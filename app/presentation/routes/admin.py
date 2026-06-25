@@ -255,3 +255,63 @@ async def audit_page(request: Request):
         },
     }
     return templates.TemplateResponse(request, "admin/audit.html", context)
+
+
+# ---------------------------------------------------------------------------
+# Relatórios (HU-09)
+# ---------------------------------------------------------------------------
+
+@router.get("/relatorios", response_class=HTMLResponse)
+async def reports_page(request: Request):
+    """Exibe o relatório consolidado de inspeções (HU-09).
+
+    Conforme HU-09 e RN-007, o relatório usa **apenas contagens e
+    categorias** — nunca valores reais detectados. Os totais são agregados
+    por resultado e por categoria para o período selecionado.
+
+    Os dados aqui são fictícios; serão substituídos por consultas agregadas
+    ao repositório de auditoria quando a camada de infraestrutura existir.
+    """
+    context = {
+        "active_page": "reports",
+        "period_label": "Últimos 30 dias",
+        "generated_at": "25/06/2026 14:05",
+        "kpis": {
+            "total":      {"value": "5.842", "trend": "+8,4% vs. período anterior", "trend_kind": "up"},
+            "block_rate": {"value": "7,3%",  "trend": "426 de 5.842 inspeções",      "trend_kind": "neutral"},
+            "approved":   {"value": "5.301", "trend": "90,7% do total",              "trend_kind": "neutral"},
+            "rejected":   {"value": "115",   "trend": "2,0% do total",               "trend_kind": "neutral"},
+        },
+        "distribution": [
+            {"kind": "approved", "label": "Aprovados",  "value": 5301, "percentage": 90.7},
+            {"kind": "blocked",  "label": "Bloqueados", "value": 426,  "percentage": 7.3},
+            {"kind": "rejected", "label": "Rejeitados", "value": 115,  "percentage": 2.0},
+        ],
+        "categories": [
+            {"name": "CPF",                  "value": 289, "percentage": 100, "share": "47,9%"},
+            {"name": "Senha em texto claro", "value": 168, "percentage": 58,  "share": "27,9%"},
+            {"name": "CNPJ",                 "value": 102, "percentage": 35,  "share": "16,9%"},
+            {"name": "Cartão de pagamento",  "value": 44,  "percentage": 15,  "share": "7,3%"},
+        ],
+        "volume": [
+            {"label": "19/06", "value": 198, "percentage": 78},
+            {"label": "20/06", "value": 215, "percentage": 85},
+            {"label": "21/06", "value": 142, "percentage": 56},
+            {"label": "22/06", "value": 167, "percentage": 66},
+            {"label": "23/06", "value": 254, "percentage": 100},
+            {"label": "24/06", "value": 231, "percentage": 91},
+            {"label": "25/06", "value": 176, "percentage": 69},
+        ],
+        "summary_rows": [
+            {"category": "CPF",                  "occurrences": 289, "files": 174, "share": "47,9%"},
+            {"category": "Senha em texto claro", "occurrences": 168, "files": 121, "share": "27,9%"},
+            {"category": "CNPJ",                 "occurrences": 102, "files": 88,  "share": "16,9%"},
+            {"category": "Cartão de pagamento",  "occurrences": 44,  "files": 39,  "share": "7,3%"},
+        ],
+        "periods": [
+            {"value": "7d",  "label": "7 dias"},
+            {"value": "30d", "label": "30 dias", "default": True},
+            {"value": "90d", "label": "90 dias"},
+        ],
+    }
+    return templates.TemplateResponse(request, "admin/reports.html", context)
