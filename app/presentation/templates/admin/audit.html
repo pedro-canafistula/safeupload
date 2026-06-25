@@ -1,0 +1,187 @@
+{% extends "admin/base_admin.html" %}
+
+{% block title %}Auditoria — SafeUpload{% endblock %}
+{% block page_title %}Auditoria{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h2 class="page-title">Histórico de inspeções</h2>
+        <p class="page-subtitle">Todos os eventos registrados conforme HU-04 — metadados, resultado e categorias detectadas</p>
+    </div>
+    <div class="page-actions">
+        <button class="btn btn-outline">
+            <span class="btn-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                    <polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+                </svg>
+            </span>
+            Exportar CSV
+        </button>
+    </div>
+</div>
+
+<!-- Resumo compacto -->
+<div class="stat-strip">
+    <div class="stat-strip-item">
+        <span class="stat-strip-label">Total</span>
+        <span class="stat-strip-value">{{ stats.total }}</span>
+    </div>
+    <div class="stat-strip-divider" aria-hidden="true"></div>
+    <div class="stat-strip-item">
+        <span class="stat-strip-dot stat-strip-dot-blocked" aria-hidden="true"></span>
+        <span class="stat-strip-label">Bloqueados</span>
+        <span class="stat-strip-value">{{ stats.blocked }}</span>
+    </div>
+    <div class="stat-strip-item">
+        <span class="stat-strip-dot stat-strip-dot-approved" aria-hidden="true"></span>
+        <span class="stat-strip-label">Aprovados</span>
+        <span class="stat-strip-value">{{ stats.approved }}</span>
+    </div>
+    <div class="stat-strip-item">
+        <span class="stat-strip-dot stat-strip-dot-rejected" aria-hidden="true"></span>
+        <span class="stat-strip-label">Rejeitados</span>
+        <span class="stat-strip-value">{{ stats.rejected }}</span>
+    </div>
+</div>
+
+<!-- Filtros -->
+<form class="filter-bar" method="GET" action="/admin/auditoria">
+    <div class="filter-group">
+        <label for="filter-period" class="filter-label">Período</label>
+        <select id="filter-period" name="periodo" class="filter-select">
+            {% for opt in filter_options.periods %}
+            <option value="{{ opt.value }}" {% if opt.default %}selected{% endif %}>{{ opt.label }}</option>
+            {% endfor %}
+        </select>
+    </div>
+
+    <div class="filter-group">
+        <label for="filter-result" class="filter-label">Resultado</label>
+        <select id="filter-result" name="resultado" class="filter-select">
+            {% for opt in filter_options.results %}
+            <option value="{{ opt.value }}" {% if opt.default %}selected{% endif %}>{{ opt.label }}</option>
+            {% endfor %}
+        </select>
+    </div>
+
+    <div class="filter-group">
+        <label for="filter-category" class="filter-label">Categoria</label>
+        <select id="filter-category" name="categoria" class="filter-select">
+            {% for opt in filter_options.categories %}
+            <option value="{{ opt.value }}" {% if opt.default %}selected{% endif %}>{{ opt.label }}</option>
+            {% endfor %}
+        </select>
+    </div>
+
+    <div class="filter-group filter-group-grow">
+        <label for="filter-search" class="filter-label">Busca por arquivo</label>
+        <div class="filter-search">
+            <span class="filter-search-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                </svg>
+            </span>
+            <input id="filter-search" type="search" name="q" class="filter-input" placeholder="Digite o nome do arquivo...">
+        </div>
+    </div>
+
+    <div class="filter-actions">
+        <button type="submit" class="btn btn-primary">Aplicar</button>
+        <a href="/admin/auditoria" class="btn btn-outline">Limpar</a>
+    </div>
+</form>
+
+<!-- Tabela -->
+<section class="card">
+    <header class="card-header card-header-tight">
+        <div>
+            <h2 class="card-title">Eventos de auditoria</h2>
+            <p class="card-subtitle">Conforme RN-007, valores reais nunca são exibidos — apenas categorias e, quando necessário, trechos mascarados</p>
+        </div>
+    </header>
+    <div class="card-body card-body-flush">
+        <table class="data-table data-table-dense">
+            <thead>
+                <tr>
+                    <th>Data / Hora</th>
+                    <th>Origem</th>
+                    <th>Arquivo</th>
+                    <th>Tamanho</th>
+                    <th>Resultado</th>
+                    <th>Categorias detectadas</th>
+                    <th aria-label="Ações"></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for ev in events %}
+                <tr>
+                    <td class="cell-mono">{{ ev.datetime }}</td>
+                    <td>
+                        <span class="source-chip">
+                            <span class="source-chip-icon" aria-hidden="true">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <circle cx="12" cy="8" r="4"/>
+                                    <path d="M4 21v-2a4 4 0 0 1 4-4h8a4 4 0 0 1 4 4v2"/>
+                                </svg>
+                            </span>
+                            {{ ev.source }}
+                        </span>
+                    </td>
+                    <td class="cell-strong">{{ ev.filename }}</td>
+                    <td class="cell-mono">{{ ev.size }}</td>
+                    <td>
+                        <span class="badge badge-{{ ev.result_kind }}">{{ ev.result_label }}</span>
+                    </td>
+                    <td>
+                        {% if ev.categories %}
+                            {% for c in ev.categories %}
+                            <span class="tag">{{ c }}</span>
+                            {% endfor %}
+                        {% elif ev.reject_reason %}
+                            <span class="muted">{{ ev.reject_reason }}</span>
+                        {% else %}
+                            <span class="muted">—</span>
+                        {% endif %}
+                    </td>
+                    <td class="cell-action">
+                        <button type="button" class="icon-btn" aria-label="Ver detalhes do evento">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                                <circle cx="12" cy="12" r="3"/>
+                            </svg>
+                        </button>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Paginação -->
+    <footer class="card-footer">
+        <span class="pagination-summary">
+            Mostrando <strong>{{ pagination.showing_from }}–{{ pagination.showing_to }}</strong>
+            de <strong>{{ pagination.total }}</strong> eventos
+        </span>
+        <nav class="pagination" aria-label="Paginação dos eventos">
+            <button class="pagination-btn" disabled aria-label="Página anterior">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="15 18 9 12 15 6"/>
+                </svg>
+            </button>
+            <button class="pagination-btn is-active" aria-current="page">1</button>
+            <button class="pagination-btn">2</button>
+            <button class="pagination-btn">3</button>
+            <span class="pagination-ellipsis">…</span>
+            <button class="pagination-btn">{{ pagination.total_pages }}</button>
+            <button class="pagination-btn" aria-label="Próxima página">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="9 18 15 12 9 6"/>
+                </svg>
+            </button>
+        </nav>
+    </footer>
+</section>
+{% endblock %}

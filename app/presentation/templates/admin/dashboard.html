@@ -1,0 +1,212 @@
+{% extends "admin/base_admin.html" %}
+
+{% block title %}Painel — SafeUpload{% endblock %}
+{% block page_title %}Painel{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h2 class="page-title">Visão geral</h2>
+        <p class="page-subtitle">Indicadores de inspeção processados pelo servidor central</p>
+    </div>
+    <div class="page-actions">
+        <div class="segmented">
+            <button class="segmented-btn">24h</button>
+            <button class="segmented-btn is-active">7 dias</button>
+            <button class="segmented-btn">30 dias</button>
+        </div>
+    </div>
+</div>
+
+<!-- KPIs -->
+<div class="kpi-grid">
+    <div class="kpi-card">
+        <div class="kpi-icon kpi-icon-primary">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                <polyline points="14 2 14 8 20 8"/>
+            </svg>
+        </div>
+        <div class="kpi-body">
+            <div class="kpi-label">Inspeções realizadas</div>
+            <div class="kpi-value">{{ kpis.total.value }}</div>
+            <div class="kpi-trend kpi-trend-{{ kpis.total.trend_kind }}">{{ kpis.total.trend }}</div>
+        </div>
+    </div>
+
+    <div class="kpi-card">
+        <div class="kpi-icon kpi-icon-danger">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/>
+            </svg>
+        </div>
+        <div class="kpi-body">
+            <div class="kpi-label">Bloqueados</div>
+            <div class="kpi-value">{{ kpis.blocked.value }}</div>
+            <div class="kpi-trend">{{ kpis.blocked.trend }}</div>
+        </div>
+    </div>
+
+    <div class="kpi-card">
+        <div class="kpi-icon kpi-icon-success">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
+            </svg>
+        </div>
+        <div class="kpi-body">
+            <div class="kpi-label">Aprovados</div>
+            <div class="kpi-value">{{ kpis.approved.value }}</div>
+            <div class="kpi-trend">{{ kpis.approved.trend }}</div>
+        </div>
+    </div>
+
+    <div class="kpi-card">
+        <div class="kpi-icon kpi-icon-warning">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+            </svg>
+        </div>
+        <div class="kpi-body">
+            <div class="kpi-label">Rejeitados</div>
+            <div class="kpi-value">{{ kpis.rejected.value }}</div>
+            <div class="kpi-trend">{{ kpis.rejected.trend }}</div>
+        </div>
+    </div>
+</div>
+
+<!-- Gráficos -->
+<div class="dashboard-row">
+    <section class="card card-trend">
+        <header class="card-header">
+            <div>
+                <h2 class="card-title">Inspeções nos últimos 7 dias</h2>
+                <p class="card-subtitle">Total por dia, incluindo todos os resultados</p>
+            </div>
+        </header>
+        <div class="card-body">
+            <div class="bar-chart" role="img" aria-label="Gráfico de barras com volume de inspeções por dia">
+                {% for day in trend %}
+                <div class="bar-chart-item">
+                    <div class="bar-chart-track">
+                        <div class="bar-chart-bar" style="height: {{ day.percentage }}%;">
+                            <span class="bar-chart-value">{{ day.value }}</span>
+                        </div>
+                    </div>
+                    <div class="bar-chart-label">{{ day.label }}</div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </section>
+
+    <section class="card card-categories">
+        <header class="card-header">
+            <div>
+                <h2 class="card-title">Categorias mais detectadas</h2>
+                <p class="card-subtitle">Ocorrências nos arquivos bloqueados</p>
+            </div>
+        </header>
+        <div class="card-body">
+            <ul class="hbar-list">
+                {% for cat in categories_top %}
+                <li class="hbar-item">
+                    <div class="hbar-label">
+                        <span class="hbar-name">{{ cat.name }}</span>
+                        <span class="hbar-value">{{ cat.value }}</span>
+                    </div>
+                    <div class="hbar-track">
+                        <div class="hbar-fill" style="width: {{ cat.percentage }}%;"></div>
+                    </div>
+                </li>
+                {% endfor %}
+            </ul>
+        </div>
+    </section>
+</div>
+
+<!-- Tabela + categorias ativas -->
+<div class="dashboard-row dashboard-row-wide">
+    <section class="card card-recent">
+        <header class="card-header">
+            <div>
+                <h2 class="card-title">Inspeções recentes</h2>
+                <p class="card-subtitle">As últimas seis inspeções processadas pelo servidor</p>
+            </div>
+            <a href="/admin/auditoria" class="card-link">Ver auditoria completa →</a>
+        </header>
+        <div class="card-body card-body-flush">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Horário</th>
+                        <th>Arquivo</th>
+                        <th>Tamanho</th>
+                        <th>Resultado</th>
+                        <th>Categorias detectadas</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for ev in recent_events %}
+                    <tr>
+                        <td class="cell-mono">{{ ev.time }}</td>
+                        <td class="cell-strong">{{ ev.filename }}</td>
+                        <td class="cell-mono">{{ ev.size }}</td>
+                        <td>
+                            <span class="badge badge-{{ ev.result_kind }}">{{ ev.result_label }}</span>
+                        </td>
+                        <td>
+                            {% if ev.categories %}
+                                {% for c in ev.categories %}
+                                <span class="tag">{{ c }}</span>
+                                {% endfor %}
+                            {% else %}
+                                <span class="muted">—</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <section class="card card-status">
+        <header class="card-header">
+            <div>
+                <h2 class="card-title">Categorias ativas</h2>
+                <p class="card-subtitle">Regras de detecção habilitadas no momento</p>
+            </div>
+        </header>
+        <div class="card-body">
+            <ul class="status-list">
+                {% for cat in categories_status %}
+                <li class="status-item">
+                    <div class="status-info">
+                        <span class="status-dot {% if cat.enabled %}status-dot-online{% else %}status-dot-off{% endif %}" aria-hidden="true"></span>
+                        <span class="status-label">{{ cat.label }}</span>
+                    </div>
+                    <span class="status-tag {% if cat.enabled %}status-tag-on{% else %}status-tag-off{% endif %}">
+                        {% if cat.enabled %}Ativa{% else %}Inativa{% endif %}
+                    </span>
+                </li>
+                {% endfor %}
+            </ul>
+            <a href="#" class="card-link card-link-block">Gerenciar categorias →</a>
+        </div>
+    </section>
+</div>
+
+<!-- Aviso -->
+<div class="notice">
+    <div class="notice-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+        </svg>
+    </div>
+    <div class="notice-body">
+        <strong>Privacidade dos dados:</strong>
+        o conteúdo integral dos arquivos é descartado após a inspeção. A auditoria armazena apenas metadados, categorias detectadas e trechos mascarados, nunca valores reais.
+    </div>
+</div>
+{% endblock %}

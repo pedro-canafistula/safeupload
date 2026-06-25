@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+
+{% block title %}Login — Centro de Administração — SafeUpload{% endblock %}
+
+{% block content %}
+<div class="auth-page">
+    <div class="auth-container">
+        <div class="auth-brand">
+            <div class="auth-shield" aria-hidden="true">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+                    <path d="m9 12 2 2 4-4"></path>
+                </svg>
+            </div>
+            <h1 class="auth-logo">SafeUpload</h1>
+            <p class="auth-subtitle">Centro de Administração</p>
+        </div>
+
+        <form class="auth-form" action="/admin/login" method="POST" novalidate>
+            <div class="form-group">
+                <label for="email" class="form-label">E-mail</label>
+                <input
+                    type="email"
+                    id="email"
+                    name="email"
+                    class="form-input"
+                    placeholder="seu.email@exemplo.com"
+                    autocomplete="email"
+                    required
+                    autofocus
+                >
+            </div>
+
+            <div class="form-group">
+                <label for="senha" class="form-label">Senha</label>
+                <input
+                    type="password"
+                    id="senha"
+                    name="senha"
+                    class="form-input"
+                    placeholder="••••••••"
+                    autocomplete="current-password"
+                    required
+                >
+            </div>
+
+            <button type="submit" class="btn btn-primary btn-block">Entrar</button>
+        </form>
+
+        <div class="auth-footer">
+            <p class="auth-hint">Área restrita — acesso apenas para administradores</p>
+        </div>
+    </div>
+
+    <footer class="page-footer">
+        <p>&copy; 2026 SafeUpload &middot; Universidade Católica de Brasília</p>
+    </footer>
+</div>
+{% endblock %}
