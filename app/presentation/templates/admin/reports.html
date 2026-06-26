@@ -6,202 +6,87 @@
 {% block content %}
 <div class="page-header">
     <div>
-        <h2 class="page-title">Relatório consolidado</h2>
-        <p class="page-subtitle">Totais por resultado e categoria (HU-09) — {{ period_label }}, gerado em {{ generated_at }}</p>
+        <h2 class="page-title">Relatórios de prevenção de vazamento de dados</h2>
+        <p class="page-subtitle">Visões sobre a base de auditoria com filtros específicos (HU-09)</p>
     </div>
-    <div class="page-actions">
-        <div class="segmented">
-            {% for p in periods %}
-            <button class="segmented-btn {% if p.default %}is-active{% endif %}">{{ p.label }}</button>
-            {% endfor %}
+</div>
+
+<p class="page-intro">
+    Há diversos relatórios internos que mostram as ocorrências de dados sensíveis detectadas nas inspeções.
+    Os mais comuns aparecem abaixo. Cada relatório é uma visão sobre a base de auditoria com filtros específicos
+    aplicados — sempre com contagens e categorias, nunca valores reais (RN-007). Para a lista completa, abra o catálogo.
+</p>
+
+<!-- Catálogo de relatórios -->
+<section class="card report-card">
+    <div class="report-feature">
+        <div class="report-feature-icon report-feature-icon-catalog" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/>
+                <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
+            </svg>
         </div>
-        <button class="btn btn-outline">
-            <span class="btn-icon" aria-hidden="true">
+        <div class="report-feature-body">
+            <h3 class="report-feature-title">Catálogo de relatórios</h3>
+            <p class="report-feature-desc">Gerencie todos os relatórios de prevenção de vazamento de dados — internos ou personalizados.</p>
+            <a href="#" class="report-link">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                    <polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+                    <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
                 </svg>
-            </span>
-            Exportar PDF
-        </button>
-    </div>
-</div>
-
-<!-- KPIs -->
-<div class="kpi-grid">
-    <div class="kpi-card">
-        <div class="kpi-icon kpi-icon-primary">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-                <polyline points="14 2 14 8 20 8"/>
-            </svg>
+                Ver catálogo
+            </a>
         </div>
-        <div class="kpi-body">
-            <div class="kpi-label">Inspeções no período</div>
-            <div class="kpi-value">{{ kpis.total.value }}</div>
-            <div class="kpi-trend kpi-trend-{{ kpis.total.trend_kind }}">{{ kpis.total.trend }}</div>
-        </div>
-    </div>
-
-    <div class="kpi-card">
-        <div class="kpi-icon kpi-icon-danger">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/>
-            </svg>
-        </div>
-        <div class="kpi-body">
-            <div class="kpi-label">Taxa de bloqueio</div>
-            <div class="kpi-value">{{ kpis.block_rate.value }}</div>
-            <div class="kpi-trend">{{ kpis.block_rate.trend }}</div>
-        </div>
-    </div>
-
-    <div class="kpi-card">
-        <div class="kpi-icon kpi-icon-success">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
-            </svg>
-        </div>
-        <div class="kpi-body">
-            <div class="kpi-label">Aprovados</div>
-            <div class="kpi-value">{{ kpis.approved.value }}</div>
-            <div class="kpi-trend">{{ kpis.approved.trend }}</div>
-        </div>
-    </div>
-
-    <div class="kpi-card">
-        <div class="kpi-icon kpi-icon-warning">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
-                <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
-            </svg>
-        </div>
-        <div class="kpi-body">
-            <div class="kpi-label">Rejeitados</div>
-            <div class="kpi-value">{{ kpis.rejected.value }}</div>
-            <div class="kpi-trend">{{ kpis.rejected.trend }}</div>
-        </div>
-    </div>
-</div>
-
-<!-- Distribuição por resultado -->
-<section class="card" style="margin-bottom: var(--space-xl);">
-    <header class="card-header">
-        <div>
-            <h2 class="card-title">Distribuição por resultado</h2>
-            <p class="card-subtitle">Proporção de inspeções aprovadas, bloqueadas e rejeitadas no período</p>
-        </div>
-    </header>
-    <div class="card-body">
-        <div class="dist-bar" role="img" aria-label="Barra de distribuição por resultado">
-            {% for d in distribution %}
-            <div class="dist-bar-segment dist-bar-{{ d.kind }}" style="width: {{ d.percentage }}%;" title="{{ d.label }}: {{ d.value }}"></div>
-            {% endfor %}
-        </div>
-        <ul class="legend">
-            {% for d in distribution %}
-            <li class="legend-item">
-                <span class="legend-dot legend-dot-{{ d.kind }}" aria-hidden="true"></span>
-                <span class="legend-label">{{ d.label }}</span>
-                <span class="legend-value">{{ d.value }} · {{ "%.1f"|format(d.percentage) }}%</span>
-            </li>
-            {% endfor %}
-        </ul>
     </div>
 </section>
 
-<!-- Volume diário + categorias -->
-<div class="dashboard-row">
-    <section class="card card-trend">
-        <header class="card-header">
-            <div>
-                <h2 class="card-title">Volume de inspeções por dia</h2>
-                <p class="card-subtitle">Amostra dos últimos 7 dias do período</p>
-            </div>
-        </header>
-        <div class="card-body">
-            <div class="bar-chart" role="img" aria-label="Gráfico de barras com volume diário de inspeções">
-                {% for day in volume %}
-                <div class="bar-chart-item">
-                    <div class="bar-chart-track">
-                        <div class="bar-chart-bar" style="height: {{ day.percentage }}%;">
-                            <span class="bar-chart-value">{{ day.value }}</span>
-                        </div>
-                    </div>
-                    <div class="bar-chart-label">{{ day.label }}</div>
-                </div>
-                {% endfor %}
-            </div>
+<!-- Relatórios recentes -->
+<section class="card report-card">
+    <div class="report-feature">
+        <div class="report-feature-icon report-feature-icon-recent" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21.21 15.89A10 10 0 1 1 8 2.83"/><path d="M22 12A10 10 0 0 0 12 2v10z"/>
+            </svg>
         </div>
-    </section>
-
-    <section class="card card-categories">
-        <header class="card-header">
-            <div>
-                <h2 class="card-title">Ocorrências por categoria</h2>
-                <p class="card-subtitle">Categorias detectadas nos arquivos bloqueados</p>
-            </div>
-        </header>
-        <div class="card-body">
-            <ul class="hbar-list">
-                {% for cat in categories %}
-                <li class="hbar-item">
-                    <div class="hbar-label">
-                        <span class="hbar-name">{{ cat.name }}</span>
-                        <span class="hbar-value">{{ cat.value }} · {{ cat.share }}</span>
-                    </div>
-                    <div class="hbar-track">
-                        <div class="hbar-fill" style="width: {{ cat.percentage }}%;"></div>
-                    </div>
+        <div class="report-feature-body">
+            <h3 class="report-feature-title">Relatórios recentes</h3>
+            <p class="report-feature-desc">Visualize e gerencie os relatórios mais recentes.</p>
+            <ol class="report-list">
+                {% for r in recent_reports %}
+                <li class="report-list-item">
+                    <span class="report-list-num">{{ r.num }}.</span>
+                    <a href="{{ r.href }}" class="report-list-link">
+                        <span class="report-list-icon report-list-icon-{{ r.kind }}" aria-hidden="true">
+                            {% if r.kind == 'table' %}
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <rect x="3" y="3" width="18" height="18" rx="2"/>
+                                <line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/>
+                                <line x1="9" y1="3" x2="9" y2="21"/>
+                            </svg>
+                            {% else %}
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M21.21 15.89A10 10 0 1 1 8 2.83"/><path d="M22 12A10 10 0 0 0 12 2v10z"/>
+                            </svg>
+                            {% endif %}
+                        </span>
+                        <span>{{ r.name }}</span>
+                    </a>
                 </li>
                 {% endfor %}
-            </ul>
+            </ol>
         </div>
-    </section>
-</div>
-
-<!-- Resumo por categoria -->
-<section class="card">
-    <header class="card-header card-header-tight">
-        <div>
-            <h2 class="card-title">Resumo por categoria</h2>
-            <p class="card-subtitle">Conforme RN-007, o relatório apresenta apenas contagens agregadas — nunca valores reais</p>
-        </div>
-    </header>
-    <div class="card-body card-body-flush">
-        <table class="data-table">
-            <thead>
-                <tr>
-                    <th>Categoria</th>
-                    <th>Ocorrências</th>
-                    <th>Arquivos afetados</th>
-                    <th>Participação</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for row in summary_rows %}
-                <tr>
-                    <td class="cell-strong">{{ row.category }}</td>
-                    <td class="cell-mono">{{ row.occurrences }}</td>
-                    <td class="cell-mono">{{ row.files }}</td>
-                    <td>{{ row.share }}</td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
     </div>
 </section>
 
 <!-- Aviso -->
-<div class="notice" style="margin-top: var(--space-xl);">
+<div class="notice">
     <div class="notice-icon" aria-hidden="true">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
         </svg>
     </div>
     <div class="notice-body">
-        <strong>Relatório agregado:</strong>
-        todos os números são contagens consolidadas. Valores reais de CPF, CNPJ, cartão ou senha nunca são incluídos no relatório (HU-09, RN-007).
+        <strong>Relatórios agregados:</strong>
+        cada relatório apresenta apenas contagens consolidadas e categorias detectadas. Valores reais de CPF, CNPJ, cartão ou senha nunca são incluídos (HU-09, RN-007).
     </div>
 </div>
 {% endblock %}
