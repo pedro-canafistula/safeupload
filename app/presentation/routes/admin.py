@@ -306,8 +306,8 @@ _ICON_SHIELD = (
 _ICON_BUILDING = (
     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" '
     'stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="2" width="16" height="20" rx="2"/>'
-    '<line x1="9" y1="6" x2="9" y2="6"/><line x1="15" y1="6" x2="15" y2="6"/>'
-    '<line x1="9" y1="10" x2="9" y2="10"/><line x1="15" y1="10" x2="15" y2="10"/>'
+    '<rect x="8" y="5" width="3" height="3"/><rect x="13" y="5" width="3" height="3"/>'
+    '<rect x="8" y="10" width="3" height="3"/><rect x="13" y="10" width="3" height="3"/>'
     '<path d="M9 22v-4h6v4"/></svg>'
 )
 _ICON_CARD = (
@@ -422,6 +422,100 @@ async def allowlist_page(request: Request):
         },
     }
     return templates.TemplateResponse(request, "admin/allowlist.html", context)
+
+
+# ---------------------------------------------------------------------------
+# Endpoints (inventário de agentes)
+# ---------------------------------------------------------------------------
+
+@router.get("/endpoints", response_class=HTMLResponse)
+async def endpoints_page(request: Request):
+    """Exibe o inventário de endpoints com o agente SafeUpload instalado.
+
+    Permite monitorar o status de cada máquina (online, offline, agente
+    desatualizado), visualizar a versão da política aplicada e executar
+    ações administrativas: forçar atualização de política, extrair
+    relatório individual ou desativar o endpoint.
+
+    Os dados aqui são fictícios; serão substituídos pela leitura do
+    registro de endpoints quando a camada de infraestrutura existir.
+    """
+    context = {
+        "active_page": "endpoints",
+        "stats": {
+            "total": "24",
+            "online": "18",
+            "offline": "4",
+            "outdated": "2",
+        },
+        "current_agent_version": "2.3.1",
+        "endpoints": [
+            {"hostname": "DESKTOP-FINANC01",    "ip": "192.168.10.101",
+             "os": "Windows 11 Pro", "os_short": "Win 11",
+             "agent_version": "2.3.1", "agent_outdated": False,
+             "policy_version": "v4", "last_seen": "26/06/2026 14:12",
+             "status": "online",   "status_label": "Online",        "inspections_7d": 47},
+            {"hostname": "DESKTOP-RH003",        "ip": "192.168.10.45",
+             "os": "Windows 10 Pro", "os_short": "Win 10",
+             "agent_version": "2.3.1", "agent_outdated": False,
+             "policy_version": "v4", "last_seen": "26/06/2026 13:58",
+             "status": "online",   "status_label": "Online",        "inspections_7d": 32},
+            {"hostname": "NOTEBOOK-TI001",       "ip": "192.168.20.12",
+             "os": "Windows 11 Pro", "os_short": "Win 11",
+             "agent_version": "2.3.1", "agent_outdated": False,
+             "policy_version": "v4", "last_seen": "26/06/2026 14:05",
+             "status": "online",   "status_label": "Online",        "inspections_7d": 91},
+            {"hostname": "DESKTOP-JURIDICO02",   "ip": "192.168.10.77",
+             "os": "Windows 11 Pro", "os_short": "Win 11",
+             "agent_version": "2.3.1", "agent_outdated": False,
+             "policy_version": "v4", "last_seen": "26/06/2026 13:44",
+             "status": "online",   "status_label": "Online",        "inspections_7d": 18},
+            {"hostname": "DESKTOP-DIRETORIA01",  "ip": "192.168.10.10",
+             "os": "Windows 11 Pro", "os_short": "Win 11",
+             "agent_version": "2.3.1", "agent_outdated": False,
+             "policy_version": "v4", "last_seen": "26/06/2026 14:01",
+             "status": "online",   "status_label": "Online",        "inspections_7d": 9},
+            {"hostname": "DESKTOP-CONTABIL02",   "ip": "192.168.10.133",
+             "os": "Windows 10 Pro", "os_short": "Win 10",
+             "agent_version": "2.3.1", "agent_outdated": False,
+             "policy_version": "v4", "last_seen": "26/06/2026 11:30",
+             "status": "online",   "status_label": "Online",        "inspections_7d": 26},
+            {"hostname": "DESKTOP-RH007",        "ip": "192.168.10.51",
+             "os": "Windows 10 Pro", "os_short": "Win 10",
+             "agent_version": "2.1.0", "agent_outdated": True,
+             "policy_version": "v3", "last_seen": "26/06/2026 09:15",
+             "status": "outdated", "status_label": "Desatualizado", "inspections_7d": 14},
+            {"hostname": "NOTEBOOK-CONTABIL03",  "ip": "192.168.20.34",
+             "os": "Windows 11 Pro", "os_short": "Win 11",
+             "agent_version": "2.2.0", "agent_outdated": True,
+             "policy_version": "v4", "last_seen": "25/06/2026 17:48",
+             "status": "outdated", "status_label": "Desatualizado", "inspections_7d": 7},
+            {"hostname": "DESKTOP-FINANC03",     "ip": "192.168.10.103",
+             "os": "Windows 10 Pro", "os_short": "Win 10",
+             "agent_version": "2.3.1", "agent_outdated": False,
+             "policy_version": "v4", "last_seen": "24/06/2026 18:22",
+             "status": "offline",  "status_label": "Offline",       "inspections_7d": 0},
+            {"hostname": "DESKTOP-JURIDICO01",   "ip": "192.168.10.75",
+             "os": "Windows 11 Pro", "os_short": "Win 11",
+             "agent_version": "2.3.1", "agent_outdated": False,
+             "policy_version": "v4", "last_seen": "23/06/2026 08:05",
+             "status": "offline",  "status_label": "Offline",       "inspections_7d": 0},
+        ],
+        "filter_options": {
+            "statuses": [
+                {"value": "all",      "label": "Todos os status",  "default": True},
+                {"value": "online",   "label": "Online"},
+                {"value": "offline",  "label": "Offline"},
+                {"value": "outdated", "label": "Desatualizado"},
+            ],
+            "os_list": [
+                {"value": "all",   "label": "Todos os sistemas", "default": True},
+                {"value": "win11", "label": "Windows 11"},
+                {"value": "win10", "label": "Windows 10"},
+            ],
+        },
+    }
+    return templates.TemplateResponse(request, "admin/endpoints.html", context)
 
 
 # ---------------------------------------------------------------------------
