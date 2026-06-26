@@ -1173,36 +1173,6 @@ table { border-collapse: collapse; width: 100%; }
     box-shadow: inset 0 0 0 1px var(--color-border);
 }
 
-.dist-bar-segment {
-    height: 100%;
-    transition: opacity var(--transition-fast);
-}
-
-.dist-bar-segment:hover { opacity: 0.85; }
-
-.dist-bar-approved { background: var(--color-success); }
-.dist-bar-blocked  { background: var(--color-danger); }
-.dist-bar-rejected { background: var(--color-warning); }
-
-.legend {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--space-lg);
-    marg
-/* ============================================================
-   Distribution bar + legend (reports page)
-   ============================================================ */
-
-.dist-bar {
-    display: flex;
-    width: 100%;
-    height: 36px;
-    border-radius: var(--radius-md);
-    overflow: hidden;
-    background: var(--color-border-soft);
-    box-shadow: inset 0 0 0 1px var(--color-border);
-}
-
 .dist-bar-segment { height: 100%; transition: opacity var(--transition-fast); }
 .dist-bar-segment:hover { opacity: 0.85; }
 .dist-bar-approved { background: var(--color-success); }
