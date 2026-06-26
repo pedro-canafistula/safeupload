@@ -382,3 +382,65 @@ async def categories_page(request: Request):
         ],
     }
     return templates.TemplateResponse(request, "admin/categories.html", context)
+
+
+# ---------------------------------------------------------------------------
+# Lista de exceções / allowlist (HU-08)
+# ---------------------------------------------------------------------------
+
+@router.get("/excecoes", response_class=HTMLResponse)
+async def allowlist_page(request: Request):
+    """Exibe a lista de exceções controladas — allowlist (HU-08).
+
+    Tratada como evolução planejada/apoio experimental. Conforme RN-007,
+    o valor real é protegido por HMAC e apenas a forma mascarada é exibida.
+    Uma exceção afeta somente o valor específico, sem desativar a categoria.
+
+    Os dados aqui são fictícios; serão substituídos pela leitura da tabela
+    ALLOWLIST quando a camada de infraestrutura existir.
+    """
+    context = {
+        "active_page": "allowlist",
+        "stats": {
+            "total": "7",
+            "by_category": [
+                {"label": "CPF",  "count": 3},
+                {"label": "CNPJ", "count": 2},
+                {"label": "Cartão", "count": 1},
+                {"label": "Senha", "count": 1},
+            ],
+        },
+        "exceptions": [
+            {"masked": "***.456.789-**", "category": "CPF",
+             "reason": "CPF fictício usado em material de treinamento",
+             "added_by": "admin@safeupload.local", "added_at": "20/06/2026"},
+            {"masked": "12.***.***/0001-**", "category": "CNPJ",
+             "reason": "CNPJ público da própria organização",
+             "added_by": "admin@safeupload.local", "added_at": "18/06/2026"},
+            {"masked": "***.222.333-**", "category": "CPF",
+             "reason": "Documento de exemplo da base de testes",
+             "added_by": "joana.silva@safeupload.local", "added_at": "17/06/2026"},
+            {"masked": "**** **** **** 1234", "category": "Cartão",
+             "reason": "Cartão de teste do gateway (sandbox)",
+             "added_by": "admin@safeupload.local", "added_at": "15/06/2026"},
+            {"masked": "98.***.***/0001-**", "category": "CNPJ",
+             "reason": "Fornecedor recorrente — documento público",
+             "added_by": "carlos.lima@safeupload.local", "added_at": "12/06/2026"},
+            {"masked": "***.888.999-**", "category": "CPF",
+             "reason": "Cadastro de demonstração aprovado pela coordenação",
+             "added_by": "joana.silva@safeupload.local", "added_at": "10/06/2026"},
+            {"masked": "senha=demo********", "category": "Senha",
+             "reason": "Credencial fictícia em manual de instalação",
+             "added_by": "admin@safeupload.local", "added_at": "08/06/2026"},
+        ],
+        "filter_options": {
+            "categories": [
+                {"value": "all",      "label": "Todas as categorias", "default": True},
+                {"value": "CPF",      "label": "CPF"},
+                {"value": "CNPJ",     "label": "CNPJ"},
+                {"value": "CARD",     "label": "Cartão de pagamento"},
+                {"value": "PASSWORD", "label": "Senha em texto claro"},
+            ],
+        },
+    }
+    return templates.TemplateResponse(request, "admin/allowlist.html", context)

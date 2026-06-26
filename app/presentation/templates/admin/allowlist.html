@@ -1,0 +1,132 @@
+{% extends "admin/base_admin.html" %}
+
+{% block title %}Lista de exceções — SafeUpload{% endblock %}
+{% block page_title %}Lista de exceções{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h2 class="page-title">Lista de exceções</h2>
+        <p class="page-subtitle">Exceções controladas para falsos positivos recorrentes (HU-08)</p>
+    </div>
+    <div class="page-actions">
+        <button class="btn btn-primary">
+            <span class="btn-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+                </svg>
+            </span>
+            Nova exceção
+        </button>
+    </div>
+</div>
+
+<!-- Banner de evolução planejada -->
+<div class="notice notice-planned">
+    <div class="notice-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+        </svg>
+    </div>
+    <div class="notice-body">
+        <strong>Evolução planejada:</strong>
+        a allowlist é tratada como apoio experimental no MVP. Cada exceção afeta apenas o valor específico cadastrado, sem desativar a categoria inteira. Os valores são armazenados como HMAC e exibidos somente de forma mascarada (RN-007).
+    </div>
+</div>
+
+<!-- Resumo -->
+<div class="stat-strip">
+    <div class="stat-strip-item">
+        <span class="stat-strip-label">Exceções cadastradas</span>
+        <span class="stat-strip-value">{{ stats.total }}</span>
+    </div>
+    <div class="stat-strip-divider" aria-hidden="true"></div>
+    {% for c in stats.by_category %}
+    <div class="stat-strip-item">
+        <span class="stat-strip-label">{{ c.label }}</span>
+        <span class="stat-strip-value">{{ c.count }}</span>
+    </div>
+    {% endfor %}
+</div>
+
+<!-- Filtros -->
+<form class="filter-bar" method="GET" action="/admin/excecoes">
+    <div class="filter-group">
+        <label for="filter-category" class="filter-label">Categoria</label>
+        <select id="filter-category" name="categoria" class="filter-select">
+            {% for opt in filter_options.categories %}
+            <option value="{{ opt.value }}" {% if opt.default %}selected{% endif %}>{{ opt.label }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="filter-group filter-group-grow">
+        <label for="filter-search" class="filter-label">Busca por justificativa</label>
+        <div class="filter-search">
+            <span class="filter-search-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                </svg>
+            </span>
+            <input id="filter-search" type="search" name="q" class="filter-input" placeholder="Digite parte da justificativa...">
+        </div>
+    </div>
+    <div class="filter-actions">
+        <button type="submit" class="btn btn-primary">Aplicar</button>
+        <a href="/admin/excecoes" class="btn btn-outline">Limpar</a>
+    </div>
+</form>
+
+<!-- Tabela -->
+<section class="card">
+    <header class="card-header card-header-tight">
+        <div>
+            <h2 class="card-title">Exceções ativas</h2>
+            <p class="card-subtitle">Apenas a forma mascarada é exibida — o valor real é protegido por HMAC e nunca apresentado (RN-007)</p>
+        </div>
+    </header>
+    <div class="card-body card-body-flush">
+        <table class="data-table data-table-dense">
+            <thead>
+                <tr>
+                    <th>Valor (mascarado)</th>
+                    <th>Categoria</th>
+                    <th>Justificativa</th>
+                    <th>Adicionado por</th>
+                    <th>Data</th>
+                    <th aria-label="Ações"></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for ex in exceptions %}
+                <tr>
+                    <td>
+                        <span class="masked-value">
+                            <span class="masked-value-text">{{ ex.masked }}</span>
+                            <span class="tag tag-hmac">HMAC</span>
+                        </span>
+                    </td>
+                    <td><span class="tag">{{ ex.category }}</span></td>
+                    <td class="cell-strong">{{ ex.reason }}</td>
+                    <td class="cell-mono">{{ ex.added_by }}</td>
+                    <td class="cell-mono">{{ ex.added_at }}</td>
+                    <td class="cell-action">
+                        <button type="button" class="icon-btn icon-btn-danger" aria-label="Remover exceção">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <polyline points="3 6 5 6 21 6"/>
+                                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                                <line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/>
+                            </svg>
+                        </button>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    <footer class="card-footer">
+        <span class="pagination-summary">
+            Mostrando <strong>{{ exceptions|length }}</strong> de <strong>{{ stats.total }}</strong> exceções
+        </span>
+    </footer>
+</section>
+{% endblock %}
