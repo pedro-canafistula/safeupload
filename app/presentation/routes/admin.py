@@ -315,3 +315,70 @@ async def reports_page(request: Request):
         ],
     }
     return templates.TemplateResponse(request, "admin/reports.html", context)
+
+
+# ---------------------------------------------------------------------------
+# Categorias de detecção (HU-07)
+# ---------------------------------------------------------------------------
+
+_ICON_SHIELD = (
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" '
+    'stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>'
+)
+_ICON_BUILDING = (
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" '
+    'stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="2" width="16" height="20" rx="2"/>'
+    '<line x1="9" y1="6" x2="9" y2="6"/><line x1="15" y1="6" x2="15" y2="6"/>'
+    '<line x1="9" y1="10" x2="9" y2="10"/><line x1="15" y1="10" x2="15" y2="10"/>'
+    '<path d="M9 22v-4h6v4"/></svg>'
+)
+_ICON_CARD = (
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" '
+    'stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/>'
+    '<line x1="2" y1="10" x2="22" y2="10"/></svg>'
+)
+_ICON_KEY = (
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" '
+    'stroke-linecap="round" stroke-linejoin="round"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 '
+    '5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3"/></svg>'
+)
+
+
+@router.get("/categorias", response_class=HTMLResponse)
+async def categories_page(request: Request):
+    """Exibe a configuração das categorias de detecção (HU-07).
+
+    Permite ativar ou desativar cada regra de detecção. Conforme RN-009, o
+    sistema não pode permitir desativar todas as categorias ao mesmo tempo.
+    Toda alteração administrativa deve ser registrada em auditoria.
+
+    Os dados aqui são fictícios; serão substituídos pela leitura da tabela
+    CATEGORIES quando a camada de infraestrutura existir.
+    """
+    context = {
+        "active_page": "categories",
+        "summary": {"active": 4, "total": 4, "occurrences": "603"},
+        "categories": [
+            {"code": "CPF", "label": "CPF", "rule": "RN-001", "tone": "primary",
+             "icon": _ICON_SHIELD, "enabled": True, "heuristic": False,
+             "occurrences": 289,
+             "description": "Classifica como CPF sequências de 11 dígitos que passam pela "
+                            "verificação matemática dos dígitos verificadores."},
+            {"code": "CNPJ", "label": "CNPJ", "rule": "RN-002", "tone": "primary",
+             "icon": _ICON_BUILDING, "enabled": True, "heuristic": False,
+             "occurrences": 102,
+             "description": "Classifica como CNPJ sequências de 14 dígitos que passam pela "
+                            "verificação matemática dos dígitos verificadores."},
+            {"code": "CARD", "label": "Cartão de pagamento", "rule": "RN-003", "tone": "warning",
+             "icon": _ICON_CARD, "enabled": True, "heuristic": False,
+             "occurrences": 44,
+             "description": "Classifica como cartão sequências de 16 dígitos com validação "
+                            "positiva pelo algoritmo de Luhn."},
+            {"code": "PASSWORD", "label": "Senha em texto claro", "rule": "RN-004", "tone": "danger",
+             "icon": _ICON_KEY, "enabled": True, "heuristic": True,
+             "occurrences": 168,
+             "description": "Identifica indícios de senha por padrões chave-valor como "
+                            "\"senha:\" ou \"password=\" com valor preenchido. Pode gerar falsos positivos."},
+        ],
+    }
+    return templates.TemplateResponse(request, "admin/categories.html", context)

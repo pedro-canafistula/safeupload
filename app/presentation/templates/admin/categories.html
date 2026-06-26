@@ -1,0 +1,79 @@
+{% extends "admin/base_admin.html" %}
+
+{% block title %}Categorias de detecção — SafeUpload{% endblock %}
+{% block page_title %}Categorias de detecção{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h2 class="page-title">Categorias de detecção</h2>
+        <p class="page-subtitle">Ative ou desative as regras aplicadas na inspeção (HU-07)</p>
+    </div>
+    <div class="page-actions">
+        <button class="btn btn-outline">Descartar</button>
+        <button class="btn btn-primary">Salvar alterações</button>
+    </div>
+</div>
+
+<!-- Resumo -->
+<div class="stat-strip">
+    <div class="stat-strip-item">
+        <span class="stat-strip-label">Categorias ativas</span>
+        <span class="stat-strip-value">{{ summary.active }} de {{ summary.total }}</span>
+    </div>
+    <div class="stat-strip-divider" aria-hidden="true"></div>
+    <div class="stat-strip-item">
+        <span class="stat-strip-label">Ocorrências (30 dias)</span>
+        <span class="stat-strip-value">{{ summary.occurrences }}</span>
+    </div>
+</div>
+
+<!-- Aviso RN-009 -->
+<div class="notice" style="margin-bottom: var(--space-lg);">
+    <div class="notice-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+            <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+        </svg>
+    </div>
+    <div class="notice-body">
+        <strong>Categoria mínima ativa (RN-009):</strong>
+        o sistema não permite desativar todas as categorias simultaneamente — ao menos uma deve permanecer ativa para garantir a inspeção mínima.
+    </div>
+</div>
+
+<!-- Lista de categorias -->
+<section class="card">
+    <header class="card-header card-header-tight">
+        <div>
+            <h2 class="card-title">Regras disponíveis</h2>
+            <p class="card-subtitle">Cada alteração passa a valer nas próximas inspeções e é registrada em auditoria (HU-07)</p>
+        </div>
+    </header>
+    <div class="card-body card-body-flush">
+        <ul class="config-list">
+            {% for cat in categories %}
+            <li class="config-item">
+                <div class="config-icon config-icon-{{ cat.tone }}" aria-hidden="true">
+                    {{ cat.icon | safe }}
+                </div>
+                <div class="config-info">
+                    <div class="config-name-row">
+                        <span class="config-name">{{ cat.label }}</span>
+                        <span class="tag">{{ cat.rule }}</span>
+                        {% if cat.heuristic %}<span class="tag">Heurística</span>{% endif %}
+                    </div>
+                    <p class="config-desc">{{ cat.description }}</p>
+                    <p class="config-meta">{{ cat.occurrences }} ocorrências nos últimos 30 dias</p>
+                </div>
+                <label class="toggle" title="{% if cat.enabled %}Desativar{% else %}Ativar{% endif %} {{ cat.label }}">
+                    <input type="checkbox" class="toggle-input" name="cat_{{ cat.code }}" {% if cat.enabled %}checked{% endif %}>
+                    <span class="toggle-track" aria-hidden="true"></span>
+                    <span class="toggle-state">{% if cat.enabled %}Ativa{% else %}Inativa{% endif %}</span>
+                </label>
+            </li>
+            {% endfor %}
+        </ul>
+    </div>
+</section>
+{% endblock %}
