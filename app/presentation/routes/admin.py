@@ -444,3 +444,57 @@ async def allowlist_page(request: Request):
         },
     }
     return templates.TemplateResponse(request, "admin/allowlist.html", context)
+
+
+# ---------------------------------------------------------------------------
+# Usuários (HU-06)
+# ---------------------------------------------------------------------------
+
+@router.get("/usuarios", response_class=HTMLResponse)
+async def users_page(request: Request):
+    """Exibe a gestão de usuários e perfis de acesso (HU-06).
+
+    Conforme RN-008, as funções administrativas são restritas ao perfil
+    administrador. As senhas são armazenadas apenas como hash seguro
+    (PBKDF2), nunca em texto claro.
+
+    Os dados aqui são fictícios; serão substituídos pela leitura da tabela
+    USERS quando a camada de infraestrutura existir.
+    """
+    context = {
+        "active_page": "users",
+        "stats": {"total": "6", "admins": "3", "auditors": "3", "active": "5"},
+        "users": [
+            {"name": "Victor Nogueira da Nova Bonato", "initials": "VB",
+             "email": "victor.bonato@safeupload.local", "role": "Administrador",
+             "role_kind": "admin", "active": True, "last_access": "25/06/2026 13:58"},
+            {"name": "Joana Silva", "initials": "JS",
+             "email": "joana.silva@safeupload.local", "role": "Administrador",
+             "role_kind": "admin", "active": True, "last_access": "25/06/2026 11:20"},
+            {"name": "Pedro Campos Canafístula", "initials": "PC",
+             "email": "pedro.campos@safeupload.local", "role": "Auditor",
+             "role_kind": "auditor", "active": True, "last_access": "24/06/2026 17:04"},
+            {"name": "Luiz Henrique Alves Rodrigues", "initials": "LR",
+             "email": "luiz.alves@safeupload.local", "role": "Auditor",
+             "role_kind": "auditor", "active": True, "last_access": "23/06/2026 09:42"},
+            {"name": "Lucas Ferreira Coelho", "initials": "LC",
+             "email": "lucas.coelho@safeupload.local", "role": "Administrador",
+             "role_kind": "admin", "active": True, "last_access": "22/06/2026 15:11"},
+            {"name": "Carlos Lima", "initials": "CL",
+             "email": "carlos.lima@safeupload.local", "role": "Auditor",
+             "role_kind": "auditor", "active": False, "last_access": "02/06/2026 08:30"},
+        ],
+        "filter_options": {
+            "roles": [
+                {"value": "all",     "label": "Todos os perfis", "default": True},
+                {"value": "admin",   "label": "Administrador"},
+                {"value": "auditor", "label": "Auditor"},
+            ],
+            "statuses": [
+                {"value": "all",      "label": "Todos os status", "default": True},
+                {"value": "active",   "label": "Apenas ativos"},
+                {"value": "inactive", "label": "Apenas inativos"},
+            ],
+        },
+    }
+    return templates.TemplateResponse(request, "admin/users.html", context)
