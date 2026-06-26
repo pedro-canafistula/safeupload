@@ -1,0 +1,211 @@
+{% extends "admin/base_admin.html" %}
+
+{% block title %}Endpoints — SafeUpload{% endblock %}
+{% block page_title %}Endpoints{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h2 class="page-title">Endpoints</h2>
+        <p class="page-subtitle">Máquinas com o agente SafeUpload instalado e registrado no servidor central</p>
+    </div>
+    <div class="page-actions">
+        <button class="btn btn-outline">
+            <span class="btn-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                    <polyline points="7 10 12 15 17 10"/>
+                    <line x1="12" y1="15" x2="12" y2="3"/>
+                </svg>
+            </span>
+            Extrair relatório
+        </button>
+        <button class="btn btn-primary">
+            <span class="btn-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="23 4 23 10 17 10"/>
+                    <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+                </svg>
+            </span>
+            Atualizar política em todos
+        </button>
+    </div>
+</div>
+
+<!-- Resumo -->
+<div class="stat-strip">
+    <div class="stat-strip-item">
+        <span class="stat-strip-label">Total de endpoints</span>
+        <span class="stat-strip-value">{{ stats.total }}</span>
+    </div>
+    <div class="stat-strip-divider" aria-hidden="true"></div>
+    <div class="stat-strip-item">
+        <span class="stat-strip-dot stat-strip-dot-approved" aria-hidden="true"></span>
+        <span class="stat-strip-label">Online</span>
+        <span class="stat-strip-value">{{ stats.online }}</span>
+    </div>
+    <div class="stat-strip-item">
+        <span class="stat-strip-dot stat-strip-dot-blocked" aria-hidden="true"></span>
+        <span class="stat-strip-label">Offline</span>
+        <span class="stat-strip-value">{{ stats.offline }}</span>
+    </div>
+    <div class="stat-strip-item">
+        <span class="stat-strip-dot stat-strip-dot-rejected" aria-hidden="true"></span>
+        <span class="stat-strip-label">Desatualizados</span>
+        <span class="stat-strip-value">{{ stats.outdated }}</span>
+    </div>
+    <div class="stat-strip-divider" aria-hidden="true"></div>
+    <div class="stat-strip-item">
+        <span class="stat-strip-label">Versão atual do agente</span>
+        <span class="stat-strip-value">{{ current_agent_version }}</span>
+    </div>
+</div>
+
+<!-- Filtros -->
+<form class="filter-bar" method="GET" action="/admin/endpoints">
+    <div class="filter-group">
+        <label for="filter-status" class="filter-label">Status</label>
+        <select id="filter-status" name="status" class="filter-select">
+            {% for opt in filter_options.statuses %}
+            <option value="{{ opt.value }}" {% if opt.default %}selected{% endif %}>{{ opt.label }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="filter-group">
+        <label for="filter-os" class="filter-label">Sistema</label>
+        <select id="filter-os" name="os" class="filter-select">
+            {% for opt in filter_options.os_list %}
+            <option value="{{ opt.value }}" {% if opt.default %}selected{% endif %}>{{ opt.label }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="filter-group filter-group-grow">
+        <label for="filter-search" class="filter-label">Busca por hostname ou IP</label>
+        <div class="filter-search">
+            <span class="filter-search-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                </svg>
+            </span>
+            <input id="filter-search" type="search" name="q" class="filter-input" placeholder="Digite o hostname ou endereço IP...">
+        </div>
+    </div>
+    <div class="filter-actions">
+        <button type="submit" class="btn btn-primary">Aplicar</button>
+        <a href="/admin/endpoints" class="btn btn-outline">Limpar</a>
+    </div>
+</form>
+
+<!-- Tabela de endpoints -->
+<section class="card">
+    <header class="card-header card-header-tight">
+        <div>
+            <h2 class="card-title">Inventário de endpoints</h2>
+            <p class="card-subtitle">Exibindo {{ endpoints|length }} de {{ stats.total }} endpoints registrados</p>
+        </div>
+    </header>
+    <div class="card-body card-body-flush">
+        <table class="data-table data-table-dense">
+            <thead>
+                <tr>
+                    <th>Máquina</th>
+                    <th>Sistema</th>
+                    <th>Agente</th>
+                    <th>Política</th>
+                    <th>Último contato</th>
+                    <th>Status</th>
+                    <th>Inspeções (7d)</th>
+                    <th aria-label="Ações"></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for ep in endpoints %}
+                <tr>
+                    <td>
+                        <div class="host-cell">
+                            <span class="host-name">{{ ep.hostname }}</span>
+                            <span class="host-ip">{{ ep.ip }}</span>
+                        </div>
+                    </td>
+                    <td><span class="tag">{{ ep.os_short }}</span></td>
+                    <td>
+                        <div class="version-cell">
+                            <span class="cell-mono">{{ ep.agent_version }}</span>
+                            {% if ep.agent_outdated %}
+                            <span class="tag tag-outdated">Desatualizado</span>
+                            {% endif %}
+                        </div>
+                    </td>
+                    <td class="cell-mono">{{ ep.policy_version }}</td>
+                    <td class="cell-mono">{{ ep.last_seen }}</td>
+                    <td>
+                        <span class="badge badge-{{ ep.status }}">{{ ep.status_label }}</span>
+                    </td>
+                    <td class="cell-mono">{{ ep.inspections_7d }}</td>
+                    <td class="cell-action">
+                        <div class="action-group">
+                            <a href="/admin/auditoria?hostname={{ ep.hostname }}"
+                               class="icon-btn"
+                               aria-label="Ver auditoria de {{ ep.hostname }}"
+                               title="Ver auditoria">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                                    <polyline points="14 2 14 8 20 8"/>
+                                    <line x1="9" y1="13" x2="15" y2="13"/>
+                                    <line x1="9" y1="17" x2="15" y2="17"/>
+                                </svg>
+                            </a>
+                            <button type="button"
+                                    class="icon-btn"
+                                    aria-label="Forçar atualização de política em {{ ep.hostname }}"
+                                    title="Atualizar política">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <polyline points="23 4 23 10 17 10"/>
+                                    <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+                                </svg>
+                            </button>
+                            <button type="button"
+                                    class="icon-btn"
+                                    aria-label="Extrair relatório de {{ ep.hostname }}"
+                                    title="Extrair relatório">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                                    <polyline points="7 10 12 15 17 10"/>
+                                    <line x1="12" y1="15" x2="12" y2="3"/>
+                                </svg>
+                            </button>
+                            <button type="button"
+                                    class="icon-btn icon-btn-danger"
+                                    aria-label="Desativar {{ ep.hostname }}"
+                                    title="Desativar endpoint">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M18.36 6.64a9 9 0 1 1-12.73 0"/>
+                                    <line x1="12" y1="2" x2="12" y2="12"/>
+                                </svg>
+                            </button>
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    <footer class="card-footer">
+        <span class="pagination-summary">
+            Exibindo <strong>{{ endpoints|length }}</strong> de <strong>{{ stats.total }}</strong> endpoints registrados
+        </span>
+    </footer>
+</section>
+
+<div class="notice">
+    <div class="notice-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+        </svg>
+    </div>
+    <div class="notice-body">
+        <strong>Privacidade dos dados:</strong>
+        o agente inspeciona o conteúdo localmente no endpoint — nenhum arquivo é transmitido ao servidor central. Apenas metadados, resultado e categorias detectadas são registrados em auditoria (RN-006, RN-007).
+    </div>
+</div>
+{% endblock %}
