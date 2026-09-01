@@ -1,57 +1,74 @@
 # SafeUpload
 
-Protótipo acadêmico de aplicação web para **prevenção de vazamento acidental de dados** (DLP) em arquivos digitais. Desenvolvido na disciplina de Análise e Projeto de Software da Universidade Católica de Brasília.
+Protótipo acadêmico de sistema de **prevenção de vazamento acidental de dados** (DLP). Desenvolvido na disciplina de Análise e Projeto de Software da Universidade Católica de Brasília.
 
-> Versão atual: **0.1.0** (protótipo visual — UI sem funcionalidades de inspeção).
+> Versão atual: **0.1.0** — protótipo visual. O Centro de Administração está construído em todas as suas telas, mas ainda sem autenticação, inspeção ou banco de dados. Todos os dados exibidos são fictícios.
 
 ---
 
 ## Sumário
 
 - [Visão geral](#visão-geral)
+- [Arquitetura do produto](#arquitetura-do-produto)
 - [Tecnologias](#tecnologias)
 - [Pré-requisitos](#pré-requisitos)
 - [Instalação e execução](#instalação-e-execução)
 - [Estrutura do projeto](#estrutura-do-projeto)
 - [Rotas disponíveis](#rotas-disponíveis)
-- [Convenções e arquitetura](#convenções-e-arquitetura)
+- [Convenções e arquitetura de código](#convenções-e-arquitetura-de-código)
 - [Documentos de referência](#documentos-de-referência)
 - [Limitações conhecidas](#limitações-conhecidas)
+- [Equipe](#equipe)
 
 ---
 
 ## Visão geral
 
-O SafeUpload permite que um usuário envie um arquivo pela interface web, recebe o arquivo no servidor central, extrai o texto e aplica regras de detecção para identificar dados sensíveis (CPF, CNPJ, cartão de pagamento e indícios de senha em texto claro). O resultado é classificado em três estados:
+O SafeUpload inspeciona o conteúdo textual de arquivos em busca de dados sensíveis — CPF, CNPJ, cartão de pagamento e indícios de senha em texto claro — e classifica cada inspeção em três estados:
 
-| Resultado    | Significado                                                                 |
-|--------------|------------------------------------------------------------------------------|
-| **Aprovado** | As regras ativas não encontraram ocorrências no conteúdo textual extraível.  |
-| **Bloqueado**| Pelo menos uma ocorrência válida foi identificada.                           |
-| **Rejeitado**| Formato inválido, tamanho acima do limite ou falha na análise.               |
+| Resultado     | Significado                                                                  |
+|---------------|------------------------------------------------------------------------------|
+| **Aprovado**  | As regras ativas não encontraram ocorrências no conteúdo textual extraível.   |
+| **Bloqueado** | Pelo menos uma ocorrência válida foi identificada.                            |
+| **Rejeitado** | Formato inválido, tamanho acima do limite ou falha na análise.                |
 
-O sistema **nunca encaminha arquivos automaticamente** para serviços externos. O upload significa apenas envio ao SafeUpload para inspeção.
+O sistema **nunca encaminha arquivos para serviços externos** e descarta o conteúdo do arquivo após a análise.
+
+---
+
+## Arquitetura do produto
+
+O SafeUpload é um sistema de **dois componentes**, seguindo o modelo de soluções DLP corporativas (Forcepoint, Symantec):
+
+**1. Agente desktop** *(ainda não implementado)*
+Aplicação Windows instalada nos endpoints dos usuários. Intercepta operações de arquivo (salvar, compartilhar, enviar), submete o conteúdo ao servidor central para inspeção via API (`POST /api/inspect`) e então bloqueia ou libera a operação conforme a resposta. O usuário final não faz upload manual e não se autentica.
+
+**2. Centro de Administração** *(implementado como protótipo visual)*
+Aplicação web usada pelos administradores para gestão de endpoints, auditoria de inspeções, configuração de categorias de detecção, lista de exceções e usuários. Exige login.
+
+> O modelo original descrito nos documentos — usuário acessa uma página web e carrega o arquivo manualmente — **foi descartado**. Decisão registrada em [`DOC_CHANGES.md`](./DOC_CHANGES.md) (item 2).
 
 ---
 
 ## Tecnologias
 
-| Camada                | Tecnologia                                |
-|-----------------------|-------------------------------------------|
-| Linguagem             | Python 3.11+                              |
-| Servidor web          | FastAPI + Uvicorn                         |
-| Renderização HTML     | Jinja2                                    |
-| Persistência (futura) | SQLite                                    |
-| Frontend              | HTML5, CSS3 puro, JavaScript vanilla      |
+| Camada                     | Tecnologia                     |
+|----------------------------|--------------------------------|
+| Linguagem                  | Python 3.11+                   |
+| Servidor web               | FastAPI + Uvicorn              |
+| Renderização HTML          | Jinja2                         |
+| Frontend                   | HTML5 + CSS3 puro              |
+| Persistência (futura)      | SQLite                         |
+| Agente desktop (futuro)    | a definir                      |
 
-Não há frameworks JavaScript (React, Vue etc.). Toda a interface é renderizada no servidor com templates Jinja2.
+Não há frameworks JavaScript nem etapa de build. Toda a interface é renderizada no servidor com templates Jinja2.
 
 ---
 
 ## Pré-requisitos
 
-- **Python 3.11** ou superior
-- **pip** (gerenciador de pacotes Python)
+- **Python 3.11** ou superior (o projeto roda em 3.13)
+- **pip**
 - Navegador moderno (Chrome, Firefox ou Edge)
 
 ---
@@ -66,7 +83,7 @@ A partir da raiz do projeto:
 python -m venv venv
 ```
 
-> O ambiente foi criado em `./venv/` (recomendado). Caso prefira outro local, ajuste os comandos abaixo conforme necessário.
+> **Nota:** o ambiente da máquina de desenvolvimento atual está em `app/venv/` — fora da convenção. Se você usa esse ambiente, ative com `.\app\venv\Scripts\Activate.ps1`. Ambos os caminhos estão no `.gitignore`.
 
 ### 2. Ativar o ambiente virtual
 
@@ -97,7 +114,7 @@ pip install -r requirements.txt
 uvicorn app.main:app --reload
 ```
 
-A aplicação ficará disponível em **http://localhost:8000**. O parâmetro `--reload` faz o servidor reiniciar automaticamente sempre que um arquivo Python ou template for alterado.
+A aplicação fica disponível em **http://localhost:8000**, que redireciona para a tela de login. Como não há autenticação real, qualquer entrada no formulário leva ao painel. O parâmetro `--reload` reinicia o servidor a cada alteração em arquivo Python ou template.
 
 ### 5. Encerrar o servidor
 
@@ -114,31 +131,36 @@ SafeUpload/
 │   ├── main.py                   # Ponto de entrada do FastAPI
 │   ├── presentation/             # Camada de apresentação (UI + rotas)
 │   │   ├── __init__.py           # Configuração compartilhada do Jinja2
-│   │   ├── routes/               # Rotas HTTP organizadas por área
+│   │   ├── routes/
 │   │   │   ├── admin.py          # Rotas do Centro de Administração
-│   │   │   └── agent.py          # Rotas da interface pública (agente DLP)
-│   │   ├── templates/            # Templates Jinja2
-│   │   │   ├── base.html         # Layout base (genérico)
-│   │   │   └── admin/            # Templates do Centro de Administração
+│   │   │   └── agent.py          # API do agente desktop (vazia por enquanto)
+│   │   ├── templates/
+│   │   │   ├── base.html            # Layout base genérico
+│   │   │   └── admin/
 │   │   │       ├── base_admin.html  # Layout com sidebar e topbar
-│   │   │       ├── login.html       # Página de login
+│   │   │       ├── login.html       # Login
 │   │   │       ├── dashboard.html   # Painel principal
-│   │   │       └── audit.html       # Histórico de auditoria
-│   │   └── static/               # Arquivos estáticos servidos em /static
+│   │   │       ├── audit.html       # Histórico de auditoria
+│   │   │       ├── endpoints.html   # Inventário de endpoints
+│   │   │       ├── reports.html     # Central de relatórios
+│   │   │       ├── categories.html  # Categorias de detecção
+│   │   │       ├── allowlist.html   # Lista de exceções
+│   │   │       └── users.html       # Usuários e perfis
+│   │   └── static/
 │   │       └── css/
 │   │           └── styles.css    # Design tokens + estilos globais
 │   ├── application/              # (Reservada) orquestração de casos de uso
 │   ├── domain/                   # (Reservada) modelos e validadores de negócio
 │   ├── infrastructure/           # (Reservada) extratores e persistência
 │   └── security/                 # (Reservada) sessão, hash, CSRF, HMAC
-├── Documentos/                   # PDFs oficiais (Visão, Requisitos, Arquitetura)
+├── Documentos/                   # Documentos oficiais (.docx), diagramas e capturas de tela
 ├── CLAUDE.md                     # Guia para o assistente Claude Code
 ├── DOC_CHANGES.md                # Mudanças pendentes na documentação oficial
 ├── README.md                     # Este arquivo
 └── requirements.txt              # Dependências Python
 ```
 
-As pastas marcadas como **(Reservada)** estão vazias no protótipo visual atual e serão preenchidas conforme a implementação avançar.
+As pastas marcadas como **(Reservada)** contêm apenas `__init__.py` — serão preenchidas conforme a implementação avançar.
 
 ---
 
@@ -146,25 +168,32 @@ As pastas marcadas como **(Reservada)** estão vazias no protótipo visual atual
 
 ### Centro de Administração (`/admin`)
 
-| Rota                  | Método | Descrição                                              |
-|-----------------------|--------|--------------------------------------------------------|
-| `/admin`              | GET    | Redireciona para `/admin/dashboard`                    |
-| `/admin/login`        | GET    | Página de login do administrador                       |
-| `/admin/login`        | POST   | Envio do formulário (stub — redireciona ao painel)     |
-| `/admin/dashboard`    | GET    | Painel principal com indicadores e inspeções recentes  |
-| `/admin/auditoria`    | GET    | Histórico completo de inspeções (HU-04)                |
+| Rota                  | Método | Descrição                                                        | HU     |
+|-----------------------|--------|------------------------------------------------------------------|--------|
+| `/admin`              | GET    | Redireciona para `/admin/dashboard`                              | —      |
+| `/admin/login`        | GET    | Página de login                                                  | HU-06  |
+| `/admin/login`        | POST   | Stub — redireciona ao painel independentemente da entrada        | HU-06  |
+| `/admin/dashboard`    | GET    | Painel com indicadores, tendência e inspeções recentes           | —      |
+| `/admin/auditoria`    | GET    | Histórico completo de inspeções                                  | HU-04  |
+| `/admin/endpoints`    | GET    | Inventário dos endpoints com agente instalado                    | —      |
+| `/admin/relatorios`   | GET    | Central de relatórios                                            | HU-09  |
+| `/admin/categorias`   | GET    | Configuração das categorias de detecção                          | HU-07  |
+| `/admin/excecoes`     | GET    | Lista de exceções controladas (allowlist)                        | HU-08  |
+| `/admin/usuarios`     | GET    | Gestão de usuários e perfis de acesso                            | HU-06  |
 
-### Interface do agente (público)
+Todas as telas exibem dados fictícios definidos em `routes/admin.py`. Formulários e filtros são visuais — não submetem para lugar nenhum.
 
-> A interface do agente (upload + resultado) **não exige autenticação**. Decisão registrada em [`DOC_CHANGES.md`](./DOC_CHANGES.md).
+### API do agente
 
-| Rota | Método | Descrição          |
-|------|--------|--------------------|
-| `/`  | GET    | Redireciona para `/admin/login` (temporário, até a UI do agente existir) |
+| Rota | Método | Descrição |
+|------|--------|-----------|
+| `/`  | GET    | Redireciona para `/admin/login` (temporário) |
+
+> `POST /api/inspect` — contrato de inspeção entre o agente desktop e o servidor. **Ainda não implementado**; `agent.py` contém apenas o router vazio.
 
 ---
 
-## Convenções e arquitetura
+## Convenções e arquitetura de código
 
 O código segue a **arquitetura em camadas** definida na Seção 4.3 do Documento de Arquitetura. A dependência principal é unidirecional:
 
@@ -174,51 +203,64 @@ presentation  →  application  →  domain  ←  infrastructure
                   security (suporte transversal)
 ```
 
-| Pacote              | Responsabilidade                                                                                   |
-|---------------------|----------------------------------------------------------------------------------------------------|
-| `app.presentation`  | Rotas HTTP (FastAPI), templates Jinja2, formulários, páginas acessadas pelo navegador.             |
-| `app.application`   | Coordenação dos casos de uso: receber arquivo, orquestrar extração e validação, gravar auditoria. |
-| `app.domain`        | Modelos do negócio, validadores (CPF, CNPJ, cartão, senha), enumerações de resultado, mascaramento. |
-| `app.infrastructure`| Extratores por formato (PDF, DOCX, XLSX...), repositório SQLite, operações de persistência.        |
-| `app.security`      | Hash de senha (PBKDF2), HMAC para allowlist, token CSRF, controle de sessão.                       |
+| Pacote               | Responsabilidade                                                                                    |
+|----------------------|-----------------------------------------------------------------------------------------------------|
+| `app.presentation`   | Rotas HTTP (FastAPI), templates Jinja2, páginas do Centro de Administração e API do agente.         |
+| `app.application`    | Coordenação dos casos de uso: receber conteúdo, orquestrar extração e validação, gravar auditoria.   |
+| `app.domain`         | Modelos do negócio, validadores (CPF, CNPJ, cartão, senha), enumerações de resultado, mascaramento.  |
+| `app.infrastructure` | Extratores por formato (PDF, DOCX, XLSX...), repositório SQLite, operações de persistência.          |
+| `app.security`       | Hash de senha (PBKDF2), HMAC para allowlist, token CSRF, controle de sessão.                         |
+
+### Perfis de acesso
+
+| Perfil            | Acesso                                                                     |
+|-------------------|----------------------------------------------------------------------------|
+| **Administrador** | Todas as telas, incluindo configuração de categorias, exceções e usuários.  |
+| **Auditor**       | Somente leitura de Painel, Auditoria e Relatórios.                          |
+
+Registrado em [`DOC_CHANGES.md`](./DOC_CHANGES.md) (item 3) — ainda não consta nos documentos oficiais.
 
 ### Design tokens (CSS)
 
-Todas as cores, espaçamentos, raios e sombras estão definidos como variáveis CSS em `:root` no arquivo `styles.css`. Para criar novas páginas com aparência consistente, use sempre as variáveis (`var(--color-primary)`, `var(--space-md)`, etc.) em vez de valores fixos.
+Todas as cores, espaçamentos, raios e sombras estão definidos como variáveis CSS em `:root` no arquivo `styles.css`. Para criar novas páginas com aparência consistente, use sempre as variáveis (`var(--color-primary)`, `var(--space-md)`) em vez de valores fixos.
 
-**Paleta:**
+| Token                | Hex       | Uso                                  |
+|----------------------|-----------|--------------------------------------|
+| `--color-primary`    | `#1e3a5f` | Marca, cabeçalhos, botões primários  |
+| `--color-accent`     | `#3b82f6` | Links, foco, destaques               |
+| `--color-success`    | `#10b981` | Resultado **Aprovado**               |
+| `--color-danger`     | `#ef4444` | Resultado **Bloqueado**              |
+| `--color-warning`    | `#f59e0b` | Resultado **Rejeitado**              |
+| `--color-bg`         | `#f8fafc` | Fundo das páginas                    |
+| `--color-surface`    | `#ffffff` | Cartões, painéis                     |
+| `--color-text`       | `#1e293b` | Texto principal                      |
+| `--color-text-muted` | `#64748b` | Texto secundário                     |
+| `--color-border`     | `#e2e8f0` | Bordas e divisores                   |
 
-| Token                | Hex      | Uso                                         |
-|----------------------|----------|---------------------------------------------|
-| `--color-primary`    | `#1e3a5f`| Marca, cabeçalhos, botões primários         |
-| `--color-accent`     | `#3b82f6`| Links, foco, destaques                      |
-| `--color-success`    | `#10b981`| Resultado **Aprovado**                      |
-| `--color-danger`     | `#ef4444`| Resultado **Bloqueado**                     |
-| `--color-warning`    | `#f59e0b`| Resultado **Rejeitado**                     |
-| `--color-bg`         | `#f8fafc`| Fundo das páginas                           |
-| `--color-surface`    | `#ffffff`| Cartões, painéis                            |
-| `--color-text`       | `#1e293b`| Texto principal                             |
-| `--color-text-muted` | `#64748b`| Texto secundário                            |
-| `--color-border`     | `#e2e8f0`| Bordas e divisores                          |
+Os ícones são SVGs inline no estilo Lucide (24×24, contorno). Não há fonte de ícones nem dependência externa.
 
 ---
 
 ## Documentos de referência
 
-A pasta `Documentos/` contém os artefatos acadêmicos oficiais:
+A pasta `Documentos/` contém os artefatos acadêmicos oficiais, em `.docx`:
 
-- **Documento de Visão (v2.0)** — escopo, partes interessadas, necessidades e funcionalidades.
-- **Documento de Requisitos (v2.0)** — histórias de usuário (HU-01 a HU-10), regras de negócio (RN-001 a RN-010), requisitos não funcionais (RNF-01 a RNF-11).
-- **Documento de Arquitetura (v2.0)** — visões 4+1, decisões arquiteturais, diagramas UML, modelo de dados.
+- **Documento de Visão** — escopo, partes interessadas, necessidades e funcionalidades.
+- **Documento de Requisitos** — histórias de usuário (HU-01 a HU-10), regras de negócio (RN-001 a RN-010), requisitos não funcionais (RNF-01 a RNF-11).
+- **Documento de Arquitetura** — visões 4+1, decisões arquiteturais, diagramas UML, modelo de dados.
 
-Mudanças no escopo ou em decisões já documentadas devem ser registradas em [`DOC_CHANGES.md`](./DOC_CHANGES.md) **antes** de serem aplicadas aos PDFs.
+Também estão na pasta a apresentação (`dlp-apresentacao.pdf`), os diagramas UML em PNG e a subpasta `imagens/` com capturas de todas as telas implementadas.
+
+Mudanças no escopo ou em decisões já documentadas devem ser registradas em [`DOC_CHANGES.md`](./DOC_CHANGES.md) **antes** de serem aplicadas aos documentos.
 
 ---
 
 ## Limitações conhecidas
 
-- **Protótipo visual:** as páginas atuais não possuem funcionalidade — formulários não autenticam, dados exibidos no painel são fictícios.
-- **OCR fora do escopo:** o MVP não interpreta texto em imagens nem realiza reconhecimento óptico de caracteres.
+- **Protótipo visual:** nenhuma tela tem funcionalidade. Não há autenticação, inspeção nem persistência — os dados exibidos são fictícios.
+- **Agente desktop inexistente:** o componente que efetivamente intercepta arquivos ainda não foi desenvolvido.
+- **Camadas vazias:** `application`, `domain`, `infrastructure` e `security` contêm apenas `__init__.py`.
+- **OCR fora do escopo:** o MVP não interpreta texto em imagens.
 - **Sem integrações externas:** o SafeUpload não encaminha arquivos para nuvem, e-mail ou outros sistemas.
 - **Heurística de senha:** a detecção de senha em texto claro pode produzir falsos positivos e falsos negativos.
 
@@ -227,6 +269,7 @@ Mudanças no escopo ou em decisões já documentadas devem ser registradas em [`
 ## Equipe
 
 **Grupo Prevenção de vazamento de dados** — UCB, 2026
+
 - Victor Nogueira da Nova Bonato
 - Pedro Campos Canafístula
 - Luiz Henrique Alves Rodrigues
