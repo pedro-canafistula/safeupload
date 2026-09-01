@@ -154,7 +154,6 @@ SafeUpload/
 │   ├── infrastructure/           # (Reservada) extratores e persistência
 │   └── security/                 # (Reservada) sessão, hash, CSRF, HMAC
 ├── Documentos/                   # Documentos oficiais (.docx), diagramas e capturas de tela
-├── CLAUDE.md                     # Guia para o assistente Claude Code
 ├── DOC_CHANGES.md                # Mudanças pendentes na documentação oficial
 ├── README.md                     # Este arquivo
 └── requirements.txt              # Dependências Python

@@ -42,5 +42,6 @@ desktop.ini
 # Uvicorn / FastAPI
 *.log
 
-#Claude
+# Claude Code
 CLAUDE.md
+.claude/
