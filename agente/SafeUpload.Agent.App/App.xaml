@@ -19,6 +19,7 @@
             <mvvm:ZeroCountToVisibilityConverter x:Key="ZeroToVisibility" />
             <mvvm:LetterSpacingConverter x:Key="LetterSpacing" />
             <mvvm:IconLookupConverter x:Key="IconLookup" />
+            <mvvm:BrushLookupConverter x:Key="BrushLookup" />
         </ResourceDictionary>
     </Application.Resources>
 </Application>

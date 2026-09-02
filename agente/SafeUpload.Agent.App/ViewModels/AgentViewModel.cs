@@ -40,6 +40,20 @@ public sealed class AgentViewModel : ObservableObject
     /// <summary>A tela de histórico.</summary>
     public HistoryViewModel History { get; }
 
+    /// <summary>
+    /// Carrega as duas telas.
+    ///
+    /// Chamado no arranque, com o painel ainda oculto, para que o agente já
+    /// tenha o estado em mãos quando o usuário abrir a janela pela primeira
+    /// vez — e para que o histórico esteja pronto para receber interceptações
+    /// antes de qualquer tela ter sido exibida.
+    /// </summary>
+    public async Task LoadAsync()
+    {
+        await Status.LoadAsync().ConfigureAwait(true);
+        await History.LoadAsync().ConfigureAwait(true);
+    }
+
     /// <summary>Os dois itens de navegação da barra lateral.</summary>
     public IReadOnlyList<NavigationSection> Sections { get; }
 

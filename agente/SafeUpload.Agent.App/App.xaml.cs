@@ -65,6 +65,9 @@ public partial class App : System.Windows.Application
         // tudo o que o agente fez antes disso.
         _panel = new AgentWindow(_agentViewModel);
 
+        // Carrega politica e trilha ja no arranque, com a janela oculta.
+        _ = _agentViewModel.LoadAsync();
+
         _tray = new TrayIconHost(OpenPanel, OpenSimulator, ExitAgent);
         _tray.ShowBalloon("SafeUpload", "Proteção ativa. O agente está na bandeja do sistema.");
     }
