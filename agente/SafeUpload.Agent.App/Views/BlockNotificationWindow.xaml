@@ -1,0 +1,118 @@
+﻿<Window x:Class="SafeUpload.Agent.App.Views.BlockNotificationWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="clr-namespace:SafeUpload.Agent.App.ViewModels"
+        mc:Ignorable="d"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        Title="Envio bloqueado pelo SafeUpload"
+        Width="380"
+        SizeToContent="Height"
+        WindowStyle="None"
+        AllowsTransparency="True"
+        Background="Transparent"
+        ShowInTaskbar="False"
+        Topmost="True"
+        ResizeMode="NoResize">
+
+    <!--
+        RN-005 — esta janela não tem, e não pode ganhar, um botão de prosseguir,
+        ignorar ou enviar assim mesmo. Um bloqueio que o usuário consegue
+        dispensar não é um bloqueio: é um aviso, e a regra pede negação. O único
+        comando aqui fecha a notificação; o arquivo continua barrado.
+    -->
+
+    <Border Background="{StaticResource Surface}"
+            BorderBrush="{StaticResource Border}"
+            BorderThickness="1"
+            CornerRadius="10"
+            Margin="12">
+        <Border.Effect>
+            <DropShadowEffect BlurRadius="18" ShadowDepth="3" Opacity="0.22" Color="#0F172A" />
+        </Border.Effect>
+
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <!-- Faixa de identidade, na cor de perigo da paleta -->
+            <Border Grid.Row="0"
+                    Background="{StaticResource Danger}"
+                    CornerRadius="9,9,0,0"
+                    Padding="16,12">
+                <StackPanel>
+                    <TextBlock Text="Envio bloqueado pelo SafeUpload"
+                               FontFamily="{StaticResource UiFont}"
+                               FontSize="15"
+                               FontWeight="SemiBold"
+                               Foreground="White"
+                               TextWrapping="Wrap" />
+                    <TextBlock x:Name="FileNameText"
+                               FontFamily="{StaticResource UiFont}"
+                               FontSize="12"
+                               Foreground="#FEE2E2"
+                               TextTrimming="CharacterEllipsis"
+                               Margin="0,3,0,0" />
+                </StackPanel>
+            </Border>
+
+            <StackPanel Grid.Row="1" Margin="16,14,16,16">
+
+                <TextBlock Text="O que foi encontrado" Style="{StaticResource SectionText}" />
+
+                <!--
+                    Só trechos mascarados chegam aqui. O mascaramento acontece no
+                    domínio, no momento da varredura: esta janela não recebe o
+                    valor original, então não teria como exibi-lo nem por engano.
+                -->
+                <ItemsControl x:Name="FindingsList" Margin="0,0,0,14">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate DataType="{x:Type vm:FindingViewModel}">
+                            <Border Background="{StaticResource DangerBg}"
+                                    CornerRadius="6"
+                                    Padding="10,7"
+                                    Margin="0,0,0,6">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+
+                                    <TextBlock Grid.Column="0"
+                                               Text="{Binding Category}"
+                                               FontFamily="{StaticResource UiFont}"
+                                               FontSize="12"
+                                               FontWeight="SemiBold"
+                                               Foreground="{StaticResource DangerText}"
+                                               VerticalAlignment="Center" />
+
+                                    <TextBlock Grid.Column="1"
+                                               Text="{Binding MaskedSnippet}"
+                                               Style="{StaticResource SnippetText}"
+                                               Foreground="{StaticResource DangerText}"
+                                               VerticalAlignment="Center" />
+                                </Grid>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+
+                <TextBlock Style="{StaticResource BodyText}"
+                           Foreground="{StaticResource TextMuted}"
+                           Text="Revise o arquivo, remova ou anonimize as informações e tente novamente."
+                           Margin="0,0,0,16" />
+
+                <!-- Único botão da janela. Ver o comentário no topo do arquivo. -->
+                <Button x:Name="AcknowledgeButton"
+                        Content="Entendi"
+                        Style="{StaticResource PrimaryButton}"
+                        HorizontalAlignment="Right"
+                        MinWidth="110"
+                        Click="Acknowledge_Click"
+                        IsDefault="True" />
+            </StackPanel>
+        </Grid>
+    </Border>
+</Window>

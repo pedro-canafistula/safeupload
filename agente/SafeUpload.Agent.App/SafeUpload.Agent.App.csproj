@@ -13,12 +13,15 @@
 
   <ItemGroup>
     <!--
-      UseWindowsForms injeta "global using System.Windows.Forms", que colide com
-      System.Windows (Application, MessageBox, etc.) numa app WPF. Removemos o
-      using implicito: o namespace do WinForms e citado explicitamente onde
-      realmente e usado (NotifyIcon).
+      UseWindowsForms injeta "global using System.Windows.Forms" e
+      "global using System.Drawing", que colidem com System.Windows numa app
+      WPF: Application, MessageBox e Brush existem nos dois lados. Removemos os
+      dois usings implicitos, de modo que o nome curto sempre signifique o tipo
+      do WPF; o WinForms e o System.Drawing sao citados explicitamente no unico
+      arquivo que os usa, o do icone de bandeja.
     -->
     <Using Remove="System.Windows.Forms" />
+    <Using Remove="System.Drawing" />
   </ItemGroup>
 
   <ItemGroup>
