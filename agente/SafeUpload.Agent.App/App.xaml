@@ -12,10 +12,13 @@
         <ResourceDictionary>
             <ResourceDictionary.MergedDictionaries>
                 <ResourceDictionary Source="Resources/Tokens.xaml" />
+                <ResourceDictionary Source="Resources/Icons.xaml" />
             </ResourceDictionary.MergedDictionaries>
 
             <mvvm:BooleanToVisibilityConverter x:Key="BoolToVisibility" />
             <mvvm:ZeroCountToVisibilityConverter x:Key="ZeroToVisibility" />
+            <mvvm:LetterSpacingConverter x:Key="LetterSpacing" />
+            <mvvm:IconLookupConverter x:Key="IconLookup" />
         </ResourceDictionary>
     </Application.Resources>
 </Application>

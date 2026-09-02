@@ -23,20 +23,20 @@ public sealed class TrayIconHost : IDisposable
     /// <summary>
     /// Cria o ícone e o menu de contexto.
     /// </summary>
-    /// <param name="openSimulator">Ação do item "Abrir simulador".</param>
-    /// <param name="showPolicyVersion">Ação do item "Versão da política".</param>
+    /// <param name="openPanel">Ação do item "Abrir painel".</param>
+    /// <param name="openSimulator">Ação do item "Simular operação...".</param>
     /// <param name="exit">Ação do item "Sair".</param>
-    public TrayIconHost(Action openSimulator, Action showPolicyVersion, Action exit)
+    public TrayIconHost(Action openPanel, Action openSimulator, Action exit)
     {
+        ArgumentNullException.ThrowIfNull(openPanel);
         ArgumentNullException.ThrowIfNull(openSimulator);
-        ArgumentNullException.ThrowIfNull(showPolicyVersion);
         ArgumentNullException.ThrowIfNull(exit);
 
         _icon = CreateShieldIcon();
 
         var menu = new WinForms.ContextMenuStrip();
-        menu.Items.Add("Abrir simulador", null, (_, _) => openSimulator());
-        menu.Items.Add("Versão da política", null, (_, _) => showPolicyVersion());
+        menu.Items.Add("Abrir painel", null, (_, _) => openPanel());
+        menu.Items.Add("Simular operação...", null, (_, _) => openSimulator());
         menu.Items.Add(new WinForms.ToolStripSeparator());
         menu.Items.Add("Sair", null, (_, _) => exit());
 
@@ -48,19 +48,17 @@ public sealed class TrayIconHost : IDisposable
             ContextMenuStrip = menu
         };
 
-        // Clique simples com o botao esquerdo abre o simulador, que e o gesto
-        // que a maioria dos agentes de bandeja usa; o duplo clique continua
-        // valendo para quem espera o comportamento antigo. Abrir e idempotente:
-        // se a janela ja estiver aberta, ela apenas vem para a frente.
+        // Clique simples e duplo com o botão esquerdo abrem o painel. Abrir é
+        // idempotente: se a janela já estiver visível, ela apenas vem à frente.
         _notifyIcon.MouseClick += (_, args) =>
         {
             if (args.Button == WinForms.MouseButtons.Left)
             {
-                openSimulator();
+                openPanel();
             }
         };
 
-        _notifyIcon.DoubleClick += (_, _) => openSimulator();
+        _notifyIcon.DoubleClick += (_, _) => openPanel();
     }
 
     /// <summary>

@@ -12,7 +12,7 @@ namespace SafeUpload.Agent.App;
 /// <summary>
 /// Ponto de entrada e composition root do agente.
 ///
-/// A composição é feita à mão, aqui, num único lugar. São seis objetos com
+/// A composição é feita à mão, aqui, num único lugar. São poucos objetos com
 /// dependências conhecidas em tempo de compilação; um contêiner de injeção
 /// trocaria essa clareza por reflexão e adiaria para a execução erros que hoje
 /// o compilador pega.
@@ -29,8 +29,11 @@ public partial class App : System.Windows.Application
 
     private InspectionService? _inspection;
     private InspectionService? _stalledInspection;
+    private AgentViewModel? _agentViewModel;
+    private AgentWindow? _panel;
     private TrayIconHost? _tray;
     private SimulatorWindow? _simulator;
+    private BlockNotificationWindow? _notification;
 
     /// <inheritdoc />
     protected override void OnStartup(StartupEventArgs e)
@@ -52,10 +55,17 @@ public partial class App : System.Windows.Application
             StalledTextExtractor.Wrap(extractors, StalledTextExtractor.DefaultDelay),
             _cache);
 
-        _tray = new TrayIconHost(OpenSimulator, ShowPolicyVersion, ExitAgent);
+        _agentViewModel = new AgentViewModel(
+            new StatusViewModel(_policyStore, _auditSink),
+            new HistoryViewModel(_auditSink));
 
-        // O agente sobe protegendo e sem roubar a tela: a única presença é o
-        // ícone na bandeja.
+        // O painel é construído no arranque e mantido oculto. O modelo de visão
+        // precisa existir desde já para acumular o que acontecer enquanto a
+        // janela estiver fechada; construí-lo só na primeira abertura perderia
+        // tudo o que o agente fez antes disso.
+        _panel = new AgentWindow(_agentViewModel);
+
+        _tray = new TrayIconHost(OpenPanel, OpenSimulator, ExitAgent);
         _tray.ShowBalloon("SafeUpload", "Proteção ativa. O agente está na bandeja do sistema.");
     }
 
@@ -66,12 +76,27 @@ public partial class App : System.Windows.Application
         base.OnExit(e);
     }
 
+    private void OpenPanel()
+    {
+        if (_panel is null)
+        {
+            return;
+        }
+
+        _panel.Show();
+
+        if (_panel.WindowState == WindowState.Minimized)
+        {
+            _panel.WindowState = WindowState.Normal;
+        }
+
+        _panel.Activate();
+    }
+
     private void OpenSimulator()
     {
         if (_simulator is not null)
         {
-            // Já aberto: traz para a frente em vez de abrir uma segunda cópia,
-            // que teria a própria fila desatualizada.
             if (_simulator.WindowState == WindowState.Minimized)
             {
                 _simulator.WindowState = WindowState.Normal;
@@ -95,54 +120,43 @@ public partial class App : System.Windows.Application
     }
 
     /// <summary>
-    /// RN-005 — todo bloqueio notifica. A janela é modal em relação ao
-    /// simulador para que o usuário veja o motivo antes de tentar de novo, e
-    /// não tem nenhuma forma de liberar o arquivo.
+    /// RN-005 — todo bloqueio notifica. A janela não tem nenhuma forma de
+    /// liberar o arquivo; ela existe para o usuário saber por que a operação
+    /// não passou.
     /// </summary>
     private Task ShowBlockNotificationAsync(InspectionResult result, FileOperation operation)
     {
-        var notification = new BlockNotificationWindow(operation.FileName, result.Findings);
+        // Uma notificação por vez. Vários bloqueios seguidos empilhariam
+        // janelas no mesmo canto da tela, sobrepostas e ilegíveis.
+        _notification?.Close();
 
-        if (_simulator is not null)
+        _notification = new BlockNotificationWindow(operation.FileName, result.Findings);
+        _notification.Closed += (_, _) => _notification = null;
+
+        if (_simulator is { IsVisible: true })
         {
-            notification.Owner = _simulator;
+            _notification.Owner = _simulator;
+        }
+        else if (_panel is { IsVisible: true })
+        {
+            _notification.Owner = _panel;
         }
 
-        notification.ShowDialog();
+        _notification.Show();
         return Task.CompletedTask;
-    }
-
-    private async void ShowPolicyVersion()
-    {
-        string message;
-
-        try
-        {
-            var policy = await _policyStore.LoadAsync(CancellationToken.None);
-
-            message = $"""
-                Versão da política: {policy.Version}
-                Categorias ativas: {string.Join(", ", policy.ActiveCategories.Select(CategoryLabels.Describe))}
-                Extensões vigiadas: {string.Join(" ", policy.MonitoredScopes.Extensions.Order())}
-                Limite de tamanho: {policy.MaxFileSizeMb} MB
-                Prazo de inspeção: {policy.InspectionTimeoutSeconds} s
-
-                Arquivo: {_policyStore.PolicyFilePath}
-                Fila: {_auditSink.QueueFilePath}
-                """;
-        }
-        catch (Exception ex)
-        {
-            message = $"Não foi possível carregar a política.{Environment.NewLine}{Environment.NewLine}{ex.Message}";
-        }
-
-        MessageBox.Show(message, "SafeUpload — política vigente", MessageBoxButton.OK, MessageBoxImage.Information);
     }
 
     private void ExitAgent()
     {
         // Encerramento explícito: é a única forma de derrubar o agente, já que
-        // ShutdownMode é OnExplicitShutdown.
+        // ShutdownMode é OnExplicitShutdown e o painel apenas se oculta ao ser
+        // fechado.
+        if (_panel is not null)
+        {
+            _panel.AllowClose = true;
+            _panel.Close();
+        }
+
         Shutdown();
     }
 }

@@ -48,7 +48,34 @@
     <SolidColorBrush x:Key="WarningText" Color="#92400E" />
     <SolidColorBrush x:Key="PrimarySoft" Color="#EFF4F9" />
 
+    <!-- Fundo da barra lateral do painel do agente -->
+    <SolidColorBrush x:Key="SidebarBg" Color="#EDF3FA" />
+
+    <!--
+        Cores das pilhas de status do painel. Sao um pouco mais escuras que as
+        do selo do simulador porque aqui o texto e menor e em maiuscula: no
+        tamanho de 10px o contraste anterior ficava no limite da legibilidade.
+    -->
+    <SolidColorBrush x:Key="PillApprovedText" Color="#047857" />
+    <SolidColorBrush x:Key="PillBlockedText" Color="#DC2626" />
+    <SolidColorBrush x:Key="PillNotInspectedText" Color="#B45309" />
+
     <FontFamily x:Key="UiFont">Segoe UI</FontFamily>
+
+    <!--
+        Lista de fallback: o WPF usa a primeira familia instalada. Cascadia Mono
+        acompanha o Windows Terminal e versoes recentes do Windows; Consolas
+        existe em qualquer Windows desde o Vista.
+    -->
+    <FontFamily x:Key="MonoFont">Cascadia Mono, Consolas, monospace</FontFamily>
+
+    <!-- Rotulo em maiuscula, monoespacado, das legendas dos cartoes -->
+    <Style x:Key="CaptionText" TargetType="TextBlock">
+        <Setter Property="FontFamily" Value="{StaticResource MonoFont}" />
+        <Setter Property="FontSize" Value="10" />
+        <Setter Property="Foreground" Value="{StaticResource TextMuted}" />
+        <Setter Property="TextWrapping" Value="Wrap" />
+    </Style>
 
     <!-- Tipografia -->
 
