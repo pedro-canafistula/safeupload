@@ -1,0 +1,12 @@
+<Application x:Class="SafeUpload.Agent.App.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             ShutdownMode="OnExplicitShutdown">
+    <!--
+        Sem StartupUri: o agente nao abre janela ao iniciar, ele vive no icone
+        de bandeja. O encerramento e explicito (menu "Sair").
+    -->
+    <Application.Resources>
+        <ResourceDictionary />
+    </Application.Resources>
+</Application>
