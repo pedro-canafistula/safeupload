@@ -29,6 +29,16 @@ public sealed class LocalQueueAuditSink : IAuditSink
         Converters = { new JsonStringEnumConverter() }
     };
 
+    /// <summary>
+    /// UTF-8 <b>sem</b> BOM. Encoding.UTF8 escreve a marca EF BB BF ao criar o
+    /// arquivo, e ela ficaria colada no início da primeira linha JSON. O leitor
+    /// daqui a tolera, mas um consumidor estrito não: json.loads do Python
+    /// recusa, jq recusa, e o despachante da HU-10 mandaria a primeira linha
+    /// corrompida para o servidor. Num formato de uma linha por evento a marca
+    /// não tem função nenhuma.
+    /// </summary>
+    private static readonly UTF8Encoding Utf8NoBom = new(encoderShouldEmitUTF8Identifier: false);
+
     // Serializa as gravações dentro do processo. Não substitui um lock entre
     // processos, mas o agente é instância única por sessão.
     private readonly SemaphoreSlim _writeLock = new(1, 1);
@@ -65,7 +75,7 @@ public sealed class LocalQueueAuditSink : IAuditSink
                 Directory.CreateDirectory(directory);
             }
 
-            await File.AppendAllTextAsync(_queueFile, line + Environment.NewLine, Encoding.UTF8, cancellationToken)
+            await File.AppendAllTextAsync(_queueFile, line + Environment.NewLine, Utf8NoBom, cancellationToken)
                 .ConfigureAwait(false);
         }
         finally
@@ -140,7 +150,7 @@ public sealed class LocalQueueAuditSink : IAuditSink
             }
 
             var temporary = _queueFile + ".tmp";
-            await File.WriteAllTextAsync(temporary, builder.ToString(), Encoding.UTF8, cancellationToken)
+            await File.WriteAllTextAsync(temporary, builder.ToString(), Utf8NoBom, cancellationToken)
                 .ConfigureAwait(false);
             File.Move(temporary, _queueFile, overwrite: true);
         }
