@@ -80,7 +80,7 @@
                         <TextBlock Text="Protegido" Style="{StaticResource CardValue}" />
 
                         <TextBlock Style="{StaticResource CaptionText}"
-                                   Text="{Binding Source='DISPOSITIVO SEGURO', Converter={StaticResource LetterSpacing}}" />
+                                   Text="DISPOSITIVO SEGURO" />
                     </StackPanel>
                 </Border>
 
@@ -101,7 +101,7 @@
                         <TextBlock Text="{Binding PolicyVersion}" Style="{StaticResource CardValue}" />
 
                         <TextBlock Style="{StaticResource CaptionText}"
-                                   Text="{Binding ActiveCategoriesCaption, Converter={StaticResource LetterSpacing}}" />
+                                   Text="{Binding ActiveCategoriesCaption}" />
                     </StackPanel>
                 </Border>
 
@@ -135,7 +135,7 @@
                                      Fill="{StaticResource PillApprovedText}"
                                      VerticalAlignment="Center" />
                             <TextBlock Text="INTERCEPTANDO"
-                                       FontFamily="{StaticResource MonoFont}"
+                                       FontFamily="{StaticResource UiFont}"
                                        FontSize="11"
                                        FontWeight="SemiBold"
                                        Foreground="{StaticResource PillApprovedText}"
@@ -144,7 +144,7 @@
                         </StackPanel>
 
                         <TextBlock Style="{StaticResource CaptionText}"
-                                   Text="{Binding Source='OPERAÇÕES EM SEGUNDO PLANO', Converter={StaticResource LetterSpacing}}" />
+                                   Text="OPERAÇÕES EM SEGUNDO PLANO" />
                     </StackPanel>
                 </Border>
             </Grid>
@@ -176,10 +176,10 @@
 
                             <TextBlock Grid.Column="0"
                                        Style="{StaticResource ColumnHeader}"
-                                       Text="{Binding Source='OPERAÇÃO DE ARQUIVO', Converter={StaticResource LetterSpacing}}" />
+                                       Text="OPERAÇÃO DE ARQUIVO" />
                             <TextBlock Grid.Column="1"
                                        Style="{StaticResource ColumnHeader}"
-                                       Text="{Binding Source='STATUS', Converter={StaticResource LetterSpacing}}" />
+                                       Text="STATUS" />
                         </Grid>
                     </Border>
 
@@ -223,7 +223,7 @@
                                         -->
                                         <TextBlock Grid.Column="1"
                                                    Text="{Binding Status.Text}"
-                                                   FontFamily="{StaticResource MonoFont}"
+                                                   FontFamily="{StaticResource UiFont}"
                                                    FontSize="10"
                                                    FontWeight="SemiBold"
                                                    Foreground="{Binding Status.ForegroundKey, Converter={StaticResource BrushLookup}}"

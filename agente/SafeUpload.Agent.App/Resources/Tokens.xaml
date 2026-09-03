@@ -69,12 +69,37 @@
     -->
     <FontFamily x:Key="MonoFont">Cascadia Mono, Consolas, monospace</FontFamily>
 
-    <!-- Rotulo em maiuscula, monoespacado, das legendas dos cartoes -->
+    <!--
+        Rotulo em maiuscula das legendas dos cartoes e dos cabecalhos de coluna.
+
+        Segoe UI, e nao a monoespacada. Uma fonte monoespacada da a cada letra a
+        mesma largura de avanco, inclusive as estreitas: em caixa alta e no
+        corpo de 10px o resultado ja parece espacado por conta propria, sem
+        nenhum espacamento artificial. O "I" de DISPOSITIVO ocupava o mesmo que
+        o "O".
+
+        Pelo mesmo motivo nao ha espacamento inserido entre as letras. A
+        tentativa de imitar o tracking do design inserindo espacos finos no
+        texto foi abandonada: no corpo de 10px, "OPERACOES EM SEGUNDO PLANO" ja
+        ocupava quase toda a largura util do cartao antes de qualquer
+        acrescimo, entao os espacos empurravam o rotulo para duas linhas e, por
+        serem quase tao largos quanto o espaco entre palavras, faziam as
+        palavras se fundirem.
+
+        A monoespacada continua onde tem funcao: nos trechos mascarados, em que
+        os marcadores precisam alinhar, e na versao do assembly.
+
+        A altura de linha e fixada para que a legenda que precise de duas linhas
+        continue compacta em vez de abrir um vao no cartao.
+    -->
     <Style x:Key="CaptionText" TargetType="TextBlock">
-        <Setter Property="FontFamily" Value="{StaticResource MonoFont}" />
+        <Setter Property="FontFamily" Value="{StaticResource UiFont}" />
         <Setter Property="FontSize" Value="10" />
+        <Setter Property="FontWeight" Value="SemiBold" />
         <Setter Property="Foreground" Value="{StaticResource TextMuted}" />
         <Setter Property="TextWrapping" Value="Wrap" />
+        <Setter Property="LineHeight" Value="14" />
+        <Setter Property="LineStackingStrategy" Value="BlockLineHeight" />
     </Style>
 
     <!-- Tipografia -->
