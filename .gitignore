@@ -45,3 +45,42 @@ desktop.ini
 # Claude Code
 CLAUDE.md
 .claude/
+# MSBuild / Visual Studio (driver e apps nativos)
+.vs/
+*.user
+*.suo
+*.sln.docstates
+Debug/
+Release/
+x64/
+ARM64/
+Win32/
+*.obj
+*.lib
+*.exp
+*.ilk
+*.pdb
+*.tlog
+*.log
+*.lastbuildstate
+*.idb
+*.iobj
+*.ipdb
+*.res
+
+# Saida de build de driver
+*.sys
+*.cat
+*.inf.resources
+*.pdb
+driver/**/x64/
+driver/**/ARM64/
+
+# Certificados de teste (nunca versionar chave privada)
+*.pfx
+*.pvk
+*.cer
+*.p12
+
+# Repositorio de samples da Microsoft (clonado fora deste repo)
+Windows-driver-samples/
