@@ -29,6 +29,24 @@ public static class AgentPaths
     /// <summary>Caminho completo do queue.jsonl.</summary>
     public static string QueueFile => Path.Combine(RootDirectory, QueueFileName);
 
+    /// <summary>
+    /// Raiz do escopo vigiado e da quarentena, em caminho de máquina.
+    ///
+    /// Não fica sob %USERPROFILE% porque quem vigia é um serviço rodando como
+    /// LocalSystem: nesse contexto %USERPROFILE% aponta para o perfil da conta
+    /// de sistema, e não para o do usuário que está usando a máquina. O serviço
+    /// vigiaria uma pasta que ninguém enxerga.
+    /// </summary>
+    public static string WorkRootDirectory { get; } = Path.Combine(
+        Path.GetPathRoot(Environment.GetFolderPath(Environment.SpecialFolder.Windows)) ?? @"C:\",
+        "SafeUpload");
+
+    /// <summary>Pasta padrão vigiada pela política.</summary>
+    public static string MonitoredFolder => Path.Combine(WorkRootDirectory, "Escopo Monitorado");
+
+    /// <summary>Para onde vão os arquivos bloqueados.</summary>
+    public static string QuarantineFolder => Path.Combine(WorkRootDirectory, "_bloqueados");
+
     /// <summary>Cria a pasta se ainda não existir.</summary>
     public static void EnsureRootDirectory() => Directory.CreateDirectory(RootDirectory);
 }

@@ -1,4 +1,6 @@
 using SafeUpload.Agent.Core.Application;
+using SafeUpload.Agent.Service.Interception;
+using SafeUpload.Agent.Service.Notifications;
 using SafeUpload.Agent.Core.Infrastructure;
 using SafeUpload.Agent.Core.Infrastructure.Extraction;
 
@@ -33,6 +35,11 @@ public static class Program
         builder.Services.AddSingleton(ExtractorRegistry.CreateDefault());
         builder.Services.AddSingleton<VerdictCache>();
         builder.Services.AddSingleton<InspectionService>();
+        builder.Services.AddSingleton<NotificationHub>();
+
+        // O gatilho. A partir daqui a protecao existe sem interface nenhuma
+        // aberta, que e o ponto de separar os dois processos.
+        builder.Services.AddHostedService<FileSystemInterceptor>();
 
         await builder.Build().RunAsync();
     }

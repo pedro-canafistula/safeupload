@@ -52,11 +52,58 @@ public class PolicyTests : IDisposable
     [Fact]
     public async Task Caminhos_monitorados_chegam_expandidos()
     {
+        _workspace.WritePolicy("""
+            {
+              "version": 1,
+              "activeCategories": ["Cpf"],
+              "monitoredScopes": { "extensions": [".txt"], "destinationPaths": ["%USERPROFILE%\\Documentos"] },
+              "maxFileSizeMb": 20,
+              "inspectionTimeoutSeconds": 5
+            }
+            """);
+
         var policy = await LoadAsync();
         var monitorado = Assert.Single(policy.MonitoredScopes.DestinationPaths);
 
         Assert.DoesNotContain('%', monitorado);
+        Assert.EndsWith(@"\Documentos", monitorado, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// O escopo padrão precisa ser um caminho de máquina, e não do perfil do
+    /// usuário.
+    ///
+    /// Quem lê esta política é um serviço rodando como LocalSystem. Nesse
+    /// contexto <c>%USERPROFILE%</c> aponta para o perfil da conta de sistema, e
+    /// não para o de quem está usando a máquina: o serviço passaria a vigiar
+    /// uma pasta que ninguém enxerga e nunca interceptaria nada. O teste
+    /// existe para que ninguém volte o padrão para o perfil sem perceber.
+    /// </summary>
+    [Fact]
+    public async Task Escopo_padrao_e_caminho_de_maquina()
+    {
+        var policy = await LoadAsync();
+        var monitorado = Assert.Single(policy.MonitoredScopes.DestinationPaths);
+
+        Assert.Equal(AgentPaths.MonitoredFolder, monitorado);
+        Assert.True(Path.IsPathRooted(monitorado));
+        Assert.DoesNotContain("Users", monitorado, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Escopo Monitorado", monitorado, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// A quarentena acompanha o escopo, na mesma raiz de máquina, e não pode
+    /// ficar dentro da pasta vigiada — senão mover o arquivo bloqueado para lá
+    /// dispararia uma nova interceptação em laço.
+    /// </summary>
+    [Fact]
+    public void Quarentena_fica_fora_da_pasta_vigiada()
+    {
+        Assert.True(Path.IsPathRooted(AgentPaths.QuarantineFolder));
+        Assert.DoesNotContain("Users", AgentPaths.QuarantineFolder, StringComparison.OrdinalIgnoreCase);
+        Assert.False(
+            AgentPaths.QuarantineFolder.StartsWith(AgentPaths.MonitoredFolder, StringComparison.OrdinalIgnoreCase),
+            "a quarentena nao pode ficar dentro do escopo vigiado");
     }
 
     /// <summary>
