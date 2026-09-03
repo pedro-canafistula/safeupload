@@ -29,13 +29,19 @@ public partial class App : System.Windows.Application
     private readonly VerdictCache _cache = new();
 
     private InspectionService? _inspection;
-    private InspectionService? _stalledInspection;
     private AgentViewModel? _agentViewModel;
     private AgentWindow? _panel;
     private TrayIconHost? _tray;
-    private SimulatorWindow? _simulator;
     private BlockNotificationWindow? _notification;
     private SimulatedInterceptor? _interceptor;
+
+#if DEBUG
+    // Estado exclusivo do simulador. Fora de depuração ele não existe, e por
+    // isso nem os campos são declarados: um campo nunca lido viraria aviso do
+    // compilador e, pior, sugeriria que o recurso está lá.
+    private InspectionService? _stalledInspection;
+    private SimulatorWindow? _simulator;
+#endif
 
     /// <inheritdoc />
     protected override void OnStartup(StartupEventArgs e)
@@ -48,6 +54,7 @@ public partial class App : System.Windows.Application
 
         _inspection = new InspectionService(_policyStore, _auditSink, extractors, _cache);
 
+#if DEBUG
         // O mesmo motor, com os extratores embrulhados por um atraso de oito
         // segundos. É assim que o simulador demonstra a RN-012 sem que o motor
         // saiba que está sendo simulado.
@@ -56,6 +63,7 @@ public partial class App : System.Windows.Application
             _auditSink,
             StalledTextExtractor.Wrap(extractors, StalledTextExtractor.DefaultDelay),
             _cache);
+#endif
 
         _agentViewModel = new AgentViewModel(
             new StatusViewModel(_policyStore, _auditSink),
@@ -70,7 +78,11 @@ public partial class App : System.Windows.Application
         // Carrega politica e trilha ja no arranque, com a janela oculta.
         _ = _agentViewModel.LoadAsync();
 
-        _tray = new TrayIconHost(OpenPanel, OpenSimulator, ExitAgent);
+#if DEBUG
+        _tray = new TrayIconHost(OpenPanel, ExitAgent, OpenSimulator);
+#else
+        _tray = new TrayIconHost(OpenPanel, ExitAgent);
+#endif
         _tray.ShowBalloon("SafeUpload", "Proteção ativa. O agente está na bandeja do sistema.");
 
         // O gatilho de inspeção. A partir daqui o agente reage sozinho ao que o
@@ -172,6 +184,12 @@ public partial class App : System.Windows.Application
         _panel.Activate();
     }
 
+#if DEBUG
+
+    /// <summary>
+    /// Abre o simulador. Ferramenta de desenvolvimento: existe apenas em builds
+    /// de depuração.
+    /// </summary>
     private void OpenSimulator()
     {
         if (_simulator is not null)
@@ -198,16 +216,21 @@ public partial class App : System.Windows.Application
         _simulator.Show();
     }
 
+#endif
+
     /// <summary>
     /// RN-005 — todo bloqueio notifica. A janela não tem nenhuma forma de
     /// liberar o arquivo; ela existe para o usuário saber por que a operação
     /// não passou.
     /// </summary>
+#if DEBUG
     private Task ShowBlockNotificationAsync(InspectionResult result, FileOperation operation)
     {
         ShowBlockNotification(result, operation, quarantined: false);
         return Task.CompletedTask;
     }
+
+#endif
 
     private void ShowBlockNotification(InspectionResult result, FileOperation operation, bool quarantined)
     {
@@ -218,11 +241,14 @@ public partial class App : System.Windows.Application
         _notification = new BlockNotificationWindow(operation.FileName, result.Findings, quarantined);
         _notification.Closed += (_, _) => _notification = null;
 
+#if DEBUG
         if (_simulator is { IsVisible: true })
         {
             _notification.Owner = _simulator;
         }
-        else if (_panel is { IsVisible: true })
+        else
+#endif
+        if (_panel is { IsVisible: true })
         {
             _notification.Owner = _panel;
         }

@@ -12,8 +12,8 @@ namespace SafeUpload.Agent.App;
 /// embrulhar essa classe acrescentaria uma dependência sem acrescentar
 /// capacidade.
 ///
-/// A bandeja é onde o agente vive: não há janela principal, e fechar o
-/// simulador não encerra a proteção.
+/// A bandeja é onde o agente vive: não há janela principal, e fechar o painel
+/// não encerra a proteção.
 /// </summary>
 public sealed class TrayIconHost : IDisposable
 {
@@ -24,19 +24,34 @@ public sealed class TrayIconHost : IDisposable
     /// Cria o ícone e o menu de contexto.
     /// </summary>
     /// <param name="openPanel">Ação do item "Abrir painel".</param>
-    /// <param name="openSimulator">Ação do item "Simular operação...".</param>
     /// <param name="exit">Ação do item "Sair".</param>
-    public TrayIconHost(Action openPanel, Action openSimulator, Action exit)
+    /// <param name="openSimulator">
+    /// Ação do item "Simular operação...". Só é usada em builds de depuração;
+    /// em Release o item não existe, ainda que a ação seja informada.
+    /// </param>
+    public TrayIconHost(Action openPanel, Action exit, Action? openSimulator = null)
     {
         ArgumentNullException.ThrowIfNull(openPanel);
-        ArgumentNullException.ThrowIfNull(openSimulator);
         ArgumentNullException.ThrowIfNull(exit);
 
         _icon = CreateShieldIcon();
 
         var menu = new WinForms.ContextMenuStrip();
         menu.Items.Add("Abrir painel", null, (_, _) => openPanel());
-        menu.Items.Add("Simular operação...", null, (_, _) => openSimulator());
+
+#if DEBUG
+        // O simulador é ferramenta de desenvolvimento, não recurso do produto.
+        // O agente informa e não dá controle ao usuário final: uma tela onde se
+        // escolhe o destino e o processo de origem à mão daria a ele exatamente
+        // o controle que a decisão de projeto retirou. Fica disponível apenas em
+        // depuração, para exercitar caminhos difíceis de reproduzir por cópia de
+        // arquivo — o timeout da RN-012 acima de todos.
+        if (openSimulator is not null)
+        {
+            menu.Items.Add("Simular operação...", null, (_, _) => openSimulator());
+        }
+#endif
+
         menu.Items.Add(new WinForms.ToolStripSeparator());
         menu.Items.Add("Sair", null, (_, _) => exit());
 
