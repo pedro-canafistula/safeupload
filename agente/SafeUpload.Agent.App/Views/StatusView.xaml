@@ -77,10 +77,10 @@
                             <TextBlock Text="Status de Segurança" Style="{StaticResource CardLabel}" />
                         </StackPanel>
 
-                        <TextBlock Text="Protegido" Style="{StaticResource CardValue}" />
+                        <TextBlock Text="{Binding SecurityState}" Style="{StaticResource CardValue}" />
 
                         <TextBlock Style="{StaticResource CaptionText}"
-                                   Text="DISPOSITIVO SEGURO" />
+                                   Text="{Binding SecurityCaption}" />
                     </StackPanel>
                 </Border>
 
@@ -130,15 +130,21 @@
                         <StackPanel Orientation="Horizontal"
                                     HorizontalAlignment="Left"
                                     Margin="0,22,0,12">
+                            <!--
+                                O ponto e o texto so ficam verdes quando ha
+                                servico do outro lado confirmando que vigia.
+                                Sem isso o cartao afirmaria protecao com base
+                                em nada.
+                            -->
                             <Ellipse Width="7"
                                      Height="7"
-                                     Fill="{StaticResource PillApprovedText}"
+                                     Fill="{Binding Connected, Converter={StaticResource MonitoringBrush}}"
                                      VerticalAlignment="Center" />
-                            <TextBlock Text="INTERCEPTANDO"
+                            <TextBlock Text="{Binding MonitoringState}"
                                        FontFamily="{StaticResource UiFont}"
                                        FontSize="11"
                                        FontWeight="SemiBold"
-                                       Foreground="{StaticResource PillApprovedText}"
+                                       Foreground="{Binding Connected, Converter={StaticResource MonitoringBrush}}"
                                        Margin="7,0,0,0"
                                        VerticalAlignment="Center" />
                         </StackPanel>

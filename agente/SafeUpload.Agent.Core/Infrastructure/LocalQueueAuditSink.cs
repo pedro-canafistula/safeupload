@@ -182,10 +182,20 @@ public sealed class LocalQueueAuditSink : IAuditSink
             return events;
         }
 
-        var lines = await File.ReadAllLinesAsync(_queueFile, Encoding.UTF8, cancellationToken)
-            .ConfigureAwait(false);
+        // FileShare.ReadWrite, e nao a partilha padrao de File.ReadAllLines.
+        // Desde a separacao em dois processos, quem escreve nesta fila e o
+        // servico e quem le e o aplicativo de bandeja, ao mesmo tempo. Sem
+        // permitir escrita concorrente, um dos dois lados falha: ou a leitura
+        // do painel, ou — pior — a gravacao do evento de auditoria.
+        await using var stream = new FileStream(
+            _queueFile,
+            FileMode.Open,
+            FileAccess.Read,
+            FileShare.ReadWrite);
 
-        foreach (var line in lines)
+        using var reader = new StreamReader(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: true);
+
+        while (await reader.ReadLineAsync(cancellationToken).ConfigureAwait(false) is { } line)
         {
             if (string.IsNullOrWhiteSpace(line))
             {

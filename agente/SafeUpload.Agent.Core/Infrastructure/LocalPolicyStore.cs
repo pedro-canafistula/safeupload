@@ -198,7 +198,11 @@ public sealed class LocalPolicyStore : IPolicyStore
         public static MonitoredScopesDocument Default { get; } = new()
         {
             Extensions = [".txt", ".csv", ".docx", ".xlsx"],
-            DestinationPaths = [@"%USERPROFILE%\SafeUpload\Escopo Monitorado"],
+
+            // Caminho de máquina, e não sob %USERPROFILE%: quem lê esta
+            // política é um serviço rodando como LocalSystem, para quem
+            // %USERPROFILE% aponta para o perfil da conta de sistema.
+            DestinationPaths = [@"C:\SafeUpload\Escopo Monitorado"],
             RemovableDrives = true,
             NetworkPaths = true
         };
