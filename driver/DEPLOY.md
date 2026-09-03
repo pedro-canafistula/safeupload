@@ -319,6 +319,32 @@ Sem saída = sucesso. Erros comuns:
 | `0x80070424` (serviço não existe) | O passo 4 falhou; reveja o `setupapi.dev.log`. |
 | `0xc0000428` (`STATUS_INVALID_IMAGE_HASH`) | Assinatura não aceita: passo 2 incompleto (test signing desligado, Secure Boot ligado, ou certificado não importado). |
 | `0xC01C0011` (`STATUS_FLT_INSTANCE_ALTITUDE_COLLISION`) | Conflito de altitude: outro filtro já ocupa 321410. Veja "Limitações conhecidas". |
+| `0x80070002` (`ERROR_FILE_NOT_FOUND`) mas o serviço existe e o `.sys` está em `system32\drivers` | Mensagem enganosa do `fltmc`. Veja abaixo — quase sempre é o registro de instância no lugar errado. |
+
+> **Atenção à mensagem do `fltmc`.** Ele reporta `0x80070002` ("não foi
+> possível encontrar o arquivo especificado") para falhas que não têm nada a
+> ver com arquivo ausente. Quando o serviço existe e o `.sys` está no lugar,
+> **não confie nessa mensagem**: vá direto ao log de eventos, que traz o
+> `NTSTATUS` real do `FltRegisterFilter`:
+>
+> ```
+> Get-WinEvent -LogName System -MaxEvents 40 | Where-Object { $_.Message -like "*SafeUpload*" } | Select-Object TimeCreated, Id, ProviderName, Message | Format-List
+> ```
+>
+> Um evento **ID 5** do `Microsoft-Windows-FilterManager` com status
+> `0xC0000034` (`STATUS_OBJECT_NAME_NOT_FOUND`) significa que o driver
+> carregou e rodou o `DriverEntry`, mas o FltMgr não achou a configuração de
+> instância no registro. Confira onde ela está:
+>
+> ```
+> Get-ChildItem "HKLM:\SYSTEM\CurrentControlSet\Services\SafeUpload" -Recurse | Select-Object Name
+> ```
+>
+> Com o instalador legado que este INF usa, ela tem que estar em
+> `Services\SafeUpload\Instances`. Se estiver em
+> `Services\SafeUpload\Parameters\Instances`, o INF aplicado é de uma versão
+> anterior à correção desse layout — reinstale com o INF atual (passo 8d
+> para remover, depois passo 4).
 
 Conferir que o filtro está registrado:
 

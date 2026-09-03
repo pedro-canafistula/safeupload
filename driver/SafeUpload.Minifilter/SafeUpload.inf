@@ -79,11 +79,29 @@ ErrorControl   = 1
 LoadOrderGroup = "FSFilter Anti-Virus"
 AddReg         = SafeUpload.AddRegistry
 
+; HKR here is HKLM\SYSTEM\CurrentControlSet\Services\SafeUpload.
+;
+; These values go directly under the service key, NOT under a "Parameters"
+; subkey. The two layouts are not interchangeable and picking the wrong one
+; fails at load time, not at install time:
+;
+;   - Legacy install (this INF: plain DefaultInstall, driver copied to
+;     dirid 12 = system32\drivers) -> FltMgr reads Services\<name>\Instances.
+;
+;   - Driver-store install (decorated DefaultInstall.NT$ARCH$.10.0...NNNNN
+;     section, driver copied to dirid 13) -> FltMgr reads
+;     Services\<name>\Parameters\Instances.
+;
+; With the wrong layout the driver loads, DriverEntry runs, and
+; FltRegisterFilter fails with STATUS_OBJECT_NAME_NOT_FOUND (0xC0000034),
+; which surfaces as a Filter Manager event ID 5 and a misleading
+; "cannot find the file specified" from fltmc.
+
 [SafeUpload.AddRegistry]
-HKR,"Parameters","SupportedFeatures",0x00010001,0x3
-HKR,"Parameters\Instances","DefaultInstance",0x00000000,%DefaultInstance%
-HKR,"Parameters\Instances\"%Instance1.Name%,"Altitude",0x00000000,%Instance1.Altitude%
-HKR,"Parameters\Instances\"%Instance1.Name%,"Flags",0x00010001,%Instance1.Flags%
+HKR,,"SupportedFeatures",0x00010001,0x3
+HKR,"Instances","DefaultInstance",0x00000000,%DefaultInstance%
+HKR,"Instances\"%Instance1.Name%,"Altitude",0x00000000,%Instance1.Altitude%
+HKR,"Instances\"%Instance1.Name%,"Flags",0x00010001,%Instance1.Flags%
 
 [SafeUpload.DriverFiles]
 %DriverName%.sys
