@@ -1,0 +1,24 @@
+﻿<Application x:Class="SafeUpload.Agent.App.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mvvm="clr-namespace:SafeUpload.Agent.App.Mvvm"
+             ShutdownMode="OnExplicitShutdown">
+    <!--
+        Sem StartupUri: o agente não abre janela ao iniciar, ele vive no ícone
+        de bandeja. O encerramento é explícito, pelo item "Sair" do menu, de
+        modo que fechar o simulador não desligue a proteção.
+    -->
+    <Application.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="Resources/Tokens.xaml" />
+                <ResourceDictionary Source="Resources/Icons.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+
+            <mvvm:BooleanToVisibilityConverter x:Key="BoolToVisibility" />
+            <mvvm:ZeroCountToVisibilityConverter x:Key="ZeroToVisibility" />
+            <mvvm:IconLookupConverter x:Key="IconLookup" />
+            <mvvm:BrushLookupConverter x:Key="BrushLookup" />
+        </ResourceDictionary>
+    </Application.Resources>
+</Application>

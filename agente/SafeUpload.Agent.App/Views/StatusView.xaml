@@ -1,0 +1,249 @@
+﻿<UserControl x:Class="SafeUpload.Agent.App.Views.StatusView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="clr-namespace:SafeUpload.Agent.App.ViewModels"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d"
+             d:DataContext="{d:DesignInstance Type=vm:StatusViewModel}"
+             FontFamily="{StaticResource UiFont}">
+
+    <UserControl.Resources>
+
+        <!-- Cartão: fundo branco, borda de 1px, raio 12, sem sombra. -->
+        <Style x:Key="PanelCard" TargetType="Border">
+            <Setter Property="Background" Value="{StaticResource Surface}" />
+            <Setter Property="BorderBrush" Value="{StaticResource Border}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="12" />
+            <Setter Property="Padding" Value="20" />
+        </Style>
+
+        <!-- Quadrado arredondado de 36px que abriga o ícone do cartão. -->
+        <Style x:Key="IconTile" TargetType="Border">
+            <Setter Property="Width" Value="36" />
+            <Setter Property="Height" Value="36" />
+            <Setter Property="CornerRadius" Value="10" />
+            <Setter Property="Background" Value="{StaticResource SidebarBg}" />
+        </Style>
+
+        <Style x:Key="CardLabel" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Foreground" Value="{StaticResource Text}" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="Margin" Value="12,0,0,0" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+        </Style>
+
+        <Style x:Key="CardValue" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="30" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Foreground" Value="{StaticResource Text}" />
+            <Setter Property="Margin" Value="0,16,0,6" />
+        </Style>
+
+        <!-- Cabeçalho de coluna da tabela de atividade. -->
+        <Style x:Key="ColumnHeader" TargetType="TextBlock" BasedOn="{StaticResource CaptionText}">
+            <Setter Property="TextWrapping" Value="NoWrap" />
+        </Style>
+
+    </UserControl.Resources>
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <StackPanel Margin="28,24,28,28">
+
+            <!-- Três cartões lado a lado, de larguras iguais. -->
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="16" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="16" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+
+                <!-- 1. Status de Segurança -->
+                <Border Grid.Column="0" Style="{StaticResource PanelCard}">
+                    <StackPanel>
+                        <StackPanel Orientation="Horizontal">
+                            <Border Style="{StaticResource IconTile}">
+                                <Path Style="{StaticResource IconPath}"
+                                      Data="{StaticResource IconShield}"
+                                      Stroke="{StaticResource Primary}"
+                                      Width="19"
+                                      Height="19" />
+                            </Border>
+                            <TextBlock Text="Status de Segurança" Style="{StaticResource CardLabel}" />
+                        </StackPanel>
+
+                        <TextBlock Text="Protegido" Style="{StaticResource CardValue}" />
+
+                        <TextBlock Style="{StaticResource CaptionText}"
+                                   Text="DISPOSITIVO SEGURO" />
+                    </StackPanel>
+                </Border>
+
+                <!-- 2. Política Ativa -->
+                <Border Grid.Column="2" Style="{StaticResource PanelCard}">
+                    <StackPanel>
+                        <StackPanel Orientation="Horizontal">
+                            <Border Style="{StaticResource IconTile}">
+                                <Path Style="{StaticResource IconPath}"
+                                      Data="{StaticResource IconFile}"
+                                      Stroke="{StaticResource Primary}"
+                                      Width="19"
+                                      Height="19" />
+                            </Border>
+                            <TextBlock Text="Política Ativa" Style="{StaticResource CardLabel}" />
+                        </StackPanel>
+
+                        <TextBlock Text="{Binding PolicyVersion}" Style="{StaticResource CardValue}" />
+
+                        <TextBlock Style="{StaticResource CaptionText}"
+                                   Text="{Binding ActiveCategoriesCaption}" />
+                    </StackPanel>
+                </Border>
+
+                <!-- 3. Monitoramento -->
+                <Border Grid.Column="4" Style="{StaticResource PanelCard}">
+                    <StackPanel>
+                        <StackPanel Orientation="Horizontal">
+                            <Border Style="{StaticResource IconTile}">
+                                <Path Style="{StaticResource IconPath}"
+                                      Data="{StaticResource IconChart}"
+                                      Stroke="{StaticResource Primary}"
+                                      Width="19"
+                                      Height="19" />
+                            </Border>
+                            <TextBlock Text="Monitoramento" Style="{StaticResource CardLabel}" />
+                        </StackPanel>
+
+                        <!--
+                            No lugar do número, um indicador: o que importa
+                            aqui não é uma medida, é se o agente está de fato
+                            interceptando neste momento. O ponto verde e a cor
+                            do texto bastam para dizer isso; uma faixa colorida
+                            atrás pesaria mais que os valores dos outros dois
+                            cartões e desequilibraria a linha.
+                        -->
+                        <StackPanel Orientation="Horizontal"
+                                    HorizontalAlignment="Left"
+                                    Margin="0,22,0,12">
+                            <Ellipse Width="7"
+                                     Height="7"
+                                     Fill="{StaticResource PillApprovedText}"
+                                     VerticalAlignment="Center" />
+                            <TextBlock Text="INTERCEPTANDO"
+                                       FontFamily="{StaticResource UiFont}"
+                                       FontSize="11"
+                                       FontWeight="SemiBold"
+                                       Foreground="{StaticResource PillApprovedText}"
+                                       Margin="7,0,0,0"
+                                       VerticalAlignment="Center" />
+                        </StackPanel>
+
+                        <TextBlock Style="{StaticResource CaptionText}"
+                                   Text="OPERAÇÕES EM SEGUNDO PLANO" />
+                    </StackPanel>
+                </Border>
+            </Grid>
+
+            <!-- Monitoramento de Atividade -->
+            <Border Style="{StaticResource PanelCard}" Margin="0,20,0,0" Padding="0">
+                <StackPanel>
+
+                    <StackPanel Margin="20,20,20,16">
+                        <TextBlock Text="Monitoramento de Atividade"
+                                   FontSize="15"
+                                   FontWeight="SemiBold"
+                                   Foreground="{StaticResource Text}" />
+                        <TextBlock Text="Intercepções e operações recentes"
+                                   Style="{StaticResource MutedText}"
+                                   Margin="0,3,0,0" />
+                    </StackPanel>
+
+                    <!-- Faixa de cabeçalho da tabela -->
+                    <Border Background="{StaticResource Bg}"
+                            BorderBrush="{StaticResource Border}"
+                            BorderThickness="0,1,0,1"
+                            Padding="20,9">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+
+                            <TextBlock Grid.Column="0"
+                                       Style="{StaticResource ColumnHeader}"
+                                       Text="OPERAÇÃO DE ARQUIVO" />
+                            <TextBlock Grid.Column="1"
+                                       Style="{StaticResource ColumnHeader}"
+                                       Text="STATUS" />
+                        </Grid>
+                    </Border>
+
+                    <ItemsControl ItemsSource="{Binding RecentActivity}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate DataType="{x:Type vm:ActivityRowViewModel}">
+                                <Border BorderBrush="{StaticResource Border}"
+                                        BorderThickness="0,0,0,1"
+                                        Padding="20,11">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+
+                                        <StackPanel Grid.Column="0" Orientation="Horizontal">
+                                            <Path Style="{StaticResource IconPath}"
+                                                  Data="{Binding IconKey, Converter={StaticResource IconLookup}}"
+                                                  Stroke="{Binding Status.ForegroundKey, Converter={StaticResource BrushLookup}}"
+                                                  Width="16"
+                                                  Height="16"
+                                                  VerticalAlignment="Center" />
+                                            <TextBlock Text="{Binding Description}"
+                                                       FontSize="13"
+                                                       Foreground="{StaticResource Text}"
+                                                       Margin="12,0,0,0"
+                                                       VerticalAlignment="Center"
+                                                       TextTrimming="CharacterEllipsis" />
+                                            <TextBlock Text="{Binding OccurredAt}"
+                                                       Style="{StaticResource MutedText}"
+                                                       Margin="12,0,0,0"
+                                                       VerticalAlignment="Center" />
+                                        </StackPanel>
+
+                                        <!--
+                                            Só o rótulo de status, colorido
+                                            pela cor da letra. Nenhum comando: o
+                                            painel informa, não oferece ao
+                                            usuário a chance de desfazer a
+                                            decisão da política.
+                                        -->
+                                        <TextBlock Grid.Column="1"
+                                                   Text="{Binding Status.Text}"
+                                                   FontFamily="{StaticResource UiFont}"
+                                                   FontSize="10"
+                                                   FontWeight="SemiBold"
+                                                   Foreground="{Binding Status.ForegroundKey, Converter={StaticResource BrushLookup}}"
+                                                   VerticalAlignment="Center" />
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+
+                    <!-- Tabela sem eventos: uma linha discreta, nunca um vazio. -->
+                    <Border Padding="20,16"
+                            Visibility="{Binding HasNoActivity, Converter={StaticResource BoolToVisibility}}">
+                        <TextBlock Text="Nenhuma operação interceptada até agora"
+                                   Style="{StaticResource MutedText}" />
+                    </Border>
+
+                </StackPanel>
+            </Border>
+
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>
