@@ -873,13 +873,41 @@ com `VERSIONINFO` ao projeto do driver.
 compilação (`SAFEUPLOAD_VERDICT_TIMEOUT_MS`, em `Filter.h`). O `RegistryPath`
 recebido no `DriverEntry` é deliberadamente ignorado nesta versão.
 
-**8. Comportamento do buffer de resposta no timeout.** O driver aloca
-requisição e resposta em um único bloco de pool e o libera assim que
-`FltSendMessage` retorna — inclusive quando ela retorna `STATUS_TIMEOUT`.
-Isso assume que o Filter Manager não escreve mais no buffer depois de
-retornar. **O passo 6 (Driver Verifier com Special Pool) existe em boa parte
-para exercitar exatamente esse caminho**: se a suposição estiver errada, o
-resultado é um bugcheck `0xC1` imediato e diagnosticável, em vez de
-corrupção silenciosa. Force o caminho de timeout parando o inspetor no
-depurador (ou colocando um `Sleep` longo antes do `FilterReplyMessage`) e
-gerando I/O.
+**8. Comportamento do buffer de resposta no timeout — verificado
+empiricamente.** O driver aloca requisição e resposta em um único bloco de
+pool e o libera assim que `FltSendMessage` retorna, inclusive quando ela
+retorna `STATUS_TIMEOUT`. Isso assume que o Filter Manager não escreve mais
+no buffer depois de retornar.
+
+Essa suposição foi exercitada na VM alvo com o Driver Verifier
+(`/standard`, Special Pool ativo), congelando o inspetor pelo modo de
+seleção do console — o que o prende dentro do `wprintf`, antes do
+`FilterReplyMessage`, com a porta ainda aberta — e gerando I/O em paralelo.
+Resultado:
+
+```
+MODULE: SafeUpload.sys (load: 1 / unload: 0)
+    Current Pool Allocations:  (      0 /      0 )
+    Current Pool Bytes:        (      0 /      0 )
+    Peak Pool Allocations:     (     33 /      0 )
+    Peak Pool Bytes:           (  40128 /      0 )
+```
+
+Leitura desses números: 40128 ÷ 33 = 1216 bytes, exatamente
+`sizeof(SAFEUPLOAD_EXCHANGE)`, então toda alocação rastreada é o bloco de
+exchange e não há nenhuma outra. `Peak 33` são 33 threads simultaneamente
+paradas no `FltSendMessage`, ou seja, o caminho de timeout foi de fato
+percorrido em volume. `Current 0` confirma que tudo foi liberado — sem
+vazamento. `Paged 0` confirma que só há pool não-paginado.
+
+Nenhum bugcheck ocorreu. Como o Special Pool coloca cada alocação em página
+própria e marca a página liberada como inacessível, uma escrita tardia do
+Filter Manager teria causado `0xC1` imediato. Evidência forte, embora
+empírica: se um dia esse caminho passar a dar `0xC1`
+(`SPECIAL_POOL_DETECTED_MEMORY_CORRUPTION`), a correção é não liberar o
+bloco no retorno de `STATUS_TIMEOUT` — mantê-lo até o unload, ou trocar por
+um buffer por-thread reaproveitado.
+
+**Repita este teste sempre que o caminho de veredito mudar.** O
+procedimento está no passo 6 e a forma de forçar o timeout é a descrita
+acima.
