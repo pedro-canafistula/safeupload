@@ -81,8 +81,11 @@ public sealed class PipeClient : IAsyncDisposable
                 // acumulado de antes.
                 delay = MinRetryDelay;
             }
-            catch (OperationCanceledException)
+            catch (OperationCanceledException) when (_stopping.IsCancellationRequested)
             {
+                // O prazo de ConnectAsync também cancela e lança esta exceção.
+                // Só o token vitalício do aplicativo encerra o laço; um prazo
+                // vencido significa apenas que o serviço segue indisponível.
                 break;
             }
             catch (Exception)

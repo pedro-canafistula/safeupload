@@ -77,6 +77,41 @@ sc.exe create SafeUploadAgent binPath= "<caminho>\SafeUpload.Agent.Service.exe" 
 sc.exe start SafeUploadAgent
 ```
 
+#### Validação da instalação como LocalSystem
+
+Validado em 3 de setembro de 2026 com o executável publicado em Release e registrado pelo
+gerenciador de serviços com início automático. O processo ficou em execução como
+`NT AUTHORITY\SYSTEM`, na sessão 0, enquanto o painel e o cliente de prova rodaram como o usuário
+comum `vika`, na sessão 1. A ACL do pipe permitiu que o cliente não elevado se conectasse e
+recebesse o estado `Protegido`, a política `v1`, as quatro categorias ativas e o indicador
+`INTERCEPTANDO`. O descritor observado no pipe continha regras para LocalSystem e para o grupo
+integrado `Users`.
+
+O serviço bloqueou e moveu o arquivo de prova para `_bloqueados` com o painel encerrado. Ao se
+conectar dentro dos 60 segundos, o painel recuperou o evento pendente, preencheu o histórico e
+mostrou a notificação. Com o painel aberto, um lote de dez arquivos produziu dez bloqueios, dez
+itens na quarentena e uma única notificação com a contagem dos dez arquivos. Parar o serviço mudou
+o painel para `Serviço indisponível`; iniciá-lo novamente restaurou `Protegido` sem reabrir o
+painel.
+
+Depois de uma reinicialização completa, o Windows iniciou o processo do serviço na sessão 0 antes
+do primeiro logon interativo. Após o logon, e ainda sem abrir o painel, uma nova cópia foi bloqueada,
+movida para a quarentena e auditada. Isso confirma na instalação exercitada tanto o início
+automático quanto a independência entre proteção e sessão de usuário.
+
+Essa última prova encontrou e corrigiu uma falha no laço de reconexão. O prazo interno de
+`ConnectAsync` também lança `OperationCanceledException`, mas o cliente tratava qualquer exceção
+desse tipo como o encerramento do aplicativo. Depois de uma tentativa expirar durante uma parada
+mais longa, ele nunca tentava novamente. Agora somente o cancelamento vitalício do aplicativo
+encerra o laço; o vencimento do prazo volta para o recuo exponencial. A correção foi exercitada
+com o serviço parado por 15 segundos: o mesmo cliente continuou tentando e reconectou sozinho
+assim que o serviço voltou.
+
+A trilha permaneceu como JSONL válido e registrou somente metadados e trechos mascarados. Sob
+LocalSystem, o campo `userName` traz a identidade de máquina (`<computador>$`), pois o mock não
+consegue determinar o usuário que originou a cópia por meio do `FileSystemWatcher`; essa é a mesma
+limitação que já deixa processo e sessão de origem desconhecidos.
+
 Para remover:
 
 ```powershell
