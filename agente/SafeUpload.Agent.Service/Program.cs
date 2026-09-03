@@ -41,6 +41,9 @@ public static class Program
         // aberta, que e o ponto de separar os dois processos.
         builder.Services.AddHostedService<FileSystemInterceptor>();
 
+        // A entrega das notificacoes aos aplicativos conectados.
+        builder.Services.AddHostedService<NotificationPipeServer>();
+
         await builder.Build().RunAsync();
     }
 }

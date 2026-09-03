@@ -1,7 +1,13 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
+    <!--
+      net10.0-windows para poder testar tambem o projeto do servico, que e
+      Windows por natureza. A suite ja dependia do Windows de qualquer forma:
+      ela exercita %ProgramData%, caminhos com barra invertida e o
+      FileSystemWatcher.
+    -->
+    <TargetFramework>net10.0-windows</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
@@ -20,6 +26,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\SafeUpload.Agent.Core\SafeUpload.Agent.Core.csproj" />
+    <ProjectReference Include="..\SafeUpload.Agent.Service\SafeUpload.Agent.Service.csproj" />
   </ItemGroup>
 
 </Project>
