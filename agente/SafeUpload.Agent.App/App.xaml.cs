@@ -1,6 +1,8 @@
 using System.Windows;
+using SafeUpload.Agent.App.Notifications;
 using SafeUpload.Agent.App.ViewModels;
 using SafeUpload.Agent.App.Views;
+using SafeUpload.Agent.Core.Contracts;
 using SafeUpload.Agent.Core.Domain;
 using SafeUpload.Agent.Core.Infrastructure;
 
@@ -13,7 +15,7 @@ namespace SafeUpload.Agent.App;
 /// Ele não intercepta, não inspeciona e não decide: quem faz isso é o serviço
 /// <c>SafeUploadAgent</c>, que roda como LocalSystem e continua funcionando com
 /// esta janela fechada. Nada que o usuário clique aqui altera um veredito,
-/// porque não existe caminho de volta até o serviço.
+/// porque o canal com o serviço não tem caminho de volta.
 ///
 /// A consequência prática é a lista de dependências: não há mais
 /// <c>InspectionService</c>, <c>ContentScanner</c> nem extratores neste projeto.
@@ -21,8 +23,8 @@ namespace SafeUpload.Agent.App;
 /// </summary>
 public partial class App : System.Windows.Application
 {
-    private readonly LocalPolicyStore _policyStore = new();
     private readonly LocalQueueAuditSink _auditSink = new();
+    private readonly PipeClient _pipe = new();
 
     private AgentViewModel? _agentViewModel;
     private AgentWindow? _panel;
@@ -35,7 +37,7 @@ public partial class App : System.Windows.Application
         base.OnStartup(e);
 
         _agentViewModel = new AgentViewModel(
-            new StatusViewModel(_policyStore, _auditSink),
+            new StatusViewModel(_auditSink),
             new HistoryViewModel(_auditSink));
 
         // O painel é construído no arranque e mantido oculto. O modelo de visão
@@ -46,14 +48,103 @@ public partial class App : System.Windows.Application
         _ = _agentViewModel.LoadAsync();
 
         _tray = new TrayIconHost(OpenPanel, ExitAgent);
-        _tray.ShowBalloon("SafeUpload", "Proteção ativa. O agente está na bandeja do sistema.");
+
+        _pipe.NotificationReceived += OnNotificationReceived;
+        _pipe.ConnectionChanged += OnConnectionChanged;
+        _pipe.Start();
+
+        _tray.ShowBalloon("SafeUpload", "Painel do agente ativo na bandeja do sistema.");
     }
 
     /// <inheritdoc />
     protected override void OnExit(ExitEventArgs e)
     {
+        _pipe.NotificationReceived -= OnNotificationReceived;
+        _pipe.ConnectionChanged -= OnConnectionChanged;
+        _ = _pipe.DisposeAsync().AsTask();
+
         _tray?.Dispose();
         base.OnExit(e);
+    }
+
+    /// <summary>
+    /// Chegou uma mensagem do serviço.
+    ///
+    /// O cliente do pipe lê numa thread de fundo, e uma
+    /// <c>ObservableCollection</c> alterada fora da thread da interface lança
+    /// na hora — não é uma corrida rara que às vezes passa, é falha imediata.
+    /// Por isso tudo o que toca o modelo de visão passa pelo Dispatcher.
+    /// </summary>
+    private void OnNotificationReceived(object? sender, AgentNotification notification)
+    {
+        Current.Dispatcher.Invoke(() =>
+        {
+            if (_agentViewModel is null)
+            {
+                return;
+            }
+
+            switch (notification)
+            {
+                case StatusNotification status:
+                    _agentViewModel.Status.ApplyStatus(status);
+                    break;
+
+                case EventNotification evento:
+                    _agentViewModel.Status.PrependActivity(evento.Event);
+                    _agentViewModel.History.Prepend(evento.Event);
+
+                    // RN-005 — todo bloqueio notifica, com o painel aberto ou
+                    // fechado.
+                    if (evento.Event.Verdict == Verdict.Blocked)
+                    {
+                        ShowBlockNotification(evento);
+                    }
+
+                    break;
+            }
+        });
+    }
+
+    private void OnConnectionChanged(object? sender, bool connected)
+    {
+        if (connected)
+        {
+            // O estado real chega logo em seguida, na mensagem de status que o
+            // serviço envia assim que aceita a conexão.
+            return;
+        }
+
+        Current.Dispatcher.Invoke(() => _agentViewModel?.Status.SetDisconnected());
+    }
+
+    /// <summary>
+    /// RN-005 — todo bloqueio notifica. A janela não tem nenhuma forma de
+    /// liberar o arquivo; ela existe para o usuário saber por que a operação
+    /// não passou.
+    /// </summary>
+    private void ShowBlockNotification(EventNotification notification)
+    {
+        // Uma notificação por vez. Vários bloqueios seguidos empilhariam
+        // janelas no mesmo canto da tela, sobrepostas e ilegíveis.
+        _notification?.Close();
+
+        // Os achados chegam prontos do serviço, já mascarados e já com a
+        // categoria de cada trecho. O aplicativo não recompõe esse par: fazer
+        // isso a partir das duas listas do evento erraria justamente quando há
+        // mais de um achado da mesma categoria.
+        _notification = new BlockNotificationWindow(
+            notification.Event.FileName,
+            notification.Findings,
+            quarantined: true);
+        _notification.Closed += (_, _) => _notification = null;
+
+        if (_panel is { IsVisible: true })
+        {
+            _notification.Owner = _panel;
+        }
+
+        _notification.Show();
     }
 
     private void OpenPanel()
@@ -71,32 +162,6 @@ public partial class App : System.Windows.Application
         }
 
         _panel.Activate();
-    }
-
-    /// <summary>
-    /// RN-005 — todo bloqueio notifica. A janela não tem nenhuma forma de
-    /// liberar o arquivo; ela existe para o usuário saber por que a operação
-    /// não passou.
-    ///
-    /// Quem chama isto passa a ser o cliente do pipe, na etapa seguinte da
-    /// separação: o aplicativo não descobre mais o bloqueio sozinho, ele é
-    /// avisado pelo serviço.
-    /// </summary>
-    private void ShowBlockNotification(string fileName, IReadOnlyList<Finding> findings, bool quarantined)
-    {
-        // Uma notificação por vez. Vários bloqueios seguidos empilhariam
-        // janelas no mesmo canto da tela, sobrepostas e ilegíveis.
-        _notification?.Close();
-
-        _notification = new BlockNotificationWindow(fileName, findings, quarantined);
-        _notification.Closed += (_, _) => _notification = null;
-
-        if (_panel is { IsVisible: true })
-        {
-            _notification.Owner = _panel;
-        }
-
-        _notification.Show();
     }
 
     private void ExitAgent()

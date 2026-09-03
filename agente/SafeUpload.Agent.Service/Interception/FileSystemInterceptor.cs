@@ -390,7 +390,7 @@ public sealed class FileSystemInterceptor : BackgroundService
 
         if (auditEvent is not null)
         {
-            _hub.Publish(new EventNotification(auditEvent));
+            _hub.Publish(new EventNotification(auditEvent, result.Findings));
         }
 
         _logger.LogInformation(

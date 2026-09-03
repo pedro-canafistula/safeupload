@@ -95,10 +95,19 @@ public sealed class NotificationPipeServer : BackgroundService
     /// <b>não</b> concede acesso a usuários comuns, e o cliente recebe acesso
     /// negado sem nenhuma pista do motivo.
     ///
-    /// A concessão é para <c>Users</c> — o grupo bem conhecido, resolvido pelo
-    /// SID e não pelo nome, porque o nome do grupo muda com o idioma do
-    /// Windows. Leitura e escrita: escrita é necessária mesmo num canal de mão
-    /// única, porque o cliente precisa poder abrir o handle.
+    /// A concessão a <c>Users</c> usa o SID bem conhecido, e não o nome do
+    /// grupo, porque o nome muda com o idioma do Windows.
+    ///
+    /// A segunda regra é a que custa caro descobrir. Informar uma
+    /// <see cref="PipeSecurity"/> <b>substitui</b> a DACL padrão inteira, e
+    /// criar uma nova instância do pipe exige o direito
+    /// <see cref="PipeAccessRights.CreateNewInstance"/>. Sem ele, a primeira
+    /// instância nasce — o criador sempre consegue criar a primeira — e a
+    /// <b>segunda</b> falha com acesso negado: o primeiro aplicativo conecta e
+    /// o canal morre logo depois, quando o laço tenta preparar a próxima. Por
+    /// isso a conta que executa o processo recebe controle total explícito, o
+    /// que cobre tanto LocalSystem em produção quanto o usuário interativo
+    /// durante a depuração em console.
     /// </summary>
     private static NamedPipeServerStream CreatePipe()
     {
@@ -109,11 +118,20 @@ public sealed class NotificationPipeServer : BackgroundService
             PipeAccessRights.ReadWrite,
             AccessControlType.Allow));
 
-        // O dono continua sendo quem cria; o sistema mantém controle total.
         security.AddAccessRule(new PipeAccessRule(
             new SecurityIdentifier(WellKnownSidType.LocalSystemSid, domainSid: null),
             PipeAccessRights.FullControl,
             AccessControlType.Allow));
+
+        using var current = WindowsIdentity.GetCurrent();
+
+        if (current.User is { } owner)
+        {
+            security.AddAccessRule(new PipeAccessRule(
+                owner,
+                PipeAccessRights.FullControl,
+                AccessControlType.Allow));
+        }
 
         return NamedPipeServerStreamAcl.Create(
             NotificationProtocol.PipeName,

@@ -14,6 +14,9 @@ namespace SafeUpload.Agent.Tests;
 /// </summary>
 public class NotificationHubTests
 {
+    private static IReadOnlyList<Finding> Achados() =>
+        [new Finding(Category.Cpf, "•••••••••25")];
+
     private static AuditEvent Evento(string fileName) => new(
         Guid.NewGuid(),
         DateTimeOffset.UtcNow,
@@ -39,7 +42,7 @@ public class NotificationHubTests
         var hub = new NotificationHub();
 
         hub.Publish(new StatusNotification(1, 4, true));
-        hub.Publish(new EventNotification(Evento("a.txt")));
+        hub.Publish(new EventNotification(Evento("a.txt"), Achados()));
     }
 
     [Fact]
@@ -48,7 +51,7 @@ public class NotificationHubTests
         var hub = new NotificationHub();
         using var assinatura = hub.Subscribe();
 
-        hub.Publish(new EventNotification(Evento("cadastro.txt")));
+        hub.Publish(new EventNotification(Evento("cadastro.txt"), Achados()));
 
         var recebido = await assinatura.Reader.ReadAsync(TestTimeout());
 
@@ -63,7 +66,7 @@ public class NotificationHubTests
         using var primeiro = hub.Subscribe();
         using var segundo = hub.Subscribe();
 
-        hub.Publish(new EventNotification(Evento("cadastro.txt")));
+        hub.Publish(new EventNotification(Evento("cadastro.txt"), Achados()));
 
         Assert.IsType<EventNotification>(await primeiro.Reader.ReadAsync(TestTimeout()));
         Assert.IsType<EventNotification>(await segundo.Reader.ReadAsync(TestTimeout()));
@@ -111,7 +114,7 @@ public class NotificationHubTests
         var hub = new NotificationHub();
 
         hub.Publish(new StatusNotification(5, 2, true));
-        hub.Publish(new EventNotification(Evento("a.txt")));
+        hub.Publish(new EventNotification(Evento("a.txt"), Achados()));
 
         Assert.Equal(5, Assert.IsType<StatusNotification>(hub.CurrentStatus).PolicyVersion);
     }
@@ -133,7 +136,7 @@ public class NotificationHubTests
 
         for (var i = 0; i < 5_000; i++)
         {
-            hub.Publish(new EventNotification(Evento($"arquivo-{i}.txt")));
+            hub.Publish(new EventNotification(Evento($"arquivo-{i}.txt"), Achados()));
         }
 
         // A fila tem capacidade finita, então só as últimas sobraram — e a
@@ -163,7 +166,7 @@ public class NotificationHubTests
         var assinatura = hub.Subscribe();
 
         assinatura.Dispose();
-        hub.Publish(new EventNotification(Evento("depois.txt")));
+        hub.Publish(new EventNotification(Evento("depois.txt"), Achados()));
 
         Assert.False(assinatura.Reader.TryRead(out _));
     }

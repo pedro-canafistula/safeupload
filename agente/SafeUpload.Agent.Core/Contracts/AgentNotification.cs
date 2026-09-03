@@ -56,7 +56,19 @@ public sealed record StatusNotification(
 /// quem lê decide o que fazer com a linha sem desserializar o resto.
 /// </summary>
 /// <param name="Event">O evento de auditoria, exatamente como foi gravado.</param>
-public sealed record EventNotification(AuditEvent Event) : AgentNotification
+/// <param name="Findings">
+/// Os achados, já mascarados, com a categoria de cada trecho.
+///
+/// Vão separados porque o <see cref="AuditEvent"/> guarda categorias e trechos
+/// como duas listas distintas, sem preservar o par: um arquivo com dois CPFs
+/// diferentes registra uma categoria e dois trechos. Casá-los por posição
+/// funciona no caso comum e erra exatamente quando há mais de um achado da
+/// mesma categoria — que é quando a notificação mais precisa estar certa. A
+/// trilha em disco continua com os dezessete campos da HU-04 inalterados.
+/// </param>
+public sealed record EventNotification(
+    AuditEvent Event,
+    IReadOnlyList<Finding> Findings) : AgentNotification
 {
     /// <summary>Discriminador desta mensagem no NDJSON.</summary>
     public const string TypeName = "event";

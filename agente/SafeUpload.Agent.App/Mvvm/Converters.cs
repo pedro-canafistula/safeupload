@@ -87,3 +87,26 @@ public sealed class BrushLookupConverter : IValueConverter
     public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) =>
         throw new NotSupportedException();
 }
+
+/// <summary>
+/// Cor do indicador de monitoramento: verde quando o serviço confirma que
+/// está vigiando, cinza quando não há confirmação.
+///
+/// A ausência de verde é deliberada e não é um detalhe estético. Enquanto o
+/// aplicativo não tiver ouvido o serviço, ele não tem base para afirmar que a
+/// máquina está protegida — e um indicador verde afirma exatamente isso.
+/// </summary>
+public sealed class MonitoringBrushConverter : IValueConverter
+{
+    /// <inheritdoc />
+    public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
+    {
+        var key = value is true ? "PillApprovedText" : "TextMuted";
+
+        return System.Windows.Application.Current?.TryFindResource(key) as Brush;
+    }
+
+    /// <inheritdoc />
+    public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) =>
+        throw new NotSupportedException();
+}

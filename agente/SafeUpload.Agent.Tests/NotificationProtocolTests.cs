@@ -14,6 +14,9 @@ namespace SafeUpload.Agent.Tests;
 /// </summary>
 public class NotificationProtocolTests
 {
+    private static IReadOnlyList<Finding> SampleFindings() =>
+        [new Finding(Category.Cpf, "•••••••••25")];
+
     private static AuditEvent SampleEvent() => new(
         Guid.Parse("11111111-2222-3333-4444-555555555555"),
         new DateTimeOffset(2026, 9, 3, 12, 0, 0, TimeSpan.Zero),
@@ -49,7 +52,7 @@ public class NotificationProtocolTests
     [Fact]
     public void Evento_leva_o_discriminador_na_raiz_e_a_auditoria_aninhada()
     {
-        var linha = NotificationProtocol.Serialize(new EventNotification(SampleEvent()));
+        var linha = NotificationProtocol.Serialize(new EventNotification(SampleEvent(), SampleFindings()));
 
         using var documento = JsonDocument.Parse(linha);
         var raiz = documento.RootElement;
@@ -67,7 +70,7 @@ public class NotificationProtocolTests
     [Fact]
     public void Mensagem_ocupa_uma_linha_e_termina_em_quebra()
     {
-        var linha = NotificationProtocol.Serialize(new EventNotification(SampleEvent()));
+        var linha = NotificationProtocol.Serialize(new EventNotification(SampleEvent(), SampleFindings()));
 
         Assert.EndsWith("\n", linha, StringComparison.Ordinal);
         Assert.Single(linha.TrimEnd('\n').Split('\n'));
@@ -97,7 +100,7 @@ public class NotificationProtocolTests
     {
         var original = SampleEvent();
         var lido = NotificationProtocol.Deserialize(
-            NotificationProtocol.Serialize(new EventNotification(original)).TrimEnd('\n'));
+            NotificationProtocol.Serialize(new EventNotification(original, SampleFindings())).TrimEnd('\n'));
 
         var evento = Assert.IsType<EventNotification>(lido).Event;
 
@@ -123,6 +126,41 @@ public class NotificationProtocolTests
     }
 
     /// <summary>
+    /// Os achados atravessam o canal com o par categoria/trecho preservado.
+    ///
+    /// É o motivo de eles irem no contrato em vez de serem recompostos do outro
+    /// lado: o evento de auditoria guarda categorias e trechos como duas listas
+    /// distintas, e um arquivo com dois CPFs diferentes registra uma categoria e
+    /// dois trechos. Quem casasse por posição mostraria a categoria errada
+    /// justamente no caso de mais de um achado.
+    /// </summary>
+    [Fact]
+    public void Achados_preservam_o_par_categoria_e_trecho()
+    {
+        IReadOnlyList<Finding> achados =
+        [
+            new Finding(Category.Cpf, "•••••••••25"),
+            new Finding(Category.Cpf, "•••••••••35"),
+            new Finding(Category.Password, "senha: ••••••••")
+        ];
+
+        var lido = NotificationProtocol.Deserialize(
+            NotificationProtocol.Serialize(new EventNotification(SampleEvent(), achados)).TrimEnd('\n'));
+
+        var recebidos = Assert.IsType<EventNotification>(lido).Findings;
+
+        Assert.Equal(3, recebidos.Count);
+        Assert.Equal(achados[0], recebidos[0]);
+        Assert.Equal(achados[1], recebidos[1]);
+        Assert.Equal(achados[2], recebidos[2]);
+
+        // Duas categorias iguais com trechos diferentes continuam distinguiveis
+        // do outro lado, que e exatamente o caso que a posicao quebraria.
+        Assert.Equal(Category.Cpf, recebidos[1].Category);
+        Assert.Equal("•••••••••35", recebidos[1].MaskedSnippet);
+    }
+
+    /// <summary>
     /// O que trafega no canal é o mesmo que vai para o log: metadados e trechos
     /// já mascarados. Não existe campo capaz de carregar conteúdo, e é isso que
     /// permite tratar o pipe como um canal de notificação e não como um canal
@@ -131,7 +169,7 @@ public class NotificationProtocolTests
     [Fact]
     public void Mensagem_nao_carrega_valor_original()
     {
-        var linha = NotificationProtocol.Serialize(new EventNotification(SampleEvent()));
+        var linha = NotificationProtocol.Serialize(new EventNotification(SampleEvent(), SampleFindings()));
 
         Assert.DoesNotContain("52998224725", linha, StringComparison.Ordinal);
         Assert.DoesNotContain("529.982.247-25", linha, StringComparison.Ordinal);
