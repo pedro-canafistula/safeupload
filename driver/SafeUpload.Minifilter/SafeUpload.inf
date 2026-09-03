@@ -1,0 +1,125 @@
+;
+; SafeUpload.inf
+;
+; Installation file for the SafeUpload minifilter.
+;
+; Installed with the legacy DefaultInstall path, not as a PnP driver
+; package:
+;
+;   rundll32.exe setupapi.dll,InstallHinfSection DefaultInstall 128 <path>
+;
+; See DEPLOY.md for the full procedure, including certificate import and
+; catalog signing, which this file assumes have already been done.
+;
+
+[Version]
+Signature   = "$Windows NT$"
+; ActivityMonitor is the class for filters that observe and record file
+; system activity, which is what this driver does: it reports operations to
+; a user-mode inspector and enforces the answer.
+Class       = "ActivityMonitor"
+ClassGuid   = {b86dff51-a31e-4bac-b3cf-e8cfe75c9fc2}
+Provider    = %ProviderString%
+DriverVer   = 09/03/2026,1.0.0.0
+CatalogFile = SafeUpload.cat
+PnpLockdown = 1
+
+[SourceDisksFiles]
+SafeUpload.sys = 1,,
+
+[SourceDisksNames]
+1 = %DiskId1%,,,
+
+[DestinationDirs]
+DefaultDestDir            = 12
+SafeUpload.DriverFiles    = 12    ; %windir%\system32\drivers
+SafeUpload.DelDriverFiles = 12
+
+;;
+;; Install
+;;
+
+[DefaultInstall.NTamd64]
+OptionDesc = %ServiceDescription%
+CopyFiles  = SafeUpload.DriverFiles
+
+[DefaultInstall.NTamd64.Services]
+AddService = %ServiceName%,,SafeUpload.Service
+
+;;
+;; Uninstall
+;;
+
+[DefaultUninstall.NTamd64]
+LegacyUninstall = 1
+DelFiles        = SafeUpload.DelDriverFiles
+
+[DefaultUninstall.NTamd64.Services]
+; 0x200 = SPSVCINST_STOPSERVICE: stop the service before deleting it.
+DelService = %ServiceName%,0x200
+
+;;
+;; Service
+;;
+
+[SafeUpload.Service]
+DisplayName    = %ServiceName%
+Description    = %ServiceDescription%
+ServiceBinary  = %12%\%DriverName%.sys
+Dependencies   = "FltMgr"
+; SERVICE_FILE_SYSTEM_DRIVER
+ServiceType    = 2
+; SERVICE_DEMAND_START. Deliberately NOT SERVICE_BOOT_START or
+; SERVICE_SYSTEM_START: a file system filter that faults during boot leaves
+; the machine unable to start, and recovering from that costs a snapshot
+; rollback. The driver is loaded on demand with "fltmc load SafeUpload".
+StartType      = 3
+; SERVICE_ERROR_NORMAL
+ErrorControl   = 1
+LoadOrderGroup = "FSFilter Anti-Virus"
+AddReg         = SafeUpload.AddRegistry
+
+[SafeUpload.AddRegistry]
+HKR,"Parameters","SupportedFeatures",0x00010001,0x3
+HKR,"Parameters\Instances","DefaultInstance",0x00000000,%DefaultInstance%
+HKR,"Parameters\Instances\"%Instance1.Name%,"Altitude",0x00000000,%Instance1.Altitude%
+HKR,"Parameters\Instances\"%Instance1.Name%,"Flags",0x00010001,%Instance1.Flags%
+
+[SafeUpload.DriverFiles]
+%DriverName%.sys
+
+[SafeUpload.DelDriverFiles]
+%DriverName%.sys
+
+;;
+;; Strings
+;;
+
+[Strings]
+ProviderString     = "SafeUpload"
+ServiceDescription = "SafeUpload minifilter driver"
+ServiceName        = "SafeUpload"
+DriverName         = "SafeUpload"
+DiskId1            = "SafeUpload Device Installation Disk"
+
+DefaultInstance    = "SafeUpload Instance"
+Instance1.Name     = "SafeUpload Instance"
+
+; TODO: this altitude is PROVISIONAL and must not ship.
+;
+; 321410 sits in the FSFilter Anti-Virus range (320000-329999), which is
+; the right group for a filter that inspects content and denies access, but
+; the value itself was picked by us and is not allocated to this product.
+; Two filters at the same altitude cannot both attach to a volume, so on
+; any machine that already runs a real anti-virus this is a collision
+; waiting to happen.
+;
+; The definitive altitude has to be requested from Microsoft, at
+; https://learn.microsoft.com/windows-hardware/drivers/ifs/allocated-altitudes
+; (request via iferrata@microsoft.com), before this driver is installed
+; anywhere other than a disposable test VM.
+Instance1.Altitude = "321410"
+
+; 0x0 - allow attachment to every volume the instance setup callback
+; accepts.
+Instance1.Flags    = 0x0

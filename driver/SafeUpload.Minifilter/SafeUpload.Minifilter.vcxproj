@@ -64,6 +64,9 @@
     <ClCompile Include="Filter.c" />
   </ItemGroup>
   <ItemGroup>
+    <None Include="SafeUpload.inf" />
+  </ItemGroup>
+  <ItemGroup>
     <ClInclude Include="Filter.h" />
     <ClInclude Include="Protocol.h" />
   </ItemGroup>
