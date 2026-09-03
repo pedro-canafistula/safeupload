@@ -1,4 +1,5 @@
 using System.Windows;
+using SafeUpload.Agent.App.Interception;
 using SafeUpload.Agent.App.Simulation;
 using SafeUpload.Agent.App.ViewModels;
 using SafeUpload.Agent.App.Views;
@@ -34,6 +35,7 @@ public partial class App : System.Windows.Application
     private TrayIconHost? _tray;
     private SimulatorWindow? _simulator;
     private BlockNotificationWindow? _notification;
+    private SimulatedInterceptor? _interceptor;
 
     /// <inheritdoc />
     protected override void OnStartup(StartupEventArgs e)
@@ -70,13 +72,87 @@ public partial class App : System.Windows.Application
 
         _tray = new TrayIconHost(OpenPanel, OpenSimulator, ExitAgent);
         _tray.ShowBalloon("SafeUpload", "Proteção ativa. O agente está na bandeja do sistema.");
+
+        // O gatilho de inspeção. A partir daqui o agente reage sozinho ao que o
+        // usuário faz com seus arquivos, sem que ninguém precise abrir o painel.
+        _interceptor = new SimulatedInterceptor(_inspection, _policyStore, _auditSink);
+        _interceptor.Intercepted += OnIntercepted;
+        _interceptor.Failed += OnInterceptionFailed;
+        _ = StartInterceptionAsync();
     }
 
     /// <inheritdoc />
     protected override void OnExit(ExitEventArgs e)
     {
+        if (_interceptor is not null)
+        {
+            _interceptor.Intercepted -= OnIntercepted;
+            _interceptor.Failed -= OnInterceptionFailed;
+            _interceptor.Dispose();
+        }
+
         _tray?.Dispose();
         base.OnExit(e);
+    }
+
+    private async Task StartInterceptionAsync()
+    {
+        try
+        {
+            await _interceptor!.StartAsync(CancellationToken.None);
+        }
+        catch (Exception ex)
+        {
+            // Sem gatilho o agente vira uma janela de leitura, e o usuário
+            // continuaria vendo "INTERCEPTANDO" no cartão de status. Falhar em
+            // silêncio aqui seria mentir sobre o estado da proteção.
+            MessageBox.Show(
+                "O agente não conseguiu vigiar as pastas monitoradas e não vai interceptar "
+                + $"operações nesta sessão.{Environment.NewLine}{Environment.NewLine}{ex.Message}",
+                "SafeUpload — interceptação indisponível",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+        }
+    }
+
+    /// <summary>
+    /// Chegada de uma interceptação.
+    ///
+    /// O <c>FileSystemWatcher</c> dispara numa thread de fundo, e uma
+    /// <c>ObservableCollection</c> alterada fora da thread da interface lança na
+    /// hora — não é uma corrida rara que às vezes passa, é falha imediata. Por
+    /// isso tudo o que toca o modelo de visão passa pelo Dispatcher.
+    /// </summary>
+    private void OnIntercepted(object? sender, InterceptionEventArgs e)
+    {
+        Current.Dispatcher.Invoke(() =>
+        {
+            if (e.AuditEvent is not null && _agentViewModel is not null)
+            {
+                _agentViewModel.Status.PrependActivity(e.AuditEvent);
+                _agentViewModel.History.Prepend(e.AuditEvent);
+            }
+
+            // RN-005 — todo bloqueio notifica, com o painel aberto ou fechado.
+            if (e.Result.IsBlocked)
+            {
+                ShowBlockNotification(e.Result, e.Operation, e.Quarantined);
+            }
+        });
+    }
+
+    /// <summary>
+    /// Uma interceptação falhou. O arquivo seguiu seu caminho, porque o agente
+    /// é fail-open, mas o usuário precisa saber que aquele arquivo não foi
+    /// examinado — do contrário o cartão de status continuaria dizendo
+    /// "INTERCEPTANDO" e a ausência de bloqueio seria lida como aprovação.
+    /// </summary>
+    private void OnInterceptionFailed(object? sender, InterceptionFailureEventArgs e)
+    {
+        Current.Dispatcher.Invoke(() => _tray?.ShowBalloon(
+            "SafeUpload",
+            $"Não foi possível examinar {System.IO.Path.GetFileName(e.Path)}. "
+            + "A operação foi permitida sem inspeção."));
     }
 
     private void OpenPanel()
@@ -129,11 +205,17 @@ public partial class App : System.Windows.Application
     /// </summary>
     private Task ShowBlockNotificationAsync(InspectionResult result, FileOperation operation)
     {
+        ShowBlockNotification(result, operation, quarantined: false);
+        return Task.CompletedTask;
+    }
+
+    private void ShowBlockNotification(InspectionResult result, FileOperation operation, bool quarantined)
+    {
         // Uma notificação por vez. Vários bloqueios seguidos empilhariam
         // janelas no mesmo canto da tela, sobrepostas e ilegíveis.
         _notification?.Close();
 
-        _notification = new BlockNotificationWindow(operation.FileName, result.Findings);
+        _notification = new BlockNotificationWindow(operation.FileName, result.Findings, quarantined);
         _notification.Closed += (_, _) => _notification = null;
 
         if (_simulator is { IsVisible: true })
@@ -146,7 +228,6 @@ public partial class App : System.Windows.Application
         }
 
         _notification.Show();
-        return Task.CompletedTask;
     }
 
     private void ExitAgent()

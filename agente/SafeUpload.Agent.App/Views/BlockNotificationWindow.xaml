@@ -102,6 +102,17 @@
                 <TextBlock Style="{StaticResource BodyText}"
                            Foreground="{StaticResource TextMuted}"
                            Text="Revise o arquivo, remova ou anonimize as informações e tente novamente."
+                           Margin="0,0,0,10" />
+
+                <!--
+                    O arquivo saiu da pasta monitorada. Dizer para onde ele foi
+                    não afrouxa o bloqueio: continua não havendo como liberá-lo
+                    daqui. Omitir isso é que transformaria um bloqueio explicado
+                    num arquivo perdido.
+                -->
+                <TextBlock x:Name="QuarantineText"
+                           Style="{StaticResource MutedText}"
+                           Text="O arquivo foi retirado da pasta monitorada e guardado em SafeUpload\_bloqueados na sua pasta de usuário."
                            Margin="0,0,0,16" />
 
                 <!-- Único botão da janela. Ver o comentário no topo do arquivo. -->

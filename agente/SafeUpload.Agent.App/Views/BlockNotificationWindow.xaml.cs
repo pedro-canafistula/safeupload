@@ -20,13 +20,21 @@ public partial class BlockNotificationWindow : Window
     /// </summary>
     /// <param name="fileName">Arquivo barrado.</param>
     /// <param name="findings">Achados, já mascarados pelo domínio.</param>
-    public BlockNotificationWindow(string fileName, IReadOnlyList<Finding> findings)
+    /// <param name="quarantined">
+    /// Se o arquivo foi retirado da pasta monitorada. Quando é o caso, a
+    /// notificação diz para onde ele foi: o arquivo sumiu de onde o usuário
+    /// acabou de colocá-lo, e deixá-lo procurar seria transformar um bloqueio
+    /// explicado num arquivo perdido.
+    /// </param>
+    public BlockNotificationWindow(string fileName, IReadOnlyList<Finding> findings, bool quarantined = false)
     {
         ArgumentNullException.ThrowIfNull(findings);
 
         InitializeComponent();
 
         FileNameText.Text = fileName;
+
+        QuarantineText.Visibility = quarantined ? Visibility.Visible : Visibility.Collapsed;
         FindingsList.ItemsSource = findings
             .Select(f => new FindingViewModel(CategoryLabels.Describe(f.Category), f.MaskedSnippet))
             .ToList();
