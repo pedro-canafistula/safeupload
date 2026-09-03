@@ -9,6 +9,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SafeUpload.Agent.App", "Saf
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SafeUpload.Agent.Tests", "SafeUpload.Agent.Tests\SafeUpload.Agent.Tests.csproj", "{ADBEE4F5-2C94-4050-9A2D-DFC0FC1ABE74}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SafeUpload.Agent.Service", "SafeUpload.Agent.Service\SafeUpload.Agent.Service.csproj", "{120A5936-D165-4ECB-9418-DFFD34A80E80}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -55,6 +57,18 @@ Global
 		{ADBEE4F5-2C94-4050-9A2D-DFC0FC1ABE74}.Release|x64.Build.0 = Release|Any CPU
 		{ADBEE4F5-2C94-4050-9A2D-DFC0FC1ABE74}.Release|x86.ActiveCfg = Release|Any CPU
 		{ADBEE4F5-2C94-4050-9A2D-DFC0FC1ABE74}.Release|x86.Build.0 = Release|Any CPU
+		{120A5936-D165-4ECB-9418-DFFD34A80E80}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{120A5936-D165-4ECB-9418-DFFD34A80E80}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{120A5936-D165-4ECB-9418-DFFD34A80E80}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{120A5936-D165-4ECB-9418-DFFD34A80E80}.Debug|x64.Build.0 = Debug|Any CPU
+		{120A5936-D165-4ECB-9418-DFFD34A80E80}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{120A5936-D165-4ECB-9418-DFFD34A80E80}.Debug|x86.Build.0 = Debug|Any CPU
+		{120A5936-D165-4ECB-9418-DFFD34A80E80}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{120A5936-D165-4ECB-9418-DFFD34A80E80}.Release|Any CPU.Build.0 = Release|Any CPU
+		{120A5936-D165-4ECB-9418-DFFD34A80E80}.Release|x64.ActiveCfg = Release|Any CPU
+		{120A5936-D165-4ECB-9418-DFFD34A80E80}.Release|x64.Build.0 = Release|Any CPU
+		{120A5936-D165-4ECB-9418-DFFD34A80E80}.Release|x86.ActiveCfg = Release|Any CPU
+		{120A5936-D165-4ECB-9418-DFFD34A80E80}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
