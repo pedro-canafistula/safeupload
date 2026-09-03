@@ -45,16 +45,18 @@ public sealed class ZeroCountToVisibilityConverter : IValueConverter
 /// recursos OpenType da fonte e não controla tracking. Sem uma caixa de texto
 /// rica, a única saída no WPF é mexer no próprio texto.
 ///
-/// O caractere usado é o U+202F, espaço estreito sem quebra, e não o U+2009,
-/// espaço fino. Os dois têm a mesma largura, mas o U+2009 é ponto de quebra
-/// válido: com ele, "DISPOSITIVO SEGURO" quebrava no meio da palavra e a
-/// legenda aparecia como "DISPOSITIVO SEG / URO". O U+202F espaça sem
-/// autorizar a quebra, então a linha só pode virar entre palavras — que é o
-/// que se espera de um rótulo.
+/// O espaçamento entre letras usa o U+200A, espaço capilar, o mais estreito do
+/// Unicode. As alternativas mais óbvias ficam largas demais: no corpo de 10px
+/// desta legenda, o U+2009 (fino) e o U+202F (estreito) somam quase um terço da
+/// largura do rótulo, e "OPERAÇÕES EM SEGUNDO PLANO" deixa de caber no cartão.
+/// Tracking de rótulo é da ordem de um pixel, não de dois ou três.
 ///
-/// Por isso o espaçamento é aplicado dentro de cada palavra e as palavras
-/// voltam a ser unidas por um espaço comum: sem esse espaço comum não sobraria
-/// nenhum ponto de quebra e a legenda transbordaria o cartão.
+/// Cada espaço capilar vem seguido de um U+2060, o "word joiner", que ocupa
+/// largura zero e proíbe a quebra de linha naquele ponto. Sem ele o rótulo
+/// quebraria no meio da palavra — "DISPOSITIVO SEG / URO" —, porque todo espaço
+/// do Unicode é ponto de quebra válido. As palavras continuam separadas por um
+/// espaço comum, que é o único lugar onde a linha pode virar e é visivelmente
+/// mais largo que o espaçamento entre letras.
 ///
 /// O texto exibido deixa de ser idêntico ao texto do modelo, e por isso a
 /// conversão fica na apresentação: o que vai para o log continua sendo o valor
@@ -62,10 +64,18 @@ public sealed class ZeroCountToVisibilityConverter : IValueConverter
 /// </summary>
 public sealed class LetterSpacingConverter : IValueConverter
 {
-    // Escrito como escape, e não como o caractere literal: um espaço estreito é
-    // invisível no editor e qualquer normalização de espaços em branco o
-    // trocaria por um espaço comum sem ninguém notar.
-    private const char NarrowNoBreakSpace = '\u202F';
+    // Escritos como escape, e não como caracteres literais: espaços de largura
+    // especial são invisíveis no editor e qualquer normalização de espaços em
+    // branco os trocaria por espaços comuns sem ninguém notar.
+
+    /// <summary>
+    /// Espaçamento entre as letras de uma mesma palavra: espaço capilar
+    /// (U+200A) seguido de word joiner (U+2060), que impede a quebra ali.
+    /// </summary>
+    private const string LetterGap = "\u200A\u2060";
+
+    /// <summary>Separação entre palavras, e único ponto de quebra do rótulo.</summary>
+    private const char WordGap = ' ';
 
     /// <inheritdoc />
     public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
@@ -78,9 +88,9 @@ public sealed class LetterSpacingConverter : IValueConverter
         }
 
         var words = text.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        var spaced = words.Select(word => string.Join(NarrowNoBreakSpace, word.ToCharArray()));
+        var spaced = words.Select(word => string.Join(LetterGap, word.ToCharArray()));
 
-        return string.Join(' ', spaced);
+        return string.Join(WordGap, spaced);
     }
 
     /// <inheritdoc />

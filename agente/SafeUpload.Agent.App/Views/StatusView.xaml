@@ -120,29 +120,28 @@
                         </StackPanel>
 
                         <!--
-                            No lugar do número, uma pílula: o que importa aqui
-                            não é uma medida, é se o agente está de fato
-                            interceptando neste momento.
+                            No lugar do número, um indicador: o que importa
+                            aqui não é uma medida, é se o agente está de fato
+                            interceptando neste momento. O ponto verde e a cor
+                            do texto bastam para dizer isso; uma faixa colorida
+                            atrás pesaria mais que os valores dos outros dois
+                            cartões e desequilibraria a linha.
                         -->
-                        <Border Background="{StaticResource SuccessBg}"
-                                CornerRadius="999"
-                                Padding="12,7"
-                                HorizontalAlignment="Left"
-                                Margin="0,18,0,8">
-                            <StackPanel Orientation="Horizontal">
-                                <Ellipse Width="7"
-                                         Height="7"
-                                         Fill="{StaticResource PillApprovedText}"
-                                         VerticalAlignment="Center" />
-                                <TextBlock Text="INTERCEPTANDO"
-                                           FontFamily="{StaticResource MonoFont}"
-                                           FontSize="11"
-                                           FontWeight="SemiBold"
-                                           Foreground="{StaticResource PillApprovedText}"
-                                           Margin="7,0,0,0"
-                                           VerticalAlignment="Center" />
-                            </StackPanel>
-                        </Border>
+                        <StackPanel Orientation="Horizontal"
+                                    HorizontalAlignment="Left"
+                                    Margin="0,22,0,12">
+                            <Ellipse Width="7"
+                                     Height="7"
+                                     Fill="{StaticResource PillApprovedText}"
+                                     VerticalAlignment="Center" />
+                            <TextBlock Text="INTERCEPTANDO"
+                                       FontFamily="{StaticResource MonoFont}"
+                                       FontSize="11"
+                                       FontWeight="SemiBold"
+                                       Foreground="{StaticResource PillApprovedText}"
+                                       Margin="7,0,0,0"
+                                       VerticalAlignment="Center" />
+                        </StackPanel>
 
                         <TextBlock Style="{StaticResource CaptionText}"
                                    Text="{Binding Source='OPERAÇÕES EM SEGUNDO PLANO', Converter={StaticResource LetterSpacing}}" />
@@ -216,22 +215,19 @@
                                         </StackPanel>
 
                                         <!--
-                                            Só a pílula de status. Nenhum
-                                            comando: o painel informa, não
-                                            oferece ao usuário a chance de
-                                            desfazer a decisão da política.
+                                            Só o rótulo de status, colorido
+                                            pela cor da letra. Nenhum comando: o
+                                            painel informa, não oferece ao
+                                            usuário a chance de desfazer a
+                                            decisão da política.
                                         -->
-                                        <Border Grid.Column="1"
-                                                Background="{Binding Status.BackgroundKey, Converter={StaticResource BrushLookup}}"
-                                                CornerRadius="999"
-                                                Padding="10,4"
-                                                VerticalAlignment="Center">
-                                            <TextBlock Text="{Binding Status.Text}"
-                                                       FontFamily="{StaticResource MonoFont}"
-                                                       FontSize="10"
-                                                       FontWeight="SemiBold"
-                                                       Foreground="{Binding Status.ForegroundKey, Converter={StaticResource BrushLookup}}" />
-                                        </Border>
+                                        <TextBlock Grid.Column="1"
+                                                   Text="{Binding Status.Text}"
+                                                   FontFamily="{StaticResource MonoFont}"
+                                                   FontSize="10"
+                                                   FontWeight="SemiBold"
+                                                   Foreground="{Binding Status.ForegroundKey, Converter={StaticResource BrushLookup}}"
+                                                   VerticalAlignment="Center" />
                                     </Grid>
                                 </Border>
                             </DataTemplate>

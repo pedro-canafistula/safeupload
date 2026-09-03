@@ -58,18 +58,22 @@ public sealed class ActivityRowViewModel
 }
 
 /// <summary>
-/// A pílula de status usada no painel: texto e cores por veredito.
+/// O rótulo de status usado no painel: texto e cor por veredito.
+///
+/// Só a cor do texto distingue os vereditos; não há faixa colorida atrás dele.
+/// Numa lista de operações, um fundo por linha compete com o próprio conteúdo
+/// da linha e transforma a tabela num semáforo — a cor da letra já carrega a
+/// mesma informação sem tirar a atenção do nome do arquivo.
 /// </summary>
 /// <param name="Text">Rótulo em maiúscula.</param>
-/// <param name="BackgroundKey">Chave do pincel de fundo.</param>
-/// <param name="ForegroundKey">Chave do pincel de texto.</param>
-public sealed record StatusPill(string Text, string BackgroundKey, string ForegroundKey)
+/// <param name="ForegroundKey">Chave do pincel de texto nos tokens da paleta.</param>
+public sealed record StatusPill(string Text, string ForegroundKey)
 {
-    /// <summary>Pílula correspondente ao veredito.</summary>
+    /// <summary>Rótulo correspondente ao veredito.</summary>
     public static StatusPill For(Verdict verdict) => verdict switch
     {
-        Verdict.Approved => new StatusPill("PERMITIDO", "SuccessBg", "PillApprovedText"),
-        Verdict.Blocked => new StatusPill("BLOQUEADO", "DangerBg", "PillBlockedText"),
-        _ => new StatusPill("NÃO INSPECIONADO", "WarningBg", "PillNotInspectedText")
+        Verdict.Approved => new StatusPill("PERMITIDO", "PillApprovedText"),
+        Verdict.Blocked => new StatusPill("BLOQUEADO", "PillBlockedText"),
+        _ => new StatusPill("NÃO INSPECIONADO", "PillNotInspectedText")
     };
 }

@@ -55,20 +55,16 @@
                         <DataGridTextColumn Header="Destino" Binding="{Binding Destination}" Width="150" />
                         <DataGridTextColumn Header="Processo" Binding="{Binding Process}" Width="110" />
 
-                        <!-- A mesma pílula do status, para o resultado ser reconhecível nas duas telas. -->
+                        <!-- O mesmo rótulo do status, para o resultado ser reconhecível nas duas telas. -->
                         <DataGridTemplateColumn Header="Resultado" Width="150">
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate DataType="{x:Type vm:HistoryRowViewModel}">
-                                    <Border Background="{Binding Status.BackgroundKey, Converter={StaticResource BrushLookup}}"
-                                            CornerRadius="999"
-                                            Padding="10,3"
-                                            HorizontalAlignment="Left">
-                                        <TextBlock Text="{Binding Status.Text}"
-                                                   FontFamily="{StaticResource MonoFont}"
-                                                   FontSize="10"
-                                                   FontWeight="SemiBold"
-                                                   Foreground="{Binding Status.ForegroundKey, Converter={StaticResource BrushLookup}}" />
-                                    </Border>
+                                    <TextBlock Text="{Binding Status.Text}"
+                                               FontFamily="{StaticResource MonoFont}"
+                                               FontSize="10"
+                                               FontWeight="SemiBold"
+                                               Foreground="{Binding Status.ForegroundKey, Converter={StaticResource BrushLookup}}"
+                                               VerticalAlignment="Center" />
                                 </DataTemplate>
                             </DataGridTemplateColumn.CellTemplate>
                         </DataGridTemplateColumn>
