@@ -60,10 +60,12 @@
     </DriverSign>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="Communication.c" />
     <ClCompile Include="Filter.c" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Filter.h" />
+    <ClInclude Include="Protocol.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
 </Project>

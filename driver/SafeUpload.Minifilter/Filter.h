@@ -25,6 +25,8 @@ Environment:
 #include <dontuse.h>
 #include <suppress.h>
 
+#include "Protocol.h"
+
 //
 //  Pool tag used for every allocation this driver makes. The constant is
 //  written back-to-front ('lfUS') because x86/x64 are little endian, so
@@ -61,6 +63,27 @@ Environment:
     DbgPrintEx( DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL, "SafeUpload: " __VA_ARGS__ )
 
 //
+//  How long the kernel is willing to wait for a verdict from user mode.
+//
+//  RN-013: when this expires - or the port is closed, or the inspector
+//  answers garbage, or we cannot allocate - the operation is ALLOWED and
+//  the event is reported as "Permitido sem inspecao". A failure to inspect
+//  must never block a user and must never wedge the file system, so this
+//  timeout is the hard ceiling on how long any single file operation can
+//  be delayed by this driver.
+//
+
+#define SAFEUPLOAD_VERDICT_TIMEOUT_MS ((LONGLONG) 500)
+
+//
+//  Relative timeouts are expressed as a negative count of 100-nanosecond
+//  intervals.
+//
+
+#define SAFEUPLOAD_VERDICT_TIMEOUT_INTERVALS \
+    (-(SAFEUPLOAD_VERDICT_TIMEOUT_MS * 10 * 1000))
+
+//
 //  Global driver state. There is exactly one instance of this structure,
 //  defined in Filter.c.
 //
@@ -80,9 +103,65 @@ typedef struct _SAFEUPLOAD_DATA {
 
     PFLT_FILTER Filter;
 
+    //
+    //  Server port the inspector connects to. Created in DriverEntry,
+    //  closed on unload; closing it stops new connections.
+    //
+
+    PFLT_PORT ServerPort;
+
+    //
+    //  Port of the connected inspector, or NULL when nobody is listening.
+    //  Only one connection is accepted at a time.
+    //
+    //  The filter manager synchronizes FltCloseClientPort against
+    //  FltSendMessage's use of this field, so it is safe to hand its
+    //  address to FltSendMessage without a lock of our own.
+    //
+
+    PFLT_PORT ClientPort;
+
+    //
+    //  PID of the process that owns ClientPort, or 0 when disconnected.
+    //  Read on every operation to keep the inspector's own I/O out of the
+    //  filter: sending the inspector a message about the inspector's own
+    //  file access would deadlock it against its own reply.
+    //
+
+    volatile ULONG InspectorProcessId;
+
+    //
+    //  Guards the user-mode channel against teardown. Every caller of
+    //  FltSendMessage holds rundown protection for the duration of the
+    //  call; unload waits for all of them to drain and blocks any new
+    //  acquisition before unregistering the filter.
+    //
+
+    EX_RUNDOWN_REF ChannelRundown;
+
+    //
+    //  Source of SAFEUPLOAD_REQUEST.RequestId.
+    //
+
+    volatile LONG64 NextRequestId;
+
 } SAFEUPLOAD_DATA, *PSAFEUPLOAD_DATA;
 
 extern SAFEUPLOAD_DATA SafeUploadData;
+
+//
+//  One request and its response in a single pool block. Keeping them in
+//  one allocation means every callback has exactly one thing to free, so
+//  the error paths are trivial to audit. Neither structure fits comfortably
+//  on a kernel stack.
+//
+
+typedef struct _SAFEUPLOAD_EXCHANGE {
+
+    SAFEUPLOAD_REQUEST Request;
+    SAFEUPLOAD_RESPONSE Response;
+
+} SAFEUPLOAD_EXCHANGE, *PSAFEUPLOAD_EXCHANGE;
 
 ///////////////////////////////////////////////////////////////////////////
 //
@@ -129,6 +208,28 @@ SafeUploadPreRead (
     _Inout_ PFLT_CALLBACK_DATA Data,
     _In_ PCFLT_RELATED_OBJECTS FltObjects,
     _Flt_CompletionContext_Outptr_ PVOID *CompletionContext
+    );
+
+///////////////////////////////////////////////////////////////////////////
+//
+//  User-mode channel. Implemented in Communication.c.
+//
+///////////////////////////////////////////////////////////////////////////
+
+NTSTATUS
+SafeUploadCreateCommunicationPort (
+    VOID
+    );
+
+VOID
+SafeUploadCloseCommunicationPort (
+    VOID
+    );
+
+NTSTATUS
+SafeUploadRequestVerdict (
+    _Inout_ PSAFEUPLOAD_EXCHANGE Exchange,
+    _Out_ PUINT32 Verdict
     );
 
 #endif // _SAFEUPLOAD_FILTER_H_

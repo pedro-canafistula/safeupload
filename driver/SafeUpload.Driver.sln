@@ -4,6 +4,8 @@ VisualStudioVersion = 18.9.12120.119
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "SafeUpload.Minifilter", "SafeUpload.Minifilter\SafeUpload.Minifilter.vcxproj", "{F0194BFE-69D7-4FED-A7F7-B5412C08E5AF}"
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "SafeUpload.Inspector", "SafeUpload.Inspector\SafeUpload.Inspector.vcxproj", "{0E2B6D95-2383-48B4-90AC-EA17FE8B8679}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -16,6 +18,10 @@ Global
 		{F0194BFE-69D7-4FED-A7F7-B5412C08E5AF}.Release|x64.ActiveCfg = Release|x64
 		{F0194BFE-69D7-4FED-A7F7-B5412C08E5AF}.Release|x64.Build.0 = Release|x64
 		{F0194BFE-69D7-4FED-A7F7-B5412C08E5AF}.Release|x64.Deploy.0 = Release|x64
+		{0E2B6D95-2383-48B4-90AC-EA17FE8B8679}.Debug|x64.ActiveCfg = Debug|x64
+		{0E2B6D95-2383-48B4-90AC-EA17FE8B8679}.Debug|x64.Build.0 = Debug|x64
+		{0E2B6D95-2383-48B4-90AC-EA17FE8B8679}.Release|x64.ActiveCfg = Release|x64
+		{0E2B6D95-2383-48B4-90AC-EA17FE8B8679}.Release|x64.Build.0 = Release|x64
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
