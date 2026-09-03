@@ -181,6 +181,122 @@ public class NotificationHubTests
         assinatura.Dispose();
     }
 
+    /// <summary>
+    /// O que aconteceu enquanto ninguém ouvia é entregue a quem conectar
+    /// depois, dentro da janela de reprodução.
+    ///
+    /// Cobre a sequência real: o usuário fecha o aplicativo, um arquivo é
+    /// bloqueado, ele reabre a interface. Sem isso o bloqueio teria acontecido
+    /// sem deixar rastro na tela.
+    /// </summary>
+    [Fact]
+    public void Evento_publicado_sem_ninguem_ouvindo_e_entregue_a_quem_conecta()
+    {
+        var hub = new NotificationHub();
+
+        hub.Publish(new EventNotification(Evento("perdido.txt"), Achados()));
+
+        using var assinatura = hub.Subscribe();
+
+        Assert.True(assinatura.Reader.TryRead(out var recebido));
+        Assert.Equal("perdido.txt", ((EventNotification)recebido!).Event.FileName);
+    }
+
+    /// <summary>
+    /// Passada a janela, o evento não é mais reproduzido: isto é notificação,
+    /// não histórico. Histórico é o queue.jsonl, que guarda tudo.
+    /// </summary>
+    [Fact]
+    public void Evento_antigo_nao_e_reproduzido()
+    {
+        var relogio = new RelogioControlado(new DateTimeOffset(2026, 9, 3, 12, 0, 0, TimeSpan.Zero));
+        var hub = new NotificationHub(relogio);
+
+        hub.Publish(new EventNotification(Evento("antigo.txt"), Achados()));
+
+        relogio.Avancar(NotificationHub.ReplayWindow + TimeSpan.FromSeconds(1));
+
+        using var assinatura = hub.Subscribe();
+
+        Assert.False(assinatura.Reader.TryRead(out _));
+    }
+
+    [Fact]
+    public void Estado_nao_entra_na_janela_de_reproducao()
+    {
+        var hub = new NotificationHub();
+
+        hub.Publish(new StatusNotification(3, 4, true));
+
+        using var assinatura = hub.Subscribe();
+
+        // O estado corrente e entregue pelo servidor do pipe, e nao pela
+        // reproducao: reproduzi-lo aqui mandaria a mesma mensagem duas vezes.
+        Assert.False(assinatura.Reader.TryRead(out _));
+        Assert.NotNull(hub.CurrentStatus);
+    }
+
+    /// <summary>
+    /// Evento com sessão de destino não vai para a sessão errada. Nome de
+    /// arquivo é dado: entregar o bloqueio de um usuário na tela de outro seria
+    /// vazar por notificação o que o agente existe para não vazar.
+    /// </summary>
+    [Fact]
+    public void Evento_com_sessao_nao_vaza_para_outra_sessao()
+    {
+        var hub = new NotificationHub();
+        using var sessaoUm = hub.Subscribe(sessionId: 1);
+        using var sessaoDois = hub.Subscribe(sessionId: 2);
+
+        hub.Publish(new EventNotification(Evento("da-sessao-1.txt"), Achados()), targetSessionId: 1);
+
+        Assert.True(sessaoUm.Reader.TryRead(out _));
+        Assert.False(sessaoDois.Reader.TryRead(out _));
+    }
+
+    /// <summary>
+    /// Sem sessão de destino, difusão. É o caminho percorrido na prática, já
+    /// que a origem de uma operação vista pelo FileSystemWatcher não é
+    /// determinável.
+    /// </summary>
+    [Fact]
+    public void Evento_sem_sessao_vai_para_todos()
+    {
+        var hub = new NotificationHub();
+        using var sessaoUm = hub.Subscribe(sessionId: 1);
+        using var sessaoDois = hub.Subscribe(sessionId: 2);
+
+        hub.Publish(new EventNotification(Evento("difusao.txt"), Achados()));
+
+        Assert.True(sessaoUm.Reader.TryRead(out _));
+        Assert.True(sessaoDois.Reader.TryRead(out _));
+    }
+
+    /// <summary>
+    /// Assinante de sessão desconhecida recebe tudo: deixá-lo sem notificação
+    /// nenhuma seria pior do que mostrar demais.
+    /// </summary>
+    [Fact]
+    public void Assinante_sem_sessao_conhecida_recebe_tudo()
+    {
+        var hub = new NotificationHub();
+        using var desconhecida = hub.Subscribe(sessionId: null);
+
+        hub.Publish(new EventNotification(Evento("de-alguma-sessao.txt"), Achados()), targetSessionId: 7);
+
+        Assert.True(desconhecida.Reader.TryRead(out _));
+    }
+
+    /// <summary>Relógio de teste, avançado à mão.</summary>
+    private sealed class RelogioControlado(DateTimeOffset inicio) : TimeProvider
+    {
+        private DateTimeOffset _agora = inicio;
+
+        public void Avancar(TimeSpan intervalo) => _agora += intervalo;
+
+        public override DateTimeOffset GetUtcNow() => _agora;
+    }
+
     private static CancellationToken TestTimeout() =>
         new CancellationTokenSource(TimeSpan.FromSeconds(5)).Token;
 }

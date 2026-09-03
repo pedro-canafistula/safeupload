@@ -149,7 +149,11 @@ public sealed class NotificationPipeServer : BackgroundService
     /// </summary>
     private async Task ServeAsync(NamedPipeServerStream pipe, CancellationToken stoppingToken)
     {
-        using var subscription = _hub.Subscribe();
+        // A sessao do aplicativo que conectou, para nao entregar a uma sessao
+        // o bloqueio ocorrido em outra.
+        var sessionId = SessionResolver.TryGetClientSessionId(pipe.SafePipeHandle);
+
+        using var subscription = _hub.Subscribe(sessionId);
 
         try
         {
@@ -160,7 +164,9 @@ public sealed class NotificationPipeServer : BackgroundService
                     AutoFlush = false
                 };
 
-                _logger.LogInformation("Aplicativo conectado ao canal de notificacao");
+                _logger.LogInformation(
+                    "Aplicativo conectado ao canal de notificacao (sessao {Sessao})",
+                    sessionId?.ToString() ?? "desconhecida");
 
                 // O estado vai primeiro, antes de qualquer evento: sem ele o
                 // aplicativo recém-aberto não teria como preencher os cartões,

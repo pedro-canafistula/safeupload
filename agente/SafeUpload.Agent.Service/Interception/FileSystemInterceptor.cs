@@ -390,7 +390,13 @@ public sealed class FileSystemInterceptor : BackgroundService
 
         if (auditEvent is not null)
         {
-            _hub.Publish(new EventNotification(auditEvent, result.Findings));
+            // A sessao de origem, quando determinavel, restringe a entrega a
+            // quem realmente fez a operacao. Com o FileSystemWatcher ela nunca
+            // e: o PID chega zero e isto sempre resolve para difusao. O caminho
+            // existe para o dia em que o minifiltro informar o processo.
+            var sessionId = SessionResolver.TryGetSessionId(operation.ProcessId);
+
+            _hub.Publish(new EventNotification(auditEvent, result.Findings), sessionId);
         }
 
         _logger.LogInformation(

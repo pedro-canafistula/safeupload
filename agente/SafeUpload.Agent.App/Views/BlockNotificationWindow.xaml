@@ -13,9 +13,16 @@
         Background="Transparent"
         ShowInTaskbar="False"
         Topmost="True"
+        ShowActivated="False"
         ResizeMode="NoResize">
 
     <!--
+        ShowActivated="False", e em nenhum lugar do codigo se chama Activate():
+        a notificacao aparece por cima sem tomar o foco do teclado. Um bloqueio
+        acontece enquanto a pessoa esta trabalhando em outro programa, e roubar
+        o foco faria as proximas teclas irem para esta janela — no melhor caso
+        perdendo o que estava sendo digitado, no pior acionando o botao.
+
         RN-005 — esta janela não tem, e não pode ganhar, um botão de prosseguir,
         ignorar ou enviar assim mesmo. Um bloqueio que o usuário consegue
         dispensar não é um bloqueio: é um aviso, e a regra pede negação. O único
@@ -49,7 +56,7 @@
                                FontWeight="SemiBold"
                                Foreground="White"
                                TextWrapping="Wrap" />
-                    <TextBlock x:Name="FileNameText"
+                    <TextBlock x:Name="SummaryText"
                                FontFamily="{StaticResource UiFont}"
                                FontSize="12"
                                Foreground="#FEE2E2"

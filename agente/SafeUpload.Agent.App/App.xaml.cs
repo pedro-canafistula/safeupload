@@ -125,18 +125,25 @@ public partial class App : System.Windows.Application
     /// </summary>
     private void ShowBlockNotification(EventNotification notification)
     {
-        // Uma notificação por vez. Vários bloqueios seguidos empilhariam
-        // janelas no mesmo canto da tela, sobrepostas e ilegíveis.
-        _notification?.Close();
-
         // Os achados chegam prontos do serviço, já mascarados e já com a
         // categoria de cada trecho. O aplicativo não recompõe esse par: fazer
         // isso a partir das duas listas do evento erraria justamente quando há
         // mais de um achado da mesma categoria.
+        if (_notification is { IsLoaded: true })
+        {
+            // Já há uma notificação na tela: ela absorve este bloqueio em vez
+            // de uma segunda janela nascer por cima. Copiar uma pasta com dez
+            // arquivos sensíveis produziria dez janelas empilhadas no mesmo
+            // canto, e o usuário fecharia uma por uma sem ler nenhuma.
+            _notification.Add(notification.Event.FileName, notification.Findings);
+            return;
+        }
+
         _notification = new BlockNotificationWindow(
             notification.Event.FileName,
             notification.Findings,
             quarantined: true);
+
         _notification.Closed += (_, _) => _notification = null;
 
         if (_panel is { IsVisible: true })
