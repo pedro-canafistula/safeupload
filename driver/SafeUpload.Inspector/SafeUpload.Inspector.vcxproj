@@ -51,6 +51,16 @@
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <ClCompile>
       <Optimization>Disabled</Optimization>
+      <!--
+        Static CRT on purpose. This program is xcopy-deployed to a bare test
+        VM that has no Visual Studio and no redistributable installed. With
+        the default /MDd it would depend on VCRUNTIME140D.dll and
+        ucrtbased.dll - debug CRT binaries that are not redistributable and
+        are absent from a clean machine - and the process would die in the
+        loader with STATUS_DLL_NOT_FOUND before reaching main, printing
+        nothing at all.
+      -->
+      <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
     </ClCompile>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -58,6 +68,7 @@
       <Optimization>MaxSpeed</Optimization>
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
+      <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
     </ClCompile>
     <Link>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>

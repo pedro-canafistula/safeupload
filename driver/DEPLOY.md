@@ -440,6 +440,26 @@ Conectado. Aguardando requisicoes (Ctrl+C para sair).
 Se aparecer `ERRO: nao foi possivel conectar na porta`, o filtro não está
 carregado (volte ao passo 5) ou o prompt não está elevado.
 
+Se **não aparecer nada** e o prompt voltar na hora, o processo morreu no
+carregador antes de chegar ao `main`. Confirme:
+
+```
+$LASTEXITCODE
+```
+
+`-1073741515` é `0xC0000135` (`STATUS_DLL_NOT_FOUND`): falta uma DLL. O
+projeto do inspetor liga o CRT estaticamente justamente para isso não
+acontecer numa VM sem Visual Studio — se você vir esse erro, o `.exe`
+copiado é anterior a essa correção. Confira as dependências dele na VM de
+desenvolvimento:
+
+```
+dumpbin /dependents C:\safeupload-pkg\SafeUpload.Inspector.exe
+```
+
+Só podem aparecer `KERNEL32.dll` e `FLTLIB.DLL`. Se aparecerem
+`VCRUNTIME140D.dll` ou `ucrtbased.dll`, recompile e recopie.
+
 **7c. Caso permitido.** Em *outra* janela:
 
 ```
