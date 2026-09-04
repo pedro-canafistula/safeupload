@@ -42,7 +42,7 @@ namespace SafeUploadAgent
             Close();
         }
 
-        // Alterna o destaque (azul) entre os itens do menu lateral
+        // Alterna o destaque (azul) entre os itens do menu lateral e troca a view exibida
         private void NavStatus_Click(object sender, RoutedEventArgs e)
         {
             NavStatusButton.Background = (Brush)new BrushConverter().ConvertFrom("#2563EB")!;
@@ -50,6 +50,9 @@ namespace SafeUploadAgent
 
             NavHistoricoButton.Background = Brushes.Transparent;
             NavHistoricoButton.Foreground = (Brush)new BrushConverter().ConvertFrom("#374151")!;
+
+            StatusView.Visibility = Visibility.Visible;
+            HistoricoView.Visibility = Visibility.Collapsed;
         }
 
         private void NavHistorico_Click(object sender, RoutedEventArgs e)
@@ -59,6 +62,9 @@ namespace SafeUploadAgent
 
             NavStatusButton.Background = Brushes.Transparent;
             NavStatusButton.Foreground = (Brush)new BrushConverter().ConvertFrom("#374151")!;
+
+            HistoricoView.Visibility = Visibility.Visible;
+            StatusView.Visibility = Visibility.Collapsed;
         }
     }
 }

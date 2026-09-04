@@ -1,39 +1,20 @@
-C:\Users\luiz.rodrigues\Documents\safeupl\SafeUploadAgent\obj\Debug\net8.0-windows\MainWindow.baml
-C:\Users\luiz.rodrigues\Documents\safeupl\SafeUploadAgent\obj\Debug\net8.0-windows\MainWindow.g.cs
-C:\Users\luiz.rodrigues\Documents\safeupl\SafeUploadAgent\obj\Debug\net8.0-windows\App.g.cs
-C:\Users\luiz.rodrigues\Documents\safeupl\SafeUploadAgent\obj\Debug\net8.0-windows\SafeUploadAgent_MarkupCompile.cache
-C:\Users\luiz.rodrigues\Documents\safeupl\SafeUploadAgent\obj\Debug\net8.0-windows\SafeUploadAgent.g.resources
-C:\Users\luiz.rodrigues\Documents\safeupl\SafeUploadAgent\obj\Debug\net8.0-windows\SafeUploadAgent.GeneratedMSBuildEditorConfig.editorconfig
-C:\Users\luiz.rodrigues\Documents\safeupl\SafeUploadAgent\obj\Debug\net8.0-windows\SafeUploadAgent.AssemblyInfoInputs.cache
-C:\Users\luiz.rodrigues\Documents\safeupl\SafeUploadAgent\obj\Debug\net8.0-windows\SafeUploadAgent.AssemblyInfo.cs
-C:\Users\luiz.rodrigues\Documents\safeupl\SafeUploadAgent\obj\Debug\net8.0-windows\SafeUploadAgent.csproj.CoreCompileInputs.cache
-C:\Users\luiz.rodrigues\Documents\safeupl\SafeUploadAgent\bin\Debug\net8.0-windows\SafeUploadAgent.exe
-C:\Users\luiz.rodrigues\Documents\safeupl\SafeUploadAgent\bin\Debug\net8.0-windows\SafeUploadAgent.deps.json
-C:\Users\luiz.rodrigues\Documents\safeupl\SafeUploadAgent\bin\Debug\net8.0-windows\SafeUploadAgent.runtimeconfig.json
-C:\Users\luiz.rodrigues\Documents\safeupl\SafeUploadAgent\bin\Debug\net8.0-windows\SafeUploadAgent.dll
-C:\Users\luiz.rodrigues\Documents\safeupl\SafeUploadAgent\bin\Debug\net8.0-windows\SafeUploadAgent.pdb
-C:\Users\luiz.rodrigues\Documents\safeupl\SafeUploadAgent\obj\Debug\net8.0-windows\SafeUploadAgent.dll
-C:\Users\luiz.rodrigues\Documents\safeupl\SafeUploadAgent\obj\Debug\net8.0-windows\refint\SafeUploadAgent.dll
-C:\Users\luiz.rodrigues\Documents\safeupl\SafeUploadAgent\obj\Debug\net8.0-windows\SafeUploadAgent.pdb
-C:\Users\luiz.rodrigues\Documents\safeupl\SafeUploadAgent\obj\Debug\net8.0-windows\SafeUploadAgent.genruntimeconfig.cache
-C:\Users\luiz.rodrigues\Documents\safeupl\SafeUploadAgent\obj\Debug\net8.0-windows\ref\SafeUploadAgent.dll
-C:\Users\luiz.rodrigues\Documents\safeuploadd\safeupload\agente\SafeUploadAgent\bin\Debug\net8.0-windows\SafeUploadAgent.exe
-C:\Users\luiz.rodrigues\Documents\safeuploadd\safeupload\agente\SafeUploadAgent\bin\Debug\net8.0-windows\SafeUploadAgent.deps.json
-C:\Users\luiz.rodrigues\Documents\safeuploadd\safeupload\agente\SafeUploadAgent\bin\Debug\net8.0-windows\SafeUploadAgent.runtimeconfig.json
-C:\Users\luiz.rodrigues\Documents\safeuploadd\safeupload\agente\SafeUploadAgent\bin\Debug\net8.0-windows\SafeUploadAgent.dll
-C:\Users\luiz.rodrigues\Documents\safeuploadd\safeupload\agente\SafeUploadAgent\bin\Debug\net8.0-windows\SafeUploadAgent.pdb
-C:\Users\luiz.rodrigues\Documents\safeuploadd\safeupload\agente\SafeUploadAgent\obj\Debug\net8.0-windows\MainWindow.baml
-C:\Users\luiz.rodrigues\Documents\safeuploadd\safeupload\agente\SafeUploadAgent\obj\Debug\net8.0-windows\MainWindow.g.cs
-C:\Users\luiz.rodrigues\Documents\safeuploadd\safeupload\agente\SafeUploadAgent\obj\Debug\net8.0-windows\App.g.cs
-C:\Users\luiz.rodrigues\Documents\safeuploadd\safeupload\agente\SafeUploadAgent\obj\Debug\net8.0-windows\SafeUploadAgent_MarkupCompile.cache
-C:\Users\luiz.rodrigues\Documents\safeuploadd\safeupload\agente\SafeUploadAgent\obj\Debug\net8.0-windows\SafeUploadAgent.g.resources
-C:\Users\luiz.rodrigues\Documents\safeuploadd\safeupload\agente\SafeUploadAgent\obj\Debug\net8.0-windows\SafeUploadAgent.GeneratedMSBuildEditorConfig.editorconfig
-C:\Users\luiz.rodrigues\Documents\safeuploadd\safeupload\agente\SafeUploadAgent\obj\Debug\net8.0-windows\SafeUploadAgent.AssemblyInfoInputs.cache
-C:\Users\luiz.rodrigues\Documents\safeuploadd\safeupload\agente\SafeUploadAgent\obj\Debug\net8.0-windows\SafeUploadAgent.AssemblyInfo.cs
-C:\Users\luiz.rodrigues\Documents\safeuploadd\safeupload\agente\SafeUploadAgent\obj\Debug\net8.0-windows\SafeUploadAgent.csproj.CoreCompileInputs.cache
-C:\Users\luiz.rodrigues\Documents\safeuploadd\safeupload\agente\SafeUploadAgent\obj\Debug\net8.0-windows\SafeUploadAgent.sourcelink.json
-C:\Users\luiz.rodrigues\Documents\safeuploadd\safeupload\agente\SafeUploadAgent\obj\Debug\net8.0-windows\SafeUploadAgent.dll
-C:\Users\luiz.rodrigues\Documents\safeuploadd\safeupload\agente\SafeUploadAgent\obj\Debug\net8.0-windows\refint\SafeUploadAgent.dll
-C:\Users\luiz.rodrigues\Documents\safeuploadd\safeupload\agente\SafeUploadAgent\obj\Debug\net8.0-windows\SafeUploadAgent.pdb
-C:\Users\luiz.rodrigues\Documents\safeuploadd\safeupload\agente\SafeUploadAgent\obj\Debug\net8.0-windows\SafeUploadAgent.genruntimeconfig.cache
-C:\Users\luiz.rodrigues\Documents\safeuploadd\safeupload\agente\SafeUploadAgent\obj\Debug\net8.0-windows\ref\SafeUploadAgent.dll
+C:\Users\thiag\OneDrive - TAREA\Documentos\Scripts Faculdade\SafeUpload\safeupload\agente\SafeUploadAgent\bin\Debug\net8.0-windows\SafeUploadAgent.exe
+C:\Users\thiag\OneDrive - TAREA\Documentos\Scripts Faculdade\SafeUpload\safeupload\agente\SafeUploadAgent\bin\Debug\net8.0-windows\SafeUploadAgent.deps.json
+C:\Users\thiag\OneDrive - TAREA\Documentos\Scripts Faculdade\SafeUpload\safeupload\agente\SafeUploadAgent\bin\Debug\net8.0-windows\SafeUploadAgent.runtimeconfig.json
+C:\Users\thiag\OneDrive - TAREA\Documentos\Scripts Faculdade\SafeUpload\safeupload\agente\SafeUploadAgent\bin\Debug\net8.0-windows\SafeUploadAgent.dll
+C:\Users\thiag\OneDrive - TAREA\Documentos\Scripts Faculdade\SafeUpload\safeupload\agente\SafeUploadAgent\bin\Debug\net8.0-windows\SafeUploadAgent.pdb
+C:\Users\thiag\OneDrive - TAREA\Documentos\Scripts Faculdade\SafeUpload\safeupload\agente\SafeUploadAgent\obj\Debug\net8.0-windows\MainWindow.baml
+C:\Users\thiag\OneDrive - TAREA\Documentos\Scripts Faculdade\SafeUpload\safeupload\agente\SafeUploadAgent\obj\Debug\net8.0-windows\MainWindow.g.cs
+C:\Users\thiag\OneDrive - TAREA\Documentos\Scripts Faculdade\SafeUpload\safeupload\agente\SafeUploadAgent\obj\Debug\net8.0-windows\App.g.cs
+C:\Users\thiag\OneDrive - TAREA\Documentos\Scripts Faculdade\SafeUpload\safeupload\agente\SafeUploadAgent\obj\Debug\net8.0-windows\SafeUploadAgent_MarkupCompile.cache
+C:\Users\thiag\OneDrive - TAREA\Documentos\Scripts Faculdade\SafeUpload\safeupload\agente\SafeUploadAgent\obj\Debug\net8.0-windows\SafeUploadAgent.g.resources
+C:\Users\thiag\OneDrive - TAREA\Documentos\Scripts Faculdade\SafeUpload\safeupload\agente\SafeUploadAgent\obj\Debug\net8.0-windows\SafeUploadAgent.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\thiag\OneDrive - TAREA\Documentos\Scripts Faculdade\SafeUpload\safeupload\agente\SafeUploadAgent\obj\Debug\net8.0-windows\SafeUploadAgent.AssemblyInfoInputs.cache
+C:\Users\thiag\OneDrive - TAREA\Documentos\Scripts Faculdade\SafeUpload\safeupload\agente\SafeUploadAgent\obj\Debug\net8.0-windows\SafeUploadAgent.AssemblyInfo.cs
+C:\Users\thiag\OneDrive - TAREA\Documentos\Scripts Faculdade\SafeUpload\safeupload\agente\SafeUploadAgent\obj\Debug\net8.0-windows\SafeUploadAgent.csproj.CoreCompileInputs.cache
+C:\Users\thiag\OneDrive - TAREA\Documentos\Scripts Faculdade\SafeUpload\safeupload\agente\SafeUploadAgent\obj\Debug\net8.0-windows\SafeUploadAgent.sourcelink.json
+C:\Users\thiag\OneDrive - TAREA\Documentos\Scripts Faculdade\SafeUpload\safeupload\agente\SafeUploadAgent\obj\Debug\net8.0-windows\SafeUploadAgent.dll
+C:\Users\thiag\OneDrive - TAREA\Documentos\Scripts Faculdade\SafeUpload\safeupload\agente\SafeUploadAgent\obj\Debug\net8.0-windows\refint\SafeUploadAgent.dll
+C:\Users\thiag\OneDrive - TAREA\Documentos\Scripts Faculdade\SafeUpload\safeupload\agente\SafeUploadAgent\obj\Debug\net8.0-windows\SafeUploadAgent.pdb
+C:\Users\thiag\OneDrive - TAREA\Documentos\Scripts Faculdade\SafeUpload\safeupload\agente\SafeUploadAgent\obj\Debug\net8.0-windows\SafeUploadAgent.genruntimeconfig.cache
+C:\Users\thiag\OneDrive - TAREA\Documentos\Scripts Faculdade\SafeUpload\safeupload\agente\SafeUploadAgent\obj\Debug\net8.0-windows\ref\SafeUploadAgent.dll

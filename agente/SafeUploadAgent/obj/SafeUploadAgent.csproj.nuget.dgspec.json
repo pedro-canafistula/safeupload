@@ -1,25 +1,32 @@
 {
   "format": 1,
   "restore": {
-    "C:\\Users\\luiz.rodrigues\\Documents\\safeuploadd\\safeupload\\agente\\SafeUploadAgent\\SafeUploadAgent.csproj": {}
+    "C:\\Users\\thiag\\OneDrive - TAREA\\Documentos\\Scripts Faculdade\\SafeUpload\\safeupload\\agente\\SafeUploadAgent\\SafeUploadAgent.csproj": {}
   },
   "projects": {
-    "C:\\Users\\luiz.rodrigues\\Documents\\safeuploadd\\safeupload\\agente\\SafeUploadAgent\\SafeUploadAgent.csproj": {
+    "C:\\Users\\thiag\\OneDrive - TAREA\\Documentos\\Scripts Faculdade\\SafeUpload\\safeupload\\agente\\SafeUploadAgent\\SafeUploadAgent.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "C:\\Users\\luiz.rodrigues\\Documents\\safeuploadd\\safeupload\\agente\\SafeUploadAgent\\SafeUploadAgent.csproj",
+        "projectUniqueName": "C:\\Users\\thiag\\OneDrive - TAREA\\Documentos\\Scripts Faculdade\\SafeUpload\\safeupload\\agente\\SafeUploadAgent\\SafeUploadAgent.csproj",
         "projectName": "SafeUploadAgent",
-        "projectPath": "C:\\Users\\luiz.rodrigues\\Documents\\safeuploadd\\safeupload\\agente\\SafeUploadAgent\\SafeUploadAgent.csproj",
-        "packagesPath": "C:\\Users\\luiz.rodrigues\\.nuget\\packages\\",
-        "outputPath": "C:\\Users\\luiz.rodrigues\\Documents\\safeuploadd\\safeupload\\agente\\SafeUploadAgent\\obj\\",
+        "projectPath": "C:\\Users\\thiag\\OneDrive - TAREA\\Documentos\\Scripts Faculdade\\SafeUpload\\safeupload\\agente\\SafeUploadAgent\\SafeUploadAgent.csproj",
+        "packagesPath": "C:\\Users\\thiag\\.nuget\\packages\\",
+        "outputPath": "C:\\Users\\thiag\\OneDrive - TAREA\\Documentos\\Scripts Faculdade\\SafeUpload\\safeupload\\agente\\SafeUploadAgent\\obj\\",
         "projectStyle": "PackageReference",
+        "fallbackFolders": [
+          "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages"
+        ],
         "configFilePaths": [
-          "C:\\Users\\luiz.rodrigues\\AppData\\Roaming\\NuGet\\NuGet.Config"
+          "C:\\Users\\thiag\\AppData\\Roaming\\NuGet\\NuGet.Config",
+          "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.FallbackLocation.config",
+          "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.Offline.config"
         ],
         "originalTargetFrameworks": [
           "net8.0-windows"
         ],
         "sources": {
+          "C:\\Program Files (x86)\\Microsoft SDKs\\NuGetPackages\\": {},
+          "C:\\Program Files\\dotnet\\library-packs": {},
           "https://api.nuget.org/v3/index.json": {}
         },
         "frameworks": {
@@ -37,7 +44,8 @@
           "enableAudit": "true",
           "auditLevel": "low",
           "auditMode": "direct"
-        }
+        },
+        "SdkAnalysisLevel": "10.0.200"
       },
       "frameworks": {
         "net8.0-windows7.0": {
@@ -61,7 +69,7 @@
               "privateAssets": "none"
             }
           },
-          "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\8.0.424/PortableRuntimeIdentifierGraph.json"
+          "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\10.0.200/PortableRuntimeIdentifierGraph.json"
         }
       }
     }
