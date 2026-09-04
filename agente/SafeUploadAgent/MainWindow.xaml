@@ -96,6 +96,59 @@
             <Setter Property="Foreground" Value="#9CA3AF"/>
         </Style>
 
+        <!-- Botão de filtro (pílula) usado na tela de Histórico -->
+        <Style x:Key="FilterPillStyle" TargetType="Button">
+            <Setter Property="Background" Value="#F3F4F6"/>
+            <Setter Property="Foreground" Value="#374151"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="FontSize" Value="12.5"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Padding" Value="16,8"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="bd" Background="{TemplateBinding Background}" CornerRadius="20">
+                            <ContentPresenter Margin="{TemplateBinding Padding}"
+                                              HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="bd" Property="Background" Value="#E5E7EB"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="FilterPillActiveStyle" TargetType="Button" BasedOn="{StaticResource FilterPillStyle}">
+            <Setter Property="Background" Value="#2563EB"/>
+            <Setter Property="Foreground" Value="White"/>
+        </Style>
+
+        <!-- Caixa de pesquisa -->
+        <Style x:Key="SearchBoxStyle" TargetType="TextBox">
+            <Setter Property="Padding" Value="12,9"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="Foreground" Value="#374151"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="BorderBrush" Value="#E5E7EB"/>
+            <Setter Property="Background" Value="White"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TextBox">
+                        <Border Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="8">
+                            <ScrollViewer x:Name="PART_ContentHost" Margin="{TemplateBinding Padding}"/>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
     </Window.Resources>
 
     <Border Background="White" BorderBrush="#D9D9D9" BorderThickness="1">
@@ -187,7 +240,9 @@
 
                 <!-- CONTEÚDO PRINCIPAL -->
                 <Grid Grid.Column="1" Background="#F5F7FA">
-                    <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="0">
+
+                    <!-- =============== VIEW: STATUS =============== -->
+                    <ScrollViewer x:Name="StatusView" VerticalScrollBarVisibility="Auto" Padding="0" Visibility="Visible">
                         <StackPanel Margin="32,26,32,26">
 
                             <!-- Cabeçalho -->
@@ -386,6 +441,288 @@
 
                         </StackPanel>
                     </ScrollViewer>
+
+                    <!-- =============== VIEW: HISTÓRICO =============== -->
+                    <ScrollViewer x:Name="HistoricoView" VerticalScrollBarVisibility="Auto" Padding="0" Visibility="Collapsed">
+                        <StackPanel Margin="32,26,32,26">
+
+                            <!-- Cabeçalho -->
+                            <Grid Margin="0,0,0,22">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel>
+                                    <TextBlock Text="Histórico de Verificações" FontSize="24" FontWeight="Bold" Foreground="#111827"/>
+                                    <TextBlock Text="Registro de arquivos analisados pelo agente" FontSize="12.5"
+                                               Foreground="#9CA3AF" Margin="0,4,0,0"/>
+                                </StackPanel>
+                                <TextBlock Grid.Column="1" Text="🔔" FontSize="18" Foreground="#374151"/>
+                            </Grid>
+
+                            <!-- Barra de pesquisa e filtros -->
+                            <Border Style="{StaticResource CardStyle}" Padding="18" Margin="0,0,0,18">
+                                <StackPanel>
+                                    <Grid Margin="0,0,0,14">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="140"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBox x:Name="SearchTextBox" Grid.Column="0" Style="{StaticResource SearchBoxStyle}"
+                                                 Text="Pesquisar por nome de arquivo..." Foreground="#9CA3AF" Margin="0,0,10,0"/>
+                                        <ComboBox x:Name="DateRangeComboBox" Grid.Column="1" Padding="10,8" FontSize="12.5"
+                                                  VerticalContentAlignment="Center" SelectedIndex="0">
+                                            <ComboBoxItem Content="Todo o período"/>
+                                            <ComboBoxItem Content="Últimas 24h"/>
+                                            <ComboBoxItem Content="Últimos 7 dias"/>
+                                            <ComboBoxItem Content="Últimos 30 dias"/>
+                                        </ComboBox>
+                                    </Grid>
+
+                                    <StackPanel Orientation="Horizontal">
+                                        <Button Content="Todos" Style="{StaticResource FilterPillActiveStyle}"/>
+                                        <Button Content="Liberados" Style="{StaticResource FilterPillStyle}" Margin="8,0,0,0"/>
+                                        <Button Content="Bloqueados" Style="{StaticResource FilterPillStyle}" Margin="8,0,0,0"/>
+                                    </StackPanel>
+                                </StackPanel>
+                            </Border>
+
+                            <!-- Card: Lista de histórico -->
+                            <Border Style="{StaticResource CardStyle}" Padding="0">
+                                <StackPanel>
+
+                                    <!-- Cabeçalho da tabela -->
+                                    <Border Background="#F9FAFB" BorderBrush="#EEEEEE" BorderThickness="0,0,0,1" Padding="24,10">
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="130"/>
+                                                <ColumnDefinition Width="110"/>
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Text="ARQUIVO" Style="{StaticResource CaptionTextStyle}"/>
+                                            <TextBlock Grid.Column="1" Text="DATA" Style="{StaticResource CaptionTextStyle}"/>
+                                            <TextBlock Grid.Column="2" Text="STATUS" Style="{StaticResource CaptionTextStyle}"/>
+                                        </Grid>
+                                    </Border>
+
+                                    <!-- Item 1: Bloqueado -->
+                                    <Border BorderBrush="#F0F0F0" BorderThickness="0,0,0,1" Padding="24,14">
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="130"/>
+                                                <ColumnDefinition Width="110"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel>
+                                                <StackPanel Orientation="Horizontal">
+                                                    <Border Width="30" Height="30" CornerRadius="6" Background="#FEECEC">
+                                                        <TextBlock Text="🚫" FontSize="13" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                    </Border>
+                                                    <TextBlock Text="contrato_confidencial.pdf" Margin="10,0,0,0"
+                                                               FontSize="13.5" Foreground="#1F2937" VerticalAlignment="Center"/>
+                                                </StackPanel>
+                                                <TextBlock Text="Motivo: documento contém dados classificados como confidenciais pela política DLP."
+                                                           FontSize="12" Foreground="#9CA3AF" Margin="40,6,0,0" TextWrapping="Wrap"/>
+                                            </StackPanel>
+                                            <TextBlock Grid.Column="1" Text="03/09/2026 14:22" FontSize="12.5"
+                                                       Foreground="#6B7280" VerticalAlignment="Center"/>
+                                            <Border Grid.Column="2" Background="#FEE2E2" CornerRadius="10" Padding="9,4"
+                                                    HorizontalAlignment="Left" VerticalAlignment="Center">
+                                                <StackPanel Orientation="Horizontal">
+                                                    <Ellipse Width="6" Height="6" Fill="#DC2626" VerticalAlignment="Center"/>
+                                                    <TextBlock Text="BLOQUEADO" Margin="5,0,0,0" FontSize="10.5"
+                                                               FontWeight="Bold" Foreground="#DC2626"/>
+                                                </StackPanel>
+                                            </Border>
+                                        </Grid>
+                                    </Border>
+
+                                    <!-- Item 2: Liberado -->
+                                    <Border BorderBrush="#F0F0F0" BorderThickness="0,0,0,1" Padding="24,14">
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="130"/>
+                                                <ColumnDefinition Width="110"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel Orientation="Horizontal">
+                                                <Border Width="30" Height="30" CornerRadius="6" Background="#F1F5F9">
+                                                    <TextBlock Text="✅" FontSize="13" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                </Border>
+                                                <TextBlock Text="planilha_vendas_out.xlsx" Margin="10,0,0,0"
+                                                           FontSize="13.5" Foreground="#1F2937" VerticalAlignment="Center"/>
+                                            </StackPanel>
+                                            <TextBlock Grid.Column="1" Text="03/09/2026 11:05" FontSize="12.5"
+                                                       Foreground="#6B7280" VerticalAlignment="Center"/>
+                                            <Border Grid.Column="2" Background="#DCFCE7" CornerRadius="10" Padding="9,4"
+                                                    HorizontalAlignment="Left" VerticalAlignment="Center">
+                                                <StackPanel Orientation="Horizontal">
+                                                    <Ellipse Width="6" Height="6" Fill="#16A34A" VerticalAlignment="Center"/>
+                                                    <TextBlock Text="LIBERADO" Margin="5,0,0,0" FontSize="10.5"
+                                                               FontWeight="Bold" Foreground="#16A34A"/>
+                                                </StackPanel>
+                                            </Border>
+                                        </Grid>
+                                    </Border>
+
+                                    <!-- Item 3: Bloqueado -->
+                                    <Border BorderBrush="#F0F0F0" BorderThickness="0,0,0,1" Padding="24,14">
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="130"/>
+                                                <ColumnDefinition Width="110"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel>
+                                                <StackPanel Orientation="Horizontal">
+                                                    <Border Width="30" Height="30" CornerRadius="6" Background="#FEECEC">
+                                                        <TextBlock Text="🚫" FontSize="13" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                    </Border>
+                                                    <TextBlock Text="backup_financeiro.zip" Margin="10,0,0,0"
+                                                               FontSize="13.5" Foreground="#1F2937" VerticalAlignment="Center"/>
+                                                </StackPanel>
+                                                <TextBlock Text="Motivo: arquivo compactado protegido por senha; conteúdo não pôde ser inspecionado."
+                                                           FontSize="12" Foreground="#9CA3AF" Margin="40,6,0,0" TextWrapping="Wrap"/>
+                                            </StackPanel>
+                                            <TextBlock Grid.Column="1" Text="02/09/2026 09:40" FontSize="12.5"
+                                                       Foreground="#6B7280" VerticalAlignment="Center"/>
+                                            <Border Grid.Column="2" Background="#FEE2E2" CornerRadius="10" Padding="9,4"
+                                                    HorizontalAlignment="Left" VerticalAlignment="Center">
+                                                <StackPanel Orientation="Horizontal">
+                                                    <Ellipse Width="6" Height="6" Fill="#DC2626" VerticalAlignment="Center"/>
+                                                    <TextBlock Text="BLOQUEADO" Margin="5,0,0,0" FontSize="10.5"
+                                                               FontWeight="Bold" Foreground="#DC2626"/>
+                                                </StackPanel>
+                                            </Border>
+                                        </Grid>
+                                    </Border>
+
+                                    <!-- Item 4: Liberado -->
+                                    <Border BorderBrush="#F0F0F0" BorderThickness="0,0,0,1" Padding="24,14">
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="130"/>
+                                                <ColumnDefinition Width="110"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel Orientation="Horizontal">
+                                                <Border Width="30" Height="30" CornerRadius="6" Background="#F1F5F9">
+                                                    <TextBlock Text="✅" FontSize="13" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                </Border>
+                                                <TextBlock Text="apresentacao_cliente.pptx" Margin="10,0,0,0"
+                                                           FontSize="13.5" Foreground="#1F2937" VerticalAlignment="Center"/>
+                                            </StackPanel>
+                                            <TextBlock Grid.Column="1" Text="01/09/2026 16:12" FontSize="12.5"
+                                                       Foreground="#6B7280" VerticalAlignment="Center"/>
+                                            <Border Grid.Column="2" Background="#DCFCE7" CornerRadius="10" Padding="9,4"
+                                                    HorizontalAlignment="Left" VerticalAlignment="Center">
+                                                <StackPanel Orientation="Horizontal">
+                                                    <Ellipse Width="6" Height="6" Fill="#16A34A" VerticalAlignment="Center"/>
+                                                    <TextBlock Text="LIBERADO" Margin="5,0,0,0" FontSize="10.5"
+                                                               FontWeight="Bold" Foreground="#16A34A"/>
+                                                </StackPanel>
+                                            </Border>
+                                        </Grid>
+                                    </Border>
+
+                                    <!-- Item 5: Bloqueado -->
+                                    <Border BorderBrush="#F0F0F0" BorderThickness="0,0,0,1" Padding="24,14">
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="130"/>
+                                                <ColumnDefinition Width="110"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel>
+                                                <StackPanel Orientation="Horizontal">
+                                                    <Border Width="30" Height="30" CornerRadius="6" Background="#FEECEC">
+                                                        <TextBlock Text="🚫" FontSize="13" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                    </Border>
+                                                    <TextBlock Text="dados_folha_pagamento.csv" Margin="10,0,0,0"
+                                                               FontSize="13.5" Foreground="#1F2937" VerticalAlignment="Center"/>
+                                                </StackPanel>
+                                                <TextBlock Text="Motivo: contém números de CPF e dados bancários classificados como sensíveis."
+                                                           FontSize="12" Foreground="#9CA3AF" Margin="40,6,0,0" TextWrapping="Wrap"/>
+                                            </StackPanel>
+                                            <TextBlock Grid.Column="1" Text="01/09/2026 08:55" FontSize="12.5"
+                                                       Foreground="#6B7280" VerticalAlignment="Center"/>
+                                            <Border Grid.Column="2" Background="#FEE2E2" CornerRadius="10" Padding="9,4"
+                                                    HorizontalAlignment="Left" VerticalAlignment="Center">
+                                                <StackPanel Orientation="Horizontal">
+                                                    <Ellipse Width="6" Height="6" Fill="#DC2626" VerticalAlignment="Center"/>
+                                                    <TextBlock Text="BLOQUEADO" Margin="5,0,0,0" FontSize="10.5"
+                                                               FontWeight="Bold" Foreground="#DC2626"/>
+                                                </StackPanel>
+                                            </Border>
+                                        </Grid>
+                                    </Border>
+
+                                    <!-- Item 6: Liberado -->
+                                    <Border BorderBrush="#F0F0F0" BorderThickness="0,0,0,1" Padding="24,14">
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="130"/>
+                                                <ColumnDefinition Width="110"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel Orientation="Horizontal">
+                                                <Border Width="30" Height="30" CornerRadius="6" Background="#F1F5F9">
+                                                    <TextBlock Text="✅" FontSize="13" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                </Border>
+                                                <TextBlock Text="relatorio_mensal.docx" Margin="10,0,0,0"
+                                                           FontSize="13.5" Foreground="#1F2937" VerticalAlignment="Center"/>
+                                            </StackPanel>
+                                            <TextBlock Grid.Column="1" Text="31/08/2026 17:30" FontSize="12.5"
+                                                       Foreground="#6B7280" VerticalAlignment="Center"/>
+                                            <Border Grid.Column="2" Background="#DCFCE7" CornerRadius="10" Padding="9,4"
+                                                    HorizontalAlignment="Left" VerticalAlignment="Center">
+                                                <StackPanel Orientation="Horizontal">
+                                                    <Ellipse Width="6" Height="6" Fill="#16A34A" VerticalAlignment="Center"/>
+                                                    <TextBlock Text="LIBERADO" Margin="5,0,0,0" FontSize="10.5"
+                                                               FontWeight="Bold" Foreground="#16A34A"/>
+                                                </StackPanel>
+                                            </Border>
+                                        </Grid>
+                                    </Border>
+
+                                    <!-- Item 7: Bloqueado -->
+                                    <Border Padding="24,14">
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="130"/>
+                                                <ColumnDefinition Width="110"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel>
+                                                <StackPanel Orientation="Horizontal">
+                                                    <Border Width="30" Height="30" CornerRadius="6" Background="#FEECEC">
+                                                        <TextBlock Text="🚫" FontSize="13" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                    </Border>
+                                                    <TextBlock Text="lista_clientes_completa.xlsx" Margin="10,0,0,0"
+                                                               FontSize="13.5" Foreground="#1F2937" VerticalAlignment="Center"/>
+                                                </StackPanel>
+                                                <TextBlock Text="Motivo: volume de dados pessoais excede o limite permitido para upload externo."
+                                                           FontSize="12" Foreground="#9CA3AF" Margin="40,6,0,0" TextWrapping="Wrap"/>
+                                            </StackPanel>
+                                            <TextBlock Grid.Column="1" Text="29/08/2026 10:02" FontSize="12.5"
+                                                       Foreground="#6B7280" VerticalAlignment="Center"/>
+                                            <Border Grid.Column="2" Background="#FEE2E2" CornerRadius="10" Padding="9,4"
+                                                    HorizontalAlignment="Left" VerticalAlignment="Center">
+                                                <StackPanel Orientation="Horizontal">
+                                                    <Ellipse Width="6" Height="6" Fill="#DC2626" VerticalAlignment="Center"/>
+                                                    <TextBlock Text="BLOQUEADO" Margin="5,0,0,0" FontSize="10.5"
+                                                               FontWeight="Bold" Foreground="#DC2626"/>
+                                                </StackPanel>
+                                            </Border>
+                                        </Grid>
+                                    </Border>
+
+                                </StackPanel>
+                            </Border>
+
+                        </StackPanel>
+                    </ScrollViewer>
+
                 </Grid>
             </Grid>
         </Grid>
