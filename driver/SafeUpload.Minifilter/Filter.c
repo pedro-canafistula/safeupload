@@ -1069,6 +1069,7 @@ Return Value:
 
 --*/
 {
+    UNREFERENCED_PARAMETER( FltObjects );
     UNREFERENCED_PARAMETER( CompletionContext = NULL );
 
     if (KeGetCurrentIrql() != PASSIVE_LEVEL) {
@@ -1082,20 +1083,23 @@ Return Value:
     }
 
     //
-    //  Same extension gate as pre-create, over the name the file was opened
-    //  under. This is the callback that floods: it fires once per read, so
-    //  rejecting out-of-scope files here without resolving a name is worth
-    //  more than anywhere else in the driver.
+    //  There is deliberately no cheap name gate here, unlike pre-create.
     //
-    //  This whole callback goes away in a later step, when the source
-    //  decision moves to create and is cached in the stream context.
+    //  FILE_OBJECT.FileName is only guaranteed valid while the create that
+    //  produced the file object is being processed. Once the create
+    //  completes the file system owns that buffer and is free to release
+    //  it, so reading FltObjects->FileObject->FileName from a read callback
+    //  reads pool that may already be gone. It is not a race that shows up
+    //  under light load: it shows up as a bugcheck, in whatever module
+    //  happens to be on the stack.
     //
-
-    if (FltObjects->FileObject == NULL ||
-        !SafeUploadMayBeInScope( &FltObjects->FileObject->FileName )) {
-
-        return FLT_PREOP_SUCCESS_NO_CALLBACK;
-    }
+    //  Resolving the name properly here would mean FltGetFileNameInformation
+    //  on every read, which is the cost this gate existed to avoid, so there
+    //  is nothing to gain by replacing it. The right answer is the stream
+    //  context: decide once at create, remember it, and let reads test a
+    //  flag. That arrives with the step that removes this callback
+    //  altogether.
+    //
 
     return SafeUploadInspectOperation( Data, SAFEUPLOAD_OPERATION_READ );
 }
