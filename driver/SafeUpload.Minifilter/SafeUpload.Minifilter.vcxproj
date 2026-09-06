@@ -63,6 +63,7 @@
     <ClCompile Include="Communication.c" />
     <ClCompile Include="Context.c" />
     <ClCompile Include="Filter.c" />
+    <ClCompile Include="Policy.c" />
   </ItemGroup>
   <ItemGroup>
     <None Include="SafeUpload.inf" />

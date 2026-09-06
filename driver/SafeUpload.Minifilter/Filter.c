@@ -41,29 +41,6 @@ SafeUploadIsIgnoredProcess (
     );
 
 static
-BOOLEAN
-SafeUploadMayBeInScope (
-    _In_ PCUNICODE_STRING FileName
-    );
-
-//
-//  Extensions the policy monitors.
-//
-//  TODO: this table is a stand-in. The real list belongs to the policy and
-//  will be pushed down from user mode over the communication port, together
-//  with the monitored path prefixes already in NT form. Until then it
-//  mirrors the defaults in LocalPolicyStore so that kernel and user mode
-//  agree on scope.
-//
-
-static CONST UNICODE_STRING SafeUploadMonitoredExtensions[] = {
-    RTL_CONSTANT_STRING( L".txt" ),
-    RTL_CONSTANT_STRING( L".csv" ),
-    RTL_CONSTANT_STRING( L".docx" ),
-    RTL_CONSTANT_STRING( L".xlsx" )
-};
-
-static
 NTSTATUS
 SafeUploadCopyRequestPath (
     _Inout_ PFLT_CALLBACK_DATA Data,
@@ -81,7 +58,8 @@ static
 FLT_PREOP_CALLBACK_STATUS
 SafeUploadInspectOperation (
     _Inout_ PFLT_CALLBACK_DATA Data,
-    _In_ UINT32 Operation
+    _In_ UINT32 Operation,
+    _In_ SAFEUPLOAD_VOLUME_KIND VolumeKind
     );
 
 #ifdef ALLOC_PRAGMA
@@ -205,6 +183,13 @@ Return Value:
     //
 
     ExInitializeRundownProtection( &SafeUploadData.ChannelRundown );
+
+    //
+    //  Also before the port: the first thing a client does after connecting
+    //  is push a policy.
+    //
+
+    SafeUploadInitializePolicy();
 
     SafeUploadData.DriverObject = DriverObject;
 
@@ -331,6 +316,14 @@ Return Value:
 
     FltUnregisterFilter( SafeUploadData.Filter );
     SafeUploadData.Filter = NULL;
+
+    //
+    //  4. Release the policy. Last, because it can only be freed once no
+    //     callback of ours can still be holding the snapshot - which is
+    //     exactly what FltUnregisterFilter returning guarantees.
+    //
+
+    SafeUploadFreePolicy();
 
     SafeUploadTrace( "unloaded\n" );
 
@@ -514,110 +507,6 @@ Return Value:
 }
 
 
-static
-BOOLEAN
-SafeUploadMayBeInScope (
-    _In_ PCUNICODE_STRING FileName
-    )
-/*++
-
-Routine Description:
-
-    Cheap extension gate.
-
-    This deliberately reads the name the caller passed rather than asking
-    the filter manager to resolve one. Resolving a name may issue I/O and
-    allocate; reading Parameters.Create.TargetFileObject->FileName costs
-    nothing. As a gate that is the right trade: it rejects the overwhelming
-    majority of operations - every .dll, .exe, .log, .dat the system touches
-    - before anything expensive happens, and the few it lets through are
-    resolved properly further down.
-
-    The name here may be relative, or a short name, or absent entirely. That
-    is fine for a gate, as long as an undetermined answer errs towards
-    letting the operation through to the slow path rather than skipping it.
-
-    IRQL: any. Touches no pageable data and issues no I/O.
-
-Arguments:
-
-    FileName - Name as supplied by the caller. May be empty.
-
-Return Value:
-
-    FALSE when the operation certainly falls outside the monitored
-    extensions and can be skipped. TRUE when it matches, or when the name is
-    not conclusive enough to decide here.
-
---*/
-{
-    UNICODE_STRING extension;
-    USHORT index;
-    USHORT charCount;
-    USHORT dotIndex;
-    ULONG entry;
-
-    if (FileName == NULL || FileName->Length == 0 || FileName->Buffer == NULL) {
-
-        //
-        //  Nothing to judge - an open by file ID, for instance. Let it reach
-        //  the slow path, which resolves the real name.
-        //
-
-        return TRUE;
-    }
-
-    charCount = (USHORT) (FileName->Length / sizeof( WCHAR ));
-    dotIndex = 0;
-
-    //
-    //  Walk back to the last dot of the final component. A separator ends
-    //  the search: a dot in a directory name is not an extension.
-    //
-
-    for (index = charCount; index > 0; index -= 1) {
-
-        WCHAR current = FileName->Buffer[index - 1];
-
-        if (current == L'\\' || current == L':') {
-
-            break;
-        }
-
-        if (current == L'.') {
-
-            dotIndex = index - 1;
-            break;
-        }
-    }
-
-    if (dotIndex == 0) {
-
-        //
-        //  Final component carries no extension. The policy only monitors
-        //  named extensions, so this is out of scope by the same rule user
-        //  mode would apply.
-        //
-
-        return FALSE;
-    }
-
-    extension.Buffer = &FileName->Buffer[dotIndex];
-    extension.Length = (USHORT) ((charCount - dotIndex) * sizeof( WCHAR ));
-    extension.MaximumLength = extension.Length;
-
-    for (entry = 0; entry < RTL_NUMBER_OF( SafeUploadMonitoredExtensions ); entry += 1) {
-
-        if (RtlCompareUnicodeString( &extension,
-                                     &SafeUploadMonitoredExtensions[entry],
-                                     TRUE ) == 0) {
-
-            return TRUE;
-        }
-    }
-
-    return FALSE;
-}
 
 
 static
@@ -820,7 +709,8 @@ static
 FLT_PREOP_CALLBACK_STATUS
 SafeUploadInspectOperation (
     _Inout_ PFLT_CALLBACK_DATA Data,
-    _In_ UINT32 Operation
+    _In_ UINT32 Operation,
+    _In_ SAFEUPLOAD_VOLUME_KIND VolumeKind
     )
 /*++
 
@@ -842,6 +732,9 @@ Arguments:
 
     Operation - SAFEUPLOAD_OPERATION_CREATE or SAFEUPLOAD_OPERATION_READ.
 
+    VolumeKind - Classification of the volume this instance is attached to,
+        read from the instance context by the caller.
+
 Return Value:
 
     FLT_PREOP_COMPLETE with STATUS_ACCESS_DENIED to block the operation,
@@ -850,6 +743,8 @@ Return Value:
 --*/
 {
     PSAFEUPLOAD_EXCHANGE exchange;
+    UNICODE_STRING normalizedPath;
+    UNICODE_STRING imageName;
     NTSTATUS status;
     UINT32 verdict = SAFEUPLOAD_VERDICT_ALLOW;
 
@@ -909,7 +804,49 @@ Return Value:
         return FLT_PREOP_SUCCESS_NO_CALLBACK;
     }
 
+    //
+    //  Scope by destination, which could not be judged before the path
+    //  existed. Removable media and network shares qualify by volume kind
+    //  alone; a fixed volume qualifies only under a monitored prefix, which
+    //  is how a cloud sync folder enters scope.
+    //
+    //  This is the last gate that costs nothing but comparisons. Everything
+    //  after it involves user mode.
+    //
+
+    normalizedPath.Buffer = exchange->Request.Path;
+    normalizedPath.Length = (USHORT) exchange->Request.PathLength;
+    normalizedPath.MaximumLength = normalizedPath.Length;
+
+    if (!SafeUploadPolicyMatchesDestination( VolumeKind, &normalizedPath )) {
+
+        ExFreePoolWithTag( exchange, SAFEUPLOAD_POOL_TAG );
+
+        return FLT_PREOP_SUCCESS_NO_CALLBACK;
+    }
+
     SafeUploadCopyRequestImageName( Data, &exchange->Request );
+
+    //
+    //  RN-014. The driver already skips its own client by PID; this is the
+    //  configurable half, for the processes the agent itself depends on.
+    //  Checked here rather than earlier because the image name is only
+    //  known once it has been resolved.
+    //
+
+    if (exchange->Request.ImageNameLength != 0) {
+
+        imageName.Buffer = exchange->Request.ImageName;
+        imageName.Length = (USHORT) exchange->Request.ImageNameLength;
+        imageName.MaximumLength = imageName.Length;
+
+        if (SafeUploadPolicyExcludesImage( &imageName )) {
+
+            ExFreePoolWithTag( exchange, SAFEUPLOAD_POOL_TAG );
+
+            return FLT_PREOP_SUCCESS_NO_CALLBACK;
+        }
+    }
 
     (VOID) SafeUploadRequestVerdict( exchange, &verdict );
 
@@ -964,8 +901,10 @@ Return Value:
 {
     PFILE_OBJECT targetFileObject;
     PIO_SECURITY_CONTEXT securityContext;
+    PSAFEUPLOAD_INSTANCE_CONTEXT instanceContext = NULL;
+    SAFEUPLOAD_VOLUME_KIND volumeKind;
+    NTSTATUS status;
 
-    UNREFERENCED_PARAMETER( FltObjects );
     UNREFERENCED_PARAMETER( CompletionContext = NULL );
 
     PAGED_CODE();
@@ -1024,10 +963,32 @@ Return Value:
         return FLT_PREOP_SUCCESS_NO_CALLBACK;
     }
 
-    if (!SafeUploadMayBeInScope( &targetFileObject->FileName )) {
+    if (!SafeUploadPolicyMatchesExtension( &targetFileObject->FileName )) {
 
         return FLT_PREOP_SUCCESS_NO_CALLBACK;
     }
 
-    return SafeUploadInspectOperation( Data, SAFEUPLOAD_OPERATION_CREATE );
+    //
+    //  The volume kind was worked out once, when this instance attached.
+    //  Reading it back is a context lookup; recomputing it would be a
+    //  FltGetVolumeProperties call on every create.
+    //
+
+    status = FltGetInstanceContext( FltObjects->Instance,
+                                    (PFLT_CONTEXT *) &instanceContext );
+
+    if (!NT_SUCCESS( status )) {
+
+        //
+        //  Without the classification there is no way to tell a pen drive
+        //  from a system disk, and guessing is worse than not inspecting.
+        //
+
+        return FLT_PREOP_SUCCESS_NO_CALLBACK;
+    }
+
+    volumeKind = instanceContext->VolumeKind;
+    FltReleaseContext( instanceContext );
+
+    return SafeUploadInspectOperation( Data, SAFEUPLOAD_OPERATION_CREATE, volumeKind );
 }

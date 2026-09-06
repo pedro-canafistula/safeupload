@@ -339,6 +339,74 @@ SafeUploadPreCreate (
 
 ///////////////////////////////////////////////////////////////////////////
 //
+//  Scope policy. Implemented in Policy.c.
+//
+//  An immutable snapshot behind a push lock: readers take it shared and
+//  never allocate, a write builds a whole new snapshot and swaps it. The
+//  character storage lives inside the snapshot and the string tables point
+//  into it, so one allocation holds everything.
+//
+///////////////////////////////////////////////////////////////////////////
+
+typedef struct _SAFEUPLOAD_POLICY {
+
+    UINT32 ExtensionCount;
+    UINT32 PrefixCount;
+    UINT32 ImageCount;
+    UINT32 Flags;
+
+    //
+    //  Measured once, when the snapshot is built. A prefix can be 260
+    //  characters, and measuring it on every operation would put a string
+    //  walk in the hot path for nothing.
+    //
+
+    UNICODE_STRING Extensions[SAFEUPLOAD_MAX_EXTENSIONS];
+    UNICODE_STRING Prefixes[SAFEUPLOAD_MAX_PREFIXES];
+    UNICODE_STRING Images[SAFEUPLOAD_MAX_IMAGES];
+
+    //
+    //  The snapshot's own copy of the message. Everything above points in
+    //  here, never at the buffer user mode supplied.
+    //
+
+    SAFEUPLOAD_POLICY_MESSAGE Data;
+
+} SAFEUPLOAD_POLICY, *PSAFEUPLOAD_POLICY;
+
+VOID
+SafeUploadInitializePolicy (
+    VOID
+    );
+
+VOID
+SafeUploadFreePolicy (
+    VOID
+    );
+
+NTSTATUS
+SafeUploadSetPolicy (
+    _In_ CONST SAFEUPLOAD_POLICY_MESSAGE *Message
+    );
+
+BOOLEAN
+SafeUploadPolicyMatchesExtension (
+    _In_ PCUNICODE_STRING FileName
+    );
+
+BOOLEAN
+SafeUploadPolicyMatchesDestination (
+    _In_ SAFEUPLOAD_VOLUME_KIND VolumeKind,
+    _In_opt_ PCUNICODE_STRING NormalizedPath
+    );
+
+BOOLEAN
+SafeUploadPolicyExcludesImage (
+    _In_ PCUNICODE_STRING ImageName
+    );
+
+///////////////////////////////////////////////////////////////////////////
+//
 //  User-mode channel. Implemented in Communication.c.
 //
 ///////////////////////////////////////////////////////////////////////////

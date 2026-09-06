@@ -32,6 +32,7 @@ Environment:
 #include <fltUser.h>
 #include <stdio.h>
 #include <wchar.h>
+#include <strsafe.h>
 
 #include "..\SafeUpload.Minifilter\Protocol.h"
 
@@ -78,6 +79,164 @@ typedef struct _SAFEUPLOAD_REPLY {
     SAFEUPLOAD_RESPONSE Response;
 
 } SAFEUPLOAD_REPLY;
+
+
+//
+//  The scope this test client pushes to the driver on connect.
+//
+//  Mirrors the defaults in LocalPolicyStore so that kernel and user mode
+//  agree, plus the smoke test directory.
+//
+
+static const WCHAR *SafeUploadTestExtensions[] = {
+    L".txt", L".csv", L".docx", L".xlsx"
+};
+
+static const WCHAR *SafeUploadTestPrefixes[] = {
+    L"C:\\safeupload-teste"
+};
+
+
+static
+BOOL
+DosPathToNtPath (
+    _In_z_ const WCHAR *DosPath,
+    _Out_writes_z_(NtPathChars) WCHAR *NtPath,
+    _In_ size_t NtPathChars
+    )
+    /*
+        NtPath is terminated on every path out of this routine: the two
+        early failures write the terminator before returning FALSE, and
+        StringCchPrintfW terminates even when it truncates.
+    */
+/*++
+
+Routine Description:
+
+    Turns C:\folder into \Device\HarddiskVolumeN\folder.
+
+    This conversion belongs here, in user mode, and happens once when the
+    policy is built. The kernel only ever sees NT paths, because a drive
+    letter is a per-logon-session symbolic link that means nothing to a
+    filter - and converting on every operation would put a lookup in the
+    hot path.
+
+Arguments:
+
+    DosPath - Path beginning with a drive letter and a colon.
+
+    NtPath - Receives the NT form.
+
+    NtPathChars - Capacity of NtPath, in characters.
+
+Return Value:
+
+    TRUE on success. FALSE when the path has no drive letter or the drive
+    has no device mapping.
+
+--*/
+{
+    WCHAR drive[3];
+    WCHAR device[MAX_PATH];
+
+    NtPath[0] = L'\0';
+
+    if (DosPath[0] == L'\0' || DosPath[1] != L':') {
+
+        return FALSE;
+    }
+
+    drive[0] = DosPath[0];
+    drive[1] = L':';
+    drive[2] = L'\0';
+
+    if (QueryDosDeviceW( drive, device, ARRAYSIZE( device ) ) == 0) {
+
+        return FALSE;
+    }
+
+    return SUCCEEDED( StringCchPrintfW( NtPath, NtPathChars, L"%s%s", device, DosPath + 2 ) );
+}
+
+
+static
+HRESULT
+SendPolicy (
+    _In_ HANDLE Port
+    )
+/*++
+
+Routine Description:
+
+    Pushes the scope policy down to the driver.
+
+    Until this arrives the driver considers nothing to be in scope, which is
+    the correct default: without a policy there is no monitored destination
+    and no monitored extension. So this has to happen right after connecting,
+    before any traffic is expected.
+
+Arguments:
+
+    Port - The connected communication port.
+
+Return Value:
+
+    The result of FilterSendMessage.
+
+--*/
+{
+    SAFEUPLOAD_POLICY_MESSAGE policy;
+    WCHAR ntPath[SAFEUPLOAD_MAX_PREFIX_CHARS];
+    DWORD returned = 0;
+    UINT32 index;
+
+    ZeroMemory( &policy, sizeof( policy ) );
+
+    policy.Control.Version = SAFEUPLOAD_PROTOCOL_VERSION;
+    policy.Control.StructSize = sizeof( SAFEUPLOAD_POLICY_MESSAGE );
+    policy.Control.Command = SAFEUPLOAD_CONTROL_SET_POLICY;
+
+    //
+    //  Removable media and network shares are destinations in their own
+    //  right, with no prefix needed: every path on them leaves the machine.
+    //
+
+    policy.Flags = SAFEUPLOAD_POLICY_FLAG_REMOVABLE | SAFEUPLOAD_POLICY_FLAG_NETWORK;
+
+    for (index = 0; index < ARRAYSIZE( SafeUploadTestExtensions ); index += 1) {
+
+        StringCchCopyW( policy.Extensions[index],
+                        SAFEUPLOAD_MAX_EXTENSION_CHARS,
+                        SafeUploadTestExtensions[index] );
+    }
+
+    policy.ExtensionCount = ARRAYSIZE( SafeUploadTestExtensions );
+
+    for (index = 0; index < ARRAYSIZE( SafeUploadTestPrefixes ); index += 1) {
+
+        if (!DosPathToNtPath( SafeUploadTestPrefixes[index], ntPath, ARRAYSIZE( ntPath ) )) {
+
+            wprintf( L"AVISO: nao foi possivel converter %s para forma NT.\n",
+                     SafeUploadTestPrefixes[index] );
+            continue;
+        }
+
+        StringCchCopyW( policy.Prefixes[policy.PrefixCount],
+                        SAFEUPLOAD_MAX_PREFIX_CHARS,
+                        ntPath );
+
+        wprintf( L"Escopo: %s  ->  %s\n", SafeUploadTestPrefixes[index], ntPath );
+
+        policy.PrefixCount += 1;
+    }
+
+    return FilterSendMessage( Port,
+                              &policy,
+                              sizeof( policy ),
+                              NULL,
+                              0,
+                              &returned );
+}
 
 
 static
@@ -225,6 +384,24 @@ Return Value:
         return 2;
     }
 
+    //
+    //  Before anything else. Until a policy arrives the driver considers
+    //  nothing to be in scope, so an inspector that connects and never
+    //  pushes one would see no traffic at all and look broken.
+    //
+
+    hr = SendPolicy( port );
+
+    if (FAILED( hr )) {
+
+        wprintf( L"ERRO: o driver recusou a politica (hr = 0x%08X).\n", hr );
+        wprintf( L"      0x8007051B e incompatibilidade de versao do protocolo:\n" );
+        wprintf( L"      o driver carregado e de outra compilacao.\n" );
+        CloseHandle( port );
+        return 4;
+    }
+
+    wprintf( L"Politica enviada ao driver.\n" );
     wprintf( L"Conectado. Aguardando requisicoes (Ctrl+C para sair).\n\n" );
 
     //

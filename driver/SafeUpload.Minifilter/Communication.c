@@ -46,11 +46,23 @@ SafeUploadPortDisconnect (
     _In_opt_ PVOID ConnectionCookie
     );
 
+static
+NTSTATUS
+SafeUploadPortMessage (
+    _In_opt_ PVOID PortCookie,
+    _In_reads_bytes_opt_(InputBufferLength) PVOID InputBuffer,
+    _In_ ULONG InputBufferLength,
+    _Out_writes_bytes_to_opt_(OutputBufferLength, *ReturnOutputBufferLength) PVOID OutputBuffer,
+    _In_ ULONG OutputBufferLength,
+    _Out_ PULONG ReturnOutputBufferLength
+    );
+
 #ifdef ALLOC_PRAGMA
     #pragma alloc_text(PAGE, SafeUploadCreateCommunicationPort)
     #pragma alloc_text(PAGE, SafeUploadCloseCommunicationPort)
     #pragma alloc_text(PAGE, SafeUploadPortConnect)
     #pragma alloc_text(PAGE, SafeUploadPortDisconnect)
+    #pragma alloc_text(PAGE, SafeUploadPortMessage)
     #pragma alloc_text(PAGE, SafeUploadRequestVerdict)
 #endif
 
@@ -119,7 +131,7 @@ Return Value:
                                          NULL,
                                          SafeUploadPortConnect,
                                          SafeUploadPortDisconnect,
-                                         NULL,
+                                         SafeUploadPortMessage,
                                          1 );
 
     //
@@ -418,6 +430,144 @@ Return Value:
 Exit:
 
     ExReleaseRundownProtection( &SafeUploadData.ChannelRundown );
+
+    return status;
+}
+
+
+static
+NTSTATUS
+SafeUploadPortMessage (
+    _In_opt_ PVOID PortCookie,
+    _In_reads_bytes_opt_(InputBufferLength) PVOID InputBuffer,
+    _In_ ULONG InputBufferLength,
+    _Out_writes_bytes_to_opt_(OutputBufferLength, *ReturnOutputBufferLength) PVOID OutputBuffer,
+    _In_ ULONG OutputBufferLength,
+    _Out_ PULONG ReturnOutputBufferLength
+    )
+/*++
+
+Routine Description:
+
+    Receives a control message from the inspector, sent with
+    FilterSendMessage. This is the direction the policy travels.
+
+    IRQL: PASSIVE_LEVEL, in the context of the sending process.
+
+    Everything reachable from InputBuffer is USER MEMORY, supplied by a
+    process this driver does not control. It has to be probed and copied
+    inside an exception handler before a single field is trusted, and every
+    count in it has to be validated afterwards. A driver that reads a
+    user-mode pointer directly is one bad pointer away from a bugcheck that
+    an unprivileged mistake can trigger.
+
+Arguments:
+
+    PortCookie - Unused.
+
+    InputBuffer - The message, in user memory.
+
+    InputBufferLength - Its size, as claimed by the caller.
+
+    OutputBuffer - Unused: control messages carry no reply payload.
+
+    OutputBufferLength - Unused.
+
+    ReturnOutputBufferLength - Set to zero.
+
+Return Value:
+
+    STATUS_SUCCESS when the message was understood and applied. The status
+    reaches the caller as the return of FilterSendMessage.
+
+--*/
+{
+    PSAFEUPLOAD_POLICY_MESSAGE policy = NULL;
+    NTSTATUS status = STATUS_SUCCESS;
+
+    UNREFERENCED_PARAMETER( PortCookie );
+    UNREFERENCED_PARAMETER( OutputBuffer );
+    UNREFERENCED_PARAMETER( OutputBufferLength );
+
+    PAGED_CODE();
+
+    *ReturnOutputBufferLength = 0;
+
+    if (InputBuffer == NULL || InputBufferLength < sizeof( SAFEUPLOAD_CONTROL )) {
+
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    //
+    //  From pool, never from the stack. A kernel stack is about 12 KB and
+    //  SAFEUPLOAD_POLICY_MESSAGE is over 11 KB of it: a local would leave
+    //  almost nothing for the routines called from here, and the overflow
+    //  would show up as a bugcheck somewhere unrelated.
+    //
+
+    policy = (PSAFEUPLOAD_POLICY_MESSAGE) ExAllocatePool2( POOL_FLAG_NON_PAGED,
+                                                           sizeof( SAFEUPLOAD_POLICY_MESSAGE ),
+                                                           SAFEUPLOAD_POOL_TAG );
+
+    if (policy == NULL) {
+
+        return STATUS_INSUFFICIENT_RESOURCES;
+    }
+
+    try {
+
+        //
+        //  The alignment requirement is the structure's own: ProbeForRead
+        //  rejects a buffer the caller placed on a boundary the structure
+        //  cannot legally sit on.
+        //
+
+        ProbeForRead( InputBuffer, InputBufferLength, __alignof( SAFEUPLOAD_POLICY_MESSAGE ) );
+
+        if (((PSAFEUPLOAD_CONTROL) InputBuffer)->Command != SAFEUPLOAD_CONTROL_SET_POLICY) {
+
+            status = STATUS_NOT_SUPPORTED;
+            leave;
+        }
+
+        if (InputBufferLength < sizeof( SAFEUPLOAD_POLICY_MESSAGE )) {
+
+            status = STATUS_INVALID_BUFFER_SIZE;
+            leave;
+        }
+
+        //
+        //  Copied out of user memory in one shot, and validated only after
+        //  the copy. Validating in place would leave every field open to
+        //  being changed by another thread of the sending process between
+        //  the check and the use.
+        //
+
+        RtlCopyMemory( policy, InputBuffer, sizeof( SAFEUPLOAD_POLICY_MESSAGE ) );
+
+    } except (EXCEPTION_EXECUTE_HANDLER) {
+
+        status = GetExceptionCode();
+    }
+
+    if (NT_SUCCESS( status )) {
+
+        if (policy->Control.Version != SAFEUPLOAD_PROTOCOL_VERSION ||
+            policy->Control.StructSize != sizeof( SAFEUPLOAD_POLICY_MESSAGE )) {
+
+            SafeUploadTrace( "policy rejeitada: versao %u tamanho %u\n",
+                             policy->Control.Version,
+                             policy->Control.StructSize );
+
+            status = STATUS_REVISION_MISMATCH;
+
+        } else {
+
+            status = SafeUploadSetPolicy( policy );
+        }
+    }
+
+    ExFreePoolWithTag( policy, SAFEUPLOAD_POOL_TAG );
 
     return status;
 }

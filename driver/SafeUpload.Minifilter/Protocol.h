@@ -49,7 +49,7 @@ Environment:
 //  message means "allow" (RN-013), never "block".
 //
 
-#define SAFEUPLOAD_PROTOCOL_VERSION ((UINT32) 1)
+#define SAFEUPLOAD_PROTOCOL_VERSION ((UINT32) 2)
 
 //
 //  Capacity of the inline string fields, in WCHARs, terminator included.
@@ -203,6 +203,94 @@ typedef struct _SAFEUPLOAD_RESPONSE {
 
 } SAFEUPLOAD_RESPONSE, *PSAFEUPLOAD_RESPONSE;
 
+///////////////////////////////////////////////////////////////////////////
+//
+//  Control channel: user -> kernel, sent with FilterSendMessage.
+//
+//  This is how the policy reaches the kernel. It travels in the opposite
+//  direction from the requests above and is not a reply to anything.
+//
+///////////////////////////////////////////////////////////////////////////
+
+#define SAFEUPLOAD_CONTROL_SET_POLICY ((UINT32) 1)
+
+//
+//  Capacities of the policy message. Fixed, like everything else here: the
+//  kernel must be able to tell how big a message is before reading it, and
+//  a policy that does not fit is a policy that has to be reduced, not a
+//  reason to invent variable-length parsing on the boundary.
+//
+
+#define SAFEUPLOAD_MAX_EXTENSIONS      ((UINT32) 32)
+#define SAFEUPLOAD_MAX_EXTENSION_CHARS ((UINT32) 16)
+#define SAFEUPLOAD_MAX_PREFIXES        ((UINT32) 16)
+#define SAFEUPLOAD_MAX_PREFIX_CHARS    ((UINT32) 260)
+#define SAFEUPLOAD_MAX_IMAGES          ((UINT32) 16)
+#define SAFEUPLOAD_MAX_IMAGE_CHARS     ((UINT32) 64)
+
+//
+//  SAFEUPLOAD_POLICY_MESSAGE.Flags
+//
+
+#define SAFEUPLOAD_POLICY_FLAG_REMOVABLE ((UINT32) 0x00000001)
+#define SAFEUPLOAD_POLICY_FLAG_NETWORK   ((UINT32) 0x00000002)
+
+typedef struct _SAFEUPLOAD_CONTROL {
+
+    UINT32 Version;
+    UINT32 StructSize;
+    UINT32 Command;
+    UINT32 Reserved;
+
+} SAFEUPLOAD_CONTROL, *PSAFEUPLOAD_CONTROL;
+
+//
+//  The policy, as user mode hands it down.
+//
+//  Prefixes arrive in NT form (\Device\HarddiskVolume3\...), already
+//  converted. That conversion belongs to user mode and happens once, when
+//  the policy is loaded: doing it in the kernel would mean converting on
+//  every operation, which is the cost this whole design exists to avoid.
+//
+
+typedef struct _SAFEUPLOAD_POLICY_MESSAGE {
+
+    SAFEUPLOAD_CONTROL Control;
+
+    UINT32 ExtensionCount;
+    UINT32 PrefixCount;
+    UINT32 ImageCount;
+
+    //
+    //  SAFEUPLOAD_POLICY_FLAG_*: whether removable media and network
+    //  volumes are monitored destinations in their own right, independent
+    //  of any path prefix.
+    //
+
+    UINT32 Flags;
+
+    //
+    //  Monitored extensions, with the leading dot, NUL-terminated.
+    //
+
+    WCHAR Extensions[SAFEUPLOAD_MAX_EXTENSIONS][SAFEUPLOAD_MAX_EXTENSION_CHARS];
+
+    //
+    //  Monitored path prefixes in NT form, NUL-terminated. A file is in
+    //  scope when its normalized path starts with one of these.
+    //
+
+    WCHAR Prefixes[SAFEUPLOAD_MAX_PREFIXES][SAFEUPLOAD_MAX_PREFIX_CHARS];
+
+    //
+    //  Process images whose I/O is never inspected, NUL-terminated, final
+    //  component only (for example "SafeUpload.Agent.Service.exe").
+    //
+
+    WCHAR Images[SAFEUPLOAD_MAX_IMAGES][SAFEUPLOAD_MAX_IMAGE_CHARS];
+
+} SAFEUPLOAD_POLICY_MESSAGE, *PSAFEUPLOAD_POLICY_MESSAGE;
+
 #pragma pack(pop)
 
 //
@@ -230,5 +318,21 @@ C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_RESPONSE, StructSize ) == 4 );
 C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_RESPONSE, RequestId )  == 8 );
 C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_RESPONSE, Verdict )    == 16 );
 C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_RESPONSE, Reserved )   == 20 );
+
+C_ASSERT( sizeof( SAFEUPLOAD_CONTROL ) == 16 );
+C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_CONTROL, Version )    == 0 );
+C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_CONTROL, StructSize ) == 4 );
+C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_CONTROL, Command )    == 8 );
+C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_CONTROL, Reserved )   == 12 );
+
+C_ASSERT( sizeof( SAFEUPLOAD_POLICY_MESSAGE ) == 11424 );
+C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_POLICY_MESSAGE, Control )        == 0 );
+C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_POLICY_MESSAGE, ExtensionCount ) == 16 );
+C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_POLICY_MESSAGE, PrefixCount )    == 20 );
+C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_POLICY_MESSAGE, ImageCount )     == 24 );
+C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_POLICY_MESSAGE, Flags )          == 28 );
+C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_POLICY_MESSAGE, Extensions )     == 32 );
+C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_POLICY_MESSAGE, Prefixes )       == 1056 );
+C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_POLICY_MESSAGE, Images )         == 9376 );
 
 #endif // _SAFEUPLOAD_PROTOCOL_H_
