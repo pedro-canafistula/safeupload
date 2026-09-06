@@ -8,10 +8,9 @@ Abstract:
 
     Main module of the SafeUpload minifilter.
 
-    The driver registers pre-operation callbacks for IRP_MJ_CREATE and
-    IRP_MJ_READ, discards the traffic it has no business arbitrating, and
-    (from the communication layer onwards) asks a user-mode inspector for a
-    verdict before letting the operation through.
+    The driver registers a pre-operation callback for IRP_MJ_CREATE,
+    discards the traffic it has no business arbitrating, and asks a
+    user-mode inspector for a verdict before letting the operation through.
 
     Deliberately, there is NO detection logic in this file. Business rules
     RN-001..RN-004 (CPF, CNPJ, Luhn, password heuristics) live in user
@@ -94,11 +93,6 @@ SafeUploadInspectOperation (
     #pragma alloc_text(PAGE, SafeUploadCopyRequestPath)
     #pragma alloc_text(PAGE, SafeUploadCopyRequestImageName)
     #pragma alloc_text(PAGE, SafeUploadInspectOperation)
-    //
-    //  SafeUploadPreRead is deliberately NOT paged: IRP_MJ_READ can reach a
-    //  minifilter above PASSIVE_LEVEL, and touching a paged-out code page
-    //  at raised IRQL bugchecks the machine.
-    //
 #endif
 
 ///////////////////////////////////////////////////////////////////////////
@@ -120,16 +114,23 @@ CONST FLT_OPERATION_REGISTRATION Callbacks[] = {
       NULL },
 
     //
-    //  Paging I/O is skipped by the filter manager itself. This keeps the
-    //  driver out of the memory manager's write-back and read-ahead paths,
-    //  where blocking on a user-mode round trip risks deadlocking the
-    //  system under memory pressure.
+    //  IRP_MJ_READ is deliberately NOT registered.
     //
-
-    { IRP_MJ_READ,
-      FLTFL_OPERATION_REGISTRATION_SKIP_PAGING_IO,
-      SafeUploadPreRead,
-      NULL },
+    //  It was, and it was the single largest cost in the driver: one
+    //  user-mode round trip per read, of every file, of every process. With
+    //  a synchronous inspector that is not merely slow, it is a feedback
+    //  loop - anything the inspector does that touches a file waits on the
+    //  inspector.
+    //
+    //  Nothing is lost. A create asking for FILE_READ_DATA is already the
+    //  declaration of intent to read, it happens once per open instead of
+    //  once per block, and it covers two cases a read hook never sees:
+    //  memory-mapped files, whose reads arrive as paging I/O, and handles
+    //  opened long before the data is touched.
+    //
+    //  See ARQUITETURA.md for the evidence under which a read hook would
+    //  come back, and in what form.
+    //
 
     { IRP_MJ_OPERATION_END }
 };
@@ -1027,76 +1028,4 @@ Return Value:
     }
 
     return SafeUploadInspectOperation( Data, SAFEUPLOAD_OPERATION_CREATE );
-}
-
-
-FLT_PREOP_CALLBACK_STATUS
-SafeUploadPreRead (
-    _Inout_ PFLT_CALLBACK_DATA Data,
-    _In_ PCFLT_RELATED_OBJECTS FltObjects,
-    _Flt_CompletionContext_Outptr_ PVOID *CompletionContext
-    )
-/*++
-
-Routine Description:
-
-    Pre-operation callback for IRP_MJ_READ.
-
-    IRQL: <= DISPATCH_LEVEL. Unlike create, a read can reach a minifilter
-    at APC_LEVEL or DISPATCH_LEVEL - cache manager read-ahead and fast I/O
-    both do it. Every service this driver needs downstream (file name
-    queries, image name lookup, FltSendMessage) is PASSIVE_LEVEL only, so
-    anything above PASSIVE_LEVEL is allowed through untouched rather than
-    inspected incorrectly.
-
-    Paging reads never reach this routine: the filter manager filters them
-    out because of FLTFL_OPERATION_REGISTRATION_SKIP_PAGING_IO.
-
-Arguments:
-
-    Data - Parameters of the operation.
-
-    FltObjects - Objects affected by the operation.
-
-    CompletionContext - Unused: no post-operation callback is registered.
-
-Return Value:
-
-    FLT_PREOP_SUCCESS_NO_CALLBACK to let the read proceed.
-
---*/
-{
-    UNREFERENCED_PARAMETER( FltObjects );
-    UNREFERENCED_PARAMETER( CompletionContext = NULL );
-
-    if (KeGetCurrentIrql() != PASSIVE_LEVEL) {
-
-        return FLT_PREOP_SUCCESS_NO_CALLBACK;
-    }
-
-    if (SafeUploadIsIgnoredProcess( FltGetRequestorProcessId( Data ) )) {
-
-        return FLT_PREOP_SUCCESS_NO_CALLBACK;
-    }
-
-    //
-    //  There is deliberately no cheap name gate here, unlike pre-create.
-    //
-    //  FILE_OBJECT.FileName is only guaranteed valid while the create that
-    //  produced the file object is being processed. Once the create
-    //  completes the file system owns that buffer and is free to release
-    //  it, so reading FltObjects->FileObject->FileName from a read callback
-    //  reads pool that may already be gone. It is not a race that shows up
-    //  under light load: it shows up as a bugcheck, in whatever module
-    //  happens to be on the stack.
-    //
-    //  Resolving the name properly here would mean FltGetFileNameInformation
-    //  on every read, which is the cost this gate existed to avoid, so there
-    //  is nothing to gain by replacing it. The right answer is the stream
-    //  context: decide once at create, remember it, and let reads test a
-    //  flag. That arrives with the step that removes this callback
-    //  altogether.
-    //
-
-    return SafeUploadInspectOperation( Data, SAFEUPLOAD_OPERATION_READ );
 }
