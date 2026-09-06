@@ -267,6 +267,23 @@ foreach ($source in $sources) {
     if (-not (Test-Path $source)) {
         Stop-WithMessage "Artefato esperado nao existe: $source"
     }
+
+    # A PowerShell script that does not parse is worse than a missing one:
+    # it is published, downloaded, and fails on the target machine with an
+    # error that says nothing about where it came from.
+    if ([IO.Path]::GetExtension($source) -eq '.ps1') {
+
+        $parseErrors = $null
+        $null = [System.Management.Automation.Language.Parser]::ParseFile($source, [ref] $null, [ref] $parseErrors)
+
+        if ($parseErrors -and $parseErrors.Count -gt 0) {
+            foreach ($parseError in $parseErrors) {
+                Write-Host "  linha $($parseError.Extent.StartLineNumber): $($parseError.Message)" -ForegroundColor Red
+            }
+            Stop-WithMessage "$(Split-Path -Leaf $source) nao e sintaticamente valido."
+        }
+    }
+
     Copy-Item $source $PackageDirectory -Force
     Write-Host "  $(Split-Path -Leaf $source)"
 }

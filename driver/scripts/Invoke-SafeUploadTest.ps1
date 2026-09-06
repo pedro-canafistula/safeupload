@@ -58,7 +58,9 @@ param(
 
     [switch] $SkipSmokeTest,
 
-    [switch] $ReproduceUnloadLeak
+    [switch] $ReproduceUnloadLeak,
+
+    [int] $StressProcesses = 8
 )
 
 $ErrorActionPreference = 'Stop'
@@ -229,11 +231,16 @@ if ($ReproduceUnloadLeak) {
     # installed, and replacing it would change the thing under test.
     #
     # Bugcheck 0xC4 subcode 0x62 is raised by Driver Verifier when a driver
-    # unloads with pool still allocated. It only fires if allocations
-    # actually happened, and the driver allocates nothing while no inspector
-    # holds the port - which is why a plain load/unload comes back clean.
-    # This sequence connects an inspector, drives traffic through it, and
-    # only then unloads.
+    # unloads with pool still allocated. Reproducing it needs the conditions
+    # the original crash had, and a gentle load does not have them:
+    #
+    #   - MANY messages in flight at once. The inspector answers one request
+    #     at a time, so concurrency comes from several processes issuing
+    #     creates simultaneously and queueing up inside FltSendMessage.
+    #
+    #   - The port torn down WHILE they are in flight, not after. Killing the
+    #     inspector mid-burst is what forces every blocked thread through the
+    #     failure path at once, which is where a missed free would hide.
     #
     # Run it with a kernel debugger attached: the machine breaks into the
     # debugger instead of bugchecking, and the pool block is still readable.
@@ -263,29 +270,58 @@ if ($ReproduceUnloadLeak) {
     Write-Host '  Subindo o inspetor.'
     Start-Inspector -LogPath $inspectorLog | Out-Null
 
-    Write-Host '  Inspetor conectado. Gerando I/O.'
+    Write-Host "  Inspetor conectado. Disparando $StressProcesses processos de carga."
 
-    foreach ($round in 1..40) {
-        Get-Content $stressFile -Raw -ErrorAction SilentlyContinue | Out-Null
+    # Separate processes, not threads: each one issues its own creates, which
+    # is exactly the shape of the traffic that produced 33 simultaneous
+    # allocations when the driver still hooked reads.
+    $stressCommand = "for /l %i in (1,1,100000) do @type `"$stressFile`" >nul 2>&1"
+    $stressProcesses = @()
+
+    foreach ($index in 1..$StressProcesses) {
+        $stressProcesses += Start-Process -FilePath 'cmd.exe' `
+            -ArgumentList '/c', $stressCommand -WindowStyle Hidden -PassThru
     }
 
-    Write-Host '  Encerrando o inspetor.'
+    Start-Sleep -Seconds 3
+
+    # Peak so far tells us whether the burst actually built up a queue. If it
+    # stayed at one, the stress did not stress anything and a clean unload
+    # afterwards proves nothing.
+    $peakDuring = [regex]::Match((& verifier.exe /query 2>&1 | Out-String),
+                                 'Peak Pool Allocations:\s*\(\s*(\d+)')
+
+    if ($peakDuring.Success) {
+        Write-Host "  Pico de alocacoes durante a carga: $($peakDuring.Groups[1].Value)"
+
+        if ([int] $peakDuring.Groups[1].Value -le 1) {
+            Write-Host '  A carga nao gerou concorrencia. Um unload limpo agora nao provaria nada.' -ForegroundColor Yellow
+        }
+    }
+
+    Write-Host '  Matando o inspetor NO MEIO da rajada.' -ForegroundColor Yellow
     Stop-Inspector | Out-Null
 
-    Start-Sleep -Seconds 1
-
     Write-Host ''
-    Write-Host '  Descarregando. Se o vazamento existir, o bugcheck e agora.' -ForegroundColor Yellow
+    Write-Host '  Descarregando imediatamente. Se o vazamento existir, o bugcheck e agora.' -ForegroundColor Yellow
     Write-Host ''
 
     & fltmc.exe unload $FilterName 2>&1 | ForEach-Object { Write-Host "  $_" }
+
+    foreach ($process in $stressProcesses) {
+        $process | Stop-Process -Force -ErrorAction SilentlyContinue
+    }
 
     if (Test-FilterLoaded) {
         Write-Host '  O filtro continua carregado - o unload foi recusado.' -ForegroundColor Red
     }
     else {
         Write-Host '  Descarregado sem bugcheck.' -ForegroundColor Green
-        Write-Host '  O caminho de alocacao exercitado aqui nao vaza.' -ForegroundColor Green
+
+        if ($peakDuring.Success -and [int] $peakDuring.Groups[1].Value -gt 1) {
+            Write-Host "  Com pico de $($peakDuring.Groups[1].Value) alocacoes simultaneas e a porta fechada" -ForegroundColor Green
+            Write-Host '  no meio delas, este e um resultado com valor.' -ForegroundColor Green
+        }
     }
 
     return
