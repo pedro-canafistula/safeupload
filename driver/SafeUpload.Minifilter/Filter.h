@@ -149,6 +149,139 @@ typedef struct _SAFEUPLOAD_DATA {
 
 extern SAFEUPLOAD_DATA SafeUploadData;
 
+///////////////////////////////////////////////////////////////////////////
+//
+//  Contexts. Implemented in Context.c.
+//
+//  These exist so the hot path can answer without talking to user mode.
+//  The instance context turns a per-operation question ("what kind of
+//  volume is this?") into a one-off computed at attach time, and the
+//  stream context turns "is this file sensitive?" into one user-mode round
+//  trip per file version instead of one per operation.
+//
+///////////////////////////////////////////////////////////////////////////
+
+//
+//  What kind of volume an instance is attached to. Computed once, in
+//  InstanceSetup, and never again.
+//
+
+typedef enum _SAFEUPLOAD_VOLUME_KIND {
+
+    //
+    //  Could not be determined. Treated as out of scope: a volume we
+    //  cannot classify is a volume we cannot make correct decisions about.
+    //
+
+    SafeUploadVolumeUnknown = 0,
+
+    //
+    //  Ordinary local disk. In scope only when the path falls under one of
+    //  the monitored prefixes - this is where cloud sync folders live.
+    //
+
+    SafeUploadVolumeFixed,
+
+    //
+    //  Removable media: pen drive, external disk, memory card.
+    //
+
+    SafeUploadVolumeRemovable,
+
+    //
+    //  Network redirector.
+    //
+
+    SafeUploadVolumeNetwork
+
+} SAFEUPLOAD_VOLUME_KIND, *PSAFEUPLOAD_VOLUME_KIND;
+
+typedef struct _SAFEUPLOAD_INSTANCE_CONTEXT {
+
+    SAFEUPLOAD_VOLUME_KIND VolumeKind;
+
+} SAFEUPLOAD_INSTANCE_CONTEXT, *PSAFEUPLOAD_INSTANCE_CONTEXT;
+
+//
+//  Per-file cache of the last inspection.
+//
+//  This context belongs to the file, not to a handle: it outlives the
+//  handle that created it and serves every process that opens the same
+//  file afterwards. That is what makes the second open of a document cost
+//  nothing.
+//
+//  The verdict is only trusted while the stamp still matches the file and
+//  Dirty is clear. Dirty is set when a handle that was opened for write is
+//  closed, because the content may have changed underneath us.
+//
+
+typedef struct _SAFEUPLOAD_STREAM_CONTEXT {
+
+    //
+    //  Guards every field below. A push lock rather than a mutex because
+    //  reads dominate by orders of magnitude: the common case is several
+    //  threads checking a verdict nobody is writing.
+    //
+
+    EX_PUSH_LOCK Lock;
+
+    //
+    //  Whether Verdict and Categories mean anything yet.
+    //
+
+    BOOLEAN VerdictValid;
+
+    //
+    //  Set when the file may have changed since the verdict was recorded.
+    //
+
+    BOOLEAN Dirty;
+
+    //
+    //  SAFEUPLOAD_VERDICT_*, as answered by user mode.
+    //
+
+    UINT32 Verdict;
+
+    //
+    //  Categories found, for the process taint table to consume later.
+    //
+
+    UINT32 Categories;
+
+    //
+    //  Stamp the verdict was computed against. A mismatch invalidates it
+    //  just as Dirty does, and catches changes made through paths this
+    //  driver never saw.
+    //
+
+    LARGE_INTEGER FileSize;
+    LARGE_INTEGER LastWriteTime;
+
+} SAFEUPLOAD_STREAM_CONTEXT, *PSAFEUPLOAD_STREAM_CONTEXT;
+
+extern CONST FLT_CONTEXT_REGISTRATION SafeUploadContextRegistration[];
+
+SAFEUPLOAD_VOLUME_KIND
+SafeUploadClassifyVolume (
+    _In_ PFLT_VOLUME Volume,
+    _In_ DEVICE_TYPE VolumeDeviceType
+    );
+
+NTSTATUS
+SafeUploadSetInstanceContext (
+    _In_ PCFLT_RELATED_OBJECTS FltObjects,
+    _In_ DEVICE_TYPE VolumeDeviceType,
+    _Out_ PSAFEUPLOAD_VOLUME_KIND VolumeKind
+    );
+
+NTSTATUS
+SafeUploadGetOrCreateStreamContext (
+    _In_ PCFLT_RELATED_OBJECTS FltObjects,
+    _In_ PFILE_OBJECT FileObject,
+    _Outptr_result_nullonfailure_ PSAFEUPLOAD_STREAM_CONTEXT *StreamContext
+    );
+
 //
 //  One request and its response in a single pool block. Keeping them in
 //  one allocation means every callback has exactly one thing to free, so

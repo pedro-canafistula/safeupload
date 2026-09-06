@@ -116,7 +116,7 @@ CONST FLT_REGISTRATION FilterRegistration = {
     sizeof( FLT_REGISTRATION ),         //  Size
     FLT_REGISTRATION_VERSION,           //  Version
     0,                                  //  Flags
-    NULL,                               //  Context registration
+    SafeUploadContextRegistration,      //  Context registration
     Callbacks,                          //  Operation callbacks
     SafeUploadUnload,                   //  FilterUnload
     SafeUploadInstanceSetup,            //  InstanceSetup
@@ -346,21 +346,50 @@ Return Value:
 
 --*/
 {
-    UNREFERENCED_PARAMETER( FltObjects );
+    SAFEUPLOAD_VOLUME_KIND volumeKind;
+    NTSTATUS status;
+
     UNREFERENCED_PARAMETER( Flags );
     UNREFERENCED_PARAMETER( VolumeFilesystemType );
 
     PAGED_CODE();
 
     //
-    //  Network redirectors are out of scope for v1: their name semantics
-    //  differ from local volumes and the inspector has no policy for them.
+    //  Network volumes are attached to, not refused. A network share is one
+    //  of the destinations the policy monitors, so declining here would be
+    //  a hole rather than an optimization.
     //
 
-    if (VolumeDeviceType == FILE_DEVICE_NETWORK_FILE_SYSTEM) {
+    status = SafeUploadSetInstanceContext( FltObjects, VolumeDeviceType, &volumeKind );
+
+    if (!NT_SUCCESS( status )) {
+
+        //
+        //  Without the context every later decision on this volume would be
+        //  taken without knowing what kind of volume it is. Declining the
+        //  attachment means this volume is simply not filtered, which is the
+        //  fail-open outcome RN-013 asks for.
+        //
+
+        SafeUploadTrace( "instance context failed, not attaching, status 0x%08X\n",
+                         status );
 
         return STATUS_FLT_DO_NOT_ATTACH;
     }
+
+    if (volumeKind == SafeUploadVolumeUnknown) {
+
+        //
+        //  A volume we cannot classify is a volume we cannot make correct
+        //  decisions about.
+        //
+
+        SafeUploadTrace( "volume could not be classified, not attaching\n" );
+
+        return STATUS_FLT_DO_NOT_ATTACH;
+    }
+
+    SafeUploadTrace( "attached to volume, kind %u\n", (ULONG) volumeKind );
 
     return STATUS_SUCCESS;
 }
