@@ -274,13 +274,33 @@ foreach ($source in $sources) {
     if ([IO.Path]::GetExtension($source) -eq '.ps1') {
 
         $parseErrors = $null
-        $null = [System.Management.Automation.Language.Parser]::ParseFile($source, [ref] $null, [ref] $parseErrors)
+        $scriptAst = [System.Management.Automation.Language.Parser]::ParseFile($source, [ref] $null, [ref] $parseErrors)
 
         if ($parseErrors -and $parseErrors.Count -gt 0) {
             foreach ($parseError in $parseErrors) {
                 Write-Host "  linha $($parseError.Extent.StartLineNumber): $($parseError.Message)" -ForegroundColor Red
             }
             Stop-WithMessage "$(Split-Path -Leaf $source) nao e sintaticamente valido."
+        }
+
+        # Variable names are case insensitive, so $foo and $Foo are the same
+        # storage. Two spellings in one script means either a typo or, worse,
+        # two different intents sharing a slot - which is how a path variable
+        # ends up holding build output and a loop bound ends up holding an
+        # array. Both have already happened here.
+        $variableNames = $scriptAst.FindAll(
+            { param($node) $node -is [System.Management.Automation.Language.VariableExpressionAst] },
+            $true) | ForEach-Object { $_.VariablePath.UserPath }
+
+        $collisions = $variableNames |
+            Group-Object { $_.ToLowerInvariant() } |
+            Where-Object { @($_.Group | Select-Object -Unique).Count -gt 1 }
+
+        if ($collisions) {
+            foreach ($collision in $collisions) {
+                Write-Host "  colisao de maiusculas: $(@($collision.Group | Select-Object -Unique) -join ' / ')" -ForegroundColor Red
+            }
+            Stop-WithMessage "$(Split-Path -Leaf $source) tem variaveis que diferem so em maiusculas."
         }
     }
 

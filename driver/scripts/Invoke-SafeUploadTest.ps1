@@ -276,10 +276,14 @@ if ($ReproduceUnloadLeak) {
     # is exactly the shape of the traffic that produced 33 simultaneous
     # allocations when the driver still hooked reads.
     $stressCommand = "for /l %i in (1,1,100000) do @type `"$stressFile`" >nul 2>&1"
-    $stressProcesses = @()
+
+    # Not $stressProcesses: PowerShell variable names are case insensitive,
+    # so that would overwrite the $StressProcesses parameter with an array
+    # and the loop bound below would stop being a number.
+    $loadProcesses = @()
 
     foreach ($index in 1..$StressProcesses) {
-        $stressProcesses += Start-Process -FilePath 'cmd.exe' `
+        $loadProcesses += Start-Process -FilePath 'cmd.exe' `
             -ArgumentList '/c', $stressCommand -WindowStyle Hidden -PassThru
     }
 
@@ -308,7 +312,7 @@ if ($ReproduceUnloadLeak) {
 
     & fltmc.exe unload $FilterName 2>&1 | ForEach-Object { Write-Host "  $_" }
 
-    foreach ($process in $stressProcesses) {
+    foreach ($process in $loadProcesses) {
         $process | Stop-Process -Force -ErrorAction SilentlyContinue
     }
 
