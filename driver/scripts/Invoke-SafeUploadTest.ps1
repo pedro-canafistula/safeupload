@@ -196,8 +196,14 @@ function Start-Inspector {
 
 function Wait-InspectorLine {
     <#
-        Waits for a line matching Pattern to appear in the inspector log,
-        and returns the index of that line, or -1.
+        Waits for a REQUEST line matching Pattern to appear in the inspector
+        log, and returns the index of that line, or -1.
+
+        Pattern is a regular expression and must be anchored to the request
+        format, because the log also carries startup banner lines - and the
+        banner prints the very paths the policy monitors. A loose match
+        finds the banner and reports success without a single request having
+        arrived, which is a test that can only ever pass.
 
         Reading the log is file I/O, which goes through the filter - but a
         .log is not a monitored extension, so the cheap gate in pre-create
@@ -220,7 +226,7 @@ function Wait-InspectorLine {
         $lines = @(Get-Content $LogPath -ErrorAction SilentlyContinue)
 
         for ($i = 0; $i -lt $lines.Count; $i += 1) {
-            if ($lines[$i] -like $Pattern) {
+            if ($lines[$i] -match $Pattern) {
                 return $i
             }
         }
@@ -668,7 +674,8 @@ try {
     # act on.
     try { Get-Content $sourceFile -Raw -ErrorAction Stop | Out-Null } catch { }
 
-    $sourceLine = Wait-InspectorLine -LogPath $inspectorLog -Pattern '*safeupload-origem*'
+    $sourceLine = Wait-InspectorLine -LogPath $inspectorLog `
+        -Pattern '^\[\d+\].*safeupload-origem.*documento\.txt'
 
     if ($sourceLine -lt 0) {
 
@@ -683,8 +690,8 @@ try {
 
         Add-Result -Name 'Arquivo sob prefixo de origem e inspecionado' -Passed $true
 
-        Add-Result -Name 'O kernel marcou o escopo como origem' -Passed ($scopeLine -like '*origem*') `
-            -Detail $(if ($scopeLine -like '*origem*') { $scopeLine.Trim() } else { "escopo relatado: '$($scopeLine.Trim())'" })
+        Add-Result -Name 'O kernel marcou o escopo como origem' -Passed ($scopeLine -match 'escopo:.*origem') `
+            -Detail $(if ($scopeLine -match 'escopo:.*origem') { $scopeLine.Trim() } else { "linha seguinte: '$($scopeLine.Trim())'" })
     }
 
     Write-Step 'Caso 4 - fora de escopo nao chega ao modo usuario'
@@ -696,7 +703,8 @@ try {
 
     Start-Sleep -Seconds 2
 
-    $outOfScopeLine = Wait-InspectorLine -LogPath $inspectorLog -Pattern '*safeupload-fora*' -TimeoutSeconds 1
+    $outOfScopeLine = Wait-InspectorLine -LogPath $inspectorLog `
+        -Pattern '^\[\d+\].*safeupload-fora.*ignorado\.txt' -TimeoutSeconds 1
 
     Add-Result -Name 'Arquivo fora de escopo nao e inspecionado' -Passed ($outOfScopeLine -lt 0) `
         -Detail $(if ($outOfScopeLine -lt 0) { 'Nada foi enviado ao modo usuario, como esperado.' } else { 'O caminho apareceu no log: o escopo nao esta filtrando.' })
