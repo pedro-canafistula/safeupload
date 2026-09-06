@@ -346,6 +346,36 @@ Write-Host '  safeupload.cat assinado.' -ForegroundColor Green
 
 # ---------------------------------------------------------------------------
 
+Write-Step 'Arquivando simbolos'
+
+# Every publish produces a different binary, and a dump is only readable with
+# the .pdb of the exact build that crashed. Overwriting symbols each time
+# means that by the time a crash is investigated, the symbols for it are
+# already gone - which is exactly what happened with the first bugcheck of
+# this driver.
+#
+# Keyed by the hash of the signed .sys, so a dump can always be matched back
+# to its symbols.
+$symbolKey = (Get-FileHash (Join-Path $PackageDirectory 'SafeUpload.sys') -Algorithm SHA256).Hash.Substring(0, 16)
+$symbolDirectory = Join-Path $PackageDirectory "symbols\$symbolKey"
+
+New-Item -ItemType Directory -Path $symbolDirectory -Force | Out-Null
+
+Copy-Item (Join-Path $PackageDirectory 'SafeUpload.sys') $symbolDirectory -Force
+Copy-Item (Join-Path $BuildOutput 'SafeUpload.pdb') $symbolDirectory -Force -ErrorAction SilentlyContinue
+Copy-Item (Join-Path $BuildOutput 'SafeUpload.Inspector.pdb') $symbolDirectory -Force -ErrorAction SilentlyContinue
+
+$commit = (& git -C $RepoRoot rev-parse --short HEAD 2>&1)
+
+Set-Content -Path (Join-Path $symbolDirectory 'build.txt') -Encoding UTF8 -Value @(
+    "sha256  $((Get-FileHash (Join-Path $PackageDirectory 'SafeUpload.sys') -Algorithm SHA256).Hash)"
+    "commit  $commit"
+    "config  $Configuration"
+    "data    $((Get-Date).ToUniversalTime().ToString('o')) UTC"
+)
+
+Write-Host "  symbols\$symbolKey  (commit $commit)"
+
 Write-Step 'Certificado e ponto de entrada'
 
 # The certificate's public half travels with the package: the target VM needs
