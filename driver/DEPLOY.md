@@ -48,6 +48,49 @@ O que ele **não** faz, por decisão de projeto:
 
 ---
 
+## Caminho rápido: os scripts
+
+O ciclo inteiro está automatizado em `driver/scripts`. As partes A e B abaixo
+continuam sendo a referência — elas explicam **por que** cada passo existe, e
+é para elas que você volta quando algo falha. Os scripts são o que você roda
+no dia a dia.
+
+**Nesta VM**, compila, assina, gera e assina o catálogo, escreve um manifesto
+com os hashes e serve o pacote:
+
+```powershell
+.\driver\scripts\Publish-SafeUpload.ps1 -Serve
+```
+
+Ele imprime a linha de comando exata a rodar do outro lado, já com o IP
+certo. Aceita `-Configuration Release` e `-Analyze` (Code Analysis com as
+regras de driver).
+
+**Na VM alvo**, elevado, faz a verificação prévia, baixa, confere os hashes
+contra o manifesto, troca o binário, carrega o filtro e roda o teste de
+fumaça inteiro:
+
+```powershell
+.\Invoke-SafeUploadTest.ps1 -SourceUrl http://192.168.122.132:8000
+```
+
+Termina com um resumo do tipo `5/5 verificações passaram` e código de saída
+diferente de zero se alguma falhar.
+
+> **Sobre hashes: use sempre o manifesto.** Assinar altera o arquivo, e cada
+> `Rebuild` produz um binário diferente do anterior mesmo sem mudança de
+> código. Por isso o `Publish` grava `manifest.json` com o hash do artefato
+> **assinado** e o `Invoke` confere contra ele. Nenhum hash anotado à mão
+> sobrevive a dois ciclos.
+
+Os scripts não substituem os pré-requisitos da Parte B que só se fazem uma
+vez — snapshot, Secure Boot desligado, `bcdedit /set testsigning on` e a
+importação do certificado. O `Invoke` **verifica** todos eles e para com
+instrução clara se algum faltar, mas não os executa: ligar modo de teste e
+mexer em firmware são decisões do operador, não de um script.
+
+---
+
 ## Parte A — Na VM de desenvolvimento (esta máquina)
 
 ### A.1. Ambiente verificado
