@@ -180,18 +180,29 @@ if (-not $SkipDownload) {
 
     Write-Step "Baixando de $SourceUrl"
 
-    $fileNames = @('manifest.json', $DriverFileName, 'SafeUpload.inf', 'safeupload.cat', $InspectorFileName, 'SafeUploadTest.cer')
+    function Get-PackageFile {
+        param([Parameter(Mandatory)] [string] $Name)
 
-    foreach ($fileName in $fileNames) {
-        $destination = Join-Path $StagingDirectory $fileName
+        $destination = Join-Path $StagingDirectory $Name
 
         try {
-            Invoke-WebRequest -Uri "$SourceUrl/$fileName" -OutFile $destination -UseBasicParsing -TimeoutSec 30
-            Write-Host "  $fileName"
+            Invoke-WebRequest -Uri "$SourceUrl/$Name" -OutFile $destination -UseBasicParsing -TimeoutSec 30
+            Write-Host "  $Name"
         }
         catch {
-            Stop-WithMessage "Falha ao baixar $fileName : $($_.Exception.Message)"
+            Stop-WithMessage "Falha ao baixar $Name : $($_.Exception.Message)"
         }
+    }
+
+    # The manifest drives the download: it is the package telling us what it
+    # contains. A hard-coded list here would drift the moment the publisher
+    # adds or renames an artifact.
+    Get-PackageFile -Name 'manifest.json'
+
+    $downloadManifest = Get-Content (Join-Path $StagingDirectory 'manifest.json') -Raw | ConvertFrom-Json
+
+    foreach ($file in $downloadManifest.files) {
+        Get-PackageFile -Name $file.name
     }
 }
 

@@ -62,20 +62,36 @@ com os hashes e serve o pacote:
 .\driver\scripts\Publish-SafeUpload.ps1 -Serve
 ```
 
-Ele imprime a linha de comando exata a rodar do outro lado, já com o IP
-certo. Aceita `-Configuration Release` e `-Analyze` (Code Analysis com as
-regras de driver).
+Aceita `-Configuration Release` e `-Analyze` (Code Analysis com as regras de
+driver). Ao servir, ele imprime o comando exato para o outro lado, já com o
+IP desta máquina.
 
-**Na VM alvo**, elevado, faz a verificação prévia, baixa, confere os hashes
-contra o manifesto, troca o binário, carrega o filtro e roda o teste de
-fumaça inteiro:
+**Na VM alvo**, em um PowerShell **elevado**, um comando só:
 
 ```powershell
-.\Invoke-SafeUploadTest.ps1 -SourceUrl http://192.168.122.132:8000
+iex (irm http://192.168.122.132:8000/bootstrap.ps1)
 ```
 
-Termina com um resumo do tipo `5/5 verificações passaram` e código de saída
-diferente de zero se alguma falhar.
+O `bootstrap.ps1` é gerado a cada publicação com a URL embutida. Ele baixa a
+**versão atual** do script de teste, libera a política de execução no escopo
+do processo e entrega o controle. Não há cópia de script para manter
+atualizada na VM alvo: o que roda é sempre o que acabou de ser publicado.
+
+A partir daí o script faz a verificação prévia, baixa o pacote, confere os
+hashes contra o manifesto, troca o binário, carrega o filtro e roda o teste
+de fumaça inteiro, terminando com um resumo do tipo `6/6 verificações
+passaram` e código de saída diferente de zero se alguma falhar.
+
+Para passar opções, rode o script já baixado:
+
+```powershell
+& $env:TEMP\Invoke-SafeUploadTest.ps1 -SkipDownload -SkipSmokeTest
+```
+
+> O `bootstrap.ps1` entrega o controle ao script **como arquivo**, e não por
+> `Invoke-Expression`. É deliberado: `#Requires -RunAsAdministrator` é
+> ignorado quando um script é interpretado a partir de uma string, e a
+> verificação de elevação se perderia justamente onde ela importa.
 
 > **Sobre hashes: use sempre o manifesto.** Assinar altera o arquivo, e cada
 > `Rebuild` produz um binário diferente do anterior mesmo sem mudança de

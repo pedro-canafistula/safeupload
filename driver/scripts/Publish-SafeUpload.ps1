@@ -63,7 +63,9 @@ param(
 
     [switch] $Serve,
 
-    [int] $Port = 8000
+    [int] $Port = 8000,
+
+    [string] $AdvertiseAddress
 )
 
 $ErrorActionPreference = 'Stop'
@@ -253,7 +255,12 @@ Get-ChildItem $PackageDirectory -Filter '*.cat' -ErrorAction SilentlyContinue | 
 $sources = @(
     (Join-Path $BuildOutput 'SafeUpload.sys'),
     (Join-Path $BuildOutput 'SafeUpload.Inspector.exe'),
-    $InfPath
+    $InfPath,
+
+    # Served alongside the artifacts so the target VM always pulls the
+    # version of the test script that matches this package, rather than
+    # whatever copy happens to be sitting on its disk.
+    (Join-Path $PSScriptRoot 'Invoke-SafeUploadTest.ps1')
 )
 
 foreach ($source in $sources) {
@@ -302,9 +309,67 @@ Write-Host '  safeupload.cat assinado.' -ForegroundColor Green
 
 # ---------------------------------------------------------------------------
 
+Write-Step 'Certificado e ponto de entrada'
+
+# The certificate's public half travels with the package: the target VM needs
+# it in Root and TrustedPublisher. The .pfx deliberately does not.
+$cerPath = Join-Path $PackageDirectory 'SafeUploadTest.cer'
+Export-Certificate -Cert $certificate -FilePath $cerPath -Force | Out-Null
+Write-Host '  SafeUploadTest.cer exportado (parte publica).'
+
+# Address the target VM will reach this machine on. Baked into bootstrap.ps1
+# so the operator does not have to type a URL twice.
+if (-not $AdvertiseAddress) {
+    $AdvertiseAddress = @(Get-NetIPAddress -AddressFamily IPv4 |
+        Where-Object { $_.IPAddress -notlike '127.*' -and $_.IPAddress -notlike '169.254.*' } |
+        Sort-Object -Property InterfaceMetric |
+        Select-Object -ExpandProperty IPAddress -First 1)
+}
+
+if (-not $AdvertiseAddress) {
+    Stop-WithMessage 'Nenhum endereco IPv4 utilizavel. Passe -AdvertiseAddress.'
+}
+
+$sourceUrl = "http://${AdvertiseAddress}:$Port"
+
+# The bootstrap is what the operator runs on the target VM. It carries the
+# URL, fetches the current test script and hands control to it as a file, so
+# that the script's #Requires -RunAsAdministrator still applies - it would be
+# ignored if the script were merely piped into Invoke-Expression.
+$bootstrap = @"
+# Gerado por Publish-SafeUpload.ps1 em $((Get-Date).ToUniversalTime().ToString('o')) UTC.
+# Nao edite: este arquivo e reescrito a cada publicacao.
+`$ErrorActionPreference = 'Stop'
+
+`$sourceUrl = '$sourceUrl'
+`$target = Join-Path `$env:TEMP 'Invoke-SafeUploadTest.ps1'
+
+Write-Host "Baixando o script de teste de `$sourceUrl ..." -ForegroundColor Cyan
+Invoke-WebRequest "`$sourceUrl/Invoke-SafeUploadTest.ps1" -OutFile `$target -UseBasicParsing
+
+# Escopo de processo apenas, e nao exige elevacao: evita que uma politica de
+# execucao restritiva impeca rodar o script recem-baixado.
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
+
+& `$target -SourceUrl `$sourceUrl
+"@
+
+$bootstrapPath = Join-Path $PackageDirectory 'bootstrap.ps1'
+Set-Content -Path $bootstrapPath -Value $bootstrap -Encoding UTF8
+Write-Host '  bootstrap.ps1 gerado.'
+
 Write-Step 'Manifesto'
 
-$artifactNames = @('SafeUpload.sys', 'SafeUpload.inf', 'safeupload.cat', 'SafeUpload.Inspector.exe')
+# bootstrap.ps1 is deliberately absent: it is the entry point, and nothing
+# can verify itself before it runs.
+$artifactNames = @(
+    'SafeUpload.sys',
+    'SafeUpload.inf',
+    'safeupload.cat',
+    'SafeUpload.Inspector.exe',
+    'SafeUploadTest.cer',
+    'Invoke-SafeUploadTest.ps1'
+)
 $artifacts = @()
 
 foreach ($name in $artifactNames) {
@@ -333,12 +398,6 @@ $manifest | ConvertTo-Json -Depth 4 | Set-Content -Path $manifestPath -Encoding 
 
 Write-Host "  manifest.json escrito." -ForegroundColor Green
 
-# The certificate's public half travels with the package: the target VM needs
-# it in Root and TrustedPublisher. The .pfx deliberately does not.
-$cerPath = Join-Path $PackageDirectory 'SafeUploadTest.cer'
-Export-Certificate -Cert $certificate -FilePath $cerPath -Force | Out-Null
-Write-Host '  SafeUploadTest.cer exportado (parte publica).' -ForegroundColor Green
-
 # ---------------------------------------------------------------------------
 
 Write-Host ''
@@ -347,19 +406,20 @@ Write-Host ''
 
 if (-not $Serve) {
     Write-Host 'Para servir para a VM alvo:'
-    Write-Host "  .\Publish-SafeUpload.ps1 -Serve"
+    Write-Host '  .\Publish-SafeUpload.ps1 -Serve'
     return
 }
 
 Write-Step "Servindo $PackageDirectory na porta $Port"
 
-$addresses = @(Get-NetIPAddress -AddressFamily IPv4 |
-    Where-Object { $_.IPAddress -notlike '127.*' } |
-    Select-Object -ExpandProperty IPAddress)
-
-foreach ($address in $addresses) {
-    Write-Host "  Na VM alvo:  .\Invoke-SafeUploadTest.ps1 -SourceUrl http://${address}:$Port" -ForegroundColor Yellow
-}
+Write-Host ''
+Write-Host '  Na VM alvo, em um PowerShell ELEVADO, um comando so:' -ForegroundColor Yellow
+Write-Host ''
+Write-Host "    iex (irm $sourceUrl/bootstrap.ps1)" -ForegroundColor Green
+Write-Host ''
+Write-Host '  Ele baixa a versao atual do script de teste e a executa.' -ForegroundColor DarkGray
+Write-Host '  Para opcoes (-SkipSmokeTest, -SkipDownload), rode depois:' -ForegroundColor DarkGray
+Write-Host '    & $env:TEMP\Invoke-SafeUploadTest.ps1 -SkipDownload -SkipSmokeTest' -ForegroundColor DarkGray
 
 $firewallRule = 'SafeUpload deploy (temp)'
 
