@@ -54,6 +54,10 @@ param(
 
     [string] $TestDirectory = 'C:\safeupload-teste',
 
+    [string] $SourceDirectory = 'C:\safeupload-origem',
+
+    [string] $OutOfScopeDirectory = 'C:\safeupload-fora',
+
     [switch] $SkipDownload,
 
     [switch] $SkipSmokeTest,
@@ -188,6 +192,41 @@ function Start-Inspector {
     finally {
         $ready.Dispose()
     }
+}
+
+function Wait-InspectorLine {
+    <#
+        Waits for a line matching Pattern to appear in the inspector log,
+        and returns the index of that line, or -1.
+
+        Reading the log is file I/O, which goes through the filter - but a
+        .log is not a monitored extension, so the cheap gate in pre-create
+        rejects it before anything expensive happens. That is what makes
+        polling here safe, and it is worth knowing that it depends on the
+        policy not listing .log.
+    #>
+    param(
+        [Parameter(Mandatory)] [string] $LogPath,
+        [Parameter(Mandatory)] [string] $Pattern,
+        [int] $TimeoutSeconds = 5
+    )
+
+    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+
+    while ((Get-Date) -lt $deadline) {
+
+        Start-Sleep -Milliseconds 200
+
+        $lines = @(Get-Content $LogPath -ErrorAction SilentlyContinue)
+
+        for ($i = 0; $i -lt $lines.Count; $i += 1) {
+            if ($lines[$i] -like $Pattern) {
+                return $i
+            }
+        }
+    }
+
+    return -1
 }
 
 # ---------------------------------------------------------------------------
@@ -556,14 +595,32 @@ if (-not (Test-Path $TestDirectory)) {
     New-Item -ItemType Directory -Path $TestDirectory -Force | Out-Null
 }
 
+foreach ($directory in @($SourceDirectory, $OutOfScopeDirectory)) {
+    if (-not (Test-Path $directory)) {
+        New-Item -ItemType Directory -Path $directory -Force | Out-Null
+    }
+}
+
 $allowedFile = Join-Path $TestDirectory 'normal.txt'
 $blockedFile = Join-Path $TestDirectory "$BlockToken.txt"
 
+# Under a monitored SOURCE prefix: a file worth reading to find out whether
+# it is sensitive, rather than a place a file must not reach.
+$sourceFile = Join-Path $SourceDirectory 'documento.txt'
+
+# Under neither list. Monitored extension, ordinary fixed volume, and the
+# driver must ignore it entirely.
+$outOfScopeFile = Join-Path $OutOfScopeDirectory 'ignorado.txt'
+
 Set-Content -Path $allowedFile -Value 'conteudo permitido' -Encoding UTF8
 Set-Content -Path $blockedFile -Value 'conteudo bloqueado' -Encoding UTF8
+Set-Content -Path $sourceFile -Value 'documento de origem' -Encoding UTF8
+Set-Content -Path $outOfScopeFile -Value 'fora de escopo' -Encoding UTF8
 
 Write-Host "  $allowedFile"
 Write-Host "  $blockedFile"
+Write-Host "  $sourceFile"
+Write-Host "  $outOfScopeFile"
 
 Write-Step 'Subindo o inspetor'
 
@@ -602,6 +659,47 @@ try {
         Add-Result -Name "$BlockToken.txt e negado pelo kernel" -Passed $false `
             -Detail "Erro inesperado: $($_.Exception.GetType().Name)"
     }
+    Write-Step 'Caso 3 - escopo de origem'
+
+    # The other half of scope, and the one that starts the chain: a file
+    # here is not a destination, it is something worth reading to find out
+    # whether it is sensitive. Without this the driver would never inspect a
+    # document being opened, and nothing downstream would have anything to
+    # act on.
+    try { Get-Content $sourceFile -Raw -ErrorAction Stop | Out-Null } catch { }
+
+    $sourceLine = Wait-InspectorLine -LogPath $inspectorLog -Pattern '*safeupload-origem*'
+
+    if ($sourceLine -lt 0) {
+
+        Add-Result -Name 'Arquivo sob prefixo de origem e inspecionado' -Passed $false `
+            -Detail 'O inspetor nao recebeu nada para este caminho.'
+    }
+    else {
+
+        # The scope is reported on the line right after the request.
+        $logLines = @(Get-Content $inspectorLog -ErrorAction SilentlyContinue)
+        $scopeLine = if (($sourceLine + 1) -lt $logLines.Count) { $logLines[$sourceLine + 1] } else { '' }
+
+        Add-Result -Name 'Arquivo sob prefixo de origem e inspecionado' -Passed $true
+
+        Add-Result -Name 'O kernel marcou o escopo como origem' -Passed ($scopeLine -like '*origem*') `
+            -Detail $(if ($scopeLine -like '*origem*') { $scopeLine.Trim() } else { "escopo relatado: '$($scopeLine.Trim())'" })
+    }
+
+    Write-Step 'Caso 4 - fora de escopo nao chega ao modo usuario'
+
+    # Same monitored extension, ordinary fixed volume, but under neither the
+    # destination nor the source list. This is what proves the gates reject
+    # rather than merely classify: it must never reach user mode at all.
+    try { Get-Content $outOfScopeFile -Raw -ErrorAction Stop | Out-Null } catch { }
+
+    Start-Sleep -Seconds 2
+
+    $outOfScopeLine = Wait-InspectorLine -LogPath $inspectorLog -Pattern '*safeupload-fora*' -TimeoutSeconds 1
+
+    Add-Result -Name 'Arquivo fora de escopo nao e inspecionado' -Passed ($outOfScopeLine -lt 0) `
+        -Detail $(if ($outOfScopeLine -lt 0) { 'Nada foi enviado ao modo usuario, como esperado.' } else { 'O caminho apareceu no log: o escopo nao esta filtrando.' })
 }
 finally {
 
@@ -609,7 +707,7 @@ finally {
     Stop-Inspector | Out-Null
 }
 
-Write-Step 'Caso 3 - RN-013, falha de inspecao permite'
+Write-Step 'Caso 5 - RN-013, falha de inspecao permite'
 
 # Without a client on the port the driver allows everything. Give the
 # disconnect a moment to land, then confirm the same file opens again.
