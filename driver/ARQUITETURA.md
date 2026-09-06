@@ -249,6 +249,46 @@ detectado, não mal interpretado.
 
 ---
 
+## Pendência conhecida: vazamento de uma alocação no unload
+
+Registrado para não se perder, porque não foi resolvido — apenas deixou de
+reproduzir.
+
+**O que foi observado.** Bugcheck `0xC4` subcódigo `0x62` ("a driver has
+forgotten to free its pool allocations prior to unloading"), com
+`IMAGE_NAME: SafeUpload.sys` e **uma** alocação não liberada. Aconteceu ao
+descarregar o filtro logo depois de matar o inspetor, com o driver ainda
+registrando `IRP_MJ_READ` e cerca de 33 mensagens em voo.
+
+**O que não foi determinado.** Qual alocação. A pilha de alocação que o
+Driver Verifier guarda exige memória de pool, e a VM estava configurada para
+minidump, que não a carrega. Quando houve depurador disponível, o defeito já
+não reproduzia.
+
+**O que foi tentado.** Reprodução com carga concorrente e a porta fechada no
+meio das mensagens em voo, via `Invoke-SafeUploadTest.ps1
+-ReproduceUnloadLeak`, com picos medidos de 8 e de 34 alocações simultâneas —
+acima das 33 do caso original. Nenhuma reproduziu.
+
+**Por que isso não é o mesmo que corrigido.** Entre o travamento e as
+tentativas mudaram três coisas ao mesmo tempo: o gancho de `IRP_MJ_READ`
+saiu, o `InstanceSetup` passou a sempre anexar, e um acesso indevido a
+`FILE_OBJECT.FileName` foi corrigido. Não dá para atribuir o desaparecimento
+a nenhuma delas. Se o vazamento depender de volume de tráfego, ele volta
+quando a v2 aumentar a carga.
+
+**O que fazer se voltar.** Configurar `CrashDumpEnabled = 2` (dump de
+kernel) *antes*, ou manter um depurador anexado, e então
+`!verifier 0x80 SafeUpload.sys` entrega a pilha de alocação. Atenção aos
+parâmetros do `0xC4`: `Arg2` é o nome do driver e `Arg3` é uma estrutura
+interna do Verifier — **nenhum dos dois é o endereço do bloco vazado**.
+
+**Descartado.** Um `0x3B` observado na mesma sessão *não* era deste driver:
+a pilha era inteiramente `condrv!CdCompleteIo` em `conhost.exe`, sem nenhum
+quadro nosso e com o módulo sequer carregado. Não reinvestigar.
+
+---
+
 ## Como medir se funcionou
 
 Contadores expostos por ETW, consultáveis sem depurador:
