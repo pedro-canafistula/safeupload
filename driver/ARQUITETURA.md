@@ -110,7 +110,21 @@ Mudanças em relação à v1:
 
 - **`IRP_MJ_READ` sai.** Era o maior custo da v1: uma ida ao modo usuário por
   leitura. A decisão de origem passa para o `CREATE`, que acontece uma vez
-  por abertura em vez de uma vez por bloco lido.
+  por abertura em vez de uma vez por bloco lido. Um `CREATE` que pede
+  `FILE_READ_DATA` já é a declaração de intenção de ler, e cobre dois casos
+  que o `READ` não cobre: arquivo mapeado em memória, cujas leituras chegam
+  como paging I/O e nunca aparecem, e handle longevo aberto muito antes da
+  leitura.
+
+  **Sob que evidência ele voltaria.** Contaminar na abertura é mais agressivo
+  do que contaminar na leitura efetiva: um processo que abre pedindo leitura
+  e não lê fica contaminado à toa. Se os contadores mostrarem falso positivo
+  demais por esse motivo, o gancho volta — mas não como estava. Volta com
+  `FLTFL_OPERATION_REGISTRATION_SKIP_CACHED_IO` e apoiado no contexto de
+  *handle*: dispara na primeira leitura real de cada handle e, nas seguintes,
+  é um teste de sinalizador. É por isso que os contadores vêm antes da
+  contaminação na ordem de implementação — a escolha é empírica, e sem medir
+  vira palpite.
 - **`IRP_MJ_WRITE` entra**, mas apenas como porta barata. Ele não inspeciona
   nada: apenas testa um sinalizador no contexto do handle. Existe para fechar
   um furo específico — um processo que abre o arquivo de destino *antes* de

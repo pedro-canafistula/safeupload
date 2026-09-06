@@ -42,6 +42,29 @@ SafeUploadIsIgnoredProcess (
     );
 
 static
+BOOLEAN
+SafeUploadMayBeInScope (
+    _In_ PCUNICODE_STRING FileName
+    );
+
+//
+//  Extensions the policy monitors.
+//
+//  TODO: this table is a stand-in. The real list belongs to the policy and
+//  will be pushed down from user mode over the communication port, together
+//  with the monitored path prefixes already in NT form. Until then it
+//  mirrors the defaults in LocalPolicyStore so that kernel and user mode
+//  agree on scope.
+//
+
+static CONST UNICODE_STRING SafeUploadMonitoredExtensions[] = {
+    RTL_CONSTANT_STRING( L".txt" ),
+    RTL_CONSTANT_STRING( L".csv" ),
+    RTL_CONSTANT_STRING( L".docx" ),
+    RTL_CONSTANT_STRING( L".xlsx" )
+};
+
+static
 NTSTATUS
 SafeUploadCopyRequestPath (
     _Inout_ PFLT_CALLBACK_DATA Data,
@@ -492,6 +515,112 @@ Return Value:
 
 
 static
+BOOLEAN
+SafeUploadMayBeInScope (
+    _In_ PCUNICODE_STRING FileName
+    )
+/*++
+
+Routine Description:
+
+    Cheap extension gate.
+
+    This deliberately reads the name the caller passed rather than asking
+    the filter manager to resolve one. Resolving a name may issue I/O and
+    allocate; reading Parameters.Create.TargetFileObject->FileName costs
+    nothing. As a gate that is the right trade: it rejects the overwhelming
+    majority of operations - every .dll, .exe, .log, .dat the system touches
+    - before anything expensive happens, and the few it lets through are
+    resolved properly further down.
+
+    The name here may be relative, or a short name, or absent entirely. That
+    is fine for a gate, as long as an undetermined answer errs towards
+    letting the operation through to the slow path rather than skipping it.
+
+    IRQL: any. Touches no pageable data and issues no I/O.
+
+Arguments:
+
+    FileName - Name as supplied by the caller. May be empty.
+
+Return Value:
+
+    FALSE when the operation certainly falls outside the monitored
+    extensions and can be skipped. TRUE when it matches, or when the name is
+    not conclusive enough to decide here.
+
+--*/
+{
+    UNICODE_STRING extension;
+    USHORT index;
+    USHORT charCount;
+    USHORT dotIndex;
+    ULONG entry;
+
+    if (FileName == NULL || FileName->Length == 0 || FileName->Buffer == NULL) {
+
+        //
+        //  Nothing to judge - an open by file ID, for instance. Let it reach
+        //  the slow path, which resolves the real name.
+        //
+
+        return TRUE;
+    }
+
+    charCount = (USHORT) (FileName->Length / sizeof( WCHAR ));
+    dotIndex = 0;
+
+    //
+    //  Walk back to the last dot of the final component. A separator ends
+    //  the search: a dot in a directory name is not an extension.
+    //
+
+    for (index = charCount; index > 0; index -= 1) {
+
+        WCHAR current = FileName->Buffer[index - 1];
+
+        if (current == L'\\' || current == L':') {
+
+            break;
+        }
+
+        if (current == L'.') {
+
+            dotIndex = index - 1;
+            break;
+        }
+    }
+
+    if (dotIndex == 0) {
+
+        //
+        //  Final component carries no extension. The policy only monitors
+        //  named extensions, so this is out of scope by the same rule user
+        //  mode would apply.
+        //
+
+        return FALSE;
+    }
+
+    extension.Buffer = &FileName->Buffer[dotIndex];
+    extension.Length = (USHORT) ((charCount - dotIndex) * sizeof( WCHAR ));
+    extension.MaximumLength = extension.Length;
+
+    for (entry = 0; entry < RTL_NUMBER_OF( SafeUploadMonitoredExtensions ); entry += 1) {
+
+        if (RtlCompareUnicodeString( &extension,
+                                     &SafeUploadMonitoredExtensions[entry],
+                                     TRUE ) == 0) {
+
+            return TRUE;
+        }
+    }
+
+    return FALSE;
+}
+
+
+static
 NTSTATUS
 SafeUploadCopyRequestPath (
     _Inout_ PFLT_CALLBACK_DATA Data,
@@ -834,6 +963,7 @@ Return Value:
 --*/
 {
     PFILE_OBJECT targetFileObject;
+    PIO_SECURITY_CONTEXT securityContext;
 
     UNREFERENCED_PARAMETER( FltObjects );
     UNREFERENCED_PARAMETER( CompletionContext = NULL );
@@ -869,7 +999,32 @@ Return Value:
         return FLT_PREOP_SUCCESS_NO_CALLBACK;
     }
 
+    //
+    //  The single most effective gate in the driver.
+    //
+    //  An operation that does not ask for the file's data cannot leak it,
+    //  and the overwhelming majority of creates on a running Windows ask
+    //  for nothing more than attributes or metadata - stat calls, directory
+    //  enumeration follow-ups, delete checks, sharing probes. All of them
+    //  end here, in two bit tests, before any context lookup, any name
+    //  resolution and any allocation.
+    //
+
+    securityContext = Data->Iopb->Parameters.Create.SecurityContext;
+
+    if (securityContext == NULL ||
+        !FlagOn( securityContext->DesiredAccess,
+                 FILE_READ_DATA | FILE_WRITE_DATA | FILE_APPEND_DATA )) {
+
+        return FLT_PREOP_SUCCESS_NO_CALLBACK;
+    }
+
     if (SafeUploadIsIgnoredProcess( FltGetRequestorProcessId( Data ) )) {
+
+        return FLT_PREOP_SUCCESS_NO_CALLBACK;
+    }
+
+    if (!SafeUploadMayBeInScope( &targetFileObject->FileName )) {
 
         return FLT_PREOP_SUCCESS_NO_CALLBACK;
     }
@@ -914,7 +1069,6 @@ Return Value:
 
 --*/
 {
-    UNREFERENCED_PARAMETER( FltObjects );
     UNREFERENCED_PARAMETER( CompletionContext = NULL );
 
     if (KeGetCurrentIrql() != PASSIVE_LEVEL) {
@@ -923,6 +1077,22 @@ Return Value:
     }
 
     if (SafeUploadIsIgnoredProcess( FltGetRequestorProcessId( Data ) )) {
+
+        return FLT_PREOP_SUCCESS_NO_CALLBACK;
+    }
+
+    //
+    //  Same extension gate as pre-create, over the name the file was opened
+    //  under. This is the callback that floods: it fires once per read, so
+    //  rejecting out-of-scope files here without resolving a name is worth
+    //  more than anywhere else in the driver.
+    //
+    //  This whole callback goes away in a later step, when the source
+    //  decision moves to create and is cached in the stream context.
+    //
+
+    if (FltObjects->FileObject == NULL ||
+        !SafeUploadMayBeInScope( &FltObjects->FileObject->FileName )) {
 
         return FLT_PREOP_SUCCESS_NO_CALLBACK;
     }
