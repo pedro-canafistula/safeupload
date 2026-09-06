@@ -116,8 +116,11 @@ $cert = New-SelfSignedCertificate `
 $cert.Thumbprint
 ```
 
-Exportar (o comando pede a senha do `.pfx` no prompt; escolha uma e guarde,
-ela é usada no `signtool`):
+Exportar. O `.cer` é a parte pública e vai para a VM alvo. O `.pfx` é a cópia
+portátil da chave privada e serve para assinar de **outra** máquina — nesta
+aqui a assinatura sai direto do repositório de certificados (passo A.5), sem
+senha. Se a senha do `.pfx` se perder, basta reexportar: a chave foi criada
+com `-KeyExportPolicy Exportable`.
 
 ```powershell
 $pfxPassword = Read-Host -AsSecureString "Senha para o PFX"
@@ -135,11 +138,29 @@ O catálogo (`.cat`) guarda o hash dos arquivos listados no INF. Se você
 assinar o `.sys` **depois** de gerar o `.cat`, o hash muda e o catálogo passa
 a estar errado. A ordem correta é:
 
+Os comandos abaixo assinam **direto do repositório de certificados**, por
+impressão digital. Não há senha envolvida. O `.pfx` é apenas uma cópia
+portátil da chave, útil para assinar de outra máquina — um servidor de build,
+por exemplo — e desnecessário aqui. Perder a senha dele não impede assinar,
+desde que o certificado continue no repositório.
+
+Para descobrir a impressão digital:
+
+```powershell
+Get-ChildItem Cert:\CurrentUser\My | Where-Object { $_.Subject -like "*SafeUpload*" } | Select-Object Thumbprint, Subject, NotAfter, HasPrivateKey
+```
+
+> **Assinar muda o arquivo.** A assinatura é embutida no `.sys`, o que altera
+> o tamanho e o hash. Qualquer conferência de integridade tem que usar o hash
+> do artefato **assinado**, em `C:\safeupload-pkg`, e nunca o da saída de
+> build em `driver\x64\Debug`. Confundir os dois faz uma cópia perfeitamente
+> boa parecer corrompida.
+
 **1) Assinar o driver (assinatura embutida — é o que o kernel valida na
 carga):**
 
 ```powershell
-& "C:\Program Files (x86)\Windows Kits\10\bin\10.0.28000.0\x64\signtool.exe" sign /v /fd sha256 /f C:\safeupload-cert\SafeUploadTest.pfx /p SUA_SENHA_DO_PFX C:\safeupload-pkg\SafeUpload.sys
+& "C:\Program Files (x86)\Windows Kits\10\bin\10.0.28000.0\x64\signtool.exe" sign /v /fd sha256 /sha1 IMPRESSAO_DIGITAL_DO_CERTIFICADO C:\safeupload-pkg\SafeUpload.sys
 ```
 
 **2) Gerar o catálogo:**
@@ -155,7 +176,7 @@ o Windows não diferencia maiúsculas em nome de arquivo, então está correto).
 **3) Assinar o catálogo (é o que o instalador do INF valida):**
 
 ```powershell
-& "C:\Program Files (x86)\Windows Kits\10\bin\10.0.28000.0\x64\signtool.exe" sign /v /fd sha256 /f C:\safeupload-cert\SafeUploadTest.pfx /p SUA_SENHA_DO_PFX C:\safeupload-pkg\safeupload.cat
+& "C:\Program Files (x86)\Windows Kits\10\bin\10.0.28000.0\x64\signtool.exe" sign /v /fd sha256 /sha1 IMPRESSAO_DIGITAL_DO_CERTIFICADO C:\safeupload-pkg\safeupload.cat
 ```
 
 **4) Conferir as duas assinaturas:**
