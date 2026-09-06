@@ -409,7 +409,9 @@ Return Value:
     }
     else {
 
-        SafeUploadTrace( "attached to volume, kind %u\n", (ULONG) volumeKind );
+        SafeUploadTrace( "attached to volume, kind %s\n",
+                         volumeKind == SafeUploadVolumeRemovable ? "removable" :
+                         volumeKind == SafeUploadVolumeNetwork ? "network" : "fixed" );
     }
 
     return STATUS_SUCCESS;

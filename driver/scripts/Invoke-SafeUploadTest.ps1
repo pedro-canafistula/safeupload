@@ -344,9 +344,27 @@ if (-not (Test-FilterLoaded)) {
 
 Add-Result -Name 'Filtro carregado' -Passed $true
 
-$instances = @(& fltmc.exe instances -f $FilterName 2>&1 |
-    Select-String -Pattern '^\s*\S+\s+\S+\s+\d+' |
-    ForEach-Object { $_.Line.Trim() })
+# Do not try to match the column layout of "fltmc instances": it varies with
+# the width of the volume names and gained columns between Windows releases.
+# The dashed separator is the reliable landmark - everything after it is a
+# row.
+$fltmcOutput = @(& fltmc.exe instances -f $FilterName 2>&1 | ForEach-Object { "$_" })
+$separatorIndex = -1
+
+for ($i = 0; $i -lt $fltmcOutput.Count; $i += 1) {
+    if ($fltmcOutput[$i] -match '^\s*-{4,}') {
+        $separatorIndex = $i
+        break
+    }
+}
+
+$instances = @()
+
+if ($separatorIndex -ge 0) {
+    $instances = @($fltmcOutput[($separatorIndex + 1)..($fltmcOutput.Count - 1)] |
+        Where-Object { $_.Trim().Length -gt 0 } |
+        ForEach-Object { $_.Trim() })
+}
 
 Write-Host ''
 Write-Host "  Instancias anexadas: $($instances.Count)"
