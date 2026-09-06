@@ -56,7 +56,9 @@ param(
 
     [switch] $SkipDownload,
 
-    [switch] $SkipSmokeTest
+    [switch] $SkipSmokeTest,
+
+    [switch] $ReproduceUnloadLeak
 )
 
 $ErrorActionPreference = 'Stop'
@@ -171,6 +173,105 @@ foreach ($storeName in @('Root', 'TrustedPublisher')) {
     }
 
     Write-Host "  Certificado presente em $storeName."
+}
+
+# ---------------------------------------------------------------------------
+# 1b. Reproduce the unload pool leak
+# ---------------------------------------------------------------------------
+
+if ($ReproduceUnloadLeak) {
+
+    # Deliberately touches nothing on disk: no download, no binary swap. The
+    # point is to reproduce a bugcheck in the driver that is already
+    # installed, and replacing it would change the thing under test.
+    #
+    # Bugcheck 0xC4 subcode 0x62 is raised by Driver Verifier when a driver
+    # unloads with pool still allocated. It only fires if allocations
+    # actually happened, and the driver allocates nothing while no inspector
+    # holds the port - which is why a plain load/unload comes back clean.
+    # This sequence connects an inspector, drives traffic through it, and
+    # only then unloads.
+    #
+    # Run it with a kernel debugger attached: the machine breaks into the
+    # debugger instead of bugchecking, and the pool block is still readable.
+
+    Write-Step 'Reproduzindo o vazamento de pool no unload'
+
+    if (-not (Test-FilterLoaded)) {
+        Write-Host '  Carregando o filtro.'
+        & fltmc.exe load $FilterName 2>&1 | ForEach-Object { Write-Host "  $_" }
+
+        if (-not (Test-FilterLoaded)) {
+            Stop-WithMessage 'O filtro nao carregou.'
+        }
+    }
+
+    Write-Host '  Filtro carregado.'
+
+    if (-not (Test-Path $TestDirectory)) {
+        New-Item -ItemType Directory -Path $TestDirectory -Force | Out-Null
+    }
+
+    $stressFile = Join-Path $TestDirectory 'normal.txt'
+    Set-Content -Path $stressFile -Value 'conteudo de teste' -Encoding UTF8
+
+    $inspectorPath = Join-Path $StagingDirectory $InspectorFileName
+    $inspectorLog = Join-Path $StagingDirectory 'inspector.log'
+    Remove-Item $inspectorLog -Force -ErrorAction SilentlyContinue
+
+    Write-Host '  Subindo o inspetor.'
+
+    $inspector = Start-Process -FilePath $inspectorPath -NoNewWindow -PassThru `
+        -RedirectStandardOutput $inspectorLog
+
+    $connected = $false
+
+    foreach ($attempt in 1..40) {
+        Start-Sleep -Milliseconds 250
+
+        if (Test-Path $inspectorLog) {
+            $log = Get-Content $inspectorLog -Raw -ErrorAction SilentlyContinue
+            if ($log -and $log -match 'Conectado') {
+                $connected = $true
+                break
+            }
+        }
+
+        if ($inspector.HasExited) {
+            break
+        }
+    }
+
+    if (-not $connected) {
+        Stop-WithMessage 'O inspetor nao conectou na porta.'
+    }
+
+    Write-Host '  Inspetor conectado. Gerando I/O.'
+
+    foreach ($round in 1..40) {
+        Get-Content $stressFile -Raw -ErrorAction SilentlyContinue | Out-Null
+    }
+
+    Write-Host '  Encerrando o inspetor.'
+    Stop-Inspector | Out-Null
+
+    Start-Sleep -Seconds 1
+
+    Write-Host ''
+    Write-Host '  Descarregando. Se o vazamento existir, o bugcheck e agora.' -ForegroundColor Yellow
+    Write-Host ''
+
+    & fltmc.exe unload $FilterName 2>&1 | ForEach-Object { Write-Host "  $_" }
+
+    if (Test-FilterLoaded) {
+        Write-Host '  O filtro continua carregado - o unload foi recusado.' -ForegroundColor Red
+    }
+    else {
+        Write-Host '  Descarregado sem bugcheck.' -ForegroundColor Green
+        Write-Host '  O caminho de alocacao exercitado aqui nao vaza.' -ForegroundColor Green
+    }
+
+    return
 }
 
 # ---------------------------------------------------------------------------
