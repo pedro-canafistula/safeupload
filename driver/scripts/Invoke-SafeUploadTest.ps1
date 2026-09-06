@@ -60,6 +60,8 @@ param(
 
     [switch] $ReproduceUnloadLeak,
 
+    [switch] $KeepLoaded,
+
     [int] $StressProcesses = 8
 )
 
@@ -654,27 +656,65 @@ if (Test-Path $inspectorLog) {
 
 Write-Step 'Driver Verifier'
 
-$verifierOutput = & verifier.exe /query 2>&1 | Out-String
+# Pool has to be checked with the filter UNLOADED, not while it is running.
+#
+# An earlier version asserted "current allocations == 0" with the driver
+# still loaded. That was valid only while the driver held nothing long
+# lived; since the policy arrived it legitimately keeps one allocation - the
+# policy snapshot - for as long as it is loaded, and the assertion started
+# reporting a leak that was not there.
+#
+# Unloading first is also the stronger test: bugcheck 0xC4 subcode 0x62 is
+# exactly "pool still allocated at unload", so this checks the same
+# condition the Verifier itself would bugcheck on.
 
-if ($verifierOutput -match 'SafeUpload\.sys') {
-    $peak = [regex]::Match($verifierOutput, 'Peak Pool Allocations:\s*\(\s*(\d+)')
-    $peakBytes = [regex]::Match($verifierOutput, 'Peak Pool Bytes:\s*\(\s*(\d+)')
-    $current = [regex]::Match($verifierOutput, 'Current Pool Allocations:\s*\(\s*(\d+)')
+if ($KeepLoaded) {
 
-    if ($peak.Success) { Write-Host "  Pico de alocacoes  : $($peak.Groups[1].Value)" }
-    if ($peakBytes.Success) { Write-Host "  Pico em bytes      : $($peakBytes.Groups[1].Value)" }
-
-    if ($current.Success) {
-        $currentValue = [int] $current.Groups[1].Value
-        Write-Host "  Alocacoes atuais   : $currentValue"
-
-        Add-Result -Name 'Sem vazamento de pool' -Passed ($currentValue -eq 0) `
-            -Detail $(if ($currentValue -eq 0) { 'Tudo que foi alocado foi liberado.' } else { "$currentValue alocacoes pendentes." })
-    }
+    Write-Host '  Filtro mantido carregado a pedido: verificacao de pool pulada.' -ForegroundColor Yellow
+    Write-Host '  Com o driver carregado ha alocacoes de vida longa (a politica),' -ForegroundColor DarkGray
+    Write-Host '  entao "alocacoes atuais" nao diz nada sobre vazamento.' -ForegroundColor DarkGray
 }
 else {
-    Write-Host '  O Driver Verifier nao esta instrumentando este driver.' -ForegroundColor Yellow
-    Write-Host '  Para ligar:  verifier /standard /driver SafeUpload.sys   e reiniciar.' -ForegroundColor Yellow
+
+    Write-Host '  Descarregando o filtro para conferir o pool.'
+
+    & fltmc.exe unload $FilterName 2>&1 | ForEach-Object { Write-Host "  $_" }
+
+    if (Test-FilterLoaded) {
+
+        Add-Result -Name 'Filtro descarregado' -Passed $false `
+            -Detail 'O unload foi recusado; nao da para avaliar o pool.'
+    }
+    else {
+
+        Add-Result -Name 'Filtro descarregado' -Passed $true
+
+        $verifierOutput = & verifier.exe /query 2>&1 | Out-String
+
+        if ($verifierOutput -match 'SafeUpload\.sys') {
+
+            $peak = [regex]::Match($verifierOutput, 'Peak Pool Allocations:\s*\(\s*(\d+)')
+            $peakBytes = [regex]::Match($verifierOutput, 'Peak Pool Bytes:\s*\(\s*(\d+)')
+            $current = [regex]::Match($verifierOutput, 'Current Pool Allocations:\s*\(\s*(\d+)')
+
+            if ($peak.Success) { Write-Host "  Pico de alocacoes  : $($peak.Groups[1].Value)" }
+            if ($peakBytes.Success) { Write-Host "  Pico em bytes      : $($peakBytes.Groups[1].Value)" }
+
+            if ($current.Success) {
+
+                $currentValue = [int] $current.Groups[1].Value
+                Write-Host "  Alocacoes atuais   : $currentValue"
+
+                Add-Result -Name 'Sem vazamento de pool apos o unload' -Passed ($currentValue -eq 0) `
+                    -Detail $(if ($currentValue -eq 0) { 'Tudo que foi alocado foi liberado.' } else { "$currentValue alocacoes pendentes." })
+            }
+        }
+        else {
+
+            Write-Host '  O Driver Verifier nao esta instrumentando este driver.' -ForegroundColor Yellow
+            Write-Host '  Para ligar:  verifier /standard /driver SafeUpload.sys   e reiniciar.' -ForegroundColor Yellow
+        }
+    }
 }
 
 # ---------------------------------------------------------------------------
@@ -700,5 +740,13 @@ if ($failed.Count -gt 0) {
     exit 1
 }
 
-Write-Host 'Tudo passou. O filtro continua carregado.' -ForegroundColor Green
-Write-Host 'Para descarregar:  fltmc unload SafeUpload' -ForegroundColor DarkGray
+Write-Host 'Tudo passou.' -ForegroundColor Green
+
+if ($KeepLoaded) {
+    Write-Host 'O filtro continua carregado.' -ForegroundColor DarkGray
+    Write-Host 'Para descarregar:  fltmc unload SafeUpload' -ForegroundColor DarkGray
+}
+else {
+    Write-Host 'O filtro foi descarregado ao final, para a verificacao de pool.' -ForegroundColor DarkGray
+    Write-Host 'Para carregar de novo:  fltmc load SafeUpload' -ForegroundColor DarkGray
+}
