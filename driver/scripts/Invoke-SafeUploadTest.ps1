@@ -104,6 +104,13 @@ function Add-Result {
 
 function Stop-WithMessage {
     param([string] $Text)
+
+    # Never leave the inspector running behind us. It holds the port, which
+    # makes the next unload fail, and it holds its own image open, which
+    # makes the next download fail with a sharing violation - a failure that
+    # looks nothing like its cause.
+    try { Stop-Inspector | Out-Null } catch { }
+
     Write-Host ''
     Write-Host "ERRO: $Text" -ForegroundColor Red
     exit 1
@@ -130,6 +137,8 @@ function Stop-Inspector {
     if ($processes.Count -gt 0) {
         Start-Sleep -Milliseconds 500
     }
+
+    return $processes.Count
 }
 
 # ---------------------------------------------------------------------------
@@ -170,6 +179,15 @@ foreach ($storeName in @('Root', 'TrustedPublisher')) {
 
 if (-not (Test-Path $StagingDirectory)) {
     New-Item -ItemType Directory -Path $StagingDirectory -Force | Out-Null
+}
+
+# Before the download, not after: the inspector keeps its own image open, so
+# a leftover process from an earlier run makes overwriting the .exe fail with
+# a sharing violation.
+Write-Step 'Encerrando execucao anterior'
+
+if ((Stop-Inspector) -eq 0) {
+    Write-Host '  Nenhum inspetor pendente.'
 }
 
 if (-not $SkipDownload) {
@@ -243,7 +261,7 @@ foreach ($expected in $manifest.files) {
 
 Write-Step 'Descarregando o filtro'
 
-Stop-Inspector
+Stop-Inspector | Out-Null
 
 if (Test-FilterLoaded) {
     & fltmc.exe unload $FilterName 2>&1 | ForEach-Object { Write-Host "  $_" }
@@ -440,7 +458,7 @@ try {
 finally {
 
     Write-Step 'Encerrando o inspetor'
-    Stop-Inspector
+    Stop-Inspector | Out-Null
 }
 
 Write-Step 'Caso 3 - RN-013, falha de inspecao permite'
