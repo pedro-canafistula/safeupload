@@ -249,6 +249,28 @@ detectado, não mal interpretado.
 
 ---
 
+## Pendência conhecida: a negação ainda não é de zero byte
+
+Enquanto a contaminação não existir, a decisão de destino também acontece no
+pós-create e a negação é `FltCancelFileOpen`. Isso é mais fraco do que o
+desenho promete, e a diferença importa.
+
+`FltCancelFileOpen` desfaz a abertura — o chamador nunca recebe um handle,
+então **nenhum conteúdo vaza** — mas **não desfaz os efeitos colaterais do
+create**. Uma abertura com `FILE_CREATE` ou `FILE_OVERWRITE` pode já ter
+criado ou truncado o arquivo no destino antes de o pós-create ser chamado.
+Na prática: pode ficar um arquivo vazio, ou um arquivo existente truncado,
+no pendrive.
+
+É exatamente por isso que o desenho põe a decisão de destino no
+**pré-create**: lá ela é uma consulta na tabela de contaminação, não precisa
+do modo usuário, retorna `FLT_PREOP_COMPLETE` e nada chega a acontecer.
+
+Some quando a contaminação entrar. Até lá, quem testar com pendrive vai ver
+o arquivo vazio aparecer e achar que é bug novo — não é, é este.
+
+---
+
 ## Pendência conhecida: vazamento de uma alocação no unload
 
 Registrado para não se perder, porque não foi resolvido — apenas deixou de

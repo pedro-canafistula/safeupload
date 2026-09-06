@@ -404,9 +404,24 @@ if (-not $SkipDownload) {
     Write-Step "Baixando de $SourceUrl"
 
     function Get-PackageFile {
-        param([Parameter(Mandatory)] [string] $Name)
+        param(
+            [Parameter(Mandatory)] [string] $Name,
+            [string] $ExpectedHash
+        )
 
         $destination = Join-Path $StagingDirectory $Name
+
+        # Skip what is already here and already correct. Most of a package
+        # does not change between runs - the INF, the catalog and the
+        # certificate usually survive many builds - and re-fetching them
+        # costs time and, worse, re-opens files the system may be holding.
+        if ($ExpectedHash -and (Test-Path $destination)) {
+
+            if ((Get-FileHash $destination -Algorithm SHA256).Hash -eq $ExpectedHash) {
+                Write-Host "  $Name (ja atualizado)"
+                return
+            }
+        }
 
         try {
             Invoke-WebRequest -Uri "$SourceUrl/$Name" -OutFile $destination -UseBasicParsing -TimeoutSec 30
@@ -425,7 +440,7 @@ if (-not $SkipDownload) {
     $downloadManifest = Get-Content (Join-Path $StagingDirectory 'manifest.json') -Raw | ConvertFrom-Json
 
     foreach ($file in $downloadManifest.files) {
-        Get-PackageFile -Name $file.name
+        Get-PackageFile -Name $file.name -ExpectedHash $file.sha256
     }
 }
 
