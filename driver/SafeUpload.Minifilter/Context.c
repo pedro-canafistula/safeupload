@@ -40,6 +40,7 @@ SafeUploadStreamContextCleanup (
     #pragma alloc_text(PAGE, SafeUploadClassifyVolume)
     #pragma alloc_text(PAGE, SafeUploadSetInstanceContext)
     #pragma alloc_text(PAGE, SafeUploadGetOrCreateStreamContext)
+    #pragma alloc_text(PAGE, SafeUploadMarkHandleForWrite)
 #endif
 
 ///////////////////////////////////////////////////////////////////////////
@@ -70,6 +71,16 @@ CONST FLT_CONTEXT_REGISTRATION SafeUploadContextRegistration[] = {
       0,
       SafeUploadStreamContextCleanup,
       sizeof( SAFEUPLOAD_STREAM_CONTEXT ),
+      SAFEUPLOAD_POOL_TAG },
+
+    //
+    //  Per handle, and owning nothing: no cleanup callback needed.
+    //
+
+    { FLT_STREAMHANDLE_CONTEXT,
+      0,
+      NULL,
+      sizeof( SAFEUPLOAD_STREAMHANDLE_CONTEXT ),
       SAFEUPLOAD_POOL_TAG },
 
     { FLT_CONTEXT_END }
@@ -402,4 +413,114 @@ Return Value:
     }
 
     return status;
+}
+
+
+NTSTATUS
+SafeUploadMarkHandleForWrite (
+    _In_ PCFLT_RELATED_OBJECTS FltObjects
+    )
+/*++
+
+Routine Description:
+
+    Marks the handle as opened for write, so that cleanup knows to
+    invalidate the file's cached verdict.
+
+    The alternative would be to hook every write, which costs a callback per
+    operation to learn something a single flag at open time already says.
+    It is deliberately conservative: a handle opened for write but never
+    written still invalidates the cache, which costs one extra inspection
+    and never returns a stale answer.
+
+    IRQL: PASSIVE_LEVEL. Called from post-create.
+
+Arguments:
+
+    FltObjects - Objects for the create that just completed.
+
+Return Value:
+
+    STATUS_SUCCESS, or the failing status. Failure is not fatal: it only
+    means the file will be re-inspected more often than strictly necessary.
+
+--*/
+{
+    PSAFEUPLOAD_STREAMHANDLE_CONTEXT handleContext = NULL;
+    NTSTATUS status;
+
+    PAGED_CODE();
+
+    if (!FltSupportsStreamHandleContexts( FltObjects->FileObject )) {
+
+        return STATUS_NOT_SUPPORTED;
+    }
+
+    status = FltAllocateContext( FltObjects->Filter,
+                                 FLT_STREAMHANDLE_CONTEXT,
+                                 sizeof( SAFEUPLOAD_STREAMHANDLE_CONTEXT ),
+                                 NonPagedPool,
+                                 (PFLT_CONTEXT *) &handleContext );
+
+    if (!NT_SUCCESS( status )) {
+
+        return status;
+    }
+
+    handleContext->OpenedForWrite = TRUE;
+
+    status = FltSetStreamHandleContext( FltObjects->Instance,
+                                        FltObjects->FileObject,
+                                        FLT_SET_CONTEXT_REPLACE_IF_EXISTS,
+                                        handleContext,
+                                        NULL );
+
+    //
+    //  Released on both paths: on success the handle holds its own
+    //  reference, and on failure this was the only one.
+    //
+
+    FltReleaseContext( handleContext );
+
+    return status;
+}
+
+
+BOOLEAN
+SafeUploadHandleWasOpenedForWrite (
+    _In_ PCFLT_RELATED_OBJECTS FltObjects
+    )
+/*++
+
+Routine Description:
+
+    Whether this handle carries the write marker set at open time.
+
+    IRQL: <= APC_LEVEL.
+
+Arguments:
+
+    FltObjects - Objects for the operation in progress.
+
+Return Value:
+
+    TRUE when the handle was opened for write.
+
+--*/
+{
+    PSAFEUPLOAD_STREAMHANDLE_CONTEXT handleContext = NULL;
+    BOOLEAN openedForWrite = FALSE;
+    NTSTATUS status;
+
+    status = FltGetStreamHandleContext( FltObjects->Instance,
+                                        FltObjects->FileObject,
+                                        (PFLT_CONTEXT *) &handleContext );
+
+    if (NT_SUCCESS( status )) {
+
+        openedForWrite = handleContext->OpenedForWrite;
+        FltReleaseContext( handleContext );
+    }
+
+    return openedForWrite;
 }

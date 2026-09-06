@@ -203,6 +203,18 @@ typedef struct _SAFEUPLOAD_INSTANCE_CONTEXT {
 } SAFEUPLOAD_INSTANCE_CONTEXT, *PSAFEUPLOAD_INSTANCE_CONTEXT;
 
 //
+//  Per-handle marker. Its only job is to remember, at cleanup time, that
+//  this particular handle was opened for write - which is when the cached
+//  verdict for the file has to be thrown away.
+//
+
+typedef struct _SAFEUPLOAD_STREAMHANDLE_CONTEXT {
+
+    BOOLEAN OpenedForWrite;
+
+} SAFEUPLOAD_STREAMHANDLE_CONTEXT, *PSAFEUPLOAD_STREAMHANDLE_CONTEXT;
+
+//
 //  Per-file cache of the last inspection.
 //
 //  This context belongs to the file, not to a handle: it outlives the
@@ -224,6 +236,23 @@ typedef struct _SAFEUPLOAD_STREAM_CONTEXT {
     //
 
     EX_PUSH_LOCK Lock;
+
+    //
+    //  Whether this file has already been judged to be in or out of scope.
+    //
+    //  Cached separately from the verdict because deciding scope costs a
+    //  name resolution, and a file that is out of scope is never asked
+    //  about again - which is the common case for most of what a machine
+    //  opens.
+    //
+
+    BOOLEAN ScopeEvaluated;
+
+    //
+    //  SAFEUPLOAD_REQUEST_FLAG_SCOPE_*, or zero when out of scope.
+    //
+
+    UINT32 ScopeFlags;
 
     //
     //  Whether Verdict and Categories mean anything yet.
@@ -273,6 +302,16 @@ SafeUploadSetInstanceContext (
     _In_ PCFLT_RELATED_OBJECTS FltObjects,
     _In_ DEVICE_TYPE VolumeDeviceType,
     _Out_ PSAFEUPLOAD_VOLUME_KIND VolumeKind
+    );
+
+NTSTATUS
+SafeUploadMarkHandleForWrite (
+    _In_ PCFLT_RELATED_OBJECTS FltObjects
+    );
+
+BOOLEAN
+SafeUploadHandleWasOpenedForWrite (
+    _In_ PCFLT_RELATED_OBJECTS FltObjects
     );
 
 NTSTATUS
@@ -331,6 +370,21 @@ SafeUploadInstanceQueryTeardown (
 
 FLT_PREOP_CALLBACK_STATUS
 SafeUploadPreCreate (
+    _Inout_ PFLT_CALLBACK_DATA Data,
+    _In_ PCFLT_RELATED_OBJECTS FltObjects,
+    _Flt_CompletionContext_Outptr_ PVOID *CompletionContext
+    );
+
+FLT_POSTOP_CALLBACK_STATUS
+SafeUploadPostCreate (
+    _Inout_ PFLT_CALLBACK_DATA Data,
+    _In_ PCFLT_RELATED_OBJECTS FltObjects,
+    _In_opt_ PVOID CompletionContext,
+    _In_ FLT_POST_OPERATION_FLAGS Flags
+    );
+
+FLT_PREOP_CALLBACK_STATUS
+SafeUploadPreCleanup (
     _Inout_ PFLT_CALLBACK_DATA Data,
     _In_ PCFLT_RELATED_OBJECTS FltObjects,
     _Flt_CompletionContext_Outptr_ PVOID *CompletionContext

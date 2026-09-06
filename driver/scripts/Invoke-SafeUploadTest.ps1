@@ -694,7 +694,43 @@ try {
             -Detail $(if ($scopeLine -match 'escopo:.*origem') { $scopeLine.Trim() } else { "linha seguinte: '$($scopeLine.Trim())'" })
     }
 
-    Write-Step 'Caso 4 - fora de escopo nao chega ao modo usuario'
+    Write-Step 'Caso 4 - o veredito e reaproveitado do cache'
+
+    # The property the whole design rests on: one round trip per file
+    # version, not one per open. Reading the same file again must produce no
+    # new request at all - the driver answers from the stream context.
+    foreach ($round in 1..3) {
+        try { Get-Content $sourceFile -Raw -ErrorAction Stop | Out-Null } catch { }
+    }
+
+    Start-Sleep -Seconds 2
+
+    $requestPattern = '^\[\d+\].*safeupload-origem.*documento\.txt'
+    $requestCount = @(Get-Content $inspectorLog -ErrorAction SilentlyContinue |
+        Where-Object { $_ -match $requestPattern }).Count
+
+    Add-Result -Name 'Quatro aberturas produzem uma unica consulta' -Passed ($requestCount -eq 1) `
+        -Detail "$requestCount requisicao(oes) no log para este arquivo."
+
+    Write-Step 'Caso 5 - escrita invalida o cache'
+
+    # A handle opened for write marks the file dirty on cleanup, so the next
+    # open has to ask again rather than trust a verdict computed against
+    # content that no longer exists.
+    Add-Content -Path $sourceFile -Value 'linha nova'
+    Start-Sleep -Milliseconds 500
+
+    try { Get-Content $sourceFile -Raw -ErrorAction Stop | Out-Null } catch { }
+
+    Start-Sleep -Seconds 2
+
+    $requestCountAfterWrite = @(Get-Content $inspectorLog -ErrorAction SilentlyContinue |
+        Where-Object { $_ -match $requestPattern }).Count
+
+    Add-Result -Name 'Apos escrita, o arquivo e consultado de novo' -Passed ($requestCountAfterWrite -gt $requestCount) `
+        -Detail "$requestCountAfterWrite requisicao(oes) apos a escrita, contra $requestCount antes."
+
+    Write-Step 'Caso 6 - fora de escopo nao chega ao modo usuario'
 
     # Same monitored extension, ordinary fixed volume, but under neither the
     # destination nor the source list. This is what proves the gates reject
@@ -715,7 +751,7 @@ finally {
     Stop-Inspector | Out-Null
 }
 
-Write-Step 'Caso 5 - RN-013, falha de inspecao permite'
+Write-Step 'Caso 7 - RN-013, falha de inspecao permite'
 
 # Without a client on the port the driver allows everything. Give the
 # disconnect a moment to land, then confirm the same file opens again.
