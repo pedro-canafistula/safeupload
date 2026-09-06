@@ -385,34 +385,31 @@ Return Value:
 
     status = SafeUploadSetInstanceContext( FltObjects, VolumeDeviceType, &volumeKind );
 
-    if (!NT_SUCCESS( status )) {
+    if (!NT_SUCCESS( status ) || volumeKind == SafeUploadVolumeUnknown) {
 
         //
-        //  Without the context every later decision on this volume would be
-        //  taken without knowing what kind of volume it is. Declining the
-        //  attachment means this volume is simply not filtered, which is the
-        //  fail-open outcome RN-013 asks for.
+        //  Attach anyway.
+        //
+        //  An earlier version declined the attachment here, on the reasoning
+        //  that a volume we cannot classify is a volume we cannot decide
+        //  about. That reasoning was wrong in practice: it turns a
+        //  recoverable, per-volume problem into a filter that is loaded,
+        //  visible in "fltmc filters", and attached to nothing at all - the
+        //  worst possible failure mode, because it looks like it is working.
+        //
+        //  Staying attached with an unknown classification is safe. Nothing
+        //  is treated as a monitored destination unless it was positively
+        //  identified as one, so an unclassified volume behaves as out of
+        //  scope. That is the same fail-open outcome, without the cliff.
         //
 
-        SafeUploadTrace( "instance context failed, not attaching, status 0x%08X\n",
+        SafeUploadTrace( "volume not classified (status 0x%08X), attaching as unknown\n",
                          status );
-
-        return STATUS_FLT_DO_NOT_ATTACH;
     }
+    else {
 
-    if (volumeKind == SafeUploadVolumeUnknown) {
-
-        //
-        //  A volume we cannot classify is a volume we cannot make correct
-        //  decisions about.
-        //
-
-        SafeUploadTrace( "volume could not be classified, not attaching\n" );
-
-        return STATUS_FLT_DO_NOT_ATTACH;
+        SafeUploadTrace( "attached to volume, kind %u\n", (ULONG) volumeKind );
     }
-
-    SafeUploadTrace( "attached to volume, kind %u\n", (ULONG) volumeKind );
 
     return STATUS_SUCCESS;
 }

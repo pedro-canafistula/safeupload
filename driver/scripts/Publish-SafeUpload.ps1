@@ -355,7 +355,13 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
 "@
 
 $bootstrapPath = Join-Path $PackageDirectory 'bootstrap.ps1'
-Set-Content -Path $bootstrapPath -Value $bootstrap -Encoding UTF8
+
+# UTF-8 WITHOUT a byte order mark. Set-Content -Encoding UTF8 writes one on
+# Windows PowerShell, and this file is fetched with Invoke-RestMethod and fed
+# to Invoke-Expression: the BOM survives as a literal character and the first
+# statement fails with "the term 'i»¿#' is not recognized".
+[System.IO.File]::WriteAllText($bootstrapPath, $bootstrap, (New-Object System.Text.UTF8Encoding($false)))
+
 Write-Host '  bootstrap.ps1 gerado.'
 
 Write-Step 'Manifesto'

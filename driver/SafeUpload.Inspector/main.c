@@ -178,6 +178,19 @@ Return Value:
     UNREFERENCED_PARAMETER( argc );
     UNREFERENCED_PARAMETER( argv );
 
+    //
+    //  Unbuffered output.
+    //
+    //  When stdout is a console the CRT flushes line by line and everything
+    //  appears as it happens. When it is redirected to a file - which is how
+    //  the test script runs this program - the CRT switches to full
+    //  buffering, and nothing reaches the file until the buffer fills or the
+    //  process exits. A watcher waiting for "Conectado" to show up in the
+    //  log would wait forever while the program sat there working fine.
+    //
+
+    setvbuf( stdout, NULL, _IONBF, 0 );
+
     wprintf( L"SafeUpload.Inspector - cliente de teste da porta %s\n",
              SAFEUPLOAD_PORT_NAME );
     wprintf( L"Regra de teste: bloqueia caminhos contendo \"%s\"\n\n",
