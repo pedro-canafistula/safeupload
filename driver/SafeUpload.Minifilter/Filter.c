@@ -805,10 +805,11 @@ Return Value:
     }
 
     //
-    //  Scope by destination, which could not be judged before the path
-    //  existed. Removable media and network shares qualify by volume kind
-    //  alone; a fixed volume qualifies only under a monitored prefix, which
-    //  is how a cloud sync folder enters scope.
+    //  Scope, which could not be judged before the path existed.
+    //
+    //  Destination: removable media and network shares qualify by volume
+    //  kind alone; a fixed volume qualifies only under a monitored prefix,
+    //  which is how a cloud sync folder enters scope.
     //
     //  This is the last gate that costs nothing but comparisons. Everything
     //  after it involves user mode.
@@ -818,7 +819,29 @@ Return Value:
     normalizedPath.Length = (USHORT) exchange->Request.PathLength;
     normalizedPath.MaximumLength = normalizedPath.Length;
 
-    if (!SafeUploadPolicyMatchesDestination( VolumeKind, &normalizedPath )) {
+    if (SafeUploadPolicyMatchesDestination( VolumeKind, &normalizedPath )) {
+
+        SetFlag( exchange->Request.Flags, SAFEUPLOAD_REQUEST_FLAG_SCOPE_DESTINATION );
+    }
+
+    //
+    //  Source scope is a separate question, and both answers can be yes.
+    //
+    //  Without this half the chain that blocks before any byte is written
+    //  never starts: a document opened from a user folder would never be
+    //  inspected, so nothing would ever mark the process as having handled
+    //  sensitive content, and the later write to a pen drive would have
+    //  nothing to act on.
+    //
+
+    if (SafeUploadPolicyMatchesSource( &normalizedPath )) {
+
+        SetFlag( exchange->Request.Flags, SAFEUPLOAD_REQUEST_FLAG_SCOPE_SOURCE );
+    }
+
+    if (!FlagOn( exchange->Request.Flags,
+                 SAFEUPLOAD_REQUEST_FLAG_SCOPE_DESTINATION |
+                 SAFEUPLOAD_REQUEST_FLAG_SCOPE_SOURCE )) {
 
         ExFreePoolWithTag( exchange, SAFEUPLOAD_POOL_TAG );
 

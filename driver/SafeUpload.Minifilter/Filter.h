@@ -352,6 +352,7 @@ typedef struct _SAFEUPLOAD_POLICY {
 
     UINT32 ExtensionCount;
     UINT32 PrefixCount;
+    UINT32 SourcePrefixCount;
     UINT32 ImageCount;
     UINT32 Flags;
 
@@ -363,6 +364,7 @@ typedef struct _SAFEUPLOAD_POLICY {
 
     UNICODE_STRING Extensions[SAFEUPLOAD_MAX_EXTENSIONS];
     UNICODE_STRING Prefixes[SAFEUPLOAD_MAX_PREFIXES];
+    UNICODE_STRING SourcePrefixes[SAFEUPLOAD_MAX_SOURCE_PREFIXES];
     UNICODE_STRING Images[SAFEUPLOAD_MAX_IMAGES];
 
     //
@@ -398,6 +400,11 @@ BOOLEAN
 SafeUploadPolicyMatchesDestination (
     _In_ SAFEUPLOAD_VOLUME_KIND VolumeKind,
     _In_opt_ PCUNICODE_STRING NormalizedPath
+    );
+
+BOOLEAN
+SafeUploadPolicyMatchesSource (
+    _In_ PCUNICODE_STRING NormalizedPath
     );
 
 BOOLEAN

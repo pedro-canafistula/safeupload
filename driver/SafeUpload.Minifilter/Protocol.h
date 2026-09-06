@@ -107,6 +107,19 @@ Environment:
 
 #define SAFEUPLOAD_REQUEST_FLAG_PATH_NOT_NORMALIZED  ((UINT32) 0x00000004)
 
+//
+//  Which scope brought this operation to user mode. Both can be set when a
+//  path is a monitored destination and a monitored source at once.
+//
+//  DESTINATION means the file is heading somewhere it must not go. SOURCE
+//  means the file is somewhere worth inspecting for sensitive content. The
+//  agent needs to tell them apart: the first asks for a verdict, the second
+//  asks what the file contains.
+//
+
+#define SAFEUPLOAD_REQUEST_FLAG_SCOPE_DESTINATION    ((UINT32) 0x00000008)
+#define SAFEUPLOAD_REQUEST_FLAG_SCOPE_SOURCE         ((UINT32) 0x00000010)
+
 #pragma pack(push, 8)
 
 //
@@ -225,6 +238,7 @@ typedef struct _SAFEUPLOAD_RESPONSE {
 #define SAFEUPLOAD_MAX_EXTENSION_CHARS ((UINT32) 16)
 #define SAFEUPLOAD_MAX_PREFIXES        ((UINT32) 16)
 #define SAFEUPLOAD_MAX_PREFIX_CHARS    ((UINT32) 260)
+#define SAFEUPLOAD_MAX_SOURCE_PREFIXES ((UINT32) 16)
 #define SAFEUPLOAD_MAX_IMAGES          ((UINT32) 16)
 #define SAFEUPLOAD_MAX_IMAGE_CHARS     ((UINT32) 64)
 
@@ -260,6 +274,7 @@ typedef struct _SAFEUPLOAD_POLICY_MESSAGE {
     UINT32 ExtensionCount;
     UINT32 PrefixCount;
     UINT32 ImageCount;
+    UINT32 SourcePrefixCount;
 
     //
     //  SAFEUPLOAD_POLICY_FLAG_*: whether removable media and network
@@ -268,6 +283,8 @@ typedef struct _SAFEUPLOAD_POLICY_MESSAGE {
     //
 
     UINT32 Flags;
+
+    UINT32 Reserved;
 
     //
     //  Monitored extensions, with the leading dot, NUL-terminated.
@@ -281,6 +298,23 @@ typedef struct _SAFEUPLOAD_POLICY_MESSAGE {
     //
 
     WCHAR Prefixes[SAFEUPLOAD_MAX_PREFIXES][SAFEUPLOAD_MAX_PREFIX_CHARS];
+
+    //
+    //  Monitored SOURCE prefixes in NT form, NUL-terminated.
+    //
+    //  A different question from the destination list, and the two are not
+    //  interchangeable. Destination scope asks "may a file end up here?".
+    //  Source scope asks "is a file here worth reading to find out whether
+    //  it is sensitive?" - which is what lets a process be marked as having
+    //  handled sensitive content, so that a later write to a destination
+    //  can be denied without inspecting anything.
+    //
+    //  Source scope is normally much broader than destination scope: user
+    //  document folders, rather than the handful of places a file must not
+    //  reach.
+    //
+
+    WCHAR SourcePrefixes[SAFEUPLOAD_MAX_SOURCE_PREFIXES][SAFEUPLOAD_MAX_PREFIX_CHARS];
 
     //
     //  Process images whose I/O is never inspected, NUL-terminated, final
@@ -325,14 +359,17 @@ C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_CONTROL, StructSize ) == 4 );
 C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_CONTROL, Command )    == 8 );
 C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_CONTROL, Reserved )   == 12 );
 
-C_ASSERT( sizeof( SAFEUPLOAD_POLICY_MESSAGE ) == 11424 );
-C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_POLICY_MESSAGE, Control )        == 0 );
-C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_POLICY_MESSAGE, ExtensionCount ) == 16 );
-C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_POLICY_MESSAGE, PrefixCount )    == 20 );
-C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_POLICY_MESSAGE, ImageCount )     == 24 );
-C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_POLICY_MESSAGE, Flags )          == 28 );
-C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_POLICY_MESSAGE, Extensions )     == 32 );
-C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_POLICY_MESSAGE, Prefixes )       == 1056 );
-C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_POLICY_MESSAGE, Images )         == 9376 );
+C_ASSERT( sizeof( SAFEUPLOAD_POLICY_MESSAGE ) == 19752 );
+C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_POLICY_MESSAGE, Control )           == 0 );
+C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_POLICY_MESSAGE, ExtensionCount )    == 16 );
+C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_POLICY_MESSAGE, PrefixCount )       == 20 );
+C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_POLICY_MESSAGE, ImageCount )        == 24 );
+C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_POLICY_MESSAGE, SourcePrefixCount ) == 28 );
+C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_POLICY_MESSAGE, Flags )             == 32 );
+C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_POLICY_MESSAGE, Reserved )          == 36 );
+C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_POLICY_MESSAGE, Extensions )        == 40 );
+C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_POLICY_MESSAGE, Prefixes )          == 1064 );
+C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_POLICY_MESSAGE, SourcePrefixes )    == 9384 );
+C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_POLICY_MESSAGE, Images )            == 17704 );
 
 #endif // _SAFEUPLOAD_PROTOCOL_H_

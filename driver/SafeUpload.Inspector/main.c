@@ -31,6 +31,7 @@ Environment:
 #include <windows.h>
 #include <fltUser.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <wchar.h>
 #include <strsafe.h>
 
@@ -94,6 +95,18 @@ static const WCHAR *SafeUploadTestExtensions[] = {
 
 static const WCHAR *SafeUploadTestPrefixes[] = {
     L"C:\\safeupload-teste"
+};
+
+//
+//  Where a file is worth reading to find out whether it is sensitive.
+//
+//  A different question from the destination list above, and normally much
+//  broader in production: user document folders, rather than the handful of
+//  places a file must not reach.
+//
+
+static const WCHAR *SafeUploadTestSourcePrefixes[] = {
+    L"C:\\safeupload-origem"
 };
 
 
@@ -185,32 +198,44 @@ Return Value:
 
 --*/
 {
-    SAFEUPLOAD_POLICY_MESSAGE policy;
+    //
+    //  From the heap, not the stack: the message is close to 20 KB and a
+    //  local of that size is a habit that stops being harmless the moment
+    //  the same code is reused somewhere with a smaller stack.
+    //
+
+    SAFEUPLOAD_POLICY_MESSAGE *policy;
     WCHAR ntPath[SAFEUPLOAD_MAX_PREFIX_CHARS];
     DWORD returned = 0;
     UINT32 index;
+    HRESULT hr;
 
-    ZeroMemory( &policy, sizeof( policy ) );
+    policy = (SAFEUPLOAD_POLICY_MESSAGE *) calloc( 1, sizeof( SAFEUPLOAD_POLICY_MESSAGE ) );
 
-    policy.Control.Version = SAFEUPLOAD_PROTOCOL_VERSION;
-    policy.Control.StructSize = sizeof( SAFEUPLOAD_POLICY_MESSAGE );
-    policy.Control.Command = SAFEUPLOAD_CONTROL_SET_POLICY;
+    if (policy == NULL) {
+
+        return E_OUTOFMEMORY;
+    }
+
+    policy->Control.Version = SAFEUPLOAD_PROTOCOL_VERSION;
+    policy->Control.StructSize = sizeof( SAFEUPLOAD_POLICY_MESSAGE );
+    policy->Control.Command = SAFEUPLOAD_CONTROL_SET_POLICY;
 
     //
     //  Removable media and network shares are destinations in their own
     //  right, with no prefix needed: every path on them leaves the machine.
     //
 
-    policy.Flags = SAFEUPLOAD_POLICY_FLAG_REMOVABLE | SAFEUPLOAD_POLICY_FLAG_NETWORK;
+    policy->Flags = SAFEUPLOAD_POLICY_FLAG_REMOVABLE | SAFEUPLOAD_POLICY_FLAG_NETWORK;
 
     for (index = 0; index < ARRAYSIZE( SafeUploadTestExtensions ); index += 1) {
 
-        StringCchCopyW( policy.Extensions[index],
+        StringCchCopyW( policy->Extensions[index],
                         SAFEUPLOAD_MAX_EXTENSION_CHARS,
                         SafeUploadTestExtensions[index] );
     }
 
-    policy.ExtensionCount = ARRAYSIZE( SafeUploadTestExtensions );
+    policy->ExtensionCount = ARRAYSIZE( SafeUploadTestExtensions );
 
     for (index = 0; index < ARRAYSIZE( SafeUploadTestPrefixes ); index += 1) {
 
@@ -221,21 +246,43 @@ Return Value:
             continue;
         }
 
-        StringCchCopyW( policy.Prefixes[policy.PrefixCount],
+        StringCchCopyW( policy->Prefixes[policy->PrefixCount],
                         SAFEUPLOAD_MAX_PREFIX_CHARS,
                         ntPath );
 
-        wprintf( L"Escopo: %s  ->  %s\n", SafeUploadTestPrefixes[index], ntPath );
+        wprintf( L"Destino: %s  ->  %s\n", SafeUploadTestPrefixes[index], ntPath );
 
-        policy.PrefixCount += 1;
+        policy->PrefixCount += 1;
     }
 
-    return FilterSendMessage( Port,
-                              &policy,
-                              sizeof( policy ),
-                              NULL,
-                              0,
-                              &returned );
+    for (index = 0; index < ARRAYSIZE( SafeUploadTestSourcePrefixes ); index += 1) {
+
+        if (!DosPathToNtPath( SafeUploadTestSourcePrefixes[index], ntPath, ARRAYSIZE( ntPath ) )) {
+
+            wprintf( L"AVISO: nao foi possivel converter %s para forma NT.\n",
+                     SafeUploadTestSourcePrefixes[index] );
+            continue;
+        }
+
+        StringCchCopyW( policy->SourcePrefixes[policy->SourcePrefixCount],
+                        SAFEUPLOAD_MAX_PREFIX_CHARS,
+                        ntPath );
+
+        wprintf( L"Origem : %s  ->  %s\n", SafeUploadTestSourcePrefixes[index], ntPath );
+
+        policy->SourcePrefixCount += 1;
+    }
+
+    hr = FilterSendMessage( Port,
+                            policy,
+                            sizeof( SAFEUPLOAD_POLICY_MESSAGE ),
+                            NULL,
+                            0,
+                            &returned );
+
+    free( policy );
+
+    return hr;
 }
 
 
@@ -491,6 +538,12 @@ Return Value:
                      verdict == SAFEUPLOAD_VERDICT_DENY
                          ? L"  => BLOQUEADO"
                          : L"" );
+
+            wprintf( L"       escopo:%s%s\n",
+                     (message.Request.Flags & SAFEUPLOAD_REQUEST_FLAG_SCOPE_DESTINATION) != 0
+                         ? L" destino" : L"",
+                     (message.Request.Flags & SAFEUPLOAD_REQUEST_FLAG_SCOPE_SOURCE) != 0
+                         ? L" origem" : L"" );
 
             if ((message.Request.Flags &
                  SAFEUPLOAD_REQUEST_FLAG_PATH_NOT_NORMALIZED) != 0) {

@@ -224,6 +224,7 @@ Return Value:
 
     if (Message->ExtensionCount > SAFEUPLOAD_MAX_EXTENSIONS ||
         Message->PrefixCount > SAFEUPLOAD_MAX_PREFIXES ||
+        Message->SourcePrefixCount > SAFEUPLOAD_MAX_SOURCE_PREFIXES ||
         Message->ImageCount > SAFEUPLOAD_MAX_IMAGES) {
 
         return STATUS_INVALID_PARAMETER;
@@ -247,6 +248,7 @@ Return Value:
 
     snapshot->ExtensionCount = Message->ExtensionCount;
     snapshot->PrefixCount = Message->PrefixCount;
+    snapshot->SourcePrefixCount = Message->SourcePrefixCount;
     snapshot->ImageCount = Message->ImageCount;
     snapshot->Flags = Message->Flags;
 
@@ -259,6 +261,11 @@ Return Value:
                                 snapshot->PrefixCount,
                                 SAFEUPLOAD_MAX_PREFIX_CHARS,
                                 snapshot->Prefixes );
+
+    SafeUploadBuildStringTable( &snapshot->Data.SourcePrefixes[0][0],
+                                snapshot->SourcePrefixCount,
+                                SAFEUPLOAD_MAX_PREFIX_CHARS,
+                                snapshot->SourcePrefixes );
 
     SafeUploadBuildStringTable( &snapshot->Data.Images[0][0],
                                 snapshot->ImageCount,
@@ -511,6 +518,69 @@ Return Value:
             if (RtlCompareUnicodeString( ImageName,
                                          &SafeUploadPolicy->Images[index],
                                          TRUE ) == 0) {
+
+                matched = TRUE;
+                break;
+            }
+        }
+    }
+
+    FltReleasePushLock( &SafeUploadPolicyLock );
+
+    return matched;
+}
+
+
+BOOLEAN
+SafeUploadPolicyMatchesSource (
+    _In_ PCUNICODE_STRING NormalizedPath
+    )
+/*++
+
+Routine Description:
+
+    Whether a path sits somewhere the policy considers worth inspecting for
+    sensitive content.
+
+    This is the other half of scope, and it is not the same question as the
+    destination list. Destination scope asks where a file must not end up;
+    source scope asks which files are worth reading to find out whether they
+    are sensitive at all.
+
+    Without it the chain that blocks before any byte is written cannot
+    start: a document opened from a user folder would never be inspected,
+    the process would never be marked as having handled sensitive content,
+    and the later write to a pen drive would have nothing to go on.
+
+    IRQL: <= APC_LEVEL. Takes a push lock shared and allocates nothing.
+
+Arguments:
+
+    NormalizedPath - Path in NT form.
+
+Return Value:
+
+    TRUE when the path is under a monitored source prefix.
+
+--*/
+{
+    BOOLEAN matched = FALSE;
+    UINT32 index;
+
+    if (NormalizedPath == NULL || NormalizedPath->Length == 0) {
+
+        return FALSE;
+    }
+
+    FltAcquirePushLockShared( &SafeUploadPolicyLock );
+
+    if (SafeUploadPolicy != NULL) {
+
+        for (index = 0; index < SafeUploadPolicy->SourcePrefixCount; index += 1) {
+
+            if (RtlPrefixUnicodeString( &SafeUploadPolicy->SourcePrefixes[index],
+                                        NormalizedPath,
+                                        TRUE )) {
 
                 matched = TRUE;
                 break;
