@@ -42,6 +42,19 @@ Environment:
 #define SAFEUPLOAD_TEST_BLOCK_TOKEN L"BLOQUEAR_TESTE"
 
 //
+//  Signalled once the port is connected, so that a script driving this
+//  program can tell when it is ready.
+//
+//  An event rather than a marker in the output, because the obvious
+//  alternative - watching the log file for a line - is file I/O, and file
+//  I/O on this machine goes through the very filter this program answers
+//  for. A watcher polling the log makes the inspector wait on the watcher
+//  that is waiting on the inspector.
+//
+
+#define SAFEUPLOAD_READY_EVENT_NAME L"Global\\SafeUploadInspectorReady"
+
+//
 //  What FilterGetMessage delivers: the filter manager's header followed by
 //  our payload. Natural alignment is kept - FILTER_MESSAGE_HEADER is 16
 //  bytes, so the request lands 8-byte aligned exactly as the kernel laid
@@ -170,6 +183,7 @@ Return Value:
 --*/
 {
     HANDLE port = INVALID_HANDLE_VALUE;
+    HANDLE readyEvent = NULL;
     SAFEUPLOAD_MESSAGE message;
     SAFEUPLOAD_REPLY reply;
     HRESULT hr;
@@ -212,6 +226,19 @@ Return Value:
     }
 
     wprintf( L"Conectado. Aguardando requisicoes (Ctrl+C para sair).\n\n" );
+
+    //
+    //  CreateEvent opens the existing event when a driving script created it
+    //  first, and creates it otherwise. Either way, failing to signal is not
+    //  worth aborting over: nobody may be listening.
+    //
+
+    readyEvent = CreateEventW( NULL, TRUE, FALSE, SAFEUPLOAD_READY_EVENT_NAME );
+
+    if (readyEvent != NULL) {
+
+        SetEvent( readyEvent );
+    }
 
     for (;;) {
 
@@ -335,6 +362,11 @@ Return Value:
         }
 
         fflush( stdout );
+    }
+
+    if (readyEvent != NULL) {
+
+        CloseHandle( readyEvent );
     }
 
     CloseHandle( port );

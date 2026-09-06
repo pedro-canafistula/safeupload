@@ -143,6 +143,49 @@ function Stop-Inspector {
     return $processes.Count
 }
 
+$InspectorReadyEventName = 'Global\SafeUploadInspectorReady'
+
+function Start-Inspector {
+    <#
+        Starts the inspector and waits until it reports the port connected.
+
+        The wait is on a named event, not on the contents of the log file.
+        Polling the log would be file I/O, and file I/O on this machine goes
+        through the very filter the inspector answers for: the watcher ends
+        up waiting on the inspector that is waiting on the watcher. That
+        deadlock is bounded by the driver's verdict timeout rather than
+        fatal, which makes it look like a hang rather than a bug.
+    #>
+    param([Parameter(Mandatory)] [string] $LogPath)
+
+    Remove-Item $LogPath -Force -ErrorAction SilentlyContinue
+
+    # Created before the process exists so the signal cannot be missed.
+    $ready = New-Object System.Threading.EventWaitHandle(
+        $false,
+        [System.Threading.EventResetMode]::ManualReset,
+        $InspectorReadyEventName)
+
+    try {
+        $process = Start-Process -FilePath (Join-Path $StagingDirectory $InspectorFileName) `
+            -NoNewWindow -PassThru -RedirectStandardOutput $LogPath
+
+        if ($ready.WaitOne([TimeSpan]::FromSeconds(20))) {
+            return $process
+        }
+
+        if ($process.HasExited) {
+            Write-Host "  O inspetor terminou sozinho (codigo $($process.ExitCode))." -ForegroundColor Red
+            Write-Host '  Codigo -1073741515 e STATUS_DLL_NOT_FOUND: binario com CRT dinamico.' -ForegroundColor Red
+        }
+
+        Stop-WithMessage 'O inspetor nao conectou na porta.'
+    }
+    finally {
+        $ready.Dispose()
+    }
+}
+
 # ---------------------------------------------------------------------------
 # 1. Preflight
 # ---------------------------------------------------------------------------
@@ -215,36 +258,10 @@ if ($ReproduceUnloadLeak) {
     $stressFile = Join-Path $TestDirectory 'normal.txt'
     Set-Content -Path $stressFile -Value 'conteudo de teste' -Encoding UTF8
 
-    $inspectorPath = Join-Path $StagingDirectory $InspectorFileName
     $inspectorLog = Join-Path $StagingDirectory 'inspector.log'
-    Remove-Item $inspectorLog -Force -ErrorAction SilentlyContinue
 
     Write-Host '  Subindo o inspetor.'
-
-    $inspector = Start-Process -FilePath $inspectorPath -NoNewWindow -PassThru `
-        -RedirectStandardOutput $inspectorLog
-
-    $connected = $false
-
-    foreach ($attempt in 1..40) {
-        Start-Sleep -Milliseconds 250
-
-        if (Test-Path $inspectorLog) {
-            $log = Get-Content $inspectorLog -Raw -ErrorAction SilentlyContinue
-            if ($log -and $log -match 'Conectado') {
-                $connected = $true
-                break
-            }
-        }
-
-        if ($inspector.HasExited) {
-            break
-        }
-    }
-
-    if (-not $connected) {
-        Stop-WithMessage 'O inspetor nao conectou na porta.'
-    }
+    Start-Inspector -LogPath $inspectorLog | Out-Null
 
     Write-Host '  Inspetor conectado. Gerando I/O.'
 
@@ -508,39 +525,9 @@ Write-Host "  $blockedFile"
 
 Write-Step 'Subindo o inspetor'
 
-$inspectorPath = Join-Path $StagingDirectory $InspectorFileName
 $inspectorLog = Join-Path $StagingDirectory 'inspector.log'
 
-Remove-Item $inspectorLog -Force -ErrorAction SilentlyContinue
-
-$inspector = Start-Process -FilePath $inspectorPath -NoNewWindow -PassThru `
-    -RedirectStandardOutput $inspectorLog
-
-$connected = $false
-
-foreach ($attempt in 1..40) {
-    Start-Sleep -Milliseconds 250
-
-    if (Test-Path $inspectorLog) {
-        $log = Get-Content $inspectorLog -Raw -ErrorAction SilentlyContinue
-        if ($log -and $log -match 'Conectado') {
-            $connected = $true
-            break
-        }
-    }
-
-    if ($inspector.HasExited) {
-        break
-    }
-}
-
-if (-not $connected) {
-    if ($inspector.HasExited) {
-        Write-Host "  O inspetor terminou sozinho (codigo $($inspector.ExitCode))." -ForegroundColor Red
-        Write-Host '  Codigo -1073741515 e STATUS_DLL_NOT_FOUND: binario com CRT dinamico.' -ForegroundColor Red
-    }
-    Stop-WithMessage 'O inspetor nao conectou na porta.'
-}
+Start-Inspector -LogPath $inspectorLog | Out-Null
 
 Add-Result -Name 'Inspetor conectado na porta' -Passed $true
 
