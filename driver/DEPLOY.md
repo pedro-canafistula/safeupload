@@ -717,6 +717,36 @@ seguida:
 !fltkd.volumes
 ```
 
+**9e-bis. Nem toda tela azul é do driver — confira antes de investigar.**
+
+A primeira pergunta, sempre:
+
+```
+lm m SafeUpload
+```
+
+Se não listar nada, o driver **não estava carregado** e nada do que se seguir
+tem a ver com ele. Se listar, olhe a pilha: sem um quadro `SafeUpload!` nela,
+a probabilidade de ser nosso cai muito.
+
+Esta VM já produziu dois bugchecks assim, ambos no caminho do **console** e
+nenhum com o driver envolvido:
+
+| Bugcheck | Pilha | Driver carregado? |
+|---|---|---|
+| `0x3B` | `condrv!CdCompleteIo`, em `conhost.exe` | não |
+| `0xA` | `nt!KiDeliverApc` vindo de `NtDeviceIoControlFile` do console, em `powershell.exe` | não |
+
+O regime que os produz parece ser console sob carga com um depurador de
+kernel anexado. Custaram duas rodadas de investigação antes de alguém rodar
+`lm m SafeUpload`. Rode primeiro.
+
+Uma ressalva honesta: corrupção de memória causada por um driver pode
+aparecer na estrutura de outro, bem depois. Ausência do nosso nome na pilha é
+evidência forte, não prova. Se houver motivo para desconfiar, `verifier
+/standard /all` instrumenta todos os drivers e encontra quem corrompe — ao
+custo de deixar a VM bem mais lenta.
+
 **9f. Bugchecks típicos com Driver Verifier ligado:**
 
 | Bugcheck | Significado provável |
