@@ -972,6 +972,42 @@ public static class SafeUploadRename
     Add-Result -Name 'Nada chegou ao destino pelo rename direto' -Passed (-not (Test-Path $directTarget)) `
         -Detail $(if (Test-Path $directTarget) { 'O arquivo esta la: o conteudo atravessou.' } else { 'Nada foi renomeado.' })
 
+    # Control for the case above, and the reason it exists:
+    #
+    # The rename was refused with ACCESS_DENIED while RenamesSeen stayed at
+    # zero - the SET_INFORMATION callback never saw a rename class. So
+    # something else refused it, and DeniedPreCreate went up by exactly one
+    # when this case was added. The likely story is that the pre-create gate
+    # caught an internal create issued while the rename was processed.
+    #
+    # That story makes a prediction: the refusal must depend on the
+    # DESTINATION being monitored, not on renames being renames. Same
+    # tainted process, same direct rename, destination out of scope.
+    #
+    #   0   the refusal follows the scope. The bypass is closed, but by the
+    #       create path - the rename hook is still unproven.
+    #   5   renames are refused regardless of destination. That is
+    #       over-blocking, and every rename on the machine pays for it.
+
+    $controlSource = Join-Path $OutOfScopeDirectory 'rename-controle.txt'
+    $controlTarget = Join-Path $OutOfScopeDirectory 'rename-controle-movido.txt'
+
+    Remove-Item $controlTarget -Force -ErrorAction SilentlyContinue
+    Set-Content -Path $controlSource -Value 'controle' -ErrorAction SilentlyContinue
+
+    $controlError = [SafeUploadRename]::Rename($controlSource, $controlTarget)
+
+    Add-Result -Name 'Rename direto fora de escopo continua permitido' -Passed ($controlError -eq 0) `
+        -Detail $(switch ($controlError) {
+            0  { 'Passou, como deveria: a recusa acompanha o escopo do destino.' }
+            5  { 'NEGADO fora de escopo: o driver esta barrando rename por ser rename, nao pelo destino.' }
+            -5 { 'Negado ao abrir a origem, fora de escopo. O pre-create esta recusando aberturas que so pedem DELETE.' }
+            default {
+                if ($controlError -lt 0) { "Erro $(-$controlError) ao abrir a origem." }
+                else { "Erro $controlError no rename." }
+            }
+        })
+
 }
 finally {
 
