@@ -1158,6 +1158,8 @@ $deniedPreCreate = 0
 $deniedRename = 0
 $renamesSeen = 0
 $renamesFromTainted = 0
+$linksSeen = 0
+$linksFromTainted = 0
 $setInformationSeen = 0
 
 foreach ($line in $counterOutput) {
@@ -1168,6 +1170,8 @@ foreach ($line in $counterOutput) {
     if ($line -match '^SetInformationSeen\s*:\s*(\d+)') { $setInformationSeen = [int] $matches[1] }
     if ($line -match '^RenamesSeen\s*:\s*(\d+)') { $renamesSeen = [int] $matches[1] }
     if ($line -match '^RenamesFromTainted\s*:\s*(\d+)') { $renamesFromTainted = [int] $matches[1] }
+    if ($line -match '^LinksSeen\s*:\s*(\d+)') { $linksSeen = [int] $matches[1] }
+    if ($line -match '^LinksFromTainted\s*:\s*(\d+)') { $linksFromTainted = [int] $matches[1] }
 }
 
 # The cache is the property the design rests on. If it never served a single
@@ -1242,28 +1246,30 @@ else {
     Write-Host ''
     Write-Host '  Leitura:'
 
+    # The class bitmap is global and cumulative: it records every class
+    # that reached the callback since load, from any process. Seeing
+    # FileLinkInformation in it proves something on the machine created a
+    # link, NOT that the link under test reached the hook. LinksSeen is
+    # the counter that answers the actual question, and it exists because
+    # the bitmap was read as if it did.
     $sawRenameClass = [bool] ($classLine -match '10=|65=')
-    $sawLinkClass = [bool] ($classLine -match '11=|72=')
 
-    if (-not $classLine) {
-        # Without the line there is no evidence either way, and saying
-        # "nao chegou" here would be the same conclusion the absence of a
-        # hard link produces - which is exactly the distinction this block
-        # exists to make. Say nothing rather than guess.
-        Write-Host '    Sem a linha de classes nao da para concluir nada sobre o link.' -ForegroundColor Yellow
-        Write-Host '    O cliente nao esta imprimindo "classes vistas" - conserte isso' -ForegroundColor Yellow
-        Write-Host '    antes de acreditar em qualquer leitura sobre o gancho.' -ForegroundColor Yellow
+    Write-Host "    LinksSeen = $linksSeen, LinksFromTainted = $linksFromTainted"
+
+    if ($linksSeen -eq 0) {
+        Write-Host '    Nenhum link chega ao gancho: o pre-create o pega antes, na' -ForegroundColor DarkGray
+        Write-Host '    abertura do novo nome. Esperado - ver ARQUITETURA.md.' -ForegroundColor DarkGray
     }
-    elseif (-not $sawLinkClass) {
-        Write-Host '    O hard link nao chega ao gancho: o pre-create o pega antes,' -ForegroundColor DarkGray
-        Write-Host '    na abertura do novo nome. Esperado - ver ARQUITETURA.md.' -ForegroundColor DarkGray
+    elseif ($linksFromTainted -eq 0) {
+        Write-Host '    Links chegam ao gancho, mas nenhum de processo marcado.' -ForegroundColor DarkGray
+        Write-Host '    Provavelmente trafego de outros processos da maquina.' -ForegroundColor DarkGray
     }
     elseif ($deniedRename -eq 0) {
-        Write-Host '    O hard link chegou ao gancho e nao foi negado por ele.' -ForegroundColor Yellow
-        Write-Host '    Quem recusou foi outra coisa: isso e novo, investigar.' -ForegroundColor Yellow
+        Write-Host '    Um link de processo marcado chegou ao gancho e nao foi negado' -ForegroundColor Yellow
+        Write-Host '    por ele. Quem recusou foi outra coisa: isso e novo, investigar.' -ForegroundColor Yellow
     }
     else {
-        Write-Host '    O gancho viu o link e recusou: o ramo saiu do papel.' -ForegroundColor Green
+        Write-Host '    O gancho viu o link marcado e recusou: o ramo saiu do papel.' -ForegroundColor Green
     }
 
     if ($sawRenameClass -and $renamesSeen -gt 0) {

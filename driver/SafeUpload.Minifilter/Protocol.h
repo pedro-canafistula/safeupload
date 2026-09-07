@@ -49,7 +49,7 @@ Environment:
 //  message means "allow" (RN-013), never "block".
 //
 
-#define SAFEUPLOAD_PROTOCOL_VERSION ((UINT32) 6)
+#define SAFEUPLOAD_PROTOCOL_VERSION ((UINT32) 7)
 
 //
 //  Capacity of the inline string fields, in WCHARs, terminator included.
@@ -448,6 +448,19 @@ typedef struct _SAFEUPLOAD_COUNTERS {
     UINT64 RenamesFromTainted;
 
     //
+    //  The same two stages for hard links, counted apart from renames.
+    //
+    //  They were folded together, and that made one question
+    //  unanswerable: a class bitmap is global and cumulative, so seeing
+    //  FileLinkInformation in it proves only that SOMETHING on the
+    //  machine created a link - not that the link under test reached this
+    //  callback. With the counts split, LinksSeen answers it directly.
+    //
+
+    UINT64 LinksSeen;
+    UINT64 LinksFromTainted;
+
+    //
     //  Bitmap of every FILE_INFORMATION_CLASS that reached the callback:
     //  bit N of Low for class N, bit N of High for class N + 64.
     //
@@ -515,7 +528,7 @@ C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_POLICY_MESSAGE, Prefixes )          == 1064 )
 C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_POLICY_MESSAGE, SourcePrefixes )    == 9384 );
 C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_POLICY_MESSAGE, Images )            == 17704 );
 
-C_ASSERT( sizeof( SAFEUPLOAD_COUNTERS ) == 144 );
+C_ASSERT( sizeof( SAFEUPLOAD_COUNTERS ) == 160 );
 C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_COUNTERS, Version )     == 0 );
 C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_COUNTERS, StructSize )  == 4 );
 C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_COUNTERS, CreatesSeen ) == 8 );

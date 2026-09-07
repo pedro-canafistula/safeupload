@@ -1530,6 +1530,7 @@ Return Value:
     SAFEUPLOAD_VOLUME_KIND volumeKind;
     ULONG processId;
     BOOLEAN monitored = FALSE;
+    BOOLEAN isLink;
     NTSTATUS status;
 
     UNREFERENCED_PARAMETER( CompletionContext = NULL );
@@ -1577,7 +1578,14 @@ Return Value:
         return FLT_PREOP_SUCCESS_NO_CALLBACK;
     }
 
-    SafeUploadCount( RenamesSeen );
+    isLink = (BOOLEAN) (informationClass == FileLinkInformation ||
+                        informationClass == FileLinkInformationEx);
+
+    if (isLink) {
+        SafeUploadCount( LinksSeen );
+    } else {
+        SafeUploadCount( RenamesSeen );
+    }
 
     processId = FltGetRequestorProcessId( Data );
 
@@ -1598,7 +1606,11 @@ Return Value:
         return FLT_PREOP_SUCCESS_NO_CALLBACK;
     }
 
-    SafeUploadCount( RenamesFromTainted );
+    if (isLink) {
+        SafeUploadCount( LinksFromTainted );
+    } else {
+        SafeUploadCount( RenamesFromTainted );
+    }
 
     status = FltGetInstanceContext( FltObjects->Instance,
                                     (PFLT_CONTEXT *) &instanceContext );

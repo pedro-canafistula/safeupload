@@ -24,7 +24,7 @@ public static class Contract
     /// mechanism that turns an incompatible pair into a clean refusal
     /// instead of a misread structure.
     /// </summary>
-    public const uint Version = 6;
+    public const uint Version = 7;
 
     public const int MaxPathChars = 512;
     public const int MaxImageNameChars = 64;
@@ -43,7 +43,7 @@ public static class Contract
     public const int ResponseSize = 24;
     public const int ControlSize = 16;
     public const int PolicyMessageSize = 19752;
-    public const int CountersSize = 144;
+    public const int CountersSize = 160;
 
     /// <summary>
     /// Throws if any managed structure fails to match the size the driver
@@ -248,6 +248,8 @@ public struct SafeUploadCounters
     public ulong SetInformationSeen;
     public ulong RenamesSeen;
     public ulong RenamesFromTainted;
+    public ulong LinksSeen;
+    public ulong LinksFromTainted;
     public ulong ClassesSeenLow;
     public ulong ClassesSeenHigh;
 }
