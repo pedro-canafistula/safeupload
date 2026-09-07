@@ -899,14 +899,19 @@ public static class SafeUploadRename
     const uint OPEN_EXISTING = 3;
     const int FileRenameInfo = 3;
 
-    // Returns 0 when the rename went through, otherwise the Win32 error.
-    // A driver refusal shows up as 5, ERROR_ACCESS_DENIED.
+    // 0 when the rename went through, the positive Win32 error when the
+    // rename itself failed, and the NEGATED Win32 error when the source
+    // could not even be opened.
+    //
+    // The sign is the whole point. Returning the bare error for both made
+    // an ACCESS_DENIED on the open indistinguishable from one on the
+    // rename - and those blame opposite halves of the driver.
     public static int Rename(string source, string destination)
     {
         IntPtr handle = CreateFileW(source, DELETE | SYNCHRONIZE, SHARE_ALL,
                                     IntPtr.Zero, OPEN_EXISTING, 0, IntPtr.Zero);
 
-        if (handle == new IntPtr(-1)) { return Marshal.GetLastWin32Error(); }
+        if (handle == new IntPtr(-1)) { return -Marshal.GetLastWin32Error(); }
 
         try
         {
@@ -955,9 +960,13 @@ public static class SafeUploadRename
 
     Add-Result -Name 'FileRenameInfo direto para o destino e negado' -Passed ($renameError -eq 5) `
         -Detail $(switch ($renameError) {
-            5       { 'ERROR_ACCESS_DENIED: o gancho de SET_INFORMATION recusou.' }
+            5       { 'ERROR_ACCESS_DENIED no rename: o gancho de SET_INFORMATION recusou.' }
             0       { 'O rename passou. O desvio por rename esta aberto.' }
-            default { "Erro $renameError - nem passou nem foi negado; ver o caso antes de concluir." }
+            -5      { 'Negado ao ABRIR a origem, nao no rename. O pre-create recusou uma abertura que pede so DELETE - o gancho de rename continua sem prova, e essa recusa e ela mesma suspeita.' }
+            default {
+                if ($renameError -lt 0) { "Erro $(-$renameError) ao abrir a origem; o rename nem chegou a ser emitido." }
+                else { "Erro $renameError no rename - nem passou nem foi negado." }
+            }
         })
 
     Add-Result -Name 'Nada chegou ao destino pelo rename direto' -Passed (-not (Test-Path $directTarget)) `
