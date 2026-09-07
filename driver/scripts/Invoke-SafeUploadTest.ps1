@@ -537,9 +537,9 @@ else {
     }
 
     $installedHash = (Get-FileHash $InstalledDriverPath -Algorithm SHA256).Hash
-    $expectedHash = ($manifest.files | Where-Object { $_.name -eq $DriverFileName }).sha256
+    $manifestDriverHash = ($manifest.files | Where-Object { $_.name -eq $DriverFileName }).sha256
 
-    if ($installedHash -ne $expectedHash) {
+    if ($installedHash -ne $manifestDriverHash) {
         Stop-WithMessage 'A copia nao surtiu efeito: o binario instalado nao confere com o pacote.'
     }
 
@@ -633,10 +633,15 @@ $sourceFile = Join-Path $SourceDirectory 'documento.txt'
 # driver must ignore it entirely.
 $outOfScopeFile = Join-Path $OutOfScopeDirectory 'ignorado.txt'
 
+# Sensitive AND under a source prefix: reading it must be allowed and must
+# mark the process.
+$taintFile = Join-Path $SourceDirectory "$BlockToken.txt"
+
 Set-Content -Path $allowedFile -Value 'conteudo permitido' -Encoding UTF8
 Set-Content -Path $blockedFile -Value 'conteudo bloqueado' -Encoding UTF8
 Set-Content -Path $sourceFile -Value 'documento de origem' -Encoding UTF8
 Set-Content -Path $outOfScopeFile -Value 'fora de escopo' -Encoding UTF8
+Set-Content -Path $taintFile -Value 'documento sensivel' -Encoding UTF8
 
 Write-Host "  $allowedFile"
 Write-Host "  $blockedFile"
@@ -759,6 +764,66 @@ try {
 
     Add-Result -Name 'Arquivo fora de escopo nao e inspecionado' -Passed ($outOfScopeLine -lt 0) `
         -Detail $(if ($outOfScopeLine -lt 0) { 'Nada foi enviado ao modo usuario, como esperado.' } else { 'O caminho apareceu no log: o escopo nao esta filtrando.' })
+    Write-Step 'Caso 7 - ler origem sensivel e permitido, e marca o processo'
+
+    # The behaviour that changed with taint. A sensitive source file is no
+    # longer refused: the user has every right to open their own document.
+    # What happens instead is that the process is remembered.
+    $sourceReadOk = $false
+
+    try {
+        Get-Content $taintFile -Raw -ErrorAction Stop | Out-Null
+        $sourceReadOk = $true
+    }
+    catch { }
+
+    Add-Result -Name 'Arquivo sensivel de origem abre normalmente' -Passed $sourceReadOk `
+        -Detail $(if ($sourceReadOk) { 'Leitura permitida, como esperado sob contaminacao.' } else { 'A leitura foi negada: a contaminacao nao esta ativa.' })
+
+    Start-Sleep -Seconds 1
+
+    Write-Step 'Caso 8 - o processo marcado nao escreve no destino'
+
+    # The zero-byte refusal, decided in pre-create with no round trip. The
+    # file must not even come into existence.
+    $destinationWrite = Join-Path $TestDirectory 'saida-marcada.txt'
+    Remove-Item $destinationWrite -Force -ErrorAction SilentlyContinue
+
+    $writeRefused = $false
+
+    try {
+        Set-Content -Path $destinationWrite -Value 'nao deveria existir' -ErrorAction Stop
+    }
+    catch {
+        $writeRefused = $true
+    }
+
+    Add-Result -Name 'Escrita no destino e negada apos a marcacao' -Passed $writeRefused `
+        -Detail $(if ($writeRefused) { 'Acesso negado antes de qualquer escrita.' } else { 'A escrita passou: a marcacao nao chegou ao pre-create.' })
+
+    # The stronger half of the guarantee: refused in pre-create means the
+    # create never happened, so not even an empty file is left behind.
+    Add-Result -Name 'Nenhum arquivo vazio ficou no destino' -Passed (-not (Test-Path $destinationWrite)) `
+        -Detail $(if (Test-Path $destinationWrite) { 'Sobrou um arquivo: a negacao veio do pos-create.' } else { 'Nada foi criado.' })
+
+    Write-Step 'Caso 9 - fora do destino, o processo marcado continua escrevendo'
+
+    # Taint must not turn into a blanket ban. A tainted process is refused
+    # only where the policy says a file must not go.
+    $freeWrite = Join-Path $OutOfScopeDirectory 'livre.txt'
+    Remove-Item $freeWrite -Force -ErrorAction SilentlyContinue
+
+    $freeWriteOk = $false
+
+    try {
+        Set-Content -Path $freeWrite -Value 'permitido' -ErrorAction Stop
+        $freeWriteOk = Test-Path $freeWrite
+    }
+    catch { }
+
+    Add-Result -Name 'Escrita fora de escopo continua permitida' -Passed $freeWriteOk `
+        -Detail $(if ($freeWriteOk) { 'A marcacao nao virou proibicao geral.' } else { 'Escrita fora de escopo foi negada: falso positivo grave.' })
+
 }
 finally {
 
@@ -766,7 +831,7 @@ finally {
     Stop-Inspector | Out-Null
 }
 
-Write-Step 'Caso 7 - RN-013, falha de inspecao permite'
+Write-Step 'Caso 10 - RN-013, falha de inspecao permite'
 
 # Without a client on the port the driver allows everything. Give the
 # disconnect a moment to land, then confirm the same file opens again.

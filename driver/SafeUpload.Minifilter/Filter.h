@@ -393,6 +393,53 @@ SafeUploadPreCleanup (
 
 ///////////////////////////////////////////////////////////////////////////
 //
+//  Process taint. Implemented in Taint.c.
+//
+//  Records which processes have obtained access to sensitive content, so
+//  that a later write to a monitored destination can be refused in
+//  pre-create - where refusing costs nothing and leaves nothing behind.
+//
+///////////////////////////////////////////////////////////////////////////
+
+//
+//  How long a taint survives without further contact with sensitive
+//  content. Without a limit, a long-lived process would be barred from
+//  writing to removable media until the machine reboots.
+//
+
+#define SAFEUPLOAD_TAINT_TTL_SECONDS ((ULONGLONG) 300)
+
+#define SAFEUPLOAD_TAINT_TTL_INTERVALS \
+    (SAFEUPLOAD_TAINT_TTL_SECONDS * 10ULL * 1000ULL * 1000ULL)
+
+VOID
+SafeUploadInitializeTaint (
+    VOID
+    );
+
+VOID
+SafeUploadFreeTaint (
+    VOID
+    );
+
+VOID
+SafeUploadTaintProcess (
+    _In_ ULONG ProcessId,
+    _In_ UINT32 Categories
+    );
+
+VOID
+SafeUploadClearProcessTaint (
+    _In_ ULONG ProcessId
+    );
+
+BOOLEAN
+SafeUploadIsProcessTainted (
+    _In_ ULONG ProcessId
+    );
+
+///////////////////////////////////////////////////////////////////////////
+//
 //  Scope policy. Implemented in Policy.c.
 //
 //  An immutable snapshot behind a push lock: readers take it shared and

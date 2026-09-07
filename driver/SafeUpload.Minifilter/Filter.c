@@ -71,6 +71,13 @@ SafeUploadReadFileStamp (
     _Out_ PLARGE_INTEGER LastWriteTime
     );
 
+static
+BOOLEAN
+SafeUploadIsMonitoredDestination (
+    _Inout_ PFLT_CALLBACK_DATA Data,
+    _In_ SAFEUPLOAD_VOLUME_KIND VolumeKind
+    );
+
 #ifdef ALLOC_PRAGMA
     #pragma alloc_text(INIT, DriverEntry)
     #pragma alloc_text(PAGE, SafeUploadUnload)
@@ -81,6 +88,7 @@ SafeUploadReadFileStamp (
     #pragma alloc_text(PAGE, SafeUploadCopyRequestImageName)
     #pragma alloc_text(PAGE, SafeUploadEvaluate)
     #pragma alloc_text(PAGE, SafeUploadReadFileStamp)
+    #pragma alloc_text(PAGE, SafeUploadIsMonitoredDestination)
     #pragma alloc_text(PAGE, SafeUploadPostCreate)
     #pragma alloc_text(PAGE, SafeUploadPreCleanup)
 #endif
@@ -219,6 +227,7 @@ Return Value:
     //
 
     SafeUploadInitializePolicy();
+    SafeUploadInitializeTaint();
 
     SafeUploadData.DriverObject = DriverObject;
 
@@ -353,6 +362,7 @@ Return Value:
     //
 
     SafeUploadFreePolicy();
+    SafeUploadFreeTaint();
 
     SafeUploadTrace( "unloaded\n" );
 
@@ -920,6 +930,76 @@ Return Value:
 }
 
 
+static
+BOOLEAN
+SafeUploadIsMonitoredDestination (
+    _Inout_ PFLT_CALLBACK_DATA Data,
+    _In_ SAFEUPLOAD_VOLUME_KIND VolumeKind
+    )
+/*++
+
+Routine Description:
+
+    Whether a create is heading for a monitored destination, answered as
+    cheaply as the policy allows.
+
+    Removable media and network shares are settled by the volume kind alone,
+    with no name at all - which is the case that matters most, because a pen
+    drive is where a refusal has to leave nothing behind.
+
+    Only a fixed volume needs a name, and only then is one resolved. The
+    caller checks process taint first precisely so that this cost is paid
+    for tainted processes, which are rare, rather than for every write.
+
+    The opened name is used rather than the normalized one: normalization
+    can fail in pre-create, and the filter manager returns opened names in
+    device form (\Device\HarddiskVolumeN\...), which is what the policy
+    prefixes are written in. A short name that fails to match means an
+    operation goes uninspected, never wrongly refused.
+
+    IRQL: PASSIVE_LEVEL.
+
+Arguments:
+
+    Data - Parameters of the create.
+
+    VolumeKind - Classification from the instance context.
+
+Return Value:
+
+    TRUE when the destination is monitored.
+
+--*/
+{
+    PFLT_FILE_NAME_INFORMATION nameInfo = NULL;
+    BOOLEAN monitored;
+    NTSTATUS status;
+
+    PAGED_CODE();
+
+    if (SafeUploadPolicyMatchesDestination( VolumeKind, NULL )) {
+
+        return TRUE;
+    }
+
+    status = FltGetFileNameInformation( Data,
+                                        FLT_FILE_NAME_OPENED |
+                                            FLT_FILE_NAME_QUERY_DEFAULT,
+                                        &nameInfo );
+
+    if (!NT_SUCCESS( status )) {
+
+        return FALSE;
+    }
+
+    monitored = SafeUploadPolicyMatchesDestination( VolumeKind, &nameInfo->Name );
+
+    FltReleaseFileNameInformation( nameInfo );
+
+    return monitored;
+}
+
+
 FLT_PREOP_CALLBACK_STATUS
 SafeUploadPreCreate (
     _Inout_ PFLT_CALLBACK_DATA Data,
@@ -1061,6 +1141,36 @@ Return Value:
 
     volumeKind = instanceContext->VolumeKind;
     FltReleaseContext( instanceContext );
+
+    //
+    //  The zero-byte refusal.
+    //
+    //  A process that has handled sensitive content may not open a
+    //  monitored destination for writing. This is decided here, in
+    //  pre-create, and it asks user mode nothing: the expensive question
+    //  was answered when the source was opened, and its answer is a hash
+    //  lookup away. Refusing here means the create never happens - no file
+    //  created, nothing truncated, nothing left behind.
+    //
+    //  Taint is checked before the destination, and the order is the point:
+    //  the taint lookup costs nothing, while deciding whether a fixed
+    //  volume path is monitored may cost a name resolution. Paying that
+    //  only for tainted processes keeps it off the common path.
+    //
+
+    if (FlagOn( securityContext->DesiredAccess,
+                FILE_WRITE_DATA | FILE_APPEND_DATA ) &&
+        SafeUploadIsProcessTainted( FltGetRequestorProcessId( Data ) ) &&
+        SafeUploadIsMonitoredDestination( Data, volumeKind )) {
+
+        SafeUploadTrace( "escrita negada: processo %lu marcado\n",
+                         FltGetRequestorProcessId( Data ) );
+
+        Data->IoStatus.Status = STATUS_ACCESS_DENIED;
+        Data->IoStatus.Information = 0;
+
+        return FLT_PREOP_COMPLETE;
+    }
 
     *CompletionContext = (PVOID) (ULONG_PTR) volumeKind;
 
@@ -1223,10 +1333,33 @@ Return Value:
 
     if (verdict == SAFEUPLOAD_VERDICT_DENY) {
 
-        FltCancelFileOpen( FltObjects->Instance, FltObjects->FileObject );
+        //
+        //  Sensitive content reached this process. The read itself is
+        //  allowed - the user has every right to open their own document -
+        //  and what is recorded is that this process now carries it.
+        //
 
-        Data->IoStatus.Status = STATUS_ACCESS_DENIED;
-        Data->IoStatus.Information = 0;
+        if (FlagOn( scopeFlags, SAFEUPLOAD_REQUEST_FLAG_SCOPE_SOURCE )) {
+
+            SafeUploadTaintProcess( FltGetRequestorProcessId( Data ), 1 );
+        }
+
+        //
+        //  A file already on its way out is refused outright. This is the
+        //  weaker refusal of the two: FltCancelFileOpen undoes the open, so
+        //  no content is ever readable, but it does not undo whatever the
+        //  create itself did - a file may have been created or truncated
+        //  before this callback ran. The strong refusal is the pre-create
+        //  one above.
+        //
+
+        if (FlagOn( scopeFlags, SAFEUPLOAD_REQUEST_FLAG_SCOPE_DESTINATION )) {
+
+            FltCancelFileOpen( FltObjects->Instance, FltObjects->FileObject );
+
+            Data->IoStatus.Status = STATUS_ACCESS_DENIED;
+            Data->IoStatus.Information = 0;
+        }
     }
 
     return FLT_POSTOP_FINISHED_PROCESSING;
