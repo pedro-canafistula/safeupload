@@ -74,7 +74,7 @@ Set-StrictMode -Version Latest
 
 $FilterName = 'SafeUpload'
 $DriverFileName = 'SafeUpload.sys'
-$InspectorFileName = 'SafeUpload.Inspector.exe'
+$InspectorFileName = 'SafeUpload.Agent.exe'
 $InstalledDriverPath = Join-Path $env:SystemRoot "System32\drivers\$DriverFileName"
 $BlockToken = 'BLOQUEAR_TESTE'
 $AdministratorsSid = '*S-1-5-32-544'
@@ -142,10 +142,21 @@ function Stop-Inspector {
         so the inspector has to go first. Killing it is fine: it owns no
         state that outlives the process.
     #>
-    $processes = @(Get-Process -Name ([IO.Path]::GetFileNameWithoutExtension($InspectorFileName)) -ErrorAction SilentlyContinue)
+    # SafeUpload.Inspector is the C client the agent replaced. A machine
+    # that ran an earlier package can still have one alive, and the port
+    # takes a single client - a leftover inspector does not just linger,
+    # it keeps the agent from connecting at all, and the failure reads as
+    # "o inspetor nao conectou na porta" with nothing pointing at the
+    # process that is actually holding it.
+    $processNames = @(
+        [IO.Path]::GetFileNameWithoutExtension($InspectorFileName),
+        'SafeUpload.Inspector'
+    ) | Select-Object -Unique
+
+    $processes = @(Get-Process -Name $processNames -ErrorAction SilentlyContinue)
 
     foreach ($process in $processes) {
-        Write-Host "  Encerrando inspetor (pid $($process.Id))."
+        Write-Host "  Encerrando $($process.ProcessName) (pid $($process.Id))."
         $process | Stop-Process -Force
     }
 
@@ -189,7 +200,9 @@ function Start-Inspector {
 
         if ($process.HasExited) {
             Write-Host "  O inspetor terminou sozinho (codigo $($process.ExitCode))." -ForegroundColor Red
-            Write-Host '  Codigo -1073741515 e STATUS_DLL_NOT_FOUND: binario com CRT dinamico.' -ForegroundColor Red
+            Write-Host '  Codigo -1073741515 e STATUS_DLL_NOT_FOUND: falta uma DLL.' -ForegroundColor Red
+            Write-Host '  No agente isso significa build dependente de framework em vez de' -ForegroundColor Red
+            Write-Host '  Native AOT - esta VM nao tem runtime .NET instalado.' -ForegroundColor Red
         }
 
         Stop-WithMessage 'O inspetor nao conectou na porta.'
@@ -709,9 +722,15 @@ try {
     }
     else {
 
-        # The scope is reported on the line right after the request.
+        # The scope is on the request line itself.
+        #
+        # The C inspector printed it on the following line, and this read
+        # $sourceLine + 1 to find it. That was positional and fragile: any
+        # other request arriving in between would have been read as this
+        # one's scope. Reading the matched line ties the assertion to the
+        # path it matched, which is what it always meant to test.
         $logLines = @(Get-Content $inspectorLog -ErrorAction SilentlyContinue)
-        $scopeLine = if (($sourceLine + 1) -lt $logLines.Count) { $logLines[$sourceLine + 1] } else { '' }
+        $scopeLine = if ($sourceLine -lt $logLines.Count) { $logLines[$sourceLine] } else { '' }
 
         Add-Result -Name 'Arquivo sob prefixo de origem e inspecionado' -Passed $true
 

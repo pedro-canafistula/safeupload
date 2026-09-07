@@ -77,6 +77,12 @@ $SolutionPath = Join-Path $RepoRoot 'driver\SafeUpload.Driver.sln'
 $InfPath = Join-Path $RepoRoot 'driver\SafeUpload.Minifilter\SafeUpload.inf'
 $BuildOutput = Join-Path $RepoRoot "driver\x64\$Configuration"
 
+# The agent is the managed replacement for SafeUpload.Inspector: same role
+# on the port, but it is the code the WPF service will actually be built
+# from, so the battery exercises the real client instead of a stand-in.
+$AgentProject = Join-Path $RepoRoot "service\SafeUpload.Agent\SafeUpload.Agent.csproj"
+$AgentPublish = Join-Path $RepoRoot "service\SafeUpload.Agent\bin\Release\net10.0-windows\win-x64\publish"
+
 function Write-Step {
     param([string] $Text)
     Write-Host ''
@@ -238,6 +244,51 @@ if ($warnings.Count -gt 0) {
     $warnings | ForEach-Object { Write-Host "    $($_.Line.Trim())" -ForegroundColor Yellow }
 }
 
+# ---------------------------------------------------------------------------
+
+Write-Step 'Compilando o agente (Native AOT)'
+
+# Native AOT, not a framework-dependent build: the target VM has no .NET
+# runtime and is not going to get one. A framework-dependent binary dies
+# there in the loader without printing anything, which is exactly how the
+# C inspector failed on VCRUNTIME140D.dll.
+#
+# The MSVC linker that AOT invokes calls vswhere.exe, which is NOT on PATH
+# by default even with Visual Studio installed. Without this the publish
+# fails with "'vswhere.exe' is not recognized" attributed to link.exe - a
+# message that names neither the cause nor the fix.
+$vsInstaller = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer'
+
+if (Test-Path $vsInstaller) {
+    $env:PATH = "$vsInstaller;$env:PATH"
+}
+
+$agentLog = & dotnet publish $AgentProject -c Release --nologo 2>&1
+
+if ($LASTEXITCODE -ne 0) {
+    $agentLog | ForEach-Object { Write-Host "  $_" }
+    Stop-WithMessage 'A compilacao do agente falhou.'
+}
+
+$agentExe = Join-Path $AgentPublish 'SafeUpload.Agent.exe'
+
+if (-not (Test-Path $agentExe)) {
+    Stop-WithMessage "O agente nao foi produzido em $agentExe."
+}
+
+# Proves the managed structures still match the C_ASSERTs in Protocol.h.
+# Cheap, needs no driver, and catches a contract drift here rather than on
+# the target machine as a corrupted path.
+$verify = & $agentExe --verify 2>&1
+
+if ($LASTEXITCODE -ne 0) {
+    $verify | ForEach-Object { Write-Host "  $_" -ForegroundColor Red }
+    Stop-WithMessage 'O agente nao confere com o contrato do driver.'
+}
+
+Write-Host "  SafeUpload.Agent.exe ($([math]::Round((Get-Item $agentExe).Length / 1KB)) KB, nativo)"
+Write-Host '  Contrato conferido contra Protocol.h.'
+
 Write-Host '  Compilado sem erros.' -ForegroundColor Green
 
 # ---------------------------------------------------------------------------
@@ -254,7 +305,7 @@ Get-ChildItem $PackageDirectory -Filter '*.cat' -ErrorAction SilentlyContinue | 
 
 $sources = @(
     (Join-Path $BuildOutput 'SafeUpload.sys'),
-    (Join-Path $BuildOutput 'SafeUpload.Inspector.exe'),
+    (Join-Path $AgentPublish 'SafeUpload.Agent.exe'),
     $InfPath,
 
     # Served alongside the artifacts so the target VM always pulls the
@@ -363,7 +414,7 @@ New-Item -ItemType Directory -Path $symbolDirectory -Force | Out-Null
 
 Copy-Item (Join-Path $PackageDirectory 'SafeUpload.sys') $symbolDirectory -Force
 Copy-Item (Join-Path $BuildOutput 'SafeUpload.pdb') $symbolDirectory -Force -ErrorAction SilentlyContinue
-Copy-Item (Join-Path $BuildOutput 'SafeUpload.Inspector.pdb') $symbolDirectory -Force -ErrorAction SilentlyContinue
+Copy-Item (Join-Path $AgentPublish 'SafeUpload.Agent.pdb') $symbolDirectory -Force -ErrorAction SilentlyContinue
 
 $commit = (& git -C $RepoRoot rev-parse --short HEAD 2>&1)
 
@@ -439,7 +490,7 @@ $artifactNames = @(
     'SafeUpload.sys',
     'SafeUpload.inf',
     'safeupload.cat',
-    'SafeUpload.Inspector.exe',
+    'SafeUpload.Agent.exe',
     'SafeUploadTest.cer',
     'Invoke-SafeUploadTest.ps1'
 )
