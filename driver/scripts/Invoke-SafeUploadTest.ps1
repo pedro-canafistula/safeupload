@@ -824,6 +824,34 @@ try {
     Add-Result -Name 'Escrita fora de escopo continua permitida' -Passed $freeWriteOk `
         -Detail $(if ($freeWriteOk) { 'A marcacao nao virou proibicao geral.' } else { 'Escrita fora de escopo foi negada: falso positivo grave.' })
 
+    Write-Step 'Caso 10 - renomear para o destino tambem e negado'
+
+    # The bypass this closes: a tainted process cannot create a file inside
+    # the monitored folder, but it can write the same content next door and
+    # rename it in. Both directories are on the same volume, so Move-Item is
+    # a rename, not a copy - which is exactly the operation that would slip
+    # past a create-only filter.
+    $stagedForRename = Join-Path $OutOfScopeDirectory 'para-mover.txt'
+    $renameTarget = Join-Path $TestDirectory 'movido.txt'
+
+    Remove-Item $renameTarget -Force -ErrorAction SilentlyContinue
+    Set-Content -Path $stagedForRename -Value 'conteudo a mover' -ErrorAction SilentlyContinue
+
+    $renameRefused = $false
+
+    try {
+        Move-Item -Path $stagedForRename -Destination $renameTarget -ErrorAction Stop
+    }
+    catch {
+        $renameRefused = $true
+    }
+
+    Add-Result -Name 'Rename para o destino e negado apos a marcacao' -Passed $renameRefused `
+        -Detail $(if ($renameRefused) { 'Acesso negado, como na abertura para escrita.' } else { 'O rename passou: a porta lateral do create continua aberta.' })
+
+    Add-Result -Name 'Nada chegou ao destino pelo rename' -Passed (-not (Test-Path $renameTarget)) `
+        -Detail $(if (Test-Path $renameTarget) { 'O arquivo esta la: o conteudo atravessou.' } else { 'Nada foi movido.' })
+
 }
 finally {
 
@@ -831,7 +859,7 @@ finally {
     Stop-Inspector | Out-Null
 }
 
-Write-Step 'Caso 10 - RN-013, falha de inspecao permite'
+Write-Step 'Caso 11 - RN-013, falha de inspecao permite'
 
 # Without a client on the port the driver allows everything. Give the
 # disconnect a moment to land, then confirm the same file opens again.

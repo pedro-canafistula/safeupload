@@ -98,6 +98,7 @@ SafeUploadIsMonitoredDestination (
     #pragma alloc_text(PAGE, SafeUploadIsMonitoredDestination)
     #pragma alloc_text(PAGE, SafeUploadPostCreate)
     #pragma alloc_text(PAGE, SafeUploadPreCleanup)
+    #pragma alloc_text(PAGE, SafeUploadPreSetInformation)
 #endif
 
 ///////////////////////////////////////////////////////////////////////////
@@ -133,6 +134,18 @@ CONST FLT_OPERATION_REGISTRATION Callbacks[] = {
     { IRP_MJ_CLEANUP,
       0,
       SafeUploadPreCleanup,
+      NULL },
+
+    //
+    //  Rename and hard link can put content somewhere the create path never
+    //  saw it go: write to an ordinary folder, then rename into the
+    //  monitored one. Without this the zero-byte refusal has a door beside
+    //  it.
+    //
+
+    { IRP_MJ_SET_INFORMATION,
+      0,
+      SafeUploadPreSetInformation,
       NULL },
 
     //
@@ -1458,4 +1471,167 @@ Return Value:
     FltReleaseContext( streamContext );
 
     return FLT_PREOP_SUCCESS_NO_CALLBACK;
+}
+
+
+FLT_PREOP_CALLBACK_STATUS
+SafeUploadPreSetInformation (
+    _Inout_ PFLT_CALLBACK_DATA Data,
+    _In_ PCFLT_RELATED_OBJECTS FltObjects,
+    _Flt_CompletionContext_Outptr_ PVOID *CompletionContext
+    )
+/*++
+
+Routine Description:
+
+    Pre-operation callback for IRP_MJ_SET_INFORMATION, registered for one
+    reason: rename and hard link can put a file somewhere the create path
+    never saw it go.
+
+    The bypass this closes is concrete. A tainted process cannot create a
+    file for writing inside a monitored cloud folder - pre-create refuses
+    it. But it can write the same content to an ordinary folder on the same
+    volume, which nothing objects to, and then rename it into the monitored
+    folder. The file arrives complete, and without this callback nothing
+    would have been asked.
+
+    A hard link is the same bypass wearing a different name: it makes the
+    content reachable through a path inside the monitored destination
+    without moving or copying anything.
+
+    Deletion is deliberately not intercepted. Removing a file is not a way
+    to get data out of the machine, and refusing deletes would break far
+    more than it protects.
+
+    IRQL: PASSIVE_LEVEL.
+
+Arguments:
+
+    Data - Parameters of the operation.
+
+    FltObjects - Objects affected by the operation.
+
+    CompletionContext - Unused: no post-operation callback is registered.
+
+Return Value:
+
+    FLT_PREOP_COMPLETE with STATUS_ACCESS_DENIED when a tainted process is
+    moving content into a monitored destination, FLT_PREOP_SUCCESS_NO_CALLBACK
+    otherwise.
+
+--*/
+{
+    FILE_INFORMATION_CLASS informationClass;
+    PFILE_RENAME_INFORMATION renameInformation;
+    PFLT_FILE_NAME_INFORMATION nameInfo = NULL;
+    PSAFEUPLOAD_INSTANCE_CONTEXT instanceContext = NULL;
+    SAFEUPLOAD_VOLUME_KIND volumeKind;
+    ULONG processId;
+    BOOLEAN monitored = FALSE;
+    NTSTATUS status;
+
+    UNREFERENCED_PARAMETER( CompletionContext = NULL );
+
+    PAGED_CODE();
+
+    informationClass = Data->Iopb->Parameters.SetFileInformation.FileInformationClass;
+
+    //
+    //  The cheapest gate available: IRP_MJ_SET_INFORMATION carries dozens of
+    //  classes - timestamps, attributes, allocation size, end of file - and
+    //  only these four move content to a new path. One comparison rejects
+    //  everything else.
+    //
+
+    if (informationClass != FileRenameInformation &&
+        informationClass != FileRenameInformationEx &&
+        informationClass != FileLinkInformation &&
+        informationClass != FileLinkInformationEx) {
+
+        return FLT_PREOP_SUCCESS_NO_CALLBACK;
+    }
+
+    if (SafeUploadData.ClientPort == NULL) {
+
+        return FLT_PREOP_SUCCESS_NO_CALLBACK;
+    }
+
+    processId = FltGetRequestorProcessId( Data );
+
+    if (SafeUploadIsIgnoredProcess( processId )) {
+
+        return FLT_PREOP_SUCCESS_NO_CALLBACK;
+    }
+
+    //
+    //  Taint before destination, for the same reason as in pre-create:
+    //  resolving the destination name is the expensive part, and only a
+    //  tainted process can be refused, so only a tainted process should pay
+    //  for it.
+    //
+
+    if (!SafeUploadIsProcessTainted( processId )) {
+
+        return FLT_PREOP_SUCCESS_NO_CALLBACK;
+    }
+
+    status = FltGetInstanceContext( FltObjects->Instance,
+                                    (PFLT_CONTEXT *) &instanceContext );
+
+    if (!NT_SUCCESS( status )) {
+
+        return FLT_PREOP_SUCCESS_NO_CALLBACK;
+    }
+
+    volumeKind = instanceContext->VolumeKind;
+    FltReleaseContext( instanceContext );
+
+    //
+    //  FILE_LINK_INFORMATION shares its leading layout with
+    //  FILE_RENAME_INFORMATION - root directory, name length, name - so one
+    //  cast serves both.
+    //
+    //  The name that matters is the DESTINATION, not the file being
+    //  renamed, and it may be relative to a root directory handle.
+    //  FltGetDestinationFileNameInformation exists precisely to resolve
+    //  that pair into a full path.
+    //
+
+    renameInformation =
+        (PFILE_RENAME_INFORMATION) Data->Iopb->Parameters.SetFileInformation.InfoBuffer;
+
+    if (renameInformation == NULL) {
+
+        return FLT_PREOP_SUCCESS_NO_CALLBACK;
+    }
+
+    status = FltGetDestinationFileNameInformation( FltObjects->Instance,
+                                                   FltObjects->FileObject,
+                                                   renameInformation->RootDirectory,
+                                                   renameInformation->FileName,
+                                                   renameInformation->FileNameLength,
+                                                   FLT_FILE_NAME_OPENED |
+                                                       FLT_FILE_NAME_QUERY_DEFAULT,
+                                                   &nameInfo );
+
+    if (NT_SUCCESS( status )) {
+
+        monitored = SafeUploadPolicyMatchesDestination( volumeKind, &nameInfo->Name );
+
+        FltReleaseFileNameInformation( nameInfo );
+    }
+
+    if (!monitored) {
+
+        return FLT_PREOP_SUCCESS_NO_CALLBACK;
+    }
+
+    SafeUploadCount( DeniedPreCreate );
+
+    SafeUploadTrace( "rename negado: processo %lu marcado\n", processId );
+
+    Data->IoStatus.Status = STATUS_ACCESS_DENIED;
+    Data->IoStatus.Information = 0;
+
+    return FLT_PREOP_COMPLETE;
 }
