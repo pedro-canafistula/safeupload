@@ -318,14 +318,57 @@ Duas consequências, e nenhuma é "está tudo bem":
    **nunca é alcançado por um rename**. `DeniedRename` fica em zero por mais
    renames que sejam bloqueados, e isso não é defeito do contador.
 
-A única operação que alcança esse ramo é o **hard link**: ele não cria
-arquivo, não move nada, e portanto não oferece nada para a porta do CREATE
-pegar. É por isso que o caso do hard link existe na bateria e é ele, não os
-casos de rename, que dirige a asserção sobre `DeniedRename`.
+O hard link parecia ser a operação que alcançaria esse ramo: não cria
+arquivo, não move nada, e portanto não ofereceria nada para a porta do
+CREATE pegar. **Não é o que acontece.** Um bitmap das classes que chegam ao
+callback resolveu a questão:
 
-Se um dia o hard link também passar a ser pego pelo CREATE, o gancho vira
-código morto e deve ser removido em vez de mantido por precaução — código
-que nunca executa não protege, só dá impressão de proteção.
+```
+ClassesSeen: 0000000000000001 0000000000180410
+  4 FileBasicInformation   10 FileRenameInformation
+ 19 FileEndOfFileInformation   20 FileAllocationInformation
+ 64 FileDispositionInformationEx
+```
+
+As classes **11** (`FileLinkInformation`) e **72** (`FileLinkInformationEx`)
+nunca aparecem. O `CreateHardLinkW` abre o novo nome com acesso de escrita
+antes de emitir o link, e o pré-CREATE o recusa ali — `DeniedPreCreate`
+sobe, e a operação de link nunca é emitida.
+
+O mesmo vale para o rename: mesmo emitido direto por
+`SetFileInformationByHandle`, sem `MoveFileEx` no meio, o destino
+monitorado é recusado numa abertura interna antes de o rename chegar.
+
+### O que isso torna verdadeiro
+
+`DeniedRename` **não pode subir** neste sistema. Não é contador quebrado
+nem gancho defeituoso: as duas portas que ele existe para fechar já estão
+fechadas mais cedo, por construção. Uma bateria que exigisse
+`DeniedRename > 0` estaria exigindo o impossível — e exigiu, por três
+execuções, até o bitmap mostrar por quê.
+
+O que fica verificado do gancho: ele **é alcançado** (renames fora de
+escopo chegam), respeita a marca, e **libera corretamente** o que não é
+destino monitorado. Esse é o ramo perigoso se estivesse errado, e está
+certo. O ramo de recusa nunca executou.
+
+### Por que ele fica
+
+O critério anunciado antes de medir era: se o hard link também for pego
+pelo CREATE, o gancho é código morto e deve sair. Revendo com o dado na
+mão, **fica** — e a razão é específica, não conservadorismo.
+
+A recusa mais cedo depende de o Win32 e o NTFS emitirem uma abertura do
+nome de destino antes da operação. Isso é comportamento observado, não
+contrato documentado: nada obriga uma versão futura, ou um chamador que
+monte o IRP por conta própria, a fazer a mesma coisa. Remover o gancho faria
+a defesa inteira repousar sobre esse acidente. Um backstop que nunca
+disparou custa uma comparação de classe por `IRP_MJ_SET_INFORMATION`, e é
+barato pelo que segura.
+
+O que **não** é aceitável é deixá-lo passar por verificado. Ele está aqui
+como rede, sem uma única recusa observada, e este parágrafo existe para que
+ninguém leia a linha verde da bateria como prova do contrário.
 
 ---
 

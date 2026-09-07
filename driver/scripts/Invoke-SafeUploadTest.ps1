@@ -1170,20 +1170,25 @@ Add-Result -Name 'O cache serviu ao menos uma resposta' -Passed ($cacheHits -gt 
 Add-Result -Name 'A recusa por marca no pre-create foi contada' -Passed ($deniedPreCreate -gt 0) `
     -Detail "DeniedPreCreate = $deniedPreCreate; o caso da escrita marcada passou, entao tem de ser >= 1."
 
-# This counter is driven by the HARD LINK case, not by the rename cases.
+# What the SET_INFORMATION hook can and cannot be asserted to do.
 #
-# Renames into the monitored folder never reach the refusal branch: the
-# pre-create gate stops them first, on an internal create the file system
-# issues while processing the rename. Measured, not assumed - two direct
-# renames were issued and only the out-of-scope one reached the callback.
+# Measured, with the class bitmap: renames and hard links aimed at the
+# monitored folder never reach this callback. Both are refused earlier, by
+# the pre-create gate, on internal creates that the Win32 layer and the
+# file system issue while processing them - DeniedPreCreate rises and
+# classes 11 and 72 never appear at all.
 #
-# So the only operation that can move this counter is the hard link, which
-# creates nothing for the create gate to catch. If it stays at zero while
-# the hard link case is green, the link was refused by something else and
-# the refusal branch is still unproven.
+# So DeniedRename cannot rise on this system, and asserting that it does
+# was asserting something impossible. What IS verifiable is that the hook
+# is reached, gates on taint, and correctly lets an out-of-scope rename
+# through - the branch that would be dangerous if it were wrong.
+#
+# The refusal branch stays as a backstop and is documented in
+# ARQUITETURA.md as never having refused anything.
 
-Add-Result -Name 'A recusa no gancho de SET_INFORMATION foi contada' -Passed ($deniedRename -gt 0) `
-    -Detail "DeniedRename = $deniedRename (SetInformationSeen = $setInformationSeen, RenamesSeen = $renamesSeen, RenamesFromTainted = $renamesFromTainted)."
+Add-Result -Name 'O gancho de SET_INFORMATION e alcancado e libera fora de escopo' `
+    -Passed ($renamesSeen -gt 0 -and $renamesFromTainted -gt 0) `
+    -Detail "RenamesSeen = $renamesSeen, RenamesFromTainted = $renamesFromTainted, DeniedRename = $deniedRename (zero e o esperado: o pre-create chega primeiro)."
 
 Write-Step 'Diagnostico do gancho de SET_INFORMATION'
 
@@ -1222,15 +1227,15 @@ else {
     $sawLinkClass = [bool] ($classLine -match '11=|72=')
 
     if (-not $sawLinkClass) {
-        Write-Host '    O hard link NAO chegou ao gancho. Foi recusado antes,' -ForegroundColor Yellow
-        Write-Host '    e o ramo de recusa continua sem execucao observada.' -ForegroundColor Yellow
+        Write-Host '    O hard link nao chega ao gancho: o pre-create o pega antes,' -ForegroundColor DarkGray
+        Write-Host '    na abertura do novo nome. Esperado - ver ARQUITETURA.md.' -ForegroundColor DarkGray
     }
     elseif ($deniedRename -eq 0) {
         Write-Host '    O hard link chegou ao gancho e nao foi negado por ele.' -ForegroundColor Yellow
-        Write-Host '    Quem recusou foi outra coisa.' -ForegroundColor Yellow
+        Write-Host '    Quem recusou foi outra coisa: isso e novo, investigar.' -ForegroundColor Yellow
     }
     else {
-        Write-Host '    O gancho viu o link e recusou: o ramo esta provado.' -ForegroundColor Green
+        Write-Host '    O gancho viu o link e recusou: o ramo saiu do papel.' -ForegroundColor Green
     }
 
     if ($sawRenameClass -and $renamesSeen -gt 0) {
