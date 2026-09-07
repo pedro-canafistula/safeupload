@@ -1536,6 +1536,8 @@ Return Value:
 
     PAGED_CODE();
 
+    SafeUploadCount( SetInformationSeen );
+
     informationClass = Data->Iopb->Parameters.SetFileInformation.FileInformationClass;
 
     //

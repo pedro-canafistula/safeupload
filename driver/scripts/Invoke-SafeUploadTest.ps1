@@ -862,6 +862,107 @@ try {
     Add-Result -Name 'Nada chegou ao destino pelo rename' -Passed (-not (Test-Path $renameTarget)) `
         -Detail $(if (Test-Path $renameTarget) { 'O arquivo esta la: o conteudo atravessou.' } else { 'Nada foi movido.' })
 
+    # The case above proves the user-visible behaviour: Move-Item fails and
+    # nothing arrives. It does NOT prove the rename hook did it.
+    #
+    # Move-Item goes through MoveFileEx, which is free to reach the same
+    # outcome without ever issuing FileRenameInformation - it can be
+    # refused while opening the destination, in which case the pre-create
+    # gate blocked it and the SET_INFORMATION callback was never consulted.
+    # The first run with these counters showed exactly that: the case
+    # passed with RenamesSeen = 0.
+    #
+    # So issue the rename directly. CreateFile with DELETE, then
+    # SetFileInformationByHandle(FileRenameInfo) - the operation the driver
+    # claims to intercept, with nothing in between free to substitute it.
+
+    $renameInterop = @'
+using System;
+using System.Runtime.InteropServices;
+
+public static class SafeUploadRename
+{
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    static extern IntPtr CreateFileW(string name, uint access, uint share,
+        IntPtr security, uint disposition, uint flags, IntPtr template);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    static extern bool SetFileInformationByHandle(IntPtr file, int infoClass,
+        IntPtr info, uint size);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    static extern bool CloseHandle(IntPtr handle);
+
+    const uint DELETE = 0x00010000;
+    const uint SYNCHRONIZE = 0x00100000;
+    const uint SHARE_ALL = 0x00000007;
+    const uint OPEN_EXISTING = 3;
+    const int FileRenameInfo = 3;
+
+    // Returns 0 when the rename went through, otherwise the Win32 error.
+    // A driver refusal shows up as 5, ERROR_ACCESS_DENIED.
+    public static int Rename(string source, string destination)
+    {
+        IntPtr handle = CreateFileW(source, DELETE | SYNCHRONIZE, SHARE_ALL,
+                                    IntPtr.Zero, OPEN_EXISTING, 0, IntPtr.Zero);
+
+        if (handle == new IntPtr(-1)) { return Marshal.GetLastWin32Error(); }
+
+        try
+        {
+            // FILE_RENAME_INFO on x64: ReplaceIfExists at 0 (4 bytes plus 4
+            // of padding), RootDirectory at 8, FileNameLength at 16, and the
+            // name from 20. FileNameLength counts bytes, not characters, and
+            // excludes the terminator.
+            byte[] name = System.Text.Encoding.Unicode.GetBytes(destination);
+            int size = 20 + name.Length + 2;
+            IntPtr buffer = Marshal.AllocHGlobal(size);
+
+            try
+            {
+                for (int i = 0; i < size; i++) { Marshal.WriteByte(buffer, i, 0); }
+
+                Marshal.WriteInt32(buffer, 0, 1);
+                Marshal.WriteIntPtr(buffer, 8, IntPtr.Zero);
+                Marshal.WriteInt32(buffer, 16, name.Length);
+                Marshal.Copy(name, 0, IntPtr.Add(buffer, 20), name.Length);
+
+                if (SetFileInformationByHandle(handle, FileRenameInfo, buffer, (uint) size))
+                {
+                    return 0;
+                }
+
+                return Marshal.GetLastWin32Error();
+            }
+            finally { Marshal.FreeHGlobal(buffer); }
+        }
+        finally { CloseHandle(handle); }
+    }
+}
+'@
+
+    if (-not ('SafeUploadRename' -as [type])) {
+        Add-Type -TypeDefinition $renameInterop -Language CSharp
+    }
+
+    $directSource = Join-Path $OutOfScopeDirectory 'rename-direto.txt'
+    $directTarget = Join-Path $TestDirectory 'rename-direto.txt'
+
+    Remove-Item $directTarget -Force -ErrorAction SilentlyContinue
+    Set-Content -Path $directSource -Value 'conteudo a renomear' -ErrorAction SilentlyContinue
+
+    $renameError = [SafeUploadRename]::Rename($directSource, $directTarget)
+
+    Add-Result -Name 'FileRenameInfo direto para o destino e negado' -Passed ($renameError -eq 5) `
+        -Detail $(switch ($renameError) {
+            5       { 'ERROR_ACCESS_DENIED: o gancho de SET_INFORMATION recusou.' }
+            0       { 'O rename passou. O desvio por rename esta aberto.' }
+            default { "Erro $renameError - nem passou nem foi negado; ver o caso antes de concluir." }
+        })
+
+    Add-Result -Name 'Nada chegou ao destino pelo rename direto' -Passed (-not (Test-Path $directTarget)) `
+        -Detail $(if (Test-Path $directTarget) { 'O arquivo esta la: o conteudo atravessou.' } else { 'Nada foi renomeado.' })
+
 }
 finally {
 
@@ -928,12 +1029,14 @@ $deniedPreCreate = 0
 $deniedRename = 0
 $renamesSeen = 0
 $renamesFromTainted = 0
+$setInformationSeen = 0
 
 foreach ($line in $counterOutput) {
     if ($line -match '^CacheHits\s*:\s*(\d+)') { $cacheHits = [int] $matches[1] }
     if ($line -match '^UserModeRoundTrips\s*:\s*(\d+)') { $roundTrips = [int] $matches[1] }
     if ($line -match '^DeniedPreCreate\s*:\s*(\d+)') { $deniedPreCreate = [int] $matches[1] }
     if ($line -match '^DeniedRename\s*:\s*(\d+)') { $deniedRename = [int] $matches[1] }
+    if ($line -match '^SetInformationSeen\s*:\s*(\d+)') { $setInformationSeen = [int] $matches[1] }
     if ($line -match '^RenamesSeen\s*:\s*(\d+)') { $renamesSeen = [int] $matches[1] }
     if ($line -match '^RenamesFromTainted\s*:\s*(\d+)') { $renamesFromTainted = [int] $matches[1] }
 }
@@ -969,7 +1072,7 @@ Add-Result -Name 'A recusa por marca no pre-create foi contada' -Passed ($denied
 #   ambos > 0              chegou e estava marcado: o destino nao casou.
 
 Add-Result -Name 'A recusa de rename foi contada' -Passed ($deniedRename -gt 0) `
-    -Detail "DeniedRename = $deniedRename (RenamesSeen = $renamesSeen, RenamesFromTainted = $renamesFromTainted)."
+    -Detail "DeniedRename = $deniedRename (SetInformationSeen = $setInformationSeen, RenamesSeen = $renamesSeen, RenamesFromTainted = $renamesFromTainted)."
 
 Write-Step 'Driver Verifier'
 
