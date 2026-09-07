@@ -249,25 +249,30 @@ detectado, não mal interpretado.
 
 ---
 
-## Pendência conhecida: a negação ainda não é de zero byte
+## Estado: a cadeia de bloqueio está implementada e verificada
 
-Enquanto a contaminação não existir, a decisão de destino também acontece no
-pós-create e a negação é `FltCancelFileOpen`. Isso é mais fraco do que o
-desenho promete, e a diferença importa.
+Os dois elos existem e foram exercitados ponta a ponta na VM alvo:
 
-`FltCancelFileOpen` desfaz a abertura — o chamador nunca recebe um handle,
-então **nenhum conteúdo vaza** — mas **não desfaz os efeitos colaterais do
-create**. Uma abertura com `FILE_CREATE` ou `FILE_OVERWRITE` pode já ter
-criado ou truncado o arquivo no destino antes de o pós-create ser chamado.
-Na prática: pode ficar um arquivo vazio, ou um arquivo existente truncado,
-no pendrive.
+| Elo | Onde | Custo | Verificado por |
+|---|---|---|---|
+| Origem sensível marca o processo | pós-create | uma ida ao modo usuário, cacheada | leitura sensível é permitida e marca |
+| Processo marcado não escreve no destino | pré-create | consulta em tabela hash | escrita negada, e **nenhum arquivo criado** |
 
-É exatamente por isso que o desenho põe a decisão de destino no
-**pré-create**: lá ela é uma consulta na tabela de contaminação, não precisa
-do modo usuário, retorna `FLT_PREOP_COMPLETE` e nada chega a acontecer.
+A segunda linha é a que importa: a recusa acontece antes de o create existir,
+então não sobra arquivo vazio nem truncado no destino. Isso é verificado
+explicitamente, e não deduzido do fato de a escrita ter falhado — uma recusa
+de pós-create também faria a escrita falhar, deixando rastro.
 
-Some quando a contaminação entrar. Até lá, quem testar com pendrive vai ver
-o arquivo vazio aparecer e achar que é bug novo — não é, é este.
+Verificado também que a marcação não vira proibição geral: o mesmo processo
+marcado continua escrevendo fora dos destinos monitorados.
+
+Medições da mesma execução, com o inspetor conectado durante todo o teste:
+
+- 18 linhas no log do inspetor para a bateria inteira
+- quatro aberturas do mesmo arquivo produzem **uma** consulta
+- uma escrita entre elas produz outra, e só uma
+- arquivo fora de escopo nunca chega ao modo usuário
+- nenhuma alocação de pool pendente depois do unload
 
 ---
 
@@ -331,16 +336,22 @@ percepção de lentidão é tarde demais como sinal.
 
 ## Ordem de implementação sugerida
 
-1. **Contextos de instância e de fluxo** + classificação de volume. Base de
-   tudo, e já reduz custo sozinha.
-2. **Portas da L1**, com destaque para o teste de `DesiredAccess`. É a maior
-   redução de custo por linha escrita.
-3. **Política empurrada pela porta** e a conversão DOS → NT no serviço.
-4. **Tabela de contaminação** com TTL e notificação de saída de processo.
-5. **Trocar o gancho de `READ` por `CREATE`/`CLEANUP`** e ligar a decisão de
-   destino.
-6. **Lookaside** e contadores por ETW.
-7. **Static Driver Verifier** antes de considerar pronto.
+1. ~~Contextos de instância e de fluxo + classificação de volume.~~ **feito**
+2. ~~Portas da L1, com destaque para o teste de `DesiredAccess`.~~ **feito**
+3. ~~Política empurrada pela porta e a conversão DOS → NT no serviço.~~
+   **feito**, com escopo de origem além do de destino.
+4. ~~Trocar o gancho de `READ` por `CREATE`/`CLEANUP`~~ **feito**, junto com o
+   cache por contexto de fluxo.
+5. ~~Tabela de contaminação com TTL e notificação de saída de processo.~~
+   **feito**, e é o que trouxe a negação sem byte gravado.
+6. **Contadores por ETW.** Adiantados na ordem original: a escolha entre
+   marcar na abertura ou na primeira leitura efetiva é empírica, e o custo de
+   não ter observabilidade já se pagou caro uma vez.
+7. **Lookaside** no lugar do `ExAllocatePool2` por operação.
+8. **`IRP_MJ_SET_INFORMATION`.** Renomear e excluir não são interceptados, e
+   com política por caminho um rename tira o arquivo do prefixo monitorado
+   sem que nada veja.
+9. **Static Driver Verifier** antes de considerar pronto.
 
 Os passos 1 a 3 valem mesmo que a contaminação seja descartada mais tarde por
 excesso de falso positivo; são redução de custo pura. O passo 4 é o único que
