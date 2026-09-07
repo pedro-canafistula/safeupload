@@ -484,7 +484,7 @@ Return Value:
 {
     PSAFEUPLOAD_POLICY_MESSAGE policy = NULL;
     NTSTATUS status = STATUS_SUCCESS;
-    UINT32 command;
+    UINT32 command = 0;
 
     UNREFERENCED_PARAMETER( PortCookie );
 
@@ -597,7 +597,14 @@ Return Value:
         status = GetExceptionCode();
     }
 
-    if (NT_SUCCESS( status )) {
+    //
+    //  Only the policy command has a policy to validate. Testing the status
+    //  alone would run this over the untouched, zeroed buffer after a
+    //  counters request succeeded, and overwrite its success with a version
+    //  mismatch against a version nobody sent.
+    //
+
+    if (NT_SUCCESS( status ) && command == SAFEUPLOAD_CONTROL_SET_POLICY) {
 
         if (policy->Control.Version != SAFEUPLOAD_PROTOCOL_VERSION ||
             policy->Control.StructSize != sizeof( SAFEUPLOAD_POLICY_MESSAGE )) {
