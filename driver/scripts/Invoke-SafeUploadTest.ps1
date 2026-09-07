@@ -968,9 +968,21 @@ public static class SafeUploadRename
 }
 '@
 
-    if (-not ('SafeUploadRename' -as [type])) {
-        Add-Type -TypeDefinition $renameInterop -Language CSharp
-    }
+    # Add-Type cannot replace a type that is already loaded, and .NET cannot
+    # unload one. A PowerShell session that ran an earlier version of this
+    # script keeps that version's class for as long as the window lives, so
+    # a fixed class name silently runs stale code - which is precisely how
+    # a call to HardLink failed with "does not contain a method named
+    # 'HardLink'" on a machine where the source plainly had it.
+    #
+    # A unique name per run makes the type that answers always the one
+    # defined above.
+    $interopTypeName = 'SafeUploadInterop_' + [guid]::NewGuid().ToString('N')
+
+    Add-Type -Language CSharp -TypeDefinition (
+        $renameInterop -replace 'SafeUploadRename', $interopTypeName)
+
+    $interop = [type] $interopTypeName
 
     $directSource = Join-Path $OutOfScopeDirectory 'rename-direto.txt'
     $directTarget = Join-Path $TestDirectory 'rename-direto.txt'
@@ -978,7 +990,7 @@ public static class SafeUploadRename
     Remove-Item $directTarget -Force -ErrorAction SilentlyContinue
     Set-Content -Path $directSource -Value 'conteudo a renomear' -ErrorAction SilentlyContinue
 
-    $renameError = [SafeUploadRename]::Rename($directSource, $directTarget)
+    $renameError = $interop::Rename($directSource, $directTarget)
     $script:Diag['rename direto -> destino monitorado'] = $renameError
 
     Add-Result -Name 'FileRenameInfo direto para o destino e negado' -Passed ($renameError -eq 5) `
@@ -1018,7 +1030,7 @@ public static class SafeUploadRename
     Remove-Item $controlTarget -Force -ErrorAction SilentlyContinue
     Set-Content -Path $controlSource -Value 'controle' -ErrorAction SilentlyContinue
 
-    $controlError = [SafeUploadRename]::Rename($controlSource, $controlTarget)
+    $controlError = $interop::Rename($controlSource, $controlTarget)
     $script:Diag['rename direto -> fora de escopo'] = $controlError
 
     Add-Result -Name 'Rename direto fora de escopo continua permitido' -Passed ($controlError -eq 0) `
@@ -1048,7 +1060,7 @@ public static class SafeUploadRename
     Remove-Item $linkTarget -Force -ErrorAction SilentlyContinue
     Set-Content -Path $linkSource -Value 'conteudo por link' -ErrorAction SilentlyContinue
 
-    $linkError = [SafeUploadRename]::HardLink($linkTarget, $linkSource)
+    $linkError = $interop::HardLink($linkTarget, $linkSource)
     $script:Diag['hard link  -> destino monitorado'] = $linkError
 
     Add-Result -Name 'Hard link para o destino e negado' -Passed ($linkError -eq 5) `
