@@ -1245,7 +1245,16 @@ else {
     $sawRenameClass = [bool] ($classLine -match '10=|65=')
     $sawLinkClass = [bool] ($classLine -match '11=|72=')
 
-    if (-not $sawLinkClass) {
+    if (-not $classLine) {
+        # Without the line there is no evidence either way, and saying
+        # "nao chegou" here would be the same conclusion the absence of a
+        # hard link produces - which is exactly the distinction this block
+        # exists to make. Say nothing rather than guess.
+        Write-Host '    Sem a linha de classes nao da para concluir nada sobre o link.' -ForegroundColor Yellow
+        Write-Host '    O cliente nao esta imprimindo "classes vistas" - conserte isso' -ForegroundColor Yellow
+        Write-Host '    antes de acreditar em qualquer leitura sobre o gancho.' -ForegroundColor Yellow
+    }
+    elseif (-not $sawLinkClass) {
         Write-Host '    O hard link nao chega ao gancho: o pre-create o pega antes,' -ForegroundColor DarkGray
         Write-Host '    na abertura do novo nome. Esperado - ver ARQUITETURA.md.' -ForegroundColor DarkGray
     }

@@ -213,6 +213,48 @@ public static class Program
             : Verdict.Allow;
     }
 
+    /// <summary>
+    /// Decodes the class bitmap into names.
+    ///
+    /// The harness parses this line, and its absence is not a cosmetic
+    /// loss: the diagnostic that asks whether a hard link ever reached the
+    /// SET_INFORMATION hook decides by looking for class 11 or 72 here.
+    /// With no line to match, it reports "did not reach" for both the case
+    /// where nothing arrived and the case where something did - the exact
+    /// answer it exists to tell apart.
+    /// </summary>
+    private static void PrintClassesSeen(SafeUploadCounters c)
+    {
+        (uint Class, string Name)[] known =
+        [
+            (4, "FileBasicInformation"),
+            (10, "FileRenameInformation"),
+            (11, "FileLinkInformation"),
+            (13, "FileDispositionInformation"),
+            (14, "FilePositionInformation"),
+            (19, "FileEndOfFileInformation"),
+            (20, "FileAllocationInformation"),
+            (64, "FileDispositionInformationEx"),
+            (65, "FileRenameInformationEx"),
+            (72, "FileLinkInformationEx"),
+        ];
+
+        Console.Write("  classes vistas        :");
+
+        foreach ((uint bit, string name) in known)
+        {
+            ulong word = bit < 64 ? c.ClassesSeenLow : c.ClassesSeenHigh;
+            int shift = (int) (bit < 64 ? bit : bit - 64);
+
+            if (((word >> shift) & 1) != 0)
+            {
+                Console.Write($" {bit}={name}");
+            }
+        }
+
+        Console.WriteLine();
+    }
+
     private static void PrintCounters(SafeUploadCounters c)
     {
         Console.WriteLine($"CreatesSeen             : {c.CreatesSeen}");
@@ -231,6 +273,7 @@ public static class Program
         Console.WriteLine($"RenamesSeen             : {c.RenamesSeen}");
         Console.WriteLine($"RenamesFromTainted      : {c.RenamesFromTainted}");
         Console.WriteLine($"ClassesSeen             : {c.ClassesSeenHigh:X16} {c.ClassesSeenLow:X16}");
+        PrintClassesSeen(c);
 
         if (c.CreatesSeen > 0)
         {
