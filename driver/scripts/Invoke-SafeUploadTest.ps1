@@ -81,6 +81,11 @@ $AdministratorsSid = '*S-1-5-32-544'
 
 $script:Results = @()
 
+# Raw return codes from the interop cases, kept so the run can end with a
+# focused block instead of leaving the reader to grep the transcript for
+# the four lines that actually decide anything.
+$script:Diag = [ordered]@{}
+
 function Write-Step {
     param([string] $Text)
     Write-Host ''
@@ -974,6 +979,7 @@ public static class SafeUploadRename
     Set-Content -Path $directSource -Value 'conteudo a renomear' -ErrorAction SilentlyContinue
 
     $renameError = [SafeUploadRename]::Rename($directSource, $directTarget)
+    $script:Diag['rename direto -> destino monitorado'] = $renameError
 
     Add-Result -Name 'FileRenameInfo direto para o destino e negado' -Passed ($renameError -eq 5) `
         -Detail $(switch ($renameError) {
@@ -1013,6 +1019,7 @@ public static class SafeUploadRename
     Set-Content -Path $controlSource -Value 'controle' -ErrorAction SilentlyContinue
 
     $controlError = [SafeUploadRename]::Rename($controlSource, $controlTarget)
+    $script:Diag['rename direto -> fora de escopo'] = $controlError
 
     Add-Result -Name 'Rename direto fora de escopo continua permitido' -Passed ($controlError -eq 0) `
         -Detail $(switch ($controlError) {
@@ -1042,6 +1049,7 @@ public static class SafeUploadRename
     Set-Content -Path $linkSource -Value 'conteudo por link' -ErrorAction SilentlyContinue
 
     $linkError = [SafeUploadRename]::HardLink($linkTarget, $linkSource)
+    $script:Diag['hard link  -> destino monitorado'] = $linkError
 
     Add-Result -Name 'Hard link para o destino e negado' -Passed ($linkError -eq 5) `
         -Detail $(switch ($linkError) {
@@ -1164,6 +1172,59 @@ Add-Result -Name 'A recusa por marca no pre-create foi contada' -Passed ($denied
 
 Add-Result -Name 'A recusa no gancho de SET_INFORMATION foi contada' -Passed ($deniedRename -gt 0) `
     -Detail "DeniedRename = $deniedRename (SetInformationSeen = $setInformationSeen, RenamesSeen = $renamesSeen, RenamesFromTainted = $renamesFromTainted)."
+
+Write-Step 'Diagnostico do gancho de SET_INFORMATION'
+
+# Everything needed to decide whether the rename/link hook works, in one
+# place. These lines were being reconstructed by hand from a transcript;
+# the script has all of them already.
+
+if ($script:Diag.Count -eq 0) {
+
+    Write-Host '  Teste de fumaca nao rodou: nada a diagnosticar.' -ForegroundColor DarkGray
+}
+else {
+
+    Write-Host '  Codigos crus (0 passou, 5 negado, negativo = falha ao abrir a origem):'
+
+    foreach ($entry in $script:Diag.GetEnumerator()) {
+        Write-Host ("    {0,-38} {1}" -f $entry.Key, $entry.Value)
+    }
+
+    Write-Host ''
+    Write-Host '  Classes que chegaram ao callback:'
+
+    $classLine = $counterOutput | Where-Object { $_ -match 'classes vistas' }
+
+    if ($classLine) {
+        Write-Host "   $classLine"
+    }
+    else {
+        Write-Host '    (nenhuma linha de classes no retorno dos contadores)' -ForegroundColor Yellow
+    }
+
+    Write-Host ''
+    Write-Host '  Leitura:'
+
+    $sawRenameClass = [bool] ($classLine -match '10=|65=')
+    $sawLinkClass = [bool] ($classLine -match '11=|72=')
+
+    if (-not $sawLinkClass) {
+        Write-Host '    O hard link NAO chegou ao gancho. Foi recusado antes,' -ForegroundColor Yellow
+        Write-Host '    e o ramo de recusa continua sem execucao observada.' -ForegroundColor Yellow
+    }
+    elseif ($deniedRename -eq 0) {
+        Write-Host '    O hard link chegou ao gancho e nao foi negado por ele.' -ForegroundColor Yellow
+        Write-Host '    Quem recusou foi outra coisa.' -ForegroundColor Yellow
+    }
+    else {
+        Write-Host '    O gancho viu o link e recusou: o ramo esta provado.' -ForegroundColor Green
+    }
+
+    if ($sawRenameClass -and $renamesSeen -gt 0) {
+        Write-Host '    Renames chegam ao gancho (o de controle, fora de escopo).'
+    }
+}
 
 Write-Step 'Driver Verifier'
 
