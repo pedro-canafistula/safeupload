@@ -331,9 +331,23 @@ ClassesSeen: 0000000000000001 0000000000180410
 ```
 
 As classes **11** (`FileLinkInformation`) e **72** (`FileLinkInformationEx`)
-nunca aparecem. O `CreateHardLinkW` abre o novo nome com acesso de escrita
+não aparecem. O `CreateHardLinkW` abre o novo nome com acesso de escrita
 antes de emitir o link, e o pré-CREATE o recusa ali — `DeniedPreCreate`
 sobe, e a operação de link nunca é emitida.
+
+**O bitmap sozinho não bastava para afirmar isso**, e vale registrar por
+quê, porque a armadilha é sutil. Ele é global e cumulativo: registra toda
+classe que passou pelo callback desde o load, de qualquer processo da
+máquina. Numa execução posterior a classe 11 apareceu, e a leitura
+automática anunciou que o hard link chegava ao gancho — conclusão que
+`RenamesFromTainted = 1` contradizia, já que o rename de controle sozinho
+explicava aquele único acerto.
+
+Quem resolveu foram `LinksSeen` e `LinksFromTainted`, contadores dedicados
+ao caminho do link. Ambos em **zero**, com o caso do hard link recusado na
+mesma execução: o link não chega, e o 11 daquela vez era tráfego de outro
+processo. A lição vale além deste caso — um agregado global não responde
+uma pergunta sobre uma operação específica, por mais que pareça responder.
 
 O mesmo vale para o rename: mesmo emitido direto por
 `SetFileInformationByHandle`, sem `MoveFileEx` no meio, o destino
