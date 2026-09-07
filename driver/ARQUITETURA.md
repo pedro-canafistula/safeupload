@@ -524,7 +524,15 @@ deixam passar. O alvo vale contra uma máquina em uso, não contra o teste.
 8. ~~`IRP_MJ_SET_INFORMATION`~~ **feito**: renomear e criar link para dentro de
    um destino monitorado sao recusados; apagar continua fora de escopo,
    de proposito.
-9. **Static Driver Verifier** antes de considerar pronto.
+9. ~~**Static Driver Verifier** antes de considerar pronto.~~ **impossível**:
+   o SDV foi **removido** do WDK. O alvo `sdv` do WDK 10.0.28000 responde
+   "Static Driver Verifier (SDV) is no longer included in the Windows Driver
+   Kit and is no longer compatible with VS2022 and later", e não existe
+   `sdv.exe` nem `staticdv.exe` no kit. Não é falha de configuração; a
+   ferramenta não está lá. Substituído por **CodeQL** com o pacote de
+   consultas de driver da Microsoft, que é o que o Static Tools Logo Test
+   exige hoje e o que alimenta o `dvl.exe` — este sim ainda presente, em
+   `Tools\dvl\`. Ver a seção seguinte.
 
 Os passos 1 a 3 valem mesmo que a contaminação seja descartada mais tarde por
 excesso de falso positivo; são redução de custo pura. O passo 4 é o único que
