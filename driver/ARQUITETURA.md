@@ -276,6 +276,44 @@ Medições da mesma execução, com o inspetor conectado durante todo o teste:
 
 ---
 
+## Descartado: lookaside no lugar do pool por operação
+
+Estava na ordem de implementação e foi implementado, medido contra o build e
+depois **abandonado**. Registrado porque a próxima pessoa que ler a lista vai
+querer saber por que o item sumiu.
+
+**Por que estava na lista.** Quando o desenho foi escrito, cada operação em
+escopo alocava um bloco de troca e o liberava em seguida — a forma exata para
+a qual uma lista de lookaside existe.
+
+**Por que deixou de valer.** O cache por contexto de fluxo esvaziou esse
+caminho. A alocação passou a acontecer uma vez por *versão de arquivo*, não
+por operação: um documento aberto vinte vezes aloca uma vez. Otimizar a
+frequência de alocação depois disso é otimizar um caminho que já é raro.
+
+**O que decidiu.** Com o lookaside, o build de Release passou a falhar no
+`ApiValidator`: `aitstatic` retorna 193 (`ERROR_BAD_EXE_FORMAT`) e o resumo
+diz "was not checked" — a ferramenta não reprova uma API, ela falha em
+analisar o binário. Verificado que:
+
+- as quatro APIs (`ExInitializeLookasideListEx`, `ExAllocateFromLookasideListEx`,
+  `ExFreeToLookasideListEx`, `ExDeleteLookasideListEx`) **estão** em
+  `UniversalDDIs.xml`;
+- o binário de Debug passa como Universal;
+- só o de Release falha, e só com esse código presente.
+
+Não foi explicado. Trocar um ganho marginal por uma verificação de build
+quebrada que ninguém entende é mau negócio, e desligar o `ApiValidator` para
+contornar seria pior: ele é a verificação que garante que o driver só usa API
+permitida em Universal.
+
+**Se voltar a valer.** Se os contadores mostrarem `UserModeRoundTrips` alto
+em relação a `CreatesSeen` sob carga real — ou seja, o cache não segurando —,
+a alocação volta a ser frequente e a questão se reabre. Aí vale investigar o
+`aitstatic`, e não antes.
+
+---
+
 ## Pendência conhecida: vazamento de uma alocação no unload
 
 Registrado para não se perder, porque não foi resolvido — apenas deixou de
@@ -344,13 +382,15 @@ percepção de lentidão é tarde demais como sinal.
    cache por contexto de fluxo.
 5. ~~Tabela de contaminação com TTL e notificação de saída de processo.~~
    **feito**, e é o que trouxe a negação sem byte gravado.
-6. **Contadores por ETW.** Adiantados na ordem original: a escolha entre
+6. ~~Contadores.~~ **feito**, lidos pela porta em vez de por ETW - ver o commit
+   que os introduziu para o porque. ETW segue sendo a resposta para producao.
+   Adiantados na ordem original: a escolha entre
    marcar na abertura ou na primeira leitura efetiva é empírica, e o custo de
    não ter observabilidade já se pagou caro uma vez.
-7. **Lookaside** no lugar do `ExAllocatePool2` por operação.
-8. **`IRP_MJ_SET_INFORMATION`.** Renomear e excluir não são interceptados, e
-   com política por caminho um rename tira o arquivo do prefixo monitorado
-   sem que nada veja.
+7. ~~Lookaside no lugar do `ExAllocatePool2` por operação.~~ **descartado**, ver a seção acima.
+8. ~~`IRP_MJ_SET_INFORMATION`~~ **feito**: renomear e criar link para dentro de
+   um destino monitorado sao recusados; apagar continua fora de escopo,
+   de proposito.
 9. **Static Driver Verifier** antes de considerar pronto.
 
 Os passos 1 a 3 valem mesmo que a contaminação seja descartada mais tarde por
