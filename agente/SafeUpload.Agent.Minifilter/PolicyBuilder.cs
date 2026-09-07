@@ -13,7 +13,7 @@ using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Text;
 
-namespace SafeUpload.Protocol;
+namespace SafeUpload.Agent.Minifilter;
 
 public sealed class PolicyBuilder
 {

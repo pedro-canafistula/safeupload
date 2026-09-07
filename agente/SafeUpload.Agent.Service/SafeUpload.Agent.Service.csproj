@@ -20,5 +20,6 @@
 
   <ItemGroup>
     <ProjectReference Include="..\SafeUpload.Agent.Core\SafeUpload.Agent.Core.csproj" />
+    <ProjectReference Include="..\SafeUpload.Agent.Minifilter\SafeUpload.Agent.Minifilter.csproj" />
   </ItemGroup>
 </Project>

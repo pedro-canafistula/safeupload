@@ -39,7 +39,34 @@ public static class Program
 
         // O gatilho. A partir daqui a protecao existe sem interface nenhuma
         // aberta, que e o ponto de separar os dois processos.
-        builder.Services.AddHostedService<FileSystemInterceptor>();
+        //
+        // Sao dois, e a escolha e de configuracao porque a diferenca entre
+        // eles nao e de implementacao, e de natureza. O FileSystemWatcher
+        // reage DEPOIS que o arquivo chegou ao destino e "bloqueia" apagando;
+        // o minifiltro intercepta ANTES e a negacao impede a operacao. O
+        // primeiro roda em qualquer maquina; o segundo exige o driver
+        // carregado e assinado.
+        //
+        // O padrao continua sendo o mock, de proposito: uma maquina sem o
+        // driver deve ficar protegida de forma imperfeita em vez de ficar
+        // sem protecao nenhuma. Para usar o kernel, em appsettings.json:
+        //
+        //   "Interception": { "Mode": "Minifilter" }
+        //
+        // Os dois nunca sobem juntos. Rodando em paralelo, o watcher veria os
+        // arquivos que o minifiltro deixou passar e os apagaria depois - dois
+        // vereditos sobre a mesma operacao, com o segundo desfazendo o
+        // primeiro.
+        string mode = builder.Configuration["Interception:Mode"] ?? "FileSystemWatcher";
+
+        if (string.Equals(mode, "Minifilter", StringComparison.OrdinalIgnoreCase))
+        {
+            builder.Services.AddHostedService<MinifilterInterceptor>();
+        }
+        else
+        {
+            builder.Services.AddHostedService<FileSystemInterceptor>();
+        }
 
         // A entrega das notificacoes aos aplicativos conectados.
         builder.Services.AddHostedService<NotificationPipeServer>();

@@ -10,7 +10,7 @@ using System.ComponentModel;
 using System.Runtime.InteropServices;
 using Microsoft.Win32.SafeHandles;
 
-namespace SafeUpload.Protocol;
+namespace SafeUpload.Agent.Minifilter;
 
 /// <summary>
 /// Header the Filter Manager puts in front of every kernel-to-user

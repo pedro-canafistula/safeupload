@@ -77,11 +77,15 @@ $SolutionPath = Join-Path $RepoRoot 'driver\SafeUpload.Driver.sln'
 $InfPath = Join-Path $RepoRoot 'driver\SafeUpload.Minifilter\SafeUpload.inf'
 $BuildOutput = Join-Path $RepoRoot "driver\x64\$Configuration"
 
-# The agent is the managed replacement for SafeUpload.Inspector: same role
-# on the port, but it is the code the WPF service will actually be built
-# from, so the battery exercises the real client instead of a stand-in.
-$AgentProject = Join-Path $RepoRoot "service\SafeUpload.Agent\SafeUpload.Agent.csproj"
-$AgentPublish = Join-Path $RepoRoot "service\SafeUpload.Agent\bin\Release\net10.0-windows\win-x64\publish"
+# The probe is the battery's client: it shares Protocol.cs, FilterPort.cs
+# and PolicyBuilder.cs with SafeUpload.Agent.Service, so the marshalling
+# under test is the marshalling the product uses. What it does NOT share is
+# the decision - the service runs InspectionService and the real rules,
+# while the probe answers by a trivial one. That split is deliberate: a
+# battery whose client ran the real rules would make every failure
+# ambiguous between driver and agent.
+$AgentProject = Join-Path $RepoRoot "agente\SafeUpload.Minifilter.Probe\SafeUpload.Minifilter.Probe.csproj"
+$AgentPublish = Join-Path $RepoRoot "agente\SafeUpload.Minifilter.Probe\bin\Release\net10.0-windows\win-x64\publish"
 
 function Write-Step {
     param([string] $Text)
@@ -246,7 +250,7 @@ if ($warnings.Count -gt 0) {
 
 # ---------------------------------------------------------------------------
 
-Write-Step 'Compilando o agente (Native AOT)'
+Write-Step 'Compilando a sonda do driver (Native AOT)'
 
 # Native AOT, not a framework-dependent build: the target VM has no .NET
 # runtime and is not going to get one. A framework-dependent binary dies
@@ -267,13 +271,13 @@ $agentLog = & dotnet publish $AgentProject -c Release --nologo 2>&1
 
 if ($LASTEXITCODE -ne 0) {
     $agentLog | ForEach-Object { Write-Host "  $_" }
-    Stop-WithMessage 'A compilacao do agente falhou.'
+    Stop-WithMessage 'A compilacao da sonda falhou.'
 }
 
-$agentExe = Join-Path $AgentPublish 'SafeUpload.Agent.exe'
+$agentExe = Join-Path $AgentPublish 'SafeUpload.Probe.exe'
 
 if (-not (Test-Path $agentExe)) {
-    Stop-WithMessage "O agente nao foi produzido em $agentExe."
+    Stop-WithMessage "A sonda nao foi produzida em $agentExe."
 }
 
 # Proves the managed structures still match the C_ASSERTs in Protocol.h.
@@ -283,10 +287,10 @@ $verify = & $agentExe --verify 2>&1
 
 if ($LASTEXITCODE -ne 0) {
     $verify | ForEach-Object { Write-Host "  $_" -ForegroundColor Red }
-    Stop-WithMessage 'O agente nao confere com o contrato do driver.'
+    Stop-WithMessage 'A sonda nao confere com o contrato do driver.'
 }
 
-Write-Host "  SafeUpload.Agent.exe ($([math]::Round((Get-Item $agentExe).Length / 1KB)) KB, nativo)"
+Write-Host "  SafeUpload.Probe.exe ($([math]::Round((Get-Item $agentExe).Length / 1KB)) KB, nativo)"
 Write-Host '  Contrato conferido contra Protocol.h.'
 
 Write-Host '  Compilado sem erros.' -ForegroundColor Green
@@ -305,7 +309,7 @@ Get-ChildItem $PackageDirectory -Filter '*.cat' -ErrorAction SilentlyContinue | 
 
 $sources = @(
     (Join-Path $BuildOutput 'SafeUpload.sys'),
-    (Join-Path $AgentPublish 'SafeUpload.Agent.exe'),
+    (Join-Path $AgentPublish 'SafeUpload.Probe.exe'),
     $InfPath,
 
     # Served alongside the artifacts so the target VM always pulls the
@@ -414,7 +418,7 @@ New-Item -ItemType Directory -Path $symbolDirectory -Force | Out-Null
 
 Copy-Item (Join-Path $PackageDirectory 'SafeUpload.sys') $symbolDirectory -Force
 Copy-Item (Join-Path $BuildOutput 'SafeUpload.pdb') $symbolDirectory -Force -ErrorAction SilentlyContinue
-Copy-Item (Join-Path $AgentPublish 'SafeUpload.Agent.pdb') $symbolDirectory -Force -ErrorAction SilentlyContinue
+Copy-Item (Join-Path $AgentPublish 'SafeUpload.Probe.pdb') $symbolDirectory -Force -ErrorAction SilentlyContinue
 
 $commit = (& git -C $RepoRoot rev-parse --short HEAD 2>&1)
 
@@ -490,7 +494,7 @@ $artifactNames = @(
     'SafeUpload.sys',
     'SafeUpload.inf',
     'safeupload.cat',
-    'SafeUpload.Agent.exe',
+    'SafeUpload.Probe.exe',
     'SafeUploadTest.cer',
     'Invoke-SafeUploadTest.ps1'
 )

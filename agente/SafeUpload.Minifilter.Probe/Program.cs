@@ -1,23 +1,29 @@
-// Reference client for the SafeUpload minifilter.
+// Probe for the SafeUpload minifilter - a test instrument, not the agent.
 //
-// This is the managed replacement for SafeUpload.Inspector, and it is
-// deliberately as dumb as that one was: it demonstrates the contract, not
-// the detection rules. RN-001..RN-004 live in user mode and are not here.
+// The real detection lives in SafeUpload.Agent.Core: RN-001 to RN-004,
+// the extractors, the masking, the InspectionService. This program does
+// none of that on purpose. The battery it serves exists to test the
+// DRIVER, and that needs a client whose behaviour is entirely
+// predictable; a probe that ran the real rules would make every failure
+// ambiguous between the two sides.
 //
-// What it does show is the shape a real service has to keep:
+// What it does demonstrate is the shape any client has to keep:
 //
 //   1. Verify the contract before connecting.
 //   2. Push the policy. Until that lands the driver inspects nothing.
 //   3. Answer every request inside the driver's 500 ms budget.
 //   4. Never let a failure to inspect become a block (RN-013).
+//
+// The service wires the same port to InspectionService instead - see
+// MinifilterInterceptor in SafeUpload.Agent.Service.
 
 using System;
 using System.Diagnostics;
 using System.IO;
 using System.Threading;
-using SafeUpload.Protocol;
+using SafeUpload.Agent.Minifilter;
 
-namespace SafeUpload.Agent;
+namespace SafeUpload.Minifilter.Probe;
 
 public static class Program
 {

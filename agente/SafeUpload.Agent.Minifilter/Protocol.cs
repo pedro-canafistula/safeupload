@@ -12,7 +12,7 @@
 using System;
 using System.Runtime.InteropServices;
 
-namespace SafeUpload.Protocol;
+namespace SafeUpload.Agent.Minifilter;
 
 public static class Contract
 {

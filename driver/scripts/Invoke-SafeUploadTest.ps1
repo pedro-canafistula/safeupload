@@ -74,7 +74,7 @@ Set-StrictMode -Version Latest
 
 $FilterName = 'SafeUpload'
 $DriverFileName = 'SafeUpload.sys'
-$InspectorFileName = 'SafeUpload.Agent.exe'
+$InspectorFileName = 'SafeUpload.Probe.exe'
 $InstalledDriverPath = Join-Path $env:SystemRoot "System32\drivers\$DriverFileName"
 $BlockToken = 'BLOQUEAR_TESTE'
 $AdministratorsSid = '*S-1-5-32-544'
@@ -150,7 +150,8 @@ function Stop-Inspector {
     # process that is actually holding it.
     $processNames = @(
         [IO.Path]::GetFileNameWithoutExtension($InspectorFileName),
-        'SafeUpload.Inspector'
+        'SafeUpload.Inspector',
+        'SafeUpload.Agent'
     ) | Select-Object -Unique
 
     $processes = @(Get-Process -Name $processNames -ErrorAction SilentlyContinue)
