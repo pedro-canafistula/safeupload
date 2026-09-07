@@ -225,7 +225,8 @@ typedef struct _SAFEUPLOAD_RESPONSE {
 //
 ///////////////////////////////////////////////////////////////////////////
 
-#define SAFEUPLOAD_CONTROL_SET_POLICY ((UINT32) 1)
+#define SAFEUPLOAD_CONTROL_SET_POLICY   ((UINT32) 1)
+#define SAFEUPLOAD_CONTROL_GET_COUNTERS ((UINT32) 2)
 
 //
 //  Capacities of the policy message. Fixed, like everything else here: the
@@ -325,6 +326,95 @@ typedef struct _SAFEUPLOAD_POLICY_MESSAGE {
 
 } SAFEUPLOAD_POLICY_MESSAGE, *PSAFEUPLOAD_POLICY_MESSAGE;
 
+
+//
+//  Counters, read with SAFEUPLOAD_CONTROL_GET_COUNTERS.
+//
+//  These exist to answer "is the design working?" without a kernel
+//  debugger. The whole point of the layered gates is that almost nothing
+//  reaches user mode, and until these numbers can be read there is no way
+//  to tell whether that is true - only whether the machine feels slow,
+//  which is a terrible instrument.
+//
+//  They are cumulative since the driver loaded, and they never reset: a
+//  reader that wants a rate takes two samples and subtracts.
+//
+
+typedef struct _SAFEUPLOAD_COUNTERS {
+
+    UINT32 Version;
+    UINT32 StructSize;
+
+    //
+    //  Every create the filter was called for.
+    //
+
+    UINT64 CreatesSeen;
+
+    //
+    //  Those that survived the cheap gates - data access requested, process
+    //  not excluded, extension monitored. The ratio to CreatesSeen is the
+    //  single most useful number here: it should be well under one percent.
+    //
+
+    UINT64 CreatesPastCheapGates;
+
+    //
+    //  Times a name had to be resolved to decide scope. Expensive, and the
+    //  stream context exists to keep this from repeating per file.
+    //
+
+    UINT64 ScopeEvaluations;
+
+    //
+    //  Times the driver actually asked user mode. The target is one per
+    //  file version, so this should sit far below ScopeEvaluations over
+    //  time.
+    //
+
+    UINT64 UserModeRoundTrips;
+
+    //
+    //  Times a cached answer served instead. CacheHits against
+    //  CacheHits + ScopeEvaluations is the hit rate.
+    //
+
+    UINT64 CacheHits;
+
+    //
+    //  Refused in pre-create, on process taint, with no round trip and no
+    //  side effect. This is the strong refusal.
+    //
+
+    UINT64 DeniedPreCreate;
+
+    //
+    //  Refused in post-create with FltCancelFileOpen. Weaker: the create
+    //  already happened.
+    //
+
+    UINT64 DeniedPostCreate;
+
+    //
+    //  RN-013 in numbers: operations allowed because inspection could not
+    //  happen - timeout, port closed, no memory, malformed reply. A number
+    //  that grows here is a user working uninspected.
+    //
+
+    UINT64 AllowedWithoutInspection;
+
+    //
+    //  Taint table activity. TaintHits against TaintLookups says how often
+    //  the table actually stops something, which is what decides whether
+    //  the false positive cost is worth paying.
+    //
+
+    UINT64 TaintsRecorded;
+    UINT64 TaintLookups;
+    UINT64 TaintHits;
+
+} SAFEUPLOAD_COUNTERS, *PSAFEUPLOAD_COUNTERS;
+
 #pragma pack(pop)
 
 //
@@ -371,5 +461,11 @@ C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_POLICY_MESSAGE, Extensions )        == 40 );
 C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_POLICY_MESSAGE, Prefixes )          == 1064 );
 C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_POLICY_MESSAGE, SourcePrefixes )    == 9384 );
 C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_POLICY_MESSAGE, Images )            == 17704 );
+
+C_ASSERT( sizeof( SAFEUPLOAD_COUNTERS ) == 96 );
+C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_COUNTERS, Version )     == 0 );
+C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_COUNTERS, StructSize )  == 4 );
+C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_COUNTERS, CreatesSeen ) == 8 );
+C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_COUNTERS, TaintHits )   == 88 );
 
 #endif // _SAFEUPLOAD_PROTOCOL_H_

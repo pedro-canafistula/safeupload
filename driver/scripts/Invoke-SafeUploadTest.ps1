@@ -876,6 +876,28 @@ if (Test-Path $inspectorLog) {
     }
 }
 
+Write-Step 'Contadores do driver'
+
+# Read after the inspector has stopped: the port takes one client at a time,
+# and the counters live in the driver rather than in whoever was connected.
+$counterOutput = & (Join-Path $StagingDirectory $InspectorFileName) --counters 2>&1
+
+$counterOutput | ForEach-Object { Write-Host "  $_" -ForegroundColor DarkGray }
+
+$cacheHits = 0
+$roundTrips = 0
+
+foreach ($line in $counterOutput) {
+    if ($line -match '^CacheHits\s*:\s*(\d+)') { $cacheHits = [int] $matches[1] }
+    if ($line -match '^UserModeRoundTrips\s*:\s*(\d+)') { $roundTrips = [int] $matches[1] }
+}
+
+# The cache is the property the design rests on. If it never served a single
+# answer, the stream context is not doing its job and every open is paying
+# full price - which no other check in this script would notice.
+Add-Result -Name 'O cache serviu ao menos uma resposta' -Passed ($cacheHits -gt 0) `
+    -Detail "$cacheHits acertos de cache contra $roundTrips idas ao modo usuario."
+
 Write-Step 'Driver Verifier'
 
 # Pool has to be checked with the filter UNLOADED, not while it is running.

@@ -393,6 +393,20 @@ SafeUploadPreCleanup (
 
 ///////////////////////////////////////////////////////////////////////////
 //
+//  Counters. Defined in Filter.c, read over the port.
+//
+//  Incremented with InterlockedIncrement64 and never read on the hot path,
+//  so the cost is one locked instruction on paths that already do more than
+//  that. They are the difference between knowing the gates work and hoping.
+//
+///////////////////////////////////////////////////////////////////////////
+
+extern SAFEUPLOAD_COUNTERS SafeUploadCounters;
+
+#define SafeUploadCount(Field)     ((VOID) InterlockedIncrement64( (volatile LONG64 *) &SafeUploadCounters.Field ))
+
+///////////////////////////////////////////////////////////////////////////
+//
 //  Process taint. Implemented in Taint.c.
 //
 //  Records which processes have obtained access to sensitive content, so

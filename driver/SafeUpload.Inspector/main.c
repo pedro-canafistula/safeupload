@@ -361,6 +361,104 @@ OperationName (
 }
 
 
+static
+int
+PrintCounters (
+    VOID
+    )
+/*++
+
+Routine Description:
+
+    Connects to the port, asks the driver for its counters, prints them and
+    leaves.
+
+    Run after the main inspector has stopped: the port accepts one client at
+    a time, and the counters live in the driver, so they outlive whoever was
+    connected.
+
+Return Value:
+
+    0 on success, non-zero on failure.
+
+--*/
+{
+    SAFEUPLOAD_CONTROL control;
+    SAFEUPLOAD_COUNTERS counters;
+    HANDLE port = INVALID_HANDLE_VALUE;
+    DWORD returned = 0;
+    HRESULT hr;
+
+    hr = FilterConnectCommunicationPort( SAFEUPLOAD_PORT_NAME,
+                                         0,
+                                         NULL,
+                                         0,
+                                         NULL,
+                                         &port );
+
+    if (FAILED( hr )) {
+
+        wprintf( L"ERRO: nao foi possivel conectar na porta (hr = 0x%08X).\n", hr );
+        return 2;
+    }
+
+    ZeroMemory( &control, sizeof( control ) );
+    ZeroMemory( &counters, sizeof( counters ) );
+
+    control.Version = SAFEUPLOAD_PROTOCOL_VERSION;
+    control.StructSize = sizeof( SAFEUPLOAD_CONTROL );
+    control.Command = SAFEUPLOAD_CONTROL_GET_COUNTERS;
+
+    hr = FilterSendMessage( port,
+                            &control,
+                            sizeof( control ),
+                            &counters,
+                            sizeof( counters ),
+                            &returned );
+
+    CloseHandle( port );
+
+    if (FAILED( hr ) || returned < sizeof( counters )) {
+
+        wprintf( L"ERRO: o driver nao devolveu os contadores (hr = 0x%08X).\n", hr );
+        return 3;
+    }
+
+    wprintf( L"CreatesSeen             : %llu\n", counters.CreatesSeen );
+    wprintf( L"CreatesPastCheapGates   : %llu\n", counters.CreatesPastCheapGates );
+    wprintf( L"ScopeEvaluations        : %llu\n", counters.ScopeEvaluations );
+    wprintf( L"UserModeRoundTrips      : %llu\n", counters.UserModeRoundTrips );
+    wprintf( L"CacheHits               : %llu\n", counters.CacheHits );
+    wprintf( L"DeniedPreCreate         : %llu\n", counters.DeniedPreCreate );
+    wprintf( L"DeniedPostCreate        : %llu\n", counters.DeniedPostCreate );
+    wprintf( L"AllowedWithoutInspection: %llu\n", counters.AllowedWithoutInspection );
+    wprintf( L"TaintsRecorded          : %llu\n", counters.TaintsRecorded );
+    wprintf( L"TaintLookups            : %llu\n", counters.TaintLookups );
+    wprintf( L"TaintHits               : %llu\n", counters.TaintHits );
+
+    //
+    //  The ratio the whole design is judged by: how little of what the
+    //  filter sees ever costs anything.
+    //
+
+    if (counters.CreatesSeen != 0) {
+
+        wprintf( L"\nPassaram das portas baratas: %.4f%% dos creates\n",
+                 (double) counters.CreatesPastCheapGates * 100.0 /
+                 (double) counters.CreatesSeen );
+    }
+
+    if ((counters.CacheHits + counters.ScopeEvaluations) != 0) {
+
+        wprintf( L"Acerto de cache            : %.1f%%\n",
+                 (double) counters.CacheHits * 100.0 /
+                 (double) (counters.CacheHits + counters.ScopeEvaluations) );
+    }
+
+    return 0;
+}
+
+
 int __cdecl
 wmain (
     int argc,
@@ -394,6 +492,18 @@ Return Value:
     SAFEUPLOAD_REPLY reply;
     HRESULT hr;
     int exitCode = 0;
+
+    //
+    //  A second, short-lived mode: connect, read the driver counters, print
+    //  and leave. Meant to run after the main inspector has stopped, since
+    //  the port takes one client at a time and the counters live in the
+    //  driver rather than in whoever was connected.
+    //
+
+    if (argc > 1 && _wcsicmp( argv[1], L"--counters" ) == 0) {
+
+        return PrintCounters();
+    }
 
     UNREFERENCED_PARAMETER( argc );
     UNREFERENCED_PARAMETER( argv );

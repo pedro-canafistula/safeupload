@@ -484,10 +484,9 @@ Return Value:
 {
     PSAFEUPLOAD_POLICY_MESSAGE policy = NULL;
     NTSTATUS status = STATUS_SUCCESS;
+    UINT32 command;
 
     UNREFERENCED_PARAMETER( PortCookie );
-    UNREFERENCED_PARAMETER( OutputBuffer );
-    UNREFERENCED_PARAMETER( OutputBufferLength );
 
     PAGED_CODE();
 
@@ -524,7 +523,55 @@ Return Value:
 
         ProbeForRead( InputBuffer, InputBufferLength, __alignof( SAFEUPLOAD_POLICY_MESSAGE ) );
 
-        if (((PSAFEUPLOAD_CONTROL) InputBuffer)->Command != SAFEUPLOAD_CONTROL_SET_POLICY) {
+        command = ((PSAFEUPLOAD_CONTROL) InputBuffer)->Command;
+
+        if (command == SAFEUPLOAD_CONTROL_GET_COUNTERS) {
+
+            //
+            //  The output buffer is user memory too, and has to be probed
+            //  for WRITE before a single byte is put into it.
+            //
+
+            if (OutputBuffer == NULL ||
+                OutputBufferLength < sizeof( SAFEUPLOAD_COUNTERS )) {
+
+                status = STATUS_BUFFER_TOO_SMALL;
+                leave;
+            }
+
+            //
+            //  Code Analysis reads ProbeForWrite as consuming the buffer and
+            //  reports C6001. It does not: it validates that the range is
+            //  writable user memory and touches no contents. Suppressed
+            //  narrowly, at the one call it applies to.
+            //
+
+#pragma warning( suppress: 6001 )
+            ProbeForWrite( OutputBuffer,
+                           sizeof( SAFEUPLOAD_COUNTERS ),
+                           __alignof( SAFEUPLOAD_COUNTERS ) );
+
+            SafeUploadCounters.Version = SAFEUPLOAD_PROTOCOL_VERSION;
+            SafeUploadCounters.StructSize = sizeof( SAFEUPLOAD_COUNTERS );
+
+            //
+            //  Copied without a lock. Each field is written with an
+            //  interlocked increment, so no value can be torn; what a reader
+            //  can get is a set of fields sampled microseconds apart, which
+            //  is fine for counters nobody derives an invariant from.
+            //
+
+            RtlCopyMemory( OutputBuffer,
+                           &SafeUploadCounters,
+                           sizeof( SAFEUPLOAD_COUNTERS ) );
+
+            *ReturnOutputBufferLength = sizeof( SAFEUPLOAD_COUNTERS );
+
+            status = STATUS_SUCCESS;
+            leave;
+        }
+
+        if (command != SAFEUPLOAD_CONTROL_SET_POLICY) {
 
             status = STATUS_NOT_SUPPORTED;
             leave;

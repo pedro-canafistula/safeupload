@@ -338,6 +338,7 @@ Arguments:
         entry->TaintedAt = now;
 
         InsertHeadList( &SafeUploadTaintBuckets[bucket], &entry->Link );
+        SafeUploadCount( TaintsRecorded );
     }
 
     FltReleasePushLock( &SafeUploadTaintLock );
@@ -435,6 +436,8 @@ Return Value:
     bucket = SafeUploadTaintBucket( ProcessId );
     now = KeQueryInterruptTime();
 
+    SafeUploadCount( TaintLookups );
+
     FltAcquirePushLockExclusive( &SafeUploadTaintLock );
 
     for (link = SafeUploadTaintBuckets[bucket].Flink;
@@ -456,6 +459,7 @@ Return Value:
         } else {
 
             tainted = TRUE;
+            SafeUploadCount( TaintHits );
         }
 
         break;

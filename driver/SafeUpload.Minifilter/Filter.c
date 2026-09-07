@@ -31,6 +31,13 @@ Environment:
 SAFEUPLOAD_DATA SafeUploadData;
 
 //
+//  Cumulative since load, never reset. A reader that wants a rate takes two
+//  samples and subtracts.
+//
+
+SAFEUPLOAD_COUNTERS SafeUploadCounters;
+
+//
 //  Local helpers.
 //
 
@@ -820,6 +827,8 @@ Return Value:
         return status;
     }
 
+    SafeUploadCount( ScopeEvaluations );
+
     normalizedPath.Buffer = exchange->Request.Path;
     normalizedPath.Length = (USHORT) exchange->Request.PathLength;
     normalizedPath.MaximumLength = normalizedPath.Length;
@@ -865,7 +874,14 @@ Return Value:
         }
     }
 
+    SafeUploadCount( UserModeRoundTrips );
+
     status = SafeUploadRequestVerdict( exchange, Verdict );
+
+    if (!NT_SUCCESS( status )) {
+
+        SafeUploadCount( AllowedWithoutInspection );
+    }
 
     ExFreePoolWithTag( exchange, SAFEUPLOAD_POOL_TAG );
 
@@ -1051,6 +1067,8 @@ Return Value:
 
     PAGED_CODE();
 
+    SafeUploadCount( CreatesSeen );
+
     //
     //  With no inspector connected there is nobody to ask, and no answer to
     //  cache.
@@ -1141,6 +1159,8 @@ Return Value:
 
     volumeKind = instanceContext->VolumeKind;
     FltReleaseContext( instanceContext );
+
+    SafeUploadCount( CreatesPastCheapGates );
 
     //
     //  The zero-byte refusal.
@@ -1276,6 +1296,7 @@ Return Value:
 
                 scopeFlags = 0;
                 answered = TRUE;
+                SafeUploadCount( CacheHits );
 
             } else if (streamContext->VerdictValid &&
                        !streamContext->Dirty &&
@@ -1285,6 +1306,7 @@ Return Value:
                 scopeFlags = streamContext->ScopeFlags;
                 verdict = streamContext->Verdict;
                 answered = TRUE;
+                SafeUploadCount( CacheHits );
             }
         }
 
@@ -1354,6 +1376,8 @@ Return Value:
         //
 
         if (FlagOn( scopeFlags, SAFEUPLOAD_REQUEST_FLAG_SCOPE_DESTINATION )) {
+
+            SafeUploadCount( DeniedPostCreate );
 
             FltCancelFileOpen( FltObjects->Instance, FltObjects->FileObject );
 
