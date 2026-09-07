@@ -228,6 +228,76 @@ public class PolicyTests : IDisposable
     }
 
     /// <summary>
+    /// RN-011 pelo outro lado: a leitura de uma origem sensível entra em
+    /// escopo pela lista de origens, e não pela de destinos.
+    ///
+    /// Este teste existe porque a falta dele deixou passar um defeito inteiro.
+    /// O motor decidia escopo só por destino, então toda leitura de origem era
+    /// julgada contra os caminhos de destino, não casava nenhum e saía como
+    /// fora de escopo — o arquivo nunca era aberto e a cadeia de contaminação
+    /// ficava sem o primeiro elo. Os 156 testes passavam, porque nenhum
+    /// perguntava isto.
+    /// </summary>
+    [Fact]
+    public void Rn011_leitura_de_origem_sensivel_entra_em_escopo_pela_lista_de_origens()
+    {
+        var arquivo = _workspace.WriteText("relatorio.txt", "vazio");
+        var origem = Path.GetDirectoryName(arquivo)!;
+
+        var comOrigem = Policy(sourcePaths: [origem]);
+
+        Assert.True(comOrigem.IsInScope(
+            TestWorkspace.Operation(arquivo, DestinationKind.SensitiveSource)));
+
+        // Sem origens configuradas a mesma leitura fica fora de escopo. É
+        // configuração legítima — vigiar destinos sem manter cadeia — e o
+        // resultado tem de ser esse, não um bloqueio.
+        var semOrigem = Policy(sourcePaths: []);
+
+        Assert.False(semOrigem.IsInScope(
+            TestWorkspace.Operation(arquivo, DestinationKind.SensitiveSource)));
+
+        // Uma origem que não cobre este arquivo também não vale.
+        var outraOrigem = Policy(sourcePaths: [Path.Combine(origem, "outra-pasta")]);
+
+        Assert.False(outraOrigem.IsInScope(
+            TestWorkspace.Operation(arquivo, DestinationKind.SensitiveSource)));
+    }
+
+    /// <summary>
+    /// A lista de origens não muda o julgamento de destino: os dois lados são
+    /// independentes, e uma origem configurada não pode fazer entrar em escopo
+    /// uma cópia para lugar nenhum.
+    /// </summary>
+    [Fact]
+    public void Origem_configurada_nao_altera_o_julgamento_de_destino()
+    {
+        var arquivo = _workspace.WriteText("dados.txt", "vazio");
+        var policy = Policy(sourcePaths: [Path.GetDirectoryName(arquivo)!]);
+
+        Assert.False(policy.IsInScope(TestWorkspace.Operation(
+            arquivo, DestinationKind.OutOfScope, destinationPath: @"C:\Temp")));
+
+        Assert.True(policy.IsInScope(
+            TestWorkspace.Operation(arquivo, DestinationKind.RemovableDrive)));
+    }
+
+    private static Policy Policy(IReadOnlyList<string> sourcePaths) =>
+        new(
+            Version: 1,
+            ActiveCategories: new HashSet<Category> { Category.Cpf },
+            MonitoredScopes: new MonitoredScopes(
+                new HashSet<string>(StringComparer.OrdinalIgnoreCase) { ".txt" },
+                [@"C:\destino-vigiado"],
+                RemovableDrives: true,
+                NetworkPaths: true,
+                SourcePaths: sourcePaths),
+            MaxFileSizeMb: 20,
+            InspectionTimeoutSeconds: 5,
+            FailOpen: true,
+            ExcludedProcesses: new HashSet<string>(StringComparer.OrdinalIgnoreCase));
+
+    /// <summary>
     /// Nuvem fora dos caminhos monitorados não entra em escopo: é uma pasta
     /// local como outra qualquer.
     /// </summary>

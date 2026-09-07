@@ -357,17 +357,25 @@ public sealed class MinifilterInterceptor : BackgroundService
             return null;
         }
 
-        // A natureza do destino que o driver sabe (volume removível, rede,
-        // caminho monitorado) não cabe no protocolo de hoje: a requisição
-        // carrega só as flags de escopo. Origem e destino monitorados são
-        // ambos tratados como Cloud, que é a categoria que a RN-011 aplica a
-        // caminho local monitorado. Mandar o DestinationKind pelo Reserved
-        // resolveria, e é a mesma anotação do parágrafo acima.
+        // Os dois lados do escopo, e a distinção não é cosmética: o motor
+        // julga origem pela lista de origens e destino pela de destinos.
+        //
+        // Tratar origem como Cloud - que foi a primeira versão disto - faz a
+        // leitura ser julgada contra os caminhos de destino, não casar
+        // nenhum e sair como fora de escopo. O arquivo nunca é aberto, o CPF
+        // nunca é encontrado, nada é marcado, e a bateria vê apenas uma
+        // escrita que passou.
+        //
+        // Origem vem primeiro porque uma requisição pode trazer as duas
+        // flags, e nesse caso o que interessa é o conteúdo sendo lido.
+        //
+        // Sobra que o driver sabe mais do que consegue contar: ele conhece a
+        // natureza do volume (removível, rede, fixo) e o protocolo não tem
+        // campo para isso. O Reserved da requisição existe e resolveria.
         DestinationKind destination =
-            request.TypedFlags.HasFlag(RequestFlags.ScopeDestination) ||
-            request.TypedFlags.HasFlag(RequestFlags.ScopeSource)
-                ? DestinationKind.Cloud
-                : DestinationKind.OutOfScope;
+            request.TypedFlags.HasFlag(RequestFlags.ScopeSource) ? DestinationKind.SensitiveSource
+            : request.TypedFlags.HasFlag(RequestFlags.ScopeDestination) ? DestinationKind.Cloud
+            : DestinationKind.OutOfScope;
 
         return new FileOperation(
             FilePath: path,

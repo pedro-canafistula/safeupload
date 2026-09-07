@@ -70,7 +70,7 @@ public sealed class InspectionService
         }
 
         // 2. RN-011 — fora do escopo declarado não se inspeciona nada.
-        if (!policy.IsMonitoredDestination(operation) || !policy.IsMonitoredExtension(operation.Extension))
+        if (!policy.IsInScope(operation) || !policy.IsMonitoredExtension(operation.Extension))
         {
             return OutOfScope(stopwatch, policy, "out_of_scope");
         }

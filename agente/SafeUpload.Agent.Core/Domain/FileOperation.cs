@@ -19,6 +19,21 @@ public enum DestinationKind
     /// </summary>
     Cloud,
 
+    /// <summary>
+    /// Não é destino nenhum: é a <b>leitura de uma origem sensível</b>.
+    ///
+    /// Entrou quando o gatilho virou o minifiltro. O mock só conhece um tipo
+    /// de operação — arquivo chegando a uma pasta vigiada — e para ele todo
+    /// caso é destino. Com interceptação de verdade existe o outro lado: abrir
+    /// um documento que pode conter dado sensível, que não vai para lugar
+    /// algum ainda mas é o que dá início à cadeia de contaminação.
+    ///
+    /// Sem este valor a operação seria julgada pela regra de destino, não
+    /// casaria caminho vigiado nenhum e sairia como fora de escopo — o
+    /// arquivo nunca seria aberto, e a cadeia não teria primeiro elo.
+    /// </summary>
+    SensitiveSource,
+
     /// <summary>Destino que a política não acompanha.</summary>
     OutOfScope
 }

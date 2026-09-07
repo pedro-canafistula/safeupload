@@ -146,6 +146,44 @@ public sealed record Policy(
         };
     }
 
+    /// <summary>
+    /// Se a operação entra em escopo, por qualquer um dos dois lados.
+    ///
+    /// É o que a RN-011 significa desde que existe leitura de origem: uma
+    /// operação interessa por ir para um destino vigiado <b>ou</b> por ler uma
+    /// origem sensível. <see cref="IsMonitoredDestination"/> responde só a
+    /// primeira metade, e usá-lo sozinho descarta toda leitura de origem antes
+    /// de abrir o arquivo — que é como a cadeia de contaminação ficou sem o
+    /// primeiro elo até se medir.
+    /// </summary>
+    public bool IsInScope(FileOperation operation)
+    {
+        ArgumentNullException.ThrowIfNull(operation);
+
+        return operation.Destination == DestinationKind.SensitiveSource
+            ? IsUnderMonitoredSource(operation.FilePath)
+            : IsMonitoredDestination(operation);
+    }
+
+    /// <summary>Se o caminho está sob uma das origens vigiadas.</summary>
+    private bool IsUnderMonitoredSource(string? filePath)
+    {
+        if (string.IsNullOrWhiteSpace(filePath))
+        {
+            return false;
+        }
+
+        foreach (string root in MonitoredScopes.SourcePaths)
+        {
+            if (filePath.StartsWith(root, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private bool IsUnderMonitoredPath(string? destinationPath)
     {
         if (string.IsNullOrWhiteSpace(destinationPath))
