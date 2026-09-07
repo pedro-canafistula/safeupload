@@ -282,6 +282,51 @@ Medições da mesma execução, com o inspetor conectado durante todo o teste:
 - arquivo fora de escopo nunca chega ao modo usuário
 - nenhuma alocação de pool pendente depois do unload
 
+Esta seção cobre os dois elos da cadeia, e só eles. O gancho de rename e
+hard link é outra coisa, e o que ficou verificado dele está na seção
+seguinte — que é menos do que a leitura otimista sugeriria.
+
+---
+
+## Quem realmente fecha o desvio por rename
+
+O gancho de `IRP_MJ_SET_INFORMATION` foi escrito para fechar duas portas:
+renomear um arquivo pronto para dentro do destino monitorado, e criar um
+hard link que torne o conteúdo alcançável lá dentro. Medindo, descobriu-se
+que ele fecha **uma** delas — e não a que motivou escrevê-lo.
+
+O que os contadores mostraram, com dois renames diretos emitidos por
+`SetFileInformationByHandle(FileRenameInfo)` no mesmo processo marcado:
+
+| Rename | Destino | Chegou ao callback | Resultado |
+|---|---|---|---|
+| `rename-direto.txt` | monitorado | **não** | `ACCESS_DENIED` |
+| `rename-controle.txt` | fora de escopo | sim | permitido |
+
+O de controle chegou, passou pela porta de classe, passou pela checagem de
+marca, não casou o destino e foi liberado — exatamente o desenhado. O outro
+foi recusado **antes** de chegar: o sistema de arquivos emite uma abertura
+interna ao processar o rename, e a porta do pré-CREATE a pega primeiro.
+
+Duas consequências, e nenhuma é "está tudo bem":
+
+1. O desvio por rename **está fechado**, mas por um caminho que ninguém
+   projetou para isso. Fecha por efeito colateral, e efeito colateral não
+   tem teste que o defenda de uma mudança futura no pré-CREATE.
+
+2. O ramo de recusa do gancho — resolver o destino, casar o prefixo, negar —
+   **nunca é alcançado por um rename**. `DeniedRename` fica em zero por mais
+   renames que sejam bloqueados, e isso não é defeito do contador.
+
+A única operação que alcança esse ramo é o **hard link**: ele não cria
+arquivo, não move nada, e portanto não oferece nada para a porta do CREATE
+pegar. É por isso que o caso do hard link existe na bateria e é ele, não os
+casos de rename, que dirige a asserção sobre `DeniedRename`.
+
+Se um dia o hard link também passar a ser pego pelo CREATE, o gancho vira
+código morto e deve ser removido em vez de mantido por precaução — código
+que nunca executa não protege, só dá impressão de proteção.
+
 ---
 
 ## Descartado: lookaside no lugar do pool por operação

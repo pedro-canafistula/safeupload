@@ -893,6 +893,23 @@ public static class SafeUploadRename
     [DllImport("kernel32.dll", SetLastError = true)]
     static extern bool CloseHandle(IntPtr handle);
 
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    static extern bool CreateHardLinkW(string newName, string existingName,
+        IntPtr attributes);
+
+    // A hard link makes the content reachable under a new path without
+    // creating a file and without moving anything, so the create gate has
+    // nothing to catch. It reaches the file system as
+    // FileLinkInformation on IRP_MJ_SET_INFORMATION - the other door the
+    // rename hook claims to close, and the only one where its refusal
+    // branch can be reached at all.
+    public static int HardLink(string newPath, string existingPath)
+    {
+        if (CreateHardLinkW(newPath, existingPath, IntPtr.Zero)) { return 0; }
+
+        return Marshal.GetLastWin32Error();
+    }
+
     const uint DELETE = 0x00010000;
     const uint SYNCHRONIZE = 0x00100000;
     const uint SHARE_ALL = 0x00000007;
@@ -1008,6 +1025,34 @@ public static class SafeUploadRename
             }
         })
 
+    # The hard link is what actually exercises the refusal branch of the
+    # rename hook.
+    #
+    # Every rename into the monitored folder is refused by the pre-create
+    # gate first, on an internal create the file system issues while
+    # processing it - which is why DeniedRename stays at zero however many
+    # renames are blocked. A hard link creates nothing, so the create gate
+    # has nothing to see and the hook is the only thing left standing
+    # between the tainted process and the monitored folder.
+
+    $linkSource = Join-Path $OutOfScopeDirectory 'link-origem.txt'
+    $linkTarget = Join-Path $TestDirectory 'link-destino.txt'
+
+    Remove-Item $linkTarget -Force -ErrorAction SilentlyContinue
+    Set-Content -Path $linkSource -Value 'conteudo por link' -ErrorAction SilentlyContinue
+
+    $linkError = [SafeUploadRename]::HardLink($linkTarget, $linkSource)
+
+    Add-Result -Name 'Hard link para o destino e negado' -Passed ($linkError -eq 5) `
+        -Detail $(switch ($linkError) {
+            5       { 'ERROR_ACCESS_DENIED: o gancho de SET_INFORMATION recusou.' }
+            0       { 'O link passou: o conteudo esta alcancavel dentro do destino.' }
+            default { "Erro $linkError - nem passou nem foi negado." }
+        })
+
+    Add-Result -Name 'Nada chegou ao destino pelo hard link' -Passed (-not (Test-Path $linkTarget)) `
+        -Detail $(if (Test-Path $linkTarget) { 'O link esta la: o conteudo atravessou.' } else { 'Nenhum link foi criado.' })
+
 }
 finally {
 
@@ -1105,18 +1150,19 @@ Add-Result -Name 'O cache serviu ao menos uma resposta' -Passed ($cacheHits -gt 
 Add-Result -Name 'A recusa por marca no pre-create foi contada' -Passed ($deniedPreCreate -gt 0) `
     -Detail "DeniedPreCreate = $deniedPreCreate; o caso da escrita marcada passou, entao tem de ser >= 1."
 
-# When this fails, the two counters below say where the callback gave up,
-# which is the whole reason they exist:
+# This counter is driven by the HARD LINK case, not by the rename cases.
 #
-#   RenamesSeen = 0        nenhum rename chegou ao callback. O Move-Item
-#                          foi barrado antes, no create - o caso nao esta
-#                          testando o gancho de SET_INFORMATION.
-#   RenamesSeen > 0,
-#   RenamesFromTainted = 0 o rename chegou, mas o processo nao estava
-#                          marcado naquele instante.
-#   ambos > 0              chegou e estava marcado: o destino nao casou.
+# Renames into the monitored folder never reach the refusal branch: the
+# pre-create gate stops them first, on an internal create the file system
+# issues while processing the rename. Measured, not assumed - two direct
+# renames were issued and only the out-of-scope one reached the callback.
+#
+# So the only operation that can move this counter is the hard link, which
+# creates nothing for the create gate to catch. If it stays at zero while
+# the hard link case is green, the link was refused by something else and
+# the refusal branch is still unproven.
 
-Add-Result -Name 'A recusa de rename foi contada' -Passed ($deniedRename -gt 0) `
+Add-Result -Name 'A recusa no gancho de SET_INFORMATION foi contada' -Passed ($deniedRename -gt 0) `
     -Detail "DeniedRename = $deniedRename (SetInformationSeen = $setInformationSeen, RenamesSeen = $renamesSeen, RenamesFromTainted = $renamesFromTainted)."
 
 Write-Step 'Driver Verifier'
