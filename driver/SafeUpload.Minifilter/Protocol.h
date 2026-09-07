@@ -49,7 +49,7 @@ Environment:
 //  message means "allow" (RN-013), never "block".
 //
 
-#define SAFEUPLOAD_PROTOCOL_VERSION ((UINT32) 3)
+#define SAFEUPLOAD_PROTOCOL_VERSION ((UINT32) 4)
 
 //
 //  Capacity of the inline string fields, in WCHARs, terminator included.
@@ -424,6 +424,23 @@ typedef struct _SAFEUPLOAD_COUNTERS {
     UINT64 TaintLookups;
     UINT64 TaintHits;
 
+    //
+    //  How far a rename or hard link got down the pre-set-information
+    //  path. These exist to localise a refusal that does not happen: the
+    //  callback can give up at three different points, and without these
+    //  a DeniedRename of zero says only "somewhere before the end".
+    //
+    //  RenamesSeen counts what got past the information-class gate - if
+    //  this is zero, no rename ever reached the callback and the question
+    //  is not about this code at all.
+    //
+    //  RenamesFromTainted counts what got past the taint check, which is
+    //  the last gate before the destination name is resolved.
+    //
+
+    UINT64 RenamesSeen;
+    UINT64 RenamesFromTainted;
+
 } SAFEUPLOAD_COUNTERS, *PSAFEUPLOAD_COUNTERS;
 
 #pragma pack(pop)
@@ -473,7 +490,7 @@ C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_POLICY_MESSAGE, Prefixes )          == 1064 )
 C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_POLICY_MESSAGE, SourcePrefixes )    == 9384 );
 C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_POLICY_MESSAGE, Images )            == 17704 );
 
-C_ASSERT( sizeof( SAFEUPLOAD_COUNTERS ) == 104 );
+C_ASSERT( sizeof( SAFEUPLOAD_COUNTERS ) == 120 );
 C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_COUNTERS, Version )     == 0 );
 C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_COUNTERS, StructSize )  == 4 );
 C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_COUNTERS, CreatesSeen ) == 8 );

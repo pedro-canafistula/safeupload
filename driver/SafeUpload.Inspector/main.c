@@ -436,6 +436,8 @@ Return Value:
     wprintf( L"TaintsRecorded          : %llu\n", counters.TaintsRecorded );
     wprintf( L"TaintLookups            : %llu\n", counters.TaintLookups );
     wprintf( L"TaintHits               : %llu\n", counters.TaintHits );
+    wprintf( L"RenamesSeen             : %llu\n", counters.RenamesSeen );
+    wprintf( L"RenamesFromTainted      : %llu\n", counters.RenamesFromTainted );
 
     //
     //  The ratio the whole design is judged by: how little of what the

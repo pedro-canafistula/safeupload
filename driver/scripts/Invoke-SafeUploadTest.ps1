@@ -926,12 +926,16 @@ $cacheHits = 0
 $roundTrips = 0
 $deniedPreCreate = 0
 $deniedRename = 0
+$renamesSeen = 0
+$renamesFromTainted = 0
 
 foreach ($line in $counterOutput) {
     if ($line -match '^CacheHits\s*:\s*(\d+)') { $cacheHits = [int] $matches[1] }
     if ($line -match '^UserModeRoundTrips\s*:\s*(\d+)') { $roundTrips = [int] $matches[1] }
     if ($line -match '^DeniedPreCreate\s*:\s*(\d+)') { $deniedPreCreate = [int] $matches[1] }
     if ($line -match '^DeniedRename\s*:\s*(\d+)') { $deniedRename = [int] $matches[1] }
+    if ($line -match '^RenamesSeen\s*:\s*(\d+)') { $renamesSeen = [int] $matches[1] }
+    if ($line -match '^RenamesFromTainted\s*:\s*(\d+)') { $renamesFromTainted = [int] $matches[1] }
 }
 
 # The cache is the property the design rests on. If it never served a single
@@ -953,8 +957,19 @@ Add-Result -Name 'O cache serviu ao menos uma resposta' -Passed ($cacheHits -gt 
 Add-Result -Name 'A recusa por marca no pre-create foi contada' -Passed ($deniedPreCreate -gt 0) `
     -Detail "DeniedPreCreate = $deniedPreCreate; o caso da escrita marcada passou, entao tem de ser >= 1."
 
+# When this fails, the two counters below say where the callback gave up,
+# which is the whole reason they exist:
+#
+#   RenamesSeen = 0        nenhum rename chegou ao callback. O Move-Item
+#                          foi barrado antes, no create - o caso nao esta
+#                          testando o gancho de SET_INFORMATION.
+#   RenamesSeen > 0,
+#   RenamesFromTainted = 0 o rename chegou, mas o processo nao estava
+#                          marcado naquele instante.
+#   ambos > 0              chegou e estava marcado: o destino nao casou.
+
 Add-Result -Name 'A recusa de rename foi contada' -Passed ($deniedRename -gt 0) `
-    -Detail "DeniedRename = $deniedRename; o caso do rename marcado passou, entao tem de ser >= 1."
+    -Detail "DeniedRename = $deniedRename (RenamesSeen = $renamesSeen, RenamesFromTainted = $renamesFromTainted)."
 
 Write-Step 'Driver Verifier'
 

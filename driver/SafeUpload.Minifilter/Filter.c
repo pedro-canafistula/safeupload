@@ -1558,6 +1558,8 @@ Return Value:
         return FLT_PREOP_SUCCESS_NO_CALLBACK;
     }
 
+    SafeUploadCount( RenamesSeen );
+
     processId = FltGetRequestorProcessId( Data );
 
     if (SafeUploadIsIgnoredProcess( processId )) {
@@ -1576,6 +1578,8 @@ Return Value:
 
         return FLT_PREOP_SUCCESS_NO_CALLBACK;
     }
+
+    SafeUploadCount( RenamesFromTainted );
 
     status = FltGetInstanceContext( FltObjects->Instance,
                                     (PFLT_CONTEXT *) &instanceContext );
