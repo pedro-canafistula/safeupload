@@ -1541,6 +1541,23 @@ Return Value:
     informationClass = Data->Iopb->Parameters.SetFileInformation.FileInformationClass;
 
     //
+    //  Record the class before any gate rejects it. Which classes arrive
+    //  is exactly what cannot be deduced from the outside, and guessing it
+    //  has already cost two deploy-and-test cycles.
+    //
+
+    if ((ULONG) informationClass < 64) {
+
+        InterlockedOr64( (volatile LONG64 *) &SafeUploadCounters.ClassesSeenLow,
+                         1ULL << (ULONG) informationClass );
+
+    } else if ((ULONG) informationClass < 128) {
+
+        InterlockedOr64( (volatile LONG64 *) &SafeUploadCounters.ClassesSeenHigh,
+                         1ULL << ((ULONG) informationClass - 64) );
+    }
+
+    //
     //  The cheapest gate available: IRP_MJ_SET_INFORMATION carries dozens of
     //  classes - timestamps, attributes, allocation size, end of file - and
     //  only these four move content to a new path. One comparison rejects

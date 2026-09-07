@@ -49,7 +49,7 @@ Environment:
 //  message means "allow" (RN-013), never "block".
 //
 
-#define SAFEUPLOAD_PROTOCOL_VERSION ((UINT32) 5)
+#define SAFEUPLOAD_PROTOCOL_VERSION ((UINT32) 6)
 
 //
 //  Capacity of the inline string fields, in WCHARs, terminator included.
@@ -447,6 +447,25 @@ typedef struct _SAFEUPLOAD_COUNTERS {
     UINT64 RenamesSeen;
     UINT64 RenamesFromTainted;
 
+    //
+    //  Bitmap of every FILE_INFORMATION_CLASS that reached the callback:
+    //  bit N of Low for class N, bit N of High for class N + 64.
+    //
+    //  This exists to end a specific kind of round trip. Twice now an
+    //  operation was refused while the counter for its refusal stayed at
+    //  zero, and answering "which class actually arrived" cost a full
+    //  build, deploy and test cycle each time. The bitmap answers it for
+    //  every class at once, so the next surprise is read rather than
+    //  guessed.
+    //
+    //  The classes that matter here: 10 FileRenameInformation, 11
+    //  FileLinkInformation, 65 FileRenameInformationEx, 72
+    //  FileLinkInformationEx.
+    //
+
+    UINT64 ClassesSeenLow;
+    UINT64 ClassesSeenHigh;
+
 } SAFEUPLOAD_COUNTERS, *PSAFEUPLOAD_COUNTERS;
 
 #pragma pack(pop)
@@ -496,7 +515,7 @@ C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_POLICY_MESSAGE, Prefixes )          == 1064 )
 C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_POLICY_MESSAGE, SourcePrefixes )    == 9384 );
 C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_POLICY_MESSAGE, Images )            == 17704 );
 
-C_ASSERT( sizeof( SAFEUPLOAD_COUNTERS ) == 128 );
+C_ASSERT( sizeof( SAFEUPLOAD_COUNTERS ) == 144 );
 C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_COUNTERS, Version )     == 0 );
 C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_COUNTERS, StructSize )  == 4 );
 C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_COUNTERS, CreatesSeen ) == 8 );

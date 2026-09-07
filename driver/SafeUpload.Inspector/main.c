@@ -441,6 +441,48 @@ Return Value:
     wprintf( L"RenamesFromTainted      : %llu\n", counters.RenamesFromTainted );
 
     //
+    //  Decode the class bitmap. Printing the raw words as well as the
+    //  names keeps the output useful when a class shows up that this
+    //  table does not know about.
+    //
+
+    wprintf( L"ClassesSeen             : %016llX %016llX\n",
+             counters.ClassesSeenHigh, counters.ClassesSeenLow );
+
+    {
+        static const struct { ULONG Class; PCWSTR Name; } known[] = {
+            {  4, L"FileBasicInformation" },
+            { 10, L"FileRenameInformation" },
+            { 11, L"FileLinkInformation" },
+            { 13, L"FileDispositionInformation" },
+            { 14, L"FilePositionInformation" },
+            { 19, L"FileEndOfFileInformation" },
+            { 20, L"FileAllocationInformation" },
+            { 64, L"FileDispositionInformationEx" },
+            { 65, L"FileRenameInformationEx" },
+            { 72, L"FileLinkInformationEx" },
+        };
+
+        ULONG index;
+
+        wprintf( L"  classes vistas        :" );
+
+        for (index = 0; index < RTL_NUMBER_OF( known ); index += 1) {
+
+            ULONG bit = known[ index ].Class;
+            UINT64 word = (bit < 64) ? counters.ClassesSeenLow : counters.ClassesSeenHigh;
+            ULONG shift = (bit < 64) ? bit : bit - 64;
+
+            if ((word >> shift) & 1) {
+                wprintf( L" %u=%s", bit, known[ index ].Name );
+            }
+        }
+
+        wprintf( L"\n" );
+    }
+
+
+    //
     //  The ratio the whole design is judged by: how little of what the
     //  filter sees ever costs anything.
     //
