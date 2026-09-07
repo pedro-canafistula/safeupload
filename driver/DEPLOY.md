@@ -791,10 +791,26 @@ de tudo.
 
 ## Contrato de mensagens (Protocol.h)
 
-Esta seção existe para o **agente WPF em C#** que vai substituir o
+Esta seção existe para o **agente em C#** que substitui o
 `SafeUpload.Inspector`. A fonte da verdade é
-`driver/SafeUpload.Minifilter/Protocol.h`; o que está abaixo é a mesma coisa
-descrita para quem vai marshalar do outro lado.
+`driver/SafeUpload.Minifilter/Protocol.h`; o que está abaixo é a mesma
+coisa descrita para quem marshala do outro lado.
+
+Já existe uma implementação de referência em `service/`, e ela é o ponto de
+partida recomendado em vez de reescrever o marshalling do zero:
+
+| Arquivo | O que é |
+|---|---|
+| `service/SafeUpload.Protocol/Protocol.cs` | As cinco estruturas, com `Contract.Verify()` |
+| `service/SafeUpload.Protocol/FilterPort.cs` | Conexão, laço de mensagens, resposta, canal de controle |
+| `service/SafeUpload.Protocol/PolicyBuilder.cs` | Montagem da política e a conversão DOS → NT |
+| `service/SafeUpload.Agent/Program.cs` | Cliente mínimo funcional, equivalente ao Inspector |
+
+Para conferir o contrato sem driver nenhum:
+
+```
+dotnet run --project service\SafeUpload.Agent -- --verify
+```
 
 ### Regras do contrato
 
@@ -806,10 +822,20 @@ descrita para quem vai marshalar do outro lado.
 3. Os campos estão ordenados para **não haver padding implícito**. O
    `Protocol.h` tem `C_ASSERT` de tamanho e de offset de cada campo: se
    alguém mudar o layout sem manter a propriedade, o build do driver quebra.
-4. As duas estruturas carregam `Version` e `StructSize`. Um par
-   kernel/usuário incompatível é **detectado**, não mal interpretado.
+4. Toda estrutura carrega `Version` e `StructSize`. Um par kernel/usuário
+   incompatível é **detectado**, não mal interpretado.
 5. Qualquer mensagem que o receptor não entenda vale **permitir**, nunca
    bloquear.
+
+### Versão
+
+`SAFEUPLOAD_PROTOCOL_VERSION` é **6**. Ela sobe sempre que o layout muda,
+inclusive quando a mudança é só um contador novo: o receptor lê a estrutura
+inteira de uma vez, então um campo acrescentado no meio desloca tudo o que
+vem depois. Um cliente antigo contra um driver novo não leria um número
+ligeiramente errado — leria os campos seguintes trocados entre si, e
+números trocados são piores que números ausentes, porque parecem
+plausíveis.
 
 ### Nome da porta
 
@@ -818,127 +844,192 @@ descrita para quem vai marshalar do outro lado.
 ```
 
 ACL: apenas SYSTEM e Administradores (descritor padrão do Filter Manager).
-Uma conexão simultânea, no máximo.
+**Uma conexão simultânea, no máximo.**
+
+Isso decide a arquitetura do lado usuário: quem segura a porta é o
+**serviço Windows**, rodando como LocalSystem. O aplicativo WPF não se
+conecta ao driver — ele conversa com o serviço. Não é preferência de
+desenho, é o que a ACL e o limite de uma conexão permitem.
+
+### As cinco mensagens
+
+| Estrutura | Sentido | Tamanho |
+|---|---|---:|
+| `SAFEUPLOAD_REQUEST` | kernel → usuário | 1192 |
+| `SAFEUPLOAD_RESPONSE` | usuário → kernel | 24 |
+| `SAFEUPLOAD_CONTROL` | usuário → kernel | 16 |
+| `SAFEUPLOAD_POLICY_MESSAGE` | usuário → kernel | 19752 |
+| `SAFEUPLOAD_COUNTERS` | kernel → usuário (resposta) | 144 |
+
+As duas primeiras trafegam pelo par `FilterGetMessage` /
+`FilterReplyMessage`. As três últimas pelo `FilterSendMessage`, que é o
+canal de controle e vai no sentido oposto.
 
 ### `SAFEUPLOAD_REQUEST` — kernel → usuário (1192 bytes)
 
 | Offset | Tamanho | Campo | Descrição |
 |---:|---:|---|---|
-| 0 | 4 | `Version` | `1` nesta versão. |
+| 0 | 4 | `Version` | `6`. |
 | 4 | 4 | `StructSize` | `1192`. |
 | 8 | 8 | `RequestId` | Identificador monotônico. A resposta **tem que** repeti-lo. |
-| 16 | 4 | `Operation` | `1` = CREATE, `2` = READ. |
+| 16 | 4 | `Operation` | `1` = CREATE. O `2` = READ existe no contrato mas não ocorre: `IRP_MJ_READ` não é registrado. |
 | 20 | 4 | `RequestorProcessId` | PID de quem pediu a operação. |
-| 24 | 4 | `Flags` | Ver tabela abaixo. |
-| 28 | 4 | `PathLength` | Bytes úteis em `Path`, sem o terminador. |
-| 32 | 4 | `ImageNameLength` | Bytes úteis em `ImageName`, sem o terminador. |
-| 36 | 4 | `Reserved` | Sempre 0. |
-| 40 | 1024 | `Path[512]` | Caminho NT do arquivo, terminado em NUL. |
-| 1064 | 128 | `ImageName[64]` | Último componente da imagem do processo, terminado em NUL. |
+| 24 | 4 | `Flags` | Ver abaixo. |
+| 28 | 4 | `PathLength` | **Bytes**, sem o terminador. |
+| 32 | 4 | `ImageNameLength` | **Bytes**, sem o terminador. |
+| 36 | 4 | `Reserved` | Zero. |
+| 40 | 1024 | `Path[512]` | Caminho em forma de dispositivo. |
+| 1064 | 128 | `ImageName[64]` | Nome da imagem, sem caminho. |
 
-`Flags`:
+Flags:
 
 | Valor | Nome | Significado |
 |---:|---|---|
-| `0x01` | `PATH_TRUNCATED` | O caminho não coube em 511 caracteres e foi cortado. |
-| `0x02` | `IMAGE_NAME_TRUNCATED` | O nome da imagem foi cortado. |
-| `0x04` | `PATH_NOT_NORMALIZED` | Não foi possível obter o nome normalizado; `Path` traz o nome aberto (pode ser relativo, nome curto, ou por outro ponto de montagem). Usável, mas **não** confiável para comparação byte a byte contra lista de política. |
+| 0x01 | `PATH_TRUNCATED` | O caminho não coube em 512 caracteres. |
+| 0x02 | `IMAGE_NAME_TRUNCATED` | O nome da imagem não coube em 64. |
+| 0x04 | `PATH_NOT_NORMALIZED` | A normalização falhou; o caminho é o de abertura. |
+| 0x08 | `SCOPE_DESTINATION` | A operação vai para um destino monitorado. |
+| 0x10 | `SCOPE_SOURCE` | A operação lê de uma origem monitorada. |
+
+Os dois últimos são a informação que o serviço usa para decidir o que a
+resposta significa. Uma negação em escopo de **origem** marca o processo;
+uma negação em escopo de **destino** cancela a abertura.
+
+`PathLength` vem do kernel e é o tamanho em bytes, não em caracteres.
+Divida por dois antes de indexar, e **limite ao tamanho do campo** antes de
+usar: indexar um buffer fixo com um valor não conferido é a diferença entre
+um cliente correto e um que lê fora da estrutura.
 
 ### `SAFEUPLOAD_RESPONSE` — usuário → kernel (24 bytes)
 
 | Offset | Tamanho | Campo | Descrição |
 |---:|---:|---|---|
-| 0 | 4 | `Version` | `1`. |
+| 0 | 4 | `Version` | `6`. |
 | 4 | 4 | `StructSize` | `24`. |
-| 8 | 8 | `RequestId` | Cópia do `RequestId` da requisição. |
-| 16 | 4 | `Verdict` | `0` = permitir, `1` = bloquear. Qualquer outro valor é tratado como permitir. |
-| 20 | 4 | `Reserved` | Sempre 0. |
+| 8 | 8 | `RequestId` | O mesmo que chegou. |
+| 16 | 4 | `Verdict` | `0` = permitir, `1` = negar. |
+| 20 | 4 | `Reserved` | Zero. |
 
-O driver descarta a resposta — e permite a operação — se `Version`,
-`StructSize` ou `RequestId` não casarem. O eco do `RequestId` é o que impede
-que uma resposta atrasada, de uma requisição que já estourou o timeout, seja
-tomada como a resposta da requisição atual.
+### `SAFEUPLOAD_CONTROL` — usuário → kernel (16 bytes)
+
+Cabeçalho de todo comando pelo `FilterSendMessage`.
+
+| Offset | Tamanho | Campo | Descrição |
+|---:|---:|---|---|
+| 0 | 4 | `Version` | `6`. |
+| 4 | 4 | `StructSize` | Tamanho da mensagem **inteira**, não do cabeçalho. |
+| 8 | 4 | `Command` | `1` = SET_POLICY, `2` = GET_COUNTERS. |
+| 12 | 4 | `Reserved` | Zero. |
+
+### `SAFEUPLOAD_POLICY_MESSAGE` — usuário → kernel (19752 bytes)
+
+**Sem esta mensagem o driver não inspeciona nada.** Ele sobe sem política e
+libera tudo; não há padrão embutido. Empurrar a política é o passo que liga
+o filtro, não configuração opcional.
+
+| Offset | Tamanho | Campo | Descrição |
+|---:|---:|---|---|
+| 0 | 16 | `Control` | Com `Command` = 1. |
+| 16 | 4 | `ExtensionCount` | Máximo 32. |
+| 20 | 4 | `PrefixCount` | Destinos, máximo 16. |
+| 24 | 4 | `ImageCount` | Imagens excluídas, máximo 16. |
+| 28 | 4 | `SourcePrefixCount` | Origens, máximo 16. |
+| 32 | 4 | `Flags` | `0x01` = todo volume removível, `0x02` = toda rede. |
+| 36 | 4 | `Reserved` | Zero. |
+| 40 | 1024 | `Extensions[32][16]` | Com o ponto: `.docx`. |
+| 1064 | 8320 | `Prefixes[16][260]` | Destinos monitorados. |
+| 9384 | 8320 | `SourcePrefixes[16][260]` | Origens sensíveis. |
+| 17704 | 2048 | `Images[16][64]` | Processos ignorados, só o nome. |
+
+Cada entrada ocupa um slot de tamanho fixo e **tem que terminar em nulo**:
+o kernel mede a string, então uma entrada escrita até o último caractere do
+slot invade o próximo.
+
+#### A armadilha dos caminhos
+
+Os prefixos têm de estar em **forma de dispositivo**:
+
+```
+\Device\HarddiskVolume3\safeupload-teste
+```
+
+e **não**
+
+```
+C:\safeupload-teste
+```
+
+O kernel compara com os nomes que o Filter Manager entrega, e esses são
+sempre em forma de dispositivo. Um prefixo em forma DOS não casa com nada.
+O sintoma é cruel: o driver carrega, anexa, responde, e simplesmente não
+inspeciona — porque permitir é o padrão seguro. Nenhum erro aparece em
+lugar nenhum; o único sinal é `ScopeEvaluations` parado em zero.
+
+A conversão é `QueryDosDeviceW` sobre a letra da unidade, concatenada com o
+resto do caminho. Está pronta em `PolicyBuilder.ToNtPath`.
+
+Caminhos UNC não têm dispositivo DOS a resolver. Destinos de rede são
+cobertos pelo flag `0x02`, não por prefixo.
+
+### `SAFEUPLOAD_COUNTERS` — resposta de GET_COUNTERS (144 bytes)
+
+Enviar um `SAFEUPLOAD_CONTROL` com `Command` = 2 e um buffer de saída de
+144 bytes. `Version` e `StructSize` nos offsets 0 e 4; a partir do 8, e nesta
+ordem, dezessete `UINT64`:
+
+```
+CreatesSeen  CreatesPastCheapGates  ScopeEvaluations  UserModeRoundTrips
+CacheHits  DeniedPreCreate  DeniedPostCreate  DeniedRename
+AllowedWithoutInspection  TaintsRecorded  TaintLookups  TaintHits
+SetInformationSeen  RenamesSeen  RenamesFromTainted
+ClassesSeenLow  ClassesSeenHigh
+```
+
+`AllowedWithoutInspection` é o que o serviço precisa vigiar: ele conta
+operações que passaram **sem inspeção** porque a resposta não chegou a
+tempo. Crescendo, o usuário está trabalhando sem proteção e nada mais no
+sistema vai avisar.
 
 ### Como o Filter Manager embrulha as mensagens
 
-O driver envia só o `SAFEUPLOAD_REQUEST`. O Filter Manager prefixa um
-`FILTER_MESSAGE_HEADER` (16 bytes: `UINT32 ReplyLength` + padding +
-`UINT64 MessageId`) antes de o modo usuário ver. A resposta vai prefixada
-por um `FILTER_REPLY_HEADER` (16 bytes: `NTSTATUS Status` + padding +
-`UINT64 MessageId`), e o `MessageId` da resposta **tem que ser** o mesmo da
-mensagem recebida.
+Cada requisição chega precedida de um cabeçalho de 16 bytes, e cada resposta
+tem de ser precedida de outro:
 
-Ou seja: buffer de recepção = 16 + 1192 = **1208 bytes**; buffer de resposta
-= 16 + 24 = **40 bytes**.
+```c
+typedef struct _FILTER_MESSAGE_HEADER {
+    ULONG     ReplyLength;
+    ULONGLONG MessageId;
+} FILTER_MESSAGE_HEADER;   //  16 bytes: o ULONGLONG alinha em 8
 
-### Esqueleto de marshalling em C#
-
-```csharp
-[StructLayout(LayoutKind.Sequential, Pack = 8)]
-public struct FilterMessageHeader
-{
-    public uint  ReplyLength;
-    public ulong MessageId;
-}
-
-[StructLayout(LayoutKind.Sequential, Pack = 8)]
-public struct FilterReplyHeader
-{
-    public int   Status;      // NTSTATUS
-    public ulong MessageId;
-}
-
-[StructLayout(LayoutKind.Sequential, Pack = 8, CharSet = CharSet.Unicode)]
-public struct SafeUploadRequest
-{
-    public uint  Version;
-    public uint  StructSize;
-    public ulong RequestId;
-    public uint  Operation;
-    public uint  RequestorProcessId;
-    public uint  Flags;
-    public uint  PathLength;
-    public uint  ImageNameLength;
-    public uint  Reserved;
-
-    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 512)]
-    public string Path;
-
-    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 64)]
-    public string ImageName;
-}
-
-[StructLayout(LayoutKind.Sequential, Pack = 8)]
-public struct SafeUploadResponse
-{
-    public uint  Version;
-    public uint  StructSize;
-    public ulong RequestId;
-    public uint  Verdict;
-    public uint  Reserved;
-}
+typedef struct _FILTER_REPLY_HEADER {
+    NTSTATUS  Status;
+    ULONGLONG MessageId;
+} FILTER_REPLY_HEADER;     //  16 bytes, mesma razão
 ```
 
-Valide na inicialização do agente, para não descobrir o desalinhamento em
-produção:
+Então o buffer de leitura tem 16 + 1192 = **1208** bytes e o de resposta
+16 + 24 = **40**. O `MessageId` da resposta é o que chegou; `Status` é um
+NTSTATUS do transporte e **não** é o veredito — o veredito viaja no corpo.
 
-```csharp
-Debug.Assert(Marshal.SizeOf<SafeUploadRequest>()  == 1192);
-Debug.Assert(Marshal.SizeOf<SafeUploadResponse>() == 24);
-```
+### O orçamento de 500 ms
 
-As três funções necessárias vêm de `fltlib.dll`:
-`FilterConnectCommunicationPort`, `FilterGetMessage`, `FilterReplyMessage`.
-O processo do agente precisa rodar como SYSTEM ou como Administrador para
-abrir a porta.
+O driver espera pelo veredito com timeout, e pela RN-013 um timeout vale
+**permitir**. Isso tem uma consequência que precisa estar clara antes de
+qualquer linha do serviço ser escrita:
 
-Ao trocar o inspetor pelo agente C#, o **serviço** `SafeUpload.Agent.Service`
-é o candidato natural a dono da porta (já roda como serviço e já fala com o
-app WPF por named pipe). O app WPF não deve abrir a porta diretamente: ele
-roda na sessão do usuário, sem privilégio, e uma sessão desconectada
-deixaria o driver sem inspetor.
+> Tudo que o serviço fizer entre receber a requisição e responder é tempo
+> em que a abertura do arquivo está parada. Se passar do orçamento, o
+> driver desiste e libera — e o arquivo passa **sem inspeção**, sem erro,
+> sem log do lado do kernel além de um contador.
 
----
+Hash, consulta a disco, chamada de rede, lock que outra thread pode segurar:
+nada disso pode estar no caminho síncrono. O que não couber no orçamento
+tem de ficar atrás de um cache que a função de decisão apenas lê.
+
+`FilterGetMessage` também bloqueia. Numa thread só, toda abertura
+monitorada da máquina enfileira atrás do veredito mais lento — a
+implementação de referência é single-thread de propósito, para ser legível,
+e um serviço real precisa de um pool.
 
 ## Limitações conhecidas da v1
 

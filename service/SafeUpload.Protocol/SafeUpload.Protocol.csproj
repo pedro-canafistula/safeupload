@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    net10.0-windows is what this machine has targeting packs for. Nothing
+    in this library uses an API newer than .NET 6 - retargeting to another
+    Windows TFM is a one-line change here and nothing else.
+
+    AllowUnsafeBlocks is not optional: the contract structures carry fixed
+    char buffers so their layout matches Protocol.h exactly, with no
+    marshalling step between the wire bytes and the fields.
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <Platforms>x64</Platforms>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <EnableNETAnalyzers>true</EnableNETAnalyzers>
+  </PropertyGroup>
+
+</Project>

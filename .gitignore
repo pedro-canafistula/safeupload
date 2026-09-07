@@ -84,3 +84,8 @@ driver/**/ARM64/
 
 # Repositorio de samples da Microsoft (clonado fora deste repo)
 Windows-driver-samples/
+
+# Saida de build do .NET (service/). O *.obj acima casa arquivo, nao
+# diretorio, e nao cobre bin/ nem obj/ dos projetos C#.
+[Bb]in/
+[Oo]bj/
