@@ -1196,6 +1196,8 @@ Return Value:
         SafeUploadIsProcessTainted( FltGetRequestorProcessId( Data ) ) &&
         SafeUploadIsMonitoredDestination( Data, volumeKind )) {
 
+        SafeUploadCount( DeniedPreCreate );
+
         SafeUploadTrace( "escrita negada: processo %lu marcado\n",
                          FltGetRequestorProcessId( Data ) );
 
@@ -1626,7 +1628,7 @@ Return Value:
         return FLT_PREOP_SUCCESS_NO_CALLBACK;
     }
 
-    SafeUploadCount( DeniedPreCreate );
+    SafeUploadCount( DeniedRename );
 
     SafeUploadTrace( "rename negado: processo %lu marcado\n", processId );
 

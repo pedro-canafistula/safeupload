@@ -247,6 +247,14 @@ lookaside elimina a alocação do caminho quente por completo.
 desde a v1 exatamente para isto: um par kernel/usuário incompatível é
 detectado, não mal interpretado.
 
+Depois subiu para **3**, quando `SAFEUPLOAD_COUNTERS` ganhou `DeniedRename`
+e passou de 96 para 104 bytes. Vale registrar por que uma mudança só de
+contador move a versão: o inspetor lê a estrutura inteira de uma vez, então
+um campo novo no meio desloca tudo o que vem depois. Um inspetor antigo
+contra um driver novo não leria um número errado por pouco — leria os campos
+seguintes trocados entre si, e números trocados são pior que números
+ausentes, porque parecem plausíveis.
+
 ---
 
 ## Estado: a cadeia de bloqueio está implementada e verificada
@@ -369,6 +377,43 @@ Contadores expostos por ETW, consultáveis sem depurador:
 
 Sem esses números não há como afirmar que o desenho está funcionando; a
 percepção de lentidão é tarde demais como sinal.
+
+### Primeira leitura, e o que ela pegou
+
+A primeira leitura real, numa bateria de testes na VM alvo:
+
+| Contador | Valor |
+|---|---|
+| Creates vistos | 287 |
+| Passaram da L1 | 14 (4,88%) |
+| Avaliações de escopo | 8 |
+| Idas ao modo usuário | 5 |
+| Acertos de cache | 4 (33%) |
+| Negados no pós-create | 1 |
+| **Negados no pré-create** | **0** |
+| Permitidos sem inspeção | 0 |
+| Marcas registradas / consultas / acertos | 1 / 5 / 4 |
+
+Os dois últimos números do meio não podiam coexistir: a marca foi encontrada
+quatro vezes e nada foi negado no pré-create, num teste em que a escrita
+marcada comprovadamente foi recusada. A contradição não estava no driver —
+a recusa por marca **não incrementava contador nenhum**, e o único
+`SafeUploadCount( DeniedPreCreate )` estava no caminho do rename.
+
+Duas correções saíram disso: o incremento que faltava, e `DeniedRename`
+separado de `DeniedPreCreate` — os dois respondem perguntas diferentes
+(o arquivo sendo escrito e o arquivo sendo movido para o lugar), e somá-los
+esconde qual elo da cadeia está segurando.
+
+O script de teste agora confere os contadores contra os casos que passaram.
+Essa é a lição que vale mais que os números: um caso de bloqueio fica verde
+quando a operação falha por qualquer motivo, e os contadores são a única
+testemunha independente de *por que* ele passou.
+
+Sobre os alvos: 4,88% está acima do `< 1%`, e 33% muito abaixo do `> 95%`.
+Nenhum dos dois é conclusivo com 287 creates de uma bateria que só mexe em
+arquivos monitorados — a amostra é feita de exatamente o caso que as portas
+deixam passar. O alvo vale contra uma máquina em uso, não contra o teste.
 
 ---
 

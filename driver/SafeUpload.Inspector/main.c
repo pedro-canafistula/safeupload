@@ -431,6 +431,7 @@ Return Value:
     wprintf( L"CacheHits               : %llu\n", counters.CacheHits );
     wprintf( L"DeniedPreCreate         : %llu\n", counters.DeniedPreCreate );
     wprintf( L"DeniedPostCreate        : %llu\n", counters.DeniedPostCreate );
+    wprintf( L"DeniedRename            : %llu\n", counters.DeniedRename );
     wprintf( L"AllowedWithoutInspection: %llu\n", counters.AllowedWithoutInspection );
     wprintf( L"TaintsRecorded          : %llu\n", counters.TaintsRecorded );
     wprintf( L"TaintLookups            : %llu\n", counters.TaintLookups );

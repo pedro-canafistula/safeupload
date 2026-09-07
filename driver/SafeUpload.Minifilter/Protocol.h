@@ -49,7 +49,7 @@ Environment:
 //  message means "allow" (RN-013), never "block".
 //
 
-#define SAFEUPLOAD_PROTOCOL_VERSION ((UINT32) 2)
+#define SAFEUPLOAD_PROTOCOL_VERSION ((UINT32) 3)
 
 //
 //  Capacity of the inline string fields, in WCHARs, terminator included.
@@ -396,6 +396,17 @@ typedef struct _SAFEUPLOAD_COUNTERS {
     UINT64 DeniedPostCreate;
 
     //
+    //  Refused in pre-set-information: a rename or hard link by a tainted
+    //  process whose destination is monitored. Counted apart from the
+    //  create refusal because the two answer different questions - one is
+    //  the file being written, the other is the file being moved into
+    //  place around the write. Folding them together hides which link of
+    //  the chain is actually holding.
+    //
+
+    UINT64 DeniedRename;
+
+    //
     //  RN-013 in numbers: operations allowed because inspection could not
     //  happen - timeout, port closed, no memory, malformed reply. A number
     //  that grows here is a user working uninspected.
@@ -462,10 +473,10 @@ C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_POLICY_MESSAGE, Prefixes )          == 1064 )
 C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_POLICY_MESSAGE, SourcePrefixes )    == 9384 );
 C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_POLICY_MESSAGE, Images )            == 17704 );
 
-C_ASSERT( sizeof( SAFEUPLOAD_COUNTERS ) == 96 );
+C_ASSERT( sizeof( SAFEUPLOAD_COUNTERS ) == 104 );
 C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_COUNTERS, Version )     == 0 );
 C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_COUNTERS, StructSize )  == 4 );
 C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_COUNTERS, CreatesSeen ) == 8 );
-C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_COUNTERS, TaintHits )   == 88 );
+C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_COUNTERS, TaintHits )   == 96 );
 
 #endif // _SAFEUPLOAD_PROTOCOL_H_

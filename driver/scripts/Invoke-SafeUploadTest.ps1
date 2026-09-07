@@ -791,11 +791,18 @@ try {
 
     $writeRefused = $false
 
+    # Only an access denial counts. Catching every exception would let a
+    # write that failed for any other reason - a locked file, a missing
+    # directory - be reported as proof that the driver refused it, which is
+    # an assertion that can only pass.
     try {
         Set-Content -Path $destinationWrite -Value 'nao deveria existir' -ErrorAction Stop
     }
-    catch {
+    catch [System.UnauthorizedAccessException] {
         $writeRefused = $true
+    }
+    catch {
+        Write-Host "          excecao inesperada: $($_.Exception.GetType().Name)" -ForegroundColor Yellow
     }
 
     Add-Result -Name 'Escrita no destino e negada apos a marcacao' -Passed $writeRefused `
@@ -842,8 +849,11 @@ try {
     try {
         Move-Item -Path $stagedForRename -Destination $renameTarget -ErrorAction Stop
     }
-    catch {
+    catch [System.UnauthorizedAccessException] {
         $renameRefused = $true
+    }
+    catch {
+        Write-Host "          excecao inesperada: $($_.Exception.GetType().Name)" -ForegroundColor Yellow
     }
 
     Add-Result -Name 'Rename para o destino e negado apos a marcacao' -Passed $renameRefused `
@@ -914,10 +924,14 @@ $counterOutput | ForEach-Object { Write-Host "  $_" -ForegroundColor DarkGray }
 
 $cacheHits = 0
 $roundTrips = 0
+$deniedPreCreate = 0
+$deniedRename = 0
 
 foreach ($line in $counterOutput) {
     if ($line -match '^CacheHits\s*:\s*(\d+)') { $cacheHits = [int] $matches[1] }
     if ($line -match '^UserModeRoundTrips\s*:\s*(\d+)') { $roundTrips = [int] $matches[1] }
+    if ($line -match '^DeniedPreCreate\s*:\s*(\d+)') { $deniedPreCreate = [int] $matches[1] }
+    if ($line -match '^DeniedRename\s*:\s*(\d+)') { $deniedRename = [int] $matches[1] }
 }
 
 # The cache is the property the design rests on. If it never served a single
@@ -925,6 +939,22 @@ foreach ($line in $counterOutput) {
 # full price - which no other check in this script would notice.
 Add-Result -Name 'O cache serviu ao menos uma resposta' -Passed ($cacheHits -gt 0) `
     -Detail "$cacheHits acertos de cache contra $roundTrips idas ao modo usuario."
+
+# The counters have to agree with the cases that just passed. They are the
+# only independent witness to WHY a case passed: a denial case can go green
+# because the operation failed for an unrelated reason, and no assertion
+# above would tell the difference.
+#
+# This check exists because it was missing. The pre-create refusal ran
+# correctly for weeks while its counter was never incremented at all, and
+# the run reported DeniedPreCreate = 0 next to a passing block test. The
+# numbers disagreed with the results and nothing was watching.
+
+Add-Result -Name 'A recusa por marca no pre-create foi contada' -Passed ($deniedPreCreate -gt 0) `
+    -Detail "DeniedPreCreate = $deniedPreCreate; o caso da escrita marcada passou, entao tem de ser >= 1."
+
+Add-Result -Name 'A recusa de rename foi contada' -Passed ($deniedRename -gt 0) `
+    -Detail "DeniedRename = $deniedRename; o caso do rename marcado passou, entao tem de ser >= 1."
 
 Write-Step 'Driver Verifier'
 
