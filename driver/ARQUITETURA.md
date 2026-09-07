@@ -372,6 +372,74 @@ ninguém leia a linha verde da bateria como prova do contrário.
 
 ---
 
+## Análise estática: CodeQL, porque o SDV não existe mais
+
+O SDV foi removido do WDK (ver a ordem de implementação). O substituto é
+CodeQL com o pacote `Windows-Driver-Developer-Supplemental-Tools` da
+Microsoft — o mesmo que alimenta o `dvl.exe` e o Static Tools Logo Test.
+
+### Como reproduzir
+
+```
+codeql database create <db> --language=cpp --command="msbuild SafeUpload.Minifilter.vcxproj /t:Rebuild /p:Configuration=Release /p:Platform=x64"
+codeql database analyze <db> <tools>/src/windows-driver-suites/mustfix.qls      --additional-packs <tools>/src --format=sarifv2.1.0 --output mustfix.sarif
+codeql database analyze <db> <tools>/src/windows-driver-suites/recommended.qls  --additional-packs <tools>/src --format=sarifv2.1.0 --output recommended.sarif
+```
+
+Duas armadilhas que custaram tempo: os `.qls` de `suites/` na raiz do
+repositório referenciam caminhos relativos de dentro do pacote e falham com
+*"is not in a pack"* — as suítes utilizáveis são as de
+`src/windows-driver-suites/`, com `--additional-packs` apontando para `src`.
+E a primeira execução da `recommended` gasta mais de meia hora só
+**compilando** as consultas, antes de avaliar qualquer coisa; execuções
+seguintes reaproveitam o cache.
+
+### Resultado
+
+| Suíte | Consultas | Achados |
+|---|---:|---:|
+| `mustfix` | 31 | **0** |
+| `recommended` | 106 | 2 |
+
+A `mustfix` é a que importa para certificação, e está limpa. Ela inclui
+`cpp/unsafe-dacl-security-descriptor`, que é a consulta que olharia o
+descritor de segurança da porta de comunicação.
+
+### Os dois achados da `recommended`, e por que não são defeitos
+
+Ambos são `cpp/paddingbyteinformationdisclosure`:
+
+```
+Policy.c:233  _SAFEUPLOAD_POLICY       includes uninitialized padding bytes
+Taint.c:330   _SAFEUPLOAD_TAINT_ENTRY  includes uninitialized padding bytes
+```
+
+São **falsos positivos**, por dois motivos independentes.
+
+O primeiro está na própria consulta. O modelo de alocação casa por prefixo
+de nome e nunca lê o argumento de flags:
+
+```ql
+this.getTarget().getName().matches("ExAllocatePool%")
+```
+
+Isso trata `ExAllocatePool2` como `ExAllocatePoolWithTag`, e as duas têm
+semânticas opostas: a segunda não zera, a primeira zera **por padrão**. O
+`wdm.h` demonstra ao definir o opt-out — `POOL_FLAG_UNINITIALIZED`, *"Don't
+zero-initialize allocation"*. As duas chamadas passam `POOL_FLAG_NON_PAGED`
+e não esse flag, então a memória sai zerada, padding incluído.
+
+O segundo é de escopo: nenhuma das duas estruturas cruza para o modo
+usuário. `SAFEUPLOAD_POLICY` é o instantâneo em kernel e
+`SAFEUPLOAD_TAINT_ENTRY` é entrada da tabela hash. Não há para quem
+divulgar.
+
+Nenhum dos dois pede mudança no código. Acrescentar um `RtlZeroMemory`
+redundante para silenciar a ferramenta seria pior: sugeriria ao próximo
+leitor que o `ExAllocatePool2` não zera.
+
+---
+
 ## Descartado: lookaside no lugar do pool por operação
 
 Estava na ordem de implementação e foi implementado, medido contra o build e
