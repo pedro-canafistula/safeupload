@@ -66,6 +66,11 @@ param(
 
     [switch] $KeepLoaded,
 
+    # A fase do servico real sobe um executavel de 38 MB e reescreve o
+    # policy.json da maquina (devolvendo o original ao final). Vale pular
+    # quando so se quer medir o driver.
+    [switch] $SkipServiceTest,
+
     [int] $StressProcesses = 8
 )
 
@@ -1144,6 +1149,223 @@ if (Test-Path $inspectorLog) {
         Write-Host '  As portas de escopo podem nao estar filtrando como deveriam.' -ForegroundColor Yellow
     }
 }
+
+# ---------------------------------------------------------------------------
+
+if ($SkipServiceTest) {
+
+    Write-Step 'Servico real do agente'
+    Write-Host '  Pulado a pedido (-SkipServiceTest).' -ForegroundColor DarkGray
+}
+else {
+
+    Write-Step 'Servico real do agente'
+
+    # Ate aqui a bateria mediu o DRIVER contra a sonda, cuja decisao e uma
+    # comparacao de string. Esta fase mede a CADEIA: o mesmo driver, agora
+    # respondido pelo InspectionService com as regras RN-001 a RN-004, que
+    # decidem pelo conteudo do arquivo e nao pelo nome dele.
+    #
+    # A diferenca aparece no que o teste escreve: um CPF valido dentro de um
+    # .txt, sem nada no nome que denuncie. Se a cadeia estiver ligada, ler
+    # esse arquivo marca o processo e a escrita seguinte no destino e negada.
+
+    $serviceExe = Join-Path $StagingDirectory 'SafeUpload.Agent.Service.exe'
+    $policyDirectory = Join-Path $env:ProgramData 'SafeUpload'
+    $policyFile = Join-Path $policyDirectory 'policy.json'
+    $policyBackup = Join-Path $policyDirectory 'policy.json.bateria-backup'
+    $serviceLog = Join-Path $StagingDirectory 'servico.log'
+    $serviceProcess = $null
+    $policySaved = $false
+
+    if (-not (Test-Path $serviceExe)) {
+
+        Add-Result -Name 'Servico do agente disponivel' -Passed $false `
+            -Detail "Nao encontrei $serviceExe. Republique o pacote."
+    }
+    else {
+
+        try {
+
+            New-Item -ItemType Directory -Force -Path $policyDirectory | Out-Null
+
+            # A politica da maquina e do usuario, nao da bateria. Guardar e
+            # devolver no fim - um teste que deixa a maquina configurada para
+            # si mesmo e um teste que estraga a proxima medicao.
+            if (Test-Path $policyFile) {
+                Copy-Item $policyFile $policyBackup -Force
+                $policySaved = $true
+            }
+
+            $policy = [ordered]@{
+                version          = 99
+                activeCategories = @('Cpf', 'Cnpj', 'PaymentCard', 'Password')
+                monitoredScopes  = [ordered]@{
+                    extensions       = @('.txt', '.csv', '.docx', '.xlsx')
+                    destinationPaths = @($TestDirectory)
+                    sourcePaths      = @($SourceDirectory)
+                    removableDrives  = $true
+                    networkPaths     = $true
+                }
+                maxFileSizeMb            = 20
+                inspectionTimeoutSeconds = 5
+                failOpen                 = $true
+                excludedProcesses        = @('System', 'SafeUpload.Agent.App')
+            }
+
+            $policy | ConvertTo-Json -Depth 5 | Set-Content -Path $policyFile -Encoding UTF8
+
+            Write-Host "  Politica da bateria escrita em $policyFile."
+            Write-Host "    origem  : $SourceDirectory"
+            Write-Host "    destino : $TestDirectory"
+
+            # O evento e criado antes do processo existir, para o sinal nao
+            # poder ser perdido. Mesma razao da sonda: esperar pela linha no
+            # log seria I/O de arquivo pelo filtro que o servico responde.
+            $ready = New-Object System.Threading.EventWaitHandle(
+                $false,
+                [System.Threading.EventResetMode]::ManualReset,
+                'Global\SafeUploadServiceReady')
+
+            try {
+
+                Remove-Item $serviceLog -Force -ErrorAction SilentlyContinue
+
+                # O mesmo executavel serve aos dois modos. Como console ele
+                # nao precisa do gerenciador de servicos, que e o que permite
+                # subir e derrubar dentro da bateria.
+                $serviceProcess = Start-Process -FilePath $serviceExe `
+                    -ArgumentList '--Interception:Mode=Minifilter' `
+                    -NoNewWindow -PassThru -RedirectStandardOutput $serviceLog
+
+                $connected = $ready.WaitOne([TimeSpan]::FromSeconds(45))
+
+                Add-Result -Name 'Servico conectou na porta em modo minifiltro' -Passed $connected `
+                    -Detail $(if ($connected) { 'Politica empurrada e laco de kernel no ar.' } else { "Nao sinalizou em 45 s. Log em $serviceLog." })
+
+                if ($connected) {
+
+                    # Um CPF valido, com digitos verificadores calculados aqui
+                    # para o teste nao depender de um numero copiado de algum
+                    # lugar. Base 123456789 produz 123.456.789-09, o exemplo
+                    # canonico - sintetico, e nao de pessoa alguma.
+                    $base = '123456789'
+                    $primeiro = 0
+                    for ($i = 0; $i -lt 9; $i += 1) { $primeiro += [int]::Parse($base[$i]) * (10 - $i) }
+                    $resto = $primeiro % 11
+                    $d1 = if ($resto -lt 2) { 0 } else { 11 - $resto }
+
+                    $comD1 = $base + $d1
+                    $segundo = 0
+                    for ($i = 0; $i -lt 10; $i += 1) { $segundo += [int]::Parse($comD1[$i]) * (11 - $i) }
+                    $resto = $segundo % 11
+                    $d2 = if ($resto -lt 2) { 0 } else { 11 - $resto }
+
+                    $cpf = '{0}.{1}.{2}-{3}{4}' -f $base.Substring(0, 3), $base.Substring(3, 3), $base.Substring(6, 3), $d1, $d2
+
+                    Write-Host "  CPF sintetico do teste: $cpf"
+
+                    $sensivel = Join-Path $SourceDirectory 'relatorio-com-cpf.txt'
+                    $inocente = Join-Path $SourceDirectory 'relatorio-sem-nada.txt'
+                    $alvo = Join-Path $TestDirectory 'exfiltrado.txt'
+
+                    Set-Content -Path $sensivel -Value "Relatorio trimestral. Responsavel: CPF $cpf." -Encoding UTF8
+                    Set-Content -Path $inocente -Value 'Relatorio trimestral. Nenhum dado pessoal aqui.' -Encoding UTF8
+
+                    # Cada metade roda num processo NOVO, e isso e essencial:
+                    # a marca e por PID, e este PowerShell ja foi marcado la
+                    # atras, no caso 7 da bateria da sonda. Reaproveitar o
+                    # processo faria o controle negativo falhar por heranca e
+                    # o positivo passar sem ter provado nada.
+                    $roteiro = @'
+param($origem, $destino)
+try { Get-Content -LiteralPath $origem -Raw -ErrorAction Stop | Out-Null } catch { }
+Start-Sleep -Milliseconds 400
+try {
+    Set-Content -LiteralPath $destino -Value 'copiado' -ErrorAction Stop
+    'ESCRITA_PASSOU'
+}
+catch [System.UnauthorizedAccessException] { 'ESCRITA_NEGADA' }
+catch { 'ERRO:' + $_.Exception.GetType().Name }
+'@
+
+                    $roteiroFile = Join-Path $StagingDirectory 'cadeia.ps1'
+                    Set-Content -Path $roteiroFile -Value $roteiro -Encoding UTF8
+
+                    # Controle primeiro: nada sensivel, escrita deve passar.
+                    Remove-Item $alvo -Force -ErrorAction SilentlyContinue
+
+                    $semNada = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $roteiroFile $inocente $alvo 2>&1 |
+                        Select-Object -Last 1
+
+                    Add-Result -Name 'Sem dado sensivel na origem, a escrita passa' -Passed ($semNada -eq 'ESCRITA_PASSOU') `
+                        -Detail "Processo limpo escreveu no destino: $semNada"
+
+                    # Agora o caso: CPF valido no conteudo, nome inocente.
+                    Remove-Item $alvo -Force -ErrorAction SilentlyContinue
+
+                    $comCpf = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $roteiroFile $sensivel $alvo 2>&1 |
+                        Select-Object -Last 1
+
+                    Add-Result -Name 'CPF valido no conteudo marca o processo' -Passed ($comCpf -eq 'ESCRITA_NEGADA') `
+                        -Detail $(if ($comCpf -eq 'ESCRITA_NEGADA') {
+                            'A escrita foi negada apos ler o arquivo com CPF: a cadeia inteira funcionou.'
+                        } else {
+                            "Escrita respondeu '$comCpf'. A decisao por conteudo nao chegou ao driver."
+                        })
+
+                    Add-Result -Name 'Nada chegou ao destino pela cadeia real' -Passed (-not (Test-Path $alvo)) `
+                        -Detail $(if (Test-Path $alvo) { 'O arquivo esta la: o conteudo atravessou.' } else { 'Nada foi escrito.' })
+
+                    # O log do servico e a unica testemunha do prazo. Um
+                    # estouro aqui significa que o arquivo passou SEM
+                    # inspecao, e o veredito que a bateria observou veio de
+                    # outro lugar - provavelmente do cache de uma leitura
+                    # anterior. Vale como aviso, nao como falha: o
+                    # descompasso de 500 ms contra 5 s e conhecido e ainda
+                    # nao foi decidido.
+                    $estouros = @(Get-Content $serviceLog -ErrorAction SilentlyContinue |
+                        Select-String -SimpleMatch 'SEM INSPECAO')
+
+                    if ($estouros.Count -gt 0) {
+                        Write-Host ''
+                        Write-Host "  Atencao: $($estouros.Count) inspecoes estouraram o prazo do driver." -ForegroundColor Yellow
+                        Write-Host '  Esses arquivos passaram sem inspecao. E o descompasso conhecido' -ForegroundColor Yellow
+                        Write-Host '  entre RN-012 (5 s) e o timeout do driver (500 ms).' -ForegroundColor Yellow
+                    }
+                }
+            }
+            finally {
+                $ready.Dispose()
+            }
+        }
+        finally {
+
+            if ($serviceProcess -and -not $serviceProcess.HasExited) {
+                Write-Host "  Encerrando o servico (pid $($serviceProcess.Id))."
+                $serviceProcess | Stop-Process -Force
+                Start-Sleep -Milliseconds 800
+            }
+
+            # A porta aceita um cliente so: um servico sobrevivente impediria
+            # a leitura dos contadores e o unload logo abaixo.
+            Get-Process -Name 'SafeUpload.Agent.Service' -ErrorAction SilentlyContinue |
+                Stop-Process -Force -ErrorAction SilentlyContinue
+
+            if ($policySaved) {
+                Copy-Item $policyBackup $policyFile -Force
+                Remove-Item $policyBackup -Force -ErrorAction SilentlyContinue
+                Write-Host '  Politica original devolvida.'
+            }
+            elseif (Test-Path $policyFile) {
+                Remove-Item $policyFile -Force -ErrorAction SilentlyContinue
+                Write-Host '  Politica da bateria removida (nao havia uma antes).'
+            }
+        }
+    }
+}
+
+# ---------------------------------------------------------------------------
 
 Write-Step 'Contadores do driver'
 

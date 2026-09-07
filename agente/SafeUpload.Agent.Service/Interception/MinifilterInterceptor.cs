@@ -126,6 +126,8 @@ public sealed class MinifilterInterceptor : BackgroundService
 
             _logger.LogInformation("Minifiltro conectado. Interceptando em modo kernel.");
 
+            ReadySignal.Announce(ReadySignal.ServiceEvent);
+
             while (!stoppingToken.IsCancellationRequested &&
                    port.TryGetMessage(out SafeUploadRequest request, out ulong messageId))
             {
@@ -172,6 +174,15 @@ public sealed class MinifilterInterceptor : BackgroundService
                 builder.WithDestination(path);
             }
 
+            // A outra metade da cadeia. Vazia e configuracao legitima, mas
+            // vale saber o que ela significa: sem origem, nenhum processo e
+            // marcado, e a negacao por contaminacao nunca dispara. O driver
+            // continua vigiando os destinos, so nao ha o que ligar a eles.
+            foreach (string path in scopes.SourcePaths)
+            {
+                builder.WithSource(path);
+            }
+
             foreach (string image in policy.ExcludedProcesses)
             {
                 builder.WithExcludedImage(image);
@@ -182,10 +193,19 @@ public sealed class MinifilterInterceptor : BackgroundService
             port.SetPolicy(builder.Build());
 
             _logger.LogInformation(
-                "Politica v{Version} empurrada ao driver: {Extensions} extensoes, {Paths} destinos.",
+                "Politica v{Version} empurrada ao driver: {Extensions} extensoes, " +
+                "{Paths} destinos, {Sources} origens.",
                 policy.Version,
                 scopes.Extensions.Count,
-                scopes.DestinationPaths.Count);
+                scopes.DestinationPaths.Count,
+                scopes.SourcePaths.Count);
+
+            if (scopes.SourcePaths.Count == 0)
+            {
+                _logger.LogWarning(
+                    "Politica sem origens: nenhum processo sera marcado e a negacao por " +
+                    "contaminacao nunca vai disparar.");
+            }
 
             return true;
         }

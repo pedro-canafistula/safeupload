@@ -23,7 +23,26 @@ public sealed record MonitoredScopes(
     IReadOnlySet<string> Extensions,
     IReadOnlyList<string> DestinationPaths,
     bool RemovableDrives,
-    bool NetworkPaths);
+    bool NetworkPaths,
+    IReadOnlyList<string>? SourcePaths = null)
+{
+    /// <summary>
+    /// Onde mora o conteúdo sensível: as pastas cuja leitura merece ser
+    /// inspecionada.
+    ///
+    /// É a outra metade do escopo, e só passou a existir quando o gatilho
+    /// virou o minifiltro. No mock a inspeção começa quando um arquivo
+    /// <b>chega</b> à pasta vigiada, e origem e destino são a mesma coisa —
+    /// não há o que distinguir. Com interceptação de verdade a cadeia tem dois
+    /// elos: ler um documento sensível marca o processo, e o processo marcado
+    /// deixa de escrever nos destinos vigiados. Sem esta lista o primeiro elo
+    /// nunca acontece, e o segundo nunca dispara.
+    ///
+    /// Vazia é configuração legítima: significa vigiar destinos sem manter
+    /// cadeia de contaminação.
+    /// </summary>
+    public IReadOnlyList<string> SourcePaths { get; init; } = SourcePaths ?? [];
+}
 
 /// <summary>
 /// A política vigente no endpoint.

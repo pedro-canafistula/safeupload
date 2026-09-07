@@ -139,7 +139,12 @@ public sealed class LocalPolicyStore : IPolicyStore
         return new Policy(
             document.Version,
             categories,
-            new MonitoredScopes(extensions, destinations, scopes.RemovableDrives, scopes.NetworkPaths),
+            new MonitoredScopes(
+                extensions,
+                destinations,
+                scopes.RemovableDrives,
+                scopes.NetworkPaths,
+                scopes.SourcePaths is null ? [] : [.. scopes.SourcePaths]),
             document.MaxFileSizeMb,
             document.InspectionTimeoutSeconds,
             document.FailOpen,
@@ -188,6 +193,9 @@ public sealed class LocalPolicyStore : IPolicyStore
 
         [JsonPropertyName("destinationPaths")]
         public string[]? DestinationPaths { get; init; }
+
+        [JsonPropertyName("sourcePaths")]
+        public string[]? SourcePaths { get; init; }
 
         [JsonPropertyName("removableDrives")]
         public bool RemovableDrives { get; init; } = true;

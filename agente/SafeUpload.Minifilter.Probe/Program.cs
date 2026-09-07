@@ -29,16 +29,6 @@ public static class Program
 {
     private const string BlockToken = "BLOQUEAR_TESTE";
 
-    /// <summary>
-    /// Signalled once the port is connected and the policy is in. The test
-    /// harness creates this before starting the process and waits on it.
-    ///
-    /// It exists because the obvious alternative - watching the log for a
-    /// "connected" line - is file I/O, and file I/O on that machine goes
-    /// through the very filter this process answers for. The watcher ends
-    /// up waiting on the agent that is waiting on the watcher.
-    /// </summary>
-    private const string ReadyEventName = @"Global\SafeUploadInspectorReady";
 
     /// <summary>
     /// The driver waits this long for a verdict before giving up and
@@ -87,7 +77,7 @@ public static class Program
 
             SendPolicy(port);
             Console.WriteLine("Conectado. Aguardando requisicoes. Ctrl+C para sair.");
-            SignalReady();
+            ReadySignal.Announce(ReadySignal.ProbeEvent);
             RunMessageLoop(port);
             return 0;
         }
@@ -112,33 +102,6 @@ public static class Program
         Console.WriteLine($"  SAFEUPLOAD_POLICY_MESSAGE {sizeof(SafeUploadPolicyMessage),6} bytes");
         Console.WriteLine($"  SAFEUPLOAD_COUNTERS       {sizeof(SafeUploadCounters),6} bytes");
         Console.WriteLine("Todos batem com os C_ASSERT de Protocol.h.");
-    }
-
-    /// <summary>
-    /// Tells the harness the agent is ready. Signalled only after the
-    /// policy is in, because a driver with no policy inspects nothing -
-    /// reporting ready any earlier would let the first test case run
-    /// against a filter that cannot answer it.
-    ///
-    /// Absence of the event is normal: it means nobody is waiting.
-    /// </summary>
-    private static void SignalReady()
-    {
-        try
-        {
-            if (EventWaitHandle.TryOpenExisting(ReadyEventName, out EventWaitHandle? ready))
-            {
-                using (ready) { ready.Set(); }
-            }
-        }
-        catch (UnauthorizedAccessException)
-        {
-            // The event exists but belongs to a session this process
-            // cannot touch. Not fatal, and not this program's business.
-        }
-        catch (WaitHandleCannotBeOpenedException)
-        {
-        }
     }
 
     private static void SendPolicy(FilterPort port)

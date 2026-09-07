@@ -87,6 +87,18 @@ $BuildOutput = Join-Path $RepoRoot "driver\x64\$Configuration"
 $AgentProject = Join-Path $RepoRoot "agente\SafeUpload.Minifilter.Probe\SafeUpload.Minifilter.Probe.csproj"
 $AgentPublish = Join-Path $RepoRoot "agente\SafeUpload.Minifilter.Probe\bin\Release\net10.0-windows\win-x64\publish"
 
+# O servico de verdade: mesmo protocolo, mas quem decide e o InspectionService
+# com as regras RN-001 a RN-004. Vai no pacote para a bateria poder exercitar
+# a cadeia inteira, e nao so o driver contra um cliente trivial.
+#
+# Arquivo unico e autocontido, nao AOT: o servico usa DI e OpenXml, que o AOT
+# poda mal. Autocontido resolve o mesmo problema pelo outro caminho - a VM alvo
+# continua sem precisar de runtime .NET instalado. Comprimido sao 38 MB num
+# arquivo so; sem PublishSingleFile seriam 231 arquivos e 86 MB, que o
+# manifesto baixaria um a um.
+$ServiceProject = Join-Path $RepoRoot "agente\SafeUpload.Agent.Service\SafeUpload.Agent.Service.csproj"
+$ServicePublish = Join-Path $RepoRoot "agente\SafeUpload.Agent.Service\bin\Release\net10.0-windows\win-x64\publish"
+
 function Write-Step {
     param([string] $Text)
     Write-Host ''
@@ -293,6 +305,27 @@ if ($LASTEXITCODE -ne 0) {
 Write-Host "  SafeUpload.Probe.exe ($([math]::Round((Get-Item $agentExe).Length / 1KB)) KB, nativo)"
 Write-Host '  Contrato conferido contra Protocol.h.'
 
+# ---------------------------------------------------------------------------
+
+Write-Step 'Compilando o servico do agente (autocontido)'
+
+$serviceLog = & dotnet publish $ServiceProject -c Release -r win-x64 --self-contained true `
+    -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true `
+    -p:IncludeNativeLibrariesForSelfExtract=true --nologo 2>&1
+
+if ($LASTEXITCODE -ne 0) {
+    $serviceLog | ForEach-Object { Write-Host "  $_" }
+    Stop-WithMessage 'A compilacao do servico falhou.'
+}
+
+$serviceExe = Join-Path $ServicePublish 'SafeUpload.Agent.Service.exe'
+
+if (-not (Test-Path $serviceExe)) {
+    Stop-WithMessage "O servico nao foi produzido em $serviceExe."
+}
+
+Write-Host "  SafeUpload.Agent.Service.exe ($([math]::Round((Get-Item $serviceExe).Length / 1MB, 1)) MB, autocontido)"
+
 Write-Host '  Compilado sem erros.' -ForegroundColor Green
 
 # ---------------------------------------------------------------------------
@@ -310,6 +343,7 @@ Get-ChildItem $PackageDirectory -Filter '*.cat' -ErrorAction SilentlyContinue | 
 $sources = @(
     (Join-Path $BuildOutput 'SafeUpload.sys'),
     (Join-Path $AgentPublish 'SafeUpload.Probe.exe'),
+    (Join-Path $ServicePublish 'SafeUpload.Agent.Service.exe'),
     $InfPath,
 
     # Served alongside the artifacts so the target VM always pulls the
@@ -495,6 +529,7 @@ $artifactNames = @(
     'SafeUpload.inf',
     'safeupload.cat',
     'SafeUpload.Probe.exe',
+    'SafeUpload.Agent.Service.exe',
     'SafeUploadTest.cer',
     'Invoke-SafeUploadTest.ps1'
 )
