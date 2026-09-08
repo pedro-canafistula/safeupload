@@ -1551,7 +1551,23 @@ catch { 'ERRO:' + $_.Exception.GetType().Name }
                         $filaAuditoria = Join-Path $policyDirectory 'queue.jsonl'
                         $noDestino = Join-Path $TestDirectory 'contrato-no-destino.txt'
 
-                        Copy-Item $sensivel $noDestino -Force -ErrorAction SilentlyContinue
+                        # Num processo NOVO, como todo o resto desta fase.
+                        #
+                        # Este PowerShell ja esta marcado - leu os arquivos
+                        # sensiveis nos casos anteriores - e por isso nao
+                        # consegue colocar nada no destino vigiado. A primeira
+                        # versao deste caso usava Copy-Item aqui mesmo e
+                        # morria com acesso negado, o que era o driver
+                        # funcionando e o teste errado.
+                        & powershell.exe -NoProfile -ExecutionPolicy Bypass -Command `
+                            "Copy-Item -LiteralPath '$sensivel' -Destination '$noDestino' -Force" 2>&1 | Out-Null
+
+                        if (-not (Test-Path $noDestino)) {
+
+                            Add-Result -Name 'Arquivo sensivel no destino e recusado' -Passed $false `
+                                -Detail 'Nao consegui preparar o arquivo no destino, nem com processo limpo.'
+                        }
+
 
                         # Primeira leitura: recusada no pos-create, porque o
                         # conteudo tem CPF e o arquivo esta num destino vigiado.
