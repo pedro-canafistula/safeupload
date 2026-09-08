@@ -85,6 +85,49 @@ public sealed class LocalQueueAuditSink : IAuditSink
     }
 
     /// <inheritdoc />
+    public async Task RecordOverrideAsync(
+        string eventId,
+        string justification,
+        CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(eventId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(justification);
+
+        // Linha própria na mesma fila, com um tipo que a distingue. Vai no
+        // mesmo arquivo de propósito: a ordem entre o bloqueio e a
+        // justificativa é a informação que uma investigação procura, e
+        // separar em dois arquivos obrigaria a reconstruí-la por horário.
+        var record = new
+        {
+            type = "override",
+            eventId,
+            justification,
+            occurredAtUtc = DateTimeOffset.UtcNow,
+            userName = Environment.UserName,
+            endpointId = Environment.MachineName,
+        };
+
+        var line = JsonSerializer.Serialize(record, Options);
+
+        await _writeLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var directory = Path.GetDirectoryName(_queueFile);
+            if (!string.IsNullOrEmpty(directory))
+            {
+                Directory.CreateDirectory(directory);
+            }
+
+            await File.AppendAllTextAsync(_queueFile, line + Environment.NewLine, Utf8NoBom, cancellationToken)
+                .ConfigureAwait(false);
+        }
+        finally
+        {
+            _writeLock.Release();
+        }
+    }
+
+    /// <inheritdoc />
     public async Task<IReadOnlyList<AuditEvent>> ReadRecentAsync(
         int maxEvents,
         CancellationToken cancellationToken)

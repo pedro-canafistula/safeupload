@@ -404,6 +404,9 @@ public class InspectionServiceTests : IDisposable
         public Task WriteAsync(AuditEvent auditEvent, CancellationToken cancellationToken) =>
             throw new IOException("disco cheio");
 
+        public Task RecordOverrideAsync(string eventId, string justification, CancellationToken cancellationToken) =>
+            throw new IOException("disco cheio");
+
         public Task<IReadOnlyList<AuditEvent>> ReadRecentAsync(int maxEvents, CancellationToken cancellationToken) =>
             Task.FromResult<IReadOnlyList<AuditEvent>>([]);
 

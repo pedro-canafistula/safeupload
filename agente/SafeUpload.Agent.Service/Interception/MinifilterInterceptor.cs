@@ -55,6 +55,8 @@ public sealed class MinifilterInterceptor : BackgroundService
     private readonly IPolicyStore _policyStore;
     private readonly IAuditSink _auditSink;
     private readonly NotificationHub _hub;
+    private readonly PendingOverrides _pending;
+    private readonly OverrideGrantQueue _grants;
     private readonly ILogger<MinifilterInterceptor> _logger;
 
     private long _overBudget;
@@ -66,12 +68,16 @@ public sealed class MinifilterInterceptor : BackgroundService
         IPolicyStore policyStore,
         IAuditSink auditSink,
         NotificationHub hub,
+        PendingOverrides pending,
+        OverrideGrantQueue grants,
         ILogger<MinifilterInterceptor> logger)
     {
         _inspection = inspection ?? throw new ArgumentNullException(nameof(inspection));
         _policyStore = policyStore ?? throw new ArgumentNullException(nameof(policyStore));
         _auditSink = auditSink ?? throw new ArgumentNullException(nameof(auditSink));
         _hub = hub ?? throw new ArgumentNullException(nameof(hub));
+        _pending = pending ?? throw new ArgumentNullException(nameof(pending));
+        _grants = grants ?? throw new ArgumentNullException(nameof(grants));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -142,6 +148,10 @@ public sealed class MinifilterInterceptor : BackgroundService
             while (!stoppingToken.IsCancellationRequested &&
                    port.TryGetMessage(out SafeUploadRequest request, out ulong messageId))
             {
+                // Entre uma requisicao e outra, e nao noutra thread: a porta
+                // aceita um cliente, e quem o segura e este laco.
+                DrainGrants(port);
+
                 uint verdict = Judge(request);
 
                 try
@@ -361,6 +371,28 @@ public sealed class MinifilterInterceptor : BackgroundService
     }
 
     /// <summary>
+    /// Leva ao driver as concessoes que o canal de justificativas deixou.
+    ///
+    /// Falha aqui nao derruba o laco: uma concessao perdida significa que o
+    /// usuario tentara de novo, enquanto um laco derrubado significa que
+    /// ninguem mais e inspecionado.
+    /// </summary>
+    private void DrainGrants(FilterPort port)
+    {
+        while (_grants.TryDequeue(out OverrideGrantQueue.Grant grant))
+        {
+            try
+            {
+                port.GrantOverride(grant.ProcessId, grant.NtPath, grant.Duration);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Falha ao conceder excecao para o processo {Pid}.", grant.ProcessId);
+            }
+        }
+    }
+
+    /// <summary>
     /// Publica o evento para o painel, quando houver o que publicar.
     ///
     /// A sessão de origem vem do PID, e aqui ela finalmente resolve: com o
@@ -388,6 +420,21 @@ public sealed class MinifilterInterceptor : BackgroundService
             if (auditEvent is not null)
             {
                 uint? sessionId = SessionResolver.TryGetSessionId(operation.ProcessId);
+
+                // Um bloqueio fica elegivel a justificativa, e so ele. Isto e
+                // o que impede a interface de liberar o que quiser: uma
+                // justificativa so vale contra um identificador que o servico
+                // registrou aqui, para a sessao que recebeu a notificacao.
+                if (result.IsBlocked)
+                {
+                    _pending.Remember(auditEvent.EventId.ToString("D"), new PendingOverrides.Entry(
+                        ProcessId: (uint) operation.ProcessId,
+                        NtPath: PolicyBuilder.ToNtPath(operation.DestinationPath),
+                        FileName: operation.FileName,
+                        SessionId: sessionId,
+                        ExpiresAt: DateTimeOffset.UtcNow + PendingOverrides.Window));
+                }
+
                 _hub.Publish(new EventNotification(auditEvent, result.Findings), sessionId);
             }
         }

@@ -25,6 +25,18 @@ public interface IAuditSink
     Task WriteAsync(AuditEvent auditEvent, CancellationToken cancellationToken);
 
     /// <summary>
+    /// Registra que um bloqueio foi liberado por justificativa do usuário.
+    ///
+    /// Vai como um evento próprio, e não como alteração do bloqueio original:
+    /// a trilha precisa mostrar que houve uma recusa <b>e</b> que ela foi
+    /// contornada, com o motivo. Reescrever o evento anterior apagaria
+    /// exatamente a parte que interessa numa investigação.
+    /// </summary>
+    /// <param name="eventId">O bloqueio que está sendo justificado.</param>
+    /// <param name="justification">O motivo, como o usuário escreveu.</param>
+    Task RecordOverrideAsync(string eventId, string justification, CancellationToken cancellationToken);
+
+    /// <summary>
     /// Últimos eventos registrados, do mais recente para o mais antigo. É o que
     /// alimenta a grade do simulador.
     /// </summary>

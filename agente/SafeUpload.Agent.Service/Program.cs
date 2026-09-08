@@ -36,6 +36,8 @@ public static class Program
         builder.Services.AddSingleton<VerdictCache>();
         builder.Services.AddSingleton<InspectionService>();
         builder.Services.AddSingleton<NotificationHub>();
+        builder.Services.AddSingleton<PendingOverrides>();
+        builder.Services.AddSingleton<OverrideGrantQueue>();
 
         // O gatilho. A partir daqui a protecao existe sem interface nenhuma
         // aberta, que e o ponto de separar os dois processos.
@@ -70,6 +72,11 @@ public static class Program
 
         // A entrega das notificacoes aos aplicativos conectados.
         builder.Services.AddHostedService<NotificationPipeServer>();
+
+        // O caminho de volta, e o unico: recebe justificativas do aplicativo.
+        // Nao altera veredito - submete um motivo para um bloqueio que este
+        // servico registrou, e valida contra o registro dele.
+        builder.Services.AddHostedService<JustificationPipeServer>();
 
         await builder.Build().RunAsync();
     }
