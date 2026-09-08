@@ -45,13 +45,14 @@ public sealed class ExtractorRegistry
     public IReadOnlySet<string> SupportedExtensions { get; }
 
     /// <summary>
-    /// Composição padrão do mock: texto puro, Word e Excel.
+    /// Composição padrão: texto puro, Word, Excel e PDF.
     /// </summary>
     public static ExtractorRegistry CreateDefault() => new(
     [
         new PlainTextExtractor(),
         new OpenXmlWordExtractor(),
-        new OpenXmlSheetExtractor()
+        new OpenXmlSheetExtractor(),
+        new PdfExtractor()
     ]);
 
     /// <summary>

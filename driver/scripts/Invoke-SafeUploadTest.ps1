@@ -1224,7 +1224,7 @@ else {
                 monitoredScopes  = [ordered]@{
                     # .bin entra de proposito e nao tem extrator: e o que
                     # exercita o caminho "monitorado mas impossivel de olhar".
-                    extensions       = @('.txt', '.csv', '.docx', '.xlsx', '.bin')
+                    extensions       = @('.txt', '.csv', '.docx', '.xlsx', '.pdf', '.bin')
                     destinationPaths = @($TestDirectory)
                     sourcePaths      = @($SourceDirectory)
                     removableDrives  = $true
@@ -1353,6 +1353,7 @@ catch { 'ERRO:' + $_.Exception.GetType().Name }
                     foreach ($caso in @(
                         @{ Arquivo = 'contrato-com-cpf.docx';  Esperado = 'ESCRITA_NEGADA'; Rotulo = '.docx com CPF marca o processo' },
                         @{ Arquivo = 'planilha-com-cpf.xlsx';  Esperado = 'ESCRITA_NEGADA'; Rotulo = '.xlsx com CPF marca o processo' },
+                        @{ Arquivo = 'contrato-com-cpf.pdf';   Esperado = 'ESCRITA_NEGADA'; Rotulo = '.pdf com CPF marca o processo' },
                         @{ Arquivo = 'contrato-sem-nada.docx'; Esperado = 'ESCRITA_PASSOU'; Rotulo = '.docx sem dado sensivel nao marca' }
                     )) {
 

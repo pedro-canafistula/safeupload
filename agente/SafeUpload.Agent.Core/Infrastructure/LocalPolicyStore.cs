@@ -209,7 +209,7 @@ public sealed class LocalPolicyStore : IPolicyStore
 
         public static MonitoredScopesDocument Default { get; } = new()
         {
-            Extensions = [".txt", ".csv", ".docx", ".xlsx"],
+            Extensions = [".txt", ".csv", ".docx", ".xlsx", ".pdf"],
 
             // Caminho de máquina, e não sob %USERPROFILE%: quem lê esta
             // política é um serviço rodando como LocalSystem, para quem

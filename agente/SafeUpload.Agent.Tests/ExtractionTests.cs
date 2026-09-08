@@ -40,11 +40,17 @@ public class ExtractionTests : IDisposable
         Assert.True(_registry.IsSupported(extension));
 
     /// <summary>
-    /// PDF ficou fora desta entrega. Sem extrator, a RN-013 libera sem
-    /// inspecionar em vez de bloquear.
+    /// Formato sem extrator não vira bloqueio: a operação segue como
+    /// AllowedWithoutInspection.
+    ///
+    /// O que mudou desde que isto foi escrito: liberar sem inspecionar deixou
+    /// de significar passagem livre. Numa leitura de origem, "não consegui
+    /// olhar" marca o processo, então um .zip continua sendo aberto
+    /// normalmente e o que vier depois dele não sai para destino vigiado.
+    ///
+    /// O .pdf saiu desta lista quando ganhou extrator.
     /// </summary>
     [Theory]
-    [InlineData(".pdf")]
     [InlineData(".zip")]
     [InlineData(".exe")]
     [InlineData("")]
@@ -60,6 +66,43 @@ public class ExtractionTests : IDisposable
     public async Task Texto_puro_e_lido_integralmente()
     {
         var path = _workspace.WriteText("nota.txt", "CPF: 529.982.247-25\nfim");
+
+        Assert.Contains("529.982.247-25", await ExtractAsync(path), StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// PDF é o formato em que contrato circula de verdade — assinado,
+    /// exportado do Word, mandado por e-mail. Sem extrator, a porta barata do
+    /// driver rejeita a extensão antes de qualquer coisa e a versão final
+    /// passa em silêncio enquanto o rascunho .docx é inspecionado.
+    /// </summary>
+    [Fact]
+    public async Task Pdf_tem_o_texto_das_paginas()
+    {
+        var path = _workspace.WritePdf("contrato.pdf", "Contratante", "CPF: 529.982.247-25");
+
+        Assert.Contains("529.982.247-25", await ExtractAsync(path), StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// O achado pode estar em qualquer página, e costuma estar na última —
+    /// assinatura e qualificação ficam no fim do contrato. Um extrator que
+    /// pare na primeira página passa neste arquivo e falha no mundo real.
+    /// </summary>
+    [Fact]
+    public async Task Pdf_le_alem_da_primeira_pagina()
+    {
+        // 45 linhas por página no gerador: a linha 60 cai na segunda.
+        var linhas = new List<string>();
+
+        for (int i = 0; i < 59; i += 1)
+        {
+            linhas.Add($"Clausula {i + 1}, sem nada de interessante.");
+        }
+
+        linhas.Add("CPF: 529.982.247-25");
+
+        var path = _workspace.WritePdf("longo.pdf", [.. linhas]);
 
         Assert.Contains("529.982.247-25", await ExtractAsync(path), StringComparison.Ordinal);
     }

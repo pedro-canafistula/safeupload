@@ -400,6 +400,7 @@ $sources = @(
     (Join-Path $FixtureDirectory 'contrato-com-cpf.docx'),
     (Join-Path $FixtureDirectory 'contrato-sem-nada.docx'),
     (Join-Path $FixtureDirectory 'planilha-com-cpf.xlsx'),
+    (Join-Path $FixtureDirectory 'contrato-com-cpf.pdf'),
     $InfPath,
 
     # Served alongside the artifacts so the target VM always pulls the
@@ -611,6 +612,7 @@ $artifactNames = @(
     'contrato-com-cpf.docx',
     'contrato-sem-nada.docx',
     'planilha-com-cpf.xlsx',
+    'contrato-com-cpf.pdf',
     'SafeUploadTest.cer',
     'Invoke-SafeUploadTest.ps1'
 )

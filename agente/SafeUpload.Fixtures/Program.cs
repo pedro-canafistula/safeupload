@@ -15,6 +15,9 @@
 using System.Diagnostics;
 using SafeUpload.Agent.Core.Domain;
 using SafeUpload.Agent.Core.Infrastructure.Extraction;
+using UglyToad.PdfPig.Core;
+using UglyToad.PdfPig.Fonts.Standard14Fonts;
+using UglyToad.PdfPig.Writer;
 using DocumentFormat.OpenXml;
 using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Spreadsheet;
@@ -27,6 +30,9 @@ using WordRun = DocumentFormat.OpenXml.Wordprocessing.Run;
 using WordText = DocumentFormat.OpenXml.Wordprocessing.Text;
 using WordParagraph = DocumentFormat.OpenXml.Wordprocessing.Paragraph;
 using DomainCategory = SafeUpload.Agent.Core.Domain.Category;
+
+// Wordprocessing tambem tem um PageSize, e e uma classe, nao o enum do PdfPig.
+using PdfPageSize = UglyToad.PdfPig.Content.PageSize;
 
 namespace SafeUpload.Fixtures;
 
@@ -51,6 +57,13 @@ public static class Program
         WriteDocx(Path.Combine(output, "contrato-sem-nada.docx"), null, bulk);
         WriteXlsx(Path.Combine(output, "planilha-com-cpf.xlsx"), cpf, bulk);
         WriteXlsx(Path.Combine(output, "planilha-sem-nada.xlsx"), null, bulk);
+
+        // O PDF leva menos conteudo que os outros de proposito: uma linha de
+        // PDF ocupa uma linha de pagina, entao o mesmo numero de paragrafos
+        // daria um documento de mil paginas. O corte em 2000 linhas produz um
+        // contrato de ~45 paginas, que e documento grande de verdade sem ser
+        // absurdo.
+        WritePdf(Path.Combine(output, "contrato-com-cpf.pdf"), cpf, Math.Min(bulk, 2000));
 
         Console.WriteLine($"  CPF sintetico: {cpf}");
         Console.WriteLine();
@@ -187,6 +200,52 @@ public static class Program
 
     private static WordParagraph Paragraph(string text) =>
         new(new WordRun(new WordText(text) { Space = SpaceProcessingModeValues.Preserve }));
+
+    /// <summary>
+    /// Gera o PDF, que e o formato em que contrato circula de verdade.
+    ///
+    /// O CPF fica na ULTIMA pagina pelo mesmo motivo que fica no fim do
+    /// .docx: um extrator que so leia a primeira pagina tem de reprovar, e
+    /// nao passar por sorte.
+    /// </summary>
+    private static void WritePdf(string path, string? cpf, int lines)
+    {
+        var builder = new PdfDocumentBuilder();
+        PdfDocumentBuilder.AddedFont font = builder.AddStandard14Font(Standard14Font.Helvetica);
+
+        const int LinesPerPage = 45;
+        const double Top = 800;
+        const double LineHeight = 17;
+
+        PdfPageBuilder? page = null;
+        int lineOnPage = 0;
+
+        void NewLine(string text)
+        {
+            if (page is null || lineOnPage >= LinesPerPage)
+            {
+                page = builder.AddPage(PdfPageSize.A4);
+                lineOnPage = 0;
+            }
+
+            page.AddText(text, 10, new PdfPoint(40, Top - (lineOnPage * LineHeight)), font);
+            lineOnPage += 1;
+        }
+
+        NewLine("Contrato de prestacao de servicos");
+
+        for (int i = 0; i < lines; i += 1)
+        {
+            NewLine($"Clausula {i + 1}. As partes acordam os termos deste instrumento.");
+        }
+
+        if (cpf is not null)
+        {
+            NewLine($"Responsavel legal, inscrito no CPF {cpf}.");
+        }
+
+        File.WriteAllBytes(path, builder.Build());
+    }
 
     private static void WriteXlsx(string path, string? cpf, int bulk)
     {

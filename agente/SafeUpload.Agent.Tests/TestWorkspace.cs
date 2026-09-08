@@ -1,3 +1,7 @@
+using UglyToad.PdfPig.Content;
+using UglyToad.PdfPig.Core;
+using UglyToad.PdfPig.Fonts.Standard14Fonts;
+using UglyToad.PdfPig.Writer;
 using System.IO.Compression;
 using System.Text;
 using SafeUpload.Agent.Core.Domain;
@@ -88,6 +92,31 @@ public sealed class TestWorkspace : IDisposable
     /// <summary>
     /// Monta um .docx mínimo, porém válido, com um parágrafo por item.
     /// </summary>
+    /// <summary>
+    /// Escreve um PDF com uma linha por argumento.
+    ///
+    /// Gerado com a mesma biblioteca que o extrator usa para ler, o que é uma
+    /// limitação honesta deste teste: ele prova que o extrator lê o que aquela
+    /// biblioteca escreve, não que lê PDF produzido por Word, scanner ou
+    /// impressora virtual. Para isso vale um arquivo de verdade no repositório.
+    /// </summary>
+    public string WritePdf(string fileName, params string[] lines)
+    {
+        var builder = new PdfDocumentBuilder();
+        PdfDocumentBuilder.AddedFont font = builder.AddStandard14Font(Standard14Font.Helvetica);
+        PdfPageBuilder page = builder.AddPage(PageSize.A4);
+
+        for (int i = 0; i < lines.Length; i += 1)
+        {
+            page.AddText(lines[i], 10, new PdfPoint(40, 800 - (i * 17)), font);
+        }
+
+        string path = Path.Combine(Root, fileName);
+        File.WriteAllBytes(path, builder.Build());
+
+        return path;
+    }
+
     public string WriteWordDocument(string fileName, params string[] paragraphs)
     {
         var body = new StringBuilder();

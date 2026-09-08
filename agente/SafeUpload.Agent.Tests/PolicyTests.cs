@@ -33,8 +33,13 @@ public class PolicyTests : IDisposable
         Assert.True(policy.FailOpen);
     }
 
+    /// <summary>
+    /// O .pdf entrou na política padrão junto com seu extrator, e a ordem
+    /// importa: monitorar uma extensão sem saber abri-la faz o driver mandar
+    /// requisições que o motor não tem como responder.
+    /// </summary>
     [Fact]
-    public async Task Politica_padrao_vigia_os_quatro_formatos()
+    public async Task Politica_padrao_vigia_os_cinco_formatos()
     {
         var policy = await LoadAsync();
 
@@ -42,7 +47,9 @@ public class PolicyTests : IDisposable
         Assert.True(policy.IsMonitoredExtension(".csv"));
         Assert.True(policy.IsMonitoredExtension(".docx"));
         Assert.True(policy.IsMonitoredExtension(".xlsx"));
-        Assert.False(policy.IsMonitoredExtension(".pdf"));
+        Assert.True(policy.IsMonitoredExtension(".pdf"));
+
+        Assert.False(policy.IsMonitoredExtension(".zip"));
     }
 
     /// <summary>
