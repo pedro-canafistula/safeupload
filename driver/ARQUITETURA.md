@@ -152,98 +152,6 @@ Divergir aqui é intencional e deve continuar.
 
 ---
 
-## Roteiro: o que trazer do mercado
-
-Ordenado por valor sobre esforço, com o exemplo que justifica cada item. A
-comparação que originou esta lista está na seção anterior.
-
-### Tier 1 — dias
-
-**1. Modo auditoria.** *(em andamento)*
-
-Empresa de 200 pessoas: o financeiro copia planilhas para uma pasta de rede
-cinquenta vezes por dia, e isso é trabalho normal. Com bloqueio direto, o dia
-1 é uma enxurrada no suporte e o agente é desinstalado na sexta. Com auditoria
-por duas semanas, o padrão aparece, vira exceção, e só então o bloqueio liga.
-
-Precisa existir nos **dois lados**: a recusa por contaminação acontece no
-kernel, sem perguntar a ninguém, então uma flag só no serviço não a desliga.
-
-A marcação continua acontecendo em modo auditoria — sem ela não há o que
-medir. O que fica suspenso são as três negações: escrita no destino, cancelamento
-no pós-create e rename.
-
-**2. Extrator de `.pdf`.**
-
-O contrato com CPF é exportado para PDF e copiado para o pen drive. Hoje
-`.pdf` não está na lista de extensões monitoradas, então a porta barata do
-driver o rejeita antes de qualquer coisa. Passa livre — e é exatamente o
-arquivo que o produto existe para parar.
-
-**3. Detector de segredos e mais identificadores.**
-
-Desenvolvedor copia a pasta do projeto para o Dropbox. Dentro, um
-`appsettings.json` com chave da AWS e string de conexão. Hoje `.json` não é
-monitorado e não há detector de segredo: nada dispara. Somar chave PIX, RG e
-CNH cobre o resto do uso brasileiro.
-
-### Tier 2 — semanas
-
-**4. Bloqueio com justificativa.**
-
-Advogada precisa mandar o contrato com CPF à parte contrária pela pasta de
-rede. Hoje: bloqueio seco, liga para o suporte, espera. Com justificativa,
-digita o motivo, segue, e o evento fica auditado. Segurança ganha um registro
-em vez de uma gambiarra.
-
-O painel e a trilha já existem. Falta o canal de volta do usuário para o
-serviço, hoje de mão única de propósito — decisão que precisa ser revista, não
-contornada.
-
-**5. Classificação persistida por identidade de arquivo.**
-
-Planilha de 15 MB aberta toda manhã. Hoje o veredito vive no contexto de fluxo
-e morre no reboot: varre de novo a cada sessão. Persistida por volume, id de
-arquivo e número de sequência de mudança, varre uma vez na vida.
-
-Resolve o problema de prazo por outro caminho, sem marca provisória.
-
-**6. Área de transferência.**
-
-Usuário abre o contrato (permitido, processo marcado), seleciona o CPF, Ctrl+C
-e cola numa aba de IA generativa. Hoje nada acontece: nenhuma operação de
-arquivo ocorreu, e a marca não ajuda porque nada foi escrito. É o canal de
-saída mais barato de acrescentar — modo usuário puro, com o classificador já
-pronto.
-
-### Tier 3 — estratégico
-
-**7. Impressão digital de documento, começando por hash exato.**
-
-"Folha de pagamento.xlsx": sem CPF, só nomes e salários. Detector nenhum
-dispara e o arquivo é confidencial. Com lista de SHA-256 na política ele é
-reconhecido pelo que é, mesmo renomeado. É o que casamento de padrão nunca vai
-pegar.
-
-Hash exato é 80% do IDM por uma fração do custo. Casamento parcial e por
-similaridade é que exige índice construído fora da máquina.
-
-**8. Impressão e upload por navegador.** Cada um é um projeto próprio.
-
-### O que deliberadamente não entra
-
-**Trocar contaminação por inspeção no egresso.** Os dois cobrem coisas
-diferentes e devem coexistir: conteúdo no egresso pega a cópia literal que a
-contaminação perde; a contaminação pega a transformação que o conteúdo perde.
-E a negação no pré-create garante zero bytes no destino, que inspeção no write
-não consegue dar.
-
-**Guardar cópia ou hash do arquivo que gerou alerta.** O mercado faz, para
-investigação. Nós guardamos só achados mascarados, por decisão de privacidade
-registrada no README do agente.
-
----
-
 ## O princípio
 
 Um minifiltro vê toda operação de arquivo da máquina. Em um Windows ocioso
@@ -1025,6 +933,79 @@ diz alguma coisa contra uma máquina em uso normal, e continua sem medição.
 Os passos 1 a 3 valem mesmo que a contaminação seja descartada mais tarde por
 excesso de falso positivo; são redução de custo pura. O passo 4 é o único que
 carrega risco de produto, e é onde vale medir antes de decidir.
+
+### Trazido do mercado
+
+Continuação da mesma lista, agora com o que a comparação com Purview,
+Forcepoint, Symantec e Strac mostrou faltar. Cada item traz o exemplo que o
+justifica, porque sem ele a prioridade vira gosto.
+
+10. ~~**Modo auditoria.**~~ **feito**. Empresa de 200 pessoas: o financeiro
+    copia planilhas para uma pasta de rede cinquenta vezes por dia, e isso é
+    trabalho normal. Com bloqueio direto, o dia 1 é uma enxurrada no suporte e
+    o agente é desinstalado na sexta. Precisou existir nos dois lados — a
+    recusa por contaminação acontece no kernel, sem perguntar a ninguém.
+
+11. ~~**Extrator de `.pdf`.**~~ **feito**. O contrato com CPF é exportado para
+    PDF e copiado para o pen drive; sem extrator, a porta barata do driver
+    rejeitava a extensão antes de qualquer coisa e a versão final passava em
+    silêncio enquanto o rascunho `.docx` era inspecionado.
+
+12. **Detector de segredos e mais identificadores.** Desenvolvedor copia a
+    pasta do projeto para o Dropbox. Dentro, um `appsettings.json` com chave
+    da AWS e string de conexão. Hoje `.json` não é monitorado e não há
+    detector de segredo: nada dispara. Somar chave PIX, RG e CNH cobre o resto
+    do uso brasileiro.
+
+13. **Bloqueio com justificativa.** Advogada precisa mandar o contrato com CPF
+    à parte contrária pela pasta de rede. Hoje: bloqueio seco, liga para o
+    suporte, espera. Com justificativa, digita o motivo, segue, e o evento
+    fica auditado. O painel e a trilha já existem; falta o canal de volta do
+    usuário para o serviço, hoje de mão única de propósito — decisão que
+    precisa ser revista, não contornada.
+
+14. **Classificação persistida por identidade de arquivo.** Planilha de 15 MB
+    aberta toda manhã: hoje o veredito vive no contexto de fluxo e morre no
+    reboot, então varre de novo a cada sessão. Persistida por volume, id de
+    arquivo e número de sequência de mudança, varre uma vez na vida. Resolve o
+    problema de prazo por outro caminho, sem marca provisória.
+
+15. **Área de transferência.** Usuário abre o contrato (permitido, processo
+    marcado), seleciona o CPF, Ctrl+C e cola numa aba de IA generativa. Hoje
+    nada acontece: nenhuma operação de arquivo ocorreu, e a marca não ajuda
+    porque nada foi escrito. É o canal de saída mais barato de acrescentar —
+    modo usuário puro, com o classificador já pronto.
+
+16. **Impressão digital de documento, começando por hash exato.** "Folha de
+    pagamento.xlsx": sem CPF, só nomes e salários. Detector nenhum dispara e o
+    arquivo é confidencial. Com lista de SHA-256 na política ele é reconhecido
+    pelo que é, mesmo renomeado. Hash exato é a maior parte do valor do IDM
+    por uma fração do custo; casamento parcial e por similaridade é que exige
+    índice construído fora da máquina.
+
+17. **Impressão e upload por navegador.** Cada um é um projeto próprio.
+
+18. **Pool de threads sobre a porta.** `FilterGetMessage` bloqueia a thread
+    que o chama, então hoje toda abertura monitorada da máquina enfileira
+    atrás do veredito mais lento. É também pré-requisito da marca provisória
+    descrita acima.
+
+19. **Altitude definitiva junto à Microsoft.** Não é trabalho, é fila: 321410
+    está na faixa certa mas não foi alocada para este produto, e dois filtros
+    na mesma altitude não coexistem. Bloqueia qualquer instalação fora de VM
+    descartável, e o pedido não depende de nós.
+
+### O que deliberadamente não entra
+
+**Trocar contaminação por inspeção no egresso.** Os dois cobrem coisas
+diferentes e devem coexistir: conteúdo no egresso pega a cópia literal que a
+contaminação perde; a contaminação pega a transformação que o conteúdo perde.
+E a negação no pré-create garante zero bytes no destino, que inspeção no write
+não consegue dar.
+
+**Guardar cópia ou hash do arquivo que gerou alerta.** O mercado faz, para
+investigação. Nós guardamos só achados mascarados, por decisão de privacidade
+registrada no README do agente.
 
 ---
 
