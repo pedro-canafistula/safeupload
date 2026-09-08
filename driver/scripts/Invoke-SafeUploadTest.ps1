@@ -1317,6 +1317,46 @@ catch { 'ERRO:' + $_.Exception.GetType().Name }
                     Add-Result -Name 'Nada chegou ao destino pela cadeia real' -Passed (-not (Test-Path $alvo)) `
                         -Detail $(if (Test-Path $alvo) { 'O arquivo esta la: o conteudo atravessou.' } else { 'Nada foi escrito.' })
 
+                    # Os arquivos do Office, que sao os que importam.
+                    #
+                    # O .txt acima prova que a cadeia liga, e so isso: ele
+                    # extrai em milissegundos e caberia em qualquer prazo. Um
+                    # .docx de 126 KB custa 640 ms para extrair e varrer, e um
+                    # .xlsx de 229 KB custa 971 ms - os dois acima do prazo
+                    # fixo de 500 ms que o driver usava antes de o valor vir
+                    # da politica. Sao estes casos que reprovam se alguem
+                    # voltar a constante.
+
+                    foreach ($caso in @(
+                        @{ Arquivo = 'contrato-com-cpf.docx';  Esperado = 'ESCRITA_NEGADA'; Rotulo = '.docx com CPF marca o processo' },
+                        @{ Arquivo = 'planilha-com-cpf.xlsx';  Esperado = 'ESCRITA_NEGADA'; Rotulo = '.xlsx com CPF marca o processo' },
+                        @{ Arquivo = 'contrato-sem-nada.docx'; Esperado = 'ESCRITA_PASSOU'; Rotulo = '.docx sem dado sensivel nao marca' }
+                    )) {
+
+                        $fixtureOrigem = Join-Path $StagingDirectory $caso.Arquivo
+                        $fixtureDestino = Join-Path $SourceDirectory $caso.Arquivo
+
+                        if (-not (Test-Path $fixtureOrigem)) {
+
+                            Add-Result -Name $caso.Rotulo -Passed $false `
+                                -Detail "Arquivo de teste ausente: $fixtureOrigem"
+                            continue
+                        }
+
+                        Copy-Item $fixtureOrigem $fixtureDestino -Force
+                        Remove-Item $alvo -Force -ErrorAction SilentlyContinue
+
+                        $resultado = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $roteiroFile $fixtureDestino $alvo 2>&1 |
+                            Select-Object -Last 1
+
+                        $tamanho = [math]::Round((Get-Item $fixtureDestino).Length / 1KB)
+
+                        Add-Result -Name $caso.Rotulo -Passed ($resultado -eq $caso.Esperado) `
+                            -Detail "$($caso.Arquivo) ($tamanho KB) respondeu '$resultado', esperado '$($caso.Esperado)'."
+                    }
+
+                    Remove-Item $alvo -Force -ErrorAction SilentlyContinue
+
                     # O log do servico e a unica testemunha do prazo. Um
                     # estouro aqui significa que o arquivo passou SEM
                     # inspecao, e o veredito que a bateria observou veio de
@@ -1327,12 +1367,13 @@ catch { 'ERRO:' + $_.Exception.GetType().Name }
                     $estouros = @(Get-Content $serviceLog -ErrorAction SilentlyContinue |
                         Select-String -SimpleMatch 'SEM INSPECAO')
 
-                    if ($estouros.Count -gt 0) {
-                        Write-Host ''
-                        Write-Host "  Atencao: $($estouros.Count) inspecoes estouraram o prazo do driver." -ForegroundColor Yellow
-                        Write-Host '  Esses arquivos passaram sem inspecao. E o descompasso conhecido' -ForegroundColor Yellow
-                        Write-Host '  entre RN-012 (5 s) e o timeout do driver (500 ms).' -ForegroundColor Yellow
-                    }
+                    Add-Result -Name 'Nenhuma inspecao estourou o prazo' -Passed ($estouros.Count -eq 0) `
+                        -Detail $(if ($estouros.Count -eq 0) {
+                            'Todo arquivo foi inspecionado dentro do prazo que a politica define.'
+                        } else {
+                            "$($estouros.Count) arquivos passaram SEM INSPECAO. O prazo da politica " +
+                            '(RN-012) nao esta cobrindo o custo real de extracao.'
+                        })
                 }
             }
             finally {

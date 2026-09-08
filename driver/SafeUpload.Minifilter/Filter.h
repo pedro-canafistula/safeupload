@@ -76,12 +76,29 @@ Environment:
 #define SAFEUPLOAD_VERDICT_TIMEOUT_MS ((LONGLONG) 500)
 
 //
+//  Bounds for the value the policy may set. The floor keeps a malformed
+//  policy from disabling inspection outright; the ceiling exists because
+//  this is time a file open is stalled, and a policy asking for a minute
+//  would hang the machine on the first monitored file rather than
+//  protecting it.
+//
+
+#define SAFEUPLOAD_VERDICT_TIMEOUT_MIN_MS ((UINT32) 100)
+#define SAFEUPLOAD_VERDICT_TIMEOUT_MAX_MS ((UINT32) 10000)
+
+//
 //  Relative timeouts are expressed as a negative count of 100-nanosecond
 //  intervals.
 //
 
-#define SAFEUPLOAD_VERDICT_TIMEOUT_INTERVALS \
-    (-(SAFEUPLOAD_VERDICT_TIMEOUT_MS * 10 * 1000))
+//
+//  Kept as the shape of the conversion, and used nowhere: the interval in
+//  force comes from the policy and is computed once, when the snapshot is
+//  built. A second place that turns milliseconds into intervals is a
+//  second place that can disagree with the first.
+//
+//  #define SAFEUPLOAD_VERDICT_TIMEOUT_INTERVALS
+//      (-(SAFEUPLOAD_VERDICT_TIMEOUT_MS * 10 * 1000))
 
 //
 //  Global driver state. There is exactly one instance of this structure,
@@ -479,6 +496,13 @@ typedef struct _SAFEUPLOAD_POLICY {
     UINT32 Flags;
 
     //
+    //  Already clamped and converted to the negative 100ns interval
+    //  KeWaitForSingleObject wants, so the wait path does no arithmetic.
+    //
+
+    LONGLONG VerdictTimeoutIntervals;
+
+    //
     //  Measured once, when the snapshot is built. A prefix can be 260
     //  characters, and measuring it on every operation would put a string
     //  walk in the hot path for nothing.
@@ -511,6 +535,11 @@ SafeUploadFreePolicy (
 NTSTATUS
 SafeUploadSetPolicy (
     _In_ CONST SAFEUPLOAD_POLICY_MESSAGE *Message
+    );
+
+LONGLONG
+SafeUploadPolicyVerdictTimeout (
+    VOID
     );
 
 BOOLEAN

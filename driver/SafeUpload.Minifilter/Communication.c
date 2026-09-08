@@ -314,7 +314,7 @@ SafeUploadRequestVerdict (
 Routine Description:
 
     Sends one request to the inspector and waits, at most
-    SAFEUPLOAD_VERDICT_TIMEOUT_MS, for its answer.
+    the deadline the policy sets, for its answer.
 
     IRQL: PASSIVE_LEVEL. FltSendMessage blocks the calling thread, so this
     routine may only be reached from a callback that has established it is
@@ -370,7 +370,13 @@ Return Value:
 
     RtlZeroMemory( &Exchange->Response, sizeof( SAFEUPLOAD_RESPONSE ) );
 
-    timeout.QuadPart = SAFEUPLOAD_VERDICT_TIMEOUT_INTERVALS;
+    //
+    //  From the policy, not from a constant: the deadline belongs to the
+    //  inspection (RN-012), and user mode is what knows how long its own
+    //  engine needs. The driver clamps whatever it is told.
+    //
+
+    timeout.QuadPart = SafeUploadPolicyVerdictTimeout();
     replyLength = sizeof( SAFEUPLOAD_RESPONSE );
 
     //

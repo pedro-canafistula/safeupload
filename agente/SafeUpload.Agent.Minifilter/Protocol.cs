@@ -24,7 +24,7 @@ public static class Contract
     /// mechanism that turns an incompatible pair into a clean refusal
     /// instead of a misread structure.
     /// </summary>
-    public const uint Version = 7;
+    public const uint Version = 8;
 
     public const int MaxPathChars = 512;
     public const int MaxImageNameChars = 64;
@@ -219,7 +219,16 @@ public unsafe struct SafeUploadPolicyMessage
     public uint ImageCount;
     public uint SourcePrefixCount;
     public uint Flags;
-    public uint Reserved;
+
+    /// <summary>
+    /// Quanto o kernel espera por um veredito, em milissegundos.
+    ///
+    /// Vem da politica e nao de uma constante no driver porque o prazo e da
+    /// inspecao, nao do transporte: a RN-012 da um orcamento ao motor, e ter
+    /// o mesmo numero escrito em dois lugares e como os dois divergem. Zero
+    /// significa "use o padrao do driver". O driver limita o valor.
+    /// </summary>
+    public uint VerdictTimeoutMs;
 
     public fixed char Extensions[Contract.MaxExtensions * Contract.MaxExtensionChars];
     public fixed char Prefixes[Contract.MaxPrefixes * Contract.MaxPrefixChars];

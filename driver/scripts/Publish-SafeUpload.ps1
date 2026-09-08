@@ -98,6 +98,17 @@ $AgentPublish = Join-Path $RepoRoot "agente\SafeUpload.Minifilter.Probe\bin\Rele
 # manifesto baixaria um a um.
 $ServiceProject = Join-Path $RepoRoot "agente\SafeUpload.Agent.Service\SafeUpload.Agent.Service.csproj"
 $ServicePublish = Join-Path $RepoRoot "agente\SafeUpload.Agent.Service\bin\Release\net10.0-windows\win-x64\publish"
+$FixtureProject = Join-Path $RepoRoot "agente\SafeUpload.Fixtures\SafeUpload.Fixtures.csproj"
+$FixtureDirectory = Join-Path $PackageDirectory "fixtures"
+
+# Quanto conteudo vai nos .docx e .xlsx de teste.
+#
+# 40000 produz um .docx de ~126 KB e um .xlsx de ~229 KB, que custam 640 ms e
+# 971 ms para extrair e varrer. O numero foi escolhido para ficar ACIMA do
+# antigo prazo fixo de 500 ms: com fixture menor a bateria passaria mesmo se
+# alguem voltasse a constante, e o teste nao defenderia nada. Documento de 100
+# a 200 KB tambem e o tamanho de um contrato ou planilha de verdade.
+$FixtureBulk = 40000
 
 function Write-Step {
     param([string] $Text)
@@ -326,6 +337,42 @@ if (-not (Test-Path $serviceExe)) {
 
 Write-Host "  SafeUpload.Agent.Service.exe ($([math]::Round((Get-Item $serviceExe).Length / 1MB, 1)) MB, autocontido)"
 
+# ---------------------------------------------------------------------------
+
+Write-Step 'Gerando os arquivos de teste (.docx e .xlsx)'
+
+# Gerados aqui, nao na VM alvo: la nao ha Office nem SDK, e montar Open XML a
+# mao em PowerShell seria codigo de teste mais fragil que o que ele testa.
+#
+# A ferramenta tambem MEDE, com os mesmos extratores que o servico usa, e
+# falha quando nenhum achado sai dos arquivos que deveriam ter CPF. Um
+# fixture que nao dispara nada faria a bateria passar por engano.
+# Compilado e chamado direto, sem `dotnet run`: o `--` que separa os
+# argumentos do SDK dos da aplicacao e consumido pelo PowerShell, que tem seu
+# proprio significado para ele, e a ferramenta acaba recebendo argumentos
+# trocados. O sintoma foi silencioso - os arquivos saiam com o tamanho padrao,
+# no diretorio errado, sem erro nenhum.
+$fixtureBuild = & dotnet build $FixtureProject -c Release --nologo -v quiet 2>&1
+
+if ($LASTEXITCODE -ne 0) {
+    $fixtureBuild | ForEach-Object { Write-Host "  $_" }
+    Stop-WithMessage 'A compilacao do gerador de arquivos de teste falhou.'
+}
+
+$fixtureExe = Join-Path (Split-Path $FixtureProject) 'bin\Release\net10.0\SafeUpload.Fixtures.exe'
+
+if (-not (Test-Path $fixtureExe)) {
+    Stop-WithMessage "O gerador nao foi produzido em $fixtureExe."
+}
+
+$fixtureLog = & $fixtureExe $FixtureDirectory $FixtureBulk 2>&1
+
+$fixtureLog | ForEach-Object { Write-Host "  $_" }
+
+if ($LASTEXITCODE -ne 0) {
+    Stop-WithMessage 'A geracao dos arquivos de teste falhou.'
+}
+
 Write-Host '  Compilado sem erros.' -ForegroundColor Green
 
 # ---------------------------------------------------------------------------
@@ -344,6 +391,9 @@ $sources = @(
     (Join-Path $BuildOutput 'SafeUpload.sys'),
     (Join-Path $AgentPublish 'SafeUpload.Probe.exe'),
     (Join-Path $ServicePublish 'SafeUpload.Agent.Service.exe'),
+    (Join-Path $FixtureDirectory 'contrato-com-cpf.docx'),
+    (Join-Path $FixtureDirectory 'contrato-sem-nada.docx'),
+    (Join-Path $FixtureDirectory 'planilha-com-cpf.xlsx'),
     $InfPath,
 
     # Served alongside the artifacts so the target VM always pulls the
@@ -530,6 +580,9 @@ $artifactNames = @(
     'safeupload.cat',
     'SafeUpload.Probe.exe',
     'SafeUpload.Agent.Service.exe',
+    'contrato-com-cpf.docx',
+    'contrato-sem-nada.docx',
+    'planilha-com-cpf.xlsx',
     'SafeUploadTest.cer',
     'Invoke-SafeUploadTest.ps1'
 )

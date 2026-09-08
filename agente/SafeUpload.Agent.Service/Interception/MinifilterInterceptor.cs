@@ -22,23 +22,34 @@ namespace SafeUpload.Agent.Service.Interception;
 /// veredito de dominio de volta para o veredito do protocolo — e nada mais.
 /// Regra de negócio aqui dentro seria regra em dois lugares.
 ///
-/// <para><b>Prazo, e por que ele ainda não fecha.</b> O driver espera
-/// <c>500 ms</c> pelo veredito e, esgotado o prazo, libera a operação sem
-/// inspeção (RN-013). O motor tem orçamento de <c>5 s</c> para extração e
-/// varredura (RN-012). São uma ordem de grandeza de diferença, e enquanto ela
-/// existir todo arquivo que precise de extração real vai estourar o prazo e
-/// passar sem inspeção. Isto está implementado de forma a tornar o problema
-/// <b>visível</b> — cada estouro é contado e registrado como aviso — e não a
-/// escondê-lo. A decisão de produto que resolve está pendente.</para>
+/// <para><b>O prazo.</b> Havia uma ordem de grandeza entre o que o driver
+/// esperava (500 ms fixos) e o que a RN-012 dá ao motor (5 s), e enquanto ela
+/// existiu todo arquivo que precisasse de extração real estouraria o prazo e
+/// passaria sem inspeção. O prazo do kernel passou a vir da política: o
+/// serviço empurra <c>InspectionTimeout</c> mais uma margem, o motor desiste
+/// antes do driver, e o número existe num lugar só.
+///
+/// O que isso <b>não</b> resolve é o custo: enquanto o veredito não volta, a
+/// abertura do arquivo está parada. Um prazo maior protege mais e trava mais,
+/// e o ponto certo dessa troca só se conhece medindo com arquivo de verdade.
+/// Cada estouro continua contado e registrado.</para>
 /// </summary>
 public sealed class MinifilterInterceptor : BackgroundService
 {
     /// <summary>
-    /// Quanto se dá ao motor antes de desistir. Fica abaixo dos 500 ms do
-    /// driver de propósito: responder tarde é o mesmo que não responder, e
-    /// ainda gasta o tempo de quem está esperando.
+    /// Margem entre o prazo que o driver espera e o que o motor recebe.
+    ///
+    /// O motor tem de desistir <b>antes</b> do driver, e não junto:
+    /// responder no instante em que o kernel parou de esperar é o mesmo que
+    /// não responder, e ainda gastou o tempo de quem esperava.
     /// </summary>
-    private static readonly TimeSpan Budget = TimeSpan.FromMilliseconds(400);
+    private static readonly TimeSpan Margin = TimeSpan.FromMilliseconds(500);
+
+    /// <summary>
+    /// O que o motor recebe, derivado da RN-012 quando a política carrega.
+    /// Antes disso não há inspeção acontecendo, então o valor não importa.
+    /// </summary>
+    private TimeSpan _budget = TimeSpan.FromMilliseconds(400);
 
     private readonly InspectionService _inspection;
     private readonly IPolicyStore _policyStore;
@@ -190,6 +201,15 @@ public sealed class MinifilterInterceptor : BackgroundService
 
             builder.WithVolumeKinds(scopes.RemovableDrives, scopes.NetworkPaths);
 
+            // O prazo do kernel sai da RN-012, e nao de uma constante no
+            // driver. O motor recebe menos do que o driver espera: a margem
+            // e o que garante que a resposta chegue enquanto ainda ha quem
+            // a receba.
+            TimeSpan kernelDeadline = policy.InspectionTimeout + Margin;
+
+            builder.WithVerdictTimeout(kernelDeadline);
+            _budget = policy.InspectionTimeout;
+
             port.SetPolicy(builder.Build());
 
             _logger.LogInformation(
@@ -199,6 +219,11 @@ public sealed class MinifilterInterceptor : BackgroundService
                 scopes.Extensions.Count,
                 scopes.DestinationPaths.Count,
                 scopes.SourcePaths.Count);
+
+            _logger.LogInformation(
+                "Prazo: motor {Budget} ms (RN-012), kernel espera {Kernel} ms.",
+                _budget.TotalMilliseconds,
+                kernelDeadline.TotalMilliseconds);
 
             if (scopes.SourcePaths.Count == 0)
             {
@@ -240,7 +265,7 @@ public sealed class MinifilterInterceptor : BackgroundService
 
         try
         {
-            using var budget = new CancellationTokenSource(Budget);
+            using var budget = new CancellationTokenSource(_budget);
 
             // GetAwaiter().GetResult() e não .Result: preserva a exceção
             // original em vez de embrulhá-la em AggregateException. O laço é
@@ -262,7 +287,7 @@ public sealed class MinifilterInterceptor : BackgroundService
                 "Inspecao de {Path} passou de {Budget} ms e o arquivo passou SEM INSPECAO. " +
                 "Este e o descompasso conhecido entre o prazo do driver (500 ms) e o do motor (5 s).",
                 operation.FileName,
-                Budget.TotalMilliseconds);
+                _budget.TotalMilliseconds);
 
             return PortVerdict.Allow;
         }

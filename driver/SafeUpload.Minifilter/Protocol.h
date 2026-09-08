@@ -49,7 +49,7 @@ Environment:
 //  message means "allow" (RN-013), never "block".
 //
 
-#define SAFEUPLOAD_PROTOCOL_VERSION ((UINT32) 7)
+#define SAFEUPLOAD_PROTOCOL_VERSION ((UINT32) 8)
 
 //
 //  Capacity of the inline string fields, in WCHARs, terminator included.
@@ -285,7 +285,28 @@ typedef struct _SAFEUPLOAD_POLICY_MESSAGE {
 
     UINT32 Flags;
 
-    UINT32 Reserved;
+    //
+    //  How long the kernel waits for a verdict, in milliseconds.
+    //
+    //  It comes from the policy rather than from a constant in the driver
+    //  because the deadline belongs to the inspection, not to the
+    //  transport: RN-012 gives the engine a budget, and having the same
+    //  number written in two places is exactly how the two drift apart.
+    //  User mode owns the value and the driver enforces it.
+    //
+    //  Zero means "use the driver's default", which is what an older
+    //  client sending a zeroed Reserved field would produce - and the
+    //  interpretation that keeps such a client working rather than giving
+    //  it a zero-millisecond timeout, under which nothing is ever
+    //  inspected.
+    //
+    //  Clamped by the driver to [SAFEUPLOAD_VERDICT_TIMEOUT_MIN_MS,
+    //  SAFEUPLOAD_VERDICT_TIMEOUT_MAX_MS]. The upper bound is not a
+    //  formality: this is time a file open is stalled, so a policy asking
+    //  for a minute would hang the machine on the first monitored file.
+    //
+
+    UINT32 VerdictTimeoutMs;
 
     //
     //  Monitored extensions, with the leading dot, NUL-terminated.
@@ -522,7 +543,7 @@ C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_POLICY_MESSAGE, PrefixCount )       == 20 );
 C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_POLICY_MESSAGE, ImageCount )        == 24 );
 C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_POLICY_MESSAGE, SourcePrefixCount ) == 28 );
 C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_POLICY_MESSAGE, Flags )             == 32 );
-C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_POLICY_MESSAGE, Reserved )          == 36 );
+C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_POLICY_MESSAGE, VerdictTimeoutMs )  == 36 );
 C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_POLICY_MESSAGE, Extensions )        == 40 );
 C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_POLICY_MESSAGE, Prefixes )          == 1064 );
 C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_POLICY_MESSAGE, SourcePrefixes )    == 9384 );

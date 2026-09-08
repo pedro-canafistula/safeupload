@@ -252,6 +252,32 @@ Return Value:
     snapshot->ImageCount = Message->ImageCount;
     snapshot->Flags = Message->Flags;
 
+    //
+    //  Clamped here, once, rather than on every wait. Zero means the
+    //  client did not set one - an older client sending a zeroed Reserved
+    //  field looks exactly like that - and taking it literally would give
+    //  a zero-millisecond timeout, under which nothing is ever inspected.
+    //
+
+    {
+        UINT32 timeoutMs = Message->VerdictTimeoutMs;
+
+        if (timeoutMs == 0) {
+
+            timeoutMs = (UINT32) SAFEUPLOAD_VERDICT_TIMEOUT_MS;
+
+        } else if (timeoutMs < SAFEUPLOAD_VERDICT_TIMEOUT_MIN_MS) {
+
+            timeoutMs = SAFEUPLOAD_VERDICT_TIMEOUT_MIN_MS;
+
+        } else if (timeoutMs > SAFEUPLOAD_VERDICT_TIMEOUT_MAX_MS) {
+
+            timeoutMs = SAFEUPLOAD_VERDICT_TIMEOUT_MAX_MS;
+        }
+
+        snapshot->VerdictTimeoutIntervals = -((LONGLONG) timeoutMs * 10 * 1000);
+    }
+
     SafeUploadBuildStringTable( &snapshot->Data.Extensions[0][0],
                                 snapshot->ExtensionCount,
                                 SAFEUPLOAD_MAX_EXTENSION_CHARS,
@@ -290,13 +316,52 @@ Return Value:
         ExFreePoolWithTag( previous, SAFEUPLOAD_POOL_TAG );
     }
 
-    SafeUploadTrace( "policy set: %u extensoes, %u prefixos, %u imagens, flags 0x%X\n",
+    SafeUploadTrace( "policy set: %u extensoes, %u prefixos, %u imagens, flags 0x%X, timeout %u ms\n",
                      snapshot->ExtensionCount,
                      snapshot->PrefixCount,
                      snapshot->ImageCount,
-                     snapshot->Flags );
+                     snapshot->Flags,
+                     (UINT32) (-snapshot->VerdictTimeoutIntervals / (10 * 1000)) );
 
     return STATUS_SUCCESS;
+}
+
+
+LONGLONG
+SafeUploadPolicyVerdictTimeout (
+    VOID
+    )
+/*++
+
+Routine Description:
+
+    The verdict deadline currently in force, as the negative 100ns interval
+    KeWaitForSingleObject wants.
+
+    Falls back to the driver's default when no policy has been pushed yet.
+    That case is real: the port can be connected and a request answered
+    before SET_POLICY arrives.
+
+    IRQL: <= APC_LEVEL, for the push lock.
+
+Return Value:
+
+    The interval to wait.
+
+--*/
+{
+    LONGLONG intervals = -(SAFEUPLOAD_VERDICT_TIMEOUT_MS * 10 * 1000);
+
+    FltAcquirePushLockShared( &SafeUploadPolicyLock );
+
+    if (SafeUploadPolicy != NULL) {
+
+        intervals = SafeUploadPolicy->VerdictTimeoutIntervals;
+    }
+
+    FltReleasePushLock( &SafeUploadPolicyLock );
+
+    return intervals;
 }
 
 

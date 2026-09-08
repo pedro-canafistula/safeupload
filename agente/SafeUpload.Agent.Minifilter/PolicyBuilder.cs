@@ -24,6 +24,8 @@ public sealed class PolicyBuilder
 
     private PolicyFlags _flags = PolicyFlags.None;
 
+    private uint _verdictTimeoutMs;
+
     /// <summary>Extension including the dot, e.g. ".docx".</summary>
     public PolicyBuilder WithExtension(string extension)
     {
@@ -64,6 +66,19 @@ public sealed class PolicyBuilder
         return this;
     }
 
+    /// <summary>
+    /// Quanto o kernel deve esperar por um veredito.
+    ///
+    /// Deriva da RN-012, e a razao de passar isto adiante em vez de deixar
+    /// o driver com uma constante: o prazo e o do motor, e quem sabe quanto
+    /// o motor precisa e o motor. Nao chamar deixa o padrao do driver.
+    /// </summary>
+    public PolicyBuilder WithVerdictTimeout(TimeSpan timeout)
+    {
+        _verdictTimeoutMs = (uint) Math.Clamp(timeout.TotalMilliseconds, 100, 10_000);
+        return this;
+    }
+
     public unsafe SafeUploadPolicyMessage Build()
     {
         Require(_extensions.Count, Contract.MaxExtensions, nameof(_extensions));
@@ -78,6 +93,7 @@ public sealed class PolicyBuilder
         message.SourcePrefixCount = (uint) _sourcePrefixes.Count;
         message.ImageCount = (uint) _excludedImages.Count;
         message.Flags = (uint) _flags;
+        message.VerdictTimeoutMs = _verdictTimeoutMs;
 
         Fill(message.Extensions, _extensions, Contract.MaxExtensionChars);
         Fill(message.Prefixes, _destinationPrefixes, Contract.MaxPrefixChars);
