@@ -261,6 +261,12 @@ public sealed class MinifilterInterceptor : BackgroundService
             return PortVerdict.Allow;
         }
 
+        // Numa requisição de ORIGEM, negar não impede nada: o driver permite
+        // a leitura e apenas marca o processo. É por isso que "não consegui
+        // inspecionar" pode virar negação aqui sem custo para quem abre o
+        // arquivo - e não pode do lado do destino, onde negar impede mesmo.
+        bool sourceScope = request.TypedFlags.HasFlag(RequestFlags.ScopeSource);
+
         var stopwatch = Stopwatch.StartNew();
 
         try
@@ -277,27 +283,65 @@ public sealed class MinifilterInterceptor : BackgroundService
 
             Announce(operation, result);
 
-            return result.IsBlocked ? PortVerdict.Deny : PortVerdict.Allow;
+            if (result.IsBlocked)
+            {
+                return PortVerdict.Deny;
+            }
+
+            // Nao consegui inspecionar: marque, nao libere em silencio.
+            //
+            // Ha tres caminhos que chegam aqui - file_too_large,
+            // unsupported_format e inspection_timeout - e nos tres o
+            // conteudo nunca foi olhado. Liberar sem marcar significa que
+            // um arquivo grande demais, ou de formato sem extrator, sai
+            // livre para qualquer destino vigiado. O limite de 20 MB e
+            // deliberado e previsivel, o que o torna trivial de explorar:
+            // basta encher o arquivo ate passar do corte.
+            //
+            // O custo e um falso positivo: um arquivo legitimo que nao
+            // coube na inspecao marca o processo pelo TTL da tabela. E
+            // aceitavel porque a marca nao impede trabalho nenhum - so
+            // escrita em destino vigiado - e porque a alternativa e um
+            // buraco que a propria politica documenta como aberto.
+            if (sourceScope && result.Verdict == Core.Domain.Verdict.AllowedWithoutInspection)
+            {
+                _logger.LogInformation(
+                    "{Arquivo} nao pode ser inspecionado ({Motivo}): processo {Pid} marcado por precaucao.",
+                    operation.FileName,
+                    result.Reason ?? "sem motivo registrado",
+                    operation.ProcessId);
+
+                return PortVerdict.Deny;
+            }
+
+            return PortVerdict.Allow;
         }
         catch (OperationCanceledException)
         {
             Interlocked.Increment(ref _overBudget);
 
             _logger.LogWarning(
-                "Inspecao de {Path} passou de {Budget} ms e o arquivo passou SEM INSPECAO. " +
-                "Este e o descompasso conhecido entre o prazo do driver (500 ms) e o do motor (5 s).",
+                "Inspecao de {Path} passou de {Budget} ms.{Consequencia}",
                 operation.FileName,
-                _budget.TotalMilliseconds);
+                _budget.TotalMilliseconds,
+                sourceScope ? " Processo marcado por precaucao." : " A operacao passou SEM INSPECAO.");
 
-            return PortVerdict.Allow;
+            // Mesma regra do caminho acima: na origem, marca; no destino,
+            // libera, porque negar ali impede o trabalho de verdade.
+            return sourceScope ? PortVerdict.Deny : PortVerdict.Allow;
         }
         catch (Exception ex)
         {
             // Fail-open, como o resto do agente: um DLP que bloqueia quando
             // quebra impede o usuário de trabalhar e é desligado na primeira
             // semana.
-            _logger.LogError(ex, "Erro ao inspecionar {Path}. Liberado sem inspecao.", operation.FileName);
-            return PortVerdict.Allow;
+            _logger.LogError(
+                ex,
+                "Erro ao inspecionar {Path}.{Consequencia}",
+                operation.FileName,
+                sourceScope ? " Processo marcado por precaucao." : " Liberado sem inspecao.");
+
+            return sourceScope ? PortVerdict.Deny : PortVerdict.Allow;
         }
         finally
         {

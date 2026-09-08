@@ -344,6 +344,103 @@ começar a acontecer vai aparecer em vez de sumir.
 
 ---
 
+## O que fazer quando não se consegue inspecionar
+
+A RN-013 diz que falha de inspeção vale permitir, e a razão é boa: um DLP que
+bloqueia quando quebra impede o usuário de trabalhar e é desligado na primeira
+semana. Só que "permitir" estava sendo aplicado a mais do que devia.
+
+Há **três** caminhos que produzem `AllowedWithoutInspection`, e nos três o
+conteúdo do arquivo nunca foi olhado:
+
+| Motivo | Quando | Deliberado? |
+|---|---|---|
+| `file_too_large` | acima de `maxFileSizeMb` (20 MB) | sim, por política |
+| `unsupported_format` | extensão monitorada sem extrator | sim, por configuração |
+| `inspection_timeout` | extração e varredura não couberam no prazo | não |
+
+Até aqui os três liberavam **e não marcavam o processo**. A consequência: um
+arquivo grande demais para ser inspecionado saía livre para qualquer destino
+vigiado, e a política documentava o limite que abria essa porta. É trivial de
+explorar — basta encher o arquivo até passar do corte.
+
+### A assimetria que resolve
+
+O que salva o caso é que **negar não significa a mesma coisa nos dois lados
+do escopo**:
+
+- Numa requisição de **destino**, negar impede a operação. É o bloqueio de
+  verdade, com zero bytes gravados.
+- Numa requisição de **origem**, negar não impede nada: o driver permite a
+  leitura e apenas **marca o processo**. O usuário abre seu documento
+  normalmente.
+
+Então "não consegui inspecionar" pode virar negação do lado da origem sem
+custo nenhum para quem abre o arquivo. É o que passou a acontecer:
+
+```
+origem  + não inspecionado  →  DENY  →  marca o processo, leitura permitida
+destino + não inspecionado  →  ALLOW →  inalterado, negar ali impede trabalho
+```
+
+O mesmo vale para o estouro de prazo e para erro durante a inspeção. A regra é
+uma só: **na origem, o que não foi olhado marca; no destino, o que não foi
+olhado passa.**
+
+### O custo, dito por inteiro
+
+Falso positivo. Um arquivo legítimo de 25 MB marca o processo, e ele fica sem
+escrever em destino vigiado pelo TTL da tabela — 300 segundos. Ninguém é
+impedido de abrir, editar ou salvar fora dos destinos monitorados; o que fica
+suspenso é a cópia para nuvem, pen drive ou rede.
+
+Isso é aceitável enquanto for raro, e os contadores dizem se é:
+`AllowedWithoutInspection` contra `TaintsRecorded`. Se o número subir em uso
+real, o custo deixa de ser aceitável e a resposta já está desenhada — ver
+abaixo.
+
+### O que foi deliberadamente NÃO construído
+
+A ideia melhor é marca **provisória**: em vez de marcar pelo TTL inteiro,
+marcar enquanto a inspeção continua em segundo plano e desmarcar quando ela
+terminar limpa. A janela de falso positivo cai de 300 segundos para o tempo
+real da inspeção.
+
+Ela exige, e é por isso que não foi feita agora:
+
+1. **Pool de threads no interceptador.** O laço é síncrono; inspecionar em
+   segundo plano exige separar a resposta ao kernel do trabalho pesado.
+2. **Estado provisório na tabela**, com contador de inspeções pendentes por
+   PID — um processo pode abrir vários arquivos grandes de uma vez.
+3. **Comando novo no protocolo** para o serviço resolver cada pendência.
+4. **Limpeza na desconexão da porta.** Se o serviço morrer no meio, ninguém
+   resolve, e o processo ficaria travado pelo TTL sem nada explicando. Sem
+   inspetor não pode haver bloqueio — que é o que a RN-013 já diz e o Caso 11
+   já testa.
+
+Quatro peças, cada uma um lugar onde uma falha silenciosa pode se esconder,
+para encurtar uma janela cuja frequência ninguém mediu. A versão de uma linha
+fecha os três buracos hoje; a maquinaria se justifica quando o contador
+mostrar que o falso positivo incomoda, e não antes.
+
+### Como é testado
+
+O caso força o caminho por `maxFileSizeMb = 0`, e não por um prazo curto. Com
+limite de tamanho o resultado é determinístico; com prazo, depende de quanto a
+máquina está carregada, e um teste que reprova conforme a carga não é teste, é
+incômodo. O arquivo usado é o **inocente**, sem nada sensível: o que precisa
+marcar o processo é a ausência de inspeção, não o conteúdo.
+
+### O buraco que nada disso fecha
+
+O driver vigia quatro extensões. Um `.pdf`, um `.zip` ou um print de tela não
+chegam ao modo usuário, não marcam e copiam livremente. Isso é decisão de
+escopo, não defeito — mas é maior que os três caminhos acima somados, e
+nenhuma dessas mudanças o toca. Vale lembrar antes de alguém ler esta seção e
+concluir que a cadeia está fechada.
+
+---
+
 ## Quem realmente fecha o desvio por rename
 
 O gancho de `IRP_MJ_SET_INFORMATION` foi escrito para fechar duas portas:

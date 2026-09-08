@@ -1395,6 +1395,70 @@ catch { 'ERRO:' + $_.Exception.GetType().Name }
                             "$($estouros.Count) arquivos passaram SEM INSPECAO. O prazo da politica " +
                             '(RN-012) nao esta cobrindo o custo real de extracao.'
                         })
+
+                    # ---------------------------------------------------
+                    # Nao consegui inspecionar tambem marca
+                    # ---------------------------------------------------
+                    #
+                    # Ha tres caminhos que produzem AllowedWithoutInspection:
+                    # arquivo grande demais, formato sem extrator e estouro de
+                    # prazo. Nos tres o conteudo nunca foi olhado, e ate agora
+                    # os tres liberavam sem marcar - um arquivo acima do limite
+                    # saia livre para qualquer destino vigiado.
+                    #
+                    # O caso e forcado por maxFileSizeMb = 0, e nao por um
+                    # timeout curto, de proposito: limite de tamanho e
+                    # deterministico, enquanto prazo depende de quanto a
+                    # maquina esta carregada. Um teste que reprova conforme a
+                    # carga nao e um teste, e um incomodo. E o limite de
+                    # tamanho e o mais explorável dos tres, porque basta encher
+                    # o arquivo ate passar do corte.
+
+                    Write-Host ''
+                    Write-Host '  Reiniciando o servico com politica que nao inspeciona nada.'
+
+                    if ($serviceProcess -and -not $serviceProcess.HasExited) {
+                        $serviceProcess | Stop-Process -Force
+                        Start-Sleep -Milliseconds 800
+                    }
+
+                    $policy.maxFileSizeMb = 0
+                    $policy | ConvertTo-Json -Depth 5 | Set-Content -Path $policyFile -Encoding UTF8
+
+                    $ready.Reset() | Out-Null
+
+                    $serviceProcess = Start-Process -FilePath $serviceExe `
+                        -ArgumentList '--Interception:Mode=Minifilter' `
+                        -NoNewWindow -PassThru -RedirectStandardOutput "$serviceLog.semlimite"
+
+                    if ($ready.WaitOne([TimeSpan]::FromSeconds(45))) {
+
+                        # O arquivo INOCENTE, de proposito. Ele nao tem nada
+                        # sensivel: o que marca o processo e o fato de a
+                        # inspecao nao ter acontecido, nao o conteudo.
+                        Remove-Item $alvo -Force -ErrorAction SilentlyContinue
+
+                        $semInspecao = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $roteiroFile $inocente $alvo 2>&1 |
+                            Select-Object -Last 1
+
+                        Add-Result -Name 'Arquivo que nao pode ser inspecionado marca o processo' `
+                            -Passed ($semInspecao -eq 'ESCRITA_NEGADA') `
+                            -Detail $(if ($semInspecao -eq 'ESCRITA_NEGADA') {
+                                'Sem inspecao possivel, o processo e marcado: o conteudo nao sai por nao ter sido olhado.'
+                            } else {
+                                "Respondeu '$semInspecao'. Um arquivo nao inspecionado esta saindo livre para o destino."
+                            })
+
+                        Add-Result -Name 'Nada chegou ao destino sem inspecao' -Passed (-not (Test-Path $alvo)) `
+                            -Detail $(if (Test-Path $alvo) { 'O arquivo esta la.' } else { 'Nada foi escrito.' })
+
+                        Remove-Item $alvo -Force -ErrorAction SilentlyContinue
+                    }
+                    else {
+
+                        Add-Result -Name 'Arquivo que nao pode ser inspecionado marca o processo' -Passed $false `
+                            -Detail "O servico nao reconectou com a politica sem limite. Log em $serviceLog.semlimite."
+                    }
                 }
             }
             finally {
