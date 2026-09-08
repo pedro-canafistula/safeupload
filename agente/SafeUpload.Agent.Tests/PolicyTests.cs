@@ -26,7 +26,10 @@ public class PolicyTests : IDisposable
 
         Assert.True(File.Exists(_workspace.PolicyFile));
         Assert.Equal(1, policy.Version);
-        Assert.Equal(4, policy.ActiveCategories.Count);
+        // Cinco desde que Secret entrou. Vale afirmar o numero e nao so
+        // conferir uma a uma: se uma categoria nova aparecer sem passar por
+        // aqui, ela esta ativa na politica padrao sem ninguem ter decidido.
+        Assert.Equal(5, policy.ActiveCategories.Count);
         Assert.Equal(20, policy.MaxFileSizeMb);
         Assert.Equal(20L * 1024 * 1024, policy.MaxFileSizeBytes);
         Assert.Equal(TimeSpan.FromSeconds(5), policy.InspectionTimeout);

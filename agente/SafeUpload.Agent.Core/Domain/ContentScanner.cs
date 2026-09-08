@@ -51,6 +51,13 @@ public static class ContentScanner
         var found = new List<(int Start, Finding Finding)>();
 
         ScanNumbers(text, active, consumed, found);
+
+        // Segredos antes de senhas, pela mesma razão que os números vêm do
+        // mais longo para o mais curto: o padrão mais específico vence. Uma
+        // linha "password = ghp_abc..." casa as duas regras, e reportar como
+        // credencial do GitHub diz o que precisa ser rotacionado; reportar
+        // como senha diz só que havia uma.
+        ScanSecrets(text, active, consumed, found);
         ScanPasswords(text, active, consumed, found);
 
         if (found.Count == 0)
@@ -110,6 +117,34 @@ public static class ContentScanner
                     found.Add((from, new Finding(category, Masking.Mask(candidate))));
                 }
             }
+        }
+    }
+
+    private static void ScanSecrets(
+        string text,
+        IReadOnlySet<Category> active,
+        List<(int Start, int End)> consumed,
+        List<(int Start, Finding Finding)> found)
+    {
+        if (!active.Contains(Category.Secret))
+        {
+            return;
+        }
+
+        foreach (var match in SecretDetector.Find(text))
+        {
+            var end = match.Start + match.Length - 1;
+
+            if (Overlaps(consumed, match.Start, end))
+            {
+                continue;
+            }
+
+            consumed.Add((match.Start, end));
+
+            // MaskSecret e não Mask: de uma credencial, nem o sufixo pode
+            // sobreviver. O rótulo diz o que rotacionar sem revelar nada.
+            found.Add((match.Start, new Finding(Category.Secret, Masking.MaskSecret(match.Kind))));
         }
     }
 

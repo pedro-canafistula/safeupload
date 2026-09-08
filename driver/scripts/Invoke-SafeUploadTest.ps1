@@ -1340,6 +1340,38 @@ catch { 'ERRO:' + $_.Exception.GetType().Name }
                     Add-Result -Name 'Nada chegou ao destino pela cadeia real' -Passed (-not (Test-Path $alvo)) `
                         -Detail $(if (Test-Path $alvo) { 'O arquivo esta la: o conteudo atravessou.' } else { 'Nada foi escrito.' })
 
+                    # Credencial de maquina, que nenhuma outra regra pega.
+                    #
+                    # Nao e numero documental, e a heuristica de senha nao
+                    # reage a "AccessKeyId". Sem o detector de segredo, a pasta
+                    # do projeto inteira sai para a nuvem com a chave dentro e
+                    # nada dispara. A chave usada e a de exemplo da propria
+                    # documentacao da AWS - formato valido, acesso a nada.
+
+                    $comChave = Join-Path $SourceDirectory 'appsettings.txt'
+                    Set-Content -Path $comChave -Encoding UTF8 -Value @(
+                        '{',
+                        '  "Storage": {',
+                        '    "AccessKeyId": "AKIAIOSFODNN7EXAMPLE"',
+                        '  }',
+                        '}'
+                    )
+
+                    Remove-Item $alvo -Force -ErrorAction SilentlyContinue
+
+                    $chaveResultado = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $roteiroFile $comChave $alvo 2>&1 |
+                        Select-Object -Last 1
+
+                    Add-Result -Name 'Credencial de maquina marca o processo' `
+                        -Passed ($chaveResultado -eq 'ESCRITA_NEGADA') `
+                        -Detail $(if ($chaveResultado -eq 'ESCRITA_NEGADA') {
+                            'Chave de nuvem reconhecida no conteudo: nenhuma outra regra pegaria isto.'
+                        } else {
+                            "Respondeu '$chaveResultado'. A pasta do projeto sai com a chave dentro."
+                        })
+
+                    Remove-Item $alvo -Force -ErrorAction SilentlyContinue
+
                     # Os arquivos do Office, que sao os que importam.
                     #
                     # O .txt acima prova que a cadeia liga, e so isso: ele

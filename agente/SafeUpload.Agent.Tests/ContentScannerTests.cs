@@ -9,13 +9,16 @@ namespace SafeUpload.Agent.Tests;
 /// </summary>
 public class ContentScannerTests
 {
-    private static readonly IReadOnlySet<Category> Todas = new HashSet<Category>
-    {
-        Category.Cpf,
-        Category.Cnpj,
-        Category.PaymentCard,
-        Category.Password
-    };
+    /// <summary>
+    /// Todas as categorias, derivadas do enum e não listadas à mão.
+    ///
+    /// Estavam listadas, e quando <see cref="Category.Secret"/> entrou o
+    /// conjunto chamado "Todas" deixou de ser todas — silenciosamente, porque
+    /// nada num teste reclama de uma categoria que ele não pediu. Derivar do
+    /// enum faz a próxima categoria entrar aqui sozinha.
+    /// </summary>
+    private static readonly IReadOnlySet<Category> Todas =
+        Enum.GetValues<Category>().ToHashSet();
 
     /// <summary>
     /// O teste que a especificação exige.
@@ -194,5 +197,73 @@ public class ContentScannerTests
         var longa = Assert.Single(ContentScanner.Scan("senha: abcdefghijklmnopqrst", Todas));
 
         Assert.Equal(curta.MaskedSnippet, longa.MaskedSnippet);
+    }
+
+    /// <summary>
+    /// A chave da AWS no arquivo de configuração que foi junto com a pasta do
+    /// projeto. Nenhuma outra regra dispara aqui: não é número documental e a
+    /// heurística de senha não reage a "AccessKey".
+    /// </summary>
+    [Theory]
+    [InlineData("\"AccessKeyId\": \"AKIAIOSFODNN7EXAMPLE\"")]
+    [InlineData("token: ghp_1234567890abcdefghijklmnopqrstuvwxyz")]
+    [InlineData("GOOGLE_KEY=AIzaSyD-1234567890abcdefghijklmnopqrstu")]
+    [InlineData("-----BEGIN RSA PRIVATE KEY-----")]
+    public void Credencial_de_maquina_e_encontrada(string texto)
+    {
+        var achados = ContentScanner.Scan(texto, Todas);
+
+        Assert.Contains(achados, f => f.Category == Category.Secret);
+    }
+
+    /// <summary>
+    /// O valor da credencial nunca sobrevive ao achado — nem o sufixo, ao
+    /// contrário dos números. O rótulo diz o que rotacionar sem revelar nada.
+    /// </summary>
+    [Fact]
+    public void Credencial_nao_aparece_em_claro_no_achado()
+    {
+        const string chave = "AKIAIOSFODNN7EXAMPLE";
+
+        var achados = ContentScanner.Scan($"aws_key = {chave}", Todas);
+        var achado = Assert.Single(achados);
+
+        Assert.DoesNotContain("AKIA", achado.MaskedSnippet, StringComparison.Ordinal);
+        Assert.DoesNotContain("EXAMPLE", achado.MaskedSnippet, StringComparison.Ordinal);
+        Assert.Contains("chave da AWS", achado.MaskedSnippet, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// O padrão mais específico vence. "password = ghp_..." casa as duas
+    /// regras, e reportar como token do GitHub diz o que precisa ser
+    /// rotacionado; reportar como senha diz apenas que havia uma.
+    /// </summary>
+    [Fact]
+    public void Credencial_vence_a_heuristica_de_senha()
+    {
+        var achados = ContentScanner.Scan(
+            "password = ghp_1234567890abcdefghijklmnopqrstuvwxyz", Todas);
+
+        var achado = Assert.Single(achados);
+
+        Assert.Equal(Category.Secret, achado.Category);
+    }
+
+    /// <summary>
+    /// O preço da precisão é cobertura, e o teste registra isso: a regra só
+    /// reconhece formatos conhecidos. Uma sequência aleatória qualquer não
+    /// vira achado — detecção por entropia pegaria os provedores desconhecidos
+    /// e traria junto todo hash, UUID e identificador de commit de qualquer
+    /// máquina de desenvolvimento.
+    /// </summary>
+    [Theory]
+    [InlineData("commit 7f3a9c2e1b4d5a6f8e0c2d4b6a8f0e1c3d5b7a9f")]
+    [InlineData("id: 550e8400-e29b-41d4-a716-446655440000")]
+    [InlineData("hash SHA256 de a3f5b8c9d0e1f2a3b4c5d6e7f8a9b0c1")]
+    public void Sequencia_aleatoria_sem_formato_conhecido_nao_vira_achado(string texto)
+    {
+        var achados = ContentScanner.Scan(texto, Todas);
+
+        Assert.DoesNotContain(achados, f => f.Category == Category.Secret);
     }
 }

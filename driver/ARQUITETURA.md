@@ -951,11 +951,27 @@ justifica, porque sem ele a prioridade vira gosto.
     rejeitava a extensão antes de qualquer coisa e a versão final passava em
     silêncio enquanto o rascunho `.docx` era inspecionado.
 
-12. **Detector de segredos e mais identificadores.** Desenvolvedor copia a
-    pasta do projeto para o Dropbox. Dentro, um `appsettings.json` com chave
-    da AWS e string de conexão. Hoje `.json` não é monitorado e não há
-    detector de segredo: nada dispara. Somar chave PIX, RG e CNH cobre o resto
-    do uso brasileiro.
+12. ~~**Detector de segredos.**~~ **feito**. Desenvolvedor copia a pasta do
+    projeto para o Dropbox e leva junto um `appsettings.json` com a chave da
+    AWS; nenhuma outra regra dispara, porque não é número documental e a
+    heurística de senha só reage ao par `senha=`. Reconhece chave da AWS,
+    token do GitHub, chave do Google, token do Slack, cabeçalho de chave
+    privada em PEM e JWT.
+
+    **Chave PIX, RG e CNH ficaram de fora, e não por falta de tempo.** RG não
+    tem dígito verificador padronizado e o formato varia por estado — a regra
+    seria "onze caracteres quaisquer", que numa detecção que leva a bloqueio é
+    inaceitável. Chave PIX aleatória é um UUID, e UUID aparece em todo log,
+    identificador de commit e arquivo de configuração de qualquer máquina de
+    desenvolvimento. CNH tem checksum e seria defensável, mas tem onze dígitos
+    como o CPF: entraria em conflito direto na varredura numérica, que hoje
+    resolve sobreposição pelo comprimento, e um número válido nos dois ficaria
+    ambíguo. Vale quando houver como decidir o empate — provavelmente por
+    contexto no texto ao redor.
+
+    **Detecção por entropia também ficou de fora**, pelo mesmo motivo:
+    pegaria os provedores desconhecidos e traria junto todo hash, UUID e
+    identificador de commit.
 
 13. **Bloqueio com justificativa.** Advogada precisa mandar o contrato com CPF
     à parte contrária pela pasta de rede. Hoje: bloqueio seco, liga para o

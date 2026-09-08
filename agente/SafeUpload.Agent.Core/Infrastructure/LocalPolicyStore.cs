@@ -181,7 +181,7 @@ public sealed class LocalPolicyStore : IPolicyStore
         public static PolicyDocument Default { get; } = new()
         {
             Version = 1,
-            ActiveCategories = ["Cpf", "Cnpj", "PaymentCard", "Password"],
+            ActiveCategories = ["Cpf", "Cnpj", "PaymentCard", "Password", "Secret"],
             MonitoredScopes = MonitoredScopesDocument.Default,
             MaxFileSizeMb = 20,
             InspectionTimeoutSeconds = 5,
