@@ -636,10 +636,39 @@ Essa é a lição que vale mais que os números: um caso de bloqueio fica verde
 quando a operação falha por qualquer motivo, e os contadores são a única
 testemunha independente de *por que* ele passou.
 
-Sobre os alvos: 4,88% está acima do `< 1%`, e 33% muito abaixo do `> 95%`.
-Nenhum dos dois é conclusivo com 287 creates de uma bateria que só mexe em
-arquivos monitorados — a amostra é feita de exatamente o caso que as portas
-deixam passar. O alvo vale contra uma máquina em uso, não contra o teste.
+Sobre os alvos naquela amostra: 4,88% está acima do `< 1%`, e 33% muito
+abaixo do `> 95%`. Nenhum dos dois era conclusivo com 287 creates de uma
+bateria que só mexe em arquivos monitorados — a amostra é feita de exatamente
+o caso que as portas deixam passar.
+
+### Leitura com a cadeia completa
+
+Com o serviço real, os arquivos do Office e uma amostra dez vezes maior:
+
+| Contador | Valor |
+|---|---|
+| Creates vistos | 8600 |
+| Passaram da L1 | 39 (**0,45%**) |
+| Idas ao modo usuário | 17 |
+| Acertos de cache | 4 (19%) |
+| Negados no pré-create | 7 |
+| Permitidos sem inspeção | **0** |
+| Marcas registradas | 4 |
+
+**O alvo de `< 1%` foi atingido**, com folga e com a maior amostra até agora.
+As portas baratas filtram o que o desenho dizia que filtrariam.
+
+**`AllowedWithoutInspection` em zero é o que valida o prazo vindo da
+política.** Um `.docx` de 123 KB e um `.xlsx` de 223 KB foram extraídos e
+varridos dentro do prazo — os mesmos que custam 805 ms e 654 ms medidos, e
+que teriam passado sem inspeção sob os 500 ms fixos de antes.
+
+**Os 19% de acerto de cache continuam sem significado**, e vale ser claro
+sobre por quê em vez de repetir que a amostra é pequena. Uma bateria toca
+cada arquivo uma ou duas vezes e escreve entre as leituras, justamente para
+testar a invalidação. É o pior caso possível para um cache. Esse número só
+diz alguma coisa contra uma máquina em uso normal, e continua sem medição.
+
 
 ---
 

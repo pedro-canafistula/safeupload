@@ -91,6 +91,15 @@ $script:Results = @()
 # the four lines that actually decide anything.
 $script:Diag = [ordered]@{}
 
+# Verificacoes que nao chegaram a acontecer.
+#
+# Existem separadas de Results porque nao sao falhas: sao perguntas que a
+# bateria nao pode responder nesta execucao. Somar como aprovadas seria
+# mentir; somar como reprovadas faria toda execucao de rotina ficar
+# vermelha. O que nao se pode e deixar sumir - uma verificacao a menos com
+# "Tudo passou" no fim e o mesmo placar de uma execucao completa.
+$script:Skipped = @()
+
 function Write-Step {
     param([string] $Text)
     Write-Host ''
@@ -120,6 +129,18 @@ function Add-Result {
     if ($Detail) {
         Write-Host "          $Detail" -ForegroundColor DarkGray
     }
+}
+
+function Add-Skipped {
+    param(
+        [Parameter(Mandatory)] [string] $Name,
+        [Parameter(Mandatory)] [string] $Reason
+    )
+
+    $script:Skipped += [pscustomobject]@{ Name = $Name; Reason = $Reason }
+
+    Write-Host "  [PULADO] $Name" -ForegroundColor Yellow
+    Write-Host "           $Reason" -ForegroundColor DarkGray
 }
 
 function Stop-WithMessage {
@@ -1598,8 +1619,8 @@ else {
         }
         else {
 
-            Write-Host '  O Driver Verifier nao esta instrumentando este driver.' -ForegroundColor Yellow
-            Write-Host '  Para ligar:  verifier /standard /driver SafeUpload.sys   e reiniciar.' -ForegroundColor Yellow
+            Add-Skipped -Name 'Sem vazamento de pool apos o unload' `
+                -Reason 'O Driver Verifier nao esta instrumentando este driver. Para ligar: verifier /standard /driver SafeUpload.sys   e reiniciar.'
         }
     }
 }
@@ -1613,6 +1634,10 @@ $failed = @($script:Results | Where-Object { -not $_.Passed })
 Write-Host ''
 Write-Host '======================================================' -ForegroundColor Cyan
 Write-Host " Resultado: $($script:Results.Count - $failed.Count)/$($script:Results.Count) verificacoes passaram" -ForegroundColor Cyan
+
+if ($script:Skipped.Count -gt 0) {
+    Write-Host " $($script:Skipped.Count) verificacao(oes) NAO foram feitas - ver abaixo" -ForegroundColor Yellow
+}
 Write-Host '======================================================' -ForegroundColor Cyan
 
 foreach ($result in $script:Results) {
@@ -1621,13 +1646,27 @@ foreach ($result in $script:Results) {
     Write-Host ("  [{0}] {1}" -f $mark, $result.Name) -ForegroundColor $color
 }
 
+foreach ($skipped in $script:Skipped) {
+    Write-Host ("  [PULADO] {0}" -f $skipped.Name) -ForegroundColor Yellow
+    Write-Host ("           {0}" -f $skipped.Reason) -ForegroundColor DarkGray
+}
+
 Write-Host ''
 
 if ($failed.Count -gt 0) {
     exit 1
 }
 
-Write-Host 'Tudo passou.' -ForegroundColor Green
+if ($script:Skipped.Count -gt 0) {
+    # Nao e "tudo passou": e "passou o que foi perguntado". A diferenca
+    # importa porque o placar de uma execucao incompleta e indistinguivel
+    # do de uma completa se ninguem disser.
+    Write-Host 'Passou tudo que foi verificado.' -ForegroundColor Green
+    Write-Host "Mas $($script:Skipped.Count) verificacao(oes) nao chegaram a acontecer." -ForegroundColor Yellow
+}
+else {
+    Write-Host 'Tudo passou.' -ForegroundColor Green
+}
 
 if ($KeepLoaded) {
     Write-Host 'O filtro continua carregado.' -ForegroundColor DarkGray
