@@ -327,6 +327,40 @@ Return Value:
 }
 
 
+BOOLEAN
+SafeUploadPolicyAuditOnly (
+    VOID
+    )
+/*++
+
+Routine Description:
+
+    Whether the policy in force asks for audit only.
+
+    Defaults to FALSE when no policy has been pushed: a driver that is
+    loaded but not configured inspects nothing anyway, so the answer only
+    matters once a policy exists.
+
+    IRQL: <= APC_LEVEL, for the push lock.
+
+--*/
+{
+    BOOLEAN auditOnly = FALSE;
+
+    FltAcquirePushLockShared( &SafeUploadPolicyLock );
+
+    if (SafeUploadPolicy != NULL) {
+
+        auditOnly = BooleanFlagOn( SafeUploadPolicy->Flags,
+                                   SAFEUPLOAD_POLICY_FLAG_AUDIT_ONLY );
+    }
+
+    FltReleasePushLock( &SafeUploadPolicyLock );
+
+    return auditOnly;
+}
+
+
 LONGLONG
 SafeUploadPolicyVerdictTimeout (
     VOID

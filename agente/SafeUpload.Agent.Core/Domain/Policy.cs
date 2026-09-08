@@ -58,6 +58,13 @@ public sealed record MonitoredScopes(
 /// <param name="InspectionTimeoutSeconds">Tempo máximo de inspeção (RN-012).</param>
 /// <param name="FailOpen">Se falha libera a operação. No projeto isto é sempre verdadeiro.</param>
 /// <param name="ExcludedProcesses">Processos nunca interceptados (RN-014).</param>
+/// <param name="AuditOnly">
+/// Avalia e registra, mas não nega nada. É como se implanta um DLP sem ser
+/// desinstalado na primeira semana: roda-se em auditoria até conhecer o que é
+/// atividade legítima, e só então liga-se o bloqueio. Enquanto está ligado, o
+/// contador <c>WouldHaveDenied</c> do driver mede exatamente quanto o bloqueio
+/// custaria hoje.
+/// </param>
 public sealed record Policy(
     int Version,
     IReadOnlySet<Category> ActiveCategories,
@@ -65,7 +72,8 @@ public sealed record Policy(
     int MaxFileSizeMb,
     int InspectionTimeoutSeconds,
     bool FailOpen,
-    IReadOnlySet<string> ExcludedProcesses)
+    IReadOnlySet<string> ExcludedProcesses,
+    bool AuditOnly = false)
 {
     /// <summary>Limite da RN-013 convertido para bytes.</summary>
     public long MaxFileSizeBytes => (long)MaxFileSizeMb * 1024 * 1024;

@@ -208,6 +208,7 @@ public sealed class MinifilterInterceptor : BackgroundService
             TimeSpan kernelDeadline = policy.InspectionTimeout + Margin;
 
             builder.WithVerdictTimeout(kernelDeadline);
+            builder.WithAuditOnly(policy.AuditOnly);
             _budget = policy.InspectionTimeout;
 
             port.SetPolicy(builder.Build());
@@ -219,6 +220,15 @@ public sealed class MinifilterInterceptor : BackgroundService
                 scopes.Extensions.Count,
                 scopes.DestinationPaths.Count,
                 scopes.SourcePaths.Count);
+
+            if (policy.AuditOnly)
+            {
+                // Em letras garrafais de proposito: uma maquina que alguem
+                // acha protegida e nao esta e pior que uma sem agente.
+                _logger.LogWarning(
+                    "MODO AUDITORIA: nada sera negado. As operacoes sao avaliadas e contadas " +
+                    "em WouldHaveDenied, que mede quanto o bloqueio custaria se fosse ligado.");
+            }
 
             _logger.LogInformation(
                 "Prazo: motor {Budget} ms (RN-012), kernel espera {Kernel} ms.",

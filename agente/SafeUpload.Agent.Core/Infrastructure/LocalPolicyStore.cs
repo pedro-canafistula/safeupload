@@ -148,7 +148,8 @@ public sealed class LocalPolicyStore : IPolicyStore
             document.MaxFileSizeMb,
             document.InspectionTimeoutSeconds,
             document.FailOpen,
-            excluded);
+            excluded,
+            document.AuditOnly);
     }
 
     private sealed record PolicyDocument
@@ -167,6 +168,9 @@ public sealed class LocalPolicyStore : IPolicyStore
 
         [JsonPropertyName("inspectionTimeoutSeconds")]
         public int InspectionTimeoutSeconds { get; init; } = 5;
+
+        [JsonPropertyName("auditOnly")]
+        public bool AuditOnly { get; init; }
 
         [JsonPropertyName("failOpen")]
         public bool FailOpen { get; init; } = true;

@@ -1196,15 +1196,31 @@ Return Value:
         SafeUploadIsProcessTainted( FltGetRequestorProcessId( Data ) ) &&
         SafeUploadIsMonitoredDestination( Data, volumeKind )) {
 
-        SafeUploadCount( DeniedPreCreate );
+        //
+        //  Em modo auditoria a escrita segue, contada como o que teria
+        //  sido negado. E o unico jeito de conhecer o custo do bloqueio
+        //  antes de liga-lo, que e como todo DLP de mercado e implantado.
+        //
 
-        SafeUploadTrace( "escrita negada: processo %lu marcado\n",
-                         FltGetRequestorProcessId( Data ) );
+        if (SafeUploadPolicyAuditOnly()) {
 
-        Data->IoStatus.Status = STATUS_ACCESS_DENIED;
-        Data->IoStatus.Information = 0;
+            SafeUploadCount( WouldHaveDenied );
 
-        return FLT_PREOP_COMPLETE;
+            SafeUploadTrace( "AUDITORIA: escrita seria negada, processo %lu marcado\n",
+                             FltGetRequestorProcessId( Data ) );
+
+        } else {
+
+            SafeUploadCount( DeniedPreCreate );
+
+            SafeUploadTrace( "escrita negada: processo %lu marcado\n",
+                             FltGetRequestorProcessId( Data ) );
+
+            Data->IoStatus.Status = STATUS_ACCESS_DENIED;
+            Data->IoStatus.Information = 0;
+
+            return FLT_PREOP_COMPLETE;
+        }
     }
 
     *CompletionContext = (PVOID) (ULONG_PTR) volumeKind;
@@ -1392,12 +1408,19 @@ Return Value:
 
         if (FlagOn( scopeFlags, SAFEUPLOAD_REQUEST_FLAG_SCOPE_DESTINATION )) {
 
-            SafeUploadCount( DeniedPostCreate );
+            if (SafeUploadPolicyAuditOnly()) {
 
-            FltCancelFileOpen( FltObjects->Instance, FltObjects->FileObject );
+                SafeUploadCount( WouldHaveDenied );
 
-            Data->IoStatus.Status = STATUS_ACCESS_DENIED;
-            Data->IoStatus.Information = 0;
+            } else {
+
+                SafeUploadCount( DeniedPostCreate );
+
+                FltCancelFileOpen( FltObjects->Instance, FltObjects->FileObject );
+
+                Data->IoStatus.Status = STATUS_ACCESS_DENIED;
+                Data->IoStatus.Information = 0;
+            }
         }
     }
 
@@ -1659,6 +1682,15 @@ Return Value:
     }
 
     if (!monitored) {
+
+        return FLT_PREOP_SUCCESS_NO_CALLBACK;
+    }
+
+    if (SafeUploadPolicyAuditOnly()) {
+
+        SafeUploadCount( WouldHaveDenied );
+
+        SafeUploadTrace( "AUDITORIA: rename seria negado, processo %lu marcado\n", processId );
 
         return FLT_PREOP_SUCCESS_NO_CALLBACK;
     }

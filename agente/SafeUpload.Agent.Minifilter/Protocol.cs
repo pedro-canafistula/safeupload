@@ -24,7 +24,7 @@ public static class Contract
     /// mechanism that turns an incompatible pair into a clean refusal
     /// instead of a misread structure.
     /// </summary>
-    public const uint Version = 8;
+    public const uint Version = 9;
 
     public const int MaxPathChars = 512;
     public const int MaxImageNameChars = 64;
@@ -43,7 +43,7 @@ public static class Contract
     public const int ResponseSize = 24;
     public const int ControlSize = 16;
     public const int PolicyMessageSize = 19752;
-    public const int CountersSize = 160;
+    public const int CountersSize = 168;
 
     /// <summary>
     /// Throws if any managed structure fails to match the size the driver
@@ -138,6 +138,15 @@ public enum PolicyFlags : uint
     None = 0,
     Removable = 0x00000001,
     Network = 0x00000002,
+
+    /// <summary>
+    /// Avalia tudo, registra tudo, nao nega nada.
+    ///
+    /// Precisa chegar ao kernel, e nao ficar so no servico: a recusa por
+    /// processo marcado acontece la sem perguntar a ninguem. A marcacao
+    /// continua acontecendo - sem ela nao ha o que medir.
+    /// </summary>
+    AuditOnly = 0x00000004,
 }
 
 public static class ControlCommand
@@ -259,6 +268,7 @@ public struct SafeUploadCounters
     public ulong RenamesFromTainted;
     public ulong LinksSeen;
     public ulong LinksFromTainted;
+    public ulong WouldHaveDenied;
     public ulong ClassesSeenLow;
     public ulong ClassesSeenHigh;
 }

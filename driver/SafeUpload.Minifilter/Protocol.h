@@ -49,7 +49,7 @@ Environment:
 //  message means "allow" (RN-013), never "block".
 //
 
-#define SAFEUPLOAD_PROTOCOL_VERSION ((UINT32) 8)
+#define SAFEUPLOAD_PROTOCOL_VERSION ((UINT32) 9)
 
 //
 //  Capacity of the inline string fields, in WCHARs, terminator included.
@@ -249,6 +249,22 @@ typedef struct _SAFEUPLOAD_RESPONSE {
 
 #define SAFEUPLOAD_POLICY_FLAG_REMOVABLE ((UINT32) 0x00000001)
 #define SAFEUPLOAD_POLICY_FLAG_NETWORK   ((UINT32) 0x00000002)
+
+//
+//  Modo auditoria: avalia tudo, registra tudo, nao nega nada.
+//
+//  Precisa existir no kernel, e nao so no servico, porque a recusa por
+//  processo marcado acontece aqui sem perguntar a ninguem - uma flag do
+//  outro lado nao teria como desliga-la.
+//
+//  A marcacao continua acontecendo: sem ela nao ha o que medir. O que fica
+//  suspenso sao as tres negacoes - escrita no destino, cancelamento no
+//  pos-create e rename. Cada uma incrementa WouldHaveDenied em vez de
+//  negar, e esse contador e a medida de quanto o bloqueio custaria se
+//  fosse ligado hoje.
+//
+
+#define SAFEUPLOAD_POLICY_FLAG_AUDIT_ONLY ((UINT32) 0x00000004)
 
 typedef struct _SAFEUPLOAD_CONTROL {
 
@@ -482,6 +498,14 @@ typedef struct _SAFEUPLOAD_COUNTERS {
     UINT64 LinksFromTainted;
 
     //
+    //  Operacoes que teriam sido negadas se o modo auditoria estivesse
+    //  desligado. Em modo bloqueio fica em zero, porque ai elas sao
+    //  negadas de fato e contadas nos Denied*.
+    //
+
+    UINT64 WouldHaveDenied;
+
+    //
     //  Bitmap of every FILE_INFORMATION_CLASS that reached the callback:
     //  bit N of Low for class N, bit N of High for class N + 64.
     //
@@ -549,7 +573,7 @@ C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_POLICY_MESSAGE, Prefixes )          == 1064 )
 C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_POLICY_MESSAGE, SourcePrefixes )    == 9384 );
 C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_POLICY_MESSAGE, Images )            == 17704 );
 
-C_ASSERT( sizeof( SAFEUPLOAD_COUNTERS ) == 160 );
+C_ASSERT( sizeof( SAFEUPLOAD_COUNTERS ) == 168 );
 C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_COUNTERS, Version )     == 0 );
 C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_COUNTERS, StructSize )  == 4 );
 C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_COUNTERS, CreatesSeen ) == 8 );

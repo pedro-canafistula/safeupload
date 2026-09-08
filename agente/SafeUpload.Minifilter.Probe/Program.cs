@@ -243,6 +243,7 @@ public static class Program
         Console.WriteLine($"RenamesFromTainted      : {c.RenamesFromTainted}");
         Console.WriteLine($"LinksSeen               : {c.LinksSeen}");
         Console.WriteLine($"LinksFromTainted        : {c.LinksFromTainted}");
+        Console.WriteLine($"WouldHaveDenied         : {c.WouldHaveDenied}");
         Console.WriteLine($"ClassesSeen             : {c.ClassesSeenHigh:X16} {c.ClassesSeenLow:X16}");
         PrintClassesSeen(c);
 

@@ -73,6 +73,27 @@ public sealed class PolicyBuilder
     /// o driver com uma constante: o prazo e o do motor, e quem sabe quanto
     /// o motor precisa e o motor. Nao chamar deixa o padrao do driver.
     /// </summary>
+    /// <summary>
+    /// Liga o modo auditoria: nada e negado, tudo e contado.
+    ///
+    /// E como se implanta DLP sem ser desinstalado na primeira semana - e,
+    /// aqui, e a unica forma de medir a taxa de falso positivo da
+    /// contaminacao antes de decidir se ela vale.
+    /// </summary>
+    public PolicyBuilder WithAuditOnly(bool auditOnly)
+    {
+        if (auditOnly)
+        {
+            _flags |= PolicyFlags.AuditOnly;
+        }
+        else
+        {
+            _flags &= ~PolicyFlags.AuditOnly;
+        }
+
+        return this;
+    }
+
     public PolicyBuilder WithVerdictTimeout(TimeSpan timeout)
     {
         _verdictTimeoutMs = (uint) Math.Clamp(timeout.TotalMilliseconds, 100, 10_000);

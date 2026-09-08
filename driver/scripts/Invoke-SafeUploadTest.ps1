@@ -1459,6 +1459,61 @@ catch { 'ERRO:' + $_.Exception.GetType().Name }
                         Add-Result -Name 'Arquivo que nao pode ser inspecionado marca o processo' -Passed $false `
                             -Detail "O servico nao reconectou com a politica sem limite. Log em $serviceLog.semlimite."
                     }
+
+                    # ---------------------------------------------------
+                    # Modo auditoria
+                    # ---------------------------------------------------
+                    #
+                    # A mesma operacao que acabou de ser negada tem de passar
+                    # agora, e ser contada. E como todo DLP de mercado e
+                    # implantado: roda em auditoria ate se conhecer o que e
+                    # atividade legitima, e so entao o bloqueio liga.
+                    #
+                    # O caso usa o arquivo COM CPF de proposito: em auditoria
+                    # a deteccao continua acontecendo e o processo continua
+                    # sendo marcado - o que muda e so a negacao. Um caso com
+                    # arquivo inocente passaria mesmo se o modo nao existisse.
+
+                    Write-Host ''
+                    Write-Host '  Reiniciando o servico em modo auditoria.'
+
+                    if ($serviceProcess -and -not $serviceProcess.HasExited) {
+                        $serviceProcess | Stop-Process -Force
+                        Start-Sleep -Milliseconds 800
+                    }
+
+                    $policy.maxFileSizeMb = 20
+                    $policy.auditOnly = $true
+                    $policy | ConvertTo-Json -Depth 5 | Set-Content -Path $policyFile -Encoding UTF8
+
+                    $ready.Reset() | Out-Null
+
+                    $serviceProcess = Start-Process -FilePath $serviceExe `
+                        -ArgumentList '--Interception:Mode=Minifilter' `
+                        -NoNewWindow -PassThru -RedirectStandardOutput "$serviceLog.auditoria"
+
+                    if ($ready.WaitOne([TimeSpan]::FromSeconds(45))) {
+
+                        Remove-Item $alvo -Force -ErrorAction SilentlyContinue
+
+                        $auditado = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $roteiroFile $sensivel $alvo 2>&1 |
+                            Select-Object -Last 1
+
+                        Add-Result -Name 'Em auditoria, a escrita que seria negada passa' `
+                            -Passed ($auditado -eq 'ESCRITA_PASSOU') `
+                            -Detail $(if ($auditado -eq 'ESCRITA_PASSOU') {
+                                'O mesmo caso que foi negado em modo bloqueio passou, como deve.'
+                            } else {
+                                "Respondeu '$auditado'. O modo auditoria esta negando, e nao deveria negar nada."
+                            })
+
+                        Remove-Item $alvo -Force -ErrorAction SilentlyContinue
+                    }
+                    else {
+
+                        Add-Result -Name 'Em auditoria, a escrita que seria negada passa' -Passed $false `
+                            -Detail "O servico nao reconectou em modo auditoria. Log em $serviceLog.auditoria."
+                    }
                 }
             }
             finally {
@@ -1509,6 +1564,7 @@ $renamesSeen = 0
 $renamesFromTainted = 0
 $linksSeen = 0
 $linksFromTainted = 0
+$wouldHaveDenied = 0
 $setInformationSeen = 0
 
 foreach ($line in $counterOutput) {
@@ -1521,6 +1577,7 @@ foreach ($line in $counterOutput) {
     if ($line -match '^RenamesFromTainted\s*:\s*(\d+)') { $renamesFromTainted = [int] $matches[1] }
     if ($line -match '^LinksSeen\s*:\s*(\d+)') { $linksSeen = [int] $matches[1] }
     if ($line -match '^LinksFromTainted\s*:\s*(\d+)') { $linksFromTainted = [int] $matches[1] }
+    if ($line -match '^WouldHaveDenied\s*:\s*(\d+)') { $wouldHaveDenied = [int] $matches[1] }
 }
 
 # The cache is the property the design rests on. If it never served a single
@@ -1557,6 +1614,12 @@ Add-Result -Name 'A recusa por marca no pre-create foi contada' -Passed ($denied
 #
 # The refusal branch stays as a backstop and is documented in
 # ARQUITETURA.md as never having refused anything.
+
+# O contador que da sentido ao modo auditoria. Sem ele, "nada foi negado" e
+# indistinguivel de "nada seria negado" - e a diferenca entre as duas e
+# exatamente o que se quer medir antes de ligar o bloqueio.
+Add-Result -Name 'A auditoria contou o que teria sido negado' -Passed ($wouldHaveDenied -gt 0) `
+    -Detail "WouldHaveDenied = $wouldHaveDenied; a fase de auditoria passou por uma operacao que seria negada."
 
 Add-Result -Name 'O gancho de SET_INFORMATION e alcancado e libera fora de escopo' `
     -Passed ($renamesSeen -gt 0 -and $renamesFromTainted -gt 0) `

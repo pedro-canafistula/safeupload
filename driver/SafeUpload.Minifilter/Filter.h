@@ -543,6 +543,11 @@ SafeUploadPolicyVerdictTimeout (
     );
 
 BOOLEAN
+SafeUploadPolicyAuditOnly (
+    VOID
+    );
+
+BOOLEAN
 SafeUploadPolicyMatchesExtension (
     _In_ PCUNICODE_STRING FileName
     );

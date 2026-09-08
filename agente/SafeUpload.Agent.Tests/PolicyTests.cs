@@ -282,6 +282,35 @@ public class PolicyTests : IDisposable
             TestWorkspace.Operation(arquivo, DestinationKind.RemovableDrive)));
     }
 
+    /// <summary>
+    /// O modo auditoria sai do policy.json e chega ao domínio.
+    ///
+    /// Vale um teste porque o campo atravessa quatro camadas até virar
+    /// comportamento — JSON, domínio, política do driver e a decisão no
+    /// kernel — e um elo perdido no caminho não produz erro nenhum: produz
+    /// uma máquina que alguém acha que está auditando e está bloqueando, ou
+    /// o contrário, que é pior.
+    /// </summary>
+    [Fact]
+    public async Task Modo_auditoria_vem_do_arquivo_de_politica()
+    {
+        var padrao = await LoadAsync();
+
+        Assert.False(padrao.AuditOnly);
+
+        await File.WriteAllTextAsync(_workspace.PolicyFile, """
+            {
+              "version": 7,
+              "activeCategories": [ "Cpf" ],
+              "auditOnly": true
+            }
+            """);
+
+        var auditoria = await LoadAsync();
+
+        Assert.True(auditoria.AuditOnly);
+    }
+
     private static Policy Policy(IReadOnlyList<string> sourcePaths) =>
         new(
             Version: 1,
