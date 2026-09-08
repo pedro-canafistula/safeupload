@@ -28,6 +28,130 @@ afirmação é verdadeira com este componente sozinho.
 
 ---
 
+## Como o mercado resolve isto, e onde divergimos
+
+Escrito depois de comparar com Microsoft Purview, Forcepoint, Symantec DLP e
+Strac. A comparação é contra documentação pública desses produtos, não contra
+o código deles — o que dá para afirmar é o modelo, não a implementação.
+
+### O que os quatro fazem igual
+
+**1. A política é escrita em cima de canais de saída, não de leituras.**
+
+Purview enumera atividades de egresso — copiar para mídia removível, imprimir,
+salvar em compartilhamento de rede, subir para nuvem. Strac enumera "cada
+saída da máquina": abertura e download de arquivo, escrita em USB, impressão,
+captura de tela, AirDrop, área de transferência, upload pelo navegador, texto
+digitado num prompt de IA generativa. A pergunta cara — "este conteúdo é
+sensível?" — é feita **sobre o arquivo que está saindo**, no momento em que
+ele sai.
+
+**2. Cada atividade tem modo próprio, e bloquear é o último deles.**
+
+Purview: Off, Allow, Audit only, Block with override, Block — por atividade.
+Strac: Block, Warn ou Audit, por saída, em Mac e Windows. A recomendação de
+implantação é explícita: subir em modo auditoria primeiro, para conhecer o que
+é atividade legítima, e só depois passar a bloquear.
+
+**3. Bloqueio com justificativa é a norma, não a exceção.**
+
+"Block with override" bloqueia mas deixa o usuário prosseguir informando uma
+justificativa de negócio, que fica auditada. Transforma proibição em
+responsabilização, e é o que impede o DLP de ser desinstalado na primeira
+semana por atrapalhar trabalho legítimo.
+
+**4. Detecção por impressão digital, além de padrão.**
+
+Symantec e Forcepoint têm duas famílias que nós não temos:
+
+- **EDM** (Exact Data Matching): índice de uma fonte estruturada — a tabela de
+  clientes, por exemplo — para reconhecer *aquele* registro, e não qualquer
+  coisa com formato de CPF.
+- **IDM** (Indexed Document Matching): índice de documentos, capaz de
+  reconhecer o documento inteiro, um trecho dele, ou conteúdo apenas
+  semelhante.
+
+O índice é construído no servidor e **baixado para o agente**, que passa a
+casar localmente e continua funcionando sem rede. É o padrão de duas camadas:
+o caro acontece fora da máquina, o rápido acontece nela.
+
+**5. Um classificador, muitos canais.**
+
+Em Strac, um tipo de dado definido uma vez vale igual saindo por USB ou por
+API de SaaS. Nós já temos essa forma — o `InspectionService` não sabe por onde
+a operação chegou —, e vale preservá-la de propósito.
+
+### Onde divergimos, e o que isso significa
+
+Nosso modelo é diferente e é bom saber disso de propósito, em vez de
+descobrir depois.
+
+| | Purview / Forcepoint / Symantec / Strac | SafeUpload |
+|---|---|---|
+| Onde inspeciona | o arquivo que está saindo | o arquivo que está sendo **lido** |
+| O que decide | conteúdo do que sai | processo marcado por ter lido origem sensível |
+| Custo por operação | egresso é raro | **toda abertura em escopo paga** |
+| Falso positivo | conteúdo limpo passa | processo marcado não escreve por 300 s |
+
+**O que o nosso modelo pega e o deles não.** Ler um contrato com CPF,
+retrabalhar o conteúdo e salvar um arquivo derivado que não contém o número
+literal. Inspeção de conteúdo no egresso libera — o arquivo novo não casa
+padrão nenhum. Contaminação de processo bloqueia. Isso não é detalhe: é uma
+categoria de produto à parte, rastreio de linhagem de dados, e o próprio
+material de mercado a trata como concorrência distinta do DLP clássico.
+
+**O que o modelo deles pega e o nosso não.** Copiar um arquivo sensível que o
+processo nunca leu por este caminho, colar conteúdo pela área de transferência,
+imprimir, subir pelo navegador, digitar num prompt de IA. Nada disso passa
+por `IRP_MJ_CREATE` num destino vigiado.
+
+**A conclusão honesta:** chegamos ao modelo de linhagem sem escolher. Ele tem
+mérito real, mas foi consequência do desenho de contaminação, não decisão de
+produto. E ele carrega o custo que os outros evitaram: inspecionar na abertura
+põe o trabalho caro no caminho quente, que é exatamente a origem do problema
+de prazo documentado acima.
+
+### O que trazer, em ordem de valor por esforço
+
+**1. Modos por atividade: auditar, avisar, bloquear.** É o que os quatro têm e
+nós não — hoje só existe bloquear, desde o primeiro minuto. Modo auditoria
+roda tudo, nega nada e registra: além de ser como se implanta DLP sem ser
+desinstalado, é a única forma de medir nossa taxa de falso positivo, que é
+justamente a pergunta em aberto sobre a contaminação. É barato: o veredito já
+passa por um ponto único no `MinifilterInterceptor`.
+
+**2. Bloqueio com justificativa.** O painel WPF e a trilha de auditoria já
+existem; falta o caminho de volta do usuário para o serviço, que hoje é de mão
+única de propósito. Vale rever essa decisão à luz do que o mercado faz — mão
+única protege contra o usuário desligar a proteção, mas justificativa auditada
+não é desligar, é registrar.
+
+**3. Classificação persistida por identidade de arquivo.** Hoje o veredito vive
+no contexto de fluxo e morre no unload. Persistir por volume + id de arquivo +
+número de sequência de mudança faz um arquivo grande ser varrido uma vez na
+vida, e não uma vez por sessão — o que resolve o problema de prazo por outro
+caminho, sem marca provisória nenhuma.
+
+**4. Inspecionar também no egresso, sem abandonar a contaminação.** Os dois
+juntos cobrem coisas diferentes: conteúdo no egresso pega a cópia literal que
+a contaminação perde; a contaminação pega a transformação que o conteúdo
+perde. Manter os dois é escolha defensável — manter só a contaminação por
+inércia não é.
+
+**5. EDM e IDM.** É o degrau mais alto e o mais caro: exige índice construído
+fora da máquina e distribuído ao agente. Fica registrado como direção, não
+como próximo passo.
+
+### O que não copiar
+
+Esses produtos guardam cópia ou hash do arquivo que gerou o alerta, para
+investigação. Nós guardamos apenas achados mascarados, e isso foi decisão
+consciente de privacidade — está no `README` do agente: nenhum arquivo sai da
+máquina, o conteúdo é lido para memória e descartado no mesmo escopo.
+Divergir aqui é intencional e deve continuar.
+
+---
+
 ## O princípio
 
 Um minifiltro vê toda operação de arquivo da máquina. Em um Windows ocioso
@@ -801,3 +925,20 @@ diz alguma coisa contra uma máquina em uso normal, e continua sem medição.
 Os passos 1 a 3 valem mesmo que a contaminação seja descartada mais tarde por
 excesso de falso positivo; são redução de custo pura. O passo 4 é o único que
 carrega risco de produto, e é onde vale medir antes de decidir.
+
+---
+
+## Fontes da comparação de mercado
+
+Documentação pública consultada ao escrever a seção "Como o mercado resolve
+isto". Nenhuma delas descreve implementação interna; o que dá para extrair é o
+modelo de produto.
+
+- [Purview — bloquear com permissão de substituição](https://learn.microsoft.com/en-us/purview/endpoint-dlp-create-policy-unauthorized-data-sharing)
+- [Purview — referência de política de DLP](https://learn.microsoft.com/en-us/purview/dlp-policy-reference)
+- [Purview — configurações de DLP de endpoint](https://learn.microsoft.com/en-us/purview/dlp-configure-endpoint-settings)
+- [Symantec — Exact Match Data Identifier, perfil e índice](https://techdocs.broadcom.com/us/en/symantec-security-software/information-security/data-loss-prevention/16-1/about-data-loss-prevention-policy-authoring/introducing-exact-match-data-identifiers-emdi/about-the-exact-match-data-identifier-profile-and-index.html)
+- [Symantec — implantação e log do índice IDM](https://techdocs.broadcom.com/us/en/symantec-security-software/information-security/data-loss-prevention/16-0/about-data-loss-prevention-policies-v27576413-d327e9/introducing-indexed-document-matching-idm-v27388119-d327e27601/about-index-deployment-and-logging-v83990894-d327e28083.html)
+- [Forcepoint — configuração de DLP](https://help.forcepoint.com/fpone/deploy/rhtml/guid-5d451096-ddf6-4849-96dc-07bb4bd84891.html)
+- [Strac — Endpoint DLP](https://www.strac.io/endpoint-dlp)
+- [Strac — o que é um agente de DLP de endpoint](https://www.strac.io/blog/what-is-dlp-endpoint-agent)
