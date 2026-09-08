@@ -65,7 +65,13 @@ param(
 
     [int] $Port = 8000,
 
-    [string] $AdvertiseAddress
+    [string] $AdvertiseAddress,
+
+    # Onde os resultados enviados pela VM alvo sao gravados. FORA do
+    # diretorio servido de proposito: o que e servido por HTTP e legivel por
+    # qualquer coisa na rede local, e um relatorio de execucao carrega
+    # caminho de arquivo, nome de maquina e o que foi bloqueado.
+    [string] $ResultsDirectory = 'C:\safeupload-resultados'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -633,7 +639,8 @@ Write-Host '  Na VM alvo, em um PowerShell ELEVADO, um comando so:' -ForegroundC
 Write-Host ''
 Write-Host "    iex (irm $sourceUrl/bootstrap.ps1)" -ForegroundColor Green
 Write-Host ''
-Write-Host '  Ele baixa a versao atual do script de teste e a executa.' -ForegroundColor DarkGray
+Write-Host '  Ele baixa a versao atual do script de teste, executa, e devolve' -ForegroundColor DarkGray
+Write-Host '  o relatorio para ca no fim - sem captura de tela no meio.' -ForegroundColor DarkGray
 Write-Host '  Para opcoes (-SkipSmokeTest, -SkipDownload), rode depois:' -ForegroundColor DarkGray
 Write-Host '    & $env:TEMP\Invoke-SafeUploadTest.ps1 -SkipDownload -SkipSmokeTest' -ForegroundColor DarkGray
 
@@ -655,4 +662,7 @@ Write-Host ''
 Write-Host 'Ctrl+C para parar o servidor.'
 Write-Host ''
 
-python -m http.server $Port --directory $PackageDirectory
+Write-Host "  Resultados da VM alvo serao gravados em $ResultsDirectory." -ForegroundColor Green
+Write-Host ''
+
+& python (Join-Path $PSScriptRoot 'serve.py') $PackageDirectory $ResultsDirectory $Port

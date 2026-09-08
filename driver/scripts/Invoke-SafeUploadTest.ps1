@@ -1778,6 +1778,95 @@ foreach ($skipped in $script:Skipped) {
     Write-Host ("           {0}" -f $skipped.Reason) -ForegroundColor DarkGray
 }
 
+# ---------------------------------------------------------------------------
+# Devolver o relatorio
+# ---------------------------------------------------------------------------
+
+# Enviado ANTES do exit, para que uma execucao que falhou tambem chegue -
+# alias, principalmente ela. Uma falha que so existe numa captura de tela e
+# uma falha que nao da para comparar com a execucao anterior.
+#
+# O relatorio e montado a partir do estado da bateria, e nao capturado do
+# console: sai estruturado, na ordem, sem quebra de linha perdida e com os
+# contadores crus junto.
+
+if ($SourceUrl) {
+
+    $relatorio = New-Object System.Text.StringBuilder
+
+    [void] $relatorio.AppendLine('SafeUpload - relatorio de execucao')
+    [void] $relatorio.AppendLine("maquina  : $env:COMPUTERNAME")
+    [void] $relatorio.AppendLine("data     : $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss K')")
+    [void] $relatorio.AppendLine("origem   : $SourceUrl")
+    [void] $relatorio.AppendLine("resultado: $($script:Results.Count - $failed.Count)/$($script:Results.Count) passaram, $($script:Skipped.Count) pulada(s)")
+    [void] $relatorio.AppendLine()
+
+    [void] $relatorio.AppendLine('--- verificacoes ---')
+
+    foreach ($result in $script:Results) {
+        [void] $relatorio.AppendLine(('[{0}] {1}' -f $(if ($result.Passed) { 'ok   ' } else { 'FALHA' }), $result.Name))
+
+        if ($result.Detail) {
+            [void] $relatorio.AppendLine("        $($result.Detail)")
+        }
+    }
+
+    foreach ($skipped in $script:Skipped) {
+        [void] $relatorio.AppendLine("[PULADO] $($skipped.Name)")
+        [void] $relatorio.AppendLine("        $($skipped.Reason)")
+    }
+
+    if ($script:Diag.Count -gt 0) {
+        [void] $relatorio.AppendLine()
+        [void] $relatorio.AppendLine('--- codigos crus do interop ---')
+
+        foreach ($entry in $script:Diag.GetEnumerator()) {
+            [void] $relatorio.AppendLine(('{0,-38} {1}' -f $entry.Key, $entry.Value))
+        }
+    }
+
+    if ($counterOutput) {
+        [void] $relatorio.AppendLine()
+        [void] $relatorio.AppendLine('--- contadores do driver ---')
+        $counterOutput | ForEach-Object { [void] $relatorio.AppendLine([string] $_) }
+    }
+
+    # O log do servico so vai junto quando algo falhou. Numa execucao verde
+    # ele e ruido; numa vermelha e onde costuma estar a resposta.
+    # Test-Path variable: e nao um teste de $null: com Set-StrictMode, ler
+    # uma variavel que nunca foi atribuida lanca. Ela so existe se a fase do
+    # servico chegou a rodar.
+    if ($failed.Count -gt 0 -and (Test-Path variable:serviceLog)) {
+
+        foreach ($log in @($serviceLog, "$serviceLog.semlimite", "$serviceLog.auditoria")) {
+
+            if ($log -and (Test-Path $log)) {
+                [void] $relatorio.AppendLine()
+                [void] $relatorio.AppendLine("--- $(Split-Path -Leaf $log) (ultimas 40 linhas) ---")
+                Get-Content $log -Tail 40 -ErrorAction SilentlyContinue |
+                    ForEach-Object { [void] $relatorio.AppendLine($_) }
+            }
+        }
+    }
+
+    try {
+        $marca = if ($failed.Count -gt 0) { 'FALHA' } else { 'ok' }
+
+        Invoke-RestMethod -Method Post -Uri "$SourceUrl/resultados" `
+            -Body ([System.Text.Encoding]::UTF8.GetBytes($relatorio.ToString())) `
+            -ContentType 'text/plain; charset=utf-8' `
+            -Headers @{ 'X-SafeUpload-Run' = "$env:COMPUTERNAME-$marca" } `
+            -TimeoutSec 20 | Out-Null
+
+        Write-Host 'Relatorio enviado para a VM de desenvolvimento.' -ForegroundColor Green
+    }
+    catch {
+        # Nunca falhar a bateria por causa do envio: o resultado que importa
+        # ja esta na tela, e o envio e conveniencia.
+        Write-Host "Nao foi possivel enviar o relatorio: $($_.Exception.Message)" -ForegroundColor Yellow
+    }
+}
+
 Write-Host ''
 
 if ($failed.Count -gt 0) {
