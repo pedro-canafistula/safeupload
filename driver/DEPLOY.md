@@ -1043,17 +1043,21 @@ filtros na mesma altitude não coexistem. A altitude definitiva precisa ser
 solicitada à Microsoft antes de qualquer instalação fora de VM descartável.
 O TODO está no `SafeUpload.inf`.
 
-**2. Custo de interceptar `IRP_MJ_READ`.** Com o inspetor conectado, **toda**
-leitura não-paginada de todo processo (fora Idle/System/inspetor) vira uma
-ida e volta ao modo usuário. Isso é caro. O teto por operação é o timeout de
-500 ms, então o sistema não trava, mas a VM fica perceptivelmente mais lenta
-sob carga de I/O. A v2 deve guardar o veredito por *stream handle context* e
-consultar o modo usuário uma vez por handle, não uma vez por leitura.
+**2. ~~Custo de interceptar `IRP_MJ_READ`.~~ Resolvido.** Na v1 toda leitura
+não-paginada virava uma ida ao modo usuário, e a VM ficava perceptivelmente
+mais lenta sob carga de I/O. O gancho de `READ` foi **removido** e o veredito
+passou a ser guardado em contexto de fluxo: uma consulta por versão de
+arquivo, não por leitura. Medido, com o alvo do desenho atingido — 0,9% dos
+creates passam das portas baratas, contra o `< 1%` projetado. Ver
+`ARQUITETURA.md` para o raciocínio e para as evidências sob as quais um
+gancho de leitura voltaria.
 
-**3. Inspetor de thread única.** O `SafeUpload.Inspector` atende uma
-requisição por vez, de forma síncrona. Todas as outras operações do sistema
-ficam na fila atrás dela. O agente C# deve usar I/O sobreposto com um pool
-de threads, como faz o sample `scanner` do WDK.
+**3. Cliente de thread única.** O laço de mensagens atende uma requisição por
+vez, de forma síncrona, e vale tanto para a sonda quanto para o
+`MinifilterInterceptor` do serviço: `FilterGetMessage` bloqueia a thread que
+o chama. Todas as outras operações monitoradas da máquina ficam na fila atrás
+da mais lenta. A saída é I/O sobreposto com um pool sobre a mesma porta, como
+faz o sample `scanner` do WDK.
 
 **4. Espera circular limitada pelo timeout.** Se o inspetor bloquear em uma
 operação de arquivo que passa por este mesmo filtro (por exemplo escrevendo

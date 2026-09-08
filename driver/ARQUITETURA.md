@@ -288,6 +288,62 @@ seguinte — que é menos do que a leitura otimista sugeriria.
 
 ---
 
+## A cadeia com o agente de verdade
+
+Tudo acima foi medido contra a **sonda**, cuja decisão é uma comparação de
+string no caminho. Isso mede o driver, e é o que se quer para medir o driver
+— mas não prova que a coisa funciona, porque o que decide no produto é o
+`InspectionService` com as regras RN-001 a RN-004.
+
+Agora foi medido com o agente real, e passa. O caso é este:
+
+1. Um `.txt` de nome inocente — `relatorio-com-cpf.txt` — contendo um CPF
+   sintético válido, numa pasta de origem vigiada.
+2. Ler o arquivo. O driver classifica como `SCOPE_SOURCE` e pergunta.
+3. O serviço extrai o texto, o `CpfValidator` confere os dígitos módulo 11 e
+   responde bloqueio.
+4. O driver **permite a leitura** e marca o processo.
+5. O mesmo processo escreve no destino vigiado, e é negado no pré-CREATE, com
+   zero bytes gravados.
+
+O controle roda antes, num processo separado: um arquivo sem nada sensível,
+lido do mesmo lugar, e a escrita seguinte passa. Os dois têm de rodar em
+processos **novos**, porque a marca é por PID e o PowerShell da bateria já
+foi marcado na fase da sonda.
+
+### Duas coisas que só apareceram aqui
+
+**A política do agente não tinha origem.** `MonitoredScopes` só modelava
+destinos, porque no mock a inspeção começa quando um arquivo *chega* à pasta
+vigiada e origem e destino são a mesma coisa. Sem `SourcePaths` o driver
+nunca classifica nada como `SCOPE_SOURCE`, e o primeiro elo da cadeia não
+existe.
+
+**O motor descartava a pergunta.** Corrigido o item acima, a bateria ainda
+falhou: `InspectionService` decidia escopo por `IsMonitoredDestination`, que
+testa o caminho de destino. Uma leitura de origem não tem destino, então
+caía como fora de escopo e o arquivo nunca era aberto. O driver tinha feito
+a parte dele — mandou `SCOPE_SOURCE` — e o motor jogava fora a pergunta,
+porque a única que sabia responder era sobre destino.
+
+`DestinationKind.SensitiveSource` e `Policy.IsInScope` fecham isso. Vale
+registrar que os 156 testes do agente passavam durante todo esse tempo:
+nenhum perguntava se uma leitura de origem entra em escopo.
+
+### O prazo, ainda aberto — e a evidência que ele não é o problema de hoje
+
+O driver espera 500 ms e a RN-012 dá 5 s ao motor. A previsão era que
+extração real estouraria o orçamento e tudo passaria sem inspeção. **Não é o
+que acontece**: nesta execução `AllowedWithoutInspection` ficou em zero e
+nenhuma inspeção estourou o prazo de 400 ms do interceptador.
+
+Isso não fecha a questão, delimita. Um `.txt` pequeno cabe folgado; um
+`.docx` ou `.xlsx` grande, passando pelo Open XML, é outra história e ainda
+não foi medido. O interceptador conta e registra cada estouro, então quando
+começar a acontecer vai aparecer em vez de sumir.
+
+---
+
 ## Quem realmente fecha o desvio por rename
 
 O gancho de `IRP_MJ_SET_INFORMATION` foi escrito para fechar duas portas:
