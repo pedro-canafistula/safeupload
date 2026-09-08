@@ -24,7 +24,7 @@ public static class Contract
     /// mechanism that turns an incompatible pair into a clean refusal
     /// instead of a misread structure.
     /// </summary>
-    public const uint Version = 9;
+    public const uint Version = 10;
 
     public const int MaxPathChars = 512;
     public const int MaxImageNameChars = 64;
@@ -43,7 +43,8 @@ public static class Contract
     public const int ResponseSize = 24;
     public const int ControlSize = 16;
     public const int PolicyMessageSize = 19752;
-    public const int CountersSize = 168;
+    public const int CountersSize = 184;
+    public const int OverrideMessageSize = 1056;
 
     /// <summary>
     /// Throws if any managed structure fails to match the size the driver
@@ -61,6 +62,7 @@ public static class Contract
         Check(nameof(SafeUploadControl), sizeof(SafeUploadControl), ControlSize);
         Check(nameof(SafeUploadPolicyMessage), sizeof(SafeUploadPolicyMessage), PolicyMessageSize);
         Check(nameof(SafeUploadCounters), sizeof(SafeUploadCounters), CountersSize);
+        Check(nameof(SafeUploadOverrideMessage), sizeof(SafeUploadOverrideMessage), OverrideMessageSize);
 
         // Offsets that carry real risk: everything after them shifts if
         // they are wrong, and a shifted path is still a readable string.
@@ -147,12 +149,22 @@ public enum PolicyFlags : uint
     /// continua acontecendo - sem ela nao ha o que medir.
     /// </summary>
     AuditOnly = 0x00000004,
+
+    /// <summary>
+    /// Deixa o usuario justificar uma recusa e seguir.
+    ///
+    /// Dois modos, e so dois. Desligado, o mecanismo fica fora do ar: o
+    /// driver recusa conceder excecao, entao nem uma interface comprometida
+    /// libera nada. A escolha e da organizacao, nao do usuario.
+    /// </summary>
+    AllowOverride = 0x00000008,
 }
 
 public static class ControlCommand
 {
     public const uint SetPolicy = 1;
     public const uint GetCounters = 2;
+    public const uint GrantOverride = 3;
 }
 
 [StructLayout(LayoutKind.Sequential, Pack = 8)]
@@ -245,6 +257,25 @@ public unsafe struct SafeUploadPolicyMessage
     public fixed char Images[Contract.MaxImages * Contract.MaxImageChars];
 }
 
+/// <summary>
+/// Concessao de excecao, do servico para o driver.
+///
+/// O caminho e exato, e nao prefixo: uma excecao para uma pasta valeria para
+/// tudo que fosse escrito nela depois. O prazo e limitado pelo driver, porque
+/// uma excecao e um buraco na protecao e um que dure uma hora e um buraco com
+/// nome.
+/// </summary>
+[StructLayout(LayoutKind.Sequential, Pack = 8)]
+public unsafe struct SafeUploadOverrideMessage
+{
+    public SafeUploadControl Control;
+    public uint ProcessId;
+    public uint DurationSeconds;
+    public uint PathLength;
+    public uint Reserved;
+    public fixed char Path[Contract.MaxPathChars];
+}
+
 [StructLayout(LayoutKind.Sequential, Pack = 8)]
 public struct SafeUploadCounters
 {
@@ -269,6 +300,8 @@ public struct SafeUploadCounters
     public ulong LinksSeen;
     public ulong LinksFromTainted;
     public ulong WouldHaveDenied;
+    public ulong OverridesGranted;
+    public ulong OverridesUsed;
     public ulong ClassesSeenLow;
     public ulong ClassesSeenHigh;
 }

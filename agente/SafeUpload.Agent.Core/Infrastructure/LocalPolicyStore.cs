@@ -149,7 +149,8 @@ public sealed class LocalPolicyStore : IPolicyStore
             document.InspectionTimeoutSeconds,
             document.FailOpen,
             excluded,
-            document.AuditOnly);
+            document.AuditOnly,
+            document.OverrideAllowed);
     }
 
     private sealed record PolicyDocument
@@ -171,6 +172,9 @@ public sealed class LocalPolicyStore : IPolicyStore
 
         [JsonPropertyName("auditOnly")]
         public bool AuditOnly { get; init; }
+
+        [JsonPropertyName("overrideAllowed")]
+        public bool OverrideAllowed { get; init; }
 
         [JsonPropertyName("failOpen")]
         public bool FailOpen { get; init; } = true;

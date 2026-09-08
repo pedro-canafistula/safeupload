@@ -973,12 +973,38 @@ justifica, porque sem ele a prioridade vira gosto.
     pegaria os provedores desconhecidos e traria junto todo hash, UUID e
     identificador de commit.
 
-13. **Bloqueio com justificativa.** Advogada precisa mandar o contrato com CPF
-    à parte contrária pela pasta de rede. Hoje: bloqueio seco, liga para o
-    suporte, espera. Com justificativa, digita o motivo, segue, e o evento
-    fica auditado. O painel e a trilha já existem; falta o canal de volta do
-    usuário para o serviço, hoje de mão única de propósito — decisão que
-    precisa ser revista, não contornada.
+13. **Bloqueio com justificativa.** *(mecanismo pronto, interface pendente)*
+    Advogada precisa mandar o contrato com CPF à parte contrária pela pasta de
+    rede. Hoje: bloqueio seco, liga para o suporte, espera. Com justificativa,
+    digita o motivo, segue, e o evento fica auditado.
+
+    **São dois modos, e só dois:** com justificativa e sem. A escolha é da
+    organização e vive na política (`overrideAllowed`). Desligado, o mecanismo
+    fica fora do ar — o driver **recusa conceder** exceção, então nem uma
+    interface comprometida libera nada. A verificação mora dentro do
+    `SafeUploadGrantOverride`, e não em quem chama, para que não exista
+    caminho que conceda com o modo desligado.
+
+    A concessão é **estreita**: um processo, um caminho de destino **exato**
+    (não prefixo — uma exceção para uma pasta valeria para tudo escrito nela
+    depois), prazo limitado pelo driver entre 10 e 120 segundos, e some depois
+    de **um uso**. A alternativa óbvia, limpar a marca do processo, seria um
+    martelo grande demais: liberaria qualquer escrita para qualquer destino
+    vigiado até o processo ler algo sensível de novo.
+
+    A concessão é **concedida, não pedida**. O kernel nunca pergunta se há
+    exceção; consulta uma tabela que o modo usuário preencheu, e nada que o
+    processo interceptado faça cria uma entrada nela. A consulta acontece só
+    no caminho que já decidiu recusar, que é frio.
+
+    **O que falta**: o canal de volta do usuário. O `NotificationPipeServer` é
+    de mão única de propósito — *"não é economia de código, é a garantia de
+    que nada que o usuário faça na interface pode alterar um veredito"*. A
+    revisão dessa garantia é esta: a interface continua sem alterar veredito;
+    ela **submete uma justificativa para um bloqueio que o próprio serviço
+    registrou**. O serviço segue sendo o único que decide, e só aceita
+    justificativa que referencie um bloqueio que ele mesmo emitiu, para a
+    sessão daquele usuário.
 
 14. **Classificação persistida por identidade de arquivo.** Planilha de 15 MB
     aberta toda manhã: hoje o veredito vive no contexto de fluxo e morre no

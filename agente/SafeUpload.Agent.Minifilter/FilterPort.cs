@@ -152,6 +152,56 @@ public sealed class FilterPort : IDisposable
         }
     }
 
+    /// <summary>
+    /// Concede uma excecao: um processo, um caminho de destino exato, por um
+    /// prazo curto e valida para um uso.
+    ///
+    /// Quem chama tem de ter registrado a justificativa ANTES - a excecao e
+    /// a consequencia do registro, nao o contrario. Um caminho que conceda
+    /// primeiro e audite depois deixa de auditar quando o segundo passo
+    /// falha, e o que fica e o buraco sem o registro.
+    /// </summary>
+    /// <param name="processId">Processo que levou a recusa.</param>
+    /// <param name="ntPath">Caminho de destino em forma de dispositivo.</param>
+    /// <param name="duration">Prazo pedido; o driver limita.</param>
+    public unsafe void GrantOverride(uint processId, string ntPath, TimeSpan duration)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(ntPath);
+
+        if (ntPath.Length >= Contract.MaxPathChars)
+        {
+            throw new ArgumentException($"Caminho com {ntPath.Length} caracteres; o limite e {Contract.MaxPathChars - 1}.", nameof(ntPath));
+        }
+
+        var message = new SafeUploadOverrideMessage
+        {
+            Control = new SafeUploadControl
+            {
+                Version = Contract.Version,
+                StructSize = (uint) sizeof(SafeUploadOverrideMessage),
+                Command = ControlCommand.GrantOverride,
+                Reserved = 0,
+            },
+            ProcessId = processId,
+            DurationSeconds = (uint) Math.Clamp(duration.TotalSeconds, 1, 600),
+            PathLength = (uint) (ntPath.Length * sizeof(char)),
+            Reserved = 0,
+        };
+
+        for (int i = 0; i < ntPath.Length; i += 1)
+        {
+            message.Path[i] = ntPath[i];
+        }
+
+        int hr = FilterSendMessage(Handle, (IntPtr) (&message), (uint) sizeof(SafeUploadOverrideMessage),
+                                   IntPtr.Zero, 0, out _);
+
+        if (hr != 0)
+        {
+            throw new Win32Exception(hr, $"Concessao de excecao falhou: 0x{hr:X8}");
+        }
+    }
+
     public unsafe SafeUploadCounters GetCounters()
     {
         var control = new SafeUploadControl

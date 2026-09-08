@@ -577,6 +577,39 @@ Return Value:
             leave;
         }
 
+        if (command == SAFEUPLOAD_CONTROL_GRANT_OVERRIDE) {
+
+            SAFEUPLOAD_OVERRIDE_MESSAGE grant;
+
+            if (InputBufferLength < sizeof( SAFEUPLOAD_OVERRIDE_MESSAGE )) {
+
+                status = STATUS_INVALID_BUFFER_SIZE;
+                leave;
+            }
+
+            //
+            //  Copiado de uma vez e validado depois, pela mesma razao da
+            //  politica: validar no lugar deixaria cada campo aberto a ser
+            //  trocado por outra thread do processo remetente entre a
+            //  verificacao e o uso.
+            //
+
+            RtlCopyMemory( &grant, InputBuffer, sizeof( SAFEUPLOAD_OVERRIDE_MESSAGE ) );
+
+            if (grant.PathLength == 0 ||
+                grant.PathLength > (SAFEUPLOAD_MAX_PATH_CHARS - 1) * sizeof( WCHAR )) {
+
+                status = STATUS_INVALID_PARAMETER;
+                leave;
+            }
+
+            status = SafeUploadGrantOverride( grant.ProcessId,
+                                              grant.Path,
+                                              (USHORT) grant.PathLength,
+                                              grant.DurationSeconds );
+            leave;
+        }
+
         if (command != SAFEUPLOAD_CONTROL_SET_POLICY) {
 
             status = STATUS_NOT_SUPPORTED;

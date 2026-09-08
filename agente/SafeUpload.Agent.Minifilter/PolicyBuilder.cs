@@ -94,6 +94,23 @@ public sealed class PolicyBuilder
         return this;
     }
 
+    /// <summary>
+    /// Liga o modo que deixa o usuario justificar uma recusa e seguir.
+    /// </summary>
+    public PolicyBuilder WithOverrideAllowed(bool allowed)
+    {
+        if (allowed)
+        {
+            _flags |= PolicyFlags.AllowOverride;
+        }
+        else
+        {
+            _flags &= ~PolicyFlags.AllowOverride;
+        }
+
+        return this;
+    }
+
     public PolicyBuilder WithVerdictTimeout(TimeSpan timeout)
     {
         _verdictTimeoutMs = (uint) Math.Clamp(timeout.TotalMilliseconds, 100, 10_000);

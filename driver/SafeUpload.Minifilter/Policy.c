@@ -328,6 +328,39 @@ Return Value:
 
 
 BOOLEAN
+SafeUploadPolicyAllowsOverride (
+    VOID
+    )
+/*++
+
+Routine Description:
+
+    Whether the policy lets a user justify a refusal and proceed.
+
+    Defaults to FALSE with no policy pushed, which is the safe direction: a
+    driver that is loaded but not configured must not hand out exceptions.
+
+    IRQL: <= APC_LEVEL, for the push lock.
+
+--*/
+{
+    BOOLEAN allowed = FALSE;
+
+    FltAcquirePushLockShared( &SafeUploadPolicyLock );
+
+    if (SafeUploadPolicy != NULL) {
+
+        allowed = BooleanFlagOn( SafeUploadPolicy->Flags,
+                                 SAFEUPLOAD_POLICY_FLAG_ALLOW_OVERRIDE );
+    }
+
+    FltReleasePushLock( &SafeUploadPolicyLock );
+
+    return allowed;
+}
+
+
+BOOLEAN
 SafeUploadPolicyAuditOnly (
     VOID
     )

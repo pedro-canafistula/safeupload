@@ -65,6 +65,12 @@ public sealed record MonitoredScopes(
 /// contador <c>WouldHaveDenied</c> do driver mede exatamente quanto o bloqueio
 /// custaria hoje.
 /// </param>
+/// <param name="OverrideAllowed">
+/// Deixa o usuário justificar uma recusa e seguir. São dois modos, e só dois:
+/// com justificativa e sem. Desligado, o mecanismo fica fora do ar — o driver
+/// recusa conceder exceção, então nem uma interface comprometida libera nada.
+/// A escolha é da organização, não do usuário, e por isso vive na política.
+/// </param>
 public sealed record Policy(
     int Version,
     IReadOnlySet<Category> ActiveCategories,
@@ -73,7 +79,8 @@ public sealed record Policy(
     int InspectionTimeoutSeconds,
     bool FailOpen,
     IReadOnlySet<string> ExcludedProcesses,
-    bool AuditOnly = false)
+    bool AuditOnly = false,
+    bool OverrideAllowed = false)
 {
     /// <summary>Limite da RN-013 convertido para bytes.</summary>
     public long MaxFileSizeBytes => (long)MaxFileSizeMb * 1024 * 1024;

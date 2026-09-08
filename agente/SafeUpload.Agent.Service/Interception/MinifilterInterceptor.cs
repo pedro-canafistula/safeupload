@@ -209,6 +209,7 @@ public sealed class MinifilterInterceptor : BackgroundService
 
             builder.WithVerdictTimeout(kernelDeadline);
             builder.WithAuditOnly(policy.AuditOnly);
+            builder.WithOverrideAllowed(policy.OverrideAllowed);
             _budget = policy.InspectionTimeout;
 
             port.SetPolicy(builder.Build());

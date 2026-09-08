@@ -244,6 +244,8 @@ public static class Program
         Console.WriteLine($"LinksSeen               : {c.LinksSeen}");
         Console.WriteLine($"LinksFromTainted        : {c.LinksFromTainted}");
         Console.WriteLine($"WouldHaveDenied         : {c.WouldHaveDenied}");
+        Console.WriteLine($"OverridesGranted        : {c.OverridesGranted}");
+        Console.WriteLine($"OverridesUsed           : {c.OverridesUsed}");
         Console.WriteLine($"ClassesSeen             : {c.ClassesSeenHigh:X16} {c.ClassesSeenLow:X16}");
         PrintClassesSeen(c);
 

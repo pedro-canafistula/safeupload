@@ -445,6 +445,15 @@ extern SAFEUPLOAD_COUNTERS SafeUploadCounters;
 //  writing to removable media until the machine reboots.
 //
 
+//
+//  Limites do prazo de uma excecao. Uma excecao e um buraco na protecao:
+//  curta demais nao serve para o usuario terminar a operacao, longa demais
+//  deixa de ser excecao.
+//
+
+#define SAFEUPLOAD_OVERRIDE_MIN_SECONDS ((ULONG) 10)
+#define SAFEUPLOAD_OVERRIDE_MAX_SECONDS ((ULONG) 120)
+
 #define SAFEUPLOAD_TAINT_TTL_SECONDS ((ULONGLONG) 300)
 
 #define SAFEUPLOAD_TAINT_TTL_INTERVALS \
@@ -464,6 +473,30 @@ VOID
 SafeUploadTaintProcess (
     _In_ ULONG ProcessId,
     _In_ UINT32 Categories
+    );
+
+VOID
+SafeUploadInitializeOverrides (
+    VOID
+    );
+
+VOID
+SafeUploadFreeOverrides (
+    VOID
+    );
+
+NTSTATUS
+SafeUploadGrantOverride (
+    _In_ ULONG ProcessId,
+    _In_ PCWSTR Path,
+    _In_ USHORT PathLengthBytes,
+    _In_ ULONG DurationSeconds
+    );
+
+BOOLEAN
+SafeUploadConsumeOverride (
+    _In_ ULONG ProcessId,
+    _In_ PCUNICODE_STRING Path
     );
 
 VOID
@@ -544,6 +577,11 @@ SafeUploadPolicyVerdictTimeout (
 
 BOOLEAN
 SafeUploadPolicyAuditOnly (
+    VOID
+    );
+
+BOOLEAN
+SafeUploadPolicyAllowsOverride (
     VOID
     );
 

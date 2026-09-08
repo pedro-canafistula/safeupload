@@ -49,7 +49,7 @@ Environment:
 //  message means "allow" (RN-013), never "block".
 //
 
-#define SAFEUPLOAD_PROTOCOL_VERSION ((UINT32) 9)
+#define SAFEUPLOAD_PROTOCOL_VERSION ((UINT32) 10)
 
 //
 //  Capacity of the inline string fields, in WCHARs, terminator included.
@@ -229,6 +229,19 @@ typedef struct _SAFEUPLOAD_RESPONSE {
 #define SAFEUPLOAD_CONTROL_GET_COUNTERS ((UINT32) 2)
 
 //
+//  Concede uma excecao para uma operacao que seria negada: um processo, um
+//  caminho de destino exato, por um prazo curto, valida para um uso.
+//
+//  E o "bloqueio com justificativa": o usuario recebe a recusa, informa um
+//  motivo de negocio, e a operacao seguinte passa - com o motivo na
+//  auditoria. O kernel nunca pergunta se ha excecao; ele consulta uma tabela
+//  que o modo usuario preencheu, e nada que o processo interceptado faca
+//  cria uma entrada nela.
+//
+
+#define SAFEUPLOAD_CONTROL_GRANT_OVERRIDE ((UINT32) 3)
+
+//
 //  Capacities of the policy message. Fixed, like everything else here: the
 //  kernel must be able to tell how big a message is before reading it, and
 //  a policy that does not fit is a policy that has to be reduced, not a
@@ -265,6 +278,19 @@ typedef struct _SAFEUPLOAD_RESPONSE {
 //
 
 #define SAFEUPLOAD_POLICY_FLAG_AUDIT_ONLY ((UINT32) 0x00000004)
+
+//
+//  Dois modos de bloqueio, e so dois: com justificativa e sem.
+//
+//  Ligado, o usuario que levou uma recusa pode informar um motivo de negocio
+//  e seguir - com o motivo registrado. Desligado, o mecanismo inteiro fica
+//  fora do ar: o driver recusa conceder excecao, entao nem uma interface
+//  comprometida consegue liberar nada.
+//
+//  A escolha e da organizacao, nao do usuario, e por isso vive na politica.
+//
+
+#define SAFEUPLOAD_POLICY_FLAG_ALLOW_OVERRIDE ((UINT32) 0x00000008)
 
 typedef struct _SAFEUPLOAD_CONTROL {
 
@@ -362,6 +388,45 @@ typedef struct _SAFEUPLOAD_POLICY_MESSAGE {
     WCHAR Images[SAFEUPLOAD_MAX_IMAGES][SAFEUPLOAD_MAX_IMAGE_CHARS];
 
 } SAFEUPLOAD_POLICY_MESSAGE, *PSAFEUPLOAD_POLICY_MESSAGE;
+
+
+//
+//  Mensagem de SAFEUPLOAD_CONTROL_GRANT_OVERRIDE.
+//
+//  O caminho e exato, e nao prefixo: uma excecao para uma pasta valeria para
+//  tudo que fosse escrito nela depois. O prazo e limitado pelo driver entre
+//  SAFEUPLOAD_OVERRIDE_MIN_SECONDS e SAFEUPLOAD_OVERRIDE_MAX_SECONDS - uma
+//  excecao e um buraco na protecao, e um que dure uma hora e um buraco com
+//  nome.
+//
+
+typedef struct _SAFEUPLOAD_OVERRIDE_MESSAGE {
+
+    SAFEUPLOAD_CONTROL Control;
+
+    UINT32 ProcessId;
+
+    //
+    //  Prazo pedido, em segundos. O driver limita.
+    //
+
+    UINT32 DurationSeconds;
+
+    //
+    //  Bytes de PathLength, sem o terminador.
+    //
+
+    UINT32 PathLength;
+
+    UINT32 Reserved;
+
+    //
+    //  Caminho de destino em forma de dispositivo, como o filtro os entrega.
+    //
+
+    WCHAR Path[SAFEUPLOAD_MAX_PATH_CHARS];
+
+} SAFEUPLOAD_OVERRIDE_MESSAGE, *PSAFEUPLOAD_OVERRIDE_MESSAGE;
 
 
 //
@@ -506,6 +571,16 @@ typedef struct _SAFEUPLOAD_COUNTERS {
     UINT64 WouldHaveDenied;
 
     //
+    //  Excecoes concedidas pelo modo usuario e efetivamente usadas. As duas
+    //  juntas dizem se o bloqueio com justificativa e usado de verdade ou se
+    //  o usuario apenas desiste da operacao - que e informacao de produto, e
+    //  nao de depuracao.
+    //
+
+    UINT64 OverridesGranted;
+    UINT64 OverridesUsed;
+
+    //
     //  Bitmap of every FILE_INFORMATION_CLASS that reached the callback:
     //  bit N of Low for class N, bit N of High for class N + 64.
     //
@@ -561,6 +636,9 @@ C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_CONTROL, Command )    == 8 );
 C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_CONTROL, Reserved )   == 12 );
 
 C_ASSERT( sizeof( SAFEUPLOAD_POLICY_MESSAGE ) == 19752 );
+C_ASSERT( sizeof( SAFEUPLOAD_OVERRIDE_MESSAGE ) == 1056 );
+C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_OVERRIDE_MESSAGE, ProcessId ) == 16 );
+C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_OVERRIDE_MESSAGE, Path )      == 32 );
 C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_POLICY_MESSAGE, Control )           == 0 );
 C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_POLICY_MESSAGE, ExtensionCount )    == 16 );
 C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_POLICY_MESSAGE, PrefixCount )       == 20 );
@@ -573,7 +651,7 @@ C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_POLICY_MESSAGE, Prefixes )          == 1064 )
 C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_POLICY_MESSAGE, SourcePrefixes )    == 9384 );
 C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_POLICY_MESSAGE, Images )            == 17704 );
 
-C_ASSERT( sizeof( SAFEUPLOAD_COUNTERS ) == 168 );
+C_ASSERT( sizeof( SAFEUPLOAD_COUNTERS ) == 184 );
 C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_COUNTERS, Version )     == 0 );
 C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_COUNTERS, StructSize )  == 4 );
 C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_COUNTERS, CreatesSeen ) == 8 );

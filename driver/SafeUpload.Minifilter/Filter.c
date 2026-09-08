@@ -85,6 +85,13 @@ SafeUploadIsMonitoredDestination (
     _In_ SAFEUPLOAD_VOLUME_KIND VolumeKind
     );
 
+static
+BOOLEAN
+SafeUploadOverrideCovers (
+    _Inout_ PFLT_CALLBACK_DATA Data,
+    _In_ ULONG ProcessId
+    );
+
 #ifdef ALLOC_PRAGMA
     #pragma alloc_text(INIT, DriverEntry)
     #pragma alloc_text(PAGE, SafeUploadUnload)
@@ -96,6 +103,7 @@ SafeUploadIsMonitoredDestination (
     #pragma alloc_text(PAGE, SafeUploadEvaluate)
     #pragma alloc_text(PAGE, SafeUploadReadFileStamp)
     #pragma alloc_text(PAGE, SafeUploadIsMonitoredDestination)
+    #pragma alloc_text(PAGE, SafeUploadOverrideCovers)
     #pragma alloc_text(PAGE, SafeUploadPostCreate)
     #pragma alloc_text(PAGE, SafeUploadPreCleanup)
     #pragma alloc_text(PAGE, SafeUploadPreSetInformation)
@@ -248,6 +256,7 @@ Return Value:
 
     SafeUploadInitializePolicy();
     SafeUploadInitializeTaint();
+    SafeUploadInitializeOverrides();
 
     SafeUploadData.DriverObject = DriverObject;
 
@@ -383,6 +392,7 @@ Return Value:
 
     SafeUploadFreePolicy();
     SafeUploadFreeTaint();
+    SafeUploadFreeOverrides();
 
     SafeUploadTrace( "unloaded\n" );
 
@@ -961,6 +971,60 @@ Return Value:
 
 static
 BOOLEAN
+SafeUploadOverrideCovers (
+    _Inout_ PFLT_CALLBACK_DATA Data,
+    _In_ ULONG ProcessId
+    )
+/*++
+
+Routine Description:
+
+    Whether a user-granted exception covers this create.
+
+    Resolves the opened name a second time, and that is deliberate: this
+    runs only on the path that is about to refuse, which is rare. Threading
+    the name through the cheap gates would put the cost on every operation
+    to save it on almost none.
+
+    IRQL: PASSIVE_LEVEL.
+
+Return Value:
+
+    TRUE when an exception covered the operation - and it is consumed.
+
+--*/
+{
+    PFLT_FILE_NAME_INFORMATION nameInfo = NULL;
+    BOOLEAN covered;
+    NTSTATUS status;
+
+    PAGED_CODE();
+
+    if (!SafeUploadPolicyAllowsOverride()) {
+
+        return FALSE;
+    }
+
+    status = FltGetFileNameInformation( Data,
+                                        FLT_FILE_NAME_OPENED |
+                                            FLT_FILE_NAME_QUERY_DEFAULT,
+                                        &nameInfo );
+
+    if (!NT_SUCCESS( status )) {
+
+        return FALSE;
+    }
+
+    covered = SafeUploadConsumeOverride( ProcessId, &nameInfo->Name );
+
+    FltReleaseFileNameInformation( nameInfo );
+
+    return covered;
+}
+
+
+static
+BOOLEAN
 SafeUploadIsMonitoredDestination (
     _Inout_ PFLT_CALLBACK_DATA Data,
     _In_ SAFEUPLOAD_VOLUME_KIND VolumeKind
@@ -1201,6 +1265,18 @@ Return Value:
         //  sido negado. E o unico jeito de conhecer o custo do bloqueio
         //  antes de liga-lo, que e como todo DLP de mercado e implantado.
         //
+
+        //
+        //  Excecao antes de negar, e so aqui: este e o caminho frio, o unico
+        //  que ja decidiu recusar.
+        //
+
+        if (SafeUploadOverrideCovers( Data, FltGetRequestorProcessId( Data ) )) {
+
+            *CompletionContext = (PVOID) (ULONG_PTR) volumeKind;
+
+            return FLT_PREOP_SUCCESS_WITH_CALLBACK;
+        }
 
         if (SafeUploadPolicyAuditOnly()) {
 
