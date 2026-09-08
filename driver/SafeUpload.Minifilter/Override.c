@@ -36,6 +36,14 @@ Environment:
 #include "Filter.h"
 
 //
+//  RtlCompareMemory e nao RtlEqualMemory: a segunda e macro para memcmp, que
+//  em Release vira importacao de CRT e reprova no ApiValidator - "aitstatic
+//  returned exit code 193", uma mensagem que nao nomeia nem a API nem o
+//  arquivo. A primeira e funcao exportada do kernel e esta na lista de DDI
+//  universal.
+//
+
+//
 //  Tabela pequena e linear, sem hash: excecao e evento raro, criado por
 //  intervencao humana. Uma lista de dezesseis entradas percorrida na negacao
 //  custa menos que a estrutura para evita-la, e a negacao ja e o caminho
@@ -223,7 +231,7 @@ Return Value:
 
         if (entry->ProcessId == ProcessId &&
             entry->PathLengthBytes == PathLengthBytes &&
-            RtlEqualMemory( entry->Path, Path, PathLengthBytes )) {
+            RtlCompareMemory( entry->Path, Path, PathLengthBytes ) == PathLengthBytes) {
 
             slot = index;
             break;
@@ -310,7 +318,7 @@ Return Value:
 
         if (entry->ProcessId == ProcessId &&
             entry->PathLengthBytes == Path->Length &&
-            RtlEqualMemory( entry->Path, Path->Buffer, Path->Length )) {
+            RtlCompareMemory( entry->Path, Path->Buffer, Path->Length ) == Path->Length) {
 
             entry->InUse = FALSE;
             allowed = TRUE;

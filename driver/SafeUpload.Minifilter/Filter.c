@@ -1484,6 +1484,16 @@ Return Value:
 
         if (FlagOn( scopeFlags, SAFEUPLOAD_REQUEST_FLAG_SCOPE_DESTINATION )) {
 
+            //
+            //  Excecao antes de cancelar, pelo mesmo motivo do pre-create:
+            //  este e o caminho que ja decidiu recusar.
+            //
+
+            if (SafeUploadOverrideCovers( Data, FltGetRequestorProcessId( Data ) )) {
+
+                return FLT_POSTOP_FINISHED_PROCESSING;
+            }
+
             if (SafeUploadPolicyAuditOnly()) {
 
                 SafeUploadCount( WouldHaveDenied );

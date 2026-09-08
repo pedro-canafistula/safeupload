@@ -765,10 +765,38 @@ analisar o binário. Verificado que:
 - o binário de Debug passa como Universal;
 - só o de Release falha, e só com esse código presente.
 
-Não foi explicado. Trocar um ganho marginal por uma verificação de build
-quebrada que ninguém entende é mau negócio, e desligar o `ApiValidator` para
-contornar seria pior: ele é a verificação que garante que o driver só usa API
-permitida em Universal.
+Não foi explicado na época. Trocar um ganho marginal por uma verificação de
+build quebrada que ninguém entende é mau negócio, e desligar o `ApiValidator`
+para contornar seria pior: ele é a verificação que garante que o driver só usa
+API permitida em Universal.
+
+### Segunda ocorrência, com evidência
+
+A mesma falha voltou ao acrescentar `Override.c`, e desta vez foi investigada
+até onde dava.
+
+**Não é API reprovada.** O código 193 é `ERROR_BAD_EXE_FORMAT`: a ferramenta
+não conseguiu *analisar* o binário. Conferido à mão, com `dumpbin /imports`
+contra o `UniversalDDIs.xml`: as **53 APIs importadas estão todas na lista**.
+A pergunta que o `ApiValidator` existe para responder tem resposta, e é
+"nenhuma API fora do permitido".
+
+**A diferença estrutural é uma seção.** O binário de Release tem uma seção
+`fothk` — thunks de import gerados pelo linker — que o de Debug não tem. É a
+única diferença de forma entre os dois, e o `aitstatic` engasga só no de
+Release.
+
+**Uma hipótese foi testada e descartada:** `RtlEqualMemory` é macro para
+`memcmp`, que poderia virar importação de CRT em Release. Trocado por
+`RtlCompareMemory`, que é função exportada do kernel — a falha continuou. A
+troca ficou no código porque é a API correta de qualquer forma.
+
+**O que isso custa hoje.** O build de Release não fecha, e com ele se perde
+uma segunda verificação sobre o mesmo código. O que é entregue é o de Debug,
+que passa no `ApiValidator` e é o que a bateria exercita. Não é aceitável
+como estado permanente — é uma verificação a menos, do tipo que some sem
+ninguém notar, que é exatamente o padrão que esta bateria inteira existe para
+combater.
 
 **Se voltar a valer.** Se os contadores mostrarem `UserModeRoundTrips` alto
 em relação a `CreatesSeen` sob carga real — ou seja, o cache não segurando —,

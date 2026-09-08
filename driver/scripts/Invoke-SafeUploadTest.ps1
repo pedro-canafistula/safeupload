@@ -143,6 +143,38 @@ function Add-Skipped {
     Write-Host "           $Reason" -ForegroundColor DarkGray
 }
 
+function Send-Justificativa {
+    <#
+        Manda um pedido de justificativa pelo mesmo pipe que o aplicativo usa.
+
+        Existe para a bateria exercitar o caminho completo sem depender da
+        interface. O formato e o do JustificationProtocol: uma linha JSON,
+        UTF-8 sem BOM.
+    #>
+    param(
+        [Parameter(Mandatory)] [string] $EventId,
+        [Parameter(Mandatory)] [string] $Motivo
+    )
+
+    try {
+        $pipe = New-Object System.IO.Pipes.NamedPipeClientStream(
+            '.', 'SafeUpload.Agent.Justification',
+            [System.IO.Pipes.PipeDirection]::Out)
+
+        $pipe.Connect(5000)
+
+        $corpo = @{ eventId = $EventId; justification = $Motivo } | ConvertTo-Json -Compress
+        $bytes = (New-Object System.Text.UTF8Encoding($false)).GetBytes($corpo + [char]10)
+
+        $pipe.Write($bytes, 0, $bytes.Length)
+        $pipe.Flush()
+        $pipe.Dispose()
+    }
+    catch {
+        Write-Host "  Falha ao mandar justificativa: $($_.Exception.Message)" -ForegroundColor Yellow
+    }
+}
+
 function Stop-WithMessage {
     param([string] $Text)
 
@@ -1484,6 +1516,123 @@ catch { 'ERRO:' + $_.Exception.GetType().Name }
                     Remove-Item $alvo -Force -ErrorAction SilentlyContinue
 
                     # ---------------------------------------------------
+                    # Bloqueio com justificativa
+                    # ---------------------------------------------------
+                    #
+                    # Exercita o caminho completo sem interface nenhuma: o
+                    # arquivo com CPF DENTRO do destino vigiado e recusado no
+                    # pos-create, o evento vai para a trilha, e o pedido de
+                    # justificativa vai pelo pipe exatamente como o aplicativo
+                    # o mandaria.
+                    #
+                    # O identificador do bloqueio vem da trilha, e nao e
+                    # inventado aqui de proposito: e a mesma restricao que o
+                    # aplicativo tem.
+
+                    Write-Host ''
+                    Write-Host '  Reiniciando o servico com justificativa permitida.'
+
+                    if ($serviceProcess -and -not $serviceProcess.HasExited) {
+                        $serviceProcess | Stop-Process -Force
+                        Start-Sleep -Milliseconds 800
+                    }
+
+                    $policy.overrideAllowed = $true
+                    $policy | ConvertTo-Json -Depth 5 | Set-Content -Path $policyFile -Encoding UTF8
+
+                    $ready.Reset() | Out-Null
+
+                    $serviceProcess = Start-Process -FilePath $serviceExe `
+                        -ArgumentList '--Interception:Mode=Minifilter' `
+                        -NoNewWindow -PassThru -RedirectStandardOutput "$serviceLog.justificativa"
+
+                    if ($ready.WaitOne([TimeSpan]::FromSeconds(45))) {
+
+                        $filaAuditoria = Join-Path $policyDirectory 'queue.jsonl'
+                        $noDestino = Join-Path $TestDirectory 'contrato-no-destino.txt'
+
+                        Copy-Item $sensivel $noDestino -Force -ErrorAction SilentlyContinue
+
+                        # Primeira leitura: recusada no pos-create, porque o
+                        # conteudo tem CPF e o arquivo esta num destino vigiado.
+                        $primeira = $false
+                        try { Get-Content -LiteralPath $noDestino -Raw -ErrorAction Stop | Out-Null }
+                        catch [System.UnauthorizedAccessException] { $primeira = $true }
+                        catch { }
+
+                        Add-Result -Name 'Arquivo sensivel no destino e recusado' -Passed $primeira `
+                            -Detail $(if ($primeira) { 'Recusa no pos-create, como esperado.' } else { 'Passou: nao ha o que justificar depois.' })
+
+                        Start-Sleep -Milliseconds 600
+
+                        $eventoId = $null
+
+                        foreach ($linha in @(Get-Content $filaAuditoria -ErrorAction SilentlyContinue | Select-Object -Last 30)) {
+                            try { $obj = $linha | ConvertFrom-Json } catch { continue }
+                            if ($obj.PSObject.Properties.Name -contains 'fileName' -and
+                                $obj.fileName -eq 'contrato-no-destino.txt' -and
+                                $obj.verdict -eq 'Blocked') {
+                                $eventoId = $obj.eventId
+                            }
+                        }
+
+                        if (-not $eventoId) {
+
+                            Add-Result -Name 'Justificativa libera a operacao' -Passed $false `
+                                -Detail "Nao achei o evento de bloqueio em $filaAuditoria."
+                        }
+                        else {
+
+                            # Um identificador inventado nao pode valer. Este
+                            # caso vem ANTES do legitimo de proposito: se o
+                            # servico aceitasse qualquer coisa, o teste
+                            # seguinte passaria sem provar nada.
+                            Send-Justificativa -EventId ([guid]::NewGuid().ToString('D')) -Motivo 'sem bloqueio correspondente'
+                            Start-Sleep -Milliseconds 600
+
+                            $aindaNegado = $false
+                            try { Get-Content -LiteralPath $noDestino -Raw -ErrorAction Stop | Out-Null }
+                            catch [System.UnauthorizedAccessException] { $aindaNegado = $true }
+                            catch { }
+
+                            Add-Result -Name 'Justificativa com identificador inventado nao vale' -Passed $aindaNegado `
+                                -Detail $(if ($aindaNegado) { 'Continua recusado, como deve.' } else { 'A operacao passou: o servico aceitou um identificador que nunca emitiu.' })
+
+                            Send-Justificativa -EventId $eventoId -Motivo 'processo 1234, envio a parte contraria'
+                            Start-Sleep -Milliseconds 800
+
+                            $liberado = $false
+                            try {
+                                Get-Content -LiteralPath $noDestino -Raw -ErrorAction Stop | Out-Null
+                                $liberado = $true
+                            }
+                            catch { }
+
+                            Add-Result -Name 'Justificativa libera a operacao' -Passed $liberado `
+                                -Detail $(if ($liberado) { 'A operacao passou depois da justificativa.' } else { 'Continua recusada: a excecao nao chegou ao driver.' })
+
+                            # A excecao vale para uma operacao, nao para um
+                            # periodo.
+                            Start-Sleep -Milliseconds 400
+
+                            $voltouANegar = $false
+                            try { Get-Content -LiteralPath $noDestino -Raw -ErrorAction Stop | Out-Null }
+                            catch [System.UnauthorizedAccessException] { $voltouANegar = $true }
+                            catch { }
+
+                            Add-Result -Name 'A excecao vale para uma operacao so' -Passed $voltouANegar `
+                                -Detail $(if ($voltouANegar) { 'Consumida: a operacao seguinte voltou a ser recusada.' } else { 'A excecao continua valendo: virou periodo de liberdade.' })
+                        }
+
+                        Remove-Item $noDestino -Force -ErrorAction SilentlyContinue
+                    }
+                    else {
+
+                        Add-Result -Name 'Justificativa libera a operacao' -Passed $false `
+                            -Detail "O servico nao reconectou. Log em $serviceLog.justificativa."
+                    }
+
+                    # ---------------------------------------------------
                     # Modo auditoria
                     # ---------------------------------------------------
                     #
@@ -1866,7 +2015,7 @@ if ($SourceUrl) {
     # servico chegou a rodar.
     if (@($failed).Count -gt 0 -and (Test-Path variable:serviceLog)) {
 
-        foreach ($log in @($serviceLog, "$serviceLog.auditoria")) {
+        foreach ($log in @($serviceLog, "$serviceLog.justificativa", "$serviceLog.auditoria")) {
 
             if ($log -and (Test-Path $log)) {
                 [void] $relatorio.AppendLine()
