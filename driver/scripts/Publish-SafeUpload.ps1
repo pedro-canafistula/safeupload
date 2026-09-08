@@ -441,6 +441,28 @@ foreach ($source in $sources) {
             Group-Object { $_.ToLowerInvariant() } |
             Where-Object { @($_.Group | Select-Object -Unique).Count -gt 1 }
 
+        # .Count desprotegido.
+        #
+        # Sob Set-StrictMode -Version Latest, .Count num escalar lanca
+        # PropertyNotFoundStrict. Uma colecao construida por += ou por
+        # pipeline chega como escalar quando tem exatamente um elemento,
+        # entao o defeito so aparece na execucao em que aquele caso
+        # aconteceu - e ja aconteceu, matando a bateria depois de as 39
+        # verificacoes terem passado.
+        #
+        # Aviso e nao erro: .Count em hashtable e legitimo, e envolver em
+        # @() ali estaria errado. Quem le decide.
+        $unguarded = Select-String -Path $source -Pattern '(?<!@\()\$[A-Za-z_][A-Za-z0-9_:]*\.Count' |
+            Where-Object { $_.Line -notmatch '@\(' }
+
+        if ($unguarded) {
+            Write-Host "  $(Split-Path -Leaf $source): .Count sem @() em $(@($unguarded).Count) linha(s):" -ForegroundColor Yellow
+            $unguarded | Select-Object -First 5 | ForEach-Object {
+                Write-Host "    linha $($_.LineNumber): $($_.Line.Trim())" -ForegroundColor DarkGray
+            }
+            Write-Host '    Escalar com um elemento so faria isto lancar sob StrictMode.' -ForegroundColor DarkGray
+        }
+
         if ($collisions) {
             foreach ($collision in $collisions) {
                 Write-Host "  colisao de maiusculas: $(@($collision.Group | Select-Object -Unique) -join ' / ')" -ForegroundColor Red

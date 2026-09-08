@@ -187,11 +187,11 @@ function Stop-Inspector {
         $process | Stop-Process -Force
     }
 
-    if ($processes.Count -gt 0) {
+    if (@($processes).Count -gt 0) {
         Start-Sleep -Milliseconds 500
     }
 
-    return $processes.Count
+    return @($processes).Count
 }
 
 $InspectorReadyEventName = 'Global\SafeUploadInspectorReady'
@@ -270,7 +270,7 @@ function Wait-InspectorLine {
 
         $lines = @(Get-Content $LogPath -ErrorAction SilentlyContinue)
 
-        for ($i = 0; $i -lt $lines.Count; $i += 1) {
+        for ($i = 0; $i -lt @($lines).Count; $i += 1) {
             if ($lines[$i] -match $Pattern) {
                 return $i
             }
@@ -303,7 +303,7 @@ foreach ($storeName in @('Root', 'TrustedPublisher')) {
     $found = @(Get-ChildItem "Cert:\LocalMachine\$storeName" -ErrorAction SilentlyContinue |
         Where-Object { $_.Subject -like '*SafeUpload*' })
 
-    if ($found.Count -eq 0) {
+    if (@($found).Count -eq 0) {
         Write-Host "  Certificado de teste ausente em $storeName." -ForegroundColor Red
         Write-Host "  Rode:  certutil -addstore -f $storeName $StagingDirectory\SafeUploadTest.cer" -ForegroundColor Red
         Stop-WithMessage 'Sem o certificado importado a assinatura nao e aceita.'
@@ -616,7 +616,7 @@ Add-Result -Name 'Filtro carregado' -Passed $true
 $fltmcOutput = @(& fltmc.exe instances -f $FilterName 2>&1 | ForEach-Object { "$_" })
 $separatorIndex = -1
 
-for ($i = 0; $i -lt $fltmcOutput.Count; $i += 1) {
+for ($i = 0; $i -lt @($fltmcOutput).Count; $i += 1) {
     if ($fltmcOutput[$i] -match '^\s*-{4,}') {
         $separatorIndex = $i
         break
@@ -626,16 +626,16 @@ for ($i = 0; $i -lt $fltmcOutput.Count; $i += 1) {
 $instances = @()
 
 if ($separatorIndex -ge 0) {
-    $instances = @($fltmcOutput[($separatorIndex + 1)..($fltmcOutput.Count - 1)] |
+    $instances = @($fltmcOutput[($separatorIndex + 1)..(@($fltmcOutput).Count - 1)] |
         Where-Object { $_.Trim().Length -gt 0 } |
         ForEach-Object { $_.Trim() })
 }
 
 Write-Host ''
-Write-Host "  Instancias anexadas: $($instances.Count)"
+Write-Host "  Instancias anexadas: $(@($instances).Count)"
 $instances | ForEach-Object { Write-Host "    $_" -ForegroundColor DarkGray }
 
-if ($instances.Count -eq 0) {
+if (@($instances).Count -eq 0) {
     Add-Result -Name 'Anexou a pelo menos um volume' -Passed $false `
         -Detail 'Nenhuma instancia. Todos os volumes foram recusados na classificacao?'
 }
@@ -757,7 +757,7 @@ try {
         # one's scope. Reading the matched line ties the assertion to the
         # path it matched, which is what it always meant to test.
         $logLines = @(Get-Content $inspectorLog -ErrorAction SilentlyContinue)
-        $scopeLine = if ($sourceLine -lt $logLines.Count) { $logLines[$sourceLine] } else { '' }
+        $scopeLine = if ($sourceLine -lt @($logLines).Count) { $logLines[$sourceLine] } else { '' }
 
         Add-Result -Name 'Arquivo sob prefixo de origem e inspecionado' -Passed $true
 
@@ -1158,15 +1158,15 @@ if (Test-Path $inspectorLog) {
     $lines = @(Get-Content $inspectorLog -ErrorAction SilentlyContinue)
     $blockedLines = @($lines | Select-String -SimpleMatch 'BLOQUEADO')
 
-    Write-Host "  Linhas no log      : $($lines.Count)"
-    Write-Host "  Operacoes negadas  : $($blockedLines.Count)"
+    Write-Host "  Linhas no log      : $(@($lines).Count)"
+    Write-Host "  Operacoes negadas  : $(@($blockedLines).Count)"
     Write-Host "  Log completo em    : $inspectorLog"
 
     # With the scope gates in place an idle desktop should produce a trickle,
     # not a flood. A large number here means the gates are not doing their job.
-    if ($lines.Count -gt 500) {
+    if (@($lines).Count -gt 500) {
         Write-Host ''
-        Write-Host "  Atencao: $($lines.Count) linhas e muito para este teste." -ForegroundColor Yellow
+        Write-Host "  Atencao: $(@($lines).Count) linhas e muito para este teste." -ForegroundColor Yellow
         Write-Host '  As portas de escopo podem nao estar filtrando como deveriam.' -ForegroundColor Yellow
     }
 }
@@ -1388,11 +1388,11 @@ catch { 'ERRO:' + $_.Exception.GetType().Name }
                     $estouros = @(Get-Content $serviceLog -ErrorAction SilentlyContinue |
                         Select-String -SimpleMatch 'SEM INSPECAO')
 
-                    Add-Result -Name 'Nenhuma inspecao estourou o prazo' -Passed ($estouros.Count -eq 0) `
-                        -Detail $(if ($estouros.Count -eq 0) {
+                    Add-Result -Name 'Nenhuma inspecao estourou o prazo' -Passed (@($estouros).Count -eq 0) `
+                        -Detail $(if (@($estouros).Count -eq 0) {
                             'Todo arquivo foi inspecionado dentro do prazo que a politica define.'
                         } else {
-                            "$($estouros.Count) arquivos passaram SEM INSPECAO. O prazo da politica " +
+                            "$(@($estouros).Count) arquivos passaram SEM INSPECAO. O prazo da politica " +
                             '(RN-012) nao esta cobrindo o custo real de extracao.'
                         })
 
@@ -1631,7 +1631,7 @@ Write-Step 'Diagnostico do gancho de SET_INFORMATION'
 # place. These lines were being reconstructed by hand from a transcript;
 # the script has all of them already.
 
-if ($script:Diag.Count -eq 0) {
+if (@($script:Diag.Keys).Count -eq 0) {
 
     Write-Host '  Teste de fumaca nao rodou: nada a diagnosticar.' -ForegroundColor DarkGray
 }
@@ -1760,10 +1760,10 @@ $failed = @($script:Results | Where-Object { -not $_.Passed })
 
 Write-Host ''
 Write-Host '======================================================' -ForegroundColor Cyan
-Write-Host " Resultado: $($script:Results.Count - $failed.Count)/$($script:Results.Count) verificacoes passaram" -ForegroundColor Cyan
+Write-Host " Resultado: $(@($script:Results).Count - @($failed).Count)/$(@($script:Results).Count) verificacoes passaram" -ForegroundColor Cyan
 
-if ($script:Skipped.Count -gt 0) {
-    Write-Host " $($script:Skipped.Count) verificacao(oes) NAO foram feitas - ver abaixo" -ForegroundColor Yellow
+if (@($script:Skipped).Count -gt 0) {
+    Write-Host " $(@($script:Skipped).Count) verificacao(oes) NAO foram feitas - ver abaixo" -ForegroundColor Yellow
 }
 Write-Host '======================================================' -ForegroundColor Cyan
 
@@ -1790,6 +1790,12 @@ foreach ($skipped in $script:Skipped) {
 # console: sai estruturado, na ordem, sem quebra de linha perdida e com os
 # contadores crus junto.
 
+# O envio inteiro dentro de um try: o relatorio e conveniencia, e conveniencia
+# que derruba a bateria e pior que conveniencia nenhuma. Foi o que aconteceu -
+# um .Count num escalar, sob Set-StrictMode, matou o script depois de as 39
+# verificacoes terem passado, e o placar sumiu junto.
+try {
+
 if ($SourceUrl) {
 
     $relatorio = New-Object System.Text.StringBuilder
@@ -1798,7 +1804,7 @@ if ($SourceUrl) {
     [void] $relatorio.AppendLine("maquina  : $env:COMPUTERNAME")
     [void] $relatorio.AppendLine("data     : $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss K')")
     [void] $relatorio.AppendLine("origem   : $SourceUrl")
-    [void] $relatorio.AppendLine("resultado: $($script:Results.Count - $failed.Count)/$($script:Results.Count) passaram, $($script:Skipped.Count) pulada(s)")
+    [void] $relatorio.AppendLine("resultado: $(@($script:Results).Count - @($failed).Count)/$(@($script:Results).Count) passaram, $(@($script:Skipped).Count) pulada(s)")
     [void] $relatorio.AppendLine()
 
     [void] $relatorio.AppendLine('--- verificacoes ---')
@@ -1816,7 +1822,7 @@ if ($SourceUrl) {
         [void] $relatorio.AppendLine("        $($skipped.Reason)")
     }
 
-    if ($script:Diag.Count -gt 0) {
+    if (@($script:Diag.Keys).Count -gt 0) {
         [void] $relatorio.AppendLine()
         [void] $relatorio.AppendLine('--- codigos crus do interop ---')
 
@@ -1836,7 +1842,7 @@ if ($SourceUrl) {
     # Test-Path variable: e nao um teste de $null: com Set-StrictMode, ler
     # uma variavel que nunca foi atribuida lanca. Ela so existe se a fase do
     # servico chegou a rodar.
-    if ($failed.Count -gt 0 -and (Test-Path variable:serviceLog)) {
+    if (@($failed).Count -gt 0 -and (Test-Path variable:serviceLog)) {
 
         foreach ($log in @($serviceLog, "$serviceLog.semlimite", "$serviceLog.auditoria")) {
 
@@ -1850,7 +1856,7 @@ if ($SourceUrl) {
     }
 
     try {
-        $marca = if ($failed.Count -gt 0) { 'FALHA' } else { 'ok' }
+        $marca = if (@($failed).Count -gt 0) { 'FALHA' } else { 'ok' }
 
         Invoke-RestMethod -Method Post -Uri "$SourceUrl/resultados" `
             -Body ([System.Text.Encoding]::UTF8.GetBytes($relatorio.ToString())) `
@@ -1867,18 +1873,24 @@ if ($SourceUrl) {
     }
 }
 
+}
+catch {
+    Write-Host "Falha ao montar o relatorio: $($_.Exception.Message)" -ForegroundColor Yellow
+    Write-Host "  em $($_.InvocationInfo.ScriptLineNumber): $($_.InvocationInfo.Line.Trim())" -ForegroundColor DarkGray
+}
+
 Write-Host ''
 
-if ($failed.Count -gt 0) {
+if (@($failed).Count -gt 0) {
     exit 1
 }
 
-if ($script:Skipped.Count -gt 0) {
+if (@($script:Skipped).Count -gt 0) {
     # Nao e "tudo passou": e "passou o que foi perguntado". A diferenca
     # importa porque o placar de uma execucao incompleta e indistinguivel
     # do de uma completa se ninguem disser.
     Write-Host 'Passou tudo que foi verificado.' -ForegroundColor Green
-    Write-Host "Mas $($script:Skipped.Count) verificacao(oes) nao chegaram a acontecer." -ForegroundColor Yellow
+    Write-Host "Mas $(@($script:Skipped).Count) verificacao(oes) nao chegaram a acontecer." -ForegroundColor Yellow
 }
 else {
     Write-Host 'Tudo passou.' -ForegroundColor Green
