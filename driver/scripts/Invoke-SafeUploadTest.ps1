@@ -1220,7 +1220,14 @@ else {
 
             $policy = [ordered]@{
                 version          = 99
-                activeCategories = @('Cpf', 'Cnpj', 'PaymentCard', 'Password')
+                # Esta lista precisa acompanhar o enum Category do dominio.
+                #
+                # Nao ha como deriva-la daqui, e ja falhou uma vez: quando
+                # Secret entrou, o caso da credencial reprovou com
+                # ESCRITA_PASSOU e a causa nao era o detector - era esta linha,
+                # que nao inspeciona o que nao esta ativo. Categoria nova no
+                # dominio, categoria nova aqui.
+                activeCategories = @('Cpf', 'Cnpj', 'PaymentCard', 'Password', 'Secret')
                 monitoredScopes  = [ordered]@{
                     # .bin entra de proposito e nao tem extrator: e o que
                     # exercita o caminho "monitorado mas impossivel de olhar".
@@ -1367,7 +1374,9 @@ catch { 'ERRO:' + $_.Exception.GetType().Name }
                         -Detail $(if ($chaveResultado -eq 'ESCRITA_NEGADA') {
                             'Chave de nuvem reconhecida no conteudo: nenhuma outra regra pegaria isto.'
                         } else {
-                            "Respondeu '$chaveResultado'. A pasta do projeto sai com a chave dentro."
+                            "Respondeu '$chaveResultado'. A pasta do projeto sai com a chave dentro. " +
+                            "Antes de suspeitar do detector, confira se 'Secret' esta em activeCategories " +
+                            'na politica que esta bateria escreve: o motor nao procura o que nao esta ativo.'
                         })
 
                     Remove-Item $alvo -Force -ErrorAction SilentlyContinue
