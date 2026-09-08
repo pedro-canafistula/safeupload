@@ -1222,7 +1222,9 @@ else {
                 version          = 99
                 activeCategories = @('Cpf', 'Cnpj', 'PaymentCard', 'Password')
                 monitoredScopes  = [ordered]@{
-                    extensions       = @('.txt', '.csv', '.docx', '.xlsx')
+                    # .bin entra de proposito e nao tem extrator: e o que
+                    # exercita o caminho "monitorado mas impossivel de olhar".
+                    extensions       = @('.txt', '.csv', '.docx', '.xlsx', '.bin')
                     destinationPaths = @($TestDirectory)
                     sourcePaths      = @($SourceDirectory)
                     removableDrives  = $true
@@ -1406,59 +1408,38 @@ catch { 'ERRO:' + $_.Exception.GetType().Name }
                     # os tres liberavam sem marcar - um arquivo acima do limite
                     # saia livre para qualquer destino vigiado.
                     #
-                    # O caso e forcado por maxFileSizeMb = 0, e nao por um
-                    # timeout curto, de proposito: limite de tamanho e
-                    # deterministico, enquanto prazo depende de quanto a
-                    # maquina esta carregada. Um teste que reprova conforme a
-                    # carga nao e um teste, e um incomodo. E o limite de
-                    # tamanho e o mais explorável dos tres, porque basta encher
-                    # o arquivo ate passar do corte.
+                    # O caminho exercitado aqui e o do FORMATO SEM EXTRATOR, e
+                    # nao o do tamanho. A primeira versao deste caso forcava
+                    # por maxFileSizeMb = 0 e nao funcionava: a politica se
+                    # recusa a carregar com limite zero, e o servico nem subia.
+                    # Formato sem extrator e melhor de qualquer forma - nao
+                    # precisa reiniciar o servico, nao depende de arquivo
+                    # gigante, e e o caso mais realista dos tres. Um .zip ou
+                    # um .pdf numa pasta de origem e exatamente isso.
+                    #
+                    # A extensao esta na politica, entao o driver a monitora e
+                    # manda a requisicao; o motor e que nao tem como abrir.
 
-                    Write-Host ''
-                    Write-Host '  Reiniciando o servico com politica que nao inspeciona nada.'
+                    $opaco = Join-Path $SourceDirectory 'dados-opacos.bin'
+                    Set-Content -Path $opaco -Value 'conteudo que ninguem sabe ler' -Encoding UTF8
 
-                    if ($serviceProcess -and -not $serviceProcess.HasExited) {
-                        $serviceProcess | Stop-Process -Force
-                        Start-Sleep -Milliseconds 800
-                    }
+                    Remove-Item $alvo -Force -ErrorAction SilentlyContinue
 
-                    $policy.maxFileSizeMb = 0
-                    $policy | ConvertTo-Json -Depth 5 | Set-Content -Path $policyFile -Encoding UTF8
+                    $semInspecao = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $roteiroFile $opaco $alvo 2>&1 |
+                        Select-Object -Last 1
 
-                    $ready.Reset() | Out-Null
+                    Add-Result -Name 'Arquivo que nao pode ser inspecionado marca o processo' `
+                        -Passed ($semInspecao -eq 'ESCRITA_NEGADA') `
+                        -Detail $(if ($semInspecao -eq 'ESCRITA_NEGADA') {
+                            'Formato sem extrator: nao da para olhar, entao marca. O conteudo nao sai por nao ter sido inspecionado.'
+                        } else {
+                            "Respondeu '$semInspecao'. Um arquivo nao inspecionado esta saindo livre para o destino."
+                        })
 
-                    $serviceProcess = Start-Process -FilePath $serviceExe `
-                        -ArgumentList '--Interception:Mode=Minifilter' `
-                        -NoNewWindow -PassThru -RedirectStandardOutput "$serviceLog.semlimite"
+                    Add-Result -Name 'Nada chegou ao destino sem inspecao' -Passed (-not (Test-Path $alvo)) `
+                        -Detail $(if (Test-Path $alvo) { 'O arquivo esta la.' } else { 'Nada foi escrito.' })
 
-                    if ($ready.WaitOne([TimeSpan]::FromSeconds(45))) {
-
-                        # O arquivo INOCENTE, de proposito. Ele nao tem nada
-                        # sensivel: o que marca o processo e o fato de a
-                        # inspecao nao ter acontecido, nao o conteudo.
-                        Remove-Item $alvo -Force -ErrorAction SilentlyContinue
-
-                        $semInspecao = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $roteiroFile $inocente $alvo 2>&1 |
-                            Select-Object -Last 1
-
-                        Add-Result -Name 'Arquivo que nao pode ser inspecionado marca o processo' `
-                            -Passed ($semInspecao -eq 'ESCRITA_NEGADA') `
-                            -Detail $(if ($semInspecao -eq 'ESCRITA_NEGADA') {
-                                'Sem inspecao possivel, o processo e marcado: o conteudo nao sai por nao ter sido olhado.'
-                            } else {
-                                "Respondeu '$semInspecao'. Um arquivo nao inspecionado esta saindo livre para o destino."
-                            })
-
-                        Add-Result -Name 'Nada chegou ao destino sem inspecao' -Passed (-not (Test-Path $alvo)) `
-                            -Detail $(if (Test-Path $alvo) { 'O arquivo esta la.' } else { 'Nada foi escrito.' })
-
-                        Remove-Item $alvo -Force -ErrorAction SilentlyContinue
-                    }
-                    else {
-
-                        Add-Result -Name 'Arquivo que nao pode ser inspecionado marca o processo' -Passed $false `
-                            -Detail "O servico nao reconectou com a politica sem limite. Log em $serviceLog.semlimite."
-                    }
+                    Remove-Item $alvo -Force -ErrorAction SilentlyContinue
 
                     # ---------------------------------------------------
                     # Modo auditoria
@@ -1482,7 +1463,6 @@ catch { 'ERRO:' + $_.Exception.GetType().Name }
                         Start-Sleep -Milliseconds 800
                     }
 
-                    $policy.maxFileSizeMb = 20
                     $policy.auditOnly = $true
                     $policy | ConvertTo-Json -Depth 5 | Set-Content -Path $policyFile -Encoding UTF8
 
@@ -1844,7 +1824,7 @@ if ($SourceUrl) {
     # servico chegou a rodar.
     if (@($failed).Count -gt 0 -and (Test-Path variable:serviceLog)) {
 
-        foreach ($log in @($serviceLog, "$serviceLog.semlimite", "$serviceLog.auditoria")) {
+        foreach ($log in @($serviceLog, "$serviceLog.auditoria")) {
 
             if ($log -and (Test-Path $log)) {
                 [void] $relatorio.AppendLine()

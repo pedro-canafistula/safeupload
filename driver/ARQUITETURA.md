@@ -641,11 +641,19 @@ mostrar que o falso positivo incomoda, e não antes.
 
 ### Como é testado
 
-O caso força o caminho por `maxFileSizeMb = 0`, e não por um prazo curto. Com
-limite de tamanho o resultado é determinístico; com prazo, depende de quanto a
-máquina está carregada, e um teste que reprova conforme a carga não é teste, é
-incômodo. O arquivo usado é o **inocente**, sem nada sensível: o que precisa
+O caso força o caminho pelo **formato sem extrator**: um `.bin` que está na
+lista de extensões monitoradas, então o driver manda a requisição, e que o
+motor não tem como abrir. O arquivo não tem nada sensível — o que precisa
 marcar o processo é a ausência de inspeção, não o conteúdo.
+
+A primeira versão forçava por `maxFileSizeMb = 0` e não funcionava: a política
+se recusa a carregar com limite zero (`EnsureValid`), e o serviço nem subia.
+Formato sem extrator é melhor de qualquer forma — não exige reiniciar o
+serviço, não depende de arquivo gigante e é o caso mais realista dos três: um
+`.pdf` ou um `.zip` numa pasta de origem é exatamente isso.
+
+Prazo curto seria a pior das três opções: depende de quanto a máquina está
+carregada, e um teste que reprova conforme a carga não é teste, é incômodo.
 
 ### O buraco que nada disso fecha
 
