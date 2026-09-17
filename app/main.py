@@ -5,8 +5,9 @@ Inicializa a aplicação FastAPI, monta o diretório de arquivos estáticos em
 ``/static`` e registra os roteadores das duas áreas do produto:
 
 - :mod:`app.presentation.routes.admin`: Centro de Administração (rotas em ``/admin``).
-- :mod:`app.presentation.routes.agent`:  Interface pública do agente DLP
-  (rotas para envio de arquivos pelo usuário final).
+- :mod:`app.presentation.routes.agent`:  API chamada pelo agente desktop
+  instalado nos endpoints (rotas em ``/agent`` — heartbeat, política e
+  envio de eventos de auditoria; ver HU-10).
 
 Para executar localmente::
 

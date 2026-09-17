@@ -1,10 +1,118 @@
 """Contextos demonstrativos do Centro de Administração.
 
-Os dados deste módulo existem apenas para sustentar o protótipo visual.
-Cada função cria e retorna uma nova estrutura, sem cache, persistência ou
-estado global mutável. As rotas permanecem responsáveis apenas pelo fluxo
-HTTP e pela seleção do template correspondente.
+A maioria dos dados deste módulo existe apenas para sustentar o protótipo
+visual: cada função cria e retorna uma nova estrutura, sem cache,
+persistência ou estado global mutável. As rotas permanecem responsáveis
+apenas pelo fluxo HTTP e pela seleção do template correspondente.
+
+Exceção: :func:`build_endpoints_context` e :func:`build_audit_context` além
+disso leem :mod:`app.infrastructure.memory_store` e colocam o que o agente
+desktop já enviou de verdade (via ``POST /agent/heartbeat`` e
+``POST /agent/events``) no topo da mesma lista mockada — a lista fixa
+continua existindo para a tela nunca aparecer vazia, mas dado real chega e
+aparece sem precisar mexer em template nenhum.
 """
+
+from datetime import datetime, timedelta, timezone
+
+from app.domain.schemas import AuditEventSchema, EndpointRecord
+from app.infrastructure import memory_store
+
+# Mesmo valor já usado como "current_agent_version" na tela de Endpoints —
+# ver build_endpoints_context(). Comparado contra o agentVersion que o
+# heartbeat manda para decidir se um endpoint está desatualizado.
+_CURRENT_AGENT_VERSION = "2.3.1"
+
+_CATEGORY_LABELS = {
+    "Cpf": "CPF",
+    "Cnpj": "CNPJ",
+    "PaymentCard": "Cartão de pagamento",
+    "Password": "Senha em texto claro",
+    "Secret": "Segredo/credencial",
+}
+
+_VERDICT_TO_RESULT = {
+    # AllowedWithoutInspection é tecnicamente uma aprovação (o arquivo
+    # passou), só que sem checagem de conteúdo — daí o rótulo distinto em
+    # vez de reaproveitar "Rejeitado" (que na tela significa o oposto:
+    # operação recusada).
+    "Approved": ("approved", "Aprovado"),
+    "Blocked": ("blocked", "Bloqueado"),
+    "AllowedWithoutInspection": ("approved", "Aprovado (sem inspeção)"),
+}
+
+
+def _format_datetime(value: datetime, *, with_seconds: bool = False) -> str:
+    fmt = "%d/%m/%Y %H:%M:%S" if with_seconds else "%d/%m/%Y %H:%M"
+    return value.strftime(fmt)
+
+
+def _format_size(size_bytes: int) -> str:
+    if size_bytes >= 1024 * 1024:
+        text = f"{size_bytes / (1024 * 1024):.1f}".replace(".", ",")
+        return f"{text} MB"
+    if size_bytes >= 1024:
+        text = f"{size_bytes / 1024:.0f}"
+        return f"{text} KB"
+    return f"{size_bytes} B"
+
+
+def _os_short(os_name: str) -> str:
+    if "11" in os_name:
+        return "Win 11"
+    if "10" in os_name:
+        return "Win 10"
+    return os_name
+
+
+def _endpoint_record_to_row(record: EndpointRecord, *, now: datetime) -> dict:
+    outdated = record.agent_version != _CURRENT_AGENT_VERSION
+    recently_seen = (now - record.last_seen_utc) < timedelta(minutes=15)
+
+    if outdated:
+        status, status_label = "outdated", "Desatualizado"
+    elif recently_seen:
+        status, status_label = "online", "Online"
+    else:
+        status, status_label = "offline", "Offline"
+
+    since_7d = now - timedelta(days=7)
+
+    return {
+        "hostname": record.hostname,
+        "ip": "—",
+        "os": record.os,
+        "os_short": _os_short(record.os),
+        "agent_version": record.agent_version,
+        "agent_outdated": outdated,
+        "policy_version": f"v{record.policy_version}",
+        "last_seen": _format_datetime(record.last_seen_utc),
+        "status": status,
+        "status_label": status_label,
+        "inspections_7d": memory_store.count_recent_events_for_endpoint(
+            record.endpoint_id, since_7d
+        ),
+    }
+
+
+def _audit_event_to_row(event: AuditEventSchema) -> dict:
+    result_kind, result_label = _VERDICT_TO_RESULT[event.verdict]
+
+    row = {
+        "datetime": _format_datetime(event.occurred_at_utc, with_seconds=True),
+        "source": event.endpoint_id,
+        "filename": event.file_name,
+        "size": _format_size(event.size_bytes),
+        "result_kind": result_kind,
+        "result_label": result_label,
+        "categories": [_CATEGORY_LABELS.get(c, c) for c in event.categories],
+    }
+
+    if event.not_inspected_reason:
+        row["reject_reason"] = event.not_inspected_reason
+
+    return row
+
 
 def build_dashboard_context():
     """Cria o contexto demonstrativo do painel principal."""
@@ -61,8 +169,9 @@ def build_dashboard_context():
 
 
 def build_audit_context():
-    """Cria o contexto demonstrativo da página de auditoria."""
-    return {
+    """Cria o contexto da página de auditoria: eventos mockados + o que o
+    agente desktop já enviou de verdade via ``POST /agent/events``."""
+    context = {
         "active_page": "audit",
         "stats": {
             "total":    "1.247",
@@ -184,6 +293,17 @@ def build_audit_context():
         },
     }
 
+    real_events = [_audit_event_to_row(event) for event in memory_store.list_audit_events()]
+    context["events"] = real_events + context["events"]
+
+    blocked_real = sum(1 for row in real_events if row["result_kind"] == "blocked")
+    approved_real = sum(1 for row in real_events if row["result_kind"] == "approved")
+    context["stats"]["total"] = str(int(context["stats"]["total"].replace(".", "")) + len(real_events))
+    context["stats"]["blocked"] = str(int(context["stats"]["blocked"]) + blocked_real)
+    context["stats"]["approved"] = str(int(context["stats"]["approved"].replace(".", "")) + approved_real)
+
+    return context
+
 
 def build_reports_context():
     """Cria o contexto demonstrativo da página de relatórios."""
@@ -289,8 +409,9 @@ def build_allowlist_context():
 
 
 def build_endpoints_context():
-    """Cria o contexto demonstrativo da página de endpoints."""
-    return {
+    """Cria o contexto da página de endpoints: lista mockada + o que o
+    agente desktop já registrou de verdade via ``POST /agent/heartbeat``."""
+    context = {
         "active_page": "endpoints",
         "stats": {
             "total": "24",
@@ -298,7 +419,7 @@ def build_endpoints_context():
             "offline": "4",
             "outdated": "2",
         },
-        "current_agent_version": "2.3.1",
+        "current_agent_version": _CURRENT_AGENT_VERSION,
         "endpoints": [
             {"hostname": "DESKTOP-FINANC01",    "ip": "192.168.10.101",
              "os": "Windows 11 Pro", "os_short": "Win 11",
@@ -365,6 +486,19 @@ def build_endpoints_context():
             ],
         },
     }
+
+    now = memory_store.utc_now()
+    real_endpoints = [
+        _endpoint_record_to_row(record, now=now) for record in memory_store.list_endpoints()
+    ]
+    context["endpoints"] = real_endpoints + context["endpoints"]
+
+    for row in real_endpoints:
+        context["stats"]["total"] = str(int(context["stats"]["total"]) + 1)
+        key = row["status"] if row["status"] in ("online", "offline", "outdated") else "offline"
+        context["stats"][key] = str(int(context["stats"][key]) + 1)
+
+    return context
 
 
 def build_users_context():
