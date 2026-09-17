@@ -62,7 +62,7 @@ SafeUploadCopyRequestImageName (
     );
 
 static
-NTSTATUS
+BOOLEAN
 SafeUploadEvaluate (
     _Inout_ PFLT_CALLBACK_DATA Data,
     _In_ SAFEUPLOAD_VOLUME_KIND VolumeKind,
@@ -775,7 +775,7 @@ Return Value:
 
 
 static
-NTSTATUS
+BOOLEAN
 SafeUploadEvaluate (
     _Inout_ PFLT_CALLBACK_DATA Data,
     _In_ SAFEUPLOAD_VOLUME_KIND VolumeKind,
@@ -811,8 +811,12 @@ Arguments:
 
 Return Value:
 
-    STATUS_SUCCESS when an answer was obtained, otherwise the failing
-    status. Either way Verdict is meaningful.
+    TRUE when Verdict is a checked answer safe to cache - the operation was
+    out of scope, the process was excluded, or user mode actually replied.
+    FALSE when Verdict is ALLOW only because user mode could not be reached
+    (allocation failure, name resolution failure, or a fail-open inside
+    SafeUploadRequestVerdict): the caller must treat this as unchecked, not
+    cache it, and count it as AllowedWithoutInspection.
 
 --*/
 {
@@ -820,6 +824,7 @@ Return Value:
     UNICODE_STRING normalizedPath;
     UNICODE_STRING imageName;
     NTSTATUS status;
+    BOOLEAN answered;
 
     PAGED_CODE();
 
@@ -832,7 +837,13 @@ Return Value:
 
     if (exchange == NULL) {
 
-        return STATUS_INSUFFICIENT_RESOURCES;
+        //
+        //  Could not even build the request. Same fail-open reasoning as a
+        //  timeout: RN-013 says allow, and this was never a checked verdict.
+        //
+
+        SafeUploadCount( AllowedWithoutInspection );
+        return FALSE;
     }
 
     exchange->Request.Version = SAFEUPLOAD_PROTOCOL_VERSION;
@@ -846,8 +857,14 @@ Return Value:
 
     if (!NT_SUCCESS( status )) {
 
+        //
+        //  Could not even resolve the name being operated on. Same
+        //  fail-open reasoning as a timeout: never a checked verdict.
+        //
+
+        SafeUploadCount( AllowedWithoutInspection );
         ExFreePoolWithTag( exchange, SAFEUPLOAD_POOL_TAG );
-        return status;
+        return FALSE;
     }
 
     SafeUploadCount( ScopeEvaluations );
@@ -872,8 +889,13 @@ Return Value:
 
     if (*ScopeFlags == 0) {
 
+        //
+        //  Out of scope is a real, checked answer - just not one that
+        //  needed a round trip to reach.
+        //
+
         ExFreePoolWithTag( exchange, SAFEUPLOAD_POOL_TAG );
-        return STATUS_SUCCESS;
+        return TRUE;
     }
 
     SafeUploadCopyRequestImageName( Data, &exchange->Request );
@@ -891,24 +913,29 @@ Return Value:
 
         if (SafeUploadPolicyExcludesImage( &imageName )) {
 
+            //
+            //  Excluded process is also a real, checked answer - RN-014,
+            //  not a fail-open.
+            //
+
             *ScopeFlags = 0;
             ExFreePoolWithTag( exchange, SAFEUPLOAD_POOL_TAG );
-            return STATUS_SUCCESS;
+            return TRUE;
         }
     }
 
     SafeUploadCount( UserModeRoundTrips );
 
-    status = SafeUploadRequestVerdict( exchange, Verdict );
+    (VOID) SafeUploadRequestVerdict( exchange, Verdict, &answered );
 
-    if (!NT_SUCCESS( status )) {
+    if (!answered) {
 
         SafeUploadCount( AllowedWithoutInspection );
     }
 
     ExFreePoolWithTag( exchange, SAFEUPLOAD_POOL_TAG );
 
-    return status;
+    return answered;
 }
 
 
@@ -1354,6 +1381,7 @@ Return Value:
     UINT32 scopeFlags = 0;
     UINT32 verdict = SAFEUPLOAD_VERDICT_ALLOW;
     BOOLEAN answered = FALSE;
+    BOOLEAN inspected;
     NTSTATUS status;
 
     PAGED_CODE();
@@ -1422,7 +1450,7 @@ Return Value:
 
     if (!answered) {
 
-        (VOID) SafeUploadEvaluate( Data, volumeKind, &scopeFlags, &verdict );
+        inspected = SafeUploadEvaluate( Data, volumeKind, &scopeFlags, &verdict );
 
         if (streamContext != NULL) {
 
@@ -1431,7 +1459,17 @@ Return Value:
             streamContext->ScopeEvaluated = TRUE;
             streamContext->ScopeFlags = scopeFlags;
             streamContext->Verdict = verdict;
-            streamContext->VerdictValid = (BOOLEAN) (scopeFlags != 0);
+
+            //
+            //  A verdict earns a place in the cache only when it was
+            //  actually checked. An unchecked ALLOW (timeout, no port,
+            //  allocation failure) must be retried on the next open, not
+            //  reused as if user mode had cleared the file - otherwise a
+            //  single failure turns into a standing exemption that lasts
+            //  until the file's bytes change.
+            //
+
+            streamContext->VerdictValid = (BOOLEAN) (scopeFlags != 0 && inspected);
             streamContext->Dirty = FALSE;
             streamContext->FileSize = fileSize;
             streamContext->LastWriteTime = lastWriteTime;
