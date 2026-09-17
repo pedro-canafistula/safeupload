@@ -1,0 +1,12 @@
+{% from "components/icons.html" import icon %}
+
+{% macro notice(icon_name, modifier="") -%}
+<div class="notice{% if modifier %} {{ modifier }}{% endif %}">
+    <div class="notice-icon" aria-hidden="true">
+        {{ icon(icon_name) }}
+    </div>
+    <div class="notice-body">
+        {{ caller() }}
+    </div>
+</div>
+{%- endmacro %}

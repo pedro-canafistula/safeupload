@@ -1,0 +1,24 @@
+{
+  "data": "2026-09-16",
+  "etapa": "F03 - componentes compartilhados de templates",
+  "base": "safeupload-etapa-1-layouts.zip",
+  "resultados": {
+    "templates_jinja_carregados": true,
+    "python_compileall": true,
+    "paginas_http_200": 8,
+    "redirecionamento_raiz": {"status": 307, "location": "/admin/login"},
+    "redirecionamento_admin": {"status": 307, "location": "/admin/dashboard"},
+    "post_login": {"status": 303, "location": "/admin/dashboard"},
+    "dom_equivalente": {
+      "login": true,
+      "dashboard": true,
+      "auditoria": true,
+      "endpoints": true,
+      "relatorios": true,
+      "categorias": true,
+      "excecoes": true,
+      "usuarios": true
+    },
+    "css_alterado": false
+  }
+}

@@ -1,0 +1,92 @@
+{
+  "document": "SafeUpload frontend final validation",
+  "date": "2026-09-16",
+  "scope": "frontend web refactoring and documentation",
+  "status": "passed_with_known_limitations",
+  "phases": {
+    "F03_templates": "passed",
+    "F04_css": "passed",
+    "F05_page_support": "passed",
+    "F06_integrated_verification": "passed",
+    "F07_documentation": "completed"
+  },
+  "routes": {
+    "/": {
+      "status": 307,
+      "location": "/admin/login"
+    },
+    "/admin": {
+      "status": 307,
+      "location": "/admin/dashboard"
+    },
+    "/admin/login": {
+      "method": "GET",
+      "status": 200
+    },
+    "/admin/login#POST": {
+      "method": "POST",
+      "status": 303,
+      "location": "/admin/dashboard"
+    },
+    "/admin/dashboard": {
+      "status": 200
+    },
+    "/admin/auditoria": {
+      "status": 200
+    },
+    "/admin/endpoints": {
+      "status": 200
+    },
+    "/admin/relatorios": {
+      "status": 200
+    },
+    "/admin/categorias": {
+      "status": 200
+    },
+    "/admin/excecoes": {
+      "status": 200
+    },
+    "/admin/usuarios": {
+      "status": 200
+    }
+  },
+  "css_resources": {
+    "styles.css": 200,
+    "tokens.css": 200,
+    "base.css": 200,
+    "auth.css": 200,
+    "controls.css": 200,
+    "layout.css": 200,
+    "components.css": 200,
+    "pages.css": 200
+  },
+  "checks": {
+    "python_compile": "passed",
+    "eight_pages_render": "passed",
+    "dom_equivalence": "passed",
+    "css_original_rule_bytes_reproduced": 40783,
+    "css_order_preserved": true,
+    "demo_contexts_preserved": true,
+    "builders_return_new_structures": true,
+    "manual_local_execution": "passed_by_user",
+    "git_diff_check": "passed_after_line_ending_cleanup"
+  },
+  "known_limitations_preserved": [
+    "no real authentication or session",
+    "no persistence",
+    "filters do not change demo data",
+    "pagination is demonstrative",
+    "CSV export is not implemented",
+    "user management actions are demonstrative",
+    "allowlist actions are demonstrative",
+    "category toggles are not persisted",
+    "endpoint policy/update actions are demonstrative",
+    "reports are not generated from real data",
+    "desktop agent integration is outside this frontend delivery",
+    "formal accessibility audit not performed",
+    "formal Chrome/Firefox version matrix not recorded"
+  ],
+  "editor_note": {
+    "dashboard_inline_jinja_css": "VS Code CSS diagnostics may flag Jinja expressions inside style attributes; values are rendered server-side before reaching the browser."
+  }
+}
