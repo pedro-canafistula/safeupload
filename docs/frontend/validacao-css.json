@@ -1,0 +1,85 @@
+{
+  "data": "2026-09-16",
+  "etapa": "F04 - organizacao do CSS",
+  "base": "safeupload-etapa-2-templates.zip",
+  "css_anterior": {
+    "linhas": 1500,
+    "bytes": 40783
+  },
+  "arquivos": [
+    {
+      "arquivo": "tokens.css",
+      "linhas_origem": "1-69",
+      "linhas": 69,
+      "bytes": 2297
+    },
+    {
+      "arquivo": "base.css",
+      "linhas_origem": "70-96",
+      "linhas": 27,
+      "bytes": 676
+    },
+    {
+      "arquivo": "auth.css",
+      "linhas_origem": "97-162",
+      "linhas": 66,
+      "bytes": 1901
+    },
+    {
+      "arquivo": "controls.css",
+      "linhas_origem": "163-246",
+      "linhas": 84,
+      "bytes": 2169
+    },
+    {
+      "arquivo": "layout.css",
+      "linhas_origem": "247-446",
+      "linhas": 200,
+      "bytes": 4821
+    },
+    {
+      "arquivo": "components.css",
+      "linhas_origem": "447-1192",
+      "linhas": 746,
+      "bytes": 19793
+    },
+    {
+      "arquivo": "pages.css",
+      "linhas_origem": "1193-1500",
+      "linhas": 308,
+      "bytes": 9126
+    }
+  ],
+  "resultados": {
+    "concatenacao_byte_a_byte_equivalente": true,
+    "ordem_imports_preservada": true,
+    "parse_css_sem_erros": true,
+    "paginas_http_200": 8,
+    "redirecionamento_raiz": {
+      "status": 307,
+      "location": "/admin/login"
+    },
+    "redirecionamento_admin": {
+      "status": 307,
+      "location": "/admin/dashboard"
+    },
+    "post_login": {
+      "status": 303,
+      "location": "/admin/dashboard"
+    },
+    "css_http_200": [
+      "styles.css",
+      "tokens.css",
+      "base.css",
+      "auth.css",
+      "controls.css",
+      "layout.css",
+      "components.css",
+      "pages.css"
+    ],
+    "templates_alterados": false,
+    "rotas_alteradas": false,
+    "dados_demonstrativos_alterados": false,
+    "comparacao_visual_multilargura": "reservada para F06"
+  }
+}

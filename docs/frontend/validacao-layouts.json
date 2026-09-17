@@ -1,0 +1,168 @@
+{
+  "date": "2026-09-16",
+  "browser": "Microsoft Edge 153.0.4234.32 (headless)",
+  "viewports": [
+    {
+      "width": 1440,
+      "height": 900
+    },
+    {
+      "width": 1024,
+      "height": 900
+    },
+    {
+      "width": 390,
+      "height": 900
+    }
+  ],
+  "versions": {
+    "fastapi": "0.141.1",
+    "starlette": "1.6.0",
+    "jinja2": "3.1.6",
+    "uvicorn": "0.53.0",
+    "httpx": "0.28.1"
+  },
+  "http_checks": {
+    "/": {
+      "status": 307,
+      "location": "/admin/login"
+    },
+    "/admin": {
+      "status": 307,
+      "location": "/admin/dashboard"
+    },
+    "POST login": {
+      "status": 303,
+      "location": "/admin/dashboard",
+      "set_cookie": null
+    },
+    "filters auditoria": "unchanged, as in original",
+    "filters endpoints": "unchanged, as in original",
+    "filters excecoes": "unchanged, as in original",
+    "filters usuarios": "unchanged, as in original",
+    "css": 200
+  },
+  "intentional_change": "Removed literal </ at end of administrative body. Its removal frees the width occupied by this stray text.",
+  "captures": [
+    {
+      "capture": "auditoria-1024.png",
+      "same_pixels_as_corrected_original": true,
+      "same_dom_as_corrected_original": true
+    },
+    {
+      "capture": "auditoria-1440.png",
+      "same_pixels_as_corrected_original": true,
+      "same_dom_as_corrected_original": true
+    },
+    {
+      "capture": "auditoria-390.png",
+      "same_pixels_as_corrected_original": true,
+      "same_dom_as_corrected_original": true
+    },
+    {
+      "capture": "categorias-1024.png",
+      "same_pixels_as_corrected_original": true,
+      "same_dom_as_corrected_original": true
+    },
+    {
+      "capture": "categorias-1440.png",
+      "same_pixels_as_corrected_original": true,
+      "same_dom_as_corrected_original": true
+    },
+    {
+      "capture": "categorias-390.png",
+      "same_pixels_as_corrected_original": true,
+      "same_dom_as_corrected_original": true
+    },
+    {
+      "capture": "dashboard-1024.png",
+      "same_pixels_as_corrected_original": true,
+      "same_dom_as_corrected_original": true
+    },
+    {
+      "capture": "dashboard-1440.png",
+      "same_pixels_as_corrected_original": true,
+      "same_dom_as_corrected_original": true
+    },
+    {
+      "capture": "dashboard-390.png",
+      "same_pixels_as_corrected_original": true,
+      "same_dom_as_corrected_original": true
+    },
+    {
+      "capture": "endpoints-1024.png",
+      "same_pixels_as_corrected_original": true,
+      "same_dom_as_corrected_original": true
+    },
+    {
+      "capture": "endpoints-1440.png",
+      "same_pixels_as_corrected_original": true,
+      "same_dom_as_corrected_original": true
+    },
+    {
+      "capture": "endpoints-390.png",
+      "same_pixels_as_corrected_original": true,
+      "same_dom_as_corrected_original": true
+    },
+    {
+      "capture": "excecoes-1024.png",
+      "same_pixels_as_corrected_original": true,
+      "same_dom_as_corrected_original": true
+    },
+    {
+      "capture": "excecoes-1440.png",
+      "same_pixels_as_corrected_original": true,
+      "same_dom_as_corrected_original": true
+    },
+    {
+      "capture": "excecoes-390.png",
+      "same_pixels_as_corrected_original": true,
+      "same_dom_as_corrected_original": true
+    },
+    {
+      "capture": "login-1024.png",
+      "same_pixels_as_corrected_original": true,
+      "same_dom_as_corrected_original": true
+    },
+    {
+      "capture": "login-1440.png",
+      "same_pixels_as_corrected_original": true,
+      "same_dom_as_corrected_original": true
+    },
+    {
+      "capture": "login-390.png",
+      "same_pixels_as_corrected_original": true,
+      "same_dom_as_corrected_original": true
+    },
+    {
+      "capture": "relatorios-1024.png",
+      "same_pixels_as_corrected_original": true,
+      "same_dom_as_corrected_original": true
+    },
+    {
+      "capture": "relatorios-1440.png",
+      "same_pixels_as_corrected_original": true,
+      "same_dom_as_corrected_original": true
+    },
+    {
+      "capture": "relatorios-390.png",
+      "same_pixels_as_corrected_original": true,
+      "same_dom_as_corrected_original": true
+    },
+    {
+      "capture": "usuarios-1024.png",
+      "same_pixels_as_corrected_original": true,
+      "same_dom_as_corrected_original": true
+    },
+    {
+      "capture": "usuarios-1440.png",
+      "same_pixels_as_corrected_original": true,
+      "same_dom_as_corrected_original": true
+    },
+    {
+      "capture": "usuarios-390.png",
+      "same_pixels_as_corrected_original": true,
+      "same_dom_as_corrected_original": true
+    }
+  ]
+}

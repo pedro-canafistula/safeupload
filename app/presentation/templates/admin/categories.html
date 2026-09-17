@@ -1,4 +1,6 @@
 {% extends "admin/base_admin.html" %}
+{% from "components/icons.html" import icon %}
+{% from "components/notice.html" import notice %}
 
 {% block title %}Categorias de detecção — SafeUpload{% endblock %}
 {% block page_title %}Categorias de detecção{% endblock %}
@@ -29,18 +31,10 @@
 </div>
 
 <!-- Aviso RN-009 -->
-<div class="notice">
-    <div class="notice-icon" aria-hidden="true">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
-            <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
-        </svg>
-    </div>
-    <div class="notice-body">
-        <strong>Categoria mínima ativa (RN-009):</strong>
-        o sistema não permite desativar todas as categorias simultaneamente — ao menos uma deve permanecer ativa para garantir a inspeção mínima.
-    </div>
-</div>
+{% call notice("alert-triangle") %}
+<strong>Categoria mínima ativa (RN-009):</strong>
+o sistema não permite desativar todas as categorias simultaneamente — ao menos uma deve permanecer ativa para garantir a inspeção mínima.
+{% endcall %}
 
 <!-- Lista de categorias -->
 <section class="card">
@@ -55,7 +49,7 @@
             {% for cat in categories %}
             <li class="config-item">
                 <div class="config-icon config-icon-{{ cat.tone }}" aria-hidden="true">
-                    {{ cat.icon | safe }}
+                    {{ icon(cat.icon) }}
                 </div>
                 <div class="config-info">
                     <div class="config-name-row">

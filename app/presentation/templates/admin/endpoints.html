@@ -1,4 +1,6 @@
 {% extends "admin/base_admin.html" %}
+{% from "components/icons.html" import icon %}
+{% from "components/notice.html" import notice %}
 
 {% block title %}Endpoints — SafeUpload{% endblock %}
 {% block page_title %}Endpoints{% endblock %}
@@ -12,20 +14,13 @@
     <div class="page-actions">
         <button class="btn btn-outline">
             <span class="btn-icon" aria-hidden="true">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                    <polyline points="7 10 12 15 17 10"/>
-                    <line x1="12" y1="15" x2="12" y2="3"/>
-                </svg>
+                {{ icon("download") }}
             </span>
             Extrair relatório
         </button>
         <button class="btn btn-primary">
             <span class="btn-icon" aria-hidden="true">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <polyline points="23 4 23 10 17 10"/>
-                    <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
-                </svg>
+                {{ icon("refresh") }}
             </span>
             Atualizar política em todos
         </button>
@@ -83,9 +78,7 @@
         <label for="filter-search" class="filter-label">Busca por hostname ou IP</label>
         <div class="filter-search">
             <span class="filter-search-icon" aria-hidden="true">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
-                </svg>
+                {{ icon("search") }}
             </span>
             <input id="filter-search" type="search" name="q" class="filter-input" placeholder="Digite o hostname ou endereço IP...">
         </div>
@@ -159,20 +152,13 @@
                                     class="icon-btn"
                                     aria-label="Forçar atualização de política em {{ ep.hostname }}"
                                     title="Atualizar política">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                    <polyline points="23 4 23 10 17 10"/>
-                                    <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
-                                </svg>
+                                {{ icon("refresh") }}
                             </button>
                             <button type="button"
                                     class="icon-btn"
                                     aria-label="Extrair relatório de {{ ep.hostname }}"
                                     title="Extrair relatório">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                                    <polyline points="7 10 12 15 17 10"/>
-                                    <line x1="12" y1="15" x2="12" y2="3"/>
-                                </svg>
+                                {{ icon("download") }}
                             </button>
                             <button type="button"
                                     class="icon-btn icon-btn-danger"
@@ -197,15 +183,8 @@
     </footer>
 </section>
 
-<div class="notice">
-    <div class="notice-icon" aria-hidden="true">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
-        </svg>
-    </div>
-    <div class="notice-body">
-        <strong>Privacidade dos dados:</strong>
-        o agente inspeciona o conteúdo localmente no endpoint — nenhum arquivo é transmitido ao servidor central. Apenas metadados, resultado e categorias detectadas são registrados em auditoria (RN-006, RN-007).
-    </div>
-</div>
+{% call notice("info") %}
+<strong>Privacidade dos dados:</strong>
+o agente inspeciona o conteúdo localmente no endpoint — nenhum arquivo é transmitido ao servidor central. Apenas metadados, resultado e categorias detectadas são registrados em auditoria (RN-006, RN-007).
+{% endcall %}
 {% endblock %}
