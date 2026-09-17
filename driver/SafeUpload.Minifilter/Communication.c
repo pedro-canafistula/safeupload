@@ -307,7 +307,8 @@ Return Value:
 NTSTATUS
 SafeUploadRequestVerdict (
     _Inout_ PSAFEUPLOAD_EXCHANGE Exchange,
-    _Out_ PUINT32 Verdict
+    _Out_ PUINT32 Verdict,
+    _Out_ PBOOLEAN Answered
     )
 /*++
 
@@ -330,10 +331,19 @@ Arguments:
         Set to ALLOW before anything else can fail, so that no error path
         can leave it undefined.
 
+    Answered - Receives TRUE only when a well-formed reply for this exact
+        request was actually read from the inspector. FALSE on every
+        fail-open path (no port, allocation failure, timeout, malformed or
+        stale reply) - in every one of those, Verdict is ALLOW, but it was
+        never checked: the caller must not cache it as a verdict, and must
+        count it as AllowedWithoutInspection.
+
 Return Value:
 
     The status of the exchange, for tracing only. The caller decides based
-    on Verdict, never on this status.
+    on Verdict and Answered, never on this status - STATUS_TIMEOUT in
+    particular is a success-class status (NT_SUCCESS(STATUS_TIMEOUT) is
+    TRUE) despite meaning no answer was obtained.
 
 --*/
 {
@@ -345,10 +355,14 @@ Return Value:
 
     //
     //  RN-013 in one line: the answer is "allow" unless user mode actively
-    //  says otherwise.
+    //  says otherwise. Answered defaults to FALSE and is only ever set to
+    //  TRUE once a validated reply is in hand - every early exit below
+    //  leaves it FALSE, which is what makes those exits fail-open without
+    //  being mistaken for a checked verdict.
     //
 
     *Verdict = SAFEUPLOAD_VERDICT_ALLOW;
+    *Answered = FALSE;
 
     //
     //  Take rundown protection for the whole call. If unload has already
@@ -423,6 +437,13 @@ Return Value:
         status = STATUS_INVALID_BUFFER_SIZE;
         goto Exit;
     }
+
+    //
+    //  A validated reply is in hand: whatever Verdict ends up being, it was
+    //  actually checked by user mode.
+    //
+
+    *Answered = TRUE;
 
     //
     //  Only an explicit DENY blocks. Any other value is an allow.

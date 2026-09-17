@@ -625,7 +625,8 @@ SafeUploadCloseCommunicationPort (
 NTSTATUS
 SafeUploadRequestVerdict (
     _Inout_ PSAFEUPLOAD_EXCHANGE Exchange,
-    _Out_ PUINT32 Verdict
+    _Out_ PUINT32 Verdict,
+    _Out_ PBOOLEAN Answered
     );
 
 #endif // _SAFEUPLOAD_FILTER_H_
