@@ -1,0 +1,12 @@
+C:\Users\luiz.rodrigues\Documents\safeuploadd\safeupload\web\back\src\main\java\com\safeupload\application\AuthService.java
+C:\Users\luiz.rodrigues\Documents\safeuploadd\safeupload\web\back\src\main\java\com\safeupload\application\dto\CadastroRequest.java
+C:\Users\luiz.rodrigues\Documents\safeuploadd\safeupload\web\back\src\main\java\com\safeupload\application\dto\LoginRequest.java
+C:\Users\luiz.rodrigues\Documents\safeuploadd\safeupload\web\back\src\main\java\com\safeupload\application\dto\UsuarioResponse.java
+C:\Users\luiz.rodrigues\Documents\safeuploadd\safeupload\web\back\src\main\java\com\safeupload\application\exception\ErroDeValidacaoException.java
+C:\Users\luiz.rodrigues\Documents\safeuploadd\safeupload\web\back\src\main\java\com\safeupload\domain\entity\Sessao.java
+C:\Users\luiz.rodrigues\Documents\safeuploadd\safeupload\web\back\src\main\java\com\safeupload\domain\entity\Usuario.java
+C:\Users\luiz.rodrigues\Documents\safeuploadd\safeupload\web\back\src\main\java\com\safeupload\infrastructure\repository\SessaoRepository.java
+C:\Users\luiz.rodrigues\Documents\safeuploadd\safeupload\web\back\src\main\java\com\safeupload\infrastructure\repository\UsuarioRepository.java
+C:\Users\luiz.rodrigues\Documents\safeuploadd\safeupload\web\back\src\main\java\com\safeupload\presentation\config\CorsConfig.java
+C:\Users\luiz.rodrigues\Documents\safeuploadd\safeupload\web\back\src\main\java\com\safeupload\presentation\controller\AuthController.java
+C:\Users\luiz.rodrigues\Documents\safeuploadd\safeupload\web\back\src\main\java\com\safeupload\SafeuploadApplication.java

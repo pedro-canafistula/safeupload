@@ -1,0 +1,83 @@
+<div class="auth-page">
+  <div class="auth-container">
+    <div class="auth-brand">
+      <div class="auth-shield" aria-hidden="true">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+          <path d="m9 12 2 2 4-4"></path>
+        </svg>
+      </div>
+      <h1 class="auth-logo">SafeUpload</h1>
+      <p class="auth-subtitle">Criar conta</p>
+    </div>
+
+    <div class="auth-messages" role="alert" *ngIf="erro">
+      <p class="alert alert-erro">{{ erro }}</p>
+    </div>
+
+    <form class="auth-form" (ngSubmit)="enviar()" novalidate>
+      <div class="form-group">
+        <label for="nomeCompleto" class="form-label">Nome completo</label>
+        <input type="text" id="nomeCompleto" name="nomeCompleto" class="form-input"
+               placeholder="Maria da Silva" [(ngModel)]="nomeCompleto"
+               autocomplete="name" required autofocus>
+      </div>
+
+      <div class="form-group">
+        <label for="username" class="form-label">Nome de usuário</label>
+        <input type="text" id="username" name="username" class="form-input"
+               placeholder="maria.silva" [(ngModel)]="username"
+               autocomplete="username" required>
+      </div>
+
+      <div class="form-group">
+        <label for="email" class="form-label">E-mail</label>
+        <input type="email" id="email" name="email" class="form-input"
+               placeholder="seu.email@exemplo.com" [(ngModel)]="email"
+               autocomplete="email" required>
+      </div>
+
+      <div class="form-group">
+        <label for="cpf" class="form-label">CPF</label>
+        <input type="text" id="cpf" name="cpf" class="form-input"
+               placeholder="000.000.000-00" [(ngModel)]="cpf"
+               inputmode="numeric" maxlength="14" required>
+      </div>
+
+      <div class="form-group">
+        <label for="dataNascimento" class="form-label">Data de nascimento</label>
+        <input type="date" id="dataNascimento" name="dataNascimento" class="form-input"
+               [(ngModel)]="dataNascimento">
+      </div>
+
+      <div class="form-group">
+        <label for="senha" class="form-label">Senha</label>
+        <input type="password" id="senha" name="senha" class="form-input"
+               placeholder="Mínimo de 8 caracteres" [(ngModel)]="senha"
+               autocomplete="new-password" minlength="8" required>
+      </div>
+
+      <div class="form-group">
+        <label for="confirmarSenha" class="form-label">Confirmar senha</label>
+        <input type="password" id="confirmarSenha" name="confirmarSenha" class="form-input"
+               placeholder="••••••••" [(ngModel)]="confirmarSenha"
+               autocomplete="new-password" minlength="8" required>
+      </div>
+
+      <button type="submit" class="btn btn-primary btn-block" [disabled]="carregando">
+        {{ carregando ? 'Enviando...' : 'Criar conta' }}
+      </button>
+    </form>
+
+    <div class="auth-footer">
+      <p class="auth-hint">
+        Já tem conta?
+        <a routerLink="/login" class="auth-link">Fazer login</a>
+      </p>
+    </div>
+  </div>
+
+  <footer class="page-footer">
+    <p>&copy; 2026 SafeUpload &middot; Universidade Católica de Brasília</p>
+  </footer>
+</div>
