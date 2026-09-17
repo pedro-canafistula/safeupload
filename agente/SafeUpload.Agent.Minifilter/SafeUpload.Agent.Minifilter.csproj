@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    O contrato com o minifiltro, isolado num projeto proprio.
+
+    Fica separado do Core de proposito: o Core e o dominio - regras, extracao,
+    mascaramento - e nao tem nada a ver com o transporte. Quem depende deste
+    projeto e a borda: o servico, para receber operacoes do kernel, e a sonda
+    de teste do driver.
+
+    net10.0-windows porque tudo aqui e P/Invoke para fltlib.dll e kernel32.
+    AllowUnsafeBlocks nao e opcional: as estruturas carregam buffers fixos
+    para casar byte a byte com Protocol.h, sem etapa de marshalling entre os
+    bytes que chegam da porta e os campos.
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+</Project>
