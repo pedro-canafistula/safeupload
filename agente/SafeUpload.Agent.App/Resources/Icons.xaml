@@ -1,0 +1,48 @@
+﻿<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!--
+        Ícones no estilo Lucide: traçado de 1.5, sem preenchimento, desenhados
+        numa grade de 24 unidades.
+
+        São geometrias no XAML e não arquivos de imagem. Um ícone vetorial
+        herda a cor de quem o usa, o que é exatamente o que a pílula de
+        navegação precisa — o mesmo escudo aparece em #64748B quando o item
+        está solto e em branco quando está selecionado, sem duas cópias do
+        arquivo. E não há binário no repositório para alguém regerar quando a
+        paleta mudar.
+    -->
+
+    <StreamGeometry x:Key="IconShield">M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67 0C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z</StreamGeometry>
+
+    <StreamGeometry x:Key="IconClock">M12 2a10 10 0 1 0 0 20 10 10 0 1 0 0-20z M12 6v6l4 2</StreamGeometry>
+
+    <StreamGeometry x:Key="IconChart">M3 3v16a2 2 0 0 0 2 2h16 M8 17V9 M13 17V5 M18 17v-6</StreamGeometry>
+
+    <StreamGeometry x:Key="IconBell">M10.268 21a2 2 0 0 0 3.464 0 M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326z</StreamGeometry>
+
+    <StreamGeometry x:Key="IconFile">M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z M14 2v6h6</StreamGeometry>
+
+    <StreamGeometry x:Key="IconBan">M12 2a10 10 0 1 0 0 20 10 10 0 1 0 0-20z M4.929 4.929l14.142 14.142</StreamGeometry>
+
+    <StreamGeometry x:Key="IconAlert">M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z M12 9v4 M12 17h.01</StreamGeometry>
+
+    <!--
+        O traçado não é preenchido e as pontas são arredondadas, que é o que dá
+        o desenho de linha do Lucide. Fill fica transparente de propósito: uma
+        geometria fechada como o escudo viraria uma mancha sólida se herdasse
+        preenchimento.
+    -->
+    <Style x:Key="IconPath" TargetType="Path">
+        <Setter Property="Stretch" Value="Uniform" />
+        <Setter Property="Fill" Value="Transparent" />
+        <Setter Property="StrokeThickness" Value="1.5" />
+        <Setter Property="StrokeLineJoin" Value="Round" />
+        <Setter Property="StrokeStartLineCap" Value="Round" />
+        <Setter Property="StrokeEndLineCap" Value="Round" />
+        <Setter Property="Width" Value="18" />
+        <Setter Property="Height" Value="18" />
+        <Setter Property="SnapsToDevicePixels" Value="True" />
+    </Style>
+
+</ResourceDictionary>

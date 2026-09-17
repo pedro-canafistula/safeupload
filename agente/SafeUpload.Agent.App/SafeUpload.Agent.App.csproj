@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+    <!-- NotifyIcon (bandeja do sistema) vem de System.Windows.Forms. -->
+    <UseWindowsForms>true</UseWindowsForms>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!--
+      UseWindowsForms injeta "global using System.Windows.Forms" e
+      "global using System.Drawing", que colidem com System.Windows numa app
+      WPF: Application, MessageBox e Brush existem nos dois lados. Removemos os
+      dois usings implicitos, de modo que o nome curto sempre signifique o tipo
+      do WPF; o WinForms e o System.Drawing sao citados explicitamente no unico
+      arquivo que os usa, o do icone de bandeja.
+    -->
+    <Using Remove="System.Windows.Forms" />
+    <Using Remove="System.Drawing" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\SafeUpload.Agent.Core\SafeUpload.Agent.Core.csproj" />
+  </ItemGroup>
+
+</Project>
