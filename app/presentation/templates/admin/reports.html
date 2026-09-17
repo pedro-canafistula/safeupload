@@ -1,4 +1,6 @@
 {% extends "admin/base_admin.html" %}
+{% from "components/icons.html" import icon %}
+{% from "components/notice.html" import notice %}
 
 {% block title %}Relatórios — SafeUpload{% endblock %}
 {% block page_title %}Relatórios{% endblock %}
@@ -43,9 +45,7 @@
 <section class="card report-card">
     <div class="report-feature">
         <div class="report-feature-icon report-feature-icon-recent" aria-hidden="true">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M21.21 15.89A10 10 0 1 1 8 2.83"/><path d="M22 12A10 10 0 0 0 12 2v10z"/>
-            </svg>
+            {{ icon("pie-chart") }}
         </div>
         <div class="report-feature-body">
             <h3 class="report-feature-title">Relatórios recentes</h3>
@@ -63,9 +63,7 @@
                                 <line x1="9" y1="3" x2="9" y2="21"/>
                             </svg>
                             {% else %}
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                <path d="M21.21 15.89A10 10 0 1 1 8 2.83"/><path d="M22 12A10 10 0 0 0 12 2v10z"/>
-                            </svg>
+                            {{ icon("pie-chart") }}
                             {% endif %}
                         </span>
                         <span>{{ r.name }}</span>
@@ -78,15 +76,8 @@
 </section>
 
 <!-- Aviso -->
-<div class="notice">
-    <div class="notice-icon" aria-hidden="true">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
-        </svg>
-    </div>
-    <div class="notice-body">
-        <strong>Relatórios agregados:</strong>
-        cada relatório apresenta apenas contagens consolidadas e categorias detectadas. Valores reais de CPF, CNPJ, cartão ou senha nunca são incluídos (HU-09, RN-007).
-    </div>
-</div>
+{% call notice("info") %}
+<strong>Relatórios agregados:</strong>
+cada relatório apresenta apenas contagens consolidadas e categorias detectadas. Valores reais de CPF, CNPJ, cartão ou senha nunca são incluídos (HU-09, RN-007).
+{% endcall %}
 {% endblock %}

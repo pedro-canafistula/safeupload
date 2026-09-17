@@ -1,0 +1,116 @@
+{
+  "all_identical": true,
+  "results": {
+    "/admin/login": {
+      "same_as_before": true,
+      "status": 200,
+      "content_type": "text/html; charset=utf-8",
+      "location": null,
+      "sha256": "e56422499cd28016b95631103fdc297f72399c098c579e3edbe380895ea995fc",
+      "bytes": 2315
+    },
+    "/admin/dashboard": {
+      "same_as_before": true,
+      "status": 200,
+      "content_type": "text/html; charset=utf-8",
+      "location": null,
+      "sha256": "335f18a48ad064b7818f0c4b3930e8b7ae35ac4e97e8c55465e521d6b257b8f5",
+      "bytes": 22779
+    },
+    "/admin/auditoria?periodo=24h&resultado=blocked&categoria=CPF&q=abc&hostname=DESKTOP-FINANC01": {
+      "same_as_before": true,
+      "status": 200,
+      "content_type": "text/html; charset=utf-8",
+      "location": null,
+      "sha256": "d5c904f6efe9abc7dc8316c97a1c506ca5d12331962e4837fd3c0f00e0a522ed",
+      "bytes": 48957
+    },
+    "/admin/relatorios": {
+      "same_as_before": true,
+      "status": 200,
+      "content_type": "text/html; charset=utf-8",
+      "location": null,
+      "sha256": "f1d87f0a5c8008d95612b9c23bea8f074340bb196794ed56862869e144d7c65e",
+      "bytes": 16295
+    },
+    "/admin/categorias": {
+      "same_as_before": true,
+      "status": 200,
+      "content_type": "text/html; charset=utf-8",
+      "location": null,
+      "sha256": "938afdac1801e5de7b10de4deeb9072b7dadefc05d3925d8497b84b246784e5d",
+      "bytes": 14070
+    },
+    "/admin/excecoes?categoria=CPF&q=teste": {
+      "same_as_before": true,
+      "status": 200,
+      "content_type": "text/html; charset=utf-8",
+      "location": null,
+      "sha256": "a802eb52afd2c55e5b3106726fc27dfc25d6373bd7e35b328aa7f600bb0c9d53",
+      "bytes": 20920
+    },
+    "/admin/endpoints?status=offline&os=win11&q=desk": {
+      "same_as_before": true,
+      "status": 200,
+      "content_type": "text/html; charset=utf-8",
+      "location": null,
+      "sha256": "626de0dd2f1fda00c45e225c779b33fecb1126f27612df13ac919c0af0c3d77d",
+      "bytes": 49641
+    },
+    "/admin/usuarios?perfil=admin&status=active&q=lucas": {
+      "same_as_before": true,
+      "status": 200,
+      "content_type": "text/html; charset=utf-8",
+      "location": null,
+      "sha256": "8671a838ef8c0c1e047be4ec909aa328ae072f99ec99993efa10971f7d9fe7b7",
+      "bytes": 21058
+    },
+    "/": {
+      "same_as_before": true,
+      "status": 307,
+      "location": "/admin/login",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "/admin": {
+      "same_as_before": true,
+      "status": 307,
+      "location": "/admin/dashboard",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "POST /admin/login": {
+      "same_as_before": true,
+      "status": 303,
+      "location": "/admin/dashboard",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    }
+  },
+  "stage": "F05 - organização do suporte às páginas",
+  "environment": {
+    "python": "3.13.5",
+    "fastapi": "0.128.2",
+    "starlette": "0.50.0",
+    "jinja2": "3.1.6",
+    "httpx": "0.28.1"
+  },
+  "context_validation": {
+    "builders": [
+      "build_dashboard_context",
+      "build_audit_context",
+      "build_reports_context",
+      "build_categories_context",
+      "build_allowlist_context",
+      "build_endpoints_context",
+      "build_users_context"
+    ],
+    "equal_to_previous_literals": true,
+    "fresh_top_level_structure_per_call": true
+  },
+  "files": {
+    "admin_routes_lines_before": 549,
+    "admin_routes_lines_after": 193,
+    "admin_data_lines": 407
+  }
+}

@@ -1,4 +1,6 @@
 {% extends "admin/base_admin.html" %}
+{% from "components/icons.html" import icon %}
+{% from "components/notice.html" import notice %}
 
 {% block title %}Lista de exceções — SafeUpload{% endblock %}
 {% block page_title %}Lista de exceções{% endblock %}
@@ -22,17 +24,10 @@
 </div>
 
 <!-- Banner de evolução planejada -->
-<div class="notice notice-planned">
-    <div class="notice-icon" aria-hidden="true">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
-        </svg>
-    </div>
-    <div class="notice-body">
-        <strong>Evolução planejada:</strong>
-        a allowlist é tratada como apoio experimental no MVP. Cada exceção afeta apenas o valor específico cadastrado, sem desativar a categoria inteira. Os valores são armazenados como HMAC e exibidos somente de forma mascarada (RN-007).
-    </div>
-</div>
+{% call notice("clock", "notice-planned") %}
+<strong>Evolução planejada:</strong>
+a allowlist é tratada como apoio experimental no MVP. Cada exceção afeta apenas o valor específico cadastrado, sem desativar a categoria inteira. Os valores são armazenados como HMAC e exibidos somente de forma mascarada (RN-007).
+{% endcall %}
 
 <!-- Resumo -->
 <div class="stat-strip">
@@ -63,9 +58,7 @@
         <label for="filter-search" class="filter-label">Busca por justificativa</label>
         <div class="filter-search">
             <span class="filter-search-icon" aria-hidden="true">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
-                </svg>
+                {{ icon("search") }}
             </span>
             <input id="filter-search" type="search" name="q" class="filter-input" placeholder="Digite parte da justificativa...">
         </div>

@@ -1,4 +1,6 @@
 {% extends "admin/base_admin.html" %}
+{% from "components/icons.html" import icon %}
+{% from "components/notice.html" import notice %}
 
 {% block title %}Usuários — SafeUpload{% endblock %}
 {% block page_title %}Usuários{% endblock %}
@@ -66,9 +68,7 @@
         <label for="filter-search" class="filter-label">Busca por nome ou e-mail</label>
         <div class="filter-search">
             <span class="filter-search-icon" aria-hidden="true">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
-                </svg>
+                {{ icon("search") }}
             </span>
             <input id="filter-search" type="search" name="q" class="filter-input" placeholder="Digite o nome ou e-mail...">
         </div>
@@ -134,15 +134,8 @@
 </section>
 
 <!-- Aviso -->
-<div class="notice">
-    <div class="notice-icon" aria-hidden="true">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
-        </svg>
-    </div>
-    <div class="notice-body">
-        <strong>Armazenamento de credenciais:</strong>
-        as senhas são guardadas apenas como hash seguro (PBKDF2), nunca em texto claro (HU-06). A interface do agente de inspeção é aberta — somente o Centro de Administração exige login.
-    </div>
-</div>
+{% call notice("lock") %}
+<strong>Armazenamento de credenciais:</strong>
+as senhas são guardadas apenas como hash seguro (PBKDF2), nunca em texto claro (HU-06). A interface do agente de inspeção é aberta — somente o Centro de Administração exige login.
+{% endcall %}
 {% endblock %}

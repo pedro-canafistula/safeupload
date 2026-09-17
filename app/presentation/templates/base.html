@@ -6,7 +6,8 @@
     <title>{% block title %}SafeUpload{% endblock %}</title>
     <link rel="stylesheet" href="/static/css/styles.css">
 </head>
-<body>
-    {% block content %}{% endblock %}
+{% set body_class %}{% block body_class %}{% endblock %}{% endset %}
+<body{% if body_class %} class="{{ body_class }}"{% endif %}>
+    {% block body %}{% endblock %}
 </body>
 </html>
