@@ -215,6 +215,48 @@ O TTL é a peça que torna o mecanismo utilizável: uma contaminação que não
 expira transforma o `explorer.exe` em um processo permanentemente proibido
 de escrever em pendrive.
 
+### O que a marca por processo não distingue
+
+A tabela acima descreve o custo em abstrato. O caso concreto, lido em
+`Taint.c` e `Filter.c` e **não medido**, é este: a marca pertence ao PID, e
+não ao arquivo nem ao handle.
+
+**Falso positivo entre documentos.** O Word roda como um processo só, com
+quantas janelas houver. Abrir dez documentos, e um deles ter CPF, marca o
+processo inteiro: os outros nove não salvam em destino monitorado (pendrive,
+rede, pasta de nuvem) enquanto a marca durar. Fechar o documento sensível
+**não** limpa a marca — o `PreCleanup` só marca o cache do arquivo como sujo
+e não toca na tabela de contaminação. Só o TTL ou o fim do processo a
+liberam, e reabrir o arquivo sensível (cache hit no pós-create) a renova por
+mais 300 s. O alcance é estreito: só escrita em destino monitorado, de
+extensão monitorada. Salvar em disco local não é afetado.
+
+**Falso negativo, pelo mesmo mecanismo.** O usuário lê o contrato, deixa o
+Word aberto e, passados 300 s sem reabri-lo, faz "Salvar como" no pendrive: a
+marca expirou e a escrita passa. O TTL que limita o falso positivo é o que
+abre este buraco, e não existe valor de TTL que feche um sem alargar o outro.
+
+**Nenhum dos dois foi medido.** O modo auditoria (`WouldHaveDenied`) existe
+para isso, e ainda não houve uso real que o alimentasse. A frequência é a
+pergunta em aberto, e o critério para mexer no kernel é o mesmo adotado para
+a marca provisória: quando o número mostrar que incomoda, e não antes.
+
+**O que fazer, em ordem de custo.** Nada disto está implementado.
+
+1. Terminar a interface do bloqueio com justificativa (item 13 da ordem de
+   implementação). É só modo usuário e troca "bloqueado por 5 minutos" por
+   "dez segundos digitando um motivo".
+2. Medir em modo auditoria.
+3. Marca por handle: o processo fica marcado enquanto tem o arquivo sensível
+   **aberto**, mais uma carência curta. Fecha o falso negativo (o documento
+   ainda aberto continua marcado) e o "fechei e continua bloqueado". Não
+   fecha o falso positivo enquanto o documento sensível estiver aberto ao
+   lado dos outros.
+4. Inspecionar também o arquivo que sai, no fechamento do handle de escrita
+   (item 4 de "O que trazer"). É a única saída que elimina o falso positivo,
+   e custa o "zero byte": o arquivo chega a existir no destino antes de ser
+   recusado.
+
 ---
 
 ## Camadas de decisão
@@ -1064,6 +1106,47 @@ justifica, porque sem ele a prioridade vira gosto.
     está na faixa certa mas não foi alocada para este produto, e dois filtros
     na mesma altitude não coexistem. Bloqueia qualquer instalação fora de VM
     descartável, e o pedido não depende de nós.
+
+20. **Destino automático para pasta de nuvem.** Analista sincroniza
+    `C:\Users\ana\OneDrive - Empresa`. É uma pasta em disco fixo e o driver não
+    a distingue de `Documentos`: hoje só é destino se alguém a cadastrou, e o
+    caminho muda em cada máquina e em cada perfil. Pendrive e compartilhamento
+    de rede já são automáticos, porque o driver decide pelo **tipo do volume**
+    (`removableDrives` e `networkPaths` na política); a nuvem é o único destino
+    que ainda depende de lista. O serviço, em modo usuário e sem tocar o
+    kernel, enumeraria as pastas de sincronização conhecidas de cada perfil ao
+    subir (por exemplo as variáveis de ambiente do OneDrive e os arquivos de
+    configuração do Dropbox e do Google Drive) e as empurraria como prefixos.
+    O teto é o protocolo: 16 prefixos de destino, que um perfil com várias
+    pastas de nuvem consome depressa.
+
+21. **Origem sem cadastro.** Cada máquina tem as pastas que o usuário criou, e
+    cadastrar origens por endpoint é inviável. Pior: um contrato com CPF numa
+    pasta não cadastrada é invisível, e vai para o pendrive sem marca nenhuma.
+    **Decisão registrada:** a lista de origens cadastradas foi sempre
+    provisória e nunca foi o objetivo final. O alvo é o modelo do mercado — os
+    itens 14 e 4 acima, mais um varredor — e o caminho até lá tem degraus:
+
+    - **a.** Flag na política, "todo volume fixo é origem", no mesmo molde de
+      `removableDrives` e `networkPaths`. A política deixa de listar pastas e
+      passa a valer igual para toda a frota.
+    - **b.** Exclusão por **caminho** no driver (`C:\Windows`, `Program Files`)
+      e processos excluídos na política (indexador de busca, antivírus,
+      backup). Hoje só existe exclusão por processo, e sem as duas o ruído
+      cresce junto com a origem.
+    - **c.** Pool de threads sobre a porta (item 18) **antes** de o degrau *a*
+      valer fora de teste. Com tudo como origem, toda primeira abertura de
+      arquivo monitorado vai ao serviço, e hoje ele atende uma por vez.
+    - **d.** Varredor em segundo plano que classifica os discos e grava o
+      resultado por identidade de arquivo (item 14). É o que responde "quais
+      arquivos sensíveis existem nesta máquina" sem pôr a inspeção no caminho
+      quente, e é o que aposenta a origem como conceito.
+
+    Até o degrau *d*, a origem cadastrada segue sendo o único mecanismo, e a
+    política padrão da API (`source_paths` vazio) **não liga a cadeia**: um
+    teste ponta a ponta precisa cadastrar ao menos uma origem. O custo dos
+    degraus *a* e *b* em máquina real não foi medido. Nada deste item está
+    implementado.
 
 ### O que deliberadamente não entra
 
