@@ -1,66 +1,22 @@
-<div class="auth-page">
-  <div class="auth-container">
-    <div class="auth-brand">
-      <div class="auth-shield" aria-hidden="true">
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
-          <path d="m9 12 2 2 4-4"></path>
-        </svg>
-      </div>
-      <h1 class="auth-logo">SafeUpload</h1>
-      <p class="auth-subtitle">Painel de administração</p>
-    </div>
+<section class="auth-page">
+  <div class="auth-box card">
+    <h1>SafeUpload</h1>
+    <p>Painel de administração</p>
 
-    <div class="auth-messages" role="alert" *ngIf="erro || sucesso">
-      <p class="alert alert-erro" *ngIf="erro">{{ erro }}</p>
-      <p class="alert alert-sucesso" *ngIf="sucesso">{{ sucesso }}</p>
-    </div>
+    <div class="msg ok" *ngIf="sucesso">{{ sucesso }}</div>
+    <div class="msg erro" *ngIf="erro">{{ erro }}</div>
 
-    <form class="auth-form" (ngSubmit)="enviar()" novalidate>
-      <div class="form-group">
-        <label for="email" class="form-label">E-mail</label>
-        <input
-          type="email"
-          id="email"
-          name="email"
-          class="form-input"
-          placeholder="seu.email@exemplo.com"
-          [(ngModel)]="email"
-          autocomplete="email"
-          required
-          autofocus
-        />
-      </div>
+    <form (ngSubmit)="enviar()">
+      <label>E-mail</label>
+      <input name="email" [(ngModel)]="email" type="email" required />
 
-      <div class="form-group">
-        <label for="senha" class="form-label">Senha</label>
-        <input
-          type="password"
-          id="senha"
-          name="senha"
-          class="form-input"
-          placeholder="••••••••"
-          [(ngModel)]="senha"
-          autocomplete="current-password"
-          required
-        />
-      </div>
+      <label>Senha</label>
+      <input name="senha" [(ngModel)]="senha" type="password" required />
 
-      <button type="submit" class="btn btn-primary btn-block" [disabled]="carregando">
-        {{ carregando ? 'Entrando...' : 'Entrar' }}
-      </button>
+      <button class="btn-primary" [disabled]="carregando" type="submit">Entrar</button>
     </form>
 
-    <div class="auth-footer">
-      <p class="auth-hint">
-        Ainda não tem conta?
-        <a routerLink="/cadastro" class="auth-link">Criar cadastro</a>
-      </p>
-      <p class="auth-hint">Área restrita — acesso apenas para administradores</p>
-    </div>
+    <a routerLink="/cadastro">Criar cadastro</a>
   </div>
+</section>
 
-  <footer class="page-footer">
-    <p>&copy; 2026 SafeUpload &middot; Universidade Católica de Brasília</p>
-  </footer>
-</div>

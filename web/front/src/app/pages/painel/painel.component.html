@@ -1,0 +1,23 @@
+<h2>Painel</h2>
+<div class="grid-kpi" *ngIf="dados">
+  <div class="card"><strong>Inspeções</strong><div>{{ dados.indicadores.inspecoes }}</div></div>
+  <div class="card"><strong>Bloqueados</strong><div>{{ dados.indicadores.bloqueados }}</div></div>
+  <div class="card"><strong>Aprovados</strong><div>{{ dados.indicadores.aprovados }}</div></div>
+  <div class="card"><strong>Rejeitados</strong><div>{{ dados.indicadores.rejeitados }}</div></div>
+</div>
+
+<div class="row" *ngIf="dados">
+  <section class="card flex2">
+    <h3>Inspeções nos últimos 7 dias</h3>
+    <div class="bars">
+      <div class="bar" *ngFor="let item of dados.inspecoesSemana" [style.height.px]="item + 20"></div>
+    </div>
+  </section>
+  <section class="card flex1">
+    <h3>Categorias mais detectadas</h3>
+    <div class="cat" *ngFor="let c of dados.categoriasDetectadas">
+      <span>{{ c.nome }}</span><strong>{{ c.valor }}</strong>
+    </div>
+  </section>
+</div>
+

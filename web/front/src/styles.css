@@ -1,2 +1,26 @@
-/* estilos globais — vazio por enquanto, cada componente traz o próprio CSS */
-body { margin: 0; font-family: system-ui, sans-serif; }
+* { box-sizing: border-box; font-family: Inter, Arial, sans-serif; }
+body { margin: 0; background: #f3f7fc; color: #0f2740; }
+a { text-decoration: none; color: inherit; }
+
+.card { background: #fff; border: 1px solid #e7edf5; border-radius: 12px; padding: 16px; }
+.btn-primary {
+  background: #0c2d59;
+  color: #fff;
+  border: none;
+  border-radius: 10px;
+  padding: 10px 16px;
+  cursor: pointer;
+}
+.btn-secondary {
+  background: #fff;
+  color: #0c2d59;
+  border: 1px solid #d6e0ee;
+  border-radius: 10px;
+  padding: 10px 16px;
+  cursor: pointer;
+}
+.pill { padding: 4px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+.pill.ok { background: #ddf8ea; color: #158248; }
+.pill.warn { background: #fff3d6; color: #a87700; }
+.pill.danger { background: #ffe3e3; color: #9d1d1d; }
+

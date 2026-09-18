@@ -1,7 +1,6 @@
 {
   "$schema": "./node_modules/@angular/cli/lib/config/schema.json",
   "version": 1,
-  "newProjectRoot": "projects",
   "projects": {
     "front": {
       "projectType": "application",
@@ -15,10 +14,9 @@
             "outputPath": "dist/front",
             "index": "src/index.html",
             "browser": "src/main.ts",
+            "polyfills": ["zone.js"],
             "tsConfig": "tsconfig.app.json",
-            "assets": [],
-            "styles": ["src/styles.css"],
-            "scripts": []
+            "styles": ["src/styles.css"]
           }
         },
         "serve": {
@@ -29,5 +27,9 @@
         }
       }
     }
+  },
+  "cli": {
+    "analytics": "8be3883e-7ef7-40e0-9f1f-7f3476479d88"
   }
 }
+

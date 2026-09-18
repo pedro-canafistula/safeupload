@@ -1,0 +1,12 @@
+.shell { display: grid; grid-template-columns: 240px 1fr; min-height: 100vh; }
+.sidebar { background: linear-gradient(180deg,#071b39,#0e2f5a); color: #fff; padding: 18px 14px; display: flex; flex-direction: column; }
+.logo { font-size: 24px; font-weight: 700; margin-bottom: 28px; }
+.logo small { font-size: 12px; font-weight: 500; opacity: .8; }
+nav { display: grid; gap: 8px; }
+nav a { padding: 11px 12px; border-radius: 8px; color: #d3dff0; }
+nav a.active, nav a:hover { background: #0c3b73; color: #fff; }
+.sidebar button { margin-top: auto; }
+.content { padding: 20px; display: grid; gap: 14px; align-content: start; }
+.topbar { display: flex; align-items: center; justify-content: space-between; }
+.status { color: #11945c; font-weight: 600; }
+

@@ -1,0 +1,7 @@
+.grid-kpi { display: grid; grid-template-columns: repeat(4,1fr); gap: 12px; }
+.grid-kpi .card div { font-size: 30px; font-weight: 700; margin-top: 6px; }
+.row { display: grid; grid-template-columns: 2fr 1fr; gap: 12px; }
+.bars { height: 220px; display: flex; align-items: end; gap: 14px; padding-top: 12px; }
+.bar { width: 34px; border-radius: 8px 8px 0 0; background: linear-gradient(180deg,#3e8ef7,#0c2d59); }
+.cat { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #edf2f8; }
+
