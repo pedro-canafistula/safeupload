@@ -1,4 +1,5 @@
 using SafeUpload.Agent.Core.Application;
+using SafeUpload.Agent.Service.Dispatch;
 using SafeUpload.Agent.Service.Interception;
 using SafeUpload.Agent.Service.Notifications;
 using SafeUpload.Agent.Core.Infrastructure;
@@ -20,6 +21,9 @@ public static class Program
     /// <summary>Nome do serviço no gerenciador de serviços do Windows.</summary>
     public const string ServiceName = "SafeUploadAgent";
 
+    /// <summary>Cliente nomeado usado para falar com o Centro de Administração.</summary>
+    private const string HttpClientName = "CentroAdministracao";
+
     /// <summary>Monta e executa o host.</summary>
     public static async Task Main(string[] args)
     {
@@ -30,7 +34,11 @@ public static class Program
         // A composição é a mesma que o aplicativo WPF fazia à mão, agora do
         // lado do serviço: são estes objetos que decidem, e é por isso que
         // saíram do processo da interface.
-        builder.Services.AddSingleton<IPolicyStore, LocalPolicyStore>();
+        //
+        // A fila de auditoria é SEMPRE a local, com ou sem Centro de
+        // Administração configurado: é ela que deixa o endpoint continuar
+        // registrando com a rede fora do ar. O envio ao painel é uma etapa
+        // posterior, feita pelo HttpAgentDispatcher, e não um substituto.
         builder.Services.AddSingleton<IAuditSink, LocalQueueAuditSink>();
         builder.Services.AddSingleton(ExtractorRegistry.CreateDefault());
         builder.Services.AddSingleton<VerdictCache>();
@@ -38,6 +46,63 @@ public static class Program
         builder.Services.AddSingleton<NotificationHub>();
         builder.Services.AddSingleton<PendingOverrides>();
         builder.Services.AddSingleton<OverrideGrantQueue>();
+
+        // De onde vem a politica, e para onde vai a trilha (HU-10).
+        //
+        // Sem "CentroAdministracao:BaseUrl" configurado, o agente e autonomo:
+        // le a politica do arquivo local e so acumula auditoria em disco. Com
+        // a URL configurada, a politica passa a vir do painel e um despachante
+        // sobe para entregar os eventos pendentes.
+        //
+        // O padrao e o local pelo mesmo motivo do gatilho logo abaixo: uma
+        // maquina que ainda nao aponta para nenhum painel precisa proteger de
+        // forma autonoma, e nao ficar esperando um servidor que talvez nunca
+        // seja configurado.
+        string adminBaseUrl = builder.Configuration["CentroAdministracao:BaseUrl"] ?? string.Empty;
+        string endpointId = Environment.MachineName;
+
+        if (string.IsNullOrWhiteSpace(adminBaseUrl))
+        {
+            builder.Services.AddSingleton<IPolicyStore, LocalPolicyStore>();
+        }
+        else
+        {
+            var adminUri = new Uri(adminBaseUrl.EndsWith('/') ? adminBaseUrl : adminBaseUrl + "/");
+
+            int timeoutSeconds =
+                int.TryParse(builder.Configuration["CentroAdministracao:TimeoutSeconds"], out int parsedTimeout)
+                    ? parsedTimeout
+                    : 5;
+
+            int intervalSeconds =
+                int.TryParse(builder.Configuration["CentroAdministracao:DispatchIntervalSeconds"], out int parsedInterval)
+                    ? parsedInterval
+                    : 30;
+
+            // Timeout curto de proposito: a politica e lida no caminho da
+            // decisao, e um painel lento nao pode virar uma inspecao lenta. Se
+            // estourar, a HttpPolicyStore cai no padrao embutido.
+            builder.Services
+                .AddHttpClient(HttpClientName, client =>
+                {
+                    client.BaseAddress = adminUri;
+                    client.Timeout = TimeSpan.FromSeconds(timeoutSeconds);
+                });
+
+            builder.Services.AddSingleton<IPolicyStore>(provider =>
+                new HttpPolicyStore(
+                    provider.GetRequiredService<IHttpClientFactory>().CreateClient(HttpClientName),
+                    endpointId));
+
+            builder.Services.AddHostedService(provider =>
+                new HttpAgentDispatcher(
+                    provider.GetRequiredService<IAuditSink>(),
+                    provider.GetRequiredService<IPolicyStore>(),
+                    provider.GetRequiredService<IHttpClientFactory>().CreateClient(HttpClientName),
+                    endpointId,
+                    TimeSpan.FromSeconds(intervalSeconds),
+                    provider.GetRequiredService<ILogger<HttpAgentDispatcher>>()));
+        }
 
         // O gatilho. A partir daqui a protecao existe sem interface nenhuma
         // aberta, que e o ponto de separar os dois processos.

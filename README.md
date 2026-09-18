@@ -49,24 +49,27 @@ A existência dessas representações visuais não significa que todos os fluxos
 
 ### 1. Agente desktop
 
-O repositório contém um protótipo de interface desktop em:
+O agente vive em `agente/` e tem seu próprio README, com a arquitetura
+completa, como rodar e a integração com o Centro de Administração:
 
 ```text
-agente/SafeUploadAgent/
+agente/README.md
 ```
 
-A aplicação foi desenvolvida com:
+Resumo: além do protótipo visual (`agente/SafeUploadAgent/`), o
+repositório contém uma implementação real em .NET 10 — `SafeUpload.Agent.Core`
+(validadores CPF/CNPJ/cartão/senha, motor de inspeção), `SafeUpload.Agent.Service`
+(serviço Windows que intercepta arquivos e decide) e `SafeUpload.Agent.App`
+(interface WPF que só exibe). Opcionalmente, um driver de kernel
+(`driver/`) permite interceptação antes da escrita, em vez de reagir depois.
 
-- WPF;
-- .NET 8;
-- C#;
-- XAML.
+Desde a HU-10, o agente pode buscar política e enviar auditoria para o
+Centro de Administração via API (ver seção
+[API do agente](#api-do-agente) abaixo) — configuração opcional, desligada
+por padrão.
 
-Ela representa a interface local do endpoint em ambiente Windows.
-
-Nesta versão, sua existência não comprova integração funcional com um serviço de inspeção, interceptação de arquivos ou aplicação automática de políticas.
-
-A implementação e a refatoração do agente desktop não fazem parte do escopo da atual entrega de melhoria do frontend web.
+Este README (do frontend web) não detalha o agente — os detalhes vivem em
+`agente/README.md` para não duplicar documentação em dois lugares.
 
 ### 2. Centro de Administração
 
@@ -261,14 +264,7 @@ SafeUpload/
 │   └── security/
 │       └── __init__.py
 │
-├── agente/
-│   ├── README.md
-│   └── SafeUploadAgent/
-│       ├── App.xaml
-│       ├── App.xaml.cs
-│       ├── MainWindow.xaml
-│       ├── MainWindow.xaml.cs
-│       └── SafeUploadAgent.csproj
+├── agente/                    # Ver agente/README.md — Core, Service, App, Tests, driver
 │
 ├── docs/
 │   └── frontend/
@@ -329,13 +325,19 @@ Da mesma forma, diversos botões representam ações previstas visualmente, mas 
 
 ### API do agente
 
-O arquivo:
+Desde a HU-10, `app/presentation/routes/agent.py` expõe três rotas que o
+agente desktop consome (prefixo `/agent`):
 
-```text
-app/presentation/routes/agent.py
-```
+| Rota | Método | Uso |
+|---|---|---|
+| `/agent/heartbeat` | POST | Registro/heartbeat do endpoint — alimenta `/admin/endpoints` |
+| `/agent/policy` | GET | Política vigente, mesmo formato que o agente já lia localmente |
+| `/agent/events` | POST | Recebe eventos de auditoria — alimenta `/admin/auditoria` |
 
-existe na estrutura atual, porém não possui um fluxo funcional de inspeção implementado.
+Persistência em memória (`app/infrastructure/memory_store.py`), sem
+autenticação — decisões de escopo documentadas no próprio módulo. Detalhes
+do lado agente (quando ele chama essas rotas, o que acontece se o servidor
+cair) estão em `agente/README.md`.
 
 ---
 
@@ -593,12 +595,10 @@ Os dados apresentados no Centro de Administração são fictícios e existem ape
 
 ### Agente desktop
 
-Existe um protótipo WPF no repositório, porém esta entrega não valida:
-
-- interceptação de arquivos;
-- integração com serviço de inspeção;
-- sincronização com o Centro de Administração;
-- aplicação automática de políticas.
+Fora do escopo desta entrega (frontend web) — ver `agente/README.md` para o
+estado real do agente, que já tem interceptação de arquivos, motor de
+inspeção e sincronização opcional com o Centro de Administração (HU-10)
+implementados e testados de ponta a ponta.
 
 ### Camadas reservadas
 
