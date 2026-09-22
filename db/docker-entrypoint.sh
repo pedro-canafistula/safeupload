@@ -100,6 +100,6 @@ SQL
 fi
 
 echo "$(date '+%d-%m-%Y %H:%M:%S') Iniciando instância MySQL..."
-echo "$(date '+%d-%m-%Y %H:%M:%S') A instância MySQL está aceitando conexões TCP/IP."
+echo "$(date '+%d-%m-%Y %H:%M:%S') A instância MySQL está aceitando conexões TCP/IP na porta 3306."
 
 exec mysqld --defaults-file="$MYSQL_CONFIG" --user=mysql --console
