@@ -179,6 +179,16 @@ docker logs safeupload-db
 ```
 A última mensagem deve indicar a aceitação de conexões TCP/IP e não deve conter mensagens de erros no log.
 
+#### 1.5 Encerrar Serviço:
+Em Windows ou em Linux:
+```bash
+docker compose down
+```
+ou se quiser excluir o banco de dados (ATENÇÃO):
+```bash
+docker compose down -v
+```
+
 ### 2. Executar Aplicação
 
 #### 2.1 Criar um ambiente virtual
