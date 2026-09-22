@@ -19,7 +19,8 @@ RUN apt install -y \
     gnupg \
     lsb-release \
     debconf \
-    debconf-utils
+    debconf-utils \
+    tzdata
 
 RUN rm -rf /var/lib/apt/lists/*
 
@@ -39,8 +40,6 @@ RUN echo "mysql-community-server mysql-community-server/root-pass password stage
 RUN apt install -y mysql-server
 
 RUN rm -rf /var/lib/apt/lists/* /tmp/mysql-apt-config_0.8.40-1_all.deb
-
-RUN rm -rf /var/lib/mysql/*
 
 WORKDIR /app
 
