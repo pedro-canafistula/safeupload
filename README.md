@@ -168,7 +168,7 @@ Em Linux:
 cd /<caminho>/safeupload/db
 ```
 #### 1.3 Executar:
-Em Windows (ainda dentro do ambiente WSL) e em Linux:
+Em Windows (ainda dentro do ambiente WSL) ou em Linux:
 ```bash
 ./install.sh
 ```
