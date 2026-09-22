@@ -113,6 +113,8 @@ O frontend web não possui dependências JavaScript nem etapa de compilação.
 
 ### Centro de Administração web
 
+- Windows com WSL2+ ou Linux;
+- Docker
 - Python 3.11 ou superior;
 - pip;
 - navegador moderno.
@@ -134,15 +136,57 @@ agente/README.md
 
 ### Centro de Administração web
 
-A partir da raiz do projeto:
+### 1. Executar Banco de Dados (Container Docker)
 
-### 1. Criar um ambiente virtual
+#### 1.1 Verificar dependências:
+No windows:
 
+```powershell
+wsl --status
+```
+```powershell
+docker version
+```
+Verificar, no Docker Desktop, se o Docker está integrado à distro do WSL.
+
+No Linux:
+```bash
+docker version
+```
+
+#### 1.2 Entrar na raiz de criação do container Docker:
+Em Windows:
+```powershell
+wsl
+```
+```bash
+cd /<caminho>/safeupload/db
+```
+
+Em Linux:
+```bash
+cd /<caminho>/safeupload/db
+```
+#### 1.3 Executar:
+Em Windows (ainda dentro do ambiente WSL) e em Linux:
+```bash
+./install.sh
+```
+
+#### 1.4 Verificar logs:
+```bash
+docker logs safeupload-db
+```
+A última mensagem deve indicar a aceitação de conexões TCP/IP e não deve conter mensagens de erros no log.
+
+### 2. Executar Aplicação
+
+#### 2.1 Criar um ambiente virtual
 ```powershell
 python -m venv .venv
 ```
 
-### 2. Instalar as dependências
+#### 2.2 Instalar as dependências
 
 Sem necessidade de ativar o ambiente:
 
@@ -157,7 +201,7 @@ Ou, caso prefira ativá-lo:
 pip install -r requirements.txt
 ```
 
-### 3. Iniciar o servidor
+#### 2.3 Iniciar o servidor
 
 Com o ambiente virtual ativado:
 
@@ -187,7 +231,7 @@ O formulário de login é demonstrativo. Nesta versão, as credenciais não são
 
 Não utilize credenciais reais durante a demonstração.
 
-### 4. Encerrar o servidor
+#### 2.4 Encerrar o servidor
 
 No terminal onde o Uvicorn está em execução:
 
