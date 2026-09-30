@@ -1,3 +1,4 @@
+using System.IO;
 using System.Windows;
 using SafeUpload.Agent.App.Notifications;
 using SafeUpload.Agent.App.ViewModels;
@@ -102,8 +103,44 @@ public partial class App : System.Windows.Application
                     }
 
                     break;
+
+                case TransferNotification transfer:
+                    ShowTransferNotification(transfer);
+                    break;
             }
         });
+    }
+
+    private void ShowTransferNotification(TransferNotification transfer)
+    {
+        if (_tray is null)
+        {
+            return;
+        }
+
+        string fileName = Path.GetFileName(transfer.FileName);
+
+        switch (transfer.Phase)
+        {
+            case TransferPhase.Analyzing:
+                _tray.ShowBalloon("SafeUpload: analisando arquivo",
+                    $"{fileName} foi salvo localmente. Aguarde a análise antes do envio.");
+                break;
+            case TransferPhase.Released:
+                _tray.ShowBalloon("SafeUpload: envio concluído",
+                    $"{fileName} foi analisado e enviado ao destino.");
+                break;
+            case TransferPhase.Retained:
+                _tray.ShowBalloon("SafeUpload: envio pendente",
+                    $"{fileName} permanece guardado localmente. O envio será tentado novamente.");
+                break;
+            // A janela de bloqueio detalha o motivo; no status, o arquivo
+            // continua somente no armazenamento local de staging.
+            case TransferPhase.Blocked:
+                _tray.ShowBalloon("SafeUpload: envio bloqueado",
+                    $"{fileName} não foi enviado ao destino.");
+                break;
+        }
     }
 
     private void OnConnectionChanged(object? sender, bool connected)

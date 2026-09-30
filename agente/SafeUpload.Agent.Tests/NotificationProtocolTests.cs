@@ -86,6 +86,21 @@ public class NotificationProtocolTests
         Assert.Equal(original, status);
     }
 
+    [Fact]
+    public void Staged_transfer_progress_survives_the_notification_pipe()
+    {
+        var original = new TransferNotification(
+            Guid.Parse("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"),
+            "report.txt", TransferPhase.Analyzing);
+
+        string line = NotificationProtocol.Serialize(original);
+        using var document = JsonDocument.Parse(line);
+        Assert.Equal("transfer", document.RootElement.GetProperty("type").GetString());
+        Assert.Equal("Analyzing", document.RootElement.GetProperty("phase").GetString());
+        Assert.Equal(original,
+            NotificationProtocol.Deserialize(line.TrimEnd('\n')));
+    }
+
     /// <summary>
     /// Todo campo da HU-04 precisa atravessar o canal intacto.
     ///

@@ -17,7 +17,30 @@ namespace SafeUpload.Agent.Core.Contracts;
 [JsonPolymorphic(TypeDiscriminatorPropertyName = "type")]
 [JsonDerivedType(typeof(StatusNotification), StatusNotification.TypeName)]
 [JsonDerivedType(typeof(EventNotification), EventNotification.TypeName)]
+[JsonDerivedType(typeof(TransferNotification), TransferNotification.TypeName)]
 public abstract record AgentNotification;
+
+/// <summary>Progress of a file held locally before release to a protected destination.</summary>
+public enum TransferPhase
+{
+    Analyzing,
+    Released,
+    Blocked,
+    Retained
+}
+
+/// <summary>
+/// Tells the user that a staged write has finished locally and is being checked.
+/// Only metadata crosses the notification pipe; the file stays in the private
+/// staging directory until the service has decided whether to release it.
+/// </summary>
+public sealed record TransferNotification(
+    Guid TransferId,
+    string FileName,
+    TransferPhase Phase) : AgentNotification
+{
+    public const string TypeName = "transfer";
+}
 
 /// <summary>
 /// O estado da proteção agora.
