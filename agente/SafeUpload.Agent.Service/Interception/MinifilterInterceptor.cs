@@ -62,6 +62,8 @@ public sealed class MinifilterInterceptor : BackgroundService
     private long _overBudget;
     private long _answered;
     private bool _overrideAllowed;
+    private int _policyVersion;
+    private int _activeCategories;
 
     /// <summary>Compõe o interceptador.</summary>
     public MinifilterInterceptor(
@@ -106,6 +108,10 @@ public sealed class MinifilterInterceptor : BackgroundService
 
     private void Run(CancellationToken stoppingToken)
     {
+        // A UI must never infer protection merely from a live service pipe.
+        // It becomes active only after the driver accepts the policy.
+        _hub.Publish(new StatusNotification(0, 0, ProtectionActive: false));
+
         try
         {
             Contract.Verify();
@@ -167,6 +173,8 @@ public sealed class MinifilterInterceptor : BackgroundService
             finally
             {
                 _grants.Unbind(port);
+                _hub.Publish(new StatusNotification(
+                    _policyVersion, _activeCategories, ProtectionActive: false));
             }
         }
 
@@ -200,14 +208,10 @@ public sealed class MinifilterInterceptor : BackgroundService
                 builder.WithDestination(path);
             }
 
-            // A outra metade da cadeia. Vazia e configuracao legitima, mas
-            // vale saber o que ela significa: sem origem, nenhum processo e
-            // marcado, e a negacao por contaminacao nunca dispara. O driver
-            // continua vigiando os destinos, so nao ha o que ligar a eles.
-            foreach (string path in scopes.SourcePaths)
-            {
-                builder.WithSource(path);
-            }
+            // Classify supported files by content wherever they reside.
+            // The minifilter only sets source scope for read opens. Its
+            // path-sensitive stream cache is disabled in this mode.
+            builder.WithAllSources();
 
             foreach (string image in policy.ExcludedProcesses)
             {
@@ -229,14 +233,18 @@ public sealed class MinifilterInterceptor : BackgroundService
 
             port.SetPolicy(builder.Build());
             _overrideAllowed = policy.OverrideAllowed;
+            _policyVersion = policy.Version;
+            _activeCategories = policy.ActiveCategories.Count;
+            _hub.Publish(new StatusNotification(
+                _policyVersion, _activeCategories, ProtectionActive: true,
+                AuditOnly: policy.AuditOnly));
 
             _logger.LogInformation(
                 "Politica v{Version} empurrada ao driver: {Extensions} extensoes, " +
-                "{Paths} destinos, {Sources} origens.",
+                "{Paths} destinos, classificacao de fontes em todos os volumes.",
                 policy.Version,
                 scopes.Extensions.Count,
-                scopes.DestinationPaths.Count,
-                scopes.SourcePaths.Count);
+                scopes.DestinationPaths.Count);
 
             if (policy.AuditOnly)
             {
@@ -251,13 +259,6 @@ public sealed class MinifilterInterceptor : BackgroundService
                 "Prazo: motor {Budget} ms (RN-012), kernel espera {Kernel} ms.",
                 _budget.TotalMilliseconds,
                 kernelDeadline.TotalMilliseconds);
-
-            if (scopes.SourcePaths.Count == 0)
-            {
-                _logger.LogWarning(
-                    "Politica sem origens: nenhum processo sera marcado e a negacao por " +
-                    "contaminacao nunca vai disparar.");
-            }
 
             return true;
         }

@@ -49,7 +49,7 @@ Environment:
 //  message means "allow" (RN-013), never "block".
 //
 
-#define SAFEUPLOAD_PROTOCOL_VERSION ((UINT32) 10)
+#define SAFEUPLOAD_PROTOCOL_VERSION ((UINT32) 11)
 
 //
 //  Capacity of the inline string fields, in WCHARs, terminator included.
@@ -291,6 +291,9 @@ typedef struct _SAFEUPLOAD_RESPONSE {
 //
 
 #define SAFEUPLOAD_POLICY_FLAG_ALLOW_OVERRIDE ((UINT32) 0x00000008)
+
+// Classify supported file reads anywhere, without a configured source path.
+#define SAFEUPLOAD_POLICY_FLAG_CLASSIFY_ALL_SOURCES ((UINT32) 0x00000010)
 
 typedef struct _SAFEUPLOAD_CONTROL {
 

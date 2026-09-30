@@ -24,7 +24,7 @@ public static class Contract
     /// mechanism that turns an incompatible pair into a clean refusal
     /// instead of a misread structure.
     /// </summary>
-    public const uint Version = 10;
+    public const uint Version = 11;
 
     public const int MaxPathChars = 512;
     public const int MaxImageNameChars = 64;
@@ -158,6 +158,9 @@ public enum PolicyFlags : uint
     /// libera nada. A escolha e da organizacao, nao do usuario.
     /// </summary>
     AllowOverride = 0x00000008,
+
+    /// <summary>Classify supported file reads on every attached volume.</summary>
+    ClassifyAllSources = 0x00000010,
 }
 
 public static class ControlCommand

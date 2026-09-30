@@ -49,6 +49,31 @@ static EX_PUSH_LOCK SafeUploadPolicyLock;
 
 static PSAFEUPLOAD_POLICY SafeUploadPolicy = NULL;
 
+static volatile LONG SafeUploadPolicyGeneration = 0;
+
+static
+BOOLEAN
+SafeUploadPathUnderPrefix (
+    _In_ PCUNICODE_STRING Prefix,
+    _In_ PCUNICODE_STRING Path
+    )
+{
+    USHORT prefixChars;
+
+    if (Prefix->Length == 0 ||
+        !RtlPrefixUnicodeString( Prefix, Path, TRUE )) {
+        return FALSE;
+    }
+
+    if (Path->Length == Prefix->Length) {
+        return TRUE;
+    }
+
+    prefixChars = Prefix->Length / sizeof( WCHAR );
+    return (BOOLEAN) (Prefix->Buffer[prefixChars - 1] == L'\\' ||
+                      Path->Buffer[prefixChars] == L'\\');
+}
+
 static
 VOID
 SafeUploadBuildStringTable (
@@ -85,6 +110,7 @@ Routine Description:
 
     FltInitializePushLock( &SafeUploadPolicyLock );
     SafeUploadPolicy = NULL;
+    SafeUploadPolicyGeneration = 0;
 }
 
 
@@ -302,6 +328,7 @@ Return Value:
 
     previous = SafeUploadPolicy;
     SafeUploadPolicy = snapshot;
+    (VOID) InterlockedIncrement( &SafeUploadPolicyGeneration );
 
     FltReleasePushLock( &SafeUploadPolicyLock );
 
@@ -324,6 +351,35 @@ Return Value:
                      (UINT32) (-snapshot->VerdictTimeoutIntervals / (10 * 1000)) );
 
     return STATUS_SUCCESS;
+}
+
+
+LONG
+SafeUploadCurrentPolicyGeneration (
+    VOID
+    )
+{
+    return InterlockedCompareExchange( &SafeUploadPolicyGeneration, 0, 0 );
+}
+
+
+BOOLEAN
+SafeUploadPolicyClassifiesAllSources (
+    VOID
+    )
+{
+    BOOLEAN enabled = FALSE;
+
+    FltAcquirePushLockShared( &SafeUploadPolicyLock );
+
+    if (SafeUploadPolicy != NULL) {
+        enabled = BooleanFlagOn( SafeUploadPolicy->Flags,
+                                 SAFEUPLOAD_POLICY_FLAG_CLASSIFY_ALL_SOURCES );
+    }
+
+    FltReleasePushLock( &SafeUploadPolicyLock );
+
+    return enabled;
 }
 
 
@@ -591,9 +647,8 @@ Return Value:
 
         for (index = 0; index < SafeUploadPolicy->PrefixCount; index += 1) {
 
-            if (RtlPrefixUnicodeString( &SafeUploadPolicy->Prefixes[index],
-                                        NormalizedPath,
-                                        TRUE )) {
+            if (SafeUploadPathUnderPrefix( &SafeUploadPolicy->Prefixes[index],
+                                           NormalizedPath )) {
 
                 matched = TRUE;
                 break;
@@ -708,11 +763,15 @@ Return Value:
 
     if (SafeUploadPolicy != NULL) {
 
-        for (index = 0; index < SafeUploadPolicy->SourcePrefixCount; index += 1) {
+        if (FlagOn( SafeUploadPolicy->Flags,
+                    SAFEUPLOAD_POLICY_FLAG_CLASSIFY_ALL_SOURCES )) {
+            matched = TRUE;
+        }
 
-            if (RtlPrefixUnicodeString( &SafeUploadPolicy->SourcePrefixes[index],
-                                        NormalizedPath,
-                                        TRUE )) {
+        for (index = 0; !matched && index < SafeUploadPolicy->SourcePrefixCount; index += 1) {
+
+            if (SafeUploadPathUnderPrefix( &SafeUploadPolicy->SourcePrefixes[index],
+                                           NormalizedPath )) {
 
                 matched = TRUE;
                 break;

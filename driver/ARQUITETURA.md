@@ -5,23 +5,48 @@ Documento de desenho. Descreve como o minifiltro deve evoluir da v1
 
 ## Estado implementado e validado (30/09/2026)
 
+### Atualização: classificação independente da pasta de origem
+
+A política operacional classifica leituras de formatos monitorados em qualquer
+pasta ou volume. `sourcePaths` saiu do JSON do agente. As listas de caminhos
+agora descrevem somente **destinos de saída**. Os prefixos de origem ainda
+existem no protocolo para o cliente de prova e não são usados pelo serviço.
+
+O cache antigo guardava escopo e veredito juntos por fluxo. Isso permitia que
+um resultado obtido com outra política, outro acesso ou outro nome do mesmo
+arquivo alterasse a decisão atual. A instalação da política agora avança uma
+geração de cache; aberturas sem leitura não reutilizam o resultado de leitura.
+Prefixos de destino agora exigem limite de pasta: uma pasta vizinha com
+o mesmo começo de nome não entra no escopo. No modo operacional
+`ClassifyAllSources`, o cache de fluxo fica desativado até
+que escopo por abertura e classificação por conteúdo sejam separados. A
+classificação nessa modalidade custa uma ida ao serviço por abertura de
+leitura, portanto a latência e a taxa de operações sob carga real ainda
+precisam ser medidas antes de implantação.
+
+A bateria na VM alvo passou **50/50 verificações** com esta política. O teste
+de justificativa também exige agora que o conteúdo sensível tenha sido lido
+após a concessão e que o kernel conte exatamente um uso da exceção. O teste
+de Driver Verifier não foi executado nessa bateria. Victor exercitou o fluxo
+da interface WPF manualmente na VM.
+
 | Funcionalidade | Estado |
 |---|---|
 | Rollback de falha em `DriverEntry` | Implementado; compilado, sem injeção de falha em cada etapa. |
 | Escrita por handle aberto antes da contaminação | Pré-`IRP_MJ_WRITE` implementado e validado na VM alvo. Paging I/O não passa por esse gancho. |
 | Extensão fora da lista de inspeção | Não contorna o bloqueio de destino; validado com `.bin`. |
 | Bloqueios de `CREATE` e `SET_INFORMATION` | Bloqueio funcional. Evento estruturado diretamente do kernel ainda pendente. |
-| Justificativa | Concessão imediata pelo serviço, pré-create e pós-create validados; uso único validado. Interface WPF compilada, sem teste interativo. Rename e hard link ainda não consomem exceções. |
+| Justificativa | Concessão imediata pelo serviço, pré-create e pós-create validados; uso único validado. Interface WPF exercitada manualmente. Rename e hard link ainda não consomem exceções. |
 | Clipboard, impressão e upload por navegador | Ainda não implementados. O minifiltro não vê o conteúdo destes canais. |
 | Vazamento no unload | Não reproduzido com Special Pool e Pool Tracking ativos; pico de 50 alocações simultâneas em unload sob carga. A causa original continua indeterminada. |
 | Métricas | Contadores pela porta funcionam. ETW de produção pendente. |
 | INF e versão | Altitude 321410 continua provisória, aguardando alocação. Recurso `VERSIONINFO` 1.0.0.0 compilado e conferido no `.sys`. |
 
-A bateria final de 30/09 passou **49/49 verificações** na VM alvo, incluindo
+Uma bateria anterior de 30/09 passou **49/49 verificações** na VM alvo, incluindo
 o unload sob Driver Verifier com Pool Tracking ativo. A investigação de carga
 separada não reproduziu o vazamento. Os testes de
 justificativa cobrem o protocolo, serviço, auditoria e driver; a nova
-interface WPF foi compilada, mas ainda não foi exercitada por uma pessoa.
+interface WPF foi compilada e exercitada manualmente por Victor.
 
 ## Escopo desta versão
 

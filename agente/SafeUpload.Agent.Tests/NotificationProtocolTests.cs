@@ -79,7 +79,7 @@ public class NotificationProtocolTests
     [Fact]
     public void Status_sobrevive_ao_percurso_completo()
     {
-        var original = new StatusNotification(9, 2, ProtectionActive: false);
+        var original = new StatusNotification(9, 2, ProtectionActive: true, AuditOnly: true);
         var lido = NotificationProtocol.Deserialize(NotificationProtocol.Serialize(original).TrimEnd('\n'));
 
         var status = Assert.IsType<StatusNotification>(lido);

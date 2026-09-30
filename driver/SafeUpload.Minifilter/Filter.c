@@ -74,7 +74,7 @@ SafeUploadEvaluate (
     );
 
 static
-VOID
+BOOLEAN
 SafeUploadReadFileStamp (
     _In_ PCFLT_RELATED_OBJECTS FltObjects,
     _Out_ PLARGE_INTEGER FileSize,
@@ -837,7 +837,7 @@ Arguments:
 Return Value:
 
     TRUE when Verdict is a checked answer safe to cache - the operation was
-    out of scope, the process was excluded, or user mode actually replied.
+    out of scope or user mode actually replied.
     FALSE when Verdict is ALLOW only because user mode could not be reached
     (allocation failure, name resolution failure, or a fail-open inside
     SafeUploadRequestVerdict): the caller must treat this as unchecked, not
@@ -903,7 +903,12 @@ Return Value:
         SetFlag( exchange->Request.Flags, SAFEUPLOAD_REQUEST_FLAG_SCOPE_DESTINATION );
     }
 
-    if (SafeUploadPolicyMatchesSource( &normalizedPath )) {
+    // Only a read open may classify a source and mark its process. A
+    // write-only open of a sensitive file must not taint the writer.
+    if (Data->Iopb->Parameters.Create.SecurityContext != NULL &&
+        FlagOn( Data->Iopb->Parameters.Create.SecurityContext->DesiredAccess,
+                FILE_READ_DATA ) &&
+        SafeUploadPolicyMatchesSource( &normalizedPath )) {
 
         SetFlag( exchange->Request.Flags, SAFEUPLOAD_REQUEST_FLAG_SCOPE_SOURCE );
     }
@@ -939,13 +944,13 @@ Return Value:
         if (SafeUploadPolicyExcludesImage( &imageName )) {
 
             //
-            //  Excluded process is also a real, checked answer - RN-014,
-            //  not a fail-open.
+            //  An image exclusion belongs to this requestor, not the file.
+            //  Another process still needs its own inspection.
             //
 
             *ScopeFlags = 0;
             ExFreePoolWithTag( exchange, SAFEUPLOAD_POOL_TAG );
-            return TRUE;
+            return FALSE;
         }
     }
 
@@ -965,7 +970,7 @@ Return Value:
 
 
 static
-VOID
+BOOLEAN
 SafeUploadReadFileStamp (
     _In_ PCFLT_RELATED_OBJECTS FltObjects,
     _Out_ PLARGE_INTEGER FileSize,
@@ -989,12 +994,11 @@ Arguments:
     FltObjects - Objects for the create that just completed.
 
     FileSize, LastWriteTime - Receive the stamp, or zero when it could not
-        be read. Zero simply means the cached entry will never match, which
-        costs an inspection and is never wrong.
+        be read. A failed query is distinct from a confirmed empty file.
 
 Return Value:
 
-    None.
+    TRUE only when the file size and time were read successfully.
 
 --*/
 {
@@ -1017,7 +1021,10 @@ Return Value:
 
         *FileSize = information.EndOfFile;
         *LastWriteTime = information.LastWriteTime;
+        return TRUE;
     }
+
+    return FALSE;
 }
 
 
@@ -1432,6 +1439,10 @@ Return Value:
     UINT32 verdict = SAFEUPLOAD_VERDICT_ALLOW;
     BOOLEAN answered = FALSE;
     BOOLEAN inspected;
+    BOOLEAN stampKnown;
+    BOOLEAN cacheEligible;
+    LONG policyGeneration;
+    LONG currentGeneration;
     NTSTATUS status;
 
     PAGED_CODE();
@@ -1475,17 +1486,44 @@ Return Value:
         return FLT_POSTOP_FINISHED_PROCESSING;
     }
 
-    SafeUploadReadFileStamp( FltObjects, &fileSize, &lastWriteTime );
+    stampKnown = SafeUploadReadFileStamp( FltObjects, &fileSize, &lastWriteTime );
+    policyGeneration = SafeUploadCurrentPolicyGeneration();
 
-    status = SafeUploadGetOrCreateStreamContext( FltObjects,
-                                                 FltObjects->FileObject,
-                                                 &streamContext );
+    // Source classification depends on the access requested for this open.
+    // A write-only open must not cache an out-of-scope result that a later
+    // reader can reuse, nor inherit a reader's sensitive source verdict.
+    cacheEligible = (BOOLEAN)
+        (Data->Iopb->Parameters.Create.SecurityContext != NULL &&
+         FlagOn( Data->Iopb->Parameters.Create.SecurityContext->DesiredAccess,
+                 FILE_READ_DATA ) &&
+         !SafeUploadPolicyClassifiesAllSources());
 
-    if (NT_SUCCESS( status )) {
+    // A newly created or truncated file has no content to classify yet.
+    // Reading it from user mode may fail on the just-opened write handle;
+    // treating that failure as sensitive taints a clean writer. Keep the
+    // write-handle marker so cleanup dirties any previous stream verdict.
+    if (stampKnown && fileSize.QuadPart == 0) {
+
+        if (FltObjects->FileObject->WriteAccess) {
+            (VOID) SafeUploadMarkHandleForWrite( FltObjects, overrideGranted );
+        }
+
+        return FLT_POSTOP_FINISHED_PROCESSING;
+    }
+
+    status = STATUS_SUCCESS;
+    if (cacheEligible) {
+        status = SafeUploadGetOrCreateStreamContext( FltObjects,
+                                                     FltObjects->FileObject,
+                                                     &streamContext );
+    }
+
+    if (NT_SUCCESS( status ) && cacheEligible) {
 
         FltAcquirePushLockShared( &streamContext->Lock );
 
-        if (streamContext->ScopeEvaluated) {
+        if (streamContext->ScopeEvaluated &&
+            streamContext->PolicyGeneration == policyGeneration) {
 
             if (streamContext->ScopeFlags == 0) {
 
@@ -1497,7 +1535,6 @@ Return Value:
 
                 scopeFlags = 0;
                 answered = TRUE;
-                SafeUploadCount( CacheHits );
 
             } else if (streamContext->VerdictValid &&
                        !streamContext->Dirty &&
@@ -1507,22 +1544,34 @@ Return Value:
                 scopeFlags = streamContext->ScopeFlags;
                 verdict = streamContext->Verdict;
                 answered = TRUE;
-                SafeUploadCount( CacheHits );
             }
         }
 
         FltReleasePushLock( &streamContext->Lock );
     }
 
+    currentGeneration = SafeUploadCurrentPolicyGeneration();
+    if (currentGeneration != policyGeneration) {
+        policyGeneration = currentGeneration;
+        answered = FALSE;
+        scopeFlags = 0;
+        verdict = SAFEUPLOAD_VERDICT_ALLOW;
+    }
+
+    if (answered) {
+        SafeUploadCount( CacheHits );
+    }
+
     if (!answered) {
 
         inspected = SafeUploadEvaluate( Data, volumeKind, &scopeFlags, &verdict );
 
-        if (streamContext != NULL) {
+        if (streamContext != NULL && cacheEligible) {
 
             FltAcquirePushLockExclusive( &streamContext->Lock );
 
-            streamContext->ScopeEvaluated = TRUE;
+            streamContext->ScopeEvaluated = inspected;
+            streamContext->PolicyGeneration = policyGeneration;
             streamContext->ScopeFlags = scopeFlags;
             streamContext->Verdict = verdict;
 

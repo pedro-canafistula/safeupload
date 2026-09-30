@@ -40,9 +40,17 @@ public sealed class PolicyBuilder
         return this;
     }
 
+    // Retained for the probe and older policy messages. The production agent
+    // classifies without a source folder list.
     public PolicyBuilder WithSource(string dosPath)
     {
         _sourcePrefixes.Add(ToNtPath(dosPath));
+        return this;
+    }
+
+    public PolicyBuilder WithAllSources()
+    {
+        _flags |= PolicyFlags.ClassifyAllSources;
         return this;
     }
 

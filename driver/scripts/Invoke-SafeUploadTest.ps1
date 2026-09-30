@@ -979,6 +979,22 @@ try {
     Add-Result -Name 'Escrita fora de escopo continua permitida' -Passed $freeWriteOk `
         -Detail $(if ($freeWriteOk) { 'A marcacao nao virou proibicao geral.' } else { 'Escrita fora de escopo foi negada: falso positivo grave.' })
 
+    # A destination prefix must end on a folder boundary. The sibling has
+    # the same characters up to the configured path but is a different folder.
+    $siblingDirectory = "$TestDirectory-vizinho"
+    New-Item -ItemType Directory -Path $siblingDirectory -Force | Out-Null
+    $siblingWrite = Join-Path $siblingDirectory 'livre.txt'
+    Remove-Item $siblingWrite -Force -ErrorAction SilentlyContinue
+    $siblingWriteOk = $false
+    try {
+        Set-Content -Path $siblingWrite -Value 'permitido' -ErrorAction Stop
+        $siblingWriteOk = Test-Path $siblingWrite
+    }
+    catch { }
+
+    Add-Result -Name 'Pasta vizinha com mesmo prefixo nao e destino' -Passed $siblingWriteOk `
+        -Detail $(if ($siblingWriteOk) { 'O prefixo terminou no limite da pasta.' } else { 'Pasta vizinha foi bloqueada indevidamente.' })
+
     Write-Step 'Caso 10 - renomear para o destino tambem e negado'
 
     # The bypass this closes: a tainted process cannot create a file inside
@@ -1330,7 +1346,6 @@ else {
                     # exercita o caminho "monitorado mas impossivel de olhar".
                     extensions       = @('.txt', '.csv', '.docx', '.xlsx', '.pdf', '.bin')
                     destinationPaths = @($TestDirectory)
-                    sourcePaths      = @($SourceDirectory)
                     removableDrives  = $true
                     networkPaths     = $true
                 }
@@ -1343,7 +1358,7 @@ else {
             $policy | ConvertTo-Json -Depth 5 | Set-Content -Path $policyFile -Encoding UTF8
 
             Write-Host "  Politica da bateria escrita em $policyFile."
-            Write-Host "    origem  : $SourceDirectory"
+            Write-Host '    origens : todos os arquivos dos formatos monitorados'
             Write-Host "    destino : $TestDirectory"
 
             # O evento e criado antes do processo existir, para o sinal nao
@@ -1392,7 +1407,8 @@ else {
 
                     Write-Host "  CPF sintetico do teste: $cpf"
 
-                    $sensivel = Join-Path $SourceDirectory 'relatorio-com-cpf.txt'
+                    # This fixture is outside the old source prefix on purpose.
+                    $sensivel = Join-Path $OutOfScopeDirectory 'relatorio-com-cpf.txt'
                     $inocente = Join-Path $SourceDirectory 'relatorio-sem-nada.txt'
                     $alvo = Join-Path $TestDirectory 'exfiltrado.txt'
 
@@ -1649,6 +1665,7 @@ catch { 'ERRO:' + $_.Exception.GetType().Name }
                         catch [System.UnauthorizedAccessException] { $primeira = $true }
                         catch { }
 
+
                         Add-Result -Name 'Arquivo sensivel no destino e recusado' -Passed $primeira `
                             -Detail $(if ($primeira) { 'Recusa no pos-create, como esperado.' } else { 'Passou: nao ha o que justificar depois.' })
 
@@ -1686,6 +1703,7 @@ catch { 'ERRO:' + $_.Exception.GetType().Name }
                             catch [System.UnauthorizedAccessException] { $aindaNegado = $true }
                             catch { }
 
+
                             Add-Result -Name 'Justificativa com identificador inventado nao vale' -Passed $aindaNegado `
                                 -Detail $(if ($aindaNegado) { 'Continua recusado, como deve.' } else { 'A operacao passou: o servico aceitou um identificador que nunca emitiu.' })
 
@@ -1703,8 +1721,8 @@ catch { 'ERRO:' + $_.Exception.GetType().Name }
 
                             $liberado = $false
                             try {
-                                Get-Content -LiteralPath $noDestino -Raw -ErrorAction Stop | Out-Null
-                                $liberado = $true
+                                $conteudo = Get-Content -LiteralPath $noDestino -Raw -ErrorAction Stop
+                                $liberado = $conteudo.Contains($cpf)
                             }
                             catch { }
 
@@ -1836,6 +1854,7 @@ $renamesFromTainted = 0
 $linksSeen = 0
 $linksFromTainted = 0
 $wouldHaveDenied = 0
+$overridesUsed = 0
 $setInformationSeen = 0
 
 foreach ($line in $counterOutput) {
@@ -1849,6 +1868,7 @@ foreach ($line in $counterOutput) {
     if ($line -match '^LinksSeen\s*:\s*(\d+)') { $linksSeen = [int] $matches[1] }
     if ($line -match '^LinksFromTainted\s*:\s*(\d+)') { $linksFromTainted = [int] $matches[1] }
     if ($line -match '^WouldHaveDenied\s*:\s*(\d+)') { $wouldHaveDenied = [int] $matches[1] }
+    if ($line -match '^OverridesUsed\s*:\s*(\d+)') { $overridesUsed = [int] $matches[1] }
 }
 
 # The cache is the property the design rests on. If it never served a single
@@ -1891,6 +1911,12 @@ Add-Result -Name 'A recusa por marca no pre-create foi contada' -Passed ($denied
 # exatamente o que se quer medir antes de ligar o bloqueio.
 Add-Result -Name 'A auditoria contou o que teria sido negado' -Passed ($wouldHaveDenied -gt 0) `
     -Detail "WouldHaveDenied = $wouldHaveDenied; a fase de auditoria passou por uma operacao que seria negada."
+
+if (-not $SkipServiceTest) {
+    Add-Result -Name 'A justificativa foi consumida uma unica vez pelo kernel' `
+        -Passed ($overridesUsed -eq 1) `
+        -Detail "OverridesUsed = $overridesUsed; o aceite do servico sozinho nao prova que o kernel consumiu a concessao."
+}
 
 Add-Result -Name 'O gancho de SET_INFORMATION e alcancado e libera fora de escopo' `
     -Passed ($renamesSeen -gt 0 -and $renamesFromTainted -gt 0) `

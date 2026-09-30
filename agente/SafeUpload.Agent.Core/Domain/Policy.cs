@@ -23,26 +23,7 @@ public sealed record MonitoredScopes(
     IReadOnlySet<string> Extensions,
     IReadOnlyList<string> DestinationPaths,
     bool RemovableDrives,
-    bool NetworkPaths,
-    IReadOnlyList<string>? SourcePaths = null)
-{
-    /// <summary>
-    /// Onde mora o conteúdo sensível: as pastas cuja leitura merece ser
-    /// inspecionada.
-    ///
-    /// É a outra metade do escopo, e só passou a existir quando o gatilho
-    /// virou o minifiltro. No mock a inspeção começa quando um arquivo
-    /// <b>chega</b> à pasta vigiada, e origem e destino são a mesma coisa —
-    /// não há o que distinguir. Com interceptação de verdade a cadeia tem dois
-    /// elos: ler um documento sensível marca o processo, e o processo marcado
-    /// deixa de escrever nos destinos vigiados. Sem esta lista o primeiro elo
-    /// nunca acontece, e o segundo nunca dispara.
-    ///
-    /// Vazia é configuração legítima: significa vigiar destinos sem manter
-    /// cadeia de contaminação.
-    /// </summary>
-    public IReadOnlyList<string> SourcePaths { get; init; } = SourcePaths ?? [];
-}
+    bool NetworkPaths);
 
 /// <summary>
 /// A política vigente no endpoint.
@@ -175,28 +156,10 @@ public sealed record Policy(
     {
         ArgumentNullException.ThrowIfNull(operation);
 
-        return operation.Destination == DestinationKind.SensitiveSource
-            ? IsUnderMonitoredSource(operation.FilePath)
-            : IsMonitoredDestination(operation);
-    }
-
-    /// <summary>Se o caminho está sob uma das origens vigiadas.</summary>
-    private bool IsUnderMonitoredSource(string? filePath)
-    {
-        if (string.IsNullOrWhiteSpace(filePath))
-        {
-            return false;
-        }
-
-        foreach (string root in MonitoredScopes.SourcePaths)
-        {
-            if (filePath.StartsWith(root, StringComparison.OrdinalIgnoreCase))
-            {
-                return true;
-            }
-        }
-
-        return false;
+        // Classify supported file reads by content, regardless of folder.
+        // The minifilter only requests SensitiveSource for a read open.
+        return operation.Destination == DestinationKind.SensitiveSource ||
+            IsMonitoredDestination(operation);
     }
 
     private bool IsUnderMonitoredPath(string? destinationPath)
@@ -208,7 +171,12 @@ public sealed record Policy(
 
         foreach (var monitored in MonitoredScopes.DestinationPaths)
         {
-            if (destinationPath.StartsWith(monitored, StringComparison.OrdinalIgnoreCase))
+            if (destinationPath.StartsWith(monitored, StringComparison.OrdinalIgnoreCase) &&
+                (destinationPath.Length == monitored.Length ||
+                 monitored.EndsWith(Path.DirectorySeparatorChar) ||
+                 monitored.EndsWith(Path.AltDirectorySeparatorChar) ||
+                 destinationPath[monitored.Length] == Path.DirectorySeparatorChar ||
+                 destinationPath[monitored.Length] == Path.AltDirectorySeparatorChar))
             {
                 return true;
             }

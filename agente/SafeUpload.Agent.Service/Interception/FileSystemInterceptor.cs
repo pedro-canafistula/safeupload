@@ -136,7 +136,8 @@ public sealed class FileSystemInterceptor : BackgroundService
             _hub.Publish(new StatusNotification(
                 policy.Version,
                 policy.ActiveCategories.Count,
-                ProtectionActive: _watchers.Count > 0));
+                ProtectionActive: _watchers.Count > 0,
+                AuditOnly: true));
         }
         catch (Exception ex)
         {

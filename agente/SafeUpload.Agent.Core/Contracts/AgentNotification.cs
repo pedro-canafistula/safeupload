@@ -34,10 +34,12 @@ public abstract record AgentNotification;
 /// não conseguiu observar as pastas — o aplicativo precisa poder distinguir
 /// "protegido" de "serviço no ar, mas cego".
 /// </param>
+/// <param name="AuditOnly">Há observação ativa, mas nenhuma operação é bloqueada.</param>
 public sealed record StatusNotification(
     int PolicyVersion,
     int ActiveCategories,
-    bool ProtectionActive) : AgentNotification
+    bool ProtectionActive,
+    bool AuditOnly = false) : AgentNotification
 {
     /// <summary>Discriminador desta mensagem no NDJSON.</summary>
     public const string TypeName = "status";

@@ -1,5 +1,23 @@
 # DEPLOY.md — Minifiltro SafeUpload (v1)
 
+## Política atual: classificação em qualquer origem
+
+O agente não usa `sourcePaths`. Ele inspeciona o conteúdo de arquivos com
+extensões monitoradas quando são abertos para leitura, qualquer que seja a
+pasta ou o volume. `destinationPaths`, `removableDrives` e `networkPaths`
+definem para onde a saída é controlada. O cliente de prova ainda usa prefixos
+de origem para exercitar o protocolo legado.
+
+Prefixos de destino exigem limite de pasta; um nome de pasta vizinha
+com o mesmo começo não entra no escopo.
+
+O pacote com protocolo 11 passou **50/50 verificações** na VM alvo em
+30/09/2026, com uma verificação de Driver Verifier pulada. O modo operacional
+desativa temporariamente o cache de fluxo para não reutilizar decisões de
+escopo de outra abertura do mesmo arquivo. Meça a latência sob carga antes
+de implantar; a separação de classificação de conteúdo e escopo por operação
+é trabalho pendente.
+
 Runbook completo para compilar, assinar, instalar, testar, depurar e remover
 o minifiltro SafeUpload em uma **VM alvo descartável**.
 
@@ -81,7 +99,7 @@ $ProgressPreference = 'SilentlyContinue'
 iex (irm http://IP_DA_VM_DEBUGGER:8000/bootstrap.ps1)
 ```
 
-Na bateria final de 30/09/2026, o pacote assinado passou 49/49 verificações:
+Numa bateria anterior de 30/09/2026, o pacote assinado passou 49/49 verificações:
 escrita por handle pré-aberto foi negada após a contaminação, `.bin` não
 contornou o destino e uma justificativa válida liberou somente uma tentativa.
 O pipe confirmou `rejected` para ID inventado e `accepted` após a concessão
@@ -135,8 +153,7 @@ com o serviço em modo minifiltro e `overrideAllowed: true` na política:
 4. Com `overrideAllowed: false`, repita o bloqueio. O campo de justificativa
    não deve aparecer.
 
-O projeto WPF compilou em Release em 30/09/2026; essa sequência de cliques
-ainda não foi executada na VM alvo.
+O projeto WPF compilou em Release em 30/09/2026; essa sequência de cliques foi executada por Victor na VM alvo.
 
 > O `bootstrap.ps1` entrega o controle ao script **como arquivo**, e não por
 > `Invoke-Expression`. É deliberado: `#Requires -RunAsAdministrator` é
@@ -815,7 +832,8 @@ anexado. Redirecionar a saída para arquivo também reduz o volume de I/O de
 console, que é o que alimenta o defeito:
 
 ```
-powershell -NoProfile -Command "iex (irm http://SEU_IP:8000/bootstrap.ps1)" > C:\safeuploadun.log 2>&1
+powershell -NoProfile -Command "iex (irm http://SEU_IP:8000/bootstrap.ps1)" > C:\safeupload
+un.log 2>&1
 ```
 
 Custaram três rodadas de investigação antes de alguém rodar
@@ -909,7 +927,7 @@ dotnet run --project service\SafeUpload.Agent -- --verify
 
 ### Versão
 
-`SAFEUPLOAD_PROTOCOL_VERSION` é **6**. Ela sobe sempre que o layout muda,
+`SAFEUPLOAD_PROTOCOL_VERSION` é **11**. Ela sobe sempre que o layout muda,
 inclusive quando a mudança é só um contador novo: o receptor lê a estrutura
 inteira de uma vez, então um campo acrescentado no meio desloca tudo o que
 vem depois. Um cliente antigo contra um driver novo não leria um número
@@ -949,7 +967,7 @@ canal de controle e vai no sentido oposto.
 
 | Offset | Tamanho | Campo | Descrição |
 |---:|---:|---|---|
-| 0 | 4 | `Version` | `6`. |
+| 0 | 4 | `Version` | `11`. |
 | 4 | 4 | `StructSize` | `1192`. |
 | 8 | 8 | `RequestId` | Identificador monotônico. A resposta **tem que** repeti-lo. |
 | 16 | 4 | `Operation` | `1` = CREATE. O `2` = READ existe no contrato mas não ocorre: `IRP_MJ_READ` não é registrado. |
@@ -969,7 +987,7 @@ Flags:
 | 0x02 | `IMAGE_NAME_TRUNCATED` | O nome da imagem não coube em 64. |
 | 0x04 | `PATH_NOT_NORMALIZED` | A normalização falhou; o caminho é o de abertura. |
 | 0x08 | `SCOPE_DESTINATION` | A operação vai para um destino monitorado. |
-| 0x10 | `SCOPE_SOURCE` | A operação lê de uma origem monitorada. |
+| 0x10 | `SCOPE_SOURCE` | A operação lê um formato monitorado; no serviço, independe da pasta. |
 
 Os dois últimos são a informação que o serviço usa para decidir o que a
 resposta significa. Uma negação em escopo de **origem** marca o processo;
@@ -984,7 +1002,7 @@ um cliente correto e um que lê fora da estrutura.
 
 | Offset | Tamanho | Campo | Descrição |
 |---:|---:|---|---|
-| 0 | 4 | `Version` | `6`. |
+| 0 | 4 | `Version` | `11`. |
 | 4 | 4 | `StructSize` | `24`. |
 | 8 | 8 | `RequestId` | O mesmo que chegou. |
 | 16 | 4 | `Verdict` | `0` = permitir, `1` = negar. |
@@ -996,7 +1014,7 @@ Cabeçalho de todo comando pelo `FilterSendMessage`.
 
 | Offset | Tamanho | Campo | Descrição |
 |---:|---:|---|---|
-| 0 | 4 | `Version` | `6`. |
+| 0 | 4 | `Version` | `11`. |
 | 4 | 4 | `StructSize` | Tamanho da mensagem **inteira**, não do cabeçalho. |
 | 8 | 4 | `Command` | `1` = SET_POLICY, `2` = GET_COUNTERS. |
 | 12 | 4 | `Reserved` | Zero. |
@@ -1014,11 +1032,11 @@ o filtro, não configuração opcional.
 | 20 | 4 | `PrefixCount` | Destinos, máximo 16. |
 | 24 | 4 | `ImageCount` | Imagens excluídas, máximo 16. |
 | 28 | 4 | `SourcePrefixCount` | Origens, máximo 16. |
-| 32 | 4 | `Flags` | `0x01` = todo volume removível, `0x02` = toda rede. |
+| 32 | 4 | `Flags` | `0x01` = removível, `0x02` = rede, `0x04` = só auditoria, `0x08` = justificativa, `0x10` = classificar toda origem. |
 | 36 | 4 | `Reserved` | Zero. |
 | 40 | 1024 | `Extensions[32][16]` | Com o ponto: `.docx`. |
 | 1064 | 8320 | `Prefixes[16][260]` | Destinos monitorados. |
-| 9384 | 8320 | `SourcePrefixes[16][260]` | Origens sensíveis. |
+| 9384 | 8320 | `SourcePrefixes[16][260]` | Prefixos legados, usados pelo cliente de prova. |
 | 17704 | 2048 | `Images[16][64]` | Processos ignorados, só o nome. |
 
 Cada entrada ocupa um slot de tamanho fixo e **tem que terminar em nulo**:

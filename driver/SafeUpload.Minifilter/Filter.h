@@ -266,6 +266,9 @@ typedef struct _SAFEUPLOAD_STREAM_CONTEXT {
 
     BOOLEAN ScopeEvaluated;
 
+    // A cached result belongs to the policy snapshot that produced it.
+    LONG PolicyGeneration;
+
     //
     //  SAFEUPLOAD_REQUEST_FLAG_SCOPE_*, or zero when out of scope.
     //
@@ -582,6 +585,16 @@ SafeUploadFreePolicy (
 NTSTATUS
 SafeUploadSetPolicy (
     _In_ CONST SAFEUPLOAD_POLICY_MESSAGE *Message
+    );
+
+LONG
+SafeUploadCurrentPolicyGeneration (
+    VOID
+    );
+
+BOOLEAN
+SafeUploadPolicyClassifiesAllSources (
+    VOID
     );
 
 LONGLONG

@@ -115,7 +115,13 @@ public sealed class StatusViewModel : ObservableObject
         // pasta inacessível. Exibir "Protegido" nesse caso seria a pior forma
         // de erro possível nesta tela: o usuário confiaria numa proteção que
         // não existe.
-        if (status.ProtectionActive)
+        if (status.ProtectionActive && status.AuditOnly)
+        {
+            SecurityState = "Em auditoria";
+            SecurityCaption = "MONITORANDO SEM BLOQUEIO";
+            MonitoringState = "AUDITANDO";
+        }
+        else if (status.ProtectionActive)
         {
             SecurityState = "Protegido";
             SecurityCaption = "DISPOSITIVO SEGURO";
