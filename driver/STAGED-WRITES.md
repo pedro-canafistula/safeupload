@@ -76,12 +76,28 @@ The WDK build succeeded. With the signed prototype loaded on the debuggee,
 destination path did not exist. The original driver was restored afterward
 (SHA-256 `ADA9D05AB6AECDD2B6C521B0CE529FC06C732154ACB3EE85439FBDC8AA80DFCE`).
 
-This proves the write redirection primitive, not application transparency.
-Immediately after that save, a metadata lookup of the original path would
-see no file. An application that reopens its save or enumerates its folder
-needs process-aware name virtualization. Cloud sync and other processes must
-not see the staged bytes before approval. The prototype is disabled by
-default with `SAFEUPLOAD_STAGING_PROTOTYPE=0` and must not be shipped.
+That first probe proved the write redirection primitive, not application
+transparency. Immediately after its save, a metadata lookup of the original
+path saw no file. An application that reopens its save or enumerates its
+folder needs process-aware name virtualization. Cloud sync and other
+processes must not see the staged bytes before approval. The prototype is
+disabled by default with `SAFEUPLOAD_STAGING_PROTOTYPE=0` and must not ship.
+
+The later test-only namespace map redirects subsequent opens by the writer's
+process to its stage file. On the debuggee, the writer could reopen and read
+the staged bytes; another process could not see the new destination path.
+The map is dropped on process exit so PID reuse does not inherit visibility.
+An explicit `SafeUploadStagingPrototype=true` WDK build property is required
+to include this code; ordinary builds still compile it out.
+
+The same test exposed two missing filesystem operations. The writer's folder
+enumeration did not include its staged file. A rename from a staged temporary
+file into the protected folder initially made bytes visible before approval.
+The prototype now denies renames and hard links into that test folder; the
+debuggee confirmed the destination stayed absent. This safety gate breaks
+rename-based saves and must become transactional rename virtualization.
+The original driver was restored after each test. The reproducible test is
+`driver/scripts/Test-StagedNamespacePrototype.ps1`.
 
 ## Implementation sequence
 

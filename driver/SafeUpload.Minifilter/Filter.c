@@ -48,6 +48,32 @@ SAFEUPLOAD_COUNTERS SafeUploadCounters;
 #endif
 
 #if SAFEUPLOAD_STAGING_PROTOTYPE
+typedef struct _SAFEUPLOAD_PROTOTYPE_MAPPING {
+    LIST_ENTRY Link;
+    ULONG OwnerProcessId;
+    UNICODE_STRING OriginalName;
+    UNICODE_STRING StageName;
+} SAFEUPLOAD_PROTOTYPE_MAPPING, *PSAFEUPLOAD_PROTOTYPE_MAPPING;
+
+static LIST_ENTRY SafeUploadPrototypeMappings;
+static FAST_MUTEX SafeUploadPrototypeMappingLock;
+static ULONG SafeUploadPrototypeMappingCount;
+static BOOLEAN SafeUploadPrototypeNotifyRegistered;
+
+static
+VOID
+SafeUploadPrototypeProcessNotify (
+    _In_ HANDLE ParentId,
+    _In_ HANDLE ProcessId,
+    _In_ BOOLEAN Create
+    );
+
+static
+VOID
+SafeUploadPrototypeFreeMappings (
+    VOID
+    );
+
 static
 FLT_PREOP_CALLBACK_STATUS
 SafeUploadPrototypeRedirectCreate (
@@ -128,6 +154,8 @@ SafeUploadOverrideCovers (
     #pragma alloc_text(PAGE, SafeUploadPreSetInformation)
 #if SAFEUPLOAD_STAGING_PROTOTYPE
     #pragma alloc_text(PAGE, SafeUploadPrototypeRedirectCreate)
+    #pragma alloc_text(PAGE, SafeUploadPrototypeFreeMappings)
+    #pragma alloc_text(PAGE, SafeUploadPrototypeProcessNotify)
 #endif
 #endif
 
@@ -274,6 +302,13 @@ Return Value:
 
     ExInitializeDriverRuntime( DrvRtPoolNxOptIn );
 
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    InitializeListHead( &SafeUploadPrototypeMappings );
+    ExInitializeFastMutex( &SafeUploadPrototypeMappingLock );
+    SafeUploadPrototypeMappingCount = 0;
+    SafeUploadPrototypeNotifyRegistered = FALSE;
+#endif
+
     //
     //  Has to be initialized before the port exists, because the first
     //  thing any user of the channel does is acquire it.
@@ -289,6 +324,17 @@ Return Value:
     SafeUploadInitializePolicy();
     SafeUploadInitializeTaint();
     SafeUploadInitializeOverrides();
+
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    // A recycled PID must never inherit an earlier process's staged view.
+    // A failed notification registration makes this test build fail to load.
+    status = PsSetCreateProcessNotifyRoutine(
+        SafeUploadPrototypeProcessNotify, FALSE );
+    if (!NT_SUCCESS( status )) {
+        goto FreeState;
+    }
+    SafeUploadPrototypeNotifyRegistered = TRUE;
+#endif
 
     SafeUploadData.DriverObject = DriverObject;
 
@@ -337,6 +383,9 @@ UnregisterFilter:
     SafeUploadData.Filter = NULL;
 
 FreeState:
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    SafeUploadPrototypeFreeMappings();
+#endif
     // These were initialized before FltRegisterFilter. In particular, the
     // taint table may have registered a process notification callback; it
     // must be removed even when registration itself failed.
@@ -426,6 +475,10 @@ Return Value:
 
     FltUnregisterFilter( SafeUploadData.Filter );
     SafeUploadData.Filter = NULL;
+
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    SafeUploadPrototypeFreeMappings();
+#endif
 
     //
     //  4. Release the policy. Last, because it can only be freed once no
@@ -1172,6 +1225,67 @@ Return Value:
 
 #if SAFEUPLOAD_STAGING_PROTOTYPE
 static
+VOID
+SafeUploadPrototypeProcessNotify (
+    _In_ HANDLE ParentId,
+    _In_ HANDLE ProcessId,
+    _In_ BOOLEAN Create
+    )
+{
+    PLIST_ENTRY link;
+    PLIST_ENTRY next;
+
+    UNREFERENCED_PARAMETER( ParentId );
+    PAGED_CODE();
+
+    if (Create) {
+        return;
+    }
+
+    ExAcquireFastMutex( &SafeUploadPrototypeMappingLock );
+    for (link = SafeUploadPrototypeMappings.Flink;
+         link != &SafeUploadPrototypeMappings;
+         link = next) {
+        PSAFEUPLOAD_PROTOTYPE_MAPPING mapping =
+            CONTAINING_RECORD( link, SAFEUPLOAD_PROTOTYPE_MAPPING, Link );
+        next = link->Flink;
+        if (mapping->OwnerProcessId == HandleToULong( ProcessId )) {
+            RemoveEntryList( link );
+            SafeUploadPrototypeMappingCount -= 1;
+            ExFreePoolWithTag( mapping, SAFEUPLOAD_POOL_TAG );
+        }
+    }
+    ExReleaseFastMutex( &SafeUploadPrototypeMappingLock );
+}
+
+static
+VOID
+SafeUploadPrototypeFreeMappings (
+    VOID
+    )
+{
+    PLIST_ENTRY link;
+
+    PAGED_CODE();
+
+    if (SafeUploadPrototypeNotifyRegistered) {
+        (VOID) PsSetCreateProcessNotifyRoutine(
+            SafeUploadPrototypeProcessNotify, TRUE );
+        SafeUploadPrototypeNotifyRegistered = FALSE;
+    }
+
+    ExAcquireFastMutex( &SafeUploadPrototypeMappingLock );
+    while (!IsListEmpty( &SafeUploadPrototypeMappings )) {
+        link = RemoveHeadList( &SafeUploadPrototypeMappings );
+        ExFreePoolWithTag( CONTAINING_RECORD( link,
+                           SAFEUPLOAD_PROTOTYPE_MAPPING, Link ),
+                           SAFEUPLOAD_POOL_TAG );
+    }
+    SafeUploadPrototypeMappingCount = 0;
+    ExReleaseFastMutex( &SafeUploadPrototypeMappingLock );
+}
+
+static
 FLT_PREOP_CALLBACK_STATUS
 SafeUploadPrototypeRedirectCreate (
     _Inout_ PFLT_CALLBACK_DATA Data
@@ -1182,7 +1296,14 @@ SafeUploadPrototypeRedirectCreate (
     PFLT_FILE_NAME_INFORMATION nameInfo = NULL;
     PIO_SECURITY_CONTEXT securityContext;
     UNICODE_STRING relativeName;
+    UNICODE_STRING processIdString;
+    WCHAR processIdBuffer[16];
+    PSAFEUPLOAD_PROTOTYPE_MAPPING mapping = NULL;
+    PLIST_ENTRY link;
     PWCH newName = NULL;
+    ULONG processId;
+    BOOLEAN isWriter;
+    BOOLEAN newMapping = FALSE;
     USHORT suffixLength;
     USHORT newNameLength;
     USHORT i;
@@ -1192,13 +1313,15 @@ SafeUploadPrototypeRedirectCreate (
 
     securityContext = Data->Iopb->Parameters.Create.SecurityContext;
     if (securityContext == NULL ||
-        !FlagOn( securityContext->DesiredAccess,
-                 FILE_WRITE_DATA | FILE_APPEND_DATA ) ||
         FlagOn( Data->Iopb->Parameters.Create.Options,
                 FILE_DIRECTORY_FILE | FILE_OPEN_BY_FILE_ID ) ||
         FlagOn( Data->Iopb->OperationFlags, SL_OPEN_PAGING_FILE )) {
         return FLT_PREOP_SUCCESS_NO_CALLBACK;
     }
+
+    processId = FltGetRequestorProcessId( Data );
+    isWriter = (BOOLEAN) FlagOn( securityContext->DesiredAccess,
+                                 FILE_WRITE_DATA | FILE_APPEND_DATA );
 
     status = FltGetFileNameInformation( Data,
                                         FLT_FILE_NAME_OPENED |
@@ -1234,13 +1357,70 @@ SafeUploadPrototypeRedirectCreate (
         }
     }
 
-    if ((ULONG) nameInfo->Volume.Length + stagePrefix.Length + suffixLength >
+    // A subsequent open by the writer sees its staged version, including
+    // metadata-only and read opens. Other processes still see the old
+    // destination. The map is keyed by the full opened name, not extension.
+    ExAcquireFastMutex( &SafeUploadPrototypeMappingLock );
+    for (link = SafeUploadPrototypeMappings.Flink;
+         link != &SafeUploadPrototypeMappings;
+         link = link->Flink) {
+        PSAFEUPLOAD_PROTOTYPE_MAPPING candidate =
+            CONTAINING_RECORD( link, SAFEUPLOAD_PROTOTYPE_MAPPING, Link );
+        if (candidate->OwnerProcessId == processId &&
+            RtlEqualUnicodeString( &candidate->OriginalName,
+                                   &nameInfo->Name, TRUE )) {
+            mapping = candidate;
+            break;
+        }
+    }
+
+    if (mapping != NULL) {
+        newNameLength = mapping->StageName.Length;
+        newName = ExAllocatePool2( POOL_FLAG_PAGED,
+                                   newNameLength + sizeof( WCHAR ),
+                                   SAFEUPLOAD_POOL_TAG );
+        if (newName != NULL) {
+            RtlCopyMemory( newName, mapping->StageName.Buffer,
+                           newNameLength + sizeof( WCHAR ) );
+        }
+        ExReleaseFastMutex( &SafeUploadPrototypeMappingLock );
+        if (newName == NULL) {
+            status = STATUS_INSUFFICIENT_RESOURCES;
+            goto Deny;
+        }
+        goto Reparse;
+    }
+
+    if (!isWriter) {
+        ExReleaseFastMutex( &SafeUploadPrototypeMappingLock );
+        FltReleaseFileNameInformation( nameInfo );
+        return FLT_PREOP_SUCCESS_NO_CALLBACK;
+    }
+
+    if (SafeUploadPrototypeMappingCount >= 128) {
+        ExReleaseFastMutex( &SafeUploadPrototypeMappingLock );
+        status = STATUS_INSUFFICIENT_RESOURCES;
+        goto Deny;
+    }
+    ExReleaseFastMutex( &SafeUploadPrototypeMappingLock );
+
+    processIdString.Buffer = processIdBuffer;
+    processIdString.Length = 0;
+    processIdString.MaximumLength = sizeof( processIdBuffer );
+    status = RtlIntegerToUnicodeString( processId, 10, &processIdString );
+    if (!NT_SUCCESS( status )) {
+        goto Deny;
+    }
+
+    if ((ULONG) nameInfo->Volume.Length + stagePrefix.Length +
+        processIdString.Length + sizeof( WCHAR ) + suffixLength >
         MAXUSHORT - sizeof( WCHAR )) {
         status = STATUS_NAME_TOO_LONG;
         goto Deny;
     }
 
-    newNameLength = nameInfo->Volume.Length + stagePrefix.Length + suffixLength;
+    newNameLength = nameInfo->Volume.Length + stagePrefix.Length +
+                    processIdString.Length + sizeof( WCHAR ) + suffixLength;
     newName = ExAllocatePool2( POOL_FLAG_PAGED,
                                newNameLength + sizeof( WCHAR ),
                                SAFEUPLOAD_POOL_TAG );
@@ -1254,22 +1434,76 @@ SafeUploadPrototypeRedirectCreate (
                    stagePrefix.Buffer, stagePrefix.Length );
     RtlCopyMemory( (PUCHAR) newName + nameInfo->Volume.Length +
                        stagePrefix.Length,
+                   processIdString.Buffer, processIdString.Length );
+    newName[(nameInfo->Volume.Length + stagePrefix.Length +
+             processIdString.Length) / sizeof( WCHAR )] = L'-';
+    RtlCopyMemory( (PUCHAR) newName + nameInfo->Volume.Length +
+                       stagePrefix.Length + processIdString.Length +
+                       sizeof( WCHAR ),
                    (PUCHAR) relativeName.Buffer + sourcePrefix.Length,
                    suffixLength );
     newName[newNameLength / sizeof( WCHAR )] = L'\0';
 
+    // Keep the two names together so a later open can resolve exactly the
+    // staged version owned by this process. This is an isolated feasibility
+    // probe, not the eventual service-owned durable transfer table.
+    mapping = ExAllocatePool2( POOL_FLAG_PAGED,
+        sizeof( *mapping ) + nameInfo->Name.Length + sizeof( WCHAR ) +
+        newNameLength + sizeof( WCHAR ), SAFEUPLOAD_POOL_TAG );
+    if (mapping == NULL) {
+        status = STATUS_INSUFFICIENT_RESOURCES;
+        goto Deny;
+    }
+    mapping->OwnerProcessId = processId;
+    mapping->OriginalName.Buffer = (PWCH) (mapping + 1);
+    mapping->OriginalName.Length = nameInfo->Name.Length;
+    mapping->OriginalName.MaximumLength = nameInfo->Name.Length + sizeof( WCHAR );
+    RtlCopyMemory( mapping->OriginalName.Buffer, nameInfo->Name.Buffer,
+                   nameInfo->Name.Length );
+    mapping->OriginalName.Buffer[nameInfo->Name.Length / sizeof( WCHAR )] = L'\0';
+    mapping->StageName.Buffer = (PWCH) ((PUCHAR) mapping->OriginalName.Buffer +
+                                        mapping->OriginalName.MaximumLength);
+    mapping->StageName.Length = newNameLength;
+    mapping->StageName.MaximumLength = newNameLength + sizeof( WCHAR );
+    RtlCopyMemory( mapping->StageName.Buffer, newName,
+                   newNameLength + sizeof( WCHAR ) );
+    newMapping = TRUE;
+
+Reparse:
     status = IoReplaceFileObjectName( Data->Iopb->TargetFileObject,
                                       newName, newNameLength );
     ExFreePoolWithTag( newName, SAFEUPLOAD_POOL_TAG );
+    newName = NULL;
 
     if (NT_SUCCESS( status )) {
+        if (newMapping) {
+            ExAcquireFastMutex( &SafeUploadPrototypeMappingLock );
+            if (SafeUploadPrototypeMappingCount < 128) {
+                InsertTailList( &SafeUploadPrototypeMappings, &mapping->Link );
+                SafeUploadPrototypeMappingCount += 1;
+            } else {
+                status = STATUS_INSUFFICIENT_RESOURCES;
+            }
+            ExReleaseFastMutex( &SafeUploadPrototypeMappingLock );
+            if (!NT_SUCCESS( status )) {
+                ExFreePoolWithTag( mapping, SAFEUPLOAD_POOL_TAG );
+                goto Deny;
+            }
+        }
         FltReleaseFileNameInformation( nameInfo );
         Data->IoStatus.Status = STATUS_REPARSE;
         Data->IoStatus.Information = IO_REPARSE;
         return FLT_PREOP_COMPLETE;
     }
 
+    if (newMapping) {
+        ExFreePoolWithTag( mapping, SAFEUPLOAD_POOL_TAG );
+    }
+
 Deny:
+    if (newName != NULL) {
+        ExFreePoolWithTag( newName, SAFEUPLOAD_POOL_TAG );
+    }
     FltReleaseFileNameInformation( nameInfo );
     Data->IoStatus.Status = status;
     Data->IoStatus.Information = 0;
@@ -2047,6 +2281,70 @@ Return Value:
 
         return FLT_PREOP_SUCCESS_NO_CALLBACK;
     }
+
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    // The reparse probe has no rename transaction yet. A rename or hard
+    // link into its test destination would put staged bytes on the real
+    // path without inspection. Refuse it even without a service client.
+    // This is a temporary safety gate; a transparent implementation must
+    // redirect the rename and update the stage mapping atomically.
+    status = FltGetFileNameInformation( Data,
+        FLT_FILE_NAME_OPENED | FLT_FILE_NAME_QUERY_DEFAULT, &nameInfo );
+    if (NT_SUCCESS( status )) {
+        UNICODE_STRING stagePrefix = RTL_CONSTANT_STRING(
+            L"\\SafeUpload\\_staging\\" );
+        UNICODE_STRING relativeName;
+
+        if (NT_SUCCESS( FltParseFileNameInformation( nameInfo ) ) &&
+            nameInfo->Name.Length > nameInfo->Volume.Length) {
+            relativeName.Buffer = (PWCH) ((PUCHAR) nameInfo->Name.Buffer +
+                                          nameInfo->Volume.Length);
+            relativeName.Length = nameInfo->Name.Length - nameInfo->Volume.Length;
+            relativeName.MaximumLength = relativeName.Length;
+            if (RtlPrefixUnicodeString( &stagePrefix, &relativeName, TRUE )) {
+                FltReleaseFileNameInformation( nameInfo );
+                Data->IoStatus.Status = STATUS_ACCESS_DENIED;
+                Data->IoStatus.Information = 0;
+                return FLT_PREOP_COMPLETE;
+            }
+        }
+        FltReleaseFileNameInformation( nameInfo );
+        nameInfo = NULL;
+    }
+
+    renameInformation = (PFILE_RENAME_INFORMATION)
+        Data->Iopb->Parameters.SetFileInformation.InfoBuffer;
+    if (renameInformation != NULL) {
+        status = FltGetDestinationFileNameInformation(
+            FltObjects->Instance, FltObjects->FileObject,
+            renameInformation->RootDirectory,
+            renameInformation->FileName,
+            renameInformation->FileNameLength,
+            FLT_FILE_NAME_OPENED | FLT_FILE_NAME_QUERY_DEFAULT,
+            &nameInfo );
+        if (NT_SUCCESS( status )) {
+            UNICODE_STRING testPrefix = RTL_CONSTANT_STRING(
+                L"\\SafeUpload\\Escopo Monitorado\\" );
+            UNICODE_STRING relativeName;
+
+            if (NT_SUCCESS( FltParseFileNameInformation( nameInfo ) ) &&
+                nameInfo->Name.Length > nameInfo->Volume.Length) {
+                relativeName.Buffer = (PWCH) ((PUCHAR) nameInfo->Name.Buffer +
+                                              nameInfo->Volume.Length);
+                relativeName.Length = nameInfo->Name.Length - nameInfo->Volume.Length;
+                relativeName.MaximumLength = relativeName.Length;
+                if (RtlPrefixUnicodeString( &testPrefix, &relativeName, TRUE )) {
+                    FltReleaseFileNameInformation( nameInfo );
+                    Data->IoStatus.Status = STATUS_ACCESS_DENIED;
+                    Data->IoStatus.Information = 0;
+                    return FLT_PREOP_COMPLETE;
+                }
+            }
+            FltReleaseFileNameInformation( nameInfo );
+            nameInfo = NULL;
+        }
+    }
+#endif
 
     if (SafeUploadData.ClientPort == NULL) {
 

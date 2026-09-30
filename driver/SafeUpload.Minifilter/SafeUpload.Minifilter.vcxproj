@@ -52,6 +52,9 @@
       <ExceptionHandling>
       </ExceptionHandling>
     </ClCompile>
+    <ClCompile Condition="'$(SafeUploadStagingPrototype)'=='true'">
+      <PreprocessorDefinitions>%(PreprocessorDefinitions);POOL_NX_OPTIN=1;SAFEUPLOAD_STAGING_PROTOTYPE=1</PreprocessorDefinitions>
+    </ClCompile>
     <Link>
       <AdditionalDependencies>%(AdditionalDependencies);$(DDK_LIB_PATH)\fltMgr.lib</AdditionalDependencies>
     </Link>
