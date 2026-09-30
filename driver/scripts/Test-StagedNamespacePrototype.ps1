@@ -15,6 +15,7 @@ $name = 'safeupload-namespace-' + [guid]::NewGuid().ToString('N') + '.txt'
 $target = Join-Path $targetDir $name
 $renameTemp = Join-Path $targetDir ($name + '.tmp')
 $renameFinal = Join-Path $targetDir ($name + '.renamed.txt')
+$hardLinkFinal = Join-Path $targetDir ($name + '.linked.txt')
 $loaded = $false
 $replaced = $false
 
@@ -46,6 +47,7 @@ try {
     Write-Output "WriterFolderListingCount=$(@(Get-ChildItem $targetDir -Filter $name).Count)"
 
     [IO.File]::WriteAllText($renameTemp, 'clean rename bytes')
+    $renameTempRead = [IO.File]::ReadAllText($renameTemp)
     $renameBlocked = $false
     try { Move-Item -LiteralPath $renameTemp -Destination $renameFinal -ErrorAction Stop }
     catch { $renameBlocked = $true }
@@ -53,14 +55,27 @@ try {
     Write-Output "RenameBlocked=$renameBlocked"
     Write-Output "RenamedDestinationVisibleOutsideWriter=$renamedVisibleOutside"
 
-    if ($reopened -ne 'staged clean content' -or $stage.Count -ne 1) {
+    $hardLinkBlocked = $false
+    try { New-Item -ItemType HardLink -Path $hardLinkFinal -Target $renameTemp -ErrorAction Stop | Out-Null }
+    catch { $hardLinkBlocked = $true }
+    $hardLinkVisibleOutside = & powershell.exe -NoProfile -Command "[IO.File]::Exists('$hardLinkFinal')"
+    Write-Output "HardLinkBlocked=$hardLinkBlocked"
+    Write-Output "HardLinkVisibleOutsideWriter=$hardLinkVisibleOutside"
+
+    if ($reopened -ne 'staged clean content' -or -not $sameProcessExists -or $stage.Count -ne 1) {
         throw 'The writer could not reopen its staged bytes.'
+    }
+    if ($renameTempRead -ne 'clean rename bytes') {
+        throw 'The writer could not reopen its temporary stage file.'
     }
     if ($otherProcessExists -ne 'False') {
         throw 'Another process could see the unapproved file.'
     }
     if (-not $renameBlocked -or $renamedVisibleOutside -ne 'False') {
         throw 'Rename leaked unapproved content to the destination.'
+    }
+    if (-not $hardLinkBlocked -or $hardLinkVisibleOutside -ne 'False') {
+        throw 'Hard link leaked unapproved content to the destination.'
     }
 }
 finally {
@@ -72,6 +87,6 @@ finally {
     Get-ChildItem $stageDir -Filter "*-$name" -ErrorAction SilentlyContinue | Remove-Item -Force
     Get-ChildItem $stageDir -Filter "*-$name*" -ErrorAction SilentlyContinue | Remove-Item -Force
     Remove-Item $target -Force -ErrorAction SilentlyContinue
-    Remove-Item $renameTemp,$renameFinal -Force -ErrorAction SilentlyContinue
+    Remove-Item $renameTemp,$renameFinal,$hardLinkFinal -Force -ErrorAction SilentlyContinue
     Write-Output 'OriginalDriverRestored=True'
 }
