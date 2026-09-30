@@ -27,9 +27,10 @@ Regras que não se negociam:
 
 ---
 
-## O que este driver faz na v1
+## O que este driver faz hoje
 
-- Intercepta `IRP_MJ_CREATE` (abertura de arquivo) e `IRP_MJ_READ` (leitura).
+- Intercepta `IRP_MJ_CREATE`, `IRP_MJ_CLEANUP`, `IRP_MJ_SET_INFORMATION`
+  (rename e hard link) e escritas não paginadas em `IRP_MJ_WRITE`.
 - Ignora paging I/O, abertura de volumes, abertura de diretórios, I/O dos
   processos Idle e System, e o I/O do próprio inspetor.
 - Manda para o modo usuário, por uma porta de comunicação do Filter Manager,
@@ -43,8 +44,8 @@ O que ele **não** faz, por decisão de projeto:
   transporta.
 - Não bloqueia quando a inspeção falha. Timeout, porta fechada, resposta
   inválida, falta de memória — tudo isso resulta em **permitir**
-  (RN-013: "Permitido sem inspeção"). O driver nunca trava o sistema de
-  arquivos esperando uma resposta que não vem: o teto é 500 ms por operação.
+  (RN-013: "Permitido sem inspeção"). O prazo de espera do kernel vem da
+  política de inspeção enviada pelo serviço, com margem para a resposta.
 
 ---
 
@@ -72,6 +73,34 @@ IP desta máquina.
 iex (irm http://192.168.122.132:8000/bootstrap.ps1)
 ```
 
+Se executar pelo SSH do Windows e `Invoke-WebRequest` falhar ao desenhar o
+progresso no console, desative essa saída na mesma sessão antes do bootstrap:
+
+```powershell
+$ProgressPreference = 'SilentlyContinue'
+iex (irm http://IP_DA_VM_DEBUGGER:8000/bootstrap.ps1)
+```
+
+Na bateria final de 30/09/2026, o pacote assinado passou 49/49 verificações:
+escrita por handle pré-aberto foi negada após a contaminação, `.bin` não
+contornou o destino e uma justificativa válida liberou somente uma tentativa.
+O pipe confirmou `rejected` para ID inventado e `accepted` após a concessão
+válida chegar ao driver.
+O unload com Pool Tracking ativo também passou. Para investigar a carga do
+unload, Driver Verifier volátil foi ativado sem reboot no debuggee:
+
+```powershell
+verifier /volatile /flags 0x9 /adddriver SafeUpload.sys
+verifier /query
+& C:\safeupload\Invoke-SafeUploadTest.ps1 -ReproduceUnloadLeak -StressProcesses 64
+```
+
+`0x9` ativa Special Pool e Pool Tracking. A carga corrigida alterna escrita e
+leitura em arquivos separados; o pico observado foi **50 alocações
+simultâneas**, acima das 33 do travamento original. O inspetor foi encerrado
+durante a rajada e o filtro descarregou sem bugcheck. Isso não identifica a
+causa original; um novo travamento exige dump de kernel e pilha de alocação.
+
 O `bootstrap.ps1` é gerado a cada publicação com a URL embutida. Ele baixa a
 **versão atual** do script de teste, libera a política de execução no escopo
 do processo e entrega o controle. Não há cópia de script para manter
@@ -87,6 +116,27 @@ Para passar opções, rode o script já baixado:
 ```powershell
 & $env:TEMP\Invoke-SafeUploadTest.ps1 -SkipDownload -SkipSmokeTest
 ```
+
+### Validar a interface de justificativa
+
+A bateria automática valida o pipe, a auditoria, a concessão no kernel e o
+uso único, mas não clica na janela WPF. Para fechar essa última validação na
+VM alvo, execute o aplicativo de bandeja na sessão interativa do usuário,
+com o serviço em modo minifiltro e `overrideAllowed: true` na política:
+
+1. Abra um arquivo sensível já existente no destino monitorado. A primeira
+   tentativa deve ser recusada e a notificação deve mostrar o campo de
+   justificativa, sem dizer que o arquivo foi movido para quarentena.
+2. Informe um motivo, envie e aguarde a mensagem de que a justificativa foi
+   **aceita** antes de tentar a mesma operação novamente. A nova tentativa
+   deve passar. O serviço só confirma depois que o driver recebe a concessão.
+3. Tente uma terceira vez. A exceção já consumida não deve valer. Confira
+   a entrada `type: "override"` em `queue.jsonl` para o ID do bloqueio.
+4. Com `overrideAllowed: false`, repita o bloqueio. O campo de justificativa
+   não deve aparecer.
+
+O projeto WPF compilou em Release em 30/09/2026; essa sequência de cliques
+ainda não foi executada na VM alvo.
 
 > O `bootstrap.ps1` entrega o controle ao script **como arquivo**, e não por
 > `Invoke-Expression`. É deliberado: `#Requires -RunAsAdministrator` é
@@ -1092,21 +1142,27 @@ faz o sample `scanner` do WDK.
 **4. Espera circular limitada pelo timeout.** Se o inspetor bloquear em uma
 operação de arquivo que passa por este mesmo filtro (por exemplo escrevendo
 um log através de um processo intermediário), forma-se uma espera circular.
-Ela **não** trava a máquina: o timeout de 500 ms a rompe e a operação é
-permitida. Mas cada ocorrência custa 500 ms. O agente C# deve evitar I/O de
-arquivo no caminho de resposta.
+Ela **não** trava a máquina: o prazo de inspeção enviado pela política a
+rompe e a operação é permitida. Mas cada ocorrência custa esse prazo. O
+agente C# deve evitar I/O de arquivo no caminho de resposta.
 
 **5. Caminhos em forma NT.** O driver entrega
 `\Device\HarddiskVolume3\...`, não `C:\...`. A conversão para forma DOS é
 responsabilidade do modo usuário (`QueryDosDevice` / tabela de volumes).
 
-**6. Sem versionamento de recurso no binário.** O `.sys` não tem bloco
-`VERSIONINFO`. Antes de qualquer assinatura de produção, adicionar um `.rc`
-com `VERSIONINFO` ao projeto do driver.
+**6. Versionamento de recurso no binário.** `SafeUpload.rc` fornece
+`VERSIONINFO` 1.0.0.0, igual ao `DriverVer` do INF. Após compilar, confirme:
 
-**7. Sem parâmetros de registro.** O timeout de 500 ms é constante de
-compilação (`SAFEUPLOAD_VERDICT_TIMEOUT_MS`, em `Filter.h`). O `RegistryPath`
-recebido no `DriverEntry` é deliberadamente ignorado nesta versão.
+```powershell
+(Get-Item .\driver\x64\Debug\SafeUpload.sys).VersionInfo |
+    Format-List FileVersion,ProductVersion,FileDescription,OriginalFilename
+```
+
+Os quatro campos foram conferidos no build de 30/09/2026.
+
+**7. Sem parâmetros de registro.** O serviço envia o prazo de inspeção ao
+driver pela política. O `RegistryPath` recebido no `DriverEntry` é
+deliberadamente ignorado nesta versão.
 
 **8. Comportamento do buffer de resposta no timeout — verificado
 empiricamente.** O driver aloca requisição e resposta em um único bloco de

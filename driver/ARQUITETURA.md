@@ -3,6 +3,26 @@
 Documento de desenho. Descreve como o minifiltro deve evoluir da v1
 (interceptar tudo, perguntar sempre) para uma versão que sustenta uso real.
 
+## Estado implementado e validado (30/09/2026)
+
+| Funcionalidade | Estado |
+|---|---|
+| Rollback de falha em `DriverEntry` | Implementado; compilado, sem injeção de falha em cada etapa. |
+| Escrita por handle aberto antes da contaminação | Pré-`IRP_MJ_WRITE` implementado e validado na VM alvo. Paging I/O não passa por esse gancho. |
+| Extensão fora da lista de inspeção | Não contorna o bloqueio de destino; validado com `.bin`. |
+| Bloqueios de `CREATE` e `SET_INFORMATION` | Bloqueio funcional. Evento estruturado diretamente do kernel ainda pendente. |
+| Justificativa | Concessão imediata pelo serviço, pré-create e pós-create validados; uso único validado. Interface WPF compilada, sem teste interativo. Rename e hard link ainda não consomem exceções. |
+| Clipboard, impressão e upload por navegador | Ainda não implementados. O minifiltro não vê o conteúdo destes canais. |
+| Vazamento no unload | Não reproduzido com Special Pool e Pool Tracking ativos; pico de 50 alocações simultâneas em unload sob carga. A causa original continua indeterminada. |
+| Métricas | Contadores pela porta funcionam. ETW de produção pendente. |
+| INF e versão | Altitude 321410 continua provisória, aguardando alocação. Recurso `VERSIONINFO` 1.0.0.0 compilado e conferido no `.sys`. |
+
+A bateria final de 30/09 passou **49/49 verificações** na VM alvo, incluindo
+o unload sob Driver Verifier com Pool Tracking ativo. A investigação de carga
+separada não reproduziu o vazamento. Os testes de
+justificativa cobrem o protocolo, serviço, auditoria e driver; a nova
+interface WPF foi compilada, mas ainda não foi exercitada por uma pessoa.
+
 ## Escopo desta versão
 
 **Dentro:**
@@ -113,18 +133,15 @@ de prazo documentado acima.
 
 ### O que trazer, em ordem de valor por esforço
 
-**1. Modos por atividade: auditar, avisar, bloquear.** É o que os quatro têm e
-nós não — hoje só existe bloquear, desde o primeiro minuto. Modo auditoria
-roda tudo, nega nada e registra: além de ser como se implanta DLP sem ser
-desinstalado, é a única forma de medir nossa taxa de falso positivo, que é
-justamente a pergunta em aberto sobre a contaminação. É barato: o veredito já
-passa por um ponto único no `MinifilterInterceptor`.
+**1. Modos por atividade: auditar, avisar, bloquear.** Há um modo global de
+auditoria e um modo de bloqueio. Modos separados por atividade ainda faltam.
+O modo auditoria roda tudo, nega nada e contabiliza o que teria sido negado,
+para medir a taxa de falso positivo antes da ativação do bloqueio.
 
-**2. Bloqueio com justificativa.** O painel WPF e a trilha de auditoria já
-existem; falta o caminho de volta do usuário para o serviço, que hoje é de mão
-única de propósito. Vale rever essa decisão à luz do que o mercado faz — mão
-única protege contra o usuário desligar a proteção, mas justificativa auditada
-não é desligar, é registrar.
+**2. Bloqueio com justificativa.** O protocolo de volta, a validação pelo
+serviço, a auditoria e a concessão ao driver funcionam para create. A
+interface WPF permite informar o motivo em bloqueios elegíveis e compila.
+Ainda faltam teste interativo e aplicação da concessão em rename e hard link.
 
 **3. Classificação persistida por identidade de arquivo.** Hoje o veredito vive
 no contexto de fluxo e morre no unload. Persistir por volume + id de arquivo +
@@ -249,8 +266,9 @@ Mudanças em relação à v1:
   é um teste de sinalizador. É por isso que os contadores vêm antes da
   contaminação na ordem de implementação — a escolha é empírica, e sem medir
   vira palpite.
-- **`IRP_MJ_WRITE` entra**, mas apenas como porta barata. Ele não inspeciona
-  nada: apenas testa um sinalizador no contexto do handle. Existe para fechar
+- **`IRP_MJ_WRITE` entra**, mas não inspeciona conteúdo. Só depois de achar
+  o PID contaminado ele consulta o destino; um handle com concessão de
+  justificativa permanece liberado para esse handle. Existe para fechar
   um furo específico — um processo que abre o arquivo de destino *antes* de
   se contaminar e escreve depois. Sem ele, o `CREATE` já teria sido
   permitido.
@@ -269,9 +287,11 @@ Na ordem, e a ordem importa — a mais seletiva vem primeiro:
    atributos ou metadados e morre aqui, em duas comparações de bits.
 3. **Processo excluído.** Serviço, aplicativo, e a lista da política. Consulta
    em tabela hash por PID.
-4. **Volume monitorado.** Lido do contexto de instância, calculado uma única
+4. **Extensão monitorada.** Comparação sobre `UNICODE_STRING`, sem alocar.
+   Se não casar, só prossegue uma escrita de processo contaminado: o destino
+   ainda precisa ser verificado independentemente do formato do arquivo.
+5. **Tipo de volume.** Lido do contexto de instância, calculado uma única
    vez no `InstanceSetup`.
-5. **Extensão monitorada.** Comparação sobre `UNICODE_STRING`, sem alocar.
 6. **Prefixo de caminho monitorado**, quando o volume não é removível nem de
    rede (caso das pastas de nuvem).
 
@@ -279,7 +299,7 @@ Na ordem, e a ordem importa — a mais seletiva vem primeiro:
 
 ```
 abertura para escrita
-  E destino monitorado (L1.4 ou L1.6)
+  E destino monitorado (L1.5 ou L1.6)
   E processo contaminado e dentro do TTL
 => FLT_PREOP_COMPLETE com STATUS_ACCESS_DENIED
 ```
@@ -826,6 +846,14 @@ meio das mensagens em voo, via `Invoke-SafeUploadTest.ps1
 -ReproduceUnloadLeak`, com picos medidos de 8 e de 34 alocações simultâneas —
 acima das 33 do caso original. Nenhuma reproduziu.
 
+Em 30/09/2026, a carga foi corrigida para alternar escrita e leitura em
+arquivos separados, invalidando o cache a cada iteração. Com Driver Verifier
+volátil (`Special Pool` e `Pool Tracking`) ativo no debuggee, 34 processos
+produziram pico de 26 alocações e 64 processos produziram pico de **50**.
+Nos dois casos, o inspetor foi encerrado durante a rajada e o unload terminou
+sem bugcheck. Isto reduz a chance de vazamento recorrente nesse caminho, mas
+não identifica a alocação do travamento original.
+
 **Por que isso não é o mesmo que corrigido.** Entre o travamento e as
 tentativas mudaram três coisas ao mesmo tempo: o gancho de `IRP_MJ_READ`
 saiu, o `InstanceSetup` passou a sempre anexar, e um acesso indevido a
@@ -847,7 +875,8 @@ quadro nosso e com o módulo sequer carregado. Não reinvestigar.
 
 ## Como medir se funcionou
 
-Contadores expostos por ETW, consultáveis sem depurador:
+Contadores atualmente consultados pela porta do minifiltro, sem depurador.
+A publicação por ETW para produção ainda está pendente:
 
 | Contador | Alvo |
 |---|---|
@@ -1001,7 +1030,7 @@ justifica, porque sem ele a prioridade vira gosto.
     pegaria os provedores desconhecidos e traria junto todo hash, UUID e
     identificador de commit.
 
-13. **Bloqueio com justificativa.** *(mecanismo pronto, interface pendente)*
+13. **Bloqueio com justificativa.** *(create e serviço validados; WPF compila; set-information pendente)*
     Advogada precisa mandar o contrato com CPF à parte contrária pela pasta de
     rede. Hoje: bloqueio seco, liga para o suporte, espera. Com justificativa,
     digita o motivo, segue, e o evento fica auditado.
@@ -1025,14 +1054,14 @@ justifica, porque sem ele a prioridade vira gosto.
     processo interceptado faça cria uma entrada nela. A consulta acontece só
     no caminho que já decidiu recusar, que é frio.
 
-    **O que falta**: o canal de volta do usuário. O `NotificationPipeServer` é
-    de mão única de propósito — *"não é economia de código, é a garantia de
-    que nada que o usuário faça na interface pode alterar um veredito"*. A
-    revisão dessa garantia é esta: a interface continua sem alterar veredito;
-    ela **submete uma justificativa para um bloqueio que o próprio serviço
-    registrou**. O serviço segue sendo o único que decide, e só aceita
-    justificativa que referencie um bloqueio que ele mesmo emitiu, para a
-    sessão daquele usuário.
+    O `JustificationPipeServer` recebe a justificativa, valida o ID e a
+    sessão do bloqueio, grava a auditoria e envia a concessão imediatamente
+    pela porta do minifiltro. O envio não espera uma nova inspeção: um
+    veredito em cache pode impedir que essa nova requisição exista. A
+    bateria confirmou a recusa de ID inventado, a resposta explícita
+    `rejected`, a concessão confirmada por `accepted`, a nova tentativa
+    permitida e a recusa seguinte. A janela WPF agora submete a justificativa para
+    eventos elegíveis; falta testá-la interativamente e cobrir rename/link.
 
 14. **Classificação persistida por identidade de arquivo.** Planilha de 15 MB
     aberta toda manhã: hoje o veredito vive no contexto de fluxo e morre no

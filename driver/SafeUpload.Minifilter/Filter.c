@@ -37,6 +37,9 @@ SAFEUPLOAD_DATA SafeUploadData;
 
 SAFEUPLOAD_COUNTERS SafeUploadCounters;
 
+// Packed into the post-create completion context beside the volume kind.
+#define SAFEUPLOAD_POSTCREATE_OVERRIDE 0x10
+
 //
 //  Local helpers.
 //
@@ -106,6 +109,7 @@ SafeUploadOverrideCovers (
     #pragma alloc_text(PAGE, SafeUploadOverrideCovers)
     #pragma alloc_text(PAGE, SafeUploadPostCreate)
     #pragma alloc_text(PAGE, SafeUploadPreCleanup)
+    #pragma alloc_text(PAGE, SafeUploadPreWrite)
     #pragma alloc_text(PAGE, SafeUploadPreSetInformation)
 #endif
 
@@ -134,14 +138,24 @@ CONST FLT_OPERATION_REGISTRATION Callbacks[] = {
       SafeUploadPostCreate },
 
     //
-    //  Cleanup exists only to invalidate the cached verdict when a handle
-    //  that was opened for write closes. Hooking writes instead would cost
-    //  a callback per block to learn the same thing.
+    //  Cleanup invalidates a cached verdict when a writable handle closes.
+    //  The write hook below serves a different purpose: catching writes
+    //  through handles opened before their process became tainted.
     //
 
     { IRP_MJ_CLEANUP,
       0,
       SafeUploadPreCleanup,
+      NULL },
+
+    // A handle may have been opened before its process read sensitive
+    // content. Check subsequent user writes as well as the create itself.
+    // Paging writes often run in System's context, where the initiating PID
+    // is unavailable; the existing create gate remains their protection.
+
+    { IRP_MJ_WRITE,
+      FLTFL_OPERATION_REGISTRATION_SKIP_PAGING_IO,
+      SafeUploadPreWrite,
       NULL },
 
     //
@@ -267,7 +281,7 @@ Return Value:
     if (!NT_SUCCESS( status )) {
 
         SafeUploadTrace( "FltRegisterFilter failed, status 0x%08X\n", status );
-        return status;
+        goto FreeState;
     }
 
     //
@@ -278,11 +292,7 @@ Return Value:
     status = SafeUploadCreateCommunicationPort();
 
     if (!NT_SUCCESS( status )) {
-
-        FltUnregisterFilter( SafeUploadData.Filter );
-        SafeUploadData.Filter = NULL;
-
-        return status;
+        goto UnregisterFilter;
     }
 
     status = FltStartFiltering( SafeUploadData.Filter );
@@ -291,17 +301,32 @@ Return Value:
 
         SafeUploadTrace( "FltStartFiltering failed, status 0x%08X\n", status );
 
-        SafeUploadCloseCommunicationPort();
-
-        FltUnregisterFilter( SafeUploadData.Filter );
-        SafeUploadData.Filter = NULL;
-
-        return status;
+        goto ClosePort;
     }
 
     SafeUploadTrace( "loaded and filtering\n" );
 
     return STATUS_SUCCESS;
+
+ClosePort:
+    // A client can connect after the port is created even if filtering
+    // fails to start. Close it and drain any in-flight port callback first.
+    SafeUploadCloseCommunicationPort();
+    ExWaitForRundownProtectionRelease( &SafeUploadData.ChannelRundown );
+
+UnregisterFilter:
+    FltUnregisterFilter( SafeUploadData.Filter );
+    SafeUploadData.Filter = NULL;
+
+FreeState:
+    // These were initialized before FltRegisterFilter. In particular, the
+    // taint table may have registered a process notification callback; it
+    // must be removed even when registration itself failed.
+    SafeUploadFreeOverrides();
+    SafeUploadFreeTaint();
+    SafeUploadFreePolicy();
+
+    return status;
 }
 
 
@@ -1165,6 +1190,8 @@ Return Value:
     PIO_SECURITY_CONTEXT securityContext;
     PSAFEUPLOAD_INSTANCE_CONTEXT instanceContext = NULL;
     SAFEUPLOAD_VOLUME_KIND volumeKind;
+    BOOLEAN monitoredExtension;
+    BOOLEAN taintedWriter = FALSE;
     NTSTATUS status;
 
     *CompletionContext = NULL;
@@ -1237,9 +1264,21 @@ Return Value:
         return FLT_PREOP_SUCCESS_NO_CALLBACK;
     }
 
-    if (!SafeUploadPolicyMatchesExtension( &targetFileObject->FileName )) {
+    monitoredExtension = SafeUploadPolicyMatchesExtension( &targetFileObject->FileName );
 
-        return FLT_PREOP_SUCCESS_NO_CALLBACK;
+    if (!monitoredExtension) {
+
+        // Keep the cheap exit for ordinary files. Only an unmonitored
+        // extension written by an already tainted process can reach the
+        // destination gate below.
+        taintedWriter = (BOOLEAN)
+            (FlagOn( securityContext->DesiredAccess,
+                     FILE_WRITE_DATA | FILE_APPEND_DATA ) &&
+             SafeUploadIsProcessTainted( FltGetRequestorProcessId( Data ) ));
+
+        if (!taintedWriter) {
+            return FLT_PREOP_SUCCESS_NO_CALLBACK;
+        }
     }
 
     //
@@ -1284,7 +1323,8 @@ Return Value:
 
     if (FlagOn( securityContext->DesiredAccess,
                 FILE_WRITE_DATA | FILE_APPEND_DATA ) &&
-        SafeUploadIsProcessTainted( FltGetRequestorProcessId( Data ) ) &&
+        (taintedWriter ||
+         SafeUploadIsProcessTainted( FltGetRequestorProcessId( Data ) )) &&
         SafeUploadIsMonitoredDestination( Data, volumeKind )) {
 
         //
@@ -1300,7 +1340,8 @@ Return Value:
 
         if (SafeUploadOverrideCovers( Data, FltGetRequestorProcessId( Data ) )) {
 
-            *CompletionContext = (PVOID) (ULONG_PTR) volumeKind;
+            *CompletionContext = (PVOID) (ULONG_PTR)
+                ((ULONG) volumeKind | SAFEUPLOAD_POSTCREATE_OVERRIDE);
 
             return FLT_PREOP_SUCCESS_WITH_CALLBACK;
         }
@@ -1324,6 +1365,14 @@ Return Value:
 
             return FLT_PREOP_COMPLETE;
         }
+    }
+
+    // Content inspection is limited to configured formats. Destination
+    // blocking above is not: renaming or writing a .bin file into a cloud
+    // folder must not bypass a tainted process's egress restriction.
+    if (!monitoredExtension) {
+
+        return FLT_PREOP_SUCCESS_NO_CALLBACK;
     }
 
     *CompletionContext = (PVOID) (ULONG_PTR) volumeKind;
@@ -1376,6 +1425,7 @@ Return Value:
 {
     PSAFEUPLOAD_STREAM_CONTEXT streamContext = NULL;
     SAFEUPLOAD_VOLUME_KIND volumeKind;
+    BOOLEAN overrideGranted;
     LARGE_INTEGER fileSize;
     LARGE_INTEGER lastWriteTime;
     UINT32 scopeFlags = 0;
@@ -1386,7 +1436,10 @@ Return Value:
 
     PAGED_CODE();
 
-    volumeKind = (SAFEUPLOAD_VOLUME_KIND) (ULONG_PTR) CompletionContext;
+    volumeKind = (SAFEUPLOAD_VOLUME_KIND)
+        ((ULONG_PTR) CompletionContext & ~SAFEUPLOAD_POSTCREATE_OVERRIDE);
+    overrideGranted = (BOOLEAN)
+        (((ULONG_PTR) CompletionContext & SAFEUPLOAD_POSTCREATE_OVERRIDE) != 0);
 
     //
     //  Draining means the filter is going away, and no callback of ours
@@ -1405,6 +1458,19 @@ Return Value:
 
     if (!NT_SUCCESS( Data->IoStatus.Status ) ||
         Data->IoStatus.Status == STATUS_REPARSE) {
+
+        return FLT_POSTOP_FINISHED_PROCESSING;
+    }
+
+    // A justified create can cover an extension outside the inspection
+    // list. It still needs a handle marker so the following write does not
+    // consume a second grant or get denied by the write callback.
+    if (overrideGranted &&
+        !SafeUploadPolicyMatchesExtension( &FltObjects->FileObject->FileName )) {
+
+        if (FltObjects->FileObject->WriteAccess) {
+            (VOID) SafeUploadMarkHandleForWrite( FltObjects, TRUE );
+        }
 
         return FLT_POSTOP_FINISHED_PROCESSING;
     }
@@ -1483,7 +1549,7 @@ Return Value:
         FltReleaseContext( streamContext );
     }
 
-    if (scopeFlags == 0) {
+    if (scopeFlags == 0 && !overrideGranted) {
 
         return FLT_POSTOP_FINISHED_PROCESSING;
     }
@@ -1495,7 +1561,7 @@ Return Value:
 
     if (FltObjects->FileObject->WriteAccess) {
 
-        (VOID) SafeUploadMarkHandleForWrite( FltObjects );
+        (VOID) SafeUploadMarkHandleForWrite( FltObjects, overrideGranted );
     }
 
     if (verdict == SAFEUPLOAD_VERDICT_DENY) {
@@ -1520,7 +1586,8 @@ Return Value:
         //  one above.
         //
 
-        if (FlagOn( scopeFlags, SAFEUPLOAD_REQUEST_FLAG_SCOPE_DESTINATION )) {
+        if (FlagOn( scopeFlags, SAFEUPLOAD_REQUEST_FLAG_SCOPE_DESTINATION ) &&
+            !overrideGranted) {
 
             //
             //  Excecao antes de cancelar, pelo mesmo motivo do pre-create:
@@ -1528,6 +1595,10 @@ Return Value:
             //
 
             if (SafeUploadOverrideCovers( Data, FltGetRequestorProcessId( Data ) )) {
+
+                if (FltObjects->FileObject->WriteAccess) {
+                    (VOID) SafeUploadMarkHandleForWrite( FltObjects, TRUE );
+                }
 
                 return FLT_POSTOP_FINISHED_PROCESSING;
             }
@@ -1553,6 +1624,79 @@ Return Value:
 
 
 FLT_PREOP_CALLBACK_STATUS
+SafeUploadPreWrite (
+    _Inout_ PFLT_CALLBACK_DATA Data,
+    _In_ PCFLT_RELATED_OBJECTS FltObjects,
+    _Flt_CompletionContext_Outptr_ PVOID *CompletionContext
+    )
+/*++
+
+Routine Description:
+
+    Closes the already-open-handle gap. A process can open a destination
+    before reading sensitive content; the create gate cannot know that it
+    will become tainted later. Only a tainted process reaches the destination
+    check, so ordinary writes do no name lookup.
+
+    Paging I/O is excluded at registration because it often runs in System's
+    context, not the process whose mapped view was modified. A grant consumed
+    at create is carried by the stream-handle context for this handle alone.
+
+    IRQL: <= APC_LEVEL.
+
+--*/
+{
+    PSAFEUPLOAD_INSTANCE_CONTEXT instanceContext = NULL;
+    SAFEUPLOAD_VOLUME_KIND volumeKind;
+    ULONG processId;
+    NTSTATUS status;
+
+    UNREFERENCED_PARAMETER( CompletionContext = NULL );
+
+    PAGED_CODE();
+
+    if (Data->Iopb->Parameters.Write.Length == 0 ||
+        SafeUploadData.ClientPort == NULL) {
+        return FLT_PREOP_SUCCESS_NO_CALLBACK;
+    }
+
+    processId = FltGetRequestorProcessId( Data );
+
+    if (SafeUploadIsIgnoredProcess( processId ) ||
+        !SafeUploadIsProcessTainted( processId ) ||
+        SafeUploadHandleHasOverride( FltObjects )) {
+        return FLT_PREOP_SUCCESS_NO_CALLBACK;
+    }
+
+    status = FltGetInstanceContext( FltObjects->Instance,
+                                    (PFLT_CONTEXT *) &instanceContext );
+
+    if (!NT_SUCCESS( status )) {
+        return FLT_PREOP_SUCCESS_NO_CALLBACK;
+    }
+
+    volumeKind = instanceContext->VolumeKind;
+    FltReleaseContext( instanceContext );
+
+    if (!SafeUploadIsMonitoredDestination( Data, volumeKind )) {
+        return FLT_PREOP_SUCCESS_NO_CALLBACK;
+    }
+
+    if (SafeUploadPolicyAuditOnly()) {
+        SafeUploadCount( WouldHaveDenied );
+        SafeUploadTrace( "AUDITORIA: write seria negado, processo %lu marcado\n",
+                         processId );
+        return FLT_PREOP_SUCCESS_NO_CALLBACK;
+    }
+
+    SafeUploadTrace( "write negado: processo %lu marcado\n", processId );
+    Data->IoStatus.Status = STATUS_ACCESS_DENIED;
+    Data->IoStatus.Information = 0;
+    return FLT_PREOP_COMPLETE;
+}
+
+
+FLT_PREOP_CALLBACK_STATUS
 SafeUploadPreCleanup (
     _Inout_ PFLT_CALLBACK_DATA Data,
     _In_ PCFLT_RELATED_OBJECTS FltObjects,
@@ -1567,8 +1711,8 @@ Routine Description:
 
     Its only job is to throw away the cached verdict when the handle that is
     closing was opened for write. Cleanup is the right moment because it is
-    when the writing is finished; a write callback would fire once per block
-    to learn the same thing.
+    when the writing is finished; the write callback exists to enforce a
+    process taint acquired after the handle was opened.
 
     Cleanup cannot be failed - the filter manager ignores the return value -
     so nothing here tries to.

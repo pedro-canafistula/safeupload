@@ -159,7 +159,7 @@ function Send-Justificativa {
     try {
         $pipe = New-Object System.IO.Pipes.NamedPipeClientStream(
             '.', 'SafeUpload.Agent.Justification',
-            [System.IO.Pipes.PipeDirection]::Out)
+            [System.IO.Pipes.PipeDirection]::InOut)
 
         $pipe.Connect(5000)
 
@@ -168,10 +168,21 @@ function Send-Justificativa {
 
         $pipe.Write($bytes, 0, $bytes.Length)
         $pipe.Flush()
+        $reader = [System.IO.StreamReader]::new(
+            $pipe, (New-Object System.Text.UTF8Encoding($false)),
+            $false, 1024, $true)
+        $replyTask = $reader.ReadLineAsync()
+        if (-not $replyTask.Wait(5000)) {
+            throw 'O servico nao respondeu a justificativa em 5 s.'
+        }
+        $reply = $replyTask.Result
+        $reader.Dispose()
         $pipe.Dispose()
+        return $reply
     }
     catch {
         Write-Host "  Falha ao mandar justificativa: $($_.Exception.Message)" -ForegroundColor Yellow
+        return 'error'
     }
 }
 
@@ -386,9 +397,6 @@ if ($ReproduceUnloadLeak) {
         New-Item -ItemType Directory -Path $TestDirectory -Force | Out-Null
     }
 
-    $stressFile = Join-Path $TestDirectory 'normal.txt'
-    Set-Content -Path $stressFile -Value 'conteudo de teste' -Encoding UTF8
-
     $inspectorLog = Join-Path $StagingDirectory 'inspector.log'
 
     Write-Host '  Subindo o inspetor.'
@@ -396,10 +404,10 @@ if ($ReproduceUnloadLeak) {
 
     Write-Host "  Inspetor conectado. Disparando $StressProcesses processos de carga."
 
-    # Separate processes, not threads: each one issues its own creates, which
-    # is exactly the shape of the traffic that produced 33 simultaneous
-    # allocations when the driver still hooked reads.
-    $stressCommand = "for /l %i in (1,1,100000) do @type `"$stressFile`" >nul 2>&1"
+    # Separate processes and files: each writer invalidates its file's cached
+    # verdict on cleanup, and the following read must ask the inspector again.
+    # Repeatedly reading one unchanged file exercises the cache instead of
+    # creating the in-flight messages required to investigate the leak.
 
     # Not $stressProcesses: PowerShell variable names are case insensitive,
     # so that would overwrite the $StressProcesses parameter with an array
@@ -407,6 +415,10 @@ if ($ReproduceUnloadLeak) {
     $loadProcesses = @()
 
     foreach ($index in 1..$StressProcesses) {
+        $stressFile = Join-Path $TestDirectory "stress-$index.txt"
+        Set-Content -Path $stressFile -Value 'conteudo de teste' -Encoding UTF8
+        $stressCommand = "for /l %i in (1,1,100000) do @(echo x>>`"$stressFile`" & type `"$stressFile`" >nul 2>&1)"
+
         $loadProcesses += Start-Process -FilePath 'cmd.exe' `
             -ArgumentList '/c', $stressCommand -WindowStyle Hidden -PassThru
     }
@@ -847,6 +859,16 @@ try {
 
     Add-Result -Name 'Arquivo fora de escopo nao e inspecionado' -Passed ($outOfScopeLine -lt 0) `
         -Detail $(if ($outOfScopeLine -lt 0) { 'Nada foi enviado ao modo usuario, como esperado.' } else { 'O caminho apareceu no log: o escopo nao esta filtrando.' })
+
+    # Open a destination before this PowerShell process becomes tainted.
+    # A create-only filter cannot reject the later write through this handle.
+    $preopenedPath = Join-Path $TestDirectory 'aberto-antes-da-marcacao.txt'
+    Remove-Item $preopenedPath -Force -ErrorAction SilentlyContinue
+    $preopened = [System.IO.FileStream]::new(
+        $preopenedPath, [System.IO.FileMode]::Create,
+        [System.IO.FileAccess]::Write, [System.IO.FileShare]::ReadWrite,
+        1, [System.IO.FileOptions]::WriteThrough)
+
     Write-Step 'Caso 7 - ler origem sensivel e permitido, e marca o processo'
 
     # The behaviour that changed with taint. A sensitive source file is no
@@ -895,6 +917,49 @@ try {
     # create never happened, so not even an empty file is left behind.
     Add-Result -Name 'Nenhum arquivo vazio ficou no destino' -Passed (-not (Test-Path $destinationWrite)) `
         -Detail $(if (Test-Path $destinationWrite) { 'Sobrou um arquivo: a negacao veio do pos-create.' } else { 'Nada foi criado.' })
+
+    $preopenedError = $null
+    try {
+        $preopened.Write([byte[]] @(65), 0, 1)
+        $preopened.Flush()
+    }
+    catch {
+        $preopenedError = $_.Exception
+        if ($preopenedError -is [System.Management.Automation.MethodInvocationException] -and
+            $preopenedError.InnerException) {
+            $preopenedError = $preopenedError.InnerException
+        }
+    }
+    finally {
+        try { $preopened.Dispose() } catch { }
+    }
+
+    $preopenedDenied = $preopenedError -is [System.UnauthorizedAccessException] -or
+        ($preopenedError -is [System.IO.IOException] -and
+         ($preopenedError.HResult -band 0xFFFF) -eq 5)
+
+    Add-Result -Name 'Handle aberto antes da marcacao nao escreve depois dela' `
+        -Passed ($preopenedDenied -and (Get-Item $preopenedPath).Length -eq 0) `
+        -Detail $(if ($preopenedError) { "$($preopenedError.GetType().Name): $($preopenedError.Message)" } else { 'Write e Flush passaram.' })
+
+    # Destination enforcement must not depend on the content-inspection
+    # extension list. The battery policy intentionally omits .bin.
+    $unmonitoredTarget = Join-Path $TestDirectory 'saida-sem-extensao-monitorada.bin'
+    Remove-Item $unmonitoredTarget -Force -ErrorAction SilentlyContinue
+    $unmonitoredDenied = $false
+    try {
+        Set-Content -Path $unmonitoredTarget -Value 'nao deveria existir' -ErrorAction Stop
+    }
+    catch [System.UnauthorizedAccessException] {
+        $unmonitoredDenied = $true
+    }
+    catch {
+        Write-Host "          excecao inesperada: $($_.Exception.GetType().Name)" -ForegroundColor Yellow
+    }
+
+    Add-Result -Name 'Extensao nao monitorada nao contorna o destino' `
+        -Passed ($unmonitoredDenied -and -not (Test-Path $unmonitoredTarget)) `
+        -Detail $(if ($unmonitoredDenied) { 'Acesso negado antes da criacao.' } else { 'A extensao atravessou o destino.' })
 
     Write-Step 'Caso 9 - fora do destino, o processo marcado continua escrevendo'
 
@@ -1611,7 +1676,9 @@ catch { 'ERRO:' + $_.Exception.GetType().Name }
                             # caso vem ANTES do legitimo de proposito: se o
                             # servico aceitasse qualquer coisa, o teste
                             # seguinte passaria sem provar nada.
-                            Send-Justificativa -EventId ([guid]::NewGuid().ToString('D')) -Motivo 'sem bloqueio correspondente'
+                            $respostaInventada = Send-Justificativa `
+                                -EventId ([guid]::NewGuid().ToString('D')) `
+                                -Motivo 'sem bloqueio correspondente'
                             Start-Sleep -Milliseconds 600
 
                             $aindaNegado = $false
@@ -1622,8 +1689,17 @@ catch { 'ERRO:' + $_.Exception.GetType().Name }
                             Add-Result -Name 'Justificativa com identificador inventado nao vale' -Passed $aindaNegado `
                                 -Detail $(if ($aindaNegado) { 'Continua recusado, como deve.' } else { 'A operacao passou: o servico aceitou um identificador que nunca emitiu.' })
 
-                            Send-Justificativa -EventId $eventoId -Motivo 'processo 1234, envio a parte contraria'
+                            Add-Result -Name 'Servico rejeita o identificador inventado' `
+                                -Passed ($respostaInventada -eq 'rejected') `
+                                -Detail "Resposta do pipe: '$respostaInventada'."
+
+                            $respostaValida = Send-Justificativa -EventId $eventoId `
+                                -Motivo 'processo 1234, envio a parte contraria'
                             Start-Sleep -Milliseconds 800
+
+                            Add-Result -Name 'Servico confirma a concessao antes da nova tentativa' `
+                                -Passed ($respostaValida -eq 'accepted') `
+                                -Detail "Resposta do pipe: '$respostaValida'."
 
                             $liberado = $false
                             try {
@@ -1937,6 +2013,23 @@ else {
 
                 Add-Result -Name 'Sem vazamento de pool apos o unload' -Passed ($currentValue -eq 0) `
                     -Detail $(if ($currentValue -eq 0) { 'Tudo que foi alocado foi liberado.' } else { "$currentValue alocacoes pendentes." })
+            }
+            else {
+                # Volatile Verifier lists the driver and flags, but does not
+                # print per-driver pool counts after unload. Pool Tracking
+                # checks for outstanding allocations at unload itself.
+                $flags = [regex]::Match($verifierOutput, 'Verifier Flags:\s*0x([0-9a-fA-F]+)')
+                $poolTracking = $flags.Success -and
+                    (([Convert]::ToUInt32($flags.Groups[1].Value, 16) -band 0x8) -ne 0)
+
+                if ($poolTracking) {
+                    Add-Result -Name 'Sem vazamento de pool apos o unload' -Passed $true `
+                        -Detail 'Pool Tracking ativo; unload terminou sem bugcheck. A consulta volatil nao fornece contagem por driver.'
+                }
+                else {
+                    Add-Skipped -Name 'Sem vazamento de pool apos o unload' `
+                        -Reason 'O driver aparece no Verifier, mas Pool Tracking nao esta ativo nem ha contagem disponivel.'
+                }
             }
         }
         else {

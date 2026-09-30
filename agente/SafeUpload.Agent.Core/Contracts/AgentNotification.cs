@@ -6,11 +6,9 @@ namespace SafeUpload.Agent.Core.Contracts;
 /// <summary>
 /// Uma mensagem do serviço para o aplicativo de bandeja.
 ///
-/// O canal é de mão única, e isso é a regra de arquitetura, não uma limitação
-/// de implementação: o serviço decide, o aplicativo apenas mostra. Não existe
-/// tipo de mensagem no sentido inverso, então nada que o usuário clique na
-/// interface tem como alterar um veredito — a ausência do caminho de volta é a
-/// garantia.
+/// O canal de notificações é de mão única: o serviço decide e o aplicativo
+/// mostra. A justificativa usa outro contrato e outro pipe; o serviço valida
+/// o bloqueio antes de conceder uma nova tentativa.
 ///
 /// Os contratos vivem no <c>Core</c> para que os dois processos compartilhem a
 /// mesma definição sem um terceiro projeto só para isso. Continuam livres de
@@ -68,7 +66,9 @@ public sealed record StatusNotification(
 /// </param>
 public sealed record EventNotification(
     AuditEvent Event,
-    IReadOnlyList<Finding> Findings) : AgentNotification
+    IReadOnlyList<Finding> Findings,
+    bool OverrideAllowed = false,
+    bool Quarantined = false) : AgentNotification
 {
     /// <summary>Discriminador desta mensagem no NDJSON.</summary>
     public const string TypeName = "event";

@@ -1,4 +1,6 @@
 using System.Windows;
+using System.Windows.Controls;
+using SafeUpload.Agent.App.Notifications;
 using SafeUpload.Agent.App.ViewModels;
 using SafeUpload.Agent.Core.Domain;
 
@@ -16,7 +18,8 @@ namespace SafeUpload.Agent.App.Views;
 /// bloqueios em poucos segundos, e dez janelas empilhadas no mesmo canto não
 /// informam nada: a de cima esconde as outras e o usuário fecha uma por uma
 /// sem ler. Em vez disso a janela existente se agrega — passa a dizer quantos
-/// arquivos foram bloqueados e junta as categorias.
+/// arquivos foram bloqueados e junta as categorias. A justificativa, quando
+/// permitida, sempre nomeia o bloqueio mais recente.
 /// </summary>
 public partial class BlockNotificationWindow : Window
 {
@@ -24,6 +27,7 @@ public partial class BlockNotificationWindow : Window
 
     private readonly List<string> _fileNames = [];
     private readonly List<FindingViewModel> _findings = [];
+    private string? _justificationEventId;
 
     /// <summary>
     /// Monta a notificação para um bloqueio.
@@ -36,15 +40,17 @@ public partial class BlockNotificationWindow : Window
     /// acabou de colocá-lo, e deixá-lo procurar seria transformar um bloqueio
     /// explicado num arquivo perdido.
     /// </param>
-    public BlockNotificationWindow(string fileName, IReadOnlyList<Finding> findings, bool quarantined = false)
+    public BlockNotificationWindow(
+        string fileName,
+        IReadOnlyList<Finding> findings,
+        string? justificationEventId = null,
+        bool quarantined = false)
     {
         ArgumentNullException.ThrowIfNull(findings);
 
         InitializeComponent();
 
-        QuarantineText.Visibility = quarantined ? Visibility.Visible : Visibility.Collapsed;
-
-        Add(fileName, findings);
+        Add(fileName, findings, justificationEventId, quarantined);
 
         // A área útil exclui a barra de tarefas, então a notificação não fica
         // escondida atrás dela nem em telas com a barra em outra borda.
@@ -54,7 +60,11 @@ public partial class BlockNotificationWindow : Window
     /// <summary>
     /// Acrescenta mais um bloqueio a esta notificação, em vez de abrir outra.
     /// </summary>
-    public void Add(string fileName, IReadOnlyList<Finding> findings)
+    public void Add(
+        string fileName,
+        IReadOnlyList<Finding> findings,
+        string? justificationEventId = null,
+        bool quarantined = false)
     {
         ArgumentNullException.ThrowIfNull(findings);
 
@@ -79,6 +89,19 @@ public partial class BlockNotificationWindow : Window
             ? _fileNames[0]
             : $"{_fileNames.Count} arquivos bloqueados";
 
+        // A notificação agrega vários bloqueios. A justificativa sempre
+        // nomeia o evento mais recente para não conceder uma exceção a um
+        // arquivo diferente daquele mostrado ao lado do campo.
+        _justificationEventId = justificationEventId;
+        QuarantineText.Visibility = quarantined ? Visibility.Visible : Visibility.Collapsed;
+        JustificationPanel.Visibility = justificationEventId is null
+            ? Visibility.Collapsed
+            : Visibility.Visible;
+        JustificationTargetText.Text = $"Justificar: {fileName}";
+        JustificationInput.Text = string.Empty;
+        JustificationInput.IsEnabled = true;
+        JustificationStatusText.Text = string.Empty;
+
         // Reatribuir a fonte é o que faz a lista redesenhar: a coleção local é
         // simples, e uma ObservableCollection aqui só acrescentaria maquinaria
         // para uma janela que vive segundos.
@@ -102,4 +125,52 @@ public partial class BlockNotificationWindow : Window
     }
 
     private void Acknowledge_Click(object sender, RoutedEventArgs e) => Close();
+
+    private void JustificationInput_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        if (SubmitJustificationButton is null)
+        {
+            return;
+        }
+
+        SubmitJustificationButton.IsEnabled =
+            _justificationEventId is not null &&
+            JustificationInput.IsEnabled &&
+            !string.IsNullOrWhiteSpace(JustificationInput.Text);
+    }
+
+    private async void SubmitJustification_Click(object sender, RoutedEventArgs e)
+    {
+        string? eventId = _justificationEventId;
+        string reason = JustificationInput.Text.Trim();
+
+        if (eventId is null || reason.Length == 0)
+        {
+            return;
+        }
+
+        SubmitJustificationButton.IsEnabled = false;
+        JustificationStatusText.Text = "Enviando ao serviço...";
+
+        try
+        {
+            await JustificationPipeClient.SendAsync(eventId, reason);
+
+            if (_justificationEventId == eventId)
+            {
+                JustificationInput.IsEnabled = false;
+                JustificationStatusText.Text =
+                    "Justificativa aceita. Tente a operação novamente.";
+            }
+        }
+        catch (Exception)
+        {
+            if (_justificationEventId == eventId)
+            {
+                JustificationStatusText.Text =
+                    "O serviço não aceitou a justificativa. O bloqueio pode ter expirado; tente iniciar a operação novamente.";
+                SubmitJustificationButton.IsEnabled = true;
+            }
+        }
+    }
 }

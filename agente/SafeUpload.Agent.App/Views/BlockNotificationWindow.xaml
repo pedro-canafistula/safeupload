@@ -23,10 +23,9 @@
         o foco faria as proximas teclas irem para esta janela — no melhor caso
         perdendo o que estava sendo digitado, no pior acionando o botao.
 
-        RN-005 — esta janela não tem, e não pode ganhar, um botão de prosseguir,
-        ignorar ou enviar assim mesmo. Um bloqueio que o usuário consegue
-        dispensar não é um bloqueio: é um aviso, e a regra pede negação. O único
-        comando aqui fecha a notificação; o arquivo continua barrado.
+        A justificativa aparece apenas quando a política permite exceção. O
+        botão submete o motivo ao serviço para uma nova tentativa; não altera
+        o veredito da operação que já foi recusada.
     -->
 
     <Border Background="{StaticResource Surface}"
@@ -122,7 +121,36 @@
                            Text="O arquivo foi retirado da pasta monitorada e guardado em SafeUpload\_bloqueados na sua pasta de usuário."
                            Margin="0,0,0,16" />
 
-                <!-- Único botão da janela. Ver o comentário no topo do arquivo. -->
+                <StackPanel x:Name="JustificationPanel"
+                            Visibility="Collapsed"
+                            Margin="0,0,0,14">
+                    <TextBlock x:Name="JustificationTargetText"
+                               Style="{StaticResource SectionText}"
+                               TextWrapping="Wrap" />
+                    <TextBlock Text="Informe o motivo de negócio para tentar novamente."
+                               Style="{StaticResource MutedText}"
+                               TextWrapping="Wrap"
+                               Margin="0,0,0,7" />
+                    <TextBox x:Name="JustificationInput"
+                             MaxLength="1000"
+                             AcceptsReturn="True"
+                             TextWrapping="Wrap"
+                             Height="68"
+                             VerticalScrollBarVisibility="Auto"
+                             TextChanged="JustificationInput_TextChanged" />
+                    <TextBlock x:Name="JustificationStatusText"
+                               Style="{StaticResource MutedText}"
+                               TextWrapping="Wrap"
+                               Margin="0,7,0,0" />
+                    <Button x:Name="SubmitJustificationButton"
+                            Content="Enviar justificativa"
+                            Style="{StaticResource PrimaryButton}"
+                            IsEnabled="False"
+                            HorizontalAlignment="Right"
+                            Margin="0,9,0,0"
+                            Click="SubmitJustification_Click" />
+                </StackPanel>
+
                 <Button x:Name="AcknowledgeButton"
                         Content="Entendi"
                         Style="{StaticResource PrimaryButton}"

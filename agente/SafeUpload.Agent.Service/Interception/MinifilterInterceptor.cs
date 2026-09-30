@@ -56,11 +56,12 @@ public sealed class MinifilterInterceptor : BackgroundService
     private readonly IAuditSink _auditSink;
     private readonly NotificationHub _hub;
     private readonly PendingOverrides _pending;
-    private readonly OverrideGrantQueue _grants;
+    private readonly OverrideGrantDispatcher _grants;
     private readonly ILogger<MinifilterInterceptor> _logger;
 
     private long _overBudget;
     private long _answered;
+    private bool _overrideAllowed;
 
     /// <summary>Compõe o interceptador.</summary>
     public MinifilterInterceptor(
@@ -69,7 +70,7 @@ public sealed class MinifilterInterceptor : BackgroundService
         IAuditSink auditSink,
         NotificationHub hub,
         PendingOverrides pending,
-        OverrideGrantQueue grants,
+        OverrideGrantDispatcher grants,
         ILogger<MinifilterInterceptor> logger)
     {
         _inspection = inspection ?? throw new ArgumentNullException(nameof(inspection));
@@ -141,27 +142,31 @@ public sealed class MinifilterInterceptor : BackgroundService
                 return;
             }
 
-            _logger.LogInformation("Minifiltro conectado. Interceptando em modo kernel.");
-
-            ReadySignal.Announce(ReadySignal.ServiceEvent);
-
-            while (!stoppingToken.IsCancellationRequested &&
-                   port.TryGetMessage(out SafeUploadRequest request, out ulong messageId))
+            _grants.Bind(port);
+            try
             {
-                // Entre uma requisicao e outra, e nao noutra thread: a porta
-                // aceita um cliente, e quem o segura e este laco.
-                DrainGrants(port);
+                _logger.LogInformation("Minifiltro conectado. Interceptando em modo kernel.");
 
-                uint verdict = Judge(request);
+                ReadySignal.Announce(ReadySignal.ServiceEvent);
 
-                try
+                while (!stoppingToken.IsCancellationRequested &&
+                       port.TryGetMessage(out SafeUploadRequest request, out ulong messageId))
                 {
-                    port.Reply(messageId, request.RequestId, verdict);
+                    uint verdict = Judge(request);
+
+                    try
+                    {
+                        port.Reply(messageId, request.RequestId, verdict);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Falha ao responder o veredito {RequestId}.", request.RequestId);
+                    }
                 }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "Falha ao responder o veredito {RequestId}.", request.RequestId);
-                }
+            }
+            finally
+            {
+                _grants.Unbind(port);
             }
         }
 
@@ -223,6 +228,7 @@ public sealed class MinifilterInterceptor : BackgroundService
             _budget = policy.InspectionTimeout;
 
             port.SetPolicy(builder.Build());
+            _overrideAllowed = policy.OverrideAllowed;
 
             _logger.LogInformation(
                 "Politica v{Version} empurrada ao driver: {Extensions} extensoes, " +
@@ -371,28 +377,6 @@ public sealed class MinifilterInterceptor : BackgroundService
     }
 
     /// <summary>
-    /// Leva ao driver as concessoes que o canal de justificativas deixou.
-    ///
-    /// Falha aqui nao derruba o laco: uma concessao perdida significa que o
-    /// usuario tentara de novo, enquanto um laco derrubado significa que
-    /// ninguem mais e inspecionado.
-    /// </summary>
-    private void DrainGrants(FilterPort port)
-    {
-        while (_grants.TryDequeue(out OverrideGrantQueue.Grant grant))
-        {
-            try
-            {
-                port.GrantOverride(grant.ProcessId, grant.NtPath, grant.Duration);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "Falha ao conceder excecao para o processo {Pid}.", grant.ProcessId);
-            }
-        }
-    }
-
-    /// <summary>
     /// Publica o evento para o painel, quando houver o que publicar.
     ///
     /// A sessão de origem vem do PID, e aqui ela finalmente resolve: com o
@@ -435,7 +419,9 @@ public sealed class MinifilterInterceptor : BackgroundService
                         ExpiresAt: DateTimeOffset.UtcNow + PendingOverrides.Window));
                 }
 
-                _hub.Publish(new EventNotification(auditEvent, result.Findings), sessionId);
+                _hub.Publish(new EventNotification(
+                    auditEvent, result.Findings,
+                    OverrideAllowed: result.IsBlocked && _overrideAllowed), sessionId);
             }
         }
         catch (Exception ex)

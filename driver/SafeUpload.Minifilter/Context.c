@@ -418,7 +418,8 @@ Return Value:
 
 NTSTATUS
 SafeUploadMarkHandleForWrite (
-    _In_ PCFLT_RELATED_OBJECTS FltObjects
+    _In_ PCFLT_RELATED_OBJECTS FltObjects,
+    _In_ BOOLEAN OverrideGranted
     )
 /*++
 
@@ -427,11 +428,10 @@ Routine Description:
     Marks the handle as opened for write, so that cleanup knows to
     invalidate the file's cached verdict.
 
-    The alternative would be to hook every write, which costs a callback per
-    operation to learn something a single flag at open time already says.
-    It is deliberately conservative: a handle opened for write but never
-    written still invalidates the cache, which costs one extra inspection
-    and never returns a stale answer.
+    This flag is for cache invalidation at cleanup. The write callback has a
+    separate purpose: it prevents a handle opened before process taint from
+    becoming an egress bypass. OverrideGranted makes a justified create's
+    one-use exception apply to subsequent writes through that handle.
 
     IRQL: PASSIVE_LEVEL. Called from post-create.
 
@@ -441,8 +441,8 @@ Arguments:
 
 Return Value:
 
-    STATUS_SUCCESS, or the failing status. Failure is not fatal: it only
-    means the file will be re-inspected more often than strictly necessary.
+    STATUS_SUCCESS, or the failing status. Failure to mark a justified handle
+    may cause the following write to be denied; the grant is not broadened.
 
 --*/
 {
@@ -468,6 +468,7 @@ Return Value:
     }
 
     handleContext->OpenedForWrite = TRUE;
+    handleContext->OverrideGranted = OverrideGranted;
 
     status = FltSetStreamHandleContext( FltObjects->Instance,
                                         FltObjects->FileObject,
@@ -523,4 +524,26 @@ Return Value:
     }
 
     return openedForWrite;
+}
+
+
+BOOLEAN
+SafeUploadHandleHasOverride (
+    _In_ PCFLT_RELATED_OBJECTS FltObjects
+    )
+{
+    PSAFEUPLOAD_STREAMHANDLE_CONTEXT handleContext = NULL;
+    BOOLEAN granted = FALSE;
+    NTSTATUS status;
+
+    status = FltGetStreamHandleContext( FltObjects->Instance,
+                                        FltObjects->FileObject,
+                                        (PFLT_CONTEXT *) &handleContext );
+
+    if (NT_SUCCESS( status )) {
+        granted = handleContext->OverrideGranted;
+        FltReleaseContext( handleContext );
+    }
+
+    return granted;
 }

@@ -11,11 +11,11 @@ namespace SafeUpload.Agent.App;
 /// <summary>
 /// Ponto de entrada e composition root do aplicativo de bandeja.
 ///
-/// A partir da separação em dois processos, este aplicativo é um <b>visor</b>.
-/// Ele não intercepta, não inspeciona e não decide: quem faz isso é o serviço
-/// <c>SafeUploadAgent</c>, que roda como LocalSystem e continua funcionando com
-/// esta janela fechada. Nada que o usuário clique aqui altera um veredito,
-/// porque o canal com o serviço não tem caminho de volta.
+/// A partir da separação em dois processos, este aplicativo mostra o estado
+/// e recebe justificativas. Ele não intercepta, não inspeciona e não decide:
+/// quem faz isso é o serviço <c>SafeUploadAgent</c>, que continua funcionando
+/// com esta janela fechada. A justificativa vai por um pipe separado, e o
+/// serviço valida o ID do bloqueio antes de conceder uma nova tentativa.
 ///
 /// A consequência prática é a lista de dependências: não há mais
 /// <c>InspectionService</c>, <c>ContentScanner</c> nem extratores neste projeto.
@@ -119,9 +119,8 @@ public partial class App : System.Windows.Application
     }
 
     /// <summary>
-    /// RN-005 — todo bloqueio notifica. A janela não tem nenhuma forma de
-    /// liberar o arquivo; ela existe para o usuário saber por que a operação
-    /// não passou.
+    /// RN-005 — todo bloqueio notifica. Quando a política permite, a janela
+    /// envia uma justificativa para que o serviço autorize uma nova tentativa.
     /// </summary>
     private void ShowBlockNotification(EventNotification notification)
     {
@@ -135,14 +134,19 @@ public partial class App : System.Windows.Application
             // de uma segunda janela nascer por cima. Copiar uma pasta com dez
             // arquivos sensíveis produziria dez janelas empilhadas no mesmo
             // canto, e o usuário fecharia uma por uma sem ler nenhuma.
-            _notification.Add(notification.Event.FileName, notification.Findings);
+            _notification.Add(
+                notification.Event.FileName,
+                notification.Findings,
+                notification.OverrideAllowed ? notification.Event.EventId.ToString("D") : null,
+                notification.Quarantined);
             return;
         }
 
         _notification = new BlockNotificationWindow(
             notification.Event.FileName,
             notification.Findings,
-            quarantined: true);
+            notification.OverrideAllowed ? notification.Event.EventId.ToString("D") : null,
+            quarantined: notification.Quarantined);
 
         _notification.Closed += (_, _) => _notification = null;
 

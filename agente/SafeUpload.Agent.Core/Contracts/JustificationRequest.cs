@@ -48,6 +48,8 @@ public static class JustificationProtocol
     /// sem que ninguém precise lembrar disso.
     /// </summary>
     public const string PipeName = "SafeUpload.Agent.Justification";
+    public const string Accepted = "accepted";
+    public const string Rejected = "rejected";
 
     /// <summary>
     /// Teto do texto da justificativa, em caracteres.

@@ -396,7 +396,8 @@ public sealed class FileSystemInterceptor : BackgroundService
             // existe para o dia em que o minifiltro informar o processo.
             var sessionId = SessionResolver.TryGetSessionId(operation.ProcessId);
 
-            _hub.Publish(new EventNotification(auditEvent, result.Findings), sessionId);
+            _hub.Publish(new EventNotification(
+                auditEvent, result.Findings, Quarantined: result.IsBlocked), sessionId);
         }
 
         _logger.LogInformation(

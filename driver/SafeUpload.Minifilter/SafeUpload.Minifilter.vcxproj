@@ -71,6 +71,9 @@
     <None Include="SafeUpload.inf" />
   </ItemGroup>
   <ItemGroup>
+    <ResourceCompile Include="SafeUpload.rc" />
+  </ItemGroup>
+  <ItemGroup>
     <ClInclude Include="Filter.h" />
     <ClInclude Include="Protocol.h" />
   </ItemGroup>

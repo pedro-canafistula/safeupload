@@ -9,10 +9,9 @@ namespace SafeUpload.Agent.Service.Notifications;
 /// Entrega as notificações aos aplicativos de bandeja conectados, por named
 /// pipe.
 ///
-/// O canal é de mão única: o servidor escreve, o cliente lê, e não existe
-/// caminho de volta. Não é economia de código — é a garantia de que nada que o
-/// usuário faça na interface pode alterar um veredito. Um canal bidirecional
-/// exigiria confiar no que o cliente manda; sem ele, não há o que validar.
+/// Este canal é de mão única: o servidor escreve e o cliente lê. O pedido de
+/// justificativa usa outro pipe, onde o serviço valida o ID e a sessão do
+/// bloqueio antes de enviar uma concessão ao driver.
 /// </summary>
 public sealed class NotificationPipeServer : BackgroundService
 {

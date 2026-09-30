@@ -40,7 +40,7 @@ public sealed class JustificationPipeServer : BackgroundService
     private readonly PendingOverrides _pending;
     private readonly IPolicyStore _policyStore;
     private readonly IAuditSink _auditSink;
-    private readonly OverrideGrantQueue _grants;
+    private readonly OverrideGrantDispatcher _grants;
     private readonly ILogger<JustificationPipeServer> _logger;
 
     /// <summary>Compõe o servidor.</summary>
@@ -48,7 +48,7 @@ public sealed class JustificationPipeServer : BackgroundService
         PendingOverrides pending,
         IPolicyStore policyStore,
         IAuditSink auditSink,
-        OverrideGrantQueue grants,
+        OverrideGrantDispatcher grants,
         ILogger<JustificationPipeServer> logger)
     {
         _pending = pending ?? throw new ArgumentNullException(nameof(pending));
@@ -93,7 +93,10 @@ public sealed class JustificationPipeServer : BackgroundService
 
         try
         {
-            using var reader = new StreamReader(pipe, JustificationProtocol.Encoding);
+            using var reader = new StreamReader(
+                pipe, JustificationProtocol.Encoding,
+                detectEncodingFromByteOrderMarks: false, bufferSize: 1024,
+                leaveOpen: true);
 
             string? line = await reader.ReadLineAsync(stoppingToken).ConfigureAwait(false);
 
@@ -102,10 +105,18 @@ public sealed class JustificationPipeServer : BackgroundService
             if (request is null)
             {
                 _logger.LogWarning("Pedido de justificativa malformado, descartado.");
-                return;
             }
 
-            await HandleAsync(request, sessionId, stoppingToken).ConfigureAwait(false);
+            bool accepted = request is not null &&
+                await HandleAsync(request, sessionId, stoppingToken).ConfigureAwait(false);
+
+            await using var writer = new StreamWriter(
+                pipe, JustificationProtocol.Encoding, bufferSize: 1024,
+                leaveOpen: true);
+            await writer.WriteLineAsync(accepted
+                ? JustificationProtocol.Accepted
+                : JustificationProtocol.Rejected).ConfigureAwait(false);
+            await writer.FlushAsync(stoppingToken).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {
@@ -120,7 +131,7 @@ public sealed class JustificationPipeServer : BackgroundService
         }
     }
 
-    private async Task HandleAsync(
+    private async Task<bool> HandleAsync(
         JustificationRequest request,
         uint? sessionId,
         CancellationToken cancellationToken)
@@ -133,7 +144,13 @@ public sealed class JustificationPipeServer : BackgroundService
             // notificação e a resposta. O driver recusaria de qualquer forma.
             _logger.LogInformation(
                 "Justificativa recebida com a politica em modo sem justificativa. Ignorada.");
-            return;
+            return false;
+        }
+
+        if (!_grants.IsConnected)
+        {
+            _logger.LogWarning("Justificativa recebida sem conexao com o minifiltro.");
+            return false;
         }
 
         PendingOverrides.Entry? pendente = _pending.Consume(request.EventId, sessionId);
@@ -142,7 +159,7 @@ public sealed class JustificationPipeServer : BackgroundService
         {
             _logger.LogWarning(
                 "Justificativa para um bloqueio que nao existe, venceu, ou e de outra sessao. Ignorada.");
-            return;
+            return false;
         }
 
         // Auditar ANTES de conceder. Concedendo primeiro, uma falha aqui
@@ -152,12 +169,13 @@ public sealed class JustificationPipeServer : BackgroundService
             request.Justification,
             cancellationToken).ConfigureAwait(false);
 
-        _grants.Enqueue(pendente.ProcessId, pendente.NtPath, GrantDuration);
+        _grants.Grant(pendente.ProcessId, pendente.NtPath, GrantDuration);
 
         _logger.LogWarning(
             "Excecao concedida para {Arquivo}, processo {Pid}, justificada pelo usuario.",
             pendente.FileName,
             pendente.ProcessId);
+        return true;
     }
 
     /// <summary>
@@ -194,12 +212,12 @@ public sealed class JustificationPipeServer : BackgroundService
 
         return NamedPipeServerStreamAcl.Create(
             JustificationProtocol.PipeName,
-            PipeDirection.In,
+            PipeDirection.InOut,
             MaxServerInstances,
             PipeTransmissionMode.Byte,
             PipeOptions.Asynchronous,
             inBufferSize: 8 * 1024,
-            outBufferSize: 0,
+            outBufferSize: 1024,
             security);
     }
 }

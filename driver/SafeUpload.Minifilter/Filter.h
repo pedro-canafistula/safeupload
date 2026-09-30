@@ -228,6 +228,7 @@ typedef struct _SAFEUPLOAD_INSTANCE_CONTEXT {
 typedef struct _SAFEUPLOAD_STREAMHANDLE_CONTEXT {
 
     BOOLEAN OpenedForWrite;
+    BOOLEAN OverrideGranted;
 
 } SAFEUPLOAD_STREAMHANDLE_CONTEXT, *PSAFEUPLOAD_STREAMHANDLE_CONTEXT;
 
@@ -323,11 +324,17 @@ SafeUploadSetInstanceContext (
 
 NTSTATUS
 SafeUploadMarkHandleForWrite (
-    _In_ PCFLT_RELATED_OBJECTS FltObjects
+    _In_ PCFLT_RELATED_OBJECTS FltObjects,
+    _In_ BOOLEAN OverrideGranted
     );
 
 BOOLEAN
 SafeUploadHandleWasOpenedForWrite (
+    _In_ PCFLT_RELATED_OBJECTS FltObjects
+    );
+
+BOOLEAN
+SafeUploadHandleHasOverride (
     _In_ PCFLT_RELATED_OBJECTS FltObjects
     );
 
@@ -402,6 +409,13 @@ SafeUploadPostCreate (
 
 FLT_PREOP_CALLBACK_STATUS
 SafeUploadPreCleanup (
+    _Inout_ PFLT_CALLBACK_DATA Data,
+    _In_ PCFLT_RELATED_OBJECTS FltObjects,
+    _Flt_CompletionContext_Outptr_ PVOID *CompletionContext
+    );
+
+FLT_PREOP_CALLBACK_STATUS
+SafeUploadPreWrite (
     _Inout_ PFLT_CALLBACK_DATA Data,
     _In_ PCFLT_RELATED_OBJECTS FltObjects,
     _Flt_CompletionContext_Outptr_ PVOID *CompletionContext
