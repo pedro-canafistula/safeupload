@@ -49,9 +49,14 @@ must retain the local version and report that it was not sent.
 - A negative test must watch the actual destination bytes and sync client during
   every blocked case. Checking only the final path after deletion is not enough.
 
-The service-side `StagedTransferPublisher` is a component of this design. It
-does not enforce the first three invariants by itself. The minifilter must not
-advertise staged protection until its redirection and recovery tests pass.
+The service-side `StagedTransferPublisher` and `StagedTransferJournal` now
+implement sealed-file inspection, durable state transitions, digest-based
+publication recovery, and outcome auditing. A classification result is not
+audited as a successful send before the destination publication succeeds.
+The focused and full agent tests pass on the debugger VM. These components do
+not enforce the first three invariants by themselves. They are not yet wired
+to the minifilter, and the minifilter must not advertise staged protection
+until its redirection and recovery tests pass.
 
 Microsoft's SimRep sample demonstrates pre-create reparsing, but explicitly
 does not virtualize the namespace for higher filters. Its rename, name-provider,

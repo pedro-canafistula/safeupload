@@ -55,6 +55,26 @@ public sealed class InspectionService
 
     /// <summary>Julga uma operação de arquivo.</summary>
     public async Task<InspectionResult> InspectAsync(FileOperation operation, CancellationToken cancellationToken)
+        => await InspectCoreAsync(operation, auditAndCache: true, cancellationToken).ConfigureAwait(false);
+
+    /// <summary>
+    /// Classifies a sealed staging file. Its verdict is not an operation
+    /// outcome: the caller records the outcome after publication or retention.
+    /// Never reuse a cached decision for a staged file.
+    /// </summary>
+    public Task<InspectionResult> InspectStagedAsync(FileOperation operation, CancellationToken cancellationToken)
+        => InspectCoreAsync(operation, auditAndCache: false, cancellationToken);
+
+    public Task RecordTransferOutcomeAsync(
+        FileOperation operation,
+        InspectionResult inspection,
+        Verdict outcome,
+        string? reason,
+        CancellationToken cancellationToken)
+        => AuditAsync(operation, inspection with { Verdict = outcome, Reason = reason }, cancellationToken);
+
+    private async Task<InspectionResult> InspectCoreAsync(
+        FileOperation operation, bool auditAndCache, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(operation);
 
@@ -76,7 +96,7 @@ public sealed class InspectionService
         }
 
         // 3. Cache. A versão da política faz parte da validade da entrada.
-        if (_cache.TryGet(operation, policy.Version, out var cached) && cached is not null)
+        if (auditAndCache && _cache.TryGet(operation, policy.Version, out var cached) && cached is not null)
         {
             stopwatch.Stop();
 
@@ -94,7 +114,7 @@ public sealed class InspectionService
         if (operation.SizeBytes > policy.MaxFileSizeBytes)
         {
             return await CompleteAsync(
-                    operation, policy, stopwatch, Verdict.AllowedWithoutInspection, [], "file_too_large", cancellationToken)
+                    operation, policy, stopwatch, Verdict.AllowedWithoutInspection, [], "file_too_large", auditAndCache, cancellationToken)
                 .ConfigureAwait(false);
         }
 
@@ -103,7 +123,7 @@ public sealed class InspectionService
         if (extractor is null)
         {
             return await CompleteAsync(
-                    operation, policy, stopwatch, Verdict.AllowedWithoutInspection, [], "unsupported_format", cancellationToken)
+                    operation, policy, stopwatch, Verdict.AllowedWithoutInspection, [], "unsupported_format", auditAndCache, cancellationToken)
                 .ConfigureAwait(false);
         }
 
@@ -126,7 +146,7 @@ public sealed class InspectionService
         {
             // RN-012 — estourou o prazo. Libera e audita o motivo.
             return await CompleteAsync(
-                    operation, policy, stopwatch, Verdict.AllowedWithoutInspection, [], "inspection_timeout", cancellationToken)
+                    operation, policy, stopwatch, Verdict.AllowedWithoutInspection, [], "inspection_timeout", auditAndCache, cancellationToken)
                 .ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -143,7 +163,7 @@ public sealed class InspectionService
             // trecho do conteúdo do arquivo.
             return await CompleteAsync(
                     operation, policy, stopwatch, Verdict.AllowedWithoutInspection, [],
-                    $"parse_error:{ex.GetType().Name}", cancellationToken)
+                    $"parse_error:{ex.GetType().Name}", auditAndCache, cancellationToken)
                 .ConfigureAwait(false);
         }
 
@@ -151,7 +171,7 @@ public sealed class InspectionService
         var verdict = findings.Count > 0 ? Verdict.Blocked : Verdict.Approved;
 
         // 8. Cache e auditoria.
-        return await CompleteAsync(operation, policy, stopwatch, verdict, findings, null, cancellationToken)
+        return await CompleteAsync(operation, policy, stopwatch, verdict, findings, null, auditAndCache, cancellationToken)
             .ConfigureAwait(false);
     }
 
@@ -184,6 +204,7 @@ public sealed class InspectionService
         Verdict verdict,
         IReadOnlyList<Finding> findings,
         string? reason,
+        bool auditAndCache,
         CancellationToken cancellationToken)
     {
         stopwatch.Stop();
@@ -197,8 +218,11 @@ public sealed class InspectionService
             policy.Version,
             InScope: true);
 
-        _cache.Set(operation, result);
-        await AuditAsync(operation, result, cancellationToken).ConfigureAwait(false);
+        if (auditAndCache)
+        {
+            _cache.Set(operation, result);
+            await AuditAsync(operation, result, cancellationToken).ConfigureAwait(false);
+        }
 
         return result;
     }

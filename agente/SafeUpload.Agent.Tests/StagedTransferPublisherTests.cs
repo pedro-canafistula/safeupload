@@ -12,12 +12,14 @@ public sealed class StagedTransferPublisherTests : IDisposable
     private readonly TestWorkspace _workspace = new();
     private readonly string _stagingRoot;
     private readonly NotificationHub _notifications = new();
+    private readonly StagedTransferJournal _journal;
     private readonly StagedTransferPublisher _publisher;
 
     public StagedTransferPublisherTests()
     {
         _stagingRoot = Path.Combine(_workspace.Root, "staging");
         Directory.CreateDirectory(_stagingRoot);
+        _journal = new StagedTransferJournal(Path.Combine(_workspace.Root, "journal"));
 
         var inspector = new InspectionService(
             new LocalPolicyStore(_workspace.PolicyFile),
@@ -25,7 +27,7 @@ public sealed class StagedTransferPublisherTests : IDisposable
             ExtractorRegistry.CreateDefault(),
             new VerdictCache());
 
-        _publisher = new StagedTransferPublisher(inspector, _notifications, _stagingRoot);
+        _publisher = new StagedTransferPublisher(inspector, _notifications, _journal, _stagingRoot);
     }
 
     public void Dispose() => _workspace.Dispose();
@@ -37,10 +39,15 @@ public sealed class StagedTransferPublisherTests : IDisposable
         string destination = Path.Combine(_workspace.Root, "destination", name);
         Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
 
-        return new StagedTransfer(
+        var transfer = new StagedTransfer(
             Guid.NewGuid(), stage, destination,
             DestinationKind.RemovableDrive,
             "explorer.exe", 4242, null);
+        _journal.CreateAsync(transfer, CancellationToken.None).GetAwaiter().GetResult();
+        _journal.TransitionAsync(transfer.TransferId,
+            TransferJournalState.Allocated, TransferJournalState.Sealed,
+            null, CancellationToken.None).GetAwaiter().GetResult();
+        return transfer;
     }
 
     [Fact]
@@ -53,6 +60,12 @@ public sealed class StagedTransferPublisherTests : IDisposable
         Assert.Equal(StagedTransferOutcome.Blocked, outcome);
         Assert.False(File.Exists(transfer.DestinationPath));
         Assert.True(File.Exists(transfer.StagePath));
+        Assert.Equal(TransferJournalState.Blocked,
+            (await _journal.ReadAsync(transfer.TransferId, CancellationToken.None)).State);
+        var audit = await new LocalQueueAuditSink(_workspace.QueueFile)
+            .ReadRecentAsync(10, CancellationToken.None);
+        Assert.Single(audit);
+        Assert.Equal(Verdict.Blocked, audit[0].Verdict);
     }
 
     [Fact]
@@ -65,6 +78,12 @@ public sealed class StagedTransferPublisherTests : IDisposable
         Assert.Equal(StagedTransferOutcome.Released, outcome);
         Assert.Equal("Relatorio sem dados pessoais.",
             await File.ReadAllTextAsync(transfer.DestinationPath));
+        Assert.Equal(TransferJournalState.Released,
+            (await _journal.ReadAsync(transfer.TransferId, CancellationToken.None)).State);
+        var audit = await new LocalQueueAuditSink(_workspace.QueueFile)
+            .ReadRecentAsync(10, CancellationToken.None);
+        Assert.Single(audit);
+        Assert.Equal(Verdict.Approved, audit[0].Verdict);
     }
 
     [Fact]
@@ -76,7 +95,7 @@ public sealed class StagedTransferPublisherTests : IDisposable
             new LocalQueueAuditSink(_workspace.QueueFile),
             new ExtractorRegistry([extractor]),
             new VerdictCache());
-        var publisher = new StagedTransferPublisher(inspector, _notifications, _stagingRoot);
+        var publisher = new StagedTransferPublisher(inspector, _notifications, _journal, _stagingRoot);
         var transfer = Transfer("waiting.txt", "Clean text.");
 
         Task<StagedTransferOutcome> publication =
@@ -84,6 +103,8 @@ public sealed class StagedTransferPublisherTests : IDisposable
         await extractor.Entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
         Assert.False(File.Exists(transfer.DestinationPath));
+        Assert.Empty(await new LocalQueueAuditSink(_workspace.QueueFile)
+            .ReadRecentAsync(10, CancellationToken.None));
         Assert.Throws<IOException>(() => new FileStream(
             transfer.StagePath, FileMode.Open, FileAccess.Write, FileShare.None));
 
@@ -102,6 +123,32 @@ public sealed class StagedTransferPublisherTests : IDisposable
         Assert.Equal(StagedTransferOutcome.Retained, outcome);
         Assert.False(File.Exists(transfer.DestinationPath));
         Assert.True(File.Exists(transfer.StagePath));
+        Assert.Equal(TransferJournalState.Retained,
+            (await _journal.ReadAsync(transfer.TransferId, CancellationToken.None)).State);
+        var audit = await new LocalQueueAuditSink(_workspace.QueueFile)
+            .ReadRecentAsync(10, CancellationToken.None);
+        Assert.Single(audit);
+        Assert.Equal(Verdict.Retained, audit[0].Verdict);
+    }
+
+    [Fact]
+    public async Task Failed_publication_is_retained_and_never_audited_as_sent()
+    {
+        var transfer = Transfer("clean.txt", "Clean text.");
+        Directory.Delete(Path.GetDirectoryName(transfer.DestinationPath)!);
+
+        var outcome = await _publisher.PublishAsync(transfer, CancellationToken.None);
+
+        Assert.Equal(StagedTransferOutcome.Retained, outcome);
+        Assert.False(File.Exists(transfer.DestinationPath));
+        Assert.True(File.Exists(transfer.StagePath));
+        Assert.Equal(TransferJournalState.Retained,
+            (await _journal.ReadAsync(transfer.TransferId, CancellationToken.None)).State);
+        var audit = await new LocalQueueAuditSink(_workspace.QueueFile)
+            .ReadRecentAsync(10, CancellationToken.None);
+        Assert.Single(audit);
+        Assert.Equal(Verdict.Retained, audit[0].Verdict);
+        Assert.Equal("publication_failed", audit[0].NotInspectedReason);
     }
 
     [Fact]

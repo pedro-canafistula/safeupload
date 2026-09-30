@@ -40,6 +40,7 @@ public sealed class ActivityRowViewModel
     {
         Verdict.Blocked => $"Upload bloqueado: {auditEvent.FileName}",
         Verdict.Approved => $"Arquivo enviado: {auditEvent.FileName}",
+        Verdict.Retained => $"Arquivo retido para análise: {auditEvent.FileName}",
         _ => $"Arquivo não inspecionado: {auditEvent.FileName}"
     };
 
@@ -53,6 +54,7 @@ public sealed class ActivityRowViewModel
     {
         Verdict.Blocked => "IconBan",
         Verdict.Approved => "IconFile",
+        Verdict.Retained => "IconAlert",
         _ => "IconAlert"
     };
 }
@@ -74,6 +76,7 @@ public sealed record StatusPill(string Text, string ForegroundKey)
     {
         Verdict.Approved => new StatusPill("PERMITIDO", "PillApprovedText"),
         Verdict.Blocked => new StatusPill("BLOQUEADO", "PillBlockedText"),
+        Verdict.Retained => new StatusPill("RETIDO", "PillNotInspectedText"),
         _ => new StatusPill("NÃO INSPECIONADO", "PillNotInspectedText")
     };
 }

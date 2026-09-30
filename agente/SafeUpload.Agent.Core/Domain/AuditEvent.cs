@@ -24,9 +24,10 @@ namespace SafeUpload.Agent.Core.Domain;
 /// <param name="ProcessId">PID desse processo.</param>
 /// <param name="DestinationPath">Destino da operação.</param>
 /// <param name="NotInspectedReason">
-/// Por que não houve inspeção: file_too_large, unsupported_format,
-/// inspection_timeout, parse_error:Tipo ou out_of_scope. Nulo quando houve
-/// inspeção de verdade.
+/// Motivo de uma operação sem inspeção ou de uma transferência retida:
+/// file_too_large, unsupported_format, inspection_timeout,
+/// parse_error:Tipo, out_of_scope ou publication_failed. Nulo quando um
+/// arquivo inspecionado foi liberado ou bloqueado sem erro.
 /// </param>
 /// <param name="PolicyVersion">Versão da política aplicada.</param>
 /// <param name="ElapsedMs">Duração da decisão, em milissegundos.</param>
