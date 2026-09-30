@@ -77,3 +77,22 @@ see no file. An application that reopens its save or enumerates its folder
 needs process-aware name virtualization. Cloud sync and other processes must
 not see the staged bytes before approval. The prototype is disabled by
 default with `SAFEUPLOAD_STAGING_PROTOTYPE=0` and must not be shipped.
+
+## Implementation sequence
+
+1. Add a service-owned transfer journal and per-user staging directory. The
+   driver requests a stage mapping for a specific destination, process, and
+   create disposition. A missing service or stage allocation error denies the
+   protected create before it reaches the destination.
+2. Track all handles for a staged version in kernel. Seal only after the final
+   writable cleanup, including mapped writes and rename-based saves. The
+   journal survives a service restart and retains an unapproved file.
+3. Virtualize names for the writing app: open, query, enumeration, rename,
+   hard link, and change notification. Do not expose staged content to the
+   sync client or another process. Apply the same rule to USB and UNC paths.
+4. Integrate the publisher with the journal. Audit the actual publication
+   outcome separately from content classification, and bind justification to
+   the exact staged version. Reconcile incomplete publication after restart.
+5. Run the coverage matrix above on the debuggee with a byte-level observer
+   on each destination, Driver Verifier, and measured save latency. Only then
+   replace the process-taint rule and enable the feature in policy.
