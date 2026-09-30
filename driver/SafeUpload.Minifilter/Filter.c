@@ -59,6 +59,8 @@ static LIST_ENTRY SafeUploadPrototypeMappings;
 static FAST_MUTEX SafeUploadPrototypeMappingLock;
 static ULONG SafeUploadPrototypeMappingCount;
 static BOOLEAN SafeUploadPrototypeNotifyRegistered;
+static LARGE_INTEGER SafeUploadPrototypeLoadTime;
+static volatile LONG SafeUploadPrototypeSequence;
 
 static
 VOID
@@ -307,6 +309,8 @@ Return Value:
     ExInitializeFastMutex( &SafeUploadPrototypeMappingLock );
     SafeUploadPrototypeMappingCount = 0;
     SafeUploadPrototypeNotifyRegistered = FALSE;
+    KeQuerySystemTime( &SafeUploadPrototypeLoadTime );
+    SafeUploadPrototypeSequence = 0;
 #endif
 
     //
@@ -1297,7 +1301,13 @@ SafeUploadPrototypeRedirectCreate (
     PIO_SECURITY_CONTEXT securityContext;
     UNICODE_STRING relativeName;
     UNICODE_STRING processIdString;
+    UNICODE_STRING loadHighString;
+    UNICODE_STRING loadLowString;
+    UNICODE_STRING sequenceString;
     WCHAR processIdBuffer[16];
+    WCHAR loadHighBuffer[16];
+    WCHAR loadLowBuffer[16];
+    WCHAR sequenceBuffer[16];
     PSAFEUPLOAD_PROTOTYPE_MAPPING mapping = NULL;
     PLIST_ENTRY link;
     PWCH newName = NULL;
@@ -1412,15 +1422,45 @@ SafeUploadPrototypeRedirectCreate (
         goto Deny;
     }
 
+    loadHighString.Buffer = loadHighBuffer;
+    loadHighString.Length = 0;
+    loadHighString.MaximumLength = sizeof( loadHighBuffer );
+    status = RtlIntegerToUnicodeString(
+        SafeUploadPrototypeLoadTime.HighPart, 16, &loadHighString );
+    if (!NT_SUCCESS( status )) {
+        goto Deny;
+    }
+    loadLowString.Buffer = loadLowBuffer;
+    loadLowString.Length = 0;
+    loadLowString.MaximumLength = sizeof( loadLowBuffer );
+    status = RtlIntegerToUnicodeString(
+        SafeUploadPrototypeLoadTime.LowPart, 16, &loadLowString );
+    if (!NT_SUCCESS( status )) {
+        goto Deny;
+    }
+    sequenceString.Buffer = sequenceBuffer;
+    sequenceString.Length = 0;
+    sequenceString.MaximumLength = sizeof( sequenceBuffer );
+    status = RtlIntegerToUnicodeString(
+        (ULONG) InterlockedIncrement( &SafeUploadPrototypeSequence ),
+        16, &sequenceString );
+    if (!NT_SUCCESS( status )) {
+        goto Deny;
+    }
+
     if ((ULONG) nameInfo->Volume.Length + stagePrefix.Length +
-        processIdString.Length + sizeof( WCHAR ) + suffixLength >
+        loadHighString.Length + loadLowString.Length +
+        processIdString.Length + sequenceString.Length +
+        4 * sizeof( WCHAR ) + suffixLength >
         MAXUSHORT - sizeof( WCHAR )) {
         status = STATUS_NAME_TOO_LONG;
         goto Deny;
     }
 
     newNameLength = nameInfo->Volume.Length + stagePrefix.Length +
-                    processIdString.Length + sizeof( WCHAR ) + suffixLength;
+                    loadHighString.Length + loadLowString.Length +
+                    processIdString.Length + sequenceString.Length +
+                    4 * sizeof( WCHAR ) + suffixLength;
     newName = ExAllocatePool2( POOL_FLAG_PAGED,
                                newNameLength + sizeof( WCHAR ),
                                SAFEUPLOAD_POOL_TAG );
@@ -1432,16 +1472,32 @@ SafeUploadPrototypeRedirectCreate (
     RtlCopyMemory( newName, nameInfo->Volume.Buffer, nameInfo->Volume.Length );
     RtlCopyMemory( (PUCHAR) newName + nameInfo->Volume.Length,
                    stagePrefix.Buffer, stagePrefix.Length );
-    RtlCopyMemory( (PUCHAR) newName + nameInfo->Volume.Length +
-                       stagePrefix.Length,
-                   processIdString.Buffer, processIdString.Length );
-    newName[(nameInfo->Volume.Length + stagePrefix.Length +
-             processIdString.Length) / sizeof( WCHAR )] = L'-';
-    RtlCopyMemory( (PUCHAR) newName + nameInfo->Volume.Length +
-                       stagePrefix.Length + processIdString.Length +
-                       sizeof( WCHAR ),
-                   (PUCHAR) relativeName.Buffer + sourcePrefix.Length,
-                   suffixLength );
+    {
+        USHORT offset = nameInfo->Volume.Length + stagePrefix.Length;
+        RtlCopyMemory( (PUCHAR) newName + offset,
+                       loadHighString.Buffer, loadHighString.Length );
+        offset += loadHighString.Length;
+        newName[offset / sizeof( WCHAR )] = L'-';
+        offset += sizeof( WCHAR );
+        RtlCopyMemory( (PUCHAR) newName + offset,
+                       loadLowString.Buffer, loadLowString.Length );
+        offset += loadLowString.Length;
+        newName[offset / sizeof( WCHAR )] = L'-';
+        offset += sizeof( WCHAR );
+        RtlCopyMemory( (PUCHAR) newName + offset,
+                       processIdString.Buffer, processIdString.Length );
+        offset += processIdString.Length;
+        newName[offset / sizeof( WCHAR )] = L'-';
+        offset += sizeof( WCHAR );
+        RtlCopyMemory( (PUCHAR) newName + offset,
+                       sequenceString.Buffer, sequenceString.Length );
+        offset += sequenceString.Length;
+        newName[offset / sizeof( WCHAR )] = L'-';
+        offset += sizeof( WCHAR );
+        RtlCopyMemory( (PUCHAR) newName + offset,
+                       (PUCHAR) relativeName.Buffer + sourcePrefix.Length,
+                       suffixLength );
+    }
     newName[newNameLength / sizeof( WCHAR )] = L'\0';
 
     // Keep the two names together so a later open can resolve exactly the

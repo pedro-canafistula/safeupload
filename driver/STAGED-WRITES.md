@@ -87,6 +87,8 @@ The later test-only namespace map redirects subsequent opens by the writer's
 process to its stage file. On the debuggee, the writer could reopen and read
 the staged bytes; another process could not see the new destination path.
 The map is dropped on process exit so PID reuse does not inherit visibility.
+Stage filenames include the driver load time and a sequence number so a later
+process with the same PID cannot overwrite an older retained stage file.
 An explicit `SafeUploadStagingPrototype=true` WDK build property is required
 to include this code; ordinary builds still compile it out.
 
