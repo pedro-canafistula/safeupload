@@ -48,6 +48,15 @@ SAFEUPLOAD_COUNTERS SafeUploadCounters;
 #endif
 
 #if SAFEUPLOAD_STAGING_PROTOTYPE
+typedef struct _SAFEUPLOAD_PROTOTYPE_STAGE_ECP {
+    ULONG StageNameLength;
+    WCHAR StageName[SAFEUPLOAD_MAX_PATH_CHARS];
+} SAFEUPLOAD_PROTOTYPE_STAGE_ECP, *PSAFEUPLOAD_PROTOTYPE_STAGE_ECP;
+
+static const GUID SafeUploadPrototypeStageEcpGuid =
+    { 0xb1e0d980, 0x4afd, 0x41cf,
+      { 0x93, 0x65, 0x2c, 0x55, 0x9e, 0x09, 0x76, 0x16 } };
+
 typedef struct _SAFEUPLOAD_PROTOTYPE_MAPPING {
     LIST_ENTRY Link;
     ULONG OwnerProcessId;
@@ -87,6 +96,21 @@ SafeUploadPrototypeAllocateStageName (
     _In_ PUNICODE_STRING OriginalName,
     _Out_writes_(SAFEUPLOAD_MAX_STAGE_NAME_CHARS) PWCH StageName,
     _Out_ PUSHORT StageNameLength
+    );
+
+static
+NTSTATUS
+SafeUploadPrototypeMarkRedirect (
+    _Inout_ PFLT_CALLBACK_DATA Data,
+    _In_reads_bytes_(StageNameLength) PWCH StageName,
+    _In_ USHORT StageNameLength
+    );
+
+static
+BOOLEAN
+SafeUploadPrototypeHasRedirectMarker (
+    _Inout_ PFLT_CALLBACK_DATA Data,
+    _In_ PUNICODE_STRING StageName
     );
 #endif
 
@@ -164,6 +188,8 @@ SafeUploadOverrideCovers (
 #if SAFEUPLOAD_STAGING_PROTOTYPE
     #pragma alloc_text(PAGE, SafeUploadPrototypeRedirectCreate)
     #pragma alloc_text(PAGE, SafeUploadPrototypeAllocateStageName)
+    #pragma alloc_text(PAGE, SafeUploadPrototypeMarkRedirect)
+    #pragma alloc_text(PAGE, SafeUploadPrototypeHasRedirectMarker)
     #pragma alloc_text(PAGE, SafeUploadPrototypeFreeMappings)
     #pragma alloc_text(PAGE, SafeUploadPrototypeProcessNotify)
 #endif
@@ -1381,6 +1407,112 @@ Exit:
 }
 
 static
+NTSTATUS
+SafeUploadPrototypeMarkRedirect (
+    _Inout_ PFLT_CALLBACK_DATA Data,
+    _In_reads_bytes_(StageNameLength) PWCH StageName,
+    _In_ USHORT StageNameLength
+    )
+{
+    PECP_LIST ecpList = NULL;
+    PSAFEUPLOAD_PROTOTYPE_STAGE_ECP ecp = NULL;
+    BOOLEAN ownList = FALSE;
+    NTSTATUS status;
+
+    PAGED_CODE();
+
+    if (StageNameLength == 0 ||
+        StageNameLength >= SAFEUPLOAD_MAX_PATH_CHARS * sizeof( WCHAR )) {
+        return STATUS_NAME_TOO_LONG;
+    }
+
+    status = FltGetEcpListFromCallbackData( SafeUploadData.Filter,
+                                            Data, &ecpList );
+    if (!NT_SUCCESS( status )) {
+        return status;
+    }
+    if (ecpList == NULL) {
+        status = FltAllocateExtraCreateParameterList(
+            SafeUploadData.Filter, 0, &ecpList );
+        if (!NT_SUCCESS( status )) {
+            return status;
+        }
+        ownList = TRUE;
+    }
+
+    status = FltAllocateExtraCreateParameter(
+        SafeUploadData.Filter, &SafeUploadPrototypeStageEcpGuid,
+        sizeof( *ecp ), 0, NULL, SAFEUPLOAD_POOL_TAG, (PVOID *) &ecp );
+    if (!NT_SUCCESS( status )) {
+        goto Cleanup;
+    }
+    RtlZeroMemory( ecp, sizeof( *ecp ) );
+    ecp->StageNameLength = StageNameLength;
+    RtlCopyMemory( ecp->StageName, StageName, StageNameLength );
+
+    status = FltInsertExtraCreateParameter( SafeUploadData.Filter,
+                                            ecpList, ecp );
+    if (!NT_SUCCESS( status )) {
+        FltFreeExtraCreateParameter( SafeUploadData.Filter, ecp );
+        goto Cleanup;
+    }
+
+    if (ownList) {
+        status = FltSetEcpListIntoCallbackData( SafeUploadData.Filter,
+                                                Data, ecpList );
+        if (!NT_SUCCESS( status )) {
+            goto Cleanup;
+        }
+    }
+
+    // The I/O manager owns the attached ECP until the entire create,
+    // including its reparse retry, completes.
+    return STATUS_SUCCESS;
+
+Cleanup:
+    if (ownList) {
+        FltFreeExtraCreateParameterList( SafeUploadData.Filter, ecpList );
+    }
+    return status;
+}
+
+static
+BOOLEAN
+SafeUploadPrototypeHasRedirectMarker (
+    _Inout_ PFLT_CALLBACK_DATA Data,
+    _In_ PUNICODE_STRING StageName
+    )
+{
+    PECP_LIST ecpList = NULL;
+    PSAFEUPLOAD_PROTOTYPE_STAGE_ECP ecp = NULL;
+    ULONG ecpSize = 0;
+    UNICODE_STRING markedName;
+    NTSTATUS status;
+
+    PAGED_CODE();
+
+    status = FltGetEcpListFromCallbackData( SafeUploadData.Filter,
+                                            Data, &ecpList );
+    if (!NT_SUCCESS( status ) || ecpList == NULL) {
+        return FALSE;
+    }
+    status = FltFindExtraCreateParameter(
+        SafeUploadData.Filter, ecpList, &SafeUploadPrototypeStageEcpGuid,
+        (PVOID *) &ecp, &ecpSize );
+    if (!NT_SUCCESS( status ) || ecp == NULL ||
+        ecpSize != sizeof( *ecp ) ||
+        FltIsEcpFromUserMode( SafeUploadData.Filter, ecp ) ||
+        ecp->StageNameLength != StageName->Length) {
+        return FALSE;
+    }
+
+    markedName.Buffer = ecp->StageName;
+    markedName.Length = (USHORT) ecp->StageNameLength;
+    markedName.MaximumLength = markedName.Length;
+    return RtlEqualUnicodeString( &markedName, StageName, TRUE );
+}
+
+static
 FLT_PREOP_CALLBACK_STATUS
 SafeUploadPrototypeRedirectCreate (
     _Inout_ PFLT_CALLBACK_DATA Data
@@ -1388,6 +1520,7 @@ SafeUploadPrototypeRedirectCreate (
 {
     UNICODE_STRING sourcePrefix = RTL_CONSTANT_STRING( L"\\SafeUpload\\Escopo Monitorado\\" );
     UNICODE_STRING stagePrefix = RTL_CONSTANT_STRING( L"\\SafeUpload\\_staging\\" );
+    UNICODE_STRING stageRoot = RTL_CONSTANT_STRING( L"\\SafeUpload\\_staging" );
     UNICODE_STRING stageDrive = RTL_CONSTANT_STRING( L"\\??\\C:" );
     UNICODE_STRING stageVolumeName = { 0 };
     PFLT_VOLUME stageVolume = NULL;
@@ -1411,16 +1544,10 @@ SafeUploadPrototypeRedirectCreate (
     PAGED_CODE();
 
     securityContext = Data->Iopb->Parameters.Create.SecurityContext;
-    if (securityContext == NULL ||
-        FlagOn( Data->Iopb->Parameters.Create.Options,
-                FILE_DIRECTORY_FILE | FILE_OPEN_BY_FILE_ID ) ||
-        FlagOn( Data->Iopb->OperationFlags, SL_OPEN_PAGING_FILE )) {
-        return FLT_PREOP_SUCCESS_NO_CALLBACK;
-    }
-
     processId = FltGetRequestorProcessId( Data );
-    isWriter = (BOOLEAN) FlagOn( securityContext->DesiredAccess,
-                                 FILE_WRITE_DATA | FILE_APPEND_DATA );
+    isWriter = securityContext != NULL &&
+        (BOOLEAN) FlagOn( securityContext->DesiredAccess,
+                          FILE_WRITE_DATA | FILE_APPEND_DATA );
 
     status = FltGetFileNameInformation( Data,
                                         FLT_FILE_NAME_OPENED |
@@ -1441,6 +1568,33 @@ SafeUploadPrototypeRedirectCreate (
                                    nameInfo->Volume.Length);
     relativeName.Length = nameInfo->Name.Length - nameInfo->Volume.Length;
     relativeName.MaximumLength = relativeName.Length;
+
+    // A user must not bypass the original destination name by opening the
+    // stage path directly. Only a create carrying our kernel-issued ECP from
+    // the reparse, or the connected agent, may open this private namespace.
+    if (RtlEqualUnicodeString( &stageRoot, &relativeName, TRUE )) {
+        // The agent must be able to initialize its stage root before it
+        // connects to the port. File opens underneath it still need ECPs.
+        FltReleaseFileNameInformation( nameInfo );
+        return FLT_PREOP_SUCCESS_NO_CALLBACK;
+    }
+    if (RtlPrefixUnicodeString( &stagePrefix, &relativeName, TRUE )) {
+        if (processId != SafeUploadData.InspectorProcessId &&
+            !SafeUploadPrototypeHasRedirectMarker( Data, &nameInfo->Name )) {
+            status = STATUS_ACCESS_DENIED;
+            goto Deny;
+        }
+        FltReleaseFileNameInformation( nameInfo );
+        return FLT_PREOP_SUCCESS_NO_CALLBACK;
+    }
+
+    if (securityContext == NULL ||
+        FlagOn( Data->Iopb->Parameters.Create.Options,
+                FILE_DIRECTORY_FILE | FILE_OPEN_BY_FILE_ID ) ||
+        FlagOn( Data->Iopb->OperationFlags, SL_OPEN_PAGING_FILE )) {
+        FltReleaseFileNameInformation( nameInfo );
+        return FLT_PREOP_SUCCESS_NO_CALLBACK;
+    }
 
     if (!RtlPrefixUnicodeString( &sourcePrefix, &relativeName, TRUE ) ||
         relativeName.Length <= sourcePrefix.Length) {
@@ -1615,6 +1769,13 @@ Reparse:
     if (stageVolumeName.Buffer != NULL) {
         ExFreePoolWithTag( stageVolumeName.Buffer, SAFEUPLOAD_POOL_TAG );
         stageVolumeName.Buffer = NULL;
+    }
+    status = SafeUploadPrototypeMarkRedirect( Data, newName, newNameLength );
+    if (!NT_SUCCESS( status )) {
+        if (newMapping) {
+            ExFreePoolWithTag( mapping, SAFEUPLOAD_POOL_TAG );
+        }
+        goto Deny;
     }
     status = IoReplaceFileObjectName( Data->Iopb->TargetFileObject,
                                       newName, newNameLength );

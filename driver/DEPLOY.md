@@ -8,7 +8,9 @@ desvio de escrita. Para testar o protótipo isolado, use
 `driver/scripts/Test-StagedCrossVolumePrototype.ps1` na debuggee, com o `.sys`
 assinado e o serviço self-contained publicados no local indicado pelo script.
 Ele cria um VHDX NTFS temporário em S:, confirma recusa sem serviço, confirma
-estágio local e diário `Allocated` com serviço, e restaura o driver original.
+estágio local e diário `Allocated` com serviço, recusa abertura direta do
+estágio enquanto o filtro está carregado, retém a transferência após reinício
+do serviço, e restaura o driver original.
 Veja `STAGED-WRITES.md` para as limitações. Esse teste não valida proteção
 completa, release nem aplicativos como Word; não instale o protótipo como
 driver operacional.

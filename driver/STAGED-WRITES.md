@@ -122,13 +122,22 @@ It also stopped and restarted the agent while the driver remained loaded:
 the unsealed `Allocated` entry became `Retained`, with no destination file.
 The rename and hard-link safety gates still denied both operations.
 
+The current probe attaches a kernel-created ECP to each redirected create.
+The same app can reopen the original name, but a direct open of the private
+stage filename without that marker is denied while the filter is loaded.
+The VM test confirmed `DirectStageReadDenied=True`. Microsoft documents that
+ECPs added during a create survive reparse retries:
+https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/fltkernel/nf-fltkernel-fltallocateextracreateparameter
+
 The agent also retains interrupted `Allocated`, `Inspecting`, and `Approved`
 entries on restart, then reconciles `Publishing` entries against the actual
 destination digest. The staged-transfer tests pass. This is a feasibility
-probe only: stage root and journal ACLs are not secure, the stage path can be
-opened directly by the same user, only the two hardcoded test directories
-are handled, and the driver still lacks final-writer tracking and a safe
-publication bypass. No automatic release is enabled. Protocol 12 requires
+probe only: stage root and journal ACLs are not secure, so unloading the
+filter exposes the stage to the same user (also confirmed by the test).
+File-ID opens and other aliases need independent coverage. Only the two
+hardcoded test directories are handled, and the driver still lacks
+final-writer tracking and a safe publication bypass. No automatic release is
+enabled. Protocol 12 requires
 the matching agent; the ordinary installed driver remains the previous
 protocol 11 binary. The prototype is compiled out by default and must not
 be placed in a production package.

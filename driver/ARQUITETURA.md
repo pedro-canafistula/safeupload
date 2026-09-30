@@ -15,7 +15,9 @@ Sem serviço, o protótipo recusa a criação no destino. O teste em VHDX passou
 e o driver original foi restaurado na VM alvo. O protocolo experimental é 12;
 o pacote instalado continua com protocolo 11.
 
-Ainda faltam a proteção de acesso direto ao estágio, o acompanhamento do
+Um ECP criado pelo kernel impede a abertura direta do arquivo de estágio
+enquanto o filtro está carregado; a bateria da VM confirmou a recusa.
+Ainda faltam ACLs que preservem essa proteção após unload, o acompanhamento do
 último handle de escrita, a visualização de diretórios, renames e hard links
 virtuais, a liberação autenticada, USB/UNC e testes de aplicativo. Portanto
 o protótipo não substitui o caminho operacional por contaminação de processo.

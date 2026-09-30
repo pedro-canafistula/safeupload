@@ -106,17 +106,17 @@ try {
     $stagePath = $entries[0].Transfer.StagePath
     $transferId = [guid] $entries[0].Transfer.TransferId
     $manifestPath = Join-Path $journalDir ($transferId.ToString('N') + '.json')
-    $stages = @(Get-Item -LiteralPath $stagePath)
     $destinationEntries = @(Get-ChildItem -LiteralPath $targetDir -Filter $name)
+    $directStageReadDenied = $false
+    try { [IO.File]::ReadAllText($stagePath) | Out-Null }
+    catch { $directStageReadDenied = $true }
 
     Write-Output "WriterRead=$writerRead"
     Write-Output "OtherProcessExists=$otherProcessExists"
-    Write-Output "LocalStageCount=$($stages.Count)"
+    Write-Output "JournalTransferCount=$($entries.Count)"
     Write-Output "JournalState=$($entries[0].State)"
     Write-Output "DestinationEntryCount=$($destinationEntries.Count)"
-    if ($stages.Count -eq 1) {
-        Write-Output "LocalStageContent=$([IO.File]::ReadAllText($stages[0].FullName))"
-    }
+    Write-Output "DirectStageReadDenied=$directStageReadDenied"
 
     $renameBlocked = $false
     try { Move-Item -LiteralPath $target -Destination $renameTarget -ErrorAction Stop }
@@ -129,7 +129,7 @@ try {
 
     if ($writerRead -ne 'cross-volume staged bytes' -or
         $otherProcessExists -ne 'False' -or
-        $stages.Count -ne 1 -or
+        -not $directStageReadDenied -or
         $entries[0].State -ne 0 -or
         $destinationEntries.Count -ne 0 -or
         -not $renameBlocked -or -not $hardLinkBlocked -or
@@ -167,6 +167,9 @@ finally {
         $serviceProcess.WaitForExit()
     }
     if ($loaded) { & fltmc.exe unload SafeUpload | Out-Host }
+    if ($stagePath -and (Test-Path -LiteralPath $stagePath)) {
+        Write-Output "LocalStageContentAfterUnload=$([IO.File]::ReadAllText($stagePath))"
+    }
     if ($replaced) { Copy-Item $backup $installed -Force }
     if ((Get-FileHash $installed -Algorithm SHA256).Hash -ne $expectedOriginal) {
         throw 'Original driver restoration failed.'
