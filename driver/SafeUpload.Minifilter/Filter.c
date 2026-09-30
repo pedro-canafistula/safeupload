@@ -40,6 +40,21 @@ SAFEUPLOAD_COUNTERS SafeUploadCounters;
 // Packed into the post-create completion context beside the volume kind.
 #define SAFEUPLOAD_POSTCREATE_OVERRIDE 0x10
 
+// Experimental namespace redirect used only on the staged-kernel-prototype
+// branch. It does not release files or provide a complete virtual namespace.
+// Disabled in normal builds; never include it in a production package.
+#ifndef SAFEUPLOAD_STAGING_PROTOTYPE
+#define SAFEUPLOAD_STAGING_PROTOTYPE 0
+#endif
+
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+static
+FLT_PREOP_CALLBACK_STATUS
+SafeUploadPrototypeRedirectCreate (
+    _Inout_ PFLT_CALLBACK_DATA Data
+    );
+#endif
+
 //
 //  Local helpers.
 //
@@ -111,6 +126,9 @@ SafeUploadOverrideCovers (
     #pragma alloc_text(PAGE, SafeUploadPreCleanup)
     #pragma alloc_text(PAGE, SafeUploadPreWrite)
     #pragma alloc_text(PAGE, SafeUploadPreSetInformation)
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    #pragma alloc_text(PAGE, SafeUploadPrototypeRedirectCreate)
+#endif
 #endif
 
 ///////////////////////////////////////////////////////////////////////////
@@ -1152,6 +1170,114 @@ Return Value:
 }
 
 
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+static
+FLT_PREOP_CALLBACK_STATUS
+SafeUploadPrototypeRedirectCreate (
+    _Inout_ PFLT_CALLBACK_DATA Data
+    )
+{
+    UNICODE_STRING sourcePrefix = RTL_CONSTANT_STRING( L"\\SafeUpload\\Escopo Monitorado\\" );
+    UNICODE_STRING stagePrefix = RTL_CONSTANT_STRING( L"\\SafeUpload\\_staging\\" );
+    PFLT_FILE_NAME_INFORMATION nameInfo = NULL;
+    PIO_SECURITY_CONTEXT securityContext;
+    UNICODE_STRING relativeName;
+    PWCH newName = NULL;
+    USHORT suffixLength;
+    USHORT newNameLength;
+    USHORT i;
+    NTSTATUS status;
+
+    PAGED_CODE();
+
+    securityContext = Data->Iopb->Parameters.Create.SecurityContext;
+    if (securityContext == NULL ||
+        !FlagOn( securityContext->DesiredAccess,
+                 FILE_WRITE_DATA | FILE_APPEND_DATA ) ||
+        FlagOn( Data->Iopb->Parameters.Create.Options,
+                FILE_DIRECTORY_FILE | FILE_OPEN_BY_FILE_ID ) ||
+        FlagOn( Data->Iopb->OperationFlags, SL_OPEN_PAGING_FILE )) {
+        return FLT_PREOP_SUCCESS_NO_CALLBACK;
+    }
+
+    status = FltGetFileNameInformation( Data,
+                                        FLT_FILE_NAME_OPENED |
+                                            FLT_FILE_NAME_QUERY_DEFAULT,
+                                        &nameInfo );
+    if (!NT_SUCCESS( status )) {
+        return FLT_PREOP_SUCCESS_NO_CALLBACK;
+    }
+
+    status = FltParseFileNameInformation( nameInfo );
+    if (!NT_SUCCESS( status ) ||
+        nameInfo->Name.Length <= nameInfo->Volume.Length) {
+        FltReleaseFileNameInformation( nameInfo );
+        return FLT_PREOP_SUCCESS_NO_CALLBACK;
+    }
+
+    relativeName.Buffer = (PWCH) ((PUCHAR) nameInfo->Name.Buffer +
+                                   nameInfo->Volume.Length);
+    relativeName.Length = nameInfo->Name.Length - nameInfo->Volume.Length;
+    relativeName.MaximumLength = relativeName.Length;
+
+    if (!RtlPrefixUnicodeString( &sourcePrefix, &relativeName, TRUE ) ||
+        relativeName.Length <= sourcePrefix.Length) {
+        FltReleaseFileNameInformation( nameInfo );
+        return FLT_PREOP_SUCCESS_NO_CALLBACK;
+    }
+
+    suffixLength = relativeName.Length - sourcePrefix.Length;
+    for (i = 0; i < suffixLength / sizeof( WCHAR ); ++i) {
+        if (relativeName.Buffer[sourcePrefix.Length / sizeof( WCHAR ) + i] == L'\\') {
+            FltReleaseFileNameInformation( nameInfo );
+            return FLT_PREOP_SUCCESS_NO_CALLBACK;
+        }
+    }
+
+    if ((ULONG) nameInfo->Volume.Length + stagePrefix.Length + suffixLength >
+        MAXUSHORT - sizeof( WCHAR )) {
+        status = STATUS_NAME_TOO_LONG;
+        goto Deny;
+    }
+
+    newNameLength = nameInfo->Volume.Length + stagePrefix.Length + suffixLength;
+    newName = ExAllocatePool2( POOL_FLAG_PAGED,
+                               newNameLength + sizeof( WCHAR ),
+                               SAFEUPLOAD_POOL_TAG );
+    if (newName == NULL) {
+        status = STATUS_INSUFFICIENT_RESOURCES;
+        goto Deny;
+    }
+
+    RtlCopyMemory( newName, nameInfo->Volume.Buffer, nameInfo->Volume.Length );
+    RtlCopyMemory( (PUCHAR) newName + nameInfo->Volume.Length,
+                   stagePrefix.Buffer, stagePrefix.Length );
+    RtlCopyMemory( (PUCHAR) newName + nameInfo->Volume.Length +
+                       stagePrefix.Length,
+                   (PUCHAR) relativeName.Buffer + sourcePrefix.Length,
+                   suffixLength );
+    newName[newNameLength / sizeof( WCHAR )] = L'\0';
+
+    status = IoReplaceFileObjectName( Data->Iopb->TargetFileObject,
+                                      newName, newNameLength );
+    ExFreePoolWithTag( newName, SAFEUPLOAD_POOL_TAG );
+
+    if (NT_SUCCESS( status )) {
+        FltReleaseFileNameInformation( nameInfo );
+        Data->IoStatus.Status = STATUS_REPARSE;
+        Data->IoStatus.Information = IO_REPARSE;
+        return FLT_PREOP_COMPLETE;
+    }
+
+Deny:
+    FltReleaseFileNameInformation( nameInfo );
+    Data->IoStatus.Status = status;
+    Data->IoStatus.Information = 0;
+    return FLT_PREOP_COMPLETE;
+}
+#endif
+
+
 FLT_PREOP_CALLBACK_STATUS
 SafeUploadPreCreate (
     _Inout_ PFLT_CALLBACK_DATA Data,
@@ -1206,6 +1332,15 @@ Return Value:
     PAGED_CODE();
 
     SafeUploadCount( CreatesSeen );
+
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    // The experiment intercepts only direct top-level writes to the test
+    // folder. Production staging needs policy-driven cross-volume mapping,
+    // handle tracking, namespace virtualization, and recovery.
+    if (SafeUploadPrototypeRedirectCreate( Data ) == FLT_PREOP_COMPLETE) {
+        return FLT_PREOP_COMPLETE;
+    }
+#endif
 
     //
     //  With no inspector connected there is nobody to ask, and no answer to

@@ -60,3 +60,20 @@ solution: https://learn.microsoft.com/en-us/samples/microsoft/windows-driver-sam
 
 Memory-mapped writes require paging-I/O coverage in a filter that monitors
 changes: https://learn.microsoft.com/en-us/windows-hardware/drivers/ifs/memory-mapped-files-in-a-file-system-filter-driver
+
+## Reparse feasibility probe (debuggee VM)
+
+An experimental pre-create callback on `feat/staged-kernel-prototype` used
+`IoReplaceFileObjectName` and `STATUS_REPARSE` to map a single top-level test
+file from `C:\SafeUpload\Escopo Monitorado` into `C:\SafeUpload\_staging`.
+The WDK build succeeded. With the signed prototype loaded on the debuggee,
+`File.WriteAllText` succeeded, the stage contained the bytes, and the original
+destination path did not exist. The original driver was restored afterward
+(SHA-256 `ADA9D05AB6AECDD2B6C521B0CE529FC06C732154ACB3EE85439FBDC8AA80DFCE`).
+
+This proves the write redirection primitive, not application transparency.
+Immediately after that save, a metadata lookup of the original path would
+see no file. An application that reopens its save or enumerates its folder
+needs process-aware name virtualization. Cloud sync and other processes must
+not see the staged bytes before approval. The prototype is disabled by
+default with `SAFEUPLOAD_STAGING_PROTOTYPE=0` and must not be shipped.
