@@ -97,10 +97,19 @@ public sealed class FilterPort : IDisposable
         return true;
     }
 
-    public unsafe void Reply(ulong messageId, ulong requestId, uint verdict)
+    public unsafe void Reply(ulong messageId, ulong requestId, uint verdict,
+        string? stageName = null)
     {
+        if (stageName is { Length: >= Contract.MaxStageNameChars } ||
+            (stageName is not null &&
+             (stageName.IndexOfAny(['\\', '/', ':']) >= 0 || stageName is "." or "..")))
+        {
+            throw new ArgumentException("Invalid stage basename.", nameof(stageName));
+        }
+
         int size = sizeof(FilterReplyHeader) + sizeof(SafeUploadResponse);
         byte* buffer = stackalloc byte[size];
+        new Span<byte>(buffer, size).Clear();
 
         *(FilterReplyHeader*) buffer = new FilterReplyHeader
         {
@@ -108,14 +117,22 @@ public sealed class FilterPort : IDisposable
             MessageId = messageId,
         };
 
-        *(SafeUploadResponse*) (buffer + sizeof(FilterReplyHeader)) = new SafeUploadResponse
+        SafeUploadResponse* response = (SafeUploadResponse*) (buffer + sizeof(FilterReplyHeader));
+        *response = new SafeUploadResponse
         {
             Version = Contract.Version,
             StructSize = (uint) sizeof(SafeUploadResponse),
             RequestId = requestId,
             Verdict = verdict,
-            Reserved = 0,
+            StageNameLength = (uint) ((stageName?.Length ?? 0) * sizeof(char)),
         };
+        if (stageName is not null)
+        {
+            for (int i = 0; i < stageName.Length; i += 1)
+            {
+                response->StageName[i] = stageName[i];
+            }
+        }
 
         int hr = FilterReplyMessage(Handle, (IntPtr) buffer, (uint) size);
 

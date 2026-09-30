@@ -45,11 +45,11 @@ Environment:
 
 //
 //  Version of this contract. Bump it on ANY layout change. Both sides
-//  reject a message whose Version they do not recognise, and a rejected
-//  message means "allow" (RN-013), never "block".
+//  reject a message whose Version they do not recognise. Ordinary verdicts
+//  fail open under RN-013; experimental staged allocations fail closed.
 //
 
-#define SAFEUPLOAD_PROTOCOL_VERSION ((UINT32) 11)
+#define SAFEUPLOAD_PROTOCOL_VERSION ((UINT32) 12)
 
 //
 //  Capacity of the inline string fields, in WCHARs, terminator included.
@@ -73,6 +73,11 @@ Environment:
 
 #define SAFEUPLOAD_OPERATION_CREATE ((UINT32) 1)
 #define SAFEUPLOAD_OPERATION_READ   ((UINT32) 2)
+#define SAFEUPLOAD_OPERATION_STAGE_ALLOCATE ((UINT32) 3)
+
+// The reply carries only a stage basename. The driver constructs the local
+// volume path and rejects separators or a malformed suffix.
+#define SAFEUPLOAD_MAX_STAGE_NAME_CHARS ((UINT32) 64)
 
 //
 //  Verdict returned by user mode. Anything that is not an explicit DENY is
@@ -212,7 +217,10 @@ typedef struct _SAFEUPLOAD_RESPONSE {
 
     UINT32 Verdict;
 
-    UINT32 Reserved;
+    UINT32 StageNameLength;
+
+    // Used only for STAGE_ALLOCATE. Length is bytes without the terminator.
+    WCHAR StageName[SAFEUPLOAD_MAX_STAGE_NAME_CHARS];
 
 } SAFEUPLOAD_RESPONSE, *PSAFEUPLOAD_RESPONSE;
 
@@ -625,12 +633,13 @@ C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_REQUEST, Reserved )           == 36 );
 C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_REQUEST, Path )               == 40 );
 C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_REQUEST, ImageName )          == 1064 );
 
-C_ASSERT( sizeof( SAFEUPLOAD_RESPONSE ) == 24 );
+C_ASSERT( sizeof( SAFEUPLOAD_RESPONSE ) == 152 );
 C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_RESPONSE, Version )    == 0 );
 C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_RESPONSE, StructSize ) == 4 );
 C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_RESPONSE, RequestId )  == 8 );
 C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_RESPONSE, Verdict )    == 16 );
-C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_RESPONSE, Reserved )   == 20 );
+C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_RESPONSE, StageNameLength ) == 20 );
+C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_RESPONSE, StageName ) == 24 );
 
 C_ASSERT( sizeof( SAFEUPLOAD_CONTROL ) == 16 );
 C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_CONTROL, Version )    == 0 );

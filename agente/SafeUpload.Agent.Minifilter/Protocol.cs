@@ -24,7 +24,7 @@ public static class Contract
     /// mechanism that turns an incompatible pair into a clean refusal
     /// instead of a misread structure.
     /// </summary>
-    public const uint Version = 11;
+    public const uint Version = 12;
 
     public const int MaxPathChars = 512;
     public const int MaxImageNameChars = 64;
@@ -40,7 +40,8 @@ public static class Contract
     // Sizes asserted by C_ASSERT on the kernel side. Duplicated here on
     // purpose: if the two ever disagree, Verify() says so by name.
     public const int RequestSize = 1192;
-    public const int ResponseSize = 24;
+    public const int ResponseSize = 152;
+    public const int MaxStageNameChars = 64;
     public const int ControlSize = 16;
     public const int PolicyMessageSize = 19752;
     public const int CountersSize = 184;
@@ -70,6 +71,8 @@ public static class Contract
                     (int) Marshal.OffsetOf<SafeUploadRequest>(nameof(SafeUploadRequest.Path)), 40);
         CheckOffset(nameof(SafeUploadRequest) + ".ImageName",
                     (int) Marshal.OffsetOf<SafeUploadRequest>(nameof(SafeUploadRequest.ImageName)), 1064);
+        CheckOffset(nameof(SafeUploadResponse) + ".StageName",
+                    (int) Marshal.OffsetOf<SafeUploadResponse>(nameof(SafeUploadResponse.StageName)), 24);
         CheckOffset(nameof(SafeUploadPolicyMessage) + ".Prefixes",
                     (int) Marshal.OffsetOf<SafeUploadPolicyMessage>(nameof(SafeUploadPolicyMessage.Prefixes)), 1064);
         CheckOffset(nameof(SafeUploadPolicyMessage) + ".SourcePrefixes",
@@ -104,6 +107,7 @@ public static class Contract
 public static class Operation
 {
     public const uint Create = 1;
+    public const uint StageAllocate = 3;
 
     /// <summary>
     /// Kept for contract completeness. The driver no longer registers
@@ -215,13 +219,14 @@ public unsafe struct SafeUploadRequest
 }
 
 [StructLayout(LayoutKind.Sequential, Pack = 8)]
-public struct SafeUploadResponse
+public unsafe struct SafeUploadResponse
 {
     public uint Version;
     public uint StructSize;
     public ulong RequestId;
     public uint Verdict;
-    public uint Reserved;
+    public uint StageNameLength;
+    public fixed char StageName[Contract.MaxStageNameChars];
 }
 
 [StructLayout(LayoutKind.Sequential, Pack = 8)]

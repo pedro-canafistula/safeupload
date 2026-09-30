@@ -201,6 +201,26 @@ public sealed class StagedTransferJournal
         }
     }
 
+    /// <summary>
+    /// A process or service crash leaves no trustworthy final-close signal.
+    /// Keep incomplete versions local until a fresh seal and inspection.
+    /// Publishing is handled separately because its destination may already
+    /// contain exactly the approved digest.
+    /// </summary>
+    public async Task RetainInterruptedAsync(CancellationToken cancellationToken)
+    {
+        foreach (var entry in await ReadPendingAsync(cancellationToken).ConfigureAwait(false))
+        {
+            if (entry.State is TransferJournalState.Allocated or
+                TransferJournalState.Inspecting or TransferJournalState.Approved)
+            {
+                await TransitionAsync(entry.Transfer.TransferId,
+                    entry.State, TransferJournalState.Retained,
+                    null, cancellationToken).ConfigureAwait(false);
+            }
+        }
+    }
+
     private async Task ReplaceAsync(
         string manifestPath,
         TransferJournalEntry entry,
@@ -237,10 +257,12 @@ public sealed class StagedTransferJournal
         TransferJournalState to) => (from, to) switch
     {
         (TransferJournalState.Allocated, TransferJournalState.Sealed) => true,
+        (TransferJournalState.Allocated, TransferJournalState.Retained) => true,
         (TransferJournalState.Sealed, TransferJournalState.Inspecting) => true,
         (TransferJournalState.Inspecting, TransferJournalState.Approved) => true,
         (TransferJournalState.Inspecting, TransferJournalState.Blocked) => true,
         (TransferJournalState.Inspecting, TransferJournalState.Retained) => true,
+        (TransferJournalState.Approved, TransferJournalState.Retained) => true,
         (TransferJournalState.Approved, TransferJournalState.Publishing) => true,
         (TransferJournalState.Publishing, TransferJournalState.Released) => true,
         (TransferJournalState.Publishing, TransferJournalState.Retained) => true,

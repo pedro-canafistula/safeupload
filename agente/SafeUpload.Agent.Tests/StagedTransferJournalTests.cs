@@ -103,6 +103,39 @@ public sealed class StagedTransferJournalTests : IDisposable
     }
 
     [Theory]
+    [InlineData(TransferJournalState.Allocated)]
+    [InlineData(TransferJournalState.Inspecting)]
+    [InlineData(TransferJournalState.Approved)]
+    public async Task Interrupted_unreleased_version_is_retained_on_restart(
+        TransferJournalState state)
+    {
+        var transfer = Transfer();
+        var journal = Journal();
+        await journal.CreateAsync(transfer, CancellationToken.None);
+        if (state != TransferJournalState.Allocated)
+        {
+            await journal.TransitionAsync(transfer.TransferId,
+                TransferJournalState.Allocated, TransferJournalState.Sealed,
+                null, CancellationToken.None);
+            await journal.TransitionAsync(transfer.TransferId,
+                TransferJournalState.Sealed, TransferJournalState.Inspecting,
+                null, CancellationToken.None);
+            if (state == TransferJournalState.Approved)
+            {
+                await journal.TransitionAsync(transfer.TransferId,
+                    TransferJournalState.Inspecting, TransferJournalState.Approved,
+                    null, CancellationToken.None);
+            }
+        }
+
+        await Journal().RetainInterruptedAsync(CancellationToken.None);
+
+        var recovered = await journal.ReadAsync(transfer.TransferId, CancellationToken.None);
+        Assert.Equal(TransferJournalState.Retained, recovered.State);
+        Assert.False(File.Exists(transfer.DestinationPath));
+    }
+
+    [Theory]
     [InlineData(true, TransferJournalState.Released)]
     [InlineData(false, TransferJournalState.Retained)]
     public async Task Crash_after_publication_does_not_overwrite_a_changed_destination(

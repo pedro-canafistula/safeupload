@@ -59,8 +59,6 @@ static LIST_ENTRY SafeUploadPrototypeMappings;
 static FAST_MUTEX SafeUploadPrototypeMappingLock;
 static ULONG SafeUploadPrototypeMappingCount;
 static BOOLEAN SafeUploadPrototypeNotifyRegistered;
-static LARGE_INTEGER SafeUploadPrototypeLoadTime;
-static volatile LONG SafeUploadPrototypeSequence;
 
 static
 VOID
@@ -80,6 +78,15 @@ static
 FLT_PREOP_CALLBACK_STATUS
 SafeUploadPrototypeRedirectCreate (
     _Inout_ PFLT_CALLBACK_DATA Data
+    );
+
+static
+NTSTATUS
+SafeUploadPrototypeAllocateStageName (
+    _Inout_ PFLT_CALLBACK_DATA Data,
+    _In_ PUNICODE_STRING OriginalName,
+    _Out_writes_(SAFEUPLOAD_MAX_STAGE_NAME_CHARS) PWCH StageName,
+    _Out_ PUSHORT StageNameLength
     );
 #endif
 
@@ -156,6 +163,7 @@ SafeUploadOverrideCovers (
     #pragma alloc_text(PAGE, SafeUploadPreSetInformation)
 #if SAFEUPLOAD_STAGING_PROTOTYPE
     #pragma alloc_text(PAGE, SafeUploadPrototypeRedirectCreate)
+    #pragma alloc_text(PAGE, SafeUploadPrototypeAllocateStageName)
     #pragma alloc_text(PAGE, SafeUploadPrototypeFreeMappings)
     #pragma alloc_text(PAGE, SafeUploadPrototypeProcessNotify)
 #endif
@@ -309,8 +317,6 @@ Return Value:
     ExInitializeFastMutex( &SafeUploadPrototypeMappingLock );
     SafeUploadPrototypeMappingCount = 0;
     SafeUploadPrototypeNotifyRegistered = FALSE;
-    KeQuerySystemTime( &SafeUploadPrototypeLoadTime );
-    SafeUploadPrototypeSequence = 0;
 #endif
 
     //
@@ -1290,6 +1296,91 @@ SafeUploadPrototypeFreeMappings (
 }
 
 static
+NTSTATUS
+SafeUploadPrototypeAllocateStageName (
+    _Inout_ PFLT_CALLBACK_DATA Data,
+    _In_ PUNICODE_STRING OriginalName,
+    _Out_writes_(SAFEUPLOAD_MAX_STAGE_NAME_CHARS) PWCH StageName,
+    _Out_ PUSHORT StageNameLength
+    )
+{
+    PSAFEUPLOAD_EXCHANGE exchange;
+    UINT32 verdict;
+    BOOLEAN answered;
+    NTSTATUS status;
+    USHORT i;
+
+    PAGED_CODE();
+
+    *StageNameLength = 0;
+    if (OriginalName->Length == 0 ||
+        OriginalName->Length > SAFEUPLOAD_MAX_PATH_BYTES) {
+        return STATUS_NAME_TOO_LONG;
+    }
+
+    exchange = ExAllocatePool2( POOL_FLAG_NON_PAGED,
+                                sizeof( *exchange ), SAFEUPLOAD_POOL_TAG );
+    if (exchange == NULL) {
+        return STATUS_INSUFFICIENT_RESOURCES;
+    }
+    RtlZeroMemory( exchange, sizeof( *exchange ) );
+    exchange->Request.Version = SAFEUPLOAD_PROTOCOL_VERSION;
+    exchange->Request.StructSize = sizeof( SAFEUPLOAD_REQUEST );
+    exchange->Request.RequestId =
+        (UINT64) InterlockedIncrement64( &SafeUploadData.NextRequestId );
+    exchange->Request.Operation = SAFEUPLOAD_OPERATION_STAGE_ALLOCATE;
+    exchange->Request.RequestorProcessId = FltGetRequestorProcessId( Data );
+    exchange->Request.PathLength = OriginalName->Length;
+    RtlCopyMemory( exchange->Request.Path, OriginalName->Buffer,
+                   OriginalName->Length );
+    SafeUploadCopyRequestImageName( Data, &exchange->Request );
+
+    status = SafeUploadRequestVerdict( exchange, &verdict, &answered );
+    if (status != STATUS_SUCCESS || !answered ||
+        verdict != SAFEUPLOAD_VERDICT_ALLOW) {
+        status = STATUS_ACCESS_DENIED;
+        goto Exit;
+    }
+
+    if (exchange->Response.StageNameLength < 32 * sizeof( WCHAR ) ||
+        exchange->Response.StageNameLength >=
+            SAFEUPLOAD_MAX_STAGE_NAME_CHARS * sizeof( WCHAR ) ||
+        exchange->Response.StageNameLength % sizeof( WCHAR ) != 0) {
+        status = STATUS_INVALID_BUFFER_SIZE;
+        goto Exit;
+    }
+
+    // Accept only the service's GUID basename plus a harmless extension.
+    // No separators, colons, dots before the GUID, or relative components.
+    for (i = 0; i < exchange->Response.StageNameLength / sizeof( WCHAR ); ++i) {
+        WCHAR ch = exchange->Response.StageName[i];
+        if (i < 32) {
+            if (!((ch >= L'0' && ch <= L'9') ||
+                  (ch >= L'a' && ch <= L'f'))) {
+                status = STATUS_INVALID_PARAMETER;
+                goto Exit;
+            }
+        } else if (!((ch >= L'a' && ch <= L'z') ||
+                     (ch >= L'A' && ch <= L'Z') ||
+                     (ch >= L'0' && ch <= L'9') ||
+                     ch == L'.' || ch == L'_')) {
+            status = STATUS_INVALID_PARAMETER;
+            goto Exit;
+        }
+    }
+
+    *StageNameLength = (USHORT) exchange->Response.StageNameLength;
+    RtlCopyMemory( StageName, exchange->Response.StageName,
+                   *StageNameLength );
+    StageName[*StageNameLength / sizeof( WCHAR )] = L'\0';
+    status = STATUS_SUCCESS;
+
+Exit:
+    ExFreePoolWithTag( exchange, SAFEUPLOAD_POOL_TAG );
+    return status;
+}
+
+static
 FLT_PREOP_CALLBACK_STATUS
 SafeUploadPrototypeRedirectCreate (
     _Inout_ PFLT_CALLBACK_DATA Data
@@ -1297,17 +1388,13 @@ SafeUploadPrototypeRedirectCreate (
 {
     UNICODE_STRING sourcePrefix = RTL_CONSTANT_STRING( L"\\SafeUpload\\Escopo Monitorado\\" );
     UNICODE_STRING stagePrefix = RTL_CONSTANT_STRING( L"\\SafeUpload\\_staging\\" );
+    UNICODE_STRING stageDrive = RTL_CONSTANT_STRING( L"\\??\\C:" );
+    UNICODE_STRING stageVolumeName = { 0 };
+    PFLT_VOLUME stageVolume = NULL;
     PFLT_FILE_NAME_INFORMATION nameInfo = NULL;
     PIO_SECURITY_CONTEXT securityContext;
     UNICODE_STRING relativeName;
-    UNICODE_STRING processIdString;
-    UNICODE_STRING loadHighString;
-    UNICODE_STRING loadLowString;
-    UNICODE_STRING sequenceString;
-    WCHAR processIdBuffer[16];
-    WCHAR loadHighBuffer[16];
-    WCHAR loadLowBuffer[16];
-    WCHAR sequenceBuffer[16];
+    WCHAR stageBaseName[SAFEUPLOAD_MAX_STAGE_NAME_CHARS];
     PSAFEUPLOAD_PROTOTYPE_MAPPING mapping = NULL;
     PLIST_ENTRY link;
     PWCH newName = NULL;
@@ -1315,6 +1402,8 @@ SafeUploadPrototypeRedirectCreate (
     BOOLEAN isWriter;
     BOOLEAN newMapping = FALSE;
     USHORT suffixLength;
+    USHORT stageBaseNameLength;
+    USHORT extensionOffset;
     USHORT newNameLength;
     USHORT i;
     NTSTATUS status;
@@ -1414,53 +1503,70 @@ SafeUploadPrototypeRedirectCreate (
     }
     ExReleaseFastMutex( &SafeUploadPrototypeMappingLock );
 
-    processIdString.Buffer = processIdBuffer;
-    processIdString.Length = 0;
-    processIdString.MaximumLength = sizeof( processIdBuffer );
-    status = RtlIntegerToUnicodeString( processId, 10, &processIdString );
+    // A service-owned journal entry must exist before this name is used.
+    // A missing, late, or malformed service answer denies the create.
+    status = SafeUploadPrototypeAllocateStageName( Data, &nameInfo->Name,
+                                                    stageBaseName,
+                                                    &stageBaseNameLength );
     if (!NT_SUCCESS( status )) {
         goto Deny;
     }
 
-    loadHighString.Buffer = loadHighBuffer;
-    loadHighString.Length = 0;
-    loadHighString.MaximumLength = sizeof( loadHighBuffer );
-    status = RtlIntegerToUnicodeString(
-        SafeUploadPrototypeLoadTime.HighPart, 16, &loadHighString );
-    if (!NT_SUCCESS( status )) {
-        goto Deny;
+    extensionOffset = suffixLength;
+    for (i = 0; i < suffixLength / sizeof( WCHAR ); ++i) {
+        if (relativeName.Buffer[sourcePrefix.Length / sizeof( WCHAR ) + i] == L'.') {
+            extensionOffset = i * sizeof( WCHAR );
+        }
     }
-    loadLowString.Buffer = loadLowBuffer;
-    loadLowString.Length = 0;
-    loadLowString.MaximumLength = sizeof( loadLowBuffer );
-    status = RtlIntegerToUnicodeString(
-        SafeUploadPrototypeLoadTime.LowPart, 16, &loadLowString );
-    if (!NT_SUCCESS( status )) {
-        goto Deny;
-    }
-    sequenceString.Buffer = sequenceBuffer;
-    sequenceString.Length = 0;
-    sequenceString.MaximumLength = sizeof( sequenceBuffer );
-    status = RtlIntegerToUnicodeString(
-        (ULONG) InterlockedIncrement( &SafeUploadPrototypeSequence ),
-        16, &sequenceString );
-    if (!NT_SUCCESS( status )) {
+    if (stageBaseNameLength != 32 * sizeof( WCHAR ) +
+                                   suffixLength - extensionOffset ||
+        RtlCompareMemory( (PUCHAR) stageBaseName + 32 * sizeof( WCHAR ),
+                          (PUCHAR) relativeName.Buffer + sourcePrefix.Length +
+                              extensionOffset,
+                          suffixLength - extensionOffset ) !=
+                              suffixLength - extensionOffset) {
+        status = STATUS_INVALID_PARAMETER;
         goto Deny;
     }
 
-    if ((ULONG) nameInfo->Volume.Length + stagePrefix.Length +
-        loadHighString.Length + loadLowString.Length +
-        processIdString.Length + sequenceString.Length +
-        4 * sizeof( WCHAR ) + suffixLength >
+    // Resolve the private local stage independently of the destination.
+    status = FltGetVolumeFromName( SafeUploadData.Filter,
+                                   &stageDrive, &stageVolume );
+    if (!NT_SUCCESS( status )) {
+        goto Deny;
+    }
+    {
+        ULONG needed = 0;
+        status = FltGetVolumeName( stageVolume, NULL, &needed );
+        if (status != STATUS_BUFFER_TOO_SMALL || needed > MAXUSHORT) {
+            if (status == STATUS_BUFFER_TOO_SMALL) {
+                status = STATUS_NAME_TOO_LONG;
+            }
+            goto Deny;
+        }
+        stageVolumeName.Buffer = ExAllocatePool2( POOL_FLAG_PAGED,
+                                                  needed,
+                                                  SAFEUPLOAD_POOL_TAG );
+        if (stageVolumeName.Buffer == NULL) {
+            status = STATUS_INSUFFICIENT_RESOURCES;
+            goto Deny;
+        }
+        stageVolumeName.MaximumLength = (USHORT) needed;
+        status = FltGetVolumeName( stageVolume, &stageVolumeName, NULL );
+        if (!NT_SUCCESS( status )) {
+            goto Deny;
+        }
+    }
+
+    if ((ULONG) stageVolumeName.Length + stagePrefix.Length +
+        stageBaseNameLength >
         MAXUSHORT - sizeof( WCHAR )) {
         status = STATUS_NAME_TOO_LONG;
         goto Deny;
     }
 
-    newNameLength = nameInfo->Volume.Length + stagePrefix.Length +
-                    loadHighString.Length + loadLowString.Length +
-                    processIdString.Length + sequenceString.Length +
-                    4 * sizeof( WCHAR ) + suffixLength;
+    newNameLength = stageVolumeName.Length + stagePrefix.Length +
+                    stageBaseNameLength;
     newName = ExAllocatePool2( POOL_FLAG_PAGED,
                                newNameLength + sizeof( WCHAR ),
                                SAFEUPLOAD_POOL_TAG );
@@ -1469,40 +1575,16 @@ SafeUploadPrototypeRedirectCreate (
         goto Deny;
     }
 
-    RtlCopyMemory( newName, nameInfo->Volume.Buffer, nameInfo->Volume.Length );
-    RtlCopyMemory( (PUCHAR) newName + nameInfo->Volume.Length,
+    RtlCopyMemory( newName, stageVolumeName.Buffer, stageVolumeName.Length );
+    RtlCopyMemory( (PUCHAR) newName + stageVolumeName.Length,
                    stagePrefix.Buffer, stagePrefix.Length );
-    {
-        USHORT offset = nameInfo->Volume.Length + stagePrefix.Length;
-        RtlCopyMemory( (PUCHAR) newName + offset,
-                       loadHighString.Buffer, loadHighString.Length );
-        offset += loadHighString.Length;
-        newName[offset / sizeof( WCHAR )] = L'-';
-        offset += sizeof( WCHAR );
-        RtlCopyMemory( (PUCHAR) newName + offset,
-                       loadLowString.Buffer, loadLowString.Length );
-        offset += loadLowString.Length;
-        newName[offset / sizeof( WCHAR )] = L'-';
-        offset += sizeof( WCHAR );
-        RtlCopyMemory( (PUCHAR) newName + offset,
-                       processIdString.Buffer, processIdString.Length );
-        offset += processIdString.Length;
-        newName[offset / sizeof( WCHAR )] = L'-';
-        offset += sizeof( WCHAR );
-        RtlCopyMemory( (PUCHAR) newName + offset,
-                       sequenceString.Buffer, sequenceString.Length );
-        offset += sequenceString.Length;
-        newName[offset / sizeof( WCHAR )] = L'-';
-        offset += sizeof( WCHAR );
-        RtlCopyMemory( (PUCHAR) newName + offset,
-                       (PUCHAR) relativeName.Buffer + sourcePrefix.Length,
-                       suffixLength );
-    }
+    RtlCopyMemory( (PUCHAR) newName + stageVolumeName.Length +
+                   stagePrefix.Length, stageBaseName, stageBaseNameLength );
     newName[newNameLength / sizeof( WCHAR )] = L'\0';
 
     // Keep the two names together so a later open can resolve exactly the
-    // staged version owned by this process. This is an isolated feasibility
-    // probe, not the eventual service-owned durable transfer table.
+    // staged version owned by this process. The durable manifest is owned by
+    // the service; this in-memory map is only the prototype writer view.
     mapping = ExAllocatePool2( POOL_FLAG_PAGED,
         sizeof( *mapping ) + nameInfo->Name.Length + sizeof( WCHAR ) +
         newNameLength + sizeof( WCHAR ), SAFEUPLOAD_POOL_TAG );
@@ -1526,6 +1608,14 @@ SafeUploadPrototypeRedirectCreate (
     newMapping = TRUE;
 
 Reparse:
+    if (stageVolume != NULL) {
+        FltObjectDereference( stageVolume );
+        stageVolume = NULL;
+    }
+    if (stageVolumeName.Buffer != NULL) {
+        ExFreePoolWithTag( stageVolumeName.Buffer, SAFEUPLOAD_POOL_TAG );
+        stageVolumeName.Buffer = NULL;
+    }
     status = IoReplaceFileObjectName( Data->Iopb->TargetFileObject,
                                       newName, newNameLength );
     ExFreePoolWithTag( newName, SAFEUPLOAD_POOL_TAG );
@@ -1534,10 +1624,22 @@ Reparse:
     if (NT_SUCCESS( status )) {
         if (newMapping) {
             ExAcquireFastMutex( &SafeUploadPrototypeMappingLock );
-            if (SafeUploadPrototypeMappingCount < 128) {
+            for (link = SafeUploadPrototypeMappings.Flink;
+                 link != &SafeUploadPrototypeMappings;
+                 link = link->Flink) {
+                PSAFEUPLOAD_PROTOTYPE_MAPPING candidate =
+                    CONTAINING_RECORD( link, SAFEUPLOAD_PROTOTYPE_MAPPING, Link );
+                if (candidate->OwnerProcessId == mapping->OwnerProcessId &&
+                    RtlEqualUnicodeString( &candidate->OriginalName,
+                                           &mapping->OriginalName, TRUE )) {
+                    status = STATUS_SHARING_VIOLATION;
+                    break;
+                }
+            }
+            if (NT_SUCCESS( status ) && SafeUploadPrototypeMappingCount < 128) {
                 InsertTailList( &SafeUploadPrototypeMappings, &mapping->Link );
                 SafeUploadPrototypeMappingCount += 1;
-            } else {
+            } else if (NT_SUCCESS( status )) {
                 status = STATUS_INSUFFICIENT_RESOURCES;
             }
             ExReleaseFastMutex( &SafeUploadPrototypeMappingLock );
@@ -1557,6 +1659,12 @@ Reparse:
     }
 
 Deny:
+    if (stageVolume != NULL) {
+        FltObjectDereference( stageVolume );
+    }
+    if (stageVolumeName.Buffer != NULL) {
+        ExFreePoolWithTag( stageVolumeName.Buffer, SAFEUPLOAD_POOL_TAG );
+    }
     if (newName != NULL) {
         ExFreePoolWithTag( newName, SAFEUPLOAD_POOL_TAG );
     }

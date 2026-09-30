@@ -5,6 +5,22 @@ Documento de desenho. Descreve como o minifiltro deve evoluir da v1
 
 ## Estado implementado e validado (30/09/2026)
 
+### Protótipo isolado de escrita em estágio
+
+Na branch `feat/staged-kernel-prototype`, um build condicionado por
+`SafeUploadStagingPrototype=true` desvia um `CREATE` de teste em C: ou em um
+volume NTFS S: para um arquivo de estágio local em C:. O serviço responde com
+um nome GUID somente depois de gravar o manifesto `Allocated` no diário.
+Sem serviço, o protótipo recusa a criação no destino. O teste em VHDX passou,
+e o driver original foi restaurado na VM alvo. O protocolo experimental é 12;
+o pacote instalado continua com protocolo 11.
+
+Ainda faltam a proteção de acesso direto ao estágio, o acompanhamento do
+último handle de escrita, a visualização de diretórios, renames e hard links
+virtuais, a liberação autenticada, USB/UNC e testes de aplicativo. Portanto
+o protótipo não substitui o caminho operacional por contaminação de processo.
+Detalhes e roteiro: `STAGED-WRITES.md`.
+
 ### Atualização: classificação independente da pasta de origem
 
 A política operacional classifica leituras de formatos monitorados em qualquer

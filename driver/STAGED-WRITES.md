@@ -89,8 +89,10 @@ The later test-only namespace map redirects subsequent opens by the writer's
 process to its stage file. On the debuggee, the writer could reopen and read
 the staged bytes; another process could not see the new destination path.
 The map is dropped on process exit so PID reuse does not inherit visibility.
-Stage filenames include the driver load time and a sequence number so a later
-process with the same PID cannot overwrite an older retained stage file.
+The earlier probe used driver load time and a sequence number in stage names.
+The current probe instead obtains a unique GUID basename from the service,
+which durably records the transfer before answering the kernel. A recycled
+PID cannot claim a previous writer's in-memory view.
 An explicit `SafeUploadStagingPrototype=true` WDK build property is required
 to include this code; ordinary builds still compile it out.
 
@@ -102,6 +104,34 @@ debuggee confirmed the destination stayed absent. This safety gate breaks
 rename-based saves and must become transactional rename virtualization.
 The original driver was restored after each test. The reproducible test is
 `driver/scripts/Test-StagedNamespacePrototype.ps1`.
+
+## Cross-volume, service-owned allocation probe (30 September 2026)
+
+On the isolated debuggee VM, `Test-StagedCrossVolumePrototype.ps1` created a
+disposable NTFS VHDX at `S:` and used the prototype build with protocol 12.
+The driver now resolves the local `C:` volume independently, asks the agent
+for a unique stage basename, and only reparses the create after the agent
+has flushed an `Allocated` journal manifest. With no agent connected, the
+protected create returned access denied and left no destination file. With
+the self-contained agent running, the writer reopened `S:\SafeUpload\Escopo
+Monitorado\...txt`, read its staged bytes from `C:\SafeUpload\_staging`, and
+another process saw no file at the destination. The journal contained one
+matching transfer, and the stage held the expected bytes. The test unloaded
+the prototype, restored the original installed driver, and detached `S:`.
+It also stopped and restarted the agent while the driver remained loaded:
+the unsealed `Allocated` entry became `Retained`, with no destination file.
+The rename and hard-link safety gates still denied both operations.
+
+The agent also retains interrupted `Allocated`, `Inspecting`, and `Approved`
+entries on restart, then reconciles `Publishing` entries against the actual
+destination digest. The staged-transfer tests pass. This is a feasibility
+probe only: stage root and journal ACLs are not secure, the stage path can be
+opened directly by the same user, only the two hardcoded test directories
+are handled, and the driver still lacks final-writer tracking and a safe
+publication bypass. No automatic release is enabled. Protocol 12 requires
+the matching agent; the ordinary installed driver remains the previous
+protocol 11 binary. The prototype is compiled out by default and must not
+be placed in a production package.
 
 ## Implementation sequence
 

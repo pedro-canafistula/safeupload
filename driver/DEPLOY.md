@@ -1,5 +1,18 @@
 # DEPLOY.md — Minifiltro SafeUpload (v1)
 
+## Protótipo de escrita em estágio (somente VMs de desenvolvimento)
+
+A branch `feat/staged-kernel-prototype` usa protocolo 12 quando compilada;
+driver e serviço precisam ser compilados juntos. O build padrão não inclui o
+desvio de escrita. Para testar o protótipo isolado, use
+`driver/scripts/Test-StagedCrossVolumePrototype.ps1` na debuggee, com o `.sys`
+assinado e o serviço self-contained publicados no local indicado pelo script.
+Ele cria um VHDX NTFS temporário em S:, confirma recusa sem serviço, confirma
+estágio local e diário `Allocated` com serviço, e restaura o driver original.
+Veja `STAGED-WRITES.md` para as limitações. Esse teste não valida proteção
+completa, release nem aplicativos como Word; não instale o protótipo como
+driver operacional.
+
 ## Política atual: classificação em qualquer origem
 
 O agente não usa `sourcePaths`. Ele inspeciona o conteúdo de arquivos com

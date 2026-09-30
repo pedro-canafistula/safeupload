@@ -58,6 +58,8 @@ public sealed class MinifilterInterceptor : BackgroundService
     private readonly PendingOverrides _pending;
     private readonly OverrideGrantDispatcher _grants;
     private readonly ILogger<MinifilterInterceptor> _logger;
+    private readonly StagedTransferAllocator? _stageAllocator;
+    private readonly StagedTransferJournal? _stageJournal;
 
     private long _overBudget;
     private long _answered;
@@ -73,6 +75,7 @@ public sealed class MinifilterInterceptor : BackgroundService
         NotificationHub hub,
         PendingOverrides pending,
         OverrideGrantDispatcher grants,
+        IConfiguration configuration,
         ILogger<MinifilterInterceptor> logger)
     {
         _inspection = inspection ?? throw new ArgumentNullException(nameof(inspection));
@@ -82,6 +85,15 @@ public sealed class MinifilterInterceptor : BackgroundService
         _pending = pending ?? throw new ArgumentNullException(nameof(pending));
         _grants = grants ?? throw new ArgumentNullException(nameof(grants));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        if (configuration.GetValue<bool>("Interception:StagingPrototype"))
+        {
+            // This feature is test-only. The driver currently accepts only
+            // C:\SafeUpload\_staging as its local stage root.
+            string root = @"C:\SafeUpload\_staging";
+            string journal = @"C:\SafeUpload\_staging-journal";
+            _stageJournal = new StagedTransferJournal(journal);
+            _stageAllocator = new StagedTransferAllocator(root, _stageJournal);
+        }
     }
 
     /// <inheritdoc />
@@ -111,6 +123,22 @@ public sealed class MinifilterInterceptor : BackgroundService
         // A UI must never infer protection merely from a live service pipe.
         // It becomes active only after the driver accepts the policy.
         _hub.Publish(new StatusNotification(0, 0, ProtectionActive: false));
+
+        if (_stageJournal is not null)
+        {
+            try
+            {
+                _stageJournal.RetainInterruptedAsync(stoppingToken)
+                    .GetAwaiter().GetResult();
+                _stageJournal.ReconcilePublishingAsync(stoppingToken)
+                    .GetAwaiter().GetResult();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogCritical(ex, "Falha ao recuperar o diario de transferencias.");
+                return;
+            }
+        }
 
         try
         {
@@ -158,11 +186,20 @@ public sealed class MinifilterInterceptor : BackgroundService
                 while (!stoppingToken.IsCancellationRequested &&
                        port.TryGetMessage(out SafeUploadRequest request, out ulong messageId))
                 {
-                    uint verdict = Judge(request);
+                    uint verdict;
+                    string? stageName = null;
+                    if (request.Operation == Operation.StageAllocate)
+                    {
+                        (verdict, stageName) = AllocateStage(request);
+                    }
+                    else
+                    {
+                        verdict = Judge(request);
+                    }
 
                     try
                     {
-                        port.Reply(messageId, request.RequestId, verdict);
+                        port.Reply(messageId, request.RequestId, verdict, stageName);
                     }
                     catch (Exception ex)
                     {
@@ -182,6 +219,42 @@ public sealed class MinifilterInterceptor : BackgroundService
             "Laco do minifiltro encerrado. {Answered} vereditos, {OverBudget} fora do prazo.",
             Interlocked.Read(ref _answered),
             Interlocked.Read(ref _overBudget));
+    }
+
+    private (uint Verdict, string? StageName) AllocateStage(SafeUploadRequest request)
+    {
+        if (_stageAllocator is null || request.Version != Contract.Version ||
+            request.TypedFlags.HasFlag(RequestFlags.PathTruncated) ||
+            request.TypedFlags.HasFlag(RequestFlags.PathNotNormalized))
+        {
+            return (PortVerdict.Deny, null);
+        }
+
+        try
+        {
+            string? destination = NtPathTranslator.ToDosPath(request.GetPath());
+            if (destination is null ||
+                !string.Equals(Path.GetDirectoryName(destination),
+                    @"S:\SafeUpload\Escopo Monitorado", StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(Path.GetDirectoryName(destination),
+                    @"C:\SafeUpload\Escopo Monitorado", StringComparison.OrdinalIgnoreCase))
+            {
+                return (PortVerdict.Deny, null);
+            }
+
+            var transfer = _stageAllocator.AllocateAsync(
+                destination, DestinationKind.Cloud, request.GetImageName(),
+                checked((int) request.RequestorProcessId),
+                SessionResolver.TryGetSessionId(checked((int) request.RequestorProcessId)),
+                CancellationToken.None).GetAwaiter().GetResult();
+            return (PortVerdict.Allow, Path.GetFileName(transfer.StagePath));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Falha ao reservar estagio para a requisicao {RequestId}.",
+                request.RequestId);
+            return (PortVerdict.Deny, null);
+        }
     }
 
     /// <summary>

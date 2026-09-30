@@ -355,6 +355,9 @@ OperationName (
         case SAFEUPLOAD_OPERATION_READ:
             return L"READ";
 
+        case SAFEUPLOAD_OPERATION_STAGE_ALLOCATE:
+            return L"STAGE";
+
         default:
             return L"?";
     }
@@ -677,7 +680,11 @@ Return Value:
             message.Request.Path[SAFEUPLOAD_MAX_PATH_CHARS - 1] = L'\0';
             message.Request.ImageName[SAFEUPLOAD_MAX_IMAGE_NAME_CHARS - 1] = L'\0';
 
-            if (ContainsTokenNoCase( message.Request.Path,
+            // This legacy probe has no durable transfer journal. Explicitly
+            // refuse a staged allocation instead of answering ALLOW without
+            // a basename and relying on the driver to reject it.
+            if (message.Request.Operation == SAFEUPLOAD_OPERATION_STAGE_ALLOCATE ||
+                ContainsTokenNoCase( message.Request.Path,
                                      SAFEUPLOAD_TEST_BLOCK_TOKEN )) {
 
                 verdict = SAFEUPLOAD_VERDICT_DENY;
