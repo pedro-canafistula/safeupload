@@ -24,7 +24,7 @@ public static class Contract
     /// mechanism that turns an incompatible pair into a clean refusal
     /// instead of a misread structure.
     /// </summary>
-    public const uint Version = 12;
+    public const uint Version = 14;
 
     public const int MaxPathChars = 512;
     public const int MaxImageNameChars = 64;
@@ -108,6 +108,7 @@ public static class Operation
 {
     public const uint Create = 1;
     public const uint StageAllocate = 3;
+    public const uint StageSeal = 4;
 
     /// <summary>
     /// Kept for contract completeness. The driver no longer registers
@@ -136,6 +137,7 @@ public enum RequestFlags : uint
 
     /// <summary>The create is reading from a monitored source.</summary>
     ScopeSource = 0x00000010,
+    StageFollowup = 0x00000020,
 }
 
 [Flags]

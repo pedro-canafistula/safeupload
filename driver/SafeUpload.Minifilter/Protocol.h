@@ -49,7 +49,7 @@ Environment:
 //  fail open under RN-013; experimental staged allocations fail closed.
 //
 
-#define SAFEUPLOAD_PROTOCOL_VERSION ((UINT32) 12)
+#define SAFEUPLOAD_PROTOCOL_VERSION ((UINT32) 14)
 
 //
 //  Capacity of the inline string fields, in WCHARs, terminator included.
@@ -74,6 +74,7 @@ Environment:
 #define SAFEUPLOAD_OPERATION_CREATE ((UINT32) 1)
 #define SAFEUPLOAD_OPERATION_READ   ((UINT32) 2)
 #define SAFEUPLOAD_OPERATION_STAGE_ALLOCATE ((UINT32) 3)
+#define SAFEUPLOAD_OPERATION_STAGE_SEAL ((UINT32) 4)
 
 // The reply carries only a stage basename. The driver constructs the local
 // volume path and rejects separators or a malformed suffix.
@@ -124,6 +125,10 @@ Environment:
 
 #define SAFEUPLOAD_REQUEST_FLAG_SCOPE_DESTINATION    ((UINT32) 0x00000008)
 #define SAFEUPLOAD_REQUEST_FLAG_SCOPE_SOURCE         ((UINT32) 0x00000010)
+
+// STAGE_ALLOCATE uses ImageName for the previous 32-character stage ID when
+// creating a later version. Reserved carries the original create disposition.
+#define SAFEUPLOAD_REQUEST_FLAG_STAGE_FOLLOWUP       ((UINT32) 0x00000020)
 
 #pragma pack(push, 8)
 

@@ -115,6 +115,25 @@ public sealed class StagedTransferPublisherTests : IDisposable
     }
 
     [Fact]
+    public async Task Sealed_file_waits_for_last_filesystem_writer_before_inspection()
+    {
+        var transfer = Transfer("writer-open.txt", "Clean text.");
+        using (var writer = new FileStream(transfer.StagePath, FileMode.Open,
+                   FileAccess.Write, FileShare.None))
+        {
+            Assert.Equal(StagedTransferOutcome.Retained,
+                await _publisher.PublishAsync(transfer, CancellationToken.None));
+            Assert.Equal(TransferJournalState.Sealed,
+                (await _journal.ReadAsync(transfer.TransferId, CancellationToken.None)).State);
+            Assert.False(File.Exists(transfer.DestinationPath));
+        }
+
+        Assert.Equal(StagedTransferOutcome.Released,
+            await _publisher.PublishAsync(transfer, CancellationToken.None));
+        Assert.Equal("Clean text.", await File.ReadAllTextAsync(transfer.DestinationPath));
+    }
+
+    [Fact]
     public async Task Policy_change_during_inspection_retains_the_file()
     {
         var extractor = new PausingExtractor();
@@ -192,6 +211,23 @@ public sealed class StagedTransferPublisherTests : IDisposable
         await Assert.ThrowsAsync<ArgumentException>(() =>
             _publisher.PublishAsync(transfer, CancellationToken.None));
         Assert.False(File.Exists(transfer.DestinationPath));
+    }
+
+    [Fact]
+    public async Task Interrupted_unsealed_file_cannot_be_published()
+    {
+        string stage = Path.Combine(_stagingRoot, "unsealed.txt");
+        await File.WriteAllTextAsync(stage, "Clean text.");
+        string destination = Path.Combine(_workspace.Root, "destination", "unsealed.txt");
+        var transfer = new StagedTransfer(Guid.NewGuid(), stage, destination,
+            DestinationKind.RemovableDrive, "explorer.exe", 4242, null);
+        await _journal.CreateAsync(transfer, CancellationToken.None);
+        await _journal.RetainInterruptedAsync(CancellationToken.None);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            _publisher.PublishAsync(transfer, CancellationToken.None));
+        Assert.False(File.Exists(destination));
+        Assert.True(File.Exists(stage));
     }
 
     private sealed class PausingExtractor : ITextExtractor

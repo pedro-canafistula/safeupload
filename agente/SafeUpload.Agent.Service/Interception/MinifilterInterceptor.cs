@@ -4,6 +4,7 @@ using SafeUpload.Agent.Core.Contracts;
 using SafeUpload.Agent.Core.Domain;
 using SafeUpload.Agent.Minifilter;
 using SafeUpload.Agent.Service.Notifications;
+using SafeUpload.Agent.Core.Infrastructure;
 using PortVerdict = SafeUpload.Agent.Minifilter.Verdict;
 
 namespace SafeUpload.Agent.Service.Interception;
@@ -60,6 +61,7 @@ public sealed class MinifilterInterceptor : BackgroundService
     private readonly ILogger<MinifilterInterceptor> _logger;
     private readonly StagedTransferAllocator? _stageAllocator;
     private readonly StagedTransferJournal? _stageJournal;
+    private readonly StagedTransferPublisher? _stagePublisher;
 
     private long _overBudget;
     private long _answered;
@@ -90,9 +92,11 @@ public sealed class MinifilterInterceptor : BackgroundService
             // This feature is test-only. The driver currently accepts only
             // C:\SafeUpload\_staging as its local stage root.
             string root = @"C:\SafeUpload\_staging";
-            string journal = @"C:\SafeUpload\_staging-journal";
-            _stageJournal = new StagedTransferJournal(journal);
+            string journal = Path.Combine(AgentPaths.RootDirectory, "staging-journal");
+            _stageJournal = new StagedTransferJournal(journal, requireProtectedParent: true);
             _stageAllocator = new StagedTransferAllocator(root, _stageJournal);
+            _stagePublisher = new StagedTransferPublisher(
+                _inspection, _hub, _stageJournal, root);
         }
     }
 
@@ -177,6 +181,11 @@ public sealed class MinifilterInterceptor : BackgroundService
             }
 
             _grants.Bind(port);
+            using var publishCancellation =
+                CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
+            Task? publishTask = _stagePublisher is null ? null :
+                Task.Run(() => PublishSealedLoopAsync(publishCancellation.Token),
+                    publishCancellation.Token);
             try
             {
                 _logger.LogInformation("Minifiltro conectado. Interceptando em modo kernel.");
@@ -191,6 +200,10 @@ public sealed class MinifilterInterceptor : BackgroundService
                     if (request.Operation == Operation.StageAllocate)
                     {
                         (verdict, stageName) = AllocateStage(request);
+                    }
+                    else if (request.Operation == Operation.StageSeal)
+                    {
+                        verdict = SealStage(request);
                     }
                     else
                     {
@@ -209,6 +222,17 @@ public sealed class MinifilterInterceptor : BackgroundService
             }
             finally
             {
+                publishCancellation.Cancel();
+                if (publishTask is not null)
+                {
+                    try { publishTask.GetAwaiter().GetResult(); }
+                    catch (OperationCanceledException) { }
+                    catch (Exception ex)
+                    {
+                        _logger.LogCritical(ex,
+                            "Processamento de transferencias seladas interrompido.");
+                    }
+                }
                 _grants.Unbind(port);
                 _hub.Publish(new StatusNotification(
                     _policyVersion, _activeCategories, ProtectionActive: false));
@@ -242,10 +266,36 @@ public sealed class MinifilterInterceptor : BackgroundService
                 return (PortVerdict.Deny, null);
             }
 
+            // S: is the disposable VHDX used to exercise the removable
+            // destination policy path in this test-only allocation gate.
+            var kind = destination.StartsWith(@"S:\", StringComparison.OrdinalIgnoreCase)
+                ? DestinationKind.RemovableDrive : DestinationKind.Cloud;
+            StagedTransfer? previous = null;
+            string processName = request.GetImageName();
+            if (request.TypedFlags.HasFlag(RequestFlags.StageFollowup))
+            {
+                if (_stageJournal is null ||
+                    !Guid.TryParseExact(processName, "N", out Guid previousId))
+                {
+                    return (PortVerdict.Deny, null);
+                }
+                var prior = _stageJournal.ReadAsync(previousId, CancellationToken.None)
+                    .GetAwaiter().GetResult();
+                if (!prior.SealedOnce ||
+                    !string.Equals(prior.Transfer.DestinationPath, destination,
+                        StringComparison.OrdinalIgnoreCase) ||
+                    prior.Transfer.ProcessId != checked((int)request.RequestorProcessId))
+                {
+                    return (PortVerdict.Deny, null);
+                }
+                previous = prior.Transfer;
+                processName = previous.ProcessName;
+            }
             var transfer = _stageAllocator.AllocateAsync(
-                destination, DestinationKind.Cloud, request.GetImageName(),
+                destination, kind, processName,
                 checked((int) request.RequestorProcessId),
                 SessionResolver.TryGetSessionId(checked((int) request.RequestorProcessId)),
+                request.Reserved, previous,
                 CancellationToken.None).GetAwaiter().GetResult();
             return (PortVerdict.Allow, Path.GetFileName(transfer.StagePath));
         }
@@ -254,6 +304,93 @@ public sealed class MinifilterInterceptor : BackgroundService
             _logger.LogError(ex, "Falha ao reservar estagio para a requisicao {RequestId}.",
                 request.RequestId);
             return (PortVerdict.Deny, null);
+        }
+    }
+
+    private uint SealStage(SafeUploadRequest request)
+    {
+        if (_stageJournal is null || request.Version != Contract.Version ||
+            request.TypedFlags.HasFlag(RequestFlags.PathTruncated) ||
+            request.TypedFlags.HasFlag(RequestFlags.PathNotNormalized))
+        {
+            return PortVerdict.Deny;
+        }
+
+        try
+        {
+            string? stage = NtPathTranslator.ToDosPath(request.GetPath());
+            if (stage is null ||
+                !string.Equals(Path.GetDirectoryName(stage), @"C:\SafeUpload\_staging",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                return PortVerdict.Deny;
+            }
+
+            string basename = Path.GetFileName(stage);
+            if (basename.Length < 32 ||
+                !Guid.TryParseExact(basename[..32], "N", out Guid id))
+            {
+                return PortVerdict.Deny;
+            }
+
+            var entry = _stageJournal.ReadAsync(id, CancellationToken.None)
+                .GetAwaiter().GetResult();
+            if (!string.Equals(entry.Transfer.StagePath, stage,
+                    StringComparison.OrdinalIgnoreCase) ||
+                entry.Transfer.ProcessId != checked((int)request.RequestorProcessId) ||
+                entry.State is not (TransferJournalState.Allocated or TransferJournalState.Unsealed))
+            {
+                return PortVerdict.Deny;
+            }
+
+            _stageJournal.TransitionAsync(id, entry.State,
+                TransferJournalState.Sealed, null, CancellationToken.None)
+                .GetAwaiter().GetResult();
+            return PortVerdict.Allow;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Falha ao selar estagio para a requisicao {RequestId}.",
+                request.RequestId);
+            return PortVerdict.Deny;
+        }
+    }
+
+    private async Task PublishSealedLoopAsync(CancellationToken cancellationToken)
+    {
+        if (_stageJournal is null || _stagePublisher is null) return;
+
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            foreach (var entry in await _stageJournal.ReadPendingAsync(cancellationToken)
+                         .ConfigureAwait(false))
+            {
+                if (entry.State != TransferJournalState.Sealed) continue;
+
+                try
+                {
+                    await _stagePublisher.PublishAsync(entry.Transfer, cancellationToken)
+                        .ConfigureAwait(false);
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    throw;
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Falha ao inspecionar transferencia selada {TransferId}.",
+                        entry.Transfer.TransferId);
+                    var current = await _stageJournal.ReadAsync(
+                        entry.Transfer.TransferId, cancellationToken).ConfigureAwait(false);
+                    if (current.State == TransferJournalState.Sealed)
+                    {
+                        await _stageJournal.TransitionAsync(entry.Transfer.TransferId,
+                            TransferJournalState.Sealed, TransferJournalState.Retained,
+                            null, cancellationToken).ConfigureAwait(false);
+                    }
+                }
+            }
+            await Task.Delay(250, cancellationToken).ConfigureAwait(false);
         }
     }
 

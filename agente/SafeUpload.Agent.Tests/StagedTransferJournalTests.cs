@@ -1,4 +1,6 @@
 using System.Security.Cryptography;
+using System.Security.AccessControl;
+using System.Security.Principal;
 using System.Text;
 using SafeUpload.Agent.Core.Domain;
 using SafeUpload.Agent.Service.Interception;
@@ -35,6 +37,7 @@ public sealed class StagedTransferJournalTests : IDisposable
         var entry = Assert.Single(recovered);
         Assert.Equal(transfer, entry.Transfer);
         Assert.Equal(TransferJournalState.Sealed, entry.State);
+        Assert.True(entry.SealedOnce);
     }
 
     [Fact]
@@ -48,6 +51,49 @@ public sealed class StagedTransferJournalTests : IDisposable
         Assert.Equal(transfer.DestinationPath,
             (await Journal().ReadAsync(transfer.TransferId, CancellationToken.None))
             .Transfer.DestinationPath);
+    }
+
+    [Fact]
+    public async Task Windows_journal_directory_and_manifest_exclude_ordinary_users()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+
+        var transfer = Transfer();
+        string path = Path.Combine(_workspace.Root, "journal");
+        await Journal().CreateAsync(transfer, CancellationToken.None);
+
+        foreach (FileSystemSecurity security in new FileSystemSecurity[]
+        {
+            new DirectoryInfo(path).GetAccessControl(),
+            new FileInfo(Path.Combine(path, transfer.TransferId.ToString("N") + ".json"))
+                .GetAccessControl()
+        })
+        {
+            var entries = security.GetAccessRules(true, true, typeof(SecurityIdentifier))
+                .Cast<FileSystemAccessRule>().ToArray();
+            Assert.DoesNotContain(entries, rule => rule.AccessControlType == AccessControlType.Allow &&
+                rule.IdentityReference is SecurityIdentifier sid &&
+                (sid.IsWellKnown(WellKnownSidType.BuiltinUsersSid) ||
+                 sid.IsWellKnown(WellKnownSidType.WorldSid) ||
+                 sid.IsWellKnown(WellKnownSidType.AuthenticatedUserSid)));
+        }
+    }
+
+    [Fact]
+    public void Journal_rejects_an_untrusted_parent_in_protected_mode()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+
+        var parent = new DirectoryInfo(_workspace.Root);
+        var security = parent.GetAccessControl();
+        security.AddAccessRule(new FileSystemAccessRule(
+            new SecurityIdentifier(WellKnownSidType.BuiltinUsersSid, null),
+            FileSystemRights.DeleteSubdirectoriesAndFiles, AccessControlType.Allow));
+        parent.SetAccessControl(security);
+
+        Assert.Throws<UnauthorizedAccessException>(() => new StagedTransferJournal(
+            Path.Combine(_workspace.Root, "protected-journal"),
+            requireProtectedParent: true));
     }
 
     [Fact]
@@ -131,8 +177,35 @@ public sealed class StagedTransferJournalTests : IDisposable
         await Journal().RetainInterruptedAsync(CancellationToken.None);
 
         var recovered = await journal.ReadAsync(transfer.TransferId, CancellationToken.None);
-        Assert.Equal(TransferJournalState.Retained, recovered.State);
+        Assert.Equal(state == TransferJournalState.Allocated
+            ? TransferJournalState.Unsealed : TransferJournalState.Retained,
+            recovered.State);
         Assert.False(File.Exists(transfer.DestinationPath));
+    }
+
+    [Fact]
+    public async Task Recovered_unsealed_allocation_cannot_enter_inspection()
+    {
+        var transfer = Transfer();
+        var journal = Journal();
+        await journal.CreateAsync(transfer, CancellationToken.None);
+        await Journal().RetainInterruptedAsync(CancellationToken.None);
+
+        var recovered = await journal.ReadAsync(transfer.TransferId, CancellationToken.None);
+        Assert.Equal(TransferJournalState.Unsealed, recovered.State);
+        Assert.False(recovered.SealedOnce);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => journal.TransitionAsync(
+            transfer.TransferId, TransferJournalState.Unsealed,
+            TransferJournalState.Inspecting, null, CancellationToken.None));
+
+        await journal.TransitionAsync(transfer.TransferId,
+            TransferJournalState.Unsealed, TransferJournalState.Sealed,
+            null, CancellationToken.None);
+        var sealedEntry = await journal.ReadAsync(transfer.TransferId, CancellationToken.None);
+        Assert.True(sealedEntry.SealedOnce);
+        await journal.TransitionAsync(transfer.TransferId,
+            TransferJournalState.Sealed, TransferJournalState.Inspecting,
+            null, CancellationToken.None);
     }
 
     [Theory]

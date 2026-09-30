@@ -56,7 +56,7 @@ public sealed class StagedTransferPublisher
 
         var journalEntry = await _journal.ReadAsync(transfer.TransferId, cancellationToken)
             .ConfigureAwait(false);
-        if (journalEntry.Transfer != transfer ||
+        if (journalEntry.Transfer != transfer || !journalEntry.SealedOnce ||
             journalEntry.State is not (TransferJournalState.Sealed or TransferJournalState.Retained))
         {
             throw new InvalidOperationException("The transfer must be sealed in the service journal.");
@@ -85,8 +85,9 @@ public sealed class StagedTransferPublisher
         }
         catch (IOException)
         {
-            _notifications.Publish(new TransferNotification(
-                transfer.TransferId, fileName, TransferPhase.Retained), transfer.SessionId);
+            // The last cleanup signal can reach the journal before NTFS has
+            // finished closing the writer. Leave Sealed for the worker's next
+            // attempt; no analysis or publication has started yet.
             return StagedTransferOutcome.Retained;
         }
 

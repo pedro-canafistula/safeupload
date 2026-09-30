@@ -54,11 +54,10 @@ implement sealed-file inspection, durable state transitions, digest-based
 publication recovery, and outcome auditing. A classification result is not
 audited as a successful send before the destination publication succeeds.
 The publisher rechecks the policy version and destination scope before
-publication; a policy change during analysis retains the file.
-The focused and full agent tests pass on the debugger VM. These components do
-not enforce the first three invariants by themselves. They are not yet wired
-to the minifilter, and the minifilter must not advertise staged protection
-until its redirection and recovery tests pass.
+publication; a policy change during analysis retains the file. The test-only
+cross-volume minifilter path is wired to the journal, final-writer seal signal,
+and publisher. It remains disabled in ordinary builds and is not a complete
+transparent namespace or private-storage implementation.
 
 Microsoft's SimRep sample demonstrates pre-create reparsing, but explicitly
 does not virtualize the namespace for higher filters. Its rename, name-provider,
@@ -119,7 +118,7 @@ another process saw no file at the destination. The journal contained one
 matching transfer, and the stage held the expected bytes. The test unloaded
 the prototype, restored the original installed driver, and detached `S:`.
 It also stopped and restarted the agent while the driver remained loaded:
-the unsealed `Allocated` entry became `Retained`, with no destination file.
+the unsealed `Allocated` entry was held locally, with no destination file.
 The rename and hard-link safety gates still denied both operations.
 
 The current probe attaches a kernel-created ECP to each redirected create.
@@ -129,18 +128,76 @@ The VM test confirmed `DirectStageReadDenied=True`. Microsoft documents that
 ECPs added during a create survive reparse retries:
 https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/fltkernel/nf-fltkernel-fltallocateextracreateparameter
 
-The agent also retains interrupted `Allocated`, `Inspecting`, and `Approved`
-entries on restart, then reconciles `Publishing` entries against the actual
+The agent also holds interrupted `Allocated` entries unsealed and retains
+interrupted `Inspecting` and `Approved` entries on restart, then reconciles
+`Publishing` entries against the actual
 destination digest. The staged-transfer tests pass. This is a feasibility
-probe only: stage root and journal ACLs are not secure, so unloading the
-filter exposes the stage to the same user (also confirmed by the test).
-File-ID opens and other aliases need independent coverage. Only the two
-hardcoded test directories are handled, and the driver still lacks
-final-writer tracking and a safe publication bypass. No automatic release is
-enabled. Protocol 12 requires
+probe only: unloading the filter exposes the stage to the same user (also
+confirmed by the test).
+Other aliases need independent coverage. Only the two hardcoded test
+directories are handled. Protocol 14 requires
 the matching agent; the ordinary installed driver remains the previous
 protocol 11 binary. The prototype is compiled out by default and must not
 be placed in a production package.
+
+## Recovery and journal hardening (30 September 2026)
+
+Recovery now puts an interrupted `Allocated` transfer in a distinct `Unsealed`
+state. It cannot enter inspection or publication. The journal records whether
+the transfer was ever sealed, so an older `Retained` manifest without seal
+provenance also cannot be published. This closes a recovery path where an
+unfinished writer's bytes could otherwise become eligible for inspection.
+
+The prototype journal moved to `%ProgramData%\SafeUpload\staging-journal`.
+On Windows, its directory and manifests get explicit service, SYSTEM, and
+Administrators ACLs. Prototype startup rejects a parent that grants ordinary
+users child-deletion rights; a LocalSystem service also rejects existing
+journal objects owned by other identities. The debugger VM passed 22 focused
+tests and the complete 192-test agent suite. The cross-volume debuggee test
+passed after the move, including `Unsealed` recovery and restoration of the
+original driver hash.
+
+This does not secure the stage file. The debuggee test still reads its exact
+unapproved bytes as the writer after the prototype filter unloads. The
+current reparse opens that file using the writer's token, so the file's NTFS
+ACL must grant that user access. That same access remains after driver unload
+or crash. An ACL on the journal cannot close this gap. A protected stage
+requires a different data path that gives the app a usable handle without
+granting it independent access to the stored file. The probe still denies
+rename-based saves and omits folder-listing virtualization. Staging remains
+disabled in ordinary builds.
+
+## Final writer and later version probe (30 September 2026)
+
+Protocol 14 uses a kernel-issued `STAGE_SEAL` message after the last writable
+handle cleans up. The driver counts staged writers and blocks another writer
+while a seal request is in flight. A writable memory-mapped view delays sealing
+after its file handle closes; a prototype worker checks the section's writable
+references and seals after the view disappears. The agent journals `Sealed`,
+notifies `Analyzing`, inspects that version, and publishes a clean version with
+its connected-port process identity. A blocked or uninspectable version remains
+local. A service restart changes interrupted `Allocated` to `Unsealed` and
+requires the real driver seal signal before inspection.
+
+After a sealed version, the same writer's next writable open allocates a new
+transfer ID. `FILE_OPEN` and `FILE_OPEN_IF` copy the prior stage into the new
+local stage; truncating dispositions start empty. A sensitive append did not
+change the already published `alphabeta` destination bytes, and a later clean
+overwrite published only `clean replacement`. The debuggee test also passed
+two concurrent handles, a mapped write without an extra file reopen, and a
+service crash with a handle held open. The WDK prototype build passed; 25
+focused and 195 full Windows agent tests passed. A separate
+`Test-StagedFileIdAlias.ps1` probe read a fixture by file ID before filter load
+and received access denied while the prototype filter was loaded. Each test
+restored the installed original driver; its independent SHA-256 check remained
+`ADA9D05AB6AECDD2B6C521B0CE529FC06C732154ACB3EE85439FBDC8AA80DFCE`.
+
+This path is still a test-specific prototype. It does not synthesize the
+writer's directory listing or virtualize rename-based saves, so Explorer and
+Office save workflows are incomplete. The stage is readable by its writer
+after driver unload. Other aliases, USB hardware, UNC shares, sync clients,
+and Driver Verifier have not passed the required matrix. The worker and
+version handoff have only the disposable-VHDX test coverage described above.
 
 ## Implementation sequence
 
