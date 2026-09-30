@@ -135,15 +135,31 @@ public sealed class StagedTransferPublisher
             return StagedTransferOutcome.Blocked;
         }
 
-        if (!result.InScope || result.Verdict != Verdict.Approved)
+        bool currentApproval = false;
+        if (result.InScope && result.Verdict == Verdict.Approved)
         {
-            // Oversize, timeout, unsupported format, and parser errors do
-            // not constitute inspection. Keep their bytes local.
+            try
+            {
+                currentApproval = await _inspection.IsCurrentStagedApprovalAsync(
+                    operation, result, cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception) when (!cancellationToken.IsCancellationRequested)
+            {
+                // An unreadable policy is not permission to publish.
+            }
+        }
+
+        if (!currentApproval)
+        {
+            // Oversize, timeout, unsupported format, parser errors, and a
+            // changed policy all keep the staged bytes local.
             await _journal.TransitionAsync(transfer.TransferId,
                 TransferJournalState.Inspecting, TransferJournalState.Retained,
                 null, cancellationToken).ConfigureAwait(false);
             await _inspection.RecordTransferOutcomeAsync(operation, result,
-                Verdict.Retained, result.Reason ?? "not_inspected", cancellationToken).ConfigureAwait(false);
+                Verdict.Retained,
+                result.Verdict == Verdict.Approved ? "policy_changed" : result.Reason ?? "not_inspected",
+                cancellationToken).ConfigureAwait(false);
             _notifications.Publish(new TransferNotification(
                 transfer.TransferId, fileName, TransferPhase.Retained), transfer.SessionId);
             return StagedTransferOutcome.Retained;

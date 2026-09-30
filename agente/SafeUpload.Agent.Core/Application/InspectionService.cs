@@ -65,6 +65,28 @@ public sealed class InspectionService
     public Task<InspectionResult> InspectStagedAsync(FileOperation operation, CancellationToken cancellationToken)
         => InspectCoreAsync(operation, auditAndCache: false, cancellationToken);
 
+    /// <summary>
+    /// A staged approval may only be published under the same policy that
+    /// inspected it. Reload just before publication; a changed or unreadable
+    /// policy keeps the file local for a new inspection.
+    /// </summary>
+    public async Task<bool> IsCurrentStagedApprovalAsync(
+        FileOperation operation,
+        InspectionResult result,
+        CancellationToken cancellationToken)
+    {
+        if (!result.InScope || result.Verdict != Verdict.Approved)
+        {
+            return false;
+        }
+
+        var current = await _policyStore.LoadAsync(cancellationToken).ConfigureAwait(false);
+        return current.Version == result.PolicyVersion &&
+            !current.IsExcludedProcess(operation.ProcessName) &&
+            current.IsMonitoredDestination(operation) &&
+            current.IsMonitoredExtension(operation.Extension);
+    }
+
     public Task RecordTransferOutcomeAsync(
         FileOperation operation,
         InspectionResult inspection,

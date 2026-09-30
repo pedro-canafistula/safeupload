@@ -53,6 +53,8 @@ The service-side `StagedTransferPublisher` and `StagedTransferJournal` now
 implement sealed-file inspection, durable state transitions, digest-based
 publication recovery, and outcome auditing. A classification result is not
 audited as a successful send before the destination publication succeeds.
+The publisher rechecks the policy version and destination scope before
+publication; a policy change during analysis retains the file.
 The focused and full agent tests pass on the debugger VM. These components do
 not enforce the first three invariants by themselves. They are not yet wired
 to the minifilter, and the minifilter must not advertise staged protection

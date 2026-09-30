@@ -4,6 +4,7 @@ using SafeUpload.Agent.Core.Infrastructure;
 using SafeUpload.Agent.Core.Infrastructure.Extraction;
 using SafeUpload.Agent.Service.Interception;
 using SafeUpload.Agent.Service.Notifications;
+using System.Text.Json.Nodes;
 
 namespace SafeUpload.Agent.Tests;
 
@@ -111,6 +112,37 @@ public sealed class StagedTransferPublisherTests : IDisposable
         extractor.Continue.SetResult();
         Assert.Equal(StagedTransferOutcome.Released, await publication);
         Assert.Equal("Clean text.", await File.ReadAllTextAsync(transfer.DestinationPath));
+    }
+
+    [Fact]
+    public async Task Policy_change_during_inspection_retains_the_file()
+    {
+        var extractor = new PausingExtractor();
+        var inspector = new InspectionService(
+            new LocalPolicyStore(_workspace.PolicyFile),
+            new LocalQueueAuditSink(_workspace.QueueFile),
+            new ExtractorRegistry([extractor]),
+            new VerdictCache());
+        var publisher = new StagedTransferPublisher(inspector, _notifications, _journal, _stagingRoot);
+        var transfer = Transfer("policy-change.txt", "Clean text.");
+
+        Task<StagedTransferOutcome> publication =
+            publisher.PublishAsync(transfer, CancellationToken.None);
+        await extractor.Entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        var policy = JsonNode.Parse(await File.ReadAllTextAsync(_workspace.PolicyFile))!;
+        policy["version"] = 2;
+        await File.WriteAllTextAsync(_workspace.PolicyFile, policy.ToJsonString());
+        extractor.Continue.SetResult();
+
+        Assert.Equal(StagedTransferOutcome.Retained, await publication);
+        Assert.False(File.Exists(transfer.DestinationPath));
+        Assert.True(File.Exists(transfer.StagePath));
+        var audit = await new LocalQueueAuditSink(_workspace.QueueFile)
+            .ReadRecentAsync(10, CancellationToken.None);
+        Assert.Single(audit);
+        Assert.Equal(Verdict.Retained, audit[0].Verdict);
+        Assert.Equal("policy_changed", audit[0].NotInspectedReason);
     }
 
     [Fact]
