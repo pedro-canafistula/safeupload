@@ -1,0 +1,9 @@
+File ID is 0x000000000000000000ee000000008499
+File ID is 0x000000000000000000ee000000008499
+\Users\vika\Documents\alias-8bcf5852373146c6947bfda129436fb5.txt
+\safeupload\Escopo Monitorado\alias-8bcf5852373146c6947bfda129436fb5.txt
+OutsideAliasWrite=written; IndependentDestinationIsolated=False
+KnownPathIdentityGapReproduced=True
+OriginalDriverRestored=ADA9D05AB6AECDD2B6C521B0CE529FC06C732154ACB3EE85439FBDC8AA80DFCE
+ExperimentalDriverUnloaded=True
+DisposableAliasFixturesRemoved=True

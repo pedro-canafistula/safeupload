@@ -723,7 +723,7 @@ static NTSTATUS StageRename(PFLT_CALLBACK_DATA Data, PSTAGE_STREAM Stream)
     if (!NT_SUCCESS(status)) goto Exit;
     if (target != NULL) {
         PSTAGE_STREAM replaced = target->Current;
-        status = SafeUploadStageCheckSubjectAccess(target->Security, DELETE);
+        status = SafeUploadStageCheckSubjectAccess(Data, target->Security, DELETE);
         if (!NT_SUCCESS(status)) goto Exit;
         StageAcquire(&replaced->Resource);
         if (replaced->RenameExchange != NULL || (replaced->ReadOnly && !replaced->Sealed) ||
@@ -734,7 +734,7 @@ static NTSTATUS StageRename(PFLT_CALLBACK_DATA Data, PSTAGE_STREAM Stream)
         StageRelease(&replaced->Resource);
         if (!NT_SUCCESS(status)) goto Exit;
     }
-    status = SafeUploadStageCheckRenameAccess(Stream->OriginalInstance, &destination->Name, replace);
+    status = SafeUploadStageCheckRenameAccess(Data, Stream->OriginalInstance, &destination->Name, replace);
     if (!NT_SUCCESS(status)) goto Exit;
     old = ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(*old) + view->Name.Length, STAGE_TAG);
     exchange = ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(*exchange), STAGE_TAG);
@@ -1238,9 +1238,12 @@ static FLT_PREOP_CALLBACK_STATUS StageExternalRename(PFLT_CALLBACK_DATA Data,
     SAFEUPLOAD_VOLUME_KIND kind = StageVolumeKind(Objects->Instance);
     BOOLEAN allow = FALSE;
     NTSTATUS status;
+    ULONG length = Data->Iopb->Parameters.SetFileInformation.Length;
     if (cls != FileRenameInformation && cls != FileRenameInformationEx && cls != FileLinkInformation && cls != FileLinkInformationEx)
         return FLT_PREOP_SUCCESS_NO_CALLBACK;
-    if (rename == NULL) goto Complete;
+    if (rename == NULL || length < (ULONG)FIELD_OFFSET(FILE_RENAME_INFORMATION, FileName) ||
+        rename->FileNameLength == 0 || (rename->FileNameLength & 1) ||
+        rename->FileNameLength > length - FIELD_OFFSET(FILE_RENAME_INFORMATION, FileName)) goto Complete;
     status = FltGetFileNameInformation(Data, FLT_FILE_NAME_NORMALIZED | FLT_FILE_NAME_QUERY_DEFAULT, &source);
     if (!NT_SUCCESS(status)) goto Complete;
     status = FltGetDestinationFileNameInformation(Objects->Instance, Objects->FileObject,

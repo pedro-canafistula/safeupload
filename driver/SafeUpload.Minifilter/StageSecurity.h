@@ -30,11 +30,13 @@ SafeUploadStageFreeSecurity (
 
 NTSTATUS
 SafeUploadStageCheckRenameAccess (
+    _In_ PFLT_CALLBACK_DATA Data,
     _In_ PFLT_INSTANCE Instance,
     _In_ PUNICODE_STRING Destination,
     _In_ BOOLEAN Replace
     );
 
-NTSTATUS SafeUploadStageCheckSubjectAccess(PSECURITY_DESCRIPTOR Descriptor, ACCESS_MASK Desired);
+NTSTATUS SafeUploadStageCheckSubjectAccess(PFLT_CALLBACK_DATA Data,
+    PSECURITY_DESCRIPTOR Descriptor, ACCESS_MASK Desired);
 
 #endif

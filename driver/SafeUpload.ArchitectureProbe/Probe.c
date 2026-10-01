@@ -573,7 +573,7 @@ static NTSTATUS ProbeRename(PFLT_CALLBACK_DATA Data, PPROBE_STREAM Stream)
         status = STATUS_NOT_SUPPORTED;
         goto Exit;
     }
-    status = SafeUploadStageCheckRenameAccess(Stream->OriginalInstance, &destination->Name, FALSE);
+    status = SafeUploadStageCheckRenameAccess(Data, Stream->OriginalInstance, &destination->Name, FALSE);
     if (!NT_SUCCESS(status)) goto Exit;
     ProbeAcquire(&Stream->Resource);
     KeAcquireSpinLock(&ProbeListLock, &irql);

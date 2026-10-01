@@ -215,6 +215,7 @@ SafeUploadStageFreeSecurity (
 
 NTSTATUS
 SafeUploadStageCheckRenameAccess (
+    _In_ PFLT_CALLBACK_DATA Data,
     _In_ PFLT_INSTANCE Instance,
     _In_ PUNICODE_STRING Destination,
     _In_ BOOLEAN Replace
@@ -228,19 +229,31 @@ SafeUploadStageCheckRenameAccess (
     NTSTATUS status;
     NTSTATUS accessStatus;
     USHORT i;
+    PEPROCESS process = FltGetRequestorProcess(Data);
+    PRIVILEGE_SET traverse = {0};
 
     PAGED_CODE();
-    if (!SeSinglePrivilegeCheck( SeExports->SeChangeNotifyPrivilege, UserMode )) {
+    if (KeGetCurrentIrql() != PASSIVE_LEVEL || Data->Thread == NULL || process == NULL) {
         return STATUS_ACCESS_DENIED;
     }
-    SeCaptureSubjectContext( &subject );
+    /* A higher filter may resume SET_INFORMATION on a system worker. Capture
+     * the requestor's tokens, never the executing worker's authority. */
+    SeCaptureSubjectContextEx( Data->Thread, process, &subject );
+    SeLockSubjectContext( &subject );
+    traverse.PrivilegeCount = 1;
+    traverse.Control = PRIVILEGE_SET_ALL_NECESSARY;
+    traverse.Privilege[0].Luid = SeExports->SeChangeNotifyPrivilege;
+    if (!SePrivilegeCheck( &traverse, &subject, UserMode )) {
+        status = STATUS_ACCESS_DENIED;
+        goto Exit;
+    }
     status = SafeUploadStageQuerySecurity( Instance, Destination, FALSE, &descriptor );
     if (NT_SUCCESS( status )) {
         if (!Replace) {
             status = STATUS_OBJECT_NAME_COLLISION;
             goto Exit;
         }
-        if (!SeAccessCheck( descriptor, &subject, FALSE, DELETE, 0,
+        if (!SeAccessCheck( descriptor, &subject, TRUE, DELETE, 0,
                 &privileges, IoGetFileObjectGenericMapping(), UserMode,
                 &granted, &accessStatus )) {
             status = STATUS_ACCESS_DENIED;
@@ -268,7 +281,7 @@ SafeUploadStageCheckRenameAccess (
     }
     status = SafeUploadStageQuerySecurity( Instance, &parent, TRUE, &descriptor );
     if (NT_SUCCESS( status ) &&
-        !SeAccessCheck( descriptor, &subject, FALSE, FILE_ADD_FILE, 0,
+        !SeAccessCheck( descriptor, &subject, TRUE, FILE_ADD_FILE, 0,
             &privileges, IoGetFileObjectGenericMapping(), UserMode,
             &granted, &accessStatus )) {
         status = STATUS_ACCESS_DENIED;
@@ -276,21 +289,26 @@ SafeUploadStageCheckRenameAccess (
 Exit:
     if (privileges != NULL) SeFreePrivileges( privileges );
     if (descriptor != NULL) ExFreePoolWithTag( descriptor, SAFEUPLOAD_POOL_TAG );
+    SeUnlockSubjectContext( &subject );
     SeReleaseSubjectContext( &subject );
     return status;
 }
 
-/* SET_INFORMATION has no CREATE security context. Capture its effective caller
- * instead of borrowing the service/kernel token used for the backing. */
-NTSTATUS SafeUploadStageCheckSubjectAccess(PSECURITY_DESCRIPTOR Descriptor, ACCESS_MASK Desired)
+/* SET_INFORMATION has no CREATE access state. Use its original thread/process,
+ * including impersonation, even when a preceding filter changes execution. */
+NTSTATUS SafeUploadStageCheckSubjectAccess(PFLT_CALLBACK_DATA Data,
+    PSECURITY_DESCRIPTOR Descriptor, ACCESS_MASK Desired)
 {
     SECURITY_SUBJECT_CONTEXT subject;
     PPRIVILEGE_SET privileges = NULL;
     ACCESS_MASK granted;
     NTSTATUS status;
     BOOLEAN allowed;
+    PEPROCESS process = FltGetRequestorProcess(Data);
     PAGED_CODE();
-    SeCaptureSubjectContext(&subject);
+    if (KeGetCurrentIrql() != PASSIVE_LEVEL || Data->Thread == NULL || process == NULL)
+        return STATUS_ACCESS_DENIED;
+    SeCaptureSubjectContextEx(Data->Thread, process, &subject);
     allowed = SeAccessCheck(Descriptor, &subject, FALSE, Desired, 0, &privileges,
         IoGetFileObjectGenericMapping(), UserMode, &granted, &status);
     if (privileges != NULL) SeFreePrivileges(privileges);

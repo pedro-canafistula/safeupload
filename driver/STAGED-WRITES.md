@@ -103,6 +103,65 @@ exact-phase reads, avoiding classic replacement of an open coordination file.
 Two coordination races (rename and an empty-ack `.Trim()` call) were fixed during
 repeated-publication testing; their interrupted runs are not acceptance evidence.
 
+### Follow-up: original requester and alias boundary
+
+Rename authorization now uses `SeCaptureSubjectContextEx(Data->Thread,
+FltGetRequestorProcess(Data), ...)`, including impersonation, instead of the
+executing worker's subject. Missing requestor identity and unsupported IRQL fail
+closed. Traverse privilege and DELETE/parent-add access use that same subject.
+External rename/link requests now validate the complete name-buffer bounds before
+passing them to the name resolver. The separate architecture probe uses the same
+updated helper signature. [API contract](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/nf-ntifs-secapturesubjectcontextex).
+
+`Test-StagedRenameSubject.ps1` passed with the ordinary feature and with the
+[test-only worker patch](evidence/2026-10-01/requestor-worker-probe.patch). The
+patch requires execution on a different thread in System PID 4 before calling
+the real rename routine. Anonymous impersonation was denied; the authorized
+caller on the same worker succeeded. The patch is not in production source.
+[Ordinary](evidence/2026-10-01/requestor-standard-gate.txt),
+[forced worker](evidence/2026-10-01/requestor-worker-gate.txt),
+[probe build/hash](evidence/2026-10-01/requestor-worker-build.txt).
+Reproduce by applying the patch only in the isolated debugger checkout, rebuilding
+and signing Debug feature, copying the SYS to the debuggee and running the subject
+test; restore the checkout source afterward and use the ordinary build for gates.
+
+All four ordinary WDK configurations pass with zero warnings/errors and active
+analysis/API validation: [normal Debug](evidence/2026-10-01/requestor-normal-debug.txt),
+[feature Debug](evidence/2026-10-01/requestor-feature-debug.txt),
+[normal Release](evidence/2026-10-01/requestor-normal-release.txt),
+[feature Release](evidence/2026-10-01/requestor-feature-release.txt).
+The service suite remains [234 passed](evidence/2026-10-01/requestor-agent-tests.txt).
+The updated ordinary driver passed `Test-StagedOwnedStreams.ps1 -Verifier
+-ReplacementCases -PublicationIterations 4`, including 322 full byte-observer
+passes: [gate](evidence/2026-10-01/requestor-verifier-gate.txt),
+[active Verifier](evidence/2026-10-01/requestor-verifier-query.txt).
+Ordinary SYS SHA256: `1229268BF405BAE8D5AB175703CC7C7513F68BBD2586AC8B43E90F1A74E94347`.
+Service package remains `B75112364877ACDAF78893B3C87A87813064AFFFF531C0BE05330092ED75F085`.
+[Independent restoration](evidence/2026-10-01/requestor-final-state.txt) at
+20:46:05 UTC confirms original hash, filter unloaded, Verifier zero/None, zero
+temporary tasks/service and no S:/VHDX.
+
+**Open failing acceptance: preexisting external hard-link aliases.**
+`Test-StagedAliases.ps1 -ReproduceKnownGap` creates one disposable NTFS file with a
+protected name and an outside hard link before load, verifies equal file IDs,
+then uses a fresh process to write synthetic sensitive bytes through the outside
+name. A physical reader opened before filter load sees those bytes at the
+protected destination. [Exact result](evidence/2026-10-01/aliases-before.txt).
+Opening the observer only afterward was an invalid probe: legacy source
+inspection denied the sensitive read and concealed the physical change. The
+recorded probe uses the already held physical object. It restores the original
+driver and deletes both fixture links in `finally`.
+
+This confirms why the path-only namespace is unqualified; it is not a publication
+permit failure. Normal builds remain disabled and the experimental path must not
+be deployed on aliased protected namespaces. Rejecting new FileLink operations
+or writable file-ID opens alone does not resolve this case. The next identity
+increment must classify existing objects by volume/file ID and serialize alias
+and parent-name changes with admission; checking NumberOfLinks and then closing
+a temporary query handle leaves a create/rename race. Publication must distinguish
+editing a shared object from replacing one name slot. Until these gates pass,
+alias support is incomplete and the broader acceptance tracker remains open.
+
 ## Current milestone (1 October 2026)
 
 Branch: `feat/staged-kernel-prototype`. The owned-stream experiment is integrated
@@ -210,9 +269,9 @@ streams, byte locks/oplocks and unsupported metadata operations fail explicitly;
 writable file-ID admission is denied. This is not complete enforcement for
 preexisting external links or case-sensitive directories: those namespaces are
 unqualified. Private directory notifications and concurrent directory mutation
-remain pending. Rename authorization currently uses the executing thread's
-subject; preserving the original caller after another filter pends a request is
-a remaining security qualification before admitting such stacks.
+remain pending. Rename authorization captures the original request's thread/process subject,
+including impersonation. A forced SYSTEM-worker probe verifies this boundary;
+actual third-party filter stacks remain unqualified.
 
 ### Lifetime, synchronization and exact seal
 
