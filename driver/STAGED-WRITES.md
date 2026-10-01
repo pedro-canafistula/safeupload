@@ -16,8 +16,10 @@ after every experiment, including failures.
          and reusing its occupied tombstone slot remain open.
    - [ ] Stable destination/view/version identity, aliases, short names, relative
          and file-ID opens, links, reparse handling and cross-process view rules.
-   - [ ] Delete/disposition, metadata/security, byte locking/oplocks and private
-         directory notifications, mutation/cancellation/concurrency coverage.
+   - [x] Owned byte-range locks: shared/exclusive access, waiting/cancellation,
+         duplicates, process exit, mapped bypass and final-close release.
+   - [ ] Delete/disposition, metadata/security, oplocks and private directory
+         notifications, broader mutation/cancellation/concurrency coverage.
 2. Approval flow
    - [ ] Real application notifications and pipe/UI exact-version justification.
    - [ ] Negative publication matrix: changed bytes/policy, unknown/parser/size/
@@ -162,6 +164,55 @@ a temporary query handle leaves a create/rename race. Publication must distingui
 editing a shared object from replacing one name slot. Until these gates pass,
 alias support is incomplete and the broader acceptance tracker remains open.
 
+### Follow-up: owned byte-range locks
+
+Each upper version owns a Filter Manager `FILE_LOCK`. `FltProcessFileLock`
+handles lock/unlock, pending requests and cancellation; ordinary I/O checks the
+resolved offset/length, original requesting process, file object and key before
+using the cache. Paging/mapped I/O follows the documented Windows rule that byte
+locks do not restrict mapped access. Pending lock requests retain their upper
+file object, so the unchanged all-object retirement condition still applies.
+CLEANUP unlocks every referenced process that used this file object (including
+cross-process duplicates); CLOSE releases those process references. The bounded
+implementation admits at most 16 locking processes per file object; excess lock
+operations fail explicitly. Oplocks remain unsupported.
+[FltProcessFileLock](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/fltkernel/nf-fltkernel-fltprocessfilelock),
+[Windows lock semantics](https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-lockfileex).
+
+Reproduce with `Test-StagedLocks.ps1 -Verifier -Iterations 100`, placing
+`StagedLockProbe.cs`, `StagedLockProcess.ps1` and `StagedTestAgent.ps1` beside it.
+It first runs the same native calls on unfiltered NTFS, then on the owned path.
+The 100 sequences cover exclusive/shared locks, competing and duplicate handles,
+unlocked ranges, beyond-EOF locks, asynchronous wait/cancel/reacquire, mapped
+bypass and final duplicate cleanup. A separate child receives a duplicate, locks
+it and exits: both NTFS and owned I/O return `33,0,0` for writes before exit,
+after exit and after final file-object cleanup. The physical preexisting reader
+retains its original bytes; a fresh independent reader later gets the exact
+approved 4096-byte result. An early polling reader omitted delete sharing and
+correctly prevented publication; the harness now shares Read/Write/Delete.
+
+[Ordinary gate](evidence/2026-10-01/locks-ordinary-gate.txt) and
+[100-sequence Verifier plus integrated regression](evidence/2026-10-01/locks-stress-gates.txt)
+PASS; [active Verifier](evidence/2026-10-01/locks-verifier-query.txt) was 0x13B.
+The 100 native sequences took 41 ms; owned sequences with Verifier took 631 ms.
+These are bounded probe timings, not application throughput or a production
+latency gate. The subsequent ordinary integrated replacement/mapped/restart gate
+passed with four approved overwrites and 293 full destination-byte passes.
+All four WDK configurations pass zero warnings/errors with validation enabled:
+[normal Debug](evidence/2026-10-01/locks-normal-debug.txt),
+[feature Debug](evidence/2026-10-01/locks-feature-debug.txt),
+[normal Release](evidence/2026-10-01/locks-normal-release.txt),
+[feature Release](evidence/2026-10-01/locks-feature-release.txt).
+The unchanged service suite still passed all 234 tests in the build script.
+
+Tested ordinary SYS SHA256:
+`4C9952143F5B34E4855540E909DE7BA4602C5FDF5AAFE3DAF51FD82EC65FAB53`;
+service package remains `B75112364877ACDAF78893B3C87A87813064AFFFF531C0BE05330092ED75F085`.
+[Independent restoration](evidence/2026-10-01/locks-final-state.txt) at 20:59:21 UTC
+confirms the original installed hash, filter unloaded, Verifier off, no test
+service/tasks and S:/VHDX absent. Alias, namespace, recovery and destination gates
+above remain open; no unsupported namespace operation was enabled by this increment.
+
 ## Current milestone (1 October 2026)
 
 Branch: `feat/staged-kernel-prototype`. The owned-stream experiment is integrated
@@ -265,7 +316,7 @@ and reuse of physically occupied tombstones remain pending.
 Hard links require alias entries for one destination identity, not independent
 path-keyed publication rights. Short names, file-ID opens and reparse aliases
 must resolve before policy/view lookup. Links, delete/disposition, alternate
-streams, byte locks/oplocks and unsupported metadata operations fail explicitly;
+streams, oplocks and unsupported metadata operations fail explicitly;
 writable file-ID admission is denied. This is not complete enforcement for
 preexisting external links or case-sensitive directories: those namespaces are
 unqualified. Private directory notifications and concurrent directory mutation

@@ -1,0 +1,128 @@
+UnfilteredNTFSLockReference=True Iterations=100 Milliseconds=41
+UnfilteredCrossProcessLockBeforeExitAfterExitAfterClose=33,0,0
+
+Verifier Volatile Flags: 0x0000013b
+
+  Volatile Flags:
+
+    [X] 0x00000001 Special pool.
+    [X] 0x00000002 Force IRQL checking.
+    [ ] 0x00000004 Randomized low resources simulation.
+    [X] 0x00000008 Pool tracking.
+    [X] 0x00000010 I/O verification.
+    [X] 0x00000020 Deadlock detection.
+    [ ] 0x00000080 DMA checking.
+    [ ] 0x00000200 Force pending I/O requests.
+    [ ] 0x00000400 IRP logging.
+    [ ] 0x00000800 Miscellaneous checks.
+
+  Added Drivers:
+
+    SafeUpload.sys
+
+The new settings are in effect until the system
+is restarted or the settings are changed again.
+OwnedExclusiveSharedPendingCancelDuplicateCleanupAndMappedLocks=True Iterations=100 Milliseconds=631
+OwnedCrossProcessLockBeforeExitAfterExitAfterClose=33,0,0
+HeldIndependentPhysicalReaderIsolated=True
+LockResultApprovedAndPublishedExactly=True
+
+Verifier Volatile Flags: 0x00000000
+
+  Volatile Flags:
+
+    [ ] 0x00000001 Special pool.
+    [ ] 0x00000002 Force IRQL checking.
+    [ ] 0x00000004 Randomized low resources simulation.
+    [ ] 0x00000008 Pool tracking.
+    [ ] 0x00000010 I/O verification.
+    [ ] 0x00000020 Deadlock detection.
+    [ ] 0x00000080 DMA checking.
+    [ ] 0x00000200 Force pending I/O requests.
+    [ ] 0x00000400 IRP logging.
+    [ ] 0x00000800 Miscellaneous checks.
+
+  Removed Drivers:
+
+    SafeUpload.sys
+
+The new settings are in effect until the system
+is restarted or the settings are changed again.
+
+No settings were changed.
+OriginalDriverRestored=ADA9D05AB6AECDD2B6C521B0CE529FC06C732154ACB3EE85439FBDC8AA80DFCE
+ExperimentalDriverUnloaded=True
+LockFixturesRemoved=True
+
+Microsoft DiskPart version 10.0.19041.964
+
+Copyright (C) Microsoft Corporation.
+On computer: WIN10-DEBUGGED
+
+
+    0 percent completed
+  100 percent completed
+
+
+DiskPart successfully created the virtual disk file.
+
+DiskPart successfully selected the virtual disk file.
+
+
+  100 percent completed
+
+
+DiskPart successfully attached the virtual disk file.
+
+DiskPart succeeded in creating the specified partition.
+
+
+    0 percent completed
+  100 percent completed
+
+
+DiskPart successfully formatted the volume.
+
+DiskPart successfully assigned the drive letter or mount point.
+UnfilteredNativeRenameControl=True
+IntegratedDriverLoaded=4C9952143F5B34E4855540E909DE7BA4602C5FDF5AAFE3DAF51FD82EC65FAB53
+DeniedWithoutService=True
+DurableAllocationAndNativeIdentity=True; Volume=\Device\HarddiskVolume36
+RenameRequested=S:\SafeUpload\Escopo Monitorado\6d1e5b886d4a4baea5bc8da8c4d9d978.txt
+RenameNativeFileName=\SafeUpload\Escopo Monitorado\6d1e5b886d4a4baea5bc8da8c4d9d978.txt
+RenameJournalDestination=S:\SafeUpload\Escopo Monitorado\6d1e5b886d4a4baea5bc8da8c4d9d978.txt
+RenameHeldName=\\?\S:\SafeUpload\Escopo Monitorado\6d1e5b886d4a4baea5bc8da8c4d9d978.txt; OldNameExists=False
+ConcurrentWritersAndNativeCrossVolumeRename=True
+ApprovedPublication=alphabetatail; Digest=6784D571A4E44598EB09029A50928089BB7B3D4DD06E9ABD081CC3935DF9A8C9
+ReopenAllocatesNewVersionPreservesPrivateAndPriorBytes=True
+LaterCleanOverwritePublished=True
+ApprovedPublicationIteration=0
+ApprovedPublicationIteration=1
+ApprovedPublicationIteration=2
+ApprovedPublicationIteration=3
+NativePosixReplacementPreservesOldReaderAndPublishes=True
+OrdinaryNativeReplacementBlockedBytesRemainPrivate=True
+ParallelWriterThreadsPublishedExact8192Bytes=True
+UnalignedGrowthPreservesAndZeroes=True
+
+Unload failed with error: 0x801f0010
+Do not detach the filter from the volume at this time.
+UnloadRefusedWithOnlyMappedWriter=True
+MappedWritesAfterCleanupDrainedAndPublishedExactly=True
+ServiceRestartRetainsThenSealsAndPublishes=True
+DestinationByteObserver=samples=293
+IntegratedOwnedStreamMilestone=True
+OriginalDriverRestored=ADA9D05AB6AECDD2B6C521B0CE529FC06C732154ACB3EE85439FBDC8AA80DFCE
+ExperimentalDriverUnloaded=True
+PhysicalDestinationAfterUnload=6d1e5b886d4a4baea5bc8da8c4d9d978-mapped.txt,6d1e5b886d4a4baea5bc8da8c4d9d978-parallel.txt,6d1e5b886d4a4baea5bc8da8c4d9d978-restart.txt,6d1e5b886d4a4baea5bc8da8c4d9d978.txt
+PrivateACLProtectsAfterUnload=True
+
+Microsoft DiskPart version 10.0.19041.964
+
+Copyright (C) Microsoft Corporation.
+On computer: WIN10-DEBUGGED
+
+DiskPart successfully selected the virtual disk file.
+
+DiskPart successfully detached the virtual disk file.
+ObserverLog=C:\Users\vika\AppData\Local\Temp\SafeUpload-owned-6d1e5b886d4a4baea5bc8da8c4d9d978.ps1.observer.log

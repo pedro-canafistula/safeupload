@@ -18,6 +18,7 @@ typedef struct _STAGE_STREAM {
     SECTION_OBJECT_POINTERS Sections;
     LIST_ENTRY Link;
     SHARE_ACCESS ShareAccess;
+    PFILE_LOCK ByteLocks;
     struct _STAGE_VIEW *View;
     volatile LONG FileObjects;
     EX_RUNDOWN_REF PagingRundown;
@@ -43,6 +44,8 @@ typedef struct _STAGE_HANDLE {
     PSTAGE_STREAM Stream;
     ACCESS_MASK GrantedAccess;
     BOOLEAN Cleaned;
+    ULONG LockOwnerCount;
+    PEPROCESS LockOwners[16]; /* Duplicate handles can issue locks in other processes. */
 } STAGE_HANDLE, *PSTAGE_HANDLE;
 
 static LIST_ENTRY StageStreams;
@@ -153,6 +156,7 @@ static VOID StageFreeStream(PSTAGE_STREAM Stream)
     if (Stream->BackingInstance != NULL) FltObjectDereference(Stream->BackingInstance);
     if (Stream->OriginalInstance != NULL) FltObjectDereference(Stream->OriginalInstance);
     if (Stream->RenameExchange != NULL) ExFreePoolWithTag(Stream->RenameExchange, STAGE_TAG);
+    if (Stream->ByteLocks != NULL) FltFreeFileLock(Stream->ByteLocks);
     if (Stream->PagingInitialized) ExDeleteResourceLite(&Stream->PagingResource);
     if (Stream->ResourceInitialized) ExDeleteResourceLite(&Stream->Resource);
     ExFreePoolWithTag(Stream, STAGE_TAG);
@@ -363,6 +367,8 @@ static NTSTATUS StageCreate(PFLT_CALLBACK_DATA Data, PCFLT_RELATED_OBJECTS Objec
         if (stream == NULL) { status = STATUS_INSUFFICIENT_RESOURCES; goto Exit; }
         newStream = TRUE;
         stream->View = view;
+        stream->ByteLocks = FltAllocateFileLock(NULL, NULL);
+        if (stream->ByteLocks == NULL) { status = STATUS_INSUFFICIENT_RESOURCES; goto Exit; }
         status = ExInitializeResourceLite(&stream->Resource);
         if (!NT_SUCCESS(status)) goto Exit;
         stream->ResourceInitialized = TRUE;
@@ -546,12 +552,21 @@ static NTSTATUS StageReadWrite(PFLT_CALLBACK_DATA Data, PSTAGE_STREAM Stream)
     if (buffer == NULL) return STATUS_INSUFFICIENT_RESOURCES;
     StageAcquire(&Stream->Resource);
     __try {
+        LARGE_INTEGER lockLength;
         if (write && (offset.QuadPart == (LONGLONG)(LONG)FILE_WRITE_TO_END_OF_FILE ||
             !FlagOn(((PSTAGE_HANDLE)file->FsContext2)->GrantedAccess, FILE_WRITE_DATA))) offset = Stream->Header.FileSize;
         if (offset.QuadPart == (LONGLONG)(LONG)FILE_USE_FILE_POINTER_POSITION) offset = file->CurrentByteOffset;
         if (offset.QuadPart < 0 || offset.QuadPart > STAGE_MAX_BYTES ||
             length > STAGE_MAX_BYTES - (ULONGLONG)offset.QuadPart) {
             status = STATUS_INVALID_PARAMETER;
+            __leave;
+        }
+        lockLength.QuadPart = length;
+        if (write ? !FsRtlFastCheckLockForWrite(Stream->ByteLocks, &offset, &lockLength,
+                Data->Iopb->Parameters.Write.Key, file, FltGetRequestorProcess(Data)) :
+            !FsRtlFastCheckLockForRead(Stream->ByteLocks, &offset, &lockLength,
+                Data->Iopb->Parameters.Read.Key, file, FltGetRequestorProcess(Data))) {
+            status = STATUS_FILE_LOCK_CONFLICT;
             __leave;
         }
         if (!write) {
@@ -813,6 +828,30 @@ static FLT_PREOP_CALLBACK_STATUS StagePreOperation(PFLT_CALLBACK_DATA Data,
     Data->IoStatus.Information = 0;
     handle = file->FsContext2;
     switch (Data->Iopb->MajorFunction) {
+    case IRP_MJ_LOCK_CONTROL:
+        if (handle == NULL || handle->Cleaned) { status = STATUS_FILE_CLOSED; break; }
+        {
+            PEPROCESS process = FltGetRequestorProcess(Data);
+            ULONG index;
+            FLT_PREOP_CALLBACK_STATUS lockResult;
+            if (process == NULL) { status = STATUS_ACCESS_DENIED; break; }
+            StageAcquire(&stream->Resource);
+            for (index = 0; index < handle->LockOwnerCount; ++index)
+                if (handle->LockOwners[index] == process) break;
+            if (index == handle->LockOwnerCount) {
+                if (index == RTL_NUMBER_OF(handle->LockOwners)) {
+                    StageRelease(&stream->Resource);
+                    status = STATUS_INSUFFICIENT_RESOURCES; break;
+                }
+                ObReferenceObject(process);
+                handle->LockOwners[handle->LockOwnerCount++] = process;
+            }
+            /* FltMgr owns waiting, cancellation and completion. The request's
+             * file object pins this version until a pending lock completes. */
+            lockResult = FltProcessFileLock(stream->ByteLocks, Data, NULL);
+            StageRelease(&stream->Resource);
+            return lockResult;
+        }
     case IRP_MJ_READ:
     case IRP_MJ_WRITE:
         if (FlagOn(Data->Iopb->IrpFlags, IRP_PAGING_IO)) {
@@ -904,10 +943,15 @@ static FLT_PREOP_CALLBACK_STATUS StagePreOperation(PFLT_CALLBACK_DATA Data,
         break;
     case IRP_MJ_CLEANUP:
         if (handle != NULL && !handle->Cleaned) {
+            ULONG index;
             StageAcquire(&stream->Resource);
             stream->DrainStatus = StageFlush(stream);
             IoRemoveShareAccess(file, &stream->ShareAccess);
             handle->Cleaned = TRUE;
+            /* Cleanup can run in a different process from a lock issued via
+             * a duplicate. Retain and unlock every participating process. */
+            for (index = 0; index < handle->LockOwnerCount; ++index)
+                (VOID)FsRtlFastUnlockAll(stream->ByteLocks, file, handle->LockOwners[index], NULL);
             SetFlag(file->Flags, FO_CLEANUP_COMPLETE);
             (VOID)CcUninitializeCacheMap(file, NULL, NULL);
             StageRelease(&stream->Resource);
@@ -916,6 +960,9 @@ static FLT_PREOP_CALLBACK_STATUS StagePreOperation(PFLT_CALLBACK_DATA Data,
         break;
     case IRP_MJ_CLOSE:
         if (handle != NULL) {
+            ULONG index;
+            for (index = 0; index < handle->LockOwnerCount; ++index)
+                ObDereferenceObject(handle->LockOwners[index]);
             ExFreePoolWithTag(handle, STAGE_TAG);
             file->FsContext2 = NULL;
             InterlockedDecrement(&StageFileObjects);
