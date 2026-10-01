@@ -1,4 +1,5 @@
 using SafeUpload.Agent.Core.Application;
+using SafeUpload.Agent.Core.Contracts;
 using SafeUpload.Agent.Core.Domain;
 using SafeUpload.Agent.Core.Infrastructure;
 using SafeUpload.Agent.Core.Infrastructure.Extraction;
@@ -34,6 +35,48 @@ public sealed class StagedTransferPublisherTests : IDisposable
     }
 
     public void Dispose() => _workspace.Dispose();
+
+    [Theory]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task Committed_publication_remains_released_after_revocation_failure_or_cancellation(
+        bool cancel, bool failRevoke)
+    {
+        using var cancellation = new CancellationTokenSource();
+        using var subscription = _notifications.Subscribe();
+        var gate = new FinalizationPublicationGate(cancel ? cancellation : null, failRevoke);
+        var publisher = new StagedTransferPublisher(new InspectionService(
+            new LocalPolicyStore(_workspace.PolicyFile), new LocalQueueAuditSink(_workspace.QueueFile),
+            ExtractorRegistry.CreateDefault(), new VerdictCache()),
+            _notifications, _journal, _stagingRoot, gate);
+        var transfer = Transfer("committed.txt", "approved committed version");
+
+        Assert.Equal(StagedTransferOutcome.Released,
+            await publisher.PublishAsync(transfer, cancellation.Token));
+        Assert.True(gate.Disposed);
+        Assert.Equal("approved committed version", await File.ReadAllTextAsync(transfer.DestinationPath));
+        Assert.Equal(TransferJournalState.Released,
+            (await _journal.ReadAsync(transfer.TransferId, CancellationToken.None)).State);
+        var phases = new List<TransferPhase>();
+        while (subscription.Reader.TryRead(out var notification))
+            if (notification is TransferNotification transferNotification) phases.Add(transferNotification.Phase);
+        Assert.Contains(TransferPhase.Released, phases);
+        Assert.DoesNotContain(TransferPhase.Retained, phases);
+    }
+
+    private sealed class FinalizationPublicationGate(CancellationTokenSource? cancellation, bool fail)
+        : IStagedPublicationGate, IDisposable
+    {
+        public bool Disposed;
+        public IDisposable Authorize(StagedTransfer transfer, string temporaryDestination, string digest) => this;
+        public void Dispose()
+        {
+            Disposed = true;
+            cancellation?.Cancel();
+            if (fail) throw new IOException("Injected disconnect during permit revocation.");
+        }
+    }
 
     [Fact]
     public async Task Approved_replacement_preserves_a_live_public_reader()

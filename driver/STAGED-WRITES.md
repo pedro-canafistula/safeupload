@@ -213,6 +213,36 @@ confirms the original installed hash, filter unloaded, Verifier off, no test
 service/tasks and S:/VHDX absent. Alias, namespace, recovery and destination gates
 above remain open; no unsupported namespace operation was enabled by this increment.
 
+### Follow-up: publication commit and cancellation
+
+A successful native destination rename is the publication commit point. Permit
+revocation or output disposal can subsequently fail after a port disconnect;
+the old catch incorrectly changed Publishing to Retained even though approved
+bytes had reached the destination. Three deterministic tests failed before the
+fix (revocation failure, cancellation during revocation, both):
+[before](evidence/2026-10-01/publication-finalization-before.txt).
+The publisher now records that commit explicitly, finishes Released bookkeeping
+and audit without the caller's canceled token, and emits Released. Cleanup
+failure after commit is logged; it cannot authorize another copy or reverse the
+already consumed permit. Failure before commit keeps the existing fail-closed
+behavior. Journal failure after commit leaves the durable Publishing intent for
+reconciliation; full crash/audit-loss injection remains open.
+
+All [237 service tests and the app Release build](evidence/2026-10-01/publication-finalization-build-tests.txt)
+PASS. The changed service package with unchanged lock driver passed
+`Test-StagedOwnedStreams.ps1 -Verifier -ReplacementCases -PublicationIterations 4`:
+[gate](evidence/2026-10-01/publication-finalization-gate.txt),
+[active 0x13B](evidence/2026-10-01/publication-finalization-verifier-query.txt).
+It completed 293 independent byte passes, concurrent/mapped retirement,
+replacement and service-restart cases. Package SHA256:
+`77868544627FF7286FD594C5B777F04B000BD5BFAE83308D8D79AE66781521E2`.
+The tested SYS remains
+`4C9952143F5B34E4855540E909DE7BA4602C5FDF5AAFE3DAF51FD82EC65FAB53`;
+no kernel source changed in this increment, so its four WDK build gates above
+remain applicable. [Independent restoration](evidence/2026-10-01/publication-finalization-final-state.txt)
+at 21:21:06 UTC confirms the original hash, filter unloaded, Verifier off,
+no test service/tasks and S:/VHDX absent. Remaining tracker items stay open.
+
 ## Current milestone (1 October 2026)
 
 Branch: `feat/staged-kernel-prototype`. The owned-stream experiment is integrated

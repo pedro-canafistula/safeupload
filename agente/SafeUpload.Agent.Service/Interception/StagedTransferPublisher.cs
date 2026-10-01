@@ -248,6 +248,7 @@ public sealed class StagedTransferPublisher
             TransferJournalState.Approved, TransferJournalState.Publishing,
             null, cancellationToken).ConfigureAwait(false);
 
+        bool committed = false;
         try
         {
             _logger?.LogDebug("Requesting kernel publication permission for {TransferId}.", transfer.TransferId);
@@ -260,8 +261,17 @@ public sealed class StagedTransferPublisher
                 _logger?.LogDebug("Approved publication bytes copied for {TransferId}.", transfer.TransferId);
                 _logger?.LogDebug("Renaming approved publication file for {TransferId}.", transfer.TransferId);
                 StagedDestinationFile.Commit(output, temporaryDestination, destinationPath);
+                committed = true;
             }
             _logger?.LogDebug("Approved publication rename completed for {TransferId}.", transfer.TransferId);
+        }
+        catch (Exception ex) when (committed)
+        {
+            // A successful native rename is the publication commit point.
+            // Losing the port while revoking its already-consumed permit, or
+            // cancellation during disposal, cannot undo those approved bytes.
+            _logger?.LogWarning(ex, "Publication committed for {TransferId}; final handle/permit cleanup failed.",
+                transfer.TransferId);
         }
         catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
         {
@@ -279,10 +289,10 @@ public sealed class StagedTransferPublisher
 
         await _journal.TransitionAsync(transfer.TransferId,
             TransferJournalState.Publishing, TransferJournalState.Released,
-            null, cancellationToken).ConfigureAwait(false);
+            null, CancellationToken.None).ConfigureAwait(false);
         await _inspection.RecordTransferOutcomeAsync(operation, result,
             Verdict.Approved, justifiedApproval ? "justified_version" : null,
-            cancellationToken).ConfigureAwait(false);
+            CancellationToken.None).ConfigureAwait(false);
 
         _notifications.Publish(new TransferNotification(
             transfer.TransferId, fileName, TransferPhase.Released), transfer.SessionId);
