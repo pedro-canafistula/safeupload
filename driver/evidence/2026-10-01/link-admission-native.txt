@@ -1,0 +1,107 @@
+UTC=2026-10-01T21:59:12.8566218Z
+FixtureDirectory=C:\Users\vika\AppData\Local\Temp\SafeUpload-link-admission-118f1f847fb14277af3f51e5e5fc67c5
+Principal=WIN10-DEBUGGED\vika
+Administrator=True
+FixtureFilesystem=NTFS
+
+
+Caption     : Microsoft Windows 10 Pro
+Version     : 10.0.19045
+BuildNumber : 19045
+
+
+
+
+
+CurrentBuild   : 19045
+UBR            : 2965
+DisplayVersion : 22H2
+
+
+
+
+
+FileName       : C:\Windows\System32\ntoskrnl.exe
+FileVersion    : 10.0.19041.2965 (WinBuild.160101.0800)
+ProductVersion : 10.0.19041.2965
+
+
+
+
+
+Algorithm : SHA256
+Hash      : EACE65A06BAB6B67461ED29783CDE9367C3DDD2A31B2594C59D22D77460D4F4B
+Path      : C:\Windows\System32\ntoskrnl.exe
+
+
+
+
+
+FileName       : C:\Windows\System32\drivers\ntfs.sys
+FileVersion    : 10.0.19041.1 (WinBuild.160101.0800)
+ProductVersion : 10.0.19041.1
+
+
+
+
+
+Algorithm : SHA256
+Hash      : 0F27357806E9E28F1436A855CAC4133A899DB579E9C70C01A7EDF3E9A2448457
+Path      : C:\Windows\System32\drivers\ntfs.sys
+
+
+
+
+
+FileName       : C:\Windows\System32\ntdll.dll
+FileVersion    : 10.0.19041.2788 (WinBuild.160101.0800)
+ProductVersion : 10.0.19041.2788
+
+
+
+
+
+Algorithm : SHA256
+Hash      : FDB2689BFFABE7D2E300882CA1C3FC2FE24A998FFCBD5F48795C7D95712D1E98
+Path      : C:\Windows\System32\ntdll.dll
+
+
+
+
+
+FileName       : C:\Windows\System32\drivers\fltmgr.sys
+FileVersion    : 10.0.19041.1 (WinBuild.160101.0800)
+ProductVersion : 10.0.19041.1
+
+
+
+
+
+Algorithm : SHA256
+Hash      : 4A96EBDFE8268AB77DBBC72EAB3D58D4C374BC269F1C0C06690A3C6A4A70D552
+Path      : C:\Windows\System32\drivers\fltmgr.sys
+
+
+
+INPUT GuardAccess=0x00000080 GuardShare=3 SourceAccess=0x00000000 SourceShare=7 FileLinkInformation=11 Replace=False
+RESULT SourceOpen=0 LinkNtStatus=0x00000000 SamePhysicalIdentity=True
+INPUT GuardAccess=0x00000080 GuardShare=3 SourceAccess=0x00000080 SourceShare=7 FileLinkInformation=11 Replace=False
+RESULT SourceOpen=0 LinkNtStatus=0x00000000 SamePhysicalIdentity=True
+INPUT GuardAccess=0x00000080 GuardShare=3 SourceAccess=0x80000000 SourceShare=7 FileLinkInformation=11 Replace=False
+RESULT SourceOpen=0 LinkNtStatus=0x00000000 SamePhysicalIdentity=True
+INPUT GuardAccess=0x00000080 GuardShare=3 SourceAccess=0x40000000 SourceShare=7 FileLinkInformation=11 Replace=False
+RESULT SourceOpen=0 LinkNtStatus=0x00000000 SamePhysicalIdentity=True
+INPUT GuardAccess=0x00000080 GuardShare=3 SourceAccess=0x00010000 SourceShare=7 FileLinkInformation=11 Replace=False
+RESULT SourceOpen=0 LinkNtStatus=0x00000000 SamePhysicalIdentity=True
+INPUT GuardAccess=0x80000000 GuardShare=3 SourceAccess=0x00000000 SourceShare=7 FileLinkInformation=11 Replace=False
+RESULT SourceOpen=0 LinkNtStatus=0x00000000 SamePhysicalIdentity=True
+INPUT GuardAccess=0x80000000 GuardShare=3 SourceAccess=0x00000080 SourceShare=7 FileLinkInformation=11 Replace=False
+RESULT SourceOpen=0 LinkNtStatus=0x00000000 SamePhysicalIdentity=True
+INPUT GuardAccess=0x80000000 GuardShare=3 SourceAccess=0x80000000 SourceShare=7 FileLinkInformation=11 Replace=False
+RESULT SourceOpen=0 LinkNtStatus=0x00000000 SamePhysicalIdentity=True
+INPUT GuardAccess=0x80000000 GuardShare=3 SourceAccess=0x40000000 SourceShare=7 FileLinkInformation=11 Replace=False
+RESULT SourceOpen=0 LinkNtStatus=0x00000000 SamePhysicalIdentity=True
+INPUT GuardAccess=0x80000000 GuardShare=3 SourceAccess=0x00010000 SourceShare=7 FileLinkInformation=11 Replace=False
+RESULT SourceOpen=32 LinkNotIssued=True
+
+UnfilteredFixturesRemovedOriginalDriverUnchanged=True

@@ -1,0 +1,261 @@
+
+************* Preparing the environment for Debugger Extensions Gallery repositories **************
+   ExtensionRepository : Implicit
+   UseExperimentalFeatureForNugetShare : true
+   AllowNugetExeUpdate : true
+   NonInteractiveNuget : true
+   AllowNugetMSCredentialProviderInstall : true
+   AllowParallelInitializationOfLocalRepositories : true
+   EnableRedirectToChakraJsProvider : false
+
+   -- Configuring repositories
+      ----> Repository : LocalInstalled, Enabled: true
+      ----> Repository : UserExtensions, Enabled: true
+
+>>>>>>>>>>>>> Preparing the environment for Debugger Extensions Gallery repositories completed, duration 0.000 seconds
+
+************* Waiting for Debugger Extensions Gallery to Initialize **************
+
+>>>>>>>>>>>>> Waiting for Debugger Extensions Gallery to Initialize completed, duration 0.000 seconds
+   ----> Repository : UserExtensions, Enabled: true, Packages count: 0
+   ----> Repository : LocalInstalled, Enabled: true, Packages count: 0
+
+Microsoft (R) Windows Debugger Version 10.0.28000.2705 AMD64
+Copyright (c) Microsoft Corporation. All rights reserved.
+
+CommandLine: C:\Users\vika\Documents\NativeLinkAdmissionProbe.exe C:\Users\vika\AppData\Local\Temp\SafeUpload-link-trace-5f1dfbb033ce4ec1aefc4c6493fc093a
+Unable to add extension DLL: ntsdexts
+Unable to add extension DLL: uext
+Unable to add extension DLL: exts
+
+************* Path validation summary **************
+Response                         Time (ms)     Location
+Deferred                                       srv*
+Symbol search path is: srv*
+Executable search path is:
+ModLoad: 00000000`00010000 00000000`00016000   image00000000`00010000
+ModLoad: 00007ff8`608f0000 00007ff8`60ae8000   ntdll.dll
+ModLoad: 00007ff8`4fd10000 00007ff8`4fd75000   C:\Windows\SYSTEM32\MSCOREE.DLL
+ModLoad: 00007ff8`5e9e0000 00007ff8`5ea9f000   C:\Windows\System32\KERNEL32.dll
+ModLoad: 00007ff8`5e060000 00007ff8`5e356000   C:\Windows\System32\KERNELBASE.dll
+(1e08.1e54): Break instruction exception - code 80000003 (first chance)
+ntdll!LdrpDoDebuggerBreak+0x30:
+00007ff8`609c0910 cc              int     3
+0:000> .sympath srv*C:\Users\vika\Documents\link-admission-symbols*https://msdl.microsoft.com/download/symbols
+Symbol search path is: srv*C:\Users\vika\Documents\link-admission-symbols*https://msdl.microsoft.com/download/symbols
+Expanded Symbol search path is: srv*c:\users\vika\documents\link-admission-symbols*https://msdl.microsoft.com/download/symbols
+
+************* Path validation summary **************
+Response                         Time (ms)     Location
+Deferred                                       srv*C:\Users\vika\Documents\link-admission-symbols*https://msdl.microsoft.com/download/symbols
+0:000> ld ntdll
+Symbols already loaded for ntdll
+0:000> lmvm ntdll
+start             end                 module name
+00007ff8`608f0000 00007ff8`60ae8000   ntdll      (pdb symbols)          c:\users\vika\documents\link-admission-symbols\ntdll.pdb\76C7BBFD419865CA30108FE0023CF0401\ntdll.pdb
+    Loaded symbol image file: C:\Windows\SYSTEM32\ntdll.dll
+    Image path: ntdll.dll
+    Image name: ntdll.dll
+    Image was built with /Brepro flag.
+    Timestamp:        2F715B17 (This is a reproducible build file hash, not a timestamp)
+    CheckSum:         001FB42F
+    ImageSize:        001F8000
+    File version:     10.0.19041.2788
+    Product version:  10.0.19041.2788
+    File flags:       0 (Mask 3F)
+    File OS:          40004 NT Win32
+    File type:        2.0 Dll
+    File date:        00000000.00000000
+    Translations:     0409.04b0
+    Information from resource tables:
+        CompanyName:      Microsoft Corporation
+        ProductName:      Microsoft« Windows« Operating System
+        InternalName:     ntdll.dll
+        OriginalFilename: ntdll.dll
+        ProductVersion:   10.0.19041.2788
+        FileVersion:      10.0.19041.2788 (WinBuild.160101.0800)
+        FileDescription:  NT Layer DLL
+        LegalCopyright:   ® Microsoft Corporation. All rights reserved.
+0:000> !lmi ntdll
+Loaded Module Info: [ntdll]
+         Module: ntdll
+   Base Address: 00007ff8608f0000
+     Image Name: ntdll.dll
+   Machine Type: 34404 (X64)
+     Time Stamp: 2f715b17 (This is a reproducible build file hash, not a true timestamp)
+           Size: 1f8000
+       CheckSum: 1fb42f
+Characteristics: 2022
+Debug Data Dirs: Type  Size     VA  Pointer
+             CODEVIEW    22, 140120,  13cf20 RSDS - GUID: {76C7BBFD-4198-65CA-3010-8FE0023CF040}
+               Age: 1, Pdb: ntdll.pdb
+                 POGO   688, 140144,  13cf44 [Data not mapped]
+                REPRO    24, 1407cc,  13d5cc Reproducible build
+           DLLCHAR_EX     4, 1407f0,  13d5f0 Extended DLL characteristics: 00000001
+                                                 CET compatible
+     Image Type: FILE     - Image read successfully from debugger.
+                 C:\Windows\SYSTEM32\ntdll.dll
+    Symbol Type: PDB      - Symbols loaded successfully from symbol server.
+                 c:\users\vika\documents\link-admission-symbols\ntdll.pdb\76C7BBFD419865CA30108FE0023CF0401\ntdll.pdb
+    Load Report: public symbols , not source indexed
+                 c:\users\vika\documents\link-admission-symbols\ntdll.pdb\76C7BBFD419865CA30108FE0023CF0401\ntdll.pdb
+0:000> x ntdll!NtSetInformationFile
+00007ff8`6098d530 ntdll!NtSetInformationFile (NtSetInformationFile)
+0:000> sxd clr
+0:000> bp ntdll!NtSetInformationFile ".if (dwo(@rsp+0x28) == 0xb) { .printf \"FILE_LINK_ENTRY Handle=%p Buffer=%p Length=%x Class=11\\n\", @rcx, @r8, @r9; du @r8+0x14; k 6; } ; gc"
+0:000> g
+ModLoad: 00007ff8`606e0000 00007ff8`6078f000   C:\Windows\System32\ADVAPI32.dll
+ModLoad: 00007ff8`5eaa0000 00007ff8`5eb3e000   C:\Windows\System32\msvcrt.dll
+ModLoad: 00007ff8`5f4d0000 00007ff8`5f56c000   C:\Windows\System32\sechost.dll
+ModLoad: 00007ff8`5fe60000 00007ff8`5ff86000   C:\Windows\System32\RPCRT4.dll
+ModLoad: 00007ff8`4fb80000 00007ff8`4fc2a000   C:\Windows\Microsoft.NET\Framework64\v4.0.30319\mscoreei.dll
+ModLoad: 00007ff8`604b0000 00007ff8`60505000   C:\Windows\System32\SHLWAPI.dll
+ModLoad: 00007ff8`5beb0000 00007ff8`5bec2000   C:\Windows\SYSTEM32\kernel.appcore.dll
+ModLoad: 00007ff8`4fc30000 00007ff8`4fc3a000   C:\Windows\SYSTEM32\VERSION.dll
+ModLoad: 00007ff8`472e0000 00007ff8`47e14000   C:\Windows\Microsoft.NET\Framework64\v4.0.30319\clr.dll
+ModLoad: 00007ff8`60540000 00007ff8`606dd000   C:\Windows\System32\USER32.dll
+ModLoad: 00007ff8`5e4c0000 00007ff8`5e4e2000   C:\Windows\System32\win32u.dll
+ModLoad: 00007ff8`4f7b0000 00007ff8`4f86d000   C:\Windows\SYSTEM32\ucrtbase_clr0400.dll
+ModLoad: 00007ff8`56ea0000 00007ff8`56eb6000   C:\Windows\SYSTEM32\VCRUNTIME140_CLR0400.dll
+ModLoad: 00007ff8`5e950000 00007ff8`5e97c000   C:\Windows\System32\GDI32.dll
+ModLoad: 00007ff8`5e710000 00007ff8`5e825000   C:\Windows\System32\gdi32full.dll
+ModLoad: 00007ff8`5e8b0000 00007ff8`5e94d000   C:\Windows\System32\msvcp_win.dll
+ModLoad: 00007ff8`5e610000 00007ff8`5e710000   C:\Windows\System32\ucrtbase.dll
+ModLoad: 00007ff8`60010000 00007ff8`60364000   C:\Windows\System32\combase.dll
+(1e08.1e54): Unknown exception - code 04242420 (first chance)
+ModLoad: 00007ff8`5f8c0000 00007ff8`5f8c8000   C:\Windows\System32\psapi.dll
+ModLoad: 00007ff8`450a0000 00007ff8`466a0000   C:\Windows\assembly\NativeImages_v4.0.30319_64\mscorlib\b647019e9c1f6030fc3caa74d4f8f2ac\mscorlib.ni.dll
+ModLoad: 00007ff8`5f720000 00007ff8`5f84a000   C:\Windows\System32\ole32.dll
+ModLoad: 00007ff8`60010000 00007ff8`60364000   C:\Windows\System32\combase.dll
+ModLoad: 00007ff8`5dfd0000 00007ff8`5e052000   C:\Windows\System32\bcryptPrimitives.dll
+ModLoad: 00007ff8`49580000 00007ff8`496cf000   C:\Windows\Microsoft.NET\Framework64\v4.0.30319\clrjit.dll
+ModLoad: 00007ff8`44420000 00007ff8`45091000   C:\Windows\assembly\NativeImages_v4.0.30319_64\System\4fb9160b27f2daa1ec55050bde519fcc\System.ni.dll
+INPUT GuardAccess=0x00000080 GuardShare=3 SourceAccess=0x00000000 SourceShare=7 FileLinkInformation=11 Replace=False
+FILE_LINK_ENTRY Handle=00000000000002b4 Buffer=0000000001a8b510 Length=104 Class=11
+00000000`01a8b524  "\??\C:\Users\vika\AppData\Local\"
+00000000`01a8b564  "Temp\SafeUpload-link-trace-5f1df"
+00000000`01a8b5a4  "bb033ce4ec1aefc4c6493fc093a\0000"
+00000000`01a8b5e4  "0080-00000000-alias.txt"
+Child-SP          RetAddr               Call Site
+00000000`007fea48 00007ff7`e7df1363     ntdll!NtSetInformationFile
+00000000`007fea50 00007ff7`e7df1254     NativeLinkAdmissionProbe!DomainBoundILStubClass.IL_STUB_PInvoke(Microsoft.Win32.SafeHandles.SafeFileHandle, IoStatus ByRef, Byte[], UInt32, Int32)+0xe3
+00000000`007feb40 00007ff7`e7df0b7c     NativeLinkAdmissionProbe!NativeLinkAdmissionProbe.Link(Microsoft.Win32.SafeHandles.SafeFileHandle, System.String)+0xa4
+00000000`007febb0 00007ff7`e7df08c6     NativeLinkAdmissionProbe!NativeLinkAdmissionProbe.Run(System.String)+0x22c
+00000000`007fec60 00007ff8`472e6993     NativeLinkAdmissionProbe!NativeLinkAdmissionProbe.Main(System.String[])+0x36
+00000000`007fecb0 00007ff8`472e68a0     clr!CallDescrWorkerInternal+0x83
+RESULT SourceOpen=0 LinkNtStatus=0x00000000 SamePhysicalIdentity=True
+INPUT GuardAccess=0x00000080 GuardShare=3 SourceAccess=0x00000080 SourceShare=7 FileLinkInformation=11 Replace=False
+FILE_LINK_ENTRY Handle=00000000000002fc Buffer=0000000001a8f200 Length=104 Class=11
+00000000`01a8f214  "\??\C:\Users\vika\AppData\Local\"
+00000000`01a8f254  "Temp\SafeUpload-link-trace-5f1df"
+00000000`01a8f294  "bb033ce4ec1aefc4c6493fc093a\0000"
+00000000`01a8f2d4  "0080-00000080-alias.txt"
+Child-SP          RetAddr               Call Site
+00000000`007fea48 00007ff7`e7df1363     ntdll!NtSetInformationFile
+00000000`007fea50 00007ff7`e7df1254     NativeLinkAdmissionProbe!DomainBoundILStubClass.IL_STUB_PInvoke(Microsoft.Win32.SafeHandles.SafeFileHandle, IoStatus ByRef, Byte[], UInt32, Int32)+0xe3
+00000000`007feb40 00007ff7`e7df0b7c     NativeLinkAdmissionProbe!NativeLinkAdmissionProbe.Link(Microsoft.Win32.SafeHandles.SafeFileHandle, System.String)+0xa4
+00000000`007febb0 00007ff7`e7df08c6     NativeLinkAdmissionProbe!NativeLinkAdmissionProbe.Run(System.String)+0x22c
+00000000`007fec60 00007ff8`472e6993     NativeLinkAdmissionProbe!NativeLinkAdmissionProbe.Main(System.String[])+0x36
+00000000`007fecb0 00007ff8`472e68a0     clr!CallDescrWorkerInternal+0x83
+RESULT SourceOpen=0 LinkNtStatus=0x00000000 SamePhysicalIdentity=True
+INPUT GuardAccess=0x00000080 GuardShare=3 SourceAccess=0x80000000 SourceShare=7 FileLinkInformation=11 Replace=False
+FILE_LINK_ENTRY Handle=00000000000002fc Buffer=0000000001a929f0 Length=104 Class=11
+00000000`01a92a04  "\??\C:\Users\vika\AppData\Local\"
+00000000`01a92a44  "Temp\SafeUpload-link-trace-5f1df"
+00000000`01a92a84  "bb033ce4ec1aefc4c6493fc093a\0000"
+00000000`01a92ac4  "0080-80000000-alias.txt"
+Child-SP          RetAddr               Call Site
+00000000`007fea48 00007ff7`e7df1363     ntdll!NtSetInformationFile
+00000000`007fea50 00007ff7`e7df1254     NativeLinkAdmissionProbe!DomainBoundILStubClass.IL_STUB_PInvoke(Microsoft.Win32.SafeHandles.SafeFileHandle, IoStatus ByRef, Byte[], UInt32, Int32)+0xe3
+00000000`007feb40 00007ff7`e7df0b7c     NativeLinkAdmissionProbe!NativeLinkAdmissionProbe.Link(Microsoft.Win32.SafeHandles.SafeFileHandle, System.String)+0xa4
+00000000`007febb0 00007ff7`e7df08c6     NativeLinkAdmissionProbe!NativeLinkAdmissionProbe.Run(System.String)+0x22c
+00000000`007fec60 00007ff8`472e6993     NativeLinkAdmissionProbe!NativeLinkAdmissionProbe.Main(System.String[])+0x36
+00000000`007fecb0 00007ff8`472e68a0     clr!CallDescrWorkerInternal+0x83
+RESULT SourceOpen=0 LinkNtStatus=0x00000000 SamePhysicalIdentity=True
+INPUT GuardAccess=0x00000080 GuardShare=3 SourceAccess=0x40000000 SourceShare=7 FileLinkInformation=11 Replace=False
+FILE_LINK_ENTRY Handle=00000000000002fc Buffer=0000000001a961e0 Length=104 Class=11
+00000000`01a961f4  "\??\C:\Users\vika\AppData\Local\"
+00000000`01a96234  "Temp\SafeUpload-link-trace-5f1df"
+00000000`01a96274  "bb033ce4ec1aefc4c6493fc093a\0000"
+00000000`01a962b4  "0080-40000000-alias.txt"
+Child-SP          RetAddr               Call Site
+00000000`007fea48 00007ff7`e7df1363     ntdll!NtSetInformationFile
+00000000`007fea50 00007ff7`e7df1254     NativeLinkAdmissionProbe!DomainBoundILStubClass.IL_STUB_PInvoke(Microsoft.Win32.SafeHandles.SafeFileHandle, IoStatus ByRef, Byte[], UInt32, Int32)+0xe3
+00000000`007feb40 00007ff7`e7df0b7c     NativeLinkAdmissionProbe!NativeLinkAdmissionProbe.Link(Microsoft.Win32.SafeHandles.SafeFileHandle, System.String)+0xa4
+00000000`007febb0 00007ff7`e7df08c6     NativeLinkAdmissionProbe!NativeLinkAdmissionProbe.Run(System.String)+0x22c
+00000000`007fec60 00007ff8`472e6993     NativeLinkAdmissionProbe!NativeLinkAdmissionProbe.Main(System.String[])+0x36
+00000000`007fecb0 00007ff8`472e68a0     clr!CallDescrWorkerInternal+0x83
+RESULT SourceOpen=0 LinkNtStatus=0x00000000 SamePhysicalIdentity=True
+INPUT GuardAccess=0x00000080 GuardShare=3 SourceAccess=0x00010000 SourceShare=7 FileLinkInformation=11 Replace=False
+FILE_LINK_ENTRY Handle=00000000000002fc Buffer=0000000001a999b8 Length=104 Class=11
+00000000`01a999cc  "\??\C:\Users\vika\AppData\Local\"
+00000000`01a99a0c  "Temp\SafeUpload-link-trace-5f1df"
+00000000`01a99a4c  "bb033ce4ec1aefc4c6493fc093a\0000"
+00000000`01a99a8c  "0080-00010000-alias.txt"
+Child-SP          RetAddr               Call Site
+00000000`007fea48 00007ff7`e7df1363     ntdll!NtSetInformationFile
+00000000`007fea50 00007ff7`e7df1254     NativeLinkAdmissionProbe!DomainBoundILStubClass.IL_STUB_PInvoke(Microsoft.Win32.SafeHandles.SafeFileHandle, IoStatus ByRef, Byte[], UInt32, Int32)+0xe3
+00000000`007feb40 00007ff7`e7df0b7c     NativeLinkAdmissionProbe!NativeLinkAdmissionProbe.Link(Microsoft.Win32.SafeHandles.SafeFileHandle, System.String)+0xa4
+00000000`007febb0 00007ff7`e7df08c6     NativeLinkAdmissionProbe!NativeLinkAdmissionProbe.Run(System.String)+0x22c
+00000000`007fec60 00007ff8`472e6993     NativeLinkAdmissionProbe!NativeLinkAdmissionProbe.Main(System.String[])+0x36
+00000000`007fecb0 00007ff8`472e68a0     clr!CallDescrWorkerInternal+0x83
+RESULT SourceOpen=0 LinkNtStatus=0x00000000 SamePhysicalIdentity=True
+INPUT GuardAccess=0x80000000 GuardShare=3 SourceAccess=0x00000000 SourceShare=7 FileLinkInformation=11 Replace=False
+FILE_LINK_ENTRY Handle=00000000000002fc Buffer=0000000001a9d1a8 Length=104 Class=11
+00000000`01a9d1bc  "\??\C:\Users\vika\AppData\Local\"
+00000000`01a9d1fc  "Temp\SafeUpload-link-trace-5f1df"
+00000000`01a9d23c  "bb033ce4ec1aefc4c6493fc093a\8000"
+00000000`01a9d27c  "0000-00000000-alias.txt"
+Child-SP          RetAddr               Call Site
+00000000`007fea48 00007ff7`e7df1363     ntdll!NtSetInformationFile
+00000000`007fea50 00007ff7`e7df1254     NativeLinkAdmissionProbe!DomainBoundILStubClass.IL_STUB_PInvoke(Microsoft.Win32.SafeHandles.SafeFileHandle, IoStatus ByRef, Byte[], UInt32, Int32)+0xe3
+00000000`007feb40 00007ff7`e7df0b7c     NativeLinkAdmissionProbe!NativeLinkAdmissionProbe.Link(Microsoft.Win32.SafeHandles.SafeFileHandle, System.String)+0xa4
+00000000`007febb0 00007ff7`e7df08c6     NativeLinkAdmissionProbe!NativeLinkAdmissionProbe.Run(System.String)+0x22c
+00000000`007fec60 00007ff8`472e6993     NativeLinkAdmissionProbe!NativeLinkAdmissionProbe.Main(System.String[])+0x36
+00000000`007fecb0 00007ff8`472e68a0     clr!CallDescrWorkerInternal+0x83
+RESULT SourceOpen=0 LinkNtStatus=0x00000000 SamePhysicalIdentity=True
+INPUT GuardAccess=0x80000000 GuardShare=3 SourceAccess=0x00000080 SourceShare=7 FileLinkInformation=11 Replace=False
+FILE_LINK_ENTRY Handle=00000000000002fc Buffer=0000000001aa0998 Length=104 Class=11
+00000000`01aa09ac  "\??\C:\Users\vika\AppData\Local\"
+00000000`01aa09ec  "Temp\SafeUpload-link-trace-5f1df"
+00000000`01aa0a2c  "bb033ce4ec1aefc4c6493fc093a\8000"
+00000000`01aa0a6c  "0000-00000080-alias.txt"
+Child-SP          RetAddr               Call Site
+00000000`007fea48 00007ff7`e7df1363     ntdll!NtSetInformationFile
+00000000`007fea50 00007ff7`e7df1254     NativeLinkAdmissionProbe!DomainBoundILStubClass.IL_STUB_PInvoke(Microsoft.Win32.SafeHandles.SafeFileHandle, IoStatus ByRef, Byte[], UInt32, Int32)+0xe3
+00000000`007feb40 00007ff7`e7df0b7c     NativeLinkAdmissionProbe!NativeLinkAdmissionProbe.Link(Microsoft.Win32.SafeHandles.SafeFileHandle, System.String)+0xa4
+00000000`007febb0 00007ff7`e7df08c6     NativeLinkAdmissionProbe!NativeLinkAdmissionProbe.Run(System.String)+0x22c
+00000000`007fec60 00007ff8`472e6993     NativeLinkAdmissionProbe!NativeLinkAdmissionProbe.Main(System.String[])+0x36
+00000000`007fecb0 00007ff8`472e68a0     clr!CallDescrWorkerInternal+0x83
+RESULT SourceOpen=0 LinkNtStatus=0x00000000 SamePhysicalIdentity=True
+INPUT GuardAccess=0x80000000 GuardShare=3 SourceAccess=0x80000000 SourceShare=7 FileLinkInformation=11 Replace=False
+FILE_LINK_ENTRY Handle=00000000000002fc Buffer=0000000001aa4188 Length=104 Class=11
+00000000`01aa419c  "\??\C:\Users\vika\AppData\Local\"
+00000000`01aa41dc  "Temp\SafeUpload-link-trace-5f1df"
+00000000`01aa421c  "bb033ce4ec1aefc4c6493fc093a\8000"
+00000000`01aa425c  "0000-80000000-alias.txt"
+Child-SP          RetAddr               Call Site
+00000000`007fea48 00007ff7`e7df1363     ntdll!NtSetInformationFile
+00000000`007fea50 00007ff7`e7df1254     NativeLinkAdmissionProbe!DomainBoundILStubClass.IL_STUB_PInvoke(Microsoft.Win32.SafeHandles.SafeFileHandle, IoStatus ByRef, Byte[], UInt32, Int32)+0xe3
+00000000`007feb40 00007ff7`e7df0b7c     NativeLinkAdmissionProbe!NativeLinkAdmissionProbe.Link(Microsoft.Win32.SafeHandles.SafeFileHandle, System.String)+0xa4
+00000000`007febb0 00007ff7`e7df08c6     NativeLinkAdmissionProbe!NativeLinkAdmissionProbe.Run(System.String)+0x22c
+00000000`007fec60 00007ff8`472e6993     NativeLinkAdmissionProbe!NativeLinkAdmissionProbe.Main(System.String[])+0x36
+00000000`007fecb0 00007ff8`472e68a0     clr!CallDescrWorkerInternal+0x83
+RESULT SourceOpen=0 LinkNtStatus=0x00000000 SamePhysicalIdentity=True
+INPUT GuardAccess=0x80000000 GuardShare=3 SourceAccess=0x40000000 SourceShare=7 FileLinkInformation=11 Replace=False
+FILE_LINK_ENTRY Handle=00000000000002fc Buffer=0000000001aa7960 Length=104 Class=11
+00000000`01aa7974  "\??\C:\Users\vika\AppData\Local\"
+00000000`01aa79b4  "Temp\SafeUpload-link-trace-5f1df"
+00000000`01aa79f4  "bb033ce4ec1aefc4c6493fc093a\8000"
+00000000`01aa7a34  "0000-40000000-alias.txt"
+Child-SP          RetAddr               Call Site
+00000000`007fea48 00007ff7`e7df1363     ntdll!NtSetInformationFile
+00000000`007fea50 00007ff7`e7df1254     NativeLinkAdmissionProbe!DomainBoundILStubClass.IL_STUB_PInvoke(Microsoft.Win32.SafeHandles.SafeFileHandle, IoStatus ByRef, Byte[], UInt32, Int32)+0xe3
+00000000`007feb40 00007ff7`e7df0b7c     NativeLinkAdmissionProbe!NativeLinkAdmissionProbe.Link(Microsoft.Win32.SafeHandles.SafeFileHandle, System.String)+0xa4
+00000000`007febb0 00007ff7`e7df08c6     NativeLinkAdmissionProbe!NativeLinkAdmissionProbe.Run(System.String)+0x22c
+00000000`007fec60 00007ff8`472e6993     NativeLinkAdmissionProbe!NativeLinkAdmissionProbe.Main(System.String[])+0x36
+00000000`007fecb0 00007ff8`472e68a0     clr!CallDescrWorkerInternal+0x83
+RESULT SourceOpen=0 LinkNtStatus=0x00000000 SamePhysicalIdentity=True
+INPUT GuardAccess=0x80000000 GuardShare=3 SourceAccess=0x00010000 SourceShare=7 FileLinkInformation=11 Replace=False
+(1e08.1e54): CLR exception - code e0434352 (first chance)
+RESULT SourceOpen=32 LinkNotIssued=True

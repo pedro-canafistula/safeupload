@@ -1,0 +1,8 @@
+.sympath srv*C:\Users\vika\Documents\link-admission-symbols*https://msdl.microsoft.com/download/symbols
+ld ntdll
+lmvm ntdll
+!lmi ntdll
+x ntdll!NtSetInformationFile
+sxd clr
+bp ntdll!NtSetInformationFile ".if (dwo(@rsp+0x28) == 0xb) { .printf \"FILE_LINK_ENTRY Handle=%p Buffer=%p Length=%x Class=11\\n\", @rcx, @r8, @r9; du @r8+0x14; k 6; } ; gc"
+g

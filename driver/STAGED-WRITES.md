@@ -166,6 +166,8 @@ and parent-name changes with admission; checking NumberOfLinks and then closing
 a temporary query handle leaves a create/rename race. Publication must distinguish
 editing a shared object from replacing one name slot. Until these gates pass,
 alias support is incomplete and the broader acceptance tracker remains open.
+The focused unfiltered investigation below also rules out relying on a retained
+query/read handle that denies delete sharing as a fence against new hard links.
 
 ### Follow-up: owned byte-range locks
 
@@ -379,6 +381,92 @@ no test service/tasks and S:/VHDX absent. The demonstrated preexisting hard-link
 failure remains open and normal builds remain disabled.
 [FILE_ID_INFORMATION contract](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/ns-ntifs-file_id_information),
 [OpenFileById contract](https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-openfilebyid).
+
+### Targeted investigation: hard-link admission fencing
+
+One question was investigated after the identity milestone's experiments and
+independent original-driver restoration: **can a retained below-instance query
+handle denying FILE_SHARE_DELETE stabilize an object's alias set during admission?**
+This affects the recorded external-hard-link isolation failure. Existing tests
+proved a physical leak, but did not exercise adding a link while such a guard
+remained open. Initial time box: 21:50:12--22:00:02 UTC, 1 October 2026; no extension
+was needed. The feature driver was never loaded or installed during this investigation.
+
+Documented guarantees: [FILE_LINK_INFORMATION](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/ns-ntifs-_file_link_information)
+requires no specific source-handle access rights. It creates a name for an existing
+object; its replacement/POSIX flags have separate semantics.
+[IoCheckShareAccess](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nf-wdm-iocheckshareaccess)
+checks granted access versus sharing during opens and requires caller
+synchronization. [IoCheckLinkShareAccess](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nf-wdm-iochecklinkshareaccess)
+documents separate opaque link-share state and checking flags; none of these
+contracts promises that an attributes-only handle reserves all namespace mutations.
+[Geoff Chappell's kernel-export research](https://www.geoffchappell.com/studies/windows/km/ntoskrnl/api/index.htm)
+distinguishes export/availability evidence from documentation and identifies the
+link-share routines beginning with 1709. Its surveyed builds stop at Windows 10
+2004, so it is context, not proof of this 19045 build's implementation. No direct
+Chappell analysis establishing this mutation fence was found.
+
+Minimal unfiltered reproduction: create one disposable C: NTFS file, hold
+`CreateFile(FILE_READ_ATTRIBUTES, FILE_SHARE_READ|FILE_SHARE_WRITE)`, open the same
+file with access zero and sharing 7, and issue `NtSetInformationFile` class 11
+with `FILE_LINK_INFORMATION`, ReplaceIfExists=false and a new full native name.
+The call returned STATUS_SUCCESS and both names had identical FILE_ID_INFORMATION.
+Repeat with a GENERIC_READ guard: link creation still succeeds. The DELETE-open
+control against the read-data guard fails with error 32, demonstrating that the
+guard is active but is not an alias-set reservation. The full bounded matrix uses
+guard access 0x80/0x80000000, guard share 3, source access
+0/0x80/0x80000000/0x40000000/0x10000 and source share 7. All nine issued link calls
+succeed; only the read-data-guard/DELETE-source open fails before issuing a link.
+[Inputs, OS/module versions, hashes and results](evidence/2026-10-01/link-admission-native.txt).
+
+Observed environment: Windows 10 Pro 22H2 **19045.2965**, x64, elevated `vika`,
+fixed C: NTFS, SafeUpload unloaded, Verifier off. Kernel 10.0.19041.2965;
+NTFS and FltMgr 10.0.19041.1; NTDLL 10.0.19041.2788. The captured module hashes
+bind the evidence to these exact images, rather than treating the product build
+as each module's version.
+
+The [focused debugger transcript](evidence/2026-10-01/link-admission-cdb-final.txt)
+uses CDB 10.0.28000.2705 and WinDbg commands at the **user-mode API boundary**.
+Matching Microsoft public `ntdll.pdb` GUID
+`76C7BBFD419865CA30108FE0023CF040`, age 1, resolves NtSetInformationFile. Nine
+conditional class-11 breakpoints show the full target name and caller stack;
+the probe records raw returned NTSTATUS and equal physical IDs. Initial reduced
+debugger copies lacked the DIA dependency and could not resolve symbols; those
+attempts are excluded. The final trace loads the matching PDB and validates nine
+entries. The script uses documented x64 argument placement and public
+FILE_LINK_INFORMATION layout, not kernel-private offsets. No kernel patch,
+undocumented production API or disassembly was needed.
+
+Reproduce with `Test-NativeLinkAdmission.ps1` and `NativeLinkAdmissionProbe.cs`
+beside it on the guarded debuggee. For the trace, compile the latter with the
+Framework64 `v4.0.30319\csc.exe /nologo /target:exe /platform:x64 /warnaserror`,
+then run the installed/copied x64 debugger:
+
+```powershell
+cdb.exe -G -cf Trace-NativeLinkAdmission.dbg NativeLinkAdmissionProbe.exe <disposable-directory>
+```
+
+Keep all debugger dependencies including `msdia140.dll` available; the symbol
+path in the checked-in command file is this VM's disposable Documents cache.
+Afterward remove that cache/tools, executable and empty fixture directory. The
+PowerShell test captures Console output explicitly and asserts the observed matrix.
+The smallest useful regression is the two guard variants with an access-zero
+link-source handle plus the read-data-guard/DELETE-open rejection control. Future
+alias admission tests must attempt this mutation concurrently with classification.
+
+Effect on implementation: a query-then-retain-handle design is insufficient.
+Physical object admission needs an explicit fence over link and parent-name
+mutations or a qualified protected-volume contract. The existing upper-stream
+lifetime, seal and publication protocols are unchanged; identity snapshots are
+not advertised as such a fence. Alias support remains disabled/unqualified.
+Internal NTFS lock selection, privileged kernel-originated mutations and other
+Windows/filesystem/redirector builds remain unresolved; a user-mode call trace
+does not establish those internals. This is a tested counterexample to the proposed
+fence, not a universal claim about every namespace operation.
+[Final independent check](evidence/2026-10-01/link-admission-final-state.txt) at
+21:59:59 UTC confirms no probe/debugger processes or fixtures, original installed
+hash unchanged, SafeUpload unloaded, Verifier zero/None and temporary debugger
+tools/cache removed. Work returns to the acceptance tracker above.
 
 ### Identity and namespace
 
