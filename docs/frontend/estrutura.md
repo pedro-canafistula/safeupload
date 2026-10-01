@@ -40,7 +40,9 @@ app/
         └── pages.css
 ```
 
-`main.py` cria a aplicação, monta `/static` e registra as rotas. `presentation/__init__.py` configura os templates Jinja2. `routes/admin.py` concentra as declarações HTTP e a seleção de templates. `demo/admin_data.py` concentra os dados fictícios e a montagem dos sete contextos demonstrativos. O router do agente está vazio.
+`main.py` cria a aplicação, monta `/static` e registra as rotas. `presentation/__init__.py` configura os templates Jinja2. `routes/admin.py` concentra as declarações HTTP e a seleção de templates. `demo/admin_data.py` concentra os exemplos e a montagem dos sete contextos; Auditoria e Endpoints também leem dados recebidos em memória.
+
+Fora da árvore de apresentação acima, `routes/agent.py` recebe heartbeats/eventos e entrega política por meio de `application/agent_service.py`. Os contratos ficam em `domain/schemas.py` e o armazenamento em `infrastructure/memory_store.py`, sem ligação com o banco. Os dois builders integrados leem esse armazenamento diretamente; essa é a dependência atual, não uma nova camada proposta.
 
 Cada função `build_*_context()` cria uma nova estrutura em memória e não mantém cache ou estado global mutável. O login não possui builder próprio porque não recebe contexto de negócio. Essa separação é interna à camada de apresentação: `demo/` não é serviço de aplicação, repositório nem fonte persistente.
 
@@ -86,6 +88,6 @@ A quarta parte separou os dados demonstrativos das declarações de rota. `route
 - Preserve a ordem dos `@import` de `styles.css`; alterações na ordem podem mudar a cascata visual.
 - Não carregue os arquivos CSS especializados diretamente pelos templates.
 - Não acrescente comportamento a controles demonstrativos durante uma refatoração.
-- Mantenha dados demonstrativos e montagem dos contextos em `demo/admin_data.py`; `routes/admin.py` deve continuar focado no fluxo HTTP.
+- Mantenha exemplos e montagem dos contextos na apresentação; `routes/admin.py` deve continuar focado no fluxo HTTP. A integração atual em `demo/admin_data.py` está descrita no [inventário das telas](telas-e-dados.md); mudanças de fonte devem ser delimitadas em uma entrega própria.
 - Builders de contexto devem retornar novas estruturas e não introduzir cache, persistência ou estado global mutável.
 - Alterações de contexto devem ser conferidas em todas as páginas consumidoras e registradas no guia de telas.

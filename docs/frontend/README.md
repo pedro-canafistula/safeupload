@@ -1,11 +1,11 @@
 # Guia do frontend web SafeUpload
 
-Este guia documenta o painel web existente e sua refatoração estrutural. O painel é um protótipo com dados fictícios. A inspeção de arquivos, a autenticação e a persistência não estão implementadas no código atual.
+Este guia documenta o painel web existente e sua refatoração estrutural. A maior parte da interface é demonstrativa; Auditoria e Endpoints também exibem dados recebidos pela API do agente, mantidos em memória. Autenticação e persistência em banco não estão implementadas no servidor web. A inspeção pertence ao [agente desktop](../../agente/README.md).
 
 ## Conteúdo
 
 - [Estrutura e layouts](estrutura.md)
-- [Telas, dados e comportamento atual](telas-e-dados.md)
+- [Inventário das oito telas, comportamento e dependências](telas-e-dados.md)
 - [Componentes e estilos](componentes-e-estilos.md)
 - [Verificação e limitações](verificacao-e-limitacoes.md)
 
@@ -29,6 +29,8 @@ A refatoração de templates está concluída: os layouts HTML usam uma base com
 
 A organização do CSS também está concluída. `/static/css/styles.css` continua sendo o único stylesheet referenciado pelo HTML, mas agora importa `tokens.css`, `base.css`, `auth.css`, `controls.css`, `layout.css`, `components.css` e `pages.css` em ordem fixa. As regras originais foram apenas separadas; não houve renomeação de classes, mudança de valores nem reordenação da cascata.
 
-A organização do suporte às páginas também está concluída. Os dados demonstrativos foram movidos para `presentation/demo/admin_data.py`, onde sete funções `build_*_context()` constroem novos dicionários a cada chamada. `routes/admin.py` permanece responsável pelas rotas, redirecionamentos e seleção de templates. Nenhum filtro, autenticação, persistência ou ação demonstrativa passou a funcionar por causa dessa separação. A próxima etapa é a verificação final F06 e a consolidação da documentação.
+A organização do suporte às páginas também está concluída. Os dados demonstrativos foram movidos para `presentation/demo/admin_data.py`, onde sete funções `build_*_context()` constroem novos dicionários a cada chamada. `routes/admin.py` permanece responsável pelas rotas, redirecionamentos e seleção de templates. A HU-10 posteriormente conectou os builders de Auditoria e Endpoints ao armazenamento em memória, preservando os exemplos na mesma lista. Filtros e ações administrativas continuam demonstrativos.
+
+O registro `validacao-final.json` documenta a conclusão de F06/F07 da refatoração em 16/09/2026. O inventário atualizado em 01/10/2026 descreve as oito telas e suas dependências; não acrescenta funcionalidades nem revalida os registros visuais históricos.
 
 O escopo de melhoria é o frontend web. O código do agente desktop é preservado sem alteração.

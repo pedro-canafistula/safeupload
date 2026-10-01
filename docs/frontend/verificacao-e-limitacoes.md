@@ -1,5 +1,7 @@
 # Verificação e limitações
 
+Este documento registra as etapas históricas da refatoração de setembro de 2026. Para o estado atual, incluindo a integração parcial da HU-10, consulte o [inventário das oito telas](telas-e-dados.md). Os resultados abaixo não certificam funcionalidades adicionadas posteriormente.
+
 ## Escopo da primeira refatoração
 
 Data: 16/09/2026. Base: ZIP confirmado pelo usuário, com SHA-256 `239de4705cb6e56282bae2174494fa3ed1c93888408f677535fce1a5d0874d35`.
@@ -107,4 +109,4 @@ Os resultados técnicos desta etapa ficam em [validacao-suporte-paginas.json](va
 
 ## Continuidade
 
-As refatorações estruturais F03, F04 e F05 estão concluídas. A próxima etapa é a F06: repetir a validação integrada das oito páginas, navegação, formulários e apresentação em navegador, seguida da consolidação final da documentação. As limitações funcionais permanecem preservadas.
+O registro [validacao-final.json](validacao-final.json) consolida F03–F06 como concluídas e F07 como documentada em 16/09/2026. A continuidade atual está no [inventário das telas](telas-e-dados.md), com comportamento, lacunas e próximos recortes separados dos resultados históricos.

@@ -2,7 +2,7 @@
 
 Protótipo acadêmico de sistema de **prevenção de vazamento acidental de dados** (DLP), desenvolvido na disciplina de Análise e Projeto de Software da Universidade Católica de Brasília.
 
-> Versão atual: **0.1.0** — protótipo acadêmico com Centro de Administração web e protótipo desktop WPF. O frontend web possui navegação, renderização e dados demonstrativos, mas ainda não possui autenticação real, persistência, inspeção integrada nem execução efetiva das ações administrativas.
+> Versão atual: **0.1.0** — protótipo acadêmico com Centro de Administração web e agente desktop. O frontend web possui navegação, renderização e dados demonstrativos; Auditoria e Endpoints também exibem dados recebidos do agente em memória. Ainda não há autenticação real, persistência em banco nem execução efetiva das ações administrativas.
 
 ---
 
@@ -39,7 +39,7 @@ O repositório atual contém duas interfaces principais:
 1. um **Centro de Administração web**, desenvolvido com FastAPI, Jinja2, HTML e CSS;
 2. um **protótipo de agente desktop**, desenvolvido em WPF com .NET 8 e C#.
 
-Nesta versão, o Centro de Administração utiliza dados demonstrativos para representar informações de auditoria, endpoints, categorias de detecção, exceções, usuários e relatórios.
+Nesta versão, o Centro de Administração utiliza dados demonstrativos para representar informações de auditoria, endpoints, categorias de detecção, exceções, usuários e relatórios. Auditoria e Endpoints acrescentam aos exemplos os eventos e heartbeats recebidos pela API do agente.
 
 A existência dessas representações visuais não significa que todos os fluxos de inspeção, autenticação, persistência ou administração estejam implementados.
 
@@ -86,7 +86,7 @@ Atualmente são apresentadas as seguintes áreas:
 - lista de exceções;
 - usuários.
 
-As páginas são renderizadas no servidor por Jinja2 e utilizam dados demonstrativos definidos na camada de apresentação.
+As páginas são renderizadas no servidor por Jinja2. Os contextos são montados na apresentação, com dados demonstrativos e, em Auditoria e Endpoints, registros recebidos em memória. O [inventário das oito telas](docs/frontend/telas-e-dados.md) distingue comportamento implementado, limitações e dependências.
 
 Não há aplicação SPA, framework JavaScript ou processo de build do frontend.
 
@@ -100,7 +100,7 @@ Não há aplicação SPA, framework JavaScript ou processo de build do frontend.
 | Servidor web | FastAPI + Uvicorn |
 | Renderização HTML | Jinja2 |
 | Frontend web | HTML5 + CSS3 |
-| Dados atuais do painel | Estruturas demonstrativas em Python |
+| Dados atuais do painel | Exemplos em Python; Auditoria e Endpoints também leem registros recebidos em memória |
 | Persistência | Não implementada nesta versão |
 | Agente desktop | WPF / .NET 8 / C# |
 | Interface desktop | XAML |
@@ -334,16 +334,7 @@ SafeUpload/
 └── requirements.txt
 ```
 
-As pastas:
-
-```text
-application/
-domain/
-infrastructure/
-security/
-```
-
-estão reservadas na estrutura atual e contêm apenas seus arquivos `__init__.py`.
+Além da apresentação, `application/agent_service.py`, `domain/schemas.py` e `infrastructure/memory_store.py` implementam o fluxo da API do agente. `security/` contém apenas a estrutura inicial.
 
 ---
 
@@ -359,13 +350,13 @@ estão reservadas na estrutura atual e contêm apenas seus arquivos `__init__.py
 | `/admin/login` | POST | Redireciona para o painel sem validar as credenciais |
 | `/admin/dashboard` | GET | Renderiza o painel administrativo |
 | `/admin/auditoria` | GET | Renderiza a tela de auditoria |
-| `/admin/endpoints` | GET | Renderiza o inventário demonstrativo de endpoints |
+| `/admin/endpoints` | GET | Renderiza exemplos e endpoints recebidos em memória |
 | `/admin/relatorios` | GET | Renderiza a central demonstrativa de relatórios |
 | `/admin/categorias` | GET | Renderiza as categorias de detecção |
 | `/admin/excecoes` | GET | Renderiza a lista demonstrativa de exceções |
 | `/admin/usuarios` | GET | Renderiza a gestão demonstrativa de usuários |
 
-As páginas administrativas recebem dados demonstrativos provenientes de:
+Os contextos das páginas administrativas são montados em:
 
 ```text
 app/presentation/demo/admin_data.py
@@ -418,9 +409,9 @@ presentation
 | Pacote | Responsabilidade atual |
 |---|---|
 | `app.presentation` | Rotas FastAPI, templates Jinja2, CSS e dados demonstrativos do frontend web |
-| `app.application` | Estrutura reservada para casos de uso |
-| `app.domain` | Estrutura reservada para regras e modelos do domínio |
-| `app.infrastructure` | Estrutura reservada para infraestrutura e persistência |
+| `app.application` | Casos de uso da API do agente em `agent_service.py` |
+| `app.domain` | Contratos da API do agente em `schemas.py` |
+| `app.infrastructure` | Armazenamento em memória de endpoints, eventos e política em `memory_store.py` |
 | `app.security` | Estrutura reservada para mecanismos de segurança |
 
 Funcionalidades ainda não implementadas não devem ser consideradas existentes apenas pela presença dessas pastas.
@@ -486,7 +477,7 @@ Esse módulo contém funções de construção de contexto para:
 - endpoints;
 - usuários.
 
-Cada função produz uma nova estrutura de dados demonstrativa por chamada.
+Cada função produz uma nova estrutura por chamada. Os builders de Auditoria e Endpoints também leem registros de `memory_store`, acrescentando-os aos exemplos; os demais continuam demonstrativos.
 
 Não há banco de dados, cache ou estado global criado por essa separação.
 
@@ -645,7 +636,7 @@ Não estão implementados nesta entrega:
 
 ### Dados demonstrativos
 
-Os dados apresentados no Centro de Administração são fictícios e existem apenas para sustentar a interface atual.
+Os exemplos fictícios sustentam a interface atual. Auditoria e Endpoints também apresentam registros recebidos do agente, misturados aos exemplos. Isso não constitui uma visão exclusivamente real do ambiente; filtros, paginação e indicadores ainda têm limitações descritas no [inventário das telas](docs/frontend/telas-e-dados.md).
 
 ### Agente desktop
 
@@ -654,18 +645,9 @@ estado real do agente, que já tem interceptação de arquivos, motor de
 inspeção e sincronização opcional com o Centro de Administração (HU-10)
 implementados e testados de ponta a ponta.
 
-### Camadas reservadas
+### Camadas parcialmente implementadas
 
-As pastas:
-
-```text
-application/
-domain/
-infrastructure/
-security/
-```
-
-ainda não possuem implementação funcional além da estrutura inicial.
+`application/`, `domain/` e `infrastructure/` já sustentam a API do agente e o armazenamento em memória. A integração com banco e os casos de uso administrativos ainda não estão implementados. `security/` permanece como estrutura inicial.
 
 ### Responsividade
 
