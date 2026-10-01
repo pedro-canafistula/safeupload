@@ -1,5 +1,261 @@
 # Staged writes to protected destinations
 
+## Active task tracker (resume here)
+
+Updated: 1 October 2026. Branch: `feat/staged-kernel-prototype`.
+The user narrowed the current work to **the cross-volume architecture problem**.
+The remaining feature tasks below are recorded for continuity and deferred from
+the current investigation. Do not query ClickUp.
+
+### Current architecture task
+
+- [x] Read this document and the native cross-volume failure evidence.
+- [x] Trace the native handle-volume query and rename paths. Separate the
+      documented Windows contract from assumptions in the previous diagnosis.
+- [x] Identify the smallest supported data path that preserves destination
+      identity and native save operations while storing unapproved data locally.
+      Do not mutate `DeviceObject`/`Vpb` or another filesystem's contexts.
+- [x] Implement a bounded feasibility test with native APIs and independent
+      destination observers. Avoid copy/move fallbacks concealing rename failure.
+- [x] Build both normal and experimental Debug configurations with the WDK. Run the
+      focused VM gate with writable mappings, native identity and rename.
+- [x] Record exact evidence, architectural decision, remaining limitations and
+      reproduction commands. Update this tracker before stopping or compaction.
+- [x] Verify the original debuggee driver is restored and temporary resources
+      and Verifier settings are removed after each experiment.
+
+The architecture gate requires a normal app opening its original protected
+path to get the intended path and volume identity, perform native rename within
+that destination, read/write and map its private version, while another process
+sees only approved destination bytes. No unapproved destination placeholders
+or app-specific hooks may be substituted for the original requirement.
+
+Current investigation: a separate `SafeUpload.ArchitectureProbe` project tests
+same-stack isolation, with an owned upper FCB/cache/section on the original
+volume and a private NTFS backing handle. It reuses original-caller access checks.
+It has no publisher or service journal and is not integrated into the feature.
+The bounded architecture gate now passes normally and with volatile Verifier
+`0x13B`: original native path/volume, native rename and held-handle name updates,
+unaligned growth, cached/mapped coherence, mapped writes after handle cleanup,
+reopen, live-mapping unload refusal, exact backing bytes, and stage ACL denial
+after unload. Independent observers synchronized with save phases took 19 and
+17 samples; physical destination file count was zero after both unloads.
+A name provider plus explicit cache invalidation fixes stale names after rename.
+Cc's `AdvanceOnly` EOF notification no longer recreates a cache after cleanup.
+Backing growth is materialized before increasing upper VDL. The normal and
+staging-enabled Debug WDK builds and probe driver analysis/API validation pass.
+Release API validation remains a separately recorded existing toolchain failure.
+Current architecture work is complete for this bounded NTFS gate. Resume the
+integration tasks only when the user broadens the current architecture scope.
+
+The first failed run stalled during unload because backing/original instance
+references were held until after `FltUnregisterFilter`. Teardown now drops those
+references first. Cleanup/reopen and live-section unload refusal now pass. The harness
+restores the installed original binary even if live objects require a reboot;
+it retains the loaded image and test fixtures for diagnosis in that case.
+The stalled run was recovered by renaming the loaded image, restoring and
+verifying the original installed binary, rebooting, and cleaning its private
+root and detached VHDX. The original hash was independently verified afterward.
+The original debuggee disk was snapshotted as
+`safeupload-architecture-20261001` before loading the separately signed probe.
+The probe SHA-256 for that first run is
+`B0E3C588840938EC6429883B105C4422875EC3E49267FC90FA73ACE67E0643E7`.
+The final tested signed probe SHA-256 is
+`59D10C3386DDDB89FC28BFDE6E9D1F02393F1F04048E168E238229200FBA6D18`.
+
+Focused run: explicitly build
+`driver/SafeUpload.ArchitectureProbe/SafeUpload.ArchitectureProbe.vcxproj`, sign
+its SYS as `C:\Users\vika\Documents\SafeUpload-architecture-probe.sys`, and run
+`driver/scripts/Test-StagedArchitecture.ps1` on the debuggee. Add `-Verifier`
+only after the ordinary gate passes. The harness always starts by checking the
+original installed driver; it observes the real destination from another
+process and also examines the physical directory after unload.
+
+Build from the debugger's isolated checkout using its installed VS/WDK tools:
+
+```powershell
+$msbuild = 'C:\Program Files\Microsoft Visual Studio\18\Community\MSBuild\Current\Bin\MSBuild.exe'
+& $msbuild driver\SafeUpload.ArchitectureProbe\SafeUpload.ArchitectureProbe.vcxproj `
+    /t:Rebuild /p:Configuration=Debug /p:Platform=x64 /p:RunCodeAnalysis=true `
+    /p:EnablePREfast=true `
+    '/p:CodeAnalysisRuleSet=C:\Program Files (x86)\Windows Kits\10\CodeAnalysis\DriverRecommendedRules.ruleset'
+```
+
+Sign the resulting SYS with the VM's existing test certificate, transfer it to
+the debuggee path above, and copy `Test-StagedArchitecture.ps1` plus
+`StagedTestAgent.ps1` to the same directory. On the debuggee:
+
+```powershell
+& C:\Users\vika\Documents\Test-StagedArchitecture.ps1
+& C:\Users\vika\Documents\Test-StagedArchitecture.ps1 -Verifier
+```
+
+Final evidence (all under `driver/evidence/2026-10-01`):
+
+- [Ordinary native/mapped gate](evidence/2026-10-01/same-stack-architecture-gate.txt).
+- [Focused Verifier gate](evidence/2026-10-01/same-stack-verifier-gate.txt) and
+  [active Verifier query](evidence/2026-10-01/same-stack-verifier-query.txt).
+- [Probe build/analysis](evidence/2026-10-01/same-stack-debug-build-native.txt) and
+  [normal/staging Debug builds](evidence/2026-10-01/stage-driver-debug-builds-native.txt).
+- [Release validation failure](evidence/2026-10-01/same-stack-release-validation-native.txt)
+  and [normal Release failure](evidence/2026-10-01/stage-driver-release-validation-native.txt).
+- [Final restoration and cleanup check](evidence/2026-10-01/same-stack-final-state.txt).
+
+Architectural rationale: a reparse changes the file object's volume. The new
+experiment completes a CREATE on the original stack using its own upper stream
+and section objects, and uses a separate kernel backing handle for local data.
+It does not modify `DeviceObject`, `Vpb`, another filesystem's FCB, or its cache.
+All operations on an owned upper file object are handled or rejected before
+they can reach the original filesystem. Paging requests preserve their flags,
+MDLs and asynchronous completion when redirected to the local backing instance.
+The backing stack-size requirement is checked before accepting the create.
+See Microsoft's [I/O parameter-block contract](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/fltkernel/ns-fltkernel-_flt_io_parameter_block),
+[cache-map ownership contract](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/nf-ntifs-ccinitializecachemap),
+and OSR's [same-stack isolation architecture](https://www.osr.com/nt-insider/2017-issue2/introduction-standard-isolation-minifilters/).
+
+Baseline checkpoint: existing reparse path redirects an `S:` create to a private
+`C:` backing file. Native volume identity is `C:` and native rename returns
+Win32 error 17. Rewriting `FileVolumeNameInformation` in the minifilter did not
+affect that query.
+This failure belongs to the old reparse architecture; the separate isolation
+experiment is the replacement under qualification.
+Baseline: commit `9dbdb16`, 216 Windows agent tests, both WDK builds and limited
+volatile Verifier tests passed. See the later dated sections for exact coverage.
+
+### Deferred completion tasks
+
+- [ ] Complete shared file/version identity across processes, aliases, handles
+      and writable mappings; preserve sharing/locking and publication ordering.
+- [ ] Complete replacement, hard links, delete/disposition, aliases, file IDs,
+      reparse paths, streams, metadata, directory notifications and cancellation.
+- [ ] Complete driver-loss/reload/reboot recovery and user access to retained
+      versions; resolve interrupted allocation, rename and publication safely.
+- [ ] Complete private-stage/journal access coverage, disk-full handling,
+      retention limits, corruption handling and safe orphan cleanup.
+- [ ] Verify actual analysis notifications and exact-version justification;
+      test real kernel permit spoofing, replay, expiry, changed bytes and paths.
+- [ ] Verify Explorer/Office, physical USB, UNC/mapped SMB and real sync clients
+      with independent destination-byte observers and concurrent/crash cases.
+- [ ] Qualify with full agent tests, WDK builds, applicable boot-time DDI/filter
+      Verifier, stress and save latency; finish configuration/install/recovery.
+- [ ] Retire process taint only for responsibilities demonstrably replaced by
+      the completed flow. Enable staging only after the required gates pass.
+
+### Workspace and VM safety checkpoint
+
+- Linux workspace: `/home/victor/Work/safeupload-staging`.
+- Debugger: `vika@192.168.122.210`; isolated checkout:
+  `C:\Users\vika\Documents\safeupload-staging-test`.
+- Do not modify `C:\Users\vika\Documents\safeupload`.
+- Debuggee: `vika@192.168.122.51`; SSH key:
+  `/home/victor/.ssh/id_ed25519`.
+- Restore and independently verify original installed `SafeUpload.sys` SHA-256:
+  `ADA9D05AB6AECDD2B6C521B0CE529FC06C732154ACB3EE85439FBDC8AA80DFCE`.
+- At this checkpoint the original driver is restored, no probe is loaded,
+  Verifier is off, and the disposable `S:` VHDX and private root were removed.
+  Verify again before reuse and after every experiment.
+- Normal builds compile staging out. Keep experimental builds isolated.
+
+## Architecture decision: preserve the original stack, own the private stream
+
+The writing application's handle must stay on the destination's original stack.
+Its stream data must have a separate local backing object. The driver owns the
+upper FCB, share state, cache and section pointers from CREATE through final
+CLOSE. It completes or rejects every operation on an upper object before a
+foreign filesystem can interpret that FCB. It never borrows the backing NTFS
+FCB or changes `DeviceObject`/`Vpb` to manufacture volume identity.
+
+```mermaid
+flowchart LR
+    A[Writing app] --> U[Original-stack upper object and cache]
+    U --> B[Private local NTFS backing]
+    O[Other apps and sync clients] --> F[Original destination filesystem]
+    F --> D[Approved destination bytes]
+```
+
+The separate probe has exercised this data path on two NTFS volumes. The normal
+SafeUpload driver still uses its existing enforcement. The probe is explicitly
+built and is absent from the normal solution and deployment. It handles new
+top-level files in its disposable fixture, up to 16 streams and 16 MiB each;
+overwrite/replacement, hard links, file IDs, directory overlays and UNC are not
+implemented by it. Its private view belongs to a referenced process object,
+so an independent process sees the physical destination.
+
+### Contracts established by the architecture gate
+
+- Native class-58 volume queries and `GetFinalPathNameByHandle` retain the
+  original destination identity. Native same-volume rename needs no copy/move
+  fallback. A name provider and explicit invalidation keep existing handles'
+  current names consistent after virtual rename.
+- Ordinary cached I/O and writable mappings share one upper cache. Paging
+  requests go to the local backing with their MDL, paging and synchronous flags
+  preserved. The documented backing-device stack-size requirement is checked
+  before CREATE; unsupported stacks are rejected.
+- The backing handle uses noncached I/O. Growth explicitly zeroes the extended
+  range and preserves an old partial sector before increasing upper VDL. Cc's
+  `AdvanceOnly` EOF notification updates backing VDL; it must not resize the
+  upper stream or recreate a cache on a cleaned handle. See Microsoft's
+  [EOF notification contract](https://learn.microsoft.com/en-us/windows-hardware/drivers/ifs/flt-parameters-for-irp-mj-set-information).
+- CLEANUP removes a handle's share/cache participation; CLOSE retires its file
+  object. A mapped view can still write after ordinary handles close. Unload
+  refuses live file objects, mappings or cache/section state, then drains
+  callbacks before freeing the stream. Instance references are released before
+  unregister to avoid a reference-cycle wait.
+- Root and backing-file SYSTEM-only ACLs protect retained bytes after unload.
+  These ACLs supplement kernel admission; they do not supply a publication
+  authorization or a complete protected-destination policy.
+
+### Integration work recorded for resumption
+
+Keep these concerns separate. Do not expand the probe into an unstructured
+filesystem implementation inside `Filter.c`.
+
+| Component | Responsibility | Required gate |
+| --- | --- | --- |
+| Namespace | Destination identity, private-view membership, names/aliases and directory overlays | Native saves and queries agree; sync readers see approved state |
+| Upper stream | Owned FCB/cache, sharing, locks, handles and section lifetime | No foreign FCB access; no sealing while bytes remain writable |
+| Local store | Durable version allocation, original ACL checks, private backing identity and recovery | Journal before successful CREATE; driver/service loss preserves private bytes |
+| Inspection/publication service | Immutable read handle, inspection, notification, exact-version justification and authenticated publish | The published handle supplies exactly the inspected bytes |
+
+1. Replace the reparse admission path with an owned upper stream only after
+   the service durably allocates a version. Keep the service's allocation,
+   security and publication protocols; a writable reparse ECP cannot be the
+   writer's data path. Represent destination, private view and immutable
+   version identity separately. Preserve process-reference and access checks.
+2. Implement namespace operations against that registry. Merge the private
+   writer's directory view, implement temporary-file replacement/delete/link
+   semantics and aliases, and preserve the original public view for unrelated
+   processes. Reopen must use the latest private content as a new version when
+   the prior version is sealed. Do not key durable identity by path or PID alone.
+3. Make stream retirement a service-visible sealing gate. CLEANUP and section
+   synchronization acquire/release callbacks are not final-writer signals.
+   Start with conservative retirement of all upper file objects and sections,
+   flush/drain the upper cache, and close backing write access before handing
+   the version to the service. A pending retirement must be notified and
+   retried without losing its private data. Narrowing retirement to writable
+   sections requires separate evidence, not a guessed handle counter.
+4. Let inspection and publication retain the same immutable version. Bind UI
+   justification and publication permits to its version identity and digest.
+   A new edit allocates a distinct version; no approval follows it automatically.
+5. Qualify the same architecture on redirector/UNC and removable filesystems
+   before admitting those stacks. The current paging route is bounded by the
+   documented stack-size rule; reject an unsupported stack rather than alter
+   foreign ownership fields. Directory/oplock/cancellation behavior also needs
+   the full app and crash matrix listed above before integration is enabled.
+
+Retain the existing taint mechanism for its current duties until the complete
+version flow demonstrably replaces them. This architecture result does not
+authorize enabling staging or retiring existing enforcement.
+
+### Architecture build limitation
+
+Release compilation/linking and probe driver analysis succeeded, but Release
+API validation failed with `aitstatic` error 193 for both the normal driver and
+the new probe. This is the already documented toolchain failure in
+[ARQUITETURA.md](ARQUITETURA.md#segunda-ocorrência-com-evidência).
+API validation remains enabled. Debug normal, staging-enabled and probe builds
+pass API validation; the probe's DriverRecommendedRules analysis is also clean.
+
 ## User-visible behavior
 
 An ordinary Save or Copy to a protected USB drive, network share, or sync

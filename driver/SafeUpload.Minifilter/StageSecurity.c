@@ -1,6 +1,18 @@
 #include "Filter.h"
 #include "StageSecurity.h"
 
+static NTSTATUS SafeUploadStageQuerySecurity(_In_ PFLT_INSTANCE Instance,
+    _In_ PUNICODE_STRING Name, _In_ BOOLEAN Directory,
+    _Outptr_result_nullonfailure_ PSECURITY_DESCRIPTOR *Descriptor);
+
+#ifdef ALLOC_PRAGMA
+#pragma alloc_text(PAGE, SafeUploadStageQuerySecurity)
+#pragma alloc_text(PAGE, SafeUploadStageCheckAccess)
+#pragma alloc_text(PAGE, SafeUploadStageCaptureSecurity)
+#pragma alloc_text(PAGE, SafeUploadStageFreeSecurity)
+#pragma alloc_text(PAGE, SafeUploadStageCheckRenameAccess)
+#endif
+
 // Read the destination's descriptor below our instance. This never creates,
 // truncates, or writes to the protected destination.
 static NTSTATUS
@@ -8,7 +20,7 @@ SafeUploadStageQuerySecurity (
     _In_ PFLT_INSTANCE Instance,
     _In_ PUNICODE_STRING Name,
     _In_ BOOLEAN Directory,
-    _Outptr_ PSECURITY_DESCRIPTOR *Descriptor
+    _Outptr_result_nullonfailure_ PSECURITY_DESCRIPTOR *Descriptor
     )
 {
     OBJECT_ATTRIBUTES attributes;
@@ -52,6 +64,9 @@ SafeUploadStageQuerySecurity (
     }
     ObDereferenceObject( fileObject );
     FltClose( handle );
+    if (NT_SUCCESS( status ) && *Descriptor == NULL) {
+        status = STATUS_INVALID_SECURITY_DESCR;
+    }
     if (!NT_SUCCESS( status ) && *Descriptor != NULL) {
         ExFreePoolWithTag( *Descriptor, SAFEUPLOAD_POOL_TAG );
         *Descriptor = NULL;
