@@ -1,13 +1,309 @@
 # Staged writes to protected destinations
 
-## Active task tracker (resume here)
+## Current milestone (1 October 2026)
 
-Updated: 1 October 2026. Branch: `feat/staged-kernel-prototype`.
-The user narrowed the current work to **the cross-volume architecture problem**.
-The remaining feature tasks below are recorded for continuity and deferred from
-the current investigation. Do not query ClickUp.
+Branch: `feat/staged-kernel-prototype`. The owned-stream experiment is integrated
+into the opt-in SafeUpload kernel data path. The bounded local-NTFS milestone
+covers durable allocation, private cached/mapped I/O, immutable version retirement,
+real inspection and authenticated approved publication. Normal builds compile
+staging out; existing process-taint enforcement remains. Do not query ClickUp.
 
-### Current architecture task
+Milestone complete: normal/feature WDK builds, 228 Windows service tests, ordinary
+and Verifier integration, cross-process duplication and directory regression passed.
+The original debuggee driver is independently verified restored, with no feature
+loaded, no test service/tasks, Verifier off and S: detached. See the result table
+for exact evidence. Older dated sections are historical and do not supersede this
+architecture or its remaining acceptance criteria.
+
+### Implemented architecture
+
+`Filter.c` registers a full operation dispatcher for feature builds. `StageStream.c`
+owns the upper stream, namespace registry, cache, sections and retirement worker;
+`StageProtocol.c` reuses the existing allocation, seal, namespace transaction and
+publication-permit messages (wire protocol 18). `StageSecurity.c` retains original
+caller access checks. `StageDirectory.c` merges private names and snapshots upper
+metadata without opening the exclusively held backing. There is no reparse data
+path or borrowed NTFS FCB in the integrated feature.
+
+```mermaid
+flowchart LR
+    W[Writer at original destination path] --> U[Owned upper stream and cache]
+    U --> B[Private NTFS version on C:]
+    B --> S[Retire sections and close write access]
+    S --> I[Journal seal and inspect immutable snapshot]
+    I --> P[Authenticated approved publication]
+    P --> D[Destination filesystem]
+    O[Independent reader] --> D
+```
+
+Admission uses existing destination policy plus the recorded bootstrap test
+scope. A protected create succeeds only after original-token access checks and
+a flushed service `Allocated` manifest. The service chooses the GUID basename,
+sets private ACLs and seeds the file using aligned noncached, write-through I/O.
+The kernel opens that backing noncached with exclusive data sharing while mutable;
+any preexisting backing cache/section causes admission to fail. Only the owned
+upper cache is writable. Later read-only backing handles permit service inspection.
+A disconnected service cannot authorize new protected writes. The authenticated
+service needs an exact publication permit to write at the protected destination.
+
+The upper file object stays on the original destination volume, with SafeUpload's
+own `FSRTL_ADVANCED_FCB_HEADER`, resources and `SECTION_OBJECT_POINTERS`. All its
+operations are handled or rejected before legacy callbacks or the original
+filesystem can interpret its contexts. Fast I/O is refused. Paging I/O and Cc's
+`AdvanceOnly` EOF notification retain their MDL, flags and asynchronous completion
+when directed to the backing instance; a postoperation releases rundown ownership.
+The target stack must have at least the original stack's size. Neither foreign
+cache state nor `DeviceObject`/`Vpb` is modified. See the Microsoft
+[I/O parameter contract](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/fltkernel/ns-fltkernel-_flt_io_parameter_block).
+
+### Identity and namespace
+
+| Identity | Implemented key and owner | Required extension |
+| --- | --- | --- |
+| Destination | Normalized original-volume path; durable monotonic `DestinationGeneration` per case-insensitive destination path | Stable volume identity plus file ID for existing objects; parent ID plus name slot for new/replacement objects; durable alias/tombstone records |
+| Private view | Referenced `PEPROCESS` plus normalized destination name; PID is only existing protocol attribution | Durable view GUID bound to principal/session and driver boot epoch; explicit authenticated reattachment after recovery |
+| Version | Service transfer GUID/private basename; one upper stream/cache/backing per version | Preserve this identity independently of all aliases and namespace moves |
+| Open capability | `STAGE_HANDLE` on a specific `FILE_OBJECT`, pointing to its version | Keep duplicate/inherited handles bound to that version even when another version becomes current |
+
+Independent opens by the same writer share the current mutable version and
+`IoCheckShareAccess` state. Duplicated handles share a file object; its CLEANUP
+arrives only after its last handle closes, including in another process. The
+referenced process identity prevents PID reuse from inheriting a private view.
+A duplicate grants access to that object, not the owner's entire directory view.
+Unrelated processes see physical, approved destination content. Published private
+views remain private views until unload; they do not silently switch held handles
+to the public object.
+
+After sealing, a writable reopen allocates a distinct service version. Nontruncating
+opens copy the prior **private** backing, including a previously blocked edit;
+CREATE/overwrite semantics select an empty new version where appropriate. A held
+read handle to an older sealed version keeps its original bytes. The registry
+retains old versions and process references until unload: at most 128 versions,
+16 MiB each. Exhaustion fails closed; reclamation is a remaining requirement.
+
+Supported native rename moves a current private name to an absent name on the
+same original volume, checks DELETE and target-parent access, and uses existing
+journal prepare/commit/abort messages. Source name becomes a private tombstone;
+held-handle names and directory overlay update together. Lost replies reuse the
+same transaction ID. Until acknowledgement, fresh opens/mutations and sealing
+remain held; mapped writes already authorized to a mutable version remain private.
+Retargeting a destination that has prior journal versions is refused, because a
+single moved manifest would otherwise make an obsolete predecessor current again.
+
+Replacement saves must become a namespace transaction over both source and target
+slots: reserve their generations, retain both prior version objects, commit the
+name mapping plus source tombstone durably, then make the new target eligible for
+inspection. Hard links must be alias entries for the same destination identity,
+not independent path-keyed publication rights. Short names, file-ID opens and
+reparse aliases must resolve before policy/view lookup. Until implemented and
+qualified, owned replacement flags, hard links, delete/disposition, alternate
+streams, byte locks/oplocks and unsupported metadata operations fail explicitly.
+Writable file-ID admission is denied. This is not complete alias enforcement for
+preexisting external links; such namespaces remain outside the qualified scope.
+Private directory notifications and concurrent directory mutation are also pending.
+
+### Lifetime, synchronization and exact seal
+
+Lock order is namespace resource, then upper stream resource. Ordinary reads,
+writes and size changes serialize on the stream resource. Cache/modified-writer
+callbacks use the separate paging resource; redirected I/O owns rundown until its
+postoperation, including asynchronous completion. The registry spin lock only
+locates owned objects; entries cannot disappear until unregister drains callbacks.
+Name-provider callbacks use the namespace resource. The service is never called
+from paging completion. Current admission/namespace/seal messages can wait under
+the namespace resource; service self-I/O bypasses private-view lookup to avoid
+reentering that lock. Per-view locking and cancellation latency are future work.
+
+CLEANUP removes share participation and uninitializes that file object's cache
+map; it never seals. CLOSE releases its handle context and object count. A 250 ms
+worker attempts conservative retirement while holding namespace then stream locks.
+**Every condition below must succeed, in this order:**
+
+1. No open share participants; `MmCanFileBeTruncated(Sections, NULL)` says no user
+   mappings, section references, images or relevant write probes remain.
+2. Flush the owned cache and backing successfully. Purge the owned cache, then
+   require all shared-cache/data/image-section pointers to be NULL and the upper
+   file-object count to be zero. A remaining read-only section also delays sealing.
+3. Drain all paging/AdvanceOnly rundown references; flush the backing again.
+4. Close the last kernel backing write handle, irrevocably mark the version
+   read-only, and reopen it read-only. A reopen failure keeps all new opens blocked
+   and retries; it cannot leave a partially admitted backing or authorize a seal.
+5. Obtain the durable service seal acknowledgement. Retry the same immutable
+   version after disconnect/reply loss; idempotent acknowledgement never resets an
+   existing inspection, block, approval or release. Only then mark `Sealed` locally.
+
+The all-object condition deliberately favors correctness over save latency. It
+must not be replaced by a writer-handle counter or section acquire/release counter.
+Microsoft documents [cache uninitialization](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/nf-ntifs-ccuninitializecachemap),
+[purge restrictions](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/nf-ntifs-ccpurgecachesection)
+and [the NULL truncation check](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/nf-ntifs-mmcanfilebetruncated).
+
+Initial CREATE cancellation is checked before allocation and before publishing an
+upper object. A canceled/lost allocation may leave a durable unsealed orphan, never
+an approved save. Ordinary synchronous operations complete their current action;
+a prepared namespace transaction remains owned by the stream until commit/abort
+acknowledgement. Full cancel-safe queued I/O and fault injection remain unqualified.
+
+### Publication and recovery ordering
+
+The existing service flow is `Allocated -> Sealed -> Inspecting -> Approved ->
+Publishing -> Released`, with `Blocked`/`Retained` outcomes and recovery `Unsealed`.
+`SealAsync` requires matching owner attribution and backing path and rejects a
+pending rename. The publisher holds the sealed file without writer sharing, scans
+its inspection snapshot, and rechecks the sealed digest and policy before copying
+that inspected snapshot. `AllowedWithoutInspection` never grants publication.
+The kernel's authenticated, expiring permit binds transfer ID, digest and exact
+temporary/destination paths, admits one temporary create and consumes one native
+rename. The kernel trusts the authenticated service's digest decision; it does not
+re-hash the output in a paging callback. Bytes in the public temporary are already
+approved; it is flushed before final rename and durable `Released` bookkeeping.
+
+The journal now assigns increasing destination generations without changing wire
+messages. Only the latest durably allocated generation may enter Inspecting, Approved or
+Publishing. Even a subsequently canceled CREATE supersedes older approvals; restoring
+an earlier version requires an explicit new save, not deleting its newer manifest. An older justification cannot replace a later edit. `Publishing`
+reserves the destination against new allocation and prepared renames until the
+outcome is durable. A pending rename reserves both names. All checks and manifest
+replacement share the journal gate; generations survive service restart. Released
+manifests must not be garbage-collected without a durable generation/tombstone
+replacement. Legacy duplicate generation-zero histories fail closed.
+
+Ordinary source inspection allows delete sharing while excluding ordinary writes.
+Its read handle pins the file being read across an approved directory replacement;
+hash and scan use the same resulting bytes. This prevents the existing source
+classifier, triggered by an independent destination reader, from vetoing publication.
+The sealed version's own service handle still excludes writes and deletion.
+
+| Failure | Implemented behavior | Remaining acceptance |
+| --- | --- | --- |
+| Service disappears | New allocations denied; existing owned/mapped writes stay private; restart changes Allocated to Unsealed; later kernel retirement can durably seal it | Fault injection at every request/reply boundary and bounded offline resource use |
+| Seal reply lost | Backing stays read-only; idempotent durable seal retries | Systematic disconnect test at the exact lost-reply boundary |
+| Voluntary driver unload | Refuses live upper objects/sections; stops worker and drains paging, drops instance references before unregister | Stress with concurrent unload/create and filter-stack changes |
+| SCM service stop | Feature registration rejects mandatory service-stop unload | Boot/shutdown lifecycle qualification |
+| Driver loss/reboot | Private ACLs and manifests survive; an unsealed version cannot become approved from a missing driver; interrupted inspection/approval retained; Publishing reconciles destination digest | Durable private namespace/view reattachment, user recovery/export and crash/power-loss matrix |
+| Rename interrupted | Pending record retains bytes and blocks publication; live driver retries same commit/abort | Reconciliation after driver loss needs durable namespace/tombstone authority |
+
+The feature uses the documented
+[service-stop registration flag](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/fltkernel/ns-fltkernel-_flt_registration).
+A crash may lose dirty cache bytes; durable recovery promises no automatic approval,
+not recovery of every unflushed application byte. File flush plus atomic same-volume
+manifest replacement is the existing protocol durability model; sudden power loss
+and directory-entry persistence have not been qualified. No automatic stage or
+journal garbage collection is introduced.
+
+### Destination contract and remaining acceptance
+
+The admitted data path requires local NTFS at destination and backing, a power-of-two
+backing sector size 512..65536, and the checked backing stack-size relation. Network
+volumes are rejected. The VM proves C: backing with C: and disposable S: NTFS
+destinations. ReFS/FAT/exFAT, physical USB surprise removal, SMB/UNC/redirectors,
+cloud sync clients, and third-party filter stacks are not qualified. A redirector
+needs its own demonstrated section, paging, identity and reconnect contracts; it
+must not be enabled by removing the NTFS/stack guards.
+
+Before deployment, complete the destination/view/alias identities and replacement
+transaction above, delete/link/metadata/locking/notification semantics, driver-loss
+recovery with user access to retained files, resource reclamation, disk-full and
+corrupt-journal handling, permit replay/spoof/expiry kernel fault tests, real UI
+exact-version justification, Explorer/Office saves, real destination stacks, and
+boot-time DDI/filter Verifier plus stress. Keep staging opt-in and retain taint
+until its remaining responsibilities are demonstrably replaced.
+
+### Reproduction and evidence
+
+- Workspace: `/home/victor/Work/safeupload-staging`; debugger SSH
+  `vika@192.168.122.210`, isolated checkout
+  `C:\Users\vika\Documents\safeupload-staging-test`. Never modify
+  `C:\Users\vika\Documents\safeupload`.
+- Debuggee: SSH `vika@192.168.122.51`, hostname `win10-debugged`, UUID
+  `9D44EEE8-81CF-4CC1-9FBA-7670F11DEF4D`, libvirt domain `win10-debug`.
+  Fresh disk snapshot: `safeupload-owned-integration-20261001`. The previous
+  `safeupload-architecture-20261001` snapshot actually belongs to debugger domain
+  `win10`; do not mistake it for a debuggee backup.
+- Original installed driver SHA-256:
+  `ADA9D05AB6AECDD2B6C521B0CE529FC06C732154ACB3EE85439FBDC8AA80DFCE`.
+  Start each test with this hash and no loaded experimental filter. Restore and
+  independently verify it afterward. The helper refuses silent cleanup if live
+  objects require a reboot and restores installed bytes before reporting that case.
+- Final signed integrated feature driver SHA-256:
+  `76365F61F5B7E0DC71DC0DFA33E6402D11790F03519CE26EA3AD0D3E88CFFC03`.
+  Tested service ZIP SHA-256:
+  `DBD489D280961BF5B43AC86A26C97F0A7FFDF9612F1E1232D187799DDA8BCAC8`.
+
+From the debugger's isolated checkout:
+
+```powershell
+& .\driver\scripts\Build-StagedOwnedStreams.ps1 `
+  -CertificateThumbprint 220DD82C37FCF36048D59E4F10113185D81D5DC7
+```
+
+This rebuilds normal and opt-in x64 Debug with DriverRecommendedRules/PREfast and
+API validation, runs the complete Windows service suite, and publishes a
+self-contained win-x64 service. Copy `owned-milestone\SafeUpload-stage-prototype.sys`
+and `owned-milestone\stage-service-publish.zip` to the debuggee's Documents. Copy
+`Test-StagedOwnedStreams.ps1`, `Test-StagedDuplicatedHandle.ps1`,
+`Test-StagedDirectory.ps1` and `StagedTestAgent.ps1` beside them. Then on the debuggee:
+
+```powershell
+& C:\Users\vika\Documents\Test-StagedOwnedStreams.ps1
+& C:\Users\vika\Documents\Test-StagedDuplicatedHandle.ps1
+& C:\Users\vika\Documents\Test-StagedDirectory.ps1
+$env:SAFEUPLOAD_STAGED_VERIFIER_LOG = 'C:\Users\vika\Documents\owned-verifier-query.txt'
+& C:\Users\vika\Documents\Test-StagedOwnedStreams.ps1 -Verifier
+```
+
+The owned-stream harness creates/detaches its own S: NTFS VHDX, starts the actual
+LocalSystem service, samples destination bytes from another process and restores
+the original driver in `finally`. Verifier is volatile `0x13B`; it is a focused
+runtime gate, not complete boot-time DDI certification. The historical Release
+`aitstatic` error 193 remains unresolved; API validation has not been disabled.
+
+| Gate | Final result and evidence |
+| --- | --- |
+| WDK x64 Debug, normal and feature | Both PASS; zero warnings/errors; DriverRecommendedRules/PREfast and API validation enabled. [Normal](evidence/2026-10-01/owned-normal-wdk.txt), [feature](evidence/2026-10-01/owned-feature-wdk.txt) |
+| Complete Windows service suite | 228 passed, 0 failed/skipped. Includes idempotent seals, partial-sector seeds, destination generation/reservations and the source-sharing regression. [Tests](evidence/2026-10-01/owned-agent-tests.txt), [service publish](evidence/2026-10-01/owned-service-build.txt) |
+| Ordinary integrated gate | PASS; 246 independent destination samples; exact native identity/rename, concurrent handles and parallel writers, private later edit/old reader, clean overwrite, mapped writes after handle closure without explicit mapped Flush, mapping-only unload refusal, two service restarts and real approved publication. [Run](evidence/2026-10-01/owned-integrated-gate.txt), [observer](evidence/2026-10-01/owned-integrated-observer.txt) |
+| Cross-process duplicated handle | PASS; owner exited while version stayed Allocated; duplicate appended; only its final close published exact `basetail`. [Run](evidence/2026-10-01/owned-duplicated-handle.txt) |
+| Directory regression | PASS; native classes 1/2/3/12/37/38/60/63, pagination, restart, small buffers and private sizes; unrelated observer saw only approved entries. [Run](evidence/2026-10-01/owned-directory-gate.txt) |
+| Focused volatile Verifier | PASS; same integrated gate, 296 destination samples, `SafeUpload.sys` active under `0x13B`; no bugcheck or Verifier report. [Run](evidence/2026-10-01/owned-verifier-gate.txt), [active query](evidence/2026-10-01/owned-verifier-query.txt), [observer](evidence/2026-10-01/owned-verifier-observer.txt) |
+| Independent final restoration | PASS at 2026-10-01 19:37:57 UTC on Windows 10 Pro 19045; original hash matches, no SafeUpload filter loaded, Verifier zero/None, zero temporary tasks/service processes, S: and VHDX absent. [Evidence](evidence/2026-10-01/owned-final-state.txt), [exact verification commands](evidence/2026-10-01/owned-final-state-command.ps1) |
+
+The first approved native-renamed file contains `alphabetatail`, SHA-256
+`6784D571A4E44598EB09029A50928089BB7B3D4DD06E9ABD081CC3935DF9A8C9`.
+The later sensitive version remained blocked/private while a held earlier reader
+and the independent public reader retained the prior bytes. A third empty overwrite
+published `clean replacement`. Parallel writes produced 4096 `A` + 4096 `B` bytes;
+mapped retirement produced `ABC` followed by 4093 zero bytes. After unload the S:
+fixture contained exactly the four approved final files, with no private temporary
+names, and direct private-stage reads were denied by ACL.
+
+The observer checks all relevant final names on each completed pass (nominal 20 ms
+sleep, slower under source inspection); it allows only absence or explicitly
+approved byte arrays. This is sampled evidence, not proof against arbitrarily
+short leaks or qualification of a real sync client. Final physical inspection
+and direct byte comparisons supplement it. All named final gates restore the
+original binary and unload the feature before deleting their fixtures.
+
+Captured text logs are normalized to UTF-8/LF with trailing whitespace removed.
+Build products remain on the isolated VMs; their tested hashes are recorded above.
+
+Focused findings retained for reproduction:
+
+- A native rename test buffer lacking a terminating WCHAR produced garbage suffixes
+  even with SafeUpload unloaded. The helper now allocates/zeros that WCHAR and the
+  gate first verifies a real unfiltered rename; this was not a kernel-volume defect.
+- Cached service allocation plus upper paging writes yielded a stale backing cache
+  (old prefix and zero tail) on a later version. Noncached service seeding and the
+  exclusive mutable backing/cache admission gate fixed this actual data-path bug.
+  [Failure evidence](evidence/2026-10-01/owned-cached-backing-failure.txt).
+- The first independent observer lacked delete sharing and interfered with rename;
+  its reads now share Read/Write/Delete. A later run exposed the separate source
+  inspector's non-delete-sharing reads. A deterministic Windows test reproduced
+  that conflict before the fix; the final suite and observed overwrite gate cover it.
+  [Pre-fix test](evidence/2026-10-01/owned-source-sharing-before.txt),
+  [VM denial](evidence/2026-10-01/owned-source-sharing-vm-failure.txt).
+
+## Historical: separate architecture experiment (before this integration)
 
 - [x] Read this document and the native cross-volume failure evidence.
 - [x] Trace the native handle-volume query and rename paths. Separate the
@@ -30,7 +326,7 @@ that destination, read/write and map its private version, while another process
 sees only approved destination bytes. No unapproved destination placeholders
 or app-specific hooks may be substituted for the original requirement.
 
-Current investigation: a separate `SafeUpload.ArchitectureProbe` project tests
+Previous investigation: a separate `SafeUpload.ArchitectureProbe` project tests
 same-stack isolation, with an owned upper FCB/cache/section on the original
 volume and a private NTFS backing handle. It reuses original-caller access checks.
 It has no publisher or service journal and is not integrated into the feature.
@@ -45,8 +341,8 @@ Cc's `AdvanceOnly` EOF notification no longer recreates a cache after cleanup.
 Backing growth is materialized before increasing upper VDL. The normal and
 staging-enabled Debug WDK builds and probe driver analysis/API validation pass.
 Release API validation remains a separately recorded existing toolchain failure.
-Current architecture work is complete for this bounded NTFS gate. Resume the
-integration tasks only when the user broadens the current architecture scope.
+The separate architecture work completed this bounded NTFS gate. The current
+user request now authorizes the integration tracked above.
 
 The first failed run stalled during unload because backing/original instance
 references were held until after `FltUnregisterFilter`. Teardown now drops those
@@ -56,8 +352,8 @@ it retains the loaded image and test fixtures for diagnosis in that case.
 The stalled run was recovered by renaming the loaded image, restoring and
 verifying the original installed binary, rebooting, and cleaning its private
 root and detached VHDX. The original hash was independently verified afterward.
-The original debuggee disk was snapshotted as
-`safeupload-architecture-20261001` before loading the separately signed probe.
+The earlier notes recorded `safeupload-architecture-20261001`; see the VM
+identity correction in the integration checkpoint above.
 The probe SHA-256 for that first run is
 `B0E3C588840938EC6429883B105C4422875EC3E49267FC90FA73ACE67E0643E7`.
 The final tested signed probe SHA-256 is
@@ -122,40 +418,6 @@ experiment is the replacement under qualification.
 Baseline: commit `9dbdb16`, 216 Windows agent tests, both WDK builds and limited
 volatile Verifier tests passed. See the later dated sections for exact coverage.
 
-### Deferred completion tasks
-
-- [ ] Complete shared file/version identity across processes, aliases, handles
-      and writable mappings; preserve sharing/locking and publication ordering.
-- [ ] Complete replacement, hard links, delete/disposition, aliases, file IDs,
-      reparse paths, streams, metadata, directory notifications and cancellation.
-- [ ] Complete driver-loss/reload/reboot recovery and user access to retained
-      versions; resolve interrupted allocation, rename and publication safely.
-- [ ] Complete private-stage/journal access coverage, disk-full handling,
-      retention limits, corruption handling and safe orphan cleanup.
-- [ ] Verify actual analysis notifications and exact-version justification;
-      test real kernel permit spoofing, replay, expiry, changed bytes and paths.
-- [ ] Verify Explorer/Office, physical USB, UNC/mapped SMB and real sync clients
-      with independent destination-byte observers and concurrent/crash cases.
-- [ ] Qualify with full agent tests, WDK builds, applicable boot-time DDI/filter
-      Verifier, stress and save latency; finish configuration/install/recovery.
-- [ ] Retire process taint only for responsibilities demonstrably replaced by
-      the completed flow. Enable staging only after the required gates pass.
-
-### Workspace and VM safety checkpoint
-
-- Linux workspace: `/home/victor/Work/safeupload-staging`.
-- Debugger: `vika@192.168.122.210`; isolated checkout:
-  `C:\Users\vika\Documents\safeupload-staging-test`.
-- Do not modify `C:\Users\vika\Documents\safeupload`.
-- Debuggee: `vika@192.168.122.51`; SSH key:
-  `/home/victor/.ssh/id_ed25519`.
-- Restore and independently verify original installed `SafeUpload.sys` SHA-256:
-  `ADA9D05AB6AECDD2B6C521B0CE529FC06C732154ACB3EE85439FBDC8AA80DFCE`.
-- At this checkpoint the original driver is restored, no probe is loaded,
-  Verifier is off, and the disposable `S:` VHDX and private root were removed.
-  Verify again before reuse and after every experiment.
-- Normal builds compile staging out. Keep experimental builds isolated.
-
 ## Architecture decision: preserve the original stack, own the private stream
 
 The writing application's handle must stay on the destination's original stack.
@@ -205,47 +467,8 @@ so an independent process sees the physical destination.
   These ACLs supplement kernel admission; they do not supply a publication
   authorization or a complete protected-destination policy.
 
-### Integration work recorded for resumption
-
-Keep these concerns separate. Do not expand the probe into an unstructured
-filesystem implementation inside `Filter.c`.
-
-| Component | Responsibility | Required gate |
-| --- | --- | --- |
-| Namespace | Destination identity, private-view membership, names/aliases and directory overlays | Native saves and queries agree; sync readers see approved state |
-| Upper stream | Owned FCB/cache, sharing, locks, handles and section lifetime | No foreign FCB access; no sealing while bytes remain writable |
-| Local store | Durable version allocation, original ACL checks, private backing identity and recovery | Journal before successful CREATE; driver/service loss preserves private bytes |
-| Inspection/publication service | Immutable read handle, inspection, notification, exact-version justification and authenticated publish | The published handle supplies exactly the inspected bytes |
-
-1. Replace the reparse admission path with an owned upper stream only after
-   the service durably allocates a version. Keep the service's allocation,
-   security and publication protocols; a writable reparse ECP cannot be the
-   writer's data path. Represent destination, private view and immutable
-   version identity separately. Preserve process-reference and access checks.
-2. Implement namespace operations against that registry. Merge the private
-   writer's directory view, implement temporary-file replacement/delete/link
-   semantics and aliases, and preserve the original public view for unrelated
-   processes. Reopen must use the latest private content as a new version when
-   the prior version is sealed. Do not key durable identity by path or PID alone.
-3. Make stream retirement a service-visible sealing gate. CLEANUP and section
-   synchronization acquire/release callbacks are not final-writer signals.
-   Start with conservative retirement of all upper file objects and sections,
-   flush/drain the upper cache, and close backing write access before handing
-   the version to the service. A pending retirement must be notified and
-   retried without losing its private data. Narrowing retirement to writable
-   sections requires separate evidence, not a guessed handle counter.
-4. Let inspection and publication retain the same immutable version. Bind UI
-   justification and publication permits to its version identity and digest.
-   A new edit allocates a distinct version; no approval follows it automatically.
-5. Qualify the same architecture on redirector/UNC and removable filesystems
-   before admitting those stacks. The current paging route is bounded by the
-   documented stack-size rule; reject an unsupported stack rather than alter
-   foreign ownership fields. Directory/oplock/cancellation behavior also needs
-   the full app and crash matrix listed above before integration is enabled.
-
-Retain the existing taint mechanism for its current duties until the complete
-version flow demonstrably replaces them. This architecture result does not
-authorize enabling staging or retiring existing enforcement.
+The integration plan recorded at this point has been implemented or explicitly
+bounded by the current milestone above. The following build limitation remains.
 
 ### Architecture build limitation
 
@@ -256,17 +479,17 @@ the new probe. This is the already documented toolchain failure in
 API validation remains enabled. Debug normal, staging-enabled and probe builds
 pass API validation; the probe's DriverRecommendedRules analysis is also clean.
 
-## User-visible behavior
+## Target behavior beyond the bounded milestone
 
 An ordinary Save or Copy to a protected USB drive, network share, or sync
 folder keeps the application's write in private local storage. The tray shows
-`Analyzing` after the final writer closes. A fully inspected clean version is
+`Analyzing` after the version passes the complete retirement gate. A fully inspected clean version is
 copied to the destination; sensitive or uninspectable versions stay local.
 No sensitive byte may be created at the destination before approval. A timeout,
 service disconnect, parser error, size limit, unknown format, or journal error
 must retain the local version and report that it was not sent.
 
-## Enforcement invariants
+## Deployment invariants (broader than the qualified milestone)
 
 1. Every writable open of a protected destination is redirected before the
    underlying filesystem handles the create. Direct writes, paging writes,
@@ -274,8 +497,8 @@ must retain the local version and report that it was not sent.
 2. The private staging file is on a local fixed volume. Its path is never inside
    a protected sync folder. The service records the destination and originating
    user in a durable journal before returning the staging path to the driver.
-3. The driver tracks all writable handles on a staged stream. Only the final
-   cleanup seals the version. The service acquires a read handle that excludes
+3. The driver tracks all writable handles on a staged stream. CLEANUP never seals a version: all upper file objects and sections must
+   retire, cached/paging I/O must drain, and backing write access must close. The service acquires a read handle that excludes
    writers for the entire scan and copy. A later open starts a new version.
 4. The service releases only `Approved` after actual content inspection under
    the current policy. `AllowedWithoutInspection` is **not** approval for a
@@ -310,9 +533,8 @@ implement sealed-file inspection, durable state transitions, digest-based
 publication recovery, and outcome auditing. A classification result is not
 audited as a successful send before the destination publication succeeds.
 The publisher rechecks the policy version and destination scope before
-publication; a policy change during analysis retains the file. The test-only
-cross-volume minifilter path is wired to the journal, final-writer seal signal,
-and publisher. It remains disabled in ordinary builds and is not a complete
+publication; a policy change during analysis retains the file. The integrated opt-in owned-stream path is wired to the journal, conservative
+retirement seal, and publisher. It remains disabled in ordinary builds and is not a complete
 transparent namespace or private-storage implementation.
 
 Microsoft's SimRep sample demonstrates pre-create reparsing, but explicitly

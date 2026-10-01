@@ -1,0 +1,54 @@
+
+Microsoft DiskPart version 10.0.19041.964
+
+Copyright (C) Microsoft Corporation.
+On computer: WIN10-DEBUGGED
+
+
+    0 percent completed
+  100 percent completed
+
+
+DiskPart successfully created the virtual disk file.
+
+DiskPart successfully selected the virtual disk file.
+
+
+  100 percent completed
+
+
+DiskPart successfully attached the virtual disk file.
+
+DiskPart succeeded in creating the specified partition.
+
+
+    0 percent completed
+  100 percent completed
+
+
+DiskPart successfully formatted the volume.
+
+DiskPart successfully assigned the drive letter or mount point.
+UnfilteredNativeRenameControl=True
+IntegratedDriverLoaded=8B8AE6ED0BB55C4BE003E896D06342507D072A94183354A58D6B743CF2250352
+DeniedWithoutService=True
+DurableAllocationAndNativeIdentity=True; Volume=\Device\HarddiskVolume16
+RenameRequested=S:\SafeUpload\Escopo Monitorado\b4bb8e16acb448a5af119743b36b869c.txt
+RenameNativeFileName=\SafeUpload\Escopo Monitorado\b4bb8e16acb448a5af119743b36b869c.txt
+RenameJournalDestination=S:\SafeUpload\Escopo Monitorado\b4bb8e16acb448a5af119743b36b869c.txt
+RenameHeldName=\\?\S:\SafeUpload\Escopo Monitorado\b4bb8e16acb448a5af119743b36b869c.txt; OldNameExists=False
+ConcurrentWritersAndNativeCrossVolumeRename=True
+ApprovedPublication=alphabetatail; Digest=6784D571A4E44598EB09029A50928089BB7B3D4DD06E9ABD081CC3935DF9A8C9
+OriginalDriverRestored=ADA9D05AB6AECDD2B6C521B0CE529FC06C732154ACB3EE85439FBDC8AA80DFCE
+ExperimentalDriverUnloaded=True
+PrivateACLProtectsAfterUnload=True
+
+Microsoft DiskPart version 10.0.19041.964
+
+Copyright (C) Microsoft Corporation.
+On computer: WIN10-DEBUGGED
+
+DiskPart successfully selected the virtual disk file.
+
+DiskPart successfully detached the virtual disk file.
+ObserverLog=C:\Users\vika\AppData\Local\Temp\SafeUpload-owned-b4bb8e16acb448a5af119743b36b869c.ps1.observer.log

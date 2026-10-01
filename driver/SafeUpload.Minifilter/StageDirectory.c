@@ -17,7 +17,7 @@ typedef struct _STAGE_DIRECTORY_VIEW {
     UNICODE_STRING Pattern;
     BOOLEAN Started;
     ULONG Bytes;
-    ULONG Owner;
+    PEPROCESS Owner;
 } STAGE_DIRECTORY_VIEW, *PSTAGE_DIRECTORY_VIEW;
 
 VOID SafeUploadFreeDirectoryView(_In_opt_ PVOID View)
@@ -29,6 +29,7 @@ VOID SafeUploadFreeDirectoryView(_In_opt_ PVOID View)
             STAGE_DIRECTORY_ENTRY, Link ), SAFEUPLOAD_POOL_TAG );
     }
     if (view->Pattern.Buffer != NULL) RtlFreeUnicodeString( &view->Pattern );
+    if (view->Owner != NULL) ObDereferenceObject(view->Owner);
     ExFreePoolWithTag( view, SAFEUPLOAD_POOL_TAG );
 }
 
@@ -89,7 +90,8 @@ static NTSTATUS StageDirectoryBuild(_In_ PFLT_INSTANCE Instance, _In_ PUNICODE_S
     if (view != NULL) InitializeListHead( &view->Entries );
     buffer = ExAllocatePool2( POOL_FLAG_PAGED, 65536, SAFEUPLOAD_POOL_TAG );
     if (view == NULL || buffer == NULL) { status = STATUS_INSUFFICIENT_RESOURCES; goto Exit; }
-    view->Owner = Owner;
+    status = PsLookupProcessByProcessId(ULongToHandle(Owner), &view->Owner);
+    if (!NT_SUCCESS(status)) goto Exit;
     status = RtlUpcaseUnicodeString( &view->Pattern, Pattern != NULL ? Pattern : &all, TRUE );
     if (!NT_SUCCESS( status )) goto Exit;
     status = SafeUploadCollectDirectoryOverlay( Owner, Directory, &overlays );
@@ -131,45 +133,14 @@ static NTSTATUS StageDirectoryBuild(_In_ PFLT_INSTANCE Instance, _In_ PUNICODE_S
         PSAFEUPLOAD_DIRECTORY_OVERLAY overlay = CONTAINING_RECORD( link, SAFEUPLOAD_DIRECTORY_OVERLAY, Link );
         StageDirectoryRemove( view, &overlay->Name );
         if (!overlay->Deleted) {
-            PFLT_VOLUME volume = NULL;
-            PFLT_INSTANCE stageInstance = NULL;
-            FILE_BASIC_INFORMATION basic = { 0 };
-            FILE_STANDARD_INFORMATION standard = { 0 };
-            FILE_INTERNAL_INFORMATION internal = { 0 };
+            FILE_BASIC_INFORMATION basic = overlay->Basic;
+            FILE_STANDARD_INFORMATION standard = overlay->Standard;
             PFILE_ID_BOTH_DIR_INFORMATION info = buffer;
-            UNICODE_STRING stageVolume = overlay->StageName;
-            USHORT end = 1;
-            while (end < stageVolume.Length / sizeof( WCHAR ) && stageVolume.Buffer[end] != L'\\') ++end;
-            ++end;
-            while (end < stageVolume.Length / sizeof( WCHAR ) && stageVolume.Buffer[end] != L'\\') ++end;
-            stageVolume.Length = end * sizeof( WCHAR );
-            status = FltGetVolumeFromName( SafeUploadData.Filter, &stageVolume, &volume );
-            if (NT_SUCCESS( status )) status = FltGetVolumeInstanceFromName( SafeUploadData.Filter,
-                volume, NULL, &stageInstance );
-            if (NT_SUCCESS( status )) {
-                InitializeObjectAttributes( &attributes, &overlay->StageName,
-                    OBJ_KERNEL_HANDLE | OBJ_CASE_INSENSITIVE, NULL, NULL );
-                status = FltCreateFileEx2( SafeUploadData.Filter, stageInstance, &handle, &file,
-                    FILE_READ_ATTRIBUTES | SYNCHRONIZE, &attributes, &io, NULL, FILE_ATTRIBUTE_NORMAL,
-                    FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, FILE_OPEN,
-                    FILE_NON_DIRECTORY_FILE | FILE_SYNCHRONOUS_IO_NONALERT, NULL, 0, 0, NULL );
-            }
-            if (NT_SUCCESS( status )) status = FltQueryInformationFile( stageInstance, file,
-                &basic, sizeof( basic ), FileBasicInformation, NULL );
-            if (NT_SUCCESS( status )) status = FltQueryInformationFile( stageInstance, file,
-                &standard, sizeof( standard ), FileStandardInformation, NULL );
-            if (NT_SUCCESS( status )) status = FltQueryInformationFile( stageInstance, file,
-                &internal, sizeof( internal ), FileInternalInformation, NULL );
-            if (handle != NULL) { FltClose( handle ); handle = NULL; }
-            if (file != NULL) { ObDereferenceObject( file ); file = NULL; }
-            if (stageInstance != NULL) FltObjectDereference( stageInstance );
-            if (volume != NULL) FltObjectDereference( volume );
-            if (!NT_SUCCESS( status )) goto Exit;
             RtlZeroMemory( buffer, FIELD_OFFSET( FILE_ID_BOTH_DIR_INFORMATION, FileName ) );
             info->CreationTime = basic.CreationTime; info->LastAccessTime = basic.LastAccessTime;
             info->LastWriteTime = basic.LastWriteTime; info->ChangeTime = basic.ChangeTime;
             info->EndOfFile = standard.EndOfFile; info->AllocationSize = standard.AllocationSize;
-            info->FileAttributes = basic.FileAttributes; info->FileId = internal.IndexNumber;
+            info->FileAttributes = basic.FileAttributes; info->FileId = overlay->FileId;
             info->FileNameLength = overlay->Name.Length;
             RtlCopyMemory( info->FileName, overlay->Name.Buffer, overlay->Name.Length );
             status = StageDirectoryAdd( view, info );
@@ -275,12 +246,19 @@ static VOID StageDirectoryWorker(_In_ PFLT_DEFERRED_IO_WORKITEM Item,
     PFLT_RELATED_OBJECTS objects = Context;
     PVOID completion = NULL;
     FLT_PREOP_CALLBACK_STATUS result;
+    if (objects == NULL) {
+        Data->IoStatus.Status = STATUS_INVALID_PARAMETER;
+        Data->IoStatus.Information = 0;
+        FltCompletePendedPreOperation(Data, FLT_PREOP_COMPLETE, NULL);
+        FltFreeDeferredIoWorkItem(Item);
+        return;
+    }
     if (FltIsIoCanceled( Data )) {
         Data->IoStatus.Status = STATUS_CANCELLED;
         Data->IoStatus.Information = 0;
         result = FLT_PREOP_COMPLETE;
     } else {
-        result = SafeUploadPrototypeDirectoryQuery( Data, objects, &completion );
+        result = SafeUploadStageDirectoryQuery( Data, objects, &completion );
     }
     FltCompletePendedPreOperation( Data, result, completion );
     ObDereferenceObject( objects->FileObject );
@@ -291,7 +269,7 @@ static VOID StageDirectoryWorker(_In_ PFLT_DEFERRED_IO_WORKITEM Item,
     FltFreeDeferredIoWorkItem( Item );
 }
 
-FLT_PREOP_CALLBACK_STATUS SafeUploadPrototypeDirectoryQuery(_Inout_ PFLT_CALLBACK_DATA Data,
+FLT_PREOP_CALLBACK_STATUS SafeUploadStageDirectoryQuery(_Inout_ PFLT_CALLBACK_DATA Data,
     _In_ PCFLT_RELATED_OBJECTS FltObjects, _Flt_CompletionContext_Outptr_ PVOID *CompletionContext)
 {
     PSAFEUPLOAD_STREAMHANDLE_CONTEXT handleContext = NULL, created = NULL;
@@ -317,8 +295,24 @@ FLT_PREOP_CALLBACK_STATUS SafeUploadPrototypeDirectoryQuery(_Inout_ PFLT_CALLBAC
             goto Exit;
         }
         RtlCopyMemory( objects, FltObjects, sizeof( *objects ) );
-        FltObjectReference( objects->Filter ); FltObjectReference( objects->Instance );
-        FltObjectReference( objects->Volume ); ObReferenceObject( objects->FileObject );
+        status = FltObjectReference(objects->Filter);
+        if (!NT_SUCCESS(status)) {
+            ExFreePoolWithTag(objects, SAFEUPLOAD_POOL_TAG); FltFreeDeferredIoWorkItem(item);
+            goto Exit;
+        }
+        status = FltObjectReference(objects->Instance);
+        if (!NT_SUCCESS(status)) {
+            FltObjectDereference(objects->Filter);
+            ExFreePoolWithTag(objects, SAFEUPLOAD_POOL_TAG); FltFreeDeferredIoWorkItem(item);
+            goto Exit;
+        }
+        status = FltObjectReference(objects->Volume);
+        if (!NT_SUCCESS(status)) {
+            FltObjectDereference(objects->Instance); FltObjectDereference(objects->Filter);
+            ExFreePoolWithTag(objects, SAFEUPLOAD_POOL_TAG); FltFreeDeferredIoWorkItem(item);
+            goto Exit;
+        }
+        ObReferenceObject(objects->FileObject);
         status = FltQueueDeferredIoWorkItem( item, Data, StageDirectoryWorker, DelayedWorkQueue, objects );
         if (NT_SUCCESS( status )) return FLT_PREOP_PENDING;
         ObDereferenceObject( objects->FileObject ); FltObjectDereference( objects->Volume );
@@ -353,12 +347,14 @@ FLT_PREOP_CALLBACK_STATUS SafeUploadPrototypeDirectoryQuery(_Inout_ PFLT_CALLBAC
         status = FltLockUserBuffer( Data );
         if (!NT_SUCCESS( status )) goto Exit;
     }
-    output = MmGetSystemAddressForMdlSafe( Data->Iopb->Parameters.DirectoryControl.QueryDirectory.MdlAddress,
-                                         NormalPagePriority | MdlMappingNoExecute );
+    output = Data->Iopb->Parameters.DirectoryControl.QueryDirectory.MdlAddress != NULL
+        ? MmGetSystemAddressForMdlSafe(Data->Iopb->Parameters.DirectoryControl.QueryDirectory.MdlAddress,
+                                      NormalPagePriority | MdlMappingNoExecute)
+        : Data->Iopb->Parameters.DirectoryControl.QueryDirectory.DirectoryBuffer;
     if (output == NULL) { status = STATUS_INSUFFICIENT_RESOURCES; goto Exit; }
     FltAcquirePushLockExclusive( &handleContext->DirectoryLock );
     if (handleContext->DirectoryView == NULL ||
-        ((PSTAGE_DIRECTORY_VIEW) handleContext->DirectoryView)->Owner != owner ||
+        ((PSTAGE_DIRECTORY_VIEW) handleContext->DirectoryView)->Owner != FltGetRequestorProcess(Data) ||
         FlagOn( Data->Iopb->OperationFlags, SL_RESTART_SCAN )) {
         PSTAGE_DIRECTORY_VIEW view = NULL;
         PUNICODE_STRING pattern = Data->Iopb->Parameters.DirectoryControl.QueryDirectory.FileName;

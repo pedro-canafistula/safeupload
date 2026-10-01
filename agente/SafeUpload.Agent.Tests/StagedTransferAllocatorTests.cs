@@ -104,6 +104,29 @@ public sealed class StagedTransferAllocatorTests : IDisposable
             (await journal.ReadAsync(second.TransferId, CancellationToken.None)).State);
     }
 
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(511)]
+    [InlineData(4095)]
+    [InlineData(65535)]
+    [InlineData(65536)]
+    [InlineData(65537)]
+    public async Task Noncached_seed_preserves_exact_bytes_and_partial_sector_length(int length)
+    {
+        string root = Path.Combine(_workspace.Root, "stage");
+        var journal = new StagedTransferJournal(Path.Combine(_workspace.Root, "journal"));
+        var allocator = new StagedTransferAllocator(root, journal);
+        string destination = Path.Combine(_workspace.Root, "report.txt");
+        byte[] content = Enumerable.Range(0, length).Select(i => (byte)(i * 17)).ToArray();
+        await File.WriteAllBytesAsync(destination, content);
+        var stage = await allocator.AllocateAsync(destination, DestinationKind.Cloud,
+            "word.exe", 17, 2, 1, null, CancellationToken.None);
+        Assert.Equal(content, await File.ReadAllBytesAsync(stage.StagePath));
+        Assert.Equal(length, new FileInfo(stage.StagePath).Length);
+        Assert.Equal(content, await File.ReadAllBytesAsync(destination));
+    }
+
     [Fact]
     public async Task Existing_destination_is_seeded_for_open_and_truncated_for_overwrite()
     {

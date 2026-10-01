@@ -631,7 +631,7 @@ Return Value:
 
         if (command == SAFEUPLOAD_CONTROL_GRANT_OVERRIDE) {
 
-            SAFEUPLOAD_OVERRIDE_MESSAGE grant;
+            PSAFEUPLOAD_OVERRIDE_MESSAGE grant = (PSAFEUPLOAD_OVERRIDE_MESSAGE)policy;
 
             if (InputBufferLength < sizeof( SAFEUPLOAD_OVERRIDE_MESSAGE )) {
 
@@ -646,19 +646,19 @@ Return Value:
             //  verificacao e o uso.
             //
 
-            RtlCopyMemory( &grant, InputBuffer, sizeof( SAFEUPLOAD_OVERRIDE_MESSAGE ) );
+            RtlCopyMemory( grant, InputBuffer, sizeof( SAFEUPLOAD_OVERRIDE_MESSAGE ) );
 
-            if (grant.PathLength == 0 ||
-                grant.PathLength > (SAFEUPLOAD_MAX_PATH_CHARS - 1) * sizeof( WCHAR )) {
+            if (grant->PathLength == 0 ||
+                grant->PathLength > (SAFEUPLOAD_MAX_PATH_CHARS - 1) * sizeof( WCHAR )) {
 
                 status = STATUS_INVALID_PARAMETER;
                 leave;
             }
 
-            status = SafeUploadGrantOverride( grant.ProcessId,
-                                              grant.Path,
-                                              (USHORT) grant.PathLength,
-                                              grant.DurationSeconds );
+            status = SafeUploadGrantOverride( grant->ProcessId,
+                                              grant->Path,
+                                              (USHORT) grant->PathLength,
+                                              grant->DurationSeconds );
             leave;
         }
 

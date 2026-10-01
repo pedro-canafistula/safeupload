@@ -1,0 +1,65 @@
+** WARNING: connection is not using a post-quantum key exchange algorithm.
+** This session may be vulnerable to "store now, decrypt later" attacks.
+** The server may need to be upgraded. See https://openssh.com/pq.html
+
+Microsoft DiskPart version 10.0.19041.964
+
+Copyright (C) Microsoft Corporation.
+On computer: WIN10-DEBUGGED
+
+
+    0 percent completed
+  100 percent completed
+
+
+DiskPart successfully created the virtual disk file.
+
+DiskPart successfully selected the virtual disk file.
+
+
+  100 percent completed
+
+
+DiskPart successfully attached the virtual disk file.
+
+DiskPart succeeded in creating the specified partition.
+
+
+    0 percent completed
+  100 percent completed
+
+
+DiskPart successfully formatted the volume.
+
+DiskPart successfully assigned the drive letter or mount point.
+UnfilteredNativeRenameControl=True
+IntegratedDriverLoaded=52E9E53182EA4C1C53E0164656399B1EC24B891B2148B3A0D917811FD28380F5
+DeniedWithoutService=True
+DurableAllocationAndNativeIdentity=True; Volume=\Device\HarddiskVolume20
+RenameRequested=S:\SafeUpload\Escopo Monitorado\e0b3ab89bba6491596af6dc0064ba0f4.txt
+RenameNativeFileName=\SafeUpload\Escopo Monitorado\e0b3ab89bba6491596af6dc0064ba0f4.txt
+RenameJournalDestination=S:\SafeUpload\Escopo Monitorado\e0b3ab89bba6491596af6dc0064ba0f4.txt
+RenameHeldName=\\?\S:\SafeUpload\Escopo Monitorado\e0b3ab89bba6491596af6dc0064ba0f4.txt; OldNameExists=False
+ConcurrentWritersAndNativeCrossVolumeRename=True
+ApprovedPublication=alphabetatail; Digest=6784D571A4E44598EB09029A50928089BB7B3D4DD06E9ABD081CC3935DF9A8C9
+ReopenAllocatesNewVersionPreservesPrivateAndPriorBytes=True
+OriginalDriverRestored=ADA9D05AB6AECDD2B6C521B0CE529FC06C732154ACB3EE85439FBDC8AA80DFCE
+ExperimentalDriverUnloaded=True
+PhysicalDestinationAfterUnload=e0b3ab89bba6491596af6dc0064ba0f4.txt
+PrivateACLProtectsAfterUnload=True
+
+Microsoft DiskPart version 10.0.19041.964
+
+Copyright (C) Microsoft Corporation.
+On computer: WIN10-DEBUGGED
+
+DiskPart successfully selected the virtual disk file.
+
+DiskPart successfully detached the virtual disk file.
+ObserverLog=C:\Users\vika\AppData\Local\Temp\SafeUpload-owned-e0b3ab89bba6491596af6dc0064ba0f4.ps1.observer.log
+Version 3735954f-9e4d-4ce0-8b61-28398473bcf9 stayed in state 7, expected 5.
+At C:\Users\vika\Documents\Test-StagedOwnedStreams.ps1:159 char:5
++     throw "Version $Transfer stayed in state $($entry.State), expecte ...
++     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : OperationStopped: (Version 3735954... 7, expected 5.:String) [], RuntimeException
+    + FullyQualifiedErrorId : Version 3735954f-9e4d-4ce0-8b61-28398473bcf9 stayed in state 7, expected 5.

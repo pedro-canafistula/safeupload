@@ -222,7 +222,17 @@ public sealed class InspectionService
         bool useCache,
         CancellationToken cancellationToken)
     {
-        var bytes = await File.ReadAllBytesAsync(operation.FilePath, cancellationToken).ConfigureAwait(false);
+        byte[] bytes;
+        // Keep the opened file's bytes stable while allowing an approved save
+        // to replace its directory entry. A source classification triggered by
+        // a reader must not transiently veto the publisher's final rename.
+        await using (var input = new FileStream(operation.FilePath, FileMode.Open,
+            FileAccess.Read, FileShare.Read | FileShare.Delete, 64 * 1024,
+            FileOptions.Asynchronous | FileOptions.SequentialScan))
+        {
+            bytes = new byte[checked((int)input.Length)];
+            await input.ReadExactlyAsync(bytes, cancellationToken).ConfigureAwait(false);
+        }
 
         // Hash and scan the same in-memory bytes. Size and timestamps alone
         // can collide (or be restored), so they cannot authorize cache reuse.

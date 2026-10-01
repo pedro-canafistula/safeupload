@@ -388,18 +388,8 @@ public sealed class MinifilterInterceptor : BackgroundService
                 return PortVerdict.Deny;
             }
 
-            var entry = _stageJournal.ReadAsync(id, CancellationToken.None)
-                .GetAwaiter().GetResult();
-            if (!string.Equals(entry.Transfer.StagePath, stage,
-                    StringComparison.OrdinalIgnoreCase) ||
-                entry.Transfer.ProcessId != checked((int)request.RequestorProcessId) ||
-                entry.State is not (TransferJournalState.Allocated or TransferJournalState.Unsealed))
-            {
-                return PortVerdict.Deny;
-            }
-
-            _stageJournal.TransitionAsync(id, entry.State,
-                TransferJournalState.Sealed, null, CancellationToken.None)
+            _stageJournal.SealAsync(id, checked((int)request.RequestorProcessId),
+                stage, CancellationToken.None)
                 .GetAwaiter().GetResult();
             return PortVerdict.Allow;
         }
@@ -437,14 +427,14 @@ public sealed class MinifilterInterceptor : BackgroundService
                         entry.Transfer.TransferId);
                     var current = await _stageJournal.ReadAsync(
                         entry.Transfer.TransferId, cancellationToken).ConfigureAwait(false);
-                    if (current.State == TransferJournalState.Sealed &&
+                    if (current.State is (TransferJournalState.Sealed or TransferJournalState.Inspecting or TransferJournalState.Approved) &&
                         current.PendingRename is null &&
                         current.Transfer == entry.Transfer)
                     {
                         try
                         {
                             await _stageJournal.TransitionAsync(entry.Transfer.TransferId,
-                                TransferJournalState.Sealed, TransferJournalState.Retained,
+                                current.State, TransferJournalState.Retained,
                                 null, cancellationToken, entry.Transfer).ConfigureAwait(false);
                         }
                         catch (Exception changed) when (changed is IOException or InvalidOperationException)

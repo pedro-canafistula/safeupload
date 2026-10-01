@@ -84,12 +84,13 @@ public static class SafeUploadArchitectureNative {
         byte[] name=Encoding.Unicode.GetBytes(destination);
         int header=IntPtr.Size==8 ? 20 : 12;
         int lengthOffset=IntPtr.Size==8 ? 16 : 8;
-        IntPtr info=Marshal.AllocHGlobal(header+name.Length);
+        IntPtr info=Marshal.AllocHGlobal(header+name.Length+2);
         try {
             Marshal.Copy(new byte[header],0,info,header);
             Marshal.WriteInt32(info,lengthOffset,name.Length);
             Marshal.Copy(name,0,IntPtr.Add(info,header),name.Length);
-            if(!SetFileInformationByHandle(handle,3,info,(uint)(header+name.Length)))
+            Marshal.WriteInt16(info,header+name.Length,0);
+            if(!SetFileInformationByHandle(handle,3,info,(uint)(header+name.Length+2)))
                 throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
         } finally { Marshal.FreeHGlobal(info); }
     }

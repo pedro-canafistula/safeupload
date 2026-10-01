@@ -225,17 +225,7 @@ typedef struct _SAFEUPLOAD_INSTANCE_CONTEXT {
 //  verdict for the file has to be thrown away.
 //
 
-#if SAFEUPLOAD_STAGING_PROTOTYPE
-typedef struct _SAFEUPLOAD_STAGE_HANDLE_NAME {
-    volatile LONG References;
-    USHORT Length;
-    USHORT VolumeLength;
-    WCHAR Name[SAFEUPLOAD_MAX_PATH_CHARS];
-    WCHAR VolumeName[SAFEUPLOAD_MAX_PATH_CHARS];
-} SAFEUPLOAD_STAGE_HANDLE_NAME, *PSAFEUPLOAD_STAGE_HANDLE_NAME;
 
-VOID SafeUploadReleaseStageHandleName(_In_opt_ PSAFEUPLOAD_STAGE_HANDLE_NAME Name);
-#endif
 
 typedef struct _SAFEUPLOAD_STREAMHANDLE_CONTEXT {
 
@@ -244,7 +234,6 @@ typedef struct _SAFEUPLOAD_STREAMHANDLE_CONTEXT {
 #if SAFEUPLOAD_STAGING_PROTOTYPE
     EX_PUSH_LOCK DirectoryLock;
     PVOID DirectoryView;
-    PSAFEUPLOAD_STAGE_HANDLE_NAME StageName;
 #endif
 
 } SAFEUPLOAD_STREAMHANDLE_CONTEXT, *PSAFEUPLOAD_STREAMHANDLE_CONTEXT;
@@ -678,13 +667,15 @@ typedef struct _SAFEUPLOAD_DIRECTORY_OVERLAY {
     LIST_ENTRY Link;
     BOOLEAN Deleted;
     UNICODE_STRING Name;
-    UNICODE_STRING StageName;
+    FILE_BASIC_INFORMATION Basic;
+    FILE_STANDARD_INFORMATION Standard;
+    LARGE_INTEGER FileId;
 } SAFEUPLOAD_DIRECTORY_OVERLAY, *PSAFEUPLOAD_DIRECTORY_OVERLAY;
 BOOLEAN SafeUploadHasDirectoryOverlay(_In_ ULONG Owner, _In_ PUNICODE_STRING Directory);
 BOOLEAN SafeUploadProcessHasMappings(_In_ ULONG Owner);
 NTSTATUS SafeUploadCollectDirectoryOverlay(_In_ ULONG Owner, _In_ PUNICODE_STRING Directory,
     _Inout_ PLIST_ENTRY Overlays);
-FLT_PREOP_CALLBACK_STATUS SafeUploadPrototypeDirectoryQuery(_Inout_ PFLT_CALLBACK_DATA Data,
+FLT_PREOP_CALLBACK_STATUS SafeUploadStageDirectoryQuery(_Inout_ PFLT_CALLBACK_DATA Data,
     _In_ PCFLT_RELATED_OBJECTS FltObjects, _Flt_CompletionContext_Outptr_ PVOID *CompletionContext);
 #endif
 

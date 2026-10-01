@@ -154,7 +154,7 @@ public sealed class StagedTransferAllocator
         }
 
         // FILE_OPEN and FILE_OPEN_IF must see the previous bytes. Truncating
-        // dispositions need a real empty file when the reparse is retried.
+        // dispositions need a real empty backing before upper-stream admission.
         string? source = previous?.StagePath;
         bool sourceExists = source is null ? File.Exists(fullDestination) : File.Exists(source);
         if (disposition == 2 && sourceExists) // FILE_CREATE
@@ -169,7 +169,12 @@ public sealed class StagedTransferAllocator
         bool copyExisting = disposition is 1 or 3 && sourceExists;
         try
         {
-            if (copyExisting)
+            if (OperatingSystem.IsWindows())
+            {
+                await StagedBackingFile.CreateAsync(copyExisting ? source ?? fullDestination : null,
+                    transfer.StagePath, cancellationToken).ConfigureAwait(false);
+            }
+            else if (copyExisting)
             {
                 await using var input = new FileStream(source ?? fullDestination,
                     FileMode.Open, FileAccess.Read, FileShare.Read,

@@ -1,0 +1,70 @@
+** WARNING: connection is not using a post-quantum key exchange algorithm.
+** This session may be vulnerable to "store now, decrypt later" attacks.
+** The server may need to be upgraded. See https://openssh.com/pq.html
+
+Microsoft DiskPart version 10.0.19041.964
+
+Copyright (C) Microsoft Corporation.
+On computer: WIN10-DEBUGGED
+
+
+    0 percent completed
+  100 percent completed
+
+
+DiskPart successfully created the virtual disk file.
+
+DiskPart successfully selected the virtual disk file.
+
+
+  100 percent completed
+
+
+DiskPart successfully attached the virtual disk file.
+
+DiskPart succeeded in creating the specified partition.
+
+
+    0 percent completed
+  100 percent completed
+
+
+DiskPart successfully formatted the volume.
+
+DiskPart successfully assigned the drive letter or mount point.
+UnfilteredNativeRenameControl=True
+IntegratedDriverLoaded=76365F61F5B7E0DC71DC0DFA33E6402D11790F03519CE26EA3AD0D3E88CFFC03
+DeniedWithoutService=True
+DurableAllocationAndNativeIdentity=True; Volume=\Device\HarddiskVolume22
+RenameRequested=S:\SafeUpload\Escopo Monitorado\fb90c3518a524a83a1f73a1a0ca48463.txt
+RenameNativeFileName=\SafeUpload\Escopo Monitorado\fb90c3518a524a83a1f73a1a0ca48463.txt
+RenameJournalDestination=S:\SafeUpload\Escopo Monitorado\fb90c3518a524a83a1f73a1a0ca48463.txt
+RenameHeldName=\\?\S:\SafeUpload\Escopo Monitorado\fb90c3518a524a83a1f73a1a0ca48463.txt; OldNameExists=False
+ConcurrentWritersAndNativeCrossVolumeRename=True
+ApprovedPublication=alphabetatail; Digest=6784D571A4E44598EB09029A50928089BB7B3D4DD06E9ABD081CC3935DF9A8C9
+ReopenAllocatesNewVersionPreservesPrivateAndPriorBytes=True
+LaterCleanOverwritePublished=True
+ParallelWriterThreadsPublishedExact8192Bytes=True
+UnalignedGrowthPreservesAndZeroes=True
+
+Unload failed with error: 0x801f0010
+Do not detach the filter from the volume at this time.
+UnloadRefusedWithOnlyMappedWriter=True
+MappedWritesAfterCleanupDrainedAndPublishedExactly=True
+ServiceRestartRetainsThenSealsAndPublishes=True
+DestinationByteObserver=samples=246
+IntegratedOwnedStreamMilestone=True
+OriginalDriverRestored=ADA9D05AB6AECDD2B6C521B0CE529FC06C732154ACB3EE85439FBDC8AA80DFCE
+ExperimentalDriverUnloaded=True
+PhysicalDestinationAfterUnload=fb90c3518a524a83a1f73a1a0ca48463-mapped.txt,fb90c3518a524a83a1f73a1a0ca48463-parallel.txt,fb90c3518a524a83a1f73a1a0ca48463-restart.txt,fb90c3518a524a83a1f73a1a0ca48463.txt
+PrivateACLProtectsAfterUnload=True
+
+Microsoft DiskPart version 10.0.19041.964
+
+Copyright (C) Microsoft Corporation.
+On computer: WIN10-DEBUGGED
+
+DiskPart successfully selected the virtual disk file.
+
+DiskPart successfully detached the virtual disk file.
+ObserverLog=C:\Users\vika\AppData\Local\Temp\SafeUpload-owned-fb90c3518a524a83a1f73a1a0ca48463.ps1.observer.log

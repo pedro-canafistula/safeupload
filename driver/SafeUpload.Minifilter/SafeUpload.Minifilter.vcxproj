@@ -73,6 +73,8 @@
     <ClCompile Include="Override.c" />
     <ClCompile Include="Taint.c" />
     <ClCompile Include="StageDirectory.c" Condition="'$(SafeUploadStagingPrototype)'=='true'" />
+    <ClCompile Include="StageStream.c" Condition="'$(SafeUploadStagingPrototype)'=='true'" />
+    <ClCompile Include="StageProtocol.c" Condition="'$(SafeUploadStagingPrototype)'=='true'" />
     <ClCompile Include="StageSecurity.c" Condition="'$(SafeUploadStagingPrototype)'=='true'" />
   </ItemGroup>
   <ItemGroup>
@@ -84,6 +86,7 @@
   <ItemGroup>
     <ClInclude Include="Filter.h" />
     <ClInclude Include="Protocol.h" />
+    <ClInclude Include="Stage.h" />
     <ClInclude Include="StageSecurity.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

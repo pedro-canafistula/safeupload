@@ -103,3 +103,34 @@ catch {
         Remove-Item -LiteralPath $launcher,$manifest,$done -Force -ErrorAction SilentlyContinue
     }
 }
+
+# Unload refusal must never leave experimental installed bytes behind. If a
+# live kernel object prevents unloading, preserve fixtures and require reboot.
+function Restore-StagedTestDriver([string] $Backup, [bool] $Loaded, [bool] $VerifierEnabled = $false) {
+    $installed = 'C:\Windows\System32\drivers\SafeUpload.sys'
+    $expected = 'ADA9D05AB6AECDD2B6C521B0CE529FC06C732154ACB3EE85439FBDC8AA80DFCE'
+    $unloaded = -not $Loaded
+    if ($Loaded) {
+        for ($attempt = 0; $attempt -lt 80 -and -not $unloaded; $attempt++) {
+            $result = & fltmc.exe unload SafeUpload 2>&1
+            $unloaded = $LASTEXITCODE -eq 0
+            if (-not $unloaded) { Start-Sleep -Milliseconds 250 }
+        }
+        $result | Out-Host
+    }
+    if ($VerifierEnabled) {
+        & verifier.exe /volatile /removedriver SafeUpload.sys | Out-Host
+        & verifier.exe /reset | Out-Host
+    }
+    if (-not $unloaded) {
+        Move-Item -LiteralPath $installed -Destination ($installed + '.owned-' + [guid]::NewGuid().ToString('N') + '.loaded')
+    }
+    Copy-Item -LiteralPath $Backup -Destination $installed -Force
+    $hash = (Get-FileHash -LiteralPath $installed -Algorithm SHA256).Hash
+    if ($hash -ne $expected) { throw "Original driver restoration failed: $hash" }
+    Write-Output "OriginalDriverRestored=$hash"
+    if (-not $unloaded) { throw 'Live owned objects prevented unload. Original installed bytes restored; reboot before cleaning retained fixtures.' }
+    $filters = & fltmc.exe filters
+    if ($filters -match '^SafeUpload\s') { throw 'SafeUpload remained loaded after restoration.' }
+    Write-Output 'ExperimentalDriverUnloaded=True'
+}

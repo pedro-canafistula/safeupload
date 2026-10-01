@@ -91,12 +91,13 @@ public static class SafeUploadRenameProbe {
         using (var file = CreateFile(source, 0x10000, 7, IntPtr.Zero, 3, 0x80, IntPtr.Zero)) {
             if (file.IsInvalid) return Marshal.GetLastWin32Error();
             byte[] name = Encoding.Unicode.GetBytes(destination);
-            IntPtr info = Marshal.AllocHGlobal(20 + name.Length);
+            IntPtr info = Marshal.AllocHGlobal(20 + name.Length + 2);
             try {
                 Marshal.Copy(new byte[20], 0, info, 20);
                 Marshal.WriteInt32(info, 16, name.Length);
                 Marshal.Copy(name, 0, IntPtr.Add(info, 20), name.Length);
-                return SetFileInformationByHandle(file, 3, info, (uint)(20 + name.Length))
+                Marshal.WriteInt16(info, 20 + name.Length, 0);
+                return SetFileInformationByHandle(file, 3, info, (uint)(20 + name.Length + 2))
                     ? 0 : Marshal.GetLastWin32Error();
             }
             finally { Marshal.FreeHGlobal(info); }
@@ -106,14 +107,15 @@ public static class SafeUploadRenameProbe {
         using (var file = CreateFile(source, 0x10000, 7, IntPtr.Zero, 3, 0x80, IntPtr.Zero)) {
             if (file.IsInvalid) return "open-error:" + Marshal.GetLastWin32Error();
             byte[] name = Encoding.Unicode.GetBytes(@"\??\" + destination);
-            IntPtr info = Marshal.AllocHGlobal(20 + name.Length);
+            IntPtr info = Marshal.AllocHGlobal(20 + name.Length + 2);
             try {
                 Marshal.Copy(new byte[20], 0, info, 20);
                 Marshal.WriteInt32(info, 16, name.Length);
                 Marshal.Copy(name, 0, IntPtr.Add(info, 20), name.Length);
+                Marshal.WriteInt16(info, 20 + name.Length, 0);
                 IoStatus status;
                 return "0x" + NtSetInformationFile(file, out status, info,
-                    (uint)(20 + name.Length), 10).ToString("X8");
+                    (uint)(20 + name.Length + 2), 10).ToString("X8");
             }
             finally { Marshal.FreeHGlobal(info); }
         }

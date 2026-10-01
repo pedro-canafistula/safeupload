@@ -56,7 +56,6 @@ static VOID SafeUploadHandleContextCleanup(_In_ PFLT_CONTEXT Context,
     PSAFEUPLOAD_STREAMHANDLE_CONTEXT handle = (PSAFEUPLOAD_STREAMHANDLE_CONTEXT) Context;
     UNREFERENCED_PARAMETER( ContextType );
     SafeUploadFreeDirectoryView( handle->DirectoryView );
-    SafeUploadReleaseStageHandleName( handle->StageName );
     FltDeletePushLock( &handle->DirectoryLock );
 }
 #endif

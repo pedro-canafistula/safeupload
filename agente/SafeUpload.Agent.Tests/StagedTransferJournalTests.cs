@@ -24,6 +24,80 @@ public sealed class StagedTransferJournalTests : IDisposable
         "explorer.exe", 1234, 1);
 
     [Fact]
+    public async Task Later_allocation_prevents_stale_approval_and_justification_after_restart()
+    {
+        var journal = Journal();
+        var first = Transfer();
+        var created = await journal.CreateAsync(first, CancellationToken.None);
+        await journal.SealAsync(first.TransferId, first.ProcessId, first.StagePath, CancellationToken.None);
+        await journal.TransitionAsync(first.TransferId, TransferJournalState.Sealed,
+            TransferJournalState.Inspecting, null, CancellationToken.None);
+        await journal.TransitionAsync(first.TransferId, TransferJournalState.Inspecting,
+            TransferJournalState.Blocked, new string('A', 64), CancellationToken.None);
+        var second = first with { TransferId = Guid.NewGuid(), StagePath = first.StagePath + ".next" };
+        var next = await journal.CreateAsync(second, CancellationToken.None);
+        Assert.True(next.DestinationGeneration > created.DestinationGeneration);
+        await Assert.ThrowsAsync<IOException>(() => Journal().TransitionAsync(first.TransferId,
+            TransferJournalState.Blocked, TransferJournalState.Inspecting, null, CancellationToken.None));
+        await Assert.ThrowsAsync<IOException>(() => journal.PrepareRenameAsync(second.TransferId, 92,
+            second.ProcessId, second.DestinationPath + ".other", false, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task Publication_reserves_destination_until_rename_outcome_is_durable()
+    {
+        var journal = Journal();
+        var first = Transfer();
+        await journal.CreateAsync(first, CancellationToken.None);
+        await journal.SealAsync(first.TransferId, first.ProcessId, first.StagePath, CancellationToken.None);
+        await journal.TransitionAsync(first.TransferId, TransferJournalState.Sealed,
+            TransferJournalState.Inspecting, null, CancellationToken.None);
+        await journal.TransitionAsync(first.TransferId, TransferJournalState.Inspecting,
+            TransferJournalState.Approved, new string('B', 64), CancellationToken.None);
+        await journal.TransitionAsync(first.TransferId, TransferJournalState.Approved,
+            TransferJournalState.Publishing, null, CancellationToken.None);
+        var next = first with { TransferId = Guid.NewGuid(), StagePath = first.StagePath + ".next" };
+        await Assert.ThrowsAsync<IOException>(() => journal.CreateAsync(next, CancellationToken.None));
+        await journal.TransitionAsync(first.TransferId, TransferJournalState.Publishing,
+            TransferJournalState.Released, null, CancellationToken.None);
+        await journal.CreateAsync(next, CancellationToken.None);
+    }
+
+    [Fact]
+    public async Task Retried_kernel_seal_does_not_reset_inspection_after_reply_loss()
+    {
+        var transfer = Transfer();
+        var journal = Journal();
+        await journal.CreateAsync(transfer, CancellationToken.None);
+        await journal.RetainInterruptedAsync(CancellationToken.None);
+        var sealedVersion = await journal.SealAsync(transfer.TransferId, transfer.ProcessId,
+            transfer.StagePath, CancellationToken.None);
+        Assert.True(sealedVersion.SealedOnce);
+        Assert.Equal(TransferJournalState.Sealed, sealedVersion.State);
+        var inspecting = await journal.TransitionAsync(transfer.TransferId,
+            TransferJournalState.Sealed, TransferJournalState.Inspecting, null, CancellationToken.None);
+        Assert.Equal(inspecting, await Journal().SealAsync(transfer.TransferId, transfer.ProcessId,
+            transfer.StagePath, CancellationToken.None));
+        await Assert.ThrowsAsync<IOException>(() => journal.SealAsync(transfer.TransferId,
+            transfer.ProcessId + 1, transfer.StagePath, CancellationToken.None));
+        await Assert.ThrowsAsync<IOException>(() => journal.SealAsync(transfer.TransferId,
+            transfer.ProcessId, transfer.StagePath + ".other", CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task Pending_namespace_transaction_cannot_be_sealed()
+    {
+        var transfer = Transfer();
+        var journal = Journal();
+        await journal.CreateAsync(transfer, CancellationToken.None);
+        await journal.PrepareRenameAsync(transfer.TransferId, 91, transfer.ProcessId,
+            transfer.DestinationPath + ".renamed", false, CancellationToken.None);
+        await Assert.ThrowsAsync<IOException>(() => journal.SealAsync(transfer.TransferId,
+            transfer.ProcessId, transfer.StagePath, CancellationToken.None));
+        Assert.False((await journal.ReadAsync(transfer.TransferId, CancellationToken.None)).SealedOnce);
+    }
+
+    [Fact]
     public async Task Sealed_transfer_survives_service_restart()
     {
         var transfer = Transfer();

@@ -129,8 +129,7 @@ finally {
         }
     }
     Stop-StagedTestAgent $agent
-    if ($loaded) { & fltmc.exe unload SafeUpload | Out-Host }
-    if ($replaced) { Copy-Item $backup $installed -Force }
+    if ($replaced) { Restore-StagedTestDriver $backup $loaded }
     if ((Get-FileHash $installed -Algorithm SHA256).Hash -ne $expected) { throw 'Original driver restoration failed.' }
     Remove-StagedTestFiles $cleanup
     $evidence = 'C:\Users\vika\Documents\stage-duplicate-evidence'
