@@ -136,6 +136,16 @@ public static class StagedIdentityProbe {
         if(mapping==IntPtr.Zero) return Marshal.GetLastWin32Error();
         Check(CloseHandle(mapping)); return 0;
     }
+    public static long Length(SafeFileHandle file) {
+        var info=new byte[24]; Check(GetFileInformationByHandleEx(file,1,info,info.Length));
+        return BitConverter.ToInt64(info,8);
+    }
+    public static byte LastByte(SafeFileHandle file) {
+        long position; uint read; var data=new byte[1];
+        Check(SetFilePointerEx(file,Length(file)-1,out position,0));
+        Check(ReadFile(file,data,1,out read,IntPtr.Zero));
+        if(read!=1) throw new Exception("Last-byte read failed"); return data[0];
+    }
     public static string Read(SafeFileHandle file) {
         long position; uint read; var data=new byte[65536];
         Check(SetFilePointerEx(file,0,out position,0)); Check(ReadFile(file,data,(uint)data.Length,out read,IntPtr.Zero));

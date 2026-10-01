@@ -9,12 +9,16 @@ namespace SafeUpload.Agent.Service.Interception;
 // do not invalidate. Use aligned, noncached writes from the first byte onward.
 internal static class StagedBackingFile
 {
-    public static async Task CreateAsync(string? source, string destination, CancellationToken token)
+    public static async Task CreateAsync(string? source, string destination, long maximumBytes, CancellationToken token)
     {
         token.ThrowIfCancellationRequested();
         await using var input = source is null ? null : new FileStream(source,
             FileMode.Open, FileAccess.Read, FileShare.Read, 64 * 1024,
             FileOptions.Asynchronous | FileOptions.SequentialScan);
+        // Check on the held source handle before creating or writing output.
+        // A streamed bound below also prevents growth from consuming more disk.
+        if (input is not null && input.Length > maximumBytes)
+            throw new IOException("The source exceeds the qualified private-version size limit.");
         using var output = CreateFile(destination, 0x40000000, 0, IntPtr.Zero, 1,
             0xA0000080, IntPtr.Zero); // GENERIC_WRITE, CREATE_NEW, NO_BUFFERING | WRITE_THROUGH
         if (output.IsInvalid) throw new IOException("Could not create private backing.", new Win32Exception());
@@ -31,6 +35,8 @@ internal static class StagedBackingFile
                 {
                     int count = await input.ReadAtLeastAsync(bytes, blockSize, false, token).ConfigureAwait(false);
                     if (count == 0) break;
+                    if (count > maximumBytes - length)
+                        throw new IOException("The source grew beyond the qualified private-version size limit.");
                     bytes.AsSpan(count).Clear();
                     Marshal.Copy(bytes, 0, aligned, blockSize);
                     if (!WriteFile(output, aligned, blockSize, out int written, IntPtr.Zero) || written != blockSize)

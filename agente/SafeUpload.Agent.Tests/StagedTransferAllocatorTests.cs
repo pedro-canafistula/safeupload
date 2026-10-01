@@ -147,4 +147,78 @@ public sealed class StagedTransferAllocatorTests : IDisposable
         await Assert.ThrowsAsync<IOException>(() => allocator.AllocateAsync(destination,
             DestinationKind.Cloud, "word.exe", 17, 2, 2, null, CancellationToken.None));
     }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(3)]
+    public async Task Oversized_source_is_rejected_without_stage_manifest_or_destination_changes(uint disposition)
+    {
+        const long maximum = 16 * 1024 * 1024;
+        string root = Path.Combine(_workspace.Root, "stage");
+        string journalRoot = Path.Combine(_workspace.Root, "journal");
+        var allocator = new StagedTransferAllocator(root, new StagedTransferJournal(journalRoot));
+        string destination = Path.Combine(_workspace.Root, "large.txt");
+        await using (var source = File.Create(destination)) source.SetLength(maximum + 1);
+
+        await Assert.ThrowsAsync<IOException>(() => allocator.AllocateAsync(destination,
+            DestinationKind.Cloud, "word.exe", 17, 2, disposition, null, CancellationToken.None));
+
+        Assert.Empty(Directory.EnumerateFiles(root));
+        Assert.Empty(Directory.EnumerateFiles(journalRoot));
+        Assert.Equal(maximum + 1, new FileInfo(destination).Length);
+    }
+
+    [Fact]
+    public async Task Exact_maximum_seed_preserves_its_final_byte_and_truncation_needs_no_seed()
+    {
+        const int maximum = 16 * 1024 * 1024;
+        string root = Path.Combine(_workspace.Root, "stage");
+        var allocator = new StagedTransferAllocator(root,
+            new StagedTransferJournal(Path.Combine(_workspace.Root, "journal")));
+        string destination = Path.Combine(_workspace.Root, "boundary.txt");
+        await using (var source = File.Create(destination))
+        {
+            source.SetLength(maximum);
+            source.Position = maximum - 1;
+            source.WriteByte(0x5a);
+        }
+        var copied = await allocator.AllocateAsync(destination, DestinationKind.Cloud,
+            "word.exe", 17, 2, 1, null, CancellationToken.None);
+        Assert.Equal(maximum, new FileInfo(copied.StagePath).Length);
+        await using (var stage = File.OpenRead(copied.StagePath))
+        {
+            stage.Position = maximum - 1;
+            Assert.Equal(0x5a, stage.ReadByte());
+        }
+        await using (var source = File.OpenWrite(destination)) source.SetLength(maximum + 1L);
+        var empty = await allocator.AllocateAsync(destination, DestinationKind.Cloud,
+            "word.exe", 17, 2, 4, null, CancellationToken.None);
+        Assert.Equal(0, new FileInfo(empty.StagePath).Length);
+        Assert.Equal(maximum + 1L, new FileInfo(destination).Length);
+    }
+
+    [Fact]
+    public async Task Oversized_prior_private_version_is_preserved_without_creating_a_followup()
+    {
+        const long maximum = 16 * 1024 * 1024;
+        string root = Path.Combine(_workspace.Root, "stage");
+        string journalRoot = Path.Combine(_workspace.Root, "journal");
+        var journal = new StagedTransferJournal(journalRoot);
+        var allocator = new StagedTransferAllocator(root, journal);
+        string destination = Path.Combine(_workspace.Root, "private-large.txt");
+        var prior = await allocator.AllocateAsync(destination, DestinationKind.Cloud,
+            "word.exe", 17, 2, CancellationToken.None);
+        await using (var source = File.OpenWrite(prior.StagePath)) source.SetLength(maximum + 1);
+        var sealedEntry = await journal.TransitionAsync(prior.TransferId, TransferJournalState.Allocated,
+            TransferJournalState.Sealed, null, CancellationToken.None);
+
+        await Assert.ThrowsAsync<IOException>(() => allocator.AllocateAsync(destination,
+            DestinationKind.Cloud, "word.exe", 17, 2, 1, prior, CancellationToken.None));
+
+        Assert.Single(Directory.EnumerateFiles(root));
+        Assert.Single(Directory.EnumerateFiles(journalRoot));
+        Assert.Equal(maximum + 1, new FileInfo(prior.StagePath).Length);
+        Assert.Equal(sealedEntry, await journal.ReadAsync(prior.TransferId, CancellationToken.None));
+        Assert.False(File.Exists(destination));
+    }
 }

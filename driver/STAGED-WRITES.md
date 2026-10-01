@@ -34,6 +34,8 @@ after every experiment, including failures.
          authenticated recovery/export without implicit approval.
    - [ ] Stage/journal reparse/ACL/race/corruption hardening, full disk and bounded
          reclamation preserving durable destination generations and user content.
+         Progress: allocation bounds seed copies to the kernel's 16 MiB limit
+         before creating output; oversize rejection and exact-bound admission pass.
 4. Destination qualification
    - [ ] USB including surprise removal and supported filesystem guards.
    - [ ] UNC/mapped SMB redirector identity/paging/reconnect architecture and gates.
@@ -516,6 +518,48 @@ pass with zero warnings/errors and validation enabled; all
 the original installed hash, filter unloaded, Verifier zero/None, no temporary
 tasks/service and no disposable S:/VHDX. Other filesystem, alias and recovery
 acceptance items remain open; normal staging remains disabled.
+
+### Follow-up: bounded seed allocation
+
+The kernel's 16 MiB version limit previously applied only after durable service
+allocation, which could copy an arbitrarily large physical or prior private
+source first. The allocator now checks the held source length before creating
+output and checks cumulative bytes before each write, including a source that
+grows while read. The Windows copy remains aligned/noncached/write-through;
+16 MiB is an exact multiple of its 64 KiB block. A failed seed creates no
+manifest and removes any partial output. Truncating dispositions still start
+empty without reading an oversized source. Prior private bytes/manifests are
+preserved. Protocol 18 and the seal condition are unchanged.
+
+All [241 Windows agent tests](evidence/2026-10-01/seed-limit-tests.txt) pass,
+including OPEN/OPEN_IF oversize refusal, exact-bound final-byte preservation,
+truncation and an oversized prior private version. The
+[Release service publication build](evidence/2026-10-01/seed-limit-publish.txt)
+passes. Service ZIP SHA256:
+`1DD9771EEB6723F977B5388155E078AA89274EAC7239B299FB34A99452798CC7`.
+The unchanged driver is the mutation-fence SYS recorded above; its four validated
+WDK builds remain applicable.
+
+On Windows 19045.2965, `Test-StagedSeedLimit.ps1 -Verifier` rejects a physical
+16 MiB + 1 byte source in 40 ms without a matching manifest, while an independent
+pre-load handle verifies original length and final byte. An exact 16 MiB source
+is admitted with its original final byte. This fixture does not qualify
+inspection/publication of a binary-filled boundary file or force a mapped growth
+race: [gate](evidence/2026-10-01/seed-limit-verifier-gate.txt),
+[active Verifier](evidence/2026-10-01/seed-limit-verifier-query.txt).
+Keep `StagedIdentityProbe.cs` and `StagedTestAgent.ps1` beside the test and extract
+the recorded service ZIP into `Documents\stage-service-publish` before running.
+
+The same package passes `Test-StagedOwnedStreams.ps1 -Verifier -ReplacementCases
+-PublicationIterations 4`, including mapped writes after handle closure,
+concurrent writers, reopening, replacement, restart and 313 full independent
+destination-byte passes: [integrated gate](evidence/2026-10-01/seed-limit-integrated-gate.txt),
+[Verifier](evidence/2026-10-01/seed-limit-integrated-verifier-query.txt).
+[Independent restoration](evidence/2026-10-01/seed-limit-final-state.txt) verifies
+the original installed driver, unloaded filter, Verifier zero/None, no test
+agent/tasks and no disposable S:/VHDX. Persistent allocation quotas, interrupted
+copy/orphan accounting, inspection-snapshot bounds and safe reclamation remain
+open. This per-seed bound alone is not bounded durable storage management.
 
 ### Identity and namespace
 

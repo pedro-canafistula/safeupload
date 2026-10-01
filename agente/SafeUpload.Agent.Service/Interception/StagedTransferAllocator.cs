@@ -11,6 +11,8 @@ namespace SafeUpload.Agent.Service.Interception;
 /// </summary>
 public sealed class StagedTransferAllocator
 {
+    // Matches the currently qualified owned-stream STAGE_MAX_BYTES bound.
+    internal const long MaximumSeedBytes = 16 * 1024 * 1024;
     private readonly string _root;
     private readonly StagedTransferJournal _journal;
     private readonly FileSecurity? _fileSecurity;
@@ -172,17 +174,29 @@ public sealed class StagedTransferAllocator
             if (OperatingSystem.IsWindows())
             {
                 await StagedBackingFile.CreateAsync(copyExisting ? source ?? fullDestination : null,
-                    transfer.StagePath, cancellationToken).ConfigureAwait(false);
+                    transfer.StagePath, MaximumSeedBytes, cancellationToken).ConfigureAwait(false);
             }
             else if (copyExisting)
             {
                 await using var input = new FileStream(source ?? fullDestination,
                     FileMode.Open, FileAccess.Read, FileShare.Read,
                     64 * 1024, FileOptions.Asynchronous | FileOptions.SequentialScan);
+                if (input.Length > MaximumSeedBytes)
+                    throw new IOException("The source exceeds the qualified private-version size limit.");
                 await using var output = new FileStream(transfer.StagePath,
                     FileMode.CreateNew, FileAccess.Write, FileShare.None,
                     64 * 1024, FileOptions.Asynchronous | FileOptions.WriteThrough);
-                await input.CopyToAsync(output, cancellationToken).ConfigureAwait(false);
+                byte[] buffer = new byte[64 * 1024];
+                long copied = 0;
+                for (;;)
+                {
+                    int count = await input.ReadAsync(buffer, cancellationToken).ConfigureAwait(false);
+                    if (count == 0) break;
+                    if (count > MaximumSeedBytes - copied)
+                        throw new IOException("The source grew beyond the qualified private-version size limit.");
+                    await output.WriteAsync(buffer.AsMemory(0, count), cancellationToken).ConfigureAwait(false);
+                    copied += count;
+                }
                 output.Flush(flushToDisk: true);
             }
             else
