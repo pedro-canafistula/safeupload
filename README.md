@@ -2,7 +2,7 @@
 
 Protótipo acadêmico de sistema de **prevenção de vazamento acidental de dados** (DLP), desenvolvido na disciplina de Análise e Projeto de Software da Universidade Católica de Brasília.
 
-> Versão atual: **0.1.0** — protótipo acadêmico com Centro de Administração web e agente desktop. O frontend web possui navegação, renderização e dados demonstrativos; Auditoria e Endpoints também exibem dados recebidos do agente em memória. Ainda não há autenticação real, persistência em banco nem execução efetiva das ações administrativas.
+> Versão atual: **0.1.0** — protótipo acadêmico com Centro de Administração web e agente desktop. O frontend web possui navegação, renderização e dados demonstrativos; Auditoria exibe somente eventos recebidos em memória; Endpoints ainda combina heartbeats com exemplos. Ainda não há autenticação real, persistência em banco nem execução efetiva das ações administrativas.
 
 ---
 
@@ -39,7 +39,7 @@ O repositório atual contém duas interfaces principais:
 1. um **Centro de Administração web**, desenvolvido com FastAPI, Jinja2, HTML e CSS;
 2. um **protótipo de agente desktop**, desenvolvido em WPF com .NET 8 e C#.
 
-Nesta versão, o Centro de Administração utiliza dados demonstrativos para representar informações de auditoria, endpoints, categorias de detecção, exceções, usuários e relatórios. Auditoria e Endpoints acrescentam aos exemplos os eventos e heartbeats recebidos pela API do agente.
+Nesta versão, a Auditoria consulta somente os eventos recebidos pela API do agente, sem exemplos. As demais telas continuam demonstrativas; Endpoints também acrescenta heartbeats recebidos aos exemplos.
 
 A existência dessas representações visuais não significa que todos os fluxos de inspeção, autenticação, persistência ou administração estejam implementados.
 
@@ -470,14 +470,13 @@ app/presentation/demo/admin_data.py
 Esse módulo contém funções de construção de contexto para:
 
 - dashboard;
-- auditoria;
 - relatórios;
 - categorias;
 - exceções;
 - endpoints;
 - usuários.
 
-Cada função produz uma nova estrutura por chamada. Os builders de Auditoria e Endpoints também leem registros de `memory_store`, acrescentando-os aos exemplos; os demais continuam demonstrativos.
+Cada função produz uma nova estrutura por chamada. Endpoints também lê registros de `memory_store`, acrescentando-os aos exemplos. A Auditoria usa `presentation/audit.py`, que recebe os eventos consultados por `application/agent_service.py` e calcula lista e totais sem dados fictícios.
 
 Não há banco de dados, cache ou estado global criado por essa separação.
 
@@ -636,7 +635,7 @@ Não estão implementados nesta entrega:
 
 ### Dados demonstrativos
 
-Os exemplos fictícios sustentam a interface atual. Auditoria e Endpoints também apresentam registros recebidos do agente, misturados aos exemplos. Isso não constitui uma visão exclusivamente real do ambiente; filtros, paginação e indicadores ainda têm limitações descritas no [inventário das telas](docs/frontend/telas-e-dados.md).
+Os exemplos fictícios sustentam as telas demonstrativas. Endpoints ainda mistura exemplos e heartbeats; a Auditoria mostra apenas eventos recebidos, com estado vazio e totais da própria lista. Não há persistência, filtros, detalhes, exportação ou paginação nessa consulta. O [inventário das telas](docs/frontend/telas-e-dados.md) registra o escopo de cada página.
 
 ### Agente desktop
 

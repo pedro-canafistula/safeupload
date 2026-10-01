@@ -1,21 +1,8 @@
-"""Contextos demonstrativos do Centro de Administração.
-
-A maioria dos dados deste módulo existe apenas para sustentar o protótipo
-visual: cada função cria e retorna uma nova estrutura, sem cache,
-persistência ou estado global mutável. As rotas permanecem responsáveis
-apenas pelo fluxo HTTP e pela seleção do template correspondente.
-
-Exceção: :func:`build_endpoints_context` e :func:`build_audit_context` além
-disso leem :mod:`app.infrastructure.memory_store` e colocam o que o agente
-desktop já enviou de verdade (via ``POST /agent/heartbeat`` e
-``POST /agent/events``) no topo da mesma lista mockada — a lista fixa
-continua existindo para a tela nunca aparecer vazia, mas dado real chega e
-aparece sem precisar mexer em template nenhum.
-"""
+"""Contextos demonstrativos; Endpoints também inclui heartbeats recebidos."""
 
 from datetime import datetime, timedelta, timezone
 
-from app.domain.schemas import AuditEventSchema, EndpointRecord
+from app.domain.schemas import EndpointRecord
 from app.infrastructure import memory_store
 
 # Mesmo valor já usado como "current_agent_version" na tela de Endpoints —
@@ -23,38 +10,9 @@ from app.infrastructure import memory_store
 # heartbeat manda para decidir se um endpoint está desatualizado.
 _CURRENT_AGENT_VERSION = "2.3.1"
 
-_CATEGORY_LABELS = {
-    "Cpf": "CPF",
-    "Cnpj": "CNPJ",
-    "PaymentCard": "Cartão de pagamento",
-    "Password": "Senha em texto claro",
-    "Secret": "Segredo/credencial",
-}
-
-_VERDICT_TO_RESULT = {
-    # AllowedWithoutInspection é tecnicamente uma aprovação (o arquivo
-    # passou), só que sem checagem de conteúdo — daí o rótulo distinto em
-    # vez de reaproveitar "Rejeitado" (que na tela significa o oposto:
-    # operação recusada).
-    "Approved": ("approved", "Aprovado"),
-    "Blocked": ("blocked", "Bloqueado"),
-    "AllowedWithoutInspection": ("approved", "Aprovado (sem inspeção)"),
-}
-
-
 def _format_datetime(value: datetime, *, with_seconds: bool = False) -> str:
     fmt = "%d/%m/%Y %H:%M:%S" if with_seconds else "%d/%m/%Y %H:%M"
     return value.strftime(fmt)
-
-
-def _format_size(size_bytes: int) -> str:
-    if size_bytes >= 1024 * 1024:
-        text = f"{size_bytes / (1024 * 1024):.1f}".replace(".", ",")
-        return f"{text} MB"
-    if size_bytes >= 1024:
-        text = f"{size_bytes / 1024:.0f}"
-        return f"{text} KB"
-    return f"{size_bytes} B"
 
 
 def _os_short(os_name: str) -> str:
@@ -93,25 +51,6 @@ def _endpoint_record_to_row(record: EndpointRecord, *, now: datetime) -> dict:
             record.endpoint_id, since_7d
         ),
     }
-
-
-def _audit_event_to_row(event: AuditEventSchema) -> dict:
-    result_kind, result_label = _VERDICT_TO_RESULT[event.verdict]
-
-    row = {
-        "datetime": _format_datetime(event.occurred_at_utc, with_seconds=True),
-        "source": event.endpoint_id,
-        "filename": event.file_name,
-        "size": _format_size(event.size_bytes),
-        "result_kind": result_kind,
-        "result_label": result_label,
-        "categories": [_CATEGORY_LABELS.get(c, c) for c in event.categories],
-    }
-
-    if event.not_inspected_reason:
-        row["reject_reason"] = event.not_inspected_reason
-
-    return row
 
 
 def build_dashboard_context():
@@ -166,143 +105,6 @@ def build_dashboard_context():
              "categories": []},
         ],
     }
-
-
-def build_audit_context():
-    """Cria o contexto da página de auditoria: eventos mockados + o que o
-    agente desktop já enviou de verdade via ``POST /agent/events``."""
-    context = {
-        "active_page": "audit",
-        "stats": {
-            "total":    "1.247",
-            "blocked":  "89",
-            "approved": "1.135",
-            "rejected": "23",
-        },
-        "events": [
-            {"datetime": "23/06/2026 13:42:15", "source": "Sessão a3f9-4c2e",
-             "filename": "relatorio_clientes_q2.xlsx", "size": "2,3 MB",
-             "result_kind": "blocked",  "result_label": "Bloqueado",
-             "categories": ["CPF", "CNPJ"]},
-            {"datetime": "23/06/2026 13:38:02", "source": "Sessão a3f9-4c2e",
-             "filename": "proposta_comercial.pdf", "size": "1,1 MB",
-             "result_kind": "approved", "result_label": "Aprovado",
-             "categories": []},
-            {"datetime": "23/06/2026 13:35:48", "source": "Sessão 7c2a-8e1d",
-             "filename": "dados_funcionarios.csv", "size": "856 KB",
-             "result_kind": "blocked",  "result_label": "Bloqueado",
-             "categories": ["CPF"]},
-            {"datetime": "23/06/2026 13:30:11", "source": "Sessão 7c2a-8e1d",
-             "filename": "apresentacao_resultados.pdf", "size": "4,2 MB",
-             "result_kind": "approved", "result_label": "Aprovado",
-             "categories": []},
-            {"datetime": "23/06/2026 13:24:55", "source": "Sessão e1d7-9f3b",
-             "filename": "backup_credenciais.txt", "size": "12 KB",
-             "result_kind": "blocked",  "result_label": "Bloqueado",
-             "categories": ["Senha em texto claro"]},
-            {"datetime": "23/06/2026 13:18:30", "source": "Sessão e1d7-9f3b",
-             "filename": "imagem_logo.png", "size": "—",
-             "result_kind": "rejected", "result_label": "Rejeitado",
-             "categories": [], "reject_reason": "Formato não suportado"},
-            {"datetime": "23/06/2026 13:12:18", "source": "Sessão 2b8f-6a4c",
-             "filename": "contratos_fornecedores.docx", "size": "567 KB",
-             "result_kind": "blocked",  "result_label": "Bloqueado",
-             "categories": ["CNPJ"]},
-            {"datetime": "23/06/2026 13:05:44", "source": "Sessão 2b8f-6a4c",
-             "filename": "manual_produto.pdf", "size": "8,7 MB",
-             "result_kind": "approved", "result_label": "Aprovado",
-             "categories": []},
-            {"datetime": "23/06/2026 12:58:21", "source": "Sessão 9d4e-3c7a",
-             "filename": "cadastro_clientes.xlsx", "size": "3,1 MB",
-             "result_kind": "blocked",  "result_label": "Bloqueado",
-             "categories": ["CPF", "Cartão de pagamento"]},
-            {"datetime": "23/06/2026 12:52:09", "source": "Sessão 9d4e-3c7a",
-             "filename": "arquivo_grande.pdf", "size": "22,4 MB",
-             "result_kind": "rejected", "result_label": "Rejeitado",
-             "categories": [], "reject_reason": "Tamanho excedido"},
-            {"datetime": "23/06/2026 12:47:33", "source": "Sessão 6f1c-2d8b",
-             "filename": "extrato_bancario.pdf", "size": "234 KB",
-             "result_kind": "blocked",  "result_label": "Bloqueado",
-             "categories": ["Cartão de pagamento"]},
-            {"datetime": "23/06/2026 12:41:18", "source": "Sessão 6f1c-2d8b",
-             "filename": "apresentacao_marketing.pdf", "size": "5,4 MB",
-             "result_kind": "approved", "result_label": "Aprovado",
-             "categories": []},
-            {"datetime": "23/06/2026 12:35:02", "source": "Sessão 4e8b-7f1a",
-             "filename": "lista_emails.csv", "size": "89 KB",
-             "result_kind": "approved", "result_label": "Aprovado",
-             "categories": []},
-            {"datetime": "23/06/2026 12:28:46", "source": "Sessão 4e8b-7f1a",
-             "filename": "folha_pagamento.xlsx", "size": "1,8 MB",
-             "result_kind": "blocked",  "result_label": "Bloqueado",
-             "categories": ["CPF"]},
-            {"datetime": "23/06/2026 12:20:11", "source": "Sessão 8a5d-3e9f",
-             "filename": "rascunho_email.txt", "size": "4 KB",
-             "result_kind": "approved", "result_label": "Aprovado",
-             "categories": []},
-            {"datetime": "23/06/2026 12:14:35", "source": "Sessão 8a5d-3e9f",
-             "filename": "dados_pix.txt", "size": "18 KB",
-             "result_kind": "blocked",  "result_label": "Bloqueado",
-             "categories": ["CPF", "Senha em texto claro"]},
-            {"datetime": "23/06/2026 12:08:22", "source": "Sessão 1f3a-5c2b",
-             "filename": "apresentacao_2026.pdf", "size": "6,7 MB",
-             "result_kind": "approved", "result_label": "Aprovado",
-             "categories": []},
-            {"datetime": "23/06/2026 12:01:47", "source": "Sessão 1f3a-5c2b",
-             "filename": "termos_servico.docx", "size": "245 KB",
-             "result_kind": "approved", "result_label": "Aprovado",
-             "categories": []},
-            {"datetime": "23/06/2026 11:55:14", "source": "Sessão 5b9c-8d4e",
-             "filename": "cadastro_v2.xlsx", "size": "4,2 MB",
-             "result_kind": "blocked",  "result_label": "Bloqueado",
-             "categories": ["CPF", "CNPJ", "Cartão de pagamento"]},
-            {"datetime": "23/06/2026 11:48:03", "source": "Sessão 5b9c-8d4e",
-             "filename": "nota_fiscal.pdf", "size": "178 KB",
-             "result_kind": "blocked",  "result_label": "Bloqueado",
-             "categories": ["CNPJ"]},
-        ],
-        "pagination": {
-            "showing_from": 1,
-            "showing_to":   20,
-            "total":        1247,
-            "current":      1,
-            "total_pages":  63,
-        },
-        # Opções dos filtros (não persistem; apenas para alimentar os <select>)
-        "filter_options": {
-            "periods": [
-                {"value": "24h",   "label": "Últimas 24 horas"},
-                {"value": "7d",    "label": "Últimos 7 dias",   "default": True},
-                {"value": "30d",   "label": "Últimos 30 dias"},
-                {"value": "90d",   "label": "Últimos 90 dias"},
-                {"value": "all",   "label": "Todo o período"},
-            ],
-            "results": [
-                {"value": "all",      "label": "Todos os resultados", "default": True},
-                {"value": "blocked",  "label": "Apenas bloqueados"},
-                {"value": "approved", "label": "Apenas aprovados"},
-                {"value": "rejected", "label": "Apenas rejeitados"},
-            ],
-            "categories": [
-                {"value": "all",      "label": "Todas as categorias", "default": True},
-                {"value": "CPF",      "label": "CPF"},
-                {"value": "CNPJ",     "label": "CNPJ"},
-                {"value": "CARD",     "label": "Cartão de pagamento"},
-                {"value": "PASSWORD", "label": "Senha em texto claro"},
-            ],
-        },
-    }
-
-    real_events = [_audit_event_to_row(event) for event in memory_store.list_audit_events()]
-    context["events"] = real_events + context["events"]
-
-    blocked_real = sum(1 for row in real_events if row["result_kind"] == "blocked")
-    approved_real = sum(1 for row in real_events if row["result_kind"] == "approved")
-    context["stats"]["total"] = str(int(context["stats"]["total"].replace(".", "")) + len(real_events))
-    context["stats"]["blocked"] = str(int(context["stats"]["blocked"]) + blocked_real)
-    context["stats"]["approved"] = str(int(context["stats"]["approved"].replace(".", "")) + approved_real)
-
-    return context
 
 
 def build_reports_context():

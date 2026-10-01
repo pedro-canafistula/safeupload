@@ -5,19 +5,18 @@ Todas as rotas deste módulo são prefixadas com ``/admin`` e devem ser
 restritas ao perfil administrador (controle de acesso será adicionado
 quando a camada de segurança for implementada).
 
-Durante a fase de protótipo visual, as páginas exibem **dados fictícios**
-fornecidos pelo módulo ``app.presentation.demo.admin_data``. Esses dados
-serão substituídos por consultas reais ao banco quando os repositórios da
-camada de infraestrutura existirem.
+A Auditoria consulta eventos recebidos pela camada de aplicação. As demais
+páginas usam contextos demonstrativos; Endpoints também inclui heartbeats.
 """
 
 from fastapi import APIRouter, Request, status
 from fastapi.responses import HTMLResponse, RedirectResponse
 
+from app.application import agent_service
 from app.presentation import templates
+from app.presentation.audit import build_audit_context
 from app.presentation.demo.admin_data import (
     build_allowlist_context,
-    build_audit_context,
     build_categories_context,
     build_dashboard_context,
     build_endpoints_context,
@@ -85,16 +84,8 @@ async def dashboard(request: Request):
 
 @router.get("/auditoria", response_class=HTMLResponse)
 async def audit_page(request: Request):
-    """Exibe o histórico completo de inspeções (HU-04).
-
-    Conforme as regras de negócio (RN-006, RN-007), o log contém apenas
-    metadados, resultado, categorias detectadas e — quando necessário —
-    trechos mascarados. **Valores reais nunca aparecem nesta página**.
-
-    Os dados aqui são fictícios; serão substituídos por uma consulta ao
-    repositório de auditoria quando a camada de infraestrutura existir.
-    """
-    context = build_audit_context()
+    """Exibe os eventos recebidos, sem filtros ou paginação (HU-04)."""
+    context = build_audit_context(agent_service.list_audit_events())
     return templates.TemplateResponse(request, "admin/audit.html", context)
 
 

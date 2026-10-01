@@ -1,10 +1,4 @@
-"""Casos de uso da API do agente desktop.
-
-Cada função recebe um schema de :mod:`app.domain.schemas`, fala com
-:mod:`app.infrastructure.memory_store`, e devolve outro schema. Sem
-classes/interfaces — são três operações, uma abstração maior não se paga
-no prazo desta entrega.
-"""
+"""Casos de uso da API do agente e consulta dos eventos recebidos."""
 
 from app.domain.schemas import (
     AuditEventSchema,
@@ -60,3 +54,7 @@ def submit_events(
         accepted_events=len(events),
         accepted_overrides=len(overrides),
     )
+
+
+def list_audit_events() -> list[AuditEventSchema]:
+    return memory_store.list_audit_events()

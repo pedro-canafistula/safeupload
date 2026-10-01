@@ -320,7 +320,8 @@
     color: var(--color-danger-text);
 }
 
-.badge-rejected {
+.badge-rejected,
+.badge-not-inspected {
     background: var(--color-warning-bg);
     color: var(--color-warning-text);
 }
@@ -446,7 +447,8 @@
 
 .stat-strip-dot-blocked  { background: var(--color-danger); }
 .stat-strip-dot-approved { background: var(--color-success); }
-.stat-strip-dot-rejected { background: var(--color-warning); }
+.stat-strip-dot-rejected,
+.stat-strip-dot-not-inspected { background: var(--color-warning); }
 
 /* ============================================================
    Filter bar (audit page)

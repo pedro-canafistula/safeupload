@@ -1,6 +1,6 @@
 # Telas e dados do frontend
 
-Inventário consolidado em 01/10/2026, conferido com o código da `main` em `a0b1918960598d9f338a5968ee1a88189c396ffe`. Descreve o comportamento implementado, incluindo a integração parcial da HU-10; não representa funcionalidades planejadas como concluídas.
+Inventário atualizado em 01/10/2026, incluindo a evolução de Auditoria somente para leitura sobre a base `e0d2c9d4380ffa85059b67ab4b53ef7ec0ebc8d4`. Descreve o comportamento desta versão; não representa funcionalidades planejadas como concluídas.
 
 ## Resumo das oito telas
 
@@ -10,14 +10,14 @@ Inventário consolidado em 01/10/2026, conferido com o código da `main` em `a0b
 |---|---|---|---|
 | Login | Sem contexto de negócio | Renderização e redirecionamento do POST | Autenticação, sessão e autorização ausentes |
 | Painel | Dados fixos | Renderização e links internos | Indicadores não refletem os eventos recebidos |
-| Auditoria | Exemplos + eventos de `memory_store` | Recepção refletida na lista e em parte dos totais | Mistura de fontes; filtros, detalhes e paginação sem execução |
+| Auditoria | Somente eventos recebidos, consultados pelo serviço | Lista, totais por resultado e estado vazio | Sem persistência, filtros, detalhes, exportação ou paginação |
 | Endpoints | Exemplos + heartbeats de `memory_store` | Recepção refletida no inventário e cálculo de status | Versão de referência fixa e ações administrativas sem execução |
 | Relatórios | Catálogo fixo | Links para Auditoria e Painel | Nenhum relatório gerado |
 | Categorias | Quatro categorias fixas | Alternância local dos checkboxes | Sem gravação ou ligação com a política do agente |
 | Exceções | Sete exemplos fixos | Renderização e navegação de Limpar | Sem cadastro, remoção, filtro ou HMAC implementado |
 | Usuários | Seis contas fixas | Renderização e navegação de Limpar | Sem cadastro, edição ou controle de acesso |
 
-Rotas e templates: [admin.py](../../app/presentation/routes/admin.py) e [templates administrativos](../../app/presentation/templates/admin). Fontes dos contextos: [admin_data.py](../../app/presentation/demo/admin_data.py) e [memory_store.py](../../app/infrastructure/memory_store.py).
+Rotas e templates: [admin.py](../../app/presentation/routes/admin.py) e [templates administrativos](../../app/presentation/templates/admin). Contextos: [audit.py](../../app/presentation/audit.py) e [admin_data.py](../../app/presentation/demo/admin_data.py). Consulta de eventos: [agent_service.py](../../app/application/agent_service.py), usando [memory_store.py](../../app/infrastructure/memory_store.py).
 
 ## Entradas e navegação
 
@@ -53,13 +53,15 @@ As rotas internas não têm controle de acesso. O destaque da sidebar depende do
 ### 3. Auditoria
 
 - **Rota e arquivo:** `/admin/auditoria` → `admin/audit.html`; `active_page=audit`.
-- **Contexto:** `stats`, `events`, `pagination`, `filter_options`.
-- **Estrutura:** resumo, filtros, vinte eventos demonstrativos acrescidos dos eventos recebidos, exportação e paginação visual. A paginação permanece fixa em 1.247 eventos e 63 páginas; não limita as linhas renderizadas.
-- **Fonte:** `build_audit_context()` antepõe os eventos de `memory_store.list_audit_events()` aos exemplos e acrescenta as quantidades recebidas aos totais fictícios de eventos, bloqueados e aprovados. O Painel não acompanha esses acréscimos.
-- **Campos da tabela:** data/hora, origem, arquivo, tamanho, resultado, categorias e ação de detalhes. Origem usa textos fictícios nos exemplos e `endpoint_id` nos eventos recebidos. Alguns eventos têm `reject_reason`, exibido quando não há categorias.
-- **Comportamento:** Aplicar envia GET; Limpar volta à URL sem parâmetros. A rota ignora os filtros, incluindo `hostname` recebido de Endpoints. Exportar CSV, detalhes e botões de paginação não executam essas ações.
-- **Limitação:** os números de página são apresentação estática; a consulta não seleciona outros eventos.
-- **Mapeamento:** `Approved` e `Blocked` viram Aprovado e Bloqueado. `AllowedWithoutInspection` aparece como Aprovado (sem inspeção), mas usa a classe e a contagem de aprovação. `Secret` já recebe o rótulo Segredo/credencial na linha; não aparece nas opções de filtro. Datas são formatadas sem conversão explícita de fuso. `event_id`, usuário, processo, destino e trechos mascarados não são repassados à linha pelo builder; o botão de detalhes não os apresenta.
+- **Contexto:** `stats` e `events`, montados por `presentation/audit.py`.
+- **Fonte:** a rota consulta `agent_service.list_audit_events()`, que usa `memory_store`. O builder recebe essa lista e monta somente a apresentação; nenhum exemplo é acrescentado.
+- **Estrutura:** aviso de consulta geral e armazenamento temporário, totais por resultado, tabela e resumo da quantidade exibida. Lista e total representam os mesmos registros, sem corte em vinte linhas ou paginação fictícia.
+- **Campos:** data/hora com o deslocamento de fuso recebido, endpoint, arquivo, tamanho, resultado, categorias e motivo de não inspeção quando informado. Não são exibidos usuário, processo, destino ou trechos mascarados.
+- **Resultados:** `Approved` → Aprovado; `Blocked` → Bloqueado; `AllowedWithoutInspection` → Liberado sem inspeção. O último tem contagem própria e sinalização de atenção. As cinco categorias do contrato, incluindo `Secret`, têm rótulos de apresentação.
+- **Vazio:** sem eventos, todos os totais são zero e a tabela informa que nenhum evento foi recebido.
+- **Escopo:** consulta somente para leitura. Filtros, exportação, detalhes e navegação de páginas não aparecem como controles disponíveis. Parâmetros antigos, inclusive `hostname`, continuam ignorados; a tela informa que a consulta é geral.
+- **Limites:** não há persistência, deduplicação, atualização automática nem recuperação específica de falha de consulta. As datas preservam o fuso informado pelo agente; a validação de datas sem fuso continua pendente na API. O Painel permanece demonstrativo e não acompanha esses totais.
+- **Verificação:** `tests/test_audit_page.py` cobre ausência de exemplos, estado vazio, contagem por resultado, ordenação entre fusos, mais de vinte registros, escape de textos e renderização das demais páginas. Executar `python -m pytest tests -q` na raiz.
 
 ### 4. Endpoints
 
@@ -110,7 +112,7 @@ As rotas internas não têm controle de acesso. O destaque da sidebar depende do
 | Página | Método | Parâmetros enviados | Tratamento atual |
 |---|---|---|---|
 | Login | POST | `email`, `senha` | Ignorados; redirecionamento 303 |
-| Auditoria | GET | `periodo`, `resultado`, `categoria`, `q` | Ignorados; contexto padrão |
+| Auditoria | GET | Sem formulário de filtros | Parâmetros antigos ignorados; consulta geral explicitada |
 | Endpoints | GET | `status`, `os`, `q` | Ignorados; contexto padrão |
 | Exceções | GET | `categoria`, `q` | Ignorados; contexto padrão |
 | Usuários | GET | `perfil`, `status`, `q` | Ignorados; contexto padrão |
@@ -119,19 +121,19 @@ As opções selecionadas nos filtros são reconstruídas a partir de `filter_opt
 
 ## Formato dos contextos e dependências de apresentação
 
-Os contratos atuais são dicionários montados por funções em `presentation/demo/admin_data.py`; não há esquema tipado específico para as páginas. As rotas chamam esses builders e repassam o resultado ao Jinja2. A documentação deve descrevê-los como contratos internos existentes, não como API JSON.
+Os contratos de apresentação são dicionários: Auditoria usa `presentation/audit.py`, e as demais páginas com contexto usam `presentation/demo/admin_data.py`. Não há esquema tipado específico para as páginas. Na Auditoria, a rota consulta o serviço e passa os eventos ao builder; depois repassa o contexto ao Jinja2. A documentação deve descrevê-los como contratos internos existentes, não como API JSON.
 
 | Página | Builder do contexto |
 |---|---|
 | Painel | `build_dashboard_context()` |
-| Auditoria | `build_audit_context()` |
+| Auditoria | `build_audit_context(events)` em `presentation/audit.py` |
 | Relatórios | `build_reports_context()` |
 | Categorias | `build_categories_context()` |
 | Exceções | `build_allowlist_context()` |
 | Endpoints | `build_endpoints_context()` |
 | Usuários | `build_users_context()` |
 
-O login não possui builder porque não recebe contexto de negócio. Cada builder retorna uma nova estrutura. Auditoria e Endpoints também leem o armazenamento compartilhado em memória; os demais contextos continuam fixos.
+O login não possui builder porque não recebe contexto de negócio. Cada builder retorna uma nova estrutura. O builder de Auditoria recebe eventos da camada de aplicação. Endpoints ainda lê o armazenamento compartilhado em memória; os demais contextos continuam fixos.
 
 | Estrutura | Campos que sustentam a apresentação |
 |---|---|
@@ -139,8 +141,8 @@ O login não possui builder porque não recebe contexto de negócio. Cada builde
 | Barra de tendência | `label`, `value`, `percentage` |
 | Categoria mais detectada | `name`, `value`, `percentage` |
 | Evento recente | `time`, `filename`, `size`, `result_kind`, `result_label`, `categories` |
-| Evento de auditoria | `datetime`, `source`, `filename`, `size`, `result_kind`, `result_label`, `categories`; `reject_reason` opcional |
-| Paginação de auditoria | `showing_from`, `showing_to`, `total`, `current`, `total_pages`; os botões iniciais são fixos no template |
+| Evento de auditoria | `datetime`, `source`, `filename`, `size`, `result_kind`, `result_label`, `categories`, `not_inspected_reason` |
+| Totais de auditoria | `total`, `blocked`, `approved`, `not_inspected`; inteiros calculados a partir da mesma lista exibida |
 | Opção de filtro | `value`, `label`, `default` opcional |
 | Categoria configurável | `code`, `label`, `rule`, `tone`, `icon`, `enabled`, `heuristic`, `occurrences`, `description`; `icon` é uma chave de apresentação conhecida |
 | Endpoint | `hostname`, `ip`, `os`, `os_short`, `agent_version`, `agent_outdated`, `policy_version`, `last_seen`, `status`, `status_label`, `inspections_7d` |
@@ -151,31 +153,31 @@ Datas, tamanhos e vários totais já chegam formatados como texto. `result_kind`
 
 ## Limites da integração atual
 
-O fluxo existente é `routes/agent.py` → `application/agent_service.py` → `infrastructure/memory_store.py`. Depois, os builders de Auditoria e Endpoints leem essa memória e `routes/admin.py` renderiza os templates. Os formatos recebidos estão em [domain/schemas.py](../../app/domain/schemas.py). Os dicionários das páginas são contratos de apresentação, distintos desses schemas.
+O fluxo existente é `routes/agent.py` → `application/agent_service.py` → `infrastructure/memory_store.py`. Para Auditoria, `routes/admin.py` consulta a aplicação e entrega os eventos ao builder de apresentação. Endpoints ainda lê essa memória em seu builder. A rota renderiza os templates. Os formatos recebidos estão em [domain/schemas.py](../../app/domain/schemas.py). Os dicionários das páginas são contratos de apresentação, distintos desses schemas.
 
 - Reiniciar o processo perde endpoints e eventos recebidos. O banco em `db/` não participa desse fluxo.
 - Reenviar um `eventId` acrescenta outra entrada; não há deduplicação no armazenamento.
 - Os schemas aceitam datas sem fuso. Elas podem falhar na ordenação com datas com fuso ou na comparação usada pelas contagens de Endpoints.
 - Não há autenticação na API do agente. Registros recebidos não equivalem a identidade autenticada.
 - A API aceita overrides, mas o despachante atual envia essa lista vazia; as telas não apresentam um fluxo de justificativas.
-- Listas sempre contêm exemplos. Não há tratamento específico de ausência de dados recebidos, lista realmente vazia ou falha de consulta. Também não há mensagens de sucesso/erro das ações ainda sem execução.
+- Auditoria tem estado vazio e não contém exemplos. As demais listas preservam dados demonstrativos. Não há tratamento específico de falha de consulta nem mensagens de sucesso/erro das ações ainda sem execução.
 
 ## Responsabilidades e próximos recortes
 
-As responsabilidades abaixo são por camada; responsáveis nominais e prioridades precisam ser acordados pela equipe. As referências HU/RN dos templates não substituem critérios de aceite. Este inventário não altera contratos, regras ou comportamento da aplicação.
+As responsabilidades abaixo são por camada; responsáveis nominais e prioridades precisam ser acordados pela equipe. As referências HU/RN dos templates não substituem critérios de aceite. Os contratos de recepção do agente não foram alterados por esse recorte de apresentação.
 
 | Tela | Recorte pequeno sugerido para a web | Dependência para comportamento real |
 |---|---|---|
 | Login | Distinguir entrada demonstrativa de sessão autenticada na apresentação | Backend/segurança: autenticação, sessão, logout e autorização |
 | Painel | Identificar a origem demonstrativa dos indicadores | Aplicação: agregações com período e fonte definidos |
-| Auditoria | Separar exemplos de registros recebidos e representar ausência de eventos | Aplicação/infraestrutura: fonte de leitura; acordo sobre IDs, vereditos e fuso |
+| Auditoria | Próximo recorte possível: um filtro de consulta | Aplicação: contrato do filtro, ordenação e total do resultado; API: validação de datas |
 | Endpoints | Distinguir conectividade de versão e explicitar ações indisponíveis | Agente/aplicação: versão de referência, identidade e critérios de status |
 | Relatórios | Diferenciar navegação existente de relatórios indisponíveis | Aplicação: definição das consultas, períodos e formatos |
 | Categorias | Explicitar que a alteração local não salva política | Aplicação/domínio: catálogo, validação, gravação, versão e auditoria de política |
 | Exceções | Explicitar o caráter experimental e as ações indisponíveis | Domínio/segurança/infraestrutura: contrato da exceção, HMAC, autorização e persistência |
 | Usuários | Explicitar contas e perfis demonstrativos | Backend/segurança: gestão de contas, credenciais e permissões |
 
-O primeiro recorte funcional proposto é Auditoria somente para leitura, a ser feito em outra entrega: fonte explícita, sem somar exemplos aos registros recebidos, lista e total coerentes, estado vazio e mapeamento acordado de categorias/vereditos/datas. Filtros, detalhes, paginação e gravações administrativas permanecem recortes posteriores.
+O recorte de Auditoria somente para leitura está implementado nesta versão: fonte explícita, sem exemplos, lista e total coerentes e estado vazio. Filtros, detalhes, paginação, persistência e gravações administrativas permanecem recortes posteriores.
 
 ## Critérios de manutenção do inventário
 

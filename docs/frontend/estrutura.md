@@ -7,6 +7,7 @@ app/
 ├── main.py
 └── presentation/
     ├── __init__.py
+    ├── audit.py
     ├── routes/
     │   ├── admin.py
     │   └── agent.py
@@ -40,9 +41,9 @@ app/
         └── pages.css
 ```
 
-`main.py` cria a aplicação, monta `/static` e registra as rotas. `presentation/__init__.py` configura os templates Jinja2. `routes/admin.py` concentra as declarações HTTP e a seleção de templates. `demo/admin_data.py` concentra os exemplos e a montagem dos sete contextos; Auditoria e Endpoints também leem dados recebidos em memória.
+`main.py` cria a aplicação, monta `/static` e registra as rotas. `presentation/__init__.py` configura os templates Jinja2. `routes/admin.py` concentra as declarações HTTP e a seleção de templates. `demo/admin_data.py` concentra os seis contextos demonstrativos, incluindo Endpoints com heartbeats recebidos. `presentation/audit.py` monta a Auditoria somente a partir dos eventos entregues pela rota, sem consultar armazenamento ou acrescentar exemplos.
 
-Fora da árvore de apresentação acima, `routes/agent.py` recebe heartbeats/eventos e entrega política por meio de `application/agent_service.py`. Os contratos ficam em `domain/schemas.py` e o armazenamento em `infrastructure/memory_store.py`, sem ligação com o banco. Os dois builders integrados leem esse armazenamento diretamente; essa é a dependência atual, não uma nova camada proposta.
+Fora da árvore de apresentação acima, `routes/agent.py` recebe heartbeats/eventos e entrega política por meio de `application/agent_service.py`. Os contratos ficam em `domain/schemas.py` e o armazenamento em `infrastructure/memory_store.py`, sem ligação com o banco. `routes/admin.py` consulta os eventos por `agent_service.list_audit_events()` e repassa a lista ao builder de Auditoria. O builder de Endpoints ainda lê o armazenamento diretamente.
 
 Cada função `build_*_context()` cria uma nova estrutura em memória e não mantém cache ou estado global mutável. O login não possui builder próprio porque não recebe contexto de negócio. Essa separação é interna à camada de apresentação: `demo/` não é serviço de aplicação, repositório nem fonte persistente.
 
@@ -66,7 +67,7 @@ A classe do corpo é capturada em uma variável Jinja2; o atributo `class` só �
 
 A topbar permanece no layout administrativo para manter o bloco `page_title` na cadeia de herança. Textos fixos de usuário e servidor continuam demonstrativos.
 
-## Mudanças aplicadas
+## Histórico da refatoração estrutural
 
 A primeira parte alterou `base.html`, `admin/base_admin.html` e o bloco externo de `admin/login.html`, adicionando `admin/partials/sidebar.html`. O trecho incompleto `</` no final do layout administrativo foi eliminado pela herança da base, deixando os fechamentos do documento em um único lugar.
 
@@ -77,6 +78,8 @@ Os quatro SVGs de categorias deixaram de ser constantes em `routes/admin.py`. O 
 A terceira parte reorganizou o stylesheet monolítico. `styles.css` permanece como o único arquivo referenciado pelo HTML, mas agora contém somente sete `@import` em ordem fixa. Os trechos originais foram movidos sem alteração para `tokens.css`, `base.css`, `auth.css`, `controls.css`, `layout.css`, `components.css` e `pages.css`. A concatenação desses arquivos na ordem dos imports reproduz byte a byte o CSS anterior.
 
 A quarta parte separou os dados demonstrativos das declarações de rota. `routes/admin.py` importa os builders de `demo/admin_data.py`, obtém o contexto e renderiza o mesmo template de antes. Foram criados `build_dashboard_context()`, `build_audit_context()`, `build_reports_context()`, `build_categories_context()`, `build_allowlist_context()`, `build_endpoints_context()` e `build_users_context()`. Os valores, URLs internas, filtros demonstrativos e campos consumidos pelos templates foram preservados.
+
+A evolução de Auditoria somente para leitura moveu seu builder para `presentation/audit.py`. Os exemplos dessa tela e seus controles sem execução foram removidos; as outras páginas preservam o comportamento existente.
 
 ## Convenções de manutenção
 
