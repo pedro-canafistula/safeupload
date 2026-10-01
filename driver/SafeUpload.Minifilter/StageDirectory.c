@@ -8,6 +8,7 @@
 typedef struct _STAGE_DIRECTORY_ENTRY {
     LIST_ENTRY Link;
     ULONG Bytes;
+    FILE_ID_128 ExtendedId;
     FILE_ID_BOTH_DIR_INFORMATION Info;
 } STAGE_DIRECTORY_ENTRY, *PSTAGE_DIRECTORY_ENTRY;
 
@@ -34,7 +35,7 @@ VOID SafeUploadFreeDirectoryView(_In_opt_ PVOID View)
 }
 
 static NTSTATUS StageDirectoryAdd(_Inout_ PSTAGE_DIRECTORY_VIEW View,
-    _In_ PFILE_ID_BOTH_DIR_INFORMATION Info)
+    _In_ PFILE_ID_BOTH_DIR_INFORMATION Info, _In_opt_ PFILE_ID_128 ExtendedId)
 {
     ULONG bytes = FIELD_OFFSET( STAGE_DIRECTORY_ENTRY, Info.FileName ) + Info->FileNameLength;
     PSTAGE_DIRECTORY_ENTRY entry;
@@ -43,6 +44,8 @@ static NTSTATUS StageDirectoryAdd(_Inout_ PSTAGE_DIRECTORY_VIEW View,
     entry = ExAllocatePool2( POOL_FLAG_PAGED, bytes, SAFEUPLOAD_POOL_TAG );
     if (entry == NULL) return STATUS_INSUFFICIENT_RESOURCES;
     entry->Bytes = bytes;
+    if (ExtendedId != NULL) entry->ExtendedId = *ExtendedId;
+    else RtlCopyMemory(&entry->ExtendedId, &Info->FileId, sizeof(Info->FileId));
     RtlCopyMemory( &entry->Info, Info,
         FIELD_OFFSET( FILE_ID_BOTH_DIR_INFORMATION, FileName ) + Info->FileNameLength );
     entry->Info.NextEntryOffset = 0;
@@ -118,7 +121,7 @@ static NTSTATUS StageDirectoryBuild(_In_ PFLT_INSTANCE Instance, _In_ PUNICODE_S
                 info->FileNameLength > returned - offset - header || (info->FileNameLength & 1)) {
                 status = STATUS_DATA_ERROR; goto Exit;
             }
-            status = StageDirectoryAdd( view, info );
+            status = StageDirectoryAdd( view, info, NULL );
             if (!NT_SUCCESS( status )) goto Exit;
             if (info->NextEntryOffset == 0) break;
             if (info->NextEntryOffset < header || info->NextEntryOffset > returned - offset) {
@@ -143,7 +146,7 @@ static NTSTATUS StageDirectoryBuild(_In_ PFLT_INSTANCE Instance, _In_ PUNICODE_S
             info->FileAttributes = basic.FileAttributes; info->FileId = overlay->FileId;
             info->FileNameLength = overlay->Name.Length;
             RtlCopyMemory( info->FileName, overlay->Name.Buffer, overlay->Name.Length );
-            status = StageDirectoryAdd( view, info );
+            status = StageDirectoryAdd( view, info, &overlay->ExtendedId );
             if (!NT_SUCCESS( status )) goto Exit;
         }
     }
@@ -217,7 +220,7 @@ static NTSTATUS StageDirectoryOutput(PFLT_CALLBACK_DATA Data, PSTAGE_DIRECTORY_V
             if (cls == FileIdFullDirectoryInformation) ((PFILE_ID_FULL_DIR_INFORMATION) out)->FileId = entry->Info.FileId;
             if (cls == FileIdExtdDirectoryInformation || cls == FileIdExtdBothDirectoryInformation) {
                 PFILE_ID_EXTD_DIR_INFORMATION extended = (PFILE_ID_EXTD_DIR_INFORMATION) out;
-                RtlCopyMemory( extended->FileId.Identifier, &entry->Info.FileId, sizeof( entry->Info.FileId ) );
+                extended->FileId = entry->ExtendedId;
             }
         }
         copied = min( name.Length, length - *Written - header ) & ~1UL;

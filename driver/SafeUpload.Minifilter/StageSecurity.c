@@ -12,7 +12,34 @@ static NTSTATUS SafeUploadStageQuerySecurity(_In_ PFLT_INSTANCE Instance,
 #pragma alloc_text(PAGE, SafeUploadStageFreeSecurity)
 #pragma alloc_text(PAGE, SafeUploadStageCheckRenameAccess)
 #pragma alloc_text(PAGE, SafeUploadStageCheckSubjectAccess)
+#pragma alloc_text(PAGE, SafeUploadStageQueryIdentity)
 #endif
+
+NTSTATUS SafeUploadStageQueryIdentity(PFLT_INSTANCE Instance, PUNICODE_STRING Name,
+    BOOLEAN Directory, PFILE_ID_INFORMATION Identity)
+{
+    OBJECT_ATTRIBUTES attributes;
+    IO_STATUS_BLOCK io = {0};
+    HANDLE handle = NULL;
+    PFILE_OBJECT file = NULL;
+    NTSTATUS status;
+    PAGED_CODE();
+    RtlZeroMemory(Identity, sizeof(*Identity));
+    InitializeObjectAttributes(&attributes, Name, OBJ_KERNEL_HANDLE | OBJ_CASE_INSENSITIVE, NULL, NULL);
+    status = FltCreateFileEx2(SafeUploadData.Filter, Instance, &handle, &file,
+        FILE_READ_ATTRIBUTES, &attributes, &io, NULL, 0,
+        FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, FILE_OPEN,
+        Directory ? FILE_DIRECTORY_FILE : FILE_NON_DIRECTORY_FILE, NULL, 0,
+        IO_IGNORE_SHARE_ACCESS_CHECK | IO_STOP_ON_SYMLINK, NULL);
+    if (status == STATUS_STOPPED_ON_SYMLINK && io.Information != 0)
+        ExFreePool((PVOID)io.Information);
+    if (NT_SUCCESS(status)) {
+        status = FltQueryInformationFile(Instance, file, Identity, sizeof(*Identity), FileIdInformation, NULL);
+        ObDereferenceObject(file);
+        FltClose(handle);
+    }
+    return status;
+}
 
 // Read the destination's descriptor below our instance. This never creates,
 // truncates, or writes to the protected destination.

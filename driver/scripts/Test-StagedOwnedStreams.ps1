@@ -2,6 +2,7 @@
 param([switch] $Verifier, [switch] $ReplacementCases, [ValidateRange(0,64)][int] $PublicationIterations = 0)
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'StagedTestAgent.ps1')
+Add-Type -Path (Join-Path $PSScriptRoot 'StagedIdentityProbe.cs')
 $installed = 'C:\Windows\System32\drivers\SafeUpload.sys'
 $expectedOriginal = 'ADA9D05AB6AECDD2B6C521B0CE529FC06C732154ACB3EE85439FBDC8AA80DFCE'
 $driver = 'C:\Users\vika\Documents\SafeUpload-stage-prototype.sys'
@@ -290,6 +291,16 @@ Add-Content '__LOG__' ('samples=' + $samples)
         throw 'Original destination path/volume identity lost.'
     }
     Write-Output "DurableAllocationAndNativeIdentity=True; Volume=$expectedVolume"
+    $privateId=[StagedIdentityProbe]::Identity($file.SafeFileHandle)
+    $volumeId=[StagedIdentityProbe]::VolumeIdentity('S:\')
+    if([BitConverter]::ToUInt64($privateId,0) -ne [BitConverter]::ToUInt64($volumeId,0)){
+        throw 'Private identity reports the backing volume serial.'
+    }
+    $idHandle=[StagedIdentityProbe]::ById('S:\',$privateId,$false)
+    try{if([StagedIdentityProbe]::Read($idHandle) -ne 'alphabeta'){throw 'Cross-volume private file-ID read lost data.'}}
+    finally{$idHandle.Dispose()}
+    if([StagedIdentityProbe]::TryById('C:\',$privateId,$false) -ne 5){throw 'Wrong-volume hint resolved a private ID.'}
+    Write-Output 'PrivateFileIdReportsOriginalVolumeAndRejectsWrongVolume=True'
     Set-OwnedObserver 'ordinary-write'
     $second = [IO.FileStream]::new($target, [IO.FileMode]::Open, [IO.FileAccess]::ReadWrite, $share)
     $second.Position = 9

@@ -71,6 +71,10 @@ typedef struct _STAGE_VIEW {
     PSECURITY_DESCRIPTOR Security;
     BOOLEAN AssignedSecurity;
     BOOLEAN Detached; /* Replaced name; held objects retain this version/view. */
+    FILE_ID_INFORMATION Identity; /* Private logical file, independent of its versions. */
+    FILE_ID_INFORMATION PhysicalIdentity;
+    FILE_ID_INFORMATION ParentIdentity;
+    BOOLEAN PhysicalExists;
     PSTAGE_STREAM Current;
     LIST_ENTRY OldNames;
     UNICODE_STRING Name;
@@ -269,6 +273,48 @@ static PSTAGE_VIEW StageFindView(PEPROCESS Owner, PUNICODE_STRING Name)
     return NULL;
 }
 
+/* Caller holds NamespaceResource. Only the private logical ID is routed here;
+ * physical aliases need separate object admission and mutation fencing. */
+static PSTAGE_VIEW StageFindId(PEPROCESS Owner, PFLT_INSTANCE Instance, PUNICODE_STRING Id)
+{
+    PLIST_ENTRY link;
+    for (link = StageViews.Flink; link != &StageViews; link = link->Flink) {
+        PSTAGE_VIEW view = CONTAINING_RECORD(link, STAGE_VIEW, Link);
+        if (view->Detached || view->Owner != Owner || view->Current->OriginalInstance != Instance) continue;
+        if (Id->Length == sizeof(FILE_ID_128) &&
+            RtlEqualMemory(Id->Buffer, &view->Identity.FileId, sizeof(FILE_ID_128))) return view;
+    }
+    return NULL;
+}
+
+static NTSTATUS StageSetIdentity(PSTAGE_VIEW View, PCWSTR Basename)
+{
+    ULONG index;
+    PLIST_ENTRY link;
+    for (index = 0; index < sizeof(View->Identity.FileId.Identifier); ++index) {
+        ULONG nibble, byte = 0;
+        for (nibble = 0; nibble < 2; ++nibble) {
+            WCHAR ch = Basename[index * 2 + nibble];
+            ULONG value = ch >= L'0' && ch <= L'9' ? ch - L'0' :
+                ch >= L'a' && ch <= L'f' ? ch - L'a' + 10 :
+                ch >= L'A' && ch <= L'F' ? ch - L'A' + 10 : 16;
+            if (value > 15) return STATUS_INVALID_PARAMETER;
+            byte = byte * 16 + value;
+        }
+        View->Identity.FileId.Identifier[index] = (UCHAR)byte;
+    }
+    /* Distinguish private IDs from NTFS's physical 64-bit reference numbers. */
+    View->Identity.FileId.Identifier[15] |= 0x80;
+    View->Identity.VolumeSerialNumber = View->ParentIdentity.VolumeSerialNumber;
+    for (link = StageViews.Flink; link != &StageViews; link = link->Flink) {
+        PSTAGE_VIEW other = CONTAINING_RECORD(link, STAGE_VIEW, Link);
+        if (other->Identity.VolumeSerialNumber == View->Identity.VolumeSerialNumber &&
+            RtlEqualMemory(&other->Identity.FileId, &View->Identity.FileId, sizeof(FILE_ID_128)))
+            return STATUS_OBJECT_NAME_COLLISION;
+    }
+    return STATUS_SUCCESS;
+}
+
 static BOOLEAN StageHiddenName(PEPROCESS Owner, PUNICODE_STRING Name)
 {
     PLIST_ENTRY link, old;
@@ -296,7 +342,7 @@ static VOID StageFreeView(PSTAGE_VIEW View)
  * An upper FILE_OBJECT references a version, never a mutable current pointer. */
 static NTSTATUS StageCreate(PFLT_CALLBACK_DATA Data, PCFLT_RELATED_OBJECTS Objects,
     PFLT_FILE_NAME_INFORMATION Name, SAFEUPLOAD_VOLUME_KIND Kind, BOOLEAN Writer,
-    PBOOLEAN Handled)
+    PSTAGE_VIEW ExpectedView, BOOLEAN PrivateNamespace, PBOOLEAN Handled)
 {
     PSTAGE_VIEW view = NULL;
     PSTAGE_STREAM stream = NULL;
@@ -318,6 +364,13 @@ static NTSTATUS StageCreate(PFLT_CALLBACK_DATA Data, PCFLT_RELATED_OBJECTS Objec
     StageAcquire(&StageNamespaceResource);
     if (StageStopping) { status = STATUS_DEVICE_NOT_READY; goto Exit; }
     view = StageFindView(owner, &Name->Name);
+    /* A name snapshot for a file-ID open must still name that same live view.
+     * Rename/replacement between lookup and admission must never create a new
+     * view or return the newly occupying file. Views remain allocated to unload. */
+    if (ExpectedView != NULL && (view != ExpectedView ||
+        view->Current->OriginalInstance != Objects->Instance)) {
+        status = STATUS_SHARING_VIOLATION; goto Exit;
+    }
     if (view == NULL && StageHiddenName(owner, &Name->Name)) {
         if (!Writer || disposition == FILE_OPEN || disposition == FILE_OVERWRITE) {
             status = STATUS_OBJECT_NAME_NOT_FOUND; goto Exit;
@@ -325,9 +378,14 @@ static NTSTATUS StageCreate(PFLT_CALLBACK_DATA Data, PCFLT_RELATED_OBJECTS Objec
         /* A fresh create at an absent physical name gets a newer durable
          * generation. The tombstone still suppresses obsolete approvals. */
     }
-    if (view == NULL && !Writer) { *Handled = FALSE; goto Exit; }
+    if (view == NULL && !Writer) {
+        if (PrivateNamespace) status = STATUS_OBJECT_NAME_NOT_FOUND;
+        else *Handled = FALSE;
+        goto Exit;
+    }
     if (Name->Name.Length > sizeof(stream->NameBuffer) || Name->Stream.Length != 0 ||
-        FlagOn(Data->Iopb->Parameters.Create.Options, FILE_DIRECTORY_FILE | FILE_OPEN_BY_FILE_ID |
+        (FlagOn(Data->Iopb->Parameters.Create.Options, FILE_OPEN_BY_FILE_ID) && ExpectedView == NULL) ||
+        FlagOn(Data->Iopb->Parameters.Create.Options, FILE_DIRECTORY_FILE |
             FILE_DELETE_ON_CLOSE | FILE_NO_INTERMEDIATE_BUFFERING) ||
         file->FsContext != NULL || file->FsContext2 != NULL) {
         status = STATUS_NOT_SUPPORTED; goto Exit;
@@ -345,6 +403,25 @@ static NTSTATUS StageCreate(PFLT_CALLBACK_DATA Data, PCFLT_RELATED_OBJECTS Objec
         status = SafeUploadStageCaptureSecurity(Data, Objects->Instance, &Name->Name,
             &view->Security, &view->AssignedSecurity, &exists, &granted);
         if (!NT_SUCCESS(status)) goto Exit;
+        {
+            UNICODE_STRING parent = Name->Name;
+            USHORT index;
+            for (index = parent.Length / sizeof(WCHAR); index > 0; --index)
+                if (parent.Buffer[index - 1] == L'\\') break;
+            if (index == 0) { status = STATUS_OBJECT_PATH_INVALID; goto Exit; }
+            parent.Length = (index - 1) * sizeof(WCHAR);
+            parent.MaximumLength = parent.Length;
+            status = SafeUploadStageQueryIdentity(Objects->Instance, &parent, TRUE, &view->ParentIdentity);
+            if (!NT_SUCCESS(status)) goto Exit;
+            view->PhysicalExists = exists;
+            if (exists) {
+                status = SafeUploadStageQueryIdentity(Objects->Instance, &Name->Name, FALSE, &view->PhysicalIdentity);
+                if (!NT_SUCCESS(status)) goto Exit;
+                if (view->PhysicalIdentity.VolumeSerialNumber != view->ParentIdentity.VolumeSerialNumber) {
+                    status = STATUS_NOT_SAME_DEVICE; goto Exit;
+                }
+            }
+        }
         view->Owner = owner; ObReferenceObject(owner);
         view->OwnerProcessId = FltGetRequestorProcessId(Data);
         view->Name.Buffer = view->NameBuffer;
@@ -393,6 +470,10 @@ static NTSTATUS StageCreate(PFLT_CALLBACK_DATA Data, PCFLT_RELATED_OBJECTS Objec
         status = SafeUploadStageAllocate(Data, &Name->Name, Kind,
             previous != NULL ? &previous->StageName : NULL, basename, &basenameLength);
         if (!NT_SUCCESS(status)) goto Exit;
+        if (newView) {
+            status = StageSetIdentity(view, basename);
+            if (!NT_SUCCESS(status)) goto Exit;
+        }
         status = RtlStringCchPrintfW(stream->StageBuffer, SAFEUPLOAD_MAX_PATH_CHARS,
             L"\\??\\C:\\ProgramData\\SafeUpload\\staging\\%ws", basename);
         if (!NT_SUCCESS(status)) goto Exit;
@@ -651,6 +732,10 @@ static NTSTATUS StageQuery(PFLT_CALLBACK_DATA Data, PSTAGE_STREAM Stream, PSTAGE
             Data->IoStatus.Information = sizeof(FILE_ACCESS_INFORMATION);
         } else if (cls == FileAlternateNameInformation) {
             status = STATUS_OBJECT_NAME_NOT_FOUND;
+        } else if (cls == FileIdInformation) {
+            if (length < sizeof(FILE_ID_INFORMATION)) { status = STATUS_INFO_LENGTH_MISMATCH; __leave; }
+            RtlCopyMemory(output, &Stream->View->Identity, sizeof(FILE_ID_INFORMATION));
+            Data->IoStatus.Information = sizeof(FILE_ID_INFORMATION);
         } else if (cls == FileBasicInformation || cls == FileStandardInformation ||
             cls == FileNetworkOpenInformation || cls == FileAttributeTagInformation) {
             status = FltQueryInformationFile(Stream->BackingInstance, Stream->BackingObject,
@@ -1225,15 +1310,18 @@ static FLT_PREOP_CALLBACK_STATUS StageAdmit(PFLT_CALLBACK_DATA Data,
     PCFLT_RELATED_OBJECTS Objects)
 {
     PFLT_FILE_NAME_INFORMATION name = NULL;
+    PFLT_FILE_NAME_INFORMATION privateName = NULL;
+    PSTAGE_VIEW expectedView = NULL;
     PIO_SECURITY_CONTEXT security = Data->Iopb->Parameters.Create.SecurityContext;
     ULONG disposition = Data->Iopb->Parameters.Create.Options >> 24;
     ULONG pid = FltGetRequestorProcessId(Data);
     BOOLEAN service = SafeUploadData.ClientPort != NULL && pid == SafeUploadData.InspectorProcessId;
-    BOOLEAN writer, handled = TRUE;
+    BOOLEAN writer, handled = TRUE, privateNamespace = FALSE;
     UNICODE_STRING relative;
     UNICODE_STRING privatePrefix = RTL_CONSTANT_STRING(L"\\ProgramData\\SafeUpload\\staging\\");
+    ULONGLONG zeroId = 0;
     SAFEUPLOAD_VOLUME_KIND kind;
-    NTSTATUS status;
+    NTSTATUS status = STATUS_SUCCESS;
     if (security == NULL || Objects->FileObject == NULL ||
         FlagOn(Data->Iopb->OperationFlags, SL_OPEN_TARGET_DIRECTORY) ||
         (Objects->FileObject->FileName.Length == 0 && Objects->FileObject->RelatedFileObject == NULL))
@@ -1241,8 +1329,39 @@ static FLT_PREOP_CALLBACK_STATUS StageAdmit(PFLT_CALLBACK_DATA Data,
     writer = BooleanFlagOn(security->DesiredAccess, FILE_WRITE_DATA | FILE_APPEND_DATA | MAXIMUM_ALLOWED) ||
         disposition == FILE_CREATE || disposition == FILE_SUPERSEDE || disposition == FILE_OVERWRITE || disposition == FILE_OVERWRITE_IF;
     if (FlagOn(Data->Iopb->Parameters.Create.Options, FILE_DIRECTORY_FILE)) return FLT_PREOP_SUCCESS_NO_CALLBACK;
-    if (writer && !service && FlagOn(Data->Iopb->Parameters.Create.Options, FILE_OPEN_BY_FILE_ID)) {
-        status = STATUS_ACCESS_DENIED; goto Complete;
+    kind = StageVolumeKind(Objects->Instance);
+    if (!service && FlagOn(Data->Iopb->Parameters.Create.Options, FILE_OPEN_BY_FILE_ID)) {
+        UNICODE_STRING id = Objects->FileObject->FileName;
+        StageAcquire(&StageNamespaceResource);
+        if (!StageStopping) expectedView = StageFindId(FltGetRequestorProcess(Data), Objects->Instance, &id);
+        if (expectedView != NULL) {
+            privateName = ExAllocatePool2(POOL_FLAG_NON_PAGED,
+                sizeof(*privateName) + expectedView->Name.Length, STAGE_TAG);
+            if (privateName != NULL) {
+                privateName->Name.Buffer = (PWCH)(privateName + 1);
+                privateName->Name.Length = privateName->Name.MaximumLength = expectedView->Name.Length;
+                RtlCopyMemory(privateName->Name.Buffer, expectedView->Name.Buffer, expectedView->Name.Length);
+                privateName->Volume = privateName->Name;
+                privateName->Volume.Length = privateName->Volume.MaximumLength = expectedView->Current->VolumeLength;
+            }
+        }
+        StageRelease(&StageNamespaceResource);
+        if (expectedView != NULL) {
+            if (privateName == NULL) { status = STATUS_INSUFFICIENT_RESOURCES; goto Complete; }
+            if (disposition != FILE_OPEN) { status = STATUS_INVALID_PARAMETER; goto Complete; }
+            status = StageCreate(Data, Objects, privateName, kind, writer, expectedView, TRUE, &handled);
+            goto Complete;
+        }
+        /* Unknown writable IDs cannot bypass destination checks. Nonzero high
+         * halves are NTFS object IDs, including our private IDs: do not let an
+         * unknown private ID fall through into another object's namespace.
+         * Legacy physical read-only IDs keep the existing source inspection. */
+        if (writer || (id.Length == sizeof(FILE_ID_128) &&
+            RtlCompareMemory((PUCHAR)id.Buffer + sizeof(ULONGLONG),
+                &zeroId, sizeof(zeroId)) != sizeof(zeroId))) {
+            status = STATUS_ACCESS_DENIED; goto Complete;
+        }
+        handled = FALSE; goto Complete;
     }
     status = FltGetFileNameInformation(Data, FLT_FILE_NAME_NORMALIZED | FLT_FILE_NAME_QUERY_DEFAULT, &name);
     if (!NT_SUCCESS(status)) {
@@ -1258,8 +1377,13 @@ static FLT_PREOP_CALLBACK_STATUS StageAdmit(PFLT_CALLBACK_DATA Data,
         if (!service) { status = STATUS_ACCESS_DENIED; goto Complete; }
         handled = FALSE; goto Complete;
     }
-    kind = StageVolumeKind(Objects->Instance);
-    if (!SafeUploadStageProtectedName(name, kind)) { handled = FALSE; goto Complete; }
+    if (!service) {
+        StageAcquire(&StageNamespaceResource);
+        expectedView = StageFindView(FltGetRequestorProcess(Data), &name->Name);
+        privateNamespace = expectedView != NULL || StageHiddenName(FltGetRequestorProcess(Data), &name->Name);
+        StageRelease(&StageNamespaceResource);
+    }
+    if (!privateNamespace && !SafeUploadStageProtectedName(name, kind)) { handled = FALSE; goto Complete; }
     if (service) {
         if (!writer || SafeUploadPublicationCreate(&name->Name, disposition, writer)) handled = FALSE;
         else status = STATUS_ACCESS_DENIED;
@@ -1267,9 +1391,10 @@ static FLT_PREOP_CALLBACK_STATUS StageAdmit(PFLT_CALLBACK_DATA Data,
     }
     if (FLT_IS_IRP_OPERATION(Data) && FltIsIoCanceled(Data)) { status = STATUS_CANCELLED; goto Complete; }
     Data->IoStatus.Information = 0;
-    status = StageCreate(Data, Objects, name, kind, writer, &handled);
+    status = StageCreate(Data, Objects, name, kind, writer, expectedView, privateNamespace, &handled);
 Complete:
     if (name != NULL) FltReleaseFileNameInformation(name);
+    if (privateName != NULL) ExFreePoolWithTag(privateName, STAGE_TAG);
     if (!handled) return FLT_PREOP_SUCCESS_NO_CALLBACK;
     Data->IoStatus.Status = status;
     if (!NT_SUCCESS(status)) Data->IoStatus.Information = 0;
@@ -1407,6 +1532,7 @@ static NTSTATUS StageAddOverlay(PLIST_ENTRY Overlays, PUNICODE_STRING Name, PSTA
         overlay->Standard.EndOfFile = Stream->Header.FileSize;
         overlay->Standard.AllocationSize = Stream->Header.AllocationSize;
         overlay->Standard.NumberOfLinks = 1;
+        overlay->ExtendedId = Stream->View->Identity.FileId;
         StageRelease(&Stream->Resource);
     }
     if (NT_SUCCESS(status)) InsertTailList(Overlays, &overlay->Link);

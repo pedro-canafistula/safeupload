@@ -3,6 +3,9 @@
 
 #include <fltKernel.h>
 
+NTSTATUS SafeUploadStageQueryIdentity(PFLT_INSTANCE Instance, PUNICODE_STRING Name,
+    BOOLEAN Directory, PFILE_ID_INFORMATION Identity);
+
 NTSTATUS
 SafeUploadStageCheckAccess (
     _In_ PFLT_CALLBACK_DATA Data,

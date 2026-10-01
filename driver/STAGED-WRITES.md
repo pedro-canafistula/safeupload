@@ -16,6 +16,9 @@ after every experiment, including failures.
          and reusing its occupied tombstone slot remain open.
    - [ ] Stable destination/view/version identity, aliases, short names, relative
          and file-ID opens, links, reparse handling and cross-process view rules.
+         Progress: private 128-bit logical IDs, native relative/file-ID reopen,
+         original-volume serial, rename/replacement/new-version identity and
+         process/volume boundaries pass. Durable identity and alias admission remain open.
    - [x] Owned byte-range locks: shared/exclusive access, waiting/cancellation,
          duplicates, process exit, mapped bypass and final-close release.
    - [ ] Delete/disposition, metadata/security, oplocks and private directory
@@ -300,12 +303,89 @@ The target stack must have at least the original stack's size. Neither foreign
 cache state nor `DeviceObject`/`Vpb` is modified. See the Microsoft
 [I/O parameter contract](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/fltkernel/ns-fltkernel-_flt_io_parameter_block).
 
+### Follow-up: native private logical identity
+
+Each live private view now has an immutable 128-bit logical file ID, derived
+from its first service allocation GUID with a nonzero high half. It is independent
+of subsequent immutable version GUIDs. A duplicate logical ID is rejected before
+admission. `FileIdInformation` and extended directory classes 60/63 return that
+same ID with the original NTFS volume's 64-bit serial. Initial physical-file and
+parent-directory IDs are captured below our instance, read-only, as identity
+snapshots; they are not an alias admission fence or journal authority. The native
+control reports volume serial `4AD66344D6632F7F`; do not substitute a zero-extended
+32-bit filesystem volume serial.
+
+`OpenFileById(ExtendedFileIdType)` resolves only an attached view belonging to
+the referenced requestor process and original instance. It snapshots the current
+name under the namespace resource, then rechecks that the exact same view still
+occupies that slot during CREATE. A rename/replacement race fails with sharing
+violation rather than allocating or opening another file. Views survive to unload,
+so the expected-view reference cannot dangle during admission. DELETE/share and
+access checks still use the existing owned CREATE path. Writable reopen of a
+sealed view allocates a new service version seeded from prior private content.
+Rename preserves the source logical ID; POSIX replacement detaches the target ID
+from fresh lookup while its held objects retain that ID and old bytes.
+
+Unknown writable physical IDs and unknown high-half/object IDs are denied.
+Physical read-only IDs retain legacy source inspection. Legacy 64-bit private
+directory/internal IDs remain zero; no physical file reference is invented.
+NTFS object-ID interoperability, physical alias canonicalization, boot-persistent
+logical IDs and authenticated reattachment remain unqualified. The live logical
+ID does not authorize another process or bypass current policy. Known private
+names/tombstones are considered before current prefix matching, so policy changes
+cannot silently redirect them to public bytes; follow-up service allocation still
+requires its policy checks. Out-of-scope retarget remains deliberately denied by
+the existing service. The first probe expected such a move to succeed and stopped
+with error 32; inspection of `RetargetStage` confirmed the restriction. The final
+probe verifies refusal leaves both views unchanged, then performs supported moves.
+
+Reproduce on the isolated debuggee with `StagedIdentityProbe.cs` and
+`StagedTestAgent.ps1` beside `Test-StagedIdentity.ps1`; run ordinary and `-Verifier`.
+The same native extended-ID and relative-open calls first run on unfiltered NTFS.
+Final feature SYS SHA256:
+`3F9BDFC52384FCF01C4490909761EB9752933496A6FB2BF437AB76F11F14464F`.
+The unchanged tested service package is
+`77868544627FF7286FD594C5B777F04B000BD5BFAE83308D8D79AE66781521E2`.
+[Ordinary](evidence/2026-10-01/identity-final-ordinary-gate.txt) and
+[Verifier](evidence/2026-10-01/identity-final-verifier-gate.txt) pass: concurrent ID
+handles, closure of the original handle, relative reopen after rename, owner and
+volume boundaries, immutable held versions, follow-up seed, displaced replacement
+identity and exact approved public bytes. Concurrent native rename/file-ID lookup
+completed 12 moves and 100 ordinary/118 Verifier reads (284/400 ms), with no wrong
+identity/bytes or sharing retries. A forced snapshot-race retry is not yet covered.
+
+The final driver also passed `Test-StagedOwnedStreams.ps1 -Verifier
+-ReplacementCases -PublicationIterations 8`, including S: identity with C: backing,
+wrong C: hint refusal, mapped writes after handle closure, restart and 344 full
+independent byte-observer passes:
+[integrated gate](evidence/2026-10-01/identity-final-integrated-gate.txt),
+[active Verifier](evidence/2026-10-01/identity-final-integrated-verifier-query.txt).
+[Directory regressions](evidence/2026-10-01/identity-final-directory-gate.txt) pass all
+eight classes; [100 lock sequences](evidence/2026-10-01/identity-final-locks-gate.txt)
+pass at 35 ms unfiltered/628 ms owned with Verifier. These probe timings are not
+the production latency acceptance gate.
+
+All four validated WDK builds pass with zero warnings/errors:
+[normal Debug](evidence/2026-10-01/identity-normal-wdk.txt),
+[feature Debug](evidence/2026-10-01/identity-owned-feature-wdk.txt),
+[normal Release](evidence/2026-10-01/identity-normal-release-wdk.txt),
+[feature Release](evidence/2026-10-01/identity-owned-feature-release-wdk.txt).
+An initial feature compile caught an uninitialized local status; it was corrected
+before deployment. [237 agent tests](evidence/2026-10-01/identity-agent-tests.txt)
+and the [WPF Release build](evidence/2026-10-01/identity-app-build.txt) pass.
+[Independent restoration](evidence/2026-10-01/identity-final-state.txt) at
+21:46:22 UTC verifies original installed bytes, feature unloaded, Verifier zero/None,
+no test service/tasks and S:/VHDX absent. The demonstrated preexisting hard-link
+failure remains open and normal builds remain disabled.
+[FILE_ID_INFORMATION contract](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/ns-ntifs-file_id_information),
+[OpenFileById contract](https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-openfilebyid).
+
 ### Identity and namespace
 
 | Identity | Implemented key and owner | Required extension |
 | --- | --- | --- |
 | Destination | Normalized original-volume path; durable monotonic `DestinationGeneration` per case-insensitive destination path | Stable volume identity plus file ID for existing objects; parent ID plus name slot for new/replacement objects; durable alias/tombstone records |
-| Private view | Referenced `PEPROCESS` plus normalized destination name; PID is only existing protocol attribution | Durable view GUID bound to principal/session and driver boot epoch; explicit authenticated reattachment after recovery |
+| Private view | Referenced `PEPROCESS`, original instance, normalized name and immutable private 128-bit logical ID; PID is only existing protocol attribution | Durable view GUID bound to principal/session and driver boot epoch; explicit authenticated reattachment after recovery |
 | Version | Service transfer GUID/private basename; one upper stream/cache/backing per version | Preserve this identity independently of all aliases and namespace moves |
 | Open capability | `STAGE_HANDLE` on a specific `FILE_OBJECT`, pointing to its version | Keep duplicate/inherited handles bound to that version even when another version becomes current |
 
@@ -344,10 +424,10 @@ tombstone works when that physical slot is absent. Physical public-source remova
 and reuse of physically occupied tombstones remain pending.
 
 Hard links require alias entries for one destination identity, not independent
-path-keyed publication rights. Short names, file-ID opens and reparse aliases
+path-keyed publication rights. Short names, physical file-ID opens and reparse aliases
 must resolve before policy/view lookup. Links, delete/disposition, alternate
 streams, oplocks and unsupported metadata operations fail explicitly;
-writable file-ID admission is denied. This is not complete enforcement for
+unknown writable file-ID admission is denied; known private 128-bit IDs use owned admission. This is not complete enforcement for
 preexisting external links or case-sensitive directories: those namespaces are
 unqualified. Private directory notifications and concurrent directory mutation
 remain pending. Rename authorization captures the original request's thread/process subject,
