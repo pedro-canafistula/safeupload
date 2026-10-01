@@ -321,6 +321,7 @@ public sealed class StagedTransferPublisherTests : IDisposable
             .ReadRecentAsync(10, CancellationToken.None);
         Assert.Single(audit);
         Assert.Equal(Verdict.Approved, audit[0].Verdict);
+        Assert.Equal(transfer.TransferId, audit[0].EventId);
     }
 
     [Fact]
@@ -403,6 +404,7 @@ public sealed class StagedTransferPublisherTests : IDisposable
         Assert.Single(audit);
         Assert.Equal(Verdict.Retained, audit[0].Verdict);
         Assert.Equal("policy_changed", audit[0].NotInspectedReason);
+        Assert.Equal(transfer.TransferId, audit[0].EventId);
     }
 
     [Fact]
@@ -485,6 +487,7 @@ public sealed class StagedTransferPublisherTests : IDisposable
         Assert.Single(audit);
         Assert.Equal(Verdict.Retained, audit[0].Verdict);
         Assert.Equal("publication_failed", audit[0].NotInspectedReason);
+        Assert.Equal(transfer.TransferId, audit[0].EventId);
     }
 
     [Fact]

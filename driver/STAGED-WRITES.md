@@ -27,6 +27,9 @@ after every experiment, including failures.
          under the stream lock; new writable sections are refused until acknowledgement.
 2. Approval flow
    - [ ] Real application notifications and pipe/UI exact-version justification.
+         Progress: real service pipes and the production application's client
+         pass exact-version approval, stale/replay denial and ordered audit;
+         the headless Session 0 run does not qualify interactive WPF controls.
    - [ ] Negative publication matrix: changed bytes/policy, unknown/parser/size/
          timeout cases, stale/replayed/expired/wrong-session/spoofed permits.
 3. Recovery, security and storage
@@ -560,6 +563,94 @@ the original installed driver, unloaded filter, Verifier zero/None, no test
 agent/tasks and no disposable S:/VHDX. Persistent allocation quotas, interrupted
 copy/orphan accounting, inspection-snapshot bounds and safe reclamation remain
 open. This per-seed bound alone is not bounded durable storage management.
+
+### Follow-up: actual approval pipes and bounded requests
+
+`Test-StagedApprovalFlow.ps1 -Verifier -PipeOnly` runs the actual LocalSystem
+service, WPF app and independent notification observer. Its bridge invokes the
+unchanged production `JustificationPipeClient.SendAsync`; it has no inspection,
+approval or driver bypass of its own. Two sealed sensitive versions generate
+masked blocked notifications. An unknown ID and the superseded version are
+rejected while a pre-load physical handle still reads `PUBLIC ORIGINAL`. The
+production client justifies the latest version, which is reinspected and released
+through the authenticated kernel permit. Replay is refused; the exact digest is
+durably Released. Its override audit precedes the Approved audit with the same
+transfer ID. The held physical object retains old bytes across POSIX replacement,
+and an independent read after filter unload verifies exact new destination bytes.
+[Gate](evidence/2026-10-01/approval-client-gate.txt),
+[active Verifier](evidence/2026-10-01/approval-client-verifier-query.txt).
+
+The initial full WPF attempt found no notification window through UI Automation
+in the SSH Session 0 environment (`quser`: no logged-in user), although both
+clients connected and masked notifications arrived. It failed with
+`Actual WPF notification window not found`, restored policy/driver and is excluded
+from acceptance: [partial output](evidence/2026-10-01/approval-ui-initial-gate.txt),
+[restoration](evidence/2026-10-01/approval-initial-final-state.txt).
+An interactive desktop must run the test **without** `-PipeOnly`; its real control
+checks remain required. Session 0 pipe success does not qualify other principals,
+session reuse, pipe-server spoofing or desktop rendering.
+
+The run also exposed a superseded callback closing the pipe without its protocol
+rejection. Expected audit/publication failures now reply `rejected`; they do not
+grant access. Separately, 16 connected idle justification clients made the old
+accept loop create a seventeenth instance outside its exception handler and stop
+the service with `All pipe instances are busy`:
+[minimal reproduction](evidence/2026-10-01/justification-limits-before.txt),
+[host failure](evidence/2026-10-01/justification-limits-before-service.txt).
+The server now reserves one of 16 connection slots before accepting, limits
+retained input to 4096 characters with bounded read-ahead, applies a five-second
+read deadline and a one-second reply deadline, and releases slots on completion.
+Protocol validation still limits reasons to 1000 characters. These limits do not
+cancel an already authorized publication merely because its client disappears.
+
+`Test-StagedJustificationLimits.ps1` verifies that the fixed service survives 16
+idle peers, admits a seventeenth after deadline drainage (4495 ms), rejects a
+4097-character unterminated line, malformed JSON and an unknown request, and
+remains connected: [gate](evidence/2026-10-01/justification-limits-gate.txt).
+Six [bounded input tests](evidence/2026-10-01/justification-input-tests.txt) cover
+Unicode, LF/CRLF/EOF, the exact line bound, limited consumption of a 1 MB attack
+and stalled-peer cancellation. This is an input/resource gate, not a complete
+authenticated-principal or malicious-client matrix.
+
+Three [pre-fix audit regressions](evidence/2026-10-01/approval-audit-before.txt)
+show Approved, policy-retained and publication-failed outcomes receiving random
+event IDs instead of their transfer ID. All staged recorded outcomes now use
+the existing optional audit-ID argument consistently, keeping the current audit
+schema. All [247 agent tests](evidence/2026-10-01/approval-agent-tests-final.txt)
+pass. [Release service](evidence/2026-10-01/approval-service-publish-final.txt),
+[WPF package](evidence/2026-10-01/staged-ui-app-publish.txt) and
+[application-client bridge](evidence/2026-10-01/approval-client-publish.txt) builds
+pass. The kernel source/SYS is unchanged from the four validated mutation builds.
+
+Reproduce from the isolated builder checkout:
+
+```powershell
+dotnet publish agente\SafeUpload.Agent.App\SafeUpload.Agent.App.csproj -c Release -r win-x64 --self-contained true -o C:\Users\vika\Documents\staged-ui-app
+dotnet publish driver\scripts\StagedApprovalClient\StagedApprovalClient.csproj -c Release -r win-x64 --self-contained true -o C:\Users\vika\Documents\staged-approval-client
+```
+
+ZIP/copy these directories to the matching debuggee Documents names; extract the
+client package before running `Test-StagedApprovalFlow.ps1 -Verifier -PipeOnly`.
+Keep `StagedApprovalPipeProbe.cs`, `StagedIdentityProbe.cs` and `StagedTestAgent.ps1`
+beside the scripts. The full WPF test extracts its app ZIP and guards its recorded
+hash; rebuilding that ZIP requires explicitly updating the test artifact hash.
+`Test-StagedJustificationLimits.ps1 -ReproduceKnownGap` is for the old recorded
+service package only, never a current acceptance gate. Current SHA256 values:
+
+- Feature SYS: `CFD66E2830AB720944C24D4BA71FEE602B4E281810D18A0F8B6B716DB1B2C6DF`.
+- Service ZIP: `0263B794943BC841896B84B9183B049E3222C28433B2C0BC9A93B2D340F1BE64`.
+- WPF ZIP: `7C5A73EBFEB122BE48671A6E27F007E4CD92F7E2CB474F5B4CB789922CAF2E50`.
+- Client bridge ZIP: `E3FD2E91B242BD852FEA1A16A29BA9264CB2383A9C386644E7071F68534E7498`.
+
+The same final package passes the [integrated Verifier gate](evidence/2026-10-01/approval-integrated-gate.txt)
+with four approved overwrites, replacement, mapped drainage, concurrent writers,
+restart and 316 full byte-observer passes; [Verifier](evidence/2026-10-01/approval-integrated-verifier-query.txt).
+[Independent restoration](evidence/2026-10-01/approval-final-state.txt) verifies
+original installed bytes, filter unloaded, Verifier zero/None, no temporary
+service/tasks/app, no S:/VHDX and restored non-override policy;
+[commands](evidence/2026-10-01/approval-final-state-command.ps1).
+Interactive WPF, expiry/kernel permit attacks, original-principal attribution,
+driver-loss recovery and the other broader tracker items remain open.
 
 ### Identity and namespace
 

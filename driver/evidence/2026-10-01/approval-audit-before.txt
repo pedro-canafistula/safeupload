@@ -1,0 +1,50 @@
+  Determining projects to restore...
+  Restored C:\Users\vika\Documents\safeupload-staging-test\agente\SafeUpload.Agent.Minifilter\SafeUpload.Agent.Minifilter.csproj (in 48 ms).
+  Restored C:\Users\vika\Documents\safeupload-staging-test\agente\SafeUpload.Agent.Core\SafeUpload.Agent.Core.csproj (in 111 ms).
+  Restored C:\Users\vika\Documents\safeupload-staging-test\agente\SafeUpload.Agent.Service\SafeUpload.Agent.Service.csproj (in 220 ms).
+  1 of 4 projects are up-to-date for restore.
+  SafeUpload.Agent.Core -> C:\Users\vika\Documents\safeupload-staging-test\agente\SafeUpload.Agent.Core\bin\Debug\net10.0\SafeUpload.Agent.Core.dll
+  SafeUpload.Agent.Minifilter -> C:\Users\vika\Documents\safeupload-staging-test\agente\SafeUpload.Agent.Minifilter\bin\Debug\net10.0-windows\SafeUpload.Agent.Minifilter.dll
+  SafeUpload.Agent.Service -> C:\Users\vika\Documents\safeupload-staging-test\agente\SafeUpload.Agent.Service\bin\Debug\net10.0-windows\SafeUpload.Agent.Service.dll
+  SafeUpload.Agent.Tests -> C:\Users\vika\Documents\safeupload-staging-test\agente\SafeUpload.Agent.Tests\bin\Debug\net10.0-windows\SafeUpload.Agent.Tests.dll
+Test run for C:\Users\vika\Documents\safeupload-staging-test\agente\SafeUpload.Agent.Tests\bin\Debug\net10.0-windows\SafeUpload.Agent.Tests.dll (.NETCoreApp,Version=v10.0)
+A total of 1 test files matched the specified pattern.
+dotnet.exe : [xUnit.net 00:00:01.85]     SafeUpload.Agent.Tests.StagedTransferPublisherTests.Failed
+_publication_is_retained_and_never_audited_as_sent [FAIL]
+At line:3 char:1
++ & dotnet.exe test .\agente\SafeUpload.Agent.Tests\SafeUpload.Agent.Te ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: ([xUnit.net 00:0..._as_sent [FAIL]:String) [], RemoteE
+   xception
+    + FullyQualifiedErrorId : NativeCommandError
+
+[xUnit.net 00:00:01.95]
+SafeUpload.Agent.Tests.StagedTransferPublisherTests.Inspected_clean_content_is_released [FAIL]
+[xUnit.net 00:00:02.01]     SafeUpload.Agent.Tests.StagedTransferPublisherTests.Policy_change_durin
+g_inspection_retains_the_file [FAIL]
+  Failed SafeUpload.Agent.Tests.StagedTransferPublisherTests.Failed_publication_is_retained_and_never_audited_as_sent [1 s]
+  Error Message:
+   Assert.Equal() Failure: Values differ
+Expected: 668029e6-d621-469b-b23e-18d839fa3748
+Actual:   c41c2861-6687-4811-aab5-8f7bbc98ba81
+  Stack Trace:
+     at SafeUpload.Agent.Tests.StagedTransferPublisherTests.Failed_publication_is_retained_and_never_audited_as_sent() in C:\Users\vika\Documents\safeupload-staging-test\agente\SafeUpload.Agent.Tests\StagedTransferPublisherTests.cs:line 490
+--- End of stack trace from previous location ---
+  Failed SafeUpload.Agent.Tests.StagedTransferPublisherTests.Inspected_clean_content_is_released [94 ms]
+  Error Message:
+   Assert.Equal() Failure: Values differ
+Expected: c48460fa-8556-42ce-9abc-9d9b6bb83904
+Actual:   75f46dd2-6412-43c8-95ec-20e62c10be19
+  Stack Trace:
+     at SafeUpload.Agent.Tests.StagedTransferPublisherTests.Inspected_clean_content_is_released() in C:\Users\vika\Documents\safeupload-staging-test\agente\SafeUpload.Agent.Tests\StagedTransferPublisherTests.cs:line 324
+--- End of stack trace from previous location ---
+  Failed SafeUpload.Agent.Tests.StagedTransferPublisherTests.Policy_change_during_inspection_retains_the_file [56 ms]
+  Error Message:
+   Assert.Equal() Failure: Values differ
+Expected: 5a8c85fd-36c4-4edd-81d3-741684922b5c
+Actual:   b7388d4c-c668-4df8-a605-c4a339022fae
+  Stack Trace:
+     at SafeUpload.Agent.Tests.StagedTransferPublisherTests.Policy_change_during_inspection_retains_the_file() in C:\Users\vika\Documents\safeupload-staging-test\agente\SafeUpload.Agent.Tests\StagedTransferPublisherTests.cs:line 407
+--- End of stack trace from previous location ---
+
+Failed!  - Failed:     3, Passed:     0, Skipped:     0, Total:     3, Duration: 1 s - SafeUpload.Agent.Tests.dll (net10.0)

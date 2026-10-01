@@ -19,6 +19,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="SafeUpload.Agent.Tests" />
     <ProjectReference Include="..\SafeUpload.Agent.Core\SafeUpload.Agent.Core.csproj" />
     <ProjectReference Include="..\SafeUpload.Agent.Minifilter\SafeUpload.Agent.Minifilter.csproj" />
   </ItemGroup>

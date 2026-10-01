@@ -215,7 +215,7 @@ public sealed class StagedTransferPublisher
             await _inspection.RecordTransferOutcomeAsync(operation, result,
                 Verdict.Retained,
                 result.Verdict == Verdict.Approved ? "policy_changed" : result.Reason ?? "not_inspected",
-                cancellationToken).ConfigureAwait(false);
+                cancellationToken, transfer.TransferId).ConfigureAwait(false);
             _notifications.Publish(new TransferNotification(
                 transfer.TransferId, fileName, TransferPhase.Retained), transfer.SessionId);
             return StagedTransferOutcome.Retained;
@@ -236,7 +236,8 @@ public sealed class StagedTransferPublisher
                 TransferJournalState.Inspecting, TransferJournalState.Retained,
                 null, cancellationToken).ConfigureAwait(false);
             await _inspection.RecordTransferOutcomeAsync(operation, result,
-                Verdict.Retained, "stage_changed_during_inspection", cancellationToken).ConfigureAwait(false);
+                Verdict.Retained, "stage_changed_during_inspection", cancellationToken,
+                transfer.TransferId).ConfigureAwait(false);
             _notifications.Publish(new TransferNotification(
                 transfer.TransferId, fileName, TransferPhase.Retained), transfer.SessionId);
             return StagedTransferOutcome.Retained;
@@ -281,7 +282,8 @@ public sealed class StagedTransferPublisher
                 TransferJournalState.Publishing, TransferJournalState.Retained,
                 null, CancellationToken.None).ConfigureAwait(false);
             await _inspection.RecordTransferOutcomeAsync(operation, result,
-                Verdict.Retained, "publication_failed", CancellationToken.None).ConfigureAwait(false);
+                Verdict.Retained, "publication_failed", CancellationToken.None,
+                transfer.TransferId).ConfigureAwait(false);
             _notifications.Publish(new TransferNotification(
                 transfer.TransferId, fileName, TransferPhase.Retained), transfer.SessionId);
             return StagedTransferOutcome.Retained;
@@ -292,7 +294,7 @@ public sealed class StagedTransferPublisher
             null, CancellationToken.None).ConfigureAwait(false);
         await _inspection.RecordTransferOutcomeAsync(operation, result,
             Verdict.Approved, justifiedApproval ? "justified_version" : null,
-            CancellationToken.None).ConfigureAwait(false);
+            CancellationToken.None, transfer.TransferId).ConfigureAwait(false);
 
         _notifications.Publish(new TransferNotification(
             transfer.TransferId, fileName, TransferPhase.Released), transfer.SessionId);

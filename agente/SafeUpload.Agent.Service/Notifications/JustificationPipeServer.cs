@@ -27,6 +27,8 @@ namespace SafeUpload.Agent.Service.Notifications;
 public sealed class JustificationPipeServer : BackgroundService
 {
     private const int MaxServerInstances = 16;
+    private static readonly TimeSpan ReadTimeout = TimeSpan.FromSeconds(5);
+    private readonly SemaphoreSlim _connections = new(MaxServerInstances, MaxServerInstances);
 
     /// <summary>
     /// Prazo da exceção no driver.
@@ -66,26 +68,31 @@ public sealed class JustificationPipeServer : BackgroundService
     {
         while (!stoppingToken.IsCancellationRequested)
         {
-            NamedPipeServerStream pipe = CreatePipe();
+            try { await _connections.WaitAsync(stoppingToken).ConfigureAwait(false); }
+            catch (OperationCanceledException) { return; }
+            NamedPipeServerStream? pipe = null;
 
             try
             {
+                pipe = CreatePipe();
                 await pipe.WaitForConnectionAsync(stoppingToken).ConfigureAwait(false);
             }
             catch (OperationCanceledException)
             {
-                await pipe.DisposeAsync().ConfigureAwait(false);
+                if (pipe is not null) await pipe.DisposeAsync().ConfigureAwait(false);
+                _connections.Release();
                 return;
             }
             catch (Exception ex)
             {
                 _logger.LogWarning(ex, "Falha ao aceitar conexao no canal de justificativas.");
-                await pipe.DisposeAsync().ConfigureAwait(false);
+                if (pipe is not null) await pipe.DisposeAsync().ConfigureAwait(false);
+                _connections.Release();
                 continue;
             }
 
-            // Sem await: um cliente lento nao pode impedir o proximo de
-            // conectar. O canal e raro, entao nao ha fila a controlar.
+            // Bound active requests and reserve an instance before accepting.
+            // Slow readers release their slot at the request deadline.
             _ = ServeAsync(pipe, stoppingToken);
         }
     }
@@ -101,7 +108,9 @@ public sealed class JustificationPipeServer : BackgroundService
                 detectEncodingFromByteOrderMarks: false, bufferSize: 1024,
                 leaveOpen: true);
 
-            string? line = await reader.ReadLineAsync(stoppingToken).ConfigureAwait(false);
+            using var readDeadline = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
+            readDeadline.CancelAfter(ReadTimeout);
+            string? line = await BoundedPipeLine.ReadAsync(reader, readDeadline.Token).ConfigureAwait(false);
 
             JustificationRequest? request = JustificationProtocol.Deserialize(line);
 
@@ -110,16 +119,28 @@ public sealed class JustificationPipeServer : BackgroundService
                 _logger.LogWarning("Pedido de justificativa malformado, descartado.");
             }
 
-            bool accepted = request is not null &&
-                await HandleAsync(request, sessionId, stoppingToken).ConfigureAwait(false);
+            bool accepted = false;
+            if (request is not null)
+            {
+                try { accepted = await HandleAsync(request, sessionId, stoppingToken).ConfigureAwait(false); }
+                catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { throw; }
+                catch (Exception ex)
+                {
+                    // A stale generation or failed audit/publication is a
+                    // rejection, not an unexplained EOF to the real client.
+                    _logger.LogWarning(ex, "Justificativa recusada durante auditoria ou publicacao.");
+                }
+            }
 
             await using var writer = new StreamWriter(
                 pipe, JustificationProtocol.Encoding, bufferSize: 1024,
                 leaveOpen: true);
-            await writer.WriteLineAsync(accepted
+            using var writeDeadline = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
+            writeDeadline.CancelAfter(TimeSpan.FromSeconds(1));
+            await writer.WriteLineAsync((accepted
                 ? JustificationProtocol.Accepted
-                : JustificationProtocol.Rejected).ConfigureAwait(false);
-            await writer.FlushAsync(stoppingToken).ConfigureAwait(false);
+                : JustificationProtocol.Rejected).AsMemory(), writeDeadline.Token).ConfigureAwait(false);
+            await writer.FlushAsync(writeDeadline.Token).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {
@@ -130,7 +151,8 @@ public sealed class JustificationPipeServer : BackgroundService
         }
         finally
         {
-            await pipe.DisposeAsync().ConfigureAwait(false);
+            try { await pipe.DisposeAsync().ConfigureAwait(false); }
+            finally { _connections.Release(); }
         }
     }
 

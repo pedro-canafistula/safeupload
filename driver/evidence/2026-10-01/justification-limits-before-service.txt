@@ -1,0 +1,32 @@
+info: Microsoft.Hosting.Lifetime[0]
+      Application started. Press Ctrl+C to shut down.
+info: Microsoft.Hosting.Lifetime[0]
+      Hosting environment: Production
+info: Microsoft.Hosting.Lifetime[0]
+      Content root path: C:\Users\vika\Documents\stage-service-publish\
+info: SafeUpload.Agent.Service.Notifications.NotificationPipeServer[0]
+      Canal de notificacao em \\.\pipe\SafeUpload.Agent
+info: SafeUpload.Agent.Service.Interception.MinifilterInterceptor[0]
+      Politica v1 empurrada ao driver: 5 extensoes, 1 destinos, classificacao de fontes em todos os volumes.
+info: SafeUpload.Agent.Service.Interception.MinifilterInterceptor[0]
+      Prazo: motor 5000 ms (RN-012), kernel espera 5500 ms.
+info: SafeUpload.Agent.Service.Interception.MinifilterInterceptor[0]
+      Minifiltro conectado. Interceptando em modo kernel.
+fail: Microsoft.Extensions.Hosting.Internal.Host[9]
+      BackgroundService failed
+      System.IO.IOException: All pipe instances are busy.
+         at System.IO.Pipes.NamedPipeServerStream.Create(String pipeName, PipeDirection direction, Int32 maxNumberOfServerInstances, PipeTransmissionMode transmissionMode, PipeOptions options, Int32 inBufferSize, Int32 outBufferSize, PipeSecurity pipeSecurity, HandleInheritability inheritability, PipeAccessRights additionalAccessRights)
+         at System.IO.Pipes.NamedPipeServerStreamAcl.Create(String pipeName, PipeDirection direction, Int32 maxNumberOfServerInstances, PipeTransmissionMode transmissionMode, PipeOptions options, Int32 inBufferSize, Int32 outBufferSize, PipeSecurity pipeSecurity, HandleInheritability inheritability, PipeAccessRights additionalAccessRights)
+         at SafeUpload.Agent.Service.Notifications.JustificationPipeServer.CreatePipe() in C:\Users\vika\Documents\safeupload-staging-test\agente\SafeUpload.Agent.Service\Notifications\JustificationPipeServer.cs:line 224
+         at SafeUpload.Agent.Service.Notifications.JustificationPipeServer.ExecuteAsync(CancellationToken stoppingToken) in C:\Users\vika\Documents\safeupload-staging-test\agente\SafeUpload.Agent.Service\Notifications\JustificationPipeServer.cs:line 69
+         at Microsoft.Extensions.Hosting.Internal.Host.TryExecuteBackgroundServiceAsync(BackgroundService backgroundService)
+crit: Microsoft.Extensions.Hosting.Internal.Host[10]
+      The HostOptions.BackgroundServiceExceptionBehavior is configured to StopHost. A BackgroundService has thrown an unhandled exception, and the IHost instance is stopping. To avoid this behavior, configure this to Ignore; however the BackgroundService will not be restarted.
+      System.IO.IOException: All pipe instances are busy.
+         at System.IO.Pipes.NamedPipeServerStream.Create(String pipeName, PipeDirection direction, Int32 maxNumberOfServerInstances, PipeTransmissionMode transmissionMode, PipeOptions options, Int32 inBufferSize, Int32 outBufferSize, PipeSecurity pipeSecurity, HandleInheritability inheritability, PipeAccessRights additionalAccessRights)
+         at System.IO.Pipes.NamedPipeServerStreamAcl.Create(String pipeName, PipeDirection direction, Int32 maxNumberOfServerInstances, PipeTransmissionMode transmissionMode, PipeOptions options, Int32 inBufferSize, Int32 outBufferSize, PipeSecurity pipeSecurity, HandleInheritability inheritability, PipeAccessRights additionalAccessRights)
+         at SafeUpload.Agent.Service.Notifications.JustificationPipeServer.CreatePipe() in C:\Users\vika\Documents\safeupload-staging-test\agente\SafeUpload.Agent.Service\Notifications\JustificationPipeServer.cs:line 224
+         at SafeUpload.Agent.Service.Notifications.JustificationPipeServer.ExecuteAsync(CancellationToken stoppingToken) in C:\Users\vika\Documents\safeupload-staging-test\agente\SafeUpload.Agent.Service\Notifications\JustificationPipeServer.cs:line 69
+         at Microsoft.Extensions.Hosting.Internal.Host.TryExecuteBackgroundServiceAsync(BackgroundService backgroundService)
+info: Microsoft.Hosting.Lifetime[0]
+      Application is shutting down...

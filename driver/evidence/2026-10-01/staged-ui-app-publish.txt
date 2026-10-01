@@ -1,0 +1,6 @@
+  Determining projects to restore...
+  Restored C:\Users\vika\Documents\safeupload-staging-test\agente\SafeUpload.Agent.App\SafeUpload.Agent.App.csproj (in 256 ms).
+  1 of 2 projects are up-to-date for restore.
+  SafeUpload.Agent.Core -> C:\Users\vika\Documents\safeupload-staging-test\agente\SafeUpload.Agent.Core\bin\Release\net10.0\SafeUpload.Agent.Core.dll
+  SafeUpload.Agent.App -> C:\Users\vika\Documents\safeupload-staging-test\agente\SafeUpload.Agent.App\bin\Release\net10.0-windows\win-x64\SafeUpload.Agent.App.dll
+  SafeUpload.Agent.App -> C:\Users\vika\Documents\staged-ui-app\
