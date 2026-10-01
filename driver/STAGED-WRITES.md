@@ -1,5 +1,108 @@
 # Staged writes to protected destinations
 
+## Remaining acceptance tracker (resumed 1 October 2026)
+
+This is the active tracker for completing the broader feature. The integrated
+milestone began at `26cab47`; Release validation was fixed in `93f890e`. Each item stays open
+until its implementation and required evidence pass. Normal builds keep staging
+disabled throughout this work. No ClickUp queries. Use only the isolated feature
+branch and debugger checkout; preserve the original debuggee hash and restore it
+after every experiment, including failures.
+
+1. Filesystem and views
+   - [x] Durable source tombstones and atomic replacement reservations; native
+         replacement, reuse of physically absent temporary slots, held old handles
+         and stale-approval regression. Moving/deleting a physical public source
+         and reusing its occupied tombstone slot remain open.
+   - [ ] Stable destination/view/version identity, aliases, short names, relative
+         and file-ID opens, links, reparse handling and cross-process view rules.
+   - [ ] Delete/disposition, metadata/security, byte locking/oplocks and private
+         directory notifications, mutation/cancellation/concurrency coverage.
+2. Approval flow
+   - [ ] Real application notifications and pipe/UI exact-version justification.
+   - [ ] Negative publication matrix: changed bytes/policy, unknown/parser/size/
+         timeout cases, stale/replayed/expired/wrong-session/spoofed permits.
+3. Recovery, security and storage
+   - [ ] Service/request/reply failures and driver-loss/reboot namespace recovery,
+         authenticated recovery/export without implicit approval.
+   - [ ] Stage/journal reparse/ACL/race/corruption hardening, full disk and bounded
+         reclamation preserving durable destination generations and user content.
+4. Destination qualification
+   - [ ] USB including surprise removal and supported filesystem guards.
+   - [ ] UNC/mapped SMB redirector identity/paging/reconnect architecture and gates.
+   - [ ] Actual sync client/destination byte observers; document qualified stacks.
+5. Full functional matrix
+   - [ ] Explorer CopyFile/MoveFile, Office replacement saves, PowerShell/.NET,
+         concurrent/duplicate/inherited handles, mappings and independent readers.
+   - [ ] Service/driver/system crashes, cancellation, resource and filesystem faults.
+6. Release gates
+   - [x] Current agent/application regressions, Debug and Release WDK validation;
+         `aitstatic` 193 resolved without disabling validation. Repeat for later changes.
+   - [ ] Applicable boot/runtime Verifier, stress, bounded latency and final
+         independent original-driver restoration evidence.
+
+Completed increment: durable rename tombstones and native replacement saves.
+The source generation barrier is committed in the same manifest as the target
+head; rename cycles and restart preserve it. Existing prepare/commit/abort
+protocol 18 is unchanged. The seal condition is unchanged. The live checks
+verified the debuggee hostname/UUID, original installed hash, unloaded filter,
+zero Verifier flags and the `safeupload-owned-integration-20261001` snapshot.
+
+All 234 service tests pass. The WPF application Release build and normal/feature
+WDK Debug/Release builds have zero warnings/errors. The old Release failure was
+an extractor-host mismatch: on the same optimized x64 SYS, x86 `aitstatic` returns
+193 and x64 `aitstatic` validates Universal. The build script uses native x64
+`Bin\amd64\MSBuild.exe`; PREfast, DriverRecommendedRules, API validation and
+compiler optimizations remain enabled. [Paired reproduction](evidence/2026-10-01/owned-release-extractor-pair.txt).
+
+The initial VM harness had two corrected probe errors (a PowerShell
+switch/variable collision and a reader without write sharing). A repeated run
+then exposed an intermittent approved public overwrite denial. The opt-in
+[diagnostic patch](evidence/2026-10-01/owned-publication-trace.patch) separated
+permit acceptance from filesystem completion: the exact permit was accepted and
+NTFS returned `STATUS_ACCESS_DENIED` (`0xC0000022`) for information class 10.
+[Trace](evidence/2026-10-01/owned-publication-race-trace.txt),
+[failed gate](evidence/2026-10-01/owned-publication-race-before.txt),
+[service error](evidence/2026-10-01/owned-publication-race-service.txt).
+
+Small unfiltered reproduction, with SafeUpload unloaded: hold a destination
+reader with Read|Delete or ReadWrite|Delete sharing; `MoveFileEx(REPLACE_EXISTING)`
+fails with access denied. `SetFileInformationByHandle(FileRenameInfoEx,
+REPLACE_IF_EXISTS|POSIX_SEMANTICS)` succeeds, the held reader keeps the old bytes,
+and the destination name reads the new bytes. [Exact probe](evidence/2026-10-01/owned-publication-native-control.ps1)
+and [results](evidence/2026-10-01/owned-publication-native-control.txt).
+The new deterministic publisher regression failed with Retained before the fix
+([result](evidence/2026-10-01/owned-publication-reader-test-before.txt)).
+This corrects the assumption that adding delete sharing to the source inspector
+alone resolved the overwrite race; the owned-stream architecture is unchanged.
+
+The publisher now creates one exclusive temporary with WRITE and DELETE access,
+copies the inspected snapshot, flushes, and performs the POSIX replacement on
+that same held file object. No close/reopen gap, fallback copy or second permit.
+Unsupported destination semantics fail closed. The diagnostic patch is removed
+from normal source; its first exploratory run accidentally matched legacy CREATE
+completion context value 1 and is excluded from qualification. The recorded trace
+above comes from the corrected SET_INFORMATION-only diagnostic.
+
+Final same-package gates passed after the journal fix: ordinary and volatile
+Verifier each ran 24 approved overwrites plus replacement, concurrent/mapped I/O,
+new private versions and service restart cases. The ordinary observer completed
+748 full passes; Verifier completed 568. Directory and duplicated-handle
+regressions passed separately with that same driver/package. See the current
+result table below. Earlier interrupted runs are excluded from acceptance.
+
+The journal now serializes its reads with mutation and opens manifests with
+delete sharing. Its atomic replacement uses the same flushed-handle POSIX
+operation as publication. A regression pins the old Allocated manifest while
+sealing and checks that both pinned old state and current new state stay readable.
+This removes the service race exposed by a harness reader without delete sharing.
+
+The byte observer now counts/acknowledges only full passes; a failed read retries
+the pass. Its small request/acknowledgement files use retryable complete-JSON /
+exact-phase reads, avoiding classic replacement of an open coordination file.
+Two coordination races (rename and an empty-ack `.Trim()` call) were fixed during
+repeated-publication testing; their interrupted runs are not acceptance evidence.
+
 ## Current milestone (1 October 2026)
 
 Branch: `feat/staged-kernel-prototype`. The owned-stream experiment is integrated
@@ -8,7 +111,8 @@ covers durable allocation, private cached/mapped I/O, immutable version retireme
 real inspection and authenticated approved publication. Normal builds compile
 staging out; existing process-taint enforcement remains. Do not query ClickUp.
 
-Milestone complete: normal/feature WDK builds, 228 Windows service tests, ordinary
+Bounded milestone and replacement increment complete: all four WDK builds,
+234 Windows service tests, ordinary
 and Verifier integration, cross-process duplication and directory regression passed.
 The original debuggee driver is independently verified restored, with no feature
 loaded, no test service/tasks, Verifier off and S: detached. See the result table
@@ -81,26 +185,34 @@ read handle to an older sealed version keeps its original bytes. The registry
 retains old versions and process references until unload: at most 128 versions,
 16 MiB each. Exhaustion fails closed; reclamation is a remaining requirement.
 
-Supported native rename moves a current private name to an absent name on the
-same original volume, checks DELETE and target-parent access, and uses existing
-journal prepare/commit/abort messages. Source name becomes a private tombstone;
-held-handle names and directory overlay update together. Lost replies reuse the
-same transaction ID. Until acknowledgement, fresh opens/mutations and sealing
-remain held; mapped writes already authorized to a mutable version remain private.
-Retargeting a destination that has prior journal versions is refused, because a
-single moved manifest would otherwise make an obsolete predecessor current again.
+Supported native rename is a transaction over source and target slots on the
+same original volume. It checks DELETE and target-parent access, durably prepares
+both destination generations, changes the private mapping and source tombstone,
+then commits using existing messages. A linked value record in the same manifest
+retains source generation barriers (at most 16 moves per version). The service
+will not inspect/publish an older source or displaced target after restart.
+Lost replies reuse the transaction ID. Until acknowledgement, fresh opens,
+mutations and sealing remain held; existing mapped writes remain private.
 
-Replacement saves must become a namespace transaction over both source and target
-slots: reserve their generations, retain both prior version objects, commit the
-name mapping plus source tombstone durably, then make the new target eligible for
-inspection. Hard links must be alias entries for the same destination identity,
-not independent path-keyed publication rights. Short names, file-ID opens and
-reparse aliases must resolve before policy/view lookup. Until implemented and
-qualified, owned replacement flags, hard links, delete/disposition, alternate
-streams, byte locks/oplocks and unsupported metadata operations fail explicitly.
-Writable file-ID admission is denied. This is not complete alias enforcement for
-preexisting external links; such namespaces remain outside the qualified scope.
-Private directory notifications and concurrent directory mutation are also pending.
+An ordinary replacement refuses an open private target. Native Ex
+REPLACE_IF_EXISTS|POSIX_SEMANTICS can displace a target whose open handles share
+DELETE; its old stream remains attached to those handles while its view leaves
+name lookup. Image sections and unacknowledged seals are rejected. The source's
+existing handles must all share DELETE. Directory overlays hide tombstones and
+displaced views without duplicating a reused active name. Creating into a source
+tombstone works when that physical slot is absent. Physical public-source removal
+and reuse of physically occupied tombstones remain pending.
+
+Hard links require alias entries for one destination identity, not independent
+path-keyed publication rights. Short names, file-ID opens and reparse aliases
+must resolve before policy/view lookup. Links, delete/disposition, alternate
+streams, byte locks/oplocks and unsupported metadata operations fail explicitly;
+writable file-ID admission is denied. This is not complete enforcement for
+preexisting external links or case-sensitive directories: those namespaces are
+unqualified. Private directory notifications and concurrent directory mutation
+remain pending. Rename authorization currently uses the executing thread's
+subject; preserving the original caller after another filter pends a request is
+a remaining security qualification before admitting such stacks.
 
 ### Lifetime, synchronization and exact seal
 
@@ -154,7 +266,10 @@ its inspection snapshot, and rechecks the sealed digest and policy before copyin
 that inspected snapshot. `AllowedWithoutInspection` never grants publication.
 The kernel's authenticated, expiring permit binds transfer ID, digest and exact
 temporary/destination paths, admits one temporary create and consumes one native
-rename. The kernel trusts the authenticated service's digest decision; it does not
+rename. Approved Windows output uses one exclusive temporary opened with WRITE
+and DELETE, flushed then replaced via FileRenameInfoEx (REPLACE|POSIX) on the same
+held handle. Existing public readers/mappings retain old bytes. Read-only targets
+are refused; unsupported stacks have no copy fallback. The kernel trusts the authenticated service's digest decision; it does not
 re-hash the output in a paging callback. Bytes in the public temporary are already
 approved; it is flushed before final rename and durable `Released` bookkeeping.
 
@@ -170,8 +285,8 @@ replacement. Legacy duplicate generation-zero histories fail closed.
 
 Ordinary source inspection allows delete sharing while excluding ordinary writes.
 Its read handle pins the file being read across an approved directory replacement;
-hash and scan use the same resulting bytes. This prevents the existing source
-classifier, triggered by an independent destination reader, from vetoing publication.
+hash and scan use the same resulting bytes. Together with POSIX destination replacement, this prevents the existing source
+classifier from vetoing publication while it pins a prior public version.
 The sealed version's own service handle still excludes writes and deletion.
 
 | Failure | Implemented behavior | Remaining acceptance |
@@ -201,8 +316,8 @@ cloud sync clients, and third-party filter stacks are not qualified. A redirecto
 needs its own demonstrated section, paging, identity and reconnect contracts; it
 must not be enabled by removing the NTFS/stack guards.
 
-Before deployment, complete the destination/view/alias identities and replacement
-transaction above, delete/link/metadata/locking/notification semantics, driver-loss
+Before deployment, complete destination/view/alias identities and physical-source
+namespace transactions, delete/link/metadata/locking/notification semantics, driver-loss
 recovery with user access to retained files, resource reclamation, disk-full and
 corrupt-journal handling, permit replay/spoof/expiry kernel fault tests, real UI
 exact-version justification, Explorer/Office saves, real destination stacks, and
@@ -226,9 +341,9 @@ until its remaining responsibilities are demonstrably replaced.
   independently verify it afterward. The helper refuses silent cleanup if live
   objects require a reboot and restores installed bytes before reporting that case.
 - Final signed integrated feature driver SHA-256:
-  `76365F61F5B7E0DC71DC0DFA33E6402D11790F03519CE26EA3AD0D3E88CFFC03`.
+  `3B55E67991748985191AD96E3415481D528246EB08BA7018002EF36735EFD49A`.
   Tested service ZIP SHA-256:
-  `DBD489D280961BF5B43AC86A26C97F0A7FFDF9612F1E1232D187799DDA8BCAC8`.
+  `B75112364877ACDAF78893B3C87A87813064AFFFF531C0BE05330092ED75F085`.
 
 From the debugger's isolated checkout:
 
@@ -237,7 +352,7 @@ From the debugger's isolated checkout:
   -CertificateThumbprint 220DD82C37FCF36048D59E4F10113185D81D5DC7
 ```
 
-This rebuilds normal and opt-in x64 Debug with DriverRecommendedRules/PREfast and
+This rebuilds normal and opt-in x64 Debug and Release with DriverRecommendedRules/PREfast and
 API validation, runs the complete Windows service suite, and publishes a
 self-contained win-x64 service. Copy `owned-milestone\SafeUpload-stage-prototype.sys`
 and `owned-milestone\stage-service-publish.zip` to the debuggee's Documents. Copy
@@ -245,28 +360,27 @@ and `owned-milestone\stage-service-publish.zip` to the debuggee's Documents. Cop
 `Test-StagedDirectory.ps1` and `StagedTestAgent.ps1` beside them. Then on the debuggee:
 
 ```powershell
-& C:\Users\vika\Documents\Test-StagedOwnedStreams.ps1
+& C:\Users\vika\Documents\Test-StagedOwnedStreams.ps1 -ReplacementCases -PublicationIterations 24
 & C:\Users\vika\Documents\Test-StagedDuplicatedHandle.ps1
 & C:\Users\vika\Documents\Test-StagedDirectory.ps1
 $env:SAFEUPLOAD_STAGED_VERIFIER_LOG = 'C:\Users\vika\Documents\owned-verifier-query.txt'
-& C:\Users\vika\Documents\Test-StagedOwnedStreams.ps1 -Verifier
+& C:\Users\vika\Documents\Test-StagedOwnedStreams.ps1 -Verifier -ReplacementCases -PublicationIterations 24
 ```
 
 The owned-stream harness creates/detaches its own S: NTFS VHDX, starts the actual
 LocalSystem service, samples destination bytes from another process and restores
 the original driver in `finally`. Verifier is volatile `0x13B`; it is a focused
-runtime gate, not complete boot-time DDI certification. The historical Release
-`aitstatic` error 193 remains unresolved; API validation has not been disabled.
+runtime gate, not complete boot-time DDI certification. Release API validation
+now passes with the native x64 extractor.
 
 | Gate | Final result and evidence |
 | --- | --- |
-| WDK x64 Debug, normal and feature | Both PASS; zero warnings/errors; DriverRecommendedRules/PREfast and API validation enabled. [Normal](evidence/2026-10-01/owned-normal-wdk.txt), [feature](evidence/2026-10-01/owned-feature-wdk.txt) |
-| Complete Windows service suite | 228 passed, 0 failed/skipped. Includes idempotent seals, partial-sector seeds, destination generation/reservations and the source-sharing regression. [Tests](evidence/2026-10-01/owned-agent-tests.txt), [service publish](evidence/2026-10-01/owned-service-build.txt) |
-| Ordinary integrated gate | PASS; 246 independent destination samples; exact native identity/rename, concurrent handles and parallel writers, private later edit/old reader, clean overwrite, mapped writes after handle closure without explicit mapped Flush, mapping-only unload refusal, two service restarts and real approved publication. [Run](evidence/2026-10-01/owned-integrated-gate.txt), [observer](evidence/2026-10-01/owned-integrated-observer.txt) |
-| Cross-process duplicated handle | PASS; owner exited while version stayed Allocated; duplicate appended; only its final close published exact `basetail`. [Run](evidence/2026-10-01/owned-duplicated-handle.txt) |
-| Directory regression | PASS; native classes 1/2/3/12/37/38/60/63, pagination, restart, small buffers and private sizes; unrelated observer saw only approved entries. [Run](evidence/2026-10-01/owned-directory-gate.txt) |
-| Focused volatile Verifier | PASS; same integrated gate, 296 destination samples, `SafeUpload.sys` active under `0x13B`; no bugcheck or Verifier report. [Run](evidence/2026-10-01/owned-verifier-gate.txt), [active query](evidence/2026-10-01/owned-verifier-query.txt), [observer](evidence/2026-10-01/owned-verifier-observer.txt) |
-| Independent final restoration | PASS at 2026-10-01 19:37:57 UTC on Windows 10 Pro 19045; original hash matches, no SafeUpload filter loaded, Verifier zero/None, zero temporary tasks/service processes, S: and VHDX absent. [Evidence](evidence/2026-10-01/owned-final-state.txt), [exact verification commands](evidence/2026-10-01/owned-final-state-command.ps1) |
+| WDK x64 Debug and Release, normal and feature | All four PASS; zero warnings/errors; PREfast/DriverRecommendedRules and API validation enabled. [Normal Debug](evidence/2026-10-01/namespace-normal-debug.txt), [feature Debug](evidence/2026-10-01/namespace-feature-debug.txt), [normal Release](evidence/2026-10-01/namespace-normal-release.txt), [feature Release](evidence/2026-10-01/namespace-feature-release.txt) |
+| Windows service suite and WPF app | 234 passed, 0 failed/skipped; app Release zero warnings/errors. Source/destination held readers, mapped old public readers, readonly target refusal, rename generations/restart and pinned manifest regression included. [Tests](evidence/2026-10-01/namespace-agent-tests.txt), [publish](evidence/2026-10-01/namespace-service-build.txt), [app build](evidence/2026-10-01/namespace-application-build.txt) |
+| Ordinary integrated gate | PASS; 748 full independent byte-observer passes; 24 approved overwrites, native private replacements/held old reader, name reuse, concurrent writers, later versions, mapping after handle close, unload refusal and restart. [Run](evidence/2026-10-01/namespace-ordinary-gate.txt), [observer](evidence/2026-10-01/namespace-ordinary-observer.txt) |
+| Duplicated handle and directories | PASS; exiting owner leaves version Allocated until duplicate closes, then publishes exact basetail. Directory classes 1/2/3/12/37/38/60/63, pagination/restart/small buffers/private sizes; observer only sees approved entries. [Run](evidence/2026-10-01/namespace-directory-duplicate.txt) |
+| Focused volatile Verifier | PASS; same replacement/24 overwrite gate, 568 full observer passes, SafeUpload.sys active under 0x13B; no bugcheck or Verifier report. [Run](evidence/2026-10-01/namespace-verifier-gate.txt), [active query](evidence/2026-10-01/namespace-verifier-query.txt), [observer](evidence/2026-10-01/namespace-verifier-observer.txt) |
+| Independent final restoration | PASS at 2026-10-01T20:29:41 UTC; original hash matches, filter unloaded, Verifier zero/None, zero temporary tasks/service processes, S:/VHDX absent. [Evidence](evidence/2026-10-01/namespace-final-state.txt), [exact commands](evidence/2026-10-01/namespace-final-state-command.ps1) |
 
 The first approved native-renamed file contains `alphabetatail`, SHA-256
 `6784D571A4E44598EB09029A50928089BB7B3D4DD06E9ABD081CC3935DF9A8C9`.

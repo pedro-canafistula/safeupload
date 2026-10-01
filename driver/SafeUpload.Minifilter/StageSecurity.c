@@ -11,6 +11,7 @@ static NTSTATUS SafeUploadStageQuerySecurity(_In_ PFLT_INSTANCE Instance,
 #pragma alloc_text(PAGE, SafeUploadStageCaptureSecurity)
 #pragma alloc_text(PAGE, SafeUploadStageFreeSecurity)
 #pragma alloc_text(PAGE, SafeUploadStageCheckRenameAccess)
+#pragma alloc_text(PAGE, SafeUploadStageCheckSubjectAccess)
 #endif
 
 // Read the destination's descriptor below our instance. This never creates,
@@ -277,4 +278,22 @@ Exit:
     if (descriptor != NULL) ExFreePoolWithTag( descriptor, SAFEUPLOAD_POOL_TAG );
     SeReleaseSubjectContext( &subject );
     return status;
+}
+
+/* SET_INFORMATION has no CREATE security context. Capture its effective caller
+ * instead of borrowing the service/kernel token used for the backing. */
+NTSTATUS SafeUploadStageCheckSubjectAccess(PSECURITY_DESCRIPTOR Descriptor, ACCESS_MASK Desired)
+{
+    SECURITY_SUBJECT_CONTEXT subject;
+    PPRIVILEGE_SET privileges = NULL;
+    ACCESS_MASK granted;
+    NTSTATUS status;
+    BOOLEAN allowed;
+    PAGED_CODE();
+    SeCaptureSubjectContext(&subject);
+    allowed = SeAccessCheck(Descriptor, &subject, FALSE, Desired, 0, &privileges,
+        IoGetFileObjectGenericMapping(), UserMode, &granted, &status);
+    if (privileges != NULL) SeFreePrivileges(privileges);
+    SeReleaseSubjectContext(&subject);
+    return allowed ? STATUS_SUCCESS : STATUS_ACCESS_DENIED;
 }

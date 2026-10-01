@@ -1,0 +1,17 @@
+NativeDirectoryClass=1 Pagination=True Restart=True SmallBuffers=True Sizes=True
+NativeDirectoryClass=2 Pagination=True Restart=True SmallBuffers=True Sizes=True
+NativeDirectoryClass=3 Pagination=True Restart=True SmallBuffers=True Sizes=True
+NativeDirectoryClass=12 Pagination=True Restart=True SmallBuffers=True Sizes=True
+NativeDirectoryClass=37 Pagination=True Restart=True SmallBuffers=True Sizes=True
+NativeDirectoryClass=38 Pagination=True Restart=True SmallBuffers=True Sizes=True
+NativeDirectoryClass=60 Pagination=True Restart=True SmallBuffers=True Sizes=True
+NativeDirectoryClass=63 Pagination=True Restart=True SmallBuffers=True Sizes=True
+ObserverSeesOnlyApprovedEntries=True
+OriginalDriverRestored=ADA9D05AB6AECDD2B6C521B0CE529FC06C732154ACB3EE85439FBDC8AA80DFCE
+ExperimentalDriverUnloaded=True
+OriginalDriverRestored=True
+OwnerExitedWithDuplicatedWriterUnsealed=True
+PublishedOnlyAfterDuplicateFinalClose=basetail
+OriginalDriverRestored=ADA9D05AB6AECDD2B6C521B0CE529FC06C732154ACB3EE85439FBDC8AA80DFCE
+ExperimentalDriverUnloaded=True
+OriginalDriverRestored=True

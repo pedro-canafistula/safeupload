@@ -67,6 +67,7 @@ typedef struct _STAGE_VIEW {
     ULONG OwnerProcessId;
     PSECURITY_DESCRIPTOR Security;
     BOOLEAN AssignedSecurity;
+    BOOLEAN Detached; /* Replaced name; held objects retain this version/view. */
     PSTAGE_STREAM Current;
     LIST_ENTRY OldNames;
     UNICODE_STRING Name;
@@ -259,7 +260,7 @@ static PSTAGE_VIEW StageFindView(PEPROCESS Owner, PUNICODE_STRING Name)
     PLIST_ENTRY link;
     for (link = StageViews.Flink; link != &StageViews; link = link->Flink) {
         PSTAGE_VIEW view = CONTAINING_RECORD(link, STAGE_VIEW, Link);
-        if (view->Owner == Owner && RtlEqualUnicodeString(&view->Name, Name, TRUE)) return view;
+        if (!view->Detached && view->Owner == Owner && RtlEqualUnicodeString(&view->Name, Name, TRUE)) return view;
     }
     return NULL;
 }
@@ -314,8 +315,11 @@ static NTSTATUS StageCreate(PFLT_CALLBACK_DATA Data, PCFLT_RELATED_OBJECTS Objec
     if (StageStopping) { status = STATUS_DEVICE_NOT_READY; goto Exit; }
     view = StageFindView(owner, &Name->Name);
     if (view == NULL && StageHiddenName(owner, &Name->Name)) {
-        /* Reusing a tombstone needs replacement transactions; fail explicitly. */
-        status = STATUS_OBJECT_NAME_NOT_FOUND; goto Exit;
+        if (!Writer || disposition == FILE_OPEN || disposition == FILE_OVERWRITE) {
+            status = STATUS_OBJECT_NAME_NOT_FOUND; goto Exit;
+        }
+        /* A fresh create at an absent physical name gets a newer durable
+         * generation. The tombstone still suppresses obsolete approvals. */
     }
     if (view == NULL && !Writer) { *Handled = FALSE; goto Exit; }
     if (Name->Name.Length > sizeof(stream->NameBuffer) || Name->Stream.Length != 0 ||
@@ -673,13 +677,13 @@ static NTSTATUS StageRename(PFLT_CALLBACK_DATA Data, PSTAGE_STREAM Stream)
 {
     PFILE_RENAME_INFORMATION rename = Data->Iopb->Parameters.SetFileInformation.InfoBuffer;
     PFLT_FILE_NAME_INFORMATION destination = NULL;
-    PSTAGE_VIEW view = Stream->View;
+    PSTAGE_VIEW view = Stream->View, target = NULL;
     PSTAGE_OLD_NAME old = NULL;
     PSAFEUPLOAD_EXCHANGE exchange = NULL;
     ULONG length = Data->Iopb->Parameters.SetFileInformation.Length;
     ULONG basename;
     BOOLEAN extended = Data->Iopb->Parameters.SetFileInformation.FileInformationClass == FileRenameInformationEx;
-    BOOLEAN replace;
+    BOOLEAN replace, posix;
     NTSTATUS status;
     if (!Data->Iopb->TargetFileObject->DeleteAccess) return STATUS_ACCESS_DENIED;
     if (rename == NULL || length < (ULONG)FIELD_OFFSET(FILE_RENAME_INFORMATION, FileName) ||
@@ -687,9 +691,11 @@ static NTSTATUS StageRename(PFLT_CALLBACK_DATA Data, PSTAGE_STREAM Stream)
         rename->FileNameLength > length - FIELD_OFFSET(FILE_RENAME_INFORMATION, FileName))
         return STATUS_INVALID_PARAMETER;
     replace = extended ? BooleanFlagOn(*(PULONG)rename, FILE_RENAME_REPLACE_IF_EXISTS) : rename->ReplaceIfExists;
-    if (replace || (extended && *(PULONG)rename != 0)) return STATUS_NOT_SUPPORTED;
+    posix = extended && BooleanFlagOn(*(PULONG)rename, FILE_RENAME_POSIX_SEMANTICS);
+    if (extended && FlagOn(*(PULONG)rename, ~(FILE_RENAME_REPLACE_IF_EXISTS | FILE_RENAME_POSIX_SEMANTICS)))
+        return STATUS_NOT_SUPPORTED;
     StageAcquire(&StageNamespaceResource);
-    if (StageStopping || view->Current != Stream || Stream->RenameExchange != NULL ||
+    if (StageStopping || view->Detached || view->Current != Stream || Stream->RenameExchange != NULL ||
         (Stream->ReadOnly && !Stream->Sealed)) {
         status = STATUS_SHARING_VIOLATION; goto Exit;
     }
@@ -708,10 +714,27 @@ static NTSTATUS StageRename(PFLT_CALLBACK_DATA Data, PSTAGE_STREAM Stream)
         status = STATUS_NOT_SAME_DEVICE; goto Exit;
     }
     if (RtlEqualUnicodeString(&view->Name, &destination->Name, TRUE)) { status = STATUS_SUCCESS; goto Exit; }
-    if (StageFindView(view->Owner, &destination->Name) != NULL || StageHiddenName(view->Owner, &destination->Name)) {
-        status = STATUS_OBJECT_NAME_COLLISION; goto Exit;
+    target = StageFindView(view->Owner, &destination->Name);
+    if (target != NULL && !replace) { status = STATUS_OBJECT_NAME_COLLISION; goto Exit; }
+    StageAcquire(&Stream->Resource);
+    status = Stream->ShareAccess.OpenCount == Stream->ShareAccess.SharedDelete ?
+        STATUS_SUCCESS : STATUS_SHARING_VIOLATION;
+    StageRelease(&Stream->Resource);
+    if (!NT_SUCCESS(status)) goto Exit;
+    if (target != NULL) {
+        PSTAGE_STREAM replaced = target->Current;
+        status = SafeUploadStageCheckSubjectAccess(target->Security, DELETE);
+        if (!NT_SUCCESS(status)) goto Exit;
+        StageAcquire(&replaced->Resource);
+        if (replaced->RenameExchange != NULL || (replaced->ReadOnly && !replaced->Sealed) ||
+            (!posix && replaced->ShareAccess.OpenCount != 0) ||
+            replaced->ShareAccess.OpenCount != replaced->ShareAccess.SharedDelete ||
+            replaced->Sections.ImageSectionObject != NULL)
+            status = STATUS_SHARING_VIOLATION;
+        StageRelease(&replaced->Resource);
+        if (!NT_SUCCESS(status)) goto Exit;
     }
-    status = SafeUploadStageCheckRenameAccess(Stream->OriginalInstance, &destination->Name, FALSE);
+    status = SafeUploadStageCheckRenameAccess(Stream->OriginalInstance, &destination->Name, replace);
     if (!NT_SUCCESS(status)) goto Exit;
     old = ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(*old) + view->Name.Length, STAGE_TAG);
     exchange = ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(*exchange), STAGE_TAG);
@@ -740,6 +763,7 @@ static NTSTATUS StageRename(PFLT_CALLBACK_DATA Data, PSTAGE_STREAM Stream)
         status = STATUS_SHARING_VIOLATION; goto Exit;
     }
     StageAcquire(&Stream->Resource);
+    if (target != NULL) target->Detached = TRUE;
     RtlCopyUnicodeString(&Stream->Name, &destination->Name);
     RtlCopyUnicodeString(&view->Name, &destination->Name);
     InsertTailList(&view->OldNames, &old->Link); old = NULL;
@@ -1226,8 +1250,9 @@ static FLT_PREOP_CALLBACK_STATUS StageExternalRename(PFLT_CALLBACK_DATA Data,
     allow = !SafeUploadStageProtectedName(source, kind) && !SafeUploadStageProtectedName(destination, kind);
     if (!allow && SafeUploadData.ClientPort != NULL &&
         FltGetRequestorProcessId(Data) == SafeUploadData.InspectorProcessId &&
-        (cls == FileRenameInformation || cls == FileRenameInformationEx))
+        (cls == FileRenameInformation || cls == FileRenameInformationEx)) {
         allow = SafeUploadPublicationRename(&source->Name, &destination->Name);
+    }
 Complete:
     if (source != NULL) FltReleaseFileNameInformation(source);
     if (destination != NULL) FltReleaseFileNameInformation(destination);
@@ -1267,7 +1292,9 @@ FLT_PREOP_CALLBACK_STATUS SafeUploadStageDispatch(PFLT_CALLBACK_DATA Data,
         break;
     case IRP_MJ_SET_INFORMATION:
         result = StageExternalRename(Data, Objects);
-        return result == FLT_PREOP_SUCCESS_NO_CALLBACK ? SafeUploadPreSetInformation(Data, Objects, CompletionContext) : result;
+        if (result != FLT_PREOP_SUCCESS_NO_CALLBACK) return result;
+        *CompletionContext = NULL;
+        return SafeUploadPreSetInformation(Data, Objects, CompletionContext);
     default: break;
     }
     return FLT_PREOP_SUCCESS_NO_CALLBACK;
@@ -1349,12 +1376,14 @@ NTSTATUS SafeUploadCollectDirectoryOverlay(_In_ ULONG Owner, _In_ PUNICODE_STRIN
         PSTAGE_VIEW view = CONTAINING_RECORD(link, STAGE_VIEW, Link);
         if (view->Owner != process) continue;
         for (old = view->OldNames.Flink; old != &view->OldNames; old = old->Flink) {
-            if (StageDirectoryChild(Directory, &CONTAINING_RECORD(old, STAGE_OLD_NAME, Link)->Name, &child)) {
+            PSTAGE_OLD_NAME hidden = CONTAINING_RECORD(old, STAGE_OLD_NAME, Link);
+            if (StageFindView(process, &hidden->Name) == NULL &&
+                StageDirectoryChild(Directory, &hidden->Name, &child)) {
                 status = StageAddOverlay(Overlays, &child, NULL);
                 if (!NT_SUCCESS(status)) goto Exit;
             }
         }
-        if (StageDirectoryChild(Directory, &view->Name, &child)) {
+        if (!view->Detached && StageDirectoryChild(Directory, &view->Name, &child)) {
             status = StageAddOverlay(Overlays, &child, view->Current);
             if (!NT_SUCCESS(status)) goto Exit;
         }
@@ -1376,7 +1405,7 @@ BOOLEAN SafeUploadHasDirectoryOverlay(_In_ ULONG Owner, _In_ PUNICODE_STRING Dir
     for (link = StageViews.Flink; link != &StageViews && !found; link = link->Flink) {
         PSTAGE_VIEW view = CONTAINING_RECORD(link, STAGE_VIEW, Link);
         if (view->Owner != process) continue;
-        found = StageDirectoryChild(Directory, &view->Name, &child);
+        found = !view->Detached && StageDirectoryChild(Directory, &view->Name, &child);
         for (old = view->OldNames.Flink; old != &view->OldNames && !found; old = old->Flink)
             found = StageDirectoryChild(Directory, &CONTAINING_RECORD(old, STAGE_OLD_NAME, Link)->Name, &child);
     }

@@ -35,6 +35,60 @@ public sealed class StagedTransferPublisherTests : IDisposable
 
     public void Dispose() => _workspace.Dispose();
 
+    [Fact]
+    public async Task Approved_replacement_preserves_a_live_public_reader()
+    {
+        var transfer = Transfer("replace-reader.txt", "new approved bytes");
+        Directory.CreateDirectory(Path.GetDirectoryName(transfer.DestinationPath)!);
+        await File.WriteAllTextAsync(transfer.DestinationPath, "old approved bytes");
+        using var reader = new FileStream(transfer.DestinationPath, FileMode.Open,
+            FileAccess.Read, FileShare.Read | FileShare.Delete);
+        Assert.Equal(StagedTransferOutcome.Released,
+            await _publisher.PublishAsync(transfer, CancellationToken.None));
+        using var text = new StreamReader(reader);
+        Assert.Equal("old approved bytes", await text.ReadToEndAsync());
+        Assert.Equal("new approved bytes", await File.ReadAllTextAsync(transfer.DestinationPath));
+    }
+
+    [Fact]
+    public async Task Approved_replacement_preserves_a_public_mapping_after_handle_close()
+    {
+        var transfer = Transfer("replace-map.txt", "new approved bytes");
+        Directory.CreateDirectory(Path.GetDirectoryName(transfer.DestinationPath)!);
+        await File.WriteAllTextAsync(transfer.DestinationPath, "old approved bytes");
+        var reader = new FileStream(transfer.DestinationPath, FileMode.Open,
+            FileAccess.Read, FileShare.Read | FileShare.Delete);
+        using var mapping = System.IO.MemoryMappedFiles.MemoryMappedFile.CreateFromFile(reader, null, 0,
+            System.IO.MemoryMappedFiles.MemoryMappedFileAccess.Read, HandleInheritability.None, leaveOpen: true);
+        using var view = mapping.CreateViewAccessor(0, 0, System.IO.MemoryMappedFiles.MemoryMappedFileAccess.Read);
+        reader.Dispose();
+        Assert.Equal(StagedTransferOutcome.Released,
+            await _publisher.PublishAsync(transfer, CancellationToken.None));
+        byte[] prior = new byte[18];
+        view.ReadArray(0, prior, 0, prior.Length);
+        Assert.Equal("old approved bytes", System.Text.Encoding.UTF8.GetString(prior));
+        Assert.Equal("new approved bytes", await File.ReadAllTextAsync(transfer.DestinationPath));
+    }
+
+    [Fact]
+    public async Task Readonly_public_destination_is_not_replaced_or_reported_released()
+    {
+        var transfer = Transfer("replace-readonly.txt", "new approved bytes");
+        Directory.CreateDirectory(Path.GetDirectoryName(transfer.DestinationPath)!);
+        await File.WriteAllTextAsync(transfer.DestinationPath, "old approved bytes");
+        File.SetAttributes(transfer.DestinationPath, FileAttributes.ReadOnly);
+        try
+        {
+            Assert.Equal(StagedTransferOutcome.Retained,
+                await _publisher.PublishAsync(transfer, CancellationToken.None));
+            Assert.Equal("old approved bytes", await File.ReadAllTextAsync(transfer.DestinationPath));
+            Assert.Equal(TransferJournalState.Retained,
+                (await _journal.ReadAsync(transfer.TransferId, CancellationToken.None)).State);
+            Assert.Empty(Directory.GetFiles(Path.GetDirectoryName(transfer.DestinationPath)!, "*.pending"));
+        }
+        finally { File.SetAttributes(transfer.DestinationPath, FileAttributes.Normal); }
+    }
+
     [Theory]
     [InlineData(false, false)]
     [InlineData(false, true)]

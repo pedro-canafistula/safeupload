@@ -1,0 +1,9 @@
+Phase 20/21: accepted permit source/destination; status is information class (10 = FileRenameInformation).
+Phase 13: filesystem postoperation NTSTATUS. Phase 12/15 would mean permit rejection.
+
+2026-10-01T20:02:50.6066217Z phase=20 pid=4852 status=0x0000000A path= Monitorado\.safeupload-7bc4e39a5c4a4880bee3fb0f5e375029.pending
+2026-10-01T20:02:50.6066217Z phase=21 pid=4852 status=0x0000000A path=afeUpload\Escopo Monitorado\f6e279dad2024bd888016fc34dfd9c40.txt
+2026-10-01T20:02:50.6066217Z phase=13 pid=4852 status=0x00000000 path=
+2026-10-01T20:02:53.5206214Z phase=20 pid=4852 status=0x0000000A path= Monitorado\.safeupload-53f47b9168d5411e8e4f8a0564af540c.pending
+2026-10-01T20:02:53.5206214Z phase=21 pid=4852 status=0x0000000A path=afeUpload\Escopo Monitorado\f6e279dad2024bd888016fc34dfd9c40.txt
+2026-10-01T20:02:53.5206214Z phase=13 pid=4852 status=0xC0000022 path=

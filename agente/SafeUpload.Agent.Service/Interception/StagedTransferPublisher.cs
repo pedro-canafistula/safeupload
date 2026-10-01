@@ -253,18 +253,14 @@ public sealed class StagedTransferPublisher
             _logger?.LogDebug("Requesting kernel publication permission for {TransferId}.", transfer.TransferId);
             using var permit = _publicationGate.Authorize(transfer, temporaryDestination, digest);
             _logger?.LogDebug("Creating approved publication file for {TransferId}.", transfer.TransferId);
-            await using (var output = new FileStream(
-                temporaryDestination, FileMode.CreateNew, FileAccess.Write,
-                FileShare.None, 64 * 1024, FileOptions.Asynchronous | FileOptions.WriteThrough))
+            await using (var output = StagedDestinationFile.Create(temporaryDestination))
             {
                 _logger?.LogDebug("Approved publication file opened for {TransferId}.", transfer.TransferId);
                 await inspectedFile.CopyToAsync(output, cancellationToken).ConfigureAwait(false);
                 _logger?.LogDebug("Approved publication bytes copied for {TransferId}.", transfer.TransferId);
-                output.Flush(flushToDisk: true);
+                _logger?.LogDebug("Renaming approved publication file for {TransferId}.", transfer.TransferId);
+                StagedDestinationFile.Commit(output, temporaryDestination, destinationPath);
             }
-
-            _logger?.LogDebug("Renaming approved publication file for {TransferId}.", transfer.TransferId);
-            File.Move(temporaryDestination, destinationPath, overwrite: true);
             _logger?.LogDebug("Approved publication rename completed for {TransferId}.", transfer.TransferId);
         }
         catch (Exception ex) when (!cancellationToken.IsCancellationRequested)

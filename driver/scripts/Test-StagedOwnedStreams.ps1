@@ -1,5 +1,5 @@
 <# Integrated owned-stream gate. Run only on the isolated debuggee. #>
-param([switch] $Verifier)
+param([switch] $Verifier, [switch] $ReplacementCases, [ValidateRange(0,64)][int] $PublicationIterations = 0)
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'StagedTestAgent.ps1')
 $installed = 'C:\Windows\System32\drivers\SafeUpload.sys'
@@ -75,17 +75,19 @@ public static class SafeUploadArchitectureNative {
             return Marshal.PtrToStringUni(IntPtr.Add(buffer,4),length/2);
         } finally { Marshal.FreeHGlobal(buffer); }
     }
-    public static void Rename(SafeFileHandle handle, string destination) {
+    public static void Rename(SafeFileHandle handle, string destination) { RenameFlags(handle,destination,0,false); }
+    public static void RenameFlags(SafeFileHandle handle, string destination, int flags, bool extended) {
         byte[] name=Encoding.Unicode.GetBytes(destination);
         int header=IntPtr.Size==8 ? 20 : 12;
         int lengthOffset=IntPtr.Size==8 ? 16 : 8;
         IntPtr info=Marshal.AllocHGlobal(header+name.Length+2);
         try {
             Marshal.Copy(new byte[header],0,info,header);
+            Marshal.WriteInt32(info,flags);
             Marshal.WriteInt32(info,lengthOffset,name.Length);
             Marshal.Copy(name,0,IntPtr.Add(info,header),name.Length);
             Marshal.WriteInt16(info,header+name.Length,0);
-            if(!SetFileInformationByHandle(handle,3,info,(uint)(header+name.Length+2)))
+            if(!SetFileInformationByHandle(handle,extended ? 22 : 3,info,(uint)(header+name.Length+2)))
                 throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
         } finally { Marshal.FreeHGlobal(info); }
     }
@@ -142,15 +144,27 @@ function Invoke-ProbeDisk([string[]] $Commands) {
     }
 }
 
+function Read-OwnedManifest([string] $Path) {
+    for ($retry=0; $retry -lt 50; $retry++) {
+        try {
+            $input = [IO.FileStream]::new($Path,[IO.FileMode]::Open,[IO.FileAccess]::Read,
+                [IO.FileShare]::ReadWrite -bor [IO.FileShare]::Delete)
+            $text = [IO.StreamReader]::new($input)
+            try { return ($text.ReadToEnd() | ConvertFrom-Json) } finally { $text.Dispose() }
+        }
+        catch [IO.IOException] { Start-Sleep -Milliseconds 20 }
+    }
+    throw "Manifest remained unavailable: $Path"
+}
 function Get-OwnedEntries([string] $Destination) {
     @(Get-ChildItem -LiteralPath $journal -Filter '*.json' | ForEach-Object {
-        Get-Content -LiteralPath $_.FullName -Raw | ConvertFrom-Json
+        Read-OwnedManifest $_.FullName
     } | Where-Object { $_.Transfer.DestinationPath -eq $Destination })
 }
 function Wait-OwnedState([guid] $Transfer, [int] $State) {
     $path = Join-Path $journal ($Transfer.ToString('N') + '.json')
     for ($attempt=0; $attempt -lt 120; $attempt++) {
-        $entry = Get-Content -LiteralPath $path -Raw | ConvertFrom-Json
+        $entry = Read-OwnedManifest $path
         if ($entry.State -eq $State) { return $entry }
         if ($agent.Process.HasExited) { throw 'Agent exited.' }
         if ($observer -and $observer.HasExited) { Get-Content $observerLog | Out-Host; throw 'Destination observer failed.' }
@@ -159,12 +173,13 @@ function Wait-OwnedState([guid] $Transfer, [int] $State) {
     throw "Version $Transfer stayed in state $($entry.State), expected $State."
 }
 function Set-OwnedObserver([string] $Phase) {
-    @{ Phase=$Phase; Rules=$observerRules } | ConvertTo-Json -Depth 4 |
-        Set-Content -LiteralPath ($observerRequest + '.next') -Encoding UTF8
-    Move-Item -LiteralPath ($observerRequest + '.next') -Destination $observerRequest -Force
+    # Readers retry incomplete JSON. No rename of a coordination file held by
+    # another reader: classic NTFS replacement may deny that operation.
+    $requestJson = @{ Phase=$Phase; Rules=$observerRules } | ConvertTo-Json -Depth 4
+    [IO.File]::WriteAllText($observerRequest, $requestJson)
     for ($attempt=0; $attempt -lt 100; $attempt++) {
         if ($observer.HasExited) { Get-Content $observerLog | Out-Host; throw "Destination observer exited during $Phase." }
-        if ((Test-Path $observerAck) -and ([string](Get-Content $observerAck -Raw)).Trim() -eq $Phase) { return }
+        if ((Test-Path $observerAck) -and (Get-Content $observerAck -Raw) -eq $Phase) { return }
         Start-Sleep -Milliseconds 100
     }
     throw "Observer did not sample $Phase."
@@ -173,6 +188,12 @@ function Write-OwnedText($Stream, [string] $Text) {
     $bytes = [Text.Encoding]::UTF8.GetBytes($Text)
     $Stream.Write($bytes, 0, $bytes.Length)
     $Stream.Flush()
+}
+function Read-OwnedPrivate([string] $Path) {
+    $input = [IO.FileStream]::new($Path,[IO.FileMode]::Open,[IO.FileAccess]::Read,
+        [IO.FileShare]::ReadWrite -bor [IO.FileShare]::Delete)
+    $textReader = [IO.StreamReader]::new($input)
+    try { $textReader.ReadToEnd() } finally { $textReader.Dispose() }
 }
 function Read-OwnedPublic([string] $Path) {
     & powershell.exe -NoProfile -Command "[IO.File]::ReadAllText('$Path')"
@@ -225,6 +246,7 @@ $ErrorActionPreference='Stop'; $samples=0
 while (-not (Test-Path '__STOP__')) {
     if (Test-Path '__REQUEST__') {
         try { $request = Get-Content '__REQUEST__' -Raw | ConvertFrom-Json } catch { continue }
+        $complete = $true
         foreach ($rule in $request.Rules.PSObject.Properties) {
             $actual = if ([IO.File]::Exists($rule.Name)) {
                 try {
@@ -234,16 +256,16 @@ while (-not (Test-Path '__STOP__')) {
                     try { $input.CopyTo($memory); [Convert]::ToBase64String($memory.ToArray()) }
                     finally { $input.Dispose(); $memory.Dispose() }
                 }
-                catch [IO.IOException] { continue }
+                catch [IO.IOException] { $complete = $false; continue }
             } else { 'ABSENT' }
             if (@($rule.Value) -notcontains $actual) {
                 Add-Content '__LOG__' ('LEAK phase=' + $request.Phase + ' path=' + $rule.Name + ' bytes=' + $actual)
                 exit 2
             }
         }
+        if (-not $complete) { Start-Sleep -Milliseconds 20; continue }
         $samples++
-        Set-Content '__ACK__.next' $request.Phase
-        Move-Item '__ACK__.next' '__ACK__' -Force
+        [IO.File]::WriteAllText('__ACK__', $request.Phase)
     }
     Start-Sleep -Milliseconds 20
 }
@@ -281,7 +303,7 @@ Add-Content '__LOG__' ('samples=' + $samples)
     $heldName = [SafeUploadArchitectureNative]::FinalPath($second.SafeFileHandle,0)
     Write-Output ('RenameRequested=' + $renamed)
     Write-Output ('RenameNativeFileName=' + [SafeUploadArchitectureNative]::QueryName($second.SafeFileHandle,9))
-    Write-Output ('RenameJournalDestination=' + ((Get-Content (Join-Path $journal ($firstId.ToString('N') + '.json')) -Raw | ConvertFrom-Json).Transfer.DestinationPath))
+    Write-Output ('RenameJournalDestination=' + ((Read-OwnedManifest (Join-Path $journal ($firstId.ToString('N') + '.json'))).Transfer.DestinationPath))
     $oldExists = [IO.File]::Exists($target)
     Write-Output "RenameHeldName=$heldName; OldNameExists=$oldExists"
     if ($heldName -ine ('\\?\' + $renamed) -or $oldExists) { throw 'Rename failed to update held names or hide the old path.' }
@@ -322,6 +344,70 @@ Add-Content '__LOG__' ('samples=' + $samples)
     $null = Wait-OwnedState ([guid]$replacement[0].Transfer.TransferId) 5
     if ((Read-OwnedPublic $renamed) -ne 'clean replacement') { throw 'Clean overwrite failed publication.' }
     Write-Output 'LaterCleanOverwritePublished=True'
+
+    for ($iteration = 0; $iteration -lt $PublicationIterations; $iteration++) {
+        $content = 'approved iteration ' + $iteration
+        $priorIds = @(Get-OwnedEntries $renamed | ForEach-Object { $_.Transfer.TransferId })
+        $observerRules[$renamed] += [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($content))
+        Set-OwnedObserver ('allow-approved-iteration-' + $iteration)
+        [IO.File]::WriteAllText($renamed,$content)
+        $iterationEntry = @(Get-OwnedEntries $renamed | Where-Object { $priorIds -notcontains $_.Transfer.TransferId })
+        if ($iterationEntry.Count -ne 1) { throw 'Repeated publication allocated unexpected versions.' }
+        $null = Wait-OwnedState ([guid]$iterationEntry[0].Transfer.TransferId) 5
+        if ((Read-OwnedPublic $renamed) -ne $content) { throw 'Repeated publication bytes differ.' }
+        Write-Output ('ApprovedPublicationIteration=' + $iteration)
+    }
+
+    if ($ReplacementCases) {
+        $approvedBeforeNative = Read-OwnedPublic $renamed
+        # Reuse the old temporary slot and replace a sealed current private
+        # version. Held old readers remain on the displaced version under POSIX.
+        $oldRead = [IO.FileStream]::new($renamed,[IO.FileMode]::Open,[IO.FileAccess]::Read,$share)
+        $file = [IO.FileStream]::new($target,[IO.FileMode]::CreateNew,[IO.FileAccess]::ReadWrite,$share)
+        Write-OwnedText $file 'native replacement'
+        $replaceEntry = (Get-OwnedEntries $target)[0]
+        $native = [SafeUploadArchitectureNative]::CreateFile($target,0x10000,7,[IntPtr]::Zero,3,0x80,[IntPtr]::Zero)
+        $denied = $false
+        try { [SafeUploadArchitectureNative]::RenameFlags($native,$renamed,1,$false) } catch { $denied = $true }
+        if (-not $denied) { throw 'Ordinary replacement accepted an open private target.' }
+        [SafeUploadArchitectureNative]::RenameFlags($native,$renamed,3,$true)
+        if ([IO.File]::Exists($target) -or (Read-OwnedPrivate $renamed) -ne 'native replacement') {
+            throw 'Replacement private namespace did not change atomically.'
+        }
+        $reader = [IO.StreamReader]::new($oldRead)
+        try { $prior = $reader.ReadToEnd() } finally { $reader.Dispose(); $oldRead = $null }
+        if ($prior -ne $approvedBeforeNative -or (Read-OwnedPublic $renamed) -ne $approvedBeforeNative) {
+            throw 'Replacement changed an old reader or public bytes before approval.'
+        }
+        $listing = @([IO.Directory]::GetFiles($directory))
+        if (@($listing | Where-Object { $_ -eq $renamed }).Count -ne 1 -or $listing -contains $target) {
+            throw 'Replacement directory overlay duplicated the active slot or exposed its tombstone.'
+        }
+        Set-OwnedObserver 'native-replacement-private'
+        $observerRules[$renamed] += [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes('native replacement'))
+        Set-OwnedObserver 'allow-native-replacement'
+        $native.Dispose(); $native = $null; $file.Dispose(); $file = $null
+        $committed = Wait-OwnedState ([guid]$replaceEntry.Transfer.TransferId) 5
+        if ((Read-OwnedPublic $renamed) -ne 'native replacement' -or -not $committed.NamespaceTombstones) {
+            throw 'Replacement did not durably tombstone and publish the exact version.'
+        }
+        Write-Output 'NativePosixReplacementPreservesOldReaderAndPublishes=True'
+
+        # Closed-target ordinary replacement uses the same transaction; a
+        # sensitive replacement remains private while the public version stays.
+        $file = [IO.FileStream]::new($target,[IO.FileMode]::CreateNew,[IO.FileAccess]::ReadWrite,$share)
+        Write-OwnedText $file 'CPF: 529.982.247-25'
+        $sensitiveReplacement = (Get-OwnedEntries $target)[0]
+        $native = [SafeUploadArchitectureNative]::CreateFile($target,0x10000,7,[IntPtr]::Zero,3,0x80,[IntPtr]::Zero)
+        [SafeUploadArchitectureNative]::RenameFlags($native,$renamed,1,$false)
+        $native.Dispose(); $native = $null; $file.Dispose(); $file = $null
+        $null = Wait-OwnedState ([guid]$sensitiveReplacement.Transfer.TransferId) 6
+        if ((Read-OwnedPublic $renamed) -ne 'native replacement' -or [IO.File]::ReadAllText($renamed) -ne 'CPF: 529.982.247-25') {
+            throw 'Blocked replacement damaged the private/public split.'
+        }
+        Set-OwnedObserver 'blocked-native-replacement'
+        Write-Output 'OrdinaryNativeReplacementBlockedBytesRemainPrivate=True'
+    }
 
     $file = [IO.FileStream]::new($parallelTarget, [IO.FileMode]::CreateNew, [IO.FileAccess]::ReadWrite, $share)
     $file.SetLength(8192)
@@ -417,7 +503,7 @@ finally {
         Write-Output 'PrivateACLProtectsAfterUnload=True'
     }
     foreach ($manifest in @(Get-ChildItem -LiteralPath $journal -Filter '*.json')) {
-        $entry = Get-Content $manifest.FullName -Raw | ConvertFrom-Json
+        $entry = Read-OwnedManifest $manifest.FullName
         if ($entry.Transfer.DestinationPath.Contains($id)) {
             $cleanup += $entry.Transfer.StagePath
             $cleanup += Join-Path $journal (([guid]$entry.Transfer.TransferId).ToString('N') + '.json')

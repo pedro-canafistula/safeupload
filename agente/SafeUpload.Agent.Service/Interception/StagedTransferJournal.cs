@@ -95,9 +95,9 @@ public sealed class StagedTransferJournal
         {
             var versions = await DestinationVersionsAsync(transfer.DestinationPath, cancellationToken)
                 .ConfigureAwait(false);
-            if (versions.Any(e => e.State == TransferJournalState.Publishing || e.PendingRename is not null))
+            if (versions.Any(e => e.Reserved))
                 throw new IOException("Publication or rename currently holds this destination.");
-            entry = entry with { DestinationGeneration = checked(versions.Select(e => e.DestinationGeneration)
+            entry = entry with { DestinationGeneration = checked(versions.Select(e => e.Generation)
                 .DefaultIfEmpty(0).Max() + 1) };
             await using (var stream = CreatePrivateTemporary(temporary))
             {
@@ -122,13 +122,21 @@ public sealed class StagedTransferJournal
         return entry;
     }
 
-    public async Task<TransferJournalEntry> ReadAsync(
-        Guid transferId,
-        CancellationToken cancellationToken)
+    public async Task<TransferJournalEntry> ReadAsync(Guid transferId, CancellationToken cancellationToken)
+    {
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try { return await ReadCoreAsync(transferId, cancellationToken).ConfigureAwait(false); }
+        finally { _gate.Release(); }
+    }
+
+    // Internal callers already hold _gate. Readers and replacement must not
+    // race the brief interval before the renamed write handle closes.
+    private async Task<TransferJournalEntry> ReadCoreAsync(
+        Guid transferId, CancellationToken cancellationToken)
     {
         string path = ManifestPath(transferId);
         await using var stream = new FileStream(
-            path, FileMode.Open, FileAccess.Read, FileShare.Read,
+            path, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete,
             4096, FileOptions.Asynchronous | FileOptions.SequentialScan);
         var entry = await JsonSerializer.DeserializeAsync<TransferJournalEntry>(
             stream, cancellationToken: cancellationToken).ConfigureAwait(false);
@@ -157,7 +165,7 @@ public sealed class StagedTransferJournal
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            var current = await ReadAsync(transferId, cancellationToken).ConfigureAwait(false);
+            var current = await ReadCoreAsync(transferId, cancellationToken).ConfigureAwait(false);
             if (current.PendingRename is not null)
                 throw new IOException("A pending namespace transaction holds this version locally.");
             if (next is TransferJournalState.Inspecting or TransferJournalState.Approved or TransferJournalState.Publishing)
@@ -211,7 +219,7 @@ public sealed class StagedTransferJournal
         await _gate.WaitAsync(token).ConfigureAwait(false);
         try
         {
-            var current = await ReadAsync(id, token).ConfigureAwait(false);
+            var current = await ReadCoreAsync(id, token).ConfigureAwait(false);
             if (current.Transfer.ProcessId != ownerProcessId ||
                 !string.Equals(current.Transfer.StagePath, Path.GetFullPath(stagePath),
                     StringComparison.OrdinalIgnoreCase) || current.PendingRename is not null)
@@ -239,7 +247,7 @@ public sealed class StagedTransferJournal
         await _gate.WaitAsync(token).ConfigureAwait(false);
         try
         {
-            var current = await ReadAsync(id, token).ConfigureAwait(false);
+            var current = await ReadCoreAsync(id, token).ConfigureAwait(false);
             if (current.Transfer.ProcessId != ownerProcessId)
                 throw new IOException("The staged version belongs to another writer.");
             var pending = new StagedRename(transactionId, destination, sealedVersion);
@@ -251,14 +259,11 @@ public sealed class StagedTransferJournal
             if (sealedVersion != current.SealedOnce)
                 throw new IOException("The kernel and journal disagree about the version seal.");
             await RequireCurrentDestinationAsync(current, token).ConfigureAwait(false);
-            // Moving the only manifest away from a name with predecessors
-            // would make an old generation appear current again. A durable
-            // namespace tombstone is required before admitting that case.
-            if ((await DestinationVersionsAsync(current.Transfer.DestinationPath, token).ConfigureAwait(false)).Count != 1)
-                throw new IOException("Retargeting a destination with earlier versions requires a namespace tombstone.");
+            int moves = 0;
+            for (var name = current.NamespaceTombstones; name is not null; name = name.Previous)
+                if (++moves >= 16) throw new IOException("The version's namespace history is full.");
             var targets = await DestinationVersionsAsync(destination, token).ConfigureAwait(false);
-            if (targets.Any(e => e.Transfer.TransferId != id &&
-                (e.State == TransferJournalState.Publishing || e.PendingRename is not null)))
+            if (targets.Any(e => e.Entry.Transfer.TransferId != id && e.Reserved))
                 throw new IOException("The rename destination is busy.");
             var updated = current with
             {
@@ -279,7 +284,7 @@ public sealed class StagedTransferJournal
         await _gate.WaitAsync(token).ConfigureAwait(false);
         try
         {
-            var current = await ReadAsync(id, token).ConfigureAwait(false);
+            var current = await ReadCoreAsync(id, token).ConfigureAwait(false);
             if (current.Transfer.ProcessId != ownerProcessId)
                 throw new IOException("The namespace transaction belongs to another writer.");
             if (current.LastRenameTransactionId == transactionId &&
@@ -296,11 +301,16 @@ public sealed class StagedTransferJournal
             if (pending.TransactionId != transactionId || pending.DestinationPath != destination)
                 throw new IOException("The namespace transaction identity or destination changed.");
             long generation = current.DestinationGeneration;
+            var tombstones = current.NamespaceTombstones;
             if (commit)
             {
                 var targets = await DestinationVersionsAsync(destination, token).ConfigureAwait(false);
-                generation = checked(targets.Where(e => e.Transfer.TransferId != id)
-                    .Select(e => e.DestinationGeneration).DefaultIfEmpty(0).Max() + 1);
+                generation = checked(targets.Select(e => e.Generation).DefaultIfEmpty(0).Max() + 1);
+                // The source barrier and target head commit in ONE manifest.
+                // An older source approval cannot resurrect after this move,
+                // even after restart or another move of this same version.
+                tombstones = new StagedNameTombstone(current.Transfer.DestinationPath,
+                    checked(current.DestinationGeneration + 1), tombstones);
             }
             var updated = current with
             {
@@ -308,6 +318,7 @@ public sealed class StagedTransferJournal
                 State = commit && pending.SealedVersion ? TransferJournalState.Sealed : current.State,
                 Sha256Hex = commit ? null : current.Sha256Hex,
                 DestinationGeneration = generation,
+                NamespaceTombstones = tombstones,
                 PendingRename = null,
                 LastRenameTransactionId = transactionId,
                 LastRenameDestination = destination,
@@ -346,17 +357,33 @@ public sealed class StagedTransferJournal
     // and makes it durable; there is no second "head" file to commit atomically.
     // Pending renames reserve both names. Path identity is the bounded NTFS
     // milestone's key; alias/file-ID identity remains a namespace acceptance gate.
-    private async Task<List<TransferJournalEntry>> DestinationVersionsAsync(string destination, CancellationToken token)
+    private sealed record DestinationClaim(TransferJournalEntry Entry, long Generation,
+        bool Tombstone, bool Reserved);
+
+    private async Task<List<DestinationClaim>> DestinationVersionsAsync(string destination, CancellationToken token)
     {
-        var versions = new List<TransferJournalEntry>();
+        var versions = new List<DestinationClaim>();
         foreach (string path in Directory.EnumerateFiles(_directory, "*.json"))
         {
             if (!Guid.TryParseExact(Path.GetFileNameWithoutExtension(path), "N", out Guid id))
                 throw new InvalidDataException($"Unexpected journal file: {path}");
-            var entry = await ReadAsync(id, token).ConfigureAwait(false);
-            if (string.Equals(entry.Transfer.DestinationPath, destination, StringComparison.OrdinalIgnoreCase) ||
-                string.Equals(entry.PendingRename?.DestinationPath, destination, StringComparison.OrdinalIgnoreCase))
-                versions.Add(entry);
+            var entry = await ReadCoreAsync(id, token).ConfigureAwait(false);
+            bool current = string.Equals(entry.Transfer.DestinationPath, destination, StringComparison.OrdinalIgnoreCase);
+            bool pending = string.Equals(entry.PendingRename?.DestinationPath, destination, StringComparison.OrdinalIgnoreCase);
+            long generation = current ? entry.DestinationGeneration : -1;
+            bool tombstone = false;
+            for (var name = entry.NamespaceTombstones; name is not null; name = name.Previous)
+            {
+                if (string.Equals(name.DestinationPath, destination, StringComparison.OrdinalIgnoreCase) &&
+                    name.Generation > generation)
+                {
+                    generation = name.Generation;
+                    tombstone = true;
+                }
+            }
+            if (generation >= 0 || pending)
+                versions.Add(new(entry, Math.Max(0, generation), tombstone,
+                    pending || (current && (entry.PendingRename is not null || entry.State == TransferJournalState.Publishing))));
         }
         return versions;
     }
@@ -364,10 +391,11 @@ public sealed class StagedTransferJournal
     private async Task RequireCurrentDestinationAsync(TransferJournalEntry current, CancellationToken token)
     {
         var versions = await DestinationVersionsAsync(current.Transfer.DestinationPath, token).ConfigureAwait(false);
-        long generation = versions.Select(e => e.DestinationGeneration).DefaultIfEmpty(0).Max();
+        long generation = versions.Select(e => e.Generation).DefaultIfEmpty(0).Max();
         if (current.DestinationGeneration != generation ||
-            versions.Count(e => e.DestinationGeneration == generation) != 1 ||
-            versions.Any(e => e.Transfer.TransferId != current.Transfer.TransferId && e.PendingRename is not null))
+            versions.Count(e => e.Generation == generation) != 1 ||
+            versions.Any(e => e.Generation == generation && e.Tombstone) ||
+            versions.Any(e => e.Entry.Transfer.TransferId != current.Transfer.TransferId && e.Reserved))
             throw new IOException("A later save or pending rename supersedes this destination version.");
     }
 
@@ -467,10 +495,9 @@ public sealed class StagedTransferJournal
             {
                 await JsonSerializer.SerializeAsync(stream, entry, cancellationToken: cancellationToken)
                     .ConfigureAwait(false);
-                stream.Flush(flushToDisk: true);
+                StagedDestinationFile.Commit(stream, temporary, manifestPath);
             }
 
-            File.Move(temporary, manifestPath, overwrite: true);
         }
         finally
         {
@@ -588,11 +615,16 @@ public sealed record TransferJournalEntry(
 {
     public bool SealedOnce { get; init; }
     public long DestinationGeneration { get; init; }
+    public StagedNameTombstone? NamespaceTombstones { get; init; }
     public StagedRename? PendingRename { get; init; }
     public ulong LastRenameTransactionId { get; init; }
     public string? LastRenameDestination { get; init; }
     public bool LastRenameCommitted { get; init; }
 }
+
+// Linked records provide value equality across serialization/reply-loss retries.
+public sealed record StagedNameTombstone(string DestinationPath, long Generation,
+    StagedNameTombstone? Previous);
 
 public sealed record StagedRename(ulong TransactionId, string DestinationPath, bool SealedVersion);
 

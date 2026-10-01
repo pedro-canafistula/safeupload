@@ -35,4 +35,6 @@ SafeUploadStageCheckRenameAccess (
     _In_ BOOLEAN Replace
     );
 
+NTSTATUS SafeUploadStageCheckSubjectAccess(PSECURITY_DESCRIPTOR Descriptor, ACCESS_MASK Desired);
+
 #endif
