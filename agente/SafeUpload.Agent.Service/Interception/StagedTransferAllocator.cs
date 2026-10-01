@@ -1,18 +1,22 @@
 using SafeUpload.Agent.Core.Domain;
+using System.Security.AccessControl;
+using System.Security.Principal;
 
 namespace SafeUpload.Agent.Service.Interception;
 
 /// <summary>
 /// Reserves a unique local stage name and commits its transfer manifest before
-/// returning that name to a filesystem writer. The stage file itself is made
-/// by the redirected create so FILE_CREATE keeps its normal semantics.
+/// returning that name to the driver. Only the service can independently open
+/// the backing file; the driver authorizes the app's virtual destination.
 /// </summary>
 public sealed class StagedTransferAllocator
 {
     private readonly string _root;
     private readonly StagedTransferJournal _journal;
+    private readonly FileSecurity? _fileSecurity;
 
-    public StagedTransferAllocator(string root, StagedTransferJournal journal)
+    public StagedTransferAllocator(string root, StagedTransferJournal journal,
+        bool requireProtectedParent = false, bool requireSystemIdentity = false)
     {
         _root = Path.GetFullPath(root);
         _journal = journal ?? throw new ArgumentNullException(nameof(journal));
@@ -39,7 +43,55 @@ public sealed class StagedTransferAllocator
                 throw new ArgumentException("Staging root contains a reparse point.", nameof(root));
             }
         }
-        Directory.CreateDirectory(_root);
+        if (OperatingSystem.IsWindows())
+        {
+            using var identity = WindowsIdentity.GetCurrent();
+            var owner = identity.User ?? throw new UnauthorizedAccessException(
+                "Staging requires a service identity.");
+            bool system = owner.IsWellKnown(WellKnownSidType.LocalSystemSid);
+            if (requireSystemIdentity && !system)
+            {
+                throw new UnauthorizedAccessException("Private staging must run as LocalSystem.");
+            }
+            if (requireProtectedParent) StagedTransferJournal.RequireProtectedParent(_root);
+            var security = new DirectorySecurity();
+            security.SetAccessRuleProtection(isProtected: true, preserveInheritance: false);
+            security.SetOwner(owner);
+            foreach (var sid in new[] { owner,
+                         new SecurityIdentifier(WellKnownSidType.LocalSystemSid, null) })
+            {
+                security.AddAccessRule(new FileSystemAccessRule(sid,
+                    FileSystemRights.FullControl,
+                    InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit,
+                    PropagationFlags.None, AccessControlType.Allow));
+            }
+            var directory = new DirectoryInfo(_root);
+            _fileSecurity = new FileSecurity();
+            _fileSecurity.SetAccessRuleProtection(isProtected: true, preserveInheritance: false);
+            _fileSecurity.SetOwner(owner);
+            foreach (var sid in new[] { owner,
+                         new SecurityIdentifier(WellKnownSidType.LocalSystemSid, null) })
+            {
+                _fileSecurity.AddAccessRule(new FileSystemAccessRule(sid,
+                    FileSystemRights.FullControl, AccessControlType.Allow));
+            }
+            if (!directory.Exists) directory.Create(security);
+            else
+            {
+                if (system) StagedTransferJournal.RequireTrustedOwner(
+                    directory.GetAccessControl(), "stage directory");
+                directory.SetAccessControl(security);
+                foreach (var file in directory.EnumerateFiles())
+                {
+                    if ((file.Attributes & FileAttributes.ReparsePoint) != 0)
+                        throw new IOException("Staging contains a reparse point.");
+                    if (system) StagedTransferJournal.RequireTrustedOwner(
+                        file.GetAccessControl(), "stage file");
+                    file.SetAccessControl(_fileSecurity);
+                }
+            }
+        }
+        else Directory.CreateDirectory(_root);
     }
 
     public async Task<StagedTransfer> AllocateAsync(
@@ -115,7 +167,6 @@ public sealed class StagedTransferAllocator
         }
 
         bool copyExisting = disposition is 1 or 3 && sourceExists;
-        bool makeEmpty = disposition is 0 or 4 or 5;
         try
         {
             if (copyExisting)
@@ -129,13 +180,18 @@ public sealed class StagedTransferAllocator
                 await input.CopyToAsync(output, cancellationToken).ConfigureAwait(false);
                 output.Flush(flushToDisk: true);
             }
-            else if (makeEmpty)
+            else
             {
                 await using var output = new FileStream(transfer.StagePath,
                     FileMode.CreateNew, FileAccess.Write, FileShare.None,
                     4096, FileOptions.WriteThrough);
                 output.Flush(flushToDisk: true);
             }
+
+            // Protect the file itself, so an alias or file-ID open cannot rely
+            // on bypassing directory traversal. Do this before issuing a name.
+            if (_fileSecurity is not null)
+                new FileInfo(transfer.StagePath).SetAccessControl(_fileSecurity);
 
         // CreateAsync flushes the manifest to disk and atomically makes it
         // visible. Nothing is returned to the driver before this succeeds.

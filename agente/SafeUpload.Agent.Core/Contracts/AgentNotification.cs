@@ -37,7 +37,9 @@ public enum TransferPhase
 public sealed record TransferNotification(
     Guid TransferId,
     string FileName,
-    TransferPhase Phase) : AgentNotification
+    TransferPhase Phase,
+    IReadOnlyList<Finding>? Findings = null,
+    bool OverrideAllowed = false) : AgentNotification
 {
     public const string TypeName = "transfer";
 }

@@ -293,6 +293,23 @@ public class InspectionServiceTests : IDisposable
     /// fazem parte da chave justamente por isso.
     /// </summary>
     [Fact]
+    public async Task Cache_rejects_changed_bytes_with_identical_size_and_timestamp()
+    {
+        var path = _workspace.WriteText("same-metadata.txt", "Relatorio limpo.");
+        var original = TestWorkspace.Operation(path);
+        var service = Service();
+        Assert.Equal(Verdict.Approved, (await service.InspectAsync(original, CancellationToken.None)).Verdict);
+        await File.WriteAllTextAsync(path, "CPF: 529.982.247-25");
+        File.SetLastWriteTimeUtc(path, original.LastWriteUtc.UtcDateTime);
+        var changed = TestWorkspace.Operation(path);
+        Assert.Equal(original.SizeBytes, changed.SizeBytes);
+        Assert.Equal(original.LastWriteUtc, changed.LastWriteUtc);
+        var result = await service.InspectAsync(changed, CancellationToken.None);
+        Assert.Equal(Verdict.Blocked, result.Verdict);
+        Assert.False(result.FromCache);
+    }
+
+    [Fact]
     public async Task Cache_nao_reaproveita_veredito_de_arquivo_editado()
     {
         var path = _workspace.WriteText("editado.txt", "Relatorio limpo.");

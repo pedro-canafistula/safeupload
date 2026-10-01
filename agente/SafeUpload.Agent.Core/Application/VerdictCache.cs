@@ -10,11 +10,9 @@ namespace SafeUpload.Agent.Core.Application;
 /// gastaria segundos onde o cache responde em menos de um milissegundo. É o
 /// que sustenta o requisito de desempenho de acerto de cache abaixo de 10 ms.
 ///
-/// A chave é caminho + tamanho + data de modificação + processo. Tamanho e
-/// data juntos são o que impede o erro perigoso: se o usuário editar o arquivo
-/// para incluir um CPF e tentar de novo, a chave muda e o veredito antigo de
-/// aprovado não é reaproveitado. O processo entra na chave porque a mesma
-/// origem pode ter escopo diferente conforme quem a executa.
+/// A chave inclui caminho, tamanho, data, processo e a impressão do conteúdo
+/// fornecida pelo motor. O motor calcula o hash dos mesmos bytes que varre:
+/// tamanho e data podem coincidir ou ser restaurados depois de uma edição.
 /// </summary>
 public sealed class VerdictCache
 {
@@ -59,11 +57,12 @@ public sealed class VerdictCache
     /// cache não expirasse.
     /// </param>
     /// <param name="result">Veredito encontrado, se houver.</param>
-    public bool TryGet(FileOperation operation, int policyVersion, out InspectionResult? result)
+    public bool TryGet(FileOperation operation, int policyVersion, out InspectionResult? result,
+        string? contentFingerprint = null)
     {
         ArgumentNullException.ThrowIfNull(operation);
 
-        var key = BuildKey(operation);
+        var key = BuildKey(operation, contentFingerprint);
         var now = _clock.GetUtcNow();
 
         lock (_gate)
@@ -85,12 +84,12 @@ public sealed class VerdictCache
     }
 
     /// <summary>Guarda o veredito da operação.</summary>
-    public void Set(FileOperation operation, InspectionResult result)
+    public void Set(FileOperation operation, InspectionResult result, string? contentFingerprint = null)
     {
         ArgumentNullException.ThrowIfNull(operation);
         ArgumentNullException.ThrowIfNull(result);
 
-        var key = BuildKey(operation);
+        var key = BuildKey(operation, contentFingerprint);
         var now = _clock.GetUtcNow();
 
         lock (_gate)
@@ -144,12 +143,13 @@ public sealed class VerdictCache
         }
     }
 
-    private static string BuildKey(FileOperation operation) => string.Join(
+    private static string BuildKey(FileOperation operation, string? contentFingerprint) => string.Join(
         '|',
         operation.FilePath,
         operation.SizeBytes.ToString(),
         operation.LastWriteUtc.UtcTicks.ToString(),
-        operation.ProcessName);
+        operation.ProcessName,
+        contentFingerprint ?? "");
 
     private readonly record struct Entry(InspectionResult Result, DateTimeOffset ExpiresAt);
 }

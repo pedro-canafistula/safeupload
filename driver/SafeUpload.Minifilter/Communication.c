@@ -191,6 +191,9 @@ Return Value:
 
         FltCloseClientPort( SafeUploadData.Filter, &SafeUploadData.ClientPort );
         SafeUploadData.InspectorProcessId = 0;
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    SafeUploadClearPublicationPermits();
+#endif
     }
 }
 
@@ -244,6 +247,19 @@ Return Value:
     //  again until disconnect has returned, so no previous client can be
     //  in place here.
     //
+
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    {
+        PACCESS_TOKEN token = PsReferencePrimaryToken( PsGetCurrentProcess() );
+        PTOKEN_USER user = NULL;
+        NTSTATUS identityStatus = SeQueryInformationToken( token, TokenUser, (PVOID *) &user );
+        BOOLEAN system = NT_SUCCESS( identityStatus ) &&
+            RtlEqualSid( user->User.Sid, SeExports->SeLocalSystemSid );
+        if (user != NULL) ExFreePool( user );
+        PsDereferencePrimaryToken( token );
+        if (!system) return STATUS_ACCESS_DENIED;
+    }
+#endif
 
     FLT_ASSERT( SafeUploadData.ClientPort == NULL );
 
@@ -301,6 +317,9 @@ Return Value:
     FltCloseClientPort( SafeUploadData.Filter, &SafeUploadData.ClientPort );
 
     SafeUploadData.InspectorProcessId = 0;
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    SafeUploadClearPublicationPermits();
+#endif
 }
 
 
@@ -597,6 +616,18 @@ Return Value:
             status = STATUS_SUCCESS;
             leave;
         }
+
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+        if (command == SAFEUPLOAD_CONTROL_STAGE_PUBLICATION) {
+            if (InputBufferLength != sizeof( SAFEUPLOAD_PUBLICATION_MESSAGE )) {
+                status = STATUS_INVALID_BUFFER_SIZE;
+                leave;
+            }
+            RtlCopyMemory( policy, InputBuffer, sizeof( SAFEUPLOAD_PUBLICATION_MESSAGE ) );
+            status = SafeUploadSetPublicationPermit( (PSAFEUPLOAD_PUBLICATION_MESSAGE) policy );
+            leave;
+        }
+#endif
 
         if (command == SAFEUPLOAD_CONTROL_GRANT_OVERRIDE) {
 

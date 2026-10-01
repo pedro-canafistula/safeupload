@@ -1,0 +1,99 @@
+# Shared test helpers. The agent runs as LocalSystem so its private backing
+# files never grant the writing user's SID independent access.
+function Start-StagedTestAgent([string] $ServiceDir, [string] $LogPrefix) {
+    $id = [guid]::NewGuid().ToString('N')
+    $taskName = 'SafeUpload-StagedTest-' + $id
+    $launcher = Join-Path $env:TEMP ('SafeUpload-agent-' + $id + '.ps1')
+    $pidFile = $launcher + '.pid'
+    $exe = Join-Path $ServiceDir 'SafeUpload.Agent.Service.exe'
+    $script = @'
+$ErrorActionPreference = 'Stop'
+$env:Interception__Mode = 'Minifilter'
+$env:Interception__StagingPrototype = 'true'
+$process = Start-Process -FilePath '__EXE__' -PassThru -WindowStyle Hidden `
+    -RedirectStandardOutput '__LOG__-out.log' -RedirectStandardError '__LOG__-err.log'
+Set-Content -LiteralPath '__PID__' -Value $process.Id
+$process.WaitForExit()
+'@
+    $script = $script.Replace('__EXE__', $exe).Replace('__LOG__', $LogPrefix).Replace('__PID__', $pidFile)
+    Set-Content -LiteralPath $launcher -Value $script -Encoding UTF8
+    $action = New-ScheduledTaskAction -Execute 'powershell.exe' `
+        -Argument ('-NoProfile -ExecutionPolicy Bypass -File "' + $launcher + '"')
+    $principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
+    $settings = New-ScheduledTaskSettingsSet -ExecutionTimeLimit ([TimeSpan]::Zero)
+    Register-ScheduledTask -TaskName $taskName -Action $action -Principal $principal -Settings $settings | Out-Null
+    try {
+        Start-ScheduledTask -TaskName $taskName
+        for ($attempt = 0; $attempt -lt 40 -and -not (Test-Path $pidFile); $attempt++) {
+            Start-Sleep -Milliseconds 250
+        }
+        if (-not (Test-Path $pidFile)) { throw 'LocalSystem test agent did not launch.' }
+        $process = Get-Process -Id ([int](Get-Content -LiteralPath $pidFile)) -ErrorAction Stop
+        return [pscustomobject]@{ TaskName = $taskName; Launcher = $launcher; PidFile = $pidFile; Process = $process }
+    }
+    catch {
+        Stop-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
+        Unregister-ScheduledTask -TaskName $taskName -Confirm:$false -ErrorAction SilentlyContinue
+        Remove-Item -LiteralPath $launcher,$pidFile -Force -ErrorAction SilentlyContinue
+        throw
+    }
+}
+
+function Stop-StagedTestAgent($Agent) {
+    if ($null -eq $Agent) { return }
+    Stop-ScheduledTask -TaskName $Agent.TaskName -ErrorAction SilentlyContinue
+    if (-not $Agent.Process.HasExited) {
+        Stop-Process -Id $Agent.Process.Id -Force -ErrorAction SilentlyContinue
+        [void]$Agent.Process.WaitForExit(10000)
+    }
+    Unregister-ScheduledTask -TaskName $Agent.TaskName -Confirm:$false -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath $Agent.Launcher,$Agent.PidFile -Force -ErrorAction SilentlyContinue
+}
+
+function Remove-StagedTestFiles([string[]] $Paths) {
+    $pathsToDelete = @($Paths | Where-Object { -not [string]::IsNullOrEmpty($_) } | Select-Object -Unique)
+    if ($pathsToDelete.Count -eq 0) { return }
+    $id = [guid]::NewGuid().ToString('N')
+    $taskName = 'SafeUpload-StagedCleanup-' + $id
+    $launcher = Join-Path $env:TEMP ('SafeUpload-cleanup-' + $id + '.ps1')
+    $manifest = $launcher + '.json'
+    $done = $launcher + '.done'
+    ConvertTo-Json -InputObject $pathsToDelete | Set-Content -LiteralPath $manifest -Encoding UTF8
+    $script = @'
+$ErrorActionPreference = 'Stop'
+$cleanupDoneFile = '__DONE__'
+try {
+    $paths = Get-Content -LiteralPath '__MANIFEST__' -Raw | ConvertFrom-Json
+    foreach ($path in $paths) {
+        if (Test-Path -LiteralPath $path) { Remove-Item -LiteralPath $path -Force }
+    }
+    [IO.File]::WriteAllText($cleanupDoneFile, 'removed')
+}
+catch {
+    [IO.File]::WriteAllText($cleanupDoneFile, 'failed: ' + $_.Exception.Message)
+    exit 1
+}
+'@
+    Set-Content -LiteralPath $launcher -Value ($script.Replace('__MANIFEST__', $manifest).Replace('__DONE__', $done)) -Encoding UTF8
+    $action = New-ScheduledTaskAction -Execute 'powershell.exe' `
+        -Argument ('-NoProfile -ExecutionPolicy Bypass -File "' + $launcher + '"')
+    $principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
+    Register-ScheduledTask -TaskName $taskName -Action $action -Principal $principal | Out-Null
+    try {
+        Start-ScheduledTask -TaskName $taskName
+        for ($attempt = 0; $attempt -lt 120 -and -not (Test-Path $done); $attempt++) {
+            Start-Sleep -Milliseconds 250
+        }
+        if (-not (Test-Path $done)) {
+            $info = Get-ScheduledTaskInfo -TaskName $taskName
+            throw "LocalSystem test cleanup did not complete; task result $($info.LastTaskResult)."
+        }
+        $result = Get-Content -LiteralPath $done -Raw
+        if ($result -ne 'removed') { throw $result }
+    }
+    finally {
+        Stop-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
+        Unregister-ScheduledTask -TaskName $taskName -Confirm:$false -ErrorAction SilentlyContinue
+        Remove-Item -LiteralPath $launcher,$manifest,$done -Force -ErrorAction SilentlyContinue
+    }
+}

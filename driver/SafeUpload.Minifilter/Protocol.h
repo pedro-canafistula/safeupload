@@ -49,7 +49,7 @@ Environment:
 //  fail open under RN-013; experimental staged allocations fail closed.
 //
 
-#define SAFEUPLOAD_PROTOCOL_VERSION ((UINT32) 14)
+#define SAFEUPLOAD_PROTOCOL_VERSION ((UINT32) 17)
 
 //
 //  Capacity of the inline string fields, in WCHARs, terminator included.
@@ -75,6 +75,10 @@ Environment:
 #define SAFEUPLOAD_OPERATION_READ   ((UINT32) 2)
 #define SAFEUPLOAD_OPERATION_STAGE_ALLOCATE ((UINT32) 3)
 #define SAFEUPLOAD_OPERATION_STAGE_SEAL ((UINT32) 4)
+#define SAFEUPLOAD_OPERATION_STAGE_RENAME ((UINT32) 5)
+#define SAFEUPLOAD_OPERATION_STAGE_DIAGNOSTIC ((UINT32) 6)
+#define SAFEUPLOAD_REQUEST_FLAG_STAGE_REMOVABLE ((UINT32) 0x00000040)
+#define SAFEUPLOAD_REQUEST_FLAG_STAGE_NETWORK ((UINT32) 0x00000080)
 
 // The reply carries only a stage basename. The driver constructs the local
 // volume path and rejects separators or a malformed suffix.
@@ -240,6 +244,7 @@ typedef struct _SAFEUPLOAD_RESPONSE {
 
 #define SAFEUPLOAD_CONTROL_SET_POLICY   ((UINT32) 1)
 #define SAFEUPLOAD_CONTROL_GET_COUNTERS ((UINT32) 2)
+#define SAFEUPLOAD_CONTROL_STAGE_PUBLICATION ((UINT32) 4)
 
 //
 //  Concede uma excecao para uma operacao que seria negada: um processo, um
@@ -445,6 +450,21 @@ typedef struct _SAFEUPLOAD_OVERRIDE_MESSAGE {
 } SAFEUPLOAD_OVERRIDE_MESSAGE, *PSAFEUPLOAD_OVERRIDE_MESSAGE;
 
 
+// Authenticated service permit. Revoke=1 invalidates the transfer permit.
+// Paths are exact normalized device names. Digest identifies inspected bytes;
+// the service holds the snapshot read lock throughout the permit lifetime.
+typedef struct _SAFEUPLOAD_PUBLICATION_MESSAGE {
+    SAFEUPLOAD_CONTROL Control;
+    GUID TransferId;
+    UINT32 Revoke;
+    UINT32 TemporaryPathLength;
+    UINT32 DestinationPathLength;
+    UINT32 Reserved;
+    UCHAR Digest[32];
+    WCHAR TemporaryPath[SAFEUPLOAD_MAX_PATH_CHARS];
+    WCHAR DestinationPath[SAFEUPLOAD_MAX_PATH_CHARS];
+} SAFEUPLOAD_PUBLICATION_MESSAGE, *PSAFEUPLOAD_PUBLICATION_MESSAGE;
+
 //
 //  Counters, read with SAFEUPLOAD_CONTROL_GET_COUNTERS.
 //
@@ -646,6 +666,7 @@ C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_RESPONSE, Verdict )    == 16 );
 C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_RESPONSE, StageNameLength ) == 20 );
 C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_RESPONSE, StageName ) == 24 );
 
+C_ASSERT( sizeof( SAFEUPLOAD_PUBLICATION_MESSAGE ) == 2128 );
 C_ASSERT( sizeof( SAFEUPLOAD_CONTROL ) == 16 );
 C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_CONTROL, Version )    == 0 );
 C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_CONTROL, StructSize ) == 4 );

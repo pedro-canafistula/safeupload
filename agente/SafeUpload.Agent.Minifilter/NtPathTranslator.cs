@@ -44,6 +44,26 @@ public static class NtPathTranslator
             return ntPath;
         }
 
+        foreach (string prefix in new[] { @"\Device\Mup\", @"\Device\LanmanRedirector\" })
+        {
+            if (!ntPath.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) continue;
+            string remote = ntPath[prefix.Length..];
+            // Redirector and mapped-drive connection markers are namespace
+            // components, not part of the server's UNC name.
+            while (remote.StartsWith(';'))
+            {
+                int separator = remote.IndexOf('\\');
+                if (separator < 0) return null;
+                remote = remote[(separator + 1)..];
+            }
+            string[] parts = remote.Split('\\');
+            if (parts.Length < 2 || string.IsNullOrWhiteSpace(parts[0]) ||
+                string.IsNullOrWhiteSpace(parts[1]) ||
+                parts.Any(static part => part is "." or ".." || part.Contains(':')))
+                return null;
+            return @"\\" + remote;
+        }
+
         string? translated = Translate(ntPath, Map());
 
         if (translated is not null)

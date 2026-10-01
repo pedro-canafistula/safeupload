@@ -5,6 +5,8 @@ using SafeUpload.Agent.Core.Infrastructure.Extraction;
 using SafeUpload.Agent.Service.Interception;
 using SafeUpload.Agent.Service.Notifications;
 using System.Text.Json.Nodes;
+using System.Runtime.InteropServices;
+using Microsoft.Win32.SafeHandles;
 
 namespace SafeUpload.Agent.Tests;
 
@@ -28,10 +30,106 @@ public sealed class StagedTransferPublisherTests : IDisposable
             ExtractorRegistry.CreateDefault(),
             new VerdictCache());
 
-        _publisher = new StagedTransferPublisher(inspector, _notifications, _journal, _stagingRoot);
+        _publisher = new StagedTransferPublisher(inspector, _notifications, _journal, _stagingRoot, new TestPublicationGate());
     }
 
     public void Dispose() => _workspace.Dispose();
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    public async Task Kernel_publication_permission_is_required_only_after_inspected_approval(
+        bool sensitive, bool refusePermit)
+    {
+        var gate = new RecordingPublicationGate(refusePermit);
+        var publisher = new StagedTransferPublisher(new InspectionService(
+            new LocalPolicyStore(_workspace.PolicyFile), new LocalQueueAuditSink(_workspace.QueueFile),
+            ExtractorRegistry.CreateDefault(), new VerdictCache()),
+            _notifications, _journal, _stagingRoot, gate);
+        var transfer = Transfer("permit.txt", sensitive ? "CPF: 529.982.247-25" : "clean version");
+        var outcome = await publisher.PublishAsync(transfer, CancellationToken.None);
+        Assert.Equal(sensitive ? StagedTransferOutcome.Blocked : refusePermit
+            ? StagedTransferOutcome.Retained : StagedTransferOutcome.Released, outcome);
+        Assert.Equal(!sensitive, gate.Called);
+        Assert.Equal(!sensitive && !refusePermit, File.Exists(transfer.DestinationPath));
+        if (gate.Called)
+        {
+            Assert.Equal(transfer, gate.Transfer);
+            Assert.Equal(Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(
+                File.ReadAllBytes(transfer.StagePath))), gate.Digest);
+            Assert.Equal(Path.Combine(Path.GetDirectoryName(transfer.DestinationPath)!,
+                ".safeupload-" + transfer.TransferId.ToString("N") + ".pending"), gate.Temporary);
+            Assert.Equal(!refusePermit, gate.Disposed);
+        }
+    }
+
+    private sealed class RecordingPublicationGate(bool refuse) : IStagedPublicationGate, IDisposable
+    {
+        public bool Called, Disposed;
+        public StagedTransfer? Transfer;
+        public string? Temporary, Digest;
+        public IDisposable Authorize(StagedTransfer transfer, string temporaryDestination, string digest)
+        {
+            Called = true; Transfer = transfer; Temporary = temporaryDestination; Digest = digest;
+            if (refuse) throw new IOException("Disconnected kernel publication gate.");
+            return this;
+        }
+        public void Dispose() => Disposed = true;
+    }
+
+    [Theory]
+    [InlineData(false, false, StagedTransferOutcome.Released)]
+    [InlineData(true, false, StagedTransferOutcome.Retained)]
+    [InlineData(false, true, StagedTransferOutcome.Blocked)]
+    public async Task Justification_is_bound_to_the_exact_inspected_version_and_policy(
+        bool changeBytes, bool changePolicy, StagedTransferOutcome expected)
+    {
+        var store = new LocalPolicyStore(_workspace.PolicyFile);
+        await store.LoadAsync(CancellationToken.None);
+        var policy = JsonNode.Parse(await File.ReadAllTextAsync(_workspace.PolicyFile))!;
+        policy["overrideAllowed"] = true;
+        await File.WriteAllTextAsync(_workspace.PolicyFile, policy.ToJsonString());
+        var broker = new StagedJustifications();
+        var publisher = new StagedTransferPublisher(new InspectionService(store,
+            new LocalQueueAuditSink(_workspace.QueueFile), ExtractorRegistry.CreateDefault(),
+            new VerdictCache()), _notifications, _journal, _stagingRoot, new TestPublicationGate(), broker);
+        var original = Transfer("justify.txt", "CPF: 529.982.247-25");
+        // Transfer() journals immediately; give this independent transfer an
+        // authenticated notification session before journaling it.
+        var transfer = original with { TransferId = Guid.NewGuid(), SessionId = 7 };
+        await _journal.CreateAsync(transfer, CancellationToken.None);
+        await _journal.TransitionAsync(transfer.TransferId, TransferJournalState.Allocated,
+            TransferJournalState.Sealed, null, CancellationToken.None);
+        Assert.Equal(StagedTransferOutcome.Blocked,
+            await publisher.PublishAsync(transfer, CancellationToken.None));
+        Assert.True(broker.TryConsume(transfer.TransferId.ToString("D"), 8, out var wrongSession));
+        Assert.Null(wrongSession);
+        Assert.True(broker.TryConsume(transfer.TransferId.ToString("D"), 7, out var publish));
+        Assert.NotNull(publish);
+        Assert.False(broker.TryConsume(transfer.TransferId.ToString("D"), 7, out _));
+        if (changeBytes) await File.WriteAllTextAsync(transfer.StagePath, "changed bytes");
+        if (changePolicy)
+        {
+            policy["version"] = 2;
+            await File.WriteAllTextAsync(_workspace.PolicyFile, policy.ToJsonString());
+        }
+        Assert.Equal(expected == StagedTransferOutcome.Released,
+            await publish!(CancellationToken.None));
+        Assert.Equal(expected == StagedTransferOutcome.Released, File.Exists(transfer.DestinationPath));
+        if (expected == StagedTransferOutcome.Released)
+            Assert.Equal("CPF: 529.982.247-25", await File.ReadAllTextAsync(transfer.DestinationPath));
+        else
+            Assert.Equal(expected == StagedTransferOutcome.Blocked
+                    ? TransferJournalState.Blocked : TransferJournalState.Retained,
+                (await _journal.ReadAsync(transfer.TransferId, CancellationToken.None)).State);
+    }
+
+    private sealed class TestPublicationGate : IStagedPublicationGate, IDisposable
+    {
+        public IDisposable Authorize(StagedTransfer transfer, string temporaryDestination, string digest) => this;
+        public void Dispose() { }
+    }
 
     private StagedTransfer Transfer(string name, string content)
     {
@@ -69,6 +167,26 @@ public sealed class StagedTransferPublisherTests : IDisposable
         Assert.Equal(Verdict.Blocked, audit[0].Verdict);
     }
 
+    [Theory]
+    [InlineData("Clean office save.", StagedTransferOutcome.Released)]
+    [InlineData("CPF: 529.982.247-25", StagedTransferOutcome.Blocked)]
+    public async Task Renamed_temporary_version_is_inspected_using_the_final_format(
+        string content, StagedTransferOutcome expected)
+    {
+        var transfer = Transfer("office.tmp", content);
+        Assert.Equal(StagedTransferOutcome.Retained,
+            await _publisher.PublishAsync(transfer, CancellationToken.None));
+        Assert.False(File.Exists(transfer.DestinationPath));
+        string final = Path.ChangeExtension(transfer.DestinationPath, ".txt");
+        var renamed = await _journal.RetargetAsync(transfer.TransferId,
+            transfer.ProcessId, final, true, CancellationToken.None);
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            _publisher.PublishAsync(transfer, CancellationToken.None));
+        Assert.Equal(expected, await _publisher.PublishAsync(renamed.Transfer, CancellationToken.None));
+        Assert.Equal(expected == StagedTransferOutcome.Released, File.Exists(final));
+        Assert.False(File.Exists(transfer.DestinationPath));
+    }
+
     [Fact]
     public async Task Inspected_clean_content_is_released()
     {
@@ -96,12 +214,17 @@ public sealed class StagedTransferPublisherTests : IDisposable
             new LocalQueueAuditSink(_workspace.QueueFile),
             new ExtractorRegistry([extractor]),
             new VerdictCache());
-        var publisher = new StagedTransferPublisher(inspector, _notifications, _journal, _stagingRoot);
+        var publisher = new StagedTransferPublisher(inspector, _notifications, _journal, _stagingRoot, new TestPublicationGate());
         var transfer = Transfer("waiting.txt", "Clean text.");
 
         Task<StagedTransferOutcome> publication =
             publisher.PublishAsync(transfer, CancellationToken.None);
         await extractor.Entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        await Assert.ThrowsAsync<IOException>(() => _journal.RetargetAsync(
+            transfer.TransferId, transfer.ProcessId,
+            Path.ChangeExtension(transfer.DestinationPath, ".renamed.txt"), true,
+            CancellationToken.None));
 
         Assert.False(File.Exists(transfer.DestinationPath));
         Assert.Empty(await new LocalQueueAuditSink(_workspace.QueueFile)
@@ -142,7 +265,7 @@ public sealed class StagedTransferPublisherTests : IDisposable
             new LocalQueueAuditSink(_workspace.QueueFile),
             new ExtractorRegistry([extractor]),
             new VerdictCache());
-        var publisher = new StagedTransferPublisher(inspector, _notifications, _journal, _stagingRoot);
+        var publisher = new StagedTransferPublisher(inspector, _notifications, _journal, _stagingRoot, new TestPublicationGate());
         var transfer = Transfer("policy-change.txt", "Clean text.");
 
         Task<StagedTransferOutcome> publication =
@@ -163,6 +286,50 @@ public sealed class StagedTransferPublisherTests : IDisposable
         Assert.Equal(Verdict.Retained, audit[0].Verdict);
         Assert.Equal("policy_changed", audit[0].NotInspectedReason);
     }
+
+    [Fact]
+    public async Task Writable_section_prevents_inspection_after_its_file_handle_closes()
+    {
+        var extractor = new PausingExtractor();
+        var inspector = new InspectionService(new LocalPolicyStore(_workspace.PolicyFile),
+            new LocalQueueAuditSink(_workspace.QueueFile), new ExtractorRegistry([extractor]),
+            new VerdictCache());
+        var publisher = new StagedTransferPublisher(inspector, _notifications, _journal, _stagingRoot, new TestPublicationGate());
+        var transfer = Transfer("late-map.txt", "Clean text with room for modified bytes.");
+        var file = new FileStream(transfer.StagePath, FileMode.Open, FileAccess.ReadWrite, FileShare.ReadWrite);
+        using var mapping = CreateFileMapping(file.SafeFileHandle, IntPtr.Zero, 4, 0, 0, null);
+        Assert.False(mapping.IsInvalid);
+        IntPtr view = MapViewOfFile(mapping, 2, 0, 0, UIntPtr.Zero);
+        Assert.NotEqual(IntPtr.Zero, view);
+        file.Dispose();
+        try
+        {
+            Assert.Equal(StagedTransferOutcome.Retained,
+                await publisher.PublishAsync(transfer, CancellationToken.None));
+            Assert.False(extractor.Entered.Task.IsCompleted);
+            Assert.Equal(TransferJournalState.Sealed,
+                (await _journal.ReadAsync(transfer.TransferId, CancellationToken.None)).State);
+            byte[] changed = System.Text.Encoding.UTF8.GetBytes("CPF: 529.982.247-25");
+            Marshal.Copy(changed, 0, view, changed.Length);
+            Assert.False(File.Exists(transfer.DestinationPath));
+        }
+        finally { UnmapViewOfFile(view); }
+        mapping.Dispose();
+        var publication = publisher.PublishAsync(transfer, CancellationToken.None);
+        await extractor.Entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        extractor.Continue.SetResult();
+        Assert.Equal(StagedTransferOutcome.Blocked, await publication);
+        Assert.False(File.Exists(transfer.DestinationPath));
+    }
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern SafeFileHandle CreateFileMapping(SafeFileHandle file,
+        IntPtr attributes, uint protection, uint maximumHigh, uint maximumLow, string? name);
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern IntPtr MapViewOfFile(SafeFileHandle mapping, uint access,
+        uint offsetHigh, uint offsetLow, UIntPtr bytes);
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool UnmapViewOfFile(IntPtr view);
 
     [Fact]
     public async Task Uninspectable_content_remains_local()

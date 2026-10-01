@@ -28,6 +28,7 @@ public partial class BlockNotificationWindow : Window
     private readonly List<string> _fileNames = [];
     private readonly List<FindingViewModel> _findings = [];
     private string? _justificationEventId;
+    private bool _staged;
 
     /// <summary>
     /// Monta a notificação para um bloqueio.
@@ -44,13 +45,14 @@ public partial class BlockNotificationWindow : Window
         string fileName,
         IReadOnlyList<Finding> findings,
         string? justificationEventId = null,
-        bool quarantined = false)
+        bool quarantined = false,
+        bool staged = false)
     {
         ArgumentNullException.ThrowIfNull(findings);
 
         InitializeComponent();
 
-        Add(fileName, findings, justificationEventId, quarantined);
+        Add(fileName, findings, justificationEventId, quarantined, staged);
 
         // A área útil exclui a barra de tarefas, então a notificação não fica
         // escondida atrás dela nem em telas com a barra em outra borda.
@@ -64,7 +66,8 @@ public partial class BlockNotificationWindow : Window
         string fileName,
         IReadOnlyList<Finding> findings,
         string? justificationEventId = null,
-        bool quarantined = false)
+        bool quarantined = false,
+        bool staged = false)
     {
         ArgumentNullException.ThrowIfNull(findings);
 
@@ -93,7 +96,11 @@ public partial class BlockNotificationWindow : Window
         // nomeia o evento mais recente para não conceder uma exceção a um
         // arquivo diferente daquele mostrado ao lado do campo.
         _justificationEventId = justificationEventId;
+        _staged = staged;
         QuarantineText.Visibility = quarantined ? Visibility.Visible : Visibility.Collapsed;
+        QuarantineText.Text = staged
+            ? "O arquivo permanece guardado localmente pelo SafeUpload e não foi enviado ao destino."
+            : "O arquivo foi retirado da pasta monitorada e guardado em SafeUpload\\_bloqueados na sua pasta de usuário.";
         JustificationPanel.Visibility = justificationEventId is null
             ? Visibility.Collapsed
             : Visibility.Visible;
@@ -160,7 +167,8 @@ public partial class BlockNotificationWindow : Window
             {
                 JustificationInput.IsEnabled = false;
                 JustificationStatusText.Text =
-                    "Justificativa aceita. Tente a operação novamente.";
+                    _staged ? "Justificativa aceita. A versão analisada foi enviada."
+                            : "Justificativa aceita. Tente a operação novamente.";
             }
         }
         catch (Exception)

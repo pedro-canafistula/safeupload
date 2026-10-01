@@ -76,12 +76,37 @@ public sealed class FilterPort : IDisposable
     /// operation uninspected (RN-013), silently. Anything slow belongs on
     /// another thread, not here.
     /// </summary>
-    public unsafe bool TryGetMessage(out SafeUploadRequest request, out ulong messageId)
+    public unsafe bool TryGetMessage(out SafeUploadRequest request, out ulong messageId,
+        CancellationToken cancellationToken = default)
     {
         int size = sizeof(FilterMessageHeader) + sizeof(SafeUploadRequest);
         byte* buffer = stackalloc byte[size];
 
-        int hr = FilterGetMessage(Handle, (IntPtr) buffer, (uint) size, IntPtr.Zero);
+        // A null OVERLAPPED waits on the port handle itself. A concurrent
+        // FilterSendMessage can signal that same handle and wake the receive
+        // before its request has completed. Own the completion event for this
+        // receive and keep its buffer/OVERLAPPED alive until completion.
+        using var completed = new EventWaitHandle(false, EventResetMode.ManualReset);
+        NativeOverlapped overlapped = new()
+        {
+            EventHandle = completed.SafeWaitHandle.DangerousGetHandle()
+        };
+        IntPtr pending = (IntPtr)(&overlapped);
+        int hr = FilterGetMessage(Handle, (IntPtr) buffer, (uint) size, pending);
+        if (hr == unchecked((int)0x800703E5)) // HRESULT_FROM_WIN32(ERROR_IO_PENDING)
+        {
+            bool canceled = false;
+            while (!completed.WaitOne(250))
+            {
+                if (!canceled && cancellationToken.IsCancellationRequested)
+                {
+                    _ = CancelIoEx(Handle, pending);
+                    canceled = true;
+                }
+            }
+            hr = GetOverlappedResult(Handle, pending, out _, false)
+                ? 0 : Marshal.GetHRForLastWin32Error();
+        }
 
         if (hr != 0)
         {
@@ -219,6 +244,37 @@ public sealed class FilterPort : IDisposable
         }
     }
 
+    public void SetPublicationPermit(Guid transferId, string temporaryPath, string destinationPath, string digest)
+        => SendPublicationPermit(transferId, PolicyBuilder.ToNtPath(temporaryPath),
+            PolicyBuilder.ToNtPath(destinationPath), Convert.FromHexString(digest), false);
+
+    public void RevokePublicationPermit(Guid transferId)
+        => SendPublicationPermit(transferId, "", "", new byte[32], true);
+
+    private unsafe void SendPublicationPermit(Guid id, string temporaryPath,
+        string destinationPath, byte[] digest, bool revoke)
+    {
+        if (id == Guid.Empty || digest.Length != 32 ||
+            temporaryPath.Length >= Contract.MaxPathChars ||
+            destinationPath.Length >= Contract.MaxPathChars)
+            throw new ArgumentException("Invalid publication permit.");
+        SafeUploadPublicationMessage message = new()
+        {
+            Control = new() { Version = Contract.Version,
+                StructSize = (uint)sizeof(SafeUploadPublicationMessage),
+                Command = ControlCommand.StagePublication },
+            TransferId = id, Revoke = revoke ? 1u : 0u,
+            TemporaryPathLength = (uint)(temporaryPath.Length * sizeof(char)),
+            DestinationPathLength = (uint)(destinationPath.Length * sizeof(char))
+        };
+        for (int i = 0; i < digest.Length; ++i) message.Digest[i] = digest[i];
+        for (int i = 0; i < temporaryPath.Length; ++i) message.TemporaryPath[i] = temporaryPath[i];
+        for (int i = 0; i < destinationPath.Length; ++i) message.DestinationPath[i] = destinationPath[i];
+        int hr = FilterSendMessage(Handle, (IntPtr)(&message), (uint)sizeof(SafeUploadPublicationMessage),
+            IntPtr.Zero, 0, out _);
+        if (hr != 0) throw new Win32Exception(hr, $"Publication permit refused: 0x{hr:X8}");
+    }
+
     public unsafe SafeUploadCounters GetCounters()
     {
         var control = new SafeUploadControl
@@ -256,6 +312,15 @@ public sealed class FilterPort : IDisposable
     [DllImport("fltlib.dll")]
     private static extern int FilterGetMessage(
         SafeFileHandle hPort, IntPtr lpMessageBuffer, uint dwMessageBufferSize, IntPtr lpOverlapped);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetOverlappedResult(SafeFileHandle handle,
+        IntPtr overlapped, out uint bytes, [MarshalAs(UnmanagedType.Bool)] bool wait);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool CancelIoEx(SafeFileHandle handle, IntPtr overlapped);
 
     [DllImport("fltlib.dll")]
     private static extern int FilterReplyMessage(

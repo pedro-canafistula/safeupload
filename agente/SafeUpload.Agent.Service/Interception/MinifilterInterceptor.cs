@@ -58,10 +58,12 @@ public sealed class MinifilterInterceptor : BackgroundService
     private readonly NotificationHub _hub;
     private readonly PendingOverrides _pending;
     private readonly OverrideGrantDispatcher _grants;
+    private readonly StagedJustifications _stagedJustifications;
     private readonly ILogger<MinifilterInterceptor> _logger;
-    private readonly StagedTransferAllocator? _stageAllocator;
-    private readonly StagedTransferJournal? _stageJournal;
-    private readonly StagedTransferPublisher? _stagePublisher;
+    private readonly bool _stagingEnabled;
+    private StagedTransferAllocator? _stageAllocator;
+    private StagedTransferJournal? _stageJournal;
+    private StagedTransferPublisher? _stagePublisher;
 
     private long _overBudget;
     private long _answered;
@@ -77,6 +79,7 @@ public sealed class MinifilterInterceptor : BackgroundService
         NotificationHub hub,
         PendingOverrides pending,
         OverrideGrantDispatcher grants,
+        StagedJustifications stagedJustifications,
         IConfiguration configuration,
         ILogger<MinifilterInterceptor> logger)
     {
@@ -86,18 +89,9 @@ public sealed class MinifilterInterceptor : BackgroundService
         _hub = hub ?? throw new ArgumentNullException(nameof(hub));
         _pending = pending ?? throw new ArgumentNullException(nameof(pending));
         _grants = grants ?? throw new ArgumentNullException(nameof(grants));
+        _stagedJustifications = stagedJustifications ?? throw new ArgumentNullException(nameof(stagedJustifications));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-        if (configuration.GetValue<bool>("Interception:StagingPrototype"))
-        {
-            // This feature is test-only. The driver currently accepts only
-            // C:\SafeUpload\_staging as its local stage root.
-            string root = @"C:\SafeUpload\_staging";
-            string journal = Path.Combine(AgentPaths.RootDirectory, "staging-journal");
-            _stageJournal = new StagedTransferJournal(journal, requireProtectedParent: true);
-            _stageAllocator = new StagedTransferAllocator(root, _stageJournal);
-            _stagePublisher = new StagedTransferPublisher(
-                _inspection, _hub, _stageJournal, root);
-        }
+        _stagingEnabled = configuration.GetValue<bool>("Interception:StagingPrototype");
     }
 
     /// <inheritdoc />
@@ -127,22 +121,6 @@ public sealed class MinifilterInterceptor : BackgroundService
         // A UI must never infer protection merely from a live service pipe.
         // It becomes active only after the driver accepts the policy.
         _hub.Publish(new StatusNotification(0, 0, ProtectionActive: false));
-
-        if (_stageJournal is not null)
-        {
-            try
-            {
-                _stageJournal.RetainInterruptedAsync(stoppingToken)
-                    .GetAwaiter().GetResult();
-                _stageJournal.ReconcilePublishingAsync(stoppingToken)
-                    .GetAwaiter().GetResult();
-            }
-            catch (Exception ex)
-            {
-                _logger.LogCritical(ex, "Falha ao recuperar o diario de transferencias.");
-                return;
-            }
-        }
 
         try
         {
@@ -175,6 +153,30 @@ public sealed class MinifilterInterceptor : BackgroundService
 
         using (port)
         {
+            // Establish the authenticated inspector identity before opening
+            // existing private stages. Recovery while disconnected would be
+            // correctly denied by the driver's direct-stage access gate.
+            if (_stagingEnabled)
+            {
+                try
+                {
+                    string root = Path.Combine(AgentPaths.RootDirectory, "staging");
+                    string journal = Path.Combine(AgentPaths.RootDirectory, "staging-journal");
+                    _stageJournal = new StagedTransferJournal(journal, requireProtectedParent: true);
+                    _stageAllocator = new StagedTransferAllocator(root, _stageJournal,
+                        requireProtectedParent: true, requireSystemIdentity: true);
+                    _stagePublisher = new StagedTransferPublisher(
+                        _inspection, _hub, _stageJournal, root,
+                        new StagedPublicationGate(port), _stagedJustifications, _logger);
+                    _stageJournal.RetainInterruptedAsync(stoppingToken).GetAwaiter().GetResult();
+                    _stageJournal.ReconcilePublishingAsync(stoppingToken).GetAwaiter().GetResult();
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogCritical(ex, "Falha ao recuperar o diario de transferencias.");
+                    return;
+                }
+            }
             if (!TryPushPolicy(port))
             {
                 return;
@@ -193,7 +195,7 @@ public sealed class MinifilterInterceptor : BackgroundService
                 ReadySignal.Announce(ReadySignal.ServiceEvent);
 
                 while (!stoppingToken.IsCancellationRequested &&
-                       port.TryGetMessage(out SafeUploadRequest request, out ulong messageId))
+                       port.TryGetMessage(out SafeUploadRequest request, out ulong messageId, stoppingToken))
                 {
                     uint verdict;
                     string? stageName = null;
@@ -205,9 +207,20 @@ public sealed class MinifilterInterceptor : BackgroundService
                     {
                         verdict = SealStage(request);
                     }
+                    else if (request.Operation == Operation.StageRename)
+                    {
+                        verdict = RetargetStage(request);
+                    }
+                    else if (request.Operation == Operation.StageDiagnostic)
+                    {
+                        _logger.LogWarning("Staged kernel diagnostic: phase {Phase}, status 0x{Status:X8}, path {Path}",
+                            request.Flags, request.Reserved, request.GetPath());
+                        verdict = PortVerdict.Deny;
+                    }
                     else
                     {
-                        verdict = Judge(request);
+                        verdict = request.Operation is Operation.Create or Operation.Read
+                            ? Judge(request) : PortVerdict.Deny;
                     }
 
                     try
@@ -234,6 +247,7 @@ public sealed class MinifilterInterceptor : BackgroundService
                     }
                 }
                 _grants.Unbind(port);
+                _stagedJustifications.Clear();
                 _hub.Publish(new StatusNotification(
                     _policyVersion, _activeCategories, ProtectionActive: false));
             }
@@ -243,6 +257,33 @@ public sealed class MinifilterInterceptor : BackgroundService
             "Laco do minifiltro encerrado. {Answered} vereditos, {OverBudget} fora do prazo.",
             Interlocked.Read(ref _answered),
             Interlocked.Read(ref _overBudget));
+    }
+
+    private uint RetargetStage(SafeUploadRequest request)
+    {
+        if (_stageJournal is null || request.Version != Contract.Version ||
+            request.TypedFlags.HasFlag(RequestFlags.PathTruncated) ||
+            request.TypedFlags.HasFlag(RequestFlags.PathNotNormalized)) return PortVerdict.Deny;
+        try
+        {
+            if (!Guid.TryParseExact(request.GetImageName(), "N", out Guid id)) return PortVerdict.Deny;
+            string? destination = NtPathTranslator.ToDosPath(request.GetPath());
+            if (destination is null) return PortVerdict.Deny;
+            var entry = _stageJournal.ReadAsync(id, CancellationToken.None).GetAwaiter().GetResult();
+            var policy = _policyStore.LoadAsync(CancellationToken.None).GetAwaiter().GetResult();
+            var operation = new FileOperation(destination, Path.GetFileName(destination),
+                Path.GetExtension(destination), 0, DateTime.MinValue, entry.Transfer.ProcessName,
+                entry.Transfer.ProcessId, destination, entry.Transfer.Destination);
+            if (!policy.IsMonitoredDestination(operation)) return PortVerdict.Deny;
+            _stageJournal.RetargetAsync(id, checked((int)request.RequestorProcessId),
+                destination, request.Reserved != 0, CancellationToken.None).GetAwaiter().GetResult();
+            return PortVerdict.Allow;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Falha ao renomear transferencia privada {RequestId}.", request.RequestId);
+            return PortVerdict.Deny;
+        }
     }
 
     private (uint Verdict, string? StageName) AllocateStage(SafeUploadRequest request)
@@ -257,19 +298,23 @@ public sealed class MinifilterInterceptor : BackgroundService
         try
         {
             string? destination = NtPathTranslator.ToDosPath(request.GetPath());
-            if (destination is null ||
-                !string.Equals(Path.GetDirectoryName(destination),
-                    @"S:\SafeUpload\Escopo Monitorado", StringComparison.OrdinalIgnoreCase) &&
-                !string.Equals(Path.GetDirectoryName(destination),
-                    @"C:\SafeUpload\Escopo Monitorado", StringComparison.OrdinalIgnoreCase))
+            if (destination is null)
             {
                 return (PortVerdict.Deny, null);
             }
 
             // S: is the disposable VHDX used to exercise the removable
             // destination policy path in this test-only allocation gate.
-            var kind = destination.StartsWith(@"S:\", StringComparison.OrdinalIgnoreCase)
-                ? DestinationKind.RemovableDrive : DestinationKind.Cloud;
+            var kind = request.TypedFlags.HasFlag(RequestFlags.StageNetwork)
+                ? DestinationKind.NetworkShare
+                : request.TypedFlags.HasFlag(RequestFlags.StageRemovable) ||
+                  destination.StartsWith(@"S:\SafeUpload\Escopo Monitorado\", StringComparison.OrdinalIgnoreCase)
+                    ? DestinationKind.RemovableDrive : DestinationKind.Cloud;
+            Policy policy = _policyStore.LoadAsync(CancellationToken.None).GetAwaiter().GetResult();
+            var destinationOperation = new FileOperation(destination, Path.GetFileName(destination),
+                Path.GetExtension(destination), 0, DateTime.MinValue, request.GetImageName(),
+                checked((int)request.RequestorProcessId), destination, kind);
+            if (!policy.IsMonitoredDestination(destinationOperation)) return (PortVerdict.Deny, null);
             StagedTransfer? previous = null;
             string processName = request.GetImageName();
             if (request.TypedFlags.HasFlag(RequestFlags.StageFollowup))
@@ -320,7 +365,8 @@ public sealed class MinifilterInterceptor : BackgroundService
         {
             string? stage = NtPathTranslator.ToDosPath(request.GetPath());
             if (stage is null ||
-                !string.Equals(Path.GetDirectoryName(stage), @"C:\SafeUpload\_staging",
+                !string.Equals(Path.GetDirectoryName(stage),
+                    Path.Combine(AgentPaths.RootDirectory, "staging"),
                     StringComparison.OrdinalIgnoreCase))
             {
                 return PortVerdict.Deny;
@@ -382,11 +428,12 @@ public sealed class MinifilterInterceptor : BackgroundService
                         entry.Transfer.TransferId);
                     var current = await _stageJournal.ReadAsync(
                         entry.Transfer.TransferId, cancellationToken).ConfigureAwait(false);
-                    if (current.State == TransferJournalState.Sealed)
+                    if (current.State == TransferJournalState.Sealed &&
+                        current.Transfer == entry.Transfer)
                     {
                         await _stageJournal.TransitionAsync(entry.Transfer.TransferId,
                             TransferJournalState.Sealed, TransferJournalState.Retained,
-                            null, cancellationToken).ConfigureAwait(false);
+                            null, cancellationToken, entry.Transfer).ConfigureAwait(false);
                     }
                 }
             }

@@ -139,8 +139,25 @@ public partial class App : System.Windows.Application
             case TransferPhase.Blocked:
                 _tray.ShowBalloon("SafeUpload: envio bloqueado",
                     $"{fileName} não foi enviado ao destino.");
+                ShowStagedBlockNotification(transfer);
                 break;
         }
+    }
+
+    private void ShowStagedBlockNotification(TransferNotification transfer)
+    {
+        string? eventId = transfer.OverrideAllowed ? transfer.TransferId.ToString("D") : null;
+        var findings = transfer.Findings ?? [];
+        if (_notification is { IsLoaded: true })
+        {
+            _notification.Add(transfer.FileName, findings, eventId, quarantined: true, staged: true);
+            return;
+        }
+        _notification = new BlockNotificationWindow(transfer.FileName, findings,
+            eventId, quarantined: true, staged: true);
+        _notification.Closed += (_, _) => _notification = null;
+        if (_panel is { IsVisible: true }) _notification.Owner = _panel;
+        _notification.Show();
     }
 
     private void OnConnectionChanged(object? sender, bool connected)

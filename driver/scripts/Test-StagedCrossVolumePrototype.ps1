@@ -5,10 +5,11 @@ unapproved bytes are held on C:. Always unloads the prototype, restores the
 known installed driver, and detaches the VHDX. Requires an elevated session.
 #>
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'StagedTestAgent.ps1')
 $installed = 'C:\Windows\System32\drivers\SafeUpload.sys'
 $backup = 'C:\Users\vika\Documents\SafeUpload-original-before-stage.sys'
 $prototype = 'C:\Users\vika\Documents\SafeUpload-stage-prototype.sys'
-$stageDir = 'C:\SafeUpload\_staging'
+$stageDir = 'C:\ProgramData\SafeUpload\staging'
 $journalDir = 'C:\ProgramData\SafeUpload\staging-journal'
 $serviceZip = 'C:\Users\vika\Documents\stage-service-publish.zip'
 $serviceDir = 'C:\Users\vika\Documents\stage-service-publish'
@@ -30,6 +31,7 @@ $mounted = $false
 $replaced = $false
 $loaded = $false
 $serviceProcess = $null
+$testAgent = $null
 $stagePath = $null
 $manifestPath = $null
 $pendingHandle = $null
@@ -55,6 +57,10 @@ function Invoke-TestDiskpart([string[]] $commands) {
     }
 }
 
+function Test-DestinationFileExists([string] $path) {
+    return (& powershell.exe -NoProfile -Command "[IO.File]::Exists('$path')") -eq 'True'
+}
+
 try {
     Invoke-TestDiskpart @(
         "create vdisk file=`"$vhd`" maximum=128 type=expandable",
@@ -67,7 +73,11 @@ try {
     $mounted = $true
     if (-not (Test-Path S:\)) { throw 'S: did not appear.' }
     New-Item -ItemType Directory -Force -Path @(
-        $targetDir, $stageDir, 'C:\SafeUpload\Escopo Monitorado') | Out-Null
+        $targetDir, 'C:\SafeUpload\Escopo Monitorado') | Out-Null
+
+    New-Item -ItemType Directory -Force -Path $serviceDir | Out-Null
+    & tar.exe -xf $serviceZip -C $serviceDir
+    if ($LASTEXITCODE -ne 0) { throw 'Could not unpack the test service.' }
 
     Copy-Item $installed $backup -Force
     Copy-Item $prototype $installed -Force
@@ -84,16 +94,8 @@ try {
         throw 'The prototype did not fail closed without a service.'
     }
 
-    New-Item -ItemType Directory -Force -Path $serviceDir | Out-Null
-    & tar.exe -xf $serviceZip -C $serviceDir
-    if ($LASTEXITCODE -ne 0) { throw 'Could not unpack the test service.' }
-    $env:Interception__Mode = 'Minifilter'
-    $env:Interception__StagingPrototype = 'true'
-    $serviceProcess = Start-Process -FilePath (Join-Path $serviceDir 'SafeUpload.Agent.Service.exe') `
-        -PassThru -WindowStyle Hidden `
-        -RedirectStandardOutput 'C:\Users\vika\Documents\stage-service-out.log' `
-        -RedirectStandardError 'C:\Users\vika\Documents\stage-service-err.log'
-    Remove-Item Env:Interception__Mode,Env:Interception__StagingPrototype -ErrorAction SilentlyContinue
+    $testAgent = Start-StagedTestAgent $serviceDir 'C:\Users\vika\Documents\stage-service'
+    $serviceProcess = $testAgent.Process
 
     $saved = $false
     for ($attempt = 0; $attempt -lt 15 -and -not $saved; $attempt++) {
@@ -118,6 +120,7 @@ try {
     $transferId = [guid] $entries[0].Transfer.TransferId
     $manifestPath = Join-Path $journalDir ($transferId.ToString('N') + '.json')
     $destinationEntries = @(Get-ChildItem -LiteralPath $targetDir -Filter $name)
+    $observerEntryCount = & powershell.exe -NoProfile -Command "@(Get-ChildItem -LiteralPath '$targetDir' -Filter '$name').Count"
     $directStageReadDenied = $false
     try { [IO.File]::ReadAllText($stagePath) | Out-Null }
     catch { $directStageReadDenied = $true }
@@ -127,6 +130,7 @@ try {
     Write-Output "JournalTransferCount=$($entries.Count)"
     Write-Output "JournalState=$($entries[0].State)"
     Write-Output "DestinationEntryCount=$($destinationEntries.Count)"
+    Write-Output "OtherProcessDirectoryEntryCount=$observerEntryCount"
     Write-Output "DirectStageReadDenied=$directStageReadDenied"
 
     $renameBlocked = $false
@@ -142,7 +146,7 @@ try {
     for ($attempt = 0; $attempt -lt 40 -and -not $blocked; $attempt++) {
         Start-Sleep -Milliseconds 250
         $current = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
-        if ([IO.File]::Exists($target)) {
+        if (Test-DestinationFileExists $target) {
             throw 'Sensitive bytes appeared at the destination during analysis.'
         }
         $blocked = $current.State -eq 6
@@ -153,11 +157,15 @@ try {
         $otherProcessExists -ne 'False' -or
         -not $directStageReadDenied -or
         -not $blocked -or
-        $destinationEntries.Count -ne 0 -or
-        -not $renameBlocked -or -not $hardLinkBlocked -or
-        [IO.File]::Exists($renameTarget) -or
-        [IO.File]::Exists($hardLinkTarget)) {
+        $destinationEntries.Count -ne 1 -or
+        $observerEntryCount -ne '0' -or
+        -not $hardLinkBlocked -or
+        (Test-DestinationFileExists $renameTarget) -or
+        (Test-DestinationFileExists $hardLinkTarget)) {
         throw 'Cross-volume staging invariant failed.'
+    }
+    if (-not $renameBlocked -and [IO.File]::ReadAllText($renameTarget) -ne $writerRead) {
+        throw 'Virtual rename lost the writer bytes.'
     }
 
     # Two writable handles must keep one version open until both clean up.
@@ -176,7 +184,7 @@ try {
         ForEach-Object { Get-Content -LiteralPath $_.FullName -Raw | ConvertFrom-Json } |
         Where-Object { $_.Transfer.DestinationPath -eq $concurrentTarget })
     if ($concurrentEntry.Count -ne 1 -or $concurrentEntry[0].State -ne 0 -or
-        [IO.File]::Exists($concurrentTarget)) {
+        (Test-DestinationFileExists $concurrentTarget)) {
         throw 'The first cleanup sealed a version with another writer open.'
     }
     $extraStagePaths += $concurrentEntry[0].Transfer.StagePath
@@ -276,7 +284,7 @@ try {
         ForEach-Object { Get-Content -LiteralPath $_.FullName -Raw | ConvertFrom-Json } |
         Where-Object { $_.Transfer.DestinationPath -eq $mappedTarget })
     if ($mappedEntry.Count -ne 1 -or $mappedEntry[0].State -ne 0 -or
-        [IO.File]::Exists($mappedTarget)) {
+        (Test-DestinationFileExists $mappedTarget)) {
         throw 'Writable mapped view was sealed before it was released.'
     }
     $extraStagePaths += $mappedEntry[0].Transfer.StagePath
@@ -315,15 +323,9 @@ try {
     $pendingManifestPath = Join-Path $journalDir (
         ([guid] $pendingEntries[0].Transfer.TransferId).ToString('N') + '.json')
 
-    Stop-Process -Id $serviceProcess.Id -Force
-    $serviceProcess.WaitForExit()
-    $env:Interception__Mode = 'Minifilter'
-    $env:Interception__StagingPrototype = 'true'
-    $serviceProcess = Start-Process -FilePath (Join-Path $serviceDir 'SafeUpload.Agent.Service.exe') `
-        -PassThru -WindowStyle Hidden `
-        -RedirectStandardOutput 'C:\Users\vika\Documents\stage-service-restart-out.log' `
-        -RedirectStandardError 'C:\Users\vika\Documents\stage-service-restart-err.log'
-    Remove-Item Env:Interception__Mode,Env:Interception__StagingPrototype -ErrorAction SilentlyContinue
+    Stop-StagedTestAgent $testAgent
+    $testAgent = Start-StagedTestAgent $serviceDir 'C:\Users\vika\Documents\stage-service-restart'
+    $serviceProcess = $testAgent.Process
     $unsealed = $false
     for ($attempt = 0; $attempt -lt 20 -and -not $unsealed; $attempt++) {
         Start-Sleep -Milliseconds 250
@@ -332,7 +334,7 @@ try {
         $unsealed = $recovered.State -eq 8
     }
     Write-Output "UnsealedAfterServiceRestart=$unsealed"
-    if (-not $unsealed -or [IO.File]::Exists($target)) {
+    if (-not $unsealed -or (Test-DestinationFileExists $target)) {
         throw 'An interrupted transfer was not safely held unsealed.'
     }
 
@@ -359,28 +361,31 @@ finally {
     if ($view) { $view.Dispose() }
     if ($mapping) { $mapping.Dispose() }
     if ($pendingHandle) { $pendingHandle.Dispose() }
-    if ($serviceProcess -and -not $serviceProcess.HasExited) {
-        Stop-Process -Id $serviceProcess.Id -Force
-        $serviceProcess.WaitForExit()
-    }
+    Stop-StagedTestAgent $testAgent
     if ($loaded) { & fltmc.exe unload SafeUpload | Out-Host }
-    if ($stagePath -and (Test-Path -LiteralPath $stagePath)) {
-        Write-Output "LocalStageContentAfterUnload=$([IO.File]::ReadAllText($stagePath))"
+    if ($stagePath) {
+        $stageDeniedAfterUnload = $false
+        try { [IO.File]::ReadAllText($stagePath) | Out-Null }
+        catch [System.UnauthorizedAccessException] { $stageDeniedAfterUnload = $true }
+        Write-Output "StageReadDeniedAfterUnload=$stageDeniedAfterUnload"
     }
     if ($replaced) { Copy-Item $backup $installed -Force }
     if ((Get-FileHash $installed -Algorithm SHA256).Hash -ne $expectedOriginal) {
         throw 'Original driver restoration failed.'
     }
-    if ($stagePath) { Remove-Item -LiteralPath $stagePath -Force -ErrorAction SilentlyContinue }
-    if ($manifestPath) { Remove-Item -LiteralPath $manifestPath -Force -ErrorAction SilentlyContinue }
-    if ($pendingStagePath) { Remove-Item -LiteralPath $pendingStagePath -Force -ErrorAction SilentlyContinue }
-    if ($pendingManifestPath) { Remove-Item -LiteralPath $pendingManifestPath -Force -ErrorAction SilentlyContinue }
-    foreach ($path in $extraStagePaths) { Remove-Item -LiteralPath $path -Force -ErrorAction SilentlyContinue }
-    foreach ($path in $extraManifestPaths) { Remove-Item -LiteralPath $path -Force -ErrorAction SilentlyContinue }
-    Remove-Item -LiteralPath $hardLinkTarget -Force -ErrorAction SilentlyContinue
-    if ($mounted) {
-        Invoke-TestDiskpart @("select vdisk file=`"$vhd`"", 'detach vdisk')
+    try {
+        Remove-StagedTestFiles (@($stagePath,$manifestPath,$pendingStagePath,$pendingManifestPath) +
+            $extraStagePaths + $extraManifestPaths)
+        Remove-Item -LiteralPath $hardLinkTarget -Force -ErrorAction SilentlyContinue
     }
-    Remove-Item -LiteralPath $vhd,$diskpartScript -Force -ErrorAction SilentlyContinue
+    finally {
+        if ($mounted) {
+            Invoke-TestDiskpart @("select vdisk file=`"$vhd`"", 'detach vdisk')
+        }
+        Remove-Item -LiteralPath $vhd,$diskpartScript -Force -ErrorAction SilentlyContinue
+    }
     Write-Output 'OriginalDriverRestored=True'
+    if ($stagePath -and -not $stageDeniedAfterUnload) {
+        throw 'The private backing stage was exposed after unload.'
+    }
 }

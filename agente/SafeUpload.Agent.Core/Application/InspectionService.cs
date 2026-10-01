@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Security.Cryptography;
 using SafeUpload.Agent.Core.Domain;
 using SafeUpload.Agent.Core.Infrastructure.Extraction;
 
@@ -14,9 +15,9 @@ namespace SafeUpload.Agent.Core.Application;
 ///
 ///   1. processo excluído                    RN-014
 ///   2. destino ou extensão fora do escopo   RN-011
-///   3. acerto de cache
-///   4. arquivo grande demais                RN-013
-///   5. formato não suportado                RN-013
+///   3. arquivo grande demais                RN-013
+///   4. formato não suportado                RN-013
+///   5. leitura e hash, acerto de cache
 ///   6. extração e varredura com prazo       RN-012
 ///   7. veredito                             RN-005
 ///   8. cache e auditoria
@@ -87,13 +88,25 @@ public sealed class InspectionService
             current.IsMonitoredExtension(operation.Extension);
     }
 
+    public async Task<bool> IsCurrentStagedJustificationAllowedAsync(
+        FileOperation operation, InspectionResult result, CancellationToken cancellationToken)
+    {
+        if (!result.InScope || !result.IsBlocked) return false;
+        var current = await _policyStore.LoadAsync(cancellationToken).ConfigureAwait(false);
+        return current.OverrideAllowed && current.Version == result.PolicyVersion &&
+            !current.IsExcludedProcess(operation.ProcessName) &&
+            current.IsMonitoredDestination(operation) &&
+            current.IsMonitoredExtension(operation.Extension);
+    }
+
     public Task RecordTransferOutcomeAsync(
         FileOperation operation,
         InspectionResult inspection,
         Verdict outcome,
         string? reason,
-        CancellationToken cancellationToken)
-        => AuditAsync(operation, inspection with { Verdict = outcome, Reason = reason }, cancellationToken);
+        CancellationToken cancellationToken,
+        Guid? eventId = null)
+        => AuditAsync(operation, inspection with { Verdict = outcome, Reason = reason }, cancellationToken, eventId);
 
     private async Task<InspectionResult> InspectCoreAsync(
         FileOperation operation, bool auditAndCache, CancellationToken cancellationToken)
@@ -117,21 +130,6 @@ public sealed class InspectionService
             return OutOfScope(stopwatch, policy, "out_of_scope");
         }
 
-        // 3. Cache. A versão da política faz parte da validade da entrada.
-        if (auditAndCache && _cache.TryGet(operation, policy.Version, out var cached) && cached is not null)
-        {
-            stopwatch.Stop();
-
-            var fromCache = cached with
-            {
-                ElapsedMs = stopwatch.ElapsedMilliseconds,
-                FromCache = true
-            };
-
-            await AuditAsync(operation, fromCache, cancellationToken).ConfigureAwait(false);
-            return fromCache;
-        }
-
         // 4. RN-013 — acima do limite, libera sem inspecionar. Nunca bloqueia.
         if (operation.SizeBytes > policy.MaxFileSizeBytes)
         {
@@ -151,6 +149,7 @@ public sealed class InspectionService
 
         // 6. Extração e varredura com prazo (RN-012).
         IReadOnlyList<Finding> findings;
+        string? fingerprint = null;
 
         try
         {
@@ -159,10 +158,23 @@ public sealed class InspectionService
             // no prazo mesmo que a análise continue presa. O trabalho abandonado
             // morre sozinho, porque não escreve nada em lugar nenhum.
             var inspection = Task.Run(
-                () => ExtractAndScanAsync(extractor, operation, policy, cancellationToken),
+                () => ExtractAndScanAsync(extractor, operation, policy, auditAndCache, cancellationToken),
                 cancellationToken);
 
-            findings = await inspection.WaitAsync(policy.InspectionTimeout, cancellationToken).ConfigureAwait(false);
+            var inspected = await inspection.WaitAsync(policy.InspectionTimeout, cancellationToken).ConfigureAwait(false);
+            fingerprint = inspected.Fingerprint;
+            findings = inspected.Findings;
+            if (inspected.Cached is not null)
+            {
+                stopwatch.Stop();
+                var fromCache = inspected.Cached with
+                {
+                    ElapsedMs = stopwatch.ElapsedMilliseconds,
+                    FromCache = true
+                };
+                await AuditAsync(operation, fromCache, cancellationToken).ConfigureAwait(false);
+                return fromCache;
+            }
         }
         catch (TimeoutException)
         {
@@ -193,7 +205,7 @@ public sealed class InspectionService
         var verdict = findings.Count > 0 ? Verdict.Blocked : Verdict.Approved;
 
         // 8. Cache e auditoria.
-        return await CompleteAsync(operation, policy, stopwatch, verdict, findings, null, auditAndCache, cancellationToken)
+        return await CompleteAsync(operation, policy, stopwatch, verdict, findings, null, auditAndCache, cancellationToken, fingerprint)
             .ConfigureAwait(false);
     }
 
@@ -203,20 +215,26 @@ public sealed class InspectionService
     /// erro: se a extração lançar, os bytes e o texto saem de escopo junto com
     /// a pilha e nada chegou a ser gravado.
     /// </summary>
-    private static async Task<IReadOnlyList<Finding>> ExtractAndScanAsync(
+    private async Task<(IReadOnlyList<Finding> Findings, string? Fingerprint, InspectionResult? Cached)> ExtractAndScanAsync(
         ITextExtractor extractor,
         FileOperation operation,
         Policy policy,
+        bool useCache,
         CancellationToken cancellationToken)
     {
         var bytes = await File.ReadAllBytesAsync(operation.FilePath, cancellationToken).ConfigureAwait(false);
 
+        // Hash and scan the same in-memory bytes. Size and timestamps alone
+        // can collide (or be restored), so they cannot authorize cache reuse.
+        string? fingerprint = useCache ? Convert.ToHexString(SHA256.HashData(bytes)) : null;
+        if (useCache && _cache.TryGet(operation, policy.Version, out var cached, fingerprint) && cached is not null)
+            return (cached.Findings, fingerprint, cached);
         using var content = new MemoryStream(bytes, writable: false);
         var text = await extractor.ExtractAsync(content, cancellationToken).ConfigureAwait(false);
 
         // O que sai daqui já é só achado mascarado. O texto em claro não
         // atravessa esta fronteira.
-        return ContentScanner.Scan(text, policy.ActiveCategories);
+        return (ContentScanner.Scan(text, policy.ActiveCategories), fingerprint, null);
     }
 
     private async Task<InspectionResult> CompleteAsync(
@@ -227,7 +245,8 @@ public sealed class InspectionService
         IReadOnlyList<Finding> findings,
         string? reason,
         bool auditAndCache,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? fingerprint = null)
     {
         stopwatch.Stop();
 
@@ -242,7 +261,8 @@ public sealed class InspectionService
 
         if (auditAndCache)
         {
-            _cache.Set(operation, result);
+            if (fingerprint is not null && verdict is Verdict.Approved or Verdict.Blocked)
+                _cache.Set(operation, result, fingerprint);
             await AuditAsync(operation, result, cancellationToken).ConfigureAwait(false);
         }
 
@@ -272,10 +292,11 @@ public sealed class InspectionService
     private async Task AuditAsync(
         FileOperation operation,
         InspectionResult result,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        Guid? eventId = null)
     {
         var auditEvent = new AuditEvent(
-            Guid.NewGuid(),
+            eventId ?? Guid.NewGuid(),
             DateTimeOffset.UtcNow,
             _endpointId,
             _userName,

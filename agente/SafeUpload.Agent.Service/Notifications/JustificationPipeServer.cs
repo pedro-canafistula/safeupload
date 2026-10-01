@@ -41,6 +41,7 @@ public sealed class JustificationPipeServer : BackgroundService
     private readonly IPolicyStore _policyStore;
     private readonly IAuditSink _auditSink;
     private readonly OverrideGrantDispatcher _grants;
+    private readonly StagedJustifications _staged;
     private readonly ILogger<JustificationPipeServer> _logger;
 
     /// <summary>Compõe o servidor.</summary>
@@ -49,12 +50,14 @@ public sealed class JustificationPipeServer : BackgroundService
         IPolicyStore policyStore,
         IAuditSink auditSink,
         OverrideGrantDispatcher grants,
+        StagedJustifications staged,
         ILogger<JustificationPipeServer> logger)
     {
         _pending = pending ?? throw new ArgumentNullException(nameof(pending));
         _policyStore = policyStore ?? throw new ArgumentNullException(nameof(policyStore));
         _auditSink = auditSink ?? throw new ArgumentNullException(nameof(auditSink));
         _grants = grants ?? throw new ArgumentNullException(nameof(grants));
+        _staged = staged ?? throw new ArgumentNullException(nameof(staged));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -151,6 +154,14 @@ public sealed class JustificationPipeServer : BackgroundService
         {
             _logger.LogWarning("Justificativa recebida sem conexao com o minifiltro.");
             return false;
+        }
+
+        if (_staged.TryConsume(request.EventId, sessionId, out var publish))
+        {
+            if (publish is null) return false;
+            await _auditSink.RecordOverrideAsync(request.EventId,
+                request.Justification, cancellationToken).ConfigureAwait(false);
+            return await publish(cancellationToken).ConfigureAwait(false);
         }
 
         PendingOverrides.Entry? pendente = _pending.Consume(request.EventId, sessionId);

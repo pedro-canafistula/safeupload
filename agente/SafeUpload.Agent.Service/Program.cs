@@ -37,6 +37,7 @@ public static class Program
         builder.Services.AddSingleton<InspectionService>();
         builder.Services.AddSingleton<NotificationHub>();
         builder.Services.AddSingleton<PendingOverrides>();
+        builder.Services.AddSingleton<StagedJustifications>();
         builder.Services.AddSingleton<OverrideGrantDispatcher>();
 
         // O gatilho. A partir daqui a protecao existe sem interface nenhuma

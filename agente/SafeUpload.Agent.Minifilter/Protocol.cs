@@ -24,7 +24,7 @@ public static class Contract
     /// mechanism that turns an incompatible pair into a clean refusal
     /// instead of a misread structure.
     /// </summary>
-    public const uint Version = 14;
+    public const uint Version = 17;
 
     public const int MaxPathChars = 512;
     public const int MaxImageNameChars = 64;
@@ -64,6 +64,9 @@ public static class Contract
         Check(nameof(SafeUploadPolicyMessage), sizeof(SafeUploadPolicyMessage), PolicyMessageSize);
         Check(nameof(SafeUploadCounters), sizeof(SafeUploadCounters), CountersSize);
         Check(nameof(SafeUploadOverrideMessage), sizeof(SafeUploadOverrideMessage), OverrideMessageSize);
+        Check(nameof(SafeUploadPublicationMessage), sizeof(SafeUploadPublicationMessage), 2128);
+        CheckOffset(nameof(SafeUploadPublicationMessage) + ".TemporaryPath",
+                    (int) Marshal.OffsetOf<SafeUploadPublicationMessage>(nameof(SafeUploadPublicationMessage.TemporaryPath)), 80);
 
         // Offsets that carry real risk: everything after them shifts if
         // they are wrong, and a shifted path is still a readable string.
@@ -109,6 +112,8 @@ public static class Operation
     public const uint Create = 1;
     public const uint StageAllocate = 3;
     public const uint StageSeal = 4;
+    public const uint StageRename = 5;
+    public const uint StageDiagnostic = 6;
 
     /// <summary>
     /// Kept for contract completeness. The driver no longer registers
@@ -138,6 +143,8 @@ public enum RequestFlags : uint
     /// <summary>The create is reading from a monitored source.</summary>
     ScopeSource = 0x00000010,
     StageFollowup = 0x00000020,
+    StageRemovable = 0x00000040,
+    StageNetwork = 0x00000080,
 }
 
 [Flags]
@@ -174,6 +181,7 @@ public static class ControlCommand
     public const uint SetPolicy = 1;
     public const uint GetCounters = 2;
     public const uint GrantOverride = 3;
+    public const uint StagePublication = 4;
 }
 
 [StructLayout(LayoutKind.Sequential, Pack = 8)]
@@ -284,6 +292,20 @@ public unsafe struct SafeUploadOverrideMessage
     public uint PathLength;
     public uint Reserved;
     public fixed char Path[Contract.MaxPathChars];
+}
+
+[StructLayout(LayoutKind.Sequential, Pack = 8)]
+public unsafe struct SafeUploadPublicationMessage
+{
+    public SafeUploadControl Control;
+    public Guid TransferId;
+    public uint Revoke;
+    public uint TemporaryPathLength;
+    public uint DestinationPathLength;
+    public uint Reserved;
+    public fixed byte Digest[32];
+    public fixed char TemporaryPath[Contract.MaxPathChars];
+    public fixed char DestinationPath[Contract.MaxPathChars];
 }
 
 [StructLayout(LayoutKind.Sequential, Pack = 8)]

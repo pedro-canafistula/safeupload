@@ -140,7 +140,8 @@ public sealed class StagedTransferJournal
         TransferJournalState expected,
         TransferJournalState next,
         string? sha256Hex,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        StagedTransfer? expectedTransfer = null)
     {
         if (!IsTransitionAllowed(expected, next))
         {
@@ -151,6 +152,8 @@ public sealed class StagedTransferJournal
         try
         {
             var current = await ReadAsync(transferId, cancellationToken).ConfigureAwait(false);
+            if (expectedTransfer is not null && current.Transfer != expectedTransfer)
+                throw new InvalidOperationException("The staged namespace changed before inspection.");
             if (current.State != expected)
             {
                 throw new InvalidOperationException(
@@ -187,6 +190,32 @@ public sealed class StagedTransferJournal
         {
             _gate.Release();
         }
+    }
+
+    public async Task<TransferJournalEntry> RetargetAsync(Guid id, int ownerProcessId,
+        string destination, bool sealedVersion, CancellationToken token)
+    {
+        await _gate.WaitAsync(token).ConfigureAwait(false);
+        try
+        {
+            var current = await ReadAsync(id, token).ConfigureAwait(false);
+            if (current.Transfer.ProcessId != ownerProcessId ||
+                current.State is TransferJournalState.Inspecting or
+                    TransferJournalState.Approved or TransferJournalState.Publishing)
+                throw new IOException("The staged version is busy or belongs to another writer.");
+            if (sealedVersion != current.SealedOnce)
+                throw new IOException("The kernel and journal disagree about the version seal.");
+            var updated = current with
+            {
+                Transfer = current.Transfer with { DestinationPath = Path.GetFullPath(destination) },
+                State = sealedVersion ? TransferJournalState.Sealed : current.State,
+                Sha256Hex = null,
+                UpdatedAtUtc = DateTimeOffset.UtcNow
+            };
+            await ReplaceAsync(ManifestPath(id), updated, token).ConfigureAwait(false);
+            return updated;
+        }
+        finally { _gate.Release(); }
     }
 
     public async Task<IReadOnlyList<TransferJournalEntry>> ReadPendingAsync(
@@ -345,7 +374,7 @@ public sealed class StagedTransferJournal
         }
     }
 
-    private static void RequireProtectedParent(string directory)
+    internal static void RequireProtectedParent(string directory)
     {
         string parent = Path.GetDirectoryName(directory) ?? throw new IOException(
             "The journal needs a protected parent directory.");
@@ -373,10 +402,8 @@ public sealed class StagedTransferJournal
             {
                 continue;
             }
-            if (sid.IsWellKnown(WellKnownSidType.WorldSid) ||
-                sid.IsWellKnown(WellKnownSidType.BuiltinUsersSid) ||
-                sid.IsWellKnown(WellKnownSidType.AuthenticatedUserSid) ||
-                sid.IsWellKnown(WellKnownSidType.InteractiveSid))
+            if (!sid.IsWellKnown(WellKnownSidType.LocalSystemSid) &&
+                !sid.IsWellKnown(WellKnownSidType.BuiltinAdministratorsSid))
             {
                 throw new UnauthorizedAccessException(
                     "The journal parent allows ordinary users to remove its children.");
@@ -384,7 +411,7 @@ public sealed class StagedTransferJournal
         }
     }
 
-    private static void RequireTrustedOwner(FileSystemSecurity security, string objectName)
+    internal static void RequireTrustedOwner(FileSystemSecurity security, string objectName)
     {
         var owner = security.GetOwner(typeof(SecurityIdentifier)) as SecurityIdentifier;
         if (owner is null ||
@@ -406,6 +433,7 @@ public sealed class StagedTransferJournal
         (TransferJournalState.Sealed, TransferJournalState.Retained) => true,
         (TransferJournalState.Inspecting, TransferJournalState.Approved) => true,
         (TransferJournalState.Inspecting, TransferJournalState.Blocked) => true,
+        (TransferJournalState.Blocked, TransferJournalState.Inspecting) => true,
         (TransferJournalState.Inspecting, TransferJournalState.Retained) => true,
         (TransferJournalState.Approved, TransferJournalState.Retained) => true,
         (TransferJournalState.Approved, TransferJournalState.Publishing) => true,

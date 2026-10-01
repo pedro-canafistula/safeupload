@@ -49,6 +49,18 @@ SafeUploadStreamContextCleanup (
 //
 ///////////////////////////////////////////////////////////////////////////
 
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+static VOID SafeUploadHandleContextCleanup(_In_ PFLT_CONTEXT Context,
+    _In_ FLT_CONTEXT_TYPE ContextType)
+{
+    PSAFEUPLOAD_STREAMHANDLE_CONTEXT handle = (PSAFEUPLOAD_STREAMHANDLE_CONTEXT) Context;
+    UNREFERENCED_PARAMETER( ContextType );
+    SafeUploadFreeDirectoryView( handle->DirectoryView );
+    SafeUploadReleaseStageHandleName( handle->StageName );
+    FltDeletePushLock( &handle->DirectoryLock );
+}
+#endif
+
 CONST FLT_CONTEXT_REGISTRATION SafeUploadContextRegistration[] = {
 
     //
@@ -79,7 +91,11 @@ CONST FLT_CONTEXT_REGISTRATION SafeUploadContextRegistration[] = {
 
     { FLT_STREAMHANDLE_CONTEXT,
       0,
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+      SafeUploadHandleContextCleanup,
+#else
       NULL,
+#endif
       sizeof( SAFEUPLOAD_STREAMHANDLE_CONTEXT ),
       SAFEUPLOAD_POOL_TAG },
 
@@ -467,6 +483,10 @@ Return Value:
         return status;
     }
 
+    RtlZeroMemory( handleContext, sizeof( *handleContext ) );
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    FltInitializePushLock( &handleContext->DirectoryLock );
+#endif
     handleContext->OpenedForWrite = TRUE;
     handleContext->OverrideGranted = OverrideGranted;
 

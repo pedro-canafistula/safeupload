@@ -1,5 +1,7 @@
 using SafeUpload.Agent.Core.Domain;
 using SafeUpload.Agent.Service.Interception;
+using System.Security.AccessControl;
+using System.Security.Principal;
 
 namespace SafeUpload.Agent.Tests;
 
@@ -27,11 +29,44 @@ public sealed class StagedTransferAllocatorTests : IDisposable
         Assert.Equal(".txt", Path.GetExtension(first.StagePath));
         Assert.StartsWith(root + Path.DirectorySeparatorChar, first.StagePath,
             StringComparison.OrdinalIgnoreCase);
-        Assert.False(File.Exists(first.StagePath));
+        Assert.True(File.Exists(first.StagePath));
+        Assert.Equal(0, new FileInfo(first.StagePath).Length);
         Assert.False(File.Exists(destination));
         var entry = await journal.ReadAsync(first.TransferId, CancellationToken.None);
         Assert.Equal(TransferJournalState.Allocated, entry.State);
         Assert.Equal(first, entry.Transfer);
+    }
+
+    [Fact]
+    public async Task Backing_file_has_its_own_private_acl_and_restart_removes_extra_grants()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        string root = Path.Combine(_workspace.Root, "stage");
+        var journal = new StagedTransferJournal(Path.Combine(_workspace.Root, "journal"));
+        var allocator = new StagedTransferAllocator(root, journal);
+        var transfer = await allocator.AllocateAsync(Path.Combine(_workspace.Root, "report.txt"),
+            DestinationKind.Cloud, "word.exe", 17, 2, CancellationToken.None);
+        var file = new FileInfo(transfer.StagePath);
+        var security = file.GetAccessControl();
+        Assert.True(security.AreAccessRulesProtected);
+        var everyone = new SecurityIdentifier(WellKnownSidType.WorldSid, null);
+        security.AddAccessRule(new FileSystemAccessRule(everyone,
+            FileSystemRights.Read, AccessControlType.Allow));
+        file.SetAccessControl(security);
+        _ = new StagedTransferAllocator(root, journal);
+        security = file.GetAccessControl();
+        Assert.True(security.AreAccessRulesProtected);
+        using var identity = WindowsIdentity.GetCurrent();
+        var owner = identity.User ?? throw new InvalidOperationException("Test identity has no SID.");
+        var rules = security.GetAccessRules(true, true, typeof(SecurityIdentifier))
+            .Cast<FileSystemAccessRule>().ToArray();
+        Assert.NotEmpty(rules);
+        Assert.All(rules, rule => {
+            Assert.Equal(AccessControlType.Allow, rule.AccessControlType);
+            Assert.False(rule.IsInherited);
+            var sid = (SecurityIdentifier)rule.IdentityReference;
+            Assert.True(sid.Equals(owner) || sid.IsWellKnown(WellKnownSidType.LocalSystemSid));
+        });
     }
 
     [Fact]

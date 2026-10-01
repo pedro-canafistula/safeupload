@@ -199,7 +199,122 @@ after driver unload. Other aliases, USB hardware, UNC shares, sync clients,
 and Driver Verifier have not passed the required matrix. The worker and
 version handoff have only the disposable-VHDX test coverage described above.
 
+## Private backing storage and exact-version approval (30 September 2026)
+
+The protocol-15 feature build now stores backing files in
+`C:\ProgramData\SafeUpload\staging` under a protected, SYSTEM-owned DACL.
+The runtime allocator requires LocalSystem. Before redirecting a create, the
+driver checks the original user's access against the destination descriptor
+or the parent and inherited descriptor for a new file. Its kernel-only ECP
+carries those granted rights into the redirected access state. It never
+substitutes the user's token and never grants permission to change the private
+backing ACL. This replaces the earlier unload exposure described above.
+
+`Test-StagedPrivateStorage.ps1` and the cross-volume harness confirmed that
+the writer could read its virtual destination while direct backing reads
+remained denied **after filter unload**. The cross-volume harness also passed
+concurrent handles, append and overwrite versions, mapped-view final closure,
+service restart with an open writer, and clean publication after final close.
+The agent now authenticates its filter-port identity before recovering existing
+private files. Every experiment restored the original installed driver, with
+the expected SHA-256 independently checked afterward.
+
+The publisher inspects a separate service-only snapshot and copies that same
+snapshot to the destination. It checks the backing digest before publication.
+A blocked version's justification is bound to its transfer ID, digest, policy
+version, originating session and a one-use time-limited callback. Changed bytes,
+policy changes, other sessions and replay do not authorize that version.
+The callback reinspects and rechecks policy; it never creates a process grant.
+The application now displays staged findings and submits this transfer ID.
+The 199-test Windows agent suite and application build passed at this point;
+the later UNC translation suite brought the total to 206 passing tests.
+
+The feature build also uses configured destination prefixes and volume kinds
+for allocation, resolves normalized names, and supports nested file paths.
+The disposable `S:` test classification and bootstrap test-folder gate remain.
+Unresolved writable names and writable file-ID opens fail closed in this
+experimental build. Ordinary builds continue to compile staging out.
+
+Protocol 16 adds a journaled virtual rename transaction, query-open fallback
+into virtual creates, and final-extension inspection of temporary files.
+Its 31 focused agent tests and WDK build pass. The VM rename test passed an
+ordinary `.NET File.Move` from a private `.tmp` stage to the final `.txt`
+name: a clean version was inspected and released, a sensitive version remained
+private, the writer read the renamed bytes and the old virtual name disappeared.
+The failure found and fixed in that test was redirecting a rename's
+`SL_OPEN_TARGET_DIRECTORY` parent open as though it were a file write.
+Protocol 17 now verifies native final-path names on the local destination,
+writer-only directory entries and sizes, old-name removal after rename, and
+ordinary clean and sensitive saves. Directory handles keep a private union
+snapshot with wildcard matching and a cursor; eight standard information
+classes, restart and single-entry queries are implemented, with unsafe-context
+queries deferred to PASSIVE_LEVEL. Small-buffer and cancellation probes still
+need dedicated VM coverage.
+
+The authenticated LocalSystem port owner now needs a per-transfer publication
+permit: an exact pending path and final destination, transfer ID, inspected
+digest, one create, one rename and a 30-second expiry. Disconnect revokes all
+permits. There is no blanket service write/rename bypass in protected scope.
+The VM passed both local rename and cross-volume clean publication through
+these permits. A dedicated completion event for each overlapped receive fixes
+a discovered shared-port wakeup that previously canceled publication when a
+control message was sent alongside the receive.
+
+The full Windows agent suite now passes 212 tests. That includes a new
+regression for changed content with identical size and timestamp: inspection
+cache reuse now hashes the same in-memory bytes that are scanned. The staged
+publisher continues to avoid the legacy inspection cache entirely.
+
+`Test-StagedDuplicatedHandle.ps1` also passed an owner process exit with its
+writable file object duplicated into another process: the transfer stayed
+unsealed while the duplicate remained open, and final cleanup in the second
+process published the exact `basetail` bytes. Both normal (staging disabled)
+and experimental WDK builds passed at this checkpoint.
+
+The cross-volume VM test passed writer-only listings, virtual rename,
+concurrent writers, append/overwrite versions, mapped-view final closure,
+service restart, and destination-byte observers. Each harness restored the
+known original driver and detached its disposable VHDX. Rename replacement of
+an existing staged target, hard-link aliases, full USB, UNC and sync-client
+coverage, crash/reboot recovery and Driver Verifier remain required before
+claiming the full design complete.
+
 ## Implementation sequence
+
+### Pause checkpoint (1 October 2026)
+
+The latest experimental WDK build and signed VM rename test passed. Each
+staged handle now retains a reference to its version's virtual name, independent
+of the mutable namespace mapping. A held read handle followed a temporary-file
+rename and kept the final virtual path after a later version was allocated;
+its original bytes remained unchanged. Native `FileAllInformation` also returned
+the virtual path. Backing DOS aliases are not returned as destination aliases.
+Directory snapshots now record the requestor identity and rebuild when a shared
+directory handle is queried by another process. Allocation failure cleanup no
+longer walks an uninitialized directory-entry list.
+
+Private-stage file-ID probes after unload passed with and without backup
+semantics under a token with elevated privileges removed. The initial elevated
+SSH test could read by ID because its `SeBackupPrivilege` was enabled, which
+Windows deliberately allows to override read ACLs. This is a trusted host-admin
+boundary, not protection against a privileged backup operator. Backing files
+now also receive explicit protected service/SYSTEM ACLs before their paths are
+issued; recovery replaces extra file grants. The ACL regression brought the
+full Windows agent suite to 213 passing tests. A nullable warning in that test
+was corrected locally after this run; no additional test run was started at
+the user's pause request.
+
+Latest signed experimental driver SHA-256:
+`3751294725B4B677C00CCFFFDB39DAE18D5F680D14691B154E2C7019D9D23D38`.
+The final VM test restored the original installed driver. Staging remains
+disabled in normal builds and process taint remains in place. The feature is
+not complete. Resume with the latest private-storage and cross-volume harnesses,
+then native directory pagination/cancellation, transactional replacement and
+hard-link/alias support. Per-process destination version ordering, directory
+notifications, cross-volume native volume identity, actual Explorer/Office,
+USB/UNC/sync, user justification UI/pipe, crash/reboot and Verifier coverage
+remain unverified or unfinished. The current rename journal retarget is still
+single phase and needs timeout/crash-safe commit handling.
 
 1. Add a service-owned transfer journal and per-user staging directory. The
    driver requests a stage mapping for a specific destination, process, and
