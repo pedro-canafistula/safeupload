@@ -35,6 +35,11 @@ public static class StagedIdentityProbe {
     static extern bool FlushFileBuffers(SafeFileHandle file);
     [DllImport("kernel32.dll", SetLastError=true)]
     static extern bool SetFileInformationByHandle(SafeFileHandle file, int cls, byte[] info, int size);
+    [DllImport("kernel32.dll", CharSet=CharSet.Unicode, SetLastError=true)]
+    static extern IntPtr CreateFileMapping(SafeFileHandle file, IntPtr security, uint protection,
+        uint high, uint low, string name);
+    [DllImport("kernel32.dll", SetLastError=true)]
+    static extern bool CloseHandle(IntPtr handle);
     [DllImport("ntdll.dll")]
     static extern int NtQueryDirectoryFile(SafeFileHandle file, IntPtr ev, IntPtr apc,
         IntPtr context, out IoStatus io, byte[] info, uint length, int cls,
@@ -117,6 +122,19 @@ public static class StagedIdentityProbe {
         Check(SetFilePointerEx(file,0,out position,0)); Check(WriteFile(file,data,(uint)data.Length,out written,IntPtr.Zero));
         if(written!=data.Length) throw new Exception("Short write");
         Check(SetEndOfFile(file)); Check(FlushFileBuffers(file));
+    }
+    public static int TryWrite(SafeFileHandle file) {
+        long position; uint written; Check(SetFilePointerEx(file,0,out position,0));
+        return WriteFile(file,new byte[]{(byte)'Z'},1,out written,IntPtr.Zero) ? 0 : Marshal.GetLastWin32Error();
+    }
+    public static int TrySize(SafeFileHandle file, bool allocation) {
+        var bytes=BitConverter.GetBytes(0L);
+        return SetFileInformationByHandle(file,allocation ? 5 : 6,bytes,bytes.Length) ? 0 : Marshal.GetLastWin32Error();
+    }
+    public static int TryWritableMapping(SafeFileHandle file) {
+        IntPtr mapping=CreateFileMapping(file,IntPtr.Zero,4,0,0,null);
+        if(mapping==IntPtr.Zero) return Marshal.GetLastWin32Error();
+        Check(CloseHandle(mapping)); return 0;
     }
     public static string Read(SafeFileHandle file) {
         long position; uint read; var data=new byte[65536];

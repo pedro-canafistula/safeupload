@@ -23,6 +23,8 @@ after every experiment, including failures.
          duplicates, process exit, mapped bypass and final-close release.
    - [ ] Delete/disposition, metadata/security, oplocks and private directory
          notifications, broader mutation/cancellation/concurrency coverage.
+         Progress: writes/size changes recheck the pending-transaction freeze
+         under the stream lock; new writable sections are refused until acknowledgement.
 2. Approval flow
    - [ ] Real application notifications and pipe/UI exact-version justification.
    - [ ] Negative publication matrix: changed bytes/policy, unknown/parser/size/
@@ -467,6 +469,53 @@ fence, not a universal claim about every namespace operation.
 21:59:59 UTC confirms no probe/debugger processes or fixtures, original installed
 hash unchanged, SafeUpload unloaded, Verifier zero/None and temporary debugger
 tools/cache removed. Work returns to the acceptance tracker above.
+
+### Follow-up: pending namespace transaction mutation fence
+
+Ordinary writes previously checked ReadOnly/RenameExchange before locking the
+user buffer and taking the stream resource. Resize/allocation had a similar
+outer check. Rename sets its freeze under that resource, so an earlier check can
+be stale. Mutation now rechecks under the same resource; StageResize asserts
+exclusive ownership and enforces immutability/freeze for every caller. Allocation
+changes also recheck before touching the backing. New writable section creation
+is denied while a namespace transaction awaits acknowledgement. Already surviving
+writable mappings still write privately and still prevent sealing; this change
+does not treat handle closure or a pending rename as an immutable seal.
+
+`Test-StagedMutationFreeze.ps1` creates a held private writer, stops the service,
+requests native rename and observes a retained abort awaiting reconnection. The
+pre-fix identity driver returned `5,5,5,0` for write, EOF change, allocation change
+and writable section creation: [reproduction](evidence/2026-10-01/mutation-before.txt).
+The corrected ordinary path under Verifier returns `5,5,5,5`, preserves both held
+private and independent physical bytes, then resumes the same version after abort
+acknowledgement and publishes its exact approved bytes:
+[gate](evidence/2026-10-01/mutation-verifier-gate.txt),
+[active Verifier](evidence/2026-10-01/mutation-verifier-query.txt).
+Reproduce with `Test-StagedMutationFreeze.ps1 -Verifier`, keeping the identity
+probe and test-agent helper beside it. `-ReproduceKnownMappingGap` is only for the
+recorded old driver. The stale normal-write check is established by the code's
+lock ordering; a forced interruption precisely between its old check and lock is
+still a remaining cancellation/concurrency gate, not claimed by this steady-state test.
+
+Final feature SYS SHA256:
+`CFD66E2830AB720944C24D4BA71FEE602B4E281810D18A0F8B6B716DB1B2C6DF`;
+service package unchanged at
+`77868544627FF7286FD594C5B777F04B000BD5BFAE83308D8D79AE66781521E2`.
+[Integrated Verifier](evidence/2026-10-01/mutation-integrated-gate.txt) passes four
+approved overwrites, native replacement, concurrent writers, mapped drainage,
+service restart and 295 full independent byte-observer passes.
+[Private identity regression](evidence/2026-10-01/mutation-identity-gate.txt) passes
+including 100 native-ID reads against 12 concurrent moves (208 ms).
+[Normal Debug](evidence/2026-10-01/mutation-normal-wdk.txt),
+[feature Debug](evidence/2026-10-01/mutation-owned-feature-wdk.txt),
+[normal Release](evidence/2026-10-01/mutation-normal-release-wdk.txt) and
+[feature Release](evidence/2026-10-01/mutation-owned-feature-release-wdk.txt) all
+pass with zero warnings/errors and validation enabled; all
+[237 agent tests](evidence/2026-10-01/mutation-agent-tests.txt) pass.
+[Independent restoration](evidence/2026-10-01/mutation-final-state.txt) confirms
+the original installed hash, filter unloaded, Verifier zero/None, no temporary
+tasks/service and no disposable S:/VHDX. Other filesystem, alias and recovery
+acceptance items remain open; normal staging remains disabled.
 
 ### Identity and namespace
 

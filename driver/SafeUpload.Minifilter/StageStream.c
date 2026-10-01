@@ -590,6 +590,8 @@ static NTSTATUS StageResize(PSTAGE_STREAM Stream, PFILE_OBJECT FileObject, LARGE
     FILE_END_OF_FILE_INFORMATION end;
     CC_FILE_SIZES sizes;
     NTSTATUS status;
+    NT_ASSERT(ExIsResourceAcquiredExclusiveLite(&Stream->Resource));
+    if (Stream->ReadOnly || Stream->RenameExchange != NULL) return STATUS_ACCESS_DENIED;
     if (Size.QuadPart < 0 || Size.QuadPart > STAGE_MAX_BYTES) return STATUS_FILE_TOO_LARGE;
     if (Size.QuadPart < Stream->Header.FileSize.QuadPart &&
         !MmCanFileBeTruncated(&Stream->Sections, &Size)) return STATUS_USER_MAPPED_FILE;
@@ -634,6 +636,12 @@ static NTSTATUS StageReadWrite(PFLT_CALLBACK_DATA Data, PSTAGE_STREAM Stream)
     StageAcquire(&Stream->Resource);
     __try {
         LARGE_INTEGER lockLength;
+        /* Rename publishes its freeze while holding this same resource.
+         * The early check can become stale while locking the user's buffer. */
+        if (write && (Stream->ReadOnly || Stream->RenameExchange != NULL)) {
+            status = STATUS_ACCESS_DENIED;
+            __leave;
+        }
         if (write && (offset.QuadPart == (LONGLONG)(LONG)FILE_WRITE_TO_END_OF_FILE ||
             !FlagOn(((PSTAGE_HANDLE)file->FsContext2)->GrantedAccess, FILE_WRITE_DATA))) offset = Stream->Header.FileSize;
         if (offset.QuadPart == (LONGLONG)(LONG)FILE_USE_FILE_POINTER_POSITION) offset = file->CurrentByteOffset;
@@ -997,7 +1005,9 @@ static FLT_PREOP_CALLBACK_STATUS StagePreOperation(PFLT_CALLBACK_DATA Data,
             FILE_STANDARD_INFORMATION standard = {0};
             StageAcquire(&stream->Resource);
             __try {
-                if (allocation->AllocationSize.QuadPart < 0 || allocation->AllocationSize.QuadPart > STAGE_MAX_BYTES)
+                if (stream->ReadOnly || stream->RenameExchange != NULL)
+                    status = STATUS_ACCESS_DENIED;
+                else if (allocation->AllocationSize.QuadPart < 0 || allocation->AllocationSize.QuadPart > STAGE_MAX_BYTES)
                     status = STATUS_FILE_TOO_LARGE;
                 else {
                     status = STATUS_SUCCESS;
@@ -1057,7 +1067,8 @@ static FLT_PREOP_CALLBACK_STATUS StagePreOperation(PFLT_CALLBACK_DATA Data,
         break;
     case IRP_MJ_ACQUIRE_FOR_SECTION_SYNCHRONIZATION:
         StageAcquire(&stream->Resource);
-        if (stream->ReadOnly && Data->Iopb->Parameters.AcquireForSectionSynchronization.SyncType == SyncTypeCreateSection &&
+        if ((stream->ReadOnly || stream->RenameExchange != NULL) &&
+            Data->Iopb->Parameters.AcquireForSectionSynchronization.SyncType == SyncTypeCreateSection &&
             FlagOn(Data->Iopb->Parameters.AcquireForSectionSynchronization.PageProtection,
                 PAGE_READWRITE | PAGE_EXECUTE_READWRITE)) {
             StageRelease(&stream->Resource);
