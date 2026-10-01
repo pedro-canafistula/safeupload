@@ -1,6 +1,6 @@
 # Guia do frontend web SafeUpload
 
-Este guia documenta o painel web existente e sua refatoração estrutural. A maior parte da interface é demonstrativa. Auditoria exibe somente eventos recebidos pela API do agente, mantidos em memória; Endpoints ainda combina heartbeats com exemplos. Autenticação e persistência em banco não estão implementadas no servidor web. A inspeção pertence ao [agente desktop](../../agente/README.md).
+Este guia documenta o painel web existente e sua refatoração estrutural. A maior parte da interface ainda é demonstrativa. Auditoria e Endpoints já exibem somente dados recebidos pela API do agente, mantidos em memória; Endpoints também aplica filtros reais e liga cada máquina ao seu histórico de auditoria. Autenticação e persistência em banco não estão implementadas no servidor web. A inspeção pertence ao [agente desktop](../../agente/README.md).
 
 ## Conteúdo
 

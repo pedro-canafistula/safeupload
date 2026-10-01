@@ -60,7 +60,7 @@ def test_auditoria_conta_somente_recebidos_e_separa_sem_inspecao(client):
     assert "Nenhum evento recebido" not in page.text
 
 
-def test_auditoria_ordena_instantes_e_exibe_fuso_recebido(client):
+def test_auditoria_ordena_corretamente_instantes_com_offsets_distintos(client):
     events = [
         event_payload(fileName="antigo.txt", occurredAtUtc="2026-10-01T10:00:00Z"),
         event_payload(fileName="recente.txt", occurredAtUtc="2026-10-01T08:00:00-03:00"),
@@ -105,7 +105,7 @@ def test_parametros_antigos_nao_sugerem_filtro_aplicado(client):
 
     assert page.context["stats"]["total"] == 1
     assert "Consulta geral, somente leitura." in page.text
-    assert "Filtros, detalhes e exportação ainda não estão disponíveis." in page.text
+    assert "Filtros adicionais, detalhes e exportação ainda não estão disponíveis." in page.text
 
 
 @pytest.mark.parametrize("path", ["login", "dashboard", "endpoints", "relatorios", "categorias", "excecoes", "usuarios"])

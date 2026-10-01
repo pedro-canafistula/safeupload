@@ -5,21 +5,21 @@ Todas as rotas deste módulo são prefixadas com ``/admin`` e devem ser
 restritas ao perfil administrador (controle de acesso será adicionado
 quando a camada de segurança for implementada).
 
-A Auditoria consulta eventos recebidos pela camada de aplicação. As demais
-páginas usam contextos demonstrativos; Endpoints também inclui heartbeats.
+Auditoria e Endpoints consultam dados recebidos pela camada de aplicação.
+As demais páginas ainda usam contextos demonstrativos.
 """
 
-from fastapi import APIRouter, Request, status
+from fastapi import APIRouter, Query, Request, status
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from app.application import agent_service
 from app.presentation import templates
 from app.presentation.audit import build_audit_context
+from app.presentation.endpoints import build_endpoints_context
 from app.presentation.demo.admin_data import (
     build_allowlist_context,
     build_categories_context,
     build_dashboard_context,
-    build_endpoints_context,
     build_reports_context,
     build_users_context,
 )
@@ -83,9 +83,12 @@ async def dashboard(request: Request):
 # ---------------------------------------------------------------------------
 
 @router.get("/auditoria", response_class=HTMLResponse)
-async def audit_page(request: Request):
-    """Exibe os eventos recebidos, sem filtros ou paginação (HU-04)."""
-    context = build_audit_context(agent_service.list_audit_events())
+async def audit_page(request: Request, endpoint: str | None = None):
+    """Exibe os eventos recebidos, com filtro opcional por endpoint (HU-04)."""
+    context = build_audit_context(
+        agent_service.list_audit_events(endpoint_id=endpoint),
+        endpoint_id=endpoint,
+    )
     return templates.TemplateResponse(request, "admin/audit.html", context)
 
 
@@ -150,18 +153,21 @@ async def allowlist_page(request: Request):
 # ---------------------------------------------------------------------------
 
 @router.get("/endpoints", response_class=HTMLResponse)
-async def endpoints_page(request: Request):
-    """Exibe o inventário de endpoints com o agente SafeUpload instalado.
-
-    Permite monitorar o status de cada máquina (online, offline, agente
-    desatualizado), visualizar a versão da política aplicada e executar
-    ações administrativas: forçar atualização de política, extrair
-    relatório individual ou desativar o endpoint.
-
-    Os dados aqui são fictícios; serão substituídos pela leitura do
-    registro de endpoints quando a camada de infraestrutura existir.
-    """
-    context = build_endpoints_context()
+async def endpoints_page(
+    request: Request,
+    status_filter: str = Query("all", alias="status"),
+    os_filter: str = Query("all", alias="os"),
+    q: str = "",
+):
+    """Exibe e filtra os endpoints efetivamente registrados por heartbeat."""
+    context = build_endpoints_context(
+        agent_service.list_endpoints(),
+        agent_service.list_audit_events(),
+        now=agent_service.get_server_time_utc(),
+        status_filter=status_filter,
+        os_filter=os_filter,
+        query=q,
+    )
     return templates.TemplateResponse(request, "admin/endpoints.html", context)
 
 

@@ -8,6 +8,7 @@ app/
 └── presentation/
     ├── __init__.py
     ├── audit.py
+    ├── endpoints.py
     ├── routes/
     │   ├── admin.py
     │   └── agent.py
@@ -41,9 +42,9 @@ app/
         └── pages.css
 ```
 
-`main.py` cria a aplicação, monta `/static` e registra as rotas. `presentation/__init__.py` configura os templates Jinja2. `routes/admin.py` concentra as declarações HTTP e a seleção de templates. `demo/admin_data.py` concentra os seis contextos demonstrativos, incluindo Endpoints com heartbeats recebidos. `presentation/audit.py` monta a Auditoria somente a partir dos eventos entregues pela rota, sem consultar armazenamento ou acrescentar exemplos.
+`main.py` cria a aplicação, monta `/static` e registra as rotas. `presentation/__init__.py` configura os templates Jinja2. `routes/admin.py` concentra as declarações HTTP e a seleção de templates. `demo/admin_data.py` concentra os cinco contextos ainda demonstrativos. `presentation/audit.py` monta a Auditoria somente a partir dos eventos entregues pela rota, e `presentation/endpoints.py` monta o inventário somente a partir dos endpoints e eventos entregues pela camada de aplicação. Nenhum desses builders consulta o armazenamento diretamente.
 
-Fora da árvore de apresentação acima, `routes/agent.py` recebe heartbeats/eventos e entrega política por meio de `application/agent_service.py`. Os contratos ficam em `domain/schemas.py` e o armazenamento em `infrastructure/memory_store.py`, sem ligação com o banco. `routes/admin.py` consulta os eventos por `agent_service.list_audit_events()` e repassa a lista ao builder de Auditoria. O builder de Endpoints ainda lê o armazenamento diretamente.
+Fora da árvore de apresentação acima, `routes/agent.py` recebe heartbeats/eventos e entrega política por meio de `application/agent_service.py`. Os contratos ficam em `domain/schemas.py` e o armazenamento em `infrastructure/memory_store.py`, sem ligação com o banco. `routes/admin.py` consulta eventos e endpoints pelo serviço de aplicação e repassa os dados aos respectivos builders.
 
 Cada função `build_*_context()` cria uma nova estrutura em memória e não mantém cache ou estado global mutável. O login não possui builder próprio porque não recebe contexto de negócio. Essa separação é interna à camada de apresentação: `demo/` não é serviço de aplicação, repositório nem fonte persistente.
 
@@ -79,7 +80,7 @@ A terceira parte reorganizou o stylesheet monolítico. `styles.css` permanece co
 
 A quarta parte separou os dados demonstrativos das declarações de rota. `routes/admin.py` importa os builders de `demo/admin_data.py`, obtém o contexto e renderiza o mesmo template de antes. Foram criados `build_dashboard_context()`, `build_audit_context()`, `build_reports_context()`, `build_categories_context()`, `build_allowlist_context()`, `build_endpoints_context()` e `build_users_context()`. Os valores, URLs internas, filtros demonstrativos e campos consumidos pelos templates foram preservados.
 
-A evolução de Auditoria somente para leitura moveu seu builder para `presentation/audit.py`. Os exemplos dessa tela e seus controles sem execução foram removidos; as outras páginas preservam o comportamento existente.
+A evolução de Auditoria somente para leitura moveu seu builder para `presentation/audit.py`. Os exemplos dessa tela e seus controles sem execução foram removidos. A evolução seguinte fez o mesmo com Endpoints: o builder passou para `presentation/endpoints.py`, os exemplos e ações fictícias foram removidos e os filtros passaram a operar sobre os heartbeats recebidos.
 
 ## Convenções de manutenção
 
@@ -91,6 +92,6 @@ A evolução de Auditoria somente para leitura moveu seu builder para `presentat
 - Preserve a ordem dos `@import` de `styles.css`; alterações na ordem podem mudar a cascata visual.
 - Não carregue os arquivos CSS especializados diretamente pelos templates.
 - Não acrescente comportamento a controles demonstrativos durante uma refatoração.
-- Mantenha exemplos e montagem dos contextos na apresentação; `routes/admin.py` deve continuar focado no fluxo HTTP. A integração atual em `demo/admin_data.py` está descrita no [inventário das telas](telas-e-dados.md); mudanças de fonte devem ser delimitadas em uma entrega própria.
+- Mantenha exemplos e montagem dos contextos na apresentação; `routes/admin.py` deve continuar focado no fluxo HTTP. Páginas integradas a dados reais devem receber os dados pela camada de aplicação, sem acessar `memory_store` diretamente.
 - Builders de contexto devem retornar novas estruturas e não introduzir cache, persistência ou estado global mutável.
 - Alterações de contexto devem ser conferidas em todas as páginas consumidoras e registradas no guia de telas.

@@ -13,9 +13,15 @@
 </div>
 
 {% call notice("info") %}
+{% if endpoint_filter %}
+<strong>Auditoria do endpoint {{ endpoint_filter }}.</strong>
+A lista abaixo mostra somente os eventos recebidos desse endpoint.
+<a href="/admin/auditoria">Ver todos os endpoints</a>.
+{% else %}
 <strong>Consulta geral, somente leitura.</strong>
 Os registros são temporários e se perdem quando o servidor reinicia.
-Filtros, detalhes e exportação ainda não estão disponíveis.
+{% endif %}
+Filtros adicionais, detalhes e exportação ainda não estão disponíveis.
 {% endcall %}
 
 <div class="stat-strip">
@@ -45,7 +51,7 @@ Filtros, detalhes e exportação ainda não estão disponíveis.
     <header class="card-header card-header-tight">
         <div>
             <h2 class="card-title">Eventos de auditoria</h2>
-            <p class="card-subtitle">Todos os registros recebidos, do mais recente ao mais antigo. Datas no fuso informado pelo agente.</p>
+            <p class="card-subtitle">Todos os registros recebidos, do mais recente ao mais antigo. Datas conforme o timestamp recebido do agente.</p>
         </div>
     </header>
     <div class="card-body card-body-flush">
