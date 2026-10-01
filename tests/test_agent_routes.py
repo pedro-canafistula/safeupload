@@ -1,30 +1,6 @@
-"""Testes de fumaça para a API do agente desktop (HU-10).
-
-Cobrem o contrato ponta a ponta sem precisar do agente C# rodando: heartbeat
-não duplica endpoint, a política sai no formato esperado, e um evento
-enviado aparece tanto na resposta quanto na tela de auditoria (via
-``build_audit_context``, sem precisar renderizar HTML).
-"""
-
-import pytest
-from fastapi.testclient import TestClient
+"""Testes de fumaça para a API do agente desktop (HU-10)."""
 
 from app.infrastructure import memory_store
-from app.main import app
-
-
-@pytest.fixture(autouse=True)
-def _reset_store():
-    """Cada teste começa com o armazenamento em memória vazio."""
-    memory_store._endpoints.clear()
-    memory_store._audit_events.clear()
-    memory_store._overrides.clear()
-    yield
-
-
-@pytest.fixture()
-def client():
-    return TestClient(app)
 
 
 def test_heartbeat_upsert_nao_duplica(client):
@@ -98,10 +74,9 @@ def test_submit_events_aceita_lote_e_aparece_na_auditoria(client):
     assert response.status_code == 200
     assert response.json() == {"acceptedEvents": 1, "acceptedOverrides": 1}
 
-    # Import tardio: build_audit_context lê memory_store no momento da chamada.
-    from app.presentation.demo.admin_data import build_audit_context
-
-    context = build_audit_context()
+    page = client.get("/admin/auditoria")
+    assert page.status_code == 200
+    context = page.context
     real_row = next(row for row in context["events"] if row["filename"] == "relatorio.xlsx")
 
     assert real_row["result_kind"] == "blocked"
