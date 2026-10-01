@@ -41,6 +41,66 @@ public sealed class StagedTransferJournalTests : IDisposable
     }
 
     [Fact]
+    public async Task Prepared_rename_survives_restart_without_authorizing_either_destination()
+    {
+        var transfer = Transfer();
+        var journal = Journal();
+        await journal.CreateAsync(transfer, CancellationToken.None);
+        await journal.TransitionAsync(transfer.TransferId, TransferJournalState.Allocated,
+            TransferJournalState.Sealed, null, CancellationToken.None);
+        string renamed = Path.ChangeExtension(transfer.DestinationPath, ".renamed.txt");
+        await journal.PrepareRenameAsync(transfer.TransferId, 77, transfer.ProcessId,
+            renamed, true, CancellationToken.None);
+        var restarted = Journal();
+        await restarted.RetainInterruptedAsync(CancellationToken.None);
+        var pending = Assert.Single(await restarted.ReadPendingAsync(CancellationToken.None));
+        Assert.Equal(transfer, pending.Transfer);
+        Assert.Equal(new StagedRename(77, renamed, true), pending.PendingRename);
+        await Assert.ThrowsAsync<IOException>(() => restarted.TransitionAsync(transfer.TransferId,
+            TransferJournalState.Sealed, TransferJournalState.Inspecting, null, CancellationToken.None));
+        var committed = await restarted.CompleteRenameAsync(transfer.TransferId, 77,
+            transfer.ProcessId, renamed, true, CancellationToken.None);
+        Assert.Null(committed.PendingRename);
+        Assert.Equal(renamed, committed.Transfer.DestinationPath);
+        Assert.Equal(TransferJournalState.Sealed, committed.State);
+        Assert.Equal(committed, await Journal().CompleteRenameAsync(transfer.TransferId, 77,
+            transfer.ProcessId, renamed, true, CancellationToken.None));
+        await Assert.ThrowsAsync<IOException>(() => restarted.CompleteRenameAsync(transfer.TransferId,
+            77, transfer.ProcessId, renamed, false, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task Rename_commit_requires_the_prepared_transaction_owner_and_destination()
+    {
+        var transfer = Transfer();
+        var journal = Journal();
+        await journal.CreateAsync(transfer, CancellationToken.None);
+        string renamed = Path.ChangeExtension(transfer.DestinationPath, ".renamed.txt");
+        await Assert.ThrowsAsync<IOException>(() => journal.CompleteRenameAsync(transfer.TransferId,
+            77, transfer.ProcessId, renamed, true, CancellationToken.None));
+        await journal.PrepareRenameAsync(transfer.TransferId, 77, transfer.ProcessId,
+            renamed, false, CancellationToken.None);
+        await Assert.ThrowsAsync<IOException>(() => journal.CompleteRenameAsync(transfer.TransferId,
+            78, transfer.ProcessId, renamed, true, CancellationToken.None));
+        await Assert.ThrowsAsync<IOException>(() => journal.CompleteRenameAsync(transfer.TransferId,
+            77, transfer.ProcessId + 1, renamed, true, CancellationToken.None));
+        await Assert.ThrowsAsync<IOException>(() => journal.CompleteRenameAsync(transfer.TransferId,
+            77, transfer.ProcessId, renamed + ".other", true, CancellationToken.None));
+        await Assert.ThrowsAsync<IOException>(() => journal.PrepareRenameAsync(transfer.TransferId,
+            78, transfer.ProcessId, renamed, false, CancellationToken.None));
+        var aborted = await journal.CompleteRenameAsync(transfer.TransferId, 77,
+            transfer.ProcessId, renamed, false, CancellationToken.None);
+        Assert.Null(aborted.PendingRename);
+        Assert.Equal(transfer, aborted.Transfer);
+        Assert.False(aborted.SealedOnce);
+        Assert.Equal(TransferJournalState.Allocated, aborted.State);
+        Assert.Equal(aborted, await Journal().CompleteRenameAsync(transfer.TransferId, 77,
+            transfer.ProcessId, renamed, false, CancellationToken.None));
+        await Assert.ThrowsAsync<IOException>(() => journal.CompleteRenameAsync(transfer.TransferId,
+            77, transfer.ProcessId, renamed, true, CancellationToken.None));
+    }
+
+    [Fact]
     public async Task Duplicate_id_cannot_replace_previous_destination()
     {
         var transfer = Transfer();

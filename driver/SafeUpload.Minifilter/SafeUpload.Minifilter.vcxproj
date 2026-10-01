@@ -55,6 +55,9 @@
     <ClCompile Condition="'$(SafeUploadStagingPrototype)'=='true'">
       <PreprocessorDefinitions>%(PreprocessorDefinitions);POOL_NX_OPTIN=1;SAFEUPLOAD_STAGING_PROTOTYPE=1</PreprocessorDefinitions>
     </ClCompile>
+    <ClCompile Condition="'$(SafeUploadStagingPrototype)'=='true' and '$(SafeUploadStageVolumeProbe)'=='true'">
+      <PreprocessorDefinitions>%(PreprocessorDefinitions);POOL_NX_OPTIN=1;SAFEUPLOAD_STAGING_PROTOTYPE=1;SAFEUPLOAD_STAGE_VOLUME_CALLBACK_PROBE=1</PreprocessorDefinitions>
+    </ClCompile>
     <Link>
       <AdditionalDependencies>%(AdditionalDependencies);$(DDK_LIB_PATH)\fltMgr.lib</AdditionalDependencies>
     </Link>

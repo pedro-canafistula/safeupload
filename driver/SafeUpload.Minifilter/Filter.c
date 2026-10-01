@@ -85,6 +85,8 @@ typedef struct _SAFEUPLOAD_PROTOTYPE_MAPPING {
     UNICODE_STRING PreviousStageName;
     PSAFEUPLOAD_STAGE_HANDLE_NAME HandleName;
     PSAFEUPLOAD_STAGE_HANDLE_NAME PreviousHandleName;
+    PSAFEUPLOAD_EXCHANGE RenameExchange;
+    BOOLEAN RenameInFlight;
 } SAFEUPLOAD_PROTOTYPE_MAPPING, *PSAFEUPLOAD_PROTOTYPE_MAPPING;
 
 typedef struct _SAFEUPLOAD_PROTOTYPE_OLD_NAME {
@@ -114,13 +116,15 @@ static PSAFEUPLOAD_STAGE_HANDLE_NAME SafeUploadNewStageHandleName(
     _In_ PUNICODE_STRING Original, _In_ USHORT VolumeLength)
 {
     PSAFEUPLOAD_STAGE_HANDLE_NAME name;
-    if (Original->Length <= VolumeLength ||
+    if (Original->Length <= VolumeLength || VolumeLength > sizeof( name->VolumeName ) ||
         Original->Length - VolumeLength > sizeof( name->Name )) return NULL;
     name = ExAllocatePool2( POOL_FLAG_NON_PAGED, sizeof( *name ), SAFEUPLOAD_POOL_TAG );
     if (name != NULL) {
         name->References = 1;
         name->Length = Original->Length - VolumeLength;
+        name->VolumeLength = VolumeLength;
         RtlCopyMemory( name->Name, (PUCHAR) Original->Buffer + VolumeLength, name->Length );
+        RtlCopyMemory( name->VolumeName, Original->Buffer, VolumeLength );
     }
     return name;
 }
@@ -570,6 +574,10 @@ SafeUploadPrototypeRename (
     exchange->Request.ImageNameLength = 32 * sizeof( WCHAR );
     RtlCopyMemory( exchange->Request.ImageName, mapping->StageName.Buffer + basename,
                    exchange->Request.ImageNameLength );
+    FltAcquirePushLockExclusive( &SafeUploadPrototypeMappingLock );
+    mapping->RenameExchange = exchange;
+    mapping->RenameInFlight = TRUE;
+    FltReleasePushLock( &SafeUploadPrototypeMappingLock );
     phase = 8;
     status = SafeUploadRequestVerdict( exchange, &verdict, &answered );
     if (status != STATUS_SUCCESS || !answered || verdict != SAFEUPLOAD_VERDICT_ALLOW) {
@@ -593,7 +601,22 @@ SafeUploadPrototypeRename (
     newName = NULL;
     InsertTailList( &mapping->OldNames, &oldName->Link );
     oldName = NULL;
-    mapping->Rotating = FALSE;
+    FltReleasePushLock( &SafeUploadPrototypeMappingLock );
+    // The virtual namespace has changed. Durably commit that exact transaction
+    // before releasing the mapping for new opens or final-writer sealing.
+    exchange->Request.Operation = SAFEUPLOAD_OPERATION_STAGE_RENAME_COMMIT;
+    phase = 9;
+    status = SafeUploadRequestVerdict( exchange, &verdict, &answered );
+    FltAcquirePushLockExclusive( &SafeUploadPrototypeMappingLock );
+    if (status == STATUS_SUCCESS && answered && verdict == SAFEUPLOAD_VERDICT_ALLOW) {
+        mapping->RenameExchange = NULL;
+        mapping->Rotating = FALSE;
+    } else {
+        // A reply can be lost after the service committed. Keep the new name
+        // and retry the idempotent commit; never seal through this uncertainty.
+        exchange = NULL;
+    }
+    mapping->RenameInFlight = FALSE;
     FltReleasePushLock( &SafeUploadPrototypeMappingLock );
     status = STATUS_SUCCESS;
 Exit:
@@ -615,7 +638,15 @@ Exit:
     }
     if (mapping != NULL) {
         FltAcquirePushLockExclusive( &SafeUploadPrototypeMappingLock );
-        mapping->Rotating = FALSE;
+        if (!NT_SUCCESS( status ) && mapping->RenameExchange != NULL) {
+            mapping->RenameExchange->Request.Operation = SAFEUPLOAD_OPERATION_STAGE_RENAME_ABORT;
+            // Prepare may have reached durable storage before a failed reply.
+            // The worker resolves the abort before another namespace change.
+            exchange = NULL;
+            mapping->RenameInFlight = FALSE;
+        } else if (mapping->RenameExchange == NULL) {
+            mapping->Rotating = FALSE;
+        }
         FltReleasePushLock( &SafeUploadPrototypeMappingLock );
         SafeUploadPrototypeFreeMapping( mapping );
     }
@@ -746,9 +777,19 @@ SafeUploadPrototypeQueryName (
     NTSTATUS status;
 
     *CompletionContext = NULL;
+#if defined(SAFEUPLOAD_STAGE_VOLUME_CALLBACK_PROBE)
+    // Diagnostic build only: if the I/O manager sends class 58 through this
+    // minifilter, the native caller must observe this sentinel failure.
+    if (informationClass == FileVolumeNameInformation) {
+        Data->IoStatus.Status = STATUS_INVALID_DEVICE_REQUEST;
+        Data->IoStatus.Information = 0;
+        return FLT_PREOP_COMPLETE;
+    }
+#endif
     if ((informationClass != FileNameInformation &&
          informationClass != FileNormalizedNameInformation &&
          informationClass != FileAllInformation &&
+         informationClass != FileVolumeNameInformation &&
          informationClass != FileAlternateNameInformation) ||
         (SafeUploadData.ClientPort != NULL &&
          FltGetRequestorProcessId( Data ) == SafeUploadData.InspectorProcessId)) {
@@ -762,10 +803,12 @@ SafeUploadPrototypeQueryName (
         if (NT_SUCCESS( status )) {
             FltAcquirePushLockShared( &SafeUploadPrototypeMappingLock );
             if (context->StageName != NULL) {
-                nameLength = context->StageName->Length;
+                BOOLEAN volume = informationClass == FileVolumeNameInformation;
+                nameLength = volume ? context->StageName->VolumeLength : context->StageName->Length;
                 virtualName = ExAllocatePool2( POOL_FLAG_PAGED, nameLength, SAFEUPLOAD_POOL_TAG );
                 if (virtualName != NULL)
-                    RtlCopyMemory( virtualName, context->StageName->Name, nameLength );
+                    RtlCopyMemory( virtualName, volume ? context->StageName->VolumeName :
+                        context->StageName->Name, nameLength );
             }
             FltReleasePushLock( &SafeUploadPrototypeMappingLock );
             FltReleaseContext( context );
@@ -782,11 +825,13 @@ SafeUploadPrototypeQueryName (
         PSAFEUPLOAD_PROTOTYPE_MAPPING mapping = CONTAINING_RECORD(
             link, SAFEUPLOAD_PROTOTYPE_MAPPING, Link );
         if (RtlEqualUnicodeString( &mapping->StageName, &opened->Name, TRUE )) {
-            nameLength = mapping->OriginalName.Length - mapping->OriginalVolumeLength;
+            BOOLEAN volume = informationClass == FileVolumeNameInformation;
+            nameLength = volume ? mapping->OriginalVolumeLength :
+                mapping->OriginalName.Length - mapping->OriginalVolumeLength;
             virtualName = ExAllocatePool2( POOL_FLAG_PAGED, nameLength, SAFEUPLOAD_POOL_TAG );
             if (virtualName != NULL) {
                 RtlCopyMemory( virtualName,
-                    (PUCHAR) mapping->OriginalName.Buffer + mapping->OriginalVolumeLength,
+                    (PUCHAR) mapping->OriginalName.Buffer + (volume ? 0 : mapping->OriginalVolumeLength),
                     nameLength );
             }
             break;
@@ -2054,6 +2099,8 @@ SafeUploadPrototypeFreeMapping (
     }
     SafeUploadReleaseStageHandleName( Mapping->HandleName );
     SafeUploadReleaseStageHandleName( Mapping->PreviousHandleName );
+    if (Mapping->RenameExchange != NULL)
+        ExFreePoolWithTag( Mapping->RenameExchange, SAFEUPLOAD_POOL_TAG );
     while (!IsListEmpty( &Mapping->OldNames )) {
         PLIST_ENTRY link = RemoveHeadList( &Mapping->OldNames );
         ExFreePoolWithTag( CONTAINING_RECORD( link,
@@ -2173,6 +2220,39 @@ SafeUploadPrototypeMappedSealWorker (
                                    Executive, KernelMode, FALSE,
                                    &interval ) == STATUS_SUCCESS) {
             break;
+        }
+
+        {
+            PSAFEUPLOAD_PROTOTYPE_MAPPING pending = NULL;
+            PSAFEUPLOAD_EXCHANGE exchange = NULL;
+            UINT32 verdict;
+            BOOLEAN answered;
+            FltAcquirePushLockExclusive( &SafeUploadPrototypeMappingLock );
+            for (link = SafeUploadPrototypeMappings.Flink;
+                 link != &SafeUploadPrototypeMappings; link = link->Flink) {
+                PSAFEUPLOAD_PROTOTYPE_MAPPING mapping = CONTAINING_RECORD(
+                    link, SAFEUPLOAD_PROTOTYPE_MAPPING, Link );
+                if (mapping->RenameExchange != NULL && !mapping->RenameInFlight) {
+                    pending = mapping;
+                    exchange = mapping->RenameExchange;
+                    mapping->RenameInFlight = TRUE;
+                    InterlockedIncrement( &mapping->References );
+                    break;
+                }
+            }
+            FltReleasePushLock( &SafeUploadPrototypeMappingLock );
+            if (pending != NULL) {
+                status = SafeUploadRequestVerdict( exchange, &verdict, &answered );
+                FltAcquirePushLockExclusive( &SafeUploadPrototypeMappingLock );
+                if (status == STATUS_SUCCESS && answered && verdict == SAFEUPLOAD_VERDICT_ALLOW) {
+                    pending->RenameExchange = NULL;
+                    pending->Rotating = FALSE;
+                } else exchange = NULL;
+                pending->RenameInFlight = FALSE;
+                FltReleasePushLock( &SafeUploadPrototypeMappingLock );
+                if (exchange != NULL) ExFreePoolWithTag( exchange, SAFEUPLOAD_POOL_TAG );
+                SafeUploadPrototypeFreeMapping( pending );
+            }
         }
 
         stageName.Buffer = stageBuffer;

@@ -152,6 +152,8 @@ public sealed class StagedTransferJournal
         try
         {
             var current = await ReadAsync(transferId, cancellationToken).ConfigureAwait(false);
+            if (current.PendingRename is not null)
+                throw new IOException("A pending namespace transaction holds this version locally.");
             if (expectedTransfer is not null && current.Transfer != expectedTransfer)
                 throw new InvalidOperationException("The staged namespace changed before inspection.");
             if (current.State != expected)
@@ -192,24 +194,69 @@ public sealed class StagedTransferJournal
         }
     }
 
-    public async Task<TransferJournalEntry> RetargetAsync(Guid id, int ownerProcessId,
-        string destination, bool sealedVersion, CancellationToken token)
+    public async Task<TransferJournalEntry> PrepareRenameAsync(Guid id, ulong transactionId,
+        int ownerProcessId, string destination, bool sealedVersion, CancellationToken token)
     {
+        if (transactionId == 0) throw new ArgumentOutOfRangeException(nameof(transactionId));
+        destination = Path.GetFullPath(destination);
         await _gate.WaitAsync(token).ConfigureAwait(false);
         try
         {
             var current = await ReadAsync(id, token).ConfigureAwait(false);
-            if (current.Transfer.ProcessId != ownerProcessId ||
+            if (current.Transfer.ProcessId != ownerProcessId)
+                throw new IOException("The staged version belongs to another writer.");
+            var pending = new StagedRename(transactionId, destination, sealedVersion);
+            if (current.PendingRename == pending) return current;
+            if (current.PendingRename is not null || current.LastRenameTransactionId == transactionId ||
                 current.State is TransferJournalState.Inspecting or
                     TransferJournalState.Approved or TransferJournalState.Publishing)
-                throw new IOException("The staged version is busy or belongs to another writer.");
+                throw new IOException("The staged version is busy.");
             if (sealedVersion != current.SealedOnce)
                 throw new IOException("The kernel and journal disagree about the version seal.");
             var updated = current with
             {
-                Transfer = current.Transfer with { DestinationPath = Path.GetFullPath(destination) },
-                State = sealedVersion ? TransferJournalState.Sealed : current.State,
-                Sha256Hex = null,
+                PendingRename = pending,
+                UpdatedAtUtc = DateTimeOffset.UtcNow
+            };
+            await ReplaceAsync(ManifestPath(id), updated, token).ConfigureAwait(false);
+            return updated;
+        }
+        finally { _gate.Release(); }
+    }
+
+    public async Task<TransferJournalEntry> CompleteRenameAsync(Guid id, ulong transactionId,
+        int ownerProcessId, string destination, bool commit, CancellationToken token)
+    {
+        if (transactionId == 0) throw new ArgumentOutOfRangeException(nameof(transactionId));
+        destination = Path.GetFullPath(destination);
+        await _gate.WaitAsync(token).ConfigureAwait(false);
+        try
+        {
+            var current = await ReadAsync(id, token).ConfigureAwait(false);
+            if (current.Transfer.ProcessId != ownerProcessId)
+                throw new IOException("The namespace transaction belongs to another writer.");
+            if (current.LastRenameTransactionId == transactionId &&
+                current.LastRenameDestination == destination && current.LastRenameCommitted == commit)
+                return current; // Reply loss must not retarget or inspect twice.
+            var pending = current.PendingRename;
+            if (pending is null)
+            {
+                // An abort after a prepare was refused is a safe no-op. A
+                // commit never invents a prepare or authorizes a new path.
+                if (!commit && current.LastRenameTransactionId != transactionId) return current;
+                throw new IOException("No matching prepared namespace transaction.");
+            }
+            if (pending.TransactionId != transactionId || pending.DestinationPath != destination)
+                throw new IOException("The namespace transaction identity or destination changed.");
+            var updated = current with
+            {
+                Transfer = commit ? current.Transfer with { DestinationPath = destination } : current.Transfer,
+                State = commit && pending.SealedVersion ? TransferJournalState.Sealed : current.State,
+                Sha256Hex = commit ? null : current.Sha256Hex,
+                PendingRename = null,
+                LastRenameTransactionId = transactionId,
+                LastRenameDestination = destination,
+                LastRenameCommitted = commit,
                 UpdatedAtUtc = DateTimeOffset.UtcNow
             };
             await ReplaceAsync(ManifestPath(id), updated, token).ConfigureAwait(false);
@@ -231,7 +278,7 @@ public sealed class StagedTransferJournal
             }
 
             var entry = await ReadAsync(id, cancellationToken).ConfigureAwait(false);
-            if (entry.State != TransferJournalState.Released)
+            if (entry.PendingRename is not null || entry.State != TransferJournalState.Released)
             {
                 entries.Add(entry);
             }
@@ -304,6 +351,10 @@ public sealed class StagedTransferJournal
     {
         foreach (var entry in await ReadPendingAsync(cancellationToken).ConfigureAwait(false))
         {
+            // A surviving driver retries its exact commit/abort. After driver
+            // loss there is no evidence of which virtual rename completed:
+            // retain both names in the manifest and never infer approval.
+            if (entry.PendingRename is not null) continue;
             if (entry.State == TransferJournalState.Allocated)
             {
                 await TransitionAsync(entry.Transfer.TransferId,
@@ -452,7 +503,13 @@ public sealed record TransferJournalEntry(
     DateTimeOffset UpdatedAtUtc)
 {
     public bool SealedOnce { get; init; }
+    public StagedRename? PendingRename { get; init; }
+    public ulong LastRenameTransactionId { get; init; }
+    public string? LastRenameDestination { get; init; }
+    public bool LastRenameCommitted { get; init; }
 }
+
+public sealed record StagedRename(ulong TransactionId, string DestinationPath, bool SealedVersion);
 
 public enum TransferJournalState
 {

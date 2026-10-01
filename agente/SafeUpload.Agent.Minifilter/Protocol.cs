@@ -24,7 +24,7 @@ public static class Contract
     /// mechanism that turns an incompatible pair into a clean refusal
     /// instead of a misread structure.
     /// </summary>
-    public const uint Version = 17;
+    public const uint Version = 18;
 
     public const int MaxPathChars = 512;
     public const int MaxImageNameChars = 64;
@@ -114,6 +114,8 @@ public static class Operation
     public const uint StageSeal = 4;
     public const uint StageRename = 5;
     public const uint StageDiagnostic = 6;
+    public const uint StageRenameCommit = 7;
+    public const uint StageRenameAbort = 8;
 
     /// <summary>
     /// Kept for contract completeness. The driver no longer registers

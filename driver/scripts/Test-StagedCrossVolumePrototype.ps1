@@ -4,6 +4,7 @@ NTFS VHDX at S:, writes to S:\SafeUpload\Escopo Monitorado, and verifies the
 unapproved bytes are held on C:. Always unloads the prototype, restores the
 known installed driver, and detaches the VHDX. Requires an elevated session.
 #>
+param([switch] $NativeIdentityOnly)
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'StagedTestAgent.ps1')
 $installed = 'C:\Windows\System32\drivers\SafeUpload.sys'
@@ -39,6 +40,68 @@ $pendingStagePath = $null
 $pendingManifestPath = $null
 $extraStagePaths = @()
 $extraManifestPaths = @()
+$nativeIdentityFailure = $null
+
+Add-Type -TypeDefinition @'
+using System;
+using System.IO;
+using System.Runtime.InteropServices;
+using System.Text;
+using Microsoft.Win32.SafeHandles;
+public static class SafeUploadCrossVolumeProbe {
+    [DllImport("kernel32.dll", CharSet=CharSet.Unicode, SetLastError=true)]
+    static extern uint GetFinalPathNameByHandle(SafeFileHandle handle, StringBuilder path,
+        uint length, uint flags);
+    [DllImport("kernel32.dll", CharSet=CharSet.Unicode, SetLastError=true)]
+    static extern SafeFileHandle CreateFile(string path, uint access, uint share,
+        IntPtr security, uint disposition, uint flags, IntPtr template);
+    [DllImport("kernel32.dll", SetLastError=true)]
+    static extern bool SetFileInformationByHandle(SafeFileHandle handle, int cls,
+        IntPtr info, uint length);
+    [StructLayout(LayoutKind.Sequential)]
+    struct IoStatus { public IntPtr Status; public UIntPtr Information; }
+    [DllImport("ntdll.dll")]
+    static extern int NtQueryInformationFile(SafeFileHandle handle, out IoStatus status,
+        IntPtr info, uint length, int cls);
+    public static string FinalPath(string path) {
+        using (var file=File.OpenRead(path)) {
+            var result=new StringBuilder(2048);
+            if (GetFinalPathNameByHandle(file.SafeFileHandle,result,2048,0)==0)
+                throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
+            return result.ToString();
+        }
+    }
+    public static int Rename(string source, string destination) {
+        using (var file=CreateFile(source,0x10000,7,IntPtr.Zero,3,0x80,IntPtr.Zero)) {
+            if(file.IsInvalid) return Marshal.GetLastWin32Error();
+            byte[] name=Encoding.Unicode.GetBytes(destination);
+            IntPtr info=Marshal.AllocHGlobal(20+name.Length);
+            try {
+                Marshal.Copy(new byte[20],0,info,20);
+                Marshal.WriteInt32(info,16,name.Length);
+                Marshal.Copy(name,0,IntPtr.Add(info,20),name.Length);
+                return SetFileInformationByHandle(file,3,info,(uint)(20+name.Length))
+                    ? 0 : Marshal.GetLastWin32Error();
+            }
+            finally { Marshal.FreeHGlobal(info); }
+        }
+    }
+    public static string VolumeName(string path) {
+        using (var file=File.OpenRead(path)) {
+            IntPtr buffer=Marshal.AllocHGlobal(4096);
+            try {
+                IoStatus io;
+                int status=NtQueryInformationFile(file.SafeFileHandle,out io,buffer,4096,58);
+                if(status!=0) return "status:0x"+status.ToString("X8");
+                int length=Marshal.ReadInt32(buffer);
+                if(length<0 || length>4092 || (length&1)!=0) throw new Exception("Invalid volume name length");
+                return Marshal.PtrToStringUni(IntPtr.Add(buffer,4),length/2);
+            }
+            finally { Marshal.FreeHGlobal(buffer); }
+        }
+    }
+}
+'@
 
 if ((Get-FileHash $installed -Algorithm SHA256).Hash -ne $expectedOriginal) {
     throw 'Installed driver is not the known original.'
@@ -74,6 +137,12 @@ try {
     if (-not (Test-Path S:\)) { throw 'S: did not appear.' }
     New-Item -ItemType Directory -Force -Path @(
         $targetDir, 'C:\SafeUpload\Escopo Monitorado') | Out-Null
+    $identityFixture = Join-Path $targetDir ('identity-' + [guid]::NewGuid().ToString('N') + '.txt')
+    try {
+        [IO.File]::WriteAllText($identityFixture, 'volume identity fixture')
+        $expectedNativeVolume = [SafeUploadCrossVolumeProbe]::VolumeName($identityFixture)
+    }
+    finally { Remove-Item -LiteralPath $identityFixture -Force -ErrorAction SilentlyContinue }
 
     New-Item -ItemType Directory -Force -Path $serviceDir | Out-Null
     & tar.exe -xf $serviceZip -C $serviceDir
@@ -111,6 +180,14 @@ try {
     if (-not $saved) { throw 'Service never completed a stage allocation.' }
 
     $writerRead = [IO.File]::ReadAllText($target)
+    $nativePath = [SafeUploadCrossVolumeProbe]::FinalPath($target)
+    $nativeVolume = [SafeUploadCrossVolumeProbe]::VolumeName($target)
+    Write-Output "WriterNativeFinalPath=$nativePath"
+    Write-Output "WriterNativeVolumeName=$nativeVolume"
+    Write-Output "DestinationNativeVolumeName=$expectedNativeVolume"
+    if ($nativePath -ine ('\\?\' + $target)) {
+        $nativeIdentityFailure = "Cross-volume handle returned backing-volume identity: $nativePath"
+    }
     $otherProcessExists = & powershell.exe -NoProfile -Command "[IO.File]::Exists('$target')"
     $entries = @(Get-ChildItem -LiteralPath $journalDir -Filter '*.json' |
         ForEach-Object { Get-Content -LiteralPath $_.FullName -Raw | ConvertFrom-Json } |
@@ -133,6 +210,22 @@ try {
     Write-Output "OtherProcessDirectoryEntryCount=$observerEntryCount"
     Write-Output "DirectStageReadDenied=$directStageReadDenied"
 
+    if ($NativeIdentityOnly) {
+        $inspected = $false
+        for ($attempt=0; $attempt -lt 40 -and -not $inspected; $attempt++) {
+            Start-Sleep -Milliseconds 250
+            $inspected = (Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json).State -eq 6
+        }
+        if (-not $inspected) { throw 'The native identity probe could not finish inspection.' }
+        $nativeRenameError = [SafeUploadCrossVolumeProbe]::Rename($target, $renameTarget)
+        Write-Output "NativeCrossVolumeRenameWin32Error=$nativeRenameError"
+        if ($nativeIdentityFailure -or $nativeRenameError -ne 0) {
+            throw "$nativeIdentityFailure; native rename after completed inspection: Win32 error $nativeRenameError"
+        }
+        Write-Output 'NativeCrossVolumeIdentityAndRename=True'
+        return
+    }
+
     $renameBlocked = $false
     try { Move-Item -LiteralPath $target -Destination $renameTarget -ErrorAction Stop }
     catch { $renameBlocked = $true }
@@ -152,6 +245,13 @@ try {
         $blocked = $current.State -eq 6
     }
     Write-Output "SensitiveTransferBlocked=$blocked"
+    if ($blocked -and $renameBlocked) {
+        $nativeRenameError = [SafeUploadCrossVolumeProbe]::Rename($target, $renameTarget)
+        Write-Output "NativeCrossVolumeRenameWin32Error=$nativeRenameError"
+        if ($nativeRenameError -ne 0) {
+            $nativeIdentityFailure += "; native rename failed after inspection: Win32 error $nativeRenameError"
+        }
+    }
 
     if ($writerRead -ne 'CPF: 529.982.247-25' -or
         $otherProcessExists -ne 'False' -or
@@ -374,6 +474,16 @@ finally {
         throw 'Original driver restoration failed.'
     }
     try {
+        if (Test-Path $journalDir) {
+            Get-ChildItem -LiteralPath $journalDir -Filter '*.json' | ForEach-Object {
+                $entry = Get-Content -LiteralPath $_.FullName -Raw | ConvertFrom-Json
+                if (@($target,$renameTarget,$pendingTarget,$concurrentTarget,$mappedTarget) -contains
+                    $entry.Transfer.DestinationPath) {
+                    $extraStagePaths += $entry.Transfer.StagePath
+                    $extraManifestPaths += $_.FullName
+                }
+            }
+        }
         Remove-StagedTestFiles (@($stagePath,$manifestPath,$pendingStagePath,$pendingManifestPath) +
             $extraStagePaths + $extraManifestPaths)
         Remove-Item -LiteralPath $hardLinkTarget -Force -ErrorAction SilentlyContinue
@@ -389,3 +499,4 @@ finally {
         throw 'The private backing stage was exposed after unload.'
     }
 }
+if ($nativeIdentityFailure) { throw $nativeIdentityFailure }

@@ -207,7 +207,8 @@ public sealed class MinifilterInterceptor : BackgroundService
                     {
                         verdict = SealStage(request);
                     }
-                    else if (request.Operation == Operation.StageRename)
+                    else if (request.Operation is Operation.StageRename or
+                             Operation.StageRenameCommit or Operation.StageRenameAbort)
                     {
                         verdict = RetargetStage(request);
                     }
@@ -270,12 +271,20 @@ public sealed class MinifilterInterceptor : BackgroundService
             string? destination = NtPathTranslator.ToDosPath(request.GetPath());
             if (destination is null) return PortVerdict.Deny;
             var entry = _stageJournal.ReadAsync(id, CancellationToken.None).GetAwaiter().GetResult();
+            if (request.Operation != Operation.StageRename)
+            {
+                _stageJournal.CompleteRenameAsync(id, request.RequestId,
+                    checked((int)request.RequestorProcessId), destination,
+                    request.Operation == Operation.StageRenameCommit, CancellationToken.None)
+                    .GetAwaiter().GetResult();
+                return PortVerdict.Allow;
+            }
             var policy = _policyStore.LoadAsync(CancellationToken.None).GetAwaiter().GetResult();
             var operation = new FileOperation(destination, Path.GetFileName(destination),
                 Path.GetExtension(destination), 0, DateTime.MinValue, entry.Transfer.ProcessName,
                 entry.Transfer.ProcessId, destination, entry.Transfer.Destination);
             if (!policy.IsMonitoredDestination(operation)) return PortVerdict.Deny;
-            _stageJournal.RetargetAsync(id, checked((int)request.RequestorProcessId),
+            _stageJournal.PrepareRenameAsync(id, request.RequestId, checked((int)request.RequestorProcessId),
                 destination, request.Reserved != 0, CancellationToken.None).GetAwaiter().GetResult();
             return PortVerdict.Allow;
         }
@@ -411,7 +420,7 @@ public sealed class MinifilterInterceptor : BackgroundService
             foreach (var entry in await _stageJournal.ReadPendingAsync(cancellationToken)
                          .ConfigureAwait(false))
             {
-                if (entry.State != TransferJournalState.Sealed) continue;
+                if (entry.PendingRename is not null || entry.State != TransferJournalState.Sealed) continue;
 
                 try
                 {
@@ -429,11 +438,22 @@ public sealed class MinifilterInterceptor : BackgroundService
                     var current = await _stageJournal.ReadAsync(
                         entry.Transfer.TransferId, cancellationToken).ConfigureAwait(false);
                     if (current.State == TransferJournalState.Sealed &&
+                        current.PendingRename is null &&
                         current.Transfer == entry.Transfer)
                     {
-                        await _stageJournal.TransitionAsync(entry.Transfer.TransferId,
-                            TransferJournalState.Sealed, TransferJournalState.Retained,
-                            null, cancellationToken, entry.Transfer).ConfigureAwait(false);
+                        try
+                        {
+                            await _stageJournal.TransitionAsync(entry.Transfer.TransferId,
+                                TransferJournalState.Sealed, TransferJournalState.Retained,
+                                null, cancellationToken, entry.Transfer).ConfigureAwait(false);
+                        }
+                        catch (Exception changed) when (changed is IOException or InvalidOperationException)
+                        {
+                            // A rename can prepare after the read above. Its
+                            // durable hold wins; keep the publisher loop alive.
+                            _logger.LogDebug(changed, "Transferencia mudou antes da retencao {TransferId}.",
+                                entry.Transfer.TransferId);
+                        }
                     }
                 }
             }

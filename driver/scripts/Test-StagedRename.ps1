@@ -229,6 +229,7 @@ try {
 finally {
     if ($heldVersion) { $heldVersion.Dispose() }
     Stop-StagedTestAgent $agent
+    Save-StagedVerifierEvidence
     if ($loaded) { & fltmc.exe unload SafeUpload | Out-Host }
     if ($replaced) { Copy-Item $backup $installed -Force }
     if ((Get-FileHash $installed -Algorithm SHA256).Hash -ne $expected) {

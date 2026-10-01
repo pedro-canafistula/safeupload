@@ -316,6 +316,74 @@ USB/UNC/sync, user justification UI/pipe, crash/reboot and Verifier coverage
 remain unverified or unfinished. The current rename journal retarget is still
 single phase and needs timeout/crash-safe commit handling.
 
+### Resumed implementation and native compatibility blocker (1 October 2026)
+
+Protocol 18 replaces the single-phase retarget with durable prepare and
+commit/abort. Preparation records both the original transfer and pending
+destination without authorizing either for publication. Journal transitions
+and the publisher reject a pending rename. The driver changes its virtual
+namespace, then commits that exact request ID and destination; it holds the
+mapping against later writes and sealing until commit acknowledgement. Its
+worker retries a lost commit or abort after reconnection. Completion is
+idempotent, rejects a different owner, transaction or destination, and never
+invents a prepare. Recovery preserves an unresolved rename instead of assuming
+it completed. After driver loss, that unresolved version stays local pending
+an explicit recovery path; automatic namespace reconstruction is unfinished.
+
+The full Windows agent suite passed 216 tests, including pending-rename
+restart, replay, abort, wrong-owner/destination, and publication-before-commit
+cases. Both WDK build modes passed; the application build had zero warnings
+and errors. The native local rename/version tests passed. The publisher loop
+also keeps running if a rename races its attempt to mark a failed seal retained.
+
+`Test-StagedDirectory.ps1` passed native classes 1, 2, 3, 12, 37, 38, 60 and 63:
+single-entry pagination, restart with the original wildcard captured, initial
+overflow, later too-small buffers without consuming an entry, metadata sizes,
+and an observer seeing only the two approved fixtures. Windows rejects buffers
+smaller than the fixed structure before the filter, so overflow tests use a
+valid fixed structure plus a partial filename. Cancellation still needs a
+dedicated asynchronous probe.
+
+`Test-StagedVerifier.ps1` passed local rename, native directory, and private
+storage tests with volatile flags `0x13B`: Special Pool, Force IRQL, Pool
+Tracking, I/O Verification, Deadlock Detection and Security Checks. It saved
+live statistics with `SafeUpload.sys` loaded, then removed/reset the volatile
+settings. These are limited Verifier runs, not full boot-time DDI/filter
+verification. The statistics are in `driver/evidence/2026-10-01/`.
+
+**The full cross-volume transparency gate now fails, despite the byte-isolation
+and publication cases passing.** An `S:` staged handle returns a `C:` final
+path and backing volume from native queries. `SetFileInformationByHandle`
+rename to another name on the same original `S:` volume returns Win32 error
+17 (`ERROR_NOT_SAME_DEVICE`), even after inspection finishes. A PowerShell
+move succeeding does not establish native rename support; its fallback can
+allocate and copy another staged version.
+
+Original-volume storage plus `FileVolumeNameInformation` virtualization did
+not change the native result. A separate diagnostic build made every class-58
+query seen by the minifilter return `STATUS_INVALID_DEVICE_REQUEST`; the native
+query still succeeded and returned the backing volume. That path bypasses this
+callback. Merely rewriting file-name query buffers cannot preserve the file
+object's original volume identity across reparsing.
+
+Reproduce with `Test-StagedCrossVolumePrototype.ps1 -NativeIdentityOnly`.
+Selected exact output, driver hashes and attempted fixes are recorded in
+`driver/evidence/2026-10-01/native-cross-volume-identity.txt`. The optional
+`SafeUploadStageVolumeProbe=true` WDK property enables only the diagnostic
+sentinel and must not be enabled in ordinary feature tests. The normal feature
+driver for these results is
+`F5E777D7DB9E7DF9470240D58CE05BB041F03D64DC613CCD2E1DBE2F394C001A`.
+
+This is a compatibility blocker in the current cross-volume reparse data path.
+Completing the intended transparent design requires preserving the original
+volume identity through a different file-object/data path, rather than relying
+on backing-file handles for native operations. Existing-target replacement,
+hard-link/alias virtualization, destination-version ordering, notifications,
+real USB/UNC/sync/Explorer/Office workflows and full crash/reboot coverage also
+remain unfinished. Process taint is still required; staging remains disabled
+in normal builds. Every experiment restored the original installed driver and
+detached its disposable VHDX.
+
 1. Add a service-owned transfer journal and per-user staging directory. The
    driver requests a stage mapping for a specific destination, process, and
    create disposition. A missing service or stage allocation error denies the

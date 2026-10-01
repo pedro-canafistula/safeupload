@@ -156,6 +156,7 @@ try {
     if (-not $blocked) { throw 'Sensitive private stage was not inspected and blocked.' }
     Stop-StagedTestAgent $agent
     $agent = $null
+    Save-StagedVerifierEvidence
     & fltmc.exe unload SafeUpload | Out-Host
     if ($LASTEXITCODE -ne 0) { throw 'Prototype unload failed.' }
     $loaded = $false

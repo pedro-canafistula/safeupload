@@ -1,0 +1,47 @@
+Recorded VM observations from the 1 October 2026 investigation.
+These are selected output fields, not a reconstructed full console transcript.
+
+Normal protocol-18 feature driver:
+F5E777D7DB9E7DF9470240D58CE05BB041F03D64DC613CCD2E1DBE2F394C001A
+
+Test-StagedCrossVolumePrototype.ps1 -NativeIdentityOnly:
+Requested path: S:\SafeUpload\Escopo Monitorado\safeupload-crossvolume-d522f78a42944208916ad8dd4e3dcf63.txt
+WriterNativeFinalPath=\\?\C:\SafeUpload\Escopo Monitorado\safeupload-crossvolume-d522f78a42944208916ad8dd4e3dcf63.txt
+WriterNativeVolumeName=\Device\HarddiskVolume3
+DestinationNativeVolumeName=\Device\HarddiskVolume10
+WriterRead=CPF: 529.982.247-25
+OtherProcessExists=False
+JournalTransferCount=1
+DestinationEntryCount=1
+OtherProcessDirectoryEntryCount=0
+DirectStageReadDenied=True
+NativeCrossVolumeRenameWin32Error=17
+StageReadDeniedAfterUnload=True
+OriginalDriverRestored=True
+
+The native rename ran only after the manifest reached Blocked (state 6),
+so an inspection lock was not the reason for this result. Error 17 is
+ERROR_NOT_SAME_DEVICE. The handle belongs to the C: backing filesystem.
+
+Attempts:
+1. Protocol-18 rename transaction build 42DDC1BD365179426ACD62949355FFF7DE3FF2AB2E48471B50E525E999F8A45B
+   returned the C: path and backing volume 3 instead of destination volume 6.
+2. The F5E777D7 build added original-volume storage per handle and class-58
+   (FileVolumeNameInformation) query virtualization. The native query still
+   returned backing volume 3 instead of destination volume 7.
+3. Diagnostic build 79DCF10EC167E2EE2C2A0DE822238E14839D930A7F8287EDE6C53338FCAB4A4D
+   used SafeUploadStageVolumeProbe=true, making every class-58 request seen
+   by the minifilter fail with STATUS_INVALID_DEVICE_REQUEST. The native
+   query still succeeded with backing volume 3 instead of destination
+   volume 8. This native query bypasses the minifilter callback path.
+4. The normal F5E777D7 feature build then independently reproduced the
+   native rename error above, before any PowerShell Move-Item fallback.
+
+Every run restored the original installed driver:
+ADA9D05AB6AECDD2B6C521B0CE529FC06C732154ACB3EE85439FBDC8AA80DFCE
+The disposable S: VHDX was detached and deleted; Verifier was removed/reset.
+
+This is a reproducible compatibility blocker for this cross-volume reparse
+implementation. It does not demonstrate a way around private storage or
+inspection. Full transparent saves require a data path that preserves the
+original file object's volume identity, including native rename checks.

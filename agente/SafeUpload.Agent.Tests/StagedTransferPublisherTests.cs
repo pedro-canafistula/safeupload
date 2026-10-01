@@ -178,13 +178,34 @@ public sealed class StagedTransferPublisherTests : IDisposable
             await _publisher.PublishAsync(transfer, CancellationToken.None));
         Assert.False(File.Exists(transfer.DestinationPath));
         string final = Path.ChangeExtension(transfer.DestinationPath, ".txt");
-        var renamed = await _journal.RetargetAsync(transfer.TransferId,
+        await _journal.PrepareRenameAsync(transfer.TransferId, 1,
+            transfer.ProcessId, final, true, CancellationToken.None);
+        var renamed = await _journal.CompleteRenameAsync(transfer.TransferId, 1,
             transfer.ProcessId, final, true, CancellationToken.None);
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
             _publisher.PublishAsync(transfer, CancellationToken.None));
         Assert.Equal(expected, await _publisher.PublishAsync(renamed.Transfer, CancellationToken.None));
         Assert.Equal(expected == StagedTransferOutcome.Released, File.Exists(final));
         Assert.False(File.Exists(transfer.DestinationPath));
+    }
+
+    [Fact]
+    public async Task Prepared_rename_cannot_publish_until_the_kernel_commits_it()
+    {
+        var transfer = Transfer("before.txt", "Clean text.");
+        string renamed = Path.ChangeExtension(transfer.DestinationPath, ".renamed.txt");
+        await _journal.PrepareRenameAsync(transfer.TransferId, 77, transfer.ProcessId,
+            renamed, true, CancellationToken.None);
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            _publisher.PublishAsync(transfer, CancellationToken.None));
+        Assert.False(File.Exists(transfer.DestinationPath));
+        Assert.False(File.Exists(renamed));
+        var committed = await _journal.CompleteRenameAsync(transfer.TransferId, 77,
+            transfer.ProcessId, renamed, true, CancellationToken.None);
+        Assert.Equal(StagedTransferOutcome.Released,
+            await _publisher.PublishAsync(committed.Transfer, CancellationToken.None));
+        Assert.False(File.Exists(transfer.DestinationPath));
+        Assert.Equal("Clean text.", await File.ReadAllTextAsync(renamed));
     }
 
     [Fact]
@@ -221,8 +242,8 @@ public sealed class StagedTransferPublisherTests : IDisposable
             publisher.PublishAsync(transfer, CancellationToken.None);
         await extractor.Entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
-        await Assert.ThrowsAsync<IOException>(() => _journal.RetargetAsync(
-            transfer.TransferId, transfer.ProcessId,
+        await Assert.ThrowsAsync<IOException>(() => _journal.PrepareRenameAsync(
+            transfer.TransferId, 1, transfer.ProcessId,
             Path.ChangeExtension(transfer.DestinationPath, ".renamed.txt"), true,
             CancellationToken.None));
 

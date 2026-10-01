@@ -1,5 +1,11 @@
 # Shared test helpers. The agent runs as LocalSystem so its private backing
 # files never grant the writing user's SID independent access.
+function Save-StagedVerifierEvidence {
+    if ([string]::IsNullOrEmpty($env:SAFEUPLOAD_STAGED_VERIFIER_LOG)) { return }
+    $result = & verifier.exe /query 2>&1
+    $result | Set-Content -LiteralPath $env:SAFEUPLOAD_STAGED_VERIFIER_LOG -Encoding UTF8
+}
+
 function Start-StagedTestAgent([string] $ServiceDir, [string] $LogPrefix) {
     $id = [guid]::NewGuid().ToString('N')
     $taskName = 'SafeUpload-StagedTest-' + $id

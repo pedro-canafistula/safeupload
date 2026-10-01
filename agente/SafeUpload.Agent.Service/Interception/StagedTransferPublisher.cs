@@ -69,7 +69,7 @@ public sealed class StagedTransferPublisher
 
         var journalEntry = await _journal.ReadAsync(transfer.TransferId, cancellationToken)
             .ConfigureAwait(false);
-        if (journalEntry.Transfer != transfer || !journalEntry.SealedOnce ||
+        if (journalEntry.PendingRename is not null || journalEntry.Transfer != transfer || !journalEntry.SealedOnce ||
             (justified is null
                 ? journalEntry.State is not (TransferJournalState.Sealed or TransferJournalState.Retained)
                 : journalEntry.State != TransferJournalState.Blocked))
