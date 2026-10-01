@@ -1,0 +1,247 @@
+Opened log file 'C:\Users\vika\Documents\boot-verifier-irp.txt'
+
+************* Preparing the environment for Debugger Extensions Gallery repositories **************
+   ExtensionRepository : Implicit
+   UseExperimentalFeatureForNugetShare : true
+   AllowNugetExeUpdate : true
+   NonInteractiveNuget : true
+   AllowNugetMSCredentialProviderInstall : true
+   AllowParallelInitializationOfLocalRepositories : true
+   EnableRedirectToChakraJsProvider : false
+
+   -- Configuring repositories
+      ----> Repository : LocalInstalled, Enabled: true
+      ----> Repository : UserExtensions, Enabled: true
+
+>>>>>>>>>>>>> Preparing the environment for Debugger Extensions Gallery repositories completed, duration 0.000 seconds
+
+************* Waiting for Debugger Extensions Gallery to Initialize **************
+
+>>>>>>>>>>>>> Waiting for Debugger Extensions Gallery to Initialize completed, duration 0.015 seconds
+   ----> Repository : UserExtensions, Enabled: true, Packages count: 0
+   ----> Repository : LocalInstalled, Enabled: true, Packages count: 30
+
+Microsoft (R) Windows Debugger Version 10.0.28000.2705 AMD64
+Copyright (c) Microsoft Corporation. All rights reserved.
+
+
+Loading Dump File [C:\Users\vika\Documents\SafeUpload-boot-verifier.dmp]
+Kernel Complete Dump File: Full address space is available
+
+Comment: 'Hello from elf2dmp!'
+
+************* Path validation summary **************
+Response                         Time (ms)     Location
+Deferred                                       srv*C:\symbols*https://msdl.microsoft.com/download/symbols
+Symbol search path is: srv*C:\symbols*https://msdl.microsoft.com/download/symbols
+Executable search path is:
+NatVis script successfully loaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\atlmfc.natvis'
+NatVis script successfully loaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\concurrency.natvis'
+NatVis script successfully loaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\cpp_rest.natvis'
+NatVis script successfully loaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\Kernel.natvis'
+NatVis script successfully loaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\ObjectiveC.natvis'
+NatVis script successfully loaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\stl.natvis'
+NatVis script successfully loaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\Usb4Kd.natvis'
+NatVis script successfully loaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\Windows.Data.Json.natvis'
+NatVis script successfully loaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\Windows.Devices.Geolocation.natvis'
+NatVis script successfully loaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\Windows.Devices.Sensors.natvis'
+NatVis script successfully loaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\Windows.Media.natvis'
+NatVis script successfully loaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\windows.natvis'
+NatVis script successfully loaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\winrt.natvis'
+KiProcessorBlock[2] is null.
+KiProcessorBlock[3] is null.
+Windows 10 Kernel Version 19041 MP (4 procs) Free x64
+Product: WinNt, suite: TerminalServer SingleUserTS
+Edition build lab: 19041.1.amd64fre.vb_release.191206-1406
+Kernel base = 0xfffff807`49414000 PsLoadedModuleList = 0xfffff807`4a03e2b0
+System Uptime: 0 days 0:00:34.946
+Loading Kernel Symbols
+...............................................................
+................................................................
+............................................
+Loading User Symbols
+................................................................
+........
+Loading unloaded module list
+...
+CLRDLL: Consider using ".cordll -lp <path>" command to specify .NET runtime directory.
+CLRDLL: Consider using ".cordll -lp <path>" command to specify .NET runtime directory.
+Unknown exception - code 00000000 (first/second chance not available)
+For analysis of this file, run !analyze -v
+0: kd> .symfix C:\Users\vika\Documents\SafeUpload-public-symbols
+0: kd> ~1s
+CLRDLL: Consider using ".cordll -lp <path>" command to specify .NET runtime directory.
+CLRDLL: Consider using ".cordll -lp <path>" command to specify .NET runtime directory.
+1: kd> !irp ffffb705305f0b80 1
+Irp is active with 11 stacks 11 is current (= 0xffffb705305f0f20)
+ Mdl=ffffb7052fc25c90: No System Buffer: Thread ffffb70530916080:  Irp stack trace.
+Flags = 40060043
+ThreadListEntry.Flink = ffffb7052f7ceba0
+ThreadListEntry.Blink = ffffb70530916530
+IoStatus.Status = 00000000
+IoStatus.Information = 00000000
+RequestorMode = 00000000
+Cancel = 00
+CancelIrql = 0
+ApcEnvironment = 00
+UserIosb = ffffb7052fc25bd0
+UserEvent = ffffb7052fc25ba0
+Overlay.AsynchronousParameters.UserApcRoutine = 00000000
+Overlay.AsynchronousParameters.UserApcContext = 00000000
+Overlay.AllocationSize = 00000000 - 00000000
+CancelRoutine = 00000000
+UserBuffer = 00000000
+&Tail.Overlay.DeviceQueueEntry = ffffb705305f0bf8
+Tail.Overlay.Thread = ffffb70530916080
+Tail.Overlay.AuxiliaryBuffer = 00000000
+Tail.Overlay.ListEntry.Flink = 00000000
+Tail.Overlay.ListEntry.Blink = 00000000
+Tail.Overlay.CurrentStackLocation = ffffb705305f0f20
+Tail.Overlay.OriginalFileObject = ffffb70530e935b0
+Tail.Apc = 00000000
+Tail.CompletionKey = 00000000
+     cmd  flg cl Device   File     Completion-Context
+ [N/A(0), N/A(0)]
+            0  0 00000000 00000000 00000000-00000000
+
+			Args: 00000000 00000000 00000000 00000000
+ [N/A(0), N/A(0)]
+            0  0 00000000 00000000 00000000-00000000
+
+			Args: 00000000 00000000 00000000 00000000
+ [N/A(0), N/A(0)]
+            0  0 00000000 00000000 00000000-00000000
+
+			Args: 00000000 00000000 00000000 00000000
+ [N/A(0), N/A(0)]
+            0  0 00000000 00000000 00000000-00000000
+
+			Args: 00000000 00000000 00000000 00000000
+ [N/A(0), N/A(0)]
+            0  0 00000000 00000000 00000000-00000000
+
+			Args: 00000000 00000000 00000000 00000000
+ [N/A(0), N/A(0)]
+            0  0 00000000 00000000 00000000-00000000
+
+			Args: 00000000 00000000 00000000 00000000
+ [N/A(0), N/A(0)]
+            0  0 00000000 00000000 00000000-00000000
+
+			Args: 00000000 00000000 00000000 00000000
+ [N/A(0), N/A(0)]
+            0  0 00000000 00000000 00000000-00000000
+
+			Args: 00000000 00000000 00000000 00000000
+ [N/A(0), N/A(0)]
+            0  0 00000000 00000000 00000000-00000000
+
+			Args: 00000000 00000000 00000000 00000000
+ [N/A(0), N/A(0)]
+            0  0 00000000 00000000 00000000-00000000
+
+			Args: 00000000 00000000 00000000 00000000
+>[IRP_MJ_READ(3), N/A(0)]
+            0  1 ffffb705302fad00 ffffb70530e935b0 00000000-00000000    pending
+	       \FileSystem\FltMgr
+			Args: 00008000 00000000 00000000 00000000
+
+Irp Extension present at 0xffffb705305f0f68:
+1: kd> !fltkd.volume ffffb7053087e010
+
+FLT_VOLUME: ffffb7053087e010 "\Device\HarddiskVolume5"
+   FLT_OBJECT: ffffb7053087e010  [04000000] Volume
+      RundownRef               : 0x000000000000000a (5)
+      PointerCount             : 0x00000001
+      PrimaryLink              : [ffffb7052a37c5a0-ffffb7052ac0c020]
+   Frame                    : ffffb7052a37c470 "Frame 0"
+   Flags                    : [000000e4] SetupNotifyCalled EnableNameCaching FilterAttached StandardLinkInfoNotSupported
+   FileSystemType           : [00000002] FLT_FSTYPE_NTFS
+   VolumeLink               : [ffffb7052a37c5a0-ffffb7052ac0c020]
+   DeviceObject             : ffffb705302fad00
+   DiskDeviceObject         : ffffb70530c69af0
+   FrameZeroVolume          : ffffb7053087e010
+   VolumeInNextFrame        : 0000000000000000
+   Guid                     : "\??\Volume{5fe2a265-0000-0000-0000-010000000000}"
+   CDODeviceName            : "\Ntfs"
+   CDODriverName            : "\FileSystem\Ntfs"
+   TargetedOpenCount        : 0
+   Callbacks                : (ffffb7053087e130)
+   ContextLock              : (ffffb7053087e518)
+   VolumeContexts           : (ffffb7053087e520)
+Could not get field size for CONTEXT_LIST_LLCACHE_ENTRY, assuming old version
+  Count=0
+   StreamListCtrls          : (ffffb7053087e528)  rCount=10
+   FileListCtrls            : (ffffb7053087e5a8)  rCount=0
+   NameCacheCtrl            : (ffffb7053087e628)
+   InstanceList             : (ffffb7053087e0b0)
+      FLT_INSTANCE: ffffb705309edcb0 "FsDepends" "407000"
+      FLT_INSTANCE: ffffb70530d6d010 "SafeUpload Instance" "321410"
+      FLT_INSTANCE: ffffb70530c3aa00 "Wof Instance" "40700"
+      FLT_INSTANCE: ffffb7052fe7b670 "FileInfo" "40500"
+1: kd> !fltkd.volume ffffb7052a760050
+
+FLT_VOLUME: ffffb7052a760050 "\Device\HarddiskVolume3"
+   FLT_OBJECT: ffffb7052a760050  [04000000] Volume
+      RundownRef               : 0x0000000000000220 (272)
+      PointerCount             : 0x00000001
+      PrimaryLink              : [ffffb7052a22b290-ffffb7052a6de6e0]
+   Frame                    : ffffb7052a37c470 "Frame 0"
+   Flags                    : [00000064] SetupNotifyCalled EnableNameCaching FilterAttached
+   FileSystemType           : [00000002] FLT_FSTYPE_NTFS
+   VolumeLink               : [ffffb7052a22b290-ffffb7052a6de6e0]
+   DeviceObject             : ffffb7052a75a550
+   DiskDeviceObject         : ffffb7052a6aa8f0
+   FrameZeroVolume          : ffffb7052a760050
+   VolumeInNextFrame        : 0000000000000000
+   Guid                     : "\??\Volume{f58c7564-1b1d-4c24-a05a-6f58cb85ec9c}"
+   CDODeviceName            : "\Ntfs"
+   CDODriverName            : "\FileSystem\Ntfs"
+   TargetedOpenCount        : 266
+   Callbacks                : (ffffb7052a760170)
+   ContextLock              : (ffffb7052a760558)
+   VolumeContexts           : (ffffb7052a760560)
+Could not get field size for CONTEXT_LIST_LLCACHE_ENTRY, assuming old version
+  Count=0
+   StreamListCtrls          : (ffffb7052a760568)  rCount=3411
+   FileListCtrls            : (ffffb7052a7605e8)  rCount=0
+   NameCacheCtrl            : (ffffb7052a760668)
+   InstanceList             : (ffffb7052a7600f0)
+      FLT_INSTANCE: ffffb705309f5a20 "FsDepends" "407000"
+      FLT_INSTANCE: ffffb70530d71010 "SafeUpload Instance" "321410"
+      FLT_INSTANCE: ffffb7052f2a4010 "luafv" "135000"
+      FLT_INSTANCE: ffffb7052a76faf0 "Wof Instance" "40700"
+      FLT_INSTANCE: ffffb7052aa718a0 "FileInfo" "40500"
+1: kd> !devstack ffffb705302fad00
+  !DevObj           !DrvObj            !DevExt           ObjectName
+> ffffb705302fad00  \FileSystem\FltMgr ffffb705302fae50
+  ffffb70530cac030  \FileSystem\Ntfs   ffffb70530cac180
+1: kd> .frame 2c
+Unable to load image \SystemRoot\System32\drivers\SafeUpload.sys, Win32 error 0n2
+2c fffffa0e`0dbe91a0 fffff80d`5f887e05     SafeUpload!StageReadWrite+0x573
+1: kd> dv /t
+union _LARGE_INTEGER lockLength = {9}
+struct _FLT_CALLBACK_DATA * Data = 0xffffb705`302ed138
+struct _STAGE_STREAM * Stream = 0xffffb705`305e65c0
+void * buffer = 0xffff9680`15d86428
+unsigned long length = 9
+struct _FILE_OBJECT * file = 0xffffb705`30e935b0 "\SafeUpload\Escopo Monitorado\8609ae230ade49f79d49a02b1899d0cd.tmp" - Device for "\Driver\volmgr" FileSystem:"\FileSystem\Ntfs"
+struct _MDL * mdl = 0xffffb705`2fbcb1f0
+union _LARGE_INTEGER offset = {0}
+long status = 0n0
+unsigned char write = 0x01 ''
+1: kd> q
+quit:
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\atlmfc.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\concurrency.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\cpp_rest.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\Kernel.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\ObjectiveC.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\stl.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\Usb4Kd.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\Windows.Data.Json.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\Windows.Devices.Geolocation.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\Windows.Devices.Sensors.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\Windows.Media.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\windows.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\winrt.natvis'

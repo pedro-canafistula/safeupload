@@ -1,5 +1,5 @@
 <# Integrated owned-stream gate. Run only on the isolated debuggee. #>
-param([switch] $Verifier, [switch] $ReplacementCases, [ValidateRange(0,64)][int] $PublicationIterations = 0)
+param([switch] $Verifier, [switch] $BootVerifier, [switch] $ReplacementCases, [ValidateRange(0,64)][int] $PublicationIterations = 0)
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'StagedTestAgent.ps1')
 Add-Type -Path (Join-Path $PSScriptRoot 'StagedIdentityProbe.cs')
@@ -200,7 +200,21 @@ function Read-OwnedPublic([string] $Path) {
     & powershell.exe -NoProfile -Command "[IO.File]::ReadAllText('$Path')"
 }
 
+if($env:COMPUTERNAME -ne 'WIN10-DEBUGGED' -or
+    (Get-CimInstance Win32_ComputerSystemProduct).UUID -ne '9D44EEE8-81CF-4CC1-9FBA-7670F11DEF4D'){throw 'Wrong debuggee.'}
 if ((Get-FileHash $installed -Algorithm SHA256).Hash -ne $expectedOriginal) { throw 'Original installed driver mismatch.' }
+if((& fltmc.exe filters) -match '^SafeUpload\s'){throw 'Expected unloaded baseline.'}
+if($Verifier -and $BootVerifier){throw 'Choose volatile or boot-activated Verifier.'}
+if($BootVerifier){
+    $active=(& verifier.exe /query) -join "`n"
+    if($active -notmatch 'Verifier Flags:\s+0x([0-9a-fA-F]+)'){throw 'No active boot Verifier flags.'}
+    $flags=[Convert]::ToUInt32($Matches[1],16)
+    if(($flags -band 0x209BB) -ne 0x209BB -or $active -notmatch 'SafeUpload.sys'){
+        throw 'Boot standard/DDI verification for SafeUpload.sys is required.'
+    }
+    $verifierEnabled=$true
+    'BootActivatedStandardDdiVerifier=True'
+}
 if ((Test-Path S:\) -or (Test-Path $vhd)) { throw 'Disposable S: already present.' }
 try {
     Invoke-ProbeDisk @("create vdisk file=`"$vhd`" maximum=128 type=expandable", "select vdisk file=`"$vhd`"",
@@ -492,7 +506,7 @@ Add-Content '__LOG__' ('samples=' + $samples)
     $observed = Get-Content $observerLog -Raw
     if ($observed -match 'LEAK' -or $observed -notmatch 'samples=[1-9]') { throw 'No continuous isolation evidence.' }
     Write-Output ('DestinationByteObserver=' + $observed.Trim())
-    if ($Verifier) { Save-StagedVerifierEvidence; & verifier.exe /query | Out-Host }
+    if ($Verifier -or $BootVerifier) { Save-StagedVerifierEvidence; & verifier.exe /query | Out-Host }
     Write-Output 'IntegratedOwnedStreamMilestone=True'
 }
 finally {

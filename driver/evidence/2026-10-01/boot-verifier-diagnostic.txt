@@ -1,0 +1,227 @@
+Opened log file 'C:\Users\vika\Documents\boot-verifier-diagnostic.txt'
+
+************* Preparing the environment for Debugger Extensions Gallery repositories **************
+   ExtensionRepository : Implicit
+   UseExperimentalFeatureForNugetShare : true
+   AllowNugetExeUpdate : true
+   NonInteractiveNuget : true
+   AllowNugetMSCredentialProviderInstall : true
+   AllowParallelInitializationOfLocalRepositories : true
+   EnableRedirectToChakraJsProvider : false
+
+   -- Configuring repositories
+      ----> Repository : LocalInstalled, Enabled: true
+      ----> Repository : UserExtensions, Enabled: true
+
+>>>>>>>>>>>>> Preparing the environment for Debugger Extensions Gallery repositories completed, duration 0.000 seconds
+
+************* Waiting for Debugger Extensions Gallery to Initialize **************
+
+>>>>>>>>>>>>> Waiting for Debugger Extensions Gallery to Initialize completed, duration 0.016 seconds
+   ----> Repository : UserExtensions, Enabled: true, Packages count: 0
+   ----> Repository : LocalInstalled, Enabled: true, Packages count: 30
+
+Microsoft (R) Windows Debugger Version 10.0.28000.2705 AMD64
+Copyright (c) Microsoft Corporation. All rights reserved.
+
+
+Loading Dump File [C:\Users\vika\Documents\SafeUpload-boot-verifier.dmp]
+Kernel Complete Dump File: Full address space is available
+
+Comment: 'Hello from elf2dmp!'
+
+************* Path validation summary **************
+Response                         Time (ms)     Location
+Deferred                                       srv*C:\symbols*https://msdl.microsoft.com/download/symbols
+Symbol search path is: srv*C:\symbols*https://msdl.microsoft.com/download/symbols
+Executable search path is:
+NatVis script successfully loaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\atlmfc.natvis'
+NatVis script successfully loaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\concurrency.natvis'
+NatVis script successfully loaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\cpp_rest.natvis'
+NatVis script successfully loaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\Kernel.natvis'
+NatVis script successfully loaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\ObjectiveC.natvis'
+NatVis script successfully loaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\stl.natvis'
+NatVis script successfully loaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\Usb4Kd.natvis'
+NatVis script successfully loaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\Windows.Data.Json.natvis'
+NatVis script successfully loaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\Windows.Devices.Geolocation.natvis'
+NatVis script successfully loaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\Windows.Devices.Sensors.natvis'
+NatVis script successfully loaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\Windows.Media.natvis'
+NatVis script successfully loaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\windows.natvis'
+NatVis script successfully loaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\winrt.natvis'
+KiProcessorBlock[2] is null.
+KiProcessorBlock[3] is null.
+Windows 10 Kernel Version 19041 MP (4 procs) Free x64
+Product: WinNt, suite: TerminalServer SingleUserTS
+Edition build lab: 19041.1.amd64fre.vb_release.191206-1406
+Kernel base = 0xfffff807`49414000 PsLoadedModuleList = 0xfffff807`4a03e2b0
+System Uptime: 0 days 0:00:34.946
+Loading Kernel Symbols
+...............................................................
+................................................................
+............................................
+Loading User Symbols
+................................................................
+........
+Loading unloaded module list
+...
+CLRDLL: Consider using ".cordll -lp <path>" command to specify .NET runtime directory.
+CLRDLL: Consider using ".cordll -lp <path>" command to specify .NET runtime directory.
+Unknown exception - code 00000000 (first/second chance not available)
+For analysis of this file, run !analyze -v
+0: kd> .symfix C:\Users\vika\Documents\SafeUpload-public-symbols
+0: kd> ~1s
+CLRDLL: Consider using ".cordll -lp <path>" command to specify .NET runtime directory.
+CLRDLL: Consider using ".cordll -lp <path>" command to specify .NET runtime directory.
+1: kd> .echo === CALLBACK DATA ===
+=== CALLBACK DATA ===
+1: kd> !fltkd.cbd ffffb7052fc86460
+
+IRP_CTRL: ffffb7052fc86460  READ (3) [80000001] Irp Dirty
+Flags                    : [10000004] DontCopyParms FixedAlloc
+Irp                      : ffffb705305f0b80
+DeviceObject             : ffffb705302fad00 "\Device\HarddiskVolume5"
+FileObject               : ffffb70530e935b0
+CompletionNodeStack      : ffffb7052fc865e8   Size=5  Next=1
+SyncEvent                : (ffffb7052fc86478)
+InitiatingInstance       : 0000000000000000
+Icc                      : fffffa0e0dbe8830
+PendingCallbackNode      : ffffb70530d6d2a0
+PendingCallbackContext   : 0000000000000000
+PendingStatus            : 0x00000000
+CallbackData             : (ffffb7052fc86548)
+ Flags                    : [80000001] Irp Dirty
+ Thread                   : ffffb70530916080
+ Iopb                     : ffffb7052fc865a0
+ RequestorMode            : [00] KernelMode
+ IoStatus.Status          : 0xffffffff
+ IoStatus.Information     : 0000000000000000
+ TagData                  : 0000000000000000 *************************************************************************
+***                                                                   ***
+***                                                                   ***
+***    Either you specified an unqualified symbol, or your debugger   ***
+***    doesn't have full symbol information.  Unqualified symbol      ***
+***    resolution is turned off by default. Please either specify a   ***
+***    fully qualified symbol module!symbolname, or enable resolution ***
+***    of unqualified symbols by typing ".symopt- 100". Note that     ***
+***    enabling unqualified symbol resolution with network symbol     ***
+***    server shares in the symbol path may cause the debugger to     ***
+***    appear to hang for long periods of time when an incorrect      ***
+***    symbol name is typed or the network symbol server is down.     ***
+***                                                                   ***
+***    For some commands to work properly, your symbol path           ***
+***    must point to .pdb files that have full type information.      ***
+***                                                                   ***
+***    Certain .pdb files (such as the public OS symbols) do not      ***
+***    contain the required information.  Contact the group that      ***
+***    provided you with these symbols if you need this command to    ***
+***    work.                                                          ***
+***                                                                   ***
+***    Type referenced: PVOID                                         ***
+***                                                                   ***
+*************************************************************************
+
+ FilterContext[0]         : 0000000000000000
+ FilterContext[1]         : 0000000000000000
+ FilterContext[2]         : 0000000000000000
+ FilterContext[3]         : 0000000000000000
+
+   Cmd     IrpFl   OpFl  CmpFl  Instance FileObjt Completion-Context  Node Adr
+--------- -------- ----- -----  -------- -------- ------------------  --------
+ [0,0]    00000000  00   0000   0000000000000000 0000000000000000 0000000000000000-0000000000000000   ffffb7052fc867e8
+	    Args: 0000000000000000 0000000000000000 0000000000000000 0000000000000000 0000000000000000 0000000000000000
+ [0,0]    00000000  00   0000   0000000000000000 0000000000000000 0000000000000000-0000000000000000   ffffb7052fc86768
+	    Args: 0000000000000000 0000000000000000 0000000000000000 0000000000000000 0000000000000000 0000000000000000
+ [0,0]    00000000  00   0000   0000000000000000 0000000000000000 0000000000000000-0000000000000000   ffffb7052fc866e8
+	    Args: 0000000000000000 0000000000000000 0000000000000000 0000000000000000 0000000000000000 0000000000000000
+ [0,0]    00000000  00   0000   0000000000000000 0000000000000000 0000000000000000-0000000000000000   ffffb7052fc86668
+	    Args: 0000000000000000 0000000000000000 0000000000000000 0000000000000000 0000000000000000 0000000000000000
+ [3,0]    40060043  00   0000   ffffb70530d6d010 ffffb70530e935b0 fffff8074931cc40-0000000000000000   ffffb7052fc865e8
+            ("SafeUpload","SafeUpload Instance")  Unable to load image \SystemRoot\System32\drivers\SafeUpload.sys, Win32 error 0n2
+SafeUpload!SafeUploadStagePostOperation  (verified)
+	    Args: 0000000000008000 0000000000000000 0000000000000000 0000000000000000 ffffb7052fc25c90 0000000000000000
+Working IOPB:
+>[3,0]    40060043  00          ffffb70530d71010 ffffb70530e92b90                     ffffb7052fc865a0
+            ("SafeUpload","SafeUpload Instance")
+	    Args: 0000000000008000 0000000000000000 0000000000000000 0000000000000000 ffffb7052fc25c90 0000000000000000
+1: kd> .echo === FILE OBJECT ===
+=== FILE OBJECT ===
+1: kd> !fileobj ffffb70530c3a530
+ffffb70530c3a530 is not a file object
+1: kd> .echo === VERIFIER DIAGNOSTIC STACK BUFFER ===
+=== VERIFIER DIAGNOSTIC STACK BUFFER ===
+1: kd> db fffffa0e0dbe8220 L280
+fffffa0e`0dbe8220  24 00 00 00 00 00 00 00-c0 8f 2e 49 07 f8 ff ff  $..........I....
+fffffa0e`0dbe8230  54 1d 2e 49 07 f8 ff ff-07 00 00 00 00 00 00 00  T..I............
+fffffa0e`0dbe8240  a8 84 be 0d 0e fa ff ff-c2 e6 94 49 07 f8 ff ff  ...........I....
+fffffa0e`0dbe8250  00 00 00 00 00 00 00 00-bb 09 12 00 00 00 00 00  ................
+fffffa0e`0dbe8260  46 49 4c 54 45 52 20 56-45 52 49 46 49 45 52 20  FILTER VERIFIER
+fffffa0e`0dbe8270  45 52 52 4f 52 3a 20 20-20 41 20 66 69 6c 74 65  ERROR:   A filte
+fffffa0e`0dbe8280  72 20 69 73 20 72 65 64-69 72 65 63 74 69 6e 67  r is redirecting
+fffffa0e`0dbe8290  20 63 61 6c 6c 62 61 63-6b 20 64 61 74 61 20 74   callback data t
+fffffa0e`0dbe82a0  6f 20 61 20 74 61 72 67-65 74 20 69 6e 73 74 61  o a target insta
+fffffa0e`0dbe82b0  6e 63 65 20 77 68 6f 73-65 20 76 6f 6c 75 6d 65  nce whose volume
+fffffa0e`0dbe82c0  0a 64 65 76 69 63 65 20-73 74 61 63 6b 20 69 73  .device stack is
+fffffa0e`0dbe82d0  20 67 72 65 61 74 65 72-20 74 68 61 6e 20 74 68   greater than th
+fffffa0e`0dbe82e0  65 20 61 76 61 69 6c 61-62 6c 65 20 73 74 61 63  e available stac
+fffffa0e`0dbe82f0  6b 20 6c 6f 63 61 74 69-6f 6e 73 20 69 6e 20 74  k locations in t
+fffffa0e`0dbe8300  68 65 20 49 52 50 2e 0a-28 46 69 6c 74 65 72 20  he IRP..(Filter
+fffffa0e`0dbe8310  3d 20 46 46 46 46 42 37-30 35 33 30 38 41 44 30  = FFFFB705308AD0
+fffffa0e`0dbe8320  31 30 20 28 53 61 66 65-55 70 6c 6f 61 64 29 2c  10 (SafeUpload),
+fffffa0e`0dbe8330  20 43 62 64 20 3d 20 46-46 46 46 42 37 30 35 32   Cbd = FFFFB7052
+fffffa0e`0dbe8340  46 43 38 36 35 34 38 2c-20 53 6f 75 72 63 65 20  FC86548, Source
+fffffa0e`0dbe8350  49 6e 73 74 61 6e 63 65-20 3d 20 46 46 46 46 42  Instance = FFFFB
+fffffa0e`0dbe8360  37 30 35 33 30 44 36 44-30 31 30 2c 20 54 61 72  70530D6D010, Tar
+fffffa0e`0dbe8370  67 65 74 20 49 6e 73 74-61 6e 63 65 20 3d 20 46  get Instance = F
+fffffa0e`0dbe8380  46 46 46 42 37 30 35 33-30 44 37 31 30 31 30 29  FFFB70530D71010)
+fffffa0e`0dbe8390  0a 00 00 00 05 b7 ff ff-ac 9f 88 5f 0d f8 ff ff  ..........._....
+fffffa0e`0dbe83a0  00 a0 be 0d 0e fa ff ff-58 67 5e 30 05 b7 ff ff  ........Xg^0....
+fffffa0e`0dbe83b0  c0 65 5e 30 05 b7 ff ff-c0 65 5e 30 05 b7 ff ff  .e^0.....e^0....
+fffffa0e`0dbe83c0  05 00 00 00 00 00 00 00-a2 a4 31 49 07 f8 ff ff  ..........1I....
+fffffa0e`0dbe83d0  03 00 00 00 00 00 00 00-41 84 be 0d 0e fa ff ff  ........A.......
+fffffa0e`0dbe83e0  03 00 00 00 00 00 00 00-b0 35 e9 30 05 b7 ff ff  .........5.0....
+fffffa0e`0dbe83f0  00 00 00 00 00 00 00 00-2b 31 df 49 07 f8 ff ff  ........+1.I....
+fffffa0e`0dbe8400  01 00 00 80 00 00 00 00-00 00 00 00 00 00 00 00  ................
+fffffa0e`0dbe8410  78 85 be 0d 0e fa ff ff-00 00 00 00 00 00 00 00  x...............
+fffffa0e`0dbe8420  00 00 00 00 00 00 00 00-00 00 00 00 00 00 00 00  ................
+fffffa0e`0dbe8430  00 00 00 00 00 00 00 00-00 00 00 00 00 00 00 00  ................
+fffffa0e`0dbe8440  00 00 00 00 00 00 00 00-00 00 00 00 00 00 00 00  ................
+fffffa0e`0dbe8450  00 00 00 00 00 00 00 00-54 a2 88 5f 0d f8 ff ff  ........T.._....
+fffffa0e`0dbe8460  61 cb ff f5 17 fb ff ff-10 d0 d6 30 05 b7 ff ff  a..........0....
+fffffa0e`0dbe8470  00 00 00 00 00 00 00 00-48 65 c8 2f 05 b7 ff ff  ........He./....
+fffffa0e`0dbe8480  03 00 00 00 00 00 00 00-10 d0 8a 30 05 b7 ff ff  ...........0....
+fffffa0e`0dbe8490  00 00 00 00 00 00 00 00-e6 b3 31 49 07 f8 ff ff  ..........1I....
+1: kd> .echo === PROMPT ===
+=== PROMPT ===
+1: kd> da fffff807492e1d58
+fffff807`492e1d58  "Break, ignore, zap or remove ? "
+1: kd> da fffff807492e1d54
+fffff807`492e1d54  "%c"
+1: kd> .echo === STACK LOCALS ===
+=== STACK LOCALS ===
+1: kd> .frame 18
+18 fffffa0e`0dbe8220 fffff807`4931b3e6     FLTMGR!FltpvPrintErrors+0x18d
+1: kd>  dv /t
+Unable to enumerate locals, Win32 error 0n87
+Private symbols (symbols.pri) are required for locals.
+Type ".hh dbgerr005" for details.
+1: kd> .frame 19
+19 fffffa0e`0dbe84a0 fffff807`4931d110     FLTMGR!FltpvVerifyPreOperationStatus+0x46e
+1: kd>  dv /t
+Unable to enumerate locals, Win32 error 0n87
+Private symbols (symbols.pri) are required for locals.
+Type ".hh dbgerr005" for details.
+1: kd> q
+quit:
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\atlmfc.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\concurrency.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\cpp_rest.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\Kernel.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\ObjectiveC.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\stl.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\Usb4Kd.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\Windows.Data.Json.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\Windows.Devices.Geolocation.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\Windows.Devices.Sensors.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\Windows.Media.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\windows.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\winrt.natvis'

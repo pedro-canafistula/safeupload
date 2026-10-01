@@ -652,6 +652,91 @@ service/tasks/app, no S:/VHDX and restored non-override policy;
 Interactive WPF, expiry/kernel permit attacks, original-principal attribution,
 driver-loss recovery and the other broader tracker items remain open.
 
+### Follow-up: boot Filter Verifier rejects paging IRP retargeting
+
+**Failing acceptance, isolated before changing the transport.** After the
+verified [original-driver baseline](evidence/2026-10-01/boot-verifier-pre-state.txt),
+an external disk-only snapshot `safeupload-pre-boot-verifier-20261001` was taken.
+Configure only `SafeUpload.sys` with `verifier /standard /driver SafeUpload.sys`,
+then `verifier /bootmode oneboot`, and reboot with the original demand-start
+driver still installed and unloaded. Verify settings, not the command's reboot
+exit code. [Configuration](evidence/2026-10-01/boot-verifier-config.txt) and
+[active flags](evidence/2026-10-01/boot-verifier-active-before.txt) show
+`0x001209bb`: all standard flags including DDI; Windows added its internal
+extended flag. No internal flag was selected manually. On Windows 10, standard
+I/O verification enables [Filter Verifier](https://learn.microsoft.com/en-us/windows-hardware/drivers/devtest/file-system-filter-verification)
+at filter registration. Volatile `0x13B` did not qualify this gate.
+
+`Test-StagedOwnedStreams.ps1 -BootVerifier -ReplacementCases
+-PublicationIterations 8` stopped at its **first** cached write: nine ASCII
+bytes `alphabeta`, offset zero, new private file on the disposable 128 MiB NTFS
+S: VHD, private noncached backing on C:. The existing feature SYS was
+`CFD66E2830AB720944C24D4BA71FEE602B4E281810D18A0F8B6B716DB1B2C6DF`;
+service ZIP was `0263B794943BC841896B84B9183B049E3222C28433B2C0BC9A93B2D340F1BE64`.
+The smallest useful regression is that one write, its flush/close and approved
+publication under boot Filter Verifier, with an independent public-byte reader.
+The complete gate's later cases never ran and are not counted as passes.
+
+The lock screen froze and SSH stopped responding. Offline public-symbol WinDbg
+analysis of preserved RAM shows CPU 1 waiting in `nt!DbgPrompt` from
+`FLTMGR!FltpvVerifyPreOperationStatus`, inside a paging READ raised by
+`CcCopyWrite` in `SafeUpload!StageReadWrite`. CPU 0 is frozen by NMI.
+`nt!KiBugCheckData` is all zero: this was a Filter Verifier debugger prompt,
+not the previously recorded condrv bugcheck. The formatted stack diagnostic is:
+“A filter is redirecting callback data to a target instance whose volume”.
+Its continuation reports that the device stack exceeds available IRP stack
+locations. [Stack](evidence/2026-10-01/boot-verifier-cpu1.txt),
+[exact diagnostic](evidence/2026-10-01/boot-verifier-diagnostic.txt),
+[IRP and inputs](evidence/2026-10-01/boot-verifier-irp.txt).
+
+The original S: volume device has StackSize **11**, C: backing has **12**, and
+the actual paging IRP has StackCount/CurrentLocation **11/11**;
+[public-symbol values](evidence/2026-10-01/boot-verifier-size-values.txt).
+The current CREATE guard accepted 12 >= 11. The
+[WDK I/O parameter page](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/fltkernel/ns-fltkernel-_flt_io_parameter_block)
+currently states the target size must be greater than or equal to the original;
+that comparison demonstrably does **not** establish sufficient capacity in this
+IRP on this build. This finding qualifies the earlier architecture statements:
+retargeting an existing paging IRP is unqualified even after that guard. No
+private production API, offsets, kernel patch or undocumented remedy is adopted.
+The small supported transport alternative to test is generating a backing I/O
+request with Filter Manager allocation, preserving upper cache/sections,
+operation parameters and rundown ownership while leaving the original IRP alone.
+
+Build is Windows 10 Pro 22H2 19045.2965; kernel 10.0.19041.2965,
+FLTMGR/NTFS 10.0.19041.1. Kernel public PDB is
+`ntkrnlmp.pdb/89284d0ca6acc8274b9a44bd5af9290b1`; WinDbg 10.0.28000.2705.
+QEMU's `dump-guest-memory -d` captured 8,723,967,872 bytes of ELF; a subsequent
+`virsh save` preserved RAM/registers and stopped the failed VM. QEMU upstream
+`elf2dmp` at `f7ada39edacaa5c26b30e98b94017b0b2ccbcf94` converted it using
+Microsoft public symbols. Its header describes a synthetic live dump, **not**
+an actual bugcheck; CPU 2/3 saved contexts were unavailable. Raw ELF SHA256 is
+`5E90F7A366A02F17F6B2CB591CC938B323745DF01F80D668FBB525618FDDC798`;
+converted DMP is `F8F9852E6B502709A95747F3CC66E48DE396E1290CE32DF4735029444AB80FC0`.
+RAM/save images are private host artifacts under `/var/tmp`, never repository
+evidence. No targeted disassembly was needed. This diagnoses the acceptance
+failure; it does not start another Chappell investigation.
+
+Recovery preserved the failed external disk overlay and all existing snapshots.
+A fresh 120 GiB qcow2 recovery overlay uses the frozen pre-test parent
+`win10-debug.safeupload-owned-integration-20261001`; the running debuggee now
+uses `win10-debug.safeupload-recovery2-20261001`. A first recovery overlay was
+mistakenly created as 64 GiB, caught via volume metadata, resized and discarded
+from use; recovery restarted from the intact parent at its verified 120 GiB.
+The failed disk was examined only through a separate forensic overlay attached
+to the debugger, then detached. Its gate log contains 384 zero bytes after the
+unclean stop; the last SSH output was DiskPart. Installed feature bytes persisted,
+but the old backup's persisted hash is not the expected original, so that backup
+is not restoration authority. Add write-through backup and checkpoint flushing
+before repeating this gate.
+
+[Independent recovered state](evidence/2026-10-01/boot-verifier-restored-final-state.txt)
+passes original installed hash `ADA9D05AB6AECDD2B6C521B0CE529FC06C732154ACB3EE85439FBDC8AA80DFCE`,
+unloaded filter, Verifier zero/None, zero tasks/service/application, no S:/VHD,
+and original non-override policy. Host UTC was 2026-10-01T23:11:50Z; guest UTC
+reported 19:11:31Z after disk recovery, so do not order evidence by that guest
+wall clock. Staging remains disabled and the release Verifier gate stays open.
+
 ### Identity and namespace
 
 | Identity | Implemented key and owner | Required extension |
