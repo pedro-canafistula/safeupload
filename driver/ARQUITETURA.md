@@ -868,6 +868,25 @@ a alocação volta a ser frequente e a questão se reabre. Aí vale investigar o
 
 ---
 
+## Release: validação resolvida em 1 de outubro de 2026
+
+A investigação isolada em `feat/staged-kernel-prototype` encontrou uma diferença
+na **arquitetura do extrator**, sem alterar o binário: `ApiValidator.exe` x86 com
+`aitstatic.exe` x86 retorna 193; o mesmo validador com `aitstatic.exe` x64 aceita
+exatamente o mesmo SYS otimizado como Universal. Os hashes antes/depois são
+iguais. A observação anterior de `fothk` não estabelecia a causa da falha.
+
+O WDK seleciona o extrator com `PROCESSOR_ARCHITECTURE`; MSBuild x86 muda esse
+valor para x86 mesmo no host Windows x64. O script
+`scripts/Build-StagedOwnedStreams.ps1` passa a usar
+`MSBuild\Current\Bin\amd64\MSBuild.exe`. Debug/Release normal e experimental
+passaram com zero avisos/erros, PREfast/DriverRecommendedRules e ApiValidator
+ativos. Não foi preciso desabilitar validação nem otimização. Para builds
+manuais use também MSBuild nativo x64. Evidência e reprodução:
+[STAGED-WRITES.md](STAGED-WRITES.md).
+
+---
+
 ## Pendência conhecida: vazamento de uma alocação no unload
 
 Registrado para não se perder, porque não foi resolvido — apenas deixou de

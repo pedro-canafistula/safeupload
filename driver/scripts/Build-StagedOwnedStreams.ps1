@@ -5,20 +5,25 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 $root = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
-$msbuild = 'C:\Program Files\Microsoft Visual Studio\18\Community\MSBuild\Current\Bin\MSBuild.exe'
+$msbuild = 'C:\Program Files\Microsoft Visual Studio\18\Community\MSBuild\Current\Bin\amd64\MSBuild.exe'
 $rules = 'C:\Program Files (x86)\Windows Kits\10\CodeAnalysis\DriverRecommendedRules.ruleset'
 New-Item -ItemType Directory -Force -Path $OutputDirectory | Out-Null
 Push-Location $root
 try {
-    foreach ($feature in @('false','true')) {
-        $label = if ($feature -eq 'true') { 'owned-feature' } else { 'normal' }
-        $log = Join-Path $OutputDirectory ($label + '-wdk.txt')
-        & $msbuild driver\SafeUpload.Minifilter\SafeUpload.Minifilter.vcxproj /t:Rebuild `
-            /p:Configuration=Debug /p:Platform=x64 "/p:SafeUploadStagingPrototype=$feature" `
-            /p:RunCodeAnalysis=true /p:EnablePREfast=true "/p:CodeAnalysisRuleSet=$rules" > $log 2>&1
-        if ($LASTEXITCODE -ne 0) { Get-Content $log -Tail 40 | Out-Host; throw "$label WDK build failed." }
-        Get-Content $log -Tail 5 | Out-Host
-        Copy-Item driver\SafeUpload.Minifilter\x64\Debug\SafeUpload.sys (Join-Path $OutputDirectory ($label + '.sys')) -Force
+    # Native x64 MSBuild selects the x64 WDK API extractor. The x86
+    # extractor rejects optimized x64 binaries with ERROR_BAD_EXE_FORMAT.
+    foreach ($configuration in @('Debug','Release')) {
+        foreach ($feature in @('false','true')) {
+            $label = if ($feature -eq 'true') { 'owned-feature' } else { 'normal' }
+            if ($configuration -eq 'Release') { $label += '-release' }
+            $log = Join-Path $OutputDirectory ($label + '-wdk.txt')
+            & $msbuild driver\SafeUpload.Minifilter\SafeUpload.Minifilter.vcxproj /t:Rebuild `
+                "/p:Configuration=$configuration" /p:Platform=x64 /warnaserror "/p:SafeUploadStagingPrototype=$feature" `
+                /p:RunCodeAnalysis=true /p:EnablePREfast=true "/p:CodeAnalysisRuleSet=$rules" > $log 2>&1
+            if ($LASTEXITCODE -ne 0) { Get-Content $log -Tail 40 | Out-Host; throw "$label WDK build failed." }
+            Get-Content $log -Tail 5 | Out-Host
+            Copy-Item "driver\SafeUpload.Minifilter\x64\$configuration\SafeUpload.sys" (Join-Path $OutputDirectory ($label + '.sys')) -Force
+        }
     }
     $driver = Join-Path $OutputDirectory 'SafeUpload-stage-prototype.sys'
     Copy-Item (Join-Path $OutputDirectory 'owned-feature.sys') $driver -Force
