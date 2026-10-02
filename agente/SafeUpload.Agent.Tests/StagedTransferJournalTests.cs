@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Security.AccessControl;
 using System.Security.Principal;
+using System.Runtime.InteropServices;
 using System.Text;
 using SafeUpload.Agent.Core.Domain;
 using SafeUpload.Agent.Service.Interception;
@@ -23,6 +24,204 @@ public sealed class StagedTransferJournalTests : IDisposable
         DestinationKind.RemovableDrive,
         "explorer.exe", 1234, 1);
 
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task Redirected_manifest_is_rejected_without_changing_external_acl(
+        bool hardLink, bool restart)
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        var journal = Journal();
+        var transfer = Transfer();
+        await journal.CreateAsync(transfer, CancellationToken.None);
+        string path = Path.Combine(_workspace.Root, "journal", transfer.TransferId.ToString("N") + ".json");
+        string outside = Path.Combine(_workspace.Root, "outside.json");
+        File.Copy(path, outside);
+        var outsideFile = new FileInfo(outside);
+        var security = outsideFile.GetAccessControl();
+        security.AddAccessRule(new FileSystemAccessRule(
+            new SecurityIdentifier(WellKnownSidType.BuiltinUsersSid, null),
+            FileSystemRights.Read, AccessControlType.Allow));
+        outsideFile.SetAccessControl(security);
+        string priorSecurity = security.GetSecurityDescriptorSddlForm(AccessControlSections.All);
+        byte[] priorBytes = await File.ReadAllBytesAsync(outside);
+        File.Delete(path);
+        if (hardLink)
+        {
+            if (!CreateHardLink(path, outside, IntPtr.Zero))
+                throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
+        }
+        else File.CreateSymbolicLink(path, outside);
+        try
+        {
+            if (restart) Assert.Throws<IOException>(() => Journal());
+            else await Assert.ThrowsAsync<IOException>(() => journal.ReadAsync(transfer.TransferId, CancellationToken.None));
+            Assert.Equal(priorBytes, await File.ReadAllBytesAsync(outside));
+            Assert.Equal(priorSecurity, outsideFile.GetAccessControl()
+                .GetSecurityDescriptorSddlForm(AccessControlSections.All));
+        }
+        finally { File.Delete(path); }
+    }
+
+    [Fact]
+    public async Task Oversized_manifest_is_rejected_before_deserialization_and_retained()
+    {
+        var journal = Journal();
+        var transfer = Transfer();
+        await journal.CreateAsync(transfer, CancellationToken.None);
+        string path = Path.Combine(_workspace.Root, "journal", transfer.TransferId.ToString("N") + ".json");
+        await File.AppendAllTextAsync(path, new string(' ', 128 * 1024));
+        byte[] prior = await File.ReadAllBytesAsync(path);
+        await Assert.ThrowsAsync<InvalidDataException>(() => journal.ReadAsync(transfer.TransferId, CancellationToken.None));
+        await Assert.ThrowsAsync<InvalidDataException>(() => Journal().RetainInterruptedAsync(CancellationToken.None));
+        Assert.Equal(prior, await File.ReadAllBytesAsync(path));
+    }
+
+    [Theory]
+    [InlineData("null-transfer")]
+    [InlineData("unknown-state")]
+    [InlineData("negative-generation")]
+    [InlineData("relative-destination")]
+    [InlineData("invalid-owner")]
+    [InlineData("unsealed-publication")]
+    [InlineData("zero-rename")]
+    [InlineData("invalid-tombstone")]
+    public async Task Malformed_manifest_is_rejected_without_recovery_mutation(string corruption)
+    {
+        var journal = Journal();
+        var transfer = Transfer();
+        var entry = await journal.CreateAsync(transfer, CancellationToken.None);
+        entry = corruption switch
+        {
+            "null-transfer" => entry with { Transfer = null! },
+            "unknown-state" => entry with { State = (TransferJournalState)99 },
+            "negative-generation" => entry with { DestinationGeneration = -1 },
+            "relative-destination" => entry with { Transfer = transfer with { DestinationPath = "relative.txt" } },
+            "invalid-owner" => entry with { Transfer = transfer with { ProcessId = 0 } },
+            "unsealed-publication" => entry with { State = TransferJournalState.Publishing, Sha256Hex = new string('A', 64) },
+            "zero-rename" => entry with { PendingRename = new StagedRename(0, transfer.DestinationPath, false) },
+            "invalid-tombstone" => entry with { NamespaceTombstones = new StagedNameTombstone(transfer.DestinationPath, -1, null) },
+            _ => throw new ArgumentException(corruption)
+        };
+        string path = Path.Combine(_workspace.Root, "journal", transfer.TransferId.ToString("N") + ".json");
+        await File.WriteAllTextAsync(path, System.Text.Json.JsonSerializer.Serialize(entry));
+        byte[] prior = await File.ReadAllBytesAsync(path);
+        await Assert.ThrowsAsync<InvalidDataException>(() => journal.ReadAsync(transfer.TransferId, CancellationToken.None));
+        await Assert.ThrowsAsync<InvalidDataException>(() => Journal().RetainInterruptedAsync(CancellationToken.None));
+        Assert.Equal(prior, await File.ReadAllBytesAsync(path));
+    }
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool CreateHardLink(string link, string existing, IntPtr reserved);
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Recovery_rejects_unexpected_directory_without_changing_external_acl(bool link)
+    {
+        var journal = Journal();
+        var transfer = Transfer();
+        await journal.CreateAsync(transfer, CancellationToken.None);
+        string outside = Path.Combine(_workspace.Root, "outside-folder");
+        string child = Path.Combine(_workspace.Root, "journal", "unexpected");
+        Directory.CreateDirectory(outside);
+        string data = Path.Combine(outside, "retained.txt");
+        await File.WriteAllTextAsync(data, "retained external bytes");
+        var info = new DirectoryInfo(outside);
+        string prior = info.GetAccessControl().GetSecurityDescriptorSddlForm(AccessControlSections.All);
+        if (link) Directory.CreateSymbolicLink(child, outside);
+        else Directory.CreateDirectory(child);
+        try
+        {
+            Assert.Throws<IOException>(() => Journal());
+            Assert.Equal(prior, info.GetAccessControl().GetSecurityDescriptorSddlForm(AccessControlSections.All));
+            Assert.Equal("retained external bytes", await File.ReadAllTextAsync(data));
+        }
+        finally { Directory.Delete(child); }
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, true)]
+    public async Task Unsafe_write_grant_is_rejected_and_never_silently_repaired(bool directory, bool restart)
+    {
+        var journal = Journal();
+        var transfer = Transfer();
+        await journal.CreateAsync(transfer, CancellationToken.None);
+        string manifest = Path.Combine(_workspace.Root, "journal", transfer.TransferId.ToString("N") + ".json");
+        FileSystemSecurity security = directory ? new DirectoryInfo(Path.GetDirectoryName(manifest)!).GetAccessControl() :
+            new FileInfo(manifest).GetAccessControl();
+        var rule = new FileSystemAccessRule(new SecurityIdentifier(WellKnownSidType.BuiltinUsersSid, null),
+            FileSystemRights.Write, AccessControlType.Allow);
+        if (directory)
+        {
+            var directorySecurity = (DirectorySecurity)security;
+            directorySecurity.AddAccessRule(rule);
+            new DirectoryInfo(Path.GetDirectoryName(manifest)!).SetAccessControl(directorySecurity);
+        }
+        else
+        {
+            var fileSecurity = (FileSecurity)security;
+            fileSecurity.AddAccessRule(rule);
+            new FileInfo(manifest).SetAccessControl(fileSecurity);
+        }
+        byte[] prior = await File.ReadAllBytesAsync(manifest);
+        // Read back the persisted descriptor: Windows may add the
+        // auto-inherited control bit when SetAccessControl returns.
+        var persisted = directory ? (FileSystemSecurity)new DirectoryInfo(Path.GetDirectoryName(manifest)!).GetAccessControl() :
+            new FileInfo(manifest).GetAccessControl();
+        string priorSecurity = persisted.GetSecurityDescriptorSddlForm(AccessControlSections.All);
+        if (restart) Assert.Throws<UnauthorizedAccessException>(() => Journal());
+        else await Assert.ThrowsAsync<UnauthorizedAccessException>(() => journal.ReadAsync(transfer.TransferId, CancellationToken.None));
+        var after = directory ? (FileSystemSecurity)new DirectoryInfo(Path.GetDirectoryName(manifest)!).GetAccessControl() :
+            new FileInfo(manifest).GetAccessControl();
+        Assert.Equal(priorSecurity, after.GetSecurityDescriptorSddlForm(AccessControlSections.All));
+        Assert.Equal(prior, await File.ReadAllBytesAsync(manifest));
+    }
+
+    [Fact]
+    public async Task Maximum_unicode_namespace_history_round_trips_and_excess_preserves_the_head()
+    {
+        var journal = Journal();
+        // Protocol paths have at most 511 UTF-16 characters; JSON may escape
+        // each character to six bytes. Exercise the full 16-name history.
+        string folder = Path.Combine(_workspace.Root, new string('\u4E2D', 180), new string('\u4E2D', 180));
+        var transfer = Transfer() with { DestinationPath = Path.Combine(folder, "0.txt") };
+        await journal.CreateAsync(transfer, CancellationToken.None);
+        for (ulong id = 1; id <= 16; id++)
+        {
+            string destination = Path.Combine(folder, id + ".txt");
+            await journal.PrepareRenameAsync(transfer.TransferId, id, transfer.ProcessId, destination, false, CancellationToken.None);
+            await journal.CompleteRenameAsync(transfer.TransferId, id, transfer.ProcessId, destination, true, CancellationToken.None);
+        }
+        string manifest = Path.Combine(_workspace.Root, "journal", transfer.TransferId.ToString("N") + ".json");
+        byte[] prior = await File.ReadAllBytesAsync(manifest);
+        Assert.True(prior.Length < StagedJournalFile.MaximumManifestBytes);
+        var current = await Journal().ReadAsync(transfer.TransferId, CancellationToken.None);
+        Assert.Equal(Path.Combine(folder, "16.txt"), current.Transfer.DestinationPath);
+        await Assert.ThrowsAsync<IOException>(() => journal.PrepareRenameAsync(transfer.TransferId, 17,
+            transfer.ProcessId, Path.Combine(folder, "17.txt"), false, CancellationToken.None));
+        Assert.Equal(prior, await File.ReadAllBytesAsync(manifest));
+    }
+
+    [Fact]
+    public async Task Incomplete_json_is_retained_and_never_recovered_as_an_allocation()
+    {
+        var journal = Journal();
+        var transfer = Transfer();
+        await journal.CreateAsync(transfer, CancellationToken.None);
+        string path = Path.Combine(_workspace.Root, "journal", transfer.TransferId.ToString("N") + ".json");
+        await File.WriteAllTextAsync(path, "{\"Transfer\":");
+        byte[] prior = await File.ReadAllBytesAsync(path);
+        await Assert.ThrowsAsync<InvalidDataException>(() => journal.ReadAsync(transfer.TransferId, CancellationToken.None));
+        await Assert.ThrowsAsync<InvalidDataException>(() => Journal().RetainInterruptedAsync(CancellationToken.None));
+        Assert.Equal(prior, await File.ReadAllBytesAsync(path));
+    }
+
     [Fact]
     public async Task Manifest_reader_keeps_prior_state_during_atomic_replacement()
     {
@@ -30,7 +229,8 @@ public sealed class StagedTransferJournalTests : IDisposable
         var journal = Journal();
         await journal.CreateAsync(transfer, CancellationToken.None);
         string path = Path.Combine(_workspace.Root, "journal", transfer.TransferId.ToString("N") + ".json");
-        using var reader = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete);
+        using var reader = StagedJournalFile.Open(path);
+        Assert.Throws<IOException>(() => new FileStream(path, FileMode.Open, FileAccess.Write, FileShare.ReadWrite | FileShare.Delete));
         await journal.SealAsync(transfer.TransferId, transfer.ProcessId, transfer.StagePath, CancellationToken.None);
         var prior = await System.Text.Json.JsonSerializer.DeserializeAsync<TransferJournalEntry>(reader);
         Assert.Equal(TransferJournalState.Allocated, prior!.State);

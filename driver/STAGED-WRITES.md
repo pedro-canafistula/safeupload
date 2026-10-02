@@ -1,5 +1,94 @@
 # Staged writes to protected destinations
 
+## Pause checkpoint (2 October 2026, user requested a break)
+
+**Work is paused, not complete.** Continue on `feat/staged-kernel-prototype` from
+this checkpoint commit. Do not query ClickUp. The completed kernel increment is
+`b6e93d6` (parent namespace rename admission); its four WDK builds and ordinary,
+runtime and boot/integrated VM gates pass. The immediately preceding increments
+qualified occupied source-slot reuse (`913a8d2`), actual interactive WPF approval
+(`2ea55c7`) and consumed/negative publication permits (`8f77c70`). The single
+Chappell-style investigation is already complete; do not restart it by default.
+
+The active work at the pause is **journal recovery hardening**, saved in source
+and tests but **not yet VM-qualified**. `StagedJournalFile.cs` opens the final
+object with documented OPEN_REPARSE_POINT, queries its handle metadata, rejects
+reparses/directories/multiple links and bounds each manifest to 128 KiB. The
+journal preflights all children before applying an inheritable directory DACL,
+then validates/repairs each child's ACL on its held handle. It rejects untrusted
+mutation grants, validates the manifest identity/path/state/seal/rename/history,
+and preserves malformed bytes instead of interpreting them as recovery approval.
+Read sharing denies data writers but allows the existing atomic replacement and
+keeps pinned readers on their original object. The existing protocol is unchanged.
+No backing-stage reclamation or namespace reconstruction is added by this work.
+
+[275/275 Windows agent tests](evidence/2026-10-02/journal-security-agent-tests.txt)
+PASS in the isolated builder checkout, including 20 new security/bounds/corruption
+cases. The 13 initial new cases [failed before the change](evidence/2026-10-02/journal-security-before.txt).
+[The first corrected focused gate](evidence/2026-10-02/journal-security-focused.txt)
+passed 34/34; subsequent full 275/275 adds unsafe ACL grants, directories, incomplete
+JSON and a maximum Unicode 16-name history. Two implementation/probe mistakes
+were found and fixed before VM use: tombstone generations belong to independent
+path slots and must not be compared to the current target's generation; ACL
+comparisons must read the persisted descriptor after Windows adds its
+AutoInherited control bit. A preliminary hard-link restart failure showed that
+parent ACL propagation preceded child validation; preflight now prevents that
+external object's ACL from being changed. The final regressions assert retained
+bytes and unchanged persisted external ACLs. These are disposable builder tests
+under its elevated test identity; the real LocalSystem path still needs the gates
+below. Protected ancestors and trusted administrator/SYSTEM authority remain
+prerequisites; this does not claim protection against a privileged host mutation.
+
+Next increment on resume:
+
+1. Inspect this checkpoint and the journal/source diff before changing it. Review
+   the schema/ACL checks against the nine preserved legacy VM manifests without
+   deleting or silently migrating them. Generation zero remains accepted for
+   older records; namespace claims still use the existing durable barriers.
+2. Publish the changed service as self-contained win-x64 Release in
+   `C:\Users\vika\Documents\safeupload-staging-test`; build the WPF app Release.
+   Run focused journal tests if a failure motivates another edit. Kernel source
+   is unchanged since `b6e93d6`, so its recorded WDK gates remain applicable.
+3. Make a new frozen disposable-debuggee checkpoint on the verified restored
+   baseline, transfer/hash the new service ZIP, and run the real LocalSystem
+   journal recovery/negative-publication cases. Check startup rejection of
+   malformed or redirected fixtures without changing public bytes or outside
+   ACLs. Add a small VM harness for those fixtures; it does not exist yet.
+4. Run `Test-StagedOwnedStreams.ps1 -Verifier -ReplacementCases
+   -PublicationIterations 24` with the unchanged SYS below and the new service
+   package. This must cover service restart, native replacement and publication
+   with the stronger journal reader. Broaden to boot DDI/MDL only for a specific
+   kernel concern or the required later combined release gate. Restore and verify
+   the original driver after every experiment, including failures.
+5. Record exact package hashes, failures/limitations and final restoration, then
+   complete the journal increment. Return to the remaining acceptance tracker:
+   aliases and other filesystem/private/public semantics; authenticated recovery
+   and driver/reboot loss; stage-object security, quotas/reclamation/full disk;
+   USB/SMB/sync stacks; full application/crash/fault/stress/latency matrix.
+
+Current **qualified** feature SYS is
+`4B60DFA21CC9800DAEA7363208A13C783E59CA37BFC288D91918803E83F19E20`
+(`C:\Users\vika\Documents\SafeUpload-stage-prototype.sys`, local
+`/tmp/safeupload-parent-current.sys`). The guest's service ZIP remains the older
+qualified `4EB6D0B43D7603878CFAFD2F69C756AE13393D0484025FC2D6554BFE6EF68AB2`;
+**no updated service package was built or deployed before the pause**. Do not
+mistake that ZIP for the changed journal source. Builder and debuggee are
+192.168.122.210 / 192.168.122.51; KDNET .232 is a separate address. The original
+checkout is untouched. Active disk is
+`/var/lib/libvirt/images/win10-debug.safeupload-pre-parent-boot-20261002`.
+Preserve both new parent snapshots, all earlier snapshots and forensic disk/RAM.
+
+[Pause restoration evidence](evidence/2026-10-02/pause-20261002-final-state.txt)
+confirms original installed ADA9D05A… SYS, filter unloaded, original Manual/Stopped
+service, configured and active Verifier off, original policy, no temporary
+tasks/service/app and absent S:/VHDX. The
+[parent independent checks](evidence/2026-10-02/parent-final-restored-state.txt)
+also verify original debugger host/port/key, with no debugger changes afterward;
+builder task/firewall/listener/temporary authority are absent. No experiment,
+build/test job, pending reboot or restoration is active at the pause. Guest/host
+clocks still differ; record both independently and never print the debugger key.
+Normal staging remains compiled out and unsupported capabilities remain disabled.
+
 ## Remaining acceptance tracker (resumed 1 October 2026)
 
 This is the active tracker for completing the broader feature. The integrated
@@ -47,6 +136,8 @@ after every experiment, including failures.
          reclamation preserving durable destination generations and user content.
          Progress: allocation bounds seed copies to the kernel's 16 MiB limit
          before creating output; oversize rejection and exact-bound admission pass.
+         Journal object/ACL/schema bounds pass 275 agent tests at the pause;
+         updated-service Release and real LocalSystem VM gates remain open.
 4. Destination qualification
    - [ ] USB including surprise removal and supported filesystem guards.
    - [ ] UNC/mapped SMB redirector identity/paging/reconnect architecture and gates.

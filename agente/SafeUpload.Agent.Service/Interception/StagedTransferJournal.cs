@@ -16,6 +16,7 @@ public sealed class StagedTransferJournal
     private readonly string _directory;
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly FileSecurity? _fileSecurity;
+    private readonly SecurityIdentifier? _owner;
 
     public StagedTransferJournal(string directory, bool requireProtectedParent = false)
     {
@@ -39,6 +40,7 @@ public sealed class StagedTransferJournal
             using var identity = WindowsIdentity.GetCurrent();
             var owner = identity.User ?? throw new InvalidOperationException(
                 "The journal needs a Windows service identity.");
+            _owner = owner;
             var directorySecurity = new DirectorySecurity();
             directorySecurity.SetAccessRuleProtection(isProtected: true, preserveInheritance: false);
             AddPrivateRules(directorySecurity, owner, inherit: true);
@@ -53,6 +55,19 @@ public sealed class StagedTransferJournal
                 {
                     RequireTrustedOwner(info.GetAccessControl(), "journal directory");
                 }
+                RequireNoUntrustedWriters(info.GetAccessControl(), owner);
+                // Setting an inheritable directory DACL can update a child's
+                // shared object before its own ACL is visited. Preflight ALL
+                // children before allowing that propagation, then reopen and
+                // validate each object again for its handle-based ACL update.
+                foreach (string path in Directory.EnumerateFileSystemEntries(_directory))
+                {
+                    using var file = StagedJournalFile.Open(path);
+                    var security = file.GetAccessControl();
+                    if (owner.IsWellKnown(WellKnownSidType.LocalSystemSid))
+                        RequireTrustedOwner(security, "journal manifest");
+                    RequireNoUntrustedWriters(security, owner);
+                }
                 info.SetAccessControl(directorySecurity);
             }
 
@@ -61,11 +76,13 @@ public sealed class StagedTransferJournal
             AddPrivateRules(_fileSecurity, owner, inherit: false);
             foreach (string path in Directory.EnumerateFiles(_directory))
             {
-                var file = new FileInfo(path);
+                using var file = StagedJournalFile.Open(path, recoverAcl: true);
+                var security = file.GetAccessControl();
                 if (owner.IsWellKnown(WellKnownSidType.LocalSystemSid))
                 {
-                    RequireTrustedOwner(file.GetAccessControl(), "journal manifest");
+                    RequireTrustedOwner(security, "journal manifest");
                 }
+                RequireNoUntrustedWriters(security, owner);
                 file.SetAccessControl(_fileSecurity);
             }
         }
@@ -88,6 +105,7 @@ public sealed class StagedTransferJournal
 
         var entry = new TransferJournalEntry(
             transfer, TransferJournalState.Allocated, null, DateTimeOffset.UtcNow);
+        ValidateEntry(entry, transfer.TransferId);
         string path = ManifestPath(transfer.TransferId);
         string temporary = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
 
@@ -114,6 +132,8 @@ public sealed class StagedTransferJournal
             {
                 await JsonSerializer.SerializeAsync(stream, entry, cancellationToken: cancellationToken)
                     .ConfigureAwait(false);
+                if (stream.Length > StagedJournalFile.MaximumManifestBytes)
+                    throw new InvalidDataException("Journal manifest exceeds the qualified size bound.");
                 stream.Flush(flushToDisk: true);
             }
 
@@ -146,18 +166,93 @@ public sealed class StagedTransferJournal
         Guid transferId, CancellationToken cancellationToken)
     {
         string path = ManifestPath(transferId);
-        await using var stream = new FileStream(
-            path, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete,
-            4096, FileOptions.Asynchronous | FileOptions.SequentialScan);
-        var entry = await JsonSerializer.DeserializeAsync<TransferJournalEntry>(
-            stream, cancellationToken: cancellationToken).ConfigureAwait(false);
-
-        if (entry is null || entry.Transfer.TransferId != transferId)
+        await using var stream = StagedJournalFile.Open(path);
+        if (_owner is not null)
         {
-            throw new InvalidDataException("The transfer manifest has the wrong ID.");
+            var security = stream.GetAccessControl();
+            if (_owner.IsWellKnown(WellKnownSidType.LocalSystemSid))
+                RequireTrustedOwner(security, "journal manifest");
+            RequireNoUntrustedWriters(security, _owner);
         }
+        TransferJournalEntry? entry;
+        try
+        {
+            entry = await JsonSerializer.DeserializeAsync<TransferJournalEntry>(
+                stream, cancellationToken: cancellationToken).ConfigureAwait(false);
+        }
+        catch (JsonException error) { throw new InvalidDataException("The transfer manifest is invalid JSON.", error); }
+        ValidateEntry(entry, transferId);
+        return entry!;
+    }
 
-        return entry;
+    private static void ValidateEntry(TransferJournalEntry? entry, Guid id)
+    {
+        if (id == Guid.Empty || entry?.Transfer is not { } transfer || transfer.TransferId != id ||
+            !Enum.IsDefined(entry.State) || !Enum.IsDefined(transfer.Destination) ||
+            transfer.ProcessId <= 0 || string.IsNullOrWhiteSpace(transfer.ProcessName) ||
+            transfer.ProcessName.Length > 63 || entry.DestinationGeneration < 0 ||
+            entry.UpdatedAtUtc == default)
+            throw new InvalidDataException("The transfer manifest has invalid identity or state.");
+        RequireManifestPath(transfer.StagePath);
+        RequireManifestPath(transfer.DestinationPath);
+        if (entry.Sha256Hex is not null && (entry.Sha256Hex.Length != 64 || !entry.Sha256Hex.All(Uri.IsHexDigit)))
+            throw new InvalidDataException("The transfer manifest has an invalid digest.");
+        bool requiresSeal = entry.State is TransferJournalState.Sealed or TransferJournalState.Inspecting or
+            TransferJournalState.Approved or TransferJournalState.Publishing or TransferJournalState.Released or
+            TransferJournalState.Blocked;
+        if ((requiresSeal && !entry.SealedOnce) ||
+            (entry.State is TransferJournalState.Allocated or TransferJournalState.Unsealed && entry.SealedOnce) ||
+            (entry.State is TransferJournalState.Publishing or TransferJournalState.Released && entry.Sha256Hex is null))
+            throw new InvalidDataException("The transfer manifest has invalid seal/publication evidence.");
+        if (entry.PendingRename is { } rename)
+        {
+            RequireManifestPath(rename.DestinationPath);
+            if (rename.TransactionId == 0 || rename.SealedVersion != entry.SealedOnce)
+                throw new InvalidDataException("The transfer manifest has an invalid pending rename.");
+        }
+        if (entry.LastRenameDestination is not null) RequireManifestPath(entry.LastRenameDestination);
+        if ((entry.LastRenameTransactionId == 0 && (entry.LastRenameDestination is not null || entry.LastRenameCommitted)) ||
+            (entry.LastRenameTransactionId != 0 && entry.LastRenameDestination is null))
+            throw new InvalidDataException("The transfer manifest has invalid completed rename evidence.");
+        int count = 0;
+        for (var name = entry.NamespaceTombstones; name is not null; name = name.Previous)
+        {
+            RequireManifestPath(name.DestinationPath);
+            // Generations belong to independent destination slots. A source
+            // tombstone may be greater than the current target generation.
+            if (++count > 16 || name.Generation <= 0)
+                throw new InvalidDataException("The transfer manifest has invalid namespace history.");
+        }
+    }
+
+    private static void RequireManifestPath(string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path) || path.Length > 511 || !Path.IsPathFullyQualified(path) ||
+            string.IsNullOrEmpty(Path.GetFileName(path)))
+            throw new InvalidDataException("The transfer manifest has an invalid path.");
+        try
+        {
+            if (!string.Equals(path, Path.GetFullPath(path), StringComparison.OrdinalIgnoreCase))
+                throw new InvalidDataException("The transfer manifest path is not normalized.");
+        }
+        catch (ArgumentException error) { throw new InvalidDataException("The transfer manifest has an invalid path.", error); }
+    }
+
+    internal static void RequireNoUntrustedWriters(FileSystemSecurity security, SecurityIdentifier owner)
+    {
+        const FileSystemRights mutations = FileSystemRights.Write | FileSystemRights.Delete |
+            FileSystemRights.DeleteSubdirectoriesAndFiles | FileSystemRights.ChangePermissions |
+            FileSystemRights.TakeOwnership;
+        foreach (FileSystemAccessRule rule in security.GetAccessRules(true, true, typeof(SecurityIdentifier)))
+        {
+            if (rule.AccessControlType != AccessControlType.Allow ||
+                (rule.PropagationFlags & PropagationFlags.InheritOnly) != 0 ||
+                (rule.FileSystemRights & mutations) == 0) continue;
+            var sid = (SecurityIdentifier)rule.IdentityReference;
+            if (!sid.Equals(owner) && !sid.IsWellKnown(WellKnownSidType.LocalSystemSid) &&
+                !sid.IsWellKnown(WellKnownSidType.BuiltinAdministratorsSid))
+                throw new UnauthorizedAccessException("Journal object grants mutation rights to an untrusted identity.");
+        }
     }
 
     public async Task<TransferJournalEntry> TransitionAsync(
@@ -499,6 +594,7 @@ public sealed class StagedTransferJournal
         TransferJournalEntry entry,
         CancellationToken cancellationToken)
     {
+        ValidateEntry(entry, entry.Transfer.TransferId);
         string temporary = manifestPath + "." + Guid.NewGuid().ToString("N") + ".tmp";
         try
         {
@@ -506,6 +602,8 @@ public sealed class StagedTransferJournal
             {
                 await JsonSerializer.SerializeAsync(stream, entry, cancellationToken: cancellationToken)
                     .ConfigureAwait(false);
+                if (stream.Length > StagedJournalFile.MaximumManifestBytes)
+                    throw new InvalidDataException("Journal manifest exceeds the qualified size bound.");
                 StagedDestinationFile.Commit(stream, temporary, manifestPath);
             }
 

@@ -1,0 +1,143 @@
+  Determining projects to restore...
+  Restored C:\Users\vika\Documents\safeupload-staging-test\agente\SafeUpload.Agent.Minifilter\SafeUpload.Agent.Minifilter.csproj (in 72 ms).
+  Restored C:\Users\vika\Documents\safeupload-staging-test\agente\SafeUpload.Agent.Core\SafeUpload.Agent.Core.csproj (in 150 ms).
+  Restored C:\Users\vika\Documents\safeupload-staging-test\agente\SafeUpload.Agent.Service\SafeUpload.Agent.Service.csproj (in 305 ms).
+  1 of 4 projects are up-to-date for restore.
+  SafeUpload.Agent.Core -> C:\Users\vika\Documents\safeupload-staging-test\agente\SafeUpload.Agent.Core\bin\Debug\net10.0\SafeUpload.Agent.Core.dll
+  SafeUpload.Agent.Minifilter -> C:\Users\vika\Documents\safeupload-staging-test\agente\SafeUpload.Agent.Minifilter\bin\Debug\net10.0-windows\SafeUpload.Agent.Minifilter.dll
+  SafeUpload.Agent.Service -> C:\Users\vika\Documents\safeupload-staging-test\agente\SafeUpload.Agent.Service\bin\Debug\net10.0-windows\SafeUpload.Agent.Service.dll
+  SafeUpload.Agent.Tests -> C:\Users\vika\Documents\safeupload-staging-test\agente\SafeUpload.Agent.Tests\bin\Debug\net10.0-windows\SafeUpload.Agent.Tests.dll
+Test run for C:\Users\vika\Documents\safeupload-staging-test\agente\SafeUpload.Agent.Tests\bin\Debug\net10.0-windows\SafeUpload.Agent.Tests.dll (.NETCoreApp,Version=v10.0)
+A total of 1 test files matched the specified pattern.
+dotnet.exe : [xUnit.net 00:00:01.92]     SafeUpload.Agent.Tests.StagedTransferJournalTests.Redirect
+ed_manifest_is_rejected_without_changing_external_acl(hardLink: False, restart: False) [FAIL]
+At line:2 char:1
++ & dotnet test agente\SafeUpload.Agent.Tests\SafeUpload.Agent.Tests.cs ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: ([xUnit.net 00:0...: False) [FAIL]:String) [], RemoteE
+   xception
+    + FullyQualifiedErrorId : NativeCommandError
+
+[xUnit.net 00:00:01.96]     SafeUpload.Agent.Tests.StagedTransferJournalTests.Redirected_manifest_i
+s_rejected_without_changing_external_acl(hardLink: True, restart: False) [FAIL]
+[xUnit.net 00:00:01.98]     SafeUpload.Agent.Tests.StagedTransferJournalTests.Redirected_manifest_i
+s_rejected_without_changing_external_acl(hardLink: False, restart: True) [FAIL]
+[xUnit.net 00:00:02.00]     SafeUpload.Agent.Tests.StagedTransferJournalTests.Redirected_manifest_i
+s_rejected_without_changing_external_acl(hardLink: True, restart: True) [FAIL]
+[xUnit.net 00:00:02.05]     SafeUpload.Agent.Tests.StagedTransferJournalTests.Malformed_manifest_is
+_rejected_without_recovery_mutation(corruption: "null-transfer") [FAIL]
+[xUnit.net 00:00:02.07]     SafeUpload.Agent.Tests.StagedTransferJournalTests.Malformed_manifest_is
+_rejected_without_recovery_mutation(corruption: "zero-rename") [FAIL]
+[xUnit.net 00:00:02.09]     SafeUpload.Agent.Tests.StagedTransferJournalTests.Malformed_manifest_is
+_rejected_without_recovery_mutation(corruption: "invalid-tombstone") [FAIL]
+[xUnit.net 00:00:02.12]     SafeUpload.Agent.Tests.StagedTransferJournalTests.Malformed_manifest_is
+_rejected_without_recovery_mutation(corruption: "invalid-owner") [FAIL]
+[xUnit.net 00:00:02.13]     SafeUpload.Agent.Tests.StagedTransferJournalTests.Malformed_manifest_is
+_rejected_without_recovery_mutation(corruption: "relative-destination") [FAIL]
+  Failed SafeUpload.Agent.Tests.StagedTransferJournalTests.Redirected_manifest_is_rejected_without_changing_external_acl(hardLink: False, restart: False) [143 ms]
+  Error Message:
+   Assert.Throws() Failure: No exception was thrown
+Expected: typeof(System.IO.IOException)
+  Stack Trace:
+     at SafeUpload.Agent.Tests.StagedTransferJournalTests.Redirected_manifest_is_rejected_without_changing_external_acl(Boolean hardLink, Boolean restart) in C:\Users\vika\Documents\safeupload-staging-test\agente\SafeUpload.Agent.Tests\StagedTransferJournalTests.cs:line 60
+--- End of stack trace from previous location ---
+  Failed SafeUpload.Agent.Tests.StagedTransferJournalTests.Redirected_manifest_is_rejected_without_changing_external_acl(hardLink: True, restart: False) [41 ms]
+  Error Message:
+   Assert.Throws() Failure: No exception was thrown
+Expected: typeof(System.IO.IOException)
+  Stack Trace:
+     at SafeUpload.Agent.Tests.StagedTransferJournalTests.Redirected_manifest_is_rejected_without_changing_external_acl(Boolean hardLink, Boolean restart) in C:\Users\vika\Documents\safeupload-staging-test\agente\SafeUpload.Agent.Tests\StagedTransferJournalTests.cs:line 60
+--- End of stack trace from previous location ---
+  Failed SafeUpload.Agent.Tests.StagedTransferJournalTests.Redirected_manifest_is_rejected_without_changing_external_acl(hardLink: False, restart: True) [22 ms]
+  Error Message:
+   Assert.Throws() Failure: No exception was thrown
+Expected: typeof(System.IO.IOException)
+  Stack Trace:
+     at SafeUpload.Agent.Tests.StagedTransferJournalTests.Redirected_manifest_is_rejected_without_changing_external_acl(Boolean hardLink, Boolean restart) in C:\Users\vika\Documents\safeupload-staging-test\agente\SafeUpload.Agent.Tests\StagedTransferJournalTests.cs:line 59
+--- End of stack trace from previous location ---
+  Failed SafeUpload.Agent.Tests.StagedTransferJournalTests.Redirected_manifest_is_rejected_without_changing_external_acl(hardLink: True, restart: True) [18 ms]
+  Error Message:
+   Assert.Throws() Failure: No exception was thrown
+Expected: typeof(System.IO.IOException)
+  Stack Trace:
+     at SafeUpload.Agent.Tests.StagedTransferJournalTests.Redirected_manifest_is_rejected_without_changing_external_acl(Boolean hardLink, Boolean restart) in C:\Users\vika\Documents\safeupload-staging-test\agente\SafeUpload.Agent.Tests\StagedTransferJournalTests.cs:line 59
+--- End of stack trace from previous location ---
+  Failed SafeUpload.Agent.Tests.StagedTransferJournalTests.Malformed_manifest_is_rejected_without_recovery_mutation(corruption: "null-transfer") [28 ms]
+  Error Message:
+   Assert.Throws() Failure: Exception type was not an exact match
+Expected: typeof(System.IO.InvalidDataException)
+Actual:   typeof(System.NullReferenceException)
+---- System.NullReferenceException : Object reference not set to an instance of an object.
+  Stack Trace:
+     at SafeUpload.Agent.Tests.StagedTransferJournalTests.Malformed_manifest_is_rejected_without_recovery_mutation(String corruption) in C:\Users\vika\Documents\safeupload-staging-test\agente\SafeUpload.Agent.Tests\StagedTransferJournalTests.cs:line 111
+--- End of stack trace from previous location ---
+----- Inner Stack Trace -----
+   at SafeUpload.Agent.Service.Interception.StagedTransferJournal.ReadCoreAsync(Guid transferId, CancellationToken cancellationToken) in C:\Users\vika\Documents\safeupload-staging-test\agente\SafeUpload.Agent.Service\Interception\StagedTransferJournal.cs:line 155
+   at SafeUpload.Agent.Service.Interception.StagedTransferJournal.ReadCoreAsync(Guid transferId, CancellationToken cancellationToken) in C:\Users\vika\Documents\safeupload-staging-test\agente\SafeUpload.Agent.Service\Interception\StagedTransferJournal.cs:line 160
+   at SafeUpload.Agent.Service.Interception.StagedTransferJournal.ReadAsync(Guid transferId, CancellationToken cancellationToken) in C:\Users\vika\Documents\safeupload-staging-test\agente\SafeUpload.Agent.Service\Interception\StagedTransferJournal.cs:line 139
+  Failed SafeUpload.Agent.Tests.StagedTransferJournalTests.Malformed_manifest_is_rejected_without_recovery_mutation(corruption: "zero-rename") [24 ms]
+  Error Message:
+   Assert.Throws() Failure: No exception was thrown
+Expected: typeof(System.IO.InvalidDataException)
+  Stack Trace:
+     at SafeUpload.Agent.Tests.StagedTransferJournalTests.Malformed_manifest_is_rejected_without_recovery_mutation(String corruption) in C:\Users\vika\Documents\safeupload-staging-test\agente\SafeUpload.Agent.Tests\StagedTransferJournalTests.cs:line 111
+--- End of stack trace from previous location ---
+  Failed SafeUpload.Agent.Tests.StagedTransferJournalTests.Malformed_manifest_is_rejected_without_recovery_mutation(corruption: "invalid-tombstone") [22 ms]
+  Error Message:
+   Assert.Throws() Failure: No exception was thrown
+Expected: typeof(System.IO.InvalidDataException)
+  Stack Trace:
+     at SafeUpload.Agent.Tests.StagedTransferJournalTests.Malformed_manifest_is_rejected_without_recovery_mutation(String corruption) in C:\Users\vika\Documents\safeupload-staging-test\agente\SafeUpload.Agent.Tests\StagedTransferJournalTests.cs:line 111
+--- End of stack trace from previous location ---
+  Failed SafeUpload.Agent.Tests.StagedTransferJournalTests.Malformed_manifest_is_rejected_without_recovery_mutation(corruption: "invalid-owner") [22 ms]
+  Error Message:
+   Assert.Throws() Failure: No exception was thrown
+Expected: typeof(System.IO.InvalidDataException)
+  Stack Trace:
+     at SafeUpload.Agent.Tests.StagedTransferJournalTests.Malformed_manifest_is_rejected_without_recovery_mutation(String corruption) in C:\Users\vika\Documents\safeupload-staging-test\agente\SafeUpload.Agent.Tests\StagedTransferJournalTests.cs:line 111
+--- End of stack trace from previous location ---
+  Failed SafeUpload.Agent.Tests.StagedTransferJournalTests.Malformed_manifest_is_rejected_without_recovery_mutation(corruption: "relative-destination") [14 ms]
+  Error Message:
+   Assert.Throws() Failure: No exception was thrown
+Expected: typeof(System.IO.InvalidDataException)
+  Stack Trace:
+     at SafeUpload.Agent.Tests.StagedTransferJournalTests.Malformed_manifest_is_rejected_without_recovery_mutation(String corruption) in C:\Users\vika\Documents\safeupload-staging-test\agente\SafeUpload.Agent.Tests\StagedTransferJournalTests.cs:line 111
+--- End of stack trace from previous location ---
+[xUnit.net 00:00:02.16]     SafeUpload.Agent.Tests.StagedTransferJournalTests.Malformed_manifest_is
+_rejected_without_recovery_mutation(corruption: "unsealed-publication") [FAIL]
+[xUnit.net 00:00:02.18]     SafeUpload.Agent.Tests.StagedTransferJournalTests.Malformed_manifest_is
+_rejected_without_recovery_mutation(corruption: "negative-generation") [FAIL]
+[xUnit.net 00:00:02.20]     SafeUpload.Agent.Tests.StagedTransferJournalTests.Malformed_manifest_is
+_rejected_without_recovery_mutation(corruption: "unknown-state") [FAIL]
+[xUnit.net 00:00:02.22]     SafeUpload.Agent.Tests.StagedTransferJournalTests.Oversized_manifest_is
+_rejected_before_deserialization_and_retained [FAIL]
+  Failed SafeUpload.Agent.Tests.StagedTransferJournalTests.Malformed_manifest_is_rejected_without_recovery_mutation(corruption: "unsealed-publication") [24 ms]
+  Error Message:
+   Assert.Throws() Failure: No exception was thrown
+Expected: typeof(System.IO.InvalidDataException)
+  Stack Trace:
+     at SafeUpload.Agent.Tests.StagedTransferJournalTests.Malformed_manifest_is_rejected_without_recovery_mutation(String corruption) in C:\Users\vika\Documents\safeupload-staging-test\agente\SafeUpload.Agent.Tests\StagedTransferJournalTests.cs:line 111
+--- End of stack trace from previous location ---
+  Failed SafeUpload.Agent.Tests.StagedTransferJournalTests.Malformed_manifest_is_rejected_without_recovery_mutation(corruption: "negative-generation") [21 ms]
+  Error Message:
+   Assert.Throws() Failure: No exception was thrown
+Expected: typeof(System.IO.InvalidDataException)
+  Stack Trace:
+     at SafeUpload.Agent.Tests.StagedTransferJournalTests.Malformed_manifest_is_rejected_without_recovery_mutation(String corruption) in C:\Users\vika\Documents\safeupload-staging-test\agente\SafeUpload.Agent.Tests\StagedTransferJournalTests.cs:line 111
+--- End of stack trace from previous location ---
+  Failed SafeUpload.Agent.Tests.StagedTransferJournalTests.Malformed_manifest_is_rejected_without_recovery_mutation(corruption: "unknown-state") [19 ms]
+  Error Message:
+   Assert.Throws() Failure: No exception was thrown
+Expected: typeof(System.IO.InvalidDataException)
+  Stack Trace:
+     at SafeUpload.Agent.Tests.StagedTransferJournalTests.Malformed_manifest_is_rejected_without_recovery_mutation(String corruption) in C:\Users\vika\Documents\safeupload-staging-test\agente\SafeUpload.Agent.Tests\StagedTransferJournalTests.cs:line 111
+--- End of stack trace from previous location ---
+  Failed SafeUpload.Agent.Tests.StagedTransferJournalTests.Oversized_manifest_is_rejected_before_deserialization_and_retained [21 ms]
+  Error Message:
+   Assert.Throws() Failure: No exception was thrown
+Expected: typeof(System.IO.InvalidDataException)
+  Stack Trace:
+     at SafeUpload.Agent.Tests.StagedTransferJournalTests.Oversized_manifest_is_rejected_before_deserialization_and_retained() in C:\Users\vika\Documents\safeupload-staging-test\agente\SafeUpload.Agent.Tests\StagedTransferJournalTests.cs:line 77
+--- End of stack trace from previous location ---
+
+Failed!  - Failed:    13, Passed:     0, Skipped:     0, Total:    13, Duration: 451 ms - SafeUpload.Agent.Tests.dll (net10.0)

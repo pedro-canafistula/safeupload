@@ -1,0 +1,20 @@
+IndependentHostUTC=2026-10-02T03:12:41.298064+00:00
+UTC=2026-10-01T23:10:55.2247351Z
+Host=WIN10-DEBUGGED
+UUID=9D44EEE8-81CF-4CC1-9FBA-7670F11DEF4D
+OriginalInstalledSHA256=ADA9D05AB6AECDD2B6C521B0CE529FC06C732154ACB3EE85439FBDC8AA80DFCE
+TestDriverSHA256=4B60DFA21CC9800DAEA7363208A13C783E59CA37BFC288D91918803E83F19E20
+ServicePackageSHA256=4EB6D0B43D7603878CFAFD2F69C756AE13393D0484025FC2D6554BFE6EF68AB2
+TemporaryTasks=0; ServiceProcesses=0
+S:\=False
+C:\Users\vika\Documents\SafeUpload-owned.vhdx=False
+C:\Users\vika\Documents\SafeUpload-owned.vhdx.txt=False
+IndependentRestorationVerified=True
+ApplicationProcesses=0
+PolicySHA256=29DC8A341BD7C549996596D2477A0CCCAF19602C362A2167FB4FDD5C66663731
+OriginalOverridePolicyRestored=FalseOverrideAllowed
+No drivers are currently verified.
+OriginalServiceManualStopped=True
+
+BuilderDebuggerBaselineClean=True
+OriginalDebuggerAuthorityPreviouslyVerified=parent-final-restored-state.txt; NoSubsequentDebuggerChanges=True
