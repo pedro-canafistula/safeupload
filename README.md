@@ -2,7 +2,7 @@
 
 Protótipo acadêmico de sistema de **prevenção de vazamento acidental de dados** (DLP), desenvolvido na disciplina de Análise e Projeto de Software da Universidade Católica de Brasília.
 
-> Versão atual: **0.1.0** — protótipo acadêmico com Centro de Administração web e agente desktop. O frontend web possui navegação, renderização e dados demonstrativos; Auditoria e Endpoints já usam somente dados recebidos em memória pela API do agente. Ainda não há autenticação real, persistência em banco nem execução efetiva das ações administrativas.
+> Versão atual: **0.1.0** — protótipo acadêmico com Centro de Administração web e agente desktop. Painel, Auditoria e Endpoints já usam dados recebidos em memória pela API do agente; as demais telas continuam demonstrativas. Ainda não há autenticação real, persistência em banco nem execução efetiva das ações administrativas.
 
 ---
 
@@ -39,7 +39,7 @@ O repositório atual contém duas interfaces principais:
 1. um **Centro de Administração web**, desenvolvido com FastAPI, Jinja2, HTML e CSS;
 2. um **protótipo de agente desktop**, desenvolvido em WPF com .NET 8 e C#.
 
-Nesta versão, Auditoria e Endpoints consultam somente dados recebidos pela API do agente, sem exemplos fictícios. As demais telas continuam demonstrativas.
+Nesta versão, Painel, Auditoria e Endpoints consultam dados reais recebidos pela API do agente, sem exemplos fictícios nessas telas. O Painel agrega os últimos sete dias e também lê a política vigente. As demais telas continuam demonstrativas.
 
 A existência dessas representações visuais não significa que todos os fluxos de inspeção, autenticação, persistência ou administração estejam implementados.
 
@@ -86,7 +86,7 @@ Atualmente são apresentadas as seguintes áreas:
 - lista de exceções;
 - usuários.
 
-As páginas são renderizadas no servidor por Jinja2. Os contextos são montados na apresentação, com dados demonstrativos nas telas ainda não integradas e dados recebidos em memória em Auditoria e Endpoints. O [inventário das oito telas](docs/frontend/telas-e-dados.md) distingue comportamento implementado, limitações e dependências.
+As páginas são renderizadas no servidor por Jinja2. Os contextos são montados na apresentação, com dados demonstrativos nas telas ainda não integradas e dados recebidos em memória em Painel, Auditoria e Endpoints. O [inventário das oito telas](docs/frontend/telas-e-dados.md) distingue comportamento implementado, limitações e dependências.
 
 Não há aplicação SPA, framework JavaScript ou processo de build do frontend.
 
@@ -100,7 +100,7 @@ Não há aplicação SPA, framework JavaScript ou processo de build do frontend.
 | Servidor web | FastAPI + Uvicorn |
 | Renderização HTML | Jinja2 |
 | Frontend web | HTML5 + CSS3 |
-| Dados atuais do painel | Exemplos em Python nas telas demonstrativas; Auditoria e Endpoints leem registros recebidos em memória |
+| Dados atuais do frontend | Painel, Auditoria e Endpoints usam registros recebidos em memória; as demais telas ainda usam exemplos em Python |
 | Persistência | Não implementada nesta versão |
 | Agente desktop | WPF / .NET 8 / C# |
 | Interface desktop | XAML |
@@ -269,6 +269,8 @@ SafeUpload/
 │   │   │   ├── admin.py
 │   │   │   └── agent.py
 │   │   │
+│   │   ├── audit.py
+│   │   ├── dashboard.py
 │   │   ├── endpoints.py
 │   │   │
 │   │   ├── demo/
@@ -350,7 +352,7 @@ Além da apresentação, `application/agent_service.py`, `domain/schemas.py` e `
 | `/admin` | GET | Redireciona para `/admin/dashboard` |
 | `/admin/login` | GET | Renderiza a página de login |
 | `/admin/login` | POST | Redireciona para o painel sem validar as credenciais |
-| `/admin/dashboard` | GET | Renderiza o painel administrativo |
+| `/admin/dashboard` | GET | Renderiza indicadores reais dos últimos sete dias e categorias da política vigente |
 | `/admin/auditoria` | GET | Renderiza eventos recebidos; aceita filtro opcional por `endpoint` |
 | `/admin/endpoints` | GET | Renderiza endpoints registrados por heartbeat e aplica filtros de status, sistema e busca |
 | `/admin/relatorios` | GET | Renderiza a central demonstrativa de relatórios |
@@ -358,7 +360,7 @@ Além da apresentação, `application/agent_service.py`, `domain/schemas.py` e `
 | `/admin/excecoes` | GET | Renderiza a lista demonstrativa de exceções |
 | `/admin/usuarios` | GET | Renderiza a gestão demonstrativa de usuários |
 
-Os contextos das páginas administrativas ficam na camada de apresentação. `presentation/audit.py` e `presentation/endpoints.py` montam as duas telas já integradas a dados recebidos; `presentation/demo/admin_data.py` concentra as páginas ainda demonstrativas.
+Os contextos das páginas administrativas ficam na camada de apresentação. `presentation/dashboard.py`, `presentation/audit.py` e `presentation/endpoints.py` montam as telas já integradas a dados recebidos; `presentation/demo/admin_data.py` concentra as páginas ainda demonstrativas.
 
 Os filtros de Endpoints são aplicados no servidor e preservam os valores selecionados. Formulários demonstrativos de outras telas ainda podem enviar parâmetros sem comportamento de negócio.
 
@@ -465,13 +467,12 @@ app/presentation/demo/admin_data.py
 
 Esse módulo contém funções de construção de contexto para:
 
-- dashboard;
 - relatórios;
 - categorias;
 - exceções;
 - usuários.
 
-Cada função produz uma nova estrutura por chamada. Auditoria e Endpoints foram retirados do módulo demonstrativo: `presentation/audit.py` recebe eventos consultados pela aplicação, e `presentation/endpoints.py` recebe endpoints e eventos para montar o inventário, os totais e os filtros reais.
+Cada função produz uma nova estrutura por chamada. Painel, Auditoria e Endpoints foram retirados do módulo demonstrativo: `presentation/dashboard.py` recebe eventos, política e horário do servidor; `presentation/audit.py` recebe eventos consultados pela aplicação; e `presentation/endpoints.py` recebe endpoints e eventos para montar o inventário, os totais e os filtros reais.
 
 Não há banco de dados, cache ou estado global criado por essa separação.
 
@@ -630,7 +631,7 @@ Não estão implementados nesta entrega:
 
 ### Dados demonstrativos
 
-Os exemplos fictícios sustentam apenas as telas ainda demonstrativas. Auditoria e Endpoints mostram somente dados recebidos, com estados vazios reais e totais coerentes. Endpoints possui filtros funcionais e ligação para a Auditoria por `endpointId`; ainda não há persistência, exportação, paginação nem ações administrativas remotas. O [inventário das telas](docs/frontend/telas-e-dados.md) registra o escopo de cada página.
+Os exemplos fictícios sustentam apenas as telas ainda demonstrativas. Painel, Auditoria e Endpoints usam dados recebidos, com estados vazios reais e totais coerentes. O Painel agrega os últimos sete dias e usa a política vigente; Endpoints possui filtros funcionais e ligação para a Auditoria por `endpointId`. Ainda não há persistência, exportação, paginação nem ações administrativas remotas. O [inventário das telas](docs/frontend/telas-e-dados.md) registra o escopo de cada página.
 
 ### Agente desktop
 

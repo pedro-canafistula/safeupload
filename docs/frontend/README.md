@@ -1,6 +1,6 @@
 # Guia do frontend web SafeUpload
 
-Este guia documenta o painel web existente e sua refatoração estrutural. A maior parte da interface ainda é demonstrativa. Auditoria e Endpoints já exibem somente dados recebidos pela API do agente, mantidos em memória; Endpoints também aplica filtros reais e liga cada máquina ao seu histórico de auditoria. Autenticação e persistência em banco não estão implementadas no servidor web. A inspeção pertence ao [agente desktop](../../agente/README.md).
+Este guia documenta o painel web existente e sua refatoração estrutural. A maior parte da interface ainda é demonstrativa. Painel, Auditoria e Endpoints já usam dados recebidos pela API do agente, mantidos em memória; o Painel agrega os últimos sete dias e lê a política vigente, enquanto Endpoints aplica filtros reais e liga cada máquina ao seu histórico de auditoria. Autenticação e persistência em banco não estão implementadas no servidor web. A inspeção pertence ao [agente desktop](../../agente/README.md).
 
 ## Conteúdo
 
@@ -29,8 +29,8 @@ A refatoração de templates está concluída: os layouts HTML usam uma base com
 
 A organização do CSS também está concluída. `/static/css/styles.css` continua sendo o único stylesheet referenciado pelo HTML, mas agora importa `tokens.css`, `base.css`, `auth.css`, `controls.css`, `layout.css`, `components.css` e `pages.css` em ordem fixa. As regras originais foram apenas separadas; não houve renomeação de classes, mudança de valores nem reordenação da cascata.
 
-Os seis contextos demonstrativos permanecem em `presentation/demo/admin_data.py`; Endpoints também lê heartbeats em memória. A Auditoria usa `presentation/audit.py`: a rota consulta `application/agent_service.py` e entrega os eventos ao builder de apresentação. Lista e totais usam os mesmos registros; ausência de eventos é exibida explicitamente. Filtros, detalhes, exportação e paginação não estão disponíveis nesse recorte.
+Os quatro contextos ainda demonstrativos permanecem em `presentation/demo/admin_data.py`: Relatórios, Categorias, Exceções e Usuários. Painel, Auditoria e Endpoints usam builders próprios na camada de apresentação e recebem dados consultados por `application/agent_service.py`. O Painel agrega eventos dos últimos sete dias, mostra os seis mais recentes e lê as categorias ativas da política vigente.
 
-O registro `validacao-final.json` documenta a conclusão de F06/F07 da refatoração em 16/09/2026. O inventário atualizado em 01/10/2026 descreve as oito telas e suas dependências, incluindo Auditoria somente para leitura. Os registros visuais históricos não certificam essa evolução.
+O registro `validacao-final.json` documenta a conclusão de F06/F07 da refatoração em 16/09/2026. O inventário atualizado em 01/10/2026 descreve as oito telas e suas dependências, incluindo Painel, Auditoria e Endpoints integrados a dados reais em memória. Os registros visuais históricos não certificam essa evolução.
 
 O escopo de melhoria é o frontend web. O código do agente desktop é preservado sem alteração.

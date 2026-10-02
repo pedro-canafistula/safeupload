@@ -1,6 +1,6 @@
 # Telas e dados do frontend
 
-Inventário atualizado em 01/10/2026, incluindo Auditoria somente para leitura e Endpoints baseado em heartbeats reais. Descreve o comportamento desta versão; não representa funcionalidades planejadas como concluídas.
+Inventário atualizado em 01/10/2026, incluindo Painel baseado em eventos reais, Auditoria somente para leitura e Endpoints baseado em heartbeats reais. Descreve o comportamento desta versão; não representa funcionalidades planejadas como concluídas.
 
 ## Resumo das oito telas
 
@@ -9,7 +9,7 @@ Inventário atualizado em 01/10/2026, incluindo Auditoria somente para leitura e
 | Tela | Fonte atual | Funciona hoje | Lacuna principal |
 |---|---|---|---|
 | Login | Sem contexto de negócio | Renderização e redirecionamento do POST | Autenticação, sessão e autorização ausentes |
-| Painel | Dados fixos | Renderização e links internos | Indicadores não refletem os eventos recebidos |
+| Painel | Eventos recebidos + política vigente | KPIs, tendência de 7 dias, categorias bloqueadas, eventos recentes e categorias ativas | Sem persistência, seleção de período ou atualização automática |
 | Auditoria | Somente eventos recebidos, consultados pelo serviço | Lista, totais, estado vazio e filtro por `endpointId` | Sem persistência, filtros adicionais, detalhes, exportação ou paginação |
 | Endpoints | Somente heartbeats recebidos, consultados pelo serviço | Inventário, online/offline, filtros e acesso à auditoria por endpoint | Sem persistência ou ações administrativas remotas |
 | Relatórios | Catálogo fixo | Links para Auditoria e Painel | Nenhum relatório gerado |
@@ -17,7 +17,7 @@ Inventário atualizado em 01/10/2026, incluindo Auditoria somente para leitura e
 | Exceções | Sete exemplos fixos | Renderização e navegação de Limpar | Sem cadastro, remoção, filtro ou HMAC implementado |
 | Usuários | Seis contas fixas | Renderização e navegação de Limpar | Sem cadastro, edição ou controle de acesso |
 
-Rotas e templates: [admin.py](../../app/presentation/routes/admin.py) e [templates administrativos](../../app/presentation/templates/admin). Contextos integrados: [audit.py](../../app/presentation/audit.py) e [endpoints.py](../../app/presentation/endpoints.py); telas demonstrativas: [admin_data.py](../../app/presentation/demo/admin_data.py). Consultas passam por [agent_service.py](../../app/application/agent_service.py), usando [memory_store.py](../../app/infrastructure/memory_store.py).
+Rotas e templates: [admin.py](../../app/presentation/routes/admin.py) e [templates administrativos](../../app/presentation/templates/admin). Contextos integrados: [dashboard.py](../../app/presentation/dashboard.py), [audit.py](../../app/presentation/audit.py) e [endpoints.py](../../app/presentation/endpoints.py); telas demonstrativas: [admin_data.py](../../app/presentation/demo/admin_data.py). Consultas passam por [agent_service.py](../../app/application/agent_service.py), usando [memory_store.py](../../app/infrastructure/memory_store.py).
 
 ## Entradas e navegação
 
@@ -46,8 +46,14 @@ As rotas internas não têm controle de acesso. O destaque da sidebar depende do
 
 - **Rota e arquivo:** `/admin/dashboard` → `admin/dashboard.html`; `active_page=dashboard`.
 - **Contexto:** `kpis`, `trend`, `categories_top`, `categories_status`, `recent_events`.
-- **Estrutura:** quatro KPIs, sete barras de tendência, quatro categorias mais detectadas, seis eventos recentes, quatro categorias ativas e aviso de privacidade.
-- **Comportamento:** links para auditoria e categorias navegam. Botões 24h, 7 dias e 30 dias não alteram o período; 7 dias recebe destaque fixo.
+- **Fonte:** a rota consulta `agent_service.list_audit_events()`, `agent_service.get_current_policy()` e `agent_service.get_server_time_utc()`. O builder em `presentation/dashboard.py` recebe esses dados e não acessa `memory_store` diretamente.
+- **Período:** os KPIs, a tendência diária e o ranking de categorias consideram os últimos sete dias, incluindo o dia corrente e ignorando eventos futuros. Não há seletor de período nesta versão.
+- **KPIs:** total, bloqueados, aprovados e liberados sem inspeção são calculados a partir dos eventos do período. Os três resultados exibem também sua participação percentual no total.
+- **Tendência:** sete barras representam a quantidade de inspeções por dia. A maior contagem do período recebe 100% de altura; em período vazio todas permanecem em zero.
+- **Categorias mais detectadas:** considera somente categorias presentes em eventos `Blocked` dos últimos sete dias e ordena por quantidade decrescente.
+- **Inspeções recentes:** mostra no máximo os seis eventos mais recentes recebidos, independentemente do período dos KPIs, com horário, arquivo, tamanho, resultado e categorias.
+- **Categorias ativas:** lê `activeCategories` da política vigente e apresenta as cinco categorias do contrato quando estiverem habilitadas, incluindo `Secret`.
+- **Vazio:** sem eventos, os KPIs ficam zerados, tendência e ranking não inventam ocorrências e a tabela informa explicitamente que nenhuma inspeção foi recebida. As categorias ativas continuam disponíveis porque vêm da política.
 - **Detalhe de implementação:** gráficos são elementos HTML com altura/largura inline derivadas de `percentage`. Não usam biblioteca de gráficos.
 
 ### 3. Auditoria
@@ -125,11 +131,11 @@ As opções selecionadas nos filtros são reconstruídas a partir de `filter_opt
 
 ## Formato dos contextos e dependências de apresentação
 
-Os contratos de apresentação são dicionários: Auditoria usa `presentation/audit.py`, Endpoints usa `presentation/endpoints.py`, e as demais páginas com contexto usam `presentation/demo/admin_data.py`. Não há esquema tipado específico para as páginas. Na Auditoria, a rota consulta o serviço e passa os eventos ao builder; depois repassa o contexto ao Jinja2. A documentação deve descrevê-los como contratos internos existentes, não como API JSON.
+Os contratos de apresentação são dicionários: Painel usa `presentation/dashboard.py`, Auditoria usa `presentation/audit.py`, Endpoints usa `presentation/endpoints.py`, e as demais páginas com contexto usam `presentation/demo/admin_data.py`. Não há esquema tipado específico para as páginas. As rotas consultam a camada de aplicação, entregam os dados aos builders e repassam o contexto resultante ao Jinja2. A documentação deve descrevê-los como contratos internos existentes, não como API JSON.
 
 | Página | Builder do contexto |
 |---|---|
-| Painel | `build_dashboard_context()` |
+| Painel | `build_dashboard_context(events, policy, now=...)` em `presentation/dashboard.py` |
 | Auditoria | `build_audit_context(events)` em `presentation/audit.py` |
 | Relatórios | `build_reports_context()` |
 | Categorias | `build_categories_context()` |
@@ -137,7 +143,7 @@ Os contratos de apresentação são dicionários: Auditoria usa `presentation/au
 | Endpoints | `build_endpoints_context(endpoints, audit_events, ...)` em `presentation/endpoints.py` |
 | Usuários | `build_users_context()` |
 
-O login não possui builder porque não recebe contexto de negócio. Cada builder retorna uma nova estrutura. Os builders de Auditoria e Endpoints recebem dados da camada de aplicação; os demais contextos continuam fixos.
+O login não possui builder porque não recebe contexto de negócio. Cada builder retorna uma nova estrutura. Os builders de Painel, Auditoria e Endpoints recebem dados da camada de aplicação; os demais contextos continuam fixos.
 
 | Estrutura | Campos que sustentam a apresentação |
 |---|---|
@@ -157,14 +163,14 @@ Datas, tamanhos e vários totais já chegam formatados como texto. `result_kind`
 
 ## Limites da integração atual
 
-O fluxo existente é `routes/agent.py` → `application/agent_service.py` → `infrastructure/memory_store.py`. Para Auditoria e Endpoints, `routes/admin.py` consulta a aplicação e entrega os dados aos builders de apresentação; esses builders não acessam o armazenamento diretamente. A rota renderiza os templates. Os formatos recebidos estão em [domain/schemas.py](../../app/domain/schemas.py). Os dicionários das páginas são contratos de apresentação, distintos desses schemas.
+O fluxo existente é `routes/agent.py` → `application/agent_service.py` → `infrastructure/memory_store.py`. Para Painel, Auditoria e Endpoints, `routes/admin.py` consulta a aplicação e entrega os dados aos builders de apresentação; esses builders não acessam o armazenamento diretamente. A rota renderiza os templates. Os formatos recebidos estão em [domain/schemas.py](../../app/domain/schemas.py). Os dicionários das páginas são contratos de apresentação, distintos desses schemas.
 
 - Reiniciar o processo perde endpoints e eventos recebidos. O banco em `db/` não participa desse fluxo.
 - Reenviar um `eventId` acrescenta outra entrada; não há deduplicação no armazenamento.
 - `AuditEventSchema` e `OverrideEventSchema` exigem informação de fuso em `occurredAtUtc`, evitando comparações ambíguas na ordenação da Auditoria e nas contagens de Endpoints.
 - Não há autenticação na API do agente. Registros recebidos não equivalem a identidade autenticada.
 - A API aceita overrides, mas o despachante atual envia essa lista vazia; as telas não apresentam um fluxo de justificativas.
-- Auditoria e Endpoints têm estados vazios reais e não contêm exemplos. As demais listas preservam dados demonstrativos. Não há tratamento específico de falha de consulta nem mensagens de sucesso/erro das ações ainda sem execução.
+- Painel, Auditoria e Endpoints têm estados vazios reais e não contêm exemplos. As demais listas preservam dados demonstrativos. Não há tratamento específico de falha de consulta nem mensagens de sucesso/erro das ações ainda sem execução.
 
 ## Responsabilidades e próximos recortes
 
@@ -173,7 +179,7 @@ As responsabilidades abaixo são por camada; responsáveis nominais e prioridade
 | Tela | Recorte pequeno sugerido para a web | Dependência para comportamento real |
 |---|---|---|
 | Login | Distinguir entrada demonstrativa de sessão autenticada na apresentação | Backend/segurança: autenticação, sessão, logout e autorização |
-| Painel | Identificar a origem demonstrativa dos indicadores | Aplicação: agregações com período e fonte definidos |
+| Painel | Próximo recorte possível: seleção de período ou atualização automática | Aplicação/apresentação: contrato de período e estratégia de atualização |
 | Auditoria | Próximo recorte possível: filtros adicionais ou detalhes | Aplicação: contrato de consulta e campos necessários; API: validação de datas |
 | Endpoints | Próximo recorte possível: persistência ou ações remotas | Infraestrutura/aplicação: repositório persistente e contratos para comandos administrativos |
 | Relatórios | Diferenciar navegação existente de relatórios indisponíveis | Aplicação: definição das consultas, períodos e formatos |
@@ -181,7 +187,7 @@ As responsabilidades abaixo são por camada; responsáveis nominais e prioridade
 | Exceções | Explicitar o caráter experimental e as ações indisponíveis | Domínio/segurança/infraestrutura: contrato da exceção, HMAC, autorização e persistência |
 | Usuários | Explicitar contas e perfis demonstrativos | Backend/segurança: gestão de contas, credenciais e permissões |
 
-Os recortes de Auditoria somente para leitura e Endpoints baseado em heartbeats estão implementados nesta versão. Ambos usam fontes explícitas, sem exemplos fictícios; Endpoints acrescenta filtros reais e navegação para a Auditoria por `endpointId`. Persistência, detalhes, paginação, exportação e comandos administrativos permanecem recortes posteriores.
+Os recortes de Painel baseado em eventos reais, Auditoria somente para leitura e Endpoints baseado em heartbeats estão implementados nesta versão. Os três usam fontes explícitas, sem exemplos fictícios; o Painel agrega os últimos sete dias e lê a política vigente, enquanto Endpoints acrescenta filtros reais e navegação para a Auditoria por `endpointId`. Persistência, seleção de período, detalhes, paginação, exportação e comandos administrativos permanecem recortes posteriores.
 
 ## Critérios de manutenção do inventário
 
