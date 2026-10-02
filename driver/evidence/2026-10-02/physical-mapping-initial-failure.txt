@@ -1,0 +1,13 @@
+#< CLIXML
+TestTimestampUTC=2026-10-02T16:06:29.8283764Z
+Host=WIN10-DEBUGGED
+UUID=9D44EEE8-81CF-4CC1-9FBA-7670F11DEF4D
+OriginalInstalledSHA256=ADA9D05AB6AECDD2B6C521B0CE529FC06C732154ACB3EE85439FBDC8AA80DFCE
+FeatureDriverSHA256=ACED8226913E062E5D3EE6FD0CF96963C3FD2C1FB2242EDBEDBB00768CCD44F8
+ServicePackageSHA256=D887E0D7F38AD64AD40CEE18B841C6D38AD2BED4D6F760B1BDE4464927381997
+OriginalPolicySHA256=29DC8A341BD7C549996596D2477A0CCCAF19602C362A2167FB4FDD5C66663731
+FilterUnloaded=True; VerifierFlags=0; VerifiedDrivers=None; Service=Manual/Stopped
+ConcurrentAgentProcesses=0; SafeUploadTestTasks=0
+OriginalDriverAndPolicyRestored=True; VerifierOff=True; FilterUnloaded=True
+SyntheticFixtureRemoved=True
+<Objs Version="1.1.0.1" xmlns="http://schemas.microsoft.com/powershell/2004/04"><Obj S="progress" RefId="0"><TN RefId="0"><T>System.Management.Automation.PSCustomObject</T><T>System.Object</T></TN><MS><I64 N="SourceId">3</I64><PR N="Record"><AV>Get-ScheduledTask | Where-Object { $_.TaskName -match '^SafeUpload-(StagedTest-|StagedCleanup-|Owned-)' }).Count -ne 0) { throw 'A SafeUpload experiment task is already active.' }</AV><AI>678907346</AI><Nil /><PI>-1</PI><PC>100</PC><T>Completed</T><SR>0</SR><SD>1/1 completed</SD></PR></MS></Obj><S S="Error">Exception calling "CreateFromFile" with "6" argument(s): "Map name cannot be an empty string."_x000D__x000A_</S><S S="Error">At C:\Users\vika\Documents\Test-StagedPreAttachmentMapping.ps1:64 char:5_x000D__x000A_</S><S S="Error">+     $mapping = [IO.MemoryMappedFiles.MemoryMappedFile]::CreateFromFil ..._x000D__x000A_</S><S S="Error">+     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~_x000D__x000A_</S><S S="Error">    + CategoryInfo          : NotSpecified: (:) [], ParentContainsErrorRecordException_x000D__x000A_</S><S S="Error">    + FullyQualifiedErrorId : ArgumentException_x000D__x000A_</S><S S="Error"> _x000D__x000A_</S></Objs>

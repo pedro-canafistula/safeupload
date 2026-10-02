@@ -21,6 +21,9 @@ remains. No watchdog work or new internals investigation is active.
       **546 independent destination-byte samples**, no leak and exit 0.
 - [x] Exact 64-link control admitted; 65-link write refused with existing bytes
       preserved. Final independent original-driver/policy/Verifier restoration.
+- [x] Preserve and run the pre-attachment writable-section reproduction on the
+      current feature SYS. A fresh post-attach file handle reads unapproved bytes
+      written through the old mapping; [gate](evidence/2026-10-02/physical-mapping-gate.txt).
 - [ ] Complete namespace/policy/attachment admission, existing physical sections,
       remaining mutation classes and the broader acceptance tracker.
 
@@ -91,10 +94,81 @@ $env:SAFEUPLOAD_STAGED_VERIFIER_LOG = 'C:\Users\vika\Documents\alias-verifier.tx
 
 Next: preserve the smallest reproduction for a writable physical mapping
 created before attachment/activation and mutated after its file handle closes.
-Finish the explicit admission/epoch barrier before claiming alias safety across
-policy changes, pending physical namespace operations or existing sections.
-No architectural change should precede that reproduction. All other tracker
+The pre-attachment section case is now reproduced below; finish an explicit
+volume admission/epoch barrier and prove concurrent open/map/attachment and
+policy-change behavior before claiming existing-section safety. All other tracker
 items remain open, and unsupported capabilities remain disabled.
+
+### Follow-up: writable mapping predating filter attachment (2 October 2026)
+
+This is a confirmed physical-destination leak on the latest qualified alias
+feature SYS, `ACED8226913E062E5D3EE6FD0CF96963C3FD2C1FB2242EDBEDBB00768CCD44F8`.
+On the isolated Windows 10 debuggee, the harness creates one GUID-named synthetic
+file under the existing protected test prefix, opens it, and creates a writable
+memory-mapped section while SafeUpload is unloaded. It then loads that exact
+feature SYS while the original file object, section and view remain alive. A
+mapped write and flush after attachment changes the bytes; a newly opened file
+object reads `MAPPED AFTER FILTER ATTACH <GUID>` from the protected destination.
+No agent/service or publication permit runs. The same run restores the original
+driver and checks policy and Verifier; an independent following SSH check confirms
+the original driver hash, filter unloaded, Manual/Stopped service, original policy,
+Verifier off, zero agent processes/test tasks and removed fixture.
+
+The baseline was independently checked before and after creating the preserved
+disk-only checkpoint `safeupload-pre-physical-mapping-20261002`. Its active
+external overlay remains `/var/lib/libvirt/images/win10-debug.safeupload-pre-physical-mapping-20261002`,
+over the preserved `safeupload-pre-alias-guard-20261002` state. The creation
+command was:
+
+```bash
+virsh -c qemu:///system snapshot-create-as --domain win10-debug \
+  --name safeupload-pre-physical-mapping-20261002 \
+  --description 'Frozen original driver, Verifier, policy and fixture baseline before pre-attachment mapped-write reproduction' \
+  --disk-only --no-metadata \
+  --diskspec vda,snapshot=external,file=/var/lib/libvirt/images/win10-debug.safeupload-pre-physical-mapping-20261002 \
+  --atomic
+```
+
+[Checkpoint command result and active disk check](evidence/2026-10-02/physical-mapping-checkpoint.txt).
+
+From `/home/victor/Work/safeupload-staging`, copy and run the harness:
+
+```bash
+scp -F /dev/null -i /home/victor/.ssh/id_ed25519 \
+  -o BatchMode=yes -o ConnectTimeout=10 -o LogLevel=ERROR \
+  -o StrictHostKeyChecking=accept-new \
+  driver/scripts/Test-StagedPreAttachmentMapping.ps1 \
+  vika@192.168.122.51:'C:/Users/vika/Documents/Test-StagedPreAttachmentMapping.ps1'
+set -o pipefail
+python3 driver/scripts/remote_ps.py 192.168.122.51 <<'PS' 2>&1 | \
+  tee driver/evidence/2026-10-02/physical-mapping-gate.txt
+$ErrorActionPreference='Stop'
+& 'C:\Users\vika\Documents\Test-StagedPreAttachmentMapping.ps1'
+PS
+```
+
+The [gate output](evidence/2026-10-02/physical-mapping-gate.txt) records the
+VM UUID, driver/service/policy hashes, baseline and observed bytes. Its scope is
+one local NTFS file on Windows 10 19045.2965 and this specific attach ordering;
+it is a counterexample, not a complete concurrent admission matrix. The first
+encoded-command launcher exceeded Windows' command-line limit. Two subsequent
+harness attempts exposed PowerShell/.NET `MemoryMappedFile` overload binding
+errors ([first](evidence/2026-10-02/physical-mapping-initial-failure.txt),
+[second](evidence/2026-10-02/physical-mapping-second-failure.txt)); each stopped
+before driver installation, and each `finally` block verified baseline and
+removed its fixture. The final version uses a GUID-scoped mapping name.
+Independent final state is in
+[physical-mapping-final-restored-state.txt](evidence/2026-10-02/physical-mapping-final-restored-state.txt).
+
+This invalidates any claim that callback admission alone isolates all writes
+after filter load. An existing writable section has no newly admitted protected
+stream object for the feature path to seal or redirect. Before production can
+activate staging on an attached volume, the design must establish a race-safe
+admission epoch covering outstanding file objects/sections and concurrent new
+opens, or safely refuse protection/activation until that boundary is met. Prove
+the barrier against mapped writes after handle close, attachment races and policy
+changes before changing the architecture. Taint and disabled normal staging
+remain in force.
 
 ## Previous milestone: journal recovery/security qualified (2 October 2026)
 
@@ -117,7 +191,8 @@ was explicitly canceled by the user. Do not resume it or overlap VM experiments.
       **614** continuous independent destination-byte samples; no leak.
 - [x] Independent final driver/Verifier/policy/fixture and builder debugger checks.
 - [ ] Remaining acceptance tracker below, starting with the demonstrated external
-      hard-link bypass and explicit object/namespace admission synchronization.
+      hard-link bypass, pre-attachment section leak and explicit
+      object/namespace admission synchronization.
 
 | Gate | Evidence and limits |
 | --- | --- |
@@ -406,8 +481,10 @@ after every experiment, including failures.
          Progress: private 128-bit logical IDs, native relative/file-ID reopen,
          original-volume serial, rename/replacement/new-version identity and
          process/volume boundaries pass. The focused external physical-alias refusal
-         and 64/65-link bounds pass; durable identity, existing physical sections
-         and complete namespace/policy admission remain open.
+         and 64/65-link bounds pass. The pre-attachment mapping probe now
+         demonstrates post-attach writes visible through a fresh physical open;
+         existing sections, durable identity and complete namespace/policy
+         admission remain open pending a race-safe volume admission epoch.
    - [x] Owned byte-range locks: shared/exclusive access, waiting/cancellation,
          duplicates, process exit, mapped bypass and final-close release.
    - [ ] Delete/disposition, metadata/security, oplocks and private directory

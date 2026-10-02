@@ -1,0 +1,27 @@
+Checkpoint purpose: freeze the independently verified original driver, policy,
+Verifier and fixture baseline before the pre-attachment mapping experiment.
+
+Command:
+virsh -c qemu:///system snapshot-create-as --domain win10-debug \
+  --name safeupload-pre-physical-mapping-20261002 \
+  --description 'Frozen original driver, Verifier, policy and fixture baseline before pre-attachment mapped-write reproduction' \
+  --disk-only --no-metadata \
+  --diskspec vda,snapshot=external,file=/var/lib/libvirt/images/win10-debug.safeupload-pre-physical-mapping-20261002 \
+  --atomic
+
+Result: Domain snapshot safeupload-pre-physical-mapping-20261002 created
+Parent preserved checkpoint: safeupload-pre-alias-guard-20261002
+The source overlay and every earlier disk/snapshot remain preserved.
+
+Independent active disk check:
+virsh -c qemu:///system domblklist win10-debug
+
+ Target   Source
+----------------------------------------------------------------------------------------
+ vda      /var/lib/libvirt/images/win10-debug.safeupload-pre-physical-mapping-20261002
+ sda      -
+ sdb      -
+
+The external checkpoint uses --no-metadata; the active libvirt block source
+above identifies its overlay. The snapshot command completed while the guest
+was running idle, after baseline and no-active-test checks.

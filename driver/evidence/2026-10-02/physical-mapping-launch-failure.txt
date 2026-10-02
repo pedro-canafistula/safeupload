@@ -1,0 +1,10 @@
+The first attempt to run the whole harness through `remote_ps.py` encoded it in
+one Windows process command. Windows returned exactly:
+
+The command line is too long.
+
+The PowerShell script did not start: no timestamp or baseline line from its body
+was emitted. The guest baseline had already been independently checked and the
+external disk-only checkpoint was active. The harness was then copied with SCP
+and invoked by its short file path; the successful command is recorded in
+STAGED-WRITES.md and its complete output in physical-mapping-gate.txt.
