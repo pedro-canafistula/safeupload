@@ -27,10 +27,11 @@ after every experiment, including failures.
          Progress: writes/size changes recheck the pending-transaction freeze
          under the stream lock; new writable sections are refused until acknowledgement.
 2. Approval flow
-   - [ ] Real application notifications and pipe/UI exact-version justification.
+   - [x] Real application notifications and pipe/UI exact-version justification.
          Progress: real service pipes and the production application's client
-         pass exact-version approval, stale/replay denial and ordered audit;
-         the headless Session 0 run does not qualify interactive WPF controls.
+         and interactive WPF controls pass exact-version approval, stale/replay
+         denial, ordered audit and independent approved destination-byte checks.
+         The earlier headless Session 0 run remains excluded from UI acceptance.
    - [ ] Negative publication matrix: changed bytes/policy, unknown/parser/size/
          timeout cases, stale/replayed/expired/wrong-session/spoofed permits.
 3. Recovery, security and storage
@@ -980,6 +981,62 @@ UTC is approximately four hours behind host UTC; it is not used to order evidenc
 Snapshots and failed-run overlays remain preserved. No other remaining tracker
 capability is qualified by these bounded cases. Normal staging stays disabled.
 
+### Follow-up: interactive WPF exact-version approval (2 October 2026)
+
+The user signed in as vika without restarting the VM. SSH remains in Session 0;
+`Start-StagedInteractiveApproval.ps1 -ExpectedSession 1` uses an InteractiveToken,
+highest-run-level task for that existing desktop. It refuses an existing app,
+an absent desktop, wrong VM/original driver, an existing test task or an
+uncollected prior result. Its child output is redirected (the recorded console
+crash safeguard); the child must return an available exit code, and the completion
+JSON is flushed with WriteThrough/Flush(true). The first exploratory launch
+recorded a null exit code after WaitForExit/Refresh; its successful UI observations
+are supporting evidence only. Start-Process -Wait -PassThru plus the explicit
+null check fixes the launcher; the repeated final run exits **0**, with
+[launcher result](evidence/2026-10-02/tombstone-wpf-interactive-approval-result.json),
+[empty stderr](evidence/2026-10-02/tombstone-wpf-interactive-approval-error.txt) and
+[full gate](evidence/2026-10-02/tombstone-wpf-interactive-approval.txt).
+
+The real WPF app, writer and UI Automation all run in **Session 1**, while the
+existing service runs as LocalSystem. SYS/service are the final 4F8D/2E44 pair
+recorded above. App ZIP SHA256 remains
+`7C5A73EBFEB122BE48671A6E27F007E4CD92F7E2CB474F5B4CB789922CAF2E50`.
+It uses the existing production NotificationsPipeClient/JustificationPipeClient
+and Portuguese notification window, not PipeOnly or a test approval implementation.
+Two sealed sensitive versions generate the actual Blocked notification. UI
+Automation sets JustificationInput and invokes SubmitJustificationButton; the
+window acknowledges `Justificativa aceita. A versão analisada foi enviada.` and
+disables the input. The Released notification, durable digest and destination
+bytes identify exactly the newer version. Unknown, superseded and consumed
+justifications are rejected. The matching override audit precedes its
+`Approved` / `justified_version` outcome. A held physical destination reader keeps
+PUBLIC ORIGINAL throughout, including after POSIX replacement; after unload an
+independent unfiltered read sees precisely the approved current bytes.
+
+The [active runtime checks](evidence/2026-10-02/tombstone-wpf-interactive-approval-verifier.txt)
+are 0x2613b (volatile 0x13b plus the remaining boot DDI/MDL checks). The live KD log
+above records Filter Verifier for both interactive launches without a stop.
+The harness uses the durable original-driver backup helper and restores the
+exact original policy bytes before unload. Final post-reboot restoration and
+debugger cleanup are the independent checks recorded above; the approval task,
+launcher, app and temporary service are gone. Reproduce on a preserved disposable
+checkpoint with vika signed in, the recorded packages and helper scripts:
+
+```powershell
+# From SSH: starts the harness in the existing Session 1; no new login/reboot.
+.\Start-StagedInteractiveApproval.ps1 -ExpectedSession 1
+Get-ScheduledTaskInfo SafeUpload-StagedTest-InteractiveApproval
+Get-Content C:\Users\vika\Documents\wpf-interactive-approval-result.json
+# Require task Ready, task result 0, JSON ExitCode 0, all gate assertions, empty stderr.
+# Collect/archive logs, unregister this exact task and remove its launcher.
+Unregister-ScheduledTask SafeUpload-StagedTest-InteractiveApproval -Confirm:$false
+# Reset/reboot and perform the independent original-driver/policy/debugger checks.
+```
+
+This closes the bounded actual notification/UI exact-version acceptance item.
+Other application save patterns, multi-user principal attribution, expired or
+spoofed kernel publication permits and the broader negative matrix remain open.
+
 ### Identity and namespace
 
 | Identity | Implemented key and owner | Required extension |
@@ -1141,8 +1198,8 @@ must not be enabled by removing the NTFS/stack guards.
 Before deployment, complete destination/view/alias identities and physical-source
 namespace transactions, delete/link/metadata/locking/notification semantics, driver-loss
 recovery with user access to retained files, resource reclamation, disk-full and
-corrupt-journal handling, permit replay/spoof/expiry kernel fault tests, real UI
-exact-version justification, Explorer/Office saves, real destination stacks, and
+corrupt-journal handling, permit replay/spoof/expiry kernel fault tests,
+Explorer/Office saves, real destination stacks, and
 boot-time DDI/filter Verifier plus stress. Keep staging opt-in and retain taint
 until its remaining responsibilities are demonstrably replaced.
 

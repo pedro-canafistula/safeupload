@@ -2,6 +2,7 @@
    Run only on the recorded disposable debuggee. Session is recorded, not inferred. #>
 param([switch] $Verifier,[switch] $PipeOnly)
 $ErrorActionPreference='Stop'
+$OutputEncoding=[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false)
 . (Join-Path $PSScriptRoot 'StagedTestAgent.ps1')
 Add-Type -Path (Join-Path $PSScriptRoot 'StagedIdentityProbe.cs')
 Add-Type -Path (Join-Path $PSScriptRoot 'StagedApprovalPipeProbe.cs')
@@ -61,7 +62,7 @@ try {
     [IO.File]::WriteAllText($target,'PUBLIC ORIGINAL')
     $observer=[IO.FileStream]::new($target,[IO.FileMode]::Open,[IO.FileAccess]::Read,
         [IO.FileShare]::ReadWrite -bor [IO.FileShare]::Delete)
-    Copy-Item $installed $backup -Force
+    Backup-StagedTestDriver $backup
     Copy-Item 'C:\Users\vika\Documents\SafeUpload-stage-prototype.sys' $installed -Force; $replaced=$true
     if($Verifier){
         & verifier.exe /volatile /flags 0x13B /adddriver SafeUpload.sys | Out-Host
