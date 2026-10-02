@@ -99,10 +99,11 @@ $env:SAFEUPLOAD_STAGED_VERIFIER_LOG = 'C:\Users\vika\Documents\alias-verifier.tx
 # The integrated script prints the retained raw observer path; archive that file.
 ```
 
-Next: finish an explicit volume admission/epoch barrier for the confirmed
-pre-attachment writable-section case below. Prove concurrent open/map/attachment
-and policy-change behavior before claiming existing-section safety. All other
-tracker items remain open, and unsupported capabilities remain disabled.
+Next: execute the accepted admission plan (see "Decision: design v2 accepted"):
+observe-only diagnostic first, then enforcement slices. Prove concurrent
+open/map/attachment and policy-change behavior before claiming existing-section
+safety. All other tracker items remain open, and unsupported capabilities
+remain disabled.
 
 ### Follow-up: writable mapping predating filter attachment (2 October 2026)
 
@@ -323,6 +324,42 @@ return 1 for writable and for read-only views while all handles are closed, usin
 section pointers from a READ_ATTRIBUTES physical open; (3) are those section
 pointers identical to the mapping's file object; (4) what an uncached reader sees
 after the old view writes and flushes, with and without a paging-write refusal.
+
+### Decision: design v2 accepted as the plan of record (2 October 2026)
+
+[admission-design-v2.txt](evidence/2026-10-02/admission-design-v2.txt) (brief:
+[admission-design-v2-brief.md](evidence/2026-10-02/worker-briefs/admission-design-v2-brief.md)).
+Core: one admission record per NTFS stream keyed by (instance, `SectionObjectPointer`),
+anchored on `FLT_STREAM_CONTEXT` (not the stream-handle context, which dies when the
+source handle closes in both repros); a documented per-file proof with
+`MmDoesFileHaveUserWritableReferences`; a fence only for identified protected
+streams; policy updates fail with `STATUS_DEVICE_BUSY` instead of waiting, with a
+documented lock order that never holds `SafeUploadPolicyLock` over file or IPC work.
+Existing `Flags` in InstanceSetup are currently ignored and need to be classified.
+
+Limits the worker found and I accept as the stated scope:
+- **Leak (a) is not closed by per-file proofs.** A pre-attachment view can write
+  before any protected open or policy scan identifies its stream, and paging I/O
+  cannot resolve a name. Until a tested attach boundary exists, late/manual attach
+  stays *Quarantined* and staging is **unavailable** for that volume (taint stays).
+  "Newly mounted volume has no earlier sections" is a hypothesis to falsify
+  (mount while loaded, remount, later stack attach), not a premise. Whether
+  unavailability on late attach is acceptable for the product, and what the
+  agent should do in that state, is a **cutover decision for the user**.
+- 17 self-attacks: one OPEN (above), 16 need experiments; none validated.
+- No enforcement is justified yet. Nine external contracts remain UNVERIFIED
+  (see the v2 list), including section-pointer identity across opens, whether a
+  pre-attachment writeback reaches this instance, and read-only mapping behavior.
+
+**Plan.** Slice 1 is an observe-only diagnostic: feature build only, **default off**
+(enabled by a control message), no denials ever, a bounded 256-entry nonpaged ring
+read through the existing filter port and `SafeUpload.Inspector`, plus new
+repro variants that read with both a buffered and an uncached/write-through
+reader. Run both orderings and the closed-handle writable/read-only probe to
+answer unknowns 1-4 above. Only then design enforcement slices. Each kernel change gets a
+fresh adversarial reviewer worker, four builds and the 275 agent tests, and a
+disk-checkpointed VM run with an independent restoration check. A diagnostic result
+is recorded as an observation, not as a blocked leak.
 
 ## Previous milestone: journal recovery/security qualified (2 October 2026)
 
