@@ -1,0 +1,8 @@
+Join-Path : Cannot find drive. A drive with the name 'S' does not exist.
+At
+C:\Users\vika\Documents\safeupload-journal-gate-20261002\Test-StagedJournalStartupFailure.ps1:25
+char:11
++ $target = Join-Path $directory ($id + '.txt')
++           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : ObjectNotFound: (S:String) [Join-Path], DriveNotFoundException
+    + FullyQualifiedErrorId : DriveNotFound,Microsoft.PowerShell.Commands.JoinPathCommand

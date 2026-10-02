@@ -1,5 +1,14 @@
 # SafeUpload overnight resume handoff
 
+**Superseded by the current journal milestone at the top of STAGED-WRITES.md.**
+The user canceled watchdog work and updated the Goal to the full taint-independent
+replacement acceptance objective. Journal 28-case LocalSystem, actual service
+corrupt-startup denial and integrated runtime gate now pass with D887… service
+and unchanged 4B60… SYS; independent original-driver restoration passes. The
+current disk is the new pre-journal-recovery checkpoint. Continue with the open
+external-hard-link/object-identity and other acceptance items. Do not resume
+timer work, start a second internals investigation or overlap VM experiments.
+
 The user authorized continued overnight work, virtual USB or their Samsung drive,
 a dedicated SMB share on the debugger VM, and their newly configured OneDrive.
 Prefer disposable fixtures; do not alter existing user content. They also
@@ -7,6 +16,17 @@ explicitly asked to kill this session abruptly and prove the timer resumes it.
 No ClickUp. No sub-agents. Do not change the acceptance objective or VM safeguards.
 
 ## Deliberate restart test
+
+**Observed result: failure, not a passing restart gate.** The helper sent the
+exact-owner SIGKILL at 03:37:18Z. The timer launched the same UUID at 03:38:15Z,
+but the CLI exited 1 with a model-capacity error before model work. See
+[sanitized evidence](watchdog-abrupt-resume.txt). Recorded environment and Goal
+contexts were also misclassified as new user input by the original fingerprint
+guard. The source now excludes only their explicit CLI metadata kinds, with
+text-spoof/unknown/mixed-kind guard tests. This fix has not had another real abrupt
+termination test. Never override a blocked/limited/paused Goal or change model to
+hide the failure. The user has now woken and requested continuation; the original
+ten-hour timer has expired. Do not start another runner alongside this session.
 
 At this checkpoint the original CLI TUI is PID **3444**, birth ticks **5830**,
 executable `/home/victor/.local/share/mise/installs/codex/0.159.2/bin/codex`.
@@ -61,7 +81,9 @@ read-only (already inspected before this checkpoint; no migration/deletion).
 Generation zero remains accepted for older records. Create a fresh frozen
 debuggee checkpoint on verified original/off baseline. Transfer/hash the new
 service ZIP. Implement a small real-LocalSystem journal recovery negative harness
-(not yet present), preserving malformed/outside bytes and ACLs, then run
+(at that handoff, newly written in `driver/scripts/StagedJournalProbe` and
+`Test-StagedJournalRecovery.ps1` but not yet VM-qualified; now qualified above), preserving
+malformed/outside bytes and ACLs, then run
 `Test-StagedOwnedStreams.ps1 -Verifier -ReplacementCases -PublicationIterations 24`
 with the stronger service. Restore and independently verify the original driver
 after **every** experiment, including failures. Record evidence and commit.

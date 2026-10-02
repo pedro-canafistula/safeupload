@@ -1,5 +1,95 @@
 # Staged writes to protected destinations
 
+## Current milestone: journal recovery/security qualified (2 October 2026)
+
+Continue on `feat/staged-kernel-prototype`. The updated goal requires replacing
+taint-dependent enforcement for every supported protected destination only after
+all replacement responsibilities pass. **Normal staging remains compiled out;
+no taint enforcement is retired by this increment.** Further timer/watchdog work
+was explicitly canceled by the user. Do not resume it or overlap VM experiments.
+
+- [x] Journal source hardening from `3872681`: 275 agent regressions and changed
+      service/application Release builds pass.
+- [x] Exact production journal assembly under LocalSystem: **28/28 cases**, native
+      object/ACL/schema checks and unchanged private/public bytes.
+- [x] Real minifilter service startup rejects a Publishing record with an exact
+      public digest but no seal, keeps its corrupt bytes, and refuses writable
+      admission. Independent post-unload destination bytes remain unchanged.
+- [x] Changed service + unchanged kernel integrated gate with runtime Verifier,
+      native replacement, concurrent writers, mapped writes after cleanup,
+      reopening/private content, service restart and **24 approved overwrites**.
+      **614** continuous independent destination-byte samples; no leak.
+- [x] Independent final driver/Verifier/policy/fixture and builder debugger checks.
+- [ ] Remaining acceptance tracker below, starting with the demonstrated external
+      hard-link bypass and explicit object/namespace admission synchronization.
+
+| Gate | Evidence and limits |
+| --- | --- |
+| LocalSystem component | [28 cases](evidence/2026-10-02/journal-local-system-cases.txt), [wrapper success](evidence/2026-10-02/journal-local-system-passed.txt). Fresh SYSTEM/Administrators-only GUID fixture roots; real production service DLL, not a reimplementation. Matching Publishing digest recognizes existing approved output; it does not copy bytes. |
+| Actual service failure | [Service exception](evidence/2026-10-02/journal-real-startup-service.txt), [denial/unchanged bytes/restoration](evidence/2026-10-02/journal-real-startup-negative.txt). One synthetic manifest is inserted then removed; the nine original manifests remain. |
+| Integrated kernel data path | [Gate](evidence/2026-10-02/journal-integrated-owned.txt), [observer](evidence/2026-10-02/journal-integrated-observer.txt), [active 0x13b Verifier](evidence/2026-10-02/journal-integrated-verifier.txt), [durable checkpoints](evidence/2026-10-02/journal-integrated-checkpoint.txt). Actual approved publication, exact 8192-byte parallel result and dirty mapped-page drainage. |
+| Restoration | [After integrated run](evidence/2026-10-02/journal-final-restored-state.txt), [after startup negative](evidence/2026-10-02/journal-final-after-negative-state.txt), [builder](evidence/2026-10-02/journal-builder-final-state.txt). Original ADA9… installed SYS, filter unloaded, Manual/Stopped, configured/active Verifier off, original policy hash/false override, no temporary tasks/service/app/S:/VHDX, debugger task/rule/listener absent. No debugger retargeting performed. |
+
+Windows **19045.2965**, kernel 10.0.19041.2965, NTFS/FltMgr 10.0.19041.1;
+the independent state file records exact versions. Clocks initially differed
+after starting both powered-off VMs and later synchronized; use recorded times.
+Fresh checkpoint `safeupload-pre-journal-recovery-20261002` was taken after a
+verified original/off baseline and clean shutdown. Active disk is now
+`/var/lib/libvirt/images/win10-debug.safeupload-pre-journal-recovery-20261002`.
+Preserve it and every earlier snapshot/forensic disk; no base commits/deletions.
+
+Qualified SYS remains **4B60DFA21CC9800DAEA7363208A13C783E59CA37BFC288D91918803E83F19E20**.
+Qualified service ZIP is now **D887E0D7F38AD64AD40CEE18B841C6D38AD2BED4D6F760B1BDE4464927381997**,
+guest `C:\Users\vika\Documents\stage-service-publish.zip`; previous qualified
+4EB6… is preserved as `stage-service-publish-pre-journal.zip`. Probe ZIP is
+**A93484B15555BEE7312E93C40935FADC50CBF57ED4D4AFD5EA6E61E706DCB3CE**;
+probe/service DLL both **182D711170CD7A659AD28F35DDECC8E57EC8D6C26519D001B81982945D201216**.
+[Probe Release publish](evidence/2026-10-02/journal-probe-build.txt) passes. Kernel
+source is unchanged, so the four recorded WDK gates and Release extractor fix
+remain applicable; later kernel changes and combined release gates must repeat
+them. This does not claim new boot/stress/latency or destination qualification.
+
+Failures were inspected before rerunning: the initial probe incorrectly expected
+IOException for an illegal state transition ([persisted failure](evidence/2026-10-02/journal-probe-initial-failure.json));
+the production contract is InvalidOperationException. All 28 then completed but
+the wrapper observed null exit status for a PID-attached Process; the
+[unfiltered nonzero control](evidence/2026-10-02/journal-process-exit-repro.txt)
+proves retaining its public Handle before releasing the probe gives the correct
+status. The wrapper now checks both actual exit status and durable case result.
+[PowerShell transcription caused tar's console-buffer failure](evidence/2026-10-02/journal-integrated-console-failure.txt)
+before feature installation; rerunning the unchanged gate in a child with both
+outputs redirected passes. The new startup-negative script initially used
+Join-Path before S: existed ([failure](evidence/2026-10-02/journal-startup-path-before.txt));
+IO.Path.Combine fixes preparation. No production architecture was changed to
+accommodate these harness failures. Original/off state was checked after them.
+
+Reproduce on the guarded, snapshotted VM with the packages above and
+`StagedTestAgent.ps1`, `StagedIdentityProbe.cs` beside the scripts:
+
+```powershell
+& .\Test-StagedJournalRecovery.ps1 -ProbeDir C:\Users\vika\Documents\stage-journal-probe-fixed
+& .\Test-StagedOwnedStreams.ps1 -Verifier -ReplacementCases -PublicationIterations 24
+& .\Test-StagedJournalStartupFailure.ps1
+```
+
+Use an outer child `powershell.exe -NoProfile -NonInteractive -ExecutionPolicy
+Bypass -File <launcher>` with **both RedirectStandardOutput and
+RedirectStandardError**, cache its public process Handle before waiting, and
+persist the exit code. Do not use Start-Transcript around native harness tools
+in the SSH console. The Linux `driver/scripts/remote_ps.py` restricts endpoints
+to the two recorded test VMs and encodes stdin PowerShell without shell expansion.
+It is a test helper, not service protocol. Component fixture roots and original
+backups are retained deliberately; generated integration stages/manifests and
+the one malformed live-journal fixture are cleaned after successful restoration.
+
+Still open: stage-object races/security, full disk, quotas/reclamation, authenticated
+export and driver/reboot namespace reconstruction; alias/parent identity and the
+remaining filesystem operations; all destination/app/fault/stress/latency gates.
+Service reconnect and recovery transitions pass within their tested scope, not
+crash durability of every namespace operation. The journal remains local trusted
+NTFS/ReFS storage; the owned data path remains qualified NTFS only. Never relax
+stack guards or infer OneDrive/SMB/USB qualification from these local tests.
+
 ## Overnight continuation and watchdog checkpoint (2 October 2026)
 
 The user superseded the pause below with overnight continuation, authorized
@@ -15,13 +105,17 @@ are unchanged. No ClickUp. No additional internals investigation is active.
       `D887E0D7F38AD64AD40CEE18B841C6D38AD2BED4D6F760B1BDE4464927381997`.
       Builder: `C:\Users\vika\Documents\journal-security-milestone\stage-service-publish.zip`;
       downloaded and hash-verified: `/tmp/safeupload-journal-current-service.zip`.
-      It has **not been deployed to the debuggee**. The old 4EB6… guest package
-      remains the qualified baseline; the kernel is still unchanged 4B60… .
+      At that historical checkpoint it had **not been deployed to the debuggee**.
+      The current qualified package and deployment are recorded above.
 - [x] Same-thread active Goal and bounded user systemd recovery timer configured.
       Guard self-tests and the real API dry run pass; a live owner is skipped.
-- [ ] Abrupt-stop recovery proof. The deliberate SIGKILL is scheduled only after
-      this checkpoint is committed; the resumed runner must record actual proof.
-- [ ] Real LocalSystem journal security/recovery and integrated VM gates.
+- [ ] Abrupt-stop recovery proof. [The actual attempt](evidence/2026-10-02/watchdog-abrupt-resume.txt)
+      sent the exact-owner SIGKILL and launched the same thread, but the selected
+      model returned a capacity error before work. This is a failed gate. The
+      recorded Goal/environment control metadata guard is corrected and tested;
+      the original timer has expired; the user canceled further watchdog work.
+- [x] Real LocalSystem journal security/recovery and integrated VM gates; see the
+      current milestone above. Historical handoff instructions are superseded.
 
 Read [the exact resume handoff](evidence/2026-10-02/overnight-resume.md) first after
 an unexpected interruption. [Independent pre-kill restoration](evidence/2026-10-02/overnight-pre-kill-restored-state.txt)
@@ -158,6 +252,44 @@ build/test job, pending reboot or restoration is active at the pause. Guest/host
 clocks still differ; record both independently and never print the debugger key.
 Normal staging remains compiled out and unsupported capabilities remain disabled.
 
+### Prepared LocalSystem journal gate (historical preparation; now qualified above)
+
+`driver/scripts/StagedJournalProbe` references the production service assembly
+and runs 28 isolated cases under real LocalSystem: startup/live hard links and
+symlinks; directories and directory links; unsafe file/directory mutation grants;
+ten malformed/schema/bound cases; legacy generation zero; interrupted allocation,
+unsealed, inspection and approval recovery; unresolved rename; exact/mismatched
+Publishing reconciliation; cancellation. Each case hashes its private and public
+files before/after; redirected objects also retain persisted ACL/byte checks.
+Fixtures use a new SYSTEM/Administrators-only GUID root under ProgramData and
+are retained for inspection; the live stage/journal is untouched. Recovery never
+publishes bytes in this component gate. A matching already-present destination
+tests recognition only, not a new approved publication. The kernel/service
+integrated gate remains mandatory.
+
+`Test-StagedJournalRecovery.ps1` runs the probe with existing redirected-output
+LocalSystem helpers, verifies original driver/off-Verifier/Manual state before
+and after, checks every case and persists results. **At this preparation checkpoint
+the probe had not been compiled or run; the qualified results are now recorded at
+the top of this file.** No SDK was installed in the local execution sandbox.
+The attempted read-only SSH baseline was interrupted
+while awaiting sandbox escalation; it did not deploy a service or load a filter.
+Revalidate external state before testing. Reproducible builder commands:
+
+```powershell
+Set-Location C:\Users\vika\Documents\safeupload-staging-test
+dotnet publish driver/scripts/StagedJournalProbe/StagedJournalProbe.csproj -c Release -r win-x64 --self-contained true -o C:\Users\vika\Documents\stage-journal-probe
+# Transfer/hash the publish folder on the verified debuggee after a fresh frozen checkpoint.
+& .\driver\scripts\Test-StagedJournalRecovery.ps1
+# Then deploy/hash D887E0D7... service ZIP and run the separate integrated gate:
+& .\driver\scripts\Test-StagedOwnedStreams.ps1 -Verifier -ReplacementCases -PublicationIterations 24
+```
+
+Completion then required actual LocalSystem results, full service/kernel
+publication with the changed service and final original-driver verification;
+these now pass in the current milestone. Existing kernel WDK evidence applies to unchanged
+source only; no new Windows build or VM result is inferred from prepared code.
+
 ## Remaining acceptance tracker (resumed 1 October 2026)
 
 This is the active tracker for completing the broader feature. The integrated
@@ -206,7 +338,9 @@ after every experiment, including failures.
          Progress: allocation bounds seed copies to the kernel's 16 MiB limit
          before creating output; oversize rejection and exact-bound admission pass.
          Journal object/ACL/schema bounds pass 275 agent tests at the pause;
-         updated-service Release and real LocalSystem VM gates remain open.
+         updated-service Release, 28 LocalSystem cases, actual corrupt-startup
+         denial and integrated runtime Verifier gate now pass. Stage security,
+         races, storage exhaustion/reclamation and full recovery remain open.
 4. Destination qualification
    - [ ] USB including surprise removal and supported filesystem guards.
    - [ ] UNC/mapped SMB redirector identity/paging/reconnect architecture and gates.
