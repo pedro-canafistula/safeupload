@@ -1,0 +1,9 @@
+PackageSHA256=D887E0D7F38AD64AD40CEE18B841C6D38AD2BED4D6F760B1BDE4464927381997
+PublishBefore: entries=238 differing=232
+StagingVerified: entries=238 differing=0
+DamagedFolderKeptAs=C:\Users\vika\Documents\stage-service-publish.damaged-20261002-183925
+VolumeCacheWritten=True
+PublishAfter: entries=238 differing=0
+AgentExeHeader=MZ
+ServicePublishIntact=True
+HARNESS_RETURNED

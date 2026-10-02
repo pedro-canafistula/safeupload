@@ -14,6 +14,10 @@ function Start-StagedTestAgent([string] $ServiceDir, [string] $LogPrefix,
     $pidFile = $launcher + '.pid'
     if ([IO.Path]::GetFileName($ExecutableName) -ne $ExecutableName) { throw 'Test executable must be inside its publish folder.' }
     $exe = Join-Path $ServiceDir $ExecutableName
+    $header = [byte[]]::new(2)
+    $headerStream = [IO.File]::Open($exe, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::ReadWrite)
+    try { [void]$headerStream.Read($header, 0, 2) } finally { $headerStream.Dispose() }
+    if ($header[0] -ne 0x4D -or $header[1] -ne 0x5A) { throw 'Agent executable has no PE header (zero-filled or damaged publish folder); repair it from the pinned package.' }
     $script = @'
 $ErrorActionPreference = 'Stop'
 $env:Interception__Mode = 'Minifilter'
@@ -35,7 +39,7 @@ $process.WaitForExit()
     Register-ScheduledTask -TaskName $taskName -Action $action -Principal $principal -Settings $settings | Out-Null
     try {
         Start-ScheduledTask -TaskName $taskName
-        for ($attempt = 0; $attempt -lt 40 -and -not (Test-Path $pidFile); $attempt++) {
+        for ($attempt = 0; $attempt -lt 240 -and -not (Test-Path $pidFile); $attempt++) {
             Start-Sleep -Milliseconds 250
         }
         if (-not (Test-Path $pidFile)) { throw 'LocalSystem test agent did not launch.' }

@@ -1,0 +1,30 @@
+# Guest agent publish directory damage assessment (2026-10-02, after the second Verifier-era recovery)
+# Source: remote compare of C:\Users\vika\Documents\stage-service-publish against stage-service-publish.zip (sha256 D887E0D7F38AD64AD40CEE18B841C6D38AD2BED4D6F760B1BDE4464927381997, matches the pinned package)
+# Trigger: the agent failed to start under every run after the first Verifier hang recovery; launch probe (fence3-launchprobe-verifier) showed STATUS_FILE_CORRUPT_ERROR (win32 1392, ntstatus 0xC0000102) for the agent exe BEFORE the feature driver was loaded and for a copy in Windows\Temp, while System32 whoami launched fine
+# Agent exe on the guest: 162816 bytes, all zero bytes (first 16 bytes 00, e_lfanew=0), sha256 E46B5246BDA293E09E199967B99AC352F931C04E2AD88E775B06A3B93CCB838C
+ZipEntries=238 Missing=0 SizeDiff=0 HashDiff=232 ZeroFilledOfHashDiff=232
+HASH coreclr.dll len=4614440 zeroFilled=True mtime=2026-07-24T15:29:12.0000000Z
+HASH createdump.exe len=71512 zeroFilled=True mtime=2026-07-24T15:29:36.0000000Z
+HASH DocumentFormat.OpenXml.dll len=6353536 zeroFilled=True mtime=2025-03-05T21:55:02.0000000Z
+HASH DocumentFormat.OpenXml.Framework.dll len=468096 zeroFilled=True mtime=2025-03-05T21:55:00.0000000Z
+HASH hostfxr.dll len=379728 zeroFilled=True mtime=2026-07-24T15:46:00.0000000Z
+HASH hostpolicy.dll len=378664 zeroFilled=True mtime=2026-07-24T15:46:00.0000000Z
+HASH Microsoft.CSharp.dll len=980816 zeroFilled=True mtime=2026-07-24T16:03:28.0000000Z
+HASH Microsoft.DiaSymReader.Native.amd64.dll len=2195504 zeroFilled=True mtime=2024-11-27T04:18:14.0000000Z
+HASH Microsoft.Extensions.Configuration.Abstractions.dll len=28456 zeroFilled=True mtime=2026-07-24T15:52:44.0000000Z
+HASH Microsoft.Extensions.Configuration.Binder.dll len=43304 zeroFilled=True mtime=2026-07-24T15:54:20.0000000Z
+HASH Microsoft.Extensions.Configuration.CommandLine.dll len=25384 zeroFilled=True mtime=2026-07-24T15:56:26.0000000Z
+HASH Microsoft.Extensions.Configuration.dll len=44880 zeroFilled=True mtime=2026-07-24T15:53:14.0000000Z
+HASH Microsoft.Extensions.Configuration.EnvironmentVariables.dll len=21840 zeroFilled=True mtime=2026-07-24T15:56:26.0000000Z
+HASH Microsoft.Extensions.Configuration.FileExtensions.dll len=28456 zeroFilled=True mtime=2026-07-24T15:56:00.0000000Z
+HASH Microsoft.Extensions.Configuration.Json.dll len=27944 zeroFilled=True mtime=2026-07-24T15:59:34.0000000Z
+HASH Microsoft.Extensions.Configuration.UserSecrets.dll len=26448 zeroFilled=True mtime=2026-07-24T16:01:34.0000000Z
+HASH Microsoft.Extensions.DependencyInjection.Abstractions.dll len=65832 zeroFilled=True mtime=2026-07-24T15:53:00.0000000Z
+HASH Microsoft.Extensions.DependencyInjection.dll len=95528 zeroFilled=True mtime=2026-07-24T15:53:56.0000000Z
+HASH Microsoft.Extensions.Diagnostics.Abstractions.dll len=31056 zeroFilled=True mtime=2026-07-24T15:56:50.0000000Z
+HASH Microsoft.Extensions.Diagnostics.dll len=36136 zeroFilled=True mtime=2026-07-24T16:01:00.0000000Z
+HASH Microsoft.Extensions.FileProviders.Abstractions.dll len=23336 zeroFilled=True mtime=2026-07-24T15:52:46.0000000Z
+HASH Microsoft.Extensions.FileProviders.Physical.dll len=45392 zeroFilled=True mtime=2026-07-24T15:53:34.0000000Z
+HASH Microsoft.Extensions.FileSystemGlobbing.dll len=47952 zeroFilled=True mtime=2026-07-24T15:52:48.0000000Z
+HASH Microsoft.Extensions.Hosting.Abstractions.dll len=54056 zeroFilled=True mtime=2026-07-24T16:00:04.0000000Z
+HASH Microsoft.Extensions.Hosting.dll len=71976 zeroFilled=True mtime=2026-07-24T16:03:06.0000000Z
