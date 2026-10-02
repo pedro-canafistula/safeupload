@@ -1,0 +1,63 @@
+UnfilteredLinkLimitFixtures=True; Counts=64,65
+File ID is 0x0000000000000000001600000002329d
+File ID is 0x0000000000000000001600000002329d
+\Users\vika\Documents\alias-a3c9a7eeae4c4d7e83308d228a301f6f.txt
+\safeupload\Escopo Monitorado\alias-a3c9a7eeae4c4d7e83308d228a301f6f.txt
+FeatureSHA256=ACED8226913E062E5D3EE6FD0CF96963C3FD2C1FB2242EDBEDBB00768CCD44F8
+ServiceZipSHA256=D887E0D7F38AD64AD40CEE18B841C6D38AD2BED4D6F760B1BDE4464927381997
+
+Verifier Volatile Flags: 0x0000013b
+
+  Volatile Flags:
+
+    [X] 0x00000001 Special pool.
+    [X] 0x00000002 Force IRQL checking.
+    [ ] 0x00000004 Randomized low resources simulation.
+    [X] 0x00000008 Pool tracking.
+    [X] 0x00000010 I/O verification.
+    [X] 0x00000020 Deadlock detection.
+    [ ] 0x00000080 DMA checking.
+    [ ] 0x00000200 Force pending I/O requests.
+    [ ] 0x00000400 IRP logging.
+    [ ] 0x00000800 Miscellaneous checks.
+
+  Added Drivers:
+
+    SafeUpload.sys
+
+The new settings are in effect until the system
+is restarted or the settings are changed again.
+OutsideAliasWrite=denied; IndependentDestinationIsolated=True
+PreAttachmentHandleWriteSizeAndRenameDenied=True; NativeError=5
+ProtectedAliasAndDirectSourceLinksDenied=True; SourceAccess=0; InformationClasses=11,72
+UnrelatedTwoAndThreeLinkWritesAllowed=True; NativeLinkControls=11,72; DifferentParents=True
+UnrelatedExact64LinksAdmitted=True; WriteAndCloseMilliseconds=10.659
+Unrelated65LinksRefused=True; ExistingBytesPreserved=True
+AllIndependentPhysicalBytesUnchanged=True
+
+Verifier Volatile Flags: 0x00000000
+
+  Volatile Flags:
+
+    [ ] 0x00000001 Special pool.
+    [ ] 0x00000002 Force IRQL checking.
+    [ ] 0x00000004 Randomized low resources simulation.
+    [ ] 0x00000008 Pool tracking.
+    [ ] 0x00000010 I/O verification.
+    [ ] 0x00000020 Deadlock detection.
+    [ ] 0x00000080 DMA checking.
+    [ ] 0x00000200 Force pending I/O requests.
+    [ ] 0x00000400 IRP logging.
+    [ ] 0x00000800 Miscellaneous checks.
+
+  Removed Drivers:
+
+    SafeUpload.sys
+
+The new settings are in effect until the system
+is restarted or the settings are changed again.
+
+No settings were changed.
+OriginalDriverRestored=ADA9D05AB6AECDD2B6C521B0CE529FC06C732154ACB3EE85439FBDC8AA80DFCE
+ExperimentalDriverUnloaded=True
+DisposableAliasFixturesRemoved=True

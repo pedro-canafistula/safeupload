@@ -1511,7 +1511,15 @@ static FLT_PREOP_CALLBACK_STATUS StageAdmit(PFLT_CALLBACK_DATA Data,
         privateNamespace = expectedView != NULL || StageHiddenName(FltGetRequestorProcess(Data), &name->Name);
         StageRelease(&StageNamespaceResource);
     }
-    if (!privateNamespace && !SafeUploadStageProtectedName(name, kind)) { handled = FALSE; goto Complete; }
+    if (!privateNamespace && !SafeUploadStageProtectedName(name, kind)) {
+        BOOLEAN protectedAlias = FALSE;
+        if (writer || BooleanFlagOn(security->DesiredAccess,
+            FILE_WRITE_ATTRIBUTES | FILE_WRITE_EA | DELETE | WRITE_DAC | WRITE_OWNER)) {
+            status = SafeUploadStageCheckNamedAliases(Objects->Instance, name, kind, &protectedAlias);
+            if (status != STATUS_SUCCESS || protectedAlias) { status = STATUS_ACCESS_DENIED; goto Complete; }
+        }
+        handled = FALSE; goto Complete;
+    }
     if (service) {
         if (!writer || SafeUploadPublicationCreate(&name->Name, disposition, writer)) handled = FALSE;
         else status = STATUS_ACCESS_DENIED;
@@ -1529,6 +1537,40 @@ Complete:
     return FLT_PREOP_COMPLETE;
 }
 
+static FLT_PREOP_CALLBACK_STATUS StagePhysicalMutation(PFLT_CALLBACK_DATA Data,
+    PCFLT_RELATED_OBJECTS Objects)
+{
+    PFLT_FILE_NAME_INFORMATION name = NULL;
+    SAFEUPLOAD_VOLUME_KIND kind = StageVolumeKind(Objects->Instance);
+    BOOLEAN protectedAlias = FALSE;
+    BOOLEAN service = SafeUploadData.ClientPort != NULL &&
+        FltGetRequestorProcessId(Data) == SafeUploadData.InspectorProcessId;
+    FLT_FILESYSTEM_TYPE fs;
+    NTSTATUS status = STATUS_ACCESS_DENIED;
+    /* Querying lower metadata is forbidden in fast I/O, paging/section paths
+     * or with a top-level IRP. Paging through mappings predating attachment is
+     * a separate volume-admission gate, not solved by this snapshot. */
+    if (FLT_IS_FASTIO_OPERATION(Data)) return FLT_PREOP_DISALLOW_FASTIO;
+    if (KeGetCurrentIrql() != PASSIVE_LEVEL || IoGetTopLevelIrp() != NULL) goto Complete;
+    status = FltGetFileSystemType(Objects->Instance, &fs);
+    if (!NT_SUCCESS(status)) goto Complete;
+    if (fs != FLT_FSTYPE_NTFS) return FLT_PREOP_SUCCESS_NO_CALLBACK;
+    status = FltGetFileNameInformation(Data, FLT_FILE_NAME_NORMALIZED | FLT_FILE_NAME_QUERY_DEFAULT, &name);
+    if (!NT_SUCCESS(status)) goto Complete;
+    status = FltParseFileNameInformation(name);
+    if (!NT_SUCCESS(status)) goto Complete;
+    if (!service && SafeUploadStageProtectedName(name, kind)) { status = STATUS_ACCESS_DENIED; goto Complete; }
+    status = SafeUploadStageCheckObjectAliases(Objects->Instance, Objects->FileObject,
+        &name->Volume, kind, &protectedAlias);
+    if (protectedAlias) status = STATUS_ACCESS_DENIED;
+Complete:
+    if (name != NULL) FltReleaseFileNameInformation(name);
+    if (status == STATUS_SUCCESS) return FLT_PREOP_SUCCESS_NO_CALLBACK;
+    Data->IoStatus.Status = STATUS_ACCESS_DENIED;
+    Data->IoStatus.Information = 0;
+    return FLT_PREOP_COMPLETE;
+}
+
 static FLT_PREOP_CALLBACK_STATUS StageExternalRename(PFLT_CALLBACK_DATA Data,
     PCFLT_RELATED_OBJECTS Objects)
 {
@@ -1541,6 +1583,7 @@ static FLT_PREOP_CALLBACK_STATUS StageExternalRename(PFLT_CALLBACK_DATA Data,
     ULONG length = Data->Iopb->Parameters.SetFileInformation.Length;
     if (cls != FileRenameInformation && cls != FileRenameInformationEx && cls != FileLinkInformation && cls != FileLinkInformationEx)
         return FLT_PREOP_SUCCESS_NO_CALLBACK;
+    if (KeGetCurrentIrql() != PASSIVE_LEVEL || IoGetTopLevelIrp() != NULL) goto Complete;
     if (rename == NULL || length < (ULONG)FIELD_OFFSET(FILE_RENAME_INFORMATION, FileName) ||
         rename->FileNameLength == 0 || (rename->FileNameLength & 1) ||
         rename->FileNameLength > length - FIELD_OFFSET(FILE_RENAME_INFORMATION, FileName)) goto Complete;
@@ -1552,6 +1595,12 @@ static FLT_PREOP_CALLBACK_STATUS StageExternalRename(PFLT_CALLBACK_DATA Data,
     if (!NT_SUCCESS(status)) goto Complete;
     allow = !SafeUploadStageTouchesProtectedNamespace(source, kind) &&
         !SafeUploadStageTouchesProtectedNamespace(destination, kind);
+    if (allow) {
+        BOOLEAN protectedAlias = FALSE;
+        status = SafeUploadStageCheckObjectAliases(Objects->Instance, Objects->FileObject,
+            &source->Volume, kind, &protectedAlias);
+        allow = status == STATUS_SUCCESS && !protectedAlias;
+    }
     if (!allow && SafeUploadData.ClientPort != NULL &&
         FltGetRequestorProcessId(Data) == SafeUploadData.InspectorProcessId &&
         (cls == FileRenameInformation || cls == FileRenameInformationEx)) {
@@ -1592,13 +1641,29 @@ FLT_PREOP_CALLBACK_STATUS SafeUploadStageDispatch(PFLT_CALLBACK_DATA Data,
     case IRP_MJ_CLEANUP:
         return SafeUploadPreCleanup(Data, Objects, CompletionContext);
     case IRP_MJ_WRITE:
-        if (!FlagOn(Data->Iopb->IrpFlags, IRP_PAGING_IO)) return SafeUploadPreWrite(Data, Objects, CompletionContext);
+        if (!FlagOn(Data->Iopb->IrpFlags, IRP_PAGING_IO)) {
+            result = StagePhysicalMutation(Data, Objects);
+            if (result != FLT_PREOP_SUCCESS_NO_CALLBACK) return result;
+            return SafeUploadPreWrite(Data, Objects, CompletionContext);
+        }
         break;
     case IRP_MJ_SET_INFORMATION:
         result = StageExternalRename(Data, Objects);
         if (result != FLT_PREOP_SUCCESS_NO_CALLBACK) return result;
+        if (Data->Iopb->Parameters.SetFileInformation.FileInformationClass != FilePositionInformation) {
+            /* Publication rename is checked/consumed by StageExternalRename. */
+            FILE_INFORMATION_CLASS cls = Data->Iopb->Parameters.SetFileInformation.FileInformationClass;
+            if (cls != FileRenameInformation && cls != FileRenameInformationEx &&
+                cls != FileLinkInformation && cls != FileLinkInformationEx) {
+                result = StagePhysicalMutation(Data, Objects);
+                if (result != FLT_PREOP_SUCCESS_NO_CALLBACK) return result;
+            }
+        }
         *CompletionContext = NULL;
         return SafeUploadPreSetInformation(Data, Objects, CompletionContext);
+    case IRP_MJ_SET_EA:
+    case IRP_MJ_SET_SECURITY:
+        return StagePhysicalMutation(Data, Objects);
     default: break;
     }
     return FLT_PREOP_SUCCESS_NO_CALLBACK;

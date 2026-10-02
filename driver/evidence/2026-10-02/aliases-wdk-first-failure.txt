@@ -1,0 +1,53 @@
+MSBuild version 18.9.1+a81b43525 for .NET Framework
+Build started 02/10/2026 16:21:55.
+
+Project "C:\Users\vika\Documents\safeupload-staging-test\driver\SafeUpload.Minifilter\SafeUpload.Minifilter.vcxproj" on node 1 (Rebuild target(s)).
+_PrepareForClean:
+  Deleting file "x64\Debug\SafeUplo.F0194BFE.tlog\SafeUpload.Minifilter.lastbuildstate".
+CoreClean:
+  Deleting file "C:\Users\vika\Documents\safeupload-staging-test\driver\SafeUpload.Minifilter\x64\Debug\SafeUpload.sys.lastcodeanalysissucceeded".
+  Deleting file "C:\Users\vika\Documents\safeupload-staging-test\driver\SafeUpload.Minifilter\x64\Debug\NativeCodeAnalysis.read.1.tlog".
+  Deleting file "C:\Users\vika\Documents\safeupload-staging-test\driver\SafeUpload.Minifilter\x64\Debug\SafeUpload.sys".
+CleanOutput:
+  Deleting file "x64\Debug\SafeUpload.Minifilter.vcxproj.FileListAbsolute.txt".
+  Deleting file "x64\Debug\SafeUpload.sys.recipe".
+DriverBuildNotifications:
+  Building 'SafeUpload.Minifilter' with toolset 'WindowsKernelModeDriver10.0' and the 'Universal' target platform.
+  Using KMDF 1.15.
+PrepareForBuild:
+  Structured output is enabled. The formatting of compiler diagnostics will reflect the error hierarchy. See https://aka.ms/cpp/structured-output for more details.
+InitializeBuildStatus:
+  Creating "x64\Debug\SafeUplo.F0194BFE.tlog\unsuccessfulbuild" because "AlwaysCreate" was specified.
+  Touching "x64\Debug\SafeUplo.F0194BFE.tlog\unsuccessfulbuild".
+ClCompile:
+  C:\Program Files\Microsoft Visual Studio\18\Community\VC\Tools\MSVC\14.51.36231\bin\HostX64\x64\CL.exe /c /Ix64\Debug\ /Zi /nologo /W4 /WX /diagnostics:column /Od /Oi /Oy- /D CODE_ANALYSIS /D _WIN64 /D _AMD64_ /D AMD64 /D DEPRECATE_DDK_FUNCTIONS=1 /D MSC_NOOPT /D _WIN32_WINNT=0x0A00 /D WINVER=0x0A00 /D WINNT=1 /D NTDDI_VERSION=0xA000012 /D DBG=1 /D POOL_NX_OPTIN=1 /D POOL_NX_OPTIN=1 /D SAFEUPLOAD_STAGING_PROTOTYPE=1 /GF /Gm- /Zp8 /GS /guard:cf /Gy /fp:precise /Qspectre /Zc:wchar_t- /Zc:forScope /Zc:inline /GR- /Fo"x64\Debug\\" /Fd"x64\Debug\vc145.pdb" /external:W4 /Gz /wd4748 /wd4603 /wd4627 /wd4986 /wd4987 /FI"C:\Program Files (x86)\Windows Kits\10\Include\10.0.28000.0\shared\warning.h" /analyze /analyze:projectdirectory"C:\Users\vika\Documents\safeupload-staging-test\driver\SafeUpload.Minifilter" /analyze:rulesetdirectory";C:\Program Files\Microsoft Visual Studio\18\Community\Team Tools\Static Analysis Tools\\Rule Sets;" /analyze:ruleset"C:\Program Files (x86)\Windows Kits\10\CodeAnalysis\DriverRecommendedRules.ruleset" /analyze:quiet /analyze:stacksize1024 /analyze:plugin"C:\Program Files\Microsoft Visual Studio\18\Community\VC\Tools\MSVC\14.51.36231\bin\HostX64\x64\EspXEngine.dll" /analyze:plugin"C:\Program Files (x86)\Windows Kits\10\bin\10.0.28000.0\x64\WindowsPrefast.dll" /analyze:plugin"C:\Program Files (x86)\Windows Kits\10\bin\10.0.28000.0\x64\drivers.dll" /FC /errorReport:queue /kernel -cbstring -d2epilogunwind /d1import_no_registry /d2AllowCompatibleILVersions /d2Zi+ Communication.c Context.c Filter.c Policy.c Override.c Taint.c StageDirectory.c StageStream.c StageProtocol.c StageSecurity.c StageAlias.c
+  Communication.c
+  Context.c
+  Filter.c
+  Policy.c
+  Override.c
+  Taint.c
+  StageDirectory.c
+  StageStream.c
+  StageProtocol.c
+  StageSecurity.c
+  StageAlias.c
+  Running Code Analysis for C/C++...
+C:\Users\vika\Documents\safeupload-staging-test\driver\SafeUpload.Minifilter\StageAlias.c(95,44): error C2220: the following warning is treated as an error [C:\Users\vika\Documents\safeupload-staging-test\driver\SafeUpload.Minifilter\SafeUpload.Minifilter.vcxproj]
+C:\Users\vika\Documents\safeupload-staging-test\driver\SafeUpload.Minifilter\StageAlias.c(95,44): error C4018: '<': signed/unsigned mismatch [C:\Users\vika\Documents\safeupload-staging-test\driver\SafeUpload.Minifilter\SafeUpload.Minifilter.vcxproj]
+C:\Users\vika\Documents\safeupload-staging-test\driver\SafeUpload.Minifilter\StageAlias.c(102,52): error C4018: '<': signed/unsigned mismatch [C:\Users\vika\Documents\safeupload-staging-test\driver\SafeUpload.Minifilter\SafeUpload.Minifilter.vcxproj]
+  Generating Code...
+Done Building Project "C:\Users\vika\Documents\safeupload-staging-test\driver\SafeUpload.Minifilter\SafeUpload.Minifilter.vcxproj" (Rebuild target(s)) -- FAILED.
+
+Build FAILED.
+
+"C:\Users\vika\Documents\safeupload-staging-test\driver\SafeUpload.Minifilter\SafeUpload.Minifilter.vcxproj" (Rebuild target) (1) ->
+(ClCompile target) ->
+  C:\Users\vika\Documents\safeupload-staging-test\driver\SafeUpload.Minifilter\StageAlias.c(95,44): error C2220: the following warning is treated as an error [C:\Users\vika\Documents\safeupload-staging-test\driver\SafeUpload.Minifilter\SafeUpload.Minifilter.vcxproj]
+  C:\Users\vika\Documents\safeupload-staging-test\driver\SafeUpload.Minifilter\StageAlias.c(95,44): error C4018: '<': signed/unsigned mismatch [C:\Users\vika\Documents\safeupload-staging-test\driver\SafeUpload.Minifilter\SafeUpload.Minifilter.vcxproj]
+  C:\Users\vika\Documents\safeupload-staging-test\driver\SafeUpload.Minifilter\StageAlias.c(102,52): error C4018: '<': signed/unsigned mismatch [C:\Users\vika\Documents\safeupload-staging-test\driver\SafeUpload.Minifilter\SafeUpload.Minifilter.vcxproj]
+
+    0 Warning(s)
+    3 Error(s)
+
+Time Elapsed 00:00:09.64

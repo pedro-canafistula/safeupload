@@ -53,6 +53,9 @@ public static class StagedIdentityProbe {
         out IoStatus io, IntPtr allocationSize, uint fileAttributes, uint share,
         uint disposition, uint options, IntPtr ea, uint eaLength);
     [DllImport("ntdll.dll")]
+    static extern int NtSetInformationFile(SafeFileHandle file, out IoStatus io,
+        byte[] info, uint length, int cls);
+    [DllImport("ntdll.dll")]
     static extern uint RtlNtStatusToDosError(int status);
     static void Check(bool success) { if(!success) throw new Win32Exception(Marshal.GetLastWin32Error()); }
     static SafeFileHandle CheckHandle(SafeFileHandle file) {
@@ -62,6 +65,15 @@ public static class StagedIdentityProbe {
     public static SafeFileHandle Open(string path, bool writer, bool create) {
         return CheckHandle(CreateFile(path,writer ? 0xC0010000 : 0x80000000,7,
             IntPtr.Zero,create ? 2u : 3u,0x80,IntPtr.Zero));
+    }
+    public static int TryLink(string source, string target, bool extended) {
+        using(var file=CheckHandle(CreateFile(source,0,7,IntPtr.Zero,3,0x80,IntPtr.Zero))) {
+            byte[] name=Encoding.Unicode.GetBytes("\\??\\"+target); int offset=IntPtr.Size==8 ? 20 : 12;
+            var info=new byte[offset+name.Length+2];
+            BitConverter.GetBytes(name.Length).CopyTo(info,offset-4); name.CopyTo(info,offset);
+            IoStatus io; int status=NtSetInformationFile(file,out io,info,(uint)info.Length,extended ? 72 : 11);
+            return status==0 ? 0 : (int)RtlNtStatusToDosError(status);
+        }
     }
     public static SafeFileHandle NativeDisposition(string path, uint disposition, out long information) {
         string native="\\??\\"+path;
@@ -184,6 +196,10 @@ public static class StagedIdentityProbe {
         var info=new byte[offset+name.Length+2]; BitConverter.GetBytes(replace ? 3 : 0).CopyTo(info,0);
         BitConverter.GetBytes(name.Length).CopyTo(info,offset-4); name.CopyTo(info,offset);
         Check(SetFileInformationByHandle(file,22,info,info.Length));
+    }
+    public static int TryRename(SafeFileHandle file, string target) {
+        try { Rename(file,target,false); return 0; }
+        catch(Win32Exception error) { return error.NativeErrorCode; }
     }
     public static int TryDirectoryRename(string source, string target, bool extended) {
         using(var file=CheckHandle(CreateFile(source,0x110080,7,IntPtr.Zero,3,0x02000000,IntPtr.Zero))) {

@@ -1,6 +1,102 @@
 # Staged writes to protected destinations
 
-## Current milestone: journal recovery/security qualified (2 October 2026)
+## Current milestone: bounded physical-alias refusal (2 October 2026)
+
+Journal milestone is committed as `85bf31f`. The physical-alias increment below
+passes its focused and integrated runtime gates. **Complete alias admission is
+still unqualified.** Normal staging stays compiled out and taint enforcement
+remains. No watchdog work or new internals investigation is active.
+
+- [x] Reproduce the existing external-hard-link physical-byte leak with qualified
+      4B60… SYS and D887… service; [exact result](evidence/2026-10-02/aliases-current-before.txt).
+- [x] Independent original/off/policy baseline and clean frozen checkpoint
+      `safeupload-pre-alias-guard-20261002`, with a verified original boot.
+      [Baseline](evidence/2026-10-02/aliases-checkpoint-baseline.txt).
+      Active disk is now `/var/lib/libvirt/images/win10-debug.safeupload-pre-alias-guard-20261002`;
+      preserve the pre-journal and all earlier disks/snapshots.
+- [x] Four WDK/static/API-validation builds and **275/275** agent regressions.
+- [x] Protected external aliases and pre-attachment physical handles refuse
+      writes/size/rename/link mutations; unrelated linked-file controls succeed.
+- [x] Runtime Verifier and integrated save regression: **24 approved overwrites**,
+      **546 independent destination-byte samples**, no leak and exit 0.
+- [x] Exact 64-link control admitted; 65-link write refused with existing bytes
+      preserved. Final independent original-driver/policy/Verifier restoration.
+- [ ] Complete namespace/policy/attachment admission, existing physical sections,
+      remaining mutation classes and the broader acceptance tracker.
+
+The bounded helper uses documented NTFS `FileHardLinkInformation`, opens its
+parent directory IDs below the original instance, and reconstructs names using
+the existing destination predicate. Object operations reopen the actual source
+by its NTFS ID with READ_ATTRIBUTES; they do not query an opened path that could
+now name a replacement. Outside mutable creates classify the existing base file
+before overwrite, including an ADS spelling. Physical nonpaging writes and
+metadata mutations check before legacy taint callbacks. Protected aliases are
+refused, not given independent publication rights. Native link/rename admission
+checks both names and the source's physical aliases. Partial enumeration, excess
+links (>64), oversized data (>64 KiB) and unresolved parents fail closed. Path
+buffers stay off the kernel stack; no private APIs or internal offsets are used.
+
+Contracts: [hard-link query](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/ns-ntifs-_file_links_information),
+[entry parent ID and WCHAR length](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/ns-ntifs-_file_link_entry_information),
+[documented binary ID opens](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nf-wdm-zwcreatefile),
+[lower query IRQL/top-level constraints](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/fltkernel/nf-fltkernel-fltqueryinformationfile).
+These are classification snapshots. No retained read/delete-sharing handle is
+advertised as a namespace fence. The existing protected root/ancestor veto and
+link/rename target veto remain. Pending operations at attachment or policy change,
+already-created physical mappings, alias virtualization/durable identity and
+unknown mutation classes still need explicit admission/recovery qualification.
+Physical fast writes are retried as IRPs; unavailable safe query context refuses
+the mutation. Compatibility, cancellation and latency need their recorded gates.
+Do not infer complete alias admission or taint-independent production acceptance
+from this focused increment.
+
+| Gate | Exact evidence and scope |
+| --- | --- |
+| Builds | [Normal Debug](evidence/2026-10-02/aliases-normal-wdk.txt), [feature Debug](evidence/2026-10-02/aliases-owned-feature-wdk.txt), [normal Release](evidence/2026-10-02/aliases-normal-release-wdk.txt), [feature Release](evidence/2026-10-02/aliases-owned-feature-release-wdk.txt): zero warnings/errors, PREfast/DriverRecommendedRules and Universal API validation. Native x64 extractor fix retained. [275 agent tests](evidence/2026-10-02/aliases-agent-tests.txt) and [service Release publish](evidence/2026-10-02/aliases-service-build.txt). |
+| Focused alias gate | [Runtime result](evidence/2026-10-02/aliases-runtime-out.txt), [active Verifier](evidence/2026-10-02/aliases-runtime-verifier.txt). Held physical observer predates attachment. Fresh outside writer denied; pre-attachment ordinary write/EOF/allocation/rename denied; access-zero link classes 11/72 denied from direct and external names. Unrelated linked objects and links with different parents work. |
+| Bounds | [64/65 result](evidence/2026-10-02/aliases-boundary-out.txt), [Verifier](evidence/2026-10-02/aliases-boundary-verifier.txt). Exact 64-link write/close measured **10.659 ms** once under Verifier; this is an observation, not a latency distribution/gate. 65 links refuse before overwrite and preserve original bytes. |
+| Integrated data path | [Result](evidence/2026-10-02/aliases-integrated-out.txt), [raw independent observer](evidence/2026-10-02/aliases-integrated-observer.txt), [Verifier](evidence/2026-10-02/aliases-integrated-verifier.txt). Native rename/replacement, held old reader, concurrent exact 8192 bytes, private new-version content, dirty mapped writes after handle closure, live-map unload refusal, restart/reseal/publication and 24 approved overwrites. |
+| Restoration | [After integrated](evidence/2026-10-02/aliases-final-restored-state.txt), [after bounds](evidence/2026-10-02/aliases-boundary-final-state.txt), [builder](evidence/2026-10-02/aliases-builder-final-state.txt): original SYS/unloaded/Manual/Stopped; active/configured Verifier off; original policy/false override; no tasks/service/app/S:/VHDX/alias fixtures; nine legacy manifests. No new crash event or debugger retargeting in this campaign. |
+
+Tested signed Debug feature SYS SHA256:
+**ACED8226913E062E5D3EE6FD0CF96963C3FD2C1FB2242EDBEDBB00768CCD44F8**,
+guest `C:\Users\vika\Documents\SafeUpload-stage-prototype.sys`, builder
+`C:\Users\vika\Documents\alias-milestone\SafeUpload-stage-prototype.sys`.
+Previous 4B60… package is preserved as `SafeUpload-stage-pre-alias.sys` on the guest.
+Service used by every VM gate remains qualified **D887E0D7…**; the new unchanged-
+source build publish is evidence, not a substituted VM package. Windows/build
+contracts remain 19045.2965/NTFS/FltMgr 10.0.19041.1. Original installed SYS remains
+ADA9…; test package location is distinct from the restored installed driver.
+
+The first builds caught [signed comparison warnings](evidence/2026-10-02/aliases-wdk-first-failure.txt),
+[SAL/paged annotations](evidence/2026-10-02/aliases-wdk-annotation-failure.txt), and
+[matching definition annotations](evidence/2026-10-02/aliases-wdk-sal-failure.txt).
+They were corrected with validation enabled before any feature installation.
+The first integrated launcher set an unused optional checkpoint variable; that
+run has actual stdout/stderr/Verifier and retained observer evidence, but **no
+durable phase-checkpoint file is claimed**. Use the correct variable below.
+No further boot Filter/DDI/MDL, stress, complete latency, concurrent classification,
+policy-change or destination-stack gate is claimed for this new kernel yet.
+
+Reproduce with the packages above and shared helpers beside the scripts, using
+the redirected outer child/retained Handle described in the journal milestone:
+
+```powershell
+& .\Test-StagedAliases.ps1 -Verifier -LinkLimitCases
+$env:SAFEUPLOAD_STAGED_CHECKPOINT = 'C:\Users\vika\Documents\alias-checkpoint.txt'
+$env:SAFEUPLOAD_STAGED_VERIFIER_LOG = 'C:\Users\vika\Documents\alias-verifier.txt'
+& .\Test-StagedOwnedStreams.ps1 -Verifier -ReplacementCases -PublicationIterations 24
+# The integrated script prints the retained raw observer path; archive that file.
+```
+
+Next: preserve the smallest reproduction for a writable physical mapping
+created before attachment/activation and mutated after its file handle closes.
+Finish the explicit admission/epoch barrier before claiming alias safety across
+policy changes, pending physical namespace operations or existing sections.
+No architectural change should precede that reproduction. All other tracker
+items remain open, and unsupported capabilities remain disabled.
+
+## Previous milestone: journal recovery/security qualified (2 October 2026)
 
 Continue on `feat/staged-kernel-prototype`. The updated goal requires replacing
 taint-dependent enforcement for every supported protected destination only after
@@ -34,20 +130,20 @@ Windows **19045.2965**, kernel 10.0.19041.2965, NTFS/FltMgr 10.0.19041.1;
 the independent state file records exact versions. Clocks initially differed
 after starting both powered-off VMs and later synchronized; use recorded times.
 Fresh checkpoint `safeupload-pre-journal-recovery-20261002` was taken after a
-verified original/off baseline and clean shutdown. Active disk is now
+verified original/off baseline and clean shutdown. At that increment the active disk was
 `/var/lib/libvirt/images/win10-debug.safeupload-pre-journal-recovery-20261002`.
 Preserve it and every earlier snapshot/forensic disk; no base commits/deletions.
 
-Qualified SYS remains **4B60DFA21CC9800DAEA7363208A13C783E59CA37BFC288D91918803E83F19E20**.
+Qualified SYS at that increment was **4B60DFA21CC9800DAEA7363208A13C783E59CA37BFC288D91918803E83F19E20**.
 Qualified service ZIP is now **D887E0D7F38AD64AD40CEE18B841C6D38AD2BED4D6F760B1BDE4464927381997**,
 guest `C:\Users\vika\Documents\stage-service-publish.zip`; previous qualified
 4EB6… is preserved as `stage-service-publish-pre-journal.zip`. Probe ZIP is
 **A93484B15555BEE7312E93C40935FADC50CBF57ED4D4AFD5EA6E61E706DCB3CE**;
 probe/service DLL both **182D711170CD7A659AD28F35DDECC8E57EC8D6C26519D001B81982945D201216**.
 [Probe Release publish](evidence/2026-10-02/journal-probe-build.txt) passes. Kernel
-source is unchanged, so the four recorded WDK gates and Release extractor fix
-remain applicable; later kernel changes and combined release gates must repeat
-them. This does not claim new boot/stress/latency or destination qualification.
+source was unchanged during those journal gates. The alias increment above
+repeats the four WDK gates for its new source. This journal evidence does not
+claim new boot/stress/latency or destination qualification.
 
 Failures were inspected before rerunning: the initial probe incorrectly expected
 IOException for an illegal state transition ([persisted failure](evidence/2026-10-02/journal-probe-initial-failure.json));
@@ -309,7 +405,9 @@ after every experiment, including failures.
          and file-ID opens, links, reparse handling and cross-process view rules.
          Progress: private 128-bit logical IDs, native relative/file-ID reopen,
          original-volume serial, rename/replacement/new-version identity and
-         process/volume boundaries pass. Durable identity and alias admission remain open.
+         process/volume boundaries pass. The focused external physical-alias refusal
+         and 64/65-link bounds pass; durable identity, existing physical sections
+         and complete namespace/policy admission remain open.
    - [x] Owned byte-range locks: shared/exclusive access, waiting/cancellation,
          duplicates, process exit, mapped bypass and final-close release.
    - [ ] Delete/disposition, metadata/security, oplocks and private directory
@@ -458,7 +556,10 @@ Service package remains `B75112364877ACDAF78893B3C87A87813064AFFFF531C0BE0533009
 20:46:05 UTC confirms original hash, filter unloaded, Verifier zero/None, zero
 temporary tasks/service and no S:/VHDX.
 
-**Open failing acceptance: preexisting external hard-link aliases.**
+**Original failing acceptance: preexisting external hard-link aliases.**
+The current alias-refusal milestone above closes the reproduced ordinary write
+and held-handle cases. Complete alias admission and physical section activation
+remain open; the following is the preserved pre-change counterexample.
 `Test-StagedAliases.ps1 -ReproduceKnownGap` creates one disposable NTFS file with a
 protected name and an outside hard link before load, verifies equal file IDs,
 then uses a fresh process to write synthetic sensitive bytes through the outside
