@@ -1550,7 +1550,8 @@ static FLT_PREOP_CALLBACK_STATUS StageExternalRename(PFLT_CALLBACK_DATA Data,
         rename->RootDirectory, rename->FileName, rename->FileNameLength,
         FLT_FILE_NAME_NORMALIZED | FLT_FILE_NAME_QUERY_DEFAULT, &destination);
     if (!NT_SUCCESS(status)) goto Complete;
-    allow = !SafeUploadStageProtectedName(source, kind) && !SafeUploadStageProtectedName(destination, kind);
+    allow = !SafeUploadStageTouchesProtectedNamespace(source, kind) &&
+        !SafeUploadStageTouchesProtectedNamespace(destination, kind);
     if (!allow && SafeUploadData.ClientPort != NULL &&
         FltGetRequestorProcessId(Data) == SafeUploadData.InspectorProcessId &&
         (cls == FileRenameInformation || cls == FileRenameInformationEx)) {

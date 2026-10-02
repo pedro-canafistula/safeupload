@@ -630,6 +630,12 @@ SafeUploadPolicyMatchesDestination (
     );
 
 BOOLEAN
+SafeUploadPolicyTouchesDestinationNamespace (
+    _In_ SAFEUPLOAD_VOLUME_KIND VolumeKind,
+    _In_opt_ PCUNICODE_STRING NormalizedPath
+    );
+
+BOOLEAN
 SafeUploadPolicyMatchesSource (
     _In_ PCUNICODE_STRING NormalizedPath
     );

@@ -26,6 +26,8 @@ after every experiment, including failures.
          notifications, broader mutation/cancellation/concurrency coverage.
          Progress: writes/size changes recheck the pending-transaction freeze
          under the stream lock; new writable sections are refused until acknowledgement.
+         Monitored root/ancestor namespace renames now have a focused admission fence;
+         current gates and its limits are recorded below.
 2. Approval flow
    - [x] Real application notifications and pipe/UI exact-version justification.
          Progress: real service pipes and the production application's client
@@ -1131,6 +1133,92 @@ verify no debugger task, scoped firewall rule, endpoint or private authority.
 Guest/host UTC are recorded separately because of the existing clock offset.
 Broader end-to-end fault/principal cases remain open; normal staging and
 unsupported destination capabilities stay disabled.
+
+### Follow-up: parent namespace rename admission (2 October 2026)
+
+The path-only external mutation check admitted a rename of a directory above a
+configured monitored prefix. The smallest preserved [before case](evidence/2026-10-02/parent-before.txt)
+uses a disposable Documents tree, temporarily adds its `Watched` child to the
+existing policy, opens a durably Allocated private writer and writes synthetic
+sensitive bytes. A native ancestor rename succeeds. A fresh process then writes
+benign `UNAPPROVED OUTSIDE WRITE` bytes at the moved public name, without approval;
+the original private handle still reads its unchanged sensitive version. No
+actual protected root or user tree is moved. Original policy/driver and fixtures
+are restored in `finally` before changing the architecture.
+
+The initial probe held a physical child reader with Read/Write/Delete sharing.
+Unfiltered NTFS denies both traditional and extended parent rename with error 5
+while that child is open; it succeeds with the child closed. That probe would
+conceal this gap and is excluded. The corrected regression closes its physical
+reader before mutation and uses a fresh independent process to observe public
+bytes. This is an observation of Windows 10 19045.2965 with ntoskrnl
+10.0.19041.2965, fltmgr/ntfs 10.0.19041.1 and ntdll 10.0.19041.2788; it is not an
+assumption that every filesystem has the same child-open rename behavior.
+
+External rename/link admission now checks each normalized source/destination
+against the current policy prefix in both directions: inside a prefix or an
+ancestor of it, with case-insensitive component boundaries. The existing shared
+policy lock protects each check; no allocation, new message or blanket inspector
+bypass is added. The bootstrap test root also matches its exact root and
+ancestors, rather than requiring a trailing separator. Mutation is denied when
+name resolution fails. Only the existing exact one-create/one-rename publication
+permit can admit a physical publication; private file rename keeps its existing
+owned-stream transaction. Policy changes, existing aliases and reparse mutation
+still need their separate synchronization/identity work. Directory moves of a
+monitored tree remain unsupported and explicitly denied; this does not implement
+private directory rename, links, deletion or notifications.
+
+The check uses the documented [destination-name resolver](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/fltkernel/nf-fltkernel-fltgetdestinationfilenameinformation)
+in the preoperation callback; its contract constructs the destination from its
+parent even when the final name does not exist. No internal offsets, patches or
+undocumented APIs are used. Name tunneling and post-success identity still remain
+part of broader namespace qualification, rather than being inferred from this
+preoperation fence. This is a focused feature regression after the completed
+single internals investigation, not a second reverse-engineering investigation.
+
+Signed SYS: `4B60DFA21CC9800DAEA7363208A13C783E59CA37BFC288D91918803E83F19E20`.
+The service source/protocol is unchanged; gates deliberately keep the already
+qualified ZIP `4EB6D0B43D7603878CFAFD2F69C756AE13393D0484025FC2D6554BFE6EF68AB2`.
+All four WDK configurations pass with active analysis/API validation and zero
+warnings/errors: [normal Debug](evidence/2026-10-02/parent-normal-wdk.txt),
+[normal Release](evidence/2026-10-02/parent-normal-release-wdk.txt),
+[feature Debug](evidence/2026-10-02/parent-owned-feature-wdk.txt),
+[feature Release](evidence/2026-10-02/parent-owned-feature-release-wdk.txt).
+[255/255 agent tests](evidence/2026-10-02/parent-agent-tests.txt) and
+[service Release publish](evidence/2026-10-02/parent-service-build.txt) pass.
+
+Reproduce `Test-StagedParentNamespace.ps1`, with `StagedIdentityProbe.cs` and
+`StagedTestAgent.ps1` beside it. Use `-ReproduceKnownGap` only with the prior SYS
+557C. The final ordinary and `-Verifier` cases check both native information
+classes 10/65: source root/ancestor denied, destination ancestor denied even
+before that monitored child exists, prefix-looking sibling allowed, exact
+private bytes retained, Sealed/Blocked and physical PUBLIC ORIGINAL unchanged.
+The [ordinary](evidence/2026-10-02/parent-ordinary.txt),
+[runtime](evidence/2026-10-02/parent-runtime.txt) and
+[boot](evidence/2026-10-02/parent-boot.txt) focused gates PASS; active checks are
+[runtime 0x13b](evidence/2026-10-02/parent-runtime-query.txt) and
+[boot 0x26bbb](evidence/2026-10-02/parent-boot-query.txt). After that harness restores
+the original, a fresh boot reactivates all 0x26bbb flags for the
+[full integrated regression](evidence/2026-10-02/parent-integrated-boot.txt): ordinary,
+concurrent, mapped-after-close, reopen/new versions, native rename/replacement,
+service restart and 24 approved overwrites PASS with **654 full independent byte
+observer passes**. [Configuration](evidence/2026-10-02/parent-integrated-boot-config.txt),
+[active statistics](evidence/2026-10-02/parent-integrated-boot-query.txt),
+[durable checkpoints](evidence/2026-10-02/parent-integrated-boot-checkpoint.txt) and
+[sanitized live KD](evidence/2026-10-02/parent-boot-kd.txt) confirm the exact binary,
+Filter Verifier and no Verifier/fatal stop. The mapped-only unload refusal is the
+expected lifetime assertion; final unload and restoration succeed. Preserve snapshots
+`safeupload-pre-parent-namespace-20261002` and `safeupload-pre-parent-boot-20261002`,
+as well as all recorded parents and forensic artifacts.
+
+[Independent post-reboot restoration](evidence/2026-10-02/parent-final-restored-state.txt)
+at host UTC 2026-10-02T02:53:52Z verifies original SYS, unloaded filter, Manual/Stopped
+service, configured and active Verifier off, original policy and debugger host/port/key,
+zero temporary tasks/service/app and absent S:/VHDX.
+[Builder restoration](evidence/2026-10-02/parent-builder-restored-state.txt) verifies
+no debugger task, firewall, UDP endpoint or temporary authority. The existing guest
+clock offset is recorded separately. Remaining alias, policy-change/admission,
+recovery, filesystem and destination gates remain open; normal staging is disabled.
 
 ### Identity and namespace
 

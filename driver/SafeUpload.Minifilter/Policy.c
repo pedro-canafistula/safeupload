@@ -587,10 +587,12 @@ Return Value:
 }
 
 
+static
 BOOLEAN
-SafeUploadPolicyMatchesDestination (
+SafeUploadPolicyMatchesDestinationNamespace (
     _In_ SAFEUPLOAD_VOLUME_KIND VolumeKind,
-    _In_opt_ PCUNICODE_STRING NormalizedPath
+    _In_opt_ PCUNICODE_STRING NormalizedPath,
+    _In_ BOOLEAN IncludeAncestors
     )
 /*++
 
@@ -612,6 +614,9 @@ Arguments:
 
     NormalizedPath - Path in NT form, when one is available. Without it only
         the volume kind can be judged.
+
+    IncludeAncestors - Also match a name above a monitored prefix, for
+        namespace mutation admission. Component boundaries apply both ways.
 
 Return Value:
 
@@ -648,7 +653,9 @@ Return Value:
         for (index = 0; index < SafeUploadPolicy->PrefixCount; index += 1) {
 
             if (SafeUploadPathUnderPrefix( &SafeUploadPolicy->Prefixes[index],
-                                           NormalizedPath )) {
+                                           NormalizedPath ) ||
+                (IncludeAncestors && SafeUploadPathUnderPrefix( NormalizedPath,
+                                           &SafeUploadPolicy->Prefixes[index] ))) {
 
                 matched = TRUE;
                 break;
@@ -659,6 +666,26 @@ Return Value:
     FltReleasePushLock( &SafeUploadPolicyLock );
 
     return matched;
+}
+
+BOOLEAN
+SafeUploadPolicyMatchesDestination (
+    _In_ SAFEUPLOAD_VOLUME_KIND VolumeKind,
+    _In_opt_ PCUNICODE_STRING NormalizedPath
+    )
+{
+    return SafeUploadPolicyMatchesDestinationNamespace( VolumeKind, NormalizedPath, FALSE );
+}
+
+BOOLEAN
+SafeUploadPolicyTouchesDestinationNamespace (
+    _In_ SAFEUPLOAD_VOLUME_KIND VolumeKind,
+    _In_opt_ PCUNICODE_STRING NormalizedPath
+    )
+{
+    /* A directory above a monitored prefix can move the entire destination
+       out of policy. Check both directions under the same policy snapshot. */
+    return SafeUploadPolicyMatchesDestinationNamespace( VolumeKind, NormalizedPath, TRUE );
 }
 
 

@@ -98,17 +98,37 @@ BOOLEAN SafeUploadPublicationCreate(_In_ PUNICODE_STRING Name,
     return allowed;
 }
 
-BOOLEAN SafeUploadStageProtectedName(_In_ PFLT_FILE_NAME_INFORMATION Name,
-    _In_ SAFEUPLOAD_VOLUME_KIND Kind)
+static BOOLEAN StageNameMatchesScope(_In_ PFLT_FILE_NAME_INFORMATION Name,
+    _In_ SAFEUPLOAD_VOLUME_KIND Kind, _In_ BOOLEAN IncludeAncestors)
 {
-    UNICODE_STRING bootstrap = RTL_CONSTANT_STRING( L"\\SafeUpload\\Escopo Monitorado\\" );
+    UNICODE_STRING bootstrap = RTL_CONSTANT_STRING( L"\\SafeUpload\\Escopo Monitorado" );
     UNICODE_STRING relative;
+    USHORT bootstrapChars = bootstrap.Length / sizeof(WCHAR), relativeChars;
     if (!NT_SUCCESS( FltParseFileNameInformation( Name ) )) return TRUE;
     relative.Buffer = (PWCH) ((PUCHAR) Name->Name.Buffer + Name->Volume.Length);
     relative.Length = Name->Name.Length - Name->Volume.Length;
     relative.MaximumLength = relative.Length;
-    return SafeUploadPolicyMatchesDestination( Kind, &Name->Name ) ||
-        RtlPrefixUnicodeString( &bootstrap, &relative, TRUE );
+    relativeChars = relative.Length / sizeof(WCHAR);
+    if (RtlPrefixUnicodeString( &bootstrap, &relative, TRUE ) &&
+        (relative.Length == bootstrap.Length || relative.Buffer[bootstrapChars] == L'\\')) return TRUE;
+    if (IncludeAncestors && relative.Length != 0 &&
+        RtlPrefixUnicodeString( &relative, &bootstrap, TRUE ) &&
+        (relative.Length == bootstrap.Length || relative.Buffer[relativeChars - 1] == L'\\' ||
+         bootstrap.Buffer[relativeChars] == L'\\')) return TRUE;
+    return IncludeAncestors ? SafeUploadPolicyTouchesDestinationNamespace( Kind, &Name->Name ) :
+        SafeUploadPolicyMatchesDestination( Kind, &Name->Name );
+}
+
+BOOLEAN SafeUploadStageProtectedName(_In_ PFLT_FILE_NAME_INFORMATION Name,
+    _In_ SAFEUPLOAD_VOLUME_KIND Kind)
+{
+    return StageNameMatchesScope( Name, Kind, FALSE );
+}
+
+BOOLEAN SafeUploadStageTouchesProtectedNamespace(_In_ PFLT_FILE_NAME_INFORMATION Name,
+    _In_ SAFEUPLOAD_VOLUME_KIND Kind)
+{
+    return StageNameMatchesScope( Name, Kind, TRUE );
 }
 
 BOOLEAN SafeUploadPublicationRename(_In_ PUNICODE_STRING Source,

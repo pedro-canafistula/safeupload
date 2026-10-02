@@ -185,6 +185,14 @@ public static class StagedIdentityProbe {
         BitConverter.GetBytes(name.Length).CopyTo(info,offset-4); name.CopyTo(info,offset);
         Check(SetFileInformationByHandle(file,22,info,info.Length));
     }
+    public static int TryDirectoryRename(string source, string target, bool extended) {
+        using(var file=CheckHandle(CreateFile(source,0x110080,7,IntPtr.Zero,3,0x02000000,IntPtr.Zero))) {
+            byte[] name=Encoding.Unicode.GetBytes(target); int offset=IntPtr.Size==8 ? 20 : 12;
+            var info=new byte[offset+name.Length+2];
+            BitConverter.GetBytes(name.Length).CopyTo(info,offset-4); name.CopyTo(info,offset);
+            return SetFileInformationByHandle(file,extended ? 22 : 3,info,info.Length) ? 0 : Marshal.GetLastWin32Error();
+        }
+    }
     public static byte[] DirectoryId(string directory, string basename) {
         using(var file=CheckHandle(CreateFile(directory,0x100001,7,IntPtr.Zero,3,0x02000000,IntPtr.Zero))) {
             var info=new byte[65536]; bool first=true;
