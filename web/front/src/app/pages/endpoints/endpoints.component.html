@@ -1,0 +1,26 @@
+<h2>Endpoints</h2>
+<section class="card" *ngIf="dados">
+  <div class="resumo">
+    <span>Total {{ dados.resumo.total }}</span>
+    <span>Online {{ dados.resumo.online }}</span>
+    <span>Offline {{ dados.resumo.offline }}</span>
+    <span>Desatualizados {{ dados.resumo.desatualizados }}</span>
+  </div>
+  <table>
+    <thead>
+      <tr><th>Máquina</th><th>Sistema</th><th>Agente</th><th>Política</th><th>Último contato</th><th>Status</th><th>Inspeções (7d)</th></tr>
+    </thead>
+    <tbody>
+      <tr *ngFor="let e of dados.itens">
+        <td>{{ e.maquina }}<br/><small>{{ e.ip }}</small></td>
+        <td>{{ e.sistema }}</td>
+        <td>{{ e.agente }}</td>
+        <td>{{ e.politica }}</td>
+        <td>{{ e.ultimoContato }}</td>
+        <td><span class="pill" [class.ok]="e.status==='Online'" [class.warn]="e.status==='Desatualizado'">{{ e.status }}</span></td>
+        <td>{{ e.inspecoes7d }}</td>
+      </tr>
+    </tbody>
+  </table>
+</section>
+

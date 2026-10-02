@@ -1,0 +1,36 @@
+<section class="auth-page">
+  <div class="auth-box card">
+    <h1>SafeUpload</h1>
+    <p>Criar conta</p>
+
+    <div class="msg erro" *ngIf="erro">{{ erro }}</div>
+
+    <form (ngSubmit)="enviar()">
+      <label>Nome completo</label>
+      <input name="nomeCompleto" [(ngModel)]="nomeCompleto" required />
+
+      <label>Nome de usuário</label>
+      <input name="username" [(ngModel)]="username" required />
+
+      <label>E-mail</label>
+      <input name="email" [(ngModel)]="email" type="email" required />
+
+      <label>CPF</label>
+      <input name="cpf" [(ngModel)]="cpf" required />
+
+      <label>Data de nascimento</label>
+      <input name="dataNascimento" [(ngModel)]="dataNascimento" type="date" />
+
+      <label>Senha</label>
+      <input name="senha" [(ngModel)]="senha" type="password" required minlength="8" />
+
+      <label>Confirmar senha</label>
+      <input name="confirmarSenha" [(ngModel)]="confirmarSenha" type="password" required />
+
+      <button class="btn-primary" [disabled]="carregando" type="submit">Criar conta</button>
+    </form>
+
+    <a routerLink="/login">Voltar para login</a>
+  </div>
+</section>
+

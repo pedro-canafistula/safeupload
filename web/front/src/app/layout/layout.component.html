@@ -1,0 +1,18 @@
+<div class="shell">
+  <aside class="sidebar">
+    <div class="logo">SafeUpload<br /><small>ADMINISTRAÇÃO</small></div>
+    <nav>
+      <a *ngFor="let item of menu" [routerLink]="item.rota" routerLinkActive="active">{{ item.titulo }}</a>
+    </nav>
+    <button class="btn-secondary" (click)="sair()">Sair</button>
+  </aside>
+
+  <main class="content">
+    <header class="topbar card">
+      <span class="status">● Servidor central operacional</span>
+      <span>{{ auth.usuarioLogado?.nomeCompleto || 'Administrador' }}</span>
+    </header>
+    <router-outlet></router-outlet>
+  </main>
+</div>
+
