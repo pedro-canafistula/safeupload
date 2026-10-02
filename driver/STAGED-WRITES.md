@@ -270,6 +270,60 @@ be reproduced; it needs its own gate.
 The volume admission design must turn both this and the pre-attachment case into
 blocked results with the same repro scripts, not merely one of them.
 
+### Decision: admission barrier design review (2 October 2026)
+
+Worker analysis: [admission-epoch-design.txt](evidence/2026-10-02/admission-epoch-design.txt)
+(brief: [admission-epoch-design-brief.md](evidence/2026-10-02/worker-briefs/admission-epoch-design-brief.md)).
+It proposes (1) per-file first-open admission with promotion, (2) volume quiesce
+and clean epoch, (3) epoch tags plus a fail-closed raw paging-write fence, and
+recommends 3. Orchestrator review **rejects option 3 as written**; nothing is
+implemented and both leaks remain open.
+
+- **Observer gap.** Both repro observers read the destination with a default
+  buffered `FileStream` ([policy-transition](scripts/Test-StagedPolicyTransitionMapping.ps1),
+  [pre-attachment](scripts/Test-StagedPreAttachmentMapping.ps1)). A buffered read
+  goes through the file's shared cache, so a dirty mapped page is visible even if
+  every paging write to disk were refused. Option 3's expected "fresh file
+  object reads baseline bytes" therefore does not follow from its fence. It is
+  also **unverified whether the recorded REPRODUCED results reflect the cache, the
+  disk or both**. A blocked result needs both a cached reader and an uncached
+  (no-buffering, write-through) reader of the physical bytes.
+- **Blast radius.** The fence denies every unowned paging write whose file
+  object has no current tag. Paging I/O cannot resolve scope by name, so
+  pre-attachment objects of any process or file on the volume are refused:
+  stuck dirty pages and possible system-file/registry effects. The design calls
+  this "disruptive"; it is not acceptable as a production barrier.
+- **Missed API, now verified.** [`MmDoesFileHaveUserWritableReferences`](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/nf-ntifs-mmdoesfilehaveuserwritablereferences)
+  (ntifs.h, Vista and later, IRQL <= APC_LEVEL, takes `PSECTION_OBJECT_POINTERS`,
+  returns 1 when the file has user-mapped sections) is documented, and states it
+  "can be used to detect if there are writable views for a file object even when
+  all file handles and section handles for the file object have been closed".
+  This is the closed-handle case of both leaks. Documented in a transactional
+  file-system context; **unverified here**: whether read-only mappings also return
+  1, and whether an attribute-only physical open on NTFS exposes the same
+  section pointers as the mapping's file object. [`MmCanFileBeTruncated`](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/nf-ntifs-mmcanfilebetruncated)
+  (< DISPATCH_LEVEL) is already used on owned streams (StageStream.c:615,1296).
+
+**Decision (direction, not yet a design).** Take option 1 as the base: per-stream
+admission records and a documented per-file proof, refusing the protected open
+(fail closed) when user-mapped sections exist, instead of a blanket paging-write
+fence. Distinguish mount-time attach (no pre-attachment sections can exist for a
+newly mounted volume; FltMgr reports this in the InstanceSetup flags, which are
+cheap to read without synchronization) from late/manual attach, where staging
+stays unavailable for that volume until its in-scope files are proven clean.
+Any write fence must be scoped to identified protected streams, never volume-wide.
+The recommended minimal slice is an **observe-only diagnostic** (no denials) to
+settle the unknowns below on the VM before any enforcement code. Next worker
+task: design v2 with exact data structures, call sites, lock order and test plan.
+
+Unknowns to settle empirically before enforcement: (1) does a pre-attachment
+section's writeback reach this instance's paging `IRP_MJ_WRITE`, with which file
+object and section pointers; (2) does `MmDoesFileHaveUserWritableReferences`
+return 1 for writable and for read-only views while all handles are closed, using
+section pointers from a READ_ATTRIBUTES physical open; (3) are those section
+pointers identical to the mapping's file object; (4) what an uncached reader sees
+after the old view writes and flushes, with and without a paging-write refusal.
+
 ## Previous milestone: journal recovery/security qualified (2 October 2026)
 
 Continue on `feat/staged-kernel-prototype`. The updated goal requires replacing
