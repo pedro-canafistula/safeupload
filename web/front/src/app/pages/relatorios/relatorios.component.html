@@ -1,0 +1,13 @@
+<h2>Relatórios</h2>
+<section class="card">
+  <h3>Catálogo de relatórios</h3>
+  <p>Gerencie relatórios internos e personalizados de prevenção a vazamento.</p>
+</section>
+
+<section class="card" *ngIf="dados">
+  <h3>Relatórios recentes</h3>
+  <ol>
+    <li *ngFor="let item of dados.recentes">{{ item }}</li>
+  </ol>
+</section>
+
