@@ -1,0 +1,14 @@
+UTC=2026-10-02T19:16:33.8799445Z
+normal-wdk : written=19:15:20 warnings=0 errors=0 succeeded=True apivalidator=True
+owned-feature-wdk : written=19:15:33 warnings=0 errors=0 succeeded=True apivalidator=True
+normal-release-wdk : written=19:15:39 warnings=0 errors=0 succeeded=True apivalidator=True
+owned-feature-release-wdk : written=19:15:51 warnings=0 errors=0 succeeded=True apivalidator=True
+normal.sys 29696 sha256=3723517C2E67B2FF36FB9DAEF3F4A590869ACAC4671B388B650AA64BD44D940E sig=NotSigned signer=
+normal-release.sys 28672 sha256=0B007990F79CE07D13E06E03C320C01037BD35FD3E6DBA28ED02F8C383899B08 sig=NotSigned signer=
+owned-feature.sys 94720 sha256=C3EE03C367395C6420F74C2BAE3879AD9793F8D9E934CD21D5D6F81883543D0B sig=NotSigned signer=
+owned-feature-release.sys 70656 sha256=0D0E1075D17554922B68707E9C2708BF84D8738491642F3DDA502C7934852AE0 sig=NotSigned signer=
+SafeUpload-stage-prototype.sys 96144 sha256=1B8335AD160FA585D2B95E5BCE609A87ADD6A062F21884A3871BC530E6C30546 sig=UnknownError signer=220DD82C37FCF36048D59E4F10113185D81D5DC7
+inspector-false-Debug : warnings=0 errors=0 size=1267712 sha256=691B12A775949D0A20CA45BC07ED740FCBC8E37E6FDC84B0AD7BC75D3CDDEF89 containsAdmissionStrings=False
+inspector-true-Debug : warnings=0 errors=0 size=1278976 sha256=2D3E2555697126F251AC522940A4EF3E412904AFD6B78C68EF70679DD7317E65 containsAdmissionStrings=True
+inspector-false-Release : warnings=0 errors=0 size=155648 sha256=F1C76C1B194132DB2F2CB9AFF9D205DE26D85164CE2E53DF8C7638A28CF22E20 containsAdmissionStrings=False
+inspector-true-Release : warnings=0 errors=0 size=162816 sha256=5493478BC358B1C9E1A406A6B09AB3BA2D3B0146F8F26F5AC8DB09E2514535C0 containsAdmissionStrings=True

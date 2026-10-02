@@ -508,6 +508,290 @@ Return Value:
 }
 
 
+#if defined(SAFEUPLOAD_STAGING_PROTOTYPE) && SAFEUPLOAD_STAGING_PROTOTYPE
+static PCWSTR AdmissionEventName(_In_ UINT32 EventKind)
+{
+    switch (EventKind) {
+        case SAFEUPLOAD_ADMISSION_TRACE_EVENT_PAGING_WRITE: return L"paging_write";
+        case SAFEUPLOAD_ADMISSION_TRACE_EVENT_UNOWNED_NONPAGING_WRITE: return L"unowned_nonpaging_write";
+        case SAFEUPLOAD_ADMISSION_TRACE_EVENT_SECTION_ACQUIRE: return L"section_acquire";
+        case SAFEUPLOAD_ADMISSION_TRACE_EVENT_SECTION_RELEASE: return L"section_release";
+        case SAFEUPLOAD_ADMISSION_TRACE_EVENT_INSTANCE_SETUP: return L"instance_setup";
+        case SAFEUPLOAD_ADMISSION_TRACE_EVENT_EXPLICIT_PROBE: return L"explicit_probe";
+        default: return L"unknown";
+    }
+}
+
+static PCWSTR AdmissionMmDoesName(_In_ UINT32 Result)
+{
+    switch (Result) {
+        case SAFEUPLOAD_ADMISSION_TRACE_MMDOES_NOT_APPLICABLE: return L"not_applicable";
+        case SAFEUPLOAD_ADMISSION_TRACE_MMDOES_SKIPPED: return L"skipped";
+        case SAFEUPLOAD_ADMISSION_TRACE_MMDOES_NO: return L"no";
+        case SAFEUPLOAD_ADMISSION_TRACE_MMDOES_YES: return L"yes";
+        default: return L"unknown";
+    }
+}
+
+static PCWSTR AdmissionContextName(_In_ UINT32 State)
+{
+    switch (State) {
+        case SAFEUPLOAD_ADMISSION_TRACE_CONTEXT_NOT_APPLICABLE: return L"not_applicable";
+        case SAFEUPLOAD_ADMISSION_TRACE_CONTEXT_UNKNOWN: return L"unknown";
+        case SAFEUPLOAD_ADMISSION_TRACE_CONTEXT_ABSENT: return L"absent";
+        case SAFEUPLOAD_ADMISSION_TRACE_CONTEXT_PRESENT: return L"present";
+        case SAFEUPLOAD_ADMISSION_TRACE_CONTEXT_NOT_QUERIED: return L"not_queried";
+        default: return L"unknown";
+    }
+}
+
+static PCWSTR AdmissionAttachClassName(_In_ UINT32 AttachClass)
+{
+    switch (AttachClass) {
+        case SAFEUPLOAD_ADMISSION_TRACE_ATTACH_AUTOMATIC: return L"automatic";
+        case SAFEUPLOAD_ADMISSION_TRACE_ATTACH_MANUAL: return L"manual";
+        case SAFEUPLOAD_ADMISSION_TRACE_ATTACH_AUTOMATIC | SAFEUPLOAD_ADMISSION_TRACE_ATTACH_MANUAL:
+            return L"automatic|manual";
+        case SAFEUPLOAD_ADMISSION_TRACE_ATTACH_NEWLY_MOUNTED: return L"newly_mounted";
+        case SAFEUPLOAD_ADMISSION_TRACE_ATTACH_AUTOMATIC | SAFEUPLOAD_ADMISSION_TRACE_ATTACH_NEWLY_MOUNTED:
+            return L"automatic|newly_mounted";
+        case SAFEUPLOAD_ADMISSION_TRACE_ATTACH_MANUAL | SAFEUPLOAD_ADMISSION_TRACE_ATTACH_NEWLY_MOUNTED:
+            return L"manual|newly_mounted";
+        case SAFEUPLOAD_ADMISSION_TRACE_ATTACH_AUTOMATIC | SAFEUPLOAD_ADMISSION_TRACE_ATTACH_MANUAL |
+             SAFEUPLOAD_ADMISSION_TRACE_ATTACH_NEWLY_MOUNTED:
+            return L"automatic|manual|newly_mounted";
+        default: return L"unknown";
+    }
+}
+
+static VOID PrintAdmissionTraceEntry(_In_ const SAFEUPLOAD_ADMISSION_TRACE_ENTRY *Entry)
+{
+    wprintf(L"{\"sequence\":%llu,\"timestamp\":%llu,\"event\":\"%s\","
+            L"\"pid\":%u,\"irql\":%u,\"instance\":\"0x%016llX\","
+            L"\"targetFileObject\":\"0x%016llX\",\"sectionObjectPointer\":\"0x%016llX\","
+            L"\"major\":%u,\"minor\":%u,\"irpFlags\":\"0x%08X\","
+            L"\"mmDoes\":\"%s\",\"streamContext\":\"%s\",\"ownedStream\":%s,"
+            L"\"admissionRecordState\":\"not_tracked\",\"setupFlags\":%u,"
+            L"\"volumeKind\":%u,\"attachClass\":\"%s\",\"syncType\":%u,"
+            L"\"pageProtection\":\"0x%08X\",\"syncParametersValid\":%s,"
+            L"\"probeStatus\":\"0x%08X\",\"probeStage\":%u}\n",
+            Entry->Sequence, Entry->Timestamp, AdmissionEventName(Entry->EventKind),
+            Entry->ProcessId, Entry->Irql, Entry->Instance, Entry->TargetFileObject,
+            Entry->SectionObjectPointer, Entry->MajorFunction, Entry->MinorFunction,
+            Entry->IrpFlags, AdmissionMmDoesName(Entry->MmDoesResult),
+            AdmissionContextName(Entry->StreamContextState),
+            Entry->OwnedStream != 0 ? L"true" : L"false", Entry->SetupFlags,
+            Entry->VolumeKind, AdmissionAttachClassName(Entry->AttachClass),
+            Entry->SyncType, Entry->PageProtection,
+            Entry->SyncParametersValid != 0 ? L"true" : L"false",
+            Entry->ProbeStatus, Entry->ProbeStage);
+}
+
+static int SendAdmissionProbe(_In_z_ PCWSTR DosPath)
+{
+    static const WCHAR volumePrefix[] = L"\\Device\\HarddiskVolume";
+    WCHAR drive[3];
+    PWCHAR deviceName = NULL;
+    PSAFEUPLOAD_ADMISSION_PROBE_REQUEST request = NULL;
+    HANDLE port = INVALID_HANDLE_VALUE;
+    PCWSTR relativePath;
+    SIZE_T dosPathChars;
+    SIZE_T deviceNameChars;
+    SIZE_T prefixChars = ARRAYSIZE(volumePrefix) - 1;
+    SIZE_T index;
+    ULONG relativeChars;
+    ULONG requestBytes;
+    const DWORD deviceNameCapacity = 4096;
+    DWORD returned = 0;
+    HRESULT hr;
+    int exitCode = 2;
+
+    dosPathChars = wcslen(DosPath);
+    if (dosPathChars < 4 || dosPathChars > SAFEUPLOAD_ADMISSION_PROBE_MAX_STRING_CHARS ||
+        !((DosPath[0] >= L'A' && DosPath[0] <= L'Z') ||
+          (DosPath[0] >= L'a' && DosPath[0] <= L'z')) ||
+        DosPath[1] != L':' || DosPath[2] != L'\\' ||
+        DosPath[dosPathChars - 1] == L'\\') {
+        fwprintf(stderr, L"Uso: SafeUpload.Inspector --admission-probe X:\\dir\\file\n");
+        return 2;
+    }
+    for (index = 0; index < dosPathChars; index += 1) {
+        if (DosPath[index] == L'/') {
+            fwprintf(stderr, L"ERRO: use uma barra invertida no caminho.\n");
+            return 2;
+        }
+        if (index >= 2 && DosPath[index] == L':') {
+            fwprintf(stderr, L"ERRO: fluxos alternativos (:) nao sao aceitos.\n");
+            return 2;
+        }
+    }
+
+    drive[0] = DosPath[0];
+    drive[1] = L':';
+    drive[2] = L'\0';
+    deviceName = (PWCHAR)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY,
+        (SIZE_T)deviceNameCapacity * sizeof(WCHAR));
+    if (deviceName == NULL) return 2;
+
+    if (QueryDosDeviceW(drive, deviceName, deviceNameCapacity) == 0) {
+        fwprintf(stderr, L"ERRO: nao foi possivel resolver a unidade %s.\n", drive);
+        goto Cleanup;
+    }
+
+    deviceNameChars = wcslen(deviceName);
+    if (deviceNameChars == 0 ||
+        deviceNameChars > SAFEUPLOAD_ADMISSION_PROBE_MAX_STRING_CHARS ||
+        deviceNameChars < prefixChars ||
+        _wcsnicmp(deviceName, volumePrefix, prefixChars) != 0) {
+        fwprintf(stderr, L"ERRO: a unidade nao aponta para um volume local suportado.\n");
+        goto Cleanup;
+    }
+
+    relativePath = DosPath + 2;
+    relativeChars = (ULONG)(dosPathChars - 2);
+    if (relativeChars > SAFEUPLOAD_ADMISSION_PROBE_MAX_STRING_CHARS) {
+        fwprintf(stderr, L"ERRO: o caminho excede o limite do protocolo.\n");
+        goto Cleanup;
+    }
+
+    requestBytes = (ULONG)FIELD_OFFSET(SAFEUPLOAD_ADMISSION_PROBE_REQUEST, Strings) +
+        ((ULONG)deviceNameChars + relativeChars) * (ULONG)sizeof(WCHAR);
+    request = (PSAFEUPLOAD_ADMISSION_PROBE_REQUEST)HeapAlloc(
+        GetProcessHeap(), HEAP_ZERO_MEMORY, requestBytes);
+    if (request == NULL) goto Cleanup;
+
+    request->Control.Version = SAFEUPLOAD_PROTOCOL_VERSION;
+    request->Control.StructSize = requestBytes;
+    request->Control.Command = SAFEUPLOAD_CONTROL_ADMISSION_PROBE;
+    request->VolumeNameChars = (UINT16)deviceNameChars;
+    request->RelativePathChars = (UINT16)relativeChars;
+    CopyMemory(request->Strings, deviceName, deviceNameChars * sizeof(WCHAR));
+    CopyMemory(request->Strings + deviceNameChars,
+               relativePath,
+               relativeChars * sizeof(WCHAR));
+
+    hr = FilterConnectCommunicationPort(SAFEUPLOAD_PORT_NAME, 0, NULL, 0, NULL, &port);
+    if (FAILED(hr)) {
+        fwprintf(stderr, L"ERRO: nao foi possivel conectar na porta (hr = 0x%08X).\n", hr);
+        goto Cleanup;
+    }
+
+    hr = FilterSendMessage(port, request, requestBytes, NULL, 0, &returned);
+    wprintf(L"{\"admissionProbe\":\"sent\",\"status\":\"0x%08X\"}\n", hr);
+    exitCode = SUCCEEDED(hr) && returned == 0 ? 0 : 3;
+
+Cleanup:
+    if (port != INVALID_HANDLE_VALUE) CloseHandle(port);
+    if (request != NULL) HeapFree(GetProcessHeap(), 0, request);
+    if (deviceName != NULL) HeapFree(GetProcessHeap(), 0, deviceName);
+    return exitCode;
+}
+
+static int SendAdmissionTraceControl(_In_ UINT32 Command, _In_z_ PCWSTR Name)
+{
+    SAFEUPLOAD_CONTROL control;
+    HANDLE port = INVALID_HANDLE_VALUE;
+    DWORD returned = 0;
+    HRESULT hr;
+
+    hr = FilterConnectCommunicationPort(SAFEUPLOAD_PORT_NAME, 0, NULL, 0, NULL, &port);
+    if (FAILED(hr)) {
+        wprintf(L"ERRO: nao foi possivel conectar na porta (hr = 0x%08X).\n", hr);
+        return 2;
+    }
+
+    ZeroMemory(&control, sizeof(control));
+    control.Version = SAFEUPLOAD_PROTOCOL_VERSION;
+    control.StructSize = sizeof(control);
+    control.Command = Command;
+    hr = FilterSendMessage(port, &control, sizeof(control), NULL, 0, &returned);
+    CloseHandle(port);
+    if (FAILED(hr) || returned != 0) {
+        wprintf(L"ERRO: o driver recusou %s (hr = 0x%08X).\n", Name, hr);
+        return 3;
+    }
+
+    wprintf(L"%s: OK\n", Name);
+    return 0;
+}
+
+static int PrintAdmissionTrace(VOID)
+{
+    SAFEUPLOAD_ADMISSION_TRACE_REQUEST request;
+    SAFEUPLOAD_ADMISSION_TRACE_BATCH batch;
+    SAFEUPLOAD_ADMISSION_TRACE_COUNTERS counters;
+    HANDLE port = INVALID_HANDLE_VALUE;
+    DWORD returned = 0;
+    UINT64 cursor = 0;
+    UINT64 snapshot = 0;
+    HRESULT hr;
+    ULONG index;
+    int exitCode = 0;
+
+    ZeroMemory(&counters, sizeof(counters));
+    hr = FilterConnectCommunicationPort(SAFEUPLOAD_PORT_NAME, 0, NULL, 0, NULL, &port);
+    if (FAILED(hr)) {
+        wprintf(L"ERRO: nao foi possivel conectar na porta (hr = 0x%08X).\n", hr);
+        return 2;
+    }
+
+    for (;;) {
+        ZeroMemory(&request, sizeof(request));
+        ZeroMemory(&batch, sizeof(batch));
+        request.Control.Version = SAFEUPLOAD_PROTOCOL_VERSION;
+        request.Control.StructSize = sizeof(request);
+        request.Control.Command = SAFEUPLOAD_CONTROL_ADMISSION_TRACE_READ_BATCH;
+        request.Cursor = cursor;
+        request.SnapshotSequence = snapshot;
+
+        returned = 0;
+        hr = FilterSendMessage(port, &request, sizeof(request), &batch, sizeof(batch), &returned);
+        if (FAILED(hr) || returned != sizeof(batch) ||
+            batch.Control.Version != SAFEUPLOAD_PROTOCOL_VERSION ||
+            batch.Control.StructSize != sizeof(batch) ||
+            batch.Control.Command != SAFEUPLOAD_CONTROL_ADMISSION_TRACE_READ_BATCH ||
+            batch.EntryCount > SAFEUPLOAD_ADMISSION_TRACE_BATCH_ENTRIES) {
+            wprintf(L"ERRO: resposta de trace invalida (hr = 0x%08X, bytes = %u).\n",
+                    hr, returned);
+            exitCode = 3;
+            break;
+        }
+
+        if (snapshot == 0) snapshot = batch.SnapshotSequence;
+        if (batch.SnapshotSequence != snapshot || batch.NextCursor < cursor) {
+            wprintf(L"ERRO: cursor ou snapshot invalido devolvido pelo driver.\n");
+            exitCode = 3;
+            break;
+        }
+
+        for (index = 0; index < batch.EntryCount; index += 1) {
+            PrintAdmissionTraceEntry(&batch.Entries[index]);
+        }
+        counters = batch.Counters;
+        if (batch.NextCursor == cursor && cursor <= snapshot) {
+            // A slot changed during this snapshot read; leave the cursor for
+            // a later invocation to retry from a fresh snapshot.
+            break;
+        }
+
+        cursor = batch.NextCursor;
+        if (cursor > snapshot) break;
+    }
+
+    CloseHandle(port);
+    if (exitCode != 0) return exitCode;
+
+    wprintf(L"{\"summary\":true,\"totalEvents\":%llu,\"pagingWrites\":%llu,"
+            L"\"nonPagingWrites\":%llu,\"sectionAcquires\":%llu,\"sectionReleases\":%llu,"
+            L"\"instanceSetups\":%llu,"
+            L"\"lostEntries\":%llu,\"cursor\":%llu,\"snapshotSequence\":%llu}\n",
+            counters.TotalEvents, counters.PagingWrites, counters.NonPagingWrites,
+            counters.SectionAcquires, counters.SectionReleases, counters.InstanceSetups,
+            counters.LostEntries, cursor, snapshot);
+    return 0;
+}
+#endif
+
 int __cdecl
 wmain (
     int argc,
@@ -553,6 +837,35 @@ Return Value:
 
         return PrintCounters();
     }
+
+#if defined(SAFEUPLOAD_STAGING_PROTOTYPE) && SAFEUPLOAD_STAGING_PROTOTYPE
+    if (argc > 1 && _wcsicmp(argv[1], L"--admission-trace-enable") == 0) {
+        return SendAdmissionTraceControl(SAFEUPLOAD_CONTROL_ADMISSION_TRACE_ENABLE,
+                                         L"admission trace enable");
+    }
+
+    if (argc > 1 && _wcsicmp(argv[1], L"--admission-trace-disable") == 0) {
+        return SendAdmissionTraceControl(SAFEUPLOAD_CONTROL_ADMISSION_TRACE_DISABLE,
+                                         L"admission trace disable");
+    }
+
+    if (argc > 1 && _wcsicmp(argv[1], L"--admission-trace-clear") == 0) {
+        return SendAdmissionTraceControl(SAFEUPLOAD_CONTROL_ADMISSION_TRACE_CLEAR,
+                                         L"admission trace clear");
+    }
+
+    if (argc > 1 && _wcsicmp(argv[1], L"--admission-trace") == 0) {
+        return PrintAdmissionTrace();
+    }
+
+    if (argc > 1 && _wcsicmp(argv[1], L"--admission-probe") == 0) {
+        if (argc != 3) {
+            fwprintf(stderr, L"Uso: SafeUpload.Inspector --admission-probe X:\\dir\\file\n");
+            return 2;
+        }
+        return SendAdmissionProbe(argv[2]);
+    }
+#endif
 
     UNREFERENCED_PARAMETER( argc );
     UNREFERENCED_PARAMETER( argv );

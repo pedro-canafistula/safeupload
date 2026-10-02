@@ -1,0 +1,55 @@
+Admission diagnostic fix 2
+Date: 2026-10-02
+
+Decisions applied
+- E1: StageStream.c:1922 StageAdmit no longer emits or runs a create probe;
+  StageCreate (line 829) has no diff from HEAD. Removed
+  StageAdmissionTraceRecordProbeSkip, StageAdmissionTraceProbeProtectedCreate,
+  and the create-path probe call sites. Paging and section hooks remain.
+- E2: Protocol.h:262 adds feature-only control 9 and the bounded request at
+  :524. Communication.c:581 bounds/probes the request and :676 copies it to
+  the existing policy pool scratch buffer before inspecting fields. It rejects
+  nonzero reserved fields, embedded NULs, bad prefixes, and non-exact sizes.
+- E3: StageStream.c:387 implements the PASSIVE_LEVEL message-thread probe;
+  only the Inspector's FilterSendMessage thread can wait on the lower open.
+  It resolves volume and instance, checks instance context for fixed local
+  NTFS, builds the path in pool, opens below that instance, records the result,
+  and releases context, handle, file object, instance, and volume. Trace
+  rundown is acquired only for the append; disabled generations are dropped.
+- E4: Inspector main.c:591 adds guarded --admission-probe handling; :857
+  dispatches it. QueryDosDeviceW must return a first target beginning with
+  \Device\HarddiskVolume. Valid sends print one JSON status line.
+- E5: Protocol.h:542-587 changes the trace entry/counter/batch layouts; :821-837
+  asserts offsets and sizes. The old inline-probe summary counters and JSON
+  fields are removed. Existing entry JSON names remain; explicit events use
+  event=explicit_probe, probeStatus, probeStage, targetFileObject,
+  sectionObjectPointer, mmDoes, and volumeKind.
+- E6: Existing feature guards/default-off state, paging and section capture,
+  InstanceSetup recording, LocalSystem connect check, scratch reply path, and
+  teardown order were left in place.
+
+Wire limits
+- Header 16 bytes; VolumeNameChars at 16, RelativePathChars at 18, Reserved
+  at 20, then back-to-back WCHAR data at 24 with no terminators. StructSize
+  and message length equal 24 + 2 * (both declared character counts).
+- Each string is at most 260 WCHARs. VolumeName starts with \Device\;
+  RelativePath is 2..260 WCHARs, starts with \ and does not end with \.
+  Both reject embedded NULs.
+- Maximum request is 1,064 bytes; Protocol.h asserts the policy scratch buffer
+  can hold it. The Inspector accepts only X:\... paths up to 260 WCHARs and
+  rejects UNC/device/relative/trailing-separator paths and nonlocal mappings.
+
+Removed symbols
+- SAFEUPLOAD_ADMISSION_TRACE_EVENT_PROTECTED_PROBE,
+  SAFEUPLOAD_ADMISSION_TRACE_PROBE_SKIP_*, ProbeAttempted, ProbeSkipReason,
+  and probe-only aggregate counters.
+
+Unresolved / reviewer focus
+- No WDK build, PREfast, ApiValidator, Inspector build, or VM run was performed;
+  the orchestrator must do those checks.
+- Review Communication.c:579-768 for user-buffer bounds, count arithmetic,
+  exact length, and copy-before-use. Review StageStream.c:387-530 hardest for
+  API/IRQL contracts, reference cleanup, trace-disable/unload races, and the
+  explicit append wait; confirm no trace rundown spans a lower call.
+- Confirm the byte-for-byte StageAdmit/StageCreate result from the source diff;
+  no changes remain in either region.

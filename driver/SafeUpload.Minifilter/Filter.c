@@ -470,7 +470,9 @@ Return Value:
     SAFEUPLOAD_VOLUME_KIND volumeKind;
     NTSTATUS status;
 
+#if !SAFEUPLOAD_STAGING_PROTOTYPE
     UNREFERENCED_PARAMETER( Flags );
+#endif
     UNREFERENCED_PARAMETER( VolumeFilesystemType );
 
     PAGED_CODE();
@@ -481,7 +483,43 @@ Return Value:
     //  a hole rather than an optimization.
     //
 
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    status = SafeUploadSetInstanceContext( FltObjects, VolumeDeviceType, Flags, &volumeKind );
+#else
     status = SafeUploadSetInstanceContext( FltObjects, VolumeDeviceType, &volumeKind );
+#endif
+
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    {
+        LONG traceState = SafeUploadAdmissionTraceControlState;
+
+        if ((traceState & 1) != 0 && SafeUploadStageAdmissionTraceBegin( traceState )) {
+            SAFEUPLOAD_ADMISSION_TRACE_ENTRY entry;
+
+            RtlZeroMemory( &entry, sizeof( entry ) );
+            entry.EventKind = SAFEUPLOAD_ADMISSION_TRACE_EVENT_INSTANCE_SETUP;
+            entry.ProcessId = (UINT32)(ULONG_PTR)PsGetCurrentProcessId();
+            entry.Irql = KeGetCurrentIrql();
+            entry.Instance = (UINT64)(ULONG_PTR)FltObjects->Instance;
+            entry.AdmissionRecordState = 0;
+            entry.SetupFlags = (UINT32) Flags;
+            entry.VolumeKind = (UINT32) volumeKind;
+
+            if (FlagOn( Flags, FLTFL_INSTANCE_SETUP_AUTOMATIC_ATTACHMENT )) {
+                entry.AttachClass |= SAFEUPLOAD_ADMISSION_TRACE_ATTACH_AUTOMATIC;
+            }
+            if (FlagOn( Flags, FLTFL_INSTANCE_SETUP_MANUAL_ATTACHMENT )) {
+                entry.AttachClass |= SAFEUPLOAD_ADMISSION_TRACE_ATTACH_MANUAL;
+            }
+            if (FlagOn( Flags, FLTFL_INSTANCE_SETUP_NEWLY_MOUNTED_VOLUME )) {
+                entry.AttachClass |= SAFEUPLOAD_ADMISSION_TRACE_ATTACH_NEWLY_MOUNTED;
+            }
+
+            SafeUploadStageAdmissionTraceRecord( &entry );
+            SafeUploadStageAdmissionTraceEnd();
+        }
+    }
+#endif
 
     if (!NT_SUCCESS( status ) || volumeKind == SafeUploadVolumeUnknown) {
 

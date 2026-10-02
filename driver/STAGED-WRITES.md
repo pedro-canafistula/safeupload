@@ -30,6 +30,9 @@ remains. No watchdog work or new internals investigation is active.
       destination after expansion; [gate](evidence/2026-10-02/policy-transition-eof-map-gate.txt),
       [independent restoration](evidence/2026-10-02/policy-transition-eof-map-final-restored-state.txt).
       Earlier harness failures are excluded (see the follow-up below).
+- [x] Observe-only admission diagnostic implemented, reviewed and built clean (feature
+      only, default off; see "Slice 1" below). **Not yet run on the debuggee; no leak
+      is blocked by it.**
 - [ ] Complete namespace/policy/attachment admission, existing physical sections
       (both open leaks above), remaining mutation classes and the broader
       acceptance tracker.
@@ -360,6 +363,93 @@ answer unknowns 1-4 above. Only then design enforcement slices. Each kernel chan
 fresh adversarial reviewer worker, four builds and the 275 agent tests, and a
 disk-checkpointed VM run with an independent restoration check. A diagnostic result
 is recorded as an observation, not as a blocked leak.
+
+### Slice 1: observe-only admission diagnostic (2 October 2026)
+
+**Status: built, reviewed three times plus a delta pass (OK-TO-RUN-ON-DISPOSABLE-VM), NOT yet run on the debuggee.** No leak is
+closed or blocked by this slice. It adds no enforcement. It exists to answer the four unknowns
+above before any enforcement code is written.
+
+What exists (feature build only, `SafeUploadStagingPrototype=true`; default OFF):
+- A 256-entry nonpaged ring plus counters, enabled and read through the existing filter port.
+  Hooks record unowned paging/nonpaging writes (target file object, `SectionObjectPointer`
+  value, IRP flags, IRQL, PID), unowned acquire/release-for-section-synchronization, and
+  InstanceSetup flags. Hooks do no context lookup, take no blocking lock and never change a
+  status or completion path. `AdmissionRecordState` is the constant `not_tracked`: slice 1 has no
+  admission-record table (revised slice contract).
+- An **explicit probe** control (`SafeUpload.Inspector --admission-probe X:\dir\file`). It runs
+  entirely in the Inspector's own message thread at PASSIVE_LEVEL: resolves this filter's
+  instance on the volume, requires a fixed local NTFS volume, opens the file below that
+  instance with `FILE_READ_ATTRIBUTES` only, records the file object, its `SectionObjectPointer`
+  and the `MmDoesFileHaveUserWritableReferences` result, and releases every reference.
+  `StageAdmit` and `StageCreate` are byte-identical to HEAD (function-body comparison).
+- Inspector commands `--admission-trace-enable|-disable|-clear`, `--admission-trace` (JSON
+  lines), `--admission-probe`. The Inspector compiles them only with the same feature define.
+- Port rules that shape every test: the port accepts only a **LocalSystem** token and allows
+  **one** client, so the Inspector cannot run while the real agent is connected and must be
+  launched as SYSTEM. A disconnect clears only the client port and publication permits; the
+  **policy stays** in the driver (Communication.c:127, :254-263, :281-313).
+
+Review history (all by fresh Luna reviewers; reports kept as evidence):
+1. [Review 1](evidence/2026-10-02/admission-diagnostic-review.txt): BUILD-AFTER-FIXES, 1 blocker,
+   6 majors, 1 minor (inline create probe could stall the original I/O; context lookups in
+   paging hooks; Inspector forced the feature define; ring cursor race).
+2. [Review 2](evidence/2026-10-02/admission-diagnostic-review2.txt): BLOCKED-DO-NOT-RUN on the
+   inline probe: during its wait an unload can set `StageStopping` and the resumed original create
+   fails with `STATUS_DEVICE_NOT_READY`. **I first kept the inline probe over review 1's blocker
+   (reasoning: attribute-only opens do not break oplocks per MS-FSA 2.1.5.1.1). Two independent
+   reviews disagreed with that and review 2 gave a concrete failure mechanism, so I reversed the
+   decision and removed the inline probe.**
+3. [Review 3](evidence/2026-10-02/admission-diagnostic-review3.txt): BUILD-AFTER-FIXES, 0 blockers,
+   2 majors, 1 minor against the explicit probe. Decisions: (a) the blocking lower open in the
+   message callback can pin the callback and delay a mandatory unload — **accepted as a
+   documented risk for the disposable debuggee only**, no production-safety claim (explicit,
+   user-triggered, harness uses per-call timeouts, a timeout fails the run); (b) reparse
+   components can make the probe describe a different object — handled as a **harness
+   precondition** (no reparse component in fixture paths, checked before the driver loads), the
+   driver does not defend against it; (c) `:` (alternate streams) now rejected in the kernel
+   handler and the Inspector.
+4. [Review 4](evidence/2026-10-02/admission-diagnostic-review4.txt): delta review of (c): verdict
+   OK-TO-RUN-ON-DISPOSABLE-VM, 0 blockers, 0 minors, one accepted major (the unbounded lower open). Exactly
+   two files differed from the reviewed manifest. It adds that an Inspector-side timeout **does not
+   cancel the kernel open**: a timed-out probe is a failed run and the checkpoint is reverted if the
+   independent restoration check does not pass.
+
+Build evidence for the final source (run 6; every claim re-checked from the builder's own logs and
+files, not from the script exit code, which was 0 even for a failed build):
+[normal Debug](evidence/2026-10-02/admission-diagnostic-run6-normal-wdk.txt),
+[feature Debug](evidence/2026-10-02/admission-diagnostic-run6-owned-feature-wdk.txt),
+[normal Release](evidence/2026-10-02/admission-diagnostic-run6-normal-release-wdk.txt),
+[feature Release](evidence/2026-10-02/admission-diagnostic-run6-owned-feature-release-wdk.txt):
+0 warnings, 0 errors, PREfast/DriverRecommendedRules/API validation on.
+[275 agent tests](evidence/2026-10-02/admission-diagnostic-run6-agent-tests.txt) pass;
+[service Release publish](evidence/2026-10-02/admission-diagnostic-run6-service-build.txt);
+[builder verification and Inspector builds](evidence/2026-10-02/admission-diagnostic-run6-builder-verification.txt)
+(all four Inspector builds 0/0; admission strings present only in the feature builds).
+**Normal-build identity**: `Test-NormalBuildIdentity.ps1` builds the committed HEAD normal driver at a
+same-length path and compares every PE section with the working-tree normal build:
+`NormalBuildIdentity=PASS`, only 22 `.rdata` bytes (PDB path/GUID/timestamp) differ in Debug and
+Release ([result](evidence/2026-10-02/normal-identity-final-run5.txt), preliminary
+[head sections](evidence/2026-10-02/normal-identity-head-samepath-sections.txt) and
+[`.rdata` diff](evidence/2026-10-02/normal-identity-rdata-diff.txt)).
+Candidate test-signed (`CN=SafeUpload Test Signing`, `220DD82C…`) Debug feature SYS SHA-256
+`5C4D04F50F37CA477110B5D496F8698C791842030E7D14AC3834704F70EEC516`.
+Failed attempts kept as **non-acceptance** records: [run 1](evidence/2026-10-02/admission-diagnostic-build-run.txt)
+(wrong WDK identifier `FLTFL_INSTANCE_SETUP_NEWLY_MOUNTED`; the real name is
+`FLTFL_INSTANCE_SETUP_NEWLY_MOUNTED_VOLUME`), [run 2](evidence/2026-10-02/admission-diagnostic-build-run2.txt)
+(PREfast C6262, a 1104-byte reply on the kernel stack in `Communication.c`; moved to the existing
+pool scratch buffer with a size assertion).
+
+**Not claimed:** any runtime behavior of this code; that a pre-attachment writeback reaches the
+hooks; section-pointer identity between the probe and a mapping's file object; the
+`MmDoesFileHaveUserWritableReferences` values; latency; Verifier cleanliness; that the probe is
+safe outside the disposable VM. Next: the harness (buffered and uncached readers, four variants),
+a checkpointed debuggee run, and an independent restoration check.
+
+The worker's own draft command script ([admission-diagnostic-build-commands.sh](evidence/2026-10-02/admission-diagnostic-build-commands.sh))
+was not used; builds ran through `driver/scripts/Invoke-BuilderBuild.sh`, which syncs the changed sources,
+verifies their hashes on the builder and records the log. `Invoke-DebuggeeExperiment.sh` is the matching
+wrapper for debuggee runs (baseline check, disk-only checkpoint, run, separate restoration check).
 
 ## Previous milestone: journal recovery/security qualified (2 October 2026)
 

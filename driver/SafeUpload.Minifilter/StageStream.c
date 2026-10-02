@@ -6,6 +6,16 @@
 #include "StageSecurity.h"
 #include <ntstrsafe.h>
 
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+static VOID StageAdmissionTraceShutdown(VOID);
+#ifdef ALLOC_PRAGMA
+#pragma alloc_text(PAGE, SafeUploadStageAdmissionTraceControl)
+#pragma alloc_text(PAGE, SafeUploadStageAdmissionTraceReadBatch)
+#pragma alloc_text(PAGE, SafeUploadStageAdmissionProbe)
+#pragma alloc_text(PAGE, StageAdmissionTraceShutdown)
+#endif
+#endif
+
 #define STAGE_TAG 'sUpS'
 #define STAGE_LIMIT 128
 #define STAGE_MAX_BYTES (16 * 1024 * 1024)
@@ -59,6 +69,468 @@ static LIST_ENTRY StageViews;
 static KEVENT StageWorkerStop;
 static HANDLE StageWorkerHandle;
 static BOOLEAN StageInitialized;
+
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+// Static storage is nonpaged and gives the callback path a bounded ring with
+// no allocation or lifetime race. An odd control state means tracing is on.
+volatile LONG SafeUploadAdmissionTraceControlState;
+DECLSPEC_ALIGN(8) static SAFEUPLOAD_ADMISSION_TRACE_ENTRY AdmissionTraceRing[
+    SAFEUPLOAD_ADMISSION_TRACE_RING_ENTRIES];
+DECLSPEC_ALIGN(8) static volatile LONG64 AdmissionTraceNextSequence;
+static volatile LONG AdmissionTraceWriterBusy;
+static SAFEUPLOAD_ADMISSION_TRACE_COUNTERS AdmissionTraceCounters;
+static EX_RUNDOWN_REF AdmissionTraceRundown;
+static FAST_MUTEX AdmissionTraceControlMutex;
+static BOOLEAN AdmissionTraceRundownClosed;
+
+static LONG StageAdmissionTraceNextState(_In_ LONG CurrentState, _In_ BOOLEAN Enable)
+{
+    ULONG nextState = (((ULONG)CurrentState & 0x7ffffffeUL) + 2UL) & 0x7ffffffeUL;
+    if (Enable) nextState |= 1UL;
+    return (LONG)nextState;
+}
+
+static VOID StageAdmissionTraceReset(VOID)
+{
+    ULONG index;
+    InterlockedExchange64(&AdmissionTraceNextSequence, 0);
+    for (index = 0; index < SAFEUPLOAD_ADMISSION_TRACE_RING_ENTRIES; index += 1) {
+        InterlockedExchange64((volatile LONG64 *)&AdmissionTraceRing[index].Sequence, 0);
+    }
+    InterlockedExchange(&AdmissionTraceWriterBusy, 0);
+    RtlZeroMemory(&AdmissionTraceCounters, sizeof(AdmissionTraceCounters));
+}
+
+static VOID StageAdmissionTraceSnapshotCounters(
+    _Out_ PSAFEUPLOAD_ADMISSION_TRACE_COUNTERS Destination)
+{
+    Destination->TotalEvents = (UINT64)InterlockedCompareExchange64(
+        (volatile LONG64 *)&AdmissionTraceCounters.TotalEvents, 0, 0);
+    Destination->PagingWrites = (UINT64)InterlockedCompareExchange64(
+        (volatile LONG64 *)&AdmissionTraceCounters.PagingWrites, 0, 0);
+    Destination->NonPagingWrites = (UINT64)InterlockedCompareExchange64(
+        (volatile LONG64 *)&AdmissionTraceCounters.NonPagingWrites, 0, 0);
+    Destination->SectionAcquires = (UINT64)InterlockedCompareExchange64(
+        (volatile LONG64 *)&AdmissionTraceCounters.SectionAcquires, 0, 0);
+    Destination->SectionReleases = (UINT64)InterlockedCompareExchange64(
+        (volatile LONG64 *)&AdmissionTraceCounters.SectionReleases, 0, 0);
+    Destination->InstanceSetups = (UINT64)InterlockedCompareExchange64(
+        (volatile LONG64 *)&AdmissionTraceCounters.InstanceSetups, 0, 0);
+    Destination->LostEntries = (UINT64)InterlockedCompareExchange64(
+        (volatile LONG64 *)&AdmissionTraceCounters.LostEntries, 0, 0);
+}
+
+BOOLEAN SafeUploadStageAdmissionTraceBegin(_In_ LONG TraceState)
+{
+    if ((TraceState & 1) == 0 || !ExAcquireRundownProtection(&AdmissionTraceRundown)) {
+        return FALSE;
+    }
+
+    KeMemoryBarrier();
+    if (SafeUploadAdmissionTraceControlState != TraceState) {
+        ExReleaseRundownProtection(&AdmissionTraceRundown);
+        return FALSE;
+    }
+
+    return TRUE;
+}
+
+VOID SafeUploadStageAdmissionTraceEnd(VOID)
+{
+    ExReleaseRundownProtection(&AdmissionTraceRundown);
+}
+
+static BOOLEAN StageAdmissionTraceRecordInternal(
+    _In_ const SAFEUPLOAD_ADMISSION_TRACE_ENTRY *Entry,
+    _In_ BOOLEAN WaitForWriter)
+{
+    SAFEUPLOAD_ADMISSION_TRACE_ENTRY copy;
+    PSAFEUPLOAD_ADMISSION_TRACE_ENTRY slot;
+    LARGE_INTEGER timestamp;
+    LONGLONG signedSequence;
+    LONGLONG lastCommittedSequence;
+    UINT64 sequence;
+    ULONG index;
+
+    InterlockedIncrement64((volatile LONG64 *)&AdmissionTraceCounters.TotalEvents);
+    switch (Entry->EventKind) {
+    case SAFEUPLOAD_ADMISSION_TRACE_EVENT_PAGING_WRITE:
+        InterlockedIncrement64((volatile LONG64 *)&AdmissionTraceCounters.PagingWrites);
+        break;
+    case SAFEUPLOAD_ADMISSION_TRACE_EVENT_UNOWNED_NONPAGING_WRITE:
+        InterlockedIncrement64((volatile LONG64 *)&AdmissionTraceCounters.NonPagingWrites);
+        break;
+    case SAFEUPLOAD_ADMISSION_TRACE_EVENT_SECTION_ACQUIRE:
+        InterlockedIncrement64((volatile LONG64 *)&AdmissionTraceCounters.SectionAcquires);
+        break;
+    case SAFEUPLOAD_ADMISSION_TRACE_EVENT_SECTION_RELEASE:
+        InterlockedIncrement64((volatile LONG64 *)&AdmissionTraceCounters.SectionReleases);
+        break;
+    case SAFEUPLOAD_ADMISSION_TRACE_EVENT_INSTANCE_SETUP:
+        InterlockedIncrement64((volatile LONG64 *)&AdmissionTraceCounters.InstanceSetups);
+        break;
+    default:
+        break;
+    }
+
+    // Callback writers drop on reservation contention. The explicit probe
+    // may wait here while appending its one user-requested entry.
+    while (InterlockedCompareExchange(&AdmissionTraceWriterBusy, 1, 0) != 0) {
+        if (!WaitForWriter) {
+            InterlockedIncrement64((volatile LONG64 *)&AdmissionTraceCounters.LostEntries);
+            return FALSE;
+        }
+        YieldProcessor();
+    }
+
+    lastCommittedSequence = InterlockedCompareExchange64(&AdmissionTraceNextSequence, 0, 0);
+    signedSequence = lastCommittedSequence + 1;
+    sequence = (UINT64)signedSequence;
+    index = (ULONG)((sequence - 1ULL) &
+        ((UINT64)SAFEUPLOAD_ADMISSION_TRACE_RING_ENTRIES - 1ULL));
+    slot = &AdmissionTraceRing[index];
+
+    if (sequence > SAFEUPLOAD_ADMISSION_TRACE_RING_ENTRIES) {
+        InterlockedIncrement64((volatile LONG64 *)&AdmissionTraceCounters.LostEntries);
+    }
+
+    // Zero marks an in-progress overwrite. The reader-visible high-water mark
+    // is updated only after the slot sequence is committed below.
+    InterlockedExchange64((volatile LONG64 *)&slot->Sequence, 0);
+    KeQuerySystemTime(&timestamp);
+    copy = *Entry;
+    copy.Sequence = sequence;
+    copy.Timestamp = (UINT64)timestamp.QuadPart;
+    RtlCopyMemory(&slot->Timestamp,
+                  &copy.Timestamp,
+                  sizeof(copy) - FIELD_OFFSET(SAFEUPLOAD_ADMISSION_TRACE_ENTRY, Timestamp));
+    KeMemoryBarrier();
+    InterlockedExchange64((volatile LONG64 *)&slot->Sequence, (LONG64)sequence);
+    KeMemoryBarrier();
+    InterlockedExchange64(&AdmissionTraceNextSequence, signedSequence);
+    InterlockedExchange(&AdmissionTraceWriterBusy, 0);
+    return TRUE;
+}
+
+VOID SafeUploadStageAdmissionTraceRecord(
+    _In_ const SAFEUPLOAD_ADMISSION_TRACE_ENTRY *Entry)
+{
+    (VOID)StageAdmissionTraceRecordInternal(Entry, FALSE);
+}
+
+NTSTATUS SafeUploadStageAdmissionTraceControl(_In_ UINT32 Command)
+{
+    LONG state;
+    BOOLEAN wasEnabled;
+    NTSTATUS status = STATUS_SUCCESS;
+
+    PAGED_CODE();
+    ExAcquireFastMutex(&AdmissionTraceControlMutex);
+    state = InterlockedCompareExchange(&SafeUploadAdmissionTraceControlState, 0, 0);
+    wasEnabled = (state & 1) != 0;
+
+    if (Command == SAFEUPLOAD_CONTROL_ADMISSION_TRACE_ENABLE) {
+        if (!wasEnabled) {
+            if (AdmissionTraceRundownClosed) {
+                ExReInitializeRundownProtection(&AdmissionTraceRundown);
+                AdmissionTraceRundownClosed = FALSE;
+            }
+            InterlockedExchange(&SafeUploadAdmissionTraceControlState,
+                                StageAdmissionTraceNextState(state, TRUE));
+        }
+    } else if (Command == SAFEUPLOAD_CONTROL_ADMISSION_TRACE_DISABLE ||
+               Command == SAFEUPLOAD_CONTROL_ADMISSION_TRACE_CLEAR) {
+        InterlockedExchange(&SafeUploadAdmissionTraceControlState,
+                            StageAdmissionTraceNextState(state, FALSE));
+        if (!AdmissionTraceRundownClosed) {
+            ExWaitForRundownProtectionRelease(&AdmissionTraceRundown);
+            AdmissionTraceRundownClosed = TRUE;
+        }
+
+        if (Command == SAFEUPLOAD_CONTROL_ADMISSION_TRACE_CLEAR) {
+            StageAdmissionTraceReset();
+            if (wasEnabled) {
+                ExReInitializeRundownProtection(&AdmissionTraceRundown);
+                AdmissionTraceRundownClosed = FALSE;
+                state = InterlockedCompareExchange(&SafeUploadAdmissionTraceControlState, 0, 0);
+                InterlockedExchange(&SafeUploadAdmissionTraceControlState,
+                                    StageAdmissionTraceNextState(state, TRUE));
+            }
+        }
+    } else {
+        status = STATUS_INVALID_PARAMETER;
+    }
+
+    ExReleaseFastMutex(&AdmissionTraceControlMutex);
+    return status;
+}
+
+NTSTATUS SafeUploadStageAdmissionTraceReadBatch(
+    _In_ UINT64 Cursor,
+    _In_ UINT64 SnapshotSequence,
+    _Out_ PSAFEUPLOAD_ADMISSION_TRACE_BATCH Batch)
+{
+    UINT64 latest;
+    UINT64 snapshot;
+    UINT64 oldest;
+    UINT64 scan;
+
+    PAGED_CODE();
+    if (Batch == NULL) return STATUS_INVALID_PARAMETER;
+
+    RtlZeroMemory(Batch, sizeof(*Batch));
+    ExAcquireFastMutex(&AdmissionTraceControlMutex);
+    latest = (UINT64)InterlockedCompareExchange64(&AdmissionTraceNextSequence, 0, 0);
+    snapshot = SnapshotSequence == 0 ? latest : SnapshotSequence;
+    if (snapshot > latest || (Cursor != 0 && Cursor - 1ULL > snapshot)) {
+        ExReleaseFastMutex(&AdmissionTraceControlMutex);
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    oldest = latest > SAFEUPLOAD_ADMISSION_TRACE_RING_ENTRIES ?
+        latest - SAFEUPLOAD_ADMISSION_TRACE_RING_ENTRIES + 1ULL : 1ULL;
+    scan = Cursor == 0 ? oldest : Cursor;
+    if (scan < oldest) scan = oldest;
+
+    Batch->Control.Version = SAFEUPLOAD_PROTOCOL_VERSION;
+    Batch->Control.StructSize = sizeof(*Batch);
+    Batch->Control.Command = SAFEUPLOAD_CONTROL_ADMISSION_TRACE_READ_BATCH;
+    Batch->EntryCount = 0;
+    Batch->Cursor = scan;
+    Batch->SnapshotSequence = snapshot;
+
+    while (scan <= snapshot && Batch->EntryCount < SAFEUPLOAD_ADMISSION_TRACE_BATCH_ENTRIES) {
+        SAFEUPLOAD_ADMISSION_TRACE_ENTRY copy;
+        PSAFEUPLOAD_ADMISSION_TRACE_ENTRY slot;
+        UINT64 before;
+        UINT64 after;
+        ULONG index = (ULONG)((scan - 1ULL) &
+            ((UINT64)SAFEUPLOAD_ADMISSION_TRACE_RING_ENTRIES - 1ULL));
+
+        slot = &AdmissionTraceRing[index];
+        before = (UINT64)InterlockedCompareExchange64((volatile LONG64 *)&slot->Sequence, 0, 0);
+        if (before == scan) {
+            RtlCopyMemory(&copy, slot, sizeof(copy));
+            KeMemoryBarrier();
+            after = (UINT64)InterlockedCompareExchange64((volatile LONG64 *)&slot->Sequence, 0, 0);
+            if (before == after && copy.Sequence == after) {
+                Batch->Entries[Batch->EntryCount] = copy;
+                Batch->EntryCount += 1;
+            } else if (after <= scan || copy.Sequence != before) {
+                // If an overwrite has not committed, leave the cursor here
+                // so a later read can retry publication.
+                break;
+            }
+        } else if (before < scan) {
+            // Sequence tickets are published after their slots commit; this
+            // mismatch is a slot transition, so do not skip the cursor.
+            break;
+        }
+
+        if (scan == 0xffffffffffffffffULL) break;
+        scan += 1ULL;
+    }
+
+    Batch->NextCursor = scan;
+    StageAdmissionTraceSnapshotCounters(&Batch->Counters);
+    ExReleaseFastMutex(&AdmissionTraceControlMutex);
+    return STATUS_SUCCESS;
+}
+
+static VOID StageAdmissionTraceShutdown(VOID)
+{
+    LONG state;
+
+    PAGED_CODE();
+    ExAcquireFastMutex(&AdmissionTraceControlMutex);
+    state = InterlockedCompareExchange(&SafeUploadAdmissionTraceControlState, 0, 0);
+    InterlockedExchange(&SafeUploadAdmissionTraceControlState,
+                        StageAdmissionTraceNextState(state, FALSE));
+    if (!AdmissionTraceRundownClosed) {
+        ExWaitForRundownProtectionRelease(&AdmissionTraceRundown);
+        AdmissionTraceRundownClosed = TRUE;
+    }
+    ExReleaseFastMutex(&AdmissionTraceControlMutex);
+}
+
+static VOID StageAdmissionTraceFillOperation(
+    _Out_ PSAFEUPLOAD_ADMISSION_TRACE_ENTRY Entry,
+    _In_ PFLT_CALLBACK_DATA Data,
+    _In_ PCFLT_RELATED_OBJECTS Objects,
+    _In_ UINT32 EventKind,
+    _In_ BOOLEAN OwnedStream)
+{
+    PFILE_OBJECT fileObject = Data->Iopb->TargetFileObject;
+    KIRQL irql = KeGetCurrentIrql();
+
+    RtlZeroMemory(Entry, sizeof(*Entry));
+    Entry->EventKind = EventKind;
+    Entry->Irql = irql;
+    Entry->MajorFunction = Data->Iopb->MajorFunction;
+    Entry->MinorFunction = Data->Iopb->MinorFunction;
+    Entry->IrpFlags = Data->Iopb->IrpFlags;
+    Entry->OwnedStream = OwnedStream ? 1u : 0u;
+    Entry->AdmissionRecordState = 0;
+    Entry->MmDoesResult = SAFEUPLOAD_ADMISSION_TRACE_MMDOES_NOT_APPLICABLE;
+    Entry->StreamContextState = SAFEUPLOAD_ADMISSION_TRACE_CONTEXT_NOT_QUERIED;
+    Entry->VolumeKind = SafeUploadVolumeUnknown;
+    if (KeGetCurrentIrql() <= APC_LEVEL) Entry->ProcessId = FltGetRequestorProcessId(Data);
+    if (Objects->Instance != NULL) Entry->Instance = (UINT64)(ULONG_PTR)Objects->Instance;
+    if (fileObject != NULL) {
+        Entry->TargetFileObject = (UINT64)(ULONG_PTR)fileObject;
+        Entry->SectionObjectPointer = (UINT64)(ULONG_PTR)fileObject->SectionObjectPointer;
+    } else {
+        Entry->StreamContextState = SAFEUPLOAD_ADMISSION_TRACE_CONTEXT_NOT_APPLICABLE;
+    }
+}
+
+NTSTATUS SafeUploadStageAdmissionProbe(
+    _In_ PCUNICODE_STRING VolumeName,
+    _In_ PCUNICODE_STRING RelativePath)
+{
+    SAFEUPLOAD_ADMISSION_TRACE_ENTRY entry;
+    OBJECT_ATTRIBUTES objectAttributes;
+    IO_STATUS_BLOCK ioStatusBlock;
+    UNICODE_STRING fullPath;
+    PFLT_VOLUME volume = NULL;
+    PFLT_INSTANCE instance = NULL;
+    PFLT_CONTEXT instanceContext = NULL;
+    HANDLE probeHandle = NULL;
+    PFILE_OBJECT probeFileObject = NULL;
+    PSECTION_OBJECT_POINTERS sectionObjectPointer = NULL;
+    PWCHAR fullPathBuffer = NULL;
+    FLT_FILESYSTEM_TYPE fileSystemType;
+    SAFEUPLOAD_VOLUME_KIND volumeKind = SafeUploadVolumeUnknown;
+    ULONG fullPathBytes;
+    LONG traceState;
+    UINT32 probeStage;
+    NTSTATUS status;
+
+    PAGED_CODE();
+    NT_ASSERT(KeGetCurrentIrql() == PASSIVE_LEVEL);
+
+    traceState = InterlockedCompareExchange(&SafeUploadAdmissionTraceControlState, 0, 0);
+    if ((traceState & 1) == 0) return STATUS_DEVICE_NOT_READY;
+
+    RtlZeroMemory(&entry, sizeof(entry));
+    entry.EventKind = SAFEUPLOAD_ADMISSION_TRACE_EVENT_EXPLICIT_PROBE;
+    entry.ProcessId = HandleToULong(PsGetCurrentProcessId());
+    entry.Irql = KeGetCurrentIrql();
+    entry.MmDoesResult = SAFEUPLOAD_ADMISSION_TRACE_MMDOES_SKIPPED;
+    entry.StreamContextState = SAFEUPLOAD_ADMISSION_TRACE_CONTEXT_NOT_APPLICABLE;
+    entry.VolumeKind = SafeUploadVolumeUnknown;
+    entry.ProbeStage = SAFEUPLOAD_ADMISSION_PROBE_STAGE_VOLUME_LOOKUP;
+    probeStage = SAFEUPLOAD_ADMISSION_PROBE_STAGE_VOLUME_LOOKUP;
+
+    status = FltGetVolumeFromName(SafeUploadData.Filter, VolumeName, &volume);
+    if (!NT_SUCCESS(status)) goto Record;
+
+    probeStage = SAFEUPLOAD_ADMISSION_PROBE_STAGE_INSTANCE_LOOKUP;
+    status = FltGetVolumeInstanceFromName(SafeUploadData.Filter, volume, NULL, &instance);
+    if (!NT_SUCCESS(status)) goto Record;
+    entry.Instance = (UINT64)(ULONG_PTR)instance;
+
+    probeStage = SAFEUPLOAD_ADMISSION_PROBE_STAGE_INSTANCE_CONTEXT;
+    status = FltGetInstanceContext(instance, &instanceContext);
+    if (!NT_SUCCESS(status)) goto Record;
+    volumeKind = ((PSAFEUPLOAD_INSTANCE_CONTEXT)instanceContext)->VolumeKind;
+    entry.VolumeKind = (UINT32)volumeKind;
+    FltReleaseContext(instanceContext);
+    instanceContext = NULL;
+
+    if (volumeKind != SafeUploadVolumeFixed) {
+        probeStage = SAFEUPLOAD_ADMISSION_PROBE_STAGE_VOLUME_KIND;
+        status = STATUS_NOT_SUPPORTED;
+        goto Record;
+    }
+
+    probeStage = SAFEUPLOAD_ADMISSION_PROBE_STAGE_FILESYSTEM_TYPE;
+    status = FltGetFileSystemType(instance, &fileSystemType);
+    if (!NT_SUCCESS(status)) goto Record;
+    if (fileSystemType != FLT_FSTYPE_NTFS) {
+        status = STATUS_NOT_SUPPORTED;
+        goto Record;
+    }
+
+    if (InterlockedCompareExchange(&SafeUploadAdmissionTraceControlState, 0, 0) != traceState) {
+        status = STATUS_DEVICE_NOT_READY;
+        goto Cleanup;
+    }
+
+    fullPathBytes = (ULONG)VolumeName->Length + (ULONG)RelativePath->Length;
+    probeStage = SAFEUPLOAD_ADMISSION_PROBE_STAGE_PATH_ALLOCATION;
+    fullPathBuffer = (PWCHAR)ExAllocatePool2(POOL_FLAG_PAGED, fullPathBytes, SAFEUPLOAD_POOL_TAG);
+    if (fullPathBuffer == NULL) {
+        status = STATUS_INSUFFICIENT_RESOURCES;
+        goto Record;
+    }
+
+    RtlCopyMemory(fullPathBuffer, VolumeName->Buffer, VolumeName->Length);
+    RtlCopyMemory((PUCHAR)fullPathBuffer + VolumeName->Length,
+                  RelativePath->Buffer,
+                  RelativePath->Length);
+    fullPath.Buffer = fullPathBuffer;
+    fullPath.Length = (USHORT)fullPathBytes;
+    fullPath.MaximumLength = (USHORT)fullPathBytes;
+
+    RtlZeroMemory(&ioStatusBlock, sizeof(ioStatusBlock));
+    InitializeObjectAttributes(&objectAttributes,
+        &fullPath,
+        OBJ_KERNEL_HANDLE | OBJ_CASE_INSENSITIVE,
+        NULL,
+        NULL);
+
+    probeStage = SAFEUPLOAD_ADMISSION_PROBE_STAGE_LOWER_OPEN;
+    status = FltCreateFileEx2(SafeUploadData.Filter,
+        instance,
+        &probeHandle,
+        &probeFileObject,
+        FILE_READ_ATTRIBUTES,
+        &objectAttributes,
+        &ioStatusBlock,
+        NULL,
+        FILE_ATTRIBUTE_NORMAL,
+        FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+        FILE_OPEN,
+        FILE_NON_DIRECTORY_FILE | FILE_OPEN_REPARSE_POINT,
+        NULL,
+        0,
+        0,
+        NULL);
+    entry.ProbeStatus = (UINT32)status;
+    if (probeFileObject != NULL) {
+        sectionObjectPointer = probeFileObject->SectionObjectPointer;
+        entry.TargetFileObject = (UINT64)(ULONG_PTR)probeFileObject;
+        entry.SectionObjectPointer = (UINT64)(ULONG_PTR)sectionObjectPointer;
+    }
+    if (sectionObjectPointer != NULL && KeGetCurrentIrql() == PASSIVE_LEVEL) {
+        entry.MmDoesResult = MmDoesFileHaveUserWritableReferences(sectionObjectPointer) ?
+            SAFEUPLOAD_ADMISSION_TRACE_MMDOES_YES :
+            SAFEUPLOAD_ADMISSION_TRACE_MMDOES_NO;
+    }
+    if (NT_SUCCESS(status)) probeStage = SAFEUPLOAD_ADMISSION_PROBE_STAGE_COMPLETE;
+
+Record:
+    entry.ProbeStage = probeStage;
+    entry.ProbeStatus = (UINT32)status;
+    if (!SafeUploadStageAdmissionTraceBegin(traceState)) {
+        status = STATUS_DEVICE_NOT_READY;
+        goto Cleanup;
+    }
+    (VOID)StageAdmissionTraceRecordInternal(&entry, TRUE);
+    SafeUploadStageAdmissionTraceEnd();
+    status = STATUS_SUCCESS;
+
+Cleanup:
+    if (instanceContext != NULL) FltReleaseContext(instanceContext);
+    if (fullPathBuffer != NULL) ExFreePoolWithTag(fullPathBuffer, SAFEUPLOAD_POOL_TAG);
+    if (probeHandle != NULL) FltClose(probeHandle);
+    if (probeFileObject != NULL) ObDereferenceObject(probeFileObject);
+    if (instance != NULL) FltObjectDereference(instance);
+    if (volume != NULL) FltObjectDereference(volume);
+    return status;
+}
+#endif
 
 typedef struct _STAGE_OLD_NAME {
     LIST_ENTRY Link;
@@ -1352,7 +1824,16 @@ NTSTATUS SafeUploadStageInitialize(VOID)
     KeInitializeEvent(&StageWorkerStop, NotificationEvent, FALSE);
     SafeUploadStageInitializeProtocol();
     status = ExInitializeResourceLite(&StageNamespaceResource);
-    if (NT_SUCCESS(status)) StageInitialized = TRUE;
+    if (NT_SUCCESS(status)) {
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+        ExInitializeFastMutex(&AdmissionTraceControlMutex);
+        ExInitializeRundownProtection(&AdmissionTraceRundown);
+        AdmissionTraceRundownClosed = FALSE;
+        InterlockedExchange(&SafeUploadAdmissionTraceControlState, 0);
+        StageAdmissionTraceReset();
+#endif
+        StageInitialized = TRUE;
+    }
     return status;
 }
 
@@ -1413,6 +1894,9 @@ NTSTATUS SafeUploadStagePrepareUnload(VOID)
 VOID SafeUploadStageFree(VOID)
 {
     if (!StageInitialized) return;
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    StageAdmissionTraceShutdown();
+#endif
     while (!IsListEmpty(&StageStreams)) {
         PSTAGE_STREAM stream = CONTAINING_RECORD(RemoveHeadList(&StageStreams), STAGE_STREAM, Link);
         FsRtlTeardownPerStreamContexts(&stream->Header);
@@ -1641,6 +2125,23 @@ FLT_PREOP_CALLBACK_STATUS SafeUploadStageDispatch(PFLT_CALLBACK_DATA Data,
     case IRP_MJ_CLEANUP:
         return SafeUploadPreCleanup(Data, Objects, CompletionContext);
     case IRP_MJ_WRITE:
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+        {
+            LONG traceState = SafeUploadAdmissionTraceControlState;
+            if ((traceState & 1) != 0 && SafeUploadStageAdmissionTraceBegin(traceState)) {
+                SAFEUPLOAD_ADMISSION_TRACE_ENTRY entry;
+
+                StageAdmissionTraceFillOperation(&entry, Data, Objects,
+                    FlagOn(Data->Iopb->IrpFlags, IRP_PAGING_IO) ?
+                        SAFEUPLOAD_ADMISSION_TRACE_EVENT_PAGING_WRITE :
+                        SAFEUPLOAD_ADMISSION_TRACE_EVENT_UNOWNED_NONPAGING_WRITE,
+                    FALSE);
+                entry.MmDoesResult = SAFEUPLOAD_ADMISSION_TRACE_MMDOES_SKIPPED;
+                SafeUploadStageAdmissionTraceRecord(&entry);
+                SafeUploadStageAdmissionTraceEnd();
+            }
+        }
+#endif
         if (!FlagOn(Data->Iopb->IrpFlags, IRP_PAGING_IO)) {
             result = StagePhysicalMutation(Data, Objects);
             if (result != FLT_PREOP_SUCCESS_NO_CALLBACK) return result;
@@ -1664,6 +2165,34 @@ FLT_PREOP_CALLBACK_STATUS SafeUploadStageDispatch(PFLT_CALLBACK_DATA Data,
     case IRP_MJ_SET_EA:
     case IRP_MJ_SET_SECURITY:
         return StagePhysicalMutation(Data, Objects);
+    case IRP_MJ_ACQUIRE_FOR_SECTION_SYNCHRONIZATION:
+    case IRP_MJ_RELEASE_FOR_SECTION_SYNCHRONIZATION:
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+        {
+            LONG traceState = SafeUploadAdmissionTraceControlState;
+            if ((traceState & 1) != 0 && SafeUploadStageAdmissionTraceBegin(traceState)) {
+                SAFEUPLOAD_ADMISSION_TRACE_ENTRY entry;
+
+                StageAdmissionTraceFillOperation(&entry, Data, Objects,
+                    Data->Iopb->MajorFunction == IRP_MJ_ACQUIRE_FOR_SECTION_SYNCHRONIZATION ?
+                        SAFEUPLOAD_ADMISSION_TRACE_EVENT_SECTION_ACQUIRE :
+                        SAFEUPLOAD_ADMISSION_TRACE_EVENT_SECTION_RELEASE,
+                    FALSE);
+                entry.MmDoesResult = SAFEUPLOAD_ADMISSION_TRACE_MMDOES_SKIPPED;
+                if (Data->Iopb->MajorFunction == IRP_MJ_ACQUIRE_FOR_SECTION_SYNCHRONIZATION) {
+                    entry.SyncType = (UINT32)Data->Iopb->Parameters.AcquireForSectionSynchronization.SyncType;
+                    entry.PageProtection = Data->Iopb->Parameters.AcquireForSectionSynchronization.PageProtection;
+                    entry.SyncParametersValid = 1;
+                } else {
+                    entry.SyncType = SAFEUPLOAD_ADMISSION_TRACE_SYNC_UNAVAILABLE;
+                    entry.SyncParametersValid = 0;
+                }
+                SafeUploadStageAdmissionTraceRecord(&entry);
+                SafeUploadStageAdmissionTraceEnd();
+            }
+        }
+#endif
+        break;
     default: break;
     }
     return FLT_PREOP_SUCCESS_NO_CALLBACK;

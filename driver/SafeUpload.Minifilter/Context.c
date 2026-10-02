@@ -224,6 +224,9 @@ NTSTATUS
 SafeUploadSetInstanceContext (
     _In_ PCFLT_RELATED_OBJECTS FltObjects,
     _In_ DEVICE_TYPE VolumeDeviceType,
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    _In_ FLT_INSTANCE_SETUP_FLAGS SetupFlags,
+#endif
     _Out_ PSAFEUPLOAD_VOLUME_KIND VolumeKind
     )
 /*++
@@ -274,6 +277,9 @@ Return Value:
 
     instanceContext->VolumeKind = SafeUploadClassifyVolume( FltObjects->Volume,
                                                             VolumeDeviceType );
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    instanceContext->SetupFlags = SetupFlags;
+#endif
 
     status = FltSetInstanceContext( FltObjects->Instance,
                                     FLT_SET_CONTEXT_KEEP_IF_EXISTS,

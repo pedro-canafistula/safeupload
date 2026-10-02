@@ -1,0 +1,60 @@
+OK-TO-RUN-ON-DISPOSABLE-VM (under the stated harness preconditions)
+
+Scope: HEAD 0999edb + tree; read-only, no build/VM/network. Counts: 0 blockers,
+1 accepted major, 0 minors.
+
+Run5 manifest comparison (expected 12-hex prefix -> current SHA-256; MATCH/DIFF):
+DIFF driver/SafeUpload.Inspector/main.c 703499e3920a -> 86f3501b094f6574588ccd9d75503a51ccdb9245c87b9ba80d2cc8648d55b05d
+MATCH driver/SafeUpload.Inspector/SafeUpload.Inspector.vcxproj 835ddb9f415d -> 835ddb9f415d303711b761e5b3639646fc6ee070ecbc8df765b53149bff16ca0
+DIFF driver/SafeUpload.Minifilter/Communication.c ef5cc63ddd3e -> fcee79cd562d17ab6545a7efbabe92385dce03405e9be2cc9bb3777e2564e191
+MATCH driver/SafeUpload.Minifilter/Context.c 17cda23e5a11 -> 17cda23e5a1120f45f078a6818c4d98667c1e5cc842b0f627f39ce207e994cb3
+MATCH driver/SafeUpload.Minifilter/Filter.c a84cafb6c75e -> a84cafb6c75e2233c0542e2f668cedcbfc9d8dd71c44de6c2725a99fdd4a1a28
+MATCH driver/SafeUpload.Minifilter/Filter.h cb2bc599a6aa -> cb2bc599a6aa5f9134aa6e489416a8838816773c23dfdab70026f455d6f0e74b
+MATCH driver/SafeUpload.Minifilter/Protocol.h 7abf3e49fc39 -> 7abf3e49fc39c58b8e0dd87ab5d907ed9e93c18ff9cfd90562849e3eff023e7a
+MATCH driver/SafeUpload.Minifilter/Stage.h dc0972e8aa44 -> dc0972e8aa448525ce53dd9e592cd7a06b9e4185234e60fffeb8d3a07af6e7e5
+MATCH driver/SafeUpload.Minifilter/StageStream.c 7194d20a76fe -> 7194d20a76fed10505ee6ef15f8b66b700c80c065dbb52578ff46f6913037999
+
+Delta review: git diff HEAD contains the previously reviewed feature as well as
+the small delta. The run5 manifest narrows changed files to the two above; its
+hashes alone cannot prove changed lines. Comparing review3's recorded state and
+the surrounding code, the only apparent new logic is Communication.c:762's
+L':' rejection and main.c:623's DOS-path colon rejection; nothing else looks new.
+
+Colon checks: Communication.c copies the exact-size, bounded request into the
+per-call pool scratch at :701, validates its kernel copy, then scans
+index < relativeChars. relativeChars is already >= 2 and <= the protocol cap;
+the ULONG loop index matches its bound. NUL and ':' both return
+STATUS_INVALID_PARAMETER, before the existing volume-prefix/path-start/path-end
+checks and before SafeUploadStageAdmissionProbe at :775. For X:\dir\file,
+Inspector permits only the drive colon at DOS index 1, sends DosPath+2 as
+RelativePath (\dir\file), and kernel validation sees no drive colon. Any ADS
+spelling using ':' including :stream and ::$DATA is rejected at either boundary.
+
+Build guards remain feature-only: Communication.c's probe dispatch is inside
+SAFEUPLOAD_STAGING_PROTOTYPE; Inspector helpers/commands require the explicit
+macro, which the project defines only when SafeUploadStagingPrototype=true.
+Existing run6 hashes match this source tree and its logs report normal and
+feature driver builds plus Inspector macro-off/on Debug/Release builds with
+zero warnings; normal Inspector binaries report no admission strings. These
+are existing records, not builds performed for this review. No new compile,
+SAL, signedness, or warnings-as-errors issue was found.
+
+Findings, most severe first:
+[MAJOR] driver/SafeUpload.Minifilter/StageStream.c:484 - synchronous lower open
+has no timeout/cancel path - a wedged lower filter/filesystem leaves the
+Inspector request and message callback stuck, so FltUnregisterFilter can hang
+waiting for it - accepted for the disposable VM; production use needs a
+bounded, cancelable request and drained cancellation. FILE_READ_ATTRIBUTES is
+the only requested access. No stage lock/resource or rundown is held across
+the open. Volume/instance references are retained until cleanup after the
+open; they can delay teardown for that same interval, not beyond its return.
+An Inspector per-call timeout does not itself cancel the kernel open.
+
+Risk/claims: no code/comment calls the probe production-safe. Filter.c:43-45
+says the prototype is isolated, disabled normally, and must not ship in
+production; Inspector's comment says a production client needs overlapped I/O.
+
+Verified: request validation order, status, bounds, drive-colon handling, ADS
+rejection, guards and teardown path. Unverified: runtime open/oplock/unload or
+the absent Test-StagedAdmissionDiagnostic.ps1 timeout/no-reparse gates; review
+assumes the stated disposable-VM preconditions are used.

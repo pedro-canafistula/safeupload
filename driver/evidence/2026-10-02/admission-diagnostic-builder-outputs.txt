@@ -1,0 +1,20 @@
+UTC=2026-10-02T18:08:11.1270499Z
+agent-tests.txt 3186 18:07:44 E3B5C430A7A36E5A
+normal.sys 29696 18:06:55 1FD39EE6BC6F9967
+normal-release.sys 28672 18:07:13 6437B208A67A6889
+normal-release-wdk.txt 13484 18:07:14 16ACD188B69D95A6
+normal-wdk.txt 13566 18:06:56 80DBCB4C381A5F39
+owned-feature.sys 93696 18:07:07 1B02790724F4086B
+owned-feature-release.sys 70144 18:07:25 CDA472FCB711F159
+owned-feature-release-wdk.txt 14246 18:07:27 D36BA6CCE034C9FC
+owned-feature-wdk.txt 14308 18:07:08 8B86DD6C34CB0C80
+owned-tests.trx 404419 18:07:44 15A547DB960E6D5C
+SafeUpload-stage-prototype.sys 93696 18:07:07 1B02790724F4086B
+service-build.txt 2096 18:07:47 06FB587CEFA0723C
+stage-service-publish.zip 40202537 18:07:53 D70B716B6E0CE4A4
+normal-wdk : warnings=0 errors=0 succeeded=True codeanalysis_lines=9
+owned-feature-wdk : warnings=0 errors=0 succeeded=True codeanalysis_lines=9
+normal-release-wdk : warnings=0 errors=0 succeeded=True codeanalysis_lines=9
+owned-feature-release-wdk : warnings=0 errors=0 succeeded=True codeanalysis_lines=9
+service zip: True
+  SafeUpload.Agent.Minifilter -> C:\Users\vika\Documents\safeupload-staging-test\agente\SafeUpload.Agent.Minifilter\bin\Release\net10.0-windows\SafeUpload.Agent.Minifilter.dll |   SafeUpload.Agent.Core -> C:\Users\vika\Documents\safeupload-staging-test\agente\SafeUpload.Agent.Core\bin\Release\net10.0\SafeUpload.Agent.Core.dll |   SafeUpload.Agent.Service -> C:\Users\vika\Documents\safeupload-staging-test\agente\SafeUpload.Agent.Service\bin\Release\net10.0-windows\win-x64\SafeUpload.Agent.Service.dll |   SafeUpload.Agent.Service -> C:\Users\vika\Documents\admission-diagnostic-milestone\service\

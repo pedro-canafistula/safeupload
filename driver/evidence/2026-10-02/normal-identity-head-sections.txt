@@ -1,0 +1,41 @@
+EXTRACTED=True
+HEAD_NORMAL_Debug warnings=0 errors=0
+HEAD_NORMAL_Debug size=29696
+HEAD_NORMAL_Debug .text    raw=  6144 sha=c1b1058690102b29
+HEAD_NORMAL_Debug .rdata   raw=  3072 sha=25bdd3689884a3cd
+HEAD_NORMAL_Debug .data    raw=   512 sha=b8d809143167338b
+HEAD_NORMAL_Debug .pdata   raw=  1024 sha=23ac0a9d47ef4cad
+HEAD_NORMAL_Debug PAGE     raw= 13824 sha=314165351795d143
+HEAD_NORMAL_Debug INIT     raw=  2560 sha=58f52c879646b822
+HEAD_NORMAL_Debug .rsrc    raw=  1024 sha=1676eb7c6cc3c5e9
+HEAD_NORMAL_Debug .reloc   raw=   512 sha=0ba17aaec7dbec4f
+HEAD_NORMAL_Release warnings=0 errors=0
+HEAD_NORMAL_Release size=28672
+HEAD_NORMAL_Release .text    raw=  5632 sha=5b0b5750a7890907
+HEAD_NORMAL_Release fothk    raw=  4096 sha=6fb289a5fb38fef9
+HEAD_NORMAL_Release .rdata   raw=  3584 sha=5806e32219768045
+HEAD_NORMAL_Release .data    raw=   512 sha=f2f85dfc4d23ee57
+HEAD_NORMAL_Release .pdata   raw=  1024 sha=c5d59f2ca402c924
+HEAD_NORMAL_Release PAGE     raw=  8704 sha=3af2c952e16663a8
+HEAD_NORMAL_Release INIT     raw=  2560 sha=4e59e21c746c3ac5
+HEAD_NORMAL_Release .rsrc    raw=  1024 sha=1676eb7c6cc3c5e9
+HEAD_NORMAL_Release .reloc   raw=   512 sha=b15afcc5836bde8d
+WORKTREE_RUN4_NORMAL_Debug size=29696
+WORKTREE_RUN4_NORMAL_Debug .text    raw=  6144 sha=c1b1058690102b29
+WORKTREE_RUN4_NORMAL_Debug .rdata   raw=  3072 sha=000e36c95f8fe8ce
+WORKTREE_RUN4_NORMAL_Debug .data    raw=   512 sha=b8d809143167338b
+WORKTREE_RUN4_NORMAL_Debug .pdata   raw=  1024 sha=de3c72f11101f6a5
+WORKTREE_RUN4_NORMAL_Debug PAGE     raw= 13824 sha=314165351795d143
+WORKTREE_RUN4_NORMAL_Debug INIT     raw=  2560 sha=58f52c879646b822
+WORKTREE_RUN4_NORMAL_Debug .rsrc    raw=  1024 sha=1676eb7c6cc3c5e9
+WORKTREE_RUN4_NORMAL_Debug .reloc   raw=   512 sha=0ba17aaec7dbec4f
+WORKTREE_RUN4_NORMAL_Release size=28672
+WORKTREE_RUN4_NORMAL_Release .text    raw=  5632 sha=5b0b5750a7890907
+WORKTREE_RUN4_NORMAL_Release fothk    raw=  4096 sha=6fb289a5fb38fef9
+WORKTREE_RUN4_NORMAL_Release .rdata   raw=  3584 sha=81ab7d180b398a03
+WORKTREE_RUN4_NORMAL_Release .data    raw=   512 sha=f2f85dfc4d23ee57
+WORKTREE_RUN4_NORMAL_Release .pdata   raw=  1024 sha=c5d59f2ca402c924
+WORKTREE_RUN4_NORMAL_Release PAGE     raw=  8704 sha=3af2c952e16663a8
+WORKTREE_RUN4_NORMAL_Release INIT     raw=  2560 sha=4e59e21c746c3ac5
+WORKTREE_RUN4_NORMAL_Release .rsrc    raw=  1024 sha=1676eb7c6cc3c5e9
+WORKTREE_RUN4_NORMAL_Release .reloc   raw=   512 sha=b15afcc5836bde8d

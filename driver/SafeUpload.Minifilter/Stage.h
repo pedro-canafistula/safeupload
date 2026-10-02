@@ -37,4 +37,19 @@ NTSTATUS SafeUploadStageAllocate(_Inout_ PFLT_CALLBACK_DATA Data, _In_ PUNICODE_
     _Out_writes_(SAFEUPLOAD_MAX_STAGE_NAME_CHARS) PWCH StageName, _Out_ PUSHORT StageNameLength);
 NTSTATUS SafeUploadStageSeal(_In_ ULONG ProcessId, _In_ PUNICODE_STRING StageName);
 
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+extern volatile LONG SafeUploadAdmissionTraceControlState;
+BOOLEAN SafeUploadStageAdmissionTraceBegin(_In_ LONG TraceState);
+VOID SafeUploadStageAdmissionTraceRecord(_In_ const SAFEUPLOAD_ADMISSION_TRACE_ENTRY *Entry);
+VOID SafeUploadStageAdmissionTraceEnd(VOID);
+NTSTATUS SafeUploadStageAdmissionTraceControl(_In_ UINT32 Command);
+NTSTATUS SafeUploadStageAdmissionTraceReadBatch(
+    _In_ UINT64 Cursor,
+    _In_ UINT64 SnapshotSequence,
+    _Out_ PSAFEUPLOAD_ADMISSION_TRACE_BATCH Batch);
+NTSTATUS SafeUploadStageAdmissionProbe(
+    _In_ PCUNICODE_STRING VolumeName,
+    _In_ PCUNICODE_STRING RelativePath);
+#endif
+
 #endif

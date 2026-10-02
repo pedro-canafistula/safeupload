@@ -1,0 +1,9 @@
+driver/SafeUpload.Inspector/main.c 703499e3920a
+driver/SafeUpload.Inspector/SafeUpload.Inspector.vcxproj 835ddb9f415d
+driver/SafeUpload.Minifilter/Communication.c ef5cc63ddd3e
+driver/SafeUpload.Minifilter/Context.c 17cda23e5a11
+driver/SafeUpload.Minifilter/Filter.c a84cafb6c75e
+driver/SafeUpload.Minifilter/Filter.h cb2bc599a6aa
+driver/SafeUpload.Minifilter/Protocol.h 7abf3e49fc39
+driver/SafeUpload.Minifilter/Stage.h dc0972e8aa44
+driver/SafeUpload.Minifilter/StageStream.c 7194d20a76fe

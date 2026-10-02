@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+# Sync changed driver/Inspector sources to the isolated builder mirror, verify
+# their hashes there, run Build-StagedOwnedStreams.ps1 and record the result.
+# Usage: driver/scripts/Invoke-BuilderBuild.sh <log-name> [output-dir-leaf] [signing-cert-thumbprint]
+# Log: driver/evidence/<today>/<log-name>.txt. The process exit code is NOT the
+# verdict; read the BUILD_RESULT / error lines this script prints.
+set -uo pipefail
+cd "$(dirname "${BASH_SOURCE[0]}")/../.."
+log_name="${1:?log name}"; leaf="${2:-admission-diagnostic-milestone}"; thumb="${3:-}"
+sign_arg=""; [ -n "$thumb" ] && sign_arg="-CertificateThumbprint '$thumb'"
+day="$(date +%F)"; log="driver/evidence/$day/$log_name.txt"
+host=192.168.122.210
+mirror='C:/Users/vika/Documents/safeupload-staging-test'
+scp_opts=(-F /dev/null -i /home/victor/.ssh/id_ed25519 -o BatchMode=yes -o ConnectTimeout=10 -o LogLevel=ERROR -o StrictHostKeyChecking=accept-new)
+
+mapfile -t files < <( { git diff --name-only HEAD -- driver/SafeUpload.Minifilter driver/SafeUpload.Inspector driver/scripts/Build-StagedOwnedStreams.ps1;
+                         git ls-files --others --exclude-standard -- driver/SafeUpload.Minifilter driver/SafeUpload.Inspector; } | sort -u )
+[ "${#files[@]}" -gt 0 ] || { echo "no changed sources"; exit 2; }
+: > "$log.hashes"
+for f in "${files[@]}"; do
+    scp "${scp_opts[@]}" "$f" "vika@$host:$mirror/$f" || { echo "scp failed: $f"; exit 3; }
+    echo "$f $(sha256sum "$f" | cut -c1-12)" >> "$log.hashes"
+done
+# Verify every copied file by hash on the builder (names passed via a here-string).
+list="$(printf "'%s'," "${files[@]//\//\\}")"; list="${list%,}"
+remote_hashes="$(python3 driver/scripts/remote_ps.py "$host" <<PS 2>&1 | sed 's/<Objs.*//' | tr -d '\r' | grep -v -e '^$' -e CLIXML
+Set-Location C:\\Users\\vika\\Documents\\safeupload-staging-test
+foreach (\$f in @($list)) { \$f.Replace('\\','/') + ' ' + (Get-FileHash \$f -Algorithm SHA256).Hash.Substring(0,12).ToLower() }
+PS
+)"
+if [ "$remote_hashes" != "$(cat "$log.hashes")" ]; then
+    echo "HASH MISMATCH between local and builder:"; diff <(echo "$remote_hashes") "$log.hashes"; exit 4
+fi
+echo "synced and verified ${#files[@]} files"; cat "$log.hashes"
+
+python3 driver/scripts/remote_ps.py "$host" <<PS 2>&1 | sed 's/<Objs.*//' | grep -v '^$' > "$log"
+\$ErrorActionPreference = 'Continue'
+'BUILD_START_UTC=' + [DateTime]::UtcNow.ToString('o')
+Set-Location C:\\Users\\vika\\Documents\\safeupload-staging-test
+try {
+    & .\\driver\\scripts\\Build-StagedOwnedStreams.ps1 -OutputDirectory 'C:\\Users\\vika\\Documents\\$leaf' $sign_arg 2>&1 | Out-Host
+    'BUILD_RESULT=SCRIPT_COMPLETED'
+} catch { 'BUILD_RESULT=FAILED: ' + \$_.Exception.Message }
+'BUILD_END_UTC=' + [DateTime]::UtcNow.ToString('o')
+PS
+grep -a -E "BUILD_(START|RESULT|END)|Warning\(s\)|Error\(s\)|error [A-Z]+[0-9]+|warning [A-Z]+[0-9]+|Passed!|Failed!|Hash +:" "$log" | cut -c1-260

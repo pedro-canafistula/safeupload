@@ -1,0 +1,49 @@
+BUILD_START_UTC=2026-10-02T18:05:21.2968968Z
+#< CLIXML
+Build succeeded.
+    0 Warning(s)
+    0 Error(s)
+
+Time Elapsed 00:00:06.36
+ApiValidator:
+  Validating 'Universal' driver using ApiValidator.exe
+  cmd.exe /D /C "C:\Users\vika\AppData\Local\Temp\MSBuildTempc500bc545d3e4a64adf7c62f7a6bd0ae\tmp4778bb376e0f48f1b1347d609f4cfdc5.cmd"
+  "C:\Program Files (x86)\Windows Kits\10\bin\10.0.28000.0\x64\ApiValidator.exe" -DriverPackagePath:C:\Users\vika\Documents\safeupload-staging-test\driver\SafeUpload.Minifilter\x64\Debug\SafeUpload.sys -SupportedApiXmlFiles:"C:\Program Files (x86)\Windows Kits\10\build\10.0.28000.0\universalDDIs\x64\UniversalDDIs.xml" -ModuleWhiteListXmlFiles:"C:\Program Files (x86)\Windows Kits\10\build\10.0.28000.0\universalDDIs\x64\ModuleWhiteList.xml" -ApiExtractorExePath:"C:\Program Files (x86)\Windows Kits\10\bin\10.0.28000.0\x64" 
+  Driver is 'Universal'.
+DriverPackageTarget:
+  Packaging up the following projects for the following configurations:
+  
+   Configuration='' Platform=''
+  
+  
+  The following files will be packaged:
+  
+  File to package:      .
+  Location in Package:  .
+  Requested by project: 
+  
+  
+Inf2Cat:
+  Inf2Cat task was skipped as there were no inf files to process
+  
+DrvCat:
+  DrvCat task was skipped as there was no catalog file to process
+  
+C:\Users\vika\Documents\safeupload-staging-test\driver\SafeUpload.Minifilter\Communication.c(489): error C6262: Function uses '1216' bytes of stack.  Consider moving some data to heap. [C:\Users\vika\Documents\safeupload-staging-test\driver\SafeUpload.Minifilter\SafeUpload.Minifilter.vcxproj]
+FinalizeBuildStatus:
+  Deleting file "x64\Debug\SafeUplo.F0194BFE.tlog\unsuccessfulbuild".
+  Touching "x64\Debug\SafeUplo.F0194BFE.tlog\SafeUpload.Minifilter.lastbuildstate".
+Done Building Project "C:\Users\vika\Documents\safeupload-staging-test\driver\SafeUpload.Minifilter\SafeUpload.Minifilter.vcxproj" (Rebuild target(s)).
+
+Build FAILED.
+
+"C:\Users\vika\Documents\safeupload-staging-test\driver\SafeUpload.Minifilter\SafeUpload.Minifilter.vcxproj" (Rebuild target) (1) ->
+(RunNativeCodeAnalysis target) -> 
+  C:\Users\vika\Documents\safeupload-staging-test\driver\SafeUpload.Minifilter\Communication.c(489): error C6262: Function uses '1216' bytes of stack.  Consider moving some data to heap. [C:\Users\vika\Documents\safeupload-staging-test\driver\SafeUpload.Minifilter\SafeUpload.Minifilter.vcxproj]
+
+    0 Warning(s)
+    1 Error(s)
+
+Time Elapsed 00:00:12.62
+BUILD_RESULT=FAILED: owned-feature WDK build failed.
+BUILD_END_UTC=2026-10-02T18:05:40.5957240Z
