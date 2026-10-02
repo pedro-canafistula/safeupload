@@ -21,9 +21,10 @@ remains. No watchdog work or new internals investigation is active.
       **546 independent destination-byte samples**, no leak and exit 0.
 - [x] Exact 64-link control admitted; 65-link write refused with existing bytes
       preserved. Final independent original-driver/policy/Verifier restoration.
-- [x] Preserve and run the pre-attachment writable-section reproduction on the
-      current feature SYS. A fresh post-attach file handle reads unapproved bytes
-      written through the old mapping; [gate](evidence/2026-10-02/physical-mapping-gate.txt).
+- [x] Reproduce the pre-attachment writable-section leak on the current feature
+      SYS after closing the source file handle before attachment. A fresh
+      post-attach file object reads the unapproved mapped write; [gate](evidence/2026-10-02/physical-mapping-handle-closed-gate.txt),
+      [independent restoration](evidence/2026-10-02/physical-mapping-handle-closed-final-restored-state.txt).
 - [ ] Complete namespace/policy/attachment admission, existing physical sections,
       remaining mutation classes and the broader acceptance tracker.
 
@@ -92,12 +93,10 @@ $env:SAFEUPLOAD_STAGED_VERIFIER_LOG = 'C:\Users\vika\Documents\alias-verifier.tx
 # The integrated script prints the retained raw observer path; archive that file.
 ```
 
-Next: preserve the smallest reproduction for a writable physical mapping
-created before attachment/activation and mutated after its file handle closes.
-The pre-attachment section case is now reproduced below; finish an explicit
-volume admission/epoch barrier and prove concurrent open/map/attachment and
-policy-change behavior before claiming existing-section safety. All other tracker
-items remain open, and unsupported capabilities remain disabled.
+Next: finish an explicit volume admission/epoch barrier for the confirmed
+pre-attachment writable-section case below. Prove concurrent open/map/attachment
+and policy-change behavior before claiming existing-section safety. All other
+tracker items remain open, and unsupported capabilities remain disabled.
 
 ### Follow-up: writable mapping predating filter attachment (2 October 2026)
 
@@ -105,31 +104,34 @@ This is a confirmed physical-destination leak on the latest qualified alias
 feature SYS, `ACED8226913E062E5D3EE6FD0CF96963C3FD2C1FB2242EDBEDBB00768CCD44F8`.
 On the isolated Windows 10 debuggee, the harness creates one GUID-named synthetic
 file under the existing protected test prefix, opens it, and creates a writable
-memory-mapped section while SafeUpload is unloaded. It then loads that exact
-feature SYS while the original file object, section and view remain alive. A
-mapped write and flush after attachment changes the bytes; a newly opened file
-object reads `MAPPED AFTER FILTER ATTACH <GUID>` from the protected destination.
-No agent/service or publication permit runs. The same run restores the original
-driver and checks policy and Verifier; an independent following SSH check confirms
-the original driver hash, filter unloaded, Manual/Stopped service, original policy,
-Verifier off, zero agent processes/test tasks and removed fixture.
+memory-mapped section while SafeUpload is unloaded. It closes the original file
+handle while retaining the section and writable view, then loads that exact
+feature SYS. A write and flush through the old view changes the bytes; a newly
+opened file object reads `MAPPED AFTER FILTER ATTACH <GUID>` from the protected
+destination. No agent/service or publication permit runs. The same run restores
+the original driver and checks policy and Verifier; an independent following SSH
+check confirms the original driver hash, filter unloaded, Manual/Stopped service,
+original policy, Verifier off, zero agent processes/test tasks and removed
+fixture. The earlier [open-handle run](evidence/2026-10-02/physical-mapping-gate.txt)
+is retained as the initial reproduction; the closed-handle run is the stronger
+current result.
 
-The baseline was independently checked before and after creating the preserved
-disk-only checkpoint `safeupload-pre-physical-mapping-20261002`. Its active
-external overlay remains `/var/lib/libvirt/images/win10-debug.safeupload-pre-physical-mapping-20261002`,
-over the preserved `safeupload-pre-alias-guard-20261002` state. The creation
-command was:
+The baseline was independently checked before creating the disk-only checkpoint
+`safeupload-pre-physical-mapping-closed-handle-20261002`. Its active external
+overlay remains `/var/lib/libvirt/images/win10-debug.safeupload-pre-physical-mapping-closed-handle-20261002`
+after the run. The prior physical-mapping checkpoint and earlier disks remain
+preserved. The creation command was:
 
 ```bash
 virsh -c qemu:///system snapshot-create-as --domain win10-debug \
-  --name safeupload-pre-physical-mapping-20261002 \
-  --description 'Frozen original driver, Verifier, policy and fixture baseline before pre-attachment mapped-write reproduction' \
+  --name safeupload-pre-physical-mapping-closed-handle-20261002 \
+  --description 'Clean original driver and policy before pre-attachment mapping with source handle closed' \
   --disk-only --no-metadata \
-  --diskspec vda,snapshot=external,file=/var/lib/libvirt/images/win10-debug.safeupload-pre-physical-mapping-20261002 \
+  --diskspec vda,snapshot=external,file=/var/lib/libvirt/images/win10-debug.safeupload-pre-physical-mapping-closed-handle-20261002 \
   --atomic
 ```
 
-[Checkpoint command result and active disk check](evidence/2026-10-02/physical-mapping-checkpoint.txt).
+[Checkpoint command and independent post-test active disk check](evidence/2026-10-02/physical-mapping-handle-closed-checkpoint.txt).
 
 From `/home/victor/Work/safeupload-staging`, copy and run the harness:
 
@@ -141,34 +143,36 @@ scp -F /dev/null -i /home/victor/.ssh/id_ed25519 \
   vika@192.168.122.51:'C:/Users/vika/Documents/Test-StagedPreAttachmentMapping.ps1'
 set -o pipefail
 python3 driver/scripts/remote_ps.py 192.168.122.51 <<'PS' 2>&1 | \
-  tee driver/evidence/2026-10-02/physical-mapping-gate.txt
+  tee driver/evidence/2026-10-02/physical-mapping-handle-closed-gate.txt
 $ErrorActionPreference='Stop'
 & 'C:\Users\vika\Documents\Test-StagedPreAttachmentMapping.ps1'
 PS
 ```
 
-The [gate output](evidence/2026-10-02/physical-mapping-gate.txt) records the
-VM UUID, driver/service/policy hashes, baseline and observed bytes. Its scope is
-one local NTFS file on Windows 10 19045.2965 and this specific attach ordering;
-it is a counterexample, not a complete concurrent admission matrix. The first
+The [closed-handle gate output](evidence/2026-10-02/physical-mapping-handle-closed-gate.txt)
+records the VM UUID, driver/service/policy hashes, closed source handle,
+retained writable section and fresh-file-object bytes. Its scope is one local
+NTFS file on Windows 10 19045.2965 and this specific attach ordering; it is a
+counterexample, not a complete concurrent admission matrix. The first
 encoded-command launcher exceeded Windows' command-line limit. Two subsequent
 harness attempts exposed PowerShell/.NET `MemoryMappedFile` overload binding
 errors ([first](evidence/2026-10-02/physical-mapping-initial-failure.txt),
 [second](evidence/2026-10-02/physical-mapping-second-failure.txt)); each stopped
 before driver installation, and each `finally` block verified baseline and
-removed its fixture. The final version uses a GUID-scoped mapping name.
-Independent final state is in
-[physical-mapping-final-restored-state.txt](evidence/2026-10-02/physical-mapping-final-restored-state.txt).
+removed its fixture. The final version uses a GUID-scoped mapping name and closes
+the source file handle before filter attachment. Independent final state for
+this run is in
+[physical-mapping-handle-closed-final-restored-state.txt](evidence/2026-10-02/physical-mapping-handle-closed-final-restored-state.txt).
 
 This invalidates any claim that callback admission alone isolates all writes
 after filter load. An existing writable section has no newly admitted protected
-stream object for the feature path to seal or redirect. Before production can
-activate staging on an attached volume, the design must establish a race-safe
-admission epoch covering outstanding file objects/sections and concurrent new
-opens, or safely refuse protection/activation until that boundary is met. Prove
-the barrier against mapped writes after handle close, attachment races and policy
-changes before changing the architecture. Taint and disabled normal staging
-remain in force.
+stream object for the feature path to seal or redirect, even after its source
+file handle closes. Before production can activate staging on an attached
+volume, the design must establish a race-safe admission epoch covering
+outstanding file objects/sections and concurrent new opens, or safely refuse
+protection/activation until that boundary is met. Prove the barrier against
+mapped writes after handle close, attachment races and policy changes before
+changing the architecture. Taint and disabled normal staging remain in force.
 
 The documented callback contracts constrain candidate fixes. Filter Manager's
 [`InstanceSetupCallback`](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/fltkernel/nc-fltkernel-pflt_instance_setup_callback)

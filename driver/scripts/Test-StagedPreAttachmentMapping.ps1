@@ -69,7 +69,9 @@ try {
     $initial = New-Object byte[] $originalBytes.Length
     $view.ReadArray(0, $initial, 0, $initial.Length)
     if ([Text.Encoding]::UTF8.GetString($initial) -ne $originalText) { throw 'Unfiltered mapping baseline mismatch.' }
-    'PreAttachmentFileHandle=True; PreAttachmentWritableSection=True'
+    $file.Dispose()
+    $file = $null
+    'PreAttachmentFileHandleClosed=True; PreAttachmentWritableSectionRetained=True'
     "SyntheticProtectedPath=$target"
 
     Backup-StagedTestDriver $backup
@@ -86,7 +88,6 @@ try {
     [Array]::Copy($changedBytes, $mapped, $changedBytes.Length)
     $view.WriteArray(0, $mapped, 0, $mapped.Length)
     $view.Flush()
-    $file.Flush($true)
 
     # This opens a new file object after attachment. It does not reuse the
     # pre-attachment stream or mapped section used by the writer.
