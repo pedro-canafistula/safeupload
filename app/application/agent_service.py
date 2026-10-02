@@ -1,5 +1,7 @@
 """Casos de uso da API do agente e consulta dos eventos recebidos."""
 
+from datetime import datetime
+
 from app.domain.schemas import (
     AuditEventSchema,
     EndpointRecord,
@@ -56,5 +58,16 @@ def submit_events(
     )
 
 
-def list_audit_events() -> list[AuditEventSchema]:
-    return memory_store.list_audit_events()
+def list_audit_events(endpoint_id: str | None = None) -> list[AuditEventSchema]:
+    events = memory_store.list_audit_events()
+    if endpoint_id is None:
+        return events
+    return [event for event in events if event.endpoint_id == endpoint_id]
+
+
+def list_endpoints() -> list[EndpointRecord]:
+    return memory_store.list_endpoints()
+
+
+def get_server_time_utc() -> datetime:
+    return memory_store.utc_now()

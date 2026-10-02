@@ -28,7 +28,11 @@ def _format_size(size_bytes: int) -> str:
     return f"{size_bytes} B"
 
 
-def build_audit_context(events: Sequence[AuditEventSchema]) -> dict:
+def build_audit_context(
+    events: Sequence[AuditEventSchema],
+    *,
+    endpoint_id: str | None = None,
+) -> dict:
     rows = []
     stats = {"total": len(events), "blocked": 0, "approved": 0, "not_inspected": 0}
 
@@ -46,4 +50,9 @@ def build_audit_context(events: Sequence[AuditEventSchema]) -> dict:
             "not_inspected_reason": event.not_inspected_reason,
         })
 
-    return {"active_page": "audit", "stats": stats, "events": rows}
+    return {
+        "active_page": "audit",
+        "stats": stats,
+        "events": rows,
+        "endpoint_filter": endpoint_id,
+    }

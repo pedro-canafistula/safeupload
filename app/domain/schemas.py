@@ -22,10 +22,16 @@ from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 Verdict = Literal["Approved", "Blocked", "AllowedWithoutInspection"]
 CategoryCode = Literal["Cpf", "Cnpj", "PaymentCard", "Password", "Secret"]
+
+
+def _require_timezone(value: datetime) -> datetime:
+    if value.tzinfo is None or value.utcoffset() is None:
+        raise ValueError("timestamp must include timezone information")
+    return value
 
 
 class MonitoredScopesSchema(BaseModel):
@@ -112,6 +118,11 @@ class AuditEventSchema(BaseModel):
     elapsed_ms: int = Field(alias="elapsedMs")
     dispatched: bool = False
 
+    @field_validator("occurred_at_utc")
+    @classmethod
+    def validate_occurred_at_utc(cls, value: datetime) -> datetime:
+        return _require_timezone(value)
+
 
 class OverrideEventSchema(BaseModel):
     """Espelha a linha ``{"type":"override", ...}`` do ``queue.jsonl``."""
@@ -123,6 +134,11 @@ class OverrideEventSchema(BaseModel):
     occurred_at_utc: datetime = Field(alias="occurredAtUtc")
     user_name: str = Field(alias="userName")
     endpoint_id: str = Field(alias="endpointId")
+
+    @field_validator("occurred_at_utc")
+    @classmethod
+    def validate_occurred_at_utc(cls, value: datetime) -> datetime:
+        return _require_timezone(value)
 
 
 class SubmitEventsRequest(BaseModel):
