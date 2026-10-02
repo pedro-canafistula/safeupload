@@ -170,6 +170,20 @@ the barrier against mapped writes after handle close, attachment races and polic
 changes before changing the architecture. Taint and disabled normal staging
 remain in force.
 
+The documented callback contracts constrain candidate fixes. Filter Manager's
+[`InstanceSetupCallback`](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/fltkernel/nc-fltkernel-pflt_instance_setup_callback)
+distinguishes automatic attachment to existing volumes, newly mounted volumes,
+manual attachment and detached volumes; it runs at PASSIVE_LEVEL and must not
+perform thread synchronization or interprocess communication. A
+[`SyncTypeCreateSection` callback](https://learn.microsoft.com/en-us/windows-hardware/drivers/ifs/flt-parameters-for-irp-mj-acquire-for-section-synchronization)
+may fail section creation only with `STATUS_INSUFFICIENT_RESOURCES`, while
+`SyncTypeOther` cannot be failed. The documented
+[`FltGetFileNameInformationUnsafe` constraints](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/fltkernel/nf-fltkernel-fltgetfilenameinformationunsafe)
+warn that filesystem name queries are unsafe in paging I/O and acquire/release
+modified-page-writer callbacks; cache-only lookup avoids that query but can miss.
+These contracts do not yet identify a qualified writeback callback solution.
+No change to attachment or section admission is claimed by this evidence.
+
 ## Previous milestone: journal recovery/security qualified (2 October 2026)
 
 Continue on `feat/staged-kernel-prototype`. The updated goal requires replacing
