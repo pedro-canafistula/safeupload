@@ -9,6 +9,7 @@
 typedef struct _SAFEUPLOAD_PUBLICATION_PERMIT {
     BOOLEAN Active;
     BOOLEAN Created;
+    BOOLEAN Consumed;
     SAFEUPLOAD_PUBLICATION_MESSAGE Message;
     ULONGLONG Expires;
 } SAFEUPLOAD_PUBLICATION_PERMIT;
@@ -28,11 +29,13 @@ NTSTATUS SafeUploadSetPublicationPermit(_In_ PSAFEUPLOAD_PUBLICATION_MESSAGE Mes
     LONG slot = -1;
     NTSTATUS status = STATUS_INSUFFICIENT_RESOURCES;
     ULONGLONG now = KeQueryInterruptTime();
+    GUID emptyId = {0};
     if (SafeUploadData.ClientPort == NULL ||
         HandleToULong( PsGetCurrentProcessId() ) != SafeUploadData.InspectorProcessId)
         return STATUS_ACCESS_DENIED;
     if (Message->Control.Version != SAFEUPLOAD_PROTOCOL_VERSION ||
-        Message->Control.StructSize != sizeof( *Message ) || Message->Reserved != 0 ||
+        Message->Control.StructSize != sizeof( *Message ) || Message->Control.Reserved != 0 ||
+        RtlEqualMemory( &Message->TransferId, &emptyId, sizeof( emptyId ) ) || Message->Reserved != 0 ||
         Message->Revoke > 1) return STATUS_INVALID_PARAMETER;
     if (!Message->Revoke && (Message->TemporaryPathLength == 0 ||
         Message->TemporaryPathLength > SAFEUPLOAD_MAX_PATH_BYTES ||
@@ -77,7 +80,7 @@ BOOLEAN SafeUploadPublicationCreate(_In_ PUNICODE_STRING Name,
     for (index = 0; index < RTL_NUMBER_OF( SafeUploadPublicationPermits ); ++index) {
         SAFEUPLOAD_PUBLICATION_PERMIT *permit = &SafeUploadPublicationPermits[index];
         UNICODE_STRING temporary;
-        if (!permit->Active || permit->Expires <= now) continue;
+        if (!permit->Active || permit->Consumed || permit->Expires <= now) continue;
         temporary.Buffer = permit->Message.TemporaryPath;
         temporary.Length = (USHORT) permit->Message.TemporaryPathLength;
         temporary.MaximumLength = temporary.Length;
@@ -118,7 +121,7 @@ BOOLEAN SafeUploadPublicationRename(_In_ PUNICODE_STRING Source,
     for (index = 0; index < RTL_NUMBER_OF( SafeUploadPublicationPermits ); ++index) {
         SAFEUPLOAD_PUBLICATION_PERMIT *permit = &SafeUploadPublicationPermits[index];
         UNICODE_STRING temporary, destination;
-        if (!permit->Active || !permit->Created || permit->Expires <= now) continue;
+        if (!permit->Active || permit->Consumed || !permit->Created || permit->Expires <= now) continue;
         temporary.Buffer = permit->Message.TemporaryPath;
         temporary.Length = (USHORT) permit->Message.TemporaryPathLength;
         temporary.MaximumLength = temporary.Length;
@@ -127,7 +130,10 @@ BOOLEAN SafeUploadPublicationRename(_In_ PUNICODE_STRING Source,
         destination.MaximumLength = destination.Length;
         if (RtlEqualUnicodeString( Source, &temporary, TRUE ) &&
             RtlEqualUnicodeString( Destination, &destination, TRUE )) {
-            permit->Active = FALSE;
+            /* Keep this attempt reserved until explicit revoke/expiry. A
+             * repeated authorization message must not reset a consumed grant.
+             * The existing publisher revokes when it disposes its attempt. */
+            permit->Consumed = TRUE;
             allowed = TRUE;
             break;
         }

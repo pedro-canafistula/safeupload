@@ -469,6 +469,58 @@ public sealed class StagedTransferPublisherTests : IDisposable
         Assert.Equal(Verdict.Retained, audit[0].Verdict);
     }
 
+    [Theory]
+    [InlineData("size", "file_too_large")]
+    [InlineData("parser", "parse_error:InvalidDataException")]
+    [InlineData("timeout", "inspection_timeout")]
+    public async Task Failed_inspection_never_requests_a_permit_or_changes_existing_destination(
+        string failure, string reason)
+    {
+        var store = new LocalPolicyStore(_workspace.PolicyFile);
+        await store.LoadAsync(CancellationToken.None);
+        var policy = JsonNode.Parse(await File.ReadAllTextAsync(_workspace.PolicyFile))!;
+        policy["maxFileSizeMb"] = 1;
+        policy["inspectionTimeoutSeconds"] = 1;
+        await File.WriteAllTextAsync(_workspace.PolicyFile, policy.ToJsonString());
+        var paused = new PausingExtractor();
+        var registry = failure == "parser" ? new ExtractorRegistry([new ThrowingExtractor()])
+            : failure == "timeout" ? new ExtractorRegistry([paused]) : ExtractorRegistry.CreateDefault();
+        var gate = new RecordingPublicationGate(false);
+        var publisher = new StagedTransferPublisher(new InspectionService(store,
+            new LocalQueueAuditSink(_workspace.QueueFile), registry, new VerdictCache()),
+            _notifications, _journal, _stagingRoot, gate);
+        string content = failure == "size" ? new string('x', 1024 * 1024 + 1) : "Clean fixture bytes.";
+        var transfer = Transfer("negative-" + failure + ".txt", content);
+        await File.WriteAllTextAsync(transfer.DestinationPath, "public original");
+        using var subscription = _notifications.Subscribe();
+        try
+        {
+            Assert.Equal(StagedTransferOutcome.Retained,
+                await publisher.PublishAsync(transfer, CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(5)));
+            Assert.False(gate.Called);
+            Assert.Equal("public original", await File.ReadAllTextAsync(transfer.DestinationPath));
+            Assert.Equal(content, await File.ReadAllTextAsync(transfer.StagePath));
+            Assert.Equal(TransferJournalState.Retained,
+                (await _journal.ReadAsync(transfer.TransferId, CancellationToken.None)).State);
+            var audit = Assert.Single(await new LocalQueueAuditSink(_workspace.QueueFile)
+                .ReadRecentAsync(10, CancellationToken.None));
+            Assert.Equal(Verdict.Retained, audit.Verdict);
+            Assert.Equal(reason, audit.NotInspectedReason);
+            while (subscription.Reader.TryRead(out var notification))
+                if (notification is TransferNotification transferNotification)
+                    Assert.NotEqual(TransferPhase.Released, transferNotification.Phase);
+            Assert.Empty(Directory.GetFiles(Path.GetDirectoryName(transfer.DestinationPath)!, "*.pending"));
+        }
+        finally { paused.Continue.TrySetResult(); }
+    }
+
+    private sealed class ThrowingExtractor : ITextExtractor
+    {
+        public IReadOnlySet<string> SupportedExtensions { get; } = new HashSet<string> { ".txt" };
+        public Task<string> ExtractAsync(Stream content, CancellationToken cancellationToken)
+            => throw new InvalidDataException("Injected parser failure.");
+    }
+
     [Fact]
     public async Task Failed_publication_is_retained_and_never_audited_as_sent()
     {

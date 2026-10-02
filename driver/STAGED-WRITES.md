@@ -34,6 +34,10 @@ after every experiment, including failures.
          The earlier headless Session 0 run remains excluded from UI acceptance.
    - [ ] Negative publication matrix: changed bytes/policy, unknown/parser/size/
          timeout cases, stale/replayed/expired/wrong-session/spoofed permits.
+         Progress: managed exact-version/policy and inspection-failure cases,
+         actual unknown/stale/replay justification denials, and native malformed,
+         consumed replay, expiry, wrong path/process and disconnect cases pass.
+         Broader end-to-end policy/principal/fault combinations remain open.
 3. Recovery, security and storage
    - [ ] Service/request/reply failures and driver-loss/reboot namespace recovery,
          authenticated recovery/export without implicit approval.
@@ -1034,8 +1038,99 @@ Unregister-ScheduledTask SafeUpload-StagedTest-InteractiveApproval -Confirm:$fal
 ```
 
 This closes the bounded actual notification/UI exact-version acceptance item.
-Other application save patterns, multi-user principal attribution, expired or
-spoofed kernel publication permits and the broader negative matrix remain open.
+Other application save patterns, multi-user principal attribution and the broader
+end-to-end negative matrix remain open. Native expiry/spoof controls are tested
+in the next increment.
+
+### Follow-up: publication attempt consumption and negative permits (2 October 2026)
+
+The existing code set Active=FALSE when admitting the one publication rename.
+That freed the slot immediately: the same authenticated authorization message
+could reactivate the consumed attempt before its explicit revocation. The
+smallest [before reproduction](evidence/2026-10-02/permit-before-final.txt) on
+SYS 4F8D (above) grants benign fixture output, creates the temporary, publishes
+it, resends the identical message and creates a second temporary. Both sends
+return HRESULT 0. Raw empty TransferId and nonzero Control.Reserved are also
+accepted despite the managed sender's stricter contract. No architecture change
+was made before preserving this case; original bytes/driver were restored.
+
+The internal permit now keeps an explicit Consumed bit. It remains Active for
+collision detection but cannot admit another create or rename. Explicit revoke,
+port disconnect or bounded expired-slot reuse reclaims the attempt. The existing
+publisher already revokes on disposal; an explicitly revoked failed attempt may
+be authorized again after the existing journal transition. This is attempt
+consumption, not a durable history replacing destination generations. Kernel
+validation also rejects empty IDs and Control.Reserved, without a wire/layout or
+service protocol change. The kernel still trusts the connected service's digest
+decision; this change does not hash public output in a callback.
+
+`StagedPublicationProbe` is a disposable LocalSystem controller using the existing
+port contract and public fltlib/handle APIs. It substitutes only for the trusted
+service to exercise permit controls; all output bytes are benign, and its digest
+is a fixture token, not proof of inspected approval. The actual inspected/approved
+application path is the separate gate above. The controller checks 10 malformed
+messages, repeated active/consumed grants, non-CREATE admission, wrong temporary,
+source and destination, a second writer create, revocation, create/rename after
+31.5 seconds, 64 occupied permit slots plus overflow/reuse, and disconnect/reconnect.
+A second LocalSystem process duplicates the live port handle but receives access
+denied because its PID is not the connected inspector; an elevated non-SYSTEM
+client is also refused. The parent retains PUBLIC ORIGINAL and checks absence of
+all forbidden destination names, then compares benign positive-control bytes
+unfiltered after unload. No sensitive fixture is authorized by this controller.
+
+Current signed SYS:
+`557CC7C71AF76B9178F3D33B41CC02B2D836BC5AADB1476D7D94DFD75910A90E`.
+Service ZIP:
+`4EB6D0B43D7603878CFAFD2F69C756AE13393D0484025FC2D6554BFE6EF68AB2`.
+Final probe ZIP:
+`A85387454950EF94DD7EED9A4F7182B9203CA87C4CAA1C4B6C078E57739A04C4`.
+The before/smaller ordinary run used probe ZIP
+`9B729EE457599E6E8E410F43DFE5CCC754D380AA64ABCA7F37DD16B304913C2D`;
+only the final matrix adds wrong-source/non-CREATE assertions. All four WDK
+configurations pass with zero warnings/errors, active analysis and Universal
+validation: [normal Debug](evidence/2026-10-02/permit-normal-wdk.txt),
+[normal Release](evidence/2026-10-02/permit-normal-release-wdk.txt),
+[feature Debug](evidence/2026-10-02/permit-owned-feature-wdk.txt),
+[feature Release](evidence/2026-10-02/permit-owned-feature-release-wdk.txt).
+[255/255 agent tests](evidence/2026-10-02/permit-agent-tests.txt) and
+[service Release publish](evidence/2026-10-02/permit-service-build.txt) pass. Three
+new publisher cases force size, parser and timeout outcomes: no permit request,
+no Released notification, exact original destination/prior private bytes retained,
+durable Retained and matching audit reason, no public temporary.
+
+[Smaller ordinary matrix](evidence/2026-10-02/permit-ordinary.txt) and
+[final runtime matrix](evidence/2026-10-02/permit-verifier.txt),
+[active checks](evidence/2026-10-02/permit-verifier-query.txt), PASS. Reproduce by
+publishing `driver\scripts\StagedPublicationProbe\StagedPublicationProbe.csproj`
+as self-contained win-x64 Release, transferring its ZIP and the recorded SYS,
+then `Test-StagedPublicationPermits.ps1 -Verifier -ProbeZipHash <recorded hash>`.
+Use `-ReproduceKnownGap` only with SYS 4F8D. The helper retains the durable backup
+and redirected LocalSystem output safeguards, with optional test executable/args;
+ordinary service callers retain the original defaults. Preserve
+`safeupload-pre-permit-controls-20261002` and `safeupload-pre-permit-boot-20261002`.
+The [full integrated boot regression](evidence/2026-10-02/permit-integrated-boot.txt)
+passes the same ordinary/concurrent/mapped-after-close/reopen/native rename/
+replacement/restart and 24-overwrite matrix with **673 full destination-byte
+observer passes** on this SYS/service pair. See its
+[0x26bbb configuration](evidence/2026-10-02/permit-integrated-boot-config.txt),
+[active statistics](evidence/2026-10-02/permit-integrated-boot-query.txt) and
+[durable checkpoints](evidence/2026-10-02/permit-integrated-boot-checkpoint.txt).
+After that harness restores/unloads the original, the final negative matrix also
+passes with [boot DDI/MDL plus volatile checks](evidence/2026-10-02/permit-ddi.txt),
+[active flags 0x2613b](evidence/2026-10-02/permit-ddi-query.txt). The
+[sanitized live KD log](evidence/2026-10-02/permit-boot-kd.txt) confirms both loads
+with Filter Verifier and no Verifier/fatal stop. The first boot preparation
+mistook Verifier's reboot-required nonzero exit for failure; querysettings
+confirmed the exact flags/driver, then the recorded reboot activated them.
+
+[Independent post-reboot restoration](evidence/2026-10-02/permit-final-restored-state.txt)
+verifies original SYS, unloaded filter/stopped demand-start service, configured
+and active Verifier off, policy, debugger host/port/key, zero temporary
+tasks/service/app and absent S:/VHDX. [Builder checks](evidence/2026-10-02/permit-builder-restored-state.txt)
+verify no debugger task, scoped firewall rule, endpoint or private authority.
+Guest/host UTC are recorded separately because of the existing clock offset.
+Broader end-to-end fault/principal cases remain open; normal staging and
+unsupported destination capabilities stay disabled.
 
 ### Identity and namespace
 

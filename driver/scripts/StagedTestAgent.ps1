@@ -6,22 +6,27 @@ function Save-StagedVerifierEvidence {
     $result | Set-Content -LiteralPath $env:SAFEUPLOAD_STAGED_VERIFIER_LOG -Encoding UTF8
 }
 
-function Start-StagedTestAgent([string] $ServiceDir, [string] $LogPrefix) {
+function Start-StagedTestAgent([string] $ServiceDir, [string] $LogPrefix,
+    [string] $ExecutableName = 'SafeUpload.Agent.Service.exe', [string] $Arguments = '') {
     $id = [guid]::NewGuid().ToString('N')
     $taskName = 'SafeUpload-StagedTest-' + $id
     $launcher = Join-Path $env:TEMP ('SafeUpload-agent-' + $id + '.ps1')
     $pidFile = $launcher + '.pid'
-    $exe = Join-Path $ServiceDir 'SafeUpload.Agent.Service.exe'
+    if ([IO.Path]::GetFileName($ExecutableName) -ne $ExecutableName) { throw 'Test executable must be inside its publish folder.' }
+    $exe = Join-Path $ServiceDir $ExecutableName
     $script = @'
 $ErrorActionPreference = 'Stop'
 $env:Interception__Mode = 'Minifilter'
 $env:Interception__StagingPrototype = 'true'
-$process = Start-Process -FilePath '__EXE__' -PassThru -WindowStyle Hidden `
-    -RedirectStandardOutput '__LOG__-out.log' -RedirectStandardError '__LOG__-err.log'
+$start = @{ FilePath = '__EXE__'; PassThru = $true; WindowStyle = 'Hidden';
+    RedirectStandardOutput = '__LOG__-out.log'; RedirectStandardError = '__LOG__-err.log' }
+if ('__ARGUMENTS__'.Length -ne 0) { $start.ArgumentList = '__ARGUMENTS__' }
+$process = Start-Process @start
 Set-Content -LiteralPath '__PID__' -Value $process.Id
 $process.WaitForExit()
 '@
     $script = $script.Replace('__EXE__', $exe).Replace('__LOG__', $LogPrefix).Replace('__PID__', $pidFile)
+    $script = $script.Replace('__ARGUMENTS__', $Arguments.Replace("'", "''"))
     Set-Content -LiteralPath $launcher -Value $script -Encoding UTF8
     $action = New-ScheduledTaskAction -Execute 'powershell.exe' `
         -Argument ('-NoProfile -ExecutionPolicy Bypass -File "' + $launcher + '"')

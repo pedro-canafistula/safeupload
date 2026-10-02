@@ -1,0 +1,8 @@
+2026-10-01T21:55:05.0583509Z BeforeDisposableVolumeSetup
+2026-10-01T21:55:08.6163516Z DurableOriginalBackupVerified; BeforeDriverReplacement
+2026-10-01T21:55:08.6263446Z FeatureInstalled; BeforeLoad
+2026-10-01T21:55:08.6583448Z FeatureLoaded
+2026-10-01T21:55:14.2603465Z BeforeFirstCachedWrite; Text=alphabeta; Length=9; Offset=0
+2026-10-01T21:55:14.2863475Z FirstCachedWriteAndFlushCompleted
+2026-10-01T21:57:01.3243444Z BeforeOriginalDriverRestoration
+2026-10-01T21:57:01.4303454Z OriginalDriverRestorationCompleted
