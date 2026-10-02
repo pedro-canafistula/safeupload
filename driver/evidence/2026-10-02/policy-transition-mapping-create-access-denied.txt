@@ -1,0 +1,26 @@
+The corrected-readiness retry confirmed that the real agent accepted the
+baseline policy, then failed while creating the mapping, before policy change
+or mapped mutation. `MemoryMappedFile.CreateFromFile` returned
+`UnauthorizedAccessException` / access denied. The exact remote output is in
+`policy-transition-mapping-create-access-denied-raw.txt`.
+
+The stopped agent log for this run shows it attempted to inspect the synthetic
+`.txt` file during the baseline-policy phase and marked the test process after
+`parse_error:IOException`. The baseline policy lists source-inspection
+extensions `.txt`, `.csv`, `.docx`, `.xlsx`, and `.pdf`; its only destination
+prefix is `C:\SafeUpload\Escopo Monitorado`. The fixture was under Documents,
+outside that prefix. The next attempt avoids this unrelated source-inspection
+path before testing destination-scope expansion.
+
+The next attempt uses a `.maptest` fixture extension, which the baseline policy
+does not inspect as a source. Destination admission is path-based, so expanding
+the policy to the GUID fixture directory still exercises the intended mapping
+transition. No destination-byte mutation or policy update is claimed from this
+failed run.
+
+The harness `finally` restored the original driver and policy and unloaded the
+filter. Independent state at
+`policy-transition-final-after-mapping-create-failure.txt` confirms original
+hashes, Verifier off, Manual/Stopped service, no agent process/task, no owned
+VHDX, and removed fixture. The active disk remained
+`safeupload-pre-policy-transition-mapping-retry-20261002`.

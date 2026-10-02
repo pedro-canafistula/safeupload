@@ -1,0 +1,17 @@
+The `.maptest` retry passed the fixture checks and the real agent accepted the
+baseline policy, but `MemoryMappedFile.CreateFromFile` still returned access
+denied before any policy update. Exact remote output is in
+`policy-transition-mapping-agent-connected-access-denied-raw.txt`.
+
+Unlike the earlier `.txt` attempt, the stopped agent log contains no request to
+inspect the `.maptest` fixture and no process-taint message. This excludes that
+source-inspection interaction as the sole cause. The test `finally` restored
+the original driver/policy and unloaded the filter; independent state is in
+`policy-transition-final-after-maptest-attempt.txt`.
+
+The next probe creates the same GUID mapping after loading the feature filter
+but before starting the real agent or installing any policy. It then pushes the
+baseline policy, expands the scope through a second real agent connection, and
+mutates the retained mapping. This isolates whether policy readiness itself
+changes the ability to create the mapping while preserving the intended
+pre-policy destination object.

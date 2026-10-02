@@ -25,8 +25,14 @@ remains. No watchdog work or new internals investigation is active.
       SYS after closing the source file handle before attachment. A fresh
       post-attach file object reads the unapproved mapped write; [gate](evidence/2026-10-02/physical-mapping-handle-closed-gate.txt),
       [independent restoration](evidence/2026-10-02/physical-mapping-handle-closed-final-restored-state.txt).
-- [ ] Complete namespace/policy/attachment admission, existing physical sections,
-      remaining mutation classes and the broader acceptance tracker.
+- [x] Reproduce a writable section that predates the agent's first policy push
+      and a later real-agent scope expansion: the old view changes the protected
+      destination after expansion; [gate](evidence/2026-10-02/policy-transition-eof-map-gate.txt),
+      [independent restoration](evidence/2026-10-02/policy-transition-eof-map-final-restored-state.txt).
+      Earlier harness failures are excluded (see the follow-up below).
+- [ ] Complete namespace/policy/attachment admission, existing physical sections
+      (both open leaks above), remaining mutation classes and the broader
+      acceptance tracker.
 
 The bounded helper uses documented NTFS `FileHardLinkInformation`, opens its
 parent directory IDs below the original instance, and reconstructs names using
@@ -187,6 +193,82 @@ warn that filesystem name queries are unsafe in paging I/O and acquire/release
 modified-page-writer callbacks; cache-only lookup avoids that query but can miss.
 These contracts do not yet identify a qualified writeback callback solution.
 No change to attachment or section admission is claimed by this evidence.
+
+### Follow-up: writable mapping predating a policy scope expansion (2 October 2026)
+
+Second confirmed physical-destination leak, same feature SYS `ACED8226…44F8`,
+service `D887E0D7…`, original policy `29DC8A34…`. The filter is already attached
+when the writable section is created, so this is not the attachment-order case;
+it is a section that predates **the agent's first policy push and a later scope
+expansion**. [Gate](evidence/2026-10-02/policy-transition-eof-map-gate.txt),
+[baseline](evidence/2026-10-02/policy-transition-eof-map-baseline.txt),
+[independent restoration](evidence/2026-10-02/policy-transition-eof-map-final-restored-state.txt).
+
+Harness: [`Test-StagedPolicyTransitionMapping.ps1`](scripts/Test-StagedPolicyTransitionMapping.ps1).
+Order of events, from the script and the gate: install and load the feature SYS
+with **no agent and no policy pushed**; create a GUID `synthetic.maptest` fixture
+(outside the baseline destination prefix and baseline source extensions) pre-sized
+to 4096 bytes; open it, create a writable mapping whose capacity equals the file
+EOF, close the file handle and retain the section/view; start the real agent,
+which pushes the baseline policy (accepted by agent and driver; fixture still out
+of scope); stop it; extend the policy file (`80694A0B…`) with the fixture directory;
+start the real agent again, which pushes the expanded policy (accepted). A write
+and flush through the old view then changes the file, and a fresh file object
+reads `MAPPED AFTER POLICY CHANGE <GUID>`. No approval permit ran, so the bytes
+are unapproved: `UnauthenticatedMappedWriteAfterPolicyExpansion=REPRODUCED`.
+The independent check ([Get-StagedBaseline.ps1](scripts/Get-StagedBaseline.ps1),
+a new read-only checker for every future baseline/restoration call) confirms
+original SYS, filter unloaded, Verifier off and unconfigured, Manual/Stopped,
+original policy, zero agent processes/tasks and no fixture or VHDX.
+Checkpoint overlay: `/var/lib/libvirt/images/win10-debug.safeupload-pre-policy-transition-mapping-eof-20261002`.
+(The script's header comment described an earlier ordering and was corrected to the
+above after the run; no executable line changed.)
+
+**Not claimed.** This is one NTFS file, one volume, Windows 10 19045.2965 and
+one ordering with no concurrent race. The section was created **before any policy
+existed**, not after the baseline policy was live: creating it with the agent and
+baseline policy active was attempted and ended in the excluded access-denied runs
+below, so "section created under an active policy, then scope expanded" is not
+demonstrated. The run also cannot separate "predates the first policy" from
+"predates the scope expansion"; the closing design must block both. It does not
+show that an approved public overwrite or the agent's own publication is affected,
+does not test a file that was already in scope when its section was created, and
+does not measure latency.
+
+**Excluded harness failures** (not driver results, not acceptance evidence). Each
+`finally` restored the original driver/policy; independent state files exist for
+four of them.
+- Log lock: the harness read the live redirected agent log while the child held
+  it ([note](evidence/2026-10-02/policy-transition-mapping-log-lock-failure.txt),
+  [raw](evidence/2026-10-02/policy-transition-mapping-log-lock-failure-raw.txt),
+  [state](evidence/2026-10-02/policy-transition-final-after-first-attempt.txt)).
+  Fixed by waiting on `Global\SafeUploadServiceReady`.
+- Mapping create access denied with a `.txt` fixture, where the agent's
+  source-inspection logged a `parse_error:IOException` taint mark ([note](evidence/2026-10-02/policy-transition-mapping-create-access-denied.txt),
+  [raw](evidence/2026-10-02/policy-transition-mapping-create-access-denied-raw.txt),
+  [state](evidence/2026-10-02/policy-transition-final-after-mapping-create-failure.txt)).
+- Same denial with a `.maptest` fixture and the agent connected; no inspection
+  or taint was logged ([note](evidence/2026-10-02/policy-transition-mapping-agent-connected-access-denied.txt),
+  [raw](evidence/2026-10-02/policy-transition-mapping-agent-connected-access-denied-raw.txt),
+  [state](evidence/2026-10-02/policy-transition-final-after-maptest-attempt.txt)).
+- Same denial with the filter loaded and no agent/policy, mapping a 4096-byte
+  capacity over a short file ([note](evidence/2026-10-02/policy-transition-mapping-before-policy-access-denied.txt),
+  [raw](evidence/2026-10-02/policy-transition-mapping-before-policy-access-denied-raw.txt),
+  [state](evidence/2026-10-02/policy-transition-final-after-prepolicy-failure.txt)).
+- Five PowerShell parse checks (`policy-transition-powershell-parse*.txt`,
+  zero errors) and the per-attempt `*-baseline.txt` files are preparation records.
+
+**Open question.** The access-denied results ended only in the run that
+pre-sized the fixture to the mapping capacity *and* created the section before any
+policy was pushed; two variables changed together. That is consistent with "section
+creation needed an implicit file extension" but the denying component (driver or
+NTFS) was never identified. Do not treat it as explained. If the feature driver is
+refusing the extension or the section while an agent/policy is active, that is
+separate behavior and also determines whether "section under active policy" can
+be reproduced; it needs its own gate.
+
+The volume admission design must turn both this and the pre-attachment case into
+blocked results with the same repro scripts, not merely one of them.
 
 ## Previous milestone: journal recovery/security qualified (2 October 2026)
 
@@ -499,8 +581,9 @@ after every experiment, including failures.
          Progress: private 128-bit logical IDs, native relative/file-ID reopen,
          original-volume serial, rename/replacement/new-version identity and
          process/volume boundaries pass. The focused external physical-alias refusal
-         and 64/65-link bounds pass. The pre-attachment mapping probe now
-         demonstrates post-attach writes visible through a fresh physical open;
+         and 64/65-link bounds pass. The pre-attachment mapping probe
+         demonstrates post-attach writes visible through a fresh physical open,
+         and a section predating a policy scope expansion does the same;
          existing sections, durable identity and complete namespace/policy
          admission remain open pending a race-safe volume admission epoch.
    - [x] Owned byte-range locks: shared/exclusive access, waiting/cancellation,
