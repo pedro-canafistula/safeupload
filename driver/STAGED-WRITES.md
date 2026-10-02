@@ -52,6 +52,9 @@ after every experiment, including failures.
          `aitstatic` 193 resolved without disabling validation. Repeat for later changes.
    - [ ] Applicable boot/runtime Verifier, stress, bounded latency and final
          independent original-driver restoration evidence.
+         Progress: generated backing I/O passes live boot Filter Verifier with
+         DDI, forced pending and both MDL invariant checks. Broader faults,
+         production stress/latency and destination stacks remain open.
 
 Completed increment: durable rename tombstones and native replacement saves.
 The source generation barrier is committed in the same manifest as the target
@@ -306,11 +309,16 @@ The upper file object stays on the original destination volume, with SafeUpload'
 own `FSRTL_ADVANCED_FCB_HEADER`, resources and `SECTION_OBJECT_POINTERS`. All its
 operations are handled or rejected before legacy callbacks or the original
 filesystem can interpret its contexts. Fast I/O is refused. Paging I/O and Cc's
-`AdvanceOnly` EOF notification retain their MDL, flags and asynchronous completion
-when directed to the backing instance; a postoperation releases rundown ownership.
-The target stack must have at least the original stack's size. Neither foreign
-cache state nor `DeviceObject`/`Vpb` is modified. See the Microsoft
-[I/O parameter contract](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/fltkernel/ns-fltkernel-_flt_io_parameter_block).
+`AdvanceOnly` EOF notification use separately allocated backing callback data;
+the original IRP, upper cache/sections and file object's volume stay intact.
+Only operation parameters and semantic paging/noncached flags are copied. A
+child read/write owns partial MDLs over the original request's locked pages;
+completion frees those partial MDLs, transfers status and releases rundown.
+Inline and asynchronous completion complete the upper request exactly once.
+The conservative original/backing stack-size admission check remains, but does
+not establish capacity for retargeting an existing IRP. See the boot Verifier
+failure and generated-I/O regression below. Neither foreign cache state nor
+`DeviceObject`/`Vpb` is modified.
 
 ### Follow-up: native private logical identity
 
@@ -735,7 +743,119 @@ passes original installed hash `ADA9D05AB6AECDD2B6C521B0CE529FC06C732154ACB3EE85
 unloaded filter, Verifier zero/None, zero tasks/service/application, no S:/VHD,
 and original non-override policy. Host UTC was 2026-10-01T23:11:50Z; guest UTC
 reported 19:11:31Z after disk recovery, so do not order evidence by that guest
-wall clock. Staging remains disabled and the release Verifier gate stays open.
+wall clock. Staging remains disabled. The generated-I/O increment below resolves
+this specific failure; the broader release gate remains open.
+
+### Follow-up: generated backing paging I/O (2 October 2026)
+
+`StageRoutePaging` now completes the upper operation using separately allocated
+Filter Manager callback data for the backing instance/object. It does not redirect
+the original IRP. `FltAllocateCallbackDataEx(PREALLOCATE_ALL_MEMORY)` supplies the
+backing stack capacity without borrowing upper reserved/allocation state. Copy
+only MajorFunction, MinorFunction, OperationFlags, Parameters and the semantic
+`IRP_NOCACHE`, `IRP_PAGING_IO`, `IRP_SYNCHRONOUS_PAGING_IO` flags. This also preserves
+Cc's `AdvanceOnly` SET_INFORMATION operation. Admission still requires the
+existing NTFS, sector and conservative stack guards; no destination was enabled.
+[Allocation contract](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/fltkernel/nf-fltkernel-fltallocatecallbackdataex).
+
+The child owns a partial MDL chain built over the original still-locked pages.
+It must **not** own the original MDLs:
+[`FltFreeCallbackData`](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/fltkernel/nf-fltkernel-fltfreecallbackdata)
+frees its associated MDL chain. Each partial uses
+[`IoBuildPartialMdl`](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nf-wdm-iobuildpartialmdl),
+and child disposal frees partial mappings without unlocking upper pages.
+Allocation failure frees any completed partial chain and fails the upper I/O.
+All completion code/context is nonpaged; there are no service calls or resource
+acquisitions in completion. Paging requests require IRQL <= APC_LEVEL; nonpaging
+AdvanceOnly requires PASSIVE_LEVEL. Cancellation observed before submission fails
+with STATUS_CANCELLED. Propagating cancellation during lower pending I/O and
+systematic resource-failure coverage remain required fault gates.
+
+The two owners of the completion context are submission and completion. State is
+explicit: 0 submitting, 1 pended, 2 completed inline. The documented
+[`FltPerformAsynchronousIo`](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/fltkernel/nf-fltkernel-fltperformasynchronousio)
+completion always runs, including failure, and may run inline. Completion copies
+IoStatus and frees the child; if it observes 1 it releases paging rundown and
+completes the pended upper callback. If it changes 0 to 2, submission releases
+rundown and returns COMPLETE. Each owner releases its own context reference.
+No backing close or immutable seal can precede completion of the lower I/O.
+The existing all-objects/all-sections seal condition is unchanged.
+Filter Manager explicitly handles completion racing the return of PENDING;
+[preoperation contract](https://learn.microsoft.com/en-us/windows-hardware/drivers/ifs/writing-preoperation-callback-routines).
+
+The VM failure also exposed a restoration gap: ordinary Copy-Item did not ensure
+the original backup survived the unclean stop. `Backup-StagedTestDriver` now
+checks the recorded original hash, copies with WriteThrough, calls Flush(true),
+and verifies the copy. Restoration rejects an invalid backup **before** touching
+installed bytes, and restores with the same durable copy. Owned, duplicate and
+lock gates use this helper. The owned gate writes optional durable checkpoints
+via `SAFEUPLOAD_STAGED_CHECKPOINT`. Frozen pre-test disk snapshots remain the
+authority for crash recovery; neither durable copies nor checkpoints replace them.
+
+Smallest regression: `Test-StagedOwnedStreams.ps1 -PagingSmoke` performs the
+original nine-byte cached write, flush, native temporary-to-.txt rename, close,
+immutable seal and approved exact publication with an independent byte observer.
+The initial smoke used a .tmp destination and correctly remained Retained with
+out_of_scope; it is excluded from acceptance. Correcting only that fixture to the
+normal final .txt save yielded 55 ordinary and 35 boot-standard full observer
+passes on preliminary SYS `EB24468DB1FD8C06A0059A445B5C85B90FDB9C23CD44C3E487A2F0AE15953313`.
+That preliminary binary also passed boot-standard full cases (671 passes), and
+standard plus forced-pending/MDL cases (508 passes). Its results are supporting
+history; qualification below uses the final binary after restricting Iopb copies.
+
+Final signed Debug feature SYS:
+`16DB78ECAFFCF515C30C37F74AFC227BAB84105266E13C7E6579B362A0282238`.
+Service ZIP remains `0263B794943BC841896B84B9183B049E3222C28433B2C0BC9A93B2D340F1BE64`;
+the service protocols and tested package are unchanged. Windows/module versions
+remain those of the failure above. Preserve `safeupload-pre-generated-paging-20261001`
+and `safeupload-pre-final-paging-20261002`, the recovered parent and failed forensic
+disk/RAM artifacts. The final gate used a live LocalSystem KDNET task, a temporary
+scoped UDP rule for OS .51 and KDNET .232, and the recorded private key. Keys and
+raw memory are excluded from repository evidence.
+
+Reproduce builds only in `C:\Users\vika\Documents\safeupload-staging-test` using
+`driver\scripts\Build-StagedOwnedStreams.ps1 -OutputDirectory
+C:\Users\vika\Documents\paging-final-milestone -CertificateThumbprint <recorded-test-cert>`.
+For the boot gate, first verify host/UUID, original installed/unloaded driver,
+off Verifier and take a fresh external disk snapshot. Configure
+`verifier /flags 0x26bbb /driver SafeUpload.sys`, then `verifier /bootmode oneboot`;
+reboot with the original demand-start driver still installed. Check active
+`verifier /query`, then use the final SYS and unchanged service ZIP in Documents:
+
+```powershell
+$env:SAFEUPLOAD_STAGED_CHECKPOINT = "$env:USERPROFILE\Documents\paging-final-boot-checkpoint.txt"
+$env:SAFEUPLOAD_STAGED_VERIFIER_LOG = "$env:USERPROFILE\Documents\paging-final-boot-query.txt"
+.\Test-StagedOwnedStreams.ps1 -BootVerifier -ReplacementCases -PublicationIterations 24
+.\Test-StagedDuplicatedHandle.ps1
+.\Test-StagedLocks.ps1 -Verifier -Iterations 100
+```
+
+| Final-binary check | Evidence and result |
+| --- | --- |
+| Normal/feature Debug and Release, PREfast/DriverRecommendedRules, Universal validation | [Normal Debug](evidence/2026-10-02/paging-normal-wdk.txt), [normal Release](evidence/2026-10-02/paging-normal-release-wdk.txt), [feature Debug](evidence/2026-10-02/paging-owned-feature-wdk.txt), [feature Release](evidence/2026-10-02/paging-owned-feature-release-wdk.txt): all zero warnings/errors, no recurrence of extractor 193 |
+| Agent regression and service Release publish | [247/247 passed](evidence/2026-10-02/paging-agent-tests.txt), [publish](evidence/2026-10-02/paging-service-build.txt); newly generated package is not substituted for the unchanged qualified ZIP |
+| Boot DDI/Filter Verifier plus forced pending and both MDL checks | [Config](evidence/2026-10-02/paging-final-boot-config.txt), [active 0x26bbb](evidence/2026-10-02/paging-final-boot-query.txt), [live sanitized KD log](evidence/2026-10-02/paging-final-boot-kd.txt): Filter verification explicitly enabled, no Verifier diagnostic |
+| Integrated ordinary/concurrent/mapped/reopen/rename/replacement/restart and 24 overwrites | [Gate](evidence/2026-10-02/paging-final-boot.txt): PASS, 736 full independent destination-byte passes; [durable first-write/restoration checkpoints](evidence/2026-10-02/paging-final-boot-checkpoint.txt) |
+| Cross-process duplicate survives owner exit | [Gate](evidence/2026-10-02/paging-final-duplicate.txt): unsealed until receiver final close; exact basetail publication |
+| Locks, pending cancellation, duplicate cleanup, process exit, mapped bypass, physical reader and exact publication | [100-iteration gate](evidence/2026-10-02/paging-final-locks.txt), [active Verifier](evidence/2026-10-02/paging-final-locks-query.txt): PASS; native 57 ms, owned 1462 ms under Verifier, not a production latency qualification |
+
+Forced-pending flags are proven active, but this run does not separately count
+inline versus asynchronous child completions. No assertion about every possible
+lower-stack behavior follows from one NTFS build. Alias admission, namespace
+recovery, storage/security faults, USB/SMB/sync and application/stress/latency gates
+remain open in the tracker. Normal staging remains disabled.
+
+After the final gates, restore the original driver, reset Verifier and reboot;
+restore the original KDNET host/port/key without logging the key. Remove the exact
+temporary builder debugger task, firewall rule, listener and private configs.
+[Independent post-reboot state](evidence/2026-10-02/paging-final-restored-state.txt)
+and [debugger/builder checks](evidence/2026-10-02/paging-final-extra-restored-state.txt)
+PASS: original SHA256, unloaded filter, demand-start/stopped service, configured
+flags zero and no active verified drivers, original policy, no temporary test
+service/tasks/app/S:/VHD, original debugger host/port/key, no builder listener or
+private fixture. Host UTC was 2026-10-02T00:33:28Z; the recovered guest clock still
+differs as recorded above. No preserved snapshot, failed overlay or memory image
+was deleted or committed into a base disk.
 
 ### Identity and namespace
 
@@ -795,8 +915,9 @@ actual third-party filter stacks remain unqualified.
 
 Lock order is namespace resource, then upper stream resource. Ordinary reads,
 writes and size changes serialize on the stream resource. Cache/modified-writer
-callbacks use the separate paging resource; redirected I/O owns rundown until its
-postoperation, including asynchronous completion. The registry spin lock only
+callbacks use the separate paging resource; generated backing I/O owns rundown
+until lower completion (or the submitting callback observes inline completion).
+The registry spin lock only
 locates owned objects; entries cannot disappear until unregister drains callbacks.
 Name-provider callbacks use the namespace resource. The service is never called
 from paging completion. Current admission/namespace/seal messages can wait under

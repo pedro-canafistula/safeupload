@@ -1,5 +1,5 @@
 <# Integrated owned-stream gate. Run only on the isolated debuggee. #>
-param([switch] $Verifier, [switch] $BootVerifier, [switch] $ReplacementCases, [ValidateRange(0,64)][int] $PublicationIterations = 0)
+param([switch] $Verifier, [switch] $BootVerifier, [switch] $PagingSmoke, [switch] $ReplacementCases, [ValidateRange(0,64)][int] $PublicationIterations = 0)
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'StagedTestAgent.ps1')
 Add-Type -Path (Join-Path $PSScriptRoot 'StagedIdentityProbe.cs')
@@ -196,6 +196,15 @@ function Read-OwnedPrivate([string] $Path) {
     $textReader = [IO.StreamReader]::new($input)
     try { $textReader.ReadToEnd() } finally { $textReader.Dispose() }
 }
+function Write-OwnedCheckpoint([string] $Text) {
+    if ([string]::IsNullOrEmpty($env:SAFEUPLOAD_STAGED_CHECKPOINT)) { return }
+    $output=[IO.FileStream]::new($env:SAFEUPLOAD_STAGED_CHECKPOINT,[IO.FileMode]::Append,
+        [IO.FileAccess]::Write,[IO.FileShare]::ReadWrite,4096,[IO.FileOptions]::WriteThrough)
+    try {
+        $bytes=[Text.Encoding]::UTF8.GetBytes([DateTime]::UtcNow.ToString('o')+' '+$Text+"`r`n")
+        $output.Write($bytes,0,$bytes.Length); $output.Flush($true)
+    } finally { $output.Dispose() }
+}
 function Read-OwnedPublic([string] $Path) {
     & powershell.exe -NoProfile -Command "[IO.File]::ReadAllText('$Path')"
 }
@@ -217,6 +226,7 @@ if($BootVerifier){
 }
 if ((Test-Path S:\) -or (Test-Path $vhd)) { throw 'Disposable S: already present.' }
 try {
+    Write-OwnedCheckpoint 'BeforeDisposableVolumeSetup'
     Invoke-ProbeDisk @("create vdisk file=`"$vhd`" maximum=128 type=expandable", "select vdisk file=`"$vhd`"",
         'attach vdisk','create partition primary','format fs=ntfs quick label=SafeUploadOwned','assign letter=S')
     $mounted = $true
@@ -237,9 +247,11 @@ try {
     Write-Output 'UnfilteredNativeRenameControl=True'
     & tar.exe -xf 'C:\Users\vika\Documents\stage-service-publish.zip' -C $serviceDir
     if ($LASTEXITCODE -ne 0) { throw 'Service extraction failed.' }
-    Copy-Item $installed $backup -Force
+    Backup-StagedTestDriver $backup
+    Write-OwnedCheckpoint 'DurableOriginalBackupVerified; BeforeDriverReplacement'
     Copy-Item $driver $installed -Force
     $replaced = $true
+    Write-OwnedCheckpoint 'FeatureInstalled; BeforeLoad'
     if ($Verifier) {
         & verifier.exe /volatile /flags 0x13B /adddriver SafeUpload.sys | Out-Host
         if ($LASTEXITCODE -ne 0) { throw 'Verifier enable failed.' }
@@ -248,6 +260,7 @@ try {
     & fltmc.exe load SafeUpload | Out-Host
     if ($LASTEXITCODE -ne 0) { throw 'Owned driver load failed.' }
     $loaded = $true
+    Write-OwnedCheckpoint 'FeatureLoaded'
     Write-Output ('IntegratedDriverLoaded=' + (Get-FileHash $driver -Algorithm SHA256).Hash)
     $denied = $false
     try { [IO.File]::WriteAllText($target, 'must stay absent') }
@@ -295,7 +308,36 @@ Add-Content '__LOG__' ('samples=' + $samples)
 
     $share = [IO.FileShare]::ReadWrite -bor [IO.FileShare]::Delete
     $file = [IO.FileStream]::new($target, [IO.FileMode]::CreateNew, [IO.FileAccess]::ReadWrite, $share)
+    Write-OwnedCheckpoint 'BeforeFirstCachedWrite; Text=alphabeta; Length=9; Offset=0'
     Write-OwnedText $file 'alphabeta'
+    Write-OwnedCheckpoint 'FirstCachedWriteAndFlushCompleted'
+    if($PagingSmoke){
+        $entry=@(Get-OwnedEntries $target)
+        if($entry.Count -ne 1 -or $entry[0].State -ne 0){throw 'Smoke allocation is not mutable.'}
+        $firstId=[guid]$entry[0].Transfer.TransferId
+        $firstStage=$entry[0].Transfer.StagePath
+        # The bootstrap accepts the temporary slot; real inspection requires
+        # its final .txt extension, just as in the complete replacement gate.
+        $native=[SafeUploadArchitectureNative]::CreateFile($target,0x10000,7,[IntPtr]::Zero,3,0x80,[IntPtr]::Zero)
+        if($native.IsInvalid){throw 'Smoke native delete handle failed.'}
+        [SafeUploadArchitectureNative]::Rename($native,$renamed)
+        $native.Dispose(); $native=$null
+        $observerRules[$renamed]=@('ABSENT',[Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes('alphabeta')))
+        Set-OwnedObserver 'smoke-publication-admitted'
+        $file.Dispose(); $file=$null
+        $released=Wait-OwnedState $firstId 5
+        if(-not $released.SealedOnce -or (Read-OwnedPublic $renamed) -ne 'alphabeta'){throw 'Smoke approved publication failed.'}
+        Set-OwnedObserver 'smoke-approved'
+        Set-Content $observerStop 'stop'
+        if(-not $observer.WaitForExit(10000) -or $observer.ExitCode -ne 0){throw 'Smoke observer failed.'}
+        $observed=Get-Content $observerLog -Raw
+        if($observed -match 'LEAK' -or $observed -notmatch 'samples=[1-9]'){throw 'No smoke byte-observer evidence.'}
+        Write-Output ('DestinationByteObserver='+$observed.Trim())
+        Write-OwnedCheckpoint 'PagingSmokeApprovedPublication=True'
+        Write-Output 'PagingSmokeApprovedPublication=True'
+        if($Verifier -or $BootVerifier){Save-StagedVerifierEvidence; & verifier.exe /query | Out-Host}
+        return
+    }
     $entry = @(Get-OwnedEntries $target)
     if ($entry.Count -ne 1 -or $entry[0].State -ne 0) { throw 'Allocation was not durably journaled before CREATE.' }
     $firstId = [guid]$entry[0].Transfer.TransferId
@@ -515,7 +557,10 @@ finally {
     }
     if ($observer -and -not $observer.HasExited) { Stop-Process $observer.Id -Force }
     Stop-StagedTestAgent $agent
+    Write-OwnedCheckpoint 'BeforeOriginalDriverRestoration'
     if ($replaced) { Restore-StagedTestDriver $backup $loaded $verifierEnabled }
+    elseif($verifierEnabled){& verifier.exe /reset | Out-Host}
+    Write-OwnedCheckpoint 'OriginalDriverRestorationCompleted'
     # A failed restoration throws above, retaining the fixtures for diagnosis.
     if ($mounted) {
         $physical = @(Get-ChildItem -LiteralPath $directory -File)

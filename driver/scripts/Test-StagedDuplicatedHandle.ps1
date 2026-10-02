@@ -16,12 +16,15 @@ $owner = $null
 $loaded = $false
 $replaced = $false
 $cleanup = @($target)
+if($env:COMPUTERNAME -ne 'WIN10-DEBUGGED' -or
+    (Get-CimInstance Win32_ComputerSystemProduct).UUID -ne '9D44EEE8-81CF-4CC1-9FBA-7670F11DEF4D'){throw 'Wrong debuggee.'}
+if((& fltmc.exe filters) -match '^SafeUpload\s'){throw 'Expected unloaded baseline.'}
 if ((Get-FileHash $installed -Algorithm SHA256).Hash -ne $expected) { throw 'Unexpected original driver.' }
 try {
     New-Item -ItemType Directory -Force -Path $root,$serviceDir | Out-Null
     & tar.exe -xf 'C:\Users\vika\Documents\stage-service-publish.zip' -C $serviceDir
     if ($LASTEXITCODE -ne 0) { throw 'Service extraction failed.' }
-    Copy-Item $installed $backup -Force
+    Backup-StagedTestDriver $backup
     Copy-Item 'C:\Users\vika\Documents\SafeUpload-stage-prototype.sys' $installed -Force
     $replaced = $true
     & fltmc.exe load SafeUpload | Out-Host

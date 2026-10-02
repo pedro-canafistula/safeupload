@@ -104,11 +104,30 @@ catch {
     }
 }
 
+function Copy-StagedOriginalDriver([string] $Source, [string] $Destination) {
+    $expected = 'ADA9D05AB6AECDD2B6C521B0CE529FC06C732154ACB3EE85439FBDC8AA80DFCE'
+    if ((Get-FileHash -LiteralPath $Source).Hash -ne $expected) { throw 'Original driver source mismatch.' }
+    $sourceStream = [IO.FileStream]::new($Source,[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::Read)
+    try {
+        $output = [IO.FileStream]::new($Destination,[IO.FileMode]::Create,[IO.FileAccess]::Write,
+            [IO.FileShare]::Read,65536,[IO.FileOptions]::WriteThrough)
+        try { $sourceStream.CopyTo($output); $output.Flush($true) } finally { $output.Dispose() }
+    } finally { $sourceStream.Dispose() }
+    if ((Get-FileHash -LiteralPath $Destination).Hash -ne $expected) { throw 'Durable original copy mismatch.' }
+}
+
+function Backup-StagedTestDriver([string] $Backup) {
+    Copy-StagedOriginalDriver 'C:\Windows\System32\drivers\SafeUpload.sys' $Backup
+}
+
 # Unload refusal must never leave experimental installed bytes behind. If a
 # live kernel object prevents unloading, preserve fixtures and require reboot.
 function Restore-StagedTestDriver([string] $Backup, [bool] $Loaded, [bool] $VerifierEnabled = $false) {
     $installed = 'C:\Windows\System32\drivers\SafeUpload.sys'
     $expected = 'ADA9D05AB6AECDD2B6C521B0CE529FC06C732154ACB3EE85439FBDC8AA80DFCE'
+    if ((Get-FileHash -LiteralPath $Backup).Hash -ne $expected) {
+        throw 'Restoration backup is not the recorded original. Recover the preserved VM snapshot.'
+    }
     $unloaded = -not $Loaded
     if ($Loaded) {
         for ($attempt = 0; $attempt -lt 80 -and -not $unloaded; $attempt++) {
@@ -125,7 +144,7 @@ function Restore-StagedTestDriver([string] $Backup, [bool] $Loaded, [bool] $Veri
     if (-not $unloaded) {
         Move-Item -LiteralPath $installed -Destination ($installed + '.owned-' + [guid]::NewGuid().ToString('N') + '.loaded')
     }
-    Copy-Item -LiteralPath $Backup -Destination $installed -Force
+    Copy-StagedOriginalDriver $Backup $installed
     $hash = (Get-FileHash -LiteralPath $installed -Algorithm SHA256).Hash
     if ($hash -ne $expected) { throw "Original driver restoration failed: $hash" }
     Write-Output "OriginalDriverRestored=$hash"

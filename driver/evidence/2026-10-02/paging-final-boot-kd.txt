@@ -1,0 +1,534 @@
+Opened log file 'C:\Users\vika\Documents\paging-final-kd-private.txt'
+
+************* Preparing the environment for Debugger Extensions Gallery repositories **************
+   ExtensionRepository : Implicit
+   UseExperimentalFeatureForNugetShare : true
+   AllowNugetExeUpdate : true
+   NonInteractiveNuget : true
+   AllowNugetMSCredentialProviderInstall : true
+   AllowParallelInitializationOfLocalRepositories : true
+   EnableRedirectToChakraJsProvider : false
+
+   -- Configuring repositories
+      ----> Repository : LocalInstalled, Enabled: true
+      ----> Repository : UserExtensions, Enabled: true
+
+>>>>>>>>>>>>> Preparing the environment for Debugger Extensions Gallery repositories completed, duration 0.016 seconds
+
+************* Waiting for Debugger Extensions Gallery to Initialize **************
+
+>>>>>>>>>>>>> Waiting for Debugger Extensions Gallery to Initialize completed, duration 0.047 seconds
+   ----> Repository : UserExtensions, Enabled: true, Packages count: 0
+   ----> Repository : LocalInstalled, Enabled: true, Packages count: 30
+
+Microsoft (R) Windows Debugger Version 10.0.28000.2705 AMD64
+Copyright (c) Microsoft Corporation. All rights reserved.
+
+Using NET for debugging
+Opened WinSock 2.0
+Waiting to reconnect...
+Connected to target 192.168.122.232 on port 50000 on local IP 192.168.122.210.
+You can get the target MAC address by running .kdtargetmac command.
+NatVis script successfully loaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\atlmfc.natvis'
+NatVis script successfully loaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\concurrency.natvis'
+NatVis script successfully loaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\cpp_rest.natvis'
+NatVis script successfully loaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\Kernel.natvis'
+NatVis script successfully loaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\ObjectiveC.natvis'
+NatVis script successfully loaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\stl.natvis'
+NatVis script successfully loaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\Usb4Kd.natvis'
+NatVis script successfully loaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\Windows.Data.Json.natvis'
+NatVis script successfully loaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\Windows.Devices.Geolocation.natvis'
+NatVis script successfully loaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\Windows.Devices.Sensors.natvis'
+NatVis script successfully loaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\Windows.Media.natvis'
+NatVis script successfully loaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\windows.natvis'
+NatVis script successfully loaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\winrt.natvis'
+Connected to Windows 10 19041 x64 target at (Fri Oct  2 01:22:43.751 2026 (UTC + 1:00)), ptr64 TRUE
+Kernel Debugger connection established.
+Symbol search path is: srv*
+Executable search path is:
+Windows 10 Kernel Version 19041 MP (1 procs) Free x64
+Edition build lab: 19041.1.amd64fre.vb_release.191206-1406
+Kernel base = 0xfffff801`22011000 PsLoadedModuleList = 0xfffff801`22c3b2b0
+System Uptime: 0 days 0:00:00.891
+Driver Verifier: XdvTimed extension started.
+minio\security\base\lsa\security\driver\asyncsspi.cxx - SspiInitAsyncInterface
+IOINIT: Built-in driver \Driver\hwpolicy failed to initialize with status - 0xC000025E
+KDTARGET: Refreshing KD connection
+DimpHidAddDevice: Failed to open device \\?\HID#VID_0627&PID_0001#7&143c9699&0&0000#{4d1e55b2-f16f-11cf-88cb-001111000030} (err=5).
+DispBroker.Desktop.dll: 10/01/26 21:22:50 GMT Summer Time: SessionHandlerBase::EvaluateTargets found new target
+   Concerning target: Id=0x0, Adapter=69f7 connected to {QXL00012017000001_01_07E1_D5}
+10/01/2026 20:22:51.00000177:RegEnumKeyExW failed with (259)
+10/01/2026 20:22:51.00000177:GP object initialized successfully
+10/01/2026 20:22:51.00000227:Deny_All not set for all. Will query other 6 GUIDs
+10/01/2026 20:22:51.00000266:Policy for other GUID is not enabled, status:  1008
+10/01/2026 20:22:51.00000266:Policy for other GUID is not enabled, status:  1008
+10/01/2026 20:22:51.00000296:Policy for other GUID is not enabled, status:  1008
+10/01/2026 20:22:51.00000296:Policy for other GUID is not enabled, status:  1008
+10/01/2026 20:22:51.00000315:Policy for other GUID is not enabled, status:  1008
+10/01/2026 20:22:51.00000319:Policy for other GUID is not enabled, status:  1008
+10/01/2026 20:22:51.00000903:Deny_All not set for all. Will query other 6 GUIDs
+10/01/2026 20:22:51.00000927:Policy for other GUID is not enabled, status:  1008
+10/01/2026 20:22:51.00000987:Policy for other GUID is not enabled, status:  1008
+10/01/2026 20:22:52.00000031:Policy for other GUID is not enabled, status:  1008
+10/01/2026 20:22:52.00000073:Policy for other GUID is not enabled, status:  1008
+10/01/2026 20:22:52.00000113:Policy for other GUID is not enabled, status:  1008
+10/01/2026 20:22:52.00000136:Policy for other GUID is not enabled, status:  1008
+Driver Verifier: VERIFIER_OPTION_ONEBOOT set before boot. Clearing Verifier options from Registry.
+DfsDs RPC server started.
+QEMU Guest Agent VSS Provider[3208]: DllMain begin, reason = 1
+QEMU Guest Agent VSS Provider[3208]: DllMain end
+QEMU Guest Agent VSS Provider[3208]: requester_init begin
+QEMU Guest Agent VSS Provider[3208]: requester_init end
+QEMU Guest Agent VSS Provider[3272]: DllMain begin, reason = 2
+QEMU Guest Agent VSS Provider[3272]: DllMain end
+QEMU Guest Agent VSS Provider[3340]: DllMain begin, reason = 2
+QEMU Guest Agent VSS Provider[3340]: DllMain end
+QEMU Guest Agent VSS Provider[4208]: DllMain begin, reason = 2
+QEMU Guest Agent VSS Provider[4208]: DllMain end
+QEMU Guest Agent VSS Provider[2904]: DllMain begin, reason = 2
+QEMU Guest Agent VSS Provider[2904]: DllMain end
+QEMU Guest Agent VSS Provider[4824]: DllMain begin, reason = 2
+QEMU Guest Agent VSS Provider[4824]: DllMain end
+10/01/2026 20:24:51.00000951:Deleted GP object
+QEMU Guest Agent VSS Provider[4208]: DllMain begin, reason = 3
+QEMU Guest Agent VSS Provider[4208]: DllMain end
+QEMU Guest Agent VSS Provider[2904]: DllMain begin, reason = 3
+QEMU Guest Agent VSS Provider[2904]: DllMain end
+QEMU Guest Agent VSS Provider[4824]: DllMain begin, reason = 3
+QEMU Guest Agent VSS Provider[4824]: DllMain end
+10/01/2026 20:26:33.00000806:RegEnumKeyExW failed with (259)
+10/01/2026 20:26:33.00000806:GP object initialized successfully
+10/01/2026 20:26:33.00000819:Deny_All not set for all. Will query other 6 GUIDs
+10/01/2026 20:26:33.00000822:Policy for other GUID is not enabled, status:  1008
+10/01/2026 20:26:33.00000823:Policy for other GUID is not enabled, status:  1008
+10/01/2026 20:26:33.00000823:Policy for other GUID is not enabled, status:  1008
+10/01/2026 20:26:33.00000825:Policy for other GUID is not enabled, status:  1008
+10/01/2026 20:26:33.00000825:Policy for other GUID is not enabled, status:  1008
+10/01/2026 20:26:33.00000827:Policy for other GUID is not enabled, status:  1008
+Driver Verifier: Enabled for SafeUpload.sys, flags 0x26bbb, build 19045, key <Verifier boot token redacted>
+[FltMgr] Mini-filter verification enabled for "SafeUpload" filter.
+[SafeUploadStage] op=5 class=0 status=c00000bb
+[SafeUploadStage] op=6 class=10 status=00000000
+[SafeUploadStage] op=3 class=0 status=c0000011
+[SafeUploadStage] op=3 class=0 status=c0000011
+QEMU Guest Agent VSS Provider[2928]: DllMain begin, reason = 2
+QEMU Guest Agent VSS Provider[2928]: DllMain end
+[SafeUploadStage] op=6 class=10 status=c0000043
+[SafeUploadStage] op=6 class=65 status=00000000
+[SafeUploadStage] op=3 class=0 status=c0000011
+[SafeUploadStage] op=3 class=0 status=c0000011
+[SafeUploadStage] op=6 class=10 status=00000000
+[SafeUploadStage] op=3 class=0 status=c0000011
+[SafeUploadStage] op=6 class=20 status=00000000
+[SafeUploadStage] op=6 class=19 status=00000000
+[SafeUploadStage] op=6 class=20 status=00000000
+[SafeUploadStage] op=6 class=19 status=00000000
+[SafeUploadStage] op=6 class=20 status=00000000
+[SafeUploadStage] op=6 class=19 status=00000000
+10/01/2026 20:28:34.00000360:Deleted GP object
+[SafeUploadStage] op=5 class=0 status=c00000bb
+Driver Verifier: Enabled for SafeUpload.sys, flags 0x2613b, build 19045, key <Verifier boot token redacted>
+[FltMgr] Mini-filter verification enabled for "SafeUpload" filter.
+[SafeUploadStage] op=3 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=3 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=3 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=3 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=3 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=3 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=3 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=3 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=3 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=3 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=3 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=3 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=3 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=3 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=3 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=3 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=3 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=3 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=3 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=3 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=3 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=3 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=3 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=3 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=3 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=3 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=3 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=3 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=3 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=3 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=3 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=3 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=3 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=3 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=3 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=3 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=3 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=3 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=3 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=3 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=3 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=3 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=3 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=3 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=3 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=3 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=3 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=3 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=3 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=3 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=3 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=3 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=3 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=3 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=3 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=3 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=3 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=3 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=3 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=3 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=3 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=3 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=3 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=3 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=3 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=3 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=3 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=3 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=3 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=3 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=3 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=3 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=3 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=3 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=3 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=3 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=3 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=3 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=3 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=3 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=3 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=3 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=3 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=3 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=3 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=3 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=3 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=3 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=3 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=3 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=3 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=3 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=3 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=3 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=3 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=3 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=3 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=3 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=3 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=3 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+[SafeUploadStage] op=4 class=0 status=c0000054
+QEMU Guest Agent VSS Provider[2928]: DllMain begin, reason = 3
+QEMU Guest Agent VSS Provider[2928]: DllMain end

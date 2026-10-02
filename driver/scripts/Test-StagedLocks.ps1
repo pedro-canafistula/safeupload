@@ -28,7 +28,7 @@ try {
     [IO.File]::WriteAllText($target,$initial)
     $observer=[IO.FileStream]::new($target,[IO.FileMode]::Open,[IO.FileAccess]::Read,
         [IO.FileShare]::ReadWrite -bor [IO.FileShare]::Delete)
-    Copy-Item $installed $backup -Force
+    Backup-StagedTestDriver $backup
     Copy-Item 'C:\Users\vika\Documents\SafeUpload-stage-prototype.sys' $installed -Force
     $replaced=$true
     if ($Verifier) {

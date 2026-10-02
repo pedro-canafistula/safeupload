@@ -888,20 +888,118 @@ Exit:
     return status;
 }
 
-static FLT_PREOP_CALLBACK_STATUS StageRoutePaging(PFLT_CALLBACK_DATA Data,
-    PSTAGE_STREAM Stream, PVOID *CompletionContext)
+typedef struct _STAGE_PAGING_IO {
+    PSTAGE_STREAM Stream;
+    PFLT_CALLBACK_DATA Original;
+    volatile LONG References; /* Submission and completion own one each. */
+    volatile LONG State;      /* 0 submitting, 1 pended, 2 completed inline. */
+} STAGE_PAGING_IO, *PSTAGE_PAGING_IO;
+
+static NTSTATUS StageClonePagingMdls(PMDL Source, PMDL *Target)
 {
+    *Target = NULL;
+    while (Source != NULL) {
+        PMDL mdl = IoAllocateMdl(MmGetMdlVirtualAddress(Source),
+            MmGetMdlByteCount(Source), FALSE, FALSE, NULL);
+        if (mdl == NULL) return STATUS_INSUFFICIENT_RESOURCES;
+        IoBuildPartialMdl(Source, mdl, MmGetMdlVirtualAddress(Source), 0);
+        *Target = mdl;
+        Target = &mdl->Next;
+        Source = Source->Next;
+    }
+    return STATUS_SUCCESS;
+}
+
+static VOID StageReleasePagingIo(PSTAGE_PAGING_IO Io)
+{
+    if (InterlockedDecrement(&Io->References) == 0)
+        ExFreePoolWithTag(Io, STAGE_TAG);
+}
+
+static VOID StagePagingComplete(PFLT_CALLBACK_DATA Data, PVOID Context)
+{
+    PSTAGE_PAGING_IO io = Context;
+    PFLT_CALLBACK_DATA original = io->Original;
+    original->IoStatus = Data->IoStatus;
+    /* The child owns partial MDLs over the original request's still-locked
+     * pages. FltFreeCallbackData frees its MDL chain, never the upper MDLs. */
+    FltFreeCallbackData(Data);
+    if (InterlockedCompareExchange(&io->State, 2, 0) == 1) {
+        ExReleaseRundownProtection(&io->Stream->PagingRundown);
+        FltCompletePendedPreOperation(original, FLT_PREOP_COMPLETE, NULL);
+    }
+    StageReleasePagingIo(io);
+}
+
+static FLT_PREOP_CALLBACK_STATUS StageRoutePaging(PFLT_CALLBACK_DATA Data,
+    PSTAGE_STREAM Stream)
+{
+    PSTAGE_PAGING_IO io;
+    PFLT_CALLBACK_DATA child = NULL;
+    NTSTATUS status;
+    FLT_PREOP_CALLBACK_STATUS result;
     if ((Stream->ReadOnly && Data->Iopb->MajorFunction != IRP_MJ_READ) ||
         !ExAcquireRundownProtection(&Stream->PagingRundown)) {
         Data->IoStatus.Status = STATUS_MEDIA_WRITE_PROTECTED;
         Data->IoStatus.Information = 0;
         return FLT_PREOP_COMPLETE;
     }
-    Data->Iopb->TargetInstance = Stream->BackingInstance;
-    Data->Iopb->TargetFileObject = Stream->BackingObject;
-    FltSetCallbackDataDirty(Data);
-    *CompletionContext = Stream;
-    return FLT_PREOP_SUCCESS_WITH_CALLBACK;
+    /* Do not retarget the upper IRP: its actual remaining stack locations can
+     * be smaller than the backing device's stack even after the CREATE guard.
+     * The generic allocator is needed here for APC-level paging and Cc's
+     * AdvanceOnly SET_INFORMATION, preserving the original operation/MDL. */
+    if (KeGetCurrentIrql() > APC_LEVEL ||
+        (!FlagOn(Data->Iopb->IrpFlags, IRP_PAGING_IO) && KeGetCurrentIrql() != PASSIVE_LEVEL)) {
+        status = STATUS_INVALID_DEVICE_STATE;
+        goto Fail;
+    }
+    if (FltIsIoCanceled(Data)) { status = STATUS_CANCELLED; goto Fail; }
+    io = ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(*io), STAGE_TAG);
+    if (io == NULL) { status = STATUS_INSUFFICIENT_RESOURCES; goto Fail; }
+    status = FltAllocateCallbackDataEx(Stream->BackingInstance, Stream->BackingObject,
+        FLT_ALLOCATE_CALLBACK_DATA_PREALLOCATE_ALL_MEMORY, &child);
+    if (!NT_SUCCESS(status)) { ExFreePoolWithTag(io, STAGE_TAG); goto Fail; }
+    child->Iopb->MajorFunction = Data->Iopb->MajorFunction;
+    child->Iopb->MinorFunction = Data->Iopb->MinorFunction;
+    child->Iopb->OperationFlags = Data->Iopb->OperationFlags;
+    child->Iopb->Parameters = Data->Iopb->Parameters;
+    if (Data->Iopb->MajorFunction == IRP_MJ_READ || Data->Iopb->MajorFunction == IRP_MJ_WRITE) {
+        PMDL sourceMdl = Data->Iopb->MajorFunction == IRP_MJ_READ ?
+            Data->Iopb->Parameters.Read.MdlAddress : Data->Iopb->Parameters.Write.MdlAddress;
+        PMDL *targetMdl = Data->Iopb->MajorFunction == IRP_MJ_READ ?
+            &child->Iopb->Parameters.Read.MdlAddress : &child->Iopb->Parameters.Write.MdlAddress;
+        status = StageClonePagingMdls(sourceMdl, targetMdl);
+        if (!NT_SUCCESS(status)) {
+            FltFreeCallbackData(child);
+            ExFreePoolWithTag(io, STAGE_TAG);
+            goto Fail;
+        }
+    }
+    /* Buffer ownership, allocation and completion flags belong to the newly
+     * generated IRP. Only the original I/O semantics are transferable. */
+    child->Iopb->IrpFlags = Data->Iopb->IrpFlags &
+        (IRP_NOCACHE | IRP_PAGING_IO | IRP_SYNCHRONOUS_PAGING_IO);
+    child->Iopb->TargetInstance = Stream->BackingInstance;
+    child->Iopb->TargetFileObject = Stream->BackingObject;
+    io->Stream = Stream;
+    io->Original = Data;
+    io->References = 2;
+    io->State = 0;
+    /* FltPerformAsynchronousIo always invokes completion, even on failure;
+     * completion may run before this call returns. Both paths complete the
+     * upper operation exactly once and release rundown only after lower I/O. */
+    (VOID)FltPerformAsynchronousIo(child, StagePagingComplete, io);
+    if (InterlockedCompareExchange(&io->State, 1, 0) == 2) {
+        ExReleaseRundownProtection(&Stream->PagingRundown);
+        result = FLT_PREOP_COMPLETE;
+    } else result = FLT_PREOP_PENDING;
+    StageReleasePagingIo(io);
+    return result;
+Fail:
+    ExReleaseRundownProtection(&Stream->PagingRundown);
+    Data->IoStatus.Status = status;
+    Data->IoStatus.Information = 0;
+    return FLT_PREOP_COMPLETE;
 }
 
 
@@ -948,10 +1046,9 @@ static FLT_PREOP_CALLBACK_STATUS StagePreOperation(PFLT_CALLBACK_DATA Data,
     case IRP_MJ_READ:
     case IRP_MJ_WRITE:
         if (FlagOn(Data->Iopb->IrpFlags, IRP_PAGING_IO)) {
-            /* Preserve paging flags, MDLs and asynchronous completion. The
-             * upper cache/section stays on the destination; only this request
-             * goes to the backing instance. References survive until unload. */
-            return StageRoutePaging(Data, stream, CompletionContext);
+            /* The upper cache/section and original request stay on the
+             * destination. A separate backing I/O owns paging rundown. */
+            return StageRoutePaging(Data, stream);
         }
         if (handle == NULL || handle->Cleaned) {
             status = STATUS_FILE_CLOSED;
@@ -973,7 +1070,7 @@ static FLT_PREOP_CALLBACK_STATUS StagePreOperation(PFLT_CALLBACK_DATA Data,
             Data->Iopb->Parameters.SetFileInformation.AdvanceOnly) {
             /* Cc may advance the on-disk VDL after cleanup. This is not a
              * resize and must never reinitialize the upper private cache map. */
-            return StageRoutePaging(Data, stream, CompletionContext);
+            return StageRoutePaging(Data, stream);
         }
         if (handle == NULL || handle->Cleaned) {
             status = STATUS_FILE_CLOSED;
