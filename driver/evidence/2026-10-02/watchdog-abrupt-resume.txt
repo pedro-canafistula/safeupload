@@ -1,0 +1,37 @@
+Abrupt restart experiment: FAILED to resume model work (not a passing recovery gate).
+
+Committed checkpoint: f1e2917, clean isolated feat/staged-kernel-prototype.
+Pre-kill baseline: overnight-pre-kill-restored-state.txt; no VM experiment active.
+Exact recorded original owner: PID 3444 / birth ticks 5830 / CLI 0.159.2.
+2026-10-02T03:37:18.201666Z abrupt-kill-requested for that identity.
+2026-10-02T03:37:18.201854Z abrupt-kill-signal-sent (SIGKILL).
+2026-10-02T03:38:15.236928Z watchdog resume-started:
+  PID 369504 / birth ticks 4728523
+  thread 01a0f8c5-025f-7ea1-8510-0d278910e7d2
+2026-10-02T03:38:18.783209Z resume-exited, exit code 1.
+Private resume JSONL contains:
+  thread.started: 01a0f8c5-025f-7ea1-8510-0d278910e7d2
+  turn.started
+  error: Selected model is at capacity. Please try a different model.
+  turn.failed with the same capacity error.
+No model/implementation work occurred through that timer invocation.
+
+Subsequent timer probes fail closed on new-user-input / blocked Goal. Inspection
+of the same rollout shows CLI-created environment/Goal context records carry
+role=user and content_item_kinds environments.environment_context and
+goal.internal_context. The original fingerprint scan incorrectly treated those
+control records as real new user authorization, preventing a capacity retry.
+The fix excludes only these explicit recorded metadata kinds, never a text/XML
+prefix; missing/unknown/mixed user.text metadata remains new input. Goal state
+is still authoritative: blocked, paused and limited Goals are never resumed.
+This relies on the observed CLI history metadata and requires requalification
+after changing CLI version; it is not an undocumented production kernel API.
+
+Current active Goal tools report the same UUID after native/user continuation.
+Original /proc/3444 is absent in the current sandbox PID namespace; that alone
+is NOT host process identity proof. The trusted kill-helper/watchdog records
+and CLI thread.started event prove exact-owner signal and same-thread launch.
+They do NOT prove successful unattended continuation, which remains open.
+The later user explicitly resumed with "Just continue, I already woke up".
+The ten-hour timer deadline has passed; do not silently rearm it or start an
+overlapping runner while the current session is active.

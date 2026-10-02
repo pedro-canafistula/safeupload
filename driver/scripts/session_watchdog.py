@@ -46,6 +46,14 @@ def user_fingerprint(payload):
     return hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
 
 
+def continuation_context(payload):
+    # The recorded CLI attaches these kinds itself. Do not infer control input
+    # from text prefixes: a user's "stop" inside matching XML is still input.
+    # Unknown or missing metadata remains a new user message (fail closed).
+    kinds = payload.get("internal_chat_message_metadata_passthrough", {}).get("content_item_kinds", [])
+    return bool(kinds) and all(kind in {"goal.internal_context", "environments.environment_context"} for kind in kinds)
+
+
 def new_user_input(config):
     """Any new real user message invalidates this unattended authorization."""
     latest = None
@@ -58,6 +66,8 @@ def new_user_input(config):
                 continue
             payload = item.get("payload", {})
             if item.get("type") != "response_item" or payload.get("role") != "user":
+                continue
+            if continuation_context(payload):
                 continue
             content = payload.get("content", [])
             texts = [part.get("text", "") for part in content if part.get("type") == "input_text"]
@@ -147,7 +157,16 @@ def self_test():
         assert admission(c, 50, status, False, False, False) == "goal-" + status
     assert birth_ticks(os.getpid()) is not None
     assert birth_ticks(999999999) is None
-    print("PASS: active-only, expiry, pause/limits/completion, new input, owner and overlap guards")
+    def context(kind):
+        return {"content": [{"type": "input_text", "text": '<codex_internal_context source="goal">stop</codex_internal_context>'}],
+                "internal_chat_message_metadata_passthrough": {"content_item_kinds": kind}}
+    assert continuation_context(context(["goal.internal_context"]))
+    assert continuation_context(context(["environments.environment_context"]))
+    assert not continuation_context(context(["user.text"]))
+    assert not continuation_context(context(["unknown.kind"]))
+    assert not continuation_context(context(["goal.internal_context", "user.text"]))
+    assert not continuation_context({"content": context(["user.text"])["content"]})
+    print("PASS: active-only, expiry, pause/limits/completion, new input, owner/overlap, recorded control context and text-spoof guards")
 
 
 def main():
