@@ -8,6 +8,7 @@ app/
 └── presentation/
     ├── __init__.py
     ├── audit.py
+    ├── dashboard.py
     ├── endpoints.py
     ├── routes/
     │   ├── admin.py
@@ -42,9 +43,9 @@ app/
         └── pages.css
 ```
 
-`main.py` cria a aplicação, monta `/static` e registra as rotas. `presentation/__init__.py` configura os templates Jinja2. `routes/admin.py` concentra as declarações HTTP e a seleção de templates. `demo/admin_data.py` concentra os cinco contextos ainda demonstrativos. `presentation/audit.py` monta a Auditoria somente a partir dos eventos entregues pela rota, e `presentation/endpoints.py` monta o inventário somente a partir dos endpoints e eventos entregues pela camada de aplicação. Nenhum desses builders consulta o armazenamento diretamente.
+`main.py` cria a aplicação, monta `/static` e registra as rotas. `presentation/__init__.py` configura os templates Jinja2. `routes/admin.py` concentra as declarações HTTP e a seleção de templates. `demo/admin_data.py` concentra os quatro contextos ainda demonstrativos. `presentation/dashboard.py` monta o Painel a partir de eventos, política e horário entregues pela camada de aplicação; `presentation/audit.py` monta a Auditoria somente a partir dos eventos entregues pela rota; e `presentation/endpoints.py` monta o inventário somente a partir dos endpoints e eventos entregues pela camada de aplicação. Nenhum desses builders consulta o armazenamento diretamente.
 
-Fora da árvore de apresentação acima, `routes/agent.py` recebe heartbeats/eventos e entrega política por meio de `application/agent_service.py`. Os contratos ficam em `domain/schemas.py` e o armazenamento em `infrastructure/memory_store.py`, sem ligação com o banco. `routes/admin.py` consulta eventos e endpoints pelo serviço de aplicação e repassa os dados aos respectivos builders.
+Fora da árvore de apresentação acima, `routes/agent.py` recebe heartbeats/eventos e entrega política por meio de `application/agent_service.py`. Os contratos ficam em `domain/schemas.py` e o armazenamento em `infrastructure/memory_store.py`, sem ligação com o banco. `routes/admin.py` consulta eventos, endpoints, política e horário do servidor pelo serviço de aplicação e repassa os dados aos respectivos builders.
 
 Cada função `build_*_context()` cria uma nova estrutura em memória e não mantém cache ou estado global mutável. O login não possui builder próprio porque não recebe contexto de negócio. Essa separação é interna à camada de apresentação: `demo/` não é serviço de aplicação, repositório nem fonte persistente.
 
@@ -80,7 +81,7 @@ A terceira parte reorganizou o stylesheet monolítico. `styles.css` permanece co
 
 A quarta parte separou os dados demonstrativos das declarações de rota. `routes/admin.py` importa os builders de `demo/admin_data.py`, obtém o contexto e renderiza o mesmo template de antes. Foram criados `build_dashboard_context()`, `build_audit_context()`, `build_reports_context()`, `build_categories_context()`, `build_allowlist_context()`, `build_endpoints_context()` e `build_users_context()`. Os valores, URLs internas, filtros demonstrativos e campos consumidos pelos templates foram preservados.
 
-A evolução de Auditoria somente para leitura moveu seu builder para `presentation/audit.py`. Os exemplos dessa tela e seus controles sem execução foram removidos. A evolução seguinte fez o mesmo com Endpoints: o builder passou para `presentation/endpoints.py`, os exemplos e ações fictícias foram removidos e os filtros passaram a operar sobre os heartbeats recebidos.
+A evolução de Auditoria somente para leitura moveu seu builder para `presentation/audit.py`. Os exemplos dessa tela e seus controles sem execução foram removidos. A evolução seguinte fez o mesmo com Endpoints: o builder passou para `presentation/endpoints.py`, os exemplos e ações fictícias foram removidos e os filtros passaram a operar sobre os heartbeats recebidos. Na evolução seguinte, o Dashboard saiu de `demo/admin_data.py` e passou a usar `presentation/dashboard.py`, agregando eventos reais dos últimos sete dias e a política vigente.
 
 ## Convenções de manutenção
 

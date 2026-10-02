@@ -5,7 +5,7 @@ Todas as rotas deste módulo são prefixadas com ``/admin`` e devem ser
 restritas ao perfil administrador (controle de acesso será adicionado
 quando a camada de segurança for implementada).
 
-Auditoria e Endpoints consultam dados recebidos pela camada de aplicação.
+Painel, Auditoria e Endpoints consultam dados recebidos pela camada de aplicação.
 As demais páginas ainda usam contextos demonstrativos.
 """
 
@@ -15,11 +15,11 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from app.application import agent_service
 from app.presentation import templates
 from app.presentation.audit import build_audit_context
+from app.presentation.dashboard import build_dashboard_context
 from app.presentation.endpoints import build_endpoints_context
 from app.presentation.demo.admin_data import (
     build_allowlist_context,
     build_categories_context,
-    build_dashboard_context,
     build_reports_context,
     build_users_context,
 )
@@ -68,13 +68,12 @@ async def login_submit():
 
 @router.get("/dashboard", response_class=HTMLResponse)
 async def dashboard(request: Request):
-    """Exibe o painel principal com indicadores e inspeções recentes.
-
-    Os dados retornados aqui são fictícios e existem apenas para demonstrar
-    o layout. Quando a camada de infraestrutura existir, este endpoint
-    passará a consultar o banco e o serviço de aplicação.
-    """
-    context = build_dashboard_context()
+    """Exibe indicadores dos eventos recebidos e a política vigente."""
+    context = build_dashboard_context(
+        agent_service.list_audit_events(),
+        agent_service.get_current_policy(),
+        now=agent_service.get_server_time_utc(),
+    )
     return templates.TemplateResponse(request, "admin/dashboard.html", context)
 
 

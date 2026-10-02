@@ -9,18 +9,10 @@
 <div class="page-header">
     <div>
         <h2 class="page-title">Visão geral</h2>
-        <p class="page-subtitle">Indicadores de inspeção processados pelo servidor central</p>
-    </div>
-    <div class="page-actions">
-        <div class="segmented">
-            <button class="segmented-btn">24h</button>
-            <button class="segmented-btn is-active">7 dias</button>
-            <button class="segmented-btn">30 dias</button>
-        </div>
+        <p class="page-subtitle">Indicadores dos eventos efetivamente recebidos pelo servidor — {{ period_label }}</p>
     </div>
 </div>
 
-<!-- KPIs -->
 <div class="kpi-grid">
     <div class="kpi-card">
         <div class="kpi-icon kpi-icon-primary">
@@ -67,14 +59,13 @@
             {{ icon("alert-triangle") }}
         </div>
         <div class="kpi-body">
-            <div class="kpi-label">Rejeitados</div>
-            <div class="kpi-value">{{ kpis.rejected.value }}</div>
-            <div class="kpi-trend">{{ kpis.rejected.trend }}</div>
+            <div class="kpi-label">Liberados sem inspeção</div>
+            <div class="kpi-value">{{ kpis.not_inspected.value }}</div>
+            <div class="kpi-trend">{{ kpis.not_inspected.trend }}</div>
         </div>
     </div>
 </div>
 
-<!-- Gráficos -->
 <div class="dashboard-row">
     <section class="card card-trend">
         <header class="card-header">
@@ -84,9 +75,9 @@
             </div>
         </header>
         <div class="card-body">
-            <div class="bar-chart" role="img" aria-label="Gráfico de barras com volume de inspeções por dia">
+            <div class="bar-chart" role="img" aria-label="Gráfico de barras com volume de inspeções por dia nos últimos sete dias">
                 {% for day in trend %}
-                <div class="bar-chart-item">
+                <div class="bar-chart-item" title="{{ day.date }} — {{ day.value }} inspeções">
                     <div class="bar-chart-track">
                         <div class="bar-chart-bar" style="height: {{ day.percentage }}%;">
                             <span class="bar-chart-value">{{ day.value }}</span>
@@ -103,10 +94,11 @@
         <header class="card-header">
             <div>
                 <h2 class="card-title">Categorias mais detectadas</h2>
-                <p class="card-subtitle">Ocorrências nos arquivos bloqueados</p>
+                <p class="card-subtitle">Ocorrências nos arquivos bloqueados nos últimos 7 dias</p>
             </div>
         </header>
         <div class="card-body">
+            {% if categories_top %}
             <ul class="hbar-list">
                 {% for cat in categories_top %}
                 <li class="hbar-item">
@@ -120,17 +112,19 @@
                 </li>
                 {% endfor %}
             </ul>
+            {% else %}
+            <p class="muted">Nenhuma categoria foi detectada em arquivos bloqueados no período.</p>
+            {% endif %}
         </div>
     </section>
 </div>
 
-<!-- Tabela + categorias ativas -->
 <div class="dashboard-row dashboard-row-wide">
     <section class="card card-recent">
         <header class="card-header">
             <div>
                 <h2 class="card-title">Inspeções recentes</h2>
-                <p class="card-subtitle">As últimas seis inspeções processadas pelo servidor</p>
+                <p class="card-subtitle">As últimas seis inspeções recebidas pelo servidor</p>
             </div>
             <a href="/admin/auditoria" class="card-link">Ver auditoria completa →</a>
         </header>
@@ -138,7 +132,7 @@
             <table class="data-table">
                 <thead>
                     <tr>
-                        <th>Horário</th>
+                        <th>Data / Hora</th>
                         <th>Arquivo</th>
                         <th>Tamanho</th>
                         <th>Resultado</th>
@@ -148,12 +142,10 @@
                 <tbody>
                     {% for ev in recent_events %}
                     <tr>
-                        <td class="cell-mono">{{ ev.time }}</td>
+                        <td class="cell-mono">{{ ev.datetime }}</td>
                         <td class="cell-strong">{{ ev.filename }}</td>
                         <td class="cell-mono">{{ ev.size }}</td>
-                        <td>
-                            <span class="badge badge-{{ ev.result_kind }}">{{ ev.result_label }}</span>
-                        </td>
+                        <td><span class="badge badge-{{ ev.result_kind }}">{{ ev.result_label }}</span></td>
                         <td>
                             {% if ev.categories %}
                                 {% for c in ev.categories %}
@@ -163,6 +155,10 @@
                                 <span class="muted">—</span>
                             {% endif %}
                         </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="5">Nenhuma inspeção recebida até o momento.</td>
                     </tr>
                     {% endfor %}
                 </tbody>
@@ -174,7 +170,7 @@
         <header class="card-header">
             <div>
                 <h2 class="card-title">Categorias ativas</h2>
-                <p class="card-subtitle">Regras de detecção habilitadas no momento</p>
+                <p class="card-subtitle">Política atualmente distribuída aos agentes</p>
             </div>
         </header>
         <div class="card-body">
@@ -182,23 +178,21 @@
                 {% for cat in categories_status %}
                 <li class="status-item">
                     <div class="status-info">
-                        <span class="status-dot {% if cat.enabled %}status-dot-online{% else %}status-dot-off{% endif %}" aria-hidden="true"></span>
+                        <span class="status-dot status-dot-online" aria-hidden="true"></span>
                         <span class="status-label">{{ cat.label }}</span>
                     </div>
-                    <span class="status-tag {% if cat.enabled %}status-tag-on{% else %}status-tag-off{% endif %}">
-                        {% if cat.enabled %}Ativa{% else %}Inativa{% endif %}
-                    </span>
+                    <span class="status-tag status-tag-on">Ativa</span>
                 </li>
+                {% else %}
+                <li class="status-item"><span class="muted">Nenhuma categoria ativa na política vigente.</span></li>
                 {% endfor %}
             </ul>
-            <a href="/admin/categorias" class="card-link card-link-block">Gerenciar categorias →</a>
         </div>
     </section>
 </div>
 
-<!-- Aviso -->
 {% call notice("info") %}
-<strong>Privacidade dos dados:</strong>
-o conteúdo integral dos arquivos é descartado após a inspeção. A auditoria armazena apenas metadados, categorias detectadas e trechos mascarados, nunca valores reais.
+<strong>Dados temporários:</strong>
+os indicadores são calculados a partir dos eventos mantidos em memória pelo servidor e são reiniciados junto com o processo. O conteúdo integral dos arquivos não é armazenado.
 {% endcall %}
 {% endblock %}
