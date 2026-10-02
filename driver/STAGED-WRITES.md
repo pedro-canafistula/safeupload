@@ -1,8 +1,77 @@
 # Staged writes to protected destinations
 
+## Overnight continuation and watchdog checkpoint (2 October 2026)
+
+The user superseded the pause below with overnight continuation, authorized
+disposable virtual USB, a dedicated debugger-VM SMB share and a dedicated
+OneDrive test subfolder, and requested an abrupt session termination to test
+automatic recovery. The objective, branch, acceptance criteria and VM safeguards
+are unchanged. No ClickUp. No additional internals investigation is active.
+
+- [x] Changed journal service self-contained win-x64 Release publish and WPF
+      Release build pass. [Service log](evidence/2026-10-02/journal-service-release.txt),
+      [application log](evidence/2026-10-02/journal-app-release.txt).
+      New service ZIP SHA256:
+      `D887E0D7F38AD64AD40CEE18B841C6D38AD2BED4D6F760B1BDE4464927381997`.
+      Builder: `C:\Users\vika\Documents\journal-security-milestone\stage-service-publish.zip`;
+      downloaded and hash-verified: `/tmp/safeupload-journal-current-service.zip`.
+      It has **not been deployed to the debuggee**. The old 4EB6… guest package
+      remains the qualified baseline; the kernel is still unchanged 4B60… .
+- [x] Same-thread active Goal and bounded user systemd recovery timer configured.
+      Guard self-tests and the real API dry run pass; a live owner is skipped.
+- [ ] Abrupt-stop recovery proof. The deliberate SIGKILL is scheduled only after
+      this checkpoint is committed; the resumed runner must record actual proof.
+- [ ] Real LocalSystem journal security/recovery and integrated VM gates.
+
+Read [the exact resume handoff](evidence/2026-10-02/overnight-resume.md) first after
+an unexpected interruption. [Independent pre-kill restoration](evidence/2026-10-02/overnight-pre-kill-restored-state.txt)
+passes: original ADA9… installed SYS, unloaded filter, Manual/Stopped service,
+configured and active Verifier off, original policy, no test processes/tasks or
+volume fixtures, builder temporary debugger task/rule/process absent. No VM
+experiment is active. Guest and builder clocks differ; both are recorded.
+
+The watchdog uses the public CLI `exec resume <exact UUID>` and read-only public
+app-server `thread/goal/get`, never edits internal databases or Goal state, and
+holds a nonblocking file lock for the entire resumed run. It checks recorded
+owner PID **and birth time**, another exact-thread CLI resume, active Goal,
+unchanged branch, unchanged user authorization and a ten-hour deadline. Pause,
+usage/budget limits, completion or new user input prevent a restart. The native
+Goal handles idle continuation while the original TUI is alive; the timer handles
+its disappearance. Other Codex app-server processes are left alone. This is
+same-thread recovery, not delegated work or a new session. Existing full-access,
+noninteractive permissions and CLI version are retained; no model override.
+The timer does not cancel an experiment already in progress at expiry.
+
+Configuration/logs: `/home/victor/.local/state/safeupload-overnight` (directory
+0700, configuration/output 0600). Goal/thread:
+`01a0f8c5-025f-7ea1-8510-0d278910e7d2`. Timer:
+`safeupload-session-watchdog.timer`, initial probe 30 seconds, then two minutes
+after each service completion; companion expiry timer stops further probes at
+approximately **2026-10-02T13:31:10Z**. Both are transient user units. To prevent
+further unattended starts without interrupting an active experiment:
+
+```bash
+systemctl --user stop safeupload-session-watchdog.timer safeupload-session-watchdog-expiry.timer
+python3 driver/scripts/session_watchdog.py --self-test
+python3 driver/scripts/session_watchdog.py --config /home/victor/.local/state/safeupload-overnight/config.json --dry-run
+```
+
+Limits: this recovers a vanished recorded CLI process while the host/user manager,
+network and account access remain available. It does not recover host power loss,
+override limits or prove an already-running but hung runner has stopped. A live
+runner is never killed by the watchdog. The one deliberate termination is the
+user-requested idle-baseline test, restricted to the recorded TUI identity.
+
+OneDrive registry discovery finds `C:\Users\vika\OneDrive` on the builder and
+`C:\Users\vika\OneDrive - União Brasileira de Educação Católica - UBEC` on the
+debuggee, with OneDrive processes in Session 1 on both. No existing user content
+was inspected or modified. Account equivalence and actual cloud-side bytes have
+not been verified; folder presence is not sync-stack qualification. Use a new
+dedicated fixture subfolder and retain independent destination observers.
+
 ## Pause checkpoint (2 October 2026, user requested a break)
 
-**Work is paused, not complete.** Continue on `feat/staged-kernel-prototype` from
+**Historical pause, superseded by the overnight request above.** Continue on `feat/staged-kernel-prototype` from
 this checkpoint commit. Do not query ClickUp. The completed kernel increment is
 `b6e93d6` (parent namespace rename admission); its four WDK builds and ordinary,
 runtime and boot/integrated VM gates pass. The immediately preceding increments

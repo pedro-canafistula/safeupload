@@ -1,0 +1,12 @@
+Host UTC 2026-10-02T03:35:27Z
+Thread/Goal 01a0f8c5-025f-7ea1-8510-0d278910e7d2
+Original owner PID 3444, birth ticks 5830, CLI 0.159.2
+Guard self-test PASS: active-only, expiry, pause/limits/completion, new input, owner and overlap guards
+Public initialize and thread/goal/get PASS: active
+Real dry-run PASS: owner-alive
+Real timer probes 03:32:00 and 03:34:05 PASS: owner-alive
+Transient watchdog timer ACTIVE: initial 30s, subsequent 2min after completion
+Expiry timer ACTIVE: approximately 2026-10-02T13:31:10Z
+Configuration 0600, directory 0700, lock held through entire resume
+Latest goodnight user steering preserves authorization
+Abrupt termination test NOT YET RUN: resumer must record outcome separately
