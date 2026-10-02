@@ -256,6 +256,12 @@ typedef struct _SAFEUPLOAD_RESPONSE {
 
 #if defined(SAFEUPLOAD_STAGING_PROTOTYPE) && SAFEUPLOAD_STAGING_PROTOTYPE
 #define SAFEUPLOAD_CONTROL_ADMISSION_TRACE_ENABLE       ((UINT32) 5)
+/*
+ *  ENABLE carries its options in SAFEUPLOAD_CONTROL.Reserved. Section
+ *  synchronization events are system-wide and ~1000 per second, so they are
+ *  recorded only when asked for; the default trace holds writes, probes and setup.
+ */
+#define SAFEUPLOAD_ADMISSION_TRACE_OPTION_SECTION_EVENTS ((UINT32) 1)
 #define SAFEUPLOAD_CONTROL_ADMISSION_TRACE_DISABLE      ((UINT32) 6)
 #define SAFEUPLOAD_CONTROL_ADMISSION_TRACE_CLEAR        ((UINT32) 7)
 #define SAFEUPLOAD_CONTROL_ADMISSION_TRACE_READ_BATCH   ((UINT32) 8)

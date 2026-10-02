@@ -1,0 +1,15 @@
+You are a FRESH adversarial reviewer (Codex worker) for a SMALL kernel/Inspector delta in /home/victor/Work/safeupload-staging (branch feat/staged-kernel-prototype, HEAD 46e0d12, uncommitted working tree). READ-ONLY: do not build, run any VM/virsh/ssh/scp/network command, or edit any source file.
+
+## Context
+Slice 1 (committed as 46e0d12) is a feature-only, default-OFF, observe-only admission trace. A first VM run showed its section-synchronization hook records every unowned section acquire/release system-wide (11,383 events in about 5 s, almost all process-launch noise), overwriting the 256-entry ring so the experiment's own events (the explicit probe entry) were lost. The delta makes section events OPT-IN: `SAFEUPLOAD_ADMISSION_TRACE_OPTION_SECTION_EVENTS` (Protocol.h) is carried in SAFEUPLOAD_CONTROL.Reserved of the ENABLE message; a new `volatile LONG SafeUploadAdmissionTraceSectionEvents` (StageStream.c) is set by ENABLE and gates only the section hook; `SafeUploadStageAdmissionTraceControl` gains an Options parameter (Stage.h/StageStream.c); Communication.c accepts a non-zero Reserved only on ENABLE and only with that bit; the Inspector adds `--admission-trace-enable-sections` and passes Options (0 for the other commands).
+
+## Task
+1. `git diff HEAD -- driver/SafeUpload.Minifilter driver/SafeUpload.Inspector` is the whole delta. Review it for: logic errors; the Reserved validation (is any other value or command still rejected; unsigned complement correctness; behavior with Reserved=0 equals the committed behavior); races (the option is set under AdmissionTraceControlMutex but read lock-free in the hook: any torn read, stale read, or ordering problem with Enable/Disable/Clear and the generation-tagged trace state); initial value and reset at StageInitialize and what happens across Disable then Enable without the option; unload; IRQL (the hook reads a volatile LONG only); compile risk under warnings-as-errors/SAL (parameter added to a declaration and definition, the PAGE-pragma'd function); feature guards (nothing outside SAFEUPLOAD_STAGING_PROTOTYPE; the normal driver and normal Inspector unchanged); Inspector argument handling and exit codes; any information leak or new user-controlled path.
+2. Confirm that StageAdmit and StageCreate remain byte-identical to HEAD (compare function bodies via git show HEAD:... versus the working tree).
+3. Say whether leaving the section hook compiled in but disabled by default changes its cost materially (one extra volatile load and branch).
+
+## Output
+Create exactly one file: driver/evidence/2026-10-02/admission-diagnostic-review5.txt (plain text, at most 50 lines): verdict (BLOCKED / BUILD-AFTER-FIXES / OK-TO-RUN-ON-DISPOSABLE-VM), findings ranked most-severe first as `[BLOCKER|MAJOR|MINOR] file:line - defect - concrete failure scenario - suggested fix`, then what you verified and could not verify. Forbidden: editing any other file; git commit/push/reset/clean/checkout/stash; deleting anything; VM/virsh/ssh/scp/network.
+
+## Final message (at most 80 words)
+Verdict, counts of blockers/majors/minors, the most dangerous finding with file:line, what you could not verify.

@@ -687,7 +687,7 @@ Cleanup:
     return exitCode;
 }
 
-static int SendAdmissionTraceControl(_In_ UINT32 Command, _In_z_ PCWSTR Name)
+static int SendAdmissionTraceControl(_In_ UINT32 Command, _In_z_ PCWSTR Name, _In_ UINT32 Options)
 {
     SAFEUPLOAD_CONTROL control;
     HANDLE port = INVALID_HANDLE_VALUE;
@@ -704,6 +704,7 @@ static int SendAdmissionTraceControl(_In_ UINT32 Command, _In_z_ PCWSTR Name)
     control.Version = SAFEUPLOAD_PROTOCOL_VERSION;
     control.StructSize = sizeof(control);
     control.Command = Command;
+    control.Reserved = Options;
     hr = FilterSendMessage(port, &control, sizeof(control), NULL, 0, &returned);
     CloseHandle(port);
     if (FAILED(hr) || returned != 0) {
@@ -841,17 +842,23 @@ Return Value:
 #if defined(SAFEUPLOAD_STAGING_PROTOTYPE) && SAFEUPLOAD_STAGING_PROTOTYPE
     if (argc > 1 && _wcsicmp(argv[1], L"--admission-trace-enable") == 0) {
         return SendAdmissionTraceControl(SAFEUPLOAD_CONTROL_ADMISSION_TRACE_ENABLE,
-                                         L"admission trace enable");
+                                         L"admission trace enable", 0);
+    }
+
+    if (argc > 1 && _wcsicmp(argv[1], L"--admission-trace-enable-sections") == 0) {
+        return SendAdmissionTraceControl(SAFEUPLOAD_CONTROL_ADMISSION_TRACE_ENABLE,
+                                         L"admission trace enable with section events",
+                                         SAFEUPLOAD_ADMISSION_TRACE_OPTION_SECTION_EVENTS);
     }
 
     if (argc > 1 && _wcsicmp(argv[1], L"--admission-trace-disable") == 0) {
         return SendAdmissionTraceControl(SAFEUPLOAD_CONTROL_ADMISSION_TRACE_DISABLE,
-                                         L"admission trace disable");
+                                         L"admission trace disable", 0);
     }
 
     if (argc > 1 && _wcsicmp(argv[1], L"--admission-trace-clear") == 0) {
         return SendAdmissionTraceControl(SAFEUPLOAD_CONTROL_ADMISSION_TRACE_CLEAR,
-                                         L"admission trace clear");
+                                         L"admission trace clear", 0);
     }
 
     if (argc > 1 && _wcsicmp(argv[1], L"--admission-trace") == 0) {

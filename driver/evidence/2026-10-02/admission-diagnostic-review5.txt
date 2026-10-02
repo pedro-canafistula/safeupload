@@ -1,0 +1,18 @@
+Admission diagnostic review 5
+Verdict: OK-TO-RUN-ON-DISPOSABLE-VM
+
+Findings (most severe first)
+[MINOR] driver/SafeUpload.Minifilter/StageStream.c:234 - live option changes do not synchronize with trace callbacks - If tracing is enabled with section events and ENABLE with Reserved=0 arrives while a section hook has read the old value, that hook can pass the unchanged generation check and record after the control returns; enabling the bit live can similarly miss an in-flight event - change options through a generation transition plus rundown drain, or define live changes as best-effort and require Disable/Enable for a strict boundary.
+
+Verified
+- Trace ENABLE accepts Reserved=0 or exactly bit 0. The UINT32 complement mask rejects every other bit/value. DISABLE and CLEAR still reject nonzero Reserved; READ_BATCH and ADMISSION_PROBE still require zero; unknown commands remain unsupported.
+- Reserved=0 remains accepted and follows the committed enable/state transitions; the intentional change is that section events are now off unless bit 0 is requested. A fresh ENABLE sets the option before publishing enabled state.
+- StageInitialize explicitly initializes the option to zero. DISABLE gates callbacks off and drains rundown; a later ENABLE without bit 0 resets it to zero. CLEAR preserves the current option while resetting the ring and, if previously enabled, resumes tracing.
+- The aligned volatile LONG read is scalar/atomic on supported Windows targets; no torn-read issue found. The live-toggle overlap above is the remaining stale-observation case. The hook takes no lock and reads the option only after the trace-enabled check.
+- Shutdown disables trace and drains rundown in StageAdmissionTraceShutdown after filter callback teardown; the option adds no unload lifetime dependency. The dispatch change is under SAFEUPLOAD_STAGING_PROTOTYPE; Protocol/Stage declarations, Communication handling, and Inspector switch are similarly guarded.
+- The added parameter is consistent across declaration, definition, and sole call; the PAGE pragma still names the same function. No SAL or warnings-as-errors defect found by source inspection.
+- Inspector switch is exact-match and guarded; it passes the one defined bit, while other trace commands pass zero. Existing helper exit codes remain 0 (success), 2 (connect failure), 3 (driver refusal). No path input or new user-controlled path was added.
+- StageAdmit and StageCreate function bodies compare byte-identical to HEAD. The default-off hook adds only a conditional volatile load and branch when tracing is enabled; short-circuiting skips that load while tracing is disabled. This is not a material cost increase.
+
+Could not verify
+- No build was run, so compiler/SAL diagnostics were not exercised. No VM/runtime or IRQL execution was run, as prohibited by the review instructions.

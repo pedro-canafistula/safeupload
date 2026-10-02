@@ -4,7 +4,11 @@
 #   2. disk-only external checkpoint (documented virsh command; earlier disks are preserved)
 #   3. copy the harness script, run the given PowerShell line, tee the full output to evidence
 #   4. SEPARATE restoration check (a new remote call, not the harness's own output)
-# Usage: Invoke-DebuggeeExperiment.sh <name> <harness.ps1 path> '<PowerShell invocation line>'
+# Usage: [EXTRA_FILES='local=guestname ...'] [PRE_RUN_PS='<PowerShell>'] \
+#        Invoke-DebuggeeExperiment.sh <name> <harness.ps1 path> '<PowerShell invocation line>'
+# EXTRA_FILES are copied to the guest Documents folder AFTER the checkpoint, so the checkpoint stays a clean
+# original; PRE_RUN_PS runs on the guest after the checkpoint and before the copy (for example to preserve
+# an existing file under a new name). Both are recorded in the gate file.
 # Outputs: driver/evidence/<today>/<name>-{baseline,checkpoint,gate,final-restored-state}.txt
 # The harness exit status is NOT the verdict; read the gate and the restoration files.
 set -uo pipefail
@@ -43,6 +47,15 @@ snap="safeupload-pre-$name-$stamp"; overlay="/var/lib/libvirt/images/win10-debug
 grep -q "$overlay" <(virsh -c qemu:///system domblklist win10-debug) || { echo "CHECKPOINT NOT ACTIVE; aborting"; exit 12; }
 
 echo "== 3. run"
+if [ -n "${PRE_RUN_PS:-}" ]; then
+    echo "PRE_RUN_PS: $PRE_RUN_PS" | tee "$ev/$name-prerun.txt"
+    python3 driver/scripts/remote_ps.py "$host" <<<"$PRE_RUN_PS" 2>&1 | clean | tee -a "$ev/$name-prerun.txt"
+fi
+for pair in ${EXTRA_FILES:-}; do
+    src="${pair%%=*}"; dst="${pair#*=}"
+    scp "${scp_opts[@]}" "$src" "vika@$host:$guest_docs/$dst" || { echo "copy failed: $src"; exit 14; }
+    echo "copied $src -> $dst sha256=$(sha256sum "$src" | cut -d' ' -f1)" | tee -a "$ev/$name-prerun.txt"
+done
 scp "${scp_opts[@]}" "$harness" "vika@$host:$guest_docs/$(basename "$harness")" || { echo "harness copy failed"; exit 13; }
 python3 driver/scripts/remote_ps.py "$host" <<PS 2>&1 | clean | tee "$ev/$name-gate.txt"
 \$ErrorActionPreference = 'Continue'

@@ -74,6 +74,7 @@ static BOOLEAN StageInitialized;
 // Static storage is nonpaged and gives the callback path a bounded ring with
 // no allocation or lifetime race. An odd control state means tracing is on.
 volatile LONG SafeUploadAdmissionTraceControlState;
+volatile LONG SafeUploadAdmissionTraceSectionEvents;
 DECLSPEC_ALIGN(8) static SAFEUPLOAD_ADMISSION_TRACE_ENTRY AdmissionTraceRing[
     SAFEUPLOAD_ADMISSION_TRACE_RING_ENTRIES];
 DECLSPEC_ALIGN(8) static volatile LONG64 AdmissionTraceNextSequence;
@@ -218,7 +219,7 @@ VOID SafeUploadStageAdmissionTraceRecord(
     (VOID)StageAdmissionTraceRecordInternal(Entry, FALSE);
 }
 
-NTSTATUS SafeUploadStageAdmissionTraceControl(_In_ UINT32 Command)
+NTSTATUS SafeUploadStageAdmissionTraceControl(_In_ UINT32 Command, _In_ UINT32 Options)
 {
     LONG state;
     BOOLEAN wasEnabled;
@@ -230,6 +231,8 @@ NTSTATUS SafeUploadStageAdmissionTraceControl(_In_ UINT32 Command)
     wasEnabled = (state & 1) != 0;
 
     if (Command == SAFEUPLOAD_CONTROL_ADMISSION_TRACE_ENABLE) {
+        InterlockedExchange(&SafeUploadAdmissionTraceSectionEvents,
+                            (Options & SAFEUPLOAD_ADMISSION_TRACE_OPTION_SECTION_EVENTS) != 0 ? 1 : 0);
         if (!wasEnabled) {
             if (AdmissionTraceRundownClosed) {
                 ExReInitializeRundownProtection(&AdmissionTraceRundown);
@@ -1830,6 +1833,7 @@ NTSTATUS SafeUploadStageInitialize(VOID)
         ExInitializeRundownProtection(&AdmissionTraceRundown);
         AdmissionTraceRundownClosed = FALSE;
         InterlockedExchange(&SafeUploadAdmissionTraceControlState, 0);
+        InterlockedExchange(&SafeUploadAdmissionTraceSectionEvents, 0);
         StageAdmissionTraceReset();
 #endif
         StageInitialized = TRUE;
@@ -2170,7 +2174,8 @@ FLT_PREOP_CALLBACK_STATUS SafeUploadStageDispatch(PFLT_CALLBACK_DATA Data,
 #if SAFEUPLOAD_STAGING_PROTOTYPE
         {
             LONG traceState = SafeUploadAdmissionTraceControlState;
-            if ((traceState & 1) != 0 && SafeUploadStageAdmissionTraceBegin(traceState)) {
+            if ((traceState & 1) != 0 && SafeUploadAdmissionTraceSectionEvents != 0 &&
+                SafeUploadStageAdmissionTraceBegin(traceState)) {
                 SAFEUPLOAD_ADMISSION_TRACE_ENTRY entry;
 
                 StageAdmissionTraceFillOperation(&entry, Data, Objects,

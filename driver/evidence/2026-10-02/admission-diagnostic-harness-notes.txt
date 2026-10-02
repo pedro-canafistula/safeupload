@@ -1,0 +1,62 @@
+# Staged admission diagnostic harness notes
+
+Date: 2026-10-02
+
+## Purpose and inputs
+- This harness is observation-only; it reports bytes and trace facts without making enforcement or acceptance claims.
+- Stage the harness as C:\Users\vika\Documents\Test-StagedAdmissionDiagnostic.ps1.
+- Stage the feature SYS as C:\Users\vika\Documents\SafeUpload-stage-prototype.sys.
+- Stage the feature Inspector as C:\Users\vika\Documents\SafeUpload.Inspector.input.exe; the harness hash-checks it, copies it to SafeUpload-admission-inspector.exe, runs it as SYSTEM, then removes that copy after verified restoration.
+- The expected feature hash from the retained run-6 artifact is 5C4D04F50F37CA477110B5D496F8698C791842030E7D14AC3834704F70EEC516.
+- The expected Inspector artifact hash is 84D7857B61FC930FFE3CA37602AB494D71C4D353EA9960AE7A819431A31EA8A0.
+- The existing service package and publish directory must be present in Documents with the hash checked by the harness.
+- Every invocation requires -ExpectedFeatureSha256 and -ExpectedInspectorSha256; optional -InspectorTimeoutSeconds defaults to 60.
+
+## Host staging and invocation
+From /home/victor/Work/safeupload-staging, use the same host scp and remote PowerShell pattern as STAGED-WRITES.md:
+
+    scp -F /dev/null -i /home/victor/.ssh/id_ed25519 -o BatchMode=yes -o ConnectTimeout=10 -o LogLevel=ERROR -o StrictHostKeyChecking=accept-new driver/scripts/Test-StagedAdmissionDiagnostic.ps1 vika@192.168.122.51:'C:/Users/vika/Documents/Test-StagedAdmissionDiagnostic.ps1'
+    scp -F /dev/null -i /home/victor/.ssh/id_ed25519 -o BatchMode=yes -o ConnectTimeout=10 -o LogLevel=ERROR -o StrictHostKeyChecking=accept-new "$FEATURE_SYS" vika@192.168.122.51:'C:/Users/vika/Documents/SafeUpload-stage-prototype.sys'
+    scp -F /dev/null -i /home/victor/.ssh/id_ed25519 -o BatchMode=yes -o ConnectTimeout=10 -o LogLevel=ERROR -o StrictHostKeyChecking=accept-new "$INSPECTOR_EXE" vika@192.168.122.51:'C:/Users/vika/Documents/SafeUpload.Inspector.input.exe'
+
+Example remote calls (run one selected variant per invocation):
+
+    set -o pipefail
+    python3 driver/scripts/remote_ps.py 192.168.122.51 <<'PS' 2>&1 | tee driver/evidence/2026-10-02/admission-diagnostic-preattach-immediate-gate.txt
+    $ErrorActionPreference='Stop'
+    & 'C:\Users\vika\Documents\Test-StagedAdmissionDiagnostic.ps1' -Variant preattach-immediate -ExpectedFeatureSha256 '5C4D04F50F37CA477110B5D496F8698C791842030E7D14AC3834704F70EEC516' -ExpectedInspectorSha256 '84D7857B61FC930FFE3CA37602AB494D71C4D353EA9960AE7A819431A31EA8A0'
+    PS
+
+    python3 driver/scripts/remote_ps.py 192.168.122.51 <<'PS' 2>&1 | tee driver/evidence/2026-10-02/admission-diagnostic-preattach-protected-open-gate.txt
+    $ErrorActionPreference='Stop'
+    & 'C:\Users\vika\Documents\Test-StagedAdmissionDiagnostic.ps1' -Variant preattach-protected-open -ExpectedFeatureSha256 '5C4D04F50F37CA477110B5D496F8698C791842030E7D14AC3834704F70EEC516' -ExpectedInspectorSha256 '84D7857B61FC930FFE3CA37602AB494D71C4D353EA9960AE7A819431A31EA8A0'
+    PS
+
+    python3 driver/scripts/remote_ps.py 192.168.122.51 <<'PS' 2>&1 | tee driver/evidence/2026-10-02/admission-diagnostic-mmdoes-matrix-gate.txt
+    $ErrorActionPreference='Stop'
+    & 'C:\Users\vika\Documents\Test-StagedAdmissionDiagnostic.ps1' -Variant mmdoes-matrix -ExpectedFeatureSha256 '5C4D04F50F37CA477110B5D496F8698C791842030E7D14AC3834704F70EEC516' -ExpectedInspectorSha256 '84D7857B61FC930FFE3CA37602AB494D71C4D353EA9960AE7A819431A31EA8A0'
+    PS
+
+    python3 driver/scripts/remote_ps.py 192.168.122.51 <<'PS' 2>&1 | tee driver/evidence/2026-10-02/admission-diagnostic-policy-transition-gate.txt
+    $ErrorActionPreference='Stop'
+    & 'C:\Users\vika\Documents\Test-StagedAdmissionDiagnostic.ps1' -Variant policy-transition -ExpectedFeatureSha256 '5C4D04F50F37CA477110B5D496F8698C791842030E7D14AC3834704F70EEC516' -ExpectedInspectorSha256 '84D7857B61FC930FFE3CA37602AB494D71C4D353EA9960AE7A819431A31EA8A0'
+    PS
+
+Use -Variant All to run them in the listed order; each invocation verifies baseline first. Save the complete remote output as evidence. The Trace_RawFile fact names the final verbatim Inspector JSON output under Documents; the matrix also retains pre-write and post-A snapshots used for write-window attribution.
+
+## Runtime estimates and questions
+- preattach-immediate: about 30-90 seconds; observes whether pre-attachment writeback reaches the trace, plus paired cached/uncached bytes without an earlier probe.
+- preattach-protected-open: about 60-120 seconds; adds the in-scope protected read-only open before the old-view write and records its outcome.
+- mmdoes-matrix: about 60-150 seconds; compares explicit-probe mmDoes, status, and SOP for closed writable, closed read-only, unmapped, and open-handle fixtures; SOP write comparisons use trace sequence windows.
+- policy-transition: about 90-180 seconds; observes a mapping across baseline-policy push and scope expansion, with the old-view write while the expanded-policy agent is connected.
+- R1/R2/R3 answer the cached-versus-uncached observer question for each applicable write ordering in this no-refusal run. Unknown #4 under an intentional paging-write refusal remains a separate test.
+- All: estimate 4-8 minutes. Agent policy readiness can take up to 45 seconds per start, and every Inspector call has a 60-second default timeout.
+
+## Output assumptions and limits
+- Inspector entry keys used here are event, major, irpFlags, ownedStream, mmDoes, probeStatus, and sectionObjectPointer; explicit probe entries use event=explicit_probe. The final summary line uses summary=true and lostEntries / snapshotSequence.
+- The explicit probe has no inline create-path dependency and does not require an agent or policy. Each Inspector task is SYSTEM because the port accepts only a SYSTEM primary token and one client at a time.
+- Every fixture path component is checked for ReparsePoint before driver load; alternate-stream colons are rejected. A redirected Documents tree that contains a reparse component is outside this run's supported path setup.
+- The native reader requires 4096 bytes to be a whole number of the volume's sectors and uses a VirtualAlloc buffer, offset zero, and a 4096-byte ReadFile.
+- Trace events carry no file path. Matrix probe association follows sequential Inspector calls; write SOP equality is reported only when the trace sequence window yields one unambiguous SOP. Other cases are AMBIGUOUS or NoPagingEntry.
+- The trace is bounded and may report lost entries. A timed-out probe does not cancel a lower open that may still be in flight; the harness stops the Inspector task, does not reconnect, runs restoration, prints InspectorTimeout=<command>, and returns failure. Follow the VM checkpoint procedure if restoration does not verify.
+- The harness never enables Verifier and leaves raw trace JSON files in Documents as evidence.

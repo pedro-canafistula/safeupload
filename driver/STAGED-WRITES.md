@@ -30,9 +30,9 @@ remains. No watchdog work or new internals investigation is active.
       destination after expansion; [gate](evidence/2026-10-02/policy-transition-eof-map-gate.txt),
       [independent restoration](evidence/2026-10-02/policy-transition-eof-map-final-restored-state.txt).
       Earlier harness failures are excluded (see the follow-up below).
-- [x] Observe-only admission diagnostic implemented, reviewed and built clean (feature
-      only, default off; see "Slice 1" below). **Not yet run on the debuggee; no leak
-      is blocked by it.**
+- [x] Observe-only admission diagnostic implemented, reviewed, built clean and run on the
+      debuggee (feature only, default off; see "Slice 1" below). It answers the four
+      unknowns; **no leak is blocked by it**.
 - [ ] Complete namespace/policy/attachment admission, existing physical sections
       (both open leaks above), remaining mutation classes and the broader
       acceptance tracker.
@@ -366,7 +366,7 @@ is recorded as an observation, not as a blocked leak.
 
 ### Slice 1: observe-only admission diagnostic (2 October 2026)
 
-**Status: built, reviewed three times plus a delta pass (OK-TO-RUN-ON-DISPOSABLE-VM), NOT yet run on the debuggee.** No leak is
+**Status: built, reviewed (OK-TO-RUN-ON-DISPOSABLE-VM), run on the debuggee; results below.** No leak is
 closed or blocked by this slice. It adds no enforcement. It exists to answer the four unknowns
 above before any enforcement code is written.
 
@@ -440,16 +440,59 @@ Failed attempts kept as **non-acceptance** records: [run 1](evidence/2026-10-02/
 (PREfast C6262, a 1104-byte reply on the kernel stack in `Communication.c`; moved to the existing
 pool scratch buffer with a size assertion).
 
-**Not claimed:** any runtime behavior of this code; that a pre-attachment writeback reaches the
-hooks; section-pointer identity between the probe and a mapping's file object; the
-`MmDoesFileHaveUserWritableReferences` values; latency; Verifier cleanliness; that the probe is
-safe outside the disposable VM. Next: the harness (buffered and uncached readers, four variants),
-a checkpointed debuggee run, and an independent restoration check.
+**Section events are now opt-in** (review 5, [OK-TO-RUN-ON-DISPOSABLE-VM](evidence/2026-10-02/admission-diagnostic-review5.txt), one accepted minor:
+live option changes are best-effort, a strict boundary needs Disable then Enable). The first VM runs showed the section hook
+records every unowned section acquire/release system-wide (11,383 events in ~5 s, almost all process-launch noise), which
+overwrote the 256-entry ring and lost the probe entry. `--admission-trace-enable` now records writes, probes and setup;
+`--admission-trace-enable-sections` adds section events. Build evidence for the final source is
+`admission-diagnostic-run7-*` (4 of 4 driver and 4 of 4 Inspector builds 0/0, 275 tests, `NormalBuildIdentity=PASS`,
+test-signed Debug feature SYS `FA83DA8A447B008107B5384233824E767EE863953B6F4CC08A2A00D77E540A39`,
+feature Release Inspector `F657B976557222E3EFA194BA7A4894761B78B0679D43F2962B91833780D9423D`;
+[verification](evidence/2026-10-02/admission-diagnostic-run7-builder-verification.txt)).
 
-The worker's own draft command script ([admission-diagnostic-build-commands.sh](evidence/2026-10-02/admission-diagnostic-build-commands.sh))
-was not used; builds ran through `driver/scripts/Invoke-BuilderBuild.sh`, which syncs the changed sources,
-verifies their hashes on the builder and records the log. `Invoke-DebuggeeExperiment.sh` is the matching
-wrapper for debuggee runs (baseline check, disk-only checkpoint, run, separate restoration check).
+### Slice 1 VM results (2 October 2026)
+
+Every run: `Get-StagedBaseline.ps1` baseline check, a disk-only checkpoint overlay (`safeupload-pre-admission-diag-*`),
+the run, then a **separate** restoration check with `BaselineClean=True` (original SYS/policy, filter unloaded, Verifier off,
+no agents/tasks/fixtures). Harness: [`Test-StagedAdmissionDiagnostic.ps1`](scripts/Test-StagedAdmissionDiagnostic.ps1)
+(parse check 0 errors on the guest; it observes only and never labels a result blocked or reproduced). Wrapper:
+[`Invoke-DebuggeeExperiment.sh`](scripts/Invoke-DebuggeeExperiment.sh). Section-pointer analysis is reproduced from the raw
+traces by [`Analyze-AdmissionTrace.py`](scripts/Analyze-AdmissionTrace.py): [output](evidence/2026-10-02/admission-diag-sop-analysis.txt).
+
+| Run | Variant | Evidence | Status |
+| --- | --- | --- | --- |
+| v1 | preattach-immediate | [gate](evidence/2026-10-02/admission-diag-v1-gate.txt) | **Non-acceptance**: section-event noise overwrote the ring (11,127 lost) and the harness discarded the probe command's output |
+| v1b | preattach-immediate | [gate](evidence/2026-10-02/admission-diag-v1b-gate.txt) | **Non-acceptance**: harness now prints the probe (exit 0, status 0) but the ring still overflowed (11,326 lost); this isolated the cause |
+| v1c | preattach-immediate | [gate](evidence/2026-10-02/admission-diag-v1c-gate.txt), [trace](evidence/2026-10-02/admission-diag-v1c-trace-raw.jsonl) | Accepted observation |
+| v3 | mmdoes-matrix | [gate](evidence/2026-10-02/admission-diag-v3-gate.txt), [pre-write](evidence/2026-10-02/admission-diag-v3-trace-prewrite.jsonl), [after A](evidence/2026-10-02/admission-diag-v3-trace-after-A.jsonl), [final](evidence/2026-10-02/admission-diag-v3-trace-final.jsonl) | Accepted observation |
+| v4 | policy-transition | [gate](evidence/2026-10-02/admission-diag-v4-gate.txt), [trace](evidence/2026-10-02/admission-diag-v4-trace-final.jsonl) | Accepted observation |
+| v2 | preattach-protected-open | [gate](evidence/2026-10-02/admission-diag-v2-gate.txt) | Accepted observation |
+
+The four unknowns, as observed on Windows 10 19045.2965, NTFS, FltMgr 10.0.19041.1, one local volume, one fixture type:
+1. **A pre-attachment writable mapping's writeback reaches this instance's `IRP_MJ_WRITE` hook: YES.** Unowned paging writes
+   (`irpFlags 0x00060043`) carry the old view's section pointer (v1c seq 12, v3 seq 209 and 353, v4 seq 195).
+2. **`MmDoesFileHaveUserWritableReferences` through an attribute-only open made after attachment:** writable mapping with the handle
+   closed **yes**; writable mapping with the handle still open **yes**; **read-only mapping, handle closed: no**; no mapping: no (v3).
+   The same `yes` under a live expanded policy (v4) and after a protected open (v2). The API therefore detects writable views only.
+3. **Section-pointer identity: the probe's `SectionObjectPointer` equals the one on the old view's paging write, from a different
+   `FILE_OBJECT`** (v1c, v3 A and D, v4; `sameFileObjectAsProbe=False` in every match), so a per-stream registry keyed by the section
+   pointer can identify the writing stream with no name lookup. B and C (no writable view) had no matching write.
+4. **Cached versus uncached: all three observers saw the written bytes** (buffered reader and uncached write-through reader opened
+   before attachment, and a fresh buffered reader) in v1c, v2 and v4, so the change is visible to an uncached reader, not only
+   through the cache. The behavior when a paging write is refused is **not** observed.
+
+Further observations, all baseline behavior of the unmodified admission logic:
+- **v2:** with the real agent and a policy covering the file, a protected open of the file **succeeds while the old writable mapping
+  exists**, and the old view's write still changes the bytes at all three readers. Admission does not consult mapping state today.
+- The guest issues about 25 to 30 unowned paging writes per second (v3: 109 in the pre-write window), so any paging fence must be per
+  stream, never volume-wide, which supports the design-v2 decision.
+- v4 reproduces leak (b) under the diagnostic driver with the real agent: expanded policy accepted, then the old view's write is
+  visible to all three readers.
+
+**Not claimed:** latency or cost of any probe; Verifier cleanliness; non-NTFS or network volumes; hard-link, alternate-stream or
+reparse spellings of one stream; concurrent open/map/attach and policy-change races; that the probe is safe outside the disposable
+debuggee (its lower open can block the Inspector's message callback); any behavior under a refused paging write. No leak is blocked:
+this slice enforces nothing. Next: the enforcement slice built on these facts.
 
 ## Previous milestone: journal recovery/security qualified (2 October 2026)
 

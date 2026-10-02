@@ -39,10 +39,11 @@ NTSTATUS SafeUploadStageSeal(_In_ ULONG ProcessId, _In_ PUNICODE_STRING StageNam
 
 #if SAFEUPLOAD_STAGING_PROTOTYPE
 extern volatile LONG SafeUploadAdmissionTraceControlState;
+extern volatile LONG SafeUploadAdmissionTraceSectionEvents;
 BOOLEAN SafeUploadStageAdmissionTraceBegin(_In_ LONG TraceState);
 VOID SafeUploadStageAdmissionTraceRecord(_In_ const SAFEUPLOAD_ADMISSION_TRACE_ENTRY *Entry);
 VOID SafeUploadStageAdmissionTraceEnd(VOID);
-NTSTATUS SafeUploadStageAdmissionTraceControl(_In_ UINT32 Command);
+NTSTATUS SafeUploadStageAdmissionTraceControl(_In_ UINT32 Command, _In_ UINT32 Options);
 NTSTATUS SafeUploadStageAdmissionTraceReadBatch(
     _In_ UINT64 Cursor,
     _In_ UINT64 SnapshotSequence,

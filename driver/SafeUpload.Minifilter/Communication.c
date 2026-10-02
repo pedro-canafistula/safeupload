@@ -619,12 +619,14 @@ Return Value:
             if (traceControl.Version != SAFEUPLOAD_PROTOCOL_VERSION ||
                 traceControl.StructSize != sizeof( SAFEUPLOAD_CONTROL ) ||
                 traceControl.Command != command ||
-                traceControl.Reserved != 0) {
+                (command != SAFEUPLOAD_CONTROL_ADMISSION_TRACE_ENABLE && traceControl.Reserved != 0) ||
+                (command == SAFEUPLOAD_CONTROL_ADMISSION_TRACE_ENABLE &&
+                 (traceControl.Reserved & ~SAFEUPLOAD_ADMISSION_TRACE_OPTION_SECTION_EVENTS) != 0)) {
                 status = STATUS_REVISION_MISMATCH;
                 leave;
             }
 
-            status = SafeUploadStageAdmissionTraceControl( command );
+            status = SafeUploadStageAdmissionTraceControl( command, traceControl.Reserved );
             leave;
         }
 
