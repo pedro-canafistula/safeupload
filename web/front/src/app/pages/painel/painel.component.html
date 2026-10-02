@@ -1,23 +1,55 @@
-<h2>Painel</h2>
-<div class="grid-kpi" *ngIf="dados">
-  <div class="card"><strong>Inspeções</strong><div>{{ dados.indicadores.inspecoes }}</div></div>
-  <div class="card"><strong>Bloqueados</strong><div>{{ dados.indicadores.bloqueados }}</div></div>
-  <div class="card"><strong>Aprovados</strong><div>{{ dados.indicadores.aprovados }}</div></div>
-  <div class="card"><strong>Rejeitados</strong><div>{{ dados.indicadores.rejeitados }}</div></div>
+<header class="page-header">
+  <h2>Visão geral</h2>
+  <p>Indicadores de inspeção processados pelo servidor central</p>
+</header>
+
+<div class="grid-kpi">
+  <div class="kpi-card">
+    <div class="kpi-icon">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+        <polyline points="14 2 14 8 20 8"/>
+      </svg>
+    </div>
+    <div class="kpi-info">
+      <span class="kpi-label">Inspeções realizadas</span>
+      <strong class="kpi-value">{{ resumo_inspecoes.inspecoes.toLocaleString('pt-BR') }}</strong>
+      <span class="kpi-trend">+{{ resumo_inspecoes.variacao }}% vs. semana anterior</span>
+    </div>
+  </div>
 </div>
 
-<div class="row" *ngIf="dados">
-  <section class="card flex2">
-    <h3>Inspeções nos últimos 7 dias</h3>
-    <div class="bars">
-      <div class="bar" *ngFor="let item of dados.inspecoesSemana" [style.height.px]="item + 20"></div>
+<div class="block">
+  <div class="blocked-itens-card">
+    <div class="block-icon">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="10"/>
+        <line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/>
+    </svg>
     </div>
-  </section>
-  <section class="card flex1">
-    <h3>Categorias mais detectadas</h3>
-    <div class="cat" *ngFor="let c of dados.categoriasDetectadas">
-      <span>{{ c.nome }}</span><strong>{{ c.valor }}</strong>
+    <div class="kpi-info">
+      <span class="kpi-label">Bloqueados</span>
+      <strong class="kpi-value">{{ resumo_bloqueados.quantidade.toLocaleString('pt-BR') }}</strong>
     </div>
-  </section>
+  </div>
 </div>
 
+<div class="aproved">
+  <div class="aproved-itens-card">
+    <div class="aproved-icon">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="10"/>
+        <line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/>
+    </svg>
+    </div>
+    <div class="kpi-info">
+      <span class="kpi-label">Aprovados</span>
+      <strong class="kpi-value">{{ resumo_aprovados.quantidade.toLocaleString('pt-BR') }}</strong>
+    </div>
+  </div>
+</div>
+
+<!-- o resto continua com *ngIf="dados" -->

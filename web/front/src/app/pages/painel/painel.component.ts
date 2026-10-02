@@ -11,10 +11,19 @@ import { ApiService } from '../../core/api.service';
 export class PainelComponent implements OnInit {
   dados: any;
 
+  // dados fictícios do card
+  resumo_inspecoes = { inspecoes: 1247, variacao: 12 };
+
+  resumo_bloqueados = { quantidade: 89};
+
+  resumo_aprovados = { quantidade: 1000};
+
   constructor(private api: ApiService) {}
 
   ngOnInit(): void {
-    this.api.getPainel().subscribe((d) => (this.dados = d));
+    this.api.getPainel().subscribe({
+      next: (d: any) => (this.dados = d),
+      error: (e) => console.error('erro painel:', e),
+    });
   }
 }
-
