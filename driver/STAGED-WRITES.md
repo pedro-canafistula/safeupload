@@ -11,9 +11,10 @@ after every experiment, including failures.
 
 1. Filesystem and views
    - [x] Durable source tombstones and atomic replacement reservations; native
-         replacement, reuse of physically absent temporary slots, held old handles
-         and stale-approval regression. Moving/deleting a physical public source
-         and reusing its occupied tombstone slot remain open.
+         replacement, reuse of physically absent and occupied source slots,
+         held old handles and stale-approval regression. Moving/deleting a
+         physical public source remains open. Occupied-slot ordinary/runtime/
+         boot Verifier and the integrated regression pass below.
    - [ ] Stable destination/view/version identity, aliases, short names, relative
          and file-ID opens, links, reparse handling and cross-process view rules.
          Progress: private 128-bit logical IDs, native relative/file-ID reopen,
@@ -857,6 +858,128 @@ private fixture. Host UTC was 2026-10-02T00:33:28Z; the recovered guest clock st
 differs as recorded above. No preserved snapshot, failed overlay or memory image
 was deleted or committed into a base disk.
 
+### Follow-up: reuse of an occupied private source slot (2 October 2026)
+
+After a private rename, FILE_OPEN/FILE_OVERWRITE must see the source as absent,
+but a create-capable disposition must be able to create a new logical file there.
+The old physical public object stays untouched until an inspected, approved
+replacement. The previous security/allocator checks conflated these two views.
+The smallest [before case](evidence/2026-10-02/tombstone-before.txt) on SYS
+`16DB78ECAFFCF515C30C37F74AFC227BAB84105266E13C7E6579B362A0282238`
+first confirms unfiltered rename/recreation returns empty FILE_CREATED, then
+shows the private occupied-source FILE_CREATE fails with
+STATUS_OBJECT_NAME_COLLISION (native mapped error 183). A first harness assertion
+expected Win32 CreateFile's error 80 instead of the native status mapping; that
+interrupted run is excluded. It restored the original and removed its fixtures.
+
+CREATE now resolves the caller's most recent local tombstone under the namespace
+resource. An old-name record retains the **renamed version**, not the view's
+changeable Current pointer, plus a local monotonic move sequence. Streams/views
+remain referenced until unload, so this pointer cannot dangle. A local sequence
+chooses among repeated reuse/move histories; it is not durable authorization.
+`SafeUploadStageCaptureSecurity(PrivateAbsent)` requires existing original-subject
+DELETE/public-replacement and parent FILE_ADD_FILE checks, then assigns a new
+descriptor from the parent and checks the requested access. The physical identity
+is captured separately. Nothing changes the public object, its descriptor or bytes.
+The existing conservative DELETE check does not qualify all parent-delete-child,
+privilege or ACL-race semantics.
+
+The existing allocation request/reply layout and protocol 18 are reused with
+`STAGE_TOMBSTONE_CREATE` (0x100). ImageName identifies the renamed transfer GUID.
+Reserved is always FILE_CREATE for this fresh empty allocation, including upper
+SUPERSEDE, OPEN_IF and OVERWRITE_IF. An older allocator therefore rejects an
+occupied physical slot instead of accidentally copying its public content.
+Followup and tombstone flags together, an invalid GUID or wrong disposition are
+denied. The authenticated service applies current destination policy, restores
+the actual process name from the manifest and passes the tombstone owner ID.
+
+Under the journal's same generation-allocation lock, the current destination
+claim must be unique, committed, a tombstone owned by that transfer, writer PID
+and session, with no publication/rename reservation. The flushed new Allocated
+manifest consumes that head by recording a strictly newer destination generation.
+Unknown, wrong-owner/session, stale and competing claims fail. The new backing
+starts empty; it never seeds the old public slot. Later writable OPEN uses the
+new sealed private version through the existing followup protocol, preserving
+logical ID and prior private bytes. Recreating after another rename gets a new
+logical ID; rotating the renamed target's current version must not change the
+source tombstone's owner GUID. These rules do not add persistent SID/logon/view
+identity or alias admission.
+
+Failure after durable allocation but before upper admission can leave an unsealed
+new head and make replay of the consumed tombstone fail closed. Those bytes stay
+private; no automatic seal or approval is inferred. Lost allocation replies,
+CREATE cancellation after allocation and authenticated recovery of that state
+remain explicit recovery/liveness acceptance criteria. Do not reclaim the head
+or its generation barrier to make a retry appear to work.
+
+`Test-StagedTombstoneReuse.ps1` first runs the same native dispositions on
+unfiltered NTFS. Its owned cases use physical public source readers opened before
+load, retain prior private handles across rename, recreate empty FILE_CREATED
+with native dispositions 2/0/3/5, deny hidden OPEN/OVERWRITE and anonymous CREATE,
+block sensitive content, then reopen from that prior private content and publish
+only the later clean version. A fresh independent process sees the public
+original while private content is blocked. It repeats reuse after a second move
+and target version rotation, then checks exact source/first-target/second-target
+bytes unfiltered after restoration. All four cases reach generation 7.
+
+Current signed SYS:
+`4F8D0792E651575C3CDF4CD1C0C3B89520D1DB5A7C7944137A925BF6C355E300`.
+Current service ZIP:
+`2E440908F5A094E591150CF8F1F98023A38B96D49C33B1E2F021B64F8CBB1B7A`.
+Only the isolated builder mirror was changed. The same build command as above,
+with output `tombstone-current-milestone`, passes all four WDK configurations:
+[normal Debug](evidence/2026-10-02/tombstone-normal-wdk.txt),
+[normal Release](evidence/2026-10-02/tombstone-normal-release-wdk.txt),
+[feature Debug](evidence/2026-10-02/tombstone-owned-feature-wdk.txt),
+[feature Release](evidence/2026-10-02/tombstone-owned-feature-release-wdk.txt).
+All have zero warnings/errors, active analysis and Universal validation. The
+[agent suite](evidence/2026-10-02/tombstone-agent-tests.txt) passes 252/252;
+[service Release publish](evidence/2026-10-02/tombstone-service-build.txt) and
+[application Release build](evidence/2026-10-02/tombstone-application-build.txt) pass.
+Five added cases cover empty occupied-slot admission, stale replay, wrong writer,
+wrong session, unknown owner and concurrent competing claims with no public or
+prior-private mutation and no rejected output left behind.
+
+[Ordinary gate](evidence/2026-10-02/tombstone-ordinary.txt) and
+[runtime Verifier gate](evidence/2026-10-02/tombstone-verifier.txt),
+[active flags](evidence/2026-10-02/tombstone-verifier-query.txt) PASS.
+Reproduce with `Test-StagedTombstoneReuse.ps1` then `-Verifier`; use
+`-ReproduceKnownGap` only with the recorded old pair. The newer runtime gate
+includes the additional hidden OPEN/OVERWRITE and fresh-process observer assertions.
+Preserve the disk-only checkpoint overlay
+`win10-debug.safeupload-pre-tombstone-reuse-20261002` (created with --no-metadata,
+not a libvirt metadata snapshot) and snapshot
+`safeupload-pre-tombstone-boot-20261002` and
+`safeupload-pre-tombstone-integrated-20261002`. The same final pair passes
+[boot standard/DDI/forced-pending/both MDL checks](evidence/2026-10-02/tombstone-boot.txt)
+with [configured flags 0x26bbb](evidence/2026-10-02/tombstone-boot-config.txt) and
+[active statistics](evidence/2026-10-02/tombstone-boot-query.txt).
+The [full integrated boot gate](evidence/2026-10-02/tombstone-integrated-boot.txt)
+passes ordinary, parallel, mapped-after-close, reopen/new-version, native rename,
+replacement, service restart and 24 approved overwrite cases, with **735 full
+independent destination-byte observer passes**. See its
+[configuration](evidence/2026-10-02/tombstone-integrated-boot-config.txt),
+[active statistics](evidence/2026-10-02/tombstone-integrated-boot-query.txt) and
+[durable checkpoints](evidence/2026-10-02/tombstone-integrated-boot-checkpoint.txt).
+The [live KD log](evidence/2026-10-02/tombstone-boot-kd.txt) confirms connected boot
+Filter Verifier and contains no Filter Verifier error, Verifier Stop or fatal
+system error. Reproduce with the existing recorded boot preparation, then
+`Test-StagedTombstoneReuse.ps1 -BootVerifier` or
+`Test-StagedOwnedStreams.ps1 -BootVerifier`; reset/reboot between campaigns.
+
+[Independent post-reboot restoration](evidence/2026-10-02/tombstone-final-restored-state.txt)
+at host UTC **2026-10-02T01:28:30Z** verifies original installed hash, unloaded
+filter, stopped demand-start service, configured/active Verifier off, no temporary
+tasks/service/app, no S:/VHDX, original policy and original KDNET host/port/key.
+[Builder checks](evidence/2026-10-02/tombstone-builder-restored-state.txt) verify
+the scoped firewall rule, debugger task, endpoint and private authority are gone.
+The first restoration command mistakenly used `hostip=`/`port=`/`key=`;
+BCDEdit rejected it without changing settings. The corrected colon syntax passed,
+followed by another original-driver reboot and the independent comparison. Guest
+UTC is approximately four hours behind host UTC; it is not used to order evidence.
+Snapshots and failed-run overlays remain preserved. No other remaining tracker
+capability is qualified by these bounded cases. Normal staging stays disabled.
+
 ### Identity and namespace
 
 | Identity | Implemented key and owner | Required extension |
@@ -897,8 +1020,9 @@ DELETE; its old stream remains attached to those handles while its view leaves
 name lookup. Image sections and unacknowledged seals are rejected. The source's
 existing handles must all share DELETE. Directory overlays hide tombstones and
 displaced views without duplicating a reused active name. Creating into a source
-tombstone works when that physical slot is absent. Physical public-source removal
-and reuse of physically occupied tombstones remain pending.
+tombstone separates logical absence from physical existence. It now creates an
+empty private view even while the old public source exists; permission and durable
+tombstone checks are described below. Physical public-source removal remains pending.
 
 Hard links require alias entries for one destination identity, not independent
 path-keyed publication rights. Short names, physical file-ID opens and reparse aliases

@@ -77,7 +77,8 @@ public sealed class StagedTransferJournal
 
     public async Task<TransferJournalEntry> CreateAsync(
         StagedTransfer transfer,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        Guid? tombstoneOwner = null)
     {
         ArgumentNullException.ThrowIfNull(transfer);
         if (transfer.TransferId == Guid.Empty)
@@ -97,6 +98,16 @@ public sealed class StagedTransferJournal
                 .ConfigureAwait(false);
             if (versions.Any(e => e.Reserved))
                 throw new IOException("Publication or rename currently holds this destination.");
+            if (tombstoneOwner is not null)
+            {
+                long head = versions.Select(e => e.Generation).DefaultIfEmpty(0).Max();
+                var claims = versions.Where(e => e.Generation == head).ToArray();
+                if (claims.Length != 1 || !claims[0].Tombstone ||
+                    claims[0].Entry.Transfer.TransferId != tombstoneOwner ||
+                    claims[0].Entry.Transfer.ProcessId != transfer.ProcessId ||
+                    claims[0].Entry.Transfer.SessionId != transfer.SessionId)
+                    throw new IOException("No current committed tombstone belongs to this writer and session.");
+            }
             entry = entry with { DestinationGeneration = checked(versions.Select(e => e.Generation)
                 .DefaultIfEmpty(0).Max() + 1) };
             await using (var stream = CreatePrivateTemporary(temporary))

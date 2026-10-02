@@ -147,6 +147,7 @@ SafeUploadStageCaptureSecurity (
     _In_ PFLT_CALLBACK_DATA Data,
     _In_ PFLT_INSTANCE Instance,
     _In_ PUNICODE_STRING Destination,
+    _In_ BOOLEAN PrivateAbsent,
     _Outptr_ PSECURITY_DESCRIPTOR *SecurityDescriptor,
     _Out_ PBOOLEAN AssignedDescriptor,
     _Out_ PBOOLEAN DestinationExists,
@@ -171,8 +172,17 @@ SafeUploadStageCaptureSecurity (
         return STATUS_ACCESS_DENIED;
     }
 
-    status = SafeUploadStageQuerySecurity( Instance, Destination, FALSE,
-                                          SecurityDescriptor );
+    if (PrivateAbsent) {
+        // A committed private rename hides this slot, not its old public
+        // object. Require authority to replace that object and add the new
+        // name, then assign NEW security from the parent. Never seed its bytes.
+        status = SafeUploadStageCheckRenameAccess(Data, Instance, Destination, TRUE);
+        if (!NT_SUCCESS(status)) return status;
+        status = STATUS_OBJECT_NAME_NOT_FOUND;
+    } else {
+        status = SafeUploadStageQuerySecurity( Instance, Destination, FALSE,
+                                              SecurityDescriptor );
+    }
     if (NT_SUCCESS( status )) {
         *DestinationExists = TRUE;
         if (disposition == FILE_CREATE) {

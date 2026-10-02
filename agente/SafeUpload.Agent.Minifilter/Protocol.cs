@@ -147,6 +147,7 @@ public enum RequestFlags : uint
     StageFollowup = 0x00000020,
     StageRemovable = 0x00000040,
     StageNetwork = 0x00000080,
+    StageTombstoneCreate = 0x00000100,
 }
 
 [Flags]

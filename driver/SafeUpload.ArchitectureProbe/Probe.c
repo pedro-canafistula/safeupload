@@ -283,7 +283,7 @@ static NTSTATUS ProbeCreate(PFLT_CALLBACK_DATA Data, PCFLT_RELATED_OBJECTS Objec
         stream->Header.Resource = &stream->Resource;
         stream->Header.PagingIoResource = &stream->PagingResource;
         stream->Header.IsFastIoPossible = FastIoIsNotPossible;
-        status = SafeUploadStageCaptureSecurity(Data, Objects->Instance, &Name->Name,
+        status = SafeUploadStageCaptureSecurity(Data, Objects->Instance, &Name->Name, FALSE,
             &stream->Security, &stream->AssignedSecurity, &exists, &granted);
         if (!NT_SUCCESS(status)) goto Exit;
         if (exists) { status = STATUS_NOT_SUPPORTED; goto Exit; }

@@ -104,6 +104,80 @@ public sealed class StagedTransferAllocatorTests : IDisposable
             (await journal.ReadAsync(second.TransferId, CancellationToken.None)).State);
     }
 
+    private async Task<(StagedTransferAllocator Allocator, StagedTransferJournal Journal,
+        StagedTransfer Owner, string Source, string Root)> RenamedOccupiedSlotAsync()
+    {
+        string root = Path.Combine(_workspace.Root, "stage");
+        var journal = new StagedTransferJournal(Path.Combine(_workspace.Root, "journal"));
+        var allocator = new StagedTransferAllocator(root, journal);
+        string source = Path.Combine(_workspace.Root, "report.txt");
+        await File.WriteAllTextAsync(source, "old public bytes");
+        var owner = await allocator.AllocateAsync(source, DestinationKind.Cloud,
+            "word.exe", 17, 2, 1, null, CancellationToken.None);
+        await File.WriteAllTextAsync(owner.StagePath, "prior private bytes");
+        string target = Path.Combine(_workspace.Root, "renamed.txt");
+        await journal.PrepareRenameAsync(owner.TransferId, 93, 17, target, false, CancellationToken.None);
+        await journal.CompleteRenameAsync(owner.TransferId, 93, 17, target, true, CancellationToken.None);
+        return (allocator, journal, owner, source, root);
+    }
+
+    [Fact]
+    public async Task Committed_private_tombstone_creates_empty_view_without_reading_or_changing_public_slot()
+    {
+        var (allocator, journal, owner, source, root) = await RenamedOccupiedSlotAsync();
+        await Assert.ThrowsAsync<IOException>(() => allocator.AllocateAsync(source,
+            DestinationKind.Cloud, "word.exe", 17, 2, 2, null, CancellationToken.None));
+        var next = await allocator.AllocateAsync(source, DestinationKind.Cloud,
+            "word.exe", 17, 2, 2, null, CancellationToken.None, owner.TransferId);
+        Assert.Equal(0, new FileInfo(next.StagePath).Length);
+        Assert.Equal("old public bytes", await File.ReadAllTextAsync(source));
+        Assert.Equal("prior private bytes", await File.ReadAllTextAsync(owner.StagePath));
+        var entry = await journal.ReadAsync(next.TransferId, CancellationToken.None);
+        Assert.True(entry.DestinationGeneration > 2);
+        Assert.Equal(TransferJournalState.Allocated, entry.State);
+        await Assert.ThrowsAsync<IOException>(() => allocator.AllocateAsync(source,
+            DestinationKind.Cloud, "word.exe", 17, 2, 2, null, CancellationToken.None, owner.TransferId));
+        Assert.Equal(2, Directory.GetFiles(root).Length);
+    }
+
+    [Theory]
+    [InlineData(18, 2, false)]
+    [InlineData(17, 3, false)]
+    [InlineData(17, 2, true)]
+    public async Task Tombstone_reuse_rejects_other_writer_session_or_unknown_owner(
+        int processId, uint sessionId, bool unknownOwner)
+    {
+        var (allocator, journal, owner, source, root) = await RenamedOccupiedSlotAsync();
+        await Assert.ThrowsAsync<IOException>(() => allocator.AllocateAsync(source,
+            DestinationKind.Cloud, "word.exe", processId, sessionId, 2, null,
+            CancellationToken.None, unknownOwner ? Guid.NewGuid() : owner.TransferId));
+        Assert.Single(Directory.GetFiles(root));
+        Assert.Single(await journal.ReadPendingAsync(CancellationToken.None));
+        Assert.Equal("old public bytes", await File.ReadAllTextAsync(source));
+        Assert.Equal("prior private bytes", await File.ReadAllTextAsync(owner.StagePath));
+    }
+
+    [Fact]
+    public async Task Concurrent_tombstone_claims_commit_only_one_new_generation()
+    {
+        var (allocator, journal, owner, source, root) = await RenamedOccupiedSlotAsync();
+        async Task<StagedTransfer?> TryClaimAsync()
+        {
+            try
+            {
+                return await allocator.AllocateAsync(source, DestinationKind.Cloud,
+                    "word.exe", 17, 2, 2, null, CancellationToken.None, owner.TransferId);
+            }
+            catch (IOException) { return null; }
+        }
+        var results = await Task.WhenAll(TryClaimAsync(), TryClaimAsync());
+        var winner = Assert.Single(results.OfType<StagedTransfer>());
+        Assert.Equal(0, new FileInfo(winner.StagePath).Length);
+        Assert.Equal(2, Directory.GetFiles(root).Length);
+        Assert.Equal(2, (await journal.ReadPendingAsync(CancellationToken.None)).Count);
+        Assert.Equal("old public bytes", await File.ReadAllTextAsync(source));
+    }
+
     [Theory]
     [InlineData(0)]
     [InlineData(1)]

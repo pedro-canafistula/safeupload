@@ -52,6 +52,7 @@ static LIST_ENTRY StageStreams;
 static KSPIN_LOCK StageListLock;
 static ERESOURCE StageNamespaceResource;
 static ULONG StageStreamCount;
+static LONG64 StageNamespaceSequence;
 static volatile LONG StageFileObjects;
 static BOOLEAN StageStopping;
 static LIST_ENTRY StageViews;
@@ -62,6 +63,8 @@ static BOOLEAN StageInitialized;
 typedef struct _STAGE_OLD_NAME {
     LIST_ENTRY Link;
     UNICODE_STRING Name;
+    LONG64 Sequence;
+    PSTAGE_STREAM Version; /* The durable tombstone belongs to the renamed GUID. */
 } STAGE_OLD_NAME, *PSTAGE_OLD_NAME;
 
 typedef struct _STAGE_VIEW {
@@ -315,18 +318,28 @@ static NTSTATUS StageSetIdentity(PSTAGE_VIEW View, PCWSTR Basename)
     return STATUS_SUCCESS;
 }
 
-static BOOLEAN StageHiddenName(PEPROCESS Owner, PUNICODE_STRING Name)
+static PSTAGE_STREAM StageHiddenStream(PEPROCESS Owner, PUNICODE_STRING Name)
 {
     PLIST_ENTRY link, old;
+    PSTAGE_STREAM found = NULL;
+    LONG64 newest = 0;
     for (link = StageViews.Flink; link != &StageViews; link = link->Flink) {
         PSTAGE_VIEW view = CONTAINING_RECORD(link, STAGE_VIEW, Link);
         if (view->Owner != Owner) continue;
         for (old = view->OldNames.Flink; old != &view->OldNames; old = old->Flink) {
-            if (RtlEqualUnicodeString(&CONTAINING_RECORD(old, STAGE_OLD_NAME, Link)->Name, Name, TRUE))
-                return TRUE;
+            PSTAGE_OLD_NAME tombstone = CONTAINING_RECORD(old, STAGE_OLD_NAME, Link);
+            if (tombstone->Sequence > newest && RtlEqualUnicodeString(&tombstone->Name, Name, TRUE)) {
+                newest = tombstone->Sequence;
+                found = tombstone->Version;
+            }
         }
     }
-    return FALSE;
+    return found;
+}
+
+static BOOLEAN StageHiddenName(PEPROCESS Owner, PUNICODE_STRING Name)
+{
+    return StageHiddenStream(Owner, Name) != NULL;
 }
 
 static VOID StageFreeView(PSTAGE_VIEW View)
@@ -345,6 +358,7 @@ static NTSTATUS StageCreate(PFLT_CALLBACK_DATA Data, PCFLT_RELATED_OBJECTS Objec
     PSTAGE_VIEW ExpectedView, BOOLEAN PrivateNamespace, PBOOLEAN Handled)
 {
     PSTAGE_VIEW view = NULL;
+    PSTAGE_STREAM hiddenStream = NULL;
     PSTAGE_STREAM stream = NULL;
     PSTAGE_HANDLE handle = NULL;
     PFILE_OBJECT file = Data->Iopb->TargetFileObject;
@@ -371,12 +385,13 @@ static NTSTATUS StageCreate(PFLT_CALLBACK_DATA Data, PCFLT_RELATED_OBJECTS Objec
         view->Current->OriginalInstance != Objects->Instance)) {
         status = STATUS_SHARING_VIOLATION; goto Exit;
     }
-    if (view == NULL && StageHiddenName(owner, &Name->Name)) {
+    if (view == NULL) hiddenStream = StageHiddenStream(owner, &Name->Name);
+    if (hiddenStream != NULL) {
         if (!Writer || disposition == FILE_OPEN || disposition == FILE_OVERWRITE) {
             status = STATUS_OBJECT_NAME_NOT_FOUND; goto Exit;
         }
-        /* A fresh create at an absent physical name gets a newer durable
-         * generation. The tombstone still suppresses obsolete approvals. */
+        /* Logical absence is distinct from an occupied public name. The
+         * service must consume this writer's CURRENT committed tombstone. */
     }
     if (view == NULL && !Writer) {
         if (PrivateNamespace) status = STATUS_OBJECT_NAME_NOT_FOUND;
@@ -400,7 +415,7 @@ static NTSTATUS StageCreate(PFLT_CALLBACK_DATA Data, PCFLT_RELATED_OBJECTS Objec
         if (view == NULL) { status = STATUS_INSUFFICIENT_RESOURCES; goto Exit; }
         newView = TRUE;
         InitializeListHead(&view->OldNames);
-        status = SafeUploadStageCaptureSecurity(Data, Objects->Instance, &Name->Name,
+        status = SafeUploadStageCaptureSecurity(Data, Objects->Instance, &Name->Name, hiddenStream != NULL,
             &view->Security, &view->AssignedSecurity, &exists, &granted);
         if (!NT_SUCCESS(status)) goto Exit;
         {
@@ -414,10 +429,12 @@ static NTSTATUS StageCreate(PFLT_CALLBACK_DATA Data, PCFLT_RELATED_OBJECTS Objec
             status = SafeUploadStageQueryIdentity(Objects->Instance, &parent, TRUE, &view->ParentIdentity);
             if (!NT_SUCCESS(status)) goto Exit;
             view->PhysicalExists = exists;
-            if (exists) {
+            if (exists || hiddenStream != NULL) {
                 status = SafeUploadStageQueryIdentity(Objects->Instance, &Name->Name, FALSE, &view->PhysicalIdentity);
-                if (!NT_SUCCESS(status)) goto Exit;
-                if (view->PhysicalIdentity.VolumeSerialNumber != view->ParentIdentity.VolumeSerialNumber) {
+                if (!exists && status == STATUS_OBJECT_NAME_NOT_FOUND) status = STATUS_SUCCESS;
+                else if (!NT_SUCCESS(status)) goto Exit;
+                else view->PhysicalExists = TRUE;
+                if (view->PhysicalExists && view->PhysicalIdentity.VolumeSerialNumber != view->ParentIdentity.VolumeSerialNumber) {
                     status = STATUS_NOT_SAME_DEVICE; goto Exit;
                 }
             }
@@ -468,7 +485,8 @@ static NTSTATUS StageCreate(PFLT_CALLBACK_DATA Data, PCFLT_RELATED_OBJECTS Objec
         stream->Name.MaximumLength = sizeof(stream->NameBuffer);
         RtlCopyUnicodeString(&stream->Name, &Name->Name);
         status = SafeUploadStageAllocate(Data, &Name->Name, Kind,
-            previous != NULL ? &previous->StageName : NULL, basename, &basenameLength);
+            previous != NULL ? &previous->StageName : NULL,
+            hiddenStream != NULL ? &hiddenStream->StageName : NULL, basename, &basenameLength);
         if (!NT_SUCCESS(status)) goto Exit;
         if (newView) {
             status = StageSetIdentity(view, basename);
@@ -874,6 +892,8 @@ static NTSTATUS StageRename(PFLT_CALLBACK_DATA Data, PSTAGE_STREAM Stream)
     if (target != NULL) target->Detached = TRUE;
     RtlCopyUnicodeString(&Stream->Name, &destination->Name);
     RtlCopyUnicodeString(&view->Name, &destination->Name);
+    old->Sequence = ++StageNamespaceSequence; /* Caller owns namespace resource. */
+    old->Version = Stream;
     InsertTailList(&view->OldNames, &old->Link); old = NULL;
     StageRelease(&Stream->Resource);
     Stream->RenameExchange->Request.Operation = SAFEUPLOAD_OPERATION_STAGE_RENAME_COMMIT;

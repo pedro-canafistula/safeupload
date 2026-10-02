@@ -115,7 +115,8 @@ public sealed class StagedTransferAllocator
         uint? sessionId,
         uint disposition,
         StagedTransfer? previous,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        Guid? tombstoneOwner = null)
     {
         string fullDestination = Path.GetFullPath(destinationPath);
         if (string.IsNullOrEmpty(Path.GetFileName(fullDestination)) ||
@@ -145,6 +146,8 @@ public sealed class StagedTransferAllocator
         {
             throw new ArgumentOutOfRangeException(nameof(disposition));
         }
+        if (tombstoneOwner is not null && (previous is not null || disposition != 2))
+            throw new ArgumentException("Tombstone allocation requires a fresh FILE_CREATE.", nameof(tombstoneOwner));
         if (previous is not null &&
             (!string.Equals(previous.DestinationPath, fullDestination,
                 StringComparison.OrdinalIgnoreCase) ||
@@ -158,7 +161,8 @@ public sealed class StagedTransferAllocator
         // FILE_OPEN and FILE_OPEN_IF must see the previous bytes. Truncating
         // dispositions need a real empty backing before upper-stream admission.
         string? source = previous?.StagePath;
-        bool sourceExists = source is null ? File.Exists(fullDestination) : File.Exists(source);
+        bool sourceExists = tombstoneOwner is null &&
+            (source is null ? File.Exists(fullDestination) : File.Exists(source));
         if (disposition == 2 && sourceExists) // FILE_CREATE
         {
             throw new IOException("The destination already exists.");
@@ -214,7 +218,7 @@ public sealed class StagedTransferAllocator
 
         // CreateAsync flushes the manifest to disk and atomically makes it
         // visible. Nothing is returned to the driver before this succeeds.
-            await _journal.CreateAsync(transfer, cancellationToken).ConfigureAwait(false);
+            await _journal.CreateAsync(transfer, cancellationToken, tombstoneOwner).ConfigureAwait(false);
             return transfer;
         }
         catch

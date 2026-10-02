@@ -19,6 +19,7 @@ SafeUploadStageCaptureSecurity (
     _In_ PFLT_CALLBACK_DATA Data,
     _In_ PFLT_INSTANCE Instance,
     _In_ PUNICODE_STRING Destination,
+    _In_ BOOLEAN PrivateAbsent,
     _Outptr_ PSECURITY_DESCRIPTOR *SecurityDescriptor,
     _Out_ PBOOLEAN AssignedDescriptor,
     _Out_ PBOOLEAN DestinationExists,

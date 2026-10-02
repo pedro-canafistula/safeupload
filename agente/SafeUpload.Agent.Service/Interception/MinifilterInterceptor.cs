@@ -325,7 +325,23 @@ public sealed class MinifilterInterceptor : BackgroundService
                 checked((int)request.RequestorProcessId), destination, kind);
             if (!policy.IsMonitoredDestination(destinationOperation)) return (PortVerdict.Deny, null);
             StagedTransfer? previous = null;
+            Guid? tombstoneOwner = null;
             string processName = request.GetImageName();
+            if (request.TypedFlags.HasFlag(RequestFlags.StageTombstoneCreate))
+            {
+                if (_stageJournal is null || request.Reserved != 2 ||
+                    request.TypedFlags.HasFlag(RequestFlags.StageFollowup) ||
+                    !Guid.TryParseExact(processName, "N", out Guid ownerId))
+                    return (PortVerdict.Deny, null);
+                var ownerEntry = _stageJournal.ReadAsync(ownerId, CancellationToken.None)
+                    .GetAwaiter().GetResult();
+                if (ownerEntry.Transfer.ProcessId != checked((int)request.RequestorProcessId))
+                    return (PortVerdict.Deny, null);
+                tombstoneOwner = ownerId;
+                processName = ownerEntry.Transfer.ProcessName;
+                // CreateAsync rechecks the committed, current tombstone and
+                // writer/session under the SAME lock as generation allocation.
+            }
             if (request.TypedFlags.HasFlag(RequestFlags.StageFollowup))
             {
                 if (_stageJournal is null ||
@@ -350,7 +366,7 @@ public sealed class MinifilterInterceptor : BackgroundService
                 checked((int) request.RequestorProcessId),
                 SessionResolver.TryGetSessionId(checked((int) request.RequestorProcessId)),
                 request.Reserved, previous,
-                CancellationToken.None).GetAwaiter().GetResult();
+                CancellationToken.None, tombstoneOwner).GetAwaiter().GetResult();
             return (PortVerdict.Allow, Path.GetFileName(transfer.StagePath));
         }
         catch (Exception ex)

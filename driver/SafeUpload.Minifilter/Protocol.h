@@ -135,6 +135,11 @@ Environment:
 // STAGE_ALLOCATE uses ImageName for the previous 32-character stage ID when
 // creating a later version. Reserved carries the original create disposition.
 #define SAFEUPLOAD_REQUEST_FLAG_STAGE_FOLLOWUP       ((UINT32) 0x00000020)
+// Allocate an empty new private view at this writer's committed rename
+// tombstone. ImageName is the tombstone-owning transfer GUID, Reserved is
+// FILE_CREATE (even for other create-capable upper dispositions). Older
+// allocators reject an occupied physical slot rather than seed public bytes.
+#define SAFEUPLOAD_REQUEST_FLAG_STAGE_TOMBSTONE_CREATE ((UINT32) 0x00000100)
 
 #pragma pack(push, 8)
 

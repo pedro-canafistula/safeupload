@@ -147,6 +147,7 @@ SafeUploadStageAllocate (
     _In_ PUNICODE_STRING OriginalName,
     _In_ SAFEUPLOAD_VOLUME_KIND VolumeKind,
     _In_opt_ PUNICODE_STRING PreviousStageName,
+    _In_opt_ PUNICODE_STRING TombstoneStageName,
     _Out_writes_(SAFEUPLOAD_MAX_STAGE_NAME_CHARS) PWCH StageName,
     _Out_ PUSHORT StageNameLength
     )
@@ -156,10 +157,12 @@ SafeUploadStageAllocate (
     BOOLEAN answered;
     NTSTATUS status;
     USHORT i;
+    PUNICODE_STRING referenceName = PreviousStageName != NULL ? PreviousStageName : TombstoneStageName;
 
     PAGED_CODE();
 
     *StageNameLength = 0;
+    if (PreviousStageName != NULL && TombstoneStageName != NULL) return STATUS_INVALID_PARAMETER;
     if (OriginalName->Length == 0 ||
         OriginalName->Length > SAFEUPLOAD_MAX_PATH_BYTES) {
         return STATUS_NAME_TOO_LONG;
@@ -187,22 +190,23 @@ SafeUploadStageAllocate (
     exchange->Request.PathLength = OriginalName->Length;
     RtlCopyMemory( exchange->Request.Path, OriginalName->Buffer,
                    OriginalName->Length );
-    if (PreviousStageName != NULL) {
+    if (referenceName != NULL) {
         USHORT basename = 0;
-        for (i = 0; i < PreviousStageName->Length / sizeof( WCHAR ); ++i) {
-            if (PreviousStageName->Buffer[i] == L'\\') {
+        for (i = 0; i < referenceName->Length / sizeof( WCHAR ); ++i) {
+            if (referenceName->Buffer[i] == L'\\') {
                 basename = i + 1;
             }
         }
-        if (PreviousStageName->Length / sizeof( WCHAR ) - basename < 32) {
+        if (referenceName->Length / sizeof( WCHAR ) - basename < 32) {
             status = STATUS_INVALID_PARAMETER;
             goto Exit;
         }
-        exchange->Request.Flags |=
-            SAFEUPLOAD_REQUEST_FLAG_STAGE_FOLLOWUP;
+        exchange->Request.Flags |= PreviousStageName != NULL ?
+            SAFEUPLOAD_REQUEST_FLAG_STAGE_FOLLOWUP : SAFEUPLOAD_REQUEST_FLAG_STAGE_TOMBSTONE_CREATE;
+        if (TombstoneStageName != NULL) exchange->Request.Reserved = FILE_CREATE;
         exchange->Request.ImageNameLength = 32 * sizeof( WCHAR );
         RtlCopyMemory( exchange->Request.ImageName,
-                       PreviousStageName->Buffer + basename,
+                       referenceName->Buffer + basename,
                        exchange->Request.ImageNameLength );
     } else {
         SafeUploadCopyRequestImageName( Data, &exchange->Request );

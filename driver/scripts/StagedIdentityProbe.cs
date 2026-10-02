@@ -40,6 +40,9 @@ public static class StagedIdentityProbe {
         uint high, uint low, string name);
     [DllImport("kernel32.dll", SetLastError=true)]
     static extern bool CloseHandle(IntPtr handle);
+    [DllImport("kernel32.dll")] static extern IntPtr GetCurrentThread();
+    [DllImport("advapi32.dll",SetLastError=true)] static extern bool ImpersonateAnonymousToken(IntPtr thread);
+    [DllImport("advapi32.dll",SetLastError=true)] static extern bool RevertToSelf();
     [DllImport("ntdll.dll")]
     static extern int NtQueryDirectoryFile(SafeFileHandle file, IntPtr ev, IntPtr apc,
         IntPtr context, out IoStatus io, byte[] info, uint length, int cls,
@@ -59,6 +62,31 @@ public static class StagedIdentityProbe {
     public static SafeFileHandle Open(string path, bool writer, bool create) {
         return CheckHandle(CreateFile(path,writer ? 0xC0010000 : 0x80000000,7,
             IntPtr.Zero,create ? 2u : 3u,0x80,IntPtr.Zero));
+    }
+    public static SafeFileHandle NativeDisposition(string path, uint disposition, out long information) {
+        string native="\\??\\"+path;
+        IntPtr text=Marshal.StringToHGlobalUni(native);
+        IntPtr name=Marshal.AllocHGlobal(Marshal.SizeOf(typeof(UnicodeString)));
+        try {
+            var unicode=new UnicodeString { Length=checked((ushort)(native.Length*2)),
+                MaximumLength=checked((ushort)(native.Length*2+2)), Buffer=text };
+            Marshal.StructureToPtr(unicode,name,false);
+            var attributes=new ObjectAttributes { Length=Marshal.SizeOf(typeof(ObjectAttributes)),
+                Name=name, Attributes=0x40 };
+            SafeFileHandle result; IoStatus io;
+            int status=NtCreateFile(out result,0xC0110000,ref attributes,out io,
+                IntPtr.Zero,0x80,7,disposition,0x60,IntPtr.Zero,0);
+            information=checked((long)io.Information.ToUInt64());
+            if(status!=0) { if(result!=null) result.Dispose(); throw new Win32Exception((int)RtlNtStatusToDosError(status)); }
+            return result;
+        } finally { Marshal.FreeHGlobal(name); Marshal.FreeHGlobal(text); }
+    }
+    public static int AnonymousNativeCreate(string path) {
+        if(!ImpersonateAnonymousToken(GetCurrentThread())) throw new Win32Exception(Marshal.GetLastWin32Error());
+        try {
+            try { long info; using(var file=NativeDisposition(path,2,out info)) return 0; }
+            catch(Win32Exception error) { return error.NativeErrorCode; }
+        } finally { if(!RevertToSelf()) throw new Win32Exception(Marshal.GetLastWin32Error()); }
     }
     public static byte[] Identity(SafeFileHandle file) {
         var info=new byte[24]; Check(GetFileInformationByHandleEx(file,18,info,info.Length)); return info;
