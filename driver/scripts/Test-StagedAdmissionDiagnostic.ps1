@@ -1017,7 +1017,25 @@ function Get-LightTrace($InspectorResult, [string] $RawPath) {
             throw "Unrecognized trace line: $text"
         }
         $g = $m.Groups
+        $probe = $null
+        $probeValid = $false
+        if ($g[3].Value -eq 'explicit_probe') {
+            $probe = ConvertFrom-Json -InputObject $text
+            $required = @('probeStatus','probeStage','targetFileObject','sectionObjectPointer',
+                'writeObjects','writersUntracked','inFlightSections','mmDoes')
+            $present = @($probe.PSObject.Properties.Name)
+            $missing = @($required | Where-Object { $present -notcontains $_ })
+            $probeValid = ($missing.Count -eq 0 -and $probe.probeStatus -eq '0x00000000' -and
+                $probe.probeStage -eq 8 -and $probe.targetFileObject -match '^0x[0-9a-fA-F]{16}$' -and
+                $probe.targetFileObject -notmatch '^0x0+$' -and
+                $probe.sectionObjectPointer -match '^0x[0-9a-fA-F]{16}$' -and
+                $probe.sectionObjectPointer -notmatch '^0x0+$' -and
+                $probe.mmDoes -in @('yes','no') -and $probe.writersUntracked -is [bool])
+        }
         [void]$entries.Add([pscustomobject]@{
+            ProbeValid = $probeValid
+            ProbeStatus = $(if ($null -ne $probe) { $probe.probeStatus } else { '' })
+            ProbeStage = $(if ($null -ne $probe) { $probe.probeStage } else { -1 })
             Seq = [UInt64]$g[1].Value
             Ts = [Int64]$g[2].Value
             Ev = $g[3].Value
@@ -1175,10 +1193,11 @@ function Complete-WriterChecks([string] $GroupName, [string] $RawPath) {
             $entry = $probes[$index]
             $writersOk = ($entry.Writers -eq $check.Expected) -and (-not $entry.WritersUntracked)
             $mmOk = ([string]::IsNullOrEmpty($check.ExpectedMm) -or $entry.MmDoes -eq $check.ExpectedMm)
-            $verdict = if ($writersOk -and $mmOk) { 'PASS' } else { 'FAIL' }
+            $verdict = if ($entry.ProbeValid -and $writersOk -and $mmOk) { 'PASS' } else { 'FAIL' }
             if ($verdict -ne 'PASS') { $script:WriterChecksFailed++ } else { $script:WriterChecksPassed++ }
             Write-Output ('WC_' + $check.Label + '=expected:' + $check.Expected + ';observed:' + $entry.Writers +
                 ';untracked:' + $entry.WritersUntracked + ';mmDoes:' + $entry.MmDoes +
+                ';probeStatus:' + $entry.ProbeStatus + ';probeStage:' + $entry.ProbeStage +
                 $(if ($check.ExpectedMm) { ';expectedMmDoes:' + $check.ExpectedMm } else { '' }) + ';' + $verdict)
         }
     }
@@ -2192,7 +2211,8 @@ public static class SafeUploadEolNative
             $probeX = @($traceX.Entries | Where-Object { $_.Ev -eq 'explicit_probe' })
             $probeText = if ($probeX.Count -eq 1) { [string]$probeX[0].InFlightSections } else { 'AMBIGUOUS' }
             Write-Output ('X3_Probe=' + $probeText + ';mmDoes:' + $(if ($probeX.Count -eq 1) { $probeX[0].MmDoes } else { 'n/a' }))
-            $probeOk = ($probeX.Count -eq 1 -and $probeX[0].InFlightSections -eq 0 -and $probeX[0].MmDoes -eq 'no')
+            $probeOk = ($probeX.Count -eq 1 -and $probeX[0].ProbeValid -and
+                $probeX[0].InFlightSections -eq 0 -and $probeX[0].MmDoes -eq 'no')
 
             $conserved = ([int64]$s4.sectionInFlightInserted - [int64]$s4.sectionInFlightReleased - [int64]$s4.sectionInFlightRemovedOnFailure - [int64]$s4.sectionInFlightNow)
             $tracked = ([int64]$s2.sectionInFlightInserted - [int64]$s1.sectionInFlightInserted)

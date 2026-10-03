@@ -8,10 +8,13 @@
 
 #if SAFEUPLOAD_STAGING_PROTOTYPE
 static VOID StageAdmissionTraceShutdown(VOID);
+static NTSTATUS StageAdmissionProbeWorkerBody(_In_ PCUNICODE_STRING VolumeName,
+    _In_ PCUNICODE_STRING RelativePath);
 #ifdef ALLOC_PRAGMA
 #pragma alloc_text(PAGE, SafeUploadStageAdmissionTraceControl)
 #pragma alloc_text(PAGE, SafeUploadStageAdmissionTraceReadBatch)
 #pragma alloc_text(PAGE, SafeUploadStageAdmissionProbe)
+#pragma alloc_text(PAGE, StageAdmissionProbeWorkerBody)
 #pragma alloc_text(PAGE, StageAdmissionTraceShutdown)
 #endif
 #endif
@@ -651,7 +654,8 @@ static VOID StageAdmissionProbeWorker(PFLT_GENERIC_WORKITEM WorkItem, PVOID FltO
     /* The waiting message callback owns work; do not touch it after signaling. */
 }
 
-NTSTATUS SafeUploadStageAdmissionProbe(PCUNICODE_STRING VolumeName, PCUNICODE_STRING RelativePath)
+NTSTATUS SafeUploadStageAdmissionProbe(_In_ PCUNICODE_STRING VolumeName,
+    _In_ PCUNICODE_STRING RelativePath)
 {
     STAGE_ADMISSION_PROBE_WORK work;
     PFLT_GENERIC_WORKITEM item;

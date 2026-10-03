@@ -63,6 +63,7 @@ NTSTATUS SafeUploadStageOpenByIdentity(
             FILE_COMPLETE_IF_OPLOCKED,
         NULL, 0, 0, NULL);
     if (status != STATUS_SUCCESS) goto Exit;
+    if (object == NULL || handle == NULL) { status = STATUS_INVALID_HANDLE; goto Exit; }
     *ProbeStage = SAFEUPLOAD_ADMISSION_PROBE_STAGE_IDENTITY_VERIFY;
     RtlZeroMemory(&actual, sizeof(actual));
     returned = 0;
@@ -78,6 +79,8 @@ NTSTATUS SafeUploadStageOpenByIdentity(
     *Handle = handle; handle = NULL;
     *Object = object; object = NULL;
 Exit:
+    /* Positive completion codes that did not produce a verified open are not successful probes. */
+    if (status != STATUS_SUCCESS && NT_SUCCESS(status)) status = STATUS_UNSUCCESSFUL;
     if (object != NULL) ObDereferenceObject(object);
     if (handle != NULL) FltClose(handle);
     if (buffer != NULL) ExFreePoolWithTag(buffer, SAFEUPLOAD_POOL_TAG);
