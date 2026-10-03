@@ -1706,11 +1706,9 @@ public static class SafeUploadWriterIo
             } finally {
                 try {
                     if (started) {
+                        // StandardError is in asynchronous mode (BeginErrorReadLine); Process.Dispose releases it.
                         try { process.StandardInput.Dispose(); }
-                        finally {
-                            try { process.StandardOutput.Dispose(); }
-                            finally { process.StandardError.Dispose(); }
-                        }
+                        finally { process.StandardOutput.Dispose(); }
                     }
                 } finally { process.Dispose(); process = null; }
             }
@@ -2939,13 +2937,19 @@ Start-Sleep -Seconds 300
             } catch {
                 Add-WCOutcome 'cancelled_execution' $false (Get-ErrorText $_)
             } finally {
+                # Counters are sampled before the helper exits so its process teardown is attributed separately.
+                $cancelledStatsAfter = Get-WriterStateStats
                 # Graceful EXIT runs worker finally blocks; the process is killed/reaped if native I/O is stuck.
                 try { $cancelledIo.Dispose() }
                 catch { Add-WCOutcome 'cancelled_worker_disposal' $false (Get-ErrorText $_) }
             }
             Add-WCOutcome 'cancelled_iterations' ($deterministicCancelled -eq 20 -and ($raceSucceeded + $raceCancelled) -eq 200) ('deterministic:' + $deterministicCancelled + ';race:' + ($raceSucceeded + $raceCancelled))
             Add-WriterProbe $fr 'cancelled_final_allClosed' 0
-            $cancelledStatsAfter = Get-WriterStateStats
+            $cancelledStatsDisposed = Get-WriterStateStats
+            Write-Output ('WC_cancelled_helperExitDelta=counted:' + ([int64]$cancelledStatsDisposed.writeObjectsCounted - [int64]$cancelledStatsAfter.writeObjectsCounted) +
+                ';released:' + ([int64]$cancelledStatsDisposed.writeObjectsReleased - [int64]$cancelledStatsAfter.writeObjectsReleased) +
+                ';untracked:' + ([int64]$cancelledStatsDisposed.untrackedCreates - [int64]$cancelledStatsAfter.untrackedCreates) +
+                ';unmatched:' + ([int64]$cancelledStatsDisposed.cleanupUnmatched - [int64]$cancelledStatsAfter.cleanupUnmatched))
             Add-WCBalance 'cancelled' $cancelledStatsBefore $cancelledStatsAfter
             Write-Output ('WC_CancelledCreates=deterministic:' + $deterministicCancelled + ';race_succeeded:' + $raceSucceeded +
                 ';race_cancelled:' + $raceCancelled + ';seed:' + $cancelSeed)
@@ -2987,11 +2991,16 @@ Start-Sleep -Seconds 300
             } catch {
                 Add-WCOutcome 'fast_execution' $false (Get-ErrorText $_)
             } finally {
+                $fastStatsAfter = Get-WriterStateStats
                 try { $fastIo.Dispose() }
                 catch { Add-WCOutcome 'fast_worker_disposal' $false (Get-ErrorText $_) }
             }
             Add-WriterProbe $fs 'fast_concurrent_allClosed' 0
-            $fastStatsAfter = Get-WriterStateStats
+            $fastStatsDisposed = Get-WriterStateStats
+            Write-Output ('WC_fast_helperExitDelta=counted:' + ([int64]$fastStatsDisposed.writeObjectsCounted - [int64]$fastStatsAfter.writeObjectsCounted) +
+                ';released:' + ([int64]$fastStatsDisposed.writeObjectsReleased - [int64]$fastStatsAfter.writeObjectsReleased) +
+                ';untracked:' + ([int64]$fastStatsDisposed.untrackedCreates - [int64]$fastStatsAfter.untrackedCreates) +
+                ';unmatched:' + ([int64]$fastStatsDisposed.cleanupUnmatched - [int64]$fastStatsAfter.cleanupUnmatched))
             Add-WCBalance 'fast' $fastStatsBefore $fastStatsAfter
             Write-Output ('WC_FastIo=writes:' + $fastWrites + ';queries:' + $fastQueries + ';concurrent_iterations:' + $concurrentIterations)
             Write-Output ('WC_Group_fast_io_RawFile=' + $rawTraceFastIo)
