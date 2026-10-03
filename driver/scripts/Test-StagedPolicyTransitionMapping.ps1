@@ -973,7 +973,7 @@ if ($monitoredExtensions -contains $fixtureExtension.ToLowerInvariant()) {
 'OriginalInstalledSHA256=' + $expectedOriginal
 'FeatureDriverSHA256=' + $expectedFeature
 'ExpectedInspectorSHA256=' + $expectedInspector
-'InspectorSourceSHA256=' + (Get-FileHash -LiteralPath $inspectorSource -Algorithm SHA256).Hash
+'InspectorInputSHA256=' + (Get-FileHash -LiteralPath $inspectorSource -Algorithm SHA256).Hash
 'ExpectedServicePackageSHA256=' + $expectedServicePackage
 'OriginalPolicySHA256=' + $expectedPolicy
 'FilterUnloaded=True; VerifierFlags=0; VerifiedDrivers=None; Service=Manual/Stopped'

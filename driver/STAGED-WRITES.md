@@ -163,9 +163,22 @@ Normal staging stays compiled out and taint enforcement remains.
           were restored ([gate](evidence/2026-10-03/policy-rejection-only-run32-gate.txt),
           [stop record](evidence/2026-10-03/policy-rejection-only-run32-pre-harness-stop.txt),
           [restored baseline](evidence/2026-10-03/policy-rejection-only-run32-post-input-restore-check.txt)).
-    - [ ] Retry the rejection-only VM diagnostic on a fresh clean checkpoint,
-          deriving and cross-checking the explicit signed-driver hash from the
-          artifact, verifying the Inspector hash, and preserving unchanged
+    - [x] Record Run33 loading the feature driver but stopping before the
+          rejection agent or policy push: the pinned Inspector executable
+          emitted its older JSON schema without `stateFlags`, so the harness
+          rejected the sample. The wrapper independently restored the original
+          driver, policy, filter, Verifier settings, and guest input metadata
+          ([gate](evidence/2026-10-03/policy-rejection-only-run33-gate.txt),
+          [schema diagnosis](evidence/2026-10-03/policy-rejection-only-run33-schema-diagnosis.txt),
+          [hash/schema check](evidence/2026-10-03/policy-rejection-only-run33-schema-hash-check.txt),
+          [restored baseline and inputs](evidence/2026-10-03/policy-rejection-only-run33-post-input-restore-check.txt)).
+          This is not a policy-rejection result. The gate's `InspectorSourceSHA256`
+          label was misleading; the harness hashes the guest executable input,
+          now labeled `InspectorInputSHA256`.
+    - [ ] Retry the rejection-only VM diagnostic on a fresh clean checkpoint
+          with a newly built Inspector from the exact current source, verifying
+          its input hash and schema, deriving and cross-checking the explicit
+          signed-driver hash from the artifact, and preserving unchanged
           approved policy scopes.
     - [ ] Verify the rejection-only branch on the clean VM, including baseline
           policy identity, expected `ERROR_NOT_SUPPORTED`, unchanged fence

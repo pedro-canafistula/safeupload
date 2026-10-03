@@ -18,10 +18,16 @@ installation.
 
 Inspector and agent
 -------------------
-The Inspector source and pinned guest input executable both have SHA-256
-8F4D97B3E2F730BE5B8C5B37531632218389873184736E577559512C8E1E8C0F.
-The guest feature-signature and input-hash checks are recorded in
-`policy-transition-run22-shrink-gate.txt`.
+The pinned guest Inspector input executable has SHA-256
+8F4D97B3E2F730BE5B8C5B37531632218389873184736E577559512C8E1E8C0F. The
+run22 gate's `InspectorSourceSHA256` field hashes that guest executable input;
+it does not identify `SafeUpload.Inspector/main.c`. The source at commit
+5b233d5 has SHA-256
+e876077f5d0069a21ce3f88b6e22c3358c50930e09218b5f03d9cc7b783ff994, while
+the current source has SHA-256
+bd5244bc2e7aa732e1405cc774bef3ecdb129939328d2899c3a055d9a4584ee1.
+Run33's schema diagnosis records the older executable's embedded JSON format
+and the later source change that added `stateFlags`.
 
 The pinned service ZIP has SHA-256
 D887E0D7F38AD64AD40CEE18B841C6D38AD2BED4D6F760B1BDE4464927381997. A

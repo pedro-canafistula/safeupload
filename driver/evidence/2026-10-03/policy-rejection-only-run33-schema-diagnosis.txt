@@ -1,0 +1,37 @@
+Run33 Inspector status-schema diagnosis
+Date: 2026-10-03
+
+Run33 stopped after the feature driver loaded and before the rejection test
+agent started. `Wait-PolicyTransitionFenceStable` calls
+`Invoke-PolicyTransitionFenceStatus` before `Test-PolicyTransitionExpectedRejection`.
+The first function rejects status JSON without `stateFlags`; the gate records
+that exact missing-field error. Therefore no rejection agent was started and no
+`FilterPort.SetPolicy` attempt or rejection result was observed. The harness
+then restored the original driver and independently verified the baseline.
+
+Schema evidence
+--------------
+The guest executable input and Run33 Inspector copy both matched SHA-256
+8F4D97B3E2F730BE5B8C5B37531632218389873184736E577559512C8E1E8C0F. The same
+artifact is present locally at `/tmp/claude-1000/artifacts/SafeUpload.Inspector.exe`.
+Its embedded fence-status JSON format contains `complete`, `entries`, and
+`generation`, but no `stateFlags`.
+
+The Inspector source at parent commit 5b233d5 has SHA-256
+e876077f5d0069a21ce3f88b6e22c3358c50930e09218b5f03d9cc7b783ff994 and emits
+that older format. Commit c44735f added the `stateFlags` JSON field and made
+`complete` require a quiescent state. Current `driver/SafeUpload.Inspector/main.c`
+has SHA-256 bd5244bc2e7aa732e1405cc774bef3ecdb129939328d2899c3a055d9a4584ee1.
+The existing pinned executable is therefore stale for the current harness
+schema; rebuild it from the exact current Inspector source and pin its new
+executable hash. Do not weaken the required status-property validation.
+Command output and source excerpts are retained in
+`policy-rejection-only-run33-schema-hash-check.txt`.
+
+Run33 cleanup
+-------------
+The gate records `OriginalDriverAndPolicyRestored=True`, `VerifierOff=True`,
+`FilterUnloaded=True`, zero agent processes/tasks, and no rejection-only
+fixture. The separate post-input-restore check reports `BaselineClean=True`;
+the three guest inputs' bytes, timestamps, and attributes match their saved
+values. Run33 is a harness/diagnostic failure, not a policy-rejection pass.
