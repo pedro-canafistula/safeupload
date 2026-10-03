@@ -713,17 +713,20 @@ static int PrintFenceStatus(VOID)
         return 3;
     }
 
+    // "complete" means the last scan succeeded and no removable/network scope was left unscanned. Reparse points
+    // inside a scope are not followed (an open through one resolves to its target's normalized name) and are
+    // counted separately in "reparseSkipped".
     wprintf(L"{\"fence\":true,\"complete\":%s,\"entries\":%lu,\"generation\":%lu,\"lastStatus\":\"0x%08X\",\"failureLine\":%lu,"
             L"\"refreshStarted\":%llu,\"refreshCompleted\":%llu,\"refreshFailed\":%llu,"
             L"\"pagingWritesDenied\":%llu,\"opensRefused\":%llu,\"directoriesScanned\":%llu,"
             L"\"filesScanned\":%llu,\"reparseSkipped\":%llu,\"volumeScopesSkipped\":%llu,"
-            L"\"streamsReleased\":%llu,\"releaseRefused\":%llu,\"sectionsDenied\":%llu,\"sectionNameUnresolved\":%llu}\n",
+            L"\"streamsReleased\":%llu,\"releaseRefused\":%llu,\"sectionsDenied\":%llu,\"sectionNameUnresolved\":%llu,\"fsctlUnresolved\":%llu}\n",
             (status.LastStatus == 0 && status.VolumeScopesSkipped == 0) ? L"true" : L"false",
             status.Entries, status.Generation, status.LastStatus, status.FailureLine,
             status.RefreshStarted, status.RefreshCompleted, status.RefreshFailed,
             status.PagingWritesDenied, status.OpensRefused, status.DirectoriesScanned,
             status.FilesScanned, status.ReparseSkipped, status.VolumeScopesSkipped,
-            status.StreamsReleased, status.ReleaseRefused, status.SectionsDenied, status.SectionNameUnresolved);
+            status.StreamsReleased, status.ReleaseRefused, status.SectionsDenied, status.SectionNameUnresolved, status.FsctlUnresolved);
     return status.LastStatus == 0 ? 0 : 4;               // a failed scan is not a healthy fence
 }
 

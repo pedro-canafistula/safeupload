@@ -1,0 +1,5 @@
+driver/SafeUpload.Inspector/main.c 17ceacc7ab59
+driver/SafeUpload.Minifilter/Filter.h 4053fece5b7b
+driver/SafeUpload.Minifilter/Policy.c 2dbb257fd364
+driver/SafeUpload.Minifilter/StageFence.c 27261ab44e9f
+driver/SafeUpload.Minifilter/StageStream.c e346657de271

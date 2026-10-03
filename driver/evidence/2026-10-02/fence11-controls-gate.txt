@@ -1,0 +1,18 @@
+Variant=fence-controls
+TestTimestampUTC=2026-10-02T20:59:18.9628159Z
+FeatureSHA256=A491F57BDF50677DBB9A29C59AECDCC6C0D052FBB85FB17025756676DE2DDC86
+FixturesPrepared=A,B,C,D,E(handle only),F(out of scope)
+FilterLoaded=True (load-time scan completed before fltmc returned)
+FenceStatus_AfterLoad={"fence":true,"complete":true,"entries":2,"generation":2,"lastStatus":"0x00000000","failureLine":0,"refreshStarted":2,"refreshCompleted":2,"refreshFailed":0,"pagingWritesDenied":0,"opensRefused":0,"directoriesScanned":4,"filesScanned":13,"reparseSkipped":0,"volumeScopesSkipped":0,"streamsReleased":0,"releaseRefused":0,"sectionsDenied":0,"sectionNameUnresolved":0}
+ProtectedOpen_A=OBSERVED_REFUSED: Exception calling ".ctor" with "4" argument(s): "The process cannot access the file 'C:\SafeUpload\Escopo Monitorado\fence-controls-df45c4c23b074ad1835285458ac4f725\A.maptest' because it is being used by another process."
+ProtectedOpen_B=OPENED
+ProtectedOpen_C=OPENED
+ProtectedOpen_D=OBSERVED_REFUSED: Exception calling ".ctor" with "4" argument(s): "The process cannot access the file 'C:\SafeUpload\Escopo Monitorado\fence-controls-df45c4c23b074ad1835285458ac4f725\D.maptest' because it is being used by another process."
+FenceStatus_AfterOpens={"fence":true,"complete":true,"entries":2,"generation":2,"lastStatus":"0x00000000","failureLine":0,"refreshStarted":2,"refreshCompleted":2,"refreshFailed":0,"pagingWritesDenied":4,"opensRefused":2,"directoriesScanned":4,"filesScanned":13,"reparseSkipped":0,"volumeScopesSkipped":0,"streamsReleased":0,"releaseRefused":0,"sectionsDenied":0,"sectionNameUnresolved":0}
+Write_A=OBSERVED_REFUSED: Exception calling "Flush" with "0" argument(s): "The media is write protected.
+"
+Write_D=OBSERVED_REFUSED: Exception calling "Flush" with "0" argument(s): "The media is write protected.
+"
+Write_F=SUCCESS
+MappingCreate_E=OBSERVED_REFUSED: Exception calling "CreateFromFile" with "6" argument(s): "Access to the path is denied."
+Write_E=NOT_ATTEMPTED (no writable view)

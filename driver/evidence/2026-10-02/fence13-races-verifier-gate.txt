@@ -1,0 +1,49 @@
+Variant=fence-races
+FeatureSHA256=7973D211309A4396C7EBC6BD9C4CA8D979A2FC7104BE4324AD3079E74851D6DE
+Iterations=15
+VerifierEnabled=volatile flags 0x13B
+Iteration_1 loadMs=28 viewsBefore=2 viewsAfterLoad=0 creationRefusedAfterLoad=255 writeRefused=2 writeSucceeded=0
+Iteration_2 loadMs=17 viewsBefore=2 viewsAfterLoad=0 creationRefusedAfterLoad=262 writeRefused=2 writeSucceeded=0
+Iteration_3 loadMs=18 viewsBefore=23 viewsAfterLoad=0 creationRefusedAfterLoad=256 writeRefused=23 writeSucceeded=0
+Iteration_4 loadMs=10 viewsBefore=5 viewsAfterLoad=0 creationRefusedAfterLoad=258 writeRefused=5 writeSucceeded=0
+Iteration_5 loadMs=15 viewsBefore=19 viewsAfterLoad=0 creationRefusedAfterLoad=267 writeRefused=19 writeSucceeded=0
+Iteration_6 loadMs=25 viewsBefore=19 viewsAfterLoad=0 creationRefusedAfterLoad=261 writeRefused=19 writeSucceeded=0
+Iteration_7 loadMs=15 viewsBefore=15 viewsAfterLoad=0 creationRefusedAfterLoad=266 writeRefused=15 writeSucceeded=0
+Iteration_8 loadMs=14 viewsBefore=4 viewsAfterLoad=0 creationRefusedAfterLoad=258 writeRefused=4 writeSucceeded=0
+Iteration_9 loadMs=16 viewsBefore=9 viewsAfterLoad=0 creationRefusedAfterLoad=259 writeRefused=9 writeSucceeded=0
+Iteration_10 loadMs=21 viewsBefore=1 viewsAfterLoad=0 creationRefusedAfterLoad=261 writeRefused=1 writeSucceeded=0
+Iteration_11 loadMs=14 viewsBefore=26 viewsAfterLoad=0 creationRefusedAfterLoad=257 writeRefused=26 writeSucceeded=0
+Iteration_12 loadMs=11 viewsBefore=10 viewsAfterLoad=0 creationRefusedAfterLoad=264 writeRefused=10 writeSucceeded=0
+Iteration_13 loadMs=11 viewsBefore=22 viewsAfterLoad=0 creationRefusedAfterLoad=260 writeRefused=22 writeSucceeded=0
+Iteration_14 loadMs=15 viewsBefore=13 viewsAfterLoad=0 creationRefusedAfterLoad=269 writeRefused=13 writeSucceeded=0
+Iteration_15 loadMs=15 viewsBefore=9 viewsAfterLoad=0 creationRefusedAfterLoad=265 writeRefused=9 writeSucceeded=0
+Total_ViewsCreatedBeforeLoad=179
+Total_ViewsCreatedAfterLoad=0
+Total_CreationsRefusedAfterLoad=3918
+Total_WritesRefused=179
+Total_WritesSucceeded=0
+Total_UnloadRefused=0
+Total_LoadFailures=0
+Verdict_NoWriteSucceededAfterLoad=True
+Verifier Volatile Flags: 0x00000000
+  Volatile Flags:
+    [ ] 0x00000001 Special pool.
+    [ ] 0x00000002 Force IRQL checking.
+    [ ] 0x00000004 Randomized low resources simulation.
+    [ ] 0x00000008 Pool tracking.
+    [ ] 0x00000010 I/O verification.
+    [ ] 0x00000020 Deadlock detection.
+    [ ] 0x00000080 DMA checking.
+    [ ] 0x00000200 Force pending I/O requests.
+    [ ] 0x00000400 IRP logging.
+    [ ] 0x00000800 Miscellaneous checks.
+  Removed Drivers:
+    SafeUpload.sys
+The new settings are in effect until the system
+is restarted or the settings are changed again.
+No settings were changed.
+OriginalDriverRestored=ADA9D05AB6AECDD2B6C521B0CE529FC06C732154ACB3EE85439FBDC8AA80DFCE
+ExperimentalDriverUnloaded=True
+RacesRestoration=OriginalDriverRestored; FilterUnloaded=True
+VariantComplete=fence-races
+HARNESS_RETURNED

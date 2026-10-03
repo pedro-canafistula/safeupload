@@ -1,0 +1,18 @@
+Variant=mutation-gates
+FeatureSHA256=7973D211309A4396C7EBC6BD9C4CA8D979A2FC7104BE4324AD3079E74851D6DE
+Gate_SetZeroData=BLOCKED head=BASELINE-DATA
+Gate_SetSparse=BLOCKED
+Gate_SetCompression=BLOCKED
+Gate_DuplicateExtents=BLOCKED (NTFS may not support this FSCTL; BLOCKED means the gate engaged)
+Gate_SetReparsePoint=BLOCKED
+Gate_DeleteOnClose=BLOCKED
+Control_SetReparsePointOutsideScope=ALLOWED
+Control_SetSparseOutsideScope=ALLOWED
+Control_GetCompressionProtected=ALLOWED
+Control_QueryAllocatedRangesProtected=ALLOWED
+Control_DeleteOnCloseOutsideScope=ALLOWED
+OriginalDriverRestored=ADA9D05AB6AECDD2B6C521B0CE529FC06C732154ACB3EE85439FBDC8AA80DFCE
+ExperimentalDriverUnloaded=True
+GatesRestoration=OriginalDriverRestored; FilterUnloaded=True
+VariantComplete=mutation-gates
+HARNESS_RETURNED

@@ -1,0 +1,28 @@
+VERDICT: BLOCKED-DO-NOT-RUN
+
+CLAIMED CHANGES
+A. NEW DEFECT — The carry-over/release mechanics match the claimed sequence and preserve references on inspected paths, but a policy-expansion section race remains; see finding 1. StageFence.c:255-273, 277-304, 662-679.
+B. NEW DEFECT — StageUnownedWritableSection classifies against only the current policy, so candidate-only sections created after the pre-scan can escape denial during transition; see finding 1. StageStream.c:2170-2186; Policy.c:351-391.
+C(1). FIXED/CORRECT — trailing separators are trimmed and a volume-root prefix invokes a whole-volume scan. StageFence.c:467-489.
+C(2). FIXED/CORRECT — unrepresentable prefixes fail and the full 260-WCHAR slot fits the scope copy. Policy.c:913-925; Filter.h:656-663.
+C(3). FIXED/CORRECT — SetPolicy holds the recursive refresh mutex across both scans and swap; reviewed paths show no policy-lock-to-refresh-mutex inverse order. Policy.c:351-392, 364-370; StageFence.c:692-707.
+C(4). FIXED/CORRECT — unknown file-ID reads are refused only when this volume has an entry; the recorded volume pointer is compared, not dereferenced. StageStream.c:1988-1994; StageFence.c:710-725.
+C(5). FIXED/CORRECT — read-only name-query failures for insufficient resources/no memory are refused on an entry-bearing volume; other failures retain the prior behavior. StageStream.c:1998-2012.
+C(6). NEW DEFECT — the service write check works after current-policy classification, but candidate-only names take the out-of-scope return first during a transition; see finding 1. StageStream.c:2029-2045.
+C(7). FIXED/CORRECT — status is asserted at 128 bytes and failed refreshes yield Inspector exit 4. Protocol.h:545-565, 866; Inspector/main.c:716-728.
+C(8). FIXED/CORRECT — names retain stream indices, and streams retain volume identity for carry-over and volume-scoped checks. StageFence.c:62-70, 228-237, 298-302, 710-725.
+
+NEW FINDINGS (ranked)
+[BLOCKER] driver/SafeUpload.Minifilter/Policy.c:351-391; driver/SafeUpload.Minifilter/StageStream.c:2178-2181 - Candidate-scope mappings can be created after the pre-scan passed their file but before the policy swap. Section admission checks only the old current policy and allows them; after the swap their paging writes can reach disk before the post-scan finds and fences them. StageAdmit also exits as out-of-scope before its quarantine check for candidate-only names (StageStream.c:2029-2045). Make the transition union visible to section/create admission and gate it through commit, or quiesce and activate the policy/fence atomically.
+[MAJOR] driver/SafeUpload.Minifilter/StageFence.c:346-354, 453-461, 481-485 - A volume-root scan starts with a directory string ending in '\\', then FenceVisit appends another separator. If the filesystem accepts that path, the table stores '\\\\' names while normalized creates use one separator; a reader can open a fenced stream and see dirty cached bytes. Append a separator only when needed and store canonical names.
+[MINOR] driver/SafeUpload.Inspector/main.c:716-727; driver/SafeUpload.Minifilter/StageFence.c:344, 795-796 - JSON can report complete=true when reparse entries were skipped, because completeness ignores ReparseSkipped. A monitor may treat a scope with skipped descendants as fully covered. Include the skipped count in completeness or define the field as scan-success only.
+
+VERIFIED
+- Read all 803 lines of StageFence.c, the requested driver/Inspector diffs, and the surrounding policy, dispatch, unload, controls, protocol, and section paths.
+- FenceCarryOver retains old entries unless the second mapping check is zero and CcPurgeCacheSection succeeds under the exclusive-file hold. Failed scans keep the old installed table; inspected reference-transfer/free paths balance references.
+- Policy refreshes serialize across SetPolicy and control refresh. The count fast paths and their install-time behavior match the explicitly accepted linearization limit.
+- Cited fence7 log reports baseline bytes after release and unload; this is evidence-file content, not independently reproduced.
+
+COULD NOT VERIFY
+- No build, analyzer, VM, or runtime test was run. I could not independently verify the fence7 result, the exact cache-manager outcome for dirty pages with no views, or FsRtlAcquireFileExclusive behavior on the cleanup-complete referenced file object.
+- I could not verify the WDK contract for completing this specific section-synchronization callback, actual APC/TopLevelIrp/name-query behavior on NTFS, or experimentally confirm whether duplicate separators are normalized by the name query.

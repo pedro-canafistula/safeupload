@@ -668,6 +668,9 @@ SafeUploadPolicyCopyScope (
     _Out_ PSAFEUPLOAD_SCOPE_COPY Scope
     );
 
+VOID SafeUploadPolicySetPending( _In_opt_ const SAFEUPLOAD_POLICY *Pending );
+BOOLEAN SafeUploadPolicyMatchesPendingDestination( _In_ SAFEUPLOAD_VOLUME_KIND VolumeKind, _In_opt_ PCUNICODE_STRING NormalizedPath );
+
 NTSTATUS SafeUploadStageFenceInitialize( VOID );
 VOID SafeUploadStageFenceFree( VOID );
 NTSTATUS SafeUploadStageFenceRefresh( _In_opt_ const SAFEUPLOAD_POLICY *Candidate );
@@ -682,6 +685,7 @@ VOID SafeUploadStageFenceCountOpenRefused( VOID );
 VOID SafeUploadStageFenceCountPagingDenied( VOID );
 VOID SafeUploadStageFenceCountSectionDenied( VOID );
 VOID SafeUploadStageFenceCountSectionUnresolved( VOID );
+VOID SafeUploadStageFenceCountFsctlUnresolved( VOID );
 VOID SafeUploadStageFenceGetStatus( _Out_ PSAFEUPLOAD_FENCE_STATUS Status );
 
 #endif

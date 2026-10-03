@@ -1,0 +1,4 @@
+82151303afb76e07815d7839770acbc8487226184db97ad4b7e6ebc4b33c72ff  /tmp/claude-1000/artifacts/ins.hash
+92dc36a6367be2ae329bc09685dbf571060e012cd8e54015e28944f5f7007543  /tmp/claude-1000/artifacts/SafeUpload.Inspector.exe
+8eb5204d973f89c06ae0279c4411162fc15a4a49a4d9320c7b046cbd48c8b6b6  /tmp/claude-1000/artifacts/SafeUpload-stage-prototype.sys
+53c8f972de4c7a586a675081b0660c818f8264abede71b366c37d6737e044ddb  /tmp/claude-1000/artifacts/sys.hash

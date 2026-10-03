@@ -36,8 +36,12 @@ remains. No watchdog work or new internals investigation is active.
 - [x] Mapped-writable stream fence (feature build only): both existing repro scripts
       **BLOCKED** (Verifier on and off), fixture E closed at section creation, the
       dirty-page lifecycle leak found and fixed, 15-cycle race test and soak under the
-      Verifier with independent restorations; see "Slice 2" below. **Review 3 and the
-      residual limits listed there remain open.**
+      Verifier with independent restorations; see "Slice 2" below. **The residual limits
+      listed there remain open.**
+- [x] Physical mutation gates for old handles (feature build only): mutating FSCTLs and
+      `FILE_DELETE_ON_CLOSE` on protected names, proven by an A/B test (five bypasses
+      REPRODUCED without the gate, all BLOCKED with it); see "Slice 3" below.
+      **Its review and the FSCTL classes it does not cover remain open.**
 - [ ] Complete namespace/policy/attachment admission, remaining mutation classes and
       the broader acceptance tracker.
 
@@ -501,7 +505,7 @@ this slice enforces nothing. Next: the enforcement slice built on these facts.
 
 ### Slice 2: mapped-writable stream fence (2 October 2026)
 
-**Status: implemented (feature build only), reviewed twice (both BLOCKED, fixes applied; a third review is pending), and
+**Status: implemented (feature build only), reviewed three times (all BLOCKED, fixes applied), and
 exercised on the debuggee. Normal builds are unchanged (`NormalBuildIdentity=PASS`); taint stays until the user approves the
 cutover. Residual limits are listed below and are NOT claimed fixed.**
 
@@ -538,9 +542,22 @@ Review history (fresh Luna reviewers; reports kept as evidence):
    the target's name), mandatory unload, a hard link created into a candidate scope mid-scan, unbounded lower I/O in the scan.
    **A fix I tried and reverted:** refusing every read-only open whose name query fails turned each probe of a non-existent file
    into a sharing violation and broke PowerShell module loading under the fence; only resource-exhaustion failures are refused.
-3. Review 3 of the lifecycle purge and the writable-section refusal: **pending** when this section was written (brief:
-   [fence-review3-brief.md](evidence/2026-10-02/worker-briefs/fence-review3-brief.md)). Nothing below is claimed reviewed
-   beyond reviews 1 and 2.
+3. [Review 3](evidence/2026-10-02/fence-review3.txt) of the lifecycle purge and the writable-section refusal: BLOCKED, 1 blocker,
+   1 major, 1 minor (brief: [fence-review3-brief.md](evidence/2026-10-02/worker-briefs/fence-review3-brief.md)). The purge mechanics, carry-over
+   and reference counting, the transition mutex and its lock order, the volume-scoped refusals and the 128-byte status were confirmed.
+   **Fixed (run 13/14):** (blocker) the writable-section refusal consulted only the CURRENT policy, so a mapping created on a file that was
+   about to come into scope, after its pre-swap scan and before the swap, was allowed: the candidate policy is now published
+   (`SafeUploadPolicySetPending`, guarded by the policy lock, cleared before the snapshot is freed and at the swap) before the scan and the
+   section refusal matches it too; (major) the volume-root scan produced names with doubled separators (separator only when needed now);
+   (minor) `complete` is defined as "last scan succeeded and no removable/network scope skipped" and `reparseSkipped` is reported separately.
+   **Not demonstrated by an experiment:** the transition race test (`Test-StagedPolicyTransitionRace.ps1`, a worker creating the first
+   writable mapping at a random moment around the real agent's first policy push, over a fixture with 6,000 filler files so the scan is long)
+   did **not** reproduce the unfixed behaviour on a control build of the pre-fix source (32 iterations, 0 writes succeeded,
+   [calibration](evidence/2026-10-02/fence10-policyrace2-runA-verifier-gate.txt), [control](evidence/2026-10-02/fence10-policyrace3-runA-verifier-gate.txt)):
+   the agent signals policy acceptance only about 1.4 to 1.8 s after launch and a leak needs a successful flush in the short interval
+   between the swap and the post-swap registration, which the worker cannot observe without driver-side timestamps. The fix therefore rests
+   on the review's code analysis plus the regression runs below, **not on a failing-then-passing test**. The test is kept as a regression
+   check only. Review 3 also found nothing wrong in the purge itself, which `fence5`/`fence7` already exercise on the VM.
 
 **A leak the reviews did not find, found by experiment.** The first complete fence only refused writeback while an entry
 existed, and a refresh pruned an entry once no user-writable mapping remained. [fence5-lifecycle-verifier](evidence/2026-10-02/fence5-lifecycle-verifier-gate.txt)
@@ -596,6 +613,14 @@ parameter omitted, nothing ran), `fence6-lifecycle-verifier` (usage error: stale
 `fence6-lifecycle-verifier2/3` (the harness died when `ScheduledTasks` failed to load, caused by the over-broad unresolved-name rule
 removed afterwards), `fence5-lifecycle-verifier` (run 9: accepted as the leak finding, not as a pass).
 
+Final runs after the review 3 fixes and after slice 3 (below): the same ten runs, each with a separately verified 8/8 restoration.
+
+| Build | Evidence | Result |
+| --- | --- | --- |
+| run 14 (review 3 fixes), source of the slice 2 claims | `fence11-*`: [controls V](evidence/2026-10-02/fence11-controls-verifier-gate.txt), [leak a V](evidence/2026-10-02/fence11-repro-a-verifier-gate.txt), [leak b V](evidence/2026-10-02/fence11-repro-b-verifier-gate.txt), [lifecycle V](evidence/2026-10-02/fence11-lifecycle-verifier-gate.txt), [soak V](evidence/2026-10-02/fence11-soak-verifier-gate.txt), [races V](evidence/2026-10-02/fence11-races-verifier-gate.txt), [policy race V](evidence/2026-10-02/fence11-policyrace-verifier-gate.txt), plain [controls](evidence/2026-10-02/fence11-controls-gate.txt), [leak a](evidence/2026-10-02/fence11-repro-a-gate.txt), [leak b](evidence/2026-10-02/fence11-repro-b-gate.txt) | leak a and b BLOCKED (both modes), E refused, lifecycle `Verdict_UnapprovedBytesReachedDisk=False`, soak 5/5, races 166 pre-load views refused / 3,990 creations refused / 0 writes succeeded, policy race 0 writes succeeded |
+| run 15 (slice 3 included) | `fence13-*` (same ten) | identical results: leak a and b BLOCKED, E refused, lifecycle False, soak 5/5, races 179 / 3,918 / 0, policy race 0 |
+| run 16 (slice 3 review fixes, current) | `fence15-*` (same ten) | identical results: leak a and b BLOCKED, E refused, lifecycle False, soak 5/5, races 179 / 4,006 / 0, policy race 0; gates test all BLOCKED with controls allowed (`fence14-gates-run16*`) |
+
 **Residual limits (documented, NOT claimed fixed):**
 - Removable and network scopes are not scanned (`volumeScopesSkipped`, `complete:false`); item 4 owns them.
 - A writable mapping of an **alternate data stream**, hard-link aliases readers outside the scope prefix, and volumes attached after
@@ -609,9 +634,91 @@ removed afterwards), `fence5-lifecycle-verifier` (run 9: accepted as the leak fi
 - Mandatory unload cannot be vetoed; a hard link created into a candidate scope while it is scanned; scans do synchronous lower I/O
   with no timeout and hold the refresh mutex (accepted on the disposable debuggee only, as with the slice 1 probe).
 - The scan caps (64 streams, 64 names, 512 directories, 8192 files) fail closed.
+- The review 3 fix (candidate policy visible to the section refusal) is not backed by a discriminating test (see review 3 above).
 - Latency, USB, UNC/SMB, a real sync client, crash and recovery, and stress are **not measured here** (items 2 to 6).
 
-Next: review 3 findings, then the remaining tracker items in order.
+Next: slice 3 (below), then the remaining tracker items in order.
+
+
+### Slice 3: physical mutation gates for handles that never pass admission (2 October 2026)
+
+**Status: implemented (feature build only), proven by a discriminating A/B test on the debuggee, regression matrix green; its
+adversarial review is recorded below.** Normal builds are unchanged (`NormalBuildIdentity=PASS` on every build).
+
+Source: a fresh Luna analysis of the item 1 leftovers ([brief](evidence/2026-10-02/worker-briefs/item1-gap-analysis-brief.md),
+[ranked gap analysis](evidence/2026-10-02/item1-gap-analysis.txt), source inspection only, nothing run). **Triage by the orchestrator:**
+acted on: mutating FSCTLs through an old handle (`SET_ZERO_DATA`, `DUPLICATE_EXTENTS_TO_FILE`, `SET_REPARSE_POINT`, sparse, compression,
+object ID, integrity, trim, offload write), and `FILE_DELETE_ON_CLOSE` on a protected file by a DELETE-only open (a non-writer, so it fell
+through to NTFS and deleted the file at cleanup with no `SET_INFORMATION`). Not acted on, with reasons: ordinary writes during a policy
+transition are pre-policy writes by definition and a pre-existing handle writing after the swap is already name-checked (the analysis ranked it
+first; I disagree); reparse points inside a scope are skipped by the scan because an open through one resolves to the target's own normalized
+name; an unresolved section name and a hard link created into a candidate scope while it is scanned are documented limits. Late attachment
+(`InstanceSetup` does not trigger a refresh) and alternate-stream mappings stay open, see below.
+
+What exists (`StageStream.c`): `StageMutatingFsctl` / `StageUnownedMutatingFsctl` run for an UNOWNED `IRP_MJ_FILE_SYSTEM_CONTROL`
+(`IRP_MN_USER_FS_REQUEST`, not from the Inspector/service) with a code in a deny list and apply the existing `StagePhysicalMutation` check
+(protected name or protected hard-link alias: `STATUS_ACCESS_DENIED`). Fast I/O is disallowed so the request retries as an IRP. If the name cannot
+be queried safely (IRQL not PASSIVE or a top-level IRP) the request is **allowed and counted** (`fsctlUnresolved`): refusing would break every
+nested legitimate caller on every file. Oplock, query and lock FSCTLs are not gated. In `StageAdmit`, a non-service create of a protected name
+with `FILE_DELETE_ON_CLOSE` is refused. Codes the WDK header lacks are built with `CTL_CODE` from winioctl.h function numbers.
+
+**A/B proof** ([`Test-StagedMutationGates.ps1`](scripts/Test-StagedMutationGates.ps1): fixtures are opened BEFORE the driver loads, so their file
+objects are unowned; the mutation is attempted AFTER the load; every probe has an out-of-scope or non-mutating control):
+
+| Probe (old handle on a protected file or directory) | run 14 (no gate) | run 15 (gate), Verifier on and off |
+| --- | --- | --- |
+| `FSCTL_SET_ZERO_DATA` over bytes 0 to 4095 | **REPRODUCED** (the file head reads empty) | **BLOCKED**, head intact (`BASELINE-DATA`) |
+| `FSCTL_SET_SPARSE` | **REPRODUCED** (sparse attribute set) | **BLOCKED** |
+| `FSCTL_SET_COMPRESSION` | **REPRODUCED** (compressed attribute set) | **BLOCKED** |
+| `FSCTL_SET_REPARSE_POINT` on a protected directory | **REPRODUCED** (it became a mount point) | **BLOCKED** |
+| `DELETE`-only open with `FILE_FLAG_DELETE_ON_CLOSE` | **REPRODUCED** (the file is gone) | **BLOCKED** (`ACCESS_DENIED`), file present |
+| `FSCTL_DUPLICATE_EXTENTS_TO_FILE` | unsupported on NTFS (error 1): no evidence either way | **BLOCKED** (the gate fires before NTFS answers) |
+| controls: sparse and reparse outside every scope, `GET_COMPRESSION` and `QUERY_ALLOCATED_RANGES` on the protected file, delete-on-close outside every scope | ALLOWED | ALLOWED |
+
+Evidence: baseline [`fence12-gates2-run14`](evidence/2026-10-02/fence12-gates2-run14-gate.txt) (the reparse row comes from this run; the first
+rows are identical in the earlier [baseline5](evidence/2026-10-02/fence12-gates-run14-baseline5-gate.txt)), gate
+[Verifier](evidence/2026-10-02/fence12-gates2-run15-verifier-gate.txt) and [plain](evidence/2026-10-02/fence12-gates2-run15-gate.txt), each with a
+separately verified 8/8 restoration. **Non-acceptance**, harness defects of mine that stopped a probe before it ran (each restoration clean):
+`fence12-gates-run14-baseline`, `-baseline2`, `-baseline3`, `-baseline4` (an unsigned literal, a variable name that collided with `$backup`
+because PowerShell is case-insensitive, the automatic variable `$Input` used as a parameter, a hex tag literal), `fence12-gates-run14`
+and `fence12-gates-run15` (the reparse buffer failed with error 87 even outside the scope because an unused output buffer was passed; fixed
+and re-run).
+
+Build: run 15, feature SYS SHA-256 `7973D211309A4396C7EBC6BD9C4CA8D979A2FC7104BE4324AD3079E74851D6DE`
+([builder verification](evidence/2026-10-02/admission-fence-run15-builder-verification.txt), all four builds 0 warnings and 0 errors,
+275 agent tests, `NormalBuildIdentity=PASS`). Regression: the ten-run fence matrix passes unchanged on run 15 (`fence13-*`, table above).
+
+**Residual limits (NOT claimed fixed):**
+- FSCTL classes outside the deny list are not gated (the list is explicit so that oplocks and queries keep working); `IRP_MJ_DEVICE_CONTROL`
+  on a file handle, `IRP_MJ_MDL_WRITE`/`PREPARE_MDL_WRITE` pass-through on an old physical handle (not shown to be reachable on this NTFS), and
+  SMB `COPYCHUNK` on network scopes are unverified.
+- A mutating FSCTL whose name cannot be queried safely is allowed (counted in `fsctlUnresolved`).
+- A writable mapping of an **alternate data stream** is still not fenced (the scan enumerates default streams).
+- Late attachment of the filter to an already-mounted volume does not trigger a fence refresh yet (a work item from `InstanceSetup` is the
+  planned fix, to be done with the removable-media work of item 4).
+- Physical `QUERY_SECURITY`/`QUERY_EA`/directory change notifications expose existing physical metadata only; not a byte-isolation issue.
+
+**Review of slice 3** ([slice3-review.txt](evidence/2026-10-02/slice3-review.txt), [brief](evidence/2026-10-02/worker-briefs/slice3-review-brief.md)):
+BLOCKED, 3 blockers, 5 majors, 1 minor. **Fixed in run 16** (feature SYS `56103382D9860AA76772992C819326686068C73548DC25DE3A336F8F40CB83B9`, four builds
+0/0, 275 tests, `NormalBuildIdentity=PASS`, [verification](evidence/2026-10-02/admission-fence-run16-builder-verification.txt)):
+- the fallback `CTL_CODE` function numbers were wrong for five codes (`ENCRYPTION_FSCTL_IO` 54, `DELETE_OBJECT_ID` 40, `WRITE_RAW_ENCRYPTED` 55,
+  `OFFLOAD_WRITE` 154, `DUPLICATE_EXTENTS_TO_FILE_EX` 250; checked against the builder's winioctl.h); every deny-list code now has a compile-time
+  assertion on its documented numeric value; `SET_ZERO_ON_DEALLOCATION` and `DELETE_EXTERNAL_BACKING` joined the list;
+- reparse-changing FSCTLs use the ancestor-aware predicate (a parent directory turned into a junction redirects the protected namespace);
+- an alternate stream is matched through its base file name, so an exact-file prefix covers its streams (`StageProtocol.c`);
+- delete-on-close is also refused for protected directories and for opens by file ID (no name to judge);
+- in an unsafe context (not PASSIVE, or a top-level IRP) the FSCTL gate consults the name cache before allowing, instead of allowing outright;
+- the writable-section check now matches the pending policy first, then the current one (race-free across the swap).
+**Declined, with reasons:** (blocker) "policy expansion invisible to the mutation gate": writes before the swap are pre-policy by definition and a
+pre-existing handle writing after it is name-checked; (blocker) protected non-NTFS scopes pass through: removable and network destinations are item 4 and
+are not qualified; (minor) the protocol version bump would change the normal driver and the agent, and mixed versions already fail safely on the exact
+size check; `IRP_MJ_DEVICE_CONTROL` and `MARK_HANDLE`/USN/purge-failure-mode FSCTLs do not change protected bytes (justification, not verification).
+**Not proven by experiment:** the ADS base-name match, the ancestor-reparse rule and the by-ID delete-on-close refusal (the no-agent harness cannot create
+an exact-file prefix or an empty ancestor); the directory delete-on-close refusal is **not discriminating** either: that probe is already BLOCKED on
+run 15 by an existing check, so the run 16 addition is defense-in-depth ([run 15](evidence/2026-10-02/fence14-gates-run15-gate.txt),
+[run 16 Verifier](evidence/2026-10-02/fence14-gates-run16-verifier-gate.txt), [run 16](evidence/2026-10-02/fence14-gates-run16-gate.txt)).
+
+Next: the remaining tracker items.
 
 ## Previous milestone: journal recovery/security qualified (2 October 2026)
 

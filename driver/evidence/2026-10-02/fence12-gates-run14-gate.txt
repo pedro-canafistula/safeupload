@@ -1,0 +1,36 @@
+Variant=mutation-gates
+FeatureSHA256=A491F57BDF50677DBB9A29C59AECDCC6C0D052FBB85FB17025756676DE2DDC86
+VerifierEnabled=volatile flags 0x13B
+Gate_SetZeroData=REPRODUCED head=
+Gate_SetSparse=REPRODUCED
+Gate_SetCompression=REPRODUCED
+Gate_DuplicateExtents=UNSUPPORTED(err=1) (NTFS may not support this FSCTL; BLOCKED means the gate engaged)
+Gate_SetReparsePoint=UNSUPPORTED(err=87)
+Gate_DeleteOnClose=REPRODUCED
+Control_SetReparsePointOutsideScope=DENIED(err=87)
+Control_SetSparseOutsideScope=ALLOWED
+Control_GetCompressionProtected=ALLOWED
+Control_QueryAllocatedRangesProtected=ALLOWED
+Control_DeleteOnCloseOutsideScope=ALLOWED
+Verifier Volatile Flags: 0x00000000
+  Volatile Flags:
+    [ ] 0x00000001 Special pool.
+    [ ] 0x00000002 Force IRQL checking.
+    [ ] 0x00000004 Randomized low resources simulation.
+    [ ] 0x00000008 Pool tracking.
+    [ ] 0x00000010 I/O verification.
+    [ ] 0x00000020 Deadlock detection.
+    [ ] 0x00000080 DMA checking.
+    [ ] 0x00000200 Force pending I/O requests.
+    [ ] 0x00000400 IRP logging.
+    [ ] 0x00000800 Miscellaneous checks.
+  Removed Drivers:
+    SafeUpload.sys
+The new settings are in effect until the system
+is restarted or the settings are changed again.
+No settings were changed.
+OriginalDriverRestored=ADA9D05AB6AECDD2B6C521B0CE529FC06C732154ACB3EE85439FBDC8AA80DFCE
+ExperimentalDriverUnloaded=True
+GatesRestoration=OriginalDriverRestored; FilterUnloaded=True
+VariantComplete=mutation-gates
+HARNESS_RETURNED

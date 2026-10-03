@@ -125,18 +125,38 @@ BOOLEAN SafeUploadStageProtectedPath(_In_ PUNICODE_STRING Name,
     return StagePathMatchesScope(Name, VolumeLength, Kind, FALSE);
 }
 
+/* The path without its stream suffix. An alternate data stream belongs to its file: for an exact-file prefix
+ * "dir\\file", the normalized name "dir\\file:stream" must match like "dir\\file" (the component boundary test accepts only a
+ * backslash), otherwise every ADS of a protected file would be classified out of scope. */
+static UNICODE_STRING StageBaseName(_In_ PFLT_FILE_NAME_INFORMATION Name)
+{
+    UNICODE_STRING base = Name->Name;
+
+    if (Name->Stream.Length != 0 && Name->Stream.Length < base.Length && (Name->Stream.Length & 1) == 0) {
+        base.Length -= Name->Stream.Length;
+        base.MaximumLength = base.Length;
+    }
+    return base;
+}
+
 BOOLEAN SafeUploadStageProtectedName(_In_ PFLT_FILE_NAME_INFORMATION Name,
     _In_ SAFEUPLOAD_VOLUME_KIND Kind)
 {
+    UNICODE_STRING base;
+
     if (!NT_SUCCESS(FltParseFileNameInformation(Name))) return TRUE;
-    return StagePathMatchesScope(&Name->Name, Name->Volume.Length, Kind, FALSE);
+    base = StageBaseName(Name);
+    return StagePathMatchesScope(&base, Name->Volume.Length, Kind, FALSE);
 }
 
 BOOLEAN SafeUploadStageTouchesProtectedNamespace(_In_ PFLT_FILE_NAME_INFORMATION Name,
     _In_ SAFEUPLOAD_VOLUME_KIND Kind)
 {
+    UNICODE_STRING base;
+
     if (!NT_SUCCESS(FltParseFileNameInformation(Name))) return TRUE;
-    return StagePathMatchesScope(&Name->Name, Name->Volume.Length, Kind, TRUE);
+    base = StageBaseName(Name);
+    return StagePathMatchesScope(&base, Name->Volume.Length, Kind, TRUE);
 }
 
 BOOLEAN SafeUploadPublicationRename(_In_ PUNICODE_STRING Source,

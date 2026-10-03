@@ -113,6 +113,7 @@ static volatile LONG64 FenceStreamsReleased;
 static volatile LONG64 FenceReleaseRefused;
 static volatile LONG64 FenceSectionsDenied;
 static volatile LONG64 FenceSectionUnresolved;
+static volatile LONG64 FenceFsctlUnresolved;
 
 static VOID FenceScanDirectory(_In_ PFENCE_SCAN Scan, _In_opt_ PFLT_INSTANCE Instance,
     _In_ PCUNICODE_STRING Directory, _In_ ULONG Depth);
@@ -335,6 +336,8 @@ static VOID FenceVisit(_In_ PFENCE_SCAN Scan, _In_opt_ PFLT_INSTANCE Instance, _
     UNICODE_STRING name, child;
     PWCHAR buffer;
     ULONG chars;
+    BOOLEAN needSeparator;
+    NTSTATUS status;
 
     name.Buffer = Entry->FileName;
     name.Length = name.MaximumLength = (USHORT)Entry->FileNameLength;
@@ -342,16 +345,25 @@ static VOID FenceVisit(_In_ PFENCE_SCAN Scan, _In_opt_ PFLT_INSTANCE Instance, _
     if ((name.Length == sizeof(WCHAR) && name.Buffer[0] == L'.') ||
         (name.Length == 2 * sizeof(WCHAR) && name.Buffer[0] == L'.' && name.Buffer[1] == L'.')) return;
     if (FlagOn(Entry->FileAttributes, FILE_ATTRIBUTE_REPARSE_POINT)) { Scan->ReparseSkipped += 1; return; }
-    /* "directory", one separator, "name": exactly this many characters, no terminator. */
-    chars = ((ULONG)Directory->Length + name.Length) / sizeof(WCHAR) + 1;
+    /* "directory", one separator (none when the directory already ends in one, as a volume root does),
+     * "name": exactly this many characters, no terminator. */
+    needSeparator = (Directory->Length == 0 || Directory->Buffer[Directory->Length / sizeof(WCHAR) - 1] != L'\\');
+    chars = ((ULONG)Directory->Length + name.Length) / sizeof(WCHAR);
+    if (needSeparator) chars += 1;
     if (chars > FENCE_PATH_CHARS) { FENCE_FAIL(Scan, STATUS_NAME_TOO_LONG); return; }
     buffer = ExAllocatePool2(POOL_FLAG_PAGED, chars * sizeof(WCHAR), FENCE_TAG);
     if (buffer == NULL) { FENCE_FAIL(Scan, STATUS_INSUFFICIENT_RESOURCES); return; }
-    RtlCopyMemory(buffer, Directory->Buffer, Directory->Length);
-    buffer[Directory->Length / sizeof(WCHAR)] = L'\\';
-    RtlCopyMemory(buffer + Directory->Length / sizeof(WCHAR) + 1, name.Buffer, name.Length);
     child.Buffer = buffer;
-    child.Length = child.MaximumLength = (USHORT)(chars * sizeof(WCHAR));
+    child.Length = 0;
+    child.MaximumLength = (USHORT)(chars * sizeof(WCHAR));
+    status = RtlAppendUnicodeStringToString(&child, Directory);
+    if (NT_SUCCESS(status) && needSeparator) status = RtlAppendUnicodeToString(&child, L"\\");
+    if (NT_SUCCESS(status)) status = RtlAppendUnicodeStringToString(&child, &name);
+    if (!NT_SUCCESS(status)) {
+        FENCE_FAIL(Scan, status);
+        ExFreePoolWithTag(buffer, FENCE_TAG);
+        return;
+    }
     if (FlagOn(Entry->FileAttributes, FILE_ATTRIBUTE_DIRECTORY)) FenceScanDirectory(Scan, Instance, &child, Depth + 1);
     else if (Scan->Files >= FENCE_MAX_FILES) FENCE_FAIL(Scan, STATUS_INSUFFICIENT_RESOURCES);
     else FenceProbeFile(Scan, Instance, &child);
@@ -776,6 +788,7 @@ VOID SafeUploadStageFenceCountOpenRefused(VOID) { InterlockedIncrement64(&FenceO
 VOID SafeUploadStageFenceCountPagingDenied(VOID) { InterlockedIncrement64(&FencePagingDenied); }
 VOID SafeUploadStageFenceCountSectionDenied(VOID) { InterlockedIncrement64(&FenceSectionsDenied); }
 VOID SafeUploadStageFenceCountSectionUnresolved(VOID) { InterlockedIncrement64(&FenceSectionUnresolved); }
+VOID SafeUploadStageFenceCountFsctlUnresolved(VOID) { InterlockedIncrement64(&FenceFsctlUnresolved); }
 
 VOID SafeUploadStageFenceGetStatus(_Out_ PSAFEUPLOAD_FENCE_STATUS Status)
 {
@@ -798,6 +811,7 @@ VOID SafeUploadStageFenceGetStatus(_Out_ PSAFEUPLOAD_FENCE_STATUS Status)
     Status->ReleaseRefused = (UINT64)InterlockedCompareExchange64(&FenceReleaseRefused, 0, 0);
     Status->SectionsDenied = (UINT64)InterlockedCompareExchange64(&FenceSectionsDenied, 0, 0);
     Status->SectionNameUnresolved = (UINT64)InterlockedCompareExchange64(&FenceSectionUnresolved, 0, 0);
+    Status->FsctlUnresolved = (UINT64)InterlockedCompareExchange64(&FenceFsctlUnresolved, 0, 0);
 }
 
 #endif

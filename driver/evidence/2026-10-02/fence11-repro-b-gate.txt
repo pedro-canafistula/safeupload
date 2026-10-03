@@ -1,0 +1,30 @@
+TestTimestampUTC=2026-10-02T20:59:36.6788232Z
+Host=WIN10-DEBUGGED
+UUID=9D44EEE8-81CF-4CC1-9FBA-7670F11DEF4D
+OriginalInstalledSHA256=ADA9D05AB6AECDD2B6C521B0CE529FC06C732154ACB3EE85439FBDC8AA80DFCE
+FeatureDriverSHA256=A491F57BDF50677DBB9A29C59AECDCC6C0D052FBB85FB17025756676DE2DDC86
+ServicePackageSHA256=D887E0D7F38AD64AD40CEE18B841C6D38AD2BED4D6F760B1BDE4464927381997
+OriginalPolicySHA256=29DC8A341BD7C549996596D2477A0CCCAF19602C362A2167FB4FDD5C66663731
+FilterUnloaded=True; VerifierFlags=0; VerifiedDrivers=None; Service=Manual/Stopped
+ConcurrentAgentProcesses=0; SafeUploadTestTasks=0
+OwnedVhdxPresent=False
+FixtureOutsideBaselinePolicy=True; Path=C:\Users\vika\Documents\SafeUpload-policy-transition-bfe40a3d9df64826a64ba098c9fc10b5
+FixtureExtension=.maptest; BaselineSourceExtensionMonitored=False
+69
+FilterAttached=True; MappingCreatedBeforeFirstPolicyPush=True; MappingCapacityEqualsFileEOF=True; PreChangeFileHandleClosed=True; WritableSectionRetained=True
+BaselinePolicyAcceptedByRealAgentAndDriver=True; MappingPredatesBaselinePolicy=True
+ExpandedPolicySHA256=8B31BA7CCBBA306E17F3BC3D27A936CF9EF5E17BF5643A2079A9715AE323C8C3
+ExpandedPolicyIncludesFixture=True
+ExpandedPolicyAcceptedByRealAgentAndDriver=True
+MappedWriteResult=OBSERVED_REFUSED: Exception calling "Flush" with "0" argument(s): "The media is write protected.
+"
+FreshFileObjectBytes=OBSERVED_REFUSED: Exception calling ".ctor" with "4" argument(s): "The process cannot access the file 'C:\Users\vika\Documents\SafeUpload-policy-transition-bfe40a3d9df64826a64ba098c9fc10b5\synthetic.maptest' because it is being used by another process."
+FreshUncachedObserver=OBSERVED_REFUSED: CreateFile error 32
+UnauthenticatedMappedWriteAfterPolicyExpansion=BLOCKED
+ViewDisposeObserved=Exception calling "Dispose" with "0" argument(s): "The media is write protected.
+"
+OriginalDriverRestored=ADA9D05AB6AECDD2B6C521B0CE529FC06C732154ACB3EE85439FBDC8AA80DFCE
+ExperimentalDriverUnloaded=True
+OriginalDriverAndPolicyRestored=True; VerifierOff=True; FilterUnloaded=True
+AgentProcesses=0; AgentTasks=0; PolicyTransitionFixtureRemoved=True
+HARNESS_RETURNED

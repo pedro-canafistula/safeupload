@@ -562,6 +562,8 @@ typedef struct _SAFEUPLOAD_FENCE_STATUS {
     UINT64 ReleaseRefused;           // release attempts that left a stream fenced (still mapped or purge failed)
     UINT64 SectionsDenied;           // writable data sections refused on an unadmitted in-scope stream
     UINT64 SectionNameUnresolved;    // writable sections allowed because no name could be resolved
+    UINT64 FsctlUnresolved;          // mutating FSCTLs allowed because the name could not be queried safely
+    UINT64 Reserved2;
 } SAFEUPLOAD_FENCE_STATUS, *PSAFEUPLOAD_FENCE_STATUS;
 
 // A zero cursor and snapshot request a snapshot of all entries retained now.
@@ -863,7 +865,7 @@ C_ASSERT( sizeof( SAFEUPLOAD_ADMISSION_TRACE_ENTRY ) == 112 );
 C_ASSERT( sizeof( SAFEUPLOAD_ADMISSION_TRACE_COUNTERS ) == 56 );
 C_ASSERT( sizeof( SAFEUPLOAD_ADMISSION_TRACE_BATCH ) == 1000 );
 C_ASSERT( sizeof( SAFEUPLOAD_POLICY_MESSAGE ) >= sizeof( SAFEUPLOAD_ADMISSION_TRACE_BATCH ) );
-C_ASSERT( sizeof( SAFEUPLOAD_FENCE_STATUS ) == 128 );
+C_ASSERT( sizeof( SAFEUPLOAD_FENCE_STATUS ) == 144 );
 C_ASSERT( sizeof( SAFEUPLOAD_POLICY_MESSAGE ) >=
           FIELD_OFFSET( SAFEUPLOAD_ADMISSION_PROBE_REQUEST, Strings ) +
           (2 * SAFEUPLOAD_ADMISSION_PROBE_MAX_STRING_CHARS * sizeof( WCHAR )) );

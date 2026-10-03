@@ -51,6 +51,19 @@ static PSAFEUPLOAD_POLICY SafeUploadPolicy = NULL;
 
 static volatile LONG SafeUploadPolicyGeneration = 0;
 
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+
+//
+//  The candidate snapshot while a policy update is in transition (from before
+//  its fence scan until the swap), guarded by SafeUploadPolicyLock. The
+//  writable-section refusal consults it so a mapping created on a file that is
+//  about to come into scope cannot slip between the scan and the swap.
+//
+
+static const SAFEUPLOAD_POLICY *SafeUploadPendingPolicy = NULL;
+
+#endif
+
 static
 BOOLEAN
 SafeUploadPathUnderPrefix (
@@ -90,6 +103,7 @@ SafeUploadBuildStringTable (
     #pragma alloc_text(PAGE, SafeUploadBuildStringTable)
 #if SAFEUPLOAD_STAGING_PROTOTYPE
     #pragma alloc_text(PAGE, SafeUploadPolicyCopyScope)
+    #pragma alloc_text(PAGE, SafeUploadPolicySetPending)
 #endif
 #endif
 
@@ -349,10 +363,12 @@ Return Value:
         //
 
         fenceTransition = SafeUploadStageFenceTransitionBegin();
+        SafeUploadPolicySetPending( snapshot );
         fenceStatus = SafeUploadStageFenceRefresh( snapshot );
 
         if (!NT_SUCCESS( fenceStatus )) {
 
+            SafeUploadPolicySetPending( NULL );             // before the snapshot is freed
             if (fenceTransition) SafeUploadStageFenceTransitionEnd();
             ExFreePoolWithTag( snapshot, SAFEUPLOAD_POOL_TAG );
             return fenceStatus;
@@ -365,6 +381,9 @@ Return Value:
 
     previous = SafeUploadPolicy;
     SafeUploadPolicy = snapshot;
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    SafeUploadPendingPolicy = NULL;                         // the candidate is the current policy from here on
+#endif
     (VOID) InterlockedIncrement( &SafeUploadPolicyGeneration );
 
     FltReleasePushLock( &SafeUploadPolicyLock );
@@ -862,6 +881,80 @@ Return Value:
 }
 
 #if SAFEUPLOAD_STAGING_PROTOTYPE
+
+VOID
+SafeUploadPolicySetPending (
+    _In_opt_ const SAFEUPLOAD_POLICY *Pending
+    )
+/*++
+
+Routine Description:
+
+    Publishes (or clears) the candidate snapshot of a policy update in
+    transition. Taking the lock exclusively waits out every reader, so a
+    snapshot is never freed while SafeUploadPolicyMatchesPendingDestination
+    is inspecting it.
+
+    IRQL: PASSIVE_LEVEL.
+
+--*/
+{
+    PAGED_CODE();
+
+    FltAcquirePushLockExclusive( &SafeUploadPolicyLock );
+    SafeUploadPendingPolicy = Pending;
+    FltReleasePushLock( &SafeUploadPolicyLock );
+}
+
+BOOLEAN
+SafeUploadPolicyMatchesPendingDestination (
+    _In_ SAFEUPLOAD_VOLUME_KIND VolumeKind,
+    _In_opt_ PCUNICODE_STRING NormalizedPath
+    )
+/*++
+
+Routine Description:
+
+    Whether the candidate policy of an update in transition covers the path.
+    FALSE when no update is in transition. Same matching rules as the current
+    policy (destination kind flags, then component-bounded prefixes).
+
+    IRQL: <= APC_LEVEL.
+
+--*/
+{
+    BOOLEAN matched = FALSE;
+    UINT32 index;
+
+    FltAcquirePushLockShared( &SafeUploadPolicyLock );
+
+    if (SafeUploadPendingPolicy != NULL) {
+
+        if ((VolumeKind == SafeUploadVolumeRemovable &&
+             FlagOn( SafeUploadPendingPolicy->Flags, SAFEUPLOAD_POLICY_FLAG_REMOVABLE )) ||
+            (VolumeKind == SafeUploadVolumeNetwork &&
+             FlagOn( SafeUploadPendingPolicy->Flags, SAFEUPLOAD_POLICY_FLAG_NETWORK ))) {
+
+            matched = TRUE;
+        }
+
+        if (!matched && NormalizedPath != NULL && NormalizedPath->Length != 0) {
+
+            for (index = 0; index < SafeUploadPendingPolicy->PrefixCount; index += 1) {
+
+                if (SafeUploadPathUnderPrefix( &SafeUploadPendingPolicy->Prefixes[index], NormalizedPath )) {
+
+                    matched = TRUE;
+                    break;
+                }
+            }
+        }
+    }
+
+    FltReleasePushLock( &SafeUploadPolicyLock );
+
+    return matched;
+}
 
 NTSTATUS
 SafeUploadPolicyCopyScope (

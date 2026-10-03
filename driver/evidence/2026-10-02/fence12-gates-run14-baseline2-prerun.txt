@@ -1,0 +1,1 @@
+copied /tmp/claude-1000/artifacts-run14/SafeUpload-stage-prototype.sys -> SafeUpload-stage-prototype.sys sha256=a491f57bdf50677dbb9a29c59aecdcc6c0d052fbb85fb17025756676de2ddc86

@@ -1930,6 +1930,25 @@ static SAFEUPLOAD_VOLUME_KIND StageVolumeKind(PFLT_INSTANCE Instance)
     return kind;
 }
 
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+/* A directory opened with FILE_DELETE_ON_CLOSE is deleted at cleanup without any SET_INFORMATION. Refuse it when the
+ * directory is, or lies above, a protected prefix; a name that cannot be resolved is refused too (the case is rare). */
+static FLT_PREOP_CALLBACK_STATUS StageDirectoryDeleteOnClose(PFLT_CALLBACK_DATA Data, PCFLT_RELATED_OBJECTS Objects)
+{
+    PFLT_FILE_NAME_INFORMATION name = NULL;
+    SAFEUPLOAD_VOLUME_KIND kind = StageVolumeKind(Objects->Instance);
+    BOOLEAN deny;
+    NTSTATUS status = FltGetFileNameInformation(Data, FLT_FILE_NAME_NORMALIZED | FLT_FILE_NAME_QUERY_DEFAULT, &name);
+
+    deny = !NT_SUCCESS(status) || SafeUploadStageTouchesProtectedNamespace(name, kind);
+    if (name != NULL) FltReleaseFileNameInformation(name);
+    if (!deny) return FLT_PREOP_SUCCESS_NO_CALLBACK;
+    Data->IoStatus.Status = STATUS_ACCESS_DENIED;
+    Data->IoStatus.Information = 0;
+    return FLT_PREOP_COMPLETE;
+}
+#endif
+
 static FLT_PREOP_CALLBACK_STATUS StageAdmit(PFLT_CALLBACK_DATA Data,
     PCFLT_RELATED_OBJECTS Objects)
 {
@@ -1952,8 +1971,22 @@ static FLT_PREOP_CALLBACK_STATUS StageAdmit(PFLT_CALLBACK_DATA Data,
         return FLT_PREOP_SUCCESS_NO_CALLBACK;
     writer = BooleanFlagOn(security->DesiredAccess, FILE_WRITE_DATA | FILE_APPEND_DATA | MAXIMUM_ALLOWED) ||
         disposition == FILE_CREATE || disposition == FILE_SUPERSEDE || disposition == FILE_OVERWRITE || disposition == FILE_OVERWRITE_IF;
-    if (FlagOn(Data->Iopb->Parameters.Create.Options, FILE_DIRECTORY_FILE)) return FLT_PREOP_SUCCESS_NO_CALLBACK;
+    if (FlagOn(Data->Iopb->Parameters.Create.Options, FILE_DIRECTORY_FILE)) {
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+        if (!service && FlagOn(Data->Iopb->Parameters.Create.Options, FILE_DELETE_ON_CLOSE))
+            return StageDirectoryDeleteOnClose(Data, Objects);
+#endif
+        return FLT_PREOP_SUCCESS_NO_CALLBACK;
+    }
     kind = StageVolumeKind(Objects->Instance);
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    /* An open by file ID carries no name, so delete-on-close cannot be judged against the protected namespace. */
+    if (!service && FlagOn(Data->Iopb->Parameters.Create.Options, FILE_OPEN_BY_FILE_ID) &&
+        FlagOn(Data->Iopb->Parameters.Create.Options, FILE_DELETE_ON_CLOSE)) {
+        status = STATUS_ACCESS_DENIED;
+        goto Complete;
+    }
+#endif
     if (!service && FlagOn(Data->Iopb->Parameters.Create.Options, FILE_OPEN_BY_FILE_ID)) {
         UNICODE_STRING id = Objects->FileObject->FileName;
         StageAcquire(&StageNamespaceResource);
@@ -2050,6 +2083,12 @@ static FLT_PREOP_CALLBACK_STATUS StageAdmit(PFLT_CALLBACK_DATA Data,
     }
     if (FLT_IS_IRP_OPERATION(Data) && FltIsIoCanceled(Data)) { status = STATUS_CANCELLED; goto Complete; }
 #if SAFEUPLOAD_STAGING_PROTOTYPE
+    /* FILE_DELETE_ON_CLOSE on a protected name deletes the physical file at cleanup without any SET_INFORMATION, so
+     * the disposition gate never sees it; a DELETE-only open is not a writer and would fall through to NTFS. */
+    if (!privateNamespace && FlagOn(Data->Iopb->Parameters.Create.Options, FILE_DELETE_ON_CLOSE)) {
+        status = STATUS_ACCESS_DENIED;
+        goto Complete;
+    }
     /* A stream with a writable mapping that predates its scope cannot be served: a reader would see
      * the dirty mapped bytes. Name check only; no I/O in the create path. */
     if (!privateNamespace && SafeUploadStageFenceNameQuarantined(&name->Name)) {
@@ -2069,8 +2108,17 @@ Complete:
     return FLT_PREOP_COMPLETE;
 }
 
+static FLT_PREOP_CALLBACK_STATUS StagePhysicalMutationEx(PFLT_CALLBACK_DATA Data,
+    PCFLT_RELATED_OBJECTS Objects, BOOLEAN IncludeAncestors);
+
 static FLT_PREOP_CALLBACK_STATUS StagePhysicalMutation(PFLT_CALLBACK_DATA Data,
     PCFLT_RELATED_OBJECTS Objects)
+{
+    return StagePhysicalMutationEx(Data, Objects, FALSE);
+}
+
+static FLT_PREOP_CALLBACK_STATUS StagePhysicalMutationEx(PFLT_CALLBACK_DATA Data,
+    PCFLT_RELATED_OBJECTS Objects, BOOLEAN IncludeAncestors)
 {
     PFLT_FILE_NAME_INFORMATION name = NULL;
     SAFEUPLOAD_VOLUME_KIND kind = StageVolumeKind(Objects->Instance);
@@ -2091,7 +2139,8 @@ static FLT_PREOP_CALLBACK_STATUS StagePhysicalMutation(PFLT_CALLBACK_DATA Data,
     if (!NT_SUCCESS(status)) goto Complete;
     status = FltParseFileNameInformation(name);
     if (!NT_SUCCESS(status)) goto Complete;
-    if (!service && SafeUploadStageProtectedName(name, kind)) { status = STATUS_ACCESS_DENIED; goto Complete; }
+    if (!service && (IncludeAncestors ? SafeUploadStageTouchesProtectedNamespace(name, kind) :
+        SafeUploadStageProtectedName(name, kind))) { status = STATUS_ACCESS_DENIED; goto Complete; }
     status = SafeUploadStageCheckObjectAliases(Objects->Instance, Objects->FileObject,
         &name->Volume, kind, &protectedAlias);
     if (protectedAlias) status = STATUS_ACCESS_DENIED;
@@ -2148,6 +2197,160 @@ Complete:
 }
 
 #if SAFEUPLOAD_STAGING_PROTOTYPE
+/* FSCTL codes that change a file's data, allocation, metadata or namespace position. A handle that predates the
+ * filter (or the policy scope) reaches the file system with these and never passes StageAdmit, so each is checked
+ * against the protected namespace exactly like a physical SET_INFORMATION. Oplock, query and lock FSCTLs are NOT
+ * listed: applications use them constantly and they cannot change protected bytes. Codes missing from the WDK
+ * headers are built with CTL_CODE from winioctl.h's function numbers. */
+#ifndef FSCTL_SET_ZERO_DATA
+#define FSCTL_SET_ZERO_DATA CTL_CODE(FILE_DEVICE_FILE_SYSTEM, 50, METHOD_BUFFERED, FILE_WRITE_DATA)
+#endif
+#ifndef FSCTL_SET_SPARSE
+#define FSCTL_SET_SPARSE CTL_CODE(FILE_DEVICE_FILE_SYSTEM, 49, METHOD_BUFFERED, FILE_SPECIAL_ACCESS)
+#endif
+#ifndef FSCTL_SET_COMPRESSION
+#define FSCTL_SET_COMPRESSION CTL_CODE(FILE_DEVICE_FILE_SYSTEM, 16, METHOD_BUFFERED, FILE_READ_DATA | FILE_WRITE_DATA)
+#endif
+#ifndef FSCTL_SET_ENCRYPTION
+#define FSCTL_SET_ENCRYPTION CTL_CODE(FILE_DEVICE_FILE_SYSTEM, 53, METHOD_NEITHER, FILE_ANY_ACCESS)
+#endif
+#ifndef FSCTL_ENCRYPTION_FSCTL_IO
+#define FSCTL_ENCRYPTION_FSCTL_IO CTL_CODE(FILE_DEVICE_FILE_SYSTEM, 54, METHOD_NEITHER, FILE_ANY_ACCESS)
+#endif
+#ifndef FSCTL_SET_OBJECT_ID
+#define FSCTL_SET_OBJECT_ID CTL_CODE(FILE_DEVICE_FILE_SYSTEM, 38, METHOD_BUFFERED, FILE_SPECIAL_ACCESS)
+#endif
+#ifndef FSCTL_SET_OBJECT_ID_EXTENDED
+#define FSCTL_SET_OBJECT_ID_EXTENDED CTL_CODE(FILE_DEVICE_FILE_SYSTEM, 47, METHOD_BUFFERED, FILE_SPECIAL_ACCESS)
+#endif
+#ifndef FSCTL_CREATE_OR_GET_OBJECT_ID
+#define FSCTL_CREATE_OR_GET_OBJECT_ID CTL_CODE(FILE_DEVICE_FILE_SYSTEM, 48, METHOD_BUFFERED, FILE_ANY_ACCESS)
+#endif
+#ifndef FSCTL_DELETE_OBJECT_ID
+#define FSCTL_DELETE_OBJECT_ID CTL_CODE(FILE_DEVICE_FILE_SYSTEM, 40, METHOD_BUFFERED, FILE_SPECIAL_ACCESS)
+#endif
+#ifndef FSCTL_SET_REPARSE_POINT
+#define FSCTL_SET_REPARSE_POINT CTL_CODE(FILE_DEVICE_FILE_SYSTEM, 41, METHOD_BUFFERED, FILE_SPECIAL_ACCESS)
+#endif
+#ifndef FSCTL_DELETE_REPARSE_POINT
+#define FSCTL_DELETE_REPARSE_POINT CTL_CODE(FILE_DEVICE_FILE_SYSTEM, 43, METHOD_BUFFERED, FILE_SPECIAL_ACCESS)
+#endif
+#ifndef FSCTL_SET_INTEGRITY_INFORMATION
+#define FSCTL_SET_INTEGRITY_INFORMATION CTL_CODE(FILE_DEVICE_FILE_SYSTEM, 160, METHOD_BUFFERED, FILE_READ_DATA | FILE_WRITE_DATA)
+#endif
+#ifndef FSCTL_DUPLICATE_EXTENTS_TO_FILE
+#define FSCTL_DUPLICATE_EXTENTS_TO_FILE CTL_CODE(FILE_DEVICE_FILE_SYSTEM, 209, METHOD_BUFFERED, FILE_WRITE_DATA)
+#endif
+#ifndef FSCTL_DUPLICATE_EXTENTS_TO_FILE_EX
+#define FSCTL_DUPLICATE_EXTENTS_TO_FILE_EX CTL_CODE(FILE_DEVICE_FILE_SYSTEM, 250, METHOD_BUFFERED, FILE_WRITE_DATA)
+#endif
+#ifndef FSCTL_FILE_LEVEL_TRIM
+#define FSCTL_FILE_LEVEL_TRIM CTL_CODE(FILE_DEVICE_FILE_SYSTEM, 130, METHOD_BUFFERED, FILE_WRITE_DATA)
+#endif
+#ifndef FSCTL_OFFLOAD_WRITE
+#define FSCTL_OFFLOAD_WRITE CTL_CODE(FILE_DEVICE_FILE_SYSTEM, 154, METHOD_BUFFERED, FILE_WRITE_ACCESS)
+#endif
+#ifndef FSCTL_SET_EXTERNAL_BACKING
+#define FSCTL_SET_EXTERNAL_BACKING CTL_CODE(FILE_DEVICE_FILE_SYSTEM, 195, METHOD_BUFFERED, FILE_SPECIAL_ACCESS)
+#endif
+#ifndef FSCTL_WRITE_RAW_ENCRYPTED
+#define FSCTL_WRITE_RAW_ENCRYPTED CTL_CODE(FILE_DEVICE_FILE_SYSTEM, 55, METHOD_NEITHER, FILE_SPECIAL_ACCESS)
+#endif
+
+#ifndef FSCTL_SET_ZERO_ON_DEALLOCATION
+#define FSCTL_SET_ZERO_ON_DEALLOCATION CTL_CODE(FILE_DEVICE_FILE_SYSTEM, 101, METHOD_BUFFERED, FILE_SPECIAL_ACCESS)
+#endif
+#ifndef FSCTL_DELETE_EXTERNAL_BACKING
+#define FSCTL_DELETE_EXTERNAL_BACKING CTL_CODE(FILE_DEVICE_FILE_SYSTEM, 197, METHOD_BUFFERED, FILE_SPECIAL_ACCESS)
+#endif
+/* Whatever defines these symbols (the WDK or the fallbacks above), the numeric values must be the documented ones:
+ * a wrong fallback would deny an unrelated code and miss the real mutator. */
+C_ASSERT(FSCTL_SET_ZERO_DATA == 0x980C8);
+C_ASSERT(FSCTL_SET_SPARSE == 0x900C4);
+C_ASSERT(FSCTL_SET_COMPRESSION == 0x9C040);
+C_ASSERT(FSCTL_SET_ENCRYPTION == 0x900D7);
+C_ASSERT(FSCTL_ENCRYPTION_FSCTL_IO == 0x900DB);
+C_ASSERT(FSCTL_SET_OBJECT_ID == 0x90098);
+C_ASSERT(FSCTL_SET_OBJECT_ID_EXTENDED == 0x900BC);
+C_ASSERT(FSCTL_CREATE_OR_GET_OBJECT_ID == 0x900C0);
+C_ASSERT(FSCTL_DELETE_OBJECT_ID == 0x900A0);
+C_ASSERT(FSCTL_SET_REPARSE_POINT == 0x900A4);
+C_ASSERT(FSCTL_DELETE_REPARSE_POINT == 0x900AC);
+C_ASSERT(FSCTL_SET_INTEGRITY_INFORMATION == 0x9C280);
+C_ASSERT(FSCTL_DUPLICATE_EXTENTS_TO_FILE == 0x98344);
+C_ASSERT(FSCTL_DUPLICATE_EXTENTS_TO_FILE_EX == 0x983E8);
+C_ASSERT(FSCTL_FILE_LEVEL_TRIM == 0x98208);
+C_ASSERT(FSCTL_OFFLOAD_WRITE == 0x98268);
+C_ASSERT(FSCTL_SET_EXTERNAL_BACKING == 0x9030C);
+C_ASSERT(FSCTL_WRITE_RAW_ENCRYPTED == 0x900DF);
+C_ASSERT(FSCTL_SET_ZERO_ON_DEALLOCATION == 0x90194);
+C_ASSERT(FSCTL_DELETE_EXTERNAL_BACKING == 0x90314);
+
+static BOOLEAN StageMutatingFsctl(ULONG Code)
+{
+    switch (Code) {
+    case FSCTL_SET_ZERO_DATA: case FSCTL_SET_SPARSE: case FSCTL_SET_COMPRESSION: case FSCTL_SET_ENCRYPTION:
+    case FSCTL_ENCRYPTION_FSCTL_IO: case FSCTL_SET_OBJECT_ID: case FSCTL_SET_OBJECT_ID_EXTENDED:
+    case FSCTL_CREATE_OR_GET_OBJECT_ID: case FSCTL_DELETE_OBJECT_ID: case FSCTL_SET_REPARSE_POINT:
+    case FSCTL_DELETE_REPARSE_POINT: case FSCTL_SET_INTEGRITY_INFORMATION: case FSCTL_DUPLICATE_EXTENTS_TO_FILE:
+    case FSCTL_DUPLICATE_EXTENTS_TO_FILE_EX: case FSCTL_FILE_LEVEL_TRIM: case FSCTL_OFFLOAD_WRITE:
+    case FSCTL_SET_EXTERNAL_BACKING: case FSCTL_WRITE_RAW_ENCRYPTED:
+    case FSCTL_SET_ZERO_ON_DEALLOCATION: case FSCTL_DELETE_EXTERNAL_BACKING:
+        return TRUE;
+    default:
+        return FALSE;
+    }
+}
+
+static BOOLEAN StageReparseFsctl(ULONG Code)
+{
+    return Code == FSCTL_SET_REPARSE_POINT || Code == FSCTL_DELETE_REPARSE_POINT;
+}
+
+/* A mutating FSCTL through a file object that was never admitted. In a safe context (PASSIVE_LEVEL, no top-level IRP)
+ * the shared physical-mutation check applies: a protected name or protected hard-link alias is refused with
+ * STATUS_ACCESS_DENIED. A reparse-changing FSCTL also covers the ANCESTORS of a protected prefix, because turning a parent
+ * directory into a junction redirects the whole protected namespace. In an unsafe context the file system cannot be
+ * queried, so only the name cache is consulted (documented to work there); a miss allows the request and counts it
+ * (fsctlUnresolved), because refusing would break every nested legitimate caller on every file. */
+static FLT_PREOP_CALLBACK_STATUS StageUnownedMutatingFsctl(PFLT_CALLBACK_DATA Data, PCFLT_RELATED_OBJECTS Objects)
+{
+    BOOLEAN service = SafeUploadData.ClientPort != NULL &&
+        FltGetRequestorProcessId(Data) == SafeUploadData.InspectorProcessId;
+    ULONG code;
+    BOOLEAN ancestors;
+
+    if (Data->Iopb->MinorFunction != IRP_MN_USER_FS_REQUEST) return FLT_PREOP_SUCCESS_NO_CALLBACK;
+    code = Data->Iopb->Parameters.FileSystemControl.Common.FsControlCode;
+    if (!StageMutatingFsctl(code)) return FLT_PREOP_SUCCESS_NO_CALLBACK;
+    if (service) return FLT_PREOP_SUCCESS_NO_CALLBACK;
+    if (FLT_IS_FASTIO_OPERATION(Data)) return FLT_PREOP_DISALLOW_FASTIO;            /* retried as an IRP */
+    ancestors = StageReparseFsctl(code);
+    if (KeGetCurrentIrql() == PASSIVE_LEVEL && IoGetTopLevelIrp() == NULL) return StagePhysicalMutationEx(Data, Objects, ancestors);
+    if (KeGetCurrentIrql() <= APC_LEVEL) {
+        PFLT_FILE_NAME_INFORMATION cached = NULL;
+        BOOLEAN deny = FALSE;
+
+        if (NT_SUCCESS(FltGetFileNameInformation(Data, FLT_FILE_NAME_NORMALIZED | FLT_FILE_NAME_QUERY_ALWAYS_ALLOW_CACHE_LOOKUP, &cached))) {
+            SAFEUPLOAD_VOLUME_KIND kind = StageVolumeKind(Objects->Instance);
+
+            if (NT_SUCCESS(FltParseFileNameInformation(cached)))
+                deny = ancestors ? SafeUploadStageTouchesProtectedNamespace(cached, kind) : SafeUploadStageProtectedName(cached, kind);
+            FltReleaseFileNameInformation(cached);
+            if (deny) {
+                Data->IoStatus.Status = STATUS_ACCESS_DENIED;
+                Data->IoStatus.Information = 0;
+                return FLT_PREOP_COMPLETE;
+            }
+            return FLT_PREOP_SUCCESS_NO_CALLBACK;
+        }
+    }
+    SafeUploadStageFenceCountFsctlUnresolved();
+    return FLT_PREOP_SUCCESS_NO_CALLBACK;
+}
+#endif
+
+#if SAFEUPLOAD_STAGING_PROTOTYPE
 #ifndef SEC_IMAGE
 #define SEC_IMAGE 0x01000000
 #endif
@@ -2177,7 +2380,12 @@ static FLT_PREOP_CALLBACK_STATUS StageUnownedWritableSection(PFLT_CALLBACK_DATA 
     kind = StageVolumeKind(Objects->Instance);
     status = FltGetFileNameInformation(Data, FLT_FILE_NAME_NORMALIZED | FLT_FILE_NAME_QUERY_DEFAULT, &name);
     if (!NT_SUCCESS(status)) { SafeUploadStageFenceCountSectionUnresolved(); return FLT_PREOP_SUCCESS_NO_CALLBACK; }
-    if (NT_SUCCESS(FltParseFileNameInformation(name)) && SafeUploadStageProtectedName(name, kind)) deny = TRUE;
+    /* Pending FIRST, then current: the swap clears the pending policy and installs it as current under one exclusive
+     * lock, so a swap between the two checks still leaves the candidate visible in the second (the reverse order would
+     * miss it). */
+    if (NT_SUCCESS(FltParseFileNameInformation(name)) &&
+        (SafeUploadPolicyMatchesPendingDestination(kind, &name->Name) ||
+         SafeUploadStageProtectedName(name, kind))) deny = TRUE;
     FltReleaseFileNameInformation(name);
     if (!deny) return FLT_PREOP_SUCCESS_NO_CALLBACK;
     SafeUploadStageFenceCountSectionDenied();
@@ -2270,6 +2478,12 @@ FLT_PREOP_CALLBACK_STATUS SafeUploadStageDispatch(PFLT_CALLBACK_DATA Data,
     case IRP_MJ_SET_EA:
     case IRP_MJ_SET_SECURITY:
         return StagePhysicalMutation(Data, Objects);
+    case IRP_MJ_FILE_SYSTEM_CONTROL:
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+        result = StageUnownedMutatingFsctl(Data, Objects);
+        if (result != FLT_PREOP_SUCCESS_NO_CALLBACK) return result;
+#endif
+        break;
     case IRP_MJ_ACQUIRE_FOR_SECTION_SYNCHRONIZATION:
     case IRP_MJ_RELEASE_FOR_SECTION_SYNCHRONIZATION:
 #if SAFEUPLOAD_STAGING_PROTOTYPE
