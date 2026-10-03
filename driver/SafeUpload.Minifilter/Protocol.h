@@ -260,10 +260,12 @@ typedef struct _SAFEUPLOAD_RESPONSE {
  *  ENABLE carries its options in SAFEUPLOAD_CONTROL.Reserved. Section
  *  synchronization events are system-wide and ~1000 per second, so they are
  *  recorded only when asked for; the default trace holds writes, probes and setup.
- *  The same option also records IRP_MJ_CLEANUP and IRP_MJ_CLOSE of file objects that were
- *  opened with write access (observe-only; they never change a status).
+ *  A separate option records IRP_MJ_CLEANUP and IRP_MJ_CLOSE of file objects that were opened
+ *  with write access (observe-only; they never change a status). It is cheap enough to leave on
+ *  for minutes, unlike the section events.
  */
 #define SAFEUPLOAD_ADMISSION_TRACE_OPTION_SECTION_EVENTS ((UINT32) 1)
+#define SAFEUPLOAD_ADMISSION_TRACE_OPTION_FILE_LIFETIME  ((UINT32) 2)
 #define SAFEUPLOAD_CONTROL_ADMISSION_TRACE_DISABLE      ((UINT32) 6)
 #define SAFEUPLOAD_CONTROL_ADMISSION_TRACE_CLEAR        ((UINT32) 7)
 #define SAFEUPLOAD_CONTROL_ADMISSION_TRACE_READ_BATCH   ((UINT32) 8)

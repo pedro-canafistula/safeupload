@@ -621,7 +621,8 @@ Return Value:
                 traceControl.Command != command ||
                 (command != SAFEUPLOAD_CONTROL_ADMISSION_TRACE_ENABLE && traceControl.Reserved != 0) ||
                 (command == SAFEUPLOAD_CONTROL_ADMISSION_TRACE_ENABLE &&
-                 (traceControl.Reserved & ~SAFEUPLOAD_ADMISSION_TRACE_OPTION_SECTION_EVENTS) != 0)) {
+                 (traceControl.Reserved & ~(SAFEUPLOAD_ADMISSION_TRACE_OPTION_SECTION_EVENTS |
+                                            SAFEUPLOAD_ADMISSION_TRACE_OPTION_FILE_LIFETIME)) != 0)) {
                 status = STATUS_REVISION_MISMATCH;
                 leave;
             }

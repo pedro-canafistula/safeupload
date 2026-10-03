@@ -899,6 +899,19 @@ Return Value:
                                          SAFEUPLOAD_ADMISSION_TRACE_OPTION_SECTION_EVENTS);
     }
 
+    if (argc > 1 && _wcsicmp(argv[1], L"--admission-trace-enable-lifetime") == 0) {
+        return SendAdmissionTraceControl(SAFEUPLOAD_CONTROL_ADMISSION_TRACE_ENABLE,
+                                         L"admission trace enable with file lifetime events",
+                                         SAFEUPLOAD_ADMISSION_TRACE_OPTION_FILE_LIFETIME);
+    }
+
+    if (argc > 1 && _wcsicmp(argv[1], L"--admission-trace-enable-sections-lifetime") == 0) {
+        return SendAdmissionTraceControl(SAFEUPLOAD_CONTROL_ADMISSION_TRACE_ENABLE,
+                                         L"admission trace enable with section and file lifetime events",
+                                         SAFEUPLOAD_ADMISSION_TRACE_OPTION_SECTION_EVENTS |
+                                         SAFEUPLOAD_ADMISSION_TRACE_OPTION_FILE_LIFETIME);
+    }
+
     if (argc > 1 && _wcsicmp(argv[1], L"--admission-trace-disable") == 0) {
         return SendAdmissionTraceControl(SAFEUPLOAD_CONTROL_ADMISSION_TRACE_DISABLE,
                                          L"admission trace disable", 0);

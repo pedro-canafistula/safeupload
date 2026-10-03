@@ -75,6 +75,7 @@ static BOOLEAN StageInitialized;
 // no allocation or lifetime race. An odd control state means tracing is on.
 volatile LONG SafeUploadAdmissionTraceControlState;
 volatile LONG SafeUploadAdmissionTraceSectionEvents;
+static volatile LONG AdmissionTraceLifetimeEvents;
 DECLSPEC_ALIGN(8) static SAFEUPLOAD_ADMISSION_TRACE_ENTRY AdmissionTraceRing[
     SAFEUPLOAD_ADMISSION_TRACE_RING_ENTRIES];
 DECLSPEC_ALIGN(8) static volatile LONG64 AdmissionTraceNextSequence;
@@ -233,6 +234,8 @@ NTSTATUS SafeUploadStageAdmissionTraceControl(_In_ UINT32 Command, _In_ UINT32 O
     if (Command == SAFEUPLOAD_CONTROL_ADMISSION_TRACE_ENABLE) {
         InterlockedExchange(&SafeUploadAdmissionTraceSectionEvents,
                             (Options & SAFEUPLOAD_ADMISSION_TRACE_OPTION_SECTION_EVENTS) != 0 ? 1 : 0);
+        InterlockedExchange(&AdmissionTraceLifetimeEvents,
+                            (Options & SAFEUPLOAD_ADMISSION_TRACE_OPTION_FILE_LIFETIME) != 0 ? 1 : 0);
         if (!wasEnabled) {
             if (AdmissionTraceRundownClosed) {
                 ExReInitializeRundownProtection(&AdmissionTraceRundown);
@@ -389,7 +392,7 @@ static VOID StageAdmissionTraceFillOperation(
 
 // Observe-only. Records IRP_MJ_CLEANUP (last user handle gone) and IRP_MJ_CLOSE (last reference gone,
 // including a section's) of a file object that was opened with write access, so the gap between the
-// two can be measured. It runs only when tracing and the sections option are on, reads no paged data,
+// two can be measured. It runs only when tracing and the file-lifetime option are on, reads no paged data,
 // takes no lock beyond the ring's try-lock, and never alters the operation.
 static VOID StageTraceFileLifetime(
     _In_ PFLT_CALLBACK_DATA Data,
@@ -400,7 +403,7 @@ static VOID StageTraceFileLifetime(
     PFILE_OBJECT fileObject = Data->Iopb->TargetFileObject;
     SAFEUPLOAD_ADMISSION_TRACE_ENTRY entry;
 
-    if ((traceState & 1) == 0 || SafeUploadAdmissionTraceSectionEvents == 0) return;
+    if ((traceState & 1) == 0 || AdmissionTraceLifetimeEvents == 0) return;
     if (fileObject == NULL || !fileObject->WriteAccess) return;
     if (!SafeUploadStageAdmissionTraceBegin(traceState)) return;
     StageAdmissionTraceFillOperation(&entry, Data, Objects, EventKind, FALSE);
@@ -1858,6 +1861,7 @@ NTSTATUS SafeUploadStageInitialize(VOID)
         AdmissionTraceRundownClosed = FALSE;
         InterlockedExchange(&SafeUploadAdmissionTraceControlState, 0);
         InterlockedExchange(&SafeUploadAdmissionTraceSectionEvents, 0);
+        InterlockedExchange(&AdmissionTraceLifetimeEvents, 0);
         StageAdmissionTraceReset();
 #endif
         StageInitialized = TRUE;
