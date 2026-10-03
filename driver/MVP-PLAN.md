@@ -85,8 +85,14 @@ accounting, and 2000 cached writes, 10,000 attribute queries and an eight-thread
 Whether the calls took FASTIO_* callbacks is consistent with the trace but not proven
 ([readout](evidence/2026-10-03/writer-count-run16-18-readout.txt)).
 
-Phase 1 remains open: nested mixed pairing, the other teardown/fault-injection cases, canary security
-and newly mounted-volume qualification, and cost remain. Empty-file mapping errors
+Primitive cost (X6) passed the absolute budget with a wide margin on Windows 10 19045 (primitive-cost run 1, ordinary, 2-vCPU guest):
+worst phase-F p95 211 us and max 3.4 ms across six operations, against p95 <= 250 ms and max <= 1000 ms. The feature driver as a whole makes a
+create about 100 us (5-6x) slower than no filter, and uncounted controls pay about the same as counted opens, so the H(F)/C(F) share is within noise and
+not separable from this run; no relative threshold was set
+([readout](evidence/2026-10-03/primitive-cost-run1-readout.txt)).
+
+Phase 1 remains open: nested mixed pairing, the other teardown/fault-injection cases, and canary security
+and newly mounted-volume qualification remain. Empty-file mapping errors
 did **not** exercise failed lower acquire. Windows 11 qualification is deferred by
 the user because no VM is available. Phases 2–5 remain open.
 [Progress evidence](evidence/2026-10-03/mvp1-idprobe-canary-progress.txt) and
