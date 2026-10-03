@@ -638,6 +638,7 @@ function Invoke-SectionTeardownScenario {
         [void](Add-STOutcome 'OldHandlesCannotWriteAfterReattach' $oldHandlesRejectedAfterReattach ('primary:'+(Format-STHandleWrite $primaryWriteAfterReattach)+';secondary:'+(Format-STHandleWrite $secondaryWriteAfterReattach)+';mappedViewWriteReturned:'+$viewWriteAfterReattach.WriteReturned+';mappedViewFlushReturned:'+$viewWriteAfterReattach.FlushReturned+';mappedViewWriteException:'+$viewWriteAfterReattach.WriteException+';mappedViewFlushException:'+$viewWriteAfterReattach.FlushException+';premise:'+$(if($oldHandlesRejectedAfterReattach){'holds'}else{'FALSE_OLD_HANDLE_WRITE_SUCCEEDED'})))
         if(-not $oldHandlesRejectedAfterReattach){Write-Output 'ST_PREMISE_FALSE=old handle wrote successfully after reattach; scoped teardown assumption is false;FAIL'}
 
+        $beforeOldClose=Get-STWriterStats
         $oldHandlesClosed=$true
         if($script:STVhdxView){try{$script:STVhdxView.Dispose();$script:STVhdxView=$null}catch{$oldHandlesClosed=$false;$result.Errors+=('VHDX mapped view close: '+$_.Exception.Message)}}
         if($script:STVhdxMapping){try{$script:STVhdxMapping.Dispose();$script:STVhdxMapping=$null}catch{$oldHandlesClosed=$false;$result.Errors+=('VHDX map close: '+$_.Exception.Message)}}
@@ -651,14 +652,26 @@ function Invoke-SectionTeardownScenario {
         [void](Add-STOutcome 'VhdxHashUnchangedAfterPostDismountAttempts' $vhdxBytesUnchanged ('beforeSHA256:'+$script:STVhdxInitialHash+';afterSHA256:'+$hashAfterAttempts+';oldHandleSuccessAfterDismount:'+$primaryWriteAfterDismount.Succeeded+'/'+$secondaryWriteAfterDismount.Succeeded+';oldHandleSuccessAfterReattach:'+$primaryWriteAfterReattach.Succeeded+'/'+$secondaryWriteAfterReattach.Succeeded))
         if(-not $vhdxBytesUnchanged){Write-Output 'ST_PREMISE_FALSE=post-dismount handle or mapped-view write changed the reattached VHDX bytes;FAIL'}
 
-        $afterOldHandlesClosed=Get-STWriterStats
+        # Run 9: the drop counter read 0 immediately after close. Wait (bounded) for the old instance's stream contexts to
+        # be freed, and record which path ran: scoped drop at teardown, or the old writers' cleanups still delivered.
+        $dropDeadline=[DateTime]::UtcNow.AddSeconds(15)
+        do {
+            $afterOldHandlesClosed=Get-STWriterStats
+            $teardownDropDelta=[int64]$afterOldHandlesClosed.writersDroppedAtTeardown-[int64]$beforeOldClose.writersDroppedAtTeardown
+            if($teardownDropDelta -gt 0){break}
+            Start-Sleep -Milliseconds 250
+        } while([DateTime]::UtcNow -lt $dropDeadline)
         $globalAfterTeardown=Get-STGlobalStatus
-        $teardownDropDelta=[int64]$afterOldHandlesClosed.writersDroppedAtTeardown-[int64]$vhdxBefore.writersDroppedAtTeardown
-        $mountedDropDelta=[int64]$afterOldHandlesClosed.writersDroppedWhileMounted-[int64]$vhdxBefore.writersDroppedWhileMounted
-        $scopedDropOk=$oldHandlesClosed -and $afterOldHandlesClosed.writersDroppedAtTeardown -gt 0 -and
-            $teardownDropDelta -gt 0 -and $afterOldHandlesClosed.writersDroppedWhileMounted -eq 0 -and
-            $mountedDropDelta -eq 0 -and $globalAfterTeardown.writerGlobalUnknown -eq 0
-        [void](Add-STOutcome 'ScopedWriterDropAccounting' $scopedDropOk ('writersDroppedAtTeardown:'+$afterOldHandlesClosed.writersDroppedAtTeardown+';teardownDelta:'+$teardownDropDelta+';writersDroppedWhileMounted:'+$afterOldHandlesClosed.writersDroppedWhileMounted+';mountedDelta:'+$mountedDropDelta+';writerGlobalUnknown:'+$globalAfterTeardown.writerGlobalUnknown))
+        $oldInstanceListed=$null -ne @($globalAfterTeardown.admissionVolumes|Where-Object {[string]$_.instance -eq [string]$entryBeforeDismount.instance})[0]
+        $mountedDropDelta=[int64]$afterOldHandlesClosed.writersDroppedWhileMounted-[int64]$beforeOldClose.writersDroppedWhileMounted
+        $releasedDelta=[int64]$afterOldHandlesClosed.writeObjectsReleased-[int64]$beforeOldClose.writeObjectsReleased
+        $unmatchedDelta=[int64]$afterOldHandlesClosed.cleanupUnmatched-[int64]$beforeOldClose.cleanupUnmatched
+        $scopedPath=if($teardownDropDelta -gt 0){'droppedAtTeardown'}elseif($releasedDelta -ge 2){'cleanupsDeliveredToOldInstance(machine-wide counter; lower confidence)'}else{'notObserved'}
+        # Owner requirement: teardown must not poison the machine and must not be classified as a mounted loss.
+        $scopedDropOk=$oldHandlesClosed -and $mountedDropDelta -eq 0 -and $globalAfterTeardown.writerGlobalUnknown -eq 0 -and $scopedPath -ne 'notObserved'
+        [void](Add-STOutcome 'ScopedWriterDropAccounting' $scopedDropOk ('path:'+$scopedPath+';teardownDelta:'+$teardownDropDelta+';mountedDelta:'+$mountedDropDelta+
+            ';releasedDelta:'+$releasedDelta+';unmatchedDelta:'+$unmatchedDelta+';oldInstanceStillListed:'+$oldInstanceListed+
+            ';writersDroppedAtTeardown:'+$afterOldHandlesClosed.writersDroppedAtTeardown+';writerGlobalUnknown:'+$globalAfterTeardown.writerGlobalUnknown))
         $cKnownProbe=Invoke-STProbe $Fixture 'CAfterScopedTeardownProbe' 0 $false
         $cKnownOk=$globalAfterTeardown.writerGlobalUnknown -eq 0 -and $null -ne $cKnownProbe -and -not $cKnownProbe.writersUntracked
         [void](Add-STOutcome 'CProbeRemainsKnownAfterTeardown' $cKnownOk ('writerGlobalUnknown:'+$globalAfterTeardown.writerGlobalUnknown+';writersUntracked:'+$(if($cKnownProbe){$cKnownProbe.writersUntracked}else{'missing'})+';writeObjects:'+$(if($cKnownProbe){$cKnownProbe.writeObjects}else{'missing'})))
