@@ -225,6 +225,8 @@ function New-PolicyTransitionServiceSecurity([bool] $Directory) {
     $security.SetAccessRuleProtection($true, $false)
     $administrators = [System.Security.Principal.SecurityIdentifier]::new('S-1-5-32-544')
     $system = [System.Security.Principal.SecurityIdentifier]::new('S-1-5-18')
+    $systemReadExecute = [System.Security.AccessControl.FileSystemRights]::ReadAndExecute -bor
+        [System.Security.AccessControl.FileSystemRights]::Synchronize
     $security.SetOwner($administrators)
     $inheritance = if ($Directory) {
         [System.Security.AccessControl.InheritanceFlags]::ContainerInherit -bor
@@ -237,7 +239,7 @@ function New-PolicyTransitionServiceSecurity([bool] $Directory) {
         $inheritance, [System.Security.AccessControl.PropagationFlags]::None,
         [System.Security.AccessControl.AccessControlType]::Allow))
     $security.AddAccessRule([System.Security.AccessControl.FileSystemAccessRule]::new(
-        $system, [System.Security.AccessControl.FileSystemRights]::ReadAndExecute,
+        $system, $systemReadExecute,
         $inheritance, [System.Security.AccessControl.PropagationFlags]::None,
         [System.Security.AccessControl.AccessControlType]::Allow))
     return $security
@@ -332,7 +334,8 @@ function Assert-PolicyTransitionServiceAcl([string] $Path, [bool] $Directory) {
         $expectedRights = if ($sid -eq $administrators) {
             [System.Security.AccessControl.FileSystemRights]::FullControl
         } elseif ($sid -eq $system) {
-            [System.Security.AccessControl.FileSystemRights]::ReadAndExecute
+            [System.Security.AccessControl.FileSystemRights]::ReadAndExecute -bor
+                [System.Security.AccessControl.FileSystemRights]::Synchronize
         } else {
             throw "Unexpected service staging ACL principal $sid at $Path"
         }

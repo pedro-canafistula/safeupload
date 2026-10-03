@@ -1,0 +1,6 @@
+ Target   Source
+---------------------------------------------------------------------------------------------------
+ vda      /var/lib/libvirt/images/win10-debug.safeupload-pre-policy-rejection-only-run30-20261003
+ sda      -
+ sdb      -
+

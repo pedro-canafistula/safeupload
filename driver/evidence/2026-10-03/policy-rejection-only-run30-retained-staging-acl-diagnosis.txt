@@ -1,0 +1,5 @@
+ExpectedAdminFull=2032127
+ExpectedSystemRX=131241
+ExpectedDirInheritance=ContainerInherit, ObjectInherit
+ACE=S-1-5-18;Actual=1179817;Expected=131241;RightsEqual=False;Inheritance=ContainerInherit, ObjectInherit;InheritanceEqual=True;Propagation=None;Allow=True
+ACE=S-1-5-32-544;Actual=2032127;Expected=2032127;RightsEqual=True;Inheritance=ContainerInherit, ObjectInherit;InheritanceEqual=True;Propagation=None;Allow=True

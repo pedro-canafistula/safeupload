@@ -1,0 +1,8 @@
+Exact-source Luna security rereview — Run31
+Date: 2026-10-03
+Reviewed file: driver/scripts/Test-StagedPolicyTransitionMapping.ps1
+SHA-256: 7612b2e30d647efb51e2cb1451e4602ffa7e2de38878cd413544e3a1b5246ab5
+
+The only source changes since Run28 add FileSystemRights.Synchronize to both the SYSTEM ReadAndExecute rule created for the staging tree and the validator's exact expected SYSTEM rights. Luna confirmed this is correct and least privilege: it matches the live Run30 ACE value 1179817 / 0x1200A9 while adding no data-write, delete, DACL, or owner rights. Exact-rights validation remains in place. Microsoft documents SYNCHRONIZE as the wait right and includes it in generic-read mapping for files: https://learn.microsoft.com/en-us/windows/win32/fileio/file-security-and-access-rights.
+
+Run31 exact-hash Windows PowerShell 5.1 parsing had zero errors; native interop compilation passed with 14 methods. The harness was not executed. Run30 stopped before driver installation because the validator omitted this normalized right. Its retained directory was confirmed empty, non-reparse, BA-owned, DACL-protected, and limited to the intended SYSTEM and Administrators ACEs. With a fresh clean baseline and exact path/ACL/empty/process/task checks, Luna approved removing that exact directory nonrecursively and verifying absence. A fresh checkpoint and explicit signed-feature/Inspector hashes are sufficient for another controlled rejection-only attempt; no destination-coverage or privacy credit is implied.

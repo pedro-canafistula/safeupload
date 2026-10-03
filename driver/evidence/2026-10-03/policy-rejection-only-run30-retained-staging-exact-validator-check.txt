@@ -1,0 +1,8 @@
+Path=C:\Program Files\SafeUpload-policy-transition-service-be7a375b49e842429fa8334f1ab6a56c
+ExpectedSystemRights=1179817
+Owner=S-1-5-32-544
+Protected=True
+Reparse=False
+ACECount=2
+ChildCount=0
+ExactAclCheck=PASS

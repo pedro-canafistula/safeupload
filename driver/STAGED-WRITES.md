@@ -143,6 +143,20 @@ Normal staging stays compiled out and taint enforcement remains.
           ([gate](evidence/2026-10-03/policy-rejection-only-run29-gate.txt),
           [stop record](evidence/2026-10-03/policy-rejection-only-run29-pre-harness-stop.txt),
           [restored baseline](evidence/2026-10-03/policy-rejection-only-run29-post-input-restore-check.txt)).
+    - [x] Record Run30 stopping during service staging before feature-driver
+          load or policy push: Windows added `Synchronize` to the SYSTEM
+          read/execute ACE, which the validator did not yet expect. The machine
+          baseline stayed clean; the retained directory was checked against the
+          corrected exact ACL, confirmed empty, and deleted nonrecursively
+          ([gate](evidence/2026-10-03/policy-rejection-only-run30-gate.txt),
+          [ACL diagnosis](evidence/2026-10-03/policy-rejection-only-run30-retained-staging-acl-diagnosis.txt),
+          [guarded cleanup](evidence/2026-10-03/policy-rejection-only-run30-guarded-staging-cleanup.txt),
+          [restored baseline and inputs](evidence/2026-10-03/policy-rejection-only-run30-post-input-restore-check.txt)).
+    - [x] Add the observed `Synchronize` right to both the protected SYSTEM
+          staging ACE and its exact validator expectation; Luna found this
+          correct and least privilege ([review](evidence/2026-10-03/policy-transition-rejection-run31-luna-review.txt)).
+    - [x] Parse and compile the exact Run31 harness with Windows PowerShell 5.1;
+          zero parser errors, 14 interop methods, no execution ([evidence](evidence/2026-10-03/policy-transition-rejection-run31-ps51-parse-compile.txt)).
     - [ ] Retry the rejection-only VM diagnostic on a fresh clean checkpoint,
           deriving and cross-checking the explicit signed-driver hash from the
           artifact, verifying the Inspector hash, and preserving unchanged
@@ -3633,13 +3647,16 @@ staging cutover eligible.
   package-hash-pinned archive read through one held handle; staging ACLs and path
   integrity are checked before extraction, launch, and cleanup. The harness also
   requires the exact SetPolicy exception plus both policy-push stack frames.
-  Luna's exact-source review found no blocker ([review record](evidence/2026-10-03/policy-transition-rejection-run28-luna-review.txt));
+  Luna's exact-source review found no blocker, including the exact Run31
+  SYSTEM ACL correction ([review record](evidence/2026-10-03/policy-transition-rejection-run31-luna-review.txt));
   the live VM's direct-parent ACL and ancestor walk pass, and the exact source
   passes Windows PowerShell 5.1 parsing and interop compilation ([ACL evidence](evidence/2026-10-03/policy-rejection-only-run26-programfiles-live-preflight.txt),
-  [PS 5.1 evidence](evidence/2026-10-03/policy-transition-rejection-run28-ps51-parse-compile.txt)).
+  [PS 5.1 evidence](evidence/2026-10-03/policy-transition-rejection-run31-ps51-parse-compile.txt)).
   Run26 stopped at the original CommonApplicationData ACL check before loading
   the driver; its independent original-machine baseline passed and guest test
-  inputs were restored. The fresh rejection-only VM retry remains open. The unchanged
+  inputs were restored. Run30 then stopped at staging-tree ACL verification
+  before driver load; the tree was proven empty with its exact protected ACL
+  and safely removed. The fresh rejection-only VM retry remains open. The unchanged
   policy includes removable and
   network scopes unsupported by this fence. Microsoft describes
   [CreateFileMapping](https://learn.microsoft.com/en-us/windows/win32/memory/creating-a-file-mapping-object)

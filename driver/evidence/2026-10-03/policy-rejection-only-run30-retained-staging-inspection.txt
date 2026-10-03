@@ -1,0 +1,13 @@
+UTC=2026-10-03T11:53:21.5869236Z
+Path=C:\Program Files\SafeUpload-policy-transition-service-be7a375b49e842429fa8334f1ab6a56c
+Exists=True
+Attributes=Directory
+OwnerSID=S-1-5-32-544
+AclProtected=True
+SDDL=O:BAG:S-1-5-21-316478115-1595729549-2803163825-513D:P(A;OICI;0x1200a9;;;SY)(A;OICI;FA;;;BA)
+RuleCount=2
+ACE=Allow;SID=S-1-5-18;Rights=1179817;Inheritance=ContainerInherit, ObjectInherit;Propagation=None;Inherited=False
+ACE=Allow;SID=S-1-5-32-544;Rights=2032127;Inheritance=ContainerInherit, ObjectInherit;Propagation=None;Inherited=False
+ChildCount=0
+FilterLoaded=False
+AgentProcessCount=0
