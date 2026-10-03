@@ -71,8 +71,15 @@ Table-capacity qualification passed ordinarily and under runtime Verifier: 66 he
 callbacks overflowed the 64-slot table; after release and a later successful mapping,
 the file-ID probe retained C Unknown (0x80000040). Independent restoration passed.
 
+Writer-node allocation failure qualification passed on Windows 10 build 19045 (run 4): a real Verifier
+low-resources failure (counter 0 -> 1, tag `SUwH`, fixture `SUHFail.exe` only) gave untrackedCreates +1,
+no counted node, and a sticky Unknown on that stream through a later writer and both cleanups, while a
+control stream stayed known. The armed window is LRS-only because `/volatile /faults` replaces the flags
+with 0x4 and `/volatile /flags` resets the filters; 0x13B holds in every window with injection off
+([readout](evidence/2026-10-03/writer-fault-run4-readout.txt)).
+
 Phase 1 remains open: cancelled creates and explicit fast I/O remain;
-nested mixed pairing, teardown/fault injection, canary security
+nested mixed pairing, the other teardown/fault-injection cases, canary security
 and newly mounted-volume qualification, and cost remain. Empty-file mapping errors
 did **not** exercise failed lower acquire. Windows 11 qualification is deferred by
 the user because no VM is available. Phases 2–5 remain open.
