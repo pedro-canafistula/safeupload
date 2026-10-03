@@ -2,6 +2,10 @@
 #include "Stage.h"
 #include <ntstrsafe.h>
 
+/* Canary-only allocations carry their own tag so Verifier low-resources simulation can fail exactly
+ * the canary (tag reads "SUcN" in pool dumps), without touching any other driver allocation. */
+#define SAFEUPLOAD_CANARY_POOL_TAG 'NcUS'
+
 static NTSTATUS StageCanaryVerifySecurity(_In_ PFLT_INSTANCE Instance, _In_ PFILE_OBJECT FileObject,
     _Out_ PULONG Reason);
 #define STAGE_CANARY_SD_BYTES 1024
@@ -247,10 +251,10 @@ static NTSTATUS StageCanaryVerifySecurity(_In_ PFLT_INSTANCE Instance, _In_ PFIL
     NTSTATUS status;
     PAGED_CODE();
     *Reason = 1;
-    buffer = ExAllocatePool2(POOL_FLAG_PAGED, STAGE_CANARY_SD_BYTES, SAFEUPLOAD_POOL_TAG);
+    buffer = ExAllocatePool2(POOL_FLAG_PAGED, STAGE_CANARY_SD_BYTES, SAFEUPLOAD_CANARY_POOL_TAG);
     if (buffer == NULL) return STATUS_INSUFFICIENT_RESOURCES;
     status = StageCanaryVerifyDescriptor(Instance, FileObject, buffer, Reason);
-    ExFreePoolWithTag(buffer, SAFEUPLOAD_POOL_TAG);
+    ExFreePoolWithTag(buffer, SAFEUPLOAD_CANARY_POOL_TAG);
     return status;
 }
 
@@ -681,7 +685,7 @@ static VOID StageCanaryRun(_In_ PFLT_INSTANCE Instance, _Inout_ PSAFEUPLOAD_INST
 #endif
     status = FltGetVolumeFromInstance(Instance, &volume);
     if (!NT_SUCCESS(status)) goto Exit;
-    buffer = ExAllocatePool2(POOL_FLAG_PAGED, SAFEUPLOAD_MAX_PATH_CHARS * sizeof(WCHAR), SAFEUPLOAD_POOL_TAG);
+    buffer = ExAllocatePool2(POOL_FLAG_PAGED, SAFEUPLOAD_MAX_PATH_CHARS * sizeof(WCHAR), SAFEUPLOAD_CANARY_POOL_TAG);
     if (buffer == NULL) { status = STATUS_INSUFFICIENT_RESOURCES; goto Exit; }
     volumeName.Buffer = buffer;
     volumeName.Length = 0;
@@ -830,7 +834,7 @@ Exit:
         if (holdClaimed) StageCanaryHoldReportFailure(Instance, status);
 #endif
     }
-    if (buffer != NULL) ExFreePoolWithTag(buffer, SAFEUPLOAD_POOL_TAG);
+    if (buffer != NULL) ExFreePoolWithTag(buffer, SAFEUPLOAD_CANARY_POOL_TAG);
     if (volume != NULL) FltObjectDereference(volume);
     Context->CanaryStatus = status;
     Context->CanaryCleanupStatus = cleanupStatus;
