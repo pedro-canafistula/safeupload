@@ -1023,7 +1023,7 @@ function Get-LightTrace($InspectorResult, [string] $RawPath) {
             Sop = (ConvertTo-NormalizedHex $g[7].Value)
             Major = [int]$g[8].Value
             MmDoes = $g[11].Value
-            Sync = [int]$g[12].Value
+            Sync = [Int64]$g[12].Value   # 4294967295 marks 'sync parameters unavailable'
             Prot = [Convert]::ToUInt32($g[13].Value.Substring(2), 16)
         })
     }
@@ -1476,25 +1476,24 @@ function Invoke-Variant([string] $SelectedVariant) {
                 $lifeDumps += $dump
             }
             $finalLife = $lifeDumps[$lifeDumps.Count - 1]
-            $cleanups = @($finalLife.Entries | Where-Object { $_.Ev -eq 'file_cleanup' -and $_.ProcessId -eq $PID } | Sort-Object Seq)
-            Write-Output ('L_OwnProcessCleanupEvents=' + $cleanups.Count + ';Expected=' + $lifeLabels.Count)
-            if ($cleanups.Count -eq $lifeLabels.Count) {
+            $writableMask = [uint32]0xCC
+            $creates = @($finalLife.Entries | Where-Object {
+                $_.Ev -eq 'section_acquire' -and $_.Sync -eq 1 -and (($_.Prot -band $writableMask) -ne 0) -and $_.ProcessId -eq $PID
+            } | Sort-Object Seq)
+            Write-Output ('L_OwnWritableCreateSectionEvents=' + $creates.Count + ';Expected=' + $lifeLabels.Count)
+            if ($creates.Count -eq $lifeLabels.Count) {
                 for ($index = 0; $index -lt $lifeLabels.Count; $index++) {
                     $label = $lifeLabels[$index]
-                    $cleanup = $cleanups[$index]
                     $step = $lifeSteps[$label]
-                    $closeEvents = @($finalLife.Entries | Where-Object { $_.Ev -eq 'file_close' -and $_.Fo -eq $cleanup.Fo })
-                    $closeText = 'NOT_OBSERVED'
-                    if ($closeEvents.Count -gt 0) {
-                        $closeText = [string][Math]::Round(($closeEvents[0].Ts - $step.MappingClosed) / 10000.0, 1)
-                    }
+                    $sop = $creates[$index].Sop
                     $unmapText = 'n/a'
                     if ($step.Unmapped -ne 0) { $unmapText = [string][Math]::Round(($step.Unmapped - $step.FileClosed) / 10000.0, 1) }
-                    Write-Output ('L_' + $label + '=cleanupAfterFileCloseMs:' + [Math]::Round(($cleanup.Ts - $step.FileClosed) / 10000.0, 1) +
-                        ';unmapAfterFileCloseMs:' + $unmapText +
-                        ';mappingClosedAfterFileCloseMs:' + [Math]::Round(($step.MappingClosed - $step.FileClosed) / 10000.0, 1) +
-                        ';closeEvents:' + $closeEvents.Count + ';closeAfterMappingClosedMs:' + $closeText +
-                        ';fileObject:' + $cleanup.Fo + ';sop:' + $cleanup.Sop)
+                    Write-Output ('L_' + $label + '=sop:' + $sop + ';unmapMsFromFileClose:' + $unmapText +
+                        ';mappingClosedMsFromFileClose:' + [Math]::Round(($step.MappingClosed - $step.FileClosed) / 10000.0, 1))
+                    foreach ($event in @($finalLife.Entries | Where-Object { $_.Sop -eq $sop -and $_.Seq -ge $creates[$index].Seq } | Sort-Object Seq)) {
+                        Write-Output ('L_' + $label + '_Event=' + $event.Ev + ';fo=' + $event.Fo + ';pid=' + $event.ProcessId +
+                            ';msFromFileClose=' + [Math]::Round(($event.Ts - $step.FileClosed) / 10000.0, 1))
+                    }
                 }
             }
             else {

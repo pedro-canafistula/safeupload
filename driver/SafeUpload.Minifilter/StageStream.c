@@ -76,6 +76,10 @@ static BOOLEAN StageInitialized;
 volatile LONG SafeUploadAdmissionTraceControlState;
 volatile LONG SafeUploadAdmissionTraceSectionEvents;
 static volatile LONG AdmissionTraceLifetimeEvents;
+#define STAGE_TRACE_WATCH_SLOTS 64
+// Section object pointers of streams that got a writable CreateSection while the lifetime option was on.
+// Observe-only: it only widens which cleanup/close events are recorded. A full table drops new entries.
+static volatile PVOID AdmissionTraceWatch[STAGE_TRACE_WATCH_SLOTS];
 DECLSPEC_ALIGN(8) static SAFEUPLOAD_ADMISSION_TRACE_ENTRY AdmissionTraceRing[
     SAFEUPLOAD_ADMISSION_TRACE_RING_ENTRIES];
 DECLSPEC_ALIGN(8) static volatile LONG64 AdmissionTraceNextSequence;
@@ -101,6 +105,9 @@ static VOID StageAdmissionTraceReset(VOID)
     }
     InterlockedExchange(&AdmissionTraceWriterBusy, 0);
     RtlZeroMemory(&AdmissionTraceCounters, sizeof(AdmissionTraceCounters));
+    for (index = 0; index < STAGE_TRACE_WATCH_SLOTS; index += 1) {
+        InterlockedExchangePointer((PVOID volatile *)&AdmissionTraceWatch[index], NULL);
+    }
 }
 
 static VOID StageAdmissionTraceSnapshotCounters(
@@ -390,9 +397,30 @@ static VOID StageAdmissionTraceFillOperation(
     }
 }
 
-// Observe-only. Records IRP_MJ_CLEANUP (last user handle gone) and IRP_MJ_CLOSE (last reference gone,
-// including a section's) of a file object that was opened with write access, so the gap between the
-// two can be measured. It runs only when tracing and the file-lifetime option are on, reads no paged data,
+static BOOLEAN StageTraceWatchContains(_In_opt_ PVOID SectionObjectPointer)
+{
+    ULONG index;
+    if (SectionObjectPointer == NULL) return FALSE;
+    for (index = 0; index < STAGE_TRACE_WATCH_SLOTS; index += 1) {
+        if (AdmissionTraceWatch[index] == SectionObjectPointer) return TRUE;
+    }
+    return FALSE;
+}
+
+static VOID StageTraceWatchAdd(_In_opt_ PVOID SectionObjectPointer)
+{
+    ULONG index;
+    if (SectionObjectPointer == NULL || StageTraceWatchContains(SectionObjectPointer)) return;
+    for (index = 0; index < STAGE_TRACE_WATCH_SLOTS; index += 1) {
+        if (InterlockedCompareExchangePointer((PVOID volatile *)&AdmissionTraceWatch[index],
+                                              SectionObjectPointer, NULL) == NULL) return;
+    }
+}
+
+// Observe-only. Records IRP_MJ_CLEANUP (last user handle gone) and IRP_MJ_CLOSE (last reference gone)
+// of a file object that was opened with write access or whose stream got a writable CreateSection while
+// tracing, so the gap between the two, and the lifetime of any internal file object a section keeps, can
+// be measured. It runs only when tracing and the file-lifetime option are on, reads no paged data,
 // takes no lock beyond the ring's try-lock, and never alters the operation.
 static VOID StageTraceFileLifetime(
     _In_ PFLT_CALLBACK_DATA Data,
@@ -404,13 +432,43 @@ static VOID StageTraceFileLifetime(
     SAFEUPLOAD_ADMISSION_TRACE_ENTRY entry;
 
     if ((traceState & 1) == 0 || AdmissionTraceLifetimeEvents == 0) return;
-    if (fileObject == NULL || !fileObject->WriteAccess) return;
+    if (fileObject == NULL) return;
+    if (!fileObject->WriteAccess && !StageTraceWatchContains(fileObject->SectionObjectPointer)) return;
     if (!SafeUploadStageAdmissionTraceBegin(traceState)) return;
     StageAdmissionTraceFillOperation(&entry, Data, Objects, EventKind, FALSE);
     entry.MmDoesResult = SAFEUPLOAD_ADMISSION_TRACE_MMDOES_SKIPPED;
     SafeUploadStageAdmissionTraceRecord(&entry);
     SafeUploadStageAdmissionTraceEnd();
 }
+
+// Observe-only. With the file-lifetime option on, remembers the stream of every writable CreateSection and
+// records that event even when the (noisy) section option is off, so cleanup/close of the file objects that
+// stream's section keeps alive can be attributed to it.
+static VOID StageTraceWritableCreateSection(
+    _In_ PFLT_CALLBACK_DATA Data,
+    _In_ PCFLT_RELATED_OBJECTS Objects)
+{
+    LONG traceState = SafeUploadAdmissionTraceControlState;
+    PFILE_OBJECT fileObject = Data->Iopb->TargetFileObject;
+    SAFEUPLOAD_ADMISSION_TRACE_ENTRY entry;
+    UINT32 protection;
+
+    if ((traceState & 1) == 0 || AdmissionTraceLifetimeEvents == 0 || fileObject == NULL) return;
+    if (Data->Iopb->Parameters.AcquireForSectionSynchronization.SyncType != SyncTypeCreateSection) return;
+    protection = Data->Iopb->Parameters.AcquireForSectionSynchronization.PageProtection;
+    if ((protection & (PAGE_READWRITE | PAGE_WRITECOPY | PAGE_EXECUTE_READWRITE | PAGE_EXECUTE_WRITECOPY)) == 0) return;
+    StageTraceWatchAdd(fileObject->SectionObjectPointer);
+    if (SafeUploadAdmissionTraceSectionEvents != 0) return;   // the section hook records it
+    if (!SafeUploadStageAdmissionTraceBegin(traceState)) return;
+    StageAdmissionTraceFillOperation(&entry, Data, Objects, SAFEUPLOAD_ADMISSION_TRACE_EVENT_SECTION_ACQUIRE, FALSE);
+    entry.MmDoesResult = SAFEUPLOAD_ADMISSION_TRACE_MMDOES_SKIPPED;
+    entry.SyncType = (UINT32)Data->Iopb->Parameters.AcquireForSectionSynchronization.SyncType;
+    entry.PageProtection = protection;
+    entry.SyncParametersValid = 1;
+    SafeUploadStageAdmissionTraceRecord(&entry);
+    SafeUploadStageAdmissionTraceEnd();
+}
+
 
 NTSTATUS SafeUploadStageAdmissionProbe(
     _In_ PCUNICODE_STRING VolumeName,
@@ -2628,6 +2686,7 @@ FLT_PREOP_CALLBACK_STATUS SafeUploadStageDispatch(PFLT_CALLBACK_DATA Data,
         if (Data->Iopb->MajorFunction == IRP_MJ_ACQUIRE_FOR_SECTION_SYNCHRONIZATION) {
             result = StageUnownedWritableSection(Data, Objects);
             if (result != FLT_PREOP_SUCCESS_NO_CALLBACK) return result;
+            StageTraceWritableCreateSection(Data, Objects);
         }
         {
             LONG traceState = SafeUploadAdmissionTraceControlState;
