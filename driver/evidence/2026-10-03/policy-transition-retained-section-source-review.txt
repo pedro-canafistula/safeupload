@@ -1,0 +1,39 @@
+Policy-transition retained-section regression: source review
+Date: 2026-10-03
+Reviewed script: driver/scripts/Test-StagedPolicyTransitionMapping.ps1
+SHA-256: 238d7de441e68f2ee79c427959731af490725dc8ebada8f2cb8827121457f071
+
+Luna reviewed the retained writable-section/no-view expansion case. The case
+creates a named writable mapping under the accepted baseline policy while its
+fixture is out of scope, creates no view until after candidate policy acceptance,
+then writes through the late view. It compares that second fixture's complete
+4096-byte physical extent with its own raw-volume baseline after view, mapping
+handle, and source file disposal. Any changed raw byte or exact marker read by
+the independent uncached reader reports exposure. A BLOCKED result requires a
+successful section creation, mapped write, FlushViewOfFile, FlushFileBuffers,
+confirmed disposal, and a complete unchanged raw comparison. Measurement
+failures stay inconclusive.
+
+The first review found no blocking issue and suggested (1) reject an unexpected
+preexisting named mapping object, (2) describe the uncached reader as a
+supplemental positive observer, and (3) phrase the no-view query behavior as a
+probe rather than an assumption. These edits were applied. The second review
+found that the `[ref]` output variable also needed initialization; it is now
+initialized before the call. A final targeted Luna review found no remaining
+source blocker. The interop helper clears last error, calls CreateFileMappingW,
+and returns the captured error; ERROR_ALREADY_EXISTS (183) is rejected.
+
+Local checks:
+- PowerShell 7 Parser API: zero syntax errors.
+- The embedded Add-Type native interop declarations, extracted from the parsed
+  script, compiled successfully.
+- `git diff --check`: passed.
+
+Limits:
+- This was a source review and parser/interop-declaration check only. The test
+  script was not executed, no Windows PowerShell parse was run, and no build or
+  VM test was performed.
+- The current approved policy still enables removable and network scopes that
+  this fence cannot cover. Do not narrow that policy to force the test. The
+  retained-section byte-privacy outcome and independent VM restoration remain
+  unmeasured.
