@@ -210,3 +210,10 @@ Fix what it finds, rerun phase 4. Then decide the order of the deferred destinat
   - The staging copy is deleted only after the hand-back copy is written and verified and the
     justification window has closed; a failed hand-back keeps the version in staging and is audited.
   - Test it in phase 4 together with the blocked-save cases.
+- Lost writer tracking is scoped (owner decision 2026-10-03, refines the rule above): writer records dropped because their
+  volume was torn down (dismount, removal, detach; instance teardown flagged before contexts are freed) do not set the
+  machine-wide Unknown, because Windows invalidates those handles permanently and a remounted volume is a new attachment
+  with its own canary. A writer record dropped while its volume is still mounted (a missed cleanup) still sets the machine-wide
+  Unknown until reboot. Conditions: the premise is proven on this build (an old handle and an old writable mapped view cannot
+  write after dismount and remount), both cases are counted and visible in the Inspector, and anything ambiguous falls back to
+  machine-wide Unknown.
