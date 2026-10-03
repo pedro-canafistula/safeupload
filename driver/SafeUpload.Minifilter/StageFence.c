@@ -877,7 +877,7 @@ static __declspec(noinline) VOID FenceAppendQuarantinedVolumes(_In_ PFENCE_SCAN 
         PFENCE_VOLUME record;
         ULONG needed = 0;
         UINT32 flags = 0;
-        BOOLEAN fixedNtfs;
+        BOOLEAN fixedNtfs = FALSE;
         NTSTATUS status;
         BOOLEAN present = FALSE;
 
@@ -945,7 +945,7 @@ static __declspec(noinline) VOID FenceCollectVolumes(_In_ PFENCE_SCAN Scan)
     PFLT_VOLUME volumes[FENCE_MAX_VOLUMES] = {0};
     ULONG count = 0, index;
     NTSTATUS status = FltEnumerateVolumes(SafeUploadData.Filter, volumes, FENCE_MAX_VOLUMES, &count);
-    BOOLEAN fixedNtfs;
+    BOOLEAN fixedNtfs = FALSE;
 
     if (!NT_SUCCESS(status) || count > FENCE_MAX_VOLUMES) {
         FenceQuarantineAll(); /* FltEnumerateVolumes failed or exceeded our bound: the volume set is unknown. */

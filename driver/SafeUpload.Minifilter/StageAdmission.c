@@ -113,7 +113,7 @@ NTSTATUS SafeUploadStageVolumeFlags(_In_ PFLT_VOLUME Volume, _Out_ PUINT32 Flags
     if (information == NULL) return STATUS_INSUFFICIENT_RESOURCES;
     status = FltGetVolumeInformation(Volume, FilterVolumeStandardInformation, information, bytes, &returned);
     if (status == STATUS_SUCCESS) {
-        if (returned < FIELD_OFFSET(FILTER_VOLUME_STANDARD_INFORMATION, FilterVolumeName) || returned > bytes ||
+        if (returned < (ULONG)FIELD_OFFSET(FILTER_VOLUME_STANDARD_INFORMATION, FilterVolumeName) || returned > bytes ||
             (information->FilterVolumeNameLength % sizeof(WCHAR)) != 0 ||
             information->FilterVolumeNameLength > returned - FIELD_OFFSET(FILTER_VOLUME_STANDARD_INFORMATION, FilterVolumeName)) {
             status = STATUS_INFO_LENGTH_MISMATCH;
