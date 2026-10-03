@@ -1,11 +1,15 @@
 <# Integrated owned-stream gate. Run only on the isolated debuggee. #>
-param([switch] $Verifier, [switch] $BootVerifier, [switch] $PagingSmoke, [switch] $ReplacementCases, [ValidateRange(0,64)][int] $PublicationIterations = 0)
+param([switch] $Verifier, [switch] $BootVerifier, [switch] $PagingSmoke, [switch] $ReplacementCases,
+    [ValidateRange(0,64)][int] $PublicationIterations = 0,
+    [ValidatePattern('^SafeUpload-stage-prototype[A-Za-z0-9._-]*\.sys$')]
+    [string] $FeatureDriverFileName = 'SafeUpload-stage-prototype.sys',
+    [ValidatePattern('^([0-9A-Fa-f]{64})?$')][string] $ExpectedFeatureSha256 = '')
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'StagedTestAgent.ps1')
 Add-Type -Path (Join-Path $PSScriptRoot 'StagedIdentityProbe.cs')
 $installed = 'C:\Windows\System32\drivers\SafeUpload.sys'
 $expectedOriginal = 'ADA9D05AB6AECDD2B6C521B0CE529FC06C732154ACB3EE85439FBDC8AA80DFCE'
-$driver = 'C:\Users\vika\Documents\SafeUpload-stage-prototype.sys'
+$driver = Join-Path 'C:\Users\vika\Documents' $FeatureDriverFileName
 $backup = 'C:\Users\vika\Documents\SafeUpload-original-before-owned.sys'
 $serviceDir = 'C:\Users\vika\Documents\stage-service-publish'
 $journal = 'C:\ProgramData\SafeUpload\staging-journal'
@@ -212,6 +216,11 @@ function Read-OwnedPublic([string] $Path) {
 if($env:COMPUTERNAME -ne 'WIN10-DEBUGGED' -or
     (Get-CimInstance Win32_ComputerSystemProduct).UUID -ne '9D44EEE8-81CF-4CC1-9FBA-7670F11DEF4D'){throw 'Wrong debuggee.'}
 if ((Get-FileHash $installed -Algorithm SHA256).Hash -ne $expectedOriginal) { throw 'Original installed driver mismatch.' }
+if ($ExpectedFeatureSha256 -and (Get-FileHash -LiteralPath $driver -Algorithm SHA256).Hash -ne $ExpectedFeatureSha256.ToUpperInvariant()) {
+    throw 'Feature driver input hash mismatch.'
+}
+if ((Get-FileHash -LiteralPath 'C:\Users\vika\Documents\stage-service-publish.zip' -Algorithm SHA256).Hash -ne
+    'D887E0D7F38AD64AD40CEE18B841C6D38AD2BED4D6F760B1BDE4464927381997') { throw 'Service package hash mismatch.' }
 if((& fltmc.exe filters) -match '^SafeUpload\s'){throw 'Expected unloaded baseline.'}
 if($Verifier -and $BootVerifier){throw 'Choose volatile or boot-activated Verifier.'}
 if($BootVerifier){
@@ -251,6 +260,9 @@ try {
     Write-OwnedCheckpoint 'DurableOriginalBackupVerified; BeforeDriverReplacement'
     Copy-Item $driver $installed -Force
     $replaced = $true
+    if ($ExpectedFeatureSha256 -and (Get-FileHash -LiteralPath $installed -Algorithm SHA256).Hash -ne $ExpectedFeatureSha256.ToUpperInvariant()) {
+        throw 'Installed feature driver hash mismatch.'
+    }
     Write-OwnedCheckpoint 'FeatureInstalled; BeforeLoad'
     if ($Verifier) {
         & verifier.exe /volatile /flags 0x13B /adddriver SafeUpload.sys | Out-Host

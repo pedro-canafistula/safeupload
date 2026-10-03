@@ -293,6 +293,8 @@ VOID SafeUploadStageCanaryTick(VOID)
     }
 }
 
+static KSTART_ROUTINE StageCanaryWorker;
+
 static VOID StageCanaryWorker(_In_opt_ PVOID Context)
 {
     LARGE_INTEGER interval;
