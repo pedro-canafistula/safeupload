@@ -260,6 +260,8 @@ typedef struct _SAFEUPLOAD_RESPONSE {
  *  ENABLE carries its options in SAFEUPLOAD_CONTROL.Reserved. Section
  *  synchronization events are system-wide and ~1000 per second, so they are
  *  recorded only when asked for; the default trace holds writes, probes and setup.
+ *  The same option also records IRP_MJ_CLEANUP and IRP_MJ_CLOSE of file objects that were
+ *  opened with write access (observe-only; they never change a status).
  */
 #define SAFEUPLOAD_ADMISSION_TRACE_OPTION_SECTION_EVENTS ((UINT32) 1)
 #define SAFEUPLOAD_CONTROL_ADMISSION_TRACE_DISABLE      ((UINT32) 6)
@@ -268,7 +270,7 @@ typedef struct _SAFEUPLOAD_RESPONSE {
 #define SAFEUPLOAD_CONTROL_ADMISSION_PROBE              ((UINT32) 9)
 #define SAFEUPLOAD_CONTROL_ADMISSION_FENCE_STATUS       ((UINT32) 10)
 #define SAFEUPLOAD_CONTROL_ADMISSION_FENCE_REFRESH      ((UINT32) 11)
-#define SAFEUPLOAD_ADMISSION_TRACE_RING_ENTRIES         ((UINT32) 256)
+#define SAFEUPLOAD_ADMISSION_TRACE_RING_ENTRIES         ((UINT32) 16384) /* power of two; feature build only */
 #define SAFEUPLOAD_ADMISSION_TRACE_BATCH_ENTRIES        ((UINT32) 8)
 #define SAFEUPLOAD_ADMISSION_PROBE_MAX_STRING_CHARS     ((UINT16) 260)
 
@@ -278,6 +280,8 @@ typedef struct _SAFEUPLOAD_RESPONSE {
 #define SAFEUPLOAD_ADMISSION_TRACE_EVENT_INSTANCE_SETUP ((UINT32) 4)
 #define SAFEUPLOAD_ADMISSION_TRACE_EVENT_EXPLICIT_PROBE ((UINT32) 5)
 #define SAFEUPLOAD_ADMISSION_TRACE_EVENT_UNOWNED_NONPAGING_WRITE ((UINT32) 6)
+#define SAFEUPLOAD_ADMISSION_TRACE_EVENT_FILE_CLEANUP   ((UINT32) 7)
+#define SAFEUPLOAD_ADMISSION_TRACE_EVENT_FILE_CLOSE     ((UINT32) 8)
 
 #define SAFEUPLOAD_ADMISSION_TRACE_MMDOES_NOT_APPLICABLE ((UINT32) 0)
 #define SAFEUPLOAD_ADMISSION_TRACE_MMDOES_SKIPPED        ((UINT32) 1)

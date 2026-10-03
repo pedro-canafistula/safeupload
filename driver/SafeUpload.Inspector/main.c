@@ -518,6 +518,8 @@ static PCWSTR AdmissionEventName(_In_ UINT32 EventKind)
         case SAFEUPLOAD_ADMISSION_TRACE_EVENT_SECTION_RELEASE: return L"section_release";
         case SAFEUPLOAD_ADMISSION_TRACE_EVENT_INSTANCE_SETUP: return L"instance_setup";
         case SAFEUPLOAD_ADMISSION_TRACE_EVENT_EXPLICIT_PROBE: return L"explicit_probe";
+        case SAFEUPLOAD_ADMISSION_TRACE_EVENT_FILE_CLEANUP: return L"file_cleanup";
+        case SAFEUPLOAD_ADMISSION_TRACE_EVENT_FILE_CLOSE: return L"file_close";
         default: return L"unknown";
     }
 }

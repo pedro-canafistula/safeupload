@@ -387,6 +387,28 @@ static VOID StageAdmissionTraceFillOperation(
     }
 }
 
+// Observe-only. Records IRP_MJ_CLEANUP (last user handle gone) and IRP_MJ_CLOSE (last reference gone,
+// including a section's) of a file object that was opened with write access, so the gap between the
+// two can be measured. It runs only when tracing and the sections option are on, reads no paged data,
+// takes no lock beyond the ring's try-lock, and never alters the operation.
+static VOID StageTraceFileLifetime(
+    _In_ PFLT_CALLBACK_DATA Data,
+    _In_ PCFLT_RELATED_OBJECTS Objects,
+    _In_ UINT32 EventKind)
+{
+    LONG traceState = SafeUploadAdmissionTraceControlState;
+    PFILE_OBJECT fileObject = Data->Iopb->TargetFileObject;
+    SAFEUPLOAD_ADMISSION_TRACE_ENTRY entry;
+
+    if ((traceState & 1) == 0 || SafeUploadAdmissionTraceSectionEvents == 0) return;
+    if (fileObject == NULL || !fileObject->WriteAccess) return;
+    if (!SafeUploadStageAdmissionTraceBegin(traceState)) return;
+    StageAdmissionTraceFillOperation(&entry, Data, Objects, EventKind, FALSE);
+    entry.MmDoesResult = SAFEUPLOAD_ADMISSION_TRACE_MMDOES_SKIPPED;
+    SafeUploadStageAdmissionTraceRecord(&entry);
+    SafeUploadStageAdmissionTraceEnd();
+}
+
 NTSTATUS SafeUploadStageAdmissionProbe(
     _In_ PCUNICODE_STRING VolumeName,
     _In_ PCUNICODE_STRING RelativePath)
@@ -2511,8 +2533,14 @@ FLT_PREOP_CALLBACK_STATUS SafeUploadStageDispatch(PFLT_CALLBACK_DATA Data,
     case IRP_MJ_DIRECTORY_CONTROL:
         return SafeUploadStageDirectoryQuery(Data, Objects, CompletionContext);
     case IRP_MJ_CLEANUP:
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+        StageTraceFileLifetime(Data, Objects, SAFEUPLOAD_ADMISSION_TRACE_EVENT_FILE_CLEANUP);
+#endif
         return SafeUploadPreCleanup(Data, Objects, CompletionContext);
 #if SAFEUPLOAD_STAGING_PROTOTYPE
+    case IRP_MJ_CLOSE:
+        StageTraceFileLifetime(Data, Objects, SAFEUPLOAD_ADMISSION_TRACE_EVENT_FILE_CLOSE);
+        break;
     case IRP_MJ_READ:
     case IRP_MJ_MDL_READ:
         return StageGateUnownedFencedRead(Data, Data->Iopb->TargetFileObject);
