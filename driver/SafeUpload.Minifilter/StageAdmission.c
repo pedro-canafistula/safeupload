@@ -258,9 +258,12 @@ static NTSTATUS StageCanaryVerifySecurity(_In_ PFLT_INSTANCE Instance, _In_ PFIL
         return STATUS_INVALID_SECURITY_DESCR;
     }
 
-    status = RtlGetControlSecurityDescriptor(descriptor, &control, &revision);
-    if (!NT_SUCCESS(status) || revision != SECURITY_DESCRIPTOR_REVISION ||
-        !FlagOn(control, SE_DACL_PROTECTED)) {
+    /* RtlGetControlSecurityDescriptor is not declared for kernel mode; the header of the
+     * validated self-relative descriptor carries the same revision and control fields. */
+    revision = ((PISECURITY_DESCRIPTOR_RELATIVE)descriptor)->Revision;
+    control = ((PISECURITY_DESCRIPTOR_RELATIVE)descriptor)->Control;
+    if (revision != SECURITY_DESCRIPTOR_REVISION || !FlagOn(control, SE_SELF_RELATIVE) ||
+        !FlagOn(control, SE_DACL_PRESENT) || !FlagOn(control, SE_DACL_PROTECTED)) {
         return STATUS_INVALID_SECURITY_DESCR;
     }
     status = RtlGetOwnerSecurityDescriptor(descriptor, &owner, &ownerDefaulted);
@@ -274,8 +277,8 @@ static NTSTATUS StageCanaryVerifySecurity(_In_ PFLT_INSTANCE Instance, _In_ PFIL
         return STATUS_INVALID_SECURITY_DESCR;
     }
     status = RtlGetDaclSecurityDescriptor(descriptor, &daclPresent, &dacl, &daclDefaulted);
-    if (!NT_SUCCESS(status) || !daclPresent || dacl == NULL || !RtlValidAcl(dacl) ||
-        dacl->AceCount != 1) {
+    /* RtlValidRelativeSecurityDescriptor above already validated this ACL against the buffer. */
+    if (!NT_SUCCESS(status) || !daclPresent || dacl == NULL || dacl->AceCount != 1) {
         return STATUS_INVALID_SECURITY_DESCR;
     }
     status = RtlGetAce(dacl, 0, &ace);
@@ -365,12 +368,11 @@ static NTSTATUS StageCanarySetDeleteDisposition(_In_ PFLT_INSTANCE Instance,
     _In_ PFILE_OBJECT FileObject, _In_ BOOLEAN DeleteFile)
 {
     FILE_DISPOSITION_INFORMATION disposition;
-    ULONG returned = 0;
     PAGED_CODE();
     NT_ASSERT(KeGetCurrentIrql() == PASSIVE_LEVEL);
     disposition.DeleteFile = DeleteFile;
     return FltSetInformationFile(Instance, FileObject, &disposition, sizeof(disposition),
-        FileDispositionInformation, &returned);
+        FileDispositionInformation);
 }
 
 static NTSTATUS StageCanaryHoldAfterSecurity(_In_ PFLT_INSTANCE Instance,
