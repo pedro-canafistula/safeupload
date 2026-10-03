@@ -29,6 +29,21 @@ public sealed class SafeUploadSectionFaultClient : IDisposable
             length > returned - start - offset) throw new InvalidOperationException("Invalid instance string");
         return Encoding.Unicode.GetString(buffer, start + offset, length);
     }
+    [DllImport("kernel32.dll", SetLastError=true, CharSet=CharSet.Unicode)]
+    static extern SafeFileHandle CreateFileW(string path, uint access, uint sharing,
+        IntPtr security, uint disposition, uint flags, IntPtr template);
+    [DllImport("kernel32.dll", SetLastError=true)]
+    static extern bool GetFileInformationByHandleEx(SafeFileHandle file, int informationClass, byte[] information, uint bytes);
+    public static SafeFileHandle OpenAttributes(string path) {
+        SafeFileHandle file = CreateFileW(path, 0x80, 7, IntPtr.Zero, 3, 0x80, IntPtr.Zero);
+        if (file.IsInvalid) { int error=Marshal.GetLastWin32Error(); file.Dispose(); throw new System.ComponentModel.Win32Exception(error); }
+        return file;
+    }
+    public static string Identity(SafeFileHandle file) {
+        byte[] identity = new byte[24];
+        if (!GetFileInformationByHandleEx(file, 18, identity, 24)) throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
+        return BitConverter.ToString(identity).Replace("-", "");
+    }
     public static string VolumeForHandle(SafeFileHandle file) {
         StringBuilder path = new StringBuilder(4096);
         uint length = GetFinalPathNameByHandleW(file, path, (uint)path.Capacity, 2);

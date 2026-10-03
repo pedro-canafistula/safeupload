@@ -40,6 +40,10 @@ Environment:
 #pragma alloc_text(PAGE, SafeUploadStageWritersPostCreate)
 #endif
 
+/* Separate node tag permits actual Verifier allocation failures to be attributed
+ * without failing stream-context or communication scratch allocations. Poolmon: SUwH. */
+#define SAFEUPLOAD_WRITER_NODE_POOL_TAG 'HwUS'
+
 typedef struct _STAGE_WRITER_NODE {
     LIST_ENTRY Link;
     PFILE_OBJECT FileObject;        /* identity token only */
@@ -154,7 +158,7 @@ VOID SafeUploadStageWritersPostCreate(
         return;
     }
 
-    node = ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(*node), SAFEUPLOAD_POOL_TAG);
+    node = ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(*node), SAFEUPLOAD_WRITER_NODE_POOL_TAG);
     if (node == NULL) {
         InterlockedExchange(&streamContext->WritersUntracked, 1);
         InterlockedIncrement64(&WriterUntrackedCreates);
@@ -201,7 +205,7 @@ VOID SafeUploadStageWritersOnCleanup(
     KeReleaseSpinLock(&streamContext->WriterLock, irql);
 
     if (found != NULL) {
-        ExFreePoolWithTag(found, SAFEUPLOAD_POOL_TAG);
+        ExFreePoolWithTag(found, SAFEUPLOAD_WRITER_NODE_POOL_TAG);
         InterlockedIncrement64(&WriterReleased);
     } else {
         InterlockedIncrement64(&WriterCleanupUnmatched);
@@ -214,7 +218,7 @@ VOID SafeUploadStageWritersFreeContext(_Inout_ PSAFEUPLOAD_STREAM_CONTEXT Stream
     /* The context is going away, so nothing else can reach its list; free any node left behind. */
     while (!IsListEmpty(&StreamContext->WriterObjects)) {
         PLIST_ENTRY link = RemoveHeadList(&StreamContext->WriterObjects);
-        ExFreePoolWithTag(CONTAINING_RECORD(link, STAGE_WRITER_NODE, Link), SAFEUPLOAD_POOL_TAG);
+        ExFreePoolWithTag(CONTAINING_RECORD(link, STAGE_WRITER_NODE, Link), SAFEUPLOAD_WRITER_NODE_POOL_TAG);
     }
 }
 

@@ -38,5 +38,7 @@ Each run has baseline, checkpoint, prechecks, gate, provenance and independent r
 
 Open phase 1 gates:
 Actual lower acquire failure and exact C>0 hold/release passed in ordinary run3 and runtime Verifier run4, independently restored. First two attempts remain failed (HRESULT formatting and unrecorded process-exit predicate); their successful subcases are not whole-run acceptance. Raw lower evidence 25 files SHA verified.
-Still open: cancelled create; explicit fast I/O; deterministic allocation failure/sticky unknown; nested mixed pairing and table capacity; teardown/draining; canary DACL readback and nonSYSTEM denial; new-volume canary/failure/timeout cleanup; primitive cost; deferred Windows 11.
+Still open: cancelled create; explicit fast I/O; deterministic allocation failure/sticky unknown; nested mixed pairing (table capacity now passed); teardown/draining; canary DACL readback and nonSYSTEM denial; new-volume canary/failure/timeout cleanup; primitive cost; deferred Windows 11.
 Atomic admission/epoch-drain, durable boot protection, taint-disabled invariant suite with raw/fresh/uncached observers, runtime+boot Verifier and latency remain phases 2–5 work.
+
+Capacity supplement: section-capacity-run1 ordinary and section-capacity-run2-verifier both pass with 66 held callbacks, upper C64/overflow14 and20 respectively, post-release later successful map still Unknown0x80000040. All native/lower work drained, both independent restorations clean. Raw lower manifest now45 SHA-verified files; capacity-held exactFO66 and postdrain PID4 probes independently checked in section-capacity-raw-verification.txt.

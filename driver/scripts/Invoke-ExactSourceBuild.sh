@@ -15,6 +15,7 @@ work="/tmp/claude-1000/exact-$label"; mkdir -p "$work"
 scp_opts=(-F /dev/null -i /home/victor/.ssh/id_ed25519 -o BatchMode=yes -o ConnectTimeout=10 -o LogLevel=ERROR -o StrictHostKeyChecking=accept-new)
 full="$(git rev-parse --verify "$commit^{commit}")" || exit 2
 paths=(driver/SafeUpload.Minifilter driver/SafeUpload.Inspector)
+if git cat-file -e "$full:driver/SafeUpload.WriterFixture/WriterFixture.cs" 2>/dev/null; then paths+=(driver/SafeUpload.WriterFixture); fi
 
 git archive --format=zip -o "$work/src.zip" "$full" "${paths[@]}" || exit 2
 : > "$work/src.manifest"
@@ -35,7 +36,7 @@ python3 driver/scripts/remote_ps.py "$host" <<PS 2>&1 | perl -pe 's/<Objs.*?<\/O
 PS
 
 for f in summary.txt owned-feature-wdk.txt normal-wdk.txt owned-feature-release-wdk.txt normal-release-wdk.txt sign.txt \
-         SafeUpload-stage-prototype.sys owned-feature.sys inspector-feature-release.exe inspector-normal-release.exe; do
+         SafeUpload-stage-prototype.sys owned-feature.sys inspector-feature-release.exe inspector-normal-release.exe writer-fixture.exe writer-fixture.txt; do
     scp "${scp_opts[@]}" "$d/exact-$label/out/$f" "$work/$f" 2>/dev/null || echo "not fetched: $f"
 done
 cp "$work/summary.txt" "$ev/exact-$label-summary.txt" 2>/dev/null

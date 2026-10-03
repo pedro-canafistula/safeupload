@@ -87,6 +87,19 @@ try {
         }
         [void]$summary.Add("$name : exit=$exit succeeded=$($text -match 'Build succeeded') warnings=$w errors=$e artifact_sha256=$artifactHash")
     }
+    $fixture = Join-Path $src 'driver\SafeUpload.WriterFixture\WriterFixture.cs'
+    if (Test-Path -LiteralPath $fixture) {
+        $log = Join-Path $out 'writer-fixture.txt'
+        $exe = Join-Path $out 'writer-fixture.exe'
+        $csc = 'C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe'
+        & $csc /nologo /target:exe /platform:x64 /warn:4 /warnaserror+ "/out:$exe" $fixture > $log 2>&1
+        $exit=$LASTEXITCODE; $text=[IO.File]::ReadAllText($log)
+        $warnings=[regex]::Matches($text,'(?im)warning CS[0-9]+').Count
+        $errors=[regex]::Matches($text,'(?im)error CS[0-9]+').Count
+        $hash=if($exit -eq 0){(Get-FileHash $exe -Algorithm SHA256).Hash}else{'NONE'}
+        [void]$summary.Add("writer-fixture : exit=$exit succeeded=$($exit -eq 0) warnings=$warnings errors=$errors artifact_sha256=$hash")
+    }
+
 }
 finally { Pop-Location }
 

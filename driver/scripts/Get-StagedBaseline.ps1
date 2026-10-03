@@ -43,7 +43,7 @@ $service = Get-CimInstance Win32_SystemDriver -Filter "Name='SafeUpload'"
 $checks['ServiceManualStopped'] = ($service.StartMode -eq 'Manual' -and $service.State -eq 'Stopped')
 $policyHash = (Get-FileHash -LiteralPath 'C:\ProgramData\SafeUpload\policy.json' -Algorithm SHA256).Hash
 $checks['OriginalPolicyHash'] = ($policyHash -eq $ExpectedPolicy)
-$inheritedChildren = @(); $fixtureObservers = @(); $lowerExercises = @(); $fixtureProcessesRead = $false
+$inheritedChildren = @(); $fixtureObservers = @(); $lowerExercises = @(); $writerFaultProcesses = @(); $fixtureProcessesRead = $false
 try {
     $powershellProcesses = @(Get-CimInstance Win32_Process -Filter "Name='powershell.exe'" -ErrorAction Stop)
     $inheritedChildren = @($powershellProcesses | Where-Object {
@@ -51,14 +51,16 @@ try {
     $fixtureObservers = @($powershellProcesses | Where-Object {
         $_.CommandLine -match 'SafeUpload-owned-[0-9a-f]{32}\.ps1\.observer\.ps1' })
     $lowerExercises = @($powershellProcesses | Where-Object {
-        $_.CommandLine -match 'Invoke-StagedSectionFault[A-Za-z0-9._-]*\.ps1' })
+        $_.CommandLine -match '(Invoke-StagedSectionFault|StagedWriterFault)[A-Za-z0-9._-]*\.ps1' })
+    $writerFaultProcesses = @(Get-CimInstance Win32_Process -Filter "Name='SUHFail.exe'" -ErrorAction Stop)
     $fixtureProcessesRead = $true
 } catch { 'FixtureProcessEnumerationError=' + $_.Exception.Message }
 $checks['FixtureProcessesEnumerated'] = $fixtureProcessesRead
 $checks['ZeroInheritedFixtureChildren'] = ($fixtureProcessesRead -and $inheritedChildren.Count -eq 0)
 $checks['ZeroFixtureObservers'] = ($fixtureProcessesRead -and $fixtureObservers.Count -eq 0)
 $checks['ZeroLowerFixtureProcesses'] = ($fixtureProcessesRead -and $lowerExercises.Count -eq 0)
-foreach ($process in @($inheritedChildren) + @($fixtureObservers) + @($lowerExercises)) {
+$checks['ZeroWriterFaultFixtureProcesses'] = ($fixtureProcessesRead -and $writerFaultProcesses.Count -eq 0)
+foreach ($process in @($inheritedChildren) + @($fixtureObservers) + @($lowerExercises) + @($writerFaultProcesses)) {
     'FixtureProcess=' + $process.ProcessId + ';CommandLine=' + $process.CommandLine
 }
 $checks['ZeroAgentProcesses'] = (@(Get-Process SafeUpload.Agent.Service -ErrorAction SilentlyContinue).Count -eq 0)

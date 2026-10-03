@@ -1,0 +1,16 @@
+Fresh writer-node allocation-failure harness review, 2026-10-03
+Reviewer=/root/primitive_review; read-only; no builds/tests/VM actions.
+
+Use actual runtime Verifier low-resources simulation restricted to pool tag SUwH and native fixture SUHFail.exe. No synthetic production failure hook. Actual failed-allocation counter delta1 and untrackedCreates delta1 are required, with exact stream identity and sticky Unknown probes. Never infer failure from command acknowledgement alone.
+
+Findings fixed before VM use:
+P2 PID reuse: retain native Process.Handle, validate live image path and creation time against CIM snapshot, terminate retained Process object, bound wait and dispose per process. Fresh absence query alone may resolve vanished snapshot PID.
+P2 cleanup resilience: collect each process/event/pin disposal and buffered raw evidence write failure independently; remaining cleanup and result publication continue, errors fail verdict.
+Reviewer re-reviewed both fixes and reported no new blocker. Live Verifier acknowledgement format remains unqualified and fails closed.
+
+Source pins at review completion:
+F373E71F1F7C0F7D7E36D7C3E34D013B6F6109E37FF115A0D4B10436BB832A7A  driver/SafeUpload.Minifilter/StageWriters.c
+A05267A1EFD680D4E01998C68FE3D561234690D21A5801CD9DDDA70BE7C91D72  driver/SafeUpload.WriterFixture/WriterFixture.cs
+C7840ADEA1A36C556094D9779FDE90E1E048913F8E94BF9966B178BF507DAF68  driver/scripts/StagedWriterFault.ps1
+67DB11118A30E0E0FF55116D90AE7B67C9C09DAAE7478D086B183051E955F274  driver/scripts/Test-StagedAdmissionDiagnostic.ps1
+E9EFD783BD12287F95FC4AC6251B8A20B160F8B995C508264FC63A729878DA4A  driver/scripts/Invoke-StagedWriterQualification.py

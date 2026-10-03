@@ -11,7 +11,7 @@ ConvertTo-Json -InputObject $items -Compress
 r=subprocess.run(['python3','driver/scripts/remote_ps.py','192.168.122.51'],input=ps,text=True,capture_output=True,check=True,cwd=root);items=json.loads(r.stdout.strip());dest=ev/'section-lower-raw';dest.mkdir(exist_ok=True)
 opts=['-F','/dev/null','-i','/home/victor/.ssh/id_ed25519','-o','BatchMode=yes','-o','ConnectTimeout=10','-o','LogLevel=ERROR','-o','StrictHostKeyChecking=accept-new']
 intervals=[]
-for gate in ev.glob('section-lower-*-gate.txt'):
+for gate in list(ev.glob('section-lower-*-gate.txt'))+list(ev.glob('section-capacity-*-gate.txt')):
  name=gate.name.removesuffix('-gate.txt');final=ev/(name+'-final-restored-state.txt');prov=ev/(name+'-provenance.txt')
  if not final.exists():continue
  a=re.search(r'^TestTimestampUTC=(.+)$',gate.read_text(),re.M);b=re.search(r'^UTC=(.+)$',final.read_text(),re.M);c=re.search(r'^SourceCommit=(.+)$',prov.read_text(),re.M)

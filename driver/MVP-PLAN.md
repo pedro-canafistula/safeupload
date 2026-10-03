@@ -67,7 +67,11 @@ one actual failed lower acquire matched upper post-acquire cleanup, and an exact
 hold showed C=1 before release and C=0 after successful completion. The companion port
 rejected the ordinary identity; attachment order and clean restoration were verified.
 
-Phase 1 remains open: cancelled creates and explicit fast I/O remain; table capacity,
+Table-capacity qualification passed ordinarily and under runtime Verifier: 66 held
+callbacks overflowed the 64-slot table; after release and a later successful mapping,
+the file-ID probe retained C Unknown (0x80000040). Independent restoration passed.
+
+Phase 1 remains open: cancelled creates and explicit fast I/O remain;
 nested mixed pairing, teardown/fault injection, canary security
 and newly mounted-volume qualification, and cost remain. Empty-file mapping errors
 did **not** exercise failed lower acquire. Windows 11 qualification is deferred by

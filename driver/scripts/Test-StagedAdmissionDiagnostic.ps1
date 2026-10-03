@@ -1,6 +1,6 @@
 param(
     [Parameter(Mandatory = $true)]
-    [ValidateSet('preattach-immediate', 'preattach-protected-open', 'mmdoes-matrix', 'policy-transition', 'retained-section', 'section-eol', 'writer-count', 'section-inflight', 'section-lower', 'All')]
+    [ValidateSet('preattach-immediate', 'preattach-protected-open', 'mmdoes-matrix', 'policy-transition', 'retained-section', 'section-eol', 'writer-count', 'section-inflight', 'section-lower', 'writer-fault', 'All')]
     [string] $Variant,
 
     [Parameter(Mandatory = $true)]
@@ -37,7 +37,11 @@ param(
     [ValidatePattern('^([0-9A-Fa-f]{64})?$')][string] $ExpectedFaultSha256 = '',
     [ValidatePattern('^([0-9A-Fa-f]{64})?$')][string] $ExpectedFaultClientSha256 = '',
     [ValidatePattern('^([0-9A-Fa-f]{64})?$')][string] $ExpectedFaultExerciseSha256 = '',
-    [switch] $FaultCapacity
+    [switch] $FaultCapacity,
+    [ValidatePattern('^SafeUpload\.WriterFault[A-Za-z0-9._-]*\.exe$')][string]$WriterFaultFileName='SafeUpload.WriterFault.input.exe',
+    [ValidatePattern('^StagedWriterFault[A-Za-z0-9._-]*\.ps1$')][string]$WriterFaultExerciseFileName='StagedWriterFault.ps1',
+    [ValidatePattern('^([0-9A-Fa-f]{64})?$')][string]$ExpectedWriterFaultSha256='',
+    [ValidatePattern('^([0-9A-Fa-f]{64})?$')][string]$ExpectedWriterFaultExerciseSha256=''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -2427,6 +2431,91 @@ Start-Sleep -Seconds 300
             [void](Invoke-InspectorChecked -Arguments @('--admission-trace-disable') -Timeout $t)
             $traceEnabled = $false
             $runSucceeded = ($script:WriterChecksFailed -eq 0)
+        }
+        elseif ($SelectedVariant -eq 'writer-fault') {
+            if (-not $Verifier) { throw 'Writer fault qualification requires runtime Verifier.' }
+            $writerInput=Join-Path $documents $WriterFaultFileName
+            $writerExercise=Join-Path $documents $WriterFaultExerciseFileName
+            $writerClient=Join-Path $documents $FaultClientFileName
+            foreach ($item in @(@($writerInput,$ExpectedWriterFaultSha256),@($writerExercise,$ExpectedWriterFaultExerciseSha256),@($writerClient,$ExpectedFaultClientSha256))) {
+                if ($item[1].Length -ne 64 -or (Get-FileHash $item[0] -Algorithm SHA256).Hash -ne $item[1]) { throw 'Writer qualification input hash mismatch.' }
+            }
+            if (@(Get-CimInstance Win32_Process -Filter "Name='SUHFail.exe'" -ErrorAction Stop).Count -ne 0) { throw 'Writer fixture process baseline is not empty.' }
+            $target=Join-Path $fixtureDirectory 'hf_target.maptest';$healthy=Join-Path $fixtureDirectory 'hf_healthy.maptest'
+            $writerExe=Join-Path $fixtureDirectory 'SUHFail.exe'
+            foreach ($path in @($target,$healthy)) { [IO.File]::WriteAllBytes($path,(New-PaddedFixtureBytes ([Text.Encoding]::UTF8.GetBytes('H FAULT '+$id))));$fixturePaths+=$path;Assert-ReparseFreeFixturePath $path }
+            Copy-Item -LiteralPath $writerInput -Destination $writerExe
+            $fixturePaths+=$writerExe
+            if ((Get-FileHash $writerExe -Algorithm SHA256).Hash -ne $ExpectedWriterFaultSha256) { throw 'Writer fixture installed hash mismatch.' }
+            Backup-StagedTestDriver $backup
+            $driverReplaced=$true;Copy-Item $featureDriver $installedDriver -Force
+            if ((Get-FileHash $installedDriver -Algorithm SHA256).Hash -ne $ExpectedFeatureSha256) { throw 'Feature install mismatch.' }
+            & verifier.exe /volatile /flags 0x13B /adddriver SafeUpload.sys|Out-Host
+            if ($LASTEXITCODE -ne 0) { throw 'Runtime Verifier enable failed.' };$verifierEnabled=$true
+            Invoke-FeatureFilterLoad;$filterLoaded=$true
+            [void](Invoke-InspectorChecked -Arguments @('--admission-trace-enable') -Timeout $InspectorTimeoutSeconds);$traceEnabled=$true
+            Wait-AdmissionCanary $target $rawTraceA
+            $rawPrefix=Join-Path $documents ('SafeUpload-writer-fault-'+$id)
+            $cleanupErrors=New-Object System.Collections.Generic.List[string]
+            try {
+                $arguments=@('-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',$writerExercise,
+                    '-Target',$target,'-Healthy',$healthy,'-Executable',$writerExe,'-Inspector',$inspectorPath,
+                    '-ClientSource',$writerClient,'-RawPrefix',$rawPrefix,'-ExpectedClientSha256',$ExpectedFaultClientSha256,
+                    '-ExpectedExecutableSha256',$ExpectedWriterFaultSha256,'-ExpectedInspectorSha256',$ExpectedInspectorSha256)
+                $line=(@($arguments|ForEach-Object {ConvertTo-WindowsArgument ([string]$_)})) -join ' '
+                $agent=Start-StagedTestAgent $PSHOME ($rawPrefix+'-system') 'powershell.exe' $line
+                [void]$agent.Process.Handle
+                if (-not $agent.Process.WaitForExit(60000)) { throw 'SYSTEM writer fault exercise timed out.' }
+                $exit=$agent.Process.get_ExitCode();Write-Output ('WriterFaultProcessExitCode='+$exit)
+                $result=Get-Content -LiteralPath ($rawPrefix+'-result.json') -Raw|ConvertFrom-Json
+                Write-Output ('WriterFaultResult='+($result|ConvertTo-Json -Depth 10 -Compress))
+                Write-Output ('WriterFaultRawPrefix='+$rawPrefix)
+                if ($exit -ne 0 -or $result.Passed -ne $true -or $result.Errors.Count -ne 0) { throw 'Writer allocation failure qualification failed.' }
+                if ($RequireAllVolumeCanaries) { Wait-AllVolumeCanaries ($rawTraceB+'-final-volumes.json') }
+                $runSucceeded=$true;Write-Output 'WriterFaultQualification=PASS'
+            } finally {
+                # Clear low-resource injection before stopping any remaining private fixture.
+                & verifier.exe /volatile /flags 0x13B|Out-Host
+                if ($LASTEXITCODE -ne 0) { [void]$cleanupErrors.Add('Parent low-resource clear failed.') }
+                $query=& verifier.exe /query 2>&1|Out-String
+                $queryExit=$LASTEXITCODE
+                $flags=[regex]::Matches($query,'(?im)^Verifier Flags:\s+0x([0-9A-F]+)\s*$')
+                if ($queryExit -ne 0 -or $flags.Count -ne 1 -or ([Convert]::ToUInt32($flags[0].Groups[1].Value,16) -band 4) -ne 0) { [void]$cleanupErrors.Add('Parent could not prove injection disabled.') }
+                try { Stop-StagedTestAgent $agent;$agent=$null } catch { [void]$cleanupErrors.Add('SYSTEM helper stop: '+$_.Exception.Message) }
+                try {
+                    $remaining=@(Get-CimInstance Win32_Process -Filter "Name='SUHFail.exe'" -ErrorAction Stop)
+                    foreach ($process in $remaining) {
+                        $native=$null
+                        try {
+                            if ($process.ExecutablePath -ne $writerExe) { throw 'Remaining writer fixture ownership unresolved.' }
+                            $native=Get-Process -Id $process.ProcessId -ErrorAction Stop
+                            # Retain the native handle before validating identity or terminating.
+                            [void]$native.Handle
+                            if ($native.HasExited) { continue }
+                            $livePath=$native.MainModule.FileName
+                            $liveStart=$native.StartTime.ToUniversalTime()
+                            $snapshotStart=([datetime]$process.CreationDate).ToUniversalTime()
+                            if ($livePath -ne $writerExe -or [Math]::Abs(($liveStart-$snapshotStart).TotalMilliseconds) -ge 1) {
+                                throw 'Remaining writer fixture live identity mismatch.'
+                            }
+                            if (-not $native.HasExited) { $native.Kill() }
+                            if (-not $native.WaitForExit(10000)) { throw 'Native writer fixture did not terminate.' }
+                        } catch {
+                            # A vanished snapshot PID is harmless only when a fresh query proves absence.
+                            $nativeCleanupMessage=$_.Exception.Message
+                            try {
+                                if (@(Get-CimInstance Win32_Process -Filter ('ProcessId='+$process.ProcessId) -ErrorAction Stop).Count -ne 0) {
+                                    [void]$cleanupErrors.Add('Native fixture cleanup: '+$nativeCleanupMessage)
+                                }
+                            } catch { [void]$cleanupErrors.Add('Native fixture absence unresolved: '+$_.Exception.Message) }
+                        } finally {
+                            if ($native) { try { $native.Dispose() } catch { [void]$cleanupErrors.Add('Native fixture disposal: '+$_.Exception.Message) } }
+                        }
+                    }
+                } catch { [void]$cleanupErrors.Add('Native fixture cleanup: '+$_.Exception.Message) }
+                Write-Output ('WriterFaultRestored='+($cleanupErrors.Count -eq 0))
+                if ($cleanupErrors.Count -ne 0) { throw ($cleanupErrors -join '; ') }
+            }
         }
         elseif ($SelectedVariant -eq 'section-lower') {
             $t = $InspectorTimeoutSeconds

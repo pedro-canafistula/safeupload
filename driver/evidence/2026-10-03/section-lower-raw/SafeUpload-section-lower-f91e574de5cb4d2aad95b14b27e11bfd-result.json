@@ -1,0 +1,466 @@
+{
+    "Passed":  true,
+    "Mode":  "live lower-stack resource-failure injection and bounded hold",
+    "Errors":  [
+
+               ],
+    "Attachments_3":  [
+                          {
+                              "Name":  "FsDepends",
+                              "Altitude":  "407000",
+                              "Volume":  "\\Device\\HarddiskVolume3",
+                              "Filter":  "FsDepends"
+                          },
+                          {
+                              "Name":  "SafeUpload Instance",
+                              "Altitude":  "321410",
+                              "Volume":  "\\Device\\HarddiskVolume3",
+                              "Filter":  "SafeUpload"
+                          },
+                          {
+                              "Name":  "SectionFault Test",
+                              "Altitude":  "321409",
+                              "Volume":  "\\Device\\HarddiskVolume3",
+                              "Filter":  "SafeUploadSectionFault"
+                          },
+                          {
+                              "Name":  "CldFlt",
+                              "Altitude":  "180451",
+                              "Volume":  "\\Device\\HarddiskVolume3",
+                              "Filter":  "CldFlt"
+                          },
+                          {
+                              "Name":  "luafv",
+                              "Altitude":  "135000",
+                              "Volume":  "\\Device\\HarddiskVolume3",
+                              "Filter":  "luafv"
+                          },
+                          {
+                              "Name":  "Wof Instance",
+                              "Altitude":  "40700",
+                              "Volume":  "\\Device\\HarddiskVolume3",
+                              "Filter":  "Wof"
+                          },
+                          {
+                              "Name":  "FileInfo",
+                              "Altitude":  "40500",
+                              "Volume":  "\\Device\\HarddiskVolume3",
+                              "Filter":  "FileInfo"
+                          }
+                      ],
+    "TargetVolume":  "\\Device\\HarddiskVolume3",
+    "Failure":  {
+                    "NativeError":  1450,
+                    "FaultCount":  1,
+                    "Arm":  {
+                                "Version":  1,
+                                "Mode":  1,
+                                "CurrentHeld":  0,
+                                "Matched":  0,
+                                "Failed":  0,
+                                "Held":  0,
+                                "TimedOut":  0,
+                                "InvalidIrql":  0,
+                                "ArmedFileObject":  18446637426722098320,
+                                "ArmGeneration":  1
+                            },
+                    "After":  {
+                                  "writerState":  true,
+                                  "postCreateRuns":  142,
+                                  "writeObjectsCounted":  142,
+                                  "writeObjectsReleased":  139,
+                                  "untrackedCreates":  0,
+                                  "cleanupUnmatched":  0,
+                                  "directoryCreatesSkipped":  0,
+                                  "sectionInFlightNow":  0,
+                                  "sectionInFlightInserted":  1,
+                                  "sectionInFlightReleased":  0,
+                                  "sectionInFlightOverflow":  0,
+                                  "sectionInFlightStuck":  0,
+                                  "sectionInFlightRemovedOnFailure":  1,
+                                  "sectionInFlightMaxDepth":  1,
+                                  "pagingCreatesSkipped":  0,
+                                  "volumeCreatesSkipped":  0,
+                                  "stageStreams":  0,
+                                  "stageFileObjects":  0,
+                                  "lastUnloadVeto":  0,
+                                  "lastUnloadStatus":  0
+                              },
+                    "Before":  {
+                                   "writerState":  true,
+                                   "postCreateRuns":  142,
+                                   "writeObjectsCounted":  142,
+                                   "writeObjectsReleased":  139,
+                                   "untrackedCreates":  0,
+                                   "cleanupUnmatched":  0,
+                                   "directoryCreatesSkipped":  0,
+                                   "sectionInFlightNow":  0,
+                                   "sectionInFlightInserted":  0,
+                                   "sectionInFlightReleased":  0,
+                                   "sectionInFlightOverflow":  0,
+                                   "sectionInFlightStuck":  0,
+                                   "sectionInFlightRemovedOnFailure":  0,
+                                   "sectionInFlightMaxDepth":  0,
+                                   "pagingCreatesSkipped":  0,
+                                   "volumeCreatesSkipped":  0,
+                                   "stageStreams":  0,
+                                   "stageFileObjects":  0,
+                                   "lastUnloadVeto":  0,
+                                   "lastUnloadStatus":  0
+                               },
+                    "State":  {
+                                  "Version":  1,
+                                  "Mode":  1,
+                                  "CurrentHeld":  0,
+                                  "Matched":  1,
+                                  "Failed":  1,
+                                  "Held":  0,
+                                  "TimedOut":  0,
+                                  "InvalidIrql":  0,
+                                  "ArmedFileObject":  18446637426722098320,
+                                  "ArmGeneration":  1
+                              }
+                },
+    "Attachments_6":  [
+                          {
+                              "Name":  "FsDepends",
+                              "Altitude":  "407000",
+                              "Volume":  "\\Device\\HarddiskVolume3",
+                              "Filter":  "FsDepends"
+                          },
+                          {
+                              "Name":  "SafeUpload Instance",
+                              "Altitude":  "321410",
+                              "Volume":  "\\Device\\HarddiskVolume3",
+                              "Filter":  "SafeUpload"
+                          },
+                          {
+                              "Name":  "SectionFault Test",
+                              "Altitude":  "321409",
+                              "Volume":  "\\Device\\HarddiskVolume3",
+                              "Filter":  "SafeUploadSectionFault"
+                          },
+                          {
+                              "Name":  "CldFlt",
+                              "Altitude":  "180451",
+                              "Volume":  "\\Device\\HarddiskVolume3",
+                              "Filter":  "CldFlt"
+                          },
+                          {
+                              "Name":  "luafv",
+                              "Altitude":  "135000",
+                              "Volume":  "\\Device\\HarddiskVolume3",
+                              "Filter":  "luafv"
+                          },
+                          {
+                              "Name":  "Wof Instance",
+                              "Altitude":  "40700",
+                              "Volume":  "\\Device\\HarddiskVolume3",
+                              "Filter":  "Wof"
+                          },
+                          {
+                              "Name":  "FileInfo",
+                              "Altitude":  "40500",
+                              "Volume":  "\\Device\\HarddiskVolume3",
+                              "Filter":  "FileInfo"
+                          }
+                      ],
+    "Hold":  {
+                 "During":  {
+                                "writerState":  true,
+                                "postCreateRuns":  142,
+                                "writeObjectsCounted":  142,
+                                "writeObjectsReleased":  139,
+                                "untrackedCreates":  0,
+                                "cleanupUnmatched":  0,
+                                "directoryCreatesSkipped":  0,
+                                "sectionInFlightNow":  1,
+                                "sectionInFlightInserted":  3,
+                                "sectionInFlightReleased":  1,
+                                "sectionInFlightOverflow":  0,
+                                "sectionInFlightStuck":  0,
+                                "sectionInFlightRemovedOnFailure":  1,
+                                "sectionInFlightMaxDepth":  1,
+                                "pagingCreatesSkipped":  0,
+                                "volumeCreatesSkipped":  0,
+                                "stageStreams":  0,
+                                "stageFileObjects":  0,
+                                "lastUnloadVeto":  0,
+                                "lastUnloadStatus":  0
+                            },
+                 "Held":  {
+                              "Version":  1,
+                              "Mode":  2,
+                              "CurrentHeld":  1,
+                              "Matched":  2,
+                              "Failed":  1,
+                              "Held":  1,
+                              "TimedOut":  0,
+                              "InvalidIrql":  0,
+                              "ArmedFileObject":  18446637426722098320,
+                              "ArmGeneration":  2
+                          },
+                 "Arm":  {
+                             "Version":  1,
+                             "Mode":  2,
+                             "CurrentHeld":  0,
+                             "Matched":  1,
+                             "Failed":  1,
+                             "Held":  0,
+                             "TimedOut":  0,
+                             "InvalidIrql":  0,
+                             "ArmedFileObject":  18446637426722098320,
+                             "ArmGeneration":  2
+                         },
+                 "After":  {
+                               "writerState":  true,
+                               "postCreateRuns":  142,
+                               "writeObjectsCounted":  142,
+                               "writeObjectsReleased":  139,
+                               "untrackedCreates":  0,
+                               "cleanupUnmatched":  0,
+                               "directoryCreatesSkipped":  0,
+                               "sectionInFlightNow":  0,
+                               "sectionInFlightInserted":  3,
+                               "sectionInFlightReleased":  2,
+                               "sectionInFlightOverflow":  0,
+                               "sectionInFlightStuck":  0,
+                               "sectionInFlightRemovedOnFailure":  1,
+                               "sectionInFlightMaxDepth":  1,
+                               "pagingCreatesSkipped":  0,
+                               "volumeCreatesSkipped":  0,
+                               "stageStreams":  0,
+                               "stageFileObjects":  0,
+                               "lastUnloadVeto":  0,
+                               "lastUnloadStatus":  0
+                           },
+                 "Before":  {
+                                "writerState":  true,
+                                "postCreateRuns":  142,
+                                "writeObjectsCounted":  142,
+                                "writeObjectsReleased":  139,
+                                "untrackedCreates":  0,
+                                "cleanupUnmatched":  0,
+                                "directoryCreatesSkipped":  0,
+                                "sectionInFlightNow":  0,
+                                "sectionInFlightInserted":  2,
+                                "sectionInFlightReleased":  1,
+                                "sectionInFlightOverflow":  0,
+                                "sectionInFlightStuck":  0,
+                                "sectionInFlightRemovedOnFailure":  1,
+                                "sectionInFlightMaxDepth":  1,
+                                "pagingCreatesSkipped":  0,
+                                "volumeCreatesSkipped":  0,
+                                "stageStreams":  0,
+                                "stageFileObjects":  0,
+                                "lastUnloadVeto":  0,
+                                "lastUnloadStatus":  0
+                            },
+                 "Released":  {
+                                  "Version":  1,
+                                  "Mode":  2,
+                                  "CurrentHeld":  0,
+                                  "Matched":  2,
+                                  "Failed":  1,
+                                  "Held":  1,
+                                  "TimedOut":  0,
+                                  "InvalidIrql":  0,
+                                  "ArmedFileObject":  18446637426722098320,
+                                  "ArmGeneration":  2
+                              }
+             },
+    "Attachments_8":  [
+                          {
+                              "Name":  "FsDepends",
+                              "Altitude":  "407000",
+                              "Volume":  "\\Device\\HarddiskVolume3",
+                              "Filter":  "FsDepends"
+                          },
+                          {
+                              "Name":  "SafeUpload Instance",
+                              "Altitude":  "321410",
+                              "Volume":  "\\Device\\HarddiskVolume3",
+                              "Filter":  "SafeUpload"
+                          },
+                          {
+                              "Name":  "SectionFault Test",
+                              "Altitude":  "321409",
+                              "Volume":  "\\Device\\HarddiskVolume3",
+                              "Filter":  "SafeUploadSectionFault"
+                          },
+                          {
+                              "Name":  "CldFlt",
+                              "Altitude":  "180451",
+                              "Volume":  "\\Device\\HarddiskVolume3",
+                              "Filter":  "CldFlt"
+                          },
+                          {
+                              "Name":  "luafv",
+                              "Altitude":  "135000",
+                              "Volume":  "\\Device\\HarddiskVolume3",
+                              "Filter":  "luafv"
+                          },
+                          {
+                              "Name":  "Wof Instance",
+                              "Altitude":  "40700",
+                              "Volume":  "\\Device\\HarddiskVolume3",
+                              "Filter":  "Wof"
+                          },
+                          {
+                              "Name":  "FileInfo",
+                              "Altitude":  "40500",
+                              "Volume":  "\\Device\\HarddiskVolume3",
+                              "Filter":  "FileInfo"
+                          }
+                      ],
+    "Capacity":  {
+                     "Workers":  66,
+                     "Arm":  {
+                                 "Version":  1,
+                                 "Mode":  2,
+                                 "CurrentHeld":  0,
+                                 "Matched":  2,
+                                 "Failed":  1,
+                                 "Held":  1,
+                                 "TimedOut":  0,
+                                 "InvalidIrql":  0,
+                                 "ArmedFileObject":  18446637426722098320,
+                                 "ArmGeneration":  3
+                             },
+                     "StickyUnknown":  true,
+                     "Held":  {
+                                  "Version":  1,
+                                  "Mode":  2,
+                                  "CurrentHeld":  66,
+                                  "Matched":  68,
+                                  "Failed":  1,
+                                  "Held":  67,
+                                  "TimedOut":  0,
+                                  "InvalidIrql":  0,
+                                  "ArmedFileObject":  18446637426722098320,
+                                  "ArmGeneration":  3
+                              },
+                     "During":  {
+                                    "writerState":  true,
+                                    "postCreateRuns":  142,
+                                    "writeObjectsCounted":  142,
+                                    "writeObjectsReleased":  139,
+                                    "untrackedCreates":  0,
+                                    "cleanupUnmatched":  0,
+                                    "directoryCreatesSkipped":  0,
+                                    "sectionInFlightNow":  64,
+                                    "sectionInFlightInserted":  67,
+                                    "sectionInFlightReleased":  2,
+                                    "sectionInFlightOverflow":  14,
+                                    "sectionInFlightStuck":  0,
+                                    "sectionInFlightRemovedOnFailure":  1,
+                                    "sectionInFlightMaxDepth":  64,
+                                    "pagingCreatesSkipped":  0,
+                                    "volumeCreatesSkipped":  0,
+                                    "stageStreams":  0,
+                                    "stageFileObjects":  0,
+                                    "lastUnloadVeto":  0,
+                                    "lastUnloadStatus":  0
+                                },
+                     "After":  {
+                                   "writerState":  true,
+                                   "postCreateRuns":  142,
+                                   "writeObjectsCounted":  142,
+                                   "writeObjectsReleased":  139,
+                                   "untrackedCreates":  0,
+                                   "cleanupUnmatched":  0,
+                                   "directoryCreatesSkipped":  0,
+                                   "sectionInFlightNow":  64,
+                                   "sectionInFlightInserted":  67,
+                                   "sectionInFlightReleased":  2,
+                                   "sectionInFlightOverflow":  110,
+                                   "sectionInFlightStuck":  0,
+                                   "sectionInFlightRemovedOnFailure":  1,
+                                   "sectionInFlightMaxDepth":  64,
+                                   "pagingCreatesSkipped":  0,
+                                   "volumeCreatesSkipped":  0,
+                                   "stageStreams":  0,
+                                   "stageFileObjects":  0,
+                                   "lastUnloadVeto":  0,
+                                   "lastUnloadStatus":  0
+                               },
+                     "Before":  {
+                                    "writerState":  true,
+                                    "postCreateRuns":  142,
+                                    "writeObjectsCounted":  142,
+                                    "writeObjectsReleased":  139,
+                                    "untrackedCreates":  0,
+                                    "cleanupUnmatched":  0,
+                                    "directoryCreatesSkipped":  0,
+                                    "sectionInFlightNow":  0,
+                                    "sectionInFlightInserted":  3,
+                                    "sectionInFlightReleased":  2,
+                                    "sectionInFlightOverflow":  0,
+                                    "sectionInFlightStuck":  0,
+                                    "sectionInFlightRemovedOnFailure":  1,
+                                    "sectionInFlightMaxDepth":  1,
+                                    "pagingCreatesSkipped":  0,
+                                    "volumeCreatesSkipped":  0,
+                                    "stageStreams":  0,
+                                    "stageFileObjects":  0,
+                                    "lastUnloadVeto":  0,
+                                    "lastUnloadStatus":  0
+                                },
+                     "Released":  {
+                                      "Version":  1,
+                                      "Mode":  2,
+                                      "CurrentHeld":  0,
+                                      "Matched":  68,
+                                      "Failed":  1,
+                                      "Held":  67,
+                                      "TimedOut":  0,
+                                      "InvalidIrql":  0,
+                                      "ArmedFileObject":  18446637426722098320,
+                                      "ArmGeneration":  3
+                                  },
+                     "Probe":  {
+                                   "sequence":  29,
+                                   "timestamp":  134355193193351999,
+                                   "event":  "explicit_probe",
+                                   "pid":  4,
+                                   "irql":  0,
+                                   "instance":  "0xFFFF9F014F9DA010",
+                                   "targetFileObject":  "0xFFFF9F014FB26520",
+                                   "sectionObjectPointer":  "0xFFFF9F014BF91D88",
+                                   "major":  0,
+                                   "minor":  0,
+                                   "irpFlags":  "0x00000000",
+                                   "mmDoes":  "no",
+                                   "streamContext":  "not_applicable",
+                                   "ownedStream":  false,
+                                   "admissionRecordState":  "not_tracked",
+                                   "setupFlags":  2147483712,
+                                   "volumeKind":  1,
+                                   "attachClass":  "unknown",
+                                   "syncType":  0,
+                                   "pageProtection":  "0x00000000",
+                                   "syncParametersValid":  false,
+                                   "probeStatus":  "0x00000000",
+                                   "probeStage":  8,
+                                   "writeObjects":  1,
+                                   "writersUntracked":  false,
+                                   "inFlightSections":  2147483712,
+                                   "canaryState":  2,
+                                   "canaryStatus":  "0x00000000",
+                                   "canaryChecks":  7,
+                                   "canaryCleanupStatus":  "0x00000000"
+                               }
+                 },
+    "Disarmed":  {
+                     "Version":  1,
+                     "Mode":  0,
+                     "CurrentHeld":  0,
+                     "Matched":  68,
+                     "Failed":  1,
+                     "Held":  67,
+                     "TimedOut":  0,
+                     "InvalidIrql":  0,
+                     "ArmedFileObject":  0,
+                     "ArmGeneration":  3
+                 }
+}
