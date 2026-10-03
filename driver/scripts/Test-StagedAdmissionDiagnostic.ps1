@@ -1294,6 +1294,433 @@ public static class SafeUploadWriterStress
     }
 }
 
+function Initialize-WriterIo {
+    # The helper process bounds even a stuck native call. No worker touches a fixture before attachment.
+    $script:WriterIoSource = @'
+using System;
+using System.ComponentModel;
+using System.Diagnostics;
+using System.IO;
+using System.Runtime.InteropServices;
+using System.Text;
+using System.Threading;
+
+public static class SafeUploadWriterIo
+{
+    const int Timeout = 10000;
+    const uint Read = 0x80000000, Write = 0x40000000;
+    static readonly IntPtr Invalid = new IntPtr(-1);
+    [StructLayout(LayoutKind.Sequential)]
+    struct OplockInput { public ushort Version, Length; public uint Level, Flags; }
+    [StructLayout(LayoutKind.Sequential)]
+    struct OplockOutput {
+        public ushort Version, Length; public uint Original, NewLevel, Flags, Access; public ushort Share;
+    }
+    [StructLayout(LayoutKind.Sequential)]
+    struct Overlapped { public IntPtr Internal, InternalHigh; public uint Offset, OffsetHigh; public IntPtr Event; }
+    [StructLayout(LayoutKind.Sequential)]
+    struct Attributes { public uint AttributesValue, CreationLow, CreationHigh, AccessLow, AccessHigh,
+        WriteLow, WriteHigh, SizeHigh, SizeLow; }
+    [DllImport("kernel32.dll", CharSet=CharSet.Unicode, SetLastError=true)]
+    static extern IntPtr CreateFileW(string path, uint access, uint share, IntPtr security,
+        uint disposition, uint flags, IntPtr template);
+    [DllImport("kernel32.dll", SetLastError=true)]
+    static extern bool CloseHandle(IntPtr handle);
+    [DllImport("kernel32.dll", SetLastError=true)]
+    static extern bool DeviceIoControl(IntPtr file, uint code, IntPtr input, uint inputSize,
+        IntPtr output, uint outputSize, out uint returned, IntPtr overlapped);
+    [DllImport("kernel32.dll", SetLastError=true)]
+    static extern bool GetOverlappedResult(IntPtr file, IntPtr overlapped, out uint transferred, bool wait);
+    [DllImport("kernel32.dll", SetLastError=true)]
+    static extern bool CancelIoEx(IntPtr file, IntPtr overlapped);
+    [DllImport("kernel32.dll", SetLastError=true)]
+    static extern bool CancelSynchronousIo(IntPtr thread);
+    [DllImport("kernel32.dll")]
+    static extern IntPtr GetCurrentProcess();
+    [DllImport("kernel32.dll")]
+    static extern IntPtr GetCurrentThread();
+    [DllImport("kernel32.dll", SetLastError=true)]
+    static extern bool DuplicateHandle(IntPtr process, IntPtr source, IntPtr target, out IntPtr handle,
+        uint access, bool inherit, uint options);
+    [DllImport("kernel32.dll", SetLastError=true)]
+    static extern bool WriteFile(IntPtr file, byte[] buffer, uint count, out uint done, IntPtr overlapped);
+    [DllImport("kernel32.dll", SetLastError=true)]
+    static extern bool ReadFile(IntPtr file, [Out] byte[] buffer, uint count, out uint done, IntPtr overlapped);
+    [DllImport("kernel32.dll", SetLastError=true)]
+    static extern bool SetFilePointerEx(IntPtr file, long distance, out long position, uint method);
+    [DllImport("kernel32.dll", CharSet=CharSet.Unicode, SetLastError=true)]
+    static extern bool GetFileAttributesExW(string path, int level, out Attributes info);
+
+    static Exception Error(string operation) { return new Win32Exception(Marshal.GetLastWin32Error(), operation); }
+    static IntPtr Open(string path, uint access, uint flags) {
+        IntPtr h = CreateFileW(path, access, 7, IntPtr.Zero, 3, flags, IntPtr.Zero);
+        if (h == Invalid) throw Error("CreateFile");
+        return h;
+    }
+    static IntPtr ThreadHandle() {
+        IntPtr h;
+        if (!DuplicateHandle(GetCurrentProcess(), GetCurrentThread(), GetCurrentProcess(), out h, 0, false, 2))
+            throw Error("DuplicateHandle(thread)");
+        return h;
+    }
+    static void Cancel(IntPtr thread, bool allowCompleted) {
+        if (thread == IntPtr.Zero) return;
+        if (!CancelSynchronousIo(thread)) {
+            int error = Marshal.GetLastWin32Error();
+            if (!allowCompleted || error != 1168) throw new Win32Exception(error, "CancelSynchronousIo");
+        }
+    }
+    static void Seek(IntPtr h, long offset) {
+        long position;
+        if (!SetFilePointerEx(h, offset, out position, 0) || position != offset) throw Error("SetFilePointerEx");
+    }
+    static void Query(string path) {
+        Attributes info;
+        if (!GetFileAttributesExW(path, 0, out info)) throw Error("GetFileAttributesEx");
+    }
+
+    sealed class PendingCreate : IDisposable
+    {
+        IntPtr holder, input, output, overlapped, victimHandle;
+        IntPtr victimFile = Invalid;
+        readonly ManualResetEvent broken = new ManualResetEvent(false);
+        readonly ManualResetEvent ready = new ManualResetEvent(false);
+        Thread victim;
+        bool started, requestPending, notificationDone;
+        bool succeeded;
+        int createError;
+        Exception workerError;
+        public string Proof;
+
+        public PendingCreate(string path, uint level) {
+            try {
+                holder = Open(path, Read, 0x40000080); // read-only, overlapped, share all
+                input = Marshal.AllocHGlobal(Marshal.SizeOf(typeof(OplockInput)));
+                output = Marshal.AllocHGlobal(Marshal.SizeOf(typeof(OplockOutput)));
+                overlapped = Marshal.AllocHGlobal(Marshal.SizeOf(typeof(Overlapped)));
+                OplockInput request = new OplockInput();
+                request.Version = 1; request.Length = (ushort)Marshal.SizeOf(typeof(OplockInput));
+                request.Level = level; request.Flags = 1; // REQUEST_OPLOCK_INPUT_FLAG_REQUEST
+                Marshal.StructureToPtr(request, input, false);
+                Marshal.StructureToPtr(new OplockOutput(), output, false);
+                Overlapped ov = new Overlapped(); ov.Event = broken.SafeWaitHandle.DangerousGetHandle();
+                Marshal.StructureToPtr(ov, overlapped, false);
+                uint returned;
+                bool granted = DeviceIoControl(holder, 0x00090240, input, (uint)request.Length,
+                    output, (uint)Marshal.SizeOf(typeof(OplockOutput)), out returned, overlapped);
+                int error = Marshal.GetLastWin32Error();
+                if (granted || error != 997) throw new Win32Exception(error, "Oplock was not granted as ERROR_IO_PENDING");
+                requestPending = true;
+                if (broken.WaitOne(0)) throw new InvalidOperationException("Oplock broke before victim start");
+                victim = new Thread(delegate () {
+                    try {
+                        victimHandle = ThreadHandle();
+                        ready.Set();
+                        // OPEN_EXISTING, synchronous CreateFile; no FILE_COMPLETE_IF_OPLOCKED. With a handle-caching
+                        // oplock the victim shares nothing, so it conflicts with the holder's open and must wait for the break.
+                        victimFile = CreateFileW(path, Write, (level & 2) != 0 ? 0u : 7u, IntPtr.Zero, 3, 0x80, IntPtr.Zero);
+                        createError = victimFile == Invalid ? Marshal.GetLastWin32Error() : 0;
+                        succeeded = victimFile != Invalid;
+                        // No later I/O on this thread: a racing cancel must not target CloseHandle.
+                        // The owning PendingCreate closes a successful handle in its finally block.
+                    } catch (Exception e) { workerError = e; ready.Set(); }
+                });
+                victim.IsBackground = true;
+                victim.Start(); started = true;
+                if (!ready.WaitOne(Timeout)) throw new TimeoutException("Victim thread startup");
+                if (!broken.WaitOne(Timeout)) throw new TimeoutException("No oplock break: create not proven pending;victim:" +
+                    (victim.Join(0) ? Outcome() : "pending"));
+                if (!GetOverlappedResult(holder, overlapped, out returned, false)) throw Error("Oplock break completion");
+                notificationDone = true;
+                OplockOutput result = (OplockOutput)Marshal.PtrToStructure(output, typeof(OplockOutput));
+                Proof = "granted:997;original:" + result.Original + ";new:" + result.NewLevel + ";flags:" + result.Flags;
+                if (result.Version != 1 || result.Length != Marshal.SizeOf(typeof(OplockOutput)) ||
+                    result.Original != level || (result.Flags & 1) == 0)
+                    throw new InvalidOperationException("Break cannot establish an acknowledgment barrier: " + Proof);
+                if (victim.Join(0)) throw new InvalidOperationException("Victim completed before cancellation: " + Outcome());
+            } catch { Dispose(); throw; }
+        }
+        void CloseHolder() {
+            IntPtr h = Interlocked.Exchange(ref holder, IntPtr.Zero);
+            if (h != IntPtr.Zero) CloseHandle(h);
+        }
+        string Outcome() {
+            if (workerError != null) throw new InvalidOperationException("Victim error", workerError);
+            return "succeeded:" + succeeded + ";win32:" + createError;
+        }
+        public string CancelOnly() {
+            Cancel(victimHandle, false);
+            if (!victim.Join(Timeout)) throw new TimeoutException("Cancelled CreateFile did not finish");
+            return Outcome(); // holder stays open across the immediate parent probe
+        }
+        public string Race(int cancelDelay, int closeDelay) {
+            Thread closer = null;
+            Exception closeError = null;
+            using (ManualResetEvent go = new ManualResetEvent(false)) {
+                try {
+                    closer = new Thread(delegate () {
+                        try {
+                            if (!go.WaitOne(Timeout)) throw new TimeoutException("Race start");
+                            if (closeDelay != 0) Thread.Sleep(closeDelay);
+                            CloseHolder();
+                        } catch (Exception e) { closeError = e; }
+                    });
+                    closer.IsBackground = true; closer.Start();
+                    go.Set();
+                    if (cancelDelay != 0) Thread.Sleep(cancelDelay);
+                    Cancel(victimHandle, true); // ERROR_NOT_FOUND is allowed only for the racing cancel call
+                    if (!victim.Join(Timeout)) throw new TimeoutException("Race CreateFile did not finish");
+                    if (!closer.Join(Timeout)) throw new TimeoutException("Race holder closure did not finish");
+                    if (closeError != null) throw closeError;
+                    return Outcome();
+                } finally {
+                    go.Set();
+                    if (closer != null && !closer.Join(Timeout)) Environment.Exit(2);
+                }
+            }
+        }
+        public void Dispose() {
+            try {
+                if (holder != IntPtr.Zero && requestPending && !notificationDone) CancelIoEx(holder, overlapped);
+                CloseHolder(); // unblock even a victim whose cancellation failed
+                if (started) {
+                    try { Cancel(victimHandle, true); } catch { /* joining below is mandatory */ }
+                    if (!victim.Join(Timeout)) Environment.Exit(2); // parent reaps this isolated process
+                }
+                if (requestPending && !notificationDone && !broken.WaitOne(Timeout)) Environment.Exit(2);
+            } finally {
+                if (victimFile != Invalid) { CloseHandle(victimFile); victimFile = Invalid; }
+                if (victimHandle != IntPtr.Zero) { CloseHandle(victimHandle); victimHandle = IntPtr.Zero; }
+                if (input != IntPtr.Zero) { Marshal.FreeHGlobal(input); input = IntPtr.Zero; }
+                if (output != IntPtr.Zero) { Marshal.FreeHGlobal(output); output = IntPtr.Zero; }
+                if (overlapped != IntPtr.Zero) { Marshal.FreeHGlobal(overlapped); overlapped = IntPtr.Zero; }
+                broken.Dispose(); ready.Dispose();
+            }
+        }
+    }
+
+    static long Concurrent(string path) {
+        Thread[] workers = new Thread[8];
+        bool[] started = new bool[8];
+        IntPtr[] handles = new IntPtr[8];
+        long[] iterations = new long[8];
+        Exception[] errors = new Exception[8];
+        using (ManualResetEvent go = new ManualResetEvent(false))
+        using (ManualResetEvent stop = new ManualResetEvent(false))
+        using (CountdownEvent ready = new CountdownEvent(8)) {
+            try {
+                for (int i = 0; i < 8; i++) {
+                    int index = i;
+                    workers[i] = new Thread(delegate () {
+                        IntPtr reader = IntPtr.Zero;
+                        bool announced = false;
+                        try {
+                            handles[index] = ThreadHandle();
+                            if (index < 4) reader = Open(path, Read, 0x80);
+                            ready.Signal(); announced = true;
+                            if (!go.WaitOne(Timeout)) throw new TimeoutException("Concurrent start");
+                            byte[] buffer = new byte[512];
+                            while (!stop.WaitOne(0)) {
+                                if (index < 4) {
+                                    Query(path); Seek(reader, 0);
+                                    uint done;
+                                    if (!ReadFile(reader, buffer, 512, out done, IntPtr.Zero) || done != 512)
+                                        throw Error("Concurrent ReadFile");
+                                } else {
+                                    IntPtr writer = IntPtr.Zero;
+                                    try {
+                                        writer = Open(path, Write, 0x80);
+                                        uint done;
+                                        if (!WriteFile(writer, buffer, 512, out done, IntPtr.Zero) || done != 512)
+                                            throw Error("Concurrent WriteFile");
+                                    } finally { if (writer != IntPtr.Zero) CloseHandle(writer); }
+                                }
+                                iterations[index]++;
+                            }
+                        } catch (Exception e) { errors[index] = e; }
+                        finally {
+                            if (!announced) ready.Signal();
+                            if (reader != IntPtr.Zero) CloseHandle(reader);
+                        }
+                    });
+                    workers[i].IsBackground = true; workers[i].Start(); started[i] = true;
+                }
+                if (!ready.Wait(Timeout)) throw new TimeoutException("Concurrent workers ready");
+                go.Set();
+                stop.WaitOne(3000); // fixed workload duration; verdict uses joins and counters
+            } finally {
+                stop.Set(); go.Set();
+                // Give ordinary I/O time to finish before cancelling a genuinely stuck call.
+                Stopwatch deadline = Stopwatch.StartNew();
+                for (int i = 0; i < 8; i++) {
+                    if (!started[i]) continue;
+                    int remaining = Math.Max(0, Timeout - (int)deadline.ElapsedMilliseconds);
+                    if (!workers[i].Join(remaining)) {
+                        try { Cancel(handles[i], true); } catch { }
+                        if (!workers[i].Join(Timeout)) Environment.Exit(2);
+                        if (errors[i] == null) errors[i] = new TimeoutException("Concurrent worker required cancellation");
+                    }
+                }
+                for (int i = 0; i < 8; i++) if (handles[i] != IntPtr.Zero) CloseHandle(handles[i]);
+            }
+        }
+        long total = 0;
+        for (int i = 0; i < 8; i++) {
+            if (errors[i] != null) throw new InvalidOperationException("Concurrent worker " + i, errors[i]);
+            if (iterations[i] == 0) throw new InvalidOperationException("Concurrent worker made no progress: " + i);
+            total += iterations[i];
+        }
+        return total;
+    }
+
+    public static void Serve(string path) {
+        PendingCreate pending = null;
+        IntPtr writer = IntPtr.Zero;
+        long offset = 0;
+        Console.Out.WriteLine("READY"); Console.Out.Flush();
+        try {
+            string line;
+            while ((line = Console.In.ReadLine()) != null) {
+                string[] args = line.Split(' ');
+                string result = "OK";
+                try {
+                    switch (args[0]) {
+                        case "BEGIN":
+                            if (pending != null) throw new InvalidOperationException("Holder already exists");
+                            pending = new PendingCreate(path, UInt32.Parse(args[1]));
+                            result += " " + pending.Proof; break;
+                        case "CANCEL": result += " " + pending.CancelOnly(); break;
+                        case "RELEASE": pending.Dispose(); pending = null; break;
+                        case "RACE":
+                            using (PendingCreate race = new PendingCreate(path, UInt32.Parse(args[1])))
+                                result += " " + race.Race(Int32.Parse(args[2]), Int32.Parse(args[3]));
+                            break;
+                        case "OPEN":
+                            if (writer != IntPtr.Zero) throw new InvalidOperationException("Writer already exists");
+                            writer = Open(path, Read | Write, 0x80); offset = 0; break;
+                        case "CLOSE":
+                            if (writer != IntPtr.Zero) { CloseHandle(writer); writer = IntPtr.Zero; } break;
+                        case "WRITES":
+                            if (writer == IntPtr.Zero) throw new InvalidOperationException("No cached writer");
+                            int count = Int32.Parse(args[1]), size = Int32.Parse(args[2]);
+                            byte[] data = new byte[size], readback = new byte[size];
+                            for (int i = 0; i < size; i++) data[i] = (byte)(i * 17 + size);
+                            for (int i = 0; i < count; i++) {
+                                uint done;
+                                Seek(writer, offset);
+                                if (!WriteFile(writer, data, (uint)size, out done, IntPtr.Zero) || done != size)
+                                    throw Error("Cached WriteFile");
+                                Seek(writer, offset);
+                                if (!ReadFile(writer, readback, (uint)size, out done, IntPtr.Zero) || done != size)
+                                    throw Error("Cached ReadFile");
+                                for (int j = 0; j < size; j++) if (data[j] != readback[j])
+                                    throw new InvalidOperationException("Cached readback mismatch");
+                                offset += size;
+                            }
+                            result += " " + count; break;
+                        case "QUERIES":
+                            int queries = Int32.Parse(args[1]);
+                            for (int i = 0; i < queries; i++) Query(path);
+                            result += " " + queries; break;
+                        case "CONCURRENT": result += " " + Concurrent(path); break;
+                        case "EXIT": return;
+                        default: throw new InvalidOperationException("Unknown worker command");
+                    }
+                } catch (Exception e) {
+                    // Failures are data for the parent's WC summary; reclaim all outstanding state first.
+                    if (pending != null) { pending.Dispose(); pending = null; }
+                    if (writer != IntPtr.Zero) { CloseHandle(writer); writer = IntPtr.Zero; }
+                    result = "ERROR " + e.ToString().Replace('\r', ' ').Replace('\n', ' ');
+                }
+                Console.Out.WriteLine(result); Console.Out.Flush();
+            }
+        } finally {
+            if (pending != null) pending.Dispose();
+            if (writer != IntPtr.Zero) CloseHandle(writer);
+        }
+    }
+
+    public sealed class Session : IDisposable
+    {
+        Process process;
+        bool started, faulted;
+        readonly StringBuilder stderr = new StringBuilder();
+        public static Session Start(string executable, string source, string fixture) {
+            Session session = new Session();
+            try {
+                string code = "$ErrorActionPreference='Stop'; try { Add-Type -Path '" + source.Replace("'", "''") +
+                    "'; [SafeUploadWriterIo]::Serve('" + fixture.Replace("'", "''") +
+                    "') } catch { [Console]::Out.WriteLine('ERROR '+$_.Exception.ToString()); exit 2 }";
+                ProcessStartInfo start = new ProcessStartInfo(executable,
+                    "-NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand " +
+                    Convert.ToBase64String(Encoding.Unicode.GetBytes(code)));
+                start.UseShellExecute = false; start.CreateNoWindow = true;
+                start.RedirectStandardInput = true; start.RedirectStandardOutput = true; start.RedirectStandardError = true;
+                session.process = new Process(); session.process.StartInfo = start;
+                session.process.ErrorDataReceived += delegate (object sender, DataReceivedEventArgs e) {
+                    if (e.Data != null) lock (session.stderr) { session.stderr.AppendLine(e.Data); }
+                };
+                if (!session.process.Start()) throw new InvalidOperationException("Worker process did not start");
+                session.started = true;
+                session.process.BeginErrorReadLine();
+                string hello = session.Receive(30000);
+                if (hello != "READY") throw new InvalidOperationException("Worker did not report READY: " + hello);
+                return session;
+            } catch (Exception failure) {
+                try { session.Dispose(); }
+                catch (Exception cleanup) { throw new AggregateException(failure, cleanup); }
+                throw;
+            }
+        }
+        string Receive(int milliseconds) {
+            var read = process.StandardOutput.ReadLineAsync();
+            if (!read.Wait(milliseconds)) throw new TimeoutException("Writer I/O worker response");
+            string line = read.Result;
+            if (line == null) {
+                lock (stderr) { throw new InvalidOperationException("Writer I/O worker exited: " + stderr); }
+            }
+            return line;
+        }
+        public string Request(string command) {
+            if (process == null || faulted) throw new InvalidOperationException("Writer I/O session unavailable");
+            try {
+                process.StandardInput.WriteLine(command); process.StandardInput.Flush();
+                string result = Receive(30000);
+                if (result != "OK" && !result.StartsWith("OK ")) throw new InvalidOperationException(result);
+                return result.Length > 3 ? result.Substring(3) : "";
+            } catch { faulted = true; throw; }
+        }
+        public void Dispose() {
+            if (process == null) return;
+            try {
+                bool killed = false;
+                if (started && !process.HasExited) {
+                    try { process.StandardInput.WriteLine("EXIT"); process.StandardInput.Flush(); } catch { }
+                    if (!process.WaitForExit(5000)) {
+                        process.Kill(); killed = true;
+                        if (!process.WaitForExit(10000)) throw new TimeoutException("Writer I/O worker termination");
+                    }
+                }
+                if (started && (killed || process.ExitCode != 0))
+                    throw new InvalidOperationException("Writer I/O worker exit:" + process.ExitCode + ";forced:" + killed);
+            } finally {
+                try {
+                    if (started) {
+                        try { process.StandardInput.Dispose(); }
+                        finally {
+                            try { process.StandardOutput.Dispose(); }
+                            finally { process.StandardError.Dispose(); }
+                        }
+                    }
+                } finally { process.Dispose(); process = null; }
+            }
+        }
+    }
+}
+'@
+    if (-not ('SafeUploadWriterIo' -as [type])) { Add-Type -TypeDefinition $script:WriterIoSource }
+}
+
 $script:WriterChecks = New-Object System.Collections.ArrayList
 
 function Add-WriterProbe([string] $Path, [string] $Label, [int] $ExpectedWriters, [string] $ExpectedMmDoes = '') {
@@ -1553,6 +1980,9 @@ function Invoke-Variant([string] $SelectedVariant) {
     $rawTraceP1 = Join-Path $documents ('SafeUpload-admission-trace-' + $SelectedVariant + '-' + $id + '-P1.jsonl')
     $rawTraceB = Join-Path $documents ('SafeUpload-admission-trace-' + $SelectedVariant + '-' + $id + '-B.jsonl')
     $rawTraceP2 = Join-Path $documents ('SafeUpload-admission-trace-' + $SelectedVariant + '-' + $id + '-P2.jsonl')
+    $rawTraceCancelledCreates = Join-Path $documents ('SafeUpload-admission-trace-' + $SelectedVariant + '-' + $id + '-cancelled-creates.jsonl')
+    $rawTraceFastIo = Join-Path $documents ('SafeUpload-admission-trace-' + $SelectedVariant + '-' + $id + '-fast-io.jsonl')
+    $writerIoSessions = New-Object System.Collections.ArrayList
     $rawTraceL = Join-Path $documents ('SafeUpload-admission-trace-' + $SelectedVariant + '-' + $id + '-L.jsonl')
     $originals = @{}
     $mappedExpected = @{}
@@ -2144,6 +2574,7 @@ public static class SafeUploadEolNative
             Initialize-EolNative
             Initialize-WriterStress
             Initialize-WriterInheritance
+            Initialize-WriterIo
             $script:WriterChecksPassed = 0
             $script:WriterChecksFailed = 0
             $access = [IO.FileShare]::ReadWrite -bor [IO.FileShare]::Delete
@@ -2177,6 +2608,42 @@ public static class SafeUploadEolNative
             $reparseTargetDirectory = Join-Path $fixtureDirectory 'wc-reparse-target'
             [void][IO.Directory]::CreateDirectory($reparseTargetDirectory)
             $fq = New-WCFile 'wc-reparse-target\wc_reparsed.maptest'
+            $fr = New-WCFile 'wc_cancelled.maptest'
+            $fs = New-WCFile 'wc_fast_io.maptest'
+            $writerIoSourcePath = Join-Path $fixtureDirectory 'wc-io-native.cs'
+            [IO.File]::WriteAllText($writerIoSourcePath, $script:WriterIoSource)
+            # Compile both isolated helpers before loading the driver; their source/temp assembly writes
+            # must not contaminate group counter deltas. They wait for commands without opening fixtures.
+            $writerIoExecutable = Join-Path $PSHOME 'powershell.exe'
+            $cancelledIo = [SafeUploadWriterIo+Session]::Start($writerIoExecutable, $writerIoSourcePath, $fr)
+            [void]$writerIoSessions.Add($cancelledIo)
+            $fastIo = [SafeUploadWriterIo+Session]::Start($writerIoExecutable, $writerIoSourcePath, $fs)
+            [void]$writerIoSessions.Add($fastIo)
+            function Add-WCOutcome([string] $Label, [bool] $Ok, [string] $Facts) {
+                $verdict = if ($Ok) { 'PASS' } else { 'FAIL' }
+                if ($Ok) { $script:WriterChecksPassed++ } else { $script:WriterChecksFailed++ }
+                Write-Output ('WC_' + $Label + '=' + $Facts + ';' + $verdict)
+            }
+            function Add-WCBalance([string] $Label, $Before, $After) {
+                $counted = [int64]$After.writeObjectsCounted - [int64]$Before.writeObjectsCounted
+                $released = [int64]$After.writeObjectsReleased - [int64]$Before.writeObjectsReleased
+                $untracked = [int64]$After.untrackedCreates - [int64]$Before.untrackedCreates
+                $unmatched = [int64]$After.cleanupUnmatched - [int64]$Before.cleanupUnmatched
+                Add-WCOutcome ($Label + '_balance') ($counted -eq $released) ('counted:' + $counted + ';released:' + $released)
+                Add-WCOutcome ($Label + '_untrackedCreates') ($untracked -eq 0) ('delta:' + $untracked)
+                Add-WCOutcome ($Label + '_cleanupUnmatched') ($unmatched -eq 0) ('delta:' + $unmatched)
+            }
+            function Invoke-WCQuietWorkload($Session, [string] $Command) {
+                # Preserve earlier explicit probes in the 16384-entry ring through high-volume loops.
+                # H(F) accounting and stats remain active; only diagnostic event collection is paused.
+                [void](Invoke-InspectorChecked -Arguments @('--admission-trace-disable') -Timeout $t)
+                $traceEnabled = $false
+                try { return $Session.Request($Command) }
+                finally {
+                    [void](Invoke-InspectorChecked -Arguments @('--admission-trace-enable') -Timeout $t)
+                    $traceEnabled = $true
+                }
+            }
             $fixturePaths += $script:fixturePathsLocal
             foreach ($path in $fixturePaths) { Assert-ReparseFreeFixturePath $path }
 
@@ -2418,6 +2885,117 @@ Start-Sleep -Seconds 300
             $secMap.Dispose()
             Add-WriterProbe $fl 'section_released_HzeroSno' 0 'no'
             Complete-WriterChecks 'many_and_sections' $rawTraceB
+
+            # Group 5: cancelled creates. A break completion alone is not enough: require ACK_REQUIRED
+            # and a still-pending victim before cancelling. A read-only oplock breaks without an acknowledgment barrier,
+            # so the read-only holder takes READ|HANDLE caching and the victim opens write with FILE_SHARE_NONE, which
+            # conflicts with the holder and pends until it acknowledges. Anything else must fail, never skip.
+            $cancelledStatsBefore = Get-WriterStateStats
+            $deterministicCancelled = 0
+            $raceSucceeded = 0
+            $raceCancelled = 0
+            $cancelSeed = 1904503
+            $cancelRng = [Random]::new($cancelSeed)
+            $cancelOplockLevel = 3 # OPLOCK_LEVEL_CACHE_READ | OPLOCK_LEVEL_CACHE_HANDLE
+            Write-Output ('WC_CancelledCreates_Seed=' + $cancelSeed + ';oplockLevel:' + $cancelOplockLevel)
+            try {
+                for ($iteration = 1; $iteration -le 20; $iteration++) {
+                    $holderActive = $false
+                    try {
+                        $proof = $cancelledIo.Request('BEGIN ' + $cancelOplockLevel)
+                        $holderActive = $true
+                        Write-Output ('WC_CancelledCreate_' + $iteration + '_Pending=' + $proof)
+                        $outcome = $cancelledIo.Request('CANCEL')
+                        $cancelOk = ($outcome -eq 'succeeded:False;win32:995')
+                        Add-WCOutcome ('cancelled_deterministic_' + $iteration) $cancelOk $outcome
+                        if (-not $cancelOk) { throw ('Deterministic create did not return ERROR_OPERATION_ABORTED: ' + $outcome) }
+                        $deterministicCancelled++
+                        if ($iteration -eq 1) {
+                            # Keep the read-only holder open through the immediate zero-writer probe.
+                            Add-WriterProbe $fr 'cancelled_immediate_holderStillOpen' 0
+                        }
+                    } finally {
+                        if ($holderActive) { [void]$cancelledIo.Request('RELEASE') }
+                    }
+                    if ($iteration -eq 1) {
+                        [void]$cancelledIo.Request('OPEN')
+                        try { Add-WriterProbe $fr 'cancelled_normalWriter_afterCancel' 1 }
+                        finally { [void]$cancelledIo.Request('CLOSE') }
+                        Add-WriterProbe $fr 'cancelled_normalWriter_closed' 0
+                    }
+                    if (($iteration % 5) -eq 0) {
+                        Add-WriterProbe $fr ('cancelled_batch_' + $iteration + '_allClosed') 0
+                    }
+                }
+                for ($iteration = 1; $iteration -le 200; $iteration++) {
+                    $cancelOffset = $cancelRng.Next(0, 6)
+                    $closeOffset = $cancelRng.Next(0, 6)
+                    $outcome = $cancelledIo.Request(('RACE ' + $cancelOplockLevel + ' ' + $cancelOffset + ' ' + $closeOffset))
+                    $raceOk = ($outcome -eq 'succeeded:True;win32:0' -or $outcome -eq 'succeeded:False;win32:995')
+                    Add-WCOutcome ('cancelled_race_' + $iteration) $raceOk ($outcome + ';cancelMs:' + $cancelOffset + ';closeMs:' + $closeOffset)
+                    if (-not $raceOk) { throw ('Unexpected racing create outcome: ' + $outcome) }
+                    if ($outcome -eq 'succeeded:True;win32:0') { $raceSucceeded++ } else { $raceCancelled++ }
+                }
+            } catch {
+                Add-WCOutcome 'cancelled_execution' $false (Get-ErrorText $_)
+            } finally {
+                # Graceful EXIT runs worker finally blocks; the process is killed/reaped if native I/O is stuck.
+                try { $cancelledIo.Dispose() }
+                catch { Add-WCOutcome 'cancelled_worker_disposal' $false (Get-ErrorText $_) }
+            }
+            Add-WCOutcome 'cancelled_iterations' ($deterministicCancelled -eq 20 -and ($raceSucceeded + $raceCancelled) -eq 200) ('deterministic:' + $deterministicCancelled + ';race:' + ($raceSucceeded + $raceCancelled))
+            Add-WriterProbe $fr 'cancelled_final_allClosed' 0
+            $cancelledStatsAfter = Get-WriterStateStats
+            Add-WCBalance 'cancelled' $cancelledStatsBefore $cancelledStatsAfter
+            Write-Output ('WC_CancelledCreates=deterministic:' + $deterministicCancelled + ';race_succeeded:' + $raceSucceeded +
+                ';race_cancelled:' + $raceCancelled + ';seed:' + $cancelSeed)
+            Write-Output ('WC_Group_cancelled_creates_RawFile=' + $rawTraceCancelledCreates)
+            Complete-WriterChecks 'cancelled_creates' $rawTraceCancelledCreates
+
+            # Group 6: cached small I/O and query-open calls. APIs may fall back to IRPs; guest tracing
+            # must establish actual FASTIO_* coverage separately. Probes always require known H(F).
+            $fastStatsBefore = Get-WriterStateStats
+            $fastWrites = 0
+            $fastQueries = 0
+            $concurrentIterations = [long]0
+            try {
+                [void]$fastIo.Request('OPEN')
+                try {
+                    Add-WriterProbe $fs 'fast_cached_before' 1
+                    $fastWrites += [int]$fastIo.Request('WRITES 1000 512')
+                    Add-WriterProbe $fs 'fast_cached_during_1000' 1
+                    $fastWrites += [int]$fastIo.Request('WRITES 1000 4096')
+                    Add-WriterProbe $fs 'fast_cached_after_2000' 1
+                    Add-WCOutcome 'fast_cached_readback' ($fastWrites -eq 2000) ('writeReadPairs:' + $fastWrites)
+                } finally { [void]$fastIo.Request('CLOSE') }
+                Add-WriterProbe $fs 'fast_cached_closed' 0
+
+                Add-WriterProbe $fs 'fast_query_noWriter_before' 0
+                $fastQueries += [int](Invoke-WCQuietWorkload $fastIo 'QUERIES 5000')
+                Add-WriterProbe $fs 'fast_query_noWriter_after' 0
+                [void]$fastIo.Request('OPEN')
+                try {
+                    Add-WriterProbe $fs 'fast_query_writer_before' 1
+                    $fastQueries += [int](Invoke-WCQuietWorkload $fastIo 'QUERIES 5000')
+                    Add-WriterProbe $fs 'fast_query_writer_after' 1
+                } finally { [void]$fastIo.Request('CLOSE') }
+                Add-WriterProbe $fs 'fast_query_writer_closed' 0
+                Add-WCOutcome 'fast_queries' ($fastQueries -eq 10000) ('GetFileAttributesEx:' + $fastQueries)
+
+                $concurrentIterations = [long](Invoke-WCQuietWorkload $fastIo 'CONCURRENT')
+                Add-WCOutcome 'fast_concurrent' ($concurrentIterations -ge 8) ('threads:8;durationMs:3000;iterations:' + $concurrentIterations)
+            } catch {
+                Add-WCOutcome 'fast_execution' $false (Get-ErrorText $_)
+            } finally {
+                try { $fastIo.Dispose() }
+                catch { Add-WCOutcome 'fast_worker_disposal' $false (Get-ErrorText $_) }
+            }
+            Add-WriterProbe $fs 'fast_concurrent_allClosed' 0
+            $fastStatsAfter = Get-WriterStateStats
+            Add-WCBalance 'fast' $fastStatsBefore $fastStatsAfter
+            Write-Output ('WC_FastIo=writes:' + $fastWrites + ';queries:' + $fastQueries + ';concurrent_iterations:' + $concurrentIterations)
+            Write-Output ('WC_Group_fast_io_RawFile=' + $rawTraceFastIo)
+            Complete-WriterChecks 'fast_io' $rawTraceFastIo
 
             $statsAfter = Get-WriterStateStats
             Write-Output ('WC_StatsAfter=counted:' + $statsAfter.writeObjectsCounted + ';released:' + $statsAfter.writeObjectsReleased +
@@ -2947,6 +3525,10 @@ Start-Sleep -Seconds 300
         }
     }
     finally {
+        foreach ($writerIoSession in $writerIoSessions) {
+            try { $writerIoSession.Dispose() }
+            catch { [void]$restorationErrors.Add('Writer I/O worker stop: ' + (Get-ErrorText $_)) }
+        }
         if ($null -ne $agent) {
             try {
                 Stop-StagedTestAgent $agent
