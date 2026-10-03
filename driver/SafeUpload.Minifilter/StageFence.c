@@ -85,6 +85,7 @@ typedef struct _FENCE_VOLUME {
     PFLT_INSTANCE Instance;                             /* NULL before the filter is attached to the volume */
     BOOLEAN ScanRequired;                               /* false only after positively classifying it out of scope */
     BOOLEAN Enumerated;                                 /* true only when returned by this exact volume snapshot */
+    BOOLEAN Detached;                                   /* positive live storage-stack query; never a root-error inference */
     UNICODE_STRING Name;
     WCHAR NameBuffer[FENCE_VOLUME_NAME_CHARS];
 } FENCE_VOLUME, *PFENCE_VOLUME;
@@ -522,14 +523,15 @@ Cleanup:
     ObDereferenceObject(object);
 }
 
-/* A volume whose device is gone or not ready cannot hold mapped files: it is skipped, not a scan failure.
- * Any other failure to open its root is unprovable and fails closed. Root names the volume root and ends
- * in a backslash. */
-static BOOLEAN FenceVolumeUsable(_In_ PFENCE_SCAN Scan, _In_opt_ PFLT_INSTANCE Instance, _In_ PCUNICODE_STRING Root)
+/* Detached storage can retain open/mapped file objects. Skip a bootstrap root only after a positive
+ * live detached query; preserve installed fences and quarantine. Other unavailable roots remain
+ * incomplete coverage. Root names the volume root and ends in a backslash. */
+static BOOLEAN FenceVolumeUsable(_In_ PFENCE_SCAN Scan, _Inout_ PFENCE_VOLUME Volume, _In_ PCUNICODE_STRING Root,
+    _In_ BOOLEAN Bootstrap)
 {
     HANDLE handle;
     PFILE_OBJECT object;
-    NTSTATUS status = FenceOpen(Instance, Root, FILE_LIST_DIRECTORY | SYNCHRONIZE, TRUE, &handle, &object);
+    NTSTATUS status = FenceOpen(Volume->Instance, Root, FILE_LIST_DIRECTORY | SYNCHRONIZE, TRUE, &handle, &object);
 
     if (NT_SUCCESS(status)) {
         (VOID)FltClose(handle);
@@ -540,6 +542,15 @@ static BOOLEAN FenceVolumeUsable(_In_ PFENCE_SCAN Scan, _In_opt_ PFLT_INSTANCE I
         status == STATUS_NO_MEDIA_IN_DEVICE || status == STATUS_DEVICE_DOES_NOT_EXIST ||
         status == STATUS_UNRECOGNIZED_VOLUME || status == STATUS_FLT_NO_DEVICE_OBJECT ||
         status == STATUS_DEVICE_NOT_CONNECTED || status == STATUS_INVALID_DEVICE_STATE) {
+        UINT32 flags = 0;
+        NTSTATUS volumeStatus = SafeUploadStageVolumeFlags(Volume->Volume, &flags);
+        if (volumeStatus == STATUS_SUCCESS && FlagOn(flags, SAFEUPLOAD_VOLUME_DETACHED_FLAG)) {
+            Volume->Detached = TRUE;
+            Volume->ScanRequired = FALSE;
+            if (!Bootstrap) FenceRecordSkippedVolumeScope(Scan);
+            return FALSE;
+        }
+        if (volumeStatus != STATUS_SUCCESS) { FENCE_FAIL(Scan, volumeStatus); return FALSE; }
         FenceRecordSkippedVolumeScope(Scan);
         return FALSE;
     }
@@ -548,8 +559,8 @@ static BOOLEAN FenceVolumeUsable(_In_ PFENCE_SCAN Scan, _In_opt_ PFLT_INSTANCE I
 }
 
 /* Scans <volume>\<Relative>; Relative starts with a backslash. */
-static VOID FenceScanUnderVolume(_In_ PFENCE_SCAN Scan, _In_ PFENCE_VOLUME Volume, _In_reads_(RelativeChars) PCWSTR Relative,
-    _In_ ULONG RelativeChars)
+static VOID FenceScanUnderVolume(_In_ PFENCE_SCAN Scan, _Inout_ PFENCE_VOLUME Volume, _In_reads_(RelativeChars) PCWSTR Relative,
+    _In_ ULONG RelativeChars, _In_ BOOLEAN Bootstrap)
 {
     PWCHAR buffer;
     UNICODE_STRING root, path;
@@ -563,7 +574,7 @@ static VOID FenceScanUnderVolume(_In_ PFENCE_SCAN Scan, _In_ PFENCE_VOLUME Volum
     root.Buffer = buffer;
     root.Length = root.MaximumLength = (USHORT)((nameChars + 1) * sizeof(WCHAR));
     Scan->CurrentVolume = Volume->Volume;
-    if (FenceVolumeUsable(Scan, Volume->Instance, &root)) {
+    if (FenceVolumeUsable(Scan, Volume, &root, Bootstrap)) {
         RtlCopyMemory(buffer + nameChars, Relative, RelativeChars * sizeof(WCHAR));
         path.Buffer = buffer;
         path.Length = path.MaximumLength = (USHORT)((nameChars + RelativeChars) * sizeof(WCHAR));
@@ -576,7 +587,7 @@ static VOID FenceScanUnderVolume(_In_ PFENCE_SCAN Scan, _In_ PFENCE_VOLUME Volum
 static VOID FenceScanPrefix(_In_ PFENCE_SCAN Scan, _In_reads_(Chars) PWCHAR Prefix, _In_ ULONG Chars)
 {
     UNICODE_STRING path, device, deviceRoot = RTL_CONSTANT_STRING(L"\\Device\\");
-    ULONG used = Chars, index, volumeIndex;
+    ULONG used = Chars, index, volumeIndex, activeIndex = MAXULONG, activeMatches = 0;
 
     while (used > 0 && used <= Chars && Prefix[used - 1] == L'\\') used -= 1;     /* canonical: no doubled separator in names */
     path.Buffer = Prefix;
@@ -586,16 +597,20 @@ static VOID FenceScanPrefix(_In_ PFENCE_SCAN Scan, _In_reads_(Chars) PWCHAR Pref
     device.Buffer = Prefix;
     device.Length = device.MaximumLength = (USHORT)(index * sizeof(WCHAR));
     for (volumeIndex = 0; volumeIndex < Scan->VolumeCount; volumeIndex += 1) {
-        if (RtlEqualUnicodeString(&device, &Scan->Volumes[volumeIndex].Name, TRUE)) {
-            if (index >= used) {                              /* the prefix is the volume root: the whole volume is in scope */
-                FenceScanUnderVolume(Scan, &Scan->Volumes[volumeIndex], L"\\", 1);
-                return;
-            }
-            FenceScanUnderVolume(Scan, &Scan->Volumes[volumeIndex], Prefix + index, used - index);
-            return;
+        if (!Scan->Volumes[volumeIndex].Detached &&
+            RtlEqualUnicodeString(&device, &Scan->Volumes[volumeIndex].Name, TRUE)) {
+            activeIndex = volumeIndex;
+            activeMatches += 1;
         }
     }
-    FenceRecordSkippedVolumeScope(Scan);                      /* not mounted, or not a fixed local NTFS volume */
+    /* Mounted and detached objects may share a device name. Only one active identity
+     * establishes coverage; a detached-only or ambiguous active match grants none. */
+    if (activeMatches != 1) { FenceRecordSkippedVolumeScope(Scan); return; }
+    if (index >= used) {                                      /* the prefix is the volume root */
+        FenceScanUnderVolume(Scan, &Scan->Volumes[activeIndex], L"\\", 1, FALSE);
+        return;
+    }
+    FenceScanUnderVolume(Scan, &Scan->Volumes[activeIndex], Prefix + index, used - index, FALSE);
 }
 
 static VOID FenceReleaseVolumes(_In_ PFENCE_SCAN Scan)
@@ -750,6 +765,7 @@ static __declspec(noinline) VOID FenceClearScannedQuarantine(_In_ PFENCE_SCAN Sc
     PFLT_VOLUME release[FENCE_MAX_QUARANTINED_VOLUMES] = {0};
     PFLT_VOLUME scanned[FENCE_MAX_SCAN_VOLUMES] = {0};
     ULONG volumeCount, quarantineGeneration;
+    BOOLEAN detachedPresent = FALSE;
     ULONG index, volumeIndex, releaseCount = 0;
     KIRQL irql;
 
@@ -759,7 +775,8 @@ static __declspec(noinline) VOID FenceClearScannedQuarantine(_In_ PFENCE_SCAN Sc
     volumeCount = Scan->VolumeCount;
     quarantineGeneration = Scan->QuarantineGeneration;
     for (volumeIndex = 0; volumeIndex < volumeCount; volumeIndex += 1) {
-        scanned[volumeIndex] = Scan->Volumes[volumeIndex].Volume;
+        if (Scan->Volumes[volumeIndex].Detached) detachedPresent = TRUE;
+        else scanned[volumeIndex] = Scan->Volumes[volumeIndex].Volume;
     }
 
     /* Setup admission, late-attach queue ownership, and quarantine insertion use RetryLock. Holding
@@ -784,7 +801,7 @@ static __declspec(noinline) VOID FenceClearScannedQuarantine(_In_ PFENCE_SCAN Sc
             }
         }
     }
-    if (InterlockedCompareExchange(&FenceQuarantineGlobalSticky, FALSE, FALSE) == FALSE &&
+    if (!detachedPresent && InterlockedCompareExchange(&FenceQuarantineGlobalSticky, FALSE, FALSE) == FALSE &&
         InterlockedCompareExchange(&FenceSetupInFlight, 0, 0) == 0 &&
         InterlockedCompareExchange(&FenceLateAttachOutstanding, 0, 0) == 0 &&
         InterlockedExchange(&FenceQuarantineGlobal, FALSE) != FALSE) {
@@ -859,6 +876,7 @@ static __declspec(noinline) VOID FenceAppendQuarantinedVolumes(_In_ PFENCE_SCAN 
     for (index = 0; index < rememberedCount && NT_SUCCESS(Scan->Failure); index += 1) {
         PFENCE_VOLUME record;
         ULONG needed = 0;
+        UINT32 flags = 0;
         BOOLEAN fixedNtfs;
         NTSTATUS status;
         BOOLEAN present = FALSE;
@@ -885,23 +903,28 @@ static __declspec(noinline) VOID FenceAppendQuarantinedVolumes(_In_ PFENCE_SCAN 
         record->Instance = NULL;
         record->ScanRequired = FALSE;
         record->Enumerated = FALSE;
+        record->Detached = FALSE;
         record->Name.Buffer = record->NameBuffer;
         record->Name.Length = 0;
         record->Name.MaximumLength = sizeof(record->NameBuffer);
         Scan->CurrentVolume = remembered[index];
-        status = FenceClassifyVolume(remembered[index], &fixedNtfs);
+        status = SafeUploadStageVolumeFlags(remembered[index], &flags);
+        if (status == STATUS_SUCCESS) {
+            record->Detached = (flags & SAFEUPLOAD_VOLUME_DETACHED_FLAG) != 0;
+            status = FenceClassifyVolume(remembered[index], &fixedNtfs);
+        }
         if (!NT_SUCCESS(status)) {
             Scan->VolumeCount += 1; /* retain the scan reference for FenceReleaseVolumes */
             FENCE_FAIL(Scan, status);
             continue;
         }
         if (!fixedNtfs) {
-            /* A remembered identity that now positively classifies out of scope is covered without
-             * scanning it. Its reference remains in the scan so a complete pass can release q. */
+            /* An active identity positively classified out of scope is covered without scanning.
+             * Detached identities retain quarantine even if classification changes. */
             Scan->VolumeCount += 1;
             continue;
         }
-        record->ScanRequired = TRUE;
+        record->ScanRequired = !record->Detached;
         status = FltGetVolumeName(remembered[index], &record->Name, &needed);
         if (!NT_SUCCESS(status) || record->Name.Length == 0 || (record->Name.Length & 1) != 0) {
             Scan->VolumeCount += 1; /* retain the scan reference for FenceReleaseVolumes */
@@ -936,9 +959,11 @@ static __declspec(noinline) VOID FenceCollectVolumes(_In_ PFENCE_SCAN Scan)
     for (index = 0; index < count; index += 1) {
         PFENCE_VOLUME record = &Scan->Volumes[Scan->VolumeCount];
         ULONG needed = 0;
+        UINT32 flags = 0;
 
         if (volumes[index] == NULL) continue;
-        status = FenceClassifyVolume(volumes[index], &fixedNtfs);
+        status = SafeUploadStageVolumeFlags(volumes[index], &flags);
+        if (status == STATUS_SUCCESS) status = FenceClassifyVolume(volumes[index], &fixedNtfs);
         if (!NT_SUCCESS(status)) {
             Scan->CurrentVolume = volumes[index];
             record->Volume = volumes[index];
@@ -954,7 +979,8 @@ static __declspec(noinline) VOID FenceCollectVolumes(_In_ PFENCE_SCAN Scan)
         Scan->CurrentVolume = volumes[index];
         record->Volume = volumes[index];
         record->Instance = NULL;
-        record->ScanRequired = TRUE;
+        record->Detached = FlagOn(flags, SAFEUPLOAD_VOLUME_DETACHED_FLAG);
+        record->ScanRequired = !record->Detached;
         record->Enumerated = TRUE;
         record->Name.Buffer = record->NameBuffer;
         record->Name.Length = 0;
@@ -1141,7 +1167,7 @@ static NTSTATUS FenceRefreshInternal(_In_opt_ const SAFEUPLOAD_POLICY *Candidate
     for (index = 0; index < scan->VolumeCount && NT_SUCCESS(scan->Failure); index += 1) {
         if (scan->Volumes[index].ScanRequired) {
             FenceScanUnderVolume(scan, &scan->Volumes[index], bootstrap,
-                (ULONG)(sizeof(bootstrap) / sizeof(WCHAR)) - 1);
+                (ULONG)(sizeof(bootstrap) / sizeof(WCHAR)) - 1, TRUE);
         }
     }
     scan->CandidateScopeActive = FALSE;

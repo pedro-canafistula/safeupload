@@ -413,6 +413,8 @@ VOID SafeUploadStageWritersGetStatus(_Out_ PSAFEUPLOAD_WRITER_STATE_STATUS Statu
     snapshot.DirectoryCreatesSkipped = (UINT64)InterlockedCompareExchange64(&WriterDirectoryCreatesSkipped, 0, 0);
     snapshot.PagingCreatesSkipped = (UINT64)InterlockedCompareExchange64(&WriterPagingCreatesSkipped, 0, 0);
     snapshot.VolumeCreatesSkipped = (UINT64)InterlockedCompareExchange64(&WriterVolumeCreatesSkipped, 0, 0);
+    SafeUploadStageGetUnloadStatus(&snapshot.StageStreams, &snapshot.StageFileObjects,
+        &snapshot.LastUnloadVeto, &snapshot.LastUnloadStatus);
     KeAcquireSpinLock(&SectionLock, &irql);
     snapshot.SectionInFlightNow = SectionNow;
     snapshot.SectionInFlightMaxDepth = SectionMaxDepth;

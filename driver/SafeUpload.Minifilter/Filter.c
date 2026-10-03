@@ -412,6 +412,9 @@ Return Value:
         SafeUploadData.ClientPort != NULL) {
 
         SafeUploadTrace( "declining voluntary unload: inspector still connected\n" );
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+        SafeUploadStageRecordUnloadVeto(SAFEUPLOAD_UNLOAD_VETO_CLIENT, STATUS_FLT_DO_NOT_DETACH);
+#endif
 
         return STATUS_FLT_DO_NOT_DETACH;
     }

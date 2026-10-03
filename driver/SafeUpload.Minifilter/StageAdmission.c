@@ -5,6 +5,7 @@
 #ifdef ALLOC_PRAGMA
 #pragma alloc_text(PAGE, SafeUploadStageOpenByIdentity)
 #pragma alloc_text(PAGE, SafeUploadStageAdmissionVolumeStatus)
+#pragma alloc_text(PAGE, SafeUploadStageVolumeFlags)
 #endif
 
 NTSTATUS SafeUploadStageOpenByIdentity(
@@ -100,6 +101,33 @@ static volatile LONG AdmissionFilteringReady;
 static KEVENT CanaryStop;
 static HANDLE CanaryThreadHandle;
 
+NTSTATUS SafeUploadStageVolumeFlags(_In_ PFLT_VOLUME Volume, _Out_ PUINT32 Flags)
+{
+    PFILTER_VOLUME_STANDARD_INFORMATION information;
+    ULONG bytes = sizeof(*information) + SAFEUPLOAD_MAX_PATH_CHARS * sizeof(WCHAR), returned = 0;
+    NTSTATUS status;
+    PAGED_CODE();
+    C_ASSERT(FLTFL_VSI_DETACHED_VOLUME == SAFEUPLOAD_VOLUME_DETACHED_FLAG);
+    *Flags = 0;
+    information = ExAllocatePool2(POOL_FLAG_PAGED, bytes, SAFEUPLOAD_POOL_TAG);
+    if (information == NULL) return STATUS_INSUFFICIENT_RESOURCES;
+    status = FltGetVolumeInformation(Volume, FilterVolumeStandardInformation, information, bytes, &returned);
+    if (status == STATUS_SUCCESS) {
+        if (returned < FIELD_OFFSET(FILTER_VOLUME_STANDARD_INFORMATION, FilterVolumeName) || returned > bytes ||
+            (information->FilterVolumeNameLength % sizeof(WCHAR)) != 0 ||
+            information->FilterVolumeNameLength > returned - FIELD_OFFSET(FILTER_VOLUME_STANDARD_INFORMATION, FilterVolumeName)) {
+            status = STATUS_INFO_LENGTH_MISMATCH;
+        } else if ((information->Flags & ~FLTFL_VSI_DETACHED_VOLUME) != 0) {
+            status = STATUS_NOT_SUPPORTED;
+        } else {
+            *Flags = information->Flags;
+        }
+    }
+    ExFreePoolWithTag(information, SAFEUPLOAD_POOL_TAG);
+    if (status != STATUS_SUCCESS && NT_SUCCESS(status)) status = STATUS_UNSUCCESSFUL;
+    return status;
+}
+
 NTSTATUS SafeUploadStageAdmissionVolumeStatus(_Out_ PSAFEUPLOAD_ADMISSION_VOLUME_STATUS Status)
 {
     PFLT_INSTANCE instances[SAFEUPLOAD_ADMISSION_VOLUME_MAX_ENTRIES];
@@ -116,12 +144,18 @@ NTSTATUS SafeUploadStageAdmissionVolumeStatus(_Out_ PSAFEUPLOAD_ADMISSION_VOLUME
         Status->EntryCount = count;
         for (index = 0; index < count; ++index) {
             PSAFEUPLOAD_INSTANCE_CONTEXT context = NULL;
+            PFLT_VOLUME volume = NULL;
             PSAFEUPLOAD_ADMISSION_VOLUME_ENTRY entry = &Status->Entries[index];
             entry->Instance = (UINT64)(ULONG_PTR)instances[index];
             entry->ContextStatus = (UINT32)FltGetInstanceContext(instances[index], (PFLT_CONTEXT *)&context);
             entry->CanaryStatus = entry->CanaryCleanupStatus = (UINT32)STATUS_PENDING;
             entry->FileSystemStatus = entry->VolumeGuidStatus = entry->ContextStatus;
             entry->InstanceWritersUntracked = 1;
+            entry->VolumeInfoStatus = (UINT32)FltGetVolumeFromInstance(instances[index], &volume);
+            if (NT_SUCCESS((NTSTATUS)entry->VolumeInfoStatus)) {
+                entry->VolumeInfoStatus = (UINT32)SafeUploadStageVolumeFlags(volume, &entry->VolumeFlags);
+                FltObjectDereference(volume);
+            }
             if (NT_SUCCESS((NTSTATUS)entry->ContextStatus)) {
                 entry->VolumeKind = (UINT32)context->VolumeKind;
                 entry->FileSystemType = (UINT32)context->FileSystemType;
@@ -334,6 +368,8 @@ VOID SafeUploadStageCanaryTick(VOID)
         RTL_NUMBER_OF(instances), &count);
     if (!NT_SUCCESS(status)) return; /* Unvisited instances stay Pending, never trusted. */
     for (index = 0; index < count; ++index) {
+        PFLT_VOLUME volume = NULL;
+        UINT32 volumeFlags = 0;
         context = NULL;
         if (KeReadStateEvent(&CanaryStop) == 0 &&
             NT_SUCCESS(FltGetInstanceContext(instances[index], (PFLT_CONTEXT *)&context))) {
@@ -341,7 +377,17 @@ VOID SafeUploadStageCanaryTick(VOID)
                     SAFEUPLOAD_CANARY_RUNNING, SAFEUPLOAD_CANARY_PENDING) == SAFEUPLOAD_CANARY_PENDING) {
                 status = FltGetFileSystemType(instances[index], &fs);
                 if (context->VolumeKind == SafeUploadVolumeFixed && NT_SUCCESS(status) && fs == FLT_FSTYPE_NTFS) {
-                    StageCanaryRun(instances[index], context);
+                    status = FltGetVolumeFromInstance(instances[index], &volume);
+                    if (NT_SUCCESS(status)) status = SafeUploadStageVolumeFlags(volume, &volumeFlags);
+                    if (volume != NULL) FltObjectDereference(volume);
+                    if (status == STATUS_SUCCESS && !FlagOn(volumeFlags, SAFEUPLOAD_VOLUME_DETACHED_FLAG)) {
+                        StageCanaryRun(instances[index], context);
+                    } else {
+                        context->CanaryStatus = status == STATUS_SUCCESS ? STATUS_VOLUME_DISMOUNTED : status;
+                        context->CanaryCleanupStatus = STATUS_SUCCESS;
+                        InterlockedExchange(&context->CanaryState, status == STATUS_SUCCESS ?
+                            SAFEUPLOAD_CANARY_DETACHED : SAFEUPLOAD_CANARY_FAILED);
+                    }
                 } else {
                     context->CanaryStatus = NT_SUCCESS(status) ? STATUS_NOT_SUPPORTED : status;
                     context->CanaryCleanupStatus = STATUS_SUCCESS;

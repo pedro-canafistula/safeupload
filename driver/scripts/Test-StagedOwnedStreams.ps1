@@ -7,9 +7,11 @@ param([switch] $Verifier, [switch] $BootVerifier, [switch] $PagingSmoke, [switch
     [ValidatePattern('^stage-service-publish[A-Za-z0-9._-]*$')]
     [string] $ServiceDirectoryName = 'stage-service-publish',
     [ValidatePattern('^[0-9A-Fa-f]{64}$')]
-    [string] $ExpectedServicePackageSha256 = 'D887E0D7F38AD64AD40CEE18B841C6D38AD2BED4D6F760B1BDE4464927381997')
+    [string] $ExpectedServicePackageSha256 = 'D887E0D7F38AD64AD40CEE18B841C6D38AD2BED4D6F760B1BDE4464927381997',
+    [ValidatePattern('^StagedTestAgent[A-Za-z0-9._-]*\.ps1$')]
+    [string] $TestAgentHelperFileName = 'StagedTestAgent.ps1')
 $ErrorActionPreference = 'Stop'
-. (Join-Path $PSScriptRoot 'StagedTestAgent.ps1')
+. (Join-Path $PSScriptRoot $TestAgentHelperFileName)
 Add-Type -Path (Join-Path $PSScriptRoot 'StagedIdentityProbe.cs')
 $installed = 'C:\Windows\System32\drivers\SafeUpload.sys'
 $expectedOriginal = 'ADA9D05AB6AECDD2B6C521B0CE529FC06C732154ACB3EE85439FBDC8AA80DFCE'

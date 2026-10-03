@@ -25,7 +25,9 @@ param(
     # Runtime Driver Verifier (volatile, flags 0x13B) on SafeUpload.sys for variants that support it.
     [switch] $Verifier,
     [switch] $RequireCanary,
-    [switch] $RequireAllVolumeCanaries
+    [switch] $RequireAllVolumeCanaries,
+    [ValidatePattern('^StagedTestAgent[A-Za-z0-9._-]*\.ps1$')]
+    [string] $TestAgentHelperFileName = 'StagedTestAgent.ps1'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -44,7 +46,7 @@ $serviceDirectory = Join-Path $documents 'stage-service-publish'
 $policyPath = 'C:\ProgramData\SafeUpload\policy.json'
 $mappingLength = 4096
 
-. (Join-Path $documents 'StagedTestAgent.ps1')
+. (Join-Path $documents $TestAgentHelperFileName)
 
 if (-not ('SafeUploadAdmissionNative' -as [type])) {
     Add-Type -TypeDefinition @'
@@ -1263,11 +1265,15 @@ function Wait-AllVolumeCanaries([string] $RawPath) {
         }
         if ($status.writerGlobalUnknown -ne 0) { throw 'Global writer tracking is unknown.' }
         foreach ($entry in $status.admissionVolumes) {
-            if ($entry.contextStatus -ne 0 -or $entry.fileSystemStatus -ne 0) {
+            if ($entry.contextStatus -ne 0 -or $entry.fileSystemStatus -ne 0 -or
+                $null -eq $entry.volumeInfoStatus -or $entry.volumeInfoStatus -ne 0 -or $null -eq $entry.volumeFlags) {
                 throw 'An attached instance has an unresolved context or filesystem.'
             }
         }
-        $eligible = @($status.admissionVolumes | Where-Object { $_.volumeKind -eq 1 -and $_.fileSystemType -eq 2 })
+        $detached = @($status.admissionVolumes | Where-Object { ($_.volumeFlags -band 1) -ne 0 })
+        Write-Output ('DetachedVolumeEntries=' + $detached.Count)
+        $eligible = @($status.admissionVolumes | Where-Object {
+            $_.volumeKind -eq 1 -and $_.fileSystemType -eq 2 -and ($_.volumeFlags -band 1) -eq 0 })
         $actual = @($eligible | ForEach-Object {
             if ($_.contextStatus -ne 0 -or $_.fileSystemStatus -ne 0 -or $_.volumeGuidStatus -ne 0 -or
                 $_.volumeGuid -notmatch '(?i)\{[0-9a-f-]{36}\}') { throw 'Unresolved eligible volume identity.' }
@@ -2480,6 +2486,14 @@ public static class SafeUploadEolNative
     catch {
         $runSucceeded = $false
         Write-Output ('RunError=' + (Get-ErrorText $_))
+        if ($filterLoaded) {
+            foreach ($command in @('--writer-state-status','--admission-fence-status','--admission-volume-status')) {
+                try {
+                    $diagnostic = Invoke-InspectorChecked -Arguments @($command) -Timeout $InspectorTimeoutSeconds
+                    Write-Output ('RunErrorDiagnostic_' + $command + '=' + ([string]$diagnostic.Stdout).Trim())
+                } catch { Write-Output ('RunErrorDiagnosticFailed_' + $command + '=' + (Get-ErrorText $_)) }
+            }
+        }
     }
     finally {
         if ($null -ne $agent) {
@@ -2526,6 +2540,12 @@ public static class SafeUploadEolNative
             }
             catch {
                 [void]$restorationErrors.Add('Driver restore: ' + (Get-ErrorText $_))
+                foreach ($command in @('--writer-state-status','--admission-fence-status')) {
+                    try {
+                        $diagnostic = Invoke-InspectorChecked -Arguments @($command) -Timeout 15
+                        Write-Output ('UnloadRefusalDiagnostic_' + $command + '=' + ([string]$diagnostic.Stdout).Trim())
+                    } catch { Write-Output ('UnloadRefusalDiagnosticFailed_' + $command + '=' + (Get-ErrorText $_)) }
+                }
             }
         }
 

@@ -157,7 +157,7 @@ function Restore-StagedTestDriver([string] $Backup, [bool] $Loaded, [bool] $Veri
     $hash = (Get-FileHash -LiteralPath $installed -Algorithm SHA256).Hash
     if ($hash -ne $expected) { throw "Original driver restoration failed: $hash" }
     Write-Output "OriginalDriverRestored=$hash"
-    if (-not $unloaded) { throw 'Live owned objects prevented unload. Original installed bytes restored; reboot before cleaning retained fixtures.' }
+    if (-not $unloaded) { throw 'Driver refused unload. Original installed bytes restored; reboot before cleaning retained fixtures.' }
     $filters = & fltmc.exe filters
     if ($filters -match '^SafeUpload\s') { throw 'SafeUpload remained loaded after restoration.' }
     Write-Output 'ExperimentalDriverUnloaded=True'

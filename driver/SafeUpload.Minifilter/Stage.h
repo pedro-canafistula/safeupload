@@ -7,6 +7,9 @@ NTSTATUS SafeUploadStageInitialize(VOID);
 NTSTATUS SafeUploadStageStartWorker(VOID);
 VOID SafeUploadStageStopWorker(VOID);
 NTSTATUS SafeUploadStagePrepareUnload(VOID);
+VOID SafeUploadStageRecordUnloadVeto(_In_ UINT32 Reason, _In_ NTSTATUS Status);
+VOID SafeUploadStageGetUnloadStatus(_Out_ PUINT32 Streams, _Out_ PUINT32 FileObjects,
+    _Out_ PUINT32 Reason, _Out_ PUINT32 Status);
 VOID SafeUploadStageFree(VOID);
 BOOLEAN SafeUploadStageCanDetach(VOID);
 FLT_PREOP_CALLBACK_STATUS SafeUploadStageDispatch(PFLT_CALLBACK_DATA Data,
@@ -58,6 +61,7 @@ NTSTATUS SafeUploadStageOpenByIdentity(_In_ PFLT_INSTANCE Instance,
     _Out_ PUINT32 ProbeStage);
 VOID SafeUploadStageAdmissionReady(VOID);
 NTSTATUS SafeUploadStageAdmissionVolumeStatus(_Out_ PSAFEUPLOAD_ADMISSION_VOLUME_STATUS Status);
+NTSTATUS SafeUploadStageVolumeFlags(_In_ PFLT_VOLUME Volume, _Out_ PUINT32 Flags);
 UINT32 SafeUploadStageWritersGlobalUnknown(VOID);
 VOID SafeUploadStageCanaryTick(VOID);
 NTSTATUS SafeUploadStageAdmissionStartWorker(VOID);

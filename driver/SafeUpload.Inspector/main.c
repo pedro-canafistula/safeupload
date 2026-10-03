@@ -725,11 +725,12 @@ static int PrintAdmissionVolumeStatus(VOID)
         wprintf(L"%s{\"instance\":\"%016llX\",\"volumeKind\":%u,\"fileSystemType\":%u,"
             L"\"fileSystemStatus\":%u,\"setupFlags\":%u,\"contextStatus\":%u,"
             L"\"canaryState\":%u,\"canaryStatus\":%u,\"canaryChecks\":%u,\"canaryCleanupStatus\":%u,"
-            L"\"instanceWritersUntracked\":%u,\"volumeGuidStatus\":%u,\"volumeGuid\":\"",
+            L"\"instanceWritersUntracked\":%u,\"volumeInfoStatus\":%u,\"volumeFlags\":%u,"
+            L"\"volumeGuidStatus\":%u,\"volumeGuid\":\"",
             index == 0 ? L"" : L",", entry->Instance, entry->VolumeKind, entry->FileSystemType,
             entry->FileSystemStatus, entry->SetupFlags, entry->ContextStatus, entry->CanaryState,
             entry->CanaryStatus, entry->CanaryChecks, entry->CanaryCleanupStatus,
-            entry->InstanceWritersUntracked, entry->VolumeGuidStatus);
+            entry->InstanceWritersUntracked, entry->VolumeInfoStatus, entry->VolumeFlags, entry->VolumeGuidStatus);
         for (character = 0; character < entry->VolumeGuidChars; ++character) {
             WCHAR value = entry->VolumeGuid[character];
             if (value == L'\\' || value == L'"') wprintf(L"\\%lc", value);
@@ -777,12 +778,14 @@ static int PrintWriterStateStatus(VOID)
             L"\"untrackedCreates\":%llu,\"cleanupUnmatched\":%llu,\"directoryCreatesSkipped\":%llu,"
             L"\"sectionInFlightNow\":%lu,\"sectionInFlightInserted\":%llu,\"sectionInFlightReleased\":%llu,"
             L"\"sectionInFlightOverflow\":%llu,\"sectionInFlightStuck\":%llu,\"sectionInFlightRemovedOnFailure\":%llu,"
-            L"\"sectionInFlightMaxDepth\":%lu,\"pagingCreatesSkipped\":%llu,\"volumeCreatesSkipped\":%llu}\n",
+            L"\"sectionInFlightMaxDepth\":%lu,\"pagingCreatesSkipped\":%llu,\"volumeCreatesSkipped\":%llu,"
+            L"\"stageStreams\":%u,\"stageFileObjects\":%u,\"lastUnloadVeto\":%u,\"lastUnloadStatus\":%u}\n",
             status.PostCreateRuns, status.WriteObjectsCounted, status.WriteObjectsReleased,
             status.UntrackedCreates, status.CleanupUnmatched, status.DirectoryCreatesSkipped,
             status.SectionInFlightNow, status.SectionInFlightInserted, status.SectionInFlightReleased,
             status.SectionInFlightOverflow, status.SectionInFlightStuck, status.SectionInFlightRemovedOnFailure,
-            status.SectionInFlightMaxDepth, status.PagingCreatesSkipped, status.VolumeCreatesSkipped);
+            status.SectionInFlightMaxDepth, status.PagingCreatesSkipped, status.VolumeCreatesSkipped,
+            status.StageStreams, status.StageFileObjects, status.LastUnloadVeto, status.LastUnloadStatus);
     return 0;
 }
 

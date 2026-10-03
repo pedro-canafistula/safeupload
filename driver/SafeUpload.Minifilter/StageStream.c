@@ -64,7 +64,8 @@ typedef struct _STAGE_HANDLE {
 static LIST_ENTRY StageStreams;
 static KSPIN_LOCK StageListLock;
 static ERESOURCE StageNamespaceResource;
-static ULONG StageStreamCount;
+static volatile ULONG StageStreamCount;
+static volatile LONG64 StageLastUnloadVeto;
 static LONG64 StageNamespaceSequence;
 static volatile LONG StageFileObjects;
 static BOOLEAN StageStopping;
@@ -2039,6 +2040,21 @@ BOOLEAN SafeUploadStageCanDetach(VOID)
     return StageStreamCount == 0;
 }
 
+VOID SafeUploadStageRecordUnloadVeto(_In_ UINT32 Reason, _In_ NTSTATUS Status)
+{
+    (VOID)InterlockedExchange64(&StageLastUnloadVeto, (LONG64)(((UINT64)Reason << 32) | (UINT32)Status));
+}
+
+VOID SafeUploadStageGetUnloadStatus(_Out_ PUINT32 Streams, _Out_ PUINT32 FileObjects,
+    _Out_ PUINT32 Reason, _Out_ PUINT32 Status)
+{
+    UINT64 veto = (UINT64)InterlockedCompareExchange64(&StageLastUnloadVeto, 0, 0);
+    *Streams = StageStreamCount;
+    *FileObjects = (UINT32)InterlockedCompareExchange(&StageFileObjects, 0, 0);
+    *Reason = (UINT32)(veto >> 32);
+    *Status = (UINT32)veto;
+}
+
 NTSTATUS SafeUploadStagePrepareUnload(VOID)
 {
     PLIST_ENTRY link;
@@ -2046,7 +2062,12 @@ NTSTATUS SafeUploadStagePrepareUnload(VOID)
 #if SAFEUPLOAD_STAGING_PROTOTYPE
     /* Rescan to drop stale entries, then refuse while a fenced mapped stream remains: unloading would
      * release its old view's writes. Before any namespace lock, so the scan never nests inside one. */
-    if (!NT_SUCCESS(SafeUploadStageFencePrepareUnload())) return STATUS_FLT_DO_NOT_DETACH;
+    SafeUploadStageRecordUnloadVeto(SAFEUPLOAD_UNLOAD_VETO_NONE, STATUS_SUCCESS);
+    status = SafeUploadStageFencePrepareUnload();
+    if (!NT_SUCCESS(status)) {
+        SafeUploadStageRecordUnloadVeto(SAFEUPLOAD_UNLOAD_VETO_FENCE, status);
+        return STATUS_FLT_DO_NOT_DETACH;
+    }
 #endif
     StageAcquire(&StageNamespaceResource);
     StageStopping = TRUE;
@@ -2058,6 +2079,8 @@ NTSTATUS SafeUploadStagePrepareUnload(VOID)
         if (!NT_SUCCESS(status)) break;
     }
     if (!NT_SUCCESS(status) || InterlockedCompareExchange(&StageFileObjects, 0, 0) != 0) {
+        SafeUploadStageRecordUnloadVeto(!NT_SUCCESS(status) ? SAFEUPLOAD_UNLOAD_VETO_STAGE_DRAIN :
+            SAFEUPLOAD_UNLOAD_VETO_STAGE_OBJECTS, !NT_SUCCESS(status) ? status : STATUS_DEVICE_BUSY);
         StageStopping = FALSE;
         StageRelease(&StageNamespaceResource);
         return STATUS_FLT_DO_NOT_DETACH;
@@ -2068,6 +2091,7 @@ NTSTATUS SafeUploadStagePrepareUnload(VOID)
      * scan, or quarantine may appear after it. A veto is still reversible because the worker and
      * backing objects have not yet been stopped or released. */
     if (!SafeUploadStageFenceTryCommitUnload()) {
+        SafeUploadStageRecordUnloadVeto(SAFEUPLOAD_UNLOAD_VETO_FENCE_COMMIT, STATUS_DEVICE_BUSY);
         StageAcquire(&StageNamespaceResource);
         StageStopping = FALSE;
         StageRelease(&StageNamespaceResource);

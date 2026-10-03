@@ -50,6 +50,9 @@ try {
 } catch { $canaryRootsRead = $false; 'CanaryVolumeEnumerationError=' + $_.Exception.Message }
 $checks['CanaryRootsEnumerated'] = $canaryRootsRead
 $checks['NoVolumeCanaryFiles'] = ($canaries.Count -eq 0 -and $canaryRootsRead)
+$volumeInventory = & fltmc.exe volumes 2>&1 | Out-String
+$volumeInventoryExit = $LASTEXITCODE
+$checks['VolumeTopologyRecorded'] = ($volumeInventoryExit -eq 0)
 
 'UTC=' + [DateTime]::UtcNow.ToString('o')
 'Host=' + $env:COMPUTERNAME
@@ -59,6 +62,7 @@ $checks['NoVolumeCanaryFiles'] = ($canaries.Count -eq 0 -and $canaryRootsRead)
 'Service=' + $service.StartMode + '/' + $service.State
 'CanaryVolumeCount=' + $canaryVolumes.Count
 'CanaryVolumeRoots=' + (($canaryVolumes | ForEach-Object DeviceID | Sort-Object) -join ';')
+'FilterManagerVolumeInventory=' + ($volumeInventory.Trim() -replace '[\r\n]+', ' | ')
 foreach ($name in $checks.Keys) { $name + '=' + $checks[$name] }
 if ($fixtures.Count -ne 0) { 'FixtureDirectories=' + (($fixtures | ForEach-Object Name) -join ';') }
 if ($canaries.Count -ne 0) { 'VolumeCanaryFiles=' + (($canaries | ForEach-Object FullName) -join ';') }
