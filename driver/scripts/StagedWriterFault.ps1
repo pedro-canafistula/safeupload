@@ -15,7 +15,11 @@ function ConvertTo-WindowsArgument([string]$Value){
     return '"'+$Value+'"'
 }
 function Get-WriterStateStats {
-    return ([SafeUploadSectionFaultClient]::Inspector($Inspector,'--writer-state-status')|ConvertFrom-Json)
+    $state=[SafeUploadSectionFaultClient]::Inspector($Inspector,'--writer-state-status')|ConvertFrom-Json
+    foreach($field in @('writersDroppedAtTeardown','writersDroppedWhileMounted')){
+        if($null -eq $state.$field){throw ('Writer state status missing '+$field)}
+    }
+    return $state
 }
 function Invoke-StagedWriterFaultQualification([string]$Target,[string]$Healthy,[string]$Executable,[string]$RawPrefix) {
     $result=[ordered]@{Passed=$false;PoolTag='SUwH';Application='SUHFail.exe';Errors=@();Probes=@()}

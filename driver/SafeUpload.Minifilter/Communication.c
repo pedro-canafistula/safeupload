@@ -589,6 +589,17 @@ Return Value:
             ProbeForRead( InputBuffer,
                           InputBufferLength,
                           __alignof( SAFEUPLOAD_ADMISSION_PROBE_REQUEST ) );
+        } else if (command == SAFEUPLOAD_CONTROL_ADMISSION_DELETE_STREAM_CONTEXT) {
+            ULONG maximumDeleteSize =
+                (ULONG)FIELD_OFFSET(SAFEUPLOAD_ADMISSION_DELETE_STREAM_CONTEXT_REQUEST, Strings) +
+                (2UL * (ULONG)SAFEUPLOAD_ADMISSION_PROBE_MAX_STRING_CHARS * (ULONG)sizeof(WCHAR));
+
+            if (InputBufferLength > maximumDeleteSize || InputBufferLength > sizeof(*policy)) {
+                status = STATUS_INVALID_BUFFER_SIZE;
+                leave;
+            }
+            ProbeForRead(InputBuffer, InputBufferLength,
+                __alignof(SAFEUPLOAD_ADMISSION_DELETE_STREAM_CONTEXT_REQUEST));
         } else
         {
             ProbeForRead( InputBuffer,
@@ -776,6 +787,85 @@ Return Value:
             }
 
             status = SafeUploadStageAdmissionProbe( &volumeName, &relativePath );
+            leave;
+        }
+
+        if (command == SAFEUPLOAD_CONTROL_ADMISSION_DELETE_STREAM_CONTEXT) {
+            PSAFEUPLOAD_ADMISSION_DELETE_STREAM_CONTEXT_REQUEST request =
+                (PSAFEUPLOAD_ADMISSION_DELETE_STREAM_CONTEXT_REQUEST)policy;
+            UNICODE_STRING volumeName;
+            UNICODE_STRING relativePath;
+            UNICODE_STRING volumePrefix = RTL_CONSTANT_STRING(L"\\Device\\HarddiskVolume");
+            ULONG volumeChars;
+            ULONG relativeChars;
+            ULONG volumeBytes;
+            ULONG relativeBytes;
+            ULONG expectedLength;
+            ULONG index;
+            ULONG maximumDeleteSize =
+                (ULONG)FIELD_OFFSET(SAFEUPLOAD_ADMISSION_DELETE_STREAM_CONTEXT_REQUEST, Strings) +
+                (2UL * (ULONG)SAFEUPLOAD_ADMISSION_PROBE_MAX_STRING_CHARS * (ULONG)sizeof(WCHAR));
+
+            if (InputBufferLength < (ULONG)FIELD_OFFSET(
+                    SAFEUPLOAD_ADMISSION_DELETE_STREAM_CONTEXT_REQUEST, Strings) ||
+                InputBufferLength > maximumDeleteSize || OutputBuffer != NULL || OutputBufferLength != 0) {
+                status = STATUS_INVALID_BUFFER_SIZE;
+                leave;
+            }
+            RtlCopyMemory(request, InputBuffer, InputBufferLength);
+            if (request->Control.Version != SAFEUPLOAD_PROTOCOL_VERSION ||
+                request->Control.StructSize != InputBufferLength ||
+                request->Control.Command != command || request->Control.Reserved != 0 ||
+                request->Reserved != 0 || request->DriveLetter != L'C' || request->Reserved2 != 0) {
+                status = STATUS_REVISION_MISMATCH;
+                leave;
+            }
+
+            volumeChars = (ULONG)request->VolumeNameChars;
+            relativeChars = (ULONG)request->RelativePathChars;
+            if (volumeChars < volumePrefix.Length / sizeof(WCHAR) ||
+                relativeChars < 2 ||
+                volumeChars > (ULONG)SAFEUPLOAD_ADMISSION_PROBE_MAX_STRING_CHARS ||
+                relativeChars > (ULONG)SAFEUPLOAD_ADMISSION_PROBE_MAX_STRING_CHARS) {
+                status = STATUS_INVALID_PARAMETER;
+                leave;
+            }
+            volumeBytes = volumeChars * (ULONG)sizeof(WCHAR);
+            relativeBytes = relativeChars * (ULONG)sizeof(WCHAR);
+            expectedLength = (ULONG)FIELD_OFFSET(
+                SAFEUPLOAD_ADMISSION_DELETE_STREAM_CONTEXT_REQUEST, Strings) +
+                volumeBytes + relativeBytes;
+            if (InputBufferLength != expectedLength) {
+                status = STATUS_INVALID_BUFFER_SIZE;
+                leave;
+            }
+
+            volumeName.Buffer = request->Strings;
+            volumeName.Length = (USHORT)volumeBytes;
+            volumeName.MaximumLength = volumeName.Length;
+            relativePath.Buffer = request->Strings + volumeChars;
+            relativePath.Length = (USHORT)relativeBytes;
+            relativePath.MaximumLength = relativePath.Length;
+            if (!RtlPrefixUnicodeString(&volumePrefix, &volumeName, TRUE) ||
+                relativePath.Buffer[0] != L'\\' ||
+                relativePath.Buffer[relativeChars - 1] == L'\\') {
+                status = STATUS_INVALID_PARAMETER;
+                leave;
+            }
+            for (index = 0; index < volumeChars; ++index) {
+                if (volumeName.Buffer[index] == UNICODE_NULL) {
+                    status = STATUS_INVALID_PARAMETER;
+                    leave;
+                }
+            }
+            for (index = 0; index < relativeChars; ++index) {
+                if (relativePath.Buffer[index] == UNICODE_NULL || relativePath.Buffer[index] == L':') {
+                    status = STATUS_INVALID_PARAMETER;
+                    leave;
+                }
+            }
+
+            status = SafeUploadStageAdmissionDeleteStreamContext(&volumeName, &relativePath);
             leave;
         }
 

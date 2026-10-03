@@ -31,7 +31,8 @@ function Read-UpperStats {
     $raw=[SafeUploadSectionFaultClient]::Inspector($Inspector,'--writer-state-status')
     $state=$raw|ConvertFrom-Json
     foreach($field in @('writerState','sectionInFlightNow','sectionInFlightInserted','sectionInFlightReleased',
-        'sectionInFlightRemovedOnFailure','sectionInFlightOverflow','sectionInFlightStuck')) {
+        'sectionInFlightRemovedOnFailure','sectionInFlightOverflow','sectionInFlightStuck',
+        'writersDroppedAtTeardown','writersDroppedWhileMounted')) {
         if ($state.PSObject.Properties.Name -notcontains $field) { throw ('Missing upper status: '+$field) }
     }
     return $state
@@ -93,7 +94,8 @@ function Get-STTraceRows([string]$Name) {
 function Get-STWriterStats {
     $state=Invoke-STInspector '--writer-state-status'|ConvertFrom-Json
     foreach($field in @('sectionInFlightNow','sectionInFlightInserted','sectionInFlightReleased',
-        'sectionInFlightOverflow','sectionInFlightStuck','sectionInFlightRemovedOnFailure')) {
+        'sectionInFlightOverflow','sectionInFlightStuck','sectionInFlightRemovedOnFailure',
+        'writersDroppedAtTeardown','writersDroppedWhileMounted')) {
         if($null -eq $state.$field){throw ('Writer status missing '+$field)}
     }
     return $state
@@ -175,9 +177,38 @@ function Read-STTargetTrace([string]$Label,[UInt64]$FileObject) {
     return @($rows|Where-Object { $_.targetFileObject -eq $identity })
 }
 
+function Format-STHandleWrite($Attempt) {
+    return 'succeeded:'+$Attempt.Succeeded+';win32Error:'+$Attempt.Win32Error+
+        ';win32ErrorHex:0x'+([int]$Attempt.Win32Error).ToString('X8')+';bytesWritten:'+$Attempt.BytesWritten
+}
+
+function Invoke-STOldViewWrite([long]$Offset,[byte]$Value) {
+    $writeReturned=$false;$flushReturned=$false;$writeException='';$flushException=''
+    try {
+        $script:STVhdxView.Write([Int64]$Offset,[Byte]$Value)
+        $writeReturned=$true
+    } catch {
+        $writeException=$_.Exception.GetType().FullName+':HRESULT=0x'+$_.Exception.HResult.ToString('X8')+':'+
+            ($_.Exception.Message -replace '[\r\n]+',' ')
+    }
+    try {
+        $script:STVhdxView.Flush()
+        $flushReturned=$true
+    } catch {
+        $flushException=$_.Exception.GetType().FullName+':HRESULT=0x'+$_.Exception.HResult.ToString('X8')+':'+
+            ($_.Exception.Message -replace '[\r\n]+',' ')
+    }
+    return [pscustomobject]@{Offset=$Offset;Value=$Value;WriteReturned=$writeReturned;FlushReturned=$flushReturned;
+        WriteException=$writeException;FlushException=$flushException}
+}
+
 function Invoke-SectionTeardownScenario {
     $script:STDiskOwned=$false
     $script:STVhdxFile=$null
+    $script:STVhdxMapping=$null
+    $script:STVhdxView=$null
+    $script:STSecondWriter=$null
+    $script:STVhdxInitialHash=''
     $script:STNestedFile=$null
     $script:STClient=$null
     $script:STNestedThreads=@()
@@ -352,11 +383,34 @@ function Invoke-SectionTeardownScenario {
         $upperInstance=$upper[0]
         $voluntaryStatus=Get-STGlobalStatus
         if($voluntaryStatus.writerGlobalUnknown -ne 0){throw 'Global writer state became unknown before teardown setup.'}
+        $entryBeforeDismount=Read-STTargetInstance $voluntaryStatus $script:STVhdxGuid
+        if($null -eq $entryBeforeDismount){throw 'Initial VHDX instance context is missing.'}
         Reset-UpperTrace
-        $vhdxBefore=Get-STWriterStats
         $vhdxProbe=Invoke-STProbe $script:STTargetPath 'VhdxBeforeAcquireProbe' 0 $false
         [void](Add-STOutcome 'VhdxWriterTrackedBeforeAcquire' ($null -ne $vhdxProbe -and $vhdxProbe.writeObjects -eq 1) `
             ('writeObjects:'+$(if($vhdxProbe){$vhdxProbe.writeObjects}else{'missing'})+';writersUntracked:'+$(if($vhdxProbe){$vhdxProbe.writersUntracked}else{'missing'})))
+
+        # This second writer is opened and retained on its own thread before the forced dismount.
+        $script:STSecondWriter=[SafeUploadSectionFaultRetainedWriter]::new($script:STTargetPath)
+        $mainThreadId=[SafeUploadSectionFaultRetainedWriter]::CurrentThreadId()
+        $secondaryThreadOk=$script:STSecondWriter.IsOpen -and $script:STSecondWriter.OpenThreadId -ne 0 -and
+            $script:STSecondWriter.OpenThreadId -ne $mainThreadId
+        [void](Add-STOutcome 'SecondaryWriterOnDistinctThread' $secondaryThreadOk `
+            ('open:true;openThreadId:'+$script:STSecondWriter.OpenThreadId+';mainThreadId:'+$mainThreadId))
+        $script:STVhdxMapping=[IO.MemoryMappedFiles.MemoryMappedFile]::CreateFromFile(
+            $script:STVhdxFile,$null,0,[IO.MemoryMappedFiles.MemoryMappedFileAccess]::ReadWrite,
+            [IO.HandleInheritability]::None,$true)
+        $script:STVhdxView=$script:STVhdxMapping.CreateViewAccessor(
+            0,4096,[IO.MemoryMappedFiles.MemoryMappedFileAccess]::ReadWrite)
+        $script:STVhdxInitialHash=(Get-FileHash -LiteralPath $script:STTargetPath -Algorithm SHA256).Hash
+        $multipleWriterProbe=Invoke-STProbe $script:STTargetPath 'VhdxMultipleWriterProbe' 0 $false
+        $multipleWritersOk=$null -ne $multipleWriterProbe -and $multipleWriterProbe.writeObjects -ge 2 -and
+            -not $multipleWriterProbe.writersUntracked -and $secondaryThreadOk
+        [void](Add-STOutcome 'MultipleVhdxWritersBeforeDismount' $multipleWritersOk `
+            ('writeObjects:'+$(if($multipleWriterProbe){$multipleWriterProbe.writeObjects}else{'missing'})+
+                ';writersUntracked:'+$(if($multipleWriterProbe){$multipleWriterProbe.writersUntracked}else{'missing'})+
+                ';mappedViewOpen:true;secondaryThreadId:'+$script:STSecondWriter.OpenThreadId))
+        $vhdxBefore=Get-STWriterStats
         $script:STTeardownThread=[SafeUploadSectionFaultThreadMapping]::new($script:STVhdxFile.SafeFileHandle)
         $arm=$script:STClient.Send(2,$script:STVhdxFile.SafeFileHandle.DangerousGetHandle())
         $script:STTeardownThread.Start(4)
@@ -425,6 +479,19 @@ function Invoke-SectionTeardownScenario {
                 ';slotInserted:'+$slotAfterDismount.sectionInFlightInserted+';slotReleased:'+$slotAfterDismount.sectionInFlightReleased+
                 ';sectionReleaseEvents:'+$releaseAfterDismount+
                 ';output:'+(($dismount.Output -replace '[\r\n]+',' ').Trim())))
+        $dismountWritePayload=[byte[]](0x53,0x54,0x2D,0x44,0x49,0x53,0x4D,0x54)
+        $primaryWriteAfterDismount=[SafeUploadSectionFaultRetainedWriter]::TryWrite(
+            $script:STVhdxFile.SafeFileHandle,$dismountWritePayload)
+        $secondaryWriteAfterDismount=$script:STSecondWriter.AttemptWrite($dismountWritePayload)
+        $viewWriteAfterDismount=Invoke-STOldViewWrite 0 ([byte]0xA5)
+        $oldHandleRejectedAfterDismount= -not $primaryWriteAfterDismount.Succeeded -and
+            -not $secondaryWriteAfterDismount.Succeeded
+        [void](Add-STOutcome 'OldHandlesCannotWriteAfterDismount' $oldHandleRejectedAfterDismount `
+            ('primary:'+ (Format-STHandleWrite $primaryWriteAfterDismount)+';secondary:'+ (Format-STHandleWrite $secondaryWriteAfterDismount)+
+                ';mappedViewWriteReturned:'+$viewWriteAfterDismount.WriteReturned+';mappedViewFlushReturned:'+$viewWriteAfterDismount.FlushReturned+
+                ';mappedViewWriteException:'+$viewWriteAfterDismount.WriteException+';mappedViewFlushException:'+$viewWriteAfterDismount.FlushException+
+                ';premise:'+$(if($oldHandleRejectedAfterDismount){'holds'}else{'FALSE_OLD_HANDLE_WRITE_SUCCEEDED'})))
+        if(-not $oldHandleRejectedAfterDismount){Write-Output 'ST_PREMISE_FALSE=old handle wrote successfully after dismount; scoped teardown assumption is false;FAIL'}
         $pendingBeforeDetach=$script:STTeardownThread.Pending
         Set-Content -LiteralPath $DiskpartPath -Value @("select vdisk file=`"$VhdxPath`"",'detach vdisk') -Encoding Ascii
         $detachDisk=Invoke-STNative 'diskpart.exe' ('/s '+(ConvertTo-STArgument $DiskpartPath)) 20
@@ -477,38 +544,137 @@ function Invoke-SectionTeardownScenario {
         $disposition=if($drainingSignature){'draining-compatible-signature'}
             elseif($normalSuccessSignature){'normal-success-counter-signature'}
             elseif($normalFailureSignature){'normal-failed-acquire-counter-signature'}else{'ambiguous-no-direct-postoperation-flag-telemetry'}
-        $ownerRuleOk=$statusAfterDetach.writerGlobalUnknown -eq 1
-        [void](Add-STOutcome 'AcquirePostOperationDisposition' ($drainingSignature -or $normalSuccessSignature -or $normalFailureSignature) `
-            ('result:'+$disposition+';writerGlobalUnknown:'+$statusAfterDetach.writerGlobalUnknown+
-                ';slotNowDelta:'+$slotDelta+';insertedDelta:'+$insertDelta+';releasedDelta:'+$releasedDelta+
-                ';removedOnFailureDelta:'+$failureDelta+';releaseTraceEvents:'+$releaseAfterDetach+';workerCompleted:'+$workerCompleted+
-                ';mappingCreated:'+$script:STTeardownThread.Created+';nativeError:'+$script:STTeardownThread.Error+
-                ';postOperationFlagDirectlyObserved:false;classificationBasis:global-state-slot-counters-trace-worker-result'+
-                ';heldStillPendingAfterDismount:'+$pendingAfterDismount+';heldBeforeDetach:'+$pendingBeforeDetach+
-                ';heldAtDetachReturn:'+$pendingAtDetachReturn+';releasedAfterDismountTimeout:'+$releasedAfterDismountTimeout+
-                ';releasedAfterDetachTimeout:'+$releasedAfterDetachTimeout))
-        [void](Add-STOutcome 'OwnerUnknownAfterTeardown' $ownerRuleOk `
-            ('expected:writerGlobalUnknown=1-after-H-or-C-instance-tracking-loss;observed:'+$statusAfterDetach.writerGlobalUnknown+
-                ';disposition:'+$disposition+';vhdxWriterBefore:'+$(if($vhdxProbe){$vhdxProbe.writeObjects}else{'missing'})+
-                ';vhdxWasDetached:'+$detachedAfterDetach))
+        Reset-UpperTrace
+        Set-Content -LiteralPath $DiskpartPath -Value @(('select vdisk file="'+$VhdxPath+'"'),'attach vdisk') -Encoding Ascii
+        $reattachDisk=Invoke-STNative 'diskpart.exe' ('/s '+(ConvertTo-STArgument $DiskpartPath)) 30
+        $result.VhdxReattach=$reattachDisk
+        $reattachMounted=$false
+        $reattachDeadline=[DateTime]::UtcNow.AddSeconds(20)
+        do {
+            $reattachImage=Get-DiskImage -ImagePath $VhdxPath -ErrorAction Stop
+            $reattachVolumes=@(Get-CimInstance Win32_Volume -Filter "DriveLetter='S:'" -ErrorAction Stop)
+            if($reattachImage.Attached -and $reattachVolumes.Count -eq 1 -and
+                $reattachVolumes[0].DriveType -eq 3 -and $reattachVolumes[0].FileSystem -eq 'NTFS' -and
+                (Test-Path -LiteralPath 'S:\')){$reattachMounted=$true;break}
+            Start-Sleep -Milliseconds 100
+        } while([DateTime]::UtcNow -lt $reattachDeadline)
+        if(-not $reattachMounted -and $reattachImage.Attached -and $reattachVolumes.Count -eq 0 -and
+            -not (Test-Path -LiteralPath 'S:\')){
+            try {
+                Add-PartitionAccessPath -DiskNumber $reattachImage.Number -PartitionNumber 1 -DriveLetter 'S' -ErrorAction Stop
+                $reattachDeadline=[DateTime]::UtcNow.AddSeconds(15)
+                do {
+                    $reattachVolumes=@(Get-CimInstance Win32_Volume -Filter "DriveLetter='S:'" -ErrorAction Stop)
+                    if($reattachVolumes.Count -eq 1 -and $reattachVolumes[0].DriveType -eq 3 -and
+                        $reattachVolumes[0].FileSystem -eq 'NTFS' -and (Test-Path -LiteralPath 'S:\')){
+                        $reattachMounted=$true;break
+                    }
+                    Start-Sleep -Milliseconds 100
+                } while([DateTime]::UtcNow -lt $reattachDeadline)
+            } catch {$result.Errors+=('VHDX drive-letter restore: '+$_.Exception.Message)}
+        }
+        [void](Add-STOutcome 'SameVhdxReattached' ($reattachMounted -and -not $reattachDisk.TimedOut -and $reattachDisk.ExitCode -eq 0) ('exitCode:'+$(if($null -ne $reattachDisk.ExitCode){$reattachDisk.ExitCode}else{'timeout'})+';attached:'+$reattachImage.Attached+';SVolumeCount:'+$reattachVolumes.Count+';mountReady:'+$reattachMounted))
+        if(-not $reattachMounted){throw 'Same VHDX did not remount as S: after detach.'}
 
-        if($script:STVhdxFile){$script:STVhdxFile.Dispose();$script:STVhdxFile=$null}
-        $cAfterDetach=Invoke-STProbe $Fixture 'CAfterDetachProbe' 0 ([bool]($statusAfterDetach.writerGlobalUnknown -ne 0))
-        $cReflectsGlobal=$null -ne $cAfterDetach -and ([bool]$cAfterDetach.writersUntracked -eq ($statusAfterDetach.writerGlobalUnknown -ne 0))
-        [void](Add-STOutcome 'CProbeReflectsGlobalState' $cReflectsGlobal `
-            ('pid:'+$(if($cAfterDetach){$cAfterDetach.pid}else{'missing'})+';writerGlobalUnknown:'+$statusAfterDetach.writerGlobalUnknown+
-                ';writersUntracked:'+$(if($cAfterDetach){$cAfterDetach.writersUntracked}else{'missing'})+
-                ';sectionInFlightOnC:'+$(if($cAfterDetach){$cAfterDetach.inFlightSections}else{'missing'})))
-        $followStatus=Get-STGlobalStatus
-        $followProbe=Invoke-STProbe $Fixture 'CStickyGlobalStateProbe' 0 ([bool]($statusAfterDetach.writerGlobalUnknown -ne 0))
-        $sticky=$statusAfterDetach.writerGlobalUnknown -eq 1 -and $followStatus.writerGlobalUnknown -eq 1 -and
-            $null -ne $followProbe -and ([bool]$followProbe.writersUntracked -eq ($followStatus.writerGlobalUnknown -ne 0))
-        [void](Add-STOutcome 'GlobalStateSticky' $sticky ('afterDetach:'+$statusAfterDetach.writerGlobalUnknown+
-            ';later:'+$followStatus.writerGlobalUnknown+';laterWritersUntracked:'+$(if($followProbe){$followProbe.writersUntracked}else{'missing'})))
-        $result.Teardown=@{Dismount=$dismount;Detach=$detachDisk;Disposition=$disposition;WriterGlobalUnknown=$statusAfterDetach.writerGlobalUnknown;
-            Before=$vhdxBefore;After=$afterDetachStats;Guid=$script:STVhdxGuid;Held=$arm;VoluntaryDetach=$script:STVoluntaryDetach;
-            WorkerCompleted=$workerCompleted;HoldDisposition=$naturalOrExplicit;SlotNowDelta=$slotDelta;InsertedDelta=$insertDelta;
-            ReleasedDelta=$releasedDelta;RemovedOnFailureDelta=$failureDelta;ReleaseTraceEvents=$releaseAfterDetach;
+        $reattachCanary=$null
+        $reattachEntry=$null
+        $reattachSetupSeen=$false
+        $reattachCanaryAck=$null
+        $canaryDeadline=[DateTime]::UtcNow.AddSeconds(35)
+        do {
+            try {$reattachCanaryAck=Invoke-STInspector ('--admission-probe "'+$script:STTargetPath+'"')|ConvertFrom-Json}
+            catch {$reattachCanaryAck=$null}
+            try {
+                $reattachStatus=Get-STGlobalStatus
+                $reattachEntry=Read-STTargetInstance $reattachStatus $script:STVhdxGuid
+                $reattachRows=Get-STTraceRows ('reattach-canary-'+[guid]::NewGuid().ToString('N'))
+                if($null -ne $reattachEntry){
+                    $newInstanceTrace='0x'+([string]$reattachEntry.instance)
+                    $reattachSetupSeen=@($reattachRows|Where-Object {$_.event -eq 'instance_setup' -and [string]$_.instance -eq $newInstanceTrace}).Count -gt 0
+                    $reattachCanary=@($reattachRows|Where-Object {
+                        $_.event -eq 'explicit_probe' -and $_.probeStatus -eq '0x00000000' -and $_.canaryState -eq 2 -and $_.canaryChecks -eq 15
+                    })|Select-Object -Last 1
+                    if($reattachEntry.canaryState -eq 2 -and $reattachEntry.canaryChecks -eq 15 -and $reattachEntry.canaryStatus -eq 0 -and
+                        $reattachSetupSeen -and $null -ne $reattachCanary -and $null -ne $reattachCanaryAck -and $reattachCanaryAck.status -eq '0x00000000'){break}
+                }
+            } catch {}
+            Start-Sleep -Milliseconds 150
+        } while([DateTime]::UtcNow -lt $canaryDeadline)
+        $reattachCanaryOk=$null -ne $reattachEntry -and $reattachEntry.canaryState -eq 2 -and $reattachEntry.canaryChecks -eq 15 -and
+            $reattachEntry.canaryStatus -eq 0 -and $reattachSetupSeen -and $null -ne $reattachCanary -and
+            $null -ne $reattachCanaryAck -and $reattachCanaryAck.status -eq '0x00000000'
+        [void](Add-STOutcome 'FreshVhdxCanaryAfterReattach' $reattachCanaryOk ('sameGuid:{'+$script:STVhdxGuid+'};instanceSetupEvent:'+$reattachSetupSeen+';oldInstance:'+$(if($entryBeforeDismount){$entryBeforeDismount.instance}else{'missing'})+';newInstance:'+$(if($reattachEntry){$reattachEntry.instance}else{'missing'})+';canaryState:'+$(if($reattachEntry){$reattachEntry.canaryState}else{'missing'})+';canaryChecks:'+$(if($reattachEntry){$reattachEntry.canaryChecks}else{'missing'})+';canaryStatus:'+$(if($reattachEntry){$reattachEntry.canaryStatus}else{'missing'})))
+        if(-not $reattachCanaryOk){throw 'Reattached VHDX instance did not pass its new canary.'}
+
+        $primaryWriteAfterReattach=[SafeUploadSectionFaultRetainedWriter]::TryWrite($script:STVhdxFile.SafeFileHandle,$dismountWritePayload)
+        $secondaryWriteAfterReattach=$script:STSecondWriter.AttemptWrite($dismountWritePayload)
+        $viewWriteAfterReattach=Invoke-STOldViewWrite 1 ([byte]0x5A)
+        $oldHandlesRejectedAfterReattach= -not $primaryWriteAfterReattach.Succeeded -and -not $secondaryWriteAfterReattach.Succeeded
+        [void](Add-STOutcome 'OldHandlesCannotWriteAfterReattach' $oldHandlesRejectedAfterReattach ('primary:'+(Format-STHandleWrite $primaryWriteAfterReattach)+';secondary:'+(Format-STHandleWrite $secondaryWriteAfterReattach)+';mappedViewWriteReturned:'+$viewWriteAfterReattach.WriteReturned+';mappedViewFlushReturned:'+$viewWriteAfterReattach.FlushReturned+';mappedViewWriteException:'+$viewWriteAfterReattach.WriteException+';mappedViewFlushException:'+$viewWriteAfterReattach.FlushException+';premise:'+$(if($oldHandlesRejectedAfterReattach){'holds'}else{'FALSE_OLD_HANDLE_WRITE_SUCCEEDED'})))
+        if(-not $oldHandlesRejectedAfterReattach){Write-Output 'ST_PREMISE_FALSE=old handle wrote successfully after reattach; scoped teardown assumption is false;FAIL'}
+
+        $oldHandlesClosed=$true
+        if($script:STVhdxView){try{$script:STVhdxView.Dispose();$script:STVhdxView=$null}catch{$oldHandlesClosed=$false;$result.Errors+=('VHDX mapped view close: '+$_.Exception.Message)}}
+        if($script:STVhdxMapping){try{$script:STVhdxMapping.Dispose();$script:STVhdxMapping=$null}catch{$oldHandlesClosed=$false;$result.Errors+=('VHDX map close: '+$_.Exception.Message)}}
+        if($script:STSecondWriter){try{$script:STSecondWriter.Dispose();$script:STSecondWriter=$null}catch{$oldHandlesClosed=$false;$result.Errors+=('Secondary writer close: '+$_.Exception.Message)}}
+        if($script:STVhdxFile){try{$script:STVhdxFile.Dispose();$script:STVhdxFile=$null}catch{$oldHandlesClosed=$false;$result.Errors+=('Original VHDX writer close: '+$_.Exception.Message)}}
+        [void](Add-STOutcome 'OldVhdxHandlesClosed' $oldHandlesClosed ('allRetainedHandlesClosed:'+$oldHandlesClosed))
+
+        $hashAfterAttempts=(Get-FileHash -LiteralPath $script:STTargetPath -Algorithm SHA256).Hash
+        $vhdxBytesUnchanged=$script:STVhdxInitialHash -eq $hashAfterAttempts
+        [void](Add-STOutcome 'OldMappedViewDidNotReachDisk' $vhdxBytesUnchanged ('beforeSHA256:'+$script:STVhdxInitialHash+';afterSHA256:'+$hashAfterAttempts+';afterDismountWriteReturned:'+$viewWriteAfterDismount.WriteReturned+';afterDismountFlushReturned:'+$viewWriteAfterDismount.FlushReturned+';afterReattachWriteReturned:'+$viewWriteAfterReattach.WriteReturned+';afterReattachFlushReturned:'+$viewWriteAfterReattach.FlushReturned+';premise:'+$(if($vhdxBytesUnchanged){'holds'}else{'FALSE_OLD_VIEW_CHANGED_DISK_BYTES'})))
+        [void](Add-STOutcome 'VhdxHashUnchangedAfterPostDismountAttempts' $vhdxBytesUnchanged ('beforeSHA256:'+$script:STVhdxInitialHash+';afterSHA256:'+$hashAfterAttempts+';oldHandleSuccessAfterDismount:'+$primaryWriteAfterDismount.Succeeded+'/'+$secondaryWriteAfterDismount.Succeeded+';oldHandleSuccessAfterReattach:'+$primaryWriteAfterReattach.Succeeded+'/'+$secondaryWriteAfterReattach.Succeeded))
+        if(-not $vhdxBytesUnchanged){Write-Output 'ST_PREMISE_FALSE=post-dismount handle or mapped-view write changed the reattached VHDX bytes;FAIL'}
+
+        $afterOldHandlesClosed=Get-STWriterStats
+        $globalAfterTeardown=Get-STGlobalStatus
+        $teardownDropDelta=[int64]$afterOldHandlesClosed.writersDroppedAtTeardown-[int64]$vhdxBefore.writersDroppedAtTeardown
+        $mountedDropDelta=[int64]$afterOldHandlesClosed.writersDroppedWhileMounted-[int64]$vhdxBefore.writersDroppedWhileMounted
+        $scopedDropOk=$oldHandlesClosed -and $afterOldHandlesClosed.writersDroppedAtTeardown -gt 0 -and
+            $teardownDropDelta -gt 0 -and $afterOldHandlesClosed.writersDroppedWhileMounted -eq 0 -and
+            $mountedDropDelta -eq 0 -and $globalAfterTeardown.writerGlobalUnknown -eq 0
+        [void](Add-STOutcome 'ScopedWriterDropAccounting' $scopedDropOk ('writersDroppedAtTeardown:'+$afterOldHandlesClosed.writersDroppedAtTeardown+';teardownDelta:'+$teardownDropDelta+';writersDroppedWhileMounted:'+$afterOldHandlesClosed.writersDroppedWhileMounted+';mountedDelta:'+$mountedDropDelta+';writerGlobalUnknown:'+$globalAfterTeardown.writerGlobalUnknown))
+        $cKnownProbe=Invoke-STProbe $Fixture 'CAfterScopedTeardownProbe' 0 $false
+        $cKnownOk=$globalAfterTeardown.writerGlobalUnknown -eq 0 -and $null -ne $cKnownProbe -and -not $cKnownProbe.writersUntracked
+        [void](Add-STOutcome 'CProbeRemainsKnownAfterTeardown' $cKnownOk ('writerGlobalUnknown:'+$globalAfterTeardown.writerGlobalUnknown+';writersUntracked:'+$(if($cKnownProbe){$cKnownProbe.writersUntracked}else{'missing'})+';writeObjects:'+$(if($cKnownProbe){$cKnownProbe.writeObjects}else{'missing'})))
+
+        $beforeMountedLoss=Get-STWriterStats
+        $deleteReply=Invoke-STInspector ('--admission-delete-stream-context "'+$Fixture+'"')|ConvertFrom-Json
+        $mountedLossDeadline=[DateTime]::UtcNow.AddSeconds(5)
+        $afterMountedLoss=$null
+        $statusAfterMountedLoss=$null
+        do {
+            $afterMountedLoss=Get-STWriterStats
+            $statusAfterMountedLoss=Get-STGlobalStatus
+            if($afterMountedLoss.writersDroppedWhileMounted -ge ([int64]$beforeMountedLoss.writersDroppedWhileMounted+1) -and $statusAfterMountedLoss.writerGlobalUnknown -eq 1){break}
+            Start-Sleep -Milliseconds 50
+        } while([DateTime]::UtcNow -lt $mountedLossDeadline)
+        $statusAfterMountedLossAgain=Get-STGlobalStatus
+        $mountedDropOk=$deleteReply.streamContextDeleted -eq $true -and $deleteReply.status -eq '0x00000000' -and
+            $beforeMountedLoss.writersDroppedWhileMounted -eq 0 -and $afterMountedLoss.writersDroppedWhileMounted -eq 1 -and
+            ([int64]$afterMountedLoss.writersDroppedWhileMounted-[int64]$beforeMountedLoss.writersDroppedWhileMounted) -eq 1 -and
+            $statusAfterMountedLoss.writerGlobalUnknown -eq 1
+        $mountedUnknownSticky=$statusAfterMountedLoss.writerGlobalUnknown -eq 1 -and $statusAfterMountedLossAgain.writerGlobalUnknown -eq 1
+        [void](Add-STOutcome 'MountedWriterDropPoisonsGlobalState' $mountedDropOk ('deleteCommandStatus:'+$deleteReply.status+';streamContextDeleted:'+$deleteReply.streamContextDeleted+';beforeMounted:'+$beforeMountedLoss.writersDroppedWhileMounted+';afterMounted:'+$afterMountedLoss.writersDroppedWhileMounted+';writerGlobalUnknown:'+$statusAfterMountedLoss.writerGlobalUnknown))
+        [void](Add-STOutcome 'MountedLossGlobalUnknownStaysSet' $mountedUnknownSticky ('firstRead:'+$statusAfterMountedLoss.writerGlobalUnknown+';secondRead:'+$statusAfterMountedLossAgain.writerGlobalUnknown))
+        $cFaultProbe=Invoke-STProbe $Fixture 'CAfterMountedDropProbe' 0 $true
+        $cFaultOk=$null -ne $cFaultProbe -and $cFaultProbe.writersUntracked
+        [void](Add-STOutcome 'CProbeUntrackedAfterMountedDrop' $cFaultOk ('writerGlobalUnknown:'+$statusAfterMountedLossAgain.writerGlobalUnknown+';writersUntracked:'+$(if($cFaultProbe){$cFaultProbe.writersUntracked}else{'missing'})))
+
+        # The mounted-loss command and its required status/probe reads are the last exercise steps before finally restores the run.
+        $result.Teardown=@{Dismount=$dismount;Detach=$detachDisk;Reattach=$reattachDisk;Disposition=$disposition;
+            WriterGlobalUnknownBeforeMountedFault=$globalAfterTeardown.writerGlobalUnknown;
+            WriterGlobalUnknownAfterMountedFault=$statusAfterMountedLossAgain.writerGlobalUnknown;
+            Before=$vhdxBefore;After=$afterOldHandlesClosed;Guid=$script:STVhdxGuid;Held=$arm;
+            VoluntaryDetach=$script:STVoluntaryDetach;WorkerCompleted=$workerCompleted;HoldDisposition=$naturalOrExplicit;
+            SlotNowDelta=$slotDelta;InsertedDelta=$insertDelta;ReleasedDelta=$releasedDelta;
+            RemovedOnFailureDelta=$failureDelta;ReleaseTraceEvents=$releaseAfterDetach;
+            WritersDroppedAtTeardownDelta=$teardownDropDelta;WritersDroppedWhileMountedDelta=$mountedDropDelta;
+            BeforeHash=$script:STVhdxInitialHash;AfterHash=$hashAfterAttempts;
+            OldHandleWritesAfterDismount=@($primaryWriteAfterDismount,$secondaryWriteAfterDismount);
+            OldHandleWritesAfterReattach=@($primaryWriteAfterReattach,$secondaryWriteAfterReattach);
+            OldViewWriteAfterDismount=$viewWriteAfterDismount;OldViewWriteAfterReattach=$viewWriteAfterReattach;
+            ReattachedInstance=$reattachEntry;MountedLossDeleteReply=$deleteReply;
             PendingAfterDismount=$pendingAfterDismount;PendingBeforeDetach=$pendingBeforeDetach;PendingAtDetachReturn=$pendingAtDetachReturn;
             ReleasedAfterDismountTimeout=$releasedAfterDismountTimeout;ReleasedAfterDetachTimeout=$releasedAfterDetachTimeout}
     }
@@ -555,6 +721,9 @@ function Invoke-SectionTeardownScenario {
             }
         }
         [void](Add-STOutcome 'FinalWorkersDrained' $allWorkersDrained ('completed:'+ $allWorkersDrained))
+        if($script:STVhdxView){try{$script:STVhdxView.Dispose()}catch{$result.Errors+=('VHDX mapped view close: '+$_.Exception.Message)};$script:STVhdxView=$null}
+        if($script:STVhdxMapping){try{$script:STVhdxMapping.Dispose()}catch{$result.Errors+=('VHDX map close: '+$_.Exception.Message)};$script:STVhdxMapping=$null}
+        if($script:STSecondWriter){try{$script:STSecondWriter.Dispose()}catch{$result.Errors+=('Secondary writer close: '+$_.Exception.Message)};$script:STSecondWriter=$null}
         if($script:STVhdxFile){try{$script:STVhdxFile.Dispose()}catch{$result.Errors+=('VHDX file close: '+$_.Exception.Message)};$script:STVhdxFile=$null}
         if($script:STNestedFile){try{$script:STNestedFile.Dispose()}catch{$result.Errors+=('C fixture file close: '+$_.Exception.Message)};$script:STNestedFile=$null}
         if($script:STClient){try{$script:STClient.Dispose()}catch{$result.Errors+=('Fault port close: '+$_.Exception.Message)};$script:STClient=$null}

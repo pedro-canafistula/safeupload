@@ -177,7 +177,11 @@ CONST FLT_REGISTRATION FilterRegistration = {
     SafeUploadUnload,                   //  FilterUnload
     SafeUploadInstanceSetup,            //  InstanceSetup
     SafeUploadInstanceQueryTeardown,    //  InstanceQueryTeardown
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    SafeUploadStageWritersInstanceTeardownStart,
+#else
     NULL,                               //  InstanceTeardownStart
+#endif
     NULL,                               //  InstanceTeardownComplete
 #if SAFEUPLOAD_STAGING_PROTOTYPE
     SafeUploadStageGenerateName,

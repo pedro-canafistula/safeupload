@@ -28,6 +28,9 @@ Environment:
 --*/
 
 #include "Filter.h"
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+#include "Stage.h"
+#endif
 
 static
 VOID
@@ -35,6 +38,36 @@ SafeUploadStreamContextCleanup (
     _In_ PFLT_CONTEXT Context,
     _In_ FLT_CONTEXT_TYPE ContextType
     );
+
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+#define SAFEUPLOAD_TEARDOWN_TOKEN_POOL_TAG 'tUAS'
+
+static VOID SafeUploadReleaseTeardownToken(
+    _Inout_opt_ PSAFEUPLOAD_INSTANCE_TEARDOWN_TOKEN Token)
+{
+    if (Token != NULL && InterlockedDecrement(&Token->ReferenceCount) == 0) {
+        ExFreePoolWithTag(Token, SAFEUPLOAD_TEARDOWN_TOKEN_POOL_TAG);
+    }
+}
+
+static VOID SafeUploadInstanceContextCleanup(
+    _In_ PFLT_CONTEXT Context,
+    _In_ FLT_CONTEXT_TYPE ContextType)
+{
+    PSAFEUPLOAD_INSTANCE_CONTEXT instanceContext = (PSAFEUPLOAD_INSTANCE_CONTEXT)Context;
+
+    UNREFERENCED_PARAMETER(ContextType);
+    FLT_ASSERT(ContextType == FLT_INSTANCE_CONTEXT);
+
+    if (instanceContext->TeardownToken != NULL) {
+        SafeUploadStageWritersInstanceContextFreed(
+            instanceContext->TeardownToken,
+            (BOOLEAN)(InterlockedCompareExchange(&instanceContext->TeardownToken->Published, 0, 0) != 0));
+        SafeUploadReleaseTeardownToken(instanceContext->TeardownToken);
+        instanceContext->TeardownToken = NULL;
+    }
+}
+#endif
 
 #ifdef ALLOC_PRAGMA
     #pragma alloc_text(PAGE, SafeUploadClassifyVolume)
@@ -63,13 +96,16 @@ static VOID SafeUploadHandleContextCleanup(_In_ PFLT_CONTEXT Context,
 CONST FLT_CONTEXT_REGISTRATION SafeUploadContextRegistration[] = {
 
     //
-    //  No cleanup callback: the instance context owns nothing but its own
-    //  bytes, which the filter manager frees.
+    //  The prototype instance context owns a reference to its teardown token.
     //
 
     { FLT_INSTANCE_CONTEXT,
       0,
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+      SafeUploadInstanceContextCleanup,
+#else
       NULL,
+#endif
       sizeof( SAFEUPLOAD_INSTANCE_CONTEXT ),
       SAFEUPLOAD_POOL_TAG },
 
@@ -137,6 +173,8 @@ Return Value:
 
 #if SAFEUPLOAD_STAGING_PROTOTYPE
     SafeUploadStageWritersFreeContext( streamContext );
+    SafeUploadReleaseTeardownToken(streamContext->TeardownToken);
+    streamContext->TeardownToken = NULL;
 #endif
 
     FltDeletePushLock( &streamContext->Lock );
@@ -261,6 +299,7 @@ Return Value:
     PSAFEUPLOAD_INSTANCE_CONTEXT instanceContext = NULL;
     NTSTATUS status;
 #if SAFEUPLOAD_STAGING_PROTOTYPE
+    PSAFEUPLOAD_INSTANCE_TEARDOWN_TOKEN teardownToken = NULL;
     UNICODE_STRING volumeGuid;
 #endif
 
@@ -284,6 +323,18 @@ Return Value:
     //
 
     RtlZeroMemory( instanceContext, sizeof( *instanceContext ) );
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    teardownToken = (PSAFEUPLOAD_INSTANCE_TEARDOWN_TOKEN)ExAllocatePool2(
+        POOL_FLAG_NON_PAGED, sizeof(*teardownToken), SAFEUPLOAD_TEARDOWN_TOKEN_POOL_TAG);
+    if (teardownToken == NULL) {
+        FltReleaseContext(instanceContext);
+        return STATUS_INSUFFICIENT_RESOURCES;
+    }
+    RtlZeroMemory(teardownToken, sizeof(*teardownToken));
+    teardownToken->ReferenceCount = 1; /* Owned by this instance context. */
+    teardownToken->State = SAFEUPLOAD_INSTANCE_STATE_ACTIVE;
+    instanceContext->TeardownToken = teardownToken;
+#endif
     instanceContext->VolumeKind = SafeUploadClassifyVolume( FltObjects->Volume,
                                                             VolumeDeviceType );
 #if SAFEUPLOAD_STAGING_PROTOTYPE
@@ -318,6 +369,9 @@ Return Value:
     if (NT_SUCCESS( status )) {
 
         *VolumeKind = instanceContext->VolumeKind;
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+        InterlockedExchange(&teardownToken->Published, 1);
+#endif
     }
 
     //
@@ -374,6 +428,10 @@ Return Value:
 {
     PSAFEUPLOAD_STREAM_CONTEXT created = NULL;
     PSAFEUPLOAD_STREAM_CONTEXT existing = NULL;
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    PSAFEUPLOAD_INSTANCE_CONTEXT instanceContext = NULL;
+    PSAFEUPLOAD_INSTANCE_TEARDOWN_TOKEN teardownToken = NULL;
+#endif
     NTSTATUS status;
 
     PAGED_CODE();
@@ -422,6 +480,19 @@ Return Value:
 #if SAFEUPLOAD_STAGING_PROTOTYPE
     KeInitializeSpinLock( &created->WriterLock );
     InitializeListHead( &created->WriterObjects );
+
+    /*
+     *  Hold the instance context while taking a token reference. A stream context
+     *  without a token is deliberately retained as ambiguous; a later dropped
+     *  writer then poisons machine-wide state instead of guessing.
+     */
+    if (NT_SUCCESS(FltGetInstanceContext(FltObjects->Instance,
+            (PFLT_CONTEXT *)&instanceContext))) {
+        teardownToken = instanceContext->TeardownToken;
+        if (teardownToken != NULL) InterlockedIncrement(&teardownToken->ReferenceCount);
+        FltReleaseContext(instanceContext);
+    }
+    created->TeardownToken = teardownToken;
 #endif
 
     //

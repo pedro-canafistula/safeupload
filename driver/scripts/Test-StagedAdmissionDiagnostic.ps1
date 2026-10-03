@@ -2323,7 +2323,11 @@ function Complete-WriterChecks([string] $GroupName, [string] $RawPath) {
 
 function Get-WriterStateStats {
     $r = Invoke-InspectorChecked -Arguments @('--writer-state-status') -Timeout $InspectorTimeoutSeconds
-    return (ConvertFrom-Json -InputObject ([string]$r.Stdout).Trim())
+    $state = ConvertFrom-Json -InputObject ([string]$r.Stdout).Trim()
+    foreach ($field in @('writersDroppedAtTeardown','writersDroppedWhileMounted')) {
+        if ($null -eq $state.$field) { throw ('Writer state status missing ' + $field) }
+    }
+    return $state
 }
 
 function Wait-AdmissionCanary([string] $Path, [string] $RawPath) {

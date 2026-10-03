@@ -213,10 +213,24 @@ typedef enum _SAFEUPLOAD_VOLUME_KIND {
 
 } SAFEUPLOAD_VOLUME_KIND, *PSAFEUPLOAD_VOLUME_KIND;
 
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+/* Shared by the instance and its stream contexts so teardown state outlives either context. */
+typedef struct _SAFEUPLOAD_INSTANCE_TEARDOWN_TOKEN {
+    volatile LONG ReferenceCount;
+    volatile LONG State;
+    volatile LONG Published;
+} SAFEUPLOAD_INSTANCE_TEARDOWN_TOKEN, *PSAFEUPLOAD_INSTANCE_TEARDOWN_TOKEN;
+
+#define SAFEUPLOAD_INSTANCE_STATE_ACTIVE       ((LONG)0)
+#define SAFEUPLOAD_INSTANCE_STATE_TEARING_DOWN ((LONG)1)
+#define SAFEUPLOAD_INSTANCE_STATE_UNKNOWN      ((LONG)2)
+#endif
+
 typedef struct _SAFEUPLOAD_INSTANCE_CONTEXT {
 
     SAFEUPLOAD_VOLUME_KIND VolumeKind;
 #if SAFEUPLOAD_STAGING_PROTOTYPE
+    PSAFEUPLOAD_INSTANCE_TEARDOWN_TOKEN TeardownToken;
     FLT_INSTANCE_SETUP_FLAGS SetupFlags;
     volatile LONG WritersUntracked; /* Sticky for this attachment if a writer cannot get a context. */
     volatile LONG CanaryState;
@@ -340,6 +354,7 @@ typedef struct _SAFEUPLOAD_STREAM_CONTEXT {
     LIST_ENTRY WriterObjects;
     volatile LONG WriteObjects;
     volatile LONG WritersUntracked;
+    PSAFEUPLOAD_INSTANCE_TEARDOWN_TOKEN TeardownToken;
 
 #endif
 

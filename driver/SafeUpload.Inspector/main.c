@@ -698,6 +698,89 @@ Cleanup:
     return exitCode;
 }
 
+static int SendAdmissionDeleteStreamContext(_In_z_ PCWSTR DosPath)
+{
+    static const WCHAR volumePrefix[] = L"\\Device\\HarddiskVolume";
+    WCHAR drive[] = L"C:";
+    PWCHAR deviceName = NULL;
+    PSAFEUPLOAD_ADMISSION_DELETE_STREAM_CONTEXT_REQUEST request = NULL;
+    HANDLE port = INVALID_HANDLE_VALUE;
+    PCWSTR relativePath;
+    SIZE_T dosPathChars;
+    SIZE_T deviceNameChars;
+    SIZE_T prefixChars = ARRAYSIZE(volumePrefix) - 1;
+    SIZE_T index;
+    ULONG relativeChars;
+    ULONG requestBytes;
+    const DWORD deviceNameCapacity = 4096;
+    DWORD returned = 0;
+    HRESULT hr;
+    int exitCode = 2;
+
+    dosPathChars = wcslen(DosPath);
+    if (dosPathChars < 4 || dosPathChars > SAFEUPLOAD_ADMISSION_PROBE_MAX_STRING_CHARS ||
+        (DosPath[0] != L'C' && DosPath[0] != L'c') ||
+        DosPath[1] != L':' || DosPath[2] != L'\\' ||
+        DosPath[dosPathChars - 1] == L'\\') {
+        fwprintf(stderr, L"Uso: SafeUpload.Inspector --admission-delete-stream-context C:\\dir\\file.maptest\n");
+        return 2;
+    }
+    for (index = 0; index < dosPathChars; ++index) {
+        if (DosPath[index] == L'/' || (index >= 2 && DosPath[index] == L':')) {
+            fwprintf(stderr, L"ERRO: caminho C: invalido ou fluxo alternativo.\n");
+            return 2;
+        }
+    }
+
+    deviceName = (PWCHAR)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY,
+        (SIZE_T)deviceNameCapacity * sizeof(WCHAR));
+    if (deviceName == NULL) return 2;
+    if (QueryDosDeviceW(drive, deviceName, deviceNameCapacity) == 0) {
+        fwprintf(stderr, L"ERRO: nao foi possivel resolver C:.\n");
+        goto Cleanup;
+    }
+    deviceNameChars = wcslen(deviceName);
+    if (deviceNameChars < prefixChars ||
+        deviceNameChars > SAFEUPLOAD_ADMISSION_PROBE_MAX_STRING_CHARS ||
+        _wcsnicmp(deviceName, volumePrefix, prefixChars) != 0) {
+        fwprintf(stderr, L"ERRO: C: nao aponta para um volume local suportado.\n");
+        goto Cleanup;
+    }
+
+    relativePath = DosPath + 2;
+    relativeChars = (ULONG)(dosPathChars - 2);
+    requestBytes = (ULONG)FIELD_OFFSET(SAFEUPLOAD_ADMISSION_DELETE_STREAM_CONTEXT_REQUEST, Strings) +
+        ((ULONG)deviceNameChars + relativeChars) * (ULONG)sizeof(WCHAR);
+    request = (PSAFEUPLOAD_ADMISSION_DELETE_STREAM_CONTEXT_REQUEST)HeapAlloc(
+        GetProcessHeap(), HEAP_ZERO_MEMORY, requestBytes);
+    if (request == NULL) goto Cleanup;
+
+    request->Control.Version = SAFEUPLOAD_PROTOCOL_VERSION;
+    request->Control.StructSize = requestBytes;
+    request->Control.Command = SAFEUPLOAD_CONTROL_ADMISSION_DELETE_STREAM_CONTEXT;
+    request->VolumeNameChars = (UINT16)deviceNameChars;
+    request->RelativePathChars = (UINT16)relativeChars;
+    request->DriveLetter = L'C';
+    CopyMemory(request->Strings, deviceName, deviceNameChars * sizeof(WCHAR));
+    CopyMemory(request->Strings + deviceNameChars, relativePath, relativeChars * sizeof(WCHAR));
+
+    hr = FilterConnectCommunicationPort(SAFEUPLOAD_PORT_NAME, 0, NULL, 0, NULL, &port);
+    if (FAILED(hr)) {
+        fwprintf(stderr, L"ERRO: nao foi possivel conectar na porta (hr = 0x%08X).\n", hr);
+        goto Cleanup;
+    }
+    hr = FilterSendMessage(port, request, requestBytes, NULL, 0, &returned);
+    wprintf(L"{\"streamContextDeleted\":%s,\"status\":\"0x%08X\"}\n",
+        SUCCEEDED(hr) && returned == 0 ? L"true" : L"false", hr);
+    exitCode = SUCCEEDED(hr) && returned == 0 ? 0 : 3;
+
+Cleanup:
+    if (port != INVALID_HANDLE_VALUE) CloseHandle(port);
+    if (request != NULL) HeapFree(GetProcessHeap(), 0, request);
+    if (deviceName != NULL) HeapFree(GetProcessHeap(), 0, deviceName);
+    return exitCode;
+}
+
 static BOOL ResolveCanaryVolumeName(_In_z_ PCWSTR Volume, _Out_writes_(SAFEUPLOAD_CANARY_VOLUME_CHARS) PWSTR NativeName,
     _Out_ PUINT16 NativeChars)
 {
@@ -938,12 +1021,14 @@ static int PrintWriterStateStatus(VOID)
             L"\"sectionInFlightNow\":%lu,\"sectionInFlightInserted\":%llu,\"sectionInFlightReleased\":%llu,"
             L"\"sectionInFlightOverflow\":%llu,\"sectionInFlightStuck\":%llu,\"sectionInFlightRemovedOnFailure\":%llu,"
             L"\"sectionInFlightMaxDepth\":%lu,\"pagingCreatesSkipped\":%llu,\"volumeCreatesSkipped\":%llu,"
+            L"\"writersDroppedAtTeardown\":%llu,\"writersDroppedWhileMounted\":%llu,"
             L"\"stageStreams\":%u,\"stageFileObjects\":%u,\"lastUnloadVeto\":%u,\"lastUnloadStatus\":%u}\n",
             status.PostCreateRuns, status.WriteObjectsCounted, status.WriteObjectsReleased,
             status.UntrackedCreates, status.CleanupUnmatched, status.DirectoryCreatesSkipped,
             status.SectionInFlightNow, status.SectionInFlightInserted, status.SectionInFlightReleased,
             status.SectionInFlightOverflow, status.SectionInFlightStuck, status.SectionInFlightRemovedOnFailure,
             status.SectionInFlightMaxDepth, status.PagingCreatesSkipped, status.VolumeCreatesSkipped,
+            status.WritersDroppedAtTeardown, status.WritersDroppedWhileMounted,
             status.StageStreams, status.StageFileObjects, status.LastUnloadVeto, status.LastUnloadStatus);
     return 0;
 }
@@ -1207,6 +1292,14 @@ Return Value:
             return 2;
         }
         return SendAdmissionProbe(argv[2]);
+    }
+
+    if (argc > 1 && _wcsicmp(argv[1], L"--admission-delete-stream-context") == 0) {
+        if (argc != 3) {
+            fwprintf(stderr, L"Uso: SafeUpload.Inspector --admission-delete-stream-context C:\\dir\\file.maptest\n");
+            return 2;
+        }
+        return SendAdmissionDeleteStreamContext(argv[2]);
     }
 
     if (argc > 1 && _wcsicmp(argv[1], L"--admission-canary-hold") == 0) {

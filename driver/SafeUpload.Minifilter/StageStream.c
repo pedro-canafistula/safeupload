@@ -647,6 +647,108 @@ Cleanup:
     return status;
 }
 
+NTSTATUS SafeUploadStageAdmissionDeleteStreamContext(_In_ PCUNICODE_STRING VolumeName,
+    _In_ PCUNICODE_STRING RelativePath)
+{
+    PFLT_VOLUME volume = NULL;
+    PFLT_VOLUME cVolume = NULL;
+    PFLT_INSTANCE instance = NULL;
+    PSAFEUPLOAD_INSTANCE_CONTEXT instanceContext = NULL;
+    PSAFEUPLOAD_STREAM_CONTEXT streamContext = NULL;
+    HANDLE handle = NULL;
+    PFILE_OBJECT fileObject = NULL;
+    PWCHAR fullPathBuffer = NULL;
+    UNICODE_STRING fullPath;
+    OBJECT_ATTRIBUTES attributes;
+    IO_STATUS_BLOCK ioStatus;
+    FLT_FILESYSTEM_TYPE fileSystemType;
+    ULONG fullPathBytes;
+    NTSTATUS status;
+    UNICODE_STRING cDrive = RTL_CONSTANT_STRING(L"\\??\\C:");
+
+    PAGED_CODE();
+    NT_ASSERT(KeGetCurrentIrql() == PASSIVE_LEVEL);
+
+    if (VolumeName == NULL || RelativePath == NULL || VolumeName->Length == 0 ||
+        RelativePath->Length < sizeof(WCHAR) * 2 ||
+        VolumeName->Length > MAXUSHORT - RelativePath->Length ||
+        (VolumeName->Length % sizeof(WCHAR)) != 0 || (RelativePath->Length % sizeof(WCHAR)) != 0) {
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    status = FltGetVolumeFromName(SafeUploadData.Filter, VolumeName, &volume);
+    if (!NT_SUCCESS(status)) goto Exit;
+    status = FltGetVolumeFromName(SafeUploadData.Filter, &cDrive, &cVolume);
+    if (!NT_SUCCESS(status)) goto Exit;
+    if (cVolume != volume) {
+        status = STATUS_INVALID_PARAMETER;
+        goto Exit;
+    }
+    status = FltGetVolumeInstanceFromName(SafeUploadData.Filter, volume, NULL, &instance);
+    if (!NT_SUCCESS(status)) goto Exit;
+
+    status = FltGetInstanceContext(instance, (PFLT_CONTEXT *)&instanceContext);
+    if (!NT_SUCCESS(status)) goto Exit;
+    if (instanceContext->VolumeKind != SafeUploadVolumeFixed) {
+        status = STATUS_NOT_SUPPORTED;
+        goto Exit;
+    }
+    status = FltGetFileSystemType(instance, &fileSystemType);
+    if (!NT_SUCCESS(status)) goto Exit;
+    if (fileSystemType != FLT_FSTYPE_NTFS) {
+        status = STATUS_NOT_SUPPORTED;
+        goto Exit;
+    }
+    FltReleaseContext(instanceContext);
+    instanceContext = NULL;
+
+    fullPathBytes = (ULONG)VolumeName->Length + (ULONG)RelativePath->Length;
+    fullPathBuffer = (PWCHAR)ExAllocatePool2(POOL_FLAG_PAGED, fullPathBytes, SAFEUPLOAD_POOL_TAG);
+    if (fullPathBuffer == NULL) {
+        status = STATUS_INSUFFICIENT_RESOURCES;
+        goto Exit;
+    }
+    RtlCopyMemory(fullPathBuffer, VolumeName->Buffer, VolumeName->Length);
+    RtlCopyMemory((PUCHAR)fullPathBuffer + VolumeName->Length,
+                  RelativePath->Buffer, RelativePath->Length);
+    fullPath.Buffer = fullPathBuffer;
+    fullPath.Length = (USHORT)fullPathBytes;
+    fullPath.MaximumLength = (USHORT)fullPathBytes;
+
+    InitializeObjectAttributes(&attributes, &fullPath,
+        OBJ_KERNEL_HANDLE | OBJ_CASE_INSENSITIVE, NULL, NULL);
+    RtlZeroMemory(&ioStatus, sizeof(ioStatus));
+    status = FltCreateFileEx2(SafeUploadData.Filter, instance, &handle, &fileObject,
+        FILE_READ_ATTRIBUTES, &attributes, &ioStatus, NULL, FILE_ATTRIBUTE_NORMAL,
+        FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, FILE_OPEN,
+        FILE_NON_DIRECTORY_FILE | FILE_OPEN_REPARSE_POINT | FILE_COMPLETE_IF_OPLOCKED,
+        NULL, 0, IO_STOP_ON_SYMLINK, NULL);
+    if (status == STATUS_STOPPED_ON_SYMLINK && ioStatus.Information != 0)
+        ExFreePool((PVOID)ioStatus.Information);
+    if (!NT_SUCCESS(status)) goto Exit;
+
+    status = FltGetStreamContext(instance, fileObject, (PFLT_CONTEXT *)&streamContext);
+    if (!NT_SUCCESS(status)) goto Exit;
+    if (InterlockedCompareExchange(&streamContext->WriteObjects, 0, 0) <= 0) {
+        status = STATUS_INVALID_DEVICE_STATE;
+        goto Exit;
+    }
+
+    FltDeleteContext((PFLT_CONTEXT)streamContext);
+    status = STATUS_SUCCESS;
+
+Exit:
+    if (streamContext != NULL) FltReleaseContext(streamContext);
+    if (handle != NULL) FltClose(handle);
+    if (fileObject != NULL) ObDereferenceObject(fileObject);
+    if (instanceContext != NULL) FltReleaseContext(instanceContext);
+    if (fullPathBuffer != NULL) ExFreePoolWithTag(fullPathBuffer, SAFEUPLOAD_POOL_TAG);
+    if (instance != NULL) FltObjectDereference(instance);
+    if (cVolume != NULL) FltObjectDereference(cVolume);
+    if (volume != NULL) FltObjectDereference(volume);
+    return status;
+}
+
 typedef struct _STAGE_ADMISSION_PROBE_WORK {
     KEVENT Done;
     PCUNICODE_STRING VolumeName;

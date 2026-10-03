@@ -50,6 +50,8 @@ Environment:
 //  fail open under RN-013; experimental staged allocations fail closed.
 //
 
+/* Unchanged by the test-only writer-state counters: that reply is size-checked by StructSize, and the agent
+ * (agente/.../Protocol.cs, Version = 18) never reads it. */
 #define SAFEUPLOAD_PROTOCOL_VERSION ((UINT32) 18)
 
 //
@@ -275,6 +277,7 @@ typedef struct _SAFEUPLOAD_RESPONSE {
 #define SAFEUPLOAD_CONTROL_ADMISSION_VOLUME_STATUS      ((UINT32) 13)
 #define SAFEUPLOAD_CONTROL_ADMISSION_CANARY_HOLD        ((UINT32) 14)
 #define SAFEUPLOAD_CONTROL_ADMISSION_CANARY_HOLD_CANCEL ((UINT32) 15)
+#define SAFEUPLOAD_CONTROL_ADMISSION_DELETE_STREAM_CONTEXT ((UINT32) 16)
 #define SAFEUPLOAD_ADMISSION_VOLUME_MAX_ENTRIES          ((UINT32) 32)
 #define SAFEUPLOAD_CONTROL_WRITER_STATE_STATUS          ((UINT32) 12)
 #define SAFEUPLOAD_ADMISSION_TRACE_RING_ENTRIES         ((UINT32) 16384) /* power of two; feature build only */
@@ -584,6 +587,18 @@ typedef struct _SAFEUPLOAD_ADMISSION_PROBE_REQUEST {
     WCHAR Strings[1];
 } SAFEUPLOAD_ADMISSION_PROBE_REQUEST, *PSAFEUPLOAD_ADMISSION_PROBE_REQUEST;
 
+/* Test-build-only request: remove one named C: fixture's stream context while its writer stays open. */
+typedef struct _SAFEUPLOAD_ADMISSION_DELETE_STREAM_CONTEXT_REQUEST {
+    SAFEUPLOAD_CONTROL Control;
+    UINT16 VolumeNameChars;
+    UINT16 RelativePathChars;
+    UINT32 Reserved;
+    WCHAR DriveLetter;
+    WCHAR Reserved2;
+    WCHAR Strings[1];
+} SAFEUPLOAD_ADMISSION_DELETE_STREAM_CONTEXT_REQUEST,
+  *PSAFEUPLOAD_ADMISSION_DELETE_STREAM_CONTEXT_REQUEST;
+
 /* Feature-only diagnostic; Pending/Running or any query failure never proves trust. */
 typedef struct _SAFEUPLOAD_ADMISSION_VOLUME_ENTRY {
     UINT64 Instance;
@@ -674,6 +689,10 @@ typedef struct _SAFEUPLOAD_WRITER_STATE_STATUS {
     UINT32 StageFileObjects;
     UINT32 LastUnloadVeto;
     UINT32 LastUnloadStatus;
+#if defined(SAFEUPLOAD_STAGING_PROTOTYPE) && SAFEUPLOAD_STAGING_PROTOTYPE
+    UINT64 WritersDroppedAtTeardown;      // writer nodes released with a teardown-marked instance token
+    UINT64 WritersDroppedWhileMounted;    // writer nodes released before instance teardown was marked
+#endif
 } SAFEUPLOAD_WRITER_STATE_STATUS, *PSAFEUPLOAD_WRITER_STATE_STATUS;
 
 /* A probe entry's AdmissionRecordState carries H(F) of the probed stream; this bit marks a lower bound. */
@@ -985,6 +1004,10 @@ C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_ADMISSION_PROBE_REQUEST, RelativePathChars ) 
 C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_ADMISSION_PROBE_REQUEST, Reserved ) == 20 );
 C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_ADMISSION_PROBE_REQUEST, Strings ) == 24 );
 C_ASSERT( sizeof( SAFEUPLOAD_ADMISSION_PROBE_REQUEST ) == 28 );
+C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_ADMISSION_DELETE_STREAM_CONTEXT_REQUEST, VolumeNameChars ) == 16 );
+C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_ADMISSION_DELETE_STREAM_CONTEXT_REQUEST, DriveLetter ) == 24 );
+C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_ADMISSION_DELETE_STREAM_CONTEXT_REQUEST, Strings ) == 28 );
+C_ASSERT( sizeof( SAFEUPLOAD_ADMISSION_DELETE_STREAM_CONTEXT_REQUEST ) == 30 );
 C_ASSERT( sizeof( SAFEUPLOAD_ADMISSION_CANARY_HOLD_REQUEST ) == 152 );
 C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_ADMISSION_CANARY_HOLD_REQUEST, VolumeName ) == 24 );
 C_ASSERT( sizeof( SAFEUPLOAD_ADMISSION_CANARY_HOLD_REPLY ) == 1040 );
@@ -1000,6 +1023,9 @@ C_ASSERT( sizeof( SAFEUPLOAD_POLICY_MESSAGE ) >= sizeof( SAFEUPLOAD_ADMISSION_CA
 C_ASSERT( sizeof( SAFEUPLOAD_POLICY_MESSAGE ) >= sizeof( SAFEUPLOAD_ADMISSION_CANARY_HOLD_REQUEST ) );
 C_ASSERT( sizeof( SAFEUPLOAD_POLICY_MESSAGE ) >= sizeof( SAFEUPLOAD_ADMISSION_TRACE_BATCH ) );
 C_ASSERT( sizeof( SAFEUPLOAD_FENCE_STATUS ) == 144 );
+C_ASSERT( sizeof( SAFEUPLOAD_WRITER_STATE_STATUS ) == 152 );
+C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_WRITER_STATE_STATUS, WritersDroppedAtTeardown ) == 136 );
+C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_WRITER_STATE_STATUS, WritersDroppedWhileMounted ) == 144 );
 C_ASSERT( sizeof( SAFEUPLOAD_POLICY_MESSAGE ) >=
           FIELD_OFFSET( SAFEUPLOAD_ADMISSION_PROBE_REQUEST, Strings ) +
           (2 * SAFEUPLOAD_ADMISSION_PROBE_MAX_STRING_CHARS * sizeof( WCHAR )) );

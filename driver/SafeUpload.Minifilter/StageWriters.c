@@ -38,6 +38,7 @@ Environment:
 
 #ifdef ALLOC_PRAGMA
 #pragma alloc_text(PAGE, SafeUploadStageWritersPostCreate)
+#pragma alloc_text(PAGE, SafeUploadStageWritersInstanceTeardownStart)
 #endif
 
 /* Separate node tag permits actual Verifier allocation failures to be attributed
@@ -57,11 +58,50 @@ static volatile LONG64 WriterCleanupUnmatched;
 static volatile LONG64 WriterDirectoryCreatesSkipped;
 static volatile LONG64 WriterPagingCreatesSkipped;
 static volatile LONG64 WriterVolumeCreatesSkipped;
+static volatile LONG64 WriterDroppedAtTeardown;
+static volatile LONG64 WriterDroppedWhileMounted;
 static volatile LONG WriterGlobalUnknown;
 
 UINT32 SafeUploadStageWritersGlobalUnknown(VOID)
 {
     return (UINT32)InterlockedCompareExchange(&WriterGlobalUnknown, 0, 0);
+}
+
+VOID SafeUploadStageWritersInstanceTeardownStart(
+    _In_ PCFLT_RELATED_OBJECTS FltObjects,
+    _In_ FLT_INSTANCE_TEARDOWN_FLAGS Reason)
+{
+    PSAFEUPLOAD_INSTANCE_CONTEXT context = NULL;
+    NTSTATUS status;
+
+    PAGED_CODE();
+    UNREFERENCED_PARAMETER(Reason);
+
+    /* InstanceTeardownStart is PASSIVE_LEVEL and precedes context teardown. */
+    status = FltGetInstanceContext(FltObjects->Instance, (PFLT_CONTEXT *)&context);
+    if (!NT_SUCCESS(status)) {
+        InterlockedExchange(&WriterGlobalUnknown, 1);
+        return;
+    }
+
+    if (context->TeardownToken == NULL) {
+        InterlockedExchange(&WriterGlobalUnknown, 1);
+    } else {
+        InterlockedExchange(&context->TeardownToken->State, SAFEUPLOAD_INSTANCE_STATE_TEARING_DOWN);
+    }
+    FltReleaseContext(context);
+}
+
+/* Nonpaged: the instance context cleanup callback may run at APC_LEVEL. */
+VOID SafeUploadStageWritersInstanceContextFreed(
+    _Inout_ PSAFEUPLOAD_INSTANCE_TEARDOWN_TOKEN Token,
+    _In_ BOOLEAN Published)
+{
+    if (Published && InterlockedCompareExchange(&Token->State,
+            SAFEUPLOAD_INSTANCE_STATE_UNKNOWN, SAFEUPLOAD_INSTANCE_STATE_ACTIVE) ==
+            SAFEUPLOAD_INSTANCE_STATE_ACTIVE) {
+        InterlockedExchange(&WriterGlobalUnknown, 1);
+    }
 }
 
 static BOOLEAN StageWritersExcludedObject(_In_ PFILE_OBJECT FileObject)
@@ -215,13 +255,23 @@ VOID SafeUploadStageWritersOnCleanup(
 
 VOID SafeUploadStageWritersFreeContext(_Inout_ PSAFEUPLOAD_STREAM_CONTEXT StreamContext)
 {
-    /* The context is going away, so nothing else can reach its list. A node left behind is a writer whose
-     * cleanup this filter never saw (instance teardown such as a forced dismount, or a missed cleanup). Its
-     * stream's next context would start at zero, so this is lost tracking: Unknown until reboot (owner rule). */
-    if (!IsListEmpty(&StreamContext->WriterObjects)) InterlockedExchange(&WriterGlobalUnknown, 1);
+    PSAFEUPLOAD_INSTANCE_TEARDOWN_TOKEN token = StreamContext->TeardownToken;
+    LONG tokenState = token != NULL ? InterlockedCompareExchange(&token->State, 0, 0) :
+        SAFEUPLOAD_INSTANCE_STATE_UNKNOWN;
+
+    /* The last context reference is being released, so no operation can still mutate this list. */
     while (!IsListEmpty(&StreamContext->WriterObjects)) {
         PLIST_ENTRY link = RemoveHeadList(&StreamContext->WriterObjects);
         ExFreePoolWithTag(CONTAINING_RECORD(link, STAGE_WRITER_NODE, Link), SAFEUPLOAD_WRITER_NODE_POOL_TAG);
+        if (tokenState == SAFEUPLOAD_INSTANCE_STATE_TEARING_DOWN) {
+            InterlockedIncrement64(&WriterDroppedAtTeardown);
+        } else if (tokenState == SAFEUPLOAD_INSTANCE_STATE_ACTIVE) {
+            InterlockedIncrement64(&WriterDroppedWhileMounted);
+            InterlockedExchange(&WriterGlobalUnknown, 1);
+        } else {
+            /* Unknown token state cannot be assigned to either scoped counter. */
+            InterlockedExchange(&WriterGlobalUnknown, 1);
+        }
     }
 }
 
@@ -428,6 +478,8 @@ VOID SafeUploadStageWritersGetStatus(_Out_ PSAFEUPLOAD_WRITER_STATE_STATUS Statu
     snapshot.DirectoryCreatesSkipped = (UINT64)InterlockedCompareExchange64(&WriterDirectoryCreatesSkipped, 0, 0);
     snapshot.PagingCreatesSkipped = (UINT64)InterlockedCompareExchange64(&WriterPagingCreatesSkipped, 0, 0);
     snapshot.VolumeCreatesSkipped = (UINT64)InterlockedCompareExchange64(&WriterVolumeCreatesSkipped, 0, 0);
+    snapshot.WritersDroppedAtTeardown = (UINT64)InterlockedCompareExchange64(&WriterDroppedAtTeardown, 0, 0);
+    snapshot.WritersDroppedWhileMounted = (UINT64)InterlockedCompareExchange64(&WriterDroppedWhileMounted, 0, 0);
     SafeUploadStageGetUnloadStatus(&snapshot.StageStreams, &snapshot.StageFileObjects,
         &snapshot.LastUnloadVeto, &snapshot.LastUnloadStatus);
     KeAcquireSpinLock(&SectionLock, &irql);

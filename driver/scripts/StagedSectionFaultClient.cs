@@ -131,6 +131,126 @@ public sealed class SafeUploadSectionFaultClient : IDisposable
     }
 }
 
+// Opens and retains a separate writer FILE_OBJECT from a dedicated managed/native thread.
+public sealed class SafeUploadSectionFaultRetainedWriter : IDisposable
+{
+    [DllImport("kernel32.dll", SetLastError=true, CharSet=CharSet.Unicode)]
+    static extern SafeFileHandle CreateFileW(string path, uint access, uint sharing,
+        IntPtr security, uint disposition, uint flags, IntPtr template);
+    [DllImport("kernel32.dll", SetLastError=true)]
+    static extern bool WriteFile(SafeFileHandle file, byte[] buffer, uint bytesToWrite,
+        out uint bytesWritten, IntPtr overlapped);
+    [DllImport("kernel32.dll")]
+    static extern uint GetCurrentThreadId();
+
+    public sealed class WriteResult
+    {
+        public bool Succeeded;
+        public int Win32Error;
+        public uint BytesWritten;
+    }
+
+    readonly ManualResetEvent ready = new ManualResetEvent(false);
+    readonly ManualResetEvent release = new ManualResetEvent(false);
+    readonly Thread thread;
+    SafeFileHandle file;
+    Exception workerError;
+    int openError;
+    uint openThreadId;
+
+    public uint OpenThreadId { get { return openThreadId; } }
+    public int OpenError { get { return openError; } }
+    public Exception WorkerError { get { return workerError; } }
+    public bool IsOpen { get { return file != null && !file.IsInvalid && !file.IsClosed; } }
+
+    public SafeUploadSectionFaultRetainedWriter(string path)
+    {
+        thread = new Thread(delegate()
+        {
+            try
+            {
+                openThreadId = GetCurrentThreadId();
+                SafeFileHandle opened = CreateFileW(path, 0x40000000, 7, IntPtr.Zero, 3, 0x80, IntPtr.Zero);
+                if (opened.IsInvalid)
+                {
+                    openError = Marshal.GetLastWin32Error();
+                    opened.Dispose();
+                }
+                else file = opened;
+            }
+            catch (Exception error) { workerError = error; }
+            finally { ready.Set(); }
+
+            if (file != null) release.WaitOne();
+            if (file != null) file.Dispose();
+        });
+        thread.IsBackground = true;
+        thread.Start();
+        if (!ready.WaitOne(10000))
+        {
+            release.Set();
+            if (thread.Join(10000))
+            {
+                ready.Dispose();
+                release.Dispose();
+            }
+            throw new InvalidOperationException("Retained writer open timed out.");
+        }
+        if (workerError != null)
+        {
+            release.Set();
+            thread.Join(10000);
+            ready.Dispose();
+            release.Dispose();
+            throw new InvalidOperationException("Retained writer open failed.", workerError);
+        }
+        if (openError != 0 || !IsOpen)
+        {
+            release.Set();
+            thread.Join(10000);
+            ready.Dispose();
+            release.Dispose();
+            if (openError != 0) throw new System.ComponentModel.Win32Exception(openError);
+            throw new InvalidOperationException("Retained writer did not keep a valid handle.");
+        }
+    }
+
+    public static uint CurrentThreadId() { return GetCurrentThreadId(); }
+
+    public static WriteResult TryWrite(SafeFileHandle handle, byte[] bytes)
+    {
+        if (handle == null || handle.IsInvalid || handle.IsClosed) throw new ArgumentException("Invalid file handle.");
+        if (bytes == null || bytes.Length == 0) throw new ArgumentException("Write payload must not be empty.");
+        bool retained = false;
+        try
+        {
+            handle.DangerousAddRef(ref retained);
+            uint written = 0;
+            bool succeeded = WriteFile(handle, bytes, (uint)bytes.Length, out written, IntPtr.Zero);
+            return new WriteResult {
+                Succeeded=succeeded,
+                Win32Error=succeeded ? 0 : Marshal.GetLastWin32Error(),
+                BytesWritten=written
+            };
+        }
+        finally { if (retained) handle.DangerousRelease(); }
+    }
+
+    public WriteResult AttemptWrite(byte[] bytes)
+    {
+        if (!IsOpen) throw new InvalidOperationException("Retained writer handle is closed.");
+        return TryWrite(file, bytes);
+    }
+
+    public void Dispose()
+    {
+        release.Set();
+        if (!thread.Join(10000)) throw new InvalidOperationException("Retained writer thread did not stop.");
+        ready.Dispose();
+        release.Dispose();
+    }
+}
+
 public sealed class SafeUploadSectionFaultMapping
 {
     [DllImport("kernel32.dll", SetLastError=true, CharSet=CharSet.Unicode)]

@@ -55,6 +55,9 @@ NTSTATUS SafeUploadStageAdmissionTraceReadBatch(
 NTSTATUS SafeUploadStageAdmissionProbe(
     _In_ PCUNICODE_STRING VolumeName,
     _In_ PCUNICODE_STRING RelativePath);
+NTSTATUS SafeUploadStageAdmissionDeleteStreamContext(
+    _In_ PCUNICODE_STRING VolumeName,
+    _In_ PCUNICODE_STRING RelativePath);
 NTSTATUS SafeUploadStageOpenByIdentity(_In_ PFLT_INSTANCE Instance,
     _In_ PCUNICODE_STRING VolumeName, _In_ PFILE_OBJECT SourceObject,
     _Out_ PHANDLE Handle, _Outptr_result_nullonfailure_ PFILE_OBJECT *Object,
@@ -66,6 +69,12 @@ NTSTATUS SafeUploadStageAdmissionCanaryHold(_In_ PCUNICODE_STRING VolumeName,
 VOID SafeUploadStageAdmissionCanaryHoldCancel(VOID);
 NTSTATUS SafeUploadStageVolumeFlags(_In_ PFLT_VOLUME Volume, _Out_ PUINT32 Flags);
 UINT32 SafeUploadStageWritersGlobalUnknown(VOID);
+VOID SafeUploadStageWritersInstanceTeardownStart(
+    _In_ PCFLT_RELATED_OBJECTS FltObjects,
+    _In_ FLT_INSTANCE_TEARDOWN_FLAGS Reason);
+VOID SafeUploadStageWritersInstanceContextFreed(
+    _Inout_ PSAFEUPLOAD_INSTANCE_TEARDOWN_TOKEN Token,
+    _In_ BOOLEAN Published);
 VOID SafeUploadStageCanaryTick(VOID);
 NTSTATUS SafeUploadStageAdmissionStartWorker(VOID);
 VOID SafeUploadStageAdmissionStopWorker(VOID);
