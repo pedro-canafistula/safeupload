@@ -204,6 +204,7 @@ static VOID StageCanaryRun(_In_ PFLT_INSTANCE Instance, _Inout_ PSAFEUPLOAD_INST
         NULL, 0, 0, NULL);
     if (status != STATUS_SUCCESS) goto Exit;
     if (fileObject == NULL || fileHandle == NULL) { status = STATUS_INVALID_HANDLE; goto Exit; }
+    if (io.Information != FILE_CREATED) { status = STATUS_DATA_ERROR; goto Exit; }
     eof.EndOfFile.QuadPart = PAGE_SIZE;
     step = 5;
     status = FltSetInformationFile(Instance, fileObject, &eof, sizeof(eof), FileEndOfFileInformation);
