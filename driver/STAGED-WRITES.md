@@ -66,6 +66,105 @@ Normal staging stays compiled out and taint enforcement remains.
           scope-correct candidate coverage is implemented.
   - [ ] Close the in-flight mapping, attachment, policy-transition and partial-
         coverage privacy gaps without relying on process taint.
+    - [x] Extend the policy-transition harness with a second fixture that keeps
+          a writable section handle, but no view, across policy expansion; its
+          first writable view is mapped after candidate acceptance and measured
+          against a separate full raw-volume baseline. Failed writes, flushes,
+          disposal, or raw observation remain inconclusive. [Harness](scripts/Test-StagedPolicyTransitionMapping.ps1).
+    - [x] Parse the retained-section harness revision and compile its embedded
+          native interop declarations with the local PowerShell 7 runtime
+          (zero parse errors; declaration compilation succeeded).
+    - [x] Receive Luna source review of the retained-section case; no blocking
+          finding. Apply named-object collision detection with a cleared-error
+          wrapper and clarify supplemental observer semantics.
+    - [x] Complete targeted Luna rereview, including cleared-error handling
+          and initialized `[ref]` storage; no remaining source blocker.
+          [Review record](evidence/2026-10-03/policy-transition-retained-section-source-review.txt).
+    - [x] Add `-PolicyRejectionOnly` mode for the unchanged full approved
+          policy: require no ready signal, stable pre/post fence generation and
+          entry count, and rejected-scan telemetry. The protocol does not expose
+          policy generation; the mode explicitly does not claim runtime readback.
+    - [x] Bind the service process to the SHA-256-pinned archive by hashing and
+          parsing one held read-only stream, then extracting under
+          CommonApplicationData with protected Administrators/SYSTEM ACLs.
+          Check member paths, ancestor/tree reparse points, and ACLs before
+          launch and recursive cleanup; require the exact `FilterPort.SetPolicy`
+          exception and policy-push stack frames. This is source-only until rerun.
+    - [x] Complete Luna's final source rereview of the package-bound
+          rejection-only harness; no source-level blocker. The ACL check is
+          conservative allow-ACE screening, not effective-token evaluation.
+          [Review record](evidence/2026-10-03/policy-transition-rejection-package-source-review.txt).
+    - [ ] Parse the updated harness with Windows PowerShell 5.1 and compile its
+          embedded native interop declarations.
+    - [ ] Build the exact current driver source in WDK Debug and Release.
+    - [ ] Verify the rejection-only branch on the clean VM, including baseline
+          policy identity and complete machine restoration.
+    - [ ] Execute this case only after scope-correct removable and network
+          coverage permits the unchanged approved policy; record independent
+          byte observation and full VM restoration.
+    - [ ] Verify and qualify transactional policy acceptance: the feature
+          path now keeps the previous policy current and the candidate pending
+          through two checked old-and-candidate union scans before publication;
+          scan failure leaves the old policy current and the last successfully
+          installed fence table intact. This removes the unchecked post-swap refresh but
+          does not close the mapping race. A proposed pre/post-operation rundown
+          was removed: the minifilter post-op completes before Memory Manager
+          creates the section. The later release callback carries no parameters
+          and may not be observed if instance teardown begins, so a correctly
+          paired, teardown-safe lease tracker is unresolved. A proposed provisional
+          registry also lacks a retirement proof: `MmDoesFileHaveUserWritableReferences`
+          reports currently user-mapped sections, while `CcPurgeCacheSection`
+          purges system cache data and explicitly does not purge mapped files.
+          An application can retain a writable file-mapping section handle
+          without a mapped view, then map a writable view after policy commit;
+          the documented section-create callback does not establish a later
+          view-map barrier. `SECTION_OBJECT_POINTERS.DataSectionObject` is not
+          a documented retirement signal: filter drivers must treat its
+          members as opaque, and the value can change at any time. See Microsoft's
+          [MmDoesFileHaveUserWritableReferences contract](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/nf-ntifs-mmdoesfilehaveuserwritablereferences),
+          [CcPurgeCacheSection contract](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/nf-ntifs-ccpurgecachesection),
+          [SECTION_OBJECT_POINTERS contract](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/ns-wdm-_section_object_pointers),
+          and [section-object/view lifecycle](https://learn.microsoft.com/en-us/windows-hardware/drivers/kernel/managing-memory-sections).
+          Any future registry must be visible to the paging-write gate before
+          an acquire proceeds, preserve successful records until a documented
+          proof rules out later writable views, and fail closed on capacity
+          exhaustion or unmatched teardown. Sticky records avoid premature
+          retirement but accumulate denials, and cannot protect writes after
+          mandatory detach, dismount or unload. The reviewed minifilter APIs
+          provide no such end-to-end lifetime guarantee.
+          Luna separately assessed a sticky `FLT_STREAM_CONTEXT` marker as a
+          bounded implementation candidate: install it on every stream in a
+          qualified protected scope and check it in paging-write pre-operation
+          before any owned-stream early return. This is not implemented or
+          qualified. Context support is filesystem-specific, and the
+          documentation does not promise that a live file-backed section keeps
+          its stream context attached after user handles close. A namespace
+          scan also races create, link, rename, and paging writes; an
+          unenumerated stream with a retained section handle is a counterexample
+          unless a volume-wide fallback covers it. Any trial therefore needs
+          gated scope changes, drained paging writes during installation,
+          fail-closed handling for missing/unsupported contexts and incomplete
+          enumeration, plus target-stack lifetime tests. See Microsoft's
+          [FltSetStreamContext contract](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/fltkernel/nf-fltkernel-fltsetstreamcontext),
+          [context cleanup](https://learn.microsoft.com/en-us/windows-hardware/drivers/ifs/managing-contexts),
+          [stream-context support](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/fltkernel/nf-fltkernel-fltsupportsstreamcontexts),
+          and [pre-operation IRQL contract](https://learn.microsoft.com/en-us/windows-hardware/drivers/ifs/writing-preoperation-callback-routines).
+          Keep this checkbox and DoD open pending a safe design, independent
+          review, build and target-stack/runtime qualification. The current
+          `FenceTryRelease` path also calls `FsRtlAcquireFileExclusive`, which
+          Microsoft reserves for system use; `CcPurgeCacheSection` requires
+          exclusive file ownership, so this is not a supported retirement
+          proof. See the [reserved DDI notice](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/nf-ntifs-_fsrtl_advanced_fcb_header-fsrtlacquirefileexclusive)
+          and [CcPurgeCacheSection requirements](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/nf-ntifs-ccpurgecachesection).
+    - [x] Complete Luna's full-scope next-slice source review. Keep the checked
+          policy transaction hardening; no additional C-only change safely
+          enables removable, SMB/UNC, or sync-client scope. Preserve fail-closed
+          policy rejection pending per-stack admission barriers and qualification.
+          [Review record](evidence/2026-10-03/full-scope-next-slice-review.txt).
+    - [ ] Rebuild the current `Policy.c` and `StageFence.c` source revision in
+          all four normal/feature Debug/Release WDK configurations, then rerun
+          the required agent tests. Run 22 predates these uncommitted source
+          edits and does not qualify them.
   - [ ] Qualify removable USB, SMB/UNC and real sync-client destinations with
         independent byte observers and scope-correct admission.
   - [ ] Pass functional, crash/recovery, Verifier, stress and latency gates,
@@ -543,28 +642,55 @@ this slice enforces nothing. Next: the enforcement slice built on these facts.
 
 ### Slice 2: mapped-writable stream fence (2 October 2026)
 
-**Status: implemented (feature build only), reviewed three times (all BLOCKED, fixes applied), and
-exercised on the debuggee. Normal builds are unchanged (`NormalBuildIdentity=PASS`); taint stays until the user approves the
-cutover. Residual limits are listed below and are NOT claimed fixed.**
+**Status: implemented (feature build only), historically exercised on the debuggee, and still BLOCKED by later independent
+review. Normal builds were previously verified unchanged (`NormalBuildIdentity=PASS`); taint stays until the user approves the
+cutover. The later review found that fence retirement calls a DDI reserved for system use and that policy transition does not
+cover a retained unmapped section handle that creates a view later. Residual limits are listed below and are NOT claimed fixed.**
 
 Goal: close the two confirmed leaks (a writable mapping that predates filter attachment, or that predates a policy scope
 expansion) without private APIs or internal offsets, and prove that unapproved mapped bytes never reach the protected file.
 
 What exists (`StageFence.c`, hooks in `StageStream.c`, `Policy.c`, `Filter.c`, `Communication.c`, Inspector):
 - **Scan and registry.** A scan of the bootstrap scope (`\SafeUpload\Escopo Monitorado` on every fixed NTFS volume) plus the
-  prefixes of the current and candidate policy (union, so expand and shrink leave no window) registers every stream whose
-  section pointer reports a user-writable mapping (`MmDoesFileHaveUserWritableReferences` through an attribute-only open below
-  the instance, or through the volume stack before attachment). Caps: 64 streams, 64 names.
+  prefixes of the current and candidate policy (union) registers streams whose section pointer reports a user-writable mapping
+  (`MmDoesFileHaveUserWritableReferences` through an attribute-only open below the instance, or through the volume stack before
+  attachment). This scan is not an atomic barrier: concurrent callbacks and retained section handles without views can escape
+  its snapshot. Caps: 64 streams, 64 names.
 - **Enforcement.** An unowned `IRP_PAGING_IO` write to a registered section pointer is refused (`STATUS_MEDIA_WRITE_PROTECTED`);
   a protected open of a registered name, and the service's WRITE open of it, is refused (`STATUS_SHARING_VIOLATION`); opens by
   file ID are refused only on a volume that holds an entry. All checks are in memory; no I/O in the create or write path.
 - **Fixture E closed.** A writable data section created after the scan through a handle that predates attachment is refused at
   creation (`IRP_MJ_ACQUIRE_FOR_SECTION_SYNCHRONIZATION`, pre-operation name query, documented as allowed there). If no name
   can be resolved the feature build now refuses the section and increments `sectionNameUnresolved`.
-- **Lifecycle.** An entry is released only after its dirty pages are purged (`CcPurgeCacheSection` with the file held exclusively
-  and no user-writable reference); otherwise it is carried over. The unload guard refuses while any entry remains.
-- **Policy transition.** `SetPolicy` holds the fence refresh mutex across pre-scan, swap and post-scan; a failed pre-scan
-  rejects the update and keeps the previous policy; the load scans before `FltStartFiltering` and fails closed.
+- **Lifecycle (unresolved).** The current `FenceTryRelease` calls `FsRtlAcquireFileExclusive` before
+  `CcPurgeCacheSection`, but Microsoft reserves `FsRtlAcquireFileExclusive` for system use and the cache purge does not
+  purge mapped files. This is not a supported retirement proof. Independently, `MmDoesFileHaveUserWritableReferences`
+  reports current mappings only: an existing writable section handle can still create a view later, and
+  `SECTION_OBJECT_POINTERS.DataSectionObject` is opaque to filters and can change at any time. The unload guard refuses
+  while any entry remains.
+  A simple sticky-entry fallback was reviewed and rejected with the current fixed table: its 64-stream/name limits would
+  become cumulative; after capacity exhaustion, the failed scan preserves the old table and quarantines covered names,
+  while paging writes are still gated only by section-table membership. A newly encountered, unregistered section could
+  therefore page out, and sticky references would also cause indefinite unload refusals. A safe replacement must address
+  capacity and unknown-stream paging writes together.
+- **Policy transition (unresolved).** `SetPolicy` holds the fence refresh mutex, keeps the old policy current and the
+  candidate pending, then performs two checked pre-publication refreshes of the old-and-candidate union. A failed scan
+  leaves the old policy current and preserves the last successfully installed fence table. This removes the former
+  unchecked post-swap refresh, but the scans do not stop section callbacks or prevent a future view from an existing
+  section handle. A minifilter post-op for `IRP_MJ_ACQUIRE_FOR_SECTION_SYNCHRONIZATION`
+  runs before Memory Manager finishes creating the section, so it cannot serve as the scan barrier. The later release
+  callback is the relevant endpoint, but its minifilter operation has no parameters and Microsoft warns that teardown can
+  prevent a filter from observing the second operation. See Microsoft's
+  [FS_FILTER_CALLBACKS contract](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/ns-ntifs-fs_filter_callbacks),
+  [release parameters](https://learn.microsoft.com/en-us/windows-hardware/drivers/ifs/flt-parameters-for-irp-mj-release-for-section-synchronization),
+  and [minifilter operation notes](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/fltkernel/ns-fltkernel-_flt_parameters).
+  No safe tracker currently pairs overlapping CreateSection and SyncTypeOther operations or handles an unmatched release.
+  A provisional registry keyed to active section acquisitions also cannot retire safely on a zero
+  `MmDoesFileHaveUserWritableReferences` result plus cache purge: an application may retain the writable section object
+  without a mapped view, then map a view after policy commit. The documented APIs provide no view-map callback or proof that
+  such a section object is gone. Do not claim the transition closed. Broader create/write/rename
+  admission races, removable/network coverage, failed-scan omissions and already-live views remain open. The load still
+  scans before `FltStartFiltering` and fails closed.
 - Inspector: `--admission-fence-status` (JSON, exit 4 after a failed scan) and `--admission-fence-refresh`.
 
 Review history (fresh Luna reviewers; reports kept as evidence):
@@ -584,7 +710,7 @@ Review history (fresh Luna reviewers; reports kept as evidence):
    1 major, 1 minor (brief: [fence-review3-brief.md](evidence/2026-10-02/worker-briefs/fence-review3-brief.md)). The purge mechanics, carry-over
    and reference counting, the transition mutex and its lock order, the volume-scoped refusals and the 128-byte status were confirmed.
    **Fixed (run 13/14):** (blocker) the writable-section refusal consulted only the CURRENT policy, so a mapping created on a file that was
-   about to come into scope, after its pre-swap scan and before the swap, was allowed: the candidate policy is now published
+   about to come into scope, after its pre-swap scan and before the swap, was allowed: the candidate policy is now published as pending
    (`SafeUploadPolicySetPending`, guarded by the policy lock, cleared before the snapshot is freed and at the swap) before the scan and the
    section refusal matches it too; (major) the volume-root scan produced names with doubled separators (separator only when needed now);
    (minor) `complete` is defined as "last scan succeeded and no removable/network scope skipped" and `reparseSkipped` is reported separately.
@@ -595,7 +721,9 @@ Review history (fresh Luna reviewers; reports kept as evidence):
    the agent signals policy acceptance only about 1.4 to 1.8 s after launch and a leak needs a successful flush in the short interval
    between the swap and the post-swap registration, which the worker cannot observe without driver-side timestamps. The fix therefore rests
    on the review's code analysis plus the regression runs below, **not on a failing-then-passing test**. The test is kept as a regression
-   check only. Review 3 also found nothing wrong in the purge itself, which `fence5`/`fence7` already exercise on the VM.
+   check only. Review 3's conclusion that the purge path had no issue is superseded by the later DDI audit: VM runs showed the
+   intended behavior on that specific build, but `FsRtlAcquireFileExclusive` is reserved for system use and cannot establish a
+   documented supported lock contract for this minifilter. The historical runs therefore do not qualify the retirement path.
 
 **A leak the reviews did not find, found by experiment.** The first complete fence only refused writeback while an entry
 existed, and a refresh pruned an entry once no user-writable mapping remained. [fence5-lifecycle-verifier](evidence/2026-10-02/fence5-lifecycle-verifier-gate.txt)
@@ -608,7 +736,8 @@ keep the disk at the baseline bytes at every sample, 15 to 60 s after the refres
 flush; the cached view also reads the baseline (the pages were discarded, not delayed); `streamsReleased=1`, the unload guard then
 allows the unload, and refused paging writes stay at 9 (no retry storm, flat CPU). `CcPurgeCacheSection` is documented only for
 file systems and says it will not purge mapped files; that it discards dirty pages of a section with no views is **observed on
-Windows 10 19045.2965 NTFS, not documented**.
+Windows 10 19045.2965 NTFS, not documented**. The later audit also found the code's `FsRtlAcquireFileExclusive` call is
+reserved for system use; this experiment is historical behavior on one build, not a supported retirement contract.
 
 **Two guest "hangs" were one bug in my code, not Verifier instability.** Both memory images (captured with QEMU, converted with
 `elf2dmp`, read with `cdb` on the builder) show bugcheck `0xD1` at IRQL 2 inside the fence's table install, which read a PAGED scan
@@ -669,8 +798,9 @@ Final runs after the review 3 fixes and after slice 3 (below): the same ten runs
   Those Round 5 changes are source-only and await review/build.
 - **Release happens only at a refresh trigger** (load, policy push, the unload guard, `--admission-fence-refresh`); until then a
   quarantined name stays refused. There is no periodic retry yet.
-- The purge discards **all** cached and modified pages of a released stream. The service's WRITE open of a quarantined name is refused
-  so no approved bytes should be in those pages; the service's READ open is not refused and can read the dirty bytes.
+- Historical runs observed `CcPurgeCacheSection` discard the tested stream's dirty pages on Windows 10 19045.2965 NTFS, but the
+  current release path cannot treat that as a supported guarantee: it calls `FsRtlAcquireFileExclusive`, which is reserved for
+  system use. The service's READ open is not refused and may read dirty bytes while the stream remains fenced.
 - Mandatory unload cannot be vetoed; a hard link created into a candidate scope while it is scanned; scans do synchronous lower I/O
   with no timeout and hold the refresh mutex (accepted on the disposable debuggee only, as with the slice 1 probe).
 - The scan caps (64 streams, 64 names, 512 directories, 8192 files) fail closed.
@@ -690,8 +820,8 @@ Source: a fresh Luna analysis of the item 1 leftovers ([brief](evidence/2026-10-
 acted on: mutating FSCTLs through an old handle (`SET_ZERO_DATA`, `DUPLICATE_EXTENTS_TO_FILE`, `SET_REPARSE_POINT`, sparse, compression,
 object ID, integrity, trim, offload write), and `FILE_DELETE_ON_CLOSE` on a protected file by a DELETE-only open (a non-writer, so it fell
 through to NTFS and deleted the file at cleanup with no `SET_INFORMATION`). Not acted on, with reasons: ordinary writes during a policy
-transition are pre-policy writes by definition and a pre-existing handle writing after the swap is already name-checked (the analysis ranked it
-first; I disagree); reparse points inside a scope are skipped by the scan because an open through one resolves to the target's own normalized
+transition were triaged as pre-policy writes; this does not establish safety for writes through pre-existing handles after the transition.
+The separately documented section-creation and future-view race remains open. Reparse points inside a scope are skipped by the scan because an open through one resolves to the target's own normalized
 name; an unresolved section name and a hard link created into a candidate scope while it is scanned are documented limits. Late attachment
 (`InstanceSetup` does not trigger a refresh) and alternate-stream mappings stay open, see below.
 
@@ -3404,8 +3534,43 @@ staging cutover eligible.
   corresponding restoration and hash verification; otherwise their retained
   paths are reported. This is a harness source fix, not run evidence and not
   proof of the approved privacy goal; Windows harness execution remains
-  pending. The updated policy-transition script parsed with zero errors on the
-  Windows builder in run 22.
+  pending. The run22 harness revision (before the retained-section and
+  rejection-only additions) parsed with zero errors on the Windows builder.
+- The retained-section harness revision adds a second fixture for a writable section handle
+  created under the baseline policy while out of scope. It keeps that section
+  handle without a process view through candidate-policy acceptance, maps the
+  first writable view afterward, writes and flushes it, releases the mapping,
+  and compares the full separate data extent against its raw baseline. Any
+  changed raw byte or exact marker seen by the independent uncached reader is
+  exposure; the uncached reader is supplemental, while a block requires
+  successful write/flush, confirmed disposal, and a complete unchanged raw
+  comparison. Other measurement failures remain inconclusive. The changed
+  retained-section revision parses with zero errors and its embedded interop declarations compile
+  using the local PowerShell 7 runtime. Luna's initial source review found no blocker and
+  suggested verifying named-section creation and clarifying observer semantics;
+  those refinements are applied, and Luna's targeted rereview found no remaining
+  source blocker ([review record](evidence/2026-10-03/policy-transition-retained-section-source-review.txt)).
+  A later `-PolicyRejectionOnly` mode checks the current transaction's expected
+  full-policy rejection and fence-table preservation without changing the
+  policy. It cannot read the internal policy generation through the current
+  status protocol. The service now launches from a protected CommonApplicationData
+  extraction of the package-hash-pinned archive, hashed and parsed through the
+  same read-only handle; staging ACLs and path integrity are checked before launch
+  and cleanup. The harness also requires the exact SetPolicy exception plus both
+  policy-push stack frames. Luna's final source rereview found no blocker
+  ([review record](evidence/2026-10-03/policy-transition-rejection-package-source-review.txt));
+  it also notes that the ACL check conservatively screens allow ACEs rather than
+  evaluating effective-token access. Those refinements are source-only: Windows
+  PowerShell 5.1 parsing, current-source WDK Debug/Release builds, and clean-VM
+  execution remain open. The unchanged
+  policy includes removable and
+  network scopes unsupported by this fence. Microsoft describes
+  [CreateFileMapping](https://learn.microsoft.com/en-us/windows/win32/memory/creating-a-file-mapping-object)
+  and [MapViewOfFile](https://learn.microsoft.com/en-us/windows/win32/memory/creating-a-file-view)
+  as separate object-creation and process-view calls; the
+  [section callback parameters](https://learn.microsoft.com/en-us/windows-hardware/drivers/ifs/flt-parameters-for-irp-mj-acquire-for-section-synchronization)
+  identify the create-section synchronization operation. Actual target-stack
+  ordering still requires VM observation.
 - The old late-attach A/B harness required manually detaching C: to create a
   pre-attach mapping. The feature build now refuses that operation; its source
   reports `NOT_RUN_MANUAL_DETACH_DISABLED` and exit 5 instead of claiming an
@@ -3417,8 +3582,9 @@ staging cutover eligible.
   `PolicyShrinkAtomicRace=NOT_RUN_NO_DETERMINISTIC_KERNEL_BARRIER`: a user-mode
   policy push cannot reliably pause the section callback between kernel policy
   snapshots, and mapping success after the shrink is accepted can be valid for
-  a now-out-of-scope path. No flaky stress result is treated as proof. Both
-  source scenarios are unrun; restoration output remains separate.
+  a now-out-of-scope path. No flaky stress result is treated as proof. The
+  late-attach, expansion, retained-section, and shrink scenarios remain unrun;
+  restoration output remains separate.
 - Destination cutover is still gated on architecture outside this feature:
   USB is supportable only under managed automount/access proof; UNC/SMB needs
   an always-present early MUP filter, which is not implemented; pausing or

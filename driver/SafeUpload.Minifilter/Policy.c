@@ -385,19 +385,19 @@ Return Value:
 #if SAFEUPLOAD_STAGING_PROTOTYPE
 
     //
-    //  Scan the candidate scopes for streams with user-writable mappings
-    //  before the swap. A scope that cannot be scanned rejects the update and
-    //  leaves the previous policy in place; the fence it builds is then ready
-    //  when the new scope takes effect.
+    //  Scan the old-and-candidate scope union before publication. Keep the
+    //  previous policy current and the candidate pending until every required
+    //  scan succeeds. A scan failure leaves the previous policy current and
+    //  preserves the last successfully installed fence table.
     //
 
     {
         NTSTATUS fenceStatus;
 
         //
-        //  The transition (this scan, the swap and the scan after it) holds the
-        //  fence's refresh mutex, so no other refresh can snapshot the old policy
-        //  and install after the swap.
+        //  Both required scans and publication run under one refresh-mutex
+        //  reservation, so another refresh cannot interpose a fence install.
+        //  This does not synchronize section creation or future view mapping.
         //
 
         fenceTransition = SafeUploadStageFenceTransitionBegin();
@@ -408,6 +408,20 @@ Return Value:
         SafeUploadPolicySetPending( snapshot );
         fenceStatus = SafeUploadStageFenceRefresh( snapshot );
 
+        if (!NT_SUCCESS( fenceStatus )) {
+
+            SafeUploadPolicySetPending( NULL );             // before the snapshot is freed
+            if (fenceTransition) SafeUploadStageFenceTransitionEnd();
+            ExFreePoolWithTag( snapshot, SAFEUPLOAD_POOL_TAG );
+            return fenceStatus;
+        }
+
+        //  Reconcile once more while the old policy is still current and the
+        //  candidate remains pending. This catches some mappings that complete
+        //  after the first scan and makes scan failure observable before commit.
+        //  It is not a synchronization barrier for section creation or later
+        //  view mapping; the privacy transition remains unqualified.
+        fenceStatus = SafeUploadStageFenceRefresh( snapshot );
         if (!NT_SUCCESS( fenceStatus )) {
 
             SafeUploadPolicySetPending( NULL );             // before the snapshot is freed
@@ -444,12 +458,13 @@ Return Value:
 #if SAFEUPLOAD_STAGING_PROTOTYPE
 
     //
-    //  A mapping created between the first scan and the swap by a stream that
-    //  was not yet in scope is caught by scanning again now that it is. A
-    //  failure here keeps the first scan's fence; the counters record it.
+    //  Every required scan completed before publication. Do not run an
+    //  unchecked post-swap refresh: its failure would leave the candidate
+    //  committed while reporting success, and a post-commit rollback would
+    //  race readers. The transition is still not a proven barrier for section
+    //  creation or future view mapping.
     //
 
-    (VOID) SafeUploadStageFenceRefresh( NULL );
     if (fenceTransition) SafeUploadStageFenceTransitionEnd();
 
 #endif

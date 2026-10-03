@@ -7,10 +7,11 @@
  * on a file object opened below this instance, or through the volume stack before
  * the filter is attached, with attribute access only) and registers them.
  * Registered streams are fenced in two ways:
- *   - an unowned paging write to the stream's SectionObjectPointer is refused,
- *     so the old view cannot change the protected bytes;
+ *   - while its fence entry remains installed and the filter stays on the stack, an
+ *     unowned paging write to the stream's SectionObjectPointer is refused;
  *   - a protected open of the stream's name is refused, so no other reader is
  *     served the dirty mapped bytes through the filter.
+ * These checks do not prove safety after an entry is retired or the filter is detached.
  * Both checks are in memory only: no I/O in the create or write path. Scans run at
  * PASSIVE_LEVEL with special kernel APCs enabled (the documented requirement of
  * FltQueryDirectoryFile and FltCreateFileEx2), serialized by a KMUTEX, never a fast mutex.
@@ -20,13 +21,12 @@
  * refused, and the previous fence stays. Once filtering, a failed scan quarantines covered fixed
  * local NTFS volumes for protected-name opens; it does not deny paging writes for unrelated streams.
  *
- * Lifecycle: an entry is dropped ONLY after its dirty pages are gone. "No user-writable mapping
- * remains" is not enough: the Memory Manager still holds the pages the old view dirtied and writes
- * them back later, so refusing writeback only until the next refresh just delays the leak (observed
- * on the debuggee, fence5-lifecycle-verifier). A refresh therefore carries every old entry over
- * unless the stream has no user-writable reference and the documented CcPurgeCacheSection, called
- * with the file held exclusively, discarded its cached and modified pages. A purge that cannot
- * complete keeps the entry (fail closed); the unload guard refuses while any entry remains.
+ * Lifecycle is unresolved. "No user-writable mapping remains" is not enough: the Memory Manager may
+ * still hold dirty pages and write them back later. CcPurgeCacheSection does not purge mapped files
+ * and requires exclusive file ownership, but FsRtlAcquireFileExclusive is reserved for system use;
+ * this minifilter has no documented supported mechanism to establish that ownership. A successful
+ * purge would also not prove that an unmapped but retained section handle cannot create a later view.
+ * Do not treat the current FenceTryRelease path as qualified. The unload guard refuses while entries remain.
  *
  * Not covered by this slice, and not claimed: removable/network scopes, writable mappings
  * created after a scan through a handle that predates it, mappings of alternate data streams,
@@ -350,11 +350,11 @@ static VOID FenceRegister(_In_ PFENCE_SCAN Scan, _In_ PFILE_OBJECT Object, _In_ 
     FenceAddName(Scan, stream, Path);
 }
 
-/* Discards the cached and modified pages of a stream that no longer has a user-writable reference.
- * Returns TRUE only when they are gone (the stream may be released); FALSE keeps it fenced. The file
- * is held exclusively (FsRtlAcquireFileExclusive, the documented precondition of CcPurgeCacheSection,
- * which also blocks a new section from being created meanwhile) and the writable reference is checked
- * again under that hold. */
+/* Attempts to discard cached and modified pages before releasing a fence entry. This prototype uses
+ * FsRtlAcquireFileExclusive to meet CcPurgeCacheSection's exclusive-file precondition, but Microsoft
+ * reserves that routine for system use. The path is unsupported and cannot establish a valid release
+ * proof; it also does not rule out a later view from a retained section handle. Keep this routine and
+ * its callers explicitly unqualified until a supported lifetime design replaces it. */
 static BOOLEAN FenceTryRelease(_In_ PFILE_OBJECT Object)
 {
     PSECTION_OBJECT_POINTERS sop = Object->SectionObjectPointer;
@@ -1155,7 +1155,7 @@ static NTSTATUS FenceRefreshInternal(_In_opt_ const SAFEUPLOAD_POLICY *Candidate
         FENCE_FAIL(scan, STATUS_NOT_SUPPORTED);
     } else if (NT_SUCCESS(scan->Failure) && RequireCompleteCoverage &&
         (scan->VolumeScopesSkipped != 0 || scan->ReparseSkipped != 0)) {
-        /* The post-swap transition scan and the unload's private final scan must cover every required scope. */
+        /* Candidate-transition and unload-final scans must cover every required scope. */
         scan->CoverageRejected = TRUE;
         FENCE_FAIL(scan, STATUS_NOT_SUPPORTED);
     }
@@ -1632,9 +1632,9 @@ VOID SafeUploadStageFenceCancelUnload(VOID)
     FenceRetryResume();
 }
 
-/* A policy transition (pre-swap scan, swap, post-swap scan) holds the refresh mutex end to end, so no other
- * refresh can snapshot the old policy and install after the swap. The mutex is recursive: the refreshes made
- * by the same thread inside the transition re-acquire it. */
+/* A policy transition holds the refresh mutex across both pre-publication scans and the policy swap, so no
+ * other refresh can interpose a fence install. The mutex is recursive: refreshes made by the same thread
+ * inside the transition re-acquire it. This does not synchronize section creation or future view mapping. */
 _Use_decl_annotations_
 BOOLEAN SafeUploadStageFenceTransitionBegin(VOID)
 {

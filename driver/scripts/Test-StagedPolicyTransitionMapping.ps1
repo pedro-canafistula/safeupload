@@ -41,8 +41,33 @@ policy to be accepted. The first isolated run stopped before the transition beca
 the approved baseline enables removable and network scopes; see
 `evidence/2026-10-03/policy-transition-run22-shrink-assessment.txt`. No
 byte-privacy result was produced.
+Optional `-PolicyRejectionOnly` mode keeps those approved scopes unchanged and
+measures the expected `ERROR_NOT_SUPPORTED` handshake. It requires no agent
+ready signal, the exact `FilterPort.SetPolicy` exception and policy-push stack,
+and stable pre/post fence generation and entry count with rejected-scan
+telemetry. The service runs from a fresh extraction of the SHA-256-pinned
+package, hashed and parsed through one held read-only handle. The extraction is
+created under CommonApplicationData with protected Administrators/SYSTEM ACLs;
+member paths, ancestors, ACLs, and reparse points are checked before execution
+and recursive cleanup. The current status protocol does not expose policy
+generation, so this mode does not claim a runtime policy-generation readback or
+full-scope privacy proof; it never narrows the policy or enters the mapping
+scenarios.
 The test does not force the exact kernel callback interleaving between policy
 snapshots; a user-mode policy push cannot deterministically pause the callback.
+
+The expansion case also retains a writable file-mapping section handle created
+while the fixture is out of scope, without creating a process view until after
+the candidate policy is accepted. It then writes through that late-created view
+and measures the separate file extent through an independent raw-volume read.
+This probes whether a retained section object with no process view is present in
+the fence's user-writable-reference query, and whether a later view-map/write
+can proceed after policy acceptance. Any changed byte in the complete raw extent
+or the exact marker from the separate uncached reader is exposure; the uncached
+reader is supplemental, and a refusal there is not a substitute for raw evidence.
+A blocked result requires a successful mapped write, both view and file-buffer
+flushes, confirmed disposal, and a complete unchanged raw comparison. Mapping,
+flush, disposal, or raw-observer failures are inconclusive.
 #>
 param(
     [string] $ExpectedFeatureSha256 = 'ACED8226913E062E5D3EE6FD0CF96963C3FD2C1FB2242EDBEDBB00768CCD44F8',
@@ -51,7 +76,8 @@ param(
     [string] $ExpectedInspectorSha256,
     [ValidateRange(5, 120)]
     [int] $InspectorTimeoutSeconds = 45,
-    [switch] $Verifier
+    [switch] $Verifier,
+    [switch] $PolicyRejectionOnly
 )
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
@@ -70,6 +96,14 @@ public static extern IntPtr VirtualAlloc(IntPtr address, UIntPtr size, uint type
 public static extern bool VirtualFree(IntPtr address, UIntPtr size, uint type);
 [DllImport("kernel32.dll", SetLastError=true, CharSet=CharSet.Unicode, ExactSpelling=true)]
 public static extern IntPtr CreateFileMappingW(IntPtr file, IntPtr attributes, uint protect, uint maxSizeHigh, uint maxSizeLow, string name);
+[DllImport("kernel32.dll", SetLastError=false)]
+public static extern void SetLastError(uint error);
+public static IntPtr CreateFileMappingWWithError(IntPtr file, IntPtr attributes, uint protect, uint maxSizeHigh, uint maxSizeLow, string name, out int error) {
+    SetLastError(0);
+    IntPtr result = CreateFileMappingW(file, attributes, protect, maxSizeHigh, maxSizeLow, name);
+    error = System.Runtime.InteropServices.Marshal.GetLastWin32Error();
+    return result;
+}
 [DllImport("kernel32.dll", SetLastError=true)]
 public static extern IntPtr MapViewOfFile(IntPtr mapping, uint access, uint offsetHigh, uint offsetLow, UIntPtr size);
 [DllImport("kernel32.dll", SetLastError=true)]
@@ -181,6 +215,262 @@ function Flush-TestFileBuffers($Stream) {
     } catch { return 'OBSERVED_REFUSED: ' + $_.Exception.Message }
 }
 
+function New-PolicyTransitionServiceSecurity([bool] $Directory) {
+    $security = if ($Directory) {
+        [System.Security.AccessControl.DirectorySecurity]::new()
+    } else {
+        [System.Security.AccessControl.FileSecurity]::new()
+    }
+    $security.SetAccessRuleProtection($true, $false)
+    $administrators = [System.Security.Principal.SecurityIdentifier]::new('S-1-5-32-544')
+    $system = [System.Security.Principal.SecurityIdentifier]::new('S-1-5-18')
+    $security.SetOwner($administrators)
+    $inheritance = if ($Directory) {
+        [System.Security.AccessControl.InheritanceFlags]::ContainerInherit -bor
+            [System.Security.AccessControl.InheritanceFlags]::ObjectInherit
+    } else {
+        [System.Security.AccessControl.InheritanceFlags]::None
+    }
+    $security.AddAccessRule([System.Security.AccessControl.FileSystemAccessRule]::new(
+        $administrators, [System.Security.AccessControl.FileSystemRights]::FullControl,
+        $inheritance, [System.Security.AccessControl.PropagationFlags]::None,
+        [System.Security.AccessControl.AccessControlType]::Allow))
+    $security.AddAccessRule([System.Security.AccessControl.FileSystemAccessRule]::new(
+        $system, [System.Security.AccessControl.FileSystemRights]::ReadAndExecute,
+        $inheritance, [System.Security.AccessControl.PropagationFlags]::None,
+        [System.Security.AccessControl.AccessControlType]::Allow))
+    return $security
+}
+
+function Assert-PolicyTransitionServiceStagingParent([string] $Path) {
+    $parent = [IO.Path]::GetFullPath($serviceStagingParent).TrimEnd('\')
+    $candidate = [IO.Path]::GetFullPath($Path).TrimEnd('\')
+    if (-not [IO.Path]::GetDirectoryName($candidate).Equals($parent, [StringComparison]::OrdinalIgnoreCase)) {
+        throw 'Service staging path is not a direct child of CommonApplicationData.'
+    }
+    $trusted = @{
+        'S-1-5-18' = $true
+        'S-1-5-32-544' = $true
+    }
+    $trustedInstaller = [System.Security.Principal.NTAccount]::new('NT SERVICE\TrustedInstaller').Translate(
+        [System.Security.Principal.SecurityIdentifier]).Value
+    $trusted[$trustedInstaller] = $true
+    $pathMutationRights = [System.Security.AccessControl.FileSystemRights]::WriteExtendedAttributes -bor
+        [System.Security.AccessControl.FileSystemRights]::WriteAttributes -bor
+        [System.Security.AccessControl.FileSystemRights]::DeleteSubdirectoriesAndFiles -bor
+        [System.Security.AccessControl.FileSystemRights]::Delete -bor
+        [System.Security.AccessControl.FileSystemRights]::ChangePermissions -bor
+        [System.Security.AccessControl.FileSystemRights]::TakeOwnership
+    $programDataMutationMask = [long]$pathMutationRights -bor
+        [System.Security.AccessControl.FileSystemRights]::WriteData -bor
+        [System.Security.AccessControl.FileSystemRights]::AppendData -bor
+        0x40000000 -bor 0x10000000
+    $ancestorMutationMask = [long]$pathMutationRights -bor 0x40000000 -bor 0x10000000
+
+    $cursor = $parent
+    while ($null -ne $cursor) {
+        if (-not (Test-Path -LiteralPath $cursor -PathType Container)) { throw "Service staging ancestor is absent: $cursor" }
+        $item = Get-Item -LiteralPath $cursor -Force -ErrorAction Stop
+        if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+            throw "Service staging ancestor is a reparse point: $cursor"
+        }
+        $ancestorAcl = [IO.Directory]::GetAccessControl($cursor)
+        $ownerSid = $ancestorAcl.GetOwner([System.Security.Principal.SecurityIdentifier]).Value
+        if (-not $trusted.ContainsKey($ownerSid)) {
+            throw "Service staging ancestor has an untrusted owner $ownerSid : $cursor"
+        }
+        foreach ($rule in $ancestorAcl.GetAccessRules($true, $true, [System.Security.Principal.SecurityIdentifier])) {
+            $mutationMask = if ($cursor.Equals($parent, [StringComparison]::OrdinalIgnoreCase)) {
+                $programDataMutationMask
+            } else {
+                $ancestorMutationMask
+            }
+            $isInheritOnly = ($rule.PropagationFlags -band [System.Security.AccessControl.PropagationFlags]::InheritOnly) -ne 0
+            if ($rule.AccessControlType -ne [System.Security.AccessControl.AccessControlType]::Allow -or
+                $isInheritOnly -or
+                ([long]$rule.FileSystemRights -band $mutationMask) -eq 0) { continue }
+            $sid = $rule.IdentityReference.Value
+            if (-not $trusted.ContainsKey($sid)) {
+                throw "Untrusted principal $sid can modify service staging ancestor $cursor."
+            }
+        }
+        if ($cursor.Equals([IO.Path]::GetPathRoot($cursor), [StringComparison]::OrdinalIgnoreCase)) { break }
+        $parentInfo = [IO.Directory]::GetParent($cursor)
+        if ($null -eq $parentInfo) { throw 'Could not resolve service staging ancestors.' }
+        $cursor = $parentInfo.FullName
+    }
+}
+
+function Assert-PolicyTransitionServiceAcl([string] $Path, [bool] $Directory) {
+    $security = if ($Directory) {
+        [IO.Directory]::GetAccessControl($Path)
+    } else {
+        [IO.File]::GetAccessControl($Path)
+    }
+    $administrators = 'S-1-5-32-544'
+    $system = 'S-1-5-18'
+    if (-not $security.AreAccessRulesProtected -or
+        $security.GetOwner([System.Security.Principal.SecurityIdentifier]).Value -ne $administrators) {
+        throw "Service staging ACL or owner is not protected: $Path"
+    }
+    $rules = @($security.GetAccessRules($true, $true, [System.Security.Principal.SecurityIdentifier]))
+    if ($rules.Count -ne 2) { throw "Unexpected service staging ACL rule count: $Path" }
+    $seen = @{}
+    foreach ($rule in $rules) {
+        $sid = $rule.IdentityReference.Value
+        $expectedRights = if ($sid -eq $administrators) {
+            [System.Security.AccessControl.FileSystemRights]::FullControl
+        } elseif ($sid -eq $system) {
+            [System.Security.AccessControl.FileSystemRights]::ReadAndExecute
+        } else {
+            throw "Unexpected service staging ACL principal $sid at $Path"
+        }
+        $expectedInheritance = if ($Directory) {
+            [System.Security.AccessControl.InheritanceFlags]::ContainerInherit -bor
+                [System.Security.AccessControl.InheritanceFlags]::ObjectInherit
+        } else {
+            [System.Security.AccessControl.InheritanceFlags]::None
+        }
+        if ($rule.AccessControlType -ne [System.Security.AccessControl.AccessControlType]::Allow -or
+            $rule.FileSystemRights -ne $expectedRights -or
+            $rule.InheritanceFlags -ne $expectedInheritance -or
+            $rule.PropagationFlags -ne [System.Security.AccessControl.PropagationFlags]::None) {
+            throw "Unexpected service staging ACL rights or inheritance at $Path"
+        }
+        if ($seen.ContainsKey($sid)) { throw "Duplicate service staging ACL principal $sid at $Path" }
+        $seen[$sid] = $true
+    }
+    if (-not $seen.ContainsKey($administrators) -or -not $seen.ContainsKey($system)) {
+        throw "Required service staging ACL principals are missing: $Path"
+    }
+}
+
+function Assert-PolicyTransitionServiceTree([string] $Path, [switch] $RequireServiceExecutable) {
+    Assert-PolicyTransitionServiceStagingParent $Path
+    if (-not (Test-Path -LiteralPath $Path -PathType Container)) { throw "Service staging directory is absent: $Path" }
+    $root = Get-Item -LiteralPath $Path -Force -ErrorAction Stop
+    if (($root.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { throw 'Service staging directory became a reparse point.' }
+    Assert-PolicyTransitionServiceAcl $Path $true
+    foreach ($child in @(Get-ChildItem -LiteralPath $Path -Force -Recurse -ErrorAction Stop)) {
+        if (($child.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+            throw "Service staging tree contains a reparse point: $($child.FullName)"
+        }
+        Assert-PolicyTransitionServiceAcl $child.FullName $child.PSIsContainer
+    }
+    if ($RequireServiceExecutable -and
+        -not (Test-Path -LiteralPath (Join-Path $Path 'SafeUpload.Agent.Service.exe') -PathType Leaf)) {
+        throw 'Verified service executable is absent from the protected staging tree.'
+    }
+}
+
+function Get-PolicyTransitionStreamSha256([IO.Stream] $Stream) {
+    if ($null -eq $Stream -or -not $Stream.CanRead -or -not $Stream.CanSeek) {
+        throw 'Service package stream must be readable and seekable.'
+    }
+    $sha256 = [Security.Cryptography.SHA256]::Create()
+    try {
+        return [BitConverter]::ToString($sha256.ComputeHash($Stream)).Replace('-', '')
+    }
+    finally { $sha256.Dispose() }
+}
+
+function Expand-VerifiedServicePackage([IO.Stream] $PackageStream, [string] $DestinationDirectory) {
+    Add-Type -AssemblyName System.IO.Compression
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    if (-not (Test-Path -LiteralPath $DestinationDirectory -PathType Container) -or
+        @(Get-ChildItem -LiteralPath $DestinationDirectory -Force).Count -ne 0) {
+        throw 'Verified service extraction directory is absent or not empty.'
+    }
+
+    $PackageStream.Position = 0
+    $archive = [IO.Compression.ZipArchive]::new($PackageStream,
+        [IO.Compression.ZipArchiveMode]::Read, $true)
+    try {
+        $root = [IO.Path]::GetFullPath($DestinationDirectory) + [IO.Path]::DirectorySeparatorChar
+        $members = New-Object System.Collections.ArrayList
+        $seen = @{}
+        $uncompressedBytes = 0L
+        foreach ($entry in $archive.Entries) {
+            $normalized = $entry.FullName.Replace('/', '\')
+            $isDirectory = $normalized.EndsWith('\')
+            $relative = $normalized.TrimEnd([char[]]@('\'))
+            if ([string]::IsNullOrEmpty($relative) -or [IO.Path]::IsPathRooted($normalized) -or $normalized.Contains(':')) {
+                throw "Unsafe service package path: $($entry.FullName)"
+            }
+            foreach ($segment in $relative.Split([char[]]@(92))) {
+                if ([string]::IsNullOrEmpty($segment) -or $segment -eq '.' -or $segment -eq '..') {
+                    throw "Unsafe service package path segment: $($entry.FullName)"
+                }
+            }
+            if ($seen.ContainsKey($relative)) { throw "Duplicate service package path: $relative" }
+            $seen[$relative] = $true
+
+            $unixType = ($entry.ExternalAttributes -shr 16) -band 0xF000
+            $dosAttributes = $entry.ExternalAttributes -band 0xFFFF
+            if ($unixType -eq 0xA000 -or ($dosAttributes -band 0x400) -ne 0) {
+                throw "Reparse-point or symbolic-link service package entry is unsupported: $relative"
+            }
+            $destination = [IO.Path]::GetFullPath((Join-Path $DestinationDirectory $relative))
+            if (-not $destination.StartsWith($root, [StringComparison]::OrdinalIgnoreCase)) {
+                throw "Service package path escapes its extraction directory: $relative"
+            }
+            if (-not $isDirectory) {
+                $uncompressedBytes += $entry.Length
+                if ($uncompressedBytes -gt 1073741824) { throw 'Service package exceeds the 1 GiB extraction limit.' }
+            }
+            [void]$members.Add([pscustomobject]@{ Entry = $entry; Path = $destination; IsDirectory = $isDirectory })
+        }
+
+        $directorySecurity = New-PolicyTransitionServiceSecurity $true
+        $fileSecurity = New-PolicyTransitionServiceSecurity $false
+        foreach ($member in $members) {
+            if ($member.IsDirectory) {
+                [void][IO.Directory]::CreateDirectory($member.Path, $directorySecurity)
+                continue
+            }
+            [void][IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($member.Path), $directorySecurity)
+            $source = $null
+            $destinationStream = $null
+            try {
+                $source = $member.Entry.Open()
+                $destinationStream = [IO.FileStream]::new($member.Path, [IO.FileMode]::CreateNew,
+                    [System.Security.AccessControl.FileSystemRights]::FullControl,
+                    [IO.FileShare]::None, 65536, [IO.FileOptions]::SequentialScan, $fileSecurity)
+                $source.CopyTo($destinationStream)
+                $destinationStream.Flush($true)
+                if ($destinationStream.Length -ne $member.Entry.Length) {
+                    throw "Service package entry length mismatch after extraction: $($member.Entry.FullName)"
+                }
+            }
+            finally {
+                if ($null -ne $destinationStream) { $destinationStream.Dispose() }
+                if ($null -ne $source) { $source.Dispose() }
+            }
+        }
+
+        $executable = Join-Path $DestinationDirectory 'SafeUpload.Agent.Service.exe'
+        if (-not (Test-Path -LiteralPath $executable -PathType Leaf)) {
+            throw 'Pinned service package does not contain SafeUpload.Agent.Service.exe at its root.'
+        }
+        $header = New-Object byte[] 2
+        $headerStream = [IO.File]::OpenRead($executable)
+        try {
+            if ($headerStream.Read($header, 0, 2) -ne 2) { throw 'Extracted service executable is shorter than its PE header.' }
+        }
+        finally { $headerStream.Dispose() }
+        if ($header[0] -ne 0x4D -or $header[1] -ne 0x5A) { throw 'Extracted service executable has no PE header.' }
+        Assert-PolicyTransitionServiceTree $DestinationDirectory -RequireServiceExecutable
+        return [pscustomobject]@{
+            Directory = $DestinationDirectory
+            Executable = $executable
+            ExecutableSHA256 = (Get-FileHash -LiteralPath $executable -Algorithm SHA256).Hash
+            EntryCount = $members.Count
+            UncompressedBytes = $uncompressedBytes
+        }
+    }
+    finally { $archive.Dispose() }
+}
+
 $installed = 'C:\Windows\System32\drivers\SafeUpload.sys'
 $expectedOriginal = 'ADA9D05AB6AECDD2B6C521B0CE529FC06C732154ACB3EE85439FBDC8AA80DFCE'
 $expectedFeature = $ExpectedFeatureSha256.ToUpperInvariant()
@@ -189,10 +479,11 @@ $expectedServicePackage = 'D887E0D7F38AD64AD40CEE18B841C6D38AD2BED4D6F760B1BDE44
 $feature = Join-Path $documents 'SafeUpload-stage-prototype.sys'
 $inspectorSource = Join-Path $documents 'SafeUpload.Inspector.input.exe'
 $servicePackage = Join-Path $documents 'stage-service-publish.zip'
-$serviceDirectory = Join-Path $documents 'stage-service-publish'
+$id = [guid]::NewGuid().ToString('N')
+$serviceStagingParent = [Environment]::GetFolderPath([System.Environment+SpecialFolder]::CommonApplicationData)
+$serviceDirectory = Join-Path $serviceStagingParent ('SafeUpload-policy-transition-service-' + $id)
 $policy = 'C:\ProgramData\SafeUpload\policy.json'
 $expectedPolicy = '29DC8A341BD7C549996596D2477A0CCCAF19602C362A2167FB4FDD5C66663731'
-$id = [guid]::NewGuid().ToString('N')
 $fixtureDirectory = Join-Path $documents ('SafeUpload-policy-transition-' + $id)
 $fixtureExtension = '.maptest'
 $target = Join-Path $fixtureDirectory ('synthetic' + $fixtureExtension)
@@ -203,17 +494,27 @@ $inspectorCopy = Join-Path $documents ($inspectorProcessName + '.exe')
 $baseLog = Join-Path $documents ('policy-transition-base-' + $id)
 $updatedLog = Join-Path $documents ('policy-transition-updated-' + $id)
 $mappingName = 'Local\SafeUpload-PolicyTransition-' + $id
+$retainedMappingName = 'Local\SafeUpload-PolicyTransition-RetainedSection-' + $id
 $originalText = 'PUBLIC BASELINE BEFORE POLICY CHANGE ' + $id
 $changedText = 'MAPPED AFTER POLICY CHANGE ' + $id
+$retainedOriginalText = 'RETAINED SECTION BASELINE ' + $id
+$retainedChangedText = 'LATE VIEW AFTER POLICY CHANGE ' + $id
 $originalBytes = [Text.Encoding]::UTF8.GetBytes($originalText)
 $changedBytes = [Text.Encoding]::UTF8.GetBytes($changedText)
+$retainedOriginalBytes = [Text.Encoding]::UTF8.GetBytes($retainedOriginalText)
+$retainedChangedBytes = [Text.Encoding]::UTF8.GetBytes($retainedChangedText)
 $shrinkMarker = [Text.Encoding]::ASCII.GetBytes(('SHRINK-' + $id).Substring(0, 32))
 $mappingLength = 4096
 $fixtureBytes = New-Object byte[] $mappingLength
 [Array]::Copy($originalBytes, $fixtureBytes, $originalBytes.Length)
+$retainedFixtureBytes = New-Object byte[] $mappingLength
+[Array]::Copy($retainedOriginalBytes, $retainedFixtureBytes, $retainedOriginalBytes.Length)
+$retainedMarkerBytes = [Text.Encoding]::UTF8.GetBytes($retainedChangedText)
+$retainedTarget = Join-Path $fixtureDirectory ('retained-section' + $fixtureExtension)
 $agent = $null
 $activeTestAgents = New-Object System.Collections.ArrayList
 $file = $null
+$retainedFile = $null
 $sectionFile = $null
 $shrinkFile = $null
 $mapping = $null
@@ -222,9 +523,13 @@ $shrinkMapping = $null
 $shrinkView = $null
 $sectionMappingHandle = [IntPtr]::Zero
 $sectionView = [IntPtr]::Zero
+$retainedMappingHandle = [IntPtr]::Zero
+$retainedView = [IntPtr]::Zero
 $rawCluster = -1L
 $rawClusterSize = 0
 $rawBaseline = $null
+$retainedRawCluster = -1L
+$retainedRawBaseline = $null
 $rawBaselineFileBuffersOutcome = 'NOT_ATTEMPTED'
 $expansionFileBuffersFlushOutcome = 'NOT_ATTEMPTED'
 $shrinkSectionFileBuffersFlushOutcome = 'NOT_ATTEMPTED'
@@ -234,9 +539,23 @@ $finalRawComparison = $null
 $allMappingsReleased = $true
 $expansionMappingsReleased = $false
 $expansionPrivacyVerdict = 'NOT_RUN'
+$retainedSectionCreateOutcome = 'NOT_RUN'
+$retainedSectionCreateError = -1
+$retainedViewWriteOutcome = 'NOT_ATTEMPTED'
+$retainedViewFlushOutcome = 'NOT_ATTEMPTED'
+$retainedFileBuffersFlushOutcome = 'NOT_ATTEMPTED'
+$retainedViewReleased = $false
+$retainedMappingReleased = $false
+$retainedFileReleased = $false
+$retainedUncachedText = 'UNOBSERVABLE'
+$retainedRawComparison = 'UNOBSERVABLE'
+$retainedPrivacyVerdict = 'NOT_RUN'
 $policyBytes = $null
 $inspectorCopyCreated = $false
 $inspectorCopyRemoved = $false
+$serviceDirectoryCreationAttempted = $false
+$serviceDirectoryCreated = $false
+$serviceDirectoryRemoved = $false
 $inspectorTaskNames = New-Object System.Collections.ArrayList
 $inspectorCleanupMessages = New-Object System.Collections.ArrayList
 $script:PolicyTransitionInspectorCopy = $inspectorCopy
@@ -268,6 +587,7 @@ function Start-TestAgentAndWaitForPolicy([string] $LogPrefix) {
     $newAgent = $null
     try {
         [void]$ready.Reset()
+        Assert-PolicyTransitionServiceTree $serviceDirectory -RequireServiceExecutable
         $newAgent = Start-StagedTestAgent $serviceDirectory $LogPrefix
         if ($null -ne $newAgent) { [void]$script:activeTestAgents.Add($newAgent) }
         if (-not $ready.WaitOne([TimeSpan]::FromSeconds(45))) {
@@ -331,6 +651,15 @@ try {
     $sectionsDenied = $null
     $sectionNameUnresolved = $null
     $statusComplete = $null
+    $statusEntries = $null
+    $statusGeneration = $null
+    $statusLastStatus = $null
+    $statusFailureLine = $null
+    $statusStateFlags = $null
+    $statusRefreshStarted = $null
+    $statusRefreshCompleted = $null
+    $statusRefreshFailed = $null
+    $statusVolumeScopesSkipped = $null
     $dataValid = $false
     $cleanupComplete = $true
     $errorText = ''
@@ -378,15 +707,30 @@ try {
             throw "Inspector status exit $exitCode is not an accepted status response: $stderr"
         }
         $status = ConvertFrom-Json -InputObject $stdout -ErrorAction Stop
-        if ($null -eq $status -or $null -eq $status.PSObject.Properties['fence'] -or
-            $status.fence -ne $true -or $null -eq $status.PSObject.Properties['sectionsDenied'] -or
-            $null -eq $status.PSObject.Properties['sectionNameUnresolved'] -or
-            $null -eq $status.PSObject.Properties['complete']) {
-            throw 'Inspector status JSON is missing required fence/counter/completeness fields.'
+        $requiredStatusProperties = @(
+            'fence','entries','generation','lastStatus','failureLine','stateFlags',
+            'refreshStarted','refreshCompleted','refreshFailed','volumeScopesSkipped',
+            'sectionsDenied','sectionNameUnresolved','complete')
+        if ($null -eq $status -or $status.fence -ne $true) {
+            throw 'Inspector status JSON is missing the fence status object.'
+        }
+        foreach ($propertyName in $requiredStatusProperties) {
+            if ($null -eq $status.PSObject.Properties[$propertyName]) {
+                throw "Inspector status JSON is missing required field $propertyName."
+            }
         }
         $sectionsDenied = [uint64]$status.sectionsDenied
         $sectionNameUnresolved = [uint64]$status.sectionNameUnresolved
         $statusComplete = [bool]$status.complete
+        $statusEntries = [uint32]$status.entries
+        $statusGeneration = [uint32]$status.generation
+        $statusLastStatus = [string]$status.lastStatus
+        $statusFailureLine = [uint32]$status.failureLine
+        $statusStateFlags = [uint32]$status.stateFlags
+        $statusRefreshStarted = [uint64]$status.refreshStarted
+        $statusRefreshCompleted = [uint64]$status.refreshCompleted
+        $statusRefreshFailed = [uint64]$status.refreshFailed
+        $statusVolumeScopesSkipped = [uint64]$status.volumeScopesSkipped
         $dataValid = $true
     }
     catch {
@@ -447,8 +791,105 @@ try {
         SectionsDenied = $sectionsDenied
         SectionNameUnresolved = $sectionNameUnresolved
         Complete = $statusComplete
+        Entries = $statusEntries
+        Generation = $statusGeneration
+        LastStatus = $statusLastStatus
+        FailureLine = $statusFailureLine
+        StateFlags = $statusStateFlags
+        RefreshStarted = $statusRefreshStarted
+        RefreshCompleted = $statusRefreshCompleted
+        RefreshFailed = $statusRefreshFailed
+        VolumeScopesSkipped = $statusVolumeScopesSkipped
         CleanupComplete = $cleanupComplete
         Error = $errorText
+    }
+}
+
+function Test-PolicyTransitionFenceSamplesEqual($Before, $After) {
+    return ($Before.Generation -eq $After.Generation -and
+        $Before.Entries -eq $After.Entries -and
+        $Before.LastStatus -eq $After.LastStatus -and
+        $Before.FailureLine -eq $After.FailureLine -and
+        $Before.StateFlags -eq $After.StateFlags -and
+        $Before.RefreshStarted -eq $After.RefreshStarted -and
+        $Before.RefreshCompleted -eq $After.RefreshCompleted -and
+        $Before.RefreshFailed -eq $After.RefreshFailed -and
+        $Before.VolumeScopesSkipped -eq $After.VolumeScopesSkipped)
+}
+
+function Wait-PolicyTransitionFenceStable([int] $TimeoutSeconds) {
+    $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
+    $previous = $null
+    while ([DateTime]::UtcNow -lt $deadline) {
+        $sample = Invoke-PolicyTransitionFenceStatus $TimeoutSeconds
+        if (-not $sample.Valid) {
+            throw "Fence status is invalid while waiting for a stable sample: $($sample.Error)"
+        }
+        if ($sample.StateFlags -eq 0 -and $null -ne $previous -and
+            (Test-PolicyTransitionFenceSamplesEqual $previous $sample)) {
+            return $sample
+        }
+        if ($sample.StateFlags -eq 0) { $previous = $sample }
+        else { $previous = $null }
+        Start-Sleep -Milliseconds 500
+    }
+    throw "Fence status did not produce two stable, quiescent samples within $TimeoutSeconds seconds."
+}
+
+function Test-PolicyTransitionExpectedRejection([string] $LogPrefix, [int] $TimeoutSeconds) {
+    $ready = New-Object System.Threading.EventWaitHandle(
+        $false,
+        [System.Threading.EventResetMode]::ManualReset,
+        'Global\SafeUploadServiceReady')
+    $testAgent = $null
+    $accepted = $false
+    $serviceExitedBeforeCleanup = $false
+    $serviceExitCode = $null
+    $combinedLog = ''
+    try {
+        [void]$ready.Reset()
+        Assert-PolicyTransitionServiceTree $serviceDirectory -RequireServiceExecutable
+        $testAgent = Start-StagedTestAgent $serviceDirectory $LogPrefix
+        if ($null -ne $testAgent) { [void]$script:activeTestAgents.Add($testAgent) }
+        $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
+        while ([DateTime]::UtcNow -lt $deadline) {
+            if ($ready.WaitOne(0)) { $accepted = $true; break }
+            if ($testAgent.Process.HasExited) { break }
+            Start-Sleep -Milliseconds 250
+        }
+        if ($ready.WaitOne(0)) { $accepted = $true }
+        $serviceExitedBeforeCleanup = $testAgent.Process.HasExited
+        if ($serviceExitedBeforeCleanup) { $serviceExitCode = $testAgent.Process.ExitCode }
+        Stop-TestAgentTracked $testAgent
+        $testAgent = $null
+
+        foreach ($suffix in @('-out.log','-err.log')) {
+            $logPath = $LogPrefix + $suffix
+            if (Test-Path -LiteralPath $logPath) {
+                $combinedLog += [IO.File]::ReadAllText($logPath) + "`n"
+            }
+        }
+        if ($accepted) { throw 'The unchanged approved policy was unexpectedly accepted.' }
+        $setPolicyFailure = $combinedLog -match '(?m)^\s*System\.ComponentModel\.Win32Exception \(0x80070032\): Envio da politica falhou: 0x80070032\s*$'
+        $setPolicyFrame = $combinedLog -match '(?m)^\s*at SafeUpload\.Agent\.Minifilter\.FilterPort\.SetPolicy\('
+        $pushPolicyFrame = $combinedLog -match '(?m)^\s*at SafeUpload\.Agent\.Service\.Interception\.MinifilterInterceptor\.TryPushPolicy\('
+        if (-not $setPolicyFailure -or -not $setPolicyFrame -or -not $pushPolicyFrame) {
+            throw "Agent log did not contain the exact SetPolicy rejection signature (Win32Exception=$setPolicyFailure; SetPolicyFrame=$setPolicyFrame; TryPushPolicyFrame=$pushPolicyFrame)."
+        }
+        return [pscustomobject]@{
+            ExpectedError = 'ERROR_NOT_SUPPORTED (0x80070032)'
+            SetPolicyFailureObserved = $setPolicyFailure
+            SetPolicyFrameObserved = $setPolicyFrame
+            TryPushPolicyFrameObserved = $pushPolicyFrame
+            ProcessExitCode = $serviceExitCode
+            ServiceExitedBeforeCleanup = $serviceExitedBeforeCleanup
+            LogPrefix = $LogPrefix
+            ReadySignaled = $false
+        }
+    }
+    finally {
+        if ($null -ne $testAgent) { Stop-TestAgentTracked $testAgent }
+        $ready.Dispose()
     }
 }
 
@@ -492,9 +933,11 @@ if (@(Get-ScheduledTask | Where-Object { $_.TaskName -match '^SafeUpload-(Staged
 if ((Get-FileHash -LiteralPath $policy -Algorithm SHA256).Hash -ne $expectedPolicy) { throw 'Original policy hash mismatch.' }
 if ((Get-FileHash -LiteralPath $feature -Algorithm SHA256).Hash -ne $expectedFeature) { throw 'Feature driver hash mismatch.' }
 if ((Get-FileHash -LiteralPath $inspectorSource -Algorithm SHA256).Hash -ne $expectedInspector) { throw 'Inspector source hash mismatch.' }
-if ((Get-FileHash -LiteralPath $servicePackage -Algorithm SHA256).Hash -ne $expectedServicePackage) { throw 'Service package hash mismatch.' }
+if (-not (Test-Path -LiteralPath $servicePackage -PathType Leaf)) { throw 'Pinned service package is absent.' }
 if (Test-Path -LiteralPath $fixtureDirectory) { throw 'GUID fixture collision.' }
 if (Test-Path -LiteralPath $inspectorCopy) { throw 'GUID Inspector copy collision.' }
+if (Test-Path -LiteralPath $serviceDirectory) { throw 'GUID service extraction collision.' }
+Assert-PolicyTransitionServiceStagingParent $serviceDirectory
 if ((Test-Path -LiteralPath (Join-Path $documents 'SafeUpload-owned.vhdx')) -or
     (Test-Path -LiteralPath (Join-Path $documents 'SafeUpload-owned.vhdx.txt'))) { throw 'An owned-stream VHDX is already present.' }
 
@@ -517,7 +960,7 @@ if ($monitoredExtensions -contains $fixtureExtension.ToLowerInvariant()) {
 'FeatureDriverSHA256=' + $expectedFeature
 'ExpectedInspectorSHA256=' + $expectedInspector
 'InspectorSourceSHA256=' + (Get-FileHash -LiteralPath $inspectorSource -Algorithm SHA256).Hash
-'ServicePackageSHA256=' + $expectedServicePackage
+'ExpectedServicePackageSHA256=' + $expectedServicePackage
 'OriginalPolicySHA256=' + $expectedPolicy
 'FilterUnloaded=True; VerifierFlags=0; VerifiedDrivers=None; Service=Manual/Stopped'
 'ConcurrentAgentProcesses=0; SafeUploadTestTasks=0'
@@ -527,6 +970,35 @@ if ($monitoredExtensions -contains $fixtureExtension.ToLowerInvariant()) {
 "FixtureExtension=$fixtureExtension; BaselineSourceExtensionMonitored=False"
 
 try {
+    # Hash and parse one read-only archive handle, then extract to an
+    # administrator/SYSTEM-only tree created with its ACL already applied.
+    # The held FileShare.Read handle prevents replacement or writes between
+    # the hash and ZIP reads.
+    $servicePackageStream = $null
+    try {
+        $servicePackageStream = [IO.File]::Open($servicePackage, [IO.FileMode]::Open,
+            [IO.FileAccess]::Read, [IO.FileShare]::Read)
+        $actualServicePackageHash = Get-PolicyTransitionStreamSha256 $servicePackageStream
+        if ($actualServicePackageHash -ne $expectedServicePackage) { throw 'Service package hash mismatch.' }
+        $servicePackageStream.Position = 0
+        'ServicePackageSHA256=' + $actualServicePackageHash
+
+        $serviceDirectoryCreationAttempted = $true
+        $serviceDirectorySecurity = New-PolicyTransitionServiceSecurity $true
+        [void][IO.Directory]::CreateDirectory($serviceDirectory, $serviceDirectorySecurity)
+        Assert-PolicyTransitionServiceTree $serviceDirectory
+        $serviceDirectoryCreated = $true
+        $serviceExtraction = Expand-VerifiedServicePackage $servicePackageStream $serviceDirectory
+    }
+    finally {
+        if ($null -ne $servicePackageStream) {
+            $servicePackageStream.Dispose()
+            $servicePackageStream = $null
+        }
+    }
+    "VerifiedServiceExtraction=$($serviceExtraction.Directory); Entries=$($serviceExtraction.EntryCount); UncompressedBytes=$($serviceExtraction.UncompressedBytes)"
+    'VerifiedServiceExecutableSHA256=' + $serviceExtraction.ExecutableSHA256
+
     # The GUID path is known to be absent from the baseline gate, so mark this
     # name as owned before copying; finally can then remove a partial copy too.
     $inspectorCopyCreated = $true
@@ -552,6 +1024,42 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Feature filter load failed.' }
     $loaded = $true
 
+    if ($PolicyRejectionOnly) {
+        if (-not [bool]$baselinePolicy.monitoredScopes.removableDrives -or
+            -not [bool]$baselinePolicy.monitoredScopes.networkPaths) {
+            throw 'Policy-rejection mode requires the pinned approved policy with removable and network scopes enabled.'
+        }
+        if ((Get-FileHash -LiteralPath $policy -Algorithm SHA256).Hash -ne $expectedPolicy) {
+            throw 'Approved policy changed before the rejection-only measurement.'
+        }
+
+        $rejectionBefore = Wait-PolicyTransitionFenceStable $InspectorTimeoutSeconds
+        "PolicyRejectionFenceBefore=Valid:$($rejectionBefore.Valid); Generation:$($rejectionBefore.Generation); Entries:$($rejectionBefore.Entries); LastStatus:$($rejectionBefore.LastStatus); StateFlags:$($rejectionBefore.StateFlags); RefreshFailed:$($rejectionBefore.RefreshFailed); VolumeScopesSkipped:$($rejectionBefore.VolumeScopesSkipped)"
+        if (-not $rejectionBefore.Valid -or $rejectionBefore.StateFlags -ne 0) {
+            throw 'The pre-rejection fence status was not valid and quiescent.'
+        }
+
+        $rejectionResult = Test-PolicyTransitionExpectedRejection $baseLog $InspectorTimeoutSeconds
+        "PolicyRejectionAgent=ExpectedError:$($rejectionResult.ExpectedError); ExactSetPolicyException:$($rejectionResult.SetPolicyFailureObserved); SetPolicyFrame:$($rejectionResult.SetPolicyFrameObserved); TryPushPolicyFrame:$($rejectionResult.TryPushPolicyFrameObserved); ReadySignaled:$($rejectionResult.ReadySignaled); ServiceExitedBeforeCleanup:$($rejectionResult.ServiceExitedBeforeCleanup); ExitCode:$($rejectionResult.ProcessExitCode); Logs:$($rejectionResult.LogPrefix)"
+        if ((Get-FileHash -LiteralPath $policy -Algorithm SHA256).Hash -ne $expectedPolicy) {
+            throw 'The approved policy file changed during the rejection measurement.'
+        }
+
+        $rejectionAfter = Wait-PolicyTransitionFenceStable $InspectorTimeoutSeconds
+        "PolicyRejectionFenceAfter=Valid:$($rejectionAfter.Valid); Generation:$($rejectionAfter.Generation); Entries:$($rejectionAfter.Entries); LastStatus:$($rejectionAfter.LastStatus); FailureLine:$($rejectionAfter.FailureLine); StateFlags:$($rejectionAfter.StateFlags); RefreshFailed:$($rejectionAfter.RefreshFailed); VolumeScopesSkipped:$($rejectionAfter.VolumeScopesSkipped)"
+        if (-not $rejectionAfter.Valid -or $rejectionAfter.StateFlags -ne 0 -or
+            $rejectionAfter.Generation -ne $rejectionBefore.Generation -or
+            $rejectionAfter.Entries -ne $rejectionBefore.Entries -or
+            $rejectionAfter.RefreshFailed -le $rejectionBefore.RefreshFailed -or
+            $rejectionAfter.LastStatus -ine '0xC00000BB' -or
+            $rejectionAfter.VolumeScopesSkipped -eq 0) {
+            throw 'Rejected policy changed the fence generation/table, omitted the expected scan failure, or left the fence non-quiescent.'
+        }
+        'PolicyGenerationRuntimeObservation=NOT_EXPOSED_BY_CURRENT_PROTOCOL'
+        'PolicyRejectionFencePreservation=PASS; FenceGenerationAndEntriesUnchanged=True; RefreshFailureObserved=True'
+        return
+    }
+
     [IO.File]::WriteAllBytes($target, $fixtureBytes)
     $rawClusterSize = [int](Get-CimInstance Win32_Volume -Filter "DriveLetter='C:'").BlockSize
     $rawCluster = Get-FirstLcn $target
@@ -575,6 +1083,22 @@ try {
     }
     "RawBaselineExtent=IDENTICAL_TO_FIXTURE; Bytes=$($fixtureBytes.Length); DifferentBytes=$baselineDifferenceCount"
     if ($baselineDifferenceCount -ne 0) { throw 'Raw baseline did not match the complete fixture contents.' }
+    [IO.File]::WriteAllBytes($retainedTarget, $retainedFixtureBytes)
+    $retainedRawCluster = Get-FirstLcn $retainedTarget
+    "RetainedSectionRawObserverFixtureCluster=$retainedRawCluster; ClusterSize=$rawClusterSize"
+    $retainedFile = [IO.FileStream]::new($retainedTarget, [IO.FileMode]::Open, [IO.FileAccess]::ReadWrite,
+        [IO.FileShare]::ReadWrite -bor [IO.FileShare]::Delete)
+    if ($retainedFile.Length -ne $mappingLength) { throw "Retained fixture EOF $($retainedFile.Length) does not match mapping size $mappingLength." }
+    $retainedBaselineFlush = Flush-TestFileBuffers $retainedFile
+    "RetainedSectionRawBaselineFlushFileBuffers=$retainedBaselineFlush"
+    if ($retainedBaselineFlush -ne 'SUCCESS') { throw 'Could not flush retained-section baseline before raw capture.' }
+    $retainedRawBaseline = Read-RawFixtureBytes $retainedRawCluster $rawClusterSize $retainedFixtureBytes.Length
+    $retainedBaselineDifferenceCount = 0
+    for ($baselineIndex = 0; $baselineIndex -lt $retainedFixtureBytes.Length; $baselineIndex++) {
+        if ($retainedRawBaseline[$baselineIndex] -ne $retainedFixtureBytes[$baselineIndex]) { $retainedBaselineDifferenceCount++ }
+    }
+    "RetainedSectionRawBaselineExtent=IDENTICAL_TO_FIXTURE; Bytes=$($retainedFixtureBytes.Length); DifferentBytes=$retainedBaselineDifferenceCount"
+    if ($retainedBaselineDifferenceCount -ne 0) { throw 'Retained-section raw baseline did not match the complete fixture contents.' }
     $mapping = [IO.MemoryMappedFiles.MemoryMappedFile]::CreateFromFile($file, $mappingName,
         [long]$mappingLength, [IO.MemoryMappedFiles.MemoryMappedFileAccess]::ReadWrite,
         [IO.HandleInheritability]::None, $true)
@@ -597,6 +1121,23 @@ try {
 
     $agent = Start-TestAgentAndWaitForPolicy $baseLog
     'BaselinePolicyAcceptedByRealAgentAndDriver=True; MappingPredatesBaselinePolicy=True'
+
+    # Create the writable section object under the accepted baseline policy,
+    # while its file remains outside scope. Deliberately leave it without a
+    # process view until after the candidate expansion is accepted.
+    $retainedMappingHandle = [SafeUploadRepro.Native]::CreateFileMappingWWithError(
+        $retainedFile.SafeFileHandle.DangerousGetHandle(), [IntPtr]::Zero, [uint32]4, [uint32]0,
+        [uint32]$mappingLength, $retainedMappingName, [ref]$retainedSectionCreateError)
+    if ($retainedMappingHandle -eq [IntPtr]::Zero) {
+        $retainedSectionCreateOutcome = 'FAILED: Win32Error ' + $retainedSectionCreateError
+        throw 'Could not create the pre-expansion writable section handle.'
+    }
+    if ($retainedSectionCreateError -eq 183) {
+        $retainedSectionCreateOutcome = 'UNOBSERVABLE_NAMED_MAPPING_ALREADY_EXISTS'
+        throw 'A named section already existed; refusing to use a mapping object not created by this test.'
+    }
+    $retainedSectionCreateOutcome = 'CREATED_WITHOUT_VIEW'
+    "RetainedSectionHandleCreatedUnderBaselinePolicy=True; LastError=$retainedSectionCreateError; RetainedViewCreatedBeforeExpansion=False"
 
     Stop-TestAgentTracked $agent
     $agent = $null
@@ -631,6 +1172,95 @@ try {
         }
     }
     "MappedWriteResult=$expansionWriteOutcome; MappedFlushResult=$expansionFlushOutcome"
+
+    # The retained section handle predates candidate-scope acceptance, but it
+    # had no mapped view during either union scan. Create its first view only
+    # after the expansion has committed, then measure the separate file extent.
+    $retainedViewWriteOutcome = 'UNOBSERVABLE_MAP_VIEW_FAILURE'
+    if ($retainedMappingHandle -ne [IntPtr]::Zero) {
+        $retainedView = [SafeUploadRepro.Native]::MapViewOfFile($retainedMappingHandle,
+            [uint32]2, [uint32]0, [uint32]0, [UIntPtr]::new([uint64]$mappingLength))
+        if ($retainedView -ne [IntPtr]::Zero) {
+            $retainedViewWriteOutcome = 'SUCCESS'
+            $retainedData = New-Object byte[] $mappingLength
+            [Array]::Copy($retainedMarkerBytes, $retainedData, $retainedMarkerBytes.Length)
+            try {
+                [Runtime.InteropServices.Marshal]::Copy($retainedData, 0, $retainedView, $retainedData.Length)
+            } catch { $retainedViewWriteOutcome = 'OBSERVED_REFUSED: ' + $_.Exception.Message }
+            if ($retainedViewWriteOutcome -eq 'SUCCESS') {
+                if ([SafeUploadRepro.Native]::FlushViewOfFile($retainedView, [UIntPtr]::new([uint64]$mappingLength))) {
+                    $retainedViewFlushOutcome = 'SUCCESS'
+                } else {
+                    $retainedViewFlushOutcome = 'OBSERVED_REFUSED: Win32Error ' + [Runtime.InteropServices.Marshal]::GetLastWin32Error()
+                }
+                $retainedFileBuffersFlushOutcome = Flush-TestFileBuffers $retainedFile
+            }
+        } else {
+            $retainedMapViewError = [Runtime.InteropServices.Marshal]::GetLastWin32Error()
+            $retainedViewWriteOutcome = 'UNOBSERVABLE_MAP_VIEW_FAILURE: Win32Error ' + $retainedMapViewError
+        }
+    } else {
+        $retainedViewWriteOutcome = 'UNOBSERVABLE_SECTION_HANDLE_MISSING'
+    }
+    "RetainedSectionHandleCreated=$retainedSectionCreateOutcome; FirstViewAfterExpansion=$($retainedView -ne [IntPtr]::Zero); MappedWrite=$retainedViewWriteOutcome; FlushViewOfFile=$retainedViewFlushOutcome; FlushFileBuffers=$retainedFileBuffersFlushOutcome"
+    if ($retainedViewWriteOutcome -eq 'SUCCESS') {
+        $retainedUncachedText = Read-UncachedText $retainedTarget $retainedMarkerBytes.Length
+    }
+    "RetainedSectionFreshUncachedObserver=$retainedUncachedText"
+
+    if ($retainedView -ne [IntPtr]::Zero) {
+        if ([SafeUploadRepro.Native]::UnmapViewOfFile($retainedView)) {
+            $retainedView = [IntPtr]::Zero
+            $retainedViewReleased = $true
+        } else {
+            $allMappingsReleased = $false
+            'RetainedSectionViewUnmap=FAILED; LastError=' + [Runtime.InteropServices.Marshal]::GetLastWin32Error()
+        }
+    }
+    if ($retainedMappingHandle -ne [IntPtr]::Zero) {
+        if ([SafeUploadRepro.Native]::CloseHandle($retainedMappingHandle)) {
+            $retainedMappingHandle = [IntPtr]::Zero
+            $retainedMappingReleased = $true
+        } else {
+            $allMappingsReleased = $false
+            'RetainedSectionHandleClose=FAILED; LastError=' + [Runtime.InteropServices.Marshal]::GetLastWin32Error()
+        }
+    }
+    if ($null -ne $retainedFile) {
+        try {
+            $retainedFile.Dispose()
+            $retainedFile = $null
+            $retainedFileReleased = $true
+        } catch {
+            $allMappingsReleased = $false
+            'RetainedSectionFileClose=FAILED; Error=' + $_.Exception.Message
+        }
+    }
+    "RetainedSectionDisposal=View:$retainedViewReleased; Section:$retainedMappingReleased; File:$retainedFileReleased"
+
+    $retainedRawComparison = 'UNOBSERVABLE'
+    try {
+        for ($rawTry = 0; $rawTry -lt 20; $rawTry++) {
+            $retainedRawComparison = Compare-RawFixtureToBaseline $retainedRawCluster $rawClusterSize $retainedRawBaseline
+            if ($retainedRawComparison.State -eq 'UNEXPECTED_BYTES_CHANGED') { break }
+            Start-Sleep -Milliseconds 500
+        }
+    } catch {
+        $retainedRawComparison = 'UNOBSERVABLE: ' + $_.Exception.Message
+        "RetainedSectionRawObserverError=$($_.Exception.Message)"
+    }
+    if ($retainedRawComparison -is [string]) { "RetainedSectionRawExtentComparison=$retainedRawComparison" }
+    else { "RetainedSectionRawExtentComparison=$($retainedRawComparison.State); Bytes=$($retainedRawComparison.ByteCount); DifferentBytes=$($retainedRawComparison.DifferentBytes); FirstDifferentOffset=$($retainedRawComparison.FirstDifferentOffset)" }
+    $retainedExposureObserved = $retainedUncachedText -eq $retainedChangedText -or
+        ($retainedRawComparison -isnot [string] -and $retainedRawComparison.State -eq 'UNEXPECTED_BYTES_CHANGED')
+    $retainedMeasurementComplete = $retainedSectionCreateOutcome -eq 'CREATED_WITHOUT_VIEW' -and
+        $retainedViewWriteOutcome -eq 'SUCCESS' -and $retainedViewFlushOutcome -eq 'SUCCESS' -and
+        $retainedFileBuffersFlushOutcome -eq 'SUCCESS' -and $retainedViewReleased -and
+        $retainedMappingReleased -and $retainedFileReleased -and $retainedRawComparison -isnot [string]
+    if ($retainedExposureObserved) { $retainedPrivacyVerdict = 'REPRODUCED' }
+    elseif ($retainedMeasurementComplete -and $retainedRawComparison.State -eq 'IDENTICAL_TO_BASELINE') { $retainedPrivacyVerdict = 'BLOCKED' }
+    else { $retainedPrivacyVerdict = 'INCONCLUSIVE' }
+    "RetainedSectionPrivacyVerdict=$retainedPrivacyVerdict; MeasurementComplete=$retainedMeasurementComplete"
 
     # Independent observers: each opens a NEW file object after the policy change.
     $observedText = 'UNOBSERVABLE'
@@ -865,8 +1495,11 @@ try {
     else { "RawDestinationExtentComparison=$($finalRawComparison.State); Bytes=$($finalRawComparison.ByteCount); DifferentBytes=$($finalRawComparison.DifferentBytes); FirstDifferentOffset=$($finalRawComparison.FirstDifferentOffset)" }
     "MappingDisposalConfirmed=$allMappingsReleased"
     $privacyGap = $expansionPrivacyVerdict -eq 'REPRODUCED' -or
+        $retainedPrivacyVerdict -eq 'REPRODUCED' -or
         ($finalRawComparison -isnot [string] -and $finalRawComparison.State -eq 'UNEXPECTED_BYTES_CHANGED')
-    $privacyUnknown = $expansionPrivacyVerdict -eq 'INCONCLUSIVE' -or -not $allMappingsReleased -or
+    $privacyUnknown = $expansionPrivacyVerdict -eq 'INCONCLUSIVE' -or
+        $retainedPrivacyVerdict -eq 'INCONCLUSIVE' -or $retainedPrivacyVerdict -eq 'NOT_RUN' -or
+        -not $allMappingsReleased -or
         ($shrinkSectionWriteAttempted -and
             ($shrinkSectionWriteOutcome -ne 'SUCCESS' -or $shrinkSectionFlushOutcome -ne 'SUCCESS' -or
              $shrinkSectionFileBuffersFlushOutcome -ne 'SUCCESS')) -or
@@ -875,6 +1508,7 @@ try {
          $oldViewShrinkFileBuffersFlushOutcome -ne 'SUCCESS') -or
         $expansionFileBuffersFlushOutcome -ne 'SUCCESS' -or $finalRawComparison -is [string]
     "ExpansionPrivacyMeasurement=$expansionPrivacyVerdict"
+    "RetainedSectionPrivacyMeasurement=$retainedPrivacyVerdict"
     "PrivacyExposure=$(if ($privacyGap) { 'OBSERVED_UNEXPECTED_BYTES' } else { 'NOT_OBSERVED' })"
     $privacyObservation = if ($privacyGap) {
         'UNEXPECTED_BYTES_EXPOSED'
@@ -978,20 +1612,49 @@ finally {
             else { $allMappingsReleased = $false; [void]$cleanupFailures.Add('Unmap section view: Win32Error ' + [Runtime.InteropServices.Marshal]::GetLastWin32Error()) }
         } catch { $allMappingsReleased = $false; [void]$cleanupFailures.Add('Unmap section view: ' + $_.Exception.Message) }
     }
+    if ($retainedView -ne [IntPtr]::Zero) {
+        try {
+            if ([SafeUploadRepro.Native]::UnmapViewOfFile($retainedView)) {
+                $retainedView = [IntPtr]::Zero
+                $retainedViewReleased = $true
+            } else {
+                $allMappingsReleased = $false
+                [void]$cleanupFailures.Add('Unmap retained-section view: Win32Error ' + [Runtime.InteropServices.Marshal]::GetLastWin32Error())
+            }
+        } catch { $allMappingsReleased = $false; [void]$cleanupFailures.Add('Unmap retained-section view: ' + $_.Exception.Message) }
+    }
     if ($sectionMappingHandle -ne [IntPtr]::Zero) {
         try {
             if ([SafeUploadRepro.Native]::CloseHandle($sectionMappingHandle)) { $sectionMappingHandle = [IntPtr]::Zero }
             else { $allMappingsReleased = $false; [void]$cleanupFailures.Add('Close section mapping handle: Win32Error ' + [Runtime.InteropServices.Marshal]::GetLastWin32Error()) }
         } catch { $allMappingsReleased = $false; [void]$cleanupFailures.Add('Close section mapping handle: ' + $_.Exception.Message) }
     }
+    if ($retainedMappingHandle -ne [IntPtr]::Zero) {
+        try {
+            if ([SafeUploadRepro.Native]::CloseHandle($retainedMappingHandle)) {
+                $retainedMappingHandle = [IntPtr]::Zero
+                $retainedMappingReleased = $true
+            } else {
+                $allMappingsReleased = $false
+                [void]$cleanupFailures.Add('Close retained-section mapping handle: Win32Error ' + [Runtime.InteropServices.Marshal]::GetLastWin32Error())
+            }
+        } catch { $allMappingsReleased = $false; [void]$cleanupFailures.Add('Close retained-section mapping handle: ' + $_.Exception.Message) }
+    }
     foreach ($item in @(
         @{ Name = 'view'; Value = $view }, @{ Name = 'mapping'; Value = $mapping },
         @{ Name = 'shrink view'; Value = $shrinkView }, @{ Name = 'shrink mapping'; Value = $shrinkMapping },
-        @{ Name = 'file'; Value = $file }, @{ Name = 'section file'; Value = $sectionFile },
+        @{ Name = 'file'; Value = $file }, @{ Name = 'retained-section file'; Value = $retainedFile },
+        @{ Name = 'section file'; Value = $sectionFile },
         @{ Name = 'shrink file'; Value = $shrinkFile }
     )) {
         if ($null -ne $item.Value) {
-            try { $item.Value.Dispose() }
+            try {
+                $item.Value.Dispose()
+                if ($item.Name -eq 'retained-section file') {
+                    $retainedFile = $null
+                    $retainedFileReleased = $true
+                }
+            }
             catch { $allMappingsReleased = $false; [void]$cleanupFailures.Add('Dispose ' + $item.Name + ': ' + $_.Exception.Message) }
         }
     }
@@ -1048,6 +1711,31 @@ finally {
         }
     } catch { [void]$cleanupFailures.Add('Verify agent/task cleanup: ' + $_.Exception.Message) }
 
+    if ($serviceDirectoryCreated) {
+        if ($agentQuiescenceVerified) {
+            try {
+                if (Test-Path -LiteralPath $serviceDirectory) {
+                    Assert-PolicyTransitionServiceTree $serviceDirectory
+                    Remove-Item -LiteralPath $serviceDirectory -Recurse -Force -ErrorAction Stop
+                }
+                $serviceDirectoryRemoved = -not (Test-Path -LiteralPath $serviceDirectory)
+                if (-not $serviceDirectoryRemoved) { throw 'Verified service extraction still exists after removal.' }
+            } catch {
+                [void]$cleanupFailures.Add('Remove verified service extraction: ' + $_.Exception.Message)
+                'RetainedVerifiedServiceExtraction=' + $serviceDirectory
+            }
+        } else {
+            [void]$cleanupFailures.Add('Verified service extraction retained because process/task cleanup was not verified.')
+            'RetainedVerifiedServiceExtraction=' + $serviceDirectory
+        }
+    } else {
+        $serviceDirectoryRemoved = -not (Test-Path -LiteralPath $serviceDirectory)
+        if ($serviceDirectoryCreationAttempted -and -not $serviceDirectoryRemoved) {
+            [void]$cleanupFailures.Add('Unverified service staging directory retained without recursive cleanup.')
+            'RetainedUnverifiedServiceStagingDirectory=' + $serviceDirectory
+        }
+    }
+
     if ($agentQuiescenceVerified) {
         try {
             if ((Get-FileHash -LiteralPath $policy -Algorithm SHA256).Hash -eq $expectedPolicy) { $policyHashVerified = $true }
@@ -1058,6 +1746,12 @@ finally {
     'PolicyTransitionInspectorProcessCleanupVerified=' + $inspectorProcessCleanupVerified
     'PolicyTransitionInspectorTaskCleanupVerified=' + $inspectorTaskCleanupVerified
     'PolicyTransitionInspectorCopyRemoved=' + $inspectorCopyRemoved
+    'VerifiedServiceExtractionRemoved=' + $serviceDirectoryRemoved
+    if ($PolicyRejectionOnly) {
+        'RetainedSectionDisposalConfirmed=NOT_APPLICABLE_POLICY_REJECTION_ONLY'
+    } else {
+        'RetainedSectionDisposalConfirmed=View:' + $retainedViewReleased + '; Section:' + $retainedMappingReleased + '; File:' + $retainedFileReleased
+    }
     if (-not $inspectorTaskCleanupVerified -or -not $inspectorProcessCleanupVerified -or -not $inspectorCopyRemoved) {
         [void]$cleanupFailures.Add('Policy-transition Inspector cleanup was not fully verified')
     }
@@ -1095,7 +1789,12 @@ finally {
     'MappingDisposalConfirmed=' + $allMappingsReleased
     if ($cleanupFailures.Count -eq 0) {
         'OriginalDriverAndPolicyRestored=True; VerifierOff=True; FilterUnloaded=True'
-        'AgentProcesses=0; AgentTasks=0; PolicyTransitionFixtureRemoved=True'
+        'VerifiedServiceExtractionRemoved=True'
+        if ($PolicyRejectionOnly) {
+            'AgentProcesses=0; AgentTasks=0; PolicyRejectionOnlyFixtureCreated=False'
+        } else {
+            'AgentProcesses=0; AgentTasks=0; PolicyTransitionFixtureRemoved=True'
+        }
     } else {
         foreach ($cleanupFailure in $cleanupFailures) { 'CleanupFailure=' + $cleanupFailure }
         throw ('Cleanup incomplete after all restoration attempts: ' + ($cleanupFailures -join '; '))
