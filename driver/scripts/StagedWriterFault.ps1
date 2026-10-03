@@ -54,7 +54,7 @@ function Invoke-StagedWriterFaultQualification([string]$Target,[string]$Healthy,
             $probes.Count -ne 1 -or $probes[0].probeStatus -ne '0x00000000' -or $probes[0].probeStage -ne 8 -or
             $probes[0].pid -ne 4 -or $probes[0].irql -ne 0 -or $probes[0].writeObjects -ne $Count -or
             $probes[0].writersUntracked -ne $Unknown -or $probes[0].mmDoes -ne 'no' -or $probes[0].inFlightSections -ne 0 -or
-            $probes[0].canaryState -ne 2 -or $probes[0].canaryChecks -ne 7 -or
+            $probes[0].canaryState -ne 2 -or $probes[0].canaryChecks -ne 15 -or
             ($ExpectedSop -and $probes[0].sectionObjectPointer -ne $ExpectedSop)){throw ('Writer-fault probe mismatch: '+$Label)}
         $result.Probes+=@{Label=$Label;Probe=$probes[0]}
         return $probes[0]

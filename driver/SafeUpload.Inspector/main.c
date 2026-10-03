@@ -30,6 +30,8 @@ Environment:
 
 #include <windows.h>
 #include <fltUser.h>
+#include <aclapi.h>
+#include <sddl.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <wchar.h>
@@ -696,6 +698,163 @@ Cleanup:
     return exitCode;
 }
 
+static BOOL ResolveCanaryVolumeName(_In_z_ PCWSTR Volume, _Out_writes_(SAFEUPLOAD_CANARY_VOLUME_CHARS) PWSTR NativeName,
+    _Out_ PUINT16 NativeChars)
+{
+    WCHAR mountPoint[4];
+    WCHAR volumeName[SAFEUPLOAD_CANARY_VOLUME_CHARS];
+    static const WCHAR guidPrefix[] = L"\\\\?\\Volume{";
+    size_t inputChars, volumeChars, nativeChars;
+
+    inputChars = wcslen(Volume);
+    if (inputChars == 2 && Volume[1] == L':') {
+        mountPoint[0] = Volume[0]; mountPoint[1] = L':'; mountPoint[2] = L'\\'; mountPoint[3] = UNICODE_NULL;
+    } else if (inputChars == 3 && Volume[1] == L':' && Volume[2] == L'\\') {
+        CopyMemory(mountPoint, Volume, sizeof(mountPoint));
+    } else {
+        return FALSE;
+    }
+    ZeroMemory(volumeName, sizeof(volumeName));
+    if (!GetVolumeNameForVolumeMountPointW(mountPoint, volumeName, ARRAYSIZE(volumeName))) return FALSE;
+    volumeChars = wcslen(volumeName);
+    if (volumeChars < ARRAYSIZE(guidPrefix) - 1 ||
+        _wcsnicmp(volumeName, guidPrefix, ARRAYSIZE(guidPrefix) - 1) != 0 ||
+        volumeName[volumeChars - 1] != L'\\') return FALSE;
+
+    /* FltGetVolumeGuidName uses the native \\??\\Volume{GUID} form without a trailing slash. */
+    if (volumeChars - 1 + 1 > SAFEUPLOAD_CANARY_VOLUME_CHARS) return FALSE;
+    NativeName[0] = L'\\'; NativeName[1] = L'?'; NativeName[2] = L'?'; NativeName[3] = L'\\';
+    nativeChars = volumeChars - 4 - 1;
+    CopyMemory(NativeName + 4, volumeName + 4, nativeChars * sizeof(WCHAR));
+    NativeName[4 + nativeChars] = UNICODE_NULL;
+    *NativeChars = (UINT16)(4 + nativeChars);
+    return TRUE;
+}
+
+static int SendAdmissionCanaryHold(_In_z_ PCWSTR Volume, _In_z_ PCWSTR MillisecondsText)
+{
+    SAFEUPLOAD_ADMISSION_CANARY_HOLD_REQUEST request;
+    SAFEUPLOAD_ADMISSION_CANARY_HOLD_REPLY reply;
+    WCHAR nativeVolume[SAFEUPLOAD_CANARY_VOLUME_CHARS];
+    WCHAR *end = NULL;
+    ULONG holdMilliseconds;
+    HANDLE port = INVALID_HANDLE_VALUE;
+    UINT16 volumeChars = 0;
+    DWORD returned = 0;
+    HRESULT hr;
+
+    holdMilliseconds = (ULONG)wcstoul(MillisecondsText, &end, 10);
+    if (end == MillisecondsText || *end != UNICODE_NULL || holdMilliseconds == 0 ||
+        holdMilliseconds > SAFEUPLOAD_CANARY_MAX_HOLD_MS ||
+        !ResolveCanaryVolumeName(Volume, nativeVolume, &volumeChars)) {
+        fwprintf(stderr, L"Uso: SafeUpload.Inspector --admission-canary-hold X:\\ 1..30000\n");
+        return 2;
+    }
+
+    ZeroMemory(&request, sizeof(request));
+    ZeroMemory(&reply, sizeof(reply));
+    request.Control.Version = SAFEUPLOAD_PROTOCOL_VERSION;
+    request.Control.StructSize = sizeof(request);
+    request.Control.Command = SAFEUPLOAD_CONTROL_ADMISSION_CANARY_HOLD;
+    request.HoldMilliseconds = holdMilliseconds;
+    request.VolumeNameChars = volumeChars;
+    CopyMemory(request.VolumeName, nativeVolume, (volumeChars + 1) * sizeof(WCHAR));
+
+    hr = FilterConnectCommunicationPort(SAFEUPLOAD_PORT_NAME, 0, NULL, 0, NULL, &port);
+    if (FAILED(hr)) goto Exit;
+    hr = FilterSendMessage(port, &request, sizeof(request), &reply, sizeof(reply), &returned);
+    if (FAILED(hr) || returned != sizeof(reply) || reply.StructSize != sizeof(reply) ||
+        reply.Status != 0 || reply.Reserved != 0 || reply.PathChars == 0 ||
+        reply.PathChars >= ARRAYSIZE(reply.CanaryPath) ||
+        reply.CanaryPath[reply.PathChars] != UNICODE_NULL ||
+        wcsncmp(reply.CanaryPath, L"\\Device\\", 8) != 0) {
+        fwprintf(stderr, L"ERRO: resposta do hold do canary invalida (hr = 0x%08X, bytes = %u).\n",
+            hr, returned);
+        if (port != INVALID_HANDLE_VALUE) CloseHandle(port);
+        return 3;
+    }
+
+    wprintf(L"{\"canaryHold\":\"armed\",\"status\":\"0x%08X\",\"holdMilliseconds\":%u,\"path\":\"",
+        reply.Status, holdMilliseconds);
+    for (UINT32 index = 0; index < reply.PathChars; ++index) {
+        WCHAR value = reply.CanaryPath[index];
+        if (value == L'\\' || value == L'\"') wprintf(L"\\%lc", value);
+        else if (value < 32 || value > 126) wprintf(L"\\u%04X", (unsigned)value);
+        else wprintf(L"%lc", value);
+    }
+    wprintf(L"\"}\n");
+    CloseHandle(port);
+    return 0;
+
+Exit:
+    fwprintf(stderr, L"ERRO: nao foi possivel conectar na porta (hr = 0x%08X).\n", hr);
+    if (port != INVALID_HANDLE_VALUE) CloseHandle(port);
+    return 3;
+}
+
+static int SendAdmissionCanaryHoldCancel(VOID)
+{
+    SAFEUPLOAD_CONTROL control;
+    HANDLE port = INVALID_HANDLE_VALUE;
+    DWORD returned = 0;
+    HRESULT hr;
+    ZeroMemory(&control, sizeof(control));
+    control.Version = SAFEUPLOAD_PROTOCOL_VERSION;
+    control.StructSize = sizeof(control);
+    control.Command = SAFEUPLOAD_CONTROL_ADMISSION_CANARY_HOLD_CANCEL;
+    hr = FilterConnectCommunicationPort(SAFEUPLOAD_PORT_NAME, 0, NULL, 0, NULL, &port);
+    if (SUCCEEDED(hr)) hr = FilterSendMessage(port, &control, sizeof(control), NULL, 0, &returned);
+    if (port != INVALID_HANDLE_VALUE) CloseHandle(port);
+    wprintf(L"{\"canaryHoldCancel\":true,\"status\":\"0x%08X\"}\n", hr);
+    return SUCCEEDED(hr) && returned == 0 ? 0 : 3;
+}
+
+static int PrintCanarySecurity(_In_z_ PCWSTR NativePath)
+{
+    WCHAR win32Path[SAFEUPLOAD_MAX_PATH_CHARS + 32];
+    HANDLE file = INVALID_HANDLE_VALUE;
+    PSECURITY_DESCRIPTOR descriptor = NULL;
+    LPWSTR sddl = NULL;
+    DWORD error, characters = 0;
+    int result = 3;
+
+    if (wcsncmp(NativePath, L"\\Device\\", 8) != 0 ||
+        FAILED(StringCchPrintfW(win32Path, ARRAYSIZE(win32Path), L"\\\\?\\GLOBALROOT%s", NativePath))) {
+        fwprintf(stderr, L"ERRO: caminho nativo do canary invalido.\n");
+        return 2;
+    }
+    file = CreateFileW(win32Path, READ_CONTROL,
+        FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL, OPEN_EXISTING,
+        FILE_FLAG_OPEN_REPARSE_POINT, NULL);
+    if (file == INVALID_HANDLE_VALUE) {
+        error = GetLastError();
+        fwprintf(stderr, L"ERRO: abertura SYSTEM do canary falhou (Win32=%lu).\n", error);
+        return 3;
+    }
+    error = GetSecurityInfo(file, SE_FILE_OBJECT,
+        OWNER_SECURITY_INFORMATION | GROUP_SECURITY_INFORMATION | DACL_SECURITY_INFORMATION,
+        NULL, NULL, NULL, NULL, &descriptor);
+    if (error != ERROR_SUCCESS) goto Exit;
+    if (!ConvertSecurityDescriptorToStringSecurityDescriptorW(descriptor, SDDL_REVISION_1,
+            OWNER_SECURITY_INFORMATION | GROUP_SECURITY_INFORMATION | DACL_SECURITY_INFORMATION,
+            &sddl, &characters)) {
+        error = GetLastError();
+        goto Exit;
+    }
+    wprintf(L"{\"canarySecurity\":\"readback\",\"status\":\"0x%08X\",\"sddl\":\"%s\"}\n",
+        ERROR_SUCCESS, sddl);
+    result = 0;
+
+Exit:
+    if (result != 0) {
+        fwprintf(stderr, L"ERRO: descritor de seguranca do canary falhou (Win32=%lu).\n", error);
+    }
+    if (sddl != NULL) LocalFree(sddl);
+    if (descriptor != NULL) LocalFree(descriptor);
+    CloseHandle(file);
+    return result;
+}
+
 static int PrintAdmissionVolumeStatus(VOID)
 {
     SAFEUPLOAD_CONTROL control;
@@ -1048,6 +1207,27 @@ Return Value:
             return 2;
         }
         return SendAdmissionProbe(argv[2]);
+    }
+
+    if (argc > 1 && _wcsicmp(argv[1], L"--admission-canary-hold") == 0) {
+        if (argc != 4) {
+            fwprintf(stderr, L"Uso: SafeUpload.Inspector --admission-canary-hold X:\\ 1..30000\n");
+            return 2;
+        }
+        return SendAdmissionCanaryHold(argv[2], argv[3]);
+    }
+
+    if (argc > 1 && _wcsicmp(argv[1], L"--admission-canary-hold-cancel") == 0) {
+        if (argc != 2) return 2;
+        return SendAdmissionCanaryHoldCancel();
+    }
+
+    if (argc > 1 && _wcsicmp(argv[1], L"--admission-canary-security") == 0) {
+        if (argc != 3) {
+            fwprintf(stderr, L"Uso: SafeUpload.Inspector --admission-canary-security \\Device\\HarddiskVolumeN\\file\n");
+            return 2;
+        }
+        return PrintCanarySecurity(argv[2]);
     }
 #endif
 

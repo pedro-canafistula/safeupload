@@ -1,6 +1,6 @@
 param(
     [Parameter(Mandatory = $true)]
-    [ValidateSet('preattach-immediate', 'preattach-protected-open', 'mmdoes-matrix', 'policy-transition', 'retained-section', 'section-eol', 'writer-count', 'section-inflight', 'section-lower', 'writer-fault', 'primitive-cost', 'All')]
+    [ValidateSet('preattach-immediate', 'preattach-protected-open', 'mmdoes-matrix', 'policy-transition', 'retained-section', 'section-eol', 'writer-count', 'canary-security', 'section-inflight', 'section-lower', 'writer-fault', 'primitive-cost', 'All')]
     [string] $Variant,
 
     [Parameter(Mandatory = $true)]
@@ -102,6 +102,251 @@ public static class SafeUploadAdmissionNative
     public static extern bool GetDiskFreeSpace(
         string rootPathName, out uint sectorsPerCluster, out uint bytesPerSector,
         out uint numberOfFreeClusters, out uint totalNumberOfClusters);
+}
+'@
+}
+
+if (-not ('SafeUploadCanarySecurityNative' -as [type])) {
+    Add-Type -TypeDefinition @'
+using System;
+using System.ComponentModel;
+using System.Runtime.InteropServices;
+
+public static class SafeUploadCanarySecurityNative
+{
+    const uint TOKEN_QUERY = 0x0008;
+    const uint TOKEN_DUPLICATE = 0x0002;
+    const uint TOKEN_IMPERSONATE = 0x0004;
+    const uint SE_PRIVILEGE_ENABLED = 0x00000002;
+    const uint OPEN_EXISTING = 3;
+    const uint FILE_SHARE_ALL = 7;
+    const uint TOKEN_ELEVATION_CLASS = 20;
+    const uint TOKEN_PRIVILEGES_CLASS = 3;
+
+    [StructLayout(LayoutKind.Sequential)]
+    struct SidAndAttributes { public IntPtr Sid; public uint Attributes; }
+    [StructLayout(LayoutKind.Sequential)]
+    struct Luid { public uint LowPart; public int HighPart; }
+
+    [DllImport("kernel32.dll")] static extern IntPtr GetCurrentProcess();
+    [DllImport("kernel32.dll", SetLastError = true)] [return: MarshalAs(UnmanagedType.Bool)]
+    static extern bool CloseHandle(IntPtr handle);
+    [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode, EntryPoint = "CreateFileW")]
+    static extern IntPtr CreateFile(string path, uint access, uint share, IntPtr security,
+        uint disposition, uint flags, IntPtr template);
+    [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode, EntryPoint = "GetFileAttributesW")]
+    static extern uint GetFileAttributes(string path);
+    [DllImport("advapi32.dll", SetLastError = true)] [return: MarshalAs(UnmanagedType.Bool)]
+    static extern bool OpenProcessToken(IntPtr process, uint access, out IntPtr token);
+    [DllImport("advapi32.dll", SetLastError = true)] [return: MarshalAs(UnmanagedType.Bool)]
+    static extern bool DuplicateTokenEx(IntPtr existing, uint access, IntPtr attributes,
+        int impersonationLevel, int tokenType, out IntPtr duplicate);
+    [DllImport("advapi32.dll", SetLastError = true)] [return: MarshalAs(UnmanagedType.Bool)]
+    static extern bool GetTokenInformation(IntPtr token, uint infoClass, IntPtr info,
+        uint infoLength, out uint returnLength);
+    [DllImport("advapi32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+    static extern bool LookupPrivilegeValue(string system, string name, out Luid luid);
+    [DllImport("advapi32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+    static extern bool ConvertStringSidToSid(string text, out IntPtr sid);
+    [DllImport("advapi32.dll", SetLastError = true)] [return: MarshalAs(UnmanagedType.Bool)]
+    static extern bool CheckTokenMembership(IntPtr token, IntPtr sid, [MarshalAs(UnmanagedType.Bool)] out bool member);
+    [DllImport("advapi32.dll", SetLastError = true)] [return: MarshalAs(UnmanagedType.Bool)]
+    static extern bool CreateRestrictedToken(IntPtr existing, uint flags, uint disableSidCount,
+        ref SidAndAttributes sidsToDisable, uint deletePrivilegeCount, IntPtr privilegesToDelete,
+        uint restrictedSidCount, IntPtr sidsToRestrict, out IntPtr restricted);
+    [DllImport("advapi32.dll", SetLastError = true)] [return: MarshalAs(UnmanagedType.Bool)]
+    static extern bool ImpersonateLoggedOnUser(IntPtr token);
+    [DllImport("advapi32.dll", SetLastError = true)] [return: MarshalAs(UnmanagedType.Bool)]
+    static extern bool RevertToSelf();
+    [DllImport("kernel32.dll")] static extern IntPtr LocalFree(IntPtr memory);
+
+    static void ThrowLastError(string operation)
+    {
+        throw new Win32Exception(Marshal.GetLastWin32Error(), operation);
+    }
+
+    static IntPtr OpenPrimaryToken()
+    {
+        IntPtr token;
+        if (!OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY | TOKEN_DUPLICATE, out token))
+            ThrowLastError("OpenProcessToken");
+        return token;
+    }
+
+    static IntPtr DuplicateForImpersonation(IntPtr token)
+    {
+        IntPtr duplicate;
+        if (!DuplicateTokenEx(token, TOKEN_QUERY | TOKEN_DUPLICATE | TOKEN_IMPERSONATE,
+                IntPtr.Zero, 2, 2, out duplicate))
+            ThrowLastError("DuplicateTokenEx");
+        return duplicate;
+    }
+
+    static bool PrivilegeEnabled(IntPtr token, string name)
+    {
+        Luid expected;
+        if (!LookupPrivilegeValue(null, name, out expected)) ThrowLastError("LookupPrivilegeValue " + name);
+        uint bytes = 0;
+        GetTokenInformation(token, TOKEN_PRIVILEGES_CLASS, IntPtr.Zero, 0, out bytes);
+        int firstError = Marshal.GetLastWin32Error();
+        if (bytes < 4 || (firstError != 122 && firstError != 0))
+            throw new Win32Exception(firstError, "GetTokenInformation(TokenPrivileges)");
+        IntPtr buffer = Marshal.AllocHGlobal((int)bytes);
+        try
+        {
+            if (!GetTokenInformation(token, TOKEN_PRIVILEGES_CLASS, buffer, bytes, out bytes))
+                ThrowLastError("GetTokenInformation(TokenPrivileges)");
+            int count = Marshal.ReadInt32(buffer);
+            int offset = 4;
+            for (int i = 0; i < count; i++, offset += 12)
+            {
+                if ((uint)offset > bytes || bytes - (uint)offset < 12)
+                    throw new InvalidOperationException("Token privilege list is truncated.");
+                uint low = unchecked((uint)Marshal.ReadInt32(buffer, offset));
+                int high = Marshal.ReadInt32(buffer, offset + 4);
+                uint attributes = unchecked((uint)Marshal.ReadInt32(buffer, offset + 8));
+                if (low == expected.LowPart && high == expected.HighPart)
+                    return (attributes & SE_PRIVILEGE_ENABLED) != 0;
+            }
+            return false;
+        }
+        finally { Marshal.FreeHGlobal(buffer); }
+    }
+
+    static IntPtr QueryTokenPrivileges(IntPtr token, out uint count)
+    {
+        uint bytes = 0;
+        GetTokenInformation(token, TOKEN_PRIVILEGES_CLASS, IntPtr.Zero, 0, out bytes);
+        int firstError = Marshal.GetLastWin32Error();
+        if (bytes < 4 || (firstError != 122 && firstError != 0))
+            throw new Win32Exception(firstError, "GetTokenInformation(TokenPrivileges)");
+        IntPtr buffer = Marshal.AllocHGlobal((int)bytes);
+        if (!GetTokenInformation(token, TOKEN_PRIVILEGES_CLASS, buffer, bytes, out bytes))
+        {
+            int error = Marshal.GetLastWin32Error();
+            Marshal.FreeHGlobal(buffer);
+            throw new Win32Exception(error, "GetTokenInformation(TokenPrivileges)");
+        }
+        count = unchecked((uint)Marshal.ReadInt32(buffer));
+        if (count > (bytes - 4) / 12)
+        {
+            Marshal.FreeHGlobal(buffer);
+            throw new InvalidOperationException("Token privilege list is truncated.");
+        }
+        return buffer;
+    }
+
+    static uint GetPrivilegeCount(IntPtr token)
+    {
+        uint count;
+        IntPtr buffer = QueryTokenPrivileges(token, out count);
+        Marshal.FreeHGlobal(buffer);
+        return count;
+    }
+
+    static bool IsElevated(IntPtr token)
+    {
+        IntPtr buffer = Marshal.AllocHGlobal(4);
+        try
+        {
+            uint returned;
+            if (!GetTokenInformation(token, TOKEN_ELEVATION_CLASS, buffer, 4, out returned))
+                ThrowLastError("GetTokenInformation(TokenElevation)");
+            return Marshal.ReadInt32(buffer) != 0;
+        }
+        finally { Marshal.FreeHGlobal(buffer); }
+    }
+
+    static IntPtr AdministratorsSid()
+    {
+        IntPtr sid;
+        if (!ConvertStringSidToSid("S-1-5-32-544", out sid)) ThrowLastError("ConvertStringSidToSid(Administrators)");
+        return sid;
+    }
+
+    public static string RequireElevatedAdministratorAndDisabledPrivileges()
+    {
+        IntPtr primary = IntPtr.Zero, impersonation = IntPtr.Zero, sid = IntPtr.Zero;
+        try
+        {
+            primary = OpenPrimaryToken();
+            impersonation = DuplicateForImpersonation(primary);
+            sid = AdministratorsSid();
+            if (System.Security.Principal.WindowsIdentity.GetCurrent().User.Value == "S-1-5-18")
+                throw new InvalidOperationException("The harness process must be a non-SYSTEM administrator.");
+            bool member;
+            if (!IsElevated(impersonation) || !CheckTokenMembership(impersonation, sid, out member) || !member)
+                throw new InvalidOperationException("The harness token is not an elevated Administrators token.");
+            string[] names = { "SeBackupPrivilege", "SeRestorePrivilege", "SeTakeOwnershipPrivilege" };
+            foreach (string name in names)
+                if (PrivilegeEnabled(impersonation, name))
+                    throw new InvalidOperationException(name + " is enabled; the harness will not change it.");
+            return "elevated=true;administrators=true;SeBackupPrivilege=not-enabled;SeRestorePrivilege=not-enabled;SeTakeOwnershipPrivilege=not-enabled";
+        }
+        finally
+        {
+            if (sid != IntPtr.Zero) LocalFree(sid);
+            if (impersonation != IntPtr.Zero) CloseHandle(impersonation);
+            if (primary != IntPtr.Zero) CloseHandle(primary);
+        }
+    }
+
+    public static int TryOpenCurrent(string path, uint access)
+    {
+        IntPtr file = CreateFile(path, access, FILE_SHARE_ALL, IntPtr.Zero, OPEN_EXISTING, 0x80, IntPtr.Zero);
+        if (file == new IntPtr(-1)) return Marshal.GetLastWin32Error();
+        CloseHandle(file);
+        return 0;
+    }
+
+    public static int GetPathAttributesError(string path)
+    {
+        return GetFileAttributes(path) == 0xFFFFFFFF ? Marshal.GetLastWin32Error() : 0;
+    }
+
+    public static int TryOpenRestricted(string path, uint access)
+    {
+        IntPtr primary = IntPtr.Zero, restrictedPrimary = IntPtr.Zero, restricted = IntPtr.Zero, sid = IntPtr.Zero;
+        bool impersonating = false;
+        try
+        {
+            primary = OpenPrimaryToken();
+            sid = AdministratorsSid();
+            SidAndAttributes disabled = new SidAndAttributes();
+            disabled.Sid = sid;
+            disabled.Attributes = 0;
+            uint privilegeCount;
+            IntPtr privileges = QueryTokenPrivileges(primary, out privilegeCount);
+            try
+            {
+                IntPtr privilegesToDelete = privilegeCount == 0 ? IntPtr.Zero : IntPtr.Add(privileges, 4);
+                if (!CreateRestrictedToken(primary, 0, 1, ref disabled,
+                        privilegeCount, privilegesToDelete, 0, IntPtr.Zero, out restrictedPrimary))
+                    ThrowLastError("CreateRestrictedToken");
+            }
+            finally { Marshal.FreeHGlobal(privileges); }
+            restricted = DuplicateForImpersonation(restrictedPrimary);
+            bool member;
+            if (!CheckTokenMembership(restricted, sid, out member) || member)
+                throw new InvalidOperationException("Administrators was not deny-only in the restricted token.");
+            if (GetPrivilegeCount(restricted) != 0)
+                throw new InvalidOperationException("The restricted token retained a privilege.");
+            if (!ImpersonateLoggedOnUser(restricted)) ThrowLastError("ImpersonateLoggedOnUser");
+            impersonating = true;
+            IntPtr file = CreateFile(path, access, FILE_SHARE_ALL, IntPtr.Zero, OPEN_EXISTING, 0x80, IntPtr.Zero);
+            if (file == new IntPtr(-1)) return Marshal.GetLastWin32Error();
+            CloseHandle(file);
+            return 0;
+        }
+        finally
+        {
+            if (impersonating && !RevertToSelf()) ThrowLastError("RevertToSelf");
+            if (sid != IntPtr.Zero) LocalFree(sid);
+            if (restricted != IntPtr.Zero) CloseHandle(restricted);
+            if (restrictedPrimary != IntPtr.Zero) CloseHandle(restrictedPrimary);
+            if (primary != IntPtr.Zero) CloseHandle(primary);
+        }
+    }
 }
 '@
 }
@@ -1056,7 +1301,7 @@ function Get-LightTrace($InspectorResult, [string] $RawPath) {
             ProbeStatus = $(if ($null -ne $probe) { $probe.probeStatus } else { '' })
             ProbeStage = $(if ($null -ne $probe) { $probe.probeStage } else { -1 })
             CanaryOk = ($null -ne $probe -and $probe.canaryState -eq 2 -and
-                $probe.canaryStatus -eq '0x00000000' -and $probe.canaryChecks -eq 7 -and
+                $probe.canaryStatus -eq '0x00000000' -and $probe.canaryChecks -eq 15 -and
                 $probe.canaryCleanupStatus -eq '0x00000000')
             CanaryState = $(if ($null -ne $probe) { $probe.canaryState } else { -1 })
             CanaryStatus = $(if ($null -ne $probe) { $probe.canaryStatus } else { '' })
@@ -2090,7 +2335,7 @@ function Wait-AllVolumeCanaries([string] $RawPath) {
         foreach ($entry in $eligible) {
             if ($entry.instanceWritersUntracked -ne 0) { throw 'Instance writer tracking is unknown.' }
             if ($entry.canaryState -lt 2) { $pending = $true; continue }
-            if ($entry.canaryState -ne 2 -or $entry.canaryStatus -ne 0 -or $entry.canaryChecks -ne 7 -or
+            if ($entry.canaryState -ne 2 -or $entry.canaryStatus -ne 0 -or $entry.canaryChecks -ne 15 -or
                 $entry.canaryCleanupStatus -ne 0) { throw ('All-volume canary failed for ' + $entry.volumeGuid) }
         }
         if (-not $pending) {
@@ -2280,7 +2525,120 @@ function Invoke-Variant([string] $SelectedVariant) {
         }
         Write-Output ('InspectorSHA256=' + $copiedInspectorHash)
 
-        if ($SelectedVariant -eq 'mmdoes-matrix') {
+        if ($SelectedVariant -eq 'canary-security') {
+            $script:CanarySecurityChecksPassed = 0
+            $script:CanarySecurityChecksFailed = 0
+            $script:CanarySecurityFindings = 0
+            $holdArmed = $false
+            $holdCompleted = $false
+            function Add-CSOutcome([string] $Label, [bool] $Ok, [string] $Facts, [bool] $Finding = $false) {
+                if ($Finding) { $script:CanarySecurityFindings++ }
+                elseif ($Ok) { $script:CanarySecurityChecksPassed++ }
+                else { $script:CanarySecurityChecksFailed++ }
+                $verdict = if ($Finding) { 'FINDING' } elseif ($Ok) { 'PASS' } else { 'FAIL' }
+                Write-Output ('CS_' + $Label + '=' + $Facts + ';' + $verdict)
+            }
+            try {
+                $tokenFacts = [SafeUploadCanarySecurityNative]::RequireElevatedAdministratorAndDisabledPrivileges()
+                Write-Output ('CS_CurrentToken=' + $tokenFacts)
+                Add-CSOutcome 'CurrentToken' $true $tokenFacts
+
+                Backup-StagedTestDriver $backup
+                if ((Get-FileHash -LiteralPath $backup -Algorithm SHA256).Hash -ne $expectedOriginalDriver) {
+                    throw 'Durable restoration backup mismatch.'
+                }
+                $driverReplaced = $true
+                Copy-Item -LiteralPath $featureDriver -Destination $installedDriver -Force
+                if ((Get-FileHash -LiteralPath $installedDriver -Algorithm SHA256).Hash -ne $ExpectedFeatureSha256.ToUpperInvariant()) {
+                    throw 'Feature driver install hash mismatch.'
+                }
+                if ($Verifier) {
+                    & verifier.exe /volatile /flags 0x13B /adddriver SafeUpload.sys | Out-Host
+                    if ($LASTEXITCODE -ne 0) { throw 'Verifier enable failed.' }
+                    $verifierEnabled = $true
+                    Write-Output 'VerifierEnabled=volatile flags 0x13B'
+                }
+                Invoke-FeatureFilterLoad
+                $filterLoaded = $true
+
+                Wait-AllVolumeCanaries ($rawTraceA + '-initial-volumes.json')
+                Add-CSOutcome 'InitialAllVolumeCanaries' $true 'checks:15'
+
+                $holdTimeout = [Math]::Max($InspectorTimeoutSeconds, 45)
+                $holdResult = Invoke-InspectorChecked -Arguments @(
+                    '--admission-canary-hold', ($env:SystemDrive + '\'), '10000') -Timeout $holdTimeout
+                $held = ConvertFrom-Json -InputObject ([string]$holdResult.Stdout).Trim()
+                if ($held.canaryHold -ne 'armed' -or $held.status -ne '0x00000000' -or
+                    $held.holdMilliseconds -ne 10000 -or
+                    [string]$held.path -notmatch '^\\Device\\HarddiskVolume[^\\]+\\SafeUpload-canary-[0-9A-Fa-f]{32}\.tmp$') {
+                    throw 'Canary hold response did not contain the exact held canary path and success status.'
+                }
+                $holdArmed = $true
+                $nativeCanaryPath = [string]$held.path
+                $win32CanaryPath = '\\?\GLOBALROOT' + $nativeCanaryPath
+                Add-CSOutcome 'HoldAndRerun' $true ('holdMilliseconds:10000;status:' + $held.status + ';path:' + $nativeCanaryPath)
+
+                $accesses = @(
+                    @{ Name = 'GENERIC_READ'; Mask = [uint32]2147483648 },
+                    @{ Name = 'GENERIC_WRITE'; Mask = [uint32]1073741824 },
+                    @{ Name = 'DELETE'; Mask = [uint32]65536 },
+                    @{ Name = 'READ_CONTROL'; Mask = [uint32]131072 },
+                    @{ Name = 'FILE_READ_ATTRIBUTES'; Mask = [uint32]128 },
+                    @{ Name = 'WRITE_DAC'; Mask = [uint32]262144 }
+                )
+                foreach ($principal in @('Administrator', 'Restricted')) {
+                    foreach ($access in $accesses) {
+                        if ($principal -eq 'Administrator') {
+                            $win32Error = [SafeUploadCanarySecurityNative]::TryOpenCurrent($win32CanaryPath, $access.Mask)
+                        }
+                        else {
+                            $win32Error = [SafeUploadCanarySecurityNative]::TryOpenRestricted($win32CanaryPath, $access.Mask)
+                        }
+                        $finding = $access.Name -eq 'FILE_READ_ATTRIBUTES' -and $win32Error -eq 0
+                        # NTFS attribute access is recorded for the orchestrator to assess.
+                        $ok = $win32Error -eq 5
+                        $facts = 'win32Error:' + $win32Error
+                        if ($finding) { $facts += ';finding:FILE_READ_ATTRIBUTES was granted while the parent directory is listable' }
+                        Add-CSOutcome ($principal + '_' + $access.Name) $ok $facts $finding
+                    }
+                }
+
+                $securityResult = Invoke-InspectorChecked -Arguments @(
+                    '--admission-canary-security', $nativeCanaryPath) -Timeout $InspectorTimeoutSeconds
+                $security = ConvertFrom-Json -InputObject ([string]$securityResult.Stdout).Trim()
+                $expectedSddl = 'O:SYG:SYD:P(A;;FA;;;SY)'
+                Write-Output ('CS_SYSTEM_SDDL=' + [string]$security.sddl)
+                Add-CSOutcome 'SystemSddl' ($security.canarySecurity -eq 'readback' -and
+                    $security.status -eq '0x00000000' -and $security.sddl -ceq $expectedSddl) `
+                    ('sddl:' + [string]$security.sddl + ';expected:' + $expectedSddl)
+
+                Wait-AllVolumeCanaries ($rawTraceB + '-held-rerun-volumes.json')
+                $holdCompleted = $true
+                Add-CSOutcome 'HeldCanaryPassed' $true 'canaryState:2;canaryStatus:0;canaryChecks:15;cleanupStatus:0'
+                $pathError = [SafeUploadCanarySecurityNative]::GetPathAttributesError($win32CanaryPath)
+                $pathMissing = $pathError -in @(2, 3)
+                Add-CSOutcome 'CanaryPathRemoved' $pathMissing ('GetFileAttributesWin32Error:' + $pathError)
+            }
+            catch {
+                $script:CanarySecurityChecksFailed++
+                Write-Output ('CS_Unexpected=' + (Get-ErrorText $_) + ';FAIL')
+                throw
+            }
+            finally {
+                if ($holdArmed -and -not $holdCompleted -and $filterLoaded -and
+                    -not $script:InspectorTimedOut -and -not $script:InspectorFailed) {
+                    try {
+                        [void](Invoke-InspectorChecked -Arguments @('--admission-canary-hold-cancel') -Timeout 15)
+                        Write-Output 'CS_HoldCancellation=sentAfterVariantFailure'
+                    }
+                    catch { Write-Output ('CS_HoldCancellationError=' + (Get-ErrorText $_)) }
+                }
+                Write-Output ('CS_Summary=passed:' + $script:CanarySecurityChecksPassed + ';failed:' + $script:CanarySecurityChecksFailed)
+                Write-Output ('CS_Findings=' + $script:CanarySecurityFindings)
+            }
+            $runSucceeded = ($script:CanarySecurityChecksFailed -eq 0)
+        }
+        elseif ($SelectedVariant -eq 'mmdoes-matrix') {
             foreach ($name in @('A', 'B', 'C', 'D')) {
                 $target = Join-Path $fixtureDirectory ($name + '.maptest')
                 $fixturePaths += $target

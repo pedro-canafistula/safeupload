@@ -801,6 +801,75 @@ Return Value:
             leave;
         }
 
+        if (command == SAFEUPLOAD_CONTROL_ADMISSION_CANARY_HOLD) {
+            SAFEUPLOAD_ADMISSION_CANARY_HOLD_REQUEST request;
+            SAFEUPLOAD_ADMISSION_CANARY_HOLD_REPLY reply;
+            UNICODE_STRING volumeName;
+            ULONG index;
+
+            if (InputBufferLength != sizeof(request) || OutputBuffer == NULL ||
+                OutputBufferLength != sizeof(reply)) {
+                status = STATUS_INVALID_BUFFER_SIZE;
+                leave;
+            }
+            RtlCopyMemory(&request, InputBuffer, sizeof(request));
+            if (request.Control.Version != SAFEUPLOAD_PROTOCOL_VERSION ||
+                request.Control.StructSize != sizeof(request) ||
+                request.Control.Command != command || request.Control.Reserved != 0 ||
+                request.Reserved != 0 || request.VolumeNameChars == 0 ||
+                request.VolumeNameChars >= SAFEUPLOAD_CANARY_VOLUME_CHARS ||
+                request.VolumeName[request.VolumeNameChars] != UNICODE_NULL ||
+                request.HoldMilliseconds == 0 ||
+                request.HoldMilliseconds > SAFEUPLOAD_CANARY_MAX_HOLD_MS) {
+                status = STATUS_INVALID_PARAMETER;
+                leave;
+            }
+            for (index = 0; index < request.VolumeNameChars; ++index) {
+                if (request.VolumeName[index] == UNICODE_NULL) {
+                    status = STATUS_INVALID_PARAMETER;
+                    leave;
+                }
+            }
+            for (index = request.VolumeNameChars + 1; index < SAFEUPLOAD_CANARY_VOLUME_CHARS; ++index) {
+                if (request.VolumeName[index] != UNICODE_NULL) {
+                    status = STATUS_INVALID_PARAMETER;
+                    leave;
+                }
+            }
+            volumeName.Buffer = request.VolumeName;
+            volumeName.Length = (USHORT)(request.VolumeNameChars * sizeof(WCHAR));
+            volumeName.MaximumLength = sizeof(request.VolumeName);
+#pragma warning( suppress: 6001 )
+            ProbeForWrite(OutputBuffer, sizeof(reply), __alignof(SAFEUPLOAD_ADMISSION_CANARY_HOLD_REPLY));
+            RtlZeroMemory(&reply, sizeof(reply));
+            status = SafeUploadStageAdmissionCanaryHold(&volumeName,
+                request.HoldMilliseconds, &reply);
+            if (NT_SUCCESS(status)) {
+                RtlCopyMemory(OutputBuffer, &reply, sizeof(reply));
+                *ReturnOutputBufferLength = sizeof(reply);
+            }
+            leave;
+        }
+
+        if (command == SAFEUPLOAD_CONTROL_ADMISSION_CANARY_HOLD_CANCEL) {
+            SAFEUPLOAD_CONTROL cancelControl;
+            if (InputBufferLength != sizeof(cancelControl) || OutputBuffer != NULL ||
+                OutputBufferLength != 0) {
+                status = STATUS_INVALID_BUFFER_SIZE;
+                leave;
+            }
+            RtlCopyMemory(&cancelControl, InputBuffer, sizeof(cancelControl));
+            if (cancelControl.Version != SAFEUPLOAD_PROTOCOL_VERSION ||
+                cancelControl.StructSize != sizeof(cancelControl) ||
+                cancelControl.Command != command || cancelControl.Reserved != 0) {
+                status = STATUS_REVISION_MISMATCH;
+                leave;
+            }
+            SafeUploadStageAdmissionCanaryHoldCancel();
+            status = STATUS_SUCCESS;
+            leave;
+        }
+
         if (command == SAFEUPLOAD_CONTROL_ADMISSION_FENCE_REFRESH ||
             command == SAFEUPLOAD_CONTROL_ADMISSION_FENCE_STATUS) {
             SAFEUPLOAD_CONTROL fenceControl;

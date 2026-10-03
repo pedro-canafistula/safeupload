@@ -2,10 +2,14 @@
 #include "Stage.h"
 #include <ntstrsafe.h>
 
+static NTSTATUS StageCanaryVerifySecurity(_In_ PFLT_INSTANCE Instance, _In_ PFILE_OBJECT FileObject);
+
 #ifdef ALLOC_PRAGMA
 #pragma alloc_text(PAGE, SafeUploadStageOpenByIdentity)
 #pragma alloc_text(PAGE, SafeUploadStageAdmissionVolumeStatus)
 #pragma alloc_text(PAGE, SafeUploadStageVolumeFlags)
+#pragma alloc_text(PAGE, SafeUploadStageAdmissionCanaryHold)
+#pragma alloc_text(PAGE, StageCanaryVerifySecurity)
 #endif
 
 NTSTATUS SafeUploadStageOpenByIdentity(
@@ -100,6 +104,25 @@ Exit:
 static volatile LONG AdmissionFilteringReady;
 static KEVENT CanaryStop;
 static HANDLE CanaryThreadHandle;
+
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+#define SAFEUPLOAD_CANARY_HOLD_IDLE      ((LONG)0)
+#define SAFEUPLOAD_CANARY_HOLD_ARMED     ((LONG)1)
+#define SAFEUPLOAD_CANARY_HOLD_PREPARING ((LONG)2)
+#define SAFEUPLOAD_CANARY_HOLD_ACTIVE    ((LONG)3)
+#define SAFEUPLOAD_CANARY_HOLD_COMPLETE  ((LONG)4)
+
+static FAST_MUTEX CanaryHoldMutex;
+static KEVENT CanaryHoldPathReady;
+static KEVENT CanaryHoldCancel;
+static LONG CanaryHoldState;
+static BOOLEAN CanaryHoldReplyConsumed;
+static PFLT_INSTANCE CanaryHoldInstance;
+static ULONG CanaryHoldMilliseconds;
+static NTSTATUS CanaryHoldStatus;
+static ULONG CanaryHoldPathChars;
+static WCHAR CanaryHoldPath[SAFEUPLOAD_MAX_PATH_CHARS];
+#endif
 
 NTSTATUS SafeUploadStageVolumeFlags(_In_ PFLT_VOLUME Volume, _Out_ PUINT32 Flags)
 {
@@ -210,6 +233,366 @@ static NTSTATUS StageCanarySecurity(_Out_ SECURITY_DESCRIPTOR *Descriptor, _Out_
     return STATUS_SUCCESS;
 }
 
+static NTSTATUS StageCanaryVerifySecurity(_In_ PFLT_INSTANCE Instance, _In_ PFILE_OBJECT FileObject)
+{
+    DECLSPEC_ALIGN(8) UCHAR buffer[1024];
+    PSECURITY_DESCRIPTOR descriptor = (PSECURITY_DESCRIPTOR)buffer;
+    SECURITY_DESCRIPTOR_CONTROL control = 0;
+    ULONG revision = 0, needed = 0, sidBytes;
+    PSID owner = NULL, group = NULL;
+    PACL dacl = NULL;
+    PVOID ace = NULL;
+    BOOLEAN ownerDefaulted = FALSE, groupDefaulted = FALSE;
+    BOOLEAN daclPresent = FALSE, daclDefaulted = FALSE;
+    NTSTATUS status;
+
+    PAGED_CODE();
+    NT_ASSERT(KeGetCurrentIrql() == PASSIVE_LEVEL);
+    RtlZeroMemory(buffer, sizeof(buffer));
+    status = FltQuerySecurityObject(Instance, FileObject,
+        OWNER_SECURITY_INFORMATION | GROUP_SECURITY_INFORMATION | DACL_SECURITY_INFORMATION,
+        descriptor, sizeof(buffer), &needed);
+    if (status != STATUS_SUCCESS || needed > sizeof(buffer) ||
+        !RtlValidRelativeSecurityDescriptor(descriptor, needed,
+            OWNER_SECURITY_INFORMATION | GROUP_SECURITY_INFORMATION | DACL_SECURITY_INFORMATION)) {
+        return STATUS_INVALID_SECURITY_DESCR;
+    }
+
+    status = RtlGetControlSecurityDescriptor(descriptor, &control, &revision);
+    if (!NT_SUCCESS(status) || revision != SECURITY_DESCRIPTOR_REVISION ||
+        !FlagOn(control, SE_DACL_PROTECTED)) {
+        return STATUS_INVALID_SECURITY_DESCR;
+    }
+    status = RtlGetOwnerSecurityDescriptor(descriptor, &owner, &ownerDefaulted);
+    if (!NT_SUCCESS(status) || owner == NULL || !RtlValidSid(owner) ||
+        !RtlEqualSid(owner, SeExports->SeLocalSystemSid)) {
+        return STATUS_INVALID_SECURITY_DESCR;
+    }
+    status = RtlGetGroupSecurityDescriptor(descriptor, &group, &groupDefaulted);
+    if (!NT_SUCCESS(status) || group == NULL || !RtlValidSid(group) ||
+        !RtlEqualSid(group, SeExports->SeLocalSystemSid)) {
+        return STATUS_INVALID_SECURITY_DESCR;
+    }
+    status = RtlGetDaclSecurityDescriptor(descriptor, &daclPresent, &dacl, &daclDefaulted);
+    if (!NT_SUCCESS(status) || !daclPresent || dacl == NULL || !RtlValidAcl(dacl) ||
+        dacl->AceCount != 1) {
+        return STATUS_INVALID_SECURITY_DESCR;
+    }
+    status = RtlGetAce(dacl, 0, &ace);
+    if (!NT_SUCCESS(status) || ace == NULL) return STATUS_INVALID_SECURITY_DESCR;
+    if (((PACE_HEADER)ace)->AceType != ACCESS_ALLOWED_ACE_TYPE ||
+        ((PACE_HEADER)ace)->AceFlags != 0 ||
+        ((PACE_HEADER)ace)->AceSize < FIELD_OFFSET(ACCESS_ALLOWED_ACE, SidStart)) {
+        return STATUS_INVALID_SECURITY_DESCR;
+    }
+    {
+        PACCESS_ALLOWED_ACE allowed = (PACCESS_ALLOWED_ACE)ace;
+        PSID trustee = (PSID)&allowed->SidStart;
+
+        if (!RtlValidSid(trustee)) return STATUS_INVALID_SECURITY_DESCR;
+        sidBytes = RtlLengthSid(trustee);
+        if ((ULONG)allowed->Header.AceSize != FIELD_OFFSET(ACCESS_ALLOWED_ACE, SidStart) + sidBytes ||
+            allowed->Mask != FILE_ALL_ACCESS ||
+            !RtlEqualSid(trustee, SeExports->SeLocalSystemSid)) {
+            /* The input ACE is already FILE_ALL_ACCESS, with no GENERIC_* bits to map. NTFS
+             * should therefore store this file-specific mask unchanged; no alternate mask is
+             * accepted without evidence that this filesystem rewrites the supplied ACE. */
+            return STATUS_INVALID_SECURITY_DESCR;
+        }
+    }
+    UNREFERENCED_PARAMETER(ownerDefaulted);
+    UNREFERENCED_PARAMETER(groupDefaulted);
+    UNREFERENCED_PARAMETER(daclDefaulted);
+    UNREFERENCED_PARAMETER(needed);
+    return STATUS_SUCCESS;
+}
+
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+static BOOLEAN StageCanaryHoldClaim(_In_ PFLT_INSTANCE Instance, _Out_ PULONG HoldMilliseconds)
+{
+    BOOLEAN claimed = FALSE;
+    PAGED_CODE();
+    NT_ASSERT(KeGetCurrentIrql() == PASSIVE_LEVEL);
+    ExAcquireFastMutex(&CanaryHoldMutex);
+    if (CanaryHoldState == SAFEUPLOAD_CANARY_HOLD_ARMED && CanaryHoldInstance == Instance) {
+        CanaryHoldState = SAFEUPLOAD_CANARY_HOLD_PREPARING;
+        *HoldMilliseconds = CanaryHoldMilliseconds;
+        claimed = TRUE;
+    }
+    ExReleaseFastMutex(&CanaryHoldMutex);
+    return claimed;
+}
+
+static VOID StageCanaryHoldReportFailure(_In_ PFLT_INSTANCE Instance, _In_ NTSTATUS Status)
+{
+    PFLT_INSTANCE dereference = NULL;
+    ExAcquireFastMutex(&CanaryHoldMutex);
+    if (CanaryHoldInstance == Instance &&
+        (CanaryHoldState == SAFEUPLOAD_CANARY_HOLD_PREPARING ||
+         CanaryHoldState == SAFEUPLOAD_CANARY_HOLD_ARMED)) {
+        CanaryHoldStatus = Status;
+        CanaryHoldPathChars = 0;
+        CanaryHoldInstance = NULL;
+        CanaryHoldState = CanaryHoldReplyConsumed ? SAFEUPLOAD_CANARY_HOLD_IDLE :
+            SAFEUPLOAD_CANARY_HOLD_COMPLETE;
+        if (CanaryHoldState == SAFEUPLOAD_CANARY_HOLD_IDLE) CanaryHoldReplyConsumed = FALSE;
+        dereference = Instance;
+        KeSetEvent(&CanaryHoldPathReady, IO_NO_INCREMENT, FALSE);
+    }
+    ExReleaseFastMutex(&CanaryHoldMutex);
+    if (dereference != NULL) FltObjectDereference(dereference);
+}
+
+static VOID StageCanaryHoldFinish(_In_ PFLT_INSTANCE Instance)
+{
+    PFLT_INSTANCE dereference = NULL;
+    ExAcquireFastMutex(&CanaryHoldMutex);
+    if (CanaryHoldInstance == Instance &&
+        (CanaryHoldState == SAFEUPLOAD_CANARY_HOLD_ACTIVE ||
+         CanaryHoldState == SAFEUPLOAD_CANARY_HOLD_PREPARING)) {
+        CanaryHoldInstance = NULL;
+        CanaryHoldState = CanaryHoldReplyConsumed ? SAFEUPLOAD_CANARY_HOLD_IDLE :
+            SAFEUPLOAD_CANARY_HOLD_COMPLETE;
+        if (CanaryHoldState == SAFEUPLOAD_CANARY_HOLD_IDLE) CanaryHoldReplyConsumed = FALSE;
+        CanaryHoldMilliseconds = 0;
+        dereference = Instance;
+    }
+    ExReleaseFastMutex(&CanaryHoldMutex);
+    if (dereference != NULL) FltObjectDereference(dereference);
+}
+
+static NTSTATUS StageCanarySetDeleteDisposition(_In_ PFLT_INSTANCE Instance,
+    _In_ PFILE_OBJECT FileObject, _In_ BOOLEAN DeleteFile)
+{
+    FILE_DISPOSITION_INFORMATION disposition;
+    ULONG returned = 0;
+    PAGED_CODE();
+    NT_ASSERT(KeGetCurrentIrql() == PASSIVE_LEVEL);
+    disposition.DeleteFile = DeleteFile;
+    return FltSetInformationFile(Instance, FileObject, &disposition, sizeof(disposition),
+        FileDispositionInformation, &returned);
+}
+
+static NTSTATUS StageCanaryHoldAfterSecurity(_In_ PFLT_INSTANCE Instance,
+    _In_ PFILE_OBJECT FileObject, _In_ PUNICODE_STRING Name, _In_ ULONG HoldMilliseconds)
+{
+    WCHAR path[SAFEUPLOAD_MAX_PATH_CHARS];
+    PFLT_INSTANCE dereference = NULL;
+    LARGE_INTEGER timeout;
+    PVOID waitObjects[2] = { &CanaryHoldCancel, &CanaryStop };
+    BOOLEAN published = FALSE;
+    NTSTATUS status;
+
+    PAGED_CODE();
+    NT_ASSERT(KeGetCurrentIrql() == PASSIVE_LEVEL);
+    if ((Name->Length % sizeof(WCHAR)) == 0 && Name->Length < sizeof(path)) {
+        RtlCopyMemory(path, Name->Buffer, Name->Length);
+        path[Name->Length / sizeof(WCHAR)] = UNICODE_NULL;
+    } else {
+        path[0] = UNICODE_NULL;
+    }
+
+    ExAcquireFastMutex(&CanaryHoldMutex);
+    if (CanaryHoldInstance == Instance && CanaryHoldState == SAFEUPLOAD_CANARY_HOLD_PREPARING) {
+        if (path[0] != UNICODE_NULL) {
+            RtlCopyMemory(CanaryHoldPath, path,
+                (Name->Length / sizeof(WCHAR) + 1) * sizeof(WCHAR));
+            CanaryHoldPathChars = Name->Length / sizeof(WCHAR);
+            CanaryHoldStatus = STATUS_SUCCESS;
+            CanaryHoldState = SAFEUPLOAD_CANARY_HOLD_ACTIVE;
+            KeSetEvent(&CanaryHoldPathReady, IO_NO_INCREMENT, FALSE);
+            published = TRUE;
+        } else {
+            CanaryHoldStatus = STATUS_NAME_TOO_LONG;
+            CanaryHoldPathChars = 0;
+            CanaryHoldInstance = NULL;
+            CanaryHoldState = CanaryHoldReplyConsumed ? SAFEUPLOAD_CANARY_HOLD_IDLE :
+                SAFEUPLOAD_CANARY_HOLD_COMPLETE;
+            if (CanaryHoldState == SAFEUPLOAD_CANARY_HOLD_IDLE) CanaryHoldReplyConsumed = FALSE;
+            dereference = Instance;
+            KeSetEvent(&CanaryHoldPathReady, IO_NO_INCREMENT, FALSE);
+        }
+    }
+    ExReleaseFastMutex(&CanaryHoldMutex);
+
+    if (published) {
+        timeout.QuadPart = -((LONGLONG)HoldMilliseconds * 10000LL);
+        (VOID)KeWaitForMultipleObjects(RTL_NUMBER_OF(waitObjects), waitObjects,
+            WaitAny, Executive, KernelMode, FALSE, &timeout, NULL);
+    }
+
+    /* The test-only run omitted FILE_DELETE_ON_CLOSE so SYSTEM and non-SYSTEM callers can
+     * exercise the live DACL by name. Restore delete-pending before any mapping step. */
+    status = StageCanarySetDeleteDisposition(Instance, FileObject, TRUE);
+    if (dereference != NULL) FltObjectDereference(dereference);
+    StageCanaryHoldFinish(Instance);
+    return status;
+}
+
+NTSTATUS SafeUploadStageAdmissionCanaryHold(_In_ PCUNICODE_STRING VolumeName,
+    _In_ UINT32 HoldMilliseconds, _Out_ PSAFEUPLOAD_ADMISSION_CANARY_HOLD_REPLY Reply)
+{
+    PFLT_INSTANCE instances[SAFEUPLOAD_ADMISSION_VOLUME_MAX_ENTRIES];
+    PSAFEUPLOAD_INSTANCE_CONTEXT chosenContext = NULL;
+    PFLT_INSTANCE chosenInstance = NULL;
+    ULONG count = 0, index;
+    LARGE_INTEGER timeout;
+    BOOLEAN enumerated = FALSE, targetReferenced = FALSE;
+    NTSTATUS status;
+
+    PAGED_CODE();
+    NT_ASSERT(KeGetCurrentIrql() == PASSIVE_LEVEL);
+    if (VolumeName == NULL || VolumeName->Buffer == NULL || VolumeName->Length == 0 ||
+        (VolumeName->Length % sizeof(WCHAR)) != 0 ||
+        VolumeName->Length > SAFEUPLOAD_CANARY_VOLUME_CHARS * sizeof(WCHAR) ||
+        HoldMilliseconds == 0 || HoldMilliseconds > SAFEUPLOAD_CANARY_MAX_HOLD_MS) {
+        return STATUS_INVALID_PARAMETER;
+    }
+    if (KeReadStateEvent(&CanaryStop) != 0) return STATUS_FLT_DELETING_OBJECT;
+
+    status = FltEnumerateInstances(NULL, SafeUploadData.Filter, instances,
+        RTL_NUMBER_OF(instances), &count);
+    if (!NT_SUCCESS(status)) return status;
+    enumerated = TRUE;
+    for (index = 0; index < count; ++index) {
+        PSAFEUPLOAD_INSTANCE_CONTEXT context = NULL;
+        if (NT_SUCCESS(FltGetInstanceContext(instances[index], (PFLT_CONTEXT *)&context))) {
+            UNICODE_STRING contextVolume;
+            contextVolume.Buffer = context->VolumeGuid;
+            contextVolume.Length = (USHORT)(context->VolumeGuidChars * sizeof(WCHAR));
+            contextVolume.MaximumLength = sizeof(context->VolumeGuid);
+            if (context->VolumeGuidStatus == STATUS_SUCCESS &&
+                RtlEqualUnicodeString(&contextVolume, VolumeName, TRUE)) {
+                if (context->VolumeKind != SafeUploadVolumeFixed ||
+                    context->FileSystemType != FLT_FSTYPE_NTFS ||
+                    InterlockedCompareExchange(&context->CanaryState, 0, 0) != SAFEUPLOAD_CANARY_PASSED ||
+                    context->CanaryStatus != STATUS_SUCCESS ||
+                    context->CanaryChecks != SAFEUPLOAD_CANARY_CHECKS_ALL ||
+                    context->CanaryCleanupStatus != STATUS_SUCCESS) {
+                    FltReleaseContext(context);
+                    status = STATUS_INVALID_DEVICE_STATE;
+                    goto Exit;
+                }
+                if (chosenContext != NULL) {
+                    FltReleaseContext(context);
+                    status = STATUS_OBJECT_NAME_COLLISION;
+                    goto Exit;
+                }
+                chosenContext = context;
+                chosenInstance = instances[index];
+            } else {
+                FltReleaseContext(context);
+            }
+        }
+    }
+    if (chosenInstance == NULL || chosenContext == NULL) {
+        status = STATUS_OBJECT_NAME_NOT_FOUND;
+        goto Exit;
+    }
+
+    status = FltObjectReference(chosenInstance);
+    if (!NT_SUCCESS(status)) goto Exit;
+    targetReferenced = TRUE;
+
+    ExAcquireFastMutex(&CanaryHoldMutex);
+    if (CanaryHoldState != SAFEUPLOAD_CANARY_HOLD_IDLE ||
+        InterlockedCompareExchange(&chosenContext->CanaryState, 0, 0) != SAFEUPLOAD_CANARY_PASSED ||
+        KeReadStateEvent(&CanaryStop) != 0) {
+        status = CanaryHoldState != SAFEUPLOAD_CANARY_HOLD_IDLE ? STATUS_DEVICE_BUSY :
+            STATUS_INVALID_DEVICE_STATE;
+        ExReleaseFastMutex(&CanaryHoldMutex);
+        goto Exit;
+    }
+    KeClearEvent(&CanaryHoldPathReady);
+    KeClearEvent(&CanaryHoldCancel);
+    CanaryHoldStatus = STATUS_PENDING;
+    CanaryHoldPathChars = 0;
+    CanaryHoldMilliseconds = HoldMilliseconds;
+    CanaryHoldReplyConsumed = FALSE;
+    CanaryHoldInstance = chosenInstance;
+    targetReferenced = FALSE; /* The hold state now owns this reference. */
+    CanaryHoldState = SAFEUPLOAD_CANARY_HOLD_ARMED;
+    chosenContext->CanaryStatus = STATUS_PENDING;
+    chosenContext->CanaryChecks = 0;
+    chosenContext->CanaryCleanupStatus = STATUS_PENDING;
+    InterlockedExchange(&chosenContext->CanaryState, SAFEUPLOAD_CANARY_PENDING);
+    ExReleaseFastMutex(&CanaryHoldMutex);
+
+    /* The separately referenced target instance is owned by the hold state. Drop the
+     * enumeration and context references before sleeping so unrelated volumes can detach. */
+    FltReleaseContext(chosenContext);
+    chosenContext = NULL;
+    for (index = 0; index < count; ++index) FltObjectDereference(instances[index]);
+    enumerated = FALSE;
+
+    timeout.QuadPart = -((LONGLONG)SAFEUPLOAD_CANARY_MAX_HOLD_MS * 10000LL);
+    status = KeWaitForSingleObject(&CanaryHoldPathReady, Executive, KernelMode, FALSE, &timeout);
+    if (status == STATUS_SUCCESS) {
+        ExAcquireFastMutex(&CanaryHoldMutex);
+        status = CanaryHoldStatus;
+        if (NT_SUCCESS(status) && CanaryHoldPathChars < RTL_NUMBER_OF(Reply->CanaryPath)) {
+            Reply->StructSize = sizeof(*Reply);
+            Reply->Status = (UINT32)status;
+            Reply->PathChars = CanaryHoldPathChars;
+            Reply->Reserved = 0;
+            RtlCopyMemory(Reply->CanaryPath, CanaryHoldPath,
+                (CanaryHoldPathChars + 1) * sizeof(WCHAR));
+        } else if (NT_SUCCESS(status)) {
+            status = STATUS_INVALID_BUFFER_SIZE;
+        }
+        if (CanaryHoldState == SAFEUPLOAD_CANARY_HOLD_COMPLETE) {
+            CanaryHoldState = SAFEUPLOAD_CANARY_HOLD_IDLE;
+            CanaryHoldReplyConsumed = FALSE;
+        } else if (CanaryHoldState == SAFEUPLOAD_CANARY_HOLD_ACTIVE) {
+            CanaryHoldReplyConsumed = TRUE;
+        }
+        ExReleaseFastMutex(&CanaryHoldMutex);
+    } else {
+        status = STATUS_IO_TIMEOUT;
+        ExAcquireFastMutex(&CanaryHoldMutex);
+        CanaryHoldReplyConsumed = TRUE;
+        if (CanaryHoldState == SAFEUPLOAD_CANARY_HOLD_COMPLETE) {
+            CanaryHoldState = SAFEUPLOAD_CANARY_HOLD_IDLE;
+            CanaryHoldReplyConsumed = FALSE;
+        }
+        ExReleaseFastMutex(&CanaryHoldMutex);
+        SafeUploadStageAdmissionCanaryHoldCancel();
+    }
+
+Exit:
+    if (targetReferenced) FltObjectDereference(chosenInstance);
+    if (chosenContext != NULL) FltReleaseContext(chosenContext);
+    if (enumerated) {
+        for (index = 0; index < count; ++index) FltObjectDereference(instances[index]);
+    }
+    return status;
+}
+
+VOID SafeUploadStageAdmissionCanaryHoldCancel(VOID)
+{
+    PFLT_INSTANCE dereference = NULL;
+    PAGED_CODE();
+    NT_ASSERT(KeGetCurrentIrql() == PASSIVE_LEVEL);
+    ExAcquireFastMutex(&CanaryHoldMutex);
+    if (CanaryHoldState == SAFEUPLOAD_CANARY_HOLD_ARMED) {
+        dereference = CanaryHoldInstance;
+        CanaryHoldInstance = NULL;
+        CanaryHoldStatus = STATUS_CANCELLED;
+        CanaryHoldPathChars = 0;
+        CanaryHoldState = CanaryHoldReplyConsumed ? SAFEUPLOAD_CANARY_HOLD_IDLE :
+            SAFEUPLOAD_CANARY_HOLD_COMPLETE;
+        if (CanaryHoldState == SAFEUPLOAD_CANARY_HOLD_IDLE) CanaryHoldReplyConsumed = FALSE;
+        KeSetEvent(&CanaryHoldPathReady, IO_NO_INCREMENT, FALSE);
+    }
+    if (CanaryHoldState == SAFEUPLOAD_CANARY_HOLD_PREPARING ||
+        CanaryHoldState == SAFEUPLOAD_CANARY_HOLD_ACTIVE) {
+        KeSetEvent(&CanaryHoldCancel, IO_NO_INCREMENT, FALSE);
+    }
+    ExReleaseFastMutex(&CanaryHoldMutex);
+    if (dereference != NULL) FltObjectDereference(dereference);
+}
+#endif
+
 static NTSTATUS StageCanaryCheckRemoved(_In_ PFLT_INSTANCE Instance, _In_ PUNICODE_STRING Name)
 {
     OBJECT_ATTRIBUTES attributes;
@@ -259,8 +642,17 @@ static VOID StageCanaryRun(_In_ PFLT_INSTANCE Instance, _Inout_ PSAFEUPLOAD_INST
     ULONG returned = 0;
     ULONG attempt;
     NTSTATUS status, cleanupStatus = STATUS_SUCCESS;
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    ULONG holdMilliseconds = 0;
+    BOOLEAN holdClaimed = FALSE;
+    BOOLEAN fileDeleteMarked = FALSE;
+#endif
 
+    PAGED_CODE();
     NT_ASSERT(KeGetCurrentIrql() == PASSIVE_LEVEL);
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    holdClaimed = StageCanaryHoldClaim(Instance, &holdMilliseconds);
+#endif
     status = FltGetVolumeFromInstance(Instance, &volume);
     if (!NT_SUCCESS(status)) goto Exit;
     buffer = ExAllocatePool2(POOL_FLAG_PAGED, SAFEUPLOAD_MAX_PATH_CHARS * sizeof(WCHAR), SAFEUPLOAD_POOL_TAG);
@@ -286,24 +678,53 @@ static VOID StageCanaryRun(_In_ PFLT_INSTANCE Instance, _Inout_ PSAFEUPLOAD_INST
     if (!NT_SUCCESS(status)) goto Exit;
     InitializeObjectAttributes(&attributes, &name, OBJ_KERNEL_HANDLE | OBJ_CASE_INSENSITIVE, NULL, &descriptor);
     step = 4;
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    /* Only an explicitly armed test run omits delete-on-close so user-mode can reopen the
+     * DACL-verified name. The hold path restores delete-pending before any mapping step. */
     status = FltCreateFileEx2(SafeUploadData.Filter, Instance, &fileHandle, &fileObject,
-        FILE_READ_DATA | FILE_WRITE_DATA | FILE_READ_ATTRIBUTES | DELETE | SYNCHRONIZE,
+        FILE_READ_DATA | FILE_WRITE_DATA | FILE_READ_ATTRIBUTES | READ_CONTROL | DELETE | SYNCHRONIZE,
+        &attributes, &io, NULL, FILE_ATTRIBUTE_TEMPORARY,
+        FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, FILE_CREATE,
+        FILE_NON_DIRECTORY_FILE | FILE_SYNCHRONOUS_IO_NONALERT | FILE_COMPLETE_IF_OPLOCKED |
+            (holdClaimed ? 0 : FILE_DELETE_ON_CLOSE),
+        NULL, 0, 0, NULL);
+#else
+    status = FltCreateFileEx2(SafeUploadData.Filter, Instance, &fileHandle, &fileObject,
+        FILE_READ_DATA | FILE_WRITE_DATA | FILE_READ_ATTRIBUTES | READ_CONTROL | DELETE | SYNCHRONIZE,
         &attributes, &io, NULL, FILE_ATTRIBUTE_TEMPORARY,
         FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, FILE_CREATE,
         FILE_NON_DIRECTORY_FILE | FILE_SYNCHRONOUS_IO_NONALERT | FILE_COMPLETE_IF_OPLOCKED |
             FILE_DELETE_ON_CLOSE,
         NULL, 0, 0, NULL);
+#endif
     if (status != STATUS_SUCCESS) goto Exit;
     if (fileObject == NULL || fileHandle == NULL) { status = STATUS_INVALID_HANDLE; goto Exit; }
-    if (io.Information != FILE_CREATED) { status = STATUS_DATA_ERROR; goto Exit; }
-    eof.EndOfFile.QuadPart = PAGE_SIZE;
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    fileDeleteMarked = !holdClaimed;
+#endif
+    /* This readback is deliberately the first post-create operation: no EOF, identity, or
+     * section work can make a volume trusted before NTFS's applied owner/group/DACL is checked. */
     step = 5;
+    status = StageCanaryVerifySecurity(Instance, fileObject);
+    if (!NT_SUCCESS(status)) goto Exit;
+    checks |= SAFEUPLOAD_CANARY_DACL_VERIFIED;
+    if (io.Information != FILE_CREATED) { status = STATUS_DATA_ERROR; goto Exit; }
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    if (holdClaimed) {
+        step = 6;
+        status = StageCanaryHoldAfterSecurity(Instance, fileObject, &name, holdMilliseconds);
+        if (!NT_SUCCESS(status)) goto Exit;
+        fileDeleteMarked = TRUE;
+    }
+#endif
+    eof.EndOfFile.QuadPart = PAGE_SIZE;
+    step = 7;
     status = FltSetInformationFile(Instance, fileObject, &eof, sizeof(eof), FileEndOfFileInformation);
     if (!NT_SUCCESS(status)) goto Exit;
     /* The canary owns this newly created lower object for its entire lifetime. Its delete-pending
      * name cannot be reopened; actual S(F) diagnostics use the verified attribute-only ID helper.
      * Here the referenced source object supplies the same NTFS per-stream section-pointer state. */
-    step = 6;
+    step = 8;
     RtlZeroMemory(&identity, sizeof(identity));
     status = FltQueryInformationFile(Instance, fileObject, &identity, sizeof(identity),
         FileIdInformation, &returned);
@@ -311,19 +732,19 @@ static VOID StageCanaryRun(_In_ PFLT_INSTANCE Instance, _Inout_ PSAFEUPLOAD_INST
     if (returned != sizeof(identity)) { status = STATUS_INFO_LENGTH_MISMATCH; goto Exit; }
     if (fileObject->SectionObjectPointer == NULL) { status = STATUS_INVALID_FILE_FOR_SECTION; goto Exit; }
     InitializeObjectAttributes(&attributes, NULL, OBJ_KERNEL_HANDLE, NULL, NULL);
-    step = 8;
+    step = 9;
     status = ZwCreateSection(&sectionHandle, SECTION_QUERY | SECTION_MAP_READ | SECTION_MAP_WRITE,
         &attributes, NULL, PAGE_READWRITE, SEC_COMMIT, fileHandle);
     if (!NT_SUCCESS(status)) goto Exit;
     /* Retain the section handle without creating a view, the admission-critical case. */
-    step = 9;
+    step = 10;
     if (!MmDoesFileHaveUserWritableReferences(fileObject->SectionObjectPointer)) {
         status = STATUS_NOT_SUPPORTED; goto Exit;
     }
     checks |= SAFEUPLOAD_CANARY_RETAINED_YES;
     ZwClose(sectionHandle); sectionHandle = NULL;
     delay.QuadPart = -100 * 10000LL;
-    step = 10;
+    step = 11;
     for (attempt = 0; attempt < 20; ++attempt) {
         if (!MmDoesFileHaveUserWritableReferences(fileObject->SectionObjectPointer)) {
             checks |= SAFEUPLOAD_CANARY_RELEASED_NO;
@@ -334,22 +755,66 @@ static VOID StageCanaryRun(_In_ PFLT_INSTANCE Instance, _Inout_ PSAFEUPLOAD_INST
     status = (checks & SAFEUPLOAD_CANARY_RELEASED_NO) != 0 ? STATUS_SUCCESS : STATUS_IO_TIMEOUT;
 Exit:
     if (sectionHandle != NULL) ZwClose(sectionHandle);
-    if (fileHandle != NULL) FltClose(fileHandle);
     if (fileObject != NULL) {
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+        if (!fileDeleteMarked) {
+            NTSTATUS deleteStatus = StageCanarySetDeleteDisposition(Instance, fileObject, TRUE);
+            if (NT_SUCCESS(deleteStatus)) fileDeleteMarked = TRUE;
+            else if (fileHandle != NULL) {
+                FILE_DISPOSITION_INFORMATION disposition;
+                IO_STATUS_BLOCK deleteIo = {0};
+                NTSTATUS fallbackStatus;
+                disposition.DeleteFile = TRUE;
+                fallbackStatus = ZwSetInformationFile(fileHandle, &deleteIo, &disposition,
+                    sizeof(disposition), FileDispositionInformation);
+                deleteStatus = fallbackStatus;
+                if (NT_SUCCESS(fallbackStatus)) fileDeleteMarked = TRUE;
+                if (!NT_SUCCESS(deleteStatus)) cleanupStatus = deleteStatus;
+            } else {
+                cleanupStatus = deleteStatus;
+            }
+        }
+#endif
+        if (fileHandle != NULL) FltClose(fileHandle);
         ObDereferenceObject(fileObject);
-        cleanupStatus = StageCanaryCheckRemoved(Instance, &name);
-        if (NT_SUCCESS(cleanupStatus)) checks |= SAFEUPLOAD_CANARY_REMOVED;
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+        if (holdClaimed) StageCanaryHoldReportFailure(Instance, status);
+#endif
+        {
+            NTSTATUS removedStatus = StageCanaryCheckRemoved(Instance, &name);
+            if (NT_SUCCESS(removedStatus)) {
+                checks |= SAFEUPLOAD_CANARY_REMOVED;
+                cleanupStatus = STATUS_SUCCESS;
+            } else if (NT_SUCCESS(cleanupStatus)) {
+                cleanupStatus = removedStatus;
+            }
+        }
+    } else {
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+        if (fileHandle != NULL && holdClaimed && !fileDeleteMarked) {
+            FILE_DISPOSITION_INFORMATION disposition;
+            IO_STATUS_BLOCK deleteIo = {0};
+            disposition.DeleteFile = TRUE;
+            cleanupStatus = ZwSetInformationFile(fileHandle, &deleteIo, &disposition,
+                sizeof(disposition), FileDispositionInformation);
+        }
+#endif
+        if (fileHandle != NULL) FltClose(fileHandle);
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+        if (holdClaimed) StageCanaryHoldReportFailure(Instance, status);
+#endif
     }
     if (buffer != NULL) ExFreePoolWithTag(buffer, SAFEUPLOAD_POOL_TAG);
     if (volume != NULL) FltObjectDereference(volume);
     Context->CanaryStatus = status;
     Context->CanaryCleanupStatus = cleanupStatus;
-    /* Failure phase in bits 8..15: volume/name/security/create/EOF/ID/delete-on-close/section/
-     * retained/released. The three low bits remain the individual checks; passed stays exactly 7. */
+    /* Failure phase in bits 8..15: volume/name/security/create/DACL/test-hold/EOF/ID/section/
+     * retained/released. The low bits are individual checks; passed is exactly 15. */
     Context->CanaryChecks = checks | (status == STATUS_SUCCESS ? 0 : step << 8);
     /* Published last; consumers must treat Pending/Running/Failed/Unsupported as untrusted. */
     InterlockedExchange(&Context->CanaryState,
-        status == STATUS_SUCCESS && cleanupStatus == STATUS_SUCCESS && checks == 7 ?
+        status == STATUS_SUCCESS && cleanupStatus == STATUS_SUCCESS &&
+            checks == SAFEUPLOAD_CANARY_CHECKS_ALL ?
             SAFEUPLOAD_CANARY_PASSED : SAFEUPLOAD_CANARY_FAILED);
 }
 
@@ -416,6 +881,18 @@ NTSTATUS SafeUploadStageAdmissionStartWorker(VOID)
 {
     OBJECT_ATTRIBUTES attributes;
     KeInitializeEvent(&CanaryStop, NotificationEvent, FALSE);
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    ExInitializeFastMutex(&CanaryHoldMutex);
+    KeInitializeEvent(&CanaryHoldPathReady, NotificationEvent, FALSE);
+    KeInitializeEvent(&CanaryHoldCancel, NotificationEvent, FALSE);
+    CanaryHoldState = SAFEUPLOAD_CANARY_HOLD_IDLE;
+    CanaryHoldReplyConsumed = FALSE;
+    CanaryHoldInstance = NULL;
+    CanaryHoldMilliseconds = 0;
+    CanaryHoldStatus = STATUS_SUCCESS;
+    CanaryHoldPathChars = 0;
+    RtlZeroMemory(CanaryHoldPath, sizeof(CanaryHoldPath));
+#endif
     InitializeObjectAttributes(&attributes, NULL, OBJ_KERNEL_HANDLE, NULL, NULL);
     return PsCreateSystemThread(&CanaryThreadHandle, SYNCHRONIZE, &attributes,
         NULL, NULL, StageCanaryWorker, &CanaryStop);
@@ -425,8 +902,14 @@ VOID SafeUploadStageAdmissionStopWorker(VOID)
 {
     if (CanaryThreadHandle != NULL) {
         KeSetEvent(&CanaryStop, IO_NO_INCREMENT, FALSE);
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+        SafeUploadStageAdmissionCanaryHoldCancel();
+#endif
         (VOID)ZwWaitForSingleObject(CanaryThreadHandle, FALSE, NULL);
         ZwClose(CanaryThreadHandle);
         CanaryThreadHandle = NULL;
     }
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    SafeUploadStageAdmissionCanaryHoldCancel();
+#endif
 }
