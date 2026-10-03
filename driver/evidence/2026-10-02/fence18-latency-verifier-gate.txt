@@ -1,0 +1,88 @@
+Variant=fence-latency
+GuestUTC=2026-10-02T22:00:18.0301170Z
+FeatureSHA256=034A0B44BF83AB11527CE00D5BB20B97D6DDAF9C239C20F3E3B576B54554AF59
+InspectorSHA256=8F4D97B3E2F730BE5B8C5B37531632218389873184736E577559512C8E1E8C0F
+DeclaredLimits={"verifier":true,"iterations":5,"qualification":"synthetic-local-NTFS-only","fileCount":6500,"p95ForegroundMs":250,"maxForegroundMs":1000,"maxScanMs":10000}
+FixtureSetupMs=2031.922
+Time Stamp: 10/02/2026 23:00:20.154
+Verifier Flags: 0x0000013b
+  Standard Flags:
+    [X] 0x00000001 Special pool.
+    [X] 0x00000002 Force IRQL checking.
+    [X] 0x00000008 Pool tracking.
+    [X] 0x00000010 I/O verification.
+    [X] 0x00000020 Deadlock detection.
+    [ ] 0x00000080 DMA checking.
+    [X] 0x00000100 Security checks.
+    [ ] 0x00000800 Miscellaneous checks.
+    [ ] 0x00020000 DDI compliance checking.
+  Additional Flags:
+    [ ] 0x00000004 Randomized low resources simulation.
+    [ ] 0x00000200 Force pending I/O requests.
+    [ ] 0x00000400 IRP logging.
+    [ ] 0x00002000 Invariant MDL checking for stack.
+    [ ] 0x00004000 Invariant MDL checking for driver.
+    [ ] 0x00008000 Power framework delay fuzzing.
+    [ ] 0x00010000 Port/miniport interface checking.
+    [ ] 0x00040000 Systematic low resources simulation.
+    [ ] 0x00080000 DDI compliance checking (additional).
+    [ ] 0x00200000 NDIS/WIFI verification.
+    [ ] 0x00800000 Kernel synchronization delay fuzzing.
+    [ ] 0x01000000 VM switch verification.
+    [ ] 0x02000000 Code integrity checks.
+    [X] Indicates flag is enabled.
+  Verifier Statistics Summary
+    Raise IRQLs:                                     0
+    Acquire Spin Locks:                              0
+    Synchronize Executions:                          0
+    Trims:                                      264515
+    Pool Allocations Attempted:               24928506
+    Pool Allocations Succeeded:               24928506
+    Pool Allocations Succeeded SpecialPool:      12421
+    Pool Allocations With No Tag:                    0
+    Pool Allocations Not Tracked:             22862354
+    Pool Allocations Failed:                         0
+    Pool Allocations Failed Deliberately:            0
+  Driver Verification List
+    MODULE: SafeUpload.sys (load: 0 / unload: 0)
+Phase={"operation":"load","iteration":1,"startUtcTicks":639265752209121218,"endUtcTicks":639265752217601163,"elapsedMs":845.7522,"exitCode":0}
+Phase={"operation":"load","iteration":2,"startUtcTicks":639265752218001173,"endUtcTicks":639265752226101160,"elapsedMs":810.3311,"exitCode":0}
+Phase={"operation":"load","iteration":3,"startUtcTicks":639265752226481157,"endUtcTicks":639265752234521162,"elapsedMs":803.49200000000008,"exitCode":0}
+Phase={"operation":"load","iteration":4,"startUtcTicks":639265752234901178,"endUtcTicks":639265752242841163,"elapsedMs":793.3727,"exitCode":0}
+Phase={"operation":"load","iteration":5,"startUtcTicks":639265752243121154,"endUtcTicks":639265752251061156,"elapsedMs":792.5665,"exitCode":0}
+Phase={"reply":"admission fence refresh: OK","iteration":1,"elapsedMs":522.7621,"after":{"fence":true,"complete":true,"entries":0,"generation":5,"lastStatus":"0x00000000","failureLine":0,"refreshStarted":5,"refreshCompleted":5,"refreshFailed":0,"pagingWritesDenied":0,"opensRefused":0,"directoriesScanned":4,"filesScanned":6509,"reparseSkipped":0,"volumeScopesSkipped":0,"streamsReleased":0,"releaseRefused":0,"sectionsDenied":0,"sectionNameUnresolved":0,"fsctlUnresolved":0,"lateRefreshesQueued":2},"endUtcTicks":639265752264781165,"before":{"fence":true,"complete":true,"entries":0,"generation":4,"lastStatus":"0x00000000","failureLine":0,"refreshStarted":4,"refreshCompleted":4,"refreshFailed":0,"pagingWritesDenied":0,"opensRefused":0,"directoriesScanned":4,"filesScanned":6509,"reparseSkipped":0,"volumeScopesSkipped":0,"streamsReleased":0,"releaseRefused":0,"sectionsDenied":0,"sectionNameUnresolved":0,"fsctlUnresolved":0,"lateRefreshesQueued":2},"exitCode":0,"startUtcTicks":639265752259521166,"operation":"refresh"}
+Phase={"reply":"admission fence refresh: OK","iteration":2,"elapsedMs":451.341,"after":{"fence":true,"complete":true,"entries":0,"generation":6,"lastStatus":"0x00000000","failureLine":0,"refreshStarted":6,"refreshCompleted":6,"refreshFailed":0,"pagingWritesDenied":0,"opensRefused":0,"directoriesScanned":4,"filesScanned":6509,"reparseSkipped":0,"volumeScopesSkipped":0,"streamsReleased":0,"releaseRefused":0,"sectionsDenied":0,"sectionNameUnresolved":0,"fsctlUnresolved":0,"lateRefreshesQueued":2},"endUtcTicks":639265752274141165,"before":{"fence":true,"complete":true,"entries":0,"generation":5,"lastStatus":"0x00000000","failureLine":0,"refreshStarted":5,"refreshCompleted":5,"refreshFailed":0,"pagingWritesDenied":0,"opensRefused":0,"directoriesScanned":4,"filesScanned":6509,"reparseSkipped":0,"volumeScopesSkipped":0,"streamsReleased":0,"releaseRefused":0,"sectionsDenied":0,"sectionNameUnresolved":0,"fsctlUnresolved":0,"lateRefreshesQueued":2},"exitCode":0,"startUtcTicks":639265752269641152,"operation":"refresh"}
+Phase={"reply":"admission fence refresh: OK","iteration":3,"elapsedMs":548.3151,"after":{"fence":true,"complete":true,"entries":0,"generation":7,"lastStatus":"0x00000000","failureLine":0,"refreshStarted":7,"refreshCompleted":7,"refreshFailed":0,"pagingWritesDenied":0,"opensRefused":0,"directoriesScanned":4,"filesScanned":6509,"reparseSkipped":0,"volumeScopesSkipped":0,"streamsReleased":0,"releaseRefused":0,"sectionsDenied":0,"sectionNameUnresolved":0,"fsctlUnresolved":0,"lateRefreshesQueued":2},"endUtcTicks":639265752279941153,"before":{"fence":true,"complete":true,"entries":0,"generation":6,"lastStatus":"0x00000000","failureLine":0,"refreshStarted":6,"refreshCompleted":6,"refreshFailed":0,"pagingWritesDenied":0,"opensRefused":0,"directoriesScanned":4,"filesScanned":6509,"reparseSkipped":0,"volumeScopesSkipped":0,"streamsReleased":0,"releaseRefused":0,"sectionsDenied":0,"sectionNameUnresolved":0,"fsctlUnresolved":0,"lateRefreshesQueued":2},"exitCode":0,"startUtcTicks":639265752274461161,"operation":"refresh"}
+Phase={"reply":"admission fence refresh: OK","iteration":4,"elapsedMs":596.3082,"after":{"fence":true,"complete":true,"entries":0,"generation":8,"lastStatus":"0x00000000","failureLine":0,"refreshStarted":8,"refreshCompleted":8,"refreshFailed":0,"pagingWritesDenied":0,"opensRefused":0,"directoriesScanned":4,"filesScanned":6509,"reparseSkipped":0,"volumeScopesSkipped":0,"streamsReleased":0,"releaseRefused":0,"sectionsDenied":0,"sectionNameUnresolved":0,"fsctlUnresolved":0,"lateRefreshesQueued":2},"endUtcTicks":639265752286421158,"before":{"fence":true,"complete":true,"entries":0,"generation":7,"lastStatus":"0x00000000","failureLine":0,"refreshStarted":7,"refreshCompleted":7,"refreshFailed":0,"pagingWritesDenied":0,"opensRefused":0,"directoriesScanned":4,"filesScanned":6509,"reparseSkipped":0,"volumeScopesSkipped":0,"streamsReleased":0,"releaseRefused":0,"sectionsDenied":0,"sectionNameUnresolved":0,"fsctlUnresolved":0,"lateRefreshesQueued":2},"exitCode":0,"startUtcTicks":639265752280461159,"operation":"refresh"}
+Phase={"reply":"admission fence refresh: OK","iteration":5,"elapsedMs":369.54150000000004,"after":{"fence":true,"complete":true,"entries":0,"generation":9,"lastStatus":"0x00000000","failureLine":0,"refreshStarted":9,"refreshCompleted":9,"refreshFailed":0,"pagingWritesDenied":0,"opensRefused":0,"directoriesScanned":4,"filesScanned":6509,"reparseSkipped":0,"volumeScopesSkipped":0,"streamsReleased":0,"releaseRefused":0,"sectionsDenied":0,"sectionNameUnresolved":0,"fsctlUnresolved":0,"lateRefreshesQueued":2},"endUtcTicks":639265752290441151,"before":{"fence":true,"complete":true,"entries":0,"generation":8,"lastStatus":"0x00000000","failureLine":0,"refreshStarted":8,"refreshCompleted":8,"refreshFailed":0,"pagingWritesDenied":0,"opensRefused":0,"directoriesScanned":4,"filesScanned":6509,"reparseSkipped":0,"volumeScopesSkipped":0,"streamsReleased":0,"releaseRefused":0,"sectionsDenied":0,"sectionNameUnresolved":0,"fsctlUnresolved":0,"lateRefreshesQueued":2},"exitCode":0,"startUtcTicks":639265752286741157,"operation":"refresh"}
+Distribution_load={"count":5,"p50Ms":803.49200000000008,"p95Ms":845.7522,"maxMs":845.7522}
+Distribution_refresh={"count":5,"p50Ms":522.7621,"p95Ms":596.3082,"maxMs":596.3082}
+Distribution_DuringScan_scopeRead={"count":321,"p50Ms":0.2502,"p95Ms":9.0545,"maxMs":12.016}
+Failures_DuringScan_scopeRead=0
+Distribution_DuringScan_outsideCreateReadDelete={"count":321,"p50Ms":1.1196,"p95Ms":1.7765,"maxMs":13.912}
+Failures_DuringScan_outsideCreateReadDelete=0
+RawSamples=C:\Users\vika\Documents\fence-latency-b358642c59474049870591eab322437e.csv
+RawRefreshPhases=C:\Users\vika\Documents\fence-latency-b358642c59474049870591eab322437e-phases.jsonl
+LatencyMeasurementPass=True
+Verifier Volatile Flags: 0x00000000
+  Volatile Flags:
+    [ ] 0x00000001 Special pool.
+    [ ] 0x00000002 Force IRQL checking.
+    [ ] 0x00000004 Randomized low resources simulation.
+    [ ] 0x00000008 Pool tracking.
+    [ ] 0x00000010 I/O verification.
+    [ ] 0x00000020 Deadlock detection.
+    [ ] 0x00000080 DMA checking.
+    [ ] 0x00000200 Force pending I/O requests.
+    [ ] 0x00000400 IRP logging.
+    [ ] 0x00000800 Miscellaneous checks.
+  Removed Drivers:
+    SafeUpload.sys
+The new settings are in effect until the system
+is restarted or the settings are changed again.
+No settings were changed.
+OriginalDriverRestored=ADA9D05AB6AECDD2B6C521B0CE529FC06C732154ACB3EE85439FBDC8AA80DFCE
+ExperimentalDriverUnloaded=True
+LatencyRestoration=OriginalDriverAndPolicyRestored; FilterUnloaded; SyntheticFixturesRemoved
+VariantComplete=fence-latency
+HARNESS_RETURNED

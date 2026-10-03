@@ -721,7 +721,44 @@ an exact-file prefix or an empty ancestor); the directory delete-on-close refusa
 run 15 by an existing check, so the run 16 addition is defense-in-depth ([run 15](evidence/2026-10-02/fence14-gates-run15-gate.txt),
 [run 16 Verifier](evidence/2026-10-02/fence14-gates-run16-verifier-gate.txt), [run 16](evidence/2026-10-02/fence14-gates-run16-gate.txt)).
 
-Next: the remaining tracker items.
+### Follow-up: synthetic fence latency measurement (2 October 2026)
+
+- [x] Separate sampling-process smoke test on the builder: 62 samples, no errors;
+      [validation](evidence/2026-10-02/fence-latency-harness-validation.txt).
+- [x] Fresh local-NTFS measurements on the unchanged run 17 packages: five loads
+      and five explicit refreshes per variant, 6,500 synthetic 4-KiB files
+      (6,509 files reported scanned). Limits declared before each run: scan max
+      10,000 ms, foreground max 1,000 ms and nearest-rank p95 250 ms, zero errors.
+- [x] Both variants pass those provisional limits, with separately collected
+      original-driver/policy/off-Verifier restoration checks.
+- [ ] Production save latency, real policy-update workflow, lower-I/O stall/fault
+      injection and an enforced scan deadline remain unqualified.
+
+| Variant | Load p50 / p95 / max (ms) | Explicit refresh p50 / p95 / max (ms) | Foreground scope-read p95 / max (ms) | Outside create/read/delete p95 / max (ms) |
+| --- | --- | --- | --- | --- |
+| [Plain](evidence/2026-10-02/fence18-latency-plain-gate.txt) | 526.31 / 1028.31 / 1028.31 | 199.65 / 274.64 / 274.64 | 0.25 / 0.89 | 0.95 / 2.68 |
+| [Volatile Verifier 0x13B](evidence/2026-10-02/fence18-latency-verifier-gate.txt) | 803.49 / 845.75 / 845.75 | 522.76 / 596.31 / 596.31 | 9.05 / 12.02 | 1.78 / 13.91 |
+
+Foreground figures include only samples overlapping measured load/refresh calls:
+268 of each operation without Verifier, 321 of each with Verifier, zero failures.
+With five scan samples, nearest-rank p95 is the maximum. A separate child records
+raw timestamps and durations; an independent CSV recomputation matches these
+figures. Explicit refresh timing runs inside the SYSTEM task, excluding scheduled
+task startup/polling. This invokes the routine used by policy updates but does not
+exercise a real policy push. No live stage/journal content was cleaned.
+
+[Provenance and artifact hashes](evidence/2026-10-02/fence18-latency-provenance.txt)
+pin driver source `5b233d5`, harness `349e8ea`, feature SYS `034A0B44…` and
+Inspector `8F4D97B3…`; the packages matched fresh guest hash checks. Raw
+[plain CSV](evidence/2026-10-02/fence18-latency-plain-samples.csv) and
+[Verifier CSV](evidence/2026-10-02/fence18-latency-verifier-samples.csv) are archived.
+Independent [plain restoration](evidence/2026-10-02/fence18-latency-plain-final-restored-state.txt)
+and [Verifier restoration](evidence/2026-10-02/fence18-latency-verifier-final-restored-state.txt)
+both report `BaselineClean=True`. Host and guest clocks differ; overlap uses only
+guest timestamps. A passing synthetic measurement does not prove a hard time
+bound: scan lower I/O remains synchronous without a timeout.
+
+Next: address the late-attachment unload-race review, then the remaining tracker items.
 
 ## Previous milestone: journal recovery/security qualified (2 October 2026)
 
