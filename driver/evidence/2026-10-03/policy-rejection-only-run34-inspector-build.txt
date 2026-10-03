@@ -1,0 +1,32 @@
+Build started 03/10/2026 13:07:24.
+
+Project "C:\Users\vika\Documents\safeupload-inspector-run34-79c0b69\driver\SafeUpload.Inspector\SafeUpload.Inspector.vcxproj" on node 1 (Rebuild target(s)).
+CoreClean:
+  Creating directory "SafeUplo.0E2B6D95\x64\Release\".
+PrepareForBuild:
+  Structured output is enabled. The formatting of compiler diagnostics will reflect the error hierarchy. See https://aka.ms/cpp/structured-output for more details.
+  Creating directory "C:\Users\vika\Documents\safeupload-inspector-run34-79c0b69\driver\SafeUpload.Inspector\x64\Release\".
+  Creating directory "SafeUplo.0E2B6D95\x64\Release\SafeUplo.0E2B6D95.tlog\".
+InitializeBuildStatus:
+  Creating "SafeUplo.0E2B6D95\x64\Release\SafeUplo.0E2B6D95.tlog\unsuccessfulbuild" because "AlwaysCreate" was specified.
+  Touching "SafeUplo.0E2B6D95\x64\Release\SafeUplo.0E2B6D95.tlog\unsuccessfulbuild".
+ClCompile:
+  C:\Program Files\Microsoft Visual Studio\18\Community\VC\Tools\MSVC\14.51.36231\bin\HostX64\x64\CL.exe /c /Zi /nologo /W4 /WX /diagnostics:column /sdl /O2 /Oi /GL /D _UNICODE /D UNICODE /D _UNICODE /D UNICODE /D WIN32_LEAN_AND_MEAN /D SAFEUPLOAD_STAGING_PROTOTYPE=1 /Gm- /EHsc /MT /GS /Gy /fp:precise /Zc:wchar_t /Zc:forScope /Zc:inline /permissive- /Fo"SafeUplo.0E2B6D95\x64\Release\\" /Fd"SafeUplo.0E2B6D95\x64\Release\vc145.pdb" /external:W4 /Gd /TC /FC /errorReport:queue main.c
+  main.c
+Link:
+  C:\Program Files\Microsoft Visual Studio\18\Community\VC\Tools\MSVC\14.51.36231\bin\HostX64\x64\link.exe /ERRORREPORT:QUEUE /OUT:"C:\Users\vika\Documents\safeupload-inspector-run34-79c0b69\driver\SafeUpload.Inspector\x64\Release\SafeUpload.Inspector.exe" /NOLOGO kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib odbc32.lib odbccp32.lib FltLib.lib /MANIFEST /MANIFESTUAC:"level='asInvoker' uiAccess='false'" /manifest:embed /DEBUG:FULL /PDB:"C:\Users\vika\Documents\safeupload-inspector-run34-79c0b69\driver\SafeUpload.Inspector\x64\Release\SafeUpload.Inspector.pdb" /SUBSYSTEM:CONSOLE /OPT:REF /OPT:ICF /LTCG:incremental /LTCGOUT:"SafeUplo.0E2B6D95\x64\Release\SafeUpload.Inspector.iobj" /TLBID:1 /DYNAMICBASE /NXCOMPAT /IMPLIB:"C:\Users\vika\Documents\safeupload-inspector-run34-79c0b69\driver\SafeUpload.Inspector\x64\Release\SafeUpload.Inspector.lib" /MACHINE:X64 SafeUplo.0E2B6D95\x64\Release\main.obj
+  Generating code
+  Previous IPDB not found, fall back to full compilation.
+  All 27 functions were compiled because no usable IPDB/IOBJ from previous compilation was found.
+  Finished generating code
+  SafeUpload.Inspector.vcxproj -> C:\Users\vika\Documents\safeupload-inspector-run34-79c0b69\driver\SafeUpload.Inspector\x64\Release\SafeUpload.Inspector.exe
+FinalizeBuildStatus:
+  Deleting file "SafeUplo.0E2B6D95\x64\Release\SafeUplo.0E2B6D95.tlog\unsuccessfulbuild".
+  Touching "SafeUplo.0E2B6D95\x64\Release\SafeUplo.0E2B6D95.tlog\SafeUpload.Inspector.lastbuildstate".
+Done Building Project "C:\Users\vika\Documents\safeupload-inspector-run34-79c0b69\driver\SafeUpload.Inspector\SafeUpload.Inspector.vcxproj" (Rebuild target(s)).
+
+Build succeeded.
+    0 Warning(s)
+    0 Error(s)
+
+Time Elapsed 00:00:01.17

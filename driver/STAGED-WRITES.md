@@ -175,6 +175,13 @@ Normal staging stays compiled out and taint enforcement remains.
           This is not a policy-rejection result. The gate's `InspectorSourceSHA256`
           label was misleading; the harness hashes the guest executable input,
           now labeled `InspectorInputSHA256`.
+    - [x] Rebuild the Inspector from source commit `79c0b69` on the isolated
+          Windows builder; Release x64 with the staged-prototype define passed
+          with zero warnings/errors, and the downloaded executable hash matched
+          the builder output and contained every required status field
+          ([summary](evidence/2026-10-03/policy-rejection-only-run34-inspector-build-summary.txt),
+          [raw build log](evidence/2026-10-03/policy-rejection-only-run34-inspector-build.txt),
+          [Luna review](evidence/2026-10-03/policy-rejection-only-run33-luna-review.txt)).
     - [ ] Retry the rejection-only VM diagnostic on a fresh clean checkpoint
           with a newly built Inspector from the exact current source, verifying
           its input hash and schema, deriving and cross-checking the explicit

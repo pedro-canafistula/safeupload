@@ -1,0 +1,37 @@
+Run34 Inspector build and artifact verification
+Date: 2026-10-03
+
+Source provenance
+-----------------
+Source commit: 79c0b69 (feat/staged-kernel-prototype)
+Archive SHA-256: 2B3FD28647CA4EB224CA71CAFC84109373E30F17CE968F94D5BD33589A58746D
+
+Transferred source files were individually rehashed on the builder:
+
+* `driver/SafeUpload.Inspector/main.c`: `BD5244BC2E7AA732E1405CC774BEF3ECDB129939328D2899C3A055D9A4584EE1`
+* `driver/SafeUpload.Inspector/SafeUpload.Inspector.vcxproj`: `835DDB9F415D303711B761E5B3639646FC6EE070ECBC8DF765B53149BFF16CA0`
+* `driver/SafeUpload.Minifilter/Protocol.h`: `9F0981F3E470E6E708E3CD2001673DD68CED1036728F9368F8055AD254BED5D4`
+
+Builder and result
+------------------
+Builder: `DESKTOP-O1LP5DG`
+UUID: `C6440689-D11C-4C63-A463-F3722B7DDB69`
+Configuration: MSBuild Release x64, `SafeUploadStagingPrototype=true`,
+`/warnaserror`
+Build exit code: 0
+Warnings: 0
+Errors: 0
+Result: `BUILD_RESULT=PASS`
+
+Inspector executable SHA-256:
+`80F2327CB62D05BC450C76B5AAD2206011111920306B4FCA3EBB18B77FC202BE`
+
+The builder verified the UTF-16 JSON-format strings for `fence`, `complete`,
+`stateFlags`, `entries`, `generation`, `lastStatus`, `failureLine`, all three
+refresh counters, `volumeScopesSkipped`, `sectionsDenied`, and
+`sectionNameUnresolved`. A separately downloaded copy had the same SHA-256 and
+the same required format strings. The raw compiler log is retained in
+`policy-rejection-only-run34-inspector-build.txt`.
+
+No VM input was replaced and no driver was installed or loaded during this
+build step.
