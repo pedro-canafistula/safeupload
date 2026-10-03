@@ -141,7 +141,7 @@ if status:
 gate = (ev / (name + '-gate.txt')).read_text()
 restored = (ev / (name + '-final-restored-state.txt')).read_text()
 for required in ['VariantComplete=section-lower', 'RestorationSucceeded=True', 'SectionFaultRestored=True',
-                 'SectionLowerQualification=PASS', 'SectionFaultNonSystemDenied=True;HRESULT=0x80070005']:
+                 'SectionLowerQualification=PASS', 'SectionLowerProcessExitCode=0', 'SectionFaultNonSystemDenied=True;HRESULT=0x80070005']:
     if gate.splitlines().count(required) != 1:
         raise SystemExit('Qualification verdict missing or ambiguous: ' + required)
 if re.search(r'^(RunError|RestorationError|HARNESS_THREW|InspectorTimeout)=?', gate, re.MULTILINE):

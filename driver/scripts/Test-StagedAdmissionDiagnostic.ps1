@@ -2513,13 +2513,18 @@ Start-Sleep -Seconds 300
                     '-ExpectedClientSha256',$ExpectedFaultClientSha256)
                 $argumentLine=(@($exerciseArguments|ForEach-Object { ConvertTo-WindowsArgument ([string]$_) })) -join ' '
                 $agent=Start-StagedTestAgent $PSHOME (Join-Path $documents ('SafeUpload-section-lower-'+$id+'-system')) 'powershell.exe' $argumentLine
+                # Retain the native process handle before exit; use the CLR getter to avoid
+                # Get-Process adapter snapshots of ExitCode. A missing exit code must fail.
+                [void]$agent.Process.Handle
                 if (-not $agent.Process.WaitForExit(60000)) { throw 'SYSTEM lower exercise timed out.' }
+                $lowerExitCode=$agent.Process.get_ExitCode()
+                Write-Output ('SectionLowerProcessExitCode='+$lowerExitCode)
                 if (-not (Test-Path $resultPath)) { throw 'SYSTEM lower exercise did not write its result.' }
                 $lower=Get-Content -LiteralPath $resultPath -Raw|ConvertFrom-Json
                 Write-Output ('SectionLowerResult='+($lower|ConvertTo-Json -Depth 10 -Compress))
                 Write-Output ('SectionLowerResultFile='+$resultPath)
                 Write-Output ('SectionLowerTracePrefix='+$tracePrefix)
-                if ($agent.Process.ExitCode -ne 0 -or $lower.Passed -ne $true -or $lower.Errors.Count -ne 0 -or
+                if ($lowerExitCode -ne 0 -or $lower.Passed -ne $true -or $lower.Errors.Count -ne 0 -or
                     $lower.Disarmed.Mode -ne 0 -or $lower.Disarmed.ArmedFileObject -ne 0 -or $lower.Disarmed.CurrentHeld -ne 0) {
                     throw 'Live lower-stack section qualification failed.'
                 }
