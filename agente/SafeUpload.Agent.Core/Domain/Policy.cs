@@ -61,8 +61,15 @@ public sealed record Policy(
     bool FailOpen,
     IReadOnlySet<string> ExcludedProcesses,
     bool AuditOnly = false,
-    bool OverrideAllowed = false)
+    bool OverrideAllowed = false,
+    ClipboardPolicy? Clipboard = null)
 {
+    /// <summary>
+    /// O bloco de clipboard em vigor. Uma política sem o bloco vale como canal
+    /// desligado, para que um arquivo antigo continue carregando igual.
+    /// </summary>
+    public ClipboardPolicy EffectiveClipboard => Clipboard ?? ClipboardPolicy.Disabled;
+
     /// <summary>Limite da RN-013 convertido para bytes.</summary>
     public long MaxFileSizeBytes => (long)MaxFileSizeMb * 1024 * 1024;
 
@@ -96,6 +103,8 @@ public sealed record Policy(
         {
             throw new InvalidPolicyException("inspectionTimeoutSeconds precisa ser maior que zero.");
         }
+
+        EffectiveClipboard.EnsureValid();
     }
 
     /// <summary>
