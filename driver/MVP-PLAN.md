@@ -95,8 +95,14 @@ create about 100 us (5-6x) slower than no filter, and uncounted controls pay abo
 not separable from this run; no relative threshold was set
 ([readout](evidence/2026-10-03/primitive-cost-run1-readout.txt)).
 
-Phase 1 remains open: nested mixed pairing, the other teardown/fault-injection cases, and canary security
-and newly mounted-volume qualification remain. Empty-file mapping errors
+Canary security passed under runtime Verifier (canary-security run 4, 18/18): every canary now reads back the applied
+owner/group/DACL and requires exactly one protected SYSTEM FILE_ALL_ACCESS ACE (checks 15), and while a test-only hold kept a
+canary alive, 12/12 non-SYSTEM opens (privilege-disabled administrator and restricted token, six access types) were refused with
+access denied ([readout](evidence/2026-10-03/canary-security-run1-4-readout.txt)). The section draining fix also passed under
+Verifier ([readout](evidence/2026-10-03/section-lower-run5-sectiondrain-verifier-readout.txt)).
+
+Phase 1 remains open: nested mixed pairing, the teardown experiment (which exercises the draining fix), and
+newly mounted-volume canary failure/timeout qualification remain. Empty-file mapping errors
 did **not** exercise failed lower acquire. Windows 11 is out of MVP scope (owner decision 2026-10-03).
 Phases 2–5 remain open.
 [Progress evidence](evidence/2026-10-03/mvp1-idprobe-canary-progress.txt) and

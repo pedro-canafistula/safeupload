@@ -1,0 +1,37 @@
+Canary security: DACL readback, test-only hold, non-SYSTEM denial (Windows 10 19045.2965)
+Verdict: run 4 (runtime Verifier 0x13B) PASSED 18/18, runner CheckpointedCanarySecurityQualification=PASS, independent BaselineClean=True.
+Run 3 (ordinary) passed the same 18/18 checks; its runner verdict failed only because the expected count was passed as a 0 placeholder.
+Runs 1 and 2 FAILED and are retained.
+
+Source: driver 03b7a18a (exact build mvp1-canarysec6: four WDK configurations PREfast/ApiValidator 0/0, both Inspectors 0/0, signed SYS A7D4224A...).
+Builds mvp1-canarysec1..5 failed or preceded fixes (declaration order, kernel-mode Rtl APIs, PREfast stack/paged-code findings,
+alloc_text declaration); all retained in this folder.
+
+What changed in the driver
+  - Every canary now reads back NTFS's applied owner, group and DACL first and requires SYSTEM owner and group, a present, protected DACL
+    with exactly one non-inherited ACCESS_ALLOWED ACE for SYSTEM with FILE_ALL_ACCESS. Any mismatch fails the canary (volume Untrusted
+    until reboot, owner decision) and reports step 50 + reason. A passing canary reports checks 15 (DACL bit 8 added).
+  - Test build only (StageAdmission.c is compiled only when SAFEUPLOAD_STAGING_PROTOTYPE): a one-shot hold of an on-demand canary rerun,
+    capped at 30 s, armed through the SYSTEM-only port; only a held canary is created without delete-on-close, and it is marked for
+    deletion after the hold or on any failure path.
+
+Failed runs
+  - Run 1: the harness stopped before any canary work: the OpenSSH-launched harness token had SeBackup/SeRestore/SeTakeOwnership enabled.
+    Fixed by impersonating a duplicate elevated-administrator token with every privilege disabled (none ever enabled) for the attempts.
+  - Run 2: both NTFS start-up canaries failed closed at the readback (STATUS_INVALID_SECURITY_DESCR, step 5; file removed): the descriptor
+    was validated against FltQuerySecurityObject's LengthNeeded, which is not a reliable length on success. Fixed by validating against the
+    whole buffer; failing sub-checks are now reported individually.
+
+Run 4 measurements (gate canary-security-run4-verifier-gate.txt)
+  - Initial start-up canaries on both active fixed NTFS volumes: PASS, checks 15.
+  - Held rerun on the system volume: 10 s hold, exact path returned (\Device\HarddiskVolume3\SafeUpload-canary-<GUID>.tmp).
+  - While held: 12/12 opens refused with Win32 error 5 (ERROR_ACCESS_DENIED): elevated administrator with all privileges disabled and a
+    restricted token (Administrators deny-only, no privileges), each for GENERIC_READ, GENERIC_WRITE, DELETE, READ_CONTROL,
+    FILE_READ_ATTRIBUTES and WRITE_DAC. No FILE_READ_ATTRIBUTES finding: NTFS refused it as well.
+  - Read back as SYSTEM from user mode: O:SYG:SYD:P(A;;FA;;;SY), exactly as required.
+  - After the hold: the canary completed and passed (state 2, status 0, checks 15, cleanup 0); the path no longer exists (error 2).
+
+Limits
+  - Administrators with SeBackup/SeRestore/SeTakeOwnership enabled can by design bypass any DACL (backup semantics, taking ownership);
+    the canary DACL protects against ordinary and restricted principals, not against an administrator who enables those privileges.
+  - Only the system volume was held; the second NTFS volume's canary passed but was not denial-tested.

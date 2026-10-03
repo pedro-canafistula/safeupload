@@ -1,0 +1,10 @@
+PRE_RUN_PS: $ErrorActionPreference='Stop';$d='C:\Users\vika\Documents';
+$p=Join-Path $d 'SafeUpload-stage-prototype-mvp1-canarysec6.sys';if((Test-Path $p) -and (Get-FileHash $p -Algorithm SHA256).Hash -ne 'A7D4224AD5F47E7F28D320BA034AECB4E76A1B71DA2C7F607D78A8E65589E035'){throw 'Existing input hash mismatch'}
+$p=Join-Path $d 'SafeUpload.Inspector.mvp1-canarysec6.exe';if((Test-Path $p) -and (Get-FileHash $p -Algorithm SHA256).Hash -ne 'C1326CC27A78131F183280A76E6745E8DB003896BB00BB96BB4A054B5DF779E2'){throw 'Existing input hash mismatch'}
+$p=Join-Path $d 'StagedTestAgent-661EBB84C8E739EE.ps1';if((Test-Path $p) -and (Get-FileHash $p -Algorithm SHA256).Hash -ne '661EBB84C8E739EE6F77E663C06557855288DA96D127E6B43642ACD480F59086'){throw 'Existing input hash mismatch'}
+'PRE_RUN_OK=True'
+
+PRE_RUN_OK=True
+copied /tmp/claude-1000/exact-mvp1-canarysec6/SafeUpload-stage-prototype.sys -> SafeUpload-stage-prototype-mvp1-canarysec6.sys sha256=a7d4224ad5f47e7f28d320ba034aecb4e76a1b71da2c7f607d78a8e65589e035
+copied /tmp/claude-1000/exact-mvp1-canarysec6/inspector-feature-release.exe -> SafeUpload.Inspector.mvp1-canarysec6.exe sha256=c1326cc27a78131f183280a76e6745e8db003896bb00bb96bb4a054b5df779e2
+copied /home/victor/Work/safeupload-staging/driver/scripts/StagedTestAgent.ps1 -> StagedTestAgent-661EBB84C8E739EE.ps1 sha256=661ebb84c8e739ee6f77e663c06557855288da96d127e6b43642acd480f59086
