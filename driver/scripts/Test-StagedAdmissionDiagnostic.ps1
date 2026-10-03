@@ -1289,7 +1289,7 @@ function Invoke-Variant([string] $SelectedVariant) {
                     }
                 }
             }
-            $lifeLabels = @('Lnv0', 'Lnv1', 'Lv0', 'Lv1', 'Lh0', 'Lh1')
+            $lifeLabels = @('Lnv0', 'Lnv1', 'Lv0', 'Lv1', 'Lc0', 'Lc1', 'Lh0', 'Lh1')   # Lc = cached (buffered I/O before mapping)
             $lifePaths = @{}
             foreach ($label in $lifeLabels) {
                 $path = Join-Path $fixtureDirectory ($label + '.maptest')
@@ -1444,6 +1444,12 @@ function Invoke-Variant([string] $SelectedVariant) {
                 else {
                     $fileStream = [IO.FileStream]::new($mapPath, [IO.FileMode]::Open, [IO.FileAccess]::ReadWrite,
                         [IO.FileShare]::ReadWrite -bor [IO.FileShare]::Delete)
+                    if ($label.StartsWith('Lc')) {
+                        # Buffered write first, so the Cache Manager has initialized a cache map for this stream.
+                        $cachedBytes = [Text.Encoding]::UTF8.GetBytes('CACHED ' + $label)
+                        $fileStream.Write($cachedBytes, 0, $cachedBytes.Length)
+                        $fileStream.Flush()
+                    }
                     $mapping = [IO.MemoryMappedFiles.MemoryMappedFile]::CreateFromFile(
                         $fileStream, $mapName, [long]$mappingLength, [IO.MemoryMappedFiles.MemoryMappedFileAccess]::ReadWrite,
                         [IO.HandleInheritability]::None, $true)
@@ -1451,7 +1457,7 @@ function Invoke-Variant([string] $SelectedVariant) {
                     [void](Invoke-MappedWrite $view ('LIFETIME ' + $label + ' ' + $id))
                     $fileStream.Dispose()
                     $step.FileClosed = [DateTime]::UtcNow.ToFileTimeUtc()
-                    if ($label.StartsWith('Lv')) {
+                    if ($label.StartsWith('Lv') -or $label.StartsWith('Lc')) {
                         $view.Dispose()
                         $step.Unmapped = [DateTime]::UtcNow.ToFileTimeUtc()
                         Start-Sleep -Seconds 3
