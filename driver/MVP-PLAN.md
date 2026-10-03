@@ -173,3 +173,11 @@ Fix what it finds, rerun phase 4. Then decide the order of the deferred destinat
   because users will see saves into the folder refused until the service starts.
 - Taint stays compiled in normal builds; the MVP proves the guarantee without it. Removing it from
   production is a later cutover decision.
+- Owner decisions 2026-10-03 (Phase 1 remainder):
+  - Test-only controls (for example holding the canary open, a dedicated canary pool tag for fault
+    injection) are allowed only in the test build, never in a build a user could receive.
+  - A volume whose start-up canary fails or times out stays Untrusted until reboot; no retry.
+  - If C(F) or H(F) tracking is lost (instance teardown or draining with work in flight), writer state
+    stays Unknown until reboot. No recovery scan, no timers: an unexpected unload or crash is a bug to
+    fix, not a state to clean up.
+  - No relative cost threshold for the MVP; the absolute budget stands.
