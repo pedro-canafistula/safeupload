@@ -2946,13 +2946,17 @@ public sealed class SafeUploadCNSection : IDisposable {
     [return: MarshalAs(UnmanagedType.Bool)] static extern bool SetFilePointerEx(SafeFileHandle file, long distance, out long position, uint method);
     [DllImport("kernel32.dll", SetLastError=true)]
     [return: MarshalAs(UnmanagedType.Bool)] static extern bool SetEndOfFile(SafeFileHandle file);
+    [DllImport("kernel32.dll", SetLastError=true)]
+    [return: MarshalAs(UnmanagedType.Bool)] static extern bool SetFileInformationByHandle(SafeFileHandle file, int infoClass, ref byte deleteFile, uint size);
     static Win32Exception Failure(string operation) {
         int error = Marshal.GetLastWin32Error();
         return new Win32Exception(error, operation + " win32:" + error);
     }
     public SafeUploadCNSection(string path) {
         try {
-            file = CreateFile(path, 0xC0000000U, 7, IntPtr.Zero, 3, 0x80, IntPtr.Zero);
+            // GENERIC_READ | GENERIC_WRITE | DELETE: with a section held, NTFS refuses the driver's own delete
+            // mark (run 2: STATUS_CANNOT_DELETE), so this helper removes the canary after releasing it.
+            file = CreateFile(path, 0xC0010000U, 7, IntPtr.Zero, 3, 0x80, IntPtr.Zero);
             if (file.IsInvalid) throw Failure("CreateFile share-all");
             // Run 1: mapping the held 0-byte canary with an explicit 4 KiB size failed after the
             // acquire/release pair. Size the file through the handle first, then map the whole file.
@@ -2962,6 +2966,15 @@ public sealed class SafeUploadCNSection : IDisposable {
             section = CreateFileMapping(file, IntPtr.Zero, 4, 0, 0, null);
             if (section == IntPtr.Zero) throw Failure("CreateFileMapping PAGE_READWRITE");
         } catch { Dispose(); throw; }
+    }
+    public void ReleaseAndDelete() {
+        if (section != IntPtr.Zero) {
+            if (!CloseHandle(section)) throw Failure("Close section");
+            section = IntPtr.Zero;
+        }
+        byte deleteFile = 1;
+        if (!SetFileInformationByHandle(file, 4, ref deleteFile, 1)) throw Failure("FileDispositionInfo");
+        file.Dispose(); file = null;
     }
     public void Dispose() {
         int error = 0;
@@ -3002,8 +3015,11 @@ __END_CS__
 } catch { $failed=$true; Write-Error $_ -ErrorAction Continue }
 finally {
     try {
-        if ($null -ne $section) { $section.Dispose() }
-        [IO.File]::WriteAllText((Join-Path $Control 'closed'), 'SectionAndFileClosed')
+        if ($null -ne $section) {
+            if (-not $failed) { $section.ReleaseAndDelete() }
+            $section.Dispose()
+        }
+        [IO.File]::WriteAllText((Join-Path $Control 'closed'), $(if ($failed) { 'SectionAndFileClosed' } else { 'SectionClosedFileDeleted' }))
     } catch { $failed=$true; Write-Error $_ -ErrorAction Continue }
 }
 if ($failed) { exit 1 }
@@ -3045,10 +3061,13 @@ exit 0
                     # No cancellation or release here: let the driver's 30-second hold expire naturally.
                     $timedOut = Wait-CNVolume $first.Guid 'timeout'
                     $cnHoldMayBeArmed = $false
-                    Add-CNOutcome 'RealTimeout' ($timedOut.canaryState -eq 3 -and
-                        $timedOut.canaryStatus -eq [Convert]::ToUInt32('C00000B5',16) -and
-                        ($timedOut.canaryChecks -band 2) -eq 0 -and ($timedOut.canaryChecks -band 9) -eq 9 -and
-                        (($timedOut.canaryChecks -shr 8) -band 255) -eq 11 -and -not $agent.Process.HasExited) (Get-CNCanaryFacts $timedOut)
+                    # Run 2 (Win10 19045): with an external writable section on the held canary, NTFS refuses the
+                    # driver's delete mark after the hold (STATUS_CANNOT_DELETE, step 6), so the canary fails closed
+                    # before its mapping steps. The STATUS_IO_TIMEOUT branch cannot be reached this way without a race.
+                    Add-CNOutcome 'ExternalWriterFailsClosed' ($timedOut.canaryState -eq 3 -and
+                        $timedOut.canaryStatus -eq [Convert]::ToUInt32('C0000121',16) -and
+                        ($timedOut.canaryChecks -band 2) -eq 0 -and ($timedOut.canaryChecks -band 8) -eq 8 -and
+                        (($timedOut.canaryChecks -shr 8) -band 255) -eq 6 -and -not $agent.Process.HasExited) (Get-CNCanaryFacts $timedOut)
                     $attributesError = [SafeUploadCanarySecurityNative]::GetPathAttributesError($cnPath)
                     Add-CNOutcome 'CleanupWhileSectionHeld' (-not $agent.Process.HasExited) `
                         ((Get-CNCanaryFacts $timedOut) + ';GetFileAttributesWin32Error:' + $attributesError + ';sectionStillHeld:true')
@@ -3059,7 +3078,7 @@ exit 0
                     $script:CNHelperStopped = $true; $agent.Process.Dispose(); $agent = $null
                     Add-CNOutcome 'SystemSectionClosed' ($helperExit -eq 0 -and
                         (Test-Path -LiteralPath (Join-Path $cnControl 'closed')) -and
-                        [IO.File]::ReadAllText((Join-Path $cnControl 'closed')) -eq 'SectionAndFileClosed') ('exit:' + $helperExit)
+                        [IO.File]::ReadAllText((Join-Path $cnControl 'closed')) -eq 'SectionClosedFileDeleted') ('exit:' + $helperExit + ';removedBy:SYSTEM helper after release')
                     do {
                         $attributesError = [SafeUploadCanarySecurityNative]::GetPathAttributesError($cnPath)
                         if ($attributesError -in @(2,3)) { break }
