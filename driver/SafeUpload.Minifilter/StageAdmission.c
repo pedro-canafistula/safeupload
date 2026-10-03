@@ -295,7 +295,7 @@ VOID SafeUploadStageCanaryTick(VOID)
 
 static KSTART_ROUTINE StageCanaryWorker;
 
-static VOID StageCanaryWorker(_In_opt_ PVOID Context)
+static VOID StageCanaryWorker(_In_ PVOID Context)
 {
     LARGE_INTEGER interval;
     UNREFERENCED_PARAMETER(Context);
@@ -311,7 +311,7 @@ NTSTATUS SafeUploadStageAdmissionStartWorker(VOID)
     KeInitializeEvent(&CanaryStop, NotificationEvent, FALSE);
     InitializeObjectAttributes(&attributes, NULL, OBJ_KERNEL_HANDLE, NULL, NULL);
     return PsCreateSystemThread(&CanaryThreadHandle, SYNCHRONIZE, &attributes,
-        NULL, NULL, StageCanaryWorker, NULL);
+        NULL, NULL, StageCanaryWorker, &CanaryStop);
 }
 
 VOID SafeUploadStageAdmissionStopWorker(VOID)
