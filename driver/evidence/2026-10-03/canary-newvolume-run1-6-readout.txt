@@ -1,0 +1,36 @@
+Canary on newly attached volumes: fresh pass, external-writer fail-closed, real allocation failure (Windows 10 19045.2965)
+Verdict: run 6 (runtime Verifier 0x13B) PASSED 20/20, runner CheckpointedCanaryNewVolumeQualification=PASS, independent BaselineClean=True.
+Run 5 passed the same 20/20 (expected count passed as a 0 placeholder). Runs 1-4 FAILED and are retained.
+
+Source: driver 3732d807 (exact build mvp1-canarynew, four WDK configurations PREfast/ApiValidator 0/0, signed); the only driver change for this
+item is the canary-only pool tag 'NcUS' (SUcN). Harness at the run-6 commit (Test-StagedAdmissionDiagnostic.ps1 variant canary-newvolume).
+
+Scenarios (run 6 gate)
+  A. Fresh VHDX attached while the driver runs (newly mounted, setupFlags 5): canary PASSED, checks 15, no canary file in its root.
+  B. External writer on a held canary of that volume (SYSTEM helper, writable section, no view): NTFS refuses the driver's post-hold delete
+     mark (STATUS_CANNOT_DELETE 0xC0000121, step 6), so the canary fails closed: state FAILED, DACL bit set, released-NO bit absent.
+     A rerun is refused (HRESULT 0x80070016 = STATUS_INVALID_DEVICE_STATE, Inspector exit 3) and the state stays FAILED; C: unchanged.
+     The driver cannot delete the file while the section exists; after the helper releases and deletes it, the path is gone in ~1.05 s.
+     The volume stays FAILED after release (no retry), per the owner rule.
+  C. Real allocation failure: verifier /volatile /faults 10000 SUcN "" 0 (acknowledged exactly; window LRS-only, flags 0x4), second fresh
+     VHDX attached: canary FAILED at step 1 with STATUS_INSUFFICIENT_RESOURCES 0xC000009A, deliberate-failure counter +1, no canary file;
+     rerun refused, state unchanged; /volatile /flags 0x13B restored and read back before anything else; C: unchanged.
+  Both VHDXs detached and deleted; Filter Manager keeps detached entries, reported explicitly (detachedEntries 2 in run 6's inventory).
+
+Failed runs and what they established
+  - Run 1: SYSTEM helper's 4 KiB CreateFileMapping on the held 0-byte canary failed after a normally paired acquire/release (our filter
+    denied nothing); error code was not logged. Helper now sizes the file first and logs every Win32 error.
+  - Run 2: the planned STATUS_IO_TIMEOUT path is not reachable this way: the external section makes NTFS refuse the delete mark first
+    (step 6). Scenario B was redefined to that real fail-closed result; the timeout branch itself remains unexercised.
+  - Run 3: exposed a harness defect affecting every variant: Invoke-InspectorAsSystem recorded every SYSTEM Inspector exit code as 0
+    (Windows PowerShell 5.1 Start-Process -PassThru leaves ExitCode empty unless the handle is cached; reproduced on the builder). Fixed.
+    Earlier evidence relied mostly on parsed Inspector output, but failures of output-less commands (trace clear/enable/disable, hold cancel)
+    would not have been detected before this fix.
+  - Run 4: scenario C stopped before attaching: the acknowledgement parser expected "(null)" for an empty Applications argument.
+
+Limits
+  - The STATUS_IO_TIMEOUT branch (released-NO never observed) is not exercised; reaching it needs a writer that appears after the delete mark
+    and before the first release check (a millisecond race) or a synthetic hook.
+  - A held canary that cannot be deleted stays on disk until the external section is released (test build only: production canaries are
+    delete-on-close from creation).
+  - Dismount of a volume in the middle of its canary is not exercised.

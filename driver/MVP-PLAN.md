@@ -101,8 +101,14 @@ canary alive, 12/12 non-SYSTEM opens (privilege-disabled administrator and restr
 access denied ([readout](evidence/2026-10-03/canary-security-run1-4-readout.txt)). The section draining fix also passed under
 Verifier ([readout](evidence/2026-10-03/section-lower-run5-sectiondrain-verifier-readout.txt)).
 
-Phase 1 remains open: nested mixed pairing, the teardown experiment (which exercises the draining fix), and
-newly mounted-volume canary failure/timeout qualification remain. Empty-file mapping errors
+Newly attached volumes passed under runtime Verifier (canary-newvolume run 6, 20/20): a fresh VHDX's canary passes; an external
+writable section on a held canary makes it fail closed (NTFS refuses the delete mark) with reruns refused and the volume Untrusted; a real
+Verifier failure of the canary-only pool tag fails a second fresh volume at step 1 with no file left. The released-NO timeout branch itself is
+not reachable without a race and remains unexercised ([readout](evidence/2026-10-03/canary-newvolume-run1-6-readout.txt)). Run 3 also
+found that the SYSTEM Inspector wrapper had recorded every exit code as 0; fixed, and earlier variants should be rerun once with the fix.
+
+Phase 1 remains open: nested mixed pairing and the teardown experiment (which exercises the draining fix) remain,
+plus one regression pass of the earlier variants with the corrected exit-code wrapper. Empty-file mapping errors
 did **not** exercise failed lower acquire. Windows 11 is out of MVP scope (owner decision 2026-10-03).
 Phases 2–5 remain open.
 [Progress evidence](evidence/2026-10-03/mvp1-idprobe-canary-progress.txt) and
