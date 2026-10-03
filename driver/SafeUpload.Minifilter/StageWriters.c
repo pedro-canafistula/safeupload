@@ -215,7 +215,10 @@ VOID SafeUploadStageWritersOnCleanup(
 
 VOID SafeUploadStageWritersFreeContext(_Inout_ PSAFEUPLOAD_STREAM_CONTEXT StreamContext)
 {
-    /* The context is going away, so nothing else can reach its list; free any node left behind. */
+    /* The context is going away, so nothing else can reach its list. A node left behind is a writer whose
+     * cleanup this filter never saw (instance teardown such as a forced dismount, or a missed cleanup). Its
+     * stream's next context would start at zero, so this is lost tracking: Unknown until reboot (owner rule). */
+    if (!IsListEmpty(&StreamContext->WriterObjects)) InterlockedExchange(&WriterGlobalUnknown, 1);
     while (!IsListEmpty(&StreamContext->WriterObjects)) {
         PLIST_ENTRY link = RemoveHeadList(&StreamContext->WriterObjects);
         ExFreePoolWithTag(CONTAINING_RECORD(link, STAGE_WRITER_NODE, Link), SAFEUPLOAD_WRITER_NODE_POOL_TAG);
