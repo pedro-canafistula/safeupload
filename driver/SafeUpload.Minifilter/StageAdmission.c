@@ -10,6 +10,7 @@ static NTSTATUS StageCanaryVerifySecurity(_In_ PFLT_INSTANCE Instance, _In_ PFIL
 #pragma alloc_text(PAGE, SafeUploadStageVolumeFlags)
 #pragma alloc_text(PAGE, SafeUploadStageAdmissionCanaryHold)
 #pragma alloc_text(PAGE, StageCanaryVerifySecurity)
+#pragma alloc_text(PAGE, StageCanaryVerifyDescriptor)
 #endif
 
 NTSTATUS SafeUploadStageOpenByIdentity(
@@ -233,9 +234,25 @@ static NTSTATUS StageCanarySecurity(_Out_ SECURITY_DESCRIPTOR *Descriptor, _Out_
     return STATUS_SUCCESS;
 }
 
+#define STAGE_CANARY_SD_BYTES 1024
+static NTSTATUS StageCanaryVerifyDescriptor(_In_ PFLT_INSTANCE Instance, _In_ PFILE_OBJECT FileObject,
+    _Out_writes_bytes_(STAGE_CANARY_SD_BYTES) PUCHAR buffer);
+
 static NTSTATUS StageCanaryVerifySecurity(_In_ PFLT_INSTANCE Instance, _In_ PFILE_OBJECT FileObject)
 {
-    DECLSPEC_ALIGN(8) UCHAR buffer[1024];
+    PUCHAR buffer;
+    NTSTATUS status;
+    PAGED_CODE();
+    buffer = ExAllocatePool2(POOL_FLAG_PAGED, STAGE_CANARY_SD_BYTES, SAFEUPLOAD_POOL_TAG);
+    if (buffer == NULL) return STATUS_INSUFFICIENT_RESOURCES;
+    status = StageCanaryVerifyDescriptor(Instance, FileObject, buffer);
+    ExFreePoolWithTag(buffer, SAFEUPLOAD_POOL_TAG);
+    return status;
+}
+
+static NTSTATUS StageCanaryVerifyDescriptor(_In_ PFLT_INSTANCE Instance, _In_ PFILE_OBJECT FileObject,
+    _Out_writes_bytes_(STAGE_CANARY_SD_BYTES) PUCHAR buffer)
+{
     PSECURITY_DESCRIPTOR descriptor = (PSECURITY_DESCRIPTOR)buffer;
     SECURITY_DESCRIPTOR_CONTROL control = 0;
     ULONG revision = 0, needed = 0, sidBytes;
@@ -248,11 +265,11 @@ static NTSTATUS StageCanaryVerifySecurity(_In_ PFLT_INSTANCE Instance, _In_ PFIL
 
     PAGED_CODE();
     NT_ASSERT(KeGetCurrentIrql() == PASSIVE_LEVEL);
-    RtlZeroMemory(buffer, sizeof(buffer));
+    RtlZeroMemory(buffer, STAGE_CANARY_SD_BYTES);
     status = FltQuerySecurityObject(Instance, FileObject,
         OWNER_SECURITY_INFORMATION | GROUP_SECURITY_INFORMATION | DACL_SECURITY_INFORMATION,
-        descriptor, sizeof(buffer), &needed);
-    if (status != STATUS_SUCCESS || needed > sizeof(buffer) ||
+        descriptor, STAGE_CANARY_SD_BYTES, &needed);
+    if (status != STATUS_SUCCESS || needed > STAGE_CANARY_SD_BYTES ||
         !RtlValidRelativeSecurityDescriptor(descriptor, needed,
             OWNER_SECURITY_INFORMATION | GROUP_SECURITY_INFORMATION | DACL_SECURITY_INFORMATION)) {
         return STATUS_INVALID_SECURITY_DESCR;
@@ -314,7 +331,7 @@ static NTSTATUS StageCanaryVerifySecurity(_In_ PFLT_INSTANCE Instance, _In_ PFIL
 static BOOLEAN StageCanaryHoldClaim(_In_ PFLT_INSTANCE Instance, _Out_ PULONG HoldMilliseconds)
 {
     BOOLEAN claimed = FALSE;
-    PAGED_CODE();
+    *HoldMilliseconds = 0;
     NT_ASSERT(KeGetCurrentIrql() == PASSIVE_LEVEL);
     ExAcquireFastMutex(&CanaryHoldMutex);
     if (CanaryHoldState == SAFEUPLOAD_CANARY_HOLD_ARMED && CanaryHoldInstance == Instance) {
@@ -368,7 +385,6 @@ static NTSTATUS StageCanarySetDeleteDisposition(_In_ PFLT_INSTANCE Instance,
     _In_ PFILE_OBJECT FileObject, _In_ BOOLEAN DeleteFile)
 {
     FILE_DISPOSITION_INFORMATION disposition;
-    PAGED_CODE();
     NT_ASSERT(KeGetCurrentIrql() == PASSIVE_LEVEL);
     disposition.DeleteFile = DeleteFile;
     return FltSetInformationFile(Instance, FileObject, &disposition, sizeof(disposition),
@@ -378,27 +394,21 @@ static NTSTATUS StageCanarySetDeleteDisposition(_In_ PFLT_INSTANCE Instance,
 static NTSTATUS StageCanaryHoldAfterSecurity(_In_ PFLT_INSTANCE Instance,
     _In_ PFILE_OBJECT FileObject, _In_ PUNICODE_STRING Name, _In_ ULONG HoldMilliseconds)
 {
-    WCHAR path[SAFEUPLOAD_MAX_PATH_CHARS];
+    BOOLEAN fits = (Name->Length % sizeof(WCHAR)) == 0 && Name->Length < sizeof(CanaryHoldPath);
     PFLT_INSTANCE dereference = NULL;
     LARGE_INTEGER timeout;
     PVOID waitObjects[2] = { &CanaryHoldCancel, &CanaryStop };
     BOOLEAN published = FALSE;
     NTSTATUS status;
 
-    PAGED_CODE();
     NT_ASSERT(KeGetCurrentIrql() == PASSIVE_LEVEL);
-    if ((Name->Length % sizeof(WCHAR)) == 0 && Name->Length < sizeof(path)) {
-        RtlCopyMemory(path, Name->Buffer, Name->Length);
-        path[Name->Length / sizeof(WCHAR)] = UNICODE_NULL;
-    } else {
-        path[0] = UNICODE_NULL;
-    }
 
     ExAcquireFastMutex(&CanaryHoldMutex);
     if (CanaryHoldInstance == Instance && CanaryHoldState == SAFEUPLOAD_CANARY_HOLD_PREPARING) {
-        if (path[0] != UNICODE_NULL) {
-            RtlCopyMemory(CanaryHoldPath, path,
-                (Name->Length / sizeof(WCHAR) + 1) * sizeof(WCHAR));
+        if (fits && Name->Length != 0) {
+            /* Copied under the mutex straight into the published buffer (no 1 KB stack copy). */
+            RtlCopyMemory(CanaryHoldPath, Name->Buffer, Name->Length);
+            CanaryHoldPath[Name->Length / sizeof(WCHAR)] = UNICODE_NULL;
             CanaryHoldPathChars = Name->Length / sizeof(WCHAR);
             CanaryHoldStatus = STATUS_SUCCESS;
             CanaryHoldState = SAFEUPLOAD_CANARY_HOLD_ACTIVE;
@@ -573,7 +583,6 @@ Exit:
 VOID SafeUploadStageAdmissionCanaryHoldCancel(VOID)
 {
     PFLT_INSTANCE dereference = NULL;
-    PAGED_CODE();
     NT_ASSERT(KeGetCurrentIrql() == PASSIVE_LEVEL);
     ExAcquireFastMutex(&CanaryHoldMutex);
     if (CanaryHoldState == SAFEUPLOAD_CANARY_HOLD_ARMED) {
@@ -650,7 +659,6 @@ static VOID StageCanaryRun(_In_ PFLT_INSTANCE Instance, _Inout_ PSAFEUPLOAD_INST
     BOOLEAN fileDeleteMarked = FALSE;
 #endif
 
-    PAGED_CODE();
     NT_ASSERT(KeGetCurrentIrql() == PASSIVE_LEVEL);
 #if SAFEUPLOAD_STAGING_PROTOTYPE
     holdClaimed = StageCanaryHoldClaim(Instance, &holdMilliseconds);

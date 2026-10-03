@@ -803,12 +803,12 @@ Return Value:
 
         if (command == SAFEUPLOAD_CONTROL_ADMISSION_CANARY_HOLD) {
             SAFEUPLOAD_ADMISSION_CANARY_HOLD_REQUEST request;
-            SAFEUPLOAD_ADMISSION_CANARY_HOLD_REPLY reply;
+            PSAFEUPLOAD_ADMISSION_CANARY_HOLD_REPLY reply;
             UNICODE_STRING volumeName;
             ULONG index;
 
             if (InputBufferLength != sizeof(request) || OutputBuffer == NULL ||
-                OutputBufferLength != sizeof(reply)) {
+                OutputBufferLength != sizeof(*reply)) {
                 status = STATUS_INVALID_BUFFER_SIZE;
                 leave;
             }
@@ -840,13 +840,22 @@ Return Value:
             volumeName.Length = (USHORT)(request.VolumeNameChars * sizeof(WCHAR));
             volumeName.MaximumLength = sizeof(request.VolumeName);
 #pragma warning( suppress: 6001 )
-            ProbeForWrite(OutputBuffer, sizeof(reply), __alignof(SAFEUPLOAD_ADMISSION_CANARY_HOLD_REPLY));
-            RtlZeroMemory(&reply, sizeof(reply));
-            status = SafeUploadStageAdmissionCanaryHold(&volumeName,
-                request.HoldMilliseconds, &reply);
-            if (NT_SUCCESS(status)) {
-                RtlCopyMemory(OutputBuffer, &reply, sizeof(reply));
-                *ReturnOutputBufferLength = sizeof(reply);
+            ProbeForWrite(OutputBuffer, sizeof(*reply), __alignof(SAFEUPLOAD_ADMISSION_CANARY_HOLD_REPLY));
+            /* The 1 KB reply lives in pool, not on this already large dispatch frame. */
+            reply = ExAllocatePool2(POOL_FLAG_PAGED, sizeof(*reply), SAFEUPLOAD_POOL_TAG);
+            if (reply == NULL) {
+                status = STATUS_INSUFFICIENT_RESOURCES;
+                leave;
+            }
+            try {
+                status = SafeUploadStageAdmissionCanaryHold(&volumeName,
+                    request.HoldMilliseconds, reply);
+                if (NT_SUCCESS(status)) {
+                    RtlCopyMemory(OutputBuffer, reply, sizeof(*reply));
+                    *ReturnOutputBufferLength = sizeof(*reply);
+                }
+            } finally {
+                ExFreePoolWithTag(reply, SAFEUPLOAD_POOL_TAG);
             }
             leave;
         }
