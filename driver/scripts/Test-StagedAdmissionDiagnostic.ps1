@@ -1,6 +1,6 @@
 param(
     [Parameter(Mandatory = $true)]
-    [ValidateSet('preattach-immediate', 'preattach-protected-open', 'mmdoes-matrix', 'policy-transition', 'All')]
+    [ValidateSet('preattach-immediate', 'preattach-protected-open', 'mmdoes-matrix', 'policy-transition', 'retained-section', 'All')]
     [string] $Variant,
 
     [Parameter(Mandatory = $true)]
@@ -12,7 +12,15 @@ param(
     [string] $ExpectedInspectorSha256,
 
     [ValidateRange(1, 600)]
-    [int] $InspectorTimeoutSeconds = 60
+    [int] $InspectorTimeoutSeconds = 60,
+
+    # Run-scoped guest file names keep the long-standing inputs (SafeUpload-stage-prototype.sys and
+    # SafeUpload.Inspector.input.exe) untouched when a newer build is staged beside them.
+    [ValidatePattern('^SafeUpload-stage-prototype[A-Za-z0-9._-]*\.sys$')]
+    [string] $FeatureDriverFileName = 'SafeUpload-stage-prototype.sys',
+
+    [ValidatePattern('^SafeUpload\.Inspector\.[A-Za-z0-9_-]+\.exe$')]
+    [string] $InspectorInputFileName = 'SafeUpload.Inspector.input.exe'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -22,8 +30,8 @@ $installedDriver = 'C:\Windows\System32\drivers\SafeUpload.sys'
 $expectedOriginalDriver = 'ADA9D05AB6AECDD2B6C521B0CE529FC06C732154ACB3EE85439FBDC8AA80DFCE'
 $expectedOriginalPolicy = '29DC8A341BD7C549996596D2477A0CCCAF19602C362A2167FB4FDD5C66663731'
 $expectedServicePackage = 'D887E0D7F38AD64AD40CEE18B841C6D38AD2BED4D6F760B1BDE4464927381997'
-$featureDriver = Join-Path $documents 'SafeUpload-stage-prototype.sys'
-$inspectorSource = Join-Path $documents 'SafeUpload.Inspector.input.exe'
+$featureDriver = Join-Path $documents $FeatureDriverFileName
+$inspectorSource = Join-Path $documents $InspectorInputFileName
 $inspectorPath = Join-Path $documents 'SafeUpload-admission-inspector.exe'
 $servicePackage = Join-Path $documents 'stage-service-publish.zip'
 $serviceDirectory = Join-Path $documents 'stage-service-publish'
@@ -950,6 +958,134 @@ function Dispose-ObserverResources(
     }
 }
 
+function New-RetainedSection([string] $Path, [string] $MappingName, [System.Collections.ArrayList] $Mappings) {
+    # A writable section object with NO view and with the file handle closed again, so the file object
+    # stays alive only because the section references it.
+    $file = [IO.FileStream]::new(
+        $Path, [IO.FileMode]::Open, [IO.FileAccess]::ReadWrite,
+        [IO.FileShare]::ReadWrite -bor [IO.FileShare]::Delete)
+    $mapping = $null
+    try {
+        if ($file.Length -ne $mappingLength) {
+            throw "Fixture EOF $($file.Length) does not equal mapping capacity $mappingLength."
+        }
+        $mapping = [IO.MemoryMappedFiles.MemoryMappedFile]::CreateFromFile(
+            $file, $MappingName, [long]$mappingLength,
+            [IO.MemoryMappedFiles.MemoryMappedFileAccess]::ReadWrite,
+            [IO.HandleInheritability]::None, $true)
+    }
+    finally {
+        $file.Dispose()
+    }
+    [void]$Mappings.Add($mapping)
+    return $mapping
+}
+
+function Add-RetainedView($Mapping) {
+    return $Mapping.CreateViewAccessor(
+        0, [long]$mappingLength, [IO.MemoryMappedFiles.MemoryMappedFileAccess]::ReadWrite)
+}
+
+function ConvertTo-NormalizedHex([string] $Value) {
+    return ('0x' + $Value.Substring(2).ToUpperInvariant())
+}
+
+$script:LightEntryPattern = [regex]('^\{"sequence":(\d+),"timestamp":(\d+),"event":"(\w+)","pid":(\d+),"irql":(\d+),' +
+    '"instance":"[^"]*","targetFileObject":"(0x[0-9A-Fa-f]+)","sectionObjectPointer":"(0x[0-9A-Fa-f]+)",' +
+    '"major":(\d+),"minor":(\d+),"irpFlags":"(0x[0-9A-Fa-f]+)","mmDoes":"(\w+)".*"syncType":(\d+),' +
+    '"pageProtection":"(0x[0-9A-Fa-f]+)"')
+
+function Get-LightTrace($InspectorResult, [string] $RawPath) {
+    # Cheap parse for dumps of thousands of lines; the raw dump is kept as evidence.
+    [IO.File]::WriteAllBytes($RawPath, $InspectorResult.StdoutBytes)
+    $entries = New-Object 'System.Collections.Generic.List[object]'
+    $summary = $null
+    foreach ($line in ([string]$InspectorResult.Stdout -split "`n")) {
+        $text = $line.TrimEnd("`r")
+        if ($text.Length -eq 0) {
+            continue
+        }
+        if ($text.StartsWith('{"summary":true')) {
+            $summary = ConvertFrom-Json -InputObject $text
+            continue
+        }
+        $m = $script:LightEntryPattern.Match($text)
+        if (-not $m.Success) {
+            throw "Unrecognized trace line: $text"
+        }
+        $g = $m.Groups
+        [void]$entries.Add([pscustomobject]@{
+            Seq = [UInt64]$g[1].Value
+            Ts = [Int64]$g[2].Value
+            Ev = $g[3].Value
+            ProcessId = [int]$g[4].Value
+            Fo = (ConvertTo-NormalizedHex $g[6].Value)
+            Sop = (ConvertTo-NormalizedHex $g[7].Value)
+            Major = [int]$g[8].Value
+            MmDoes = $g[11].Value
+            Sync = [int]$g[12].Value
+            Prot = [Convert]::ToUInt32($g[13].Value.Substring(2), 16)
+        })
+    }
+    if ($null -eq $summary) {
+        throw 'Trace output did not include its summary object.'
+    }
+    return [pscustomobject]@{ Entries = $entries; Summary = $summary; RawFile = $RawPath }
+}
+
+function Write-DumpQuality([string] $Name, $Trace) {
+    $counts = @{}
+    foreach ($entry in $Trace.Entries) {
+        $counts[$entry.Ev] = 1 + [int]$counts[$entry.Ev]
+    }
+    $parts = @()
+    foreach ($key in @($counts.Keys | Sort-Object)) {
+        $parts += ($key + '=' + $counts[$key])
+    }
+    Write-Output ('Dump_' + $Name + '=entries:' + $Trace.Entries.Count + ';snapshotSequence:' + $Trace.Summary.snapshotSequence +
+        ';totalEvents:' + $Trace.Summary.totalEvents + ';lostEntries:' + $Trace.Summary.lostEntries +
+        ';ringWrapped:' + ([UInt64]$Trace.Summary.snapshotSequence -gt [UInt64]16384) + ';' + ($parts -join ','))
+    Write-Output ('Dump_' + $Name + '_RawFile=' + $Trace.RawFile)
+}
+
+function Get-SopEventFacts($Trace, [string] $Sop) {
+    $mine = @($Trace.Entries | Where-Object { $_.Sop -eq $Sop })
+    return [pscustomobject]@{
+        All = $mine
+        Acquire = @($mine | Where-Object { $_.Ev -eq 'section_acquire' })
+        Release = @($mine | Where-Object { $_.Ev -eq 'section_release' })
+        Cleanup = @($mine | Where-Object { $_.Ev -eq 'file_cleanup' })
+        Close = @($mine | Where-Object { $_.Ev -eq 'file_close' })
+        Paging = @($mine | Where-Object { $_.Ev -eq 'paging_write' })
+    }
+}
+
+function Format-SopEventFacts($Facts) {
+    $acquireText = (@($Facts.Acquire | ForEach-Object { 'sync' + $_.Sync + '/prot0x' + $_.Prot.ToString('X') }) -join ',')
+    $pids = (@($Facts.All | ForEach-Object { $_.ProcessId } | Sort-Object -Unique) -join ',')
+    return ('acquire=' + $Facts.Acquire.Count + '[' + $acquireText + ']; release=' + $Facts.Release.Count +
+        '; cleanup=' + $Facts.Cleanup.Count + '; close=' + $Facts.Close.Count +
+        '; pagingWrite=' + $Facts.Paging.Count + '; pids=' + $pids)
+}
+
+function Get-ProbeResults($Trace, [string[]] $Labels) {
+    $probes = @($Trace.Entries | Where-Object { $_.Ev -eq 'explicit_probe' })
+    if ($probes.Count -ne $Labels.Count) {
+        Write-Host ('ProbeAttribution=AMBIGUOUS;ProbeEntries=' + $probes.Count + ';Expected=' + $Labels.Count)
+        return $null
+    }
+    $map = @{}
+    for ($index = 0; $index -lt $Labels.Count; $index++) {
+        $map[$Labels[$index]] = $probes[$index]
+    }
+    return $map
+}
+
+function Write-CompactReader([string] $Name, $Observation) {
+    Write-Output ($Name + '=' + $Observation.Class + ';EqualMapped=' + $Observation.EqualMapped +
+        ';EqualOriginal=' + $Observation.EqualOriginal + ';Text=' + $Observation.Text)
+}
+
 function Invoke-Variant([string] $SelectedVariant) {
     $script:LastRestorationVerified = $false
     $script:LastRunSucceeded = $false
@@ -986,6 +1122,11 @@ function Invoke-Variant([string] $SelectedVariant) {
     $rawTrace = Join-Path $documents ('SafeUpload-admission-trace-' + $SelectedVariant + '-' + $id + '.jsonl')
     $rawPreWriteTrace = Join-Path $documents ('SafeUpload-admission-trace-' + $SelectedVariant + '-' + $id + '-prewrite.jsonl')
     $rawAfterATrace = Join-Path $documents ('SafeUpload-admission-trace-' + $SelectedVariant + '-' + $id + '-after-A.jsonl')
+    $rawTraceA = Join-Path $documents ('SafeUpload-admission-trace-' + $SelectedVariant + '-' + $id + '-A.jsonl')
+    $rawTraceP1 = Join-Path $documents ('SafeUpload-admission-trace-' + $SelectedVariant + '-' + $id + '-P1.jsonl')
+    $rawTraceB = Join-Path $documents ('SafeUpload-admission-trace-' + $SelectedVariant + '-' + $id + '-B.jsonl')
+    $rawTraceP2 = Join-Path $documents ('SafeUpload-admission-trace-' + $SelectedVariant + '-' + $id + '-P2.jsonl')
+    $rawTraceL = Join-Path $documents ('SafeUpload-admission-trace-' + $SelectedVariant + '-' + $id + '-L.jsonl')
     $originals = @{}
     $mappedExpected = @{}
     $markers = @{}
@@ -1124,6 +1265,247 @@ function Invoke-Variant([string] $SelectedVariant) {
                 Write-Output 'SOP_Equal_A=AMBIGUOUS'
                 Write-Output 'SOP_Equal_D=AMBIGUOUS'
             }
+            $runSucceeded = $true
+        }
+        elseif ($SelectedVariant -eq 'retained-section') {
+            # Question under test: can a writable section object that outlives its file handle (and has no view)
+            # create a NEW view later without any filter-visible event, and when does the writer's file object
+            # finally close? Observe-only: no policy, no agent, fixtures outside every protected scope.
+            $copies = 4
+            $t = $InspectorTimeoutSeconds
+            $labels = @()
+            $records = @{}
+            foreach ($kind in @('Rpre', 'Rpost', 'S')) {
+                for ($i = 0; $i -lt $copies; $i++) {
+                    $label = $kind + $i
+                    $path = Join-Path $fixtureDirectory ($label + '.maptest')
+                    $original = New-PaddedFixtureBytes ([Text.Encoding]::UTF8.GetBytes('PUBLIC BASELINE ' + $label + ' ' + $id))
+                    [IO.File]::WriteAllBytes($path, $original)
+                    $fixturePaths += $path
+                    $labels += $label
+                    $records[$label] = [pscustomobject]@{
+                        Label = $label; Kind = $kind; Path = $path; Original = $original
+                        Mapping = $null; View = $null; Observer = $null; Sop = ''; Expected = $null
+                    }
+                }
+            }
+            $lifeLabels = @('Lnv0', 'Lnv1', 'Lv0', 'Lv1', 'Lh0', 'Lh1')
+            $lifePaths = @{}
+            foreach ($label in $lifeLabels) {
+                $path = Join-Path $fixtureDirectory ($label + '.maptest')
+                [IO.File]::WriteAllBytes($path, (New-PaddedFixtureBytes ([Text.Encoding]::UTF8.GetBytes('LIFETIME BASELINE ' + $label + ' ' + $id))))
+                $fixturePaths += $path
+                $lifePaths[$label] = $path
+            }
+            foreach ($path in $fixturePaths) {
+                Assert-ReparseFreeFixturePath $path
+            }
+            foreach ($label in $labels) {
+                $records[$label].Observer = New-ObserverPair $records[$label].Path $fileHandles $uncachedReaders
+            }
+            foreach ($label in $labels) {
+                if ($records[$label].Kind -eq 'Rpre') {
+                    $records[$label].Mapping = New-RetainedSection $records[$label].Path ('Local\SafeUpload-Retained-' + $id + '-' + $label) $mappings
+                }
+            }
+            Write-Output ('RetainedSection_Copies=' + $copies)
+            Write-Output 'RetainedPreAttachSections=Created;NoViews;FileHandlesClosed'
+
+            Backup-StagedTestDriver $backup
+            if ((Get-FileHash -LiteralPath $backup -Algorithm SHA256).Hash -ne $expectedOriginalDriver) {
+                throw 'Durable restoration backup mismatch.'
+            }
+            $driverReplaced = $true
+            Copy-Item -LiteralPath $featureDriver -Destination $installedDriver -Force
+            if ((Get-FileHash -LiteralPath $installedDriver -Algorithm SHA256).Hash -ne $ExpectedFeatureSha256.ToUpperInvariant()) {
+                throw 'Feature driver install hash mismatch.'
+            }
+            Invoke-FeatureFilterLoad
+            $filterLoaded = $true
+            [void](Invoke-InspectorChecked -Arguments @('--admission-trace-clear') -Timeout $t)
+
+            # Window A: creation of the post-attach retained sections (section + lifetime events on).
+            [void](Invoke-InspectorChecked -Arguments @('--admission-trace-enable-sections-lifetime') -Timeout $t)
+            $traceEnabled = $true
+            [void](Invoke-InspectorChecked -Arguments @('--admission-trace-clear') -Timeout $t)
+            foreach ($label in $labels) {
+                if ($records[$label].Kind -eq 'Rpost') {
+                    $records[$label].Mapping = New-RetainedSection $records[$label].Path ('Local\SafeUpload-Retained-' + $id + '-' + $label) $mappings
+                }
+            }
+            $traceA = Get-LightTrace (Invoke-InspectorChecked -Arguments @('--admission-trace') -Timeout $t) $rawTraceA
+            Write-DumpQuality 'A' $traceA
+
+            # Probes before any retained section has a view (lifetime events only, so the ring stays quiet).
+            [void](Invoke-InspectorChecked -Arguments @('--admission-trace-enable-lifetime') -Timeout $t)
+            [void](Invoke-InspectorChecked -Arguments @('--admission-trace-clear') -Timeout $t)
+            foreach ($label in $labels) {
+                [void](Invoke-AdmissionProbe $records[$label].Path ('P1_' + $label) $t)
+            }
+            $traceP1 = Get-LightTrace (Invoke-InspectorChecked -Arguments @('--admission-trace') -Timeout $t) $rawTraceP1
+            Write-DumpQuality 'P1' $traceP1
+            $probe1 = Get-ProbeResults $traceP1 $labels
+            if ($null -ne $probe1) {
+                foreach ($label in $labels) {
+                    $records[$label].Sop = ConvertTo-NormalizedHex ([string]$probe1[$label].Sop)
+                    Write-Output ('P1_' + $label + '_MmDoes=' + $probe1[$label].MmDoes + ';Sop=' + $records[$label].Sop)
+                }
+            }
+
+            # Window B: view creation from the retained sections, plus fresh sections as the positive control.
+            [void](Invoke-InspectorChecked -Arguments @('--admission-trace-enable-sections-lifetime') -Timeout $t)
+            [void](Invoke-InspectorChecked -Arguments @('--admission-trace-clear') -Timeout $t)
+            foreach ($label in $labels) {
+                $record = $records[$label]
+                $marker = $record.Kind + ' MARKER ' + $label + ' ' + $id
+                if ($record.Kind -eq 'S') {
+                    $fixture = New-MappedFixture $record.Path ('Local\SafeUpload-Retained-' + $id + '-' + $label) $false $false $fileHandles $mappings $views
+                    $record.Mapping = $fixture.Mapping
+                    $record.View = $fixture.View
+                }
+                else {
+                    $record.View = Add-RetainedView $record.Mapping
+                    [void]$views.Add($record.View)
+                }
+                $record.Expected = New-PaddedFixtureBytes ([Text.Encoding]::UTF8.GetBytes($marker))
+                $write = Invoke-MappedWrite $record.View $marker
+                Write-Output ('B_MappedWrite_' + $label + '=' + $write.Result + $(if ($write.Error) { ';' + $write.Error } else { '' }))
+            }
+            $traceB = Get-LightTrace (Invoke-InspectorChecked -Arguments @('--admission-trace') -Timeout $t) $rawTraceB
+            Write-DumpQuality 'B' $traceB
+
+            foreach ($label in $labels) {
+                $record = $records[$label]
+                $r1 = Get-ObserverReadResult $record.Observer 'R1' $record.Original $record.Expected
+                $r2 = Get-ObserverReadResult $record.Observer 'R2' $record.Original $record.Expected
+                $r3 = Read-FreshBufferedObservation $record.Path $record.Original $record.Expected
+                Write-CompactReader ('B_' + $label + '_R1buffered') $r1
+                Write-CompactReader ('B_' + $label + '_R2uncached') $r2
+                Write-CompactReader ('B_' + $label + '_R3fresh') $r3
+            }
+
+            # Probes after every view exists.
+            [void](Invoke-InspectorChecked -Arguments @('--admission-trace-enable-lifetime') -Timeout $t)
+            [void](Invoke-InspectorChecked -Arguments @('--admission-trace-clear') -Timeout $t)
+            foreach ($label in $labels) {
+                [void](Invoke-AdmissionProbe $records[$label].Path ('P2_' + $label) $t)
+            }
+            $traceP2 = Get-LightTrace (Invoke-InspectorChecked -Arguments @('--admission-trace') -Timeout $t) $rawTraceP2
+            Write-DumpQuality 'P2' $traceP2
+            $probe2 = Get-ProbeResults $traceP2 $labels
+            if ($null -ne $probe2) {
+                foreach ($label in $labels) {
+                    $sop2 = ConvertTo-NormalizedHex ([string]$probe2[$label].Sop)
+                    Write-Output ('P2_' + $label + '_MmDoes=' + $probe2[$label].MmDoes + ';Sop=' + $sop2 + ';SopStable=' + ($sop2 -eq $records[$label].Sop))
+                }
+            }
+
+            # Per-label event facts for windows A and B.
+            foreach ($label in $labels) {
+                $sop = $records[$label].Sop
+                if ([string]::IsNullOrEmpty($sop)) {
+                    Write-Output ('A_' + $label + '=AMBIGUOUS_NO_SOP')
+                    Write-Output ('B_' + $label + '=AMBIGUOUS_NO_SOP')
+                    continue
+                }
+                Write-Output ('A_' + $label + '=' + (Format-SopEventFacts (Get-SopEventFacts $traceA $sop)))
+                Write-Output ('B_' + $label + '=' + (Format-SopEventFacts (Get-SopEventFacts $traceB $sop)))
+            }
+            foreach ($kind in @('Rpre', 'Rpost', 'S')) {
+                $bWithSection = 0
+                $aWithAcquire = 0
+                foreach ($label in ($labels | Where-Object { $records[$_].Kind -eq $kind })) {
+                    $sop = $records[$label].Sop
+                    if ([string]::IsNullOrEmpty($sop)) { continue }
+                    $bFacts = Get-SopEventFacts $traceB $sop
+                    if (($bFacts.Acquire.Count + $bFacts.Release.Count) -gt 0) { $bWithSection++ }
+                    if ((Get-SopEventFacts $traceA $sop).Acquire.Count -gt 0) { $aWithAcquire++ }
+                }
+                Write-Output ('Summary_' + $kind + '_SectionAcquireInWindowA=' + $aWithAcquire + 'of' + $copies)
+                Write-Output ('Summary_' + $kind + '_SectionEventsInWindowB=' + $bWithSection + 'of' + $copies)
+            }
+
+            # Lifetime window: no observers and no probes on these files, so no other file object touches their streams.
+            [void](Invoke-InspectorChecked -Arguments @('--admission-trace-enable-lifetime') -Timeout $t)
+            [void](Invoke-InspectorChecked -Arguments @('--admission-trace-clear') -Timeout $t)
+            $lifeSteps = @{}
+            foreach ($label in $lifeLabels) {
+                $step = @{ FileClosed = [Int64]0; Unmapped = [Int64]0; MappingClosed = [Int64]0 }
+                $lifeSteps[$label] = $step
+                $mapPath = $lifePaths[$label]
+                $mapName = 'Local\SafeUpload-Life-' + $id + '-' + $label
+                if ($label.StartsWith('Lnv')) {
+                    $mapping = New-RetainedSection $mapPath $mapName $mappings
+                    $step.FileClosed = [DateTime]::UtcNow.ToFileTimeUtc()
+                    Start-Sleep -Seconds 3
+                    $mapping.Dispose()
+                    $step.MappingClosed = [DateTime]::UtcNow.ToFileTimeUtc()
+                }
+                else {
+                    $fileStream = [IO.FileStream]::new($mapPath, [IO.FileMode]::Open, [IO.FileAccess]::ReadWrite,
+                        [IO.FileShare]::ReadWrite -bor [IO.FileShare]::Delete)
+                    $mapping = [IO.MemoryMappedFiles.MemoryMappedFile]::CreateFromFile(
+                        $fileStream, $mapName, [long]$mappingLength, [IO.MemoryMappedFiles.MemoryMappedFileAccess]::ReadWrite,
+                        [IO.HandleInheritability]::None, $true)
+                    $view = $mapping.CreateViewAccessor(0, [long]$mappingLength, [IO.MemoryMappedFiles.MemoryMappedFileAccess]::ReadWrite)
+                    [void](Invoke-MappedWrite $view ('LIFETIME ' + $label + ' ' + $id))
+                    $fileStream.Dispose()
+                    $step.FileClosed = [DateTime]::UtcNow.ToFileTimeUtc()
+                    if ($label.StartsWith('Lv')) {
+                        $view.Dispose()
+                        $step.Unmapped = [DateTime]::UtcNow.ToFileTimeUtc()
+                        Start-Sleep -Seconds 3
+                        $mapping.Dispose()
+                        $step.MappingClosed = [DateTime]::UtcNow.ToFileTimeUtc()
+                    }
+                    else {
+                        $mapping.Dispose()
+                        $step.MappingClosed = [DateTime]::UtcNow.ToFileTimeUtc()
+                        Start-Sleep -Seconds 3
+                        $view.Dispose()
+                        $step.Unmapped = [DateTime]::UtcNow.ToFileTimeUtc()
+                    }
+                }
+            }
+            $lifeEndFt = [DateTime]::UtcNow.ToFileTimeUtc()
+            $lifeDumps = @()
+            foreach ($wait in @(5, 15, 30)) {
+                Start-Sleep -Seconds $wait
+                $dump = Get-LightTrace (Invoke-InspectorChecked -Arguments @('--admission-trace') -Timeout $t) ($rawTraceL + '-after' + $wait)
+                Write-DumpQuality ('L_after_' + $wait + 's') $dump
+                $lifeDumps += $dump
+            }
+            $finalLife = $lifeDumps[$lifeDumps.Count - 1]
+            $cleanups = @($finalLife.Entries | Where-Object { $_.Ev -eq 'file_cleanup' -and $_.ProcessId -eq $PID } | Sort-Object Seq)
+            Write-Output ('L_OwnProcessCleanupEvents=' + $cleanups.Count + ';Expected=' + $lifeLabels.Count)
+            if ($cleanups.Count -eq $lifeLabels.Count) {
+                for ($index = 0; $index -lt $lifeLabels.Count; $index++) {
+                    $label = $lifeLabels[$index]
+                    $cleanup = $cleanups[$index]
+                    $step = $lifeSteps[$label]
+                    $closeEvents = @($finalLife.Entries | Where-Object { $_.Ev -eq 'file_close' -and $_.Fo -eq $cleanup.Fo })
+                    $closeText = 'NOT_OBSERVED'
+                    if ($closeEvents.Count -gt 0) {
+                        $closeText = [string][Math]::Round(($closeEvents[0].Ts - $step.MappingClosed) / 10000.0, 1)
+                    }
+                    $unmapText = 'n/a'
+                    if ($step.Unmapped -ne 0) { $unmapText = [string][Math]::Round(($step.Unmapped - $step.FileClosed) / 10000.0, 1) }
+                    Write-Output ('L_' + $label + '=cleanupAfterFileCloseMs:' + [Math]::Round(($cleanup.Ts - $step.FileClosed) / 10000.0, 1) +
+                        ';unmapAfterFileCloseMs:' + $unmapText +
+                        ';mappingClosedAfterFileCloseMs:' + [Math]::Round(($step.MappingClosed - $step.FileClosed) / 10000.0, 1) +
+                        ';closeEvents:' + $closeEvents.Count + ';closeAfterMappingClosedMs:' + $closeText +
+                        ';fileObject:' + $cleanup.Fo + ';sop:' + $cleanup.Sop)
+                }
+            }
+            else {
+                Write-Output 'L_Attribution=AMBIGUOUS'
+            }
+            Write-Output ('L_ObservedMsAfterLastStep=' + [Math]::Round(([DateTime]::UtcNow.ToFileTimeUtc() - $lifeEndFt) / 10000.0, 0))
+
+            $disable = Invoke-InspectorChecked -Arguments @('--admission-trace-disable') -Timeout $t
+            $traceEnabled = $false
+            $fence = Invoke-InspectorChecked -Arguments @('--admission-fence-status') -Timeout $t
+            Write-Output ('FenceStatus=' + ([regex]::Replace([string]$fence.Stdout, '[\r\n]+', ' ')).Trim())
             $runSucceeded = $true
         }
         else {
