@@ -185,6 +185,145 @@ UINT32 SafeUploadStageWritersSnapshot(_In_ PFLT_INSTANCE Instance, _In_ PFILE_OB
     return result;
 }
 
+/* ---- C(F): writable CreateSections in flight ----------------------------------------------------
+ * The section-synchronization acquire/release callbacks arrive paired on one thread and one file object (seen in
+ * every trace). A writable CreateSection that passes the existing policy check is entered here and removed by the
+ * matching release, or by the post-operation callback when the acquire itself fails (no release follows then).
+ * Interlocked operations only, so it is safe in the callbacks' context.
+ *
+ * The slot's FileObject pointer IS its state: NULL = free, FILLING/RELEASING = a marker while one thread owns the
+ * slot, anything else = an active entry for that file object. Claims are compare-exchanges on that pointer, so
+ * identity and ownership are checked atomically and an entry is never invisible while it is still in flight.
+ * A full table is counted and must be read as "unknown"; an entry older than the stuck threshold is counted,
+ * never silently expired. */
+
+#define STAGE_SECTION_SLOTS 64
+#define STAGE_SECTION_STUCK_100NS (20LL * 1000 * 1000)     /* 2 s */
+#define STAGE_SECTION_FILLING ((PVOID)(ULONG_PTR)1)
+#define STAGE_SECTION_RELEASING ((PVOID)(ULONG_PTR)2)
+#define STAGE_SECTION_IS_ENTRY(P) ((P) != NULL && (P) != STAGE_SECTION_FILLING && (P) != STAGE_SECTION_RELEASING)
+
+typedef struct _STAGE_SECTION_SLOT {
+    volatile PVOID FileObject;
+    PVOID Thread;
+    PVOID SectionObjectPointer;
+    LONGLONG Time;
+} STAGE_SECTION_SLOT;
+
+static STAGE_SECTION_SLOT SectionSlots[STAGE_SECTION_SLOTS];
+static volatile LONG SectionNow;
+static volatile LONG SectionMaxDepth;
+static volatile LONG64 SectionInserted;
+static volatile LONG64 SectionReleased;
+static volatile LONG64 SectionOverflow;
+static volatile LONG64 SectionRemovedOnFailure;
+
+static BOOLEAN StageSectionWritable(_In_ PFLT_CALLBACK_DATA Data)
+{
+    UINT32 protection;
+
+    if (Data->Iopb->TargetFileObject == NULL) return FALSE;
+    if (Data->Iopb->Parameters.AcquireForSectionSynchronization.SyncType != SyncTypeCreateSection) return FALSE;
+    protection = Data->Iopb->Parameters.AcquireForSectionSynchronization.PageProtection;
+    return (protection & (PAGE_READWRITE | PAGE_WRITECOPY | PAGE_EXECUTE_READWRITE | PAGE_EXECUTE_WRITECOPY)) != 0;
+}
+
+BOOLEAN SafeUploadStageSectionAcquired(_In_ PFLT_CALLBACK_DATA Data)
+{
+    PFILE_OBJECT fileObject = Data->Iopb->TargetFileObject;
+    ULONG index;
+    LONG depth, observed;
+
+    if (!StageSectionWritable(Data)) return FALSE;
+    for (index = 0; index < STAGE_SECTION_SLOTS; index += 1) {
+        STAGE_SECTION_SLOT *slot = &SectionSlots[index];
+        if (InterlockedCompareExchangePointer(&slot->FileObject, STAGE_SECTION_FILLING, NULL) != NULL) continue;
+        slot->Thread = PsGetCurrentThread();
+        slot->SectionObjectPointer = fileObject->SectionObjectPointer;
+        slot->Time = (LONGLONG)KeQueryInterruptTime();
+        KeMemoryBarrier();
+        InterlockedExchangePointer(&slot->FileObject, fileObject);      /* publish last */
+        InterlockedIncrement64(&SectionInserted);
+        depth = InterlockedIncrement(&SectionNow);
+        for (;;) {
+            observed = InterlockedCompareExchange(&SectionMaxDepth, 0, 0);
+            if (depth <= observed || InterlockedCompareExchange(&SectionMaxDepth, depth, observed) == observed) break;
+        }
+        return TRUE;
+    }
+    InterlockedIncrement64(&SectionOverflow);
+    return FALSE;
+}
+
+/* Removes the newest entry of this thread and file object; falls back to any thread when none matches. */
+static BOOLEAN StageSectionRemove(_In_ PFILE_OBJECT FileObject)
+{
+    PVOID thread = PsGetCurrentThread();
+    LONG pass, attempt;
+    ULONG index;
+
+    if (InterlockedCompareExchange(&SectionNow, 0, 0) == 0) return FALSE;     /* common case: nothing in flight */
+    for (pass = 0; pass < 2; pass += 1) {
+        for (attempt = 0; attempt < 4; attempt += 1) {
+            LONG best = -1;
+            LONGLONG bestTime = -1;
+
+            for (index = 0; index < STAGE_SECTION_SLOTS; index += 1) {
+                STAGE_SECTION_SLOT *slot = &SectionSlots[index];
+                if (slot->FileObject != (PVOID)FileObject) continue;
+                if (pass == 0 && slot->Thread != thread) continue;
+                if (slot->Time > bestTime) { bestTime = slot->Time; best = (LONG)index; }
+            }
+            if (best < 0) break;
+            /* Succeeds only if the slot still holds this file object: nothing else can have taken it over. */
+            if (InterlockedCompareExchangePointer(&SectionSlots[best].FileObject, STAGE_SECTION_RELEASING, FileObject) !=
+                (PVOID)FileObject) continue;
+            SectionSlots[best].Thread = NULL;
+            SectionSlots[best].SectionObjectPointer = NULL;
+            KeMemoryBarrier();
+            InterlockedExchangePointer(&SectionSlots[best].FileObject, NULL);
+            InterlockedDecrement(&SectionNow);
+            return TRUE;
+        }
+    }
+    return FALSE;
+}
+
+VOID SafeUploadStageSectionReleased(_In_ PFLT_CALLBACK_DATA Data)
+{
+    if (Data->Iopb->TargetFileObject != NULL && StageSectionRemove(Data->Iopb->TargetFileObject)) {
+        InterlockedIncrement64(&SectionReleased);
+    }
+}
+
+VOID SafeUploadStageSectionAcquireFailed(_In_ PFLT_CALLBACK_DATA Data)
+{
+    if (Data->Iopb->TargetFileObject != NULL && StageSectionRemove(Data->Iopb->TargetFileObject)) {
+        InterlockedIncrement64(&SectionRemovedOnFailure);
+    }
+}
+
+/* Counts active entries of one stream. An entry being filled or released is not yet or no longer in flight; the
+ * pointer is re-read after the data so a slot refilled in between is not counted by mistake. */
+UINT32 SafeUploadStageSectionsInFlight(_In_opt_ PVOID SectionObjectPointer)
+{
+    UINT32 count = 0;
+    ULONG index;
+
+    if (SectionObjectPointer == NULL) return 0;
+    for (index = 0; index < STAGE_SECTION_SLOTS; index += 1) {
+        STAGE_SECTION_SLOT *slot = &SectionSlots[index];
+        PVOID before = slot->FileObject;
+        PVOID sop;
+
+        if (!STAGE_SECTION_IS_ENTRY(before)) continue;
+        sop = slot->SectionObjectPointer;
+        KeMemoryBarrier();
+        if (slot->FileObject == before && sop == SectionObjectPointer) count += 1;
+    }
+    return count;
+}
+
 VOID SafeUploadStageWritersGetStatus(_Out_ PSAFEUPLOAD_WRITER_STATE_STATUS Status)
 {
     RtlZeroMemory(Status, sizeof(*Status));
@@ -195,6 +334,24 @@ VOID SafeUploadStageWritersGetStatus(_Out_ PSAFEUPLOAD_WRITER_STATE_STATUS Statu
     Status->UntrackedCreates = (UINT64)InterlockedCompareExchange64(&WriterUntrackedCreates, 0, 0);
     Status->CleanupUnmatched = (UINT64)InterlockedCompareExchange64(&WriterCleanupUnmatched, 0, 0);
     Status->DirectoryCreatesSkipped = (UINT64)InterlockedCompareExchange64(&WriterDirectoryCreatesSkipped, 0, 0);
+    Status->SectionInFlightNow = (UINT32)InterlockedCompareExchange(&SectionNow, 0, 0);
+    Status->SectionInFlightMaxDepth = (UINT32)InterlockedCompareExchange(&SectionMaxDepth, 0, 0);
+    Status->SectionInFlightInserted = (UINT64)InterlockedCompareExchange64(&SectionInserted, 0, 0);
+    Status->SectionInFlightReleased = (UINT64)InterlockedCompareExchange64(&SectionReleased, 0, 0);
+    Status->SectionInFlightOverflow = (UINT64)InterlockedCompareExchange64(&SectionOverflow, 0, 0);
+    Status->SectionInFlightRemovedOnFailure = (UINT64)InterlockedCompareExchange64(&SectionRemovedOnFailure, 0, 0);
+    {
+        LONGLONG now = (LONGLONG)KeQueryInterruptTime();
+        ULONG index;
+        UINT64 stuck = 0;
+
+        for (index = 0; index < STAGE_SECTION_SLOTS; index += 1) {
+            STAGE_SECTION_SLOT *slot = &SectionSlots[index];
+            PVOID entry = slot->FileObject;
+            if (STAGE_SECTION_IS_ENTRY(entry) && now - slot->Time > STAGE_SECTION_STUCK_100NS) stuck += 1;
+        }
+        Status->SectionInFlightStuck = stuck;
+    }
 }
 
 #endif

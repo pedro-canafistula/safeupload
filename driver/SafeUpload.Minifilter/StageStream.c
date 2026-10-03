@@ -597,6 +597,8 @@ NTSTATUS SafeUploadStageAdmissionProbe(
     if (probeFileObject != NULL) {
         /* Reuses AdmissionRecordState (a constant until now): H(F) of the probed stream, bit 31 = untracked. */
         entry.AdmissionRecordState = SafeUploadStageWritersSnapshot(instance, probeFileObject);
+        /* SetupFlags is unused by probe entries; it carries C(F) of the probed stream. */
+        entry.SetupFlags = SafeUploadStageSectionsInFlight(sectionObjectPointer);
     }
     if (NT_SUCCESS(status)) probeStage = SAFEUPLOAD_ADMISSION_PROBE_STAGE_COMPLETE;
 
@@ -2579,6 +2581,9 @@ FLT_PREOP_CALLBACK_STATUS SafeUploadStageDispatch(PFLT_CALLBACK_DATA Data,
     PCFLT_RELATED_OBJECTS Objects, PVOID *CompletionContext)
 {
     FLT_PREOP_CALLBACK_STATUS result;
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    BOOLEAN sectionInFlight = FALSE;
+#endif
     *CompletionContext = NULL;
     /* This fence MUST precede all legacy taint/context/policy callbacks. */
     if (StageStreamForObject(Data->Iopb->TargetFileObject) != NULL)
@@ -2702,6 +2707,9 @@ FLT_PREOP_CALLBACK_STATUS SafeUploadStageDispatch(PFLT_CALLBACK_DATA Data,
             result = StageUnownedWritableSection(Data, Objects);
             if (result != FLT_PREOP_SUCCESS_NO_CALLBACK) return result;
             StageTraceWritableCreateSection(Data, Objects);
+            sectionInFlight = SafeUploadStageSectionAcquired(Data);
+        } else {
+            SafeUploadStageSectionReleased(Data);
         }
         {
             LONG traceState = SafeUploadAdmissionTraceControlState;
@@ -2727,6 +2735,11 @@ FLT_PREOP_CALLBACK_STATUS SafeUploadStageDispatch(PFLT_CALLBACK_DATA Data,
                 SafeUploadStageAdmissionTraceEnd();
             }
         }
+        if (sectionInFlight) {
+            /* A post-operation callback removes the entry if the acquire fails below us (no release follows). */
+            *CompletionContext = SAFEUPLOAD_SECTION_ACQUIRE_CONTEXT;
+            return FLT_PREOP_SUCCESS_WITH_CALLBACK;
+        }
 #endif
         break;
     default: break;
@@ -2737,6 +2750,13 @@ FLT_PREOP_CALLBACK_STATUS SafeUploadStageDispatch(PFLT_CALLBACK_DATA Data,
 FLT_POSTOP_CALLBACK_STATUS SafeUploadStagePostOperation(PFLT_CALLBACK_DATA Data,
     PCFLT_RELATED_OBJECTS Objects, PVOID CompletionContext, FLT_POST_OPERATION_FLAGS Flags)
 {
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    if (CompletionContext == SAFEUPLOAD_SECTION_ACQUIRE_CONTEXT) {
+        /* The acquire failed below us: no release follows, so drop the in-flight entry here. */
+        if (!NT_SUCCESS(Data->IoStatus.Status)) SafeUploadStageSectionAcquireFailed(Data);
+        return FLT_POSTOP_FINISHED_PROCESSING;
+    }
+#endif
     if (Data->Iopb->MajorFunction == IRP_MJ_CREATE) {
 #if SAFEUPLOAD_STAGING_PROTOTYPE
         SafeUploadStageWritersPostCreate(Data, Objects, Flags);

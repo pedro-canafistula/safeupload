@@ -597,6 +597,7 @@ typedef struct _SAFEUPLOAD_WRITER_STATE_STATUS {
     UINT64 SectionInFlightReleased;
     UINT64 SectionInFlightOverflow;  // acquires that found the in-flight table full (fail closed)
     UINT64 SectionInFlightStuck;     // entries older than the stuck threshold when sampled
+    UINT64 SectionInFlightRemovedOnFailure;  // entries removed by post-operation because the acquire failed
     UINT32 SectionInFlightMaxDepth;
     UINT32 Reserved;
 } SAFEUPLOAD_WRITER_STATE_STATUS, *PSAFEUPLOAD_WRITER_STATE_STATUS;

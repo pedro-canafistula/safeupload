@@ -577,7 +577,7 @@ static VOID PrintAdmissionTraceEntry(_In_ const SAFEUPLOAD_ADMISSION_TRACE_ENTRY
             L"\"volumeKind\":%u,\"attachClass\":\"%s\",\"syncType\":%u,"
             L"\"pageProtection\":\"0x%08X\",\"syncParametersValid\":%s,"
             L"\"probeStatus\":\"0x%08X\",\"probeStage\":%u,"
-            L"\"writeObjects\":%u,\"writersUntracked\":%s}\n",
+            L"\"writeObjects\":%u,\"writersUntracked\":%s,\"inFlightSections\":%u}\n",
             Entry->Sequence, Entry->Timestamp, AdmissionEventName(Entry->EventKind),
             Entry->ProcessId, Entry->Irql, Entry->Instance, Entry->TargetFileObject,
             Entry->SectionObjectPointer, Entry->MajorFunction, Entry->MinorFunction,
@@ -589,7 +589,8 @@ static VOID PrintAdmissionTraceEntry(_In_ const SAFEUPLOAD_ADMISSION_TRACE_ENTRY
             Entry->SyncParametersValid != 0 ? L"true" : L"false",
             Entry->ProbeStatus, Entry->ProbeStage,
             Entry->AdmissionRecordState & ~SAFEUPLOAD_WRITERS_UNTRACKED_BIT,
-            (Entry->AdmissionRecordState & SAFEUPLOAD_WRITERS_UNTRACKED_BIT) != 0 ? L"true" : L"false");
+            (Entry->AdmissionRecordState & SAFEUPLOAD_WRITERS_UNTRACKED_BIT) != 0 ? L"true" : L"false",
+            Entry->EventKind == SAFEUPLOAD_ADMISSION_TRACE_EVENT_EXPLICIT_PROBE ? Entry->SetupFlags : 0);
 }
 
 static int SendAdmissionProbe(_In_z_ PCWSTR DosPath)
@@ -721,11 +722,13 @@ static int PrintWriterStateStatus(VOID)
     wprintf(L"{\"writerState\":true,\"postCreateRuns\":%llu,\"writeObjectsCounted\":%llu,\"writeObjectsReleased\":%llu,"
             L"\"untrackedCreates\":%llu,\"cleanupUnmatched\":%llu,\"directoryCreatesSkipped\":%llu,"
             L"\"sectionInFlightNow\":%lu,\"sectionInFlightInserted\":%llu,\"sectionInFlightReleased\":%llu,"
-            L"\"sectionInFlightOverflow\":%llu,\"sectionInFlightStuck\":%llu,\"sectionInFlightMaxDepth\":%lu}\n",
+            L"\"sectionInFlightOverflow\":%llu,\"sectionInFlightStuck\":%llu,\"sectionInFlightRemovedOnFailure\":%llu,"
+            L"\"sectionInFlightMaxDepth\":%lu}\n",
             status.PostCreateRuns, status.WriteObjectsCounted, status.WriteObjectsReleased,
             status.UntrackedCreates, status.CleanupUnmatched, status.DirectoryCreatesSkipped,
             status.SectionInFlightNow, status.SectionInFlightInserted, status.SectionInFlightReleased,
-            status.SectionInFlightOverflow, status.SectionInFlightStuck, status.SectionInFlightMaxDepth);
+            status.SectionInFlightOverflow, status.SectionInFlightStuck, status.SectionInFlightRemovedOnFailure,
+            status.SectionInFlightMaxDepth);
     return 0;
 }
 

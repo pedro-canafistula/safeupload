@@ -1,6 +1,6 @@
 param(
     [Parameter(Mandatory = $true)]
-    [ValidateSet('preattach-immediate', 'preattach-protected-open', 'mmdoes-matrix', 'policy-transition', 'retained-section', 'section-eol', 'writer-count', 'All')]
+    [ValidateSet('preattach-immediate', 'preattach-protected-open', 'mmdoes-matrix', 'policy-transition', 'retained-section', 'section-eol', 'writer-count', 'section-inflight', 'All')]
     [string] $Variant,
 
     [Parameter(Mandatory = $true)]
@@ -1190,6 +1190,75 @@ function Get-WriterStateStats {
     return (ConvertFrom-Json -InputObject ([string]$r.Stdout).Trim())
 }
 
+function Initialize-SectionStress {
+    if (-not ('SafeUploadSectionStress' -as [type])) {
+        Add-Type -TypeDefinition @'
+using System;
+using System.IO;
+using System.IO.MemoryMappedFiles;
+using System.Runtime.InteropServices;
+using System.Threading;
+
+public static class SafeUploadSectionStress
+{
+    [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+    static extern IntPtr CreateFileMappingW(IntPtr file, IntPtr attributes, uint protect, uint maxHigh, uint maxLow, string name);
+    [DllImport("kernel32.dll")] static extern bool CloseHandle(IntPtr handle);
+
+    // Creates and drops writable sections (and, optionally, read-only ones) from several threads; returns failures.
+    public static int Run(string[] paths, int threads, int iterations, bool alsoReadOnly)
+    {
+        int failures = 0;
+        Thread[] workers = new Thread[threads];
+        for (int t = 0; t < threads; t++)
+        {
+            int seed = t;
+            workers[t] = new Thread(delegate ()
+            {
+                for (int i = 0; i < iterations; i++)
+                {
+                    string path = paths[(seed * iterations + i) % paths.Length];
+                    try
+                    {
+                        using (FileStream f = new FileStream(path, FileMode.Open, FileAccess.ReadWrite, FileShare.ReadWrite | FileShare.Delete))
+                        using (MemoryMappedFile m = MemoryMappedFile.CreateFromFile(f, null, 4096, MemoryMappedFileAccess.ReadWrite, HandleInheritability.None, true))
+                        {
+                            using (MemoryMappedViewAccessor v = m.CreateViewAccessor(0, 4096, MemoryMappedFileAccess.ReadWrite)) { v.Write(0, (byte)0x42); }
+                        }
+                        if (alsoReadOnly)
+                        {
+                            using (FileStream r = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
+                            using (MemoryMappedFile m2 = MemoryMappedFile.CreateFromFile(r, null, 0, MemoryMappedFileAccess.Read, HandleInheritability.None, true))
+                            {
+                                using (MemoryMappedViewAccessor v2 = m2.CreateViewAccessor(0, 0, MemoryMappedFileAccess.Read)) { v2.ReadByte(0); }
+                            }
+                        }
+                    }
+                    catch (Exception) { Interlocked.Increment(ref failures); }
+                }
+            });
+            workers[t].Start();
+        }
+        foreach (Thread w in workers) { w.Join(); }
+        return failures;
+    }
+
+    // A writable mapping of an empty file with no size fails inside the memory manager. Returns the Win32 error (0 = unexpected success).
+    public static int TryEmptyFileMapping(string path)
+    {
+        using (FileStream f = new FileStream(path, FileMode.Open, FileAccess.ReadWrite, FileShare.ReadWrite | FileShare.Delete))
+        {
+            IntPtr mapping = CreateFileMappingW(f.SafeFileHandle.DangerousGetHandle(), IntPtr.Zero, 0x04, 0, 0, null);
+            if (mapping == IntPtr.Zero) { return Marshal.GetLastWin32Error(); }
+            CloseHandle(mapping);
+            return 0;
+        }
+    }
+}
+'@
+    }
+}
+
 function Invoke-Variant([string] $SelectedVariant) {
     $script:LastRestorationVerified = $false
     $script:LastRunSucceeded = $false
@@ -1991,6 +2060,98 @@ public static class SafeUploadEolNative
             [void](Invoke-InspectorChecked -Arguments @('--admission-trace-disable') -Timeout $t)
             $traceEnabled = $false
             $runSucceeded = ($script:WriterChecksFailed -eq 0)
+        }
+        elseif ($SelectedVariant -eq 'section-inflight') {
+            # X3: C(F), writable CreateSections in flight. The window is microseconds, so this checks conservation:
+            # every entry inserted is removed again (release, or post-operation on a failed acquire), nothing
+            # overflows or sticks, and read-only sections are never tracked.
+            $t = $InspectorTimeoutSeconds
+            Initialize-SectionStress
+            $stormFiles = @()
+            for ($i = 0; $i -lt 16; $i++) {
+                $p = Join-Path $fixtureDirectory ('sf_{0:D2}.maptest' -f $i)
+                [IO.File]::WriteAllBytes($p, (New-PaddedFixtureBytes ([Text.Encoding]::UTF8.GetBytes('SF ' + $i + ' ' + $id))))
+                $fixturePaths += $p
+                $stormFiles += $p
+            }
+            $emptyFile = Join-Path $fixtureDirectory 'sf_empty.maptest'
+            [IO.File]::WriteAllBytes($emptyFile, [byte[]]@())
+            $fixturePaths += $emptyFile
+            foreach ($path in $fixturePaths) { Assert-ReparseFreeFixturePath $path }
+
+            Backup-StagedTestDriver $backup
+            if ((Get-FileHash -LiteralPath $backup -Algorithm SHA256).Hash -ne $expectedOriginalDriver) {
+                throw 'Durable restoration backup mismatch.'
+            }
+            $driverReplaced = $true
+            Copy-Item -LiteralPath $featureDriver -Destination $installedDriver -Force
+            if ((Get-FileHash -LiteralPath $installedDriver -Algorithm SHA256).Hash -ne $ExpectedFeatureSha256.ToUpperInvariant()) {
+                throw 'Feature driver install hash mismatch.'
+            }
+            if ($Verifier) {
+                & verifier.exe /volatile /flags 0x13B /adddriver SafeUpload.sys | Out-Host
+                if ($LASTEXITCODE -ne 0) { throw 'Verifier enable failed.' }
+                $verifierEnabled = $true
+                Write-Output 'VerifierEnabled=volatile flags 0x13B'
+            }
+            Invoke-FeatureFilterLoad
+            $filterLoaded = $true
+            [void](Invoke-InspectorChecked -Arguments @('--admission-trace-clear') -Timeout $t)
+            [void](Invoke-InspectorChecked -Arguments @('--admission-trace-enable') -Timeout $t)
+            $traceEnabled = $true
+
+            $s0 = Get-WriterStateStats
+            Write-Output ('X3_Stats0=inserted:' + $s0.sectionInFlightInserted + ';released:' + $s0.sectionInFlightReleased +
+                ';removedOnFailure:' + $s0.sectionInFlightRemovedOnFailure + ';now:' + $s0.sectionInFlightNow +
+                ';overflow:' + $s0.sectionInFlightOverflow + ';stuck:' + $s0.sectionInFlightStuck)
+
+            $single = [SafeUploadSectionStress]::Run($stormFiles, 1, 500, $false)
+            $s1 = Get-WriterStateStats
+            Write-Output ('X3_Single=failures:' + $single + ';insertedDelta:' + ([int64]$s1.sectionInFlightInserted - [int64]$s0.sectionInFlightInserted) +
+                ';releasedDelta:' + ([int64]$s1.sectionInFlightReleased - [int64]$s0.sectionInFlightReleased) +
+                ';now:' + $s1.sectionInFlightNow)
+
+            $storm = [SafeUploadSectionStress]::Run($stormFiles, 8, 300, $true)
+            $s2 = Get-WriterStateStats
+            Write-Output ('X3_Storm=failures:' + $storm + ';writableSections:2400;readOnlySections:2400' +
+                ';insertedDelta:' + ([int64]$s2.sectionInFlightInserted - [int64]$s1.sectionInFlightInserted) +
+                ';releasedDelta:' + ([int64]$s2.sectionInFlightReleased - [int64]$s1.sectionInFlightReleased) +
+                ';removedOnFailureDelta:' + ([int64]$s2.sectionInFlightRemovedOnFailure - [int64]$s1.sectionInFlightRemovedOnFailure) +
+                ';maxDepth:' + $s2.sectionInFlightMaxDepth + ';overflowDelta:' + ([int64]$s2.sectionInFlightOverflow - [int64]$s1.sectionInFlightOverflow))
+
+            # Failure injection: a writable mapping of an empty file with no size fails inside Mm.
+            $failed = 0
+            for ($i = 0; $i -lt 20; $i++) {
+                if ([SafeUploadSectionStress]::TryEmptyFileMapping($emptyFile) -eq 0) { $failed++ }
+            }
+            $s3 = Get-WriterStateStats
+            Write-Output ('X3_InjectedFailures=attempts:20;failedAsExpected:' + $failed +
+                ';insertedDelta:' + ([int64]$s3.sectionInFlightInserted - [int64]$s2.sectionInFlightInserted) +
+                ';releasedDelta:' + ([int64]$s3.sectionInFlightReleased - [int64]$s2.sectionInFlightReleased) +
+                ';removedOnFailureDelta:' + ([int64]$s3.sectionInFlightRemovedOnFailure - [int64]$s2.sectionInFlightRemovedOnFailure))
+
+            Start-Sleep -Seconds 3
+            $s4 = Get-WriterStateStats
+            Write-Output ('X3_AtRest=inserted:' + $s4.sectionInFlightInserted + ';released:' + $s4.sectionInFlightReleased +
+                ';removedOnFailure:' + $s4.sectionInFlightRemovedOnFailure + ';now:' + $s4.sectionInFlightNow +
+                ';overflow:' + $s4.sectionInFlightOverflow + ';stuck:' + $s4.sectionInFlightStuck + ';maxDepth:' + $s4.sectionInFlightMaxDepth)
+            [void](Invoke-AdmissionProbe $stormFiles[0] 'X3_Probe' $t)
+            $traceX = Get-LightTrace (Invoke-InspectorChecked -Arguments @('--admission-trace') -Timeout $t) $rawTraceA
+            $probeX = @($traceX.Entries | Where-Object { $_.Ev -eq 'explicit_probe' })
+            $probeText = if ($probeX.Count -eq 1) { 'inFlightForProbedStream_see_raw_dump' } else { 'AMBIGUOUS' }
+            Write-Output ('X3_Probe=' + $probeText + ';mmDoes:' + $(if ($probeX.Count -eq 1) { $probeX[0].MmDoes } else { 'n/a' }))
+
+            $conserved = ([int64]$s4.sectionInFlightInserted - [int64]$s4.sectionInFlightReleased - [int64]$s4.sectionInFlightRemovedOnFailure - [int64]$s4.sectionInFlightNow)
+            $tracked = ([int64]$s2.sectionInFlightInserted - [int64]$s1.sectionInFlightInserted)
+            Write-Output ('X3_Verdict=conservationResidual:' + $conserved + ';stormTrackedSections:' + $tracked +
+                ';overflow:' + $s4.sectionInFlightOverflow + ';stuck:' + $s4.sectionInFlightStuck + ';now:' + $s4.sectionInFlightNow)
+            [void](Invoke-InspectorChecked -Arguments @('--admission-trace-disable') -Timeout $t)
+            $traceEnabled = $false
+            # The storm creates 2400 writable sections; other processes may add a few. Read-only sections must not be tracked.
+            $ok = ($conserved -eq 0) -and ([int64]$s4.sectionInFlightOverflow -eq 0) -and ([int64]$s4.sectionInFlightStuck -eq 0) -and
+                ([int64]$s4.sectionInFlightNow -le 2) -and ($tracked -ge 2400) -and ($tracked -lt 3000) -and ($storm -eq 0)
+            Write-Output ('X3_Result=' + $(if ($ok) { 'PASS' } else { 'FAIL' }))
+            $runSucceeded = $ok
         }
         else {
             $target = Join-Path $fixtureDirectory ('synthetic-' + $id + '.maptest')
