@@ -1,6 +1,6 @@
 param(
     [Parameter(Mandatory = $true)]
-    [ValidateSet('preattach-immediate', 'preattach-protected-open', 'mmdoes-matrix', 'policy-transition', 'retained-section', 'section-eol', 'writer-count', 'section-inflight', 'All')]
+    [ValidateSet('preattach-immediate', 'preattach-protected-open', 'mmdoes-matrix', 'policy-transition', 'retained-section', 'section-eol', 'writer-count', 'section-inflight', 'section-lower', 'All')]
     [string] $Variant,
 
     [Parameter(Mandatory = $true)]
@@ -27,7 +27,16 @@ param(
     [switch] $RequireCanary,
     [switch] $RequireAllVolumeCanaries,
     [ValidatePattern('^StagedTestAgent[A-Za-z0-9._-]*\.ps1$')]
-    [string] $TestAgentHelperFileName = 'StagedTestAgent.ps1'
+    [string] $TestAgentHelperFileName = 'StagedTestAgent.ps1',
+    [ValidatePattern('^SafeUploadSectionFault[A-Za-z0-9._-]*\.sys$')]
+    [string] $FaultDriverFileName = 'SafeUploadSectionFault.input.sys',
+    [ValidatePattern('^StagedSectionFaultClient[A-Za-z0-9._-]*\.cs$')]
+    [string] $FaultClientFileName = 'StagedSectionFaultClient.cs',
+    [ValidatePattern('^Invoke-StagedSectionFault[A-Za-z0-9._-]*\.ps1$')]
+    [string] $FaultExerciseFileName = 'Invoke-StagedSectionFault.ps1',
+    [ValidatePattern('^([0-9A-Fa-f]{64})?$')][string] $ExpectedFaultSha256 = '',
+    [ValidatePattern('^([0-9A-Fa-f]{64})?$')][string] $ExpectedFaultClientSha256 = '',
+    [ValidatePattern('^([0-9A-Fa-f]{64})?$')][string] $ExpectedFaultExerciseSha256 = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -2417,6 +2426,144 @@ Start-Sleep -Seconds 300
             [void](Invoke-InspectorChecked -Arguments @('--admission-trace-disable') -Timeout $t)
             $traceEnabled = $false
             $runSucceeded = ($script:WriterChecksFailed -eq 0)
+        }
+        elseif ($SelectedVariant -eq 'section-lower') {
+            $t = $InspectorTimeoutSeconds
+            $faultInput=Join-Path $documents $FaultDriverFileName
+            $faultClientSource=Join-Path $documents $FaultClientFileName
+            $faultExercise=Join-Path $documents $FaultExerciseFileName
+            foreach ($lowerInput in @(@($faultInput,$ExpectedFaultSha256),@($faultClientSource,$ExpectedFaultClientSha256),
+                @($faultExercise,$ExpectedFaultExerciseSha256))) {
+                if ($lowerInput[1].Length -ne 64 -or (Get-FileHash -LiteralPath $lowerInput[0] -Algorithm SHA256).Hash -ne $lowerInput[1]) {
+                    throw 'Lower qualification input hash mismatch.'
+                }
+            }
+            $faultInstalled='C:\Windows\System32\drivers\SafeUploadSectionFault.sys'
+            $faultKey='HKLM:\SYSTEM\CurrentControlSet\Services\SafeUploadSectionFault'
+            $faultInventory=& fltmc.exe filters 2>&1|Out-String
+            if ($LASTEXITCODE -ne 0) { throw 'Companion baseline filter enumeration failed.' }
+            if ((Test-Path $faultInstalled) -or (Test-Path $faultKey) -or
+                @(Get-CimInstance Win32_SystemDriver -Filter "Name='SafeUploadSectionFault'" -ErrorAction Stop).Count -ne 0 -or
+                ($faultInventory -match '(?m)^SafeUploadSectionFault\s')) { throw 'Companion baseline is not empty.' }
+            $sig=Get-AuthenticodeSignature -LiteralPath $faultInput
+            if ($sig.Status.ToString() -ne 'Valid' -or $sig.SignerCertificate.Thumbprint -ne '220DD82C37FCF36048D59E4F10113185D81D5DC7') {
+                throw 'Companion signature mismatch.'
+            }
+            $target=Join-Path $fixtureDirectory 'sf_lower.maptest'
+            [IO.File]::WriteAllBytes($target,(New-PaddedFixtureBytes ([Text.Encoding]::UTF8.GetBytes('SECTION LOWER '+$id))))
+            $fixturePaths += $target
+            Assert-ReparseFreeFixturePath $target
+            Backup-StagedTestDriver $backup
+            if ((Get-FileHash $backup -Algorithm SHA256).Hash -ne $expectedOriginalDriver) { throw 'Original backup mismatch.' }
+            $driverReplaced=$true
+            Copy-Item $featureDriver $installedDriver -Force
+            if ((Get-FileHash $installedDriver -Algorithm SHA256).Hash -ne $ExpectedFeatureSha256) { throw 'Upper install mismatch.' }
+            if ($Verifier) {
+                & verifier.exe /volatile /flags 0x13B /adddriver SafeUpload.sys|Out-Host
+                if ($LASTEXITCODE -ne 0) { throw 'Upper Verifier enable failed.' }
+                $verifierEnabled=$true
+            }
+            Invoke-FeatureFilterLoad
+            $filterLoaded=$true
+            [void](Invoke-InspectorChecked -Arguments @('--admission-trace-enable-sections') -Timeout $t)
+            $traceEnabled=$true
+            Wait-AdmissionCanary $target $rawTraceA
+            $faultFileOwned=$false; $faultServiceOwned=$false; $faultLoaded=$false; $faultVerified=$false
+            $faultCleanupErrors=New-Object System.Collections.Generic.List[string]
+            try {
+                $faultFileOwned=$true
+                Copy-Item -LiteralPath $faultInput -Destination $faultInstalled
+                if ((Get-FileHash $faultInstalled -Algorithm SHA256).Hash -ne $ExpectedFaultSha256) { throw 'Companion installed hash mismatch.' }
+                & sc.exe create SafeUploadSectionFault type= filesys start= demand binPath= $faultInstalled group= 'FSFilter Anti-Virus' depend= FltMgr|Out-Host
+                if ($LASTEXITCODE -ne 0) { throw 'Companion service creation failed.' }
+                $faultServiceOwned=$true
+                $instances=Join-Path $faultKey 'Instances'; $instance=Join-Path $instances 'SectionFault Test'
+                New-Item $instance -Force|Out-Null
+                New-ItemProperty $instances DefaultInstance -PropertyType String -Value 'SectionFault Test' -Force|Out-Null
+                New-ItemProperty $instance Altitude -PropertyType String -Value '321409' -Force|Out-Null
+                New-ItemProperty $instance Flags -PropertyType DWord -Value 1 -Force|Out-Null
+                if ($Verifier) {
+                    & verifier.exe /volatile /flags 0x13B /adddriver SafeUploadSectionFault.sys|Out-Host
+                    if ($LASTEXITCODE -ne 0) { throw 'Companion Verifier enable failed.' }
+                    $faultVerified=$true
+                }
+                & fltmc.exe load SafeUploadSectionFault|Out-Host
+                if ($LASTEXITCODE -ne 0) { throw 'Companion load failed.' }
+                $faultLoaded=$true
+                & fltmc.exe attach SafeUploadSectionFault C:|Out-Host
+                if ($LASTEXITCODE -ne 0) { throw 'Companion manual attachment failed.' }
+                Write-Output ('SectionFaultSHA256='+$ExpectedFaultSha256)
+                Add-Type -Path $faultClientSource
+                if ([Security.Principal.WindowsIdentity]::GetCurrent().User.Value -eq 'S-1-5-18') { throw 'NonSYSTEM control-denial qualification needs the ordinary harness identity.' }
+                $denied=$false; $denialCode=''
+                try { $unexpected=[SafeUploadSectionFaultClient]::new(); $unexpected.Dispose() }
+                catch {
+                    $exception=$_.Exception
+                    while ($exception.InnerException) { $exception=$exception.InnerException }
+                    $denialCode='0x'+([uint32]([int64]$exception.HResult -band 0xffffffff)).ToString('X8')
+                    $denied=$denialCode -eq '0x80070005'
+                }
+                Write-Output ('SectionFaultNonSystemDenied='+$denied+';HRESULT='+$denialCode)
+                if (-not $denied) { throw 'Companion port did not reject the ordinary identity with access denied.' }
+                $resultPath=Join-Path $documents ('SafeUpload-section-lower-'+$id+'-result.json')
+                $tracePrefix=Join-Path $documents ('SafeUpload-section-lower-'+$id)
+                $exerciseArguments=@('-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',$faultExercise,
+                    '-Fixture',$target,'-Inspector',$inspectorPath,'-ClientSource',$faultClientSource,'-ResultPath',$resultPath,
+                    '-TracePrefix',$tracePrefix,'-ExpectedInspectorSha256',$ExpectedInspectorSha256,
+                    '-ExpectedClientSha256',$ExpectedFaultClientSha256)
+                $argumentLine=(@($exerciseArguments|ForEach-Object { ConvertTo-WindowsArgument ([string]$_) })) -join ' '
+                $agent=Start-StagedTestAgent $PSHOME (Join-Path $documents ('SafeUpload-section-lower-'+$id+'-system')) 'powershell.exe' $argumentLine
+                if (-not $agent.Process.WaitForExit(60000)) { throw 'SYSTEM lower exercise timed out.' }
+                if (-not (Test-Path $resultPath)) { throw 'SYSTEM lower exercise did not write its result.' }
+                $lower=Get-Content -LiteralPath $resultPath -Raw|ConvertFrom-Json
+                Write-Output ('SectionLowerResult='+($lower|ConvertTo-Json -Depth 10 -Compress))
+                Write-Output ('SectionLowerResultFile='+$resultPath)
+                Write-Output ('SectionLowerTracePrefix='+$tracePrefix)
+                if ($agent.Process.ExitCode -ne 0 -or $lower.Passed -ne $true -or $lower.Errors.Count -ne 0 -or
+                    $lower.Disarmed.Mode -ne 0 -or $lower.Disarmed.ArmedFileObject -ne 0 -or $lower.Disarmed.CurrentHeld -ne 0) {
+                    throw 'Live lower-stack section qualification failed.'
+                }
+                if ($RequireAllVolumeCanaries) { Wait-AllVolumeCanaries ($rawTraceB+'-final-volumes.json') }
+                $runSucceeded=$true
+                Write-Output 'SectionLowerQualification=PASS'
+            } finally {
+                try { Stop-StagedTestAgent $agent; $agent=$null }
+                finally {
+                    if ($faultLoaded) {
+                        & fltmc.exe unload SafeUploadSectionFault|Out-Host
+                        if ($LASTEXITCODE -ne 0) { [void]$faultCleanupErrors.Add('Companion unload failed.') }
+                    }
+                    if ($faultVerified) {
+                        & verifier.exe /volatile /removedriver SafeUploadSectionFault.sys|Out-Host
+                        if ($LASTEXITCODE -ne 0) { [void]$faultCleanupErrors.Add('Companion Verifier removal failed.') }
+                    }
+                    if ($faultServiceOwned) {
+                        & sc.exe delete SafeUploadSectionFault|Out-Host
+                        if ($LASTEXITCODE -ne 0) { [void]$faultCleanupErrors.Add('Companion service delete failed.') }
+                    }
+                    $faultInventory=& fltmc.exe filters 2>&1|Out-String
+                    $faultInventoryExit=$LASTEXITCODE
+                    if ($faultInventoryExit -ne 0) { [void]$faultCleanupErrors.Add('Companion filter enumeration failed; binary retained.') }
+                    if ($faultFileOwned -and $faultInventoryExit -eq 0 -and $faultInventory -notmatch '(?m)^SafeUploadSectionFault\s') {
+                        try { Remove-Item -LiteralPath $faultInstalled -Force }
+                        catch { [void]$faultCleanupErrors.Add('Companion file delete: '+$_.Exception.Message) }
+                    }
+                    $faultServices=@(); $faultServicesRead=$false
+                    try {
+                        $deleteDeadline=[DateTime]::UtcNow.AddSeconds(5)
+                        do {
+                            $faultServices=@(Get-CimInstance Win32_SystemDriver -Filter "Name='SafeUploadSectionFault'" -ErrorAction Stop)
+                            if ($faultServices.Count -ne 0 -or (Test-Path $faultKey)) { Start-Sleep -Milliseconds 100 }
+                        } while (($faultServices.Count -ne 0 -or (Test-Path $faultKey)) -and [DateTime]::UtcNow -lt $deleteDeadline)
+                        $faultServicesRead=$true
+                    } catch { [void]$faultCleanupErrors.Add('Companion service enumeration: '+$_.Exception.Message) }
+                    $clean=$faultInventoryExit -eq 0 -and $faultServicesRead -and
+                        -not (Test-Path $faultInstalled) -and -not (Test-Path $faultKey) -and $faultServices.Count -eq 0 -and
+                        $faultInventory -notmatch '(?m)^SafeUploadSectionFault\s'
+                    Write-Output ('SectionFaultRestored='+$clean)
+                    if (-not $clean -or $faultCleanupErrors.Count -ne 0) { throw ('Companion restoration failed: '+($faultCleanupErrors -join '; ')) }
+                }
+            }
         }
         elseif ($SelectedVariant -eq 'section-inflight') {
             # X3: C(F), writable CreateSections in flight. The window is microseconds, so this checks conservation:

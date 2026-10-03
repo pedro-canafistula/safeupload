@@ -48,6 +48,28 @@ VM test policy that names only the local folder.
 
 ### Phase 1: free-of-writers primitives, observe-only
 
+Progress 2026-10-03: H(F)'s 43 fixture checks passed both ordinarily and under runtime Verifier,
+including true handle inheritance, delete-on-close, and an actual NTFS junction;
+the file-ID S(F) worker and canaries passed on both active fixed NTFS volumes.
+C(F)'s corpus passed ordinarily and under Verifier with 5,320 balanced writable acquire/release
+pairs, including mixed protections on a shared file object. The detached-volume
+fix also passed this corpus with a disposed VHDX still visible to Filter Manager:
+the two active NTFS identities matched independent enumeration and the detached
+entry remained explicitly reported. All four exact-source WDK configurations
+passed PREfast and ApiValidator with zero warnings/errors; relevant service tests
+passed 283/283. The local publication regression previously passed with a dedicated
+folder policy; its existing taint mode and fresh-reader observer make it regression
+evidence, not MVP acceptance. A subsequent observer failure remains recorded as failed evidence. Its rerun passed
+under runtime Verifier with 400 fresh-reader samples and clean restoration.
+
+Phase 1 remains open: cancelled creates and explicit fast I/O remain; actual lower section-acquire
+failure, controlled in-flight observation, teardown/fault injection, canary security
+and newly mounted-volume qualification, and cost remain. Empty-file mapping errors
+did **not** exercise failed lower acquire. Windows 11 qualification is deferred by
+the user because no VM is available. Phases 2–5 remain open.
+[Earlier evidence](evidence/2026-10-03/mvp1-writer-section-progress.txt) and
+[detached-volume review](evidence/2026-10-03/mvp1-detached-adversarial-review.txt).
+
 - **H(F)**: count of open file objects with write access per stream (create +1, cleanup -1), stream
   context based, on attached fixed NTFS volumes.
 - **S(F)**: `MmDoesFileHaveUserWritableReferences` queried off the I/O path through an attribute-only
@@ -118,7 +140,7 @@ Fix what it finds, rerun phase 4. Then decide the order of the deferred destinat
 
 ## Dependencies and decisions
 
-- **Windows 11 VM** for the canary and section experiments (phase 1). Not available today.
+- **Windows 11 VM** for the canary and section experiments (phase 1). The user deferred this gate on 2026-10-03 because no VM is available. It remains unqualified and prevents an overall completion claim; continue all independent Windows 10 work.
 - Fail closed on the protected scope while the agent is down: follows the agreed rule; noted here
   because users will see saves into the folder refused until the service starts.
 - Taint stays compiled in normal builds; the MVP proves the guarantee without it. Removing it from

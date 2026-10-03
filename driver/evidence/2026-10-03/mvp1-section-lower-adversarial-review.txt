@@ -1,0 +1,16 @@
+Fresh separate-agent adversarial review: /root/primitive_review
+Read-only source review; no tests, VM actions, or edits by reviewer.
+Qualification companion remains excluded from product solution and packaging.
+Review covered rundown/disconnect/unload, effective SYSTEM authorization per message, exact FO lifetime, IRQL, 72-byte protocol, native attachment inventory, mapping handle lifetime, trace completeness, wired launch and restoration.
+Fixed findings: critical-region IRQL exit; valid INSTANCE_INFORMATION_CLASS; trace summary schema/cursor/loss; deliberate held slot aging allowance with exact attribution and strict zero before/after; complete hold polling predicate; fltmc enumeration exit checked before absence/file deletion; independent companion filter/service/registry/binary/process absence; service deletion polling.
+Final reviewer: all four harness findings addressed; no additional blocking findings in wired SYSTEM launch, nested cleanup, deletion polling or baseline.
+Windows parser and both C# interop sources compiled: mvp1-lower1-harness-parse.txt.
+Actual lower-stack VM qualification remains pending at this review.
+Reviewed file SHA256:
+4a6e45738f44a603a2ad7c7cbb0694a5bcf8cf0e9dc65f153315ade96041774d  driver/SafeUpload.SectionFault/Fault.c
+38c801ac14cb58db264413cadf794f197be88cffd32c04ca48e3808157208dcd  driver/SafeUpload.SectionFault/Protocol.h
+7027ba23b199ece53bac866dd81924131ce6eeb5000e1650a458d21f9ce50d7b  driver/SafeUpload.SectionFault/SafeUpload.SectionFault.vcxproj
+ebfa91c62cb19b94590e988e2ec6d8b3eee1f8154c884509d17bb72f0386b70b  driver/scripts/StagedSectionFaultClient.cs
+cce807f794459a894376177f4ac3020371ea48a366dfc0f7ef43f500e3c9534e  driver/scripts/Invoke-StagedSectionFault.ps1
+678c23063fc74c468121c27e6d597127c2f5eb71a15096d2e13b68bb053650e6  driver/scripts/Test-StagedAdmissionDiagnostic.ps1
+7665c690e6a165d05e2792f16e5d5ef1c1b818e8082b4c24afd6a8fd56956f78  driver/scripts/Get-StagedBaseline.ps1

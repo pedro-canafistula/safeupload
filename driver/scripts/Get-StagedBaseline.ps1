@@ -17,7 +17,22 @@ $uuid = (Get-CimInstance Win32_ComputerSystemProduct).UUID
 $checks['DebuggeeIdentity'] = ($env:COMPUTERNAME -eq 'WIN10-DEBUGGED' -and $uuid -eq '9D44EEE8-81CF-4CC1-9FBA-7670F11DEF4D')
 $installedHash = (Get-FileHash -LiteralPath 'C:\Windows\System32\drivers\SafeUpload.sys' -Algorithm SHA256).Hash
 $checks['OriginalDriverHash'] = ($installedHash -eq $ExpectedOriginal)
-$checks['FilterUnloaded'] = -not ((& fltmc.exe filters | Out-String) -match '(?m)^SafeUpload\s')
+$filterInventory = & fltmc.exe filters 2>&1 | Out-String
+$filterInventoryExit = $LASTEXITCODE
+$checks['FiltersEnumerated'] = ($filterInventoryExit -eq 0)
+$checks['FilterUnloaded'] = ($filterInventoryExit -eq 0 -and $filterInventory -notmatch '(?m)^SafeUpload\s')
+$checks['SectionFaultFilterAbsent'] = ($filterInventoryExit -eq 0 -and $filterInventory -notmatch '(?m)^SafeUploadSectionFault\s')
+$checks['SectionFaultBinaryAbsent'] = -not (Test-Path -LiteralPath 'C:\Windows\System32\drivers\SafeUploadSectionFault.sys')
+$checks['SectionFaultRegistryAbsent'] = -not (Test-Path -LiteralPath 'HKLM:\SYSTEM\CurrentControlSet\Services\SafeUploadSectionFault')
+try {
+    $faultServices = @(Get-CimInstance Win32_SystemDriver -Filter "Name='SafeUploadSectionFault'" -ErrorAction Stop)
+    $checks['SectionFaultServiceEnumerated'] = $true
+    $checks['SectionFaultServiceAbsent'] = ($faultServices.Count -eq 0)
+} catch {
+    $checks['SectionFaultServiceEnumerated'] = $false
+    $checks['SectionFaultServiceAbsent'] = $false
+    'SectionFaultServiceEnumerationError=' + $_.Exception.Message
+}
 $verifierQuery = & verifier.exe /query 2>&1 | Out-String
 $verifierSettings = & verifier.exe /querysettings 2>&1 | Out-String
 $checks['VerifierOff'] = ($verifierQuery -match 'No drivers are currently verified' -and
@@ -28,19 +43,22 @@ $service = Get-CimInstance Win32_SystemDriver -Filter "Name='SafeUpload'"
 $checks['ServiceManualStopped'] = ($service.StartMode -eq 'Manual' -and $service.State -eq 'Stopped')
 $policyHash = (Get-FileHash -LiteralPath 'C:\ProgramData\SafeUpload\policy.json' -Algorithm SHA256).Hash
 $checks['OriginalPolicyHash'] = ($policyHash -eq $ExpectedPolicy)
-$inheritedChildren = @(); $fixtureObservers = @(); $fixtureProcessesRead = $false
+$inheritedChildren = @(); $fixtureObservers = @(); $lowerExercises = @(); $fixtureProcessesRead = $false
 try {
     $powershellProcesses = @(Get-CimInstance Win32_Process -Filter "Name='powershell.exe'" -ErrorAction Stop)
     $inheritedChildren = @($powershellProcesses | Where-Object {
         $_.CommandLine -match 'SafeUpload-admission-[0-9a-f]{32}\\wc-inherit-child\.ps1' })
     $fixtureObservers = @($powershellProcesses | Where-Object {
         $_.CommandLine -match 'SafeUpload-owned-[0-9a-f]{32}\.ps1\.observer\.ps1' })
+    $lowerExercises = @($powershellProcesses | Where-Object {
+        $_.CommandLine -match 'Invoke-StagedSectionFault[A-Za-z0-9._-]*\.ps1' })
     $fixtureProcessesRead = $true
 } catch { 'FixtureProcessEnumerationError=' + $_.Exception.Message }
 $checks['FixtureProcessesEnumerated'] = $fixtureProcessesRead
 $checks['ZeroInheritedFixtureChildren'] = ($fixtureProcessesRead -and $inheritedChildren.Count -eq 0)
 $checks['ZeroFixtureObservers'] = ($fixtureProcessesRead -and $fixtureObservers.Count -eq 0)
-foreach ($process in @($inheritedChildren) + @($fixtureObservers)) {
+$checks['ZeroLowerFixtureProcesses'] = ($fixtureProcessesRead -and $lowerExercises.Count -eq 0)
+foreach ($process in @($inheritedChildren) + @($fixtureObservers) + @($lowerExercises)) {
     'FixtureProcess=' + $process.ProcessId + ';CommandLine=' + $process.CommandLine
 }
 $checks['ZeroAgentProcesses'] = (@(Get-Process SafeUpload.Agent.Service -ErrorAction SilentlyContinue).Count -eq 0)

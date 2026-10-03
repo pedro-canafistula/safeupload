@@ -1,0 +1,16 @@
+678C23063FC74C468121C27E6D597127C2F5EB71A15096D2E13B68BB053650E6  driver/scripts/Test-StagedAdmissionDiagnostic.ps1
+066AEDCA363CCD1455C4DAFEC42E389B36F1D67AE58E10A74365F18DD69FAF84  driver/scripts/Test-StagedOwnedStreams.ps1
+7665C690E6A165D05E2792F16E5D5EF1C1B818E8082B4C24AFD6A8FD56956F78  driver/scripts/Get-StagedBaseline.ps1
+CCE807F794459A894376177F4AC3020371EA48A366DFC0F7EF43F500E3C9534E  driver/scripts/Invoke-StagedSectionFault.ps1
+75D5FD4FD3859E625C48D6EDA983A79848384CFB6FF2A474AE075DCAF8B60DCE  driver/scripts/Build-ExactSectionFault.ps1
+6EB53E1F4D8C333DD13EF7B44AB8CCD561CAB8227DC1D3CFC24847323734BBDC  extracted:Test-StagedAdmissionDiagnostic.ps1:$script:WriterInheritanceSource = @'
+C8CC6D2B140871C1FC47C57DD1028C5DC3D5CA652BE4D3F92A50C31A7F414A39  extracted:Test-StagedOwnedStreams.ps1:$watch = @'
+EBFA91C62CB19B94590E988E2EC6D8B3EEE1F8154C884509D17BB72F0386B70B  driver/scripts/StagedSectionFaultClient.cs
+Parsed=Test-StagedAdmissionDiagnostic.ps1
+Parsed=Test-StagedOwnedStreams.ps1
+Parsed=Get-StagedBaseline.ps1
+Parsed=Invoke-StagedSectionFault.ps1
+Parsed=Build-ExactSectionFault.ps1
+InheritanceInteropCompiled=True
+ObserverScriptParsed=True
+LowerClientCompiled=True
