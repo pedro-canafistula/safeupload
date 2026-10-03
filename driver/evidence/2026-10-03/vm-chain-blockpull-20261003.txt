@@ -1,0 +1,16 @@
+UTC=2026-10-03T22:31:38Z
+User ran: virsh -c qemu:///system blockpull win10-debug vda --base /var/lib/libvirt/images/flare.qcow2 --wait --verbose
+Before: 199 backingStore layers (libvirt refused new checkpoints at the 200-layer limit)
+--- after
+running
+
+ Target   Source
+--------------------------------------------------------------------------------------------------------------
+ vda      /var/lib/libvirt/images/win10-debug.safeupload-pre-writer-count-run19-regression-verifier-20261003
+ sda      -
+ sdb      -
+
+BackingChainDepth=1
+source file='/var/lib/libvirt/images/win10-debug.safeupload-pre-writer-count-run19-regression-verifier-20261003'
+source file='/var/lib/libvirt/images/flare.qcow2'
+No current block job for vda
