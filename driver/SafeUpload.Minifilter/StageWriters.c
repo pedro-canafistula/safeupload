@@ -383,6 +383,14 @@ VOID SafeUploadStageSectionAcquireFailed(_In_ PVOID CompletionContext)
     KeReleaseSpinLock(&SectionLock, irql);
 }
 
+/* Draining: the acquire's outcome is unavailable and its release may never reach this filter. The slot stays
+ * (its stream keeps C>0) and all writer state becomes Unknown until the driver is reloaded, i.e. until reboot in
+ * production. No recovery path: an unexpected teardown is a defect to fix, not a state to clean up. */
+VOID SafeUploadStageSectionAcquireDraining(VOID)
+{
+    InterlockedExchange(&WriterGlobalUnknown, 1);
+}
+
 UINT32 SafeUploadStageSectionsInFlight(_In_opt_ PVOID SectionObjectPointer)
 {
     UINT32 count = 0;

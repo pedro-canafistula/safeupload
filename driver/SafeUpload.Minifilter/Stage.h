@@ -78,6 +78,7 @@ UINT32 SafeUploadStageWritersSnapshot(_In_ PFLT_INSTANCE Instance, _In_ PFILE_OB
 VOID SafeUploadStageWritersInitialize(VOID);
 PVOID SafeUploadStageSectionAcquired(_In_ PFLT_CALLBACK_DATA Data);
 VOID SafeUploadStageSectionAcquireFailed(_In_ PVOID CompletionContext);
+VOID SafeUploadStageSectionAcquireDraining(VOID);
 VOID SafeUploadStageSectionReleased(_In_ PFLT_CALLBACK_DATA Data);
 UINT32 SafeUploadStageSectionsInFlight(_In_opt_ PVOID SectionObjectPointer);
 VOID SafeUploadStageWritersGetStatus(_Out_ PSAFEUPLOAD_WRITER_STATE_STATUS Status);

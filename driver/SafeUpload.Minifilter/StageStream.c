@@ -2861,8 +2861,11 @@ FLT_POSTOP_CALLBACK_STATUS SafeUploadStagePostOperation(PFLT_CALLBACK_DATA Data,
 {
 #if SAFEUPLOAD_STAGING_PROTOTYPE
     if (Data->Iopb->MajorFunction == IRP_MJ_ACQUIRE_FOR_SECTION_SYNCHRONIZATION && CompletionContext != NULL) {
-        /* The acquire failed below us: no release follows, so drop the in-flight entry here. */
-        if (!FlagOn(Flags, FLTFL_POST_OPERATION_DRAINING) && !NT_SUCCESS(Data->IoStatus.Status)) {
+        if (FlagOn(Flags, FLTFL_POST_OPERATION_DRAINING)) {
+            /* Outcome unavailable while draining: keep the entry and make writer state Unknown. */
+            SafeUploadStageSectionAcquireDraining();
+        } else if (!NT_SUCCESS(Data->IoStatus.Status)) {
+            /* The acquire failed below us: no release follows, so drop the in-flight entry here. */
             SafeUploadStageSectionAcquireFailed(CompletionContext);
         }
         return FLT_POSTOP_FINISHED_PROCESSING;
