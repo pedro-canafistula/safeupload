@@ -1,0 +1,16 @@
+PRE_RUN_PS: $ErrorActionPreference='Stop';$d='C:\Users\vika\Documents';
+$p=Join-Path $d 'SafeUpload-stage-prototype-mvp1-scoped3.sys';if((Test-Path $p) -and (Get-FileHash $p -Algorithm SHA256).Hash -ne 'FAEF0BA6500B42BDFCFA750839C64D409E9888556A06168C3B16DD58957B3291'){throw 'Existing input hash mismatch'}
+$p=Join-Path $d 'SafeUpload.Inspector.mvp1-scoped3.exe';if((Test-Path $p) -and (Get-FileHash $p -Algorithm SHA256).Hash -ne '87C03F70590116F718BCB50ED5BC1ED9BBA139816B325DE10DE5C4723C2C9AD4'){throw 'Existing input hash mismatch'}
+$p=Join-Path $d 'SafeUploadSectionFault-exact2.sys';if((Test-Path $p) -and (Get-FileHash $p -Algorithm SHA256).Hash -ne 'D1DED0AE46AF9978F73297AD3B191FB1F9023B8E51AEF91BDB3D41FBFA88E15A'){throw 'Existing input hash mismatch'}
+$p=Join-Path $d 'StagedSectionFaultClient-2BA0517F1A5FF763.cs';if((Test-Path $p) -and (Get-FileHash $p -Algorithm SHA256).Hash -ne '2BA0517F1A5FF76383C998456002A37763DFAB695BD0111C10A75EAE62DA0182'){throw 'Existing input hash mismatch'}
+$p=Join-Path $d 'Invoke-StagedSectionFault-97DD695A1B715B3C.ps1';if((Test-Path $p) -and (Get-FileHash $p -Algorithm SHA256).Hash -ne '97DD695A1B715B3CB681221D651CC4762B3F40F830147CD9C777D50684F91C77'){throw 'Existing input hash mismatch'}
+$p=Join-Path $d 'StagedTestAgent-661EBB84C8E739EE.ps1';if((Test-Path $p) -and (Get-FileHash $p -Algorithm SHA256).Hash -ne '661EBB84C8E739EE6F77E663C06557855288DA96D127E6B43642ACD480F59086'){throw 'Existing input hash mismatch'}
+'PRE_RUN_OK=True'
+
+PRE_RUN_OK=True
+copied /tmp/claude-1000/exact-mvp1-scoped3/SafeUpload-stage-prototype.sys -> SafeUpload-stage-prototype-mvp1-scoped3.sys sha256=faef0ba6500b42bdfcfa750839c64d409e9888556a06168c3b16dd58957b3291
+copied /tmp/claude-1000/exact-mvp1-scoped3/inspector-feature-release.exe -> SafeUpload.Inspector.mvp1-scoped3.exe sha256=87c03f70590116f718bcb50ed5bc1ed9bba139816b325de10de5c4723c2c9ad4
+copied /tmp/claude-1000/exact-section-fault-exact2/SafeUploadSectionFault.sys -> SafeUploadSectionFault-exact2.sys sha256=d1ded0ae46af9978f73297ad3b191fb1f9023b8e51aef91bdb3d41fbfa88e15a
+copied /home/victor/Work/safeupload-staging/driver/scripts/StagedSectionFaultClient.cs -> StagedSectionFaultClient-2BA0517F1A5FF763.cs sha256=2ba0517f1a5ff76383c998456002a37763dfab695bd0111c10a75eae62da0182
+copied /home/victor/Work/safeupload-staging/driver/scripts/Invoke-StagedSectionFault.ps1 -> Invoke-StagedSectionFault-97DD695A1B715B3C.ps1 sha256=97dd695a1b715b3cb681221d651cc4762b3f40f830147cd9c777d50684f91c77
+copied /home/victor/Work/safeupload-staging/driver/scripts/StagedTestAgent.ps1 -> StagedTestAgent-661EBB84C8E739EE.ps1 sha256=661ebb84c8e739ee6f77e663c06557855288da96d127e6b43642acd480f59086
