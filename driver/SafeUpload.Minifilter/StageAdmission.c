@@ -160,12 +160,12 @@ static VOID StageCanaryRun(_In_ PFLT_INSTANCE Instance, _Inout_ PSAFEUPLOAD_INST
     OBJECT_ATTRIBUTES attributes;
     IO_STATUS_BLOCK io = {0};
     FILE_END_OF_FILE_INFORMATION eof;
-    FILE_DISPOSITION_INFORMATION disposition;
-    FILE_DISPOSITION_INFORMATION_EX onClose;
-    HANDLE fileHandle = NULL, probeHandle = NULL, sectionHandle = NULL;
-    PFILE_OBJECT fileObject = NULL, probeObject = NULL;
+    FILE_ID_INFORMATION identity;
+    HANDLE fileHandle = NULL, sectionHandle = NULL;
+    PFILE_OBJECT fileObject = NULL;
     LARGE_INTEGER delay;
-    UINT32 probeStage, checks = 0, step = 1;
+    UINT32 checks = 0, step = 1;
+    ULONG returned = 0;
     ULONG attempt;
     NTSTATUS status, cleanupStatus = STATUS_SUCCESS;
 
@@ -199,7 +199,8 @@ static VOID StageCanaryRun(_In_ PFLT_INSTANCE Instance, _Inout_ PSAFEUPLOAD_INST
         FILE_READ_DATA | FILE_WRITE_DATA | FILE_READ_ATTRIBUTES | DELETE | SYNCHRONIZE,
         &attributes, &io, NULL, FILE_ATTRIBUTE_TEMPORARY,
         FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, FILE_CREATE,
-        FILE_NON_DIRECTORY_FILE | FILE_SYNCHRONOUS_IO_NONALERT | FILE_COMPLETE_IF_OPLOCKED,
+        FILE_NON_DIRECTORY_FILE | FILE_SYNCHRONOUS_IO_NONALERT | FILE_COMPLETE_IF_OPLOCKED |
+            FILE_DELETE_ON_CLOSE,
         NULL, 0, 0, NULL);
     if (status != STATUS_SUCCESS) goto Exit;
     if (fileObject == NULL || fileHandle == NULL) { status = STATUS_INVALID_HANDLE; goto Exit; }
@@ -207,22 +208,16 @@ static VOID StageCanaryRun(_In_ PFLT_INSTANCE Instance, _Inout_ PSAFEUPLOAD_INST
     step = 5;
     status = FltSetInformationFile(Instance, fileObject, &eof, sizeof(eof), FileEndOfFileInformation);
     if (!NT_SUCCESS(status)) goto Exit;
-    /* An attribute-only ID reopen samples the same stream even if its name changes. */
+    /* The canary owns this newly created lower object for its entire lifetime. Its delete-pending
+     * name cannot be reopened; actual S(F) diagnostics use the verified attribute-only ID helper.
+     * Here the referenced source object supplies the same NTFS per-stream section-pointer state. */
     step = 6;
-    status = SafeUploadStageOpenByIdentity(Instance, &volumeName, fileObject,
-        &probeHandle, &probeObject, &probeStage);
+    RtlZeroMemory(&identity, sizeof(identity));
+    status = FltQueryInformationFile(Instance, fileObject, &identity, sizeof(identity),
+        FileIdInformation, &returned);
     if (!NT_SUCCESS(status)) goto Exit;
-    if (probeObject->SectionObjectPointer == NULL) { status = STATUS_INVALID_FILE_FOR_SECTION; goto Exit; }
-    /* Arm deletion only after the ID reopen: NTFS rejects new opens of a delete-pending file.
-     * Closing our source handle then remains a cleanup fallback even if the explicit delete fails. */
-    onClose.Flags = FILE_DISPOSITION_DELETE | FILE_DISPOSITION_ON_CLOSE;
-    step = 7;
-    /* ON_CLOSE changes the handle's deletion state. The object-only FltSetInformationFile path
-     * returns STATUS_NOT_SUPPORTED on the qualified Win10 NTFS build; use the documented handle
-     * API for this operation. This handle owns only the freshly created private canary file. */
-    RtlZeroMemory(&io, sizeof(io));
-    status = ZwSetInformationFile(fileHandle, &io, &onClose, sizeof(onClose), FileDispositionInformationEx);
-    if (!NT_SUCCESS(status)) goto Exit;
+    if (returned != sizeof(identity)) { status = STATUS_INFO_LENGTH_MISMATCH; goto Exit; }
+    if (fileObject->SectionObjectPointer == NULL) { status = STATUS_INVALID_FILE_FOR_SECTION; goto Exit; }
     InitializeObjectAttributes(&attributes, NULL, OBJ_KERNEL_HANDLE, NULL, NULL);
     step = 8;
     status = ZwCreateSection(&sectionHandle, SECTION_QUERY | SECTION_MAP_READ | SECTION_MAP_WRITE,
@@ -230,7 +225,7 @@ static VOID StageCanaryRun(_In_ PFLT_INSTANCE Instance, _Inout_ PSAFEUPLOAD_INST
     if (!NT_SUCCESS(status)) goto Exit;
     /* Retain the section handle without creating a view, the admission-critical case. */
     step = 9;
-    if (!MmDoesFileHaveUserWritableReferences(probeObject->SectionObjectPointer)) {
+    if (!MmDoesFileHaveUserWritableReferences(fileObject->SectionObjectPointer)) {
         status = STATUS_NOT_SUPPORTED; goto Exit;
     }
     checks |= SAFEUPLOAD_CANARY_RETAINED_YES;
@@ -238,7 +233,7 @@ static VOID StageCanaryRun(_In_ PFLT_INSTANCE Instance, _Inout_ PSAFEUPLOAD_INST
     delay.QuadPart = -100 * 10000LL;
     step = 10;
     for (attempt = 0; attempt < 20; ++attempt) {
-        if (!MmDoesFileHaveUserWritableReferences(probeObject->SectionObjectPointer)) {
+        if (!MmDoesFileHaveUserWritableReferences(fileObject->SectionObjectPointer)) {
             checks |= SAFEUPLOAD_CANARY_RELEASED_NO;
             break;
         }
@@ -247,17 +242,10 @@ static VOID StageCanaryRun(_In_ PFLT_INSTANCE Instance, _Inout_ PSAFEUPLOAD_INST
     status = (checks & SAFEUPLOAD_CANARY_RELEASED_NO) != 0 ? STATUS_SUCCESS : STATUS_IO_TIMEOUT;
 Exit:
     if (sectionHandle != NULL) ZwClose(sectionHandle);
-    if (probeHandle != NULL) FltClose(probeHandle);
-    if (probeObject != NULL) ObDereferenceObject(probeObject);
-    if (fileObject != NULL) {
-        disposition.DeleteFile = TRUE;
-        cleanupStatus = FltSetInformationFile(Instance, fileObject, &disposition,
-            sizeof(disposition), FileDispositionInformation);
-    }
     if (fileHandle != NULL) FltClose(fileHandle);
     if (fileObject != NULL) {
         ObDereferenceObject(fileObject);
-        if (NT_SUCCESS(cleanupStatus)) cleanupStatus = StageCanaryCheckRemoved(Instance, &name);
+        cleanupStatus = StageCanaryCheckRemoved(Instance, &name);
         if (NT_SUCCESS(cleanupStatus)) checks |= SAFEUPLOAD_CANARY_REMOVED;
     }
     if (buffer != NULL) ExFreePoolWithTag(buffer, SAFEUPLOAD_POOL_TAG);
