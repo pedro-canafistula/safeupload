@@ -669,24 +669,39 @@ SafeUploadPolicyCopyScope (
     );
 
 VOID SafeUploadPolicySetPending( _In_opt_ const SAFEUPLOAD_POLICY *Pending );
-BOOLEAN SafeUploadPolicyMatchesPendingDestination( _In_ SAFEUPLOAD_VOLUME_KIND VolumeKind, _In_opt_ PCUNICODE_STRING NormalizedPath );
+BOOLEAN SafeUploadPolicyMatchesCurrentOrPendingDestination(
+    _In_ SAFEUPLOAD_VOLUME_KIND VolumeKind,
+    _In_opt_ PCUNICODE_STRING NormalizedPath,
+    _In_ BOOLEAN IncludeAncestors );
 
 NTSTATUS SafeUploadStageFenceInitialize( VOID );
 VOID SafeUploadStageFenceFree( VOID );
+VOID SafeUploadStageFenceStartRetries( VOID );
+_IRQL_requires_(PASSIVE_LEVEL)
 NTSTATUS SafeUploadStageFenceRefresh( _In_opt_ const SAFEUPLOAD_POLICY *Candidate );
+_IRQL_requires_(PASSIVE_LEVEL)
 NTSTATUS SafeUploadStageFencePrepareUnload( VOID );
+BOOLEAN SafeUploadStageFenceTryCommitUnload( VOID );
+VOID SafeUploadStageFenceCancelUnload( VOID );
+VOID SafeUploadStageFenceCommitUnload( VOID );
 BOOLEAN SafeUploadStageFenceHasEntries( VOID );
+_IRQL_requires_(PASSIVE_LEVEL)
 BOOLEAN SafeUploadStageFenceTransitionBegin( VOID );
+_IRQL_requires_(PASSIVE_LEVEL)
 VOID SafeUploadStageFenceTransitionEnd( VOID );
 BOOLEAN SafeUploadStageFenceVolumeHasEntries( _In_opt_ PFLT_VOLUME Volume );
+BOOLEAN SafeUploadStageFenceVolumeBlocksDetach( _In_opt_ PFLT_VOLUME Volume );
 BOOLEAN SafeUploadStageFenceIsFenced( _In_opt_ PFILE_OBJECT FileObject );
 BOOLEAN SafeUploadStageFenceNameQuarantined( _In_ PCUNICODE_STRING NormalizedName );
+BOOLEAN SafeUploadStageFenceVolumeQuarantined( _In_opt_ PFLT_VOLUME Volume );
 VOID SafeUploadStageFenceCountOpenRefused( VOID );
 VOID SafeUploadStageFenceCountPagingDenied( VOID );
 VOID SafeUploadStageFenceCountSectionDenied( VOID );
 VOID SafeUploadStageFenceCountSectionUnresolved( VOID );
 VOID SafeUploadStageFenceCountFsctlUnresolved( VOID );
-VOID SafeUploadStageFenceQueueRefresh( VOID );
+BOOLEAN SafeUploadStageFenceQueueRefresh( _In_ PFLT_VOLUME Volume );
+BOOLEAN SafeUploadStageFenceSetupBegin( VOID );
+VOID SafeUploadStageFenceSetupEnd( VOID );
 VOID SafeUploadStageFenceGetStatus( _Out_ PSAFEUPLOAD_FENCE_STATUS Status );
 
 #endif

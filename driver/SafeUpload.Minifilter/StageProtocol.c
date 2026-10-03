@@ -159,12 +159,23 @@ BOOLEAN SafeUploadStageTouchesProtectedNamespace(_In_ PFLT_FILE_NAME_INFORMATION
     return StagePathMatchesScope(&base, Name->Volume.Length, Kind, TRUE);
 }
 
-BOOLEAN SafeUploadPublicationRename(_In_ PUNICODE_STRING Source,
-    _In_ PUNICODE_STRING Destination)
+BOOLEAN SafeUploadPublicationRename(_In_ PFLT_VOLUME TargetVolume, _In_ PUNICODE_STRING Source,
+    _In_ PUNICODE_STRING Destination, _Out_ PBOOLEAN QuarantineRefused)
 {
     ULONG index;
     BOOLEAN allowed = FALSE;
     ULONGLONG now = KeQueryInterruptTime();
+
+    *QuarantineRefused = FALSE;
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    if (SafeUploadStageFenceVolumeQuarantined(TargetVolume)) {
+        *QuarantineRefused = TRUE;
+        return FALSE;
+    }
+#else
+    UNREFERENCED_PARAMETER(TargetVolume);
+#endif
+
     FltAcquirePushLockExclusive( &SafeUploadPublicationLock );
     for (index = 0; index < RTL_NUMBER_OF( SafeUploadPublicationPermits ); ++index) {
         SAFEUPLOAD_PUBLICATION_PERMIT *permit = &SafeUploadPublicationPermits[index];

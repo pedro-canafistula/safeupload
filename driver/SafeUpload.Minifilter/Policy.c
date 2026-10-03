@@ -56,8 +56,9 @@ static volatile LONG SafeUploadPolicyGeneration = 0;
 //
 //  The candidate snapshot while a policy update is in transition (from before
 //  its fence scan until the swap), guarded by SafeUploadPolicyLock. The
-//  writable-section refusal consults it so a mapping created on a file that is
-//  about to come into scope cannot slip between the scan and the swap.
+//  Feature-only current-or-pending matching lets selected section and FSCTL
+//  admission checks classify against both snapshots. It does not reserve an
+//  operation through the lower file-system mutation or drain it before swap.
 //
 
 static const SAFEUPLOAD_POLICY *SafeUploadPendingPolicy = NULL;
@@ -85,6 +86,43 @@ SafeUploadPathUnderPrefix (
     prefixChars = Prefix->Length / sizeof( WCHAR );
     return (BOOLEAN) (Prefix->Buffer[prefixChars - 1] == L'\\' ||
                       Path->Buffer[prefixChars] == L'\\');
+}
+
+/* Caller holds SafeUploadPolicyLock shared. Keep current, pending, and union
+ * matching on one implementation so broad volume flags and prefix boundaries
+ * cannot drift between policy snapshots. */
+static BOOLEAN SafeUploadPolicySnapshotMatchesDestination(
+    _In_opt_ const SAFEUPLOAD_POLICY *Policy,
+    _In_ SAFEUPLOAD_VOLUME_KIND VolumeKind,
+    _In_opt_ PCUNICODE_STRING NormalizedPath,
+    _In_ BOOLEAN IncludeAncestors)
+{
+    UINT32 index;
+
+    if (Policy == NULL) return FALSE;
+
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    if ((VolumeKind == SafeUploadVolumeUnknown &&
+         FlagOn(Policy->Flags, SAFEUPLOAD_POLICY_FLAG_REMOVABLE | SAFEUPLOAD_POLICY_FLAG_NETWORK)) ||
+#else
+    if (
+#endif
+        (VolumeKind == SafeUploadVolumeRemovable &&
+         FlagOn(Policy->Flags, SAFEUPLOAD_POLICY_FLAG_REMOVABLE)) ||
+        (VolumeKind == SafeUploadVolumeNetwork &&
+         FlagOn(Policy->Flags, SAFEUPLOAD_POLICY_FLAG_NETWORK))) {
+        return TRUE;
+    }
+
+    if (NormalizedPath == NULL || NormalizedPath->Length == 0) return FALSE;
+    for (index = 0; index < Policy->PrefixCount; index += 1) {
+        if (SafeUploadPathUnderPrefix(&Policy->Prefixes[index], NormalizedPath) ||
+            (IncludeAncestors && SafeUploadPathUnderPrefix(NormalizedPath, &Policy->Prefixes[index]))) {
+            return TRUE;
+        }
+    }
+
+    return FALSE;
 }
 
 static
@@ -363,6 +401,10 @@ Return Value:
         //
 
         fenceTransition = SafeUploadStageFenceTransitionBegin();
+        if (!fenceTransition) {
+            ExFreePoolWithTag( snapshot, SAFEUPLOAD_POOL_TAG );
+            return STATUS_DEVICE_BUSY;
+        }
         SafeUploadPolicySetPending( snapshot );
         fenceStatus = SafeUploadStageFenceRefresh( snapshot );
 
@@ -693,44 +735,11 @@ Return Value:
 
 --*/
 {
-    BOOLEAN matched = FALSE;
-    UINT32 index;
+    BOOLEAN matched;
 
     FltAcquirePushLockShared( &SafeUploadPolicyLock );
-
-    if (SafeUploadPolicy == NULL) {
-
-        //
-        //  No policy means no monitored destination. Nothing is in scope
-        //  until user mode says what is.
-        //
-
-        FltReleasePushLock( &SafeUploadPolicyLock );
-        return FALSE;
-    }
-
-    if ((VolumeKind == SafeUploadVolumeRemovable &&
-         FlagOn( SafeUploadPolicy->Flags, SAFEUPLOAD_POLICY_FLAG_REMOVABLE )) ||
-        (VolumeKind == SafeUploadVolumeNetwork &&
-         FlagOn( SafeUploadPolicy->Flags, SAFEUPLOAD_POLICY_FLAG_NETWORK ))) {
-
-        matched = TRUE;
-    }
-
-    if (!matched && NormalizedPath != NULL && NormalizedPath->Length != 0) {
-
-        for (index = 0; index < SafeUploadPolicy->PrefixCount; index += 1) {
-
-            if (SafeUploadPathUnderPrefix( &SafeUploadPolicy->Prefixes[index],
-                                           NormalizedPath ) ||
-                (IncludeAncestors && SafeUploadPathUnderPrefix( NormalizedPath,
-                                           &SafeUploadPolicy->Prefixes[index] ))) {
-
-                matched = TRUE;
-                break;
-            }
-        }
-    }
+    matched = SafeUploadPolicySnapshotMatchesDestination(
+        SafeUploadPolicy, VolumeKind, NormalizedPath, IncludeAncestors);
 
     FltReleasePushLock( &SafeUploadPolicyLock );
 
@@ -892,7 +901,7 @@ Routine Description:
 
     Publishes (or clears) the candidate snapshot of a policy update in
     transition. Taking the lock exclusively waits out every reader, so a
-    snapshot is never freed while SafeUploadPolicyMatchesPendingDestination
+    snapshot is never freed while the current-or-pending destination matcher
     is inspecting it.
 
     IRQL: PASSIVE_LEVEL.
@@ -907,50 +916,32 @@ Routine Description:
 }
 
 BOOLEAN
-SafeUploadPolicyMatchesPendingDestination (
+SafeUploadPolicyMatchesCurrentOrPendingDestination (
     _In_ SAFEUPLOAD_VOLUME_KIND VolumeKind,
-    _In_opt_ PCUNICODE_STRING NormalizedPath
+    _In_opt_ PCUNICODE_STRING NormalizedPath,
+    _In_ BOOLEAN IncludeAncestors
     )
 /*++
 
 Routine Description:
 
-    Whether the candidate policy of an update in transition covers the path.
-    FALSE when no update is in transition. Same matching rules as the current
-    policy (destination kind flags, then component-bounded prefixes).
+    Tests current and pending policy snapshots under one shared lock. Callers
+    may also request component-bounded ancestor matching for namespace
+    mutations such as reparse changes on a parent of a protected prefix.
 
     IRQL: <= APC_LEVEL.
 
 --*/
 {
-    BOOLEAN matched = FALSE;
-    UINT32 index;
+    BOOLEAN matched;
 
     FltAcquirePushLockShared( &SafeUploadPolicyLock );
-
-    if (SafeUploadPendingPolicy != NULL) {
-
-        if ((VolumeKind == SafeUploadVolumeRemovable &&
-             FlagOn( SafeUploadPendingPolicy->Flags, SAFEUPLOAD_POLICY_FLAG_REMOVABLE )) ||
-            (VolumeKind == SafeUploadVolumeNetwork &&
-             FlagOn( SafeUploadPendingPolicy->Flags, SAFEUPLOAD_POLICY_FLAG_NETWORK ))) {
-
-            matched = TRUE;
-        }
-
-        if (!matched && NormalizedPath != NULL && NormalizedPath->Length != 0) {
-
-            for (index = 0; index < SafeUploadPendingPolicy->PrefixCount; index += 1) {
-
-                if (SafeUploadPathUnderPrefix( &SafeUploadPendingPolicy->Prefixes[index], NormalizedPath )) {
-
-                    matched = TRUE;
-                    break;
-                }
-            }
-        }
+    matched = SafeUploadPolicySnapshotMatchesDestination(
+        SafeUploadPolicy, VolumeKind, NormalizedPath, IncludeAncestors);
+    if (!matched) {
+        matched = SafeUploadPolicySnapshotMatchesDestination(
+            SafeUploadPendingPolicy, VolumeKind, NormalizedPath, IncludeAncestors);
     }
-
     FltReleasePushLock( &SafeUploadPolicyLock );
 
     return matched;

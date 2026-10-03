@@ -199,7 +199,11 @@ manual attachment and detached volumes; it runs at PASSIVE_LEVEL and must not
 perform thread synchronization or interprocess communication. A
 [`SyncTypeCreateSection` callback](https://learn.microsoft.com/en-us/windows-hardware/drivers/ifs/flt-parameters-for-irp-mj-acquire-for-section-synchronization)
 may fail section creation only with `STATUS_INSUFFICIENT_RESOURCES`, while
-`SyncTypeOther` cannot be failed. The documented
+`SyncTypeOther` cannot be failed. The feature callback currently completes a
+policy-denied writable section with `STATUS_ACCESS_DENIED`; that is unsupported
+by the documented contract, and no documented policy-denial alternative has
+been identified. Treat this as a hard blocker, not as a supported protection
+gate. The documented
 [`FltGetFileNameInformationUnsafe` constraints](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/fltkernel/nf-fltkernel-fltgetfilenameinformationunsafe)
 warn that filesystem name queries are unsafe in paging I/O and acquire/release
 modified-page-writer callbacks; cache-only lookup avoids that query but can miss.
@@ -522,7 +526,7 @@ What exists (`StageFence.c`, hooks in `StageStream.c`, `Policy.c`, `Filter.c`, `
   file ID are refused only on a volume that holds an entry. All checks are in memory; no I/O in the create or write path.
 - **Fixture E closed.** A writable data section created after the scan through a handle that predates attachment is refused at
   creation (`IRP_MJ_ACQUIRE_FOR_SECTION_SYNCHRONIZATION`, pre-operation name query, documented as allowed there). If no name
-  can be resolved the section is allowed and counted (`sectionNameUnresolved`): a documented limit.
+  can be resolved the feature build now refuses the section and increments `sectionNameUnresolved`.
 - **Lifecycle.** An entry is released only after its dirty pages are purged (`CcPurgeCacheSection` with the file held exclusively
   and no user-writable reference); otherwise it is carried over. The unload guard refuses while any entry remains.
 - **Policy transition.** `SetPolicy` holds the fence refresh mutex across pre-scan, swap and post-scan; a failed pre-scan
@@ -625,8 +629,10 @@ Final runs after the review 3 fixes and after slice 3 (below): the same ten runs
 - Removable and network scopes are not scanned (`volumeScopesSkipped`, `complete:false`); item 4 owns them.
 - A writable mapping of an **alternate data stream**, hard-link aliases readers outside the scope prefix, and volumes attached after
   load are covered only after the refresh that `InstanceSetup` queues (see Slice 3). Reparse points inside a scope are not followed.
-- A writable section whose name cannot be resolved (`sectionNameUnresolved`) is allowed; the name query is refused in the paging path,
-  with a top-level IRP and when all APCs are disabled.
+- A writable section whose name cannot be resolved is now denied and counted. This does not close the independent mapping
+  admission-to-scan window described below. At the run-16 source snapshot, mutating FSCTLs had a trusted Inspector/service
+  bypass and allowed unresolved names; Round 5 removes that bypass and fails closed for unresolved or unsupported FSCTL scope.
+  Those Round 5 changes are source-only and await review/build.
 - **Release happens only at a refresh trigger** (load, policy push, the unload guard, `--admission-fence-refresh`); until then a
   quarantined name stays refused. There is no periodic retry yet.
 - The purge discards **all** cached and modified pages of a released stream. The service's WRITE open of a quarantined name is refused
@@ -655,12 +661,13 @@ first; I disagree); reparse points inside a scope are skipped by the scan becaus
 name; an unresolved section name and a hard link created into a candidate scope while it is scanned are documented limits. Late attachment
 (`InstanceSetup` does not trigger a refresh) and alternate-stream mappings stay open, see below.
 
-What exists (`StageStream.c`): `StageMutatingFsctl` / `StageUnownedMutatingFsctl` run for an UNOWNED `IRP_MJ_FILE_SYSTEM_CONTROL`
-(`IRP_MN_USER_FS_REQUEST`, not from the Inspector/service) with a code in a deny list and apply the existing `StagePhysicalMutation` check
-(protected name or protected hard-link alias: `STATUS_ACCESS_DENIED`). Fast I/O is disallowed so the request retries as an IRP. If the name cannot
-be queried safely (IRQL not PASSIVE or a top-level IRP) the request is **allowed and counted** (`fsctlUnresolved`): refusing would break every
-nested legitimate caller on every file. Oplock, query and lock FSCTLs are not gated. In `StageAdmit`, a non-service create of a protected name
-with `FILE_DELETE_ON_CLOSE` is refused. Codes the WDK header lacks are built with `CTL_CODE` from winioctl.h function numbers.
+At the run-16 source snapshot, `StageMutatingFsctl` / `StageUnownedMutatingFsctl` ran for selected unowned
+`IRP_MJ_FILE_SYSTEM_CONTROL` (`IRP_MN_USER_FS_REQUEST`) codes and applied physical name/alias checks, with an Inspector/service bypass and
+allow-on-unresolved behavior. The Round 5 source removes that bypass, denies an installed fenced SOP before name resolution, retains safe
+PASSIVE-level NTFS name/alias checks, and denies/counts unresolved, unsafe, or unsupported-filesystem cases. Fast I/O is disallowed so the
+request retries as an IRP. Oplock, query and lock FSCTLs and other device-control mutations remain outside this selected list. In `StageAdmit`,
+a non-service create of a protected name with `FILE_DELETE_ON_CLOSE` is refused. Codes the WDK header lacks are built with `CTL_CODE` from
+winioctl.h function numbers. The Round 5 source has not been built or reviewed.
 
 **A/B proof** ([`Test-StagedMutationGates.ps1`](scripts/Test-StagedMutationGates.ps1): fixtures are opened BEFORE the driver loads, so their file
 objects are unowned; the mutation is attempted AFTER the load; every probe has an out-of-scope or non-mutating control):
@@ -3117,3 +3124,265 @@ detached its disposable VHDX.
 5. Run the coverage matrix above on the debuggee with a byte-level observer
    on each destination, Driver Verifier, and measured save latency. Only then
    replace the process-taint rule and enable the feature in policy.
+
+### Late-attach unload source increment (2026-10-03; awaiting review/build)
+
+The current uncommitted fence source reserves public scans, policy transitions,
+late-attach work, and retry work against unload admission. Voluntary unload
+closes the gate, drains previously reserved work, and performs its own private
+final scan. Manual QueryTeardown refuses when the target volume has ordinary
+fence entries or quarantine, or when admitted/active fence work or a retry is
+pending. Out-of-coverage network, removable, and non-NTFS volumes retain their
+main SafeUpload attachment and policy callbacks when fence work is skipped;
+covered fixed local NTFS still requires successful late-refresh queueing. The
+scan confirms each late-attach trigger is present in its volume snapshot before
+installing success; omission fails and quarantines for retry. The name-based
+create checks and target-volume publication-rename quarantine check remain
+enabled.
+
+This does not close late-attach coverage. First, a paging write can reach an
+already mapped protected stream after attachment becomes usable and before the
+queued scan installs that stream in the table. Filter Manager warns against
+thread synchronization or IPC in InstanceSetup, so the callback does not wait.
+Second, QueryTeardown checks state at one instant; a new attach or scan can be
+admitted after it returns and before Filter Manager completes detach. Both are
+explicit cutover blockers. A safe next design needs an external volume-use
+admission gate or scoped pre-attach stream inventory for the first window, plus
+a per-volume detach reservation coordinated with attach/scan admission and
+validated teardown lifecycle rollback for the second. Neither should deny
+paging writes volume-wide. The manual-detach entry check also has an unresolved
+volume-identity lifetime issue: the installed table retains raw `PFLT_VOLUME`
+pointer values after the enumeration references are released. Pointer reuse
+could make a later volume comparison stale. A table-owned reference set or a
+validated stable volume identity needs a separately reviewed ownership design.
+
+Failure after fixed-NTFS enumeration quarantines all enumerated volumes plus
+the late-attach trigger, including carry-over overflow on an Inspector refresh
+without a trigger. The 65-stream/64-entry scan failure still discards its
+partial table. Quarantine blocks protected-name opens and voluntary unload but
+does not block paging writeback for a stream missing from that table. This is a
+known byte-privacy gap and a blocking cutover residual under the approved scoped
+policy. A no-trigger failure before enumeration sets global protected-name
+quarantine until retry proves coverage; a late-attach failure remains scoped to
+its supported NTFS volume. Paging writes remain outside quarantine in both
+cases.
+
+The updated `Test-StagedLateAttachUnload.ps1 -FailurePath` source measures 65
+writable mappings, keeps C: attached during automatic retry, checks an outside-
+scope `%TEMP%` mapping on C:, disposes all target mappings, and reads the exact
+marker from the raw volume while quarantined and after recovery. It reports
+quarantine lifecycle separately from `PrivacyExposure`; an observed marker is
+`KNOWN_PRIVACY_GAP` and exit 3, while no observation is exit 4 (not proof of
+privacy). The six run-18 PREfast findings have source-level changes pending a
+fresh WDK analysis run. No clean review/build/VM result is claimed for this
+increment; staging default and taint enforcement remain unchanged.
+
+#### Round 4 source update (2026-10-03; awaiting reread/build)
+
+Late-attach setup now holds a nonblocking admission through the callback's
+return, separately from the queued refresh. A supported fixed-NTFS attach stays
+attached if volume classification, refresh work allocation, reference,
+queueing, or retryable reservation fails: the driver records protected-name
+quarantine and retries. Positively unsupported volumes remain attached and are
+skipped.
+During unload CLOSING, a setup is admitted and drained or leaves quarantine that
+vetoes voluntary unload. An atomic final commit after all fallible Stage drains
+publishes CLOSED; only setups after that point may return DO_NOT_ATTACH, and
+there is no later voluntary-unload failure return. This uses the driver's
+admission protocol rather than assuming Filter Manager serializes setup and
+unload callbacks. `InstanceSetup` remains nonblocking as required by the
+documented callback contract.
+
+Quarantine is no longer pruned merely because a volume was absent from one
+`FltEnumerateVolumes` snapshot. A scan appends remembered quarantined volume
+identities with its own references, scans them alongside the current snapshot,
+and clears only an unchanged quarantine generation after a complete scan, when
+no setup callback or late-trigger scan is in flight. If
+the quarantine table fills, a sticky global protected-name fallback remains
+until mandatory filter teardown because an unremembered identity cannot be
+proven removed by a later mutable snapshot; the voluntary unload guard refuses
+while quarantine remains, so recovery may require a system restart. Paging
+writes outside ordinary fence entries remain unblocked by quarantine.
+
+The previous blockers remain: QueryTeardown's check-then-act window,
+attachment-to-scan mapped-write exposure, the observed 65-stream/64-entry
+partial-table privacy gap, and raw `PFLT_VOLUME` pointer lifetime in the
+installed table. The WDK fixes still need a fresh PREfast run; this is not a
+clean review/build/VM result, and staging default and taint enforcement remain
+unchanged.
+
+#### Round 5 source update (2026-10-03; awaiting Luna reread)
+
+This source pass supersedes the Round 4 QueryTeardown and raw-volume-lifetime
+findings. It is not a clean review, build, or VM result and does not make the
+staging cutover eligible.
+
+- `StageAdmit` checks the installed normalized fence-name table before the
+  current-policy out-of-scope return and before the service/publication path.
+  The volume quarantine remains scoped after policy classification, so an
+  unrelated name on that volume stays available. Publication rename retains
+  its target-volume quarantine refusal. The writable-section callback checks
+  installed section-object identity and carried-over exact names before
+  current or pending policy matching; unresolved names are denied. The former
+  Inspector service exemption on writable-section admission is removed.
+  Unowned IRP and MDL reads now deny an installed fenced section-object
+  identity; fenced fast-I/O reads are sent through the IRP read gate. These
+  checks use only the nonpaged SOP table and do not query names on paging or
+  top-level paths. Owned `StageStream` reads remain on their existing path.
+  Mutating FSCTLs no longer have an Inspector PID bypass. Safe PASSIVE-level
+  NTFS requests retain normalized-name and hard-link-alias checks; unsafe,
+  unresolved, or unsupported-filesystem cases are denied and counted because
+  an out-of-scope cache name cannot rule out a protected alias. This remains a
+  bounded list of FSCTLs, not a general device-control gate. Extant user views
+  can still read resident pages without a filter callback, so the read checks
+  do not close the mapped-view privacy blocker.
+- Policy transition rejects an unmatched or unavailable candidate prefix,
+  requested removable/network scan scope, and reparses in a required candidate
+  scope before swapping policy. The unload final scan also refuses incomplete
+  volume/reparse coverage. Inspector `complete` is false for reparses,
+  skipped volume scopes, unresolved writable-section names, unresolved
+  mutating-FSCTL names, and active gate/work/quarantine/retry flags.
+- A successfully attached `Unknown` volume kind, including a missing
+  instance-context fallback, now conservatively matches configured
+  removable/network flags and explicit name prefixes in the feature build.
+  For Unknown instances, create/write name-query failures remain monitored
+  even under prefix-only policy; broad network/removable flags also match
+  without a name. A rename-destination query failure is refused as monitored,
+  and a name-query failure never grants an override. Known fixed-volume
+  name-query failures retain the existing policy behavior. InstanceSetup
+  records context-install failure in the trace and keeps the ordinary
+  callbacks attached. Positively unsupported volumes remain attached.
+  Normal-build classification behavior
+  remains unchanged. This source path has static assertions only; no injected
+  context-allocation failure has been exercised on Windows.
+- Feature-build `InstanceQueryTeardown` now unconditionally returns
+  `STATUS_FLT_DO_NOT_DETACH`; normal builds still return success. Microsoft
+  documents that this callback handles manual detach requests and is not called
+  for mandatory filter unload or volume dismount. The query/teardown race is
+  therefore avoided only for manual detach; mandatory teardown and dismount can
+  still remove protection.
+- `FENCE_TABLE.StreamVolume` now owns one Filter Manager reference for each
+  installed stream-volume association. New scan entries acquire a table
+  reference, carry-over acquires a replacement reference before retiring the
+  old table, and failed builds/old-table reclamation release their own
+  references. This addresses the stale borrowed-pointer finding in source;
+  ownership still needs independent rereview.
+- The rereview found that writable-section admission checked pending policy
+  and current policy under separate shared-lock acquisitions; a shrink could
+  swap snapshots between those checks. The callback now calls a feature-only
+  current-or-pending matcher that reads both snapshots while holding the
+  policy lock shared once, using the existing Unknown/removable/network flags
+  and component-bounded prefix logic. The exact carried-name, SOP-identity,
+  quarantine, and bootstrap checks remain. This source fix needs Luna rereview
+  and a WDK build; it does not establish broader policy-transition race
+  closure.
+- The selected mutating-FSCTL path now uses the same feature-only, one-lock
+  current-plus-pending matcher with component-bounded `IncludeAncestors` for
+  reparse-changing controls. This covers an ancestor of a newly added pending
+  prefix when classifying the current name snapshot. It does not drain or
+  reserve a lower reparse operation: a mutation admitted before pending-policy
+  publication can remain in flight while the candidate scan passes and then
+  complete before commit. Closing that ordering needs operation rundown and a
+  post-operation drain, or an external admission gate; this source change is
+  only a partial classification fix.
+- A separate pending-policy publication race remains open. During a candidate
+  policy scan, `StageAdmit` and the legacy create/write/rename/publication
+  paths still classify physical operations using the current policy rather
+  than the pending candidate. A tainted process can create or write under a
+  newly added candidate prefix before the swap; namespace mutation and
+  publication admission are not serialized with the scan. The current-or-
+  pending matcher is used for writable-section and selected FSCTL snapshot
+  decisions only. This needs a race-safe admission design and is not covered
+  by the mapping regression.
+- The shrink harness accepts only the expected sharing-violation result for a
+  fresh-reader refusal; arbitrary open or `CreateFileMapping` failures are
+  unclassified and cannot count as protected refusals. Raw observer failures
+  and refused mapped flushes are `INCONCLUSIVE`, never `BLOCKED`. The writable-
+  section callback still returns `STATUS_ACCESS_DENIED` for policy refusal.
+  The documented callback contract permits only
+  `STATUS_INSUFFICIENT_RESOURCES` for a failed `SyncTypeCreateSection`, and no
+  documented policy-denial alternative is known. This is an unsupported hard
+  blocker; the harness deliberately emits no protection PASS for it. The exact
+  policy-snapshot race remains
+  `PolicyShrinkAtomicRace=NOT_RUN_NO_DETERMINISTIC_KERNEL_BARRIER`.
+- The late-attach trigger must appear in the exact `FltEnumerateVolumes`
+  snapshot for that scan; a remembered quarantined identity appended after the
+  snapshot cannot satisfy trigger inclusion. The callback remains
+  nonblocking, because Filter Manager calls `InstanceSetup` on the first
+  operation after mount and warns against thread synchronization or IPC there.
+  An already mapped write can therefore reach storage between first operation/
+  attachment and asynchronous scan completion. Under the approved prohibition
+  on volume-wide paging denial, no local fence change closes this general
+  window. A volume must have an admission gate before handles or sections can
+  exist; otherwise staging must remain off for it.
+- Setup admission is released immediately before `InstanceSetup` returns.
+  No documented post-return hook confirms that Filter Manager accepted the
+  instance, so the final unload commit can theoretically race that small edge.
+  Keep this lifecycle edge open pending independent contract review; do not
+  claim the CLOSING protocol fully closes it.
+- The 65-mapping/64-stream and other failed or over-cap scans still discard
+  the new partial fence table. Quarantine refuses protected-name opens and
+  unload, but the installed-table IRP/MDL read gate and paging-write gate
+  cannot identify streams omitted from that table. Such preexisting handles
+  can still read dirty bytes, and paging writes can still reach storage despite
+  quarantine. This leaves raw-byte privacy unproven and remains a cutover
+  blocker. Denying every read on a quarantined volume would exceed the approved
+  path-scoped behavior; volume-wide read denial is outside this design. Do not
+  increase the fixed cap or call quarantine a privacy pass. Extant mapped views
+  also retain resident-page reads without a callback.
+- The selected mutating-FSCTL fallback denies every unresolved, unsafe-context,
+  classification-error, and unsupported-filesystem request in its bounded
+  class, including unrelated targets. This is a known compatibility impact
+  beyond the protected path scope; allowing a cached out-of-scope name would
+  not rule out a protected hard-link alias. The class list is narrow, but this
+  fail-closed impact remains for review.
+  Sticky quarantine may require mandatory filter teardown or a system restart
+  to recover; ordinary refresh cannot prove removal of an unremembered volume.
+- The policy-transition harness gives expansion its own mapping, tracks
+  mapped write and flush separately, disposes that view before its independent
+  raw-volume observation. After the allocated fixture is flushed, it saves a
+  raw baseline for all 4096 fixture bytes; post-write raw reads compare the
+  entire data extent, so any unexpected changed byte is exposure. Expansion is
+  `BLOCKED` only when mapped write, view flush, `FlushFileBuffers`, disposal,
+  and raw comparison all succeed with the full fixture unchanged. Expected
+  filtered file-reader refusals do not override a successful raw observation;
+  missing flush/baseline/disposal/raw evidence remains `INCONCLUSIVE`. It
+  separately records the shrink `FlushViewOfFile`, old-view flush, and their
+  file-buffer flush outcomes. If the old-view shrink write is refused or not
+  exercised, or section creation has an unclassified error, or a created
+  section cannot be mapped, the section measurement is `UNOBSERVABLE` and
+  makes the privacy measurement unknown. A positive full-extent change takes
+  precedence in `PrivacyObservation` and is reported as
+  `UNEXPECTED_BYTES_EXPOSED`, even if the old-view probe is incomplete; the
+  separate `PrivacyExposure` field also remains explicit. The unsupported
+  section-callback status still forces overall failure. Agent-stop, handle
+  cleanup, policy restore, and driver restore are attempted independently.
+  Policy and driver backups are removed separately only after their
+  corresponding restoration and hash verification; otherwise their retained
+  paths are reported. This is a harness source fix, not run evidence and not
+  proof of the approved privacy goal; PowerShell parsing and Windows execution
+  remain pending.
+- The old late-attach A/B harness required manually detaching C: to create a
+  pre-attach mapping. The feature build now refuses that operation; its source
+  reports `NOT_RUN_MANUAL_DETACH_DISABLED` and exit 5 instead of claiming an
+  attach-race pass. The policy-transition harness preserves its original
+  expansion repro and adds a shrink scenario that exercises fresh-reader
+  refusal and a writable section attempt through a pre-shrink handle, with an
+  independent raw-volume marker read. Failed mapping disposal is a non-pass
+  measurement, and any visible marker is a privacy failure. The harness emits
+  `PolicyShrinkAtomicRace=NOT_RUN_NO_DETERMINISTIC_KERNEL_BARRIER`: a user-mode
+  policy push cannot reliably pause the section callback between kernel policy
+  snapshots, and mapping success after the shrink is accepted can be valid for
+  a now-out-of-scope path. No flaky stress result is treated as proof. Both
+  source scenarios are unrun; restoration output remains separate.
+- Destination cutover is still gated on architecture outside this feature:
+  USB is supportable only under managed automount/access proof; UNC/SMB needs
+  an always-present early MUP filter, which is not implemented; pausing or
+  disconnecting a sync client does not drain existing handles or mappings.
+  No destination gate has passed here, and no DOD/security goal is claimed
+  complete.
+
+Official callback contracts checked for these boundaries:
+[InstanceSetup](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/fltkernel/nc-fltkernel-pflt_instance_setup_callback),
+[QueryTeardown](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/fltkernel/nc-fltkernel-pflt_instance_query_teardown_callback),
+and [Filter Manager loading/unloading](https://learn.microsoft.com/en-us/windows-hardware/drivers/ifs/loading-and-unloading).

@@ -17,7 +17,8 @@
  * The fence is ONE immutable table installed atomically: readers of the pointer table
  * (spin lock) and of the name table (push lock) can never see two generations.
  * A scan that cannot prove its scope fails closed: a policy update is rejected, a load is
- * refused, and the previous fence stays.
+ * refused, and the previous fence stays. Once filtering, a failed scan quarantines covered fixed
+ * local NTFS volumes for protected-name opens; it does not deny paging writes for unrelated streams.
  *
  * Lifecycle: an entry is dropped ONLY after its dirty pages are gone. "No user-writable mapping
  * remains" is not enough: the Memory Manager still holds the pages the old view dirtied and writes
@@ -29,7 +30,11 @@
  *
  * Not covered by this slice, and not claimed: removable/network scopes, writable mappings
  * created after a scan through a handle that predates it, mappings of alternate data streams,
- * hard-link alias readers outside the protected prefix, volumes attached after load. */
+ * or hard-link alias readers outside the protected prefix. Late attachment still has an open
+ * admission-to-refresh window; the queued scan and unload gate do not close that window. InstanceSetup
+ * does not synchronously wait for the scan because Filter Manager warns against thread synchronization
+ * or IPC in that callback. Feature-build manual detach is refused unconditionally; automatic/mandatory
+ * teardown and volume dismount cannot be vetoed by QueryTeardown. */
 #include "Stage.h"
 
 #if SAFEUPLOAD_STAGING_PROTOTYPE
@@ -45,7 +50,11 @@
 #define FENCE_MAX_FILES 8192
 #define FENCE_DIRECTORY_BUFFER 8192
 #define FENCE_MAX_VOLUMES 16
+#define FENCE_MAX_QUARANTINED_VOLUMES (FENCE_MAX_VOLUMES + 1)
+#define FENCE_MAX_SCAN_VOLUMES (FENCE_MAX_VOLUMES + FENCE_MAX_QUARANTINED_VOLUMES)
 #define FENCE_VOLUME_NAME_CHARS 256
+#define FENCE_RETRY_INITIAL_SECONDS 1
+#define FENCE_RETRY_MAX_SECONDS 60
 #define FENCE_MAPPED_BIT ((ULONG_PTR)1)
 
 #ifdef ALLOC_PRAGMA
@@ -64,7 +73,7 @@ typedef struct _FENCE_TABLE {
     ULONG NameCount;
     ULONG_PTR Slots[FENCE_HASH_SLOTS];
     PFILE_OBJECT Objects[FENCE_MAX_STREAMS];            /* referenced: keeps each stream (and its pointers) alive */
-    PFLT_VOLUME StreamVolume[FENCE_MAX_STREAMS];        /* identity only (never dereferenced): the volume a stream lives on */
+    PFLT_VOLUME StreamVolume[FENCE_MAX_STREAMS];        /* table-owned reference: stable volume identity while installed */
     USHORT NameBytes[FENCE_NAME_CAPACITY];
     USHORT NameStream[FENCE_NAME_CAPACITY];             /* index into Objects of the stream the name belongs to */
     WCHAR Names[FENCE_NAME_CAPACITY][FENCE_NAME_CHARS];
@@ -73,6 +82,8 @@ typedef struct _FENCE_TABLE {
 typedef struct _FENCE_VOLUME {
     PFLT_VOLUME Volume;
     PFLT_INSTANCE Instance;                             /* NULL before the filter is attached to the volume */
+    BOOLEAN ScanRequired;                               /* false only after positively classifying it out of scope */
+    BOOLEAN Enumerated;                                 /* true only when returned by this exact volume snapshot */
     UNICODE_STRING Name;
     WCHAR NameBuffer[FENCE_VOLUME_NAME_CHARS];
 } FENCE_VOLUME, *PFENCE_VOLUME;
@@ -84,14 +95,25 @@ typedef struct _FENCE_SCAN {
     ULONG Files;
     ULONG ReparseSkipped;
     ULONG VolumeScopesSkipped;
+    ULONG CandidateReparseSkipped;
+    ULONG CandidateVolumeScopesSkipped;
     ULONG VolumeCount;
+    ULONG QuarantineGeneration;
+    BOOLEAN EnumerationSucceeded;
+    BOOLEAN CandidateScopeActive;
+    BOOLEAN CoverageRejected;
     PFENCE_TABLE Table;                /* being built */
     PFLT_VOLUME CurrentVolume;         /* volume being scanned, recorded with each registered stream */
-    FENCE_VOLUME Volumes[FENCE_MAX_VOLUMES];
+    PFLT_VOLUME FailureVolume;         /* borrowed from this scan or trigger; valid until scan release */
+    FENCE_VOLUME Volumes[FENCE_MAX_SCAN_VOLUMES];
 } FENCE_SCAN, *PFENCE_SCAN;
 
 static KMUTEX FenceRefreshMutex;
 static KSPIN_LOCK FenceSopLock;
+static KSPIN_LOCK FenceRetryLock;
+static KEVENT FenceLateRefreshIdle;
+static KTIMER FenceRetryTimer;
+static KDPC FenceRetryDpc;
 static EX_PUSH_LOCK FenceNameLock;
 static PFENCE_TABLE FenceTable;                         /* both locks held to replace; either to read */
 static BOOLEAN FenceInitialized;
@@ -115,18 +137,80 @@ static volatile LONG64 FenceSectionsDenied;
 static volatile LONG64 FenceSectionUnresolved;
 static volatile LONG64 FenceFsctlUnresolved;
 static volatile LONG64 FenceLateRefreshQueued;
-static volatile LONG FenceLateRefreshPending;
+static DECLSPEC_ALIGN(8) volatile LONG64 FenceLateControl;
+static volatile LONG FenceRefreshInFlight;
+static volatile LONG FenceRetryPending;
+static volatile LONG FenceRetryTimerArmed;
+static volatile LONG FenceRetryStopping;
+static volatile LONG FenceRetryEnabled;
+static volatile LONG FenceSetupInFlight;
+static volatile LONG FenceLateAttachOutstanding;
+static volatile LONG FenceQuarantineGeneration; /* FenceSopLock */
+static volatile LONG FenceQuarantineGlobalSticky; /* FenceSopLock; only unload clears an untracked identity */
+static ULONG FenceRetryDelaySeconds;
+static PETHREAD volatile FenceTransitionOwner;
+
+typedef struct _FENCE_QUARANTINE {
+    PFLT_VOLUME Volume;                 /* reference held until a covering refresh or filter teardown */
+} FENCE_QUARANTINE;
+
+static FENCE_QUARANTINE FenceQuarantine[FENCE_MAX_QUARANTINED_VOLUMES];
+static volatile LONG FenceQuarantineGlobal; /* FenceSopLock */
+
+/* Lock order: the PASSIVE_LEVEL refresh mutex may precede FenceNameLock -> FenceSopLock for publication,
+ * or FenceRetryLock -> FenceSopLock while clearing a covered quarantine generation. Retry coordination
+ * may nest FenceSopLock for reads/updates (FenceRetryLock -> FenceSopLock). No path acquires the refresh
+ * mutex or FenceNameLock while holding FenceRetryLock or FenceSopLock. */
+
+#define FENCE_LATE_GATE_MASK      ((LONG64)0x3)
+#define FENCE_LATE_WORK_UNIT      ((LONG64)0x4)
+#define FENCE_LATE_GATE_OPEN      ((LONG64)0)
+#define FENCE_LATE_GATE_CLOSING   ((LONG64)1)
+#define FENCE_LATE_GATE_CLOSED    ((LONG64)2)
+#define FENCE_LATE_WORK_COUNT(C)  ((C) & ~FENCE_LATE_GATE_MASK)
+
+_Function_class_(KDEFERRED_ROUTINE)
+_IRQL_requires_(DISPATCH_LEVEL)
+_IRQL_requires_same_
+static KDEFERRED_ROUTINE FenceRetryTimerDpc;
+_IRQL_requires_(PASSIVE_LEVEL)
+static NTSTATUS FenceRefreshInternal(_In_opt_ const SAFEUPLOAD_POLICY *Candidate,
+    _In_opt_ PFLT_VOLUME TriggerVolume, _In_ BOOLEAN RequireCompleteCoverage);
+static BOOLEAN FenceLateControlReserve(VOID);
+static BOOLEAN FenceLateControlReserveAttach(VOID);
+static VOID FenceLateControlComplete(VOID);
+#ifdef ALLOC_PRAGMA
+#pragma alloc_text(PAGE, FenceRefreshInternal)
+#endif
+static VOID FenceRetryUpdateAfterRefresh(VOID);
+static VOID FenceRetryStopForUnload(VOID);
+static VOID FenceRetryResume(VOID);
+static VOID FenceRetryResetAfterDrain(VOID);
+static VOID FenceWaitForLateWorkers(VOID);
 
 static VOID FenceScanDirectory(_In_ PFENCE_SCAN Scan, _In_opt_ PFLT_INSTANCE Instance,
     _In_ PCUNICODE_STRING Directory, _In_ ULONG Depth);
 
 #define FENCE_FAIL(S, ST) FenceFail((S), (ULONG)__LINE__, (ST))
 
+static VOID FenceRecordSkippedVolumeScope(_Inout_ PFENCE_SCAN Scan)
+{
+    Scan->VolumeScopesSkipped += 1;
+    if (Scan->CandidateScopeActive) Scan->CandidateVolumeScopesSkipped += 1;
+}
+
+static VOID FenceRecordSkippedReparse(_Inout_ PFENCE_SCAN Scan)
+{
+    Scan->ReparseSkipped += 1;
+    if (Scan->CandidateScopeActive) Scan->CandidateReparseSkipped += 1;
+}
+
 static VOID FenceFail(_In_ PFENCE_SCAN Scan, _In_ ULONG Line, _In_ NTSTATUS Status)
 {
     if (NT_SUCCESS(Scan->Failure)) {
         Scan->Failure = Status;
         Scan->FailureLine = Line;
+        Scan->FailureVolume = Scan->CurrentVolume;
     }
 }
 
@@ -137,17 +221,22 @@ static ULONG FenceHash(_In_ ULONG_PTR Sop)
 
 /* A fixed local NTFS volume. Works for a volume the filter is not attached to (and before it is
  * started), unlike the instance context. */
-static BOOLEAN FenceVolumeIsFixedNtfs(_In_ PFLT_VOLUME Volume)
+static NTSTATUS FenceClassifyVolume(_In_ PFLT_VOLUME Volume, _Out_ PBOOLEAN FixedNtfs)
 {
     FLT_VOLUME_PROPERTIES properties;
     FLT_FILESYSTEM_TYPE type;
     ULONG returned = 0;
-    NTSTATUS status = FltGetVolumeProperties(Volume, &properties, sizeof(properties), &returned);
+    NTSTATUS status;
 
-    if (NT_ERROR(status)) return FALSE;                 /* STATUS_BUFFER_OVERFLOW is the normal, usable case */
-    if (properties.DeviceType == FILE_DEVICE_NETWORK_FILE_SYSTEM) return FALSE;
-    if (FlagOn(properties.DeviceCharacteristics, FILE_REMOVABLE_MEDIA)) return FALSE;
-    return NT_SUCCESS(FltGetFileSystemType(Volume, &type)) && type == FLT_FSTYPE_NTFS;
+    *FixedNtfs = FALSE;
+    status = FltGetVolumeProperties(Volume, &properties, sizeof(properties), &returned);
+    if (NT_ERROR(status)) return status;                /* STATUS_BUFFER_OVERFLOW is the normal, usable case */
+    if (properties.DeviceType == FILE_DEVICE_NETWORK_FILE_SYSTEM ||
+        FlagOn(properties.DeviceCharacteristics, FILE_REMOVABLE_MEDIA)) return STATUS_SUCCESS;
+    status = FltGetFileSystemType(Volume, &type);
+    if (!NT_SUCCESS(status)) return status;
+    *FixedNtfs = type == FLT_FSTYPE_NTFS;
+    return STATUS_SUCCESS;
 }
 
 /* Opens below Instance (through the volume stack when Instance is NULL, before the filter is attached)
@@ -197,13 +286,14 @@ static ULONG FenceFindStream(_In_ PFENCE_TABLE Table, _In_ PSECTION_OBJECT_POINT
     return MAXULONG;
 }
 
-/* Adds a stream to the table being built. Takes ownership of the file object reference ONLY on success
- * (the caller dereferences it on MAXULONG). */
+/* Adds a stream to the table being built. On success the table takes ownership of the supplied file
+ * object reference and an independent volume reference; the caller owns both on failure. */
 static ULONG FenceAddStream(_In_ PFENCE_SCAN Scan, _In_ PFILE_OBJECT Object, _In_ PSECTION_OBJECT_POINTERS Sop,
     _In_opt_ PFLT_VOLUME Volume)
 {
     PFENCE_TABLE table = Scan->Table;
     ULONG slot, probes, index;
+    NTSTATUS status;
 
     if (((ULONG_PTR)Sop & FENCE_MAPPED_BIT) != 0) { FENCE_FAIL(Scan, STATUS_DATATYPE_MISALIGNMENT); return MAXULONG; }
     if (table->StreamCount >= FENCE_MAX_STREAMS) { FENCE_FAIL(Scan, STATUS_INSUFFICIENT_RESOURCES); return MAXULONG; }
@@ -212,6 +302,10 @@ static ULONG FenceAddStream(_In_ PFENCE_SCAN Scan, _In_ PFILE_OBJECT Object, _In
         if ((table->Slots[slot] & ~FENCE_MAPPED_BIT) == 0) break;
     }
     if (probes >= FENCE_HASH_SLOTS) { FENCE_FAIL(Scan, STATUS_INSUFFICIENT_RESOURCES); return MAXULONG; }
+    if (Volume != NULL) {
+        status = FltObjectReference(Volume);
+        if (!NT_SUCCESS(status)) { FENCE_FAIL(Scan, status); return MAXULONG; }
+    }
     index = table->StreamCount;
     table->Slots[slot] = (ULONG_PTR)Sop | FENCE_MAPPED_BIT;
     table->Objects[index] = Object;
@@ -346,7 +440,7 @@ static VOID FenceVisit(_In_ PFENCE_SCAN Scan, _In_opt_ PFLT_INSTANCE Instance, _
     if (name.Length == 0) return;
     if ((name.Length == sizeof(WCHAR) && name.Buffer[0] == L'.') ||
         (name.Length == 2 * sizeof(WCHAR) && name.Buffer[0] == L'.' && name.Buffer[1] == L'.')) return;
-    if (FlagOn(Entry->FileAttributes, FILE_ATTRIBUTE_REPARSE_POINT)) { Scan->ReparseSkipped += 1; return; }
+    if (FlagOn(Entry->FileAttributes, FILE_ATTRIBUTE_REPARSE_POINT)) { FenceRecordSkippedReparse(Scan); return; }
     /* "directory", one separator (none when the directory already ends in one, as a volume root does),
      * "name": exactly this many characters, no terminator. */
     needSeparator = (Directory->Length == 0 || Directory->Buffer[Directory->Length / sizeof(WCHAR) - 1] != L'\\');
@@ -445,7 +539,7 @@ static BOOLEAN FenceVolumeUsable(_In_ PFENCE_SCAN Scan, _In_opt_ PFLT_INSTANCE I
         status == STATUS_NO_MEDIA_IN_DEVICE || status == STATUS_DEVICE_DOES_NOT_EXIST ||
         status == STATUS_UNRECOGNIZED_VOLUME || status == STATUS_FLT_NO_DEVICE_OBJECT ||
         status == STATUS_DEVICE_NOT_CONNECTED || status == STATUS_INVALID_DEVICE_STATE) {
-        Scan->VolumeScopesSkipped += 1;
+        FenceRecordSkippedVolumeScope(Scan);
         return FALSE;
     }
     FENCE_FAIL(Scan, status);
@@ -467,8 +561,8 @@ static VOID FenceScanUnderVolume(_In_ PFENCE_SCAN Scan, _In_ PFENCE_VOLUME Volum
     buffer[nameChars] = L'\\';
     root.Buffer = buffer;
     root.Length = root.MaximumLength = (USHORT)((nameChars + 1) * sizeof(WCHAR));
+    Scan->CurrentVolume = Volume->Volume;
     if (FenceVolumeUsable(Scan, Volume->Instance, &root)) {
-        Scan->CurrentVolume = Volume->Volume;
         RtlCopyMemory(buffer + nameChars, Relative, RelativeChars * sizeof(WCHAR));
         path.Buffer = buffer;
         path.Length = path.MaximumLength = (USHORT)((nameChars + RelativeChars) * sizeof(WCHAR));
@@ -486,7 +580,7 @@ static VOID FenceScanPrefix(_In_ PFENCE_SCAN Scan, _In_reads_(Chars) PWCHAR Pref
     while (used > 0 && used <= Chars && Prefix[used - 1] == L'\\') used -= 1;     /* canonical: no doubled separator in names */
     path.Buffer = Prefix;
     path.Length = path.MaximumLength = (USHORT)(used * sizeof(WCHAR));
-    if (!RtlPrefixUnicodeString(&deviceRoot, &path, TRUE)) { Scan->VolumeScopesSkipped += 1; return; }
+    if (!RtlPrefixUnicodeString(&deviceRoot, &path, TRUE)) { FenceRecordSkippedVolumeScope(Scan); return; }
     for (index = deviceRoot.Length / sizeof(WCHAR); index < Chars && index < used && Prefix[index] != L'\\'; index += 1) {}
     device.Buffer = Prefix;
     device.Length = device.MaximumLength = (USHORT)(index * sizeof(WCHAR));
@@ -500,7 +594,7 @@ static VOID FenceScanPrefix(_In_ PFENCE_SCAN Scan, _In_reads_(Chars) PWCHAR Pref
             return;
         }
     }
-    Scan->VolumeScopesSkipped += 1;                           /* not mounted, or not a fixed local NTFS volume */
+    FenceRecordSkippedVolumeScope(Scan);                      /* not mounted, or not a fixed local NTFS volume */
 }
 
 static VOID FenceReleaseVolumes(_In_ PFENCE_SCAN Scan)
@@ -514,36 +608,356 @@ static VOID FenceReleaseVolumes(_In_ PFENCE_SCAN Scan)
     Scan->VolumeCount = 0;
 }
 
-/* Collects every fixed local NTFS volume with its name and, when the filter is attached, its instance. */
-static VOID FenceCollectVolumes(_In_ PFENCE_SCAN Scan)
+/* Quarantine applies at protected-name gates by volume identity. A retained reference prevents pointer reuse;
+ * the paging path never consults quarantine. The global bit is reserved for an unknown volume set. */
+static __declspec(noinline) VOID FenceQuarantineAll(VOID)
+{
+    KIRQL irql;
+    KeAcquireSpinLock(&FenceSopLock, &irql);
+    if (InterlockedExchange(&FenceQuarantineGlobal, TRUE) == FALSE) {
+        InterlockedIncrement(&FenceQuarantineGeneration);
+    }
+    KeReleaseSpinLock(&FenceSopLock, irql);
+}
+
+/* Used when a volume identity could not be retained. A later mutable volume snapshot cannot prove
+ * that an unremembered volume has gone away, so this protected-name quarantine stays until unload. */
+static __declspec(noinline) VOID FenceQuarantineAllSticky(VOID)
+{
+    KIRQL irql;
+    KeAcquireSpinLock(&FenceSopLock, &irql);
+    if (InterlockedExchange(&FenceQuarantineGlobal, TRUE) == FALSE) {
+        InterlockedIncrement(&FenceQuarantineGeneration);
+    }
+    if (InterlockedExchange(&FenceQuarantineGlobalSticky, TRUE) == FALSE) {
+        InterlockedIncrement(&FenceQuarantineGeneration);
+    }
+    KeReleaseSpinLock(&FenceSopLock, irql);
+}
+
+/* The caller owns Reference on entry. This helper takes only spin locks and can therefore be
+ * called while FenceRetryLock serializes attach-failure recording with unload commit. */
+static __declspec(noinline) BOOLEAN FenceQuarantineStoreReferenced(_In_ PFLT_VOLUME Volume)
+{
+    ULONG index, freeIndex = FENCE_MAX_QUARANTINED_VOLUMES;
+    BOOLEAN keepReference = FALSE;
+    KIRQL irql;
+
+    KeAcquireSpinLock(&FenceSopLock, &irql);
+    for (index = 0; index < FENCE_MAX_QUARANTINED_VOLUMES; index += 1) {
+        if (FenceQuarantine[index].Volume == Volume) break;
+        if (FenceQuarantine[index].Volume == NULL && freeIndex == FENCE_MAX_QUARANTINED_VOLUMES) freeIndex = index;
+    }
+    if (index < FENCE_MAX_QUARANTINED_VOLUMES) {
+        /* Existing entry already owns its reference. */
+    } else if (freeIndex < FENCE_MAX_QUARANTINED_VOLUMES) {
+        FenceQuarantine[freeIndex].Volume = Volume;
+        InterlockedIncrement(&FenceQuarantineGeneration);
+        keepReference = TRUE;
+    } else {
+        /* We cannot remember another identity. Fail closed for protected names and never clear this
+         * fallback from a single mutable FltEnumerateVolumes snapshot. */
+        if (InterlockedExchange(&FenceQuarantineGlobal, TRUE) == FALSE) {
+            InterlockedIncrement(&FenceQuarantineGeneration);
+        }
+        if (InterlockedExchange(&FenceQuarantineGlobalSticky, TRUE) == FALSE) {
+            InterlockedIncrement(&FenceQuarantineGeneration);
+        }
+    }
+    KeReleaseSpinLock(&FenceSopLock, irql);
+    return keepReference;
+}
+
+static __declspec(noinline) VOID FenceQuarantineVolume(_In_opt_ PFLT_VOLUME Volume)
+{
+    NTSTATUS status, referenceStatus;
+    BOOLEAN stickyBefore;
+    BOOLEAN fixedNtfs;
+
+    if (Volume == NULL) return;
+    status = FenceClassifyVolume(Volume, &fixedNtfs);
+    if (NT_SUCCESS(status) && !fixedNtfs) {
+        SafeUploadTrace("not quarantining volume outside fixed NTFS fence coverage\n");
+        return;
+    }
+    referenceStatus = FltObjectReference(Volume);
+    if (!NT_SUCCESS(referenceStatus)) {
+        FenceQuarantineAllSticky();
+        SafeUploadTrace("volume reference failed while quarantining; sticky global protected-name quarantine enabled\n");
+        return;
+    }
+    stickyBefore = InterlockedCompareExchange(&FenceQuarantineGlobalSticky, FALSE, FALSE) != FALSE;
+    if (!FenceQuarantineStoreReferenced(Volume)) FltObjectDereference(Volume);
+    if (!NT_SUCCESS(status)) {
+        SafeUploadTrace("volume classification failed while quarantining; retained identity for retry\n");
+        return;
+    }
+    if (!stickyBefore && InterlockedCompareExchange(&FenceQuarantineGlobalSticky, FALSE, FALSE) != FALSE) {
+        SafeUploadTrace("quarantine table overflow; sticky global protected-name quarantine enabled\n");
+    }
+}
+
+static VOID FenceQuarantineFailedScan(_In_opt_ PFENCE_SCAN Scan, _In_opt_ PFLT_VOLUME TriggerVolume)
+{
+    ULONG index;
+
+    /* A failed full-table build discards every stream in its partial table, including streams found
+     * before the failing directory or carried from the previous generation. Quarantine every fixed
+     * NTFS volume this scan enumerated, not only the volume on which the first failure was reported. */
+    if (Scan != NULL && Scan->EnumerationSucceeded) {
+        for (index = 0; index < Scan->VolumeCount; index += 1) {
+            FenceQuarantineVolume(Scan->Volumes[index].Volume);
+        }
+    } else if (Scan != NULL && Scan->FailureVolume != NULL) {
+        FenceQuarantineVolume(Scan->FailureVolume);
+    } else if (TriggerVolume == NULL) {
+        /* Before enumeration there is no scoped volume set to protect. Preserve fail-open behavior
+         * outside policy-protected names, but quarantine protected-name opens until a retry proves
+         * coverage. This also covers a scan-state allocation failure before Scan exists. */
+        FenceQuarantineAll();
+    }
+    if (TriggerVolume != NULL) FenceQuarantineVolume(TriggerVolume);
+}
+
+static __declspec(noinline) VOID FenceClearQuarantine(VOID)
+{
+    PFLT_VOLUME release[FENCE_MAX_QUARANTINED_VOLUMES] = {0};
+    ULONG index;
+    KIRQL irql;
+
+    KeAcquireSpinLock(&FenceSopLock, &irql);
+    for (index = 0; index < FENCE_MAX_QUARANTINED_VOLUMES; index += 1) {
+        release[index] = FenceQuarantine[index].Volume;
+        FenceQuarantine[index].Volume = NULL;
+    }
+    if (InterlockedExchange(&FenceQuarantineGlobal, FALSE) != FALSE) {
+        InterlockedIncrement(&FenceQuarantineGeneration);
+    }
+    if (InterlockedExchange(&FenceQuarantineGlobalSticky, FALSE) != FALSE) {
+        InterlockedIncrement(&FenceQuarantineGeneration);
+    }
+    KeReleaseSpinLock(&FenceSopLock, irql);
+    for (index = 0; index < FENCE_MAX_QUARANTINED_VOLUMES; index += 1) {
+        if (release[index] != NULL) FltObjectDereference(release[index]);
+    }
+}
+
+/* A completed scan can release only identities it enumerated and scanned. The caller checks that
+ * no policy scope was skipped; a global quarantine is meaningful only after enumeration succeeded. */
+static __declspec(noinline) VOID FenceClearScannedQuarantine(_In_ PFENCE_SCAN Scan)
+{
+    PFLT_VOLUME release[FENCE_MAX_QUARANTINED_VOLUMES] = {0};
+    ULONG index, volumeIndex, releaseCount = 0;
+    KIRQL irql;
+
+    if (!Scan->EnumerationSucceeded || Scan->VolumeScopesSkipped != 0 || Scan->ReparseSkipped != 0) return;
+
+    /* Setup admission, late-attach queue ownership, and quarantine insertion use RetryLock. Holding
+     * it before SopLock makes clearing a global fallback atomic against a just-admitted setup. */
+    KeAcquireSpinLock(&FenceRetryLock, &irql);
+    KeAcquireSpinLockAtDpcLevel(&FenceSopLock);
+    /* Queue/scan failures may add a quarantine after the remembered set was copied. Keep all
+     * quarantine in that generation; the next retry will append and cover the new identity. */
+    if ((ULONG)InterlockedCompareExchange(&FenceQuarantineGeneration, 0, 0) != Scan->QuarantineGeneration) {
+        KeReleaseSpinLockFromDpcLevel(&FenceSopLock);
+        KeReleaseSpinLock(&FenceRetryLock, irql);
+        return;
+    }
+    for (index = 0; index < FENCE_MAX_QUARANTINED_VOLUMES; index += 1) {
+        PFLT_VOLUME quarantined = FenceQuarantine[index].Volume;
+        if (quarantined == NULL) continue;
+        for (volumeIndex = 0; volumeIndex < Scan->VolumeCount; volumeIndex += 1) {
+            if (Scan->Volumes[volumeIndex].Volume == quarantined) {
+                release[releaseCount++] = quarantined;
+                FenceQuarantine[index].Volume = NULL;
+                break;
+            }
+        }
+    }
+    if (InterlockedCompareExchange(&FenceQuarantineGlobalSticky, FALSE, FALSE) == FALSE &&
+        InterlockedCompareExchange(&FenceSetupInFlight, 0, 0) == 0 &&
+        InterlockedCompareExchange(&FenceLateAttachOutstanding, 0, 0) == 0 &&
+        InterlockedExchange(&FenceQuarantineGlobal, FALSE) != FALSE) {
+        InterlockedIncrement(&FenceQuarantineGeneration);
+    }
+    if (releaseCount != 0) InterlockedIncrement(&FenceQuarantineGeneration);
+    KeReleaseSpinLockFromDpcLevel(&FenceSopLock);
+    KeReleaseSpinLock(&FenceRetryLock, irql);
+
+    for (index = 0; index < releaseCount; index += 1) FltObjectDereference(release[index]);
+}
+
+static __declspec(noinline) BOOLEAN FenceVolumeIsQuarantined(_In_opt_ PFLT_VOLUME Volume)
+{
+    ULONG index;
+    KIRQL irql;
+    BOOLEAN hit = FALSE;
+
+    KeAcquireSpinLock(&FenceSopLock, &irql);
+    hit = InterlockedCompareExchange(&FenceQuarantineGlobal, FALSE, FALSE) != FALSE;
+    for (index = 0; !hit && index < FENCE_MAX_QUARANTINED_VOLUMES; index += 1) {
+        if (FenceQuarantine[index].Volume != NULL &&
+            (Volume == NULL || FenceQuarantine[index].Volume == Volume)) hit = TRUE;
+    }
+    KeReleaseSpinLock(&FenceSopLock, irql);
+    return hit;
+}
+
+static BOOLEAN FenceAnyQuarantine(VOID)
+{
+    return FenceVolumeIsQuarantined(NULL);
+}
+
+/* A sticky global quarantine has no retained identity to prove removed. Retry any remembered
+ * volume entries once, then stop polling until another scoped entry arrives; the global bit stays. */
+static __declspec(noinline) BOOLEAN FenceAnyRetryableQuarantine(VOID)
+{
+    ULONG index;
+    BOOLEAN hit = FALSE;
+    KIRQL irql;
+
+    KeAcquireSpinLock(&FenceSopLock, &irql);
+    hit = InterlockedCompareExchange(&FenceQuarantineGlobal, FALSE, FALSE) != FALSE &&
+        InterlockedCompareExchange(&FenceQuarantineGlobalSticky, FALSE, FALSE) == FALSE;
+    for (index = 0; !hit && index < FENCE_MAX_QUARANTINED_VOLUMES; index += 1) {
+        if (FenceQuarantine[index].Volume != NULL) hit = TRUE;
+    }
+    KeReleaseSpinLock(&FenceSopLock, irql);
+    return hit;
+}
+
+/* Preserve every remembered identity across a mutable FltEnumerateVolumes snapshot. Quarantine owns
+ * each source reference; this refresh mutex excludes the only paths that can release those refs while
+ * the snapshot is copied, and each appended scan record takes its own reference for cleanup. */
+static __declspec(noinline) VOID FenceAppendQuarantinedVolumes(_In_ PFENCE_SCAN Scan)
+{
+    PFLT_VOLUME remembered[FENCE_MAX_QUARANTINED_VOLUMES] = {0};
+    ULONG index, scanIndex, rememberedCount = 0;
+    KIRQL irql;
+
+    KeAcquireSpinLock(&FenceSopLock, &irql);
+    Scan->QuarantineGeneration = (ULONG)InterlockedCompareExchange(&FenceQuarantineGeneration, 0, 0);
+    for (index = 0; index < FENCE_MAX_QUARANTINED_VOLUMES; index += 1) {
+        if (FenceQuarantine[index].Volume != NULL) remembered[rememberedCount++] = FenceQuarantine[index].Volume;
+    }
+    KeReleaseSpinLock(&FenceSopLock, irql);
+
+    for (index = 0; index < rememberedCount && NT_SUCCESS(Scan->Failure); index += 1) {
+        PFENCE_VOLUME record;
+        ULONG needed = 0;
+        BOOLEAN fixedNtfs;
+        NTSTATUS status;
+        BOOLEAN present = FALSE;
+
+        for (scanIndex = 0; scanIndex < Scan->VolumeCount; scanIndex += 1) {
+            if (Scan->Volumes[scanIndex].Volume == remembered[index]) { present = TRUE; break; }
+        }
+        if (present) continue;
+        if (Scan->VolumeCount >= FENCE_MAX_SCAN_VOLUMES) {
+            Scan->CurrentVolume = remembered[index];
+            FENCE_FAIL(Scan, STATUS_BUFFER_TOO_SMALL);
+            break;
+        }
+        status = FltObjectReference(remembered[index]);
+        if (!NT_SUCCESS(status)) {
+            FenceQuarantineAllSticky();
+            Scan->CurrentVolume = remembered[index];
+            FENCE_FAIL(Scan, status);
+            break;
+        }
+
+        record = &Scan->Volumes[Scan->VolumeCount];
+        record->Volume = remembered[index];
+        record->Instance = NULL;
+        record->ScanRequired = FALSE;
+        record->Enumerated = FALSE;
+        record->Name.Buffer = record->NameBuffer;
+        record->Name.Length = 0;
+        record->Name.MaximumLength = sizeof(record->NameBuffer);
+        Scan->CurrentVolume = remembered[index];
+        status = FenceClassifyVolume(remembered[index], &fixedNtfs);
+        if (!NT_SUCCESS(status)) {
+            Scan->VolumeCount += 1; /* retain the scan reference for FenceReleaseVolumes */
+            FENCE_FAIL(Scan, status);
+            continue;
+        }
+        if (!fixedNtfs) {
+            /* A remembered identity that now positively classifies out of scope is covered without
+             * scanning it. Its reference remains in the scan so a complete pass can release q. */
+            Scan->VolumeCount += 1;
+            continue;
+        }
+        record->ScanRequired = TRUE;
+        status = FltGetVolumeName(remembered[index], &record->Name, &needed);
+        if (!NT_SUCCESS(status) || record->Name.Length == 0 || (record->Name.Length & 1) != 0) {
+            Scan->VolumeCount += 1; /* retain the scan reference for FenceReleaseVolumes */
+            FenceQuarantineVolume(remembered[index]);
+            FENCE_FAIL(Scan, NT_SUCCESS(status) ? STATUS_UNSUCCESSFUL : status);
+            continue;
+        }
+        if (!NT_SUCCESS(FltGetVolumeInstanceFromName(SafeUploadData.Filter,
+                remembered[index], NULL, &record->Instance))) {
+            record->Instance = NULL;
+        }
+        Scan->VolumeCount += 1;
+    }
+}
+
+static __declspec(noinline) VOID FenceCollectVolumes(_In_ PFENCE_SCAN Scan)
 {
     PFLT_VOLUME volumes[FENCE_MAX_VOLUMES] = {0};
     ULONG count = 0, index;
     NTSTATUS status = FltEnumerateVolumes(SafeUploadData.Filter, volumes, FENCE_MAX_VOLUMES, &count);
+    BOOLEAN fixedNtfs;
 
-    if (!NT_SUCCESS(status)) { FENCE_FAIL(Scan, status); return; }      /* includes more volumes than the bound: fail closed */
-    for (index = 0; index < count && index < FENCE_MAX_VOLUMES; index += 1) {
+    if (!NT_SUCCESS(status) || count > FENCE_MAX_VOLUMES) {
+        FenceQuarantineAll(); /* FltEnumerateVolumes failed or exceeded our bound: the volume set is unknown. */
+        FENCE_FAIL(Scan, NT_SUCCESS(status) ? STATUS_BUFFER_TOO_SMALL : status);
+        for (index = 0; index < count && index < FENCE_MAX_VOLUMES; index += 1) {
+            if (volumes[index] != NULL) FltObjectDereference(volumes[index]);
+        }
+        return;
+    }
+    Scan->EnumerationSucceeded = TRUE;
+    for (index = 0; index < count; index += 1) {
         PFENCE_VOLUME record = &Scan->Volumes[Scan->VolumeCount];
         ULONG needed = 0;
 
         if (volumes[index] == NULL) continue;
-        if (!FenceVolumeIsFixedNtfs(volumes[index])) { FltObjectDereference(volumes[index]); continue; }
+        status = FenceClassifyVolume(volumes[index], &fixedNtfs);
+        if (!NT_SUCCESS(status)) {
+            Scan->CurrentVolume = volumes[index];
+            record->Volume = volumes[index];
+            record->Instance = NULL;
+            record->ScanRequired = FALSE;
+            record->Enumerated = TRUE;
+            Scan->VolumeCount += 1;
+            FenceQuarantineVolume(volumes[index]);
+            FENCE_FAIL(Scan, status);
+            continue;
+        }
+        if (!fixedNtfs) { FltObjectDereference(volumes[index]); continue; }
+        Scan->CurrentVolume = volumes[index];
+        record->Volume = volumes[index];
+        record->Instance = NULL;
+        record->ScanRequired = TRUE;
+        record->Enumerated = TRUE;
         record->Name.Buffer = record->NameBuffer;
         record->Name.Length = 0;
         record->Name.MaximumLength = sizeof(record->NameBuffer);
         status = FltGetVolumeName(volumes[index], &record->Name, &needed);
         if (!NT_SUCCESS(status) || record->Name.Length == 0 || (record->Name.Length & 1) != 0) {
+            FenceQuarantineVolume(volumes[index]); /* name failure is local; volume identity is still known */
             FENCE_FAIL(Scan, NT_SUCCESS(status) ? STATUS_UNSUCCESSFUL : status);
-            FltObjectDereference(volumes[index]);
+            Scan->VolumeCount += 1; /* retain its reference until FailureVolume has been quarantined */
             continue;
         }
-        record->Volume = volumes[index];
-        record->Instance = NULL;
         if (!NT_SUCCESS(FltGetVolumeInstanceFromName(SafeUploadData.Filter, volumes[index], NULL, &record->Instance))) {
             record->Instance = NULL;                                     /* not attached yet (before FltStartFiltering) */
         }
         Scan->VolumeCount += 1;
     }
+    if (NT_SUCCESS(Scan->Failure)) FenceAppendQuarantinedVolumes(Scan);
 }
 
 static VOID FenceFreeTable(_In_opt_ PFENCE_TABLE Table)
@@ -553,6 +967,7 @@ static VOID FenceFreeTable(_In_opt_ PFENCE_TABLE Table)
     if (Table == NULL) return;
     for (index = 0; index < Table->StreamCount; index += 1) {
         if (Table->Objects[index] != NULL) ObDereferenceObject(Table->Objects[index]);
+        if (Table->StreamVolume[index] != NULL) FltObjectDereference(Table->StreamVolume[index]);
     }
     ExFreePoolWithTag(Table, FENCE_TAG);
 }
@@ -562,13 +977,30 @@ NTSTATUS SafeUploadStageFenceInitialize(VOID)
     PAGED_CODE();
     KeInitializeMutex(&FenceRefreshMutex, 0);
     KeInitializeSpinLock(&FenceSopLock);
+    KeInitializeSpinLock(&FenceRetryLock);
+    KeInitializeEvent(&FenceLateRefreshIdle, NotificationEvent, TRUE);
+    KeInitializeTimer(&FenceRetryTimer);
+    KeInitializeDpc(&FenceRetryDpc, FenceRetryTimerDpc, NULL);
     FltInitializePushLock(&FenceNameLock);
+    InterlockedExchange64(&FenceLateControl, FENCE_LATE_GATE_OPEN);
+    RtlZeroMemory(FenceQuarantine, sizeof(FenceQuarantine));
+    InterlockedExchange(&FenceQuarantineGlobal, FALSE);
+    InterlockedExchange(&FenceQuarantineGlobalSticky, FALSE);
+    InterlockedExchange(&FenceQuarantineGeneration, 0);
+    InterlockedExchange(&FenceRefreshInFlight, 0);
+    InterlockedExchange(&FenceRetryPending, FALSE);
+    InterlockedExchange(&FenceRetryTimerArmed, FALSE);
+    InterlockedExchange(&FenceRetryStopping, FALSE);
+    InterlockedExchange(&FenceRetryEnabled, FALSE);
+    InterlockedExchange(&FenceSetupInFlight, 0);
+    InterlockedExchange(&FenceLateAttachOutstanding, 0);
+    FenceRetryDelaySeconds = FENCE_RETRY_INITIAL_SECONDS;
     FenceInitialized = TRUE;
     return STATUS_SUCCESS;
 }
 
 /* Detaches the installed table under both locks (non-paged helper: it raises IRQL). */
-static PFENCE_TABLE FenceDetachTable(VOID)
+static __declspec(noinline) PFENCE_TABLE FenceDetachTable(VOID)
 {
     PFENCE_TABLE table;
     KIRQL irql;
@@ -588,14 +1020,18 @@ VOID SafeUploadStageFenceFree(VOID)
 {
     PAGED_CODE();
     if (!FenceInitialized) return;
+    FenceRetryStopForUnload();
+    FenceWaitForLateWorkers();
+    FenceRetryResetAfterDrain();
     KeWaitForSingleObject(&FenceRefreshMutex, Executive, KernelMode, FALSE, NULL);
     FenceInitialized = FALSE;
     FenceFreeTable(FenceDetachTable());
+    FenceClearQuarantine();
     (VOID)KeReleaseMutex(&FenceRefreshMutex, FALSE);
     FltDeletePushLock(&FenceNameLock);
 }
 
-static VOID FenceInstall(_In_ PFENCE_SCAN Scan)
+static __declspec(noinline) VOID FenceInstall(_In_ PFENCE_SCAN Scan)
 {
     PFENCE_TABLE installing = Scan->Table;                /* the table is non-paged; Scan is PAGED pool */
     PFENCE_TABLE old;
@@ -631,18 +1067,25 @@ static VOID FenceInstall(_In_ PFENCE_SCAN Scan)
 /* Rebuilds the whole fence from the bootstrap scope on every fixed NTFS volume plus the prefixes of the
  * CURRENT policy and of Candidate (their union, so a policy expansion or shrink never leaves a window).
  * Callable before the filter starts. On failure the previous fence stays and the failure is returned. */
-NTSTATUS SafeUploadStageFenceRefresh(_In_opt_ const SAFEUPLOAD_POLICY *Candidate)
+static NTSTATUS FenceRefreshInternal(_In_opt_ const SAFEUPLOAD_POLICY *Candidate,
+    _In_opt_ PFLT_VOLUME TriggerVolume, _In_ BOOLEAN RequireCompleteCoverage)
 {
     static const WCHAR bootstrap[] = L"\\SafeUpload\\Escopo Monitorado";
     PFENCE_SCAN scan = NULL;
     PSAFEUPLOAD_SCOPE_COPY current = NULL, candidate = NULL;
     NTSTATUS status;
     ULONG index;
+    BOOLEAN triggerIncluded = FALSE;
 
     PAGED_CODE();
     if (!FenceInitialized) return STATUS_DEVICE_NOT_READY;
+    InterlockedIncrement(&FenceRefreshInFlight);
     KeWaitForSingleObject(&FenceRefreshMutex, Executive, KernelMode, FALSE, NULL);
-    if (!FenceInitialized) { (VOID)KeReleaseMutex(&FenceRefreshMutex, FALSE); return STATUS_DEVICE_NOT_READY; }
+    if (!FenceInitialized) {
+        (VOID)KeReleaseMutex(&FenceRefreshMutex, FALSE);
+        InterlockedDecrement(&FenceRefreshInFlight);
+        return STATUS_DEVICE_NOT_READY;
+    }
     InterlockedIncrement64(&FenceRefreshStarted);
     scan = ExAllocatePool2(POOL_FLAG_PAGED, sizeof(*scan), FENCE_TAG);                  /* zeroed */
     current = ExAllocatePool2(POOL_FLAG_PAGED, sizeof(*current), FENCE_TAG);
@@ -661,26 +1104,88 @@ NTSTATUS SafeUploadStageFenceRefresh(_In_opt_ const SAFEUPLOAD_POLICY *Candidate
     if (!NT_SUCCESS(status)) { scan->FailureLine = (ULONG)__LINE__; goto Finish; }
 
     FenceCollectVolumes(scan);
-    for (index = 0; index < scan->VolumeCount && NT_SUCCESS(scan->Failure); index += 1) {
-        FenceScanUnderVolume(scan, &scan->Volumes[index], bootstrap, (ULONG)(sizeof(bootstrap) / sizeof(WCHAR)) - 1);
+    if (NT_SUCCESS(scan->Failure) && TriggerVolume != NULL) {
+        for (index = 0; index < scan->VolumeCount; index += 1) {
+            if (scan->Volumes[index].Volume == TriggerVolume && scan->Volumes[index].Enumerated) {
+                triggerIncluded = TRUE;
+                break;
+            }
+        }
+        if (!triggerIncluded) {
+            /* FltEnumerateVolumes' set is not stable against concurrent mount/teardown. Do not
+             * install a successful generation that omitted the volume whose setup admitted this
+             * work item. Keep its identity as the failure target; Finish quarantines it and retry
+             * can prove inclusion on a later snapshot. The worker still owns the trigger reference. */
+            scan->CurrentVolume = TriggerVolume;
+            FENCE_FAIL(scan, STATUS_DEVICE_BUSY);
+            SafeUploadTrace("late-attach trigger absent from volume snapshot; refresh deferred for retry\n");
+        }
     }
+    /* Bootstrap is always a required protected scope. */
+    scan->CandidateScopeActive = TRUE;
+    for (index = 0; index < scan->VolumeCount && NT_SUCCESS(scan->Failure); index += 1) {
+        if (scan->Volumes[index].ScanRequired) {
+            FenceScanUnderVolume(scan, &scan->Volumes[index], bootstrap,
+                (ULONG)(sizeof(bootstrap) / sizeof(WCHAR)) - 1);
+        }
+    }
+    scan->CandidateScopeActive = FALSE;
     for (index = 0; index < current->Count && NT_SUCCESS(scan->Failure); index += 1) {
         FenceScanPrefix(scan, current->Prefix[index], current->Length[index] / sizeof(WCHAR));
     }
+    scan->CandidateScopeActive = TRUE;
     for (index = 0; index < candidate->Count && NT_SUCCESS(scan->Failure); index += 1) {
         FenceScanPrefix(scan, candidate->Prefix[index], candidate->Length[index] / sizeof(WCHAR));
     }
-    if (((current->Flags | candidate->Flags) & (SAFEUPLOAD_POLICY_FLAG_REMOVABLE | SAFEUPLOAD_POLICY_FLAG_NETWORK)) != 0) {
-        scan->VolumeScopesSkipped += 1;               /* every file on those volumes is in scope; not scanned here */
+    scan->CandidateScopeActive = FALSE;
+    if ((current->Flags & (SAFEUPLOAD_POLICY_FLAG_REMOVABLE | SAFEUPLOAD_POLICY_FLAG_NETWORK)) != 0) {
+        FenceRecordSkippedVolumeScope(scan);          /* current whole-volume scope is outside fixed-NTFS scan coverage */
     }
-    if (NT_SUCCESS(scan->Failure)) FenceCarryOver(scan);
+    if ((candidate->Flags & (SAFEUPLOAD_POLICY_FLAG_REMOVABLE | SAFEUPLOAD_POLICY_FLAG_NETWORK)) != 0) {
+        scan->VolumeScopesSkipped += 1;               /* every candidate file on those volumes is in scope */
+        scan->CandidateVolumeScopesSkipped += 1;
+    }
+    if (NT_SUCCESS(scan->Failure) && Candidate != NULL &&
+        (scan->CandidateVolumeScopesSkipped != 0 || scan->CandidateReparseSkipped != 0)) {
+        /* This generation is not a proof of the new scope. Preserve the installed fence and reject the
+         * policy transition; a successful NTSTATUS from an individual directory is insufficient. */
+        scan->CoverageRejected = TRUE;
+        FENCE_FAIL(scan, STATUS_NOT_SUPPORTED);
+    } else if (NT_SUCCESS(scan->Failure) && RequireCompleteCoverage &&
+        (scan->VolumeScopesSkipped != 0 || scan->ReparseSkipped != 0)) {
+        /* The post-swap transition scan and the unload's private final scan must cover every required scope. */
+        scan->CoverageRejected = TRUE;
+        FENCE_FAIL(scan, STATUS_NOT_SUPPORTED);
+    }
+    if (NT_SUCCESS(scan->Failure)) {
+        scan->CurrentVolume = NULL; /* carry-over is guarded by the installed fence, not a new volume scan */
+        FenceCarryOver(scan);
+    }
     status = scan->Failure;
-    if (NT_SUCCESS(status)) FenceInstall(scan);
+    if (NT_SUCCESS(status)) {
+        FenceInstall(scan);
+        if (scan->VolumeScopesSkipped == 0) {
+            FenceClearScannedQuarantine(scan);
+        }
+    }
 
 Finish:
+    /* A failure before enumeration has no scoped volume set; without an attach trigger it sets the
+     * global protected-name quarantine, while a supported trigger scopes quarantine to that volume.
+     * Startup still aborts before filtering, policy expansion rejects a failed pre-swap scan, and a
+     * later successful retry is required to clear any quarantine created after filtering starts. */
+    if (!NT_SUCCESS(status) && (scan == NULL || !scan->CoverageRejected)) {
+        FenceQuarantineFailedScan(scan, TriggerVolume);
+    }
     if (scan != NULL) {
         FenceReleaseVolumes(scan);
-        if (!NT_SUCCESS(status)) InterlockedExchange(&FenceFailureLine, (LONG)scan->FailureLine);
+        if (!NT_SUCCESS(status)) {
+            InterlockedExchange(&FenceFailureLine, (LONG)scan->FailureLine);
+            InterlockedExchange64(&FenceDirectories, scan->Directories);
+            InterlockedExchange64(&FenceFiles, scan->Files);
+            InterlockedExchange64(&FenceReparseSkipped, scan->ReparseSkipped);
+            InterlockedExchange64(&FenceVolumeScopesSkipped, scan->VolumeScopesSkipped);
+        }
         FenceFreeTable(scan->Table);                 /* NULL once installed; releases references of a failed scan */
         ExFreePoolWithTag(scan, FENCE_TAG);
     }
@@ -690,17 +1195,430 @@ Finish:
     if (NT_SUCCESS(status)) InterlockedIncrement64(&FenceRefreshCompleted);
     else InterlockedIncrement64(&FenceRefreshFailed);
     (VOID)KeReleaseMutex(&FenceRefreshMutex, FALSE);
+    InterlockedDecrement(&FenceRefreshInFlight);
+    /* A policy transition can still own its outer recursive mutex acquisition here. */
+    if (KeReadStateMutex(&FenceRefreshMutex)) FenceRetryUpdateAfterRefresh();
     return status;
 }
 
-/* Voluntary unload: refresh to release entries whose dirty pages could be purged, then refuse while any
- * stream is still fenced (without the filter its dirty pages or old view would write freely). */
+_Use_decl_annotations_
+NTSTATUS SafeUploadStageFenceRefresh(_In_opt_ const SAFEUPLOAD_POLICY *Candidate)
+{
+    BOOLEAN transitionReservation;
+    BOOLEAN reservedHere = FALSE;
+    NTSTATUS status;
+
+    PAGED_CODE();
+    transitionReservation = (PETHREAD)InterlockedCompareExchangePointer(
+        (PVOID volatile *)&FenceTransitionOwner, NULL, NULL) == PsGetCurrentThread();
+    if (!transitionReservation) {
+        if (!FenceLateControlReserve()) {
+            status = STATUS_DEVICE_BUSY;
+            InterlockedExchange(&FenceLastStatus, (LONG)status);
+            SafeUploadTrace("public fence refresh rejected after unload admission closed\n");
+            return status;
+        }
+        reservedHere = TRUE;
+    }
+    status = FenceRefreshInternal(Candidate, NULL, Candidate != NULL || transitionReservation);
+    if (reservedHere) FenceLateControlComplete();
+    return status;
+}
+
+static LONG64 FenceLateControlRead(VOID)
+{
+    return InterlockedCompareExchange64(&FenceLateControl, 0, 0);
+}
+
+static BOOLEAN FenceLateControlReserve(VOID)
+{
+    LONG64 oldValue, newValue;
+    for (;;) {
+        oldValue = FenceLateControlRead();
+        if ((oldValue & FENCE_LATE_GATE_MASK) != FENCE_LATE_GATE_OPEN ||
+            FENCE_LATE_WORK_COUNT(oldValue) > MAXLONGLONG - FENCE_LATE_WORK_UNIT) return FALSE;
+        newValue = oldValue + FENCE_LATE_WORK_UNIT;
+        if (InterlockedCompareExchange64(&FenceLateControl, newValue, oldValue) == oldValue) {
+            KeClearEvent(&FenceLateRefreshIdle);
+            return TRUE;
+        }
+    }
+}
+
+/* InstanceSetup stays nonblocking, but accepts work during CLOSING. That reservation must either be
+ * drained before the unload final scan/commit or cause a voluntary unload veto. CLOSED is the only
+ * state in which a new setup may be declined; CLOSED is published only by the final unload commit. */
+static BOOLEAN FenceLateControlReserveAttach(VOID)
+{
+    LONG64 oldValue, newValue;
+    for (;;) {
+        oldValue = FenceLateControlRead();
+        if ((oldValue & FENCE_LATE_GATE_MASK) == FENCE_LATE_GATE_CLOSED ||
+            FENCE_LATE_WORK_COUNT(oldValue) > MAXLONGLONG - FENCE_LATE_WORK_UNIT) return FALSE;
+        newValue = oldValue + FENCE_LATE_WORK_UNIT;
+        if (InterlockedCompareExchange64(&FenceLateControl, newValue, oldValue) == oldValue) {
+            KeClearEvent(&FenceLateRefreshIdle);
+            return TRUE;
+        }
+    }
+}
+
+static VOID FenceLateControlComplete(VOID)
+{
+    LONG64 oldValue, newValue;
+    for (;;) {
+        oldValue = FenceLateControlRead();
+        if (FENCE_LATE_WORK_COUNT(oldValue) == 0) return;
+        newValue = oldValue - FENCE_LATE_WORK_UNIT;
+        if (InterlockedCompareExchange64(&FenceLateControl, newValue, oldValue) == oldValue) {
+            if (FENCE_LATE_WORK_COUNT(newValue) == 0) KeSetEvent(&FenceLateRefreshIdle, IO_NO_INCREMENT, FALSE);
+            return;
+        }
+    }
+}
+
+/* RetryPending covers the timer, its DPC, and its work item. A parked timer owns no late-work unit;
+ * the DPC reserves a unit only immediately before it queues the generic work item. */
+static VOID FenceRetryArmLocked(VOID)
+{
+    LARGE_INTEGER dueTime;
+    ULONG delay;
+
+    if (InterlockedCompareExchange(&FenceRetryStopping, FALSE, FALSE) != FALSE ||
+        InterlockedCompareExchange(&FenceRetryEnabled, FALSE, FALSE) == FALSE ||
+        (FenceLateControlRead() & FENCE_LATE_GATE_MASK) != FENCE_LATE_GATE_OPEN ||
+        !FenceAnyRetryableQuarantine()) {
+        InterlockedExchange(&FenceRetryPending, FALSE);
+        InterlockedExchange(&FenceRetryTimerArmed, FALSE);
+        if (!FenceAnyRetryableQuarantine()) FenceRetryDelaySeconds = FENCE_RETRY_INITIAL_SECONDS;
+        return;
+    }
+    if (InterlockedCompareExchange(&FenceRetryTimerArmed, FALSE, FALSE) != FALSE) return;
+
+    delay = FenceRetryDelaySeconds;
+    if (delay == 0) delay = FENCE_RETRY_INITIAL_SECONDS;
+    dueTime.QuadPart = -((LONGLONG)delay * 10 * 1000 * 1000);
+    InterlockedExchange(&FenceRetryPending, TRUE);
+    InterlockedExchange(&FenceRetryTimerArmed, TRUE);
+    (VOID)KeSetTimer(&FenceRetryTimer, dueTime, &FenceRetryDpc);
+    FenceRetryDelaySeconds = delay >= FENCE_RETRY_MAX_SECONDS / 2 ?
+        FENCE_RETRY_MAX_SECONDS : delay * 2;
+}
+
+static VOID FenceRetryFinish(VOID)
+{
+    KIRQL irql;
+    KeAcquireSpinLock(&FenceRetryLock, &irql);
+    if (!FenceAnyRetryableQuarantine()) {
+        FenceRetryDelaySeconds = FENCE_RETRY_INITIAL_SECONDS;
+        InterlockedExchange(&FenceRetryPending, FALSE);
+        InterlockedExchange(&FenceRetryTimerArmed, FALSE);
+    } else {
+        FenceRetryArmLocked();
+    }
+    KeReleaseSpinLock(&FenceRetryLock, irql);
+}
+
+/* Reconcile once refresh serialization is released. A later failure may have re-added quarantine
+ * before this routine gets the retry lock, so inspect the current state before cancelling a retry. */
+/* Keep the spin-lock critical section out of pageable refresh/unload callers. */
+static __declspec(noinline) VOID FenceRetryUpdateAfterRefresh(VOID)
+{
+    BOOLEAN quarantined;
+    KIRQL irql;
+    KeAcquireSpinLock(&FenceRetryLock, &irql);
+    quarantined = FenceAnyRetryableQuarantine();
+    if (quarantined) {
+        if (InterlockedCompareExchange(&FenceRetryPending, FALSE, FALSE) == FALSE) FenceRetryArmLocked();
+    } else {
+        FenceRetryDelaySeconds = FENCE_RETRY_INITIAL_SECONDS;
+    }
+    if (!quarantined && InterlockedCompareExchange(&FenceRetryTimerArmed, FALSE, FALSE) != FALSE) {
+        if (KeCancelTimer(&FenceRetryTimer)) {
+            InterlockedExchange(&FenceRetryTimerArmed, FALSE);
+            InterlockedExchange(&FenceRetryPending, FALSE);
+        } else {
+            /* The DPC already owns the pending state and will observe the cleared quarantine. */
+            InterlockedExchange(&FenceRetryTimerArmed, FALSE);
+        }
+    }
+    KeReleaseSpinLock(&FenceRetryLock, irql);
+}
+
+static __declspec(noinline) VOID FenceRetryStopForUnload(VOID)
+{
+    KIRQL irql;
+    KeAcquireSpinLock(&FenceRetryLock, &irql);
+    InterlockedExchange(&FenceRetryStopping, TRUE);
+    if (InterlockedCompareExchange(&FenceRetryTimerArmed, FALSE, FALSE) != FALSE) {
+        if (KeCancelTimer(&FenceRetryTimer)) {
+            InterlockedExchange(&FenceRetryPending, FALSE);
+        }
+        InterlockedExchange(&FenceRetryTimerArmed, FALSE);
+    }
+    KeReleaseSpinLock(&FenceRetryLock, irql);
+    /* KeCancelTimer cannot retire a DPC that has already been queued or started. */
+    KeFlushQueuedDpcs();
+}
+
+static __declspec(noinline) VOID FenceRetryResetAfterDrain(VOID)
+{
+    KIRQL irql;
+    KeAcquireSpinLock(&FenceRetryLock, &irql);
+    InterlockedExchange(&FenceRetryPending, FALSE);
+    InterlockedExchange(&FenceRetryTimerArmed, FALSE);
+    KeReleaseSpinLock(&FenceRetryLock, irql);
+}
+
+static __declspec(noinline) VOID FenceRetryResume(VOID)
+{
+    KIRQL irql;
+    KeAcquireSpinLock(&FenceRetryLock, &irql);
+    InterlockedExchange(&FenceRetryStopping, FALSE);
+    if (InterlockedCompareExchange(&FenceRetryPending, FALSE, FALSE) == FALSE) FenceRetryArmLocked();
+    KeReleaseSpinLock(&FenceRetryLock, irql);
+}
+
+VOID SafeUploadStageFenceStartRetries(VOID)
+{
+    KIRQL irql;
+    if (!FenceInitialized) return;
+    KeAcquireSpinLock(&FenceRetryLock, &irql);
+    InterlockedExchange(&FenceRetryEnabled, TRUE);
+    FenceRetryArmLocked();
+    KeReleaseSpinLock(&FenceRetryLock, irql);
+}
+
+static VOID FenceRetryRefreshRoutine(_In_ PFLT_GENERIC_WORKITEM WorkItem,
+    _In_ PVOID FltObject, _In_opt_ PVOID Context)
+{
+    NTSTATUS status = STATUS_DEVICE_NOT_READY;
+    UNREFERENCED_PARAMETER(FltObject);
+    UNREFERENCED_PARAMETER(Context);
+
+    if ((FenceLateControlRead() & FENCE_LATE_GATE_MASK) == FENCE_LATE_GATE_OPEN &&
+        InterlockedCompareExchange(&FenceRetryStopping, FALSE, FALSE) == FALSE && FenceAnyRetryableQuarantine()) {
+        status = FenceRefreshInternal(NULL, NULL, FALSE);
+    }
+    if (!NT_SUCCESS(status) && status != STATUS_DEVICE_NOT_READY) {
+        SafeUploadTrace("quarantine retry scan did not complete, status 0x%08X\n", status);
+    }
+    FltFreeGenericWorkItem(WorkItem);
+    FenceRetryFinish();
+    FenceLateControlComplete();
+}
+
+/* DISPATCH_LEVEL DPC: admission and queueing only. The PASSIVE_LEVEL work item owns the scan. */
+_Use_decl_annotations_
+static VOID FenceRetryTimerDpc(_In_ PKDPC Dpc, _In_opt_ PVOID DeferredContext,
+    _In_opt_ PVOID SystemArgument1, _In_opt_ PVOID SystemArgument2)
+{
+    PFLT_GENERIC_WORKITEM item;
+    NTSTATUS status;
+    UNREFERENCED_PARAMETER(Dpc);
+    UNREFERENCED_PARAMETER(DeferredContext);
+    UNREFERENCED_PARAMETER(SystemArgument1);
+    UNREFERENCED_PARAMETER(SystemArgument2);
+
+    KeAcquireSpinLockAtDpcLevel(&FenceRetryLock);
+    InterlockedExchange(&FenceRetryTimerArmed, FALSE);
+    if (InterlockedCompareExchange(&FenceRetryPending, FALSE, FALSE) == FALSE ||
+        InterlockedCompareExchange(&FenceRetryStopping, FALSE, FALSE) != FALSE ||
+        InterlockedCompareExchange(&FenceRetryEnabled, FALSE, FALSE) == FALSE ||
+        (FenceLateControlRead() & FENCE_LATE_GATE_MASK) != FENCE_LATE_GATE_OPEN ||
+        !FenceAnyRetryableQuarantine()) {
+        if (!FenceAnyRetryableQuarantine()) FenceRetryDelaySeconds = FENCE_RETRY_INITIAL_SECONDS;
+        InterlockedExchange(&FenceRetryPending, FALSE);
+        KeReleaseSpinLockFromDpcLevel(&FenceRetryLock);
+        return;
+    }
+    KeReleaseSpinLockFromDpcLevel(&FenceRetryLock);
+
+    item = FltAllocateGenericWorkItem();
+    KeAcquireSpinLockAtDpcLevel(&FenceRetryLock);
+    if (item == NULL ||
+        InterlockedCompareExchange(&FenceRetryStopping, FALSE, FALSE) != FALSE ||
+        InterlockedCompareExchange(&FenceRetryEnabled, FALSE, FALSE) == FALSE ||
+        (FenceLateControlRead() & FENCE_LATE_GATE_MASK) != FENCE_LATE_GATE_OPEN ||
+        !FenceAnyRetryableQuarantine()) {
+        if (!FenceAnyRetryableQuarantine()) FenceRetryDelaySeconds = FENCE_RETRY_INITIAL_SECONDS;
+        if (InterlockedCompareExchange(&FenceRetryStopping, FALSE, FALSE) != FALSE ||
+            (FenceLateControlRead() & FENCE_LATE_GATE_MASK) != FENCE_LATE_GATE_OPEN ||
+            !FenceAnyRetryableQuarantine()) {
+            InterlockedExchange(&FenceRetryPending, FALSE);
+        } else {
+            FenceRetryArmLocked();
+        }
+        KeReleaseSpinLockFromDpcLevel(&FenceRetryLock);
+        if (item != NULL) FltFreeGenericWorkItem(item);
+        return;
+    }
+
+    /* FenceLateControlClose also takes FenceRetryLock, so this item is either queued before
+     * the gate closes or rejected here; it cannot be queued after a CLOSED gate. */
+    if (!FenceLateControlReserve()) {
+        FenceRetryArmLocked();
+        KeReleaseSpinLockFromDpcLevel(&FenceRetryLock);
+        FltFreeGenericWorkItem(item);
+        return;
+    }
+    status = FltQueueGenericWorkItem(item, SafeUploadData.Filter,
+        FenceRetryRefreshRoutine, DelayedWorkQueue, NULL);
+    if (!NT_SUCCESS(status)) {
+        FenceLateControlComplete();
+        FenceRetryArmLocked();
+        KeReleaseSpinLockFromDpcLevel(&FenceRetryLock);
+        FltFreeGenericWorkItem(item);
+        return;
+    }
+    KeReleaseSpinLockFromDpcLevel(&FenceRetryLock);
+}
+
+static __declspec(noinline) BOOLEAN FenceLateControlClose(VOID)
+{
+    LONG64 oldValue, newValue;
+    KIRQL irql;
+    KeAcquireSpinLock(&FenceRetryLock, &irql);
+    for (;;) {
+        oldValue = FenceLateControlRead();
+        if ((oldValue & FENCE_LATE_GATE_MASK) != FENCE_LATE_GATE_OPEN) {
+            KeReleaseSpinLock(&FenceRetryLock, irql);
+            return FALSE;
+        }
+        newValue = (oldValue & ~FENCE_LATE_GATE_MASK) | FENCE_LATE_GATE_CLOSING;
+        if (InterlockedCompareExchange64(&FenceLateControl, newValue, oldValue) == oldValue) {
+            KeReleaseSpinLock(&FenceRetryLock, irql);
+            return TRUE;
+        }
+    }
+}
+
+static __declspec(noinline) VOID FenceLateControlOpen(VOID)
+{
+    LONG64 oldValue, newValue;
+    KIRQL irql;
+    KeAcquireSpinLock(&FenceRetryLock, &irql);
+    for (;;) {
+        oldValue = FenceLateControlRead();
+        if ((oldValue & FENCE_LATE_GATE_MASK) != FENCE_LATE_GATE_CLOSING) {
+            KeReleaseSpinLock(&FenceRetryLock, irql);
+            return;
+        }
+        newValue = oldValue & ~FENCE_LATE_GATE_MASK;
+        if (InterlockedCompareExchange64(&FenceLateControl, newValue, oldValue) == oldValue) {
+            KeReleaseSpinLock(&FenceRetryLock, irql);
+            return;
+        }
+    }
+}
+
+__declspec(noinline) VOID SafeUploadStageFenceCommitUnload(VOID)
+{
+    LONG64 oldValue, newValue;
+    KIRQL irql;
+    (VOID)FenceLateControlClose();
+    FenceRetryStopForUnload();
+    KeAcquireSpinLock(&FenceRetryLock, &irql);
+    for (;;) {
+        oldValue = FenceLateControlRead();
+        if ((oldValue & FENCE_LATE_GATE_MASK) == FENCE_LATE_GATE_CLOSED) break;
+        newValue = (oldValue & ~FENCE_LATE_GATE_MASK) | FENCE_LATE_GATE_CLOSED;
+        if (InterlockedCompareExchange64(&FenceLateControl, newValue, oldValue) == oldValue) break;
+    }
+    KeReleaseSpinLock(&FenceRetryLock, irql);
+}
+
+static VOID FenceWaitForLateWorkers(VOID)
+{
+    for (;;) {
+        if (FENCE_LATE_WORK_COUNT(FenceLateControlRead()) == 0) {
+            KeSetEvent(&FenceLateRefreshIdle, IO_NO_INCREMENT, FALSE);
+            return;
+        }
+        KeClearEvent(&FenceLateRefreshIdle);
+        if (FENCE_LATE_WORK_COUNT(FenceLateControlRead()) == 0) continue;
+        KeWaitForSingleObject(&FenceLateRefreshIdle, Executive, KernelMode, FALSE, NULL);
+    }
+}
+
+/* Final commit is the point after which FilterUnload cannot return DO_NOT_DETACH. Queue admission
+ * races this exact state transition with a CAS; attach-failure quarantine takes FenceRetryLock, so
+ * the commit observes either its work reservation or its quarantine before closing the gate. */
+BOOLEAN SafeUploadStageFenceTryCommitUnload(VOID)
+{
+    LONG64 oldValue, newValue;
+    KIRQL irql;
+    BOOLEAN committed = FALSE;
+
+    PAGED_CODE();
+    if (!FenceInitialized) return TRUE;
+    KeAcquireSpinLock(&FenceRetryLock, &irql);
+    oldValue = FenceLateControlRead();
+    if ((oldValue & FENCE_LATE_GATE_MASK) == FENCE_LATE_GATE_CLOSING &&
+        FENCE_LATE_WORK_COUNT(oldValue) == 0 &&
+        InterlockedCompareExchange(&FenceSetupInFlight, 0, 0) == 0 &&
+        InterlockedCompareExchange(&FenceLateAttachOutstanding, 0, 0) == 0 &&
+        InterlockedCompareExchange(&FenceEntryCount, 0, 0) == 0 &&
+        !FenceAnyQuarantine() &&
+        InterlockedCompareExchange64(&FenceVolumeScopesSkipped, 0, 0) == 0 &&
+        InterlockedCompareExchange64(&FenceReparseSkipped, 0, 0) == 0 &&
+        InterlockedCompareExchange(&FenceRetryPending, FALSE, FALSE) == FALSE &&
+        InterlockedCompareExchange(&FenceRetryTimerArmed, FALSE, FALSE) == FALSE) {
+        newValue = (oldValue & ~FENCE_LATE_GATE_MASK) | FENCE_LATE_GATE_CLOSED;
+        committed = InterlockedCompareExchange64(&FenceLateControl, newValue, oldValue) == oldValue;
+    }
+    KeReleaseSpinLock(&FenceRetryLock, irql);
+    return committed;
+}
+
+BOOLEAN SafeUploadStageFenceSetupBegin(VOID)
+{
+    KIRQL irql;
+    BOOLEAN admitted;
+    KeAcquireSpinLock(&FenceRetryLock, &irql);
+    admitted = FenceLateControlReserveAttach();
+    if (admitted) InterlockedIncrement(&FenceSetupInFlight);
+    KeReleaseSpinLock(&FenceRetryLock, irql);
+    return admitted;
+}
+
+VOID SafeUploadStageFenceSetupEnd(VOID)
+{
+    KIRQL irql;
+    KeAcquireSpinLock(&FenceRetryLock, &irql);
+    if (InterlockedCompareExchange(&FenceSetupInFlight, 0, 0) > 0) {
+        InterlockedDecrement(&FenceSetupInFlight);
+    }
+    KeReleaseSpinLock(&FenceRetryLock, irql);
+    FenceLateControlComplete();
+}
+
+/* Voluntary unload: close admission atomically, drain each accepted worker, then scan synchronously even
+ * when the installed table is empty. FilterUnload commits or cancels this gate after the stage guard. */
 NTSTATUS SafeUploadStageFencePrepareUnload(VOID)
 {
+    NTSTATUS status;
     PAGED_CODE();
-    if (!FenceInitialized || InterlockedCompareExchange(&FenceEntryCount, 0, 0) == 0) return STATUS_SUCCESS;
-    if (!NT_SUCCESS(SafeUploadStageFenceRefresh(NULL))) return STATUS_FLT_DO_NOT_DETACH;
-    return InterlockedCompareExchange(&FenceEntryCount, 0, 0) == 0 ? STATUS_SUCCESS : STATUS_FLT_DO_NOT_DETACH;
+    if (!FenceInitialized) return STATUS_SUCCESS;
+    if (!FenceLateControlClose()) return STATUS_FLT_DO_NOT_DETACH;
+    FenceRetryStopForUnload();
+    FenceWaitForLateWorkers();
+    FenceRetryResetAfterDrain();
+    /* Private final pass: public refresh admission is closed, and all pre-close reservations drained. */
+    status = FenceRefreshInternal(NULL, NULL, TRUE);
+    if (!NT_SUCCESS(status) || SafeUploadStageFenceHasEntries() ||
+        InterlockedCompareExchange64(&FenceVolumeScopesSkipped, 0, 0) != 0 ||
+        InterlockedCompareExchange64(&FenceReparseSkipped, 0, 0) != 0) {
+        return STATUS_FLT_DO_NOT_DETACH;
+    }
+    return STATUS_SUCCESS; /* retain CLOSING while higher-level guards run */
+}
+
+/* StagePrepareUnload can still refuse after the fence scan. Reopen then so future attachments can be admitted. */
+VOID SafeUploadStageFenceCancelUnload(VOID)
+{
+    FenceLateControlOpen();
+    FenceRetryResume();
 }
 
 /* A policy transition (pre-swap scan, swap, post-swap scan) holds the refresh mutex end to end, so no other
@@ -709,16 +1627,26 @@ NTSTATUS SafeUploadStageFencePrepareUnload(VOID)
 BOOLEAN SafeUploadStageFenceTransitionBegin(VOID)
 {
     PAGED_CODE();
-    if (!FenceInitialized) return FALSE;
+    if (!FenceInitialized || !FenceLateControlReserve()) return FALSE;
     KeWaitForSingleObject(&FenceRefreshMutex, Executive, KernelMode, FALSE, NULL);
-    if (!FenceInitialized) { (VOID)KeReleaseMutex(&FenceRefreshMutex, FALSE); return FALSE; }
+    if (!FenceInitialized) {
+        (VOID)KeReleaseMutex(&FenceRefreshMutex, FALSE);
+        FenceLateControlComplete();
+        return FALSE;
+    }
+    InterlockedExchangePointer((PVOID volatile *)&FenceTransitionOwner, PsGetCurrentThread());
     return TRUE;
 }
 
 VOID SafeUploadStageFenceTransitionEnd(VOID)
 {
     PAGED_CODE();
+    NT_ASSERT((PETHREAD)InterlockedCompareExchangePointer(
+        (PVOID volatile *)&FenceTransitionOwner, NULL, NULL) == PsGetCurrentThread());
+    InterlockedExchangePointer((PVOID volatile *)&FenceTransitionOwner, NULL);
     (VOID)KeReleaseMutex(&FenceRefreshMutex, FALSE);
+    if (KeReadStateMutex(&FenceRefreshMutex)) FenceRetryUpdateAfterRefresh();
+    FenceLateControlComplete();
 }
 
 /* Whether any registered stream lives on Volume (an unknown volume counts as a hit). Used to scope the
@@ -726,9 +1654,8 @@ VOID SafeUploadStageFenceTransitionEnd(VOID)
 BOOLEAN SafeUploadStageFenceVolumeHasEntries(_In_opt_ PFLT_VOLUME Volume)
 {
     ULONG index;
-    BOOLEAN hit = FALSE;
-
-    if (InterlockedCompareExchange(&FenceEntryCount, 0, 0) == 0) return FALSE;
+    BOOLEAN hit = FenceVolumeIsQuarantined(Volume);
+    if (hit || InterlockedCompareExchange(&FenceEntryCount, 0, 0) == 0) return hit;
     FltAcquirePushLockShared(&FenceNameLock);
     if (FenceTable != NULL) {
         for (index = 0; index < FenceTable->StreamCount && index < FENCE_MAX_STREAMS; index += 1) {
@@ -737,6 +1664,16 @@ BOOLEAN SafeUploadStageFenceVolumeHasEntries(_In_opt_ PFLT_VOLUME Volume)
     }
     FltReleasePushLock(&FenceNameLock);
     return hit;
+}
+
+BOOLEAN SafeUploadStageFenceVolumeBlocksDetach(_In_opt_ PFLT_VOLUME Volume)
+{
+    LONG64 control = FenceLateControlRead();
+    return (control & FENCE_LATE_GATE_MASK) != FENCE_LATE_GATE_OPEN ||
+        FENCE_LATE_WORK_COUNT(control) != 0 ||
+        InterlockedCompareExchange(&FenceRefreshInFlight, 0, 0) != 0 ||
+        InterlockedCompareExchange(&FenceRetryPending, FALSE, FALSE) != FALSE ||
+        SafeUploadStageFenceVolumeHasEntries(Volume);
 }
 
 BOOLEAN SafeUploadStageFenceIsFenced(_In_opt_ PFILE_OBJECT FileObject)
@@ -762,6 +1699,11 @@ BOOLEAN SafeUploadStageFenceIsFenced(_In_opt_ PFILE_OBJECT FileObject)
     return hit;
 }
 
+BOOLEAN SafeUploadStageFenceVolumeQuarantined(_In_opt_ PFLT_VOLUME Volume)
+{
+    return FenceVolumeIsQuarantined(Volume);
+}
+
 BOOLEAN SafeUploadStageFenceNameQuarantined(_In_ PCUNICODE_STRING NormalizedName)
 {
     UNICODE_STRING entry;
@@ -783,46 +1725,154 @@ BOOLEAN SafeUploadStageFenceNameQuarantined(_In_ PCUNICODE_STRING NormalizedName
 
 BOOLEAN SafeUploadStageFenceHasEntries(VOID)
 {
-    return InterlockedCompareExchange(&FenceEntryCount, 0, 0) != 0;
+    return InterlockedCompareExchange(&FenceEntryCount, 0, 0) != 0 || FenceAnyQuarantine();
 }
 
 VOID SafeUploadStageFenceCountOpenRefused(VOID) { InterlockedIncrement64(&FenceOpensRefused); }
 VOID SafeUploadStageFenceCountPagingDenied(VOID) { InterlockedIncrement64(&FencePagingDenied); }
 VOID SafeUploadStageFenceCountSectionDenied(VOID) { InterlockedIncrement64(&FenceSectionsDenied); }
 VOID SafeUploadStageFenceCountSectionUnresolved(VOID) { InterlockedIncrement64(&FenceSectionUnresolved); }
-/* A volume the filter attaches to after the load (a manual or late attachment, or a newly mounted volume) may already
- * hold a writable mapping inside a protected scope, which no earlier scan could see. InstanceSetup cannot do file I/O,
- * so it queues one coalesced refresh at PASSIVE_LEVEL. The window between the attachment and the refresh is documented,
- * not closed. */
+/* Every accepted attachment gets one work item; serialization in FenceRefreshMutex ensures each
+ * arrival is covered by a scan even when it occurs after an earlier scan enumerated volumes. */
 static VOID FenceLateRefreshRoutine(_In_ PFLT_GENERIC_WORKITEM WorkItem, _In_ PVOID FltObject, _In_opt_ PVOID Context)
 {
+    NTSTATUS status;
+    KIRQL irql;
     UNREFERENCED_PARAMETER(FltObject);
-    UNREFERENCED_PARAMETER(Context);
-    InterlockedExchange(&FenceLateRefreshPending, 0);
-    (VOID)SafeUploadStageFenceRefresh(NULL);
+    status = FenceRefreshInternal(NULL, (PFLT_VOLUME)Context, FALSE);
+    if (!NT_SUCCESS(status)) {
+        SafeUploadTrace("late-attach fence refresh failed, status 0x%08X\n", status);
+    }
+    if (Context != NULL) FltObjectDereference(Context);
     FltFreeGenericWorkItem(WorkItem);
+    KeAcquireSpinLock(&FenceRetryLock, &irql);
+    if (InterlockedCompareExchange(&FenceLateAttachOutstanding, 0, 0) > 0) {
+        InterlockedDecrement(&FenceLateAttachOutstanding);
+    }
+    KeReleaseSpinLock(&FenceRetryLock, irql);
+    FenceRetryUpdateAfterRefresh();
+    FenceLateControlComplete();
 }
 
-VOID SafeUploadStageFenceQueueRefresh(VOID)
+/* Record an attach that could not reserve/queue its scan without ever making InstanceSetup wait.
+ * FenceRetryLock serializes this record with the final CLOSING->CLOSED commit. */
+static __declspec(noinline) BOOLEAN FenceLateAttachQuarantine(_In_ PFLT_VOLUME Volume)
+{
+    NTSTATUS status = FltObjectReference(Volume);
+    BOOLEAN keepReference = FALSE;
+    BOOLEAN admitted = FALSE;
+    LONG64 control;
+    KIRQL irql;
+
+    KeAcquireSpinLock(&FenceRetryLock, &irql);
+    control = FenceLateControlRead();
+    if ((control & FENCE_LATE_GATE_MASK) != FENCE_LATE_GATE_CLOSED) {
+        admitted = TRUE;
+        if (NT_SUCCESS(status)) keepReference = FenceQuarantineStoreReferenced(Volume);
+        else FenceQuarantineAllSticky();
+    }
+    KeReleaseSpinLock(&FenceRetryLock, irql);
+
+    if (NT_SUCCESS(status) && !keepReference) FltObjectDereference(Volume);
+    if (admitted && (control & FENCE_LATE_GATE_MASK) == FENCE_LATE_GATE_OPEN) {
+        FenceRetryUpdateAfterRefresh();
+    }
+    return admitted;
+}
+
+BOOLEAN SafeUploadStageFenceQueueRefresh(_In_ PFLT_VOLUME Volume)
 {
     PFLT_GENERIC_WORKITEM item;
+    NTSTATUS status;
+    BOOLEAN quarantined;
+    BOOLEAN fixedNtfs;
+    KIRQL irql;
 
-    if (!FenceInitialized) return;
-    if (InterlockedCompareExchange(&FenceLateRefreshPending, 1, 0) != 0) return;     /* one is already queued */
+    if (Volume == NULL) return FALSE;
+    /* Do not wait for work here: Filter Manager cautions against synchronization in InstanceSetup.
+     * That leaves an explicit attachment-to-scan paging-write window for covered volumes. The fence
+     * scanner has an intentionally narrow scope. Do not make a transient work-item or
+     * unload-gate failure detach SafeUpload from network, removable, or non-NTFS volumes: those
+     * attachments still carry the ordinary policy callbacks, while this feature reports that the
+     * volume is outside its mapped-stream fence coverage. */
+    status = FenceClassifyVolume(Volume, &fixedNtfs);
+    if (!NT_SUCCESS(status)) {
+        quarantined = FenceLateAttachQuarantine(Volume);
+        InterlockedExchange(&FenceLastStatus, (LONG)status);
+        InterlockedIncrement64(&FenceRefreshFailed);
+        SafeUploadTrace("late-attach volume classification failed, status 0x%08X; %s attachment with quarantine\n",
+            status, quarantined ? "retaining SafeUpload" : "unload commit already closed; declining");
+        return quarantined;
+    }
+    if (!fixedNtfs) {
+        SafeUploadTrace("late-attach fence refresh skipped: volume outside fixed NTFS coverage; retaining SafeUpload attachment\n");
+        return TRUE;
+    }
+    if (!FenceInitialized) return FALSE;
+
+    /* Reserve before any fallible allocation or reference so a closing unload either drains this
+     * setup's scan or observes its quarantine and vetoes. CLOSED is published only after the
+     * unload's final, non-fallible commit point. */
+    if (!FenceLateControlReserveAttach()) {
+        quarantined = FenceLateAttachQuarantine(Volume);
+        if (quarantined) {
+            InterlockedExchange(&FenceLastStatus, (LONG)STATUS_DEVICE_BUSY);
+            InterlockedIncrement64(&FenceRefreshFailed);
+            SafeUploadTrace("late-attach refresh could not reserve work; protected-name quarantine recorded, retaining attachment\n");
+        }
+        return quarantined;
+    }
+
     item = FltAllocateGenericWorkItem();
-    if (item == NULL) { InterlockedExchange(&FenceLateRefreshPending, 0); return; }
-    if (!NT_SUCCESS(FltQueueGenericWorkItem(item, SafeUploadData.Filter, FenceLateRefreshRoutine, DelayedWorkQueue, NULL))) {
+    if (item == NULL) {
+        status = STATUS_INSUFFICIENT_RESOURCES;
+        quarantined = FenceLateAttachQuarantine(Volume);
+        FenceLateControlComplete();
+        InterlockedExchange(&FenceLastStatus, (LONG)STATUS_INSUFFICIENT_RESOURCES);
+        InterlockedIncrement64(&FenceRefreshFailed);
+        SafeUploadTrace("late-attach fence work-item allocation failed, status 0x%08X; %s attachment\n",
+            status, quarantined ? "retaining SafeUpload" : "unload commit already closed; declining");
+        return quarantined;
+    }
+    status = FltObjectReference(Volume);
+    if (!NT_SUCCESS(status)) {
+        quarantined = FenceLateAttachQuarantine(Volume);
+        FenceLateControlComplete();
         FltFreeGenericWorkItem(item);
-        InterlockedExchange(&FenceLateRefreshPending, 0);
-        return;
+        InterlockedExchange(&FenceLastStatus, (LONG)status);
+        InterlockedIncrement64(&FenceRefreshFailed);
+        SafeUploadTrace("late-attach fence volume reference failed, status 0x%08X; %s attachment\n",
+            status, quarantined ? "retaining SafeUpload" : "unload commit already closed; declining");
+        return quarantined;
+    }
+    KeAcquireSpinLock(&FenceRetryLock, &irql);
+    InterlockedIncrement(&FenceLateAttachOutstanding);
+    KeReleaseSpinLock(&FenceRetryLock, irql);
+    status = FltQueueGenericWorkItem(item, SafeUploadData.Filter, FenceLateRefreshRoutine, DelayedWorkQueue, Volume);
+    if (!NT_SUCCESS(status)) {
+        KeAcquireSpinLock(&FenceRetryLock, &irql);
+        InterlockedDecrement(&FenceLateAttachOutstanding);
+        KeReleaseSpinLock(&FenceRetryLock, irql);
+        FltObjectDereference(Volume);
+        FltFreeGenericWorkItem(item);
+        quarantined = FenceLateAttachQuarantine(Volume);
+        FenceLateControlComplete();
+        InterlockedExchange(&FenceLastStatus, (LONG)status);
+        InterlockedIncrement64(&FenceRefreshFailed);
+        SafeUploadTrace("late-attach fence work-item queue failed, status 0x%08X; %s attachment\n",
+            status, quarantined ? "retaining SafeUpload" : "unload commit already closed; declining");
+        return quarantined;
     }
     InterlockedIncrement64(&FenceLateRefreshQueued);
+    return TRUE;
 }
 
 VOID SafeUploadStageFenceCountFsctlUnresolved(VOID) { InterlockedIncrement64(&FenceFsctlUnresolved); }
 
 VOID SafeUploadStageFenceGetStatus(_Out_ PSAFEUPLOAD_FENCE_STATUS Status)
 {
+    LONG64 lateControl;
+
     RtlZeroMemory(Status, sizeof(*Status));
     Status->StructSize = sizeof(*Status);
     Status->Entries = (UINT32)InterlockedCompareExchange(&FenceEntryCount, 0, 0);
@@ -844,6 +1894,23 @@ VOID SafeUploadStageFenceGetStatus(_Out_ PSAFEUPLOAD_FENCE_STATUS Status)
     Status->SectionNameUnresolved = (UINT64)InterlockedCompareExchange64(&FenceSectionUnresolved, 0, 0);
     Status->FsctlUnresolved = (UINT64)InterlockedCompareExchange64(&FenceFsctlUnresolved, 0, 0);
     Status->LateRefreshesQueued = (UINT64)InterlockedCompareExchange64(&FenceLateRefreshQueued, 0, 0);
+    Status->StateFlags = 0;
+    lateControl = FenceLateControlRead();
+    if (FENCE_LATE_WORK_COUNT(lateControl) != 0) {
+        Status->StateFlags |= SAFEUPLOAD_FENCE_STATUS_FLAG_LATE_REFRESH_PENDING;
+    }
+    if ((lateControl & FENCE_LATE_GATE_MASK) != FENCE_LATE_GATE_OPEN) {
+        Status->StateFlags |= SAFEUPLOAD_FENCE_STATUS_FLAG_UNLOAD_GATE_CLOSED;
+    }
+    if (FenceAnyQuarantine()) {
+        Status->StateFlags |= SAFEUPLOAD_FENCE_STATUS_FLAG_QUARANTINED;
+    }
+    if (InterlockedCompareExchange(&FenceRefreshInFlight, 0, 0) != 0) {
+        Status->StateFlags |= SAFEUPLOAD_FENCE_STATUS_FLAG_REFRESH_ACTIVE;
+    }
+    if (InterlockedCompareExchange(&FenceRetryPending, FALSE, FALSE) != FALSE) {
+        Status->StateFlags |= SAFEUPLOAD_FENCE_STATUS_FLAG_RETRY_PENDING;
+    }
 }
 
 #endif

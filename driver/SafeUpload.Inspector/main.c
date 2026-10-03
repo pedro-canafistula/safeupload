@@ -694,6 +694,7 @@ static int PrintFenceStatus(VOID)
     HANDLE port = INVALID_HANDLE_VALUE;
     DWORD returned = 0;
     HRESULT hr;
+    BOOL complete;
 
     hr = FilterConnectCommunicationPort(SAFEUPLOAD_PORT_NAME, 0, NULL, 0, NULL, &port);
     if (FAILED(hr)) {
@@ -713,21 +714,23 @@ static int PrintFenceStatus(VOID)
         return 3;
     }
 
-    // "complete" means the last scan succeeded and no removable/network scope was left unscanned. Reparse points
-    // inside a scope are not followed (an open through one resolves to its target's normalized name) and are
-    // counted separately in "reparseSkipped".
-    wprintf(L"{\"fence\":true,\"complete\":%s,\"entries\":%lu,\"generation\":%lu,\"lastStatus\":\"0x%08X\",\"failureLine\":%lu,"
+    // "complete" requires a successful scan with no skipped scopes or reparses, no unresolved
+    // admission counters, and no refresh, unload gate, quarantine, or retry still active. This is a
+    // sampled status and does not close the attach-to-scan window.
+    complete = status.LastStatus == 0 && status.VolumeScopesSkipped == 0 && status.ReparseSkipped == 0 &&
+        status.SectionNameUnresolved == 0 && status.FsctlUnresolved == 0 && status.StateFlags == 0;
+    wprintf(L"{\"fence\":true,\"complete\":%s,\"stateFlags\":%lu,\"entries\":%lu,\"generation\":%lu,\"lastStatus\":\"0x%08X\",\"failureLine\":%lu,"
             L"\"refreshStarted\":%llu,\"refreshCompleted\":%llu,\"refreshFailed\":%llu,"
             L"\"pagingWritesDenied\":%llu,\"opensRefused\":%llu,\"directoriesScanned\":%llu,"
             L"\"filesScanned\":%llu,\"reparseSkipped\":%llu,\"volumeScopesSkipped\":%llu,"
             L"\"streamsReleased\":%llu,\"releaseRefused\":%llu,\"sectionsDenied\":%llu,\"sectionNameUnresolved\":%llu,\"fsctlUnresolved\":%llu,\"lateRefreshesQueued\":%llu}\n",
-            (status.LastStatus == 0 && status.VolumeScopesSkipped == 0) ? L"true" : L"false",
-            status.Entries, status.Generation, status.LastStatus, status.FailureLine,
+            complete ? L"true" : L"false",
+            status.StateFlags, status.Entries, status.Generation, status.LastStatus, status.FailureLine,
             status.RefreshStarted, status.RefreshCompleted, status.RefreshFailed,
             status.PagingWritesDenied, status.OpensRefused, status.DirectoriesScanned,
             status.FilesScanned, status.ReparseSkipped, status.VolumeScopesSkipped,
             status.StreamsReleased, status.ReleaseRefused, status.SectionsDenied, status.SectionNameUnresolved, status.FsctlUnresolved, status.LateRefreshesQueued);
-    return status.LastStatus == 0 ? 0 : 4;               // a failed scan is not a healthy fence
+    return complete ? 0 : 4;
 }
 
 static int SendAdmissionTraceControl(_In_ UINT32 Command, _In_z_ PCWSTR Name, _In_ UINT32 Options)

@@ -249,7 +249,8 @@ Arguments:
 Return Value:
 
     STATUS_SUCCESS when the context is in place. On failure nothing is left
-    allocated and the caller must decline the attachment.
+    allocated. The feature build may retain attachment and use its conservative
+    Unknown-volume fallback; the normal build retains its prior behavior.
 
 --*/
 {

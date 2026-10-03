@@ -548,7 +548,7 @@ typedef struct _SAFEUPLOAD_FENCE_STATUS {
     UINT32 Generation;
     UINT32 LastStatus;               // NTSTATUS of the latest refresh
     UINT32 FailureLine;              // StageFence.c line of the latest failed scan's first failure
-    UINT32 Reserved;
+    UINT32 StateFlags;              // SAFEUPLOAD_FENCE_STATUS_FLAG_*
     UINT64 RefreshStarted;
     UINT64 RefreshCompleted;
     UINT64 RefreshFailed;
@@ -561,10 +561,17 @@ typedef struct _SAFEUPLOAD_FENCE_STATUS {
     UINT64 StreamsReleased;          // entries dropped after their dirty pages were purged
     UINT64 ReleaseRefused;           // release attempts that left a stream fenced (still mapped or purge failed)
     UINT64 SectionsDenied;           // writable data sections refused on an unadmitted in-scope stream
-    UINT64 SectionNameUnresolved;    // writable sections allowed because no name could be resolved
-    UINT64 FsctlUnresolved;          // mutating FSCTLs allowed because the name could not be queried safely
+    UINT64 SectionNameUnresolved;    // writable sections denied because no name could be resolved
+    UINT64 FsctlUnresolved;          // selected mutating FSCTLs denied because name or NTFS alias scope was unresolved
     UINT64 LateRefreshesQueued;      // refreshes queued by an instance attachment after the load
 } SAFEUPLOAD_FENCE_STATUS, *PSAFEUPLOAD_FENCE_STATUS;
+
+#define SAFEUPLOAD_FENCE_STATUS_FLAG_LATE_REFRESH_PENDING ((UINT32)0x00000001)
+#define SAFEUPLOAD_FENCE_STATUS_FLAG_UNLOAD_GATE_CLOSED   ((UINT32)0x00000002)
+#define SAFEUPLOAD_FENCE_STATUS_FLAG_REFRESH_ACTIVE       ((UINT32)0x00000004)
+#define SAFEUPLOAD_FENCE_STATUS_FLAG_QUARANTINED           ((UINT32)0x00000008)
+/* Reuses StateFlags' former Reserved word; SAFEUPLOAD_FENCE_STATUS size is unchanged. */
+#define SAFEUPLOAD_FENCE_STATUS_FLAG_RETRY_PENDING         ((UINT32)0x00000010)
 
 // A zero cursor and snapshot request a snapshot of all entries retained now.
 // Later requests pass the returned NextCursor and SnapshotSequence.

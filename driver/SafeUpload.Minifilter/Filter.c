@@ -314,6 +314,10 @@ Return Value:
     }
 
 #if SAFEUPLOAD_STAGING_PROTOTYPE
+    SafeUploadStageFenceStartRetries();
+#endif
+
+#if SAFEUPLOAD_STAGING_PROTOTYPE
 
     //
     //  Instances exist now. A second scan, below them, catches a mapping created between the
@@ -387,6 +391,10 @@ Return Value:
 
 --*/
 {
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    NTSTATUS status;
+#endif
+
     PAGED_CODE();
 
     SafeUploadTrace( "unload requested (mandatory=%u)\n",
@@ -416,7 +424,14 @@ Return Value:
     //
 
 #if SAFEUPLOAD_STAGING_PROTOTYPE
-    if (!NT_SUCCESS(SafeUploadStagePrepareUnload())) return STATUS_FLT_DO_NOT_DETACH;
+    status = SafeUploadStagePrepareUnload();
+    if (!NT_SUCCESS(status)) {
+        if (!FlagOn( Flags, FLTFL_FILTER_UNLOAD_MANDATORY )) {
+            SafeUploadStageFenceCancelUnload();
+            return STATUS_FLT_DO_NOT_DETACH;
+        }
+    }
+    SafeUploadStageFenceCommitUnload();
 #endif
 
     SafeUploadCloseCommunicationPort();
@@ -496,6 +511,9 @@ Return Value:
 {
     SAFEUPLOAD_VOLUME_KIND volumeKind;
     NTSTATUS status;
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    BOOLEAN fenceSetupAdmitted = FALSE;
+#endif
 
 #if !SAFEUPLOAD_STAGING_PROTOTYPE
     UNREFERENCED_PARAMETER( Flags );
@@ -511,6 +529,18 @@ Return Value:
     //
 
 #if SAFEUPLOAD_STAGING_PROTOTYPE
+    // Hold a nonblocking admission through the end of this callback. A voluntary unload cannot
+    // commit while this setup is running; work admission then covers its refresh or q fallback.
+    if (!SafeUploadStageFenceSetupBegin()) {
+        SafeUploadTrace("declining late volume attachment after unload commit\n");
+        return STATUS_FLT_DO_NOT_ATTACH;
+    }
+    fenceSetupAdmitted = TRUE;
+    if (!SafeUploadStageFenceQueueRefresh( FltObjects->Volume )) {
+        SafeUploadTrace("declining late volume attachment: unload already committed\n");
+        SafeUploadStageFenceSetupEnd();
+        return STATUS_FLT_DO_NOT_ATTACH;
+    }
     status = SafeUploadSetInstanceContext( FltObjects, VolumeDeviceType, Flags, &volumeKind );
 #else
     status = SafeUploadSetInstanceContext( FltObjects, VolumeDeviceType, &volumeKind );
@@ -548,18 +578,23 @@ Return Value:
     }
 #endif
 
+    if (!NT_SUCCESS( status )) {
 #if SAFEUPLOAD_STAGING_PROTOTYPE
-
-    //
-    //  The volume may already hold a writable mapping inside a protected scope.
-    //  Queue a fence refresh; the scan itself cannot run in this callback.
-    //
-
-    SafeUploadStageFenceQueueRefresh();
-
+        /* Keep the normal callbacks active. Every feature-build destination gate treats a missing
+         * instance context as Unknown, which matches configured network/removable flags and explicit
+         * prefixes; the fence admission above separately records supported-volume scan failures. */
+        SafeUploadTrace( "instance context unavailable (status 0x%08X); retaining attachment with Unknown fallback\n",
+                         status );
+        volumeKind = SafeUploadVolumeUnknown;
+#else
+        /* Preserve the normal-build behavior; the feature build requires a usable context. */
+        SafeUploadTrace( "instance classification context unavailable (status 0x%08X); attaching as unknown\n",
+                         status );
+        volumeKind = SafeUploadVolumeUnknown;
 #endif
+    }
 
-    if (!NT_SUCCESS( status ) || volumeKind == SafeUploadVolumeUnknown) {
+    if (volumeKind == SafeUploadVolumeUnknown) {
 
         //
         //  Attach anyway.
@@ -571,14 +606,18 @@ Return Value:
         //  visible in "fltmc filters", and attached to nothing at all - the
         //  worst possible failure mode, because it looks like it is working.
         //
-        //  Staying attached with an unknown classification is safe. Nothing
-        //  is treated as a monitored destination unless it was positively
-        //  identified as one, so an unclassified volume behaves as out of
-        //  scope. That is the same fail-open outcome, without the cliff.
+        //  In the feature build, policy gates conservatively treat Unknown as
+        //  covered when removable/network destinations are enabled and still
+        //  test explicit path prefixes. A missing context follows the same
+        //  fallback while the normal callbacks remain attached.
         //
 
-        SafeUploadTrace( "volume not classified (status 0x%08X), attaching as unknown\n",
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+        SafeUploadTrace( "volume not classified (status 0x%08X), attaching with conservative Unknown policy matching\n",
                          status );
+#else
+        SafeUploadTrace( "volume not classified (status 0x%08X), attaching as unknown\n", status );
+#endif
     }
     else {
 
@@ -587,6 +626,9 @@ Return Value:
                          volumeKind == SafeUploadVolumeNetwork ? "network" : "fixed" );
     }
 
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    if (fenceSetupAdmitted) SafeUploadStageFenceSetupEnd();
+#endif
     return STATUS_SUCCESS;
 }
 
@@ -601,8 +643,10 @@ SafeUploadInstanceQueryTeardown (
 Routine Description:
 
     Called when someone requests a manual detach of one of our instances
-    ("fltmc detach"). We hold no per-instance state, so detaching is always
-    safe.
+    ("fltmc detach"). The feature build refuses every manual detach because
+    Filter Manager provides no reservation here that can exclude a later scan
+    or attachment before teardown completes. This callback is not invoked for
+    mandatory unload or volume dismount.
 
     IRQL: PASSIVE_LEVEL.
 
@@ -614,7 +658,8 @@ Arguments:
 
 Return Value:
 
-    STATUS_SUCCESS - the detach may proceed.
+    STATUS_FLT_DO_NOT_DETACH - feature-build manual detach is disabled.
+    STATUS_SUCCESS - normal-build behavior is unchanged.
 
 --*/
 {
@@ -624,9 +669,10 @@ Return Value:
     PAGED_CODE();
 
 #if SAFEUPLOAD_STAGING_PROTOTYPE
-    if (!SafeUploadStageCanDetach()) return STATUS_FLT_DO_NOT_DETACH;
-#endif
+    return STATUS_FLT_DO_NOT_DETACH;
+#else
     return STATUS_SUCCESS;
+#endif
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -1158,8 +1204,12 @@ Return Value:
                                         &nameInfo );
 
     if (!NT_SUCCESS( status )) {
-
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+        /* Name-query failure is never an override grant. */
         return FALSE;
+#else
+        return FALSE;
+#endif
     }
 
     covered = SafeUploadConsumeOverride( ProcessId, &nameInfo->Name );
@@ -1228,7 +1278,14 @@ Return Value:
                                         &nameInfo );
 
     if (!NT_SUCCESS( status )) {
-
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+        /* Unknown classification plus an unresolved name cannot prove that an explicit prefix is
+         * outside scope. Broad removable/network flags were checked above; conservatively cover
+         * prefix-only policies here as well. */
+        if (VolumeKind == SafeUploadVolumeUnknown) {
+            return TRUE;
+        }
+#endif
         return FALSE;
     }
 
@@ -1392,17 +1449,16 @@ Return Value:
                                     (PFLT_CONTEXT *) &instanceContext );
 
     if (!NT_SUCCESS( status )) {
-
-        //
-        //  Without the classification there is no way to tell a pen drive
-        //  from a system disk, and guessing is worse than not inspecting.
-        //
-
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+        /* A missing instance context is not proof that this is an unmonitored volume. */
+        volumeKind = SafeUploadVolumeUnknown;
+#else
         return FLT_PREOP_SUCCESS_NO_CALLBACK;
+#endif
+    } else {
+        volumeKind = instanceContext->VolumeKind;
+        FltReleaseContext( instanceContext );
     }
-
-    volumeKind = instanceContext->VolumeKind;
-    FltReleaseContext( instanceContext );
 
     SafeUploadCount( CreatesPastCheapGates );
 
@@ -1817,11 +1873,15 @@ Routine Description:
                                     (PFLT_CONTEXT *) &instanceContext );
 
     if (!NT_SUCCESS( status )) {
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+        volumeKind = SafeUploadVolumeUnknown;
+#else
         return FLT_PREOP_SUCCESS_NO_CALLBACK;
+#endif
+    } else {
+        volumeKind = instanceContext->VolumeKind;
+        FltReleaseContext( instanceContext );
     }
-
-    volumeKind = instanceContext->VolumeKind;
-    FltReleaseContext( instanceContext );
 
     if (!SafeUploadIsMonitoredDestination( Data, volumeKind )) {
         return FLT_PREOP_SUCCESS_NO_CALLBACK;
@@ -2055,12 +2115,15 @@ Return Value:
                                     (PFLT_CONTEXT *) &instanceContext );
 
     if (!NT_SUCCESS( status )) {
-
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+        volumeKind = SafeUploadVolumeUnknown;
+#else
         return FLT_PREOP_SUCCESS_NO_CALLBACK;
+#endif
+    } else {
+        volumeKind = instanceContext->VolumeKind;
+        FltReleaseContext( instanceContext );
     }
-
-    volumeKind = instanceContext->VolumeKind;
-    FltReleaseContext( instanceContext );
 
     //
     //  FILE_LINK_INFORMATION shares its leading layout with
@@ -2095,6 +2158,11 @@ Return Value:
         monitored = SafeUploadPolicyMatchesDestination( volumeKind, &nameInfo->Name );
 
         FltReleaseFileNameInformation( nameInfo );
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    } else if (volumeKind == SafeUploadVolumeUnknown) {
+        /* A failed destination query cannot prove that this is outside an enabled broad scope. */
+        monitored = TRUE;
+#endif
     }
 
     if (!monitored) {
