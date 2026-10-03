@@ -2,10 +2,11 @@
 #include "Stage.h"
 #include <ntstrsafe.h>
 
-static NTSTATUS StageCanaryVerifySecurity(_In_ PFLT_INSTANCE Instance, _In_ PFILE_OBJECT FileObject);
+static NTSTATUS StageCanaryVerifySecurity(_In_ PFLT_INSTANCE Instance, _In_ PFILE_OBJECT FileObject,
+    _Out_ PULONG Reason);
 #define STAGE_CANARY_SD_BYTES 1024
 static NTSTATUS StageCanaryVerifyDescriptor(_In_ PFLT_INSTANCE Instance, _In_ PFILE_OBJECT FileObject,
-    _Out_writes_bytes_(STAGE_CANARY_SD_BYTES) PUCHAR buffer);
+    _Out_writes_bytes_(STAGE_CANARY_SD_BYTES) PUCHAR buffer, _Out_ PULONG Reason);
 
 #ifdef ALLOC_PRAGMA
 #pragma alloc_text(PAGE, SafeUploadStageOpenByIdentity)
@@ -237,20 +238,24 @@ static NTSTATUS StageCanarySecurity(_Out_ SECURITY_DESCRIPTOR *Descriptor, _Out_
     return STATUS_SUCCESS;
 }
 
-static NTSTATUS StageCanaryVerifySecurity(_In_ PFLT_INSTANCE Instance, _In_ PFILE_OBJECT FileObject)
+/* Reason (reported as canary step 50 + Reason on failure): 1 query, 2 descriptor validation,
+ * 3 revision/control, 4 owner, 5 group, 6 DACL presence/count, 7 ACE header, 8 ACE SID/mask. */
+static NTSTATUS StageCanaryVerifySecurity(_In_ PFLT_INSTANCE Instance, _In_ PFILE_OBJECT FileObject,
+    _Out_ PULONG Reason)
 {
     PUCHAR buffer;
     NTSTATUS status;
     PAGED_CODE();
+    *Reason = 1;
     buffer = ExAllocatePool2(POOL_FLAG_PAGED, STAGE_CANARY_SD_BYTES, SAFEUPLOAD_POOL_TAG);
     if (buffer == NULL) return STATUS_INSUFFICIENT_RESOURCES;
-    status = StageCanaryVerifyDescriptor(Instance, FileObject, buffer);
+    status = StageCanaryVerifyDescriptor(Instance, FileObject, buffer, Reason);
     ExFreePoolWithTag(buffer, SAFEUPLOAD_POOL_TAG);
     return status;
 }
 
 static NTSTATUS StageCanaryVerifyDescriptor(_In_ PFLT_INSTANCE Instance, _In_ PFILE_OBJECT FileObject,
-    _Out_writes_bytes_(STAGE_CANARY_SD_BYTES) PUCHAR buffer)
+    _Out_writes_bytes_(STAGE_CANARY_SD_BYTES) PUCHAR buffer, _Out_ PULONG Reason)
 {
     PSECURITY_DESCRIPTOR descriptor = (PSECURITY_DESCRIPTOR)buffer;
     SECURITY_DESCRIPTOR_CONTROL control = 0;
@@ -263,17 +268,22 @@ static NTSTATUS StageCanaryVerifyDescriptor(_In_ PFLT_INSTANCE Instance, _In_ PF
     NTSTATUS status;
 
     PAGED_CODE();
+    *Reason = 1;
     NT_ASSERT(KeGetCurrentIrql() == PASSIVE_LEVEL);
     RtlZeroMemory(buffer, STAGE_CANARY_SD_BYTES);
     status = FltQuerySecurityObject(Instance, FileObject,
         OWNER_SECURITY_INFORMATION | GROUP_SECURITY_INFORMATION | DACL_SECURITY_INFORMATION,
         descriptor, STAGE_CANARY_SD_BYTES, &needed);
-    if (status != STATUS_SUCCESS || needed > STAGE_CANARY_SD_BYTES ||
-        !RtlValidRelativeSecurityDescriptor(descriptor, needed,
+    /* LengthNeeded is only meaningful when the buffer is too small; on success validate every
+     * component offset against the whole buffer instead. */
+    if (status != STATUS_SUCCESS) return STATUS_INVALID_SECURITY_DESCR;
+    *Reason = 2;
+    if (!RtlValidRelativeSecurityDescriptor(descriptor, STAGE_CANARY_SD_BYTES,
             OWNER_SECURITY_INFORMATION | GROUP_SECURITY_INFORMATION | DACL_SECURITY_INFORMATION)) {
         return STATUS_INVALID_SECURITY_DESCR;
     }
 
+    *Reason = 3;
     /* RtlGetControlSecurityDescriptor is not declared for kernel mode; the header of the
      * validated self-relative descriptor carries the same revision and control fields. */
     revision = ((PISECURITY_DESCRIPTOR_RELATIVE)descriptor)->Revision;
@@ -282,21 +292,25 @@ static NTSTATUS StageCanaryVerifyDescriptor(_In_ PFLT_INSTANCE Instance, _In_ PF
         !FlagOn(control, SE_DACL_PRESENT) || !FlagOn(control, SE_DACL_PROTECTED)) {
         return STATUS_INVALID_SECURITY_DESCR;
     }
+    *Reason = 4;
     status = RtlGetOwnerSecurityDescriptor(descriptor, &owner, &ownerDefaulted);
     if (!NT_SUCCESS(status) || owner == NULL || !RtlValidSid(owner) ||
         !RtlEqualSid(owner, SeExports->SeLocalSystemSid)) {
         return STATUS_INVALID_SECURITY_DESCR;
     }
+    *Reason = 5;
     status = RtlGetGroupSecurityDescriptor(descriptor, &group, &groupDefaulted);
     if (!NT_SUCCESS(status) || group == NULL || !RtlValidSid(group) ||
         !RtlEqualSid(group, SeExports->SeLocalSystemSid)) {
         return STATUS_INVALID_SECURITY_DESCR;
     }
+    *Reason = 6;
     status = RtlGetDaclSecurityDescriptor(descriptor, &daclPresent, &dacl, &daclDefaulted);
     /* RtlValidRelativeSecurityDescriptor above already validated this ACL against the buffer. */
     if (!NT_SUCCESS(status) || !daclPresent || dacl == NULL || dacl->AceCount != 1) {
         return STATUS_INVALID_SECURITY_DESCR;
     }
+    *Reason = 7;
     status = RtlGetAce(dacl, 0, &ace);
     if (!NT_SUCCESS(status) || ace == NULL) return STATUS_INVALID_SECURITY_DESCR;
     if (((PACE_HEADER)ace)->AceType != ACCESS_ALLOWED_ACE_TYPE ||
@@ -305,6 +319,7 @@ static NTSTATUS StageCanaryVerifyDescriptor(_In_ PFLT_INSTANCE Instance, _In_ PF
         return STATUS_INVALID_SECURITY_DESCR;
     }
     {
+        *Reason = 8;
         PACCESS_ALLOWED_ACE allowed = (PACCESS_ALLOWED_ACE)ace;
         PSID trustee = (PSID)&allowed->SidStart;
 
@@ -323,6 +338,7 @@ static NTSTATUS StageCanaryVerifyDescriptor(_In_ PFLT_INSTANCE Instance, _In_ PF
     UNREFERENCED_PARAMETER(groupDefaulted);
     UNREFERENCED_PARAMETER(daclDefaulted);
     UNREFERENCED_PARAMETER(needed);
+    *Reason = 0;
     return STATUS_SUCCESS;
 }
 
@@ -649,6 +665,7 @@ static VOID StageCanaryRun(_In_ PFLT_INSTANCE Instance, _Inout_ PSAFEUPLOAD_INST
     PFILE_OBJECT fileObject = NULL;
     LARGE_INTEGER delay;
     UINT32 checks = 0, step = 1;
+    ULONG securityReason = 0;
     ULONG returned = 0;
     ULONG attempt;
     NTSTATUS status, cleanupStatus = STATUS_SUCCESS;
@@ -714,8 +731,8 @@ static VOID StageCanaryRun(_In_ PFLT_INSTANCE Instance, _Inout_ PSAFEUPLOAD_INST
     /* This readback is deliberately the first post-create operation: no EOF, identity, or
      * section work can make a volume trusted before NTFS's applied owner/group/DACL is checked. */
     step = 5;
-    status = StageCanaryVerifySecurity(Instance, fileObject);
-    if (!NT_SUCCESS(status)) goto Exit;
+    status = StageCanaryVerifySecurity(Instance, fileObject, &securityReason);
+    if (!NT_SUCCESS(status)) { step = 50 + securityReason; goto Exit; }
     checks |= SAFEUPLOAD_CANARY_DACL_VERIFIED;
     if (io.Information != FILE_CREATED) { status = STATUS_DATA_ERROR; goto Exit; }
 #if SAFEUPLOAD_STAGING_PROTOTYPE
