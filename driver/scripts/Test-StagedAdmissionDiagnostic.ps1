@@ -996,7 +996,7 @@ function ConvertTo-NormalizedHex([string] $Value) {
 $script:LightEntryPattern = [regex]('^\{"sequence":(\d+),"timestamp":(\d+),"event":"(\w+)","pid":(\d+),"irql":(\d+),' +
     '"instance":"[^"]*","targetFileObject":"(0x[0-9A-Fa-f]+)","sectionObjectPointer":"(0x[0-9A-Fa-f]+)",' +
     '"major":(\d+),"minor":(\d+),"irpFlags":"(0x[0-9A-Fa-f]+)","mmDoes":"(\w+)".*"syncType":(\d+),' +
-    '"pageProtection":"(0x[0-9A-Fa-f]+)"(?:.*"writeObjects":(\d+),"writersUntracked":(true|false))?')
+    '"pageProtection":"(0x[0-9A-Fa-f]+)"(?:.*"writeObjects":(\d+),"writersUntracked":(true|false))?(?:,"inFlightSections":(\d+))?')
 
 function Get-LightTrace($InspectorResult, [string] $RawPath) {
     # Cheap parse for dumps of thousands of lines; the raw dump is kept as evidence.
@@ -1030,6 +1030,7 @@ function Get-LightTrace($InspectorResult, [string] $RawPath) {
             Prot = [Convert]::ToUInt32($g[13].Value.Substring(2), 16)
             Writers = $(if ($g[14].Success) { [int]$g[14].Value } else { 0 })
             WritersUntracked = ($g[15].Success -and $g[15].Value -eq 'true')
+            InFlightSections = $(if ($g[16].Success) { [Int64]$g[16].Value } else { -1 })
         })
     }
     if ($null -eq $summary) {
@@ -1253,6 +1254,39 @@ public static class SafeUploadSectionStress
             CloseHandle(mapping);
             return 0;
         }
+    }
+
+    // All threads map the SAME file object. Mixed protections exercise release pairing without
+    // the incidental isolation provided by a separate FileStream for every mapping.
+    public static int RunSharedFileObject(string path, int threads, int iterations)
+    {
+        int failures = 0;
+        using (FileStream f = new FileStream(path, FileMode.Open, FileAccess.ReadWrite, FileShare.ReadWrite | FileShare.Delete))
+        using (ManualResetEvent start = new ManualResetEvent(false))
+        {
+            IntPtr file = f.SafeFileHandle.DangerousGetHandle();
+            Thread[] workers = new Thread[threads];
+            for (int t = 0; t < threads; t++)
+            {
+                workers[t] = new Thread(delegate ()
+                {
+                    start.WaitOne();
+                    for (int i = 0; i < iterations; i++)
+                    {
+                        foreach (uint protection in new uint[] { 0x04, 0x02 })
+                        {
+                            IntPtr mapping = CreateFileMappingW(file, IntPtr.Zero, protection, 0, 4096, null);
+                            if (mapping == IntPtr.Zero) Interlocked.Increment(ref failures);
+                            else if (!CloseHandle(mapping)) Interlocked.Increment(ref failures);
+                        }
+                    }
+                });
+                workers[t].Start();
+            }
+            start.Set();
+            foreach (Thread w in workers) w.Join();
+        }
+        return failures;
     }
 }
 '@
@@ -2122,13 +2156,22 @@ public static class SafeUploadEolNative
             # Failure injection: a writable mapping of an empty file with no size fails inside Mm.
             $failed = 0
             for ($i = 0; $i -lt 20; $i++) {
-                if ([SafeUploadSectionStress]::TryEmptyFileMapping($emptyFile) -eq 0) { $failed++ }
+                if ([SafeUploadSectionStress]::TryEmptyFileMapping($emptyFile) -eq 1006) { $failed++ }
             }
             $s3 = Get-WriterStateStats
             Write-Output ('X3_InjectedFailures=attempts:20;failedAsExpected:' + $failed +
                 ';insertedDelta:' + ([int64]$s3.sectionInFlightInserted - [int64]$s2.sectionInFlightInserted) +
                 ';releasedDelta:' + ([int64]$s3.sectionInFlightReleased - [int64]$s2.sectionInFlightReleased) +
                 ';removedOnFailureDelta:' + ([int64]$s3.sectionInFlightRemovedOnFailure - [int64]$s2.sectionInFlightRemovedOnFailure))
+            # A failed CreateFileMapping can still have a successful acquire followed by release.
+            # Count the callback path separately so this does not qualify failed-acquire cleanup.
+            Write-Output ('X3_FailedAcquireCoverage=' + $(if ([int64]$s3.sectionInFlightRemovedOnFailure -gt [int64]$s2.sectionInFlightRemovedOnFailure) { 'EXERCISED' } else { 'NOT_EXERCISED' }))
+
+            $shared = [SafeUploadSectionStress]::RunSharedFileObject($stormFiles[0], 8, 300)
+            $sharedStats = Get-WriterStateStats
+            $sharedTracked = [int64]$sharedStats.sectionInFlightInserted - [int64]$s3.sectionInFlightInserted
+            Write-Output ('X3_SharedFileObject=failures:' + $shared + ';writableSections:2400;readOnlySections:2400;insertedDelta:' + $sharedTracked +
+                ';releasedDelta:' + ([int64]$sharedStats.sectionInFlightReleased - [int64]$s3.sectionInFlightReleased))
 
             Start-Sleep -Seconds 3
             $s4 = Get-WriterStateStats
@@ -2138,8 +2181,9 @@ public static class SafeUploadEolNative
             [void](Invoke-AdmissionProbe $stormFiles[0] 'X3_Probe' $t)
             $traceX = Get-LightTrace (Invoke-InspectorChecked -Arguments @('--admission-trace') -Timeout $t) $rawTraceA
             $probeX = @($traceX.Entries | Where-Object { $_.Ev -eq 'explicit_probe' })
-            $probeText = if ($probeX.Count -eq 1) { 'inFlightForProbedStream_see_raw_dump' } else { 'AMBIGUOUS' }
+            $probeText = if ($probeX.Count -eq 1) { [string]$probeX[0].InFlightSections } else { 'AMBIGUOUS' }
             Write-Output ('X3_Probe=' + $probeText + ';mmDoes:' + $(if ($probeX.Count -eq 1) { $probeX[0].MmDoes } else { 'n/a' }))
+            $probeOk = ($probeX.Count -eq 1 -and $probeX[0].InFlightSections -eq 0 -and $probeX[0].MmDoes -eq 'no')
 
             $conserved = ([int64]$s4.sectionInFlightInserted - [int64]$s4.sectionInFlightReleased - [int64]$s4.sectionInFlightRemovedOnFailure - [int64]$s4.sectionInFlightNow)
             $tracked = ([int64]$s2.sectionInFlightInserted - [int64]$s1.sectionInFlightInserted)
@@ -2149,7 +2193,8 @@ public static class SafeUploadEolNative
             $traceEnabled = $false
             # The storm creates 2400 writable sections; other processes may add a few. Read-only sections must not be tracked.
             $ok = ($conserved -eq 0) -and ([int64]$s4.sectionInFlightOverflow -eq 0) -and ([int64]$s4.sectionInFlightStuck -eq 0) -and
-                ([int64]$s4.sectionInFlightNow -le 2) -and ($tracked -ge 2400) -and ($tracked -lt 3000) -and ($storm -eq 0)
+                ([int64]$s4.sectionInFlightNow -eq 0) -and ($tracked -ge 2400) -and ($tracked -lt 3000) -and ($storm -eq 0) -and
+                ($single -eq 0) -and ($failed -eq 20) -and ($shared -eq 0) -and ($sharedTracked -ge 2400) -and ($sharedTracked -lt 3000) -and $probeOk
             Write-Output ('X3_Result=' + $(if ($ok) { 'PASS' } else { 'FAIL' }))
             $runSucceeded = $ok
         }

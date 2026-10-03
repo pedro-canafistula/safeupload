@@ -604,6 +604,8 @@ typedef struct _SAFEUPLOAD_WRITER_STATE_STATUS {
 
 /* A probe entry's AdmissionRecordState carries H(F) of the probed stream; this bit marks a lower bound. */
 #define SAFEUPLOAD_WRITERS_UNTRACKED_BIT ((UINT32)0x80000000)
+/* A probe entry's SetupFlags carries C(F); unknown identity or pairing overflow sets this bit. */
+#define SAFEUPLOAD_SECTIONS_UNTRACKED_BIT ((UINT32)0x80000000)
 
 // A zero cursor and snapshot request a snapshot of all entries retained now.
 // Later requests pass the returned NextCursor and SnapshotSequence.

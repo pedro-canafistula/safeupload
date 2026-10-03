@@ -1918,6 +1918,7 @@ NTSTATUS SafeUploadStageInitialize(VOID)
     status = ExInitializeResourceLite(&StageNamespaceResource);
     if (NT_SUCCESS(status)) {
 #if SAFEUPLOAD_STAGING_PROTOTYPE
+        SafeUploadStageWritersInitialize();
         status = SafeUploadStageFenceInitialize();
         if (!NT_SUCCESS(status)) return status;
         ExInitializeFastMutex(&AdmissionTraceControlMutex);
@@ -2582,7 +2583,7 @@ FLT_PREOP_CALLBACK_STATUS SafeUploadStageDispatch(PFLT_CALLBACK_DATA Data,
 {
     FLT_PREOP_CALLBACK_STATUS result;
 #if SAFEUPLOAD_STAGING_PROTOTYPE
-    BOOLEAN sectionInFlight = FALSE;
+    PVOID sectionInFlight = NULL;
 #endif
     *CompletionContext = NULL;
     /* This fence MUST precede all legacy taint/context/policy callbacks. */
@@ -2737,7 +2738,7 @@ FLT_PREOP_CALLBACK_STATUS SafeUploadStageDispatch(PFLT_CALLBACK_DATA Data,
         }
         if (sectionInFlight) {
             /* A post-operation callback removes the entry if the acquire fails below us (no release follows). */
-            *CompletionContext = SAFEUPLOAD_SECTION_ACQUIRE_CONTEXT;
+            *CompletionContext = sectionInFlight;
             return FLT_PREOP_SUCCESS_WITH_CALLBACK;
         }
 #endif
@@ -2751,9 +2752,11 @@ FLT_POSTOP_CALLBACK_STATUS SafeUploadStagePostOperation(PFLT_CALLBACK_DATA Data,
     PCFLT_RELATED_OBJECTS Objects, PVOID CompletionContext, FLT_POST_OPERATION_FLAGS Flags)
 {
 #if SAFEUPLOAD_STAGING_PROTOTYPE
-    if (CompletionContext == SAFEUPLOAD_SECTION_ACQUIRE_CONTEXT) {
+    if (Data->Iopb->MajorFunction == IRP_MJ_ACQUIRE_FOR_SECTION_SYNCHRONIZATION && CompletionContext != NULL) {
         /* The acquire failed below us: no release follows, so drop the in-flight entry here. */
-        if (!NT_SUCCESS(Data->IoStatus.Status)) SafeUploadStageSectionAcquireFailed(Data);
+        if (!FlagOn(Flags, FLTFL_POST_OPERATION_DRAINING) && !NT_SUCCESS(Data->IoStatus.Status)) {
+            SafeUploadStageSectionAcquireFailed(CompletionContext);
+        }
         return FLT_POSTOP_FINISHED_PROCESSING;
     }
 #endif

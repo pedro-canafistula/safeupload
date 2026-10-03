@@ -9,7 +9,10 @@ if len(sys.argv) != 2 or sys.argv[1] not in {"192.168.122.51", "192.168.122.210"
 script = sys.stdin.read()
 if not script.strip():
     raise SystemExit("No PowerShell input")
-command = "powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand " + base64.b64encode(script.encode("utf-16le")).decode()
+script = "$global:ProgressPreference = 'SilentlyContinue'\n" + script
+# Suppress module progress globally and request text when OpenSSH invokes a PowerShell shell,
+# keeping serialized progress records from interleaving with stdout evidence.
+command = "powershell.exe -NoProfile -NonInteractive -OutputFormat Text -ExecutionPolicy Bypass -EncodedCommand " + base64.b64encode(script.encode("utf-16le")).decode()
 raise SystemExit(subprocess.call([
     "ssh", "-F", "/dev/null", "-i", "/home/victor/.ssh/id_ed25519",
     "-o", "BatchMode=yes", "-o", "ConnectTimeout=10", "-o", "LogLevel=ERROR", "-o", "StrictHostKeyChecking=accept-new",

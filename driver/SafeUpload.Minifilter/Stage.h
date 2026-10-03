@@ -60,10 +60,10 @@ VOID SafeUploadStageWritersPostCreate(_In_ PFLT_CALLBACK_DATA Data, _In_ PCFLT_R
     _In_ FLT_POST_OPERATION_FLAGS Flags);
 VOID SafeUploadStageWritersOnCleanup(_In_ PFLT_CALLBACK_DATA Data, _In_ PCFLT_RELATED_OBJECTS FltObjects);
 UINT32 SafeUploadStageWritersSnapshot(_In_ PFLT_INSTANCE Instance, _In_ PFILE_OBJECT FileObject);
-/* C(F): writable CreateSections acquired and not yet released (lock-free table, observe-only). */
-#define SAFEUPLOAD_SECTION_ACQUIRE_CONTEXT ((PVOID)(ULONG_PTR)0x2000)
-BOOLEAN SafeUploadStageSectionAcquired(_In_ PFLT_CALLBACK_DATA Data);
-VOID SafeUploadStageSectionAcquireFailed(_In_ PFLT_CALLBACK_DATA Data);
+/* C(F): writable CreateSections acquired and not yet released (observe-only). */
+VOID SafeUploadStageWritersInitialize(VOID);
+PVOID SafeUploadStageSectionAcquired(_In_ PFLT_CALLBACK_DATA Data);
+VOID SafeUploadStageSectionAcquireFailed(_In_ PVOID CompletionContext);
 VOID SafeUploadStageSectionReleased(_In_ PFLT_CALLBACK_DATA Data);
 UINT32 SafeUploadStageSectionsInFlight(_In_opt_ PVOID SectionObjectPointer);
 VOID SafeUploadStageWritersGetStatus(_Out_ PSAFEUPLOAD_WRITER_STATE_STATUS Status);
