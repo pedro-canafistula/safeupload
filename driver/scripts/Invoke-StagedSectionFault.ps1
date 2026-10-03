@@ -606,7 +606,19 @@ function Invoke-SectionTeardownScenario {
             $reattachEntry.canaryStatus -eq 0 -and $reattachSetupSeen -and $null -ne $reattachCanary -and
             $null -ne $reattachCanaryAck -and $reattachCanaryAck.status -eq '0x00000000'
         [void](Add-STOutcome 'FreshVhdxCanaryAfterReattach' $reattachCanaryOk ('sameGuid:{'+$script:STVhdxGuid+'};instanceSetupEvent:'+$reattachSetupSeen+';oldInstance:'+$(if($entryBeforeDismount){$entryBeforeDismount.instance}else{'missing'})+';newInstance:'+$(if($reattachEntry){$reattachEntry.instance}else{'missing'})+';canaryState:'+$(if($reattachEntry){$reattachEntry.canaryState}else{'missing'})+';canaryChecks:'+$(if($reattachEntry){$reattachEntry.canaryChecks}else{'missing'})+';canaryStatus:'+$(if($reattachEntry){$reattachEntry.canaryStatus}else{'missing'})))
-        if(-not $reattachCanaryOk){throw 'Reattached VHDX instance did not pass its new canary.'}
+        if(-not $reattachCanaryOk){
+            # Run 5: no new instance for the reattached GUID within 35 s. Capture direct evidence before failing.
+            try {
+                $fm=Invoke-STNative 'fltmc.exe' 'instances' 20
+                $result.ReattachFltmcInstances=$fm.Output
+                $result.ReattachFltmcVolumes=(Invoke-STNative 'fltmc.exe' 'volumes' 20).Output
+                $result.ReattachVolumeStatusRaw=(Get-STGlobalStatus|ConvertTo-Json -Depth 6 -Compress)
+                $setupRows=@(Get-STTraceRows ('reattach-diag-'+[guid]::NewGuid().ToString('N'))|Where-Object event -eq 'instance_setup')
+                $result.ReattachInstanceSetupEvents=@($setupRows|ForEach-Object {$_|ConvertTo-Json -Compress})
+                $result.ReattachSVolume=(@(Get-CimInstance Win32_Volume -Filter "DriveLetter='S:'")|Select-Object DeviceID,DriveType,FileSystem|ConvertTo-Json -Compress)
+            } catch {$result.Errors+=('Reattach diagnostics: '+$_.Exception.Message)}
+            throw 'Reattached VHDX instance did not pass its new canary.'
+        }
 
         $primaryWriteAfterReattach=[SafeUploadSectionFaultRetainedWriter]::TryWrite($script:STVhdxFile.SafeFileHandle,$dismountWritePayload)
         $secondaryWriteAfterReattach=$script:STSecondWriter.AttemptWrite($dismountWritePayload)
