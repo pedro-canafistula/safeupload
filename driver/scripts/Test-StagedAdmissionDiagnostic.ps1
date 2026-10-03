@@ -1,6 +1,6 @@
 param(
     [Parameter(Mandatory = $true)]
-    [ValidateSet('preattach-immediate', 'preattach-protected-open', 'mmdoes-matrix', 'policy-transition', 'retained-section', 'section-eol', 'writer-count', 'section-inflight', 'section-lower', 'writer-fault', 'All')]
+    [ValidateSet('preattach-immediate', 'preattach-protected-open', 'mmdoes-matrix', 'policy-transition', 'retained-section', 'section-eol', 'writer-count', 'section-inflight', 'section-lower', 'writer-fault', 'primitive-cost', 'All')]
     [string] $Variant,
 
     [Parameter(Mandatory = $true)]
@@ -1719,6 +1719,273 @@ public static class SafeUploadWriterIo
     if (-not ('SafeUploadWriterIo' -as [type])) { Add-Type -TypeDefinition $script:WriterIoSource }
 }
 
+function Initialize-PrimitiveCost {
+    # Like WriterIo, compile command-driven child processes before attachment. No fixture opens at READY.
+    $script:PrimitiveCostSource = @'
+using System;
+using System.ComponentModel;
+using System.Diagnostics;
+using System.Globalization;
+using System.IO;
+using System.Runtime.InteropServices;
+using System.Text;
+
+public static class SafeUploadPrimitiveCost
+{
+    const int Warmup = 2000, Measured = 20000, PhaseMilliseconds = 580000;
+    const uint Read = 0x80000000, Write = 0x40000000;
+    static readonly IntPtr Invalid = new IntPtr(-1);
+    [DllImport("kernel32.dll", CharSet=CharSet.Unicode, SetLastError=true)]
+    static extern IntPtr CreateFileW(string path, uint access, uint share, IntPtr security,
+        uint disposition, uint flags, IntPtr template);
+    [DllImport("kernel32.dll", SetLastError=true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    static extern bool CloseHandle(IntPtr handle);
+    [DllImport("kernel32.dll", SetLastError=true)]
+    static extern IntPtr CreateFileMappingW(IntPtr file, IntPtr security, uint protection,
+        uint sizeHigh, uint sizeLow, IntPtr name);
+    [DllImport("kernel32.dll", SetLastError=true)]
+    static extern IntPtr MapViewOfFile(IntPtr mapping, uint access, uint offsetHigh,
+        uint offsetLow, UIntPtr length);
+    [DllImport("kernel32.dll", SetLastError=true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    static extern bool UnmapViewOfFile(IntPtr view);
+    [DllImport("kernel32.dll", SetLastError=true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    static extern bool WriteFile(IntPtr file, IntPtr buffer, uint size, out uint written, IntPtr overlapped);
+    [DllImport("kernel32.dll", SetLastError=true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    static extern bool SetFilePointerEx(IntPtr file, long distance, out long position, uint method);
+    [DllImport("kernel32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    static extern bool QueryPerformanceCounter(out long value);
+    [DllImport("kernel32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    static extern bool QueryPerformanceFrequency(out long value);
+
+    static long Counter() {
+        long value;
+        if (!QueryPerformanceCounter(out value)) throw new InvalidOperationException("QPC failed");
+        return value;
+    }
+    static IntPtr Open(string path, uint access) {
+        IntPtr handle = CreateFileW(path, access, 7, IntPtr.Zero, 3, 0x80, IntPtr.Zero);
+        if (handle == Invalid) throw new Win32Exception(Marshal.GetLastWin32Error(), "CreateFileW");
+        return handle;
+    }
+    static void Close(IntPtr handle) {
+        if (!CloseHandle(handle)) throw new Win32Exception(Marshal.GetLastWin32Error(), "CloseHandle");
+    }
+    static void Unmap(IntPtr view) {
+        if (!UnmapViewOfFile(view)) throw new Win32Exception(Marshal.GetLastWin32Error(), "UnmapViewOfFile");
+    }
+    static string Summary(long[] ticks, long frequency) {
+        Array.Sort(ticks);
+        // Nearest-rank percentiles, using the complete measured array, without interpolation.
+        return "n:" + ticks.Length.ToString(CultureInfo.InvariantCulture) +
+            ";minTicks:" + ticks[0].ToString(CultureInfo.InvariantCulture) +
+            ";p50Ticks:" + ticks[(ticks.Length * 50 / 100) - 1].ToString(CultureInfo.InvariantCulture) +
+            ";p95Ticks:" + ticks[(ticks.Length * 95 / 100) - 1].ToString(CultureInfo.InvariantCulture) +
+            ";p99Ticks:" + ticks[(ticks.Length * 99 / 100) - 1].ToString(CultureInfo.InvariantCulture) +
+            ";maxTicks:" + ticks[ticks.Length - 1].ToString(CultureInfo.InvariantCulture) +
+            ";frequency:" + frequency.ToString(CultureInfo.InvariantCulture);
+    }
+    static string Measure(string path, string operation) {
+        bool create = operation == "create_write" || operation == "create_read" || operation == "create_attr";
+        bool section = operation == "section_write" || operation == "section_read";
+        bool write = operation == "write_cached";
+        if (!create && !section && !write) throw new ArgumentException("Unknown cost operation");
+        long frequency;
+        if (!QueryPerformanceFrequency(out frequency) || frequency <= 0)
+            throw new InvalidOperationException("QPF failed");
+        long[] samples = new long[Measured];
+        long[] createOnly = operation == "create_write" ? new long[Measured] : null;
+        // Both section controls use an already-open writable handle; only mapping protection changes.
+        uint access = (operation == "create_write" || section || write) ? Read | Write :
+            (operation == "create_attr" ? 0x100U : Read);
+        IntPtr file = Invalid, buffer = IntPtr.Zero;
+        try {
+            if (!create) file = Open(path, access);
+            if (write) {
+                buffer = Marshal.AllocHGlobal(4096);
+                byte[] data = new byte[4096];
+                for (int i = 0; i < data.Length; i++) data[i] = 0x5a;
+                Marshal.Copy(data, 0, buffer, data.Length);
+            }
+            // No managed allocations, sleeping, flushing or sample formatting in the successful loop.
+            for (int i = 0; i < Warmup + Measured; i++) {
+                long begin, end, opened = 0;
+                if (create) {
+                    IntPtr current = Invalid;
+                    begin = Counter();
+                    try {
+                        current = Open(path, access);
+                        if (createOnly != null) opened = Counter();
+                    } finally { if (current != Invalid) Close(current); }
+                    end = Counter();
+                } else if (section) {
+                    IntPtr mapping = IntPtr.Zero, view = IntPtr.Zero;
+                    begin = Counter();
+                    try {
+                        mapping = CreateFileMappingW(file, IntPtr.Zero,
+                            operation == "section_write" ? 0x04U : 0x02U, 0, 4096, IntPtr.Zero);
+                        if (mapping == IntPtr.Zero)
+                            throw new Win32Exception(Marshal.GetLastWin32Error(), "CreateFileMappingW");
+                        view = MapViewOfFile(mapping, operation == "section_write" ? 0x02U : 0x04U,
+                            0, 0, new UIntPtr(4096U));
+                        if (view == IntPtr.Zero)
+                            throw new Win32Exception(Marshal.GetLastWin32Error(), "MapViewOfFile");
+                    } finally {
+                        try { if (view != IntPtr.Zero) Unmap(view); }
+                        finally { if (mapping != IntPtr.Zero) Close(mapping); }
+                    }
+                    end = Counter();
+                } else {
+                    // Reuse the same 4 KiB extent. Seek is outside the timed WriteFile call.
+                    long position;
+                    if (!SetFilePointerEx(file, 0, out position, 0))
+                        throw new Win32Exception(Marshal.GetLastWin32Error(), "SetFilePointerEx");
+                    uint written;
+                    begin = Counter();
+                    bool ok = WriteFile(file, buffer, 4096, out written, IntPtr.Zero);
+                    end = Counter();
+                    if (!ok) throw new Win32Exception(Marshal.GetLastWin32Error(), "WriteFile");
+                    if (written != 4096) throw new IOException("Short cached WriteFile");
+                }
+                if (end < begin || (createOnly != null && (opened < begin || end < opened)))
+                    throw new InvalidOperationException("QPC moved backwards");
+                if (i >= Warmup) {
+                    samples[i - Warmup] = end - begin;
+                    if (createOnly != null) createOnly[i - Warmup] = opened - begin;
+                }
+            }
+        } finally {
+            try { if (file != Invalid) Close(file); }
+            finally { if (buffer != IntPtr.Zero) Marshal.FreeHGlobal(buffer); }
+        }
+        return Summary(samples, frequency) + (createOnly == null ? "" : "|" + Summary(createOnly, frequency));
+    }
+    public static void Serve(string path) {
+        string decision;
+        using (Process self = Process.GetCurrentProcess()) {
+            ulong allowed = unchecked((ulong)self.ProcessorAffinity.ToInt64());
+            if (allowed == 0) throw new InvalidOperationException("Empty allowed CPU affinity");
+            ulong single = allowed & unchecked(~allowed + 1UL);
+            IntPtr affinity = IntPtr.Size == 8 ? new IntPtr(unchecked((long)single)) :
+                new IntPtr(unchecked((int)single));
+            self.ProcessorAffinity = affinity;
+            self.PriorityClass = ProcessPriorityClass.Normal;
+            if (self.ProcessorAffinity != affinity || self.PriorityClass != ProcessPriorityClass.Normal)
+                throw new InvalidOperationException("CPU affinity or priority readback mismatch");
+            decision = "affinityMask:0x" + single.ToString("X", CultureInfo.InvariantCulture) +
+                ";selection:lowestAllowedLogicalProcessorInCurrentGroup;priority:Normal;processorCount:" +
+                Environment.ProcessorCount.ToString(CultureInfo.InvariantCulture);
+        }
+        Console.Out.WriteLine("READY " + decision); Console.Out.Flush();
+        string line;
+        while ((line = Console.In.ReadLine()) != null && line != "EXIT") {
+            // Reply only after every handle/view for this operation has been released: helper is idle.
+            Console.Out.WriteLine("OK " + Measure(path, line)); Console.Out.Flush();
+        }
+    }
+    public sealed class Session : IDisposable
+    {
+        Process process;
+        bool started, aborted;
+        Stopwatch phase;
+        readonly StringBuilder stderr = new StringBuilder();
+        public string ReadyInfo { get; private set; }
+        public static Session Start(string executable, string source, string fixture) {
+            Session session = new Session();
+            try {
+                string code = "$ErrorActionPreference='Stop'; try { Add-Type -Path '" + source.Replace("'", "''") +
+                    "'; [SafeUploadPrimitiveCost]::Serve('" + fixture.Replace("'", "''") +
+                    "') } catch { [Console]::Out.WriteLine('ERROR '+$_.Exception.ToString()); exit 2 }";
+                ProcessStartInfo start = new ProcessStartInfo(executable,
+                    "-NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand " +
+                    Convert.ToBase64String(Encoding.Unicode.GetBytes(code)));
+                start.UseShellExecute = false; start.CreateNoWindow = true;
+                start.RedirectStandardInput = true; start.RedirectStandardOutput = true; start.RedirectStandardError = true;
+                session.process = new Process(); session.process.StartInfo = start;
+                session.process.ErrorDataReceived += delegate (object sender, DataReceivedEventArgs e) {
+                    if (e.Data != null) lock (session.stderr) { session.stderr.AppendLine(e.Data); }
+                };
+                if (!session.process.Start()) throw new InvalidOperationException("Cost worker did not start");
+                session.started = true; session.process.BeginErrorReadLine();
+                string hello = session.Receive(30000);
+                if (!hello.StartsWith("READY ")) throw new InvalidOperationException("Cost worker not READY: " + hello);
+                session.ReadyInfo = hello.Substring(6);
+                return session;
+            } catch (Exception failure) {
+                try { try { session.Kill(); } finally { session.Dispose(); } }
+                catch (Exception cleanup) { throw new AggregateException(failure, cleanup); }
+                throw;
+            }
+        }
+        string Receive(int milliseconds) {
+            var read = process.StandardOutput.ReadLineAsync();
+            if (!read.Wait(milliseconds)) throw new TimeoutException("Primitive cost worker response");
+            string line = read.Result;
+            if (line == null) {
+                lock (stderr) { throw new InvalidOperationException("Cost worker exited: " + stderr); }
+            }
+            return line;
+        }
+        void Kill() {
+            aborted = true;
+            if (process != null && started && !process.HasExited) {
+                process.Kill();
+                if (!process.WaitForExit(10000)) throw new TimeoutException("Cost worker termination");
+            }
+        }
+        public void BeginPhase() { phase = Stopwatch.StartNew(); }
+        public string Request(string operation) {
+            if (process == null || phase == null) throw new InvalidOperationException("Cost phase unavailable");
+            try {
+                int remaining = PhaseMilliseconds - (int)Math.Min(phase.ElapsedMilliseconds, PhaseMilliseconds);
+                if (remaining <= 0) throw new TimeoutException("Primitive cost phase deadline");
+                process.StandardInput.WriteLine(operation); process.StandardInput.Flush();
+                string result = Receive(remaining);
+                if (!result.StartsWith("OK ")) throw new InvalidOperationException(result);
+                if (phase.ElapsedMilliseconds >= PhaseMilliseconds)
+                    throw new TimeoutException("Primitive cost phase deadline");
+                return result.Substring(3);
+            } catch (Exception failure) {
+                // Kill immediately on timeout/error, including a native call stuck inside the child.
+                try { try { Kill(); } finally { Dispose(); } }
+                catch (Exception cleanup) { throw new AggregateException(failure, cleanup); }
+                throw;
+            }
+        }
+        public void Dispose() {
+            if (process == null) return;
+            try {
+                if (started && !process.HasExited) {
+                    // A failed Kill already consumed its bounded wait; never wait/kill a second time.
+                    if (aborted) throw new TimeoutException("Cost worker did not terminate after Kill");
+                    try { process.StandardInput.WriteLine("EXIT"); process.StandardInput.Flush(); } catch { }
+                    if (!process.WaitForExit(5000)) {
+                        Kill();
+                        throw new TimeoutException("Cost worker required forced termination");
+                    }
+                }
+                if (started && !aborted && process.ExitCode != 0)
+                    throw new InvalidOperationException("Cost worker exit: " + process.ExitCode);
+            } finally {
+                try {
+                    if (started) {
+                        try { process.StandardInput.Dispose(); }
+                        finally { process.StandardOutput.Dispose(); }
+                    }
+                } finally { process.Dispose(); process = null; }
+            }
+        }
+    }
+}
+'@
+    if (-not ('SafeUploadPrimitiveCost' -as [type])) { Add-Type -TypeDefinition $script:PrimitiveCostSource }
+}
+
 $script:WriterChecks = New-Object System.Collections.ArrayList
 
 function Add-WriterProbe([string] $Path, [string] $Label, [int] $ExpectedWriters, [string] $ExpectedMmDoes = '') {
@@ -3018,6 +3285,158 @@ Start-Sleep -Seconds 300
             [void](Invoke-InspectorChecked -Arguments @('--admission-trace-disable') -Timeout $t)
             $traceEnabled = $false
             $runSucceeded = ($script:WriterChecksFailed -eq 0)
+        }
+        elseif ($SelectedVariant -eq 'primitive-cost') {
+            # X6: absolute latency budget, with original unloaded-driver B followed by feature-driver F.
+            # Helpers use the existing session cleanup list; the common restoration finally is unchanged.
+            $passed = 0
+            $failed = 0
+            try {
+                $t = $InspectorTimeoutSeconds
+                Initialize-PrimitiveCost
+                $costBPath = Join-Path $fixtureDirectory 'cost_baseline.maptest'
+                $costFPath = Join-Path $fixtureDirectory 'cost_feature.maptest'
+                $costSourcePath = Join-Path $fixtureDirectory 'cost-native.cs'
+                $fixturePaths += @($costBPath, $costFPath, $costSourcePath)
+                $costBytes = New-PaddedFixtureBytes ([Text.Encoding]::UTF8.GetBytes('COST BASELINE ' + $id))
+                foreach ($path in @($costBPath, $costFPath)) { [IO.File]::WriteAllBytes($path, $costBytes) }
+                [IO.File]::WriteAllText($costSourcePath, $script:PrimitiveCostSource)
+                foreach ($path in $fixturePaths) { Assert-ReparseFreeFixturePath $path }
+                $costDrive = [IO.DriveInfo]::new([IO.Path]::GetPathRoot($costBPath))
+                if ($costDrive.DriveType -ne [IO.DriveType]::Fixed -or $costDrive.DriveFormat -ne 'NTFS') {
+                    throw 'Primitive cost fixtures require a local fixed NTFS volume.'
+                }
+                Write-Output ('COST_ProcessorCount=' + [Environment]::ProcessorCount)
+                Write-Output ('COST_Fixtures=B:' + $costBPath + ';F:' + $costFPath + ';sizeBytes:' + $costBytes.Length)
+                Write-Output 'COST_Counts=warmupDiscarded:2000;measured:20000;totalPerOperation:22000'
+                Write-Output 'COST_Method=QPC;percentiles:nearestRank;phaseDeadlineMs:580000;killWaitMs:10000'
+                Write-Output 'COST_create_write_createOnly_Method=additionalQPCInsidePair;noTimerOverheadSubtraction'
+                Write-Output 'COST_write_cached_Method=4096Bytes;sameExtent;seekOutsideTimedCall;noFlush'
+                $costExecutable = Join-Path $PSHOME 'powershell.exe'
+                # Both sessions reach READY before B: no Add-Type/compiler/source I/O under the feature driver.
+                $costB = [SafeUploadPrimitiveCost+Session]::Start($costExecutable, $costSourcePath, $costBPath)
+                [void]$writerIoSessions.Add($costB)
+                $costF = [SafeUploadPrimitiveCost+Session]::Start($costExecutable, $costSourcePath, $costFPath)
+                [void]$writerIoSessions.Add($costF)
+                Write-Output ('COST_Helper_B=' + $costB.ReadyInfo)
+                Write-Output ('COST_Helper_F=' + $costF.ReadyInfo)
+                $costOperations = @('create_write', 'create_read', 'create_attr', 'section_write', 'section_read', 'write_cached')
+                $costReportedOperations = @($costOperations) + @('create_write_createOnly')
+                Write-Output ('COST_Order=' + ($costOperations -join ','))
+                $costResults = @{ B = @{}; F = @{} }
+                $costCulture = [Globalization.CultureInfo]::InvariantCulture
+                function Convert-CostSample([string] $Packet) {
+                    $values = @{}
+                    foreach ($field in $Packet.Split(';')) {
+                        $parts = $field.Split(':')
+                        if ($parts.Length -ne 2 -or $values.ContainsKey($parts[0])) { throw 'Malformed cost sample.' }
+                        $values[$parts[0]] = [long]::Parse($parts[1], $costCulture)
+                    }
+                    foreach ($key in @('n', 'frequency', 'minTicks', 'p50Ticks', 'p95Ticks', 'p99Ticks', 'maxTicks')) {
+                        if (-not $values.ContainsKey($key)) { throw ('Missing cost field: ' + $key) }
+                    }
+                    if ($values.n -ne 20000 -or $values.frequency -le 0) { throw 'Invalid cost sample counts/frequency.' }
+                    $stats = @{ n = $values.n }
+                    $previous = [long]-1
+                    foreach ($stat in @('min', 'p50', 'p95', 'p99', 'max')) {
+                        $ticks = $values[$stat + 'Ticks']
+                        if ($ticks -lt 0 -or $ticks -lt $previous) { throw 'Invalid cost sample ordering.' }
+                        $previous = $ticks
+                        # Keep unrounded decimal values for budgets, deltas and ratios. Format only for output.
+                        $stats[$stat + 'Us'] = [decimal]$ticks * [decimal]1000000 / [decimal]$values.frequency
+                    }
+                    return $stats
+                }
+                function Format-CostUs([decimal] $Value) { return $Value.ToString('F6', $costCulture) }
+                function Invoke-CostPhase($Session, [string] $Phase) {
+                    $Session.BeginPhase()
+                    foreach ($operation in $costOperations) {
+                        $packets = $Session.Request($operation).Split('|')
+                        $expectedPackets = if ($operation -eq 'create_write') { 2 } else { 1 }
+                        if ($packets.Length -ne $expectedPackets) { throw 'Unexpected cost sample packet count.' }
+                        for ($index = 0; $index -lt $packets.Length; $index++) {
+                            $label = if ($index -eq 0) { $operation } else { 'create_write_createOnly' }
+                            $stats = Convert-CostSample $packets[$index]
+                            $costResults[$Phase][$label] = $stats
+                            Write-Output ('COST_' + $label + '_' + $Phase + '=n:' + $stats.n +
+                                ';minUs:' + (Format-CostUs $stats.minUs) + ';p50Us:' + (Format-CostUs $stats.p50Us) +
+                                ';p95Us:' + (Format-CostUs $stats.p95Us) + ';p99Us:' + (Format-CostUs $stats.p99Us) +
+                                ';maxUs:' + (Format-CostUs $stats.maxUs))
+                        }
+                    }
+                }
+                Invoke-CostPhase $costB 'B'
+                $costB.Dispose()
+
+                # Same install/load/Verifier structure as writer-count. Do not change the baseline policy.
+                Backup-StagedTestDriver $backup
+                if ((Get-FileHash -LiteralPath $backup -Algorithm SHA256).Hash -ne $expectedOriginalDriver) {
+                    throw 'Durable restoration backup mismatch.'
+                }
+                $driverReplaced = $true
+                Copy-Item -LiteralPath $featureDriver -Destination $installedDriver -Force
+                if ((Get-FileHash -LiteralPath $installedDriver -Algorithm SHA256).Hash -ne $ExpectedFeatureSha256.ToUpperInvariant()) {
+                    throw 'Feature driver install hash mismatch.'
+                }
+                if ($Verifier) {
+                    & verifier.exe /volatile /flags 0x13B /adddriver SafeUpload.sys | Out-Host
+                    if ($LASTEXITCODE -ne 0) { throw 'Verifier enable failed.' }
+                    $verifierEnabled = $true
+                    Write-Output 'VerifierEnabled=volatile flags 0x13B'
+                }
+                Invoke-FeatureFilterLoad
+                $filterLoaded = $true
+                [void](Invoke-InspectorChecked -Arguments @('--admission-trace-clear') -Timeout $t)
+                [void](Invoke-InspectorChecked -Arguments @('--admission-trace-enable') -Timeout $t)
+                $traceEnabled = $true
+                [void](Invoke-InspectorChecked -Arguments @('--admission-trace-clear') -Timeout $t)
+                Wait-AdmissionCanary $costFPath $rawTraceA
+                [void](Invoke-InspectorChecked -Arguments @('--admission-trace-disable') -Timeout $t)
+                $traceEnabled = $false
+                Write-Output 'COST_TraceDuringF=DISABLED'
+                $costStatsBefore = Get-WriterStateStats
+                Invoke-CostPhase $costF 'F'
+                # OK arrives after native finally blocks. Keep the helper idle for the stats snapshot.
+                $costStatsAfter = Get-WriterStateStats
+                foreach ($stats in @($costStatsBefore, $costStatsAfter)) {
+                    foreach ($key in @('writeObjectsCounted', 'writeObjectsReleased', 'untrackedCreates')) {
+                        if ($null -eq $stats.$key) { throw ('Missing writer-state counter: ' + $key) }
+                    }
+                }
+                $costCounted = [long]$costStatsAfter.writeObjectsCounted - [long]$costStatsBefore.writeObjectsCounted
+                $costReleased = [long]$costStatsAfter.writeObjectsReleased - [long]$costStatsBefore.writeObjectsReleased
+                $costUntracked = [long]$costStatsAfter.untrackedCreates - [long]$costStatsBefore.untrackedCreates
+                $pathOk = $costCounted -ge 22000 -and $costCounted -eq $costReleased -and $costUntracked -eq 0
+                Write-Output ('COST_PathEvidence=countedDelta:' + $costCounted + ';releasedDelta:' + $costReleased +
+                    ';untrackedCreatesDelta:' + $costUntracked + ';minimumCounted:22000;balanceTolerance:0;' +
+                    $(if ($pathOk) { 'PASS' } else { 'FAIL' }))
+                if ($pathOk) { $passed++ } else { $failed++ }
+                $costF.Dispose()
+                if ($RequireAllVolumeCanaries) { Wait-AllVolumeCanaries ($rawTraceB + '-final-volumes.json') }
+                foreach ($operation in $costReportedOperations) {
+                    $b = $costResults.B[$operation]
+                    $f = $costResults.F[$operation]
+                    Write-Output ('COST_' + $operation + '_delta=p50Us:' + (Format-CostUs ($f.p50Us - $b.p50Us)) +
+                        ';p95Us:' + (Format-CostUs ($f.p95Us - $b.p95Us)) +
+                        ';p99Us:' + (Format-CostUs ($f.p99Us - $b.p99Us)) +
+                        ';maxUs:' + (Format-CostUs ($f.maxUs - $b.maxUs)))
+                    $ratio50 = if ($b.p50Us -eq 0) { 'undefined' } else { Format-CostUs ($f.p50Us / $b.p50Us) }
+                    $ratio95 = if ($b.p95Us -eq 0) { 'undefined' } else { Format-CostUs ($f.p95Us / $b.p95Us) }
+                    Write-Output ('COST_' + $operation + '_ratio=p50:' + $ratio50 + ';p95:' + $ratio95 + ';informationalOnly:true')
+                    if ($operation -ne 'create_write_createOnly') {
+                        $budgetOk = $f.p95Us -le 250000 -and $f.maxUs -le 1000000
+                        Write-Output ('COST_' + $operation + '_budget=' + $(if ($budgetOk) { 'PASS' } else { 'FAIL' }))
+                        if ($budgetOk) { $passed++ } else { $failed++ }
+                    }
+                }
+            } catch {
+                $failed++
+                Write-Output ('COST_Execution=FAIL;' + (Get-ErrorText $_))
+                throw
+            } finally {
+                Write-Output ('COST_Summary=passed:' + $passed + ';failed:' + $failed)
+                $runSucceeded = ($failed -eq 0)
+            }
         }
         elseif ($SelectedVariant -eq 'writer-fault') {
             if (-not $Verifier) { throw 'Writer fault qualification requires runtime Verifier.' }
