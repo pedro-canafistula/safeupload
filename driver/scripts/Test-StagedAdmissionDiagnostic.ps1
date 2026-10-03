@@ -2500,7 +2500,7 @@ Start-Sleep -Seconds 300
                 catch {
                     $exception=$_.Exception
                     while ($exception.InnerException) { $exception=$exception.InnerException }
-                    $denialCode='0x'+([uint32]([int64]$exception.HResult -band 0xffffffff)).ToString('X8')
+                    $denialCode='0x'+([BitConverter]::ToUInt32([BitConverter]::GetBytes([int]$exception.HResult),0)).ToString('X8')
                     $denied=$denialCode -eq '0x80070005'
                 }
                 Write-Output ('SectionFaultNonSystemDenied='+$denied+';HRESULT='+$denialCode)

@@ -1,0 +1,3 @@
+FAILED before SYSTEM exercise: ordinary identity connect returned signed access-denied HRESULT -2147024891, but harness formatting used signed 0xffffffff and UInt32 conversion threw. No fault ARM occurred.
+Both active NTFS canaries passed. Companion unloaded, service/key/binary removed; original driver/policy restored. Harness restoration succeeded; independent BaselineClean=True including all new companion/process absence checks.
+Preserved initial checkpoint, baseline, prechecks, gate, provenance, final independent restoration. Fix uses byte-preserving Int32-to-UInt32 conversion; retry must use new run name.
