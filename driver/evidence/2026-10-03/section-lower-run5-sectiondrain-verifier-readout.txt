@@ -1,0 +1,16 @@
+Section draining fix (commit 12a2f3fb), runtime Verifier qualification
+Verdict: PASSED. section-lower-run5-sectiondrain-verifier, runtime Verifier 0x13B, Windows 10 19045; runner CheckpointedSectionQualification=PASS;
+SectionLowerQualification=PASS, SectionFaultRestored=True, VariantComplete=section-lower, independent BaselineClean=True.
+Build: exact-mvp1-sectiondrain from 12a2f3fb, four WDK configurations PREfast/ApiValidator 0 warnings/0 errors, both Inspectors 0/0, signed SYS
+6CCB203E...; companion lower filter exact2 (unchanged).
+
+Change: a section-synchronization acquire whose post-operation arrives while draining keeps its in-flight slot and sets writer state globally Unknown
+(owner rule: lost tracking stays Unknown until reboot). The non-draining branches are unchanged in behavior; the failure branch was restructured.
+
+Measured (raw result/traces in section-lower-raw/, SHA verified by runner-fetch-section-lower.py):
+  - Real lower acquire failure still removes its slot: sectionInFlightRemovedOnFailure 0 -> 1, sectionInFlightNow 0, stuck 0, overflow 0.
+  - Held acquire: sectionInFlightNow 1 during the hold, 0 after release.
+  - The restructured branch does not raise the new flag on the normal paths: writerGlobalUnknown 0 at both snapshots; all 16,590 trace rows
+    writersUntracked false; untrackedCreates 0.
+
+Not exercised: the draining branch itself (needs instance teardown with an acquire in flight), which is the Phase 1 teardown experiment (item 4).
