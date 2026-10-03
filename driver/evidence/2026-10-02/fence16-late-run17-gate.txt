@@ -1,0 +1,34 @@
+Variant=late-attach
+FeatureSHA256=034A0B44BF83AB11527CE00D5BB20B97D6DDAF9C239C20F3E3B576B54554AF59
+VerifierEnabled=volatile flags 0x13B
+InstancesAfterLoad=1
+DetachExit=0 output=
+InstancesOnCAfterDetach=0
+AttachExit=0 output=ATTACH successful... Instance Name: SafeUpload Instance
+Status_AfterAttach={"fence":true,"complete":true,"entries":1,"generation":5,"lastStatus":"0x00000000","failureLine":0,"refreshStarted":5,"refreshCompleted":5,"refreshFailed":0,"pagingWritesDenied":2,"opensRefused":0,"directoriesScanned":4,"filesScanned":9,"reparseSkipped":0,"volumeScopesSkipped":0,"streamsReleased":0,"releaseRefused":0,"sectionsDenied":0,"sectionNameUnresolved":0,"fsctlUnresolved":0,"lateRefreshesQueued":3}
+LateRefreshesQueued=3 entries=1
+LateAttachWriteAndFlush=REFUSED: Exception calling "Flush" with "0" argument(s): "The media is write protected.
+"
+LateAttach=BLOCKED
+Verifier Volatile Flags: 0x00000000
+  Volatile Flags:
+    [ ] 0x00000001 Special pool.
+    [ ] 0x00000002 Force IRQL checking.
+    [ ] 0x00000004 Randomized low resources simulation.
+    [ ] 0x00000008 Pool tracking.
+    [ ] 0x00000010 I/O verification.
+    [ ] 0x00000020 Deadlock detection.
+    [ ] 0x00000080 DMA checking.
+    [ ] 0x00000200 Force pending I/O requests.
+    [ ] 0x00000400 IRP logging.
+    [ ] 0x00000800 Miscellaneous checks.
+  Removed Drivers:
+    SafeUpload.sys
+The new settings are in effect until the system
+is restarted or the settings are changed again.
+No settings were changed.
+OriginalDriverRestored=ADA9D05AB6AECDD2B6C521B0CE529FC06C732154ACB3EE85439FBDC8AA80DFCE
+ExperimentalDriverUnloaded=True
+LateRestoration=OriginalDriverRestored; FilterUnloaded=True
+VariantComplete=late-attach
+HARNESS_RETURNED

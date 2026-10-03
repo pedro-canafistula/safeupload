@@ -1,0 +1,2 @@
+copied /tmp/claude-1000/artifacts/SafeUpload.Inspector.exe -> SafeUpload.Inspector.input.exe sha256=8f4d97b3e2f730be5b8c5b37531632218389873184736e577559512c8e1e8c0f
+copied /tmp/claude-1000/artifacts/SafeUpload-stage-prototype.sys -> SafeUpload-stage-prototype.sys sha256=034a0b44bf83ab11527ce00d5bb20b97d6ddaf9c239c20f3e3b576b54554af59

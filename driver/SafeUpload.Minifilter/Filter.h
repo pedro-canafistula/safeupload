@@ -686,6 +686,7 @@ VOID SafeUploadStageFenceCountPagingDenied( VOID );
 VOID SafeUploadStageFenceCountSectionDenied( VOID );
 VOID SafeUploadStageFenceCountSectionUnresolved( VOID );
 VOID SafeUploadStageFenceCountFsctlUnresolved( VOID );
+VOID SafeUploadStageFenceQueueRefresh( VOID );
 VOID SafeUploadStageFenceGetStatus( _Out_ PSAFEUPLOAD_FENCE_STATUS Status );
 
 #endif

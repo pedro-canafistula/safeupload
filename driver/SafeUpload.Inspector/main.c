@@ -720,13 +720,13 @@ static int PrintFenceStatus(VOID)
             L"\"refreshStarted\":%llu,\"refreshCompleted\":%llu,\"refreshFailed\":%llu,"
             L"\"pagingWritesDenied\":%llu,\"opensRefused\":%llu,\"directoriesScanned\":%llu,"
             L"\"filesScanned\":%llu,\"reparseSkipped\":%llu,\"volumeScopesSkipped\":%llu,"
-            L"\"streamsReleased\":%llu,\"releaseRefused\":%llu,\"sectionsDenied\":%llu,\"sectionNameUnresolved\":%llu,\"fsctlUnresolved\":%llu}\n",
+            L"\"streamsReleased\":%llu,\"releaseRefused\":%llu,\"sectionsDenied\":%llu,\"sectionNameUnresolved\":%llu,\"fsctlUnresolved\":%llu,\"lateRefreshesQueued\":%llu}\n",
             (status.LastStatus == 0 && status.VolumeScopesSkipped == 0) ? L"true" : L"false",
             status.Entries, status.Generation, status.LastStatus, status.FailureLine,
             status.RefreshStarted, status.RefreshCompleted, status.RefreshFailed,
             status.PagingWritesDenied, status.OpensRefused, status.DirectoriesScanned,
             status.FilesScanned, status.ReparseSkipped, status.VolumeScopesSkipped,
-            status.StreamsReleased, status.ReleaseRefused, status.SectionsDenied, status.SectionNameUnresolved, status.FsctlUnresolved);
+            status.StreamsReleased, status.ReleaseRefused, status.SectionsDenied, status.SectionNameUnresolved, status.FsctlUnresolved, status.LateRefreshesQueued);
     return status.LastStatus == 0 ? 0 : 4;               // a failed scan is not a healthy fence
 }
 

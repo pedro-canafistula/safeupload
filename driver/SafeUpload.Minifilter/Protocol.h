@@ -563,7 +563,7 @@ typedef struct _SAFEUPLOAD_FENCE_STATUS {
     UINT64 SectionsDenied;           // writable data sections refused on an unadmitted in-scope stream
     UINT64 SectionNameUnresolved;    // writable sections allowed because no name could be resolved
     UINT64 FsctlUnresolved;          // mutating FSCTLs allowed because the name could not be queried safely
-    UINT64 Reserved2;
+    UINT64 LateRefreshesQueued;      // refreshes queued by an instance attachment after the load
 } SAFEUPLOAD_FENCE_STATUS, *PSAFEUPLOAD_FENCE_STATUS;
 
 // A zero cursor and snapshot request a snapshot of all entries retained now.

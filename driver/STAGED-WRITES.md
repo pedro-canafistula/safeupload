@@ -624,7 +624,7 @@ Final runs after the review 3 fixes and after slice 3 (below): the same ten runs
 **Residual limits (documented, NOT claimed fixed):**
 - Removable and network scopes are not scanned (`volumeScopesSkipped`, `complete:false`); item 4 owns them.
 - A writable mapping of an **alternate data stream**, hard-link aliases readers outside the scope prefix, and volumes attached after
-  load (no `InstanceSetup` trigger yet) are not covered. Reparse points inside a scope are not followed.
+  load are covered only after the refresh that `InstanceSetup` queues (see Slice 3). Reparse points inside a scope are not followed.
 - A writable section whose name cannot be resolved (`sectionNameUnresolved`) is allowed; the name query is refused in the paging path,
   with a top-level IRP and when all APCs are disabled.
 - **Release happens only at a refresh trigger** (load, policy push, the unload guard, `--admission-fence-refresh`); until then a
@@ -694,8 +694,11 @@ Build: run 15, feature SYS SHA-256 `7973D211309A4396C7EBC6BD9C4CA8D979A2FC7104BE
   SMB `COPYCHUNK` on network scopes are unverified.
 - A mutating FSCTL whose name cannot be queried safely is allowed (counted in `fsctlUnresolved`).
 - A writable mapping of an **alternate data stream** is still not fenced (the scan enumerates default streams).
-- Late attachment of the filter to an already-mounted volume does not trigger a fence refresh yet (a work item from `InstanceSetup` is the
-  planned fix, to be done with the removable-media work of item 4).
+- **Late attachment (run 17):** `InstanceSetup` queues one coalesced fence refresh (a generic work item, so the scan runs at PASSIVE_LEVEL). A/B proof
+  with [`Test-StagedLateAttach.ps1`](scripts/Test-StagedLateAttach.ps1) (detach the filter from `C:`, create a writable mapping while no filter is attached,
+  re-attach, wait 2.5 s, write and flush): run 16 [REPRODUCED](evidence/2026-10-02/fence16-late-run16-gate.txt) (the write succeeded, `entries=0`), run 17
+  [BLOCKED](evidence/2026-10-02/fence16-late-run17-gate.txt) (`entries=1`, flush refused). The window between the attachment and the refresh is **documented, not
+  closed**; the ten-run matrix passes on run 17 ([`fence17-*`](evidence/2026-10-02/fence17-controls-verifier-gate.txt)). Removable media are item 4.
 - Physical `QUERY_SECURITY`/`QUERY_EA`/directory change notifications expose existing physical metadata only; not a byte-isolation issue.
 
 **Review of slice 3** ([slice3-review.txt](evidence/2026-10-02/slice3-review.txt), [brief](evidence/2026-10-02/worker-briefs/slice3-review-brief.md)):

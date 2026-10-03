@@ -114,6 +114,8 @@ static volatile LONG64 FenceReleaseRefused;
 static volatile LONG64 FenceSectionsDenied;
 static volatile LONG64 FenceSectionUnresolved;
 static volatile LONG64 FenceFsctlUnresolved;
+static volatile LONG64 FenceLateRefreshQueued;
+static volatile LONG FenceLateRefreshPending;
 
 static VOID FenceScanDirectory(_In_ PFENCE_SCAN Scan, _In_opt_ PFLT_INSTANCE Instance,
     _In_ PCUNICODE_STRING Directory, _In_ ULONG Depth);
@@ -788,6 +790,35 @@ VOID SafeUploadStageFenceCountOpenRefused(VOID) { InterlockedIncrement64(&FenceO
 VOID SafeUploadStageFenceCountPagingDenied(VOID) { InterlockedIncrement64(&FencePagingDenied); }
 VOID SafeUploadStageFenceCountSectionDenied(VOID) { InterlockedIncrement64(&FenceSectionsDenied); }
 VOID SafeUploadStageFenceCountSectionUnresolved(VOID) { InterlockedIncrement64(&FenceSectionUnresolved); }
+/* A volume the filter attaches to after the load (a manual or late attachment, or a newly mounted volume) may already
+ * hold a writable mapping inside a protected scope, which no earlier scan could see. InstanceSetup cannot do file I/O,
+ * so it queues one coalesced refresh at PASSIVE_LEVEL. The window between the attachment and the refresh is documented,
+ * not closed. */
+static VOID FenceLateRefreshRoutine(_In_ PFLT_GENERIC_WORKITEM WorkItem, _In_ PVOID FltObject, _In_opt_ PVOID Context)
+{
+    UNREFERENCED_PARAMETER(FltObject);
+    UNREFERENCED_PARAMETER(Context);
+    InterlockedExchange(&FenceLateRefreshPending, 0);
+    (VOID)SafeUploadStageFenceRefresh(NULL);
+    FltFreeGenericWorkItem(WorkItem);
+}
+
+VOID SafeUploadStageFenceQueueRefresh(VOID)
+{
+    PFLT_GENERIC_WORKITEM item;
+
+    if (!FenceInitialized) return;
+    if (InterlockedCompareExchange(&FenceLateRefreshPending, 1, 0) != 0) return;     /* one is already queued */
+    item = FltAllocateGenericWorkItem();
+    if (item == NULL) { InterlockedExchange(&FenceLateRefreshPending, 0); return; }
+    if (!NT_SUCCESS(FltQueueGenericWorkItem(item, SafeUploadData.Filter, FenceLateRefreshRoutine, DelayedWorkQueue, NULL))) {
+        FltFreeGenericWorkItem(item);
+        InterlockedExchange(&FenceLateRefreshPending, 0);
+        return;
+    }
+    InterlockedIncrement64(&FenceLateRefreshQueued);
+}
+
 VOID SafeUploadStageFenceCountFsctlUnresolved(VOID) { InterlockedIncrement64(&FenceFsctlUnresolved); }
 
 VOID SafeUploadStageFenceGetStatus(_Out_ PSAFEUPLOAD_FENCE_STATUS Status)
@@ -812,6 +843,7 @@ VOID SafeUploadStageFenceGetStatus(_Out_ PSAFEUPLOAD_FENCE_STATUS Status)
     Status->SectionsDenied = (UINT64)InterlockedCompareExchange64(&FenceSectionsDenied, 0, 0);
     Status->SectionNameUnresolved = (UINT64)InterlockedCompareExchange64(&FenceSectionUnresolved, 0, 0);
     Status->FsctlUnresolved = (UINT64)InterlockedCompareExchange64(&FenceFsctlUnresolved, 0, 0);
+    Status->LateRefreshesQueued = (UINT64)InterlockedCompareExchange64(&FenceLateRefreshQueued, 0, 0);
 }
 
 #endif

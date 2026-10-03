@@ -548,6 +548,17 @@ Return Value:
     }
 #endif
 
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+
+    //
+    //  The volume may already hold a writable mapping inside a protected scope.
+    //  Queue a fence refresh; the scan itself cannot run in this callback.
+    //
+
+    SafeUploadStageFenceQueueRefresh();
+
+#endif
+
     if (!NT_SUCCESS( status ) || volumeKind == SafeUploadVolumeUnknown) {
 
         //

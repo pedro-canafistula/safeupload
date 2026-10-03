@@ -1,0 +1,12 @@
+UTC=2026-10-03T01:44:44Z
+virsh -c qemu:///system snapshot-create-as --domain win10-debug --name safeupload-pre-fence17-controls-20261002 --description 'Clean original driver and policy before fence17-controls' --disk-only --no-metadata --diskspec vda,snapshot=external,file=/var/lib/libvirt/images/win10-debug.safeupload-pre-fence17-controls-20261002 --atomic
+Domain snapshot safeupload-pre-fence17-controls-20261002 created
+--- active disk after checkpoint
+ Target   Source
+----------------------------------------------------------------------------------------
+ vda      /var/lib/libvirt/images/win10-debug.safeupload-pre-fence17-controls-20261002
+ sda      -
+ sdb      -
+
+running
+
