@@ -398,7 +398,8 @@ function Invoke-SectionTeardownScenario {
         [void](Add-STOutcome 'SecondaryWriterOnDistinctThread' $secondaryThreadOk `
             ('open:true;openThreadId:'+$script:STSecondWriter.OpenThreadId+';mainThreadId:'+$mainThreadId))
         $script:STVhdxMapping=[IO.MemoryMappedFiles.MemoryMappedFile]::CreateFromFile(
-            $script:STVhdxFile,$null,0,[IO.MemoryMappedFiles.MemoryMappedFileAccess]::ReadWrite,
+            # PowerShell 5.1 converts $null to "" for a string parameter; CreateFromFile rejects "" (run 2).
+            $script:STVhdxFile,[NullString]::Value,0,[IO.MemoryMappedFiles.MemoryMappedFileAccess]::ReadWrite,
             [IO.HandleInheritability]::None,$true)
         $script:STVhdxView=$script:STVhdxMapping.CreateViewAccessor(
             0,4096,[IO.MemoryMappedFiles.MemoryMappedFileAccess]::ReadWrite)
