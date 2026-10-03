@@ -1,0 +1,31 @@
+Policy-transition run22 artifact provenance
+Date: 2026-10-03
+
+Feature driver
+--------------
+The builder's unsigned run22 feature artifact hash is
+E5D8E632F784F2FE33B6A325226EC6838C7AAB1AC93B3D4DCE5BB806D8A90079.
+The separately named test-signed copy has SHA-256
+55177F2D9FCA737A8A78B37B728ED197DB4D06AD885CDD056AF5389C6A27A495.
+It was made by copying the hash-verified unsigned run22 file before signing
+with test certificate thumbprint 220DD82C37FCF36048D59E4F10113185D81D5DC7.
+The PE section comparison found all eight sections identical between the
+unsigned and signed files. The guest verified the signed file as Valid with
+that signer before installation. The builder did not trust the test
+certificate root, so its local Authenticode verification returned an
+untrusted-root status; the guest check was the relevant trust validation for
+installation.
+
+Inspector and agent
+-------------------
+The Inspector source and pinned guest input executable both have SHA-256
+8F4D97B3E2F730BE5B8C5B37531632218389873184736E577559512C8E1E8C0F.
+The guest feature-signature and input-hash checks are recorded in
+`policy-transition-run22-shrink-gate.txt`.
+
+The pinned service ZIP has SHA-256
+D887E0D7F38AD64AD40CEE18B841C6D38AD2BED4D6F760B1BDE4464927381997. A
+read-only comparison of the guest's extracted service directory found 238 ZIP
+members and 238 files, with zero missing members, length mismatches, content
+hash mismatches, or extra files. The executed service therefore matched the
+pinned D887 package.

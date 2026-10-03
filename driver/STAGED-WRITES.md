@@ -53,9 +53,17 @@ Normal staging stays compiled out and taint enforcement remains.
   - [x] Parse and review the policy-shrink diagnostic that brackets section
         creation with hash-pinned SYSTEM Inspector snapshots; retain its
         temporal-correlation limitation.
-  - [ ] Run the reviewed policy-shrink diagnostic on the isolated Windows VM,
-        then independently verify driver, policy, Verifier, fixture, and task
-        restoration.
+  - [x] Attempt the reviewed policy-shrink diagnostic on the isolated Windows
+        VM under a clean checkpoint. It stopped before baseline policy
+        acceptance because the approved policy enables removable and network
+        scopes that this feature gate cannot yet cover.
+    - [x] Verify run22 signed-driver PE sections, guest signer, Inspector hash,
+          and the extracted D887 service directory against its pinned ZIP.
+    - [x] Independently verify original driver/policy/Verifier state, filter
+          unload, task/fixture cleanup, and restoration of the prior guest
+          feature input.
+    - [ ] Reach policy transition and section-denial measurement after
+          scope-correct candidate coverage is implemented.
   - [ ] Close the in-flight mapping, attachment, policy-transition and partial-
         coverage privacy gaps without relying on process taint.
   - [ ] Qualify removable USB, SMB/UNC and real sync-client destinations with
@@ -3460,9 +3468,13 @@ Debug and Release) all passed with zero warnings and zero errors. Agent tests
 passed 275/275; the service publish and ZIP completed. The normal Debug and
 Release binaries passed the committed-HEAD section identity comparison, and
 the modified policy-transition PowerShell harness parsed with zero errors.
-This was build and parser verification only: the feature driver was not
-installed or loaded, the VM mapping scenarios were not run, and no byte-privacy
-or destination gate is claimed.
+Those build and parser checks did not install or load a driver. A later
+isolated-VM diagnostic used a test-signed copy of the run22 feature build; all
+eight PE sections matched the verified unsigned artifact. The run stopped
+before baseline policy acceptance because the original policy enables both
+removable and network scopes, for which the current fence has no complete
+coverage. No policy transition, writable-section attempt, or byte-privacy
+measurement occurred; the original VM state was restored independently.
 
 Run 22 evidence: [build summary](evidence/2026-10-03/admission-fence-build-run22.txt),
 [builder verification and normal-build identity](evidence/2026-10-03/admission-fence-run22-postbuild-verification.txt),
@@ -3476,3 +3488,22 @@ The updated policy-transition harness parsed with zero errors on the Windows
 builder ([parse record](evidence/2026-10-03/admission-fence-run22-policy-script-parse.txt))
 and received a Luna security review for its isolated-VM diagnostic use
 ([review](evidence/2026-10-03/admission-fence-run22-policy-script-review.txt)).
+The later comment-only status correction also parsed with zero errors
+([current-source parser record](evidence/2026-10-03/policy-transition-run22-harness-comment-parse.txt)).
+
+The later VM diagnostic is documented in its
+[assessment](evidence/2026-10-03/policy-transition-run22-shrink-assessment.txt),
+[pre-run baseline](evidence/2026-10-03/policy-transition-run22-shrink-baseline.txt),
+[checkpoint](evidence/2026-10-03/policy-transition-run22-shrink-checkpoint.txt),
+[cache flush](evidence/2026-10-03/policy-transition-run22-shrink-flush.txt),
+[artifact staging](evidence/2026-10-03/policy-transition-run22-shrink-prerun.txt),
+[gate output](evidence/2026-10-03/policy-transition-run22-shrink-gate.txt),
+[agent error log](evidence/2026-10-03/policy-transition-run22-shrink-agent-base-out.log),
+[artifact provenance](evidence/2026-10-03/policy-transition-run22-shrink-artifact-provenance.txt),
+[active disk record](evidence/2026-10-03/policy-transition-run22-shrink-active-disk-after.txt),
+and [independent restoration](evidence/2026-10-03/policy-transition-run22-shrink-final-restored-state.txt);
+[evidence hashes](evidence/2026-10-03/policy-transition-run22-shrink.txt.hashes).
+It confirms the current feature candidate refuses the unchanged baseline policy
+with `ERROR_NOT_SUPPORTED` while removable/network scopes remain enabled. Do
+not disable those flags to force this mapping test: that would narrow the
+approved policy scope. No section-denial or privacy conclusion is claimed.

@@ -1,0 +1,8 @@
+2026-10-03T08:11:48Z
+ Type   Device   Target   Source
+----------------------------------------------------------------------------------------------------------------------
+ file   disk     vda      /var/lib/libvirt/images/win10-debug.safeupload-pre-policy-transition-run22-shrink-20261003
+ file   cdrom    sda      -
+ file   cdrom    sdb      -
+
+running

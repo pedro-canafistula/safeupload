@@ -31,5 +31,10 @@ isolated VM with no other known section-creation test active. It is diagnostic
 evidence and does not independently clear the architecture or cutover gates.
 
 The reviewer found no PowerShell semantic issue in the inspected paths. The
-review did not execute PowerShell, build binaries, or run a VM. The separate
-Windows-builder parser record reports zero errors for this exact source hash.
+review did not execute PowerShell or build binaries. The reviewed hash above
+was the exact harness used in the VM attempt. After that run, only the
+source-status comment was corrected; no executable PowerShell statement
+changed. The current file is hash
+42B31CB502F013A3085C890BFE4DB0D0B86F7B36C4D03CE2473950A37D23424B and the
+Windows-builder parser reports zero errors for it in
+`policy-transition-run22-harness-comment-parse.txt`.

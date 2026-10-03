@@ -35,8 +35,12 @@ returned valid status JSON, because it indicates incomplete sampled coverage
 and is not used as a verdict here. The script checks the fixture's physical
 NTFS extent through
 an aligned unbuffered raw-volume read; an unobservable raw read or an
-unconfirmed mapping disposal is a failed measurement. This is source-only
-until a reviewed Windows build is available.
+unconfirmed mapping disposal is a failed measurement. A privacy measurement
+remains unavailable until scope-correct candidate coverage allows the original
+policy to be accepted. The first isolated run stopped before the transition because
+the approved baseline enables removable and network scopes; see
+`evidence/2026-10-03/policy-transition-run22-shrink-assessment.txt`. No
+byte-privacy result was produced.
 The test does not force the exact kernel callback interleaving between policy
 snapshots; a user-mode policy push cannot deterministically pause the callback.
 #>
