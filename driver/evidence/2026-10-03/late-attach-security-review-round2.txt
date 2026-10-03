@@ -1,0 +1,265 @@
+SafeUpload staged-writes: round-two independent security review
+Date: 2026-10-03
+Review scope: frozen uncommitted candidate at base HEAD
+  5b00091c6bed5d312f2550c577ce5d8c6c33bd96
+Review mode: read-only review; no source edits, build, PREfast, or VM run.
+
+Disposition
+==========
+
+The candidate is not cleared for WDK/VM validation or privacy cutover. No P0
+was identified. Multiple P1 findings remain, including an unsupported attempt
+to deny writable section creation from an already-open handle, an actionable
+policy-shrink race, existing-handle read/FSCTL paths, and explicitly documented
+late-attach/incomplete-scan byte-privacy gaps. The manual detach and unload
+rundown changes improve controls but do not establish the end requirement
+that unapproved bytes stay private.
+
+Round-two findings
+==================
+
+P1 — Unsupported section-denial status; no documented minifilter alternative
+----------------------------------------------------------------------------
+
+`driver/SafeUpload.Minifilter/StageStream.c:2393-2442` handles
+IRP_MJ_ACQUIRE_FOR_SECTION_SYNCHRONIZATION and completes a writable
+SyncTypeCreateSection with STATUS_ACCESS_DENIED for policy, quarantine, name,
+IRQL, or fence outcomes (`:2437-2442`). Microsoft's documented contract says
+SyncTypeOther cannot be failed, and SyncTypeCreateSection may fail with
+STATUS_INSUFFICIENT_RESOURCES when there is insufficient memory to create the
+section. That exception does not authorize STATUS_ACCESS_DENIED for a policy
+decision. Do not fabricate memory pressure to obtain the allowed status.
+
+No alternate documented minifilter/FSFilter hook was found that can safely
+refuse this section operation on an already-open, unowned destination handle
+with a policy status. The section-synchronization callback is the relevant
+notification, but the documented failure contract constrains it. FltCancelFileOpen
+is not a substitute: Microsoft documents it for a just-completed IRP_MJ_CREATE
+in the post-create callback, before any handles are created; it cannot revoke a
+pre-existing handle and cannot be called from a section callback. The
+FltCreateSectionForDataScan API creates a section for a filter's own scanning
+work; it does not interpose on or deny the caller's section creation. Completing
+the callback successfully or using STATUS_FSFILTER_OP_COMPLETED_SUCCESSFULLY
+cannot express a policy refusal.
+
+Required implication: keep staging disabled for destinations where correctness
+depends on refusing writable section creation through pre-existing handles,
+unless a separately documented and validated mechanism is introduced. A
+supported admission design must prevent such handles/sections from existing
+before the policy becomes active. A volume lock is only a possible external
+quiescence check in restricted situations, not a repair for dirty mappings:
+Microsoft documents that FSCTL_LOCK_VOLUME fails if files are open and flushes
+all cached data to the volume before locking; it is unsupported for SMB 3.0 and
+fails for system/pagefile volumes. Flushing unapproved dirty pages to the
+destination before the lock would defeat privacy. The lock also cannot be
+treated as an all-destination, already-dirty-data privacy mechanism.
+
+P1 — Policy shrink can admit a writable section after both transition scans
+----------------------------------------------------------------------------
+
+Trigger: current scope contains path P; candidate scope shrinks to exclude P;
+an existing file handle for P has no writable mapping when the transition's
+pre-swap scan runs. A SyncTypeCreateSection callback starts while pending
+policy is published. `StageStream.c:2425-2434` checks pending and current with
+separate helper calls and therefore separate policy-lock acquisitions. It can
+observe pending candidate at `Policy.c:370-371` (P excluded), be preempted,
+then resume after `Policy.c:384-391` has installed that candidate as current
+and cleared pending. The current-policy check also excludes P, so the callback
+allows the mapping. The pre-swap scan saw no mapping and the post-swap scan
+covers only the shrunken candidate scope. The “pending first, current second”
+comment at StageStream.c:2425-2427 is sufficient for additions but not shrink.
+
+Fix needs one consistent current-plus-pending policy decision or generation
+protocol plus a barrier ensuring no callback can straddle the transition swap.
+The added policy-transition harness checks stable post-shrink behavior at
+`driver/scripts/Test-StagedPolicyTransitionMapping.ps1:359-363`; it does not
+force this interleaving.
+
+P1 — Existing read handles can observe bytes after new-open quarantine
+-----------------------------------------------------------------------
+
+Trigger: a process opens a protected destination before scan/quarantine or
+before a scope transition. `StageStream.c:2074-2082` applies the quarantined
+name check only while admitting a new IRP_MJ_CREATE. The dispatcher at
+`StageStream.c:2446-2570` has no IRP_MJ_READ case, so reads through the
+pre-existing file object take the default-success path. A paging-write fence
+and refusal of later opens do not revoke read access through an already-open
+handle. The bytes can remain observable even when writeback is fenced.
+
+Add an existing-handle read policy where identity is available, and keep
+cutover blocked for failed/incomplete scans where a protected existing handle
+cannot be reliably identified.
+
+P1 — Late attach, incomplete scan, and capacity loss do not protect bytes
+------------------------------------------------------------------------
+
+The SOP fence has a fixed 64-stream table (`StageFence.c:42-45`); insertion
+fails after capacity (`:298-304`). A failed scan discards its partial table and
+records quarantine (`:700-720`), but quarantine refuses later name opens and
+vetoes unload; paging writes consult only the installed SOP table
+(`StageStream.c:2498-2503`, `StageFence.c:1679-1699`). Thus a live writable
+mapping omitted from a failed or 65-stream scan can still page-write public
+bytes. The review note accurately records this as a cutover blocker at
+`driver/evidence/2026-10-02/late-attach-security-review.txt:195-202`.
+
+Separately, InstanceSetup queues a scan and returns success before that worker
+finishes (`Filter.c:534-542,629-632`; `StageFence.c:1783-1818`). Existing
+handles/mappings can therefore write during attach-to-scan. Microsoft says
+InstanceSetup runs at PASSIVE_LEVEL but warns against thread synchronization
+or IPC there due to deadlock risk; synchronously waiting for the scan is not an
+acceptable fix. Scanner coverage is not a complete stream-identity inventory:
+ADS and aliases outside enumerated protected directories may evade the scan
+and exact-name policy gates. Keep normal staging off until a real external
+pre-handle/section admission gate or equivalent scoped inventory is proven;
+do not replace this with volume-wide paging-write denial.
+
+P1 — Unowned mutating FSCTL can proceed when the name is unresolved
+------------------------------------------------------------------
+
+Trigger: a pre-existing file object issues a mutating FSCTL at unsafe context
+or a name-cache miss. `StageStream.c:2341-2346,2360-2380` consults a cached
+normalized name when possible; on lookup failure/cache miss it increments the
+unresolved counter and returns FLT_PREOP_SUCCESS_NO_CALLBACK at `:2379-2380`.
+A cached out-of-scope alias also passes at `:2376` without named-alias
+resolution. A mutating FSCTL can therefore alter the physical protected
+destination; a counter or incomplete status is post hoc. Resolve stable file
+identity or fail closed in a defensible supported scope; otherwise retain the
+cutover blocker. The Inspector exception at `:2357` is a trusted SYSTEM client
+path and remains an explicit trust boundary.
+
+P1 residual — Mandatory unload and volume dismount bypass manual teardown veto
+-----------------------------------------------------------------------------
+
+Manual QueryTeardown refusal is now unconditional in the feature build
+(`Filter.c:671-675`). Microsoft's contract is that QueryTeardown is for manual
+detach; mandatory unload and volume dismount do not invoke it (`Filter.c:645-649`).
+Mandatory unload bypasses the voluntary veto (`Filter.c:427-435`). If privacy
+must survive forced unload/removal, the feature cannot guarantee it without an
+external gate/data policy. Setup admission also ends immediately before the
+InstanceSetup callback returns (`Filter.c:629-632`); no documented post-return
+acceptance notification or FltMgr serialization guarantee was found. This
+limitation is already disclosed in `driver/STAGED-WRITES.md:325-331`.
+
+P2 — Sticky global quarantine may require mandatory teardown/restart
+--------------------------------------------------------------------
+
+`StageFence.c:623-665` makes a global quarantine sticky if volume identity
+cannot be retained or the quarantine table is exhausted. Successful scans do
+not clear it, while voluntary unload refuses when quarantine remains; freeing
+occurs only after unregister. This is fail-closed for names but can dead-end
+availability until mandatory teardown/reboot (`late-attach-security-review.txt:263-275`).
+Routine complete-enumeration failures should remain distinguishable and
+recoverable; stickiness is warranted only when identities/capacity are lost and
+coverage cannot be proved.
+
+P2 — Harness currently skips fixed-build late-attach lifecycle
+--------------------------------------------------------------
+
+The late-attach/unload harness detects that fixed candidate refuses manual
+detach, reports `NOT_RUN_MANUAL_DETACH_DISABLED`, and exits 5 rather than
+claiming a pass (`driver/scripts/Test-StagedLateAttachUnload.ps1:238-247,472-476`).
+The policy-transition harness labels any CreateFileMappingW failure as
+“REFUSED” without asserting an expected status and does not force the shrink
+race (`Test-StagedPolicyTransitionMapping.ps1:359-363`). The raw physical
+marker observation correctly treats read failures as UNOBSERVABLE/fail, but
+both scenarios remain source-only/unrun (`late-attach-security-review.txt:335-342`).
+
+Controls confirmed in source
+============================
+
+* QueryTeardown unconditionally rejects feature-build manual detach.
+* Trigger-volume membership is checked against the actual FltEnumerateVolumes
+  result before installing the generation; appended remembered identities do
+  not satisfy that proof.
+* Covered scan setup failures record quarantine and retain the attachment when
+  possible; positively out-of-coverage/non-NTFS volumes remain attached with
+  ordinary policy callbacks.
+* Candidate transitions reject skipped or reparse coverage.
+* Installed FENCE_TABLE stream-volume references are explicitly acquired and
+  released.
+* Unload closes work admission, drains accepted work, performs its final scan,
+  and checks active entries/quarantines before voluntary commit. This improves
+  rundown correctness but does not close the documented callback-return,
+  mandatory-teardown, or pre-scan byte-privacy limits.
+* Protocol layout appears ABI-preserving under feature guards. No source issue
+  found in the normal-build guard review.
+
+Microsoft primary references used for section/admission assessment
+==================================================================
+
+* FLT_PARAMETERS for IRP_MJ_ACQUIRE_FOR_SECTION_SYNCHRONIZATION union:
+  https://learn.microsoft.com/en-us/windows-hardware/drivers/ifs/flt-parameters-for-irp-mj-acquire-for-section-synchronization
+  It states SyncTypeOther cannot be failed and SyncTypeCreateSection may fail
+  with STATUS_INSUFFICIENT_RESOURCES if memory is insufficient.
+* FltCancelFileOpen:
+  https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/fltkernel/nf-fltkernel-fltcancelfileopen
+  It applies only in post-create, to a just-opened/created file, before any
+  handles are created; it does not undo modifications.
+* FltCreateSectionForDataScan:
+  https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/fltkernel/nf-fltkernel-fltcreate-section-for-data-scan
+  This creates a section for filter scanning; it is not a caller section
+  admission/denial interface.
+* InstanceSetup callback contract:
+  https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/fltkernel/nc-fltkernel-pflt_instance_setup_callback
+  The callback is PASSIVE_LEVEL, with a warning against synchronization/IPC
+  because of deadlock risk.
+* FSCTL_LOCK_VOLUME:
+  https://learn.microsoft.com/en-us/windows/win32/api/winioctl/ni-winioctl-fsctl_lock_volume
+  Fails when files are open, flushes cached data before locking, and Microsoft
+  lists SMB 3.0 as unsupported. It cannot safely repair already-dirty
+  unapproved mappings by flushing them to the public destination.
+
+Required external admission/quiescence contract
+===============================================
+
+Before enabling staging for a destination, an OS-enforced gate must keep all
+applications and services (including direct volume paths, aliases/reparse
+paths, background sync clients, and writable section creators) from opening or
+mapping protected data. The gate must establish and attest that prior writable
+handles and mappings are drained, and that no dirty unapproved mapped bytes
+will be flushed to the destination during that drain. Keep admission closed
+while attaching the filter, completing a complete supported-volume scan, and
+confirming the instance and callbacks are active. Release access only after a
+complete successful scan; on unsupported classification, scan failure,
+capacity overflow, teardown, or an unprovable state, leave the destination
+unavailable and staging off. Policy shrink/expansion must likewise serialize
+with section/handle admission or use a proven atomic transition gate.
+
+This is a volume-scoped, temporary admission/quiescence gate, not a request to
+deny paging writes volume-wide. If the deployment cannot enforce and verify
+that gate for a destination, there is no supported late-attach section-denial
+fallback satisfying scoped fail-closed, fail-open elsewhere, and byte privacy;
+the requested privacy cutover must remain disabled for that destination.
+
+Fingerprint and verification
+============================
+
+HEAD at final reread: 5b00091c6bed5d312f2550c577ce5d8c6c33bd96.
+The following 14 SHA256 values identify the candidate reviewed in round two;
+they matched at that review's start and end. During the later focused
+architecture follow-up, a final fingerprint recheck found that three source
+files had changed concurrently. Those later edits were not reviewed here, so
+the findings above apply to the candidate identified by the listed round-two
+hashes, not to those subsequent edits. Current hashes observed on 2026-10-03:
+
+  driver/SafeUpload.Minifilter/Filter.h c8f67d518a611dbb417e57a918330d0f51aa7f20115d32a66a9fedfa8129935a
+  driver/SafeUpload.Minifilter/Policy.c a5562cb3305d0ff552e92093caf1a3b20af5b6e2ff1dbed9e227cab858629828
+  driver/SafeUpload.Minifilter/StageStream.c 317bdeaa298ca66236a17a8d5df425bde42947adfdc9c0c33880be2096fb58fe
+
+`git diff --check` passed on the reviewed and follow-up workspace state. This
+review did not run a build, PREfast, or VM.
+
+  driver/STAGED-WRITES.md f9765f5de4d507e74a4656a1fe7cbe96deb9d9e3c30d5245ad3983d3b73957c3
+  driver/SafeUpload.Inspector/main.c bd5244bc2e7aa732e1405cc774bef3ecdb129939328d2899c3a055d9a4584ee1
+  driver/SafeUpload.Minifilter/Context.c b30d64ab78e8072589bb68f4e65d1dbf6d9ff916db381ab717fd7dc51a934fa4
+  driver/SafeUpload.Minifilter/Filter.c 6b0786850fe99fc14af59c7b6eec7e1cf8da85e2252699594f77d854044ac1d5
+  driver/SafeUpload.Minifilter/Filter.h 7bce089b3578ebf8d0d2687417079bd5cb00850437d6311c28606ffd3c0ffd23
+  driver/SafeUpload.Minifilter/Policy.c 89511d052df193b88481e12d73f635c7b7c147e6f6613508569fdf26c50edbba
+  driver/SafeUpload.Minifilter/Protocol.h 9420bf06a4ad303fd829915565d5e7d99216686357d5504bdcd4cad87fa7cba4
+  driver/SafeUpload.Minifilter/Stage.h 3f7a948f1dc5ab649c8c58292c726dbc87166ddd9e00c2bcee3ef7c336dd9411
+  driver/SafeUpload.Minifilter/StageFence.c 318fa32d9371ae2ed4f3673cd58834bf2816b3f27f4ecabacbd183ad90d5048f
+  driver/SafeUpload.Minifilter/StageProtocol.c e3eecd5ca8ad5fe2e650ee80cb1ef89907fd56bdd5fedb39d8d19496c266ee45
+  driver/SafeUpload.Minifilter/StageStream.c 20cbe3c2fe88c5fe8dd459ade3208972d29463ec471407876ddf8d87eecb3981
+  driver/scripts/Test-StagedPolicyTransitionMapping.ps1 1ae579533d68456250dc5bf9f9f07700b932fc27a7cf10e3c79993bcaee93e36
+  driver/scripts/Test-StagedLateAttachUnload.ps1 c3d053e71bfd4f2133f1f07b91b26d4acc7765f93b005b17691cbcfa2e354f7e
+  driver/evidence/2026-10-02/late-attach-security-review.txt 0c33cd0f339f2597b2a5ff419a562b12d148a07d3d867fc569c7641cc1701ec2
