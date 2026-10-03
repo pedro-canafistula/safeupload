@@ -35,7 +35,18 @@ if(Test-Path (Join-Path $out 'Debug.sys')){
  $summary+='SignExit='+$LASTEXITCODE;$summary+='SignedSHA256='+(Get-FileHash $sys -Algorithm SHA256).Hash
 }
 }finally{Pop-Location}
-& $sign verify /pa (Join-Path $out 'SafeUploadSectionFault.sys') >> (Join-Path $out 'sign.txt') 2>&1
-$summary+='SignatureVerifyExit='+$LASTEXITCODE
+# The builder has the signing private key but does not trust this test root.
+# Record chain verification; the debuggee requires Valid and the pinned signer before installation.
+if(Test-Path (Join-Path $out 'SafeUploadSectionFault.sys')) {
+ $ErrorActionPreference='Continue'
+ & $sign verify /pa (Join-Path $out 'SafeUploadSectionFault.sys') >> (Join-Path $out 'sign.txt') 2>&1
+ $verifyExit=$LASTEXITCODE
+ $ErrorActionPreference='Stop'
+ $signature=Get-AuthenticodeSignature (Join-Path $out 'SafeUploadSectionFault.sys')
+ $summary+='BuilderSignatureVerifyExit='+$verifyExit
+ $summary+='BuilderSignatureStatus='+$signature.Status
+ $summary+='SignerThumbprint='+$signature.SignerCertificate.Thumbprint
+}
+
 $summary+='BUILD_END_UTC='+[DateTime]::UtcNow.ToString('o');$summary|Set-Content (Join-Path $out 'summary.txt') -Encoding UTF8
 $summary
