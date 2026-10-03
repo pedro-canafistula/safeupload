@@ -1,0 +1,16 @@
+PRE_RUN_PS: $ErrorActionPreference='Stop';$d='C:\Users\vika\Documents';
+$p=Join-Path $d 'SafeUpload-stage-prototype-mvp1-writerfault.sys';if((Test-Path $p) -and (Get-FileHash $p -Algorithm SHA256).Hash -ne '118075BD49D2AE072EC008A4EBDA9D56F02F2922C5F0489AD1F5CB4E6E1BB4DD'){throw 'Existing input hash mismatch'}
+$p=Join-Path $d 'SafeUpload.Inspector.mvp1-writerfault.exe';if((Test-Path $p) -and (Get-FileHash $p -Algorithm SHA256).Hash -ne 'AB5B55A4B95F29DD4D0FD769D33C064C5FF1C8EF6A2B71955673A1E492184F97'){throw 'Existing input hash mismatch'}
+$p=Join-Path $d 'SafeUpload.WriterFault-mvp1-writerfault.exe';if((Test-Path $p) -and (Get-FileHash $p -Algorithm SHA256).Hash -ne '4D2F2E293F4CB50933315E9F5106F268F9319457B45C61DB66E8794D699F3439'){throw 'Existing input hash mismatch'}
+$p=Join-Path $d 'StagedSectionFaultClient-C2B05861BAD5F47B.cs';if((Test-Path $p) -and (Get-FileHash $p -Algorithm SHA256).Hash -ne 'C2B05861BAD5F47B62A6C718B81341B64C925B6FB9236FDFA3854DC4D7C229AC'){throw 'Existing input hash mismatch'}
+$p=Join-Path $d 'StagedWriterFault-E472E22966301A32.ps1';if((Test-Path $p) -and (Get-FileHash $p -Algorithm SHA256).Hash -ne 'E472E22966301A32DBD5D9E041BFC3C922B6764B1304B6DE5DA2B444456FA30B'){throw 'Existing input hash mismatch'}
+$p=Join-Path $d 'StagedTestAgent-661EBB84C8E739EE.ps1';if((Test-Path $p) -and (Get-FileHash $p -Algorithm SHA256).Hash -ne '661EBB84C8E739EE6F77E663C06557855288DA96D127E6B43642ACD480F59086'){throw 'Existing input hash mismatch'}
+'PRE_RUN_OK=True'
+
+PRE_RUN_OK=True
+copied /tmp/claude-1000/exact-mvp1-writerfault/SafeUpload-stage-prototype.sys -> SafeUpload-stage-prototype-mvp1-writerfault.sys sha256=118075bd49d2ae072ec008a4ebda9d56f02f2922c5f0489ad1f5cb4e6e1bb4dd
+copied /tmp/claude-1000/exact-mvp1-writerfault/inspector-feature-release.exe -> SafeUpload.Inspector.mvp1-writerfault.exe sha256=ab5b55a4b95f29dd4d0fd769d33c064c5ff1c8ef6a2b71955673a1e492184f97
+copied /tmp/claude-1000/exact-mvp1-writerfault/writer-fixture.exe -> SafeUpload.WriterFault-mvp1-writerfault.exe sha256=4d2f2e293f4cb50933315e9f5106f268f9319457b45c61db66e8794d699f3439
+copied /home/victor/Work/safeupload-staging/driver/scripts/StagedSectionFaultClient.cs -> StagedSectionFaultClient-C2B05861BAD5F47B.cs sha256=c2b05861bad5f47b62a6c718b81341b64c925b6fb9236fdfa3854dc4d7c229ac
+copied /home/victor/Work/safeupload-staging/driver/scripts/StagedWriterFault.ps1 -> StagedWriterFault-E472E22966301A32.ps1 sha256=e472e22966301a32dbd5d9e041bfc3c922b6764b1304b6de5da2b444456fa30b
+copied /home/victor/Work/safeupload-staging/driver/scripts/StagedTestAgent.ps1 -> StagedTestAgent-661EBB84C8E739EE.ps1 sha256=661ebb84c8e739ee6f77e663c06557855288da96d127e6b43642acd480f59086

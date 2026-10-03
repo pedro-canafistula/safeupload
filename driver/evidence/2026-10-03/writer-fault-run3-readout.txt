@@ -1,0 +1,21 @@
+Verdict=FAILED
+SourceCommit=7496d5adab67a0cf12f016f222773dc96b104b94
+HarnessSourceCommit=40b497ef (StagedWriterFault.ps1 without the /flags reassertion)
+MainBuildLabel=mvp1-writerfault (same signed SYS 118075BD..., fixture 4D2F2E29..., Inspector AB5B55A4... as runs 1-2)
+Run=writer-fault-run3 (raw prefix SafeUpload-writer-fault-79917f0daa1547239610636815d0f031)
+
+Failure: "Active Verifier flags mismatch." at the armed query. /volatile /faults 10000 SUwH SUHFail.exe 0 was acknowledged exactly and nothing
+reset it, but the active flags after it are 0x00000004 (armed-verifier.txt: every standard flag, including 0x13B bits, unchecked; SafeUpload.sys
+still the single verified module). Before: 0x13B. After /volatile /flags 0x13B (cleanup): 0x13B again, bit 4 clear.
+Established Win10 19045 facts (runs 2 and 3, raw in writer-fault-raw/):
+  - /volatile /faults <filters> REPLACES the active flag set with 0x4.
+  - /volatile /flags <mask with 0x4> RESETS the filters to 600/(null)/(null)/8.
+  - Therefore filtered LRS cannot be combined with 0x13B through verifier.exe on this build; a filtered fault window is LRS-only.
+No measured writable open occurred; untrackedCreates 0; Pool Allocations Failed Deliberately 0 before and at cleanup. No allocation-failure claim.
+
+Cleanup: injection disabled by /volatile /flags 0x13B (cleanup-disabled-verifier.txt 0x13B); WriterFaultRestored True; original SYS/policy exact;
+independent BaselineClean True.
+
+Next (harness only): the armed/failed-open queries require bit 4 and record their flags; the full 0x13B remains mandatory in every window with
+injection off (before, disabled, cleanup-disabled). Consequence to carry to the milestone review: the failing allocation itself runs under LRS
+only, not under special pool/pool tracking/IRQL/I/O verification; the surrounding healthy paths and the post-fault paths run under 0x13B.

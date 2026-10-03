@@ -38,7 +38,9 @@ function Invoke-StagedWriterFaultQualification([string]$Target,[string]$Healthy,
         $modules=[regex]::Matches($raw,'(?im)^\s*MODULE:\s+(\S+)\s+\(')
         if($flags.Count -ne 1 -or $counter.Count -ne 1 -or $modules.Count -ne 1 -or $modules[0].Groups[1].Value -ne 'SafeUpload.sys'){throw 'Verifier inventory or counters ambiguous.'}
         $value=[Convert]::ToUInt32($flags[0].Groups[1].Value,16)
-        if(($value -band 0x13B) -ne 0x13B -or (($value -band 4) -ne 0) -ne $ExpectedFaults){throw 'Active Verifier flags mismatch.'}
+        # Win10 19045 (runs 2-3): /volatile /faults replaces the active flags with 0x4 and /volatile /flags resets the
+        # filters, so the armed window is LRS-only. Every window with injection off must still read the full 0x13B.
+        if((($value -band 4) -ne 0) -ne $ExpectedFaults -or (-not $ExpectedFaults -and ($value -band 0x13B) -ne 0x13B)){throw 'Active Verifier flags mismatch.'}
         return @{Flags=$value;Faults=[UInt64]$counter[0].Groups[1].Value}
     }
     function Assert-FaultProbe([string]$Path,[string]$Label,[int]$Count,[bool]$Unknown,[string]$ExpectedSop='') {
@@ -101,7 +103,7 @@ function Invoke-StagedWriterFaultQualification([string]$Target,[string]$Healthy,
         $configurationExit=$LASTEXITCODE;$rawRecords['fault-configuration.txt']=$configuration
         Assert-FaultConfiguration $configuration $configurationExit
         # Do not follow /faults with /volatile /flags: on this Windows build (run 2) that resets the
-        # filters to 600/(null)/(null)/8. The active /query flags must still carry 0x13B plus LRS.
+        # filters to 600/(null)/(null)/8. The armed query must show LRS active; its flags are recorded as evidence.
         $verifierArmed=Read-FaultVerifier 'armed' $true
         Open-FaultWriter $first $identity
         $statsFailed=Get-WriterStateStats
