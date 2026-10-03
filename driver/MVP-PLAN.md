@@ -5,6 +5,9 @@ and [retained-section findings](evidence/2026-10-03/retained-section-findings.tx
 
 ## Goal
 
+Target platform for the MVP (owner decision 2026-10-03): **Windows 10 22H2, build 19045.2965 only**, the
+build on the test VM. Windows 11 and other Windows 10 builds are not MVP requirements.
+
 One protected folder on a local fixed NTFS volume where **no byte that was not approved by the
 service ever reaches the destination**, proven by an independent raw-volume observer, with:
 
@@ -25,8 +28,9 @@ The MVP adds admission correctness and boot behavior around it. It does not rewr
 ## Out of scope for the MVP (kept in the architecture, done afterwards one at a time)
 
 USB/removable, SMB/UNC, sync clients, ReFS/FAT, transactional NTFS (TxF), hard-link aliases,
-alternate data streams, raw-disk writes, other Windows builds beyond the canary check below,
-hibernation/fast startup. Inside a protected scope these fail closed: transacted write opens,
+alternate data streams, raw-disk writes, Windows 11 and every Windows build other than 19045.2965,
+hibernation/fast startup. On another build the start-up canary still runs and fails closed (volume
+Untrusted) if the mapping answer differs, but no other build is qualified. Inside a protected scope these fail closed: transacted write opens,
 volume write opens on a volume with a protected scope, and the existing alias/ADS refusals stay on.
 The production policy that enables removable and network scopes stays rejected
 (`ERROR_NOT_SUPPORTED`, run 34) until those destinations are qualified. The MVP runs with a dedicated
@@ -93,8 +97,8 @@ not separable from this run; no relative threshold was set
 
 Phase 1 remains open: nested mixed pairing, the other teardown/fault-injection cases, and canary security
 and newly mounted-volume qualification remain. Empty-file mapping errors
-did **not** exercise failed lower acquire. Windows 11 qualification is deferred by
-the user because no VM is available. Phases 2–5 remain open.
+did **not** exercise failed lower acquire. Windows 11 is out of MVP scope (owner decision 2026-10-03).
+Phases 2–5 remain open.
 [Progress evidence](evidence/2026-10-03/mvp1-idprobe-canary-progress.txt) and
 [detached-volume review](evidence/2026-10-03/mvp1-detached-adversarial-review.txt).
 
@@ -111,8 +115,7 @@ the user because no VM is available. Phases 2–5 remain open.
   against ground truth.
 
 Exit: X2 and X3 show no case where Free(F) reads true while a writer exists; canary passes; cost
-measured with the latency harness. One short Windows 11 run of the canary and the section
-experiments (needs a Windows 11 VM).
+measured with the latency harness. All on Windows 10 build 19045.2965.
 
 ### Phase 2: boot start with a durable policy
 
@@ -168,7 +171,8 @@ Fix what it finds, rerun phase 4. Then decide the order of the deferred destinat
 
 ## Dependencies and decisions
 
-- **Windows 11 VM** for the canary and section experiments (phase 1). The user deferred this gate on 2026-10-03 because no VM is available. It remains unqualified and prevents an overall completion claim; continue all independent Windows 10 work.
+- **Platform:** the MVP targets Windows 10 build 19045.2965 only (owner decision 2026-10-03, replacing the
+  earlier deferred Windows 11 gate). Windows 11 and other builds are post-MVP qualification work.
 - Fail closed on the protected scope while the agent is down: follows the agreed rule; noted here
   because users will see saves into the folder refused until the service starts.
 - Taint stays compiled in normal builds; the MVP proves the guarantee without it. Removing it from
