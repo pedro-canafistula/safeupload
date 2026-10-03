@@ -2942,12 +2942,25 @@ public sealed class SafeUploadCNSection : IDisposable {
     static extern IntPtr CreateFileMapping(SafeFileHandle file, IntPtr sa, uint protect, uint high, uint low, string name);
     [DllImport("kernel32.dll", SetLastError=true)]
     [return: MarshalAs(UnmanagedType.Bool)] static extern bool CloseHandle(IntPtr handle);
+    [DllImport("kernel32.dll", SetLastError=true)]
+    [return: MarshalAs(UnmanagedType.Bool)] static extern bool SetFilePointerEx(SafeFileHandle file, long distance, out long position, uint method);
+    [DllImport("kernel32.dll", SetLastError=true)]
+    [return: MarshalAs(UnmanagedType.Bool)] static extern bool SetEndOfFile(SafeFileHandle file);
+    static Win32Exception Failure(string operation) {
+        int error = Marshal.GetLastWin32Error();
+        return new Win32Exception(error, operation + " win32:" + error);
+    }
     public SafeUploadCNSection(string path) {
         try {
             file = CreateFile(path, 0xC0000000U, 7, IntPtr.Zero, 3, 0x80, IntPtr.Zero);
-            if (file.IsInvalid) throw new Win32Exception(Marshal.GetLastWin32Error(), "CreateFile share-all");
-            section = CreateFileMapping(file, IntPtr.Zero, 4, 0, 4096, null);
-            if (section == IntPtr.Zero) throw new Win32Exception(Marshal.GetLastWin32Error(), "CreateFileMapping PAGE_READWRITE");
+            if (file.IsInvalid) throw Failure("CreateFile share-all");
+            // Run 1: mapping the held 0-byte canary with an explicit 4 KiB size failed after the
+            // acquire/release pair. Size the file through the handle first, then map the whole file.
+            long position;
+            if (!SetFilePointerEx(file, 4096, out position, 0)) throw Failure("SetFilePointerEx 4096");
+            if (!SetEndOfFile(file)) throw Failure("SetEndOfFile 4096");
+            section = CreateFileMapping(file, IntPtr.Zero, 4, 0, 0, null);
+            if (section == IntPtr.Zero) throw Failure("CreateFileMapping PAGE_READWRITE");
         } catch { Dispose(); throw; }
     }
     public void Dispose() {
