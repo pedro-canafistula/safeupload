@@ -1,0 +1,13 @@
+PRE_RUN_PS: $d = 'C:\Users\vika\Documents'
+$expect = @{ 'SafeUpload-stage-prototype-diagf0960f65.sys' = '2FC5315863FF85B250AD68BD3BFDF778549C697AD62C7702E2A98183598F9AB9'; 'SafeUpload.Inspector.diagf0960f65.exe' = 'A676C41EA87D4FB191BF7D95C8E3883B727AD01E516148C530DC68AC4DE1F7FC' }
+foreach ($n in $expect.Keys) {
+    $p = Join-Path $d $n
+    if (Test-Path -LiteralPath $p) {
+        $h = (Get-FileHash -LiteralPath $p -Algorithm SHA256).Hash
+        if ($h -ne $expect[$n]) { throw "existing $n has an unexpected hash: $h" }
+    }
+}
+'PRE_RUN_OK=True'
+PRE_RUN_OK=True
+copied /tmp/claude-1000/exact-diag-watch/SafeUpload-stage-prototype.sys -> SafeUpload-stage-prototype-diagf0960f65.sys sha256=2fc5315863ff85b250ad68bd3bfdf778549c697ad62c7702e2a98183598f9ab9
+copied /tmp/claude-1000/exact-diag-watch/inspector-feature-release.exe -> SafeUpload.Inspector.diagf0960f65.exe sha256=a676c41ea87d4fb191bf7d95c8e3883b727ad01e516148c530dc68ac4de1f7fc

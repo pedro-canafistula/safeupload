@@ -1,0 +1,8 @@
+GuestIdentity=True
+Removed_SafeUpload.Inspector.diag7436498d.exe=True
+Removed_SafeUpload-stage-prototype-diag7436498d.sys=True
+Removed_SafeUpload.Inspector.diagf0960f65.exe=True
+Removed_SafeUpload-stage-prototype-diagf0960f65.sys=True
+RemovedRawTraceFiles=10
+PriorFeatureInputSHA256=B664C2F3AF7B1BE70BBAFB60ED5901070E736211077AB436C81A8B2587DA00A2
+PriorInspectorInputSHA256=8F4D97B3E2F730BE5B8C5B37531632218389873184736E577559512C8E1E8C0F
