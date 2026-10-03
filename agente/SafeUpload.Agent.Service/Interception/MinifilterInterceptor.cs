@@ -295,6 +295,10 @@ public sealed class MinifilterInterceptor : BackgroundService
         }
     }
 
+    internal static DestinationKind ClassifyStagedDestination(RequestFlags flags) =>
+        flags.HasFlag(RequestFlags.StageNetwork) ? DestinationKind.NetworkShare :
+        flags.HasFlag(RequestFlags.StageRemovable) ? DestinationKind.RemovableDrive : DestinationKind.Cloud;
+
     private (uint Verdict, string? StageName) AllocateStage(SafeUploadRequest request)
     {
         if (_stageAllocator is null || request.Version != Contract.Version ||
@@ -312,13 +316,7 @@ public sealed class MinifilterInterceptor : BackgroundService
                 return (PortVerdict.Deny, null);
             }
 
-            // S: is the disposable VHDX used to exercise the removable
-            // destination policy path in this test-only allocation gate.
-            var kind = request.TypedFlags.HasFlag(RequestFlags.StageNetwork)
-                ? DestinationKind.NetworkShare
-                : request.TypedFlags.HasFlag(RequestFlags.StageRemovable) ||
-                  destination.StartsWith(@"S:\SafeUpload\Escopo Monitorado\", StringComparison.OrdinalIgnoreCase)
-                    ? DestinationKind.RemovableDrive : DestinationKind.Cloud;
+            var kind = ClassifyStagedDestination(request.TypedFlags);
             Policy policy = _policyStore.LoadAsync(CancellationToken.None).GetAwaiter().GetResult();
             var destinationOperation = new FileOperation(destination, Path.GetFileName(destination),
                 Path.GetExtension(destination), 0, DateTime.MinValue, request.GetImageName(),

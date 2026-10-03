@@ -144,6 +144,7 @@ NTSTATUS SafeUploadStageAdmissionVolumeStatus(_Out_ PSAFEUPLOAD_ADMISSION_VOLUME
         }
     }
     /* Too many instances returns an error rather than partial success. */
+    Status->WriterGlobalUnknown |= SafeUploadStageWritersGlobalUnknown();
     ExReleaseRundownProtection(&SafeUploadData.ChannelRundown);
     return status;
 }

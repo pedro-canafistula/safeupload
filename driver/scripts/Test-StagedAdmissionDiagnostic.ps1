@@ -30,6 +30,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
+if ($RequireAllVolumeCanaries) { $RequireCanary = $true }
 $documents = Join-Path $env:USERPROFILE 'Documents'
 $installedDriver = 'C:\Windows\System32\drivers\SafeUpload.sys'
 $expectedOriginalDriver = 'ADA9D05AB6AECDD2B6C521B0CE529FC06C732154ACB3EE85439FBDC8AA80DFCE'
@@ -1261,6 +1262,11 @@ function Wait-AllVolumeCanaries([string] $RawPath) {
             throw 'Missing all-volume status fields.'
         }
         if ($status.writerGlobalUnknown -ne 0) { throw 'Global writer tracking is unknown.' }
+        foreach ($entry in $status.admissionVolumes) {
+            if ($entry.contextStatus -ne 0 -or $entry.fileSystemStatus -ne 0) {
+                throw 'An attached instance has an unresolved context or filesystem.'
+            }
+        }
         $eligible = @($status.admissionVolumes | Where-Object { $_.volumeKind -eq 1 -and $_.fileSystemType -eq 2 })
         $actual = @($eligible | ForEach-Object {
             if ($_.contextStatus -ne 0 -or $_.fileSystemStatus -ne 0 -or $_.volumeGuidStatus -ne 0 -or
@@ -2194,6 +2200,7 @@ public static class SafeUploadEolNative
             $dReleased = [int64]$statsAfter.writeObjectsReleased - [int64]$statsBefore.writeObjectsReleased
             Write-Output ('WC_StatsDelta=counted:' + $dCounted + ';released:' + $dReleased + ';liveDelta:' + ($dCounted - $dReleased))
             Write-Output ('WC_Summary=passed:' + $script:WriterChecksPassed + ';failed:' + $script:WriterChecksFailed)
+            if ($RequireAllVolumeCanaries) { Wait-AllVolumeCanaries ($rawTraceB + '-final-volumes.json') }
             [void](Invoke-InspectorChecked -Arguments @('--admission-trace-disable') -Timeout $t)
             $traceEnabled = $false
             $runSucceeded = ($script:WriterChecksFailed -eq 0)
@@ -2295,6 +2302,7 @@ public static class SafeUploadEolNative
             $tracked = ([int64]$s2.sectionInFlightInserted - [int64]$s1.sectionInFlightInserted)
             Write-Output ('X3_Verdict=conservationResidual:' + $conserved + ';stormTrackedSections:' + $tracked +
                 ';overflow:' + $s4.sectionInFlightOverflow + ';stuck:' + $s4.sectionInFlightStuck + ';now:' + $s4.sectionInFlightNow)
+            if ($RequireAllVolumeCanaries) { Wait-AllVolumeCanaries ($rawTraceA + '-final-volumes.json') }
             [void](Invoke-InspectorChecked -Arguments @('--admission-trace-disable') -Timeout $t)
             $traceEnabled = $false
             # The storm creates 2400 writable sections; other processes may add a few. Read-only sections must not be tracked.

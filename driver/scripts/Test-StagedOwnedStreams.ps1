@@ -3,7 +3,11 @@ param([switch] $Verifier, [switch] $BootVerifier, [switch] $PagingSmoke, [switch
     [ValidateRange(0,64)][int] $PublicationIterations = 0,
     [ValidatePattern('^SafeUpload-stage-prototype[A-Za-z0-9._-]*\.sys$')]
     [string] $FeatureDriverFileName = 'SafeUpload-stage-prototype.sys',
-    [ValidatePattern('^([0-9A-Fa-f]{64})?$')][string] $ExpectedFeatureSha256 = '')
+    [ValidatePattern('^([0-9A-Fa-f]{64})?$')][string] $ExpectedFeatureSha256 = '',
+    [ValidatePattern('^stage-service-publish[A-Za-z0-9._-]*$')]
+    [string] $ServiceDirectoryName = 'stage-service-publish',
+    [ValidatePattern('^[0-9A-Fa-f]{64}$')]
+    [string] $ExpectedServicePackageSha256 = 'D887E0D7F38AD64AD40CEE18B841C6D38AD2BED4D6F760B1BDE4464927381997')
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'StagedTestAgent.ps1')
 Add-Type -Path (Join-Path $PSScriptRoot 'StagedIdentityProbe.cs')
@@ -11,7 +15,8 @@ $installed = 'C:\Windows\System32\drivers\SafeUpload.sys'
 $expectedOriginal = 'ADA9D05AB6AECDD2B6C521B0CE529FC06C732154ACB3EE85439FBDC8AA80DFCE'
 $driver = Join-Path 'C:\Users\vika\Documents' $FeatureDriverFileName
 $backup = 'C:\Users\vika\Documents\SafeUpload-original-before-owned.sys'
-$serviceDir = 'C:\Users\vika\Documents\stage-service-publish'
+$serviceDir = Join-Path 'C:\Users\vika\Documents' $ServiceDirectoryName
+$servicePackage = $serviceDir + '.zip'
 $journal = 'C:\ProgramData\SafeUpload\staging-journal'
 $vhd = 'C:\Users\vika\Documents\SafeUpload-owned.vhdx'
 $diskpart = $vhd + '.txt'
@@ -219,8 +224,8 @@ if ((Get-FileHash $installed -Algorithm SHA256).Hash -ne $expectedOriginal) { th
 if ($ExpectedFeatureSha256 -and (Get-FileHash -LiteralPath $driver -Algorithm SHA256).Hash -ne $ExpectedFeatureSha256.ToUpperInvariant()) {
     throw 'Feature driver input hash mismatch.'
 }
-if ((Get-FileHash -LiteralPath 'C:\Users\vika\Documents\stage-service-publish.zip' -Algorithm SHA256).Hash -ne
-    'D887E0D7F38AD64AD40CEE18B841C6D38AD2BED4D6F760B1BDE4464927381997') { throw 'Service package hash mismatch.' }
+if ((Get-FileHash -LiteralPath $servicePackage -Algorithm SHA256).Hash -ne
+    $ExpectedServicePackageSha256.ToUpperInvariant()) { throw 'Service package hash mismatch.' }
 if((& fltmc.exe filters) -match '^SafeUpload\s'){throw 'Expected unloaded baseline.'}
 if($Verifier -and $BootVerifier){throw 'Choose volatile or boot-activated Verifier.'}
 if($BootVerifier){
@@ -254,7 +259,8 @@ try {
         }
     } finally { $controlHandle.Dispose(); Remove-Item $controlRename -Force }
     Write-Output 'UnfilteredNativeRenameControl=True'
-    & tar.exe -xf 'C:\Users\vika\Documents\stage-service-publish.zip' -C $serviceDir
+    & tar.exe -xf $servicePackage -C $serviceDir
+    if ($LASTEXITCODE -ne 0) { throw 'Service package extraction failed.' }
     if ($LASTEXITCODE -ne 0) { throw 'Service extraction failed.' }
     Backup-StagedTestDriver $backup
     Write-OwnedCheckpoint 'DurableOriginalBackupVerified; BeforeDriverReplacement'
