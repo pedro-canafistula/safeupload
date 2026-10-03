@@ -1,0 +1,40 @@
+X3 nested pairing and teardown, with the scoped lost-tracking rule (Windows 10 19045.2965)
+Verdict: section-teardown run 10 (runtime Verifier 0x13B) PASSED 59/59, runner CheckpointedSectionTeardownQualification=PASS,
+independent BaselineClean=True. Driver 88875b67 (exact build mvp1-scoped3: four WDK configurations PREfast/ApiValidator 0/0, signed),
+companion exact2. Runs 1-9 FAILED and are retained (harness defects found and fixed one by one; run 1 used the pre-scoped driver).
+
+Driver changes qualified here
+  - 12a2f3fb: a drained section acquire sets writer state machine-wide Unknown (owner rule).
+  - 12ba539d -> 1c085543 (+ build fixes): writer nodes left on a freed stream context are classified by a per-instance teardown
+    token marked in InstanceTeardownStart: after teardown started -> counted writersDroppedAtTeardown, no machine-wide Unknown;
+    while mounted or unknown -> writersDroppedWhileMounted (when mounted) and machine-wide Unknown. Test-build-only SYSTEM-port
+    command to delete one open C: fixture's stream context (counter-case). Wire protocol unchanged (18).
+
+Run 10 results
+  Nested mixed pairing (one FILE_OBJECT shared by two threads, companion holding writable creates):
+    C=1 while T1's writable create is held, through four T2 read-only creates on the same object; 0 after T1's release; T2's writable
+    create held C=1 then 0; inserted 2 / released 2; no stuck, no overflow, writerGlobalUnknown 0.
+  Teardown with an acquire held, on a fresh VHDX:
+    - Voluntary detach is vetoed (fltmc detach -> 0x801f0010), SafeUpload stays attached, acquire still held (by design).
+    - fsutil volume dismount with the acquire held: completes in ~0.1 s; Filter Manager still delivers the held acquire's completion and
+      its release normally (inserted 4 / released 4, now 0): C tracking is not lost and the draining branch is NOT exercised.
+    - Premise of the scoped decision HOLDS: after dismount and again after reattaching the same VHDX, both old write handles
+      (two threads) fail with Win32 error 5 and the old writable mapped view faults on write (SEH, recorded through a guarded native
+      write); the file's SHA-256 is unchanged (AD7FACB2...). No ST_PREMISE_FALSE.
+    - The reattached volume gets a new SafeUpload instance (newly mounted) whose canary passes (state 2, checks 15).
+    - Closing the old handles: the old (dismounted) instance is still listed and still receives their cleanups (released +2,
+      unmatched 0); writersDroppedAtTeardown stays 0, writersDroppedWhileMounted 0, machine-wide Unknown 0, C: probes known.
+      => On this build no writer tracking is lost at dismount; the "dropped at teardown" classification path was not exercised.
+  Counter-case (last step): deleting the stream context of an open C: fixture while its writer is open -> writersDroppedWhileMounted
+    0 -> 1, machine-wide Unknown 1 and sticky on repeated reads, C: probe writersUntracked true.
+
+Harness defects found along the way (all fixed): null map name became "" in PowerShell 5.1 (run 2); Get-FileHash cannot read a file
+held by our own writers (run 3); writes through a dismounted view raise an uncatchable SEH that killed the exercise (run 4); lookup of
+the reattached instance treated old+new entries with the same GUID as ambiguous (runs 5-6); trace-ring loss treated as fatal for
+corroborating counts (runs 7-8); drop counter sampled before the old contexts could be freed (run 9).
+
+Limits
+  - The draining branch for a held section acquire and the "dropped at teardown" classification are implemented and reviewed but not
+    exercised: Filter Manager on this build completes held operations and delivers cleanups across a forced dismount. Filter unload
+    with open files (test-only) or a surprise removal are the remaining ways to reach them.
+  - The counter-case uses a test-build-only context deletion, not an organic missed cleanup.

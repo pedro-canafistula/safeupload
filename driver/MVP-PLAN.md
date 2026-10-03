@@ -107,8 +107,16 @@ Verifier failure of the canary-only pool tag fails a second fresh volume at step
 not reachable without a race and remains unexercised ([readout](evidence/2026-10-03/canary-newvolume-run1-6-readout.txt)). Run 3 also
 found that the SYSTEM Inspector wrapper had recorded every exit code as 0; fixed, and earlier variants should be rerun once with the fix.
 
-Phase 1 remains open: nested mixed pairing and the teardown experiment (which exercises the draining fix) remain,
-plus one regression pass of the earlier variants with the corrected exit-code wrapper. Empty-file mapping errors
+Nested mixed pairing and teardown passed under runtime Verifier (section-teardown run 10, 59/59): C stays exact across two threads on
+one file object; a forced dismount with an acquire held loses nothing (Filter Manager completes the held acquire and still delivers the
+old writers' cleanups); old handles and an old writable view provably cannot write after dismount or reattach; a writer record dropped
+while mounted sets the machine-wide Unknown (scoped rule). The draining and dropped-at-teardown branches remain unexercised
+([readout](evidence/2026-10-03/section-teardown-run1-10-readout.txt)). The regression pass with the corrected exit-code wrapper
+passed ([readout](evidence/2026-10-03/regression-wrapperfix-readout.txt)); writer-count run 21 then passed 287/287 under
+Verifier on the scoped-teardown driver 88875b67.
+
+Phase 1 status: every listed experiment has a qualifying run on Windows 10 19045.2965. Remaining before calling Phase 1 closed:
+the milestone review, and the unexercised branches noted in the readouts. Empty-file mapping errors
 did **not** exercise failed lower acquire. Windows 11 is out of MVP scope (owner decision 2026-10-03).
 Phases 2–5 remain open.
 [Progress evidence](evidence/2026-10-03/mvp1-idprobe-canary-progress.txt) and
