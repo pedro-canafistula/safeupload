@@ -184,20 +184,13 @@ function Format-STHandleWrite($Attempt) {
 
 function Invoke-STOldViewWrite([long]$Offset,[byte]$Value) {
     $writeReturned=$false;$flushReturned=$false;$writeException='';$flushException=''
-    try {
-        $script:STVhdxView.Write([Int64]$Offset,[Byte]$Value)
-        $writeReturned=$true
-    } catch {
-        $writeException=$_.Exception.GetType().FullName+':HRESULT=0x'+$_.Exception.HResult.ToString('X8')+':'+
-            ($_.Exception.Message -replace '[\r\n]+',' ')
-    }
-    try {
-        $script:STVhdxView.Flush()
-        $flushReturned=$true
-    } catch {
-        $flushException=$_.Exception.GetType().FullName+':HRESULT=0x'+$_.Exception.HResult.ToString('X8')+':'+
-            ($_.Exception.Message -replace '[\r\n]+',' ')
-    }
+    # Raw, guarded access: a dismounted backing faults with an exception managed code cannot catch (run 4).
+    $address=[IntPtr]::Add($script:STVhdxView.SafeMemoryMappedViewHandle.DangerousGetHandle(),
+        [int]($script:STVhdxView.PointerOffset+$Offset))
+    $writeOutcome=[SafeUploadGuardedView]::Write($address,[byte]$Value)
+    if($writeOutcome -eq 'returned'){$writeReturned=$true}else{$writeException=$writeOutcome}
+    $flushOutcome=[SafeUploadGuardedView]::Flush($address)
+    if($flushOutcome -eq 'returned'){$flushReturned=$true}else{$flushException=$flushOutcome}
     return [pscustomobject]@{Offset=$Offset;Value=$Value;WriteReturned=$writeReturned;FlushReturned=$flushReturned;
         WriteException=$writeException;FlushException=$flushException}
 }

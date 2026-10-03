@@ -370,3 +370,32 @@ public sealed class SafeUploadSectionFaultThreadMapping : IDisposable
         completed.Dispose();
     }
 }
+
+/* Writes through a view whose backing volume was dismounted fault with an in-page/access exception that .NET 4
+ * does not deliver to managed handlers by default (section-teardown run 4 crashed the exercise). Catch it here so
+ * the outcome is recorded instead of terminating the process. Raw address = view base + PointerOffset + offset. */
+public static class SafeUploadGuardedView
+{
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    static extern bool FlushViewOfFile(IntPtr address, UIntPtr bytes);
+
+    [System.Runtime.ExceptionServices.HandleProcessCorruptedStateExceptions]
+    [System.Security.SecurityCritical]
+    public static string Write(IntPtr address, byte value)
+    {
+        try { Marshal.WriteByte(address, value); return "returned"; }
+        catch (Exception e) { return "faulted:" + e.GetType().FullName + ":0x" + e.HResult.ToString("X8"); }
+    }
+
+    [System.Runtime.ExceptionServices.HandleProcessCorruptedStateExceptions]
+    [System.Security.SecurityCritical]
+    public static string Flush(IntPtr address)
+    {
+        try {
+            if (FlushViewOfFile(address, new UIntPtr(1))) return "returned";
+            return "failed:win32:" + Marshal.GetLastWin32Error();
+        }
+        catch (Exception e) { return "faulted:" + e.GetType().FullName + ":0x" + e.HResult.ToString("X8"); }
+    }
+}
