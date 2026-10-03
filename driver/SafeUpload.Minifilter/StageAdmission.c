@@ -3,6 +3,9 @@
 #include <ntstrsafe.h>
 
 static NTSTATUS StageCanaryVerifySecurity(_In_ PFLT_INSTANCE Instance, _In_ PFILE_OBJECT FileObject);
+#define STAGE_CANARY_SD_BYTES 1024
+static NTSTATUS StageCanaryVerifyDescriptor(_In_ PFLT_INSTANCE Instance, _In_ PFILE_OBJECT FileObject,
+    _Out_writes_bytes_(STAGE_CANARY_SD_BYTES) PUCHAR buffer);
 
 #ifdef ALLOC_PRAGMA
 #pragma alloc_text(PAGE, SafeUploadStageOpenByIdentity)
@@ -233,10 +236,6 @@ static NTSTATUS StageCanarySecurity(_Out_ SECURITY_DESCRIPTOR *Descriptor, _Out_
     Descriptor->Control |= SE_DACL_PROTECTED;
     return STATUS_SUCCESS;
 }
-
-#define STAGE_CANARY_SD_BYTES 1024
-static NTSTATUS StageCanaryVerifyDescriptor(_In_ PFLT_INSTANCE Instance, _In_ PFILE_OBJECT FileObject,
-    _Out_writes_bytes_(STAGE_CANARY_SD_BYTES) PUCHAR buffer);
 
 static NTSTATUS StageCanaryVerifySecurity(_In_ PFLT_INSTANCE Instance, _In_ PFILE_OBJECT FileObject)
 {
