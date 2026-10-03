@@ -1,0 +1,23 @@
+Regression pass after the SYSTEM Inspector exit-code fix, on driver bf0c5a74 (mvp1-teardown: section draining fix, canary DACL readback,
+canary pool tag, stream-context lost-tracking flag), Windows 10 19045.2965.
+
+Infrastructure: the first attempt (writer-count run 19 + four aborted runs) ended when the VM's external-overlay checkpoint chain hit
+libvirt's 200-layer limit. The user flattened it with virsh blockpull --base flare.qcow2 (vm-chain-blockpull-20261003.txt: depth 199 -> 1,
+old checkpoint files intact); the wrapper now refuses to checkpoint at 190 layers.
+
+Results (each with independent BaselineClean=True)
+  - writer-count run 20, runtime Verifier: PASS 287/287 (machine-wide counters now informational after run 19's 28 unrelated open
+    handles; per-stream probes and untrackedCreates asserted).
+  - writer-fault run 7: PASS; real Verifier failure counter 3 -> 4, untrackedCreates 0 -> 1, armed window 0x4, 0x13B before/after.
+    Run 6 FAILED because the armed injection did not fire (counter unchanged 3 -> 3, writer counted normally); the harness failed
+    closed as designed. Not reproduced in run 7. Recorded as an observed Verifier non-event, cause unknown.
+  - section-lower run 8, runtime Verifier: PASS (real lower failure removedOnFailure +1, hold C=1 -> 0). Run 7 passed functionally but
+    its runner looked for a gate line the shared exercise renamed (fixed in the runner).
+  - canary-security run 6, runtime Verifier: PASS 18/18.
+  - primitive-cost run 3: PASS (absolute budget).
+  - section-teardown run 1 (new, Verifier): nested mixed pairing PASSED every check (T1 held writable C=1 through four T2 read-only
+    creates on the same FILE_OBJECT, 0 after release; T2 writable held C=1 then 0; inserted 2 / released 2; no stuck/overflow).
+    Teardown: voluntary detach vetoed (0x801f0010) as designed; forced dismount detached the instance with the acquire held, and
+    Filter Manager still delivered the held acquire's completion and release normally (released 3/3, now 0) -> C tracking was not lost
+    and the draining branch was not exercised. writerGlobalUnknown stayed 0: the only VHDX writer was the test's own handle, still
+    open at measurement, so its stream context had not been freed. This led to the scoped lost-tracking decision (MVP-PLAN).
