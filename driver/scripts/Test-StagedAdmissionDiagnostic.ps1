@@ -627,8 +627,11 @@ $start = @{ FilePath = '__EXE__'; PassThru = $true; WindowStyle = 'Hidden';
     RedirectStandardOutput = '__STDOUT__'; RedirectStandardError = '__STDERR__' }
 $start.ArgumentList = '__ARGUMENTS__'
 $process = Start-Process @start
+# Windows PowerShell 5.1: without caching the handle, ExitCode stays empty and was recorded as 0.
+[void]$process.Handle
 [IO.File]::WriteAllText('__PID__', [string]$process.Id)
 $process.WaitForExit()
+if ($null -eq $process.ExitCode) { throw 'Inspector exit code unavailable.' }
 [IO.File]::WriteAllText('__EXIT__', [string]$process.ExitCode)
 '@
     $launcherBody = $launcherTemplate.Replace('__EXE__', (ConvertTo-PowerShellLiteral $inspectorPath))
@@ -2865,7 +2868,9 @@ function Invoke-Variant([string] $SelectedVariant) {
                 $cnRaw[$Label + '-refusal.txt'] = [string]$refusal.Stdout + [string]$refusal.Stderr
                 $after = Find-CNVolume (Read-CNVolumes ($Label + '-after-refusal')) $Before.Guid
                 Add-CNOutcome ($Label + 'HoldRefused') ($refusal.ExitCode -eq 3 -and
-                    $refusal.Stderr -match 'resposta do hold do canary invalida \(hr = 0x[0-9A-Fa-f]{8}, bytes = 0\)' -and
+                    # The driver refuses a non-PASSED volume with STATUS_INVALID_DEVICE_STATE (HRESULT 0x80070016).
+                    # FilterSendMessage leaves the returned-bytes count unspecified on failure, so it is not checked.
+                    $refusal.Stderr -match 'resposta do hold do canary invalida \(hr = 0x80070016, bytes = [0-9]+\)' -and
                     (Test-CNSameCanary $Before.Entry $after) -and $after.canaryState -eq 3) `
                     ('exit:' + $refusal.ExitCode + ';diagnostic:' + ([regex]::Replace([string]$refusal.Stderr, '[\r\n]+', ' ')).Trim() +
                     ';after:' + (Get-CNCanaryFacts $after))
