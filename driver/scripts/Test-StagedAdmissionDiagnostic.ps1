@@ -1,6 +1,6 @@
 param(
     [Parameter(Mandatory = $true)]
-    [ValidateSet('preattach-immediate', 'preattach-protected-open', 'mmdoes-matrix', 'policy-transition', 'retained-section', 'section-eol', 'writer-count', 'canary-security', 'section-inflight', 'section-lower', 'writer-fault', 'primitive-cost', 'All')]
+    [ValidateSet('preattach-immediate', 'preattach-protected-open', 'mmdoes-matrix', 'policy-transition', 'retained-section', 'section-eol', 'writer-count', 'canary-security', 'canary-newvolume', 'section-inflight', 'section-lower', 'writer-fault', 'primitive-cost', 'All')]
     [string] $Variant,
 
     [Parameter(Mandatory = $true)]
@@ -2687,6 +2687,473 @@ function Invoke-Variant([string] $SelectedVariant) {
                 Write-Output ('CS_Findings=' + $script:CanarySecurityFindings)
             }
             $runSucceeded = ($script:CanarySecurityChecksFailed -eq 0)
+        }
+        elseif ($SelectedVariant -eq 'canary-newvolume') {
+            if (-not $Verifier) { throw 'New-volume canary qualification requires runtime Verifier.' }
+            $script:CNPassed = 0; $script:CNFailed = 0
+            $cnDisks = New-Object System.Collections.ArrayList
+            $cnRaw = @{}
+            $cnFaultsMayBeEnabled = $false
+            $cnHoldMayBeArmed = $false
+            $script:CNHelperStopped = $true
+            $cnPrefix = Join-Path $documents ('SafeUpload-canary-newvolume-' + $id)
+            # Reuse the baseline's exact owned names and S: sequentially. The second image is
+            # newly created after the first is disposed; retain both GUIDs in the evidence.
+            $cnVhd = Join-Path $documents 'SafeUpload-owned.vhdx'
+            $cnDiskpart = $cnVhd + '.txt'
+            $cnControl = Join-Path $fixtureDirectory 'canary-section'
+            $cnHelper = Join-Path $fixtureDirectory 'cn-system-section.ps1'
+            function Add-CNOutcome([string] $Name, [bool] $Ok, [string] $Facts) {
+                if ($Ok) { $script:CNPassed++ } else { $script:CNFailed++ }
+                Write-Output ('CN_' + $Name + '=' + $Facts + ';' + $(if ($Ok) { 'PASS' } else { 'FAIL' }))
+                if (-not $Ok) { throw ('New-volume canary check failed: ' + $Name) }
+            }
+            function Invoke-CNNative([string] $Exe, [string] $Arguments, [int] $Seconds = 30) {
+                $start = [Diagnostics.ProcessStartInfo]::new($Exe, $Arguments)
+                $start.UseShellExecute = $false; $start.CreateNoWindow = $true
+                $start.RedirectStandardOutput = $true; $start.RedirectStandardError = $true
+                $process = [Diagnostics.Process]::Start($start)
+                try {
+                    [void]$process.Handle
+                    $stdout = $process.StandardOutput.ReadToEndAsync()
+                    $stderr = $process.StandardError.ReadToEndAsync()
+                    if (-not $process.WaitForExit($Seconds * 1000)) { throw ('Native command timed out: ' + $Exe) }
+                    if (-not $stdout.Wait(5000) -or -not $stderr.Wait(5000)) { throw 'Native output did not drain.' }
+                    return [pscustomobject]@{ ExitCode = $process.get_ExitCode(); Raw = $stdout.Result + $stderr.Result }
+                } finally {
+                    if (-not $process.HasExited) {
+                        $process.Kill()
+                        if (-not $process.WaitForExit(10000)) { throw 'Native command did not terminate.' }
+                    }
+                    $process.Dispose()
+                }
+            }
+            function Read-CNVerifier([string] $Label, [uint32] $ExpectedFlags) {
+                $query = Invoke-CNNative 'verifier.exe' '/query'
+                $cnRaw[$Label + '-verifier.txt'] = $query.Raw
+                $flags = [regex]::Matches($query.Raw, '(?im)^Verifier Flags:\s+0x([0-9A-F]+)\s*$')
+                $counter = [regex]::Matches($query.Raw, '(?im)^\s*Pool Allocations Failed Deliberately:\s+([0-9]+)\s*$')
+                $modules = [regex]::Matches($query.Raw, '(?im)^\s*MODULE:\s+(\S+)\s+\(')
+                if ($query.ExitCode -ne 0 -or $flags.Count -ne 1 -or $counter.Count -ne 1 -or
+                    $modules.Count -ne 1 -or $modules[0].Groups[1].Value -ine 'SafeUpload.sys' -or
+                    [Convert]::ToUInt32($flags[0].Groups[1].Value, 16) -ne $ExpectedFlags) {
+                    throw 'Canary Verifier flags, inventory or deliberate-failure counter ambiguous.'
+                }
+                return [pscustomobject]@{ Flags = $ExpectedFlags; Faults = [uint64]$counter[0].Groups[1].Value }
+            }
+            function Restore-CNVerifier {
+                $restore = Invoke-CNNative 'verifier.exe' '/volatile /flags 0x13B'
+                $cnRaw['restore-flags.txt'] = $restore.Raw
+                if ($restore.ExitCode -ne 0) { throw 'Canary LRS disable failed.' }
+                # This exact active query must precede every subsequent operation, including
+                # helper termination, path inspection and disk detach. Keep the guard on failure.
+                $restored = Read-CNVerifier 'restored' 0x13B
+                $script:CNRestoredVerifier = $restored
+            }
+            function Invoke-CNDiskpart([string[]] $Commands, [string] $Label) {
+                Set-Content -LiteralPath $cnDiskpart -Value $Commands -Encoding Ascii
+                $diskpart = Invoke-CNNative 'diskpart.exe' ('/s ' + (ConvertTo-WindowsArgument $cnDiskpart)) 60
+                $cnRaw[$Label + '-diskpart.txt'] = $diskpart.Raw
+                if ($diskpart.ExitCode -ne 0 -or $diskpart.Raw -match 'DiskPart has encountered an error') {
+                    throw ('Owned canary disk operation failed: ' + $Label)
+                }
+            }
+            function New-CNVolume([string] $Label) {
+                if ((Test-Path -LiteralPath $cnVhd) -or (Test-Path -LiteralPath 'S:\')) { throw 'Owned canary disk/letter already present.' }
+                $disk = [pscustomobject]@{ Label = $Label; Guid = ''; Disposed = $false }
+                [void]$cnDisks.Add($disk) # Register ownership BEFORE create/attach, including partial setup.
+                Invoke-CNDiskpart @("create vdisk file=`"$cnVhd`" maximum=128 type=fixed",
+                    "select vdisk file=`"$cnVhd`"", 'attach vdisk', 'create partition primary',
+                    'format fs=ntfs quick label=SafeUploadOwned', 'assign letter=S') $Label
+                $deadline = [DateTime]::UtcNow.AddSeconds(15)
+                do {
+                    $volumes = @(Get-CimInstance Win32_Volume -Filter "DriveLetter='S:'" -ErrorAction Stop)
+                    if ($volumes.Count -gt 1) { throw 'Owned letter identity ambiguous.' }
+                    if ($volumes.Count -eq 1 -and $volumes[0].DriveType -eq 3 -and $volumes[0].FileSystem -eq 'NTFS' -and
+                        $volumes[0].DeviceID -match '(?i)\{[0-9a-f-]{36}\}') {
+                        $disk.Guid = $matches[0].ToLowerInvariant()
+                        return $disk
+                    }
+                    Start-Sleep -Milliseconds 100
+                } while ([DateTime]::UtcNow -lt $deadline)
+                throw 'Owned fixed NTFS volume identity did not become ready.'
+            }
+            function Remove-CNVolume($Disk) {
+                if ($Disk.Disposed) { return }
+                if (Test-Path -LiteralPath $cnVhd) {
+                    $image = Get-DiskImage -ImagePath $cnVhd -ErrorAction Stop
+                    if ($image.Attached) {
+                        Invoke-CNDiskpart @("select vdisk file=`"$cnVhd`"", 'detach vdisk') ($Disk.Label + '-detach')
+                    }
+                    $deadline = [DateTime]::UtcNow.AddSeconds(15)
+                    do {
+                        $image = Get-DiskImage -ImagePath $cnVhd -ErrorAction Stop
+                        if (-not $image.Attached -and -not (Test-Path -LiteralPath 'S:\') -and
+                            @(Get-CimInstance Win32_Volume -Filter "DriveLetter='S:'" -ErrorAction Stop).Count -eq 0) { break }
+                        Start-Sleep -Milliseconds 100
+                    } while ([DateTime]::UtcNow -lt $deadline)
+                    if ($image.Attached -or (Test-Path -LiteralPath 'S:\') -or
+                        @(Get-CimInstance Win32_Volume -Filter "DriveLetter='S:'" -ErrorAction Stop).Count -ne 0) {
+                        throw 'Owned canary VHDX detach could not be proven.'
+                    }
+                    Remove-Item -LiteralPath $cnVhd -Force
+                }
+                if (Test-Path -LiteralPath $cnDiskpart) { Remove-Item -LiteralPath $cnDiskpart -Force }
+                $Disk.Disposed = $true
+            }
+            function Read-CNVolumes([string] $Label, [int] $Timeout = $InspectorTimeoutSeconds) {
+                $response = Invoke-InspectorChecked -Arguments @('--admission-volume-status') -Timeout $Timeout
+                $cnRaw[$Label + '-volumes.json'] = [string]$response.Stdout
+                $status = ConvertFrom-Json -InputObject ([string]$response.Stdout).Trim()
+                if ($null -eq $status.admissionVolumes -or $null -eq $status.writerGlobalUnknown -or $status.writerGlobalUnknown -ne 0) {
+                    throw 'Canary volume inventory missing or globally unknown.'
+                }
+                foreach ($entry in $status.admissionVolumes) {
+                    # Detached storage is tolerated exactly as in Wait-AllVolumeCanaries:
+                    # context/fs/volume-info resolved, DETACHED flag explicit; no GUID requirement.
+                    if ($null -eq $entry.contextStatus -or $entry.contextStatus -ne 0 -or
+                        $null -eq $entry.fileSystemStatus -or $entry.fileSystemStatus -ne 0 -or
+                        $null -eq $entry.volumeInfoStatus -or $entry.volumeInfoStatus -ne 0 -or $null -eq $entry.volumeFlags) {
+                        throw 'Canary inventory has an unresolved attached/detached entry.'
+                    }
+                }
+                return $status
+            }
+            function Find-CNVolume($Status, [string] $Guid) {
+                $entries = @($Status.admissionVolumes | Where-Object {
+                    ($_.volumeFlags -band 1) -eq 0 -and $_.volumeKind -eq 1 -and $_.fileSystemType -eq 2 -and
+                    $_.volumeGuidStatus -eq 0 -and ([string]$_.volumeGuid).ToLowerInvariant().Contains($Guid) })
+                if ($entries.Count -gt 1) { throw 'Canary target instance ambiguous.' }
+                if ($entries.Count -eq 1) {
+                    $entry = $entries[0]
+                    foreach ($field in @('canaryState', 'canaryStatus', 'canaryChecks', 'canaryCleanupStatus', 'setupFlags', 'instanceWritersUntracked')) {
+                        if ($null -eq $entry.$field) { throw ('Canary result field missing: ' + $field) }
+                    }
+                    if ($entry.instanceWritersUntracked -ne 0) { throw 'Canary instance writer tracking unknown.' }
+                    return $entry
+                }
+                return $null
+            }
+            function Wait-CNVolume([string] $Guid, [string] $Label) {
+                $deadline = [DateTime]::UtcNow.AddSeconds(60)
+                $attempt = 0
+                do {
+                    $remainingSeconds = [Math]::Max(1, [int][Math]::Ceiling(($deadline - [DateTime]::UtcNow).TotalSeconds))
+                    $status = Read-CNVolumes ($Label + '-' + $attempt++) ([Math]::Min($InspectorTimeoutSeconds, $remainingSeconds))
+                    $entry = Find-CNVolume $status $Guid
+                    if ($null -ne $entry -and $entry.canaryState -ge 2) { return $entry }
+                    Start-Sleep -Milliseconds 100
+                } while ([DateTime]::UtcNow -lt $deadline)
+                throw ('Canary instance/result wait exceeded 60 seconds: ' + $Label)
+            }
+            function Get-CNCanaryFacts($Entry) {
+                return ('instance:' + $Entry.instance + ';guid:' + $Entry.volumeGuid + ';setupFlags:' + $Entry.setupFlags +
+                    ';state:' + $Entry.canaryState + ';status:0x' + ([uint32]$Entry.canaryStatus).ToString('X8') +
+                    ';checks:' + $Entry.canaryChecks + ';lowChecks:' + ($Entry.canaryChecks -band 15) +
+                    ';step:' + (($Entry.canaryChecks -shr 8) -band 255) + ';cleanup:0x' + ([uint32]$Entry.canaryCleanupStatus).ToString('X8'))
+            }
+            function Test-CNSameCanary($Before, $After) {
+                if ($null -eq $After) { return $false }
+                foreach ($field in @('instance', 'canaryState', 'canaryStatus', 'canaryChecks', 'canaryCleanupStatus')) {
+                    if ($Before.$field -ne $After.$field) { return $false }
+                }
+                return $true
+            }
+            function Assert-CNHoldRefused($Before, [string] $Label) {
+                # Expected negative control: do NOT poison InspectorFailed through the checked wrapper.
+                $refusal = Invoke-InspectorAsSystem -Arguments @('--admission-canary-hold', 'S:\', '1000') -Timeout 45
+                $cnRaw[$Label + '-refusal.txt'] = [string]$refusal.Stdout + [string]$refusal.Stderr
+                $after = Find-CNVolume (Read-CNVolumes ($Label + '-after-refusal')) $Before.Guid
+                Add-CNOutcome ($Label + 'HoldRefused') ($refusal.ExitCode -eq 3 -and
+                    $refusal.Stderr -match 'resposta do hold do canary invalida \(hr = 0x[0-9A-Fa-f]{8}, bytes = 0\)' -and
+                    (Test-CNSameCanary $Before.Entry $after) -and $after.canaryState -eq 3) `
+                    ('exit:' + $refusal.ExitCode + ';diagnostic:' + ([regex]::Replace([string]$refusal.Stderr, '[\r\n]+', ' ')).Trim() +
+                    ';after:' + (Get-CNCanaryFacts $after))
+            }
+            function Stop-CNHelper {
+                if ($null -eq $agent) { return }
+                try { [IO.File]::WriteAllText((Join-Path $cnControl 'release'), 'release') }
+                catch {
+                    # A failed handoff must still reach bounded termination below.
+                    $script:CNFailed++; [void]$restorationErrors.Add('Canary helper release: ' + (Get-ErrorText $_))
+                    Write-Output ('CN_HelperRelease=' + (Get-ErrorText $_) + ';FAIL')
+                }
+                if (-not $agent.Process.HasExited -and -not $agent.Process.WaitForExit(10000)) {
+                    $agent.Process.Kill()
+                    if (-not $agent.Process.WaitForExit(10000)) { throw 'SYSTEM canary section helper did not terminate.' }
+                }
+                if (-not $agent.Process.HasExited) { throw 'SYSTEM canary section helper still owns its section.' }
+                # Process exit closes kernel handles even after a forced termination. Set this
+                # before task/log cleanup so their failure cannot prevent safe disk disposal.
+                $script:CNHelperStopped = $true
+                Stop-StagedTestAgent $agent
+                foreach ($suffix in @('-out.log', '-err.log')) {
+                    $log = $cnLog + $suffix
+                    if (Test-Path -LiteralPath $log) { $cnRaw['helper' + $suffix] = [IO.File]::ReadAllText($log) }
+                }
+                $cnRaw['system-exit.txt'] = [string]$agent.Process.get_ExitCode()
+            }
+            try {
+                $os = Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion'
+                Add-CNOutcome 'Platform' ($os.CurrentBuildNumber -eq '19045' -and $os.UBR -eq 2965) ('build:' + $os.CurrentBuildNumber + '.' + $os.UBR)
+                Backup-StagedTestDriver $backup
+                $driverReplaced = $true
+                Copy-Item -LiteralPath $featureDriver -Destination $installedDriver -Force
+                if ((Get-FileHash -LiteralPath $installedDriver -Algorithm SHA256).Hash -ne $ExpectedFeatureSha256) { throw 'Feature install mismatch.' }
+                & verifier.exe /volatile /flags 0x13B /adddriver SafeUpload.sys | Out-Host
+                if ($LASTEXITCODE -ne 0) { throw 'Canary runtime Verifier enable failed.' }
+                $verifierEnabled = $true
+                [void](Read-CNVerifier 'initial' 0x13B)
+                Invoke-FeatureFilterLoad; $filterLoaded = $true
+                Wait-AllVolumeCanaries ($cnPrefix + '-initial-volumes.json')
+                $initial = Read-CNVolumes 'initial'
+                $cVolumes = @(Get-CimInstance Win32_Volume -Filter "DriveLetter='C:'" -ErrorAction Stop)
+                if ($cVolumes.Count -ne 1 -or $cVolumes[0].DeviceID -notmatch '(?i)\{[0-9a-f-]{36}\}') { throw 'C: identity ambiguous.' }
+                $cGuid = $matches[0].ToLowerInvariant()
+                $cBefore = Find-CNVolume $initial $cGuid
+                Add-CNOutcome 'InitialCanaries' ($null -ne $cBefore -and $cBefore.canaryState -eq 2 -and
+                    $cBefore.canaryStatus -eq 0 -and $cBefore.canaryChecks -eq 15 -and $cBefore.canaryCleanupStatus -eq 0) (Get-CNCanaryFacts $cBefore)
+
+                # A. New fixed-size, fixed-device NTFS image, while the feature is already loaded.
+                $first = $null
+                try {
+                    $first = New-CNVolume 'fresh'
+                    $fresh = Wait-CNVolume $first.Guid 'fresh'
+                    $freshFiles = @(Get-ChildItem -LiteralPath 'S:\' -Filter 'SafeUpload-canary-*.tmp' -Force -ErrorAction Stop)
+                    Add-CNOutcome 'FreshVolume' ($fresh.canaryState -eq 2 -and $fresh.canaryStatus -eq 0 -and
+                        $fresh.canaryChecks -eq 15 -and $fresh.canaryCleanupStatus -eq 0 -and $freshFiles.Count -eq 0 -and
+                        ($fresh.setupFlags -band 4) -ne 0 -and $null -eq (Find-CNVolume $initial $first.Guid)) `
+                        ((Get-CNCanaryFacts $fresh) + ';rootCanaryFiles:' + $freshFiles.Count)
+
+                    # B. Compile and initialize SYSTEM before arming the timed hold. The held file is
+                    # initially empty: mapping maximum 4096 extends it to the driver's intended PAGE_SIZE.
+                    [void][IO.Directory]::CreateDirectory($cnControl)
+                    $cnSectionSource = @'
+using System;
+using System.ComponentModel;
+using System.Runtime.InteropServices;
+using Microsoft.Win32.SafeHandles;
+public sealed class SafeUploadCNSection : IDisposable {
+    SafeFileHandle file;
+    IntPtr section;
+    [DllImport("kernel32.dll", CharSet=CharSet.Unicode, SetLastError=true, EntryPoint="CreateFileW")]
+    static extern SafeFileHandle CreateFile(string path, uint access, uint share, IntPtr sa, uint creation, uint flags, IntPtr template);
+    [DllImport("kernel32.dll", CharSet=CharSet.Unicode, SetLastError=true, EntryPoint="CreateFileMappingW")]
+    static extern IntPtr CreateFileMapping(SafeFileHandle file, IntPtr sa, uint protect, uint high, uint low, string name);
+    [DllImport("kernel32.dll", SetLastError=true)]
+    [return: MarshalAs(UnmanagedType.Bool)] static extern bool CloseHandle(IntPtr handle);
+    public SafeUploadCNSection(string path) {
+        try {
+            file = CreateFile(path, 0xC0000000U, 7, IntPtr.Zero, 3, 0x80, IntPtr.Zero);
+            if (file.IsInvalid) throw new Win32Exception(Marshal.GetLastWin32Error(), "CreateFile share-all");
+            section = CreateFileMapping(file, IntPtr.Zero, 4, 0, 4096, null);
+            if (section == IntPtr.Zero) throw new Win32Exception(Marshal.GetLastWin32Error(), "CreateFileMapping PAGE_READWRITE");
+        } catch { Dispose(); throw; }
+    }
+    public void Dispose() {
+        int error = 0;
+        if (section != IntPtr.Zero) { if (!CloseHandle(section)) error = Marshal.GetLastWin32Error(); section = IntPtr.Zero; }
+        if (file != null) { file.Dispose(); file = null; }
+        if (error != 0) throw new Win32Exception(error, "Close section");
+    }
+}
+'@
+                    $cnHelperTemplate = @'
+param([Parameter(Mandatory=$true)][string]$Control)
+$ErrorActionPreference = 'Stop'
+$section = $null; $failed = $false
+try {
+    if ([Security.Principal.WindowsIdentity]::GetCurrent().User.Value -ne 'S-1-5-18') { throw 'SYSTEM required.' }
+    Add-Type -TypeDefinition @'
+__CS__
+__END_CS__
+    [IO.File]::WriteAllText((Join-Path $Control 'initialized'), 'SYSTEM;CSharpReady')
+    $request = Join-Path $Control 'path.json'
+    $deadline = [DateTime]::UtcNow.AddSeconds(60)
+    while (-not (Test-Path -LiteralPath $request)) {
+        if (Test-Path -LiteralPath (Join-Path $Control 'release')) { throw 'Cancelled before section open.' }
+        if ([DateTime]::UtcNow -ge $deadline) { throw 'Path handoff timed out.' }
+        Start-Sleep -Milliseconds 50
+    }
+    $path = [string](Get-Content -LiteralPath $request -Raw | ConvertFrom-Json).Path
+    if ($path -notmatch '^\\\\\?\\GLOBALROOT\\Device\\HarddiskVolume[^\\]+\\SafeUpload-canary-[0-9A-Fa-f]{32}\.tmp$') { throw 'Invalid held canary path.' }
+    $section = New-Object SafeUploadCNSection -ArgumentList $path
+    $ready = @{ Sid='S-1-5-18'; Path=$path; Protection='PAGE_READWRITE'; Share=7; Maximum=4096; View=$false } | ConvertTo-Json -Compress
+    [IO.File]::WriteAllText((Join-Path $Control 'ready.tmp'), $ready)
+    Move-Item -LiteralPath (Join-Path $Control 'ready.tmp') -Destination (Join-Path $Control 'ready.json')
+    $deadline = [DateTime]::UtcNow.AddSeconds(120)
+    while (-not (Test-Path -LiteralPath (Join-Path $Control 'release'))) {
+        if ([DateTime]::UtcNow -ge $deadline) { throw 'Section retention timed out.' }
+        Start-Sleep -Milliseconds 50
+    }
+} catch { $failed=$true; Write-Error $_ -ErrorAction Continue }
+finally {
+    try {
+        if ($null -ne $section) { $section.Dispose() }
+        [IO.File]::WriteAllText((Join-Path $Control 'closed'), 'SectionAndFileClosed')
+    } catch { $failed=$true; Write-Error $_ -ErrorAction Continue }
+}
+if ($failed) { exit 1 }
+exit 0
+'@
+                    # Escape the nested here-string terminator in this source template only.
+                    $cnHelperBody = $cnHelperTemplate.Replace('__CS__', $cnSectionSource).Replace('__END_CS__', "'@")
+                    Set-Content -LiteralPath $cnHelper -Value $cnHelperBody -Encoding UTF8
+                    $cnLog = $cnPrefix + '-system'
+                    [void]$agentLogs.Add($cnLog + '-out.log'); [void]$agentLogs.Add($cnLog + '-err.log')
+                    $cnLine = '-NoProfile -NonInteractive -ExecutionPolicy Bypass -File ' + (ConvertTo-WindowsArgument $cnHelper) +
+                        ' -Control ' + (ConvertTo-WindowsArgument $cnControl)
+                    $agent = Start-StagedTestAgent $PSHOME $cnLog 'powershell.exe' $cnLine
+                    $script:CNHelperStopped = $false; [void]$agent.Process.Handle
+                    $deadline = [DateTime]::UtcNow.AddSeconds(15)
+                    while (-not (Test-Path -LiteralPath (Join-Path $cnControl 'initialized')) -and [DateTime]::UtcNow -lt $deadline -and -not $agent.Process.HasExited) { Start-Sleep -Milliseconds 50 }
+                    if (-not (Test-Path -LiteralPath (Join-Path $cnControl 'initialized'))) { throw 'SYSTEM section helper did not initialize.' }
+                    $cnHoldMayBeArmed = $true # Set before sending, including lost/invalid replies.
+                    $hold = Invoke-InspectorChecked -Arguments @('--admission-canary-hold', 'S:\', '30000') -Timeout 45
+                    $cnRaw['timeout-hold.json'] = [string]$hold.Stdout
+                    $held = ConvertFrom-Json -InputObject ([string]$hold.Stdout).Trim()
+                    Add-CNOutcome 'HoldAndRerun' ($held.canaryHold -eq 'armed' -and $held.status -eq '0x00000000' -and
+                        $held.holdMilliseconds -eq 30000 -and [string]$held.path -match '^\\Device\\HarddiskVolume[^\\]+\\SafeUpload-canary-[0-9A-Fa-f]{32}\.tmp$') `
+                        ('holdMilliseconds:' + $held.holdMilliseconds + ';path:' + $held.path)
+                    $cnPath = '\\?\GLOBALROOT' + [string]$held.path
+                    $leaf = ([string]$held.path -split '\\')[-1]
+                    Add-CNOutcome 'HeldPathOnOwnedVolume' (@(Get-ChildItem -LiteralPath 'S:\' -Filter $leaf -Force -ErrorAction Stop).Count -eq 1 -and
+                        (Find-CNVolume (Read-CNVolumes 'held') $first.Guid).instance -eq $fresh.instance) ('guid:' + $first.Guid + ';leaf:' + $leaf)
+                    [IO.File]::WriteAllText((Join-Path $cnControl 'path.tmp'), (@{Path=$cnPath} | ConvertTo-Json -Compress))
+                    Move-Item -LiteralPath (Join-Path $cnControl 'path.tmp') -Destination (Join-Path $cnControl 'path.json')
+                    $deadline = [DateTime]::UtcNow.AddSeconds(10)
+                    while (-not (Test-Path -LiteralPath (Join-Path $cnControl 'ready.json')) -and [DateTime]::UtcNow -lt $deadline -and -not $agent.Process.HasExited) { Start-Sleep -Milliseconds 50 }
+                    if (-not (Test-Path -LiteralPath (Join-Path $cnControl 'ready.json'))) { throw 'SYSTEM section was not ready during hold.' }
+                    $cnRaw['system-ready.json'] = [IO.File]::ReadAllText((Join-Path $cnControl 'ready.json'))
+                    $ready = ConvertFrom-Json -InputObject $cnRaw['system-ready.json']
+                    Add-CNOutcome 'SystemSectionReady' ($ready.Sid -eq 'S-1-5-18' -and $ready.Path -ceq $cnPath -and
+                        $ready.Protection -eq 'PAGE_READWRITE' -and $ready.Share -eq 7 -and $ready.Maximum -eq 4096 -and
+                        $ready.View -eq $false -and -not $agent.Process.HasExited) ($ready | ConvertTo-Json -Compress)
+                    # No cancellation or release here: let the driver's 30-second hold expire naturally.
+                    $timedOut = Wait-CNVolume $first.Guid 'timeout'
+                    $cnHoldMayBeArmed = $false
+                    Add-CNOutcome 'RealTimeout' ($timedOut.canaryState -eq 3 -and
+                        $timedOut.canaryStatus -eq [Convert]::ToUInt32('C00000B5',16) -and
+                        ($timedOut.canaryChecks -band 2) -eq 0 -and ($timedOut.canaryChecks -band 9) -eq 9 -and
+                        (($timedOut.canaryChecks -shr 8) -band 255) -eq 11 -and -not $agent.Process.HasExited) (Get-CNCanaryFacts $timedOut)
+                    $attributesError = [SafeUploadCanarySecurityNative]::GetPathAttributesError($cnPath)
+                    Add-CNOutcome 'CleanupWhileSectionHeld' (-not $agent.Process.HasExited) `
+                        ((Get-CNCanaryFacts $timedOut) + ';GetFileAttributesWin32Error:' + $attributesError + ';sectionStillHeld:true')
+                    Assert-CNHoldRefused ([pscustomobject]@{ Guid=$first.Guid; Entry=$timedOut }) 'Timeout'
+                    $releaseClock = [Diagnostics.Stopwatch]::StartNew()
+                    Stop-CNHelper
+                    $helperExit = $agent.Process.get_ExitCode()
+                    $script:CNHelperStopped = $true; $agent.Process.Dispose(); $agent = $null
+                    Add-CNOutcome 'SystemSectionClosed' ($helperExit -eq 0 -and
+                        (Test-Path -LiteralPath (Join-Path $cnControl 'closed')) -and
+                        [IO.File]::ReadAllText((Join-Path $cnControl 'closed')) -eq 'SectionAndFileClosed') ('exit:' + $helperExit)
+                    do {
+                        $attributesError = [SafeUploadCanarySecurityNative]::GetPathAttributesError($cnPath)
+                        if ($attributesError -in @(2,3)) { break }
+                        Start-Sleep -Milliseconds 50
+                    } while ($releaseClock.ElapsedMilliseconds -lt 15000)
+                    $releaseClock.Stop()
+                    $remaining = @(Get-ChildItem -LiteralPath 'S:\' -Filter 'SafeUpload-canary-*.tmp' -Force -ErrorAction Stop)
+                    Add-CNOutcome 'PathRemovedAfterRelease' ($attributesError -in @(2,3) -and $remaining.Count -eq 0 -and
+                        $releaseClock.ElapsedMilliseconds -le 15000) ('millisecondsFromRelease:' + $releaseClock.ElapsedMilliseconds +
+                        ';GetFileAttributesWin32Error:' + $attributesError + ';rootCanaryFiles:' + $remaining.Count)
+                    $postRelease = Read-CNVolumes 'timeout-after-release'
+                    $failedAfterRelease = Find-CNVolume $postRelease $first.Guid
+                    Add-CNOutcome 'TimeoutRemainsFailedAfterRelease' (Test-CNSameCanary $timedOut $failedAfterRelease) (Get-CNCanaryFacts $failedAfterRelease)
+                    $cAfter = Find-CNVolume $postRelease $cGuid
+                    Add-CNOutcome 'CUnchangedAfterTimeout' (Test-CNSameCanary $cBefore $cAfter) (Get-CNCanaryFacts $cAfter)
+                } finally {
+                    if ($null -ne $first -and $script:CNHelperStopped) { Remove-CNVolume $first }
+                }
+
+                # C. PsCreateSystemThread(..., ProcessHandle=NULL, ...) establishes a system thread,
+                # not a matchable .exe. Leave Applications empty (any context), with only unique SUcN.
+                # https://learn.microsoft.com/en-us/windows-hardware/drivers/devtest/low-resources-simulation
+                # Explicit native argument string preserves "" under Windows PowerShell 5.1.
+                $beforeFault = Read-CNVerifier 'before-fault' 0x13B
+                $allocation = $null; $second = $null
+                try {
+                    try {
+                        $cnFaultsMayBeEnabled = $true
+                        $config = Invoke-CNNative 'verifier.exe' '/volatile /faults 10000 SUcN "" 0'
+                        $cnRaw['fault-configuration.txt'] = $config.Raw
+                        if ($config.ExitCode -ne 0) { throw 'Canary fault configuration failed.' }
+                        foreach ($field in @(@('Probability','10000'), @('Pool Tags','SUcN'), @('Applications','(null)'), @('Delay Minutes','0'))) {
+                            $fields = [regex]::Matches($config.Raw, ('(?im)^\s*' + [regex]::Escape($field[0]) + ':\s*([^\r\n]+)\s*$'))
+                            if ($fields.Count -ne 1 -or $fields[0].Groups[1].Value.Trim() -cne $field[1]) { throw 'Verifier did not confirm exact canary fault filters.' }
+                        }
+                        # Win10 evidence: /faults replaces active flags with 0x4. Never reassert /flags
+                        # inside this window (that resets the filters). Surrounding windows require 0x13B.
+                        $armedFault = Read-CNVerifier 'armed-fault' 4
+                        $second = New-CNVolume 'allocation'
+                        $allocation = Wait-CNVolume $second.Guid 'allocation'
+                    } finally {
+                        # Close the window as soon as any terminal result is observed, BEFORE assertions,
+                        # counter interpretation, root listing, negative hold or disposal. Retry in outer finally.
+                        Restore-CNVerifier
+                        $cnFaultsMayBeEnabled = $false
+                    }
+                    $afterFault = $script:CNRestoredVerifier
+                    Add-CNOutcome 'VerifierRestored' ($afterFault.Flags -eq 0x13B) 'activeFlags:0x13B;faultWindowFlags:0x4;applications:(null);poolTag:SUcN'
+                    Add-CNOutcome 'RealAllocationFailure' ($second.Guid -ne $first.Guid -and $allocation.canaryState -eq 3 -and
+                        $allocation.canaryStatus -eq [Convert]::ToUInt32('C000009A',16) -and
+                        $allocation.canaryChecks -eq (1 -shl 8) -and $allocation.canaryCleanupStatus -eq 0 -and
+                        ($allocation.setupFlags -band 4) -ne 0 -and $null -eq (Find-CNVolume $initial $second.Guid) -and
+                        $afterFault.Faults -gt $beforeFault.Faults -and $afterFault.Faults -gt $armedFault.Faults) `
+                        ((Get-CNCanaryFacts $allocation) + ';deliberateBefore:' + $beforeFault.Faults +
+                        ';deliberateArmed:' + $armedFault.Faults + ';deliberateAfter:' + $afterFault.Faults +
+                        ';deliberateDelta:' + ([decimal]$afterFault.Faults - [decimal]$beforeFault.Faults))
+                    $allocationFiles = @(Get-ChildItem -LiteralPath 'S:\' -Filter 'SafeUpload-canary-*.tmp' -Force -ErrorAction Stop)
+                    Add-CNOutcome 'AllocationRootClean' ($allocationFiles.Count -eq 0) ('rootCanaryFiles:' + $allocationFiles.Count)
+                    Assert-CNHoldRefused ([pscustomobject]@{ Guid=$second.Guid; Entry=$allocation }) 'Allocation'
+                } finally {
+                    if ($null -ne $second -and -not $cnFaultsMayBeEnabled) { Remove-CNVolume $second }
+                }
+                Wait-AllVolumeCanaries ($cnPrefix + '-disposed-volumes.json')
+                $disposed = Read-CNVolumes 'disposed'
+                $cFinal = Find-CNVolume $disposed $cGuid
+                Add-CNOutcome 'CUnchangedAfterAllocation' (Test-CNSameCanary $cBefore $cFinal) (Get-CNCanaryFacts $cFinal)
+                $detached = @($disposed.admissionVolumes | Where-Object { ($_.volumeFlags -band 1) -ne 0 })
+                Add-CNOutcome 'DisposedVolumeInventory' ($null -eq (Find-CNVolume $disposed $first.Guid) -and
+                    $null -eq (Find-CNVolume $disposed $second.Guid)) ('detachedEntries:' + $detached.Count +
+                    ';entries:' + ($detached | ConvertTo-Json -Depth 5 -Compress))
+            } catch {
+                $script:CNFailed++
+                Write-Output ('CN_Unexpected=' + (Get-ErrorText $_) + ';FAIL')
+                throw
+            } finally {
+                if ($cnFaultsMayBeEnabled) {
+                    try { Restore-CNVerifier; $cnFaultsMayBeEnabled = $false }
+                    catch { $script:CNFailed++; [void]$restorationErrors.Add('Canary LRS restore: ' + (Get-ErrorText $_)); Write-Output ('CN_LRSRestore=' + (Get-ErrorText $_) + ';FAIL') }
+                }
+                if ($null -ne $agent) {
+                    try { Stop-CNHelper; $script:CNHelperStopped = $true; $agent.Process.Dispose(); $agent = $null }
+                    catch { $script:CNFailed++; [void]$restorationErrors.Add('Canary SYSTEM helper stop: ' + (Get-ErrorText $_)); Write-Output ('CN_HelperStop=' + (Get-ErrorText $_) + ';FAIL') }
+                }
+                if ($cnHoldMayBeArmed -and $filterLoaded -and -not $script:InspectorTimedOut -and -not $script:InspectorFailed) {
+                    try { [void](Invoke-InspectorChecked -Arguments @('--admission-canary-hold-cancel') -Timeout 15) }
+                    catch { $script:CNFailed++; [void]$restorationErrors.Add('Canary hold cancel: ' + (Get-ErrorText $_)); Write-Output ('CN_HoldCancel=' + (Get-ErrorText $_) + ';FAIL') }
+                }
+                foreach ($disk in $cnDisks) {
+                    try {
+                        if (-not $script:CNHelperStopped) { throw 'Cannot detach while SYSTEM section ownership remains unresolved.' }
+                        Remove-CNVolume $disk
+                    } catch { $script:CNFailed++; [void]$restorationErrors.Add('Canary disk disposal: ' + (Get-ErrorText $_)); Write-Output ('CN_DiskDisposal=' + (Get-ErrorText $_) + ';FAIL') }
+                }
+                $cnDisposed = (-not (Test-Path -LiteralPath $cnVhd)) -and (-not (Test-Path -LiteralPath $cnDiskpart)) -and
+                    (-not (Test-Path -LiteralPath 'S:\')) -and @($cnDisks | Where-Object { -not $_.Disposed }).Count -eq 0
+                if (-not $cnDisposed) { $script:CNFailed++; [void]$restorationErrors.Add('Owned canary VHDX/letter/script remains.') }
+                Write-Output ('CN_OwnedDisksRemoved=vhdxAbsent:' + (-not (Test-Path -LiteralPath $cnVhd)) +
+                    ';diskpartAbsent:' + (-not (Test-Path -LiteralPath $cnDiskpart)) + ';SAbsent:' + (-not (Test-Path -LiteralPath 'S:\')) +
+                    ';' + $(if ($cnDisposed) { $script:CNPassed++; 'PASS' } else { 'FAIL' }))
+                foreach ($leaf in $cnRaw.Keys) {
+                    try { [IO.File]::WriteAllText(($cnPrefix + '-' + $leaf), [string]$cnRaw[$leaf]) }
+                    catch { $script:CNFailed++; [void]$restorationErrors.Add('Canary evidence write: ' + (Get-ErrorText $_)); Write-Output ('CN_EvidenceWrite=' + (Get-ErrorText $_) + ';FAIL') }
+                }
+                Write-Output ('CanaryNewVolumeRawPrefix=' + $cnPrefix)
+                Write-Output ('CN_Summary=passed:' + $script:CNPassed + ';failed:' + $script:CNFailed)
+            }
+            $runSucceeded = ($script:CNFailed -eq 0)
         }
         elseif ($SelectedVariant -eq 'mmdoes-matrix') {
             foreach ($name in @('A', 'B', 'C', 'D')) {
