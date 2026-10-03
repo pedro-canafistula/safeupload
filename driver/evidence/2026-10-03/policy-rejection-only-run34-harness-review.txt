@@ -1,0 +1,25 @@
+Run34 harness and wrapper source review — Luna 6 max
+Date: 2026-10-03
+
+Reviewed exact harness SHA-256
+094F149CE4F96F8139E951F05103C2BF95FF90995A15E8184DFA55A4B4606C81
+and wrapper SHA-256
+1B18B42E1ABFE9F111AB40C2D96B862628361B64596A63353B9D97C840333A42.
+
+Disposition: no remaining source-level blocker. The Inspector filename
+validation is anchored and excludes path separators; the parameter is last,
+preserving prior positional binding. The input file is hash-pinned and rejected
+if it is a directory or reparse point. The Documents path is pinned to
+`C:\Users\vika\Documents`, and each ancestor to the drive root is checked for
+directory/non-reparse status.
+
+The wrapper reads `PIPESTATUS[0]` immediately after the PRE_RUN pipeline and
+requires both a successful remote exit and an exact `PRE_RUN_OK=True` output
+line before it stages any extra file. Luna confirmed this closes the reviewed
+source-level gaps.
+
+The caller must still run separate post-wrapper cleanup after every outcome,
+including the wrapper's PRE_RUN early exit: verify guest identity and active
+overlay before writes; check the run's Inspector process, status task, and
+GUID-scoped copy are gone; remove only the unique staged input with its expected
+hash and non-reparse state; then rerun the independent baseline check.

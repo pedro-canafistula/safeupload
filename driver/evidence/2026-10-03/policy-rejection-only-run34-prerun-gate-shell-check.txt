@@ -1,0 +1,13 @@
+Run34 PRE_RUN gate shell check
+Date: 2026-10-03
+Wrapper SHA-256:
+1B18B42E1ABFE9F111AB40C2D96B862628361B64596A63353B9D97C840333A42
+
+`bash -n driver/scripts/Invoke-DebuggeeExperiment.sh` passed. A local
+non-VM fixture exercised the same pipeline-status and exact-marker condition:
+
+* marker plus remote status 0 -> accepted (status 0)
+* successful remote status without marker -> rejected (status 15)
+* marker plus remote status 9 -> rejected (status 15)
+
+No guest or VM state was changed by this check.

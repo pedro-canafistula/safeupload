@@ -56,7 +56,12 @@ grep -q "$overlay" <(virsh -c qemu:///system domblklist win10-debug) || { echo "
 echo "== 3. run"
 if [ -n "${PRE_RUN_PS:-}" ]; then
     echo "PRE_RUN_PS: $PRE_RUN_PS" | tee "$ev/$name-prerun.txt"
-    python3 driver/scripts/remote_ps.py "$host" <<<"$PRE_RUN_PS" 2>&1 | clean | tee -a "$ev/$name-prerun.txt"
+    python3 driver/scripts/remote_ps.py "$host" <<<"$PRE_RUN_PS" 2>&1 | clean | tee "$ev/$name-prerun-result.txt" | tee -a "$ev/$name-prerun.txt"
+    pre_run_status=${PIPESTATUS[0]}
+    if [ "$pre_run_status" -ne 0 ] || ! grep -qx 'PRE_RUN_OK=True' "$ev/$name-prerun-result.txt"; then
+        echo "PRE_RUN failed or omitted PRE_RUN_OK=True; refusing extra-file staging"
+        exit 15
+    fi
 fi
 for pair in ${EXTRA_FILES:-}; do
     src="${pair%%=*}"; dst="${pair#*=}"

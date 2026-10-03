@@ -182,11 +182,23 @@ Normal staging stays compiled out and taint enforcement remains.
           ([summary](evidence/2026-10-03/policy-rejection-only-run34-inspector-build-summary.txt),
           [raw build log](evidence/2026-10-03/policy-rejection-only-run34-inspector-build.txt),
           [Luna review](evidence/2026-10-03/policy-rejection-only-run33-luna-review.txt)).
+    - [x] Keep the existing guest Inspector input untouched: allow a run-scoped
+          direct-child filename, require the canonical non-reparse Documents
+          path and clean ancestors, and make the wrapper stop before extra-file
+          staging unless the read-only pre-run emits its exact success marker.
+          Shell syntax and success/missing-marker/remote-failure gate checks
+          passed ([Luna review](evidence/2026-10-03/policy-rejection-only-run34-harness-review.txt),
+          [shell gate check](evidence/2026-10-03/policy-rejection-only-run34-prerun-gate-shell-check.txt)).
+    - [x] Parse and compile the exact current harness with Windows PowerShell
+          5.1; zero parse errors, 14 declared interop methods compiled, the
+          default and run-scoped names were accepted, and a traversal name was
+          rejected ([evidence](evidence/2026-10-03/policy-rejection-only-run34-harness-ps51-parse-compile.txt)).
     - [ ] Retry the rejection-only VM diagnostic on a fresh clean checkpoint
-          with a newly built Inspector from the exact current source, verifying
-          its input hash and schema, deriving and cross-checking the explicit
-          signed-driver hash from the artifact, and preserving unchanged
-          approved policy scopes.
+          using a unique `InspectorInputFileName`, the rebuilt Inspector hash,
+          and the pre-run marker gate; verify the active overlay and guest
+          identity during unconditional post-wrapper cleanup, derive and
+          cross-check the signed-driver hash, and preserve unchanged approved
+          policy scopes.
     - [ ] Verify the rejection-only branch on the clean VM, including baseline
           policy identity, expected `ERROR_NOT_SUPPORTED`, unchanged fence
           state, and independent machine restoration.

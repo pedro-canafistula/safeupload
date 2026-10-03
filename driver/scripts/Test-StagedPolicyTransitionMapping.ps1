@@ -78,11 +78,33 @@ param(
     [ValidateRange(5, 120)]
     [int] $InspectorTimeoutSeconds = 45,
     [switch] $Verifier,
-    [switch] $PolicyRejectionOnly
+    [switch] $PolicyRejectionOnly,
+    [ValidatePattern('^SafeUpload\.Inspector\.[A-Za-z0-9_-]+\.exe$')]
+    [string] $InspectorInputFileName = 'SafeUpload.Inspector.input.exe'
 )
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 $documents = Join-Path $env:USERPROFILE 'Documents'
+$expectedDocuments = 'C:\Users\vika\Documents'
+$documentsFullPath = [IO.Path]::GetFullPath($documents)
+if ($documentsFullPath -ine $expectedDocuments) { throw 'Documents is not the canonical test-user directory.' }
+$documentsItem = Get-Item -LiteralPath $documents -Force -ErrorAction Stop
+if (-not $documentsItem.PSIsContainer -or
+    (($documentsItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) -or
+    ([IO.Path]::GetFullPath($documentsItem.FullName) -ine $documentsFullPath)) {
+    throw 'Documents must be the expected non-reparse directory.'
+}
+$documentsAncestor = $documentsFullPath
+while (-not [string]::IsNullOrEmpty($documentsAncestor)) {
+    $ancestorItem = Get-Item -LiteralPath $documentsAncestor -Force -ErrorAction Stop
+    if (-not $ancestorItem.PSIsContainer -or
+        (($ancestorItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0)) {
+        throw "Documents path contains a missing or reparse ancestor: $documentsAncestor"
+    }
+    $parent = [IO.Directory]::GetParent($ancestorItem.FullName)
+    if ($null -eq $parent) { break }
+    $documentsAncestor = $parent.FullName
+}
 . (Join-Path $documents 'StagedTestAgent.ps1')
 Add-Type -Namespace SafeUploadRepro -Name Native -MemberDefinition @'
 [DllImport("kernel32.dll", SetLastError=true, CharSet=CharSet.Unicode)]
@@ -491,7 +513,7 @@ $expectedFeature = $ExpectedFeatureSha256.ToUpperInvariant()
 $expectedInspector = $ExpectedInspectorSha256.ToUpperInvariant()
 $expectedServicePackage = 'D887E0D7F38AD64AD40CEE18B841C6D38AD2BED4D6F760B1BDE4464927381997'
 $feature = Join-Path $documents 'SafeUpload-stage-prototype.sys'
-$inspectorSource = Join-Path $documents 'SafeUpload.Inspector.input.exe'
+$inspectorSource = Join-Path $documents $InspectorInputFileName
 $servicePackage = Join-Path $documents 'stage-service-publish.zip'
 $id = [guid]::NewGuid().ToString('N')
 $serviceStagingParent = [Environment]::GetFolderPath([System.Environment+SpecialFolder]::ProgramFiles)
@@ -946,7 +968,13 @@ if (@(Get-Process SafeUpload.Agent.Service -ErrorAction SilentlyContinue).Count 
 if (@(Get-ScheduledTask | Where-Object { $_.TaskName -match '^SafeUpload-(StagedTest-|StagedCleanup-|Owned-)' }).Count -ne 0) { throw 'A SafeUpload experiment task is already active.' }
 if ((Get-FileHash -LiteralPath $policy -Algorithm SHA256).Hash -ne $expectedPolicy) { throw 'Original policy hash mismatch.' }
 if ((Get-FileHash -LiteralPath $feature -Algorithm SHA256).Hash -ne $expectedFeature) { throw 'Feature driver hash mismatch.' }
-if ((Get-FileHash -LiteralPath $inspectorSource -Algorithm SHA256).Hash -ne $expectedInspector) { throw 'Inspector source hash mismatch.' }
+$inspectorSourceItem = Get-Item -LiteralPath $inspectorSource -Force -ErrorAction Stop
+if ($inspectorSourceItem.PSIsContainer -or
+    (($inspectorSourceItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) -or
+    ([IO.Path]::GetFullPath($inspectorSourceItem.FullName) -ine [IO.Path]::GetFullPath($inspectorSource))) {
+    throw 'Inspector input must be a regular, direct-child file under Documents.'
+}
+if ((Get-FileHash -LiteralPath $inspectorSource -Algorithm SHA256).Hash -ne $expectedInspector) { throw 'Inspector input hash mismatch.' }
 if (-not (Test-Path -LiteralPath $servicePackage -PathType Leaf)) { throw 'Pinned service package is absent.' }
 if (Test-Path -LiteralPath $fixtureDirectory) { throw 'GUID fixture collision.' }
 if (Test-Path -LiteralPath $inspectorCopy) { throw 'GUID Inspector copy collision.' }
@@ -973,6 +1001,7 @@ if ($monitoredExtensions -contains $fixtureExtension.ToLowerInvariant()) {
 'OriginalInstalledSHA256=' + $expectedOriginal
 'FeatureDriverSHA256=' + $expectedFeature
 'ExpectedInspectorSHA256=' + $expectedInspector
+'InspectorInputFileName=' + $InspectorInputFileName
 'InspectorInputSHA256=' + (Get-FileHash -LiteralPath $inspectorSource -Algorithm SHA256).Hash
 'ExpectedServicePackageSHA256=' + $expectedServicePackage
 'OriginalPolicySHA256=' + $expectedPolicy
