@@ -62,6 +62,7 @@
 #pragma alloc_text(PAGE, SafeUploadStageFenceFree)
 #pragma alloc_text(PAGE, SafeUploadStageFenceRefresh)
 #pragma alloc_text(PAGE, SafeUploadStageFencePrepareUnload)
+#pragma alloc_text(PAGE, SafeUploadStageFenceTryCommitUnload)
 #pragma alloc_text(PAGE, SafeUploadStageFenceTransitionBegin)
 #pragma alloc_text(PAGE, SafeUploadStageFenceTransitionEnd)
 #endif
@@ -1067,6 +1068,7 @@ static __declspec(noinline) VOID FenceInstall(_In_ PFENCE_SCAN Scan)
 /* Rebuilds the whole fence from the bootstrap scope on every fixed NTFS volume plus the prefixes of the
  * CURRENT policy and of Candidate (their union, so a policy expansion or shrink never leaves a window).
  * Callable before the filter starts. On failure the previous fence stays and the failure is returned. */
+_Use_decl_annotations_
 static NTSTATUS FenceRefreshInternal(_In_opt_ const SAFEUPLOAD_POLICY *Candidate,
     _In_opt_ PFLT_VOLUME TriggerVolume, _In_ BOOLEAN RequireCompleteCoverage)
 {
@@ -1544,14 +1546,14 @@ static VOID FenceWaitForLateWorkers(VOID)
 /* Final commit is the point after which FilterUnload cannot return DO_NOT_DETACH. Queue admission
  * races this exact state transition with a CAS; attach-failure quarantine takes FenceRetryLock, so
  * the commit observes either its work reservation or its quarantine before closing the gate. */
-BOOLEAN SafeUploadStageFenceTryCommitUnload(VOID)
+/* Keep spin-lock/CAS work out of PAGE: KeAcquireSpinLock raises execution to DISPATCH_LEVEL. */
+_IRQL_requires_(PASSIVE_LEVEL)
+static __declspec(noinline) BOOLEAN FenceTryCommitUnloadNonPaged(VOID)
 {
     LONG64 oldValue, newValue;
     KIRQL irql;
     BOOLEAN committed = FALSE;
 
-    PAGED_CODE();
-    if (!FenceInitialized) return TRUE;
     KeAcquireSpinLock(&FenceRetryLock, &irql);
     oldValue = FenceLateControlRead();
     if ((oldValue & FENCE_LATE_GATE_MASK) == FENCE_LATE_GATE_CLOSING &&
@@ -1569,6 +1571,14 @@ BOOLEAN SafeUploadStageFenceTryCommitUnload(VOID)
     }
     KeReleaseSpinLock(&FenceRetryLock, irql);
     return committed;
+}
+
+_Use_decl_annotations_
+BOOLEAN SafeUploadStageFenceTryCommitUnload(VOID)
+{
+    PAGED_CODE();
+    if (!FenceInitialized) return TRUE;
+    return FenceTryCommitUnloadNonPaged();
 }
 
 BOOLEAN SafeUploadStageFenceSetupBegin(VOID)
@@ -1595,6 +1605,7 @@ VOID SafeUploadStageFenceSetupEnd(VOID)
 
 /* Voluntary unload: close admission atomically, drain each accepted worker, then scan synchronously even
  * when the installed table is empty. FilterUnload commits or cancels this gate after the stage guard. */
+_Use_decl_annotations_
 NTSTATUS SafeUploadStageFencePrepareUnload(VOID)
 {
     NTSTATUS status;
@@ -1624,6 +1635,7 @@ VOID SafeUploadStageFenceCancelUnload(VOID)
 /* A policy transition (pre-swap scan, swap, post-swap scan) holds the refresh mutex end to end, so no other
  * refresh can snapshot the old policy and install after the swap. The mutex is recursive: the refreshes made
  * by the same thread inside the transition re-acquire it. */
+_Use_decl_annotations_
 BOOLEAN SafeUploadStageFenceTransitionBegin(VOID)
 {
     PAGED_CODE();
@@ -1638,6 +1650,7 @@ BOOLEAN SafeUploadStageFenceTransitionBegin(VOID)
     return TRUE;
 }
 
+_Use_decl_annotations_
 VOID SafeUploadStageFenceTransitionEnd(VOID)
 {
     PAGED_CODE();

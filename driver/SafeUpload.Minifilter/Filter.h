@@ -681,6 +681,7 @@ _IRQL_requires_(PASSIVE_LEVEL)
 NTSTATUS SafeUploadStageFenceRefresh( _In_opt_ const SAFEUPLOAD_POLICY *Candidate );
 _IRQL_requires_(PASSIVE_LEVEL)
 NTSTATUS SafeUploadStageFencePrepareUnload( VOID );
+_IRQL_requires_(PASSIVE_LEVEL)
 BOOLEAN SafeUploadStageFenceTryCommitUnload( VOID );
 VOID SafeUploadStageFenceCancelUnload( VOID );
 VOID SafeUploadStageFenceCommitUnload( VOID );

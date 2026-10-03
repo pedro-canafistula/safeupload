@@ -1,0 +1,35 @@
+Policy-transition harness security review — run 22
+Date: 2026-10-03
+
+Reviewed source
+---------------
+File: driver/scripts/Test-StagedPolicyTransitionMapping.ps1
+SHA-256: f09cd872b31a886249eb0ed970407cab33e74a63cac098d1f2492af7ca05b4b9
+Reviewer: Luna security reviewer
+
+Disposition
+-----------
+No new blocker to using this harness as an isolated-VM diagnostic. The earlier
+error-5-only false pass is closed: the script requires Win32 ERROR_ACCESS_DENIED,
+one `sectionsDenied` increment, and no `sectionNameUnresolved` increment between
+hash-pinned LocalSystem Inspector status snapshots. It captures
+`GetLastWin32Error()` immediately after `CreateFileMappingW`, before the later
+status query can overwrite it.
+
+The status snapshots accept Inspector exits 0 or 4 only when the required JSON
+fields parse. Exit 4 indicates incomplete sampled coverage; the snapshot still
+reports counters and completeness, and the script does not use completeness as
+a pass condition. Snapshot task/process cleanup is checked, and the outer
+`finally` retries cleanup and restoration.
+
+Limitation
+----------
+`sectionsDenied` and `sectionNameUnresolved` are global counters. A concurrent
+denial on another protected file could produce the same delta, so
+`TEMPORALLY_CORRELATED` is not per-file causal attribution. Use this only on an
+isolated VM with no other known section-creation test active. It is diagnostic
+evidence and does not independently clear the architecture or cutover gates.
+
+The reviewer found no PowerShell semantic issue in the inspected paths. The
+review did not execute PowerShell, build binaries, or run a VM. The separate
+Windows-builder parser record reports zero errors for this exact source hash.

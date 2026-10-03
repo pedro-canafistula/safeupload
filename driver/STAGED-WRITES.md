@@ -1,11 +1,13 @@
 # Staged writes to protected destinations
 
-## Current milestone: bounded physical-alias refusal (2 October 2026)
+## Current milestone: destination admission gate for staged writes (3 October 2026)
 
 Journal milestone is committed as `85bf31f`. The physical-alias increment below
-passes its focused and integrated runtime gates. **Complete alias admission is
-still unqualified.** Normal staging stays compiled out and taint enforcement
-remains. No watchdog work or new internals investigation is active.
+passes its focused and integrated runtime gates at the documented scope.
+**Complete alias admission is still unqualified.** The active work is to prove
+race-safe admission and privacy across the full approved policy scope, including
+whole-drive policy scopes, removable USB, UNC/SMB, and sync-client destinations.
+Normal staging stays compiled out and taint enforcement remains.
 
 - [x] Reproduce the existing external-hard-link physical-byte leak with qualified
       4B60… SYS and D887… service; [exact result](evidence/2026-10-02/aliases-current-before.txt).
@@ -44,6 +46,23 @@ remains. No watchdog work or new internals investigation is active.
       **Its review and the FSCTL classes it does not cover remain open.**
 - [ ] Complete namespace/policy/attachment admission, remaining mutation classes and
       the broader acceptance tracker.
+  - [x] Review the section-create status contract and document the remaining
+        existing-writable-view lifetime blocker.
+  - [x] Rebuild the unload-helper annotation fix in the four normal/feature
+        Debug/Release configurations; pass 275/275 agent tests.
+  - [x] Parse and review the policy-shrink diagnostic that brackets section
+        creation with hash-pinned SYSTEM Inspector snapshots; retain its
+        temporal-correlation limitation.
+  - [ ] Run the reviewed policy-shrink diagnostic on the isolated Windows VM,
+        then independently verify driver, policy, Verifier, fixture, and task
+        restoration.
+  - [ ] Close the in-flight mapping, attachment, policy-transition and partial-
+        coverage privacy gaps without relying on process taint.
+  - [ ] Qualify removable USB, SMB/UNC and real sync-client destinations with
+        independent byte observers and scope-correct admission.
+  - [ ] Pass functional, crash/recovery, Verifier, stress and latency gates,
+        restoring the original VM state independently after each run.
+  - [ ] Obtain user signoff before preparing the taint-removal plan.
 
 The bounded helper uses documented NTFS `FileHardLinkInformation`, opens its
 parent directory IDs below the original instance, and reconstructs names using
@@ -198,12 +217,19 @@ distinguishes automatic attachment to existing volumes, newly mounted volumes,
 manual attachment and detached volumes; it runs at PASSIVE_LEVEL and must not
 perform thread synchronization or interprocess communication. A
 [`SyncTypeCreateSection` callback](https://learn.microsoft.com/en-us/windows-hardware/drivers/ifs/flt-parameters-for-irp-mj-acquire-for-section-synchronization)
-may fail section creation only with `STATUS_INSUFFICIENT_RESOURCES`, while
-`SyncTypeOther` cannot be failed. The feature callback currently completes a
-policy-denied writable section with `STATUS_ACCESS_DENIED`; that is unsupported
-by the documented contract, and no documented policy-denial alternative has
-been identified. Treat this as a hard blocker, not as a supported protection
-gate. The documented
+cannot be pended as a policy wait. Its section-specific page says
+`SyncTypeOther` cannot fail and documents `STATUS_INSUFFICIENT_RESOURCES` when
+memory is insufficient; it does not state that as the only possible failure.
+The generic [minifilter completion](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/fltkernel/nc-fltkernel-pflt_pre_operation_callback)
+and [FS_FILTER callback](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/ns-ntifs-fs_filter_callbacks)
+contracts permit an accurate non-success status, so `STATUS_ACCESS_DENIED` for
+a policy-denied `SyncTypeCreateSection` appears contract-consistent, though the
+section-specific page does not name that status. Validate it on each target
+OS/filesystem stack; never fake memory exhaustion. The hard blocker is that
+these callbacks do not drain writable views created before a gate: user code
+can still store through a live view and modified pages can be written lazily
+after handles close. This mapped-view lifetime gap remains a cutover blocker.
+The documented
 [`FltGetFileNameInformationUnsafe` constraints](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/fltkernel/nf-fltkernel-fltgetfilenameinformationunsafe)
 warn that filesystem name queries are unsafe in paging I/O and acquire/release
 modified-page-writer callbacks; cache-only lookup avoids that query but can miss.
@@ -3299,11 +3325,13 @@ staging cutover eligible.
   unclassified and cannot count as protected refusals. Raw observer failures
   and refused mapped flushes are `INCONCLUSIVE`, never `BLOCKED`. The writable-
   section callback still returns `STATUS_ACCESS_DENIED` for policy refusal.
-  The documented callback contract permits only
-  `STATUS_INSUFFICIENT_RESOURCES` for a failed `SyncTypeCreateSection`, and no
-  documented policy-denial alternative is known. This is an unsupported hard
-  blocker; the harness deliberately emits no protection PASS for it. The exact
-  policy-snapshot race remains
+  A follow-up contract review found that the generic minifilter and FS_FILTER
+  contracts permit an accurate final error status; the section-specific page
+  does not name `STATUS_ACCESS_DENIED` but does not say its insufficient-memory
+  example is exclusive. The status appears contract-consistent for policy
+  denial on `SyncTypeCreateSection`; the harness still needs a target-stack
+  test and must count only the exact expected denial. Do not fabricate
+  `STATUS_INSUFFICIENT_RESOURCES`. The exact policy-snapshot race remains
   `PolicyShrinkAtomicRace=NOT_RUN_NO_DETERMINISTIC_KERNEL_BARRIER`.
 - The late-attach trigger must appear in the exact `FltEnumerateVolumes`
   snapshot for that scan; a remembered quarantined identity appended after the
@@ -3354,14 +3382,22 @@ staging cutover eligible.
   makes the privacy measurement unknown. A positive full-extent change takes
   precedence in `PrivacyObservation` and is reported as
   `UNEXPECTED_BYTES_EXPOSED`, even if the old-view probe is incomplete; the
-  separate `PrivacyExposure` field also remains explicit. The unsupported
-  section-callback status still forces overall failure. Agent-stop, handle
+  separate `PrivacyExposure` field also remains explicit. The harness brackets
+  the writable-section attempt with hash-pinned SYSTEM Inspector snapshots and
+  treats Win32 error 5 plus exactly one `sectionsDenied` increment and zero
+  `sectionNameUnresolved` increments as `TEMPORALLY_CORRELATED`. These are
+  global counters, so this is diagnostic evidence for an isolated VM, not
+  per-file attribution or standalone cutover proof. Missing status data,
+  another error, or an ambiguous counter delta is non-passing. Luna reviewed
+  the exact script hash and found no new blocker to using it as an isolated-VM
+  diagnostic; the review did not execute PowerShell or a VM. Agent-stop, handle
   cleanup, policy restore, and driver restore are attempted independently.
   Policy and driver backups are removed separately only after their
   corresponding restoration and hash verification; otherwise their retained
   paths are reported. This is a harness source fix, not run evidence and not
-  proof of the approved privacy goal; PowerShell parsing and Windows execution
-  remain pending.
+  proof of the approved privacy goal; Windows harness execution remains
+  pending. The updated policy-transition script parsed with zero errors on the
+  Windows builder in run 22.
 - The old late-attach A/B harness required manually detaching C: to create a
   pre-attach mapping. The feature build now refuses that operation; its source
   reports `NOT_RUN_MANUAL_DETACH_DISABLED` and exit 5 instead of claiming an
@@ -3392,3 +3428,51 @@ records the official-Microsoft-source disposition, a restricted cooperative
 fixed-local-NTFS experiment, and the universal destination-admission blockers.
 This is not a cutover pass: staging stays disabled by default and taint
 enforcement is unchanged.
+
+Section-status contract correction (2026-10-03): [admission-gate-contract-correction.txt](evidence/2026-10-03/admission-gate-contract-correction.txt)
+withdraws the earlier categorical claim that `STATUS_ACCESS_DENIED` cannot
+refuse `SyncTypeCreateSection`; the generic callback contracts support an
+accurate failure status, subject to target-stack validation. The remaining
+privacy blocker is lifetime and visibility of already-created writable views,
+including remote mappings. Preserve the full USB, SMB/UNC, and sync-client
+scope; this correction does not clear the admission gate.
+
+Exact-source WDK run 20: [summary](evidence/2026-10-03/admission-fence-build-run20.txt),
+[normal Debug](evidence/2026-10-03/admission-fence-run20-normal-wdk.txt), and
+[owned-feature Debug](evidence/2026-10-03/admission-fence-run20-owned-feature-wdk.txt).
+Normal Debug passed with zero warnings/errors; owned-feature Debug stopped on
+five PREfast errors. Release builds and agent tests were not run. This compile
+attempt did not install or load the driver and provides no byte-privacy proof.
+
+Run 21 applies the annotation-only fix reviewed by Luna:
+[summary](evidence/2026-10-03/admission-fence-build-run21.txt),
+[normal Debug](evidence/2026-10-03/admission-fence-run21-normal-wdk.txt), and
+[owned-feature Debug](evidence/2026-10-03/admission-fence-run21-owned-feature-wdk.txt).
+Normal Debug remains 0/0; feature Debug is down to one PREfast error (C28150)
+at the pageable unload-commit routine's spin lock. Release builds and agent
+tests remain unrun; no driver was installed or loaded.
+
+Run 22 supersedes the run-21 build status. Luna reviewed the unload helper
+split: the PASSIVE pageable wrapper retains the initialization check, while a
+noinline nonpaged helper contains the unchanged spin-lock/CAS/quarantine
+sequence. The four exact-source WDK/PREfast builds (normal and owned feature,
+Debug and Release) all passed with zero warnings and zero errors. Agent tests
+passed 275/275; the service publish and ZIP completed. The normal Debug and
+Release binaries passed the committed-HEAD section identity comparison, and
+the modified policy-transition PowerShell harness parsed with zero errors.
+This was build and parser verification only: the feature driver was not
+installed or loaded, the VM mapping scenarios were not run, and no byte-privacy
+or destination gate is claimed.
+
+Run 22 evidence: [build summary](evidence/2026-10-03/admission-fence-build-run22.txt),
+[builder verification and normal-build identity](evidence/2026-10-03/admission-fence-run22-postbuild-verification.txt),
+[normal Debug](evidence/2026-10-03/admission-fence-run22-normal-wdk.txt),
+[owned-feature Debug](evidence/2026-10-03/admission-fence-run22-owned-feature-wdk.txt),
+[normal Release](evidence/2026-10-03/admission-fence-run22-normal-release-wdk.txt),
+[owned-feature Release](evidence/2026-10-03/admission-fence-run22-owned-feature-release-wdk.txt),
+[agent tests](evidence/2026-10-03/admission-fence-run22-agent-tests.txt), and
+[service publish](evidence/2026-10-03/admission-fence-run22-service-build.txt).
+The updated policy-transition harness parsed with zero errors on the Windows
+builder ([parse record](evidence/2026-10-03/admission-fence-run22-policy-script-parse.txt))
+and received a Luna security review for its isolated-VM diagnostic use
+([review](evidence/2026-10-03/admission-fence-run22-policy-script-review.txt)).

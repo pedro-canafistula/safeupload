@@ -35,12 +35,19 @@ Contract constraints
   Microsoft documents the section-sync operation as an FSFilter callback and
   permits FLT_PREOP_PENDING only for IRP-based I/O; the IRP pending contract
   therefore does not provide a wait/resume path for this FSFilter operation.
-  Microsoft says SyncTypeOther cannot fail and documents
+  The section-specific page says SyncTypeOther cannot fail and documents
   STATUS_INSUFFICIENT_RESOURCES as an allowed SyncTypeCreateSection failure
-  when there is insufficient memory to create the section. No policy-denial
-  status is documented. The filter's own FltCreateSectionForDataScan facility
-  creates sections for scanning; it is not a way to deny a caller's section
-  creation.
+  when memory is insufficient; it does not say that is the only possible
+  failure. The generic minifilter contract permits FLT_PREOP_COMPLETE with a
+  final NTSTATUS other than STATUS_PENDING, and the FS_FILTER callback contract
+  says a non-success status fails the request and should describe the error
+  accurately. Together these contracts indicate that STATUS_ACCESS_DENIED for
+  an actual policy refusal on SyncTypeCreateSection is contract-consistent,
+  although the section-specific page does not name that status. Confirm the
+  exact behavior on each qualified OS/filesystem stack. Never report fake
+  memory exhaustion as a policy refusal. The filter's FltCreateSectionForDataScan
+  facility creates sections for scanning; it is not a way to deny a caller's
+  section creation.
 * FSCTL_LOCK_VOLUME is volume-wide. It succeeds only when there are no open
   files, flushes cached data before locking (so dirty data may be made public
   before the lock), and fails for system or pagefile volumes. The page's
@@ -153,6 +160,8 @@ Official Microsoft references
 
 * Acquire-for-section-synchronization status rules:
   https://learn.microsoft.com/en-us/windows-hardware/drivers/ifs/flt-parameters-for-irp-mj-acquire-for-section-synchronization
+* Completing a minifilter operation with a final NTSTATUS:
+  https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/fltkernel/nc-fltkernel-pflt_pre_operation_callback
 * FS_FILTER_CALLBACKS acquire/release callback behavior:
   https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/ns-ntifs-fs_filter_callbacks
 * FltCreateSectionForDataScan (filter scanning, not caller admission):
@@ -168,6 +177,10 @@ Official Microsoft references
 * Creating and writing mapped views:
   https://learn.microsoft.com/en-us/windows/win32/memory/creating-a-file-view
   https://learn.microsoft.com/en-us/windows/win32/memory/reading-and-writing-from-a-file-view
+* Closing a file mapping object while views can remain open; modified pages are written lazily:
+  https://learn.microsoft.com/en-us/windows/win32/memory/closing-a-file-mapping-object
+* MapViewOfFile remote-file support and cross-computer mapping incoherency:
+  https://learn.microsoft.com/en-us/windows/win32/api/memoryapi/nf-memoryapi-mapviewoffile
 * Oplocks and coherency:
   https://learn.microsoft.com/en-us/windows/win32/fileio/opportunistic-locks
 * FSFilter acquire-for-section-synchronization oplock behavior:
@@ -190,3 +203,25 @@ Official Microsoft references
 No build, PREfast run, VM run, or destination proof was performed for this
 assessment. Staging remains disabled by default and taint enforcement is
 unchanged.
+
+Contract correction (2026-10-03)
+================================
+
+A follow-up Luna review corrected an earlier overstatement that
+STATUS_ACCESS_DENIED is categorically unsupported for writable-section
+creation. The general callback contracts permit an accurate final error
+status; the section-specific page does not name a policy-denial status but also
+does not say its documented insufficient-memory failure is exclusive. Thus
+STATUS_ACCESS_DENIED appears contract-consistent for a policy-denied
+SyncTypeCreateSection, subject to a disposable target-stack test. The actual
+privacy blocker is lifetime of already-created writable views: Windows
+documents that handles can close while views remain mapped and that modified
+pages may be written lazily later. A process can store through the view pointer
+without issuing file I/O at the time of the store. The section acquire/release
+notifications do not provide a documented path-scoped rundown of all extant
+views across processes or SMB clients. This lifetime conclusion is an
+inference from the documented view and callback contracts, not a theorem that
+Windows cannot add such an API. MapViewOfFile is documented to work with
+remote files, but writable mappings on different computers are not coherent.
+The full destination DoD therefore remains open; do not narrow it or claim a
+universal admission gate based on this correction.

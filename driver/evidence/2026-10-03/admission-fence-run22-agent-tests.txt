@@ -1,0 +1,14 @@
+  Determining projects to restore...
+  Restored C:\Users\vika\Documents\safeupload-staging-test\agente\SafeUpload.Agent.Minifilter\SafeUpload.Agent.Minifilter.csproj (in 34 ms).
+  Restored C:\Users\vika\Documents\safeupload-staging-test\agente\SafeUpload.Agent.Core\SafeUpload.Agent.Core.csproj (in 950 ms).
+  Restored C:\Users\vika\Documents\safeupload-staging-test\agente\SafeUpload.Agent.Service\SafeUpload.Agent.Service.csproj (in 1.07 sec).
+  1 of 4 projects are up-to-date for restore.
+  SafeUpload.Agent.Minifilter -> C:\Users\vika\Documents\safeupload-staging-test\agente\SafeUpload.Agent.Minifilter\bin\Debug\net10.0-windows\SafeUpload.Agent.Minifilter.dll
+  SafeUpload.Agent.Core -> C:\Users\vika\Documents\safeupload-staging-test\agente\SafeUpload.Agent.Core\bin\Debug\net10.0\SafeUpload.Agent.Core.dll
+  SafeUpload.Agent.Service -> C:\Users\vika\Documents\safeupload-staging-test\agente\SafeUpload.Agent.Service\bin\Debug\net10.0-windows\SafeUpload.Agent.Service.dll
+  SafeUpload.Agent.Tests -> C:\Users\vika\Documents\safeupload-staging-test\agente\SafeUpload.Agent.Tests\bin\Debug\net10.0-windows\SafeUpload.Agent.Tests.dll
+Test run for C:\Users\vika\Documents\safeupload-staging-test\agente\SafeUpload.Agent.Tests\bin\Debug\net10.0-windows\SafeUpload.Agent.Tests.dll (.NETCoreApp,Version=v10.0)
+A total of 1 test files matched the specified pattern.
+Results File: C:\Users\vika\Documents\admission-fence-run22\owned-tests.trx
+
+Passed!  - Failed:     0, Passed:   275, Skipped:     0, Total:   275, Duration: 11 s - SafeUpload.Agent.Tests.dll (net10.0)

@@ -1,0 +1,37 @@
+Admission-fence source build — run 21
+Date: 2026-10-03
+
+Source identity
+---------------
+Repository base: a552028d048ead30b73f4171c0f82f844ea59ade
+Feature source patch SHA-256 (`git diff --binary HEAD -- StageFence.c Filter.h`):
+8829764433a4e72cab4416ce56e9314032e2b3543ba16a9008339384067c6ad8
+The builder tree began as the exact HEAD archive (run 20 archive hash
+9d0ada2cd2f46d078592c76e28019e0f4e257180a385053aeb58665707396dd0); only the
+two listed feature-source files were then copied and hash-verified before this
+run.
+
+Results
+-------
+* Normal Debug WDK/PREfast: passed, 0 warnings, 0 errors.
+* Owned-feature Debug WDK/PREfast: failed, 0 warnings, 1 error.
+  * C28150: `SafeUploadStageFenceTryCommitUnload` calls
+    `KeAcquireSpinLockRaiseToDpc` while marked pageable. This is the remaining
+    PREfast finding in this run; the correction must keep the public path at
+    PASSIVE_LEVEL without misrepresenting pageable code.
+* Normal Release, owned-feature Release, agent tests, and service publish were
+  not run because the build script stops on the first failed configuration.
+
+Evidence and source hashes
+--------------------------
+* `admission-fence-run21-normal-wdk.txt` — SHA-256
+  914c976f4cf3458bda56fb7d76084871743c8dae057c0dd9f8c2b02498c123a9
+* `admission-fence-run21-owned-feature-wdk.txt` — SHA-256
+  f1ed63762dda01896f72429ef985dadf7328aef0c107676298dc332de199e4cd
+* `StageFence.c` — SHA-256
+  8d65411e52bdd1d76b303e223ba42d16e05700131fb52dce2dbf6d96236ec109
+* `Filter.h` — SHA-256
+  95d761860eb1adcd8f3613e4da40741f36c0ba53911ca44bf94b90e987cbfc44
+
+No driver was installed or loaded; no VM or destination-byte test was run.
+Staging remains disabled by default and taint enforcement remains unchanged.

@@ -22,19 +22,33 @@ Disposal/agent-stop errors are recorded without skipping policy or driver restor
 The current source candidate extends this case with a policy shrink while the
 old writable view and a second pre-shrink file handle remain alive. Fresh-open
 refusal is recognized only for the expected sharing-violation result; other
-errors are unclassified failures. A failed writable-section creation is
-reported by its exact Win32 error, and only ERROR_ACCESS_DENIED is labeled as
-the driver's observed denial. That section-callback status is not a valid pass:
-the documented contract does not support STATUS_ACCESS_DENIED as a policy
-denial, and no documented policy-denial alternative is known. The script thus
-keeps the shrink gate non-passing even when it observes that status. It checks
-the fixture's physical NTFS extent through an aligned unbuffered raw-volume
-read; an unobservable raw read or an unconfirmed mapping disposal is a failed
-measurement. This is source-only until a reviewed Windows build is available.
+errors are unclassified failures. The writable-section attempt is bracketed by
+driver status snapshots from a hash-pinned Inspector run as LocalSystem. Only
+Win32 ERROR_ACCESS_DENIED plus exactly one `sectionsDenied` increment and no
+`sectionNameUnresolved` increment is reported as a correlated section-callback
+denial. The counters are global and provide temporal correlation only, not
+per-file attribution. Treat the one-increment result as useful only on the
+isolated test machine with no other known section-creation test active. A raw
+error 5 alone, an ambiguous counter delta, or missing/invalid status JSON is
+never a callback pass. Exit 4 is accepted only when the Inspector still
+returned valid status JSON, because it indicates incomplete sampled coverage
+and is not used as a verdict here. The script checks the fixture's physical
+NTFS extent through
+an aligned unbuffered raw-volume read; an unobservable raw read or an
+unconfirmed mapping disposal is a failed measurement. This is source-only
+until a reviewed Windows build is available.
 The test does not force the exact kernel callback interleaving between policy
 snapshots; a user-mode policy push cannot deterministically pause the callback.
 #>
-param([string] $ExpectedFeatureSha256 = 'ACED8226913E062E5D3EE6FD0CF96963C3FD2C1FB2242EDBEDBB00768CCD44F8', [switch] $Verifier)
+param(
+    [string] $ExpectedFeatureSha256 = 'ACED8226913E062E5D3EE6FD0CF96963C3FD2C1FB2242EDBEDBB00768CCD44F8',
+    [Parameter(Mandatory = $true)]
+    [ValidatePattern('^[0-9A-Fa-f]{64}$')]
+    [string] $ExpectedInspectorSha256,
+    [ValidateRange(5, 120)]
+    [int] $InspectorTimeoutSeconds = 45,
+    [switch] $Verifier
+)
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 $documents = Join-Path $env:USERPROFILE 'Documents'
@@ -166,8 +180,10 @@ function Flush-TestFileBuffers($Stream) {
 $installed = 'C:\Windows\System32\drivers\SafeUpload.sys'
 $expectedOriginal = 'ADA9D05AB6AECDD2B6C521B0CE529FC06C732154ACB3EE85439FBDC8AA80DFCE'
 $expectedFeature = $ExpectedFeatureSha256.ToUpperInvariant()
+$expectedInspector = $ExpectedInspectorSha256.ToUpperInvariant()
 $expectedServicePackage = 'D887E0D7F38AD64AD40CEE18B841C6D38AD2BED4D6F760B1BDE4464927381997'
 $feature = Join-Path $documents 'SafeUpload-stage-prototype.sys'
+$inspectorSource = Join-Path $documents 'SafeUpload.Inspector.input.exe'
 $servicePackage = Join-Path $documents 'stage-service-publish.zip'
 $serviceDirectory = Join-Path $documents 'stage-service-publish'
 $policy = 'C:\ProgramData\SafeUpload\policy.json'
@@ -178,6 +194,8 @@ $fixtureExtension = '.maptest'
 $target = Join-Path $fixtureDirectory ('synthetic' + $fixtureExtension)
 $backup = Join-Path $documents ('SafeUpload-original-before-policy-transition-' + $id + '.sys')
 $policyBackup = Join-Path $documents ('SafeUpload-policy-before-transition-' + $id + '.bin')
+$inspectorProcessName = 'SafeUpload-policy-transition-inspector-' + $id
+$inspectorCopy = Join-Path $documents ($inspectorProcessName + '.exe')
 $baseLog = Join-Path $documents ('policy-transition-base-' + $id)
 $updatedLog = Join-Path $documents ('policy-transition-updated-' + $id)
 $mappingName = 'Local\SafeUpload-PolicyTransition-' + $id
@@ -213,6 +231,14 @@ $allMappingsReleased = $true
 $expansionMappingsReleased = $false
 $expansionPrivacyVerdict = 'NOT_RUN'
 $policyBytes = $null
+$inspectorCopyCreated = $false
+$inspectorCopyRemoved = $false
+$inspectorTaskNames = New-Object System.Collections.ArrayList
+$inspectorCleanupMessages = New-Object System.Collections.ArrayList
+$script:PolicyTransitionInspectorCopy = $inspectorCopy
+$script:PolicyTransitionInspectorProcessName = $inspectorProcessName
+$script:PolicyTransitionInspectorTaskNames = $inspectorTaskNames
+$script:PolicyTransitionInspectorCleanupMessages = $inspectorCleanupMessages
 $replaced = $false
 $loaded = $false
 $fixtureCreated = $false
@@ -259,6 +285,169 @@ function Stop-TestAgentTracked($Target) {
     [void]$script:activeTestAgents.Remove($Target)
 }
 
+function ConvertTo-PolicyTransitionPowerShellLiteral([string] $Value) {
+    return "'" + $Value.Replace("'", "''") + "'"
+}
+
+function Get-PolicyTransitionInspectorProcesses {
+    $filter = "Name='$($script:PolicyTransitionInspectorProcessName).exe'"
+    return @(Get-CimInstance -ClassName Win32_Process -Filter $filter -ErrorAction Stop |
+        Where-Object { $_.ExecutablePath -ieq $script:PolicyTransitionInspectorCopy })
+}
+
+function Invoke-PolicyTransitionFenceStatus([int] $TimeoutSeconds) {
+    $callId = [guid]::NewGuid().ToString('N')
+    $taskName = 'SafeUpload-StagedTest-PolicyFenceStatus-' + $callId
+    $launcher = Join-Path $env:TEMP ('SafeUpload-policy-fence-status-' + $callId + '.ps1')
+    $pidFile = $launcher + '.pid'
+    $exitFile = $launcher + '.exit'
+    $stdoutFile = $launcher + '.stdout'
+    $stderrFile = $launcher + '.stderr'
+    $launcherTemplate = @'
+$ErrorActionPreference = 'Stop'
+try {
+    $process = Start-Process -FilePath __EXE__ -ArgumentList '--admission-fence-status' `
+        -PassThru -WindowStyle Hidden -RedirectStandardOutput __STDOUT__ -RedirectStandardError __STDERR__
+    [IO.File]::WriteAllText(__PID__, [string]$process.Id)
+    $process.WaitForExit()
+    [IO.File]::WriteAllText(__EXIT__, [string]$process.ExitCode)
+} catch {
+    [IO.File]::WriteAllText(__STDERR__, $_.Exception.ToString())
+    [IO.File]::WriteAllText(__EXIT__, '255')
+}
+'@
+    $launcherBody = $launcherTemplate.Replace('__EXE__', (ConvertTo-PolicyTransitionPowerShellLiteral $script:PolicyTransitionInspectorCopy))
+    $launcherBody = $launcherBody.Replace('__STDOUT__', (ConvertTo-PolicyTransitionPowerShellLiteral $stdoutFile))
+    $launcherBody = $launcherBody.Replace('__STDERR__', (ConvertTo-PolicyTransitionPowerShellLiteral $stderrFile))
+    $launcherBody = $launcherBody.Replace('__PID__', (ConvertTo-PolicyTransitionPowerShellLiteral $pidFile))
+    $launcherBody = $launcherBody.Replace('__EXIT__', (ConvertTo-PolicyTransitionPowerShellLiteral $exitFile))
+
+    $registered = $false
+    $exitCode = -1
+    $sectionsDenied = $null
+    $sectionNameUnresolved = $null
+    $statusComplete = $null
+    $dataValid = $false
+    $cleanupComplete = $true
+    $errorText = ''
+
+    try {
+        if (@(Get-Process SafeUpload.Agent.Service -ErrorAction SilentlyContinue).Count -ne 0) {
+            throw 'Agent must be stopped before the section-callback status sample.'
+        }
+        if ((Get-PolicyTransitionInspectorProcesses).Count -ne 0) {
+            throw 'A policy-transition Inspector process is already running.'
+        }
+        Set-Content -LiteralPath $launcher -Value $launcherBody -Encoding UTF8
+        $taskArgument = '-NoProfile -ExecutionPolicy Bypass -File "' + $launcher + '"'
+        $action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument $taskArgument
+        $principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
+        $settings = New-ScheduledTaskSettingsSet -ExecutionTimeLimit ([TimeSpan]::FromSeconds($TimeoutSeconds + 15))
+        Register-ScheduledTask -TaskName $taskName -Action $action -Principal $principal -Settings $settings | Out-Null
+        $registered = $true
+        [void]$script:PolicyTransitionInspectorTaskNames.Add($taskName)
+        Start-ScheduledTask -TaskName $taskName
+
+        $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
+        while (-not (Test-Path -LiteralPath $exitFile) -and [DateTime]::UtcNow -lt $deadline) {
+            Start-Sleep -Milliseconds 250
+        }
+        if (-not (Test-Path -LiteralPath $exitFile)) {
+            throw "Inspector status query exceeded $TimeoutSeconds seconds."
+        }
+
+        $taskStopped = $false
+        for ($attempt = 0; $attempt -lt 40; $attempt++) {
+            $scheduled = Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
+            if ($null -eq $scheduled -or $scheduled.State -ne 'Running') {
+                $taskStopped = $true
+                break
+            }
+            Start-Sleep -Milliseconds 250
+        }
+        if (-not $taskStopped) { throw 'Inspector status task did not stop after writing its exit code.' }
+
+        $exitCode = [int]([IO.File]::ReadAllText($exitFile))
+        $stdout = [IO.File]::ReadAllText($stdoutFile)
+        if ($exitCode -notin @(0, 4)) {
+            $stderr = if (Test-Path -LiteralPath $stderrFile) { [IO.File]::ReadAllText($stderrFile) } else { '' }
+            throw "Inspector status exit $exitCode is not an accepted status response: $stderr"
+        }
+        $status = ConvertFrom-Json -InputObject $stdout -ErrorAction Stop
+        if ($null -eq $status -or $null -eq $status.PSObject.Properties['fence'] -or
+            $status.fence -ne $true -or $null -eq $status.PSObject.Properties['sectionsDenied'] -or
+            $null -eq $status.PSObject.Properties['sectionNameUnresolved'] -or
+            $null -eq $status.PSObject.Properties['complete']) {
+            throw 'Inspector status JSON is missing required fence/counter/completeness fields.'
+        }
+        $sectionsDenied = [uint64]$status.sectionsDenied
+        $sectionNameUnresolved = [uint64]$status.sectionNameUnresolved
+        $statusComplete = [bool]$status.complete
+        $dataValid = $true
+    }
+    catch {
+        $errorText = $_.Exception.Message
+    }
+    finally {
+        if ($registered) {
+            Stop-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
+            Unregister-ScheduledTask -TaskName $taskName -Confirm:$false -ErrorAction SilentlyContinue
+        }
+
+        try {
+            foreach ($process in @(Get-PolicyTransitionInspectorProcesses)) {
+                Stop-Process -Id ([int]$process.ProcessId) -Force -ErrorAction Stop
+            }
+            $processesGone = $false
+            for ($attempt = 0; $attempt -lt 20; $attempt++) {
+                if ((Get-PolicyTransitionInspectorProcesses).Count -eq 0) {
+                    $processesGone = $true
+                    break
+                }
+                Start-Sleep -Milliseconds 250
+            }
+            $taskRemains = $null -ne (Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue)
+            if (-not $processesGone -or $taskRemains) {
+                $cleanupComplete = $false
+                $errorText = (($errorText + '; ') + 'Inspector process/task cleanup could not be verified.').Trim('; ')
+            }
+        }
+        catch {
+            $cleanupComplete = $false
+            $errorText = (($errorText + '; ') + 'Inspector process/task cleanup failed: ' + $_.Exception.Message).Trim('; ')
+        }
+
+        if ($cleanupComplete) {
+            try {
+                Remove-Item -LiteralPath $launcher,$pidFile,$exitFile,$stdoutFile,$stderrFile -Force -ErrorAction SilentlyContinue
+                $temporaryFiles = @($launcher,$pidFile,$exitFile,$stdoutFile,$stderrFile)
+                $remainingTemporaryFiles = @($temporaryFiles | Where-Object { Test-Path -LiteralPath $_ })
+                if ($remainingTemporaryFiles.Count -ne 0) {
+                    $cleanupComplete = $false
+                    $errorText = (($errorText + '; ') + 'Inspector temporary-file removal could not be verified.').Trim('; ')
+                }
+            }
+            catch {
+                $cleanupComplete = $false
+                $errorText = (($errorText + '; ') + 'Inspector temporary-file cleanup failed: ' + $_.Exception.Message).Trim('; ')
+            }
+        } else {
+            [void]$script:PolicyTransitionInspectorCleanupMessages.Add(
+                "RetainedInspectorTaskArtifacts=$launcher; Process/task cleanup incomplete; Inspector copy retained at $script:PolicyTransitionInspectorCopy")
+        }
+    }
+
+    return [pscustomobject]@{
+        Valid = ($dataValid -and $cleanupComplete)
+        ExitCode = $exitCode
+        SectionsDenied = $sectionsDenied
+        SectionNameUnresolved = $sectionNameUnresolved
+        Complete = $statusComplete
+        CleanupComplete = $cleanupComplete
+        Error = $errorText
+    }
+}
+
 function Assert-OutsideBaselineScopes([string] $Path, $PolicyDocument) {
     $candidate = [IO.Path]::GetFullPath($Path).TrimEnd('\')
     foreach ($configured in @($PolicyDocument.monitoredScopes.destinationPaths)) {
@@ -298,8 +487,10 @@ if (@(Get-Process SafeUpload.Agent.Service -ErrorAction SilentlyContinue).Count 
 if (@(Get-ScheduledTask | Where-Object { $_.TaskName -match '^SafeUpload-(StagedTest-|StagedCleanup-|Owned-)' }).Count -ne 0) { throw 'A SafeUpload experiment task is already active.' }
 if ((Get-FileHash -LiteralPath $policy -Algorithm SHA256).Hash -ne $expectedPolicy) { throw 'Original policy hash mismatch.' }
 if ((Get-FileHash -LiteralPath $feature -Algorithm SHA256).Hash -ne $expectedFeature) { throw 'Feature driver hash mismatch.' }
+if ((Get-FileHash -LiteralPath $inspectorSource -Algorithm SHA256).Hash -ne $expectedInspector) { throw 'Inspector source hash mismatch.' }
 if ((Get-FileHash -LiteralPath $servicePackage -Algorithm SHA256).Hash -ne $expectedServicePackage) { throw 'Service package hash mismatch.' }
 if (Test-Path -LiteralPath $fixtureDirectory) { throw 'GUID fixture collision.' }
+if (Test-Path -LiteralPath $inspectorCopy) { throw 'GUID Inspector copy collision.' }
 if ((Test-Path -LiteralPath (Join-Path $documents 'SafeUpload-owned.vhdx')) -or
     (Test-Path -LiteralPath (Join-Path $documents 'SafeUpload-owned.vhdx.txt'))) { throw 'An owned-stream VHDX is already present.' }
 
@@ -320,6 +511,8 @@ if ($monitoredExtensions -contains $fixtureExtension.ToLowerInvariant()) {
 'UUID=' + (Get-CimInstance Win32_ComputerSystemProduct).UUID
 'OriginalInstalledSHA256=' + $expectedOriginal
 'FeatureDriverSHA256=' + $expectedFeature
+'ExpectedInspectorSHA256=' + $expectedInspector
+'InspectorSourceSHA256=' + (Get-FileHash -LiteralPath $inspectorSource -Algorithm SHA256).Hash
 'ServicePackageSHA256=' + $expectedServicePackage
 'OriginalPolicySHA256=' + $expectedPolicy
 'FilterUnloaded=True; VerifierFlags=0; VerifiedDrivers=None; Service=Manual/Stopped'
@@ -330,6 +523,14 @@ if ($monitoredExtensions -contains $fixtureExtension.ToLowerInvariant()) {
 "FixtureExtension=$fixtureExtension; BaselineSourceExtensionMonitored=False"
 
 try {
+    # The GUID path is known to be absent from the baseline gate, so mark this
+    # name as owned before copying; finally can then remove a partial copy too.
+    $inspectorCopyCreated = $true
+    Copy-Item -LiteralPath $inspectorSource -Destination $inspectorCopy
+    $copiedInspectorHash = (Get-FileHash -LiteralPath $inspectorCopy -Algorithm SHA256).Hash
+    if ($copiedInspectorHash -ne $expectedInspector) { throw 'Copied Inspector hash mismatch.' }
+    'InspectorCopySHA256=' + $copiedInspectorHash
+
     [void][IO.Directory]::CreateDirectory($fixtureDirectory)
     $fixtureCreated = $true
     Backup-StagedTestDriver $backup
@@ -491,6 +692,9 @@ try {
     [IO.File]::WriteAllBytes($policy, $policyBytes)
     $agent = Start-TestAgentAndWaitForPolicy (Join-Path $documents ('policy-transition-shrunk-' + $id))
     'PolicyShrinkAcceptedByRealAgentAndDriver=True'
+    Stop-TestAgentTracked $agent
+    $agent = $null
+    'PolicyShrinkAgentStoppedBeforeSectionAttribution=True'
 
     $freshOpenHandle = [SafeUploadRepro.Native]::CreateFileW($target, [uint32]2147483648,
         [uint32]7, [IntPtr]::Zero, [uint32]3, [uint32]0, [IntPtr]::Zero)
@@ -505,18 +709,62 @@ try {
     }
     "PolicyShrinkFreshReaderOpen=$freshOpenOutcome; Win32Error=$freshOpenError"
 
-    $sectionMappingHandle = [SafeUploadRepro.Native]::CreateFileMappingW(
-        $sectionFile.SafeFileHandle.DangerousGetHandle(), [IntPtr]::Zero, [uint32]4, [uint32]0,
-        [uint32]4096, ('Local\SafeUpload-PolicyShrink-' + $id))
+    $sectionStatusBefore = Invoke-PolicyTransitionFenceStatus $InspectorTimeoutSeconds
+    "PolicyShrinkFenceStatusBefore=Valid:$($sectionStatusBefore.Valid); ExitCode:$($sectionStatusBefore.ExitCode); SectionsDenied:$($sectionStatusBefore.SectionsDenied); SectionNameUnresolved:$($sectionStatusBefore.SectionNameUnresolved); Complete:$($sectionStatusBefore.Complete)"
+    if ($sectionStatusBefore.Error) { "PolicyShrinkFenceStatusBeforeError=$($sectionStatusBefore.Error -replace '[\r\n;]', ' ')" }
+
+    $sectionNativeException = ''
+    try {
+        $sectionMappingHandle = [SafeUploadRepro.Native]::CreateFileMappingW(
+            $sectionFile.SafeFileHandle.DangerousGetHandle(), [IntPtr]::Zero, [uint32]4, [uint32]0,
+            [uint32]4096, ('Local\SafeUpload-PolicyShrink-' + $id))
+    }
+    catch {
+        $sectionMappingHandle = [IntPtr]::Zero
+        $sectionNativeException = $_.Exception.Message
+    }
     $sectionCreateError = if ($sectionMappingHandle -eq [IntPtr]::Zero) {
-        [Runtime.InteropServices.Marshal]::GetLastWin32Error()
+        if ($sectionNativeException) { -1 } else { [Runtime.InteropServices.Marshal]::GetLastWin32Error() }
     } else { 0 }
+    $sectionStatusAfter = Invoke-PolicyTransitionFenceStatus $InspectorTimeoutSeconds
+    "PolicyShrinkFenceStatusAfter=Valid:$($sectionStatusAfter.Valid); ExitCode:$($sectionStatusAfter.ExitCode); SectionsDenied:$($sectionStatusAfter.SectionsDenied); SectionNameUnresolved:$($sectionStatusAfter.SectionNameUnresolved); Complete:$($sectionStatusAfter.Complete)"
+    if ($sectionStatusAfter.Error) { "PolicyShrinkFenceStatusAfterError=$($sectionStatusAfter.Error -replace '[\r\n;]', ' ')" }
+
+    $sectionDeniedDelta = $null
+    $sectionUnresolvedDelta = $null
+    $sectionCallbackCorrelation = 'UNOBSERVABLE'
+    if ($sectionStatusBefore.Valid -and $sectionStatusAfter.Valid) {
+        $sectionDeniedDelta = [decimal]$sectionStatusAfter.SectionsDenied - [decimal]$sectionStatusBefore.SectionsDenied
+        $sectionUnresolvedDelta = [decimal]$sectionStatusAfter.SectionNameUnresolved - [decimal]$sectionStatusBefore.SectionNameUnresolved
+        if ($sectionCreateError -ne 5) {
+            $sectionCallbackCorrelation = 'UNOBSERVABLE_OTHER_CREATE_RESULT'
+        } elseif ($sectionDeniedDelta -lt 0 -or $sectionUnresolvedDelta -lt 0) {
+            $sectionCallbackCorrelation = 'UNOBSERVABLE_COUNTER_REGRESSION'
+        } elseif ($sectionUnresolvedDelta -gt 0 -or $sectionDeniedDelta -gt 1) {
+            $sectionCallbackCorrelation = 'AMBIGUOUS'
+        } elseif ($sectionDeniedDelta -eq 0) {
+            $sectionCallbackCorrelation = 'UNATTRIBUTED'
+        } elseif ($sectionDeniedDelta -eq 1 -and $sectionUnresolvedDelta -eq 0) {
+            $sectionCallbackCorrelation = 'TEMPORALLY_CORRELATED'
+        } else {
+            $sectionCallbackCorrelation = 'UNOBSERVABLE_COUNTER_DELTA'
+        }
+    }
+    $deniedDeltaOutput = if ($null -eq $sectionDeniedDelta) { 'UNAVAILABLE' } else { [string]$sectionDeniedDelta }
+    $unresolvedDeltaOutput = if ($null -eq $sectionUnresolvedDelta) { 'UNAVAILABLE' } else { [string]$sectionUnresolvedDelta }
+    "PolicyShrinkSectionCallbackCorrelation=$sectionCallbackCorrelation; Win32Error=$sectionCreateError; SectionsDeniedDelta=$deniedDeltaOutput; SectionNameUnresolvedDelta=$unresolvedDeltaOutput"
+    if ($sectionNativeException) { "PolicyShrinkWritableSectionNativeError=$($sectionNativeException -replace '[\r\n;]', ' ')" }
+
     if ($sectionMappingHandle -ne [IntPtr]::Zero) {
         $sectionCreateOutcome = 'ALLOWED'
         $shrinkSectionMeasurementOutcome = 'SECTION_CREATED'
+    } elseif ($sectionCreateError -eq 5 -and $sectionCallbackCorrelation -eq 'TEMPORALLY_CORRELATED') {
+        $sectionCreateOutcome = 'EXPECTED_ACCESS_DENIED_TEMPORALLY_CORRELATED'
+        $shrinkSectionMeasurementOutcome = 'ACCESS_DENIED_TEMPORALLY_CORRELATED'
     } elseif ($sectionCreateError -eq 5) {
-        $sectionCreateOutcome = 'ACCESS_DENIED_OBSERVED_CONTRACT_UNSUPPORTED'
-        $shrinkSectionMeasurementOutcome = 'ACCESS_DENIED_CONTRACT_UNSUPPORTED'
+        $sectionCreateOutcome = 'ACCESS_DENIED_' + $sectionCallbackCorrelation
+        $shrinkSectionMeasurementOutcome = 'UNOBSERVABLE_' + $sectionCallbackCorrelation
+        $shrinkSectionMeasurementUnknown = $true
     } else {
         $sectionCreateOutcome = 'UNCLASSIFIED_FAILURE'
         $shrinkSectionMeasurementOutcome = 'UNOBSERVABLE_UNCLASSIFIED_CREATE_ERROR'
@@ -633,14 +881,19 @@ try {
     else { 'NO_UNEXPECTED_BYTES_OBSERVED' }
     "PrivacyObservation=$privacyObservation"
     $freshReaderRefusedByFence = $freshOpenOutcome -eq 'PROTECTED_REFUSAL_SHARING_VIOLATION'
-    # No documented STATUS value presently authorizes a policy-denied section callback, so this cannot pass.
-    $sectionCreateRefusedBySupportedContract = $false
+    # The generic callback contracts permit accurate failure status. Count only ERROR_ACCESS_DENIED
+    # with one driver counter increment in the bracket; that global delta is temporal correlation,
+    # not per-file attribution. All other results remain non-passing.
+    $sectionCreateRefusedByContract = $sectionCreateOutcome -eq 'EXPECTED_ACCESS_DENIED_TEMPORALLY_CORRELATED' -and
+        $sectionCallbackCorrelation -eq 'TEMPORALLY_CORRELATED'
     if ($privacyGap -or $privacyUnknown -or -not $freshReaderRefusedByFence -or
-        -not $sectionCreateRefusedBySupportedContract) {
+        -not $sectionCreateRefusedByContract) {
         'PolicyShrinkProtection=FAIL'
-        'PolicyShrinkSectionCallbackStatus=BLOCKED_UNSUPPORTED_STATUS_CONTRACT'
-        throw 'Policy-shrink protection is not a pass: see raw-byte outcome, exact refusal errors, and unsupported section-callback status contract.'
+        'PolicyShrinkSectionCallbackStatus=' + $(if ($sectionCreateRefusedByContract) { 'EXPECTED_ACCESS_DENIED_TEMPORALLY_CORRELATED' } else { 'NOT_EXPECTED_DENIAL' })
+        throw 'Policy-shrink protection is not a pass: see raw-byte outcome, old-view result, fresh-reader result, and exact section-create error.'
     }
+    'PolicyShrinkProtection=PASS'
+    'PolicyShrinkSectionCallbackStatus=EXPECTED_ACCESS_DENIED_TEMPORALLY_CORRELATED'
 }
 finally {
     $cleanupFailures = New-Object 'System.Collections.Generic.List[string]'
@@ -659,6 +912,61 @@ finally {
             [void]$activeTestAgents.Remove($trackedAgent)
         } catch { [void]$cleanupFailures.Add('Stop agent: ' + $_.Exception.Message) }
     }
+
+    $inspectorProcessCleanupVerified = $false
+    $inspectorTaskCleanupVerified = $false
+    try {
+        foreach ($taskName in @($inspectorTaskNames)) {
+            Stop-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
+            Unregister-ScheduledTask -TaskName $taskName -Confirm:$false -ErrorAction SilentlyContinue
+        }
+        $inspectorTaskCleanupVerified = $true
+        foreach ($taskName in @($inspectorTaskNames)) {
+            if ($null -ne (Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue)) {
+                $inspectorTaskCleanupVerified = $false
+            }
+        }
+    } catch {
+        [void]$cleanupFailures.Add('Inspector task cleanup: ' + $_.Exception.Message)
+    }
+    try {
+        $namedInspectorProcesses = @(Get-Process -Name $inspectorProcessName -ErrorAction SilentlyContinue)
+        $matchingInspectorProcesses = @(Get-PolicyTransitionInspectorProcesses)
+        if ($namedInspectorProcesses.Count -ne $matchingInspectorProcesses.Count) {
+            throw 'Could not verify the image path of every policy-transition Inspector process.'
+        }
+        foreach ($process in $matchingInspectorProcesses) {
+            Stop-Process -Id ([int]$process.ProcessId) -Force -ErrorAction Stop
+        }
+        $inspectorProcessCleanupVerified = $false
+        for ($attempt = 0; $attempt -lt 20; $attempt++) {
+            if (@(Get-Process -Name $inspectorProcessName -ErrorAction SilentlyContinue).Count -eq 0) {
+                $inspectorProcessCleanupVerified = $true
+                break
+            }
+            Start-Sleep -Milliseconds 250
+        }
+    } catch {
+        [void]$cleanupFailures.Add('Inspector process cleanup: ' + $_.Exception.Message)
+    }
+    if ($inspectorCopyCreated) {
+        if ($inspectorProcessCleanupVerified -and $inspectorTaskCleanupVerified) {
+            try {
+                Remove-Item -LiteralPath $inspectorCopy -Force -ErrorAction Stop
+                $inspectorCopyRemoved = -not (Test-Path -LiteralPath $inspectorCopy)
+                if (-not $inspectorCopyRemoved) { throw 'Inspector copy still exists after removal.' }
+            } catch {
+                [void]$cleanupFailures.Add('Remove Inspector copy: ' + $_.Exception.Message)
+                'RetainedInspectorCopy=' + $inspectorCopy
+            }
+        } else {
+            [void]$cleanupFailures.Add('Inspector copy retained because process/task cleanup was not verified.')
+            'RetainedInspectorCopy=' + $inspectorCopy
+        }
+    } else {
+        $inspectorCopyRemoved = -not (Test-Path -LiteralPath $inspectorCopy)
+    }
+    foreach ($inspectorCleanupMessage in $inspectorCleanupMessages) { $inspectorCleanupMessage }
 
     if ($sectionView -ne [IntPtr]::Zero) {
         try {
@@ -742,6 +1050,13 @@ finally {
             else { $policyHashVerified = $false; [void]$cleanupFailures.Add('Policy changed after initial restoration verification') }
         } catch { $policyHashVerified = $false; [void]$cleanupFailures.Add('Final policy restoration verification: ' + $_.Exception.Message) }
     } else { $policyHashVerified = $false }
+
+    'PolicyTransitionInspectorProcessCleanupVerified=' + $inspectorProcessCleanupVerified
+    'PolicyTransitionInspectorTaskCleanupVerified=' + $inspectorTaskCleanupVerified
+    'PolicyTransitionInspectorCopyRemoved=' + $inspectorCopyRemoved
+    if (-not $inspectorTaskCleanupVerified -or -not $inspectorProcessCleanupVerified -or -not $inspectorCopyRemoved) {
+        [void]$cleanupFailures.Add('Policy-transition Inspector cleanup was not fully verified')
+    }
 
     # Remove recovery copies independently, and only after the corresponding
     # restore and verification succeeded. Failed recovery keeps a named copy.
