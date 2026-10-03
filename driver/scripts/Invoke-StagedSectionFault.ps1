@@ -155,11 +155,16 @@ function ConvertTo-STArgument([string]$Value) {
     return '"'+$Value.Replace('"','\"')+'"'
 }
 
-function Read-STTargetInstance($Status,[string]$Guid) {
+function Read-STTargetInstance($Status,[string]$Guid,[string]$AttachedExcept='') {
     $matches=@($Status.admissionVolumes|Where-Object {
         $null -ne $_.volumeGuidStatus -and $_.volumeGuidStatus -eq 0 -and
             -not [string]::IsNullOrWhiteSpace([string]$_.volumeGuid) -and
             ([string]$_.volumeGuid).ToLowerInvariant().Contains($Guid.ToLowerInvariant()) })
+    if($AttachedExcept){
+        # Run 6: after reattach the same GUID lists the old, detached instance (volumeFlags bit 0) and the new one.
+        $matches=@($matches|Where-Object {
+            $null -ne $_.volumeFlags -and ($_.volumeFlags -band 1) -eq 0 -and [string]$_.instance -ne $AttachedExcept })
+    }
     if($matches.Count -gt 1){throw 'VHDX Filter Manager inventory is ambiguous.'}
     if($matches.Count -eq 0){return $null}
     foreach($field in @('contextStatus','fileSystemStatus','volumeInfoStatus','volumeGuidStatus','volumeFlags')){
@@ -588,7 +593,7 @@ function Invoke-SectionTeardownScenario {
             catch {$reattachCanaryAck=$null}
             try {
                 $reattachStatus=Get-STGlobalStatus
-                $reattachEntry=Read-STTargetInstance $reattachStatus $script:STVhdxGuid
+                $reattachEntry=Read-STTargetInstance $reattachStatus $script:STVhdxGuid ([string]$entryBeforeDismount.instance)
                 $reattachRows=Get-STTraceRows ('reattach-canary-'+[guid]::NewGuid().ToString('N'))
                 if($null -ne $reattachEntry){
                     $newInstanceTrace='0x'+([string]$reattachEntry.instance)
