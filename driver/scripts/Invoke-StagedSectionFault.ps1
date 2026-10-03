@@ -81,13 +81,17 @@ function Invoke-STInspector([string]$Command) {
     return [SafeUploadSectionFaultClient]::Inspector($Inspector,$Command)
 }
 
-function Get-STTraceRows([string]$Name) {
+function Get-STTraceRows([string]$Name,[switch]$AllowIncomplete) {
     $raw=Invoke-STInspector '--admission-trace'
     $traces[$Name]=$raw
     $rows=@($raw -split '[\r\n]+'|Where-Object { $_.Trim().Length -gt 0 }|ForEach-Object { $_|ConvertFrom-Json })
     $summary=@($rows|Where-Object { $_.summary -eq $true })
     if($summary.Count -ne 1 -or $summary[0].lostEntries -ne 0 -or
-        $summary[0].cursor -ne ([UInt64]$summary[0].snapshotSequence+1)){throw ('Upper trace incomplete: '+$Name)}
+        $summary[0].cursor -ne ([UInt64]$summary[0].snapshotSequence+1)){
+        # Probes stay strict. Corroborating event counts tolerate a lossy ring (run 8) and are recorded as lower bounds.
+        if(-not $AllowIncomplete){throw ('Upper trace incomplete: '+$Name)}
+        $script:STTraceIncomplete+=$Name
+    }
     return $rows
 }
 
@@ -177,7 +181,7 @@ function Read-STTargetInstance($Status,[string]$Guid,[string]$AttachedExcept='')
 }
 
 function Read-STTargetTrace([string]$Label,[UInt64]$FileObject) {
-    $rows=Get-STTraceRows $Label
+    $rows=Get-STTraceRows $Label -AllowIncomplete
     $identity='0x'+$FileObject.ToString('X16')
     return @($rows|Where-Object { $_.targetFileObject -eq $identity })
 }
@@ -207,6 +211,7 @@ function Invoke-SectionTeardownScenario {
     $script:STVhdxView=$null
     $script:STSecondWriter=$null
     $script:STVhdxInitialHash=''
+    $script:STTraceIncomplete=@()
     # Get-FileHash opens with read-only sharing and fails while this exercise's own writers hold the file (run 3).
     function Get-STShareAllHash([string]$Path) {
         $stream=[IO.FileStream]::new($Path,[IO.FileMode]::Open,[IO.FileAccess]::Read,
@@ -369,7 +374,7 @@ function Invoke-SectionTeardownScenario {
         do {
             Reset-UpperTrace
             [void](Invoke-STInspector ('--admission-probe "'+$script:STTargetPath+'"'))
-            $canaryRows=Get-STTraceRows 'new-volume-canary-poll'
+            $canaryRows=Get-STTraceRows 'new-volume-canary-poll' -AllowIncomplete
             $canaryEntries=@($canaryRows|Where-Object event -eq 'explicit_probe')
             if($canaryEntries.Count -eq 1){$canary=$canaryEntries[0];if($canary.canaryState -eq 2){break};if($canary.canaryState -ge 3){throw ('Fresh VHDX canary failed: '+$canary.canaryStatus)}}
             Start-Sleep -Milliseconds 150
@@ -594,7 +599,7 @@ function Invoke-SectionTeardownScenario {
             try {
                 $reattachStatus=Get-STGlobalStatus
                 $reattachEntry=Read-STTargetInstance $reattachStatus $script:STVhdxGuid ([string]$entryBeforeDismount.instance)
-                $reattachRows=Get-STTraceRows ('reattach-canary-'+[guid]::NewGuid().ToString('N'))
+                $reattachRows=Get-STTraceRows ('reattach-canary-'+[guid]::NewGuid().ToString('N')) -AllowIncomplete
                 if($null -ne $reattachEntry){
                     $newInstanceTrace='0x'+([string]$reattachEntry.instance)
                     $reattachSetupSeen=@($reattachRows|Where-Object {$_.event -eq 'instance_setup' -and [string]$_.instance -eq $newInstanceTrace}).Count -gt 0
@@ -619,7 +624,7 @@ function Invoke-SectionTeardownScenario {
                 $result.ReattachFltmcInstances=$fm.Output
                 $result.ReattachFltmcVolumes=(Invoke-STNative 'fltmc.exe' 'volumes' 20).Output
                 $result.ReattachVolumeStatusRaw=(Get-STGlobalStatus|ConvertTo-Json -Depth 6 -Compress)
-                $setupRows=@(Get-STTraceRows ('reattach-diag-'+[guid]::NewGuid().ToString('N'))|Where-Object event -eq 'instance_setup')
+                $setupRows=@(Get-STTraceRows ('reattach-diag-'+[guid]::NewGuid().ToString('N')) -AllowIncomplete|Where-Object event -eq 'instance_setup')
                 $result.ReattachInstanceSetupEvents=@($setupRows|ForEach-Object {$_|ConvertTo-Json -Compress})
                 $result.ReattachSVolume=(@(Get-CimInstance Win32_Volume -Filter "DriveLetter='S:'")|Select-Object DeviceID,DriveType,FileSystem|ConvertTo-Json -Compress)
             } catch {$result.Errors+=('Reattach diagnostics: '+$_.Exception.Message)}
@@ -947,6 +952,7 @@ finally {
     if ($client) { try { $client.Dispose() } catch { $result.Errors+='Port dispose: '+$_.Exception.Message } }
     foreach($name in $traces.Keys) { [IO.File]::WriteAllText($TracePrefix+'-'+$name+'.jsonl',$traces[$name]) }
     if ($result.Errors.Count -ne 0) { $result.Passed=$false }
+    $result.TraceIncomplete=@($script:STTraceIncomplete)
     $json=$result|ConvertTo-Json -Depth 10
     [IO.File]::WriteAllText($ResultPath+'.next',$json)
     Move-Item -LiteralPath ($ResultPath+'.next') -Destination $ResultPath
