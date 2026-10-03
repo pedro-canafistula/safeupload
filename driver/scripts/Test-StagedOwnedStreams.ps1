@@ -331,7 +331,7 @@ try {
     catch { $denied = $true }
     if (-not $denied -or [IO.File]::Exists($target)) { throw 'Missing service did not deny create.' }
     Write-Output 'DeniedWithoutService=True'
-    $agent = Start-StagedTestAgent $serviceDir 'C:\Users\vika\Documents\stage-owned-service'
+    $agent = Start-StagedTestAgent $serviceDir (Join-Path 'C:\Users\vika\Documents' ('stage-owned-service-' + $id))
     Start-Sleep -Seconds 2
     $watch = @'
 $ErrorActionPreference='Stop'; $samples=0; $acknowledgedPhase=''; $observerExit=0
@@ -588,7 +588,7 @@ exit $observerExit
     & fltmc.exe unload SafeUpload | Out-Host
     if ($LASTEXITCODE -eq 0) { $loaded = $false; throw 'Unload accepted a surviving writable mapping.' }
     Write-Output 'UnloadRefusedWithOnlyMappedWriter=True'
-    $agent = Start-StagedTestAgent $serviceDir 'C:\Users\vika\Documents\stage-owned-mapped-restart-service'
+    $agent = Start-StagedTestAgent $serviceDir (Join-Path 'C:\Users\vika\Documents' ('stage-owned-mapped-restart-service-' + $id))
     $null = Wait-OwnedState ([guid]$mappedEntry.Transfer.TransferId) 8
     $view.Write(2,[byte]0x43)
     $expectedMapped = [byte[]]::new(4096); $expectedMapped[0]=0x41; $expectedMapped[1]=0x42; $expectedMapped[2]=0x43
@@ -605,7 +605,7 @@ exit $observerExit
     Write-OwnedText $file 'survives service restart'
     $restartEntry = (Get-OwnedEntries $restartTarget)[0]
     Stop-StagedTestAgent $agent; $agent = $null
-    $agent = Start-StagedTestAgent $serviceDir 'C:\Users\vika\Documents\stage-owned-restarted-service'
+    $agent = Start-StagedTestAgent $serviceDir (Join-Path 'C:\Users\vika\Documents' ('stage-owned-restarted-service-' + $id))
     $null = Wait-OwnedState ([guid]$restartEntry.Transfer.TransferId) 8
     Set-OwnedObserver 'service-restart-unsealed'
     $observerRules[$restartTarget] = @('ABSENT',[Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes('survives service restart')))
@@ -677,6 +677,11 @@ finally {
     Remove-Item -LiteralPath $vhd,$diskpart,$systemScript,$systemResult,$observerScript,$observerStop,$observerRequest,$observerAck -Force -ErrorAction SilentlyContinue
     Remove-Item -LiteralPath ($observerRequest + '.next'),($observerAck + '.next') -Force -ErrorAction SilentlyContinue
     # Retain observerLog as evidence, with its path printed on every run.
+    foreach ($stem in @('stage-owned-service','stage-owned-mapped-restart-service','stage-owned-restarted-service')) {
+        foreach ($suffix in @('-out.log','-err.log')) {
+            Write-Output ('ServiceLog=' + (Join-Path 'C:\Users\vika\Documents' ($stem + '-' + $id + $suffix)))
+        }
+    }
     Write-Output "ObserverLog=$observerLog"
     Write-Output "ObserverStdout=$observerStdout"
     Write-Output "ObserverStderr=$observerStderr"

@@ -1196,6 +1196,11 @@ public static class SafeUploadWriterInheritance
         byte[] info = new byte[24]; Check(GetFileInformationByHandleEx(file, 18, info, info.Length));
         return BitConverter.ToString(info).Replace("-", "");
     }
+    public static uint ReparseTag(IntPtr directory) {
+        byte[] info = new byte[8]; Check(GetFileInformationByHandleEx(directory, 9, info, info.Length));
+        if ((BitConverter.ToUInt32(info, 0) & 0x400) == 0) throw new InvalidOperationException("Not a reparse point");
+        return BitConverter.ToUInt32(info, 4);
+    }
     // The explicit list contains only the fixture file handle. No DuplicateHandle into the child is used.
     public static Process Start(IntPtr file, string application, string command) {
         uint originalFlags; Check(GetHandleInformation(file, out originalFlags));
@@ -2155,6 +2160,9 @@ public static class SafeUploadEolNative
             $fn = New-WCFile 'wc_delete_only.maptest'
             $fo = New-WCFile 'wc_inherited.maptest'
             $fp = New-WCFile 'wc_delete_on_close.maptest'
+            $reparseTargetDirectory = Join-Path $fixtureDirectory 'wc-reparse-target'
+            [void][IO.Directory]::CreateDirectory($reparseTargetDirectory)
+            $fq = New-WCFile 'wc-reparse-target\wc_reparsed.maptest'
             $fixturePaths += $script:fixturePathsLocal
             foreach ($path in $fixturePaths) { Assert-ReparseFreeFixturePath $path }
 
@@ -2341,7 +2349,38 @@ Start-Sleep -Seconds 300
             if ($adsHandle.IsInvalid) { throw 'Alternate stream open failed.' }
             Add-WriterProbe $fm 'ads_sideStreamWriterDoesNotCountForBase' 0
             $adsHandle.Dispose()
-            Complete-WriterChecks 'aliases' $rawTraceP2
+            # A same-volume junction causes a real filesystem reparse of the write create.
+            $junction = Join-Path $fixtureDirectory 'wc-reparse-junction'
+            $reparsedFile = $null
+            try {
+                New-Item -ItemType Junction -Path $junction -Target $reparseTargetDirectory | Out-Null
+                $junctionHandle = [SafeUploadAdmissionNative]::CreateFile($junction, [uint32]0x100, [uint32]7,
+                    [IntPtr]::Zero, [uint32]3, [uint32]0x02200000, [IntPtr]::Zero)
+                if ($junctionHandle.IsInvalid) { throw 'Junction tag open failed.' }
+                try { $tag = [SafeUploadWriterInheritance]::ReparseTag($junctionHandle.DangerousGetHandle()) }
+                finally { $junctionHandle.Dispose() }
+                if ($tag -ne [uint32]2684354563) { throw 'Fixture is not a mount-point junction.' }
+                $direct = [SafeUploadAdmissionNative]::CreateFile($fq, [uint32]0x100, [uint32]7,
+                    [IntPtr]::Zero, [uint32]3, [uint32]0x80, [IntPtr]::Zero)
+                if ($direct.IsInvalid) { throw 'Canonical reparse target identity open failed.' }
+                try { $canonicalIdentity = [SafeUploadWriterInheritance]::Identity($direct.DangerousGetHandle()) }
+                finally { $direct.Dispose() }
+                $reparsedFile = [SafeUploadAdmissionNative]::CreateFile((Join-Path $junction 'wc_reparsed.maptest'),
+                    [uint32]0x40010000, [uint32]7, [IntPtr]::Zero, [uint32]3, [uint32]0x80, [IntPtr]::Zero)
+                if ($reparsedFile.IsInvalid) { throw 'Reparsed write-create failed.' }
+                [void]$fileHandles.Add($reparsedFile)
+                $redirectedIdentity = [SafeUploadWriterInheritance]::Identity($reparsedFile.DangerousGetHandle())
+                if ($redirectedIdentity -ne $canonicalIdentity) { throw 'Reparsed write-create resolved to another file.' }
+                Write-Output ('WC_ReparseProof=Tag:' + $tag + ';Identity:' + $redirectedIdentity + ';MatchesCanonical=True')
+                Add-WriterProbe $fq 'reparsed_writeOpenCountsCanonicalTarget' 1
+                $reparsedFile.Dispose()
+                Add-WriterProbe $fq 'reparsed_closed' 0
+            } finally {
+                if ($null -ne $reparsedFile) { $reparsedFile.Dispose() }
+                # Remove only the junction itself; never recurse through the target during cleanup.
+                if (Test-Path -LiteralPath $junction) { [IO.Directory]::Delete($junction, $false) }
+            }
+            Complete-WriterChecks 'aliases_and_reparse' $rawTraceP2
 
             # Group 4: many handles, stress, and a writer whose file handle closed but whose section is retained
             $many = New-Object System.Collections.ArrayList
