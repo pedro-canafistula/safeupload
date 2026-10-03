@@ -577,7 +577,9 @@ static VOID PrintAdmissionTraceEntry(_In_ const SAFEUPLOAD_ADMISSION_TRACE_ENTRY
             L"\"volumeKind\":%u,\"attachClass\":\"%s\",\"syncType\":%u,"
             L"\"pageProtection\":\"0x%08X\",\"syncParametersValid\":%s,"
             L"\"probeStatus\":\"0x%08X\",\"probeStage\":%u,"
-            L"\"writeObjects\":%u,\"writersUntracked\":%s,\"inFlightSections\":%u}\n",
+            L"\"writeObjects\":%u,\"writersUntracked\":%s,\"inFlightSections\":%u,"
+            L"\"canaryState\":%u,\"canaryStatus\":\"0x%08X\",\"canaryChecks\":%u,"
+            L"\"canaryCleanupStatus\":\"0x%08X\"}\n",
             Entry->Sequence, Entry->Timestamp, AdmissionEventName(Entry->EventKind),
             Entry->ProcessId, Entry->Irql, Entry->Instance, Entry->TargetFileObject,
             Entry->SectionObjectPointer, Entry->MajorFunction, Entry->MinorFunction,
@@ -590,7 +592,8 @@ static VOID PrintAdmissionTraceEntry(_In_ const SAFEUPLOAD_ADMISSION_TRACE_ENTRY
             Entry->ProbeStatus, Entry->ProbeStage,
             Entry->AdmissionRecordState & ~SAFEUPLOAD_WRITERS_UNTRACKED_BIT,
             (Entry->AdmissionRecordState & SAFEUPLOAD_WRITERS_UNTRACKED_BIT) != 0 ? L"true" : L"false",
-            Entry->EventKind == SAFEUPLOAD_ADMISSION_TRACE_EVENT_EXPLICIT_PROBE ? Entry->SetupFlags : 0);
+            Entry->EventKind == SAFEUPLOAD_ADMISSION_TRACE_EVENT_EXPLICIT_PROBE ? Entry->SetupFlags : 0,
+            Entry->CanaryState, Entry->CanaryStatus, Entry->CanaryChecks, Entry->CanaryCleanupStatus);
 }
 
 static int SendAdmissionProbe(_In_z_ PCWSTR DosPath)

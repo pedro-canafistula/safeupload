@@ -23,7 +23,8 @@ param(
     [string] $InspectorInputFileName = 'SafeUpload.Inspector.input.exe',
 
     # Runtime Driver Verifier (volatile, flags 0x13B) on SafeUpload.sys for variants that support it.
-    [switch] $Verifier
+    [switch] $Verifier,
+    [switch] $RequireCanary
 )
 
 $ErrorActionPreference = 'Stop'
@@ -1036,6 +1037,9 @@ function Get-LightTrace($InspectorResult, [string] $RawPath) {
             ProbeValid = $probeValid
             ProbeStatus = $(if ($null -ne $probe) { $probe.probeStatus } else { '' })
             ProbeStage = $(if ($null -ne $probe) { $probe.probeStage } else { -1 })
+            CanaryOk = ($null -ne $probe -and $probe.canaryState -eq 2 -and
+                $probe.canaryStatus -eq '0x00000000' -and $probe.canaryChecks -eq 7 -and
+                $probe.canaryCleanupStatus -eq '0x00000000')
             Seq = [UInt64]$g[1].Value
             Ts = [Int64]$g[2].Value
             Ev = $g[3].Value
@@ -1193,7 +1197,8 @@ function Complete-WriterChecks([string] $GroupName, [string] $RawPath) {
             $entry = $probes[$index]
             $writersOk = ($entry.Writers -eq $check.Expected) -and (-not $entry.WritersUntracked)
             $mmOk = ([string]::IsNullOrEmpty($check.ExpectedMm) -or $entry.MmDoes -eq $check.ExpectedMm)
-            $verdict = if ($entry.ProbeValid -and $writersOk -and $mmOk) { 'PASS' } else { 'FAIL' }
+            $verdict = if ($entry.ProbeValid -and $writersOk -and $mmOk -and
+                (-not $RequireCanary -or $entry.CanaryOk)) { 'PASS' } else { 'FAIL' }
             if ($verdict -ne 'PASS') { $script:WriterChecksFailed++ } else { $script:WriterChecksPassed++ }
             Write-Output ('WC_' + $check.Label + '=expected:' + $check.Expected + ';observed:' + $entry.Writers +
                 ';untracked:' + $entry.WritersUntracked + ';mmDoes:' + $entry.MmDoes +
@@ -1208,6 +1213,24 @@ function Complete-WriterChecks([string] $GroupName, [string] $RawPath) {
 function Get-WriterStateStats {
     $r = Invoke-InspectorChecked -Arguments @('--writer-state-status') -Timeout $InspectorTimeoutSeconds
     return (ConvertFrom-Json -InputObject ([string]$r.Stdout).Trim())
+}
+
+function Wait-AdmissionCanary([string] $Path, [string] $RawPath) {
+    if (-not $RequireCanary) { return }
+    for ($attempt = 0; $attempt -lt 20; $attempt++) {
+        [void](Invoke-AdmissionProbe $Path ('Canary_' + $attempt) $InspectorTimeoutSeconds)
+        $trace = Get-LightTrace (Invoke-InspectorChecked -Arguments @('--admission-trace') -Timeout $InspectorTimeoutSeconds) ($RawPath + '-canary-' + $attempt + '.jsonl')
+        $probes = @($trace.Entries | Where-Object { $_.Ev -eq 'explicit_probe' })
+        if ($probes.Count -ne 1 -or -not $probes[0].ProbeValid) { throw 'Canary probe failed or attribution is ambiguous.' }
+        if ($probes[0].CanaryOk) {
+            Write-Output 'VolumeCanary=PASS;retained:YES;released:NO;removed:YES'
+            [void](Invoke-InspectorChecked -Arguments @('--admission-trace-clear') -Timeout $InspectorTimeoutSeconds)
+            return
+        }
+        [void](Invoke-InspectorChecked -Arguments @('--admission-trace-clear') -Timeout $InspectorTimeoutSeconds)
+        Start-Sleep -Milliseconds 100
+    }
+    throw 'Volume canary did not reach its passed state (inspect retained raw canary probes).'
 }
 
 function Initialize-SectionStress {
@@ -1996,6 +2019,7 @@ public static class SafeUploadEolNative
             $traceEnabled = $true
             [void](Invoke-InspectorChecked -Arguments @('--admission-trace-clear') -Timeout $t)
             $statsBefore = Get-WriterStateStats
+            Wait-AdmissionCanary $fa $rawTraceA
             Write-Output ('WC_StatsBefore=counted:' + $statsBefore.writeObjectsCounted + ';released:' + $statsBefore.writeObjectsReleased +
                 ';untracked:' + $statsBefore.untrackedCreates + ';unmatched:' + $statsBefore.cleanupUnmatched)
 
@@ -2163,6 +2187,7 @@ public static class SafeUploadEolNative
             $traceEnabled = $true
 
             $s0 = Get-WriterStateStats
+            Wait-AdmissionCanary $stormFiles[0] $rawTraceA
             Write-Output ('X3_Stats0=inserted:' + $s0.sectionInFlightInserted + ';released:' + $s0.sectionInFlightReleased +
                 ';removedOnFailure:' + $s0.sectionInFlightRemovedOnFailure + ';now:' + $s0.sectionInFlightNow +
                 ';overflow:' + $s0.sectionInFlightOverflow + ';stuck:' + $s0.sectionInFlightStuck)
@@ -2212,7 +2237,8 @@ public static class SafeUploadEolNative
             $probeText = if ($probeX.Count -eq 1) { [string]$probeX[0].InFlightSections } else { 'AMBIGUOUS' }
             Write-Output ('X3_Probe=' + $probeText + ';mmDoes:' + $(if ($probeX.Count -eq 1) { $probeX[0].MmDoes } else { 'n/a' }))
             $probeOk = ($probeX.Count -eq 1 -and $probeX[0].ProbeValid -and
-                $probeX[0].InFlightSections -eq 0 -and $probeX[0].MmDoes -eq 'no')
+                $probeX[0].InFlightSections -eq 0 -and $probeX[0].MmDoes -eq 'no' -and
+                (-not $RequireCanary -or $probeX[0].CanaryOk))
 
             $conserved = ([int64]$s4.sectionInFlightInserted - [int64]$s4.sectionInFlightReleased - [int64]$s4.sectionInFlightRemovedOnFailure - [int64]$s4.sectionInFlightNow)
             $tracked = ([int64]$s2.sectionInFlightInserted - [int64]$s1.sectionInFlightInserted)

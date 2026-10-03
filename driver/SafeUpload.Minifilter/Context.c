@@ -285,6 +285,8 @@ Return Value:
                                                             VolumeDeviceType );
 #if SAFEUPLOAD_STAGING_PROTOTYPE
     instanceContext->SetupFlags = SetupFlags;
+    instanceContext->CanaryStatus = STATUS_PENDING;
+    instanceContext->CanaryCleanupStatus = STATUS_PENDING;
 #endif
 
     status = FltSetInstanceContext( FltObjects->Instance,

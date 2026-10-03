@@ -525,6 +525,15 @@ static NTSTATUS StageAdmissionProbeWorkerBody(
     status = FltGetInstanceContext(instance, &instanceContext);
     if (!NT_SUCCESS(status)) goto Record;
     volumeKind = ((PSAFEUPLOAD_INSTANCE_CONTEXT)instanceContext)->VolumeKind;
+    entry.CanaryState = (UINT32)InterlockedCompareExchange(
+        &((PSAFEUPLOAD_INSTANCE_CONTEXT)instanceContext)->CanaryState, 0, 0);
+    if (entry.CanaryState >= SAFEUPLOAD_CANARY_PASSED) {
+        entry.CanaryStatus = (UINT32)((PSAFEUPLOAD_INSTANCE_CONTEXT)instanceContext)->CanaryStatus;
+        entry.CanaryChecks = ((PSAFEUPLOAD_INSTANCE_CONTEXT)instanceContext)->CanaryChecks;
+        entry.CanaryCleanupStatus = (UINT32)((PSAFEUPLOAD_INSTANCE_CONTEXT)instanceContext)->CanaryCleanupStatus;
+    } else {
+        entry.CanaryStatus = entry.CanaryCleanupStatus = (UINT32)STATUS_PENDING;
+    }
     entry.VolumeKind = (UINT32)volumeKind;
     FltReleaseContext(instanceContext);
     instanceContext = NULL;
@@ -2000,8 +2009,17 @@ NTSTATUS SafeUploadStageInitialize(VOID)
 NTSTATUS SafeUploadStageStartWorker(VOID)
 {
     OBJECT_ATTRIBUTES attributes;
+    NTSTATUS status;
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    status = SafeUploadStageAdmissionStartWorker();
+    if (!NT_SUCCESS(status)) return status;
+#endif
     InitializeObjectAttributes(&attributes, NULL, OBJ_KERNEL_HANDLE, NULL, NULL);
-    return PsCreateSystemThread(&StageWorkerHandle, SYNCHRONIZE, &attributes, NULL, NULL, StageWorker, NULL);
+    status = PsCreateSystemThread(&StageWorkerHandle, SYNCHRONIZE, &attributes, NULL, NULL, StageWorker, NULL);
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    if (!NT_SUCCESS(status)) SafeUploadStageAdmissionStopWorker();
+#endif
+    return status;
 }
 
 VOID SafeUploadStageStopWorker(VOID)
@@ -2011,6 +2029,9 @@ VOID SafeUploadStageStopWorker(VOID)
         (VOID)ZwWaitForSingleObject(StageWorkerHandle, FALSE, NULL);
         ZwClose(StageWorkerHandle); StageWorkerHandle = NULL;
     }
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    SafeUploadStageAdmissionStopWorker();
+#endif
 }
 
 BOOLEAN SafeUploadStageCanDetach(VOID)

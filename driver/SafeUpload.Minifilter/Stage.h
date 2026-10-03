@@ -56,6 +56,10 @@ NTSTATUS SafeUploadStageOpenByIdentity(_In_ PFLT_INSTANCE Instance,
     _In_ PCUNICODE_STRING VolumeName, _In_ PFILE_OBJECT SourceObject,
     _Out_ PHANDLE Handle, _Outptr_result_nullonfailure_ PFILE_OBJECT *Object,
     _Out_ PUINT32 ProbeStage);
+VOID SafeUploadStageAdmissionReady(VOID);
+VOID SafeUploadStageCanaryTick(VOID);
+NTSTATUS SafeUploadStageAdmissionStartWorker(VOID);
+VOID SafeUploadStageAdmissionStopWorker(VOID);
 
 /* StageWriters.c: H(F), the per-stream count of write file objects (observe-only). */
 #define SAFEUPLOAD_WRITERS_ONLY_CONTEXT ((PVOID)(ULONG_PTR)0x1000)

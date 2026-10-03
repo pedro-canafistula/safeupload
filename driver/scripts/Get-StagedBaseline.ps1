@@ -36,6 +36,17 @@ $fixtures = @(Get-ChildItem -LiteralPath $documents -Directory -Force -ErrorActi
     Where-Object { $_.Name -match '^SafeUpload-.*[0-9a-f]{32}$' })
 $checks['NoGuidFixtureDirectories'] = ($fixtures.Count -eq 0)
 $checks['NoSyntheticVolume'] = -not (Test-Path -LiteralPath 'S:\')
+$canaries = @()
+$canaryRootsRead = $true
+try {
+    foreach ($volume in @(Get-CimInstance Win32_Volume -Filter 'DriveType=3' -ErrorAction Stop |
+        Where-Object FileSystem -eq 'NTFS')) {
+        try { $canaries += @(Get-ChildItem -LiteralPath $volume.DeviceID -Filter 'SafeUpload-canary-*.tmp' -Force -ErrorAction Stop) }
+        catch { $canaryRootsRead = $false; 'CanaryRootReadError=' + $_.Exception.Message }
+    }
+} catch { $canaryRootsRead = $false; 'CanaryVolumeEnumerationError=' + $_.Exception.Message }
+$checks['CanaryRootsEnumerated'] = $canaryRootsRead
+$checks['NoVolumeCanaryFiles'] = ($canaries.Count -eq 0 -and $canaryRootsRead)
 
 'UTC=' + [DateTime]::UtcNow.ToString('o')
 'Host=' + $env:COMPUTERNAME
@@ -45,4 +56,5 @@ $checks['NoSyntheticVolume'] = -not (Test-Path -LiteralPath 'S:\')
 'Service=' + $service.StartMode + '/' + $service.State
 foreach ($name in $checks.Keys) { $name + '=' + $checks[$name] }
 if ($fixtures.Count -ne 0) { 'FixtureDirectories=' + (($fixtures | ForEach-Object Name) -join ';') }
+if ($canaries.Count -ne 0) { 'VolumeCanaryFiles=' + (($canaries | ForEach-Object FullName) -join ';') }
 'BaselineClean=' + (-not ($checks.Values -contains $false))

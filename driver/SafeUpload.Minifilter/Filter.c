@@ -314,6 +314,7 @@ Return Value:
     }
 
 #if SAFEUPLOAD_STAGING_PROTOTYPE
+    SafeUploadStageAdmissionReady();
     SafeUploadStageFenceStartRetries();
 #endif
 

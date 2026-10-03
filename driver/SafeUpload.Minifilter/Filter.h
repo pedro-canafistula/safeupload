@@ -219,6 +219,10 @@ typedef struct _SAFEUPLOAD_INSTANCE_CONTEXT {
 #if SAFEUPLOAD_STAGING_PROTOTYPE
     FLT_INSTANCE_SETUP_FLAGS SetupFlags;
     volatile LONG WritersUntracked; /* Sticky for this attachment if a writer cannot get a context. */
+    volatile LONG CanaryState;
+    NTSTATUS CanaryStatus;
+    UINT32 CanaryChecks;
+    NTSTATUS CanaryCleanupStatus;
 #endif
 
 } SAFEUPLOAD_INSTANCE_CONTEXT, *PSAFEUPLOAD_INSTANCE_CONTEXT;
