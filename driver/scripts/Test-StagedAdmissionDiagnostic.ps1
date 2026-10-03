@@ -158,6 +158,9 @@ public static class SafeUploadCanarySecurityNative
     static extern bool ImpersonateLoggedOnUser(IntPtr token);
     [DllImport("advapi32.dll", SetLastError = true)] [return: MarshalAs(UnmanagedType.Bool)]
     static extern bool RevertToSelf();
+    [DllImport("advapi32.dll", SetLastError = true)] [return: MarshalAs(UnmanagedType.Bool)]
+    static extern bool AdjustTokenPrivileges(IntPtr token, [MarshalAs(UnmanagedType.Bool)] bool disableAll,
+        IntPtr newState, uint bufferLength, IntPtr previousState, IntPtr returnLength);
     [DllImport("kernel32.dll")] static extern IntPtr LocalFree(IntPtr memory);
 
     static void ThrowLastError(string operation)
@@ -277,11 +280,24 @@ public static class SafeUploadCanarySecurityNative
             bool member;
             if (!IsElevated(impersonation) || !CheckTokenMembership(impersonation, sid, out member) || !member)
                 throw new InvalidOperationException("The harness token is not an elevated Administrators token.");
+            // The launching shell's token may have privileges enabled (OpenSSH sessions do). Record it;
+            // the attempts themselves use AdminWithoutPrivileges(), never this token.
+            string facts = "elevated=true;administrators=true";
             string[] names = { "SeBackupPrivilege", "SeRestorePrivilege", "SeTakeOwnershipPrivilege" };
             foreach (string name in names)
-                if (PrivilegeEnabled(impersonation, name))
-                    throw new InvalidOperationException(name + " is enabled; the harness will not change it.");
-            return "elevated=true;administrators=true;SeBackupPrivilege=not-enabled;SeRestorePrivilege=not-enabled;SeTakeOwnershipPrivilege=not-enabled";
+                facts += ";process" + name + "=" + (PrivilegeEnabled(impersonation, name) ? "enabled" : "not-enabled");
+            IntPtr attempt = AdminWithoutPrivileges();
+            try
+            {
+                foreach (string name in names)
+                    if (PrivilegeEnabled(attempt, name))
+                        throw new InvalidOperationException(name + " stayed enabled in the attempt token.");
+                bool attemptMember;
+                if (!IsElevated(attempt) || !CheckTokenMembership(attempt, sid, out attemptMember) || !attemptMember)
+                    throw new InvalidOperationException("The attempt token is not an elevated Administrators token.");
+            }
+            finally { CloseHandle(attempt); }
+            return facts + ";attemptToken=elevatedAdministratorAllPrivilegesDisabled";
         }
         finally
         {
@@ -291,12 +307,46 @@ public static class SafeUploadCanarySecurityNative
         }
     }
 
+    // Elevated Administrators impersonation token with every privilege disabled (never enabled),
+    // matching a default desktop administrator process regardless of how the harness was launched.
+    static IntPtr AdminWithoutPrivileges()
+    {
+        IntPtr primary = IntPtr.Zero, duplicate;
+        try
+        {
+            primary = OpenPrimaryToken();
+            if (!DuplicateTokenEx(primary, TOKEN_QUERY | TOKEN_DUPLICATE | TOKEN_IMPERSONATE | 0x20,
+                    IntPtr.Zero, 2, 2, out duplicate))
+                ThrowLastError("DuplicateTokenEx");
+            if (!AdjustTokenPrivileges(duplicate, true, IntPtr.Zero, 0, IntPtr.Zero, IntPtr.Zero))
+            {
+                int error = Marshal.GetLastWin32Error();
+                CloseHandle(duplicate);
+                throw new Win32Exception(error, "AdjustTokenPrivileges(DisableAll)");
+            }
+            return duplicate;
+        }
+        finally { if (primary != IntPtr.Zero) CloseHandle(primary); }
+    }
+
     public static int TryOpenCurrent(string path, uint access)
     {
-        IntPtr file = CreateFile(path, access, FILE_SHARE_ALL, IntPtr.Zero, OPEN_EXISTING, 0x80, IntPtr.Zero);
-        if (file == new IntPtr(-1)) return Marshal.GetLastWin32Error();
-        CloseHandle(file);
-        return 0;
+        IntPtr token = AdminWithoutPrivileges();
+        bool impersonating = false;
+        try
+        {
+            if (!ImpersonateLoggedOnUser(token)) ThrowLastError("ImpersonateLoggedOnUser");
+            impersonating = true;
+            IntPtr file = CreateFile(path, access, FILE_SHARE_ALL, IntPtr.Zero, OPEN_EXISTING, 0x80, IntPtr.Zero);
+            if (file == new IntPtr(-1)) return Marshal.GetLastWin32Error();
+            CloseHandle(file);
+            return 0;
+        }
+        finally
+        {
+            if (impersonating && !RevertToSelf()) ThrowLastError("RevertToSelf");
+            CloseHandle(token);
+        }
     }
 
     public static int GetPathAttributesError(string path)
