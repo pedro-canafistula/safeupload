@@ -1,6 +1,6 @@
 param(
     [Parameter(Mandatory = $true)]
-    [ValidateSet('preattach-immediate', 'preattach-protected-open', 'mmdoes-matrix', 'policy-transition', 'retained-section', 'All')]
+    [ValidateSet('preattach-immediate', 'preattach-protected-open', 'mmdoes-matrix', 'policy-transition', 'retained-section', 'section-eol', 'All')]
     [string] $Variant,
 
     [Parameter(Mandatory = $true)]
@@ -1511,6 +1511,119 @@ function Invoke-Variant([string] $SelectedVariant) {
             $traceEnabled = $false
             $fence = Invoke-InspectorChecked -Arguments @('--admission-fence-status') -Timeout $t
             Write-Output ('FenceStatus=' + ([regex]::Replace([string]$fence.Stdout, '[\r\n]+', ' ')).Trim())
+            $runSucceeded = $true
+        }
+        elseif ($SelectedVariant -eq 'section-eol') {
+            # Question under test: how does MmDoesFileHaveUserWritableReferences (the explicit probe) behave across the
+            # life of a writable section, and does it flip back to "no" promptly once the last writable section/view is
+            # gone? Observer-free fixtures, one probe per state change, each probe timestamped by the kernel.
+            $t = $InspectorTimeoutSeconds
+            $caseNames = @('Env', 'Eview', 'Ecache', 'Ehold')
+            $copies = 2
+            $eolLabels = @()
+            $eolPaths = @{}
+            foreach ($case in $caseNames) {
+                for ($i = 0; $i -lt $copies; $i++) {
+                    $label = $case + $i
+                    $path = Join-Path $fixtureDirectory ($label + '.maptest')
+                    [IO.File]::WriteAllBytes($path, (New-PaddedFixtureBytes ([Text.Encoding]::UTF8.GetBytes('EOL BASELINE ' + $label + ' ' + $id))))
+                    $fixturePaths += $path
+                    $eolPaths[$label] = $path
+                    $eolLabels += $label
+                }
+            }
+            foreach ($path in $fixturePaths) { Assert-ReparseFreeFixturePath $path }
+
+            Backup-StagedTestDriver $backup
+            if ((Get-FileHash -LiteralPath $backup -Algorithm SHA256).Hash -ne $expectedOriginalDriver) {
+                throw 'Durable restoration backup mismatch.'
+            }
+            $driverReplaced = $true
+            Copy-Item -LiteralPath $featureDriver -Destination $installedDriver -Force
+            if ((Get-FileHash -LiteralPath $installedDriver -Algorithm SHA256).Hash -ne $ExpectedFeatureSha256.ToUpperInvariant()) {
+                throw 'Feature driver install hash mismatch.'
+            }
+            Invoke-FeatureFilterLoad
+            $filterLoaded = $true
+            [void](Invoke-InspectorChecked -Arguments @('--admission-trace-clear') -Timeout $t)
+            [void](Invoke-InspectorChecked -Arguments @('--admission-trace-enable-lifetime') -Timeout $t)
+            $traceEnabled = $true
+            [void](Invoke-InspectorChecked -Arguments @('--admission-trace-clear') -Timeout $t)
+
+            $eolProbes = New-Object System.Collections.ArrayList
+            $releaseFt = @{}
+            foreach ($label in $eolLabels) {
+                $path = $eolPaths[$label]
+                $name = 'Local\SafeUpload-Eol-' + $id + '-' + $label
+                $mapping = $null; $view = $null
+                if ($label.StartsWith('Env')) {
+                    $mapping = New-RetainedSection $path $name $mappings
+                    [void]$eolProbes.Add(@{ Label = $label; State = 'sectionOpenNoView' })
+                    [void](Invoke-AdmissionProbe $path ('EOL_' + $label + '_sectionOpenNoView') $t)
+                }
+                else {
+                    $fileStream = [IO.FileStream]::new($path, [IO.FileMode]::Open, [IO.FileAccess]::ReadWrite,
+                        [IO.FileShare]::ReadWrite -bor [IO.FileShare]::Delete)
+                    if ($label.StartsWith('Ecache')) {
+                        $cachedBytes = [Text.Encoding]::UTF8.GetBytes('CACHED ' + $label)
+                        $fileStream.Write($cachedBytes, 0, $cachedBytes.Length)
+                        $fileStream.Flush()
+                    }
+                    $mapping = [IO.MemoryMappedFiles.MemoryMappedFile]::CreateFromFile(
+                        $fileStream, $name, [long]$mappingLength, [IO.MemoryMappedFiles.MemoryMappedFileAccess]::ReadWrite,
+                        [IO.HandleInheritability]::None, $true)
+                    [void]$mappings.Add($mapping)
+                    $view = $mapping.CreateViewAccessor(0, [long]$mappingLength, [IO.MemoryMappedFiles.MemoryMappedFileAccess]::ReadWrite)
+                    [void](Invoke-MappedWrite $view ('EOL ' + $label + ' ' + $id))
+                    $fileStream.Dispose()
+                    [void]$eolProbes.Add(@{ Label = $label; State = 'viewLiveSectionOpen' })
+                    [void](Invoke-AdmissionProbe $path ('EOL_' + $label + '_viewLiveSectionOpen') $t)
+                    if ($label.StartsWith('Ehold')) {
+                        $mapping.Dispose()      # section handle gone, view still mapped
+                        [void]$eolProbes.Add(@{ Label = $label; State = 'viewOnlySectionHandleClosed' })
+                        [void](Invoke-AdmissionProbe $path ('EOL_' + $label + '_viewOnlySectionHandleClosed') $t)
+                        $view.Dispose()
+                        $releaseFt[$label] = [DateTime]::UtcNow.ToFileTimeUtc()
+                    }
+                    else {
+                        $view.Dispose()         # section handle still open, no views
+                        [void]$eolProbes.Add(@{ Label = $label; State = 'sectionOpenNoView' })
+                        [void](Invoke-AdmissionProbe $path ('EOL_' + $label + '_sectionOpenNoView') $t)
+                    }
+                }
+                if (-not $label.StartsWith('Ehold')) {
+                    $mapping.Dispose()
+                    $releaseFt[$label] = [DateTime]::UtcNow.ToFileTimeUtc()
+                }
+                [void]$eolProbes.Add(@{ Label = $label; State = 'afterRelease1' })
+                [void](Invoke-AdmissionProbe $path ('EOL_' + $label + '_afterRelease1') $t)
+                Start-Sleep -Seconds 4
+                [void]$eolProbes.Add(@{ Label = $label; State = 'afterRelease2' })
+                [void](Invoke-AdmissionProbe $path ('EOL_' + $label + '_afterRelease2') $t)
+                Start-Sleep -Seconds 10
+                [void]$eolProbes.Add(@{ Label = $label; State = 'afterRelease3' })
+                [void](Invoke-AdmissionProbe $path ('EOL_' + $label + '_afterRelease3') $t)
+            }
+            $traceE = Get-LightTrace (Invoke-InspectorChecked -Arguments @('--admission-trace') -Timeout $t) $rawTraceL
+            Write-DumpQuality 'EOL' $traceE
+            $probeEntries = @($traceE.Entries | Where-Object { $_.Ev -eq 'explicit_probe' } | Sort-Object Seq)
+            Write-Output ('EOL_ProbeEntries=' + $probeEntries.Count + ';Expected=' + $eolProbes.Count)
+            if ($probeEntries.Count -eq $eolProbes.Count) {
+                for ($index = 0; $index -lt $eolProbes.Count; $index++) {
+                    $probe = $eolProbes[$index]
+                    $entry = $probeEntries[$index]
+                    $msText = 'n/a'
+                    if ($releaseFt.ContainsKey($probe.Label)) {
+                        $msText = [string][Math]::Round(($entry.Ts - $releaseFt[$probe.Label]) / 10000.0, 0)
+                    }
+                    Write-Output ('EOL_' + $probe.Label + '_' + $probe.State + '=mmDoes:' + $entry.MmDoes + ';msAfterFinalRelease:' + $msText)
+                }
+            }
+            else {
+                Write-Output 'EOL_Attribution=AMBIGUOUS'
+            }
+            $disable = Invoke-InspectorChecked -Arguments @('--admission-trace-disable') -Timeout $t
+            $traceEnabled = $false
             $runSucceeded = $true
         }
         else {

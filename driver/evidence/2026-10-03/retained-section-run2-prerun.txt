@@ -1,0 +1,8 @@
+PRE_RUN_PS: $d = 'C:\Users\vika\Documents'
+foreach ($n in 'SafeUpload-stage-prototype-diagf0960f65.sys', 'SafeUpload.Inspector.diagf0960f65.exe') {
+    if (Test-Path -LiteralPath (Join-Path $d $n)) { throw "already exists: $n" }
+}
+'PRE_RUN_OK=True'
+PRE_RUN_OK=True
+copied /tmp/claude-1000/exact-diag-watch/SafeUpload-stage-prototype.sys -> SafeUpload-stage-prototype-diagf0960f65.sys sha256=2fc5315863ff85b250ad68bd3bfdf778549c697ad62c7702e2a98183598f9ab9
+copied /tmp/claude-1000/exact-diag-watch/inspector-feature-release.exe -> SafeUpload.Inspector.diagf0960f65.exe sha256=a676c41ea87d4fb191bf7d95c8e3883b727ad01e516148c530dc68ac4de1f7fc
