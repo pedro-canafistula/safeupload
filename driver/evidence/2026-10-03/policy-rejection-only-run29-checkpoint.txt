@@ -1,0 +1,12 @@
+UTC=2026-10-03T11:50:07Z
+virsh -c qemu:///system snapshot-create-as --domain win10-debug --name safeupload-pre-policy-rejection-only-run29-20261003 --description 'Clean original driver and policy before policy-rejection-only-run29' --disk-only --no-metadata --diskspec vda,snapshot=external,file=/var/lib/libvirt/images/win10-debug.safeupload-pre-policy-rejection-only-run29-20261003 --atomic
+Domain snapshot safeupload-pre-policy-rejection-only-run29-20261003 created
+--- active disk after checkpoint
+ Target   Source
+---------------------------------------------------------------------------------------------------
+ vda      /var/lib/libvirt/images/win10-debug.safeupload-pre-policy-rejection-only-run29-20261003
+ sda      -
+ sdb      -
+
+running
+

@@ -136,9 +136,17 @@ Normal staging stays compiled out and taint enforcement remains.
     - [x] Complete Luna's exact-source review of the Program Files staging
           revision; no source-level blocker to the controlled rejection-only
           diagnostic ([review](evidence/2026-10-03/policy-transition-rejection-run28-luna-review.txt)).
+    - [x] Record Run29 stopping in the invocation hash guard before the harness;
+          guest Authenticode and signer checks were valid, but a transposed
+          expected-hash literal prevented the harness from running. Independent
+          machine restoration and exact guest-input restoration passed
+          ([gate](evidence/2026-10-03/policy-rejection-only-run29-gate.txt),
+          [stop record](evidence/2026-10-03/policy-rejection-only-run29-pre-harness-stop.txt),
+          [restored baseline](evidence/2026-10-03/policy-rejection-only-run29-post-input-restore-check.txt)).
     - [ ] Retry the rejection-only VM diagnostic on a fresh clean checkpoint,
-          passing explicit signed-driver and Inspector hashes and preserving the
-          unchanged approved policy scopes.
+          deriving and cross-checking the explicit signed-driver hash from the
+          artifact, verifying the Inspector hash, and preserving unchanged
+          approved policy scopes.
     - [ ] Verify the rejection-only branch on the clean VM, including baseline
           policy identity, expected `ERROR_NOT_SUPPORTED`, unchanged fence
           state, and independent machine restoration.
