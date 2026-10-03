@@ -1,0 +1,139 @@
+Writer-ledger admission design v1 (proposal for adversarial review)
+Date: 2026-10-03
+Status: PROPOSAL. Nothing here is implemented or verified. Owner-approved direction
+(2026-10-03): the filter starts at boot; process taint is not an acceptable protection
+mechanism; scan-based fences (late attach, live policy expansion, quarantine) are not
+the target design. Staging stays compiled out and taint enforcement unchanged until a
+later cutover decision.
+
+1. Problem statement
+--------------------
+Windows grants file rights per handle and per mapped view and provides no API to revoke
+either. A filter that starts after a writer exists, or that learns of a new protected
+scope after a writer exists, cannot make that writer stop, and cannot enumerate every
+view reliably. Every scan-based design (late-attach refresh, policy-transition scan,
+quarantine with retry) therefore has an inherent window and a failure mode (partial
+table, over-cap, scan failure) that must fail open or break availability. Reviews of
+the scan design (late-attach-security-review-round3.txt, admission-gate-design-
+assessment.txt) list these as open P1 blockers.
+
+2. Principle
+------------
+Know every writer from the moment it is created instead of searching for writers
+afterwards. Make the filter present before any user writer can exist (boot start and,
+for volumes that mount later, attach at mount), and keep a per-file record of writers
+that is complete by construction.
+
+3. Components
+-------------
+3.1 Boot-anchored start
+  - Driver StartType = boot (0) in the production INF, in a boot-appropriate load-order
+    group, attached to every volume at mount, including volumes mounted later (USB,
+    VHDX). Production builds do not support voluntary unload (no FilterUnload veto
+    race to defend); mandatory unload/dismount are explicitly outside the contract.
+  - FLTFL_INSTANCE_SETUP_NEWLY_MOUNTED_VOLUME / AUTOMATIC_ATTACHMENT are classified in
+    InstanceSetup (currently ignored). Premise to verify: a volume that is newly
+    mounted while the filter is loaded cannot have earlier handles or sections.
+
+3.2 Writer ledger (per file, keyed by the file's stream identity, anchored on a stream
+    context, not a stream-handle context)
+  - Recorded for EVERY volume the filter is attached to, protected or not, because a
+    file can later enter a protected scope.
+  - Fields (concept): raw write-handle count (opens that grant write/append/delete-on-
+    close rights and are not staged), a sticky "writable section was created" bit,
+    and the identity needed to ask MmDoesFileHaveUserWritableReferences for live views.
+  - The section-creation callback (IRP_MJ_ACQUIRE_FOR_SECTION_SYNCHRONIZATION,
+    SyncTypeCreateSection with a writable page protection) updates the ledger BEFORE
+    the mapping exists. There is no enumeration, no capacity-bound table scan, and no
+    "failed inventory" state.
+  - Completeness holds from boot (no user process exists) and from mount (no handle
+    can exist on an unmounted volume).
+
+3.3 Policy transition without scans
+  - A policy change publishes a pending policy. Every admission path (create, write,
+    rename/link, FSCTL, section create, delete, set-information, publication) matches
+    against current-or-pending atomically. In-flight operations that were admitted
+    under the old policy are drained (rundown) before the new policy becomes current.
+  - New opens and new mappings in an added scope are staged and inspected immediately.
+  - For each pre-existing file in the added scope the ledger answers at once whether a
+    pre-existing writer exists. No such writer: the file is Protected immediately.
+  - Pre-existing writer present: the file is Activating. The pre-existing writer
+    finishes under the rights it was granted. While Activating: no new writable
+    mapping or write handle is granted (so the state terminates when the old writer
+    closes), no staged content is published into the file, and the agent is told which
+    process and file hold activation. When the last pre-existing writer is gone, the
+    file's cached data is flushed and the file becomes Protected.
+  - Definition accepted by the owner: protection of a file begins when it has no
+    writer that existed before it entered scope; such writers finish under the old
+    rules and are reported.
+
+3.4 Abnormal late attach (should not happen with boot start and no unload)
+  - A volume where the filter attached late, or whose ledger completeness cannot be
+    established, is marked Untrusted. Its protected scopes become fail-closed for
+    writes/mappings/new opens until reboot. No taint fallback, no effect outside the
+    protected scopes.
+
+3.5 Raw volume access
+  - Opening a volume (\\.\X:, volume GUID path) for write is refused on volumes that
+    contain protected scopes, since it bypasses file-level admission.
+
+3.6 Retirement
+  - The scan-based fence (StageFence.c) is retired after the ledger passes the scenario
+    matrix; it may remain as defense in depth only if it adds no failure mode.
+
+4. Explicit non-goals / residual risk
+-------------------------------------
+  - Other computers writing through an SMB share; kernel-mode adversaries; offline disk
+    access; mandatory filter unload or volume dismount.
+  - A pre-existing writer finishing its own writes (by definition in 3.3).
+  - Remote mapped-file incoherence between computers.
+
+5. UNVERIFIED premises (each must be settled by an observe-only experiment)
+---------------------------------------------------------------------------
+  P1. A boot-start filter attaches to the system volume before any user-mode process can
+      open a file (and which services/processes precede it).
+  P2. A volume mounted while the filter is loaded (VHDX, USB) reaches InstanceSetup with
+      NEWLY_MOUNTED_VOLUME and before the first user open.
+  P3. The writable-section callback is invoked before every writable mapping creation on
+      local NTFS, including through duplicated handles, file-ID opens, DAX/large pages,
+      and when a section already exists from another file object.
+  P4. The same holds for the network redirector (SMB loopback), including the cases
+      where MUP is bypassed after provider resolution.
+  P5. The ledger agrees with MmDoesFileHaveUserWritableReferences on a corpus of
+      files (closed handle with live view, read-only view, image section, copy-on-write).
+  P6. Stream-context identity (SectionObjectPointer / FsContext) is stable across opens
+      of the same stream and distinguishes alternate data streams and hard links.
+  P7. Cost: ledger overhead on every open/section creation is acceptable (existing
+      latency harness: p95 foreground budget 250 ms, max 1000 ms; target far below).
+
+6. Attack surface the review must cover (non-exhaustive)
+--------------------------------------------------------
+  - Writers the ledger can miss: handle duplication/inheritance, FILE_OBJECT reuse,
+    opens that fail after ledger update (rollback), IRP vs fast-I/O, paging-file and
+    system-volume exclusions, NTFS transactions, oplock breaks, encryption (EFS),
+    sparse/compressed/dedup'd streams, USN-driven writers, Volume Shadow Copy.
+  - Hard links, alternate data streams, reparse points/junctions/symlinks, mount points,
+    case/short-name aliasing, rename into and out of scope, object-ID opens.
+  - Race: policy publication vs admission (including rundown correctness), ledger
+    update vs section creation, close vs reopen, crash/bugcheck recovery of a boot
+    driver, hibernation/fast startup (a "boot" that preserves old processes), S3 resume.
+  - Boot-start driver hazards: load order vs file system and storage drivers, early-
+    boot allocation/IRQL limits, registry/communication-port availability before the
+    agent starts, behavior when the agent is down (fail-open vs fail-closed per scope).
+  - Activating state: starvation by a long-lived pre-existing writer, denial of service by
+    an unprivileged process holding a mapping, privilege/ownership of the report channel.
+  - Untrusted-volume fallback correctness and its availability blast radius.
+  - Anything in section 4 that is not actually outside the threat model.
+
+7. Evidence plan (after design review)
+--------------------------------------
+  Step 0: observe-only experiments for P1-P7 on the isolated debuggee (checkpointed,
+          independent restoration). If any premise fails, redesign before enforcement.
+  Step 1: ledger, observe-only, plus overhead measurement.
+  Step 2: per-file activation for policy transitions.
+  Step 3: trusted-attach classification, Untrusted late attach, raw-volume write
+          blocking, no unload in production.
+  Step 4: retire the scan fence; rerun the scenario matrix (late attach, expansion,
+          shrink, USB-style VHDX, SMB loopback) with byte observers and Driver Verifier.
+  Each kernel change: fresh adversarial reviewer, four WDK builds with PREfast, the
+  275 agent tests, VM proof, independent restoration.
