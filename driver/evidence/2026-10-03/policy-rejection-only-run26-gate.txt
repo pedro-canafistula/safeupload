@@ -1,0 +1,1 @@
+HARNESS_THREW: Untrusted principal S-1-5-32-545 can modify service staging ancestor C:\ProgramData.

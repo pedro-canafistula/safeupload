@@ -1,0 +1,15 @@
+Run26 exact-source feature Debug build and test-sign provenance
+Date: 2026-10-03 (UTC build window: 2026-10-03T11:32:11.9439103Z–2026-10-03T11:32:28.2341435Z)
+Builder: DESKTOP-O1LP5DG (192.168.122.210)
+Source archive SHA-256: fe0aa2d822e8a3e37ff2ac96863cfe3c1befe57ddfa3a12ddf16b9068e3f1abd
+Source manifest SHA-256: b77c3d64a685112575927ccb3f5b04d58d278a2f04fe8e8f456bc3ca2dd96373 (19 paths; all extracted file hashes matched)
+Feature Debug WDK rebuild: exit 0, Build succeeded, zero warnings/errors, PREfast DriverRecommendedRules active, ApiValidator invoked and passed.
+Unsigned feature SYS SHA-256: 798d5f152860f2f7d6b4cef67957216806be8e18283d664cf1d237e4ad35b88f
+Signed feature SYS SHA-256: b664c2f3af7b1be70bbafb60ed5901070e736211077ab436c81a8b2587da00a2
+Test signer thumbprint: 220DD82C37FCF36048D59E4F10113185D81D5DC7
+Builder Authenticode status: UnknownError (builder trust store lacks the test root; guest signature/load validation is required).
+Signed/unsigned PE section identity: PASS (8 sections; each section header and raw-byte SHA-256 matched).
+Signing output: ﻿Done Adding Additional Store | Successfully signed: C:\Users\vika\Documents\safeupload-staging-test\exact-c9df964-run26-rejection-artifact\out\SafeUpload-stage-prototype.sys
+No install/load or debuggee operation occurred during this artifact build.
+Run26 full WDK log: admission-fence-run26-feature-debug-wdk.txt (SHA-256 c4bdaf9e1613b44654918763e942536e292be6e4a09cc291e9dd0937bc3f92fc)
+Builder cleanup: run26 child removed; old checkout remained at ac81ca4c61b2be99fb0f2b2e6b7f23bdca93f468 with status count 1,395 and fingerprint 82ffa7a8022ab4e08b9a343f5153c982356d24daf94c85d61d0a754c561fc09d; active build processes 0.

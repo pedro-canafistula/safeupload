@@ -19,8 +19,8 @@ Normal staging stays compiled out and taint enforcement remains.
 - [x] Previous Run 22 source: four WDK/static/API-validation builds and
       **275/275** agent regressions ([build summary](evidence/2026-10-03/admission-fence-build-run22.txt),
       [agent tests](evidence/2026-10-03/admission-fence-run22-agent-tests.txt)).
-      This does not qualify the later `Policy.c` and `StageFence.c` revision
-      now awaiting the exact-source build gate below.
+      Run 22 did not qualify the later `Policy.c` and `StageFence.c` revision;
+      that exact-source gap is closed by Run 23 below.
 - [x] The agent-test gate remains current: no files under `agente/` changed
       since Run 22's recorded source base `a552028`; the suite passed 275/275.
       This is agent-unit-test evidence, not integration qualification of the
@@ -93,23 +93,59 @@ Normal staging stays compiled out and taint enforcement remains.
           entry count, and rejected-scan telemetry. The protocol does not expose
           policy generation; the mode explicitly does not claim runtime readback.
     - [x] Bind the service process to the SHA-256-pinned archive by hashing and
-          parsing one held read-only stream, then extracting under
-          CommonApplicationData with protected Administrators/SYSTEM ACLs.
-          Check member paths, ancestor/tree reparse points, and ACLs before
-          launch and recursive cleanup; require the exact `FilterPort.SetPolicy`
-          exception and policy-push stack frames. This is source-only until rerun.
+          parsing one held read-only stream, then extracting as a GUID child of
+          canonical Program Files only after a local fixed NTFS volume and
+          trusted owner/ACL/reparse walk pass. The child receives a protected
+          Administrators/SYSTEM ACL atomically. Check member paths and the full
+          tree before launch and recursive cleanup; require the exact
+          `FilterPort.SetPolicy` exception and policy-push stack frames. This
+          remains source-only until the VM gate passes.
     - [x] Complete Luna's final source rereview of the package-bound
           rejection-only harness; no source-level blocker. The ACL check is
           conservative allow-ACE screening, not effective-token evaluation.
           [Review record](evidence/2026-10-03/policy-transition-rejection-package-source-review.txt).
-    - [ ] Parse the updated harness with Windows PowerShell 5.1 and compile its
-          embedded native interop declarations.
-    - [ ] Build the exact current driver source in WDK Debug and Release.
+    - [x] Parse the final rejection-only harness with Windows PowerShell 5.1
+          and compile its embedded native interop declarations; zero parser
+          errors, 14 interop methods compiled, harness not executed
+          ([evidence](evidence/2026-10-03/policy-transition-rejection-run25-ps51-parse-compile.txt)).
+    - [x] Rereview the final rejection-only cleanup guards with Luna; the
+          unchanged broad policy is not rewritten, missing policy bytes are
+          restored, and rejection-only creates no mapping fixture
+          ([review](evidence/2026-10-03/policy-transition-rejection-run25-luna-review.txt)).
+    - [x] Build the exact current driver source in all four normal/feature
+          Debug/Release WDK configurations with PREfast and ApiValidator
+          passing, zero warnings/errors ([Run 23 summary](evidence/2026-10-03/admission-fence-run23-wdk-summary.txt)).
+          A fresh exact-manifest feature Debug rebuild for the rejection-only
+          VM image also passed; its test-signed image has eight PE sections
+          identical to the unsigned build ([Run 26 build](evidence/2026-10-03/admission-fence-run26-feature-debug-wdk.txt),
+          [signing and section identity](evidence/2026-10-03/admission-fence-run26-feature-sign-summary.txt)).
+    - [x] Record Run26's rejection-only attempt stopping at ACL preflight before
+          driver load; independently confirm original driver/policy/filter/
+          Verifier baseline stayed clean and restore the three guest test inputs
+          with their recorded hashes, timestamps, and attributes ([gate](evidence/2026-10-03/policy-rejection-only-run26-gate.txt),
+          [restored baseline](evidence/2026-10-03/policy-rejection-only-run26-post-input-restore-check.txt)).
+          This is a preflight failure, not a policy-rejection test pass.
+    - [x] Verify canonical Program Files path, fixed NTFS volume, ancestor ACLs,
+          trusted owners, non-reparse state, and administrator test token on the
+          live debug VM ([ACLs](evidence/2026-10-03/policy-rejection-only-run26-programfiles-staging-acl-check.txt),
+          [token](evidence/2026-10-03/policy-rejection-only-run26-programfiles-token-check.txt),
+          [live preflight](evidence/2026-10-03/policy-rejection-only-run26-programfiles-live-preflight.txt)).
+    - [x] Parse the updated Program Files staging harness with Windows
+          PowerShell 5.1 and compile its embedded native interop declarations;
+          zero parse errors, 14 methods, no harness execution ([evidence](evidence/2026-10-03/policy-transition-rejection-run28-ps51-parse-compile.txt)).
+    - [x] Complete Luna's exact-source review of the Program Files staging
+          revision; no source-level blocker to the controlled rejection-only
+          diagnostic ([review](evidence/2026-10-03/policy-transition-rejection-run28-luna-review.txt)).
+    - [ ] Retry the rejection-only VM diagnostic on a fresh clean checkpoint,
+          passing explicit signed-driver and Inspector hashes and preserving the
+          unchanged approved policy scopes.
     - [ ] Verify the rejection-only branch on the clean VM, including baseline
-          policy identity and complete machine restoration.
-    - [ ] Execute this case only after scope-correct removable and network
-          coverage permits the unchanged approved policy; record independent
-          byte observation and full VM restoration.
+          policy identity, expected `ERROR_NOT_SUPPORTED`, unchanged fence
+          state, and independent machine restoration.
+    - [ ] Run the positive policy-transition mapping and byte-observation cases
+          only after scope-correct removable and network coverage permits the
+          unchanged approved policy; record independent byte observation and
+          full VM restoration.
     - [ ] Verify and qualify transactional policy acceptance: the feature
           path now keeps the previous policy current and the candidate pending
           through two checked old-and-candidate union scans before publication;
@@ -178,11 +214,18 @@ Normal staging stays compiled out and taint enforcement remains.
           context retrievable through a later first view; it cannot close late
           attach or mandatory-teardown gaps. No source patch is justified yet.
           [Review record](evidence/2026-10-03/stream-context-lifetime-luna-review.txt).
-    - [ ] Rebuild the current `Policy.c` and `StageFence.c` source revision in
-          all four normal/feature Debug/Release WDK configurations. Run 22
-          predates this source revision and does not qualify it. This Linux
-          workspace has no Windows PowerShell or MSBuild/WDK, and its `dotnet`
-          host has no SDK; no current-source Windows build or parse has run here.
+    - [x] Rebuild the current `Policy.c` and `StageFence.c` source revision in
+          all four normal/feature Debug/Release WDK configurations. Run 23 is
+          bound to the exact 19-file `HEAD` source manifest and its remote log
+          and SYS hashes match the local evidence; the package-only PowerShell
+          5.1 parser/interop gate also passed ([source manifest](evidence/2026-10-03/admission-fence-run23-source-manifest.txt),
+          [build summary](evidence/2026-10-03/admission-fence-run23-wdk-summary.txt),
+          [builder cleanup](evidence/2026-10-03/admission-fence-run23-builder-restore.txt),
+          [final PS 5.1 check](evidence/2026-10-03/policy-transition-rejection-run25-ps51-parse-compile.txt),
+          [Luna rereview](evidence/2026-10-03/policy-transition-rejection-run25-luna-review.txt)).
+          Run 22's 275/275 agent test result remains current because `agente/`
+          has no changes since its recorded base; it remains unit-test evidence,
+          not minifilter integration qualification.
   - [ ] Qualify removable USB (including surprise removal), SMB/UNC, and the
         configured OneDrive destination with scope-correct admission and
         independent destination-byte observers. Use only the dedicated test
@@ -3577,16 +3620,18 @@ staging cutover eligible.
   A later `-PolicyRejectionOnly` mode checks the current transaction's expected
   full-policy rejection and fence-table preservation without changing the
   policy. It cannot read the internal policy generation through the current
-  status protocol. The service now launches from a protected CommonApplicationData
-  extraction of the package-hash-pinned archive, hashed and parsed through the
-  same read-only handle; staging ACLs and path integrity are checked before launch
-  and cleanup. The harness also requires the exact SetPolicy exception plus both
-  policy-push stack frames. Luna's final source rereview found no blocker
-  ([review record](evidence/2026-10-03/policy-transition-rejection-package-source-review.txt));
-  it also notes that the ACL check conservatively screens allow ACEs rather than
-  evaluating effective-token access. Those refinements are source-only: Windows
-  PowerShell 5.1 parsing, current-source WDK Debug/Release builds, and clean-VM
-  execution remain open. The unchanged
+  status protocol. The service now launches from a protected GUID extraction
+  under canonical Program Files on a verified local fixed NTFS volume, using the
+  package-hash-pinned archive read through one held handle; staging ACLs and path
+  integrity are checked before extraction, launch, and cleanup. The harness also
+  requires the exact SetPolicy exception plus both policy-push stack frames.
+  Luna's exact-source review found no blocker ([review record](evidence/2026-10-03/policy-transition-rejection-run28-luna-review.txt));
+  the live VM's direct-parent ACL and ancestor walk pass, and the exact source
+  passes Windows PowerShell 5.1 parsing and interop compilation ([ACL evidence](evidence/2026-10-03/policy-rejection-only-run26-programfiles-live-preflight.txt),
+  [PS 5.1 evidence](evidence/2026-10-03/policy-transition-rejection-run28-ps51-parse-compile.txt)).
+  Run26 stopped at the original CommonApplicationData ACL check before loading
+  the driver; its independent original-machine baseline passed and guest test
+  inputs were restored. The fresh rejection-only VM retry remains open. The unchanged
   policy includes removable and
   network scopes unsupported by this fence. Microsoft describes
   [CreateFileMapping](https://learn.microsoft.com/en-us/windows/win32/memory/creating-a-file-mapping-object)

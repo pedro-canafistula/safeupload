@@ -47,12 +47,13 @@ ready signal, the exact `FilterPort.SetPolicy` exception and policy-push stack,
 and stable pre/post fence generation and entry count with rejected-scan
 telemetry. The service runs from a fresh extraction of the SHA-256-pinned
 package, hashed and parsed through one held read-only handle. The extraction is
-created under CommonApplicationData with protected Administrators/SYSTEM ACLs;
-member paths, ancestors, ACLs, and reparse points are checked before execution
-and recursive cleanup. The current status protocol does not expose policy
-generation, so this mode does not claim a runtime policy-generation readback or
-full-scope privacy proof; it never narrows the policy or enters the mapping
-scenarios.
+created as a direct child of the canonical Program Files folder after checking
+that its local NTFS volume and every ancestor have trusted owners and ACLs.
+The new directory's protected Administrators/SYSTEM ACL is set atomically at
+creation. Member paths, ancestors, ACLs, and reparse points are checked before
+execution and recursive cleanup. The current status protocol does not expose
+policy generation, so this mode claims neither runtime generation readback nor
+full-scope privacy; it never narrows the policy or enters the mapping scenarios.
 The test does not force the exact kernel callback interleaving between policy
 snapshots; a user-mode policy push cannot deterministically pause the callback.
 
@@ -244,9 +245,19 @@ function New-PolicyTransitionServiceSecurity([bool] $Directory) {
 
 function Assert-PolicyTransitionServiceStagingParent([string] $Path) {
     $parent = [IO.Path]::GetFullPath($serviceStagingParent).TrimEnd('\')
+    $canonicalProgramFiles = [Environment]::GetFolderPath([System.Environment+SpecialFolder]::ProgramFiles)
+    if ([string]::IsNullOrWhiteSpace($canonicalProgramFiles) -or
+        -not $parent.Equals([IO.Path]::GetFullPath($canonicalProgramFiles).TrimEnd('\'), [StringComparison]::OrdinalIgnoreCase)) {
+        throw 'Service staging parent does not match the canonical Program Files folder.'
+    }
+    $driveRoot = [IO.Path]::GetPathRoot($parent)
+    $drive = [IO.DriveInfo]::new($driveRoot)
+    if (-not $drive.IsReady -or $drive.DriveType -ne [IO.DriveType]::Fixed -or $drive.DriveFormat -ne 'NTFS') {
+        throw 'Service staging parent must be on a ready local fixed NTFS volume.'
+    }
     $candidate = [IO.Path]::GetFullPath($Path).TrimEnd('\')
     if (-not [IO.Path]::GetDirectoryName($candidate).Equals($parent, [StringComparison]::OrdinalIgnoreCase)) {
-        throw 'Service staging path is not a direct child of CommonApplicationData.'
+        throw 'Service staging path is not a direct child of the configured trusted staging parent.'
     }
     $trusted = @{
         'S-1-5-18' = $true
@@ -261,7 +272,7 @@ function Assert-PolicyTransitionServiceStagingParent([string] $Path) {
         [System.Security.AccessControl.FileSystemRights]::Delete -bor
         [System.Security.AccessControl.FileSystemRights]::ChangePermissions -bor
         [System.Security.AccessControl.FileSystemRights]::TakeOwnership
-    $programDataMutationMask = [long]$pathMutationRights -bor
+    $directParentMutationMask = [long]$pathMutationRights -bor
         [System.Security.AccessControl.FileSystemRights]::WriteData -bor
         [System.Security.AccessControl.FileSystemRights]::AppendData -bor
         0x40000000 -bor 0x10000000
@@ -281,7 +292,7 @@ function Assert-PolicyTransitionServiceStagingParent([string] $Path) {
         }
         foreach ($rule in $ancestorAcl.GetAccessRules($true, $true, [System.Security.Principal.SecurityIdentifier])) {
             $mutationMask = if ($cursor.Equals($parent, [StringComparison]::OrdinalIgnoreCase)) {
-                $programDataMutationMask
+                $directParentMutationMask
             } else {
                 $ancestorMutationMask
             }
@@ -480,7 +491,7 @@ $feature = Join-Path $documents 'SafeUpload-stage-prototype.sys'
 $inspectorSource = Join-Path $documents 'SafeUpload.Inspector.input.exe'
 $servicePackage = Join-Path $documents 'stage-service-publish.zip'
 $id = [guid]::NewGuid().ToString('N')
-$serviceStagingParent = [Environment]::GetFolderPath([System.Environment+SpecialFolder]::CommonApplicationData)
+$serviceStagingParent = [Environment]::GetFolderPath([System.Environment+SpecialFolder]::ProgramFiles)
 $serviceDirectory = Join-Path $serviceStagingParent ('SafeUpload-policy-transition-service-' + $id)
 $policy = 'C:\ProgramData\SafeUpload\policy.json'
 $expectedPolicy = '29DC8A341BD7C549996596D2477A0CCCAF19602C362A2167FB4FDD5C66663731'
@@ -985,6 +996,7 @@ try {
 
         $serviceDirectoryCreationAttempted = $true
         $serviceDirectorySecurity = New-PolicyTransitionServiceSecurity $true
+        Assert-PolicyTransitionServiceStagingParent $serviceDirectory
         [void][IO.Directory]::CreateDirectory($serviceDirectory, $serviceDirectorySecurity)
         Assert-PolicyTransitionServiceTree $serviceDirectory
         $serviceDirectoryCreated = $true
@@ -1007,8 +1019,10 @@ try {
     if ($copiedInspectorHash -ne $expectedInspector) { throw 'Copied Inspector hash mismatch.' }
     'InspectorCopySHA256=' + $copiedInspectorHash
 
-    [void][IO.Directory]::CreateDirectory($fixtureDirectory)
-    $fixtureCreated = $true
+    if (-not $PolicyRejectionOnly) {
+        [void][IO.Directory]::CreateDirectory($fixtureDirectory)
+        $fixtureCreated = $true
+    }
     Backup-StagedTestDriver $backup
     if ((Get-FileHash -LiteralPath $backup -Algorithm SHA256).Hash -ne $expectedOriginal) { throw 'Durable restoration backup mismatch.' }
     $replaced = $true
@@ -1671,7 +1685,17 @@ finally {
                     else { [void]$cleanupFailures.Add('Policy backup hash mismatch; falling back to in-memory baseline') }
                 } catch { [void]$cleanupFailures.Add('Read/verify policy backup: ' + $_.Exception.Message) }
             }
-            [IO.File]::WriteAllBytes($policy, $restorePolicy)
+            # Preserve the baseline file and its metadata when a rejection-only
+            # run left the approved policy bytes unchanged.
+            $policyNeedsRestore = -not (Test-Path -LiteralPath $policy -PathType Leaf)
+            if (-not $policyNeedsRestore) {
+                try {
+                    $policyNeedsRestore = (Get-FileHash -LiteralPath $policy -Algorithm SHA256).Hash -ne $expectedPolicy
+                } catch { $policyNeedsRestore = $true }
+            }
+            if ($policyNeedsRestore) {
+                [IO.File]::WriteAllBytes($policy, $restorePolicy)
+            }
             $policyRestoreSucceeded = $true
         } catch { [void]$cleanupFailures.Add('Restore policy: ' + $_.Exception.Message) }
     }
