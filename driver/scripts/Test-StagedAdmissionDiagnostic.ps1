@@ -1142,6 +1142,101 @@ public static class SafeUploadEolNative
     }
 }
 
+function Initialize-WriterInheritance {
+    $script:WriterInheritanceSource = @'
+using System;
+using System.ComponentModel;
+using System.Diagnostics;
+using System.Runtime.InteropServices;
+using System.Text;
+
+public static class SafeUploadWriterInheritance
+{
+    [StructLayout(LayoutKind.Sequential, CharSet=CharSet.Unicode)]
+    struct STARTUPINFO {
+        public uint cb; public string reserved, desktop, title;
+        public uint x, y, xSize, ySize, xCountChars, yCountChars, fillAttribute, flags;
+        public ushort showWindow, reserved2Size; public IntPtr reserved2, stdin, stdout, stderr;
+    }
+    [StructLayout(LayoutKind.Sequential)]
+    struct STARTUPINFOEX { public STARTUPINFO startup; public IntPtr attributes; }
+    [StructLayout(LayoutKind.Sequential)]
+    struct PROCESS_INFORMATION { public IntPtr process, thread; public uint processId, threadId; }
+    [DllImport("kernel32.dll", SetLastError=true)]
+    static extern bool GetHandleInformation(IntPtr handle, out uint flags);
+    [DllImport("kernel32.dll", SetLastError=true)]
+    static extern bool SetHandleInformation(IntPtr handle, uint mask, uint flags);
+    [DllImport("kernel32.dll", SetLastError=true)]
+    static extern bool InitializeProcThreadAttributeList(IntPtr list, int count, uint flags, ref IntPtr size);
+    [DllImport("kernel32.dll", SetLastError=true)]
+    static extern bool UpdateProcThreadAttribute(IntPtr list, uint flags, IntPtr attribute,
+        IntPtr value, IntPtr size, IntPtr previous, IntPtr returned);
+    [DllImport("kernel32.dll")]
+    static extern void DeleteProcThreadAttributeList(IntPtr list);
+    [DllImport("kernel32.dll", SetLastError=true, CharSet=CharSet.Unicode)]
+    static extern bool CreateProcessW(string application, StringBuilder command, IntPtr processAttributes,
+        IntPtr threadAttributes, [MarshalAs(UnmanagedType.Bool)] bool inherit, uint flags,
+        IntPtr environment, string directory, ref STARTUPINFOEX startup, out PROCESS_INFORMATION process);
+    [DllImport("kernel32.dll")]
+    static extern bool CloseHandle(IntPtr handle);
+    [DllImport("kernel32.dll", SetLastError=true)]
+    static extern bool TerminateProcess(IntPtr process, uint exitCode);
+    [DllImport("kernel32.dll", SetLastError=true)]
+    static extern uint WaitForSingleObject(IntPtr handle, uint timeout);
+    [DllImport("kernel32.dll", SetLastError=true, CharSet=CharSet.Unicode)]
+    static extern uint GetFileAttributesW(string path);
+    public static int MissingFileError(string path) {
+        uint attributes = GetFileAttributesW(path);
+        return attributes == 0xffffffff ? Marshal.GetLastWin32Error() : 0;
+    }
+    [DllImport("kernel32.dll", SetLastError=true)]
+    static extern bool GetFileInformationByHandleEx(IntPtr file, int informationClass, byte[] information, int size);
+    static void Check(bool value) { if (!value) throw new Win32Exception(Marshal.GetLastWin32Error()); }
+    public static string Identity(IntPtr file) {
+        byte[] info = new byte[24]; Check(GetFileInformationByHandleEx(file, 18, info, info.Length));
+        return BitConverter.ToString(info).Replace("-", "");
+    }
+    // The explicit list contains only the fixture file handle. No DuplicateHandle into the child is used.
+    public static Process Start(IntPtr file, string application, string command) {
+        uint originalFlags; Check(GetHandleInformation(file, out originalFlags));
+        IntPtr size = IntPtr.Zero, list = IntPtr.Zero, handles = IntPtr.Zero;
+        bool initialized = false, inheritanceChanged = false; Process managed = null;
+        PROCESS_INFORMATION pi = new PROCESS_INFORMATION();
+        try {
+            Check(SetHandleInformation(file, 1, 1)); inheritanceChanged = true;
+            InitializeProcThreadAttributeList(IntPtr.Zero, 1, 0, ref size);
+            if (size == IntPtr.Zero) throw new Win32Exception(Marshal.GetLastWin32Error());
+            list = Marshal.AllocHGlobal(size); handles = Marshal.AllocHGlobal(IntPtr.Size);
+            Check(InitializeProcThreadAttributeList(list, 1, 0, ref size)); initialized = true;
+            Marshal.WriteIntPtr(handles, file);
+            Check(UpdateProcThreadAttribute(list, 0, new IntPtr(0x20002), handles, new IntPtr(IntPtr.Size), IntPtr.Zero, IntPtr.Zero));
+            STARTUPINFOEX si = new STARTUPINFOEX(); si.startup.cb = (uint)Marshal.SizeOf(typeof(STARTUPINFOEX)); si.attributes = list;
+            Check(CreateProcessW(application, new StringBuilder(command), IntPtr.Zero, IntPtr.Zero, true,
+                0x08080000, IntPtr.Zero, null, ref si, out pi));
+            managed = Process.GetProcessById((int)pi.processId);
+            IntPtr managedHandle = managed.Handle; // Acquire managed ownership before releasing the native handle.
+            Check(SetHandleInformation(file, 1, originalFlags & 1)); inheritanceChanged = false;
+            return managed;
+        } catch (Exception error) {
+            bool terminated = pi.process == IntPtr.Zero || TerminateProcess(pi.process, 3);
+            uint waited = pi.process == IntPtr.Zero ? 0 : WaitForSingleObject(pi.process, 10000);
+            if (managed != null) managed.Dispose();
+            throw new InvalidOperationException("Inherited child setup failed: " + error.Message +
+                "; childPid=" + pi.processId + "; terminated=" + terminated + "; wait=" + waited, error);
+        } finally {
+            if (inheritanceChanged) SetHandleInformation(file, 1, originalFlags & 1);
+            if (pi.thread != IntPtr.Zero) CloseHandle(pi.thread);
+            if (pi.process != IntPtr.Zero) CloseHandle(pi.process);
+            if (initialized) DeleteProcThreadAttributeList(list);
+            if (handles != IntPtr.Zero) Marshal.FreeHGlobal(handles);
+            if (list != IntPtr.Zero) Marshal.FreeHGlobal(list);
+        }
+    }
+}
+'@
+    if (-not ('SafeUploadWriterInheritance' -as [type])) { Add-Type -TypeDefinition $script:WriterInheritanceSource }
+}
+
 function Initialize-WriterStress {
     if (-not ('SafeUploadWriterStress' -as [type])) {
         Add-Type -TypeDefinition @'
@@ -2029,6 +2124,7 @@ public static class SafeUploadEolNative
             $t = $InspectorTimeoutSeconds
             Initialize-EolNative
             Initialize-WriterStress
+            Initialize-WriterInheritance
             $script:WriterChecksPassed = 0
             $script:WriterChecksFailed = 0
             $access = [IO.FileShare]::ReadWrite -bor [IO.FileShare]::Delete
@@ -2057,6 +2153,8 @@ public static class SafeUploadEolNative
             $fl = New-WCFile 'wc_section.maptest'
             $fm = New-WCFile 'wc_ads_base.maptest'
             $fn = New-WCFile 'wc_delete_only.maptest'
+            $fo = New-WCFile 'wc_inherited.maptest'
+            $fp = New-WCFile 'wc_delete_on_close.maptest'
             $fixturePaths += $script:fixturePathsLocal
             foreach ($path in $fixturePaths) { Assert-ReparseFreeFixturePath $path }
 
@@ -2107,7 +2205,32 @@ public static class SafeUploadEolNative
             if ($deleteOnly.IsInvalid) { throw 'Delete-only open failed.' }
             Add-WriterProbe $fn 'deleteOnly_open' 1
             $deleteOnly.Dispose(); Add-WriterProbe $fn 'deleteOnly_closed' 0
-            Complete-WriterChecks 'basic' $rawTraceA
+            # FILE_FLAG_DELETE_ON_CLOSE takes effect after the final handle to the same file object closes.
+            $deleteClose = [SafeUploadAdmissionNative]::CreateFile($fp, [uint32]0x40010000, [uint32]7,
+                [IntPtr]::Zero, [uint32]3, [uint32]0x04000080, [IntPtr]::Zero)
+            if ($deleteClose.IsInvalid) { throw 'Delete-on-close open failed.' }
+            [void]$fileHandles.Add($deleteClose)
+            $deleteDup = $null
+            try {
+                Add-WriterProbe $fp 'deleteOnClose_open' 1
+                $deleteDupPtr = [IntPtr]::Zero
+                if (-not [SafeUploadEolNative]::DuplicateHandle([SafeUploadEolNative]::GetCurrentProcess(),
+                    $deleteClose.DangerousGetHandle(), [SafeUploadEolNative]::GetCurrentProcess(),
+                    [ref]$deleteDupPtr, [uint32]0, $false, [uint32]2)) { throw 'Delete-on-close duplicate failed.' }
+                $deleteDup = [Microsoft.Win32.SafeHandles.SafeFileHandle]::new($deleteDupPtr, $true)
+                [void]$fileHandles.Add($deleteDup)
+                $deleteClose.Dispose()
+                Add-WriterProbe $fp 'deleteOnClose_originalClosedDuplicateHolds' 1
+                $deleteDup.Dispose()
+                $deleteError = [SafeUploadWriterInheritance]::MissingFileError($fp)
+                $deleted = $deleteError -eq 2
+                Write-Output ('WC_DeleteOnClose_FinalHandleDeletedFile=' + $deleted + ';NativeError=' + $deleteError)
+                if (-not $deleted) { throw 'Delete-on-close did not delete the fixture after final close.' }
+            } finally {
+                $deleteClose.Dispose()
+                if ($null -ne $deleteDup) { $deleteDup.Dispose() }
+            }
+            Complete-WriterChecks 'basic_and_deleteOnClose' $rawTraceA
 
             # Group 2: duplicated handles
             $d1 = Open-WC $fd
@@ -2133,7 +2256,52 @@ public static class SafeUploadEolNative
                 Add-WriterProbe $fe 'dupChild_childKilled' 0
             }
             finally { if ($null -ne $child -and -not $child.HasExited) { $child.Kill() } }
-            Complete-WriterChecks 'duplicates' $rawTraceP1
+            # True CreateProcess inheritance, with child-side FILE_ID_INFO proof of the inherited handle.
+            $inheritedFile = Open-WC $fo
+            [void]$fileHandles.Add($inheritedFile)
+            $nativeSourcePath = Join-Path $fixtureDirectory 'wc-inherit-native.cs'
+            $readyPath = Join-Path $fixtureDirectory 'wc-inherit-ready.json'
+            [IO.File]::WriteAllText($nativeSourcePath, $script:WriterInheritanceSource)
+            $nativeHandle = $inheritedFile.SafeFileHandle.DangerousGetHandle()
+            $expectedIdentity = [SafeUploadWriterInheritance]::Identity($nativeHandle)
+            $childCode = @"
+`$ErrorActionPreference='Stop'
+Add-Type -Path '$nativeSourcePath'
+`$identity=[SafeUploadWriterInheritance]::Identity([IntPtr]::new($($nativeHandle.ToInt64())))
+if (`$identity -ne '$expectedIdentity') { throw 'Inherited file identity mismatch' }
+@{ Identity=`$identity; ProcessId=`$PID; Handle=$($nativeHandle.ToInt64()) } | ConvertTo-Json | Set-Content -LiteralPath '$readyPath.next'
+Move-Item -LiteralPath '$readyPath.next' -Destination '$readyPath'
+Start-Sleep -Seconds 300
+"@
+            $childScriptPath = Join-Path $fixtureDirectory 'wc-inherit-child.ps1'
+            [IO.File]::WriteAllText($childScriptPath, $childCode)
+            $application = Join-Path $PSHOME 'powershell.exe'
+            $child = $null
+            try {
+                $child = [SafeUploadWriterInheritance]::Start($nativeHandle, $application,
+                    ('"' + $application + '" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "' + $childScriptPath + '"'))
+                $readyDeadline = [DateTime]::UtcNow.AddSeconds(30)
+                while (-not (Test-Path -LiteralPath $readyPath) -and -not $child.HasExited -and [DateTime]::UtcNow -lt $readyDeadline) {
+                    Start-Sleep -Milliseconds 50
+                }
+                if (-not (Test-Path -LiteralPath $readyPath)) { throw 'Inherited child did not prove its handle.' }
+                $ready = Get-Content -LiteralPath $readyPath -Raw | ConvertFrom-Json
+                if ($ready.Identity -ne $expectedIdentity -or $ready.ProcessId -ne $child.Id -or
+                    $ready.Handle -ne $nativeHandle.ToInt64()) { throw 'Inherited child proof mismatch.' }
+                Write-Output ('WC_InheritedProof=PID:' + $ready.ProcessId + ';Identity:' + $ready.Identity + ';Handle:' + $ready.Handle)
+                Add-WriterProbe $fo 'inherited_parentAndChildHold' 1
+                $inheritedFile.Dispose()
+                Add-WriterProbe $fo 'inherited_parentClosedChildHolds' 1
+                $child.Kill(); $child.WaitForExit()
+                Add-WriterProbe $fo 'inherited_childExited' 0
+            } finally {
+                $inheritedFile.Dispose()
+                if ($null -ne $child) {
+                    if (-not $child.HasExited) { $child.Kill(); $child.WaitForExit() }
+                    $child.Dispose()
+                }
+            }
+            Complete-WriterChecks 'duplicates_and_inheritance' $rawTraceP1
 
             # Group 3: failed creates, truncation, aliases
             $x1 = Open-WC $ff ([IO.FileMode]::Open) ([IO.FileAccess]::ReadWrite) ([IO.FileShare]::None)

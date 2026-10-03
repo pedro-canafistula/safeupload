@@ -28,6 +28,21 @@ $service = Get-CimInstance Win32_SystemDriver -Filter "Name='SafeUpload'"
 $checks['ServiceManualStopped'] = ($service.StartMode -eq 'Manual' -and $service.State -eq 'Stopped')
 $policyHash = (Get-FileHash -LiteralPath 'C:\ProgramData\SafeUpload\policy.json' -Algorithm SHA256).Hash
 $checks['OriginalPolicyHash'] = ($policyHash -eq $ExpectedPolicy)
+$inheritedChildren = @(); $fixtureObservers = @(); $fixtureProcessesRead = $false
+try {
+    $powershellProcesses = @(Get-CimInstance Win32_Process -Filter "Name='powershell.exe'" -ErrorAction Stop)
+    $inheritedChildren = @($powershellProcesses | Where-Object {
+        $_.CommandLine -match 'SafeUpload-admission-[0-9a-f]{32}\\wc-inherit-child\.ps1' })
+    $fixtureObservers = @($powershellProcesses | Where-Object {
+        $_.CommandLine -match 'SafeUpload-owned-[0-9a-f]{32}\.ps1\.observer\.ps1' })
+    $fixtureProcessesRead = $true
+} catch { 'FixtureProcessEnumerationError=' + $_.Exception.Message }
+$checks['FixtureProcessesEnumerated'] = $fixtureProcessesRead
+$checks['ZeroInheritedFixtureChildren'] = ($fixtureProcessesRead -and $inheritedChildren.Count -eq 0)
+$checks['ZeroFixtureObservers'] = ($fixtureProcessesRead -and $fixtureObservers.Count -eq 0)
+foreach ($process in @($inheritedChildren) + @($fixtureObservers)) {
+    'FixtureProcess=' + $process.ProcessId + ';CommandLine=' + $process.CommandLine
+}
 $checks['ZeroAgentProcesses'] = (@(Get-Process SafeUpload.Agent.Service -ErrorAction SilentlyContinue).Count -eq 0)
 $checks['ZeroTestTasks'] = (@(Get-ScheduledTask | Where-Object { $_.TaskName -match '^SafeUpload-(StagedTest-|StagedCleanup-|Owned-)' }).Count -eq 0)
 $checks['NoOwnedVhdx'] = -not ((Test-Path -LiteralPath (Join-Path $documents 'SafeUpload-owned.vhdx')) -or

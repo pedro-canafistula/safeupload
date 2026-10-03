@@ -34,6 +34,8 @@ $systemResult = $systemScript + '.result'
 $taskName = 'SafeUpload-Owned-' + $id
 $observerScript = $systemScript + '.observer.ps1'
 $observerLog = $systemScript + '.observer.log'
+$observerStdout = $systemScript + '.observer.out.log'
+$observerStderr = $systemScript + '.observer.err.log'
 $observerStop = $systemScript + '.stop'
 $observerRequest = $systemScript + '.request'
 $observerAck = $systemScript + '.ack'
@@ -41,6 +43,7 @@ $mounted = $false; $replaced = $false; $loaded = $false; $verifierEnabled = $fal
 $agent = $null; $observer = $null; $file = $null; $second = $null; $native = $null
 $mapping = $null; $view = $null; $oldRead = $null
 $cleanup = @()
+$observerCleanupErrors = New-Object System.Collections.Generic.List[string]
 $observerRules = @{}
 $observerRules[$target] = @('ABSENT')
 $observerRules[$renamed] = @('ABSENT')
@@ -173,13 +176,20 @@ function Get-OwnedEntries([string] $Destination) {
         Read-OwnedManifest $_.FullName
     } | Where-Object { $_.Transfer.DestinationPath -eq $Destination })
 }
+function Show-OwnedObserverDiagnostics {
+    foreach ($path in @($observerLog,$observerStdout,$observerStderr)) {
+        Write-Output ('ObserverDiagnosticPath=' + $path)
+        if (Test-Path -LiteralPath $path) { Get-Content -LiteralPath $path -ErrorAction Continue | Out-Host }
+        else { Write-Output 'ObserverDiagnosticMissing=True' }
+    }
+}
 function Wait-OwnedState([guid] $Transfer, [int] $State) {
     $path = Join-Path $journal ($Transfer.ToString('N') + '.json')
     for ($attempt=0; $attempt -lt 120; $attempt++) {
         $entry = Read-OwnedManifest $path
         if ($entry.State -eq $State) { return $entry }
         if ($agent.Process.HasExited) { throw 'Agent exited.' }
-        if ($observer -and $observer.HasExited) { Get-Content $observerLog | Out-Host; throw 'Destination observer failed.' }
+        if ($observer -and $observer.HasExited) { Show-OwnedObserverDiagnostics; throw 'Destination observer failed.' }
         Start-Sleep -Milliseconds 250
     }
     throw "Version $Transfer stayed in state $($entry.State), expected $State."
@@ -188,10 +198,17 @@ function Set-OwnedObserver([string] $Phase) {
     # Readers retry incomplete JSON. No rename of a coordination file held by
     # another reader: classic NTFS replacement may deny that operation.
     $requestJson = @{ Phase=$Phase; Rules=$observerRules } | ConvertTo-Json -Depth 4
-    [IO.File]::WriteAllText($observerRequest, $requestJson)
+    $requestWritten = $false
     for ($attempt=0; $attempt -lt 100; $attempt++) {
-        if ($observer.HasExited) { Get-Content $observerLog | Out-Host; throw "Destination observer exited during $Phase." }
-        if ((Test-Path $observerAck) -and (Get-Content $observerAck -Raw) -eq $Phase) { return }
+        try { [IO.File]::WriteAllText($observerRequest, $requestJson); $requestWritten=$true; break }
+        catch [IO.IOException] { Start-Sleep -Milliseconds 100 }
+    }
+    if (-not $requestWritten) { throw "Observer request remained unavailable during $Phase." }
+    for ($attempt=0; $attempt -lt 100; $attempt++) {
+        if ($observer.HasExited) { Show-OwnedObserverDiagnostics; throw "Destination observer exited during $Phase." }
+        try {
+            if ((Test-Path $observerAck) -and (Get-Content $observerAck -Raw) -eq $Phase) { return }
+        } catch [IO.IOException] { }
         Start-Sleep -Milliseconds 100
     }
     throw "Observer did not sample $Phase."
@@ -317,7 +334,8 @@ try {
     $agent = Start-StagedTestAgent $serviceDir 'C:\Users\vika\Documents\stage-owned-service'
     Start-Sleep -Seconds 2
     $watch = @'
-$ErrorActionPreference='Stop'; $samples=0
+$ErrorActionPreference='Stop'; $samples=0; $acknowledgedPhase=''; $observerExit=0
+try {
 while (-not (Test-Path '__STOP__')) {
     if (Test-Path '__REQUEST__') {
         try { $request = Get-Content '__REQUEST__' -Raw | ConvertFrom-Json } catch { continue }
@@ -340,15 +358,22 @@ while (-not (Test-Path '__STOP__')) {
         }
         if (-not $complete) { Start-Sleep -Milliseconds 20; continue }
         $samples++
-        [IO.File]::WriteAllText('__ACK__', $request.Phase)
+        if ($acknowledgedPhase -ne $request.Phase) {
+            try { [IO.File]::WriteAllText('__ACK__', $request.Phase); $acknowledgedPhase=$request.Phase }
+            catch [IO.IOException] { Start-Sleep -Milliseconds 20; continue }
+        }
     }
     Start-Sleep -Milliseconds 20
 }
-Add-Content '__LOG__' ('samples=' + $samples)
+} catch {
+    Add-Content '__LOG__' ('OBSERVER_ERROR=' + $_.Exception.ToString())
+    $observerExit=3
+} finally { Add-Content '__LOG__' ('samples=' + $samples) }
+exit $observerExit
 '@
     Set-Content $observerScript ($watch.Replace('__STOP__',$observerStop).Replace('__REQUEST__',$observerRequest).
         Replace('__LOG__',$observerLog).Replace('__ACK__',$observerAck)) -Encoding UTF8
-    $observer = Start-Process powershell.exe -PassThru -WindowStyle Hidden -ArgumentList @(
+    $observer = Start-Process powershell.exe -PassThru -WindowStyle Hidden -RedirectStandardOutput $observerStdout -RedirectStandardError $observerStderr -ArgumentList @(
         '-NoProfile','-ExecutionPolicy','Bypass','-File',('"' + $observerScript + '"'))
     $null = $observer.Handle
     Set-OwnedObserver 'ready'
@@ -600,14 +625,35 @@ Add-Content '__LOG__' ('samples=' + $samples)
 }
 finally {
     foreach ($disposable in @($reader,$oldRead,$native,$file,$second,$view,$mapping)) {
-        if ($null -ne $disposable) { $disposable.Dispose() }
+        if ($null -ne $disposable) {
+            try { $disposable.Dispose() }
+            catch { [void]$observerCleanupErrors.Add('Fixture dispose: ' + $_.Exception.Message) }
+        }
     }
-    if ($observer -and -not $observer.HasExited) { Stop-Process $observer.Id -Force }
-    Stop-StagedTestAgent $agent
-    Write-OwnedCheckpoint 'BeforeOriginalDriverRestoration'
-    if ($replaced) { Restore-StagedTestDriver $backup $loaded $verifierEnabled }
-    elseif($verifierEnabled){& verifier.exe /reset | Out-Host}
-    Write-OwnedCheckpoint 'OriginalDriverRestorationCompleted'
+    try {
+        if ($observer) {
+            if (-not $observer.HasExited) {
+                try { Set-Content -LiteralPath $observerStop 'stop' }
+                catch { [void]$observerCleanupErrors.Add('Observer stop signal: ' + $_.Exception.Message) }
+                if (-not $observer.WaitForExit(10000)) {
+                    Stop-Process $observer.Id -Force -ErrorAction Stop
+                    if (-not $observer.WaitForExit(10000)) { throw 'Observer survived forced termination.' }
+                }
+            }
+            Show-OwnedObserverDiagnostics
+        }
+    } catch { [void]$observerCleanupErrors.Add('Observer shutdown: ' + $_.Exception.Message) }
+    finally {
+        try { Stop-StagedTestAgent $agent }
+        finally {
+            try { Write-OwnedCheckpoint 'BeforeOriginalDriverRestoration' }
+            catch { [void]$observerCleanupErrors.Add('Pre-restoration checkpoint: ' + $_.Exception.Message) }
+            if ($replaced) { Restore-StagedTestDriver $backup $loaded $verifierEnabled }
+            elseif ($verifierEnabled) { & verifier.exe /reset | Out-Host }
+        }
+    }
+    try { Write-OwnedCheckpoint 'OriginalDriverRestorationCompleted' }
+    catch { [void]$observerCleanupErrors.Add('Post-restoration checkpoint: ' + $_.Exception.Message) }
     # A failed restoration throws above, retaining the fixtures for diagnosis.
     if ($mounted) {
         $physical = @(Get-ChildItem -LiteralPath $directory -File)
@@ -632,4 +678,7 @@ finally {
     Remove-Item -LiteralPath ($observerRequest + '.next'),($observerAck + '.next') -Force -ErrorAction SilentlyContinue
     # Retain observerLog as evidence, with its path printed on every run.
     Write-Output "ObserverLog=$observerLog"
+    Write-Output "ObserverStdout=$observerStdout"
+    Write-Output "ObserverStderr=$observerStderr"
+    if ($observerCleanupErrors.Count -ne 0) { throw ($observerCleanupErrors -join "; ") }
 }
