@@ -3386,3 +3386,9 @@ Official callback contracts checked for these boundaries:
 [InstanceSetup](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/fltkernel/nc-fltkernel-pflt_instance_setup_callback),
 [QueryTeardown](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/fltkernel/nc-fltkernel-pflt_instance_query_teardown_callback),
 and [Filter Manager loading/unloading](https://learn.microsoft.com/en-us/windows-hardware/drivers/ifs/loading-and-unloading).
+
+Architecture gate assessment (2026-10-03): [admission-gate-design-assessment.txt](evidence/2026-10-03/admission-gate-design-assessment.txt)
+records the official-Microsoft-source disposition, a restricted cooperative
+fixed-local-NTFS experiment, and the universal destination-admission blockers.
+This is not a cutover pass: staging stays disabled by default and taint
+enforcement is unchanged.
