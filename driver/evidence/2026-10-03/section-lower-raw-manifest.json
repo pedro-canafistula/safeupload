@@ -1,0 +1,227 @@
+[
+  {
+    "Name": "SafeUpload-admission-trace-section-lower-153d202abed748f8a93020d522cf1113-A.jsonl-canary-0.jsonl",
+    "SHA256": "E6F2C16C9644A9DD1D9931E647D98096CB8CDA8C65AE8B2B6F36BD2C11FB6CB0",
+    "Bytes": 11376370,
+    "UTC": "2026-10-03T16:35:49.1751985Z",
+    "Run": "section-lower-run4-verifier",
+    "SourceCommit": "952b343b911f69801d73b8a54bc9ac24a1a6492f",
+    "LocalPath": "driver/evidence/2026-10-03/section-lower-raw/SafeUpload-admission-trace-section-lower-153d202abed748f8a93020d522cf1113-A.jsonl-canary-0.jsonl"
+  },
+  {
+    "Name": "SafeUpload-admission-trace-section-lower-153d202abed748f8a93020d522cf1113-A.jsonl-volumes.json-0",
+    "SHA256": "0139C474F235703BBD9ABC11087C3549773E6E991FEC8AD4CC92DF27836FC18E",
+    "Bytes": 2126,
+    "UTC": "2026-10-03T16:35:39.9452030Z",
+    "Run": "section-lower-run4-verifier",
+    "SourceCommit": "952b343b911f69801d73b8a54bc9ac24a1a6492f",
+    "LocalPath": "driver/evidence/2026-10-03/section-lower-raw/SafeUpload-admission-trace-section-lower-153d202abed748f8a93020d522cf1113-A.jsonl-volumes.json-0"
+  },
+  {
+    "Name": "SafeUpload-admission-trace-section-lower-153d202abed748f8a93020d522cf1113-B.jsonl-final-volumes.json-0",
+    "SHA256": "0139C474F235703BBD9ABC11087C3549773E6E991FEC8AD4CC92DF27836FC18E",
+    "Bytes": 2126,
+    "UTC": "2026-10-03T16:36:02.3652058Z",
+    "Run": "section-lower-run4-verifier",
+    "SourceCommit": "952b343b911f69801d73b8a54bc9ac24a1a6492f",
+    "LocalPath": "driver/evidence/2026-10-03/section-lower-raw/SafeUpload-admission-trace-section-lower-153d202abed748f8a93020d522cf1113-B.jsonl-final-volumes.json-0"
+  },
+  {
+    "Name": "SafeUpload-admission-trace-section-lower-3bb753ba79034f4799bdfe8eb2710a98-A.jsonl-canary-0.jsonl",
+    "SHA256": "F294F615862A5EF953D7DAE3CAFBF8BF4ADAE70955942DD3C71885F948E58A11",
+    "Bytes": 11376433,
+    "UTC": "2026-10-03T16:29:55.2912019Z",
+    "Run": "section-lower-run1",
+    "SourceCommit": "952b343b911f69801d73b8a54bc9ac24a1a6492f",
+    "LocalPath": "driver/evidence/2026-10-03/section-lower-raw/SafeUpload-admission-trace-section-lower-3bb753ba79034f4799bdfe8eb2710a98-A.jsonl-canary-0.jsonl"
+  },
+  {
+    "Name": "SafeUpload-admission-trace-section-lower-3bb753ba79034f4799bdfe8eb2710a98-A.jsonl-volumes.json-0",
+    "SHA256": "C0D9E1CBB22BA82902C2093115C498035261755733C74E8B6C99099370A22B8D",
+    "Bytes": 2126,
+    "UTC": "2026-10-03T16:29:50.0492033Z",
+    "Run": "section-lower-run1",
+    "SourceCommit": "952b343b911f69801d73b8a54bc9ac24a1a6492f",
+    "LocalPath": "driver/evidence/2026-10-03/section-lower-raw/SafeUpload-admission-trace-section-lower-3bb753ba79034f4799bdfe8eb2710a98-A.jsonl-volumes.json-0"
+  },
+  {
+    "Name": "SafeUpload-admission-trace-section-lower-6dcd78be5f6a4bd0bbce7102fc756e90-A.jsonl-canary-0.jsonl",
+    "SHA256": "7F776D7150948C40C94D1A3B6FF17A2342833E6E4336F4E416DAFC674DF52B06",
+    "Bytes": 11376436,
+    "UTC": "2026-10-03T16:31:18.4952045Z",
+    "Run": "section-lower-run2",
+    "SourceCommit": "952b343b911f69801d73b8a54bc9ac24a1a6492f",
+    "LocalPath": "driver/evidence/2026-10-03/section-lower-raw/SafeUpload-admission-trace-section-lower-6dcd78be5f6a4bd0bbce7102fc756e90-A.jsonl-canary-0.jsonl"
+  },
+  {
+    "Name": "SafeUpload-admission-trace-section-lower-6dcd78be5f6a4bd0bbce7102fc756e90-A.jsonl-volumes.json-0",
+    "SHA256": "65D908EB5C8DD656E03EEC8436AD1D8F568368F6B584109879E524668F313752",
+    "Bytes": 2126,
+    "UTC": "2026-10-03T16:31:13.6771998Z",
+    "Run": "section-lower-run2",
+    "SourceCommit": "952b343b911f69801d73b8a54bc9ac24a1a6492f",
+    "LocalPath": "driver/evidence/2026-10-03/section-lower-raw/SafeUpload-admission-trace-section-lower-6dcd78be5f6a4bd0bbce7102fc756e90-A.jsonl-volumes.json-0"
+  },
+  {
+    "Name": "SafeUpload-admission-trace-section-lower-b9888e2e69e94283bb161a5b50a62601-A.jsonl-canary-0.jsonl",
+    "SHA256": "5327BE11D689E8434DA618158108B7C9508C503ADBC3237514F0A9D4714F60AF",
+    "Bytes": 11376815,
+    "UTC": "2026-10-03T16:34:38.3712013Z",
+    "Run": "section-lower-run3",
+    "SourceCommit": "952b343b911f69801d73b8a54bc9ac24a1a6492f",
+    "LocalPath": "driver/evidence/2026-10-03/section-lower-raw/SafeUpload-admission-trace-section-lower-b9888e2e69e94283bb161a5b50a62601-A.jsonl-canary-0.jsonl"
+  },
+  {
+    "Name": "SafeUpload-admission-trace-section-lower-b9888e2e69e94283bb161a5b50a62601-A.jsonl-volumes.json-0",
+    "SHA256": "5CA2FF7E119DA195C41E4ADA6FD7D984CCBD61B02E7AF150A82841E7A5A6AA5B",
+    "Bytes": 2126,
+    "UTC": "2026-10-03T16:34:33.5811998Z",
+    "Run": "section-lower-run3",
+    "SourceCommit": "952b343b911f69801d73b8a54bc9ac24a1a6492f",
+    "LocalPath": "driver/evidence/2026-10-03/section-lower-raw/SafeUpload-admission-trace-section-lower-b9888e2e69e94283bb161a5b50a62601-A.jsonl-volumes.json-0"
+  },
+  {
+    "Name": "SafeUpload-admission-trace-section-lower-b9888e2e69e94283bb161a5b50a62601-B.jsonl-final-volumes.json-0",
+    "SHA256": "5CA2FF7E119DA195C41E4ADA6FD7D984CCBD61B02E7AF150A82841E7A5A6AA5B",
+    "Bytes": 2126,
+    "UTC": "2026-10-03T16:34:47.6472037Z",
+    "Run": "section-lower-run3",
+    "SourceCommit": "952b343b911f69801d73b8a54bc9ac24a1a6492f",
+    "LocalPath": "driver/evidence/2026-10-03/section-lower-raw/SafeUpload-admission-trace-section-lower-b9888e2e69e94283bb161a5b50a62601-B.jsonl-final-volumes.json-0"
+  },
+  {
+    "Name": "SafeUpload-section-lower-153d202abed748f8a93020d522cf1113-failure.jsonl",
+    "SHA256": "E81F27C75D0B0FCA57ACB29BC86825D69F428E1953B7159D613E8DB866E6E9B6",
+    "Bytes": 83926,
+    "UTC": "2026-10-03T16:35:58.8471983Z",
+    "Run": "section-lower-run4-verifier",
+    "SourceCommit": "952b343b911f69801d73b8a54bc9ac24a1a6492f",
+    "LocalPath": "driver/evidence/2026-10-03/section-lower-raw/SafeUpload-section-lower-153d202abed748f8a93020d522cf1113-failure.jsonl"
+  },
+  {
+    "Name": "SafeUpload-section-lower-153d202abed748f8a93020d522cf1113-held.jsonl",
+    "SHA256": "2FF6AC58751CD4FEA7A0571C9D581BA43409C372CA0AE8A8CBF865F283210169",
+    "Bytes": 59669,
+    "UTC": "2026-10-03T16:35:58.8491986Z",
+    "Run": "section-lower-run4-verifier",
+    "SourceCommit": "952b343b911f69801d73b8a54bc9ac24a1a6492f",
+    "LocalPath": "driver/evidence/2026-10-03/section-lower-raw/SafeUpload-section-lower-153d202abed748f8a93020d522cf1113-held.jsonl"
+  },
+  {
+    "Name": "SafeUpload-section-lower-153d202abed748f8a93020d522cf1113-result.json",
+    "SHA256": "FA18C3470D116D0E4BD56B4D70C30EE55689CB3F151F28B3E1C426EEDCB7E95F",
+    "Bytes": 14273,
+    "UTC": "2026-10-03T16:35:58.8731988Z",
+    "Run": "section-lower-run4-verifier",
+    "SourceCommit": "952b343b911f69801d73b8a54bc9ac24a1a6492f",
+    "LocalPath": "driver/evidence/2026-10-03/section-lower-raw/SafeUpload-section-lower-153d202abed748f8a93020d522cf1113-result.json"
+  },
+  {
+    "Name": "SafeUpload-section-lower-153d202abed748f8a93020d522cf1113-system-err.log",
+    "SHA256": "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855",
+    "Bytes": 0,
+    "UTC": "2026-10-03T16:35:57.1332027Z",
+    "Run": "section-lower-run4-verifier",
+    "SourceCommit": "952b343b911f69801d73b8a54bc9ac24a1a6492f",
+    "LocalPath": "driver/evidence/2026-10-03/section-lower-raw/SafeUpload-section-lower-153d202abed748f8a93020d522cf1113-system-err.log"
+  },
+  {
+    "Name": "SafeUpload-section-lower-153d202abed748f8a93020d522cf1113-system-out.log",
+    "SHA256": "5C9B3BCCD9195C7773D69D5E3F484E8A49A28414FAD723A046FAD921EEC26734",
+    "Bytes": 14275,
+    "UTC": "2026-10-03T16:35:58.9192057Z",
+    "Run": "section-lower-run4-verifier",
+    "SourceCommit": "952b343b911f69801d73b8a54bc9ac24a1a6492f",
+    "LocalPath": "driver/evidence/2026-10-03/section-lower-raw/SafeUpload-section-lower-153d202abed748f8a93020d522cf1113-system-out.log"
+  },
+  {
+    "Name": "SafeUpload-section-lower-6dcd78be5f6a4bd0bbce7102fc756e90-failure.jsonl",
+    "SHA256": "3B37BAD03C1E7A6D993B97197EB4245B4717B46ADA5059465F0D7335AD5D320B",
+    "Bytes": 125958,
+    "UTC": "2026-10-03T16:31:25.8712059Z",
+    "Run": "section-lower-run2",
+    "SourceCommit": "952b343b911f69801d73b8a54bc9ac24a1a6492f",
+    "LocalPath": "driver/evidence/2026-10-03/section-lower-raw/SafeUpload-section-lower-6dcd78be5f6a4bd0bbce7102fc756e90-failure.jsonl"
+  },
+  {
+    "Name": "SafeUpload-section-lower-6dcd78be5f6a4bd0bbce7102fc756e90-held.jsonl",
+    "SHA256": "8DBDA32037E7FCE7D17B4E52C7992371B674AE4C4CAD74E81E8F032D59B260FE",
+    "Bytes": 58956,
+    "UTC": "2026-10-03T16:31:25.8712059Z",
+    "Run": "section-lower-run2",
+    "SourceCommit": "952b343b911f69801d73b8a54bc9ac24a1a6492f",
+    "LocalPath": "driver/evidence/2026-10-03/section-lower-raw/SafeUpload-section-lower-6dcd78be5f6a4bd0bbce7102fc756e90-held.jsonl"
+  },
+  {
+    "Name": "SafeUpload-section-lower-6dcd78be5f6a4bd0bbce7102fc756e90-result.json",
+    "SHA256": "2E3DF5B5D81C708F7F676FE346544E48F134AF1DE09FC368396B8E79F5127E6E",
+    "Bytes": 14273,
+    "UTC": "2026-10-03T16:31:25.8912026Z",
+    "Run": "section-lower-run2",
+    "SourceCommit": "952b343b911f69801d73b8a54bc9ac24a1a6492f",
+    "LocalPath": "driver/evidence/2026-10-03/section-lower-raw/SafeUpload-section-lower-6dcd78be5f6a4bd0bbce7102fc756e90-result.json"
+  },
+  {
+    "Name": "SafeUpload-section-lower-6dcd78be5f6a4bd0bbce7102fc756e90-system-err.log",
+    "SHA256": "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855",
+    "Bytes": 0,
+    "UTC": "2026-10-03T16:31:24.7552093Z",
+    "Run": "section-lower-run2",
+    "SourceCommit": "952b343b911f69801d73b8a54bc9ac24a1a6492f",
+    "LocalPath": "driver/evidence/2026-10-03/section-lower-raw/SafeUpload-section-lower-6dcd78be5f6a4bd0bbce7102fc756e90-system-err.log"
+  },
+  {
+    "Name": "SafeUpload-section-lower-6dcd78be5f6a4bd0bbce7102fc756e90-system-out.log",
+    "SHA256": "EECA3CE00A94D6B03A77B58986B90ED1E1B4C17672BA341044B6F87BDF93E7E7",
+    "Bytes": 14275,
+    "UTC": "2026-10-03T16:31:25.9152271Z",
+    "Run": "section-lower-run2",
+    "SourceCommit": "952b343b911f69801d73b8a54bc9ac24a1a6492f",
+    "LocalPath": "driver/evidence/2026-10-03/section-lower-raw/SafeUpload-section-lower-6dcd78be5f6a4bd0bbce7102fc756e90-system-out.log"
+  },
+  {
+    "Name": "SafeUpload-section-lower-b9888e2e69e94283bb161a5b50a62601-failure.jsonl",
+    "SHA256": "33623EC11AAF60E618A28CE9E7EE07074930D533AA4446F50676EF93B622904A",
+    "Bytes": 126007,
+    "UTC": "2026-10-03T16:34:45.6831989Z",
+    "Run": "section-lower-run3",
+    "SourceCommit": "952b343b911f69801d73b8a54bc9ac24a1a6492f",
+    "LocalPath": "driver/evidence/2026-10-03/section-lower-raw/SafeUpload-section-lower-b9888e2e69e94283bb161a5b50a62601-failure.jsonl"
+  },
+  {
+    "Name": "SafeUpload-section-lower-b9888e2e69e94283bb161a5b50a62601-held.jsonl",
+    "SHA256": "3EA784541D3D29687E3B54964F4E3A7C2AC64A62C0D076F6239526F734F38B4C",
+    "Bytes": 58989,
+    "UTC": "2026-10-03T16:34:45.6852016Z",
+    "Run": "section-lower-run3",
+    "SourceCommit": "952b343b911f69801d73b8a54bc9ac24a1a6492f",
+    "LocalPath": "driver/evidence/2026-10-03/section-lower-raw/SafeUpload-section-lower-b9888e2e69e94283bb161a5b50a62601-held.jsonl"
+  },
+  {
+    "Name": "SafeUpload-section-lower-b9888e2e69e94283bb161a5b50a62601-result.json",
+    "SHA256": "AAF205CE61904B6CA0A0AD0023AA9FB62069AFA75E221987AA494559D94CEB04",
+    "Bytes": 14273,
+    "UTC": "2026-10-03T16:34:45.7052017Z",
+    "Run": "section-lower-run3",
+    "SourceCommit": "952b343b911f69801d73b8a54bc9ac24a1a6492f",
+    "LocalPath": "driver/evidence/2026-10-03/section-lower-raw/SafeUpload-section-lower-b9888e2e69e94283bb161a5b50a62601-result.json"
+  },
+  {
+    "Name": "SafeUpload-section-lower-b9888e2e69e94283bb161a5b50a62601-system-err.log",
+    "SHA256": "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855",
+    "Bytes": 0,
+    "UTC": "2026-10-03T16:34:44.6572010Z",
+    "Run": "section-lower-run3",
+    "SourceCommit": "952b343b911f69801d73b8a54bc9ac24a1a6492f",
+    "LocalPath": "driver/evidence/2026-10-03/section-lower-raw/SafeUpload-section-lower-b9888e2e69e94283bb161a5b50a62601-system-err.log"
+  },
+  {
+    "Name": "SafeUpload-section-lower-b9888e2e69e94283bb161a5b50a62601-system-out.log",
+    "SHA256": "79A626A45EB0A74686447BEBE457C7CAFE6B51C41791568FE9DA5879709D6812",
+    "Bytes": 14275,
+    "UTC": "2026-10-03T16:34:45.7291975Z",
+    "Run": "section-lower-run3",
+    "SourceCommit": "952b343b911f69801d73b8a54bc9ac24a1a6492f",
+    "LocalPath": "driver/evidence/2026-10-03/section-lower-raw/SafeUpload-section-lower-b9888e2e69e94283bb161a5b50a62601-system-out.log"
+  }
+]

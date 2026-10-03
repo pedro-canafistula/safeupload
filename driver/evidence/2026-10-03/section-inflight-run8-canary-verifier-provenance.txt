@@ -1,0 +1,13 @@
+SourceCommit=dc3574d7fe38915f57189815955a13072aec63d5
+BuildLabel=mvp1-canary7
+FeatureSHA256=F7944ED26514CA4E46196EA449A17EA71BAE8F043695E03B7BA4DCB7A467BB1E
+InspectorSHA256=C730662895B6D6D7885B0BAFED5D54556730C2FF5D8A6CAA3094EA12046934D3
+Variant=section-inflight
+Verifier=True
+Invocation=$ErrorActionPreference='Stop'; $d='C:\Users\vika\Documents'; $driver=Join-Path $d 'SafeUpload-stage-prototype-mvp1canary7.sys'; $sig=Get-AuthenticodeSignature -LiteralPath $driver; 'FeatureSignatureStatus='+$sig.Status; 'FeatureSignerThumbprint='+$sig.SignerCertificate.Thumbprint; if($sig.Status.ToString() -ne 'Valid' -or $sig.SignerCertificate.Thumbprint -ne '220DD82C37FCF36048D59E4F10113185D81D5DC7'){throw 'Signature preflight failed'}; if((Get-FileHash -LiteralPath (Join-Path $d 'Test-StagedAdmissionDiagnostic.ps1') -Algorithm SHA256).Hash -ne 'FFA6D7417FF697F5FB52BD8CF60546E54B159236B105DCBB25CCED92293E2690'){throw 'Harness hash mismatch'}; & (Join-Path $d 'Test-StagedAdmissionDiagnostic.ps1') -Variant 'section-inflight' -ExpectedFeatureSha256 'F7944ED26514CA4E46196EA449A17EA71BAE8F043695E03B7BA4DCB7A467BB1E' -ExpectedInspectorSha256 'C730662895B6D6D7885B0BAFED5D54556730C2FF5D8A6CAA3094EA12046934D3' -FeatureDriverFileName 'SafeUpload-stage-prototype-mvp1canary7.sys' -InspectorInputFileName 'SafeUpload.Inspector.mvp1canary7.exe' -Verifier -RequireCanary
+Harness and helper SHA256:
+ffa6d7417ff697f5fb52bd8cf60546e54b159236b105dcbb25cced92293e2690  driver/scripts/Test-StagedAdmissionDiagnostic.ps1
+e17696ff684a27a283469989f6a58b8f6111bcb11ae8f9cabd025f711bacefd9  driver/scripts/StagedTestAgent.ps1
+9ec10aa3ebcb67b75d56bf2084e1d42ec5d6762913bc8f1f95e389565582fca2  driver/scripts/Get-StagedBaseline.ps1
+1b18b42e1abfe9f111ab40c2d96b862628361b64596a63353b9d97c840333a42  driver/scripts/Invoke-DebuggeeExperiment.sh
+76af25ca7b3784c67d5a07322a87fd3835cad5fd2e6b9f05a1e0869da50abc27  driver/scripts/remote_ps.py

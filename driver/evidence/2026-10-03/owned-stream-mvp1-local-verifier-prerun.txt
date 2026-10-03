@@ -1,0 +1,13 @@
+PRE_RUN_PS: $ErrorActionPreference='Stop';$d='C:\Users\vika\Documents'
+if((Get-FileHash (Join-Path $d 'StagedTestAgent.ps1') -Algorithm SHA256).Hash -ne 'E17696FF684A27A283469989F6A58B8F6111BCB11AE8F9CABD025F711BACEFD9'){throw 'Helper hash mismatch'}
+$cs=Join-Path $d 'StagedIdentityProbe.cs';if((Test-Path $cs) -and (Get-FileHash $cs -Algorithm SHA256).Hash -ne 'F48CF293CEE263B57246FF3E396A8EB007705B60B9E263B1A223D0FFB54024D0'){throw 'Existing identity helper hash mismatch'}
+$sys=Join-Path $d 'SafeUpload-stage-prototype-mvp1localservice.sys';if((Test-Path $sys) -and (Get-FileHash $sys -Algorithm SHA256).Hash -ne '01D9DE859CA7D186F81FA608391E559D1A739066873FFFC26F6A722A7646AC0F'){throw 'Existing feature input mismatch'}
+if(Test-Path (Join-Path $d 'owned-stream-mvp1-local-verifier-original-policy.bin')){throw 'Existing run policy backup'}
+$package=Join-Path $d 'stage-service-publish-mvp1localservice.zip';if((Test-Path $package) -and (Get-FileHash $package -Algorithm SHA256).Hash -ne '3A8948FD25E4DD3170BEA80B44511B0D72279EEA42D7628CCA28FEE1340785E1'){throw 'Existing package hash mismatch'}
+if(Test-Path (Join-Path $d 'stage-service-publish-mvp1localservice')){throw 'Service run directory already exists'}
+'PRE_RUN_OK=True'
+
+PRE_RUN_OK=True
+copied /tmp/claude-1000/exact-mvp1-local-service/SafeUpload-stage-prototype.sys -> SafeUpload-stage-prototype-mvp1localservice.sys sha256=01d9de859ca7d186f81fa608391e559d1a739066873fffc26f6a722a7646ac0f
+copied /home/victor/Work/safeupload-staging/driver/scripts/StagedIdentityProbe.cs -> StagedIdentityProbe.cs sha256=f48cf293cee263b57246ff3e396a8eb007705b60b9e263b1a223d0ffb54024d0
+copied /tmp/claude-1000/exact-agent-mvp1-local-service/stage-service-publish.zip -> stage-service-publish-mvp1localservice.zip sha256=3a8948fd25e4dd3170bea80b44511b0d72279eea42d7628cca28fee1340785e1

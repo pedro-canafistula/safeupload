@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Checkpoint one lower-section experiment, using exact-source build evidence.
 
-Usage: <run-name> <main-build-label> <companion-build-label> <source-commit> [--verifier]
+Usage: <run-name> <main-build-label> <companion-build-label> <source-commit> [--verifier] [--capacity]
 The shared experiment wrapper requires independent clean baselines before and after.
 """
 from pathlib import Path
@@ -14,8 +14,9 @@ import sys
 
 root = Path(__file__).resolve().parents[2]
 name, label, fault_label, revision = sys.argv[1:5]
-verifier = sys.argv[5:] == ['--verifier']
-if sys.argv[5:] not in ([], ['--verifier']):
+verifier = '--verifier' in sys.argv[5:]
+capacity = '--capacity' in sys.argv[5:]
+if any(flag not in ['--verifier', '--capacity'] for flag in sys.argv[5:]) or len(set(sys.argv[5:])) != len(sys.argv[5:]):
     raise SystemExit('Unknown arguments')
 for value in (name, label, fault_label):
     if not re.fullmatch(r'[A-Za-z0-9._-]{3,60}', value):
@@ -111,6 +112,8 @@ invocation = "$ErrorActionPreference='Stop';$d='C:\\Users\\vika\\Documents';"
 invocation += "if((Get-FileHash (Join-Path $d 'Test-StagedAdmissionDiagnostic.ps1') -Algorithm SHA256).Hash -ne '" + harness_hash + "'){throw 'Harness hash mismatch'};"
 invocation += "$sig=Get-AuthenticodeSignature (Join-Path $d 'SafeUpload-stage-prototype-" + label + ".sys');if($sig.Status.ToString() -ne 'Valid' -or $sig.SignerCertificate.Thumbprint -ne '220DD82C37FCF36048D59E4F10113185D81D5DC7'){throw 'Upper signature preflight failed'};"
 invocation += "& (Join-Path $d 'Test-StagedAdmissionDiagnostic.ps1') -Variant section-lower -RequireAllVolumeCanaries"
+if capacity:
+    invocation += ' -FaultCapacity'
 if verifier:
     invocation += ' -Verifier'
 pre = "$ErrorActionPreference='Stop';$d='C:\\Users\\vika\\Documents';\n"
@@ -121,7 +124,7 @@ for param, hash_param, path, guest_leaf in inputs:
     pre += "$p=Join-Path $d '" + guest_leaf + "';if((Test-Path $p) -and (Get-FileHash $p -Algorithm SHA256).Hash -ne '" + sha(path) + "'){throw 'Existing input hash mismatch'}\n"
 pre += "'PRE_RUN_OK=True'\n"
 provenance = ['SourceCommit=' + commit, 'HarnessSourceCommit=' + head, 'MainBuildLabel=' + label,
-              'CompanionBuildLabel=' + fault_label, 'Verifier=' + str(verifier), 'Invocation=' + invocation]
+              'CompanionBuildLabel=' + fault_label, 'Verifier=' + str(verifier), 'IntentionalCapacityOverflow=' + str(capacity), 'Invocation=' + invocation]
 for leaf in ['Invoke-StagedSectionQualification.py', 'Test-StagedAdmissionDiagnostic.ps1', 'Get-StagedBaseline.ps1',
              'StagedTestAgent.ps1', 'StagedSectionFaultClient.cs', 'Invoke-StagedSectionFault.ps1',
              'Invoke-DebuggeeExperiment.sh', 'remote_ps.py']:

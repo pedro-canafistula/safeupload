@@ -1,0 +1,90 @@
+MVP phase 1 progress: writer and section observations
+Date: 2026-10-03
+
+Scope: observe-only writer-state primitives on the existing fixed local NTFS
+Windows 10 debuggee. No boot-start or policy-epoch admission claim is made.
+
+Source changes
+- bf43d8b4: fix the Verifier 0xD1 paged-scan access under fence spin locks.
+- de9743cc: replace lock-free section pairing with one locked table containing
+  writable and non-writable acquisitions. A release removes only the newest
+  acquisition belonging to its thread and file object. Failed acquire callbacks
+  carry the exact slot through CompletionContext. Read-only releases cannot
+  retire an enclosing writable acquire. An overflow is sticky; per-stream C(F)
+  returns the unknown bit until unload. Old entries are never silently expired.
+- X3 now requires ERROR_FILE_INVALID (1006) for all 20 empty-file mappings,
+  adds 8 threads using one shared file object with mixed protections, requires
+  C(F)=0 at rest and checks the explicit per-stream probe instead of just
+  printing its existence. The previous harness inverted the failure count and
+  did not include it in the verdict.
+- Remote PowerShell requests text output and suppresses progress globally,
+  preventing module XML progress from interleaving with subsequent gate output.
+
+Build provenance
+Each source commit has a fresh four-configuration WDK build (normal/feature,
+Debug/Release), with PREfast DriverRecommendedRules and ApiValidator, zero
+warnings/errors, both Release Inspectors and a signed feature Debug artifact.
+The exact-mvp1-irqlfix and exact-mvp1-sectionpair source manifests were checked
+against all 22 source files in their respective commits. Archive, manifest,
+unsigned/signed driver and Inspector SHA256 values are kept in their summaries.
+No build result is attributed to a different source commit by filename alone.
+The older writers and inflight source manifests also match c1684c7e and
+9a68db7d respectively; those older builds are separate evidence.
+
+Runtime evidence so far
+- writer-count-run3-verifier, bf43d8b4: 34/34 fixture checks pass; 8x400 writer
+  stress has zero open failures; all fixture writers close to H(F)=0. Global
+  counters counted 3784 and released 3779 during the sample; background writers
+  remain, and unmatched cleanup increased from 1 to 8. This is not a global
+  create/cleanup balance claim or proof that pre-attachment writers are known.
+- section-inflight-run1, bf43d8b4 and the original X3 harness: conservation
+  residual 0 (2920 inserted/released), but its misleading failedAsExpected:0
+  was permitted by the old verdict. This is preliminary evidence only.
+- section-inflight-run2-verifier, de9743cc: PASS. 5320 writable insertions and
+  5320 releases, residual 0, now 0, overflow 0, stuck 0, max depth 7. The shared
+  file-object case accounts for 2400 writable and 2400 read-only sections;
+  only 2400 writable insertions are counted. All 20 mapping failures are 1006.
+  The explicit probe reports C(F)=0, S(F)=NO at rest. Runtime Verifier 0x13B.
+- section-inflight-run3, de9743cc, ordinary mode: same PASS and 5320 balanced
+  writable insertions/releases, max depth 6, zero current/overflow/stuck.
+- writer-count-run4-verifier, de9743cc: 34/34 fixture checks pass; counted and
+  released deltas both 3768 (live delta 0), untracked 0, unmatched 0, zero stress
+  open failures. This repeats the writer regression on the final section code.
+Each completed run has a fresh disk-only checkpoint and a SEPARATE restoration
+call reporting BaselineClean=True. The original installed driver and policy
+are restored, filter unloaded, Verifier off/unconfigured, service Manual/Stopped,
+and no agent processes, test tasks, GUID fixtures or synthetic volume remain.
+Harness/source hashes and complete invocations are retained in per-run provenance.
+Gate logs containing Write-Host information can still include XML; global module
+progress is suppressed in the final transport. Readable extracted counters are
+supplementary and do not replace those raw logs or the retained Inspector traces.
+
+All 11 raw Inspector traces were downloaded, rehashed and parsed independently;
+their manifest maps each GUID to its run and exact source commit using disjoint
+guest UTC run intervals. Both writer runs contain 34 successful explicit probes,
+and each section run contains the one successful C(F)=0/S(F)=NO rest probe.
+The four newly staged input copies were removed only after their hashes matched,
+and mvp1-final-input-cleanup.txt independently confirms BaselineClean=True again
+at 2026-10-03T14:29:00Z. Long-standing guest input filenames were not used for
+these new artifacts.
+
+The builder final-state record confirms its original checkout remains at ac81ca4c
+with 1395 status entries and the unchanged 82ffa7a8... status fingerprint; zero
+build processes remain. The build children are outside that checkout.
+
+Remaining phase 1 gates
+- A mapping failure is not a failed acquire callback. These 20 mappings each
+  acquired and released successfully before Mm rejected the mapping. The
+  RemovedOnFailure counter remained zero, explicitly NOT_EXERCISED. A controlled
+  lower-acquire failure remains required to validate exact-slot failure cleanup.
+- Draining/teardown, nested callback pairing, table-capacity/unknown behavior and
+  a controlled observation while C(F)>0 need targeted qualification. Successful
+  conservation alone is not a proof of Free(F)'s admission linearization.
+- Complete X2's inherited, cancelled/reparsed, delete-on-close and explicit fast
+  I/O corpus, plus distinguish background versus fixture cleanup accounting.
+- Generalize the S(F) worker to stable file identity, implement per-volume startup
+  canary/trust state, measure primitive cost, and qualify a Windows 11 VM.
+- H(F) is incomplete for late attachment. Boot/mount completeness and fail-closed
+  Untrusted handling belong to the following admission/boot work.
+Phase 1 remains open. Do not use these diagnostic results as a taint-free byte
+privacy qualification or proceed directly to boot/policy enforcement.

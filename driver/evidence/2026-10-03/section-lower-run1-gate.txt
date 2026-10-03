@@ -1,0 +1,45 @@
+Variant=section-lower
+TestTimestampUTC=2026-10-03T16:29:45.7292018Z
+Host=WIN10-DEBUGGED
+UUID=9D44EEE8-81CF-4CC1-9FBA-7670F11DEF4D
+OriginalInstalledSHA256=ADA9D05AB6AECDD2B6C521B0CE529FC06C732154ACB3EE85439FBDC8AA80DFCE
+FeatureSHA256=346BF7268EEE3742FDC4F9E85B2FCB9B08770984A77902115128D50450E527A7
+ExpectedInspectorSHA256=3BF78CE3FB49308A93F0F9778BB3689459ECA0580128EAF3F54266DCDB3959A2
+OriginalPolicySHA256=29DC8A341BD7C549996596D2477A0CCCAF19602C362A2167FB4FDD5C66663731
+ServicePackageSHA256=D887E0D7F38AD64AD40CEE18B841C6D38AD2BED4D6F760B1BDE4464927381997
+Baseline=FilterUnloaded;VerifierOffAndUnconfigured;ServiceManualStopped;AgentProcesses0;Tasks0
+InspectorSHA256=3BF78CE3FB49308A93F0F9778BB3689459ECA0580128EAF3F54266DCDB3959A2
+FeatureFilterLoadOutput=
+IndependentFixedNtfsGuids={eaf511cc-cf01-403b-a803-6fb5471aaecd};{f58c7564-1b1d-4c24-a05a-6f58cb85ec9c}
+DetachedVolumeEntries=2
+AllVolumeCanaries=PASS;count:2
+ProbeCommand_Canary_0=SUCCESS
+ProbeCommand_Canary_0_ExitCode=0
+ProbeCommand_Canary_0_Stdout={"admissionProbe":"sent","status":"0x00000000"}
+ProbeCommand_Canary_0_Stderr=
+VolumeCanary=PASS;retained:YES;released:NO;removed:YES
+[SC] CreateService SUCCESS
+ATTACH successful... Instance Name: SectionFault Test
+SectionFaultSHA256=D1DED0AE46AF9978F73297AD3B191FB1F9023B8E51AEF91BDB3D41FBFA88E15A
+[SC] DeleteService SUCCESS
+SectionFaultRestored=True
+RunError=Cannot convert value "-2147024891" to type "System.UInt32". Error: "Value was either too large or too small for a UInt32."
+RunErrorDiagnostic_--writer-state-status={"writerState":true,"postCreateRuns":125,"writeObjectsCounted":125,"writeObjectsReleased":123,"untrackedCreates":0,"cleanupUnmatched":0,"directoryCreatesSkipped":0,"sectionInFlightNow":0,"sectionInFlightInserted":0,"sectionInFlightReleased":0,"sectionInFlightOverflow":0,"sectionInFlightStuck":0,"sectionInFlightRemovedOnFailure":0,"sectionInFlightMaxDepth":0,"pagingCreatesSkipped":0,"volumeCreatesSkipped":0,"stageStreams":0,"stageFileObjects":0,"lastUnloadVeto":0,"lastUnloadStatus":0}
+RunErrorDiagnostic_--admission-fence-status={"fence":true,"complete":true,"stateFlags":0,"entries":0,"generation":6,"lastStatus":"0x00000000","failureLine":0,"refreshStarted":6,"refreshCompleted":6,"refreshFailed":0,"pagingWritesDenied":0,"opensRefused":0,"directoriesScanned":3,"filesScanned":8,"reparseSkipped":0,"volumeScopesSkipped":0,"streamsReleased":0,"releaseRefused":0,"sectionsDenied":0,"sectionNameUnresolved":0,"fsctlUnresolved":0,"lateRefreshesQueued":4}
+RunErrorDiagnostic_--admission-volume-status={"writerGlobalUnknown":0,"admissionVolumes":[{"instance":"FFFF9F01502B0330","volumeKind":3,"fileSystemType":13,"fileSystemStatus":0,"setupFlags":1,"contextStatus":0,"canaryState":4,"canaryStatus":3221225659,"canaryChecks":0,"canaryCleanupStatus":0,"instanceWritersUntracked":0,"volumeInfoStatus":0,"volumeFlags":0,"volumeGuidStatus":3221225488,"volumeGuid":""},{"instance":"FFFF9F014F98F010","volumeKind":1,"fileSystemType":2,"fileSystemStatus":0,"setupFlags":1,"contextStatus":0,"canaryState":2,"canaryStatus":0,"canaryChecks":7,"canaryCleanupStatus":0,"instanceWritersUntracked":0,"volumeInfoStatus":0,"volumeFlags":0,"volumeGuidStatus":0,"volumeGuid":"\\??\\Volume{f58c7564-1b1d-4c24-a05a-6f58cb85ec9c}"},{"instance":"FFFF9F014FA94010","volumeKind":1,"fileSystemType":3,"fileSystemStatus":0,"setupFlags":1,"contextStatus":0,"canaryState":4,"canaryStatus":3221225659,"canaryChecks":0,"canaryCleanupStatus":0,"instanceWritersUntracked":0,"volumeInfoStatus":0,"volumeFlags":0,"volumeGuidStatus":0,"volumeGuid":"\\??\\Volume{7ea913f9-8621-4fb0-8169-6285b4322329}"},{"instance":"FFFF9F014BB28330","volumeKind":1,"fileSystemType":2,"fileSystemStatus":0,"setupFlags":1,"contextStatus":0,"canaryState":2,"canaryStatus":0,"canaryChecks":7,"canaryCleanupStatus":0,"instanceWritersUntracked":0,"volumeInfoStatus":0,"volumeFlags":0,"volumeGuidStatus":0,"volumeGuid":"\\??\\Volume{eaf511cc-cf01-403b-a803-6fb5471aaecd}"},{"instance":"FFFF9F014D45D010","volumeKind":1,"fileSystemType":2,"fileSystemStatus":0,"setupFlags":9,"contextStatus":0,"canaryState":5,"canaryStatus":3221226094,"canaryChecks":0,"canaryCleanupStatus":0,"instanceWritersUntracked":0,"volumeInfoStatus":0,"volumeFlags":1,"volumeGuidStatus":0,"volumeGuid":"\\??\\Volume{0be2aa22-0000-0000-0000-010000000000}"},{"instance":"FFFF9F014BDF2010","volumeKind":1,"fileSystemType":2,"fileSystemStatus":0,"setupFlags":9,"contextStatus":0,"canaryState":5,"canaryStatus":3221226094,"canaryChecks":0,"canaryCleanupStatus":0,"instanceWritersUntracked":0,"volumeInfoStatus":0,"volumeFlags":1,"volumeGuidStatus":0,"volumeGuid":"\\??\\Volume{0be2ab27-0000-0000-0000-010000000000}"}]}
+OriginalDriverRestored=ADA9D05AB6AECDD2B6C521B0CE529FC06C732154ACB3EE85439FBDC8AA80DFCE
+ExperimentalDriverUnloaded=True
+Restoration_OriginalDriver=True
+Restoration_OriginalPolicy=True
+Restoration_FilterUnloaded=True
+Restoration_VerifierOff=True
+Restoration_ServiceManualStopped=True
+Restoration_AgentProcesses=0
+Restoration_InspectorProcesses=0
+Restoration_Tasks=0
+Restoration_FixtureRemoved=True
+Restoration_BackupsRemoved=True
+Restoration_AgentLogsRemoved=True
+Restoration_InspectorCopyRemoved=True
+RestorationSucceeded=True
+HARNESS_RETURNED

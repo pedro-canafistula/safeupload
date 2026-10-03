@@ -1,0 +1,4 @@
+SourceCommit=952b343b911f69801d73b8a54bc9ac24a1a6492f
+ArchiveSHA256=4e02a4c8934b9c1d7150bb9da35aff621949d91e61a50e78ebd111b2f006319b
+ManifestSHA256=ac75ea68798816ce121098dd4814f47b1e7df6b402060c9a2bef13524d64ccd5
+Command=driver/scripts/Invoke-ExactSourceBuild.sh mvp1-lower 952b343b

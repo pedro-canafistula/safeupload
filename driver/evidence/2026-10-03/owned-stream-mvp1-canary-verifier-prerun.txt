@@ -1,0 +1,10 @@
+PRE_RUN_PS: $ErrorActionPreference='Stop';$d='C:\Users\vika\Documents'
+if((Get-FileHash (Join-Path $d 'StagedTestAgent.ps1') -Algorithm SHA256).Hash -ne 'E17696FF684A27A283469989F6A58B8F6111BCB11AE8F9CABD025F711BACEFD9'){throw 'Helper hash mismatch'}
+$cs=Join-Path $d 'StagedIdentityProbe.cs';if((Test-Path $cs) -and (Get-FileHash $cs -Algorithm SHA256).Hash -ne 'F48CF293CEE263B57246FF3E396A8EB007705B60B9E263B1A223D0FFB54024D0'){throw 'Existing identity helper hash mismatch'}
+$sys=Join-Path $d 'SafeUpload-stage-prototype-mvp1canary7.sys';if((Test-Path $sys) -and (Get-FileHash $sys -Algorithm SHA256).Hash -ne 'F7944ED26514CA4E46196EA449A17EA71BAE8F043695E03B7BA4DCB7A467BB1E'){throw 'Existing feature input mismatch'}
+if(Test-Path (Join-Path $d 'owned-stream-mvp1-canary-verifier-original-policy.bin')){throw 'Existing run policy backup'}
+'PRE_RUN_OK=True'
+
+PRE_RUN_OK=True
+copied /tmp/claude-1000/exact-mvp1-canary7/SafeUpload-stage-prototype.sys -> SafeUpload-stage-prototype-mvp1canary7.sys sha256=f7944ed26514ca4e46196ea449a17ea71bae8f043695e03b7ba4dcb7a467bb1e
+copied /home/victor/Work/safeupload-staging/driver/scripts/StagedIdentityProbe.cs -> StagedIdentityProbe.cs sha256=f48cf293cee263b57246ff3e396a8eb007705b60b9e263b1a223d0ffb54024d0

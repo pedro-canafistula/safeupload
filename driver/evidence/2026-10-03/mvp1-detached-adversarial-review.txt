@@ -1,0 +1,12 @@
+SourceCommit=707180211faa9090435e8d88b49aedb59beecddb
+Reviewer=/root/primitive_review (separate reviewer explicitly authorized by user)
+ReviewMode=read-only source review; no tests/builds/VM actions
+
+Initial findings:
+P2: FenceScanPrefix stopped at first detached volume with the requested name; FltMgr can contain active and detached objects sharing a device name.
+P3: FenceAppendQuarantinedVolumes did not query live attachment flags, so retained identities used a different quarantine-retirement contract.
+
+Fixes: select exactly one active matching identity after scanning all records; reject zero or multiple active matches. Query and validate live flags for retained quarantine identities; preserve detached quarantine, including an identity subsequently classified out of scope.
+Follow-up: both findings fixed; no new actionable correctness, IRQL, reference lifetime, status/schema, or detached-quarantine bypass found. Reporter retains ChannelRundown and releases its instance/context/volume references. Flags helper uses bounded paged allocation at <= APC_LEVEL and rejects incomplete results, invalid lengths, or unknown flags. Post-unload-veto writer/fence snapshots are present.
+
+Limits: source review is not runtime qualification. Existing non-atomic scans and unsupported FenceTryRelease remain unqualified phase 3 issues. Windows 11 qualification is deferred by user; MVP completion remains unclaimed.

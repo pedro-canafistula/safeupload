@@ -62,12 +62,17 @@ folder policy; its existing taint mode and fresh-reader observer make it regress
 evidence, not MVP acceptance. A subsequent observer failure remains recorded as failed evidence. Its rerun passed
 under runtime Verifier with 400 fresh-reader samples and clean restoration.
 
-Phase 1 remains open: cancelled creates and explicit fast I/O remain; actual lower section-acquire
-failure, controlled in-flight observation, teardown/fault injection, canary security
+The isolated lower-filter experiment passed ordinarily and under runtime Verifier:
+one actual failed lower acquire matched upper post-acquire cleanup, and an exact-file-object
+hold showed C=1 before release and C=0 after successful completion. The companion port
+rejected the ordinary identity; attachment order and clean restoration were verified.
+
+Phase 1 remains open: cancelled creates and explicit fast I/O remain; table capacity,
+nested mixed pairing, teardown/fault injection, canary security
 and newly mounted-volume qualification, and cost remain. Empty-file mapping errors
 did **not** exercise failed lower acquire. Windows 11 qualification is deferred by
 the user because no VM is available. Phases 2–5 remain open.
-[Earlier evidence](evidence/2026-10-03/mvp1-writer-section-progress.txt) and
+[Progress evidence](evidence/2026-10-03/mvp1-idprobe-canary-progress.txt) and
 [detached-volume review](evidence/2026-10-03/mvp1-detached-adversarial-review.txt).
 
 - **H(F)**: count of open file objects with write access per stream (create +1, cleanup -1), stream

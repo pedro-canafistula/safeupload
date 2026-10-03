@@ -1,0 +1,10 @@
+PRE_RUN_PS: $ErrorActionPreference='Stop'
+$d='C:\Users\vika\Documents'
+$expected=@{'SafeUpload-stage-prototype-mvp1irqlfix.sys'='643748E6165A1D3F209DFE9D7887B3376D30D1F1D0C1E50689582E636CF83204';'SafeUpload.Inspector.mvp1irqlfix.exe'='CCF42A1727F02CE32217E49440A965D34BBAEAD4D3DA1D2EA45657B65A5A5828'}
+foreach($n in $expected.Keys){$p=Join-Path $d $n;if(Test-Path -LiteralPath $p){if((Get-FileHash -LiteralPath $p -Algorithm SHA256).Hash -ne $expected[$n]){throw ('Existing input hash mismatch: '+$n)}}}
+if((Get-FileHash -LiteralPath (Join-Path $d 'StagedTestAgent.ps1') -Algorithm SHA256).Hash -ne 'E17696FF684A27A283469989F6A58B8F6111BCB11AE8F9CABD025F711BACEFD9'){throw 'Shared helper hash mismatch'}
+'PRE_RUN_OK=True'
+
+PRE_RUN_OK=True
+copied /tmp/claude-1000/exact-mvp1-irqlfix/SafeUpload-stage-prototype.sys -> SafeUpload-stage-prototype-mvp1irqlfix.sys sha256=643748e6165a1d3f209dfe9d7887b3376d30d1f1d0c1e50689582e636cf83204
+copied /tmp/claude-1000/exact-mvp1-irqlfix/inspector-feature-release.exe -> SafeUpload.Inspector.mvp1irqlfix.exe sha256=ccf42a1727f02ce32217e49440a965d34bbaead4d3da1d2ea45657b65a5a5828

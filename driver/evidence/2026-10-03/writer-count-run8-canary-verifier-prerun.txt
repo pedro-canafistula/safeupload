@@ -1,0 +1,10 @@
+PRE_RUN_PS: $ErrorActionPreference='Stop'
+$d='C:\Users\vika\Documents'
+$expected=@{'SafeUpload-stage-prototype-mvp1canary5.sys'='F4F3312C283DBF679D7CFB6425D3C3C01D2DB662A8074BF62C0916332B7AF2E3';'SafeUpload.Inspector.mvp1canary5.exe'='F93DB989CE14C0CBD184F198F1A594FDF28333BD6F0E3FD35A87B0717A4EAA08'}
+foreach($n in $expected.Keys){$p=Join-Path $d $n;if(Test-Path -LiteralPath $p){if((Get-FileHash -LiteralPath $p -Algorithm SHA256).Hash -ne $expected[$n]){throw ('Existing input hash mismatch: '+$n)}}}
+if((Get-FileHash -LiteralPath (Join-Path $d 'StagedTestAgent.ps1') -Algorithm SHA256).Hash -ne 'E17696FF684A27A283469989F6A58B8F6111BCB11AE8F9CABD025F711BACEFD9'){throw 'Shared helper hash mismatch'}
+'PRE_RUN_OK=True'
+
+PRE_RUN_OK=True
+copied /tmp/claude-1000/exact-mvp1-canary5/SafeUpload-stage-prototype.sys -> SafeUpload-stage-prototype-mvp1canary5.sys sha256=f4f3312c283dbf679d7cfb6425d3c3c01d2db662a8074bf62c0916332b7af2e3
+copied /tmp/claude-1000/exact-mvp1-canary5/inspector-feature-release.exe -> SafeUpload.Inspector.mvp1canary5.exe sha256=f93db989ce14c0cbd184f198f1a594fdf28333bd6f0e3fd35a87b0717a4eaa08

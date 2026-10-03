@@ -1,0 +1,3 @@
+4a6e45738f44a603a2ad7c7cbb0694a5bcf8cf0e9dc65f153315ade96041774d  driver/SafeUpload.SectionFault/Fault.c
+38c801ac14cb58db264413cadf794f197be88cffd32c04ca48e3808157208dcd  driver/SafeUpload.SectionFault/Protocol.h
+7027ba23b199ece53bac866dd81924131ce6eeb5000e1650a458d21f9ce50d7b  driver/SafeUpload.SectionFault/SafeUpload.SectionFault.vcxproj

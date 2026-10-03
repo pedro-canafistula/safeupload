@@ -1,0 +1,37 @@
+UTC=2026-10-03T14:04:26Z
+# Debuggee froze during writer-count-run2-verifier (volatile Verifier 0x13B, build mvp1-writers F63BB58F...). Guest unreachable (100% ping loss), QEMU ~200% CPU = a bugcheck spinning in the debugger wait.
+# memory image (private, not in repo): /var/tmp/safeupload-h1-verifier.elf  8723972067 bytes
+# failed active overlay (preserved): /var/lib/libvirt/images/win10-debug.safeupload-pre-writer-count-run2-verifier-20261003
+# clean parent (frozen at the start of the failed run): /var/lib/libvirt/images/win10-debug.safeupload-pre-writer-count-run1-20261003
+--- domain xml before recovery
+864
+--- create recovery overlay
+error: failed to get vol '/var/lib/libvirt/images/win10-debug.safeupload-pre-writer-count-run1-20261003'
+error: Storage volume not found: no storage vol with matching path '/var/lib/libvirt/images/win10-debug.safeupload-pre-writer-count-run1-20261003'
+
+--- pool refresh
+Pool default refreshed
+
+--- create recovery overlay (retry)
+Vol win10-debug.safeupload-recovery-writers-20261003 created
+
+--- force off, redefine, start
+Domain 'win10-debug' destroyed
+
+error: Failed to define domain from /tmp/claude-1000/-home-victor-Work-safeupload-staging/51bab987-d309-44cf-8daf-58afbc816c00/scratchpad/dom-recovered.xml
+error: at line 61: Opening and ending tag mismatch: disk line 58 and backingStore
+                                                                                </backingStore>
+-----------------------------------------------------------------------------------------------^
+
+Domain 'win10-debug' started
+
+ vda      /var/lib/libvirt/images/win10-debug.safeupload-pre-writer-count-run2-verifier-20261003
+Domain 'win10-debug' destroyed
+
+--- (first define attempt failed on a malformed edit and the domain restarted from the OLD definition; destroyed again at once, nothing was run on it)
+--- redefine with a parsed XML edit, start
+Domain 'win10-debug' defined from /tmp/claude-1000/-home-victor-Work-safeupload-staging/51bab987-d309-44cf-8daf-58afbc816c00/scratchpad/dom-recovered.xml
+
+Domain 'win10-debug' started
+
+ vda      /var/lib/libvirt/images/win10-debug.safeupload-recovery-writers-20261003

@@ -1,0 +1,13 @@
+SourceCommit=e34d1d0da84f9a0bb6cf77e86a3a4f9760e95211
+BuildLabel=mvp1-local-regression
+FeatureSHA256=B56E4DBF809621DD221E429F096474047E0C9DF514322033736EBBA2CE09F969
+InspectorSHA256=87841CDE7AF47E1B498DE4C2A1830AEEFD233628B163DC7DC874FB1818905807
+Variant=section-inflight
+Verifier=True
+Invocation=$ErrorActionPreference='Stop'; $d='C:\Users\vika\Documents'; $driver=Join-Path $d 'SafeUpload-stage-prototype-mvp1localregression.sys'; $sig=Get-AuthenticodeSignature -LiteralPath $driver; 'FeatureSignatureStatus='+$sig.Status; 'FeatureSignerThumbprint='+$sig.SignerCertificate.Thumbprint; if($sig.Status.ToString() -ne 'Valid' -or $sig.SignerCertificate.Thumbprint -ne '220DD82C37FCF36048D59E4F10113185D81D5DC7'){throw 'Signature preflight failed'}; if((Get-FileHash -LiteralPath (Join-Path $d 'Test-StagedAdmissionDiagnostic.ps1') -Algorithm SHA256).Hash -ne 'CF3161FD5B2C49E3ECC1BCE40D8D8962EE291E173FFCCA330D313A901A316A26'){throw 'Harness hash mismatch'}; & (Join-Path $d 'Test-StagedAdmissionDiagnostic.ps1') -Variant 'section-inflight' -ExpectedFeatureSha256 'B56E4DBF809621DD221E429F096474047E0C9DF514322033736EBBA2CE09F969' -ExpectedInspectorSha256 '87841CDE7AF47E1B498DE4C2A1830AEEFD233628B163DC7DC874FB1818905807' -FeatureDriverFileName 'SafeUpload-stage-prototype-mvp1localregression.sys' -InspectorInputFileName 'SafeUpload.Inspector.mvp1localregression.exe' -Verifier -RequireAllVolumeCanaries
+Harness and helper SHA256:
+cf3161fd5b2c49e3ecc1bce40d8d8962ee291e173ffcca330d313a901a316a26  driver/scripts/Test-StagedAdmissionDiagnostic.ps1
+e17696ff684a27a283469989f6a58b8f6111bcb11ae8f9cabd025f711bacefd9  driver/scripts/StagedTestAgent.ps1
+79e56dca7ad50bd99711eaa10546c283afba976012b43a72421ebd6514f55eda  driver/scripts/Get-StagedBaseline.ps1
+1b18b42e1abfe9f111ab40c2d96b862628361b64596a63353b9d97c840333a42  driver/scripts/Invoke-DebuggeeExperiment.sh
+76af25ca7b3784c67d5a07322a87fd3835cad5fd2e6b9f05a1e0869da50abc27  driver/scripts/remote_ps.py

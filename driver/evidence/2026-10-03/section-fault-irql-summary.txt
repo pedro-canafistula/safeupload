@@ -1,0 +1,6 @@
+﻿SOURCE_MANIFEST_VERIFIED=3 BUILDER=DESKTOP-O1LP5DG
+Debug : exit=0 warnings=0 errors=0 prefast=True apivalidator=True
+Release : exit=0 warnings=0 errors=0 prefast=True apivalidator=True
+SignExit=0
+SignedSHA256=8902244A1A8BA29FAE67EC59FC67ECB0FD212C0086140EE5A2D396E5EBD028DF
+BUILD_END_UTC=2026-10-03T16:04:45.6130270Z

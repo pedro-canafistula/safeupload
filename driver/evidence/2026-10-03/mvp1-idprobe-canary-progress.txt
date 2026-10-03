@@ -1,0 +1,42 @@
+Phase 1 progress through exact lower companion preparation (2026-10-03)
+
+This supersedes mvp1-writer-section-progress.txt for the latest H/S/C and canary results; preserves earlier failures and historical results.
+MVP completion remains unclaimed. Windows 11 gate deferred explicitly by user (no VM). All independent Windows 10 work continues. Phases 2–5 remain open; current primitive observations do not establish atomic free-of-writers admission.
+
+Latest passed handle qualification:
+writer-count-run14-detached-verifier: runtime Verifier 0x13B, 43/43 exact fixture checks.
+writer-count-run15-detached: ordinary, same 43/43.
+Includes true inherited handle (child FILE_ID_INFO proof; H counts one FILE_OBJECT across parent/child, then zero on final cleanup), duplicated delete-on-close (ERROR_FILE_NOT_FOUND only after final close), actual NTFS junction tag 0xA0000003 and canonical FILE_ID_INFO equality, ADS/hard-link/relative/failed-create/basic/stress/sections cases.
+Stress: 8 workers x400 iterations, zero worker failures. Generic stress traces lost 7/5 entries respectively; every required fixture probe is retained. Do not claim those generic stress traces complete.
+Both runs: two disposed NTFS volume records explicitly Detached, both active fixed NTFS identities C/Recovery matched independent enumeration, initial/final canaries passed, separate final BaselineClean=True.
+
+Latest passed section pairing corpus:
+section-inflight-run13-detached-verifier: runtime Verifier 0x13B.
+section-inflight-run14-detached: ordinary.
+Each: 5,320 writable inserts/releases conserved; 500 single mappings, 2,400 writable +2,400 readonly storm, 2,400 writable +2,400 readonly sharing file objects, and 20 empty-file errors. Current, overflow and stuck all zero at end; max depths 6/7 respectively. Empty-file errors did NOT exercise actual lower acquire failure (removed-on-failure delta zero). Active canaries passed with detached records present, independent restoration clean.
+
+Publication regression (existing taint defaults; no independent raw-volume observer; NOT MVP acceptance):
+owned-stream-mvp1-detached-observer2-verifier passed integrated milestone, 400 fresh-reader samples, no LEAK/error, runtime Verifier, clean independent restoration.
+Exercises 8 publication iterations, POSIX replacement old-reader preservation, ordinary private replacement, parallel 8192 bytes, unaligned growth, expected unload refusal while mapped writer live, mapped-after-cleanup publication, retained writer/service restart and publication.
+Dedicated local-folder policy SHA256 B7DBBFB169F71353F2838D52F5E62754FF5D8F2B7732286014379484DE5165ED; original policy restored exactly. Nine observer/service logs downloaded with guest/local SHA verification in owned-stream-mvp1-detached-observer2-verifier-logs-manifest.json.
+Earlier owned-stream-mvp1-detached-verifier failed when observer exited during publication iteration 2. It remains FAILED even though restoration passed. Observer log was absent; generic service-out/err names were overwritten by retry before download. This is a preserved evidence gap, not an inferred passing result.
+
+Earlier section-inflight-run11-all-volumes-verifier failed before X3 because disposed volume had no live-detached classification. Its failed gate and BaselineClean=False remain intact. Separate recovery evidence records reboot and final clean baseline. Fixes 70718021/6d066ac2 validated later without hiding disposed volume records.
+
+Source/build/service provenance:
+Kernel used in latest above VM runs: 6d066ac2865a8cdb79fd639603ae6b1885aa2a7c; exact-mvp1-detached2 four WDK and both Inspector builds pass zero warnings/errors, PREfast/ApiValidator enabled in all four WDK builds.
+Signed SYS 27F54DF104DAED46B8B73AA95E65D0062F343A6A6B1B5C79B86D35B7FD243CAF
+Inspector 41EE7A8197AC93B470400CB6FA05A4DB822BD536E4E306A8EC707C84FB090E8A
+Exact-agent detached2: 283/283 tests passed, build/publish zero warnings; executable 9B706E449837F1DF4A9AA977DFFB9E85E04B5A5248FCB78D5BAF0ECB3E31332E; package 10EC079C82D97BD1BFE07D0C623BC0699B15D96839B7324690090490BA96E5D3.
+Writer run14/15 harness source a7fe270cf97ca0a2112d357bf5a298b0a50a933b; section run13/owned observer2 harness f7dede8fd6a35d003bf024372946b788a6b5a42f; section run14 harness a7fe270c. Where launch-time harness was dirty, later exact Git blob SHA matching is recorded in its provenance; do not infer invocation HEAD equaled executed harness.
+New lower-qualification source 952b343b911f69801d73b8a54bc9ac24a1a6492f; four main WDK and both Inspector exact-mvp1-lower builds pass. Companion exact1 failed overall due builder test-root chain verification after two clean WDK builds; no VM used that artifact. Exact2 Debug/Release clean with zero warnings/errors and PREfast/ApiValidator; signed companion D1DED0AE46AF9978F73297AD3B191FB1F9023B8E51AEF91BDB3D41FBFA88E15A. Builder does not trust test root; debuggee signature Valid/pinned signer is mandatory before install.
+
+Raw data:
+mvp1-idprobe-canary-raw-traces-manifest.json: 64 files, guest/local SHA-verified and uniquely attributed by test/restoration UTC intervals. Probe PID4, IRQL0, status0, stage8 verified. These are driver admission traces/canary reports, not raw-volume byte observers.
+Original 11-file primitive raw traces retained separately.
+Each run has baseline, checkpoint, prechecks, gate, provenance and independent restoration evidence. Review notes cover detached identity selection/quarantine, inheritance/junction/observer lifetime and controlled lower companion.
+
+Open phase 1 gates:
+Actual lower acquire failure and exact C>0 hold/release passed in ordinary run3 and runtime Verifier run4, independently restored. First two attempts remain failed (HRESULT formatting and unrecorded process-exit predicate); their successful subcases are not whole-run acceptance. Raw lower evidence 25 files SHA verified.
+Still open: cancelled create; explicit fast I/O; deterministic allocation failure/sticky unknown; nested mixed pairing and table capacity; teardown/draining; canary DACL readback and nonSYSTEM denial; new-volume canary/failure/timeout cleanup; primitive cost; deferred Windows 11.
+Atomic admission/epoch-drain, durable boot protection, taint-disabled invariant suite with raw/fresh/uncached observers, runtime+boot Verifier and latency remain phases 2–5 work.

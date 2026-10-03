@@ -1,0 +1,578 @@
+[
+  {
+    "Name": "SafeUpload-admission-trace-section-inflight-0fb77b3d85c3419f86ad31eec930a21e-A.jsonl",
+    "SHA256": "4F96C61FDCFD8FE363967783F5AA8CFE4006441BB02FECE0711222DCEBD0792E",
+    "Bytes": 3828898,
+    "UTC": "2026-10-03T15:10:07.4552588Z",
+    "LocalPath": "driver/evidence/2026-10-03/mvp1-idprobe-canary-raw-traces/SafeUpload-admission-trace-section-inflight-0fb77b3d85c3419f86ad31eec930a21e-A.jsonl",
+    "Run": "section-inflight-run8-canary-verifier",
+    "SourceCommit": "dc3574d7fe38915f57189815955a13072aec63d5"
+  },
+  {
+    "Name": "SafeUpload-admission-trace-section-inflight-0fb77b3d85c3419f86ad31eec930a21e-A.jsonl-canary-0.jsonl",
+    "SHA256": "D19C0903BA2FF3A2DB21F8D5B8277DAE342161811B2D3E33A69BD17B9D1AAE72",
+    "Bytes": 75559,
+    "UTC": "2026-10-03T15:09:33.8732585Z",
+    "LocalPath": "driver/evidence/2026-10-03/mvp1-idprobe-canary-raw-traces/SafeUpload-admission-trace-section-inflight-0fb77b3d85c3419f86ad31eec930a21e-A.jsonl-canary-0.jsonl",
+    "Run": "section-inflight-run8-canary-verifier",
+    "SourceCommit": "dc3574d7fe38915f57189815955a13072aec63d5"
+  },
+  {
+    "Name": "SafeUpload-admission-trace-section-inflight-a2103e671cdf4d2cbfe1f6ff28790334-A.jsonl",
+    "SHA256": "56BD4BEF4AAF9E4E410BE487A8A8C04CA3D7FD7ED3F977E257C6D6D14781056B",
+    "Bytes": 3848409,
+    "UTC": "2026-10-03T15:55:38.4212163Z",
+    "LocalPath": "driver/evidence/2026-10-03/mvp1-idprobe-canary-raw-traces/SafeUpload-admission-trace-section-inflight-a2103e671cdf4d2cbfe1f6ff28790334-A.jsonl",
+    "Run": "section-inflight-run13-detached-verifier",
+    "SourceCommit": "6d066ac2865a8cdb79fd639603ae6b1885aa2a7c"
+  },
+  {
+    "Name": "SafeUpload-admission-trace-section-inflight-a2103e671cdf4d2cbfe1f6ff28790334-A.jsonl-canary-0.jsonl",
+    "SHA256": "10A02FC8355BD402DD5FB701CFC26E2BFEC455186A9E69B24E26C89A1D4C42C5",
+    "Bytes": 83832,
+    "UTC": "2026-10-03T15:55:04.9032002Z",
+    "LocalPath": "driver/evidence/2026-10-03/mvp1-idprobe-canary-raw-traces/SafeUpload-admission-trace-section-inflight-a2103e671cdf4d2cbfe1f6ff28790334-A.jsonl-canary-0.jsonl",
+    "Run": "section-inflight-run13-detached-verifier",
+    "SourceCommit": "6d066ac2865a8cdb79fd639603ae6b1885aa2a7c"
+  },
+  {
+    "Name": "SafeUpload-admission-trace-section-inflight-a2103e671cdf4d2cbfe1f6ff28790334-A.jsonl-final-volumes.json-0",
+    "SHA256": "D23951E58C18EC150C411D41CCF61B5468BDD3DA69B2D6155BE169F80F699A97",
+    "Bytes": 1770,
+    "UTC": "2026-10-03T15:55:43.1632007Z",
+    "LocalPath": "driver/evidence/2026-10-03/mvp1-idprobe-canary-raw-traces/SafeUpload-admission-trace-section-inflight-a2103e671cdf4d2cbfe1f6ff28790334-A.jsonl-final-volumes.json-0",
+    "Run": "section-inflight-run13-detached-verifier",
+    "SourceCommit": "6d066ac2865a8cdb79fd639603ae6b1885aa2a7c"
+  },
+  {
+    "Name": "SafeUpload-admission-trace-section-inflight-a2103e671cdf4d2cbfe1f6ff28790334-A.jsonl-volumes.json-0",
+    "SHA256": "D23951E58C18EC150C411D41CCF61B5468BDD3DA69B2D6155BE169F80F699A97",
+    "Bytes": 1770,
+    "UTC": "2026-10-03T15:54:58.0052010Z",
+    "LocalPath": "driver/evidence/2026-10-03/mvp1-idprobe-canary-raw-traces/SafeUpload-admission-trace-section-inflight-a2103e671cdf4d2cbfe1f6ff28790334-A.jsonl-volumes.json-0",
+    "Run": "section-inflight-run13-detached-verifier",
+    "SourceCommit": "6d066ac2865a8cdb79fd639603ae6b1885aa2a7c"
+  },
+  {
+    "Name": "SafeUpload-admission-trace-section-inflight-b56b4b66c6334d7698e848c77663fef1-A.jsonl",
+    "SHA256": "1A2C2F0AA9681ACB636CBC1FE2E27B64AEF03028ABBCB025B748A8FCE54F26C9",
+    "Bytes": 3713597,
+    "UTC": "2026-10-03T16:07:24.4191998Z",
+    "LocalPath": "driver/evidence/2026-10-03/mvp1-idprobe-canary-raw-traces/SafeUpload-admission-trace-section-inflight-b56b4b66c6334d7698e848c77663fef1-A.jsonl",
+    "Run": "section-inflight-run14-detached",
+    "SourceCommit": "a7fe270cf97ca0a2112d357bf5a298b0a50a933b"
+  },
+  {
+    "Name": "SafeUpload-admission-trace-section-inflight-b56b4b66c6334d7698e848c77663fef1-A.jsonl-canary-0.jsonl",
+    "SHA256": "2788876D9C12EB02B296E949D44631F318E29B05D4CA54AA886D95EA612E2729",
+    "Bytes": 128761,
+    "UTC": "2026-10-03T16:07:04.6052002Z",
+    "LocalPath": "driver/evidence/2026-10-03/mvp1-idprobe-canary-raw-traces/SafeUpload-admission-trace-section-inflight-b56b4b66c6334d7698e848c77663fef1-A.jsonl-canary-0.jsonl",
+    "Run": "section-inflight-run14-detached",
+    "SourceCommit": "a7fe270cf97ca0a2112d357bf5a298b0a50a933b"
+  },
+  {
+    "Name": "SafeUpload-admission-trace-section-inflight-b56b4b66c6334d7698e848c77663fef1-A.jsonl-final-volumes.json-0",
+    "SHA256": "F76FE240A7515E5BCAA4EF2E54171C6AD32C8217D0F58FCA8AD25A84E542A951",
+    "Bytes": 2126,
+    "UTC": "2026-10-03T16:07:27.5852013Z",
+    "LocalPath": "driver/evidence/2026-10-03/mvp1-idprobe-canary-raw-traces/SafeUpload-admission-trace-section-inflight-b56b4b66c6334d7698e848c77663fef1-A.jsonl-final-volumes.json-0",
+    "Run": "section-inflight-run14-detached",
+    "SourceCommit": "a7fe270cf97ca0a2112d357bf5a298b0a50a933b"
+  },
+  {
+    "Name": "SafeUpload-admission-trace-section-inflight-b56b4b66c6334d7698e848c77663fef1-A.jsonl-volumes.json-0",
+    "SHA256": "F76FE240A7515E5BCAA4EF2E54171C6AD32C8217D0F58FCA8AD25A84E542A951",
+    "Bytes": 2126,
+    "UTC": "2026-10-03T16:07:00.7692071Z",
+    "LocalPath": "driver/evidence/2026-10-03/mvp1-idprobe-canary-raw-traces/SafeUpload-admission-trace-section-inflight-b56b4b66c6334d7698e848c77663fef1-A.jsonl-volumes.json-0",
+    "Run": "section-inflight-run14-detached",
+    "SourceCommit": "a7fe270cf97ca0a2112d357bf5a298b0a50a933b"
+  },
+  {
+    "Name": "SafeUpload-admission-trace-section-inflight-cb8a51b926144d7a866aef4cc67c806f-A.jsonl",
+    "SHA256": "D8A17133D27346D320F916ABE2EAD1F1BB7A953E1AFE3E9A3787F1C2411825C0",
+    "Bytes": 3313655,
+    "UTC": "2026-10-03T14:46:43.8192572Z",
+    "LocalPath": "driver/evidence/2026-10-03/mvp1-idprobe-canary-raw-traces/SafeUpload-admission-trace-section-inflight-cb8a51b926144d7a866aef4cc67c806f-A.jsonl",
+    "Run": "section-inflight-run4-idprobe-verifier",
+    "SourceCommit": "43aa391d3322b16350dcd96399d1746f132c5557"
+  },
+  {
+    "Name": "SafeUpload-admission-trace-section-inflight-ef0e0350df03465e8b552b9b49d2180e-A.jsonl-volumes.json-0",
+    "SHA256": "F587908A895EDA9A1BEE9D023259143AFF0F85ED471D1A8B8862F745B51C6229",
+    "Bytes": 1588,
+    "UTC": "2026-10-03T15:30:11.8012589Z",
+    "LocalPath": "driver/evidence/2026-10-03/mvp1-idprobe-canary-raw-traces/SafeUpload-admission-trace-section-inflight-ef0e0350df03465e8b552b9b49d2180e-A.jsonl-volumes.json-0",
+    "Run": "section-inflight-run11-all-volumes-verifier",
+    "SourceCommit": "e34d1d0da84f9a0bb6cf77e86a3a4f9760e95211"
+  },
+  {
+    "Name": "SafeUpload-admission-trace-writer-count-2152be7ba9aa43538122dfbdb547ce84-A.jsonl",
+    "SHA256": "D0D9EF3D0933A4C88AB22FF711B2747606988B2EEA67A9739DADEC2012AC3666",
+    "Bytes": 431939,
+    "UTC": "2026-10-03T16:01:02.0372168Z",
+    "LocalPath": "driver/evidence/2026-10-03/mvp1-idprobe-canary-raw-traces/SafeUpload-admission-trace-writer-count-2152be7ba9aa43538122dfbdb547ce84-A.jsonl",
+    "Run": "writer-count-run14-detached-verifier",
+    "SourceCommit": "a7fe270cf97ca0a2112d357bf5a298b0a50a933b"
+  },
+  {
+    "Name": "SafeUpload-admission-trace-writer-count-2152be7ba9aa43538122dfbdb547ce84-A.jsonl-canary-0.jsonl",
+    "SHA256": "505154D520A35A09D7808541F1BFFB72E1C2A10A0C564E5056EC8539C9B16E7A",
+    "Bytes": 107013,
+    "UTC": "2026-10-03T16:00:03.8351992Z",
+    "LocalPath": "driver/evidence/2026-10-03/mvp1-idprobe-canary-raw-traces/SafeUpload-admission-trace-writer-count-2152be7ba9aa43538122dfbdb547ce84-A.jsonl-canary-0.jsonl",
+    "Run": "writer-count-run14-detached-verifier",
+    "SourceCommit": "a7fe270cf97ca0a2112d357bf5a298b0a50a933b"
+  },
+  {
+    "Name": "SafeUpload-admission-trace-writer-count-2152be7ba9aa43538122dfbdb547ce84-A.jsonl-volumes.json-0",
+    "SHA256": "0D3CF7925CCC0DCC3FF0BCE1085E2D73F17DAB661AFAF8E03305CAB28CEA100C",
+    "Bytes": 2126,
+    "UTC": "2026-10-03T15:59:56.6031991Z",
+    "LocalPath": "driver/evidence/2026-10-03/mvp1-idprobe-canary-raw-traces/SafeUpload-admission-trace-writer-count-2152be7ba9aa43538122dfbdb547ce84-A.jsonl-volumes.json-0",
+    "Run": "writer-count-run14-detached-verifier",
+    "SourceCommit": "a7fe270cf97ca0a2112d357bf5a298b0a50a933b"
+  },
+  {
+    "Name": "SafeUpload-admission-trace-writer-count-2152be7ba9aa43538122dfbdb547ce84-B.jsonl",
+    "SHA256": "CCB95A9039AA980289F69ED8A8A3CC882C07D61A8383CFAEDAB5839E5AC116F7",
+    "Bytes": 2443380,
+    "UTC": "2026-10-03T16:03:11.5132074Z",
+    "LocalPath": "driver/evidence/2026-10-03/mvp1-idprobe-canary-raw-traces/SafeUpload-admission-trace-writer-count-2152be7ba9aa43538122dfbdb547ce84-B.jsonl",
+    "Run": "writer-count-run14-detached-verifier",
+    "SourceCommit": "a7fe270cf97ca0a2112d357bf5a298b0a50a933b"
+  },
+  {
+    "Name": "SafeUpload-admission-trace-writer-count-2152be7ba9aa43538122dfbdb547ce84-B.jsonl-final-volumes.json-0",
+    "SHA256": "0D3CF7925CCC0DCC3FF0BCE1085E2D73F17DAB661AFAF8E03305CAB28CEA100C",
+    "Bytes": 2126,
+    "UTC": "2026-10-03T16:03:23.0031999Z",
+    "LocalPath": "driver/evidence/2026-10-03/mvp1-idprobe-canary-raw-traces/SafeUpload-admission-trace-writer-count-2152be7ba9aa43538122dfbdb547ce84-B.jsonl-final-volumes.json-0",
+    "Run": "writer-count-run14-detached-verifier",
+    "SourceCommit": "a7fe270cf97ca0a2112d357bf5a298b0a50a933b"
+  },
+  {
+    "Name": "SafeUpload-admission-trace-writer-count-2152be7ba9aa43538122dfbdb547ce84-P1.jsonl",
+    "SHA256": "3F32D407F59FABC84AAE0CAEB6BEC15E878864939CC73ED93AAC2F6A37891E0A",
+    "Bytes": 291193,
+    "UTC": "2026-10-03T16:01:40.8192141Z",
+    "LocalPath": "driver/evidence/2026-10-03/mvp1-idprobe-canary-raw-traces/SafeUpload-admission-trace-writer-count-2152be7ba9aa43538122dfbdb547ce84-P1.jsonl",
+    "Run": "writer-count-run14-detached-verifier",
+    "SourceCommit": "a7fe270cf97ca0a2112d357bf5a298b0a50a933b"
+  },
+  {
+    "Name": "SafeUpload-admission-trace-writer-count-2152be7ba9aa43538122dfbdb547ce84-P2.jsonl",
+    "SHA256": "7FA68E1F77314299677BE4E2C4212734DBC0B91C0D80FA62464A45DF41757647",
+    "Bytes": 427596,
+    "UTC": "2026-10-03T16:02:37.8492131Z",
+    "LocalPath": "driver/evidence/2026-10-03/mvp1-idprobe-canary-raw-traces/SafeUpload-admission-trace-writer-count-2152be7ba9aa43538122dfbdb547ce84-P2.jsonl",
+    "Run": "writer-count-run14-detached-verifier",
+    "SourceCommit": "a7fe270cf97ca0a2112d357bf5a298b0a50a933b"
+  },
+  {
+    "Name": "SafeUpload-admission-trace-writer-count-243f54297c3049d397c905ee2dcefd6d-A.jsonl-canary-0.jsonl",
+    "SHA256": "0803E0D97714C9FFD0D06BB11F897F0442A07C2AE79D004213AC4D6EF9BCD355",
+    "Bytes": 62575,
+    "UTC": "2026-10-03T14:58:33.5272545Z",
+    "LocalPath": "driver/evidence/2026-10-03/mvp1-idprobe-canary-raw-traces/SafeUpload-admission-trace-writer-count-243f54297c3049d397c905ee2dcefd6d-A.jsonl-canary-0.jsonl",
+    "Run": "writer-count-run8-canary-verifier",
+    "SourceCommit": "f015fe35946f74f0fb933ce1bc14bd6ecaaaa282"
+  },
+  {
+    "Name": "SafeUpload-admission-trace-writer-count-31d3f6293c75412dacab3eac673c5921-A.jsonl",
+    "SHA256": "DD78ED84D38375FA52F334DE464BCFE3C2493A72A73F0009BA583BE75FEA259A",
+    "Bytes": 334687,
+    "UTC": "2026-10-03T16:05:00.4332227Z",
+    "LocalPath": "driver/evidence/2026-10-03/mvp1-idprobe-canary-raw-traces/SafeUpload-admission-trace-writer-count-31d3f6293c75412dacab3eac673c5921-A.jsonl",
+    "Run": "writer-count-run15-detached",
+    "SourceCommit": "a7fe270cf97ca0a2112d357bf5a298b0a50a933b"
+  },
+  {
+    "Name": "SafeUpload-admission-trace-writer-count-31d3f6293c75412dacab3eac673c5921-A.jsonl-canary-0.jsonl",
+    "SHA256": "374A03FDC47E70556D1C5AD5EEFD6D29A4D4164DC0932BFBCBBD8DB41CD08E93",
+    "Bytes": 96089,
+    "UTC": "2026-10-03T16:04:30.1371995Z",
+    "LocalPath": "driver/evidence/2026-10-03/mvp1-idprobe-canary-raw-traces/SafeUpload-admission-trace-writer-count-31d3f6293c75412dacab3eac673c5921-A.jsonl-canary-0.jsonl",
+    "Run": "writer-count-run15-detached",
+    "SourceCommit": "a7fe270cf97ca0a2112d357bf5a298b0a50a933b"
+  },
+  {
+    "Name": "SafeUpload-admission-trace-writer-count-31d3f6293c75412dacab3eac673c5921-A.jsonl-volumes.json-0",
+    "SHA256": "34FD46661BC796EBF713FAB59BA6D8B113B7C6AAB788A912164C50B3760C42AA",
+    "Bytes": 2126,
+    "UTC": "2026-10-03T16:04:26.4511994Z",
+    "LocalPath": "driver/evidence/2026-10-03/mvp1-idprobe-canary-raw-traces/SafeUpload-admission-trace-writer-count-31d3f6293c75412dacab3eac673c5921-A.jsonl-volumes.json-0",
+    "Run": "writer-count-run15-detached",
+    "SourceCommit": "a7fe270cf97ca0a2112d357bf5a298b0a50a933b"
+  },
+  {
+    "Name": "SafeUpload-admission-trace-writer-count-31d3f6293c75412dacab3eac673c5921-B.jsonl",
+    "SHA256": "A49C61061A762E2711DDCA98FCF049C818CEBAC1025418F4A891640CE8A3406B",
+    "Bytes": 2467594,
+    "UTC": "2026-10-03T16:06:09.0812000Z",
+    "LocalPath": "driver/evidence/2026-10-03/mvp1-idprobe-canary-raw-traces/SafeUpload-admission-trace-writer-count-31d3f6293c75412dacab3eac673c5921-B.jsonl",
+    "Run": "writer-count-run15-detached",
+    "SourceCommit": "a7fe270cf97ca0a2112d357bf5a298b0a50a933b"
+  },
+  {
+    "Name": "SafeUpload-admission-trace-writer-count-31d3f6293c75412dacab3eac673c5921-B.jsonl-final-volumes.json-0",
+    "SHA256": "34FD46661BC796EBF713FAB59BA6D8B113B7C6AAB788A912164C50B3760C42AA",
+    "Bytes": 2126,
+    "UTC": "2026-10-03T16:06:15.5932065Z",
+    "LocalPath": "driver/evidence/2026-10-03/mvp1-idprobe-canary-raw-traces/SafeUpload-admission-trace-writer-count-31d3f6293c75412dacab3eac673c5921-B.jsonl-final-volumes.json-0",
+    "Run": "writer-count-run15-detached",
+    "SourceCommit": "a7fe270cf97ca0a2112d357bf5a298b0a50a933b"
+  },
+  {
+    "Name": "SafeUpload-admission-trace-writer-count-31d3f6293c75412dacab3eac673c5921-P1.jsonl",
+    "SHA256": "865FBA897F1151D4E363F2093FDBCD5DB6E83EB2A2FA9A5225621572CA14DE3A",
+    "Bytes": 236692,
+    "UTC": "2026-10-03T16:05:21.2412017Z",
+    "LocalPath": "driver/evidence/2026-10-03/mvp1-idprobe-canary-raw-traces/SafeUpload-admission-trace-writer-count-31d3f6293c75412dacab3eac673c5921-P1.jsonl",
+    "Run": "writer-count-run15-detached",
+    "SourceCommit": "a7fe270cf97ca0a2112d357bf5a298b0a50a933b"
+  },
+  {
+    "Name": "SafeUpload-admission-trace-writer-count-31d3f6293c75412dacab3eac673c5921-P2.jsonl",
+    "SHA256": "F8EC69DC4C0265570D6B96E9A63B28F3103D1C95ED57B6A132DAB9B5E67648C2",
+    "Bytes": 351211,
+    "UTC": "2026-10-03T16:05:51.3672115Z",
+    "LocalPath": "driver/evidence/2026-10-03/mvp1-idprobe-canary-raw-traces/SafeUpload-admission-trace-writer-count-31d3f6293c75412dacab3eac673c5921-P2.jsonl",
+    "Run": "writer-count-run15-detached",
+    "SourceCommit": "a7fe270cf97ca0a2112d357bf5a298b0a50a933b"
+  },
+  {
+    "Name": "SafeUpload-admission-trace-writer-count-5b7b7f30972d450e8aca1dd3ee0405f7-A.jsonl",
+    "SHA256": "56EEF3C3A59FF7AF820E9A15784236A473D0E4BF310997E05953881779366691",
+    "Bytes": 373652,
+    "UTC": "2026-10-03T14:42:21.9712510Z",
+    "LocalPath": "driver/evidence/2026-10-03/mvp1-idprobe-canary-raw-traces/SafeUpload-admission-trace-writer-count-5b7b7f30972d450e8aca1dd3ee0405f7-A.jsonl",
+    "Run": "writer-count-run5-idprobe-verifier",
+    "SourceCommit": "43aa391d3322b16350dcd96399d1746f132c5557"
+  },
+  {
+    "Name": "SafeUpload-admission-trace-writer-count-5b7b7f30972d450e8aca1dd3ee0405f7-B.jsonl",
+    "SHA256": "2BFC7F79069322BC17EE91F9E56CB8E282BA62456091578344E02E1FCA1B7546",
+    "Bytes": 2069289,
+    "UTC": "2026-10-03T14:43:47.4532512Z",
+    "LocalPath": "driver/evidence/2026-10-03/mvp1-idprobe-canary-raw-traces/SafeUpload-admission-trace-writer-count-5b7b7f30972d450e8aca1dd3ee0405f7-B.jsonl",
+    "Run": "writer-count-run5-idprobe-verifier",
+    "SourceCommit": "43aa391d3322b16350dcd96399d1746f132c5557"
+  },
+  {
+    "Name": "SafeUpload-admission-trace-writer-count-5b7b7f30972d450e8aca1dd3ee0405f7-P1.jsonl",
+    "SHA256": "C439BD5EADD3F13F3FEA4A06D28C34D6EEF09CCBAC2CAC3CF4CCF3329C0C0BF4",
+    "Bytes": 161803,
+    "UTC": "2026-10-03T14:42:41.6192532Z",
+    "LocalPath": "driver/evidence/2026-10-03/mvp1-idprobe-canary-raw-traces/SafeUpload-admission-trace-writer-count-5b7b7f30972d450e8aca1dd3ee0405f7-P1.jsonl",
+    "Run": "writer-count-run5-idprobe-verifier",
+    "SourceCommit": "43aa391d3322b16350dcd96399d1746f132c5557"
+  },
+  {
+    "Name": "SafeUpload-admission-trace-writer-count-5b7b7f30972d450e8aca1dd3ee0405f7-P2.jsonl",
+    "SHA256": "51F7139F0159FC15640FC790D02074C6DBEB8543BEEB07EC2C3368528761C16A",
+    "Bytes": 270904,
+    "UTC": "2026-10-03T14:43:21.4512531Z",
+    "LocalPath": "driver/evidence/2026-10-03/mvp1-idprobe-canary-raw-traces/SafeUpload-admission-trace-writer-count-5b7b7f30972d450e8aca1dd3ee0405f7-P2.jsonl",
+    "Run": "writer-count-run5-idprobe-verifier",
+    "SourceCommit": "43aa391d3322b16350dcd96399d1746f132c5557"
+  },
+  {
+    "Name": "SafeUpload-admission-trace-writer-count-5f98717a1ff443798522b84416e4df28-A.jsonl",
+    "SHA256": "14C11B0503C387DA1C9BC429AE32A6617493FA61F2F17FE30A71CB6F774BAD80",
+    "Bytes": 430486,
+    "UTC": "2026-10-03T15:04:48.8292610Z",
+    "LocalPath": "driver/evidence/2026-10-03/mvp1-idprobe-canary-raw-traces/SafeUpload-admission-trace-writer-count-5f98717a1ff443798522b84416e4df28-A.jsonl",
+    "Run": "writer-count-run9-canary-verifier",
+    "SourceCommit": "dc3574d7fe38915f57189815955a13072aec63d5"
+  },
+  {
+    "Name": "SafeUpload-admission-trace-writer-count-5f98717a1ff443798522b84416e4df28-A.jsonl-canary-0.jsonl",
+    "SHA256": "8FBB31883D35163D8C80835F64806A9E34B57567F20F570C68E086AD8A87E5E6",
+    "Bytes": 55735,
+    "UTC": "2026-10-03T15:04:00.7412579Z",
+    "LocalPath": "driver/evidence/2026-10-03/mvp1-idprobe-canary-raw-traces/SafeUpload-admission-trace-writer-count-5f98717a1ff443798522b84416e4df28-A.jsonl-canary-0.jsonl",
+    "Run": "writer-count-run9-canary-verifier",
+    "SourceCommit": "dc3574d7fe38915f57189815955a13072aec63d5"
+  },
+  {
+    "Name": "SafeUpload-admission-trace-writer-count-5f98717a1ff443798522b84416e4df28-B.jsonl",
+    "SHA256": "6D081960E00EE8029CE45FEFA0DEDF6A52D376C407A9E37CC5DE928ECA713B50",
+    "Bytes": 2422809,
+    "UTC": "2026-10-03T15:06:32.6752535Z",
+    "LocalPath": "driver/evidence/2026-10-03/mvp1-idprobe-canary-raw-traces/SafeUpload-admission-trace-writer-count-5f98717a1ff443798522b84416e4df28-B.jsonl",
+    "Run": "writer-count-run9-canary-verifier",
+    "SourceCommit": "dc3574d7fe38915f57189815955a13072aec63d5"
+  },
+  {
+    "Name": "SafeUpload-admission-trace-writer-count-5f98717a1ff443798522b84416e4df28-P1.jsonl",
+    "SHA256": "CD8ABB9867A83BCD410010446BE641083F8EDFA7BCEF45D850608D7C486E7956",
+    "Bytes": 172835,
+    "UTC": "2026-10-03T15:05:12.7972536Z",
+    "LocalPath": "driver/evidence/2026-10-03/mvp1-idprobe-canary-raw-traces/SafeUpload-admission-trace-writer-count-5f98717a1ff443798522b84416e4df28-P1.jsonl",
+    "Run": "writer-count-run9-canary-verifier",
+    "SourceCommit": "dc3574d7fe38915f57189815955a13072aec63d5"
+  },
+  {
+    "Name": "SafeUpload-admission-trace-writer-count-5f98717a1ff443798522b84416e4df28-P2.jsonl",
+    "SHA256": "47A7FE19C47A988EF1F441AA4EBB865C0D7194412DD81C5173035C16A6D53550",
+    "Bytes": 345950,
+    "UTC": "2026-10-03T15:06:01.2032545Z",
+    "LocalPath": "driver/evidence/2026-10-03/mvp1-idprobe-canary-raw-traces/SafeUpload-admission-trace-writer-count-5f98717a1ff443798522b84416e4df28-P2.jsonl",
+    "Run": "writer-count-run9-canary-verifier",
+    "SourceCommit": "dc3574d7fe38915f57189815955a13072aec63d5"
+  },
+  {
+    "Name": "SafeUpload-admission-trace-writer-count-9d5790ff76d7428780e20c182a361a6f-A.jsonl-canary-0.jsonl",
+    "SHA256": "F2EFC88FCEBA9C4A2A39543509BA9BA62EF6C114EF0D04D48E39C571EA3BD8E8",
+    "Bytes": 63947,
+    "UTC": "2026-10-03T14:54:49.0532548Z",
+    "LocalPath": "driver/evidence/2026-10-03/mvp1-idprobe-canary-raw-traces/SafeUpload-admission-trace-writer-count-9d5790ff76d7428780e20c182a361a6f-A.jsonl-canary-0.jsonl",
+    "Run": "writer-count-run7-canarydiag-verifier",
+    "SourceCommit": "19c732441c102e13cf8e310fc7ff1be2bb706031"
+  },
+  {
+    "Name": "SafeUpload-admission-trace-writer-count-a43e5752ad184af783660583e4037cd1-A.jsonl",
+    "SHA256": "2EFE23C1899A5B8D72239141840218841ACC40BBF7EE84994F212D401AE35C74",
+    "Bytes": 410182,
+    "UTC": "2026-10-03T15:25:34.8892553Z",
+    "LocalPath": "driver/evidence/2026-10-03/mvp1-idprobe-canary-raw-traces/SafeUpload-admission-trace-writer-count-a43e5752ad184af783660583e4037cd1-A.jsonl",
+    "Run": "writer-count-run10-all-volumes-verifier",
+    "SourceCommit": "c8947bf130b40703c73ba5f0e9e042bdb4b16f1c"
+  },
+  {
+    "Name": "SafeUpload-admission-trace-writer-count-a43e5752ad184af783660583e4037cd1-A.jsonl-canary-0.jsonl",
+    "SHA256": "24210283F00CF574A2374611F4913ACB2B3EB66965DC91BD010FD8CB6AC263B6",
+    "Bytes": 79078,
+    "UTC": "2026-10-03T15:24:45.1472687Z",
+    "LocalPath": "driver/evidence/2026-10-03/mvp1-idprobe-canary-raw-traces/SafeUpload-admission-trace-writer-count-a43e5752ad184af783660583e4037cd1-A.jsonl-canary-0.jsonl",
+    "Run": "writer-count-run10-all-volumes-verifier",
+    "SourceCommit": "c8947bf130b40703c73ba5f0e9e042bdb4b16f1c"
+  },
+  {
+    "Name": "SafeUpload-admission-trace-writer-count-a43e5752ad184af783660583e4037cd1-A.jsonl-volumes.json-0",
+    "SHA256": "B8105DA9C85D808DCAE9B83964A0934FD51E0C12631B12D5804714C047CD01BA",
+    "Bytes": 1266,
+    "UTC": "2026-10-03T15:24:38.0492656Z",
+    "LocalPath": "driver/evidence/2026-10-03/mvp1-idprobe-canary-raw-traces/SafeUpload-admission-trace-writer-count-a43e5752ad184af783660583e4037cd1-A.jsonl-volumes.json-0",
+    "Run": "writer-count-run10-all-volumes-verifier",
+    "SourceCommit": "c8947bf130b40703c73ba5f0e9e042bdb4b16f1c"
+  },
+  {
+    "Name": "SafeUpload-admission-trace-writer-count-a43e5752ad184af783660583e4037cd1-B.jsonl",
+    "SHA256": "BE666F582BD892656A5AC01E0334FA0BF2D408CEEE859BC860A7C130993D4826",
+    "Bytes": 2422797,
+    "UTC": "2026-10-03T15:27:25.1412538Z",
+    "LocalPath": "driver/evidence/2026-10-03/mvp1-idprobe-canary-raw-traces/SafeUpload-admission-trace-writer-count-a43e5752ad184af783660583e4037cd1-B.jsonl",
+    "Run": "writer-count-run10-all-volumes-verifier",
+    "SourceCommit": "c8947bf130b40703c73ba5f0e9e042bdb4b16f1c"
+  },
+  {
+    "Name": "SafeUpload-admission-trace-writer-count-a43e5752ad184af783660583e4037cd1-B.jsonl-final-volumes.json-0",
+    "SHA256": "B8105DA9C85D808DCAE9B83964A0934FD51E0C12631B12D5804714C047CD01BA",
+    "Bytes": 1266,
+    "UTC": "2026-10-03T15:27:36.7072569Z",
+    "LocalPath": "driver/evidence/2026-10-03/mvp1-idprobe-canary-raw-traces/SafeUpload-admission-trace-writer-count-a43e5752ad184af783660583e4037cd1-B.jsonl-final-volumes.json-0",
+    "Run": "writer-count-run10-all-volumes-verifier",
+    "SourceCommit": "c8947bf130b40703c73ba5f0e9e042bdb4b16f1c"
+  },
+  {
+    "Name": "SafeUpload-admission-trace-writer-count-a43e5752ad184af783660583e4037cd1-P1.jsonl",
+    "SHA256": "B71F1E9BCD374BC5A50F5F0BF76A764FB9D2485F1E5B7983F7D92D744A78E2F8",
+    "Bytes": 165385,
+    "UTC": "2026-10-03T15:25:59.9532590Z",
+    "LocalPath": "driver/evidence/2026-10-03/mvp1-idprobe-canary-raw-traces/SafeUpload-admission-trace-writer-count-a43e5752ad184af783660583e4037cd1-P1.jsonl",
+    "Run": "writer-count-run10-all-volumes-verifier",
+    "SourceCommit": "c8947bf130b40703c73ba5f0e9e042bdb4b16f1c"
+  },
+  {
+    "Name": "SafeUpload-admission-trace-writer-count-a43e5752ad184af783660583e4037cd1-P2.jsonl",
+    "SHA256": "2CFD311BF1C483EC9BDCCF0FB93FA8FA3884C1DC3F56082389EDA7DD47E8FB83",
+    "Bytes": 326668,
+    "UTC": "2026-10-03T15:26:50.5472712Z",
+    "LocalPath": "driver/evidence/2026-10-03/mvp1-idprobe-canary-raw-traces/SafeUpload-admission-trace-writer-count-a43e5752ad184af783660583e4037cd1-P2.jsonl",
+    "Run": "writer-count-run10-all-volumes-verifier",
+    "SourceCommit": "c8947bf130b40703c73ba5f0e9e042bdb4b16f1c"
+  },
+  {
+    "Name": "SafeUpload-admission-trace-writer-count-e77e18d928554f49b17715ed6b7a28df-A.jsonl-canary-0.jsonl",
+    "SHA256": "7AE0AB1AAFC9ACB8A99FCE32C5565E92FEAE9B933AF844EC12EC545AC6BB9B2A",
+    "Bytes": 63213,
+    "UTC": "2026-10-03T14:50:14.4092572Z",
+    "LocalPath": "driver/evidence/2026-10-03/mvp1-idprobe-canary-raw-traces/SafeUpload-admission-trace-writer-count-e77e18d928554f49b17715ed6b7a28df-A.jsonl-canary-0.jsonl",
+    "Run": "writer-count-run6-canary-verifier",
+    "SourceCommit": "fb54f609d3a5e5e0f6b9fc5b93e4abd34a3b265e"
+  },
+  {
+    "Name": "SafeUpload-admission-trace-writer-count-e77e18d928554f49b17715ed6b7a28df-A.jsonl-canary-1.jsonl",
+    "SHA256": "81E7D5354D5CF97A104753977FF5B4D3B25AE957F241980A0A1E8A01AF71DBB9",
+    "Bytes": 39960,
+    "UTC": "2026-10-03T14:50:23.2132533Z",
+    "LocalPath": "driver/evidence/2026-10-03/mvp1-idprobe-canary-raw-traces/SafeUpload-admission-trace-writer-count-e77e18d928554f49b17715ed6b7a28df-A.jsonl-canary-1.jsonl",
+    "Run": "writer-count-run6-canary-verifier",
+    "SourceCommit": "fb54f609d3a5e5e0f6b9fc5b93e4abd34a3b265e"
+  },
+  {
+    "Name": "SafeUpload-admission-trace-writer-count-e77e18d928554f49b17715ed6b7a28df-A.jsonl-canary-10.jsonl",
+    "SHA256": "24D9E806AB453611197553B3FF4392361C290C107B2EFA2F96B40FF2B4F1B8D3",
+    "Bytes": 162434,
+    "UTC": "2026-10-03T14:51:39.2452543Z",
+    "LocalPath": "driver/evidence/2026-10-03/mvp1-idprobe-canary-raw-traces/SafeUpload-admission-trace-writer-count-e77e18d928554f49b17715ed6b7a28df-A.jsonl-canary-10.jsonl",
+    "Run": "writer-count-run6-canary-verifier",
+    "SourceCommit": "fb54f609d3a5e5e0f6b9fc5b93e4abd34a3b265e"
+  },
+  {
+    "Name": "SafeUpload-admission-trace-writer-count-e77e18d928554f49b17715ed6b7a28df-A.jsonl-canary-11.jsonl",
+    "SHA256": "A4F0EDA32D5DDDA026D9DDE2A113AED66D49FA3BA36AC7D155105A26CEC4D235",
+    "Bytes": 150981,
+    "UTC": "2026-10-03T14:51:47.4632593Z",
+    "LocalPath": "driver/evidence/2026-10-03/mvp1-idprobe-canary-raw-traces/SafeUpload-admission-trace-writer-count-e77e18d928554f49b17715ed6b7a28df-A.jsonl-canary-11.jsonl",
+    "Run": "writer-count-run6-canary-verifier",
+    "SourceCommit": "fb54f609d3a5e5e0f6b9fc5b93e4abd34a3b265e"
+  },
+  {
+    "Name": "SafeUpload-admission-trace-writer-count-e77e18d928554f49b17715ed6b7a28df-A.jsonl-canary-12.jsonl",
+    "SHA256": "FDB6C344226ADA80A6D33F0500F0E9E218E515C7048C9EC64564CB1C17675135",
+    "Bytes": 39261,
+    "UTC": "2026-10-03T14:51:55.7132538Z",
+    "LocalPath": "driver/evidence/2026-10-03/mvp1-idprobe-canary-raw-traces/SafeUpload-admission-trace-writer-count-e77e18d928554f49b17715ed6b7a28df-A.jsonl-canary-12.jsonl",
+    "Run": "writer-count-run6-canary-verifier",
+    "SourceCommit": "fb54f609d3a5e5e0f6b9fc5b93e4abd34a3b265e"
+  },
+  {
+    "Name": "SafeUpload-admission-trace-writer-count-e77e18d928554f49b17715ed6b7a28df-A.jsonl-canary-13.jsonl",
+    "SHA256": "5841A0A32A50A00415A378ADE79B4B281FFEBE9A81FCF9721B21B1389B2F6B2C",
+    "Bytes": 69321,
+    "UTC": "2026-10-03T14:52:03.9692511Z",
+    "LocalPath": "driver/evidence/2026-10-03/mvp1-idprobe-canary-raw-traces/SafeUpload-admission-trace-writer-count-e77e18d928554f49b17715ed6b7a28df-A.jsonl-canary-13.jsonl",
+    "Run": "writer-count-run6-canary-verifier",
+    "SourceCommit": "fb54f609d3a5e5e0f6b9fc5b93e4abd34a3b265e"
+  },
+  {
+    "Name": "SafeUpload-admission-trace-writer-count-e77e18d928554f49b17715ed6b7a28df-A.jsonl-canary-14.jsonl",
+    "SHA256": "BB4131FD10400A5487E551A795C1018C342C9F492C770D3FAE8D99E7A42AABB5",
+    "Bytes": 44072,
+    "UTC": "2026-10-03T14:52:12.2452604Z",
+    "LocalPath": "driver/evidence/2026-10-03/mvp1-idprobe-canary-raw-traces/SafeUpload-admission-trace-writer-count-e77e18d928554f49b17715ed6b7a28df-A.jsonl-canary-14.jsonl",
+    "Run": "writer-count-run6-canary-verifier",
+    "SourceCommit": "fb54f609d3a5e5e0f6b9fc5b93e4abd34a3b265e"
+  },
+  {
+    "Name": "SafeUpload-admission-trace-writer-count-e77e18d928554f49b17715ed6b7a28df-A.jsonl-canary-15.jsonl",
+    "SHA256": "180AEF8EBF26D0C37504792BDA534B8CB1381CB090DA1DB9F377BFB8EC305D62",
+    "Bytes": 63769,
+    "UTC": "2026-10-03T14:52:20.4632522Z",
+    "LocalPath": "driver/evidence/2026-10-03/mvp1-idprobe-canary-raw-traces/SafeUpload-admission-trace-writer-count-e77e18d928554f49b17715ed6b7a28df-A.jsonl-canary-15.jsonl",
+    "Run": "writer-count-run6-canary-verifier",
+    "SourceCommit": "fb54f609d3a5e5e0f6b9fc5b93e4abd34a3b265e"
+  },
+  {
+    "Name": "SafeUpload-admission-trace-writer-count-e77e18d928554f49b17715ed6b7a28df-A.jsonl-canary-16.jsonl",
+    "SHA256": "CA77CF5A2F68F8397A9911CF4D3AE1902D7973EBEC395A9BA2ABB7804D9ACEC1",
+    "Bytes": 36535,
+    "UTC": "2026-10-03T14:52:28.7332528Z",
+    "LocalPath": "driver/evidence/2026-10-03/mvp1-idprobe-canary-raw-traces/SafeUpload-admission-trace-writer-count-e77e18d928554f49b17715ed6b7a28df-A.jsonl-canary-16.jsonl",
+    "Run": "writer-count-run6-canary-verifier",
+    "SourceCommit": "fb54f609d3a5e5e0f6b9fc5b93e4abd34a3b265e"
+  },
+  {
+    "Name": "SafeUpload-admission-trace-writer-count-e77e18d928554f49b17715ed6b7a28df-A.jsonl-canary-17.jsonl",
+    "SHA256": "579146F6E3DAFACB18FC1EC6A4C9630D9C6AFEE50FA1276C87D2992CB447C94F",
+    "Bytes": 67930,
+    "UTC": "2026-10-03T14:52:36.9632524Z",
+    "LocalPath": "driver/evidence/2026-10-03/mvp1-idprobe-canary-raw-traces/SafeUpload-admission-trace-writer-count-e77e18d928554f49b17715ed6b7a28df-A.jsonl-canary-17.jsonl",
+    "Run": "writer-count-run6-canary-verifier",
+    "SourceCommit": "fb54f609d3a5e5e0f6b9fc5b93e4abd34a3b265e"
+  },
+  {
+    "Name": "SafeUpload-admission-trace-writer-count-e77e18d928554f49b17715ed6b7a28df-A.jsonl-canary-18.jsonl",
+    "SHA256": "E10FA2DA4BF027DB41655129C5799729BCF21AE12704B1524A4F31FDFC9E975B",
+    "Bytes": 41318,
+    "UTC": "2026-10-03T14:52:45.2972528Z",
+    "LocalPath": "driver/evidence/2026-10-03/mvp1-idprobe-canary-raw-traces/SafeUpload-admission-trace-writer-count-e77e18d928554f49b17715ed6b7a28df-A.jsonl-canary-18.jsonl",
+    "Run": "writer-count-run6-canary-verifier",
+    "SourceCommit": "fb54f609d3a5e5e0f6b9fc5b93e4abd34a3b265e"
+  },
+  {
+    "Name": "SafeUpload-admission-trace-writer-count-e77e18d928554f49b17715ed6b7a28df-A.jsonl-canary-19.jsonl",
+    "SHA256": "3CF06A78D9BFDD91E271A387FDED96C12B2A31E88DE6FE72F80F9D57367794AF",
+    "Bytes": 59657,
+    "UTC": "2026-10-03T14:52:53.4952572Z",
+    "LocalPath": "driver/evidence/2026-10-03/mvp1-idprobe-canary-raw-traces/SafeUpload-admission-trace-writer-count-e77e18d928554f49b17715ed6b7a28df-A.jsonl-canary-19.jsonl",
+    "Run": "writer-count-run6-canary-verifier",
+    "SourceCommit": "fb54f609d3a5e5e0f6b9fc5b93e4abd34a3b265e"
+  },
+  {
+    "Name": "SafeUpload-admission-trace-writer-count-e77e18d928554f49b17715ed6b7a28df-A.jsonl-canary-2.jsonl",
+    "SHA256": "1C1452499DAF686F20E5A323062E213F50D484E8BE536BD9CB6DC403BF5B273F",
+    "Bytes": 51723,
+    "UTC": "2026-10-03T14:50:31.5152547Z",
+    "LocalPath": "driver/evidence/2026-10-03/mvp1-idprobe-canary-raw-traces/SafeUpload-admission-trace-writer-count-e77e18d928554f49b17715ed6b7a28df-A.jsonl-canary-2.jsonl",
+    "Run": "writer-count-run6-canary-verifier",
+    "SourceCommit": "fb54f609d3a5e5e0f6b9fc5b93e4abd34a3b265e"
+  },
+  {
+    "Name": "SafeUpload-admission-trace-writer-count-e77e18d928554f49b17715ed6b7a28df-A.jsonl-canary-3.jsonl",
+    "SHA256": "ABE6805AB0FFE9C1F19B9BC6C41141FDE47734A13BDBDE447BE7957BE038EEE0",
+    "Bytes": 34494,
+    "UTC": "2026-10-03T14:50:39.7552513Z",
+    "LocalPath": "driver/evidence/2026-10-03/mvp1-idprobe-canary-raw-traces/SafeUpload-admission-trace-writer-count-e77e18d928554f49b17715ed6b7a28df-A.jsonl-canary-3.jsonl",
+    "Run": "writer-count-run6-canary-verifier",
+    "SourceCommit": "fb54f609d3a5e5e0f6b9fc5b93e4abd34a3b265e"
+  },
+  {
+    "Name": "SafeUpload-admission-trace-writer-count-e77e18d928554f49b17715ed6b7a28df-A.jsonl-canary-4.jsonl",
+    "SHA256": "CCDA69F9C5F8ED5B1EAE9192688ECD3211C6162052DCEDAFB4ABCDC7D2E6A7CD",
+    "Bytes": 48326,
+    "UTC": "2026-10-03T14:50:47.9992508Z",
+    "LocalPath": "driver/evidence/2026-10-03/mvp1-idprobe-canary-raw-traces/SafeUpload-admission-trace-writer-count-e77e18d928554f49b17715ed6b7a28df-A.jsonl-canary-4.jsonl",
+    "Run": "writer-count-run6-canary-verifier",
+    "SourceCommit": "fb54f609d3a5e5e0f6b9fc5b93e4abd34a3b265e"
+  },
+  {
+    "Name": "SafeUpload-admission-trace-writer-count-e77e18d928554f49b17715ed6b7a28df-A.jsonl-canary-5.jsonl",
+    "SHA256": "FC93F7446D160EF925F9C2B36D0A28A0EA41339EC24C222949B45CDA39F90DE9",
+    "Bytes": 37215,
+    "UTC": "2026-10-03T14:50:56.2912506Z",
+    "LocalPath": "driver/evidence/2026-10-03/mvp1-idprobe-canary-raw-traces/SafeUpload-admission-trace-writer-count-e77e18d928554f49b17715ed6b7a28df-A.jsonl-canary-5.jsonl",
+    "Run": "writer-count-run6-canary-verifier",
+    "SourceCommit": "fb54f609d3a5e5e0f6b9fc5b93e4abd34a3b265e"
+  },
+  {
+    "Name": "SafeUpload-admission-trace-writer-count-e77e18d928554f49b17715ed6b7a28df-A.jsonl-canary-6.jsonl",
+    "SHA256": "56278B80A7D817C6FE000B81D370BB510B3C584CC506F926D4ED71B1F6DAF1E7",
+    "Bytes": 46865,
+    "UTC": "2026-10-03T14:51:04.6192547Z",
+    "LocalPath": "driver/evidence/2026-10-03/mvp1-idprobe-canary-raw-traces/SafeUpload-admission-trace-writer-count-e77e18d928554f49b17715ed6b7a28df-A.jsonl-canary-6.jsonl",
+    "Run": "writer-count-run6-canary-verifier",
+    "SourceCommit": "fb54f609d3a5e5e0f6b9fc5b93e4abd34a3b265e"
+  },
+  {
+    "Name": "SafeUpload-admission-trace-writer-count-e77e18d928554f49b17715ed6b7a28df-A.jsonl-canary-7.jsonl",
+    "SHA256": "CB3C45F4F646E3325A1FA11E968049533805507EAABB14DBBD05943F45815F4D",
+    "Bytes": 35840,
+    "UTC": "2026-10-03T14:51:12.8072541Z",
+    "LocalPath": "driver/evidence/2026-10-03/mvp1-idprobe-canary-raw-traces/SafeUpload-admission-trace-writer-count-e77e18d928554f49b17715ed6b7a28df-A.jsonl-canary-7.jsonl",
+    "Run": "writer-count-run6-canary-verifier",
+    "SourceCommit": "fb54f609d3a5e5e0f6b9fc5b93e4abd34a3b265e"
+  },
+  {
+    "Name": "SafeUpload-admission-trace-writer-count-e77e18d928554f49b17715ed6b7a28df-A.jsonl-canary-8.jsonl",
+    "SHA256": "D06FF9AD4149E6A1644C6E936CF037124277F1CC829ECF16C052E5EC508F70E3",
+    "Bytes": 37922,
+    "UTC": "2026-10-03T14:51:21.1392535Z",
+    "LocalPath": "driver/evidence/2026-10-03/mvp1-idprobe-canary-raw-traces/SafeUpload-admission-trace-writer-count-e77e18d928554f49b17715ed6b7a28df-A.jsonl-canary-8.jsonl",
+    "Run": "writer-count-run6-canary-verifier",
+    "SourceCommit": "fb54f609d3a5e5e0f6b9fc5b93e4abd34a3b265e"
+  },
+  {
+    "Name": "SafeUpload-admission-trace-writer-count-e77e18d928554f49b17715ed6b7a28df-A.jsonl-canary-9.jsonl",
+    "SHA256": "FA44CB07720BBC8B563058E03F763B373A73A3CCFB7A4883FC246F5BCB7654F1",
+    "Bytes": 63106,
+    "UTC": "2026-10-03T14:51:30.6692530Z",
+    "LocalPath": "driver/evidence/2026-10-03/mvp1-idprobe-canary-raw-traces/SafeUpload-admission-trace-writer-count-e77e18d928554f49b17715ed6b7a28df-A.jsonl-canary-9.jsonl",
+    "Run": "writer-count-run6-canary-verifier",
+    "SourceCommit": "fb54f609d3a5e5e0f6b9fc5b93e4abd34a3b265e"
+  }
+]

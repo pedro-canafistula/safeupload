@@ -1,0 +1,4 @@
+SOURCE_MANIFEST_VERIFIED=3 BUILDER=DESKTOP-O1LP5DG
+Debug : exit=1 warnings=0 errors=1 prefast=True apivalidator=True
+Release : exit=1 warnings=0 errors=1 prefast=True apivalidator=True
+BUILD_END_UTC=2026-10-03T16:04:00.8936070Z

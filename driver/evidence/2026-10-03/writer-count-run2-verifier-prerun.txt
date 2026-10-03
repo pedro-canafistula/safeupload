@@ -1,0 +1,13 @@
+PRE_RUN_PS: $d = 'C:\Users\vika\Documents'
+$expect = @{ 'SafeUpload-stage-prototype-mvp1f63bb58.sys' = 'F63BB58FFFAE8691504E9983E358269E0BB3E6D864D4FF85D23FD4E1ED2CCC1F'; 'SafeUpload.Inspector.mvp1f63bb58.exe' = '33C970A623A2C48C8D76A44F2828653A25DE9C203E6B429C7C3F8EC5BB102DFC' }
+foreach ($n in $expect.Keys) {
+    $p = Join-Path $d $n
+    if (Test-Path -LiteralPath $p) {
+        $h = (Get-FileHash -LiteralPath $p -Algorithm SHA256).Hash
+        if ($h -ne $expect[$n]) { throw "existing $n has an unexpected hash: $h" }
+    }
+}
+'PRE_RUN_OK=True'
+PRE_RUN_OK=True
+copied /tmp/claude-1000/exact-mvp1-writers/SafeUpload-stage-prototype.sys -> SafeUpload-stage-prototype-mvp1f63bb58.sys sha256=f63bb58fffae8691504e9983e358269e0bb3e6d864d4ff85d23fd4e1ed2ccc1f
+copied /tmp/claude-1000/exact-mvp1-writers/inspector-feature-release.exe -> SafeUpload.Inspector.mvp1f63bb58.exe sha256=33c970a623a2c48c8d76a44f2828653a25de9c203e6b429c7c3f8ec5bb102dfc

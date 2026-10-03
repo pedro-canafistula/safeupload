@@ -1,0 +1,11 @@
+PRE_RUN_PS: $ErrorActionPreference='Stop'
+$d='C:\Users\vika\Documents'
+$expected=@{'SafeUpload-stage-prototype-mvp1detached2.sys'='27F54DF104DAED46B8B73AA95E65D0062F343A6A6B1B5C79B86D35B7FD243CAF';'SafeUpload.Inspector.mvp1detached2.exe'='41EE7A8197AC93B470400CB6FA05A4DB822BD536E4E306A8EC707C84FB090E8A';'StagedTestAgent-661EBB84C8E739EE.ps1'='661EBB84C8E739EE6F77E663C06557855288DA96D127E6B43642ACD480F59086'}
+foreach($n in $expected.Keys){$p=Join-Path $d $n;if(Test-Path -LiteralPath $p){if((Get-FileHash -LiteralPath $p -Algorithm SHA256).Hash -ne $expected[$n]){throw ('Existing input hash mismatch: '+$n)}}}
+if((Get-FileHash -LiteralPath (Join-Path $d 'StagedTestAgent.ps1') -Algorithm SHA256).Hash -ne 'E17696FF684A27A283469989F6A58B8F6111BCB11AE8F9CABD025F711BACEFD9'){throw 'Original shared helper hash mismatch'}
+'PRE_RUN_OK=True'
+
+PRE_RUN_OK=True
+copied /tmp/claude-1000/exact-mvp1-detached2/SafeUpload-stage-prototype.sys -> SafeUpload-stage-prototype-mvp1detached2.sys sha256=27f54df104daed46b8b73aa95e65d0062f343a6a6b1b5c79b86d35b7fd243caf
+copied /tmp/claude-1000/exact-mvp1-detached2/inspector-feature-release.exe -> SafeUpload.Inspector.mvp1detached2.exe sha256=41ee7a8197ac93b470400cb6fa05a4db822bd536e4e306a8ec707c84fb090e8a
+copied /home/victor/Work/safeupload-staging/driver/scripts/StagedTestAgent.ps1 -> StagedTestAgent-661EBB84C8E739EE.ps1 sha256=661ebb84c8e739ee6f77e663c06557855288da96d127e6b43642acd480f59086

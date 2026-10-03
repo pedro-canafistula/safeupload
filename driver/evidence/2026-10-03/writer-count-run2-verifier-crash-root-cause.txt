@@ -1,0 +1,37 @@
+Writer-count run2 Verifier crash: source and dump correlation
+Date: 2026-10-03
+
+Failed runtime artifact: F63BB58FFFAE8691504E9983E358269E0BB3E6D864D4FF85D23FD4E1ED2CCC1F
+Build: exact-mvp1-writers, source commit c1684c7e (full ID in source-provenance.txt).
+The preserved 22-file source manifest matches that commit, including StageFence.c
+SHA256 8b48d98de71491db1f667c400e3ff654db4c7fcfd0b2d7ccd8f4b14537b3b960.
+The gate records this signed artifact installed before volatile Verifier 0x13B.
+The original run2 harness SHA256 was not recorded; its exact revision is not
+inferred from the artifact hash. Fresh reruns have explicit harness provenance.
+
+The QEMU memory capture was converted to a synthetic live dump. !analyze reports
+0x161 for that container; the real nt!KiBugCheckData in crash-stacks.txt is:
+  0xD1, address ffffe78f`98144024, IRQL 2, write 1, instruction fffff804`22ffe358.
+The matching driver symbols in crash-site.txt identify
+SafeUpload!FenceAppendQuarantinedVolumes+0x68:
+  mov dword ptr [rcx+24h],eax
+The source writes Scan->QuarantineGeneration while FenceSopLock is held.
+Scan is allocated from POOL_FLAG_PAGED. The lock raises IRQL to DISPATCH_LEVEL,
+where the paged-pool write is invalid when Verifier has trimmed that page.
+
+FenceClearScannedQuarantine also read Scan fields under two spin locks. Commit
+bf43d8b4 moves the generation store after lowering IRQL and snapshots the scanned
+volume identities and generation on the kernel stack before acquiring locks.
+The generation comparison remains protected by the same locks, so a concurrent
+quarantine insertion still prevents clearing the outdated snapshot.
+
+The failed overlay and private memory capture were preserved. The recovery log
+ends with win10-debug running on safeupload-recovery-writers-20261003. Fresh
+writer-count-run3-verifier-baseline.txt independently verifies the restored
+original driver/policy, unloaded filter, Verifier off, no test tasks or fixtures.
+This recovery baseline is current evidence, not an inferred run2 cleanup pass.
+
+Fix validation: exact-mvp1-irqlfix summary (four WDK configurations, both
+Inspectors, zero warnings/errors, PREfast and ApiValidator), writer-count run3
+under volatile Verifier (34 fixture checks pass), and its independent restoration.
+The later exact-mvp1-sectionpair build includes this same fence fix.

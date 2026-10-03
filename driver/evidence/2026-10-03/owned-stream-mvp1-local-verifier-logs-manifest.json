@@ -1,0 +1,27 @@
+[
+  {
+    "GuestPath": "C:/Users/vika/Documents/stage-owned-service-out.log",
+    "LocalPath": "driver/evidence/2026-10-03/owned-stream-mvp1-local-verifier-service-out.log",
+    "SHA256": "AE34FCC110EED4479D9A95EE105F8F4E8607D0C07FB92B88F00C6B6B5507E5B5"
+  },
+  {
+    "GuestPath": "C:/Users/vika/Documents/stage-owned-service-err.log",
+    "LocalPath": "driver/evidence/2026-10-03/owned-stream-mvp1-local-verifier-service-err.log",
+    "SHA256": "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855"
+  },
+  {
+    "GuestPath": "C:/Users/vika/Documents/stage-owned-mapped-restart-service-out.log",
+    "LocalPath": "driver/evidence/2026-10-03/owned-stream-mvp1-local-verifier-mapped-restart-out.log",
+    "SHA256": "63B74EAB05536E2DD42A08973428FDE0CD7FAAFF4470CAC252428DB32F178037"
+  },
+  {
+    "GuestPath": "C:/Users/vika/Documents/stage-owned-restarted-service-out.log",
+    "LocalPath": "driver/evidence/2026-10-03/owned-stream-mvp1-local-verifier-restarted-out.log",
+    "SHA256": "AE34FCC110EED4479D9A95EE105F8F4E8607D0C07FB92B88F00C6B6B5507E5B5"
+  },
+  {
+    "GuestPath": "C:/Users/vika/AppData/Local/Temp/SafeUpload-owned-26a710469abb41478f73844c80cf03d6.ps1.observer.log",
+    "LocalPath": "driver/evidence/2026-10-03/owned-stream-mvp1-local-verifier-observer.log",
+    "SHA256": "B8A6A3C43A9E61E447A56AC47EC09BB27B2A7AECE87A5E4D70C7EF1987801424"
+  }
+]

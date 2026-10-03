@@ -1,0 +1,79 @@
+FeatureSignatureStatus=Valid
+FeatureSignerThumbprint=220DD82C37FCF36048D59E4F10113185D81D5DC7
+Variant=section-inflight
+TestTimestampUTC=2026-10-03T14:22:22.4972570Z
+Host=WIN10-DEBUGGED
+UUID=9D44EEE8-81CF-4CC1-9FBA-7670F11DEF4D
+OriginalInstalledSHA256=ADA9D05AB6AECDD2B6C521B0CE529FC06C732154ACB3EE85439FBDC8AA80DFCE
+FeatureSHA256=BAFE5F100CE8C43A79EEE0C12EED9A8D0D7A7023EF281CA7F1F5822BB4D7D125
+ExpectedInspectorSHA256=48BAA396FE8CB701230F95D50298075996830D9C9E4BB3C437D6E470F447748E
+OriginalPolicySHA256=29DC8A341BD7C549996596D2477A0CCCAF19602C362A2167FB4FDD5C66663731
+ServicePackageSHA256=D887E0D7F38AD64AD40CEE18B841C6D38AD2BED4D6F760B1BDE4464927381997
+Baseline=FilterUnloaded;VerifierOffAndUnconfigured;ServiceManualStopped;AgentProcesses0;Tasks0
+InspectorSHA256=48BAA396FE8CB701230F95D50298075996830D9C9E4BB3C437D6E470F447748E
+Verifier Volatile Flags: 0x0000013b
+  Volatile Flags:
+    [X] 0x00000001 Special pool.
+    [X] 0x00000002 Force IRQL checking.
+    [ ] 0x00000004 Randomized low resources simulation.
+    [X] 0x00000008 Pool tracking.
+    [X] 0x00000010 I/O verification.
+    [X] 0x00000020 Deadlock detection.
+    [ ] 0x00000080 DMA checking.
+    [ ] 0x00000200 Force pending I/O requests.
+    [ ] 0x00000400 IRP logging.
+    [ ] 0x00000800 Miscellaneous checks.
+  Added Drivers:
+    SafeUpload.sys
+The new settings are in effect until the system
+is restarted or the settings are changed again.
+VerifierEnabled=volatile flags 0x13B
+FeatureFilterLoadOutput=
+X3_Stats0=inserted:0;released:0;removedOnFailure:0;now:0;overflow:0;stuck:0
+X3_Single=failures:0;insertedDelta:500;releasedDelta:500;now:0
+X3_Storm=failures:0;writableSections:2400;readOnlySections:2400;insertedDelta:2400;releasedDelta:2400;removedOnFailureDelta:0;maxDepth:3;overflowDelta:0
+X3_InjectedFailures=attempts:20;failedAsExpected:20;insertedDelta:20;releasedDelta:20;removedOnFailureDelta:0
+X3_FailedAcquireCoverage=NOT_EXERCISED
+X3_SharedFileObject=failures:0;writableSections:2400;readOnlySections:2400;insertedDelta:2400;releasedDelta:2400
+X3_AtRest=inserted:5320;released:5320;removedOnFailure:0;now:0;overflow:0;stuck:0;maxDepth:7
+ProbeCommand_X3_Probe=SUCCESS
+ProbeCommand_X3_Probe_ExitCode=0
+ProbeCommand_X3_Probe_Stdout={"admissionProbe":"sent","status":"0x00000000"}
+ProbeCommand_X3_Probe_Stderr=
+X3_Probe=0;mmDoes:no
+X3_Verdict=conservationResidual:0;stormTrackedSections:2400;overflow:0;stuck:0;now:0
+X3_Result=PASS
+Verifier Volatile Flags: 0x00000000
+  Volatile Flags:
+    [ ] 0x00000001 Special pool.
+    [ ] 0x00000002 Force IRQL checking.
+    [ ] 0x00000004 Randomized low resources simulation.
+    [ ] 0x00000008 Pool tracking.
+    [ ] 0x00000010 I/O verification.
+    [ ] 0x00000020 Deadlock detection.
+    [ ] 0x00000080 DMA checking.
+    [ ] 0x00000200 Force pending I/O requests.
+    [ ] 0x00000400 IRP logging.
+    [ ] 0x00000800 Miscellaneous checks.
+  Removed Drivers:
+    SafeUpload.sys
+The new settings are in effect until the system
+is restarted or the settings are changed again.
+No settings were changed.
+OriginalDriverRestored=ADA9D05AB6AECDD2B6C521B0CE529FC06C732154ACB3EE85439FBDC8AA80DFCE
+ExperimentalDriverUnloaded=True
+Restoration_OriginalDriver=True
+Restoration_OriginalPolicy=True
+Restoration_FilterUnloaded=True
+Restoration_VerifierOff=True
+Restoration_ServiceManualStopped=True
+Restoration_AgentProcesses=0
+Restoration_InspectorProcesses=0
+Restoration_Tasks=0
+Restoration_FixtureRemoved=True
+Restoration_BackupsRemoved=True
+Restoration_AgentLogsRemoved=True
+Restoration_InspectorCopyRemoved=True
+RestorationSucceeded=True
+VariantComplete=section-inflight
+HARNESS_RETURNED

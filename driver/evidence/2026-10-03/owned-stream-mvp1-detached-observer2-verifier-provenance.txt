@@ -1,0 +1,36 @@
+HarnessSourceCommit=f7dede8fd6a35d003bf024372946b788a6b5a42f
+HelperInputFileName=StagedTestAgent-661EBB84C8E739EE.ps1
+SourceCommit=6d066ac2865a8cdb79fd639603ae6b1885aa2a7c
+BuildLabel=mvp1-detached2
+FeatureSHA256=27F54DF104DAED46B8B73AA95E65D0062F343A6A6B1B5C79B86D35B7FD243CAF
+ServicePackageSHA256=10EC079C82D97BD1BFE07D0C623BC0699B15D96839B7324690090490BA96E5D3
+AgentSourceCommit=6d066ac2865a8cdb79fd639603ae6b1885aa2a7c
+Invocation=$ErrorActionPreference='Stop';$d='C:\Users\vika\Documents';$driver=Join-Path $d 'SafeUpload-stage-prototype-mvp1detached2.sys'
+$sig=Get-AuthenticodeSignature $driver;if($sig.Status.ToString() -ne 'Valid' -or $sig.SignerCertificate.Thumbprint -ne '220DD82C37FCF36048D59E4F10113185D81D5DC7'){throw 'Signature mismatch'}
+if((Get-FileHash (Join-Path $d 'Test-StagedOwnedStreams.ps1') -Algorithm SHA256).Hash -ne '64D64BBB6EC1B2957DE37E7A29DFF3E1BE272FB8EED57AC91CB1FD872DEFA22B'){throw 'Harness hash mismatch'}
+if((Get-FileHash (Join-Path $d 'StagedIdentityProbe.cs') -Algorithm SHA256).Hash -ne 'F48CF293CEE263B57246FF3E396A8EB007705B60B9E263B1A223D0FFB54024D0'){throw 'Identity helper hash mismatch'}
+$policy='C:\ProgramData\SafeUpload\policy.json';$originalHash='29DC8A341BD7C549996596D2477A0CCCAF19602C362A2167FB4FDD5C66663731'
+if((Get-FileHash $policy -Algorithm SHA256).Hash -ne $originalHash){throw 'Policy baseline mismatch'}
+$backup=Join-Path $d 'owned-stream-mvp1-detached-observer2-verifier-original-policy.bin';$bytes=[IO.File]::ReadAllBytes($policy);[IO.File]::WriteAllBytes($backup,$bytes)
+if((Get-FileHash $backup -Algorithm SHA256).Hash -ne $originalHash){throw 'Durable policy backup failed'}
+$test=[Text.Encoding]::UTF8.GetString($bytes)|ConvertFrom-Json
+$test.monitoredScopes.destinationPaths=@('S:\SafeUpload\Escopo Monitorado');$test.monitoredScopes.removableDrives=$false;$test.monitoredScopes.networkPaths=$false;$test.auditOnly=$false
+try {
+ [IO.File]::WriteAllBytes($policy,[Text.Encoding]::UTF8.GetBytes(($test|ConvertTo-Json -Depth 20)))
+ 'DedicatedLocalPolicySHA256='+(Get-FileHash $policy -Algorithm SHA256).Hash
+ 'RegressionTaintMode=EXISTING_DEFAULT;MvpAcceptance=False'
+ & (Join-Path $d 'Test-StagedOwnedStreams.ps1') -TestAgentHelperFileName 'StagedTestAgent-661EBB84C8E739EE.ps1' -Verifier -ReplacementCases -PublicationIterations 8 -FeatureDriverFileName 'SafeUpload-stage-prototype-mvp1detached2.sys' -ExpectedFeatureSha256 '27F54DF104DAED46B8B73AA95E65D0062F343A6A6B1B5C79B86D35B7FD243CAF' -ServiceDirectoryName 'stage-service-publish-mvp1detached2-observer2' -ExpectedServicePackageSha256 '10EC079C82D97BD1BFE07D0C623BC0699B15D96839B7324690090490BA96E5D3'
+} finally {
+ [IO.File]::WriteAllBytes($policy,[IO.File]::ReadAllBytes($backup))
+ if((Get-FileHash $policy -Algorithm SHA256).Hash -ne $originalHash){throw 'Policy restoration failed'}
+ Remove-Item -LiteralPath $backup -Force
+ 'DedicatedLocalPolicyRestored=True'
+}
+
+Not MVP acceptance: existing taint enforcement and fresh-reader observer.
+64d64bbb6ec1b2957de37e7a29dff3e1be272fb8eed57ac91cb1fd872defa22b  driver/scripts/Test-StagedOwnedStreams.ps1
+661ebb84c8e739ee6f77e663c06557855288da96d127e6b43642acd480f59086  driver/scripts/StagedTestAgent.ps1
+f48cf293cee263b57246ff3e396a8eb007705b60b9e263b1a223d0ffb54024d0  driver/scripts/StagedIdentityProbe.cs
+948d0ecd9dae85142bbf3dbdc93f83ae5d8a4fda7585c7774035a5246fa2da15  driver/scripts/Get-StagedBaseline.ps1
+1b18b42e1abfe9f111ab40c2d96b862628361b64596a63353b9d97c840333a42  driver/scripts/Invoke-DebuggeeExperiment.sh
+76af25ca7b3784c67d5a07322a87fd3835cad5fd2e6b9f05a1e0869da50abc27  driver/scripts/remote_ps.py

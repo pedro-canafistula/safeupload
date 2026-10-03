@@ -1,0 +1,8 @@
+AllVolumeCanaries=PASS;count:2
+WC_Group_basic=probes:12;checks:12;lostEntries:0;snapshotSequence:598
+WC_Group_duplicates=probes:5;checks:5;lostEntries:0;snapshotSequence:241
+WC_Group_aliases=probes:12;checks:12;lostEntries:0;snapshotSequence:476
+WC_Group_many_and_sections=probes:7;checks:7;lostEntries:0;snapshotSequence:3486
+WC_StatsDelta=counted:4226;released:4226;liveDelta:0
+WC_Summary=passed:36;failed:0
+RestorationSucceeded=True

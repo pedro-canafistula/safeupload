@@ -1,0 +1,10 @@
+Readable extracted counters and verdicts; raw gate remains authoritative.
+X3_Stats0=inserted:0;released:0;removedOnFailure:0;now:0;overflow:0;stuck:0
+X3_Single=failures:0;insertedDelta:500;releasedDelta:500;now:0
+X3_Storm=failures:0;writableSections:2400;readOnlySections:2400;insertedDelta:2400;releasedDelta:2400;removedOnFailureDelta:0;maxDepth:3;overflowDelta:0
+X3_InjectedFailures=attempts:20;failedAsExpected:0;insertedDelta:20;releasedDelta:20;removedOnFailureDelta:0
+X3_AtRest=inserted:2920;released:2920;removedOnFailure:0;now:0;overflow:0;stuck:0;maxDepth:3
+X3_Verdict=conservationResidual:0;stormTrackedSections:2400;overflow:0;stuck:0;now:0
+X3_Result=PASS
+VariantComplete=section-inflight
+RestorationSucceeded=True

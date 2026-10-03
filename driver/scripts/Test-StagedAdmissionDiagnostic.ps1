@@ -36,7 +36,8 @@ param(
     [string] $FaultExerciseFileName = 'Invoke-StagedSectionFault.ps1',
     [ValidatePattern('^([0-9A-Fa-f]{64})?$')][string] $ExpectedFaultSha256 = '',
     [ValidatePattern('^([0-9A-Fa-f]{64})?$')][string] $ExpectedFaultClientSha256 = '',
-    [ValidatePattern('^([0-9A-Fa-f]{64})?$')][string] $ExpectedFaultExerciseSha256 = ''
+    [ValidatePattern('^([0-9A-Fa-f]{64})?$')][string] $ExpectedFaultExerciseSha256 = '',
+    [switch] $FaultCapacity
 )
 
 $ErrorActionPreference = 'Stop'
@@ -2511,6 +2512,7 @@ Start-Sleep -Seconds 300
                     '-Fixture',$target,'-Inspector',$inspectorPath,'-ClientSource',$faultClientSource,'-ResultPath',$resultPath,
                     '-TracePrefix',$tracePrefix,'-ExpectedInspectorSha256',$ExpectedInspectorSha256,
                     '-ExpectedClientSha256',$ExpectedFaultClientSha256)
+                if ($FaultCapacity) { $exerciseArguments += '-Capacity' }
                 $argumentLine=(@($exerciseArguments|ForEach-Object { ConvertTo-WindowsArgument ([string]$_) })) -join ' '
                 $agent=Start-StagedTestAgent $PSHOME (Join-Path $documents ('SafeUpload-section-lower-'+$id+'-system')) 'powershell.exe' $argumentLine
                 # Retain the native process handle before exit; use the CLR getter to avoid
@@ -2528,6 +2530,7 @@ Start-Sleep -Seconds 300
                     $lower.Disarmed.Mode -ne 0 -or $lower.Disarmed.ArmedFileObject -ne 0 -or $lower.Disarmed.CurrentHeld -ne 0) {
                     throw 'Live lower-stack section qualification failed.'
                 }
+                if ($FaultCapacity -and ($lower.Capacity.StickyUnknown -ne $true -or $lower.Capacity.Workers -ne 66)) { throw 'Capacity qualification result missing.' }
                 if ($RequireAllVolumeCanaries) { Wait-AllVolumeCanaries ($rawTraceB+'-final-volumes.json') }
                 $runSucceeded=$true
                 Write-Output 'SectionLowerQualification=PASS'

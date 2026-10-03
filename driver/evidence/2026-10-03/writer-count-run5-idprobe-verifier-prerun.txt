@@ -1,0 +1,10 @@
+PRE_RUN_PS: $ErrorActionPreference='Stop'
+$d='C:\Users\vika\Documents'
+$expected=@{'SafeUpload-stage-prototype-mvp1idprobe2.sys'='7741E7D4A5D43BB2125DB3AED159FD4E9B37C8A2A931290D6A1363F5CBCBFFA2';'SafeUpload.Inspector.mvp1idprobe2.exe'='34D405C320F5B766BB53D3003E541BFA9379BB8EBF135C1FA2A763D80A4193C8'}
+foreach($n in $expected.Keys){$p=Join-Path $d $n;if(Test-Path -LiteralPath $p){if((Get-FileHash -LiteralPath $p -Algorithm SHA256).Hash -ne $expected[$n]){throw ('Existing input hash mismatch: '+$n)}}}
+if((Get-FileHash -LiteralPath (Join-Path $d 'StagedTestAgent.ps1') -Algorithm SHA256).Hash -ne 'E17696FF684A27A283469989F6A58B8F6111BCB11AE8F9CABD025F711BACEFD9'){throw 'Shared helper hash mismatch'}
+'PRE_RUN_OK=True'
+
+PRE_RUN_OK=True
+copied /tmp/claude-1000/exact-mvp1-idprobe2/SafeUpload-stage-prototype.sys -> SafeUpload-stage-prototype-mvp1idprobe2.sys sha256=7741e7d4a5d43bb2125db3aed159fd4e9b37c8a2a931290d6a1363f5cbcbffa2
+copied /tmp/claude-1000/exact-mvp1-idprobe2/inspector-feature-release.exe -> SafeUpload.Inspector.mvp1idprobe2.exe sha256=34d405c320f5b766bb53d3003e541bfa9379bb8ebf135c1fa2a763d80a4193c8

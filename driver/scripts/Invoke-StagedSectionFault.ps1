@@ -5,10 +5,11 @@ param([Parameter(Mandatory)][string]$Fixture,
     [Parameter(Mandatory)][string]$ResultPath,
     [Parameter(Mandatory)][string]$TracePrefix,
     [Parameter(Mandatory)][string]$ExpectedInspectorSha256,
-    [Parameter(Mandatory)][string]$ExpectedClientSha256)
+    [Parameter(Mandatory)][string]$ExpectedClientSha256,
+    [switch]$Capacity)
 $ErrorActionPreference='Stop'
 $result=[ordered]@{ Passed=$false; Mode='live lower-stack resource-failure injection and bounded hold'; Errors=@() }
-$client=$null; $file=$null; $mapping=$null; $traces=@{}; $exerciseError=$null
+$client=$null; $file=$null; $mapping=$null; $traces=@{}; $exerciseError=$null; $capacityMappings=@()
 function Assert-LowerAttachment {
     $volume=[SafeUploadSectionFaultClient]::VolumeForHandle($file.SafeFileHandle)
     $inventory=@([SafeUploadSectionFaultClient]::Inventory($volume))
@@ -21,13 +22,17 @@ function Assert-LowerAttachment {
     $result['Attachments_'+$result.Count]=$inventory
     $result.TargetVolume=$volume
 }
-function Get-UpperStats([switch]$AllowIntentionalHold) {
+function Read-UpperStats {
     $raw=[SafeUploadSectionFaultClient]::Inspector($Inspector,'--writer-state-status')
     $state=$raw|ConvertFrom-Json
     foreach($field in @('writerState','sectionInFlightNow','sectionInFlightInserted','sectionInFlightReleased',
         'sectionInFlightRemovedOnFailure','sectionInFlightOverflow','sectionInFlightStuck')) {
         if ($state.PSObject.Properties.Name -notcontains $field) { throw ('Missing upper status: '+$field) }
     }
+    return $state
+}
+function Get-UpperStats([switch]$AllowIntentionalHold) {
+    $state=Read-UpperStats
     # Only the exact held callback may age beyond the production two-second threshold.
     # The caller brackets this snapshot with same-FO/generation CurrentHeld=1 proof.
     $heldSnapshot = $AllowIntentionalHold -and $state.sectionInFlightNow -eq 1 -and
@@ -133,6 +138,69 @@ try {
         throw 'Held acquire/release did not conserve upper C.'
     }
     $result.Hold=@{Before=$before;During=$during;After=$after;Arm=$armed;Held=$stillHeld;Released=$released}
+    if ($Capacity) {
+        # Intentionally exceed the production table's 64 slots. This is a separate
+        # negative qualification: overflow must remain Unknown after all native work drains.
+        Assert-LowerAttachment
+        Reset-UpperTrace
+        $capacityBefore=Get-UpperStats
+        if ($capacityBefore.sectionInFlightNow -ne 0) { throw 'Tracker busy before capacity test.' }
+        $capacityArm=$client.Send(2,$file.SafeFileHandle.DangerousGetHandle())
+        for ($index=0;$index -lt 66;$index++) {
+            $capacityMappings += [SafeUploadSectionFaultMapping]::new($file.SafeFileHandle)
+        }
+        $deadline=[DateTime]::UtcNow.AddSeconds(10)
+        do {
+            $capacityHeld=$client.Send(0,[IntPtr]::Zero)
+            $established=$capacityHeld.CurrentHeld -eq 66 -and ($capacityHeld.Held-$capacityArm.Held) -eq 66 -and
+                $capacityHeld.ArmedFileObject -eq $capacityArm.ArmedFileObject -and
+                $capacityHeld.ArmGeneration -eq $capacityArm.ArmGeneration
+            if (-not $established) { Start-Sleep -Milliseconds 10 }
+        } while (-not $established -and [DateTime]::UtcNow -lt $deadline)
+        if (-not $established) { throw 'Capacity callbacks did not establish the exact-FO hold.' }
+        foreach ($worker in $capacityMappings) { if ($worker.Wait(0)) { throw 'Capacity mapping escaped hold.' } }
+        $capacityDuring=Read-UpperStats
+        $capacityEntries=@(Get-UpperTrace 'capacity-held' $capacityArm.ArmedFileObject)
+        $capacityAcquires=@($capacityEntries|Where-Object { $_.event -eq 'section_acquire' -and $_.syncType -eq 1 -and
+            ([Convert]::ToUInt32($_.pageProtection.Substring(2),16) -band 0xCC) -ne 0 })
+        $capacityStillHeld=$client.Send(0,[IntPtr]::Zero)
+        if ($capacityAcquires.Count -ne 66 -or $capacityDuring.writerState -ne $true -or
+            $capacityDuring.sectionInFlightOverflow -le $capacityBefore.sectionInFlightOverflow -or
+            $capacityDuring.sectionInFlightNow -le 0 -or $capacityDuring.sectionInFlightNow -gt 64 -or
+            $capacityStillHeld.CurrentHeld -ne 66 -or $capacityStillHeld.ArmedFileObject -ne $capacityArm.ArmedFileObject -or
+            $capacityStillHeld.ArmGeneration -ne $capacityArm.ArmGeneration -or
+            $capacityStillHeld.TimedOut -ne $capacityArm.TimedOut -or $capacityStillHeld.InvalidIrql -ne $capacityArm.InvalidIrql) {
+            throw 'Intentional table overflow was not attributable to the held callbacks.'
+        }
+        [void]$client.Send(3,[IntPtr]::Zero)
+        $drainDeadline=[DateTime]::UtcNow.AddSeconds(10)
+        foreach ($worker in $capacityMappings) {
+            $remaining=[Math]::Max(0,[int]($drainDeadline-[DateTime]::UtcNow).TotalMilliseconds)
+            if (-not $worker.Wait($remaining) -or $worker.WorkerError -or -not $worker.Created) { throw 'Capacity native worker did not drain successfully.' }
+        }
+        $capacityReleased=$client.Send(0,[IntPtr]::Zero)
+        if ($capacityReleased.CurrentHeld -ne 0 -or $capacityReleased.TimedOut -ne $capacityArm.TimedOut -or
+            $capacityReleased.InvalidIrql -ne $capacityArm.InvalidIrql) { throw 'Capacity lower callbacks did not drain.' }
+        [void]$client.Send(4,[IntPtr]::Zero)
+        # A later successful mapping must not clear sticky uncertainty.
+        $mapping=[SafeUploadSectionFaultMapping]::new($file.SafeFileHandle)
+        if (-not $mapping.Wait(10000) -or $mapping.WorkerError -or -not $mapping.Created) { throw 'Post-overflow mapping did not succeed.' }
+        $capacityAfter=Read-UpperStats
+        if ($capacityAfter.sectionInFlightOverflow -lt $capacityDuring.sectionInFlightOverflow -or
+            $capacityAfter.sectionInFlightNow -ne $capacityDuring.sectionInFlightNow -or
+            $capacityAfter.sectionInFlightRemovedOnFailure -ne $capacityBefore.sectionInFlightRemovedOnFailure) { throw 'Overflow uncertainty did not remain sticky.' }
+        # File-ID S/H/C probes are allowed only after every held callback and mapping has drained.
+        Reset-UpperTrace
+        [void][SafeUploadSectionFaultClient]::Inspector($Inspector,('--admission-probe "'+$Fixture+'"'))
+        [void](Get-UpperTrace 'capacity-probe' $capacityArm.ArmedFileObject)
+        $probeRows=@($traces['capacity-probe'] -split '[\r\n]+'|Where-Object { $_.Trim().Length -gt 0 }|ForEach-Object { $_|ConvertFrom-Json })
+        $probes=@($probeRows|Where-Object event -eq 'explicit_probe')
+        if ($probes.Count -ne 1 -or $probes[0].probeStatus -ne '0x00000000' -or $probes[0].probeStage -ne 8 -or
+            $probes[0].pid -ne 4 -or $probes[0].irql -ne 0 -or
+            ([UInt64]$probes[0].inFlightSections -band [UInt64]2147483648) -eq 0) { throw 'Post-drain C probe did not report sticky Unknown.' }
+        $result.Capacity=@{Workers=66;Before=$capacityBefore;During=$capacityDuring;After=$capacityAfter;
+            Arm=$capacityArm;Held=$capacityStillHeld;Released=$capacityReleased;Probe=$probes[0];StickyUnknown=$true}
+    }
     $result.Passed=$true
 } catch { $exerciseError=$_.Exception.ToString(); $result.Errors+= $exerciseError }
 finally {
@@ -141,6 +209,11 @@ finally {
         catch { $result.Errors+='Disarm: '+$_.Exception.Message }
     }
     if ($mapping -and -not $mapping.Wait(10000)) { $result.Errors+='Mapping worker did not drain.' }
+    $drainDeadline=[DateTime]::UtcNow.AddSeconds(10)
+    foreach ($worker in $capacityMappings) {
+        $remaining=[Math]::Max(0,[int]($drainDeadline-[DateTime]::UtcNow).TotalMilliseconds)
+        if (-not $worker.Wait($remaining)) { $result.Errors+='Capacity mapping worker did not drain.' }
+    }
     if ($file) { try { $file.Dispose() } catch { $result.Errors+='File dispose: '+$_.Exception.Message } }
     if ($client) { try { $client.Dispose() } catch { $result.Errors+='Port dispose: '+$_.Exception.Message } }
     foreach($name in $traces.Keys) { [IO.File]::WriteAllText($TracePrefix+'-'+$name+'.jsonl',$traces[$name]) }

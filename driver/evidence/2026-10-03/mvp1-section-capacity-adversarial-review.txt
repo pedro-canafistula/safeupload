@@ -1,0 +1,5 @@
+Fresh read-only review /root/primitive_review; no tests, builds, VM actions or edits by reviewer.
+No blocking findings in capacity addition. Proof requires all66 exactFO callbacks held, complete trace and actual upper overflow. Every native worker must drain before FILE-ID probe; final probe requires sticky C uncertainty after later successful mapping. Cleanup bounded; strict checks outside deliberate overflow retained. Live qualification pending at review.
+773e91e0dc207fb7793d8bce6424572324ddeeb6d2c72fcf6aaaf7cb29ee87e6  driver/scripts/Invoke-StagedSectionFault.ps1
+8c0f15a02d96d02f88de41a5f43a2ac7def75f7d7613dcc213dd45c699c1ff6f  driver/scripts/Test-StagedAdmissionDiagnostic.ps1
+aa26f0f8b16e896d6896efe053985005cfc4f04a01757f652dc17755f816caaa  driver/scripts/Invoke-StagedSectionQualification.py

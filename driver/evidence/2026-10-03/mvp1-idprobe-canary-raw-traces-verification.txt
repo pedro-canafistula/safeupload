@@ -1,0 +1,22 @@
+DownloadedRawFiles=64
+Every guest/local SHA256 verified=True
+ExplicitProbeTransportFailures=0
+Canary failures are independent fields and are NOT treated as passing qualification.
+Per-run counts:
+section-inflight-run11-all-volumes-verifier: {"files": 1, "volume_reports": 1}
+section-inflight-run13-detached-verifier: {"explicit_probes": 2, "files": 4, "rows": 5743, "volume_reports": 2}
+section-inflight-run14-detached: {"explicit_probes": 2, "files": 4, "rows": 5619, "volume_reports": 2}
+section-inflight-run4-idprobe-verifier: {"explicit_probes": 1, "files": 1, "rows": 5627}
+section-inflight-run8-canary-verifier: {"explicit_probes": 2, "files": 2, "rows": 5701}
+writer-count-run10-all-volumes-verifier: {"explicit_probes": 37, "files": 7, "rows": 4921, "volume_reports": 2}
+writer-count-run14-detached-verifier: {"explicit_probes": 44, "files": 7, "rows": 5354, "volume_reports": 2}
+writer-count-run15-detached: {"explicit_probes": 44, "files": 7, "rows": 5039, "volume_reports": 2}
+writer-count-run5-idprobe-verifier: {"explicit_probes": 36, "files": 4, "rows": 4825}
+writer-count-run6-canary-verifier: {"explicit_probes": 20, "files": 20, "rows": 1754}
+writer-count-run7-canarydiag-verifier: {"explicit_probes": 1, "files": 1, "rows": 94}
+writer-count-run8-canary-verifier: {"explicit_probes": 1, "files": 1, "rows": 92}
+writer-count-run9-canary-verifier: {"explicit_probes": 37, "files": 5, "rows": 4956}
+
+Attribution uses separate test-start / independent-final-baseline intervals and exact source commit recorded in each manifest item.
+Stress-window lostEntries are reported in raw summaries. The exact expected fixture probes are retained; a group does not establish a complete unbroken generic event trace.
+Failure evidence remains failure: section-inflight-run11-all-volumes-verifier aborted on a detached-volume mismatch before X3; recovered state is separate.

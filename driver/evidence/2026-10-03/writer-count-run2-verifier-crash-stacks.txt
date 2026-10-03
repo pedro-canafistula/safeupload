@@ -1,0 +1,275 @@
+
+************* Preparing the environment for Debugger Extensions Gallery repositories **************
+   ExtensionRepository : Implicit
+   UseExperimentalFeatureForNugetShare : true
+   AllowNugetExeUpdate : true
+   NonInteractiveNuget : true
+   AllowNugetMSCredentialProviderInstall : true
+   AllowParallelInitializationOfLocalRepositories : true
+   EnableRedirectToChakraJsProvider : false
+
+   -- Configuring repositories
+      ----> Repository : LocalInstalled, Enabled: true
+      ----> Repository : UserExtensions, Enabled: true
+
+>>>>>>>>>>>>> Preparing the environment for Debugger Extensions Gallery repositories completed, duration 0.000 seconds
+
+************* Waiting for Debugger Extensions Gallery to Initialize **************
+
+>>>>>>>>>>>>> Waiting for Debugger Extensions Gallery to Initialize completed, duration 0.015 seconds
+   ----> Repository : UserExtensions, Enabled: true, Packages count: 0
+   ----> Repository : LocalInstalled, Enabled: true, Packages count: 30
+
+Microsoft (R) Windows Debugger Version 10.0.28000.2705 AMD64
+Copyright (c) Microsoft Corporation. All rights reserved.
+
+
+Loading Dump File [C:\Users\vika\Documents\SafeUpload-h1-verifier.dmp]
+Kernel Complete Dump File: Full address space is available
+
+Comment: 'Hello from elf2dmp!'
+
+************* Path validation summary **************
+Response                         Time (ms)     Location
+Deferred                                       srv*C:\symbols*https://msdl.microsoft.com/download/symbols
+Symbol search path is: srv*C:\symbols*https://msdl.microsoft.com/download/symbols
+Executable search path is: 
+KiProcessorBlock[2] is null.
+KiProcessorBlock[3] is null.
+Windows 10 Kernel Version 19041 MP (4 procs) Free x64
+Product: WinNt, suite: TerminalServer SingleUserTS
+Edition build lab: 19041.1.amd64fre.vb_release.191206-1406
+Kernel base = 0xfffff801`57a00000 PsLoadedModuleList = 0xfffff801`5862a2b0
+System Uptime: 0 days 16:36:49.229
+Loading Kernel Symbols
+...............................................................
+................................................................
+..........................................
+Loading User Symbols
+
+Loading unloaded module list
+..................................................
+Unknown exception - code 00000000 (first/second chance not available)
+For analysis of this file, run !analyze -v
+0: kd> cdb: Reading initial command '.symfix+ C:\Symbols; .reload; !sym noisy off; .echo ===BUGCHECKDATA; dq nt!KiBugCheckData L5; .echo ===CPU1_THREAD; .thread ffffd203fd5b6040; kn 45; .echo ===THREAD_INFO; !thread ffffd203fd5b6040 3; .echo ===DONE; q'
+Loading Kernel Symbols
+...............................................................
+................................................................
+..........................................
+Loading User Symbols
+
+Loading unloaded module list
+..................................................
+noisy mode - symbol prompts off
+===BUGCHECKDATA
+fffff801`5862b340  00000000`000000d1 ffffe78f`98144024
+fffff801`5862b350  00000000`00000002 00000000`00000001
+fffff801`5862b360  fffff804`22ffe358
+===CPU1_THREAD
+DBGHELP: C:\Symbols\kdnet.dll\0478E2FE49000\kdnet.dll - OK
+DBGENG:  C:\Symbols\kdnet.dll\0478E2FE49000\kdnet.dll - Mapped image memory
+         c:\symbols*https://msdl.microsoft.com/download/symbols
+         kdnet.pdb
+         0591D13A7F04DC69F24F5866C1FABB0C1
+DBGHELP: kdcom - public symbols  
+        c:\symbols\kdnet.pdb\0591D13A7F04DC69F24F5866C1FABB0C1\kdnet.pdb
+Implicit thread is now ffffd203`fd5b6040
+         kd_02_8086.dll
+         AEFFD4325c000
+DBGHELP: C:\Users\vika\kd_02_8086.dll - file not found
+DBGHELP: C:\Users\vika\kd_02_8086.dll - file not found
+DBGHELP: kd_02_8086.dll not found in .reload
+DBGHELP: kd_02_8086.dll not found in .reload
+DBGHELP: kd_02_8086.dll not found in !sym noisy off
+DBGHELP: kd_02_8086.dll not found in !sym noisy off
+DBGHELP: kd_02_8086.dll not found in .echo ===BUGCHECKDATA
+DBGHELP: kd_02_8086.dll not found in .echo ===BUGCHECKDATA
+DBGHELP: kd_02_8086.dll not found in dq nt!KiBugCheckData L5
+DBGHELP: kd_02_8086.dll not found in dq nt!KiBugCheckData L5
+DBGHELP: kd_02_8086.dll not found in .echo ===CPU1_THREAD
+DBGHELP: kd_02_8086.dll not found in .echo ===CPU1_THREAD
+DBGHELP: kd_02_8086.dll not found in .thread ffffd203fd5b6040
+DBGHELP: kd_02_8086.dll not found in .thread ffffd203fd5b6040
+DBGHELP: kd_02_8086.dll not found in kn 45
+DBGHELP: kd_02_8086.dll not found in kn 45
+DBGHELP: kd_02_8086.dll not found in .echo ===THREAD_INFO
+DBGHELP: kd_02_8086.dll not found in .echo ===THREAD_INFO
+DBGHELP: kd_02_8086.dll not found in !thread ffffd203fd5b6040 3
+DBGHELP: kd_02_8086.dll not found in !thread ffffd203fd5b6040 3
+DBGHELP: kd_02_8086.dll not found in .echo ===DONE
+DBGHELP: kd_02_8086.dll not found in .echo ===DONE
+         https://msdl.microsoft.com/download/symbols
+         kd_02_8086.dll
+         AEFFD4325c000
+DBGHELP: C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\sym\kd_02_8086.dll\AEFFD4325c000\kd_02_8086.dll - OK
+DBGENG:  C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\sym\kd_02_8086.dll\AEFFD4325c000\kd_02_8086.dll - Mapped image memory
+         c:\symbols*https://msdl.microsoft.com/download/symbols
+         kd_02_8086.pdb
+         986F77ED49217C38E7257109E71610AD1
+DBGHELP: kd_02_8086 - public symbols  
+        c:\symbols\kd_02_8086.pdb\986F77ED49217C38E7257109E71610AD1\kd_02_8086.pdb
+ # Child-SP          RetAddr               Call Site
+00 ffffb080`661a1d48 fffff801`55c2240c     kdcom!WRITE_REGISTER_ULONG+0x2
+01 ffffb080`661a1d50 fffff801`55c23a20     kd_02_8086!WriteDeviceMemory+0x74
+02 ffffb080`661a1d90 fffff801`55c233ef     kd_02_8086!e1000_OutDword+0x34
+03 ffffb080`661a1dd0 fffff801`55c2375a     kd_02_8086!e1000_UNDI_Status+0xdf
+04 ffffb080`661a1e10 fffff801`55c21895     kd_02_8086!e1000_UNDI_APIEntry+0x12a
+05 ffffb080`661a1e40 fffff801`55c21079     kd_02_8086!UndiGetRxPacket+0xb9
+06 ffffb080`661a2050 fffff801`55c84cf8     kd_02_8086!KdGetRxPacket+0x9
+07 ffffb080`661a2080 fffff801`55c850fe     kdcom!GetRxPacket+0x88
+08 ffffb080`661a20d0 fffff801`55c851a1     kdcom!WaitForRxPacket+0x11a
+09 ffffb080`661a2130 fffff801`55c8535b     kdcom!WaitForSpecificRxPacket+0x39
+0a ffffb080`661a2190 fffff801`55c85576     kdcom!WaitForSpecificRxIpPacket+0xb7
+0b ffffb080`661a2260 fffff801`55c86ac6     kdcom!WaitForSpecificRxUdpPacketEx+0x6e
+0c ffffb080`661a22e0 fffff801`55c83253     kdcom!NetReadKdPacket+0xd6
+0d ffffb080`661a23a0 fffff801`55c8385d     kdcom!KdReceivePacket+0x153
+0e ffffb080`661a2460 fffff801`583bb5a3     kdcom!KdSendPacket+0x2ad
+0f ffffb080`661a24d0 fffff801`583bad9f     nt!KdpSendWaitContinue+0xaf
+10 ffffb080`661a26b0 fffff801`57f0ff6b     nt!KdpReportExceptionStateChange+0xbf
+11 ffffb080`661a2820 fffff801`583bdb80     nt!KdpReport+0xb7
+12 ffffb080`661a2860 fffff801`57ce7c99     nt!KdpTrap+0x160
+13 ffffb080`661a28b0 fffff801`57ce7887     nt!KdTrap+0x2d
+14 ffffb080`661a28f0 fffff801`57dfcdb2     nt!KiDispatchException+0x177
+15 ffffb080`661a2fb0 fffff801`57dfcd80     nt!KxExceptionDispatchOnExceptionStack+0x12
+16 ffffad08`2f9b07c8 fffff801`57e0fe65     nt!KiExceptionDispatchOnExceptionStackContinue
+17 ffffad08`2f9b07d0 fffff801`57e08ed0     nt!KiExceptionDispatch+0x125
+18 ffffad08`2f9b09b0 fffff801`57e05241     nt!KiBreakpointTrap+0x310
+19 ffffad08`2f9b0b48 fffff801`57f162f2     nt!DbgBreakPointWithStatus+0x1
+1a ffffad08`2f9b0b50 fffff801`57f15d62     nt!KiBugCheckDebugBreak+0x12
+1b ffffad08`2f9b0bb0 fffff801`57dfbda7     nt!KeBugCheck2+0xdd2
+1c ffffad08`2f9b12c0 fffff801`57e0fd29     nt!KeBugCheckEx+0x107
+1d ffffad08`2f9b1300 fffff801`57e0b8e3     nt!KiBugCheckDispatch+0x69
+1e ffffad08`2f9b1440 fffff804`22ffe358     nt!KiPageFault+0x463
+         SafeUpload.sys
+         6AC1087920a000
+DBGHELP: C:\Users\vika\SafeUpload.sys - file not found
+DBGHELP: C:\Users\vika\SafeUpload.sys - file not found
+DBGHELP: SafeUpload.sys not found in .reload
+DBGHELP: SafeUpload.sys not found in .reload
+DBGHELP: SafeUpload.sys not found in !sym noisy off
+DBGHELP: SafeUpload.sys not found in !sym noisy off
+DBGHELP: SafeUpload.sys not found in .echo ===BUGCHECKDATA
+DBGHELP: SafeUpload.sys not found in .echo ===BUGCHECKDATA
+DBGHELP: SafeUpload.sys not found in dq nt!KiBugCheckData L5
+DBGHELP: SafeUpload.sys not found in dq nt!KiBugCheckData L5
+DBGHELP: SafeUpload.sys not found in .echo ===CPU1_THREAD
+DBGHELP: SafeUpload.sys not found in .echo ===CPU1_THREAD
+DBGHELP: SafeUpload.sys not found in .thread ffffd203fd5b6040
+DBGHELP: SafeUpload.sys not found in .thread ffffd203fd5b6040
+DBGHELP: SafeUpload.sys not found in kn 45
+DBGHELP: SafeUpload.sys not found in kn 45
+DBGHELP: SafeUpload.sys not found in .echo ===THREAD_INFO
+DBGHELP: SafeUpload.sys not found in .echo ===THREAD_INFO
+DBGHELP: SafeUpload.sys not found in !thread ffffd203fd5b6040 3
+DBGHELP: SafeUpload.sys not found in !thread ffffd203fd5b6040 3
+DBGHELP: SafeUpload.sys not found in .echo ===DONE
+DBGHELP: SafeUpload.sys not found in .echo ===DONE
+         https://msdl.microsoft.com/download/symbols
+         SafeUpload.sys
+         6AC1087920a000
+DBGHELP: C:\Users\vika\SafeUpload.sys - file not found
+DBGHELP: C:\Users\vika\SafeUpload.sys - file not found
+         c:\symbols*https://msdl.microsoft.com/download/symbols
+         SafeUpload.sys
+         6AC1087920a000
+         SafeUpload.sys
+         6AC1087920a000
+DBGHELP: C:\Users\vika\SafeUpload.sys - file not found
+DBGHELP: C:\Users\vika\SafeUpload.sys - file not found
+DBGHELP: SafeUpload.sys not found in .reload
+DBGHELP: SafeUpload.sys not found in .reload
+DBGHELP: SafeUpload.sys not found in !sym noisy off
+DBGHELP: SafeUpload.sys not found in !sym noisy off
+DBGHELP: SafeUpload.sys not found in .echo ===BUGCHECKDATA
+DBGHELP: SafeUpload.sys not found in .echo ===BUGCHECKDATA
+DBGHELP: SafeUpload.sys not found in dq nt!KiBugCheckData L5
+DBGHELP: SafeUpload.sys not found in dq nt!KiBugCheckData L5
+DBGHELP: SafeUpload.sys not found in .echo ===CPU1_THREAD
+DBGHELP: SafeUpload.sys not found in .echo ===CPU1_THREAD
+DBGHELP: SafeUpload.sys not found in .thread ffffd203fd5b6040
+DBGHELP: SafeUpload.sys not found in .thread ffffd203fd5b6040
+DBGHELP: SafeUpload.sys not found in kn 45
+DBGHELP: SafeUpload.sys not found in kn 45
+DBGHELP: SafeUpload.sys not found in .echo ===THREAD_INFO
+DBGHELP: SafeUpload.sys not found in .echo ===THREAD_INFO
+DBGHELP: SafeUpload.sys not found in !thread ffffd203fd5b6040 3
+DBGHELP: SafeUpload.sys not found in !thread ffffd203fd5b6040 3
+DBGHELP: SafeUpload.sys not found in .echo ===DONE
+DBGHELP: SafeUpload.sys not found in .echo ===DONE
+         C:\symbols*https://msdl.microsoft.com/download/symbols
+         SafeUpload.sys
+         6AC1087920a000
+         https://msdl.microsoft.com/download/symbols
+         SafeUpload.sys
+         6AC1087920a000
+DBGENG:  \SystemRoot\System32\drivers\SafeUpload.sys - Image mapping disallowed by non-local path.
+Unable to load image \SystemRoot\System32\drivers\SafeUpload.sys, Win32 error 0n2
+         c:\symbols*https://msdl.microsoft.com/download/symbols
+         SafeUpload.pdb
+         9EB8D8D7D9564B26AE51D8ECD4BA06B61
+         SafeUpload.pdb
+         9EB8D8D7D9564B26AE51D8ECD4BA06B61
+DBGHELP: .reload\SafeUpload.pdb - file not found
+DBGHELP: .reload\sys\SafeUpload.pdb - file not found
+DBGHELP: .reload\symbols\sys\SafeUpload.pdb - file not found
+DBGHELP: !sym noisy off\SafeUpload.pdb - file not found
+DBGHELP: !sym noisy off\sys\SafeUpload.pdb - file not found
+DBGHELP: !sym noisy off\symbols\sys\SafeUpload.pdb - file not found
+DBGHELP: .echo ===BUGCHECKDATA\SafeUpload.pdb - file not found
+DBGHELP: .echo ===BUGCHECKDATA\sys\SafeUpload.pdb - file not found
+DBGHELP: .echo ===BUGCHECKDATA\symbols\sys\SafeUpload.pdb - file not found
+DBGHELP: dq nt!KiBugCheckData L5\SafeUpload.pdb - file not found
+DBGHELP: dq nt!KiBugCheckData L5\sys\SafeUpload.pdb - file not found
+DBGHELP: dq nt!KiBugCheckData L5\symbols\sys\SafeUpload.pdb - file not found
+DBGHELP: .echo ===CPU1_THREAD\SafeUpload.pdb - file not found
+DBGHELP: .echo ===CPU1_THREAD\sys\SafeUpload.pdb - file not found
+DBGHELP: .echo ===CPU1_THREAD\symbols\sys\SafeUpload.pdb - file not found
+DBGHELP: .thread ffffd203fd5b6040\SafeUpload.pdb - file not found
+DBGHELP: .thread ffffd203fd5b6040\sys\SafeUpload.pdb - file not found
+DBGHELP: .thread ffffd203fd5b6040\symbols\sys\SafeUpload.pdb - file not found
+DBGHELP: kn 45\SafeUpload.pdb - file not found
+DBGHELP: kn 45\sys\SafeUpload.pdb - file not found
+DBGHELP: kn 45\symbols\sys\SafeUpload.pdb - file not found
+DBGHELP: .echo ===THREAD_INFO\SafeUpload.pdb - file not found
+DBGHELP: .echo ===THREAD_INFO\sys\SafeUpload.pdb - file not found
+DBGHELP: .echo ===THREAD_INFO\symbols\sys\SafeUpload.pdb - file not found
+DBGHELP: !thread ffffd203fd5b6040 3\SafeUpload.pdb - file not found
+DBGHELP: !thread ffffd203fd5b6040 3\sys\SafeUpload.pdb - file not found
+DBGHELP: !thread ffffd203fd5b6040 3\symbols\sys\SafeUpload.pdb - file not found
+DBGHELP: .echo ===DONE\SafeUpload.pdb - file not found
+DBGHELP: .echo ===DONE\sys\SafeUpload.pdb - file not found
+DBGHELP: .echo ===DONE\symbols\sys\SafeUpload.pdb - file not found
+DBGHELP: q*https://msdl.microsoft.com/download/symbols\SafeUpload.pdb - file not found
+DBGHELP: q*https://msdl.microsoft.com/download/symbols\sys\SafeUpload.pdb - file not found
+DBGHELP: q*https://msdl.microsoft.com/download/symbols\symbols\sys\SafeUpload.pdb - file not found
+DBGHELP: SafeUpload - private symbols & lines 
+        C:\Users\vika\Documents\exact-mvp1-writers\src\driver\SafeUpload.Minifilter\x64\Debug\SafeUpload.pdb
+1f ffffad08`2f9b15d0 fffff804`22fff0ed     SafeUpload!FenceAppendQuarantinedVolumes+0x68
+20 ffffad08`2f9b16d0 fffff804`231f4b44     SafeUpload!FenceCollectVolumes+0x39d
+21 ffffad08`2f9b17c0 fffff804`231f5433     SafeUpload!FenceRefreshInternal+0x214
+22 ffffad08`2f9b1830 fffff804`231f60ce     SafeUpload!SafeUploadStageFenceRefresh+0x113
+23 ffffad08`2f9b1890 fffff804`231f61d0     SafeUpload!DriverEntry+0xce
+24 ffffad08`2f9b18d0 fffff801`5816c0f4     SafeUpload!GsDriverEntry+0x20
+25 ffffad08`2f9b1900 fffff801`581382b5     nt!PnpCallDriverEntry+0x4c
+26 ffffad08`2f9b1960 fffff801`5817ca97     nt!IopLoadDriver+0x4e5
+27 ffffad08`2f9b1b30 fffff801`57c8e5c5     nt!IopLoadUnloadDriver+0x57
+28 ffffad08`2f9b1b70 fffff801`57d265f5     nt!ExpWorkerThread+0x105
+29 ffffad08`2f9b1c10 fffff801`57e048d8     nt!PspSystemThreadStartup+0x55
+2a ffffad08`2f9b1c60 00000000`00000000     nt!KiStartSystemThread+0x28
+===THREAD_INFO
+THREAD ffffd203fd5b6040  Cid 0004.1004  Teb: 0000000000000000 Win32Thread: 0000000000000000 RUNNING on processor 1
+===DONE
+quit:
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\atlmfc.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\concurrency.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\cpp_rest.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\Kernel.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\ObjectiveC.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\stl.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\Usb4Kd.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\Windows.Data.Json.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\Windows.Devices.Geolocation.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\Windows.Devices.Sensors.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\Windows.Media.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\windows.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\winrt.natvis'
