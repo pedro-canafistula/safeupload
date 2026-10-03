@@ -1,5 +1,23 @@
 [
   {
+    "Name": "SafeUpload-admission-trace-writer-fault-852a5b4f75704ee08ab58e2c0941c8eb-A.jsonl-canary-0.jsonl",
+    "SHA256": "221F7A5805D8D06D3E0438AE8FD7A582738D0F0CA51625FBEB53094C88BAFAA8",
+    "Bytes": 96000,
+    "UTC": "2026-10-03T17:14:31.7671998Z",
+    "Run": "writer-fault-run2",
+    "SourceCommit": "7496d5adab67a0cf12f016f222773dc96b104b94",
+    "LocalPath": "driver/evidence/2026-10-03/writer-fault-raw/SafeUpload-admission-trace-writer-fault-852a5b4f75704ee08ab58e2c0941c8eb-A.jsonl-canary-0.jsonl"
+  },
+  {
+    "Name": "SafeUpload-admission-trace-writer-fault-852a5b4f75704ee08ab58e2c0941c8eb-A.jsonl-volumes.json-0",
+    "SHA256": "827E467BDC855C6E6D5FE65A286F03E98E50BB7A40A3A69702D8596541932DA7",
+    "Bytes": 2126,
+    "UTC": "2026-10-03T17:14:24.4452005Z",
+    "Run": "writer-fault-run2",
+    "SourceCommit": "7496d5adab67a0cf12f016f222773dc96b104b94",
+    "LocalPath": "driver/evidence/2026-10-03/writer-fault-raw/SafeUpload-admission-trace-writer-fault-852a5b4f75704ee08ab58e2c0941c8eb-A.jsonl-volumes.json-0"
+  },
+  {
     "Name": "SafeUpload-admission-trace-writer-fault-d244059a767e47b9af7336caeecedd16-A.jsonl-canary-0.jsonl",
     "SHA256": "9E401A7A6441072A9DDA0E861E33D2C58A78DDCA0B5D988DF738E6E2561955F4",
     "Bytes": 108255,
@@ -16,6 +34,87 @@
     "Run": "writer-fault-run1",
     "SourceCommit": "7496d5adab67a0cf12f016f222773dc96b104b94",
     "LocalPath": "driver/evidence/2026-10-03/writer-fault-raw/SafeUpload-admission-trace-writer-fault-d244059a767e47b9af7336caeecedd16-A.jsonl-volumes.json-0"
+  },
+  {
+    "Name": "SafeUpload-writer-fault-852a5b4f75704ee08ab58e2c0941c8eb-before-verifier.txt",
+    "SHA256": "BA5F628E0197FB3787AC1EADE290BB44ED09FE3B71AED8BBD73653620F728530",
+    "Bytes": 2290,
+    "UTC": "2026-10-03T17:14:43.2052037Z",
+    "Run": "writer-fault-run2",
+    "SourceCommit": "7496d5adab67a0cf12f016f222773dc96b104b94",
+    "LocalPath": "driver/evidence/2026-10-03/writer-fault-raw/SafeUpload-writer-fault-852a5b4f75704ee08ab58e2c0941c8eb-before-verifier.txt"
+  },
+  {
+    "Name": "SafeUpload-writer-fault-852a5b4f75704ee08ab58e2c0941c8eb-cleanup-disabled-verifier.txt",
+    "SHA256": "F11ADDE44F521345613A70FEF50D18F243FB162432C91FF7D6257A663DFDA9DB",
+    "Bytes": 2290,
+    "UTC": "2026-10-03T17:14:43.2052037Z",
+    "Run": "writer-fault-run2",
+    "SourceCommit": "7496d5adab67a0cf12f016f222773dc96b104b94",
+    "LocalPath": "driver/evidence/2026-10-03/writer-fault-raw/SafeUpload-writer-fault-852a5b4f75704ee08ab58e2c0941c8eb-cleanup-disabled-verifier.txt"
+  },
+  {
+    "Name": "SafeUpload-writer-fault-852a5b4f75704ee08ab58e2c0941c8eb-combined-configuration.txt",
+    "SHA256": "64B09E165FC4BC63F20DF1B70507B0EE903EAA74B92989F3662B6A4AC304CF8F",
+    "Bytes": 712,
+    "UTC": "2026-10-03T17:14:43.2211996Z",
+    "Run": "writer-fault-run2",
+    "SourceCommit": "7496d5adab67a0cf12f016f222773dc96b104b94",
+    "LocalPath": "driver/evidence/2026-10-03/writer-fault-raw/SafeUpload-writer-fault-852a5b4f75704ee08ab58e2c0941c8eb-combined-configuration.txt"
+  },
+  {
+    "Name": "SafeUpload-writer-fault-852a5b4f75704ee08ab58e2c0941c8eb-fault-configuration.txt",
+    "SHA256": "C473CC76ECA50DB5C4D30344DD524096ACA661F3200EDECC8D6DF7311C693913",
+    "Bytes": 717,
+    "UTC": "2026-10-03T17:14:43.2172049Z",
+    "Run": "writer-fault-run2",
+    "SourceCommit": "7496d5adab67a0cf12f016f222773dc96b104b94",
+    "LocalPath": "driver/evidence/2026-10-03/writer-fault-raw/SafeUpload-writer-fault-852a5b4f75704ee08ab58e2c0941c8eb-fault-configuration.txt"
+  },
+  {
+    "Name": "SafeUpload-writer-fault-852a5b4f75704ee08ab58e2c0941c8eb-healthy-before-probe.jsonl",
+    "SHA256": "92F214EDC3E6D6DD8ECCD72CC1FCA4EEAEEFC3DA0F9CD4C571A490B2A606E695",
+    "Bytes": 857,
+    "UTC": "2026-10-03T17:14:43.2112051Z",
+    "Run": "writer-fault-run2",
+    "SourceCommit": "7496d5adab67a0cf12f016f222773dc96b104b94",
+    "LocalPath": "driver/evidence/2026-10-03/writer-fault-raw/SafeUpload-writer-fault-852a5b4f75704ee08ab58e2c0941c8eb-healthy-before-probe.jsonl"
+  },
+  {
+    "Name": "SafeUpload-writer-fault-852a5b4f75704ee08ab58e2c0941c8eb-result.json",
+    "SHA256": "8258F7879D3425F55DADD13108605CD5D72A8EDF0D651F7BCE97C2A443591463",
+    "Bytes": 4498,
+    "UTC": "2026-10-03T17:14:43.2452114Z",
+    "Run": "writer-fault-run2",
+    "SourceCommit": "7496d5adab67a0cf12f016f222773dc96b104b94",
+    "LocalPath": "driver/evidence/2026-10-03/writer-fault-raw/SafeUpload-writer-fault-852a5b4f75704ee08ab58e2c0941c8eb-result.json"
+  },
+  {
+    "Name": "SafeUpload-writer-fault-852a5b4f75704ee08ab58e2c0941c8eb-system-err.log",
+    "SHA256": "9EBE8103CD0FDA003EBAB2ACC908C74E5D5D3CA3A689A14CEF66B708FA75E891",
+    "Bytes": 562,
+    "UTC": "2026-10-03T17:14:43.3872099Z",
+    "Run": "writer-fault-run2",
+    "SourceCommit": "7496d5adab67a0cf12f016f222773dc96b104b94",
+    "LocalPath": "driver/evidence/2026-10-03/writer-fault-raw/SafeUpload-writer-fault-852a5b4f75704ee08ab58e2c0941c8eb-system-err.log"
+  },
+  {
+    "Name": "SafeUpload-writer-fault-852a5b4f75704ee08ab58e2c0941c8eb-system-out.log",
+    "SHA256": "6BF15DE52E8AF236A7F60A93CFBD5D1AFC625EAD94FE476021B5912A7C20D539",
+    "Bytes": 2358,
+    "UTC": "2026-10-03T17:14:43.2571976Z",
+    "Run": "writer-fault-run2",
+    "SourceCommit": "7496d5adab67a0cf12f016f222773dc96b104b94",
+    "LocalPath": "driver/evidence/2026-10-03/writer-fault-raw/SafeUpload-writer-fault-852a5b4f75704ee08ab58e2c0941c8eb-system-out.log"
+  },
+  {
+    "Name": "SafeUpload-writer-fault-852a5b4f75704ee08ab58e2c0941c8eb-target-before-probe.jsonl",
+    "SHA256": "89DE291CBB2BF37BABB143278E998461EE4C9D7B8BC0988B47711CA7BE1359B1",
+    "Bytes": 857,
+    "UTC": "2026-10-03T17:14:43.2211996Z",
+    "Run": "writer-fault-run2",
+    "SourceCommit": "7496d5adab67a0cf12f016f222773dc96b104b94",
+    "LocalPath": "driver/evidence/2026-10-03/writer-fault-raw/SafeUpload-writer-fault-852a5b4f75704ee08ab58e2c0941c8eb-target-before-probe.jsonl"
   },
   {
     "Name": "SafeUpload-writer-fault-d244059a767e47b9af7336caeecedd16-before-verifier.txt",

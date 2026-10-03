@@ -100,11 +100,8 @@ function Invoke-StagedWriterFaultQualification([string]$Target,[string]$Healthy,
         $configuration=& verifier.exe /volatile /faults 10000 SUwH SUHFail.exe 0 2>&1|Out-String
         $configurationExit=$LASTEXITCODE;$rawRecords['fault-configuration.txt']=$configuration
         Assert-FaultConfiguration $configuration $configurationExit
-        # /faults sets volatile flags to 4 on this Windows build. Restore the full
-        # runtime set plus LRS, and require its acknowledgement to retain all filters.
-        $combined=& verifier.exe /volatile /flags 0x13F 2>&1|Out-String
-        $combinedExit=$LASTEXITCODE;$rawRecords['combined-configuration.txt']=$combined
-        Assert-FaultConfiguration $combined $combinedExit
+        # Do not follow /faults with /volatile /flags: on this Windows build (run 2) that resets the
+        # filters to 600/(null)/(null)/8. The active /query flags must still carry 0x13B plus LRS.
         $verifierArmed=Read-FaultVerifier 'armed' $true
         Open-FaultWriter $first $identity
         $statsFailed=Get-WriterStateStats

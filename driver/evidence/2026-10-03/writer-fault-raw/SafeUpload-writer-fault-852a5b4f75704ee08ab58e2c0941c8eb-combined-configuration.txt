@@ -1,0 +1,25 @@
+
+Verifier Volatile Flags: 0x0000013f
+
+  Volatile Flags:
+
+    [X] 0x00000001 Special pool.
+    [X] 0x00000002 Force IRQL checking.
+    [X] 0x00000004 Randomized low resources simulation.
+    [X] 0x00000008 Pool tracking.
+    [X] 0x00000010 I/O verification.
+    [X] 0x00000020 Deadlock detection.
+    [ ] 0x00000080 DMA checking.
+    [ ] 0x00000200 Force pending I/O requests.
+    [ ] 0x00000400 IRP logging.
+    [ ] 0x00000800 Miscellaneous checks.
+
+  Randomized Low Resources Simulation Parameters:
+
+    Probability: 600
+    Pool Tags: (null)
+    Applications: (null)
+    Delay Minutes: 8
+
+The new settings are in effect until the system
+is restarted or the settings are changed again.
