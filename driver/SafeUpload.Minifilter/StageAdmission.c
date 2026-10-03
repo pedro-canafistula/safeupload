@@ -217,7 +217,11 @@ static VOID StageCanaryRun(_In_ PFLT_INSTANCE Instance, _Inout_ PSAFEUPLOAD_INST
      * Closing our source handle then remains a cleanup fallback even if the explicit delete fails. */
     onClose.Flags = FILE_DISPOSITION_DELETE | FILE_DISPOSITION_ON_CLOSE;
     step = 7;
-    status = FltSetInformationFile(Instance, fileObject, &onClose, sizeof(onClose), FileDispositionInformationEx);
+    /* ON_CLOSE changes the handle's deletion state. The object-only FltSetInformationFile path
+     * returns STATUS_NOT_SUPPORTED on the qualified Win10 NTFS build; use the documented handle
+     * API for this operation. This handle owns only the freshly created private canary file. */
+    RtlZeroMemory(&io, sizeof(io));
+    status = ZwSetInformationFile(fileHandle, &io, &onClose, sizeof(onClose), FileDispositionInformationEx);
     if (!NT_SUCCESS(status)) goto Exit;
     InitializeObjectAttributes(&attributes, NULL, OBJ_KERNEL_HANDLE, NULL, NULL);
     step = 8;
