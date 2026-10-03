@@ -1,0 +1,6 @@
+PRE_RUN_PS: $p = 'C:\Users\vika\Documents\SafeUpload.Inspector.run34-79c0b69.exe'
+if (Test-Path -LiteralPath $p) { throw 'run34 Inspector input path already exists' }
+'PRE_RUN_OK=True'
+PRE_RUN_OK=True
+copied /tmp/safeupload-run26-feature-signed.sys -> SafeUpload-stage-prototype.sys sha256=b664c2f3af7b1be70bbafb60ed5901070e736211077ab436c81a8b2587da00a2
+copied /tmp/claude-1000/artifacts/SafeUpload.Inspector.run34.exe -> SafeUpload.Inspector.run34-79c0b69.exe sha256=80f2327cb62d05bc450c76b5aad2206011111920306b4fca3ebb18b77fc202be

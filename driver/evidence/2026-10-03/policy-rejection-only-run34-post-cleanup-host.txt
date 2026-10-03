@@ -1,0 +1,8 @@
+UTC=2026-10-03T12:25:34Z
+--- active disk
+ Target   Source
+---------------------------------------------------------------------------------------------------
+ vda      /var/lib/libvirt/images/win10-debug.safeupload-pre-policy-rejection-only-run34-20261003
+ sda      -
+ sdb      -
+

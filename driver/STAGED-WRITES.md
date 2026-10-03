@@ -193,15 +193,27 @@ Normal staging stays compiled out and taint enforcement remains.
           5.1; zero parse errors, 14 declared interop methods compiled, the
           default and run-scoped names were accepted, and a traversal name was
           rejected ([evidence](evidence/2026-10-03/policy-rejection-only-run34-harness-ps51-parse-compile.txt)).
-    - [ ] Retry the rejection-only VM diagnostic on a fresh clean checkpoint
-          using a unique `InspectorInputFileName`, the rebuilt Inspector hash,
-          and the pre-run marker gate; verify the active overlay and guest
-          identity during unconditional post-wrapper cleanup, derive and
-          cross-check the signed-driver hash, and preserve unchanged approved
-          policy scopes.
-    - [ ] Verify the rejection-only branch on the clean VM, including baseline
-          policy identity, expected `ERROR_NOT_SUPPORTED`, unchanged fence
-          state, and independent machine restoration.
+    - [x] Retry the rejection-only VM diagnostic (run34) on a fresh clean
+          checkpoint with the run-scoped Inspector input `80F2327C…`, the
+          pre-run marker gate (`PRE_RUN_OK=True`), and the signed run26 feature
+          SYS `B664C2F3…` (signature Valid, signer `220DD82C…`). Post-wrapper
+          cleanup verified the active run34 overlay and guest identity, removed
+          only the hash-checked staged input, left the prior guest input
+          `8F4D97B3…` untouched, and a fresh baseline was clean.
+    - [x] Verify the rejection-only branch on the clean VM: baseline policy
+          `29DC8A34…` unchanged, the pinned agent's policy push failed with
+          `ERROR_NOT_SUPPORTED` from `FilterPort.SetPolicy`/`TryPushPolicy`,
+          fence generation and entry count unchanged with the rejected refresh
+          observed (`PolicyRejectionFencePreservation=PASS`), and independent
+          restoration `BaselineClean=True`. This proves only the refusal path
+          for the unchanged removable/network policy; it is not a byte-privacy
+          or policy-transition result. Evidence: [baseline](evidence/2026-10-03/policy-rejection-only-run34-baseline.txt),
+          [checkpoint](evidence/2026-10-03/policy-rejection-only-run34-checkpoint.txt),
+          [pre-run](evidence/2026-10-03/policy-rejection-only-run34-prerun.txt),
+          [gate](evidence/2026-10-03/policy-rejection-only-run34-gate.txt),
+          [independent restoration](evidence/2026-10-03/policy-rejection-only-run34-final-restored-state.txt),
+          [post-wrapper cleanup](evidence/2026-10-03/policy-rejection-only-run34-post-cleanup-guest.txt),
+          [post-cleanup baseline](evidence/2026-10-03/policy-rejection-only-run34-post-cleanup-baseline.txt).
     - [ ] Run the positive policy-transition mapping and byte-observation cases
           only after scope-correct removable and network coverage permits the
           unchanged approved policy; record independent byte observation and
