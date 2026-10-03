@@ -1,6 +1,6 @@
 param(
     [Parameter(Mandatory = $true)]
-    [ValidateSet('preattach-immediate', 'preattach-protected-open', 'mmdoes-matrix', 'policy-transition', 'retained-section', 'section-eol', 'writer-count', 'canary-security', 'canary-newvolume', 'section-inflight', 'section-lower', 'writer-fault', 'primitive-cost', 'All')]
+    [ValidateSet('preattach-immediate', 'preattach-protected-open', 'mmdoes-matrix', 'policy-transition', 'retained-section', 'section-eol', 'writer-count', 'canary-security', 'canary-newvolume', 'section-inflight', 'section-lower', 'section-teardown', 'writer-fault', 'primitive-cost', 'All')]
     [string] $Variant,
 
     [Parameter(Mandatory = $true)]
@@ -2523,6 +2523,14 @@ function Invoke-Variant([string] $SelectedVariant) {
     $traceEnabled = $false
     $agent = $null
     $runSucceeded = $false
+    $sectionTeardownVariant = $SelectedVariant -eq 'section-teardown'
+    $sectionTeardownVhdx = $null
+    $sectionTeardownDiskpart = $null
+    $sectionTeardownVhdxOwned = $false
+    $sectionTeardownSummaryEmitted = $false
+    $sectionTeardownExerciseResultSeen = $false
+    $script:SectionTeardownPassed = 0
+    $script:SectionTeardownFailed = 0
     $restorationErrors = New-Object System.Collections.ArrayList
     $fileHandles = New-Object System.Collections.ArrayList
     $mappings = New-Object System.Collections.ArrayList
@@ -4439,8 +4447,16 @@ Start-Sleep -Seconds 300
                 if ($cleanupErrors.Count -ne 0) { throw ($cleanupErrors -join '; ') }
             }
         }
-        elseif ($SelectedVariant -eq 'section-lower') {
+        elseif ($SelectedVariant -eq 'section-lower' -or $SelectedVariant -eq 'section-teardown') {
             $t = $InspectorTimeoutSeconds
+            if ($sectionTeardownVariant) {
+                if (-not $Verifier) { throw 'section-teardown requires runtime Verifier.' }
+                $sectionTeardownVhdx = Join-Path $documents ('SafeUpload-section-teardown-' + $id + '.vhdx')
+                $sectionTeardownDiskpart = $sectionTeardownVhdx + '.txt'
+                if ((Test-Path -LiteralPath $sectionTeardownVhdx) -or (Test-Path -LiteralPath $sectionTeardownDiskpart) -or
+                    (Test-Path -LiteralPath 'S:\')) { throw 'Owned VHDX path or S: is already present.' }
+                $sectionTeardownVhdxOwned = $true
+            }
             $faultInput=Join-Path $documents $FaultDriverFileName
             $faultClientSource=Join-Path $documents $FaultClientFileName
             $faultExercise=Join-Path $documents $FaultExerciseFileName
@@ -4517,37 +4533,175 @@ Start-Sleep -Seconds 300
                 }
                 Write-Output ('SectionFaultNonSystemDenied='+$denied+';HRESULT='+$denialCode)
                 if (-not $denied) { throw 'Companion port did not reject the ordinary identity with access denied.' }
-                $resultPath=Join-Path $documents ('SafeUpload-section-lower-'+$id+'-result.json')
-                $tracePrefix=Join-Path $documents ('SafeUpload-section-lower-'+$id)
+                $exerciseLabel=if($sectionTeardownVariant){'section-teardown'}else{'section-lower'}
+                $resultPath=Join-Path $documents ('SafeUpload-'+$exerciseLabel+'-'+$id+'-result.json')
+                $tracePrefix=Join-Path $documents ('SafeUpload-'+$exerciseLabel+'-'+$id)
                 $exerciseArguments=@('-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',$faultExercise,
                     '-Fixture',$target,'-Inspector',$inspectorPath,'-ClientSource',$faultClientSource,'-ResultPath',$resultPath,
                     '-TracePrefix',$tracePrefix,'-ExpectedInspectorSha256',$ExpectedInspectorSha256,
                     '-ExpectedClientSha256',$ExpectedFaultClientSha256)
-                if ($FaultCapacity) { $exerciseArguments += '-Capacity' }
+                if ($sectionTeardownVariant) {
+                    $exerciseArguments += @('-SectionTeardown','-Verifier','-VhdxPath',$sectionTeardownVhdx,'-DiskpartPath',$sectionTeardownDiskpart)
+                }
+                elseif ($FaultCapacity) { $exerciseArguments += '-Capacity' }
                 $argumentLine=(@($exerciseArguments|ForEach-Object { ConvertTo-WindowsArgument ([string]$_) })) -join ' '
-                $agent=Start-StagedTestAgent $PSHOME (Join-Path $documents ('SafeUpload-section-lower-'+$id+'-system')) 'powershell.exe' $argumentLine
+                $agent=Start-StagedTestAgent $PSHOME (Join-Path $documents ('SafeUpload-'+$exerciseLabel+'-'+$id+'-system')) 'powershell.exe' $argumentLine
                 # Retain the native process handle before exit; use the CLR getter to avoid
                 # Get-Process adapter snapshots of ExitCode. A missing exit code must fail.
                 [void]$agent.Process.Handle
-                if (-not $agent.Process.WaitForExit(60000)) { throw 'SYSTEM lower exercise timed out.' }
+                $exerciseWaitMs=if($sectionTeardownVariant){300000}else{60000}
+                if (-not $agent.Process.WaitForExit($exerciseWaitMs)) {
+                    if($sectionTeardownVariant){
+                        Write-Output 'ST_ExerciseProcess=completed:false;timeoutMs:300000;FAIL'
+                        $script:SectionTeardownFailed++
+                        $sectionTeardownExerciseResultSeen=$true
+                    }
+                    throw 'SYSTEM lower/teardown exercise timed out.'
+                }
                 $lowerExitCode=$agent.Process.get_ExitCode()
-                Write-Output ('SectionLowerProcessExitCode='+$lowerExitCode)
-                if (-not (Test-Path $resultPath)) { throw 'SYSTEM lower exercise did not write its result.' }
+                Write-Output ('SectionExerciseProcessExitCode='+$lowerExitCode)
+                if (-not (Test-Path $resultPath)) {
+                    if($sectionTeardownVariant){
+                        Write-Output 'ST_ExerciseResult=missing:true;FAIL'
+                        $script:SectionTeardownFailed++
+                        $sectionTeardownExerciseResultSeen=$true
+                    }
+                    throw 'SYSTEM section exercise did not write its result.'
+                }
                 $lower=Get-Content -LiteralPath $resultPath -Raw|ConvertFrom-Json
-                Write-Output ('SectionLowerResult='+($lower|ConvertTo-Json -Depth 10 -Compress))
-                Write-Output ('SectionLowerResultFile='+$resultPath)
-                Write-Output ('SectionLowerTracePrefix='+$tracePrefix)
+                if($sectionTeardownVariant){$sectionTeardownExerciseResultSeen=$true}
+                Write-Output ('SectionExerciseResult='+($lower|ConvertTo-Json -Depth 10 -Compress))
+                Write-Output ('SectionExerciseResultFile='+$resultPath)
+                Write-Output ('SectionExerciseTracePrefix='+$tracePrefix)
+                if($sectionTeardownVariant){
+                    foreach($checkLine in @($lower.Checks)){
+                        Write-Output ([string]$checkLine)
+                        if([string]$checkLine -match ';PASS$'){$script:SectionTeardownPassed++}
+                        else{$script:SectionTeardownFailed++}
+                    }
+                    $exerciseOk=$lowerExitCode -eq 0 -and $lower.Passed -eq $true -and $lower.Errors.Count -eq 0
+                    Write-Output ('ST_ExerciseResult=exitCode:'+ $lowerExitCode +';passed:'+$lower.Passed+';errors:'+$lower.Errors.Count+';'+$(if($exerciseOk){'PASS'}else{'FAIL'}))
+                    if($exerciseOk){$script:SectionTeardownPassed++}else{$script:SectionTeardownFailed++}
+                }
                 if ($lowerExitCode -ne 0 -or $lower.Passed -ne $true -or $lower.Errors.Count -ne 0 -or
                     $lower.Disarmed.Mode -ne 0 -or $lower.Disarmed.ArmedFileObject -ne 0 -or $lower.Disarmed.CurrentHeld -ne 0) {
-                    throw 'Live lower-stack section qualification failed.'
+                    throw 'Live lower-stack/teardown section qualification failed.'
                 }
-                if ($FaultCapacity -and ($lower.Capacity.StickyUnknown -ne $true -or $lower.Capacity.Workers -ne 66)) { throw 'Capacity qualification result missing.' }
-                if ($RequireAllVolumeCanaries) { Wait-AllVolumeCanaries ($rawTraceB+'-final-volumes.json') }
+                if (-not $sectionTeardownVariant -and $FaultCapacity -and ($lower.Capacity.StickyUnknown -ne $true -or $lower.Capacity.Workers -ne 66)) { throw 'Capacity qualification result missing.' }
+                if ($RequireAllVolumeCanaries -and -not $sectionTeardownVariant) { Wait-AllVolumeCanaries ($rawTraceB+'-final-volumes.json') }
                 $runSucceeded=$true
-                Write-Output 'SectionLowerQualification=PASS'
+                if($sectionTeardownVariant){Write-Output 'SectionTeardownQualification=PASS'}
+                else{Write-Output 'SectionLowerQualification=PASS'}
             } finally {
                 try { Stop-StagedTestAgent $agent; $agent=$null }
                 finally {
+                    if ($sectionTeardownVariant -and $faultLoaded) {
+                        $rescueAgent = $null
+                        $rescueResultPath = Join-Path $documents ('SafeUpload-section-teardown-' + $id + '-release-result.json')
+                        $rescueTracePrefix = Join-Path $documents ('SafeUpload-section-teardown-' + $id + '-release')
+                        try {
+                            $rescueArguments = @('-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',$faultExercise,
+                                '-Fixture',$target,'-Inspector',$inspectorPath,'-ClientSource',$faultClientSource,
+                                '-ResultPath',$rescueResultPath,'-TracePrefix',$rescueTracePrefix,
+                                '-ExpectedInspectorSha256',$ExpectedInspectorSha256,
+                                '-ExpectedClientSha256',$ExpectedFaultClientSha256,'-EmergencyRelease')
+                            $rescueLine = (@($rescueArguments | ForEach-Object { ConvertTo-WindowsArgument ([string]$_) })) -join ' '
+                            $rescueAgent = Start-StagedTestAgent $PSHOME (Join-Path $documents ('SafeUpload-section-teardown-' + $id + '-release-system')) 'powershell.exe' $rescueLine
+                            [void]$rescueAgent.Process.Handle
+                            if (-not $rescueAgent.Process.WaitForExit(30000)) {
+                                Stop-StagedTestAgent $rescueAgent
+                                $rescueAgent = $null
+                                throw 'SYSTEM emergency release timed out after 30000 ms.'
+                            }
+                            $rescueExit = $rescueAgent.Process.get_ExitCode()
+                            if (-not (Test-Path -LiteralPath $rescueResultPath)) { throw 'SYSTEM emergency release result is missing.' }
+                            $rescueResult = Get-Content -LiteralPath $rescueResultPath -Raw | ConvertFrom-Json
+                            $rescueArmedFileObject = [UInt64]$rescueResult.Disarmed.ArmedFileObject
+                            $rescueOk = $rescueExit -eq 0 -and $rescueResult.Passed -eq $true -and
+                                $rescueResult.Disarmed.Mode -eq 0 -and $rescueArmedFileObject -eq 0 -and
+                                $rescueResult.Disarmed.CurrentHeld -eq 0
+                            Write-Output ('ST_EmergencyHoldRelease=exitCode:' + $rescueExit + ';releaseMode:' + $rescueResult.EmergencyRelease.ReleaseMode +
+                                ';mode:' + $rescueResult.Disarmed.Mode + ';armedFileObject:0x' + $rescueArmedFileObject.ToString('X16') +
+                                ';currentHeld:' + $rescueResult.Disarmed.CurrentHeld + ';resultFile:' + $rescueResultPath +
+                                ';' + $(if ($rescueOk) { 'PASS' } else { 'FAIL' }))
+                            if ($rescueOk) { $script:SectionTeardownPassed++ }
+                            else {
+                                $script:SectionTeardownFailed++
+                                [void]$faultCleanupErrors.Add('SYSTEM emergency release did not confirm disarm.')
+                            }
+                        }
+                        catch {
+                            Write-Output ('ST_EmergencyHoldRelease=error:' + ((Get-ErrorText $_) -replace '[\r\n]+', ' ') + ';FAIL')
+                            $script:SectionTeardownFailed++
+                            [void]$faultCleanupErrors.Add('SYSTEM emergency release: ' + (Get-ErrorText $_))
+                        }
+                        finally {
+                            if ($null -ne $rescueAgent) {
+                                try { Stop-StagedTestAgent $rescueAgent }
+                                catch { [void]$faultCleanupErrors.Add('SYSTEM emergency release agent stop: ' + (Get-ErrorText $_)) }
+                            }
+                        }
+                    }
+                    if ($sectionTeardownVariant -and -not $sectionTeardownExerciseResultSeen) {
+                        Write-Output 'ST_ExerciseResult=completed:false;reason:failed-before-result;FAIL'
+                        $script:SectionTeardownFailed++
+                        $sectionTeardownExerciseResultSeen=$true
+                    }
+                    if ($sectionTeardownVariant -and $sectionTeardownVhdxOwned) {
+                        $outerDiskClean=$true
+                        try {
+                            if (Test-Path -LiteralPath $sectionTeardownVhdx) {
+                                $outerImage=Get-DiskImage -ImagePath $sectionTeardownVhdx -ErrorAction Stop
+                                if ($outerImage.Attached) {
+                                    Set-Content -LiteralPath $sectionTeardownDiskpart -Value @(
+                                        ('select vdisk file="'+$sectionTeardownVhdx+'"'),'detach vdisk') -Encoding Ascii
+                                    $outerStart=[Diagnostics.ProcessStartInfo]::new('diskpart.exe',
+                                        ('/s '+(ConvertTo-WindowsArgument $sectionTeardownDiskpart)))
+                                    $outerStart.UseShellExecute=$false
+                                    $outerStart.CreateNoWindow=$true
+                                    $outerProcess=[Diagnostics.Process]::Start($outerStart)
+                                    try {
+                                        [void]$outerProcess.Handle
+                                        if (-not $outerProcess.WaitForExit(30000)) {
+                                            $outerProcess.Kill()
+                                            [void]$outerProcess.WaitForExit(10000)
+                                            throw 'Outer VHDX detach timed out.'
+                                        }
+                                        if ($outerProcess.get_ExitCode() -ne 0) { throw 'Outer DiskPart detach returned nonzero.' }
+                                    } finally {
+                                        if (-not $outerProcess.HasExited) {
+                                            try { $outerProcess.Kill(); [void]$outerProcess.WaitForExit(10000) } catch {}
+                                        }
+                                        $outerProcess.Dispose()
+                                    }
+                                }
+                                $outerDetachDeadline=[DateTime]::UtcNow.AddSeconds(15)
+                                do {
+                                    $outerImage=Get-DiskImage -ImagePath $sectionTeardownVhdx -ErrorAction Stop
+                                    $outerS=@(Get-CimInstance Win32_Volume -Filter "DriveLetter='S:'" -ErrorAction Stop)
+                                    if (-not $outerImage.Attached -and $outerS.Count -eq 0 -and -not (Test-Path -LiteralPath 'S:\')) { break }
+                                    Start-Sleep -Milliseconds 100
+                                } while ([DateTime]::UtcNow -lt $outerDetachDeadline)
+                                if ($outerImage.Attached -or $outerS.Count -ne 0 -or (Test-Path -LiteralPath 'S:\')) {
+                                    throw 'Outer VHDX detach could not be proven.'
+                                }
+                                Remove-Item -LiteralPath $sectionTeardownVhdx -Force
+                            }
+                            if (Test-Path -LiteralPath $sectionTeardownDiskpart) {
+                                Remove-Item -LiteralPath $sectionTeardownDiskpart -Force
+                            }
+                        }
+                        catch {
+                            $outerDiskClean=$false
+                            [void]$restorationErrors.Add('Section teardown VHDX final cleanup: '+(Get-ErrorText $_))
+                        }
+                        $outerDiskClean=$outerDiskClean -and -not (Test-Path -LiteralPath $sectionTeardownVhdx) -and
+                            -not (Test-Path -LiteralPath $sectionTeardownDiskpart) -and -not (Test-Path -LiteralPath 'S:\')
+                        Write-Output ('ST_OuterVhdxCleanup=vhdxAbsent:' + (-not (Test-Path -LiteralPath $sectionTeardownVhdx)) +
+                            ';diskpartAbsent:' + (-not (Test-Path -LiteralPath $sectionTeardownDiskpart)) +
+                            ';SAbsent:' + (-not (Test-Path -LiteralPath 'S:\')) + ';' + $(if ($outerDiskClean) { 'PASS' } else { 'FAIL' }))
+                        if ($outerDiskClean) { $script:SectionTeardownPassed++ } else { $script:SectionTeardownFailed++ }
+                    }
                     if ($faultLoaded) {
                         & fltmc.exe unload SafeUploadSectionFault|Out-Host
                         if ($LASTEXITCODE -ne 0) { [void]$faultCleanupErrors.Add('Companion unload failed.') }
@@ -4580,6 +4734,11 @@ Start-Sleep -Seconds 300
                         -not (Test-Path $faultInstalled) -and -not (Test-Path $faultKey) -and $faultServices.Count -eq 0 -and
                         $faultInventory -notmatch '(?m)^SafeUploadSectionFault\s'
                     Write-Output ('SectionFaultRestored='+$clean)
+                    if ($sectionTeardownVariant) {
+                        $companionClean=$clean -and $faultCleanupErrors.Count -eq 0
+                        Write-Output ('ST_CompanionRestored=' + $companionClean + ';' + $(if ($companionClean) { 'PASS' } else { 'FAIL' }))
+                        if ($companionClean) { $script:SectionTeardownPassed++ } else { $script:SectionTeardownFailed++ }
+                    }
                     if (-not $clean -or $faultCleanupErrors.Count -ne 0) { throw ('Companion restoration failed: '+($faultCleanupErrors -join '; ')) }
                 }
             }
@@ -4859,6 +5018,10 @@ Start-Sleep -Seconds 300
     catch {
         $runSucceeded = $false
         Write-Output ('RunError=' + (Get-ErrorText $_))
+        if ($sectionTeardownVariant -and -not $sectionTeardownSummaryEmitted) {
+            Write-Output ('ST_Execution=error:' + ((Get-ErrorText $_) -replace '[\r\n]+', ' ') + ';FAIL')
+            $script:SectionTeardownFailed++
+        }
         if ($filterLoaded) {
             foreach ($command in @('--writer-state-status','--admission-fence-status','--admission-volume-status')) {
                 try {
@@ -5043,6 +5206,17 @@ Start-Sleep -Seconds 300
             (-not (Test-Path -LiteralPath $inspectorPath))
         $restorationVerified = ($coreRestored -and $fixtureRemoved -and $backupRemoved -and
             $agentLogsRemoved -and $inspectorCopyRemoved -and $restorationErrors.Count -eq 0)
+
+        if ($sectionTeardownVariant) {
+            Write-Output ('ST_RunSucceeded=' + $runSucceeded + ';' + $(if ($runSucceeded) { 'PASS' } else { 'FAIL' }))
+            if ($runSucceeded) { $script:SectionTeardownPassed++ } else { $script:SectionTeardownFailed++ }
+            Write-Output ('ST_Restoration=verified:' + $restorationVerified + ';SafeUploadUnloaded:' + $filterUnloaded +
+                ';VerifierOff:' + $verifierOff + ';errors:' + $restorationErrors.Count + ';' +
+                $(if ($restorationVerified) { 'PASS' } else { 'FAIL' }))
+            if ($restorationVerified) { $script:SectionTeardownPassed++ } else { $script:SectionTeardownFailed++ }
+            Write-Output ('ST_Summary=passed:' + $script:SectionTeardownPassed + ';failed:' + $script:SectionTeardownFailed)
+            $sectionTeardownSummaryEmitted = $true
+        }
 
         Write-Output ('Restoration_OriginalDriver=' + $driverRestored)
         Write-Output ('Restoration_OriginalPolicy=' + $policyRestored)

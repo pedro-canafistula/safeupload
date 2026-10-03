@@ -159,3 +159,94 @@ public sealed class SafeUploadSectionFaultMapping
     }
     public bool Wait(int timeoutMilliseconds) { return thread.Join(timeoutMilliseconds); }
 }
+
+// One persistent native worker per simulated caller. Reusing the thread matters because
+// SafeUpload pairs release callbacks by (thread, FILE_OBJECT), newest slot first.
+public sealed class SafeUploadSectionFaultThreadMapping : IDisposable
+{
+    [DllImport("kernel32.dll", SetLastError=true, CharSet=CharSet.Unicode)]
+    static extern IntPtr CreateFileMappingW(IntPtr file, IntPtr attributes, uint protection,
+        uint highSize, uint lowSize, string name);
+    [DllImport("kernel32.dll")]
+    static extern bool CloseHandle(IntPtr handle);
+    [DllImport("kernel32.dll")]
+    static extern uint GetCurrentThreadId();
+
+    readonly SafeFileHandle file;
+    readonly AutoResetEvent command = new AutoResetEvent(false);
+    readonly ManualResetEvent completed = new ManualResetEvent(true);
+    readonly Thread thread;
+    volatile bool stopping;
+    uint protection;
+    uint nativeThreadId;
+    bool created;
+    int error;
+    Exception workerError;
+
+    public SafeUploadSectionFaultThreadMapping(SafeFileHandle sharedFile)
+    {
+        file = sharedFile;
+        thread = new Thread(Worker);
+        thread.IsBackground = true;
+        thread.Start();
+    }
+
+    public uint NativeThreadId { get { return nativeThreadId; } }
+    public bool Created { get { return created; } }
+    public int Error { get { return error; } }
+    public Exception WorkerError { get { return workerError; } }
+    public bool Pending { get { return !completed.WaitOne(0); } }
+
+    public void Start(uint pageProtection)
+    {
+        if (!completed.WaitOne(0)) throw new InvalidOperationException("Section worker already has an operation.");
+        protection = pageProtection;
+        nativeThreadId = 0;
+        created = false;
+        error = 0;
+        workerError = null;
+        completed.Reset();
+        command.Set();
+    }
+
+    void Worker()
+    {
+        for (;;)
+        {
+            command.WaitOne();
+            if (stopping) return;
+            bool retained = false;
+            try
+            {
+                nativeThreadId = GetCurrentThreadId();
+                file.DangerousAddRef(ref retained);
+                IntPtr mapping = CreateFileMappingW(file.DangerousGetHandle(), IntPtr.Zero,
+                    protection, 0, 4096, null);
+                error = mapping == IntPtr.Zero ? Marshal.GetLastWin32Error() : 0;
+                created = mapping != IntPtr.Zero;
+                if (created && !CloseHandle(mapping))
+                {
+                    error = Marshal.GetLastWin32Error();
+                    created = false;
+                }
+            }
+            catch (Exception exception) { workerError = exception; }
+            finally
+            {
+                if (retained) file.DangerousRelease();
+                completed.Set();
+            }
+        }
+    }
+
+    public bool Wait(int timeoutMilliseconds) { return completed.WaitOne(timeoutMilliseconds); }
+
+    public void Dispose()
+    {
+        stopping = true;
+        command.Set();
+        if (!thread.Join(10000)) throw new InvalidOperationException("Persistent section worker did not stop.");
+        command.Dispose();
+        completed.Dispose();
+    }
+}
