@@ -1,0 +1,137 @@
+SafeUpload late-attach / policy-transition security rereview — round 3
+Date: 2026-10-03
+
+Disposition
+-----------
+NOT CLEAR for build/VM validation or cutover. This was a read-only review of
+the uncommitted tracked source delta. No source edits, WDK build, or VM test
+were performed. `git diff --check` passed at review completion.
+
+Reviewed revision and fingerprints
+----------------------------------
+Base HEAD during review: 9142fe78d4768cb12ae756f2586115ed10e87964
+Binary tracked-diff SHA-256: aedb88406f26142d2753e8348201334b131b3e816c62a027dd6d71976763c2d8
+
+Priority-file hashes:
+  driver/SafeUpload.Minifilter/StageStream.c
+    ff0dd449a7bc8773cce66a59e188256a1738389df9af6d520a1b7e7fb4ad5a85
+  driver/SafeUpload.Minifilter/Protocol.h
+    9f0981f3e470e6e708e3cd2001673dd68ced1036728f9368f8055ad254bed5d4
+  driver/scripts/Test-StagedPolicyTransitionMapping.ps1
+    a581b2cc3c1cbf6beb4b863d08855c934a09a7cb018025cff2ddb4b77acfea86
+  driver/STAGED-WRITES.md
+    b1c2e73d562a5dd891475e482bded73caf6ab764d60c18947861f280d54fe416
+
+P1 findings
+-----------
+
+1. Unsupported section-refusal status —
+   driver/SafeUpload.Minifilter/StageStream.c:2476-2486
+   The writable-section path completes policy/name/fence refusals with
+   STATUS_ACCESS_DENIED (line 2484). Microsoft documents that SyncTypeOther
+   cannot fail and SyncTypeCreateSection may fail with STATUS_INSUFFICIENT_RESOURCES
+   only when memory is insufficient. The shrink harness labels observed
+   access-denied as contract-unsupported and hardcodes the supported-refusal
+   verdict false. This remains a blocker; do not fabricate memory pressure.
+   Require an external gate that prevents handles and sections from existing
+   before protection, or leave staging disabled for that destination.
+
+2. Failed/capacity-limited scan leaves reads and writes to omitted mappings —
+   driver/SafeUpload.Minifilter/StageFence.c:700-720, 1172-1190;
+   driver/SafeUpload.Minifilter/StageStream.c:2351-2358, 2516-2528
+   Failed scans quarantine volumes but discard the partial table. The new
+   IRP/MDL read gate and paging-write gate consult only the installed SOP
+   table. A preexisting handle to a discovered-but-unrecorded stream can
+   therefore read dirty bytes and its missing SOP is not protected from
+   paging writes. An Objects->Volume quarantine test would be synchronous,
+   reference-safe and spin-lock-only, but scoped quarantine would deny all
+   reads on each quarantined volume, and global quarantine would deny reads
+   on every volume. This exceeds path-scoped fail-closed behavior and still
+   cannot block resident mapped-view reads; it is not an acceptable general
+   repair under the current scope rule.
+
+3. Candidate policy expansion is not an admission transaction —
+   driver/SafeUpload.Minifilter/Policy.c:402-408, 421-430;
+   driver/SafeUpload.Minifilter/Filter.c:1270-1292, 1481-1485,
+   1886-1887, 2147-2159
+   Creates, physical writes and legacy rename checks still use current policy
+   while the candidate is pending and being scanned. A tainted process can
+   write into a newly added destination before the policy swap; the scan does
+   not serialize concurrent admission. The atomic current-or-pending matcher
+   currently protects writable-section and selected FSCTL decisions, not
+   these paths. Add a race-safe transition/admission barrier and cover these
+   operations before treating policy acceptance as a privacy boundary.
+
+4. Reparse FSCTL misses pending-policy ancestors and lacks mutation rundown —
+   driver/SafeUpload.Minifilter/StageStream.c:2402-2417;
+   driver/SafeUpload.Minifilter/StageProtocol.c:101-120;
+   driver/SafeUpload.Minifilter/Policy.c:757-765
+   The exact FSCTL name is checked against current and pending policy, but
+   the ancestor check uses current policy only. An unowned
+   FSCTL_SET_REPARSE_POINT on a parent of a newly added prefix can pass during
+   candidate scan. A current-or-pending IncludeAncestors matcher closes only
+   this snapshot-classification gap: the pre-op decision is followed by the
+   lower FSCTL without transition reservation or post-op drain. A mutation
+   admitted before pending publication can remain in flight while the scan
+   passes and then complete before commit. Close/drain mutating-operation
+   admission before scanning, or revalidate after in-flight mutations drain.
+
+5. Late-attach pre-scan window remains open —
+   driver/SafeUpload.Minifilter/Filter.c:531-544;
+   driver/SafeUpload.Minifilter/StageFence.c:1106-1123;
+   driver/STAGED-WRITES.md:3299-3308
+   InstanceSetup queues an asynchronous refresh after the volume's first
+   operation. An already-live writable view may reach storage before coverage
+   completes. Synchronous waiting in InstanceSetup is not an acceptable
+   workaround under Microsoft guidance. A volume needs an external admission
+   gate before handles or sections can exist; otherwise keep staging off.
+
+P2 findings
+-----------
+
+1. Selected mutating FSCTLs fail closed outside policy scope —
+   driver/SafeUpload.Minifilter/StageStream.c:2386-2389, 2420-2425
+   Non-NTFS, classification failures, unsafe IRQL/top-level/paging paths and
+   name/alias failures are denied even when unrelated to configured scope.
+   Inspector PID bypass removal is appropriate; denial scope remains broader
+   than the stated scoped-fail-closed rule.
+
+2. Expansion harness cannot report BLOCKED under expected fence behavior;
+   shrink flush evidence is incomplete —
+   driver/scripts/Test-StagedPolicyTransitionMapping.ps1:366-377, 421-423
+   If fresh readers or the old mapped view are refused, expansion becomes
+   INCONCLUSIVE even when the raw marker is absent; the independent raw
+   observer cannot produce a positive BLOCKED verdict by itself. The shrink
+   FlushViewOfFile return is ignored, so a failed flush can leave a no-marker
+   result without marking the measurement unknown.
+
+3. Agent-stop failure can skip restoration —
+   driver/scripts/Test-StagedPolicyTransitionMapping.ps1:185-206, 489-503
+   With ErrorActionPreference=Stop, an exception from Stop-StagedTestAgent in
+   the finally block aborts before policy/driver restoration. Its startup
+   catch has the same unguarded stop. Restoration should run in a nested
+   finally and report stop failure separately.
+
+4. Sticky global quarantine can require forced teardown/restart —
+   driver/SafeUpload.Minifilter/StageFence.c:623-635, 813-826, 1547-1569;
+   driver/STAGED-WRITES.md:3319-3320
+   A sticky fallback is not retryable, while voluntary unload refuses any
+   remaining quarantine. This is documented but remains an availability and
+   recovery limitation.
+
+Review notes and evidence limits
+-------------------------------
+The current-or-pending policy matcher reads both snapshots under one shared
+lock; the matcher itself is sound, but its call-site coverage and transition
+serialization remain incomplete. Reusing the former reserved status word for
+StateFlags leaves the protocol structure size unchanged. Feature-only guards
+appear to preserve normal-build matching behavior in source. No Windows build,
+PREfast run, verifier run, or VM execution was performed for this review.
+
+Microsoft primary references:
+  * Section synchronization status contract:
+    https://learn.microsoft.com/en-us/windows-hardware/drivers/ifs/flt-parameters-for-irp-mj-acquire-for-section-synchronization
+  * FLT_RELATED_OBJECTS Volume identity/lifetime for an operation:
+    https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/fltkernel/ns-fltkernel-_flt_related_objects
+  * Pre-operation callback IRQL guidance:
+    https://learn.microsoft.com/en-us/windows-hardware/drivers/ifs/writing-preoperation-callback-routines
