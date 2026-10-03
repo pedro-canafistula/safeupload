@@ -1,0 +1,16 @@
+SourceCommit=3732d8070af634c5acb4edb21932a324e278b54f
+HarnessSourceCommit=45bad9036424adf98c6b894b27ba64b6c014a767
+MainBuildLabel=mvp1-canarynew
+Variant=canary-newvolume
+Verifier=True
+ExpectedChecks=0
+Invocation=$ErrorActionPreference='Stop';$d='C:\Users\vika\Documents';if((Get-FileHash (Join-Path $d 'Test-StagedAdmissionDiagnostic.ps1') -Algorithm SHA256).Hash -ne '5754C6E04A89EDF35B8F878F40453DCC7410D95FEED80EDF31FEEA27E1DC0347'){throw 'Harness hash mismatch'};$sig=Get-AuthenticodeSignature (Join-Path $d 'SafeUpload-stage-prototype-mvp1-canarynew.sys');if($sig.Status.ToString() -ne 'Valid' -or $sig.SignerCertificate.Thumbprint -ne '220DD82C37FCF36048D59E4F10113185D81D5DC7'){throw 'Upper signature preflight failed'};& (Join-Path $d 'Test-StagedAdmissionDiagnostic.ps1') -Variant canary-newvolume -RequireAllVolumeCanaries -Verifier -FeatureDriverFileName 'SafeUpload-stage-prototype-mvp1-canarynew.sys' -ExpectedFeatureSha256 '2808B2C07CE2EB666CEEFECB60C97DEF8DBEFF5B7CE044E878CAA74ADF526D9D' -InspectorInputFileName 'SafeUpload.Inspector.mvp1-canarynew.exe' -ExpectedInspectorSha256 '8979C23843CF306F442064102E0F257E929F751DF310ED22EF6D8B294856BA71' -TestAgentHelperFileName 'StagedTestAgent-661EBB84C8E739EE.ps1'
+4B0F6E7F8940907DA544E4316B6925CA7472B79710525E0B8CA741DED11196B6  driver/scripts/Invoke-StagedCanaryNewVolumeQualification.py
+5754C6E04A89EDF35B8F878F40453DCC7410D95FEED80EDF31FEEA27E1DC0347  driver/scripts/Test-StagedAdmissionDiagnostic.ps1
+D29D2330750CCB760FBC24F5B8788BCCA011F578B24071EFD9C7F799D87A4D73  driver/scripts/Get-StagedBaseline.ps1
+661EBB84C8E739EE6F77E663C06557855288DA96D127E6B43642ACD480F59086  driver/scripts/StagedTestAgent.ps1
+1B18B42E1ABFE9F111AB40C2D96B862628361B64596A63353B9D97C840333A42  driver/scripts/Invoke-DebuggeeExperiment.sh
+76AF25CA7B3784C67D5A07322A87FD3835CAD5FD2E6B9F05A1E0869DA50ABC27  driver/scripts/remote_ps.py
+Input=SafeUpload-stage-prototype-mvp1-canarynew.sys;SHA256=2808B2C07CE2EB666CEEFECB60C97DEF8DBEFF5B7CE044E878CAA74ADF526D9D
+Input=SafeUpload.Inspector.mvp1-canarynew.exe;SHA256=8979C23843CF306F442064102E0F257E929F751DF310ED22EF6D8B294856BA71
+Input=StagedTestAgent-661EBB84C8E739EE.ps1;SHA256=661EBB84C8E739EE6F77E663C06557855288DA96D127E6B43642ACD480F59086

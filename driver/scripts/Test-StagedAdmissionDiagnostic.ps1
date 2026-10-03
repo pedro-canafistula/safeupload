@@ -3115,8 +3115,10 @@ exit 0
                         $config = Invoke-CNNative 'verifier.exe' '/volatile /faults 10000 SUcN "" 0'
                         $cnRaw['fault-configuration.txt'] = $config.Raw
                         if ($config.ExitCode -ne 0) { throw 'Canary fault configuration failed.' }
-                        foreach ($field in @(@('Probability','10000'), @('Pool Tags','SUcN'), @('Applications','(null)'), @('Delay Minutes','0'))) {
-                            $fields = [regex]::Matches($config.Raw, ('(?im)^\s*' + [regex]::Escape($field[0]) + ':\s*([^\r\n]+)\s*$'))
+                        # Run 4 (Win10 19045): an empty Applications argument is acknowledged as a blank value. Match
+                        # within one line only, so a blank value cannot borrow the next line.
+                        foreach ($field in @(@('Probability','10000'), @('Pool Tags','SUcN'), @('Applications',''), @('Delay Minutes','0'))) {
+                            $fields = [regex]::Matches($config.Raw, ('(?im)^[ \t]*' + [regex]::Escape($field[0]) + ':[ \t]*([^\r\n]*)\r?$'))
                             if ($fields.Count -ne 1 -or $fields[0].Groups[1].Value.Trim() -cne $field[1]) { throw 'Verifier did not confirm exact canary fault filters.' }
                         }
                         # Win10 evidence: /faults replaces active flags with 0x4. Never reassert /flags
