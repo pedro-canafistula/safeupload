@@ -9,6 +9,7 @@ cd "$(dirname "${BASH_SOURCE[0]}")/../.."
 log_name="${1:?log name}"; leaf="${2:-admission-diagnostic-milestone}"; thumb="${3:-}"
 sign_arg=""; [ -n "$thumb" ] && sign_arg="-CertificateThumbprint '$thumb'"
 day="$(date +%F)"; log="driver/evidence/$day/$log_name.txt"
+mkdir -p "driver/evidence/$day"
 host=192.168.122.210
 mirror='C:/Users/vika/Documents/safeupload-staging-test'
 scp_opts=(-F /dev/null -i /home/victor/.ssh/id_ed25519 -o BatchMode=yes -o ConnectTimeout=10 -o LogLevel=ERROR -o StrictHostKeyChecking=accept-new)

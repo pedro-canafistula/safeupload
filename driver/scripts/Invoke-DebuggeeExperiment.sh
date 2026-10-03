@@ -16,6 +16,7 @@ set -uo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/../.."
 name="${1:?experiment name}"; harness="${2:?harness script}"; invocation="${3:?PowerShell invocation line}"
 day="$(date +%F)"; stamp="$(date +%Y%m%d)"; ev="driver/evidence/$day"; host=192.168.122.51
+mkdir -p "$ev"
 scp_opts=(-F /dev/null -i /home/victor/.ssh/id_ed25519 -o BatchMode=yes -o ConnectTimeout=10 -o LogLevel=ERROR -o StrictHostKeyChecking=accept-new)
 guest_docs='C:/Users/vika/Documents'
 clean() { perl -pe 's/<Objs.*?<\/Objs>//g' | tr -d '\r' | grep -v -e '^$' -e CLIXML; }   # strip only the progress spans, never the text around them

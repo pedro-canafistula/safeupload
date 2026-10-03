@@ -6,6 +6,7 @@
 set -uo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/../.."
 label="${1:?run label}"; day="$(date +%F)"; ev="driver/evidence/$day"; host=192.168.122.210
+mkdir -p "$ev"
 scp_opts=(-F /dev/null -i /home/victor/.ssh/id_ed25519 -o BatchMode=yes -o ConnectTimeout=10 -o LogLevel=ERROR)
 mkdir -p /tmp/claude-1000/artifacts /tmp/claude-1000/headcheck
 git archive HEAD driver/SafeUpload.Minifilter -o /tmp/claude-1000/headcheck/head-minifilter.tar
