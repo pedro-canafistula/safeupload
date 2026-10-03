@@ -261,6 +261,33 @@ try {
     Write-Output 'UnfilteredNativeRenameControl=True'
     & tar.exe -xf $servicePackage -C $serviceDir
     if ($LASTEXITCODE -ne 0) { throw 'Service package extraction failed.' }
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    $package = [IO.Compression.ZipFile]::OpenRead($servicePackage)
+    $packageFiles = 0
+    try {
+        foreach ($entry in $package.Entries) {
+            if ($entry.FullName.EndsWith('/')) { continue }
+            if ([IO.Path]::IsPathRooted($entry.FullName) -or $entry.FullName -match '(^|[\\/])\.\.([\\/]|$)|:') {
+                throw 'Invalid service package entry.'
+            }
+            $path = Join-Path $serviceDir ($entry.FullName.Replace('/', '\'))
+            $item = Get-Item -LiteralPath $path -ErrorAction Stop
+            if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { throw 'Service package reparse file.' }
+            $stream = $entry.Open()
+            $sha = [Security.Cryptography.SHA256]::Create()
+            try { $expectedHash = [BitConverter]::ToString($sha.ComputeHash($stream)).Replace('-', '') }
+            finally { $stream.Dispose(); $sha.Dispose() }
+            if ((Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash -ne $expectedHash) {
+                throw ('Extracted service file hash mismatch: ' + $entry.FullName)
+            }
+            ++$packageFiles
+        }
+        if (@(Get-ChildItem -LiteralPath $serviceDir -Recurse -File -Force).Count -ne $packageFiles) {
+            throw 'Unexpected files in service publish directory.'
+        }
+    } finally { $package.Dispose() }
+    Write-Output ('ServicePackageManifestVerified=' + $packageFiles)
+    Write-Output ('ExecutedServiceExeSHA256=' + (Get-FileHash (Join-Path $serviceDir 'SafeUpload.Agent.Service.exe') -Algorithm SHA256).Hash)
     if ($LASTEXITCODE -ne 0) { throw 'Service extraction failed.' }
     Backup-StagedTestDriver $backup
     Write-OwnedCheckpoint 'DurableOriginalBackupVerified; BeforeDriverReplacement'

@@ -33,3 +33,17 @@ for f in summary.txt tests.txt agent-tests.trx publish.txt package-manifest.txt 
     fi
 done
 cat "$work/summary.txt"
+python3 - "$work" <<'PY'
+from pathlib import Path
+import hashlib, sys, xml.etree.ElementTree as E
+work = Path(sys.argv[1])
+summary = (work / 'summary.txt').read_text(encoding='utf-8-sig')
+assert 'tests: exit=0 warnings=0' in summary and 'publish: exit=0 warnings=0' in summary
+ns = {'t': 'http://microsoft.com/schemas/VisualStudio/TeamTest/2010'}
+counters = E.parse(work / 'agent-tests.trx').find('.//t:Counters', ns).attrib
+assert int(counters['total']) > 0 and counters['passed'] == counters['total'] == counters['executed']
+assert all(counters.get(k, '0') == '0' for k in ['failed', 'error', 'timeout', 'aborted', 'notExecuted'])
+package = work / 'stage-service-publish.zip'
+assert 'package_sha256=' + hashlib.sha256(package.read_bytes()).hexdigest().upper() in summary
+print('ExactAgentGate=PASS;tests=' + counters['passed'])
+PY

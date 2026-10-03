@@ -228,7 +228,7 @@ public sealed class StagedTransferPublisherTests : IDisposable
         public void Dispose() { }
     }
 
-    private StagedTransfer Transfer(string name, string content)
+    private StagedTransfer Transfer(string name, string content, DestinationKind kind = DestinationKind.RemovableDrive)
     {
         string stage = Path.Combine(_stagingRoot, name);
         File.WriteAllText(stage, content);
@@ -237,7 +237,7 @@ public sealed class StagedTransferPublisherTests : IDisposable
 
         var transfer = new StagedTransfer(
             Guid.NewGuid(), stage, destination,
-            DestinationKind.RemovableDrive,
+            kind,
             "explorer.exe", 4242, null);
         _journal.CreateAsync(transfer, CancellationToken.None).GetAwaiter().GetResult();
         _journal.TransitionAsync(transfer.TransferId,
@@ -303,6 +303,53 @@ public sealed class StagedTransferPublisherTests : IDisposable
             await _publisher.PublishAsync(committed.Transfer, CancellationToken.None));
         Assert.False(File.Exists(transfer.DestinationPath));
         Assert.Equal("Clean text.", await File.ReadAllTextAsync(renamed));
+    }
+
+    private async Task SetLocalPolicyAsync(string directory, int version = 1)
+    {
+        await new LocalPolicyStore(_workspace.PolicyFile).LoadAsync(CancellationToken.None);
+        var policy = JsonNode.Parse(await File.ReadAllTextAsync(_workspace.PolicyFile))!;
+        policy["version"] = version;
+        policy["monitoredScopes"]!["destinationPaths"] = new JsonArray(JsonValue.Create(directory));
+        policy["monitoredScopes"]!["removableDrives"] = false;
+        policy["monitoredScopes"]!["networkPaths"] = false;
+        await File.WriteAllTextAsync(_workspace.PolicyFile, policy.ToJsonString());
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Local_publication_requires_the_exact_monitored_folder(bool inScope)
+    {
+        var transfer = Transfer("local.txt", "Clean local content.", DestinationKind.Cloud);
+        await SetLocalPolicyAsync(inScope ? Path.GetDirectoryName(transfer.DestinationPath)! :
+            Path.Combine(_workspace.Root, "other-folder"));
+        var outcome = await _publisher.PublishAsync(transfer, CancellationToken.None);
+        Assert.Equal(inScope ? StagedTransferOutcome.Released : StagedTransferOutcome.Retained, outcome);
+        Assert.Equal(inScope, File.Exists(transfer.DestinationPath));
+        if (inScope) Assert.Equal("Clean local content.", await File.ReadAllTextAsync(transfer.DestinationPath));
+        else Assert.True(File.Exists(transfer.StagePath));
+    }
+
+    [Fact]
+    public async Task Local_scope_shrink_during_inspection_retains_bytes()
+    {
+        var transfer = Transfer("local-shrink.txt", "Clean local content.", DestinationKind.Cloud);
+        await SetLocalPolicyAsync(Path.GetDirectoryName(transfer.DestinationPath)!);
+        var extractor = new PausingExtractor();
+        var inspection = new InspectionService(new LocalPolicyStore(_workspace.PolicyFile),
+            new LocalQueueAuditSink(_workspace.QueueFile), new ExtractorRegistry([extractor]), new VerdictCache());
+        var publisher = new StagedTransferPublisher(inspection, _notifications, _journal, _stagingRoot,
+            new TestPublicationGate());
+        var publication = publisher.PublishAsync(transfer, CancellationToken.None);
+        await extractor.Entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await SetLocalPolicyAsync(Path.Combine(_workspace.Root, "other-folder"), 2);
+        extractor.Continue.SetResult();
+        Assert.Equal(StagedTransferOutcome.Retained, await publication);
+        Assert.False(File.Exists(transfer.DestinationPath));
+        Assert.True(File.Exists(transfer.StagePath));
+        Assert.Equal(TransferJournalState.Retained,
+            (await _journal.ReadAsync(transfer.TransferId, CancellationToken.None)).State);
     }
 
     [Fact]

@@ -72,3 +72,5 @@ try {
     $summary | Set-Content (Join-Path $out 'summary.txt') -Encoding UTF8
     $summary | Write-Output
 }
+if ($testExit -ne 0 -or $testWarnings -ne 0 -or $publishExit -ne 0 -or $publishWarnings -ne 0 -or
+    -not (Test-Path (Join-Path $out 'stage-service-publish.zip'))) { throw 'Exact agent build/test gate failed; inspect retained logs.' }
