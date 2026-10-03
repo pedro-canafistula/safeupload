@@ -1,0 +1,8 @@
+C:\Users\vika\Documents\StagedWriterFault-C7840ADEA1A36C55.ps1 : Real writer-node allocation failure qualification 
+failed.
+At C:\Users\vika\Documents\StagedWriterFault-C7840ADEA1A36C55.ps1:153 char:95
++ ... rget $Healthy $Executable $RawPrefix } catch { Write-Error $_; exit 1 ...
++                                                    ~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (:) [Write-Error], WriteErrorException
+    + FullyQualifiedErrorId : Microsoft.PowerShell.Commands.WriteErrorException,StagedWriterFault-C7840ADEA1A36C55.ps1
+ 

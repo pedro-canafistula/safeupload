@@ -22,6 +22,13 @@ function Invoke-StagedWriterFaultQualification([string]$Target,[string]$Healthy,
     $workers=New-Object System.Collections.ArrayList
     $pins=New-Object System.Collections.ArrayList
     $faultsMayBeEnabled=$false; $rawRecords=@{}
+    function Assert-FaultConfiguration([string]$Raw,[int]$ExitCode) {
+        if($ExitCode -ne 0){throw 'Verifier fault configuration failed.'}
+        foreach($field in @(@('Probability','10000'),@('Pool Tags','SUwH'),@('Applications','SUHFail.exe'),@('Delay Minutes','0'))){
+            $matches=[regex]::Matches($Raw,('(?im)^\s*'+[regex]::Escape($field[0])+':\s*([^\r\n]+)\s*$'))
+            if($matches.Count -ne 1 -or $matches[0].Groups[1].Value.Trim() -cne $field[1]){throw 'Verifier did not confirm exact fault filters.'}
+        }
+    }
     function Read-FaultVerifier([string]$Label,[bool]$ExpectedFaults) {
         $raw=& verifier.exe /query 2>&1|Out-String
         if($LASTEXITCODE -ne 0){throw 'Active Verifier query failed.'}
@@ -92,8 +99,12 @@ function Invoke-StagedWriterFaultQualification([string]$Target,[string]$Healthy,
         $faultsMayBeEnabled=$true
         $configuration=& verifier.exe /volatile /faults 10000 SUwH SUHFail.exe 0 2>&1|Out-String
         $configurationExit=$LASTEXITCODE;$rawRecords['fault-configuration.txt']=$configuration
-        if($configurationExit -ne 0 -or $configuration -notmatch '10000/10000' -or $configuration -notmatch 'SUwH' -or
-            $configuration -notmatch 'SUHFail\.exe' -or $configuration -notmatch '(?i)(delay|time).*(0 minutes|0 minute)'){throw 'Verifier did not confirm exact fault filters.'}
+        Assert-FaultConfiguration $configuration $configurationExit
+        # /faults sets volatile flags to 4 on this Windows build. Restore the full
+        # runtime set plus LRS, and require its acknowledgement to retain all filters.
+        $combined=& verifier.exe /volatile /flags 0x13F 2>&1|Out-String
+        $combinedExit=$LASTEXITCODE;$rawRecords['combined-configuration.txt']=$combined
+        Assert-FaultConfiguration $combined $combinedExit
         $verifierArmed=Read-FaultVerifier 'armed' $true
         Open-FaultWriter $first $identity
         $statsFailed=Get-WriterStateStats

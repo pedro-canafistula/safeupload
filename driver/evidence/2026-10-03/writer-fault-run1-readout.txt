@@ -1,0 +1,10 @@
+Verdict=FAILED
+SourceCommit=7496d5adab67a0cf12f016f222773dc96b104b94
+HarnessSourceCommit=7496d5adab67a0cf12f016f222773dc96b104b94
+MainBuildLabel=mvp1-writerfault;24 exact manifest files;four WDK PREfast/ApiValidator and both Inspector configurations zero warnings/errors;native fixture CSC warn4/warnaserror exit0.
+SignedSYS=118075BD49D2AE072EC008A4EBDA9D56F02F2922C5F0489AD1F5CB4E6E1BB4DD
+NativeFixture=4D2F2E293F4CB50933315E9F5106F268F9319457B45C61DB66E8794D699F3439
+
+Failure: acknowledgement parser expected 10000/10000 and natural-language zero-minute delay. Actual Win10 output uses Probability:10000 and Delay Minutes:0. No measured writable open occurred; target/healthy baseline probes H0 known, C0, S no, canary7. No allocation-failure/sticky-H claim. /faults reported volatile flags4; next attempt reasserts0x13F while requiring filter acknowledgement retained.
+
+SYSTEM exit1, PassedFalse. Parent injection clear and private-fixture cleanup WriterFaultRestoredTrue; original SYS/policy exact restoration; independent BaselineCleanTrue. Ten raw files guest/local SHA verified, uniquely attributed by UTC interval in writer-fault-raw-manifest.json.

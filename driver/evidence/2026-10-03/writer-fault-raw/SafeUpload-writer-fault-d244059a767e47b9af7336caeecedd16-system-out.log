@@ -1,0 +1,20 @@
+
+Verifier Volatile Flags: 0x0000013b
+
+  Volatile Flags:
+
+    [X] 0x00000001 Special pool.
+    [X] 0x00000002 Force IRQL checking.
+    [ ] 0x00000004 Randomized low resources simulation.
+    [X] 0x00000008 Pool tracking.
+    [X] 0x00000010 I/O verification.
+    [X] 0x00000020 Deadlock detection.
+    [ ] 0x00000080 DMA checking.
+    [ ] 0x00000200 Force pending I/O requests.
+    [ ] 0x00000400 IRP logging.
+    [ ] 0x00000800 Miscellaneous checks.
+
+The new settings are in effect until the system
+is restarted or the settings are changed again.
+WriterFaultResult={"Passed":false,"PoolTag":"SUwH","Application":"SUHFail.exe","Errors":["System.Management.Automation.RuntimeException: Verifier did not confirm exact fault filters."],"Probes":[{"Probe":{"sequence":1,"timestamp":134355211136591972,"event":"explicit_probe","pid":4,"irql":0,"instance":"0xFFFF9F014F857010","targetFileObject":"0xFFFF9F014BF65B50","sectionObjectPointer":"0xFFFF9F014FB3CB78","major":0,"minor":0,"irpFlags":"0x00000000","mmDoes":"no","streamContext":"not_applicable","ownedStream":false,"admissionRecordState":"not_tracked","setupFlags":0,"volumeKind":1,"attachClass":"unknown","syncType":0,"pageProtection":"0x00000000","syncParametersValid":false,"probeStatus":"0x00000000","probeStage":8,"writeObjects":0,"writersUntracked":false,"inFlightSections":0,"canaryState":2,"canaryStatus":"0x00000000","canaryChecks":7,"canaryCleanupStatus":"0x00000000"},"Label":"target-before"},{"Probe":{"sequence":1,"timestamp":134355211139112031,"event":"explicit_probe","pid":4,"irql":0,"instance":"0xFFFF9F014F857010","targetFileObject":"0xFFFF9F014BF65B50","sectionObjectPointer":"0xFFFF9F014FB3D418","major":0,"minor":0,"irpFlags":"0x00000000","mmDoes":"no","streamContext":"not_applicable","ownedStream":false,"admissionRecordState":"not_tracked","setupFlags":0,"volumeKind":1,"attachClass":"unknown","syncType":0,"pageProtection":"0x00000000","syncParametersValid":false,"probeStatus":"0x00000000","probeStage":8,"writeObjects":0,"writersUntracked":false,"inFlightSections":0,"canaryState":2,"canaryStatus":"0x00000000","canaryChecks":7,"canaryCleanupStatus":"0x00000000"},"Label":"healthy-before"}],"TargetIdentity":"7F2F63D64463D64A72150200000007000000000000000000"}
+WriterFaultRawPrefix=C:\Users\vika\Documents\SafeUpload-writer-fault-d244059a767e47b9af7336caeecedd16
