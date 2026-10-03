@@ -470,7 +470,7 @@ static VOID StageTraceWritableCreateSection(
 }
 
 
-NTSTATUS SafeUploadStageAdmissionProbe(
+static NTSTATUS StageAdmissionProbeWorkerBody(
     _In_ PCUNICODE_STRING VolumeName,
     _In_ PCUNICODE_STRING RelativePath)
 {
@@ -483,6 +483,8 @@ NTSTATUS SafeUploadStageAdmissionProbe(
     PFLT_CONTEXT instanceContext = NULL;
     HANDLE probeHandle = NULL;
     PFILE_OBJECT probeFileObject = NULL;
+    HANDLE identityHandle = NULL;
+    PFILE_OBJECT identityObject = NULL;
     PSECTION_OBJECT_POINTERS sectionObjectPointer = NULL;
     PWCHAR fullPathBuffer = NULL;
     FLT_FILESYSTEM_TYPE fileSystemType;
@@ -578,15 +580,21 @@ NTSTATUS SafeUploadStageAdmissionProbe(
         FILE_ATTRIBUTE_NORMAL,
         FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
         FILE_OPEN,
-        FILE_NON_DIRECTORY_FILE | FILE_OPEN_REPARSE_POINT,
+        FILE_NON_DIRECTORY_FILE | FILE_OPEN_REPARSE_POINT | FILE_COMPLETE_IF_OPLOCKED,
         NULL,
         0,
-        0,
+        IO_STOP_ON_SYMLINK,
         NULL);
+    if (status == STATUS_STOPPED_ON_SYMLINK && ioStatusBlock.Information != 0)
+        ExFreePool((PVOID)ioStatusBlock.Information);
+    if (status != STATUS_SUCCESS) goto Record;
+    status = SafeUploadStageOpenByIdentity(instance, VolumeName, probeFileObject,
+        &identityHandle, &identityObject, &probeStage);
+    if (status != STATUS_SUCCESS) goto Record;
     entry.ProbeStatus = (UINT32)status;
-    if (probeFileObject != NULL) {
-        sectionObjectPointer = probeFileObject->SectionObjectPointer;
-        entry.TargetFileObject = (UINT64)(ULONG_PTR)probeFileObject;
+    if (identityObject != NULL) {
+        sectionObjectPointer = identityObject->SectionObjectPointer;
+        entry.TargetFileObject = (UINT64)(ULONG_PTR)identityObject;
         entry.SectionObjectPointer = (UINT64)(ULONG_PTR)sectionObjectPointer;
     }
     if (sectionObjectPointer != NULL && KeGetCurrentIrql() == PASSIVE_LEVEL) {
@@ -594,13 +602,14 @@ NTSTATUS SafeUploadStageAdmissionProbe(
             SAFEUPLOAD_ADMISSION_TRACE_MMDOES_YES :
             SAFEUPLOAD_ADMISSION_TRACE_MMDOES_NO;
     }
-    if (probeFileObject != NULL) {
+    if (identityObject != NULL) {
         /* Reuses AdmissionRecordState (a constant until now): H(F) of the probed stream, bit 31 = untracked. */
-        entry.AdmissionRecordState = SafeUploadStageWritersSnapshot(instance, probeFileObject);
+        entry.AdmissionRecordState = SafeUploadStageWritersSnapshot(instance, identityObject);
         /* SetupFlags is unused by probe entries; it carries C(F) of the probed stream. */
         entry.SetupFlags = SafeUploadStageSectionsInFlight(sectionObjectPointer);
     }
-    if (NT_SUCCESS(status)) probeStage = SAFEUPLOAD_ADMISSION_PROBE_STAGE_COMPLETE;
+    if (sectionObjectPointer == NULL) status = STATUS_INVALID_FILE_FOR_SECTION;
+    if (status == STATUS_SUCCESS) probeStage = SAFEUPLOAD_ADMISSION_PROBE_STAGE_COMPLETE;
 
 Record:
     entry.ProbeStage = probeStage;
@@ -614,6 +623,8 @@ Record:
     status = STATUS_SUCCESS;
 
 Cleanup:
+    if (identityHandle != NULL) FltClose(identityHandle);
+    if (identityObject != NULL) ObDereferenceObject(identityObject);
     if (instanceContext != NULL) FltReleaseContext(instanceContext);
     if (fullPathBuffer != NULL) ExFreePoolWithTag(fullPathBuffer, SAFEUPLOAD_POOL_TAG);
     if (probeHandle != NULL) FltClose(probeHandle);
@@ -621,6 +632,54 @@ Cleanup:
     if (instance != NULL) FltObjectDereference(instance);
     if (volume != NULL) FltObjectDereference(volume);
     return status;
+}
+
+typedef struct _STAGE_ADMISSION_PROBE_WORK {
+    KEVENT Done;
+    PCUNICODE_STRING VolumeName;
+    PCUNICODE_STRING RelativePath;
+    NTSTATUS Status;
+} STAGE_ADMISSION_PROBE_WORK;
+
+static VOID StageAdmissionProbeWorker(PFLT_GENERIC_WORKITEM WorkItem, PVOID FltObject, PVOID Context)
+{
+    STAGE_ADMISSION_PROBE_WORK *work = Context;
+    UNREFERENCED_PARAMETER(FltObject);
+    work->Status = StageAdmissionProbeWorkerBody(work->VolumeName, work->RelativePath);
+    FltFreeGenericWorkItem(WorkItem);
+    KeSetEvent(&work->Done, IO_NO_INCREMENT, FALSE);
+    /* The waiting message callback owns work; do not touch it after signaling. */
+}
+
+NTSTATUS SafeUploadStageAdmissionProbe(PCUNICODE_STRING VolumeName, PCUNICODE_STRING RelativePath)
+{
+    STAGE_ADMISSION_PROBE_WORK work;
+    PFLT_GENERIC_WORKITEM item;
+    NTSTATUS status;
+    PAGED_CODE();
+    NT_ASSERT(KeGetCurrentIrql() == PASSIVE_LEVEL);
+    /* Only the explicit control message calls this routine. No probe I/O runs on its caller's
+     * thread, and no I/O callback waits on this work item. The message's rundown protects unload. */
+    KeInitializeEvent(&work.Done, NotificationEvent, FALSE);
+    work.VolumeName = VolumeName;
+    work.RelativePath = RelativePath;
+    work.Status = STATUS_UNSUCCESSFUL;
+    if (!ExAcquireRundownProtection(&SafeUploadData.ChannelRundown)) return STATUS_FLT_DELETING_OBJECT;
+    item = FltAllocateGenericWorkItem();
+    if (item == NULL) {
+        ExReleaseRundownProtection(&SafeUploadData.ChannelRundown);
+        return STATUS_INSUFFICIENT_RESOURCES;
+    }
+    status = FltQueueGenericWorkItem(item, SafeUploadData.Filter, StageAdmissionProbeWorker,
+        DelayedWorkQueue, &work);
+    if (!NT_SUCCESS(status)) {
+        FltFreeGenericWorkItem(item);
+        ExReleaseRundownProtection(&SafeUploadData.ChannelRundown);
+        return status;
+    }
+    (VOID)KeWaitForSingleObject(&work.Done, Executive, KernelMode, FALSE, NULL);
+    ExReleaseRundownProtection(&SafeUploadData.ChannelRundown);
+    return work.Status;
 }
 #endif
 

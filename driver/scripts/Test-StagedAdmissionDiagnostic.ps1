@@ -1951,6 +1951,7 @@ public static class SafeUploadEolNative
             $fk = New-WCFile 'wc_stress.maptest'
             $fl = New-WCFile 'wc_section.maptest'
             $fm = New-WCFile 'wc_ads_base.maptest'
+            $fn = New-WCFile 'wc_delete_only.maptest'
             $fixturePaths += $script:fixturePathsLocal
             foreach ($path in $fixturePaths) { Assert-ReparseFreeFixturePath $path }
 
@@ -1995,6 +1996,11 @@ public static class SafeUploadEolNative
             if ($attr.IsInvalid) { throw 'Attributes-only open failed.' }
             Add-WriterProbe $fc 'attributesOnly_open' 0
             $attr.Dispose(); Add-WriterProbe $fc 'attributesOnly_closed' 0
+            $deleteOnly = [SafeUploadAdmissionNative]::CreateFile($fn, [uint32]0x10000, [uint32]7,
+                [IntPtr]::Zero, [uint32]3, [uint32]0x80, [IntPtr]::Zero)
+            if ($deleteOnly.IsInvalid) { throw 'Delete-only open failed.' }
+            Add-WriterProbe $fn 'deleteOnly_open' 1
+            $deleteOnly.Dispose(); Add-WriterProbe $fn 'deleteOnly_closed' 0
             Complete-WriterChecks 'basic' $rawTraceA
 
             # Group 2: duplicated handles
@@ -2029,10 +2035,12 @@ public static class SafeUploadEolNative
             $failedSharing = $false
             try { $x2 = Open-WC $ff; $x2.Dispose() } catch { $failedSharing = $true }
             Write-Output ('WC_Note_SharingViolationRaised=' + $failedSharing)
+            if (-not $failedSharing) { throw 'Sharing-violation fixture did not fail its create.' }
             Add-WriterProbe $ff 'failed_afterSharingViolation' 1
             $failedMissing = $false
             try { $x3 = Open-WC (Join-Path $fixtureDirectory 'wc_missing.maptest'); $x3.Dispose() } catch { $failedMissing = $true }
             Write-Output ('WC_Note_MissingOpenRaised=' + $failedMissing)
+            if (-not $failedMissing) { throw 'Missing-file fixture did not fail its create.' }
             Add-WriterProbe $ff 'failed_afterMissingOpen' 1
             $x1.Dispose(); Add-WriterProbe $ff 'failed_closed' 0
             $tr = Open-WC $fg ([IO.FileMode]::Create); Add-WriterProbe $fg 'truncate_open' 1
@@ -2071,6 +2079,7 @@ public static class SafeUploadEolNative
             Add-WriterProbe $fj 'many_allClosed' 0
             $stressFailures = [SafeUploadWriterStress]::Run($fk, 8, 400)
             Write-Output ('WC_Note_StressOpenFailures=' + $stressFailures)
+            if ($stressFailures -ne 0) { throw ('Writer stress open failures: ' + $stressFailures) }
             Add-WriterProbe $fk 'stress_8x400_allClosed' 0
             $secFile = Open-WC $fl
             $secMap = [IO.MemoryMappedFiles.MemoryMappedFile]::CreateFromFile($secFile, ('Local\SafeUpload-Wc-' + $id), [long]$mappingLength,

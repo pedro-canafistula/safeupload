@@ -218,6 +218,7 @@ typedef struct _SAFEUPLOAD_INSTANCE_CONTEXT {
     SAFEUPLOAD_VOLUME_KIND VolumeKind;
 #if SAFEUPLOAD_STAGING_PROTOTYPE
     FLT_INSTANCE_SETUP_FLAGS SetupFlags;
+    volatile LONG WritersUntracked; /* Sticky for this attachment if a writer cannot get a context. */
 #endif
 
 } SAFEUPLOAD_INSTANCE_CONTEXT, *PSAFEUPLOAD_INSTANCE_CONTEXT;

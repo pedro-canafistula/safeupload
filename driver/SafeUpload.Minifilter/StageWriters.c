@@ -12,7 +12,7 @@ Abstract:
 
     Design rules (see evidence/2026-10-03/writer-state-design-v2.txt):
 
-    - Count at post-create of a successful physical open whose file object has WriteAccess.
+    - Count at post-create of a successful physical open whose file object has WriteAccess or DeleteAccess.
       A create the legacy pre-create did not ask a callback for is upgraded to a callback so
       that streams outside every protected scope are counted too: any file may later enter a
       scope.
@@ -51,6 +51,19 @@ static volatile LONG64 WriterReleased;
 static volatile LONG64 WriterUntrackedCreates;
 static volatile LONG64 WriterCleanupUnmatched;
 static volatile LONG64 WriterDirectoryCreatesSkipped;
+static volatile LONG WriterGlobalUnknown;
+
+static VOID StageWritersMarkInstanceUnknown(_In_ PFLT_INSTANCE Instance)
+{
+    PSAFEUPLOAD_INSTANCE_CONTEXT context = NULL;
+    if (Instance != NULL && NT_SUCCESS(FltGetInstanceContext(Instance, (PFLT_CONTEXT *)&context))) {
+        InterlockedExchange(&context->WritersUntracked, 1);
+        FltReleaseContext(context);
+    } else {
+        /* No place to retain the failure: every later snapshot must remain conservative. */
+        InterlockedExchange(&WriterGlobalUnknown, 1);
+    }
+}
 
 /* Nonpaged and not inlined: the pageable post-create must not contain a spin-lock acquisition (PREfast C28150,
  * and a paged routine running at raised IRQL faults under Driver Verifier's paged-code trimming). */
@@ -72,7 +85,7 @@ BOOLEAN SafeUploadStageWritersWantPostCreate(_In_ PFLT_CALLBACK_DATA Data)
 
     if (securityContext == NULL) return FALSE;
     return (securityContext->DesiredAccess &
-        (FILE_WRITE_DATA | FILE_APPEND_DATA | GENERIC_WRITE | GENERIC_ALL | MAXIMUM_ALLOWED)) != 0;
+        (FILE_WRITE_DATA | FILE_APPEND_DATA | DELETE | GENERIC_WRITE | GENERIC_ALL | MAXIMUM_ALLOWED)) != 0;
 }
 
 VOID SafeUploadStageWritersPostCreate(
@@ -83,13 +96,18 @@ VOID SafeUploadStageWritersPostCreate(
     PFILE_OBJECT fileObject = FltObjects->FileObject;
     PSAFEUPLOAD_STREAM_CONTEXT streamContext = NULL;
     PSTAGE_WRITER_NODE node;
+    BOOLEAN directory = FALSE;
     NTSTATUS status;
 
     PAGED_CODE();
 
-    if (FlagOn(Flags, FLTFL_POST_OPERATION_DRAINING)) return;
+    if (FlagOn(Flags, FLTFL_POST_OPERATION_DRAINING)) {
+        /* Draining permits only completion-context cleanup; the create result is unavailable. */
+        InterlockedExchange(&WriterGlobalUnknown, 1);
+        return;
+    }
     if (!NT_SUCCESS(Data->IoStatus.Status) || Data->IoStatus.Status == STATUS_REPARSE) return;
-    if (fileObject == NULL || !fileObject->WriteAccess) return;
+    if (fileObject == NULL || (!fileObject->WriteAccess && !fileObject->DeleteAccess)) return;
     InterlockedIncrement64(&WriterPostCreateRuns);
 
     /* Create.Options keeps the disposition in its high byte; the option bits are the low 24. */
@@ -97,9 +115,22 @@ VOID SafeUploadStageWritersPostCreate(
         InterlockedIncrement64(&WriterDirectoryCreatesSkipped);
         return;
     }
+    /* Opening a directory does not require FILE_DIRECTORY_FILE. Avoid treating its unsupported
+     * stream context as a lost file writer, including DELETE-only directory handles. */
+    status = FltIsDirectory(fileObject, FltObjects->Instance, &directory);
+    if (!NT_SUCCESS(status)) {
+        StageWritersMarkInstanceUnknown(FltObjects->Instance);
+        InterlockedIncrement64(&WriterUntrackedCreates);
+        return;
+    }
+    if (directory) {
+        InterlockedIncrement64(&WriterDirectoryCreatesSkipped);
+        return;
+    }
 
     status = SafeUploadGetOrCreateStreamContext(FltObjects, fileObject, &streamContext);
     if (!NT_SUCCESS(status)) {
+        StageWritersMarkInstanceUnknown(FltObjects->Instance);
         InterlockedIncrement64(&WriterUntrackedCreates);
         return;
     }
@@ -129,7 +160,7 @@ VOID SafeUploadStageWritersOnCleanup(
     KIRQL irql;
     NTSTATUS status;
 
-    if (fileObject == NULL || !fileObject->WriteAccess) return;
+    if (fileObject == NULL || (!fileObject->WriteAccess && !fileObject->DeleteAccess)) return;
 
     status = FltGetStreamContext(FltObjects->Instance, fileObject, (PFLT_CONTEXT *)&streamContext);
     if (!NT_SUCCESS(status)) {
@@ -167,17 +198,31 @@ VOID SafeUploadStageWritersFreeContext(_Inout_ PSAFEUPLOAD_STREAM_CONTEXT Stream
     }
 }
 
-/* The probe's lower file object belongs to the same stream as every other open of it, so its stream
- * context carries the count. No context means no write open has been seen since the stream appeared. */
+/* A missing stream context proves zero only when no writer-context failure was recorded for this
+ * attachment. Allocation failure must survive a later successful allocation on the same stream. */
 UINT32 SafeUploadStageWritersSnapshot(_In_ PFLT_INSTANCE Instance, _In_ PFILE_OBJECT FileObject)
 {
     PSAFEUPLOAD_STREAM_CONTEXT streamContext = NULL;
+    PSAFEUPLOAD_INSTANCE_CONTEXT instanceContext = NULL;
     UINT32 result = 0;
+    NTSTATUS status;
 
-    if (FileObject == NULL || !NT_SUCCESS(FltGetStreamContext(Instance, FileObject, (PFLT_CONTEXT *)&streamContext))) {
-        return 0;
+    if (FileObject == NULL || Instance == NULL) return SAFEUPLOAD_WRITERS_UNTRACKED_BIT;
+    if (InterlockedCompareExchange(&WriterGlobalUnknown, 0, 0) != 0)
+        result |= SAFEUPLOAD_WRITERS_UNTRACKED_BIT;
+    status = FltGetInstanceContext(Instance, (PFLT_CONTEXT *)&instanceContext);
+    if (!NT_SUCCESS(status)) result |= SAFEUPLOAD_WRITERS_UNTRACKED_BIT;
+    else {
+        if (InterlockedCompareExchange(&instanceContext->WritersUntracked, 0, 0) != 0)
+            result |= SAFEUPLOAD_WRITERS_UNTRACKED_BIT;
+        FltReleaseContext(instanceContext);
     }
-    result = (UINT32)InterlockedCompareExchange(&streamContext->WriteObjects, 0, 0) & ~SAFEUPLOAD_WRITERS_UNTRACKED_BIT;
+    status = FltGetStreamContext(Instance, FileObject, (PFLT_CONTEXT *)&streamContext);
+    if (!NT_SUCCESS(status)) {
+        if (status != STATUS_NOT_FOUND) result |= SAFEUPLOAD_WRITERS_UNTRACKED_BIT;
+        return result;
+    }
+    result |= (UINT32)InterlockedCompareExchange(&streamContext->WriteObjects, 0, 0) & ~SAFEUPLOAD_WRITERS_UNTRACKED_BIT;
     if (InterlockedCompareExchange(&streamContext->WritersUntracked, 0, 0) != 0) {
         result |= SAFEUPLOAD_WRITERS_UNTRACKED_BIT;
     }

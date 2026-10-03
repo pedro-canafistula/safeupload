@@ -280,6 +280,7 @@ Return Value:
     //  FltAllocateContext does not zero what it hands back.
     //
 
+    RtlZeroMemory( instanceContext, sizeof( *instanceContext ) );
     instanceContext->VolumeKind = SafeUploadClassifyVolume( FltObjects->Volume,
                                                             VolumeDeviceType );
 #if SAFEUPLOAD_STAGING_PROTOTYPE

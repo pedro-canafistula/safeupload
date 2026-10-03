@@ -79,6 +79,7 @@
     <ClCompile Include="StageAlias.c" Condition="'$(SafeUploadStagingPrototype)'=='true'" />
     <ClCompile Include="StageFence.c" Condition="'$(SafeUploadStagingPrototype)'=='true'" />
     <ClCompile Include="StageWriters.c" Condition="'$(SafeUploadStagingPrototype)'=='true'" />
+    <ClCompile Include="StageAdmission.c" Condition="'$(SafeUploadStagingPrototype)'=='true'" />
   </ItemGroup>
   <ItemGroup>
     <None Include="SafeUpload.inf" />
