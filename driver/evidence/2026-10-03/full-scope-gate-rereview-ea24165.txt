@@ -1,0 +1,44 @@
+SafeUpload full-scope gate rereview
+Date: 2026-10-03
+Reviewer: delegated Luna security/source review (gpt-6-luna, max reasoning)
+Reviewed driver-source commit: ea24165ce1b28ed070b3cfc71ef10d660a574543
+Current branch at recording: eff8206 (adds review/harness artifacts only;
+                              no driver C-source changes after the reviewed commit)
+
+Scope
+-----
+Read-only review of the current policy-transition and stage-fence source after
+the two checked pre-publication union scans replaced the unchecked post-swap
+refresh. Also checked whether this source change alters the prior full-scope
+conclusion for removable, SMB/UNC, or sync-client destinations.
+
+Findings
+--------
+1. P1: The section/view lifetime race remains. `SafeUploadSetPolicy` keeps the
+   old policy current, exposes the candidate, performs two checked union scans,
+   then swaps policy (`Policy.c:403-445`). Writable-section admission and scans
+   do not synchronize a retained section handle through a later view creation.
+   A view can therefore be created after the scans and policy commit.
+2. P1: No safe C-only patch makes removable, SMB/UNC, or sync-client scopes
+   ready. `FenceClassifyVolume` covers fixed NTFS only (`StageFence.c:223-240`);
+   transitions reject skipped volume scopes and reparses
+   (`StageFence.c:1143-1160`). Late attachment remains asynchronous and leaves
+   an attachment-to-scan window (`StageFence.c:1805-1822`, `Filter.c:531-544`).
+   Staging also rejects network/non-NTFS targets and uses a C: NTFS backing
+   volume (`StageStream.c:650-696,883-886`).
+
+Disposition and next gate
+-------------------------
+The checked scans improve failure handling: scan failures reject the candidate
+and preserve the old policy. They do not establish complete coverage or close
+the section/view race. Keep unsupported destination scopes rejected. Do not add
+scope-enabling code until a per-stack admission design exists.
+
+Next validation gate: build and test the exact current source with the WDK,
+then run the rejection-only policy case on a clean VM. The rejection-only case
+must preserve the unchanged approved policy and prior fence state. Full USB,
+SMB/UNC, and sync-client qualification remains separate and requires per-stack
+admission design and independent destination-byte observation.
+
+No WDK build, PowerShell parse, VM execution, or destination-byte observation
+was performed by this review.

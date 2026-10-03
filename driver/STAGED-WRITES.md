@@ -161,6 +161,10 @@ Normal staging stays compiled out and taint enforcement remains.
           enables removable, SMB/UNC, or sync-client scope. Preserve fail-closed
           policy rejection pending per-stack admission barriers and qualification.
           [Review record](evidence/2026-10-03/full-scope-next-slice-review.txt).
+    - [x] Fresh Luna rereview after the checked pre-publication scans: the
+          section/view race and destination-scope blockers remain; the next
+          gate is current-source WDK validation and the clean-VM rejection-only
+          case. [Review record](evidence/2026-10-03/full-scope-gate-rereview-ea24165.txt).
     - [ ] Rebuild the current `Policy.c` and `StageFence.c` source revision in
           all four normal/feature Debug/Release WDK configurations, then rerun
           the required agent tests. Run 22 predates these uncommitted source
