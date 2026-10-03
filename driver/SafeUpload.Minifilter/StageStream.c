@@ -666,7 +666,6 @@ NTSTATUS SafeUploadStageAdmissionDeleteStreamContext(_In_ PCUNICODE_STRING Volum
     NTSTATUS status;
     UNICODE_STRING cDrive = RTL_CONSTANT_STRING(L"\\??\\C:");
 
-    PAGED_CODE();
     NT_ASSERT(KeGetCurrentIrql() == PASSIVE_LEVEL);
 
     if (VolumeName == NULL || RelativePath == NULL || VolumeName->Length == 0 ||
@@ -708,12 +707,16 @@ NTSTATUS SafeUploadStageAdmissionDeleteStreamContext(_In_ PCUNICODE_STRING Volum
         status = STATUS_INSUFFICIENT_RESOURCES;
         goto Exit;
     }
-    RtlCopyMemory(fullPathBuffer, VolumeName->Buffer, VolumeName->Length);
-    RtlCopyMemory((PUCHAR)fullPathBuffer + VolumeName->Length,
-                  RelativePath->Buffer, RelativePath->Length);
+    /* Bounded copies: MaximumLength is exactly the validated sum, so both appends must fit. */
     fullPath.Buffer = fullPathBuffer;
-    fullPath.Length = (USHORT)fullPathBytes;
+    fullPath.Length = 0;
     fullPath.MaximumLength = (USHORT)fullPathBytes;
+    RtlCopyUnicodeString(&fullPath, VolumeName);
+    status = RtlAppendUnicodeStringToString(&fullPath, RelativePath);
+    if (!NT_SUCCESS(status) || fullPath.Length != fullPathBytes) {
+        status = STATUS_INVALID_PARAMETER;
+        goto Exit;
+    }
 
     InitializeObjectAttributes(&attributes, &fullPath,
         OBJ_KERNEL_HANDLE | OBJ_CASE_INSENSITIVE, NULL, NULL);
