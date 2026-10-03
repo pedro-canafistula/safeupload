@@ -157,6 +157,12 @@ Normal staging stays compiled out and taint enforcement remains.
           correct and least privilege ([review](evidence/2026-10-03/policy-transition-rejection-run31-luna-review.txt)).
     - [x] Parse and compile the exact Run31 harness with Windows PowerShell 5.1;
           zero parser errors, 14 interop methods, no execution ([evidence](evidence/2026-10-03/policy-transition-rejection-run31-ps51-parse-compile.txt)).
+    - [x] Record Run32 stopping before harness execution because Bash
+          `printf` interpreted the `\U` in the Windows path; the wrapper's
+          independent baseline passed, and all three guest inputs and metadata
+          were restored ([gate](evidence/2026-10-03/policy-rejection-only-run32-gate.txt),
+          [stop record](evidence/2026-10-03/policy-rejection-only-run32-pre-harness-stop.txt),
+          [restored baseline](evidence/2026-10-03/policy-rejection-only-run32-post-input-restore-check.txt)).
     - [ ] Retry the rejection-only VM diagnostic on a fresh clean checkpoint,
           deriving and cross-checking the explicit signed-driver hash from the
           artifact, verifying the Inspector hash, and preserving unchanged
