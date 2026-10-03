@@ -1,6 +1,6 @@
 param(
     [Parameter(Mandatory = $true)]
-    [ValidateSet('preattach-immediate', 'preattach-protected-open', 'mmdoes-matrix', 'policy-transition', 'retained-section', 'section-eol', 'All')]
+    [ValidateSet('preattach-immediate', 'preattach-protected-open', 'mmdoes-matrix', 'policy-transition', 'retained-section', 'section-eol', 'writer-count', 'All')]
     [string] $Variant,
 
     [Parameter(Mandatory = $true)]
@@ -20,7 +20,10 @@ param(
     [string] $FeatureDriverFileName = 'SafeUpload-stage-prototype.sys',
 
     [ValidatePattern('^SafeUpload\.Inspector\.[A-Za-z0-9_-]+\.exe$')]
-    [string] $InspectorInputFileName = 'SafeUpload.Inspector.input.exe'
+    [string] $InspectorInputFileName = 'SafeUpload.Inspector.input.exe',
+
+    # Runtime Driver Verifier (volatile, flags 0x13B) on SafeUpload.sys for variants that support it.
+    [switch] $Verifier
 )
 
 $ErrorActionPreference = 'Stop'
@@ -993,7 +996,7 @@ function ConvertTo-NormalizedHex([string] $Value) {
 $script:LightEntryPattern = [regex]('^\{"sequence":(\d+),"timestamp":(\d+),"event":"(\w+)","pid":(\d+),"irql":(\d+),' +
     '"instance":"[^"]*","targetFileObject":"(0x[0-9A-Fa-f]+)","sectionObjectPointer":"(0x[0-9A-Fa-f]+)",' +
     '"major":(\d+),"minor":(\d+),"irpFlags":"(0x[0-9A-Fa-f]+)","mmDoes":"(\w+)".*"syncType":(\d+),' +
-    '"pageProtection":"(0x[0-9A-Fa-f]+)"')
+    '"pageProtection":"(0x[0-9A-Fa-f]+)"(?:.*"writeObjects":(\d+),"writersUntracked":(true|false))?')
 
 function Get-LightTrace($InspectorResult, [string] $RawPath) {
     # Cheap parse for dumps of thousands of lines; the raw dump is kept as evidence.
@@ -1025,6 +1028,8 @@ function Get-LightTrace($InspectorResult, [string] $RawPath) {
             MmDoes = $g[11].Value
             Sync = [Int64]$g[12].Value   # 4294967295 marks 'sync parameters unavailable'
             Prot = [Convert]::ToUInt32($g[13].Value.Substring(2), 16)
+            Writers = $(if ($g[14].Success) { [int]$g[14].Value } else { 0 })
+            WritersUntracked = ($g[15].Success -and $g[15].Value -eq 'true')
         })
     }
     if ($null -eq $summary) {
@@ -1086,6 +1091,105 @@ function Write-CompactReader([string] $Name, $Observation) {
         ';EqualOriginal=' + $Observation.EqualOriginal + ';Text=' + $Observation.Text)
 }
 
+function Initialize-EolNative {
+    if (-not ('SafeUploadEolNative' -as [type])) {
+        Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+
+public static class SafeUploadEolNative
+{
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool DuplicateHandle(
+        IntPtr sourceProcess, IntPtr sourceHandle, IntPtr targetProcess, out IntPtr targetHandle,
+        uint desiredAccess, [MarshalAs(UnmanagedType.Bool)] bool inheritHandle, uint options);
+
+    [DllImport("kernel32.dll")]
+    public static extern IntPtr GetCurrentProcess();
+}
+'@
+    }
+}
+
+function Initialize-WriterStress {
+    if (-not ('SafeUploadWriterStress' -as [type])) {
+        Add-Type -TypeDefinition @'
+using System;
+using System.IO;
+using System.Threading;
+
+public static class SafeUploadWriterStress
+{
+    // Opens and closes the same file for write from several threads; returns the number of failed opens.
+    public static int Run(string path, int threads, int iterations)
+    {
+        int failures = 0;
+        Thread[] workers = new Thread[threads];
+        for (int t = 0; t < threads; t++)
+        {
+            workers[t] = new Thread(delegate ()
+            {
+                for (int i = 0; i < iterations; i++)
+                {
+                    try
+                    {
+                        using (FileStream f = new FileStream(path, FileMode.Open, FileAccess.ReadWrite,
+                            FileShare.ReadWrite | FileShare.Delete)) { f.WriteByte(0x41); }
+                    }
+                    catch (IOException) { Interlocked.Increment(ref failures); }
+                }
+            });
+            workers[t].Start();
+        }
+        foreach (Thread w in workers) { w.Join(); }
+        return failures;
+    }
+}
+'@
+    }
+}
+
+$script:WriterChecks = New-Object System.Collections.ArrayList
+
+function Add-WriterProbe([string] $Path, [string] $Label, [int] $ExpectedWriters, [string] $ExpectedMmDoes = '') {
+    # Probes the stream and remembers what the harness knows to be true at this instant.
+    [void]$script:WriterChecks.Add(@{ Label = $Label; Expected = $ExpectedWriters; ExpectedMm = $ExpectedMmDoes })
+    [void](Invoke-AdmissionProbe $Path ('WC_' + $Label) $InspectorTimeoutSeconds)
+}
+
+function Complete-WriterChecks([string] $GroupName, [string] $RawPath) {
+    # One dump per group keeps the ring small; entries are matched to checks by order.
+    $trace = Get-LightTrace (Invoke-InspectorChecked -Arguments @('--admission-trace') -Timeout $InspectorTimeoutSeconds) $RawPath
+    $probes = @($trace.Entries | Where-Object { $_.Ev -eq 'explicit_probe' } | Sort-Object Seq)
+    Write-Output ('WC_Group_' + $GroupName + '=probes:' + $probes.Count + ';checks:' + $script:WriterChecks.Count +
+        ';lostEntries:' + $trace.Summary.lostEntries + ';snapshotSequence:' + $trace.Summary.snapshotSequence)
+    if ($probes.Count -ne $script:WriterChecks.Count) {
+        Write-Output ('WC_Group_' + $GroupName + '_Attribution=AMBIGUOUS')
+        $script:WriterChecksFailed += $script:WriterChecks.Count
+    }
+    else {
+        for ($index = 0; $index -lt $probes.Count; $index++) {
+            $check = $script:WriterChecks[$index]
+            $entry = $probes[$index]
+            $writersOk = ($entry.Writers -eq $check.Expected) -and (-not $entry.WritersUntracked)
+            $mmOk = ([string]::IsNullOrEmpty($check.ExpectedMm) -or $entry.MmDoes -eq $check.ExpectedMm)
+            $verdict = if ($writersOk -and $mmOk) { 'PASS' } else { 'FAIL' }
+            if ($verdict -ne 'PASS') { $script:WriterChecksFailed++ } else { $script:WriterChecksPassed++ }
+            Write-Output ('WC_' + $check.Label + '=expected:' + $check.Expected + ';observed:' + $entry.Writers +
+                ';untracked:' + $entry.WritersUntracked + ';mmDoes:' + $entry.MmDoes +
+                $(if ($check.ExpectedMm) { ';expectedMmDoes:' + $check.ExpectedMm } else { '' }) + ';' + $verdict)
+        }
+    }
+    $script:WriterChecks.Clear()
+    [void](Invoke-InspectorChecked -Arguments @('--admission-trace-clear') -Timeout $InspectorTimeoutSeconds)
+}
+
+function Get-WriterStateStats {
+    $r = Invoke-InspectorChecked -Arguments @('--writer-state-status') -Timeout $InspectorTimeoutSeconds
+    return (ConvertFrom-Json -InputObject ([string]$r.Stdout).Trim())
+}
+
 function Invoke-Variant([string] $SelectedVariant) {
     $script:LastRestorationVerified = $false
     $script:LastRunSucceeded = $false
@@ -1103,6 +1207,7 @@ function Invoke-Variant([string] $SelectedVariant) {
     $inspectorCopyCreated = $false
     $driverReplaced = $false
     $filterLoaded = $false
+    $verifierEnabled = $false
     $traceEnabled = $false
     $agent = $null
     $runSucceeded = $false
@@ -1711,6 +1816,182 @@ public static class SafeUploadEolNative
             $traceEnabled = $false
             $runSucceeded = $true
         }
+        elseif ($SelectedVariant -eq 'writer-count') {
+            # X2: H(F), the per-stream count of write file objects, against what the harness knows to be true.
+            $t = $InspectorTimeoutSeconds
+            Initialize-EolNative
+            Initialize-WriterStress
+            $script:WriterChecksPassed = 0
+            $script:WriterChecksFailed = 0
+            $access = [IO.FileShare]::ReadWrite -bor [IO.FileShare]::Delete
+            function Open-WC([string] $p, [IO.FileMode] $mode = [IO.FileMode]::Open, [IO.FileAccess] $acc = [IO.FileAccess]::ReadWrite,
+                [IO.FileShare] $share = ([IO.FileShare]::ReadWrite -bor [IO.FileShare]::Delete)) {
+                return [IO.FileStream]::new($p, $mode, $acc, $share)
+            }
+            function New-WCFile([string] $name) {
+                $p = Join-Path $fixtureDirectory $name
+                [IO.File]::WriteAllBytes($p, (New-PaddedFixtureBytes ([Text.Encoding]::UTF8.GetBytes('WC BASELINE ' + $name + ' ' + $id))))
+                $script:fixturePathsLocal += $p
+                return $p
+            }
+            $script:fixturePathsLocal = @()
+            $fa = New-WCFile 'wc_single.maptest'
+            $fb = New-WCFile 'wc_two.maptest'
+            $fc = New-WCFile 'wc_readonly.maptest'
+            $fd = New-WCFile 'wc_dupsame.maptest'
+            $fe = New-WCFile 'wc_dupchild.maptest'
+            $ff = New-WCFile 'wc_failed.maptest'
+            $fg = New-WCFile 'wc_truncate.maptest'
+            $fh = New-WCFile 'wc_alias_target.maptest'
+            $fi = New-WCFile 'wc_a_rather_long_file_name_for_short_names.maptest'
+            $fj = New-WCFile 'wc_many.maptest'
+            $fk = New-WCFile 'wc_stress.maptest'
+            $fl = New-WCFile 'wc_section.maptest'
+            $fm = New-WCFile 'wc_ads_base.maptest'
+            $fixturePaths += $script:fixturePathsLocal
+            foreach ($path in $fixturePaths) { Assert-ReparseFreeFixturePath $path }
+
+            Backup-StagedTestDriver $backup
+            if ((Get-FileHash -LiteralPath $backup -Algorithm SHA256).Hash -ne $expectedOriginalDriver) {
+                throw 'Durable restoration backup mismatch.'
+            }
+            $driverReplaced = $true
+            Copy-Item -LiteralPath $featureDriver -Destination $installedDriver -Force
+            if ((Get-FileHash -LiteralPath $installedDriver -Algorithm SHA256).Hash -ne $ExpectedFeatureSha256.ToUpperInvariant()) {
+                throw 'Feature driver install hash mismatch.'
+            }
+            if ($Verifier) {
+                & verifier.exe /volatile /flags 0x13B /adddriver SafeUpload.sys | Out-Host
+                if ($LASTEXITCODE -ne 0) { throw 'Verifier enable failed.' }
+                $verifierEnabled = $true
+                Write-Output 'VerifierEnabled=volatile flags 0x13B'
+            }
+            Invoke-FeatureFilterLoad
+            $filterLoaded = $true
+            [void](Invoke-InspectorChecked -Arguments @('--admission-trace-clear') -Timeout $t)
+            [void](Invoke-InspectorChecked -Arguments @('--admission-trace-enable') -Timeout $t)
+            $traceEnabled = $true
+            [void](Invoke-InspectorChecked -Arguments @('--admission-trace-clear') -Timeout $t)
+            $statsBefore = Get-WriterStateStats
+            Write-Output ('WC_StatsBefore=counted:' + $statsBefore.writeObjectsCounted + ';released:' + $statsBefore.writeObjectsReleased +
+                ';untracked:' + $statsBefore.untrackedCreates + ';unmatched:' + $statsBefore.cleanupUnmatched)
+
+            # Group 1: basic counting
+            Add-WriterProbe $fa 'single_beforeOpen' 0
+            $s1 = Open-WC $fa
+            Add-WriterProbe $fa 'single_open' 1
+            $s1.Dispose()
+            Add-WriterProbe $fa 'single_closed' 0
+            $sa = Open-WC $fb; Add-WriterProbe $fb 'two_firstOpen' 1
+            $sb = Open-WC $fb; Add-WriterProbe $fb 'two_secondOpen' 2
+            $sa.Dispose(); Add-WriterProbe $fb 'two_firstClosed' 1
+            $sb.Dispose(); Add-WriterProbe $fb 'two_allClosed' 0
+            $r1 = Open-WC $fc ([IO.FileMode]::Open) ([IO.FileAccess]::Read); Add-WriterProbe $fc 'readOnly_open' 0
+            $r1.Dispose()
+            $attr = [SafeUploadAdmissionNative]::CreateFile($fc, [uint32]0x100, [uint32]7, [IntPtr]::Zero, [uint32]3, [uint32]0x80, [IntPtr]::Zero)
+            if ($attr.IsInvalid) { throw 'Attributes-only open failed.' }
+            Add-WriterProbe $fc 'attributesOnly_open' 0
+            $attr.Dispose(); Add-WriterProbe $fc 'attributesOnly_closed' 0
+            Complete-WriterChecks 'basic' $rawTraceA
+
+            # Group 2: duplicated handles
+            $d1 = Open-WC $fd
+            $dupPtr = [IntPtr]::Zero
+            $okDup = [SafeUploadEolNative]::DuplicateHandle([SafeUploadEolNative]::GetCurrentProcess(), $d1.SafeFileHandle.DangerousGetHandle(),
+                [SafeUploadEolNative]::GetCurrentProcess(), [ref]$dupPtr, [uint32]0, $false, [uint32]2)
+            if (-not $okDup) { throw 'In-process DuplicateHandle failed.' }
+            $dup = [Microsoft.Win32.SafeHandles.SafeFileHandle]::new($dupPtr, $true)
+            Add-WriterProbe $fd 'dupSame_afterDuplicate' 1
+            $d1.Dispose(); Add-WriterProbe $fd 'dupSame_originalClosed' 1
+            $dup.Dispose(); Add-WriterProbe $fd 'dupSame_allClosed' 0
+            $e1 = Open-WC $fe
+            $child = $null
+            try {
+                $child = Start-Process -FilePath powershell.exe -ArgumentList @('-NoProfile', '-Command', 'Start-Sleep -Seconds 300') -PassThru -WindowStyle Hidden
+                $dupChild = [IntPtr]::Zero
+                $okChild = [SafeUploadEolNative]::DuplicateHandle([SafeUploadEolNative]::GetCurrentProcess(), $e1.SafeFileHandle.DangerousGetHandle(),
+                    $child.Handle, [ref]$dupChild, [uint32]0, $false, [uint32]2)
+                if (-not $okChild) { throw 'Cross-process DuplicateHandle failed.' }
+                $e1.Dispose()
+                Add-WriterProbe $fe 'dupChild_parentClosedChildHolds' 1
+                $child.Kill(); $child.WaitForExit()
+                Add-WriterProbe $fe 'dupChild_childKilled' 0
+            }
+            finally { if ($null -ne $child -and -not $child.HasExited) { $child.Kill() } }
+            Complete-WriterChecks 'duplicates' $rawTraceP1
+
+            # Group 3: failed creates, truncation, aliases
+            $x1 = Open-WC $ff ([IO.FileMode]::Open) ([IO.FileAccess]::ReadWrite) ([IO.FileShare]::None)
+            Add-WriterProbe ($ff) 'failed_exclusiveOpen' 1
+            $failedSharing = $false
+            try { $x2 = Open-WC $ff; $x2.Dispose() } catch { $failedSharing = $true }
+            Write-Output ('WC_Note_SharingViolationRaised=' + $failedSharing)
+            Add-WriterProbe $ff 'failed_afterSharingViolation' 1
+            $failedMissing = $false
+            try { $x3 = Open-WC (Join-Path $fixtureDirectory 'wc_missing.maptest'); $x3.Dispose() } catch { $failedMissing = $true }
+            Write-Output ('WC_Note_MissingOpenRaised=' + $failedMissing)
+            Add-WriterProbe $ff 'failed_afterMissingOpen' 1
+            $x1.Dispose(); Add-WriterProbe $ff 'failed_closed' 0
+            $tr = Open-WC $fg ([IO.FileMode]::Create); Add-WriterProbe $fg 'truncate_open' 1
+            $tr.Dispose(); Add-WriterProbe $fg 'truncate_closed' 0
+            $linkPath = Join-Path $fixtureDirectory 'wc_alias_link.maptest'
+            New-Item -ItemType HardLink -Path $linkPath -Target $fh | Out-Null
+            $script:fixturePathsLocal += $linkPath; $fixturePaths += $linkPath
+            $viaLink = Open-WC $linkPath
+            Add-WriterProbe $fh 'hardLink_openedViaLinkProbedViaTarget' 1
+            Add-WriterProbe $linkPath 'hardLink_probedViaLink' 1
+            $viaLink.Dispose(); Add-WriterProbe $fh 'hardLink_closed' 0
+            $shortPath = $null
+            try { $shortPath = (New-Object -ComObject Scripting.FileSystemObject).GetFile($fi).ShortPath } catch { }
+            if ($shortPath -and $shortPath -ne $fi) {
+                $viaShort = Open-WC $shortPath
+                Add-WriterProbe $fi 'shortName_openedViaShortProbedViaLong' 1
+                $viaShort.Dispose(); Add-WriterProbe $fi 'shortName_closed' 0
+                Write-Output ('WC_Note_ShortPath=' + $shortPath)
+            }
+            else { Write-Output 'WC_Note_ShortPath=NOT_AVAILABLE' }
+            $adsPath = $fm + ':side'
+            # .NET FileStream rejects stream names; use the Win32 open. GENERIC_WRITE, share all, OPEN_ALWAYS.
+            $adsHandle = [SafeUploadAdmissionNative]::CreateFile($adsPath, [uint32]0x40000000, [uint32]7, [IntPtr]::Zero, [uint32]4, [uint32]0x80, [IntPtr]::Zero)
+            if ($adsHandle.IsInvalid) { throw 'Alternate stream open failed.' }
+            Add-WriterProbe $fm 'ads_sideStreamWriterDoesNotCountForBase' 0
+            $adsHandle.Dispose()
+            Complete-WriterChecks 'aliases' $rawTraceP2
+
+            # Group 4: many handles, stress, and a writer whose file handle closed but whose section is retained
+            $many = New-Object System.Collections.ArrayList
+            for ($i = 0; $i -lt 120; $i++) { [void]$many.Add((Open-WC $fj)) }
+            Add-WriterProbe $fj 'many_120open' 120
+            for ($i = 0; $i -lt 60; $i++) { $many[$i].Dispose() }
+            Add-WriterProbe $fj 'many_60closed' 60
+            for ($i = 60; $i -lt 120; $i++) { $many[$i].Dispose() }
+            Add-WriterProbe $fj 'many_allClosed' 0
+            $stressFailures = [SafeUploadWriterStress]::Run($fk, 8, 400)
+            Write-Output ('WC_Note_StressOpenFailures=' + $stressFailures)
+            Add-WriterProbe $fk 'stress_8x400_allClosed' 0
+            $secFile = Open-WC $fl
+            $secMap = [IO.MemoryMappedFiles.MemoryMappedFile]::CreateFromFile($secFile, ('Local\SafeUpload-Wc-' + $id), [long]$mappingLength,
+                [IO.MemoryMappedFiles.MemoryMappedFileAccess]::ReadWrite, [IO.HandleInheritability]::None, $true)
+            [void]$mappings.Add($secMap)
+            Add-WriterProbe $fl 'section_fileOpenSectionRetained' 1 'yes'
+            $secFile.Dispose()
+            Add-WriterProbe $fl 'section_fileClosedSectionRetained_HzeroSyes' 0 'yes'
+            $secMap.Dispose()
+            Add-WriterProbe $fl 'section_released_HzeroSno' 0 'no'
+            Complete-WriterChecks 'many_and_sections' $rawTraceB
+
+            $statsAfter = Get-WriterStateStats
+            Write-Output ('WC_StatsAfter=counted:' + $statsAfter.writeObjectsCounted + ';released:' + $statsAfter.writeObjectsReleased +
+                ';untracked:' + $statsAfter.untrackedCreates + ';unmatched:' + $statsAfter.cleanupUnmatched +
+                ';postCreateRuns:' + $statsAfter.postCreateRuns)
+            $dCounted = [int64]$statsAfter.writeObjectsCounted - [int64]$statsBefore.writeObjectsCounted
+            $dReleased = [int64]$statsAfter.writeObjectsReleased - [int64]$statsBefore.writeObjectsReleased
+            Write-Output ('WC_StatsDelta=counted:' + $dCounted + ';released:' + $dReleased + ';liveDelta:' + ($dCounted - $dReleased))
+            Write-Output ('WC_Summary=passed:' + $script:WriterChecksPassed + ';failed:' + $script:WriterChecksFailed)
+            [void](Invoke-InspectorChecked -Arguments @('--admission-trace-disable') -Timeout $t)
+            $traceEnabled = $false
+            $runSucceeded = ($script:WriterChecksFailed -eq 0)
+        }
         else {
             $target = Join-Path $fixtureDirectory ('synthetic-' + $id + '.maptest')
             $fixturePaths = @($target)
@@ -1920,7 +2201,7 @@ public static class SafeUploadEolNative
 
         if ($driverReplaced) {
             try {
-                Restore-StagedTestDriver $backup $filterLoaded $false
+                Restore-StagedTestDriver $backup $filterLoaded $verifierEnabled
                 $filterLoaded = $false
             }
             catch {
