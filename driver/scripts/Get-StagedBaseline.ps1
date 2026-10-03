@@ -38,9 +38,12 @@ $checks['NoGuidFixtureDirectories'] = ($fixtures.Count -eq 0)
 $checks['NoSyntheticVolume'] = -not (Test-Path -LiteralPath 'S:\')
 $canaries = @()
 $canaryRootsRead = $true
+$canaryVolumes = @()
 try {
-    foreach ($volume in @(Get-CimInstance Win32_Volume -Filter 'DriveType=3' -ErrorAction Stop |
-        Where-Object FileSystem -eq 'NTFS')) {
+    $canaryVolumes = @(Get-CimInstance Win32_Volume -Filter 'DriveType=3' -ErrorAction Stop |
+        Where-Object FileSystem -eq 'NTFS')
+    if ($canaryVolumes.Count -eq 0) { throw 'No fixed NTFS volume was enumerated.' }
+    foreach ($volume in $canaryVolumes) {
         try { $canaries += @(Get-ChildItem -LiteralPath $volume.DeviceID -Filter 'SafeUpload-canary-*.tmp' -Force -ErrorAction Stop) }
         catch { $canaryRootsRead = $false; 'CanaryRootReadError=' + $_.Exception.Message }
     }
@@ -54,6 +57,8 @@ $checks['NoVolumeCanaryFiles'] = ($canaries.Count -eq 0 -and $canaryRootsRead)
 'OriginalInstalledSHA256=' + $installedHash
 'PolicySHA256=' + $policyHash
 'Service=' + $service.StartMode + '/' + $service.State
+'CanaryVolumeCount=' + $canaryVolumes.Count
+'CanaryVolumeRoots=' + (($canaryVolumes | ForEach-Object DeviceID | Sort-Object) -join ';')
 foreach ($name in $checks.Keys) { $name + '=' + $checks[$name] }
 if ($fixtures.Count -ne 0) { 'FixtureDirectories=' + (($fixtures | ForEach-Object Name) -join ';') }
 if ($canaries.Count -ne 0) { 'VolumeCanaryFiles=' + (($canaries | ForEach-Object FullName) -join ';') }

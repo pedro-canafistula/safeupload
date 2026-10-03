@@ -4,6 +4,7 @@
 
 #ifdef ALLOC_PRAGMA
 #pragma alloc_text(PAGE, SafeUploadStageOpenByIdentity)
+#pragma alloc_text(PAGE, SafeUploadStageAdmissionVolumeStatus)
 #endif
 
 NTSTATUS SafeUploadStageOpenByIdentity(
@@ -77,6 +78,13 @@ NTSTATUS SafeUploadStageOpenByIdentity(
         status = STATUS_FILE_INVALID;
         goto Exit;
     }
+    /* File IDs identify the file; the pinned section-pointer identity identifies its stream.
+     * A future caller passing an ADS must not silently sample the unnamed stream. */
+    if (SourceObject->SectionObjectPointer == NULL || object->SectionObjectPointer == NULL ||
+        SourceObject->SectionObjectPointer != object->SectionObjectPointer) {
+        status = STATUS_FILE_INVALID;
+        goto Exit;
+    }
     *Handle = handle; handle = NULL;
     *Object = object; object = NULL;
 Exit:
@@ -91,6 +99,54 @@ Exit:
 static volatile LONG AdmissionFilteringReady;
 static KEVENT CanaryStop;
 static HANDLE CanaryThreadHandle;
+
+NTSTATUS SafeUploadStageAdmissionVolumeStatus(_Out_ PSAFEUPLOAD_ADMISSION_VOLUME_STATUS Status)
+{
+    PFLT_INSTANCE instances[SAFEUPLOAD_ADMISSION_VOLUME_MAX_ENTRIES];
+    ULONG count = 0, index;
+    NTSTATUS status;
+    PAGED_CODE();
+    RtlZeroMemory(Status, sizeof(*Status));
+    Status->StructSize = sizeof(*Status);
+    Status->WriterGlobalUnknown = SafeUploadStageWritersGlobalUnknown();
+    if (!ExAcquireRundownProtection(&SafeUploadData.ChannelRundown)) return STATUS_FLT_DELETING_OBJECT;
+    status = FltEnumerateInstances(NULL, SafeUploadData.Filter, instances,
+        RTL_NUMBER_OF(instances), &count);
+    if (NT_SUCCESS(status)) {
+        Status->EntryCount = count;
+        for (index = 0; index < count; ++index) {
+            PSAFEUPLOAD_INSTANCE_CONTEXT context = NULL;
+            PSAFEUPLOAD_ADMISSION_VOLUME_ENTRY entry = &Status->Entries[index];
+            entry->Instance = (UINT64)(ULONG_PTR)instances[index];
+            entry->ContextStatus = (UINT32)FltGetInstanceContext(instances[index], (PFLT_CONTEXT *)&context);
+            entry->CanaryStatus = entry->CanaryCleanupStatus = (UINT32)STATUS_PENDING;
+            entry->FileSystemStatus = entry->VolumeGuidStatus = entry->ContextStatus;
+            entry->InstanceWritersUntracked = 1;
+            if (NT_SUCCESS((NTSTATUS)entry->ContextStatus)) {
+                entry->VolumeKind = (UINT32)context->VolumeKind;
+                entry->FileSystemType = (UINT32)context->FileSystemType;
+                entry->FileSystemStatus = (UINT32)context->FileSystemStatus;
+                entry->SetupFlags = (UINT32)context->SetupFlags;
+                entry->VolumeGuidStatus = (UINT32)context->VolumeGuidStatus;
+                entry->VolumeGuidChars = context->VolumeGuidChars;
+                RtlCopyMemory(entry->VolumeGuid, context->VolumeGuid, sizeof(entry->VolumeGuid));
+                entry->InstanceWritersUntracked = (UINT32)InterlockedCompareExchange(&context->WritersUntracked, 0, 0);
+                /* Final state is published last. Pending/Running reports no partial results. */
+                entry->CanaryState = (UINT32)InterlockedCompareExchange(&context->CanaryState, 0, 0);
+                if (entry->CanaryState >= SAFEUPLOAD_CANARY_PASSED) {
+                    entry->CanaryStatus = (UINT32)context->CanaryStatus;
+                    entry->CanaryChecks = context->CanaryChecks;
+                    entry->CanaryCleanupStatus = (UINT32)context->CanaryCleanupStatus;
+                }
+                FltReleaseContext(context);
+            }
+            FltObjectDereference(instances[index]);
+        }
+    }
+    /* Too many instances returns an error rather than partial success. */
+    ExReleaseRundownProtection(&SafeUploadData.ChannelRundown);
+    return status;
+}
 
 VOID SafeUploadStageAdmissionReady(VOID)
 {

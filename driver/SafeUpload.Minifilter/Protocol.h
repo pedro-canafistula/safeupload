@@ -272,6 +272,8 @@ typedef struct _SAFEUPLOAD_RESPONSE {
 #define SAFEUPLOAD_CONTROL_ADMISSION_PROBE              ((UINT32) 9)
 #define SAFEUPLOAD_CONTROL_ADMISSION_FENCE_STATUS       ((UINT32) 10)
 #define SAFEUPLOAD_CONTROL_ADMISSION_FENCE_REFRESH      ((UINT32) 11)
+#define SAFEUPLOAD_CONTROL_ADMISSION_VOLUME_STATUS      ((UINT32) 13)
+#define SAFEUPLOAD_ADMISSION_VOLUME_MAX_ENTRIES          ((UINT32) 32)
 #define SAFEUPLOAD_CONTROL_WRITER_STATE_STATUS          ((UINT32) 12)
 #define SAFEUPLOAD_ADMISSION_TRACE_RING_ENTRIES         ((UINT32) 16384) /* power of two; feature build only */
 #define SAFEUPLOAD_ADMISSION_TRACE_BATCH_ENTRIES        ((UINT32) 8)
@@ -556,6 +558,32 @@ typedef struct _SAFEUPLOAD_ADMISSION_PROBE_REQUEST {
     WCHAR Strings[1];
 } SAFEUPLOAD_ADMISSION_PROBE_REQUEST, *PSAFEUPLOAD_ADMISSION_PROBE_REQUEST;
 
+/* Feature-only diagnostic; Pending/Running or any query failure never proves trust. */
+typedef struct _SAFEUPLOAD_ADMISSION_VOLUME_ENTRY {
+    UINT64 Instance;
+    UINT32 VolumeKind;
+    UINT32 FileSystemType;
+    UINT32 FileSystemStatus;
+    UINT32 SetupFlags;
+    UINT32 CanaryState;
+    UINT32 CanaryStatus;
+    UINT32 CanaryChecks;
+    UINT32 CanaryCleanupStatus;
+    UINT32 InstanceWritersUntracked;
+    UINT32 ContextStatus;
+    UINT32 VolumeGuidStatus;
+    UINT32 VolumeGuidChars;
+    WCHAR VolumeGuid[64];
+} SAFEUPLOAD_ADMISSION_VOLUME_ENTRY, *PSAFEUPLOAD_ADMISSION_VOLUME_ENTRY;
+
+typedef struct _SAFEUPLOAD_ADMISSION_VOLUME_STATUS {
+    UINT32 StructSize;
+    UINT32 EntryCount;
+    UINT32 WriterGlobalUnknown;
+    UINT32 Reserved;
+    SAFEUPLOAD_ADMISSION_VOLUME_ENTRY Entries[SAFEUPLOAD_ADMISSION_VOLUME_MAX_ENTRIES];
+} SAFEUPLOAD_ADMISSION_VOLUME_STATUS, *PSAFEUPLOAD_ADMISSION_VOLUME_STATUS;
+
 /*
  *  Mapped-writable stream fence. A scan of the protected scopes registers streams that
  *  have user-writable mapped views; their unowned paging writes are refused and
@@ -612,6 +640,8 @@ typedef struct _SAFEUPLOAD_WRITER_STATE_STATUS {
     UINT64 SectionInFlightRemovedOnFailure;  // entries removed by post-operation because the acquire failed
     UINT32 SectionInFlightMaxDepth;
     UINT32 Reserved;
+    UINT64 PagingCreatesSkipped;
+    UINT64 VolumeCreatesSkipped;
 } SAFEUPLOAD_WRITER_STATE_STATUS, *PSAFEUPLOAD_WRITER_STATE_STATUS;
 
 /* A probe entry's AdmissionRecordState carries H(F) of the probed stream; this bit marks a lower bound. */
@@ -921,6 +951,9 @@ C_ASSERT( sizeof( SAFEUPLOAD_ADMISSION_TRACE_REQUEST ) == 32 );
 C_ASSERT( sizeof( SAFEUPLOAD_ADMISSION_TRACE_ENTRY ) == 128 );
 C_ASSERT( sizeof( SAFEUPLOAD_ADMISSION_TRACE_COUNTERS ) == 56 );
 C_ASSERT( sizeof( SAFEUPLOAD_ADMISSION_TRACE_BATCH ) == 1128 );
+C_ASSERT( sizeof( SAFEUPLOAD_ADMISSION_VOLUME_ENTRY ) == 184 );
+C_ASSERT( sizeof( SAFEUPLOAD_ADMISSION_VOLUME_STATUS ) == 5904 );
+C_ASSERT( sizeof( SAFEUPLOAD_POLICY_MESSAGE ) >= sizeof( SAFEUPLOAD_ADMISSION_VOLUME_STATUS ) );
 C_ASSERT( sizeof( SAFEUPLOAD_POLICY_MESSAGE ) >= sizeof( SAFEUPLOAD_ADMISSION_TRACE_BATCH ) );
 C_ASSERT( sizeof( SAFEUPLOAD_FENCE_STATUS ) == 144 );
 C_ASSERT( sizeof( SAFEUPLOAD_POLICY_MESSAGE ) >=

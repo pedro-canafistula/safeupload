@@ -779,6 +779,28 @@ Return Value:
             leave;
         }
 
+        if (command == SAFEUPLOAD_CONTROL_ADMISSION_VOLUME_STATUS) {
+            PSAFEUPLOAD_ADMISSION_VOLUME_STATUS volumeStatus = (PSAFEUPLOAD_ADMISSION_VOLUME_STATUS)policy;
+            if (InputBufferLength != sizeof(SAFEUPLOAD_CONTROL) || OutputBuffer == NULL ||
+                OutputBufferLength != sizeof(*volumeStatus)) {
+                status = STATUS_INVALID_BUFFER_SIZE;
+                leave;
+            }
+            if (controlHeader.Version != SAFEUPLOAD_PROTOCOL_VERSION ||
+                controlHeader.StructSize != sizeof(SAFEUPLOAD_CONTROL) || controlHeader.Reserved != 0) {
+                status = STATUS_REVISION_MISMATCH;
+                leave;
+            }
+#pragma warning( suppress: 6001 )
+            ProbeForWrite(OutputBuffer, sizeof(*volumeStatus), __alignof(SAFEUPLOAD_ADMISSION_VOLUME_STATUS));
+            status = SafeUploadStageAdmissionVolumeStatus(volumeStatus);
+            if (NT_SUCCESS(status)) {
+                RtlCopyMemory(OutputBuffer, volumeStatus, sizeof(*volumeStatus));
+                *ReturnOutputBufferLength = sizeof(*volumeStatus);
+            }
+            leave;
+        }
+
         if (command == SAFEUPLOAD_CONTROL_ADMISSION_FENCE_REFRESH ||
             command == SAFEUPLOAD_CONTROL_ADMISSION_FENCE_STATUS) {
             SAFEUPLOAD_CONTROL fenceControl;

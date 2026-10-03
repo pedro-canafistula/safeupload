@@ -51,7 +51,21 @@ static volatile LONG64 WriterReleased;
 static volatile LONG64 WriterUntrackedCreates;
 static volatile LONG64 WriterCleanupUnmatched;
 static volatile LONG64 WriterDirectoryCreatesSkipped;
+static volatile LONG64 WriterPagingCreatesSkipped;
+static volatile LONG64 WriterVolumeCreatesSkipped;
 static volatile LONG WriterGlobalUnknown;
+
+UINT32 SafeUploadStageWritersGlobalUnknown(VOID)
+{
+    return (UINT32)InterlockedCompareExchange(&WriterGlobalUnknown, 0, 0);
+}
+
+static BOOLEAN StageWritersExcludedObject(_In_ PFILE_OBJECT FileObject)
+{
+    /* Paging files do not support stream contexts, and volume handles are outside the
+     * regular-file writer registry. This does not grant either object admission to a scope. */
+    return FlagOn(FileObject->Flags, FO_VOLUME_OPEN) || FsRtlIsPagingFile(FileObject);
+}
 
 static VOID StageWritersMarkInstanceUnknown(_In_ PFLT_INSTANCE Instance)
 {
@@ -108,6 +122,11 @@ VOID SafeUploadStageWritersPostCreate(
     }
     if (!NT_SUCCESS(Data->IoStatus.Status) || Data->IoStatus.Status == STATUS_REPARSE) return;
     if (fileObject == NULL || (!fileObject->WriteAccess && !fileObject->DeleteAccess)) return;
+    if (StageWritersExcludedObject(fileObject)) {
+        if (FlagOn(fileObject->Flags, FO_VOLUME_OPEN)) InterlockedIncrement64(&WriterVolumeCreatesSkipped);
+        else InterlockedIncrement64(&WriterPagingCreatesSkipped);
+        return;
+    }
     InterlockedIncrement64(&WriterPostCreateRuns);
 
     /* Create.Options keeps the disposition in its high byte; the option bits are the low 24. */
@@ -161,6 +180,7 @@ VOID SafeUploadStageWritersOnCleanup(
     NTSTATUS status;
 
     if (fileObject == NULL || (!fileObject->WriteAccess && !fileObject->DeleteAccess)) return;
+    if (StageWritersExcludedObject(fileObject)) return;
 
     status = FltGetStreamContext(FltObjects->Instance, fileObject, (PFLT_CONTEXT *)&streamContext);
     if (!NT_SUCCESS(status)) {
@@ -391,6 +411,8 @@ VOID SafeUploadStageWritersGetStatus(_Out_ PSAFEUPLOAD_WRITER_STATE_STATUS Statu
     snapshot.UntrackedCreates = (UINT64)InterlockedCompareExchange64(&WriterUntrackedCreates, 0, 0);
     snapshot.CleanupUnmatched = (UINT64)InterlockedCompareExchange64(&WriterCleanupUnmatched, 0, 0);
     snapshot.DirectoryCreatesSkipped = (UINT64)InterlockedCompareExchange64(&WriterDirectoryCreatesSkipped, 0, 0);
+    snapshot.PagingCreatesSkipped = (UINT64)InterlockedCompareExchange64(&WriterPagingCreatesSkipped, 0, 0);
+    snapshot.VolumeCreatesSkipped = (UINT64)InterlockedCompareExchange64(&WriterVolumeCreatesSkipped, 0, 0);
     KeAcquireSpinLock(&SectionLock, &irql);
     snapshot.SectionInFlightNow = SectionNow;
     snapshot.SectionInFlightMaxDepth = SectionMaxDepth;

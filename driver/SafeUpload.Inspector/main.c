@@ -696,6 +696,57 @@ Cleanup:
     return exitCode;
 }
 
+static int PrintAdmissionVolumeStatus(VOID)
+{
+    SAFEUPLOAD_CONTROL control;
+    PSAFEUPLOAD_ADMISSION_VOLUME_STATUS status;
+    HANDLE port = INVALID_HANDLE_VALUE;
+    DWORD returned = 0;
+    UINT32 index, character;
+    HRESULT hr;
+    int result = 3;
+    status = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(*status));
+    if (status == NULL) return 4;
+    hr = FilterConnectCommunicationPort(SAFEUPLOAD_PORT_NAME, 0, NULL, 0, NULL, &port);
+    if (FAILED(hr)) goto Exit;
+    ZeroMemory(&control, sizeof(control));
+    control.Version = SAFEUPLOAD_PROTOCOL_VERSION;
+    control.StructSize = sizeof(control);
+    control.Command = SAFEUPLOAD_CONTROL_ADMISSION_VOLUME_STATUS;
+    hr = FilterSendMessage(port, &control, sizeof(control), status, sizeof(*status), &returned);
+    if (FAILED(hr) || returned != sizeof(*status) || status->StructSize != sizeof(*status) ||
+        status->EntryCount > SAFEUPLOAD_ADMISSION_VOLUME_MAX_ENTRIES || status->Reserved != 0) goto Exit;
+    for (index = 0; index < status->EntryCount; ++index) {
+        if (status->Entries[index].VolumeGuidChars >= ARRAYSIZE(status->Entries[index].VolumeGuid)) goto Exit;
+    }
+    wprintf(L"{\"writerGlobalUnknown\":%u,\"admissionVolumes\":[", status->WriterGlobalUnknown);
+    for (index = 0; index < status->EntryCount; ++index) {
+        const SAFEUPLOAD_ADMISSION_VOLUME_ENTRY *entry = &status->Entries[index];
+        wprintf(L"%s{\"instance\":\"%016llX\",\"volumeKind\":%u,\"fileSystemType\":%u,"
+            L"\"fileSystemStatus\":%u,\"setupFlags\":%u,\"contextStatus\":%u,"
+            L"\"canaryState\":%u,\"canaryStatus\":%u,\"canaryChecks\":%u,\"canaryCleanupStatus\":%u,"
+            L"\"instanceWritersUntracked\":%u,\"volumeGuidStatus\":%u,\"volumeGuid\":\"",
+            index == 0 ? L"" : L",", entry->Instance, entry->VolumeKind, entry->FileSystemType,
+            entry->FileSystemStatus, entry->SetupFlags, entry->ContextStatus, entry->CanaryState,
+            entry->CanaryStatus, entry->CanaryChecks, entry->CanaryCleanupStatus,
+            entry->InstanceWritersUntracked, entry->VolumeGuidStatus);
+        for (character = 0; character < entry->VolumeGuidChars; ++character) {
+            WCHAR value = entry->VolumeGuid[character];
+            if (value == L'\\' || value == L'"') wprintf(L"\\%lc", value);
+            else if (value < 32 || value > 126) wprintf(L"\\u%04X", (unsigned)value);
+            else wprintf(L"%lc", value);
+        }
+        wprintf(L"\"}");
+    }
+    wprintf(L"]}\n");
+    result = 0;
+Exit:
+    if (result != 0) wprintf(L"ERRO: resposta de admission-volume invalida (hr = 0x%08X, bytes = %u).\n", hr, returned);
+    if (port != INVALID_HANDLE_VALUE) CloseHandle(port);
+    HeapFree(GetProcessHeap(), 0, status);
+    return result;
+}
+
 static int PrintWriterStateStatus(VOID)
 {
     SAFEUPLOAD_CONTROL control;
@@ -726,12 +777,12 @@ static int PrintWriterStateStatus(VOID)
             L"\"untrackedCreates\":%llu,\"cleanupUnmatched\":%llu,\"directoryCreatesSkipped\":%llu,"
             L"\"sectionInFlightNow\":%lu,\"sectionInFlightInserted\":%llu,\"sectionInFlightReleased\":%llu,"
             L"\"sectionInFlightOverflow\":%llu,\"sectionInFlightStuck\":%llu,\"sectionInFlightRemovedOnFailure\":%llu,"
-            L"\"sectionInFlightMaxDepth\":%lu}\n",
+            L"\"sectionInFlightMaxDepth\":%lu,\"pagingCreatesSkipped\":%llu,\"volumeCreatesSkipped\":%llu}\n",
             status.PostCreateRuns, status.WriteObjectsCounted, status.WriteObjectsReleased,
             status.UntrackedCreates, status.CleanupUnmatched, status.DirectoryCreatesSkipped,
             status.SectionInFlightNow, status.SectionInFlightInserted, status.SectionInFlightReleased,
             status.SectionInFlightOverflow, status.SectionInFlightStuck, status.SectionInFlightRemovedOnFailure,
-            status.SectionInFlightMaxDepth);
+            status.SectionInFlightMaxDepth, status.PagingCreatesSkipped, status.VolumeCreatesSkipped);
     return 0;
 }
 
@@ -974,6 +1025,9 @@ Return Value:
 
     if (argc > 1 && _wcsicmp(argv[1], L"--writer-state-status") == 0) {
         return PrintWriterStateStatus();
+    }
+    if (argc > 1 && _wcsicmp(argv[1], L"--admission-volume-status") == 0) {
+        return PrintAdmissionVolumeStatus();
     }
 
     if (argc > 1 && _wcsicmp(argv[1], L"--admission-fence-status") == 0) {

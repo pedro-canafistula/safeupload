@@ -223,6 +223,11 @@ typedef struct _SAFEUPLOAD_INSTANCE_CONTEXT {
     NTSTATUS CanaryStatus;
     UINT32 CanaryChecks;
     NTSTATUS CanaryCleanupStatus;
+    FLT_FILESYSTEM_TYPE FileSystemType;
+    NTSTATUS FileSystemStatus;
+    NTSTATUS VolumeGuidStatus;
+    UINT32 VolumeGuidChars;
+    WCHAR VolumeGuid[64]; /* Immutable after InstanceSetup; query failure stays explicit. */
 #endif
 
 } SAFEUPLOAD_INSTANCE_CONTEXT, *PSAFEUPLOAD_INSTANCE_CONTEXT;

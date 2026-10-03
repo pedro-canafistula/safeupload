@@ -57,6 +57,8 @@ NTSTATUS SafeUploadStageOpenByIdentity(_In_ PFLT_INSTANCE Instance,
     _Out_ PHANDLE Handle, _Outptr_result_nullonfailure_ PFILE_OBJECT *Object,
     _Out_ PUINT32 ProbeStage);
 VOID SafeUploadStageAdmissionReady(VOID);
+NTSTATUS SafeUploadStageAdmissionVolumeStatus(_Out_ PSAFEUPLOAD_ADMISSION_VOLUME_STATUS Status);
+UINT32 SafeUploadStageWritersGlobalUnknown(VOID);
 VOID SafeUploadStageCanaryTick(VOID);
 NTSTATUS SafeUploadStageAdmissionStartWorker(VOID);
 VOID SafeUploadStageAdmissionStopWorker(VOID);

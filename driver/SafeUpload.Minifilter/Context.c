@@ -260,6 +260,9 @@ Return Value:
 {
     PSAFEUPLOAD_INSTANCE_CONTEXT instanceContext = NULL;
     NTSTATUS status;
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    UNICODE_STRING volumeGuid;
+#endif
 
     PAGED_CODE();
 
@@ -287,6 +290,24 @@ Return Value:
     instanceContext->SetupFlags = SetupFlags;
     instanceContext->CanaryStatus = STATUS_PENDING;
     instanceContext->CanaryCleanupStatus = STATUS_PENDING;
+    instanceContext->FileSystemStatus = FltGetFileSystemType(FltObjects->Instance,
+        &instanceContext->FileSystemType);
+    volumeGuid.Buffer = instanceContext->VolumeGuid;
+    volumeGuid.Length = 0;
+    volumeGuid.MaximumLength = sizeof(instanceContext->VolumeGuid) - sizeof(WCHAR);
+    /* On supported Windows versions this is safe in InstanceSetup, after mount processing.
+     * Keep the GUID rather than a drive letter or transient HarddiskVolume number. */
+    instanceContext->VolumeGuidStatus = FltGetVolumeGuidName(FltObjects->Volume, &volumeGuid, NULL);
+    if (instanceContext->VolumeGuidStatus == STATUS_SUCCESS) {
+        if (volumeGuid.Length == 0 || volumeGuid.Length > volumeGuid.MaximumLength ||
+            (volumeGuid.Length % sizeof(WCHAR)) != 0) {
+            instanceContext->VolumeGuidStatus = STATUS_INVALID_BUFFER_SIZE;
+        } else {
+            instanceContext->VolumeGuidChars = volumeGuid.Length / sizeof(WCHAR);
+        }
+    }
+    if (instanceContext->VolumeGuidStatus != STATUS_SUCCESS)
+        RtlZeroMemory(instanceContext->VolumeGuid, sizeof(instanceContext->VolumeGuid));
 #endif
 
     status = FltSetInstanceContext( FltObjects->Instance,

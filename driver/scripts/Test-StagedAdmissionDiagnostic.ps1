@@ -24,7 +24,8 @@ param(
 
     # Runtime Driver Verifier (volatile, flags 0x13B) on SafeUpload.sys for variants that support it.
     [switch] $Verifier,
-    [switch] $RequireCanary
+    [switch] $RequireCanary,
+    [switch] $RequireAllVolumeCanaries
 )
 
 $ErrorActionPreference = 'Stop'
@@ -1219,6 +1220,7 @@ function Get-WriterStateStats {
 }
 
 function Wait-AdmissionCanary([string] $Path, [string] $RawPath) {
+    if ($RequireAllVolumeCanaries) { Wait-AllVolumeCanaries ($RawPath + '-volumes.json') }
     if (-not $RequireCanary) { return }
     for ($attempt = 0; $attempt -lt 20; $attempt++) {
         [void](Invoke-AdmissionProbe $Path ('Canary_' + $attempt) $InspectorTimeoutSeconds)
@@ -1238,6 +1240,48 @@ function Wait-AdmissionCanary([string] $Path, [string] $RawPath) {
         Start-Sleep -Milliseconds 100
     }
     throw 'Volume canary did not reach its passed state (inspect retained raw canary probes).'
+}
+
+function Wait-AllVolumeCanaries([string] $RawPath) {
+    $volumes = @(Get-CimInstance Win32_Volume -Filter 'DriveType=3' -ErrorAction Stop |
+        Where-Object FileSystem -eq 'NTFS')
+    $expected = @($volumes | ForEach-Object {
+        if ($_.DeviceID -notmatch '(?i)\{[0-9a-f-]{36}\}') { throw 'Invalid independent volume GUID.' }
+        $matches[0].ToLowerInvariant()
+    } | Sort-Object)
+    if ($expected.Count -eq 0 -or @($expected | Select-Object -Unique).Count -ne $expected.Count) {
+        throw 'Independent fixed NTFS volume set is empty or ambiguous.'
+    }
+    Write-Output ('IndependentFixedNtfsGuids=' + ($expected -join ';'))
+    for ($attempt = 0; $attempt -lt 60; ++$attempt) {
+        $response = Invoke-InspectorChecked -Arguments @('--admission-volume-status') -Timeout $InspectorTimeoutSeconds
+        [IO.File]::WriteAllText(($RawPath + '-' + $attempt), [string]$response.Stdout)
+        $status = ConvertFrom-Json -InputObject ([string]$response.Stdout).Trim()
+        if ($null -eq $status.admissionVolumes -or $null -eq $status.writerGlobalUnknown) {
+            throw 'Missing all-volume status fields.'
+        }
+        if ($status.writerGlobalUnknown -ne 0) { throw 'Global writer tracking is unknown.' }
+        $eligible = @($status.admissionVolumes | Where-Object { $_.volumeKind -eq 1 -and $_.fileSystemType -eq 2 })
+        $actual = @($eligible | ForEach-Object {
+            if ($_.contextStatus -ne 0 -or $_.fileSystemStatus -ne 0 -or $_.volumeGuidStatus -ne 0 -or
+                $_.volumeGuid -notmatch '(?i)\{[0-9a-f-]{36}\}') { throw 'Unresolved eligible volume identity.' }
+            $matches[0].ToLowerInvariant()
+        } | Sort-Object)
+        if (($actual -join ';') -ne ($expected -join ';')) { throw 'Attached fixed NTFS set differs from independent volume set.' }
+        $pending = $false
+        foreach ($entry in $eligible) {
+            if ($entry.instanceWritersUntracked -ne 0) { throw 'Instance writer tracking is unknown.' }
+            if ($entry.canaryState -lt 2) { $pending = $true; continue }
+            if ($entry.canaryState -ne 2 -or $entry.canaryStatus -ne 0 -or $entry.canaryChecks -ne 7 -or
+                $entry.canaryCleanupStatus -ne 0) { throw ('All-volume canary failed for ' + $entry.volumeGuid) }
+        }
+        if (-not $pending) {
+            Write-Output ('AllVolumeCanaries=PASS;count:' + $eligible.Count)
+            return
+        }
+        Start-Sleep -Milliseconds 100
+    }
+    throw 'All-volume canary timeout.'
 }
 
 function Initialize-SectionStress {
