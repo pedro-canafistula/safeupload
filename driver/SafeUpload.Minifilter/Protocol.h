@@ -266,6 +266,8 @@ typedef struct _SAFEUPLOAD_RESPONSE {
 #define SAFEUPLOAD_CONTROL_ADMISSION_TRACE_CLEAR        ((UINT32) 7)
 #define SAFEUPLOAD_CONTROL_ADMISSION_TRACE_READ_BATCH   ((UINT32) 8)
 #define SAFEUPLOAD_CONTROL_ADMISSION_PROBE              ((UINT32) 9)
+#define SAFEUPLOAD_CONTROL_ADMISSION_FENCE_STATUS       ((UINT32) 10)
+#define SAFEUPLOAD_CONTROL_ADMISSION_FENCE_REFRESH      ((UINT32) 11)
 #define SAFEUPLOAD_ADMISSION_TRACE_RING_ENTRIES         ((UINT32) 256)
 #define SAFEUPLOAD_ADMISSION_TRACE_BATCH_ENTRIES        ((UINT32) 8)
 #define SAFEUPLOAD_ADMISSION_PROBE_MAX_STRING_CHARS     ((UINT16) 260)
@@ -534,6 +536,33 @@ typedef struct _SAFEUPLOAD_ADMISSION_PROBE_REQUEST {
     UINT32 Reserved;
     WCHAR Strings[1];
 } SAFEUPLOAD_ADMISSION_PROBE_REQUEST, *PSAFEUPLOAD_ADMISSION_PROBE_REQUEST;
+
+/*
+ *  Mapped-writable stream fence. A scan of the protected scopes registers streams that
+ *  have user-writable mapped views; their unowned paging writes are refused and
+ *  protected opens of their names are refused. STATUS reads this; REFRESH reruns the scan.
+ */
+typedef struct _SAFEUPLOAD_FENCE_STATUS {
+    UINT32 StructSize;
+    UINT32 Entries;
+    UINT32 Generation;
+    UINT32 LastStatus;               // NTSTATUS of the latest refresh
+    UINT32 FailureLine;              // StageFence.c line of the latest failed scan's first failure
+    UINT32 Reserved;
+    UINT64 RefreshStarted;
+    UINT64 RefreshCompleted;
+    UINT64 RefreshFailed;
+    UINT64 PagingWritesDenied;
+    UINT64 OpensRefused;
+    UINT64 DirectoriesScanned;
+    UINT64 FilesScanned;
+    UINT64 ReparseSkipped;
+    UINT64 VolumeScopesSkipped;      // removable/network scopes the scan does not cover
+    UINT64 StreamsReleased;          // entries dropped after their dirty pages were purged
+    UINT64 ReleaseRefused;           // release attempts that left a stream fenced (still mapped or purge failed)
+    UINT64 SectionsDenied;           // writable data sections refused on an unadmitted in-scope stream
+    UINT64 SectionNameUnresolved;    // writable sections allowed because no name could be resolved
+} SAFEUPLOAD_FENCE_STATUS, *PSAFEUPLOAD_FENCE_STATUS;
 
 // A zero cursor and snapshot request a snapshot of all entries retained now.
 // Later requests pass the returned NextCursor and SnapshotSequence.
@@ -834,6 +863,7 @@ C_ASSERT( sizeof( SAFEUPLOAD_ADMISSION_TRACE_ENTRY ) == 112 );
 C_ASSERT( sizeof( SAFEUPLOAD_ADMISSION_TRACE_COUNTERS ) == 56 );
 C_ASSERT( sizeof( SAFEUPLOAD_ADMISSION_TRACE_BATCH ) == 1000 );
 C_ASSERT( sizeof( SAFEUPLOAD_POLICY_MESSAGE ) >= sizeof( SAFEUPLOAD_ADMISSION_TRACE_BATCH ) );
+C_ASSERT( sizeof( SAFEUPLOAD_FENCE_STATUS ) == 128 );
 C_ASSERT( sizeof( SAFEUPLOAD_POLICY_MESSAGE ) >=
           FIELD_OFFSET( SAFEUPLOAD_ADMISSION_PROBE_REQUEST, Strings ) +
           (2 * SAFEUPLOAD_ADMISSION_PROBE_MAX_STRING_CHARS * sizeof( WCHAR )) );

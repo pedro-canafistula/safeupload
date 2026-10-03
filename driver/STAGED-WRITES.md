@@ -33,9 +33,13 @@ remains. No watchdog work or new internals investigation is active.
 - [x] Observe-only admission diagnostic implemented, reviewed, built clean and run on the
       debuggee (feature only, default off; see "Slice 1" below). It answers the four
       unknowns; **no leak is blocked by it**.
-- [ ] Complete namespace/policy/attachment admission, existing physical sections
-      (both open leaks above), remaining mutation classes and the broader
-      acceptance tracker.
+- [x] Mapped-writable stream fence (feature build only): both existing repro scripts
+      **BLOCKED** (Verifier on and off), fixture E closed at section creation, the
+      dirty-page lifecycle leak found and fixed, 15-cycle race test and soak under the
+      Verifier with independent restorations; see "Slice 2" below. **Review 3 and the
+      residual limits listed there remain open.**
+- [ ] Complete namespace/policy/attachment admission, remaining mutation classes and
+      the broader acceptance tracker.
 
 The bounded helper uses documented NTFS `FileHardLinkInformation`, opens its
 parent directory IDs below the original instance, and reconstructs names using
@@ -493,6 +497,121 @@ Further observations, all baseline behavior of the unmodified admission logic:
 reparse spellings of one stream; concurrent open/map/attach and policy-change races; that the probe is safe outside the disposable
 debuggee (its lower open can block the Inspector's message callback); any behavior under a refused paging write. No leak is blocked:
 this slice enforces nothing. Next: the enforcement slice built on these facts.
+
+
+### Slice 2: mapped-writable stream fence (2 October 2026)
+
+**Status: implemented (feature build only), reviewed twice (both BLOCKED, fixes applied; a third review is pending), and
+exercised on the debuggee. Normal builds are unchanged (`NormalBuildIdentity=PASS`); taint stays until the user approves the
+cutover. Residual limits are listed below and are NOT claimed fixed.**
+
+Goal: close the two confirmed leaks (a writable mapping that predates filter attachment, or that predates a policy scope
+expansion) without private APIs or internal offsets, and prove that unapproved mapped bytes never reach the protected file.
+
+What exists (`StageFence.c`, hooks in `StageStream.c`, `Policy.c`, `Filter.c`, `Communication.c`, Inspector):
+- **Scan and registry.** A scan of the bootstrap scope (`\SafeUpload\Escopo Monitorado` on every fixed NTFS volume) plus the
+  prefixes of the current and candidate policy (union, so expand and shrink leave no window) registers every stream whose
+  section pointer reports a user-writable mapping (`MmDoesFileHaveUserWritableReferences` through an attribute-only open below
+  the instance, or through the volume stack before attachment). Caps: 64 streams, 64 names.
+- **Enforcement.** An unowned `IRP_PAGING_IO` write to a registered section pointer is refused (`STATUS_MEDIA_WRITE_PROTECTED`);
+  a protected open of a registered name, and the service's WRITE open of it, is refused (`STATUS_SHARING_VIOLATION`); opens by
+  file ID are refused only on a volume that holds an entry. All checks are in memory; no I/O in the create or write path.
+- **Fixture E closed.** A writable data section created after the scan through a handle that predates attachment is refused at
+  creation (`IRP_MJ_ACQUIRE_FOR_SECTION_SYNCHRONIZATION`, pre-operation name query, documented as allowed there). If no name
+  can be resolved the section is allowed and counted (`sectionNameUnresolved`): a documented limit.
+- **Lifecycle.** An entry is released only after its dirty pages are purged (`CcPurgeCacheSection` with the file held exclusively
+  and no user-writable reference); otherwise it is carried over. The unload guard refuses while any entry remains.
+- **Policy transition.** `SetPolicy` holds the fence refresh mutex across pre-scan, swap and post-scan; a failed pre-scan
+  rejects the update and keeps the previous policy; the load scans before `FltStartFiltering` and fails closed.
+- Inspector: `--admission-fence-status` (JSON, exit 4 after a failed scan) and `--admission-fence-refresh`.
+
+Review history (fresh Luna reviewers; reports kept as evidence):
+1. [Review 1](evidence/2026-10-02/fence-review.txt) of the first implementation: BLOCKED, 7 blockers, 10 majors, 2 minors.
+   Real defects fixed in the v2 rewrite (uninitialized name, scan zeroing, `FAST_MUTEX` held across file I/O, non-atomic table,
+   union scope, pre-start fail-closed scan, file prefixes, deduplication, unload guard). One blocker was a false positive.
+2. [Review 2](evidence/2026-10-02/fence-review2.txt) of v2: BLOCKED, 8 blockers, 4 majors, 1 minor. **Fixed:** a volume-root
+   prefix scanned nothing; a trailing separator produced doubled-separator names; a full 260-character prefix was silently
+   dropped; policy and fence generations could diverge (the transition now holds the refresh mutex end to end); opens by file ID
+   were refused system-wide (now per volume); a read-only open whose name query fails for lack of resources; the service's
+   write open of a quarantined name; the status JSON and exit code after a failed scan. **Not defects, or accepted limits**
+   (see Residual limits): the zero-count fast path (it linearizes at install), reparse points (opens through them resolve to
+   the target's name), mandatory unload, a hard link created into a candidate scope mid-scan, unbounded lower I/O in the scan.
+   **A fix I tried and reverted:** refusing every read-only open whose name query fails turned each probe of a non-existent file
+   into a sharing violation and broke PowerShell module loading under the fence; only resource-exhaustion failures are refused.
+3. Review 3 of the lifecycle purge and the writable-section refusal: **pending** when this section was written (brief:
+   [fence-review3-brief.md](evidence/2026-10-02/worker-briefs/fence-review3-brief.md)). Nothing below is claimed reviewed
+   beyond reviews 1 and 2.
+
+**A leak the reviews did not find, found by experiment.** The first complete fence only refused writeback while an entry
+existed, and a refresh pruned an entry once no user-writable mapping remained. [fence5-lifecycle-verifier](evidence/2026-10-02/fence5-lifecycle-verifier-gate.txt)
+(run 9, Verifier on) reads the raw volume cluster of the fixture: after the old view was closed and one refresh, the Memory
+Manager flushed the dirty pages and **the unapproved marker reached the disk with the driver still loaded**
+(`Verdict_UnapprovedBytesReachedDisk=True`). The entry lifecycle was changed so that a stream is released only after
+`CcPurgeCacheSection` discarded its dirty pages (see "Lifecycle" above). The same experiment on the final build:
+[run 11](evidence/2026-10-02/fence7-lifecycle-verifier-gate.txt) and [run 12](evidence/2026-10-02/fence8-lifecycle-verifier-gate.txt)
+keep the disk at the baseline bytes at every sample, 15 to 60 s after the refresh and after the unload and a fresh-handle
+flush; the cached view also reads the baseline (the pages were discarded, not delayed); `streamsReleased=1`, the unload guard then
+allows the unload, and refused paging writes stay at 9 (no retry storm, flat CPU). `CcPurgeCacheSection` is documented only for
+file systems and says it will not purge mapped files; that it discards dirty pages of a section with no views is **observed on
+Windows 10 19045.2965 NTFS, not documented**.
+
+**Two guest "hangs" were one bug in my code, not Verifier instability.** Both memory images (captured with QEMU, converted with
+`elf2dmp`, read with `cdb` on the builder) show bugcheck `0xD1` at IRQL 2 inside the fence's table install, which read a PAGED scan
+structure while holding a spin lock; the Verifier's forced IRQL checking trims pageable pool, and the guest, being a kernel-debug
+target with no debugger attached, then waits forever in the kdnet wait. [Root cause](evidence/2026-10-02/fence-verifier-hangs-root-cause.txt),
+[hang 1](evidence/2026-10-02/fence1-hang-cdb.txt), [hang 2](evidence/2026-10-02/fence2-hang-cdb3.txt). Fixed by copying everything out
+of the scan before taking the locks; review 2 found no other new paged access on the paging-write path.
+
+**The later "agent did not launch" failures were a damaged guest, not the driver.** After the first recovery 232 of 238 files in
+the guest's agent publish folder were zero-filled (sizes intact, zip intact): `CreateProcess` failed with `STATUS_FILE_CORRUPT_ERROR`
+before any driver was loaded ([assessment](evidence/2026-10-02/fence3-guest-publish-damage-assessment.txt), [launch probe](evidence/2026-10-02/fence3-launchprobe-verifier-gate.txt)).
+Repaired from the pinned package and verified 238 of 238 ([repair](evidence/2026-10-02/fence3-publish-repair-gate.txt)); how the zero-fill arose
+is **not established** (the checkpoint was taken from a running guest without flushing; the wrapper now flushes first). Commit `286c211`.
+
+Build evidence for the final source (run 12, feature SYS SHA-256 `F366358A5D6501EA50EF0C46FE3F19C58230B2F62D47D09D94660581D6712CED`,
+test-signed `220DD82C…`; every claim re-checked from the builder's own files): [normal Debug](evidence/2026-10-02/admission-fence-run12-normal-wdk.txt),
+[feature Debug](evidence/2026-10-02/admission-fence-run12-owned-feature-wdk.txt), [normal Release](evidence/2026-10-02/admission-fence-run12-normal-release-wdk.txt),
+[feature Release](evidence/2026-10-02/admission-fence-run12-owned-feature-release-wdk.txt): 0 warnings, 0 errors, PREfast, DriverRecommendedRules and API
+validation on. [275 agent tests](evidence/2026-10-02/admission-fence-run12-agent-tests.txt) pass; [service Release publish](evidence/2026-10-02/admission-fence-run12-service-build.txt);
+[builder verification and Inspector builds](evidence/2026-10-02/admission-fence-run12-builder-verification.txt) (all four Inspector builds 0/0).
+`NormalBuildIdentity=PASS`: the normal driver is byte-equivalent to HEAD apart from the debug-metadata bytes. Earlier build runs 1 to 11 are kept as
+records; the failed ones (wrong identifiers, PREfast C6262/C6387/C6385/C28172/C28112/C28150, SAL on a reduced length) are non-acceptance.
+
+VM results on run 12. Every row: baseline check, disk-only checkpoint, the run, then a **separate** restoration check with all eight lines true.
+
+| Run | What it shows | Evidence | Result |
+| --- | --- | --- | --- |
+| `Test-StagedPreAttachmentMapping.ps1` | leak (a), no agent, Verifier on | [gate](evidence/2026-10-02/fence8-repro-a-verifier-gate.txt) | **BLOCKED** (flush refused, both fresh observers refused) |
+| same, Verifier off | | [gate](evidence/2026-10-02/fence8-repro-a-gate.txt) | **BLOCKED** |
+| `Test-StagedPolicyTransitionMapping.ps1` | leak (b), real agent, policy expansion, Verifier on | [gate](evidence/2026-10-02/fence8-repro-b-verifier-gate.txt) | **BLOCKED** |
+| same, Verifier off | | [gate](evidence/2026-10-02/fence8-repro-b-gate.txt) | **BLOCKED** |
+| `Test-StagedFenceControls.ps1`, both modes | A and D fenced; B (read-only map) and C (no map) open; F out of scope not fenced; **E (mapping created after attach through an old handle) refused at creation** | [Verifier](evidence/2026-10-02/fence8-controls-verifier-gate.txt), [plain](evidence/2026-10-02/fence8-controls-gate.txt) | as designed |
+| `Test-StagedFenceLifecycle.ps1`, Verifier | does unapproved data reach the disk after release or unload | [gate](evidence/2026-10-02/fence8-lifecycle-verifier-gate.txt) | **No** (`Verdict_UnapprovedBytesReachedDisk=False`) |
+| `Test-StagedFenceRaces.ps1`, Verifier | 15 load/unload cycles, mappings created at random moments around the load | [gate](evidence/2026-10-02/fence9-races-verifier-gate.txt) | 167 pre-load views all refused a write and flush, 0 views created after load, 4,054 creations refused, **0 writes succeeded**, 0 load failures, 0 unload refusals |
+| `Test-StagedFenceSoak.ps1`, Verifier | 5 load/unload cycles with a registered stream | [gate](evidence/2026-10-02/fence8-soak-verifier-gate.txt) | 5/5 |
+
+Non-acceptance and superseded runs (kept, never counted): the first fence runs with the damaged toolbox (`fence2-*`, `fence3-debug-*`,
+`fence3-agent-hold-*`, `fence3-launch*`), the two Verifier hangs (`fence-verifier-hang-*`), `fence4-controls-verifier` (my usage error: a required
+parameter omitted, nothing ran), `fence6-lifecycle-verifier` (usage error: stale driver on the guest, hash check refused to run) and
+`fence6-lifecycle-verifier2/3` (the harness died when `ScheduledTasks` failed to load, caused by the over-broad unresolved-name rule
+removed afterwards), `fence5-lifecycle-verifier` (run 9: accepted as the leak finding, not as a pass).
+
+**Residual limits (documented, NOT claimed fixed):**
+- Removable and network scopes are not scanned (`volumeScopesSkipped`, `complete:false`); item 4 owns them.
+- A writable mapping of an **alternate data stream**, hard-link aliases readers outside the scope prefix, and volumes attached after
+  load (no `InstanceSetup` trigger yet) are not covered. Reparse points inside a scope are not followed.
+- A writable section whose name cannot be resolved (`sectionNameUnresolved`) is allowed; the name query is refused in the paging path,
+  with a top-level IRP and when all APCs are disabled.
+- **Release happens only at a refresh trigger** (load, policy push, the unload guard, `--admission-fence-refresh`); until then a
+  quarantined name stays refused. There is no periodic retry yet.
+- The purge discards **all** cached and modified pages of a released stream. The service's WRITE open of a quarantined name is refused
+  so no approved bytes should be in those pages; the service's READ open is not refused and can read the dirty bytes.
+- Mandatory unload cannot be vetoed; a hard link created into a candidate scope while it is scanned; scans do synchronous lower I/O
+  with no timeout and hold the refresh mutex (accepted on the disposable debuggee only, as with the slice 1 probe).
+- The scan caps (64 streams, 64 names, 512 directories, 8192 files) fail closed.
+- Latency, USB, UNC/SMB, a real sync client, crash and recovery, and stress are **not measured here** (items 2 to 6).
+
+Next: review 3 findings, then the remaining tracker items in order.
 
 ## Previous milestone: journal recovery/security qualified (2 October 2026)
 

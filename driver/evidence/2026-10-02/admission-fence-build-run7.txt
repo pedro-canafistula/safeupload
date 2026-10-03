@@ -1,0 +1,49 @@
+BUILD_START_UTC=2026-10-02T21:06:30.3370280Z
+#< CLIXML
+Build succeeded.
+    0 Warning(s)
+    0 Error(s)
+
+Time Elapsed 00:00:06.17
+ApiValidator:
+  Validating 'Universal' driver using ApiValidator.exe
+  cmd.exe /D /C "C:\Users\vika\AppData\Local\Temp\MSBuildTemp0d19969d1e9b4fffb5d956fd4eda3931\tmpaf003ec64db44a68846a9ab820a77aed.cmd"
+  "C:\Program Files (x86)\Windows Kits\10\bin\10.0.28000.0\x64\ApiValidator.exe" -DriverPackagePath:C:\Users\vika\Documents\safeupload-staging-test\driver\SafeUpload.Minifilter\x64\Debug\SafeUpload.sys -SupportedApiXmlFiles:"C:\Program Files (x86)\Windows Kits\10\build\10.0.28000.0\universalDDIs\x64\UniversalDDIs.xml" -ModuleWhiteListXmlFiles:"C:\Program Files (x86)\Windows Kits\10\build\10.0.28000.0\universalDDIs\x64\ModuleWhiteList.xml" -ApiExtractorExePath:"C:\Program Files (x86)\Windows Kits\10\bin\10.0.28000.0\x64" 
+  Driver is 'Universal'.
+DriverPackageTarget:
+  Packaging up the following projects for the following configurations:
+  
+   Configuration='' Platform=''
+  
+  
+  The following files will be packaged:
+  
+  File to package:      .
+  Location in Package:  .
+  Requested by project: 
+  
+  
+Inf2Cat:
+  Inf2Cat task was skipped as there were no inf files to process
+  
+DrvCat:
+  DrvCat task was skipped as there was no catalog file to process
+  
+C:\Users\vika\Documents\safeupload-staging-test\driver\SafeUpload.Minifilter\StageFence.c(459): error C28150: The function 'KeAcquireSpinLockRaiseToDpc' causes the IRQ Level to be set above the maximum acceptable for the function being analyzed:  The level limits come from being PAGED_CODE or annotations on the current function. [C:\Users\vika\Documents\safeupload-staging-test\driver\SafeUpload.Minifilter\SafeUpload.Minifilter.vcxproj]
+FinalizeBuildStatus:
+  Deleting file "x64\Debug\SafeUplo.F0194BFE.tlog\unsuccessfulbuild".
+  Touching "x64\Debug\SafeUplo.F0194BFE.tlog\SafeUpload.Minifilter.lastbuildstate".
+Done Building Project "C:\Users\vika\Documents\safeupload-staging-test\driver\SafeUpload.Minifilter\SafeUpload.Minifilter.vcxproj" (Rebuild target(s)).
+
+Build FAILED.
+
+"C:\Users\vika\Documents\safeupload-staging-test\driver\SafeUpload.Minifilter\SafeUpload.Minifilter.vcxproj" (Rebuild target) (1) ->
+(RunNativeCodeAnalysis target) -> 
+  C:\Users\vika\Documents\safeupload-staging-test\driver\SafeUpload.Minifilter\StageFence.c(459): error C28150: The function 'KeAcquireSpinLockRaiseToDpc' causes the IRQ Level to be set above the maximum acceptable for the function being analyzed:  The level limits come from being PAGED_CODE or annotations on the current function. [C:\Users\vika\Documents\safeupload-staging-test\driver\SafeUpload.Minifilter\SafeUpload.Minifilter.vcxproj]
+
+    0 Warning(s)
+    1 Error(s)
+
+Time Elapsed 00:00:13.28
+BUILD_RESULT=FAILED: owned-feature WDK build failed.
+BUILD_END_UTC=2026-10-02T21:06:50.1025944Z

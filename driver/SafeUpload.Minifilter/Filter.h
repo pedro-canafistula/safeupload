@@ -646,6 +646,46 @@ SafeUploadPolicyMatchesSource (
     _In_ PCUNICODE_STRING NormalizedPath
     );
 
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+
+//
+//  Destination prefixes copied out of a policy snapshot, for the fence scan.
+//  The scan does file I/O and must not run under the policy lock.
+//
+
+typedef struct _SAFEUPLOAD_SCOPE_COPY {
+
+    UINT32 Count;
+    UINT32 Flags;
+    USHORT Length[SAFEUPLOAD_MAX_PREFIXES];             // bytes, no terminator
+    WCHAR Prefix[SAFEUPLOAD_MAX_PREFIXES][SAFEUPLOAD_MAX_PREFIX_CHARS];
+
+} SAFEUPLOAD_SCOPE_COPY, *PSAFEUPLOAD_SCOPE_COPY;
+
+NTSTATUS
+SafeUploadPolicyCopyScope (
+    _In_opt_ const SAFEUPLOAD_POLICY *Candidate,
+    _Out_ PSAFEUPLOAD_SCOPE_COPY Scope
+    );
+
+NTSTATUS SafeUploadStageFenceInitialize( VOID );
+VOID SafeUploadStageFenceFree( VOID );
+NTSTATUS SafeUploadStageFenceRefresh( _In_opt_ const SAFEUPLOAD_POLICY *Candidate );
+NTSTATUS SafeUploadStageFencePrepareUnload( VOID );
+BOOLEAN SafeUploadStageFenceHasEntries( VOID );
+BOOLEAN SafeUploadStageFenceTransitionBegin( VOID );
+VOID SafeUploadStageFenceTransitionEnd( VOID );
+BOOLEAN SafeUploadStageFenceVolumeHasEntries( _In_opt_ PFLT_VOLUME Volume );
+BOOLEAN SafeUploadStageFenceIsFenced( _In_opt_ PFILE_OBJECT FileObject );
+BOOLEAN SafeUploadStageFenceNameQuarantined( _In_ PCUNICODE_STRING NormalizedName );
+VOID SafeUploadStageFenceCountOpenRefused( VOID );
+VOID SafeUploadStageFenceCountPagingDenied( VOID );
+VOID SafeUploadStageFenceCountSectionDenied( VOID );
+VOID SafeUploadStageFenceCountSectionUnresolved( VOID );
+VOID SafeUploadStageFenceGetStatus( _Out_ PSAFEUPLOAD_FENCE_STATUS Status );
+
+#endif
+
 BOOLEAN
 SafeUploadPolicyExcludesImage (
     _In_ PCUNICODE_STRING ImageName

@@ -1,0 +1,11 @@
+UTC=2026-10-03T00:28:47.6443793Z
+normal-wdk : written=00:27:36 warnings=0 errors=0 succeeded=True apivalidator=True
+owned-feature-wdk : written=00:27:50 warnings=0 errors=0 succeeded=True apivalidator=True
+normal-release-wdk : written=00:27:56 warnings=0 errors=0 succeeded=True apivalidator=True
+owned-feature-release-wdk : written=00:28:09 warnings=0 errors=0 succeeded=True apivalidator=True
+SafeUpload-stage-prototype.sys 109456 sha256=F366358A5D6501EA50EF0C46FE3F19C58230B2F62D47D09D94660581D6712CED signer=220DD82C37FCF36048D59E4F10113185D81D5DC7 written=00:28:09
+inspector-false-Debug : warnings=0 errors=0 size=1267712 sha256=E75FD8DD76BE45E6DBC2486FFE2CACBF75504C74ED1F36DE1E006F6275346564 containsAdmissionStrings=False
+inspector-true-Debug : warnings=0 errors=0 size=1282560 sha256=1DCDC4451D4494BC981C04CD17AD7BEBD0CDC6DAD10213E830C7AF473AE9BA44 containsAdmissionStrings=True
+inspector-false-Release : warnings=0 errors=0 size=155648 sha256=E5FF89B2F4CBC007F2A9D1225EB4638674419CEB9C4BBBCE5D3F8BB32E2F0C3A containsAdmissionStrings=False
+inspector-true-Release : warnings=0 errors=0 size=164864 sha256=4B101E4F3958617FCD17CB91399A4C16962B40E464AFDEEF25E7ECD94D5D44D8 containsAdmissionStrings=True
+NormalBuildIdentity=PASS

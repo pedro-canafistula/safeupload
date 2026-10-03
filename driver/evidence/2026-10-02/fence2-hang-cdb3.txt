@@ -1,0 +1,184 @@
+Opened log file 'C:\Users\vika\Documents\forensic\fence2-hang-cdb3.txt'
+
+************* Preparing the environment for Debugger Extensions Gallery repositories **************
+   ExtensionRepository : Implicit
+   UseExperimentalFeatureForNugetShare : true
+   AllowNugetExeUpdate : true
+   NonInteractiveNuget : true
+   AllowNugetMSCredentialProviderInstall : true
+   AllowParallelInitializationOfLocalRepositories : true
+   EnableRedirectToChakraJsProvider : false
+
+   -- Configuring repositories
+      ----> Repository : LocalInstalled, Enabled: true
+      ----> Repository : UserExtensions, Enabled: true
+
+>>>>>>>>>>>>> Preparing the environment for Debugger Extensions Gallery repositories completed, duration 0.046 seconds
+
+************* Waiting for Debugger Extensions Gallery to Initialize **************
+
+>>>>>>>>>>>>> Waiting for Debugger Extensions Gallery to Initialize completed, duration 0.016 seconds
+   ----> Repository : UserExtensions, Enabled: true, Packages count: 0
+   ----> Repository : LocalInstalled, Enabled: true, Packages count: 30
+
+Microsoft (R) Windows Debugger Version 10.0.28000.2705 AMD64
+Copyright (c) Microsoft Corporation. All rights reserved.
+
+
+Loading Dump File [C:\Users\vika\Documents\forensic\fence2-hang.dmp]
+Kernel Complete Dump File: Full address space is available
+
+Comment: 'Hello from elf2dmp!'
+
+************* Path validation summary **************
+Response                         Time (ms)     Location
+Deferred                                       srv*C:\symbols*https://msdl.microsoft.com/download/symbols
+OK                                             C:\Users\vika\Documents\safeupload-staging-test\driver\SafeUpload.Minifilter\x64\Debug
+Symbol search path is: srv*C:\symbols*https://msdl.microsoft.com/download/symbols;C:\Users\vika\Documents\safeupload-staging-test\driver\SafeUpload.Minifilter\x64\Debug
+Executable search path is: 
+NatVis script successfully loaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\atlmfc.natvis'
+NatVis script successfully loaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\concurrency.natvis'
+NatVis script successfully loaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\cpp_rest.natvis'
+NatVis script successfully loaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\Kernel.natvis'
+NatVis script successfully loaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\ObjectiveC.natvis'
+NatVis script successfully loaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\stl.natvis'
+NatVis script successfully loaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\Usb4Kd.natvis'
+NatVis script successfully loaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\Windows.Data.Json.natvis'
+NatVis script successfully loaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\Windows.Devices.Geolocation.natvis'
+NatVis script successfully loaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\Windows.Devices.Sensors.natvis'
+NatVis script successfully loaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\Windows.Media.natvis'
+NatVis script successfully loaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\windows.natvis'
+NatVis script successfully loaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\winrt.natvis'
+KiProcessorBlock[2] is null.
+KiProcessorBlock[3] is null.
+Windows 10 Kernel Version 19041 MP (4 procs) Free x64
+Product: WinNt, suite: TerminalServer SingleUserTS
+Edition build lab: 19041.1.amd64fre.vb_release.191206-1406
+Kernel base = 0xfffff800`69200000 PsLoadedModuleList = 0xfffff800`69e2a2b0
+System Uptime: 0 days 0:14:13.683
+Loading Kernel Symbols
+...............................................................
+................................................................
+..........................................
+Loading User Symbols
+
+Loading unloaded module list
+......
+Unknown exception - code 00000000 (first/second chance not available)
+For analysis of this file, run !analyze -v
+0: kd> .symfix+
+0: kd> .reload /f SafeUpload.sys
+0: kd> dd nt!KiBugCheckData L5
+fffff800`69e2b340  000000d1 00000000 0223c020 ffff838a
+fffff800`69e2b350  00000002
+0: kd> .bugcheck
+Bugcheck code 00000161
+Arguments 00000000`00000000 00000000`00000000 00000000`00000000 00000000`00000000
+0: kd> .trap ffffea0e`f98d6650
+NOTE: The trap frame does not contain all registers.
+Some register values may be zeroed or incorrect.
+rax=ffff838a0223c000 rbx=0000000000000000 rcx=831d3175c1390000
+rdx=0000000000000000 rsi=0000000000000000 rdi=0000000000000000
+rip=fffff8007251d1c9 rsp=ffffea0ef98d67e0 rbp=ffffea0ef98d6a60
+ r8=0000000000000000  r9=0000000000000000 r10=0000fffff8006941
+r11=ffffb5f8c9a00000 r12=0000000000000000 r13=0000000000000000
+r14=0000000000000000 r15=0000000000000000
+iopl=0         nv up ei ng nz na pe nc
+SafeUpload!FenceInstall+0x39:
+fffff800`7251d1c9 488b4020        mov     rax,qword ptr [rax+20h] ds:ffff838a`0223c020=ffffaa87352db000
+0: kd> r
+Last set context:
+rax=ffff838a0223c000 rbx=0000000000000000 rcx=831d3175c1390000
+rdx=0000000000000000 rsi=0000000000000000 rdi=0000000000000000
+rip=fffff8007251d1c9 rsp=ffffea0ef98d67e0 rbp=ffffea0ef98d6a60
+ r8=0000000000000000  r9=0000000000000000 r10=0000fffff8006941
+r11=ffffb5f8c9a00000 r12=0000000000000000 r13=0000000000000000
+r14=0000000000000000 r15=0000000000000000
+iopl=0         nv up ei ng nz na pe nc
+cs=0010  ss=0018  ds=0000  es=0000  fs=0000  gs=0000             efl=00050282
+SafeUpload!FenceInstall+0x39:
+fffff800`7251d1c9 488b4020        mov     rax,qword ptr [rax+20h] ds:ffff838a`0223c020=ffffaa87352db000
+0: kd> ln @rip
+Browse module
+Set bu breakpoint
+
+(fffff800`7251d190)   SafeUpload!FenceInstall+0x39   |  (fffff800`7251d290)   SafeUpload!FenceOpen
+0: kd> !pte @cr2
+                                           VA ffff838a0223c020
+PXE at FFFFEF77BBDDE838    PPE at FFFFEF77BBD07140    PDE at FFFFEF77A0E28088    PTE at FFFFEF41C50111E0
+contains 0A00000279CCD863  contains 0A0000010A707863  contains 0A0000013DF68863  contains 00000001094DB880
+pfn 279ccd    ---DA--KWEV  pfn 10a707    ---DA--KWEV  pfn 13df68    ---DA--KWEV  not valid
+                                                                                  Transition: 1094db
+                                                                                  Protect: 4 - ReadWrite
+
+0: kd> u SafeUpload!FenceInstall L28
+SafeUpload!FenceInstall:
+fffff800`7251d190 48894c2408      mov     qword ptr [rsp+8],rcx
+fffff800`7251d195 4883ec38        sub     rsp,38h
+fffff800`7251d199 33d2            xor     edx,edx
+fffff800`7251d19b 488d0d060e0300  lea     rcx,[SafeUpload!FenceNameLock (fffff800`7254dfa8)]
+fffff800`7251d1a2 e89b180000      call    SafeUpload!FltAcquirePushLockExclusiveEx (fffff800`7251ea42)
+fffff800`7251d1a7 488d0df20d0300  lea     rcx,[SafeUpload!FenceSopLock (fffff800`7254dfa0)]
+fffff800`7251d1ae ff15ec210000    call    qword ptr [SafeUpload!_imp_KeAcquireSpinLockRaiseToDpc (fffff800`7251f3a0)]
+fffff800`7251d1b4 88442420        mov     byte ptr [rsp+20h],al
+fffff800`7251d1b8 488b05f10d0300  mov     rax,qword ptr [SafeUpload!FenceTable (fffff800`7254dfb0)]
+fffff800`7251d1bf 4889442428      mov     qword ptr [rsp+28h],rax
+fffff800`7251d1c4 488b442440      mov     rax,qword ptr [rsp+40h]
+fffff800`7251d1c9 488b4020        mov     rax,qword ptr [rax+20h]
+fffff800`7251d1cd 488905dc0d0300  mov     qword ptr [SafeUpload!FenceTable (fffff800`7254dfb0)],rax
+fffff800`7251d1d4 488b442440      mov     rax,qword ptr [rsp+40h]
+fffff800`7251d1d9 488b4020        mov     rax,qword ptr [rax+20h]
+fffff800`7251d1dd 8b00            mov     eax,dword ptr [rax]
+fffff800`7251d1df 488d0de20d0300  lea     rcx,[SafeUpload!FenceEntryCount (fffff800`7254dfc8)]
+fffff800`7251d1e6 8701            xchg    eax,dword ptr [rcx]
+fffff800`7251d1e8 488b442440      mov     rax,qword ptr [rsp+40h]
+fffff800`7251d1ed 488b4020        mov     rax,qword ptr [rax+20h]
+fffff800`7251d1f1 8b4004          mov     eax,dword ptr [rax+4]
+fffff800`7251d1f4 488d0dd10d0300  lea     rcx,[SafeUpload!FenceNameCount (fffff800`7254dfcc)]
+fffff800`7251d1fb 8701            xchg    eax,dword ptr [rcx]
+fffff800`7251d1fd 0fb6542420      movzx   edx,byte ptr [rsp+20h]
+fffff800`7251d202 488d0d970d0300  lea     rcx,[SafeUpload!FenceSopLock (fffff800`7254dfa0)]
+fffff800`7251d209 ff1589210000    call    qword ptr [SafeUpload!_imp_KeReleaseSpinLock (fffff800`7251f398)]
+fffff800`7251d20f 33d2            xor     edx,edx
+fffff800`7251d211 488d0d900d0300  lea     rcx,[SafeUpload!FenceNameLock (fffff800`7254dfa8)]
+fffff800`7251d218 e831180000      call    SafeUpload!FltReleasePushLockEx (fffff800`7251ea4e)
+fffff800`7251d21d 488b442440      mov     rax,qword ptr [rsp+40h]
+fffff800`7251d222 48c7402000000000 mov     qword ptr [rax+20h],0
+fffff800`7251d22a 488b4c2428      mov     rcx,qword ptr [rsp+28h]
+fffff800`7251d22f e8bcfeffff      call    SafeUpload!FenceFreeTable (fffff800`7251d0f0)
+fffff800`7251d234 488d05810d0300  lea     rax,[SafeUpload!FenceGeneration (fffff800`7254dfbc)]
+fffff800`7251d23b f0ff00          lock inc dword ptr [rax]
+fffff800`7251d23e 488b442440      mov     rax,qword ptr [rsp+40h]
+fffff800`7251d243 8b4008          mov     eax,dword ptr [rax+8]
+fffff800`7251d246 488d0dab0d0300  lea     rcx,[SafeUpload!FenceDirectories (fffff800`7254dff8)]
+fffff800`7251d24d 488701          xchg    rax,qword ptr [rcx]
+fffff800`7251d250 488b442440      mov     rax,qword ptr [rsp+40h]
+0: kd> lmvm SafeUpload
+Browse full module list
+start             end                 module name
+fffff800`72510000 fffff800`7255c000   SafeUpload # (private pdb symbols)  c:\users\vika\documents\safeupload-staging-test\driver\safeupload.minifilter\x64\debug\SafeUpload.pdb
+    Loaded symbol image file: SafeUpload.sys
+    Mapped memory image file: c:\users\vika\documents\safeupload-staging-test\driver\safeupload.minifilter\x64\debug\SafeUpload.sys
+    Image path: \SystemRoot\System32\drivers\SafeUpload.sys
+    Image name: SafeUpload.sys
+    Browse all global symbols  functions  data  Symbol Reload
+    Timestamp:        Fri Oct  2 22:07:34 2026 (6AC01D16)
+    CheckSum:         0002421E
+    ImageSize:        0004C000
+    File version:     1.0.0.0
+    Product version:  1.0.0.0
+    File flags:       0 (Mask 3F)
+    File OS:          40004 NT Win32
+    File type:        3.7 Driver
+    File date:        00000000.00000000
+    Translations:     0409.04b0
+    Information from resource tables:
+        CompanyName:      SafeUpload
+        ProductName:      SafeUpload
+        InternalName:     SafeUpload
+        OriginalFilename: SafeUpload.sys
+        ProductVersion:   1.0.0.0
+        FileVersion:      1.0.0.0
+        FileDescription:  SafeUpload file system minifilter
+0: kd> .logclose
+Closing open log file C:\Users\vika\Documents\forensic\fence2-hang-cdb3.txt

@@ -287,6 +287,23 @@ Return Value:
     if (!NT_SUCCESS(status)) goto ClosePort;
 #endif
 
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+
+    //
+    //  Scan the bootstrap scope BEFORE any callback can run, through the volume stack: no window in
+    //  which an old writable view of a protected file is unfenced. A scan that cannot prove the scope
+    //  fails the load closed.
+    //
+
+    status = SafeUploadStageFenceRefresh( NULL );
+
+    if (!NT_SUCCESS( status )) {
+
+        SafeUploadTrace( "pre-start fence scan failed, status 0x%08X\n", status );
+        goto ClosePort;
+    }
+#endif
+
     status = FltStartFiltering( SafeUploadData.Filter );
 
     if (!NT_SUCCESS( status )) {
@@ -295,6 +312,16 @@ Return Value:
 
         goto ClosePort;
     }
+
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+
+    //
+    //  Instances exist now. A second scan, below them, catches a mapping created between the
+    //  pre-start scan and the first callback. A failure is recorded in the fence counters.
+    //
+
+    (VOID) SafeUploadStageFenceRefresh( NULL );
+#endif
 
     SafeUploadTrace( "loaded and filtering\n" );
 

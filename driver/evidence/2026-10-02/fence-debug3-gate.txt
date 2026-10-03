@@ -1,0 +1,26 @@
+FltmcLoadExit=0
+FltmcLoadOutput=
+PolicyReadyWithin20s=True
+--- inspector (status, refresh, status)
+{"fence":true,"entries":0,"generation":3,"lastStatus":"0x00000000","failureLine":0,"refreshStarted":3,"refreshCompleted":3,"refreshFailed":0,"pagingWritesDenied":0,"opensRefused":0,"directoriesScanned":3,"filesScanned":14,"reparseSkipped":0,"volumeScopesSkipped":2}
+admission fence refresh: OK
+{"fence":true,"entries":0,"generation":4,"lastStatus":"0x00000000","failureLine":0,"refreshStarted":4,"refreshCompleted":4,"refreshFailed":0,"pagingWritesDenied":0,"opensRefused":0,"directoriesScanned":3,"filesScanned":14,"reparseSkipped":0,"volumeScopesSkipped":2}
+--- -out.log
+info: Microsoft.Hosting.Lifetime[0]
+      Application started. Press Ctrl+C to shut down.
+info: Microsoft.Hosting.Lifetime[0]
+      Hosting environment: Production
+info: SafeUpload.Agent.Service.Notifications.NotificationPipeServer[0]
+      Canal de notificacao em \\.\pipe\SafeUpload.Agent
+info: Microsoft.Hosting.Lifetime[0]
+      Content root path: C:\Users\vika\Documents\stage-service-publish\
+info: SafeUpload.Agent.Service.Interception.MinifilterInterceptor[0]
+      Politica v1 empurrada ao driver: 5 extensoes, 1 destinos, classificacao de fontes em todos os volumes.
+info: SafeUpload.Agent.Service.Interception.MinifilterInterceptor[0]
+      Prazo: motor 5000 ms (RN-012), kernel espera 5500 ms.
+info: SafeUpload.Agent.Service.Interception.MinifilterInterceptor[0]
+      Minifiltro conectado. Interceptando em modo kernel.
+--- -err.log
+OriginalDriverRestored=ADA9D05AB6AECDD2B6C521B0CE529FC06C732154ACB3EE85439FBDC8AA80DFCE
+ExperimentalDriverUnloaded=True
+HARNESS_RETURNED

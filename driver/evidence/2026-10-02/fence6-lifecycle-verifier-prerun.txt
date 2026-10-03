@@ -1,0 +1,1 @@
+copied /tmp/claude-1000/artifacts/SafeUpload.Inspector.exe -> SafeUpload.Inspector.input.exe sha256=1a6320bc4c88a69da8ce289c11a32db6053d14c00e709b31bab51963bb039e54

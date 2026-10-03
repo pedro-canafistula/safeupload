@@ -1,0 +1,49 @@
+BUILD_START_UTC=2026-10-02T20:26:48.3902517Z
+#< CLIXML
+Build succeeded.
+    0 Warning(s)
+    0 Error(s)
+
+Time Elapsed 00:00:06.17
+  C:\Users\vika\Documents\safeupload-staging-test\driver\SafeUpload.Minifilter\Protocol.h(860,1): error C2148: total size of array must not exceed 0x7fffffff bytes [C:\Users\vika\Documents\safeupload-staging-test\driver\SafeUpload.Minifilter\SafeUpload.Minifilter.vcxproj]
+  C:\Users\vika\Documents\safeupload-staging-test\driver\SafeUpload.Minifilter\Protocol.h(860,1): error C2369: '__C_ASSERT__': redefinition; different subscripts [C:\Users\vika\Documents\safeupload-staging-test\driver\SafeUpload.Minifilter\SafeUpload.Minifilter.vcxproj]
+  C:\Users\vika\Documents\safeupload-staging-test\driver\SafeUpload.Minifilter\Protocol.h(860,1): error C2118: negative subscript [C:\Users\vika\Documents\safeupload-staging-test\driver\SafeUpload.Minifilter\SafeUpload.Minifilter.vcxproj]
+  C:\Users\vika\Documents\safeupload-staging-test\driver\SafeUpload.Minifilter\Protocol.h(860,1): error C2148: total size of array must not exceed 0x7fffffff bytes [C:\Users\vika\Documents\safeupload-staging-test\driver\SafeUpload.Minifilter\SafeUpload.Minifilter.vcxproj]
+  C:\Users\vika\Documents\safeupload-staging-test\driver\SafeUpload.Minifilter\Protocol.h(860,1): error C2369: '__C_ASSERT__': redefinition; different subscripts [C:\Users\vika\Documents\safeupload-staging-test\driver\SafeUpload.Minifilter\SafeUpload.Minifilter.vcxproj]
+  C:\Users\vika\Documents\safeupload-staging-test\driver\SafeUpload.Minifilter\Protocol.h(860,1): error C2118: negative subscript [C:\Users\vika\Documents\safeupload-staging-test\driver\SafeUpload.Minifilter\SafeUpload.Minifilter.vcxproj]
+  C:\Users\vika\Documents\safeupload-staging-test\driver\SafeUpload.Minifilter\Protocol.h(860,1): error C2148: total size of array must not exceed 0x7fffffff bytes [C:\Users\vika\Documents\safeupload-staging-test\driver\SafeUpload.Minifilter\SafeUpload.Minifilter.vcxproj]
+  C:\Users\vika\Documents\safeupload-staging-test\driver\SafeUpload.Minifilter\Protocol.h(860,1): error C2369: '__C_ASSERT__': redefinition; different subscripts [C:\Users\vika\Documents\safeupload-staging-test\driver\SafeUpload.Minifilter\SafeUpload.Minifilter.vcxproj]
+  C:\Users\vika\Documents\safeupload-staging-test\driver\SafeUpload.Minifilter\Protocol.h(860,1): error C2118: negative subscript [C:\Users\vika\Documents\safeupload-staging-test\driver\SafeUpload.Minifilter\SafeUpload.Minifilter.vcxproj]
+  C:\Users\vika\Documents\safeupload-staging-test\driver\SafeUpload.Minifilter\Protocol.h(860,1): error C2148: total size of array must not exceed 0x7fffffff bytes [C:\Users\vika\Documents\safeupload-staging-test\driver\SafeUpload.Minifilter\SafeUpload.Minifilter.vcxproj]
+  C:\Users\vika\Documents\safeupload-staging-test\driver\SafeUpload.Minifilter\Protocol.h(860,1): error C2369: '__C_ASSERT__': redefinition; different subscripts [C:\Users\vika\Documents\safeupload-staging-test\driver\SafeUpload.Minifilter\SafeUpload.Minifilter.vcxproj]
+  C:\Users\vika\Documents\safeupload-staging-test\driver\SafeUpload.Minifilter\Protocol.h(860,1): error C2118: negative subscript [C:\Users\vika\Documents\safeupload-staging-test\driver\SafeUpload.Minifilter\SafeUpload.Minifilter.vcxproj]
+  C:\Users\vika\Documents\safeupload-staging-test\driver\SafeUpload.Minifilter\Protocol.h(860,1): error C2148: total size of array must not exceed 0x7fffffff bytes [C:\Users\vika\Documents\safeupload-staging-test\driver\SafeUpload.Minifilter\SafeUpload.Minifilter.vcxproj]
+  C:\Users\vika\Documents\safeupload-staging-test\driver\SafeUpload.Minifilter\Protocol.h(860,1): error C2369: '__C_ASSERT__': redefinition; different subscripts [C:\Users\vika\Documents\safeupload-staging-test\driver\SafeUpload.Minifilter\SafeUpload.Minifilter.vcxproj]
+  C:\Users\vika\Documents\safeupload-staging-test\driver\SafeUpload.Minifilter\Protocol.h(860,1): error C2118: negative subscript [C:\Users\vika\Documents\safeupload-staging-test\driver\SafeUpload.Minifilter\SafeUpload.Minifilter.vcxproj]
+  C:\Users\vika\Documents\safeupload-staging-test\driver\SafeUpload.Minifilter\Protocol.h(860,1): error C2148: total size of array must not exceed 0x7fffffff bytes [C:\Users\vika\Documents\safeupload-staging-test\driver\SafeUpload.Minifilter\SafeUpload.Minifilter.vcxproj]
+  C:\Users\vika\Documents\safeupload-staging-test\driver\SafeUpload.Minifilter\Protocol.h(860,1): error C2369: '__C_ASSERT__': redefinition; different subscripts [C:\Users\vika\Documents\safeupload-staging-test\driver\SafeUpload.Minifilter\SafeUpload.Minifilter.vcxproj]
+  C:\Users\vika\Documents\safeupload-staging-test\driver\SafeUpload.Minifilter\Protocol.h(860,1): error C2118: negative subscript [C:\Users\vika\Documents\safeupload-staging-test\driver\SafeUpload.Minifilter\SafeUpload.Minifilter.vcxproj]
+  C:\Users\vika\Documents\safeupload-staging-test\driver\SafeUpload.Minifilter\Protocol.h(860,1): error C2148: total size of array must not exceed 0x7fffffff bytes [C:\Users\vika\Documents\safeupload-staging-test\driver\SafeUpload.Minifilter\SafeUpload.Minifilter.vcxproj]
+  C:\Users\vika\Documents\safeupload-staging-test\driver\SafeUpload.Minifilter\Protocol.h(860,1): error C2369: '__C_ASSERT__': redefinition; different subscripts [C:\Users\vika\Documents\safeupload-staging-test\driver\SafeUpload.Minifilter\SafeUpload.Minifilter.vcxproj]
+  C:\Users\vika\Documents\safeupload-staging-test\driver\SafeUpload.Minifilter\Protocol.h(860,1): error C2118: negative subscript [C:\Users\vika\Documents\safeupload-staging-test\driver\SafeUpload.Minifilter\SafeUpload.Minifilter.vcxproj]
+  C:\Users\vika\Documents\safeupload-staging-test\driver\SafeUpload.Minifilter\Protocol.h(860,1): error C2148: total size of array must not exceed 0x7fffffff bytes [C:\Users\vika\Documents\safeupload-staging-test\driver\SafeUpload.Minifilter\SafeUpload.Minifilter.vcxproj]
+  C:\Users\vika\Documents\safeupload-staging-test\driver\SafeUpload.Minifilter\Protocol.h(860,1): error C2369: '__C_ASSERT__': redefinition; different subscripts [C:\Users\vika\Documents\safeupload-staging-test\driver\SafeUpload.Minifilter\SafeUpload.Minifilter.vcxproj]
+  C:\Users\vika\Documents\safeupload-staging-test\driver\SafeUpload.Minifilter\Protocol.h(860,1): error C2118: negative subscript [C:\Users\vika\Documents\safeupload-staging-test\driver\SafeUpload.Minifilter\SafeUpload.Minifilter.vcxproj]
+  C:\Users\vika\Documents\safeupload-staging-test\driver\SafeUpload.Minifilter\Protocol.h(860,1): error C2148: total size of array must not exceed 0x7fffffff bytes [C:\Users\vika\Documents\safeupload-staging-test\driver\SafeUpload.Minifilter\SafeUpload.Minifilter.vcxproj]
+  C:\Users\vika\Documents\safeupload-staging-test\driver\SafeUpload.Minifilter\Protocol.h(860,1): error C2369: '__C_ASSERT__': redefinition; different subscripts [C:\Users\vika\Documents\safeupload-staging-test\driver\SafeUpload.Minifilter\SafeUpload.Minifilter.vcxproj]
+  C:\Users\vika\Documents\safeupload-staging-test\driver\SafeUpload.Minifilter\Protocol.h(860,1): error C2118: negative subscript [C:\Users\vika\Documents\safeupload-staging-test\driver\SafeUpload.Minifilter\SafeUpload.Minifilter.vcxproj]
+  C:\Users\vika\Documents\safeupload-staging-test\driver\SafeUpload.Minifilter\Protocol.h(860,1): error C2148: total size of array must not exceed 0x7fffffff bytes [C:\Users\vika\Documents\safeupload-staging-test\driver\SafeUpload.Minifilter\SafeUpload.Minifilter.vcxproj]
+  C:\Users\vika\Documents\safeupload-staging-test\driver\SafeUpload.Minifilter\Protocol.h(860,1): error C2369: '__C_ASSERT__': redefinition; different subscripts [C:\Users\vika\Documents\safeupload-staging-test\driver\SafeUpload.Minifilter\SafeUpload.Minifilter.vcxproj]
+  C:\Users\vika\Documents\safeupload-staging-test\driver\SafeUpload.Minifilter\Protocol.h(860,1): error C2118: negative subscript [C:\Users\vika\Documents\safeupload-staging-test\driver\SafeUpload.Minifilter\SafeUpload.Minifilter.vcxproj]
+  C:\Users\vika\Documents\safeupload-staging-test\driver\SafeUpload.Minifilter\Protocol.h(860,1): error C2148: total size of array must not exceed 0x7fffffff bytes [C:\Users\vika\Documents\safeupload-staging-test\driver\SafeUpload.Minifilter\SafeUpload.Minifilter.vcxproj]
+  C:\Users\vika\Documents\safeupload-staging-test\driver\SafeUpload.Minifilter\Protocol.h(860,1): error C2369: '__C_ASSERT__': redefinition; different subscripts [C:\Users\vika\Documents\safeupload-staging-test\driver\SafeUpload.Minifilter\SafeUpload.Minifilter.vcxproj]
+  C:\Users\vika\Documents\safeupload-staging-test\driver\SafeUpload.Minifilter\Protocol.h(860,1): error C2118: negative subscript [C:\Users\vika\Documents\safeupload-staging-test\driver\SafeUpload.Minifilter\SafeUpload.Minifilter.vcxproj]
+  C:\Users\vika\Documents\safeupload-staging-test\driver\SafeUpload.Minifilter\Protocol.h(860,1): error C2148: total size of array must not exceed 0x7fffffff bytes [C:\Users\vika\Documents\safeupload-staging-test\driver\SafeUpload.Minifilter\SafeUpload.Minifilter.vcxproj]
+  C:\Users\vika\Documents\safeupload-staging-test\driver\SafeUpload.Minifilter\Protocol.h(860,1): error C2369: '__C_ASSERT__': redefinition; different subscripts [C:\Users\vika\Documents\safeupload-staging-test\driver\SafeUpload.Minifilter\SafeUpload.Minifilter.vcxproj]
+
+    0 Warning(s)
+    36 Error(s)
+
+Time Elapsed 00:00:01.46
+BUILD_RESULT=FAILED: owned-feature WDK build failed.
+BUILD_END_UTC=2026-10-02T20:26:56.3277545Z

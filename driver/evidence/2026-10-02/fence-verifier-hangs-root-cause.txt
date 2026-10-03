@@ -1,0 +1,29 @@
+# Root cause of the two guest "hangs" under the volatile Verifier (2026-10-02)
+
+Both hangs were the SAME defect in my fence code, not Verifier instability and not a FltMgr prompt.
+
+Evidence (memory images taken with QEMU dump-guest-memory, converted with elf2dmp, read with cdb on the builder;
+cdb transcripts are kept next to this file):
+- Hang 1 (feature build with the v1 fence, `fltmc load` under Verifier flags 0x13B): fence1-hang-cdb.txt.
+  KiBugCheckData = 0xD1 (DRIVER_IRQL_NOT_LESS_OR_EQUAL), arg2 = 2 (DISPATCH_LEVEL), arg3 = 0 (read). CPU 1 is inside
+  nt!KeBugCheckEx -> nt!KiBugCheckDebugBreak -> kdcom!WaitForRxPacket (kdnet): the guest is a kernel-debug target
+  with no debugger attached, so the bugcheck waits forever for a debugger and looks like a hang. The faulting
+  frame is SafeUpload+0xcec9, called from SafeUpload+0x489d6 <- +0x4a104 <- +0x4a190 (DriverEntry). The PDB for
+  that build no longer exists (overwritten by later builds), so frames are not symbolized.
+- Hang 2 (run 8 build, same flow): fence2-hang-cdb3.txt. Same bugcheck 0xD1, arg1 ffff838a`0223c020, IRQL 2.
+  Symbolized: SafeUpload!FenceInstall+0x39 <- SafeUploadStageFenceRefresh+0x376 <- DriverEntry+0xce. The faulting
+  instruction is `mov rax,[rax+20h]` with rax = Scan (PAGED pool); !pte shows the page in transition (trimmed).
+- Source: FenceInstall dereferenced the paged scan structure (Scan->Table / Scan->Count / Scan->Entries) AFTER
+  KeAcquireSpinLock (DISPATCH_LEVEL). v1 (/tmp/claude-1000/StageFence.v1.c lines 347-352) had the identical
+  pattern. Verifier's forced IRQL checking trims pageable pool at raised IRQL, which turns a latent bug into an
+  immediate bugcheck; without the Verifier the page happened to stay resident.
+
+Fix (run 9, feature SYS SHA-256 19CAE9513995E6FA74FA5E7466A89680DF3E326C8EAB9DF6B8AB4394026E4B23): FenceInstall
+copies every value it needs out of the scan state into locals BEFORE taking the locks, and only dereferences the
+non-paged table pointer under them.
+Verified on the debuggee: 5/5 load/unload iterations under Verifier 0x13B with a registered mapped stream
+(fence3-soak-verifier), the load no longer bugchecks, and both original repro scripts and the controls pass under
+the Verifier (fence4-*).
+
+Unrelated second cause of the later "agent did not launch" failures: the guest's agent publish folder was
+zero-filled (see fence3-guest-publish-damage-assessment.txt; repaired by fence3-publish-repair).

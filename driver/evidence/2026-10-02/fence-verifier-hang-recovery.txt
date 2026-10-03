@@ -1,0 +1,47 @@
+UTC=2026-10-02T20:58:01Z
+# Debuggee hung during fence-repro-b-verifier (volatile Verifier 0x13B). Evidence preserved, then recovery from the clean frozen parent.
+# memory image (private, not in repo): /var/tmp/safeupload-fence-verifier-20261002.elf  8723972067 bytes
+# failed active overlay (preserved): /var/lib/libvirt/images/win10-debug.safeupload-pre-fence-repro-b-verifier-20261002
+# clean parent: win10-debug.safeupload-pre-fence-repro-a-verifier-20261002 (frozen at the start of the failed run)
+--- create recovery overlay
+Vol win10-debug.safeupload-recovery-fence-20261002 created
+
+  <capacity unit='bytes'>128849018880</capacity>
+  <allocation unit='bytes'>200704</allocation>
+--
+    <path>/var/lib/libvirt/images/win10-debug.safeupload-recovery-fence-20261002</path>
+    <format type='qcow2'/>
+--
+  <backingStore>
+    <path>/var/lib/libvirt/images/win10-debug.safeupload-pre-fence-repro-a-verifier-20261002</path>
+--- force off, redefine, start
+Domain 'win10-debug' destroyed
+
+Domain 'win10-debug' defined from /tmp/claude-1000/dom-recovered.xml
+
+Domain 'win10-debug' started
+
+ vda      /var/lib/libvirt/images/win10-debug.safeupload-recovery-fence-20261002
+--- 2026-10-02T21:18:45Z second hang (fence2-debug-verifier3): memory image via QEMU monitor dump-guest-memory (libvirt-qemu 0400, private, not in repo)
+--- temporary libvirt dir pool 'forensic' on /var/tmp, only to stream the image to a readable copy; removed afterwards
+Pool forensic defined
+
+Pool forensic started
+
+--- 2026-10-02T21:19:53Z recovery #2 from win10-debug.safeupload-pre-fence2-debug-verifier2-20261002 (frozen after the clean fence2-debug-verifier2 run); failed active overlay win10-debug.safeupload-pre-fence2-debug-verifier3-20261002 preserved
+Vol win10-debug.safeupload-recovery-fence2-20261002 created
+
+60:      <source file='/var/lib/libvirt/images/win10-debug.safeupload-recovery-fence2-20261002'/>
+63:        <source file='/var/lib/libvirt/images/win10-debug.safeupload-pre-fence2-debug-verifier2-20261002'/>
+Domain 'win10-debug' destroyed
+
+Domain 'win10-debug' defined from /tmp/claude-1000/dom-recovered2.xml
+
+Domain 'win10-debug' started
+
+ vda      /var/lib/libvirt/images/win10-debug.safeupload-recovery-fence2-20261002
+--- 2026-10-02T21:44:59Z forensic pool removed (files in /var/tmp untouched; ELF images and readable copies preserved)
+Pool forensic destroyed
+
+Pool forensic has been undefined
+

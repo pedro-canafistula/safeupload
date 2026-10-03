@@ -687,6 +687,46 @@ Cleanup:
     return exitCode;
 }
 
+static int PrintFenceStatus(VOID)
+{
+    SAFEUPLOAD_CONTROL control;
+    SAFEUPLOAD_FENCE_STATUS status;
+    HANDLE port = INVALID_HANDLE_VALUE;
+    DWORD returned = 0;
+    HRESULT hr;
+
+    hr = FilterConnectCommunicationPort(SAFEUPLOAD_PORT_NAME, 0, NULL, 0, NULL, &port);
+    if (FAILED(hr)) {
+        wprintf(L"ERRO: nao foi possivel conectar na porta (hr = 0x%08X).\n", hr);
+        return 2;
+    }
+
+    ZeroMemory(&control, sizeof(control));
+    ZeroMemory(&status, sizeof(status));
+    control.Version = SAFEUPLOAD_PROTOCOL_VERSION;
+    control.StructSize = sizeof(control);
+    control.Command = SAFEUPLOAD_CONTROL_ADMISSION_FENCE_STATUS;
+    hr = FilterSendMessage(port, &control, sizeof(control), &status, sizeof(status), &returned);
+    CloseHandle(port);
+    if (FAILED(hr) || returned != sizeof(status) || status.StructSize != sizeof(status)) {
+        wprintf(L"ERRO: o driver recusou o status da cerca (hr = 0x%08X, %lu bytes).\n", hr, returned);
+        return 3;
+    }
+
+    wprintf(L"{\"fence\":true,\"complete\":%s,\"entries\":%lu,\"generation\":%lu,\"lastStatus\":\"0x%08X\",\"failureLine\":%lu,"
+            L"\"refreshStarted\":%llu,\"refreshCompleted\":%llu,\"refreshFailed\":%llu,"
+            L"\"pagingWritesDenied\":%llu,\"opensRefused\":%llu,\"directoriesScanned\":%llu,"
+            L"\"filesScanned\":%llu,\"reparseSkipped\":%llu,\"volumeScopesSkipped\":%llu,"
+            L"\"streamsReleased\":%llu,\"releaseRefused\":%llu,\"sectionsDenied\":%llu,\"sectionNameUnresolved\":%llu}\n",
+            (status.LastStatus == 0 && status.VolumeScopesSkipped == 0) ? L"true" : L"false",
+            status.Entries, status.Generation, status.LastStatus, status.FailureLine,
+            status.RefreshStarted, status.RefreshCompleted, status.RefreshFailed,
+            status.PagingWritesDenied, status.OpensRefused, status.DirectoriesScanned,
+            status.FilesScanned, status.ReparseSkipped, status.VolumeScopesSkipped,
+            status.StreamsReleased, status.ReleaseRefused, status.SectionsDenied, status.SectionNameUnresolved);
+    return status.LastStatus == 0 ? 0 : 4;               // a failed scan is not a healthy fence
+}
+
 static int SendAdmissionTraceControl(_In_ UINT32 Command, _In_z_ PCWSTR Name, _In_ UINT32 Options)
 {
     SAFEUPLOAD_CONTROL control;
@@ -863,6 +903,15 @@ Return Value:
 
     if (argc > 1 && _wcsicmp(argv[1], L"--admission-trace") == 0) {
         return PrintAdmissionTrace();
+    }
+
+    if (argc > 1 && _wcsicmp(argv[1], L"--admission-fence-status") == 0) {
+        return PrintFenceStatus();
+    }
+
+    if (argc > 1 && _wcsicmp(argv[1], L"--admission-fence-refresh") == 0) {
+        return SendAdmissionTraceControl(SAFEUPLOAD_CONTROL_ADMISSION_FENCE_REFRESH,
+                                         L"admission fence refresh", 0);
     }
 
     if (argc > 1 && _wcsicmp(argv[1], L"--admission-probe") == 0) {

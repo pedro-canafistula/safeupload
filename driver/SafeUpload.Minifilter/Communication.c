@@ -777,6 +777,44 @@ Return Value:
             status = SafeUploadStageAdmissionProbe( &volumeName, &relativePath );
             leave;
         }
+
+        if (command == SAFEUPLOAD_CONTROL_ADMISSION_FENCE_REFRESH ||
+            command == SAFEUPLOAD_CONTROL_ADMISSION_FENCE_STATUS) {
+            SAFEUPLOAD_CONTROL fenceControl;
+            SAFEUPLOAD_FENCE_STATUS fenceStatus;
+            BOOLEAN wantStatus = command == SAFEUPLOAD_CONTROL_ADMISSION_FENCE_STATUS;
+
+            if (InputBufferLength != sizeof( SAFEUPLOAD_CONTROL )) {
+                status = STATUS_INVALID_BUFFER_SIZE;
+                leave;
+            }
+            if (wantStatus ? (OutputBuffer == NULL || OutputBufferLength != sizeof( fenceStatus )) :
+                             (OutputBuffer != NULL || OutputBufferLength != 0)) {
+                status = STATUS_INVALID_BUFFER_SIZE;
+                leave;
+            }
+
+            RtlCopyMemory( &fenceControl, InputBuffer, sizeof( fenceControl ) );
+            if (fenceControl.Version != SAFEUPLOAD_PROTOCOL_VERSION ||
+                fenceControl.StructSize != sizeof( SAFEUPLOAD_CONTROL ) ||
+                fenceControl.Command != command ||
+                fenceControl.Reserved != 0) {
+                status = STATUS_REVISION_MISMATCH;
+                leave;
+            }
+
+            if (!wantStatus) {
+                status = SafeUploadStageFenceRefresh( NULL );
+                leave;
+            }
+
+#pragma warning( suppress: 6001 )
+            ProbeForWrite( OutputBuffer, sizeof( fenceStatus ), __alignof( SAFEUPLOAD_FENCE_STATUS ) );
+            SafeUploadStageFenceGetStatus( &fenceStatus );
+            RtlCopyMemory( OutputBuffer, &fenceStatus, sizeof( fenceStatus ) );
+            *ReturnOutputBufferLength = sizeof( fenceStatus );
+            leave;
+        }
 #endif
 
         if (command == SAFEUPLOAD_CONTROL_GET_COUNTERS) {

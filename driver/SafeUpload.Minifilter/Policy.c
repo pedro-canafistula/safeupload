@@ -88,6 +88,9 @@ SafeUploadBuildStringTable (
     #pragma alloc_text(PAGE, SafeUploadFreePolicy)
     #pragma alloc_text(PAGE, SafeUploadSetPolicy)
     #pragma alloc_text(PAGE, SafeUploadBuildStringTable)
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    #pragma alloc_text(PAGE, SafeUploadPolicyCopyScope)
+#endif
 #endif
 
 
@@ -240,6 +243,9 @@ Return Value:
 {
     PSAFEUPLOAD_POLICY snapshot;
     PSAFEUPLOAD_POLICY previous;
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    BOOLEAN fenceTransition = FALSE;
+#endif
 
     PAGED_CODE();
 
@@ -324,6 +330,37 @@ Return Value:
                                 SAFEUPLOAD_MAX_IMAGE_CHARS,
                                 snapshot->Images );
 
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+
+    //
+    //  Scan the candidate scopes for streams with user-writable mappings
+    //  before the swap. A scope that cannot be scanned rejects the update and
+    //  leaves the previous policy in place; the fence it builds is then ready
+    //  when the new scope takes effect.
+    //
+
+    {
+        NTSTATUS fenceStatus;
+
+        //
+        //  The transition (this scan, the swap and the scan after it) holds the
+        //  fence's refresh mutex, so no other refresh can snapshot the old policy
+        //  and install after the swap.
+        //
+
+        fenceTransition = SafeUploadStageFenceTransitionBegin();
+        fenceStatus = SafeUploadStageFenceRefresh( snapshot );
+
+        if (!NT_SUCCESS( fenceStatus )) {
+
+            if (fenceTransition) SafeUploadStageFenceTransitionEnd();
+            ExFreePoolWithTag( snapshot, SAFEUPLOAD_POOL_TAG );
+            return fenceStatus;
+        }
+    }
+
+#endif
+
     FltAcquirePushLockExclusive( &SafeUploadPolicyLock );
 
     previous = SafeUploadPolicy;
@@ -342,6 +379,19 @@ Return Value:
 
         ExFreePoolWithTag( previous, SAFEUPLOAD_POOL_TAG );
     }
+
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+
+    //
+    //  A mapping created between the first scan and the swap by a stream that
+    //  was not yet in scope is caught by scanning again now that it is. A
+    //  failure here keeps the first scan's fence; the counters record it.
+    //
+
+    (VOID) SafeUploadStageFenceRefresh( NULL );
+    if (fenceTransition) SafeUploadStageFenceTransitionEnd();
+
+#endif
 
     SafeUploadTrace( "policy set: %u extensoes, %u prefixos, %u imagens, flags 0x%X, timeout %u ms\n",
                      snapshot->ExtensionCount,
@@ -810,3 +860,77 @@ Return Value:
 
     return matched;
 }
+
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+
+NTSTATUS
+SafeUploadPolicyCopyScope (
+    _In_opt_ const SAFEUPLOAD_POLICY *Candidate,
+    _Out_ PSAFEUPLOAD_SCOPE_COPY Scope
+    )
+/*++
+
+Routine Description:
+
+    Copies the destination prefixes of a snapshot (the candidate, or the
+    current policy when Candidate is NULL) so the fence scan can do file I/O
+    without holding the policy lock.
+
+    IRQL: PASSIVE_LEVEL.
+
+--*/
+{
+    const SAFEUPLOAD_POLICY *source = Candidate;
+    UINT32 index;
+
+    PAGED_CODE();
+
+    RtlZeroMemory( Scope, sizeof( *Scope ) );
+
+    if (source == NULL) {
+
+        FltAcquirePushLockShared( &SafeUploadPolicyLock );
+        source = SafeUploadPolicy;
+
+        if (source == NULL) {
+
+            FltReleasePushLock( &SafeUploadPolicyLock );
+            return STATUS_SUCCESS;
+        }
+    }
+
+    Scope->Flags = source->Flags;
+
+    for (index = 0; index < source->PrefixCount && index < SAFEUPLOAD_MAX_PREFIXES; index += 1) {
+
+        USHORT bytes = source->Prefixes[index].Length;
+
+        //
+        //  A prefix the scan cannot represent must not be silently dropped: its
+        //  descendants would be in scope but never scanned. Fail closed.
+        //
+
+        if (bytes == 0 || (bytes & 1) != 0 ||
+            bytes > SAFEUPLOAD_MAX_PREFIX_CHARS * sizeof( WCHAR )) {
+
+            if (Candidate == NULL) {
+
+                FltReleasePushLock( &SafeUploadPolicyLock );
+            }
+            return STATUS_INVALID_PARAMETER;
+        }
+
+        RtlCopyMemory( Scope->Prefix[Scope->Count], source->Prefixes[index].Buffer, bytes );
+        Scope->Length[Scope->Count] = bytes;
+        Scope->Count += 1;
+    }
+
+    if (Candidate == NULL) {
+
+        FltReleasePushLock( &SafeUploadPolicyLock );
+    }
+
+    return STATUS_SUCCESS;
+}
+
+#endif

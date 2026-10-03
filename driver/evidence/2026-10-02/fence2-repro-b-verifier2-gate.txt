@@ -1,0 +1,53 @@
+TestTimestampUTC=2026-10-02T17:09:26.1045647Z
+Host=WIN10-DEBUGGED
+UUID=9D44EEE8-81CF-4CC1-9FBA-7670F11DEF4D
+OriginalInstalledSHA256=ADA9D05AB6AECDD2B6C521B0CE529FC06C732154ACB3EE85439FBDC8AA80DFCE
+FeatureDriverSHA256=96BE5A4DE8DDB2FCB3B76EE1B493F058A2314E405DE5BD3ABAFEC696863BEE44
+ServicePackageSHA256=D887E0D7F38AD64AD40CEE18B841C6D38AD2BED4D6F760B1BDE4464927381997
+OriginalPolicySHA256=29DC8A341BD7C549996596D2477A0CCCAF19602C362A2167FB4FDD5C66663731
+FilterUnloaded=True; VerifierFlags=0; VerifiedDrivers=None; Service=Manual/Stopped
+ConcurrentAgentProcesses=0; SafeUploadTestTasks=0
+OwnedVhdxPresent=False
+FixtureOutsideBaselinePolicy=True; Path=C:\Users\vika\Documents\SafeUpload-policy-transition-66e0480d64874ea7994714b4adb498f8
+FixtureExtension=.maptest; BaselineSourceExtensionMonitored=False
+Verifier Volatile Flags: 0x0000013b
+  Volatile Flags:
+    [X] 0x00000001 Special pool.
+    [X] 0x00000002 Force IRQL checking.
+    [ ] 0x00000004 Randomized low resources simulation.
+    [X] 0x00000008 Pool tracking.
+    [X] 0x00000010 I/O verification.
+    [X] 0x00000020 Deadlock detection.
+    [ ] 0x00000080 DMA checking.
+    [ ] 0x00000200 Force pending I/O requests.
+    [ ] 0x00000400 IRP logging.
+    [ ] 0x00000800 Miscellaneous checks.
+  Added Drivers:
+    SafeUpload.sys
+The new settings are in effect until the system
+is restarted or the settings are changed again.
+VerifierEnabled=volatile flags 0x13B (special pool, IRQL, pool tracking, I/O, deadlock, DDI)
+69
+FilterAttached=True; MappingCreatedBeforeFirstPolicyPush=True; MappingCapacityEqualsFileEOF=True; PreChangeFileHandleClosed=True; WritableSectionRetained=True
+Verifier Volatile Flags: 0x00000000
+  Volatile Flags:
+    [ ] 0x00000001 Special pool.
+    [ ] 0x00000002 Force IRQL checking.
+    [ ] 0x00000004 Randomized low resources simulation.
+    [ ] 0x00000008 Pool tracking.
+    [ ] 0x00000010 I/O verification.
+    [ ] 0x00000020 Deadlock detection.
+    [ ] 0x00000080 DMA checking.
+    [ ] 0x00000200 Force pending I/O requests.
+    [ ] 0x00000400 IRP logging.
+    [ ] 0x00000800 Miscellaneous checks.
+  Removed Drivers:
+    SafeUpload.sys
+The new settings are in effect until the system
+is restarted or the settings are changed again.
+No settings were changed.
+OriginalDriverRestored=ADA9D05AB6AECDD2B6C521B0CE529FC06C732154ACB3EE85439FBDC8AA80DFCE
+ExperimentalDriverUnloaded=True
+OriginalDriverAndPolicyRestored=True; VerifierOff=True; FilterUnloaded=True
+AgentProcesses=0; AgentTasks=0; PolicyTransitionFixtureRemoved=True
+HARNESS_THREW: LocalSystem test agent did not launch.

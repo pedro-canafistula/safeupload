@@ -747,7 +747,8 @@ function New-ExpandedPolicyForFixture([string] $FixtureDirectory, [string] $Poli
 }
 
 function Invoke-AdmissionProbe([string] $Path, [string] $Name, [int] $Timeout) {
-    Assert-ReparseFreeFixturePath $Path
+    # The reparse-free precondition was verified before the driver loaded. It is not repeated here: with a
+    # fence active the file itself may be quarantined and even a stat of it is refused.
     if ($Path.Length -gt 260) {
         throw "Inspector probe path exceeds the 260-character command limit: $Path"
     }
@@ -910,7 +911,14 @@ function Dispose-ObserverResources(
             $Views[$index].Dispose()
         }
         catch {
-            [void]$Errors.Add('View dispose: ' + (Get-ErrorText $_))
+            $disposeText = Get-ErrorText $_
+            if ($disposeText -match 'write protected') {
+                # A fenced stream refuses the final flush of its old view: an observation, not a restoration failure.
+                Write-Output ('ViewDisposeObserved=' + $disposeText)
+            }
+            else {
+                [void]$Errors.Add('View dispose: ' + $disposeText)
+            }
         }
     }
     for ($index = $Mappings.Count - 1; $index -ge 0; $index--) {
@@ -1093,6 +1101,8 @@ function Invoke-Variant([string] $SelectedVariant) {
             $traceResult = Invoke-InspectorChecked -Arguments @('--admission-trace') -Timeout $InspectorTimeoutSeconds
             $trace = Get-TraceDump $traceResult $rawTrace
             Write-TraceFacts $trace
+            $fence = Invoke-InspectorChecked -Arguments @('--admission-fence-status') -Timeout $InspectorTimeoutSeconds
+            Write-Output ('FenceStatus=' + ([regex]::Replace([string]$fence.Stdout, '[\r\n]+', ' ')).Trim())
 
             $probes = @(Get-TraceProbeEntries $trace)
             Write-ProbeFacts $probes $probeNames
@@ -1274,6 +1284,8 @@ function Invoke-Variant([string] $SelectedVariant) {
             $traceResult = Invoke-InspectorChecked -Arguments @('--admission-trace') -Timeout $InspectorTimeoutSeconds
             $trace = Get-TraceDump $traceResult $rawTrace
             Write-TraceFacts $trace
+            $fence = Invoke-InspectorChecked -Arguments @('--admission-fence-status') -Timeout $InspectorTimeoutSeconds
+            Write-Output ('FenceStatus=' + ([regex]::Replace([string]$fence.Stdout, '[\r\n]+', ' ')).Trim())
             $probes = @(Get-TraceProbeEntries $trace)
             Write-ProbeFacts $probes @('Fixture')
             $runSucceeded = $true

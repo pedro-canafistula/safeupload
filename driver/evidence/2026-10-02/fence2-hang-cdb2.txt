@@ -1,0 +1,213 @@
+Opened log file 'C:\Users\vika\Documents\forensic\fence2-hang-cdb2.txt'
+
+************* Preparing the environment for Debugger Extensions Gallery repositories **************
+   ExtensionRepository : Implicit
+   UseExperimentalFeatureForNugetShare : true
+   AllowNugetExeUpdate : true
+   NonInteractiveNuget : true
+   AllowNugetMSCredentialProviderInstall : true
+   AllowParallelInitializationOfLocalRepositories : true
+   EnableRedirectToChakraJsProvider : false
+
+   -- Configuring repositories
+      ----> Repository : LocalInstalled, Enabled: true
+      ----> Repository : UserExtensions, Enabled: true
+
+>>>>>>>>>>>>> Preparing the environment for Debugger Extensions Gallery repositories completed, duration 0.016 seconds
+
+************* Waiting for Debugger Extensions Gallery to Initialize **************
+
+>>>>>>>>>>>>> Waiting for Debugger Extensions Gallery to Initialize completed, duration 0.031 seconds
+   ----> Repository : UserExtensions, Enabled: true, Packages count: 0
+   ----> Repository : LocalInstalled, Enabled: true, Packages count: 30
+
+Microsoft (R) Windows Debugger Version 10.0.28000.2705 AMD64
+Copyright (c) Microsoft Corporation. All rights reserved.
+
+
+Loading Dump File [C:\Users\vika\Documents\forensic\fence2-hang.dmp]
+Kernel Complete Dump File: Full address space is available
+
+Comment: 'Hello from elf2dmp!'
+
+************* Path validation summary **************
+Response                         Time (ms)     Location
+Deferred                                       srv*C:\symbols*https://msdl.microsoft.com/download/symbols
+OK                                             C:\Users\vika\Documents\safeupload-staging-test\driver\SafeUpload.Minifilter\x64\Debug
+Symbol search path is: srv*C:\symbols*https://msdl.microsoft.com/download/symbols;C:\Users\vika\Documents\safeupload-staging-test\driver\SafeUpload.Minifilter\x64\Debug
+Executable search path is: 
+NatVis script successfully loaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\atlmfc.natvis'
+NatVis script successfully loaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\concurrency.natvis'
+NatVis script successfully loaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\cpp_rest.natvis'
+NatVis script successfully loaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\Kernel.natvis'
+NatVis script successfully loaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\ObjectiveC.natvis'
+NatVis script successfully loaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\stl.natvis'
+NatVis script successfully loaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\Usb4Kd.natvis'
+NatVis script successfully loaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\Windows.Data.Json.natvis'
+NatVis script successfully loaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\Windows.Devices.Geolocation.natvis'
+NatVis script successfully loaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\Windows.Devices.Sensors.natvis'
+NatVis script successfully loaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\Windows.Media.natvis'
+NatVis script successfully loaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\windows.natvis'
+NatVis script successfully loaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\winrt.natvis'
+KiProcessorBlock[2] is null.
+KiProcessorBlock[3] is null.
+Windows 10 Kernel Version 19041 MP (4 procs) Free x64
+Product: WinNt, suite: TerminalServer SingleUserTS
+Edition build lab: 19041.1.amd64fre.vb_release.191206-1406
+Kernel base = 0xfffff800`69200000 PsLoadedModuleList = 0xfffff800`69e2a2b0
+System Uptime: 0 days 0:14:13.683
+Loading Kernel Symbols
+...............................................................
+................................................................
+..........................................
+Loading User Symbols
+
+Loading unloaded module list
+......
+Unknown exception - code 00000000 (first/second chance not available)
+For analysis of this file, run !analyze -v
+0: kd> .symfix+
+0: kd> vertarget
+Windows 10 Kernel Version 19041 MP (4 procs) Free x64
+Product: WinNt, suite: TerminalServer SingleUserTS
+Edition build lab: 19041.1.amd64fre.vb_release.191206-1406
+Kernel base = 0xfffff800`69200000 PsLoadedModuleList = 0xfffff800`69e2a2b0
+System Uptime: 0 days 0:14:13.683
+0: kd> lm m SafeUpload
+Browse full module list
+start             end                 module name
+fffff800`72510000 fffff800`7255c000   SafeUpload   (deferred)             
+0: kd> !running -it
+
+System Processors:  (0000000000000003)
+  Idle Processors:  (0000000000000002)
+
+       Prcbs             Current         (pri) Next            (pri) Idle
+  0    fffff8006733f180  ffffaa873077b080 (13)                       fffff80069f27a00  ................
+
+0k
+ # Child-SP          RetAddr               Call Site
+00 fffff800`6f0abd48 fffff800`67ec16e5     kdcom!READ_REGISTER_ULONG+0x2
+01 fffff800`6f0abd50 fffff800`67ec39d9     kd_02_8086!ReadDeviceMemory+0x71
+02 fffff800`6f0abd90 fffff800`67ec33d6     kd_02_8086!e1000_InDword+0x39
+03 fffff800`6f0abdd0 fffff800`67ec375a     kd_02_8086!e1000_UNDI_Status+0xc6
+04 fffff800`6f0abe10 fffff800`67ec1895     kd_02_8086!e1000_UNDI_APIEntry+0x12a
+05 fffff800`6f0abe40 fffff800`67ec1079     kd_02_8086!UndiGetRxPacket+0xb9
+06 fffff800`6f0ac050 fffff800`67f24cf8     kd_02_8086!KdGetRxPacket+0x9
+07 fffff800`6f0ac080 fffff800`67f250fe     kdcom!GetRxPacket+0x88
+08 fffff800`6f0ac0d0 fffff800`67f2525d     kdcom!WaitForRxPacket+0x11a
+09 fffff800`6f0ac130 fffff800`67f2535b     kdcom!WaitForSpecificRxPacket+0xf5
+0a fffff800`6f0ac190 fffff800`67f25576     kdcom!WaitForSpecificRxIpPacket+0xb7
+0b fffff800`6f0ac260 fffff800`67f26ac6     kdcom!WaitForSpecificRxUdpPacketEx+0x6e
+0c fffff800`6f0ac2e0 fffff800`67f23253     kdcom!NetReadKdPacket+0xd6
+0d fffff800`6f0ac3a0 fffff800`67f2385d     kdcom!KdReceivePacket+0x153
+0e fffff800`6f0ac460 fffff800`69bbb5a3     kdcom!KdSendPacket+0x2ad
+0f fffff800`6f0ac4d0 fffff800`69bbad9f     nt!KdpSendWaitContinue+0xaf
+10 fffff800`6f0ac6b0 fffff800`6970ff6b     nt!KdpReportExceptionStateChange+0xbf
+11 fffff800`6f0ac820 fffff800`69bbdb80     nt!KdpReport+0xb7
+12 fffff800`6f0ac860 fffff800`694e7c99     nt!KdpTrap+0x160
+13 fffff800`6f0ac8b0 fffff800`694e7887     nt!KdTrap+0x2d
+14 fffff800`6f0ac8f0 fffff800`695fcdb2     nt!KiDispatchException+0x177
+15 fffff800`6f0acfb0 fffff800`695fcd80     nt!KxExceptionDispatchOnExceptionStack+0x12
+16 ffffea0e`f98d59d8 fffff800`6960fe65     nt!KiExceptionDispatchOnExceptionStackContinue
+17 ffffea0e`f98d59e0 fffff800`69608ed0     nt!KiExceptionDispatch+0x125
+18 ffffea0e`f98d5bc0 fffff800`69605241     nt!KiBreakpointTrap+0x310
+19 ffffea0e`f98d5d58 fffff800`697162f2     nt!DbgBreakPointWithStatus+0x1
+1a ffffea0e`f98d5d60 fffff800`69715d62     nt!KiBugCheckDebugBreak+0x12
+1b ffffea0e`f98d5dc0 fffff800`695fbda7     nt!KeBugCheck2+0xdd2
+1c ffffea0e`f98d64d0 fffff800`6960fd29     nt!KeBugCheckEx+0x107
+1d ffffea0e`f98d6510 fffff800`6960b8e3     nt!KiBugCheckDispatch+0x69
+1e ffffea0e`f98d6650 fffff800`7251d1c9     nt!KiPageFault+0x463
+1f ffffea0e`f98d67e0 fffff800`72556af6     SafeUpload!FenceInstall+0x39
+20 ffffea0e`f98d6820 fffff800`725580ce     SafeUpload!SafeUploadStageFenceRefresh+0x376
+21 ffffea0e`f98d6890 fffff800`725581d0     SafeUpload!DriverEntry+0xce
+22 ffffea0e`f98d68d0 fffff800`6996c0f4     SafeUpload!GsDriverEntry+0x20
+23 ffffea0e`f98d6900 fffff800`699382b5     nt!PnpCallDriverEntry+0x4c
+24 ffffea0e`f98d6960 fffff800`6997ca97     nt!IopLoadDriver+0x4e5
+25 ffffea0e`f98d6b30 fffff800`6948e5c5     nt!IopLoadUnloadDriver+0x57
+26 ffffea0e`f98d6b70 fffff800`695265f5     nt!ExpWorkerThread+0x105
+27 ffffea0e`f98d6c10 fffff800`696048d8     nt!PspSystemThreadStartup+0x55
+28 ffffea0e`f98d6c60 00000000`00000000     nt!KiStartSystemThread+0x28
+
+  1    ffffc6009e189180  ffffc6009e1940c0 ( 0)                       ffffc6009e1940c0  ................
+
+1k
+ # Child-SP          RetAddr               Call Site
+00 ffffc600`9e254b70 fffff800`6971c562     nt!KiCheckStall+0x79
+01 ffffc600`9e254ba0 fffff800`69710b0a     nt!KiFreezeTargetExecution+0x1e2
+02 ffffc600`9e254cb0 fffff800`69710f85     nt!KiCheckForFreezeExecution+0x2a
+03 ffffc600`9e254ce0 fffff800`69608b42     nt!KiProcessNMI+0x55
+04 ffffc600`9e254d30 fffff800`69608912     nt!KxNmiInterrupt+0x82
+05 ffffc600`9e254e70 fffff800`695f7a7f     nt!KiNmiInterrupt+0x212
+06 ffffea0e`f98296b8 fffff800`695bc494     nt!HalProcessorIdle+0xf
+07 ffffea0e`f98296c0 fffff800`69482db6     nt!PpmIdleDefaultExecute+0x14
+08 ffffea0e`f98296f0 fffff800`69481b74     nt!PpmIdleExecuteTransition+0x10c6
+09 ffffea0e`f9829af0 fffff800`69600554     nt!PoIdle+0x374
+0a ffffea0e`f9829c60 00000000`00000000     nt!KiIdleLoop+0x54
+
+0: kd> ~0s
+0: kd> k 40
+ # Child-SP          RetAddr               Call Site
+00 fffff800`6f0abd48 fffff800`67ec16e5     kdcom!READ_REGISTER_ULONG+0x2
+01 fffff800`6f0abd50 fffff800`67ec39d9     kd_02_8086!ReadDeviceMemory+0x71
+02 fffff800`6f0abd90 fffff800`67ec33d6     kd_02_8086!e1000_InDword+0x39
+03 fffff800`6f0abdd0 fffff800`67ec375a     kd_02_8086!e1000_UNDI_Status+0xc6
+04 fffff800`6f0abe10 fffff800`67ec1895     kd_02_8086!e1000_UNDI_APIEntry+0x12a
+05 fffff800`6f0abe40 fffff800`67ec1079     kd_02_8086!UndiGetRxPacket+0xb9
+06 fffff800`6f0ac050 fffff800`67f24cf8     kd_02_8086!KdGetRxPacket+0x9
+07 fffff800`6f0ac080 fffff800`67f250fe     kdcom!GetRxPacket+0x88
+08 fffff800`6f0ac0d0 fffff800`67f2525d     kdcom!WaitForRxPacket+0x11a
+09 fffff800`6f0ac130 fffff800`67f2535b     kdcom!WaitForSpecificRxPacket+0xf5
+0a fffff800`6f0ac190 fffff800`67f25576     kdcom!WaitForSpecificRxIpPacket+0xb7
+0b fffff800`6f0ac260 fffff800`67f26ac6     kdcom!WaitForSpecificRxUdpPacketEx+0x6e
+0c fffff800`6f0ac2e0 fffff800`67f23253     kdcom!NetReadKdPacket+0xd6
+0d fffff800`6f0ac3a0 fffff800`67f2385d     kdcom!KdReceivePacket+0x153
+0e fffff800`6f0ac460 fffff800`69bbb5a3     kdcom!KdSendPacket+0x2ad
+0f fffff800`6f0ac4d0 fffff800`69bbad9f     nt!KdpSendWaitContinue+0xaf
+10 fffff800`6f0ac6b0 fffff800`6970ff6b     nt!KdpReportExceptionStateChange+0xbf
+11 fffff800`6f0ac820 fffff800`69bbdb80     nt!KdpReport+0xb7
+12 fffff800`6f0ac860 fffff800`694e7c99     nt!KdpTrap+0x160
+13 fffff800`6f0ac8b0 fffff800`694e7887     nt!KdTrap+0x2d
+14 fffff800`6f0ac8f0 fffff800`695fcdb2     nt!KiDispatchException+0x177
+15 fffff800`6f0acfb0 fffff800`695fcd80     nt!KxExceptionDispatchOnExceptionStack+0x12
+16 ffffea0e`f98d59d8 fffff800`6960fe65     nt!KiExceptionDispatchOnExceptionStackContinue
+17 ffffea0e`f98d59e0 fffff800`69608ed0     nt!KiExceptionDispatch+0x125
+18 ffffea0e`f98d5bc0 fffff800`69605241     nt!KiBreakpointTrap+0x310
+19 ffffea0e`f98d5d58 fffff800`697162f2     nt!DbgBreakPointWithStatus+0x1
+1a ffffea0e`f98d5d60 fffff800`69715d62     nt!KiBugCheckDebugBreak+0x12
+1b ffffea0e`f98d5dc0 fffff800`695fbda7     nt!KeBugCheck2+0xdd2
+1c ffffea0e`f98d64d0 fffff800`6960fd29     nt!KeBugCheckEx+0x107
+1d ffffea0e`f98d6510 fffff800`6960b8e3     nt!KiBugCheckDispatch+0x69
+1e ffffea0e`f98d6650 fffff800`7251d1c9     nt!KiPageFault+0x463
+1f ffffea0e`f98d67e0 fffff800`72556af6     SafeUpload!FenceInstall+0x39
+20 ffffea0e`f98d6820 fffff800`725580ce     SafeUpload!SafeUploadStageFenceRefresh+0x376
+21 ffffea0e`f98d6890 fffff800`725581d0     SafeUpload!DriverEntry+0xce
+22 ffffea0e`f98d68d0 fffff800`6996c0f4     SafeUpload!GsDriverEntry+0x20
+23 ffffea0e`f98d6900 fffff800`699382b5     nt!PnpCallDriverEntry+0x4c
+24 ffffea0e`f98d6960 fffff800`6997ca97     nt!IopLoadDriver+0x4e5
+25 ffffea0e`f98d6b30 fffff800`6948e5c5     nt!IopLoadUnloadDriver+0x57
+26 ffffea0e`f98d6b70 fffff800`695265f5     nt!ExpWorkerThread+0x105
+27 ffffea0e`f98d6c10 fffff800`696048d8     nt!PspSystemThreadStartup+0x55
+28 ffffea0e`f98d6c60 00000000`00000000     nt!KiStartSystemThread+0x28
+0: kd> ~1s
+1: kd> k 40
+ # Child-SP          RetAddr               Call Site
+00 ffffc600`9e254b70 fffff800`6971c562     nt!KiCheckStall+0x79
+01 ffffc600`9e254ba0 fffff800`69710b0a     nt!KiFreezeTargetExecution+0x1e2
+02 ffffc600`9e254cb0 fffff800`69710f85     nt!KiCheckForFreezeExecution+0x2a
+03 ffffc600`9e254ce0 fffff800`69608b42     nt!KiProcessNMI+0x55
+04 ffffc600`9e254d30 fffff800`69608912     nt!KxNmiInterrupt+0x82
+05 ffffc600`9e254e70 fffff800`695f7a7f     nt!KiNmiInterrupt+0x212
+06 ffffea0e`f98296b8 fffff800`695bc494     nt!HalProcessorIdle+0xf
+07 ffffea0e`f98296c0 fffff800`69482db6     nt!PpmIdleDefaultExecute+0x14
+08 ffffea0e`f98296f0 fffff800`69481b74     nt!PpmIdleExecuteTransition+0x10c6
+09 ffffea0e`f9829af0 fffff800`69600554     nt!PoIdle+0x374
+0a ffffea0e`f9829c60 00000000`00000000     nt!KiIdleLoop+0x54
+1: kd> !process -1 0
+PROCESS ffffaa873065d0c0
+    SessionId: none  Cid: 0004    Peb: 00000000  ParentCid: 0000
+    DirBase: 001ad000  ObjectTable: ffff8389f901dd00  HandleCount: 1744.
+    Image: System
+
+1: kd> .logclose
+Closing open log file C:\Users\vika\Documents\forensic\fence2-hang-cdb2.txt
