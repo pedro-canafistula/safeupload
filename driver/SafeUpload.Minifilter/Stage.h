@@ -52,6 +52,15 @@ NTSTATUS SafeUploadStageAdmissionTraceReadBatch(
 NTSTATUS SafeUploadStageAdmissionProbe(
     _In_ PCUNICODE_STRING VolumeName,
     _In_ PCUNICODE_STRING RelativePath);
+
+/* StageWriters.c: H(F), the per-stream count of write file objects (observe-only). */
+#define SAFEUPLOAD_WRITERS_ONLY_CONTEXT ((PVOID)(ULONG_PTR)0x1000)
+BOOLEAN SafeUploadStageWritersWantPostCreate(_In_ PFLT_CALLBACK_DATA Data);
+VOID SafeUploadStageWritersPostCreate(_In_ PFLT_CALLBACK_DATA Data, _In_ PCFLT_RELATED_OBJECTS FltObjects,
+    _In_ FLT_POST_OPERATION_FLAGS Flags);
+VOID SafeUploadStageWritersOnCleanup(_In_ PFLT_CALLBACK_DATA Data, _In_ PCFLT_RELATED_OBJECTS FltObjects);
+UINT32 SafeUploadStageWritersSnapshot(_In_ PFLT_INSTANCE Instance, _In_ PFILE_OBJECT FileObject);
+VOID SafeUploadStageWritersGetStatus(_Out_ PSAFEUPLOAD_WRITER_STATE_STATUS Status);
 #endif
 
 #endif

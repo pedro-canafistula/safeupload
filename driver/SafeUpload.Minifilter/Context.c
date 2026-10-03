@@ -135,6 +135,10 @@ Return Value:
 
     FLT_ASSERT( ContextType == FLT_STREAM_CONTEXT );
 
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    SafeUploadStageWritersFreeContext( streamContext );
+#endif
+
     FltDeletePushLock( &streamContext->Lock );
 }
 
@@ -391,6 +395,10 @@ Return Value:
 
     RtlZeroMemory( created, sizeof( SAFEUPLOAD_STREAM_CONTEXT ) );
     FltInitializePushLock( &created->Lock );
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    KeInitializeSpinLock( &created->WriterLock );
+    InitializeListHead( &created->WriterObjects );
+#endif
 
     //
     //  KEEP_IF_EXISTS rather than REPLACE: another thread may have created

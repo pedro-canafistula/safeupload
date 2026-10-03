@@ -317,6 +317,22 @@ typedef struct _SAFEUPLOAD_STREAM_CONTEXT {
     LARGE_INTEGER FileSize;
     LARGE_INTEGER LastWriteTime;
 
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+
+    //
+    //  H(F): the file objects opened with write access on this stream that have
+    //  not yet seen IRP_MJ_CLEANUP. Only objects counted at post-create are ever
+    //  removed, so a stray cleanup can never undercount. WritersUntracked is
+    //  sticky: a write open could not be recorded, so the count is a lower bound.
+    //
+
+    KSPIN_LOCK WriterLock;
+    LIST_ENTRY WriterObjects;
+    volatile LONG WriteObjects;
+    volatile LONG WritersUntracked;
+
+#endif
+
 } SAFEUPLOAD_STREAM_CONTEXT, *PSAFEUPLOAD_STREAM_CONTEXT;
 
 extern CONST FLT_CONTEXT_REGISTRATION SafeUploadContextRegistration[];
@@ -674,6 +690,7 @@ BOOLEAN SafeUploadPolicyMatchesCurrentOrPendingDestination(
     _In_opt_ PCUNICODE_STRING NormalizedPath,
     _In_ BOOLEAN IncludeAncestors );
 
+VOID SafeUploadStageWritersFreeContext( _Inout_ PSAFEUPLOAD_STREAM_CONTEXT StreamContext );
 NTSTATUS SafeUploadStageFenceInitialize( VOID );
 VOID SafeUploadStageFenceFree( VOID );
 VOID SafeUploadStageFenceStartRetries( VOID );

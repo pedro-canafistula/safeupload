@@ -818,6 +818,33 @@ Return Value:
         }
 #endif
 
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+        if (command == SAFEUPLOAD_CONTROL_WRITER_STATE_STATUS) {
+            SAFEUPLOAD_CONTROL writerControl;
+            SAFEUPLOAD_WRITER_STATE_STATUS writerStatus;
+
+            if (InputBufferLength != sizeof( SAFEUPLOAD_CONTROL ) ||
+                OutputBuffer == NULL || OutputBufferLength != sizeof( writerStatus )) {
+                status = STATUS_INVALID_BUFFER_SIZE;
+                leave;
+            }
+            RtlCopyMemory( &writerControl, InputBuffer, sizeof( writerControl ) );
+            if (writerControl.Version != SAFEUPLOAD_PROTOCOL_VERSION ||
+                writerControl.StructSize != sizeof( SAFEUPLOAD_CONTROL ) ||
+                writerControl.Command != command ||
+                writerControl.Reserved != 0) {
+                status = STATUS_REVISION_MISMATCH;
+                leave;
+            }
+#pragma warning( suppress: 6001 )
+            ProbeForWrite( OutputBuffer, sizeof( writerStatus ), __alignof( SAFEUPLOAD_WRITER_STATE_STATUS ) );
+            SafeUploadStageWritersGetStatus( &writerStatus );
+            RtlCopyMemory( OutputBuffer, &writerStatus, sizeof( writerStatus ) );
+            *ReturnOutputBufferLength = sizeof( writerStatus );
+            leave;
+        }
+#endif
+
         if (command == SAFEUPLOAD_CONTROL_GET_COUNTERS) {
 
             //

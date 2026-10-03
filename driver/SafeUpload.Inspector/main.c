@@ -576,7 +576,8 @@ static VOID PrintAdmissionTraceEntry(_In_ const SAFEUPLOAD_ADMISSION_TRACE_ENTRY
             L"\"admissionRecordState\":\"not_tracked\",\"setupFlags\":%u,"
             L"\"volumeKind\":%u,\"attachClass\":\"%s\",\"syncType\":%u,"
             L"\"pageProtection\":\"0x%08X\",\"syncParametersValid\":%s,"
-            L"\"probeStatus\":\"0x%08X\",\"probeStage\":%u}\n",
+            L"\"probeStatus\":\"0x%08X\",\"probeStage\":%u,"
+            L"\"writeObjects\":%u,\"writersUntracked\":%s}\n",
             Entry->Sequence, Entry->Timestamp, AdmissionEventName(Entry->EventKind),
             Entry->ProcessId, Entry->Irql, Entry->Instance, Entry->TargetFileObject,
             Entry->SectionObjectPointer, Entry->MajorFunction, Entry->MinorFunction,
@@ -586,7 +587,9 @@ static VOID PrintAdmissionTraceEntry(_In_ const SAFEUPLOAD_ADMISSION_TRACE_ENTRY
             Entry->VolumeKind, AdmissionAttachClassName(Entry->AttachClass),
             Entry->SyncType, Entry->PageProtection,
             Entry->SyncParametersValid != 0 ? L"true" : L"false",
-            Entry->ProbeStatus, Entry->ProbeStage);
+            Entry->ProbeStatus, Entry->ProbeStage,
+            Entry->AdmissionRecordState & ~SAFEUPLOAD_WRITERS_UNTRACKED_BIT,
+            (Entry->AdmissionRecordState & SAFEUPLOAD_WRITERS_UNTRACKED_BIT) != 0 ? L"true" : L"false");
 }
 
 static int SendAdmissionProbe(_In_z_ PCWSTR DosPath)
@@ -687,6 +690,43 @@ Cleanup:
     if (request != NULL) HeapFree(GetProcessHeap(), 0, request);
     if (deviceName != NULL) HeapFree(GetProcessHeap(), 0, deviceName);
     return exitCode;
+}
+
+static int PrintWriterStateStatus(VOID)
+{
+    SAFEUPLOAD_CONTROL control;
+    SAFEUPLOAD_WRITER_STATE_STATUS status;
+    HANDLE port = INVALID_HANDLE_VALUE;
+    DWORD returned = 0;
+    HRESULT hr;
+
+    hr = FilterConnectCommunicationPort(SAFEUPLOAD_PORT_NAME, 0, NULL, 0, NULL, &port);
+    if (FAILED(hr)) {
+        wprintf(L"ERRO: nao foi possivel conectar na porta (hr = 0x%08X).\n", hr);
+        return 2;
+    }
+
+    ZeroMemory(&control, sizeof(control));
+    ZeroMemory(&status, sizeof(status));
+    control.Version = SAFEUPLOAD_PROTOCOL_VERSION;
+    control.StructSize = sizeof(control);
+    control.Command = SAFEUPLOAD_CONTROL_WRITER_STATE_STATUS;
+    hr = FilterSendMessage(port, &control, sizeof(control), &status, sizeof(status), &returned);
+    CloseHandle(port);
+    if (FAILED(hr) || returned != sizeof(status) || status.StructSize != sizeof(status)) {
+        wprintf(L"ERRO: resposta de writer-state invalida (hr = 0x%08X, bytes = %u).\n", hr, returned);
+        return 3;
+    }
+
+    wprintf(L"{\"writerState\":true,\"postCreateRuns\":%llu,\"writeObjectsCounted\":%llu,\"writeObjectsReleased\":%llu,"
+            L"\"untrackedCreates\":%llu,\"cleanupUnmatched\":%llu,\"directoryCreatesSkipped\":%llu,"
+            L"\"sectionInFlightNow\":%lu,\"sectionInFlightInserted\":%llu,\"sectionInFlightReleased\":%llu,"
+            L"\"sectionInFlightOverflow\":%llu,\"sectionInFlightStuck\":%llu,\"sectionInFlightMaxDepth\":%lu}\n",
+            status.PostCreateRuns, status.WriteObjectsCounted, status.WriteObjectsReleased,
+            status.UntrackedCreates, status.CleanupUnmatched, status.DirectoryCreatesSkipped,
+            status.SectionInFlightNow, status.SectionInFlightInserted, status.SectionInFlightReleased,
+            status.SectionInFlightOverflow, status.SectionInFlightStuck, status.SectionInFlightMaxDepth);
+    return 0;
 }
 
 static int PrintFenceStatus(VOID)
@@ -924,6 +964,10 @@ Return Value:
 
     if (argc > 1 && _wcsicmp(argv[1], L"--admission-trace") == 0) {
         return PrintAdmissionTrace();
+    }
+
+    if (argc > 1 && _wcsicmp(argv[1], L"--writer-state-status") == 0) {
+        return PrintWriterStateStatus();
     }
 
     if (argc > 1 && _wcsicmp(argv[1], L"--admission-fence-status") == 0) {

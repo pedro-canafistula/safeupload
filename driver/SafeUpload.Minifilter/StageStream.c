@@ -594,6 +594,10 @@ NTSTATUS SafeUploadStageAdmissionProbe(
             SAFEUPLOAD_ADMISSION_TRACE_MMDOES_YES :
             SAFEUPLOAD_ADMISSION_TRACE_MMDOES_NO;
     }
+    if (probeFileObject != NULL) {
+        /* Reuses AdmissionRecordState (a constant until now): H(F) of the probed stream, bit 31 = untracked. */
+        entry.AdmissionRecordState = SafeUploadStageWritersSnapshot(instance, probeFileObject);
+    }
     if (NT_SUCCESS(status)) probeStage = SAFEUPLOAD_ADMISSION_PROBE_STAGE_COMPLETE;
 
 Record:
@@ -2582,7 +2586,17 @@ FLT_PREOP_CALLBACK_STATUS SafeUploadStageDispatch(PFLT_CALLBACK_DATA Data,
     switch (Data->Iopb->MajorFunction) {
     case IRP_MJ_CREATE:
         result = StageAdmit(Data, Objects);
-        return result == FLT_PREOP_SUCCESS_NO_CALLBACK ? SafeUploadPreCreate(Data, Objects, CompletionContext) : result;
+        if (result != FLT_PREOP_SUCCESS_NO_CALLBACK) return result;
+        result = SafeUploadPreCreate(Data, Objects, CompletionContext);
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+        /* H(F) must see every write open, including those the legacy pre-create skips: any file may later
+         * enter a protected scope. The sentinel tells post-create not to run the legacy handler. */
+        if (result == FLT_PREOP_SUCCESS_NO_CALLBACK && SafeUploadStageWritersWantPostCreate(Data)) {
+            *CompletionContext = SAFEUPLOAD_WRITERS_ONLY_CONTEXT;
+            return FLT_PREOP_SUCCESS_WITH_CALLBACK;
+        }
+#endif
+        return result;
     case IRP_MJ_QUERY_OPEN:
     case IRP_MJ_NETWORK_QUERY_OPEN:
         if (FltGetRequestorProcessId(Data) > 4 &&
@@ -2597,6 +2611,7 @@ FLT_PREOP_CALLBACK_STATUS SafeUploadStageDispatch(PFLT_CALLBACK_DATA Data,
     case IRP_MJ_CLEANUP:
 #if SAFEUPLOAD_STAGING_PROTOTYPE
         StageTraceFileLifetime(Data, Objects, SAFEUPLOAD_ADMISSION_TRACE_EVENT_FILE_CLEANUP);
+        SafeUploadStageWritersOnCleanup(Data, Objects);
 #endif
         return SafeUploadPreCleanup(Data, Objects, CompletionContext);
 #if SAFEUPLOAD_STAGING_PROTOTYPE
@@ -2722,8 +2737,13 @@ FLT_PREOP_CALLBACK_STATUS SafeUploadStageDispatch(PFLT_CALLBACK_DATA Data,
 FLT_POSTOP_CALLBACK_STATUS SafeUploadStagePostOperation(PFLT_CALLBACK_DATA Data,
     PCFLT_RELATED_OBJECTS Objects, PVOID CompletionContext, FLT_POST_OPERATION_FLAGS Flags)
 {
-    if (Data->Iopb->MajorFunction == IRP_MJ_CREATE)
+    if (Data->Iopb->MajorFunction == IRP_MJ_CREATE) {
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+        SafeUploadStageWritersPostCreate(Data, Objects, Flags);
+        if (CompletionContext == SAFEUPLOAD_WRITERS_ONLY_CONTEXT) return FLT_POSTOP_FINISHED_PROCESSING;
+#endif
         return SafeUploadPostCreate(Data, Objects, CompletionContext, Flags);
+    }
     if (CompletionContext != NULL) {
         PSTAGE_STREAM stream = CompletionContext;
         ExReleaseRundownProtection(&stream->PagingRundown);

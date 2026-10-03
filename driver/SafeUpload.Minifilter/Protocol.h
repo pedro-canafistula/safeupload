@@ -272,6 +272,7 @@ typedef struct _SAFEUPLOAD_RESPONSE {
 #define SAFEUPLOAD_CONTROL_ADMISSION_PROBE              ((UINT32) 9)
 #define SAFEUPLOAD_CONTROL_ADMISSION_FENCE_STATUS       ((UINT32) 10)
 #define SAFEUPLOAD_CONTROL_ADMISSION_FENCE_REFRESH      ((UINT32) 11)
+#define SAFEUPLOAD_CONTROL_WRITER_STATE_STATUS          ((UINT32) 12)
 #define SAFEUPLOAD_ADMISSION_TRACE_RING_ENTRIES         ((UINT32) 16384) /* power of two; feature build only */
 #define SAFEUPLOAD_ADMISSION_TRACE_BATCH_ENTRIES        ((UINT32) 8)
 #define SAFEUPLOAD_ADMISSION_PROBE_MAX_STRING_CHARS     ((UINT16) 260)
@@ -578,6 +579,30 @@ typedef struct _SAFEUPLOAD_FENCE_STATUS {
 #define SAFEUPLOAD_FENCE_STATUS_FLAG_QUARANTINED           ((UINT32)0x00000008)
 /* Reuses StateFlags' former Reserved word; SAFEUPLOAD_FENCE_STATUS size is unchanged. */
 #define SAFEUPLOAD_FENCE_STATUS_FLAG_RETRY_PENDING         ((UINT32)0x00000010)
+
+/*
+ *  Writer-state primitives (feature build, observe-only). H(F): file objects opened with write access,
+ *  per stream. C(F): writable CreateSections acquired but not yet released. Counters are global.
+ */
+typedef struct _SAFEUPLOAD_WRITER_STATE_STATUS {
+    UINT32 StructSize;
+    UINT32 SectionInFlightNow;       // writable CreateSections acquired and not yet released
+    UINT64 PostCreateRuns;           // post-create callbacks that looked at a successful create
+    UINT64 WriteObjectsCounted;      // write file objects added to a stream's writer list
+    UINT64 WriteObjectsReleased;     // write file objects removed again at IRP_MJ_CLEANUP
+    UINT64 UntrackedCreates;         // write opens that could not be tracked (no stream contexts, allocation failure)
+    UINT64 CleanupUnmatched;         // cleanups of write file objects that were never counted
+    UINT64 DirectoryCreatesSkipped;  // write-access opens of directories, not counted
+    UINT64 SectionInFlightInserted;
+    UINT64 SectionInFlightReleased;
+    UINT64 SectionInFlightOverflow;  // acquires that found the in-flight table full (fail closed)
+    UINT64 SectionInFlightStuck;     // entries older than the stuck threshold when sampled
+    UINT32 SectionInFlightMaxDepth;
+    UINT32 Reserved;
+} SAFEUPLOAD_WRITER_STATE_STATUS, *PSAFEUPLOAD_WRITER_STATE_STATUS;
+
+/* A probe entry's AdmissionRecordState carries H(F) of the probed stream; this bit marks a lower bound. */
+#define SAFEUPLOAD_WRITERS_UNTRACKED_BIT ((UINT32)0x80000000)
 
 // A zero cursor and snapshot request a snapshot of all entries retained now.
 // Later requests pass the returned NextCursor and SnapshotSequence.
