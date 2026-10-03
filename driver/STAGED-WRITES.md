@@ -16,7 +16,15 @@ Normal staging stays compiled out and taint enforcement remains.
       [Baseline](evidence/2026-10-02/aliases-checkpoint-baseline.txt).
       Active disk is now `/var/lib/libvirt/images/win10-debug.safeupload-pre-alias-guard-20261002`;
       preserve the pre-journal and all earlier disks/snapshots.
-- [x] Four WDK/static/API-validation builds and **275/275** agent regressions.
+- [x] Previous Run 22 source: four WDK/static/API-validation builds and
+      **275/275** agent regressions ([build summary](evidence/2026-10-03/admission-fence-build-run22.txt),
+      [agent tests](evidence/2026-10-03/admission-fence-run22-agent-tests.txt)).
+      This does not qualify the later `Policy.c` and `StageFence.c` revision
+      now awaiting the exact-source build gate below.
+- [x] The agent-test gate remains current: no files under `agente/` changed
+      since Run 22's recorded source base `a552028`; the suite passed 275/275.
+      This is agent-unit-test evidence, not integration qualification of the
+      later minifilter revision.
 - [x] Protected external aliases and pre-attachment physical handles refuse
       writes/size/rename/link mutations; unrelated linked-file controls succeed.
 - [x] Runtime Verifier and integrated save regression: **24 approved overwrites**,
@@ -165,12 +173,21 @@ Normal staging stays compiled out and taint enforcement remains.
           section/view race and destination-scope blockers remain; the next
           gate is current-source WDK validation and the clean-VM rejection-only
           case. [Review record](evidence/2026-10-03/full-scope-gate-rereview-ea24165.txt).
+    - [x] Focused Luna review of the proposed stream-context fence: documented
+          lifetime does not prove a retained no-view section handle keeps its
+          context retrievable through a later first view; it cannot close late
+          attach or mandatory-teardown gaps. No source patch is justified yet.
+          [Review record](evidence/2026-10-03/stream-context-lifetime-luna-review.txt).
     - [ ] Rebuild the current `Policy.c` and `StageFence.c` source revision in
-          all four normal/feature Debug/Release WDK configurations, then rerun
-          the required agent tests. Run 22 predates these uncommitted source
-          edits and does not qualify them.
-  - [ ] Qualify removable USB, SMB/UNC and real sync-client destinations with
-        independent byte observers and scope-correct admission.
+          all four normal/feature Debug/Release WDK configurations. Run 22
+          predates this source revision and does not qualify it. This Linux
+          workspace has no Windows PowerShell or MSBuild/WDK, and its `dotnet`
+          host has no SDK; no current-source Windows build or parse has run here.
+  - [ ] Qualify removable USB (including surprise removal), SMB/UNC, and the
+        configured OneDrive destination with scope-correct admission and
+        independent destination-byte observers. Use only the dedicated test
+        child described in the [fixture handoff](evidence/2026-10-02/overnight-resume.md);
+        prior folder discovery is not sync qualification.
   - [ ] Pass functional, crash/recovery, Verifier, stress and latency gates,
         restoring the original VM state independently after each run.
   - [ ] Obtain user signoff before preparing the taint-removal plan.
@@ -1285,7 +1302,10 @@ after every experiment, including failures.
 4. Destination qualification
    - [ ] USB including surprise removal and supported filesystem guards.
    - [ ] UNC/mapped SMB redirector identity/paging/reconnect architecture and gates.
-   - [ ] Actual sync client/destination byte observers; document qualified stacks.
+   - [ ] Configured OneDrive client and actual cloud-destination byte observer
+         on a new dedicated test child; document the qualified stack. The prior
+         [folder discovery](evidence/2026-10-02/overnight-resume.md) is not
+         qualification.
 5. Full functional matrix
    - [ ] Explorer CopyFile/MoveFile, Office replacement saves, PowerShell/.NET,
          concurrent/duplicate/inherited handles, mappings and independent readers.
