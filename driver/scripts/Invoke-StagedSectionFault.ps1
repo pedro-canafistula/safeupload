@@ -209,6 +209,14 @@ function Invoke-SectionTeardownScenario {
     $script:STVhdxView=$null
     $script:STSecondWriter=$null
     $script:STVhdxInitialHash=''
+    # Get-FileHash opens with read-only sharing and fails while this exercise's own writers hold the file (run 3).
+    function Get-STShareAllHash([string]$Path) {
+        $stream=[IO.FileStream]::new($Path,[IO.FileMode]::Open,[IO.FileAccess]::Read,
+            ([IO.FileShare]::ReadWrite -bor [IO.FileShare]::Delete))
+        try { $sha=[Security.Cryptography.SHA256]::Create()
+            try { return ([BitConverter]::ToString($sha.ComputeHash($stream)) -replace '-','') } finally { $sha.Dispose() } }
+        finally { $stream.Dispose() }
+    }
     $script:STNestedFile=$null
     $script:STClient=$null
     $script:STNestedThreads=@()
@@ -403,7 +411,7 @@ function Invoke-SectionTeardownScenario {
             [IO.HandleInheritability]::None,$true)
         $script:STVhdxView=$script:STVhdxMapping.CreateViewAccessor(
             0,4096,[IO.MemoryMappedFiles.MemoryMappedFileAccess]::ReadWrite)
-        $script:STVhdxInitialHash=(Get-FileHash -LiteralPath $script:STTargetPath -Algorithm SHA256).Hash
+        $script:STVhdxInitialHash=Get-STShareAllHash $script:STTargetPath
         $multipleWriterProbe=Invoke-STProbe $script:STTargetPath 'VhdxMultipleWriterProbe' 0 $false
         $multipleWritersOk=$null -ne $multipleWriterProbe -and $multipleWriterProbe.writeObjects -ge 2 -and
             -not $multipleWriterProbe.writersUntracked -and $secondaryThreadOk
@@ -621,7 +629,7 @@ function Invoke-SectionTeardownScenario {
         if($script:STVhdxFile){try{$script:STVhdxFile.Dispose();$script:STVhdxFile=$null}catch{$oldHandlesClosed=$false;$result.Errors+=('Original VHDX writer close: '+$_.Exception.Message)}}
         [void](Add-STOutcome 'OldVhdxHandlesClosed' $oldHandlesClosed ('allRetainedHandlesClosed:'+$oldHandlesClosed))
 
-        $hashAfterAttempts=(Get-FileHash -LiteralPath $script:STTargetPath -Algorithm SHA256).Hash
+        $hashAfterAttempts=Get-STShareAllHash $script:STTargetPath
         $vhdxBytesUnchanged=$script:STVhdxInitialHash -eq $hashAfterAttempts
         [void](Add-STOutcome 'OldMappedViewDidNotReachDisk' $vhdxBytesUnchanged ('beforeSHA256:'+$script:STVhdxInitialHash+';afterSHA256:'+$hashAfterAttempts+';afterDismountWriteReturned:'+$viewWriteAfterDismount.WriteReturned+';afterDismountFlushReturned:'+$viewWriteAfterDismount.FlushReturned+';afterReattachWriteReturned:'+$viewWriteAfterReattach.WriteReturned+';afterReattachFlushReturned:'+$viewWriteAfterReattach.FlushReturned+';premise:'+$(if($vhdxBytesUnchanged){'holds'}else{'FALSE_OLD_VIEW_CHANGED_DISK_BYTES'})))
         [void](Add-STOutcome 'VhdxHashUnchangedAfterPostDismountAttempts' $vhdxBytesUnchanged ('beforeSHA256:'+$script:STVhdxInitialHash+';afterSHA256:'+$hashAfterAttempts+';oldHandleSuccessAfterDismount:'+$primaryWriteAfterDismount.Succeeded+'/'+$secondaryWriteAfterDismount.Succeeded+';oldHandleSuccessAfterReattach:'+$primaryWriteAfterReattach.Succeeded+'/'+$secondaryWriteAfterReattach.Succeeded))
