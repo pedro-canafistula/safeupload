@@ -3808,9 +3808,11 @@ public static class SafeUploadEolNative
                 $released = [int64]$After.writeObjectsReleased - [int64]$Before.writeObjectsReleased
                 $untracked = [int64]$After.untrackedCreates - [int64]$Before.untrackedCreates
                 $unmatched = [int64]$After.cleanupUnmatched - [int64]$Before.cleanupUnmatched
-                Add-WCOutcome ($Label + '_balance') ($counted -eq $released) ('counted:' + $counted + ';released:' + $released)
+                # counted/released/unmatched are machine-wide: any process's writers in the window move them (run 19 under
+                # Verifier: 28 unrelated handles open at sampling while the fixture stream probed exactly 0). They are recorded,
+                # not asserted; the per-stream probes prove the fixture's H(F). An untracked create anywhere stays a failure.
+                Write-Output ('WC_' + $Label + '_globalBalance=counted:' + $counted + ';released:' + $released + ';unmatched:' + $unmatched + ';informational')
                 Add-WCOutcome ($Label + '_untrackedCreates') ($untracked -eq 0) ('delta:' + $untracked)
-                Add-WCOutcome ($Label + '_cleanupUnmatched') ($unmatched -eq 0) ('delta:' + $unmatched)
             }
             function Invoke-WCQuietWorkload($Session, [string] $Command) {
                 # Preserve earlier explicit probes in the 16384-entry ring through high-volume loops.

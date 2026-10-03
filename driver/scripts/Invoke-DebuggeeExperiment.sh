@@ -39,6 +39,10 @@ PS
 grep -q 'VolumeCacheWritten=True' "$ev/$name-flush.txt" || echo "warning: guest volume cache flush did not report success"
 
 echo "== 2. checkpoint"
+# Each run stacks one external overlay; libvirt refuses chains deeper than 200. Stop early with a clear reason.
+depth=$(virsh -c qemu:///system dumpxml win10-debug | grep -c '<backingStore type')
+echo "BackingChainDepth=$depth"
+[ "$depth" -lt 190 ] || { echo "BACKING CHAIN TOO DEEP ($depth layers); flatten it (virsh blockpull) before more runs"; exit 13; }
 snap="safeupload-pre-$name-$stamp"; overlay="/var/lib/libvirt/images/win10-debug.$snap"
 [ -e "$overlay" ] && { echo "overlay already exists: $overlay"; exit 11; }
 {

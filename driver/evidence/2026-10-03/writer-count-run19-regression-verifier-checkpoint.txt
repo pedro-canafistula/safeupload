@@ -1,0 +1,12 @@
+UTC=2026-10-03T20:49:52Z
+virsh -c qemu:///system snapshot-create-as --domain win10-debug --name safeupload-pre-writer-count-run19-regression-verifier-20261003 --description 'Clean original driver and policy before writer-count-run19-regression-verifier' --disk-only --no-metadata --diskspec vda,snapshot=external,file=/var/lib/libvirt/images/win10-debug.safeupload-pre-writer-count-run19-regression-verifier-20261003 --atomic
+Domain snapshot safeupload-pre-writer-count-run19-regression-verifier-20261003 created
+--- active disk after checkpoint
+ Target   Source
+--------------------------------------------------------------------------------------------------------------
+ vda      /var/lib/libvirt/images/win10-debug.safeupload-pre-writer-count-run19-regression-verifier-20261003
+ sda      -
+ sdb      -
+
+running
+
