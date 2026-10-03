@@ -748,10 +748,19 @@ static __declspec(noinline) VOID FenceClearQuarantine(VOID)
 static __declspec(noinline) VOID FenceClearScannedQuarantine(_In_ PFENCE_SCAN Scan)
 {
     PFLT_VOLUME release[FENCE_MAX_QUARANTINED_VOLUMES] = {0};
+    PFLT_VOLUME scanned[FENCE_MAX_SCAN_VOLUMES] = {0};
+    ULONG volumeCount, quarantineGeneration;
     ULONG index, volumeIndex, releaseCount = 0;
     KIRQL irql;
 
     if (!Scan->EnumerationSucceeded || Scan->VolumeScopesSkipped != 0 || Scan->ReparseSkipped != 0) return;
+    /* Scan lives in paged pool. Copy its stable, refresh-mutex-owned identity set before either
+     * spin lock raises IRQL; only the stack snapshot may be read while the locks are held. */
+    volumeCount = Scan->VolumeCount;
+    quarantineGeneration = Scan->QuarantineGeneration;
+    for (volumeIndex = 0; volumeIndex < volumeCount; volumeIndex += 1) {
+        scanned[volumeIndex] = Scan->Volumes[volumeIndex].Volume;
+    }
 
     /* Setup admission, late-attach queue ownership, and quarantine insertion use RetryLock. Holding
      * it before SopLock makes clearing a global fallback atomic against a just-admitted setup. */
@@ -759,7 +768,7 @@ static __declspec(noinline) VOID FenceClearScannedQuarantine(_In_ PFENCE_SCAN Sc
     KeAcquireSpinLockAtDpcLevel(&FenceSopLock);
     /* Queue/scan failures may add a quarantine after the remembered set was copied. Keep all
      * quarantine in that generation; the next retry will append and cover the new identity. */
-    if ((ULONG)InterlockedCompareExchange(&FenceQuarantineGeneration, 0, 0) != Scan->QuarantineGeneration) {
+    if ((ULONG)InterlockedCompareExchange(&FenceQuarantineGeneration, 0, 0) != quarantineGeneration) {
         KeReleaseSpinLockFromDpcLevel(&FenceSopLock);
         KeReleaseSpinLock(&FenceRetryLock, irql);
         return;
@@ -767,8 +776,8 @@ static __declspec(noinline) VOID FenceClearScannedQuarantine(_In_ PFENCE_SCAN Sc
     for (index = 0; index < FENCE_MAX_QUARANTINED_VOLUMES; index += 1) {
         PFLT_VOLUME quarantined = FenceQuarantine[index].Volume;
         if (quarantined == NULL) continue;
-        for (volumeIndex = 0; volumeIndex < Scan->VolumeCount; volumeIndex += 1) {
-            if (Scan->Volumes[volumeIndex].Volume == quarantined) {
+        for (volumeIndex = 0; volumeIndex < volumeCount; volumeIndex += 1) {
+            if (scanned[volumeIndex] == quarantined) {
                 release[releaseCount++] = quarantined;
                 FenceQuarantine[index].Volume = NULL;
                 break;
@@ -833,15 +842,19 @@ static __declspec(noinline) BOOLEAN FenceAnyRetryableQuarantine(VOID)
 static __declspec(noinline) VOID FenceAppendQuarantinedVolumes(_In_ PFENCE_SCAN Scan)
 {
     PFLT_VOLUME remembered[FENCE_MAX_QUARANTINED_VOLUMES] = {0};
+    ULONG quarantineGeneration;
     ULONG index, scanIndex, rememberedCount = 0;
     KIRQL irql;
 
     KeAcquireSpinLock(&FenceSopLock, &irql);
-    Scan->QuarantineGeneration = (ULONG)InterlockedCompareExchange(&FenceQuarantineGeneration, 0, 0);
+    quarantineGeneration = (ULONG)InterlockedCompareExchange(&FenceQuarantineGeneration, 0, 0);
     for (index = 0; index < FENCE_MAX_QUARANTINED_VOLUMES; index += 1) {
         if (FenceQuarantine[index].Volume != NULL) remembered[rememberedCount++] = FenceQuarantine[index].Volume;
     }
     KeReleaseSpinLock(&FenceSopLock, irql);
+    /* The generation and remembered identities came from one locked snapshot. Store into the
+     * paged scan only after lowering IRQL; a later insertion still invalidates this generation. */
+    Scan->QuarantineGeneration = quarantineGeneration;
 
     for (index = 0; index < rememberedCount && NT_SUCCESS(Scan->Failure); index += 1) {
         PFENCE_VOLUME record;
