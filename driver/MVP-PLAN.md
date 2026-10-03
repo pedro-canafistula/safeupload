@@ -185,3 +185,16 @@ Fix what it finds, rerun phase 4. Then decide the order of the deferred destinat
     stays Unknown until reboot. No recovery scan, no timers: an unexpected unload or crash is a bug to
     fix, not a state to clean up.
   - No relative cost threshold for the MVP; the absolute budget stands.
+- Blocked staged versions (owner decision 2026-10-03, option 1): the user gets their own blocked version
+  back. After a version is `Blocked`, the service copies that exact sealed snapshot (digest-checked) into
+  a per-user location readable only by that user and SYSTEM (the earlier `SafeUpload\_bloqueados`
+  pattern in the user's profile), and the block window says where it is. Nothing reaches the protected
+  destination. Requirements:
+  - The copy target must never be a protected destination or a synced folder; if it would be, fail
+    closed and keep the version in staging.
+  - The service runs as SYSTEM and writes into a user-controlled profile: it must not follow junctions,
+    symlinks or hard-link tricks (open the target relative to a verified handle, refuse reparse points,
+    create new files only), or a user could redirect a SYSTEM write anywhere on the machine.
+  - The staging copy is deleted only after the hand-back copy is written and verified and the
+    justification window has closed; a failed hand-back keeps the version in staging and is audited.
+  - Test it in phase 4 together with the blocked-save cases.
