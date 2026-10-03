@@ -1532,7 +1532,32 @@ function Invoke-Variant([string] $SelectedVariant) {
                     $eolLabels += $label
                 }
             }
+            $extraLabels = @('Edup0', 'Ecow0', 'Eread0')
+            foreach ($label in $extraLabels) {
+                $path = Join-Path $fixtureDirectory ($label + '.maptest')
+                [IO.File]::WriteAllBytes($path, (New-PaddedFixtureBytes ([Text.Encoding]::UTF8.GetBytes('EOL BASELINE ' + $label + ' ' + $id))))
+                $fixturePaths += $path
+                $eolPaths[$label] = $path
+            }
             foreach ($path in $fixturePaths) { Assert-ReparseFreeFixturePath $path }
+            if (-not ('SafeUploadEolNative' -as [type])) {
+                Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+
+public static class SafeUploadEolNative
+{
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool DuplicateHandle(
+        IntPtr sourceProcess, IntPtr sourceHandle, IntPtr targetProcess, out IntPtr targetHandle,
+        uint desiredAccess, [MarshalAs(UnmanagedType.Bool)] bool inheritHandle, uint options);
+
+    [DllImport("kernel32.dll")]
+    public static extern IntPtr GetCurrentProcess();
+}
+'@
+            }
 
             Backup-StagedTestDriver $backup
             if ((Get-FileHash -LiteralPath $backup -Algorithm SHA256).Hash -ne $expectedOriginalDriver) {
@@ -1604,6 +1629,66 @@ function Invoke-Variant([string] $SelectedVariant) {
                 [void]$eolProbes.Add(@{ Label = $label; State = 'afterRelease3' })
                 [void](Invoke-AdmissionProbe $path ('EOL_' + $label + '_afterRelease3') $t)
             }
+            # Edup: the only writable section handle lives in ANOTHER process after the creator closes its own.
+            $child = $null
+            try {
+                $label = 'Edup0'; $path = $eolPaths[$label]
+                $mapping = New-RetainedSection $path ('Local\SafeUpload-Eol-' + $id + '-' + $label) $mappings
+                $child = Start-Process -FilePath powershell.exe -ArgumentList @('-NoProfile', '-Command', 'Start-Sleep -Seconds 300') -PassThru -WindowStyle Hidden
+                $duplicate = [IntPtr]::Zero
+                $ok = [SafeUploadEolNative]::DuplicateHandle([SafeUploadEolNative]::GetCurrentProcess(),
+                    $mapping.SafeMemoryMappedFileHandle.DangerousGetHandle(), $child.Handle, [ref]$duplicate, [uint32]0, $false, [uint32]2)
+                if (-not $ok) { throw (New-Object System.ComponentModel.Win32Exception([Runtime.InteropServices.Marshal]::GetLastWin32Error())) }
+                Write-Output ('Edup_DuplicatedIntoChildPid=' + $child.Id)
+                $mapping.Dispose()
+                [void]$eolProbes.Add(@{ Label = $label; State = 'creatorClosedChildHolds' })
+                [void](Invoke-AdmissionProbe $path ('EOL_' + $label + '_creatorClosedChildHolds') $t)
+                $child.Kill()
+                $child.WaitForExit()
+                $releaseFt[$label] = [DateTime]::UtcNow.ToFileTimeUtc()
+                [void]$eolProbes.Add(@{ Label = $label; State = 'afterRelease1' })
+                [void](Invoke-AdmissionProbe $path ('EOL_' + $label + '_afterRelease1') $t)
+                Start-Sleep -Seconds 4
+                [void]$eolProbes.Add(@{ Label = $label; State = 'afterRelease2' })
+                [void](Invoke-AdmissionProbe $path ('EOL_' + $label + '_afterRelease2') $t)
+            }
+            finally {
+                if ($null -ne $child -and -not $child.HasExited) { $child.Kill() }
+            }
+            # Ecow: a copy-on-write section can never write back to the file, so it must not read as "writable".
+            $label = 'Ecow0'; $path = $eolPaths[$label]
+            $fileStream = [IO.FileStream]::new($path, [IO.FileMode]::Open, [IO.FileAccess]::ReadWrite,
+                [IO.FileShare]::ReadWrite -bor [IO.FileShare]::Delete)
+            $mapping = [IO.MemoryMappedFiles.MemoryMappedFile]::CreateFromFile(
+                $fileStream, ('Local\SafeUpload-Eol-' + $id + '-' + $label), [long]$mappingLength,
+                [IO.MemoryMappedFiles.MemoryMappedFileAccess]::CopyOnWrite, [IO.HandleInheritability]::None, $true)
+            [void]$mappings.Add($mapping)
+            $view = $mapping.CreateViewAccessor(0, [long]$mappingLength, [IO.MemoryMappedFiles.MemoryMappedFileAccess]::CopyOnWrite)
+            $view.WriteArray(0, [byte[]](1, 2, 3, 4), 0, 4)
+            $fileStream.Dispose()
+            [void]$eolProbes.Add(@{ Label = $label; State = 'copyOnWriteViewLive' })
+            [void](Invoke-AdmissionProbe $path ('EOL_' + $label + '_copyOnWriteViewLive') $t)
+            $view.Dispose(); $mapping.Dispose()
+            $releaseFt[$label] = [DateTime]::UtcNow.ToFileTimeUtc()
+            [void]$eolProbes.Add(@{ Label = $label; State = 'afterRelease1' })
+            [void](Invoke-AdmissionProbe $path ('EOL_' + $label + '_afterRelease1') $t)
+            # Eread: a read-only section and view.
+            $label = 'Eread0'; $path = $eolPaths[$label]
+            $fileStream = [IO.FileStream]::new($path, [IO.FileMode]::Open, [IO.FileAccess]::Read,
+                [IO.FileShare]::ReadWrite -bor [IO.FileShare]::Delete)
+            $mapping = [IO.MemoryMappedFiles.MemoryMappedFile]::CreateFromFile(
+                $fileStream, ('Local\SafeUpload-Eol-' + $id + '-' + $label), [long]$mappingLength,
+                [IO.MemoryMappedFiles.MemoryMappedFileAccess]::Read, [IO.HandleInheritability]::None, $true)
+            [void]$mappings.Add($mapping)
+            $view = $mapping.CreateViewAccessor(0, [long]$mappingLength, [IO.MemoryMappedFiles.MemoryMappedFileAccess]::Read)
+            $fileStream.Dispose()
+            [void]$eolProbes.Add(@{ Label = $label; State = 'readOnlyViewLive' })
+            [void](Invoke-AdmissionProbe $path ('EOL_' + $label + '_readOnlyViewLive') $t)
+            $view.Dispose(); $mapping.Dispose()
+            $releaseFt[$label] = [DateTime]::UtcNow.ToFileTimeUtc()
+            [void]$eolProbes.Add(@{ Label = $label; State = 'afterRelease1' })
+            [void](Invoke-AdmissionProbe $path ('EOL_' + $label + '_afterRelease1') $t)
+
             $traceE = Get-LightTrace (Invoke-InspectorChecked -Arguments @('--admission-trace') -Timeout $t) $rawTraceL
             Write-DumpQuality 'EOL' $traceE
             $probeEntries = @($traceE.Entries | Where-Object { $_.Ev -eq 'explicit_probe' } | Sort-Object Seq)
