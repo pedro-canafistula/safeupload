@@ -1,0 +1,46 @@
+X2 handle corpus extension: cancelled creates and fast I/O (Windows 10 build 19045, local NTFS)
+Verdict: run 17 (ordinary) PASSED 291/291; run 18 (runtime Verifier 0x13B) PASSED 291/291. Run 16 FAILED and is retained.
+
+Source: kernel/Inspector/fixture source commit 7496d5adab67a0cf12f016f222773dc96b104b94, build label mvp1-writerfault (signed SYS 118075BD...,
+Inspector AB5B55A4..., both unchanged from the writer-fault runs; HEAD driver subtrees verified identical to that commit by the runner).
+Harness: run 16 at 26fa5d1b (+ runner), runs 17-18 at 76e510d3 (Test-StagedAdmissionDiagnostic.ps1 groups 5-6; the original 43 checks unchanged).
+Runner: driver/scripts/Invoke-StagedWriterCountQualification.py (exact-source gates, hash-pinned inputs, independent restoration, exact check count).
+All three runs: independent BaselineClean=True. 27 raw traces (9 per run) guest/local SHA verified in writer-count-raw-manifest.json.
+
+Run 16 (FAILED, 289 passed / 4 failed): all behavioral checks passed. Failures were harness-only: (1) helper Dispose touched StandardError after
+BeginErrorReadLine ("Cannot mix synchronous and asynchronous operation on process stream"), twice; (2) cleanupUnmatched delta +1 in each group,
+because each group's window contained one helper-process exit. Fixed in 76e510d3 by not touching StandardError and sampling the counters before
+helper disposal, reporting the helper-exit delta separately.
+
+Cancelled creates (group 5), runs 17 and 18 identical in outcome:
+  - The create is proven pending, not assumed: read-only holder with READ|HANDLE oplock (level 3), victim opens GENERIC_WRITE with FILE_SHARE_NONE,
+    and the harness waits for the break notification and requires ACK_REQUIRED (20/20 proofs "granted:997;original:3;new:1;flags:3") before cancelling.
+    (A plain READ oplock breaks without an acknowledgment barrier and could not hold the create; the first design was changed for that reason.)
+  - 20/20 deterministic cancels returned succeeded:False;win32:995 (ERROR_OPERATION_ABORTED); the holder stayed open and the immediate probe read H=0,
+    writersUntracked False; a normal writer afterwards read 1 and then 0; batch probes at 5/10/15/20 and the final probe read 0.
+  - 200 seeded races (seed 1904503) between holder close and cancel: run 17 76 succeeded + 124 cancelled; run 18 77 + 123; no other outcome.
+    Each successful handle was closed. After the group: probe 0; counted delta == released delta; untrackedCreates delta 0; cleanupUnmatched delta 0
+    (measured before helper exit).
+  - Raw trace (retained): 8 explicit probes, writeObjects [0,1,0,0,0,0,0,0], all status 0, PID 4, IRQL 0, writersUntracked False, zero lost entries.
+
+Fast I/O (group 6), runs 17 and 18 identical in outcome:
+  - 2000 cached WriteFile/ReadFile pairs on one handle (512 B and 4096 B): H stayed 1 before, during and after; 0 after close.
+  - 10,000 GetFileAttributesEx queries (5000 with no writer, 5000 with one writer): H stayed 0 and 1 respectively.
+  - 3 s eight-thread storm (queries/reads plus open-write/close): 25,424 (run 16), 23,069 (run 17), 17,190 (run 18) iterations; afterwards H 0,
+    counted == released, untrackedCreates 0, cleanupUnmatched 0 (before helper exit).
+  - Raw trace: 10 explicit probes, writeObjects [1,1,1,0,0,0,1,1,0,0], all clean, zero lost entries.
+
+Helper-exit delta (informational): each helper process exit shows counted 37 / released 37 / untracked 0 / unmatched +1 (runs 17 and 18).
+The single unmatched cleanup per helper exit is attributed to teardown by sampling; its cause is not identified (candidates: a handle the helper
+opened before the filter attached, or a write/delete-access directory handle, whose cleanup is unmatched by design). Whole-run unmatched totals
+are 3->7 in the earlier 43-check runs and 0->6 here, with untracked 0 throughout.
+Whole-run (runs 17/18): counted == released over 13,714 and 10,863 write file objects; liveDelta 0; untrackedCreates 0.
+
+Limits:
+  - "Cancelled" covers a create pending in NTFS (oplock/sharing wait) cancelled with CancelSynchronousIo. The race loop reaches both completion orders
+    but cannot isolate cancellation after the file system succeeded and before the I/O manager returned, which stays covered only statistically.
+  - Fast I/O: API success does not prove FASTIO_* callbacks. The retained trace shows about 2,041 write events from the helper with IrpFlags 0x0
+    (the form a fast I/O callback takes, which carries no IRP) next to about 2,043 IRP-form events (0x60A00), consistent with fast I/O but not proof;
+    the driver does not log the fast-I/O flag. The result established is that these operations leave H(F) exact and the accounting balanced.
+  - Windows 10 19045 only; Windows 11 deferred (no VM). Local NTFS only.
+  - Probes are explicit PID-4 file-ID probes taken between operations; nothing here proves atomic free-of-writers admission (Phases 2-5).

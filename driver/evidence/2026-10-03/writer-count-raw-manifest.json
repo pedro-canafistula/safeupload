@@ -1,0 +1,245 @@
+[
+  {
+    "Name": "SafeUpload-admission-trace-writer-count-4230bcf176cb4535b3e37f98752e3247-A.jsonl",
+    "SHA256": "42B7778465140B167FB552FA6964DC8F6F48709F73A76D44F48241EFB85E7B07",
+    "Bytes": 327746,
+    "UTC": "2026-10-03T17:46:20.9152016Z",
+    "Run": "writer-count-run16-cancel-fastio",
+    "SourceCommit": "7496d5adab67a0cf12f016f222773dc96b104b94",
+    "LocalPath": "driver/evidence/2026-10-03/writer-count-raw/SafeUpload-admission-trace-writer-count-4230bcf176cb4535b3e37f98752e3247-A.jsonl"
+  },
+  {
+    "Name": "SafeUpload-admission-trace-writer-count-4230bcf176cb4535b3e37f98752e3247-A.jsonl-canary-0.jsonl",
+    "SHA256": "805ADD1B30A1B09C592B25ABBFAD64C74B293FF36AD008C45D1ACF2B4AC5D69C",
+    "Bytes": 119911,
+    "UTC": "2026-10-03T17:45:50.6152013Z",
+    "Run": "writer-count-run16-cancel-fastio",
+    "SourceCommit": "7496d5adab67a0cf12f016f222773dc96b104b94",
+    "LocalPath": "driver/evidence/2026-10-03/writer-count-raw/SafeUpload-admission-trace-writer-count-4230bcf176cb4535b3e37f98752e3247-A.jsonl-canary-0.jsonl"
+  },
+  {
+    "Name": "SafeUpload-admission-trace-writer-count-4230bcf176cb4535b3e37f98752e3247-A.jsonl-volumes.json-0",
+    "SHA256": "99C5F7290FE6EEC6DB3F57955895564762B6E1EED223016CA00E12F8088D3DED",
+    "Bytes": 2126,
+    "UTC": "2026-10-03T17:45:46.7772003Z",
+    "Run": "writer-count-run16-cancel-fastio",
+    "SourceCommit": "7496d5adab67a0cf12f016f222773dc96b104b94",
+    "LocalPath": "driver/evidence/2026-10-03/writer-count-raw/SafeUpload-admission-trace-writer-count-4230bcf176cb4535b3e37f98752e3247-A.jsonl-volumes.json-0"
+  },
+  {
+    "Name": "SafeUpload-admission-trace-writer-count-4230bcf176cb4535b3e37f98752e3247-B.jsonl",
+    "SHA256": "970C6C5F12990B26C34523D9302F7001FBE644C2828AE60C231449622DDCEF28",
+    "Bytes": 2398996,
+    "UTC": "2026-10-03T17:47:29.0192068Z",
+    "Run": "writer-count-run16-cancel-fastio",
+    "SourceCommit": "7496d5adab67a0cf12f016f222773dc96b104b94",
+    "LocalPath": "driver/evidence/2026-10-03/writer-count-raw/SafeUpload-admission-trace-writer-count-4230bcf176cb4535b3e37f98752e3247-B.jsonl"
+  },
+  {
+    "Name": "SafeUpload-admission-trace-writer-count-4230bcf176cb4535b3e37f98752e3247-B.jsonl-final-volumes.json-0",
+    "SHA256": "99C5F7290FE6EEC6DB3F57955895564762B6E1EED223016CA00E12F8088D3DED",
+    "Bytes": 2126,
+    "UTC": "2026-10-03T17:48:43.2672004Z",
+    "Run": "writer-count-run16-cancel-fastio",
+    "SourceCommit": "7496d5adab67a0cf12f016f222773dc96b104b94",
+    "LocalPath": "driver/evidence/2026-10-03/writer-count-raw/SafeUpload-admission-trace-writer-count-4230bcf176cb4535b3e37f98752e3247-B.jsonl-final-volumes.json-0"
+  },
+  {
+    "Name": "SafeUpload-admission-trace-writer-count-4230bcf176cb4535b3e37f98752e3247-cancelled-creates.jsonl",
+    "SHA256": "BE9910BFAC01BD67534EEA73C5E7AE86D682A03749B1E8E7602B6A6D4722554D",
+    "Bytes": 348737,
+    "UTC": "2026-10-03T17:47:54.4152014Z",
+    "Run": "writer-count-run16-cancel-fastio",
+    "SourceCommit": "7496d5adab67a0cf12f016f222773dc96b104b94",
+    "LocalPath": "driver/evidence/2026-10-03/writer-count-raw/SafeUpload-admission-trace-writer-count-4230bcf176cb4535b3e37f98752e3247-cancelled-creates.jsonl"
+  },
+  {
+    "Name": "SafeUpload-admission-trace-writer-count-4230bcf176cb4535b3e37f98752e3247-fast-io.jsonl",
+    "SHA256": "7D9928977FA947495E0ADF95C0B74417773DC4F443A038AA8D55F58B7D1077BF",
+    "Bytes": 3194879,
+    "UTC": "2026-10-03T17:48:36.4152039Z",
+    "Run": "writer-count-run16-cancel-fastio",
+    "SourceCommit": "7496d5adab67a0cf12f016f222773dc96b104b94",
+    "LocalPath": "driver/evidence/2026-10-03/writer-count-raw/SafeUpload-admission-trace-writer-count-4230bcf176cb4535b3e37f98752e3247-fast-io.jsonl"
+  },
+  {
+    "Name": "SafeUpload-admission-trace-writer-count-4230bcf176cb4535b3e37f98752e3247-P1.jsonl",
+    "SHA256": "01739595E890264E389B9EBE6B4DFE95A33DCFC4FCBF1A3C0884523525697C20",
+    "Bytes": 235299,
+    "UTC": "2026-10-03T17:46:41.7652047Z",
+    "Run": "writer-count-run16-cancel-fastio",
+    "SourceCommit": "7496d5adab67a0cf12f016f222773dc96b104b94",
+    "LocalPath": "driver/evidence/2026-10-03/writer-count-raw/SafeUpload-admission-trace-writer-count-4230bcf176cb4535b3e37f98752e3247-P1.jsonl"
+  },
+  {
+    "Name": "SafeUpload-admission-trace-writer-count-4230bcf176cb4535b3e37f98752e3247-P2.jsonl",
+    "SHA256": "6C0AFEB27FF36DB45CFE9AA41E9B331DC29B69F17E69ED4D08775794BE191720",
+    "Bytes": 419212,
+    "UTC": "2026-10-03T17:47:11.2232014Z",
+    "Run": "writer-count-run16-cancel-fastio",
+    "SourceCommit": "7496d5adab67a0cf12f016f222773dc96b104b94",
+    "LocalPath": "driver/evidence/2026-10-03/writer-count-raw/SafeUpload-admission-trace-writer-count-4230bcf176cb4535b3e37f98752e3247-P2.jsonl"
+  },
+  {
+    "Name": "SafeUpload-admission-trace-writer-count-d12803675f8c44d5ad44508504aa9235-A.jsonl",
+    "SHA256": "00D34449F0DE09592A71D1A8246399BFE177D1EB81B412421B460A16881B0F93",
+    "Bytes": 347647,
+    "UTC": "2026-10-03T17:51:16.9872052Z",
+    "Run": "writer-count-run17-cancel-fastio",
+    "SourceCommit": "7496d5adab67a0cf12f016f222773dc96b104b94",
+    "LocalPath": "driver/evidence/2026-10-03/writer-count-raw/SafeUpload-admission-trace-writer-count-d12803675f8c44d5ad44508504aa9235-A.jsonl"
+  },
+  {
+    "Name": "SafeUpload-admission-trace-writer-count-d12803675f8c44d5ad44508504aa9235-A.jsonl-canary-0.jsonl",
+    "SHA256": "40250B9785A80A3A41F5771B614269D2FFE47180805322D3B031FB7F41FC145B",
+    "Bytes": 94048,
+    "UTC": "2026-10-03T17:50:44.8972164Z",
+    "Run": "writer-count-run17-cancel-fastio",
+    "SourceCommit": "7496d5adab67a0cf12f016f222773dc96b104b94",
+    "LocalPath": "driver/evidence/2026-10-03/writer-count-raw/SafeUpload-admission-trace-writer-count-d12803675f8c44d5ad44508504aa9235-A.jsonl-canary-0.jsonl"
+  },
+  {
+    "Name": "SafeUpload-admission-trace-writer-count-d12803675f8c44d5ad44508504aa9235-A.jsonl-volumes.json-0",
+    "SHA256": "B392AF3D67ED45DE22DBFEB82B0925B25EE544AEBA650314EDEA7D3B02FF20E3",
+    "Bytes": 2126,
+    "UTC": "2026-10-03T17:50:41.0692017Z",
+    "Run": "writer-count-run17-cancel-fastio",
+    "SourceCommit": "7496d5adab67a0cf12f016f222773dc96b104b94",
+    "LocalPath": "driver/evidence/2026-10-03/writer-count-raw/SafeUpload-admission-trace-writer-count-d12803675f8c44d5ad44508504aa9235-A.jsonl-volumes.json-0"
+  },
+  {
+    "Name": "SafeUpload-admission-trace-writer-count-d12803675f8c44d5ad44508504aa9235-B.jsonl",
+    "SHA256": "19DC4CB68CFA8819A61D423DDEFAFCC5C5847E64807D1A8DFC8BA255AEF49107",
+    "Bytes": 2402892,
+    "UTC": "2026-10-03T17:52:26.3472015Z",
+    "Run": "writer-count-run17-cancel-fastio",
+    "SourceCommit": "7496d5adab67a0cf12f016f222773dc96b104b94",
+    "LocalPath": "driver/evidence/2026-10-03/writer-count-raw/SafeUpload-admission-trace-writer-count-d12803675f8c44d5ad44508504aa9235-B.jsonl"
+  },
+  {
+    "Name": "SafeUpload-admission-trace-writer-count-d12803675f8c44d5ad44508504aa9235-B.jsonl-final-volumes.json-0",
+    "SHA256": "B392AF3D67ED45DE22DBFEB82B0925B25EE544AEBA650314EDEA7D3B02FF20E3",
+    "Bytes": 2126,
+    "UTC": "2026-10-03T17:53:45.5092059Z",
+    "Run": "writer-count-run17-cancel-fastio",
+    "SourceCommit": "7496d5adab67a0cf12f016f222773dc96b104b94",
+    "LocalPath": "driver/evidence/2026-10-03/writer-count-raw/SafeUpload-admission-trace-writer-count-d12803675f8c44d5ad44508504aa9235-B.jsonl-final-volumes.json-0"
+  },
+  {
+    "Name": "SafeUpload-admission-trace-writer-count-d12803675f8c44d5ad44508504aa9235-cancelled-creates.jsonl",
+    "SHA256": "52B203EBBF006E03BDDE495CB5689CD7F0C989ECA4B35C3941CFF9C57E2AFCCD",
+    "Bytes": 329507,
+    "UTC": "2026-10-03T17:52:53.9592028Z",
+    "Run": "writer-count-run17-cancel-fastio",
+    "SourceCommit": "7496d5adab67a0cf12f016f222773dc96b104b94",
+    "LocalPath": "driver/evidence/2026-10-03/writer-count-raw/SafeUpload-admission-trace-writer-count-d12803675f8c44d5ad44508504aa9235-cancelled-creates.jsonl"
+  },
+  {
+    "Name": "SafeUpload-admission-trace-writer-count-d12803675f8c44d5ad44508504aa9235-fast-io.jsonl",
+    "SHA256": "8DAA05D8C1E08F22DD17B4F3AF59E97D608AD72E375800371187F01971FF308A",
+    "Bytes": 3165748,
+    "UTC": "2026-10-03T17:53:38.4672040Z",
+    "Run": "writer-count-run17-cancel-fastio",
+    "SourceCommit": "7496d5adab67a0cf12f016f222773dc96b104b94",
+    "LocalPath": "driver/evidence/2026-10-03/writer-count-raw/SafeUpload-admission-trace-writer-count-d12803675f8c44d5ad44508504aa9235-fast-io.jsonl"
+  },
+  {
+    "Name": "SafeUpload-admission-trace-writer-count-d12803675f8c44d5ad44508504aa9235-P1.jsonl",
+    "SHA256": "95D6879EC87547FC21B4C11717DC28C323ADA912A52866BF56F1B406010C3641",
+    "Bytes": 242084,
+    "UTC": "2026-10-03T17:51:39.6392072Z",
+    "Run": "writer-count-run17-cancel-fastio",
+    "SourceCommit": "7496d5adab67a0cf12f016f222773dc96b104b94",
+    "LocalPath": "driver/evidence/2026-10-03/writer-count-raw/SafeUpload-admission-trace-writer-count-d12803675f8c44d5ad44508504aa9235-P1.jsonl"
+  },
+  {
+    "Name": "SafeUpload-admission-trace-writer-count-d12803675f8c44d5ad44508504aa9235-P2.jsonl",
+    "SHA256": "577A00A18B30B1CABFE9BA7F5D967AAF80E3A4C42D9134B2194D4D8ED14A50F4",
+    "Bytes": 424018,
+    "UTC": "2026-10-03T17:52:09.2272025Z",
+    "Run": "writer-count-run17-cancel-fastio",
+    "SourceCommit": "7496d5adab67a0cf12f016f222773dc96b104b94",
+    "LocalPath": "driver/evidence/2026-10-03/writer-count-raw/SafeUpload-admission-trace-writer-count-d12803675f8c44d5ad44508504aa9235-P2.jsonl"
+  },
+  {
+    "Name": "SafeUpload-admission-trace-writer-count-ef4dd316f7b64ce6bb73aaae160659f1-A.jsonl",
+    "SHA256": "218D5D65064159216B3903AE1FD2407246E5C898DF5B2612A007C41BBF280F8B",
+    "Bytes": 442721,
+    "UTC": "2026-10-03T17:55:29.8211990Z",
+    "Run": "writer-count-run18-cancel-fastio-verifier",
+    "SourceCommit": "7496d5adab67a0cf12f016f222773dc96b104b94",
+    "LocalPath": "driver/evidence/2026-10-03/writer-count-raw/SafeUpload-admission-trace-writer-count-ef4dd316f7b64ce6bb73aaae160659f1-A.jsonl"
+  },
+  {
+    "Name": "SafeUpload-admission-trace-writer-count-ef4dd316f7b64ce6bb73aaae160659f1-A.jsonl-canary-0.jsonl",
+    "SHA256": "95CCBCCDEB0BC84781D4F7484B1EE909804A3C7CACBA41103177017394667075",
+    "Bytes": 102411,
+    "UTC": "2026-10-03T17:54:32.8591987Z",
+    "Run": "writer-count-run18-cancel-fastio-verifier",
+    "SourceCommit": "7496d5adab67a0cf12f016f222773dc96b104b94",
+    "LocalPath": "driver/evidence/2026-10-03/writer-count-raw/SafeUpload-admission-trace-writer-count-ef4dd316f7b64ce6bb73aaae160659f1-A.jsonl-canary-0.jsonl"
+  },
+  {
+    "Name": "SafeUpload-admission-trace-writer-count-ef4dd316f7b64ce6bb73aaae160659f1-A.jsonl-volumes.json-0",
+    "SHA256": "1251084AA6371392136BACFDD119B6B662B7D6CB56D5E1451D4C925C6603751E",
+    "Bytes": 2126,
+    "UTC": "2026-10-03T17:54:25.9172078Z",
+    "Run": "writer-count-run18-cancel-fastio-verifier",
+    "SourceCommit": "7496d5adab67a0cf12f016f222773dc96b104b94",
+    "LocalPath": "driver/evidence/2026-10-03/writer-count-raw/SafeUpload-admission-trace-writer-count-ef4dd316f7b64ce6bb73aaae160659f1-A.jsonl-volumes.json-0"
+  },
+  {
+    "Name": "SafeUpload-admission-trace-writer-count-ef4dd316f7b64ce6bb73aaae160659f1-B.jsonl",
+    "SHA256": "69848971EC18A3B614B8449FD107B144ECCC851E7E6262E38914CE45D6D4350E",
+    "Bytes": 2437191,
+    "UTC": "2026-10-03T17:57:40.9792109Z",
+    "Run": "writer-count-run18-cancel-fastio-verifier",
+    "SourceCommit": "7496d5adab67a0cf12f016f222773dc96b104b94",
+    "LocalPath": "driver/evidence/2026-10-03/writer-count-raw/SafeUpload-admission-trace-writer-count-ef4dd316f7b64ce6bb73aaae160659f1-B.jsonl"
+  },
+  {
+    "Name": "SafeUpload-admission-trace-writer-count-ef4dd316f7b64ce6bb73aaae160659f1-B.jsonl-final-volumes.json-0",
+    "SHA256": "1251084AA6371392136BACFDD119B6B662B7D6CB56D5E1451D4C925C6603751E",
+    "Bytes": 2126,
+    "UTC": "2026-10-03T18:00:04.4772034Z",
+    "Run": "writer-count-run18-cancel-fastio-verifier",
+    "SourceCommit": "7496d5adab67a0cf12f016f222773dc96b104b94",
+    "LocalPath": "driver/evidence/2026-10-03/writer-count-raw/SafeUpload-admission-trace-writer-count-ef4dd316f7b64ce6bb73aaae160659f1-B.jsonl-final-volumes.json-0"
+  },
+  {
+    "Name": "SafeUpload-admission-trace-writer-count-ef4dd316f7b64ce6bb73aaae160659f1-cancelled-creates.jsonl",
+    "SHA256": "4402B8F61CD5630B1CD43571927240AC92AF3706C4F68B691E1010215669E349",
+    "Bytes": 352742,
+    "UTC": "2026-10-03T17:58:30.7612038Z",
+    "Run": "writer-count-run18-cancel-fastio-verifier",
+    "SourceCommit": "7496d5adab67a0cf12f016f222773dc96b104b94",
+    "LocalPath": "driver/evidence/2026-10-03/writer-count-raw/SafeUpload-admission-trace-writer-count-ef4dd316f7b64ce6bb73aaae160659f1-cancelled-creates.jsonl"
+  },
+  {
+    "Name": "SafeUpload-admission-trace-writer-count-ef4dd316f7b64ce6bb73aaae160659f1-fast-io.jsonl",
+    "SHA256": "7AD9C038B0BB5CF36138BCFEB5D299E17AF64C81EA3264D6F86E418E8C09217F",
+    "Bytes": 3270095,
+    "UTC": "2026-10-03T17:59:52.6192047Z",
+    "Run": "writer-count-run18-cancel-fastio-verifier",
+    "SourceCommit": "7496d5adab67a0cf12f016f222773dc96b104b94",
+    "LocalPath": "driver/evidence/2026-10-03/writer-count-raw/SafeUpload-admission-trace-writer-count-ef4dd316f7b64ce6bb73aaae160659f1-fast-io.jsonl"
+  },
+  {
+    "Name": "SafeUpload-admission-trace-writer-count-ef4dd316f7b64ce6bb73aaae160659f1-P1.jsonl",
+    "SHA256": "31AB556B8C0DF0CA2CA6A53E28C4AA558CD1C205D7D21615E75B2254DD8F1C50",
+    "Bytes": 336230,
+    "UTC": "2026-10-03T17:56:07.6312041Z",
+    "Run": "writer-count-run18-cancel-fastio-verifier",
+    "SourceCommit": "7496d5adab67a0cf12f016f222773dc96b104b94",
+    "LocalPath": "driver/evidence/2026-10-03/writer-count-raw/SafeUpload-admission-trace-writer-count-ef4dd316f7b64ce6bb73aaae160659f1-P1.jsonl"
+  },
+  {
+    "Name": "SafeUpload-admission-trace-writer-count-ef4dd316f7b64ce6bb73aaae160659f1-P2.jsonl",
+    "SHA256": "57E930DE5853583412A177833C04F3A0A96DFFD526A2041399A37E104B9525EB",
+    "Bytes": 421017,
+    "UTC": "2026-10-03T17:57:07.0092033Z",
+    "Run": "writer-count-run18-cancel-fastio-verifier",
+    "SourceCommit": "7496d5adab67a0cf12f016f222773dc96b104b94",
+    "LocalPath": "driver/evidence/2026-10-03/writer-count-raw/SafeUpload-admission-trace-writer-count-ef4dd316f7b64ce6bb73aaae160659f1-P2.jsonl"
+  }
+]

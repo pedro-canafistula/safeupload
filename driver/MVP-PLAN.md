@@ -78,8 +78,14 @@ control stream stayed known. The armed window is LRS-only because `/volatile /fa
 with 0x4 and `/volatile /flags` resets the filters; 0x13B holds in every window with injection off
 ([readout](evidence/2026-10-03/writer-fault-run4-readout.txt)).
 
-Phase 1 remains open: cancelled creates and explicit fast I/O remain;
-nested mixed pairing, the other teardown/fault-injection cases, canary security
+The X2 handle corpus gained cancelled creates and cached/query fast-path I/O, both passing 291/291 checks
+ordinarily and under runtime Verifier on Windows 10 19045 (runs 17-18): 20 deterministic cancels of a create
+proven pending behind an acknowledgment-requiring oplock break plus 200 seeded races left H(F)=0 with balanced
+accounting, and 2000 cached writes, 10,000 attribute queries and an eight-thread open/close storm left H(F) exact.
+Whether the calls took FASTIO_* callbacks is consistent with the trace but not proven
+([readout](evidence/2026-10-03/writer-count-run16-18-readout.txt)).
+
+Phase 1 remains open: nested mixed pairing, the other teardown/fault-injection cases, canary security
 and newly mounted-volume qualification, and cost remain. Empty-file mapping errors
 did **not** exercise failed lower acquire. Windows 11 qualification is deferred by
 the user because no VM is available. Phases 2–5 remain open.

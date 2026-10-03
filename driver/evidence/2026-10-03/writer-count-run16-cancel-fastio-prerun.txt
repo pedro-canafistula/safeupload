@@ -1,0 +1,10 @@
+PRE_RUN_PS: $ErrorActionPreference='Stop';$d='C:\Users\vika\Documents';
+$p=Join-Path $d 'SafeUpload-stage-prototype-mvp1-writerfault.sys';if((Test-Path $p) -and (Get-FileHash $p -Algorithm SHA256).Hash -ne '118075BD49D2AE072EC008A4EBDA9D56F02F2922C5F0489AD1F5CB4E6E1BB4DD'){throw 'Existing input hash mismatch'}
+$p=Join-Path $d 'SafeUpload.Inspector.mvp1-writerfault.exe';if((Test-Path $p) -and (Get-FileHash $p -Algorithm SHA256).Hash -ne 'AB5B55A4B95F29DD4D0FD769D33C064C5FF1C8EF6A2B71955673A1E492184F97'){throw 'Existing input hash mismatch'}
+$p=Join-Path $d 'StagedTestAgent-661EBB84C8E739EE.ps1';if((Test-Path $p) -and (Get-FileHash $p -Algorithm SHA256).Hash -ne '661EBB84C8E739EE6F77E663C06557855288DA96D127E6B43642ACD480F59086'){throw 'Existing input hash mismatch'}
+'PRE_RUN_OK=True'
+
+PRE_RUN_OK=True
+copied /tmp/claude-1000/exact-mvp1-writerfault/SafeUpload-stage-prototype.sys -> SafeUpload-stage-prototype-mvp1-writerfault.sys sha256=118075bd49d2ae072ec008a4ebda9d56f02f2922c5f0489ad1f5cb4e6e1bb4dd
+copied /tmp/claude-1000/exact-mvp1-writerfault/inspector-feature-release.exe -> SafeUpload.Inspector.mvp1-writerfault.exe sha256=ab5b55a4b95f29dd4d0fd769d33c064c5ff1c8ef6a2b71955673a1e492184f97
+copied /home/victor/Work/safeupload-staging/driver/scripts/StagedTestAgent.ps1 -> StagedTestAgent-661EBB84C8E739EE.ps1 sha256=661ebb84c8e739ee6f77e663c06557855288da96d127e6b43642acd480f59086
