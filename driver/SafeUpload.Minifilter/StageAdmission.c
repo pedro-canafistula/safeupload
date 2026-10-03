@@ -165,7 +165,7 @@ static VOID StageCanaryRun(_In_ PFLT_INSTANCE Instance, _Inout_ PSAFEUPLOAD_INST
     HANDLE fileHandle = NULL, probeHandle = NULL, sectionHandle = NULL;
     PFILE_OBJECT fileObject = NULL, probeObject = NULL;
     LARGE_INTEGER delay;
-    UINT32 probeStage, checks = 0;
+    UINT32 probeStage, checks = 0, step = 1;
     ULONG attempt;
     NTSTATUS status, cleanupStatus = STATUS_SUCCESS;
 
@@ -179,6 +179,7 @@ static VOID StageCanaryRun(_In_ PFLT_INSTANCE Instance, _Inout_ PSAFEUPLOAD_INST
     volumeName.MaximumLength = (USHORT)(SAFEUPLOAD_MAX_PATH_CHARS * sizeof(WCHAR));
     status = FltGetVolumeName(volume, &volumeName, NULL);
     if (!NT_SUCCESS(status)) goto Exit;
+    step = 2;
     status = ExUuidCreate(&id);
     if (!NT_SUCCESS(status)) goto Exit;
     status = RtlStringCchPrintfW(suffix, RTL_NUMBER_OF(suffix),
@@ -189,9 +190,11 @@ static VOID StageCanaryRun(_In_ PFLT_INSTANCE Instance, _Inout_ PSAFEUPLOAD_INST
     name = volumeName;
     status = RtlAppendUnicodeToString(&name, suffix);
     if (!NT_SUCCESS(status)) goto Exit;
+    step = 3;
     status = StageCanarySecurity(&descriptor, &acl.Header, sizeof(acl));
     if (!NT_SUCCESS(status)) goto Exit;
     InitializeObjectAttributes(&attributes, &name, OBJ_KERNEL_HANDLE | OBJ_CASE_INSENSITIVE, NULL, &descriptor);
+    step = 4;
     status = FltCreateFileEx2(SafeUploadData.Filter, Instance, &fileHandle, &fileObject,
         FILE_READ_DATA | FILE_WRITE_DATA | FILE_READ_ATTRIBUTES | DELETE | SYNCHRONIZE,
         &attributes, &io, NULL, FILE_ATTRIBUTE_TEMPORARY,
@@ -201,9 +204,11 @@ static VOID StageCanaryRun(_In_ PFLT_INSTANCE Instance, _Inout_ PSAFEUPLOAD_INST
     if (status != STATUS_SUCCESS) goto Exit;
     if (fileObject == NULL || fileHandle == NULL) { status = STATUS_INVALID_HANDLE; goto Exit; }
     eof.EndOfFile.QuadPart = PAGE_SIZE;
+    step = 5;
     status = FltSetInformationFile(Instance, fileObject, &eof, sizeof(eof), FileEndOfFileInformation);
     if (!NT_SUCCESS(status)) goto Exit;
     /* An attribute-only ID reopen samples the same stream even if its name changes. */
+    step = 6;
     status = SafeUploadStageOpenByIdentity(Instance, &volumeName, fileObject,
         &probeHandle, &probeObject, &probeStage);
     if (!NT_SUCCESS(status)) goto Exit;
@@ -211,19 +216,23 @@ static VOID StageCanaryRun(_In_ PFLT_INSTANCE Instance, _Inout_ PSAFEUPLOAD_INST
     /* Arm deletion only after the ID reopen: NTFS rejects new opens of a delete-pending file.
      * Closing our source handle then remains a cleanup fallback even if the explicit delete fails. */
     onClose.Flags = FILE_DISPOSITION_DELETE | FILE_DISPOSITION_ON_CLOSE;
+    step = 7;
     status = FltSetInformationFile(Instance, fileObject, &onClose, sizeof(onClose), FileDispositionInformationEx);
     if (!NT_SUCCESS(status)) goto Exit;
     InitializeObjectAttributes(&attributes, NULL, OBJ_KERNEL_HANDLE, NULL, NULL);
+    step = 8;
     status = ZwCreateSection(&sectionHandle, SECTION_QUERY | SECTION_MAP_READ | SECTION_MAP_WRITE,
         &attributes, NULL, PAGE_READWRITE, SEC_COMMIT, fileHandle);
     if (!NT_SUCCESS(status)) goto Exit;
     /* Retain the section handle without creating a view, the admission-critical case. */
+    step = 9;
     if (!MmDoesFileHaveUserWritableReferences(probeObject->SectionObjectPointer)) {
         status = STATUS_NOT_SUPPORTED; goto Exit;
     }
     checks |= SAFEUPLOAD_CANARY_RETAINED_YES;
     ZwClose(sectionHandle); sectionHandle = NULL;
     delay.QuadPart = -100 * 10000LL;
+    step = 10;
     for (attempt = 0; attempt < 20; ++attempt) {
         if (!MmDoesFileHaveUserWritableReferences(probeObject->SectionObjectPointer)) {
             checks |= SAFEUPLOAD_CANARY_RELEASED_NO;
@@ -251,7 +260,9 @@ Exit:
     if (volume != NULL) FltObjectDereference(volume);
     Context->CanaryStatus = status;
     Context->CanaryCleanupStatus = cleanupStatus;
-    Context->CanaryChecks = checks;
+    /* Failure phase in bits 8..15: volume/name/security/create/EOF/ID/delete-on-close/section/
+     * retained/released. The three low bits remain the individual checks; passed stays exactly 7. */
+    Context->CanaryChecks = checks | (status == STATUS_SUCCESS ? 0 : step << 8);
     /* Published last; consumers must treat Pending/Running/Failed/Unsupported as untrusted. */
     InterlockedExchange(&Context->CanaryState,
         status == STATUS_SUCCESS && cleanupStatus == STATUS_SUCCESS && checks == 7 ?

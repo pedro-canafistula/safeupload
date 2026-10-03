@@ -1040,6 +1040,9 @@ function Get-LightTrace($InspectorResult, [string] $RawPath) {
             CanaryOk = ($null -ne $probe -and $probe.canaryState -eq 2 -and
                 $probe.canaryStatus -eq '0x00000000' -and $probe.canaryChecks -eq 7 -and
                 $probe.canaryCleanupStatus -eq '0x00000000')
+            CanaryState = $(if ($null -ne $probe) { $probe.canaryState } else { -1 })
+            CanaryStatus = $(if ($null -ne $probe) { $probe.canaryStatus } else { '' })
+            CanaryChecks = $(if ($null -ne $probe) { $probe.canaryChecks } else { -1 })
             Seq = [UInt64]$g[1].Value
             Ts = [Int64]$g[2].Value
             Ev = $g[3].Value
@@ -1226,6 +1229,10 @@ function Wait-AdmissionCanary([string] $Path, [string] $RawPath) {
             Write-Output 'VolumeCanary=PASS;retained:YES;released:NO;removed:YES'
             [void](Invoke-InspectorChecked -Arguments @('--admission-trace-clear') -Timeout $InspectorTimeoutSeconds)
             return
+        }
+        if ($probes[0].CanaryState -ge 3) {
+            throw ('Volume canary failed: state=' + $probes[0].CanaryState + ';status=' +
+                $probes[0].CanaryStatus + ';checks=' + $probes[0].CanaryChecks)
         }
         [void](Invoke-InspectorChecked -Arguments @('--admission-trace-clear') -Timeout $InspectorTimeoutSeconds)
         Start-Sleep -Milliseconds 100
