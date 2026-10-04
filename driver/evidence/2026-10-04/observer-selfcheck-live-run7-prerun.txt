@@ -1,0 +1,1 @@
+copied /home/victor/Work/safeupload-staging/driver/scripts/StagedInvariantObserver.psm1 -> StagedInvariantObserver.psm1 sha256=8b27a5ecb54d9ea031ed30bfe7ebfdab132a9e216bd6be11c967f6931ad962af
