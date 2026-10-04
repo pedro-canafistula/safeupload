@@ -266,11 +266,12 @@ function Restore-StagedTestDriver([string] $Backup, [bool] $Loaded, [bool] $Veri
     if ($Loaded) {
         # Each attempt is bounded: a filter stuck in FltUnregisterFilter (a leaked instance reference) never lets fltmc return, which
         # once stalled a whole qualification run for six hours (registry-txf run 2). A hang is reported and handled as a refused unload.
+        # fltmc gets its own hidden console: an inherited SSH console kept the session open behind the stuck process (run 5 lost its output).
         $unloadHung = $false
         for ($attempt = 0; $attempt -lt 80 -and -not $unloaded -and -not $unloadHung; $attempt++) {
             $stdout = Join-Path $env:TEMP ('fltmc-unload-' + [guid]::NewGuid().ToString('N') + '.txt')
             $process = Start-Process -FilePath (Join-Path $env:SystemRoot 'System32\fltMC.exe') -ArgumentList @('unload', 'SafeUpload') `
-                -NoNewWindow -PassThru -RedirectStandardOutput $stdout -RedirectStandardError ($stdout + '.err')
+                -WindowStyle Hidden -PassThru -RedirectStandardOutput $stdout -RedirectStandardError ($stdout + '.err')
             [void]$process.Handle
             if ($process.WaitForExit(60000)) {
                 $unloaded = $process.ExitCode -eq 0
