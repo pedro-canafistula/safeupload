@@ -745,7 +745,15 @@ function Start-TestAgentAndWaitForPolicy([string] $LogPrefix) {
         [void]$ready.Reset()
         $newAgent = Start-StagedTestAgent $serviceDirectory $LogPrefix
         if (-not $ready.WaitOne([TimeSpan]::FromSeconds(45))) {
-            throw 'Agent did not signal policy acceptance within 45 seconds.'
+            # The agent's reason lives in the Application log (the default .NET service host). Carry it in the error text:
+            # this function's pipeline is captured by its caller, and only the RunError line is always printed.
+            $since = (Get-Date).AddMinutes(-2)
+            $events = @(Get-WinEvent -FilterHashtable @{ LogName = 'Application'; StartTime = $since } -ErrorAction SilentlyContinue |
+                Where-Object { $_.ProviderName -match 'SafeUpload|\.NET Runtime|Application Error' } |
+                Select-Object -First 6 | ForEach-Object {
+                    $_.ProviderName + '/' + $_.Id + ': ' + ([regex]::Replace([string]$_.Message, '\s+', ' ')).Substring(0,
+                        [Math]::Min(600, ([regex]::Replace([string]$_.Message, '\s+', ' ')).Length)) })
+            throw ('Agent did not signal policy acceptance within 45 seconds. AgentEvents=' + ($events -join ' || '))
         }
         return $newAgent
     }
@@ -2706,6 +2714,7 @@ function Invoke-Variant([string] $SelectedVariant) {
     $registryTxfSummaryEmitted = $false
     if ($registryTxfVariant) {
         $script:RegistryTxfChecksPassed = 0
+        $script:RegistryTxfOutcomeLines = New-Object System.Collections.Generic.List[string]
         $script:RegistryTxfChecksFailed = 0
     }
     $sectionTeardownVariant = $SelectedVariant -eq 'section-teardown'
@@ -3954,7 +3963,9 @@ public static class SafeUploadEolNative
             function Add-RTOutcome([string] $Label, [bool] $Ok, [string] $Facts) {
                 $verdict = if ($Ok) { 'PASS' } else { 'FAIL' }
                 if ($Ok) { $script:RegistryTxfChecksPassed++ } else { $script:RegistryTxfChecksFailed++ }
-                Write-Output ('RT_' + $Label + '=' + $Facts + ';' + $verdict)
+                # Collected, not written: callers discard Assert-RTEntry's pipeline with [void](...), which swallowed every
+                # verdict line (run 7: 66 failures counted, none printed). All verdicts are printed with the summary.
+                [void]$script:RegistryTxfOutcomeLines.Add('RT_' + $Label + '=' + $Facts + ';' + $verdict)
             }
             function New-RTFile([string] $Name, [string] $Prefix) {
                 $path = Join-Path $fixtureDirectory $Name
@@ -5912,6 +5923,7 @@ Start-Sleep -Seconds 300
             if ($restorationVerified) { $script:RegistryTxfChecksPassed++ } else { $script:RegistryTxfChecksFailed++ }
             Write-Output ('RT_Restoration=verified:' + $restorationVerified + ';errors:' + $restorationErrors.Count +
                 ';' + $(if ($restorationVerified) { 'PASS' } else { 'FAIL' }))
+            foreach ($outcomeLine in $script:RegistryTxfOutcomeLines) { Write-Output $outcomeLine }
             Write-Output ('RT_Summary=passed:' + $script:RegistryTxfChecksPassed + ';failed:' + $script:RegistryTxfChecksFailed)
             $registryTxfSummaryEmitted = $true
         }
