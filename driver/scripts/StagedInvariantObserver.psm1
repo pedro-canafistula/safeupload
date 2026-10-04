@@ -290,7 +290,9 @@ namespace StagedInvariant {
   static void CrossRecord(Volume v,Record r) {
    byte[] data=Io(v.Raw,0x90068,BitConverter.GetBytes((long)r.Number),v.Geometry.RecordSize+16);
    Require(data.Length>=12 && (U64(data,0)&0x0000FFFFFFFFFFFFUL)==r.Number && U32(data,8)==r.Raw.Length && data.Length>=12+r.Raw.Length,"FileRecord","Lower/mismatched/truncated FSCTL record");
-   byte[] fixedRecord=Fixup(Slice(data,12,r.Raw.Length),v.Geometry.Sector,"FILE");
+   // FSCTL_GET_NTFS_FILE_RECORD returns the record with the update-sequence fixups ALREADY APPLIED (verified on Win10 19045:
+   // tails restored, USA array intact), unlike a raw read. Fixup() applies only to raw data; here just validate the signature.
+   byte[] fixedRecord=Slice(data,12,r.Raw.Length); Require(Encoding.ASCII.GetString(fixedRecord,0,4)=="FILE","FileRecord","FSCTL record signature");
    Require(U32(fixedRecord,44)==r.Number && U16(fixedRecord,16)==r.Sequence && U64(fixedRecord,32)==r.BaseReference,"FileRecord","Raw/FSCTL identity mismatch");
   }
   static void AddContainer(List<Container> list,string kind,long offset,byte[] bytes) {
