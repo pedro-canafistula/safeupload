@@ -1,0 +1,4 @@
+System.Management.Automation.RuntimeException: SafeUploadAgent service disappeared before its start type was restored.
+at Set-AgentServiceStart, C:\Users\vika\Documents\Test-StagedInvariantSuite-1B7E9248E227E873.ps1: line 236
+at <ScriptBlock>, C:\Users\vika\Documents\Test-StagedInvariantSuite-1B7E9248E227E873.ps1: line 686
+at <ScriptBlock>, <No file>: line 1

@@ -1,0 +1,96 @@
+== 1. baseline
+baseline clean
+== 2. checkpoint
+BackingChainDepth=64
+UTC=2026-10-04T22:33:37Z
+virsh -c qemu:///system snapshot-create-as --domain win10-debug --name safeupload-pre-boot-start-invariant-S00-observer-control-ordinary-wp3s00e-20261004 --description 'Clean original driver and policy before boot-start-invariant-S00-observer-control-ordinary-wp3s00e' --disk-only --no-metadata --diskspec vda,snapshot=external,file=/var/lib/libvirt/images/win10-debug.safeupload-pre-boot-start-invariant-S00-observer-control-ordinary-wp3s00e-20261004 --atomic
+Domain snapshot safeupload-pre-boot-start-invariant-S00-observer-control-ordinary-wp3s00e-20261004 created
+--- active disk after checkpoint
+ Target   Source
+----------------------------------------------------------------------------------------------------------------------------------
+ vda      /var/lib/libvirt/images/win10-debug.safeupload-pre-boot-start-invariant-S00-observer-control-ordinary-wp3s00e-20261004
+ sda      -
+ sdb      -
+
+running
+
+== 3. run
+PRE_RUN_PS: $ErrorActionPreference='Stop';$d='C:\Users\vika\Documents';
+$p=Join-Path $d 'SafeUpload-stage-prototype-213D6DE141D7C8CF.sys';if((Test-Path -LiteralPath $p) -and (Get-FileHash $p).Hash -ne '213D6DE141D7C8CF92DE117E08EA245744894629073BA71BD74C50FF613FAEED'){throw 'Input collision'};
+$p=Join-Path $d 'inspector-feature-release-64155F8550B1B6F7.exe';if((Test-Path -LiteralPath $p) -and (Get-FileHash $p).Hash -ne '64155F8550B1B6F7639712DD19A12AF32FAAE848C9A5F0BD916ACEEE78255371'){throw 'Input collision'};
+$p=Join-Path $d 'StagedInvariantCases-03F7817A58CA635A.psd1';if((Test-Path -LiteralPath $p) -and (Get-FileHash $p).Hash -ne '03F7817A58CA635A31C317FDC2482B37F941742AAC6A389536562F4C48B1C156'){throw 'Input collision'};
+$p=Join-Path $d 'StagedInvariantObserver-8B27A5ECB54D9EA0.psm1';if((Test-Path -LiteralPath $p) -and (Get-FileHash $p).Hash -ne '8B27A5ECB54D9EA031ED30BFE7EBFDAB132A9E216BD6BE11C967F6931AD962AF'){throw 'Input collision'};
+$p=Join-Path $d 'StagedTestAgent-4C9220B7D202255D.ps1';if((Test-Path -LiteralPath $p) -and (Get-FileHash $p).Hash -ne '4C9220B7D202255DC29EDB585DB3C51AED0B2284C06914E41E2C7C1BAA247699'){throw 'Input collision'};
+$p=Join-Path $d 'stage-service-publish.zip';if((Test-Path -LiteralPath $p) -and (Get-FileHash $p).Hash -ne '1B5DDA54236CDCAA5DD09F1347507D7B5BB1F87C347F01FFB51379CC7F3438C5'){$old=(Get-FileHash $p).Hash;$keep=$p+'.preserved-'+$old;if(Test-Path -LiteralPath $keep){throw 'Preserved package collision'};Move-Item -LiteralPath $p -Destination $keep};
+$p=Join-Path $d 'Test-StagedInvariantSuite-EEBE4AA05BF97FC7.ps1';if((Test-Path -LiteralPath $p) -and (Get-FileHash $p).Hash -ne 'EEBE4AA05BF97FC7893FE6B5E1FB6713FB13CCC3441643C6ECFC77F8ED0134A0'){throw 'Input collision'};
+if(Test-Path -LiteralPath (Join-Path $d 'boot-start-invariant-S00-observer-control-ordinary-wp3s00e-artifacts')){throw 'Run-scoped guest evidence collision'};
+if(Test-Path -LiteralPath (Join-Path $d 'SafeUpload-invariant-state-boot-start-invariant-S00-observer-control-ordinary-wp3s00e')){throw 'Run-scoped guest evidence collision'};
+if(Test-Path -LiteralPath (Join-Path $d 'boot-start-invariant-S00-observer-control-ordinary-wp3s00e-prepare.out')){throw 'Run-scoped guest evidence collision'};
+if(Test-Path -LiteralPath (Join-Path $d 'boot-start-invariant-S00-observer-control-ordinary-wp3s00e-prepare.err')){throw 'Run-scoped guest evidence collision'};
+if(Test-Path -LiteralPath (Join-Path $d 'boot-start-invariant-S00-observer-control-ordinary-wp3s00e-afterboot.out')){throw 'Run-scoped guest evidence collision'};
+if(Test-Path -LiteralPath (Join-Path $d 'boot-start-invariant-S00-observer-control-ordinary-wp3s00e-afterboot.err')){throw 'Run-scoped guest evidence collision'};
+if(Test-Path -LiteralPath (Join-Path $d 'boot-start-invariant-S00-observer-control-ordinary-wp3s00e-finalize.out')){throw 'Run-scoped guest evidence collision'};
+if(Test-Path -LiteralPath (Join-Path $d 'boot-start-invariant-S00-observer-control-ordinary-wp3s00e-finalize.err')){throw 'Run-scoped guest evidence collision'};
+'PRE_RUN_OK=True'
+
+PRE_RUN_OK=True
+copied /tmp/claude-1000/exact-mvp3-a10/SafeUpload-stage-prototype.sys -> SafeUpload-stage-prototype-213D6DE141D7C8CF.sys sha256=213d6de141d7c8cf92de117e08ea245744894629073ba71bd74c50ff613faeed
+copied /tmp/claude-1000/exact-mvp3-a10/inspector-feature-release.exe -> inspector-feature-release-64155F8550B1B6F7.exe sha256=64155f8550b1b6f7639712dd19a12af32faae848c9a5f0bd916aceee78255371
+copied /home/victor/Work/safeupload-staging/driver/scripts/StagedInvariantCases.psd1 -> StagedInvariantCases-03F7817A58CA635A.psd1 sha256=03f7817a58ca635a31c317fdc2482b37f941742aac6a389536562f4c48b1c156
+copied /home/victor/Work/safeupload-staging/driver/scripts/StagedInvariantObserver.psm1 -> StagedInvariantObserver-8B27A5ECB54D9EA0.psm1 sha256=8b27a5ecb54d9ea031ed30bfe7ebfdab132a9e216bd6be11c967f6931ad962af
+copied /home/victor/Work/safeupload-staging/driver/scripts/StagedTestAgent.ps1 -> StagedTestAgent-4C9220B7D202255D.ps1 sha256=4c9220b7d202255dc29edb585db3c51aed0b2284c06914e41e2c7c1baa247699
+copied /tmp/claude-1000/exact-agent-mvp2-n2-agent2/stage-service-publish.zip -> stage-service-publish.zip sha256=1b5dda54236cdcaa5dd09f1347507d7b5bb1f87c347f01ffb51379cc7f3438c5
+processed file: C:\Users\vika\Documents\SafeUpload-invariant-state-boot-start-invariant-S00-observer-control-ordinary-wp3s00e
+Successfully processed 1 files; Failed processing 0 files
+processed file: C:\Users\vika\Documents\boot-start-invariant-S00-observer-control-ordinary-wp3s00e-artifacts
+Successfully processed 1 files; Failed processing 0 files
+processed file: C:\Users\vika\Documents\SafeUpload-invariant-state-boot-start-invariant-S00-observer-control-ordinary-wp3s00e
+Successfully processed 1 files; Failed processing 0 files
+processed file: C:\Users\vika\Documents\SafeUpload-invariant-state-boot-start-invariant-S00-observer-control-ordinary-wp3s00e\actor
+Successfully processed 1 files; Failed processing 0 files
+processed file: C:\SafeUploadInvariant-boot-start-invariant-S00-observer-control-ordinary-wp3s00e
+Successfully processed 1 files; Failed processing 0 files
+PolicyAclVerified=True;Trustees=SYSTEM,Administrators;InheritedAces=0
+BootPolicySeed=product-mode;ExitCode:0;PASS
+BootPolicyPrebootVerified=ParametersAcl:True;BootPolicyAcl:True;RecordBytes:16656;ExactRecord:True;PendingScopes:Absent;Start:3;PASS
+processed file: C:\Users\vika\Documents\SafeUpload-invariant-state-boot-start-invariant-S00-observer-control-ordinary-wp3s00e\writer-config.clixml
+Successfully processed 1 files; Failed processing 0 files
+processed file: C:\Users\vika\Documents\SafeUpload-invariant-state-boot-start-invariant-S00-observer-control-ordinary-wp3s00e\writer.ps1
+Successfully processed 1 files; Failed processing 0 files
+[SC] ChangeServiceConfig SUCCESS
+CaseStatus=READY
+INVARIANT_PREPARED=True
+HARNESS_RETURNED
+REBOOT_REQUESTED=True
+guest SSH returned after reboot (attempt 1)
+BootIdentityChanged=True;Before=2026-10-04T22:29:34.5000000Z;After=2026-10-04T22:33:31.5000000Z
+[SC] ChangeServiceConfig SUCCESS
+No settings were changed.
+<Objs Version="1.1.0.1" xmlns="http://schemas.microsoft.com/powershell/2004/04"><Obj S="progress" RefId="0"><TN RefId="0"><T>System.Management.Automation.PSCustomObject</T><T>System.Object</T></TN><MS><I64 N="SourceId">5</I64><PR N="Record"><AV>Get-ScheduledTask -TaskName $Task -ErrorAction Stop</AV><AI>1817170833</AI><Nil /><PI>-1</PI><PC>100</PC><T>Completed</T><SR>0</SR><SD>1/1 completed</SD></PR></MS></Obj><Obj S="progress" RefId="1"><TNRef RefId="0" /><MS><I64 N="SourceId">6</I64><PR N="Record"><AV>Get-ScheduledTask -TaskName $Task -ErrorAction Stop</AV><AI>828184362</AI><Nil /><PI>-1</PI><PC>100</PC><T>Completed</T><SR>0</SR><SD>1/1 completed</SD></PR></MS></Obj><Obj S="progress" RefId="2"><TNRef RefId="0" /><MS><I64 N="SourceId">7</I64><PR N="Record"><AV>Get-ScheduledTask -TaskName $Task -ErrorAction Stop</AV><AI>998305217</AI><Nil /><PI>-1</PI><PC>100</PC><T>Completed</T><SR>0</SR><SD>1/1 completed</SD></PR></MS></Obj><Obj S="progress" RefId="3"><TNRef RefId="0" /><MS><I64 N="SourceId">8</I64><PR N="Record"><AV>Get-ScheduledTask -TaskName $Task -ErrorAction Stop</AV><AI>1016993241</AI><Nil /><PI>-1</PI><PC>100</PC><T>Completed</T><SR>0</SR><SD>1/1 completed</SD></PR></MS></Obj><Obj S="progress" RefId="4"><TNRef RefId="0" /><MS><I64 N="SourceId">9</I64><PR N="Record"><AV>Get-ScheduledTask -TaskName $Task -ErrorAction Stop</AV><AI>567779180</AI><Nil /><PI>-1</PI><PC>100</PC><T>Completed</T><SR>0</SR><SD>1/1 completed</SD></PR></MS></Obj><Obj S="progress" RefId="5"><TNRef RefId="0" /><MS><I64 N="SourceId">10</I64><PR N="Record"><AV>Get-ScheduledTask -TaskName $Task -ErrorAction Stop</AV><AI>2072291478</AI><Nil /><PI>-1</PI><PC>100</PC><T>Completed</T><SR>0</SR><SD>1/1 completed</SD></PR></MS></Obj><Obj S="progress" RefId="6"><TNRef RefId="0" /><MS><I64 N="SourceId">11</I64><PR N="Record"><AV>Get-ScheduledTask -TaskName $Task -ErrorAction Stop</AV><AI>1930539216</AI><Nil /><PI>-1</PI><PC>100</PC><T>Completed</T><SR>0</SR><SD>1/1 completed</SD></PR></MS></Obj><Obj S="progress" RefId="7"><TNRef RefId="0" /><MS><I64 N="SourceId">12</I64><PR N="Record"><AV>Get-ScheduledTask -TaskName $Task -ErrorAction Stop</AV><AI>1702834452</AI><Nil /><PI>-1</PI><PC>100</PC><T>Completed</T><SR>0</SR><SD>1/1 completed</SD></PR></MS></Obj><Obj S="progress" RefId="8"><TNRef RefId="0" /><MS><I64 N="SourceId">13</I64><PR N="Record"><AV>Get-ScheduledTaskInfo -TaskName $Task</AV><AI>1672722990</AI><Nil /><PI>-1</PI><PC>100</PC><T>Completed</T><SR>0</SR><SD>1/1 completed</SD></PR></MS></Obj><Obj S="progress" RefId="9"><TNRef RefId="0" /><MS><I64 N="SourceId">14</I64><PR N="Record"><AV>Get-ScheduledTask -TaskName $task -ErrorAction SilentlyContinue){Stop-ScheduledTask -TaskName $task;Unregister-ScheduledTask -TaskName $task -Confirm:$false}</AV><AI>1912978322</AI><Nil /><PI>-1</PI><PC>100</PC><T>Completed</T><SR>0</SR><SD>1/1 completed</SD></PR></MS></Obj><Obj S="progress" RefId="10"><TNRef RefId="0" /><MS><I64 N="SourceId">15</I64><PR N="Record"><AV>Stop-ScheduledTask -TaskName $task;Unregister-ScheduledTask -TaskName $task -Confirm:$false}</AV><AI>1079239753</AI><Nil /><PI>-1</PI><PC>100</PC><T>Completed</T><SR>0</SR><SD>1/1 completed</SD></PR></MS></Obj><Obj S="progress" RefId="11"><TNRef RefId="0" /><MS><I64 N="SourceId">16</I64><PR N="Record"><AV>Unregister-ScheduledTask -TaskName $task -Confirm:$false}</AV><AI>403208209</AI><Nil /><PI>-1</PI><PC>100</PC><T>Completed</T><SR>0</SR><SD>2/2 completed</SD></PR></MS></Obj><Obj S="progress" RefId="12"><TNRef RefId="0" /><MS><I64 N="SourceId">17</I64><PR N="Record"><AV>Get-ScheduledTask -TaskName $task -ErrorAction SilentlyContinue){throw 'Task residue'}}catch{$errors.Add($_.Exception.ToString())}</AV><AI>1222208935</AI><Nil /><PI>-1</PI><PC>100</PC><T>Completed</T><SR>0</SR><SD>1/1 completed</SD></PR></MS></Obj><Obj S="progress" RefId="13"><TNRef RefId="0" /><MS><I64 N="SourceId">18</I64><PR N="Record"><AV>Get-ScheduledTask -TaskName $task -ErrorAction SilentlyContinue){Stop-ScheduledTask -TaskName $task;Unregister-ScheduledTask -TaskName $task -Confirm:$false}</AV><AI>1893192020</AI><Nil /><PI>-1</PI><PC>100</PC><T>Completed</T><SR>0</SR><SD>1/1 completed</SD></PR></MS></Obj><Obj S="progress" RefId="14"><TNRef RefId="0" /><MS><I64 N="SourceId">19</I64><PR N="Record"><AV>Stop-ScheduledTask -TaskName $task;Unregister-ScheduledTask -TaskName $task -Confirm:$false}</AV><AI>1973909211</AI><Nil /><PI>-1</PI><PC>100</PC><T>Completed</T><SR>0</SR><SD>1/1 completed</SD></PR></MS></Obj><Obj S="progress" RefId="15"><TNRef RefId="0" /><MS><I64 N="SourceId">20</I64><PR N="Record"><AV>Unregister-ScheduledTask -TaskName $task -Confirm:$false}</AV><AI>2030855465</AI><Nil /><PI>-1</PI><PC>100</PC><T>Completed</T><SR>0</SR><SD>2/2 completed</SD></PR></MS></Obj><Obj S="progress" RefId="16"><TNRef RefId="0" /><MS><I64 N="SourceId">21</I64><PR N="Record"><AV>Get-ScheduledTask -TaskName $task -ErrorAction SilentlyContinue){throw 'Task residue'}}catch{$errors.Add($_.Exception.ToString())}</AV><AI>417966842</AI><Nil /><PI>-1</PI><PC>100</PC><T>Completed</T><SR>0</SR><SD>1/1 completed</SD></PR></MS></Obj><Obj S="progress" RefId="17"><TNRef RefId="0" /><MS><I64 N="SourceId">23</I64><PR N="Record"><AV>Get-ScheduledTask -TaskName $Name -ErrorAction SilentlyContinue){throw 'Task collision'}</AV><AI>492346924</AI><Nil /><PI>-1</PI><PC>100</PC><T>Completed</T><SR>0</SR><SD>1/1 completed</SD></PR></MS></Obj><Obj S="progress" RefId="18"><TNRef RefId="0" /><MS><I64 N="SourceId">24</I64><PR N="Record"><AV>New-ScheduledTaskAction -Execute 'powershell.exe' -Argument ('-NoProfile -ExecutionPolicy Bypass -File "'+$Launcher+'"')</AV><AI>1647692794</AI><Nil /><PI>-1</PI><PC>100</PC><T>Completed</T><SR>0</SR><SD>1/1 completed</SD></PR></MS></Obj><Obj S="progress" RefId="19"><TNRef RefId="0" /><MS><I64 N="SourceId">25</I64><PR N="Record"><AV>New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest</AV><AI>2097774589</AI><Nil /><PI>-1</PI><PC>100</PC><T>Completed</T><SR>0</SR><SD>1/1 completed</SD></PR></MS></Obj><Obj S="progress" RefId="20"><TNRef RefId="0" /><MS><I64 N="SourceId">26</I64><PR N="Record"><AV>New-SRestoration needs attention; preserve state and checkpoint: actor-profile: 
+System.Management.Automation.RuntimeException: Owned user profile still loaded
+At C:\Users\vika\Documents\Test-StagedInvariantSuite-EEBE4AA05BF97FC7.ps1:654 char:29
++ ... ount -gt 0){throw ('Restoration needs attention; preserve state and c ...
++                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : OperationStopped: (Restoration nee...le still loaded:String) [], Run 
+   timeException
+    + FullyQualifiedErrorId : Restoration needs attention; preserve state and checkpoint: actor-pr 
+   ofile: System.Management.Automation.RuntimeException: Owned user profile still loaded
+ 
+System.Management.Automation.RuntimeException: Restoration needs attention; preserve state and checkpoint: actor-profile: System.Management.Automation.RuntimeException: Owned user profile still loadedat Restore-Suite, C:\Users\vika\Documents\Test-StagedInvariantSuite-EEBE4AA05BF97FC7.ps1: line 654
+at <ScriptBlock>, C:\Users\vika\Documents\Test-StagedInvariantSuite-EEBE4AA05BF97FC7.ps1: line 836
+at <ScriptBlock>, <No file>: line 1
+cheduledTaskSettingsSet -ExecutionTimeLimit ([TimeSpan]::FromMinutes(15))</AV><AI>1648665304</AI><Nil /><PI>-1</PI><PC>100</PC><T>Completed</T><SR>0</SR><SD>1/1 completed</SD></PR></MS></Obj><Obj S="progress" RefId="21"><TNRef RefId="0" /><MS><I64 N="SourceId">27</I64><PR N="Record"><AV>Register-ScheduledTask @args | Out-Null</AV><AI>1888526191</AI><Nil /><PI>-1</PI><PC>100</PC><T>Completed</T><SR>0</SR><SD>1/1 completed</SD></PR></MS></Obj><Obj S="progress" RefId="22"><TNRef RefId="0" /><MS><I64 N="SourceId">28</I64><PR N="Record"><AV>Start-ScheduledTask -TaskName $name;return (Wait-TaskCompletion $name $done $token 90).Value}</AV><AI>1772649618</AI><Nil /><PI>-1</PI><PC>100</PC><T>Completed</T><SR>0</SR><SD>1/1 completed</SD></PR></MS></Obj><Obj S="progress" RefId="23"><TNRef RefId="0" /><MS><I64 N="SourceId">29</I64><PR N="Record"><AV>Get-ScheduledTask -TaskName $Task -ErrorAction Stop</AV><AI>1910246775</AI><Nil /><PI>-1</PI><PC>100</PC><T>Completed</T><SR>0</SR><SD>1/1 completed</SD></PR></MS></Obj><Obj S="progress" RefId="24"><TNRef RefId="0" /><MS><I64 N="SourceId">30</I64><PR N="Record"><AV>Get-ScheduledTask -TaskName $Task -ErrorAction Stop</AV><AI>213859025</AI><Nil /><PI>-1</PI><PC>100</PC><T>Completed</T><SR>0</SR><SD>1/1 completed</SD></PR></MS></Obj><Obj S="progress" RefId="25"><TNRef RefId="0" /><MS><I64 N="SourceId">31</I64><PR N="Record"><AV>Get-ScheduledTaskInfo -TaskName $Task</AV><AI>1329775231</AI><Nil /><PI>-1</PI><PC>100</PC><T>Completed</T><SR>0</SR><SD>1/1 completed</SD></PR></MS></Obj><Obj S="progress" RefId="26"><TNRef RefId="0" /><MS><I64 N="SourceId">32</I64><PR N="Record"><AV>Get-ScheduledTask -TaskName $name -ErrorAction SilentlyContinue){Stop-ScheduledTask -TaskName $name;Unregister-ScheduledTask -TaskName $name -Confirm:$false}}</AV><AI>1954896972</AI><Nil /><PI>-1</PI><PC>100</PC><T>Completed</T><SR>0</SR><SD>1/1 completed</SD></PR></MS></Obj><Obj S="progress" RefId="27"><TNRef RefId="0" /><MS><I64 N="SourceId">33</I64><PR N="Record"><AV>Stop-ScheduledTask -TaskName $name;Unregister-ScheduledTask -TaskName $name -Confirm:$false}}</AV><AI>1593815917</AI><Nil /><PI>-1</PI><PC>100</PC><T>Completed</T><SR>0</SR><SD>1/1 completed</SD></PR></MS></Obj><Obj S="progress" RefId="28"><TNRef RefId="0" /><MS><I64 N="SourceId">34</I64><PR N="Record"><AV>Unregister-ScheduledTask -TaskName $name -Confirm:$false}}</AV><AI>1465817381</AI><Nil /><PI>-1</PI><PC>100</PC><T>Completed</T><SR>0</SR><SD>2/2 completed</SD></PR></MS></Obj></Objs>
+HARNESS_THREW: Suite child failed
+AFTER-BOOT RESTORATION FAILED; preserve checkpoint and inspect guest state
+GUEST_RECOVERY_REQUIRED=True
+Reason=AfterBoot harness failed or restoration was incomplete.
+Checkpoint=safeupload-pre-boot-start-invariant-S00-observer-control-ordinary-wp3s00e-20261004
+ActiveOverlay=/var/lib/libvirt/images/win10-debug.safeupload-pre-boot-start-invariant-S00-observer-control-ordinary-wp3s00e-20261004
+Domain=win10-debug
+ Type   Device   Target   Source
+--------------------------------------------------------------------------------------------------------------------------------------------------
+ file   disk     vda      /var/lib/libvirt/images/win10-debug.safeupload-pre-boot-start-invariant-S00-observer-control-ordinary-wp3s00e-20261004
+ file   cdrom    sda      -
+ file   cdrom    sdb      -
+
+Could not determine the checkpoint overlay backing file: /var/lib/libvirt/images/win10-debug.safeupload-pre-boot-start-invariant-S00-observer-control-ordinary-wp3s00e-20261004

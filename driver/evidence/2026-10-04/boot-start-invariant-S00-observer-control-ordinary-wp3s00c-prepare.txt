@@ -1,0 +1,20 @@
+processed file: C:\Users\vika\Documents\SafeUpload-invariant-state-boot-start-invariant-S00-observer-control-ordinary-wp3s00c
+Successfully processed 1 files; Failed processing 0 files
+processed file: C:\Users\vika\Documents\boot-start-invariant-S00-observer-control-ordinary-wp3s00c-artifacts
+Successfully processed 1 files; Failed processing 0 files
+[SC] ChangeServiceConfig SUCCESS
+No settings were changed.
+PrepareRollbackComplete=True;RestorationRebootRequired=True
+SafeUploadAgent service disappeared before its start type was restored.
+At C:\Users\vika\Documents\Test-StagedInvariantSuite-1B7E9248E227E873.ps1:236 char:54
++ ... viceKey)) { throw 'SafeUploadAgent service disappeared before its sta ...
++                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : OperationStopped: (SafeUploadAgent...e was restored.:String) [], Run 
+   timeException
+    + FullyQualifiedErrorId : SafeUploadAgent service disappeared before its start type was restor 
+   ed.
+ 
+System.Management.Automation.RuntimeException: SafeUploadAgent service disappeared before its start type was restored.at Set-AgentServiceStart, C:\Users\vika\Documents\Test-StagedInvariantSuite-1B7E9248E227E873.ps1: line 236
+at <ScriptBlock>, C:\Users\vika\Documents\Test-StagedInvariantSuite-1B7E9248E227E873.ps1: line 686
+at <ScriptBlock>, <No file>: line 1
+HARNESS_THREW: Suite child failed

@@ -1,0 +1,12 @@
+UTC=2026-10-04T22:40:57Z
+virsh -c qemu:///system snapshot-create-as --domain win10-debug --name safeupload-pre-boot-start-invariant-S00-observer-control-ordinary-wp3s00g-20261004 --description 'Clean original driver and policy before boot-start-invariant-S00-observer-control-ordinary-wp3s00g' --disk-only --no-metadata --diskspec vda,snapshot=external,file=/var/lib/libvirt/images/win10-debug.safeupload-pre-boot-start-invariant-S00-observer-control-ordinary-wp3s00g-20261004 --atomic
+Domain snapshot safeupload-pre-boot-start-invariant-S00-observer-control-ordinary-wp3s00g-20261004 created
+--- active disk after checkpoint
+ Target   Source
+----------------------------------------------------------------------------------------------------------------------------------
+ vda      /var/lib/libvirt/images/win10-debug.safeupload-pre-boot-start-invariant-S00-observer-control-ordinary-wp3s00g-20261004
+ sda      -
+ sdb      -
+
+running
+

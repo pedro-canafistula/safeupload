@@ -328,3 +328,8 @@ falsify the Phase 3 cutoff mechanism; the harness must test it, never reinterpre
   independent restoration (readout: evidence/2026-10-04/registry-txf-run1-19-readout.txt). Next: increments 3-5 (admission epoch and two-phase
   apply, Activating enforcement with cutoff flush and cache-barrier promotion, removal of StageFence from admission), then Phase 4 S00 in
   boot-start mode, where Free/promotion are exercised on a trusted instance.
+- **2026-10-04 status: Phase 4 S00 lifecycle verified.** The invariant suite ran its first case end to end in boot-start mode (prepare,
+  activating reboot, standard-user writer, raw-volume samples, restoration reboot, finalize; independent BaselineClean=True), ForbiddenByteCount
+  0, latency p95 1.3 ms. Verdict INCONCLUSIVE until the proof adapters exist (lower mutation ledger, metadata expectations, cadence accounting,
+  live taint readback, service timelines). Open product finding: a trusted boot-attached C: reports writer tracking Unknown minutes after boot
+  (suspected untracked open-by-ID writers); must be fixed before promotion can work on a real boot. Readout: evidence/2026-10-04/s00-attempt1-7-readout.txt.

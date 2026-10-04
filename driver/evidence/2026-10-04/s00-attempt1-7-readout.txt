@@ -1,0 +1,20 @@
+Phase 4 WP3: first invariant-suite case, S00-observer-control, ordinary mode, boot-start lifecycle (driver mvp3-a10 / 9b2cb34f)
+Verdict: attempt 7 (wp3s00g) ran the full lifecycle with no errors - Prepare (product seeding, Start=0), activating reboot, AfterBoot (readiness,
+standard-user writer, raw-volume observer, 4 samples, 404 operations), restoration reboot, Finalize - and independent BaselineClean=True.
+Case verdict INCONCLUSIVE by design: ForbiddenByteCount 0 and ~100 exact native-status assertions PASS, but the strict gate demands proof the
+suite cannot yet produce. Latency (absolute budget p95<=250 ms, max<=1000 ms): writer-open p95 1.30 ms, max 9.83 ms, PASS.
+
+Inconclusive assertions (each is a missing proof adapter, not a product failure):
+  PredicateCoverage / NoUnapprovedByte  - no lower mutation ledger (driver-side journal of physical writes) yet.
+  MetadataCrossCheck / MetadataCoverage - raw vs API LastAccess differ (lazy NTFS access-time update); expectation model lacks exact metadata.
+  CadenceCoverage / CadenceGap          - sample cadence gaps (e.g. 15.9 ms) not accounted against the ledger.
+  ExternalCoverage                      - platform/identity/cadence/restoration evidence not yet attested in the result.
+  LiveTaintFlags                        - no Inspector readback of the live TEST_DISABLE_TAINT flag.
+  ActualServiceTimelines                - no authenticated adapter for the agent's journal/notification timeline.
+Harness defects found by attempts 1-6 (all fixed): UTF-16 build logs read as UTF-8; cmd.exe 8,191-char limit on the encoded command (remote_ps
+now stages long scripts as files); agent start type pinned on a guest without the service; new standard user lacked SeBatchLogonRight (task
+never started, 0x00041303); actor profile unloads asynchronously (now deleted in Finalize after the restoration reboot); baseline now checks for
+leftover test users and profiles.
+Product finding (boot-start readiness): C: attached at mount and TRUSTED, yet instanceWritersUntracked=1 and writerGlobalUnknown=1 minutes
+after boot. Suspected: writers the registry leaves untracked (open by file ID) whose cleanups arrive unmatched on a trusted instance. To confirm
+and fix after the increments 3-5 merge; it would otherwise block every promotion on a real boot.
