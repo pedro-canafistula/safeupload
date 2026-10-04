@@ -53,6 +53,37 @@ function Write-DurableFile([string]$Path,[string]$Text,[switch]$New) {
     $stream=[IO.FileStream]::new($Path,$fm,[IO.FileAccess]::Write,[IO.FileShare]::Read,4096,[IO.FileOptions]::WriteThrough)
     try {$stream.Write($bytes,0,$bytes.Length);$stream.Flush($true)} finally {$stream.Dispose()}
 }
+function Set-ActorBatchLogon([string]$Sid,[bool]$Grant) {
+    # A new standard user lacks "log on as a batch job", so its password-logon writer task never starts
+    # (S00 attempt 4: LastTaskResult 0x00041303, no identity). Grant it for the run; revoke before the user is removed, or the
+    # right outlives the account as an orphaned SID grant.
+    if (-not ('SUActorLsa' -as [type])) {
+        Add-Type -TypeDefinition @"
+using System; using System.Runtime.InteropServices; using System.Security.Principal;
+public static class SUActorLsa {
+  [StructLayout(LayoutKind.Sequential)] struct US { public ushort Length, MaximumLength; public IntPtr Buffer; }
+  [StructLayout(LayoutKind.Sequential)] struct OA { public int Length; public IntPtr a, b; public uint c; public IntPtr d, e; }
+  [DllImport("advapi32.dll")] static extern uint LsaOpenPolicy(IntPtr s, ref OA o, uint access, out IntPtr h);
+  [DllImport("advapi32.dll")] static extern uint LsaAddAccountRights(IntPtr h, byte[] sid, US[] rights, uint n);
+  [DllImport("advapi32.dll")] static extern uint LsaRemoveAccountRights(IntPtr h, byte[] sid, bool all, US[] rights, uint n);
+  [DllImport("advapi32.dll")] static extern uint LsaClose(IntPtr h);
+  [DllImport("advapi32.dll")] static extern uint LsaNtStatusToWinError(uint s);
+  public static uint Set(string sidText, string right, bool add) {
+    var sid = new SecurityIdentifier(sidText); byte[] b = new byte[sid.BinaryLength]; sid.GetBinaryForm(b, 0);
+    OA o = new OA(); o.Length = Marshal.SizeOf(typeof(OA)); IntPtr h;
+    uint s = LsaOpenPolicy(IntPtr.Zero, ref o, 0x811, out h); if (s != 0) return LsaNtStatusToWinError(s);
+    US u = new US(); u.Buffer = Marshal.StringToHGlobalUni(right); u.Length = (ushort)(right.Length * 2); u.MaximumLength = (ushort)(u.Length + 2);
+    try { s = add ? LsaAddAccountRights(h, b, new[]{u}, 1) : LsaRemoveAccountRights(h, b, false, new[]{u}, 1); }
+    finally { Marshal.FreeHGlobal(u.Buffer); LsaClose(h); }
+    return s == 0 ? 0 : LsaNtStatusToWinError(s);
+  }
+}
+"@
+    }
+    $code = [SUActorLsa]::Set($Sid, 'SeBatchLogonRight', $Grant)
+    # Revoking a right the SID no longer holds (ERROR_FILE_NOT_FOUND) is already the desired end state.
+    if ($code -ne 0 -and -not ((-not $Grant) -and $code -eq 2)) { throw ('SeBatchLogonRight ' + $(if ($Grant) { 'grant' } else { 'revoke' }) + ' failed: ' + $code) }
+}
 function Save-State($Value,[string]$Path) { Write-DurableFile $Path ([Management.Automation.PSSerializer]::Serialize($Value,32)) }
 function Load-State([string]$Path) { [Management.Automation.PSSerializer]::Deserialize([IO.File]::ReadAllText($Path)) }
 function Get-BootId { $env:COMPUTERNAME+'/'+(Get-CimInstance Win32_OperatingSystem).LastBootUpTime.ToUniversalTime().ToString('o') }
@@ -615,7 +646,7 @@ $value='Removed'
                 if(@(Get-CimInstance Win32_UserProfile | Where-Object SID -ceq $state.ActorSid).Count -ne 0){throw 'Owned profile residue'}
             }
         }},
-        @{Name='actor-user';Action={if(Get-LocalUser -Name $state.ActorUser -ErrorAction SilentlyContinue){Remove-LocalUser -Name $state.ActorUser};if(Get-LocalUser -Name $state.ActorUser -ErrorAction SilentlyContinue){throw 'User residue'}}}
+        @{Name='actor-user';Action={if($state.ActorSid){Set-ActorBatchLogon $state.ActorSid $false};if(Get-LocalUser -Name $state.ActorUser -ErrorAction SilentlyContinue){Remove-LocalUser -Name $state.ActorUser};if(Get-LocalUser -Name $state.ActorUser -ErrorAction SilentlyContinue){throw 'User residue'}}}
     )
     foreach($step in $steps){try{& $step.Action}catch{$errors.Add($step.Name+': '+$_.Exception.ToString())}}
     if($Rollback){try{Set-AgentServiceStart $state.OriginalAgentStart}catch{$errors.Add($_.Exception.ToString())}}
@@ -694,6 +725,7 @@ if($Phase -eq 'Prepare'){
         $state.ActorSid=$user.SID.Value
         # Logon requires Users membership; explicitly prove absence of Administrators membership.
         Add-LocalGroupMember -SID 'S-1-5-32-545' -Member $actorUser
+        Set-ActorBatchLogon $state.ActorSid $true
         if(@(Get-LocalGroupMember -SID 'S-1-5-32-544' | Where-Object SID -eq $user.SID).Count -ne 0){throw 'Actor administrator membership'}
         & icacls.exe $stateDirectory /grant ('*'+$state.ActorSid+':RX') | Out-Host
         if($LASTEXITCODE -ne 0){throw 'Actor traversal ACL failed'}
