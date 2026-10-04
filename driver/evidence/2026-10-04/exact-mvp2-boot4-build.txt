@@ -1,0 +1,15 @@
+SOURCE_MANIFEST_VERIFIED=25 files
+LABEL=mvp2-boot4
+ARCHIVE_SHA256=CAEFDDFCA2C47CFB6D0FFAE648533C2C309D5DF48D261451E808B7DE587A1721
+MANIFEST_SHA256=FCCCFD0BF775B8F479FC534B38DC4EDC7A2EA8516202F5A28EE2629133E4376F
+BUILDER=DESKTOP-O1LP5DG
+BUILD_END_UTC=2026-10-04T04:07:14.8012222Z
+driver:normal : configuration=Debug feature=false exit=1 succeeded=False warnings=0 errors=2 apivalidator=False prefast=True artifact_sha256=NONE
+driver:owned-feature : configuration=Debug feature=true exit=1 succeeded=False warnings=0 errors=2 apivalidator=False prefast=True artifact_sha256=NONE
+driver:normal-release : configuration=Release feature=false exit=1 succeeded=False warnings=0 errors=2 apivalidator=False prefast=True artifact_sha256=NONE
+driver:owned-feature-release : configuration=Release feature=true exit=1 succeeded=False warnings=0 errors=2 apivalidator=False prefast=True artifact_sha256=NONE
+inspector-normal-release : exit=0 succeeded=True warnings=0 errors=0 artifact_sha256=1517A8626854ABB3968CEE8C00A6798DFB31D359A4C0ED6C3B2472A8C56DE6EF
+inspector-feature-release : exit=0 succeeded=True warnings=0 errors=0 artifact_sha256=5D35838FBDFBEB9171A44DCF171AC4AA7F62161C8BE44CA2F77671586C8DA391
+writer-fixture : exit=0 succeeded=True warnings=0 errors=0 artifact_sha256=120CCC657C6C14E81812A1199A8ECDB094F8BB8274D25E1D6F896F5AACCDD542
+sign : SKIPPED (no feature Debug SYS)
+EXACT_BUILD_DONE

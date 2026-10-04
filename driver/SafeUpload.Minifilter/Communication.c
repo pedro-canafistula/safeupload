@@ -108,7 +108,7 @@ static BOOLEAN SafeUploadCurrentProcessHasAgentServiceSid(VOID)
         RtlZeroMemory(serviceSidStorage, sizeof(serviceSidStorage));
         serviceSidLength = sizeof(serviceSidStorage);
         status = createServiceSid(&serviceName, (PSID)serviceSidStorage, &serviceSidLength);
-        if (!NT_SUCCESS(status) || serviceSidLength < FIELD_OFFSET(SID, SubAuthority) ||
+        if (!NT_SUCCESS(status) || serviceSidLength < (ULONG)FIELD_OFFSET(SID, SubAuthority) ||
             serviceSidLength > sizeof(serviceSidStorage)) return FALSE;
         serviceSid = (PSID)serviceSidStorage;
     }
