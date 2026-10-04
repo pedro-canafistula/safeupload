@@ -69,11 +69,66 @@ grep -q "$overlay" <(virsh -c qemu:///system domblklist win10-debug) || {
     exit 12
 }
 
+write_offline_rollback_step() {
+    local backing format quoted_backing output="$ev/$name-offline-rollback.txt"
+    backing="$(qemu-img info --output=json "$overlay" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("backing-filename", ""))')"
+    if [ -z "$backing" ]; then
+        echo "Could not determine the checkpoint overlay backing file: $overlay" | tee "$output"
+        return 1
+    fi
+    case "$backing" in
+        /*) ;;
+        *) backing="$(realpath -m "$(dirname "$overlay")/$backing")" ;;
+    esac
+    format="$(qemu-img info --output=json "$backing" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("format", ""))')"
+    if [ -z "$format" ]; then
+        echo "Could not determine the backing disk format: $backing" | tee "$output"
+        return 1
+    fi
+    printf -v quoted_backing '%q' "$backing"
+    {
+        echo 'OFFLINE_ROLLBACK_OPERATOR_STEP=True'
+        echo 'These commands are recorded for an operator. The wrapper will not repoint VM disks.'
+        echo 'Run only after inspecting the guest and deciding to roll it back to the checkpoint parent.'
+        echo '1. Stop the VM if it is running:'
+        echo 'virsh -c qemu:///system destroy win10-debug'
+        echo '2. Confirm the current vda source:'
+        echo 'virsh -c qemu:///system domblklist win10-debug --details'
+        echo '3. Remove vda from the persistent VM definition:'
+        echo 'virsh -c qemu:///system detach-disk win10-debug vda --config'
+        echo '4. Attach the checkpoint parent disk as vda:'
+        echo "virsh -c qemu:///system attach-disk win10-debug $quoted_backing vda --driver qemu --subdriver $format --targetbus virtio --config"
+        echo '5. Verify the persistent vda source before starting the VM:'
+        echo 'virsh -c qemu:///system domblklist win10-debug --details'
+        echo "CheckpointOverlay=$overlay"
+        echo "CheckpointParent=$backing"
+        echo "CheckpointParentFormat=$format"
+    } | tee "$output"
+}
+
+record_recovery_required() {  # $1 concise reason
+    {
+        echo "GUEST_RECOVERY_REQUIRED=True"
+        echo "Reason=$1"
+        echo "Checkpoint=$snap"
+        echo "ActiveOverlay=$overlay"
+        echo "Domain=win10-debug"
+        virsh -c qemu:///system domblklist win10-debug --details
+        qemu-img info --backing-chain "$overlay"
+    } | tee "$ev/$name-recovery-required.txt"
+    write_offline_rollback_step || true
+}
+
 echo "== 3. run"
 if [ -n "${PRE_RUN_PS:-}" ]; then
     echo "PRE_RUN_PS: $PRE_RUN_PS" | tee "$ev/$name-prerun.txt"
-    python3 driver/scripts/remote_ps.py "$host" <<<"$PRE_RUN_PS" 2>&1 | clean | tee "$ev/$name-prerun-result.txt" | tee -a "$ev/$name-prerun.txt"
-    pre_run_status=${PIPESTATUS[0]}
+    for pre_attempt in 1 2 3; do  # the first guest call right after a disk-only checkpoint can fail transiently
+        python3 driver/scripts/remote_ps.py "$host" <<<"$PRE_RUN_PS" 2>&1 | clean | tee "$ev/$name-prerun-result.txt" | tee -a "$ev/$name-prerun.txt"
+        pre_run_status=${PIPESTATUS[0]}
+        [ "$pre_run_status" -eq 0 ] && grep -qx 'PRE_RUN_OK=True' "$ev/$name-prerun-result.txt" && break
+        echo "PRE_RUN attempt $pre_attempt failed (status $pre_run_status); retrying" | tee -a "$ev/$name-prerun.txt"
+        sleep 10
+    done
     if [ "$pre_run_status" -ne 0 ] || ! grep -qx 'PRE_RUN_OK=True' "$ev/$name-prerun-result.txt"; then
         echo "PRE_RUN failed or omitted PRE_RUN_OK=True; refusing extra-file staging"
         record_recovery_required 'PRE_RUN failed after the checkpoint became active.'
@@ -153,56 +208,6 @@ wait_for_changed_boot_time() {  # $1 previous LastBootUpTime, $2 evidence label
     done
     echo "BootIdentityChanged=False;Before=$before;LastObserved=$current" | tee "$ev/$name-$label-changed.txt"
     return 1
-}
-
-write_offline_rollback_step() {
-    local backing format quoted_backing output="$ev/$name-offline-rollback.txt"
-    backing="$(qemu-img info --output=json "$overlay" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("backing-filename", ""))')"
-    if [ -z "$backing" ]; then
-        echo "Could not determine the checkpoint overlay backing file: $overlay" | tee "$output"
-        return 1
-    fi
-    case "$backing" in
-        /*) ;;
-        *) backing="$(realpath -m "$(dirname "$overlay")/$backing")" ;;
-    esac
-    format="$(qemu-img info --output=json "$backing" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("format", ""))')"
-    if [ -z "$format" ]; then
-        echo "Could not determine the backing disk format: $backing" | tee "$output"
-        return 1
-    fi
-    printf -v quoted_backing '%q' "$backing"
-    {
-        echo 'OFFLINE_ROLLBACK_OPERATOR_STEP=True'
-        echo 'These commands are recorded for an operator. The wrapper will not repoint VM disks.'
-        echo 'Run only after inspecting the guest and deciding to roll it back to the checkpoint parent.'
-        echo '1. Stop the VM if it is running:'
-        echo 'virsh -c qemu:///system destroy win10-debug'
-        echo '2. Confirm the current vda source:'
-        echo 'virsh -c qemu:///system domblklist win10-debug --details'
-        echo '3. Remove vda from the persistent VM definition:'
-        echo 'virsh -c qemu:///system detach-disk win10-debug vda --config'
-        echo '4. Attach the checkpoint parent disk as vda:'
-        echo "virsh -c qemu:///system attach-disk win10-debug $quoted_backing vda --driver qemu --subdriver $format --targetbus virtio --config"
-        echo '5. Verify the persistent vda source before starting the VM:'
-        echo 'virsh -c qemu:///system domblklist win10-debug --details'
-        echo "CheckpointOverlay=$overlay"
-        echo "CheckpointParent=$backing"
-        echo "CheckpointParentFormat=$format"
-    } | tee "$output"
-}
-
-record_recovery_required() {  # $1 concise reason
-    {
-        echo "GUEST_RECOVERY_REQUIRED=True"
-        echo "Reason=$1"
-        echo "Checkpoint=$snap"
-        echo "ActiveOverlay=$overlay"
-        echo "Domain=win10-debug"
-        virsh -c qemu:///system domblklist win10-debug --details
-        qemu-img info --backing-chain "$overlay"
-    } | tee "$ev/$name-recovery-required.txt"
-    write_offline_rollback_step || true
 }
 
 case "$name" in boot-start*) boot_start_run=1 ;; *) boot_start_run=0 ;; esac
