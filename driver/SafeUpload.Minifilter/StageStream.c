@@ -2958,7 +2958,12 @@ FLT_PREOP_CALLBACK_STATUS SafeUploadStageDispatch(PFLT_CALLBACK_DATA Data,
         SafeUploadStageTxfRecordRefused();
         return StageCompleteAccessDenied(Data);
     }
-    result = SafeUploadStageTxfFsctlPreOperation(Data, Objects, CompletionContext);
+    {
+        /* The TxF FSCTL gate never leaves a completion context; give it a scratch one so *CompletionContext stays provably NULL
+           for the legacy callbacks below (PREfast C6388 on each of their call sites). */
+        PVOID txfFsctlContext = NULL;
+        result = SafeUploadStageTxfFsctlPreOperation(Data, Objects, &txfFsctlContext);
+    }
     if (result != FLT_PREOP_SUCCESS_NO_CALLBACK) return result;
     /* This fence MUST precede all legacy taint/context/policy callbacks. */
     if (StageStreamForObject(Data->Iopb->TargetFileObject) != NULL)
@@ -3017,7 +3022,6 @@ FLT_PREOP_CALLBACK_STATUS SafeUploadStageDispatch(PFLT_CALLBACK_DATA Data,
         StageTraceFileLifetime(Data, Objects, SAFEUPLOAD_ADMISSION_TRACE_EVENT_FILE_CLEANUP);
         SafeUploadStageWritersOnCleanup(Data, Objects);
 #endif
-        *CompletionContext = NULL;  /* the callee's contract requires it to be NULL on entry (PREfast C6388) */
         return SafeUploadPreCleanup(Data, Objects, CompletionContext);
 #if SAFEUPLOAD_STAGING_PROTOTYPE
     case IRP_MJ_CLOSE:
