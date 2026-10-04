@@ -289,3 +289,8 @@ Fix what it finds, rerun phase 4. Then decide the order of the deferred destinat
   Implementation order: (1) TxF refusal + transaction tracking; (2) writer registry since boot, Free(F) evaluation by file ID,
   Activating classification and status page; (3) admission epoch + two-phase policy apply; (4) Activating enforcement, cutoff flush,
   paging-write denial, cache-barrier promotion; (5) remove StageFence from the admission path; then the Phase 4 suite.
+
+Phase 2 status (2026-10-04): boot start qualified on the guest under boot Verifier (boot-start run 13, [readout](evidence/2026-10-04/boot-start-run13-readout.txt)):
+X4 first write after boot denied with durable readiness recorded first and raw bytes identical; agent-down fail-closed for new opens and writable sections; fresh
+VHDX trusted; E1 shows a late-attached volume Untrusted with "protection pending reboot" and records that a pre-attach mapped writer DID change bytes there (documented
+limit). Open carried-forward items before release: N-01 (normal build needs a canary/trust path), N-02 (installer must seed and verify BootPolicy before the activating reboot).
