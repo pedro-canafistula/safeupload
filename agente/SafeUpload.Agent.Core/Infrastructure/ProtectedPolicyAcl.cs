@@ -1,3 +1,4 @@
+using System.Runtime.Versioning;
 using System.Security.AccessControl;
 using System.Security.Principal;
 
@@ -11,6 +12,7 @@ namespace SafeUpload.Agent.Core.Infrastructure;
 /// Existing mismatches are refused instead of repaired and immediately loaded:
 /// a file exposed to a standard user may already contain a weakened policy.
 /// </summary>
+[SupportedOSPlatform("windows")]
 internal static class ProtectedPolicyAcl
 {
     private static readonly SecurityIdentifier SystemSid =
