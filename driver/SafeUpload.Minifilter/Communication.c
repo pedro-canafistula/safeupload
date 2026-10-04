@@ -648,7 +648,8 @@ Return Value:
         RtlCopyMemory( &controlHeader, InputBuffer, sizeof( controlHeader ) );
         command = controlHeader.Command;
 
-        if (command == SAFEUPLOAD_CONTROL_ADMISSION_PROBE) {
+        if (command == SAFEUPLOAD_CONTROL_ADMISSION_PROBE ||
+            command == SAFEUPLOAD_CONTROL_REGISTRY_ENTRY) {
             ULONG maximumProbeSize = (ULONG)FIELD_OFFSET( SAFEUPLOAD_ADMISSION_PROBE_REQUEST, Strings ) +
                 (2UL * (ULONG)SAFEUPLOAD_ADMISSION_PROBE_MAX_STRING_CHARS * (ULONG)sizeof( WCHAR ));
 
@@ -659,6 +660,12 @@ Return Value:
             ProbeForRead( InputBuffer,
                           InputBufferLength,
                           __alignof( SAFEUPLOAD_ADMISSION_PROBE_REQUEST ) );
+        } else if (command == SAFEUPLOAD_CONTROL_REGISTRY_SET_CAPACITY) {
+            if (InputBufferLength != sizeof(SAFEUPLOAD_CONTROL)) {
+                status = STATUS_INVALID_BUFFER_SIZE;
+                leave;
+            }
+            ProbeForRead(InputBuffer, InputBufferLength, __alignof(SAFEUPLOAD_CONTROL));
         } else if (command == SAFEUPLOAD_CONTROL_ADMISSION_DELETE_STREAM_CONTEXT) {
             ULONG maximumDeleteSize =
                 (ULONG)FIELD_OFFSET(SAFEUPLOAD_ADMISSION_DELETE_STREAM_CONTEXT_REQUEST, Strings) +
@@ -771,9 +778,11 @@ Return Value:
             leave;
         }
 
-        if (command == SAFEUPLOAD_CONTROL_ADMISSION_PROBE) {
+        if (command == SAFEUPLOAD_CONTROL_ADMISSION_PROBE ||
+            command == SAFEUPLOAD_CONTROL_REGISTRY_ENTRY) {
             PSAFEUPLOAD_ADMISSION_PROBE_REQUEST request =
                 (PSAFEUPLOAD_ADMISSION_PROBE_REQUEST)policy;
+            PSAFEUPLOAD_REGISTRY_ENTRY_STATUS registryReply = NULL;
             UNICODE_STRING volumeName;
             UNICODE_STRING relativePath;
             UNICODE_STRING volumePrefix = RTL_CONSTANT_STRING( L"\\Device\\" );
@@ -789,9 +798,19 @@ Return Value:
 
             if (InputBufferLength < (ULONG)FIELD_OFFSET( SAFEUPLOAD_ADMISSION_PROBE_REQUEST, Strings ) ||
                 InputBufferLength > maximumProbeSize ||
-                OutputBuffer != NULL || OutputBufferLength != 0) {
+                (command == SAFEUPLOAD_CONTROL_ADMISSION_PROBE ?
+                    (OutputBuffer != NULL || OutputBufferLength != 0) :
+                    (OutputBuffer == NULL || OutputBufferLength != sizeof(SAFEUPLOAD_REGISTRY_ENTRY_STATUS)))) {
                 status = STATUS_INVALID_BUFFER_SIZE;
                 leave;
+            }
+
+            if (command == SAFEUPLOAD_CONTROL_REGISTRY_ENTRY) {
+#pragma warning( suppress: 6001 )
+                ProbeForWrite(OutputBuffer, sizeof(SAFEUPLOAD_REGISTRY_ENTRY_STATUS),
+                    __alignof(SAFEUPLOAD_REGISTRY_ENTRY_STATUS));
+                registryReply = (PSAFEUPLOAD_REGISTRY_ENTRY_STATUS)policy;
+                RtlZeroMemory(registryReply, sizeof(*registryReply));
             }
 
             // This bounded request is larger than the control header; copy it
@@ -800,7 +819,7 @@ Return Value:
 
             if (request->Control.Version != SAFEUPLOAD_PROTOCOL_VERSION ||
                 request->Control.StructSize != InputBufferLength ||
-                request->Control.Command != SAFEUPLOAD_CONTROL_ADMISSION_PROBE ||
+                request->Control.Command != command ||
                 request->Control.Reserved != 0 ||
                 request->Reserved != 0) {
                 status = STATUS_REVISION_MISMATCH;
@@ -870,7 +889,35 @@ Return Value:
                 leave;
             }
 
-            status = SafeUploadStageAdmissionProbe( &volumeName, &relativePath );
+            if (command == SAFEUPLOAD_CONTROL_ADMISSION_PROBE) {
+                status = SafeUploadStageAdmissionProbe(&volumeName, &relativePath);
+            } else {
+                status = SafeUploadStageRegistryEntryProbe(&volumeName, &relativePath, registryReply);
+                if (NT_SUCCESS(status)) {
+                    RtlCopyMemory(OutputBuffer, registryReply, sizeof(*registryReply));
+                    *ReturnOutputBufferLength = sizeof(*registryReply);
+                }
+            }
+            leave;
+        }
+
+        if (command == SAFEUPLOAD_CONTROL_REGISTRY_SET_CAPACITY) {
+            SAFEUPLOAD_CONTROL capacityControl;
+            if (InputBufferLength != sizeof(capacityControl) || OutputBuffer != NULL ||
+                OutputBufferLength != 0) {
+                status = STATUS_INVALID_BUFFER_SIZE;
+                leave;
+            }
+            RtlCopyMemory(&capacityControl, InputBuffer, sizeof(capacityControl));
+            if (capacityControl.Version != SAFEUPLOAD_PROTOCOL_VERSION ||
+                capacityControl.StructSize != sizeof(capacityControl) ||
+                capacityControl.Command != command ||
+                capacityControl.Reserved > SAFEUPLOAD_WRITER_REGISTRY_TOTAL_LIMIT) {
+                status = STATUS_REVISION_MISMATCH;
+                leave;
+            }
+            SafeUploadStageWritersSetCapacity(capacityControl.Reserved);
+            status = STATUS_SUCCESS;
             leave;
         }
 

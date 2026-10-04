@@ -40,6 +40,16 @@ NTSTATUS SafeUploadStageAllocate(_Inout_ PFLT_CALLBACK_DATA Data, _In_ PUNICODE_
     _In_opt_ PUNICODE_STRING TombstoneStageName,
     _Out_writes_(SAFEUPLOAD_MAX_STAGE_NAME_CHARS) PWCH StageName, _Out_ PUSHORT StageNameLength);
 NTSTATUS SafeUploadStageSeal(_In_ ULONG ProcessId, _In_ PUNICODE_STRING StageName);
+BOOLEAN SafeUploadStageTxfSetInformationMustRefuse(_In_ PFLT_CALLBACK_DATA Data,
+    _In_ PCFLT_RELATED_OBJECTS Objects);
+BOOLEAN SafeUploadStageTxfCreateMustRefuse(_In_ PFLT_CALLBACK_DATA Data,
+    _In_ PCFLT_RELATED_OBJECTS Objects);
+BOOLEAN SafeUploadStageTxfFsctlMustRefuse(_In_ PFLT_CALLBACK_DATA Data,
+    _In_ PCFLT_RELATED_OBJECTS Objects);
+VOID SafeUploadStageTxfRecordRefused(VOID);
+FLT_PREOP_CALLBACK_STATUS SafeUploadStageTxfFsctlPreOperation(
+    _In_ PFLT_CALLBACK_DATA Data, _In_ PCFLT_RELATED_OBJECTS Objects,
+    _Out_ PVOID *CompletionContext);
 
 #if SAFEUPLOAD_STAGING_PROTOTYPE
 extern volatile LONG SafeUploadAdmissionTraceControlState;
@@ -55,6 +65,8 @@ NTSTATUS SafeUploadStageAdmissionTraceReadBatch(
 NTSTATUS SafeUploadStageAdmissionProbe(
     _In_ PCUNICODE_STRING VolumeName,
     _In_ PCUNICODE_STRING RelativePath);
+NTSTATUS SafeUploadStageRegistryEntryProbe(_In_ PCUNICODE_STRING VolumeName,
+    _In_ PCUNICODE_STRING RelativePath, _Out_ PSAFEUPLOAD_REGISTRY_ENTRY_STATUS Status);
 NTSTATUS SafeUploadStageAdmissionDeleteStreamContext(
     _In_ PCUNICODE_STRING VolumeName,
     _In_ PCUNICODE_STRING RelativePath);
@@ -82,18 +94,43 @@ VOID SafeUploadStageAdmissionStopWorker(VOID);
 /* StageWriters.c: H(F), the per-stream count of write file objects (observe-only). */
 #define SAFEUPLOAD_WRITERS_ONLY_CONTEXT ((PVOID)(ULONG_PTR)0x1000)
 BOOLEAN SafeUploadStageWritersWantPostCreate(_In_ PFLT_CALLBACK_DATA Data);
-VOID SafeUploadStageWritersPostCreate(_In_ PFLT_CALLBACK_DATA Data, _In_ PCFLT_RELATED_OBJECTS FltObjects,
-    _In_ FLT_POST_OPERATION_FLAGS Flags);
+NTSTATUS SafeUploadStageWritersReserveCreate(_In_ PFLT_CALLBACK_DATA Data,
+    _In_ PCFLT_RELATED_OBJECTS FltObjects, _Outptr_result_maybenull_ PVOID *Reservation,
+    _Out_ PBOOLEAN Required);
+VOID SafeUploadStageWritersSetCompletion(_In_ PVOID Reservation,
+    _In_opt_ PVOID LegacyCompletionContext, _In_ BOOLEAN LegacyCallbackRequired);
+BOOLEAN SafeUploadStageWritersIsReservation(_In_opt_ PVOID Context);
+VOID SafeUploadStageWritersCancelReservation(_In_opt_ PVOID Reservation);
+NTSTATUS SafeUploadStageWritersPrepareRename(_In_ PFLT_CALLBACK_DATA Data,
+    _In_ PCFLT_RELATED_OBJECTS FltObjects, _In_ PCUNICODE_STRING Destination,
+    _In_ BOOLEAN LinkOperation, _Outptr_result_maybenull_ PVOID *RenameContext);
+BOOLEAN SafeUploadStageWritersIsRenameContext(_In_opt_ PVOID Context);
+VOID SafeUploadStageWritersCompleteRename(_In_opt_ PVOID Context,
+    _In_ BOOLEAN Succeeded, _In_ BOOLEAN Draining);
+NTSTATUS SafeUploadStageWritersPostCreate(_In_ PFLT_CALLBACK_DATA Data,
+    _In_ PCFLT_RELATED_OBJECTS FltObjects, _In_ FLT_POST_OPERATION_FLAGS Flags,
+    _In_opt_ PVOID Reservation, _Out_opt_ PVOID *LegacyCompletionContext,
+    _Out_opt_ PBOOLEAN LegacyCallbackRequired);
 VOID SafeUploadStageWritersOnCleanup(_In_ PFLT_CALLBACK_DATA Data, _In_ PCFLT_RELATED_OBJECTS FltObjects);
 UINT32 SafeUploadStageWritersSnapshot(_In_ PFLT_INSTANCE Instance, _In_ PFILE_OBJECT FileObject);
 /* C(F): writable CreateSections acquired and not yet released (observe-only). */
 VOID SafeUploadStageWritersInitialize(VOID);
-PVOID SafeUploadStageSectionAcquired(_In_ PFLT_CALLBACK_DATA Data);
+NTSTATUS SafeUploadStageSectionAcquired(_In_ PFLT_CALLBACK_DATA Data,
+    _In_ PCFLT_RELATED_OBJECTS FltObjects,
+    _Outptr_result_maybenull_ PVOID *CompletionContext);
 VOID SafeUploadStageSectionAcquireFailed(_In_ PVOID CompletionContext);
 VOID SafeUploadStageSectionAcquireDraining(VOID);
 VOID SafeUploadStageSectionReleased(_In_ PFLT_CALLBACK_DATA Data);
 UINT32 SafeUploadStageSectionsInFlight(_In_opt_ PVOID SectionObjectPointer);
 VOID SafeUploadStageWritersGetStatus(_Out_ PSAFEUPLOAD_WRITER_STATE_STATUS Status);
+NTSTATUS SafeUploadStageWritersRegistryEvaluate(_In_ PFLT_INSTANCE Instance,
+    _In_ PCUNICODE_STRING VolumeName, _In_ PCUNICODE_STRING NormalizedName,
+    _In_ PFILE_OBJECT SourceObject,
+    _Out_ PSAFEUPLOAD_REGISTRY_ENTRY_STATUS Status);
+VOID SafeUploadStageWritersSetCapacity(_In_ UINT32 Capacity);
+VOID SafeUploadStageWritersRecordTxfRefused(VOID);
+NTSTATUS SafeUploadStageTransactionNotification(_In_ PCFLT_RELATED_OBJECTS FltObjects,
+    _In_opt_ PFLT_CONTEXT TransactionContext, _In_ ULONG NotificationMask);
 #endif
 
 #endif

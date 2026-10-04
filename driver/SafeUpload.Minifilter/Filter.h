@@ -240,6 +240,25 @@ typedef struct _SAFEUPLOAD_INSTANCE_TEARDOWN_TOKEN {
 #define SAFEUPLOAD_INSTANCE_STATE_ACTIVE       ((LONG)0)
 #define SAFEUPLOAD_INSTANCE_STATE_TEARING_DOWN ((LONG)1)
 #define SAFEUPLOAD_INSTANCE_STATE_UNKNOWN      ((LONG)2)
+
+/* Sticky prototype registry loss reasons; these are diagnostic bits only. */
+#define SAFEUPLOAD_REGISTRY_UNKNOWN_CAPACITY    ((LONG)0x00000001)
+#define SAFEUPLOAD_REGISTRY_UNKNOWN_ALLOCATION  ((LONG)0x00000002)
+#define SAFEUPLOAD_REGISTRY_UNKNOWN_IDENTITY    ((LONG)0x00000004)
+#define SAFEUPLOAD_REGISTRY_UNKNOWN_TRANSACTION ((LONG)0x00000008)
+#define SAFEUPLOAD_REGISTRY_UNKNOWN_RENAME      ((LONG)0x00000010)
+#define SAFEUPLOAD_REGISTRY_UNKNOWN_TEARDOWN    ((LONG)0x00000020)
+#define SAFEUPLOAD_REGISTRY_UNKNOWN_CLEANUP     ((LONG)0x00000040)
+#define SAFEUPLOAD_REGISTRY_UNKNOWN_TRUST       ((LONG)0x00000080)
+#define SAFEUPLOAD_REGISTRY_UNKNOWN_CREATE_IN_FLIGHT ((LONG)0x00000100)
+#define SAFEUPLOAD_REGISTRY_UNKNOWN_RENAME_IN_FLIGHT ((LONG)0x00000200)
+
+/* FltEnlistInTransaction requires a registered, non-NULL transaction context. */
+typedef struct _SAFEUPLOAD_TRANSACTION_CONTEXT {
+    ULONG Signature;
+    volatile LONG State;
+} SAFEUPLOAD_TRANSACTION_CONTEXT, *PSAFEUPLOAD_TRANSACTION_CONTEXT;
+#define SAFEUPLOAD_TRANSACTION_CONTEXT_SIGNATURE 'xUwS'
 #endif
 
 typedef struct _SAFEUPLOAD_INSTANCE_CONTEXT {
@@ -250,6 +269,7 @@ typedef struct _SAFEUPLOAD_INSTANCE_CONTEXT {
 #if SAFEUPLOAD_STAGING_PROTOTYPE
     PSAFEUPLOAD_INSTANCE_TEARDOWN_TOKEN TeardownToken;
     volatile LONG WritersUntracked; /* Sticky for this attachment if a writer cannot get a context. */
+    volatile LONG RegistryUnknownReasons;
     volatile LONG CanaryState;
     volatile LONG64 CanaryStartInterruptTime;
     NTSTATUS CanaryStatus;
@@ -370,8 +390,8 @@ typedef struct _SAFEUPLOAD_STREAM_CONTEXT {
 
     KSPIN_LOCK WriterLock;
     LIST_ENTRY WriterObjects;
-    volatile LONG WriteObjects;
     volatile LONG WritersUntracked;
+    PVOID WriterRegistryEntry; /* Identity history is owned by StageWriters; H nodes reference it. */
     PSAFEUPLOAD_INSTANCE_TEARDOWN_TOKEN TeardownToken;
 
 #endif
@@ -667,6 +687,10 @@ BOOLEAN SafeUploadInstanceIsTrusted(_In_ PFLT_INSTANCE Instance);
 BOOLEAN SafeUploadInstanceTrustGateSatisfied(_In_ PFLT_INSTANCE Instance);
 VOID SafeUploadInstanceCheckCanaryDeadline(_Inout_ PSAFEUPLOAD_INSTANCE_CONTEXT Context);
 BOOLEAN SafeUploadPolicyHasDestinationScopes(_In_ SAFEUPLOAD_VOLUME_KIND VolumeKind);
+BOOLEAN SafeUploadPolicyMatchesCurrentOrPendingDestination(
+    _In_ SAFEUPLOAD_VOLUME_KIND VolumeKind,
+    _In_opt_ PCUNICODE_STRING NormalizedPath,
+    _In_ BOOLEAN IncludeAncestors);
 
 LONG
 SafeUploadCurrentPolicyGeneration (
@@ -744,11 +768,6 @@ SafeUploadPolicyCopyScope (
     );
 
 VOID SafeUploadPolicySetPending( _In_opt_ const SAFEUPLOAD_POLICY *Pending );
-BOOLEAN SafeUploadPolicyMatchesCurrentOrPendingDestination(
-    _In_ SAFEUPLOAD_VOLUME_KIND VolumeKind,
-    _In_opt_ PCUNICODE_STRING NormalizedPath,
-    _In_ BOOLEAN IncludeAncestors );
-
 VOID SafeUploadStageWritersFreeContext( _Inout_ PSAFEUPLOAD_STREAM_CONTEXT StreamContext );
 NTSTATUS SafeUploadStageFenceInitialize( VOID );
 VOID SafeUploadStageFenceFree( VOID );
