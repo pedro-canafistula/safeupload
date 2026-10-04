@@ -1004,7 +1004,7 @@ $value=$b.ToString().Split([char]0)[0]
         for($i=0;$i -le 100;$i++){
             $bytes=[byte[]]$baseline.Clone()
             if($CaseId -ne 'S00-observer-control'){
-                foreach($offset in @(0,[int]($size/2),$size-128)){
+                foreach($offset in @(0,[int]($size/2),($size-128))){ # parenthesized: ',' binds tighter than '-' in PowerShell
                     $block=[Text.Encoding]::ASCII.GetBytes(('ATTEMPT-'+$RunName+'-trial-'+$i+'-offset-'+$offset).PadRight(128,'U'))
                     if($block.Length -ne 128){throw 'Forbidden block too long'}
                     [Array]::Copy($block,0,$bytes,$offset,128);$state.ForbiddenBlocks+=[Convert]::ToBase64String($block)
