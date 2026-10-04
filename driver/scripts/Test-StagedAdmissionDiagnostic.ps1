@@ -1519,8 +1519,11 @@ public static class SafeUploadRegistryTxfNative
         uint inputLength, byte[] output, uint outputLength, out uint returned, IntPtr overlapped);
     [DllImport("ntdll.dll", EntryPoint="RtlGetCurrentTransaction")]
     static extern IntPtr GetCurrentTransaction();
+    // BOOLEAN, not NTSTATUS: TRUE is success. Reading it as a status (run 15) returned early with the transaction still
+    // set on the thread, so every later file operation ran inside a dead transaction and restoration failed.
     [DllImport("ntdll.dll", EntryPoint="RtlSetCurrentTransaction")]
-    static extern uint SetCurrentTransaction(IntPtr transaction);
+    [return: MarshalAs(UnmanagedType.U1)]
+    static extern bool SetCurrentTransaction(IntPtr transaction);
     [DllImport("ntdll.dll", EntryPoint="NtCreateFile")]
     static extern uint NtCreateFileNative(out IntPtr file, uint desiredAccess,
         ref ObjectAttributes objectAttributes, out IoStatusBlock ioStatus, IntPtr allocationSize,
@@ -1564,9 +1567,8 @@ public static class SafeUploadRegistryTxfNative
             Marshal.StructureToPtr(attributes, attributesBuffer, false);
 
             previousTransaction = GetCurrentTransaction();
-            uint setStatus = SetCurrentTransaction(transaction);
-            if (setStatus != 0) return setStatus;
-            transactionSet = true;
+            transactionSet = true; // reset in finally even if the set call reports failure
+            if (!SetCurrentTransaction(transaction)) return 0xC0000001; // STATUS_UNSUCCESSFUL
             ObjectAttributes localAttributes = (ObjectAttributes)Marshal.PtrToStructure(
                 attributesBuffer, typeof(ObjectAttributes));
             IoStatusBlock ioStatus;
@@ -4198,6 +4200,9 @@ public static class SafeUploadEolNative
                 $stream.Dispose()
                 [void](Assert-RTEntry $path ('Corpus_' + $index + '_Close') $true 0 0 'no' 0 $true)
             }
+            # Always record the registry state after the corpus, so an instance-level Unknown can be attributed even when
+            # no RunError triggers the diagnostics (run 15 lost them).
+            Write-Host ('RT_StatusAfterCorpus=' + ((Get-RTStats) | ConvertTo-Json -Compress))
 
             $duplicatePath = $RegistryTxfCorpus[4]
             $duplicateSource = [IO.FileStream]::new($duplicatePath, [IO.FileMode]::Open,
