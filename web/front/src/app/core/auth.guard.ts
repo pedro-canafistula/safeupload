@@ -1,19 +1,17 @@
 import { inject } from '@angular/core';
-import { CanActivateFn, Router } from '@angular/router';
+import { CanActivateChildFn, Router } from '@angular/router';
 import { catchError, map, of } from 'rxjs';
 import { AuthService } from './auth.service';
 
-export const authGuard: CanActivateFn = () => {
+export const authGuard: CanActivateChildFn = () => {
   const auth = inject(AuthService);
   const router = inject(Router);
 
-  if (auth.usuarioLogado) {
-    return true;
-  }
-
   return auth.carregarSessao().pipe(
-    map(() => true),
-    catchError(() => of(router.createUrlTree(['/login'])))
+    map((usuario) => usuario.role === 'admin' ? true : router.createUrlTree(['/acesso-negado'])),
+    catchError((erro) => of(router.createUrlTree(['/login'], {
+      queryParams: erro.status === 401 ? { sessao: 'expirada' } : { servico: 'indisponivel' }
+    })))
   );
 };
 

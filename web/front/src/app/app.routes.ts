@@ -7,14 +7,16 @@ import { PainelComponent } from './pages/painel/painel.component';
 import { AuditoriaComponent } from './pages/auditoria/auditoria.component';
 import { EndpointsComponent } from './pages/endpoints/endpoints.component';
 import { RelatoriosComponent } from './pages/relatorios/relatorios.component';
+import { AcessoNegadoComponent } from './pages/acesso-negado/acesso-negado.component';
 
 export const routes: Routes = [
   { path: 'login', component: LoginComponent },
   { path: 'cadastro', component: CadastroComponent },
+  { path: 'acesso-negado', component: AcessoNegadoComponent },
   {
     path: '',
     component: LayoutComponent,
-    canActivate: [authGuard],
+    canActivateChild: [authGuard],
     children: [
       { path: '', redirectTo: 'painel', pathMatch: 'full' },
       { path: 'painel', component: PainelComponent },
