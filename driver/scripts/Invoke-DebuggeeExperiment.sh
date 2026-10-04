@@ -205,7 +205,8 @@ record_recovery_required() {  # $1 concise reason
     write_offline_rollback_step || true
 }
 
-if [ "$name" = boot-start ]; then
+case "$name" in boot-start*) boot_start_run=1 ;; *) boot_start_run=0 ;; esac
+if [ "$boot_start_run" = 1 ]; then
     : "${BOOT_START_AFTER_BOOT_PS:?set the AfterBoot PowerShell invocation}"
     : "${BOOT_START_FINAL_PS:?set the Finalize PowerShell invocation}"
     run_remote_phase prepare "$invocation"

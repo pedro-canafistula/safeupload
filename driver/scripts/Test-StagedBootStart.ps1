@@ -861,6 +861,14 @@ if ($Phase -eq 'Prepare') {
     if ($LASTEXITCODE -ne 0 -or (Get-ItemProperty "HKLM:\$registryService").Start -ne 0) {
         throw 'Could not stage the test driver as boot start.'
     }
+    # Boot review N-03: assert every service setting the boot depends on before requesting the reboot.
+    $svc = Get-ItemProperty "HKLM:\$registryService"
+    if ($svc.Start -ne 0 -or $svc.ErrorControl -ne 1 -or $svc.Group -ne 'FSFilter Anti-Virus' -or
+        @($svc.DependOnService).Count -ne 1 -or @($svc.DependOnService)[0] -ne 'FltMgr' -or $svc.Type -ne 2) {
+        throw ('Boot service settings are not as required: Start=' + $svc.Start + ';ErrorControl=' + $svc.ErrorControl +
+            ';Group=' + $svc.Group + ';Depend=' + (@($svc.DependOnService) -join ',') + ';Type=' + $svc.Type)
+    }
+    Write-Output ('BootServiceSettings=Start:0;ErrorControl:1;Group:FSFilter Anti-Virus;Depend:FltMgr;Type:2;PASS')
     $deviceName = [Text.StringBuilder]::new(1024)
     if ([SafeUploadBootSectionNative]::QueryDosDevice('C:', $deviceName, $deviceName.Capacity) -eq 0) {
         throw 'QueryDosDevice could not resolve the C: boot volume for its durable registry scope.'
