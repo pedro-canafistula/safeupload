@@ -295,7 +295,6 @@ NTSTATUS SafeUploadReadBootPolicy(_In_ PUNICODE_STRING ServiceRegistryPath,
     UINT32 bootPolicyState = SAFEUPLOAD_BOOT_POLICY_STATE_UNREADABLE;
     NTSTATUS status;
 
-    PAGED_CODE();
     if (BootStartMode != NULL) *BootStartMode = TRUE; /* Unknown start mode skips volume scans. */
     if (ServiceRegistryPath == NULL || Policy == NULL || Scopes == NULL || State == NULL || BootStartMode == NULL ||
         ServiceRegistryPath->Buffer == NULL || ServiceRegistryPath->Length == 0 ||

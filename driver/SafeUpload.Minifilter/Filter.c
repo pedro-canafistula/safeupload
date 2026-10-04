@@ -123,7 +123,6 @@ static FLT_PREOP_CALLBACK_STATUS SafeUploadPreAcquireSection(_Inout_ PFLT_CALLBA
     #pragma alloc_text(PAGE, SafeUploadPreCleanup)
     #pragma alloc_text(PAGE, SafeUploadPreWrite)
     #pragma alloc_text(PAGE, SafeUploadPreSetInformation)
-    #pragma alloc_text(PAGE, SafeUploadCreateIsWriter)
     #pragma alloc_text(PAGE, SafeUploadFailClosedProtectedCreate)
     #pragma alloc_text(PAGE, SafeUploadPreAcquireSection)
 

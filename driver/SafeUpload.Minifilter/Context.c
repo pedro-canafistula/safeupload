@@ -76,7 +76,6 @@ static VOID SafeUploadInstanceContextCleanup(
     #pragma alloc_text(PAGE, SafeUploadClassifyVolume)
     #pragma alloc_text(PAGE, SafeUploadSetInstanceContext)
     #pragma alloc_text(PAGE, SafeUploadInstanceIsTrusted)
-    #pragma alloc_text(PAGE, SafeUploadInstanceTrustGateSatisfied)
     #pragma alloc_text(PAGE, SafeUploadGetOrCreateStreamContext)
     #pragma alloc_text(PAGE, SafeUploadMarkHandleForWrite)
 #endif
