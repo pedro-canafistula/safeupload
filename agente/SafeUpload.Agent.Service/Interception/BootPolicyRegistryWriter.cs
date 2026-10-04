@@ -1,4 +1,5 @@
 using System.Buffers.Binary;
+using System.Runtime.Versioning;
 using System.Security.AccessControl;
 using System.Security.Principal;
 using Microsoft.Win32;
@@ -14,6 +15,7 @@ internal interface IBootPolicyRegistryBackend
     void WritePending(byte[] value);
     void WriteCommitted(byte[] value);
     void ClearPending();
+    void VerifySeeded(byte[] expectedCommitted);
 }
 
 /// <summary>
@@ -48,6 +50,25 @@ internal sealed class BootPolicyRegistryWriter
         _backend.WriteCommitted(candidateBytes);
         _backend.ClearPending();
         finalizeAuthenticatedPolicy();
+    }
+
+    /// <summary>
+    /// Seeds the policy before the driver is activated. The pending union
+    /// keeps previous scopes covered until the candidate is committed; the
+    /// final read-back proves the exact record, no pending value, and both
+    /// protected registry key descriptors before success is reported.
+    /// </summary>
+    internal void Seed(SafeUploadPolicyMessage candidate)
+    {
+        byte[] candidateBytes = BootPolicyCodec.Encode(candidate);
+        BootPolicyScopes prior = _backend.ReadKnownScopes();
+        BootPolicyScopes pending = BootPolicyCodec.Union(prior,
+            BootPolicyCodec.DecodeKnown(candidateBytes));
+
+        _backend.WritePending(BootPolicyCodec.Encode(pending));
+        _backend.WriteCommitted(candidateBytes);
+        _backend.ClearPending();
+        _backend.VerifySeeded(candidateBytes);
     }
 }
 
@@ -236,6 +257,7 @@ internal static unsafe class BootPolicyCodec
     }
 }
 
+[SupportedOSPlatform("windows")]
 internal sealed class WindowsBootPolicyRegistryBackend : IBootPolicyRegistryBackend
 {
     private const string ServiceKeyPath = @"SYSTEM\CurrentControlSet\Services\SafeUpload";
@@ -269,10 +291,26 @@ internal sealed class WindowsBootPolicyRegistryBackend : IBootPolicyRegistryBack
         {
             policy.DeleteValue(PendingValue, throwOnMissingValue: false);
             policy.Flush();
-            if (ReadBinary(policy, PendingValue) is not null)
+            if (HasValue(policy, PendingValue))
                 throw new IOException("Pending boot policy remained after deletion.");
             VerifySecurity(parameters);
             VerifySecurity(policy);
+        }
+    }
+
+    public void VerifySeeded(byte[] expectedCommitted)
+    {
+        using RegistryKey parameters = OpenProtectedKeys(create: false, out RegistryKey policy,
+            repairSecurity: false);
+        using (policy)
+        {
+            VerifySecurity(parameters);
+            VerifySecurity(policy);
+            byte[]? committed = ReadBinary(policy, ScopesValue);
+            if (committed is null || !committed.AsSpan().SequenceEqual(expectedCommitted))
+                throw new IOException("Committed boot policy failed exact final read-back.");
+            if (HasValue(policy, PendingValue))
+                throw new IOException("Pending boot policy remained after seeding.");
         }
     }
 
@@ -304,7 +342,11 @@ internal sealed class WindowsBootPolicyRegistryBackend : IBootPolicyRegistryBack
         return bytes;
     }
 
-    private static RegistryKey OpenProtectedKeys(bool create, out RegistryKey policy)
+    private static bool HasValue(RegistryKey key, string name) =>
+        key.GetValueNames().Contains(name, StringComparer.OrdinalIgnoreCase);
+
+    private static RegistryKey OpenProtectedKeys(bool create, out RegistryKey policy,
+        bool repairSecurity = true)
     {
         using RegistryKey service = Registry.LocalMachine.OpenSubKey(ServiceKeyPath, writable: true)
             ?? throw new IOException("SafeUpload service registry key is missing or not writable.");
@@ -316,16 +358,22 @@ internal sealed class WindowsBootPolicyRegistryBackend : IBootPolicyRegistryBack
         RegistryKey? openedPolicy = null;
         try
         {
-            parameters.SetAccessControl(security);
-            parameters.Flush();
+            if (repairSecurity)
+            {
+                parameters.SetAccessControl(security);
+                parameters.Flush();
+            }
             VerifySecurity(parameters);
             RegistryKey createdPolicy = create
                 ? parameters.CreateSubKey(BootPolicyKey, RegistryKeyPermissionCheck.ReadWriteSubTree,
                     RegistryOptions.None, security) ?? throw new IOException("Could not create BootPolicy key.")
                 : parameters.OpenSubKey(BootPolicyKey, writable: true) ?? throw new IOException("BootPolicy key is missing.");
             openedPolicy = createdPolicy;
-            createdPolicy.SetAccessControl(security);
-            createdPolicy.Flush();
+            if (repairSecurity)
+            {
+                createdPolicy.SetAccessControl(security);
+                createdPolicy.Flush();
+            }
             VerifySecurity(createdPolicy);
             policy = createdPolicy;
             return parameters;

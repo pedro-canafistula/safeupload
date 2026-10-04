@@ -38,15 +38,6 @@ namespace SafeUpload.Agent.Service.Interception;
 public sealed class MinifilterInterceptor : BackgroundService
 {
     /// <summary>
-    /// Margem entre o prazo que o driver espera e o que o motor recebe.
-    ///
-    /// O motor tem de desistir <b>antes</b> do driver, e não junto:
-    /// responder no instante em que o kernel parou de esperar é o mesmo que
-    /// não responder, e ainda gastou o tempo de quem esperava.
-    /// </summary>
-    private static readonly TimeSpan Margin = TimeSpan.FromMilliseconds(500);
-
-    /// <summary>
     /// O que o motor recebe, derivado da RN-012 quando a política carrega.
     /// Antes disso não há inspeção acontecendo, então o valor não importa.
     /// </summary>
@@ -61,6 +52,7 @@ public sealed class MinifilterInterceptor : BackgroundService
     private readonly StagedJustifications _stagedJustifications;
     private readonly ILogger<MinifilterInterceptor> _logger;
     private readonly bool _stagingEnabled;
+    private readonly SemaphoreSlim _bootPolicyGate = new(1, 1);
     private StagedTransferAllocator? _stageAllocator;
     private StagedTransferJournal? _stageJournal;
     private StagedTransferPublisher? _stagePublisher;
@@ -115,6 +107,36 @@ public sealed class MinifilterInterceptor : BackgroundService
         thread.Start();
 
         return Task.CompletedTask;
+    }
+
+    /// <inheritdoc />
+    public override async Task StopAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            await _bootPolicyGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+            try
+            {
+                await BootPolicySeeder.SeedAsync(_policyStore,
+                    new BootPolicyRegistryWriter(new WindowsBootPolicyRegistryBackend()),
+                    cancellationToken).ConfigureAwait(false);
+                _logger.LogInformation("BootPolicy reseeded for the next boot during service shutdown.");
+            }
+            finally
+            {
+                _bootPolicyGate.Release();
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            _logger.LogWarning("Shutdown BootPolicy reseed was cancelled; the last durable policy remains in place.");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Shutdown BootPolicy reseed failed; the last durable policy remains in place.");
+        }
+
+        await base.StopAsync(cancellationToken).ConfigureAwait(false);
     }
 
     private void Run(CancellationToken stoppingToken)
@@ -484,46 +506,21 @@ public sealed class MinifilterInterceptor : BackgroundService
         {
             Policy policy = _policyStore.LoadAsync(CancellationToken.None).GetAwaiter().GetResult();
             MonitoredScopes scopes = policy.MonitoredScopes;
-            var builder = new PolicyBuilder();
-
-            foreach (string extension in scopes.Extensions)
-            {
-                builder.WithExtension(extension);
-            }
-
-            foreach (string path in scopes.DestinationPaths)
-            {
-                builder.WithDestination(path);
-            }
-
-            // Classify supported files by content wherever they reside.
-            // The minifilter only sets source scope for read opens. Its
-            // path-sensitive stream cache is disabled in this mode.
-            builder.WithAllSources();
-
-            foreach (string image in policy.ExcludedProcesses)
-            {
-                builder.WithExcludedImage(image);
-            }
-
-            builder.WithVolumeKinds(scopes.RemovableDrives, scopes.NetworkPaths);
-
-            // O prazo do kernel sai da RN-012, e nao de uma constante no
-            // driver. O motor recebe menos do que o driver espera: a margem
-            // e o que garante que a resposta chegue enquanto ainda ha quem
-            // a receba.
-            TimeSpan kernelDeadline = policy.InspectionTimeout + Margin;
-
-            builder.WithVerdictTimeout(kernelDeadline);
-            builder.WithAuditOnly(policy.AuditOnly);
-            builder.WithOverrideAllowed(policy.OverrideAllowed);
             _budget = policy.InspectionTimeout;
 
-            SafeUploadPolicyMessage driverPolicy = builder.Build();
+            SafeUploadPolicyMessage driverPolicy = MinifilterPolicyFactory.Build(policy);
             var bootPolicyWriter = new BootPolicyRegistryWriter(new WindowsBootPolicyRegistryBackend());
-            bootPolicyWriter.Apply(driverPolicy,
-                () => port.SetPolicy(driverPolicy),
-                () => port.SetPolicy(driverPolicy, finalizeDurableBootScopes: true));
+            _bootPolicyGate.Wait();
+            try
+            {
+                bootPolicyWriter.Apply(driverPolicy,
+                    () => port.SetPolicy(driverPolicy),
+                    () => port.SetPolicy(driverPolicy, finalizeDurableBootScopes: true));
+            }
+            finally
+            {
+                _bootPolicyGate.Release();
+            }
             _overrideAllowed = policy.OverrideAllowed;
             _auditOnly = policy.AuditOnly;
             _policyVersion = policy.Version;

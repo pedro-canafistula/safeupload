@@ -293,4 +293,4 @@ Fix what it finds, rerun phase 4. Then decide the order of the deferred destinat
 Phase 2 status (2026-10-04): boot start qualified on the guest under boot Verifier (boot-start run 13, [readout](evidence/2026-10-04/boot-start-run13-readout.txt)):
 X4 first write after boot denied with durable readiness recorded first and raw bytes identical; agent-down fail-closed for new opens and writable sections; fresh
 VHDX trusted; E1 shows a late-attached volume Untrusted with "protection pending reboot" and records that a pre-attach mapped writer DID change bytes there (documented
-limit). Open carried-forward items before release: N-01 (normal build needs a canary/trust path), N-02 (installer must seed and verify BootPolicy before the activating reboot).
+limit). Open carried-forward item before release: N-01 (normal build needs a canary/trust path). N-02 implementation now has a SYSTEM-only agent seed mode and installer gate before restoring driver boot-start; Windows verification of the installer path and final registry read-back remains required.

@@ -79,7 +79,9 @@ sc.exe qsidtype SafeUploadAgent
 
 O script registra o serviço como LocalSystem e configura `SERVICE_SID_TYPE_UNRESTRICTED` para que o token contenha
 `NT SERVICE\SafeUploadAgent`, exigido pelo driver para substituir política e conceder autorizações. Ele não inicia o serviço.
-Depois de instalar o driver boot-start, reinicie o Windows; a proteção só é anunciada após esse reboot.
+Instale primeiro o INF do minifiltro e execute o script antes de reiniciar. Ele semeia e verifica `BootPolicy` como SYSTEM,
+mantém o driver em início sob demanda até a semeadura terminar e então o deixa em boot-start. Se a semeadura falhar, a
+instalação para e o driver fica em início sob demanda. O filtro não é iniciado pelo instalador; a proteção ativa depois do reboot.
 
 Antes de ler `policy.json`, o agente exige ACL protegida e explícita, sem ACEs herdadas, com controle total somente para
 SYSTEM e Administradores em `%ProgramData%\SafeUpload` e no arquivo. Se a ACL existente não corresponder, ele recusa o

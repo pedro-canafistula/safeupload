@@ -157,5 +157,12 @@ public sealed class BootPolicyRegistryWriterTests
             Pending = null;
             Operations.Add("clear");
         }
+
+        public void VerifySeeded(byte[] expectedCommitted)
+        {
+            Operations.Add("verify-seeded");
+            Assert.Equal(expectedCommitted, Committed);
+            Assert.Null(Pending);
+        }
     }
 }

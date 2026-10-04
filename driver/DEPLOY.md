@@ -63,13 +63,16 @@ Regras que não se negociam:
 ## O que este driver faz hoje
 
 **Instalação exige reinicialização.** O INF configura `SafeUpload` como
-`SERVICE_BOOT_START`. Instaladores e caminhos de deploy apenas deixam o
-binário e essa configuração prontos; não use `fltmc load` nem `sc start` para
-iniciar o filtro. A proteção só pode ser anunciada depois do primeiro boot
-com o driver. Se alguém o carregar manualmente mais tarde, os volumes ficam
-`Untrusted` e o Inspector informa `protection pending reboot` até reiniciar.
-Sem escopos válidos no registro, ou após `ACL_REJECTED`, o driver não reivindica
-proteção baseada na política de boot.
+`SERVICE_BOOT_START`. Antes de qualquer reinicialização, o instalador do agente
+mantém o serviço do driver em `DEMAND_START`, executa `--seed-boot-policy`
+como `SYSTEM`, verifica o registro durável e só então volta a configurar
+`BOOT_START`. Não reinicie entre instalar o INF e concluir o instalador do
+agente. O filtro não é iniciado pelo instalador. A proteção só pode ser
+anunciada depois do primeiro boot com o driver. Se alguém o carregar
+manualmente mais tarde, os volumes ficam `Untrusted` e o Inspector informa
+`protection pending reboot` até reiniciar. Sem escopos válidos no registro, ou
+após `ACL_REJECTED`, o driver não reivindica proteção baseada na política de
+boot.
 
 - Intercepta `IRP_MJ_CREATE`, `IRP_MJ_CLEANUP`, `IRP_MJ_SET_INFORMATION`
   (rename e hard link) e escritas não paginadas em `IRP_MJ_WRITE`.
@@ -374,12 +377,12 @@ VirtualBox), com a VM desligada ou em estado estável:
 - Hyper-V: `Checkpoint-VM -Name "<nome-da-vm>" -SnapshotName "pre-safeupload"`
 - VMware / VirtualBox: use o menu de snapshots da interface.
 
-Anote o nome do snapshot. O passo 10 depende dele.
+Anote o nome do snapshot. O passo 11 depende dele.
 
 ### 2. Preparar a VM para aceitar assinatura de teste
 
 Sem isto, o Windows recusa carregar o driver com
-`STATUS_INVALID_IMAGE_HASH` e o `fltmc load` do passo 5 falha.
+`STATUS_INVALID_IMAGE_HASH` e o carregamento manual com `fltmc load` falha.
 
 **2a. Desligar o Secure Boot** no firmware da VM (configuração do
 hipervisor). Confirme dentro do Windows:
@@ -448,7 +451,7 @@ Confira que a assinatura agora é reconhecida:
 certutil -verify -urlfetch C:\safeupload\SafeUpload.sys
 ```
 
-### 4. Instalar e deixar o driver boot-start
+### 4. Instalar o pacote do driver sem reiniciar
 
 ```
 rundll32.exe setupapi.dll,InstallHinfSection DefaultInstall 128 C:\safeupload\SafeUpload.inf
@@ -464,14 +467,46 @@ sc query SafeUpload
 ```
 
 Esperado antes da reinicialização: `TYPE : 2 FILE_SYSTEM_DRIVER` e
-`STATE : 1 STOPPED`. Confira o tipo de início:
+`STATE : 1 STOPPED`. O INF pode inicialmente registrar `BOOT_START`; não
+reinicie ainda. Não inicie o filtro com `fltmc load` ou `sc start`.
+
+### 5. Semear a política antes do reboot
+
+Com o serviço do driver criado pelo INF e ainda descarregado, instale o agente
+antes de reiniciar:
+
+```powershell
+.\agente\scripts\Install-SafeUploadAgent.ps1 `
+  -ServiceExecutablePath "C:\caminho\publicado\SafeUpload.Agent.Service.exe"
+```
+
+O instalador muda temporariamente o tipo de início do driver para demanda e
+cria uma tarefa agendada de execução única como `SYSTEM`. O processo carrega e
+valida `C:\ProgramData\SafeUpload\policy.json` pelo mesmo caminho de ACL do
+serviço, grava `PendingScopes`, `Scopes`, remove `PendingScopes` e confere os
+bytes finais e o proprietário/DACL de `Parameters` e `BootPolicy`. Qualquer
+falha encerra a instalação antes de voltar para `BOOT_START`. O agente e o
+filtro não são iniciados. O instalador imprime `Protection activates after
+reboot.`; só então reinicie o Windows.
+
+Confira que o instalador deixou o driver em boot-start:
 
 ```
 sc qc SafeUpload
 ```
 
-`START_TYPE` deve mostrar `BOOT_START` (`0`). A instalação só prepara o
-próximo boot; não inicie o filtro com `fltmc load` ou `sc start`.
+`START_TYPE` deve mostrar `BOOT_START` (`0`).
+
+Os prefixos de pasta no registro usam nomes como
+`\Device\HarddiskVolume3\...`, derivados da letra de unidade no momento da
+semeadura. O sufixo numérico `HarddiskVolumeN` pode mudar entre boots. O
+serviço, em modo `Minifilter`, atualiza o registro quando aplica a política
+em cada início e também faz uma nova semeadura ao encerrar; isso prepara o próximo boot, mas não
+corrige o boot atual se o número mudar antes de o agente iniciar. Não mude a
+versão nem o formato do registro manualmente. A correção completa exige um
+formato de política com identidade estável de volume (por exemplo, GUID de
+volume) e uma mudança no driver para comparar essa identidade com cada volume
+montado, em vez de depender do nome `HarddiskVolumeN`.
 
 **Arquivo copiado:**
 
@@ -487,7 +522,7 @@ notepad C:\Windows\INF\setupapi.dev.log
 
 Procure pelas últimas entradas contendo `SafeUpload`.
 
-### 5. Reiniciar para iniciar a proteção
+### 6. Reiniciar para iniciar a proteção
 
 Reinicie o Windows depois da instalação ou de trocar o driver:
 
@@ -536,7 +571,7 @@ comuns:
 > Com o instalador legado que este INF usa, ela tem que estar em
 > `Services\SafeUpload\Instances`. Se estiver em
 > `Services\SafeUpload\Parameters\Instances`, o INF aplicado é de uma versão
-> anterior à correção desse layout — reinstale com o INF atual (passo 8d
+> anterior à correção desse layout — reinstale com o INF atual (passo 9d
 > para remover, depois passo 4).
 
 Conferir que o filtro está registrado:
@@ -562,7 +597,7 @@ fltmc instances -f SafeUpload
 Esperado — uma instância por volume local (`C:`, `D:`, etc.). Volumes de
 rede são recusados de propósito pelo `InstanceSetup` do driver.
 
-### 6. Ligar o Driver Verifier apenas neste driver
+### 7. Ligar o Driver Verifier apenas neste driver
 
 O Verifier é o que transforma um bug silencioso (uso de memória liberada,
 IRQL errado, vazamento de pool) em uma tela azul imediata e diagnosticável.
@@ -592,12 +627,12 @@ ligar o Verifier aqui).
 
 O Verifier não muda o tipo boot-start. O filtro continua iniciando no boot.
 
-### 7. Teste de fumaça
+### 8. Teste de fumaça
 
 O inspetor é o "log" desta versão: ele imprime no console cada operação que
 o kernel manda.
 
-**7a. Preparar o arquivo de bloqueio ANTES de tudo.**
+**8a. Preparar o arquivo de bloqueio ANTES de tudo.**
 
 Isto tem que ser feito com o inspetor **desligado**. Enquanto ele estiver
 rodando, qualquer tentativa de *criar* um arquivo com `BLOQUEAR_TESTE` no
@@ -610,7 +645,7 @@ echo conteudo de teste > C:\safeupload-teste\BLOQUEAR_TESTE.txt
 echo arquivo normal > C:\safeupload-teste\normal.txt
 ```
 
-**7b. Iniciar o inspetor** em um Prompt de Comando **como Administrador**
+**8b. Iniciar o inspetor** em um Prompt de Comando **como Administrador**
 (a porta é acessível apenas a SYSTEM e Administradores):
 
 ```
@@ -627,7 +662,7 @@ Conectado. Aguardando requisicoes (Ctrl+C para sair).
 ```
 
 Se aparecer `ERRO: nao foi possivel conectar na porta`, o filtro não está
-carregado (volte ao passo 5) ou o prompt não está elevado.
+carregado (volte ao passo 6) ou o prompt não está elevado.
 
 Se **não aparecer nada** e o prompt voltar na hora, o processo morreu no
 carregador antes de chegar ao `main`. Confirme:
@@ -649,7 +684,7 @@ dumpbin /dependents C:\safeupload-pkg\SafeUpload.Inspector.exe
 Só podem aparecer `KERNEL32.dll` e `FLTLIB.DLL`. Se aparecerem
 `VCRUNTIME140D.dll` ou `ucrtbased.dll`, recompile e recopie.
 
-**7c. Caso permitido.** Em *outra* janela:
+**8c. Caso permitido.** Em *outra* janela:
 
 ```
 notepad C:\safeupload-teste\normal.txt
@@ -666,7 +701,7 @@ como:
 O caminho vem em forma NT (`\Device\HarddiskVolumeN\...`), não em forma DOS
 (`C:\...`). Isso é o caminho normalizado que o Filter Manager entrega.
 
-**7d. Caso bloqueado:**
+**8d. Caso bloqueado:**
 
 ```
 notepad C:\safeupload-teste\BLOQUEAR_TESTE.txt
@@ -687,12 +722,12 @@ E no inspetor:
 [57] CREATE pid=9120   cmd.exe          \Device\HarddiskVolume3\safeupload-teste\BLOQUEAR_TESTE.txt  => BLOQUEADO
 ```
 
-**7e. Caso de falha de inspeção (RN-013).** Feche o inspetor com `Ctrl+C` e
-repita o passo 7d. O arquivo agora **abre normalmente**: sem inspetor
+**8e. Caso de falha de inspeção (RN-013).** Feche o inspetor com `Ctrl+C` e
+repita o passo 8d. O arquivo agora **abre normalmente**: sem inspetor
 conectado, o driver permite tudo. Esse é o comportamento correto e
 proposital — falha de inspeção nunca vira bloqueio.
 
-**7f. Rastros do kernel (opcional).** As mensagens `DbgPrintEx` do driver
+**8f. Rastros do kernel (opcional).** As mensagens `DbgPrintEx` do driver
 saem em `DPFLTR_INFO_LEVEL`, que o kernel filtra por padrão. Para vê-las é
 preciso um depurador de kernel anexado (ou o DebugView do Sysinternals com
 "Capture Kernel" ligado) **e** subir a máscara:
@@ -704,9 +739,9 @@ preciso um depurador de kernel anexado (ou o DebugView do Sysinternals com
   reg add "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Debug Print Filter" /v IHVDRIVER /t REG_DWORD /d 0xF /f
   ```
 
-### 8. Descarregar e desinstalar
+### 9. Descarregar e desinstalar
 
-**8a. Pare o inspetor primeiro** (`Ctrl+C` na janela dele).
+**9a. Pare o inspetor primeiro** (`Ctrl+C` na janela dele).
 
 Isso é obrigatório: o driver **recusa** um descarregamento voluntário
 enquanto houver inspetor conectado. Se você tentar `fltmc unload` com ele
@@ -714,7 +749,7 @@ rodando, o comando falha com `STATUS_FLT_DO_NOT_DETACH` (`0xC01C0010`).
 É proposital — descarregar sob um cliente vivo deixa a ordem dos eventos
 imprevisível.
 
-**8b. Descarregar o filtro:**
+**9b. Descarregar o filtro:**
 
 ```
 fltmc unload SafeUpload
@@ -728,14 +763,14 @@ fltmc filters
 
 `SafeUpload` não deve mais aparecer na lista.
 
-**8c. Desligar o Driver Verifier:**
+**9c. Desligar o Driver Verifier:**
 
 ```
 verifier /reset
 shutdown /r /t 0
 ```
 
-**8d. Desinstalar o INF (remove o serviço e o arquivo):**
+**9d. Desinstalar o INF (remove o serviço e o arquivo):**
 
 ```
 rundll32.exe setupapi.dll,InstallHinfSection DefaultUninstall 128 C:\safeupload\SafeUpload.inf
@@ -756,7 +791,7 @@ sc query SafeUpload
 
 Esperado: `O serviço especificado não existe como um serviço instalado.`
 
-**8e. (Opcional) Reverter o modo de teste:**
+**9e. (Opcional) Reverter o modo de teste:**
 
 ```
 bcdedit /set testsigning off
@@ -765,9 +800,9 @@ certutil -delstore TrustedPublisher "SafeUpload Test Signing"
 shutdown /r /t 0
 ```
 
-### 9. Em caso de tela azul (BSOD)
+### 10. Em caso de tela azul (BSOD)
 
-**9a. Garanta que a VM alvo está configurada para gerar dump.** Faça isto
+**10a. Garanta que a VM alvo está configurada para gerar dump.** Faça isto
 *antes* de precisar:
 
 - `sysdm.cpl` → Avançado → Inicialização e Recuperação → Configurações →
@@ -781,20 +816,20 @@ Equivalente por linha de comando (1 = completo, 2 = kernel):
 reg add "HKLM\SYSTEM\CurrentControlSet\Control\CrashControl" /v CrashDumpEnabled /t REG_DWORD /d 2 /f
 ```
 
-**9b. Depois do BSOD**, copie o dump da VM alvo para esta VM de
+**10b. Depois do BSOD**, copie o dump da VM alvo para esta VM de
 desenvolvimento:
 
 ```
 C:\Windows\MEMORY.DMP  ->  C:\safeupload-dumps\MEMORY.DMP
 ```
 
-**9c. Abrir no WinDbg** (nesta VM):
+**10c. Abrir no WinDbg** (nesta VM):
 
 ```
 & "C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\windbg.exe" -z C:\safeupload-dumps\MEMORY.DMP
 ```
 
-**9d. Dentro do WinDbg**, na ordem:
+**10d. Dentro do WinDbg**, na ordem:
 
 ```
 .symfix
@@ -811,7 +846,7 @@ símbolo não casa.
 O `!analyze -v` mostra o bugcheck, o módulo culpado (`MODULE_NAME`) e a
 pilha. Se `MODULE_NAME` for `SafeUpload`, a falha é nossa.
 
-**9e. Estado do Filter Manager** no momento do crash:
+**10e. Estado do Filter Manager** no momento do crash:
 
 ```
 .load fltkd
@@ -826,7 +861,7 @@ seguida:
 !fltkd.volumes
 ```
 
-**9e-bis. Nem toda tela azul é do driver — confira antes de investigar.**
+**10e-bis. Nem toda tela azul é do driver — confira antes de investigar.**
 
 A primeira pergunta, sempre:
 
@@ -887,7 +922,7 @@ evidência forte, não prova. Se houver motivo para desconfiar, `verifier
 /standard /all` instrumenta todos os drivers e encontra quem corrompe — ao
 custo de deixar a VM bem mais lenta.
 
-**9f. Bugchecks típicos com Driver Verifier ligado:**
+**10f. Bugchecks típicos com Driver Verifier ligado:**
 
 | Bugcheck | Significado provável |
 |---|---|
@@ -905,11 +940,11 @@ Para inspecionar o pool deste driver especificamente (tag `SUfl`):
 
 Um valor que só cresce em `!poolused` entre operações indica vazamento.
 
-### 10. Recuperação: a VM alvo não inicializa
+### 11. Recuperação: a VM alvo não inicializa
 
 Ordem do mais barato para o mais caro:
 
-**10a.** Se ela chega ao menu de boot: F8 → **Modo de Segurança**. Não conte
+**11a.** Se ela chega ao menu de boot: F8 → **Modo de Segurança**. Não conte
 com o modo de segurança como recuperação do filtro boot-start. Se a VM inicia
 nesse modo, desative o Verifier e o driver antes de tentar iniciar normalmente:
 
@@ -920,7 +955,7 @@ sc config SafeUpload start= disabled
 
 Reinicie normalmente.
 
-**10b.** Se nem isso funciona: **reverta o snapshot** do passo 1.
+**11b.** Se nem isso funciona: **reverta o snapshot** do passo 1.
 
 - Hyper-V: `Restore-VMSnapshot -VMName "<nome-da-vm>" -Name "pre-safeupload" -Confirm:$false`
 - VMware / VirtualBox: pelo gerenciador de snapshots.
@@ -1261,5 +1296,5 @@ bloco no retorno de `STATUS_TIMEOUT` — mantê-lo até o unload, ou trocar por
 um buffer por-thread reaproveitado.
 
 **Repita este teste sempre que o caminho de veredito mudar.** O
-procedimento está no passo 6 e a forma de forçar o timeout é a descrita
+procedimento está no passo 7 e a forma de forçar o timeout é a descrita
 acima.
