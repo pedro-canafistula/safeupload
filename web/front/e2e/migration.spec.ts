@@ -58,6 +58,11 @@ test('heartbeat e três eventos reais aparecem no painel, endpoints e auditoria'
   await expect(page.getByText('inspection_timeout')).toBeVisible();
   await expect(page.getByRole('cell', { name: '<script>alert(1)</script>.txt', exact: true })).toBeVisible();
   await expect(page.locator('app-event-table script')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Detalhes de <script>alert(1)</script>.txt', exact: true }).click();
+  const detalhes = page.getByRole('region', { name: 'Detalhes de <script>alert(1)</script>.txt', exact: true });
+  await expect(detalhes).toContainText('editor.exe');
+  await expect(detalhes).toContainText('C:\\SafeUpload');
+  await expect(detalhes).toContainText('42');
   await page.setViewportSize({ width: 390, height: 844 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBeTruthy();
 });
