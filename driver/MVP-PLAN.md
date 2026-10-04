@@ -278,3 +278,14 @@ Fix what it finds, rerun phase 4. Then decide the order of the deferred destinat
 - Installation requires a reboot (owner decision 2026-10-04): the installer stages the driver as boot-start and does not start it;
   nothing is protected until the first reboot, so there is no late-attach period in normal deployment. A driver loaded late anyway
   (manual load/attach) leaves its volumes Untrusted until reboot and claims no protection there.
+- Phase 3 design v1 accepted ([design](evidence/2026-10-04/phase3-design-v1.txt)), with this orchestrator decision made unattended on
+  2026-10-04 (owner asleep; revisit if you disagree). **Stores through a writable view that predates a new scope**: a file-system
+  minifilter cannot stop CPU stores into an existing view, but it can stop them reaching disk. Cutoff rule: at the epoch swap that adds
+  a scope, each registry entry that becomes Activating gets one `CcFlushCache`+`FltFlushBuffers` (data written before the cutoff is
+  legitimate and reaches disk), after which **paging writes to that stream are denied** until promotion. A file with dirty pages created
+  after the cutoff can never be promoted (its pages cannot be cleaned without writing them): it stays Activating until reboot and is
+  reported to the service ("close the application; unsaved in-memory changes will be lost"). The on-disk bytes therefore never change
+  after the cutoff, the invariant holds, and no scan or taint is needed. This replaces the design's "grandfathered bytes" caveat.
+  Implementation order: (1) TxF refusal + transaction tracking; (2) writer registry since boot, Free(F) evaluation by file ID,
+  Activating classification and status page; (3) admission epoch + two-phase policy apply; (4) Activating enforcement, cutoff flush,
+  paging-write denial, cache-barrier promotion; (5) remove StageFence from the admission path; then the Phase 4 suite.

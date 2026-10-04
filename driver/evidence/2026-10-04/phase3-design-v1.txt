@@ -1,0 +1,475 @@
+SafeUpload Phase 3 design v1
+Date: 2026-10-04
+Status: design only; no code or tests were run for this document.
+
+Purpose
+-------
+Replace StageFence's directory scans and scan-built admission table with one
+boot-lifetime writer registry, per-file Activating state, and a lower-I/O
+admission epoch. The existing owned-stream staging and publication path stays
+the write path for Protected files.
+
+Binding envelope
+----------------
+The only qualified target is Windows 10 22H2 build 19045.2965, local fixed
+NTFS, installed boot-start and activated only after reboot. The installer
+stages the driver and does not start it. A manual/late load or an instance
+without FLTFL_INSTANCE_SETUP_NEWLY_MOUNTED_VOLUME makes that volume Untrusted
+until reboot; it claims no protection there. A failed or timed-out canary also
+leaves the volume Untrusted until reboot and is not retried.
+
+The MVP guarantee uses no process taint. Taint remains compiled in ordinary
+builds, but a TEST_DISABLE_TAINT policy bit in the unchanged policy Flags word
+is accepted only by SAFEUPLOAD_STAGING_PROTOTYPE. Every MVP harness policy
+sets it and reads back that state. The bit is not stored in BootPolicy's
+destination-scope union. Test controls, fault injection, and diagnostic holds
+remain prototype-only. The protocol message layout stays version 18.
+
+The threat boundary trusts local administrators, SYSTEM, and other kernel
+drivers; it protects standard users. Cheap hardening still applies: the port
+must authenticate the SafeUpload service SID, not merely any SYSTEM process,
+and BootPolicy values are not consumed after an ACL mismatch. Invalid or
+unreadable boot policy means deny mutating I/O on supported volumes until a
+valid service policy is installed. Agent down means identified protected
+scopes deny new mutations and publication. Removable, network, ReFS, FAT,
+Windows 11, other builds, hibernation/fast startup, raw-disk writes, hard-link
+aliases, and ADS remain outside qualification; existing alias/ADS refusals
+stay enabled. A blocked staged version is handed back as the same
+digest-checked snapshot to a per-user, non-synced, non-protected location;
+refuse reparse/hard-link redirection, create new files only, and retain/audit
+the staging copy until the copy is verified and the justification window
+closes.
+
+1. Data model and writer registry
+---------------------------------
+Add one SAFEUPLOAD_FILE_KEY per stream: referenced mounted-volume identity
+(plus the queried volume serial), FILE_ID_INFORMATION.FileId (128 bits), and
+the NTFS stream name. MVP admission accepts only the unnamed data stream;
+ADS and ambiguous aliases fail closed. Keep the current normalized NT path
+as a bounded index for prefix matching and service display, and update it only
+on a successfully completed rename. File ID is authoritative; the path index
+is not an identity substitute.
+
+Each registry entry contains:
+  - File key, current normalized name, first-seen policy generation, and state:
+    Unscoped, Activating, Protected, or Unknown.
+  - H count and the existing per-file-object cleanup nodes. Each node also
+    stores the opener PID (best effort); cleanup removes only an exact node.
+  - C count and the existing exact acquire/release slot identity, extended
+    with volume/file identity and opener PID.
+  - T count and a deduplicated set of transactions touching this file.
+  - An optional referenced file object and a nonpaged SECTION_OBJECT_POINTERS
+    hash entry while H, C, T, or S may still be nonzero. The fast path compares
+    the SOP pointer only; it never dereferences a stale SOP. Drop this active
+    pointer only after H=C=T=0, S=NO, and the cache barrier succeeds. Retain
+    the compact file-ID/path history until reboot.
+
+Record every successful write, append, delete, overwrite, supersede, and
+delete-on-close open on every qualified volume, even when the path is outside
+the current policy: a future policy may add it. Reserve the bounded registry
+slot from the pre-create path before passing a writer create down; post-create
+fills its file ID and commits H only on successful create. Failed, cancelled,
+or reparsed creates release the reservation and epoch token. If path or ID
+cannot be recorded, refuse the create before lower completion and mark
+tracking Unknown. Do not allow an untracked writer to escape through a
+post-create allocation failure.
+
+Bound the registry at 1,024 records per instance and 4,096 total, with at most
+512 WCHARs of retained name per record and a 4 MiB total name budget. A
+capacity/allocation failure closes writer admission on that instance and
+marks tracking Unknown; if the failure could have dropped a live record while
+mounted, set machine-wide Unknown as required by the owner decision. Unknown
+never becomes Free and is sticky until reboot. A missing registry entry means
+no writer has existed on that stream since the trusted boot attach, because
+every writer create was reserved and tracked.
+
+An actual FLTFL_INSTANCE_TEARDOWN_VOLUME_DISMOUNT may discard that volume's
+entries only after marking its teardown token and confirming the dismount
+reason. Old handles/views are invalid after dismount/remount on the qualified
+build; the remount is a new volume identity and reruns the canary. A record
+dropped while mounted, a non-dismount teardown, or an ambiguous reason sets
+machine-wide Unknown until reboot. Both scoped and global losses are counted
+and reported.
+
+For any entry in a newly added scope, calculate:
+  Free(F) = H(F)=0 AND S(F)=NO AND C(F)=0 AND T(F)=0.
+S is queried only by the PASSIVE worker: reopen by file ID below this
+instance, verify volume serial, all 128 file-ID bits, and identical stream
+identity/SOP, then call MmDoesFileHaveUserWritableReferences. This extends
+SafeUploadStageOpenByIdentity; it does not enumerate a directory. H comes
+from the per-stream context; C from exact in-flight section slots; T from
+transaction enlistments below. A failed identity check is Unknown, not NO.
+An entry absent from the registry has H=C=T=0 and no writable reference by
+construction; a first access to it under a protected prefix is Protected
+immediately. No directory enumeration or file-content scan is used.
+
+2. Pending policy and admission epoch
+-------------------------------------
+Use immutable policy snapshots and a nonpaged admission-epoch record:
+generation, effective current/pending scope pointers, accepting flag, active
+callback count, and a drained event. A nonpaged completion token holds the
+epoch pointer and operation kind. A short KSPIN_LOCK protects only epoch
+pointer selection, accepting state, and count changes. The policy push lock
+may protect short snapshot reads/swaps, but no push lock, spin lock, file
+resource, or registry lock is held across lower I/O, a wait, a file-ID probe,
+or a cache flush. Epoch and completion storage is nonpaged. Name and ID work
+runs at PASSIVE_LEVEL; callbacks that cannot safely resolve a required name
+fail closed.
+
+Take an epoch before policy/path matching for every operation that can
+introduce or change writable access. This includes operations outside the
+present scope: otherwise a pre-operation that looked out of scope could
+complete below the filter after a new scope became current. Hold the token
+through lower completion, not merely through the policy comparison:
+
+  Operation                         Registration and completion
+  CREATE/write open                 StageAdmit, including delete-only,
+                                    overwrite, supersede, and directory
+                                    namespace changes; post-create releases.
+  Nonpaging and paging WRITE        Dispatch pre-op and post-op. Paging uses
+                                    the SOP hash and no name query.
+  Writable section create          Acquire callback and post-op; the token
+                                    and C slot survive lower completion.
+  Section release                  Keep C until release lower completion;
+                                    post-op decrements C and queues recheck.
+  Rename/link                      Source and destination plus ancestors;
+                                    post-set-information updates path/state.
+  Other SET_INFORMATION             Delete/disposition, EOF, allocation,
+                                    valid-data-length, basic/EA/security and
+                                    other mutating classes; post-op releases.
+  Selected mutating FSCTLs          Existing StageMutatingFsctl list, with
+                                    alias/reparse checks; post-op releases.
+  Publication                       Actual permitted destination create or
+                                    rename/link takes the token to lower
+                                    completion; permit is bound to generation,
+                                    exact destination and one use.
+
+Fast I/O that cannot carry the token is disallowed and retried as IRP I/O.
+Read-only operations do not take a mutation epoch, but reads/MDL/fast-I/O
+reads of an Activating SOP follow the same temporary refusal as the old
+fence. Every early local denial releases its token before completion. Every
+pass-through mutation returns with a post-operation callback; never use
+SUCCESS_NO_CALLBACK while holding a token. For pended create/inspection, keep
+the token in the nonpaged completion context and pass it through
+FltCompletePendedPreOperation. Post-operation draining releases the token
+only after marking writer state Unknown if the lower result/identity was
+lost.
+
+Policy application has two phases, serialized to one updater:
+  1. The service writes and verifies PendingScopes = old durable union
+     candidate. SET_POLICY Reserved=0 validates the immutable candidate,
+     publishes the in-memory old+candidate union, closes the old epoch to new
+     entrants, and drains all old-epoch completions. New relevant callbacks
+     take the union epoch. Registry classification begins only after the
+     drain; it uses the candidate paths and registry, not a scan.
+  2. The service writes candidate Scopes, flushes/readbacks it, deletes
+     PendingScopes, flushes/readbacks that deletion, then sends the same
+     SET_POLICY with Reserved=1. Finalization briefly closes union-epoch
+     admission (mutations into the union get STATUS_RETRY), drains that epoch,
+     atomically swaps candidate to current and opens a fresh epoch, then drops
+     the in-memory boot union. Only then does the service report policy
+     applied. This retains the prior BootPolicy ordering but keeps the new
+     candidate pending until the durable commit is complete.
+
+Use a 30-second bounded wait for each epoch drain. On timeout, do not promote
+or clear any union: old current stays current, candidate stays pending, the
+union remains effective, transition state is FailedClosed, and mutating
+operations in the union return STATUS_RETRY until an authenticated retry or
+reboot. The service leaves PendingScopes in place and reports failure. No
+part of a failed candidate is current. A port disconnect, registry write
+failure, finalization mismatch, or service restart has the same restrictive
+old+candidate behavior. A boot that finds invalid/ACL-rejected policy uses no
+rejected values and denies supported-volume mutations until a valid policy is
+pushed.
+
+3. Activating, promotion, and service status
+--------------------------------------------
+For a file newly covered by a candidate scope:
+  - No history entry: classify Protected at first access; no prior writer
+    could exist on a trusted boot-attached volume.
+  - History entry with Free(F) false: Activating.
+  - History entry with Free(F) true: Activating until the cache barrier below
+    succeeds, then Protected.
+  - Any tracking, trust, identity, or scope ambiguity: Unknown/Untrusted,
+    fail closed; never infer Protected.
+
+Activating denies new non-service writer opens and new writable sections, and
+denies service publication into that file. Existing handles/views can remain
+alive; direct physical mutators through an old handle are refused by the
+current-or-pending policy gate. A CPU store through a writable view that
+predates the scope cannot be revoked by a file-system minifilter. The file
+therefore is not Protected until the last such reference is gone and the
+cache barrier completes. Its already-authorized pre-scope contents/writes are
+grandfathered by this design; Phase 4 must baseline them and assert that no
+new write reaches the file after Protected. If the owner means that every
+byte written from the instant SET_POLICY begins, including stores through a
+pre-existing mapped view, must be rejected, that requirement conflicts with
+no scans/no taint and needs a different mechanism. Do not report an
+Activating file as Protected.
+
+Re-evaluate on successful last H cleanup, writable-section release completion,
+transaction commit-finalize/rollback, and candidate installation. If H=C=T=0
+but S still says YES, queue a per-file PASSIVE probe at most six times, 100 ms
+apart (covers the observed <=0.5 s delayed NO); exhaustion leaves Activating
+and reports the held file. This is a targeted retry for a known entry, not a
+volume scan. Unknown/lost tracking has no retry or timer and stays Unknown
+until reboot.
+
+Cache barrier, only in a PASSIVE worker with no global/policy/registry lock:
+  1. Reopen the recorded file ID with SafeUploadStageOpenByIdentity, hold the
+     verified file object, and require its SOP to match the active entry.
+  2. Call CcFlushCache(SOP, NULL, 0, &iosb) to flush the entire stream; wait
+     for completion and require iosb.Status == STATUS_SUCCESS.
+  3. Call FltFlushBuffers(instance, identityObject) so NTFS data/metadata and
+     the underlying storage cache are synchronized below this instance.
+  4. Call CcGetFlushedValidData(SOP, FALSE). If CcIsFileCached is true,
+     require the returned flushed-valid offset to cover queried EndOfFile;
+     MAXLONGLONG is accepted only for a stream no longer cached. Recheck
+     H=C=T=0 and S=NO, then atomically set Protected for this generation.
+
+Do not call CcPurgeCacheSection or the unsupported FsRtlAcquireFileExclusive.
+Promotion needs a flush barrier, not cache invalidation; purge does not remove
+user mappings and requires exclusive file ownership. If the cache is not
+provably clean, the ID/SOP changed, or any flush status/readback is
+ambiguous, remain Activating. Sparse/preallocated files for which the
+conservative EOF check cannot prove cleanliness stay held; test this case.
+
+On Activating entry and every status change, publish an event to the service
+from a worker (never block an I/O callback). Add a read-only
+GET_ACTIVATING_STATUS control page, bounded to 64 entries, with generation,
+NT path or volume+FileId fallback, H/S/C/T, state, and up to a bounded set of
+opener/acquisition PIDs. The service pages the initial list after policy
+finalization and consumes change events; after reconnect it queries again.
+PIDs identify the opener/acquirer when known, not necessarily the process
+currently holding a duplicated handle. Service-channel failure never changes
+admission; retain state and report it on reconnect.
+
+4. TxF
+-------
+The exact detection in every pre-create is PCFLT_RELATED_OBJECTS.Transaction
+!= NULL. Do not infer TxF from create option bits. On Windows Vista and later,
+Filter Manager sets this member to the transaction associated with the
+operation; NULL means the operation is not transacted. In a protected or
+pending scope, refuse any transacted open whose access, disposition, or
+options can write, delete, overwrite, supersede, rename, or link, including
+FILE_DELETE_ON_CLOSE and MAXIMUM_ALLOWED. Return STATUS_ACCESS_DENIED with a
+TxF-refused reason. Apply the same transaction check to SET_INFORMATION and
+selected FSCTL mutations so a transaction opened outside scope cannot rename
+or link into it. For FILE_OPEN_BY_FILE_ID with no resolvable name, refuse a
+transacted mutation on a volume that has any protected scope.
+
+A transacted writer opened while its file is outside all scopes still enters
+the writer registry. Enlist that transaction with
+FltEnlistInTransaction for COMMIT_FINALIZE and ROLLBACK; the per-file T
+association remains until the terminal notification, even if cleanup already
+made H=0. Deduplicate multiple handles in one transaction. If enlistment,
+context allocation, or the bounded association table fails, mark tracking
+Unknown (and machine-wide Unknown if a live record may have been lost); no
+affected file can promote. Thus T is zero for every Protected file:
+new in-scope TxF mutators are refused, and a pre-existing out-of-scope
+transaction keeps the entry Activating until commit/rollback is observed.
+The scope check is local to the protected scope/volume; ordinary servicing
+TxF elsewhere remains available.
+
+5. Expansion, shrink, and StageFence replacement
+-------------------------------------------------
+Expansion: write PendingScopes union first. Epoch drain closes races with
+creates, writes, writable sections, rename/link, set-information, selected
+FSCTLs, and publication. New scopes immediately route new user writes through
+owned streams. For each candidate path already in the writer registry, create
+Activating and refuse new writers/publication; promote per file only after
+Free(F) and the cache barrier. Report each held entry and known opener PIDs.
+No directory walk occurs. Registry absence is the proof for immediate
+Protected; overflow or a lost record is Unknown and fails closed.
+
+Shrink: old+candidate union remains enforced through both drains and durable
+finalization. Operations begun under the old epoch finish before commit;
+operations arriving during the final drain into the union get STATUS_RETRY.
+After the atomic swap, old-only paths are no longer protected. Clear an
+Activating state only when no remaining current scope contains that identity;
+keep its history entry for later expansions. A rename/link into or out of
+scope is checked against both names and ancestors and held to lower
+completion. Hard-link and ADS alias refusals remain on.
+
+StageFence.c is removed from the Phase 3 admission path; retain it only for
+Phase 1 diagnostics until milestone review, then delete if unreferenced.
+Replace each behavior as follows:
+  - Directory enumeration and current/candidate scans: bounded writer registry
+    and targeted file-ID probes.
+  - Scan-built section-pointer table and paging/read denial: active registry
+    SOP hash, populated from tracked H/C/S references and removed only after
+    verified release/promotion.
+  - Global/per-volume scan quarantine and late-attach retries: immutable
+    Untrusted/Unknown states; no retry for either state. The separate
+    newly-mounted trust gate and canary remain.
+  - Refresh mutex around policy scan/swap: admission epochs and two-phase
+    durable commit above.
+  - Fence refresh/retry timer: last cleanup, section release, TxF terminal
+    notification, and the bounded per-entry S recheck.
+  - Fence status counters: registry/epoch status page and Activating events.
+No StageFence refresh, scan, or retry is called during boot policy load, SET_POLICY,
+or MVP admission.
+
+6. Fail-closed paths
+--------------------
+Failure / required behavior
+--------------------------
+Policy validation/allocation, unknown test flag, or prefix overflow:
+  Reject candidate; old snapshot and durable union remain. No partial swap.
+Epoch token allocation/entry failure or unsupported IRQL/name ambiguity:
+  Complete the mutation before lower with a real denial/retry status; do not
+  pass an operation without a token.
+Either epoch drain times out; service disconnects; registry commit/readback or
+finalization fails:
+  Keep old current plus pending candidate/boot union; deny mutations in that
+  union; do not finalize or report success.
+Writer registry/path/ID/SOP capacity or allocation failure before create:
+  Refuse writer create, set instance Unknown, and deny later protected
+  mutations there until reboot.
+H cleanup unmatched, a counted H/C node dropped while mounted, post-op drain
+with unknown outcome, or ambiguous teardown:
+  Set machine-wide Unknown until reboot; never set H/C to zero by inference.
+Confirmed volume dismount with only that volume's records dropped:
+  Retire that volume's records and counters only; a remount is a new identity.
+C slot overflow before lower section acquire:
+  Deny the acquire and set that instance Unknown. If a lower acquire can have
+  escaped without a slot, set machine-wide Unknown.
+Transaction enlistment/terminal notification/table failure:
+  Keep affected file/instance Unknown and prevent promotion. A TxF mutation
+  whose path cannot be resolved on a scoped volume is denied.
+S probe, file-ID verification, volume trust, or cache flush/readback failure:
+  Keep file Activating or volume Untrusted/Unknown; deny new writers and
+  publication. S=YES gets only the bounded retry; other errors do not.
+Publication permit absent, expired, generation-mismatched, wrong path, wrong
+service identity, or reused:
+  Deny publication; never use a port connection alone as authorization.
+Boot policy ACL mismatch/missing/corrupt-empty, canary fail, or agent down:
+  Consume no ACL-rejected values. Deny supported-volume mutations until a
+  valid service policy; identified protected scopes always fail closed.
+Unknown/unsupported mutating FSCTL, alias/reparse resolution failure, or
+unresolvable write open in a volume with a protected scope:
+  Deny. Do not treat an unresolved name as outside scope.
+Service cannot receive/report status:
+  Keep kernel state unchanged; query again on reconnect. No admission path
+  waits for status delivery.
+Blocked-version hand-back target invalid, redirected, protected/synced, or
+write/verification fails:
+  Keep exact sealed version in staging, audit failure, and publish no
+  destination bytes. Delete staging only after verified hand-back and closed
+  justification window.
+
+7. Test plan and exit mapping
+-----------------------------
+Use the existing checkpointed runner pattern: flush guest volume cache, take a
+disk-only external checkpoint, record source/backing chain and driver/policy
+hashes, run one isolated case, and independently restore/reboot/check the
+baseline. Never rely on SSH return alone after a reboot; require a changed
+boot identity. Run ordinary, volatile runtime Verifier 0x13B, and boot
+Verifier modes. Use the existing StagePolicyTransitionMapping/Race fixture
+patterns, but replace scan telemetry with epoch generation, registry state,
+and held-file reports. Any missing flush/disposal/identity/raw-observer
+evidence is INCONCLUSIVE, never a pass.
+
+For every destination case, baseline and independently observe all allocated
+NTFS extents via FSCTL_GET_RETRIEVAL_POINTERS and aligned unbuffered raw-volume
+reads, plus a fresh FILE_FLAG_NO_BUFFERING|FILE_FLAG_WRITE_THROUGH reader.
+Record the complete extent before and after, not only a marker. This observer
+is authoritative; filtered readers are supplemental.
+
+Case -> criterion / evidence
+----------------------------
+Epoch race: parallel create/write-open, direct write, section create, rename,
+link, EOF/allocation/delete, selected FSCTL, and publication at expansion and
+shrink. Hold lower operations at a test-only barrier. Prove every token's
+generation and lower completion precede atomic promotion; inject drain timeout
+and prove old+candidate stays enforced with no generation change.
+
+Expansion with old handle: open writer before scope addition, duplicate it to
+another process, add its folder, and attempt new writer/publication and direct
+mutations. Expect Activating, denial for new admission, service path/FileId
+and opener PID, then exact H cleanup and per-file promotion.
+
+Retained section: create a writable section with no view, add scope, create a
+late view and attempt mapping writes; also keep a view alive through the
+transition. Prove S remains YES while the section/view exists, no promotion
+occurs, then release it, observe S=NO, flush, and verify no later write after
+Protected. The raw observer must label any bytes produced by a pre-scope
+mapping before promotion as grandfathered; it must report zero delta for
+post-promotion attempts. If the acceptance criterion counts grandfathered
+Activating bytes as unapproved from SET_POLICY initiation, record the
+no-scan limitation rather than declaring a pass.
+
+Clean new file / registry absent: add an empty test directory with no previous
+writer; its first create is immediately Protected and user bytes only enter
+through the owned-stream inspect/publish path. Check cached write, mapped
+write, overwrite, replacement save, rename into scope, fresh readers, and raw
+extents.
+
+Shrink: keep old writer/section and concurrent operations while removing a
+scope. Verify the old+candidate union through finalization, old epochs drain,
+and old-only paths become writable only after the candidate generation is
+current. Repeat with the path retained by another prefix.
+
+E2 TxF: use CreateFileTransacted on the protected test folder for write,
+delete-on-close, overwrite, supersede, rename, and link; assert
+PCFLT_RELATED_OBJECTS.Transaction was non-NULL, the create/mutation was
+refused, and raw extents/name remain unchanged. Control transacted writes
+outside a protected scope to prove no machine-wide TxF refusal. Open a
+transacted writer outside scope, close its handle, add the scope, and commit
+or roll back; T must hold Activating through the terminal notification.
+
+E4 cache barrier: dirty cached and mapped data before expansion. Hold cleanup
+and section release separately; show no promotion while H/S/C/T is nonzero.
+After Free(F), inject a test-only CcFlushCache/FltFlushBuffers failure and
+prove state stays Activating. On success verify CcGetFlushedValidData, storage
+flush completion, promotion ordering, and unchanged raw bytes on subsequent
+post-promotion writes. Include zero-length, sparse/preallocated, and
+unobservable-cache outcomes; ambiguity stays held.
+
+Capacity/loss: fill H registry and C slots, fail each reserved allocation,
+exercise unmatched cleanup, non-dismount teardown, real dismount, probe
+identity mismatch, transaction enlistment failure, status-page truncation,
+and service disconnect. Verify scoped versus machine-wide Unknown rules,
+Inspector visibility, and reboot-only recovery.
+
+Agent and release paths: stop/restart service during transition; agent down
+at boot; bad policy ACL; invalid canary; first post-install reboot; taint
+disabled for every MVP run; flag rejected by normal build. Exercise approve,
+block, and justification, and verify blocked-version hand-back constraints.
+All Phase 3 expansion, shrink, and retained-section cases must pass the Phase
+4 zero-post-promotion-delta invariant under ordinary, runtime Verifier, and
+boot Verifier, with clean restoration and latency p95 <= 250 ms and max <=
+1000 ms. The absolute latency budget applies; no relative-cost threshold is
+added.
+
+Windows behavior assumptions to qualify on this build
+------------------------------------------------------
+The canary checks retained writable-section S=YES and released S=NO on each
+eligible mount; the observation is build-specific, not a general Windows
+contract. H cleanup balances successful write creates, C slots balance
+section acquire/release, and transaction notifications cover commit-finalize
+and rollback. The per-file ID reopen returns the same stream/SOP; the epoch
+post callback runs after lower completion; CcFlushCache plus
+FltFlushBuffers/CcGetFlushedValidData proves no cache dirty data remains.
+The Phase 3 harness must test each premise under runtime Verifier on exactly
+19045.2965. Higher-altitude filters are trusted and may not hide operations.
+The file-system minifilter cannot intercept CPU stores into an already
+writable mapped view; Activating is therefore explicitly a transition state,
+not a claim that the file is already Protected.
+
+DDI references
+--------------
+FLT_RELATED_OBJECTS.Transaction is the transaction pointer for an operation:
+https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/fltkernel/ns-fltkernel-_flt_related_objects
+FltEnlistInTransaction and commit/rollback notifications:
+https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/fltkernel/nf-fltkernel-fltenlistintransaction
+CcFlushCache full-file flush semantics:
+https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/nf-ntifs-ccflushcache
+FltFlushBuffers sends a synchronous flush below the specified instance and
+synchronizes the underlying storage cache:
+https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/fltkernel/nf-fltkernel-fltflushbuffers
+CcGetFlushedValidData reports the lowest dirty offset or the fully flushed
+valid-data length:
+https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/nf-ntifs-ccgetflushedvaliddata
+CcPurgeCacheSection's exclusive-file and mapping limits:
+https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/nf-ntifs-ccpurgecachesection
