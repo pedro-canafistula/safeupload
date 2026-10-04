@@ -1058,6 +1058,16 @@ finally { $resultStream.Dispose() }
         Invoke-RestoreStep 'remove staged service package' {
             Remove-Item -LiteralPath $serviceDirectory -Recurse -Force -ErrorAction SilentlyContinue
         } $rollbackErrors
+        if ($rollbackErrors.Count -eq 0) {
+            # A clean rollback leaves no residue that would make the next attempt refuse ("A prior boot-start state directory exists").
+            Invoke-RestoreStep 'remove boot-start state and empty test parent' {
+                Remove-Item -LiteralPath $stateDirectory -Recurse -Force -ErrorAction Stop
+                $parent = Split-Path -Parent $protectedDirectory
+                if ((Test-Path -LiteralPath $parent) -and @(Get-ChildItem -LiteralPath $parent -Force).Count -eq 0) {
+                    Remove-Item -LiteralPath $parent -Force -ErrorAction Stop
+                }
+            } $rollbackErrors
+        }
         if ($rollbackErrors.Count -gt 0) {
             Write-Output ('PrepareRollbackNeedsAttention=' + ($rollbackErrors -join ' | '))
         }
