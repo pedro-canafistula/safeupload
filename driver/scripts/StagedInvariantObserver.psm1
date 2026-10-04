@@ -416,8 +416,13 @@ namespace StagedInvariant {
   public static string Fingerprint(Image image) {
    StringBuilder s=new StringBuilder(); s.Append(image.Identity.FileId).Append(':').Append(image.Identity.Eof).Append(':').Append(image.Identity.Allocation).Append(':').Append(image.Identity.Attributes);
    foreach(Run r in image.Runs) s.Append('|').Append(r.Vcn).Append(',').Append(r.NextVcn).Append(',').Append(r.Lcn);
-   foreach(Record r in image.Records) s.Append('|').Append(r.Number).Append(':').Append(Hash(r.Fixed));
-   foreach(NameEntry n in image.Names) s.Append('|').Append(n.Name).Append(':').Append(n.Reference).Append(':').Append(n.Eof).Append(':').Append(n.Attributes);
+   bool directory=(image.Identity.Attributes&0x10)!=0;
+   // A directory's MFT record (LSN, timestamps) and its index entries' copies of child sizes/attributes are updated lazily by NTFS
+   // while the children are written (observer-selfcheck-live run 4: "Directory changed across bracket" with nothing changed by the caller).
+   // A directory is fingerprinted by what the invariant cares about: its identity, runs and its names with file reference and namespace.
+   if(!directory) foreach(Record r in image.Records) s.Append('|').Append(r.Number).Append(':').Append(Hash(r.Fixed));
+   List<string> names=new List<string>(); foreach(NameEntry n in image.Names) names.Add(directory?(n.Name+":"+n.Reference+":"+n.Namespace):(n.Name+":"+n.Reference+":"+n.Eof+":"+n.Attributes));
+   names.Sort(StringComparer.Ordinal); foreach(string n in names) s.Append('|').Append(n);
    return Hash(Encoding.UTF8.GetBytes(s.ToString()));
   }
   public static Reader Fresh(string path,bool raw,int alignment) {

@@ -321,6 +321,7 @@ if (-not [string]::IsNullOrWhiteSpace($Live)) {
         Report-IO 'LiveDirectoryAllocation' ($indexContainers.Count -gt 0) ('physical-index-containers:' + $indexContainers.Count)
         $sample = Capture-InvariantSample $context $baseline 'Unchanged' 1
         $v = FixtureVerdict $baseline $sample
+        if ($sample.Status -ne 'OK') { Write-Output ('IO_LiveSampleErrorDetail=' + (($sample.Error | ConvertTo-Json -Depth 8 -Compress))) }
         Report-IO 'LiveUnchangedBytes' ($sample.Status -eq 'OK' -and @($v.Assertions | Where-Object { $_.Verdict -eq 'FAIL' }).Count -eq 0) ('sample:' + $sample.Status + ';verdict:' + $v.Verdict)
         Report-IO 'LiveMissingLedgerCannotPass' ($v.Verdict -eq 'INCONCLUSIVE') ('verdict:' + $v.Verdict)
         $fresh = @($sample.Readers | Where-Object { $_.Status -eq 'OK' -and $null -ne $_.Path })
