@@ -48,6 +48,12 @@ def git(*args):
     return subprocess.check_output(['git', *args], cwd=ROOT)
 
 
+def read_log(path):
+    # WDK/msbuild logs from the builder are UTF-16 LE with a BOM; summaries are UTF-8 with a BOM (S00 attempt 1).
+    raw = path.read_bytes()
+    return raw.decode('utf-16') if raw[:2] in (b'\xff\xfe', b'\xfe\xff') else raw.decode('utf-8-sig')
+
+
 def require(condition, reason):
     if not condition:
         raise RuntimeError(reason)
@@ -122,7 +128,7 @@ def build_inputs(args, commit, agent_commit, head):
     for suffix, log in [('normal', 'normal-wdk.txt'), ('owned-feature', 'owned-feature-wdk.txt'),
                         ('normal-release', 'normal-release-wdk.txt'), ('owned-feature-release', 'owned-feature-release-wdk.txt')]:
         checked_gate(summary, 'driver:' + suffix, True)
-        require('DriverRecommendedRules.ruleset' in (work / log).read_text('utf-8-sig'), 'WDK rule set evidence absent: ' + log)
+        require('DriverRecommendedRules.ruleset' in read_log(work / log), 'WDK rule set evidence absent: ' + log)
     for gate in ('inspector-normal-release', 'inspector-feature-release', 'writer-fixture'):
         checked_gate(summary, gate)
     exact_sources(work, summary, commit, ['driver/SafeUpload.Minifilter', 'driver/SafeUpload.Inspector', 'driver/SafeUpload.WriterFixture'])
