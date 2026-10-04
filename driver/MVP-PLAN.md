@@ -268,3 +268,10 @@ Fix what it finds, rerun phase 4. Then decide the order of the deferred destinat
   Unknown until reboot. Conditions: the premise is proven on this build (an old handle and an old writable mapped view cannot
   write after dismount and remount), both cases are counted and visible in the Inspector, and anything ambiguous falls back to
   machine-wide Unknown.
+- Trust boundary (owner decision 2026-10-04): local administrators and SYSTEM are trusted for the MVP. The MVP protects against
+  standard users; admin/SYSTEM tampering (taking ownership of the policy key, loading/unloading drivers, a SYSTEM process talking
+  to the port) is out of scope and documented. Cheap hardening still applies: the port accepts only the SafeUpload service's own
+  service SID (not any SYSTEM process), and policy values are never used after an ACL mismatch.
+- Installation requires a reboot (owner decision 2026-10-04): the installer stages the driver as boot-start and does not start it;
+  nothing is protected until the first reboot, so there is no late-attach period in normal deployment. A driver loaded late anyway
+  (manual load/attach) leaves its volumes Untrusted until reboot and claims no protection there.
