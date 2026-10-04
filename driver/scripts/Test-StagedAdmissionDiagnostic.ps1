@@ -4225,9 +4225,11 @@ public static class SafeUploadEolNative
             $sectionView = $sectionMap.CreateViewAccessor(0, [long]$mappingLength,
                 [IO.MemoryMappedFiles.MemoryMappedFileAccess]::ReadWrite)
             [void]$mappings.Add($sectionMap); [void]$views.Add($sectionView)
-            [void](Assert-RTEntry $sectionPath 'Section_Open' $true 1 -1 'yes' 0 $false $true $true)
+            # C counts writable section CREATION in flight and is 0 once the view exists; the live mapping is S=YES
+            # (run 11: driver and independent probe both C=0, S=YES).
+            [void](Assert-RTEntry $sectionPath 'Section_Open' $true 1 0 'yes' 0 $false)
             $sectionStream.Dispose()
-            [void](Assert-RTEntry $sectionPath 'Section_HandleClosed' $true 0 -1 'yes' 0 $false $true $true)
+            [void](Assert-RTEntry $sectionPath 'Section_HandleClosed' $true 0 0 'yes' 0 $false)
             $sectionView.Dispose(); $sectionMap.Dispose()
             [void](Assert-RTEntry $sectionPath 'Section_Released' $true 0 0 'no' 0 $true)
 
