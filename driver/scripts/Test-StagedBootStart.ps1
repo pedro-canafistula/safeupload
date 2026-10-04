@@ -1004,13 +1004,16 @@ finally { $resultStream.Dispose() }
     $settings = New-ScheduledTaskSettingsSet -ExecutionTimeLimit ([TimeSpan]::FromMinutes(2))
     Register-ScheduledTask -TaskName $bootTask -Action $action -Trigger $trigger -Principal $principal -Settings $settings | Out-Null
 
+    # verifier.exe returns 2 (EXIT_CODE_REBOOT_NEEDED) for a successful boot-time configuration (run 7), 1 for an error.
     & verifier.exe /standard /driver SafeUpload.sys | Out-Host
-    if ($LASTEXITCODE -ne 0) { throw 'Could not configure standard boot Verifier for SafeUpload.sys.' }
+    if ($LASTEXITCODE -notin @(0, 2)) { throw ('Could not configure standard boot Verifier for SafeUpload.sys (exit ' + $LASTEXITCODE + ').') }
     & verifier.exe /bootmode oneboot | Out-Host
-    if ($LASTEXITCODE -ne 0) { throw 'Could not configure one-boot Verifier mode.' }
-    $verifier = (& verifier.exe /query 2>&1 | Out-String)
-    if ($verifier -notmatch 'SafeUpload\.sys' -or $verifier -notmatch 'Verifier Flags:\s+0x') {
-        throw 'Boot Verifier configuration did not report SafeUpload.sys and active flags.'
+    if ($LASTEXITCODE -notin @(0, 2)) { throw ('Could not configure one-boot Verifier mode (exit ' + $LASTEXITCODE + ').') }
+    # /query shows only ACTIVE verification; the settings that apply at the next boot are in /querysettings.
+    $verifier = (& verifier.exe /querysettings 2>&1 | Out-String)
+    Write-Output ('BootVerifierSettings=' + (($verifier -replace '\s+',' ').Trim()))
+    if ($verifier -notmatch 'SafeUpload\.sys' -or $verifier -notmatch 'Verifier Flags:\s+0x(?!0+\b)[0-9a-fA-F]+') {
+        throw 'Boot Verifier configuration did not report SafeUpload.sys and nonzero flags for the next boot.'
     }
     Write-Output 'BootVerifierConfigured=True'
     Write-Output 'BOOT_PREPARED=True'
@@ -1052,7 +1055,7 @@ finally { $resultStream.Dispose() }
         }
         Invoke-RestoreStep 'reset Driver Verifier' {
             & verifier.exe /reset | Out-Host
-            if ($LASTEXITCODE -ne 0) { throw 'Driver Verifier reset failed during rollback.' }
+            if ($LASTEXITCODE -notin @(0, 2)) { throw ('Driver Verifier reset failed during rollback (exit ' + $LASTEXITCODE + ').') }
         } $rollbackErrors
         Invoke-RestoreStep 'remove startup task' {
             if (Get-ScheduledTask -TaskName $bootTask -ErrorAction SilentlyContinue) {
@@ -1328,7 +1331,7 @@ elseif ($Phase -eq 'AfterBoot') {
         Invoke-RestoreStep 'remove durable test policy' { Invoke-SystemRegistryCleanup } $restoreErrors
         Invoke-RestoreStep 'reset Driver Verifier' {
             & verifier.exe /reset | Out-Host
-            if ($LASTEXITCODE -ne 0) { throw 'Driver Verifier reset failed.' }
+            if ($LASTEXITCODE -notin @(0, 2)) { throw ('Driver Verifier reset failed (exit ' + $LASTEXITCODE + ').') }
         } $restoreErrors
         Invoke-RestoreStep 'remove protected test folder' {
             Remove-Item -LiteralPath $protectedDirectory -Recurse -Force -ErrorAction SilentlyContinue
