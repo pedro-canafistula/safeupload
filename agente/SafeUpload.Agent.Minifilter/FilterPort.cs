@@ -175,14 +175,14 @@ public sealed class FilterPort : IDisposable
     /// all and inspects nothing, so this is not optional setup - it is the
     /// step that turns the filter on.
     /// </summary>
-    public unsafe void SetPolicy(in SafeUploadPolicyMessage policy)
+    public unsafe void SetPolicy(in SafeUploadPolicyMessage policy, bool finalizeDurableBootScopes = false)
     {
         fixed (SafeUploadPolicyMessage* p = &policy)
         {
             p->Control.Version = Contract.Version;
             p->Control.StructSize = (uint) sizeof(SafeUploadPolicyMessage);
             p->Control.Command = ControlCommand.SetPolicy;
-            p->Control.Reserved = 0;
+            p->Control.Reserved = finalizeDurableBootScopes ? Contract.FinalizeDurableBootScopes : 0;
 
             int hr = FilterSendMessage(Handle, (IntPtr) p, (uint) sizeof(SafeUploadPolicyMessage),
                                        IntPtr.Zero, 0, out _);

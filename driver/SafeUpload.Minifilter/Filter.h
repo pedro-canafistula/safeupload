@@ -147,6 +147,11 @@ typedef struct _SAFEUPLOAD_DATA {
 
     volatile ULONG InspectorProcessId;
 
+    /* Set only after the connected SYSTEM client installs a valid policy. */
+    volatile LONG AuthenticatedClient;
+    volatile ULONG BootPolicyState;
+    BOOLEAN BootStartMode;
+
     //
     //  Guards the user-mode channel against teardown. Every caller of
     //  FltSendMessage holds rundown protection for the duration of the
@@ -213,6 +218,17 @@ typedef enum _SAFEUPLOAD_VOLUME_KIND {
 
 } SAFEUPLOAD_VOLUME_KIND, *PSAFEUPLOAD_VOLUME_KIND;
 
+/* Up to two boot records are unioned until the first authenticated live
+ * policy replaces them. Kept separately from SAFEUPLOAD_POLICY because the
+ * live port protocol deliberately remains capped at 16 destination paths. */
+typedef struct _SAFEUPLOAD_BOOT_SCOPE_SET {
+    UINT32 PrefixCount;
+    UINT32 Flags;
+    BOOLEAN Overflow;
+    USHORT PrefixChars[SAFEUPLOAD_BOOT_SCOPE_MAX_PREFIXES];
+    WCHAR Prefixes[SAFEUPLOAD_BOOT_SCOPE_MAX_PREFIXES][SAFEUPLOAD_MAX_PREFIX_CHARS];
+} SAFEUPLOAD_BOOT_SCOPE_SET, *PSAFEUPLOAD_BOOT_SCOPE_SET;
+
 #if SAFEUPLOAD_STAGING_PROTOTYPE
 /* Shared by the instance and its stream contexts so teardown state outlives either context. */
 typedef struct _SAFEUPLOAD_INSTANCE_TEARDOWN_TOKEN {
@@ -229,9 +245,10 @@ typedef struct _SAFEUPLOAD_INSTANCE_TEARDOWN_TOKEN {
 typedef struct _SAFEUPLOAD_INSTANCE_CONTEXT {
 
     SAFEUPLOAD_VOLUME_KIND VolumeKind;
+    FLT_INSTANCE_SETUP_FLAGS SetupFlags;
+    UINT32 TrustState;
 #if SAFEUPLOAD_STAGING_PROTOTYPE
     PSAFEUPLOAD_INSTANCE_TEARDOWN_TOKEN TeardownToken;
-    FLT_INSTANCE_SETUP_FLAGS SetupFlags;
     volatile LONG WritersUntracked; /* Sticky for this attachment if a writer cannot get a context. */
     volatile LONG CanaryState;
     NTSTATUS CanaryStatus;
@@ -372,9 +389,7 @@ NTSTATUS
 SafeUploadSetInstanceContext (
     _In_ PCFLT_RELATED_OBJECTS FltObjects,
     _In_ DEVICE_TYPE VolumeDeviceType,
-#if SAFEUPLOAD_STAGING_PROTOTYPE
     _In_ FLT_INSTANCE_SETUP_FLAGS SetupFlags,
-#endif
     _Out_ PSAFEUPLOAD_VOLUME_KIND VolumeKind
     );
 
@@ -627,8 +642,12 @@ typedef struct _SAFEUPLOAD_POLICY {
 
 VOID
 SafeUploadInitializePolicy (
-    VOID
+    _In_ PUNICODE_STRING RegistryPath
     );
+
+NTSTATUS SafeUploadReadBootPolicy(_In_ PUNICODE_STRING ServiceRegistryPath,
+    _Out_ PSAFEUPLOAD_POLICY_MESSAGE Policy, _Out_ PSAFEUPLOAD_BOOT_SCOPE_SET Scopes,
+    _Out_ PUINT32 State, _Out_ PBOOLEAN BootStartMode);
 
 VOID
 SafeUploadFreePolicy (
@@ -639,6 +658,13 @@ NTSTATUS
 SafeUploadSetPolicy (
     _In_ CONST SAFEUPLOAD_POLICY_MESSAGE *Message
     );
+
+NTSTATUS SafeUploadFinalizeBootPolicy(_In_ CONST SAFEUPLOAD_POLICY_MESSAGE *Message);
+
+BOOLEAN SafeUploadIsAuthenticatedClient(VOID);
+BOOLEAN SafeUploadInstanceIsTrusted(_In_ PFLT_INSTANCE Instance);
+BOOLEAN SafeUploadInstanceTrustGateSatisfied(_In_ PFLT_INSTANCE Instance);
+BOOLEAN SafeUploadPolicyHasDestinationScopes(_In_ SAFEUPLOAD_VOLUME_KIND VolumeKind);
 
 LONG
 SafeUploadCurrentPolicyGeneration (

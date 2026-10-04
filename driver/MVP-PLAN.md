@@ -143,17 +143,56 @@ measured with the latency harness. All on Windows 10 build 19045.2965.
 
 ### Phase 2: boot start with a durable policy
 
-- Production INF: boot start in an appropriate FSFilter load-order group; test builds keep a
-  test-only unload so the VM harness can restore the original driver.
-- Durable boot policy: the service writes the protected scopes to a protected registry key under the
-  driver's service key; the driver reads it in `DriverEntry` before `FltStartFiltering`.
-- Agent not running (boot, crash, restart): protected scopes fail closed for new write opens and new
-  writable sections; nothing outside the scopes changes. This already matches "a disconnected service
-  cannot authorize new protected writes", now also before the first connection.
-- Volumes attached while the system is running but not newly mounted are Untrusted (fail closed on
-  scope until reboot).
-- One adversarial review of the boot path before the first VM boot. Experiment **X4**: first
-  user-mode write versus filter readiness at boot; newly mounted VHDX attach flags before the first open.
+- Production INF: boot start in `FSFilter Anti-Virus`, dependent on `FltMgr`, with explicit
+  `ErrorControl=1` (`SERVICE_ERROR_NORMAL`). Ordinary load/init failure is logged and boot
+  continues. `ErrorControl` cannot recover from a driver bugcheck; the VM harness takes a disk-only
+  external checkpoint first and requires offline restore of that checkpoint if the guest cannot
+  boot. Test/prototype builds retain the test-only unload; production registration has no voluntary
+  unload callback.
+- Durable boot policy: service key
+  `SYSTEM\CurrentControlSet\Services\SafeUpload\Parameters\BootPolicy`, binary values `Scopes`
+  and `PendingScopes`. Both `Parameters` and `BootPolicy` use owner SYSTEM and protected DACL
+  `O:SYD:P(A;;KA;;;SY)(A;;KA;;;TI)` (only SYSTEM and TrustedInstaller have Full Control). The
+  service flushes and reads each value back before it reports policy applied. `PendingScopes` is the
+  union of prior committed scopes and the candidate, written before the authenticated port update;
+  a crash during replacement can retain the old/new union but cannot lose either.
+- The prototype reads the service `Start` DWORD before filtering. `Start=0` and an unreadable start
+  value disable the existing scan-based fence refresh/retry path for this boot-start mode, including
+  policy updates and test unload; boot admission comes from the bounded registry policy and the
+  separate attachment trust state. `Start=3` keeps the existing demand-load Phase 1 diagnostic flow
+  and its corpora. No file-system scan is added to DriverEntry or the boot-mode policy push.
+- Record v1 is an exact 16,656-byte little-endian record: 16-byte version/size/count/destination
+  flags header and 32 fixed 260-WCHAR NT-prefix slots. DriverEntry performs bounded PASSIVE_LEVEL
+  reads and exact owner/DACL checks before `FltStartFiltering`. Committed records allow at most 16
+  prefixes; pending unions allow 32. It accepts strict records only; for corrupt but readable
+  records it retains complete independently valid slots and known v1 destination flags.
+  Missing/corrupt/unreadable/ACL-rejected states are reported in prototype admission status and the
+  driver trace. Only scopes identified from readable data are enforced; when none can be identified,
+  no scope is enforced and the explicit state records why. Protocol layout stays at version 18.
+  The first authenticated SET_POLICY installs the live snapshot while retaining the boot union;
+  only after `Scopes` is durable and `PendingScopes` is removed does the service send the same
+  SET_POLICY with `Control.Reserved=1` to clear that union. A registry or finalization failure keeps
+  the union enforced and prevents the service from reporting policy applied.
+- Agent not running (boot, crash, restart): identified protected scopes fail closed for new
+  writable creates and new writable sections. Reads and operations outside a matched scope keep
+  their existing behavior. A port connection alone is not authorization: the accepted client must
+  be SYSTEM, control messages are bound to its process ID, and authentication becomes active only
+  after a valid SET_POLICY succeeds.
+- Trust is assigned only from `FLTFL_INSTANCE_SETUP_NEWLY_MOUNTED_VOLUME` at instance setup. A
+  volume without that flag stays Untrusted until its instance is destroyed and a new mount creates
+  a new instance. The canary remains a separate primitive result and never upgrades trust. This
+  keeps the demand-start Phase 1 flow usable: canary PASS is still reported even when C: is
+  late-attached and Untrusted; only the authenticated test-prototype demand-start corpus may
+  continue through its existing service policy path. Agent-down creates still fail closed, while
+  boot-start prototype and production enforcement require newly-mounted trust.
+- `Test-StagedBootStart.ps1` and the `boot-start` wrapper path prepare a durable one-folder test
+  policy, configure one-boot standard Verifier, reboot, measure the first startup write before
+  agent launch, exercise agent stop/restart, trust C: and a new VHDX, run pre-attach-writer E1,
+  restore the original demand-start driver/policy, and reboot for final checks.
+- One adversarial review of the boot path is required before the first VM boot. X4 must establish
+  the first user-mode attempt versus observed filter readiness and that no destination bytes appear
+  before readiness; the post-boot VHDX must be newly mounted/trusted, while E1's already-mounted
+  instance stays Untrusted even if its canary passes.
 
 Exit: boot with the feature driver under boot Verifier, folder protected before user logon, agent
 start and stop handled, test-only unload restores the VM.

@@ -957,20 +957,25 @@ static int PrintAdmissionVolumeStatus(VOID)
     control.Command = SAFEUPLOAD_CONTROL_ADMISSION_VOLUME_STATUS;
     hr = FilterSendMessage(port, &control, sizeof(control), status, sizeof(*status), &returned);
     if (FAILED(hr) || returned != sizeof(*status) || status->StructSize != sizeof(*status) ||
-        status->EntryCount > SAFEUPLOAD_ADMISSION_VOLUME_MAX_ENTRIES || status->Reserved != 0) goto Exit;
+        status->EntryCount > SAFEUPLOAD_ADMISSION_VOLUME_MAX_ENTRIES ||
+        status->BootPolicyState > SAFEUPLOAD_BOOT_POLICY_STATE_PENDING_UNION) goto Exit;
     for (index = 0; index < status->EntryCount; ++index) {
         if (status->Entries[index].VolumeGuidChars >= ARRAYSIZE(status->Entries[index].VolumeGuid)) goto Exit;
     }
-    wprintf(L"{\"writerGlobalUnknown\":%u,\"admissionVolumes\":[", status->WriterGlobalUnknown);
+    wprintf(L"{\"writerGlobalUnknown\":%u,\"bootPolicyState\":%u,\"admissionVolumes\":[",
+        status->WriterGlobalUnknown, status->BootPolicyState);
     for (index = 0; index < status->EntryCount; ++index) {
         const SAFEUPLOAD_ADMISSION_VOLUME_ENTRY *entry = &status->Entries[index];
+        UINT32 trustState = ((INT32)entry->ContextStatus >= 0) ?
+            ((entry->SetupFlags & SAFEUPLOAD_SETUP_FLAG_NEWLY_MOUNTED_VOLUME) != 0 ? SAFEUPLOAD_VOLUME_TRUST_NEWLY_MOUNTED :
+                SAFEUPLOAD_VOLUME_TRUST_UNTRUSTED_FLAGS) : SAFEUPLOAD_VOLUME_TRUST_CONTEXT_UNAVAILABLE;
         wprintf(L"%s{\"instance\":\"%016llX\",\"volumeKind\":%u,\"fileSystemType\":%u,"
-            L"\"fileSystemStatus\":%u,\"setupFlags\":%u,\"contextStatus\":%u,"
+            L"\"fileSystemStatus\":%u,\"setupFlags\":%u,\"trustState\":%u,\"contextStatus\":%u,"
             L"\"canaryState\":%u,\"canaryStatus\":%u,\"canaryChecks\":%u,\"canaryCleanupStatus\":%u,"
             L"\"instanceWritersUntracked\":%u,\"volumeInfoStatus\":%u,\"volumeFlags\":%u,"
             L"\"volumeGuidStatus\":%u,\"volumeGuid\":\"",
             index == 0 ? L"" : L",", entry->Instance, entry->VolumeKind, entry->FileSystemType,
-            entry->FileSystemStatus, entry->SetupFlags, entry->ContextStatus, entry->CanaryState,
+            entry->FileSystemStatus, entry->SetupFlags, trustState, entry->ContextStatus, entry->CanaryState,
             entry->CanaryStatus, entry->CanaryChecks, entry->CanaryCleanupStatus,
             entry->InstanceWritersUntracked, entry->VolumeInfoStatus, entry->VolumeFlags, entry->VolumeGuidStatus);
         for (character = 0; character < entry->VolumeGuidChars; ++character) {

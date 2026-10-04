@@ -68,6 +68,7 @@
   <ItemGroup>
     <ClCompile Include="Communication.c" />
     <ClCompile Include="Context.c" />
+    <ClCompile Include="BootPolicy.c" />
     <ClCompile Include="Filter.c" />
     <ClCompile Include="Policy.c" />
     <ClCompile Include="Override.c" />

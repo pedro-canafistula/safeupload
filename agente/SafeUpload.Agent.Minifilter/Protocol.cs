@@ -44,6 +44,9 @@ public static class Contract
     public const int MaxStageNameChars = 64;
     public const int ControlSize = 16;
     public const int PolicyMessageSize = 19752;
+    // SafeUploadControl.Reserved on SET_POLICY. Sent only after the boot
+    // policy's committed registry value is durable and its pending union is removed.
+    public const uint FinalizeDurableBootScopes = 1;
     public const int CountersSize = 184;
     public const int OverrideMessageSize = 1056;
 

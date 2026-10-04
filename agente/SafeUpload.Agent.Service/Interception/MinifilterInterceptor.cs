@@ -68,6 +68,7 @@ public sealed class MinifilterInterceptor : BackgroundService
     private long _overBudget;
     private long _answered;
     private bool _overrideAllowed;
+    private bool _auditOnly;
     private int _policyVersion;
     private int _activeCategories;
 
@@ -153,9 +154,15 @@ public sealed class MinifilterInterceptor : BackgroundService
 
         using (port)
         {
-            // Establish the authenticated inspector identity before opening
-            // existing private stages. Recovery while disconnected would be
-            // correctly denied by the driver's direct-stage access gate.
+            // The driver authenticates the SYSTEM client only after its
+            // durable policy is flushed and accepted. Do that first so
+            // recovery can use the private stage namespace without opening
+            // a pre-policy access window in the public protected scopes.
+            if (!TryPushPolicy(port))
+            {
+                return;
+            }
+
             if (_stagingEnabled)
             {
                 try
@@ -177,10 +184,6 @@ public sealed class MinifilterInterceptor : BackgroundService
                     return;
                 }
             }
-            if (!TryPushPolicy(port))
-            {
-                return;
-            }
 
             _grants.Bind(port);
             using var publishCancellation =
@@ -191,6 +194,9 @@ public sealed class MinifilterInterceptor : BackgroundService
             try
             {
                 _logger.LogInformation("Minifiltro conectado. Interceptando em modo kernel.");
+
+                _hub.Publish(new StatusNotification(
+                    _policyVersion, _activeCategories, ProtectionActive: true, AuditOnly: _auditOnly));
 
                 ReadySignal.Announce(ReadySignal.ServiceEvent);
 
@@ -468,8 +474,9 @@ public sealed class MinifilterInterceptor : BackgroundService
     /// <summary>
     /// Traduz a política do agente para a do driver e empurra.
     ///
-    /// Sem isto o driver não inspeciona nada: ele sobe sem política e libera
-    /// tudo. Falhar aqui é falhar em ligar a proteção, não em configurá-la.
+    /// A política durável já protege os escopos do boot enquanto o agente
+    /// está desconectado. A atualização só fica ativa depois da gravação
+    /// durável e da aceitação pela porta autenticada.
     /// </summary>
     private bool TryPushPolicy(FilterPort port)
     {
@@ -512,13 +519,15 @@ public sealed class MinifilterInterceptor : BackgroundService
             builder.WithOverrideAllowed(policy.OverrideAllowed);
             _budget = policy.InspectionTimeout;
 
-            port.SetPolicy(builder.Build());
+            SafeUploadPolicyMessage driverPolicy = builder.Build();
+            var bootPolicyWriter = new BootPolicyRegistryWriter(new WindowsBootPolicyRegistryBackend());
+            bootPolicyWriter.Apply(driverPolicy,
+                () => port.SetPolicy(driverPolicy),
+                () => port.SetPolicy(driverPolicy, finalizeDurableBootScopes: true));
             _overrideAllowed = policy.OverrideAllowed;
+            _auditOnly = policy.AuditOnly;
             _policyVersion = policy.Version;
             _activeCategories = policy.ActiveCategories.Count;
-            _hub.Publish(new StatusNotification(
-                _policyVersion, _activeCategories, ProtectionActive: true,
-                AuditOnly: policy.AuditOnly));
 
             _logger.LogInformation(
                 "Politica v{Version} empurrada ao driver: {Extensions} extensoes, " +

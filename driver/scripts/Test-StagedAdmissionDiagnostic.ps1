@@ -2368,7 +2368,8 @@ function Wait-AllVolumeCanaries([string] $RawPath) {
         $response = Invoke-InspectorChecked -Arguments @('--admission-volume-status') -Timeout $InspectorTimeoutSeconds
         [IO.File]::WriteAllText(($RawPath + '-' + $attempt), [string]$response.Stdout)
         $status = ConvertFrom-Json -InputObject ([string]$response.Stdout).Trim()
-        if ($null -eq $status.admissionVolumes -or $null -eq $status.writerGlobalUnknown) {
+        if ($null -eq $status.admissionVolumes -or $null -eq $status.writerGlobalUnknown -or
+            $null -eq $status.bootPolicyState) {
             throw 'Missing all-volume status fields.'
         }
         if ($status.writerGlobalUnknown -ne 0) { throw 'Global writer tracking is unknown.' }
@@ -2820,7 +2821,8 @@ function Invoke-Variant([string] $SelectedVariant) {
                 $response = Invoke-InspectorChecked -Arguments @('--admission-volume-status') -Timeout $Timeout
                 $cnRaw[$Label + '-volumes.json'] = [string]$response.Stdout
                 $status = ConvertFrom-Json -InputObject ([string]$response.Stdout).Trim()
-                if ($null -eq $status.admissionVolumes -or $null -eq $status.writerGlobalUnknown -or $status.writerGlobalUnknown -ne 0) {
+                if ($null -eq $status.admissionVolumes -or $null -eq $status.writerGlobalUnknown -or
+                    $status.writerGlobalUnknown -ne 0 -or $null -eq $status.bootPolicyState) {
                     throw 'Canary volume inventory missing or globally unknown.'
                 }
                 foreach ($entry in $status.admissionVolumes) {
@@ -2841,7 +2843,7 @@ function Invoke-Variant([string] $SelectedVariant) {
                 if ($entries.Count -gt 1) { throw 'Canary target instance ambiguous.' }
                 if ($entries.Count -eq 1) {
                     $entry = $entries[0]
-                    foreach ($field in @('canaryState', 'canaryStatus', 'canaryChecks', 'canaryCleanupStatus', 'setupFlags', 'instanceWritersUntracked')) {
+                    foreach ($field in @('canaryState', 'canaryStatus', 'canaryChecks', 'canaryCleanupStatus', 'setupFlags', 'trustState', 'instanceWritersUntracked')) {
                         if ($null -eq $entry.$field) { throw ('Canary result field missing: ' + $field) }
                     }
                     if ($entry.instanceWritersUntracked -ne 0) { throw 'Canary instance writer tracking unknown.' }
@@ -2863,13 +2865,14 @@ function Invoke-Variant([string] $SelectedVariant) {
             }
             function Get-CNCanaryFacts($Entry) {
                 return ('instance:' + $Entry.instance + ';guid:' + $Entry.volumeGuid + ';setupFlags:' + $Entry.setupFlags +
+                    ';trustState:' + $Entry.trustState +
                     ';state:' + $Entry.canaryState + ';status:0x' + ([uint32]$Entry.canaryStatus).ToString('X8') +
                     ';checks:' + $Entry.canaryChecks + ';lowChecks:' + ($Entry.canaryChecks -band 15) +
                     ';step:' + (($Entry.canaryChecks -shr 8) -band 255) + ';cleanup:0x' + ([uint32]$Entry.canaryCleanupStatus).ToString('X8'))
             }
             function Test-CNSameCanary($Before, $After) {
                 if ($null -eq $After) { return $false }
-                foreach ($field in @('instance', 'canaryState', 'canaryStatus', 'canaryChecks', 'canaryCleanupStatus')) {
+                foreach ($field in @('instance', 'canaryState', 'canaryStatus', 'canaryChecks', 'canaryCleanupStatus', 'trustState')) {
                     if ($Before.$field -ne $After.$field) { return $false }
                 }
                 return $true

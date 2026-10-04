@@ -69,12 +69,13 @@ ServiceBinary  = %12%\%DriverName%.sys
 Dependencies   = "FltMgr"
 ; SERVICE_FILE_SYSTEM_DRIVER
 ServiceType    = 2
-; SERVICE_DEMAND_START. Deliberately NOT SERVICE_BOOT_START or
-; SERVICE_SYSTEM_START: a file system filter that faults during boot leaves
-; the machine unable to start, and recovering from that costs a snapshot
-; rollback. The driver is loaded on demand with "fltmc load SafeUpload".
-StartType      = 3
-; SERVICE_ERROR_NORMAL
+; SERVICE_BOOT_START. FSFilter Anti-Virus is the selected boot load-order
+; group so Filter Manager can attach before user-mode writers run.
+StartType      = 0
+; SERVICE_ERROR_NORMAL: ordinary initialization failures are recorded and
+; Windows continues booting. ErrorControl cannot recover from a driver
+; bugcheck; the boot-start VM harness takes an external disk-only checkpoint
+; before the run and restores that clean parent if the guest does not boot.
 ErrorControl   = 1
 LoadOrderGroup = "FSFilter Anti-Virus"
 AddReg         = SafeUpload.AddRegistry

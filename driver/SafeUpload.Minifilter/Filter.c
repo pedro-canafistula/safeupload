@@ -101,6 +101,12 @@ SafeUploadOverrideCovers (
     _In_ ULONG ProcessId
     );
 
+static BOOLEAN SafeUploadCreateIsWriter(_In_ PFLT_CALLBACK_DATA Data);
+static BOOLEAN SafeUploadFailClosedProtectedCreate(_Inout_ PFLT_CALLBACK_DATA Data,
+    _In_ PCFLT_RELATED_OBJECTS FltObjects);
+static FLT_PREOP_CALLBACK_STATUS SafeUploadPreAcquireSection(_Inout_ PFLT_CALLBACK_DATA Data,
+    _In_ PCFLT_RELATED_OBJECTS FltObjects, _Flt_CompletionContext_Outptr_ PVOID *CompletionContext);
+
 #ifdef ALLOC_PRAGMA
     #pragma alloc_text(INIT, DriverEntry)
     #pragma alloc_text(PAGE, SafeUploadUnload)
@@ -117,6 +123,9 @@ SafeUploadOverrideCovers (
     #pragma alloc_text(PAGE, SafeUploadPreCleanup)
     #pragma alloc_text(PAGE, SafeUploadPreWrite)
     #pragma alloc_text(PAGE, SafeUploadPreSetInformation)
+    #pragma alloc_text(PAGE, SafeUploadCreateIsWriter)
+    #pragma alloc_text(PAGE, SafeUploadFailClosedProtectedCreate)
+    #pragma alloc_text(PAGE, SafeUploadPreAcquireSection)
 
 #endif
 
@@ -159,6 +168,7 @@ CONST FLT_OPERATION_REGISTRATION Callbacks[] = {
     { IRP_MJ_CLEANUP, 0, SafeUploadPreCleanup, NULL },
     { IRP_MJ_WRITE, FLTFL_OPERATION_REGISTRATION_SKIP_PAGING_IO, SafeUploadPreWrite, NULL },
     { IRP_MJ_SET_INFORMATION, 0, SafeUploadPreSetInformation, NULL },
+    { IRP_MJ_ACQUIRE_FOR_SECTION_SYNCHRONIZATION, 0, SafeUploadPreAcquireSection, NULL },
     { IRP_MJ_OPERATION_END }
 };
 #endif
@@ -174,7 +184,11 @@ CONST FLT_REGISTRATION FilterRegistration = {
 #endif
     SafeUploadContextRegistration,      //  Context registration
     Callbacks,                          //  Operation callbacks
-    SafeUploadUnload,                   //  FilterUnload
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    SafeUploadUnload,                   // Test build only: the harness restores the original driver.
+#else
+    NULL,                               // Production build: no voluntary unload callback.
+#endif
     SafeUploadInstanceSetup,            //  InstanceSetup
     SafeUploadInstanceQueryTeardown,    //  InstanceQueryTeardown
 #if SAFEUPLOAD_STAGING_PROTOTYPE
@@ -212,14 +226,14 @@ Routine Description:
     manager and starts filtering.
 
     IRQL: PASSIVE_LEVEL. Called by the I/O manager in the context of the
-    System process while the service is being started.
+    System process while the service is being started. RegistryPath supplies
+    the bounded durable policy location read before FltStartFiltering.
 
 Arguments:
 
     DriverObject - Driver object created by the system for this driver.
 
-    RegistryPath - Where this driver's service parameters live. Unused in
-        v1: every tunable is a compile-time constant.
+    RegistryPath - Where this driver's service parameters live.
 
 Return Value:
 
@@ -229,8 +243,6 @@ Return Value:
 --*/
 {
     NTSTATUS status;
-
-    UNREFERENCED_PARAMETER( RegistryPath );
 
     //
     //  Opt in to non-paged, non-executable pool for every allocation that
@@ -254,7 +266,7 @@ Return Value:
     //  is push a policy.
     //
 
-    SafeUploadInitializePolicy();
+    SafeUploadInitializePolicy( RegistryPath );
     SafeUploadInitializeTaint();
     SafeUploadInitializeOverrides();
 
@@ -292,19 +304,16 @@ Return Value:
 #endif
 
 #if SAFEUPLOAD_STAGING_PROTOTYPE
-
-    //
-    //  Scan the bootstrap scope BEFORE any callback can run, through the volume stack: no window in
-    //  which an old writable view of a protected file is unfenced. A scan that cannot prove the scope
-    //  fails the load closed.
-    //
-
-    status = SafeUploadStageFenceRefresh( NULL );
-
-    if (!NT_SUCCESS( status )) {
-
-        SafeUploadTrace( "pre-start fence scan failed, status 0x%08X\n", status );
-        goto ClosePort;
+    if (!SafeUploadData.BootStartMode) {
+        /* Preserve Phase 1 demand-load behavior. A boot-start load never
+         * performs synchronous volume enumeration or lower file I/O here. */
+        status = SafeUploadStageFenceRefresh( NULL );
+        if (!NT_SUCCESS( status )) {
+            SafeUploadTrace( "pre-start fence scan failed, status 0x%08X\n", status );
+            goto ClosePort;
+        }
+    } else {
+        SafeUploadTrace("boot-start mode: scan-based fence refresh is disabled\n");
     }
 #endif
 
@@ -319,17 +328,14 @@ Return Value:
 
 #if SAFEUPLOAD_STAGING_PROTOTYPE
     SafeUploadStageAdmissionReady();
-    SafeUploadStageFenceStartRetries();
+    if (!SafeUploadData.BootStartMode) SafeUploadStageFenceStartRetries();
 #endif
 
 #if SAFEUPLOAD_STAGING_PROTOTYPE
-
-    //
-    //  Instances exist now. A second scan, below them, catches a mapping created between the
-    //  pre-start scan and the first callback. A failure is recorded in the fence counters.
-    //
-
-    (VOID) SafeUploadStageFenceRefresh( NULL );
+    if (!SafeUploadData.BootStartMode) {
+        /* Demand-start diagnostic path only; boot start remains registry-only. */
+        (VOID) SafeUploadStageFenceRefresh( NULL );
+    }
 #endif
 
     SafeUploadTrace( "loaded and filtering\n" );
@@ -523,9 +529,6 @@ Return Value:
     BOOLEAN fenceSetupAdmitted = FALSE;
 #endif
 
-#if !SAFEUPLOAD_STAGING_PROTOTYPE
-    UNREFERENCED_PARAMETER( Flags );
-#endif
     UNREFERENCED_PARAMETER( VolumeFilesystemType );
 
     PAGED_CODE();
@@ -538,20 +541,20 @@ Return Value:
 
 #if SAFEUPLOAD_STAGING_PROTOTYPE
     // Hold a nonblocking admission through the end of this callback. A voluntary unload cannot
-    // commit while this setup is running; work admission then covers its refresh or q fallback.
+    // commit while this setup is running. Demand-start tests also queue their existing refresh.
     if (!SafeUploadStageFenceSetupBegin()) {
         SafeUploadTrace("declining late volume attachment after unload commit\n");
         return STATUS_FLT_DO_NOT_ATTACH;
     }
     fenceSetupAdmitted = TRUE;
-    if (!SafeUploadStageFenceQueueRefresh( FltObjects->Volume )) {
+    if (!SafeUploadData.BootStartMode && !SafeUploadStageFenceQueueRefresh( FltObjects->Volume )) {
         SafeUploadTrace("declining late volume attachment: unload already committed\n");
         SafeUploadStageFenceSetupEnd();
         return STATUS_FLT_DO_NOT_ATTACH;
     }
     status = SafeUploadSetInstanceContext( FltObjects, VolumeDeviceType, Flags, &volumeKind );
 #else
-    status = SafeUploadSetInstanceContext( FltObjects, VolumeDeviceType, &volumeKind );
+    status = SafeUploadSetInstanceContext( FltObjects, VolumeDeviceType, Flags, &volumeKind );
 #endif
 
 #if SAFEUPLOAD_STAGING_PROTOTYPE
@@ -1308,6 +1311,104 @@ Return Value:
 
 
 
+static BOOLEAN SafeUploadCreateIsWriter(_In_ PFLT_CALLBACK_DATA Data)
+{
+    PIO_SECURITY_CONTEXT security = Data->Iopb->Parameters.Create.SecurityContext;
+    ULONG disposition = Data->Iopb->Parameters.Create.Options >> 24;
+    if (security == NULL) return FALSE;
+    return BooleanFlagOn(security->DesiredAccess,
+            FILE_WRITE_DATA | FILE_APPEND_DATA | FILE_WRITE_ATTRIBUTES | FILE_WRITE_EA |
+            FILE_DELETE_CHILD | DELETE | WRITE_DAC | WRITE_OWNER | MAXIMUM_ALLOWED |
+            GENERIC_WRITE | GENERIC_ALL) ||
+        FlagOn(Data->Iopb->Parameters.Create.Options, FILE_DELETE_ON_CLOSE) ||
+        disposition == FILE_CREATE || disposition == FILE_SUPERSEDE ||
+        disposition == FILE_OVERWRITE || disposition == FILE_OVERWRITE_IF;
+}
+
+/* The connected-port bit alone is not authorization: only an accepted SET_POLICY
+ * from the authenticated service enables protected writes. */
+static BOOLEAN SafeUploadFailClosedProtectedCreate(_Inout_ PFLT_CALLBACK_DATA Data,
+    _In_ PCFLT_RELATED_OBJECTS FltObjects)
+{
+    PFLT_FILE_NAME_INFORMATION name = NULL;
+    PSAFEUPLOAD_INSTANCE_CONTEXT instanceContext = NULL;
+    SAFEUPLOAD_VOLUME_KIND kind = SafeUploadVolumeUnknown;
+    BOOLEAN protectedName = FALSE;
+    NTSTATUS status;
+
+    PAGED_CODE();
+    if (!SafeUploadCreateIsWriter(Data) || Data->Iopb->TargetFileObject == NULL) return FALSE;
+
+    if (NT_SUCCESS(FltGetInstanceContext(FltObjects->Instance,
+            (PFLT_CONTEXT *)&instanceContext))) {
+        kind = instanceContext->VolumeKind;
+        FltReleaseContext(instanceContext);
+    }
+
+    /* An open that begins while the authenticated service is connected on a
+     * trusted instance keeps the existing policy path. With no destination
+     * scopes there is no reason to normalize every unrelated boot write. */
+    if ((SafeUploadIsAuthenticatedClient() && SafeUploadInstanceTrustGateSatisfied(FltObjects->Instance)) ||
+        !SafeUploadPolicyHasDestinationScopes(kind)) return FALSE;
+
+    status = FltGetFileNameInformation(Data,
+        FLT_FILE_NAME_NORMALIZED | FLT_FILE_NAME_QUERY_DEFAULT, &name);
+    if (NT_SUCCESS(status) && name != NULL && NT_SUCCESS(FltParseFileNameInformation(name))) {
+        protectedName = SafeUploadPolicyMatchesDestination(kind, &name->Name);
+    } else {
+        /* A volume-kind scope remains identifiable without a path. A
+         * path-prefix scope is not widened to the rest of a fixed volume. */
+        protectedName = SafeUploadPolicyMatchesDestination(kind, NULL);
+    }
+    if (name != NULL) FltReleaseFileNameInformation(name);
+
+    return protectedName && (!SafeUploadInstanceTrustGateSatisfied(FltObjects->Instance) ||
+        !SafeUploadIsAuthenticatedClient());
+}
+
+static FLT_PREOP_CALLBACK_STATUS SafeUploadPreAcquireSection(_Inout_ PFLT_CALLBACK_DATA Data,
+    _In_ PCFLT_RELATED_OBJECTS FltObjects,
+    _Flt_CompletionContext_Outptr_ PVOID *CompletionContext)
+{
+    PFLT_FILE_NAME_INFORMATION name = NULL;
+    PSAFEUPLOAD_INSTANCE_CONTEXT instanceContext = NULL;
+    SAFEUPLOAD_VOLUME_KIND kind = SafeUploadVolumeUnknown;
+    BOOLEAN protectedName = FALSE;
+    NTSTATUS status;
+
+    *CompletionContext = NULL;
+    PAGED_CODE();
+    if (Data->Iopb->Parameters.AcquireForSectionSynchronization.SyncType != SyncTypeCreateSection ||
+        !FlagOn(Data->Iopb->Parameters.AcquireForSectionSynchronization.PageProtection,
+            PAGE_READWRITE | PAGE_EXECUTE_READWRITE) ||
+        FlagOn(Data->Iopb->Parameters.AcquireForSectionSynchronization.AllocationAttributes, SEC_IMAGE)) {
+        return FLT_PREOP_SUCCESS_NO_CALLBACK;
+    }
+
+    if (NT_SUCCESS(FltGetInstanceContext(FltObjects->Instance,
+            (PFLT_CONTEXT *)&instanceContext))) {
+        kind = instanceContext->VolumeKind;
+        FltReleaseContext(instanceContext);
+    }
+    if ((SafeUploadIsAuthenticatedClient() && SafeUploadInstanceTrustGateSatisfied(FltObjects->Instance)) ||
+        !SafeUploadPolicyHasDestinationScopes(kind)) return FLT_PREOP_SUCCESS_NO_CALLBACK;
+    status = FltGetFileNameInformation(Data,
+        FLT_FILE_NAME_NORMALIZED | FLT_FILE_NAME_QUERY_DEFAULT, &name);
+    if (NT_SUCCESS(status) && name != NULL && NT_SUCCESS(FltParseFileNameInformation(name)))
+        protectedName = SafeUploadPolicyMatchesDestination(kind, &name->Name);
+    else
+        protectedName = SafeUploadPolicyMatchesDestination(kind, NULL);
+    if (name != NULL) FltReleaseFileNameInformation(name);
+
+    if (protectedName && (!SafeUploadInstanceTrustGateSatisfied(FltObjects->Instance) ||
+        !SafeUploadIsAuthenticatedClient())) {
+        Data->IoStatus.Status = STATUS_ACCESS_DENIED;
+        Data->IoStatus.Information = 0;
+        return FLT_PREOP_COMPLETE;
+    }
+    return FLT_PREOP_SUCCESS_NO_CALLBACK;
+}
+
 FLT_PREOP_CALLBACK_STATUS
 SafeUploadPreCreate (
     _Inout_ PFLT_CALLBACK_DATA Data,
@@ -1367,19 +1468,28 @@ Return Value:
 
 
     //
-    //  With no inspector connected there is nobody to ask, and no answer to
-    //  cache.
-    //
-
-    if (SafeUploadData.ClientPort == NULL) {
-
-        return FLT_PREOP_SUCCESS_NO_CALLBACK;
-    }
-
     targetFileObject = Data->Iopb->TargetFileObject;
 
     if (targetFileObject == NULL) {
 
+        return FLT_PREOP_SUCCESS_NO_CALLBACK;
+    }
+
+    if (SafeUploadFailClosedProtectedCreate(Data, FltObjects)) {
+        Data->IoStatus.Status = STATUS_ACCESS_DENIED;
+        Data->IoStatus.Information = 0;
+        return FLT_PREOP_COMPLETE;
+    }
+
+    /* Reads and writes outside protected scopes keep the existing no-port
+     * behavior. Recheck after the initial fail-closed probe so a disconnect
+     * between the two checks cannot turn the create into a no-port allow. */
+    if (!SafeUploadIsAuthenticatedClient()) {
+        if (SafeUploadFailClosedProtectedCreate(Data, FltObjects)) {
+            Data->IoStatus.Status = STATUS_ACCESS_DENIED;
+            Data->IoStatus.Information = 0;
+            return FLT_PREOP_COMPLETE;
+        }
         return FLT_PREOP_SUCCESS_NO_CALLBACK;
     }
 

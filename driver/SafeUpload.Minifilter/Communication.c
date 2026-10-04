@@ -9,14 +9,9 @@ Abstract:
     Filter communication port used by the SafeUpload minifilter to ask a
     user-mode inspector whether a file operation may proceed.
 
-    Everything here is transport. No message is interpreted beyond checking
-    that it is well formed and answers the question that was asked; the
-    policy that produces the verdict lives entirely in user mode.
-
-    The overriding rule of this module is RN-013: every failure mode -
-    nobody connected, allocation failure, timeout, malformed reply, driver
-    unloading - resolves to "allow". The kernel never blocks a user because
-    inspection did not happen.
+    Existing inspection exchanges retain RN-013: failure to obtain a verdict
+    does not wedge unrelated I/O. Phase 2 separately denies new writes and
+    writable sections inside identified protected scopes while unauthorized.
 
 Environment:
 
@@ -184,6 +179,10 @@ Return Value:
 {
     PAGED_CODE();
 
+    /* A connected port is not an accepted policy. Drop authorization before
+     * either endpoint is closed, including DriverEntry failure cleanup. */
+    InterlockedExchange(&SafeUploadData.AuthenticatedClient, 0);
+
     if (SafeUploadData.ServerPort != NULL) {
 
         FltCloseCommunicationPort( SafeUploadData.ServerPort );
@@ -251,21 +250,21 @@ Return Value:
     //  in place here.
     //
 
-#if SAFEUPLOAD_STAGING_PROTOTYPE
     {
         PACCESS_TOKEN token = PsReferencePrimaryToken( PsGetCurrentProcess() );
         PTOKEN_USER user = NULL;
         NTSTATUS identityStatus = SeQueryInformationToken( token, TokenUser, (PVOID *) &user );
-        BOOLEAN system = NT_SUCCESS( identityStatus ) &&
+        BOOLEAN system = NT_SUCCESS( identityStatus ) && user != NULL &&
+            user->User.Sid != NULL && RtlValidSid( user->User.Sid ) &&
             RtlEqualSid( user->User.Sid, SeExports->SeLocalSystemSid );
         if (user != NULL) ExFreePool( user );
         PsDereferencePrimaryToken( token );
         if (!system) return STATUS_ACCESS_DENIED;
     }
-#endif
 
     FLT_ASSERT( SafeUploadData.ClientPort == NULL );
 
+    InterlockedExchange(&SafeUploadData.AuthenticatedClient, 0);
     SafeUploadData.InspectorProcessId = HandleToULong( PsGetCurrentProcessId() );
     SafeUploadData.ClientPort = ClientPort;
 
@@ -287,9 +286,9 @@ Routine Description:
 
     Called when the inspector closes its handle or exits.
 
-    From the moment ClientPort goes back to NULL, every operation is
-    allowed without inspection (RN-013). That is deliberate: an inspector
-    that crashed must not take the file system down with it.
+    From the moment the authenticated client disconnects, protected-scope
+    create and writable-section gates fail closed. Reads and operations
+    outside those scopes retain the existing no-inspection behavior.
 
     IRQL: PASSIVE_LEVEL.
 
@@ -311,12 +310,12 @@ Return Value:
                      SafeUploadData.InspectorProcessId );
 
     //
-    //  Close the port before clearing the PID, never the other way round.
-    //  Once ClientPort is NULL no message can be sent at all; clearing the
-    //  PID first would open a window in which the port is still live and
-    //  the departing inspector's own I/O would be sent back to it.
+    //  Clear authorization before closing the port. An already-dispatched
+    //  callback may still see ClientPort while teardown is in progress, but
+    //  it can no longer authorize a protected create or writable section.
     //
 
+    InterlockedExchange(&SafeUploadData.AuthenticatedClient, 0);
     FltCloseClientPort( SafeUploadData.Filter, &SafeUploadData.ClientPort );
 
     SafeUploadData.InspectorProcessId = 0;
@@ -547,6 +546,14 @@ Return Value:
     if (InputBuffer == NULL || InputBufferLength < sizeof( SAFEUPLOAD_CONTROL )) {
 
         return STATUS_INVALID_PARAMETER;
+    }
+
+    /* A SYSTEM process may duplicate the client-port handle. Bind every
+     * request to the process accepted by PortConnect, not only to whoever
+     * presents a handle for the connection. */
+    if (SafeUploadData.ClientPort == NULL ||
+        HandleToULong(PsGetCurrentProcessId()) != SafeUploadData.InspectorProcessId) {
+        return STATUS_ACCESS_DENIED;
     }
 
     //
@@ -995,6 +1002,10 @@ Return Value:
             }
 
             if (!wantStatus) {
+                if (SafeUploadData.BootStartMode) {
+                    status = STATUS_NOT_SUPPORTED;
+                    leave;
+                }
                 status = SafeUploadStageFenceRefresh( NULL );
                 leave;
             }
@@ -1170,9 +1181,22 @@ Return Value:
 
             status = STATUS_REVISION_MISMATCH;
 
-        } else {
+        } else if (policy->Control.Reserved == 0) {
 
             status = SafeUploadSetPolicy( policy );
+            if (NT_SUCCESS(status)) {
+                InterlockedExchange(&SafeUploadData.AuthenticatedClient, 1);
+            }
+
+        } else if (policy->Control.Reserved == SAFEUPLOAD_POLICY_CONTROL_FINALIZE_BOOT_SCOPES) {
+            /* The second SET_POLICY arrives only after the service durably
+             * commits Scopes and removes PendingScopes. Normalize the header
+             * before comparing it with the already-installed live snapshot. */
+            policy->Control.Reserved = 0;
+            status = SafeUploadFinalizeBootPolicy(policy);
+
+        } else {
+            status = STATUS_INVALID_PARAMETER;
         }
     }
 

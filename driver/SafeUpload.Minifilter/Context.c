@@ -28,6 +28,9 @@ Environment:
 --*/
 
 #include "Filter.h"
+
+C_ASSERT(FLTFL_INSTANCE_SETUP_NEWLY_MOUNTED_VOLUME ==
+    SAFEUPLOAD_SETUP_FLAG_NEWLY_MOUNTED_VOLUME);
 #if SAFEUPLOAD_STAGING_PROTOTYPE
 #include "Stage.h"
 #endif
@@ -72,6 +75,8 @@ static VOID SafeUploadInstanceContextCleanup(
 #ifdef ALLOC_PRAGMA
     #pragma alloc_text(PAGE, SafeUploadClassifyVolume)
     #pragma alloc_text(PAGE, SafeUploadSetInstanceContext)
+    #pragma alloc_text(PAGE, SafeUploadInstanceIsTrusted)
+    #pragma alloc_text(PAGE, SafeUploadInstanceTrustGateSatisfied)
     #pragma alloc_text(PAGE, SafeUploadGetOrCreateStreamContext)
     #pragma alloc_text(PAGE, SafeUploadMarkHandleForWrite)
 #endif
@@ -266,9 +271,7 @@ NTSTATUS
 SafeUploadSetInstanceContext (
     _In_ PCFLT_RELATED_OBJECTS FltObjects,
     _In_ DEVICE_TYPE VolumeDeviceType,
-#if SAFEUPLOAD_STAGING_PROTOTYPE
     _In_ FLT_INSTANCE_SETUP_FLAGS SetupFlags,
-#endif
     _Out_ PSAFEUPLOAD_VOLUME_KIND VolumeKind
     )
 /*++
@@ -323,6 +326,9 @@ Return Value:
     //
 
     RtlZeroMemory( instanceContext, sizeof( *instanceContext ) );
+    instanceContext->SetupFlags = SetupFlags;
+    instanceContext->TrustState = FlagOn(SetupFlags, FLTFL_INSTANCE_SETUP_NEWLY_MOUNTED_VOLUME) ?
+        SAFEUPLOAD_VOLUME_TRUST_NEWLY_MOUNTED : SAFEUPLOAD_VOLUME_TRUST_UNTRUSTED_FLAGS;
 #if SAFEUPLOAD_STAGING_PROTOTYPE
     teardownToken = (PSAFEUPLOAD_INSTANCE_TEARDOWN_TOKEN)ExAllocatePool2(
         POOL_FLAG_NON_PAGED, sizeof(*teardownToken), SAFEUPLOAD_TEARDOWN_TOKEN_POOL_TAG);
@@ -338,7 +344,6 @@ Return Value:
     instanceContext->VolumeKind = SafeUploadClassifyVolume( FltObjects->Volume,
                                                             VolumeDeviceType );
 #if SAFEUPLOAD_STAGING_PROTOTYPE
-    instanceContext->SetupFlags = SetupFlags;
     instanceContext->CanaryStatus = STATUS_PENDING;
     instanceContext->CanaryCleanupStatus = STATUS_PENDING;
     instanceContext->FileSystemStatus = FltGetFileSystemType(FltObjects->Instance,
@@ -382,6 +387,30 @@ Return Value:
     FltReleaseContext( instanceContext );
 
     return status;
+}
+
+BOOLEAN SafeUploadInstanceIsTrusted(_In_ PFLT_INSTANCE Instance)
+{
+    PSAFEUPLOAD_INSTANCE_CONTEXT context = NULL;
+    BOOLEAN trusted = FALSE;
+    PAGED_CODE();
+    if (NT_SUCCESS(FltGetInstanceContext(Instance, (PFLT_CONTEXT *)&context))) {
+        trusted = context->TrustState == SAFEUPLOAD_VOLUME_TRUST_NEWLY_MOUNTED;
+        FltReleaseContext(context);
+    }
+    return trusted;
+}
+
+BOOLEAN SafeUploadInstanceTrustGateSatisfied(_In_ PFLT_INSTANCE Instance)
+{
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    /* Keep the demand-start Phase 1 corpus runnable with its authenticated
+     * diagnostic service. The instance remains reported Untrusted; agent-down
+     * creates still fail closed, and boot-start prototype/production builds
+     * always require the newly-mounted flag. */
+    if (!SafeUploadData.BootStartMode) return TRUE;
+#endif
+    return SafeUploadInstanceIsTrusted(Instance);
 }
 
 ///////////////////////////////////////////////////////////////////////////

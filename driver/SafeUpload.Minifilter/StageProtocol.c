@@ -30,7 +30,7 @@ NTSTATUS SafeUploadSetPublicationPermit(_In_ PSAFEUPLOAD_PUBLICATION_MESSAGE Mes
     NTSTATUS status = STATUS_INSUFFICIENT_RESOURCES;
     ULONGLONG now = KeQueryInterruptTime();
     GUID emptyId = {0};
-    if (SafeUploadData.ClientPort == NULL ||
+    if (!SafeUploadIsAuthenticatedClient() ||
         HandleToULong( PsGetCurrentProcessId() ) != SafeUploadData.InspectorProcessId)
         return STATUS_ACCESS_DENIED;
     if (Message->Control.Version != SAFEUPLOAD_PROTOCOL_VERSION ||
