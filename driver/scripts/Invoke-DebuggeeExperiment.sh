@@ -272,10 +272,15 @@ if [ "$boot_start_run" = 1 ]; then
         exit 22
     }
 else
-    python3 driver/scripts/remote_ps.py "$host" <<PS 2>&1 | clean | tee "$ev/$name-gate.txt"
+    # A guest command that never returns (registry-txf run 2: fltmc unload parked in FltUnregisterFilter) must not stall the run.
+    timeout "${HARNESS_TIMEOUT_SECONDS:-5400}" python3 driver/scripts/remote_ps.py "$host" <<PS 2>&1 | clean | tee "$ev/$name-gate.txt"
 \$ErrorActionPreference = 'Continue'
 try { $invocation; 'HARNESS_RETURNED' } catch { 'HARNESS_THREW: ' + \$_.Exception.Message }
 PS
+    if [ "${PIPESTATUS[0]}" -eq 124 ]; then
+        echo "HARNESS_TIMEOUT=True;Seconds=${HARNESS_TIMEOUT_SECONDS:-5400}" | tee -a "$ev/$name-gate.txt"
+        record_recovery_required "The guest harness did not return within ${HARNESS_TIMEOUT_SECONDS:-5400} s; a guest command is hung."
+    fi
 fi
 
 echo "== 4. independent restoration check"
