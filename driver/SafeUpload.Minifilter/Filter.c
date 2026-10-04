@@ -47,9 +47,7 @@ SAFEUPLOAD_COUNTERS SafeUploadCounters;
 #define SAFEUPLOAD_STAGING_PROTOTYPE 0
 #endif
 
-#if SAFEUPLOAD_STAGING_PROTOTYPE
 #include "Stage.h"
-#endif
 
 static
 BOOLEAN
@@ -167,6 +165,7 @@ CONST FLT_OPERATION_REGISTRATION Callbacks[] = {
     { IRP_MJ_CLEANUP, 0, SafeUploadPreCleanup, NULL },
     { IRP_MJ_WRITE, FLTFL_OPERATION_REGISTRATION_SKIP_PAGING_IO, SafeUploadPreWrite, NULL },
     { IRP_MJ_SET_INFORMATION, 0, SafeUploadPreSetInformation, NULL },
+    { IRP_MJ_FILE_SYSTEM_CONTROL, 0, SafeUploadStageTxfFsctlPreOperation, NULL },
     { IRP_MJ_ACQUIRE_FOR_SECTION_SYNCHRONIZATION, 0, SafeUploadPreAcquireSection, NULL },
     { IRP_MJ_OPERATION_END }
 };
@@ -203,7 +202,12 @@ CONST FLT_REGISTRATION FilterRegistration = {
     NULL,
     NULL,
 #endif
-    NULL                                // NormalizeContextCleanup
+    NULL,                               // NormalizeContextCleanup
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    SafeUploadStageTransactionNotification // TransactionNotificationCallback
+#else
+    NULL                                // TransactionNotificationCallback
+#endif
 };
 
 ///////////////////////////////////////////////////////////////////////////
@@ -1462,6 +1466,14 @@ Return Value:
 
     PAGED_CODE();
 
+    if (FltObjects->Transaction != NULL &&
+        SafeUploadStageTxfCreateMustRefuse(Data, FltObjects)) {
+        SafeUploadStageTxfRecordRefused();
+        Data->IoStatus.Status = STATUS_ACCESS_DENIED;
+        Data->IoStatus.Information = 0;
+        return FLT_PREOP_COMPLETE;
+    }
+
     SafeUploadCount( CreatesSeen );
 
 
@@ -2150,6 +2162,14 @@ Return Value:
     UNREFERENCED_PARAMETER( CompletionContext = NULL );
 
     PAGED_CODE();
+
+    if (FltObjects->Transaction != NULL &&
+        SafeUploadStageTxfSetInformationMustRefuse(Data, FltObjects)) {
+        SafeUploadStageTxfRecordRefused();
+        Data->IoStatus.Status = STATUS_ACCESS_DENIED;
+        Data->IoStatus.Information = 0;
+        return FLT_PREOP_COMPLETE;
+    }
 
     SafeUploadCount( SetInformationSeen );
 

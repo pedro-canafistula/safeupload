@@ -1028,7 +1028,7 @@ Exit:
     return result;
 }
 
-static int PrintWriterStateStatus(VOID)
+static int PrintWriterStateStatus(_In_ BOOL RegistryStatus)
 {
     SAFEUPLOAD_CONTROL control;
     SAFEUPLOAD_WRITER_STATE_STATUS status;
@@ -1054,14 +1054,23 @@ static int PrintWriterStateStatus(VOID)
         return 3;
     }
 
-    wprintf(L"{\"writerState\":true,\"postCreateRuns\":%llu,\"writeObjectsCounted\":%llu,\"writeObjectsReleased\":%llu,"
+#if defined(SAFEUPLOAD_STAGING_PROTOTYPE) && SAFEUPLOAD_STAGING_PROTOTYPE
+    wprintf(L"{\"writerState\":true,\"registryStatus\":%s,\"postCreateRuns\":%llu,\"writeObjectsCounted\":%llu,\"writeObjectsReleased\":%llu,"
             L"\"untrackedCreates\":%llu,\"cleanupUnmatched\":%llu,\"directoryCreatesSkipped\":%llu,"
             L"\"sectionInFlightNow\":%lu,\"sectionInFlightInserted\":%llu,\"sectionInFlightReleased\":%llu,"
             L"\"sectionInFlightOverflow\":%llu,\"sectionInFlightStuck\":%llu,\"sectionInFlightRemovedOnFailure\":%llu,"
             L"\"sectionInFlightMaxDepth\":%lu,\"pagingCreatesSkipped\":%llu,\"volumeCreatesSkipped\":%llu,"
             L"\"writersDroppedAtTeardown\":%llu,\"writersDroppedWhileMounted\":%llu,"
             L"\"instanceTeardownsDismount\":%llu,\"instanceTeardownsOther\":%llu,"
-            L"\"stageStreams\":%u,\"stageFileObjects\":%u,\"lastUnloadVeto\":%u,\"lastUnloadStatus\":%u}\n",
+            L"\"stageStreams\":%u,\"stageFileObjects\":%u,\"lastUnloadVeto\":%u,\"lastUnloadStatus\":%u,"
+            L"\"txfRefused\":%llu,\"registryEntries\":%u,\"registryReservations\":%u,"
+            L"\"registryOverflow\":%u,\"registryUnknownReasons\":\"0x%08X\","
+            L"\"registryInstanceUnknown\":%u,\"registryCapacity\":%u,\"transactionAssociations\":%u,"
+            L"\"registryCapacityFailures\":%llu,\"registryAllocationFailures\":%llu,"
+            L"\"registryIdentityFailures\":%llu,\"registryTransactionFailures\":%llu,"
+            L"\"registryRenameFailures\":%llu,\"registryDroppedAtDismount\":%llu,"
+            L"\"registryDroppedWhileMounted\":%llu}\n",
+            RegistryStatus ? L"true" : L"false",
             status.PostCreateRuns, status.WriteObjectsCounted, status.WriteObjectsReleased,
             status.UntrackedCreates, status.CleanupUnmatched, status.DirectoryCreatesSkipped,
             status.SectionInFlightNow, status.SectionInFlightInserted, status.SectionInFlightReleased,
@@ -1069,9 +1078,168 @@ static int PrintWriterStateStatus(VOID)
             status.SectionInFlightMaxDepth, status.PagingCreatesSkipped, status.VolumeCreatesSkipped,
             status.WritersDroppedAtTeardown, status.WritersDroppedWhileMounted,
             status.InstanceTeardownsDismount, status.InstanceTeardownsOther,
+            status.StageStreams, status.StageFileObjects, status.LastUnloadVeto, status.LastUnloadStatus,
+            status.TxfRefused, status.RegistryEntries, status.RegistryReservations,
+            status.RegistryOverflow, status.RegistryUnknownReasons, status.RegistryInstanceUnknown,
+            status.RegistryCapacity, status.TransactionAssociations, status.RegistryCapacityFailures,
+            status.RegistryAllocationFailures, status.RegistryIdentityFailures,
+            status.RegistryTransactionFailures, status.RegistryRenameFailures,
+            status.RegistryDroppedAtDismount, status.RegistryDroppedWhileMounted);
+#else
+    UNREFERENCED_PARAMETER(RegistryStatus);
+    wprintf(L"{\"writerState\":true,\"postCreateRuns\":%llu,\"writeObjectsCounted\":%llu,\"writeObjectsReleased\":%llu,"
+            L"\"untrackedCreates\":%llu,\"cleanupUnmatched\":%llu,\"directoryCreatesSkipped\":%llu,"
+            L"\"sectionInFlightNow\":%lu,\"sectionInFlightInserted\":%llu,\"sectionInFlightReleased\":%llu,"
+            L"\"sectionInFlightOverflow\":%llu,\"sectionInFlightStuck\":%llu,\"sectionInFlightRemovedOnFailure\":%llu,"
+            L"\"sectionInFlightMaxDepth\":%lu,\"pagingCreatesSkipped\":%llu,\"volumeCreatesSkipped\":%llu,"
+            L"\"stageStreams\":%u,\"stageFileObjects\":%u,\"lastUnloadVeto\":%u,\"lastUnloadStatus\":%u}\n",
+            status.PostCreateRuns, status.WriteObjectsCounted, status.WriteObjectsReleased,
+            status.UntrackedCreates, status.CleanupUnmatched, status.DirectoryCreatesSkipped,
+            status.SectionInFlightNow, status.SectionInFlightInserted, status.SectionInFlightReleased,
+            status.SectionInFlightOverflow, status.SectionInFlightStuck, status.SectionInFlightRemovedOnFailure,
+            status.SectionInFlightMaxDepth, status.PagingCreatesSkipped, status.VolumeCreatesSkipped,
             status.StageStreams, status.StageFileObjects, status.LastUnloadVeto, status.LastUnloadStatus);
+#endif
     return 0;
 }
+
+#if defined(SAFEUPLOAD_STAGING_PROTOTYPE) && SAFEUPLOAD_STAGING_PROTOTYPE
+static PCWSTR RegistryStateName(_In_ UINT32 State)
+{
+    switch (State) {
+        case SAFEUPLOAD_REGISTRY_STATE_UNSCOPED: return L"Unscoped";
+        case SAFEUPLOAD_REGISTRY_STATE_ACTIVATING: return L"Activating";
+        case SAFEUPLOAD_REGISTRY_STATE_PROTECTED: return L"Protected";
+        case SAFEUPLOAD_REGISTRY_STATE_UNKNOWN: return L"Unknown";
+        default: return L"Unknown";
+    }
+}
+
+static PCWSTR RegistrySName(_In_ UINT32 State)
+{
+    switch (State) {
+        case SAFEUPLOAD_REGISTRY_S_NO: return L"NO";
+        case SAFEUPLOAD_REGISTRY_S_YES: return L"YES";
+        default: return L"Unknown";
+    }
+}
+
+static int SendRegistryEntry(_In_z_ PCWSTR DosPath)
+{
+    static const WCHAR volumePrefix[] = L"\\Device\\HarddiskVolume";
+    WCHAR drive[3];
+    PWCHAR deviceName = NULL;
+    PSAFEUPLOAD_ADMISSION_PROBE_REQUEST request = NULL;
+    HANDLE port = INVALID_HANDLE_VALUE;
+    SAFEUPLOAD_REGISTRY_ENTRY_STATUS entry;
+    PCWSTR relativePath;
+    SIZE_T pathChars, deviceChars, prefixChars = ARRAYSIZE(volumePrefix) - 1, index;
+    ULONG requestBytes;
+    const DWORD deviceNameCapacity = 4096;
+    DWORD returned = 0;
+    HRESULT hr;
+    int result = 2;
+
+    pathChars = wcslen(DosPath);
+    if (pathChars < 4 || pathChars > SAFEUPLOAD_ADMISSION_PROBE_MAX_STRING_CHARS ||
+        DosPath[1] != L':' || DosPath[2] != L'\\' || DosPath[pathChars - 1] == L'\\') {
+        fwprintf(stderr, L"Uso: SafeUpload.Inspector --registry-entry X:\\dir\\file\n");
+        return 2;
+    }
+    for (index = 0; index < pathChars; ++index) {
+        if (DosPath[index] == L'/' || (index >= 2 && DosPath[index] == L':')) {
+            fwprintf(stderr, L"ERRO: caminho invalido ou fluxo alternativo.\n");
+            return 2;
+        }
+    }
+    drive[0] = DosPath[0]; drive[1] = L':'; drive[2] = L'\0';
+    deviceName = (PWCHAR)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY,
+        (SIZE_T)deviceNameCapacity * sizeof(WCHAR));
+    if (deviceName == NULL) return 2;
+    if (QueryDosDeviceW(drive, deviceName, deviceNameCapacity) == 0) {
+        fwprintf(stderr, L"ERRO: nao foi possivel resolver a unidade %s.\n", drive);
+        goto Cleanup;
+    }
+    deviceChars = wcslen(deviceName);
+    if (deviceChars < prefixChars || deviceChars > SAFEUPLOAD_ADMISSION_PROBE_MAX_STRING_CHARS ||
+        _wcsnicmp(deviceName, volumePrefix, prefixChars) != 0) {
+        fwprintf(stderr, L"ERRO: a unidade nao aponta para um volume NTFS local qualificado.\n");
+        goto Cleanup;
+    }
+    relativePath = DosPath + 2;
+    requestBytes = (ULONG)FIELD_OFFSET(SAFEUPLOAD_ADMISSION_PROBE_REQUEST, Strings) +
+        ((ULONG)deviceChars + (ULONG)(pathChars - 2)) * (ULONG)sizeof(WCHAR);
+    request = (PSAFEUPLOAD_ADMISSION_PROBE_REQUEST)HeapAlloc(
+        GetProcessHeap(), HEAP_ZERO_MEMORY, requestBytes);
+    if (request == NULL) goto Cleanup;
+    request->Control.Version = SAFEUPLOAD_PROTOCOL_VERSION;
+    request->Control.StructSize = requestBytes;
+    request->Control.Command = SAFEUPLOAD_CONTROL_REGISTRY_ENTRY;
+    request->VolumeNameChars = (UINT16)deviceChars;
+    request->RelativePathChars = (UINT16)(pathChars - 2);
+    CopyMemory(request->Strings, deviceName, deviceChars * sizeof(WCHAR));
+    CopyMemory(request->Strings + deviceChars, relativePath, (pathChars - 2) * sizeof(WCHAR));
+
+    hr = FilterConnectCommunicationPort(SAFEUPLOAD_PORT_NAME, 0, NULL, 0, NULL, &port);
+    if (FAILED(hr)) {
+        fwprintf(stderr, L"ERRO: nao foi possivel conectar na porta (hr = 0x%08X).\n", hr);
+        goto Cleanup;
+    }
+    ZeroMemory(&entry, sizeof(entry));
+    hr = FilterSendMessage(port, request, requestBytes, &entry, sizeof(entry), &returned);
+    if (FAILED(hr) || returned != sizeof(entry) || entry.StructSize != sizeof(entry)) {
+        fwprintf(stderr, L"ERRO: resposta registry-entry invalida (hr = 0x%08X, bytes = %u).\n", hr, returned);
+        result = 3;
+        goto Cleanup;
+    }
+    wprintf(L"{\"registryEntry\":true,\"historyPresent\":%s,\"state\":\"%s\",\"free\":%s,"
+            L"\"H\":%u,\"S\":\"%s\",\"C\":%u,\"T\":%u,\"volumeSerial\":\"0x%016llX\","
+            L"\"fileId\":\"",
+            entry.HistoryPresent ? L"true" : L"false", RegistryStateName(entry.State),
+            entry.Free ? L"true" : L"false", entry.H, RegistrySName(entry.S), entry.C, entry.T,
+            entry.VolumeSerialNumber);
+    for (index = 0; index < ARRAYSIZE(entry.FileId); ++index) wprintf(L"%02X", entry.FileId[index]);
+    wprintf(L"\",\"unknownReasons\":\"0x%08X\",\"firstSeenGeneration\":%u,\"openerPids\":[",
+        entry.UnknownReasons, entry.FirstSeenGeneration);
+    for (index = 0; index < entry.OpenerPidCount && index < ARRAYSIZE(entry.OpenerPids); ++index)
+        wprintf(L"%s%u", index == 0 ? L"" : L",", entry.OpenerPids[index]);
+    wprintf(L"],\"nameMatches\":%s}\n", entry.NameMatches ? L"true" : L"false");
+    result = 0;
+
+Cleanup:
+    if (port != INVALID_HANDLE_VALUE) CloseHandle(port);
+    if (request != NULL) HeapFree(GetProcessHeap(), 0, request);
+    if (deviceName != NULL) HeapFree(GetProcessHeap(), 0, deviceName);
+    return result;
+}
+
+static int SetRegistryCapacity(_In_z_ PCWSTR Text)
+{
+    WCHAR *end = NULL;
+    ULONG capacity;
+    SAFEUPLOAD_CONTROL control;
+    HANDLE port = INVALID_HANDLE_VALUE;
+    DWORD returned = 0;
+    HRESULT hr;
+    if (Text == NULL || Text[0] == L'\0') return 2;
+    capacity = wcstoul(Text, &end, 10);
+    if (end == Text || *end != L'\0' || capacity > SAFEUPLOAD_WRITER_REGISTRY_TOTAL_LIMIT) {
+        fwprintf(stderr, L"Uso: SafeUpload.Inspector --registry-capacity 0..4096\n");
+        return 2;
+    }
+    ZeroMemory(&control, sizeof(control));
+    control.Version = SAFEUPLOAD_PROTOCOL_VERSION;
+    control.StructSize = sizeof(control);
+    control.Command = SAFEUPLOAD_CONTROL_REGISTRY_SET_CAPACITY;
+    control.Reserved = capacity;
+    hr = FilterConnectCommunicationPort(SAFEUPLOAD_PORT_NAME, 0, NULL, 0, NULL, &port);
+    if (FAILED(hr)) return 2;
+    hr = FilterSendMessage(port, &control, sizeof(control), NULL, 0, &returned);
+    CloseHandle(port);
+    wprintf(L"{\"registryCapacity\":%u,\"status\":\"0x%08X\"}\n", capacity, hr);
+    return SUCCEEDED(hr) && returned == 0 ? 0 : 3;
+}
+#endif
 
 static int PrintFenceStatus(VOID)
 {
@@ -1311,7 +1479,24 @@ Return Value:
     }
 
     if (argc > 1 && _wcsicmp(argv[1], L"--writer-state-status") == 0) {
-        return PrintWriterStateStatus();
+        return PrintWriterStateStatus(FALSE);
+    }
+    if (argc > 1 && _wcsicmp(argv[1], L"--registry-status") == 0) {
+        return PrintWriterStateStatus(TRUE);
+    }
+    if (argc > 1 && _wcsicmp(argv[1], L"--registry-entry") == 0) {
+        if (argc != 3) {
+            fwprintf(stderr, L"Uso: SafeUpload.Inspector --registry-entry X:\\dir\\file\n");
+            return 2;
+        }
+        return SendRegistryEntry(argv[2]);
+    }
+    if (argc > 1 && _wcsicmp(argv[1], L"--registry-capacity") == 0) {
+        if (argc != 3) {
+            fwprintf(stderr, L"Uso: SafeUpload.Inspector --registry-capacity 0..4096\n");
+            return 2;
+        }
+        return SetRegistryCapacity(argv[2]);
     }
     if (argc > 1 && _wcsicmp(argv[1], L"--admission-volume-status") == 0) {
         return PrintAdmissionVolumeStatus();

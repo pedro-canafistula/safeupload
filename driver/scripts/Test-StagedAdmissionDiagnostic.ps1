@@ -1,6 +1,6 @@
 param(
     [Parameter(Mandatory = $true)]
-    [ValidateSet('preattach-immediate', 'preattach-protected-open', 'mmdoes-matrix', 'policy-transition', 'retained-section', 'section-eol', 'writer-count', 'canary-security', 'canary-newvolume', 'section-inflight', 'section-lower', 'section-teardown', 'writer-fault', 'primitive-cost', 'All')]
+    [ValidateSet('preattach-immediate', 'preattach-protected-open', 'mmdoes-matrix', 'policy-transition', 'retained-section', 'section-eol', 'writer-count', 'registry-txf', 'canary-security', 'canary-newvolume', 'section-inflight', 'section-lower', 'section-teardown', 'writer-fault', 'primitive-cost', 'All')]
     [string] $Variant,
 
     [Parameter(Mandatory = $true)]
@@ -1454,6 +1454,175 @@ public static class SafeUploadEolNative
     }
 }
 
+function Initialize-RegistryTxfNative {
+    if (-not ('SafeUploadRegistryTxfNative' -as [type])) {
+        Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+using System.Text;
+using Microsoft.Win32.SafeHandles;
+
+public static class SafeUploadRegistryTxfNative
+{
+    [StructLayout(LayoutKind.Sequential)]
+    struct UnicodeString { public ushort Length; public ushort MaximumLength; public IntPtr Buffer; }
+    [StructLayout(LayoutKind.Sequential)]
+    struct ObjectAttributes
+    {
+        public uint Length; public IntPtr RootDirectory; public IntPtr ObjectName;
+        public uint Attributes; public IntPtr SecurityDescriptor; public IntPtr SecurityQualityOfService;
+    }
+    [StructLayout(LayoutKind.Sequential)]
+    struct IoStatusBlock { public IntPtr Status; public UIntPtr Information; }
+
+    [DllImport("ktmw32.dll", SetLastError=true, CharSet=CharSet.Unicode)]
+    public static extern IntPtr CreateTransaction(IntPtr attributes, IntPtr unitOfWork,
+        uint createOptions, uint isolationLevel, uint isolationFlags, uint timeout, string description);
+    [DllImport("ktmw32.dll", SetLastError=true)]
+    [return: MarshalAs(UnmanagedType.Bool)] public static extern bool CommitTransaction(IntPtr transaction);
+    [DllImport("ktmw32.dll", SetLastError=true)]
+    [return: MarshalAs(UnmanagedType.Bool)] public static extern bool RollbackTransaction(IntPtr transaction);
+    [DllImport("kernel32.dll", SetLastError=true)]
+    [return: MarshalAs(UnmanagedType.Bool)] public static extern bool CloseHandle(IntPtr handle);
+    [DllImport("kernel32.dll", SetLastError=true, CharSet=CharSet.Unicode,
+        EntryPoint="CreateFileTransactedW")]
+    public static extern SafeFileHandle CreateFileTransacted(string path, uint access, uint share,
+        IntPtr security, uint disposition, uint flags, IntPtr template, IntPtr transaction,
+        IntPtr miniVersion, IntPtr extendedParameter);
+    [DllImport("kernel32.dll", SetLastError=true, EntryPoint="WriteFile")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    static extern bool WriteFileNative(SafeFileHandle file, byte[] bytes, uint length,
+        out uint written, IntPtr overlapped);
+    [DllImport("kernel32.dll", SetLastError=true, EntryPoint="DeviceIoControl")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    static extern bool DeviceIoControlNative(SafeFileHandle file, uint code, byte[] input,
+        uint inputLength, byte[] output, uint outputLength, out uint returned, IntPtr overlapped);
+    [DllImport("ntdll.dll", EntryPoint="RtlGetCurrentTransaction")]
+    static extern IntPtr GetCurrentTransaction();
+    [DllImport("ntdll.dll", EntryPoint="RtlSetCurrentTransaction")]
+    static extern uint SetCurrentTransaction(IntPtr transaction);
+    [DllImport("ntdll.dll", EntryPoint="NtCreateFile")]
+    static extern uint NtCreateFileNative(out IntPtr file, uint desiredAccess,
+        ref ObjectAttributes objectAttributes, out IoStatusBlock ioStatus, IntPtr allocationSize,
+        uint fileAttributes, uint shareAccess, uint createDisposition, uint createOptions,
+        IntPtr eaBuffer, uint eaLength);
+    [DllImport("ntdll.dll", EntryPoint="NtClose")]
+    static extern uint NtClose(IntPtr handle);
+    [DllImport("ntdll.dll", EntryPoint="NtSetInformationFile")]
+    static extern uint NtSetInformationFileNative(IntPtr file, out IoStatusBlock ioStatus,
+        IntPtr information, uint length, uint informationClass);
+
+    public static bool Write(SafeFileHandle file, byte[] bytes)
+    {
+        uint written;
+        return WriteFileNative(file, bytes, (uint)bytes.Length, out written, IntPtr.Zero) &&
+            written == (uint)bytes.Length;
+    }
+
+    public static uint NtCreateSupersede(string dosPath, IntPtr transaction)
+    {
+        IntPtr nameBuffer = IntPtr.Zero, nameStruct = IntPtr.Zero, attributesBuffer = IntPtr.Zero;
+        IntPtr file = IntPtr.Zero;
+        IntPtr previousTransaction = IntPtr.Zero;
+        bool transactionSet = false;
+        try
+        {
+            string ntPath = "\\??\\" + dosPath;
+            int nameBytes = Encoding.Unicode.GetByteCount(ntPath);
+            nameBuffer = Marshal.StringToHGlobalUni(ntPath);
+            UnicodeString name = new UnicodeString();
+            name.Length = (ushort)nameBytes;
+            name.MaximumLength = (ushort)(nameBytes + 2);
+            name.Buffer = nameBuffer;
+            nameStruct = Marshal.AllocHGlobal(Marshal.SizeOf(typeof(UnicodeString)));
+            Marshal.StructureToPtr(name, nameStruct, false);
+            ObjectAttributes attributes = new ObjectAttributes();
+            attributes.Length = (uint)Marshal.SizeOf(typeof(ObjectAttributes));
+            attributes.ObjectName = nameStruct;
+            attributes.Attributes = 0x00000040; // OBJ_CASE_INSENSITIVE
+            attributesBuffer = Marshal.AllocHGlobal(Marshal.SizeOf(typeof(ObjectAttributes)));
+            Marshal.StructureToPtr(attributes, attributesBuffer, false);
+
+            previousTransaction = GetCurrentTransaction();
+            uint setStatus = SetCurrentTransaction(transaction);
+            if (setStatus != 0) return setStatus;
+            transactionSet = true;
+            ObjectAttributes localAttributes = (ObjectAttributes)Marshal.PtrToStructure(
+                attributesBuffer, typeof(ObjectAttributes));
+            IoStatusBlock ioStatus;
+            uint status = NtCreateFileNative(out file,
+                0x00010000 | 0x00000002 | 0x00100000, // DELETE | FILE_WRITE_DATA | SYNCHRONIZE
+                ref localAttributes, out ioStatus, IntPtr.Zero, 0x00000080, 0x00000007,
+                0, 0x00000060, IntPtr.Zero, 0); // FILE_SUPERSEDE, NON_DIRECTORY | SYNCHRONOUS_IO_NONALERT
+            if (file != IntPtr.Zero && file != new IntPtr(-1)) NtClose(file);
+            return status;
+        }
+        finally
+        {
+            if (transactionSet) SetCurrentTransaction(previousTransaction);
+            if (attributesBuffer != IntPtr.Zero) Marshal.FreeHGlobal(attributesBuffer);
+            if (nameStruct != IntPtr.Zero) Marshal.FreeHGlobal(nameStruct);
+            if (nameBuffer != IntPtr.Zero) Marshal.FreeHGlobal(nameBuffer);
+        }
+    }
+
+    static byte[] NameInformation(string dosPath)
+    {
+        byte[] name = Encoding.Unicode.GetBytes("\\??\\" + dosPath);
+        int rootOffset = IntPtr.Size == 8 ? 8 : 4;
+        int lengthOffset = rootOffset + IntPtr.Size;
+        int nameOffset = lengthOffset + 4;
+        byte[] information = new byte[nameOffset + name.Length];
+        information[0] = 0; // ReplaceIfExists = FALSE
+        Buffer.BlockCopy(BitConverter.GetBytes((uint)name.Length), 0, information, lengthOffset, 4);
+        Buffer.BlockCopy(name, 0, information, nameOffset, name.Length);
+        return information;
+    }
+
+    public static uint SetRename(SafeFileHandle file, string destination)
+    { return SetNameInformation(file, destination, 10); } // FileRenameInformation
+    public static uint SetLink(SafeFileHandle file, string destination)
+    { return SetNameInformation(file, destination, 11); } // FileLinkInformation
+    static uint SetNameInformation(SafeFileHandle file, string destination, uint informationClass)
+    {
+        byte[] bytes = NameInformation(destination);
+        IntPtr buffer = Marshal.AllocHGlobal(bytes.Length);
+        try
+        {
+            Marshal.Copy(bytes, 0, buffer, bytes.Length);
+            IoStatusBlock ioStatus;
+            return NtSetInformationFileNative(file.DangerousGetHandle(), out ioStatus,
+                buffer, (uint)bytes.Length, informationClass);
+        }
+        finally { Marshal.FreeHGlobal(buffer); }
+    }
+    public static uint SetDelete(SafeFileHandle file)
+    {
+        IntPtr buffer = Marshal.AllocHGlobal(1);
+        try
+        {
+            Marshal.WriteByte(buffer, 0, 1);
+            IoStatusBlock ioStatus;
+            return NtSetInformationFileNative(file.DangerousGetHandle(), out ioStatus,
+                buffer, 1, 13); // FileDispositionInformation
+        }
+        finally { Marshal.FreeHGlobal(buffer); }
+    }
+    public static bool SetZeroData(SafeFileHandle file)
+    {
+        byte[] input = new byte[16];
+        Buffer.BlockCopy(BitConverter.GetBytes(0L), 0, input, 0, 8);
+        Buffer.BlockCopy(BitConverter.GetBytes(16L), 0, input, 8, 8);
+        uint returned;
+        return DeviceIoControlNative(file, 0x000980C8, input, (uint)input.Length,
+            null, 0, out returned, IntPtr.Zero);
+    }
+    public static int LastError() { return Marshal.GetLastWin32Error(); }
+}
+'@
+    }
+}
+
 function Initialize-WriterInheritance {
     $script:WriterInheritanceSource = @'
 using System;
@@ -2528,6 +2697,12 @@ function Invoke-Variant([string] $SelectedVariant) {
     $traceEnabled = $false
     $agent = $null
     $runSucceeded = $false
+    $registryTxfVariant = $SelectedVariant -eq 'registry-txf'
+    $registryTxfSummaryEmitted = $false
+    if ($registryTxfVariant) {
+        $script:RegistryTxfChecksPassed = 0
+        $script:RegistryTxfChecksFailed = 0
+    }
     $sectionTeardownVariant = $SelectedVariant -eq 'section-teardown'
     $sectionTeardownVhdx = $null
     $sectionTeardownDiskpart = $null
@@ -2538,6 +2713,7 @@ function Invoke-Variant([string] $SelectedVariant) {
     $script:SectionTeardownFailed = 0
     $restorationErrors = New-Object System.Collections.ArrayList
     $fileHandles = New-Object System.Collections.ArrayList
+    $registryTxfTransactions = New-Object System.Collections.ArrayList
     $mappings = New-Object System.Collections.ArrayList
     $views = New-Object System.Collections.ArrayList
     $uncachedReaders = New-Object System.Collections.ArrayList
@@ -3761,6 +3937,494 @@ public static class SafeUploadEolNative
             $disable = Invoke-InspectorChecked -Arguments @('--admission-trace-disable') -Timeout $t
             $traceEnabled = $false
             $runSucceeded = $true
+        }
+        elseif ($SelectedVariant -eq 'registry-txf') {
+            $t = $InspectorTimeoutSeconds
+            Initialize-EolNative
+            Initialize-RegistryTxfNative
+            $script:RegistryTxfChecksPassed = 0
+            $script:RegistryTxfChecksFailed = 0
+            $script:RegistryTxfCorpus = @()
+            $script:RegistryTxfFixturePaths = @()
+            function Add-RTOutcome([string] $Label, [bool] $Ok, [string] $Facts) {
+                $verdict = if ($Ok) { 'PASS' } else { 'FAIL' }
+                if ($Ok) { $script:RegistryTxfChecksPassed++ } else { $script:RegistryTxfChecksFailed++ }
+                Write-Output ('RT_' + $Label + '=' + $Facts + ';' + $verdict)
+            }
+            function New-RTFile([string] $Name, [string] $Prefix) {
+                $path = Join-Path $fixtureDirectory $Name
+                [IO.File]::WriteAllBytes($path,
+                    (New-PaddedFixtureBytes ([Text.Encoding]::UTF8.GetBytes($Prefix + ' ' + $id + ' ' + $Name))))
+                $script:RegistryTxfFixturePaths += $path
+                return $path
+            }
+            function Get-RTStats {
+                $result = Invoke-InspectorChecked -Arguments @('--registry-status') -Timeout $t
+                $state = ConvertFrom-Json -InputObject ([string]$result.Stdout).Trim()
+                if (-not $state.registryStatus -or $null -eq $state.txfRefused -or
+                    $null -eq $state.registryUnknownReasons) { throw 'Registry status fields are incomplete.' }
+                return $state
+            }
+            function Get-RTEntry([string] $Path) {
+                $result = Invoke-InspectorChecked -Arguments @('--registry-entry', $Path) -Timeout $t
+                return (ConvertFrom-Json -InputObject ([string]$result.Stdout).Trim())
+            }
+            function Get-RTUncachedHash([string] $Path) {
+                $reader = New-UncachedObserver $Path
+                try {
+                    $zeroBytes = New-Object byte[] $mappingLength
+                    return (Read-UncachedObservation $reader $zeroBytes $zeroBytes).SHA256
+                }
+                finally {
+                    if ($null -ne $reader.Handle) { $reader.Handle.Dispose() }
+                    if ($reader.Buffer -ne [IntPtr]::Zero) {
+                        [void][SafeUploadAdmissionNative]::VirtualFree(
+                            $reader.Buffer, [UIntPtr]::Zero, [uint32]32768)
+                    }
+                }
+            }
+            function Wait-RTTerminal([string] $Path) {
+                for ($attempt = 0; $attempt -lt 10; $attempt++) {
+                    $entry = Get-RTEntry $Path
+                    if ([int]$entry.T -eq 0) { return $entry }
+                    Start-Sleep -Milliseconds 100
+                }
+                throw ('Transaction terminal notification did not clear T: ' + $Path)
+            }
+            function Assert-RTEntry(
+                [string] $Path, [string] $Label, [bool] $History, [int] $ExpectedH,
+                [int] $ExpectedC, [string] $ExpectedS, [int] $ExpectedT,
+                [bool] $ExpectedFree, [bool] $ExpectedNameMatch = $true, [bool] $RequirePositiveC = $false,
+                [string] $ExpectedState = 'Unscoped'
+            ) {
+                $entry = Get-RTEntry $Path
+                if ($ExpectedFree -and $ExpectedS -eq 'no') {
+                    for ($probeAttempt = 0; $probeAttempt -lt 6; $probeAttempt++) {
+                        $entryCMatches = if ($RequirePositiveC) { [int]$entry.C -gt 0 } else { [int]$entry.C -eq $ExpectedC }
+                        if ([int]$entry.H -eq $ExpectedH -and $entryCMatches -and
+                            [string]$entry.S -eq 'NO' -and [int]$entry.T -eq $ExpectedT -and
+                            [bool]$entry.Free -eq $ExpectedFree) { break }
+                        Start-Sleep -Milliseconds 100
+                        $entry = Get-RTEntry $Path
+                    }
+                }
+                [void](Invoke-InspectorChecked -Arguments @('--admission-trace-clear') -Timeout $t)
+                [void](Invoke-AdmissionProbe $Path ('RT_' + $Label) $t)
+                $dump = Get-LightTrace (Invoke-InspectorChecked -Arguments @('--admission-trace') -Timeout $t) $rawTraceA
+                $probes = @($dump.Entries | Where-Object { $_.Ev -eq 'explicit_probe' })
+                $probe = if ($probes.Count -eq 1) { $probes[0] } else { $null }
+                $probeOk = ($null -ne $probe -and $probe.ProbeValid -and $probe.InFlightSections -ge 0)
+                $entryS = switch ([string]$entry.S) { 'NO' { 'no' } 'YES' { 'yes' } default { 'unknown' } }
+                $groundTruthOk = $probeOk -and [int]$entry.H -eq [int]$probe.Writers -and
+                    [int]$entry.C -eq [int]$probe.InFlightSections -and $entryS -eq [string]$probe.MmDoes
+                $expectedC = if ($RequirePositiveC) { [int]$entry.C -gt 0 } else { [int]$entry.C -eq $ExpectedC }
+                $ok = ($probeOk -and $groundTruthOk -and [bool]$entry.HistoryPresent -eq $History -and
+                    [int]$entry.H -eq $ExpectedH -and $expectedC -and
+                    ($ExpectedS -eq '' -or $entryS -eq $ExpectedS) -and [int]$entry.T -eq $ExpectedT -and
+                    [bool]$entry.Free -eq $ExpectedFree -and [bool]$entry.NameMatches -eq $ExpectedNameMatch -and
+                    ([string]$entry.State -eq $ExpectedState))
+                Add-RTOutcome $Label $ok ('history:' + $entry.HistoryPresent + ';H:' + $entry.H +
+                    ';probeH:' + $(if ($null -ne $probe) { $probe.Writers } else { 'missing' }) +
+                    ';S:' + $entry.S + ';C:' + $entry.C +
+                    ';probeC:' + $(if ($null -ne $probe) { $probe.InFlightSections } else { 'missing' }) +
+                    ';T:' + $entry.T + ';free:' + $entry.Free + ';state:' + $entry.State +
+                    ';nameMatches:' + $entry.NameMatches)
+                return $entry
+            }
+            function New-RTTransaction([string] $Description) {
+                $transaction = [SafeUploadRegistryTxfNative]::CreateTransaction(
+                    [IntPtr]::Zero, [IntPtr]::Zero, [uint32]0, [uint32]0, [uint32]0, [uint32]0, $Description)
+                if ($transaction -eq [IntPtr]::Zero -or $transaction.ToInt64() -eq -1) {
+                    throw ('CreateTransaction failed: ' + [SafeUploadRegistryTxfNative]::LastError())
+                }
+                [void]$registryTxfTransactions.Add($transaction)
+                return $transaction
+            }
+            function Close-RTTransaction([IntPtr] $Transaction) {
+                if ($Transaction -eq [IntPtr]::Zero) { return }
+                [void][SafeUploadRegistryTxfNative]::CloseHandle($Transaction)
+                for ($transactionIndex = $registryTxfTransactions.Count - 1; $transactionIndex -ge 0; $transactionIndex--) {
+                    if ([IntPtr]$registryTxfTransactions[$transactionIndex] -eq $Transaction) {
+                        $registryTxfTransactions.RemoveAt($transactionIndex)
+                        break
+                    }
+                }
+            }
+            function Invoke-RTCreateAttempt([string] $Path, [string] $Case) {
+                $transaction = New-RTTransaction ('SafeUpload registry-txf ' + $Case)
+                $handle = $null
+                $success = $false
+                $errorCode = 0
+                $rolledBack = $false
+                try {
+                    $access = [uint32]0x40000000
+                    $disposition = [uint32]4 # OPEN_EXISTING: make the write and MAXIMUM_ALLOWED cases test access, not CREATE_ALWAYS.
+                    $flags = [uint32]0x80
+                    switch ($Case) {
+                        'delete-on-close' { $access = [uint32]0x10000; $flags = [uint32]0x04000080 }
+                        'overwrite' { $disposition = [uint32]5 }
+                        'overwrite-if' { $disposition = [uint32]2 }
+                        'maximum-allowed' { $access = [uint32]0x02000000 }
+                    }
+                    $handle = [SafeUploadRegistryTxfNative]::CreateFileTransacted(
+                        $Path, $access, [uint32]7, [IntPtr]::Zero, $disposition, $flags,
+                        [IntPtr]::Zero, $transaction, [IntPtr]::Zero, [IntPtr]::Zero)
+                    if ($handle.IsInvalid) { $errorCode = [SafeUploadRegistryTxfNative]::LastError() }
+                    else {
+                        $success = $true
+                        if ($Case -ne 'delete-on-close' -and $Case -ne 'maximum-allowed') {
+                            [void][SafeUploadRegistryTxfNative]::Write($handle,
+                                [Text.Encoding]::UTF8.GetBytes('RT SHOULD ROLLBACK ' + $Case))
+                        }
+                    }
+                }
+                finally {
+                    if ($null -ne $handle) { $handle.Dispose() }
+                    $rolledBack = [SafeUploadRegistryTxfNative]::RollbackTransaction($transaction)
+                    if ($rolledBack) { Close-RTTransaction $transaction }
+                }
+                return [pscustomobject]@{ AccessDenied = ($errorCode -eq 5); Succeeded = $success;
+                    Error = $errorCode; RolledBack = $rolledBack }
+            }
+            function Invoke-RTSupersedeAttempt([string] $Path) {
+                $transaction = New-RTTransaction 'SafeUpload registry-txf supersede'
+                $status = [uint32]0xC0000001
+                $rolledBack = $false
+                try { $status = [SafeUploadRegistryTxfNative]::NtCreateSupersede($Path, $transaction) }
+                finally {
+                    $rolledBack = [SafeUploadRegistryTxfNative]::RollbackTransaction($transaction)
+                    if ($rolledBack) { Close-RTTransaction $transaction }
+                }
+                return [pscustomobject]@{ AccessDenied = ($status -eq [uint32]0xC0000022);
+                    Succeeded = ($status -eq 0); Status = ('0x{0:X8}' -f $status); RolledBack = $rolledBack }
+            }
+            function Assert-RTRefusal([string] $Label, [scriptblock] $Action, [string] $StatusField) {
+                $before = Get-RTStats
+                $result = & $Action
+                $after = Get-RTStats
+                $delta = [long]$after.txfRefused - [long]$before.txfRefused
+                $denied = [bool]$result.AccessDenied
+                $ok = $denied -and $delta -eq 1 -and [bool]$result.RolledBack
+                $statusValue = if ($null -ne $result.PSObject.Properties['Status']) { $result.Status } else { $result.Error }
+                Add-RTOutcome $Label $ok ($StatusField + ':' + $statusValue +
+                    ';denied:' + $denied + ';TxfRefusedDelta:' + $delta + ';rollback:' + $result.RolledBack)
+            }
+
+            for ($index = 0; $index -lt 20; $index++) {
+                $path = New-RTFile ('registry_{0:D2}.maptest' -f $index) 'RT BASELINE'
+                $script:RegistryTxfCorpus += $path
+            }
+            $txControlPath = New-RTFile 'txf_control.maptest' 'RT TXF CONTROL'
+            $txPendingPath = New-RTFile 'txf_pending.maptest' 'RT TXF PENDING'
+            $txRollbackPath = New-RTFile 'txf_rollback.maptest' 'RT TXF ROLLBACK'
+            $txMutationPath = New-RTFile 'txf_mutation.maptest' 'RT TXF MUTATION'
+            $txCreatePath = New-RTFile 'txf_create.maptest' 'RT TXF CREATE'
+            $fixturePaths += $script:RegistryTxfFixturePaths
+            foreach ($path in $script:RegistryTxfFixturePaths) { Assert-ReparseFreeFixturePath $path }
+
+            Backup-StagedTestDriver $backup
+            if ((Get-FileHash -LiteralPath $backup -Algorithm SHA256).Hash -ne $expectedOriginalDriver) {
+                throw 'Durable restoration backup mismatch.'
+            }
+            $driverReplaced = $true
+            Copy-Item -LiteralPath $featureDriver -Destination $installedDriver -Force
+            if ((Get-FileHash -LiteralPath $installedDriver -Algorithm SHA256).Hash -ne $ExpectedFeatureSha256.ToUpperInvariant()) {
+                throw 'Feature driver install hash mismatch.'
+            }
+            if ($Verifier) {
+                & verifier.exe /volatile /flags 0x13B /adddriver SafeUpload.sys | Out-Host
+                if ($LASTEXITCODE -ne 0) { throw 'Verifier enable failed.' }
+                $verifierEnabled = $true
+                Write-Output 'VerifierEnabled=volatile flags 0x13B'
+            }
+            Invoke-FeatureFilterLoad
+            $filterLoaded = $true
+            [void](Invoke-InspectorChecked -Arguments @('--admission-trace-clear') -Timeout $t)
+            [void](Invoke-InspectorChecked -Arguments @('--admission-trace-enable') -Timeout $t)
+            $traceEnabled = $true
+            [void](Invoke-InspectorChecked -Arguments @('--admission-trace-clear') -Timeout $t)
+            Wait-AdmissionCanary $RegistryTxfCorpus[0] $rawTraceA
+
+            for ($index = 0; $index -lt 20; $index++) {
+                $path = $RegistryTxfCorpus[$index]
+                if ($index -lt 4) {
+                    [void](Assert-RTEntry $path ('NeverWritten_' + $index) $false 0 0 'no' 0 $true)
+                    continue
+                }
+                $stream = [IO.FileStream]::new($path, [IO.FileMode]::Open, [IO.FileAccess]::ReadWrite,
+                    ([IO.FileShare]::ReadWrite -bor [IO.FileShare]::Delete))
+                [void]$fileHandles.Add($stream)
+                [void](Assert-RTEntry $path ('Corpus_' + $index + '_Open') $true 1 0 'no' 0 $false)
+                $stream.Position = 0
+                $bytes = [Text.Encoding]::UTF8.GetBytes('RT WRITTEN ' + $index + ' ' + $id)
+                $stream.Write($bytes, 0, $bytes.Length)
+                $stream.Flush($true)
+                [void](Assert-RTEntry $path ('Corpus_' + $index + '_Write') $true 1 0 'no' 0 $false)
+                $stream.Dispose()
+                [void](Assert-RTEntry $path ('Corpus_' + $index + '_Close') $true 0 0 'no' 0 $true)
+            }
+
+            $duplicatePath = $RegistryTxfCorpus[4]
+            $duplicateSource = [IO.FileStream]::new($duplicatePath, [IO.FileMode]::Open,
+                [IO.FileAccess]::ReadWrite, ([IO.FileShare]::ReadWrite -bor [IO.FileShare]::Delete))
+            [void]$fileHandles.Add($duplicateSource)
+            $duplicateHandle = [IntPtr]::Zero
+            if (-not [SafeUploadEolNative]::DuplicateHandle([SafeUploadEolNative]::GetCurrentProcess(),
+                $duplicateSource.SafeFileHandle.DangerousGetHandle(), [SafeUploadEolNative]::GetCurrentProcess(),
+                [ref]$duplicateHandle, [uint32]0, $false, [uint32]2)) { throw 'Registry duplicate handle failed.' }
+            $duplicateSafeHandle = [Microsoft.Win32.SafeHandles.SafeFileHandle]::new($duplicateHandle, $true)
+            [void]$fileHandles.Add($duplicateSafeHandle)
+            [void](Assert-RTEntry $duplicatePath 'Duplicate_Open' $true 1 0 'no' 0 $false)
+            $duplicateSource.Dispose()
+            [void](Assert-RTEntry $duplicatePath 'Duplicate_OriginalClosed' $true 1 0 'no' 0 $false)
+            $duplicateSafeHandle.Dispose()
+            [void](Assert-RTEntry $duplicatePath 'Duplicate_AllClosed' $true 0 0 'no' 0 $true)
+
+            $sectionPath = $RegistryTxfCorpus[5]
+            $sectionStream = [IO.FileStream]::new($sectionPath, [IO.FileMode]::Open,
+                [IO.FileAccess]::ReadWrite, ([IO.FileShare]::ReadWrite -bor [IO.FileShare]::Delete))
+            [void]$fileHandles.Add($sectionStream)
+            $sectionMap = [IO.MemoryMappedFiles.MemoryMappedFile]::CreateFromFile($sectionStream,
+                ('Local\SafeUpload-RegistryTxf-' + $id), [long]$mappingLength,
+                [IO.MemoryMappedFiles.MemoryMappedFileAccess]::ReadWrite,
+                [IO.HandleInheritability]::None, $true)
+            $sectionView = $sectionMap.CreateViewAccessor(0, [long]$mappingLength,
+                [IO.MemoryMappedFiles.MemoryMappedFileAccess]::ReadWrite)
+            [void]$mappings.Add($sectionMap); [void]$views.Add($sectionView)
+            [void](Assert-RTEntry $sectionPath 'Section_Open' $true 1 -1 'yes' 0 $false $true $true)
+            $sectionStream.Dispose()
+            [void](Assert-RTEntry $sectionPath 'Section_HandleClosed' $true 0 -1 'yes' 0 $false $true $true)
+            $sectionView.Dispose(); $sectionMap.Dispose()
+            [void](Assert-RTEntry $sectionPath 'Section_Released' $true 0 0 'no' 0 $true)
+
+            $renameOldPath = $RegistryTxfCorpus[19]
+            $renameBefore = Get-RTEntry $renameOldPath
+            $renameNewPath = Join-Path $fixtureDirectory 'registry_renamed_away.maptest'
+            [IO.File]::Move($renameOldPath, $renameNewPath)
+            $renameAfter = Assert-RTEntry $renameNewPath 'Rename_Away' $true 0 0 'no' 0 $true
+            $renameOk = $renameBefore.fileId -eq $renameAfter.fileId -and
+                -not (Test-Path -LiteralPath $renameOldPath) -and [bool]$renameAfter.nameMatches
+            Add-RTOutcome 'Rename_FileIdAndRetainedName' $renameOk ('sameFileId:' + ($renameBefore.fileId -eq $renameAfter.fileId) +
+                ';oldNameAbsent:' + (-not (Test-Path -LiteralPath $renameOldPath)) + ';newNameMatches:' + $renameAfter.nameMatches)
+
+            $tx = New-RTTransaction 'SafeUpload registry-txf outside control'
+            $controlOriginalHash = Get-RTUncachedHash $txControlPath
+            $txFile = $null
+            $controlCommitted = $false
+            try {
+                $txFile = [SafeUploadRegistryTxfNative]::CreateFileTransacted($txControlPath,
+                    [uint32]0x40000000, [uint32]7, [IntPtr]::Zero, [uint32]3, [uint32]0x80,
+                    [IntPtr]::Zero, $tx, [IntPtr]::Zero, [IntPtr]::Zero)
+                if ($txFile.IsInvalid) { throw ('Out-of-scope CreateFileTransacted failed: ' + [SafeUploadRegistryTxfNative]::LastError()) }
+                [void]$fileHandles.Add($txFile)
+                if (-not [SafeUploadRegistryTxfNative]::Write($txFile, [Text.Encoding]::UTF8.GetBytes('RT TXF COMMIT ' + $id))) {
+                    throw ('Out-of-scope transacted WriteFile failed: ' + [SafeUploadRegistryTxfNative]::LastError())
+                }
+                $txFile.Dispose(); $txFile = $null
+                if (-not [SafeUploadRegistryTxfNative]::CommitTransaction($tx)) {
+                    throw ('Out-of-scope CommitTransaction failed: ' + [SafeUploadRegistryTxfNative]::LastError())
+                }
+                $controlCommitted = $true
+            }
+            finally {
+                if ($null -ne $txFile) { $txFile.Dispose() }
+                if ($controlCommitted) { Close-RTTransaction $tx }
+            }
+            $controlCommitted = (Get-RTUncachedHash $txControlPath) -ne $controlOriginalHash
+            Add-RTOutcome 'OutsideScope_TransactedWriteCommit' $controlCommitted ('committed:' + $controlCommitted)
+            [void](Wait-RTTerminal $txControlPath)
+            [void](Assert-RTEntry $txControlPath 'OutsideScope_CommitState' $true 0 0 'no' 0 $true)
+
+            $pendingOriginalHash = Get-RTUncachedHash $txPendingPath
+            $pendingTx = New-RTTransaction 'SafeUpload registry-txf pending commit'
+            $pendingA = $null; $pendingB = $null
+            try {
+                $pendingA = [SafeUploadRegistryTxfNative]::CreateFileTransacted($txPendingPath,
+                    [uint32]0x40000000, [uint32]7, [IntPtr]::Zero, [uint32]3, [uint32]0x80,
+                    [IntPtr]::Zero, $pendingTx, [IntPtr]::Zero, [IntPtr]::Zero)
+                if ($pendingA.IsInvalid) { throw ('Pending transacted open A failed: ' + [SafeUploadRegistryTxfNative]::LastError()) }
+                [void]$fileHandles.Add($pendingA)
+                if (-not [SafeUploadRegistryTxfNative]::Write($pendingA, [Text.Encoding]::UTF8.GetBytes('RT PENDING COMMIT ' + $id))) {
+                    throw ('Pending transacted write failed: ' + [SafeUploadRegistryTxfNative]::LastError())
+                }
+                $pendingB = [SafeUploadRegistryTxfNative]::CreateFileTransacted($txPendingPath,
+                    [uint32]0x40000000, [uint32]7, [IntPtr]::Zero, [uint32]3, [uint32]0x80,
+                    [IntPtr]::Zero, $pendingTx, [IntPtr]::Zero, [IntPtr]::Zero)
+                if ($pendingB.IsInvalid) { throw ('Pending transacted open B failed: ' + [SafeUploadRegistryTxfNative]::LastError()) }
+                [void]$fileHandles.Add($pendingB)
+                [void](Assert-RTEntry $txPendingPath 'Transaction_DedupTwoHandles' $true 2 0 'no' 1 $false)
+                $pendingA.Dispose(); $pendingA = $null
+                $pendingB.Dispose(); $pendingB = $null
+                [void](Assert-RTEntry $txPendingPath 'Transaction_HandleCloseKeepsT' $true 0 0 'no' 1 $false)
+            }
+            catch {
+                if ($null -ne $pendingA) { $pendingA.Dispose(); $pendingA = $null }
+                if ($null -ne $pendingB) { $pendingB.Dispose(); $pendingB = $null }
+                if ([SafeUploadRegistryTxfNative]::RollbackTransaction($pendingTx)) {
+                    Close-RTTransaction $pendingTx
+                }
+                throw
+            }
+
+            $rollbackOriginalHash = Get-RTUncachedHash $txRollbackPath
+            $rollbackTx = New-RTTransaction 'SafeUpload registry-txf rollback'
+            $rollbackHandle = $null
+            try {
+                $rollbackHandle = [SafeUploadRegistryTxfNative]::CreateFileTransacted($txRollbackPath,
+                    [uint32]0x40000000, [uint32]7, [IntPtr]::Zero, [uint32]3, [uint32]0x80,
+                    [IntPtr]::Zero, $rollbackTx, [IntPtr]::Zero, [IntPtr]::Zero)
+                if ($rollbackHandle.IsInvalid) { throw ('Rollback transacted open failed: ' + [SafeUploadRegistryTxfNative]::LastError()) }
+                [void]$fileHandles.Add($rollbackHandle)
+                if (-not [SafeUploadRegistryTxfNative]::Write($rollbackHandle,
+                    [Text.Encoding]::UTF8.GetBytes('RT ROLLBACK ' + $id))) { throw 'Rollback transacted write failed.' }
+                [void](Assert-RTEntry $txRollbackPath 'Transaction_RollbackBeforeClose' $true 1 0 'no' 1 $false)
+                $rollbackHandle.Dispose(); $rollbackHandle = $null
+                [void](Assert-RTEntry $txRollbackPath 'Transaction_RollbackHandleClosed' $true 0 0 'no' 1 $false)
+            }
+            finally {
+                if ($null -ne $rollbackHandle) { $rollbackHandle.Dispose() }
+            }
+
+            $mutationOriginalHash = Get-RTUncachedHash $txMutationPath
+            $mutationTx = New-RTTransaction 'SafeUpload registry-txf protected set-information'
+            $mutationHandle = [SafeUploadRegistryTxfNative]::CreateFileTransacted($txMutationPath,
+                [uint32]0x40010000, [uint32]7, [IntPtr]::Zero, [uint32]3, [uint32]0x80,
+                [IntPtr]::Zero, $mutationTx, [IntPtr]::Zero, [IntPtr]::Zero)
+            if ($mutationHandle.IsInvalid) {
+                $openError = [SafeUploadRegistryTxfNative]::LastError()
+                if ([SafeUploadRegistryTxfNative]::RollbackTransaction($mutationTx)) {
+                    Close-RTTransaction $mutationTx
+                }
+                throw ('Pre-scope transaction handle open failed: ' + $openError)
+            }
+            [void]$fileHandles.Add($mutationHandle)
+            if (-not [SafeUploadRegistryTxfNative]::Write($mutationHandle,
+                [Text.Encoding]::UTF8.GetBytes('RT MUTATION TRANSACTION ' + $id))) {
+                $writeError = [SafeUploadRegistryTxfNative]::LastError()
+                $mutationHandle.Dispose()
+                if ([SafeUploadRegistryTxfNative]::RollbackTransaction($mutationTx)) {
+                    Close-RTTransaction $mutationTx
+                }
+                throw ('Pre-scope transaction write failed: ' + $writeError)
+            }
+            [void](Assert-RTEntry $txMutationPath 'Transaction_PreScopeWriter' $true 1 0 'no' 1 $false)
+
+            $expandedPolicy = New-ExpandedPolicyForFixture $fixtureDirectory $policyBackup
+            $policyBytes = $expandedPolicy.OriginalBytes
+            [IO.File]::WriteAllBytes($policyPath, $expandedPolicy.UpdatedBytes)
+            Write-Output ('RT_ExpandedPolicySHA256=' + (Get-FileHash -LiteralPath $policyPath -Algorithm SHA256).Hash)
+            $agent = Start-TestAgentAndWaitForPolicy (Join-Path $documents ('SafeUpload-registry-txf-agent-' + $id))
+            Write-Output 'RT_ExpandedScopeAcceptedByAgentAndDriver=True'
+            [void](Assert-RTEntry $txPendingPath 'Transaction_ScopeAddedTStillOne' $true 0 0 'no' 1 $false `
+                -ExpectedState 'Activating')
+            [void](Assert-RTEntry $txRollbackPath 'Transaction_RollbackScopeAddedTStillOne' $true 0 0 'no' 1 $false `
+                -ExpectedState 'Activating')
+            if (-not [SafeUploadRegistryTxfNative]::RollbackTransaction($rollbackTx)) {
+                throw ('RollbackTransaction failed: ' + [SafeUploadRegistryTxfNative]::LastError())
+            }
+            Close-RTTransaction $rollbackTx
+            [void](Wait-RTTerminal $txRollbackPath)
+            $rollbackAfterHash = Get-RTUncachedHash $txRollbackPath
+            Add-RTOutcome 'Transaction_RollbackBytes' ($rollbackAfterHash -eq $rollbackOriginalHash) `
+                ('bytesUnchanged:' + ($rollbackAfterHash -eq $rollbackOriginalHash))
+            [void](Assert-RTEntry $txRollbackPath 'Transaction_RollbackTZeroFree' $true 0 0 'no' 0 $true `
+                -ExpectedState 'Activating')
+            [void](Assert-RTEntry $txMutationPath 'Transaction_MutationScopeAddedTStillOne' $true 1 0 'no' 1 $false `
+                -ExpectedState 'Activating')
+            if (-not [SafeUploadRegistryTxfNative]::CommitTransaction($pendingTx)) {
+                throw ('Pending CommitTransaction failed: ' + [SafeUploadRegistryTxfNative]::LastError())
+            }
+            Close-RTTransaction $pendingTx
+            [void](Wait-RTTerminal $txPendingPath)
+            $pendingAfterHash = Get-RTUncachedHash $txPendingPath
+            Add-RTOutcome 'Transaction_CommitBytes' ($pendingAfterHash -ne $pendingOriginalHash) `
+                ('commitChangedBytes:' + ($pendingAfterHash -ne $pendingOriginalHash))
+            [void](Assert-RTEntry $txPendingPath 'Transaction_CommitTZeroFree' $true 0 0 'no' 0 $true `
+                -ExpectedState 'Activating')
+
+            $createOriginalHash = Get-RTUncachedHash $txCreatePath
+            foreach ($case in @('write', 'delete-on-close', 'overwrite', 'overwrite-if', 'maximum-allowed')) {
+                Assert-RTRefusal ('Create_' + $case) { Invoke-RTCreateAttempt $txCreatePath $case } 'Win32Error'
+            }
+            Assert-RTRefusal 'Create_supersede' { Invoke-RTSupersedeAttempt $txCreatePath } 'NtStatus'
+
+            $renameDeniedPath = Join-Path $fixtureDirectory 'txf_rename_denied.maptest'
+            $linkDeniedPath = Join-Path $fixtureDirectory 'txf_link_denied.maptest'
+            $setInfoCases = @(
+                @{ Name = 'rename'; Run = { [SafeUploadRegistryTxfNative]::SetRename($mutationHandle, $renameDeniedPath) } },
+                @{ Name = 'link'; Run = { [SafeUploadRegistryTxfNative]::SetLink($mutationHandle, $linkDeniedPath) } },
+                @{ Name = 'delete'; Run = { [SafeUploadRegistryTxfNative]::SetDelete($mutationHandle) } }
+            )
+            foreach ($case in $setInfoCases) {
+                $before = Get-RTStats
+                $nativeStatus = & $case.Run
+                $after = Get-RTStats
+                $delta = [long]$after.txfRefused - [long]$before.txfRefused
+                $denied = [uint32]$nativeStatus -eq [uint32]0xC0000022
+                Add-RTOutcome ('SetInformation_' + $case.Name) ($denied -and $delta -eq 1) `
+                    ('NtStatus:0x{0:X8};TxfRefusedDelta:{1}' -f [uint32]$nativeStatus, $delta)
+            }
+            $fsctlBefore = Get-RTStats
+            $fsctlOk = [SafeUploadRegistryTxfNative]::SetZeroData($mutationHandle)
+            $fsctlError = if ($fsctlOk) { 0 } else { [SafeUploadRegistryTxfNative]::LastError() }
+            $fsctlAfter = Get-RTStats
+            $fsctlDelta = [long]$fsctlAfter.txfRefused - [long]$fsctlBefore.txfRefused
+            Add-RTOutcome 'FSCTL_SetZeroData' ((-not $fsctlOk) -and $fsctlError -eq 5 -and $fsctlDelta -eq 1) `
+                ('success:' + $fsctlOk + ';Win32Error:' + $fsctlError + ';TxfRefusedDelta:' + $fsctlDelta)
+            $createAfterHash = Get-RTUncachedHash $txCreatePath
+            $mutationDiskHash = Get-RTUncachedHash $txMutationPath
+            $namespaceUnchanged = -not (Test-Path -LiteralPath $renameDeniedPath) -and
+                -not (Test-Path -LiteralPath $linkDeniedPath)
+            Add-RTOutcome 'ScopedTxF_BytesAndNamesUnchanged' `
+                ($createAfterHash -eq $createOriginalHash -and $namespaceUnchanged -and $mutationDiskHash -eq $mutationOriginalHash) `
+                ('createBytesUnchanged:' + ($createAfterHash -eq $createOriginalHash) +
+                    ';mutationBytesUnchanged:' + ($mutationDiskHash -eq $mutationOriginalHash) +
+                    ';renameAndLinkNamesAbsent:' + $namespaceUnchanged)
+            $mutationHandle.Dispose()
+            [void](Assert-RTEntry $txMutationPath 'Transaction_SetInfoHandleClosedTOne' $true 0 0 'no' 1 $false `
+                -ExpectedState 'Activating')
+            if (-not [SafeUploadRegistryTxfNative]::RollbackTransaction($mutationTx)) {
+                throw ('Mutation RollbackTransaction failed: ' + [SafeUploadRegistryTxfNative]::LastError())
+            }
+            Close-RTTransaction $mutationTx
+            $mutationAfterHash = Get-RTUncachedHash $txMutationPath
+            Add-RTOutcome 'Transaction_MutationRollbackBytes' ($mutationAfterHash -eq $mutationOriginalHash) `
+                ('bytesUnchanged:' + ($mutationAfterHash -eq $mutationOriginalHash))
+            [void](Assert-RTEntry $txMutationPath 'Transaction_MutationRollbackTZeroFree' $true 0 0 'no' 0 $true `
+                -ExpectedState 'Activating')
+
+            if ($null -ne $agent) { Stop-StagedTestAgent $agent; $agent = $null }
+            $capacityBefore = Get-RTStats
+            [void](Invoke-InspectorChecked -Arguments @('--registry-capacity', '8') -Timeout $t)
+            $overflowHandle = [SafeUploadAdmissionNative]::CreateFile($RegistryTxfCorpus[6],
+                [uint32]0x40000000, [uint32]7, [IntPtr]::Zero, [uint32]3, [uint32]0x80, [IntPtr]::Zero)
+            $overflowError = if ($overflowHandle.IsInvalid) { [SafeUploadRegistryTxfNative]::LastError() } else { 0 }
+            $overflowOpenFailed = [bool]$overflowHandle.IsInvalid
+            if (-not $overflowOpenFailed) { $overflowHandle.Dispose() }
+            $capacityAfter = Get-RTStats
+            $capacityReasonText = [string]$capacityAfter.registryUnknownReasons
+            if ($capacityReasonText.StartsWith('0x', [StringComparison]::OrdinalIgnoreCase)) {
+                $capacityReasonText = $capacityReasonText.Substring(2)
+            }
+            $capacityBits = [Convert]::ToUInt32($capacityReasonText, 16)
+            $capacityOk = $overflowOpenFailed -and $overflowError -eq 5 -and
+                [int]$capacityAfter.registryOverflow -gt [int]$capacityBefore.registryOverflow -and
+                (($capacityBits -band 1) -ne 0) -and [int]$capacityAfter.registryInstanceUnknown -gt 0
+            Add-RTOutcome 'CapacityOverflowClosesInstance' $capacityOk ('smallCapacity:8;Win32Error:' + $overflowError +
+                ';overflowDelta:' + ([int]$capacityAfter.registryOverflow - [int]$capacityBefore.registryOverflow) +
+                ';unknownReasons:' + $capacityAfter.registryUnknownReasons + ';instanceUnknown:' +
+                $capacityAfter.registryInstanceUnknown)
+            $closedWriter = [SafeUploadAdmissionNative]::CreateFile($RegistryTxfCorpus[7],
+                [uint32]0x40000000, [uint32]7, [IntPtr]::Zero, [uint32]3, [uint32]0x80, [IntPtr]::Zero)
+            $closedWriterError = if ($closedWriter.IsInvalid) { [SafeUploadRegistryTxfNative]::LastError() } else { 0 }
+            $closedWriterIsInvalid = [bool]$closedWriter.IsInvalid
+            if (-not $closedWriterIsInvalid) { $closedWriter.Dispose() }
+            Add-RTOutcome 'CapacityFailureStickyAdmissionClose' ($closedWriterIsInvalid -and $closedWriterError -eq 5) `
+                ('Win32Error:' + $closedWriterError + ';secondWriterRefused:' + $closedWriterIsInvalid)
+            [void](Invoke-InspectorChecked -Arguments @('--registry-capacity', '0') -Timeout $t)
+            [void](Invoke-InspectorChecked -Arguments @('--admission-trace-disable') -Timeout $t)
+            $traceEnabled = $false
+            $runSucceeded = ($script:RegistryTxfChecksFailed -eq 0)
         }
         elseif ($SelectedVariant -eq 'writer-count') {
             # X2: H(F), the per-stream count of write file objects, against what the harness knows to be true.
@@ -5055,6 +5719,24 @@ Start-Sleep -Seconds 300
 
         Dispose-ObserverResources $views $mappings $fileHandles $uncachedReaders $restorationErrors
 
+        if ($registryTxfVariant) {
+            foreach ($transaction in @($registryTxfTransactions.ToArray())) {
+                try {
+                    if (-not [SafeUploadRegistryTxfNative]::RollbackTransaction([IntPtr]$transaction)) {
+                        [void]$restorationErrors.Add('TxF transaction rollback: ' + [SafeUploadRegistryTxfNative]::LastError())
+                    }
+                }
+                catch {
+                    [void]$restorationErrors.Add('TxF transaction rollback: ' + (Get-ErrorText $_))
+                }
+                finally {
+                    try { [void][SafeUploadRegistryTxfNative]::CloseHandle([IntPtr]$transaction) }
+                    catch { [void]$restorationErrors.Add('TxF transaction close: ' + (Get-ErrorText $_)) }
+                }
+            }
+            $registryTxfTransactions.Clear()
+        }
+
         if ($traceEnabled -and -not $script:InspectorTimedOut -and
             -not $script:InspectorFailed -and
             (@(Get-Process SafeUpload.Agent.Service -ErrorAction SilentlyContinue).Count -eq 0)) {
@@ -5213,6 +5895,17 @@ Start-Sleep -Seconds 300
             (-not (Test-Path -LiteralPath $inspectorPath))
         $restorationVerified = ($coreRestored -and $fixtureRemoved -and $backupRemoved -and
             $agentLogsRemoved -and $inspectorCopyRemoved -and $restorationErrors.Count -eq 0)
+
+        if ($registryTxfVariant -and -not $registryTxfSummaryEmitted) {
+            $executionVerdict = if ($runSucceeded) { 'PASS' } else { 'FAIL' }
+            if ($runSucceeded) { $script:RegistryTxfChecksPassed++ } else { $script:RegistryTxfChecksFailed++ }
+            Write-Output ('RT_Execution=' + $executionVerdict)
+            if ($restorationVerified) { $script:RegistryTxfChecksPassed++ } else { $script:RegistryTxfChecksFailed++ }
+            Write-Output ('RT_Restoration=verified:' + $restorationVerified + ';errors:' + $restorationErrors.Count +
+                ';' + $(if ($restorationVerified) { 'PASS' } else { 'FAIL' }))
+            Write-Output ('RT_Summary=passed:' + $script:RegistryTxfChecksPassed + ';failed:' + $script:RegistryTxfChecksFailed)
+            $registryTxfSummaryEmitted = $true
+        }
 
         if ($sectionTeardownVariant) {
             Write-Output ('ST_RunSucceeded=' + $runSucceeded + ';' + $(if ($runSucceeded) { 'PASS' } else { 'FAIL' }))

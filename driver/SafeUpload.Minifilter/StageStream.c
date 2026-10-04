@@ -10,11 +10,15 @@
 static VOID StageAdmissionTraceShutdown(VOID);
 static NTSTATUS StageAdmissionProbeWorkerBody(_In_ PCUNICODE_STRING VolumeName,
     _In_ PCUNICODE_STRING RelativePath);
+static NTSTATUS StageRegistryEntryProbeWorkerBody(_In_ PCUNICODE_STRING VolumeName,
+    _In_ PCUNICODE_STRING RelativePath, _Out_ PSAFEUPLOAD_REGISTRY_ENTRY_STATUS Status);
 #ifdef ALLOC_PRAGMA
 #pragma alloc_text(PAGE, SafeUploadStageAdmissionTraceControl)
 #pragma alloc_text(PAGE, SafeUploadStageAdmissionTraceReadBatch)
 #pragma alloc_text(PAGE, SafeUploadStageAdmissionProbe)
 #pragma alloc_text(PAGE, StageAdmissionProbeWorkerBody)
+#pragma alloc_text(PAGE, SafeUploadStageRegistryEntryProbe)
+#pragma alloc_text(PAGE, StageRegistryEntryProbeWorkerBody)
 #pragma alloc_text(PAGE, StageAdmissionTraceShutdown)
 #endif
 #endif
@@ -732,7 +736,8 @@ NTSTATUS SafeUploadStageAdmissionDeleteStreamContext(_In_ PCUNICODE_STRING Volum
 
     status = FltGetStreamContext(instance, fileObject, (PFLT_CONTEXT *)&streamContext);
     if (!NT_SUCCESS(status)) goto Exit;
-    if (InterlockedCompareExchange(&streamContext->WriteObjects, 0, 0) <= 0) {
+    if ((SafeUploadStageWritersSnapshot(instance, fileObject) &
+         ~SAFEUPLOAD_WRITERS_UNTRACKED_BIT) == 0) {
         status = STATUS_INVALID_DEVICE_STATE;
         goto Exit;
     }
@@ -799,6 +804,121 @@ NTSTATUS SafeUploadStageAdmissionProbe(_In_ PCUNICODE_STRING VolumeName,
     (VOID)KeWaitForSingleObject(&work.Done, Executive, KernelMode, FALSE, NULL);
     ExReleaseRundownProtection(&SafeUploadData.ChannelRundown);
     return work.Status;
+}
+
+typedef struct _STAGE_REGISTRY_PROBE_WORK {
+    KEVENT Done;
+    PCUNICODE_STRING VolumeName;
+    PCUNICODE_STRING RelativePath;
+    PSAFEUPLOAD_REGISTRY_ENTRY_STATUS Status;
+    NTSTATUS CompletionStatus;
+} STAGE_REGISTRY_PROBE_WORK, *PSTAGE_REGISTRY_PROBE_WORK;
+
+static VOID StageRegistryEntryProbeWorker(PFLT_GENERIC_WORKITEM WorkItem, PVOID FltObject, PVOID Context)
+{
+    PSTAGE_REGISTRY_PROBE_WORK work = Context;
+    UNREFERENCED_PARAMETER(FltObject);
+    work->CompletionStatus = StageRegistryEntryProbeWorkerBody(work->VolumeName,
+        work->RelativePath, work->Status);
+    FltFreeGenericWorkItem(WorkItem);
+    KeSetEvent(&work->Done, IO_NO_INCREMENT, FALSE);
+}
+
+NTSTATUS SafeUploadStageRegistryEntryProbe(_In_ PCUNICODE_STRING VolumeName,
+    _In_ PCUNICODE_STRING RelativePath, _Out_ PSAFEUPLOAD_REGISTRY_ENTRY_STATUS Status)
+{
+    STAGE_REGISTRY_PROBE_WORK work;
+    PFLT_GENERIC_WORKITEM item;
+    NTSTATUS result;
+    PAGED_CODE();
+    NT_ASSERT(KeGetCurrentIrql() == PASSIVE_LEVEL);
+    KeInitializeEvent(&work.Done, NotificationEvent, FALSE);
+    work.VolumeName = VolumeName;
+    work.RelativePath = RelativePath;
+    work.Status = Status;
+    work.CompletionStatus = STATUS_UNSUCCESSFUL;
+    if (!ExAcquireRundownProtection(&SafeUploadData.ChannelRundown)) return STATUS_FLT_DELETING_OBJECT;
+    item = FltAllocateGenericWorkItem();
+    if (item == NULL) {
+        ExReleaseRundownProtection(&SafeUploadData.ChannelRundown);
+        return STATUS_INSUFFICIENT_RESOURCES;
+    }
+    result = FltQueueGenericWorkItem(item, SafeUploadData.Filter, StageRegistryEntryProbeWorker,
+        DelayedWorkQueue, &work);
+    if (!NT_SUCCESS(result)) {
+        FltFreeGenericWorkItem(item);
+        ExReleaseRundownProtection(&SafeUploadData.ChannelRundown);
+        return result;
+    }
+    (VOID)KeWaitForSingleObject(&work.Done, Executive, KernelMode, FALSE, NULL);
+    ExReleaseRundownProtection(&SafeUploadData.ChannelRundown);
+    return work.CompletionStatus;
+}
+
+static NTSTATUS StageRegistryEntryProbeWorkerBody(_In_ PCUNICODE_STRING VolumeName,
+    _In_ PCUNICODE_STRING RelativePath, _Out_ PSAFEUPLOAD_REGISTRY_ENTRY_STATUS Result)
+{
+    PFLT_VOLUME volume = NULL;
+    PFLT_INSTANCE instance = NULL;
+    PFILE_OBJECT sourceObject = NULL;
+    PFLT_FILE_NAME_INFORMATION normalizedName = NULL;
+    HANDLE sourceHandle = NULL;
+    PWCHAR fullNameBuffer = NULL;
+    UNICODE_STRING fullName;
+    OBJECT_ATTRIBUTES attributes;
+    IO_STATUS_BLOCK io = {0};
+    ULONG fullNameBytes;
+    NTSTATUS status;
+
+    PAGED_CODE();
+    NT_ASSERT(KeGetCurrentIrql() == PASSIVE_LEVEL);
+    RtlZeroMemory(Result, sizeof(*Result));
+    if (VolumeName->Length > MAXUSHORT - RelativePath->Length ||
+        VolumeName->Length + RelativePath->Length == 0) return STATUS_NAME_TOO_LONG;
+    fullNameBytes = (ULONG)VolumeName->Length + RelativePath->Length;
+    fullNameBuffer = ExAllocatePool2(POOL_FLAG_PAGED, fullNameBytes, SAFEUPLOAD_POOL_TAG);
+    if (fullNameBuffer == NULL) return STATUS_INSUFFICIENT_RESOURCES;
+    RtlCopyMemory(fullNameBuffer, VolumeName->Buffer, VolumeName->Length);
+    RtlCopyMemory((PUCHAR)fullNameBuffer + VolumeName->Length,
+        RelativePath->Buffer, RelativePath->Length);
+    fullName.Buffer = fullNameBuffer;
+    fullName.Length = fullName.MaximumLength = (USHORT)fullNameBytes;
+
+    status = FltGetVolumeFromName(SafeUploadData.Filter, VolumeName, &volume);
+    if (!NT_SUCCESS(status)) goto Exit;
+    status = FltGetVolumeInstanceFromName(SafeUploadData.Filter, volume, NULL, &instance);
+    if (!NT_SUCCESS(status)) goto Exit;
+    InitializeObjectAttributes(&attributes, &fullName,
+        OBJ_KERNEL_HANDLE | OBJ_CASE_INSENSITIVE, NULL, NULL);
+    status = FltCreateFileEx2(SafeUploadData.Filter, instance, &sourceHandle, &sourceObject,
+        FILE_READ_ATTRIBUTES | SYNCHRONIZE, &attributes, &io, NULL, FILE_ATTRIBUTE_NORMAL,
+        FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, FILE_OPEN,
+        FILE_NON_DIRECTORY_FILE | FILE_OPEN_REPARSE_POINT | FILE_COMPLETE_IF_OPLOCKED,
+        NULL, 0, IO_STOP_ON_SYMLINK, NULL);
+    if (status == STATUS_STOPPED_ON_SYMLINK && io.Information != 0)
+        ExFreePool((PVOID)io.Information);
+    if (status != STATUS_SUCCESS) goto Exit;
+    status = FltGetFileNameInformationUnsafe(sourceObject, instance,
+        FLT_FILE_NAME_NORMALIZED | FLT_FILE_NAME_QUERY_DEFAULT, &normalizedName);
+    if (!NT_SUCCESS(status)) goto Exit;
+    status = FltParseFileNameInformation(normalizedName);
+    if (!NT_SUCCESS(status)) goto Exit;
+    if (normalizedName->Stream.Length != 0) {
+        /* This path resolves an ADS or an ambiguous stream; it is outside the file key. */
+        status = STATUS_NOT_SUPPORTED;
+        goto Exit;
+    }
+    status = SafeUploadStageWritersRegistryEvaluate(instance, VolumeName,
+        &normalizedName->Name, sourceObject, Result);
+
+Exit:
+    if (normalizedName != NULL) FltReleaseFileNameInformation(normalizedName);
+    if (sourceHandle != NULL) FltClose(sourceHandle);
+    if (sourceObject != NULL) ObDereferenceObject(sourceObject);
+    if (instance != NULL) FltObjectDereference(instance);
+    if (volume != NULL) FltObjectDereference(volume);
+    if (fullNameBuffer != NULL) ExFreePoolWithTag(fullNameBuffer, SAFEUPLOAD_POOL_TAG);
+    return status;
 }
 #endif
 
@@ -1556,7 +1676,7 @@ static NTSTATUS StageRename(PFLT_CALLBACK_DATA Data, PSTAGE_STREAM Stream)
     if (!Data->Iopb->TargetFileObject->DeleteAccess) return STATUS_ACCESS_DENIED;
     if (rename == NULL || length < (ULONG)FIELD_OFFSET(FILE_RENAME_INFORMATION, FileName) ||
         rename->FileNameLength == 0 || (rename->FileNameLength & 1) ||
-        rename->FileNameLength > length - FIELD_OFFSET(FILE_RENAME_INFORMATION, FileName))
+        rename->FileNameLength > length - (ULONG)FIELD_OFFSET(FILE_RENAME_INFORMATION, FileName))
         return STATUS_INVALID_PARAMETER;
     replace = extended ? BooleanFlagOn(*(PULONG)rename, FILE_RENAME_REPLACE_IF_EXISTS) : rename->ReplaceIfExists;
     posix = extended && BooleanFlagOn(*(PULONG)rename, FILE_RENAME_POSIX_SEMANTICS);
@@ -2282,6 +2402,12 @@ static FLT_PREOP_CALLBACK_STATUS StageAdmit(PFLT_CALLBACK_DATA Data,
     ULONGLONG zeroId = 0;
     SAFEUPLOAD_VOLUME_KIND kind;
     NTSTATUS status = STATUS_SUCCESS;
+    if (SafeUploadStageTxfCreateMustRefuse(Data, Objects)) {
+        SafeUploadStageTxfRecordRefused();
+        Data->IoStatus.Status = STATUS_ACCESS_DENIED;
+        Data->IoStatus.Information = 0;
+        return FLT_PREOP_COMPLETE;
+    }
     if (security == NULL || Objects->FileObject == NULL ||
         FlagOn(Data->Iopb->OperationFlags, SL_OPEN_TARGET_DIRECTORY) ||
         (Objects->FileObject->FileName.Length == 0 && Objects->FileObject->RelatedFileObject == NULL))
@@ -2503,7 +2629,7 @@ Complete:
 }
 
 static FLT_PREOP_CALLBACK_STATUS StageExternalRename(PFLT_CALLBACK_DATA Data,
-    PCFLT_RELATED_OBJECTS Objects)
+    PCFLT_RELATED_OBJECTS Objects, _Out_opt_ PVOID *RegistryRenameContext)
 {
     FILE_INFORMATION_CLASS cls = Data->Iopb->Parameters.SetFileInformation.FileInformationClass;
     PFILE_RENAME_INFORMATION rename = Data->Iopb->Parameters.SetFileInformation.InfoBuffer;
@@ -2512,13 +2638,14 @@ static FLT_PREOP_CALLBACK_STATUS StageExternalRename(PFLT_CALLBACK_DATA Data,
     BOOLEAN allow = FALSE;
     BOOLEAN quarantineRefused = FALSE;
     NTSTATUS status;
+    if (RegistryRenameContext != NULL) *RegistryRenameContext = NULL;
     ULONG length = Data->Iopb->Parameters.SetFileInformation.Length;
     if (cls != FileRenameInformation && cls != FileRenameInformationEx && cls != FileLinkInformation && cls != FileLinkInformationEx)
         return FLT_PREOP_SUCCESS_NO_CALLBACK;
     if (KeGetCurrentIrql() != PASSIVE_LEVEL || IoGetTopLevelIrp() != NULL) goto Complete;
     if (rename == NULL || length < (ULONG)FIELD_OFFSET(FILE_RENAME_INFORMATION, FileName) ||
         rename->FileNameLength == 0 || (rename->FileNameLength & 1) ||
-        rename->FileNameLength > length - FIELD_OFFSET(FILE_RENAME_INFORMATION, FileName)) goto Complete;
+        rename->FileNameLength > length - (ULONG)FIELD_OFFSET(FILE_RENAME_INFORMATION, FileName)) goto Complete;
     status = FltGetFileNameInformation(Data, FLT_FILE_NAME_NORMALIZED | FLT_FILE_NAME_QUERY_DEFAULT, &source);
     if (!NT_SUCCESS(status)) goto Complete;
     status = FltGetDestinationFileNameInformation(Objects->Instance, Objects->FileObject,
@@ -2542,6 +2669,13 @@ static FLT_PREOP_CALLBACK_STATUS StageExternalRename(PFLT_CALLBACK_DATA Data,
         if (quarantineRefused) SafeUploadStageFenceCountOpenRefused();
 #endif
     }
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    if (allow && RegistryRenameContext != NULL) {
+        BOOLEAN linkOperation = cls == FileLinkInformation || cls == FileLinkInformationEx;
+        (VOID)SafeUploadStageWritersPrepareRename(Data, Objects, &destination->Name,
+            linkOperation, RegistryRenameContext);
+    }
+#endif
 Complete:
     if (source != NULL) FltReleaseFileNameInformation(source);
     if (destination != NULL) FltReleaseFileNameInformation(destination);
@@ -2551,7 +2685,6 @@ Complete:
     return FLT_PREOP_COMPLETE;
 }
 
-#if SAFEUPLOAD_STAGING_PROTOTYPE
 /* FSCTL codes that change a file's data, allocation, metadata or namespace position. A handle that predates the
  * filter (or the policy scope) reaches the file system with these and never passes StageAdmit, so each is checked
  * against the protected namespace exactly like a physical SET_INFORMATION. Oplock, query and lock FSCTLs are NOT
@@ -2669,6 +2802,7 @@ static FLT_PREOP_CALLBACK_STATUS StageCompleteAccessDenied(_Inout_ PFLT_CALLBACK
     return FLT_PREOP_COMPLETE;
 }
 
+#if SAFEUPLOAD_STAGING_PROTOTYPE
 /* The installed table is nonpaged and keyed by SectionObjectPointer, so this check needs no name query and is safe
  * for paging and elevated-IRQL callbacks. Fast-I/O reads are sent back through the IRP read path, which applies the
  * same identity check before allowing the filesystem to return bytes. */
@@ -2819,23 +2953,53 @@ FLT_PREOP_CALLBACK_STATUS SafeUploadStageDispatch(PFLT_CALLBACK_DATA Data,
     PVOID sectionInFlight = NULL;
 #endif
     *CompletionContext = NULL;
+    if (Data->Iopb->MajorFunction == IRP_MJ_SET_INFORMATION &&
+        SafeUploadStageTxfSetInformationMustRefuse(Data, Objects)) {
+        SafeUploadStageTxfRecordRefused();
+        return StageCompleteAccessDenied(Data);
+    }
+    result = SafeUploadStageTxfFsctlPreOperation(Data, Objects, CompletionContext);
+    if (result != FLT_PREOP_SUCCESS_NO_CALLBACK) return result;
     /* This fence MUST precede all legacy taint/context/policy callbacks. */
     if (StageStreamForObject(Data->Iopb->TargetFileObject) != NULL)
         return StagePreOperation(Data, Objects, CompletionContext);
     switch (Data->Iopb->MajorFunction) {
     case IRP_MJ_CREATE:
+        {
+        PVOID legacyCompletionContext = NULL;
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+        PVOID writerReservation = NULL;
+        BOOLEAN reservationRequired = FALSE;
+        NTSTATUS reserveStatus;
+#endif
         result = StageAdmit(Data, Objects);
         if (result != FLT_PREOP_SUCCESS_NO_CALLBACK) return result;
-        result = SafeUploadPreCreate(Data, Objects, CompletionContext);
+        result = SafeUploadPreCreate(Data, Objects, &legacyCompletionContext);
+        if (result == FLT_PREOP_COMPLETE) return result;
 #if SAFEUPLOAD_STAGING_PROTOTYPE
-        /* H(F) must see every write open, including those the legacy pre-create skips: any file may later
-         * enter a protected scope. The sentinel tells post-create not to run the legacy handler. */
-        if (result == FLT_PREOP_SUCCESS_NO_CALLBACK && SafeUploadStageWritersWantPostCreate(Data)) {
-            *CompletionContext = SAFEUPLOAD_WRITERS_ONLY_CONTEXT;
+        /* Reserve bounded registry capacity before a physical writer create reaches NTFS. */
+        reserveStatus = SafeUploadStageWritersReserveCreate(Data, Objects,
+            &writerReservation, &reservationRequired);
+        if (!NT_SUCCESS(reserveStatus)) {
+            Data->IoStatus.Status = STATUS_ACCESS_DENIED;
+            Data->IoStatus.Information = 0;
+            return FLT_PREOP_COMPLETE;
+        }
+        if (reservationRequired) {
+            if (writerReservation == NULL) {
+                Data->IoStatus.Status = STATUS_ACCESS_DENIED;
+                Data->IoStatus.Information = 0;
+                return FLT_PREOP_COMPLETE;
+            }
+            SafeUploadStageWritersSetCompletion(writerReservation, legacyCompletionContext,
+                result == FLT_PREOP_SUCCESS_WITH_CALLBACK);
+            *CompletionContext = writerReservation;
             return FLT_PREOP_SUCCESS_WITH_CALLBACK;
         }
 #endif
+        *CompletionContext = legacyCompletionContext;
         return result;
+        }
     case IRP_MJ_QUERY_OPEN:
     case IRP_MJ_NETWORK_QUERY_OPEN:
         if (FltGetRequestorProcessId(Data) > 4 &&
@@ -2912,7 +3076,9 @@ FLT_PREOP_CALLBACK_STATUS SafeUploadStageDispatch(PFLT_CALLBACK_DATA Data,
         }
         break;
     case IRP_MJ_SET_INFORMATION:
-        result = StageExternalRename(Data, Objects);
+        {
+        PVOID registryRenameContext = NULL;
+        result = StageExternalRename(Data, Objects, &registryRenameContext);
         if (result != FLT_PREOP_SUCCESS_NO_CALLBACK) return result;
         if (Data->Iopb->Parameters.SetFileInformation.FileInformationClass != FilePositionInformation) {
             /* Publication rename is checked/consumed by StageExternalRename. */
@@ -2924,7 +3090,19 @@ FLT_PREOP_CALLBACK_STATUS SafeUploadStageDispatch(PFLT_CALLBACK_DATA Data,
             }
         }
         *CompletionContext = NULL;
-        return SafeUploadPreSetInformation(Data, Objects, CompletionContext);
+        result = SafeUploadPreSetInformation(Data, Objects, CompletionContext);
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+        if (result != FLT_PREOP_SUCCESS_NO_CALLBACK) {
+            SafeUploadStageWritersCompleteRename(registryRenameContext, FALSE, FALSE);
+            return result;
+        }
+        if (registryRenameContext != NULL) {
+            *CompletionContext = registryRenameContext;
+            return FLT_PREOP_SUCCESS_WITH_CALLBACK;
+        }
+#endif
+        return result;
+        }
     case IRP_MJ_SET_EA:
     case IRP_MJ_SET_SECURITY:
         return StagePhysicalMutation(Data, Objects);
@@ -2938,10 +3116,12 @@ FLT_PREOP_CALLBACK_STATUS SafeUploadStageDispatch(PFLT_CALLBACK_DATA Data,
     case IRP_MJ_RELEASE_FOR_SECTION_SYNCHRONIZATION:
 #if SAFEUPLOAD_STAGING_PROTOTYPE
         if (Data->Iopb->MajorFunction == IRP_MJ_ACQUIRE_FOR_SECTION_SYNCHRONIZATION) {
+            NTSTATUS sectionStatus;
             result = StageUnownedWritableSection(Data, Objects);
             if (result != FLT_PREOP_SUCCESS_NO_CALLBACK) return result;
             StageTraceWritableCreateSection(Data, Objects);
-            sectionInFlight = SafeUploadStageSectionAcquired(Data);
+            sectionStatus = SafeUploadStageSectionAcquired(Data, Objects, &sectionInFlight);
+            if (!NT_SUCCESS(sectionStatus)) return StageCompleteAccessDenied(Data);
         } else {
             SafeUploadStageSectionReleased(Data);
         }
@@ -2995,11 +3175,26 @@ FLT_POSTOP_CALLBACK_STATUS SafeUploadStagePostOperation(PFLT_CALLBACK_DATA Data,
         }
         return FLT_POSTOP_FINISHED_PROCESSING;
     }
+    if (Data->Iopb->MajorFunction == IRP_MJ_SET_INFORMATION &&
+        SafeUploadStageWritersIsRenameContext(CompletionContext)) {
+        SafeUploadStageWritersCompleteRename(CompletionContext,
+            !FlagOn(Flags, FLTFL_POST_OPERATION_DRAINING) && Data->IoStatus.Status == STATUS_SUCCESS,
+            FlagOn(Flags, FLTFL_POST_OPERATION_DRAINING));
+        return FLT_POSTOP_FINISHED_PROCESSING;
+    }
 #endif
     if (Data->Iopb->MajorFunction == IRP_MJ_CREATE) {
 #if SAFEUPLOAD_STAGING_PROTOTYPE
-        SafeUploadStageWritersPostCreate(Data, Objects, Flags);
-        if (CompletionContext == SAFEUPLOAD_WRITERS_ONLY_CONTEXT) return FLT_POSTOP_FINISHED_PROCESSING;
+        if (SafeUploadStageWritersIsReservation(CompletionContext)) {
+            PVOID legacyCompletionContext = NULL;
+            BOOLEAN legacyCallbackRequired = FALSE;
+            NTSTATUS writerStatus = SafeUploadStageWritersPostCreate(Data, Objects, Flags,
+                CompletionContext, &legacyCompletionContext, &legacyCallbackRequired);
+            if (!NT_SUCCESS(writerStatus)) return FLT_POSTOP_FINISHED_PROCESSING;
+            if (legacyCallbackRequired)
+                return SafeUploadPostCreate(Data, Objects, legacyCompletionContext, Flags);
+            return FLT_POSTOP_FINISHED_PROCESSING;
+        }
 #endif
         return SafeUploadPostCreate(Data, Objects, CompletionContext, Flags);
     }
