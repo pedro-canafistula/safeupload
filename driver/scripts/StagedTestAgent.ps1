@@ -264,10 +264,24 @@ function Restore-StagedTestDriver([string] $Backup, [bool] $Loaded, [bool] $Veri
     }
     $unloaded = -not $Loaded
     if ($Loaded) {
-        for ($attempt = 0; $attempt -lt 80 -and -not $unloaded; $attempt++) {
-            $result = & fltmc.exe unload SafeUpload 2>&1
-            $unloaded = $LASTEXITCODE -eq 0
-            if (-not $unloaded) { Start-Sleep -Milliseconds 250 }
+        # Each attempt is bounded: a filter stuck in FltUnregisterFilter (a leaked instance reference) never lets fltmc return, which
+        # once stalled a whole qualification run for six hours (registry-txf run 2). A hang is reported and handled as a refused unload.
+        $unloadHung = $false
+        for ($attempt = 0; $attempt -lt 80 -and -not $unloaded -and -not $unloadHung; $attempt++) {
+            $stdout = Join-Path $env:TEMP ('fltmc-unload-' + [guid]::NewGuid().ToString('N') + '.txt')
+            $process = Start-Process -FilePath (Join-Path $env:SystemRoot 'System32\fltMC.exe') -ArgumentList @('unload', 'SafeUpload') `
+                -NoNewWindow -PassThru -RedirectStandardOutput $stdout -RedirectStandardError ($stdout + '.err')
+            [void]$process.Handle
+            if ($process.WaitForExit(60000)) {
+                $unloaded = $process.ExitCode -eq 0
+                $result = (Get-Content -LiteralPath $stdout -ErrorAction SilentlyContinue) + (Get-Content -LiteralPath ($stdout + '.err') -ErrorAction SilentlyContinue)
+                Remove-Item -LiteralPath $stdout, ($stdout + '.err') -Force -ErrorAction SilentlyContinue
+                if (-not $unloaded) { Start-Sleep -Milliseconds 250 }
+            } else {
+                $unloadHung = $true
+                Write-Output ('UnloadHang=True;fltmc-pid=' + $process.Id + ';waited-seconds=60')
+                try { $process.Kill() } catch { }
+            }
         }
         $result | Out-Host
     }
