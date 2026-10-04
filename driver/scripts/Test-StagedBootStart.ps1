@@ -436,7 +436,7 @@ function Test-ExactSystemTiAcl($registryKey) {
         if ($rule.AccessControlType -ne [Security.AccessControl.AccessControlType]::Allow -or
             $rule.IsInherited -or $rule.InheritanceFlags -ne [Security.AccessControl.InheritanceFlags]::None -or
             $rule.PropagationFlags -ne [Security.AccessControl.PropagationFlags]::None -or
-            $rule.RegistryRights -ne [Microsoft.Win32.RegistryRights]::FullControl) { $rulesOk = $false }
+            $rule.RegistryRights -ne [Security.AccessControl.RegistryRights]::FullControl) { $rulesOk = $false }
         $sidSet += $rule.IdentityReference.Value
     }
     $expected = @('S-1-5-18','S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464')
@@ -514,13 +514,13 @@ try {
 $servicePath = 'SYSTEM\CurrentControlSet\Services\SafeUpload'
 $systemSid = [Security.Principal.SecurityIdentifier]::new('S-1-5-18')
 $installerSid = [Security.Principal.SecurityIdentifier]::new('S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464')
-$security = [Microsoft.Win32.RegistrySecurity]::new()
+$security = [Security.AccessControl.RegistrySecurity]::new()
 $security.SetAccessRuleProtection($true, $false)
 $security.SetOwner($systemSid)
-$security.SetAccessRule([Microsoft.Win32.RegistryAccessRule]::new($systemSid,
-    [Microsoft.Win32.RegistryRights]::FullControl, [Security.AccessControl.AccessControlType]::Allow))
-$security.SetAccessRule([Microsoft.Win32.RegistryAccessRule]::new($installerSid,
-    [Microsoft.Win32.RegistryRights]::FullControl, [Security.AccessControl.AccessControlType]::Allow))
+$security.SetAccessRule([Security.AccessControl.RegistryAccessRule]::new($systemSid,
+    [Security.AccessControl.RegistryRights]::FullControl, [Security.AccessControl.AccessControlType]::Allow))
+$security.SetAccessRule([Security.AccessControl.RegistryAccessRule]::new($installerSid,
+    [Security.AccessControl.RegistryRights]::FullControl, [Security.AccessControl.AccessControlType]::Allow))
 function Test-ExactSystemTiAcl($registryKey) {
     $acl = $registryKey.GetAccessControl([Security.AccessControl.AccessControlSections]::Owner -bor
         [Security.AccessControl.AccessControlSections]::Access)
@@ -533,7 +533,7 @@ function Test-ExactSystemTiAcl($registryKey) {
         if ($rule.AccessControlType -ne [Security.AccessControl.AccessControlType]::Allow -or
             $rule.IsInherited -or $rule.InheritanceFlags -ne [Security.AccessControl.InheritanceFlags]::None -or
             $rule.PropagationFlags -ne [Security.AccessControl.PropagationFlags]::None -or
-            $rule.RegistryRights -ne [Microsoft.Win32.RegistryRights]::FullControl) { return $false }
+            $rule.RegistryRights -ne [Security.AccessControl.RegistryRights]::FullControl) { return $false }
         if ($rule.IdentityReference.Value -eq 'S-1-5-18') { $seenSystem = $true }
         elseif ($rule.IdentityReference.Value -eq 'S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464') { $seenInstaller = $true }
         else { return $false }

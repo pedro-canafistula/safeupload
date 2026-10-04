@@ -1,0 +1,7 @@
+PolicyAclVerified=True;Trustees=SYSTEM,Administrators;InheritedAces=0
+[SC] ChangeServiceConfig SUCCESS
+BootServiceSettings=Start:0;ErrorControl:1;Group:FSFilter Anti-Virus;Depend:FltMgr;Type:2;PASS
+PrepareRollbackReason=SYSTEM boot-policy writer failed: System.Management.Automation.RuntimeException: Unable to find type [Microsoft.Win32.RegistrySecurity]. @ at <ScriptBlock>, C:\Users\vika\Documents\SafeUpload-boot-start-state\policy-writer-de2d0104e6004c0294da483e2b051dbe.ps1: line 6
+[SC] ChangeServiceConfig SUCCESS
+No settings were changed.
+HARNESS_THREW: SYSTEM boot-policy writer failed: System.Management.Automation.RuntimeException: Unable to find type [Microsoft.Win32.RegistrySecurity]. @ at <ScriptBlock>, C:\Users\vika\Documents\SafeUpload-boot-start-state\policy-writer-de2d0104e6004c0294da483e2b051dbe.ps1: line 6
