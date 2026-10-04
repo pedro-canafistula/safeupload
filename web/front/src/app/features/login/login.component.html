@@ -4,7 +4,7 @@
     <p>Painel de administração</p>
 
     <div class="msg ok" *ngIf="sucesso">{{ sucesso }}</div>
-    <div class="msg erro" *ngIf="erro">{{ erro }}</div>
+    <div class="msg erro" role="alert" *ngIf="erro">{{ erro }}</div>
 
     <form (ngSubmit)="enviar()">
       <label for="email">E-mail</label>

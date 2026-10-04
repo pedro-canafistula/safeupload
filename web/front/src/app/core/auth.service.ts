@@ -1,6 +1,6 @@
 import { HttpClient } from '@angular/common/http';
 import { Injectable } from '@angular/core';
-import { BehaviorSubject, Observable, tap } from 'rxjs';
+import { BehaviorSubject, Observable, tap, catchError, throwError } from 'rxjs';
 import { Usuario } from './models';
 
 @Injectable({ providedIn: 'root' })
@@ -16,7 +16,11 @@ export class AuthService {
 
   carregarSessao(): Observable<Usuario> {
     return this.http.get<Usuario>(`${this.api}/auth/me`, { withCredentials: true }).pipe(
-      tap((u) => this.usuario$.next(u))
+      tap((u) => this.usuario$.next(u)),
+      catchError((erro) => {
+        this.usuario$.next(null);
+        return throwError(() => erro);
+      })
     );
   }
 
