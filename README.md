@@ -26,7 +26,7 @@ Requisitos: **Java 21**, **Maven 3.9+**, **Node 22.12+ da linha 22 ou Node 24**,
 Na raiz do repositório, em um terminal:
 
 ```powershell
-mvn -f web/back/pom.xml spring-boot:run
+mvn -f web/back/pom.xml clean spring-boot:run
 ```
 
 Em outro terminal:
@@ -48,7 +48,7 @@ No agente, `CentroAdministracao:BaseUrl` está configurada como `http://127.0.0.
 Backend (inclui teste de fechamento/reabertura da aplicação com H2 em arquivo temporário):
 
 ```powershell
-mvn -f web/back/pom.xml test
+mvn -f web/back/pom.xml clean test
 ```
 
 Frontend:
@@ -63,7 +63,7 @@ npx playwright install chromium
 Para executar `npm test`, use **um backend exclusivo de testes**, com banco vazio, na porta 8080. Pare o backend normal antes. Na raiz do repositório:
 
 ```powershell
-mvn -f web/back/pom.xml package
+mvn -f web/back/pom.xml clean package
 java -jar web/back/target/backend-0.1.0.jar "--spring.datasource.url=jdbc:h2:mem:e2e" "--spring.jpa.hibernate.ddl-auto=create-drop"
 ```
 
