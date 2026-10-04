@@ -4455,7 +4455,7 @@ public static class SafeUploadEolNative
             $capacityBefore = Get-RTStats
             [void](Invoke-InspectorChecked -Arguments @('--registry-capacity', '8') -Timeout $t)
             $overflowHandle = [SafeUploadAdmissionNative]::CreateFile($overflowTargets[0],
-                [uint32]0x40000000, [uint32]7, [IntPtr]::Zero, [uint32]3, [uint32]0x80, [IntPtr]::Zero)
+                [uint32]0x40000000, [uint32]7, [IntPtr]::Zero, [uint32]4, [uint32]0x80, [IntPtr]::Zero)
             $overflowError = if ($overflowHandle.IsInvalid) { [SafeUploadRegistryTxfNative]::LastError() } else { 0 }
             $overflowOpenFailed = [bool]$overflowHandle.IsInvalid
             if (-not $overflowOpenFailed) { $overflowHandle.Dispose() }
@@ -4474,7 +4474,7 @@ public static class SafeUploadEolNative
                 ';unknownReasons:' + $capacityAfter.registryUnknownReasons + ';instanceUnknown:' +
                 $capacityAfter.registryInstanceUnknown)
             $closedWriter = [SafeUploadAdmissionNative]::CreateFile($overflowTargets[1],
-                [uint32]0x40000000, [uint32]7, [IntPtr]::Zero, [uint32]3, [uint32]0x80, [IntPtr]::Zero)
+                [uint32]0x40000000, [uint32]7, [IntPtr]::Zero, [uint32]4, [uint32]0x80, [IntPtr]::Zero)
             $closedWriterError = if ($closedWriter.IsInvalid) { [SafeUploadRegistryTxfNative]::LastError() } else { 0 }
             $closedWriterIsInvalid = [bool]$closedWriter.IsInvalid
             if (-not $closedWriterIsInvalid) { $closedWriter.Dispose() }
