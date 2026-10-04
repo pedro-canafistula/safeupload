@@ -932,7 +932,11 @@ if($Phase -eq 'Prepare'){
     $actorUser='sui'+[guid]::NewGuid().ToString('N').Substring(0,12)
     $volume=@(Get-CimInstance Win32_Volume -Filter "DriveLetter='C:'")
     if($volume.Count -ne 1){throw 'Volume identity ambiguous'}
-    $size=[int](Get-Volume -DriveLetter C).AllocationUnitSize*3
+    # Get-Volume -DriveLetter C can return more than one object on this guest, which made $size an array (S01 wp4proof1:
+    # op_Subtraction on Object[]). Take the cluster size from exactly one volume or fail.
+    $cVolumes=@(Get-CimInstance Win32_Volume -Filter "DriveLetter='C:'")
+    if($cVolumes.Count -ne 1 -or [int]$cVolumes[0].BlockSize -le 0){throw ('Expected exactly one C: volume with a block size; found '+$cVolumes.Count)}
+    $size=[int]$cVolumes[0].BlockSize*3
     $baseline=[Text.Encoding]::ASCII.GetBytes(('BASELINE-'+$RunName).PadRight($size,'B'))
     $state=@{CaseId=$CaseId;Mode=$Mode;RunName=$RunName;TableRevision=$table.TableRevision;PrepareBootId=(Get-BootId);
         OriginalAgentStart=$originalAgentStart;OriginalPolicyBase64=[Convert]::ToBase64String([IO.File]::ReadAllBytes($policyPath));
