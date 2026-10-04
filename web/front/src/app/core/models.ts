@@ -22,6 +22,12 @@ export interface AuditEvent {
   verdict: Verdict;
   categories: Category[];
   notInspectedReason: string | null;
+  extension?: string | null;
+  processName?: string | null;
+  processId?: number | null;
+  destinationPath?: string | null;
+  policyVersion?: number | null;
+  elapsedMs?: number | null;
 }
 export interface Summary { total: number; bloqueados: number; aprovados: number; liberadosSemInspecao: number; }
 export interface Dashboard {
