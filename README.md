@@ -71,6 +71,28 @@ Em outro terminal, dentro de `web/front`, execute `npm test`. O Playwright inici
 
 O workflow [functional-web.yml](.github/workflows/functional-web.yml) executa os testes Java, build Angular e testes de navegador em PRs para `main`.
 
+### Contrato com o agente C# (Windows)
+
+Com SDK .NET 10, execute a suíte existente:
+
+```powershell
+dotnet test agente/SafeUpload.Agent.Tests/SafeUpload.Agent.Tests.csproj
+```
+
+O projeto `agente/SafeUpload.Agent.ContractSmoke` usa `HttpPolicyStore`, `LocalQueueAuditSink` e `HttpAgentDispatcher` reais contra o Spring, com fila temporária e dados sintéticos. Não instala serviço ou driver. Para executá-lo, inicie um backend separado, vazio, na porta 18080:
+
+```powershell
+java -jar web/back/target/backend-0.1.0.jar "--server.port=18080" "--spring.datasource.url=jdbc:h2:mem:contract" "--spring.jpa.hibernate.ddl-auto=create-drop"
+```
+
+Em outro terminal:
+
+```powershell
+dotnet run --project agente/SafeUpload.Agent.ContractSmoke/SafeUpload.Agent.ContractSmoke.csproj
+```
+
+Reinicie esse backend entre execuções. O teste confirma busca de política, heartbeat, confirmação da fila, três resultados e reenvio idempotente. Ele usa somente `127.0.0.1:18080`, distinto do backend normal.
+
 ## Limites desta entrega
 
 - A API do agente mantém o contrato anterior **sem autenticação de dispositivo**. Use localmente; não exponha esse protótipo diretamente à internet. A variável `SAFEUPLOAD_BIND_ADDRESS` permite mudar o bind quando houver infraestrutura de autenticação/rede apropriada.

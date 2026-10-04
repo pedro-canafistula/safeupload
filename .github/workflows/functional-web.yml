@@ -54,3 +54,40 @@ jobs:
             backend-e2e.log
             web/back/target/surefire-reports/
             web/front/test-results/
+
+  agent-contract:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Agent tests
+        run: dotnet test agente/SafeUpload.Agent.Tests/SafeUpload.Agent.Tests.csproj --verbosity minimal
+      - name: Package backend
+        run: mvn -B -f web/back/pom.xml clean package -DskipTests
+      - name: C# to Java contract
+        shell: pwsh
+        run: |
+          $server = Start-Process java -WindowStyle Hidden -PassThru -ArgumentList @('-jar', 'web/back/target/backend-0.1.0.jar', '--server.port=18080', '--spring.datasource.url=jdbc:h2:mem:contract', '--spring.jpa.hibernate.ddl-auto=create-drop')
+          try {
+            $ready = $false
+            for ($attempt = 0; $attempt -lt 30; $attempt++) {
+              try {
+                Invoke-RestMethod http://127.0.0.1:18080/agent/policy | Out-Null
+                $ready = $true
+                break
+              } catch { Start-Sleep -Seconds 1 }
+            }
+            if (-not $ready) { throw 'Backend não iniciou.' }
+            dotnet run --project agente/SafeUpload.Agent.ContractSmoke/SafeUpload.Agent.ContractSmoke.csproj
+            if ($LASTEXITCODE -ne 0) { throw 'Contrato C# → Java falhou.' }
+          } finally {
+            Stop-Process -Id $server.Id -ErrorAction SilentlyContinue
+          }
