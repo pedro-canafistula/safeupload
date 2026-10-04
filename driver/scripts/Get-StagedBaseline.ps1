@@ -70,6 +70,9 @@ $checks['NoOwnedVhdx'] = -not ((Test-Path -LiteralPath (Join-Path $documents 'Sa
 $fixtures = @(Get-ChildItem -LiteralPath $documents -Directory -Force -ErrorAction SilentlyContinue |
     Where-Object { $_.Name -match '^SafeUpload-.*[0-9a-f]{32}$' })
 $checks['NoGuidFixtureDirectories'] = ($fixtures.Count -eq 0)
+# The invariant suite creates a standard-user actor; its account and profile (C:\Users\<name>) must not survive a run.
+$checks['NoActorUsers'] = (@(Get-LocalUser | Where-Object { $_.Name -match '^su[0-9a-f]{8,}$' -or $_.Name -eq 'surtprobe' }).Count -eq 0)
+$checks['NoTestProfiles'] = (@(Get-CimInstance Win32_UserProfile | Where-Object { -not $_.Special -and $_.LocalPath -notmatch '\\vika$' }).Count -eq 0)
 $checks['NoSyntheticVolume'] = -not (Test-Path -LiteralPath 'S:\')
 $canaries = @()
 $canaryRootsRead = $true

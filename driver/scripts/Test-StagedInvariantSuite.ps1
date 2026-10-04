@@ -641,8 +641,17 @@ $value='Removed'
         @{Name='service-package';Action={if(Test-Path -LiteralPath $serviceDirectory){Remove-Item -LiteralPath $serviceDirectory -Recurse -Force};if(Test-Path -LiteralPath $serviceDirectory){throw 'Service package residue'}}},
         @{Name='actor-profile';Action={
             if(-not [string]::IsNullOrWhiteSpace($state.ActorSid)){
+                # Windows unloads a profile asynchronously after the task's logon session ends (S00 attempt 5: "Owned user profile
+                # still loaded"). End any process the actor still owns, then wait (bounded) for the unload before deleting it.
+                foreach($process in @(Get-CimInstance Win32_Process)){
+                    try{$owner=Invoke-CimMethod -InputObject $process -MethodName GetOwnerSid -ErrorAction Stop}catch{continue}
+                    if($owner.Sid -ceq $state.ActorSid){Stop-Process -Id $process.ProcessId -Force -ErrorAction SilentlyContinue}
+                }
+                $profileDeadline=[DateTime]::UtcNow.AddSeconds(90)
+                while(@(Get-CimInstance Win32_UserProfile | Where-Object { $_.SID -ceq $state.ActorSid -and $_.Loaded }).Count -ne 0 -and
+                      [DateTime]::UtcNow -lt $profileDeadline){Start-Sleep -Milliseconds 500}
                 $profiles=@(Get-CimInstance Win32_UserProfile | Where-Object SID -ceq $state.ActorSid)
-                foreach($profile in $profiles){if($profile.Loaded){throw 'Owned user profile still loaded'};Remove-CimInstance -InputObject $profile}
+                foreach($profile in $profiles){if($profile.Loaded){throw 'Owned user profile still loaded after 90 s'};Remove-CimInstance -InputObject $profile}
                 if(@(Get-CimInstance Win32_UserProfile | Where-Object SID -ceq $state.ActorSid).Count -ne 0){throw 'Owned profile residue'}
             }
         }},
