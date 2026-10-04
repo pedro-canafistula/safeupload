@@ -76,7 +76,6 @@ static VOID SafeUploadInstanceContextCleanup(
     #pragma alloc_text(PAGE, SafeUploadClassifyVolume)
     #pragma alloc_text(PAGE, SafeUploadSetInstanceContext)
     #pragma alloc_text(PAGE, SafeUploadInstanceIsTrusted)
-    #pragma alloc_text(PAGE, SafeUploadInstanceCheckCanaryDeadline)
     #pragma alloc_text(PAGE, SafeUploadGetOrCreateStreamContext)
     #pragma alloc_text(PAGE, SafeUploadMarkHandleForWrite)
 #endif
@@ -403,7 +402,7 @@ VOID SafeUploadInstanceCheckCanaryDeadline(_Inout_ PSAFEUPLOAD_INSTANCE_CONTEXT 
     ULONGLONG now;
     const ULONGLONG timeout = 60ULL * 10000000ULL;
 
-    PAGED_CODE();
+    /* Non-paged: interlocked state only (and empty in the normal build). */
     trustState = InterlockedCompareExchange(&Context->TrustState, 0, 0);
     canaryState = InterlockedCompareExchange(&Context->CanaryState, 0, 0);
     if (trustState != SAFEUPLOAD_VOLUME_TRUST_CANARY_PENDING ||
