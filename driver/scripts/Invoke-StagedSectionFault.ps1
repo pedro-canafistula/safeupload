@@ -159,11 +159,16 @@ function ConvertTo-STArgument([string]$Value) {
     return '"'+$Value.Replace('"','\"')+'"'
 }
 
-function Read-STTargetInstance($Status,[string]$Guid,[string]$AttachedExcept='') {
+function Read-STTargetInstance($Status,[string]$Guid,[string]$AttachedExcept='',[string]$OnlyInstance='') {
     $matches=@($Status.admissionVolumes|Where-Object {
         $null -ne $_.volumeGuidStatus -and $_.volumeGuidStatus -eq 0 -and
             -not [string]::IsNullOrWhiteSpace([string]$_.volumeGuid) -and
             ([string]$_.volumeGuid).ToLowerInvariant().Contains($Guid.ToLowerInvariant()) })
+    if($OnlyInstance){
+        # Run 11: after a dismount the volume can be remounted by any access, adding a new instance under the same GUID.
+        # Post-dismount lookups concern the original instance, so select it by identity.
+        $matches=@($matches|Where-Object {[string]$_.instance -eq $OnlyInstance})
+    }
     if($AttachedExcept){
         # Run 6: after reattach the same GUID lists the old, detached instance (volumeFlags bit 0) and the new one.
         $matches=@($matches|Where-Object {
@@ -477,7 +482,7 @@ function Invoke-SectionTeardownScenario {
                 ';workerWaitElapsedMs:'+$releaseWaitClock.ElapsedMilliseconds+';limitMs:20000'))
         }
         $statusAfterDismount=Get-STGlobalStatus
-        $entryAfterDismount=Read-STTargetInstance $statusAfterDismount $script:STVhdxGuid
+        $entryAfterDismount=Read-STTargetInstance $statusAfterDismount $script:STVhdxGuid '' ([string]$entryBeforeDismount.instance)
         $detachedAfterDismount=$null -eq $entryAfterDismount -or (($entryAfterDismount.volumeFlags -band 1) -ne 0)
         $slotAfterDismount=Get-STWriterStats
         $traceAfterDismount=Read-STTargetTrace 'vhdx-after-dismount' $targetFo
@@ -530,7 +535,7 @@ function Invoke-SectionTeardownScenario {
             else{'explicit-release-after-detach-wait'}
         $afterDetachStats=Get-STWriterStats
         $statusAfterDetach=Get-STGlobalStatus
-        $entryAfterDetach=Read-STTargetInstance $statusAfterDetach $script:STVhdxGuid
+        $entryAfterDetach=Read-STTargetInstance $statusAfterDetach $script:STVhdxGuid '' ([string]$entryBeforeDismount.instance)
         $detachedAfterDetach=$null -eq $entryAfterDetach -or (($entryAfterDetach.volumeFlags -band 1) -ne 0)
         $traceAfterDetach=Read-STTargetTrace 'vhdx-after-detach' $targetFo
         $releaseAfterDetach=@($traceAfterDetach|Where-Object event -eq 'section_release').Count
