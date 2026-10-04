@@ -1,0 +1,11 @@
+GUEST_RECOVERY_REQUIRED=True
+Reason=Prepare failed after the checkpoint became active.
+Checkpoint=safeupload-pre-boot-start-run8-20261004
+ActiveOverlay=/var/lib/libvirt/images/win10-debug.safeupload-pre-boot-start-run8-20261004
+Domain=win10-debug
+ Type   Device   Target   Source
+-------------------------------------------------------------------------------------------------------
+ file   disk     vda      /var/lib/libvirt/images/win10-debug.safeupload-pre-boot-start-run8-20261004
+ file   cdrom    sda      -
+ file   cdrom    sdb      -
+

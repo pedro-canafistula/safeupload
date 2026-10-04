@@ -970,8 +970,11 @@ if ($ready) {
     }
     catch {
         $writeResult = 'Denied'
-        $writeErrorType = $_.Exception.GetType().FullName
-        $writeError = $writeErrorType + ': ' + $_.Exception.Message
+        # PowerShell wraps .NET method failures in MethodInvocationException (run 9: the denial itself was real).
+        $ex = $_.Exception
+        if ($ex -is [Management.Automation.MethodInvocationException] -and $null -ne $ex.InnerException) { $ex = $ex.InnerException }
+        $writeErrorType = $ex.GetType().FullName
+        $writeError = $writeErrorType + ': ' + $ex.Message
     }
 }
 $result = [ordered]@{
