@@ -38,3 +38,10 @@ Limits
     exercised: Filter Manager on this build completes held operations and delivers cleanups across a forced dismount. Filter unload
     with open files (test-only) or a surprise removal are the remaining ways to reach them.
   - The counter-case uses a test-build-only context deletion, not an organic missed cleanup.
+
+Addendum (milestone review F-03, driver 9d4ebfbb, harness c016bc1a+): section-teardown run 12 (runtime Verifier) PASSED 60/60, runner
+PASS, BaselineClean=True. New check TeardownReasonIsDismount: instanceTeardownsDismount +52, instanceTeardownsOther 0 in the window
+(the VHDX volume was mounted and torn down repeatedly around the forced dismount/detach; run 11 also saw an unexpected remount, which
+made its post-dismount lookup ambiguous until lookups selected the original instance). Scoped accounting unchanged: cleanups still
+delivered to the old instance (released +3, unmatched 0), no drop at teardown, machine-wide Unknown 0; mounted-loss counter-case still
+sets it to 1. writer-count run 22 passed 287/287 under Verifier on the same driver. Run 11 FAILED (ambiguous lookup) and is retained.
