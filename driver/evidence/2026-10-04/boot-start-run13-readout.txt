@@ -27,3 +27,11 @@ Carried forward from the boot-path re-review
     normal build is required before any release rollout.
   - N-02 (P1): a clean product install has no durable boot scope until the agent first connects; the installer must stage and verify BootPolicy before the reboot
     that activates protection (the harness does this explicitly).
+
+Addendum (N-02): boot-start run 15 PASSED end to end with the PRODUCT seeding the durable policy. Prepare ran the staged service executable
+(`SafeUpload.Agent.Service.exe --seed-boot-policy`, agent build mvp2-n2-agent2 b6ce8648, 296/296 tests) as SYSTEM against a policy.json listing only the test folder;
+BootPolicySeed=product-mode;ExitCode:0;PASS, exact record/ACL/no-PendingScopes read-back, Start 3 until the harness set 0. Then reboot (boot time changed), X4 raw bytes IDENTICAL to
+baseline after the denied first write, agent-down fail-closed, E1 Untrusted/"protection pending reboot" (raw bytes changed by the pre-attach mapping, documented limit),
+restoration, second reboot, Finalize, state directory removed, BaselineClean=True. Runs 14 (state directory left by run 13) retained.
+Remaining carried-forward item: N-01 (normal build has no canary/trust path). Documented risk: \Device\HarddiskVolumeN prefixes in BootPolicy can renumber across boots; the agent
+reseeds at startup and shutdown, a stable-identity record needs a driver change.
