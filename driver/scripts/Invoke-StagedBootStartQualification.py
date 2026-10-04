@@ -2,6 +2,8 @@
 """Checkpoint one Phase 2 boot-start run (X4 + E1 with boot Verifier), using exact-source build evidence.
 
 Usage: <run-name starting with boot-start> <main-build-label> <source-commit> <agent-build-label> <original-policy-sha256>
+The agent label must pin a package with the SYSTEM-only --seed-boot-policy mode.
+This runner and Test-StagedBootStart.ps1 may be uncommitted; their working-tree bytes are pinned in provenance.
 The shared experiment wrapper requires independent clean baselines before and after.
 """
 from pathlib import Path
@@ -131,13 +133,15 @@ for param, hash_param, path, guest_leaf in inputs:
     else:
         pre += "$p=Join-Path $d '" + guest_leaf + "';if((Test-Path $p) -and (Get-FileHash $p -Algorithm SHA256).Hash -ne '" + sha(path) + "'){throw 'Existing input hash mismatch'}\n"
 pre += "'PRE_RUN_OK=True'\n"
-provenance = ['SourceCommit=' + commit, 'HarnessSourceCommit=' + head, 'MainBuildLabel=' + label,
+provenance = ['SourceCommit=' + commit, 'HarnessBaseCommit=' + head, 'HarnessSourceMode=sha256-pinned-working-tree', 'MainBuildLabel=' + label,
               'Variant=boot-start', 'AgentBuildLabel=' + agent_label, 'BootVerifier=True', 'Invocation=' + invocation,
               'AfterBootInvocation=' + after_boot_ps, 'FinalInvocation=' + final_ps]
 for leaf in ['Invoke-StagedBootStartQualification.py', 'Test-StagedBootStart.ps1', 'Get-StagedBaseline.ps1',
              'StagedTestAgent.ps1', 'Invoke-DebuggeeExperiment.sh', 'remote_ps.py']:
     path = root / 'driver/scripts' / leaf
-    if subprocess.check_output(['git', 'show', head + ':driver/scripts/' + leaf], cwd=root) != path.read_bytes():
+    # Allow this harness-only edit without a commit; keep every shared helper's exact-HEAD gate.
+    if leaf not in ('Invoke-StagedBootStartQualification.py', 'Test-StagedBootStart.ps1') and \
+            subprocess.check_output(['git', 'show', head + ':driver/scripts/' + leaf], cwd=root) != path.read_bytes():
         raise SystemExit('Dirty executable harness source: ' + leaf)
     provenance.append(sha(path) + '  driver/scripts/' + leaf)
 for _, _, path, guest_leaf in inputs:
@@ -152,7 +156,9 @@ status = subprocess.call(['driver/scripts/Invoke-DebuggeeExperiment.sh', name, s
 if status:
     raise SystemExit(status)
 restored = (ev / (name + '-final-restored-state.txt')).read_text()
-for phase, required in [('prepare', ['BOOT_PREPARED=True', 'BootVerifierConfigured=True', 'HARNESS_RETURNED']),
+for phase, required in [('prepare', ['BootPolicySeed=product-mode;ExitCode:0;PASS',
+                                    'BootPolicyPrebootVerified=ParametersAcl:True;BootPolicyAcl:True;RecordBytes:16656;ExactRecord:True;PendingScopes:Absent;Start:3;PASS',
+                                    'BOOT_PREPARED=True', 'BootVerifierConfigured=True', 'HARNESS_RETURNED']),
                         ('after-boot', ['BootStartX4AndE1=True', 'BOOT_RESTORED=True', 'HARNESS_RETURNED']),
                         ('finalize', ['BOOT_FINAL_STATE=True', 'HARNESS_RETURNED'])]:
     text = (ev / (name + '-' + phase + '.txt')).read_text().splitlines()

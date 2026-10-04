@@ -28,7 +28,10 @@ param(
     [string] $InspectorFileName = 'SafeUpload.Inspector.input.exe',
 
     [ValidatePattern('^StagedTestAgent[A-Za-z0-9._-]*\.ps1$')]
-    [string] $TestAgentHelperFileName = 'StagedTestAgent.ps1'
+    [string] $TestAgentHelperFileName = 'StagedTestAgent.ps1',
+
+    # Regression comparison only; qualification defaults to the product seeder.
+    [switch] $ManualBootPolicy
 )
 
 $ErrorActionPreference = 'Stop'
@@ -381,6 +384,111 @@ $process = Start-Process -FilePath '__EXE__' -ArgumentList '--admission-volume-s
     }
 }
 
+function Invoke-ProductBootPolicySeedAsSystem {
+    $id = [guid]::NewGuid().ToString('N')
+    $taskName = 'SafeUpload-BootPolicySeed-' + $id
+    $launcher = Join-Path $stateDirectory ('policy-seed-' + $id + '.ps1')
+    $outPath = $launcher + '.out'
+    $errPath = $launcher + '.err'
+    $exitPath = $launcher + '.exit'
+    $errorPath = $launcher + '.error'
+    $body = @'
+$ErrorActionPreference = 'Stop'
+$process = $null
+$exitCode = -1
+try {
+    $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+    try {
+        if ($identity.User.Value -ne 'S-1-5-18') { throw 'Boot policy seed task is not LocalSystem.' }
+    }
+    finally { $identity.Dispose() }
+    # Seed mode requires exactly this one argument; do not use the normal service launcher.
+    $process = Start-Process -FilePath '__EXE__' -ArgumentList '--seed-boot-policy' -PassThru `
+        -WorkingDirectory '__DIR__' -WindowStyle Hidden -RedirectStandardOutput '__OUT__' -RedirectStandardError '__ERR__'
+    # Retain the process handle so ExitCode remains available in Windows PowerShell 5.1.
+    $null = $process.Handle
+    if (-not $process.WaitForExit(45000)) { throw 'Product boot policy seed exceeded 45 seconds.' }
+    $process.WaitForExit()
+    if ($null -eq $process.ExitCode) { throw 'Product boot policy seed returned no exit code.' }
+    $exitCode = $process.ExitCode
+}
+catch {
+    [IO.File]::WriteAllText('__ERROR__', (($_ | Out-String) + $_.Exception.ToString() + "`r`n" + $_.ScriptStackTrace))
+}
+finally {
+    try {
+        if ($null -ne $process) {
+            if (-not $process.HasExited) { $process.Kill(); $process.WaitForExit() }
+            $process.Dispose()
+        }
+    }
+    catch {
+        $exitCode = -1
+        [IO.File]::AppendAllText('__ERROR__', (($_ | Out-String) + $_.Exception.ToString() + "`r`n" + $_.ScriptStackTrace))
+    }
+    # Completion marker is written last, after the redirected output has closed.
+    [IO.File]::WriteAllText('__EXIT__', [string]$exitCode)
+}
+'@
+    $body = $body.Replace('__EXE__', (ConvertTo-PowerShellLiteral (Join-Path $serviceDirectory 'SafeUpload.Agent.Service.exe')))
+    $body = $body.Replace('__DIR__', (ConvertTo-PowerShellLiteral $serviceDirectory))
+    $body = $body.Replace('__OUT__', (ConvertTo-PowerShellLiteral $outPath))
+    $body = $body.Replace('__ERR__', (ConvertTo-PowerShellLiteral $errPath))
+    $body = $body.Replace('__EXIT__', (ConvertTo-PowerShellLiteral $exitPath))
+    $body = $body.Replace('__ERROR__', (ConvertTo-PowerShellLiteral $errorPath))
+    Set-Content -LiteralPath $launcher -Value $body -Encoding UTF8
+    $registered = $false
+    try {
+        $action = New-ScheduledTaskAction -Execute 'powershell.exe' `
+            -Argument ('-NoProfile -ExecutionPolicy Bypass -File "' + $launcher + '"')
+        $principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
+        $settings = New-ScheduledTaskSettingsSet -ExecutionTimeLimit ([TimeSpan]::FromSeconds(60))
+        Register-ScheduledTask -TaskName $taskName -Action $action -Principal $principal -Settings $settings | Out-Null
+        $registered = $true
+        Start-ScheduledTask -TaskName $taskName
+        $deadline = [DateTime]::UtcNow.AddSeconds(60)
+        while (-not (Test-Path -LiteralPath $exitPath) -and [DateTime]::UtcNow -lt $deadline) {
+            Start-Sleep -Milliseconds 200
+        }
+        if (-not (Test-Path -LiteralPath $exitPath)) {
+            $info = Get-ScheduledTaskInfo -TaskName $taskName
+            throw ('SYSTEM product boot policy seed timed out; task result ' + $info.LastTaskResult)
+        }
+        $exitText = [IO.File]::ReadAllText($exitPath)
+        if ($exitText -notmatch '^-?[0-9]+$') { throw 'SYSTEM product boot policy seed wrote an invalid exit code.' }
+        $exitCode = [int]$exitText
+        if ($exitCode -ne 0 -or (Test-Path -LiteralPath $errorPath) -or
+            -not (Test-Path -LiteralPath $outPath) -or -not (Test-Path -LiteralPath $errPath)) {
+            throw ('SYSTEM product boot policy seed failed; exit code ' + $exitCode)
+        }
+        return [pscustomobject]@{
+            ExitCode = $exitCode
+            StdOut = [IO.File]::ReadAllText($outPath)
+            StdErr = [IO.File]::ReadAllText($errPath)
+        }
+    }
+    catch {
+        $failure = $_.Exception.Message
+        $captured = foreach ($item in @(
+            [pscustomobject]@{ Label = 'stdout'; Path = $outPath },
+            [pscustomobject]@{ Label = 'stderr'; Path = $errPath },
+            [pscustomobject]@{ Label = 'exit code'; Path = $exitPath },
+            [pscustomobject]@{ Label = 'launcher error'; Path = $errorPath }
+        )) {
+            $value = if (Test-Path -LiteralPath $item.Path) { [IO.File]::ReadAllText($item.Path) } else { '<missing>' }
+            $item.Label + ":`r`n" + $value
+        }
+        throw ($failure + "`r`n" + ($captured -join "`r`n"))
+    }
+    finally {
+        if ($registered) {
+            Stop-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
+            Unregister-ScheduledTask -TaskName $taskName -Confirm:$false -ErrorAction SilentlyContinue
+        }
+        Remove-Item -LiteralPath $launcher,$outPath,$errPath,$exitPath,$errorPath -Force -ErrorAction SilentlyContinue
+    }
+}
+
 function Wait-AgentPolicyAccepted([string] $LogPrefix, [int] $ExpectedPrefixCount = 1) {
     if (@(Get-Process SafeUpload.Agent.Service -ErrorAction SilentlyContinue).Count -ne 0) {
         throw 'An agent process is already running.'
@@ -417,8 +525,11 @@ function Get-BootPolicyReadbackAsSystem {
     $taskName = 'SafeUpload-BootPolicyReader-' + $id
     $launcher = Join-Path $stateDirectory ('policy-reader-' + $id + '.ps1')
     $outputPath = $launcher + '.json'
+    $errorPath = $launcher + '.error'
+    $donePath = $launcher + '.done'
     $body = @'
 $ErrorActionPreference = 'Stop'
+try {
 $path = 'SYSTEM\CurrentControlSet\Services\SafeUpload\Parameters\BootPolicy'
 $parentPath = 'SYSTEM\CurrentControlSet\Services\SafeUpload\Parameters'
 $key = [Microsoft.Win32.Registry]::LocalMachine.OpenSubKey($path, $false)
@@ -445,9 +556,10 @@ function Test-ExactSystemTiAcl($registryKey) {
 }
 try {
     $record = $key.GetValue('Scopes', $null)
-    $pending = $key.GetValue('PendingScopes', $null)
+    $pendingPresent = $key.GetValueNames() -contains 'PendingScopes'
     if ($record -isnot [byte[]]) { throw 'Scopes is not REG_BINARY.' }
-    $aclValid = (Test-ExactSystemTiAcl $key) -and (Test-ExactSystemTiAcl $parent)
+    $policyAclValid = Test-ExactSystemTiAcl $key
+    $parametersAclValid = Test-ExactSystemTiAcl $parent
     $prefixes = @()
     $prefix = ''
     if ($record.Length -ne 16656) { throw 'Scopes has the wrong record size.' }
@@ -465,21 +577,34 @@ try {
     }
     if ($prefixes.Count -gt 0) { $prefix = $prefixes[0] }
     $result = [ordered]@{
-        AclValid = $aclValid
-        Owner = 'S-1-5-18'
+        AclValid = $policyAclValid -and $parametersAclValid
+        BootPolicyAclValid = $policyAclValid
+        ParametersAclValid = $parametersAclValid
+        Owner = $key.GetAccessControl().GetOwner([Security.Principal.SecurityIdentifier]).Value
+        RecordBytes = $record.Length
+        RecordBase64 = [Convert]::ToBase64String($record)
+        DriverStart = [int](Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Services\SafeUpload' -ErrorAction Stop).Start
         PrefixCount = $prefixCount
         Flags = [BitConverter]::ToUInt32($record, 12)
         StructSize = [BitConverter]::ToUInt32($record, 4)
         Version = [BitConverter]::ToUInt32($record, 0)
-        PendingPresent = ($null -ne $pending)
+        PendingPresent = $pendingPresent
         Prefix = $prefix
         Prefixes = @($prefixes)
     }
     $result | ConvertTo-Json -Compress | Set-Content -LiteralPath '__OUT__' -Encoding UTF8
 }
 finally { $key.Dispose(); $parent.Dispose() }
+}
+catch {
+    [IO.File]::WriteAllText('__ERROR__', (($_ | Out-String) + $_.Exception.ToString() + "`r`n" + $_.ScriptStackTrace))
+}
+finally { [IO.File]::WriteAllText('__DONE__', 'done') }
 '@
-    Set-Content -LiteralPath $launcher -Value $body.Replace('__OUT__', (ConvertTo-PowerShellLiteral $outputPath)) -Encoding UTF8
+    $body = $body.Replace('__OUT__', (ConvertTo-PowerShellLiteral $outputPath))
+    $body = $body.Replace('__ERROR__', (ConvertTo-PowerShellLiteral $errorPath))
+    $body = $body.Replace('__DONE__', (ConvertTo-PowerShellLiteral $donePath))
+    Set-Content -LiteralPath $launcher -Value $body -Encoding UTF8
     $registered = $false
     try {
         $action = New-ScheduledTaskAction -Execute 'powershell.exe' `
@@ -488,10 +613,12 @@ finally { $key.Dispose(); $parent.Dispose() }
         Register-ScheduledTask -TaskName $taskName -Action $action -Principal $principal | Out-Null
         $registered = $true
         Start-ScheduledTask -TaskName $taskName
-        for ($attempt = 0; $attempt -lt 120 -and -not (Test-Path -LiteralPath $outputPath); ++$attempt) {
+        for ($attempt = 0; $attempt -lt 120 -and -not (Test-Path -LiteralPath $donePath); ++$attempt) {
             Start-Sleep -Milliseconds 250
         }
-        if (-not (Test-Path -LiteralPath $outputPath)) { throw 'SYSTEM boot-policy read-back timed out.' }
+        if (-not (Test-Path -LiteralPath $donePath)) { throw 'SYSTEM boot-policy read-back timed out.' }
+        if (Test-Path -LiteralPath $errorPath) { throw ('SYSTEM boot-policy read-back failed: ' + [IO.File]::ReadAllText($errorPath)) }
+        if (-not (Test-Path -LiteralPath $outputPath)) { throw 'SYSTEM boot-policy read-back produced no record.' }
         return Get-Content -LiteralPath $outputPath -Raw | ConvertFrom-Json
     }
     finally {
@@ -499,7 +626,7 @@ finally { $key.Dispose(); $parent.Dispose() }
             Stop-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
             Unregister-ScheduledTask -TaskName $taskName -Confirm:$false -ErrorAction SilentlyContinue
         }
-        Remove-Item -LiteralPath $launcher,$outputPath -Force -ErrorAction SilentlyContinue
+        Remove-Item -LiteralPath $launcher,$outputPath,$errorPath,$donePath -Force -ErrorAction SilentlyContinue
     }
 }
 
@@ -831,6 +958,7 @@ if ($Phase -eq 'Prepare') {
         activeCategories = @('Cpf')
         monitoredScopes = [ordered]@{
             extensions = @('.txt')
+            # LocalPolicyStore -> PolicyBuilder preserves this suffix (no trailing slash).
             destinationPaths = @($protectedDirectory)
             removableDrives = $false
             networkPaths = $false
@@ -864,6 +992,56 @@ if ($Phase -eq 'Prepare') {
     if ((Get-FileHash -LiteralPath $installedDriver -Algorithm SHA256).Hash -ne $ExpectedFeatureSha256.ToUpperInvariant()) {
         throw 'Feature driver did not install byte-for-byte.'
     }
+    $deviceName = [Text.StringBuilder]::new(1024)
+    if ([SafeUploadBootSectionNative]::QueryDosDevice('C:', $deviceName, $deviceName.Capacity) -eq 0) {
+        throw 'QueryDosDevice could not resolve the C: boot volume for its durable registry scope.'
+    }
+    $devicePath = $deviceName.ToString().Split([char]0)[0].TrimEnd('\')
+    $bootPrefix = $devicePath + '\SafeUploadBootStart\Protected'
+    if ((Get-ItemProperty "HKLM:\$registryService").Start -ne 3) {
+        throw 'The driver must remain demand-start before boot policy seeding.'
+    }
+    $seedCapture = ''
+    if ($ManualBootPolicy) { $null = Write-BootPolicyAsSystem $bootPrefix }
+    else {
+        $seed = Invoke-ProductBootPolicySeedAsSystem
+        $seedCapture = "Product seed exit code: $($seed.ExitCode)`r`nstdout:`r`n$($seed.StdOut)`r`nstderr:`r`n$($seed.StdErr)"
+        Write-Output $seedCapture
+    }
+    try {
+        # Independent oracle: compare ALL bytes, including the first slot's tail and all unused slots.
+        $expectedRecord = New-Object byte[] 16656
+        [BitConverter]::GetBytes([uint32]1).CopyTo($expectedRecord, 0)
+        [BitConverter]::GetBytes([uint32]16656).CopyTo($expectedRecord, 4)
+        [BitConverter]::GetBytes([uint32]1).CopyTo($expectedRecord, 8)
+        $prefixBytes = [Text.Encoding]::Unicode.GetBytes($bootPrefix)
+        if ($prefixBytes.Length -gt 518) { throw 'Boot scope prefix exceeds its 260 WCHAR slot.' }
+        [Array]::Copy($prefixBytes, 0, $expectedRecord, 16, $prefixBytes.Length)
+        $readback = Get-BootPolicyReadbackAsSystem
+        if (-not $readback.ParametersAclValid -or -not $readback.BootPolicyAclValid -or
+            $readback.PendingPresent -or $readback.RecordBytes -ne 16656 -or
+            $readback.Version -ne 1 -or $readback.StructSize -ne 16656 -or
+            $readback.PrefixCount -ne 1 -or $readback.Flags -ne 0 -or
+            $readback.Prefix -cne $bootPrefix -or
+            $readback.RecordBase64 -cne [Convert]::ToBase64String($expectedRecord)) {
+            throw 'Seeded preboot Scopes failed independent exact record or registry ACL read-back.'
+        }
+        if ($readback.DriverStart -ne 3 -or (Get-ItemProperty "HKLM:\$registryService").Start -ne 3) {
+            throw 'Boot policy seeding changed the driver Start value; expected demand-start (3).'
+        }
+        if ((& fltmc.exe filters 2>&1 | Out-String) -match '(?m)^SafeUpload\s' -or
+            @(Get-Process SafeUpload.Agent.Service -ErrorAction SilentlyContinue).Count -ne 0) {
+            throw 'Boot policy seeding left the filter loaded or an agent process running.'
+        }
+    }
+    catch { throw ($_.Exception.Message + "`r`n" + $seedCapture) }
+    Write-Output 'BootPolicyPrebootVerified=ParametersAcl:True;BootPolicyAcl:True;RecordBytes:16656;ExactRecord:True;PendingScopes:Absent;Start:3;PASS'
+    if ($ManualBootPolicy) { Write-Output 'BootPolicySeed=manual-writer;PASS' }
+    else { Write-Output 'BootPolicySeed=product-mode;ExitCode:0;PASS' }
+    Write-Output ('TestPolicyStagedWithoutLoading=True;Prefix=' + $bootPrefix +
+        ';RegistryRecordBytes=' + $readback.RecordBytes)
+
+    # Only the harness activates boot start, after the seed and independent read-back.
     & sc.exe config SafeUpload start= boot | Out-Host
     if ($LASTEXITCODE -ne 0 -or (Get-ItemProperty "HKLM:\$registryService").Start -ne 0) {
         throw 'Could not stage the test driver as boot start.'
@@ -876,20 +1054,6 @@ if ($Phase -eq 'Prepare') {
             ';Group=' + $svc.Group + ';Depend=' + (@($svc.DependOnService) -join ',') + ';Type=' + $svc.Type)
     }
     Write-Output ('BootServiceSettings=Start:0;ErrorControl:1;Group:FSFilter Anti-Virus;Depend:FltMgr;Type:2;PASS')
-    $deviceName = [Text.StringBuilder]::new(1024)
-    if ([SafeUploadBootSectionNative]::QueryDosDevice('C:', $deviceName, $deviceName.Capacity) -eq 0) {
-        throw 'QueryDosDevice could not resolve the C: boot volume for its durable registry scope.'
-    }
-    $devicePath = $deviceName.ToString().Split([char]0)[0].TrimEnd('\')
-    $bootPrefix = $devicePath + '\SafeUploadBootStart\Protected'
-    $bootWrite = Write-BootPolicyAsSystem $bootPrefix
-    $readback = Get-BootPolicyReadbackAsSystem
-    if (-not $readback.AclValid -or $readback.PendingPresent -or $readback.PrefixCount -ne 1 -or
-        $readback.Prefix -notmatch '(?i)SafeUploadBootStart\\Protected') {
-        throw 'The manually staged preboot Scopes value failed exact registry read-back.'
-    }
-    Write-Output ('TestPolicyStagedWithoutLoading=True;Prefix=' + $bootPrefix +
-        ';RegistryRecordBytes=' + $bootWrite.RecordBytes)
     if ((Get-ItemProperty "HKLM:\$registryService").Start -ne 0) {
         throw 'The test driver no longer has boot start configured.'
     }
@@ -1363,7 +1527,7 @@ else {
     if (Test-Path -LiteralPath $parametersKey) { throw 'Test boot policy registry key remained after restoration.' }
     if (@(Get-Process SafeUpload.Agent.Service -ErrorAction SilentlyContinue).Count -ne 0) { throw 'Agent process remained after restoration.' }
     if (@(Get-ScheduledTask | Where-Object {
-        $_.TaskName -match '^SafeUpload-(BootStart|BootInspector|BootPolicyReader|BootRegistryCleanup|StagedTest|StagedCleanup)'
+        $_.TaskName -match '^SafeUpload-(BootStart|BootInspector|BootPolicyReader|BootPolicySeed|BootPolicyWriter|BootRegistryCleanup|StagedTest|StagedCleanup)'
     }).Count -ne 0) {
         throw 'A boot-start experiment or agent task remained after restoration.'
     }
