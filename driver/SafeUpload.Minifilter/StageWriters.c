@@ -213,7 +213,9 @@ static VOID StageRegistryMarkEntryUnknown(_In_ PSTAGE_REGISTRY_ENTRY Entry, _In_
     InterlockedOr(&Entry->UnknownReasons, Reason);
     InterlockedExchange((volatile LONG *)&Entry->State, SAFEUPLOAD_REGISTRY_STATE_UNKNOWN);
     if (KeGetCurrentIrql() <= APC_LEVEL) {
-        StageRegistryMarkUnknown(Entry->Instance, Reason, FALSE);
+        /* Read once: teardown clears it (NULL then marks machine-wide). Callers hold the instance for this call. */
+        StageRegistryMarkUnknown((PFLT_INSTANCE)InterlockedCompareExchangePointer(
+            (PVOID volatile *)&Entry->Instance, NULL, NULL), Reason, FALSE);
     } else {
         /* A set-information post-operation may run at DISPATCH_LEVEL. Preserve
          * correctness without touching pageable instance context there. */
@@ -1189,31 +1191,6 @@ static VOID StageRegistryRetireInstance(_In_ PFLT_INSTANCE Instance, _In_ BOOLEA
                 SAFEUPLOAD_INSTANCE_STATE_TEARING_DOWN : SAFEUPLOAD_INSTANCE_STATE_UNKNOWN);
     }
     FltReleasePushLock(&RegistryLock);
-    for (;;) {
-        PSTAGE_REGISTRY_ENTRY entry = NULL;
-        FltAcquirePushLockExclusive(&RegistryLock);
-        for (link = RegistryEntries.Flink; link != &RegistryEntries; link = link->Flink) {
-            PSTAGE_REGISTRY_ENTRY current = CONTAINING_RECORD(link, STAGE_REGISTRY_ENTRY, Link);
-            if (current->Instance == Instance && !current->Retired) {
-                entry = current;
-                entry->Retired = TRUE;
-                RemoveEntryList(&entry->Link);
-                if (RegistryEntryCount != 0) RegistryEntryCount -= 1;
-                if (RegistryNameBytes >= entry->NameChars * sizeof(WCHAR))
-                    RegistryNameBytes -= entry->NameChars * sizeof(WCHAR);
-                break;
-            }
-        }
-        FltReleasePushLock(&RegistryLock);
-        if (entry == NULL) break;
-        if (Dismount) InterlockedIncrement64(&RegistryDroppedAtDismount);
-        else {
-            InterlockedIncrement64(&RegistryDroppedWhileMounted);
-            InterlockedExchange(&WriterGlobalUnknown, 1);
-            InterlockedOr((volatile LONG *)&RegistryUnknownReasons, SAFEUPLOAD_REGISTRY_UNKNOWN_TEARDOWN);
-        }
-        StageRegistryDereference(entry); /* Drop the registry-history reference. */
-    }
 
     /* A terminal notification after teardown has no useful admission state. Drop each association here;
      * any non-dismount loss is already covered by machine-wide Unknown. */
@@ -1267,6 +1244,46 @@ static VOID StageRegistryRetireInstance(_In_ PFLT_INSTANCE Instance, _In_ BOOLEA
         if (entry == NULL) break;
         StageRegistryDereference(entry); /* The map or exact C slot reference. */
     }
+
+    /* Retire last (the loops above find this instance's slots through Entry->Instance). Retirement also releases each entry's
+     * instance and volume references: stream contexts and writer nodes can still hold entries, and Filter Manager frees those
+     * contexts only AFTER FltpFreeInstance has waited out every FltObjectReference on the instance. An entry pinning its
+     * instance therefore deadlocked teardown (registry-txf runs 2-6: fltmc unload parked in FltpFreeInstance, rundown count 1).
+     * A retired entry is unlisted history and is never matched again, so it needs no live instance or volume. */
+    for (;;) {
+        PSTAGE_REGISTRY_ENTRY entry = NULL;
+        PFLT_INSTANCE instanceReference = NULL;
+        PFLT_VOLUME volumeReference = NULL;
+        FltAcquirePushLockExclusive(&RegistryLock);
+        for (link = RegistryEntries.Flink; link != &RegistryEntries; link = link->Flink) {
+            PSTAGE_REGISTRY_ENTRY current = CONTAINING_RECORD(link, STAGE_REGISTRY_ENTRY, Link);
+            if (current->Instance == Instance && !current->Retired) {
+                entry = current;
+                entry->Retired = TRUE;
+                RemoveEntryList(&entry->Link);
+                entry->Listed = FALSE;
+                instanceReference = entry->Instance;
+                volumeReference = entry->Volume;
+                entry->Instance = NULL;
+                entry->Volume = NULL;
+                if (RegistryEntryCount != 0) RegistryEntryCount -= 1;
+                if (RegistryNameBytes >= entry->NameChars * sizeof(WCHAR))
+                    RegistryNameBytes -= entry->NameChars * sizeof(WCHAR);
+                break;
+            }
+        }
+        FltReleasePushLock(&RegistryLock);
+        if (entry == NULL) break;
+        if (Dismount) InterlockedIncrement64(&RegistryDroppedAtDismount);
+        else {
+            InterlockedIncrement64(&RegistryDroppedWhileMounted);
+            InterlockedExchange(&WriterGlobalUnknown, 1);
+            InterlockedOr((volatile LONG *)&RegistryUnknownReasons, SAFEUPLOAD_REGISTRY_UNKNOWN_TEARDOWN);
+        }
+        if (volumeReference != NULL) FltObjectDereference(volumeReference);
+        if (instanceReference != NULL) FltObjectDereference(instanceReference);
+        StageRegistryDereference(entry); /* Drop the registry-history reference. */
+    }
 }
 
 static VOID StageRegistryBeginInstanceTeardown(_In_ PFLT_INSTANCE Instance,
@@ -1293,6 +1310,10 @@ static BOOLEAN StageRegistryAssociateSectionPointer(_In_ PSTAGE_WRITER_RESERVATI
 {
     ULONG index, empty = MAXULONG;
     PVOID oldSectionObjectPointer;
+    /* Map references dropped by a rebind; released after both locks (a release may free the entry). Each pointer occupies at
+     * most one slot and this entry at most one other, so at most two bindings are dropped. */
+    PSTAGE_REGISTRY_ENTRY released[2] = { NULL, NULL };
+    ULONG releasedCount = 0;
     BOOLEAN ok = FALSE;
     BOOLEAN pointerConflict = FALSE;
     KIRQL irql;
@@ -1303,12 +1324,12 @@ static BOOLEAN StageRegistryAssociateSectionPointer(_In_ PSTAGE_WRITER_RESERVATI
         FltReleasePushLock(&RegistryLock);
         return FALSE;
     }
+    /* NTFS keeps exactly one SCB, hence one section-object pointer, per live stream, and every handle, section or mapped view
+     * keeps that SCB alive. So a different pointer for this file ID, or this pointer still bound to another file ID, proves the
+     * earlier incarnation is gone and no S reference can remain on it: rebind instead of failing. (registry-txf run 6: ordinary
+     * pool reuse after close was read as a capacity failure and made the volume Unknown after 10 entries.) */
     oldSectionObjectPointer = InterlockedCompareExchangePointer(
-        (PVOID volatile *)&Entry->SectionObjectPointer, SectionObjectPointer, NULL);
-    if (oldSectionObjectPointer != NULL && oldSectionObjectPointer != SectionObjectPointer) {
-        FltReleasePushLock(&RegistryLock);
-        return FALSE;
-    }
+        (PVOID volatile *)&Entry->SectionObjectPointer, NULL, NULL);
     KeAcquireSpinLock(&SectionLock, &irql);
     for (index = 0; index < STAGE_SECTION_SLOTS; ++index) {
         if (SectionSlots[index].SectionObjectPointer == SectionObjectPointer &&
@@ -1323,19 +1344,29 @@ static BOOLEAN StageRegistryAssociateSectionPointer(_In_ PSTAGE_WRITER_RESERVATI
         FltReleasePushLock(&RegistryLock);
         return FALSE;
     }
+    /* The conflict check above stands: a writable section in flight on this pointer bound to another entry is inconsistent. */
+    InterlockedExchangePointer((PVOID volatile *)&Entry->SectionObjectPointer, SectionObjectPointer);
     for (index = 0; index < RTL_NUMBER_OF(RegistrySopSlots); ++index) {
         PSTAGE_REGISTRY_SOP_SLOT map = &RegistrySopSlots[index];
-        if (map->SectionObjectPointer == SectionObjectPointer) {
-            if (map->Entry == Entry) { ok = TRUE; break; }
-            /* No cache barrier exists in this increment. Keep the first identity
-             * bound to this opaque pointer until teardown; do not recycle a map
-             * slot based only on H/T/C, because an S reference may still live. */
-            pointerConflict = TRUE;
-            break;
+        if (map->Entry == Entry && oldSectionObjectPointer != NULL && oldSectionObjectPointer != SectionObjectPointer &&
+            map->SectionObjectPointer == oldSectionObjectPointer && releasedCount < RTL_NUMBER_OF(released)) {
+            /* This file's previous incarnation: drop its binding. */
+            released[releasedCount++] = map->Entry;
+            RtlZeroMemory(map, sizeof(*map));
+        } else if (map->SectionObjectPointer == SectionObjectPointer) {
+            if (map->Entry != Entry && releasedCount < RTL_NUMBER_OF(released)) {
+                /* The pointer was reused by this stream after another file's SCB was freed: the old binding is stale. */
+                (VOID)InterlockedCompareExchangePointer((PVOID volatile *)&map->Entry->SectionObjectPointer,
+                    NULL, SectionObjectPointer);
+                released[releasedCount++] = map->Entry;
+                StageRegistryReference(Entry);
+                map->Entry = Entry;
+            }
+            ok = map->Entry == Entry;
         }
         if (empty == MAXULONG && map->SectionObjectPointer == NULL) empty = index;
     }
-    if (!ok && !pointerConflict && empty != MAXULONG) {
+    if (!ok && empty != MAXULONG) {
         StageRegistryReference(Entry);
         RegistrySopSlots[empty].SectionObjectPointer = SectionObjectPointer;
         RegistrySopSlots[empty].Entry = Entry;
@@ -1355,6 +1386,7 @@ static BOOLEAN StageRegistryAssociateSectionPointer(_In_ PSTAGE_WRITER_RESERVATI
     }
     KeReleaseSpinLock(&SectionLock, irql);
     FltReleasePushLock(&RegistryLock);
+    for (index = 0; index < releasedCount; ++index) StageRegistryDereference(released[index]);
     if (!ok) {
         InterlockedIncrement64(&RegistryCapacityFailures);
         InterlockedIncrement((volatile LONG *)&RegistryOverflow);
@@ -1994,9 +2026,11 @@ NTSTATUS SafeUploadStageWritersRegistryEvaluate(_In_ PFLT_INSTANCE Instance,
     /* Identity-open, all-128-bit verification, SOP equality, and MmDoes run only here at PASSIVE_LEVEL. */
     status = SafeUploadStageOpenByIdentity(Instance, VolumeName, SourceObject,
         &identityHandle, &identityObject, &probeStage);
-    if (status == STATUS_SUCCESS && identityObject != NULL &&
-        identityObject->SectionObjectPointer == sectionObjectPointer && sectionObjectPointer != NULL) {
-        Result->S = MmDoesFileHaveUserWritableReferences(sectionObjectPointer) ?
+    /* The identity open is verified (all 128 ID bits, same stream as the source open) and joins the stream's one live SCB. If
+     * the stored pointer differs, the earlier incarnation is gone and nothing can still map it, so S is read on the live one. */
+    UNREFERENCED_PARAMETER(sectionObjectPointer);
+    if (status == STATUS_SUCCESS && identityObject != NULL && identityObject->SectionObjectPointer != NULL) {
+        Result->S = MmDoesFileHaveUserWritableReferences(identityObject->SectionObjectPointer) ?
             SAFEUPLOAD_REGISTRY_S_YES : SAFEUPLOAD_REGISTRY_S_NO;
     } else {
         unknown |= SAFEUPLOAD_REGISTRY_UNKNOWN_IDENTITY;
@@ -2067,7 +2101,8 @@ NTSTATUS SafeUploadStageWritersRegistryEvaluate(_In_ PFLT_INSTANCE Instance,
             InterlockedExchange((volatile LONG *)&entry->State, (LONG)state);
         }
         FltReleasePushLock(&RegistryLock);
-        if (stickyReasons != 0) StageRegistryMarkUnknown(entry->Instance, stickyReasons, FALSE);
+        /* The caller's referenced Instance, never entry->Instance, which teardown may release concurrently. */
+        if (stickyReasons != 0 && !entryRetired) StageRegistryMarkUnknown(Instance, stickyReasons, FALSE);
     }
 
     if (identityHandle != NULL) FltClose(identityHandle);
