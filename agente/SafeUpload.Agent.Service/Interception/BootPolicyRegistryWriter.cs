@@ -68,11 +68,10 @@ internal static unsafe class BootPolicyCodec
         var prefixes = new List<string>((int)policy.PrefixCount);
         unsafe
         {
-            fixed (char* table = policy.Prefixes)
-            {
-                for (int index = 0; index < (int)policy.PrefixCount; index++)
-                    prefixes.Add(ReadSlot(table + index * PrefixChars));
-            }
+            // `policy` is a by-value parameter, so its fixed-size buffer is already in a fixed location (CS0213).
+            char* table = policy.Prefixes;
+            for (int index = 0; index < (int)policy.PrefixCount; index++)
+                prefixes.Add(ReadSlot(table + index * PrefixChars));
         }
         return Encode(new BootPolicyScopes(prefixes, policy.Flags & DestinationFlagMask));
     }
