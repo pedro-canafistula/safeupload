@@ -123,7 +123,13 @@ after_boot_ps = phase_line('AfterBoot')
 final_ps = phase_line('Finalize')
 pre = "$ErrorActionPreference='Stop';$d='C:\\Users\\vika\\Documents';\n"
 for param, hash_param, path, guest_leaf in inputs:
-    pre += "$p=Join-Path $d '" + guest_leaf + "';if((Test-Path $p) -and (Get-FileHash $p -Algorithm SHA256).Hash -ne '" + sha(path) + "'){throw 'Existing input hash mismatch'}\n"
+    if param is None:
+        # A different package from an earlier run may sit under the fixed name: preserve it under its hash, never overwrite or delete.
+        pre += ("$p=Join-Path $d '" + guest_leaf + "';if((Test-Path $p) -and (Get-FileHash $p -Algorithm SHA256).Hash -ne '" + sha(path) + "'){"
+                "$old=(Get-FileHash $p -Algorithm SHA256).Hash.Substring(0,16);$keep=$p+'.preserved-'+$old;"
+                "if(Test-Path $keep){throw 'Preserved package name already exists'};Move-Item -LiteralPath $p -Destination $keep}\n")
+    else:
+        pre += "$p=Join-Path $d '" + guest_leaf + "';if((Test-Path $p) -and (Get-FileHash $p -Algorithm SHA256).Hash -ne '" + sha(path) + "'){throw 'Existing input hash mismatch'}\n"
 pre += "'PRE_RUN_OK=True'\n"
 provenance = ['SourceCommit=' + commit, 'HarnessSourceCommit=' + head, 'MainBuildLabel=' + label,
               'Variant=boot-start', 'AgentBuildLabel=' + agent_label, 'BootVerifier=True', 'Invocation=' + invocation,
