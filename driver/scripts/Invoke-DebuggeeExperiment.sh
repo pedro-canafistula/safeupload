@@ -12,6 +12,8 @@
 # waits for guest SSH, runs AfterBoot, reboots after restoration, then runs
 # Finalize. If SSH does not return, the wrapper stops without modifying the
 # external checkpoint; use the recorded overlay for offline recovery.
+# Suite-specific completion lines may use BOOT_START_{PREPARED,CASE,RESTORED,FINAL}_SENTINEL.
+# Defaults preserve the Phase 2 boot-start protocol. These lines are not a case verdict.
 # EXTRA_FILES are copied to the guest Documents folder AFTER the checkpoint, so the checkpoint stays a clean
 # original; PRE_RUN_PS runs on the guest after the checkpoint and before the copy (for example to preserve
 # an existing file under a new name). Both are recorded in the gate file.
@@ -215,7 +217,7 @@ if [ "$boot_start_run" = 1 ]; then
     : "${BOOT_START_AFTER_BOOT_PS:?set the AfterBoot PowerShell invocation}"
     : "${BOOT_START_FINAL_PS:?set the Finalize PowerShell invocation}"
     run_remote_phase prepare "$invocation"
-    grep -qx 'BOOT_PREPARED=True' "$ev/$name-prepare.txt" &&
+    grep -Fqx -- "${BOOT_START_PREPARED_SENTINEL:-BOOT_PREPARED=True}" "$ev/$name-prepare.txt" &&
         grep -qx 'HARNESS_RETURNED' "$ev/$name-prepare.txt" || {
         echo "BOOT PREPARE FAILED; inspect the retained checkpoint and prepare rollback evidence"
         record_recovery_required 'Prepare failed after the checkpoint became active.'
@@ -241,8 +243,8 @@ if [ "$boot_start_run" = 1 ]; then
         exit 52
     fi
     run_remote_phase after-boot "$BOOT_START_AFTER_BOOT_PS"
-    grep -qx 'BootStartX4AndE1=True' "$ev/$name-after-boot.txt" &&
-        grep -qx 'BOOT_RESTORED=True' "$ev/$name-after-boot.txt" &&
+    grep -Fqx -- "${BOOT_START_CASE_SENTINEL:-BootStartX4AndE1=True}" "$ev/$name-after-boot.txt" &&
+        grep -Fqx -- "${BOOT_START_RESTORED_SENTINEL:-BOOT_RESTORED=True}" "$ev/$name-after-boot.txt" &&
         grep -qx 'HARNESS_RETURNED' "$ev/$name-after-boot.txt" || {
         echo "AFTER-BOOT RESTORATION FAILED; preserve checkpoint and inspect guest state"
         record_recovery_required 'AfterBoot harness failed or restoration was incomplete.'
@@ -265,7 +267,7 @@ if [ "$boot_start_run" = 1 ]; then
         exit 53
     fi
     run_remote_phase finalize "$BOOT_START_FINAL_PS"
-    grep -qx 'BOOT_FINAL_STATE=True' "$ev/$name-finalize.txt" &&
+    grep -Fqx -- "${BOOT_START_FINAL_SENTINEL:-BOOT_FINAL_STATE=True}" "$ev/$name-finalize.txt" &&
         grep -qx 'HARNESS_RETURNED' "$ev/$name-finalize.txt" || {
         echo "FINAL RESTORATION ASSERTIONS FAILED"
         record_recovery_required 'Final restoration assertions failed after the restoration reboot.'
