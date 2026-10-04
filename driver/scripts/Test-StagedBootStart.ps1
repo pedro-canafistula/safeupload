@@ -1546,4 +1546,8 @@ else {
     Write-Output 'BOOT_FINAL_STATE=True'
     Write-Output ('FinalOriginalDriverSHA256=' + $originalDriverHash)
     Write-Output ('FinalPolicySHA256=' + (Get-FileHash -LiteralPath $policyPath -Algorithm SHA256).Hash)
+    # A completed run leaves no state directory behind (the next Prepare refuses a leftover one: run 14).
+    Remove-Item -LiteralPath $stateDirectory -Recurse -Force -ErrorAction Stop
+    if (Test-Path -LiteralPath $stateDirectory) { throw 'Boot-start state directory could not be removed after Finalize.' }
+    Write-Output 'BootStartStateRemoved=True'
 }
