@@ -175,7 +175,7 @@ def build_inputs(args, commit, agent_commit, head):
                   'AgentSummarySha256': sha(agent_work / 'summary.txt'), 'WriterFixtureSha256': sha(work / 'writer-fixture.exe')}
     pins = {}
     for leaf in ('StagedInvariantCases.psd1', 'StagedInvariantObserver.psm1', 'Test-StagedInvariantSuite.ps1',
-                 'Invoke-StagedInvariantQualification.py', 'StagedTestAgent.ps1', 'Invoke-DebuggeeExperiment.sh', 'Get-StagedBaseline.ps1', 'remote_ps.py'):
+                 'Invoke-StagedInvariantQualification.py', 'StagedInvariantProofAdapters.SelfCheck.ps1', 'test_staged_invariant_proof_adapters.py', 'StagedTestAgent.ps1', 'Invoke-DebuggeeExperiment.sh', 'Get-StagedBaseline.ps1', 'remote_ps.py'):
         path = SCRIPTS / leaf
         if leaf in ('StagedInvariantObserver.psm1', 'StagedTestAgent.ps1', 'Get-StagedBaseline.ps1', 'remote_ps.py'):
             require(git('show', head + ':driver/scripts/' + leaf) == path.read_bytes(), 'Dirty shared executable: ' + leaf)
@@ -229,8 +229,127 @@ def phase_gate(ev, name):
     require((ev / (name + '-flush.txt')).read_text().splitlines().count('VolumeCacheWritten=True') == 1, 'Checkpoint flush missing/duplicate')
 
 
+def actor_cadence_complete(trial):
+    """Recompute operation-free intervals; never accept an Accounted/Complete flag."""
+    try:
+        baseline, fence = trial['Baseline'], trial['WriterFence']
+        boot, frequency = baseline['Time']['BootId'], baseline['Time']['QpcFrequency']
+        calls, samples = trial['Operations'], trial['Samples']
+        if (fence['Complete'] is not True or fence['BootId'] != boot or fence['QpcFrequency'] != frequency
+                or frequency <= 0 or fence['ExpectedAttempts'] != 101 or not samples
+                or fence['ReleasedQpc'] > fence['CompletedQpc']):
+            return False
+        windows, count, previous = [], 0, fence['ReleasedQpc']
+        for number in range(101):
+            attempt = [c for c in calls if c['Trial'] == number]
+            classes = [c['Class'] for c in attempt]
+            if classes == ['writer-open-deny']:
+                if attempt[0]['NativeCode'] == 0:
+                    return False
+            elif classes == ['writer-open', 'cached-write', 'flush', 'close']:
+                if attempt[0]['NativeCode'] != 0:
+                    return False
+            else:
+                return False
+            for call in attempt:
+                if not previous <= call['StartQpc'] <= call['EndQpc'] <= fence['CompletedQpc']:
+                    return False
+                previous = call['EndQpc']
+            windows.append((attempt[0]['StartQpc'], attempt[-1]['EndQpc']))
+            count += len(attempt)
+        if count != len(calls):
+            return False
+        if any(end > samples[-1]['End']['Qpc'] for _, end in windows):
+            return False
+        if baseline.get('CaseId') != 'S00-observer-control' and any(start < baseline['Time']['Qpc'] for start, _ in windows):
+            return False
+        previous = baseline['Time']['Qpc']
+        for sequence, sample in enumerate(samples, 1):
+            start, end = sample['Start'], sample['End']
+            if (sample['Status'] != 'OK' or sample['Sequence'] != sequence
+                    or start['BootId'] != boot or end['BootId'] != boot
+                    or start['QpcFrequency'] != frequency or end['QpcFrequency'] != frequency
+                    or not previous <= start['Qpc'] <= end['Qpc']):
+                return False
+            # Includes capture duration, not just dead time between samples.
+            if any(left <= end['Qpc'] and right >= previous for left, right in windows):
+                return False
+            previous = end['Qpc']
+        return True
+    except (KeyError, TypeError, ValueError, IndexError):
+        return False
+
+
+def attest_external_coverage(result):
+    """Called only after phase_gate and the independent remote baseline."""
+    boot, restoration = result['BootIds'], result['Restoration']
+    for trial in result['Trials']:
+        timeline = trial.setdefault('ExpectedTimeline', {})
+        evidence = timeline.setdefault('ExternalEvidence', {})
+        evidence['Restoration'] = dict(restoration, FinalBootId=boot['Final'])
+        problems = []
+        baseline = trial.get('Baseline') or {}
+        platform = trial.get('Platform') or {}
+        actor = trial.get('Actor') or {}
+        provenance = trial.get('ActorProvenance') or {}
+        observer = platform.get('ObserverProcess') or {}
+        if baseline.get('Build') != '19045.2965' or evidence.get('Build') != baseline.get('Build'):
+            problems.append('Build 19045.2965 attestation missing.')
+        if (len({boot.get(k) for k in ('Prepare', 'Active', 'Final')}) != 3
+                or not all(boot.get(k) for k in ('Prepare', 'Active', 'Final'))
+                or boot['Active'] != baseline.get('Time', {}).get('BootId')
+                or evidence.get('PrepareBootId') != boot['Prepare'] or evidence.get('ActiveBootId') != boot['Active']):
+            problems.append('Activation/restoration boot identities incomplete.')
+        if (evidence.get('ObserverSid') != 'S-1-5-18' or baseline.get('ObserverSid') != evidence.get('ObserverSid')
+                or observer.get('OwnerSid') != evidence.get('ObserverSid')
+                or observer.get('Pid', 0) <= 0 or observer.get('Pid') != evidence.get('ObserverPid')
+                or baseline.get('ObserverPid') != observer.get('Pid')):
+            problems.append('OS SYSTEM observer identity missing.')
+        if (actor.get('Elevated') is not False or actor.get('IsAdministrator') is not False
+                or not re.fullmatch(r'S-1-5-21-[0-9]+-[0-9]+-[0-9]+-[0-9]+', actor.get('Sid', ''))
+                or actor.get('Sid') == evidence.get('ObserverSid') or actor.get('Pid', 0) <= 0
+                or actor.get('Pid') == evidence.get('ObserverPid') or actor.get('BootId') != boot['Active']
+                or provenance.get('OwnerSid') != actor.get('Sid') or provenance.get('Pid') != actor.get('Pid')
+                or provenance.get('SessionId') != actor.get('SessionId')
+                or timeline.get('WriterIdentities') != [actor]):
+            problems.append('OS independent standard-user writer/session provenance missing.')
+        if not actor_cadence_complete(trial):
+            problems.append('Synchronous actor cadence has unaccounted intervals.')
+        if (restoration.get('Known') is not True or restoration.get('GuestChecks') is not True
+                or not restoration.get('IndependentBaseline') or not restoration.get('IndependentBaselineSha256')):
+            problems.append('Independent restoration evidence missing.')
+        assertion = {'Name': 'ExternalCoverage', 'Verdict': 'INCONCLUSIVE' if problems else 'PASS',
+                     'Reason': ' '.join(problems) if problems else
+                     'Build, boot identities, OS observer/writer SID/PID/session, operation-free QPC intervals and independent BaselineClean=True attested.',
+                     'Evidence': evidence}
+        for container in (trial, trial.get('Predicate', {})):
+            assertions = [a for a in container.get('Assertions', []) if a.get('Name') != 'ExternalCoverage']
+            assertions.append(assertion)
+            container['Assertions'] = assertions
+            container['Verdict'] = ('FAIL' if any(a.get('Verdict') == 'FAIL' for a in assertions) else
+                                    'INCONCLUSIVE' if any(a.get('Verdict') != 'PASS' for a in assertions) else 'PASS')
+        if trial.get('Errors') or any(l.get('Verdict') != 'PASS' for l in trial.get('Latency', [])):
+            trial['Verdict'] = 'FAIL' if any(l.get('Verdict') == 'FAIL' for l in trial.get('Latency', [])) or trial['Verdict'] == 'FAIL' else 'INCONCLUSIVE'
+    result['Verdict'] = ('FAIL' if any(t['Verdict'] == 'FAIL' for t in result['Trials']) else
+                         'INCONCLUSIVE' if any(t['Verdict'] != 'PASS' for t in result['Trials']) else 'PASS')
+
+
+def validate_service_artifacts(result, destination, guest_root):
+    for trial in result.get('Trials', []):
+        for snapshot in (trial.get('ServiceBefore') or {}, trial.get('ServiceAfter') or {}):
+            for record in snapshot.get('Journal', []):
+                path = record['Artifact']
+                require(path.startswith(guest_root), 'Service evidence outside owned guest evidence root')
+                relative = path[len(guest_root):].replace('\\', '/')
+                require('..' not in relative.split('/') and not relative.startswith('/'), 'Invalid service artifact path')
+                artifact = destination / relative
+                require(artifact.stat().st_size == record['Length'] and sha(artifact) == record['Sha256'],
+                        'Copied authenticated journal hash/length mismatch')
+                require(json.loads(artifact.read_text('utf-8-sig')) == record['Entry'], 'Journal JSON differs from retained bytes')
+
+
 def case_gate(result, case, mode, name, params):
-    require(result.get('Schema') == 'StagedInvariantSuite/1' and result.get('CaseId') == case and result.get('Mode') == mode
+    require(result.get('Schema') == 'StagedInvariantSuite/2' and result.get('CaseId') == case and result.get('Mode') == mode
             and result.get('RunName') == name, 'Case JSON schema/run identity mismatch')
     for param, field in [('ExpectedTableSha256', 'Table'), ('ExpectedObserverSha256', 'Observer'), ('ExpectedSuiteSha256', 'Suite'),
                          ('ExpectedHelperSha256', 'Helper'), ('ExpectedFeatureSha256', 'Feature'), ('ExpectedInspectorSha256', 'Inspector'),
@@ -328,8 +447,8 @@ def run_case(args, case, mode, ev, files, package, tree_hash, provenance):
         # Preserve guest bytes; only the host knows the separate remote baseline.
         provisional.rename(destination / 'case.guest-export.txt')
         manifest = destination / 'raw/manifest.ndjson'
+        guest_root = 'C:\\Users\\vika\\Documents\\' + name + '-artifacts\\'
         if manifest.exists():
-            guest_root = 'C:\\Users\\vika\\Documents\\' + name + '-artifacts\\'
             for line in manifest.read_text('utf-8-sig').splitlines():
                 entry = json.loads(line)
                 require(entry['Path'].startswith(guest_root), 'Raw artifact outside owned evidence root')
@@ -337,13 +456,15 @@ def run_case(args, case, mode, ev, files, package, tree_hash, provenance):
                 require('..' not in relative.split('/'), 'Invalid artifact path')
                 artifact = destination / relative
                 require(artifact.stat().st_size == entry['Length'] and sha(artifact) == entry['Sha256'], 'Copied raw artifact hash/length mismatch')
-        passed = case_gate(result, case, mode, name, params)
+        validate_service_artifacts(result, destination, guest_root)
         result['AuthoritativeCaseExport'] = True
         result['Restoration'].update(Known=True, IndependentBaseline=str(ev / (name + '-final-restored-state.txt')),
                                      IndependentBaselineSha256=sha(ev / (name + '-final-restored-state.txt')))
         result['CheckpointLinks'] = {key: str(ev / (name + '-' + key + '.txt')) for key in ('baseline', 'flush', 'checkpoint', 'prepare', 'after-boot', 'finalize', 'final-restored-state')}
         result['ProvenanceLink'] = str(ev / (name + '-provenance.txt'))
         result['ArtifactRootMapping'] = {'Guest': 'C:\\Users\\vika\\Documents\\' + name + '-artifacts', 'Host': str(destination)}
+        attest_external_coverage(result)
+        passed = case_gate(result, case, mode, name, params)
         result['GatePassed'] = passed
         write_new(provisional, json.dumps(result, indent=2) + '\n')
         return {'CaseId': case, 'Mode': mode, 'RunName': name, 'Verdict': result['Verdict'], 'GatePassed': passed,

@@ -846,6 +846,124 @@ function Read-IOArtifact($Artifact) {
 function New-IOAssertion([string] $Name, [string] $Verdict, [string] $Reason, $Sequence, $Path) {
     return New-IORecord 'Assertion' @{ Name = $Name; Verdict = $Verdict; Reason = $Reason; SampleSequence = $Sequence; Path = $Path }
 }
+function Test-InvariantCadence($Baseline, $Samples, $Operations, $Fence) {
+    Set-StrictMode -Off # Missing proof fields produce INCONCLUSIVE, including older evidence.
+
+    # Evaluate the synchronous actor timeline, not a substitute lower mutation ledger.
+    # Treat an entire open/write/flush/close attempt as live, including between calls.
+    $windows=@();$receipts=@();$assertions=@();$valid=$false
+    try {
+        $frequency=[long]$Baseline.Time.QpcFrequency
+        if ($frequency -le 0 -or $Fence.Complete -ne $true -or $Fence.BootId -cne $Baseline.Time.BootId -or
+            $Fence.QpcFrequency -ne $frequency -or $Fence.ExpectedAttempts -ne 101 -or
+            $Fence.ReleasedQpc -gt $Fence.CompletedQpc) { throw 'Missing complete writer barrier/completion/QPC fence.' }
+        $assigned=0;$last=[long]$Fence.ReleasedQpc
+        for($n=0;$n -lt $Fence.ExpectedAttempts;$n++) {
+            $calls=@($Operations | Where-Object Trial -eq $n)
+            if ($calls.Count -notin @(1,4) -or $calls[0].Class -notin @('writer-open','writer-open-deny')) { throw 'Incomplete native attempt timeline.' }
+            if (($calls.Count -eq 1 -and ($calls[0].Class -cne 'writer-open-deny' -or $calls[0].NativeCode -eq 0)) -or
+                ($calls.Count -eq 4 -and (($calls.Class -join ',') -cne 'writer-open,cached-write,flush,close' -or $calls[0].NativeCode -ne 0))) { throw 'Native call order is incomplete.' }
+            foreach($call in $calls) {
+                if ($call.StartQpc -lt $last -or $call.EndQpc -lt $call.StartQpc -or $call.EndQpc -gt $Fence.CompletedQpc) { throw 'Native QPC order outside writer fence.' }
+                $last=[long]$call.EndQpc
+            }
+            $assigned+=$calls.Count
+            $windows+= [pscustomobject]@{Trial=$n;StartQpc=$calls[0].StartQpc;EndQpc=$calls[-1].EndQpc}
+        }
+        if ($Operations.Count -ne $assigned) { throw 'Unassigned operation records.' }
+        if($Samples.Count -eq 0 -or @($windows | Where-Object {$_.EndQpc -gt $Samples[-1].End.Qpc}).Count){throw 'Actor operations extend beyond the final observation.'}
+        if($Baseline.CaseId -cne 'S00-observer-control' -and @($windows | Where-Object {$_.StartQpc -lt $Baseline.Time.Qpc}).Count){throw 'Pre-baseline actor operations are allowed only for the S00 control fixture setup.'}
+        $valid=$true
+    } catch { $failure=$_.Exception.Message }
+    $previous=[long]$Baseline.Time.Qpc;$previousStart=$previous;$sequence=0
+    foreach($s in $Samples) {
+        $ordered=($valid -and $s.Status -eq 'OK' -and $s.Sequence -eq ($sequence+1) -and
+            $s.Start.BootId -ceq $Baseline.Time.BootId -and $s.End.BootId -ceq $Baseline.Time.BootId -and
+            $s.Start.QpcFrequency -eq $frequency -and $s.End.QpcFrequency -eq $frequency -and
+            $s.Start.Qpc -ge $previous -and $s.End.Qpc -ge $s.Start.Qpc)
+        foreach($interval in @(
+            @{Kind='Gap';Start=$previous;End=$s.Start.Qpc;Assertion='CadenceGap'},
+            @{Kind='Capture';Start=$s.Start.Qpc;End=$s.End.Qpc;Assertion='CadenceCoverage'})) {
+            $overlap=@($windows | Where-Object { $_.StartQpc -le $interval.End -and $_.EndQpc -ge $interval.Start })
+            $accounted=($ordered -and $overlap.Count -eq 0)
+            $reason=if(-not $valid){$failure}elseif(-not $ordered){'Invalid sample boot/frequency/order/status.'}
+                elseif($overlap.Count){'Actor attempt may occur unobserved; no lower ledger exists to bridge this interval.'}
+                else{'No actor attempt intersects this interval; complete synchronous writer fence. Kernel mutations remain outside this adapter.'}
+            $receipt=[pscustomobject]@{SampleSequence=$s.Sequence;Kind=$interval.Kind;BootId=$Baseline.Time.BootId;QpcFrequency=$frequency;
+                StartQpc=$interval.Start;EndQpc=$interval.End;DurationMs=$(if($ordered){1000.0*($interval.End-$interval.Start)/$frequency}else{$null});
+                RecordedDurationMs=$s.DurationMs;RecordedGapMs=$s.GapMs;RecordedCadenceMs=$s.CadenceMs;
+                StartToStartMs=$(if($ordered){1000.0*($s.Start.Qpc-$previousStart)/$frequency}else{$null});
+                OverlappingAttempts=@($overlap | ForEach-Object {$_.Trial});Accounted=$accounted;Reason=$reason}
+            $receipts+=$receipt
+            $assertions+=New-IOAssertion $interval.Assertion $(if($accounted){'PASS'}else{'INCONCLUSIVE'}) ($receipt | ConvertTo-Json -Depth 5 -Compress) $s.Sequence $null
+        }
+        $previous=$s.End.Qpc;$previousStart=$s.Start.Qpc;$sequence=$s.Sequence
+    }
+    return [pscustomobject]@{Scope='Synchronous actor only; never lower writes';Complete=($valid -and $Samples.Count -gt 0 -and @($receipts | Where-Object {-not $_.Accounted}).Count -eq 0);
+        WriterFence=$Fence;AttemptWindows=$windows;Intervals=$receipts;Assertions=$assertions}
+}
+function Test-InvariantMetadata($Image, $Expectation, $Sample, $Policy) {
+    Set-StrictMode -Off # Missing proof fields produce INCONCLUSIVE, including older evidence.
+
+    $assertions=@();$fields=@('Attributes','Creation','Modified','Changed','Accessed','Links')
+    if ($null -eq $Expectation.PSObject.Properties['Metadata']) {
+        return New-IOAssertion 'MetadataCoverage' 'INCONCLUSIVE' 'Exact per-fixture metadata expectation missing.' $Sample.Sequence $Image.Path
+    }
+    $m=$Expectation.Metadata;$complete=$true
+    foreach($field in $fields) {
+        if ($null -eq $m.Raw.PSObject.Properties[$field] -or $null -eq $m.Api.PSObject.Properties[$field]) {
+            $complete=$false;continue
+        }
+        if($field -eq 'Accessed' -and $m.AccessRule -ceq 'NtfsReadWindow') {
+            # LastAccess is the only permitted divergence. Both values remain bounded;
+            # disabled disk updates must retain exactly the baseline disk value.
+            $known=($m.AccessWindowStartFileTime -gt 0 -and $Policy.Status -ceq 'OK' -and $Policy.Before.Value -eq $Policy.After.Value -and
+                $Policy.Before.Value -in @(0,1,2,3) -and $Policy.Before.BootId -ceq $Sample.Start.BootId -and
+                $Policy.After.BootId -ceq $Sample.Start.BootId -and $Policy.Before.VolumeGuid -ceq $m.VolumeGuid -and
+                $Policy.After.VolumeGuid -ceq $m.VolumeGuid -and $Policy.Before.Qpc -le $Sample.Start.Qpc -and $Policy.After.Qpc -ge $Sample.End.Qpc)
+            if(-not $known) { $complete=$false;$assertions+=New-IOAssertion 'MetadataCrossCheck' 'INCONCLUSIVE' 'Accessed: fsutil disablelastaccess policy missing, changed, or not bound to this volume/boot/window.' $Sample.Sequence $Image.Path;continue }
+            $raw=[long]$Image.RawMetadata.Accessed;$api=[long]$Image.Identity.Accessed
+            $upper=[DateTime]::Parse($Sample.End.Utc).ToUniversalTime().ToFileTimeUtc()
+            $disabled=($Policy.Before.Value -in @(1,3))
+            $good=($m.AccessWindowStartFileTime -gt 0 -and $raw -ge $m.Raw.Accessed -and $api -ge $m.Api.Accessed -and $raw -le $api -and $api -le $upper)
+            if($api -ne $m.Api.Accessed){$good=$good -and $api -ge $m.AccessWindowStartFileTime}
+            if($disabled){$good=$good -and $raw -eq $m.Raw.Accessed}
+            else{$good=$good -and ($api-$raw) -le [TimeSpan]::FromHours(1).Ticks}
+            $reason='Accessed: '+$m.AccessReason+'; fsutil='+$Policy.Before.Value+'; raw='+$raw+'; API='+$api+'; baselineRaw='+$m.Raw.Accessed+'; baselineAPI='+$m.Api.Accessed+'; upper='+$upper
+            $assertions+=New-IOAssertion 'MetadataCrossCheck' $(if($good){'PASS'}else{'FAIL'}) $reason $Sample.Sequence $Image.Path
+            $assertions+=New-IOAssertion 'FileMetadata' $(if($good){'PASS'}else{'FAIL'}) $reason $Sample.Sequence $Image.Path
+        } else {
+            if($field -ne 'Links'){$assertions+=New-IOAssertion 'MetadataCrossCheck' $(if($Image.RawMetadata.$field -eq $Image.Identity.$field){'PASS'}else{'INCONCLUSIVE'}) ('Exact raw/API field: '+$field) $Sample.Sequence $Image.Path}
+            $reason=if($field -eq 'Links'){'Exact baseline Links: API handle link count copied into RawMetadata by the unchanged decoder; no independent raw link-count claim.'}else{'Exact baseline field: '+$field}
+            $assertions+=New-IOAssertion 'FileMetadata' $(if($Image.RawMetadata.$field -eq $m.Raw.$field -and $Image.Identity.$field -eq $m.Api.$field){'PASS'}else{'FAIL'}) $reason $Sample.Sequence $Image.Path
+        }
+    }
+    if($null -eq $m.PSObject.Properties['SecurityId'] -or [string]::IsNullOrWhiteSpace($m.Sddl)){$complete=$false}
+    else{$assertions+=New-IOAssertion 'FileSecurity' $(if($Image.SecurityId -eq $m.SecurityId -and $Image.Sddl -ceq $m.Sddl){'PASS'}else{'FAIL'}) 'Exact baseline owner/DACL/security ID.' $Sample.Sequence $Image.Path}
+    $assertions+=New-IOAssertion 'MetadataCoverage' $(if($complete){'PASS'}else{'INCONCLUSIVE'}) ('Per-fixture fields: '+($fields -join ',')+'; tolerated field Accessed only under the recorded NtfsReadWindow rule.') $Sample.Sequence $Image.Path
+    return $assertions
+}
+function Test-InvariantExternalCoverage($Baseline, $Timeline) {
+    Set-StrictMode -Off # Missing proof fields produce INCONCLUSIVE, including older evidence.
+
+    $e=$Timeline.ExternalEvidence;$reasons=@()
+    if($Baseline.Build -cne '19045.2965' -or $e.Build -cne $Baseline.Build){$reasons+='Build 19045.2965 attestation missing.'}
+    if([string]::IsNullOrWhiteSpace($e.PrepareBootId) -or $e.PrepareBootId -ceq $Baseline.Time.BootId -or $e.ActiveBootId -cne $Baseline.Time.BootId){$reasons+='Activating boot identity missing.'}
+    if($e.ObserverPid -ne $Baseline.ObserverPid -or $e.ObserverPid -le 0 -or $e.ObserverSid -cne $Baseline.ObserverSid -or $e.ObserverSid -cne 'S-1-5-18'){$reasons+='SYSTEM observer identity not attested.'}
+    $writers=@($Timeline.WriterIdentities)
+    if($writers.Count -ne 1){$reasons+='One standard-user writer required.'}else{
+        $w=$writers[0]
+        if($w.Elevated -ne $false -or $w.IsAdministrator -ne $false -or $w.Pid -le 0 -or $w.Pid -eq $e.ObserverPid -or
+            $w.Sid -notmatch '^S-1-5-21-[0-9]+-[0-9]+-[0-9]+-[0-9]+$' -or $w.Sid -ceq $e.ObserverSid -or
+            $w.BootId -cne $e.ActiveBootId -or $e.ActorProvenance.OwnerSid -cne $w.Sid -or $e.ActorProvenance.Pid -ne $w.Pid -or
+            $e.ActorProvenance.SessionId -ne $w.SessionId){$reasons+='OS writer identity/session provenance missing.'}
+    }
+    if($e.ObserverProcess.OwnerSid -cne $e.ObserverSid -or $e.ObserverProcess.Pid -ne $e.ObserverPid){$reasons+='OS observer identity not attested.'}
+    if($Timeline.CadenceProof.Complete -ne $true){$reasons+='Synchronous actor cadence has unaccounted intervals.'}
+    # Only the host can append the independent restoration evidence.
+    if($e.Restoration.Known -ne $true){$reasons+='Awaiting host independent baseline plus restoration reboot.'}
+    return New-IOAssertion 'ExternalCoverage' $(if($reasons.Count){'INCONCLUSIVE'}else{'PASS'}) $(if($reasons.Count){$reasons -join ' '}else{'Platform, boot, SYSTEM observer, OS standard-user identity, actor cadence and independent restoration attested.'}) $null $null
+}
 function Get-IOExpectedBytes($Baseline, $ApprovedImages, $Timeline, $Expectation, [string] $Path, [long] $Qpc, [switch] $DigestOnly) {
     if ($Expectation.Version -eq 'Baseline') {
         $image = @($Baseline.Images | Where-Object { $_.Role -eq 'Current' -and $_.Path -eq $Path })
@@ -909,14 +1027,14 @@ function Test-NoUnapprovedByte {
                 $assertions += New-IOAssertion 'SampleOrdering' 'INCONCLUSIVE' 'QPC/boot/sequence order not established.' $orderedSample.Sequence $null
             }
             $lastSeq = $orderedSample.Sequence; $lastQpc = $orderedSample.End.Qpc
-            $longPass=$false
-            if ($null -ne $orderedSample.PSObject.Properties['DurationMs'] -and $orderedSample.DurationMs -gt 10) { $longPass=$true }
-            if ($null -ne $orderedSample.PSObject.Properties['CadenceMs'] -and $orderedSample.CadenceMs -gt 10) { $longPass=$true }
-            if ($longPass -and $ExpectedTimeline.AccountedGapSequences -notcontains $orderedSample.Sequence) { $assertions += New-IOAssertion 'CadenceCoverage' 'INCONCLUSIVE' 'Full-pass duration/cadence exceeds target without explicit ledger gap accounting.' $orderedSample.Sequence $null }
-            if ($null -ne $orderedSample.GapMs -and $orderedSample.GapMs -gt 10 -and $ExpectedTimeline.AccountedGapSequences -notcontains $orderedSample.Sequence) {
-                $assertions += New-IOAssertion 'CadenceGap' 'INCONCLUSIVE' ('Unaccounted gap ms: ' + $orderedSample.GapMs) $orderedSample.Sequence $null
-            }
+
         }
+        $operations=@();$fence=$null
+        if($null -ne $ExpectedTimeline.PSObject.Properties['Operations']){$operations=$ExpectedTimeline.Operations}
+        if($null -ne $ExpectedTimeline.PSObject.Properties['WriterFence']){$fence=$ExpectedTimeline.WriterFence}
+        # Hashtable and deserialized objects both occur in the harness.
+        if($ExpectedTimeline -is [System.Collections.IDictionary]){$operations=$ExpectedTimeline['Operations'];$fence=$ExpectedTimeline['WriterFence']}
+        $assertions += (Test-InvariantCadence $Baseline $Samples $operations $fence).Assertions
         foreach ($rejected in @($ApprovedImages | Where-Object { $_.Status -ne 'OK' })) {
             $assertions += New-IOAssertion 'PublicationRegistration' $rejected.Error.Verdict 'Approval/snapshot/actual grant registration failed.' $null $null
         }
@@ -1038,14 +1156,12 @@ function Test-NoUnapprovedByte {
                             [Array]::Copy($approvedBytes, [long]$range.Offset, $expectedBytes, [long]$range.Offset, [long]$range.Length)
                         }
                     } elseif ($expect.Kind -ne 'Final') { throw 'Unknown storage kind.' }
-                    if ($frame.Stable) { foreach ($mf in @('Attributes','Creation','Modified','Changed','Accessed')) {
-                        if ($image.RawMetadata.$mf -ne $image.Identity.$mf) { $assertions += New-IOAssertion 'MetadataCrossCheck' 'INCONCLUSIVE' ('Raw/API metadata differ: ' + $mf) $s.Sequence $image.Path }
+                    if ($frame.Stable) {
+                        $policy=$null
+                        if($ExpectedTimeline -is [System.Collections.IDictionary]){$policy=$ExpectedTimeline['LastAccessPolicy']}
+                        elseif($null -ne $ExpectedTimeline.PSObject.Properties['LastAccessPolicy']){$policy=$ExpectedTimeline.LastAccessPolicy}
+                        $assertions += Test-InvariantMetadata $image $expect $s $policy
                     }
-                    if ($null -eq $expect.PSObject.Properties['Metadata']) { $assertions += New-IOAssertion 'MetadataCoverage' 'INCONCLUSIVE' 'Exact destination metadata expectation missing.' $s.Sequence $image.Path }
-                    else { foreach ($mf in @('Attributes','Creation','Modified','Changed','Accessed','Links')) {
-                        if ($image.RawMetadata.$mf -ne $expect.Metadata.$mf) { $assertions += New-IOAssertion 'FileMetadata' 'FAIL' ('Unexpected ' + $mf) $s.Sequence $image.Path }
-                    }
-                    if ($image.SecurityId -ne $expect.Metadata.SecurityId -or $image.Sddl -cne $expect.Metadata.Sddl) { $assertions += New-IOAssertion 'FileSecurity' 'FAIL' 'Owner/DACL/security ID differs.' $s.Sequence $image.Path } } }
                     if (-not [string]::IsNullOrWhiteSpace($expect.FileId) -and $expect.FileId -cne $image.Identity.FileId) { $assertions += New-IOAssertion 'DestinationGeneration' 'FAIL' 'Unexpected file ID.' $s.Sequence $image.Path }
                     if ($image.Length -ne $expectedBytes.Length -or $image.Sha256 -cne [StagedInvariant.Native]::Hash($expectedBytes)) {
                         $assertions += New-IOAssertion 'CompleteImage' 'FAIL' 'Length/digest differs from exact allowed generation/image.' $s.Sequence $image.Path
@@ -1094,11 +1210,8 @@ function Test-NoUnapprovedByte {
                 $assertions += New-IOAssertion 'ObserverIdentity' 'INCONCLUSIVE' 'Writer is not an independent standard-user process.' $null $null
             }
         }
-        if (-not $ExpectedTimeline.PlatformValidated -or -not $ExpectedTimeline.ObserverIndependent -or -not $ExpectedTimeline.StandardUserWriters -or
-            -not $ExpectedTimeline.ContinuousObservationComplete -or -not $ExpectedTimeline.RestorationKnown) {
-            $assertions += New-IOAssertion 'ExternalCoverage' 'INCONCLUSIVE' 'Platform/identity/cadence/restoration evidence not established.' $null $null
-        }
-        if (-not $MutationLedger.Complete -or $MutationLedger.Overflow -or $MutationLedger.Entries.Count -eq 0) { throw 'Missing/incomplete/lost lower mutation ledger.' }
+        $assertions += Test-InvariantExternalCoverage $Baseline $ExpectedTimeline
+        if (-not $MutationLedger.Complete -or $MutationLedger.Overflow -or $MutationLedger.Entries.Count -eq 0) { throw 'Driver lower admission/completion mutation ledger unavailable: user-mode calls and raw samples cannot prove PredicateCoverage or NoUnapprovedByte.' }
         $next = [long]$MutationLedger.FirstSequence
         foreach ($entry in $MutationLedger.Entries) {
             if ($entry.Sequence -ne $next -or -not $entry.PostComplete) { throw 'Ledger gap/missing lower completion.' }; $next++
@@ -1134,7 +1247,7 @@ function Test-NoUnapprovedByte {
     $verdict = 'PASS'
     if (@($assertions | Where-Object { $_.Verdict -eq 'FAIL' }).Count -gt 0) { $verdict = 'FAIL' }
     elseif (@($assertions | Where-Object { $_.Verdict -eq 'INCONCLUSIVE' }).Count -gt 0) { $verdict = 'INCONCLUSIVE' }
-    $assertions += New-IOAssertion 'NoUnapprovedByte' $verdict 'Full-image, allocation, directory and temporal evidence combined; FAIL takes precedence.' $null $null
+    $assertions += New-IOAssertion 'NoUnapprovedByte' $verdict 'Full-image evidence combined with temporal proof; driver lower admission/completion mutation ledger is required for NoUnapprovedByte. FAIL takes precedence.' $null $null
     return New-IORecord 'Verdict' @{ Schema = 'StagedInvariant/1'; Verdict = $verdict; ForbiddenByteCount = $forbidden
         Assertions = $assertions; RawDifferences = $differences; AuthoritativeCaseExport = $false }
 }
@@ -1148,4 +1261,4 @@ function Close-InvariantObserver {
     $Context.Closed = $true; $errors += $Context.Errors
     return New-IORecord 'Disposal' @{ Status = $(if ($errors.Count -eq 0) { 'OK' } else { 'ERROR' }); Errors = $errors; Time = (Get-IOTime $Context) }
 }
-Export-ModuleMember -Function Open-InvariantObserver, Capture-InvariantBaseline, Register-InvariantPublication, Capture-InvariantSample, Test-NoUnapprovedByte, Close-InvariantObserver
+Export-ModuleMember -Function Test-InvariantCadence, Test-InvariantExternalCoverage, Open-InvariantObserver, Capture-InvariantBaseline, Register-InvariantPublication, Capture-InvariantSample, Test-NoUnapprovedByte, Close-InvariantObserver

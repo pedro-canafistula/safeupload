@@ -3,7 +3,7 @@
 <# WP3 seed lifecycle. Completion sentinels describe transport/restoration, NOT
    protection. Finalize exports one provisional case.json; the host makes the
    single authoritative export after the wrapper's independent remote baseline.
-   Missing lower-ledger/live-taint/service adapters deliberately cannot PASS. #>
+   Missing lower-ledger/live-taint and non-durable notification proof cannot PASS. #>
 [CmdletBinding()]
 param(
     [Parameter(Mandatory=$true)][ValidateSet('Prepare','AfterBoot','Finalize')][string]$Phase,
@@ -427,6 +427,7 @@ try {
     Write-DurableFile '__IDENTITY__' ([Management.Automation.PSSerializer]::Serialize($actor,32)) -New
     $deadline=[DateTime]::UtcNow.AddSeconds(180)
     while(-not(Test-Path -LiteralPath '__GO__')){if([DateTime]::UtcNow -gt $deadline){throw 'Writer barrier timed out'};Start-Sleep -Milliseconds 10}
+    $releasedQpc=[Diagnostics.Stopwatch]::GetTimestamp()
     $calls=@()
     # One cold attempt followed by 100 calls without per-call test holds. Payload
     # generation, serialization, observer waits and process startup are not timed.
@@ -434,7 +435,7 @@ try {
         $bytes=[Convert]::FromBase64String($config.Payloads[$trial])
         $calls+= [SUWriter]::Attempt($config.Target,$bytes,$config.CreateNew,$trial)
     }
-    $value=@{Actor=$actor;Calls=$calls;QpcFrequency=[Diagnostics.Stopwatch]::Frequency;Held=$false}
+    $value=@{Actor=$actor;Calls=$calls;QpcFrequency=[Diagnostics.Stopwatch]::Frequency;ReleasedQpc=$releasedQpc;Held=$false}
 }finally{$identity.Dispose()}
 '@
 }
@@ -494,10 +495,209 @@ function Get-ExpectedCheckpoint($Baseline,[string]$PhaseName,[long]$Sequence) {
         if($image.Role -eq 'Parent'){$dirs+=@{Path=$image.Path;Entries=$image.DirectoryEntries;SecurityId=$image.SecurityId;Sddl=$image.Sddl}}
         elseif($image.Role -eq 'Current'){
             if($image.Absent){$storage+=@{Path=$image.Path;Kind='Absent'}}
-            else{$storage+=@{Path=$image.Path;Kind='Final';Version='Baseline';FileId=$image.Identity.FileId;Generation=0;ZeroPadding=$false}}
+            else{
+                $raw=[ordered]@{};$api=[ordered]@{}
+                foreach($field in @('Attributes','Creation','Modified','Changed','Accessed','Links')){$raw[$field]=$image.RawMetadata.$field;$api[$field]=$image.Identity.$field}
+                $storage+= [pscustomobject]@{Path=$image.Path;Kind='Final';Version='Baseline';FileId=$image.Identity.FileId;Generation=0;ZeroPadding=$false;
+                    Metadata=[pscustomobject]@{Raw=[pscustomobject]$raw;Api=[pscustomobject]$api;SecurityId=$image.SecurityId;Sddl=$image.Sddl;VolumeGuid=$Baseline.Geometry.Guid;
+                        AccessWindowStartFileTime=$Baseline.CaptureStartedFileTime;
+                        AccessRule=$row.MetadataExpectations.Accessed;AccessReason=$row.MetadataExpectations.AccessReason}}
+            }
         }
     }
     return [pscustomobject]@{Phase=$PhaseName;OperationSequence=$Sequence;State=$row.ExpectedTimeline[2];Storage=$storage;Directories=$dirs;ReadDenials=@()}
+}
+function Get-LastAccessEvidence {
+    $text=(& fsutil.exe behavior query disablelastaccess 2>&1 | Out-String);$code=$LASTEXITCODE
+    $matches=[regex]::Matches($text,'(?im)^\s*DisableLastAccess\s*=\s*([0-3])\b')
+    return [pscustomobject]@{Command='fsutil.exe behavior query disablelastaccess';Output=$text;ExitCode=$code;
+        Value=$(if($code -eq 0 -and $matches.Count -eq 1){[int]$matches[0].Groups[1].Value}else{$null});
+        BootId=(Get-BootId);VolumeGuid=$state.VolumeGuid;Qpc=[Diagnostics.Stopwatch]::GetTimestamp();
+        RegistryValue=(Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem').NtfsDisableLastAccessUpdate;
+        Note='Query only: set disablelastaccess changes machine policy and may require reboot. No default is assumed.'}
+}
+function Initialize-ServiceEvidenceReader {
+    if('SUProofFile' -as [type]){return}
+    # Separate harness helper. Nothing in the NTFS decoder is modified.
+    Add-Type -TypeDefinition @'
+using System; using System.IO; using System.Collections.Generic; using System.ComponentModel;
+using System.Runtime.InteropServices; using System.Security.AccessControl; using System.Security.Principal;
+using Microsoft.Win32.SafeHandles;
+public sealed class SUProofObject : IDisposable {
+ public SafeFileHandle Handle; public string Path, Sddl, Owner; public bool Directory;
+ public void Dispose() { if(Handle!=null) Handle.Dispose(); }
+}
+public static class SUProofFile {
+ [StructLayout(LayoutKind.Sequential)] struct Info { public uint Attributes; public System.Runtime.InteropServices.ComTypes.FILETIME Creation,Access,Write; public uint Volume,High,Low,Links,IdHigh,IdLow; }
+ [DllImport("kernel32.dll",CharSet=CharSet.Unicode,SetLastError=true)] static extern SafeFileHandle CreateFile(string p,uint a,uint s,IntPtr z,uint d,uint f,IntPtr t);
+ [DllImport("kernel32.dll",SetLastError=true)] static extern bool GetFileInformationByHandle(SafeFileHandle h,out Info i);
+ [DllImport("advapi32.dll")] static extern uint GetSecurityInfo(SafeFileHandle h,int type,uint flags,out IntPtr owner,out IntPtr group,out IntPtr dacl,out IntPtr sacl,out IntPtr sd);
+ [DllImport("advapi32.dll")] static extern uint GetSecurityDescriptorLength(IntPtr sd);
+ [DllImport("kernel32.dll")] static extern IntPtr LocalFree(IntPtr p);
+ public static SUProofObject Open(string path,bool directory,bool protect) {
+  var h=CreateFile(path,0x80020000u,directory?3u:1u,IntPtr.Zero,3,0x02200000,IntPtr.Zero);
+  if(h.IsInvalid){int e=Marshal.GetLastWin32Error();h.Dispose();throw new Win32Exception(e);}
+  try {
+   Info i;if(!GetFileInformationByHandle(h,out i))throw new Win32Exception(Marshal.GetLastWin32Error());
+   if((i.Attributes&0x400)!=0 || ((i.Attributes&0x10)!=0)!=directory || (!directory && i.Links!=1))throw new IOException("Reparse/type/link-count journal object rejected.");
+   IntPtr owner,group,dacl,sacl,sd;uint code=GetSecurityInfo(h,1,7,out owner,out group,out dacl,out sacl,out sd);
+   if(code!=0)throw new Win32Exception((int)code);
+   FileSecurity security=new FileSecurity();try{byte[] bytes=new byte[GetSecurityDescriptorLength(sd)];Marshal.Copy(sd,bytes,0,bytes.Length);security.SetSecurityDescriptorBinaryForm(bytes);}finally{LocalFree(sd);}
+   string sid=security.GetOwner(typeof(SecurityIdentifier)).Value;
+   if(protect) {
+    if(sid!="S-1-5-18" || !security.AreAccessRulesProtected)throw new IOException("SYSTEM owner and protected DACL required.");
+    var rules=security.GetAccessRules(true,true,typeof(SecurityIdentifier));bool system=false,admin=false;
+    if(rules.Count!=2)throw new IOException("Exact private SYSTEM/Administrators DACL required.");
+    foreach(FileSystemAccessRule r in rules) {
+     string trustee=r.IdentityReference.Value;
+     if(r.AccessControlType!=AccessControlType.Allow || r.IsInherited || r.FileSystemRights!=FileSystemRights.FullControl ||
+       r.PropagationFlags!=PropagationFlags.None || r.InheritanceFlags!=(directory?(InheritanceFlags.ContainerInherit|InheritanceFlags.ObjectInherit):InheritanceFlags.None))throw new IOException("Non-exact journal ACE.");
+     if(trustee=="S-1-5-18" && !system)system=true;else if(trustee=="S-1-5-32-544" && !admin)admin=true;else throw new IOException("Unexpected journal trustee.");
+    }
+    if(!system || !admin)throw new IOException("Missing private journal trustee.");
+   }
+   return new SUProofObject{Handle=h,Path=path,Directory=directory,Owner=sid,Sddl=security.GetSecurityDescriptorSddlForm(AccessControlSections.Owner|AccessControlSections.Group|AccessControlSections.Access)};
+  }catch{h.Dispose();throw;}
+ }
+ public static byte[] Read(SUProofObject o,int maximum) {
+  // The same authenticated handle supplies all bytes; no path reopen/ACL repair.
+  using(var stream=new FileStream(o.Handle,FileAccess.Read,4096,false)) {
+   if(stream.Length>maximum)throw new IOException("Product evidence size bound exceeded.");
+   byte[] b=new byte[(int)stream.Length];int offset=0,n;while(offset<b.Length && (n=stream.Read(b,offset,b.Length-offset))>0)offset+=n;
+   if(offset!=b.Length || stream.Length!=b.Length)throw new IOException("Short/unstable product evidence read.");return b;
+  }
+ }
+}
+'@
+}
+function Get-ServiceSnapshot([string]$Tag) {
+    $result=[ordered]@{Status='INCONCLUSIVE';Tag=$Tag;BootId=(Get-BootId);QpcFrequency=[Diagnostics.Stopwatch]::Frequency;StartQpc=[Diagnostics.Stopwatch]::GetTimestamp();
+        Journal=@();Objects=@();Errors=@();Application=@();AgentProcesses=@(Get-CimInstance Win32_Process -Filter "Name='SafeUpload.Agent.Service.exe'" | Select-Object ProcessId,CommandLine);}
+    $held=@();$root=Split-Path -Parent $policyPath;$journal=Join-Path $root 'staging-journal'
+    try {
+        Initialize-ServiceEvidenceReader
+        # Pin each ancestor without following reparses. Private root authenticates
+        # an absent journal directory; never create/repair product evidence.
+        $ancestors=@();for($cursor=$root; -not [string]::IsNullOrWhiteSpace($cursor);$cursor=[IO.Path]::GetDirectoryName($cursor)){$ancestors=@($cursor)+$ancestors}
+        foreach($path in $ancestors){$obj=[SUProofFile]::Open($path,$true,($path -ceq $root));$held+=$obj;$result.Objects+=@{Path=$path;Owner=$obj.Owner;Sddl=$obj.Sddl}}
+        $result.JournalAbsent=-not(Test-Path -LiteralPath $journal)
+        if(-not $result.JournalAbsent) {
+            $obj=[SUProofFile]::Open($journal,$true,$true);$held+=$obj;$result.Objects+=@{Path=$journal;Owner=$obj.Owner;Sddl=$obj.Sddl}
+            foreach($file in @(Get-ChildItem -LiteralPath $journal -Force | Sort-Object Name)) {
+                if($file.Name -notmatch '^[0-9a-f]{32}\.json$'){throw 'Unrecognized journal child; snapshot is not complete.'}
+                $obj=[SUProofFile]::Open($file.FullName,$false,$true)
+                try{$bytes=[SUProofFile]::Read($obj,131072)}finally{$obj.Dispose()}
+                $leaf='service-'+$Tag+'-'+$file.Name;$copy=Join-Path $evidenceDirectory $leaf
+                $stream=[IO.File]::Open($copy,[IO.FileMode]::CreateNew,[IO.FileAccess]::Write,[IO.FileShare]::Read)
+                try{$stream.Write($bytes,0,$bytes.Length);$stream.Flush($true)}finally{$stream.Dispose()}
+                $entry=[Text.UTF8Encoding]::new($false,$true).GetString($bytes) | ConvertFrom-Json
+                $id=[guid]::ParseExact($file.BaseName,'N');$states=@('Allocated','Sealed','Inspecting','Approved','Publishing','Released','Blocked','Retained','Unsealed')
+                if($id -eq [guid]::Empty -or [guid]$entry.Transfer.TransferId -ne $id -or $entry.Transfer.ProcessId -le 0 -or
+                    [string]::IsNullOrWhiteSpace($entry.Transfer.ProcessName) -or $entry.Transfer.ProcessName.Length -gt 63 -or
+                    $entry.Transfer.Destination -notin @(0,1,2,3,4) -or $null -eq $entry.DestinationGeneration -or $entry.DestinationGeneration -lt 0 -or $null -eq $entry.State -or
+                    ([string]$entry.State -notmatch '^[0-8]$') -or [string]::IsNullOrWhiteSpace($entry.UpdatedAtUtc)) {throw 'Invalid product journal identity/state.'}
+                if([DateTimeOffset]::Parse($entry.UpdatedAtUtc) -eq [DateTimeOffset]::MinValue){throw 'Invalid journal update timestamp.'}
+                if(($null -ne $entry.Sha256Hex -and $entry.Sha256Hex -notmatch '^[0-9a-fA-F]{64}$') -or
+                    ($entry.State -in @(1,2,3,4,5,6) -and $entry.SealedOnce -ne $true) -or
+                    ($entry.State -in @(0,8) -and $entry.SealedOnce -ne $false) -or
+                    ($entry.State -in @(4,5) -and $null -eq $entry.Sha256Hex)){throw 'Invalid product seal/publication evidence.'}
+                $destinations=@(Get-ServiceDestinationPaths $entry)
+                foreach($path in @($entry.Transfer.StagePath)+$destinations){
+                    if([string]::IsNullOrWhiteSpace($path) -or $path.Length -gt 511 -or $path -notmatch '^(?:[A-Za-z]:\\|\\\\[^\\]+\\[^\\]+\\)' -or
+                        [string]::IsNullOrWhiteSpace([IO.Path]::GetFileName($path)) -or [IO.Path]::GetFullPath($path) -ine $path){throw 'Invalid product manifest path.'}
+                }
+                $result.Journal+= [pscustomobject]@{Path=$file.FullName;Owner=$obj.Owner;Sddl=$obj.Sddl;Sha256=(Get-FileHash -LiteralPath $copy).Hash;
+                    Artifact=$copy;Length=$bytes.Length;Entry=$entry;DestinationPaths=$destinations;StateName=$states[[int]$entry.State]}
+            }
+        }
+        $result.Status='OK'
+    }catch{$result.Errors+=Get-ErrorChain $_.Exception}
+    finally{foreach($obj in $held){$obj.Dispose()}}
+    # Record IDs delimit all providers in Application; provider absence is an
+    # empty query result, not proof that a notification was never emitted.
+    try {
+        $oldest=Get-WinEvent -LogName Application -Oldest -MaxEvents 1 -ErrorAction Stop
+        $newest=Get-WinEvent -LogName Application -MaxEvents 1 -ErrorAction Stop
+        $result.Application=[pscustomobject]@{Status='OK';OldestRecordId=$oldest.RecordId;NewestRecordId=$newest.RecordId;
+            NewestXml=$newest.ToXml();OldestXml=$oldest.ToXml();Log=(Get-WinEvent -ListLog Application | Select-Object LogName,IsEnabled,LogMode,RecordCount,MaximumSizeInBytes,SecurityDescriptor)}
+    }catch{$result.Application=[pscustomobject]@{Status='INCONCLUSIVE';Errors=(Get-ErrorChain $_.Exception)}}
+    $result.EndQpc=[Diagnostics.Stopwatch]::GetTimestamp()
+    Save-State $result (Join-Path $evidenceDirectory ('service-'+$Tag+'.clixml'))
+    return [pscustomobject]$result
+}
+function Get-ServiceDestinationPaths($Entry) {
+    $paths=@($Entry.Transfer.DestinationPath)
+    if($null -ne $Entry.PendingRename){
+        if($Entry.PendingRename.TransactionId -eq 0 -or $Entry.PendingRename.SealedVersion -ne $Entry.SealedOnce){throw 'Invalid pending journal rename.'}
+        $paths+=$Entry.PendingRename.DestinationPath
+    }
+    if($null -ne $Entry.LastRenameDestination){$paths+=$Entry.LastRenameDestination}
+    if(($Entry.LastRenameTransactionId -eq 0 -and ($null -ne $Entry.LastRenameDestination -or $Entry.LastRenameCommitted)) -or
+        ($Entry.LastRenameTransactionId -ne 0 -and $null -eq $Entry.LastRenameDestination)){throw 'Invalid completed journal rename.'}
+    $count=0
+    for($name=$Entry.NamespaceTombstones;$null -ne $name;$name=$name.Previous){
+        if(++$count -gt 16 -or $name.Generation -le 0){throw 'Invalid journal namespace history.'}
+        $paths+=$name.DestinationPath
+    }
+    return $paths
+}
+function Test-ServiceFixtureEntry($Record) {
+    # Include committed/pending rename names, so rename-away cannot erase a hit.
+    foreach($path in @(Get-ServiceDestinationPaths $Record.Entry)){
+        if($path.StartsWith($protectedDirectory+'\',[StringComparison]::OrdinalIgnoreCase)){return $true}
+    }
+    return $false
+}
+function Get-ServiceTimeline($Before,$After,$Fence) {
+    $assertions=@();$events=@();$eventStatus='INCONCLUSIVE';$eventReason='Application log anchors unavailable.'
+    try {
+        if($Before.Application.Status -cne 'OK' -or $After.Application.Status -cne 'OK' -or $Before.BootId -cne $After.BootId -or
+            $After.Application.OldestRecordId -gt $Before.Application.NewestRecordId -or $After.Application.NewestRecordId -lt $Before.Application.NewestRecordId){throw 'Application log cleared/wrapped or anchors unavailable.'}
+        # Re-read the exact starting anchor to detect clear/reuse, not just IDs.
+        $anchor=@(Get-WinEvent -LogName Application -FilterXPath ("*[System[EventRecordID="+$Before.Application.NewestRecordId+"]]"))
+        if($anchor.Count -ne 1 -or $anchor[0].ToXml() -cne $Before.Application.NewestXml){throw 'Application starting anchor changed/disappeared.'}
+        $query="*[System[Provider[@Name='SafeUpload.Agent.Service'] and EventRecordID > "+$Before.Application.NewestRecordId+" and EventRecordID <= "+$After.Application.NewestRecordId+"]]"
+        $queryErrors=@();$records=@(Get-WinEvent -LogName Application -FilterXPath $query -ErrorAction SilentlyContinue -ErrorVariable queryErrors | Sort-Object RecordId)
+        if(@($queryErrors | Where-Object {$_.FullyQualifiedErrorId -notlike 'NoMatchingEventsFound*'}).Count){throw 'Application provider query failed.'}
+        foreach($record in $records){$events+=@{RecordId=$record.RecordId;Provider=$record.ProviderName;Id=$record.Id;Utc=$record.TimeCreated.ToUniversalTime().ToString('o');
+            Xml=$record.ToXml();Message=$record.Message;UserSid=$(if($null -ne $record.UserId){$record.UserId.Value}else{$null});ProcessId=$record.ProcessId;
+            Authentication='Windows Application record and provider filter only; no authenticated NotificationHub emission contract'}}
+        $eventStatus='OK';$eventReason='Application anchors retained; exact provider/RecordID window read. This provider has no durable NotificationHub emission contract.'
+    }catch{$eventReason=$_.Exception.Message}
+    $windowKnown=($Fence.Complete -eq $true -and $Before.BootId -ceq $Fence.BootId -and $After.BootId -ceq $Fence.BootId -and
+        $Before.QpcFrequency -eq $Fence.QpcFrequency -and $After.QpcFrequency -eq $Fence.QpcFrequency -and
+        $Before.StartQpc -le $Before.EndQpc -and $Before.EndQpc -le $Fence.ReleasedQpc -and
+        $Fence.ReleasedQpc -le $Fence.CompletedQpc -and $Fence.CompletedQpc -le $After.StartQpc -and $After.StartQpc -le $After.EndQpc)
+    $journalKnown=($windowKnown -and $Before.Status -ceq 'OK' -and $After.Status -ceq 'OK')
+    $beforeCase=@($Before.Journal | Where-Object {Test-ServiceFixtureEntry $_})
+    $afterCase=@($After.Journal | Where-Object {Test-ServiceFixtureEntry $_})
+    # Manifests are durable and never deleted by the pinned product journal.
+    # Any missing prior manifest prevents negative timeline proof.
+    foreach($file in $Before.Journal){if(@($After.Journal | Where-Object Path -ceq $file.Path).Count -ne 1){$journalKnown=$false}}
+    $new=@($afterCase | Where-Object {$beforeCase.Path -notcontains $_.Path})
+    foreach($expectation in $row.JournalExpectations) {
+        $verdict='INCONCLUSIVE';$reason='Authenticated complete journal snapshots/QPC operation fence missing, or a prior manifest disappeared.'
+        $bad=@(@($beforeCase)+@($afterCase) | Where-Object {if($expectation -ceq 'NoApproved'){$_.StateName -in @('Approved','Publishing','Released')}elseif($expectation -ceq 'NoReleased'){$_.StateName -ceq 'Released'}else{$false}})
+        if($journalKnown){
+            if($expectation -ceq 'NoNewTransfer'){$verdict=if($new.Count){'FAIL'}else{'PASS'};$reason='Before/after authenticated product manifest inventory; new fixture transfers='+$new.Count}
+            elseif($expectation -in @('NoApproved','NoReleased')){
+                if($bad.Count){$verdict='FAIL';$reason='Authenticated fixture manifest contradicts '+$expectation}
+                elseif($beforeCase.Count -eq 0 -and $afterCase.Count -eq 0){$verdict='PASS';$reason='No fixture transfer in the durable retained journal; therefore no fixture '+$expectation.Substring(2)+' transition.'}
+                else{$reason='Latest-state manifests are not an append-only transition history; an intermediate state cannot be excluded.'}
+            }else{$reason='Unsupported journal expectation: '+$expectation}
+        }
+        # A trusted partial snapshot can still contain a positive contradiction.
+        if($bad.Count){$verdict='FAIL';$reason='Authenticated fixture manifest contradicts '+$expectation+'; incomplete coverage cannot hide positive evidence.'}
+        if($expectation -ceq 'NoNewTransfer' -and $windowKnown -and $Before.Status -ceq 'OK' -and $new.Count){$verdict='FAIL';$reason='Authenticated new fixture manifest contradicts NoNewTransfer.'}
+        $assertions+=@{Name='JournalExpectation';Expectation=$expectation;Verdict=$verdict;Reason=$reason}
+    }
+    foreach($expectation in $row.NotificationExpectations){$assertions+=@{Name='NotificationExpectation';Expectation=$expectation;Verdict='INCONCLUSIVE';Reason=$eventReason+' '+$expectation+' cannot be inferred from journal states or empty event logs; NotificationHub emission is not recorded by the current product.'}}
+    $verdict=if(@($assertions | Where-Object Verdict -eq 'FAIL').Count){'FAIL'}elseif(@($assertions | Where-Object Verdict -eq 'INCONCLUSIVE').Count){'INCONCLUSIVE'}else{'PASS'}
+    $assertions+=@{Name='ActualServiceTimelines';Verdict=$verdict;Reason='Per-expectation results from authenticated product journal snapshots and Application provider XML; see ServiceEvidence.'}
+    $result=[pscustomobject]@{Source='AuthenticatedAgentJournalFilesAndWindowsApplicationRecords';TrustBoundary='SYSTEM owner, exact protected SYSTEM/Administrators DACL, no reparses, single-link bounded manifests, same-handle ACL and bytes; privileged local actors trusted';
+        Before=$Before;After=$After;OperationFence=$Fence;WindowBound=$windowKnown;ApplicationStatus=$eventStatus;ApplicationReason=$eventReason;ApplicationEvents=$events;Assertions=$assertions}
+    Save-State $result (Join-Path $evidenceDirectory 'service-timeline.clixml')
+    return $result
 }
 function Assert-ActorProcess($Actor) {
     $process=Get-CimInstance Win32_Process -Filter ("ProcessId="+$Actor.Pid) -ErrorAction Stop
@@ -535,6 +735,8 @@ $value=$b.ToString().Split([char]0)[0]
 
         Write-DurableFile (Join-Path $evidenceDirectory 'readiness.json') ($ready | ConvertTo-Json -Depth 32) -New
         $trial.Readiness=$ready
+        $trial.ServiceBefore=Get-ServiceSnapshot 'before'
+        $trial.LastAccessBefore=Get-LastAccessEvidence
         if($CaseId -eq 'S00-observer-control'){
             Start-ScheduledTask -TaskName $writerTask
             $identityPath=Join-Path $actorDirectory 'identity.clixml'
@@ -550,9 +752,15 @@ $value=$b.ToString().Split([char]0)[0]
         $context=Open-InvariantObserver $ready.VolumeGuid $protectedDirectory (Join-Path $evidenceDirectory 'raw') $CaseId
         if($context.Status -ne 'OK'){throw ($context.Error | Out-String)}
         $expected=@{'marker.bin'=[Convert]::FromBase64String($state.BaselineBase64);'new.bin'=$null}
+        $captureStarted=[DateTime]::UtcNow.ToFileTimeUtc()
         $baseline=Capture-InvariantBaseline $context @('marker.bin','new.bin') $expected
+        $baseline | Add-Member NoteProperty CaptureStartedFileTime $captureStarted
         $trial.DecoderVersion=$context.DecoderVersion;$trial.ObserverModuleSha256=$context.ModuleSha256
-        $trial.Geometry=$context.Geometry;$trial.Platform=@{Build=$context.Build;BootId=$context.BootId;ObserverPid=$context.ObserverPid;ObserverSid=$context.ObserverSid}
+        $observerProcess=Get-CimInstance Win32_Process -Filter ('ProcessId='+$PID)
+        $observerOwner=Invoke-CimMethod -InputObject $observerProcess -MethodName GetOwnerSid
+        if($observerOwner.ReturnValue -ne 0 -or $observerOwner.Sid -cne $context.ObserverSid){throw 'OS observer SID mismatch'}
+        $trial.Geometry=$context.Geometry;$trial.Platform=@{Build=$context.Build;BootId=$context.BootId;ObserverPid=$context.ObserverPid;ObserverSid=$context.ObserverSid;
+            ObserverProcess=@{Pid=$observerProcess.ProcessId;OwnerSid=$observerOwner.Sid;SessionId=$observerProcess.SessionId;CommandLine=$observerProcess.CommandLine}}
         if($baseline.Status -ne 'OK'){throw ($baseline.Error | Out-String)}
         $seq=1;$checkpoints+=Get-ExpectedCheckpoint $baseline 'BeforeOperation' $seq
         $samples+=Capture-InvariantSample $context $baseline 'BeforeOperation' $seq
@@ -567,7 +775,7 @@ $value=$b.ToString().Split([char]0)[0]
         do {
             $seq++;$checkpoints+=Get-ExpectedCheckpoint $baseline 'Continuous' $seq
             $samples+=Capture-InvariantSample $context $baseline 'Continuous' $seq
-            # Target cadence only; durations/gaps survive, never mark gaps accounted without ledger.
+            # Full-pass and gap QPC intervals are later checked against all actor attempts.
             Start-Sleep -Milliseconds 10
             if([DateTime]::UtcNow -gt $deadline.AddSeconds(120)){throw 'Writer completion unavailable'}
         }while(-not(Test-Path -LiteralPath (Join-Path $actorDirectory 'completion.clixml')))
@@ -581,6 +789,13 @@ $value=$b.ToString().Split([char]0)[0]
         $samples+=Capture-InvariantSample $context $baseline 'AfterOperation' $seq
         $seq++;$checkpoints+=Get-ExpectedCheckpoint $baseline 'FinalQuiescence' $seq
         $samples+=Capture-InvariantSample $context $baseline 'FinalQuiescence' $seq
+        $trial.LastAccessAfter=Get-LastAccessEvidence
+        $trial.ServiceAfter=Get-ServiceSnapshot 'after'
+        $serviceFence=[pscustomobject]@{Complete=($writer.ExitCode -eq 0 -and $writer.Value.Held -eq $false);BootId=$writer.BootId;
+            QpcFrequency=$writer.Value.QpcFrequency;ReleasedQpc=$writer.Value.ReleasedQpc;CompletedQpc=$writer.CompletedQpc}
+        $trial.ServiceEvidence=Get-ServiceTimeline $trial.ServiceBefore $trial.ServiceAfter $serviceFence
+        $trial.Journal=$trial.ServiceAfter.Journal;$trial.Notifications=$trial.ServiceEvidence.ApplicationEvents
+        $trial.Assertions+=@($trial.ServiceEvidence.Assertions)
         $trial.VerifierAfter=Get-VerifierEvidence 'after' -RequireMode
         for($n=0;$n -le 100;$n++){
             $calls=@($trial.Operations | Where-Object Trial -eq $n)
@@ -594,19 +809,25 @@ $value=$b.ToString().Split([char]0)[0]
     finally {
         if($null -ne $context -and $context.Status -eq 'OK'){$disposal=Close-InvariantObserver $context}
         $trial.Baseline=$baseline;$trial.Samples=$samples;$trial.Disposal=$disposal
-        # No fabricated lower entries, actor-free bypass, live Flags or event proof.
-        $trial.MutationLedger=@{Complete=$false;Overflow=$false;FirstSequence=0;LastSequence=0;Entries=@();Source='Unavailable: Phase3 lower-ledger adapter'}
+        $trial.WriterFence=[pscustomobject]@{Complete=($null -ne $writer -and $writer.ExitCode -eq 0 -and $writer.Value.Held -eq $false);
+            BootId=$writer.BootId;QpcFrequency=$writer.Value.QpcFrequency;ReleasedQpc=$writer.Value.ReleasedQpc;CompletedQpc=$writer.CompletedQpc;ExpectedAttempts=101}
+        $trial.LastAccessPolicy=[pscustomobject]@{Status=$(if($null -ne $trial.LastAccessBefore.Value -and $null -ne $trial.LastAccessAfter.Value){'OK'}else{'INCONCLUSIVE'});Before=$trial.LastAccessBefore;After=$trial.LastAccessAfter}
+        # No fabricated lower entries, actor-free bypass or live Flags proof.
+        $trial.MutationLedger=@{Complete=$false;Overflow=$false;FirstSequence=0;LastSequence=0;Entries=@();Source='Unavailable: driver lower admission/completion mutation ledger readback; user-mode calls cannot substitute'}
         $trial.ExpectedTimeline=@{ForbiddenBlocks=@($state.ForbiddenBlocks | ForEach-Object {,[Convert]::FromBase64String($_)});
             PreCutoffImages=@();Checkpoints=$checkpoints;AllowedMutations=@();ExpectedDenials=@();WriterIdentities=@($trial.Actor | Where-Object {$null -ne $_});
-            AccountedGapSequences=@();PlatformValidated=($null -ne $trial.Readiness);ObserverIndependent=($null -ne $trial.Actor);
-            StandardUserWriters=($null -ne $trial.Actor);ContinuousObservationComplete=$false;RestorationKnown=$false}
+            Operations=$trial.Operations;WriterFence=$trial.WriterFence;LastAccessPolicy=$trial.LastAccessPolicy;
+            ExternalEvidence=[pscustomobject]@{Build=$trial.Platform.Build;PrepareBootId=$state.PrepareBootId;ActiveBootId=$trial.Platform.BootId;
+                ObserverPid=$trial.Platform.ObserverPid;ObserverSid=$trial.Platform.ObserverSid;ObserverProcess=$trial.Platform.ObserverProcess;
+                ActorProvenance=$trial.ActorProvenance;Restoration=@{Known=$false}}}
+        if($null -ne $baseline){$trial.CadenceProof=Test-InvariantCadence $baseline $samples $trial.Operations $trial.WriterFence;$trial.ExpectedTimeline.CadenceProof=$trial.CadenceProof}
         if($null -ne $baseline -and $samples.Count -gt 0){
             $trial.Predicate=Test-NoUnapprovedByte $baseline @() $samples $trial.MutationLedger $trial.ExpectedTimeline
             $trial.ForbiddenByteCount=$trial.Predicate.ForbiddenByteCount
             $trial.Assertions+=@($trial.Predicate.Assertions)
         }
-        $trial.Assertions+=@{Name='LiveTaintFlags';Verdict='INCONCLUSIVE';Reason='TEST_DISABLE_TAINT setter/readback unavailable; BootPolicy.Flags is not live Flags'}
-        $trial.Assertions+=@{Name='ActualServiceTimelines';Verdict='INCONCLUSIVE';Reason='Journal/notification negative assertions lack authenticated product adapter'}
+        $trial.Assertions+=@{Name='LiveTaintFlags';Verdict='INCONCLUSIVE';Reason='Driver Inspector does not expose live TEST_DISABLE_TAINT flag readback; registry BootPolicy.Flags does not attest live Flags. WP4 makes no driver changes.'}
+        if($null -eq $trial.ServiceEvidence){$trial.Assertions+=@{Name='ActualServiceTimelines';Verdict='INCONCLUSIVE';Reason='Service before/after evidence collection did not complete; see Errors and service snapshot artifacts.'}}
         if($null -eq $disposal -or $disposal.Status -ne 'OK'){$trial.Assertions+=@{Name='Disposal';Verdict='INCONCLUSIVE';Reason='Checked observer disposal missing or failed'}}
         $trial.Verdict=if(@($trial.Assertions | Where-Object Verdict -eq 'FAIL').Count -gt 0 -or @($trial.Latency | Where-Object Verdict -eq 'FAIL').Count -gt 0){'FAIL'}else{'INCONCLUSIVE'}
         Save-State $trial $trialPath
@@ -827,7 +1048,7 @@ $value=$b.ToString().Split([char]0)[0]
         Write-DurableFile (Join-Path $evidenceDirectory 'prepare-error.txt') ($_.Exception.ToString()+"`n"+$_.ScriptStackTrace) -New
         try{Restore-Suite -Rollback}
         finally{
-            Write-DurableFile (Join-Path $evidenceDirectory 'case.json') (@{Schema='StagedInvariantSuite/1';CaseId=$CaseId;Mode=$Mode;RunName=$RunName;
+            Write-DurableFile (Join-Path $evidenceDirectory 'case.json') (@{Schema='StagedInvariantSuite/2';CaseId=$CaseId;Mode=$Mode;RunName=$RunName;
                 Verdict='INCONCLUSIVE';CaseStatus='READY';AuthoritativeCaseExport=$false;Trials=@();Restoration=@{Known=$false};
                 Reasons=@('Prepare failed; retained prepare-error and rollback artifacts; restoration reboot required')} | ConvertTo-Json -Depth 32) -New
         }
@@ -873,16 +1094,18 @@ $value=$b.ToString().Split([char]0)[0]
         (Get-SecuritySddl (Split-Path -Parent $policyPath) $true) -cne $state.OriginalPolicyDirectorySddl){throw 'Restored policy ACL mismatch'}
     $trial=if(Test-Path -LiteralPath $trialPath){Load-State $trialPath}else{@{Verdict='INCONCLUSIVE';ForbiddenByteCount=$null;Reasons=@('Startup task did not export observations')}}
     if($null -ne $trial.Baseline -and @($trial.Samples).Count -gt 0){
+        $trial.Assertions=@($trial.Assertions | Where-Object {$trial.Predicate.Assertions.Name -notcontains $_.Name})
         $trial.Predicate=Test-NoUnapprovedByte $trial.Baseline @() $trial.Samples $trial.MutationLedger $trial.ExpectedTimeline
+        $trial.Assertions+=@($trial.Predicate.Assertions)
         if($trial.Predicate.Verdict -eq 'FAIL'){$trial.Verdict='FAIL'}
         $trial.ForbiddenByteCount=$trial.Predicate.ForbiddenByteCount
     }
-    $result=[ordered]@{Schema='StagedInvariantSuite/1';TableRevision=$table.TableRevision;CaseRevision=$row.Revision;CaseId=$CaseId;Mode=$Mode;RunName=$RunName;
+    $result=[ordered]@{Schema='StagedInvariantSuite/2';TableRevision=$table.TableRevision;CaseRevision=$row.Revision;CaseId=$CaseId;Mode=$Mode;RunName=$RunName;
         CaseStatus='READY';QualificationScope=$row.QualificationScope;Verdict=$trial.Verdict;ForbiddenByteCount=$trial.ForbiddenByteCount;Trials=@($trial);
         InputHashes=@{Table=$ExpectedTableSha256;Observer=$ExpectedObserverSha256;Suite=$ExpectedSuiteSha256;Helper=$ExpectedHelperSha256;
             Feature=$ExpectedFeatureSha256;Inspector=$ExpectedInspectorSha256;ServicePackage=$ExpectedServicePackageSha256;ServiceTree=$ExpectedServiceTreeSha256};
         BootIds=@{Prepare=$state.PrepareBootId;Active=$state.AfterBootId;Final=(Get-BootId)};Restoration=@{GuestChecks=$true;IndependentBaseline=$null;Known=$false};
-        AuthoritativeCaseExport=$false;Reasons=@('WP3 seeds do not qualify Phase4; lower ledger, live taint, exact service and cadence evidence unavailable');
+        AuthoritativeCaseExport=$false;Reasons=@('Seed rows do not qualify Phase4; driver lower mutation ledger and live taint readback unavailable; current NotificationHub has no durable emission timeline');
         Load=@{ComputerSystem=(Get-CimInstance Win32_ComputerSystem | Select-Object NumberOfLogicalProcessors,TotalPhysicalMemory);Cpu=(Get-CimInstance Win32_Processor | Select-Object Name,NumberOfCores);Disk=(Get-Disk | Select-Object Number,FriendlyName,BusType);ObserverPriority=[string][Diagnostics.Process]::GetCurrentProcess().PriorityClass}}
     Copy-Item -LiteralPath $statePath -Destination (Join-Path $evidenceDirectory 'lifecycle.clixml')
     Copy-Item -LiteralPath $actorDirectory -Destination (Join-Path $evidenceDirectory 'actor') -Recurse

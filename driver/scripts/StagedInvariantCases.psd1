@@ -3,7 +3,7 @@
 # design section 4 corpus, NOT a claim that one row covers every future variant.
 @{
     Schema = 'StagedInvariantCases/1'
-    TableRevision = 1
+    TableRevision = 2
     Modes = @('ordinary', 'runtime-verifier', 'boot-verifier')
     RowSchema = @{
         Required = @('CaseId', 'Revision', 'Status', 'Variant', 'Outcome',
@@ -32,7 +32,7 @@
     }
     Cases = @(
         @{
-            CaseId = 'S00-observer-control'; Revision = 1; Status = 'Ready'
+            CaseId = 'S00-observer-control'; Revision = 2; Status = 'Ready'
             Variant = 'fixed-NTFS-nonresident-known-rewrite'; Outcome = 'CONTROL'
             QualificationScope = 'WP3SeedOnly; cannot satisfy Phase4Suite'
             ActorSid = 'ResolveStandardUserTokenAtRuntime'; ActorSession = 'ResolveTokenSessionId'
@@ -43,6 +43,13 @@
             Barriers = @('BootIdentityChanged', 'FilterReady', 'ValidPolicy', 'NewlyMounted', 'CanaryPassed', 'Trusted', 'ReadinessDurable', 'BeforeOperation', 'AfterOperation', 'FinalQuiescence')
             ExpectedTimeline = @('UnscopedSetup', 'BootTrusted', 'Unscoped', 'BaselineEqualsEverySample')
             StatusClasses = @('Open=Win32:0', 'Write=Win32:0', 'Flush=Win32:0', 'Close=Win32:0')
+            MetadataExpectations = @{
+                Exact = @('Attributes','Creation','Modified','Changed','Links','SecurityId','Sddl')
+                Accessed = 'NtfsReadWindow'
+                AccessReason = 'NTFS reads update in-memory LastAccess; disk updates are lazy (at most one hour when enabled). Disabled updates require exact baseline raw Accessed; API Accessed may advance only between baseline and sample-end FILETIME. No other field is tolerated.'
+                Source = 'https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/fsutil-behavior'
+            }
+            ServiceEvidence = @{ Journal = '%ProgramData%\SafeUpload\staging-journal'; OwnerSid = 'S-1-5-18'; ProtectedAcl = 'Exact SYSTEM and Administrators full control'; EventLog = 'Application'; Provider = 'SafeUpload.Agent.Service'; NotificationContract = 'Unavailable: NotificationHub emits no durable event'; Scope = 'Fixture destination paths; retained journal manifests' }
             JournalExpectations = @('NoNewTransfer', 'NoApproved', 'NoReleased')
             NotificationExpectations = @('NoApproval', 'NoRelease', 'NoHandBack')
             AllowedDirectoryTransitions = @('SameActiveNamesIdsSizesAttributesSecurity')
@@ -51,7 +58,7 @@
             Cleanup = @('CloseObserver', 'StopOwnedTasks', 'RemoveOwnedUser', 'RestoreDriver', 'RestorePolicyBytesAndAcls', 'RemoveOwnedBootPolicy', 'RestoreAgentConfig', 'ResetVerifier', 'RemoveFixtureAndState', 'RestorationReboot', 'IndependentBaseline')
         }
         @{
-            CaseId = 'S01-denied-write-after-boot'; Revision = 1; Status = 'Ready'
+            CaseId = 'S01-denied-write-after-boot'; Revision = 2; Status = 'Ready'
             Variant = 'fixed-NTFS-nonresident-first-write'; Outcome = 'DENY'
             QualificationScope = 'WP3SeedOnly; cannot satisfy Phase4Suite'
             ActorSid = 'ResolveStandardUserTokenAtRuntime'; ActorSession = 'ResolveTokenSessionId'
@@ -62,6 +69,13 @@
             Barriers = @('BootIdentityChanged', 'FilterReady', 'ValidPolicy', 'NewlyMounted', 'CanaryPassed', 'Trusted', 'ReadinessDurable', 'BeforeOperation', 'AfterOperation', 'FinalQuiescence')
             ExpectedTimeline = @('UnscopedSetup', 'BootTrusted', 'ProtectedAgentAbsent', 'BaselineEqualsEverySample')
             StatusClasses = @('Open=Win32:5', 'Write=NotCalled', 'Flush=NotCalled', 'Close=NotCalled')
+            MetadataExpectations = @{
+                Exact = @('Attributes','Creation','Modified','Changed','Links','SecurityId','Sddl')
+                Accessed = 'NtfsReadWindow'
+                AccessReason = 'NTFS reads update in-memory LastAccess; disk updates are lazy (at most one hour when enabled). Disabled updates require exact baseline raw Accessed; API Accessed may advance only between baseline and sample-end FILETIME. No other field is tolerated.'
+                Source = 'https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/fsutil-behavior'
+            }
+            ServiceEvidence = @{ Journal = '%ProgramData%\SafeUpload\staging-journal'; OwnerSid = 'S-1-5-18'; ProtectedAcl = 'Exact SYSTEM and Administrators full control'; EventLog = 'Application'; Provider = 'SafeUpload.Agent.Service'; NotificationContract = 'Unavailable: NotificationHub emits no durable event'; Scope = 'Fixture destination paths; retained journal manifests' }
             JournalExpectations = @('NoNewTransfer', 'NoApproved', 'NoReleased')
             NotificationExpectations = @('NoApproval', 'NoRelease', 'NoHandBack')
             AllowedDirectoryTransitions = @('SameActiveNamesIdsSizesAttributesSecurity')
@@ -70,7 +84,7 @@
             Cleanup = @('CloseObserver', 'StopOwnedTasks', 'RemoveOwnedUser', 'RestoreDriver', 'RestorePolicyBytesAndAcls', 'RemoveOwnedBootPolicy', 'RestoreAgentConfig', 'ResetVerifier', 'RemoveFixtureAndState', 'RestorationReboot', 'IndependentBaseline')
         }
         @{
-            CaseId = 'S02-agent-down-open-refused'; Revision = 1; Status = 'Ready'
+            CaseId = 'S02-agent-down-open-refused'; Revision = 2; Status = 'Ready'
             Variant = 'fixed-NTFS-absent-new-name'; Outcome = 'DENY'
             QualificationScope = 'WP3SeedOnly; cannot satisfy Phase4Suite'
             ActorSid = 'ResolveStandardUserTokenAtRuntime'; ActorSession = 'ResolveTokenSessionId'
@@ -81,6 +95,13 @@
             Barriers = @('BootIdentityChanged', 'FilterReady', 'ValidPolicy', 'NewlyMounted', 'CanaryPassed', 'Trusted', 'ReadinessDurable', 'BeforeOperation', 'AfterOperation', 'FinalQuiescence')
             ExpectedTimeline = @('UnscopedSetup', 'BootTrusted', 'ProtectedAgentAbsent', 'BaselineEqualsEverySample')
             StatusClasses = @('Open=Win32:5', 'Write=NotCalled', 'Flush=NotCalled', 'Close=NotCalled')
+            MetadataExpectations = @{
+                Exact = @('Attributes','Creation','Modified','Changed','Links','SecurityId','Sddl')
+                Accessed = 'NtfsReadWindow'
+                AccessReason = 'NTFS reads update in-memory LastAccess; disk updates are lazy (at most one hour when enabled). Disabled updates require exact baseline raw Accessed; API Accessed may advance only between baseline and sample-end FILETIME. No other field is tolerated.'
+                Source = 'https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/fsutil-behavior'
+            }
+            ServiceEvidence = @{ Journal = '%ProgramData%\SafeUpload\staging-journal'; OwnerSid = 'S-1-5-18'; ProtectedAcl = 'Exact SYSTEM and Administrators full control'; EventLog = 'Application'; Provider = 'SafeUpload.Agent.Service'; NotificationContract = 'Unavailable: NotificationHub emits no durable event'; Scope = 'Fixture destination paths; retained journal manifests' }
             JournalExpectations = @('NoNewTransfer', 'NoApproved', 'NoReleased')
             NotificationExpectations = @('NoApproval', 'NoRelease', 'NoHandBack')
             AllowedDirectoryTransitions = @('SameActiveNamesIdsSizesAttributesSecurity')
