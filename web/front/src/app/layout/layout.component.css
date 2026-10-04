@@ -6,7 +6,15 @@ nav { display: grid; gap: 8px; }
 nav a { padding: 11px 12px; border-radius: 8px; color: #d3dff0; }
 nav a.active, nav a:hover { background: #0c3b73; color: #fff; }
 .sidebar button { margin-top: auto; }
-.content { padding: 20px; display: grid; gap: 14px; align-content: start; }
+.content { min-width: 0; padding: 20px; display: grid; gap: 14px; align-content: start; }
 .topbar { display: flex; align-items: center; justify-content: space-between; }
 .status { color: #11945c; font-weight: 600; }
+
+@media (max-width: 760px) {
+  .shell { grid-template-columns: 1fr; }
+  .sidebar { gap: 12px; }
+  .logo { margin-bottom: 0; }
+  nav { grid-template-columns: repeat(2, 1fr); }
+  .topbar { flex-wrap: wrap; gap: 10px; }
+}
 

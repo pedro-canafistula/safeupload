@@ -1,29 +1,23 @@
 import { CommonModule } from '@angular/common';
-import { Component, OnInit } from '@angular/core';
+import { Component, inject } from '@angular/core';
+import { RouterLink } from '@angular/router';
+import { Subject, startWith, switchMap } from 'rxjs';
 import { ApiService } from '../../core/api.service';
+import { loadState } from '../../core/load-state';
+import { categoryLabels } from '../../core/models';
+import { EventTableComponent } from '../../core/event-table.component';
 
 @Component({
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, RouterLink, EventTableComponent],
   templateUrl: './painel.component.html',
   styleUrl: './painel.component.css'
 })
-export class PainelComponent implements OnInit {
-  dados: any;
+export class PainelComponent {
+  private readonly api = inject(ApiService);
+  readonly refresh = new Subject<void>();
+  readonly state$ = this.refresh.pipe(startWith(undefined), switchMap(() => loadState(this.api.getPainel())));
+  readonly categories = categoryLabels;
 
-  // dados fictícios do card
-  resumo_inspecoes = { inspecoes: 1247, variacao: 12 };
-
-  resumo_bloqueados = { quantidade: 89};
-
-  resumo_aprovados = { quantidade: 1000};
-
-  constructor(private api: ApiService) {}
-
-  ngOnInit(): void {
-    this.api.getPainel().subscribe({
-      next: (d: any) => (this.dados = d),
-      error: (e) => console.error('erro painel:', e),
-    });
-  }
+  percentage(count: number, total: number): number { return total ? count / total * 100 : 0; }
 }

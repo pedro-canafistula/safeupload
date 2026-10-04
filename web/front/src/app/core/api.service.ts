@@ -1,26 +1,21 @@
 import { HttpClient } from '@angular/common/http';
 import { Injectable } from '@angular/core';
+import { Audit, Dashboard, Endpoints } from './models';
 
 @Injectable({ providedIn: 'root' })
 export class ApiService {
-  private readonly api = 'http://localhost:8080/api';
-
   constructor(private http: HttpClient) {}
 
   getPainel() {
-    return this.http.get<any>(`${this.api}/painel`, { withCredentials: true });
+    return this.http.get<Dashboard>('/api/painel', { withCredentials: true });
   }
 
-  getAuditoria() {
-    return this.http.get<any>(`${this.api}/auditoria`, { withCredentials: true });
+  getAuditoria(endpoint = '') {
+    return this.http.get<Audit>('/api/auditoria', { params: { endpoint }, withCredentials: true });
   }
 
-  getEndpoints() {
-    return this.http.get<any>(`${this.api}/endpoints`, { withCredentials: true });
-  }
-
-  getRelatorios() {
-    return this.http.get<any>(`${this.api}/relatorios`, { withCredentials: true });
+  getEndpoints(status = 'all', os = 'all', q = '') {
+    return this.http.get<Endpoints>('/api/endpoints', { params: { status, os, q }, withCredentials: true });
   }
 }
 
