@@ -7,10 +7,9 @@ namespace SafeUpload.Agent.Tests;
 /// <summary>
 /// O ponto de encontro entre quem decide e quem mostra.
 ///
-/// A propriedade que estes testes protegem é uma só: <b>publicar nunca
-/// bloqueia</b>. O veredito já foi dado e o arquivo já foi movido quando a
-/// notificação sai; se a entrega entrasse no caminho da decisão, um aplicativo
-/// travado seguraria a inspeção do próximo arquivo.
+/// These queue/replay tests use an explicit in-memory recorder. Slow clients
+/// never hold up publication; disk recording and failure behavior are exercised
+/// separately in NotificationRecordTests.
 /// </summary>
 public class NotificationHubTests
 {
@@ -39,7 +38,7 @@ public class NotificationHubTests
     [Fact]
     public void Sem_assinante_publicar_nao_lanca()
     {
-        var hub = new NotificationHub();
+        var hub = NotificationTestHub.Create();
 
         hub.Publish(new StatusNotification(1, 4, true));
         hub.Publish(new EventNotification(Evento("a.txt"), Achados()));
@@ -48,7 +47,7 @@ public class NotificationHubTests
     [Fact]
     public async Task Assinante_recebe_o_que_foi_publicado()
     {
-        var hub = new NotificationHub();
+        var hub = NotificationTestHub.Create();
         using var assinatura = hub.Subscribe();
 
         hub.Publish(new EventNotification(Evento("cadastro.txt"), Achados()));
@@ -62,7 +61,7 @@ public class NotificationHubTests
     [Fact]
     public async Task Todos_os_assinantes_recebem()
     {
-        var hub = new NotificationHub();
+        var hub = NotificationTestHub.Create();
         using var primeiro = hub.Subscribe();
         using var segundo = hub.Subscribe();
 
@@ -80,7 +79,7 @@ public class NotificationHubTests
     [Fact]
     public void Estado_atual_e_retido_para_quem_conectar_depois()
     {
-        var hub = new NotificationHub();
+        var hub = NotificationTestHub.Create();
 
         Assert.Null(hub.CurrentStatus);
 
@@ -95,7 +94,7 @@ public class NotificationHubTests
     [Fact]
     public void Estado_retido_e_sempre_o_mais_recente()
     {
-        var hub = new NotificationHub();
+        var hub = NotificationTestHub.Create();
 
         hub.Publish(new StatusNotification(1, 4, true));
         hub.Publish(new StatusNotification(2, 1, false));
@@ -111,7 +110,7 @@ public class NotificationHubTests
     [Fact]
     public void Evento_nao_substitui_o_estado_retido()
     {
-        var hub = new NotificationHub();
+        var hub = NotificationTestHub.Create();
 
         hub.Publish(new StatusNotification(5, 2, true));
         hub.Publish(new EventNotification(Evento("a.txt"), Achados()));
@@ -131,7 +130,7 @@ public class NotificationHubTests
     [Fact]
     public async Task Assinante_que_nao_le_nao_bloqueia_quem_publica()
     {
-        var hub = new NotificationHub();
+        var hub = NotificationTestHub.Create();
         using var assinatura = hub.Subscribe();
 
         for (var i = 0; i < 5_000; i++)
@@ -162,7 +161,7 @@ public class NotificationHubTests
     [Fact]
     public void Assinatura_descartada_para_de_receber()
     {
-        var hub = new NotificationHub();
+        var hub = NotificationTestHub.Create();
         var assinatura = hub.Subscribe();
 
         assinatura.Dispose();
@@ -174,7 +173,7 @@ public class NotificationHubTests
     [Fact]
     public void Descartar_duas_vezes_nao_lanca()
     {
-        var hub = new NotificationHub();
+        var hub = NotificationTestHub.Create();
         var assinatura = hub.Subscribe();
 
         assinatura.Dispose();
@@ -192,7 +191,7 @@ public class NotificationHubTests
     [Fact]
     public void Evento_publicado_sem_ninguem_ouvindo_e_entregue_a_quem_conecta()
     {
-        var hub = new NotificationHub();
+        var hub = NotificationTestHub.Create();
 
         hub.Publish(new EventNotification(Evento("perdido.txt"), Achados()));
 
@@ -210,7 +209,7 @@ public class NotificationHubTests
     public void Evento_antigo_nao_e_reproduzido()
     {
         var relogio = new RelogioControlado(new DateTimeOffset(2026, 9, 3, 12, 0, 0, TimeSpan.Zero));
-        var hub = new NotificationHub(relogio);
+        var hub = NotificationTestHub.Create(relogio);
 
         hub.Publish(new EventNotification(Evento("antigo.txt"), Achados()));
 
@@ -224,7 +223,7 @@ public class NotificationHubTests
     [Fact]
     public void Estado_nao_entra_na_janela_de_reproducao()
     {
-        var hub = new NotificationHub();
+        var hub = NotificationTestHub.Create();
 
         hub.Publish(new StatusNotification(3, 4, true));
 
@@ -244,7 +243,7 @@ public class NotificationHubTests
     [Fact]
     public void Evento_com_sessao_nao_vaza_para_outra_sessao()
     {
-        var hub = new NotificationHub();
+        var hub = NotificationTestHub.Create();
         using var sessaoUm = hub.Subscribe(sessionId: 1);
         using var sessaoDois = hub.Subscribe(sessionId: 2);
 
@@ -262,7 +261,7 @@ public class NotificationHubTests
     [Fact]
     public void Evento_sem_sessao_vai_para_todos()
     {
-        var hub = new NotificationHub();
+        var hub = NotificationTestHub.Create();
         using var sessaoUm = hub.Subscribe(sessionId: 1);
         using var sessaoDois = hub.Subscribe(sessionId: 2);
 
@@ -279,7 +278,7 @@ public class NotificationHubTests
     [Fact]
     public void Assinante_sem_sessao_conhecida_recebe_tudo()
     {
-        var hub = new NotificationHub();
+        var hub = NotificationTestHub.Create();
         using var desconhecida = hub.Subscribe(sessionId: null);
 
         hub.Publish(new EventNotification(Evento("de-alguma-sessao.txt"), Achados()), targetSessionId: 7);

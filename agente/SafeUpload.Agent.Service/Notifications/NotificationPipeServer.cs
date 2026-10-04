@@ -170,7 +170,7 @@ public sealed class NotificationPipeServer : BackgroundService
                 // O estado vai primeiro, antes de qualquer evento: sem ele o
                 // aplicativo recém-aberto não teria como preencher os cartões,
                 // porque quem carrega política agora é o serviço.
-                if (_hub.CurrentStatus is { } status
+                if (_hub.GetRecordedStatus() is { } status
                     && !await TryWriteAsync(writer, status, stoppingToken).ConfigureAwait(false))
                 {
                     return;

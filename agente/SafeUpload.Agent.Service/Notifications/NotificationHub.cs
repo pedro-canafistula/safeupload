@@ -4,19 +4,9 @@ using SafeUpload.Agent.Core.Contracts;
 namespace SafeUpload.Agent.Service.Notifications;
 
 /// <summary>
-/// O ponto de encontro entre quem decide e quem mostra.
-///
-/// O interceptador publica aqui e segue em frente; quem entrega as mensagens
-/// aos aplicativos conectados é outro serviço. A separação existe por uma razão
-/// só: <b>publicar não pode bloquear</b>. O veredito já foi dado e o arquivo já
-/// foi movido quando a notificação sai — se a entrega ficasse no caminho da
-/// decisão, um aplicativo lento, minimizado ou morto seguraria a inspeção do
-/// próximo arquivo.
-///
-/// Cada assinante tem sua própria fila limitada. Fila cheia significa
-/// aplicativo que parou de ler: a mensagem mais antiga é descartada em vez de
-/// esperar. Perder notificação de tela é aceitável — a trilha de auditoria em
-/// disco é a fonte da verdade, e ela não passa por aqui.
+/// Records each emission durably before retaining or delivering it. Subscriber
+/// queues are bounded and never wait for a slow client; durable recording is
+/// synchronous and may wait for disk. A failed record suppresses delivery.
 /// </summary>
 public sealed class NotificationHub
 {
@@ -44,17 +34,20 @@ public sealed class NotificationHub
     private readonly List<Buffered> _replay = [];
     private readonly Lock _gate = new();
     private readonly TimeProvider _clock;
+    private readonly INotificationRecord _record;
+    private readonly ILogger<NotificationHub> _logger;
 
     private StatusNotification? _currentStatus;
 
-    /// <summary>Cria o hub com o relógio do sistema.</summary>
-    public NotificationHub() : this(TimeProvider.System)
-    {
-    }
+    public NotificationHub(INotificationRecord record, ILogger<NotificationHub> logger)
+        : this(record, logger, TimeProvider.System) { }
 
-    /// <summary>Cria o hub com um relógio explícito. Serve aos testes.</summary>
-    public NotificationHub(TimeProvider clock) =>
+    internal NotificationHub(INotificationRecord record, ILogger<NotificationHub> logger, TimeProvider clock)
+    {
+        _record = record ?? throw new ArgumentNullException(nameof(record));
+        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _clock = clock ?? throw new ArgumentNullException(nameof(clock));
+    }
 
     /// <summary>
     /// O último estado publicado, entregue a todo aplicativo que conectar.
@@ -108,7 +101,7 @@ public sealed class NotificationHub
 
             foreach (var buffered in _replay)
             {
-                if (Targets(subscription, buffered.TargetSessionId))
+                if (Targets(subscription, buffered.TargetSessionId) && TryRecord(buffered.Notification, buffered.TargetSessionId))
                 {
                     channel.Writer.TryWrite(buffered.Notification);
                 }
@@ -119,7 +112,7 @@ public sealed class NotificationHub
     }
 
     /// <summary>
-    /// Publica uma mensagem. Não bloqueia e não lança.
+    /// Flushes the emission record, then publishes. Recording failure is logged and suppresses delivery.
     /// </summary>
     /// <param name="notification">A mensagem.</param>
     /// <param name="targetSessionId">
@@ -133,6 +126,8 @@ public sealed class NotificationHub
 
         lock (_gate)
         {
+            if (!TryRecord(notification, targetSessionId)) return;
+
             if (notification is StatusNotification status)
             {
                 _currentStatus = status;
@@ -154,6 +149,25 @@ public sealed class NotificationHub
                     subscription.Channel.Writer.TryWrite(notification);
                 }
             }
+        }
+    }
+
+    /// <summary>Record the retained status again before the pipe sends it to a new client.</summary>
+    public StatusNotification? GetRecordedStatus()
+    {
+        lock (_gate)
+        {
+            return _currentStatus is { } status && TryRecord(status, null) ? status : null;
+        }
+    }
+
+    private bool TryRecord(AgentNotification notification, uint? targetSessionId)
+    {
+        try { _record.Append(notification, targetSessionId); return true; }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Notification recording failed; {Kind} was not delivered", notification.GetType().Name);
+            return false;
         }
     }
 

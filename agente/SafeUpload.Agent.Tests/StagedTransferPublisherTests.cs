@@ -15,7 +15,7 @@ public sealed class StagedTransferPublisherTests : IDisposable
 {
     private readonly TestWorkspace _workspace = new();
     private readonly string _stagingRoot;
-    private readonly NotificationHub _notifications = new();
+    private readonly NotificationHub _notifications = NotificationTestHub.Create();
     private readonly StagedTransferJournal _journal;
     private readonly StagedTransferPublisher _publisher;
 

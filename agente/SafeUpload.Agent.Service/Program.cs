@@ -55,6 +55,20 @@ public static class Program
         builder.Services.AddSingleton(ExtractorRegistry.CreateDefault());
         builder.Services.AddSingleton<VerdictCache>();
         builder.Services.AddSingleton<InspectionService>();
+        builder.Services.AddSingleton<INotificationRecord>(services =>
+        {
+            var logger = services.GetRequiredService<ILogger<NotificationRecord>>();
+            try
+            {
+                return new NotificationRecord(Path.Combine(Environment.GetFolderPath(
+                    Environment.SpecialFolder.CommonApplicationData), "SafeUpload", "notifications"), logger);
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Cannot open notification record; all notifications will be suppressed");
+                return new UnavailableNotificationRecord(ex);
+            }
+        });
         builder.Services.AddSingleton<NotificationHub>();
         builder.Services.AddSingleton<PendingOverrides>();
         builder.Services.AddSingleton<StagedJustifications>();

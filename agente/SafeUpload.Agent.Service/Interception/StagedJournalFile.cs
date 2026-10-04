@@ -10,15 +10,15 @@ internal static class StagedJournalFile
 {
     internal const int MaximumManifestBytes = 128 * 1024;
 
-    public static FileStream Open(string path, bool recoverAcl = false)
+    public static FileStream Open(string path, bool recoverAcl = false, bool writable = false, int maximumBytes = MaximumManifestBytes)
     {
         if (!OperatingSystem.IsWindows())
         {
             if ((File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0)
                 throw new IOException("Journal contains a reparse point.");
-            var stream = new FileStream(path, FileMode.Open, FileAccess.Read,
-                FileShare.Read | FileShare.Delete, 4096, FileOptions.Asynchronous);
-            try { RequireBound(stream); return stream; }
+            var stream = new FileStream(path, FileMode.Open, writable ? FileAccess.ReadWrite : FileAccess.Read,
+                writable ? FileShare.Read : FileShare.Read | FileShare.Delete, 4096, FileOptions.Asynchronous);
+            try { RequireBound(stream, maximumBytes); return stream; }
             catch { stream.Dispose(); throw; }
         }
 
@@ -26,8 +26,8 @@ internal static class StagedJournalFile
         // OPEN_REPARSE_POINT | OVERLAPPED | BACKUP_SEMANTICS (so an
         // unexpected directory can be identified and refused). Never follow
         // the final link; trusted ownership is still checked by the caller.
-        var handle = CreateFile(path, 0x80000000U | (recoverAcl ? 0x40000U : 0),
-            5, IntPtr.Zero, 3, 0x42200000, IntPtr.Zero);
+        var handle = CreateFile(path, 0x80000000U | (writable ? 0x40000000U : 0) | (recoverAcl ? 0x40000U : 0),
+            writable ? 1U : 5U, IntPtr.Zero, 3, 0x42200000U | (writable ? 0x80000000U : 0), IntPtr.Zero);
         if (handle.IsInvalid)
         {
             var error = new Win32Exception(Marshal.GetLastWin32Error());
@@ -47,16 +47,16 @@ internal static class StagedJournalFile
                     new Win32Exception(Marshal.GetLastWin32Error()));
             if ((information.Attributes & 0x410) != 0 || information.LinkCount != 1)
                 throw new IOException("Journal manifest must be a regular file with exactly one link.");
-            var stream = new FileStream(handle, FileAccess.Read, 4096, isAsync: true);
-            try { RequireBound(stream); return stream; }
+            var stream = new FileStream(handle, writable ? FileAccess.ReadWrite : FileAccess.Read, 4096, isAsync: true);
+            try { RequireBound(stream, maximumBytes); return stream; }
             catch { stream.Dispose(); throw; }
         }
         catch { handle.Dispose(); throw; }
     }
 
-    private static void RequireBound(FileStream stream)
+    private static void RequireBound(FileStream stream, int maximumBytes)
     {
-        if (stream.Length > MaximumManifestBytes)
+        if (stream.Length > maximumBytes)
             throw new InvalidDataException("Journal manifest exceeds the qualified size bound.");
     }
 

@@ -3,7 +3,7 @@
 <# WP3 seed lifecycle. Completion sentinels describe transport/restoration, NOT
    protection. Finalize exports one provisional case.json; the host makes the
    single authoritative export after the wrapper's independent remote baseline.
-   Missing lower-ledger/live-taint and non-durable notification proof cannot PASS. #>
+   Missing lower-ledger/live-taint or incomplete notification coverage cannot PASS. #>
 [CmdletBinding()]
 param(
     [Parameter(Mandatory=$true)][ValidateSet('Prepare','AfterBoot','Finalize')][string]$Phase,
@@ -534,8 +534,11 @@ public static class SUProofFile {
  [DllImport("advapi32.dll")] static extern uint GetSecurityInfo(SafeFileHandle h,int type,uint flags,out IntPtr owner,out IntPtr group,out IntPtr dacl,out IntPtr sacl,out IntPtr sd);
  [DllImport("advapi32.dll")] static extern uint GetSecurityDescriptorLength(IntPtr sd);
  [DllImport("kernel32.dll")] static extern IntPtr LocalFree(IntPtr p);
- public static SUProofObject Open(string path,bool directory,bool protect) {
-  var h=CreateFile(path,0x80020000u,directory?3u:1u,IntPtr.Zero,3,0x02200000,IntPtr.Zero);
+ [DllImport("kernel32.dll")] static extern IntPtr GetCurrentProcess();
+ [DllImport("kernel32.dll",SetLastError=true)] static extern bool DuplicateHandle(IntPtr source,SafeFileHandle h,IntPtr target,out SafeFileHandle copy,uint access,bool inherit,uint options);
+ public static SUProofObject Open(string path,bool directory,bool protect) { return Open(path,directory,protect,false,false); }
+ public static SUProofObject Open(string path,bool directory,bool protect,bool live,bool trustedAdminOwner) {
+  var h=CreateFile(path,0x80020000u,directory?3u:(live?7u:1u),IntPtr.Zero,3,0x02200000,IntPtr.Zero);
   if(h.IsInvalid){int e=Marshal.GetLastWin32Error();h.Dispose();throw new Win32Exception(e);}
   try {
    Info i;if(!GetFileInformationByHandle(h,out i))throw new Win32Exception(Marshal.GetLastWin32Error());
@@ -545,7 +548,7 @@ public static class SUProofFile {
    FileSecurity security=new FileSecurity();try{byte[] bytes=new byte[GetSecurityDescriptorLength(sd)];Marshal.Copy(sd,bytes,0,bytes.Length);security.SetSecurityDescriptorBinaryForm(bytes);}finally{LocalFree(sd);}
    string sid=security.GetOwner(typeof(SecurityIdentifier)).Value;
    if(protect) {
-    if(sid!="S-1-5-18" || !security.AreAccessRulesProtected)throw new IOException("SYSTEM owner and protected DACL required.");
+    if((sid!="S-1-5-18" && (!trustedAdminOwner || sid!="S-1-5-32-544")) || !security.AreAccessRulesProtected)throw new IOException("Trusted owner and protected DACL required.");
     var rules=security.GetAccessRules(true,true,typeof(SecurityIdentifier));bool system=false,admin=false;
     if(rules.Count!=2)throw new IOException("Exact private SYSTEM/Administrators DACL required.");
     foreach(FileSystemAccessRule r in rules) {
@@ -561,7 +564,8 @@ public static class SUProofFile {
  }
  public static byte[] Read(SUProofObject o,int maximum) {
   // The same authenticated handle supplies all bytes; no path reopen/ACL repair.
-  using(var stream=new FileStream(o.Handle,FileAccess.Read,4096,false)) {
+  SafeFileHandle copy;if(!DuplicateHandle(GetCurrentProcess(),o.Handle,GetCurrentProcess(),out copy,0,false,2))throw new Win32Exception(Marshal.GetLastWin32Error());
+  using(var stream=new FileStream(copy,FileAccess.Read,4096,false)) {
    if(stream.Length>maximum)throw new IOException("Product evidence size bound exceeded.");
    byte[] b=new byte[(int)stream.Length];int offset=0,n;while(offset<b.Length && (n=stream.Read(b,offset,b.Length-offset))>0)offset+=n;
    if(offset!=b.Length || stream.Length!=b.Length)throw new IOException("Short/unstable product evidence read.");return b;
@@ -570,6 +574,117 @@ public static class SUProofFile {
 }
 '@
 }
+function ConvertFrom-NotificationRecord($Segments,[byte[]]$HeadBytes) {
+    $entries=@();$utf8=[Text.UTF8Encoding]::new($false,$true);$sha=[Security.Cryptography.SHA256]::Create()
+    try {
+        foreach($segment in $Segments){
+            [byte[]]$bytes=$segment.Bytes
+            if($bytes.Length -eq 0 -or $bytes.Length -gt 4194304 -or $bytes[$bytes.Length-1] -ne 10){throw 'Notification segment empty, oversized, or partial.'}
+            $start=0
+            for($i=0;$i -lt $bytes.Length;$i++){
+                if($bytes[$i] -ne 10){continue}
+                $length=$i-$start
+                if($length -le 0 -or $length -ge 16384){throw 'Invalid notification line size.'}
+                $text=$utf8.GetString($bytes,$start,$length);$entry=$text | ConvertFrom-Json
+                if($entry.Version -ne 1 -or $entry.Sequence -le 0 -or $null -eq $entry.DroppedThroughSequence -or $entry.DroppedThroughSequence -lt 0 -or
+                    $entry.DroppedThroughSequence -ge $entry.Sequence -or [string]::IsNullOrWhiteSpace($entry.BootId) -or
+                    [string]::IsNullOrWhiteSpace($entry.Utc) -or $null -eq $entry.Qpc -or $entry.Qpc -lt 0 -or $entry.QpcFrequency -le 0 -or
+                    $entry.PreviousSha256 -cnotmatch '^[0-9A-F]{64}$' -or $entry.Kind -cnotin @('Start','Heartbeat','Stop','Rotation','Transfer','Event','Status')){throw 'Invalid notification identity/time/kind.'}
+                $utcText=if($entry.Utc -is [DateTime]){$entry.Utc.ToString('o')}else{[string]$entry.Utc}
+                if([guid]::Parse($entry.InstanceId) -eq [guid]::Empty -or [DateTimeOffset]::Parse($utcText).Offset -ne [TimeSpan]::Zero){throw 'Invalid notification instance or UTC.'}
+                if($entry.Kind -ceq 'Transfer' -and ([guid]::Parse($entry.TransferId) -eq [guid]::Empty -or $entry.Phase -cnotin @('Analyzing','Released','Blocked','Retained'))){throw 'Invalid transfer notification.'}
+                if($entry.Kind -ceq 'Event' -and ([guid]::Parse($entry.EventId) -eq [guid]::Empty -or $entry.Phase -cnotin @('Approved','Blocked','AllowedWithoutInspection','Retained'))){throw 'Invalid event notification.'}
+                $hash=([BitConverter]::ToString($sha.ComputeHash($bytes,$start,$length))).Replace('-','')
+                if($entries.Count){
+                    $prior=$entries[$entries.Count-1]
+                    if($entry.Sequence -ne $prior.Entry.Sequence+1 -or $entry.PreviousSha256 -cne $prior.Hash){throw 'Notification sequence/hash chain gap.'}
+                    if($entry.DroppedThroughSequence -lt $prior.Entry.DroppedThroughSequence -or
+                        ($entry.DroppedThroughSequence -ne $prior.Entry.DroppedThroughSequence -and $entry.Kind -cne 'Rotation')){throw 'Unannounced notification rotation loss.'}
+                }
+                $entries+= [pscustomobject]@{Entry=$entry;Hash=$hash;Artifact=$segment.Artifact};$start=$i+1
+            }
+        }
+        if($entries.Count -eq 0 -or $HeadBytes.Length -gt 4096){throw 'Missing or oversized notification head.'}
+        $head=$utf8.GetString($HeadBytes) | ConvertFrom-Json
+        $first=$entries[0].Entry;$last=$entries[$entries.Count-1]
+        if($first.Sequence -ne $last.Entry.DroppedThroughSequence+1 -or
+            ($first.Sequence -eq 1 -and $first.PreviousSha256 -cne ('0'*64))){throw 'Unannounced retained-prefix loss.'}
+        if($head.Version -ne 1 -or $head.Sequence -ne $last.Entry.Sequence -or $head.Sha256 -cne $last.Hash){throw 'Notification tail truncation/head mismatch.'}
+        return [pscustomobject]@{Entries=$entries;Head=$head}
+    }finally{$sha.Dispose()}
+}
+function Get-NotificationSnapshot([string]$Tag,[string]$BootId,[long]$MinimumQpc) {
+    $directory=Join-Path (Split-Path -Parent $policyPath) 'notifications'
+    $deadline=[DateTime]::UtcNow.AddSeconds(4);$reason='Notification record unavailable.'
+    do {
+        $held=@()
+        try {
+            Initialize-ServiceEvidenceReader
+            # Pin ancestors; read live files with write/delete sharing so evidence
+            # collection cannot cause the agent to fail closed. Hash/head and
+            # size checks reject torn reads and retry without repairing files.
+            $ancestors=@();for($cursor=$directory; -not [string]::IsNullOrWhiteSpace($cursor);$cursor=[IO.Path]::GetDirectoryName($cursor)){$ancestors=@($cursor)+$ancestors}
+            $objects=@()
+            foreach($path in $ancestors){
+                $private=($path -ceq $directory -or $path -ceq (Split-Path -Parent $policyPath))
+                $obj=[SUProofFile]::Open($path,$true,$private,$false,($path -ceq $directory));$held+=$obj;$objects+=@{Path=$path;Owner=$obj.Owner;Sddl=$obj.Sddl}
+            }
+            $names=@(Get-ChildItem -LiteralPath $directory -Force | Select-Object -ExpandProperty Name)
+            if($names -notcontains 'emissions.jsonl' -or $names -notcontains 'head.json' -or $names -notcontains 'writer.lock' -or
+                @($names | Where-Object {$_ -cnotin @('emissions.jsonl','previous.jsonl','head.json','writer.lock')}).Count){throw 'Missing/unrecognized notification record child.'}
+            $files=@{}
+            foreach($name in @('previous.jsonl','emissions.jsonl','head.json','writer.lock')){
+                if($names -contains $name){$obj=[SUProofFile]::Open((Join-Path $directory $name),$false,$true,$true,$true);$held+=$obj;$files[$name]=$obj;$objects+=@{Path=$obj.Path;Owner=$obj.Owner;Sddl=$obj.Sddl}}
+            }
+            if(([SUProofFile]::Read($files['writer.lock'],1)).Length -ne 0){throw 'Invalid notification writer lease.'}
+            $segments=@();$headBytes=$null;$copies=@()
+            foreach($name in @('previous.jsonl','emissions.jsonl','head.json')){
+                if(-not $files.ContainsKey($name)){continue}
+                $bound=if($name -ceq 'head.json'){4096}else{4194304}
+                $bytes=[SUProofFile]::Read($files[$name],$bound)
+                $artifact=Join-Path $evidenceDirectory ('notifications-'+$Tag+'-'+$name)
+                $copies+=@{Path=$artifact;Bytes=$bytes}
+                if($name -ceq 'head.json'){$headBytes=$bytes}else{$segments+=@{Bytes=$bytes;Artifact=$artifact}}
+            }
+            $record=ConvertFrom-NotificationRecord $segments $headBytes
+            $tail=$record.Entries[$record.Entries.Count-1].Entry
+            if($tail.BootId -cne $BootId -or $tail.QpcFrequency -ne [Diagnostics.Stopwatch]::Frequency -or $tail.Qpc -lt $MinimumQpc){throw 'Notification record has not covered snapshot fence in this boot.'}
+            foreach($copy in $copies){
+                $stream=[IO.File]::Open($copy.Path,[IO.FileMode]::Create,[IO.FileAccess]::Write,[IO.FileShare]::Read)
+                try{$stream.Write($copy.Bytes,0,$copy.Bytes.Length);$stream.Flush($true)}finally{$stream.Dispose()}
+            }
+            return [pscustomobject]@{Status='OK';BootId=$BootId;QpcFrequency=$tail.QpcFrequency;Entries=$record.Entries;Head=$record.Head;Objects=$objects;ReadQpc=[Diagnostics.Stopwatch]::GetTimestamp()}
+        }catch{$reason=$_.Exception.Message}
+        finally{foreach($obj in $held){$obj.Dispose()}}
+        Start-Sleep -Milliseconds 100
+    }while([DateTime]::UtcNow -lt $deadline)
+    return [pscustomobject]@{Status='INCONCLUSIVE';Reason=$reason;Entries=@()}
+}
+function Test-NotificationWindow($Before,$After,$Fence,[bool]$WindowKnown) {
+    try {
+        if(-not $WindowKnown -or $Before.Status -cne 'OK' -or $After.Status -cne 'OK'){throw 'Authenticated notification snapshots and complete QPC fence required.'}
+        if($Before.BootId -cne $Fence.BootId -or $After.BootId -cne $Fence.BootId -or
+            $Before.QpcFrequency -ne $Fence.QpcFrequency -or $After.QpcFrequency -ne $Fence.QpcFrequency){throw 'Notification boot/frequency mismatch.'}
+        $anchor=@($After.Entries | Where-Object {$_.Entry.Sequence -eq $Before.Head.Sequence -and $_.Hash -ceq $Before.Head.Sha256})
+        if($anchor.Count -ne 1){throw 'Notification starting head disappeared/changed (including rotation past window).'}
+        $range=@($After.Entries | Where-Object {$_.Entry.Sequence -ge $Before.Head.Sequence})
+        if($range.Count -eq 0 -or $range[0].Entry.Qpc -gt $Fence.ReleasedQpc -or
+            $range[$range.Count-1].Entry.Qpc -lt $Fence.CompletedQpc){throw 'Notification record does not bracket whole operation window.'}
+        $instance=$range[0].Entry.InstanceId;$previous=$null
+        foreach($item in $range){
+            $entry=$item.Entry
+            if($entry.BootId -cne $Fence.BootId -or $entry.QpcFrequency -ne $Fence.QpcFrequency -or
+                $entry.InstanceId -cne $instance -or $entry.Kind -cin @('Start','Stop')){throw 'Notification service restart/stop or cross-boot coverage.'}
+            if($null -ne $previous -and ($entry.Sequence -ne $previous.Entry.Sequence+1 -or $entry.PreviousSha256 -cne $previous.Hash -or
+                $entry.Qpc -lt $previous.Entry.Qpc -or ($entry.Qpc-$previous.Entry.Qpc) -gt 5*$Fence.QpcFrequency)){throw 'Notification sequence/chain/QPC coverage gap.'}
+            $previous=$item
+        }
+        if($range[$range.Count-1].Entry.Sequence -ne $After.Head.Sequence -or $range[$range.Count-1].Hash -cne $After.Head.Sha256){throw 'Notification final head mismatch.'}
+        $emissions=@($range | Where-Object {$_.Entry.Kind -cin @('Transfer','Event','Status') -and $_.Entry.Qpc -ge $Fence.ReleasedQpc -and $_.Entry.Qpc -le $Fence.CompletedQpc})
+        return [pscustomobject]@{Complete=$true;Reason='Authenticated continuous emission coverage with retained before/after heads.';Emissions=$emissions;FirstSequence=$range[0].Entry.Sequence;LastSequence=$range[$range.Count-1].Entry.Sequence}
+    }catch{return [pscustomobject]@{Complete=$false;Reason=$_.Exception.Message;Emissions=@()}}
+}
+
 function Get-ServiceSnapshot([string]$Tag) {
     $result=[ordered]@{Status='INCONCLUSIVE';Tag=$Tag;BootId=(Get-BootId);QpcFrequency=[Diagnostics.Stopwatch]::Frequency;StartQpc=[Diagnostics.Stopwatch]::GetTimestamp();
         Journal=@();Objects=@();Errors=@();Application=@();AgentProcesses=@(Get-CimInstance Win32_Process -Filter "Name='SafeUpload.Agent.Service.exe'" | Select-Object ProcessId,CommandLine);}
@@ -621,6 +736,7 @@ function Get-ServiceSnapshot([string]$Tag) {
         $result.Application=[pscustomobject]@{Status='OK';OldestRecordId=$oldest.RecordId;NewestRecordId=$newest.RecordId;
             NewestXml=$newest.ToXml();OldestXml=$oldest.ToXml();Log=(Get-WinEvent -ListLog Application | Select-Object LogName,IsEnabled,LogMode,RecordCount,MaximumSizeInBytes,SecurityDescriptor)}
     }catch{$result.Application=[pscustomobject]@{Status='INCONCLUSIVE';Errors=(Get-ErrorChain $_.Exception)}}
+    $result.Notifications=Get-NotificationSnapshot $Tag $result.BootId $result.StartQpc
     $result.EndQpc=[Diagnostics.Stopwatch]::GetTimestamp()
     Save-State $result (Join-Path $evidenceDirectory ('service-'+$Tag+'.clixml'))
     return [pscustomobject]$result
@@ -661,8 +777,8 @@ function Get-ServiceTimeline($Before,$After,$Fence) {
         if(@($queryErrors | Where-Object {$_.FullyQualifiedErrorId -notlike 'NoMatchingEventsFound*'}).Count){throw 'Application provider query failed.'}
         foreach($record in $records){$events+=@{RecordId=$record.RecordId;Provider=$record.ProviderName;Id=$record.Id;Utc=$record.TimeCreated.ToUniversalTime().ToString('o');
             Xml=$record.ToXml();Message=$record.Message;UserSid=$(if($null -ne $record.UserId){$record.UserId.Value}else{$null});ProcessId=$record.ProcessId;
-            Authentication='Windows Application record and provider filter only; no authenticated NotificationHub emission contract'}}
-        $eventStatus='OK';$eventReason='Application anchors retained; exact provider/RecordID window read. This provider has no durable NotificationHub emission contract.'
+            Authentication='Windows Application provider XML; diagnostic only, not notification emission evidence'}}
+        $eventStatus='OK';$eventReason='Application anchors retained; exact provider/RecordID window read. Notification expectations use the separate protected durable record.'
     }catch{$eventReason=$_.Exception.Message}
     $windowKnown=($Fence.Complete -eq $true -and $Before.BootId -ceq $Fence.BootId -and $After.BootId -ceq $Fence.BootId -and
         $Before.QpcFrequency -eq $Fence.QpcFrequency -and $After.QpcFrequency -eq $Fence.QpcFrequency -and
@@ -691,10 +807,30 @@ function Get-ServiceTimeline($Before,$After,$Fence) {
         if($expectation -ceq 'NoNewTransfer' -and $windowKnown -and $Before.Status -ceq 'OK' -and $new.Count){$verdict='FAIL';$reason='Authenticated new fixture manifest contradicts NoNewTransfer.'}
         $assertions+=@{Name='JournalExpectation';Expectation=$expectation;Verdict=$verdict;Reason=$reason}
     }
-    foreach($expectation in $row.NotificationExpectations){$assertions+=@{Name='NotificationExpectation';Expectation=$expectation;Verdict='INCONCLUSIVE';Reason=$eventReason+' '+$expectation+' cannot be inferred from journal states or empty event logs; NotificationHub emission is not recorded by the current product.'}}
+    $notificationProof=Test-NotificationWindow $Before.Notifications $After.Notifications $Fence $windowKnown
+    foreach($expectation in $row.NotificationExpectations){
+        $verdict='INCONCLUSIVE';$reason=$notificationProof.Reason
+        if($notificationProof.Complete){
+            $bad=@();$supported=$true
+            switch -CaseSensitive ($expectation) {
+                'NoNotification' {$bad=@($notificationProof.Emissions)}
+                'None' {$bad=@($notificationProof.Emissions)}
+                'ExpectedNone' {$bad=@($notificationProof.Emissions)}
+                'NoRelease' {$bad=@($notificationProof.Emissions | Where-Object {($_.Entry.Kind -ceq 'Transfer' -and $_.Entry.Phase -ceq 'Released') -or ($_.Entry.Kind -ceq 'Event' -and $_.Entry.Phase -cin @('Approved','AllowedWithoutInspection'))})}
+                # Approval/release/hand-back are the concrete current contract
+                # states, including legacy audit-event notifications.
+                'NoApproval' {$bad=@($notificationProof.Emissions | Where-Object {($_.Entry.Kind -ceq 'Transfer' -and $_.Entry.Phase -ceq 'Released') -or ($_.Entry.Kind -ceq 'Event' -and $_.Entry.Phase -ceq 'Approved')})}
+                'NoHandBack' {$bad=@($notificationProof.Emissions | Where-Object {($_.Entry.Kind -ceq 'Transfer' -and $_.Entry.Phase -cin @('Blocked','Retained')) -or ($_.Entry.Kind -ceq 'Event' -and $_.Entry.Phase -cin @('Blocked','Retained'))})}
+                default {$supported=$false;$reason='Unsupported notification expectation: '+$expectation}
+            }
+            if($supported -and $verdict -eq 'INCONCLUSIVE'){$verdict=if($bad.Count){'FAIL'}else{'PASS'}}
+            if($supported){$reason='Authenticated emission chain covers whole operation window; '+$expectation+' matching emissions='+$bad.Count+'. Scope is all agent emissions (conservative for fixture negatives).'}
+        }
+        $assertions+=@{Name='NotificationExpectation';Expectation=$expectation;Verdict=$verdict;Reason=$reason}
+    }
     $verdict=if(@($assertions | Where-Object Verdict -eq 'FAIL').Count){'FAIL'}elseif(@($assertions | Where-Object Verdict -eq 'INCONCLUSIVE').Count){'INCONCLUSIVE'}else{'PASS'}
-    $assertions+=@{Name='ActualServiceTimelines';Verdict=$verdict;Reason='Per-expectation results from authenticated product journal snapshots and Application provider XML; see ServiceEvidence.'}
-    $result=[pscustomobject]@{Source='AuthenticatedAgentJournalFilesAndWindowsApplicationRecords';TrustBoundary='SYSTEM owner, exact protected SYSTEM/Administrators DACL, no reparses, single-link bounded manifests, same-handle ACL and bytes; privileged local actors trusted';
+    $assertions+=@{Name='ActualServiceTimelines';Verdict=$verdict;Reason='Per-expectation results from authenticated product journal snapshots and durable notification chain; see ServiceEvidence.'}
+    $result=[pscustomobject]@{Source='AuthenticatedAgentJournalAndNotificationRecord';NotificationProof=$notificationProof;NotificationEmissions=$notificationProof.Emissions;TrustBoundary='SYSTEM-owned policy/journal; SYSTEM or Administrators-owned notification record; exact protected SYSTEM/Administrators DACL, no reparses, single-link bounded manifests, same-handle ACL and bytes; privileged local actors trusted';
         Before=$Before;After=$After;OperationFence=$Fence;WindowBound=$windowKnown;ApplicationStatus=$eventStatus;ApplicationReason=$eventReason;ApplicationEvents=$events;Assertions=$assertions}
     Save-State $result (Join-Path $evidenceDirectory 'service-timeline.clixml')
     return $result
@@ -794,7 +930,7 @@ $value=$b.ToString().Split([char]0)[0]
         $serviceFence=[pscustomobject]@{Complete=($writer.ExitCode -eq 0 -and $writer.Value.Held -eq $false);BootId=$writer.BootId;
             QpcFrequency=$writer.Value.QpcFrequency;ReleasedQpc=$writer.Value.ReleasedQpc;CompletedQpc=$writer.CompletedQpc}
         $trial.ServiceEvidence=Get-ServiceTimeline $trial.ServiceBefore $trial.ServiceAfter $serviceFence
-        $trial.Journal=$trial.ServiceAfter.Journal;$trial.Notifications=$trial.ServiceEvidence.ApplicationEvents
+        $trial.Journal=$trial.ServiceAfter.Journal;$trial.Notifications=$trial.ServiceEvidence.NotificationEmissions
         $trial.Assertions+=@($trial.ServiceEvidence.Assertions)
         $trial.VerifierAfter=Get-VerifierEvidence 'after' -RequireMode
         for($n=0;$n -le 100;$n++){
@@ -1109,7 +1245,7 @@ $value=$b.ToString().Split([char]0)[0]
         InputHashes=@{Table=$ExpectedTableSha256;Observer=$ExpectedObserverSha256;Suite=$ExpectedSuiteSha256;Helper=$ExpectedHelperSha256;
             Feature=$ExpectedFeatureSha256;Inspector=$ExpectedInspectorSha256;ServicePackage=$ExpectedServicePackageSha256;ServiceTree=$ExpectedServiceTreeSha256};
         BootIds=@{Prepare=$state.PrepareBootId;Active=$state.AfterBootId;Final=(Get-BootId)};Restoration=@{GuestChecks=$true;IndependentBaseline=$null;Known=$false};
-        AuthoritativeCaseExport=$false;Reasons=@('Seed rows do not qualify Phase4; driver lower mutation ledger and live taint readback unavailable; current NotificationHub has no durable emission timeline');
+        AuthoritativeCaseExport=$false;Reasons=@('Seed rows do not qualify Phase4; driver lower mutation ledger and live taint readback unavailable; notification absence requires complete authenticated record coverage');
         Load=@{ComputerSystem=(Get-CimInstance Win32_ComputerSystem | Select-Object NumberOfLogicalProcessors,TotalPhysicalMemory);Cpu=(Get-CimInstance Win32_Processor | Select-Object Name,NumberOfCores);Disk=(Get-Disk | Select-Object Number,FriendlyName,BusType);ObserverPriority=[string][Diagnostics.Process]::GetCurrentProcess().PriorityClass}}
     Copy-Item -LiteralPath $statePath -Destination (Join-Path $evidenceDirectory 'lifecycle.clixml')
     Copy-Item -LiteralPath $actorDirectory -Destination (Join-Path $evidenceDirectory 'actor') -Recurse

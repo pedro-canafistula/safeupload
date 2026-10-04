@@ -49,7 +49,7 @@
                 AccessReason = 'NTFS reads update in-memory LastAccess; disk updates are lazy (at most one hour when enabled). Disabled updates require exact baseline raw Accessed; API Accessed may advance only between baseline and sample-end FILETIME. No other field is tolerated.'
                 Source = 'https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/fsutil-behavior'
             }
-            ServiceEvidence = @{ Journal = '%ProgramData%\SafeUpload\staging-journal'; OwnerSid = 'S-1-5-18'; ProtectedAcl = 'Exact SYSTEM and Administrators full control'; EventLog = 'Application'; Provider = 'SafeUpload.Agent.Service'; NotificationContract = 'Unavailable: NotificationHub emits no durable event'; Scope = 'Fixture destination paths; retained journal manifests' }
+            ServiceEvidence = @{ Journal = '%ProgramData%\SafeUpload\staging-journal'; OwnerSid = 'S-1-5-18'; ProtectedAcl = 'Exact SYSTEM and Administrators full control'; EventLog = 'Application'; Provider = 'SafeUpload.Agent.Service'; NotificationContract = 'v1 notifications/emissions.jsonl + previous.jsonl + head.json; complete boot/QPC/instance coverage required'; Scope = 'Fixture destination paths; retained journal manifests' }
             JournalExpectations = @('NoNewTransfer', 'NoApproved', 'NoReleased')
             NotificationExpectations = @('NoApproval', 'NoRelease', 'NoHandBack')
             AllowedDirectoryTransitions = @('SameActiveNamesIdsSizesAttributesSecurity')
@@ -75,7 +75,7 @@
                 AccessReason = 'NTFS reads update in-memory LastAccess; disk updates are lazy (at most one hour when enabled). Disabled updates require exact baseline raw Accessed; API Accessed may advance only between baseline and sample-end FILETIME. No other field is tolerated.'
                 Source = 'https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/fsutil-behavior'
             }
-            ServiceEvidence = @{ Journal = '%ProgramData%\SafeUpload\staging-journal'; OwnerSid = 'S-1-5-18'; ProtectedAcl = 'Exact SYSTEM and Administrators full control'; EventLog = 'Application'; Provider = 'SafeUpload.Agent.Service'; NotificationContract = 'Unavailable: NotificationHub emits no durable event'; Scope = 'Fixture destination paths; retained journal manifests' }
+            ServiceEvidence = @{ Journal = '%ProgramData%\SafeUpload\staging-journal'; OwnerSid = 'S-1-5-18'; ProtectedAcl = 'Exact SYSTEM and Administrators full control'; EventLog = 'Application'; Provider = 'SafeUpload.Agent.Service'; NotificationContract = 'v1 notifications/emissions.jsonl + previous.jsonl + head.json; complete boot/QPC/instance coverage required'; Scope = 'Fixture destination paths; retained journal manifests' }
             JournalExpectations = @('NoNewTransfer', 'NoApproved', 'NoReleased')
             NotificationExpectations = @('NoApproval', 'NoRelease', 'NoHandBack')
             AllowedDirectoryTransitions = @('SameActiveNamesIdsSizesAttributesSecurity')
@@ -101,7 +101,7 @@
                 AccessReason = 'NTFS reads update in-memory LastAccess; disk updates are lazy (at most one hour when enabled). Disabled updates require exact baseline raw Accessed; API Accessed may advance only between baseline and sample-end FILETIME. No other field is tolerated.'
                 Source = 'https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/fsutil-behavior'
             }
-            ServiceEvidence = @{ Journal = '%ProgramData%\SafeUpload\staging-journal'; OwnerSid = 'S-1-5-18'; ProtectedAcl = 'Exact SYSTEM and Administrators full control'; EventLog = 'Application'; Provider = 'SafeUpload.Agent.Service'; NotificationContract = 'Unavailable: NotificationHub emits no durable event'; Scope = 'Fixture destination paths; retained journal manifests' }
+            ServiceEvidence = @{ Journal = '%ProgramData%\SafeUpload\staging-journal'; OwnerSid = 'S-1-5-18'; ProtectedAcl = 'Exact SYSTEM and Administrators full control'; EventLog = 'Application'; Provider = 'SafeUpload.Agent.Service'; NotificationContract = 'v1 notifications/emissions.jsonl + previous.jsonl + head.json; complete boot/QPC/instance coverage required'; Scope = 'Fixture destination paths; retained journal manifests' }
             JournalExpectations = @('NoNewTransfer', 'NoApproved', 'NoReleased')
             NotificationExpectations = @('NoApproval', 'NoRelease', 'NoHandBack')
             AllowedDirectoryTransitions = @('SameActiveNamesIdsSizesAttributesSecurity')
