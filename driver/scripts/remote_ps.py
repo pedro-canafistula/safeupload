@@ -12,8 +12,26 @@ if not script.strip():
 script = "$global:ProgressPreference = 'SilentlyContinue'\n" + script
 # Suppress module progress globally and request text when OpenSSH invokes a PowerShell shell,
 # keeping serialized progress records from interleaving with stdout evidence.
-command = "powershell.exe -NoProfile -NonInteractive -OutputFormat Text -ExecutionPolicy Bypass -EncodedCommand " + base64.b64encode(script.encode("utf-16le")).decode()
-raise SystemExit(subprocess.call([
-    "ssh", "-F", "/dev/null", "-i", "/home/victor/.ssh/id_ed25519",
-    "-o", "BatchMode=yes", "-o", "ConnectTimeout=10", "-o", "LogLevel=ERROR", "-o", "StrictHostKeyChecking=accept-new",
-    "vika@" + sys.argv[1], command]))
+SSH = ["-F", "/dev/null", "-i", "/home/victor/.ssh/id_ed25519",
+       "-o", "BatchMode=yes", "-o", "ConnectTimeout=10", "-o", "LogLevel=ERROR", "-o", "StrictHostKeyChecking=accept-new"]
+PREFIX = "powershell.exe -NoProfile -NonInteractive -OutputFormat Text -ExecutionPolicy Bypass "
+command = PREFIX + "-EncodedCommand " + base64.b64encode(script.encode("utf-16le")).decode()
+if len(command) > 7000:
+    # Windows OpenSSH runs the command through cmd.exe, which caps a command line at 8,191 characters, and -EncodedCommand
+    # inflates the script ~2.7x ("The command line is too long": S00 attempt 2, the guest cleanup script). Larger scripts go up as a UTF-8 BOM file (PowerShell 5.1 reads
+    # BOM-less files as ANSI), run with -File, and are removed; the script's exit code is passed through.
+    import os, tempfile, uuid
+    name = "remote_ps_" + uuid.uuid4().hex + ".ps1"
+    with tempfile.NamedTemporaryFile("w", encoding="utf-8-sig", suffix=".ps1", delete=False) as handle:
+        handle.write(script)
+        local = handle.name
+    try:
+        if subprocess.call(["scp"] + SSH + [local, "vika@" + sys.argv[1] + ":C:/Users/vika/AppData/Local/Temp/" + name]) != 0:
+            raise SystemExit("Could not stage the long script on the guest")
+    finally:
+        os.unlink(local)
+    remote = "C:\\Users\\vika\\AppData\\Local\\Temp\\" + name
+    runner = ("$p='" + remote + "'; try { & powershell.exe -NoProfile -NonInteractive -OutputFormat Text -ExecutionPolicy Bypass "
+              "-File $p; $code = $LASTEXITCODE } finally { Remove-Item -LiteralPath $p -Force -ErrorAction SilentlyContinue }; exit $code")
+    command = PREFIX + "-EncodedCommand " + base64.b64encode(runner.encode("utf-16le")).decode()
+raise SystemExit(subprocess.call(["ssh"] + SSH + ["vika@" + sys.argv[1], command]))
