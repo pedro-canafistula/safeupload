@@ -298,3 +298,13 @@ limit). Open carried-forward item before release: N-01 (normal build needs a can
 Phase 4 design v1 accepted (2026-10-04, [design](evidence/2026-10-04/phase4-suite-design-v1.txt)): one observer module + case table + runner; work packages WP1-WP7
 (observer library and VM self-tests can start before Phase 3 enforcement exists; case batches need Phase 3). A flush at the cutoff that includes post-cutoff stores (case A05) would
 falsify the Phase 3 cutoff mechanism; the harness must test it, never reinterpret the cutoff.
+- **2026-10-04, owner-approved: the writer registry is a ledger, not a gate.** registry-txf runs 2-4 showed the Phase 3
+  registry denying every writer create on a volume once the instance was Unknown (a handle that predates the driver closing,
+  a full table, an allocation failure): the guest's own SYSTEM tasks could not write files. Decision: tracking loss never
+  refuses or cancels I/O. It records Unknown at the narrowest correct scope (entry, else instance, machine-wide only under the
+  scoped lost-tracking rule), sticky until reboot; Unknown only withholds protection claims and promotion (files stay
+  Activating) and is reported loudly. Scoped writes stay fail-closed in exactly one place, the existing admission path. An
+  unmatched writer cleanup counts as loss only on a trusted (boot-attached) instance; late-attached volumes claim nothing.
+  Registry capacity stays bounded per instance; overflow can only stop new scopes from activating, never stop writes (a
+  per-user quota may come later). Free/promotion tests run in boot-start mode (trusted instance); late-load harness runs
+  assert H/S/C/T and Unknown reporting only.

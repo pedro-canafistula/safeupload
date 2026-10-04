@@ -1,0 +1,1 @@
+Could not determine the checkpoint overlay backing file: /var/lib/libvirt/images/win10-debug.safeupload-pre-registry-txf-run4-20261004

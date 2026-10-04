@@ -1,0 +1,11 @@
+GUEST_RECOVERY_REQUIRED=True
+Reason=The guest harness did not return within 5400 s; a guest command is hung.
+Checkpoint=safeupload-pre-registry-txf-run4-20261004
+ActiveOverlay=/var/lib/libvirt/images/win10-debug.safeupload-pre-registry-txf-run4-20261004
+Domain=win10-debug
+ Type   Device   Target   Source
+---------------------------------------------------------------------------------------------------------
+ file   disk     vda      /var/lib/libvirt/images/win10-debug.safeupload-pre-registry-txf-run4-20261004
+ file   cdrom    sda      -
+ file   cdrom    sdb      -
+

@@ -1,0 +1,227 @@
+Opened log file 'C:\Users\vika\Documents\forensic\p3-unload-hang-cdb16.txt'
+
+************* Preparing the environment for Debugger Extensions Gallery repositories **************
+   ExtensionRepository : Implicit
+   UseExperimentalFeatureForNugetShare : true
+   AllowNugetExeUpdate : true
+   NonInteractiveNuget : true
+   AllowNugetMSCredentialProviderInstall : true
+   AllowParallelInitializationOfLocalRepositories : true
+   EnableRedirectToChakraJsProvider : false
+
+   -- Configuring repositories
+      ----> Repository : LocalInstalled, Enabled: true
+      ----> Repository : UserExtensions, Enabled: true
+
+>>>>>>>>>>>>> Preparing the environment for Debugger Extensions Gallery repositories completed, duration 0.000 seconds
+
+************* Waiting for Debugger Extensions Gallery to Initialize **************
+
+>>>>>>>>>>>>> Waiting for Debugger Extensions Gallery to Initialize completed, duration 0.031 seconds
+   ----> Repository : UserExtensions, Enabled: true, Packages count: 0
+   ----> Repository : LocalInstalled, Enabled: true, Packages count: 30
+
+Microsoft (R) Windows Debugger Version 10.0.28000.2705 AMD64
+Copyright (c) Microsoft Corporation. All rights reserved.
+
+
+Loading Dump File [C:\Users\vika\Documents\forensic\p3-unload-hang.dmp]
+Kernel Complete Dump File: Full address space is available
+
+Comment: 'Hello from elf2dmp!'
+
+************* Path validation summary **************
+Response                         Time (ms)     Location
+Deferred                                       srv*C:\symbols
+OK                                             C:\Users\vika\Documents\exact-mvp3-a5\src\driver\SafeUpload.Minifilter\x64\Debug
+Symbol search path is: srv*C:\symbols;C:\Users\vika\Documents\exact-mvp3-a5\src\driver\SafeUpload.Minifilter\x64\Debug
+Executable search path is: 
+NatVis script successfully loaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\atlmfc.natvis'
+NatVis script successfully loaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\concurrency.natvis'
+NatVis script successfully loaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\cpp_rest.natvis'
+NatVis script successfully loaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\Kernel.natvis'
+NatVis script successfully loaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\ObjectiveC.natvis'
+NatVis script successfully loaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\stl.natvis'
+NatVis script successfully loaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\Usb4Kd.natvis'
+NatVis script successfully loaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\Windows.Data.Json.natvis'
+NatVis script successfully loaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\Windows.Devices.Geolocation.natvis'
+NatVis script successfully loaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\Windows.Devices.Sensors.natvis'
+NatVis script successfully loaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\Windows.Media.natvis'
+NatVis script successfully loaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\windows.natvis'
+NatVis script successfully loaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\winrt.natvis'
+KiProcessorBlock[2] is null.
+KiProcessorBlock[3] is null.
+Windows 10 Kernel Version 19041 MP (4 procs) Free x64
+Product: WinNt, suite: TerminalServer SingleUserTS
+Edition build lab: 19041.1.amd64fre.vb_release.191206-1406
+Kernel base = 0xfffff802`75400000 PsLoadedModuleList = 0xfffff802`7602a2b0
+System Uptime: 0 days 7:13:09.824
+Loading Kernel Symbols
+...............................................................
+................................................................
+..........................................
+Loading User Symbols
+
+Loading unloaded module list
+..
+Unknown exception - code 00000000 (first/second chance not available)
+For analysis of this file, run !analyze -v
+0: kd> !poolfind rUwS 0; !poolfind HwUS 0; !poolfind tUwS 0; q
+Usage: !poolfind [-tag] <tag> [options] [-x "cmd"]
+
+  tag:       A string or a hex value specifying the tag to search for,
+             may include * and ? wildcards. If the tag contains spaces,
+             use -tag switch and put the tag in quotes.
+
+  cmd:       Command to execute for each found allocation. The @$extret register
+             contains the address of the allocation.
+
+Search options:
+
+  -nonpaged  Search non-paged pool.
+  -paged     Search paged pool.
+
+  -global    Search global (non-session) pool.
+  -session   Search session pool.
+
+  -regular   Search regular (non-special) pool.
+  -special   Search special pool.
+
+  -small     Include small (sub-page) allocations.
+  -large     Include large (page-aligned) allocations.
+
+  -busy      Include busy allocations.
+  -free      Include free allocations.
+
+             The options above are additive. For example, specifying -global
+             and -session will search both global and session pools.
+             If no options are specified, a global non-paged search is
+             performed. Both small and large allocations are included, as well
+             regular and special pool. Free allocations are not included.
+
+  -process   Interpret tag value as a process pointer and search for
+             quota allocations charged to that process.
+
+Notes:
+
+  Allocation sizes reported by this command do not include the size of the
+  pool header (if one is present). Similarly, allocation addresses represent
+  the start of the user accessible portion of the allocation.
+
+Examples:
+
+  !poolfind Mm*               - Find all Mm allocations in nonpaged pool.
+  !poolfind MmSt -paged       - Find MmSt allocations in paged pool.
+  !poolfind Gla1 -session     - Find Gla1 allocations in session pool.
+  !poolfind -tag "AB C"       - Find pool tag which contains a space.
+  !poolfind -x "dt nt!_MDL @$extret" Mdl  - Find and print MDL allocations.
+Usage: !poolfind [-tag] <tag> [options] [-x "cmd"]
+
+  tag:       A string or a hex value specifying the tag to search for,
+             may include * and ? wildcards. If the tag contains spaces,
+             use -tag switch and put the tag in quotes.
+
+  cmd:       Command to execute for each found allocation. The @$extret register
+             contains the address of the allocation.
+
+Search options:
+
+  -nonpaged  Search non-paged pool.
+  -paged     Search paged pool.
+
+  -global    Search global (non-session) pool.
+  -session   Search session pool.
+
+  -regular   Search regular (non-special) pool.
+  -special   Search special pool.
+
+  -small     Include small (sub-page) allocations.
+  -large     Include large (page-aligned) allocations.
+
+  -busy      Include busy allocations.
+  -free      Include free allocations.
+
+             The options above are additive. For example, specifying -global
+             and -session will search both global and session pools.
+             If no options are specified, a global non-paged search is
+             performed. Both small and large allocations are included, as well
+             regular and special pool. Free allocations are not included.
+
+  -process   Interpret tag value as a process pointer and search for
+             quota allocations charged to that process.
+
+Notes:
+
+  Allocation sizes reported by this command do not include the size of the
+  pool header (if one is present). Similarly, allocation addresses represent
+  the start of the user accessible portion of the allocation.
+
+Examples:
+
+  !poolfind Mm*               - Find all Mm allocations in nonpaged pool.
+  !poolfind MmSt -paged       - Find MmSt allocations in paged pool.
+  !poolfind Gla1 -session     - Find Gla1 allocations in session pool.
+  !poolfind -tag "AB C"       - Find pool tag which contains a space.
+  !poolfind -x "dt nt!_MDL @$extret" Mdl  - Find and print MDL allocations.
+Usage: !poolfind [-tag] <tag> [options] [-x "cmd"]
+
+  tag:       A string or a hex value specifying the tag to search for,
+             may include * and ? wildcards. If the tag contains spaces,
+             use -tag switch and put the tag in quotes.
+
+  cmd:       Command to execute for each found allocation. The @$extret register
+             contains the address of the allocation.
+
+Search options:
+
+  -nonpaged  Search non-paged pool.
+  -paged     Search paged pool.
+
+  -global    Search global (non-session) pool.
+  -session   Search session pool.
+
+  -regular   Search regular (non-special) pool.
+  -special   Search special pool.
+
+  -small     Include small (sub-page) allocations.
+  -large     Include large (page-aligned) allocations.
+
+  -busy      Include busy allocations.
+  -free      Include free allocations.
+
+             The options above are additive. For example, specifying -global
+             and -session will search both global and session pools.
+             If no options are specified, a global non-paged search is
+             performed. Both small and large allocations are included, as well
+             regular and special pool. Free allocations are not included.
+
+  -process   Interpret tag value as a process pointer and search for
+             quota allocations charged to that process.
+
+Notes:
+
+  Allocation sizes reported by this command do not include the size of the
+  pool header (if one is present). Similarly, allocation addresses represent
+  the start of the user accessible portion of the allocation.
+
+Examples:
+
+  !poolfind Mm*               - Find all Mm allocations in nonpaged pool.
+  !poolfind MmSt -paged       - Find MmSt allocations in paged pool.
+  !poolfind Gla1 -session     - Find Gla1 allocations in session pool.
+  !poolfind -tag "AB C"       - Find pool tag which contains a space.
+  !poolfind -x "dt nt!_MDL @$extret" Mdl  - Find and print MDL allocations.
+quit:
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\atlmfc.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\concurrency.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\cpp_rest.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\Kernel.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\ObjectiveC.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\stl.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\Usb4Kd.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\Windows.Data.Json.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\Windows.Devices.Geolocation.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\Windows.Devices.Sensors.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\Windows.Media.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\windows.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\winrt.natvis'

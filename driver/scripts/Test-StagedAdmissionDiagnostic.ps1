@@ -4412,10 +4412,11 @@ public static class SafeUploadEolNative
                 $capacityReasonText = $capacityReasonText.Substring(2)
             }
             $capacityBits = [Convert]::ToUInt32($capacityReasonText, 16)
-            $capacityOk = $overflowOpenFailed -and $overflowError -eq 5 -and
+            # The registry is a ledger, not a gate (MVP-PLAN 2026-10-04): overflow records Unknown and the open SUCCEEDS.
+            $capacityOk = (-not $overflowOpenFailed) -and $overflowError -eq 0 -and
                 [int]$capacityAfter.registryOverflow -gt [int]$capacityBefore.registryOverflow -and
                 (($capacityBits -band 1) -ne 0) -and [int]$capacityAfter.registryInstanceUnknown -gt 0
-            Add-RTOutcome 'CapacityOverflowClosesInstance' $capacityOk ('smallCapacity:8;Win32Error:' + $overflowError +
+            Add-RTOutcome 'CapacityOverflowRecordsUnknownWritesProceed' $capacityOk ('smallCapacity:8;Win32Error:' + $overflowError +
                 ';overflowDelta:' + ([int]$capacityAfter.registryOverflow - [int]$capacityBefore.registryOverflow) +
                 ';unknownReasons:' + $capacityAfter.registryUnknownReasons + ';instanceUnknown:' +
                 $capacityAfter.registryInstanceUnknown)
@@ -4424,8 +4425,11 @@ public static class SafeUploadEolNative
             $closedWriterError = if ($closedWriter.IsInvalid) { [SafeUploadRegistryTxfNative]::LastError() } else { 0 }
             $closedWriterIsInvalid = [bool]$closedWriter.IsInvalid
             if (-not $closedWriterIsInvalid) { $closedWriter.Dispose() }
-            Add-RTOutcome 'CapacityFailureStickyAdmissionClose' ($closedWriterIsInvalid -and $closedWriterError -eq 5) `
-                ('Win32Error:' + $closedWriterError + ';secondWriterRefused:' + $closedWriterIsInvalid)
+            $stickyAfter = Get-RTStats
+            Add-RTOutcome 'CapacityUnknownStickyWritesProceed' ((-not $closedWriterIsInvalid) -and $closedWriterError -eq 0 -and
+                [int]$stickyAfter.registryInstanceUnknown -gt 0) `
+                ('Win32Error:' + $closedWriterError + ';secondWriterRefused:' + $closedWriterIsInvalid +
+                ';instanceUnknown:' + $stickyAfter.registryInstanceUnknown)
             [void](Invoke-InspectorChecked -Arguments @('--registry-capacity', '0') -Timeout $t)
             [void](Invoke-InspectorChecked -Arguments @('--admission-trace-disable') -Timeout $t)
             $traceEnabled = $false

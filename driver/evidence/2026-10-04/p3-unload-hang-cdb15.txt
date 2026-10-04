@@ -1,0 +1,111 @@
+Opened log file 'C:\Users\vika\Documents\forensic\p3-unload-hang-cdb15.txt'
+
+************* Preparing the environment for Debugger Extensions Gallery repositories **************
+   ExtensionRepository : Implicit
+   UseExperimentalFeatureForNugetShare : true
+   AllowNugetExeUpdate : true
+   NonInteractiveNuget : true
+   AllowNugetMSCredentialProviderInstall : true
+   AllowParallelInitializationOfLocalRepositories : true
+   EnableRedirectToChakraJsProvider : false
+
+   -- Configuring repositories
+      ----> Repository : LocalInstalled, Enabled: true
+      ----> Repository : UserExtensions, Enabled: true
+
+>>>>>>>>>>>>> Preparing the environment for Debugger Extensions Gallery repositories completed, duration 0.000 seconds
+
+************* Waiting for Debugger Extensions Gallery to Initialize **************
+
+>>>>>>>>>>>>> Waiting for Debugger Extensions Gallery to Initialize completed, duration 0.032 seconds
+   ----> Repository : UserExtensions, Enabled: true, Packages count: 0
+   ----> Repository : LocalInstalled, Enabled: true, Packages count: 30
+
+Microsoft (R) Windows Debugger Version 10.0.28000.2705 AMD64
+Copyright (c) Microsoft Corporation. All rights reserved.
+
+
+Loading Dump File [C:\Users\vika\Documents\forensic\p3-unload-hang.dmp]
+Kernel Complete Dump File: Full address space is available
+
+Comment: 'Hello from elf2dmp!'
+
+************* Path validation summary **************
+Response                         Time (ms)     Location
+Deferred                                       srv*C:\symbols
+OK                                             C:\Users\vika\Documents\exact-mvp3-a5\src\driver\SafeUpload.Minifilter\x64\Debug
+Symbol search path is: srv*C:\symbols;C:\Users\vika\Documents\exact-mvp3-a5\src\driver\SafeUpload.Minifilter\x64\Debug
+Executable search path is: 
+NatVis script successfully loaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\atlmfc.natvis'
+NatVis script successfully loaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\concurrency.natvis'
+NatVis script successfully loaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\cpp_rest.natvis'
+NatVis script successfully loaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\Kernel.natvis'
+NatVis script successfully loaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\ObjectiveC.natvis'
+NatVis script successfully loaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\stl.natvis'
+NatVis script successfully loaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\Usb4Kd.natvis'
+NatVis script successfully loaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\Windows.Data.Json.natvis'
+NatVis script successfully loaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\Windows.Devices.Geolocation.natvis'
+NatVis script successfully loaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\Windows.Devices.Sensors.natvis'
+NatVis script successfully loaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\Windows.Media.natvis'
+NatVis script successfully loaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\windows.natvis'
+NatVis script successfully loaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\winrt.natvis'
+KiProcessorBlock[2] is null.
+KiProcessorBlock[3] is null.
+Windows 10 Kernel Version 19041 MP (4 procs) Free x64
+Product: WinNt, suite: TerminalServer SingleUserTS
+Edition build lab: 19041.1.amd64fre.vb_release.191206-1406
+Kernel base = 0xfffff802`75400000 PsLoadedModuleList = 0xfffff802`7602a2b0
+System Uptime: 0 days 7:13:09.824
+Loading Kernel Symbols
+...............................................................
+................................................................
+..........................................
+Loading User Symbols
+
+Loading unloaded module list
+..
+Unknown exception - code 00000000 (first/second chance not available)
+For analysis of this file, run !analyze -v
+0: kd> x FLTMGR!FltpObject*; uf FLTMGR!FltObjectReference; uf FLTMGR!FltObjectDereference; q
+Unable to load image \SystemRoot\system32\kd_02_8086.dll, Win32 error 0n2
+fffff802`7229ea98 FLTMGR!FltpObjectPointerDereference (void)
+fffff802`722a30a8 FLTMGR!FltpObjectPointerReference (FltpObjectPointerReference)
+FLTMGR!FltObjectReference:
+fffff802`72262cb0 4883ec28        sub     rsp,28h
+fffff802`72262cb4 4883c108        add     rcx,8
+fffff802`72262cb8 4c8b1581da0200  mov     r10,qword ptr [FLTMGR!_imp_ExAcquireRundownProtection (fffff802`72290740)]
+fffff802`72262cbf e8cc184903      call    nt!ExfAcquireRundownProtection (fffff802`756f4590)
+fffff802`72262cc4 84c0            test    al,al
+fffff802`72262cc6 7408            je      FLTMGR!FltObjectReference+0x20 (fffff802`72262cd0)  Branch
+
+FLTMGR!FltObjectReference+0x18:
+fffff802`72262cc8 33c0            xor     eax,eax
+
+FLTMGR!FltObjectReference+0x1a:
+fffff802`72262cca 4883c428        add     rsp,28h
+fffff802`72262cce c3              ret
+
+FLTMGR!FltObjectReference+0x20:
+fffff802`72262cd0 b80b001cc0      mov     eax,0C01C000Bh
+fffff802`72262cd5 ebf3            jmp     FLTMGR!FltObjectReference+0x1a (fffff802`72262cca)  Branch
+FLTMGR!FltMgrFsRtlEcpCleanup:
+fffff802`7226a4d0 4883ec28        sub     rsp,28h
+fffff802`7226a4d4 4883c108        add     rcx,8
+fffff802`7226a4d8 4c8b1569620200  mov     r10,qword ptr [FLTMGR!_imp_ExReleaseRundownProtection (fffff802`72290748)]
+fffff802`7226a4df e84c0d4903      call    nt!ExfReleaseRundownProtection (fffff802`756fb230)
+fffff802`7226a4e4 4883c428        add     rsp,28h
+fffff802`7226a4e8 c3              ret
+quit:
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\atlmfc.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\concurrency.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\cpp_rest.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\Kernel.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\ObjectiveC.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\stl.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\Usb4Kd.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\Windows.Data.Json.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\Windows.Devices.Geolocation.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\Windows.Devices.Sensors.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\Windows.Media.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\windows.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\winrt.natvis'

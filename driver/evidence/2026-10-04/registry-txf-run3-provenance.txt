@@ -1,0 +1,16 @@
+SourceCommit=18581005d4a097b6513e90d35344e10f5d5a3bb4
+HarnessSourceCommit=c198be60ea822788514006c095833d551beb52d4
+MainBuildLabel=mvp3-a5
+Variant=registry-txf
+Verifier=True
+ExpectedChecks=1
+Invocation=$ErrorActionPreference='Stop';$d='C:\Users\vika\Documents';if((Get-FileHash (Join-Path $d 'Test-StagedAdmissionDiagnostic.ps1') -Algorithm SHA256).Hash -ne '26BE68B8CDCE92B29E8264D2F6360B82C713304D7051683772C9390790710927'){throw 'Harness hash mismatch'};$sig=Get-AuthenticodeSignature (Join-Path $d 'SafeUpload-stage-prototype-mvp3-a5.sys');if($sig.Status.ToString() -ne 'Valid' -or $sig.SignerCertificate.Thumbprint -ne '220DD82C37FCF36048D59E4F10113185D81D5DC7'){throw 'Upper signature preflight failed'};& (Join-Path $d 'Test-StagedAdmissionDiagnostic.ps1') -Variant registry-txf -RequireAllVolumeCanaries -Verifier -ExpectedServicePackageSha256 '1B5DDA54236CDCAA5DD09F1347507D7B5BB1F87C347F01FFB51379CC7F3438C5' -FeatureDriverFileName 'SafeUpload-stage-prototype-mvp3-a5.sys' -ExpectedFeatureSha256 'B4A9991123ABAC6248B64132588DAAF6E41D5D25ADAD43DF6AA1A8401FB61795' -InspectorInputFileName 'SafeUpload.Inspector.mvp3-a5.exe' -ExpectedInspectorSha256 'A589245F69F426716DCAFF8AA69E9D00AD2F8EF4D0AC37E72FFFF52E3885038A' -TestAgentHelperFileName 'StagedTestAgent-AC22CE113383FB25.ps1'
+2FA29F0B1A8DD66DAC93A2C2B45CD478487225A5C2B9A258AB37D5C93FE7A638  driver/scripts/Invoke-StagedRegistryTxfQualification.py
+26BE68B8CDCE92B29E8264D2F6360B82C713304D7051683772C9390790710927  driver/scripts/Test-StagedAdmissionDiagnostic.ps1
+D29D2330750CCB760FBC24F5B8788BCCA011F578B24071EFD9C7F799D87A4D73  driver/scripts/Get-StagedBaseline.ps1
+AC22CE113383FB25C753C4225AC12F4A920D6166022D6FFE6363AFA52DE991DF  driver/scripts/StagedTestAgent.ps1
+FFF0207C31B37418D3B84EA5B895BA19D689E71807C34EB7831A4E9553EE039B  driver/scripts/Invoke-DebuggeeExperiment.sh
+76AF25CA7B3784C67D5A07322A87FD3835CAD5FD2E6B9F05A1E0869DA50ABC27  driver/scripts/remote_ps.py
+Input=SafeUpload-stage-prototype-mvp3-a5.sys;SHA256=B4A9991123ABAC6248B64132588DAAF6E41D5D25ADAD43DF6AA1A8401FB61795
+Input=SafeUpload.Inspector.mvp3-a5.exe;SHA256=A589245F69F426716DCAFF8AA69E9D00AD2F8EF4D0AC37E72FFFF52E3885038A
+Input=StagedTestAgent-AC22CE113383FB25.ps1;SHA256=AC22CE113383FB25C753C4225AC12F4A920D6166022D6FFE6363AFA52DE991DF

@@ -486,10 +486,9 @@ NTSTATUS SafeUploadStageWritersReserveCreate(_In_ PFLT_CALLBACK_DATA Data,
 
     status = FltGetInstanceContext(FltObjects->Instance, (PFLT_CONTEXT *)&instanceContext);
     if (!NT_SUCCESS(status)) {
-        *Required = TRUE;
         InterlockedIncrement64(&RegistryIdentityFailures);
         StageRegistryMarkUnknown(FltObjects->Instance, SAFEUPLOAD_REGISTRY_UNKNOWN_IDENTITY, TRUE);
-        return STATUS_ACCESS_DENIED;
+        return STATUS_SUCCESS; /* tracking lost; the ledger never refuses a create */
     }
     kind = instanceContext->VolumeKind;
     if (instanceContext->TeardownToken == NULL ||
@@ -499,17 +498,18 @@ NTSTATUS SafeUploadStageWritersReserveCreate(_In_ PFLT_CALLBACK_DATA Data,
             InterlockedCompareExchange(&instanceContext->TeardownToken->State, 0, 0) :
             SAFEUPLOAD_INSTANCE_STATE_UNKNOWN;
         FltReleaseContext(instanceContext);
-        *Required = TRUE;
         if (teardownState != SAFEUPLOAD_INSTANCE_STATE_TEARING_DOWN) {
             StageRegistryMarkUnknown(FltObjects->Instance,
                 SAFEUPLOAD_REGISTRY_UNKNOWN_TEARDOWN, TRUE);
         }
-        return STATUS_ACCESS_DENIED;
+        return STATUS_SUCCESS; /* the instance is going away; its creates proceed untracked */
     }
     if (InterlockedCompareExchange(&instanceContext->WritersUntracked, 0, 0) != 0 ||
         InterlockedCompareExchange(&instanceContext->RegistryUnknownReasons, 0, 0) != 0) {
+        /* Already Unknown until reboot: nothing left to track and no protection is claimed. The registry is a ledger,
+         * not a gate (MVP-PLAN 2026-10-04): refusing here locked every writer out of the volume (registry-txf runs 2-4). */
         FltReleaseContext(instanceContext);
-        return STATUS_ACCESS_DENIED;
+        return STATUS_SUCCESS;
     }
     FltReleaseContext(instanceContext);
     instanceContext = NULL;
@@ -517,8 +517,7 @@ NTSTATUS SafeUploadStageWritersReserveCreate(_In_ PFLT_CALLBACK_DATA Data,
     if (!NT_SUCCESS(status)) {
         InterlockedIncrement64(&RegistryIdentityFailures);
         StageRegistryMarkUnknown(FltObjects->Instance, SAFEUPLOAD_REGISTRY_UNKNOWN_IDENTITY, TRUE);
-        *Required = TRUE;
-        return STATUS_ACCESS_DENIED;
+        return STATUS_SUCCESS;
     }
     if (kind != SafeUploadVolumeFixed || fs != FLT_FSTYPE_NTFS)
         return STATUS_SUCCESS; /* Registry scope is the qualified fixed-NTFS envelope. */
@@ -527,7 +526,7 @@ NTSTATUS SafeUploadStageWritersReserveCreate(_In_ PFLT_CALLBACK_DATA Data,
     if (FlagOn(Data->Iopb->Parameters.Create.Options, FILE_OPEN_BY_FILE_ID)) {
         InterlockedIncrement64(&RegistryIdentityFailures);
         StageRegistryMarkUnknown(FltObjects->Instance, SAFEUPLOAD_REGISTRY_UNKNOWN_IDENTITY, FALSE);
-        return STATUS_ACCESS_DENIED;
+        return STATUS_SUCCESS; /* a by-ID writer has no name key: tracking lost, the create proceeds */
     }
     status = FltGetFileNameInformation(Data,
         FLT_FILE_NAME_NORMALIZED | FLT_FILE_NAME_QUERY_DEFAULT, &name);
@@ -568,7 +567,7 @@ NTSTATUS SafeUploadStageWritersReserveCreate(_In_ PFLT_CALLBACK_DATA Data,
     status = FltGetInstanceContext(FltObjects->Instance, (PFLT_CONTEXT *)&instanceContext);
     if (!NT_SUCCESS(status)) {
         StageRegistryMarkUnknown(FltObjects->Instance, SAFEUPLOAD_REGISTRY_UNKNOWN_TEARDOWN, TRUE);
-        status = STATUS_ACCESS_DENIED;
+        status = STATUS_SUCCESS;
         goto Cleanup;
     }
     FltAcquirePushLockExclusive(&RegistryLock);
@@ -584,7 +583,7 @@ NTSTATUS SafeUploadStageWritersReserveCreate(_In_ PFLT_CALLBACK_DATA Data,
         if (teardownState != SAFEUPLOAD_INSTANCE_STATE_TEARING_DOWN)
             StageRegistryMarkUnknown(FltObjects->Instance,
                 SAFEUPLOAD_REGISTRY_UNKNOWN_TEARDOWN, TRUE);
-        status = STATUS_ACCESS_DENIED;
+        status = STATUS_SUCCESS;
         goto Cleanup;
     }
     capacity = StageRegistryCapacityLocked();
@@ -600,7 +599,7 @@ NTSTATUS SafeUploadStageWritersReserveCreate(_In_ PFLT_CALLBACK_DATA Data,
         FltReleasePushLock(&RegistryLock);
         InterlockedIncrement64(&RegistryCapacityFailures);
         StageRegistryMarkUnknown(FltObjects->Instance, SAFEUPLOAD_REGISTRY_UNKNOWN_CAPACITY, FALSE);
-        status = STATUS_ACCESS_DENIED;
+        status = STATUS_SUCCESS;
         goto Cleanup;
     }
     InsertTailList(&RegistryReservations, &reservation->Link);
@@ -619,13 +618,16 @@ NTSTATUS SafeUploadStageWritersReserveCreate(_In_ PFLT_CALLBACK_DATA Data,
 RefuseIdentity:
     InterlockedIncrement64(&RegistryIdentityFailures);
     StageRegistryMarkUnknown(FltObjects->Instance, SAFEUPLOAD_REGISTRY_UNKNOWN_IDENTITY, FALSE);
-    status = STATUS_ACCESS_DENIED;
+    status = STATUS_SUCCESS;
     goto Cleanup;
 RefuseAllocation:
     InterlockedIncrement64(&RegistryAllocationFailures);
     StageRegistryMarkUnknown(FltObjects->Instance, SAFEUPLOAD_REGISTRY_UNKNOWN_ALLOCATION, FALSE);
-    status = STATUS_ACCESS_DENIED;
+    status = STATUS_SUCCESS;
 Cleanup:
+    /* Every path here lost tracking (success returned above): Unknown is recorded, nothing is required, nothing is refused. */
+    *Required = FALSE;
+    *ReservationOut = NULL;
     if (instanceContext != NULL) FltReleaseContext(instanceContext);
     if (name != NULL) FltReleaseFileNameInformation(name);
     if (volume != NULL) FltObjectDereference(volume);
@@ -899,13 +901,12 @@ NTSTATUS SafeUploadStageWritersPostCreate(
             StageRegistryMarkUnknown(reservation->Instance,
                 SAFEUPLOAD_REGISTRY_UNKNOWN_TEARDOWN, TRUE);
         }
-        status = STATUS_ACCESS_DENIED;
-        goto CancelOpenedFile;
+        goto TrackingLost;
     }
     InterlockedIncrement64(&WriterPostCreateRuns);
     if (fileObject == NULL || StageWritersExcludedObject(fileObject)) {
         SafeUploadStageWritersCancelReservation(reservation);
-        return STATUS_ACCESS_DENIED;
+        return STATUS_SUCCESS; /* excluded objects are simply not tracked; the legacy post-create still runs */
     }
     if (FlagOn(Data->Iopb->Parameters.Create.Options, FILE_DIRECTORY_FILE)) {
         InterlockedIncrement64(&WriterDirectoryCreatesSkipped);
@@ -934,15 +935,13 @@ NTSTATUS SafeUploadStageWritersPostCreate(
                 StageRegistryMarkUnknown(reservation->Instance,
                     SAFEUPLOAD_REGISTRY_UNKNOWN_TEARDOWN, TRUE);
             }
-            status = STATUS_ACCESS_DENIED;
-            goto CancelOpenedFile;
+            goto TrackingLost;
         }
         goto IdentityFailure;
     }
     if (!StageRegistryAssociateSectionPointer(reservation, entry, fileObject->SectionObjectPointer)) {
         StageRegistryMarkEntryUnknown(entry, SAFEUPLOAD_REGISTRY_UNKNOWN_CAPACITY);
-        status = STATUS_ACCESS_DENIED;
-        goto CancelOpenedFile;
+        goto TrackingLost;
     }
     StageRegistryAddOpener(entry, FltGetRequestorProcessId(Data));
     if (FltObjects->Transaction != NULL) {
@@ -951,7 +950,7 @@ NTSTATUS SafeUploadStageWritersPostCreate(
             InterlockedIncrement64(&RegistryTransactionFailures);
             StageRegistryMarkEntryUnknown(entry, SAFEUPLOAD_REGISTRY_UNKNOWN_TRANSACTION);
             InterlockedExchange(&WriterGlobalUnknown, 1);
-            goto CancelOpenedFile;
+            goto TrackingLost;
         }
     }
 
@@ -963,7 +962,7 @@ NTSTATUS SafeUploadStageWritersPostCreate(
             InterlockedIncrement64(&RegistryAllocationFailures);
             StageRegistryMarkEntryUnknown(entry, SAFEUPLOAD_REGISTRY_UNKNOWN_ALLOCATION);
             InterlockedExchange(&WriterGlobalUnknown, 1);
-            goto CancelOpenedFile;
+            goto TrackingLost;
         }
         reservation->Node->FileObject = fileObject;
         reservation->Node->Entry = entry; /* The lookup reference transfers to this exact cleanup node. */
@@ -975,8 +974,7 @@ NTSTATUS SafeUploadStageWritersPostCreate(
             FltReleasePushLock(&RegistryLock);
             StageRegistryMarkEntryUnknown(entry, SAFEUPLOAD_REGISTRY_UNKNOWN_IDENTITY);
             InterlockedExchange(&WriterGlobalUnknown, 1);
-            status = STATUS_ACCESS_DENIED;
-            goto CancelOpenedFile;
+            goto TrackingLost;
         }
         FltReleasePushLock(&RegistryLock);
         reservation->Node = NULL;
@@ -995,14 +993,13 @@ NTSTATUS SafeUploadStageWritersPostCreate(
 IdentityFailure:
     InterlockedIncrement64(&RegistryIdentityFailures);
     StageRegistryMarkUnknown(reservation->Instance, SAFEUPLOAD_REGISTRY_UNKNOWN_IDENTITY, TRUE);
-    status = STATUS_ACCESS_DENIED;
-CancelOpenedFile:
+TrackingLost:
+    /* Tracking this writer failed. The open is never refused or cancelled (the registry is a ledger, not a gate): the loss is
+     * recorded above as entry, instance or machine Unknown, which withholds every protection claim and promotion. Scoped
+     * writes are still decided by the admission path. */
     if (streamContext != NULL) FltReleaseContext(streamContext);
-    if (fileObject != NULL) (VOID)FltCancelFileOpen(FltObjects->Instance, fileObject);
-    Data->IoStatus.Status = STATUS_ACCESS_DENIED;
-    Data->IoStatus.Information = 0;
     SafeUploadStageWritersCancelReservation(reservation);
-    return status;
+    return STATUS_SUCCESS;
 }
 
 static BOOLEAN StageWritersInstanceTearingDown(_In_ PFLT_INSTANCE Instance)
@@ -1037,7 +1034,8 @@ VOID SafeUploadStageWritersOnCleanup(
     status = FltGetStreamContext(FltObjects->Instance, fileObject, (PFLT_CONTEXT *)&streamContext);
     if (!NT_SUCCESS(status)) {
         InterlockedIncrement64(&WriterCleanupUnmatched);
-        if (!StageWritersInstanceTearingDown(FltObjects->Instance)) {
+        /* A handle that predates the driver has no node; only a trusted (boot-attached) instance treats that as loss. */
+        if (!StageWritersInstanceTearingDown(FltObjects->Instance) && SafeUploadInstanceIsTrusted(FltObjects->Instance)) {
             StageRegistryMarkUnknown(FltObjects->Instance,
                 SAFEUPLOAD_REGISTRY_UNKNOWN_CLEANUP, TRUE);
         }
@@ -1065,7 +1063,8 @@ VOID SafeUploadStageWritersOnCleanup(
         InterlockedIncrement64(&WriterReleased);
     } else {
         InterlockedIncrement64(&WriterCleanupUnmatched);
-        if (!tearingDown) {
+        /* A handle that predates the driver has no node; only a trusted (boot-attached) instance treats that as loss. */
+        if (!tearingDown && SafeUploadInstanceIsTrusted(FltObjects->Instance)) {
             StageRegistryMarkUnknown(FltObjects->Instance,
                 SAFEUPLOAD_REGISTRY_UNKNOWN_CLEANUP, TRUE);
         }
