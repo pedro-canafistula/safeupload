@@ -1855,7 +1855,8 @@ NTSTATUS SafeUploadStageWritersRegistryEvaluate(_In_ PFLT_INSTANCE Instance,
     HANDLE identityHandle = NULL;
     PVOID sectionObjectPointer = NULL;
     PWCHAR retainedName = NULL;
-    ULONG returned = 0, probeStage = SAFEUPLOAD_ADMISSION_PROBE_STAGE_IDENTITY_QUERY;
+    ULONG returned = 0;
+    UINT32 probeStage = SAFEUPLOAD_ADMISSION_PROBE_STAGE_IDENTITY_QUERY;
     ULONG unknown = 0, nameChars = 0, index;
     UINT32 cCount = 0;
     UINT32 state;
