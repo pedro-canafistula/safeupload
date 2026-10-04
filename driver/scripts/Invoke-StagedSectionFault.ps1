@@ -32,7 +32,7 @@ function Read-UpperStats {
     $state=$raw|ConvertFrom-Json
     foreach($field in @('writerState','sectionInFlightNow','sectionInFlightInserted','sectionInFlightReleased',
         'sectionInFlightRemovedOnFailure','sectionInFlightOverflow','sectionInFlightStuck',
-        'writersDroppedAtTeardown','writersDroppedWhileMounted')) {
+        'writersDroppedAtTeardown','writersDroppedWhileMounted','instanceTeardownsDismount','instanceTeardownsOther')) {
         if ($state.PSObject.Properties.Name -notcontains $field) { throw ('Missing upper status: '+$field) }
     }
     return $state
@@ -99,7 +99,7 @@ function Get-STWriterStats {
     $state=Invoke-STInspector '--writer-state-status'|ConvertFrom-Json
     foreach($field in @('sectionInFlightNow','sectionInFlightInserted','sectionInFlightReleased',
         'sectionInFlightOverflow','sectionInFlightStuck','sectionInFlightRemovedOnFailure',
-        'writersDroppedAtTeardown','writersDroppedWhileMounted')) {
+        'writersDroppedAtTeardown','writersDroppedWhileMounted','instanceTeardownsDismount','instanceTeardownsOther')) {
         if($null -eq $state.$field){throw ('Writer status missing '+$field)}
     }
     return $state
@@ -672,6 +672,12 @@ function Invoke-SectionTeardownScenario {
         [void](Add-STOutcome 'ScopedWriterDropAccounting' $scopedDropOk ('path:'+$scopedPath+';teardownDelta:'+$teardownDropDelta+';mountedDelta:'+$mountedDropDelta+
             ';releasedDelta:'+$releasedDelta+';unmatchedDelta:'+$unmatchedDelta+';oldInstanceStillListed:'+$oldInstanceListed+
             ';writersDroppedAtTeardown:'+$afterOldHandlesClosed.writersDroppedAtTeardown+';writerGlobalUnknown:'+$globalAfterTeardown.writerGlobalUnknown))
+        # Milestone review F-03: only FLTFL_INSTANCE_TEARDOWN_VOLUME_DISMOUNT is classified as safe teardown. Prove the forced
+        # dismount above actually arrived with that reason, and that no other teardown reason occurred in this window.
+        $dismountTeardowns=[int64]$afterOldHandlesClosed.instanceTeardownsDismount-[int64]$vhdxBefore.instanceTeardownsDismount
+        $otherTeardowns=[int64]$afterOldHandlesClosed.instanceTeardownsOther-[int64]$vhdxBefore.instanceTeardownsOther
+        [void](Add-STOutcome 'TeardownReasonIsDismount' ($dismountTeardowns -ge 1 -and $otherTeardowns -eq 0) `
+            ('dismountTeardowns:'+$dismountTeardowns+';otherTeardowns:'+$otherTeardowns))
         $cKnownProbe=Invoke-STProbe $Fixture 'CAfterScopedTeardownProbe' 0 $false
         $cKnownOk=$globalAfterTeardown.writerGlobalUnknown -eq 0 -and $null -ne $cKnownProbe -and -not $cKnownProbe.writersUntracked
         [void](Add-STOutcome 'CProbeRemainsKnownAfterTeardown' $cKnownOk ('writerGlobalUnknown:'+$globalAfterTeardown.writerGlobalUnknown+';writersUntracked:'+$(if($cKnownProbe){$cKnownProbe.writersUntracked}else{'missing'})+';writeObjects:'+$(if($cKnownProbe){$cKnownProbe.writeObjects}else{'missing'})))
