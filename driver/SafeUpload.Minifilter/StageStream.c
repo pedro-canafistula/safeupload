@@ -3017,6 +3017,7 @@ FLT_PREOP_CALLBACK_STATUS SafeUploadStageDispatch(PFLT_CALLBACK_DATA Data,
         StageTraceFileLifetime(Data, Objects, SAFEUPLOAD_ADMISSION_TRACE_EVENT_FILE_CLEANUP);
         SafeUploadStageWritersOnCleanup(Data, Objects);
 #endif
+        *CompletionContext = NULL;  /* the callee's contract requires it to be NULL on entry (PREfast C6388) */
         return SafeUploadPreCleanup(Data, Objects, CompletionContext);
 #if SAFEUPLOAD_STAGING_PROTOTYPE
     case IRP_MJ_CLOSE:

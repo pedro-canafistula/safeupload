@@ -1,0 +1,2 @@
+95f3fa92bc2f9ecd170bc1c912381488f2b99960d6c70deb04bae75cb53806f4  inspector-feature-release.exe
+503c29bde26cfd3f208c04dbe6dec9e567d1fb7713075d01b2a92a61f92b965c  inspector-normal-release.exe
