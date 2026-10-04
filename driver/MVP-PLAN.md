@@ -294,3 +294,7 @@ Phase 2 status (2026-10-04): boot start qualified on the guest under boot Verifi
 X4 first write after boot denied with durable readiness recorded first and raw bytes identical; agent-down fail-closed for new opens and writable sections; fresh
 VHDX trusted; E1 shows a late-attached volume Untrusted with "protection pending reboot" and records that a pre-attach mapped writer DID change bytes there (documented
 limit). Open carried-forward item before release: N-01 (normal build needs a canary/trust path). N-02 implementation now has a SYSTEM-only agent seed mode and installer gate before restoring driver boot-start; Windows verification of the installer path and final registry read-back remains required.
+
+Phase 4 design v1 accepted (2026-10-04, [design](evidence/2026-10-04/phase4-suite-design-v1.txt)): one observer module + case table + runner; work packages WP1-WP7
+(observer library and VM self-tests can start before Phase 3 enforcement exists; case batches need Phase 3). A flush at the cutoff that includes post-cutoff stores (case A05) would
+falsify the Phase 3 cutoff mechanism; the harness must test it, never reinterpret the cutoff.
