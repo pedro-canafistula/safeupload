@@ -1,0 +1,5 @@
+PolicyAclVerified=True;Trustees=SYSTEM,Administrators;InheritedAces=0
+PrepareRollbackReason=Cannot find an overload for "Open" and the argument count: "6".
+[SC] ChangeServiceConfig SUCCESS
+No settings were changed.
+HARNESS_THREW: Cannot find an overload for "Open" and the argument count: "6".

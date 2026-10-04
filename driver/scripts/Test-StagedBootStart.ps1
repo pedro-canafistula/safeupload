@@ -836,7 +836,7 @@ if ($Phase -eq 'Prepare') {
         overrideAllowed = $false
     }
     $testPolicy | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $policyPath -Encoding UTF8
-    $x4Stream = [IO.File]::Open($firstWritePath, [IO.FileMode]::CreateNew,
+    $x4Stream = [IO.FileStream]::new($firstWritePath, [IO.FileMode]::CreateNew,
         [IO.FileAccess]::Write, [IO.FileShare]::ReadWrite, 4096, [IO.FileOptions]::WriteThrough)
     try {
         $x4Stream.Write($x4Baseline, 0, $x4Baseline.Length)
@@ -940,7 +940,7 @@ $readiness = [ordered]@{
     InstanceOutput = ($instances -replace '[\r\n]+', ' ').Trim()
 }
 $readyBytes = [Text.UTF8Encoding]::new($false).GetBytes(($readiness | ConvertTo-Json -Compress -Depth 4))
-$readyStream = [IO.File]::Open($readyPath, [IO.FileMode]::Create, [IO.FileAccess]::Write,
+$readyStream = [IO.FileStream]::new($readyPath, [IO.FileMode]::Create, [IO.FileAccess]::Write,
     [IO.FileShare]::Read, 4096, [IO.FileOptions]::WriteThrough)
 try { $readyStream.Write($readyBytes, 0, $readyBytes.Length); $readyStream.Flush($true) }
 finally { $readyStream.Dispose() }
@@ -978,7 +978,7 @@ $result = [ordered]@{
     AttemptMarkerSha256 = [BitConverter]::ToString([Security.Cryptography.SHA256]::Create().ComputeHash($marker)).Replace('-', '')
 }
 $resultBytes = [Text.UTF8Encoding]::new($false).GetBytes(($result | ConvertTo-Json -Compress -Depth 4))
-$resultStream = [IO.File]::Open($resultPath, [IO.FileMode]::Create, [IO.FileAccess]::Write,
+$resultStream = [IO.FileStream]::new($resultPath, [IO.FileMode]::Create, [IO.FileAccess]::Write,
     [IO.FileShare]::Read, 4096, [IO.FileOptions]::WriteThrough)
 try { $resultStream.Write($resultBytes, 0, $resultBytes.Length); $resultStream.Flush($true) }
 finally { $resultStream.Dispose() }
@@ -1197,7 +1197,7 @@ elseif ($Phase -eq 'AfterBoot') {
         $latePath = Join-Path $e1ProtectedDirectory 'E1-mapped-writer.txt'
         $lateBaseline = [Text.Encoding]::ASCII.GetBytes(('E1-BASELINE-' + $state.X4RunId).PadRight(4096, 'B'))
         $lateAttempt = [Text.Encoding]::ASCII.GetBytes(('E1-ATTEMPT-' + $state.X4RunId).PadRight(4096, 'A'))
-        $lateWriter = [IO.File]::Open($latePath, [IO.FileMode]::CreateNew,
+        $lateWriter = [IO.FileStream]::new($latePath, [IO.FileMode]::CreateNew,
             [IO.FileAccess]::ReadWrite, [IO.FileShare]::ReadWrite, 4096, [IO.FileOptions]::WriteThrough)
         $lateWriter.Write($lateBaseline, 0, $lateBaseline.Length)
         $lateWriter.Flush($true)
