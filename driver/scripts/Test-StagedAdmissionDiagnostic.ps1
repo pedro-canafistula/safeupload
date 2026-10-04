@@ -733,7 +733,7 @@ function Invoke-InspectorChecked([string[]] $Arguments, [int] $Timeout) {
     return $result
 }
 
-function Start-TestAgentAndWaitForPolicy([string] $LogPrefix) {
+function Start-TestAgentAndWaitForPolicy([string] $LogPrefix, [string] $AgentArguments = '') {
     Assert-NoInspectorProcess
     Assert-NoAgentProcess
     $ready = New-Object System.Threading.EventWaitHandle(
@@ -743,7 +743,7 @@ function Start-TestAgentAndWaitForPolicy([string] $LogPrefix) {
     $newAgent = $null
     try {
         [void]$ready.Reset()
-        $newAgent = Start-StagedTestAgent $serviceDirectory $LogPrefix
+        $newAgent = Start-StagedTestAgent $serviceDirectory $LogPrefix 'SafeUpload.Agent.Service.exe' $AgentArguments
         if (-not $ready.WaitOne([TimeSpan]::FromSeconds(45))) {
             # The agent's reason lives in the Application log (the default .NET service host). Carry it in the error text:
             # this function's pipeline is captured by its caller, and only the RunError line is always printed.
@@ -4034,16 +4034,23 @@ public static class SafeUploadEolNative
                 $groundTruthOk = $probeOk -and [int]$entry.H -eq [int]$probe.Writers -and
                     [int]$entry.C -eq [int]$probe.InFlightSections -and $entryS -eq [string]$probe.MmDoes
                 $expectedC = if ($RequirePositiveC) { [int]$entry.C -gt 0 } else { [int]$entry.C -eq $ExpectedC }
+                # A late-loaded driver leaves C: untrusted (owner decision: late attach claims nothing), so Free is always false
+                # and the state Unknown, with TRUST (0x80) as the ONLY reason. Any other reason is a real tracking loss and fails.
+                # Free/promotion proper is qualified in boot-start mode (MVP-PLAN 2026-10-04, ledger-not-gate decision).
+                $reasons = [Convert]::ToUInt32(([string]$entry.unknownReasons) -replace '^0x', '', 16)
+                $trustOnly = ($reasons -eq 0x80)
+                $freeOk = if ($trustOnly) { -not [bool]$entry.Free -and [string]$entry.State -eq 'Unknown' } else {
+                    [bool]$entry.Free -eq $ExpectedFree -and [string]$entry.State -eq $ExpectedState }
                 $ok = ($probeOk -and $groundTruthOk -and [bool]$entry.HistoryPresent -eq $History -and
                     [int]$entry.H -eq $ExpectedH -and $expectedC -and
                     ($ExpectedS -eq '' -or $entryS -eq $ExpectedS) -and [int]$entry.T -eq $ExpectedT -and
-                    [bool]$entry.Free -eq $ExpectedFree -and [bool]$entry.NameMatches -eq $ExpectedNameMatch -and
-                    ([string]$entry.State -eq $ExpectedState))
+                    $freeOk -and [bool]$entry.NameMatches -eq $ExpectedNameMatch -and
+                    ($trustOnly -or $reasons -eq 0))
                 Add-RTOutcome $Label $ok ('history:' + $entry.HistoryPresent + ';H:' + $entry.H +
                     ';probeH:' + $(if ($null -ne $probe) { $probe.Writers } else { 'missing' }) +
                     ';S:' + $entry.S + ';C:' + $entry.C +
                     ';probeC:' + $(if ($null -ne $probe) { $probe.InFlightSections } else { 'missing' }) +
-                    ';T:' + $entry.T + ';free:' + $entry.Free + ';state:' + $entry.State +
+                    ';T:' + $entry.T + ';free:' + $entry.Free + ';state:' + $entry.State + ';reasons:' + $entry.unknownReasons +
                     ';nameMatches:' + $entry.NameMatches)
                 return $entry
             }
@@ -4329,7 +4336,10 @@ public static class SafeUploadEolNative
             $policyBytes = $expandedPolicy.OriginalBytes
             [IO.File]::WriteAllBytes($policyPath, $expandedPolicy.UpdatedBytes)
             Write-Output ('RT_ExpandedPolicySHA256=' + (Get-FileHash -LiteralPath $policyPath -Algorithm SHA256).Hash)
-            $agent = Start-TestAgentAndWaitForPolicy (Join-Path $documents ('SafeUpload-registry-txf-agent-' + $id))
+            # Staging off: a late-loaded driver leaves C: untrusted, and since Phase 2 the service may use the private staging
+            # namespace only on a trusted instance, so staging recovery can never succeed here (run 8). TxF refusal needs only
+            # the policy scope. The later command-line key overrides the helper's StagingPrototype=true.
+            $agent = Start-TestAgentAndWaitForPolicy (Join-Path $documents ('SafeUpload-registry-txf-agent-' + $id)) '--Interception:StagingPrototype=false'
             Write-Output 'RT_ExpandedScopeAcceptedByAgentAndDriver=True'
             [void](Assert-RTEntry $txPendingPath 'Transaction_ScopeAddedTStillOne' $true 0 0 'no' 1 $false `
                 -ExpectedState 'Activating')

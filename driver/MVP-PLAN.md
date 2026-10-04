@@ -308,3 +308,12 @@ falsify the Phase 3 cutoff mechanism; the harness must test it, never reinterpre
   Registry capacity stays bounded per instance; overflow can only stop new scopes from activating, never stop writes (a
   per-user quota may come later). Free/promotion tests run in boot-start mode (trusted instance); late-load harness runs
   assert H/S/C/T and Unknown reporting only.
+- **2026-10-04, unattended (under the ledger-not-gate decision): Unknown is scoped by what was lost.** A loss about one file
+  (identity open, transaction enlistment, section binding) marks only that entry, keyed by file ID, which then can never be
+  Free. A rename loss widens to the instance, because the entry's name is stale and scope classification matches by name.
+  Diagnostics (Evaluate) are reads and never persist reasons they merely derive (untrusted volume, instance Unknown, work in
+  flight); run 8 showed the first probe on a late-attached volume poisoning it. Section-object pointers are rebound, not
+  refused: NTFS keeps one SCB per live stream, so a reused or changed pointer proves the old incarnation dead. Retiring an
+  entry releases its instance/volume references (an entry pinning its instance deadlocked instance teardown). Harness
+  consequence: registry-txf in late-load mode starts the agent with staging off (the private staging namespace requires a
+  trusted instance since Phase 2) and accepts TRUST as the only Unknown reason.

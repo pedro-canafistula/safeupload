@@ -212,6 +212,10 @@ static VOID StageRegistryMarkEntryUnknown(_In_ PSTAGE_REGISTRY_ENTRY Entry, _In_
 {
     InterlockedOr(&Entry->UnknownReasons, Reason);
     InterlockedExchange((volatile LONG *)&Entry->State, SAFEUPLOAD_REGISTRY_STATE_UNKNOWN);
+    /* Narrowest scope: a loss about this file (identity, transaction, section binding) stays on its entry, which is keyed by
+     * file ID and can never be Free. Only a rename loss widens: the entry's name is then stale, and scope classification
+     * matches by name, so this file could fall inside a newly added scope unmatched; the instance must be Unknown. */
+    if ((Reason & SAFEUPLOAD_REGISTRY_UNKNOWN_RENAME) == 0) return;
     if (KeGetCurrentIrql() <= APC_LEVEL) {
         /* Read once: teardown clears it (NULL then marks machine-wide). Callers hold the instance for this call. */
         StageRegistryMarkUnknown((PFLT_INSTANCE)InterlockedCompareExchangePointer(
@@ -2086,24 +2090,13 @@ NTSTATUS SafeUploadStageWritersRegistryEvaluate(_In_ PFLT_INSTANCE Instance,
     Result->State = state;
     Result->Free = (Result->H == 0 && Result->S == SAFEUPLOAD_REGISTRY_S_NO &&
         Result->C == 0 && Result->T == 0 && unknown == 0) ? 1 : 0;
-    {
-        LONG ignoredReasons = SAFEUPLOAD_REGISTRY_UNKNOWN_CREATE_IN_FLIGHT |
-            SAFEUPLOAD_REGISTRY_UNKNOWN_RENAME_IN_FLIGHT;
-        LONG stickyReasons;
-        if (entryRetired) ignoredReasons |= SAFEUPLOAD_REGISTRY_UNKNOWN_TEARDOWN;
-        stickyReasons = (LONG)(unknown & ~ignoredReasons);
-        if (stickyReasons != 0) {
-            if (!entryRetired) {
-                InterlockedOr(&entry->UnknownReasons, stickyReasons);
-                InterlockedExchange((volatile LONG *)&entry->State, SAFEUPLOAD_REGISTRY_STATE_UNKNOWN);
-            }
-        } else if (unknown == 0 && !entryRetired) {
-            InterlockedExchange((volatile LONG *)&entry->State, (LONG)state);
-        }
-        FltReleasePushLock(&RegistryLock);
-        /* The caller's referenced Instance, never entry->Instance, which teardown may release concurrently. */
-        if (stickyReasons != 0 && !entryRetired) StageRegistryMarkUnknown(Instance, stickyReasons, FALSE);
-    }
+    /* Evaluate is a read. It publishes the computed state but writes no sticky reasons: those it derives (untrusted volume,
+     * instance or machine Unknown, creates or renames in flight) describe the volume or the moment, not a loss of this file's
+     * tracking, and persisting them made the first probe on a late-attached volume mark it Unknown, so every later create went
+     * untracked (registry-txf run 8, reasons 0x84). The one loss Evaluate itself discovers, a failed identity open, is
+     * recorded explicitly above. */
+    if (!entryRetired) InterlockedExchange((volatile LONG *)&entry->State, (LONG)state);
+    FltReleasePushLock(&RegistryLock);
 
     if (identityHandle != NULL) FltClose(identityHandle);
     if (identityObject != NULL) ObDereferenceObject(identityObject);
