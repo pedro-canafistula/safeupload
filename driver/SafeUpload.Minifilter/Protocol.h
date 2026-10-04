@@ -692,6 +692,8 @@ typedef struct _SAFEUPLOAD_WRITER_STATE_STATUS {
 #if defined(SAFEUPLOAD_STAGING_PROTOTYPE) && SAFEUPLOAD_STAGING_PROTOTYPE
     UINT64 WritersDroppedAtTeardown;      // writer nodes released with a teardown-marked instance token
     UINT64 WritersDroppedWhileMounted;    // writer nodes released before instance teardown was marked
+    UINT64 InstanceTeardownsDismount;     // InstanceTeardownStart with FLTFL_INSTANCE_TEARDOWN_VOLUME_DISMOUNT
+    UINT64 InstanceTeardownsOther;        // any other teardown reason (unload, manual, internal error)
 #endif
 } SAFEUPLOAD_WRITER_STATE_STATUS, *PSAFEUPLOAD_WRITER_STATE_STATUS;
 
@@ -1023,7 +1025,9 @@ C_ASSERT( sizeof( SAFEUPLOAD_POLICY_MESSAGE ) >= sizeof( SAFEUPLOAD_ADMISSION_CA
 C_ASSERT( sizeof( SAFEUPLOAD_POLICY_MESSAGE ) >= sizeof( SAFEUPLOAD_ADMISSION_CANARY_HOLD_REQUEST ) );
 C_ASSERT( sizeof( SAFEUPLOAD_POLICY_MESSAGE ) >= sizeof( SAFEUPLOAD_ADMISSION_TRACE_BATCH ) );
 C_ASSERT( sizeof( SAFEUPLOAD_FENCE_STATUS ) == 144 );
-C_ASSERT( sizeof( SAFEUPLOAD_WRITER_STATE_STATUS ) == 152 );
+C_ASSERT( sizeof( SAFEUPLOAD_WRITER_STATE_STATUS ) == 168 );
+C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_WRITER_STATE_STATUS, InstanceTeardownsDismount ) == 152 );
+C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_WRITER_STATE_STATUS, InstanceTeardownsOther ) == 160 );
 C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_WRITER_STATE_STATUS, WritersDroppedAtTeardown ) == 136 );
 C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_WRITER_STATE_STATUS, WritersDroppedWhileMounted ) == 144 );
 C_ASSERT( sizeof( SAFEUPLOAD_POLICY_MESSAGE ) >=

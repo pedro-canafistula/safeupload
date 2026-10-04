@@ -1022,6 +1022,7 @@ static int PrintWriterStateStatus(VOID)
             L"\"sectionInFlightOverflow\":%llu,\"sectionInFlightStuck\":%llu,\"sectionInFlightRemovedOnFailure\":%llu,"
             L"\"sectionInFlightMaxDepth\":%lu,\"pagingCreatesSkipped\":%llu,\"volumeCreatesSkipped\":%llu,"
             L"\"writersDroppedAtTeardown\":%llu,\"writersDroppedWhileMounted\":%llu,"
+            L"\"instanceTeardownsDismount\":%llu,\"instanceTeardownsOther\":%llu,"
             L"\"stageStreams\":%u,\"stageFileObjects\":%u,\"lastUnloadVeto\":%u,\"lastUnloadStatus\":%u}\n",
             status.PostCreateRuns, status.WriteObjectsCounted, status.WriteObjectsReleased,
             status.UntrackedCreates, status.CleanupUnmatched, status.DirectoryCreatesSkipped,
@@ -1029,6 +1030,7 @@ static int PrintWriterStateStatus(VOID)
             status.SectionInFlightOverflow, status.SectionInFlightStuck, status.SectionInFlightRemovedOnFailure,
             status.SectionInFlightMaxDepth, status.PagingCreatesSkipped, status.VolumeCreatesSkipped,
             status.WritersDroppedAtTeardown, status.WritersDroppedWhileMounted,
+            status.InstanceTeardownsDismount, status.InstanceTeardownsOther,
             status.StageStreams, status.StageFileObjects, status.LastUnloadVeto, status.LastUnloadStatus);
     return 0;
 }

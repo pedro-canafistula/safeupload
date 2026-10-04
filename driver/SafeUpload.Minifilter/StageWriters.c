@@ -60,6 +60,8 @@ static volatile LONG64 WriterPagingCreatesSkipped;
 static volatile LONG64 WriterVolumeCreatesSkipped;
 static volatile LONG64 WriterDroppedAtTeardown;
 static volatile LONG64 WriterDroppedWhileMounted;
+static volatile LONG64 InstanceTeardownsDismount;
+static volatile LONG64 InstanceTeardownsOther;
 static volatile LONG WriterGlobalUnknown;
 
 UINT32 SafeUploadStageWritersGlobalUnknown(VOID)
@@ -75,9 +77,10 @@ VOID SafeUploadStageWritersInstanceTeardownStart(
     NTSTATUS status;
 
     PAGED_CODE();
-    UNREFERENCED_PARAMETER(Reason);
 
     /* InstanceTeardownStart is PASSIVE_LEVEL and precedes context teardown. */
+    if (FlagOn(Reason, FLTFL_INSTANCE_TEARDOWN_VOLUME_DISMOUNT)) InterlockedIncrement64(&InstanceTeardownsDismount);
+    else InterlockedIncrement64(&InstanceTeardownsOther);
     status = FltGetInstanceContext(FltObjects->Instance, (PFLT_CONTEXT *)&context);
     if (!NT_SUCCESS(status)) {
         InterlockedExchange(&WriterGlobalUnknown, 1);
@@ -87,7 +90,12 @@ VOID SafeUploadStageWritersInstanceTeardownStart(
     if (context->TeardownToken == NULL) {
         InterlockedExchange(&WriterGlobalUnknown, 1);
     } else {
-        InterlockedExchange(&context->TeardownToken->State, SAFEUPLOAD_INSTANCE_STATE_TEARING_DOWN);
+        /* Only a volume dismount invalidates the volume's existing handles (proven on 19045 by section-teardown run 10).
+         * Filter unload, manual detach or an internal error leave writers live: their records count as lost tracking
+         * (milestone review F-03), so the token becomes UNKNOWN and any leftover writer sets the machine-wide Unknown. */
+        InterlockedExchange(&context->TeardownToken->State,
+            FlagOn(Reason, FLTFL_INSTANCE_TEARDOWN_VOLUME_DISMOUNT) ?
+                SAFEUPLOAD_INSTANCE_STATE_TEARING_DOWN : SAFEUPLOAD_INSTANCE_STATE_UNKNOWN);
     }
     FltReleaseContext(context);
 }
@@ -480,6 +488,8 @@ VOID SafeUploadStageWritersGetStatus(_Out_ PSAFEUPLOAD_WRITER_STATE_STATUS Statu
     snapshot.VolumeCreatesSkipped = (UINT64)InterlockedCompareExchange64(&WriterVolumeCreatesSkipped, 0, 0);
     snapshot.WritersDroppedAtTeardown = (UINT64)InterlockedCompareExchange64(&WriterDroppedAtTeardown, 0, 0);
     snapshot.WritersDroppedWhileMounted = (UINT64)InterlockedCompareExchange64(&WriterDroppedWhileMounted, 0, 0);
+    snapshot.InstanceTeardownsDismount = (UINT64)InterlockedCompareExchange64(&InstanceTeardownsDismount, 0, 0);
+    snapshot.InstanceTeardownsOther = (UINT64)InterlockedCompareExchange64(&InstanceTeardownsOther, 0, 0);
     SafeUploadStageGetUnloadStatus(&snapshot.StageStreams, &snapshot.StageFileObjects,
         &snapshot.LastUnloadVeto, &snapshot.LastUnloadStatus);
     KeAcquireSpinLock(&SectionLock, &irql);
