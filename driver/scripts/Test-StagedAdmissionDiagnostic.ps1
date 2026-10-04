@@ -4354,6 +4354,10 @@ public static class SafeUploadEolNative
             # the policy scope. The later command-line key overrides the helper's StagingPrototype=true.
             $agent = Start-TestAgentAndWaitForPolicy (Join-Path $documents ('SafeUpload-registry-txf-agent-' + $id)) '--Interception:StagingPrototype=false'
             Write-Output 'RT_ExpandedScopeAcceptedByAgentAndDriver=True'
+            # The port takes one client and the Inspector needs it. Disconnect clears only authentication; the accepted
+            # policy and its scopes stay installed, and TxF refusal is decided by the driver from them (run 12).
+            Stop-StagedTestAgent $agent
+            $agent = $null
             [void](Assert-RTEntry $txPendingPath 'Transaction_ScopeAddedTStillOne' $true 0 0 'no' 1 $false `
                 -ExpectedState 'Activating')
             [void](Assert-RTEntry $txRollbackPath 'Transaction_RollbackScopeAddedTStillOne' $true 0 0 'no' 1 $false `
