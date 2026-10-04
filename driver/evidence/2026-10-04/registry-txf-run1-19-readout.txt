@@ -1,0 +1,23 @@
+Phase 3 increments 1-2 (TxF refusal and tracking, writer registry since boot, pruning) on Windows 10 19045.2965, runtime Verifier 0x13B
+Verdict: registry-txf run 19 CheckpointedRegistryTxfQualification=PASS, RT 93/93, VariantComplete, clean unload, independent BaselineClean=True.
+Build: mvp3-a10, source 9b2cb34f (four WDK configurations 0/0, PREfast + ApiValidator). Harness commit 00e8ab8a. Agent package mvp2-n2-agent2 (1B5DDA54...).
+
+What run 19 proved (late-loaded driver: C: is untrusted by owner decision, so TRUST is the only Unknown reason and Free is never claimed there)
+  - Registry corpus: H/S/C/T for 20 files across open/write/close agree with the independent PID-4 probe after every step; never-written files have no entry.
+  - Duplicate handles, writable section (C=0 with the view mapped, S=YES; S=NO after release), rename keeps the file ID and updates the retained name.
+  - TxF outside scope: transacted writers enter the registry; T is deduplicated per transaction, survives handle close, clears on commit and on rollback; bytes match.
+  - TxF inside scope: transacted create (write, delete-on-close, overwrite, overwrite-if, maximum-allowed, supersede), rename, link, delete and FSCTL_SET_ZERO_DATA all
+    refused with access denied, each counted once (TxfRefused delta 1); bytes and names unchanged on disk.
+  - Pruning bounds the registry by concurrency: 1,970 entries pruned in 17 reclaim passes, 742 live, no overflow, no Unknown reason after the corpus.
+  - Capacity overflow (test-only capacity 8): the overflow is recorded (reason 0x1, instance Unknown) and writes PROCEED (ledger, not gate).
+Defects found by runs 1-18 and fixed (all runs retained as evidence)
+  Driver: (1) tracking loss denied every writer create on the volume (outage) -> ledger-not-gate, owner-approved; (2) entries pinned their instance with
+  FltObjectReference while stream contexts held entries, and Filter Manager frees contexts only after FltpFreeInstance's rundown wait -> unload deadlock
+  (found by memory dumps: rundown count 1); retirement and pruning now release the references; (3) reused section-object pointers read as capacity failures ->
+  rebind; (4) the read-only probe persisted derived reasons as sticky Unknown -> Evaluate only reads, per-file losses stay on the entry, only rename widens;
+  (5) the 1,024-entry limit filled in minutes on a real system volume -> pruning, owner-approved.
+  Harness: unbounded unload and guest calls, swallowed verdict lines, agent staging on an untrusted volume, fence-incompatible test scope, single-client port,
+  PowerShell 5.1 hex literals as negative Int32, RtlSetCurrentTransaction read as NTSTATUS (left a dead ambient transaction), overflow targets in a scope.
+Known limits / follow-ups: Free and promotion are not exercised on a late-loaded driver (they need a trusted, boot-attached instance: boot-start mode in the
+  Phase 4 suite); a stuck fltmc can still pin the harness SSH session (now only if unload hangs); 2 writer handles of other processes outstanding at the
+  status sample are expected.

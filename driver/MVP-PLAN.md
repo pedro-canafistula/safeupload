@@ -324,3 +324,7 @@ falsify the Phase 3 cutoff mechanism; the harness must test it, never reinterpre
   crosses 3/4 of its limit or on a capacity failure; the prune itself re-checks under the registry lock. No timers, no
   file-system scan. The registry is bounded by concurrency, not uptime; an absent entry keeps meaning provably free.
   Run 10 motivated it: ordinary Windows activity filled the 1,024-entry instance limit within minutes.
+- **2026-10-04 status: Phase 3 increments 1-2 qualified.** registry-txf run 19 passed 93/93 under runtime Verifier with a clean unload and
+  independent restoration (readout: evidence/2026-10-04/registry-txf-run1-19-readout.txt). Next: increments 3-5 (admission epoch and two-phase
+  apply, Activating enforcement with cutoff flush and cache-barrier promotion, removal of StageFence from admission), then Phase 4 S00 in
+  boot-start mode, where Free/promotion are exercised on a trusted instance.
