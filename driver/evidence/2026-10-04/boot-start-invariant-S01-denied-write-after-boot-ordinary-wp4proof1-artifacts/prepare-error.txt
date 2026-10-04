@@ -1,0 +1,7 @@
+System.Management.Automation.RuntimeException: Method invocation failed because [System.Object[]] does not contain a method named 'op_Subtraction'.
+   at System.Management.Automation.ExceptionHandlingOps.CheckActionPreference(FunctionContext funcContext, Exception exception)
+   at System.Management.Automation.Interpreter.ActionCallInstruction`2.Run(InterpretedFrame frame)
+   at System.Management.Automation.Interpreter.EnterTryCatchFinallyInstruction.Run(InterpretedFrame frame)
+   at System.Management.Automation.Interpreter.EnterTryCatchFinallyInstruction.Run(InterpretedFrame frame)
+at <ScriptBlock>, C:\Users\vika\Documents\Test-StagedInvariantSuite-B2DC9683007B65C5.ps1: line 1003
+at <ScriptBlock>, <No file>: line 1

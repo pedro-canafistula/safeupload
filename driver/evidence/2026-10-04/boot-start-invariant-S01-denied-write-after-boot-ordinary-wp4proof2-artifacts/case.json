@@ -1,0 +1,18 @@
+{
+    "Mode":  "ordinary",
+    "Trials":  [
+
+               ],
+    "Verdict":  "INCONCLUSIVE",
+    "CaseStatus":  "READY",
+    "AuthoritativeCaseExport":  false,
+    "RunName":  "boot-start-invariant-S01-denied-write-after-boot-ordinary-wp4proof2",
+    "Restoration":  {
+                        "Known":  false
+                    },
+    "Schema":  "StagedInvariantSuite/2",
+    "Reasons":  [
+                    "Prepare failed; retained prepare-error and rollback artifacts; restoration reboot required"
+                ],
+    "CaseId":  "S01-denied-write-after-boot"
+}

@@ -1,0 +1,20 @@
+processed file: C:\Users\vika\Documents\SafeUpload-invariant-state-boot-start-invariant-S01-denied-write-after-boot-ordinary-wp4proof3
+Successfully processed 1 files; Failed processing 0 files
+processed file: C:\Users\vika\Documents\boot-start-invariant-S01-denied-write-after-boot-ordinary-wp4proof3-artifacts
+Successfully processed 1 files; Failed processing 0 files
+processed file: C:\Users\vika\Documents\SafeUpload-invariant-state-boot-start-invariant-S01-denied-write-after-boot-ordinary-wp4proof3
+Successfully processed 1 files; Failed processing 0 files
+processed file: C:\Users\vika\Documents\SafeUpload-invariant-state-boot-start-invariant-S01-denied-write-after-boot-ordinary-wp4proof3\actor
+Successfully processed 1 files; Failed processing 0 files
+processed file: C:\SafeUploadInvariant-boot-start-invariant-S01-denied-write-after-boot-ordinary-wp4proof3
+Successfully processed 1 files; Failed processing 0 files
+PolicyAclVerified=True;Trustees=SYSTEM,Administrators;InheritedAces=0
+BootPolicySeed=product-mode;ExitCode:0;PASS
+BootPolicyPrebootVerified=ParametersAcl:True;BootPolicyAcl:True;RecordBytes:16656;ExactRecord:True;PendingScopes:Absent;Start:3;PASS
+processed file: C:\Users\vika\Documents\SafeUpload-invariant-state-boot-start-invariant-S01-denied-write-after-boot-ordinary-wp4proof3\writer-config.clixml
+Successfully processed 1 files; Failed processing 0 files
+processed file: C:\Users\vika\Documents\SafeUpload-invariant-state-boot-start-invariant-S01-denied-write-after-boot-ordinary-wp4proof3\writer.ps1
+Successfully processed 1 files; Failed processing 0 files
+[SC] ChangeServiceConfig SUCCESS
+CaseStatus=READY
+INVARIANT_PREPARED=True

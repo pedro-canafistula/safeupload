@@ -18,3 +18,12 @@ leftover test users and profiles.
 Product finding (boot-start readiness): C: attached at mount and TRUSTED, yet instanceWritersUntracked=1 and writerGlobalUnknown=1 minutes
 after boot. Suspected: writers the registry leaves untracked (open by file ID) whose cleanups arrive unmatched on a trusted instance. To confirm
 and fix after the increments 3-5 merge; it would otherwise block every promotion on a real boot.
+
+Addendum - seed cases with the WP4 proof adapters (ordinary mode, driver mvp3-a10):
+  S00 (wp4proof1) INCONCLUSIVE, 162 assertions PASS, ForbiddenByteCount 0; metadata, cadence and external coverage now proven.
+  S01 denied write after boot (wp4proof3) INCONCLUSIVE, 160 PASS, ForbiddenByteCount 0 (no attempted byte reached the volume).
+  S02 agent down, open refused (wp4proof3) INCONCLUSIVE, 159 PASS, ForbiddenByteCount 0.
+  All three: full boot-start lifecycle, independent BaselineClean=True. Remaining INCONCLUSIVE: lower mutation ledger (Predicate/NoUnapprovedByte),
+  live taint readback, agent journal/notification expectations (the agent keeps no durable notification record), and in S01/S02 one or two
+  cadence gaps not accounted against the timeline. Harness defects found here: Get-Volume cluster-size hardening; PowerShell comma-vs-minus
+  precedence in the forbidden-block offsets (misdiagnosed once as the cluster size).
