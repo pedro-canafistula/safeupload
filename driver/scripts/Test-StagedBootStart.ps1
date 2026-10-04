@@ -510,6 +510,7 @@ function Write-BootPolicyAsSystem([string] $Prefix) {
     $outputPath = $launcher + '.json'
     $body = @'
 $ErrorActionPreference = 'Stop'
+try {
 $servicePath = 'SYSTEM\CurrentControlSet\Services\SafeUpload'
 $systemSid = [Security.Principal.SecurityIdentifier]::new('S-1-5-18')
 $installerSid = [Security.Principal.SecurityIdentifier]::new('S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464')
@@ -583,6 +584,11 @@ finally {
     if ($null -ne $parameters) { $parameters.Dispose() }
     $service.Dispose()
 }
+}
+catch {
+    # Run 5 timed out silently: report the SYSTEM-side failure instead.
+    [IO.File]::WriteAllText('__OUT__', (@{ WriterError = ($_.Exception.GetType().FullName + ': ' + $_.Exception.Message + ' @ ' + $_.ScriptStackTrace) } | ConvertTo-Json -Compress), [Text.Encoding]::UTF8)
+}
 '@
     $body = $body.Replace('__PREFIX__', (ConvertTo-PowerShellLiteral $Prefix))
     $body = $body.Replace('__OUT__', (ConvertTo-PowerShellLiteral $outputPath))
@@ -600,6 +606,7 @@ finally {
         }
         if (-not (Test-Path -LiteralPath $outputPath)) { throw 'SYSTEM boot-policy writer timed out.' }
         $result = Get-Content -LiteralPath $outputPath -Raw | ConvertFrom-Json
+        if ($result.PSObject.Properties.Name -contains 'WriterError') { throw ('SYSTEM boot-policy writer failed: ' + $result.WriterError) }
         if (-not $result.ParametersAclValid -or -not $result.BootPolicyAclValid -or
             -not $result.ReadbackMatches -or $result.PrefixCount -ne 1 -or $result.Version -ne 1 -or
             $result.StructSize -ne 16656 -or $result.RecordBytes -ne 16656) {
