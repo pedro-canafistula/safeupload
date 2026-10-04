@@ -4037,7 +4037,8 @@ public static class SafeUploadEolNative
                 # A late-loaded driver leaves C: untrusted (owner decision: late attach claims nothing), so Free is always false
                 # and the state Unknown, with TRUST (0x80) as the ONLY reason. Any other reason is a real tracking loss and fails.
                 # Free/promotion proper is qualified in boot-start mode (MVP-PLAN 2026-10-04, ledger-not-gate decision).
-                $reasons = [Convert]::ToUInt32(([string]$entry.unknownReasons) -replace '^0x', '', 16)
+                $reasonText = ([string]$entry.unknownReasons) -replace '^0x', ''
+                $reasons = [Convert]::ToUInt32($reasonText, 16)
                 $trustOnly = ($reasons -eq 0x80)
                 $freeOk = if ($trustOnly) { -not [bool]$entry.Free -and [string]$entry.State -eq 'Unknown' } else {
                     [bool]$entry.Free -eq $ExpectedFree -and [string]$entry.State -eq $ExpectedState }
