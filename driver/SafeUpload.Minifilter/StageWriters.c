@@ -761,7 +761,7 @@ VOID SafeUploadStageWritersCompleteRename(_In_opt_ PVOID Context,
     PSTAGE_REGISTRY_ENTRY entry;
     BOOLEAN markUnknown = FALSE;
 
-    if (!SafeUploadStageWritersIsRenameContext(Context)) return;
+    if (rename == NULL || !SafeUploadStageWritersIsRenameContext(Context)) return;
     entry = rename->Entry;
     if (KeGetCurrentIrql() > APC_LEVEL) {
         if (Draining || Succeeded) {
@@ -1640,7 +1640,8 @@ static NTSTATUS StageRegistryWaitForAssociation(_In_ PSTAGE_TX_ASSOCIATION Assoc
 {
     LONG state = InterlockedCompareExchange(&Association->State, 0, 0);
     if (state == SAFEUPLOAD_TX_ASSOC_PENDING) {
-        KeWaitForSingleObject(&Association->StateChanged, Executive, KernelMode, FALSE, NULL);
+        /* A nonalertable kernel wait with no timeout returns only when the event is signaled. */
+        (void)KeWaitForSingleObject(&Association->StateChanged, Executive, KernelMode, FALSE, NULL);
         state = InterlockedCompareExchange(&Association->State, 0, 0);
     }
     return state == SAFEUPLOAD_TX_ASSOC_FAILED ? Association->CompletionStatus : STATUS_SUCCESS;
@@ -1655,6 +1656,7 @@ static NTSTATUS StageRegistryEnlistTransaction(_In_ PFLT_INSTANCE Instance,
     PSTAGE_TX_ASSOCIATION waitFor = NULL;
     PLIST_ENTRY link;
     BOOLEAN alreadyEnlisted;
+    BOOLEAN enlistSucceeded;
     BOOLEAN dropTableReference = FALSE;
     PFLT_CONTEXT transactionContext = NULL;
     NTSTATUS status;
@@ -1731,10 +1733,16 @@ Retry:
         FltReleaseContext(transactionContext);
         transactionContext = NULL;
     }
+    /* Examine the enlistment result even when a terminal callback supersedes it below. */
+    if (NT_SUCCESS(status)) {
+        enlistSucceeded = TRUE;
+    } else {
+        enlistSucceeded = FALSE;
+    }
     FltAcquirePushLockExclusive(&RegistryLock);
     if (InterlockedCompareExchange(&association->State, 0, 0) == SAFEUPLOAD_TX_ASSOC_TERMINAL) {
         status = STATUS_SUCCESS; /* The terminal callback retired T while enlistment completed. */
-    } else if (NT_SUCCESS(status)) {
+    } else if (enlistSucceeded) {
         InterlockedExchange(&association->State, SAFEUPLOAD_TX_ASSOC_ENLISTED);
         association->CompletionStatus = STATUS_SUCCESS;
         KeSetEvent(&association->StateChanged, IO_NO_INCREMENT, FALSE);

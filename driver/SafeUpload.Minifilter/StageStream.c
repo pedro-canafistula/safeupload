@@ -3010,6 +3010,7 @@ FLT_PREOP_CALLBACK_STATUS SafeUploadStageDispatch(PFLT_CALLBACK_DATA Data,
         }
         break;
     case IRP_MJ_DIRECTORY_CONTROL:
+        *CompletionContext = NULL;
         return SafeUploadStageDirectoryQuery(Data, Objects, CompletionContext);
     case IRP_MJ_CLEANUP:
 #if SAFEUPLOAD_STAGING_PROTOTYPE

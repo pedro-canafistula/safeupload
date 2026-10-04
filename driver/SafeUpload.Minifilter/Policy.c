@@ -1137,6 +1137,8 @@ Routine Description:
     FltReleasePushLock( &SafeUploadPolicyLock );
 }
 
+#endif
+
 BOOLEAN
 SafeUploadPolicyMatchesCurrentOrPendingDestination (
     _In_ SAFEUPLOAD_VOLUME_KIND VolumeKind,
@@ -1147,8 +1149,9 @@ SafeUploadPolicyMatchesCurrentOrPendingDestination (
 
 Routine Description:
 
-    Tests current and pending policy snapshots under one shared lock. Callers
-    may also request component-bounded ancestor matching for namespace
+    Tests the current policy and, in prototype builds, the pending snapshot
+    under one shared lock. Callers may also request component-bounded
+    ancestor matching for namespace
     mutations such as reparse changes on a parent of a protected prefix.
 
     IRQL: <= APC_LEVEL.
@@ -1160,14 +1163,18 @@ Routine Description:
     FltAcquirePushLockShared( &SafeUploadPolicyLock );
     matched = SafeUploadPolicySnapshotMatchesDestination(
         SafeUploadPolicy, VolumeKind, NormalizedPath, IncludeAncestors);
+#if SAFEUPLOAD_STAGING_PROTOTYPE
     if (!matched) {
         matched = SafeUploadPolicySnapshotMatchesDestination(
             SafeUploadPendingPolicy, VolumeKind, NormalizedPath, IncludeAncestors);
     }
+#endif
     FltReleasePushLock( &SafeUploadPolicyLock );
 
     return matched;
 }
+
+#if SAFEUPLOAD_STAGING_PROTOTYPE
 
 NTSTATUS
 SafeUploadPolicyCopyScope (

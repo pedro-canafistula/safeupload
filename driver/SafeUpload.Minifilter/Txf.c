@@ -313,7 +313,7 @@ FLT_PREOP_CALLBACK_STATUS SafeUploadStageTxfFsctlPreOperation(
     _In_ PFLT_CALLBACK_DATA Data, _In_ PCFLT_RELATED_OBJECTS Objects,
     _Out_ PVOID *CompletionContext)
 {
-    UNREFERENCED_PARAMETER(CompletionContext);
+    *CompletionContext = NULL;
     if (!SafeUploadStageTxfFsctlMustRefuse(Data, Objects)) return FLT_PREOP_SUCCESS_NO_CALLBACK;
     SafeUploadStageTxfRecordRefused();
     return StageTxfCompleteAccessDenied(Data);

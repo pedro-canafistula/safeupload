@@ -806,10 +806,18 @@ Return Value:
             }
 
             if (command == SAFEUPLOAD_CONTROL_REGISTRY_ENTRY) {
+                C_ASSERT(sizeof(SAFEUPLOAD_POLICY_MESSAGE) >=
+                    (ULONG)FIELD_OFFSET(SAFEUPLOAD_ADMISSION_PROBE_REQUEST, Strings) +
+                    (2UL * SAFEUPLOAD_ADMISSION_PROBE_MAX_STRING_CHARS * sizeof(WCHAR)) +
+                    sizeof(SAFEUPLOAD_REGISTRY_ENTRY_STATUS));
+                C_ASSERT((sizeof(SAFEUPLOAD_POLICY_MESSAGE) - sizeof(SAFEUPLOAD_REGISTRY_ENTRY_STATUS)) %
+                    __alignof(SAFEUPLOAD_REGISTRY_ENTRY_STATUS) == 0);
 #pragma warning( suppress: 6001 )
                 ProbeForWrite(OutputBuffer, sizeof(SAFEUPLOAD_REGISTRY_ENTRY_STATUS),
                     __alignof(SAFEUPLOAD_REGISTRY_ENTRY_STATUS));
-                registryReply = (PSAFEUPLOAD_REGISTRY_ENTRY_STATUS)policy;
+                /* Keep the reply beyond the bounded request in the existing pool allocation. */
+                registryReply = (PSAFEUPLOAD_REGISTRY_ENTRY_STATUS)((PUCHAR)policy +
+                    sizeof(*policy) - sizeof(*registryReply));
                 RtlZeroMemory(registryReply, sizeof(*registryReply));
             }
 
