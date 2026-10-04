@@ -4446,9 +4446,15 @@ public static class SafeUploadEolNative
                 -ExpectedState 'Activating')
 
             if ($null -ne $agent) { Stop-StagedTestAgent $agent; $agent = $null }
+            # The fixture folder is a protected scope by now, and with the agent stopped admission correctly refuses writes
+            # there (run 17: Win32 5 while the overflow itself was recorded). The overflow targets live outside every scope.
+            $overflowDirectory = Join-Path $documents ('SafeUploadRtOverflow-' + $id + '-unscoped')
+            [void](New-Item -ItemType Directory -Path $overflowDirectory -Force)
+            $overflowTargets = @((Join-Path $overflowDirectory 'overflow_a.maptest'), (Join-Path $overflowDirectory 'overflow_b.maptest'))
+            try {
             $capacityBefore = Get-RTStats
             [void](Invoke-InspectorChecked -Arguments @('--registry-capacity', '8') -Timeout $t)
-            $overflowHandle = [SafeUploadAdmissionNative]::CreateFile($RegistryTxfCorpus[6],
+            $overflowHandle = [SafeUploadAdmissionNative]::CreateFile($overflowTargets[0],
                 [uint32]0x40000000, [uint32]7, [IntPtr]::Zero, [uint32]3, [uint32]0x80, [IntPtr]::Zero)
             $overflowError = if ($overflowHandle.IsInvalid) { [SafeUploadRegistryTxfNative]::LastError() } else { 0 }
             $overflowOpenFailed = [bool]$overflowHandle.IsInvalid
@@ -4467,7 +4473,7 @@ public static class SafeUploadEolNative
                 ';overflowDelta:' + ([int]$capacityAfter.registryOverflow - [int]$capacityBefore.registryOverflow) +
                 ';unknownReasons:' + $capacityAfter.registryUnknownReasons + ';instanceUnknown:' +
                 $capacityAfter.registryInstanceUnknown)
-            $closedWriter = [SafeUploadAdmissionNative]::CreateFile($RegistryTxfCorpus[7],
+            $closedWriter = [SafeUploadAdmissionNative]::CreateFile($overflowTargets[1],
                 [uint32]0x40000000, [uint32]7, [IntPtr]::Zero, [uint32]3, [uint32]0x80, [IntPtr]::Zero)
             $closedWriterError = if ($closedWriter.IsInvalid) { [SafeUploadRegistryTxfNative]::LastError() } else { 0 }
             $closedWriterIsInvalid = [bool]$closedWriter.IsInvalid
@@ -4478,6 +4484,12 @@ public static class SafeUploadEolNative
                 ('Win32Error:' + $closedWriterError + ';secondWriterRefused:' + $closedWriterIsInvalid +
                 ';instanceUnknown:' + $stickyAfter.registryInstanceUnknown)
             [void](Invoke-InspectorChecked -Arguments @('--registry-capacity', '0') -Timeout $t)
+            }
+            finally {
+                Remove-Item -LiteralPath $overflowDirectory -Recurse -Force -ErrorAction SilentlyContinue
+            }
+            Add-RTOutcome 'CapacityOverflowTargetsRemoved' (-not (Test-Path -LiteralPath $overflowDirectory)) `
+                ('removed:' + (-not (Test-Path -LiteralPath $overflowDirectory)))
             [void](Invoke-InspectorChecked -Arguments @('--admission-trace-disable') -Timeout $t)
             $traceEnabled = $false
             $runSucceeded = ($script:RegistryTxfChecksFailed -eq 0)
