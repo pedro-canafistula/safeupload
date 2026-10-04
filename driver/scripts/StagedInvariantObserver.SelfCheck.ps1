@@ -204,37 +204,96 @@ function SyntheticPredicate([string] $Variant) {
         $identity=[pscustomobject]@{ FileId='synthetic-id'; Attributes=0; Creation=0; Modified=0; Changed=0; Accessed=0; Links=1 }
         $bimage=[pscustomobject]@{ Role='Current'; Path='synthetic-file'; Absent=$false; Identity=$identity; RawMetadata=$metadata; Containers=@(); LogicalArtifact=$ba; Length=4; Sha256=$ba.Sha256 }
         $simage=[pscustomobject]@{ Role='Current'; Path='synthetic-file'; Absent=$false; Identity=$identity; RawMetadata=$metadata; Containers=@(); LogicalArtifact=$aa; Length=4; Sha256=$aa.Sha256; Runs=@(); SecurityId=0; Sddl='synthetic' }
-        $baseline=[pscustomobject]@{ Status='OK'; Images=@($bimage); Time=[pscustomobject]@{ Qpc=1; BootId='fabricated' }; Build='19045.2965'; ObserverPid=10; ObserverSid='S-1-5-18'; Geometry=[pscustomobject]@{ Cluster=4096 } }
+        # S00 setup attempts all precede the baseline; neither the gap nor the
+        # capture overlaps an actor attempt. These are fabricated QPC facts.
+        $frequency=1000
+        $baseline=[pscustomobject]@{ Status='OK'; CaseId='S00-observer-control'; Images=@($bimage); Time=[pscustomobject]@{ Qpc=2000; QpcFrequency=$frequency; BootId='fabricated' }; Build='19045.2965'; ObserverPid=10; ObserverSid='S-1-5-18'; Geometry=[pscustomobject]@{ Cluster=4096 } }
         $readers=@($false,$true | ForEach-Object { [pscustomobject]@{ Path='synthetic-file'; Unbuffered=$_; Status='OK'; Result=[pscustomobject]@{ Digest=$aa.Sha256; Length=4 } } })
-        $sample=[pscustomobject]@{ Status='OK'; Sequence=1; OperationSequence=1; Phase='synthetic'; Start=[pscustomobject]@{ Qpc=10; BootId='fabricated'; Utc='2026-10-04T00:00:00Z' }; End=[pscustomobject]@{ Qpc=11 }; GapMs=$null
+        $sample=[pscustomobject]@{ Status='OK'; Sequence=1; OperationSequence=1; Phase='synthetic'; Start=[pscustomobject]@{ Qpc=2010; QpcFrequency=$frequency; BootId='fabricated'; Utc='2026-10-04T00:00:00Z' }; End=[pscustomobject]@{ Qpc=2011; QpcFrequency=$frequency; BootId='fabricated'; Utc='2026-10-04T00:00:00.001Z' }; GapMs=10; DurationMs=1; CadenceMs=10
             CleanupErrors=@(); Images=@($simage); Readers=$readers; Captures=@([pscustomobject]@{ Status='OK'; Images=@($simage); Readers=$readers }) }
         if ($Variant -eq 'Partial') { $sample.Status='ERROR'; $sample.Captures[0].Status='ERROR' }
-        $expect=[pscustomobject]@{ Path='synthetic-file'; Kind='Final'; Version='Baseline'; Generation=0; FileId='synthetic-id'; ZeroPadding=$false; Metadata=$metadata }
+        $exactMetadata=[pscustomobject]@{ Raw=$metadata; Api=$identity; AccessRule='Exact'; SecurityId=0; Sddl='synthetic' }
+        $expect=[pscustomobject]@{ Path='synthetic-file'; Kind='Final'; Version='Baseline'; Generation=0; FileId='synthetic-id'; ZeroPadding=$false; Metadata=$exactMetadata }
         $timeline=[pscustomobject]@{ ForbiddenBlocks=@(); PreCutoffImages=@(); AllowedMutations=@(); ExpectedDenials=@(); AccountedGapSequences=@()
-            WriterIdentities=@([pscustomobject]@{ Pid=11; Sid='S-1-5-21-1-2-3-1000'; Elevated=$false; IsAdministrator=$false; BootId='fabricated' })
+            WriterIdentities=@([pscustomobject]@{ Pid=11; Sid='S-1-5-21-1-2-3-1000'; SessionId=1; Elevated=$false; IsAdministrator=$false; BootId='fabricated' })
+            Operations=@(for ($n=0; $n -le 100; $n++) { [pscustomobject]@{ Trial=$n; Class='writer-open-deny'; NativeCode=5; StartQpc=100+$n*10; EndQpc=101+$n*10 } })
+            WriterFence=[pscustomobject]@{ Complete=$true; BootId='fabricated'; QpcFrequency=$frequency; ReleasedQpc=50; CompletedQpc=1500; ExpectedAttempts=101 }
+            CadenceProof=$null
+            ExternalEvidence=[pscustomobject]@{ Provenance='SyntheticTestEvidence'; Build='19045.2965'; PrepareBootId='fabricated-prepare'; ActiveBootId='fabricated'; ObserverPid=10; ObserverSid='S-1-5-18'
+                ActorProvenance=[pscustomobject]@{ OwnerSid='S-1-5-21-1-2-3-1000'; Pid=11; SessionId=1 }
+                ObserverProcess=[pscustomobject]@{ OwnerSid='S-1-5-18'; Pid=10 }; Restoration=[pscustomobject]@{ Known=$true } }
             PlatformValidated=$true; ObserverIndependent=$true; StandardUserWriters=$true; ContinuousObservationComplete=$true; RestorationKnown=$true
             Checkpoints=@([pscustomobject]@{ OperationSequence=1; Phase='synthetic'; State='Protected'; Storage=@($expect); Directories=@(); ReadDenials=@() }) }
         $denied=[pscustomobject]@{ Sequence=1; PostComplete=$true; LowerAdmitted=$false; DeniedBeforeLower=$true; NativeResult=5
             FileId='synthetic-id'; VolumeSerial=1; SopIdentity='sop'; EpochGeneration=1; Operation='Write'; Paging=$false; Offset=0; Length=4
             AttemptId=''; PolicyGeneration=1; DestinationGeneration=1; PayloadSha256=$aa.Sha256; Path='synthetic-file' }
         $timeline.ExpectedDenials=@($denied)
-        $ledger=[pscustomobject]@{ Complete=$true; Overflow=$false; FirstSequence=1; LastSequence=1; Entries=@($denied) }
+        $ledger=[pscustomobject]@{ Provenance='SyntheticTestLedger'; Complete=$true; Overflow=$false; FirstSequence=1; LastSequence=1; Entries=@($denied) }
         if ($Variant -eq 'MissingLedger') { $ledger.Complete=$false }
         if ($Variant -eq 'WriteErase') { $denied.LowerAdmitted=$true; $denied.DeniedBeforeLower=$false; $denied.NativeResult=0 }
         if ($Variant -eq 'LostCompletion') { $denied.PostComplete=$false }
         if ($Variant -eq 'Forbidden') { $timeline.ForbiddenBlocks=,([byte[]]@(99,4)); $sample.Status='ERROR' }
         if ($Variant -eq 'LostArtifact') { [IO.File]::Delete($ap) }
-        return Test-NoUnapprovedByte $baseline @() @($sample) $ledger $timeline
+        if ($Variant -eq 'FlatMetadata') { $expect.Metadata=$metadata }
+        if ($Variant -eq 'MissingRawMetadata') { $exactMetadata.Raw=$null }
+        if ($Variant -eq 'MissingApiMetadata') { $exactMetadata.Api=$null }
+        if ($Variant -eq 'MissingProvenance') { $ledger.Provenance=$null }
+        if ($Variant -eq 'MissingExternalProvenance') { $timeline.ExternalEvidence.Provenance=$null }
+        if ($Variant -eq 'LedgerInRealRun') { $timeline.ExternalEvidence.Provenance=$null }
+        if ($Variant -eq 'ExternalInRealRun') { $ledger.Provenance=$null }
+        if ($Variant -eq 'RealMissingLedger') {
+            $ledger.Provenance=$null; $ledger.Complete=$false; $ledger.Entries=@()
+            $timeline.ExternalEvidence.Provenance=$null
+        }
+        $timeline.CadenceProof=Test-InvariantCadence $baseline @($sample) $timeline.Operations $timeline.WriterFence
+        return Test-NoUnapprovedByte $baseline @() @($sample) $ledger $timeline -SyntheticRun:($Variant -notin @('UnmarkedSynthetic','LedgerInRealRun','ExternalInRealRun','RealMissingLedger'))
     } finally { [IO.Directory]::Delete($dir,$true) }
 }
-Check-IO 'PredicateCompleteAllowedImage' { (SyntheticPredicate 'Unchanged').Verdict -eq 'PASS' }
-Check-IO 'PredicateWholeImageChange' { (SyntheticPredicate 'Changed').Verdict -eq 'FAIL' }
-Check-IO 'PredicatePartialViolationWins' { (SyntheticPredicate 'Partial').Verdict -eq 'FAIL' }
+Check-IO 'PredicateCompleteAllowedImage' {
+    $v=SyntheticPredicate 'Unchanged'
+    $v.Verdict -eq 'PASS' -and $v.SyntheticRun -and @($v.Assertions | Where-Object { $_.Verdict -ne 'PASS' }).Count -eq 0 -and
+        (SyntheticPredicate 'UnmarkedSynthetic').Verdict -eq 'INCONCLUSIVE' -and
+        (SyntheticPredicate 'LedgerInRealRun').Verdict -eq 'INCONCLUSIVE' -and
+        (SyntheticPredicate 'ExternalInRealRun').Verdict -eq 'INCONCLUSIVE' -and
+        (SyntheticPredicate 'MissingProvenance').Verdict -eq 'INCONCLUSIVE' -and
+        (SyntheticPredicate 'MissingExternalProvenance').Verdict -eq 'INCONCLUSIVE'
+}
+Check-IO 'PredicateWholeImageChange' {
+    $v=SyntheticPredicate 'Changed'
+    $v.Verdict -eq 'FAIL' -and @($v.Assertions | Where-Object { $_.Name -eq 'CompleteImage' -and $_.Verdict -eq 'FAIL' }).Count -gt 0
+}
+Check-IO 'PredicatePartialViolationWins' {
+    $v=SyntheticPredicate 'Partial'
+    $v.Verdict -eq 'FAIL' -and @($v.Assertions | Where-Object { $_.Name -eq 'CompleteImage' -and $_.Verdict -eq 'FAIL' }).Count -gt 0 -and
+        @($v.Assertions | Where-Object { $_.Name -eq 'CaptureCoverage' -and $_.Verdict -eq 'INCONCLUSIVE' }).Count -gt 0
+}
 Check-IO 'PredicatePartialForbiddenBlock' { $v=SyntheticPredicate 'Forbidden'; $v.Verdict -eq 'FAIL' -and $v.ForbiddenByteCount -gt 0 }
-Check-IO 'PredicateMissingLedger' { (SyntheticPredicate 'MissingLedger').Verdict -eq 'INCONCLUSIVE' }
-Check-IO 'PredicateWriteThenErase' { (SyntheticPredicate 'WriteErase').Verdict -eq 'FAIL' }
-Check-IO 'PredicateLostArtifactCannotHideViolation' { (SyntheticPredicate 'LostArtifact').Verdict -eq 'FAIL' }
-Check-IO 'PredicateLostCompletion' { (SyntheticPredicate 'LostCompletion').Verdict -eq 'INCONCLUSIVE' }
+Check-IO 'PredicateMissingLedger' {
+    $synthetic=SyntheticPredicate 'MissingLedger'; $real=SyntheticPredicate 'RealMissingLedger'
+    $synthetic.Verdict -eq 'INCONCLUSIVE' -and $real.Verdict -eq 'INCONCLUSIVE' -and -not $real.SyntheticRun -and
+        @($real.Assertions | Where-Object { $_.Name -eq 'PredicateCoverage' -and $_.Reason -like '*Driver lower admission/completion mutation ledger unavailable:*' }).Count -eq 1
+}
+Check-IO 'PredicateWriteThenErase' {
+    $v=SyntheticPredicate 'WriteErase'
+    $v.Verdict -eq 'FAIL' -and @($v.Assertions | Where-Object { $_.Name -eq 'LowerMutation' -and $_.Verdict -eq 'FAIL' }).Count -eq 1
+}
+Check-IO 'PredicateLostArtifactCannotHideViolation' {
+    $v=SyntheticPredicate 'LostArtifact'
+    $v.Verdict -eq 'FAIL' -and @($v.Assertions | Where-Object { $_.Name -eq 'CompleteImage' -and $_.Verdict -eq 'FAIL' }).Count -gt 0 -and
+        @($v.Assertions | Where-Object { $_.Name -eq 'ArtifactCoverage' -and $_.Verdict -eq 'INCONCLUSIVE' }).Count -gt 0
+}
+Check-IO 'PredicateLostCompletion' {
+    $v=SyntheticPredicate 'LostCompletion'
+    $ok=$v.Verdict -eq 'INCONCLUSIVE' -and @($v.Assertions | Where-Object { $_.Name -eq 'PredicateCoverage' -and $_.Reason -like '*Ledger gap/missing lower completion.*' }).Count -eq 1
+    foreach ($variant in @('FlatMetadata','MissingRawMetadata','MissingApiMetadata')) {
+        $v=SyntheticPredicate $variant
+        $view=if ($variant -eq 'MissingApiMetadata') { 'Api' } else { 'Raw' }
+        $ok=$ok -and $v.Verdict -eq 'INCONCLUSIVE' -and
+            @($v.Assertions | Where-Object { $_.Name -eq 'MetadataCoverage' -and $_.Reason -ceq ('Exact per-fixture metadata ' + $view + ' expectation missing.') }).Count -eq 1 -and
+            @($v.Assertions | Where-Object { $_.Name -eq 'AllowedImageCoverage' }).Count -eq 0
+    }
+    $ok
+}
 function FixtureBytes([int] $Length, [int] $Seed) {
     $b = [byte[]]::new($Length)
     for ($i=0; $i -lt $Length; $i++) { $b[$i] = [byte](($i * 17 + $Seed) % 251) }

@@ -910,6 +910,16 @@ function Test-InvariantMetadata($Image, $Expectation, $Sample, $Policy) {
         return New-IOAssertion 'MetadataCoverage' 'INCONCLUSIVE' 'Exact per-fixture metadata expectation missing.' $Sample.Sequence $Image.Path
     }
     $m=$Expectation.Metadata;$complete=$true
+    # Older/partial fixtures may have a flat or absent metadata object. Do not
+    # index Properties on a null Raw/Api object (even with StrictMode off).
+    if ($null -eq $m) {
+        return New-IOAssertion 'MetadataCoverage' 'INCONCLUSIVE' 'Exact per-fixture metadata expectation missing.' $Sample.Sequence $Image.Path
+    }
+    foreach ($view in @('Raw','Api')) {
+        if ($null -eq $m.PSObject.Properties[$view] -or $null -eq $m.$view) {
+            return New-IOAssertion 'MetadataCoverage' 'INCONCLUSIVE' ('Exact per-fixture metadata ' + $view + ' expectation missing.') $Sample.Sequence $Image.Path
+        }
+    }
     foreach($field in $fields) {
         if ($null -eq $m.Raw.PSObject.Properties[$field] -or $null -eq $m.Api.PSObject.Properties[$field]) {
             $complete=$false;continue
@@ -943,10 +953,12 @@ function Test-InvariantMetadata($Image, $Expectation, $Sample, $Policy) {
     $assertions+=New-IOAssertion 'MetadataCoverage' $(if($complete){'PASS'}else{'INCONCLUSIVE'}) ('Per-fixture fields: '+($fields -join ',')+'; tolerated field Accessed only under the recorded NtfsReadWindow rule.') $Sample.Sequence $Image.Path
     return $assertions
 }
-function Test-InvariantExternalCoverage($Baseline, $Timeline) {
+function Test-InvariantExternalCoverage($Baseline, $Timeline, [switch] $SyntheticRun) {
     Set-StrictMode -Off # Missing proof fields produce INCONCLUSIVE, including older evidence.
 
     $e=$Timeline.ExternalEvidence;$reasons=@()
+    if ($SyntheticRun -and $e.Provenance -cne 'SyntheticTestEvidence') { $reasons+='Synthetic run requires explicitly synthetic external evidence provenance.' }
+    elseif (-not $SyntheticRun -and $e.Provenance -eq 'SyntheticTestEvidence') { $reasons+='Synthetic test external evidence requires an explicitly synthetic run.' }
     if($Baseline.Build -cne '19045.2965' -or $e.Build -cne $Baseline.Build){$reasons+='Build 19045.2965 attestation missing.'}
     if([string]::IsNullOrWhiteSpace($e.PrepareBootId) -or $e.PrepareBootId -ceq $Baseline.Time.BootId -or $e.ActiveBootId -cne $Baseline.Time.BootId){$reasons+='Activating boot identity missing.'}
     if($e.ObserverPid -ne $Baseline.ObserverPid -or $e.ObserverPid -le 0 -or $e.ObserverSid -cne $Baseline.ObserverSid -or $e.ObserverSid -cne 'S-1-5-18'){$reasons+='SYSTEM observer identity not attested.'}
@@ -994,7 +1006,7 @@ function Get-IOExpectedBytes($Baseline, $ApprovedImages, $Timeline, $Expectation
 function Test-NoUnapprovedByte {
     [CmdletBinding()] param([Parameter(Mandatory=$true)] $Baseline, [object[]] $ApprovedImages = @(),
         [Parameter(Mandatory=$true)][object[]] $Samples, [Parameter(Mandatory=$true)] $MutationLedger,
-        [Parameter(Mandatory=$true)] $ExpectedTimeline)
+        [Parameter(Mandatory=$true)] $ExpectedTimeline, [switch] $SyntheticRun)
     $assertions = @(); $forbidden = 0; $differences = @()
     try {
         if ($Baseline.Status -ne 'OK') { throw 'Successful baseline required.' }
@@ -1210,7 +1222,19 @@ function Test-NoUnapprovedByte {
                 $assertions += New-IOAssertion 'ObserverIdentity' 'INCONCLUSIVE' 'Writer is not an independent standard-user process.' $null $null
             }
         }
-        $assertions += Test-InvariantExternalCoverage $Baseline $ExpectedTimeline
+        $assertions += Test-InvariantExternalCoverage $Baseline $ExpectedTimeline -SyntheticRun:$SyntheticRun
+        # Synthetic evidence is usable only by an explicitly marked evaluation
+        # run. No production proof requirement is bypassed in either mode.
+        $ledgerProvenance=$null
+        if ($MutationLedger -is [System.Collections.IDictionary]) { $ledgerProvenance=$MutationLedger['Provenance'] }
+        elseif ($null -ne $MutationLedger.PSObject.Properties['Provenance']) { $ledgerProvenance=$MutationLedger.Provenance }
+        if ($SyntheticRun) {
+            if ($ledgerProvenance -cne 'SyntheticTestLedger') {
+                $assertions += New-IOAssertion 'PredicateCoverage' 'INCONCLUSIVE' 'Synthetic run requires explicitly synthetic test ledger provenance.' $null $null
+            }
+        } elseif ($ledgerProvenance -eq 'SyntheticTestLedger') {
+            $assertions += New-IOAssertion 'PredicateCoverage' 'INCONCLUSIVE' 'Synthetic test ledger cannot establish production PredicateCoverage or NoUnapprovedByte.' $null $null
+        }
         if (-not $MutationLedger.Complete -or $MutationLedger.Overflow -or $MutationLedger.Entries.Count -eq 0) { throw 'Driver lower admission/completion mutation ledger unavailable: user-mode calls and raw samples cannot prove PredicateCoverage or NoUnapprovedByte.' }
         $next = [long]$MutationLedger.FirstSequence
         foreach ($entry in $MutationLedger.Entries) {
@@ -1247,9 +1271,11 @@ function Test-NoUnapprovedByte {
     $verdict = 'PASS'
     if (@($assertions | Where-Object { $_.Verdict -eq 'FAIL' }).Count -gt 0) { $verdict = 'FAIL' }
     elseif (@($assertions | Where-Object { $_.Verdict -eq 'INCONCLUSIVE' }).Count -gt 0) { $verdict = 'INCONCLUSIVE' }
-    $assertions += New-IOAssertion 'NoUnapprovedByte' $verdict 'Full-image evidence combined with temporal proof; driver lower admission/completion mutation ledger is required for NoUnapprovedByte. FAIL takes precedence.' $null $null
+    $proofReason=if ($SyntheticRun) { 'Synthetic test only: full-image evidence combined with synthetic temporal proof and synthetic test ledger. FAIL takes precedence.' }
+        else { 'Full-image evidence combined with temporal proof; driver lower admission/completion mutation ledger is required for NoUnapprovedByte. FAIL takes precedence.' }
+    $assertions += New-IOAssertion 'NoUnapprovedByte' $verdict $proofReason $null $null
     return New-IORecord 'Verdict' @{ Schema = 'StagedInvariant/1'; Verdict = $verdict; ForbiddenByteCount = $forbidden
-        Assertions = $assertions; RawDifferences = $differences; AuthoritativeCaseExport = $false }
+        Assertions = $assertions; RawDifferences = $differences; SyntheticRun = [bool]$SyntheticRun; AuthoritativeCaseExport = $false }
 }
 function Close-InvariantObserver {
     [CmdletBinding()] param([Parameter(Mandatory=$true)] $Context)

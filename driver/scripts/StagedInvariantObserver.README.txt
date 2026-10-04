@@ -168,9 +168,17 @@ Bounds and honest limits
 Orchestrator commands (from the staged source root; capture raw stdout/stderr)
   Builder, any Windows build, Windows PowerShell 5.1; no elevation/raw volume:
     powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\driver\scripts\StagedInvariantObserver.SelfCheck.ps1
+  Pure proof-adapter evaluation (Windows PowerShell 5.1):
+    powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\driver\scripts\StagedInvariantProofAdapters.SelfCheck.ps1
+  The predicate self-check supplies complete fabricated QPC/cadence, nested
+  Raw/API metadata, external facts and SyntheticTestLedger provenance, and
+  explicitly invokes -SyntheticRun. SyntheticTestEvidence external facts and
+  SyntheticTestLedger ledgers cannot establish a production PASS. Synthetic
+  mode still applies every image, cadence, identity, restoration and ledger
+  completeness check; its returned verdict is labeled SyntheticRun=true.
   Guest, driver OFF, elevated, Windows 10 19045.2965, existing fixed-NTFS folder:
     powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\driver\scripts\StagedInvariantObserver.SelfCheck.ps1 -Live C:\IOFixtureRoot
-  Both: require process exit 0 AND one IO_Summary with failed:0; preserve full
+  Observer self-checks: require process exit 0 AND one IO_Summary with failed:0; preserve full
   output. Live creates unique io-fixtures-* and io-evidence-* below the supplied
   root and RETAINS both. Fragmentation requires >=3 actually observed extents;
   failure to achieve that is FAIL, not a skipped success. Read reported fixture

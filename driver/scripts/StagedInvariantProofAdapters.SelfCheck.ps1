@@ -45,6 +45,18 @@ $image.Identity | Add-Member NoteProperty FileId 'id'
 $baseline.Images=@($image);$baseline | Add-Member NoteProperty CaptureStartedFileTime $time
 $script:row=@{ExpectedTimeline=@('setup','boot','Unscoped');MetadataExpectations=@{Accessed='NtfsReadWindow';AccessReason='NTFS read-side in-memory time versus lazy disk update'}}
 $expect=(Get-ExpectedCheckpoint $baseline 'Continuous' 1).Storage[0]
+# Absent nested metadata used to index a null Properties array in the observer.
+foreach($view in @('Raw','Api')) {
+    $bad=Clone $expect;$bad.Metadata.$view=$null
+    $result=@(Test-InvariantMetadata $image $bad $samples[0] $null)
+    Check ($result.Count -eq 1 -and $result[0].Verdict -eq 'INCONCLUSIVE' -and $result[0].Reason -ceq ('Exact per-fixture metadata '+$view+' expectation missing.')) ('Absent '+$view+' metadata must have an exact reason, without throwing.')
+}
+$bad=Clone $expect;$bad.Metadata=Clone $metadata
+$result=@(Test-InvariantMetadata $image $bad $samples[0] $null)
+Check ($result.Count -eq 1 -and $result[0].Verdict -eq 'INCONCLUSIVE' -and $result[0].Reason -ceq 'Exact per-fixture metadata Raw expectation missing.') 'Legacy flat metadata must be INCONCLUSIVE without throwing.'
+$bad=Clone $expect;$bad.Metadata=$null
+$result=@(Test-InvariantMetadata $image $bad $samples[0] $null)
+Check ($result.Count -eq 1 -and $result[0].Verdict -eq 'INCONCLUSIVE' -and $result[0].Reason -ceq 'Exact per-fixture metadata expectation missing.') 'Null metadata must be INCONCLUSIVE without throwing.'
 $policy=[pscustomobject]@{Status='OK';Before=[pscustomobject]@{Value=3;BootId=$boot;VolumeGuid='volume';Qpc=0};After=[pscustomobject]@{Value=3;BootId=$boot;VolumeGuid='volume';Qpc=20000}}
 $image.Identity.Accessed=$time+10000
 $assertions=@(Test-InvariantMetadata $image $expect $samples[0] $policy)
@@ -58,6 +70,15 @@ Check (@(Test-InvariantMetadata $bad $expect $samples[0] $policy | Where-Object 
 Check (@(Test-InvariantMetadata $image $expect $samples[0] $null | Where-Object Verdict -eq 'INCONCLUSIVE').Count -gt 0) 'Absent policy cannot authorize Accessed tolerance.'
 $bad=Clone $policy;$bad.After.Value=0
 Check (@(Test-InvariantMetadata $image $expect $samples[0] $bad | Where-Object Verdict -eq 'INCONCLUSIVE').Count -gt 0) 'Policy change invalidates tolerance.'
+$external=[pscustomobject]@{WriterIdentities=@([pscustomobject]@{Pid=1000;Sid='S-1-5-21-1-2-3-1000';SessionId=1;Elevated=$false;IsAdministrator=$false;BootId=$boot});CadenceProof=[pscustomobject]@{Complete=$true}
+    ExternalEvidence=[pscustomobject]@{Provenance='SyntheticTestEvidence';Build=$baseline.Build;PrepareBootId='fixture/prepare';ActiveBootId=$boot;ObserverPid=$baseline.ObserverPid;ObserverSid=$baseline.ObserverSid
+        ActorProvenance=[pscustomobject]@{OwnerSid='S-1-5-21-1-2-3-1000';Pid=1000;SessionId=1};ObserverProcess=[pscustomobject]@{OwnerSid=$baseline.ObserverSid;Pid=$baseline.ObserverPid};Restoration=[pscustomobject]@{Known=$true}}}
+Check ((Test-InvariantExternalCoverage $baseline $external -SyntheticRun).Verdict -eq 'PASS') 'Complete synthetic external facts require an explicitly synthetic run.'
+Check ((Test-InvariantExternalCoverage $baseline $external).Verdict -eq 'INCONCLUSIVE') 'Synthetic external facts cannot attest a real run.'
+$bad=Clone $external;$bad.ExternalEvidence.Restoration.Known=$false
+Check ((Test-InvariantExternalCoverage $baseline $bad -SyntheticRun).Verdict -eq 'INCONCLUSIVE') 'Synthetic mode cannot waive independent restoration.'
+$bad=Clone $external;$bad.ExternalEvidence.Provenance=$null
+Check ((Test-InvariantExternalCoverage $baseline $bad -SyntheticRun).Verdict -eq 'INCONCLUSIVE') 'Synthetic mode requires declared synthetic external provenance.'
 # Mock only transport for pure service expectation evaluation.
 function Save-State($Value,[string]$Path){}
 function Get-WinEvent {param($LogName,$FilterXPath) if($FilterXPath -match 'Provider'){return};$a=[pscustomobject]@{};$a | Add-Member ScriptMethod ToXml {'anchor'};return $a}
