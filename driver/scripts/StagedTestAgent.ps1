@@ -50,7 +50,7 @@ function Start-StagedTestAgent([string] $ServiceDir, [string] $LogPrefix,
             & sc.exe sidtype $serviceName unrestricted | Out-Host
             if ($LASTEXITCODE -ne 0) { throw 'Could not enable the SafeUploadAgent service SID.' }
             $sidType = (& sc.exe qsidtype $serviceName 2>&1 | Out-String)
-            if ($LASTEXITCODE -ne 0 -or $sidType -notmatch 'SERVICE_SID_TYPE_UNRESTRICTED') {
+            if ($LASTEXITCODE -ne 0 -or $sidType -notmatch 'SERVICE_SID_TYPE:\s+UNRESTRICTED') {
                 throw "SafeUploadAgent does not have an unrestricted service SID: $sidType"
             }
             & sc.exe start $serviceName | Out-Host
