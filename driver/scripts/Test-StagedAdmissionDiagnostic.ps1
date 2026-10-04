@@ -1074,12 +1074,19 @@ function Invoke-MappedWrite($View, [string] $Marker) {
     }
 }
 
-function New-ExpandedPolicyForFixture([string] $FixtureDirectory, [string] $PolicyBackup) {
+function New-ExpandedPolicyForFixture([string] $FixtureDirectory, [string] $PolicyBackup, [switch] $FixedScopesOnly) {
     $policyBytes = [IO.File]::ReadAllBytes($policyPath)
     [IO.File]::WriteAllBytes($PolicyBackup, $policyBytes)
     $policyDocument = [Text.Encoding]::UTF8.GetString($policyBytes) | ConvertFrom-Json
     $policyDocument.monitoredScopes.destinationPaths =
         @($policyDocument.monitoredScopes.destinationPaths) + @($FixtureDirectory)
+    if ($FixedScopesOnly) {
+        # The scan-based fence (still in the admission path until Phase 3 increment 5) cannot cover whole removable or
+        # network volumes and rejects any policy transition that adds them (registry-txf run 10: SetPolicy NOT_SUPPORTED,
+        # StageFence CoverageRejected). Tests that need only a fixed-NTFS fixture scope leave them out.
+        $policyDocument.monitoredScopes.removableDrives = $false
+        $policyDocument.monitoredScopes.networkPaths = $false
+    }
     $updatedBytes = [Text.Encoding]::UTF8.GetBytes(($policyDocument | ConvertTo-Json -Depth 10))
     return [pscustomobject]@{
         OriginalBytes = $policyBytes
@@ -4336,7 +4343,7 @@ public static class SafeUploadEolNative
             }
             [void](Assert-RTEntry $txMutationPath 'Transaction_PreScopeWriter' $true 1 0 'no' 1 $false)
 
-            $expandedPolicy = New-ExpandedPolicyForFixture $fixtureDirectory $policyBackup
+            $expandedPolicy = New-ExpandedPolicyForFixture $fixtureDirectory $policyBackup -FixedScopesOnly
             $policyBytes = $expandedPolicy.OriginalBytes
             [IO.File]::WriteAllBytes($policyPath, $expandedPolicy.UpdatedBytes)
             Write-Output ('RT_ExpandedPolicySHA256=' + (Get-FileHash -LiteralPath $policyPath -Algorithm SHA256).Hash)
