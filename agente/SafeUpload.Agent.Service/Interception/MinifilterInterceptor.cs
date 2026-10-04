@@ -545,7 +545,7 @@ public sealed class MinifilterInterceptor : BackgroundService
             _logger.LogInformation(
                 "Prazo: motor {Budget} ms (RN-012), kernel espera {Kernel} ms.",
                 _budget.TotalMilliseconds,
-                kernelDeadline.TotalMilliseconds);
+                (policy.InspectionTimeout + MinifilterPolicyFactory.Margin).TotalMilliseconds);
 
             return true;
         }

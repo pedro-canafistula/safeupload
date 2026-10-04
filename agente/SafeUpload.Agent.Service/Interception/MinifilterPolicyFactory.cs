@@ -10,7 +10,8 @@ namespace SafeUpload.Agent.Service.Interception;
 /// </summary>
 internal static class MinifilterPolicyFactory
 {
-    private static readonly TimeSpan Margin = TimeSpan.FromMilliseconds(500);
+    /// <summary>Safety margin between the engine budget and the kernel's wait (RN-012).</summary>
+    internal static readonly TimeSpan Margin = TimeSpan.FromMilliseconds(500);
 
     internal static SafeUploadPolicyMessage Build(Policy policy)
     {
