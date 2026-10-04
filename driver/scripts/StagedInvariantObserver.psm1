@@ -420,7 +420,10 @@ namespace StagedInvariant {
    // A directory's MFT record (LSN, timestamps) and its index entries' copies of child sizes/attributes are updated lazily by NTFS
    // while the children are written (observer-selfcheck-live run 4: "Directory changed across bracket" with nothing changed by the caller).
    // A directory is fingerprinted by what the invariant cares about: its identity, runs and its names with file reference and namespace.
-   if(!directory) foreach(Record r in image.Records) s.Append('|').Append(r.Number).Append(':').Append(Hash(r.Fixed));
+   // The MFT record bytes (LSN at offset 8, $STANDARD_INFORMATION times/USN) also change lazily after a write while the data and layout
+   // do not (run 6: "Content/layout changed across bracket" right after a patch and restore). Content is covered by the image Digest compared
+   // alongside this fingerprint and layout by identity, EOF, allocation and runs, so record numbers (not bytes) are what is fingerprinted.
+   foreach(Record r in image.Records) s.Append('|').Append(r.Number);
    List<string> names=new List<string>(); foreach(NameEntry n in image.Names) names.Add(directory?(n.Name+":"+n.Reference+":"+n.Namespace):(n.Name+":"+n.Reference+":"+n.Eof+":"+n.Attributes));
    names.Sort(StringComparer.Ordinal); foreach(string n in names) s.Append('|').Append(n);
    return Hash(Encoding.UTF8.GetBytes(s.ToString()));

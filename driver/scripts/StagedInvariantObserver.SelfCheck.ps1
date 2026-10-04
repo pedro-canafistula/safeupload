@@ -348,6 +348,7 @@ if (-not [string]::IsNullOrWhiteSpace($Live)) {
         WriteFixture (Join-Path $scope 'new-name.bin') ([byte[]]@(0x41)) $false; FlushFixture $scope; $seq++
         $s = Capture-InvariantSample $context $baseline 'ChangedMetadata' $seq
         $verdict = FixtureVerdict $baseline $s
+        if ($s.Status -ne 'OK') { Write-Output ('IO_LiveMetadataSampleErrorDetail=' + (($s.Error | ConvertTo-Json -Depth 8 -Compress))) }
         $detected = @($verdict.Assertions | Where-Object { $_.Verdict -eq 'FAIL' -and ($_.Name -eq 'DirectoryMetadata' -or $_.Name -eq 'DestinationPresence') }).Count -gt 0
         Report-IO 'LiveMetadataChange' ($s.Status -eq 'OK' -and $detected) ('new-name.bin;sample:' + $s.Status + ';verdict:' + $verdict.Verdict)
     } catch { Report-IO 'LiveException' $false $_.Exception.ToString() }
