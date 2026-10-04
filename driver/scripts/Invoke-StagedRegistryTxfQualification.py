@@ -56,7 +56,7 @@ def checked_gate(content, prefix, analysis=False):
 for gate in ['driver:normal', 'driver:owned-feature', 'driver:normal-release', 'driver:owned-feature-release',
              'inspector-normal-release', 'inspector-feature-release']:
     checked_gate(summary, gate, gate.startswith('driver:'))
-subtrees = ['driver/SafeUpload.Minifilter', 'driver/SafeUpload.Inspector']
+subtrees = ['driver/SafeUpload.Minifilter', 'driver/SafeUpload.Inspector', 'driver/SafeUpload.WriterFixture']
 for local, key in [('src.zip', 'ARCHIVE_SHA256'), ('src.manifest', 'MANIFEST_SHA256')]:
     digest = hashlib.sha256((work / local).read_bytes()).hexdigest().upper()
     matches = re.findall(r'^' + key + r'=([0-9A-Fa-f]{64})$', summary, re.MULTILINE)
