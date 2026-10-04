@@ -1,0 +1,22 @@
+Phase 1 milestone review triage (orchestrator, 2026-10-03). Review: mvp1-phase1-milestone-review.txt (Luna, read-only, HEAD de9f096a).
+
+F-01 (P0) late/manual attach can pass the canary with an uncounted pre-attach writer: VALID. It is the Phase 2 rule ("volumes attached
+  while running but not newly mounted are Untrusted until reboot"), which cannot be enforced while the test driver is demand-loaded
+  (every volume, including C:, is late-attached). Moved to Phase 2: canary/trust requires FLTFL_INSTANCE_SETUP_NEWLY_MOUNTED_VOLUME
+  (boot-start attach); experiment E1 is a Phase 2 exit test. Until then a canary PASS means "S(F) primitive verified on this volume",
+  not "volume trusted".
+F-02 (P0) TxF writer state absent: VALID. Phase 3 admission: refuse transacted write/delete opens inside a protected scope (not
+  machine-wide: Windows servicing uses TxF). Experiment E2 becomes a Phase 3 test.
+F-03 (P1) every teardown reason treated as safe: VALID, FIXED (9d4ebfbb + c016bc1a): only FLTFL_INSTANCE_TEARDOWN_VOLUME_DISMOUNT marks
+  the token TEARING_DOWN; other reasons mark it UNKNOWN; teardown counters by reason; section-teardown asserts the dismount reason.
+  Note: in-memory Unknown cannot survive a driver reload; production has no voluntary unload (boot start), test-only unload resets it.
+F-04 (P1) Free(F) is not a cache-flush barrier: VALID as a Phase 3 promotion requirement (design: promote only when Free(F) AND the
+  file's cache is flushed); experiment E4 there.
+F-05 (P1) higher-altitude filter can hide opens: ACCEPTED AS AN EXPLICIT ASSUMPTION: other kernel drivers are inside the trust boundary.
+F-06, F-07 (P2) unproven FASTIO/cancel-after-success paths, unexercised timeout/draining branches: ALREADY DOCUMENTED as limits in the
+  readouts; kept open.
+F-08 (P2) writable section from a read-only handle: REFUTED on the builder (Win10 19045, elevated admin): CreateFileMapping(PAGE_READWRITE)
+  on a GENERIC_READ handle -> Win32 5; NtCreateSection(SECTION_ALL_ACCESS, PAGE_READWRITE) -> 0xC0000022; PAGE_WRITECOPY succeeds but is
+  private copy-on-write (never written back).
+F-09 (P2) test controls exist in the feature Release build: DOCUMENTED RULE: the feature/prototype build (SAFEUPLOAD_STAGING_PROTOTYPE) is
+  test-only and never user-receivable; any user-receivable build must be built without it (the port is also SYSTEM-only).

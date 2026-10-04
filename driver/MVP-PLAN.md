@@ -115,8 +115,12 @@ while mounted sets the machine-wide Unknown (scoped rule). The draining and drop
 passed ([readout](evidence/2026-10-03/regression-wrapperfix-readout.txt)); writer-count run 21 then passed 287/287 under
 Verifier on the scoped-teardown driver 88875b67.
 
-Phase 1 status: every listed experiment has a qualifying run on Windows 10 19045.2965. Remaining before calling Phase 1 closed:
-the milestone review, and the unexercised branches noted in the readouts. Empty-file mapping errors
+Phase 1 status: every listed experiment has a qualifying run on Windows 10 19045.2965. The milestone review
+([report](evidence/2026-10-03/mvp1-phase1-milestone-review.txt), [triage](evidence/2026-10-03/mvp1-phase1-milestone-triage.txt))
+found two P0s that belong to later phases (late-attach trust -> Phase 2, TxF -> Phase 3) and one P1 fixed now (teardown reason).
+Carried forward: Phase 2 must make trust require a newly mounted attach (experiment E1); Phase 3 must refuse transacted writes in a
+protected scope (E2) and require a cache flush before promotion (E4). Assumption: other kernel drivers are trusted. Release rule:
+SAFEUPLOAD_STAGING_PROTOTYPE builds are test-only and never user-receivable. Empty-file mapping errors
 did **not** exercise failed lower acquire. Windows 11 is out of MVP scope (owner decision 2026-10-03).
 Phases 2–5 remain open.
 [Progress evidence](evidence/2026-10-03/mvp1-idprobe-canary-progress.txt) and
