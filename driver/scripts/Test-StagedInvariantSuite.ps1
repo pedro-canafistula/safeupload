@@ -651,7 +651,10 @@ $value='Removed'
                 while(@(Get-CimInstance Win32_UserProfile | Where-Object { $_.SID -ceq $state.ActorSid -and $_.Loaded }).Count -ne 0 -and
                       [DateTime]::UtcNow -lt $profileDeadline){Start-Sleep -Milliseconds 500}
                 $profiles=@(Get-CimInstance Win32_UserProfile | Where-Object SID -ceq $state.ActorSid)
-                foreach($profile in $profiles){if($profile.Loaded){throw 'Owned user profile still loaded after 90 s'};Remove-CimInstance -InputObject $profile}
+                # Services can keep a batch logon's hive open for minutes even after its processes end (attempt 6: still loaded
+                # after 90 s). Defer: Finalize runs after the restoration reboot, where no profile can be loaded, and deletes it.
+                if(@($profiles | Where-Object Loaded).Count -ne 0){$state.ProfileDeletionDeferred=$true;Save-State $state $statePath;return}
+                foreach($profile in $profiles){Remove-CimInstance -InputObject $profile}
                 if(@(Get-CimInstance Win32_UserProfile | Where-Object SID -ceq $state.ActorSid).Count -ne 0){throw 'Owned profile residue'}
             }
         }},
@@ -851,6 +854,13 @@ $value=$b.ToString().Split([char]0)[0]
     $state=Load-State $statePath
     if((Get-BootId) -ceq $state.AfterBootId -or [string]::IsNullOrWhiteSpace($state.AfterBootId)){throw 'Restoration reboot identity unavailable'}
     Assert-Hash $installedDriver $originalDriverHash;Assert-Hash $policyPath $ExpectedOriginalPolicySha256
+    if(-not [string]::IsNullOrWhiteSpace($state.ActorSid)){
+        foreach($profile in @(Get-CimInstance Win32_UserProfile | Where-Object SID -ceq $state.ActorSid)){
+            if($profile.Loaded){throw 'Actor profile loaded after the restoration reboot'}
+            Remove-CimInstance -InputObject $profile
+        }
+        if(@(Get-CimInstance Win32_UserProfile | Where-Object SID -ceq $state.ActorSid).Count -ne 0){throw 'Actor profile residue'}
+    }
     if((Get-ItemProperty "HKLM:\$registryService").Start -ne 3 -or (& fltmc.exe filters | Out-String) -match '(?m)^SafeUpload\s' -or
         (Test-Path -LiteralPath $parametersKey) -or (Test-Path -LiteralPath $protectedDirectory) -or (Test-Path -LiteralPath $serviceDirectory) -or
         @(Get-Process SafeUpload.Agent.Service -ErrorAction SilentlyContinue).Count -ne 0 -or
