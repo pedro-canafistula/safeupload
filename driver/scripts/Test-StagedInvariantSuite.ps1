@@ -683,7 +683,9 @@ if($Phase -eq 'Prepare'){
         if($LASTEXITCODE -ne 0){throw 'State ACL failed'}
         & icacls.exe $evidenceDirectory /inheritance:r /grant:r '*S-1-5-18:(OI)(CI)F' '*S-1-5-32-544:(OI)(CI)F' | Out-Host
         if($LASTEXITCODE -ne 0){throw 'Evidence ACL failed'}
-        Set-AgentServiceStart 3
+        # Only an installed service has a start type to pin (as Test-StagedBootStart does); S00 attempt 3 threw here on a
+        # guest without one.
+        if ($null -ne $originalAgentStart) { Set-AgentServiceStart 3 }
         New-Item -ItemType Directory -Path $protectedDirectory,$actorDirectory,$serviceDirectory | Out-Null
         Expand-Archive -LiteralPath (Join-Path $documents 'stage-service-publish.zip') -DestinationPath $serviceDirectory
         if((Get-ServiceTreeHash) -cne $ExpectedServiceTreeSha256.ToUpperInvariant()){throw 'Extracted service tree hash mismatch'}
