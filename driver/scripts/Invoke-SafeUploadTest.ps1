@@ -6,8 +6,8 @@
     only.
 
 .DESCRIPTION
-    Automates part B of DEPLOY.md: preflight, fetch, swap the driver binary,
-    load the filter and run the smoke test end to end.
+    Automates part B of DEPLOY.md: preflight, fetch, stage the boot-start
+    driver, require a reboot, then validate the already boot-loaded filter.
 
     Before doing anything it verifies the machine is actually able to load a
     test-signed driver. Every one of those checks corresponds to a failure
@@ -38,7 +38,7 @@
     Use whatever is already in the staging directory.
 
 .PARAMETER SkipSmokeTest
-    Deploy and load, but stop before exercising the filter.
+    After boot readiness is verified, stop before exercising the filter.
 
 .EXAMPLE
     .\Invoke-SafeUploadTest.ps1 -SourceUrl http://192.168.122.132:8000
@@ -81,6 +81,7 @@ $FilterName = 'SafeUpload'
 $DriverFileName = 'SafeUpload.sys'
 $InspectorFileName = 'SafeUpload.Probe.exe'
 $InstalledDriverPath = Join-Path $env:SystemRoot "System32\drivers\$DriverFileName"
+$InstalledInspectorPath = Join-Path $StagingDirectory $InspectorFileName
 $BlockToken = 'BLOQUEAR_TESTE'
 $AdministratorsSid = '*S-1-5-32-544'
 
@@ -203,6 +204,54 @@ function Stop-WithMessage {
 function Test-FilterLoaded {
     $output = & fltmc.exe filters 2>&1
     return [bool] ($output | Select-String -SimpleMatch $FilterName -Quiet)
+}
+
+function Get-AdmissionStatusAsSystem {
+    $id = [guid]::NewGuid().ToString('N')
+    $taskName = 'SafeUpload-DeploymentStatus-' + $id
+    $launcher = Join-Path $env:TEMP ('safeupload-status-' + $id + '.ps1')
+    $outPath = $launcher + '.out'
+    $errPath = $launcher + '.err'
+    $exitPath = $launcher + '.exit'
+    $body = @'
+$ErrorActionPreference = 'Stop'
+$process = Start-Process -FilePath '__EXE__' -ArgumentList '--admission-volume-status' -PassThru -Wait `
+    -WindowStyle Hidden -RedirectStandardOutput '__OUT__' -RedirectStandardError '__ERR__'
+[IO.File]::WriteAllText('__EXIT__', [string]$process.ExitCode)
+'@
+    $body = $body.Replace('__EXE__', $InstalledInspectorPath.Replace("'", "''"))
+    $body = $body.Replace('__OUT__', $outPath)
+    $body = $body.Replace('__ERR__', $errPath)
+    $body = $body.Replace('__EXIT__', $exitPath)
+    Set-Content -LiteralPath $launcher -Value $body -Encoding UTF8
+    $registered = $false
+    try {
+        $action = New-ScheduledTaskAction -Execute 'powershell.exe' `
+            -Argument ('-NoProfile -ExecutionPolicy Bypass -File "' + $launcher + '"')
+        $principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
+        $settings = New-ScheduledTaskSettingsSet -ExecutionTimeLimit ([TimeSpan]::FromSeconds(45))
+        Register-ScheduledTask -TaskName $taskName -Action $action -Principal $principal -Settings $settings | Out-Null
+        $registered = $true
+        Start-ScheduledTask -TaskName $taskName
+        $deadline = [DateTime]::UtcNow.AddSeconds(45)
+        while (-not (Test-Path -LiteralPath $exitPath) -and [DateTime]::UtcNow -lt $deadline) {
+            Start-Sleep -Milliseconds 200
+        }
+        if (-not (Test-Path -LiteralPath $exitPath)) { throw 'SYSTEM admission status query timed out.' }
+        $exitCode = [int][IO.File]::ReadAllText($exitPath)
+        if ($exitCode -ne 0) {
+            $errorText = if (Test-Path -LiteralPath $errPath) { [IO.File]::ReadAllText($errPath) } else { '' }
+            throw "SYSTEM admission status query failed ($exitCode): $errorText"
+        }
+        return ([IO.File]::ReadAllText($outPath) | ConvertFrom-Json)
+    }
+    finally {
+        if ($registered) {
+            Stop-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
+            Unregister-ScheduledTask -TaskName $taskName -Confirm:$false -ErrorAction SilentlyContinue
+        }
+        Remove-Item -LiteralPath $launcher,$outPath,$errPath,$exitPath -Force -ErrorAction SilentlyContinue
+    }
 }
 
 function Stop-Inspector {
@@ -565,31 +614,24 @@ foreach ($expected in $manifest.files) {
 }
 
 # ---------------------------------------------------------------------------
-# 3. Swap the driver
+# 3. Stage the boot-start driver, then require a reboot
 # ---------------------------------------------------------------------------
 
-Write-Step 'Descarregando o filtro'
+Write-Step 'Preparando o filtro boot-start'
 
 Stop-Inspector | Out-Null
-
-if (Test-FilterLoaded) {
-    & fltmc.exe unload $FilterName 2>&1 | ForEach-Object { Write-Host "  $_" }
-
-    if (Test-FilterLoaded) {
-        Stop-WithMessage 'O filtro continua carregado. Nao da para trocar o binario em uso.'
-    }
-
-    Write-Host '  Descarregado.'
-}
-else {
-    Write-Host '  Nao estava carregado.'
-}
-
+$wasLoaded = Test-FilterLoaded
 $service = Get-Service -Name $FilterName -ErrorAction SilentlyContinue
+$stagedDriver = Join-Path $StagingDirectory $DriverFileName
+$manifestDriverHash = ($manifest.files | Where-Object { $_.name -eq $DriverFileName }).sha256
+$installedHash = if (Test-Path -LiteralPath $InstalledDriverPath) {
+    (Get-FileHash $InstalledDriverPath -Algorithm SHA256).Hash
+} else { '' }
+$startValue = $null
 
 if (-not $service) {
 
-    Write-Step 'Instalando o INF (servico ainda nao existe)'
+    Write-Step 'Instalando o INF como boot-start'
 
     & rundll32.exe setupapi.dll,InstallHinfSection DefaultInstall 128 (Join-Path $StagingDirectory 'SafeUpload.inf')
     Start-Sleep -Seconds 2
@@ -601,57 +643,87 @@ if (-not $service) {
     }
 
     Write-Host '  Servico criado.'
+    $service = Get-Service -Name $FilterName -ErrorAction Stop
+    $startValue = (Get-ItemProperty "HKLM:\SYSTEM\CurrentControlSet\Services\$FilterName").Start
+    $installedHash = if (Test-Path -LiteralPath $InstalledDriverPath) {
+        (Get-FileHash $InstalledDriverPath -Algorithm SHA256).Hash
+    } else { '' }
 }
 else {
-
-    Write-Step 'Substituindo o binario'
-
-    $stagedDriver = Join-Path $StagingDirectory $DriverFileName
-
-    try {
-        Copy-Item $stagedDriver $InstalledDriverPath -Force -ErrorAction Stop
-    }
-    catch [System.UnauthorizedAccessException] {
-
-        # PnpLockdown=1 in the INF leaves files under system32\drivers owned
-        # by TrustedInstaller, so an elevated administrator still cannot
-        # write them. Taking ownership is acceptable on a disposable test VM;
-        # in production a driver binary is replaced through the INF.
-        Write-Host '  Acesso negado (PnpLockdown). Tomando posse do arquivo.' -ForegroundColor Yellow
-
-        & takeown.exe /f $InstalledDriverPath | Out-Null
-        & icacls.exe $InstalledDriverPath /grant "${AdministratorsSid}:F" | Out-Null
-
-        Copy-Item $stagedDriver $InstalledDriverPath -Force
-    }
-
-    $installedHash = (Get-FileHash $InstalledDriverPath -Algorithm SHA256).Hash
-    $manifestDriverHash = ($manifest.files | Where-Object { $_.name -eq $DriverFileName }).sha256
-
-    if ($installedHash -ne $manifestDriverHash) {
-        Stop-WithMessage 'A copia nao surtiu efeito: o binario instalado nao confere com o pacote.'
-    }
-
-    Write-Host '  Binario substituido e conferido.' -ForegroundColor Green
+    $startValue = (Get-ItemProperty "HKLM:\SYSTEM\CurrentControlSet\Services\$FilterName").Start
 }
 
 # ---------------------------------------------------------------------------
-# 4. Load
+# 4. Require boot readiness; never start the driver from this deployment path
 # ---------------------------------------------------------------------------
 
-Write-Step 'Carregando o filtro'
-
-$loadOutput = & fltmc.exe load $FilterName 2>&1
+if ($startValue -ne 0 -or $installedHash -ne $manifestDriverHash) {
+    if ($wasLoaded) {
+        & fltmc.exe unload $FilterName 2>&1 | ForEach-Object { Write-Host "  $_" }
+        if (Test-FilterLoaded) { Stop-WithMessage 'O filtro continua carregado; nao da para trocar o binario em uso.' }
+    }
+    if ($installedHash -ne $manifestDriverHash) {
+        Write-Step 'Substituindo e conferindo o binario antes do reboot'
+        try {
+            Copy-Item $stagedDriver $InstalledDriverPath -Force -ErrorAction Stop
+        }
+        catch [System.UnauthorizedAccessException] {
+            Write-Host '  Acesso negado (PnpLockdown). Tomando posse do arquivo da VM descartavel.' -ForegroundColor Yellow
+            & takeown.exe /f $InstalledDriverPath | Out-Null
+            & icacls.exe $InstalledDriverPath /grant "${AdministratorsSid}:F" | Out-Null
+            Copy-Item $stagedDriver $InstalledDriverPath -Force
+        }
+        $installedHash = (Get-FileHash $InstalledDriverPath -Algorithm SHA256).Hash
+        if ($installedHash -ne $manifestDriverHash) {
+            Stop-WithMessage 'A copia nao surtiu efeito: o binario instalado nao confere com o pacote.'
+        }
+    }
+    & sc.exe config $FilterName start= boot | Out-Host
+    if ($LASTEXITCODE -ne 0 -or (Get-ItemProperty "HKLM:\SYSTEM\CurrentControlSet\Services\$FilterName").Start -ne 0) {
+        Stop-WithMessage 'Nao foi possivel deixar SafeUpload boot-start.'
+    }
+    Add-Result -Name 'Driver boot-start staged; reboot required' -Passed $true
+    Write-Output 'ProtectionStatus=protection pending reboot'
+    Write-Output 'FilterStartedByDeployment=False'
+    Write-Output 'RebootRequired=True'
+    Write-Output 'Restart Windows, then run this script again to verify boot readiness.'
+    exit 0
+}
 
 if (-not (Test-FilterLoaded)) {
-    $loadOutput | ForEach-Object { Write-Host "  $_" -ForegroundColor Red }
-    Write-Host ''
-    Write-Host '  A mensagem do fltmc costuma enganar. O status real esta no log de eventos:' -ForegroundColor Yellow
-    Write-Host '    Get-WinEvent -LogName System -MaxEvents 40 | Where-Object { $_.Message -like "*SafeUpload*" } | Format-List' -ForegroundColor Yellow
-    Stop-WithMessage 'O filtro nao carregou.'
+    Add-Result -Name 'Boot-start filter readiness' -Passed $false `
+        -Detail 'The matching driver is staged as boot-start but Filter Manager has no loaded instance; a reboot is required.'
+    Write-Output 'ProtectionStatus=protection pending reboot'
+    Write-Output 'FilterStartedByDeployment=False'
+    Write-Output 'RebootRequired=True'
+    exit 0
+}
+
+Write-Step 'Conferindo confianca das instancias carregadas no boot'
+$admission = Get-AdmissionStatusAsSystem
+$cVolumes = @(Get-CimInstance Win32_Volume -Filter "DriveLetter='C:'" -ErrorAction Stop)
+if ($cVolumes.Count -ne 1 -or $cVolumes[0].DeviceID -notmatch '(?i)\{[0-9a-f-]{36}\}') {
+    Stop-WithMessage 'Nao foi possivel identificar o volume C: para conferir o estado boot-start.'
+}
+$cGuid = [regex]::Match($cVolumes[0].DeviceID, '(?i)\{[0-9a-f-]{36}\}').Value
+$cEntries = @($admission.admissionVolumes | Where-Object {
+    ([string]$_.volumeGuid).IndexOf($cGuid, [StringComparison]::OrdinalIgnoreCase) -ge 0
+})
+$cEntry = if ($cEntries.Count -eq 1) { $cEntries[0] } else { $null }
+if ($admission.bootPolicyState -ne 1 -or $null -eq $cEntry -or $cEntry.trustState -ne 3 -or
+    $cEntry.canaryState -ne 2 -or ($cEntry.setupFlags -band 4) -eq 0) {
+    Add-Result -Name 'Boot-start protection readiness' -Passed $false `
+        -Detail (if ($null -ne $cEntry) { $cEntry.protectionStatus + '; bootPolicyState=' + $admission.bootPolicyState } else { 'No C: admission entry.' })
+    Write-Output 'ProtectionStatus=protection pending reboot'
+    if ($null -ne $cEntry) { Write-Output ('VolumeProtectionStatus=' + $cEntry.protectionStatus + ';TrustState=' + $cEntry.trustState) }
+    Write-Output ('BootPolicyState=' + $admission.bootPolicyState)
+    Write-Output 'FilterStartedByDeployment=False'
+    Write-Output 'RebootRequired=True'
+    exit 0
 }
 
 Add-Result -Name 'Filtro carregado' -Passed $true
+Write-Output 'BootTrustVerified=True'
 
 # Do not try to match the column layout of "fltmc instances": it varies with
 # the width of the volume names and gained columns between Windows releases.
@@ -2000,9 +2072,9 @@ Write-Step 'Driver Verifier'
 # exactly "pool still allocated at unload", so this checks the same
 # condition the Verifier itself would bugcheck on.
 
-if ($KeepLoaded) {
+if ($KeepLoaded -or (Get-ItemProperty "HKLM:\SYSTEM\CurrentControlSet\Services\$FilterName").Start -eq 0) {
 
-    Write-Host '  Filtro mantido carregado a pedido: verificacao de pool pulada.' -ForegroundColor Yellow
+    Write-Host '  Filtro mantido carregado: verificacao de pool pulada.' -ForegroundColor Yellow
     Write-Host '  Com o driver carregado ha alocacoes de vida longa (a politica),' -ForegroundColor DarkGray
     Write-Host '  entao "alocacoes atuais" nao diz nada sobre vazamento.' -ForegroundColor DarkGray
 }
@@ -2210,11 +2282,10 @@ else {
     Write-Host 'Tudo passou.' -ForegroundColor Green
 }
 
-if ($KeepLoaded) {
-    Write-Host 'O filtro continua carregado.' -ForegroundColor DarkGray
-    Write-Host 'Para descarregar:  fltmc unload SafeUpload' -ForegroundColor DarkGray
+if ($KeepLoaded -or (Get-ItemProperty "HKLM:\SYSTEM\CurrentControlSet\Services\$FilterName").Start -eq 0) {
+    Write-Host 'O filtro continua carregado; o driver boot-start permanece ativo ate desligar o Windows.' -ForegroundColor DarkGray
 }
 else {
     Write-Host 'O filtro foi descarregado ao final, para a verificacao de pool.' -ForegroundColor DarkGray
-    Write-Host 'Para carregar de novo:  fltmc load SafeUpload' -ForegroundColor DarkGray
+    Write-Host 'Reinicie o Windows para iniciar a proteção com a instalação boot-start.' -ForegroundColor DarkGray
 }

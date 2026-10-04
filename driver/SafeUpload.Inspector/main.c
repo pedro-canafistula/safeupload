@@ -945,6 +945,7 @@ static int PrintAdmissionVolumeStatus(VOID)
     HANDLE port = INVALID_HANDLE_VALUE;
     DWORD returned = 0;
     UINT32 index, character;
+    PCWSTR bootPolicyProtectionStatus;
     HRESULT hr;
     int result = 3;
     status = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(*status));
@@ -962,20 +963,52 @@ static int PrintAdmissionVolumeStatus(VOID)
     for (index = 0; index < status->EntryCount; ++index) {
         if (status->Entries[index].VolumeGuidChars >= ARRAYSIZE(status->Entries[index].VolumeGuid)) goto Exit;
     }
-    wprintf(L"{\"writerGlobalUnknown\":%u,\"bootPolicyState\":%u,\"admissionVolumes\":[",
-        status->WriterGlobalUnknown, status->BootPolicyState);
+    switch (status->BootPolicyState) {
+    case SAFEUPLOAD_BOOT_POLICY_STATE_MISSING:
+        bootPolicyProtectionStatus = L"not claimed: missing";
+        break;
+    case SAFEUPLOAD_BOOT_POLICY_STATE_CORRUPT_EMPTY:
+        bootPolicyProtectionStatus = L"not claimed: corrupt empty";
+        break;
+    case SAFEUPLOAD_BOOT_POLICY_STATE_ACL_REJECTED:
+        bootPolicyProtectionStatus = L"not claimed: ACL_REJECTED";
+        break;
+    case SAFEUPLOAD_BOOT_POLICY_STATE_VALID:
+        bootPolicyProtectionStatus = L"valid";
+        break;
+    case SAFEUPLOAD_BOOT_POLICY_STATE_PENDING_UNION:
+        bootPolicyProtectionStatus = L"pending union";
+        break;
+    case SAFEUPLOAD_BOOT_POLICY_STATE_CORRUPT_PARTIAL:
+        bootPolicyProtectionStatus = L"partial: only identified scopes enforced";
+        break;
+    default:
+        bootPolicyProtectionStatus = L"unreadable: protection uncertain";
+        break;
+    }
+    wprintf(L"{\"writerGlobalUnknown\":%u,\"bootPolicyState\":%u,"
+        L"\"bootPolicyProtectionStatus\":\"%s\",\"admissionVolumes\":[",
+        status->WriterGlobalUnknown, status->BootPolicyState, bootPolicyProtectionStatus);
     for (index = 0; index < status->EntryCount; ++index) {
         const SAFEUPLOAD_ADMISSION_VOLUME_ENTRY *entry = &status->Entries[index];
         UINT32 trustState = ((INT32)entry->ContextStatus >= 0) ?
-            ((entry->SetupFlags & SAFEUPLOAD_SETUP_FLAG_NEWLY_MOUNTED_VOLUME) != 0 ? SAFEUPLOAD_VOLUME_TRUST_NEWLY_MOUNTED :
-                SAFEUPLOAD_VOLUME_TRUST_UNTRUSTED_FLAGS) : SAFEUPLOAD_VOLUME_TRUST_CONTEXT_UNAVAILABLE;
+            ((entry->SetupFlags >> SAFEUPLOAD_SETUP_TRUST_STATE_SHIFT) & 0xFFFF) :
+            SAFEUPLOAD_VOLUME_TRUST_CONTEXT_UNAVAILABLE;
+        UINT32 setupFlags = entry->SetupFlags & SAFEUPLOAD_SETUP_FLAGS_MASK;
+        BOOLEAN trusted = trustState == SAFEUPLOAD_VOLUME_TRUST_CANARY_PASSED &&
+            entry->CanaryState == SAFEUPLOAD_CANARY_PASSED;
+        PCWSTR protectionStatus;
+        if (trustState == SAFEUPLOAD_VOLUME_TRUST_CANARY_PASSED && !trusted)
+            trustState = SAFEUPLOAD_VOLUME_TRUST_CANARY_PENDING;
+        protectionStatus = trusted ? L"trusted" :
+            (trustState == SAFEUPLOAD_VOLUME_TRUST_PENDING_REBOOT ? L"protection pending reboot" : L"untrusted");
         wprintf(L"%s{\"instance\":\"%016llX\",\"volumeKind\":%u,\"fileSystemType\":%u,"
-            L"\"fileSystemStatus\":%u,\"setupFlags\":%u,\"trustState\":%u,\"contextStatus\":%u,"
+            L"\"fileSystemStatus\":%u,\"setupFlags\":%u,\"trustState\":%u,\"protectionStatus\":\"%s\",\"contextStatus\":%u,"
             L"\"canaryState\":%u,\"canaryStatus\":%u,\"canaryChecks\":%u,\"canaryCleanupStatus\":%u,"
             L"\"instanceWritersUntracked\":%u,\"volumeInfoStatus\":%u,\"volumeFlags\":%u,"
             L"\"volumeGuidStatus\":%u,\"volumeGuid\":\"",
             index == 0 ? L"" : L",", entry->Instance, entry->VolumeKind, entry->FileSystemType,
-            entry->FileSystemStatus, entry->SetupFlags, trustState, entry->ContextStatus, entry->CanaryState,
+            entry->FileSystemStatus, setupFlags, trustState, protectionStatus, entry->ContextStatus, entry->CanaryState,
             entry->CanaryStatus, entry->CanaryChecks, entry->CanaryCleanupStatus,
             entry->InstanceWritersUntracked, entry->VolumeInfoStatus, entry->VolumeFlags, entry->VolumeGuidStatus);
         for (character = 0; character < entry->VolumeGuidChars; ++character) {

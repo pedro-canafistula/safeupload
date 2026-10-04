@@ -2348,6 +2348,17 @@ static FLT_PREOP_CALLBACK_STATUS StageAdmit(PFLT_CALLBACK_DATA Data,
     status = FltGetFileNameInformation(Data, FLT_FILE_NAME_NORMALIZED | FLT_FILE_NAME_QUERY_DEFAULT, &name);
     if (!NT_SUCCESS(status)) {
 #if SAFEUPLOAD_STAGING_PROTOTYPE
+        /* A service create is a publication only after the destination has a
+         * normalized name and SafeUploadPublicationCreate finds its explicit
+         * permit. If this volume may contain a current, pending, or boot
+         * scope, an unresolved name cannot be sent through as an ordinary
+         * service write, including OBJECT_NAME_NOT_FOUND and resource errors. */
+        if (service && SafeUploadPolicyMayMatchVolume(kind, Objects->Volume)) {
+            SafeUploadStageFenceCountOpenRefused();
+            SafeUploadTrace("service create refused: destination name unresolved on a possibly protected volume\n");
+            status = STATUS_ACCESS_DENIED;
+            goto Complete;
+        }
         /* A name query that failed for lack of resources says nothing about the target, which could be a
          * fenced stream: refuse on a volume that holds one instead of serving dirty bytes. Every other failure
          * (a file that does not exist is the common one: callers probe paths constantly) cannot read bytes and

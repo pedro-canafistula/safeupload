@@ -246,11 +246,12 @@ typedef struct _SAFEUPLOAD_INSTANCE_CONTEXT {
 
     SAFEUPLOAD_VOLUME_KIND VolumeKind;
     FLT_INSTANCE_SETUP_FLAGS SetupFlags;
-    UINT32 TrustState;
+    volatile LONG TrustState; /* Monotonic per instance: canary pass is required; loss is sticky until reboot. */
 #if SAFEUPLOAD_STAGING_PROTOTYPE
     PSAFEUPLOAD_INSTANCE_TEARDOWN_TOKEN TeardownToken;
     volatile LONG WritersUntracked; /* Sticky for this attachment if a writer cannot get a context. */
     volatile LONG CanaryState;
+    volatile LONG64 CanaryStartInterruptTime;
     NTSTATUS CanaryStatus;
     UINT32 CanaryChecks;
     NTSTATUS CanaryCleanupStatus;
@@ -664,6 +665,7 @@ NTSTATUS SafeUploadFinalizeBootPolicy(_In_ CONST SAFEUPLOAD_POLICY_MESSAGE *Mess
 BOOLEAN SafeUploadIsAuthenticatedClient(VOID);
 BOOLEAN SafeUploadInstanceIsTrusted(_In_ PFLT_INSTANCE Instance);
 BOOLEAN SafeUploadInstanceTrustGateSatisfied(_In_ PFLT_INSTANCE Instance);
+VOID SafeUploadInstanceCheckCanaryDeadline(_Inout_ PSAFEUPLOAD_INSTANCE_CONTEXT Context);
 BOOLEAN SafeUploadPolicyHasDestinationScopes(_In_ SAFEUPLOAD_VOLUME_KIND VolumeKind);
 
 LONG
@@ -700,6 +702,12 @@ BOOLEAN
 SafeUploadPolicyMatchesDestination (
     _In_ SAFEUPLOAD_VOLUME_KIND VolumeKind,
     _In_opt_ PCUNICODE_STRING NormalizedPath
+    );
+
+BOOLEAN
+SafeUploadPolicyMayMatchVolume (
+    _In_ SAFEUPLOAD_VOLUME_KIND VolumeKind,
+    _In_opt_ PFLT_VOLUME Volume
     );
 
 BOOLEAN

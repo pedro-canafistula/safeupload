@@ -41,7 +41,11 @@ echo "baseline clean"
 python3 driver/scripts/remote_ps.py "$host" <<'PS' 2>&1 | clean | tee "$ev/$name-flush.txt" >/dev/null
 try { Write-VolumeCache -DriveLetter C; 'VolumeCacheWritten=True' } catch { 'VolumeCacheWritten=False ' + $_.Exception.Message }
 PS
-grep -q 'VolumeCacheWritten=True' "$ev/$name-flush.txt" || echo "warning: guest volume cache flush did not report success"
+grep -qx 'VolumeCacheWritten=True' "$ev/$name-flush.txt" || {
+    echo "guest volume cache flush failed; aborting before checkpoint"
+    cat "$ev/$name-flush.txt"
+    exit 16
+}
 
 echo "== 2. checkpoint"
 # Each run stacks one external overlay; libvirt refuses chains deeper than 200. Stop early with a clear reason.
@@ -60,7 +64,10 @@ snap="safeupload-pre-$name-$stamp"; overlay="/var/lib/libvirt/images/win10-debug
   virsh -c qemu:///system domblklist win10-debug 2>&1
   virsh -c qemu:///system domstate win10-debug 2>&1
 } | tee "$ev/$name-checkpoint.txt"
-grep -q "$overlay" <(virsh -c qemu:///system domblklist win10-debug) || { echo "CHECKPOINT NOT ACTIVE; aborting"; exit 12; }
+grep -q "$overlay" <(virsh -c qemu:///system domblklist win10-debug) || {
+    echo "CHECKPOINT NOT ACTIVE; aborting"
+    exit 12
+}
 
 echo "== 3. run"
 if [ -n "${PRE_RUN_PS:-}" ]; then
@@ -69,15 +76,24 @@ if [ -n "${PRE_RUN_PS:-}" ]; then
     pre_run_status=${PIPESTATUS[0]}
     if [ "$pre_run_status" -ne 0 ] || ! grep -qx 'PRE_RUN_OK=True' "$ev/$name-prerun-result.txt"; then
         echo "PRE_RUN failed or omitted PRE_RUN_OK=True; refusing extra-file staging"
+        record_recovery_required 'PRE_RUN failed after the checkpoint became active.'
         exit 15
     fi
 fi
 for pair in ${EXTRA_FILES:-}; do
     src="${pair%%=*}"; dst="${pair#*=}"
-    scp "${scp_opts[@]}" "$src" "vika@$host:$guest_docs/$dst" || { echo "copy failed: $src"; exit 14; }
+    scp "${scp_opts[@]}" "$src" "vika@$host:$guest_docs/$dst" || {
+        echo "copy failed: $src"
+        record_recovery_required "Could not stage extra file $dst after checkpoint."
+        exit 14
+    }
     echo "copied $src -> $dst sha256=$(sha256sum "$src" | cut -d' ' -f1)" | tee -a "$ev/$name-prerun.txt"
 done
-scp "${scp_opts[@]}" "$harness" "vika@$host:$guest_docs/$(basename "$harness")" || { echo "harness copy failed"; exit 13; }
+scp "${scp_opts[@]}" "$harness" "vika@$host:$guest_docs/$(basename "$harness")" || {
+    echo "harness copy failed"
+    record_recovery_required 'Could not stage the harness after the checkpoint became active.'
+    exit 13
+}
 
 run_remote_phase() {  # $1 evidence label, $2 PowerShell invocation
     local label="$1" command_line="$2"
@@ -94,7 +110,8 @@ request_guest_reboot() {  # $1 evidence label
 try { & shutdown.exe /r /t 5 /c 'SafeUpload checkpointed boot-start experiment'; 'REBOOT_REQUESTED=True' }
 catch { 'REBOOT_REQUEST_FAILED=' + \$_.Exception.Message }
 PS
-    return "${PIPESTATUS[0]}"
+    local remote_status=${PIPESTATUS[0]}
+    [ "$remote_status" -eq 0 ] && grep -qx 'REBOOT_REQUESTED=True' "$ev/$name-$label.txt"
 }
 
 wait_for_guest_ssh() {  # allow up to 15 minutes; boot Verifier can delay logon
@@ -109,6 +126,85 @@ wait_for_guest_ssh() {  # allow up to 15 minutes; boot Verifier can delay logon
     return 1
 }
 
+guest_boot_time() {  # $1 evidence label; prints the guest's current LastBootUpTime
+    local label output
+    label="$1"
+    output="$ev/$name-$label.txt"
+    python3 driver/scripts/remote_ps.py "$host" <<'PS' 2>&1 | clean | tee "$output" >/dev/null
+try {
+    $boot = (Get-CimInstance Win32_OperatingSystem -ErrorAction Stop).LastBootUpTime.ToUniversalTime().ToString('o')
+    'GuestLastBootUpTime=' + $boot
+} catch { 'GuestLastBootUpTimeError=' + $_.Exception.Message; exit 1 }
+PS
+    local remote_status=${PIPESTATUS[0]}
+    [ "$remote_status" -eq 0 ] || return 1
+    grep '^GuestLastBootUpTime=' "$output" | tail -n 1 | cut -d= -f2-
+}
+
+wait_for_changed_boot_time() {  # $1 previous LastBootUpTime, $2 evidence label
+    local before="$1" label="$2" current attempt
+    for attempt in $(seq 1 24); do
+        current="$(guest_boot_time "$label-attempt-$attempt")" || current=''
+        if [ -n "$current" ] && [ "$current" != "$before" ]; then
+            echo "BootIdentityChanged=True;Before=$before;After=$current" | tee "$ev/$name-$label-changed.txt"
+            return 0
+        fi
+        sleep 5
+    done
+    echo "BootIdentityChanged=False;Before=$before;LastObserved=$current" | tee "$ev/$name-$label-changed.txt"
+    return 1
+}
+
+write_offline_rollback_step() {
+    local backing format quoted_backing output="$ev/$name-offline-rollback.txt"
+    backing="$(qemu-img info --output=json "$overlay" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("backing-filename", ""))')"
+    if [ -z "$backing" ]; then
+        echo "Could not determine the checkpoint overlay backing file: $overlay" | tee "$output"
+        return 1
+    fi
+    case "$backing" in
+        /*) ;;
+        *) backing="$(realpath -m "$(dirname "$overlay")/$backing")" ;;
+    esac
+    format="$(qemu-img info --output=json "$backing" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("format", ""))')"
+    if [ -z "$format" ]; then
+        echo "Could not determine the backing disk format: $backing" | tee "$output"
+        return 1
+    fi
+    printf -v quoted_backing '%q' "$backing"
+    {
+        echo 'OFFLINE_ROLLBACK_OPERATOR_STEP=True'
+        echo 'These commands are recorded for an operator. The wrapper will not repoint VM disks.'
+        echo 'Run only after inspecting the guest and deciding to roll it back to the checkpoint parent.'
+        echo '1. Stop the VM if it is running:'
+        echo 'virsh -c qemu:///system destroy win10-debug'
+        echo '2. Confirm the current vda source:'
+        echo 'virsh -c qemu:///system domblklist win10-debug --details'
+        echo '3. Remove vda from the persistent VM definition:'
+        echo 'virsh -c qemu:///system detach-disk win10-debug vda --config'
+        echo '4. Attach the checkpoint parent disk as vda:'
+        echo "virsh -c qemu:///system attach-disk win10-debug $quoted_backing vda --driver qemu --subdriver $format --targetbus virtio --config"
+        echo '5. Verify the persistent vda source before starting the VM:'
+        echo 'virsh -c qemu:///system domblklist win10-debug --details'
+        echo "CheckpointOverlay=$overlay"
+        echo "CheckpointParent=$backing"
+        echo "CheckpointParentFormat=$format"
+    } | tee "$output"
+}
+
+record_recovery_required() {  # $1 concise reason
+    {
+        echo "GUEST_RECOVERY_REQUIRED=True"
+        echo "Reason=$1"
+        echo "Checkpoint=$snap"
+        echo "ActiveOverlay=$overlay"
+        echo "Domain=win10-debug"
+        virsh -c qemu:///system domblklist win10-debug --details
+        qemu-img info --backing-chain "$overlay"
+    } | tee "$ev/$name-recovery-required.txt"
+    write_offline_rollback_step || true
+}
+
 if [ "$name" = boot-start ]; then
     : "${BOOT_START_AFTER_BOOT_PS:?set the AfterBoot PowerShell invocation}"
     : "${BOOT_START_FINAL_PS:?set the Finalize PowerShell invocation}"
@@ -116,45 +212,57 @@ if [ "$name" = boot-start ]; then
     grep -qx 'BOOT_PREPARED=True' "$ev/$name-prepare.txt" &&
         grep -qx 'HARNESS_RETURNED' "$ev/$name-prepare.txt" || {
         echo "BOOT PREPARE FAILED; inspect the retained checkpoint and prepare rollback evidence"
+        record_recovery_required 'Prepare failed after the checkpoint became active.'
         exit 20
     }
-    request_guest_reboot reboot-1-requested || true
+    boot_before_1="$(guest_boot_time reboot-1-before)" || {
+        echo "Could not read LastBootUpTime before the first reboot"
+        record_recovery_required 'Could not read LastBootUpTime before requesting the first reboot.'
+        exit 23
+    }
+    request_guest_reboot reboot-1-requested || {
+        echo "Guest reboot request failed; aborting without claiming a reboot"
+        cat "$ev/$name-reboot-1-requested.txt"
+        record_recovery_required 'Guest rejected the first reboot request.'
+        exit 24
+    }
     if ! wait_for_guest_ssh; then
-        {
-            echo "GUEST_RECOVERY_REQUIRED=True"
-            echo "Checkpoint=$snap"
-            echo "ActiveOverlay=$overlay"
-            echo "Domain=win10-debug"
-            echo "Guest did not return after the boot-Verifier reboot; stop the VM and restore its vda source to the overlay's backing file before retrying."
-            virsh -c qemu:///system domblklist win10-debug
-            qemu-img info --backing-chain "$overlay"
-        } | tee "$ev/$name-recovery-required.txt"
+        record_recovery_required 'Guest did not return after the boot-Verifier reboot.'
         exit 50
+    fi
+    if ! wait_for_changed_boot_time "$boot_before_1" reboot-1; then
+        record_recovery_required 'LastBootUpTime did not change after the first reboot request.'
+        exit 52
     fi
     run_remote_phase after-boot "$BOOT_START_AFTER_BOOT_PS"
     grep -qx 'BootStartX4AndE1=True' "$ev/$name-after-boot.txt" &&
         grep -qx 'BOOT_RESTORED=True' "$ev/$name-after-boot.txt" &&
         grep -qx 'HARNESS_RETURNED' "$ev/$name-after-boot.txt" || {
         echo "AFTER-BOOT RESTORATION FAILED; preserve checkpoint and inspect guest state"
+        record_recovery_required 'AfterBoot harness failed or restoration was incomplete.'
         exit 21
     }
-    request_guest_reboot reboot-restore-requested || true
+    boot_before_2="$(guest_boot_time reboot-restore-before)" || {
+        record_recovery_required 'Could not read LastBootUpTime before the restoration reboot.'
+        exit 25
+    }
+    request_guest_reboot reboot-restore-requested || {
+        record_recovery_required 'Guest restoration reboot request failed.'
+        exit 26
+    }
     if ! wait_for_guest_ssh; then
-        {
-            echo "GUEST_RECOVERY_REQUIRED=True"
-            echo "Checkpoint=$snap"
-            echo "ActiveOverlay=$overlay"
-            echo "Domain=win10-debug"
-            echo "Guest did not return after the restored-driver reboot; retain the external checkpoint for offline repair."
-            virsh -c qemu:///system domblklist win10-debug
-            qemu-img info --backing-chain "$overlay"
-        } | tee "$ev/$name-recovery-required.txt"
+        record_recovery_required 'Guest did not return after the restored-driver reboot.'
         exit 51
+    fi
+    if ! wait_for_changed_boot_time "$boot_before_2" reboot-restore; then
+        record_recovery_required 'LastBootUpTime did not change after the restoration reboot request.'
+        exit 53
     fi
     run_remote_phase finalize "$BOOT_START_FINAL_PS"
     grep -qx 'BOOT_FINAL_STATE=True' "$ev/$name-finalize.txt" &&
         grep -qx 'HARNESS_RETURNED' "$ev/$name-finalize.txt" || {
         echo "FINAL RESTORATION ASSERTIONS FAILED"
+        record_recovery_required 'Final restoration assertions failed after the restoration reboot.'
         exit 22
     }
 else

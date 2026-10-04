@@ -154,6 +154,40 @@ public class PolicyTests : IDisposable
         await Assert.ThrowsAsync<InvalidPolicyException>(LoadAsync);
     }
 
+    [Fact]
+    public async Task ACL_fraca_sem_politica_aplicada_recusa_o_arquivo()
+    {
+        _workspace.WritePolicy("""
+            { "version": 1, "activeCategories": ["Cpf"], "monitoredScopes": { "extensions": [".txt"], "destinationPaths": ["C:\\Protected"] } }
+            """);
+        var store = new LocalPolicyStore(_workspace.PolicyFile, _ => false);
+
+        await Assert.ThrowsAsync<PolicyFileAclRejectedException>(
+            () => store.LoadAsync(CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task ACL_fraca_depois_da_aplicacao_mantem_a_ultima_politica_em_memoria()
+    {
+        _workspace.WritePolicy("""
+            { "version": 1, "activeCategories": ["Cpf"], "monitoredScopes": { "extensions": [".txt"], "destinationPaths": ["C:\\Protected"] }, "auditOnly": false }
+            """);
+        bool aclValid = true;
+        var store = new LocalPolicyStore(_workspace.PolicyFile, _ => aclValid);
+        Policy applied = await store.LoadAsync(CancellationToken.None);
+
+        _workspace.WritePolicy("""
+            { "version": 1, "activeCategories": ["Cpf"], "monitoredScopes": { "extensions": [".txt"], "destinationPaths": [] }, "auditOnly": true }
+            """);
+        aclValid = false;
+
+        Policy retained = await store.LoadAsync(CancellationToken.None);
+
+        Assert.Same(applied, retained);
+        Assert.False(retained.AuditOnly);
+        Assert.Contains("C:\\Protected", retained.MonitoredScopes.DestinationPaths);
+    }
+
     /// <summary>
     /// Categoria desconhecida convivendo com categorias conhecidas é ignorada,
     /// e o agente continua funcionando. Um painel mais novo pode publicar uma

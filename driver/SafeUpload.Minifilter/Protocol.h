@@ -439,11 +439,18 @@ typedef struct _SAFEUPLOAD_BOOT_POLICY {
 #define SAFEUPLOAD_BOOT_POLICY_STATE_PENDING_UNION  ((UINT32) 7)
 
 #define SAFEUPLOAD_VOLUME_TRUST_UNTRUSTED_FLAGS      ((UINT32) 0)
-#define SAFEUPLOAD_VOLUME_TRUST_NEWLY_MOUNTED        ((UINT32) 1)
+#define SAFEUPLOAD_VOLUME_TRUST_CANARY_PENDING       ((UINT32) 1)
 #define SAFEUPLOAD_VOLUME_TRUST_CONTEXT_UNAVAILABLE  ((UINT32) 2)
+#define SAFEUPLOAD_VOLUME_TRUST_CANARY_PASSED        ((UINT32) 3)
+#define SAFEUPLOAD_VOLUME_TRUST_CANARY_LOST          ((UINT32) 4)
+#define SAFEUPLOAD_VOLUME_TRUST_PENDING_REBOOT       ((UINT32) 5)
+#define SAFEUPLOAD_VOLUME_TRUST_DETACHED              ((UINT32) 6)
 /* Filter Manager's FLTFL_INSTANCE_SETUP_NEWLY_MOUNTED_VOLUME value, mirrored
- * for the test inspector to report trust without changing its wire record. */
+ * for the test inspector. The feature diagnostic packs TrustState into the
+ * high 16 bits of SetupFlags so its existing version-18 record stays sized. */
 #define SAFEUPLOAD_SETUP_FLAG_NEWLY_MOUNTED_VOLUME    ((UINT32) 0x00000004)
+#define SAFEUPLOAD_SETUP_TRUST_STATE_SHIFT            ((UINT32) 16)
+#define SAFEUPLOAD_SETUP_FLAGS_MASK                   ((UINT32) 0x0000FFFF)
 
 typedef struct _SAFEUPLOAD_CONTROL {
 

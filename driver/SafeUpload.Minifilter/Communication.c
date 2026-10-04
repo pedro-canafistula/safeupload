@@ -55,6 +55,8 @@ SafeUploadPortMessage (
     _Out_ PULONG ReturnOutputBufferLength
     );
 
+static BOOLEAN SafeUploadCurrentProcessHasAgentServiceSid(VOID);
+
 #ifdef ALLOC_PRAGMA
     #pragma alloc_text(PAGE, SafeUploadCreateCommunicationPort)
     #pragma alloc_text(PAGE, SafeUploadCloseCommunicationPort)
@@ -62,7 +64,68 @@ SafeUploadPortMessage (
     #pragma alloc_text(PAGE, SafeUploadPortDisconnect)
     #pragma alloc_text(PAGE, SafeUploadPortMessage)
     #pragma alloc_text(PAGE, SafeUploadRequestVerdict)
+    #pragma alloc_text(PAGE, SafeUploadCurrentProcessHasAgentServiceSid)
 #endif
+
+/* Documented fallback service SID for NT SERVICE\SafeUploadAgent:
+ * SHA-1(uppercase service name as UTF-16LE), split into five little-endian
+ * ULONG subauthorities after S-1-5-80. The fixed result is
+ * S-1-5-80-2445692249-22211692-2238493510-3749888094-4283558424.
+ * Prefer the kernel's RtlCreateServiceSid when exported. Keep the fallback
+ * synchronized with Program.ServiceName and the installer. */
+static const struct _SAFEUPLOAD_AGENT_SERVICE_SID {
+    UCHAR Revision;
+    UCHAR SubAuthorityCount;
+    SID_IDENTIFIER_AUTHORITY IdentifierAuthority;
+    ULONG SubAuthority[6];
+} SafeUploadAgentServiceSid = {
+    SID_REVISION,
+    6,
+    {{0, 0, 0, 0, 0, 5}},
+    {80, 2445692249, 22211692, 2238493510, 3749888094, 4283558424}
+};
+
+static BOOLEAN SafeUploadCurrentProcessHasAgentServiceSid(VOID)
+{
+    typedef NTSTATUS (NTAPI *PSAFEUPLOAD_RTL_CREATE_SERVICE_SID)(
+        PUNICODE_STRING ServiceName, PSID ServiceSid, PULONG ServiceSidLength);
+    PACCESS_TOKEN token;
+    PTOKEN_GROUPS groups = NULL;
+    UCHAR serviceSidStorage[68];
+    PSID serviceSid = (PSID)&SafeUploadAgentServiceSid;
+    UNICODE_STRING serviceName, routineName;
+    PSAFEUPLOAD_RTL_CREATE_SERVICE_SID createServiceSid;
+    ULONG serviceSidLength;
+    ULONG index;
+    BOOLEAN found = FALSE;
+    NTSTATUS status;
+
+    PAGED_CODE();
+    RtlInitUnicodeString(&serviceName, L"SafeUploadAgent");
+    RtlInitUnicodeString(&routineName, L"RtlCreateServiceSid");
+    createServiceSid = (PSAFEUPLOAD_RTL_CREATE_SERVICE_SID)MmGetSystemRoutineAddress(&routineName);
+    if (createServiceSid != NULL) {
+        RtlZeroMemory(serviceSidStorage, sizeof(serviceSidStorage));
+        serviceSidLength = sizeof(serviceSidStorage);
+        status = createServiceSid(&serviceName, (PSID)serviceSidStorage, &serviceSidLength);
+        if (!NT_SUCCESS(status) || serviceSidLength < FIELD_OFFSET(SID, SubAuthority) ||
+            serviceSidLength > sizeof(serviceSidStorage)) return FALSE;
+        serviceSid = (PSID)serviceSidStorage;
+    }
+    token = PsReferencePrimaryToken(PsGetCurrentProcess());
+    status = SeQueryInformationToken(token, TokenGroups, (PVOID *)&groups);
+    if (NT_SUCCESS(status) && groups != NULL) {
+        for (index = 0; index < groups->GroupCount; ++index) {
+            if (RtlEqualSid(groups->Groups[index].Sid, serviceSid)) {
+                found = TRUE;
+                break;
+            }
+        }
+    }
+    if (groups != NULL) ExFreePool(groups);
+    PsDereferencePrimaryToken(token);
+    return found;
+}
 
 
 NTSTATUS
@@ -617,6 +680,20 @@ Return Value:
         ProbeForRead( InputBuffer, InputBufferLength, __alignof( SAFEUPLOAD_POLICY_MESSAGE ) );
         command = ((PSAFEUPLOAD_CONTROL) InputBuffer)->Command;
 #endif
+
+        /* SYSTEM remains the connection prerequisite. Policy replacement,
+         * publication permits and override grants additionally require the
+         * service SID; the owner decision trusts admins/SYSTEM, so this is
+         * inexpensive hardening against unrelated SYSTEM clients. Read-only
+         * and feature diagnostics remain available to the SYSTEM Inspector. */
+        if (command == SAFEUPLOAD_CONTROL_SET_POLICY ||
+            command == SAFEUPLOAD_CONTROL_STAGE_PUBLICATION ||
+            command == SAFEUPLOAD_CONTROL_GRANT_OVERRIDE) {
+            if (!SafeUploadCurrentProcessHasAgentServiceSid()) {
+                status = STATUS_ACCESS_DENIED;
+                leave;
+            }
+        }
 
 #if SAFEUPLOAD_STAGING_PROTOTYPE
         if (command == SAFEUPLOAD_CONTROL_ADMISSION_TRACE_ENABLE ||

@@ -190,10 +190,13 @@ NTSTATUS SafeUploadStageAdmissionVolumeStatus(_Out_ PSAFEUPLOAD_ADMISSION_VOLUME
                 FltObjectDereference(volume);
             }
             if (NT_SUCCESS((NTSTATUS)entry->ContextStatus)) {
+                SafeUploadInstanceCheckCanaryDeadline(context);
                 entry->VolumeKind = (UINT32)context->VolumeKind;
                 entry->FileSystemType = (UINT32)context->FileSystemType;
                 entry->FileSystemStatus = (UINT32)context->FileSystemStatus;
-                entry->SetupFlags = (UINT32)context->SetupFlags;
+                entry->SetupFlags = ((UINT32)context->SetupFlags & SAFEUPLOAD_SETUP_FLAGS_MASK) |
+                    ((UINT32)InterlockedCompareExchange(&context->TrustState, 0, 0) <<
+                        SAFEUPLOAD_SETUP_TRUST_STATE_SHIFT);
                 entry->VolumeGuidStatus = (UINT32)context->VolumeGuidStatus;
                 entry->VolumeGuidChars = context->VolumeGuidChars;
                 RtlCopyMemory(entry->VolumeGuid, context->VolumeGuid, sizeof(entry->VolumeGuid));
@@ -348,6 +351,28 @@ static NTSTATUS StageCanaryVerifyDescriptor(_In_ PFLT_INSTANCE Instance, _In_ PF
 }
 
 #if SAFEUPLOAD_STAGING_PROTOTYPE
+static VOID StageCanaryRevokeTrust(_Inout_ PSAFEUPLOAD_INSTANCE_CONTEXT Context)
+{
+    LONG trust;
+    if (!FlagOn(Context->SetupFlags, SAFEUPLOAD_SETUP_FLAG_NEWLY_MOUNTED_VOLUME)) return;
+    trust = InterlockedCompareExchange(&Context->TrustState, 0, 0);
+    while (trust == SAFEUPLOAD_VOLUME_TRUST_CANARY_PENDING ||
+        trust == SAFEUPLOAD_VOLUME_TRUST_CANARY_PASSED) {
+        LONG prior = InterlockedCompareExchange(&Context->TrustState,
+            SAFEUPLOAD_VOLUME_TRUST_CANARY_LOST, trust);
+        if (prior == trust) return;
+        trust = prior;
+    }
+}
+
+static VOID StageCanaryRecordTrustPass(_Inout_ PSAFEUPLOAD_INSTANCE_CONTEXT Context)
+{
+    if (FlagOn(Context->SetupFlags, SAFEUPLOAD_SETUP_FLAG_NEWLY_MOUNTED_VOLUME)) {
+        (VOID)InterlockedCompareExchange(&Context->TrustState,
+            SAFEUPLOAD_VOLUME_TRUST_CANARY_PASSED, SAFEUPLOAD_VOLUME_TRUST_CANARY_PENDING);
+    }
+}
+
 static BOOLEAN StageCanaryHoldClaim(_In_ PFLT_INSTANCE Instance, _Out_ PULONG HoldMilliseconds)
 {
     BOOLEAN claimed = FALSE;
@@ -547,6 +572,9 @@ NTSTATUS SafeUploadStageAdmissionCanaryHold(_In_ PCUNICODE_STRING VolumeName,
     chosenContext->CanaryStatus = STATUS_PENDING;
     chosenContext->CanaryChecks = 0;
     chosenContext->CanaryCleanupStatus = STATUS_PENDING;
+    /* The diagnostic hold re-arms the primitive; trust lost during this
+     * reset is sticky even if the later canary run succeeds. */
+    StageCanaryRevokeTrust(chosenContext);
     InterlockedExchange(&chosenContext->CanaryState, SAFEUPLOAD_CANARY_PENDING);
     ExReleaseFastMutex(&CanaryHoldMutex);
 
@@ -842,11 +870,22 @@ Exit:
     /* Failure phase in bits 8..15: volume/name/security/create/DACL/test-hold/EOF/ID/section/
      * retained/released. The low bits are individual checks; passed is exactly 15. */
     Context->CanaryChecks = checks | (status == STATUS_SUCCESS ? 0 : step << 8);
-    /* Published last; consumers must treat Pending/Running/Failed/Unsupported as untrusted. */
-    InterlockedExchange(&Context->CanaryState,
-        status == STATUS_SUCCESS && cleanupStatus == STATUS_SUCCESS &&
-            checks == SAFEUPLOAD_CANARY_CHECKS_ALL ?
-            SAFEUPLOAD_CANARY_PASSED : SAFEUPLOAD_CANARY_FAILED);
+    /* Trust can advance only from a newly-mounted pending state. Any failure
+     * permanently loses it for this instance; a later diagnostic rerun cannot
+     * restore trust before reboot. */
+    if (status == STATUS_SUCCESS && cleanupStatus == STATUS_SUCCESS &&
+        checks == SAFEUPLOAD_CANARY_CHECKS_ALL) {
+        /* A worker can return after the deadline without an Inspector read
+         * arriving during the canary. Record that timeout before trust can
+         * advance, so a slow pass cannot turn a timed-out instance trusted. */
+        SafeUploadInstanceCheckCanaryDeadline(Context);
+        StageCanaryRecordTrustPass(Context);
+        /* Published last; consumers treat Pending/Running as Untrusted. */
+        InterlockedExchange(&Context->CanaryState, SAFEUPLOAD_CANARY_PASSED);
+    } else {
+        StageCanaryRevokeTrust(Context);
+        InterlockedExchange(&Context->CanaryState, SAFEUPLOAD_CANARY_FAILED);
+    }
 }
 
 VOID SafeUploadStageCanaryTick(VOID)
@@ -871,6 +910,8 @@ VOID SafeUploadStageCanaryTick(VOID)
             NT_SUCCESS(FltGetInstanceContext(instances[index], (PFLT_CONTEXT *)&context))) {
             if (InterlockedCompareExchange(&context->CanaryState,
                     SAFEUPLOAD_CANARY_RUNNING, SAFEUPLOAD_CANARY_PENDING) == SAFEUPLOAD_CANARY_PENDING) {
+                InterlockedExchange64(&context->CanaryStartInterruptTime,
+                    (LONG64)KeQueryInterruptTime());
                 status = FltGetFileSystemType(instances[index], &fs);
                 if (context->VolumeKind == SafeUploadVolumeFixed && NT_SUCCESS(status) && fs == FLT_FSTYPE_NTFS) {
                     status = FltGetVolumeFromInstance(instances[index], &volume);
@@ -881,12 +922,14 @@ VOID SafeUploadStageCanaryTick(VOID)
                     } else {
                         context->CanaryStatus = status == STATUS_SUCCESS ? STATUS_VOLUME_DISMOUNTED : status;
                         context->CanaryCleanupStatus = STATUS_SUCCESS;
+                        StageCanaryRevokeTrust(context);
                         InterlockedExchange(&context->CanaryState, status == STATUS_SUCCESS ?
                             SAFEUPLOAD_CANARY_DETACHED : SAFEUPLOAD_CANARY_FAILED);
                     }
                 } else {
                     context->CanaryStatus = NT_SUCCESS(status) ? STATUS_NOT_SUPPORTED : status;
                     context->CanaryCleanupStatus = STATUS_SUCCESS;
+                    StageCanaryRevokeTrust(context);
                     InterlockedExchange(&context->CanaryState, SAFEUPLOAD_CANARY_UNSUPPORTED);
                 }
             }

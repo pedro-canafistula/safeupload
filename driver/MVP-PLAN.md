@@ -178,17 +178,19 @@ measured with the latency harness. All on Windows 10 build 19045.2965.
   their existing behavior. A port connection alone is not authorization: the accepted client must
   be SYSTEM, control messages are bound to its process ID, and authentication becomes active only
   after a valid SET_POLICY succeeds.
-- Trust is assigned only from `FLTFL_INSTANCE_SETUP_NEWLY_MOUNTED_VOLUME` at instance setup. A
-  volume without that flag stays Untrusted until its instance is destroyed and a new mount creates
-  a new instance. The canary remains a separate primitive result and never upgrades trust. This
-  keeps the demand-start Phase 1 flow usable: canary PASS is still reported even when C: is
-  late-attached and Untrusted; only the authenticated test-prototype demand-start corpus may
-  continue through its existing service policy path. Agent-down creates still fail closed, while
-  boot-start prototype and production enforcement require newly-mounted trust.
-- `Test-StagedBootStart.ps1` and the `boot-start` wrapper path prepare a durable one-folder test
-  policy, configure one-boot standard Verifier, reboot, measure the first startup write before
-  agent launch, exercise agent stop/restart, trust C: and a new VHDX, run pre-attach-writer E1,
-  restore the original demand-start driver/policy, and reboot for final checks.
+- Trust requires both `FLTFL_INSTANCE_SETUP_NEWLY_MOUNTED_VOLUME` and a passed startup canary.
+  Pending, failed, timed-out, unsupported, or detached instances stay Untrusted. Trust loss is
+  sticky until reboot, including a canary diagnostic reset. A late load after boot reports
+  `protection pending reboot` and leaves its volumes Untrusted. Agent-down creates still fail
+  closed; the demand-start Phase 1 diagnostic path does not claim volume trust without the canary.
+- `Test-StagedBootStart.ps1` and the `boot-start` wrapper path prepare a durable C: policy scope,
+  configure one-boot standard Verifier, reboot, durably record filter readiness before the first
+  unique marker write, and compare the marker's allocated bytes through an independent raw-volume
+  observer. The harness exercises agent stop/restart, trusts C: and a fresh VHDX, then runs E1 on
+  S: with a writable mapping created before late filter attachment. E1 passes when the late-loaded
+  volume reports Untrusted and `protection pending reboot`; its raw bytes are recorded and may
+  change because late attachment cannot protect an already-existing mapping. The harness restores
+  the original driver/policy and reboots for final checks.
 - One adversarial review of the boot path is required before the first VM boot. X4 must establish
   the first user-mode attempt versus observed filter readiness and that no destination bytes appear
   before readiness; the post-boot VHDX must be newly mounted/trusted, while E1's already-mounted
@@ -271,7 +273,8 @@ Fix what it finds, rerun phase 4. Then decide the order of the deferred destinat
 - Trust boundary (owner decision 2026-10-04): local administrators and SYSTEM are trusted for the MVP. The MVP protects against
   standard users; admin/SYSTEM tampering (taking ownership of the policy key, loading/unloading drivers, a SYSTEM process talking
   to the port) is out of scope and documented. Cheap hardening still applies: the port accepts only the SafeUpload service's own
-  service SID (not any SYSTEM process), and policy values are never used after an ACL mismatch.
+  service SID (not any SYSTEM process), and policy values are never used after an ACL mismatch. The agent's local `policy.json`
+  and `%ProgramData%\SafeUpload` directory use protected explicit ACLs for SYSTEM and Administrators, with no inherited ACEs.
 - Installation requires a reboot (owner decision 2026-10-04): the installer stages the driver as boot-start and does not start it;
   nothing is protected until the first reboot, so there is no late-attach period in normal deployment. A driver loaded late anyway
   (manual load/attach) leaves its volumes Untrusted until reboot and claims no protection there.

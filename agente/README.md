@@ -73,9 +73,17 @@ Em PowerShell **elevado**:
 
 ```powershell
 dotnet publish agente\SafeUpload.Agent.Service -c Release -r win-x64 --self-contained false
-sc.exe create SafeUploadAgent binPath= "<caminho>\SafeUpload.Agent.Service.exe" start= auto
-sc.exe start SafeUploadAgent
+.\agente\scripts\Install-SafeUploadAgent.ps1 -ServiceExecutablePath "<caminho>\SafeUpload.Agent.Service.exe"
+sc.exe qsidtype SafeUploadAgent
 ```
+
+O script registra o serviço como LocalSystem e configura `SERVICE_SID_TYPE_UNRESTRICTED` para que o token contenha
+`NT SERVICE\SafeUploadAgent`, exigido pelo driver para substituir política e conceder autorizações. Ele não inicia o serviço.
+Depois de instalar o driver boot-start, reinicie o Windows; a proteção só é anunciada após esse reboot.
+
+Antes de ler `policy.json`, o agente exige ACL protegida e explícita, sem ACEs herdadas, com controle total somente para
+SYSTEM e Administradores em `%ProgramData%\SafeUpload` e no arquivo. Se a ACL existente não corresponder, ele recusa o
+arquivo e mantém a última política aplicada em memória; sem uma política válida anterior, não carrega uma política mais fraca.
 
 #### Validação da instalação como LocalSystem
 
@@ -301,8 +309,8 @@ detecção e, como qualquer achado leva a bloqueio, o custo recai sobre o usuár
 mínima reduziria o ruído mas deixaria passar senhas fracas, que são justamente as que mais aparecem
 em planilhas compartilhadas. O projeto escolheu errar para o lado do bloqueio.
 
-**O estado local não é protegido.** Qualquer usuário da máquina pode editar `policy.json` ou apagar
-`queue.jsonl`. No produto real, ACLs e o serviço em SYSTEM impediriam isso.
+**A fila local de auditoria ainda não é protegida por ACL.** Qualquer usuário da máquina pode editar
+ou apagar `queue.jsonl`. O agente protege `policy.json` com ACL explícita para SYSTEM e Administradores.
 
 ---
 

@@ -87,6 +87,12 @@ VOID SafeUploadStageWritersInstanceTeardownStart(
         return;
     }
 
+    /* A detached/dismounted instance can never carry trust into a later
+     * attachment. Preserve an explicit Untrusted state while its context is
+     * still available for the admission readout. */
+    InterlockedExchange(&context->TrustState, SAFEUPLOAD_VOLUME_TRUST_DETACHED);
+    InterlockedExchange(&context->CanaryState, SAFEUPLOAD_CANARY_DETACHED);
+
     if (context->TeardownToken == NULL) {
         InterlockedExchange(&WriterGlobalUnknown, 1);
     } else {

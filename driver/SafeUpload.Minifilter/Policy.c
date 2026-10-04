@@ -163,6 +163,7 @@ SafeUploadBuildStringTable (
     #pragma alloc_text(PAGE, SafeUploadPolicyCopyScope)
     #pragma alloc_text(PAGE, SafeUploadPolicySetPending)
 #endif
+    #pragma alloc_text(PAGE, SafeUploadPolicyMayMatchVolume)
 #endif
 
 
@@ -885,6 +886,95 @@ BOOLEAN SafeUploadPolicyHasDestinationScopes(_In_ SAFEUPLOAD_VOLUME_KIND VolumeK
     }
     FltReleasePushLock(&SafeUploadPolicyLock);
     return hasScopes;
+}
+
+BOOLEAN SafeUploadPolicyMayMatchVolume(
+    _In_ SAFEUPLOAD_VOLUME_KIND VolumeKind,
+    _In_opt_ PFLT_VOLUME Volume)
+{
+    WCHAR volumeNameBuffer[SAFEUPLOAD_MAX_PREFIX_CHARS];
+    UNICODE_STRING volumeName;
+    BOOLEAN mayMatch = FALSE;
+    ULONG index;
+    NTSTATUS status;
+
+    PAGED_CODE();
+    if (Volume == NULL) return SafeUploadPolicyHasDestinationScopes(VolumeKind);
+
+    volumeName.Buffer = volumeNameBuffer;
+    volumeName.Length = 0;
+    volumeName.MaximumLength = sizeof(volumeNameBuffer);
+    status = FltGetVolumeName(Volume, &volumeName, NULL);
+
+    FltAcquirePushLockShared(&SafeUploadPolicyLock);
+    if (!NT_SUCCESS(status) || volumeName.Length == 0 || (volumeName.Length & 1) != 0) {
+        /* A failed volume-name query cannot prove that this is outside every
+         * configured prefix. Fail closed whenever any current, pending, or
+         * boot destination scope exists. */
+        mayMatch = (SafeUploadPolicy != NULL &&
+                (SafeUploadPolicy->PrefixCount != 0 ||
+                 ((VolumeKind == SafeUploadVolumeUnknown || VolumeKind == SafeUploadVolumeRemovable) &&
+                  FlagOn(SafeUploadPolicy->Flags, SAFEUPLOAD_POLICY_FLAG_REMOVABLE)) ||
+                 ((VolumeKind == SafeUploadVolumeUnknown || VolumeKind == SafeUploadVolumeNetwork) &&
+                  FlagOn(SafeUploadPolicy->Flags, SAFEUPLOAD_POLICY_FLAG_NETWORK)))) ||
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+            (SafeUploadPendingPolicy != NULL &&
+                (SafeUploadPendingPolicy->PrefixCount != 0 ||
+                 ((VolumeKind == SafeUploadVolumeUnknown || VolumeKind == SafeUploadVolumeRemovable) &&
+                  FlagOn(SafeUploadPendingPolicy->Flags, SAFEUPLOAD_POLICY_FLAG_REMOVABLE)) ||
+                 ((VolumeKind == SafeUploadVolumeUnknown || VolumeKind == SafeUploadVolumeNetwork) &&
+                  FlagOn(SafeUploadPendingPolicy->Flags, SAFEUPLOAD_POLICY_FLAG_NETWORK)))) ||
+#endif
+            (SafeUploadBootScopesActive &&
+                (SafeUploadBootScopes.PrefixCount != 0 || SafeUploadBootScopes.Overflow ||
+                 ((VolumeKind == SafeUploadVolumeUnknown || VolumeKind == SafeUploadVolumeRemovable) &&
+                  FlagOn(SafeUploadBootScopes.Flags, SAFEUPLOAD_BOOT_POLICY_FLAG_REMOVABLE)) ||
+                 ((VolumeKind == SafeUploadVolumeUnknown || VolumeKind == SafeUploadVolumeNetwork) &&
+                  FlagOn(SafeUploadBootScopes.Flags, SAFEUPLOAD_BOOT_POLICY_FLAG_NETWORK))));
+    } else {
+        if (SafeUploadPolicy != NULL) {
+            mayMatch = ((VolumeKind == SafeUploadVolumeUnknown || VolumeKind == SafeUploadVolumeRemovable) &&
+                    FlagOn(SafeUploadPolicy->Flags, SAFEUPLOAD_POLICY_FLAG_REMOVABLE)) ||
+                ((VolumeKind == SafeUploadVolumeUnknown || VolumeKind == SafeUploadVolumeNetwork) &&
+                    FlagOn(SafeUploadPolicy->Flags, SAFEUPLOAD_POLICY_FLAG_NETWORK)) ||
+                ((VolumeKind == SafeUploadVolumeUnknown || VolumeKind == SafeUploadVolumeNetwork) &&
+                    SafeUploadPolicy->PrefixCount != 0);
+            for (index = 0; !mayMatch && index < SafeUploadPolicy->PrefixCount; ++index) {
+                mayMatch = SafeUploadPathUnderPrefix(&volumeName, &SafeUploadPolicy->Prefixes[index]);
+            }
+        }
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+        if (!mayMatch && SafeUploadPendingPolicy != NULL) {
+            mayMatch = ((VolumeKind == SafeUploadVolumeUnknown || VolumeKind == SafeUploadVolumeRemovable) &&
+                    FlagOn(SafeUploadPendingPolicy->Flags, SAFEUPLOAD_POLICY_FLAG_REMOVABLE)) ||
+                ((VolumeKind == SafeUploadVolumeUnknown || VolumeKind == SafeUploadVolumeNetwork) &&
+                    FlagOn(SafeUploadPendingPolicy->Flags, SAFEUPLOAD_POLICY_FLAG_NETWORK)) ||
+                ((VolumeKind == SafeUploadVolumeUnknown || VolumeKind == SafeUploadVolumeNetwork) &&
+                    SafeUploadPendingPolicy->PrefixCount != 0);
+            for (index = 0; !mayMatch && index < SafeUploadPendingPolicy->PrefixCount; ++index) {
+                mayMatch = SafeUploadPathUnderPrefix(&volumeName, &SafeUploadPendingPolicy->Prefixes[index]);
+            }
+        }
+#endif
+        if (!mayMatch && SafeUploadBootScopesActive) {
+            mayMatch = ((VolumeKind == SafeUploadVolumeUnknown || VolumeKind == SafeUploadVolumeRemovable) &&
+                    FlagOn(SafeUploadBootScopes.Flags, SAFEUPLOAD_BOOT_POLICY_FLAG_REMOVABLE)) ||
+                ((VolumeKind == SafeUploadVolumeUnknown || VolumeKind == SafeUploadVolumeNetwork) &&
+                    FlagOn(SafeUploadBootScopes.Flags, SAFEUPLOAD_BOOT_POLICY_FLAG_NETWORK)) ||
+                ((VolumeKind == SafeUploadVolumeUnknown || VolumeKind == SafeUploadVolumeNetwork) &&
+                    SafeUploadBootScopes.PrefixCount != 0);
+            for (index = 0; !mayMatch && index < SafeUploadBootScopes.PrefixCount; ++index) {
+                UNICODE_STRING prefix;
+                prefix.Buffer = SafeUploadBootScopes.Prefixes[index];
+                prefix.Length = (USHORT)(SafeUploadBootScopes.PrefixChars[index] * sizeof(WCHAR));
+                prefix.MaximumLength = prefix.Length;
+                mayMatch = SafeUploadPathUnderPrefix(&volumeName, &prefix);
+            }
+            if (!mayMatch && SafeUploadBootScopes.Overflow) mayMatch = TRUE;
+        }
+    }
+    FltReleasePushLock(&SafeUploadPolicyLock);
+    return mayMatch;
 }
 
 BOOLEAN

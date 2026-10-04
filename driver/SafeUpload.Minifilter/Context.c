@@ -76,6 +76,7 @@ static VOID SafeUploadInstanceContextCleanup(
     #pragma alloc_text(PAGE, SafeUploadClassifyVolume)
     #pragma alloc_text(PAGE, SafeUploadSetInstanceContext)
     #pragma alloc_text(PAGE, SafeUploadInstanceIsTrusted)
+    #pragma alloc_text(PAGE, SafeUploadInstanceCheckCanaryDeadline)
     #pragma alloc_text(PAGE, SafeUploadGetOrCreateStreamContext)
     #pragma alloc_text(PAGE, SafeUploadMarkHandleForWrite)
 #endif
@@ -327,7 +328,9 @@ Return Value:
     RtlZeroMemory( instanceContext, sizeof( *instanceContext ) );
     instanceContext->SetupFlags = SetupFlags;
     instanceContext->TrustState = FlagOn(SetupFlags, FLTFL_INSTANCE_SETUP_NEWLY_MOUNTED_VOLUME) ?
-        SAFEUPLOAD_VOLUME_TRUST_NEWLY_MOUNTED : SAFEUPLOAD_VOLUME_TRUST_UNTRUSTED_FLAGS;
+        SAFEUPLOAD_VOLUME_TRUST_CANARY_PENDING :
+        (SafeUploadData.BootStartMode ? SAFEUPLOAD_VOLUME_TRUST_PENDING_REBOOT :
+            SAFEUPLOAD_VOLUME_TRUST_UNTRUSTED_FLAGS);
 #if SAFEUPLOAD_STAGING_PROTOTYPE
     teardownToken = (PSAFEUPLOAD_INSTANCE_TEARDOWN_TOKEN)ExAllocatePool2(
         POOL_FLAG_NON_PAGED, sizeof(*teardownToken), SAFEUPLOAD_TEARDOWN_TOKEN_POOL_TAG);
@@ -342,6 +345,10 @@ Return Value:
 #endif
     instanceContext->VolumeKind = SafeUploadClassifyVolume( FltObjects->Volume,
                                                             VolumeDeviceType );
+    if (!FlagOn(SetupFlags, FLTFL_INSTANCE_SETUP_NEWLY_MOUNTED_VOLUME) && SafeUploadData.BootStartMode) {
+        DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL,
+            "SafeUpload: volume instance attached after mount; protection pending reboot; volume remains Untrusted\n");
+    }
 #if SAFEUPLOAD_STAGING_PROTOTYPE
     instanceContext->CanaryStatus = STATUS_PENDING;
     instanceContext->CanaryCleanupStatus = STATUS_PENDING;
@@ -388,13 +395,49 @@ Return Value:
     return status;
 }
 
+VOID SafeUploadInstanceCheckCanaryDeadline(_Inout_ PSAFEUPLOAD_INSTANCE_CONTEXT Context)
+{
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    LONG trustState, canaryState;
+    LONG64 started;
+    ULONGLONG now;
+    const ULONGLONG timeout = 60ULL * 10000000ULL;
+
+    PAGED_CODE();
+    trustState = InterlockedCompareExchange(&Context->TrustState, 0, 0);
+    canaryState = InterlockedCompareExchange(&Context->CanaryState, 0, 0);
+    if (trustState != SAFEUPLOAD_VOLUME_TRUST_CANARY_PENDING ||
+        canaryState != SAFEUPLOAD_CANARY_RUNNING) return;
+    started = InterlockedCompareExchange64(&Context->CanaryStartInterruptTime, 0, 0);
+    if (started == 0) return;
+    now = KeQueryInterruptTime();
+    if (now >= (ULONGLONG)started && now - (ULONGLONG)started >= timeout &&
+        InterlockedCompareExchange(&Context->TrustState,
+            SAFEUPLOAD_VOLUME_TRUST_CANARY_LOST, SAFEUPLOAD_VOLUME_TRUST_CANARY_PENDING) ==
+            SAFEUPLOAD_VOLUME_TRUST_CANARY_PENDING) {
+        DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL,
+            "SafeUpload: startup canary timed out; volume remains Untrusted until reboot\n");
+    }
+#else
+    UNREFERENCED_PARAMETER(Context);
+#endif
+}
+
 BOOLEAN SafeUploadInstanceIsTrusted(_In_ PFLT_INSTANCE Instance)
 {
     PSAFEUPLOAD_INSTANCE_CONTEXT context = NULL;
     BOOLEAN trusted = FALSE;
     PAGED_CODE();
     if (NT_SUCCESS(FltGetInstanceContext(Instance, (PFLT_CONTEXT *)&context))) {
-        trusted = context->TrustState == SAFEUPLOAD_VOLUME_TRUST_NEWLY_MOUNTED;
+        SafeUploadInstanceCheckCanaryDeadline(context);
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+        trusted = InterlockedCompareExchange(&context->TrustState, 0, 0) ==
+                SAFEUPLOAD_VOLUME_TRUST_CANARY_PASSED &&
+            InterlockedCompareExchange(&context->CanaryState, 0, 0) == SAFEUPLOAD_CANARY_PASSED;
+#else
+        trusted = InterlockedCompareExchange(&context->TrustState, 0, 0) ==
+            SAFEUPLOAD_VOLUME_TRUST_CANARY_PASSED;
+#endif
         FltReleaseContext(context);
     }
     return trusted;
@@ -403,10 +446,9 @@ BOOLEAN SafeUploadInstanceIsTrusted(_In_ PFLT_INSTANCE Instance)
 BOOLEAN SafeUploadInstanceTrustGateSatisfied(_In_ PFLT_INSTANCE Instance)
 {
 #if SAFEUPLOAD_STAGING_PROTOTYPE
-    /* Keep the demand-start Phase 1 corpus runnable with its authenticated
-     * diagnostic service. The instance remains reported Untrusted; agent-down
-     * creates still fail closed, and boot-start prototype/production builds
-     * always require the newly-mounted flag. */
+    /* Keep the demand-start Phase 1 diagnostic corpus runnable with its
+     * authenticated service. Trust reporting remains canary-gated in both
+     * modes; boot-start admission always requires the trusted state. */
     if (!SafeUploadData.BootStartMode) return TRUE;
 #endif
     return SafeUploadInstanceIsTrusted(Instance);

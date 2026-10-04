@@ -62,6 +62,15 @@ Regras que não se negociam:
 
 ## O que este driver faz hoje
 
+**Instalação exige reinicialização.** O INF configura `SafeUpload` como
+`SERVICE_BOOT_START`. Instaladores e caminhos de deploy apenas deixam o
+binário e essa configuração prontos; não use `fltmc load` nem `sc start` para
+iniciar o filtro. A proteção só pode ser anunciada depois do primeiro boot
+com o driver. Se alguém o carregar manualmente mais tarde, os volumes ficam
+`Untrusted` e o Inspector informa `protection pending reboot` até reiniciar.
+Sem escopos válidos no registro, ou após `ACL_REJECTED`, o driver não reivindica
+proteção baseada na política de boot.
+
 - Intercepta `IRP_MJ_CREATE`, `IRP_MJ_CLEANUP`, `IRP_MJ_SET_INFORMATION`
   (rename e hard link) e escritas não paginadas em `IRP_MJ_WRITE`.
 - Ignora paging I/O, abertura de volumes, abertura de diretórios, I/O dos
@@ -139,10 +148,13 @@ O `bootstrap.ps1` é gerado a cada publicação com a URL embutida. Ele baixa a
 do processo e entrega o controle. Não há cópia de script para manter
 atualizada na VM alvo: o que roda é sempre o que acabou de ser publicado.
 
-A partir daí o script faz a verificação prévia, baixa o pacote, confere os
-hashes contra o manifesto, troca o binário, carrega o filtro e roda o teste
-de fumaça inteiro, terminando com um resumo do tipo `6/6 verificações
-passaram` e código de saída diferente de zero se alguma falhar.
+A partir daí o script faz a verificação prévia, baixa o pacote e confere os
+hashes contra o manifesto. Na primeira execução (ou depois de trocar o
+binário), ele só instala/atualiza o driver boot-start e termina com
+`protection pending reboot`; ele não inicia o filtro. Reinicie o Windows e
+rode o script de novo para confirmar que o driver subiu no boot antes de
+iniciar o teste de fumaça. Um teste que não confirmou o boot não anuncia
+proteção.
 
 Para passar opções, rode o script já baixado:
 
@@ -436,7 +448,7 @@ Confira que a assinatura agora é reconhecida:
 certutil -verify -urlfetch C:\safeupload\SafeUpload.sys
 ```
 
-### 4. Instalar o INF
+### 4. Instalar e deixar o driver boot-start
 
 ```
 rundll32.exe setupapi.dll,InstallHinfSection DefaultInstall 128 C:\safeupload\SafeUpload.inf
@@ -451,8 +463,15 @@ o resultado de duas formas:
 sc query SafeUpload
 ```
 
-Esperado: `TYPE : 2 FILE_SYSTEM_DRIVER` e `STATE : 1 STOPPED` (parado
-porque é demand start — ele só sobe no passo 5).
+Esperado antes da reinicialização: `TYPE : 2 FILE_SYSTEM_DRIVER` e
+`STATE : 1 STOPPED`. Confira o tipo de início:
+
+```
+sc qc SafeUpload
+```
+
+`START_TYPE` deve mostrar `BOOT_START` (`0`). A instalação só prepara o
+próximo boot; não inicie o filtro com `fltmc load` ou `sc start`.
 
 **Arquivo copiado:**
 
@@ -468,13 +487,25 @@ notepad C:\Windows\INF\setupapi.dev.log
 
 Procure pelas últimas entradas contendo `SafeUpload`.
 
-### 5. Carregar o filtro
+### 5. Reiniciar para iniciar a proteção
+
+Reinicie o Windows depois da instalação ou de trocar o driver:
 
 ```
-fltmc load SafeUpload
+shutdown /r /t 0
 ```
 
-Sem saída = sucesso. Erros comuns:
+Depois do boot, confira o filtro e as instâncias:
+
+```
+fltmc filters
+fltmc instances -f SafeUpload
+```
+
+O Inspector deve indicar `trusted` depois que o canário passar. Se a instância
+foi carregada manualmente após o boot, ela continua `Untrusted` e informa
+`protection pending reboot`; reinicie para começar a proteção. Erros de carga
+comuns:
 
 | Mensagem | Causa |
 |---|---|
@@ -542,7 +573,8 @@ ficaria inutilizavelmente lenta.
 verifier /standard /driver SafeUpload.sys
 ```
 
-Resposta esperada: aviso de que é preciso reiniciar.
+Resposta esperada: aviso de que é preciso reiniciar. Se você ativar o Verifier
+depois do reboot de instalação, reinicie outra vez para aplicá-lo.
 
 ```
 shutdown /r /t 0
@@ -558,12 +590,7 @@ Deve listar `SafeUpload.sys` com as opções padrão (que incluem **Special
 Pool** — é ele que detecta uso de memória liberada, e é a razão principal de
 ligar o Verifier aqui).
 
-> O driver é *demand start*: ele **não** sobe sozinho no boot. Depois de
-> reiniciar, carregue de novo:
->
-> ```
-> fltmc load SafeUpload
-> ```
+O Verifier não muda o tipo boot-start. O filtro continua iniciando no boot.
 
 ### 7. Teste de fumaça
 
@@ -882,8 +909,9 @@ Um valor que só cresce em `!poolused` entre operações indica vazamento.
 
 Ordem do mais barato para o mais caro:
 
-**10a.** Se ela chega ao menu de boot: F8 → **Modo de Segurança**. O driver
-é *demand start*, então não sobe em modo de segurança. De dentro dele:
+**10a.** Se ela chega ao menu de boot: F8 → **Modo de Segurança**. Não conte
+com o modo de segurança como recuperação do filtro boot-start. Se a VM inicia
+nesse modo, desative o Verifier e o driver antes de tentar iniciar normalmente:
 
 ```
 verifier /reset

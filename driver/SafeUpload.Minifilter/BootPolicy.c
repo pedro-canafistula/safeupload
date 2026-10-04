@@ -291,7 +291,7 @@ NTSTATUS SafeUploadReadBootPolicy(_In_ PUNICODE_STRING ServiceRegistryPath,
     HANDLE serviceKey = NULL, parametersKey = NULL, policyKey = NULL;
     UNICODE_STRING parametersName, policyName, committedName, pendingName, startName;
     SAFEUPLOAD_BOOT_VALUE_RESULT committed, pending;
-    BOOLEAN aclRejected = FALSE, readFailed = FALSE, anyValue = FALSE, anyCorrupt = FALSE;
+    BOOLEAN readFailed = FALSE, anyValue = FALSE, anyCorrupt = FALSE;
     UINT32 bootPolicyState = SAFEUPLOAD_BOOT_POLICY_STATE_UNREADABLE;
     NTSTATUS status;
 
@@ -344,19 +344,27 @@ NTSTATUS SafeUploadReadBootPolicy(_In_ PUNICODE_STRING ServiceRegistryPath,
              SAFEUPLOAD_BOOT_POLICY_STATE_UNREADABLE);
         goto Exit;
     }
-    if (!SafeUploadBootPolicyVerifyAcl(parametersKey)) aclRejected = TRUE;
+    if (!SafeUploadBootPolicyVerifyAcl(parametersKey)) {
+        *State = SAFEUPLOAD_BOOT_POLICY_STATE_ACL_REJECTED;
+        status = STATUS_SUCCESS;
+        goto Exit;
+    }
 
     RtlInitUnicodeString(&policyName, L"BootPolicy");
     InitializeObjectAttributes(&attributes, &policyName,
         OBJ_CASE_INSENSITIVE | OBJ_KERNEL_HANDLE, parametersKey, NULL);
     status = ZwOpenKey(&policyKey, KEY_QUERY_VALUE | READ_CONTROL, &attributes);
     if (!NT_SUCCESS(status)) {
-        *State = aclRejected || status == STATUS_ACCESS_DENIED ? SAFEUPLOAD_BOOT_POLICY_STATE_ACL_REJECTED :
+        *State = status == STATUS_ACCESS_DENIED ? SAFEUPLOAD_BOOT_POLICY_STATE_ACL_REJECTED :
             (status == STATUS_OBJECT_NAME_NOT_FOUND ? SAFEUPLOAD_BOOT_POLICY_STATE_MISSING :
              SAFEUPLOAD_BOOT_POLICY_STATE_UNREADABLE);
         goto Exit;
     }
-    if (!SafeUploadBootPolicyVerifyAcl(policyKey)) aclRejected = TRUE;
+    if (!SafeUploadBootPolicyVerifyAcl(policyKey)) {
+        *State = SAFEUPLOAD_BOOT_POLICY_STATE_ACL_REJECTED;
+        status = STATUS_SUCCESS;
+        goto Exit;
+    }
 
     RtlInitUnicodeString(&committedName, L"Scopes");
     RtlInitUnicodeString(&pendingName, L"PendingScopes");
@@ -368,14 +376,21 @@ NTSTATUS SafeUploadReadBootPolicy(_In_ PUNICODE_STRING ServiceRegistryPath,
     anyCorrupt = committed == SafeUploadBootValueCorrupt || pending == SafeUploadBootValueCorrupt;
     readFailed = committed == SafeUploadBootValueUnreadable || pending == SafeUploadBootValueUnreadable;
 
-    if (aclRejected) bootPolicyState = SAFEUPLOAD_BOOT_POLICY_STATE_ACL_REJECTED;
-    else if (readFailed) bootPolicyState = SAFEUPLOAD_BOOT_POLICY_STATE_UNREADABLE;
+    if (readFailed) bootPolicyState = SAFEUPLOAD_BOOT_POLICY_STATE_UNREADABLE;
     else if (anyCorrupt) bootPolicyState = Scopes->PrefixCount != 0 || Scopes->Flags != 0 || Scopes->Overflow ?
         SAFEUPLOAD_BOOT_POLICY_STATE_CORRUPT_PARTIAL : SAFEUPLOAD_BOOT_POLICY_STATE_CORRUPT_EMPTY;
     else if (!anyValue) bootPolicyState = SAFEUPLOAD_BOOT_POLICY_STATE_MISSING;
     else if (pending == SafeUploadBootValueValid) bootPolicyState = SAFEUPLOAD_BOOT_POLICY_STATE_PENDING_UNION;
     else bootPolicyState = SAFEUPLOAD_BOOT_POLICY_STATE_VALID;
     *State = bootPolicyState;
+
+    if (bootPolicyState == SAFEUPLOAD_BOOT_POLICY_STATE_MISSING ||
+        bootPolicyState == SAFEUPLOAD_BOOT_POLICY_STATE_CORRUPT_EMPTY ||
+        bootPolicyState == SAFEUPLOAD_BOOT_POLICY_STATE_ACL_REJECTED) {
+        DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL,
+            "SafeUpload: BOOT POLICY NOT PROTECTED state=%u identified-prefixes=%u flags=0x%X; admins/SYSTEM are trusted by owner decision, and no registry-derived scope is enforced when none is identifiable\n",
+            bootPolicyState, Scopes->PrefixCount, Scopes->Flags);
+    }
 
     Policy->Control.Version = SAFEUPLOAD_PROTOCOL_VERSION;
     Policy->Control.StructSize = sizeof(*Policy);
@@ -395,6 +410,14 @@ Exit:
     if (policyKey != NULL) ZwClose(policyKey);
     if (parametersKey != NULL) ZwClose(parametersKey);
     if (serviceKey != NULL) ZwClose(serviceKey);
+    if (*State == SAFEUPLOAD_BOOT_POLICY_STATE_ACL_REJECTED) {
+        DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL,
+            "SafeUpload: BOOT POLICY ACL_REJECTED; Scopes and PendingScopes were not read or used, no registry-derived protection is claimed (admins/SYSTEM are trusted by owner decision)\n");
+    }
+    if (*State == SAFEUPLOAD_BOOT_POLICY_STATE_MISSING) {
+        DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL,
+            "SafeUpload: BOOT POLICY MISSING; no registry-derived scope is enforced and no boot-policy protection is claimed (admins/SYSTEM are trusted by owner decision)\n");
+    }
     SafeUploadTrace("boot policy state=%u identified-prefixes=%u flags=0x%X overflow=%u boot-start-mode=%u\n",
         *State, Scopes->PrefixCount, Scopes->Flags, Scopes->Overflow ? 1 : 0,
         *BootStartMode ? 1 : 0);
