@@ -4122,14 +4122,15 @@ public static class SafeUploadEolNative
             }
             function Invoke-RTSupersedeAttempt([string] $Path) {
                 $transaction = New-RTTransaction 'SafeUpload registry-txf supersede'
-                $status = [uint32]0xC0000001
+                # PowerShell 5.1 parses 0xC00000xx as a negative Int32: decimal constants, and mask the native Int32.
+                $status = [uint32]3221225473  # STATUS_UNSUCCESSFUL
                 $rolledBack = $false
-                try { $status = [SafeUploadRegistryTxfNative]::NtCreateSupersede($Path, $transaction) }
+                try { $status = [uint32]([int64][SafeUploadRegistryTxfNative]::NtCreateSupersede($Path, $transaction) -band 0xFFFFFFFFL) }
                 finally {
                     $rolledBack = [SafeUploadRegistryTxfNative]::RollbackTransaction($transaction)
                     if ($rolledBack) { Close-RTTransaction $transaction }
                 }
-                return [pscustomobject]@{ AccessDenied = ($status -eq [uint32]0xC0000022);
+                return [pscustomobject]@{ AccessDenied = ($status -eq [uint32]3221225506);
                     Succeeded = ($status -eq 0); Status = ('0x{0:X8}' -f $status); RolledBack = $rolledBack }
             }
             function Assert-RTRefusal([string] $Label, [scriptblock] $Action, [string] $StatusField) {
@@ -4403,9 +4404,12 @@ public static class SafeUploadEolNative
                 $nativeStatus = & $case.Run
                 $after = Get-RTStats
                 $delta = [long]$after.txfRefused - [long]$before.txfRefused
-                $denied = [uint32]$nativeStatus -eq [uint32]0xC0000022
+                # NTSTATUS arrives as a signed Int32, and PowerShell 5.1 parses 0xC0000022 as a negative Int32 too: mask
+                # through Int64 before any UInt32 cast (run 13 threw on 0xC0000001).
+                $nativeStatus = [uint32]([int64]$nativeStatus -band 0xFFFFFFFFL)
+                $denied = $nativeStatus -eq [uint32]3221225506  # STATUS_ACCESS_DENIED
                 Add-RTOutcome ('SetInformation_' + $case.Name) ($denied -and $delta -eq 1) `
-                    ('NtStatus:0x{0:X8};TxfRefusedDelta:{1}' -f [uint32]$nativeStatus, $delta)
+                    ('NtStatus:0x{0:X8};TxfRefusedDelta:{1}' -f $nativeStatus, $delta)
             }
             $fsctlBefore = Get-RTStats
             $fsctlOk = [SafeUploadRegistryTxfNative]::SetZeroData($mutationHandle)

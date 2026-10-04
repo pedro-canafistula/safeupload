@@ -1434,13 +1434,16 @@ static BOOLEAN StageRegistryAssociateSectionPointer(_In_ PSTAGE_WRITER_RESERVATI
 /* Caller holds RegistryLock exclusive. Unlinks Entry if nothing can still be bound to it; returns the map-slot reference
  * to drop (at most one, since every pointer occupies one slot) through *MapReference. The caller drops the history
  * reference and *MapReference after releasing the lock. */
-static BOOLEAN StageRegistryPruneLocked(_In_ PSTAGE_REGISTRY_ENTRY Entry, _Out_ PSTAGE_REGISTRY_ENTRY *MapReference)
+static BOOLEAN StageRegistryPruneLocked(_In_ PSTAGE_REGISTRY_ENTRY Entry, _Out_ PSTAGE_REGISTRY_ENTRY *MapReference,
+    _Out_ PFLT_INSTANCE *InstanceReference, _Out_ PFLT_VOLUME *VolumeReference)
 {
     PLIST_ENTRY link;
     ULONG index;
     KIRQL irql;
     BOOLEAN busy = FALSE;
     *MapReference = NULL;
+    *InstanceReference = NULL;
+    *VolumeReference = NULL;
     if (!Entry->Listed || Entry->Retired ||
         InterlockedCompareExchange(&Entry->H, 0, 0) != 0 || InterlockedCompareExchange(&Entry->T, 0, 0) != 0 ||
         InterlockedCompareExchange(&Entry->RenameInFlight, 0, 0) != 0 ||
@@ -1469,6 +1472,13 @@ static BOOLEAN StageRegistryPruneLocked(_In_ PSTAGE_REGISTRY_ENTRY Entry, _Out_ 
     RemoveEntryList(&Entry->Link);
     Entry->Listed = FALSE;
     Entry->Retired = TRUE;
+    /* Like retirement: an unlisted entry is never matched again, so it releases its instance and volume now. A stream
+     * context may keep the entry alive, and Filter Manager frees contexts only after waiting out every reference on the
+     * instance: keeping them deadlocked unload (registry-txf run 13, rundown count 1 after 2,991 prunes). */
+    *InstanceReference = Entry->Instance;
+    *VolumeReference = Entry->Volume;
+    Entry->Instance = NULL;
+    Entry->Volume = NULL;
     if (RegistryEntryCount != 0) RegistryEntryCount -= 1;
     if (RegistryNameBytes >= Entry->NameChars * sizeof(WCHAR)) RegistryNameBytes -= Entry->NameChars * sizeof(WCHAR);
     return TRUE;
@@ -1572,16 +1582,20 @@ static VOID StageRegistryReclaimWorker(_In_ PFLT_GENERIC_WORKITEM WorkItem, _In_
         for (index = 0; index < count; ++index) {
             PSTAGE_REGISTRY_ENTRY entry = candidates[index];
             PSTAGE_REGISTRY_ENTRY mapReference = NULL;
+            PFLT_INSTANCE entryInstance = NULL;
+            PFLT_VOLUME entryVolume = NULL;
             BOOLEAN pruned = FALSE;
             /* The check runs without the lock; a new writer in between needs a handle, which raises H or binds a
              * reservation, and the locked re-check below refuses the prune. */
             if (StageRegistryEntryQuiescent(entry, instances[index], volumes[index])) {
                 FltAcquirePushLockExclusive(&RegistryLock);
-                pruned = StageRegistryPruneLocked(entry, &mapReference);
+                pruned = StageRegistryPruneLocked(entry, &mapReference, &entryInstance, &entryVolume);
                 FltReleasePushLock(&RegistryLock);
             }
             if (pruned) {
                 InterlockedIncrement64(&RegistryPruned);
+                if (entryVolume != NULL) FltObjectDereference(entryVolume);
+                if (entryInstance != NULL) FltObjectDereference(entryInstance);
                 StageRegistryDereference(mapReference);
                 StageRegistryDereference(entry); /* the registry-history reference */
             }
