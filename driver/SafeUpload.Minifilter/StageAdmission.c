@@ -169,6 +169,7 @@ NTSTATUS SafeUploadStageAdmissionVolumeStatus(_Out_ PSAFEUPLOAD_ADMISSION_VOLUME
     RtlZeroMemory(Status, sizeof(*Status));
     Status->StructSize = sizeof(*Status);
     Status->WriterGlobalUnknown = SafeUploadStageWritersGlobalUnknown();
+    Status->BootPolicyState = SafeUploadData.BootPolicyState;
     if (!ExAcquireRundownProtection(&SafeUploadData.ChannelRundown)) return STATUS_FLT_DELETING_OBJECT;
     status = FltEnumerateInstances(NULL, SafeUploadData.Filter, instances,
         RTL_NUMBER_OF(instances), &count);

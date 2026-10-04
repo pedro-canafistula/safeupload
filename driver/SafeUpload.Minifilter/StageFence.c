@@ -1654,12 +1654,16 @@ NTSTATUS SafeUploadStageFencePrepareUnload(VOID)
     FenceRetryStopForUnload();
     FenceWaitForLateWorkers();
     FenceRetryResetAfterDrain();
-    /* Private final pass: public refresh admission is closed, and all pre-close reservations drained. */
-    status = FenceRefreshInternal(NULL, NULL, TRUE);
-    if (!NT_SUCCESS(status) || SafeUploadStageFenceHasEntries() ||
-        InterlockedCompareExchange64(&FenceVolumeScopesSkipped, 0, 0) != 0 ||
-        InterlockedCompareExchange64(&FenceReparseSkipped, 0, 0) != 0) {
-        return STATUS_FLT_DO_NOT_DETACH;
+    /* Boot start has no scan-installed table: drain admission and the retry
+     * worker, but do not start lower file I/O during startup or test teardown. */
+    if (!SafeUploadData.BootStartMode) {
+        /* Private final pass: public refresh admission is closed, and all pre-close reservations drained. */
+        status = FenceRefreshInternal(NULL, NULL, TRUE);
+        if (!NT_SUCCESS(status) || SafeUploadStageFenceHasEntries() ||
+            InterlockedCompareExchange64(&FenceVolumeScopesSkipped, 0, 0) != 0 ||
+            InterlockedCompareExchange64(&FenceReparseSkipped, 0, 0) != 0) {
+            return STATUS_FLT_DO_NOT_DETACH;
+        }
     }
     return STATUS_SUCCESS; /* retain CLOSING while higher-level guards run */
 }

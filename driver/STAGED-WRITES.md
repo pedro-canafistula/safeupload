@@ -1434,6 +1434,17 @@ after every experiment, including failures.
          DDI, forced pending and both MDL invariant checks. Broader faults,
          production stress/latency and destination stacks remain open.
 
+Phase 2 boot-start source implementation is present in the isolated `safeupload-staging-wt-phase2`
+worktree; **no new build, agent test, adversarial review, VM boot or Verifier result is claimed**.
+The source adds `Parameters\BootPolicy\Scopes` plus a crash-safe `PendingScopes` union, a
+SYSTEM/TrustedInstaller-only protected DACL, pre-`FltStartFiltering` bounded reads, separate
+new-mount trust reporting, boot-mode suppression of the existing scan-based fence refresh path,
+agent-side durable writes and tests, and `Test-StagedBootStart.ps1` with the checkpoint wrapper's
+two-reboot `boot-start` sequence. The first VM action remains gated on the required independent
+adversarial review of DriverEntry registry handling, load ordering, callback readiness, and recovery
+after a failed boot. The existing boot Filter Verifier notes above describe prior generated-backing-I/O
+work only; they do not qualify this new boot-start path.
+
 Completed increment: durable rename tombstones and native replacement saves.
 The source generation barrier is committed in the same manifest as the target
 head; rename cycles and restart preserve it. Existing prepare/commit/abort

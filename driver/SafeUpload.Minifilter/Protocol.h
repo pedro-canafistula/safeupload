@@ -363,6 +363,9 @@ typedef struct _SAFEUPLOAD_RESPONSE {
 #define SAFEUPLOAD_MAX_EXTENSION_CHARS ((UINT32) 16)
 #define SAFEUPLOAD_MAX_PREFIXES        ((UINT32) 16)
 #define SAFEUPLOAD_MAX_PREFIX_CHARS    ((UINT32) 260)
+#define SAFEUPLOAD_BOOT_POLICY_VERSION ((UINT32) 1)
+#define SAFEUPLOAD_BOOT_POLICY_MAX_PREFIXES ((UINT32) 32)
+#define SAFEUPLOAD_BOOT_SCOPE_MAX_PREFIXES ((UINT32) (SAFEUPLOAD_BOOT_POLICY_MAX_PREFIXES * 2))
 #define SAFEUPLOAD_MAX_SOURCE_PREFIXES ((UINT32) 16)
 #define SAFEUPLOAD_MAX_IMAGES          ((UINT32) 16)
 #define SAFEUPLOAD_MAX_IMAGE_CHARS     ((UINT32) 64)
@@ -405,6 +408,42 @@ typedef struct _SAFEUPLOAD_RESPONSE {
 
 // Classify supported file reads anywhere, without a configured source path.
 #define SAFEUPLOAD_POLICY_FLAG_CLASSIFY_ALL_SOURCES ((UINT32) 0x00000010)
+
+/* SET_POLICY Control.Reserved: sent only after Scopes is flushed and
+ * PendingScopes is durably removed. Keeps protocol layout/version 18. */
+#define SAFEUPLOAD_POLICY_CONTROL_FINALIZE_BOOT_SCOPES ((UINT32) 0x00000001)
+
+/*
+ * Durable registry format. It is separate from the port protocol: each
+ * committed record has at most the live protocol's 16 destination prefixes;
+ * PendingScopes may hold the union of the old and candidate records (32).
+ * The driver reads both bounded records in DriverEntry before it starts
+ * filtering. Version/size are exact and every unused slot must be zero.
+ */
+#define SAFEUPLOAD_BOOT_POLICY_FLAG_REMOVABLE ((UINT32) 0x00000001)
+#define SAFEUPLOAD_BOOT_POLICY_FLAG_NETWORK   ((UINT32) 0x00000002)
+typedef struct _SAFEUPLOAD_BOOT_POLICY {
+    UINT32 Version;
+    UINT32 StructSize;
+    UINT32 PrefixCount;
+    UINT32 Flags;
+    WCHAR Prefixes[SAFEUPLOAD_BOOT_POLICY_MAX_PREFIXES][SAFEUPLOAD_MAX_PREFIX_CHARS];
+} SAFEUPLOAD_BOOT_POLICY, *PSAFEUPLOAD_BOOT_POLICY;
+
+#define SAFEUPLOAD_BOOT_POLICY_STATE_VALID          ((UINT32) 1)
+#define SAFEUPLOAD_BOOT_POLICY_STATE_MISSING        ((UINT32) 2)
+#define SAFEUPLOAD_BOOT_POLICY_STATE_CORRUPT_PARTIAL ((UINT32) 3)
+#define SAFEUPLOAD_BOOT_POLICY_STATE_CORRUPT_EMPTY   ((UINT32) 4)
+#define SAFEUPLOAD_BOOT_POLICY_STATE_ACL_REJECTED   ((UINT32) 5)
+#define SAFEUPLOAD_BOOT_POLICY_STATE_UNREADABLE     ((UINT32) 6)
+#define SAFEUPLOAD_BOOT_POLICY_STATE_PENDING_UNION  ((UINT32) 7)
+
+#define SAFEUPLOAD_VOLUME_TRUST_UNTRUSTED_FLAGS      ((UINT32) 0)
+#define SAFEUPLOAD_VOLUME_TRUST_NEWLY_MOUNTED        ((UINT32) 1)
+#define SAFEUPLOAD_VOLUME_TRUST_CONTEXT_UNAVAILABLE  ((UINT32) 2)
+/* Filter Manager's FLTFL_INSTANCE_SETUP_NEWLY_MOUNTED_VOLUME value, mirrored
+ * for the test inspector to report trust without changing its wire record. */
+#define SAFEUPLOAD_SETUP_FLAG_NEWLY_MOUNTED_VOLUME    ((UINT32) 0x00000004)
 
 typedef struct _SAFEUPLOAD_CONTROL {
 
@@ -623,7 +662,7 @@ typedef struct _SAFEUPLOAD_ADMISSION_VOLUME_STATUS {
     UINT32 StructSize;
     UINT32 EntryCount;
     UINT32 WriterGlobalUnknown;
-    UINT32 Reserved;
+    UINT32 BootPolicyState;
     SAFEUPLOAD_ADMISSION_VOLUME_ENTRY Entries[SAFEUPLOAD_ADMISSION_VOLUME_MAX_ENTRIES];
 } SAFEUPLOAD_ADMISSION_VOLUME_STATUS, *PSAFEUPLOAD_ADMISSION_VOLUME_STATUS;
 
@@ -979,6 +1018,8 @@ C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_CONTROL, Command )    == 8 );
 C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_CONTROL, Reserved )   == 12 );
 
 C_ASSERT( sizeof( SAFEUPLOAD_POLICY_MESSAGE ) == 19752 );
+C_ASSERT( sizeof( SAFEUPLOAD_BOOT_POLICY ) == 16656 );
+C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_BOOT_POLICY, Prefixes ) == 16 );
 C_ASSERT( sizeof( SAFEUPLOAD_OVERRIDE_MESSAGE ) == 1056 );
 C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_OVERRIDE_MESSAGE, ProcessId ) == 16 );
 C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_OVERRIDE_MESSAGE, Path )      == 32 );

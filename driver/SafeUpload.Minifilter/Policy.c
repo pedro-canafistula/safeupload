@@ -49,6 +49,14 @@ static EX_PUSH_LOCK SafeUploadPolicyLock;
 
 static PSAFEUPLOAD_POLICY SafeUploadPolicy = NULL;
 
+/* Fixed DriverEntry storage keeps an identified boot policy independent of
+ * pool allocation. An authenticated service policy replaces this snapshot
+ * and clears the boot-only union atomically. */
+static SAFEUPLOAD_POLICY SafeUploadBootSnapshot;
+static SAFEUPLOAD_POLICY_MESSAGE SafeUploadBootMessage;
+static SAFEUPLOAD_BOOT_SCOPE_SET SafeUploadBootScopes;
+static BOOLEAN SafeUploadBootScopesActive;
+
 static volatile LONG SafeUploadPolicyGeneration = 0;
 
 #if SAFEUPLOAD_STAGING_PROTOTYPE
@@ -98,27 +106,38 @@ static BOOLEAN SafeUploadPolicySnapshotMatchesDestination(
     _In_ BOOLEAN IncludeAncestors)
 {
     UINT32 index;
+    if (Policy != NULL) {
+        if ((VolumeKind == SafeUploadVolumeUnknown &&
+             FlagOn(Policy->Flags, SAFEUPLOAD_POLICY_FLAG_REMOVABLE | SAFEUPLOAD_POLICY_FLAG_NETWORK)) ||
+            (VolumeKind == SafeUploadVolumeRemovable &&
+             FlagOn(Policy->Flags, SAFEUPLOAD_POLICY_FLAG_REMOVABLE)) ||
+            (VolumeKind == SafeUploadVolumeNetwork &&
+             FlagOn(Policy->Flags, SAFEUPLOAD_POLICY_FLAG_NETWORK))) return TRUE;
 
-    if (Policy == NULL) return FALSE;
-
-#if SAFEUPLOAD_STAGING_PROTOTYPE
-    if ((VolumeKind == SafeUploadVolumeUnknown &&
-         FlagOn(Policy->Flags, SAFEUPLOAD_POLICY_FLAG_REMOVABLE | SAFEUPLOAD_POLICY_FLAG_NETWORK)) ||
-#else
-    if (
-#endif
-        (VolumeKind == SafeUploadVolumeRemovable &&
-         FlagOn(Policy->Flags, SAFEUPLOAD_POLICY_FLAG_REMOVABLE)) ||
-        (VolumeKind == SafeUploadVolumeNetwork &&
-         FlagOn(Policy->Flags, SAFEUPLOAD_POLICY_FLAG_NETWORK))) {
-        return TRUE;
+        if (NormalizedPath != NULL && NormalizedPath->Length != 0) {
+            for (index = 0; index < Policy->PrefixCount; index += 1) {
+                if (SafeUploadPathUnderPrefix(&Policy->Prefixes[index], NormalizedPath) ||
+                    (IncludeAncestors && SafeUploadPathUnderPrefix(NormalizedPath, &Policy->Prefixes[index]))) {
+                    return TRUE;
+                }
+            }
+        }
     }
 
-    if (NormalizedPath == NULL || NormalizedPath->Length == 0) return FALSE;
-    for (index = 0; index < Policy->PrefixCount; index += 1) {
-        if (SafeUploadPathUnderPrefix(&Policy->Prefixes[index], NormalizedPath) ||
-            (IncludeAncestors && SafeUploadPathUnderPrefix(NormalizedPath, &Policy->Prefixes[index]))) {
-            return TRUE;
+    if (SafeUploadBootScopesActive) {
+        if (((VolumeKind == SafeUploadVolumeUnknown || VolumeKind == SafeUploadVolumeRemovable) &&
+             FlagOn(SafeUploadBootScopes.Flags, SAFEUPLOAD_BOOT_POLICY_FLAG_REMOVABLE)) ||
+            ((VolumeKind == SafeUploadVolumeUnknown || VolumeKind == SafeUploadVolumeNetwork) &&
+             FlagOn(SafeUploadBootScopes.Flags, SAFEUPLOAD_BOOT_POLICY_FLAG_NETWORK))) return TRUE;
+        if (NormalizedPath != NULL && NormalizedPath->Length != 0) {
+            for (index = 0; index < SafeUploadBootScopes.PrefixCount; index += 1) {
+                UNICODE_STRING prefix;
+                prefix.Buffer = SafeUploadBootScopes.Prefixes[index];
+                prefix.Length = (USHORT)(SafeUploadBootScopes.PrefixChars[index] * sizeof(WCHAR));
+                prefix.MaximumLength = prefix.Length;
+                if (SafeUploadPathUnderPrefix(&prefix, NormalizedPath) ||
+                    (IncludeAncestors && SafeUploadPathUnderPrefix(NormalizedPath, &prefix))) return TRUE;
+            }
         }
     }
 
@@ -138,6 +157,7 @@ SafeUploadBuildStringTable (
     #pragma alloc_text(PAGE, SafeUploadInitializePolicy)
     #pragma alloc_text(PAGE, SafeUploadFreePolicy)
     #pragma alloc_text(PAGE, SafeUploadSetPolicy)
+    #pragma alloc_text(PAGE, SafeUploadFinalizeBootPolicy)
     #pragma alloc_text(PAGE, SafeUploadBuildStringTable)
 #if SAFEUPLOAD_STAGING_PROTOTYPE
     #pragma alloc_text(PAGE, SafeUploadPolicyCopyScope)
@@ -148,7 +168,7 @@ SafeUploadBuildStringTable (
 
 VOID
 SafeUploadInitializePolicy (
-    VOID
+    _In_ PUNICODE_STRING RegistryPath
     )
 /*++
 
@@ -161,11 +181,52 @@ Routine Description:
 
 --*/
 {
+    NTSTATUS status;
+    UINT32 bootPolicyState = SAFEUPLOAD_BOOT_POLICY_STATE_UNREADABLE;
+
     PAGED_CODE();
 
     FltInitializePushLock( &SafeUploadPolicyLock );
     SafeUploadPolicy = NULL;
     SafeUploadPolicyGeneration = 0;
+    SafeUploadBootScopesActive = FALSE;
+    SafeUploadData.AuthenticatedClient = 0;
+    SafeUploadData.BootPolicyState = bootPolicyState;
+    RtlZeroMemory(&SafeUploadBootSnapshot, sizeof(SafeUploadBootSnapshot));
+    RtlZeroMemory(&SafeUploadBootMessage, sizeof(SafeUploadBootMessage));
+    RtlZeroMemory(&SafeUploadBootScopes, sizeof(SafeUploadBootScopes));
+
+    SafeUploadData.BootStartMode = TRUE;
+    status = SafeUploadReadBootPolicy(RegistryPath, &SafeUploadBootMessage,
+        &SafeUploadBootScopes, &bootPolicyState, &SafeUploadData.BootStartMode);
+    SafeUploadData.BootPolicyState = bootPolicyState;
+    if (!NT_SUCCESS(status)) {
+        /* The bounded reader classifies a missing key, ACL rejection, and
+         * unreadable registry path separately. Keep that reported state; the
+         * zeroed scope set means no destination could be identified. */
+        SafeUploadTrace("boot policy read failed 0x%08X; state=%u; identified-prefixes=%u flags=0x%X\n",
+            status, SafeUploadData.BootPolicyState, SafeUploadBootScopes.PrefixCount,
+            SafeUploadBootScopes.Flags);
+        return;
+    }
+
+    SafeUploadBootScopesActive = SafeUploadBootScopes.PrefixCount != 0 ||
+        SafeUploadBootScopes.Flags != 0 || SafeUploadBootScopes.Overflow;
+    if (SafeUploadBootScopesActive) {
+        RtlCopyMemory(&SafeUploadBootSnapshot.Data, &SafeUploadBootMessage,
+            sizeof(SAFEUPLOAD_POLICY_MESSAGE));
+        SafeUploadBootSnapshot.ExtensionCount = 0;
+        SafeUploadBootSnapshot.PrefixCount = SafeUploadBootMessage.PrefixCount;
+        SafeUploadBootSnapshot.SourcePrefixCount = 0;
+        SafeUploadBootSnapshot.ImageCount = 0;
+        SafeUploadBootSnapshot.Flags = SafeUploadBootMessage.Flags;
+        SafeUploadBootSnapshot.VerdictTimeoutIntervals =
+            -((LONGLONG)SAFEUPLOAD_VERDICT_TIMEOUT_MS * 10 * 1000);
+        SafeUploadBuildStringTable(&SafeUploadBootSnapshot.Data.Prefixes[0][0],
+            SafeUploadBootSnapshot.PrefixCount, SAFEUPLOAD_MAX_PREFIX_CHARS,
+            SafeUploadBootSnapshot.Prefixes);
+        SafeUploadPolicy = &SafeUploadBootSnapshot;
+    }
 }
 
 
@@ -195,12 +256,21 @@ Routine Description:
 
     FltReleasePushLock( &SafeUploadPolicyLock );
 
-    if (previous != NULL) {
+    if (previous != NULL && previous != &SafeUploadBootSnapshot) {
 
         ExFreePoolWithTag( previous, SAFEUPLOAD_POOL_TAG );
     }
 
+    RtlZeroMemory(&SafeUploadBootScopes, sizeof(SafeUploadBootScopes));
+    SafeUploadBootScopesActive = FALSE;
+
     FltDeletePushLock( &SafeUploadPolicyLock );
+}
+
+BOOLEAN SafeUploadIsAuthenticatedClient(VOID)
+{
+    return SafeUploadData.ClientPort != NULL &&
+        InterlockedCompareExchange(&SafeUploadData.AuthenticatedClient, 0, 0) != 0;
 }
 
 
@@ -391,7 +461,7 @@ Return Value:
     //  preserves the last successfully installed fence table.
     //
 
-    {
+    if (!SafeUploadData.BootStartMode) {
         NTSTATUS fenceStatus;
 
         //
@@ -437,6 +507,8 @@ Return Value:
 
     previous = SafeUploadPolicy;
     SafeUploadPolicy = snapshot;
+    /* Keep the DriverEntry scope union live until the service confirms that
+     * its committed registry value is flushed and PendingScopes is removed. */
 #if SAFEUPLOAD_STAGING_PROTOTYPE
     SafeUploadPendingPolicy = NULL;                         // the candidate is the current policy from here on
 #endif
@@ -450,7 +522,7 @@ Return Value:
     //  exclusively above means every one of them has finished.
     //
 
-    if (previous != NULL) {
+    if (previous != NULL && previous != &SafeUploadBootSnapshot) {
 
         ExFreePoolWithTag( previous, SAFEUPLOAD_POOL_TAG );
     }
@@ -477,6 +549,29 @@ Return Value:
                      (UINT32) (-snapshot->VerdictTimeoutIntervals / (10 * 1000)) );
 
     return STATUS_SUCCESS;
+}
+
+NTSTATUS SafeUploadFinalizeBootPolicy(_In_ CONST SAFEUPLOAD_POLICY_MESSAGE *Message)
+{
+    NTSTATUS status = STATUS_SUCCESS;
+
+    PAGED_CODE();
+    if (!SafeUploadIsAuthenticatedClient()) return STATUS_ACCESS_DENIED;
+    if (Message == NULL || Message->Control.Version != SAFEUPLOAD_PROTOCOL_VERSION ||
+        Message->Control.StructSize != sizeof(*Message) || Message->Control.Command != SAFEUPLOAD_CONTROL_SET_POLICY ||
+        Message->Control.Reserved != 0) return STATUS_INVALID_PARAMETER;
+
+    FltAcquirePushLockExclusive(&SafeUploadPolicyLock);
+    if (SafeUploadPolicy == NULL ||
+        !RtlEqualMemory(&SafeUploadPolicy->Data, Message, sizeof(*Message))) {
+        status = STATUS_REVISION_MISMATCH;
+    } else {
+        RtlZeroMemory(&SafeUploadBootScopes, sizeof(SafeUploadBootScopes));
+        SafeUploadBootScopesActive = FALSE;
+        SafeUploadData.BootPolicyState = SAFEUPLOAD_BOOT_POLICY_STATE_VALID;
+    }
+    FltReleasePushLock(&SafeUploadPolicyLock);
+    return status;
 }
 
 
@@ -768,6 +863,28 @@ SafeUploadPolicyMatchesDestination (
     )
 {
     return SafeUploadPolicyMatchesDestinationNamespace( VolumeKind, NormalizedPath, FALSE );
+}
+
+BOOLEAN SafeUploadPolicyHasDestinationScopes(_In_ SAFEUPLOAD_VOLUME_KIND VolumeKind)
+{
+    BOOLEAN hasScopes = FALSE;
+    FltAcquirePushLockShared(&SafeUploadPolicyLock);
+    if (SafeUploadPolicy != NULL) {
+        hasScopes = SafeUploadPolicy->PrefixCount != 0 ||
+            ((VolumeKind == SafeUploadVolumeUnknown || VolumeKind == SafeUploadVolumeRemovable) &&
+             FlagOn(SafeUploadPolicy->Flags, SAFEUPLOAD_POLICY_FLAG_REMOVABLE)) ||
+            ((VolumeKind == SafeUploadVolumeUnknown || VolumeKind == SafeUploadVolumeNetwork) &&
+             FlagOn(SafeUploadPolicy->Flags, SAFEUPLOAD_POLICY_FLAG_NETWORK));
+    }
+    if (!hasScopes && SafeUploadBootScopesActive) {
+        hasScopes = SafeUploadBootScopes.PrefixCount != 0 || SafeUploadBootScopes.Overflow ||
+            ((VolumeKind == SafeUploadVolumeUnknown || VolumeKind == SafeUploadVolumeRemovable) &&
+             FlagOn(SafeUploadBootScopes.Flags, SAFEUPLOAD_BOOT_POLICY_FLAG_REMOVABLE)) ||
+            ((VolumeKind == SafeUploadVolumeUnknown || VolumeKind == SafeUploadVolumeNetwork) &&
+             FlagOn(SafeUploadBootScopes.Flags, SAFEUPLOAD_BOOT_POLICY_FLAG_NETWORK));
+    }
+    FltReleasePushLockShared(&SafeUploadPolicyLock);
+    return hasScopes;
 }
 
 BOOLEAN

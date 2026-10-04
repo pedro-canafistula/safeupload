@@ -1926,7 +1926,9 @@ static FLT_PREOP_CALLBACK_STATUS StagePreOperation(PFLT_CALLBACK_DATA Data,
         break;
     case IRP_MJ_ACQUIRE_FOR_SECTION_SYNCHRONIZATION:
         StageAcquire(&stream->Resource);
-        if ((stream->ReadOnly || stream->RenameExchange != NULL) &&
+        if (((stream->ReadOnly || stream->RenameExchange != NULL) ||
+             !SafeUploadIsAuthenticatedClient() ||
+             !SafeUploadInstanceTrustGateSatisfied(stream->OriginalInstance)) &&
             Data->Iopb->Parameters.AcquireForSectionSynchronization.SyncType == SyncTypeCreateSection &&
             FlagOn(Data->Iopb->Parameters.AcquireForSectionSynchronization.PageProtection,
                 PAGE_READWRITE | PAGE_EXECUTE_READWRITE)) {
@@ -2273,7 +2275,7 @@ static FLT_PREOP_CALLBACK_STATUS StageAdmit(PFLT_CALLBACK_DATA Data,
     PIO_SECURITY_CONTEXT security = Data->Iopb->Parameters.Create.SecurityContext;
     ULONG disposition = Data->Iopb->Parameters.Create.Options >> 24;
     ULONG pid = FltGetRequestorProcessId(Data);
-    BOOLEAN service = SafeUploadData.ClientPort != NULL && pid == SafeUploadData.InspectorProcessId;
+    BOOLEAN service = SafeUploadIsAuthenticatedClient() && pid == SafeUploadData.InspectorProcessId;
     BOOLEAN writer, handled = TRUE, privateNamespace = FALSE;
     UNICODE_STRING relative;
     UNICODE_STRING privatePrefix = RTL_CONSTANT_STRING(L"\\ProgramData\\SafeUpload\\staging\\");
@@ -2389,6 +2391,13 @@ static FLT_PREOP_CALLBACK_STATUS StageAdmit(PFLT_CALLBACK_DATA Data,
         if (!service) { status = STATUS_ACCESS_DENIED; goto Complete; }
         handled = FALSE; goto Complete;
     }
+    if (!privateNamespace && writer && SafeUploadStageProtectedName(name, kind) &&
+        (!SafeUploadInstanceTrustGateSatisfied(Objects->Instance) || !SafeUploadIsAuthenticatedClient())) {
+        /* Canary results describe the primitive only; trust is assigned from
+         * the immutable setup flags and can never be upgraded on this mount. */
+        status = STATUS_ACCESS_DENIED;
+        goto Complete;
+    }
     if (!privateNamespace && !SafeUploadStageProtectedName(name, kind)) {
         BOOLEAN protectedAlias = FALSE;
         if (writer || BooleanFlagOn(security->DesiredAccess,
@@ -2453,7 +2462,7 @@ static FLT_PREOP_CALLBACK_STATUS StagePhysicalMutationEx(PFLT_CALLBACK_DATA Data
     PFLT_FILE_NAME_INFORMATION name = NULL;
     SAFEUPLOAD_VOLUME_KIND kind = StageVolumeKind(Objects->Instance);
     BOOLEAN protectedAlias = FALSE;
-    BOOLEAN service = SafeUploadData.ClientPort != NULL &&
+    BOOLEAN service = SafeUploadIsAuthenticatedClient() &&
         FltGetRequestorProcessId(Data) == SafeUploadData.InspectorProcessId;
     FLT_FILESYSTEM_TYPE fs;
     NTSTATUS status = STATUS_ACCESS_DENIED;
@@ -2513,7 +2522,7 @@ static FLT_PREOP_CALLBACK_STATUS StageExternalRename(PFLT_CALLBACK_DATA Data,
             &source->Volume, kind, &protectedAlias);
         allow = status == STATUS_SUCCESS && !protectedAlias;
     }
-    if (!allow && SafeUploadData.ClientPort != NULL &&
+    if (!allow && SafeUploadIsAuthenticatedClient() &&
         FltGetRequestorProcessId(Data) == SafeUploadData.InspectorProcessId &&
         (cls == FileRenameInformation || cls == FileRenameInformationEx)) {
         allow = SafeUploadPublicationRename(Objects->Volume, &source->Name, &destination->Name,
