@@ -883,7 +883,7 @@ BOOLEAN SafeUploadPolicyHasDestinationScopes(_In_ SAFEUPLOAD_VOLUME_KIND VolumeK
             ((VolumeKind == SafeUploadVolumeUnknown || VolumeKind == SafeUploadVolumeNetwork) &&
              FlagOn(SafeUploadBootScopes.Flags, SAFEUPLOAD_BOOT_POLICY_FLAG_NETWORK));
     }
-    FltReleasePushLockShared(&SafeUploadPolicyLock);
+    FltReleasePushLock(&SafeUploadPolicyLock);
     return hasScopes;
 }
 

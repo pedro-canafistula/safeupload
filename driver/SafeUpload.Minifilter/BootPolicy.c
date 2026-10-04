@@ -146,7 +146,7 @@ static VOID SafeUploadBootPolicySalvage(_In_reads_bytes_(AvailableBytes) PCUCHAR
     const ULONG slotBytes = SAFEUPLOAD_MAX_PREFIX_CHARS * sizeof(WCHAR);
     ULONG index, chars, completeSlots;
 
-    if (AvailableBytes < FIELD_OFFSET(SAFEUPLOAD_BOOT_POLICY, Prefixes)) return;
+    if (AvailableBytes < (ULONG)FIELD_OFFSET(SAFEUPLOAD_BOOT_POLICY, Prefixes)) return;
     record = (const SAFEUPLOAD_BOOT_POLICY *)Data;
     /* Slot offsets are meaningful only for the known v1 envelope. A future
      * or wrong-sized record is corrupt-empty, never guessed as v1. */
@@ -170,7 +170,8 @@ static SAFEUPLOAD_BOOT_VALUE_RESULT SafeUploadBootPolicyReadValue(_In_ HANDLE Ke
     PKEY_VALUE_PARTIAL_INFORMATION information =
         (PKEY_VALUE_PARTIAL_INFORMATION)SafeUploadBootPolicyValueBuffer;
     USHORT slotChars[SAFEUPLOAD_BOOT_POLICY_MAX_PREFIXES];
-    ULONG returned = 0, bytesAvailable = 0, flags = 0;
+    ULONG returned = 0, bytesAvailable = 0;
+    UINT32 flags = 0;
     NTSTATUS status;
     BOOLEAN strict;
 
@@ -180,7 +181,7 @@ static SAFEUPLOAD_BOOT_VALUE_RESULT SafeUploadBootPolicyReadValue(_In_ HANDLE Ke
     if (status == STATUS_OBJECT_NAME_NOT_FOUND) return SafeUploadBootValueMissing;
     if (status != STATUS_SUCCESS && status != STATUS_BUFFER_OVERFLOW && status != STATUS_BUFFER_TOO_SMALL)
         return SafeUploadBootValueUnreadable;
-    if (returned < FIELD_OFFSET(KEY_VALUE_PARTIAL_INFORMATION, Data) ||
+    if (returned < (ULONG)FIELD_OFFSET(KEY_VALUE_PARTIAL_INFORMATION, Data) ||
         information->Type != REG_BINARY) return SafeUploadBootValueCorrupt;
 
     bytesAvailable = min(information->DataLength, (ULONG)sizeof(SAFEUPLOAD_BOOT_POLICY));
@@ -219,8 +220,10 @@ static BOOLEAN SafeUploadBootPolicyVerifyAcl(_In_ HANDLE Key)
     RtlZeroMemory(SafeUploadBootPolicySecurityBuffer, sizeof(SafeUploadBootPolicySecurityBuffer));
     status = ZwQuerySecurityObject(Key, OWNER_SECURITY_INFORMATION | DACL_SECURITY_INFORMATION,
         descriptor, sizeof(SafeUploadBootPolicySecurityBuffer), &returned);
+    /* Validate against the whole zeroed buffer, not the returned length: the canary readback showed the length a
+     * security query reports on success is not a reliable descriptor length (canary-security run 2). */
     if (status != STATUS_SUCCESS || returned > sizeof(SafeUploadBootPolicySecurityBuffer) ||
-        !RtlValidRelativeSecurityDescriptor(descriptor, returned,
+        !RtlValidRelativeSecurityDescriptor(descriptor, sizeof(SafeUploadBootPolicySecurityBuffer),
             OWNER_SECURITY_INFORMATION | DACL_SECURITY_INFORMATION)) return FALSE;
     revision = ((PISECURITY_DESCRIPTOR_RELATIVE)descriptor)->Revision;
     control = ((PISECURITY_DESCRIPTOR_RELATIVE)descriptor)->Control;
@@ -230,7 +233,8 @@ static BOOLEAN SafeUploadBootPolicyVerifyAcl(_In_ HANDLE Key)
     if (!NT_SUCCESS(status) || owner == NULL || !RtlValidSid(owner) ||
         !RtlEqualSid(owner, SeExports->SeLocalSystemSid)) return FALSE;
     status = RtlGetDaclSecurityDescriptor(descriptor, &daclPresent, &dacl, &daclDefaulted);
-    if (!NT_SUCCESS(status) || !daclPresent || dacl == NULL || !RtlValidAcl(dacl) || dacl->AceCount != 2)
+    /* RtlValidAcl is not available to kernel mode; the descriptor validation above covers the DACL. */
+    if (!NT_SUCCESS(status) || !daclPresent || dacl == NULL || dacl->AceCount != 2)
         return FALSE;
 
     /* S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464. */
