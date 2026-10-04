@@ -11,6 +11,11 @@ param(
     [ValidatePattern('^[0-9A-Fa-f]{64}$')]
     [string] $ExpectedInspectorSha256,
 
+    # Optional: the agent service package already on the guest (stage-service-publish.zip). The default is the 2026-10-02 pin that every
+    # run before the Phase 2 agent changes used; later runs pass the hash of the exact agent build they were qualified with.
+    [ValidatePattern('^[0-9A-Fa-f]{64}$')]
+    [string] $ExpectedServicePackageSha256 = 'D887E0D7F38AD64AD40CEE18B841C6D38AD2BED4D6F760B1BDE4464927381997',
+
     [ValidateRange(1, 600)]
     [int] $InspectorTimeoutSeconds = 60,
 
@@ -51,7 +56,7 @@ $documents = Join-Path $env:USERPROFILE 'Documents'
 $installedDriver = 'C:\Windows\System32\drivers\SafeUpload.sys'
 $expectedOriginalDriver = 'ADA9D05AB6AECDD2B6C521B0CE529FC06C732154ACB3EE85439FBDC8AA80DFCE'
 $expectedOriginalPolicy = '29DC8A341BD7C549996596D2477A0CCCAF19602C362A2167FB4FDD5C66663731'
-$expectedServicePackage = 'D887E0D7F38AD64AD40CEE18B841C6D38AD2BED4D6F760B1BDE4464927381997'
+$expectedServicePackage = $ExpectedServicePackageSha256.ToUpperInvariant()
 $featureDriver = Join-Path $documents $FeatureDriverFileName
 $inspectorSource = Join-Path $documents $InspectorInputFileName
 $inspectorPath = Join-Path $documents 'SafeUpload-admission-inspector.exe'

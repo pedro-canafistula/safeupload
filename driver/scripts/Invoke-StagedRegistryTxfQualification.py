@@ -87,6 +87,9 @@ inputs = [
     ('InspectorInputFileName', 'ExpectedInspectorSha256', work / 'inspector-feature-release.exe',
      'SafeUpload.Inspector.' + label + '.exe'),
 ]
+agent_pkg_hash = os.environ.get('AGENT_PACKAGE_SHA256', '')
+if not re.fullmatch(r'[0-9A-Fa-f]{64}', agent_pkg_hash):
+    raise SystemExit('AGENT_PACKAGE_SHA256 must be the hash of the agent package already on the guest')
 helper = root / 'driver/scripts/StagedTestAgent.ps1'
 if subprocess.check_output(['git', 'show', head + ':driver/scripts/StagedTestAgent.ps1'], cwd=root) != helper.read_bytes():
     raise SystemExit('Dirty executable harness source: StagedTestAgent.ps1')
@@ -103,7 +106,7 @@ harness_hash = sha(harness)
 invocation = "$ErrorActionPreference='Stop';$d='C:\\Users\\vika\\Documents';"
 invocation += "if((Get-FileHash (Join-Path $d 'Test-StagedAdmissionDiagnostic.ps1') -Algorithm SHA256).Hash -ne '" + harness_hash + "'){throw 'Harness hash mismatch'};"
 invocation += "$sig=Get-AuthenticodeSignature (Join-Path $d 'SafeUpload-stage-prototype-" + label + ".sys');if($sig.Status.ToString() -ne 'Valid' -or $sig.SignerCertificate.Thumbprint -ne '220DD82C37FCF36048D59E4F10113185D81D5DC7'){throw 'Upper signature preflight failed'};"
-invocation += "& (Join-Path $d 'Test-StagedAdmissionDiagnostic.ps1') -Variant registry-txf -RequireAllVolumeCanaries -Verifier"
+invocation += "& (Join-Path $d 'Test-StagedAdmissionDiagnostic.ps1') -Variant registry-txf -RequireAllVolumeCanaries -Verifier" + " -ExpectedServicePackageSha256 '" + agent_pkg_hash.upper() + "'"
 pre = "$ErrorActionPreference='Stop';$d='C:\\Users\\vika\\Documents';\n"
 for param, hash_param, path, guest_leaf in inputs:
     invocation += " -" + param + " '" + guest_leaf + "'"
