@@ -5,7 +5,8 @@
   "scripts": {
     "start": "ng serve",
     "build": "ng build",
-    "test": "ng test"
+    "test": "playwright test",
+    "test:ui": "playwright test --ui"
   },
   "dependencies": {
     "@angular/animations": "^20.2.0",
@@ -21,6 +22,7 @@
     "zone.js": "~0.15.0"
   },
   "devDependencies": {
+    "@playwright/test": "1.63.0",
     "@angular-devkit/build-angular": "^20.2.0",
     "@angular/cli": "^20.2.0",
     "@angular/compiler-cli": "^20.2.0",

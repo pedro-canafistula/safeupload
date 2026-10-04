@@ -1,0 +1,56 @@
+name: Functional web
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  migration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: web/front/package-lock.json
+      - name: Backend tests and package
+        run: mvn -B -f web/back/pom.xml clean package
+      - name: Frontend dependencies and build
+        working-directory: web/front
+        run: |
+          npm ci
+          npm run build
+          npx playwright install --with-deps chromium
+      - name: Start isolated backend
+        run: |
+          java -jar web/back/target/backend-0.1.0.jar '--spring.datasource.url=jdbc:h2:mem:e2e' '--spring.jpa.hibernate.ddl-auto=create-drop' > backend-e2e.log 2>&1 &
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:8080/agent/policy > /dev/null; then exit 0; fi
+            sleep 1
+          done
+          cat backend-e2e.log
+          exit 1
+      - name: Browser tests
+        working-directory: web/front
+        run: npm test
+      - name: Test diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: migration-diagnostics
+          path: |
+            backend-e2e.log
+            web/back/target/surefire-reports/
+            web/front/test-results/

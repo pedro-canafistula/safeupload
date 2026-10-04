@@ -5,7 +5,7 @@ import { Usuario } from './models';
 
 @Injectable({ providedIn: 'root' })
 export class AuthService {
-  private readonly api = 'http://localhost:8080/api';
+  private readonly api = '/api';
   private readonly usuario$ = new BehaviorSubject<Usuario | null>(null);
 
   constructor(private http: HttpClient) {}
