@@ -1069,7 +1069,7 @@ static int PrintWriterStateStatus(_In_ BOOL RegistryStatus)
             L"\"registryCapacityFailures\":%llu,\"registryAllocationFailures\":%llu,"
             L"\"registryIdentityFailures\":%llu,\"registryTransactionFailures\":%llu,"
             L"\"registryRenameFailures\":%llu,\"registryDroppedAtDismount\":%llu,"
-            L"\"registryDroppedWhileMounted\":%llu}\n",
+            L"\"registryDroppedWhileMounted\":%llu,\"registryPruned\":%llu,\"registryReclaimPasses\":%llu}\n",
             RegistryStatus ? L"true" : L"false",
             status.PostCreateRuns, status.WriteObjectsCounted, status.WriteObjectsReleased,
             status.UntrackedCreates, status.CleanupUnmatched, status.DirectoryCreatesSkipped,
@@ -1084,7 +1084,8 @@ static int PrintWriterStateStatus(_In_ BOOL RegistryStatus)
             status.RegistryCapacity, status.TransactionAssociations, status.RegistryCapacityFailures,
             status.RegistryAllocationFailures, status.RegistryIdentityFailures,
             status.RegistryTransactionFailures, status.RegistryRenameFailures,
-            status.RegistryDroppedAtDismount, status.RegistryDroppedWhileMounted);
+            status.RegistryDroppedAtDismount, status.RegistryDroppedWhileMounted,
+            status.RegistryPruned, status.RegistryReclaimPasses);
 #else
     UNREFERENCED_PARAMETER(RegistryStatus);
     wprintf(L"{\"writerState\":true,\"postCreateRuns\":%llu,\"writeObjectsCounted\":%llu,\"writeObjectsReleased\":%llu,"

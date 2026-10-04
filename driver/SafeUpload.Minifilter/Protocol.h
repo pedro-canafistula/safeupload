@@ -762,6 +762,8 @@ typedef struct _SAFEUPLOAD_WRITER_STATE_STATUS {
     UINT32 RegistryCapacity;
     UINT32 TransactionAssociations;
     UINT32 Reserved2;
+    UINT64 RegistryPruned;                // entries removed once provably quiescent (no writer, section, cache or transaction)
+    UINT64 RegistryReclaimPasses;         // reclaim worker passes (queued at 3/4 of a limit or on a capacity failure)
 #endif
 } SAFEUPLOAD_WRITER_STATE_STATUS, *PSAFEUPLOAD_WRITER_STATE_STATUS;
 
@@ -1125,7 +1127,8 @@ C_ASSERT( sizeof( SAFEUPLOAD_POLICY_MESSAGE ) >= sizeof( SAFEUPLOAD_ADMISSION_CA
 C_ASSERT( sizeof( SAFEUPLOAD_POLICY_MESSAGE ) >= sizeof( SAFEUPLOAD_ADMISSION_TRACE_BATCH ) );
 C_ASSERT( sizeof( SAFEUPLOAD_FENCE_STATUS ) == 144 );
 C_ASSERT( (ULONG)FIELD_OFFSET( SAFEUPLOAD_WRITER_STATE_STATUS, TxfRefused ) == 168 );
-C_ASSERT( sizeof( SAFEUPLOAD_WRITER_STATE_STATUS ) == 264 );
+C_ASSERT( (ULONG)FIELD_OFFSET( SAFEUPLOAD_WRITER_STATE_STATUS, RegistryPruned ) == 264 );
+C_ASSERT( sizeof( SAFEUPLOAD_WRITER_STATE_STATUS ) == 280 );
 C_ASSERT( (ULONG)FIELD_OFFSET( SAFEUPLOAD_REGISTRY_ENTRY_STATUS, VolumeSerialNumber ) == 40 );
 C_ASSERT( (ULONG)FIELD_OFFSET( SAFEUPLOAD_REGISTRY_ENTRY_STATUS, FileId ) == 48 );
 C_ASSERT( (ULONG)FIELD_OFFSET( SAFEUPLOAD_REGISTRY_ENTRY_STATUS, NameMatches ) == 100 );

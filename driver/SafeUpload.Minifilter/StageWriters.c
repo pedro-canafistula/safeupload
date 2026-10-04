@@ -157,6 +157,10 @@ static volatile LONG64 RegistryTransactionFailures;
 static volatile LONG64 RegistryRenameFailures;
 static volatile LONG64 RegistryDroppedAtDismount;
 static volatile LONG64 RegistryDroppedWhileMounted;
+static volatile LONG64 RegistryPruned;
+static volatile LONG64 RegistryReclaimPasses;
+static volatile LONG RegistryReclaimQueued;
+static VOID StageRegistryQueueReclaim(VOID);
 static STAGE_REGISTRY_SOP_SLOT RegistrySopSlots[SAFEUPLOAD_WRITER_REGISTRY_TOTAL_LIMIT];
 static VOID StageRegistryRetireInstance(_In_ PFLT_INSTANCE Instance, _In_ BOOLEAN Dismount);
 static VOID StageRegistryBeginInstanceTeardown(_In_ PFLT_INSTANCE Instance,
@@ -337,6 +341,7 @@ static PSTAGE_REGISTRY_ENTRY StageRegistryGetOrInsert(_In_ PSTAGE_WRITER_RESERVA
         FltReleasePushLock(&RegistryLock);
         InterlockedIncrement64(&RegistryCapacityFailures);
         StageRegistryMarkUnknown(Reservation->Instance, SAFEUPLOAD_REGISTRY_UNKNOWN_CAPACITY, FALSE);
+        StageRegistryQueueReclaim();
         return NULL;
     }
 
@@ -357,7 +362,14 @@ static PSTAGE_REGISTRY_ENTRY StageRegistryGetOrInsert(_In_ PSTAGE_WRITER_RESERVA
     RegistryEntryCount += 1;
     RegistryNameBytes += entry->NameChars * sizeof(WCHAR);
     Reservation->BoundEntry = entry;
-    FltReleasePushLock(&RegistryLock);
+    {
+        /* Reclaim before the limits are reached: at 3/4 of the instance or total limit. */
+        BOOLEAN pressure = RegistryEntryCount * 4 >= capacity * 3 ||
+            StageRegistryInstanceCountLocked(Reservation->Instance) * 4 >=
+                min((ULONG)SAFEUPLOAD_WRITER_REGISTRY_INSTANCE_LIMIT, capacity) * 3;
+        FltReleasePushLock(&RegistryLock);
+        if (pressure) StageRegistryQueueReclaim();
+    }
     return entry;
 }
 
@@ -605,6 +617,7 @@ NTSTATUS SafeUploadStageWritersReserveCreate(_In_ PFLT_CALLBACK_DATA Data,
         FltReleasePushLock(&RegistryLock);
         InterlockedIncrement64(&RegistryCapacityFailures);
         StageRegistryMarkUnknown(FltObjects->Instance, SAFEUPLOAD_REGISTRY_UNKNOWN_CAPACITY, FALSE);
+        StageRegistryQueueReclaim();
         status = STATUS_SUCCESS;
         goto Cleanup;
     }
@@ -848,8 +861,17 @@ __declspec(noinline) static BOOLEAN StageWritersInsertNode(
 {
     KIRQL irql;
     BOOLEAN compatible;
+    PSTAGE_REGISTRY_ENTRY previous = NULL;
 
     KeAcquireSpinLock(&StreamContext->WriterLock, &irql);
+    if (StreamContext->WriterRegistryEntry != NULL && StreamContext->WriterRegistryEntry != Node->Entry &&
+        ((PSTAGE_REGISTRY_ENTRY)StreamContext->WriterRegistryEntry)->Retired &&
+        IsListEmpty(&StreamContext->WriterObjects)) {
+        /* The cached entry was pruned (or retired) while this stream had no writer; the file's history now lives in
+         * Node->Entry. Retired is monotonic, so a stale FALSE only refuses (and records Unknown), never misbinds. */
+        previous = (PSTAGE_REGISTRY_ENTRY)StreamContext->WriterRegistryEntry;
+        StreamContext->WriterRegistryEntry = NULL;
+    }
     if (StreamContext->WriterRegistryEntry == NULL) {
         StageRegistryReference(Node->Entry);
         StreamContext->WriterRegistryEntry = Node->Entry;
@@ -860,6 +882,7 @@ __declspec(noinline) static BOOLEAN StageWritersInsertNode(
         InterlockedIncrement(&Node->Entry->H);
     }
     KeReleaseSpinLock(&StreamContext->WriterLock, irql);
+    if (previous != NULL) StageRegistryDereference(previous);
     return compatible;
 }
 
@@ -1398,6 +1421,195 @@ static BOOLEAN StageRegistryAssociateSectionPointer(_In_ PSTAGE_WRITER_RESERVATI
     return ok;
 }
 
+/* ---- Pruning: the registry holds only files that may still be live -------------------------------------------------
+ * An entry exists to remember a possible writer. Once a file has no writer handle, no writable section in flight, no
+ * transaction, no rename in flight, AND its live stream has neither a data section nor a shared cache map (so no mapping
+ * and no dirty cache can still write to it), the entry says nothing an absent entry would not: it is removed. The registry
+ * is then bounded by concurrency, not uptime (owner-approved 2026-10-04; run 10 filled 1,024 entries within minutes).
+ * Entries that carry an Unknown reason are never pruned: they record a loss. No timers and no file-system scan: one
+ * reclaim worker runs when an instance or the total crosses 3/4 of its limit, or on a capacity failure. */
+
+#define STAGE_RECLAIM_BATCH 128
+
+/* Caller holds RegistryLock exclusive. Unlinks Entry if nothing can still be bound to it; returns the map-slot reference
+ * to drop (at most one, since every pointer occupies one slot) through *MapReference. The caller drops the history
+ * reference and *MapReference after releasing the lock. */
+static BOOLEAN StageRegistryPruneLocked(_In_ PSTAGE_REGISTRY_ENTRY Entry, _Out_ PSTAGE_REGISTRY_ENTRY *MapReference)
+{
+    PLIST_ENTRY link;
+    ULONG index;
+    KIRQL irql;
+    BOOLEAN busy = FALSE;
+    *MapReference = NULL;
+    if (!Entry->Listed || Entry->Retired ||
+        InterlockedCompareExchange(&Entry->H, 0, 0) != 0 || InterlockedCompareExchange(&Entry->T, 0, 0) != 0 ||
+        InterlockedCompareExchange(&Entry->RenameInFlight, 0, 0) != 0 ||
+        InterlockedCompareExchange(&Entry->UnknownReasons, 0, 0) != 0) return FALSE;
+    for (link = RegistryReservations.Flink; link != &RegistryReservations; link = link->Flink) {
+        if (CONTAINING_RECORD(link, STAGE_WRITER_RESERVATION, Link)->BoundEntry == Entry) return FALSE;
+    }
+    for (link = TransactionAssociations.Flink; link != &TransactionAssociations; link = link->Flink) {
+        if (CONTAINING_RECORD(link, STAGE_TX_ASSOCIATION, Link)->Entry == Entry) return FALSE;
+    }
+    KeAcquireSpinLock(&SectionLock, &irql);
+    for (index = 0; index < STAGE_SECTION_SLOTS; ++index) {
+        if (SectionSlots[index].RegistryEntry == Entry) { busy = TRUE; break; }
+    }
+    if (!busy) {
+        for (index = 0; index < RTL_NUMBER_OF(RegistrySopSlots); ++index) {
+            if (RegistrySopSlots[index].Entry == Entry) {
+                *MapReference = Entry;
+                RtlZeroMemory(&RegistrySopSlots[index], sizeof(RegistrySopSlots[index]));
+                break;
+            }
+        }
+    }
+    KeReleaseSpinLock(&SectionLock, irql);
+    if (busy) return FALSE;
+    RemoveEntryList(&Entry->Link);
+    Entry->Listed = FALSE;
+    Entry->Retired = TRUE;
+    if (RegistryEntryCount != 0) RegistryEntryCount -= 1;
+    if (RegistryNameBytes >= Entry->NameChars * sizeof(WCHAR)) RegistryNameBytes -= Entry->NameChars * sizeof(WCHAR);
+    return TRUE;
+}
+
+/* PASSIVE. Opens the candidate by its 64-bit NTFS file reference (never the 16-byte form, which NTFS reads as an object
+ * ID), verifies all 128 ID bits and the volume serial, and reports whether the live stream is quiescent. A file that no
+ * longer exists is quiescent too: nothing can write to it. */
+static BOOLEAN StageRegistryEntryQuiescent(_In_ PSTAGE_REGISTRY_ENTRY Entry, _In_ PFLT_INSTANCE Instance,
+    _In_ PFLT_VOLUME Volume)
+{
+    UNICODE_STRING volumeName = { 0 }, name;
+    OBJECT_ATTRIBUTES attributes;
+    IO_STATUS_BLOCK io = { 0 };
+    FILE_ID_INFORMATION actual;
+    HANDLE handle = NULL;
+    PFILE_OBJECT object = NULL;
+    PWCHAR buffer = NULL;
+    ULONG needed = 0, bytes, returned = 0;
+    BOOLEAN quiescent = FALSE;
+    NTSTATUS status;
+
+    status = FltGetVolumeName(Volume, NULL, &needed);
+    if (status != STATUS_BUFFER_TOO_SMALL || needed == 0 || needed > MAXUSHORT - 64) return FALSE;
+    bytes = needed + sizeof(WCHAR) + sizeof(ULONGLONG);
+    buffer = ExAllocatePool2(POOL_FLAG_PAGED, bytes, SAFEUPLOAD_REGISTRY_POOL_TAG);
+    if (buffer == NULL) return FALSE;
+    volumeName.Buffer = buffer;
+    volumeName.MaximumLength = (USHORT)needed;
+    status = FltGetVolumeName(Volume, &volumeName, NULL);
+    if (!NT_SUCCESS(status)) goto Exit;
+    buffer[volumeName.Length / sizeof(WCHAR)] = L'\\';
+    RtlCopyMemory((PUCHAR)buffer + volumeName.Length + sizeof(WCHAR), Entry->FileId.Identifier, sizeof(ULONGLONG));
+    name.Buffer = buffer;
+    name.Length = name.MaximumLength = (USHORT)(volumeName.Length + sizeof(WCHAR) + sizeof(ULONGLONG));
+    InitializeObjectAttributes(&attributes, &name, OBJ_KERNEL_HANDLE, NULL, NULL);
+    status = FltCreateFileEx2(SafeUploadData.Filter, Instance, &handle, &object, FILE_READ_ATTRIBUTES | SYNCHRONIZE,
+        &attributes, &io, NULL, 0, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, FILE_OPEN,
+        FILE_OPEN_BY_FILE_ID | FILE_NON_DIRECTORY_FILE | FILE_SYNCHRONOUS_IO_NONALERT | FILE_COMPLETE_IF_OPLOCKED,
+        NULL, 0, 0, NULL);
+    if (status == STATUS_INVALID_PARAMETER || status == STATUS_OBJECT_NAME_NOT_FOUND ||
+        status == STATUS_FILE_DELETED || status == STATUS_DELETE_PENDING) {
+        quiescent = TRUE; /* the file is gone (or going): no writer, mapping or cache can reach it */
+        goto Exit;
+    }
+    if (status != STATUS_SUCCESS || object == NULL) goto Exit;
+    RtlZeroMemory(&actual, sizeof(actual));
+    status = FltQueryInformationFile(Instance, object, &actual, sizeof(actual), FileIdInformation, &returned);
+    if (status != STATUS_SUCCESS || returned != sizeof(actual)) goto Exit;
+    if (actual.VolumeSerialNumber != Entry->VolumeSerial ||
+        !RtlEqualMemory(&actual.FileId, &Entry->FileId, sizeof(actual.FileId))) {
+        quiescent = TRUE; /* the reference now names another file: the tracked one is gone */
+        goto Exit;
+    }
+    /* Our open holds the stream's one live SCB, so these pointers are current. No data section means no mapping (writable
+     * or not); no shared cache map means no dirty cached data. */
+    quiescent = object->SectionObjectPointer != NULL &&
+        object->SectionObjectPointer->DataSectionObject == NULL &&
+        object->SectionObjectPointer->SharedCacheMap == NULL;
+Exit:
+    if (object != NULL) ObDereferenceObject(object);
+    if (handle != NULL) FltClose(handle);
+    ExFreePoolWithTag(buffer, SAFEUPLOAD_REGISTRY_POOL_TAG);
+    return quiescent;
+}
+
+static VOID StageRegistryReclaimWorker(_In_ PFLT_GENERIC_WORKITEM WorkItem, _In_ PVOID FltObject, _In_opt_ PVOID Context)
+{
+    PSTAGE_REGISTRY_ENTRY *candidates;
+    PFLT_INSTANCE *instances;
+    PFLT_VOLUME *volumes;
+    PLIST_ENTRY link;
+    ULONG count = 0, index;
+    UNREFERENCED_PARAMETER(FltObject);
+    UNREFERENCED_PARAMETER(Context);
+    FltFreeGenericWorkItem(WorkItem);
+    InterlockedIncrement64(&RegistryReclaimPasses);
+
+    candidates = ExAllocatePool2(POOL_FLAG_NON_PAGED, STAGE_RECLAIM_BATCH * (sizeof(PVOID) * 3), SAFEUPLOAD_REGISTRY_POOL_TAG);
+    if (candidates != NULL) {
+        instances = (PFLT_INSTANCE *)(candidates + STAGE_RECLAIM_BATCH);
+        volumes = (PFLT_VOLUME *)(instances + STAGE_RECLAIM_BATCH);
+        /* Snapshot quiet-looking entries with their own instance and volume references (a tearing-down instance refuses
+         * FltObjectReference and is skipped: its teardown retires the entries anyway). */
+        FltAcquirePushLockExclusive(&RegistryLock);
+        for (link = RegistryEntries.Flink; link != &RegistryEntries && count < STAGE_RECLAIM_BATCH; link = link->Flink) {
+            PSTAGE_REGISTRY_ENTRY entry = CONTAINING_RECORD(link, STAGE_REGISTRY_ENTRY, Link);
+            if (entry->Retired || entry->Instance == NULL || entry->Volume == NULL ||
+                InterlockedCompareExchange(&entry->H, 0, 0) != 0 || InterlockedCompareExchange(&entry->T, 0, 0) != 0 ||
+                InterlockedCompareExchange(&entry->UnknownReasons, 0, 0) != 0) continue;
+            if (!NT_SUCCESS(FltObjectReference(entry->Instance))) continue;
+            if (!NT_SUCCESS(FltObjectReference(entry->Volume))) { FltObjectDereference(entry->Instance); continue; }
+            StageRegistryReference(entry);
+            candidates[count] = entry;
+            instances[count] = entry->Instance;
+            volumes[count] = entry->Volume;
+            count += 1;
+        }
+        FltReleasePushLock(&RegistryLock);
+
+        for (index = 0; index < count; ++index) {
+            PSTAGE_REGISTRY_ENTRY entry = candidates[index];
+            PSTAGE_REGISTRY_ENTRY mapReference = NULL;
+            BOOLEAN pruned = FALSE;
+            /* The check runs without the lock; a new writer in between needs a handle, which raises H or binds a
+             * reservation, and the locked re-check below refuses the prune. */
+            if (StageRegistryEntryQuiescent(entry, instances[index], volumes[index])) {
+                FltAcquirePushLockExclusive(&RegistryLock);
+                pruned = StageRegistryPruneLocked(entry, &mapReference);
+                FltReleasePushLock(&RegistryLock);
+            }
+            if (pruned) {
+                InterlockedIncrement64(&RegistryPruned);
+                StageRegistryDereference(mapReference);
+                StageRegistryDereference(entry); /* the registry-history reference */
+            }
+            FltObjectDereference(volumes[index]);
+            FltObjectDereference(instances[index]);
+            StageRegistryDereference(entry);     /* this pass's reference */
+        }
+        ExFreePoolWithTag(candidates, SAFEUPLOAD_REGISTRY_POOL_TAG);
+    }
+    InterlockedExchange(&RegistryReclaimQueued, 0);
+    ExReleaseRundownProtection(&SafeUploadData.ChannelRundown);
+}
+
+/* At most one pass is queued at a time. Unload waits on the channel rundown this pass holds. */
+static VOID StageRegistryQueueReclaim(VOID)
+{
+    PFLT_GENERIC_WORKITEM item;
+    if (InterlockedCompareExchange(&RegistryReclaimQueued, 1, 0) != 0) return;
+    if (!ExAcquireRundownProtection(&SafeUploadData.ChannelRundown)) { InterlockedExchange(&RegistryReclaimQueued, 0); return; }
+    item = FltAllocateGenericWorkItem();
+    if (item == NULL || !NT_SUCCESS(FltQueueGenericWorkItem(item, SafeUploadData.Filter, StageRegistryReclaimWorker,
+            DelayedWorkQueue, NULL))) {
+        if (item != NULL) FltFreeGenericWorkItem(item);
+        ExReleaseRundownProtection(&SafeUploadData.ChannelRundown);
+        InterlockedExchange(&RegistryReclaimQueued, 0);
+    }
+}
+
 VOID SafeUploadStageWritersInitialize(VOID)
 {
     KeInitializeSpinLock(&SectionLock);
@@ -1589,6 +1801,8 @@ VOID SafeUploadStageWritersGetStatus(_Out_ PSAFEUPLOAD_WRITER_STATE_STATUS Statu
     snapshot.RegistryRenameFailures = (UINT64)InterlockedCompareExchange64(&RegistryRenameFailures, 0, 0);
     snapshot.RegistryDroppedAtDismount = (UINT64)InterlockedCompareExchange64(&RegistryDroppedAtDismount, 0, 0);
     snapshot.RegistryDroppedWhileMounted = (UINT64)InterlockedCompareExchange64(&RegistryDroppedWhileMounted, 0, 0);
+    snapshot.RegistryPruned = (UINT64)InterlockedCompareExchange64(&RegistryPruned, 0, 0);
+    snapshot.RegistryReclaimPasses = (UINT64)InterlockedCompareExchange64(&RegistryReclaimPasses, 0, 0);
     FltAcquirePushLockShared(&RegistryLock);
     snapshot.RegistryEntries = RegistryEntryCount;
     snapshot.RegistryReservations = RegistryReservationCount;

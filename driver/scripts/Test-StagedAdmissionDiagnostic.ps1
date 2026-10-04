@@ -4042,7 +4042,10 @@ public static class SafeUploadEolNative
                 $trustOnly = ($reasons -eq 0x80)
                 $freeOk = if ($trustOnly) { -not [bool]$entry.Free -and [string]$entry.State -eq 'Unknown' } else {
                     [bool]$entry.Free -eq $ExpectedFree -and [string]$entry.State -eq $ExpectedState }
-                $ok = ($probeOk -and $groundTruthOk -and [bool]$entry.HistoryPresent -eq $History -and
+                # Pruning (owner-approved 2026-10-04): a closed, quiet file may legitimately have no entry any more.
+                $historyOk = ([bool]$entry.HistoryPresent -eq $History) -or
+                    ($History -and $ExpectedH -eq 0 -and $ExpectedT -eq 0 -and -not [bool]$entry.HistoryPresent)
+                $ok = ($probeOk -and $groundTruthOk -and $historyOk -and
                     [int]$entry.H -eq $ExpectedH -and $expectedC -and
                     ($ExpectedS -eq '' -or $entryS -eq $ExpectedS) -and [int]$entry.T -eq $ExpectedT -and
                     $freeOk -and [bool]$entry.NameMatches -eq $ExpectedNameMatch -and

@@ -317,3 +317,10 @@ falsify the Phase 3 cutoff mechanism; the harness must test it, never reinterpre
   entry releases its instance/volume references (an entry pinning its instance deadlocked instance teardown). Harness
   consequence: registry-txf in late-load mode starts the agent with staging off (the private staging namespace requires a
   trusted instance since Phase 2) and accepts TRUST as the only Unknown reason.
+- **2026-10-04, owner-approved: registry pruning.** An entry is removed once its file is provably quiescent: no writer
+  handle, no writable section in flight, no transaction, no rename in flight, no recorded Unknown, and the live stream has
+  neither a data section nor a shared cache map (no mapping, no dirty cache). Checked by one reclaim worker (open by the
+  64-bit file reference, all 128 ID bits verified, then the stream's section pointers), queued when an instance or the total
+  crosses 3/4 of its limit or on a capacity failure; the prune itself re-checks under the registry lock. No timers, no
+  file-system scan. The registry is bounded by concurrency, not uptime; an absent entry keeps meaning provably free.
+  Run 10 motivated it: ordinary Windows activity filled the 1,024-entry instance limit within minutes.
