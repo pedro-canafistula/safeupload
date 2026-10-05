@@ -170,7 +170,7 @@ static FLT_PREOP_CALLBACK_STATUS FaultPreWrite(_Inout_ PFLT_CALLBACK_DATA Data,
     PFILE_OBJECT file = NULL;
     ULONG mode;
     KIRQL irql;
-    NTSTATUS status;
+    NTSTATUS status = STATUS_SUCCESS;
     LARGE_INTEGER writeOffset;
     ULONG writeLength, writeIrpFlags;
     BOOLEAN preCallbackReference = FALSE;
