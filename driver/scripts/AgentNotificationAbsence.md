@@ -13,9 +13,13 @@ provider query or a stopped-service flag alone.
 
 The non-execution route relies on:
 
-- OS/SCM snapshots of SafeUploadAgent at both edges: stopped, PID zero, stable
-  service/display/image identity. Both the installed SCM image and the seed
-  package image are checked.
+- Native OpenSCManager/OpenService queries of SafeUploadAgent at both edges.
+  Only ERROR_SERVICE_DOES_NOT_EXIST (1060) authenticates absence. Absence at
+  both edges with continuous System evidence and no 7045 installation in the
+  window satisfies the SCM premise independently of installed Stopped/PID 0.
+  Installed services require stopped, PID zero and stable service/display/image
+  identity. The installed SCM image (when present) and the hash-pinned seed
+  package image are checked; service SID identity is derived even when absent.
 - Complete native process inventories at both edges, including each process's
   full image and primary-token user, group and restricted SIDs. Disabled group
   SIDs also count. PID 0/4 are kernel processes; every other unreadable or
@@ -30,9 +34,22 @@ The non-execution route relies on:
   other events naming its service/display identity. Unknown SCM identity data
   also defeats the proof. System clear 104, Security clear 1102, audit loss/full/
   error/shutdown, EventLog restart/shutdown, audit-policy changes and primary
-  token reassignment 4696 all defeat coverage.
-- Process Creation success auditing enabled at both edges with no per-user
-  overrides. **Every 4688 creation between the inventories defeats this
+  token reassignment 4696 all defeat coverage. The separate AgentAbsenceScm
+  assertion reports FAIL for authenticated agent state-change/install events
+  or running/PID-positive installed edges. State-change detection uses event
+  IDs rather than localized state text. Coverage loss stays INCONCLUSIVE;
+  evidence of service execution alone does not fabricate a notification.
+- Prepare records native Process Creation success/failure flags and per-user
+  override count durably before using auditpol with the subcategory GUID to
+  enable success, retaining the failure setting. Per-user overrides prevent
+  setup and are checked again at both edges. Independent restoration steps
+  restore the exact recorded flags via auditpol and require native readback;
+  rollback, Finalize residue checks and independent pre/post baselines all
+  retain/check audit policy. The wrapper compares baseline flags/count and the
+  host binds the guest restoration receipts to those independent values.
+  Success auditing must be enabled at both edges, with continuous Security
+  evidence and no policy-change/loss events across the window.
+  **Every 4688 creation between the inventories defeats this
   conservative route**, even for a benign image. 4688 exposes image/user
   identity but does not include token group or restricted SIDs, so it cannot
   exclude a transient process carrying the service SID. There is deliberately
@@ -58,6 +75,29 @@ thread impersonation, privileged tampering, unreported audit transport failure,
 off-window notifications, or intermediate notification-file create/delete
 activity that leaves identical edges. In particular, absence at two filesystem
 edges alone never proves non-emission.
+
+The notify5 collector failure was a cascade from treating a zero-result SCM
+query as an exception. All three cases recorded only
+`SCM SafeUploadAgent service missing/ambiguous.` in their execution errors,
+and native audit flags were zero with no per-user overrides. Their System and
+Security **begin** anchors were OK and contained first/last record IDs and raw
+XML. The exception skipped service SID/package-image initialization, the
+entire process inventory (including its collector), InventoryEndQpc, and both
+end anchors. Thus the empty `before=; after=` diagnostic came from an OK begin
+anchor without a failure reason plus a missing end anchor, not an observed
+permission, channel-name or Get-WinEvent compatibility error. The notify5
+artifacts examined reside in the sibling `/home/victor/Work/safeupload-staging`
+worktree; they were not copied, rewritten or promoted here.
+
+The collector now treats native service absence as data, isolates SCM and
+audit read errors, initializes package image/SID independently of installation,
+and always attempts end anchors in finally. First/last IDs are checked before
+publishing an anchor. Missing anchors name the channel and edge; failed reads
+retain error chains. Continuous all-provider windows still reject System 104
+and Security 1102 clears, missing/changed anchors, wrap, gaps and audit loss.
+Synthetic checks exercise both absence and SCM query failures through the
+actual collector functions with mocked OS calls, in addition to proof-level
+absent-service, start/install, disabled-audit and clear-event cases.
 
 The original `2026-10-04/*ordinary-notify4-artifacts/case.json` files were not
 modified or promoted. They predate the execution snapshots and log windows,

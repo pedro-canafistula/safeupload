@@ -12,7 +12,7 @@ function Import-EvaluationFunctions([string]$File,[string[]]$Names) {
         $functions=@($ast.FindAll({param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -ceq $name},$false))
         if($functions.Count -ne 1){throw ('Missing/ambiguous evaluation function: '+$name)}
         # Define at script scope without importing the module's native decoder.
-        $definition=$functions[0].Extent.Text.Replace(('function '+$name+'('),('function script:'+$name+'('))
+        $definition=$functions[0].Extent.Text.Replace(('function '+$name),('function script:'+$name))
         Invoke-Expression $definition
     }
 }
@@ -299,7 +299,7 @@ $script:absenceLogs=@{System=(Make-AgentLog 'System');Security=(Make-AgentLog 'S
 $downBefore=Clone $before;$downAfter=Clone $after;$downAfter.Notifications=$null
 $execution=[pscustomobject]@{Status='OK';BootId=$boot;EndBootId=$boot;QpcFrequency=$frequency;StartQpc=1;EndQpc=8;InventoryStartQpc=3;InventoryEndQpc=5;
     Errors=@();CollectedByPid=100;ServiceSid='S-1-5-80-1-2-3-4-5';ImagePaths=@('C:\installed\SafeUpload.Agent.Service.exe','C:\seed\SafeUpload.Agent.Service.exe');
-    Service=[pscustomobject]@{Name='SafeUploadAgent';DisplayName='SafeUpload Agent';State='Stopped';ProcessId=0;PathName='"C:\installed\SafeUpload.Agent.Service.exe"';StartMode='Disabled'};
+    Service=[pscustomobject]@{Name='SafeUploadAgent';Exists=$true;QueryStatus='OK';QuerySource='OpenSCManager/OpenService';DisplayName='SafeUpload Agent';State='Stopped';ProcessId=0;PathName='"C:\installed\SafeUpload.Agent.Service.exe"';StartMode='Disabled'};
     Audit=[pscustomobject]@{CreationFlags=1;PerUserPolicyCount=0};Processes=@([pscustomobject]@{Pid=100;Image='C:\Windows\System32\powershell.exe';TokenSids=@('S-1-5-18','S-1-5-32-544')});
     SystemBegin=$script:absenceLogs.System.Before;SecurityBegin=$script:absenceLogs.Security.Before}
 $downBefore | Add-Member NoteProperty AgentExecution $execution -Force
@@ -314,6 +314,49 @@ $script:row.NotificationExpectations=@('ExpectedNone','NoApproval','NoRelease','
 $none=Get-ServiceTimeline $downBefore $downAfter $fence
 Check ($none.AgentAbsenceProof.Complete -and $none.NotificationLocationProof.Complete) 'Whole-window stopped/no-process evidence and absent locations support absence.'
 Check (@($none.Assertions | Where-Object {$_.Name -eq 'NotificationExpectation' -and $_.Verdict -eq 'PASS' -and $_.Reason -ceq 'agent did not run in window'}).Count -eq 6) 'Every supported negative reports the exact agent-did-not-run reason.'
+$absentBefore=Clone $downBefore;$absentAfter=Clone $downAfter
+foreach($snapshot in @($absentBefore,$absentAfter)){
+    $snapshot.AgentExecution.Service=[pscustomobject]@{Name='SafeUploadAgent';Exists=$false;QueryStatus='OK';QuerySource='OpenSCManager/OpenService';AbsenceError=1060}
+    $snapshot.AgentExecution.ImagePaths=@('C:\seed\SafeUpload.Agent.Service.exe')
+}
+$absent=Get-ServiceTimeline $absentBefore $absentAfter $fence
+Check ($absent.AgentAbsenceProof.ScmProof.Complete -and $absent.AgentAbsenceProof.ScmProof.Verdict -ceq 'PASS' -and
+    $absent.AgentAbsenceProof.ScmProof.Reason -like '*absent at both edges, never installed*') 'Authenticated absent service at both edges with System continuity satisfies the distinct SCM premise.'
+Check ($absent.NotificationProof.Complete) 'Absent SCM service still requires image/SID/process, auditing, log and location coverage.'
+foreach($fault in @('query','absent-error','installed-after','image','audit','collector','sid')){
+    $b=Clone $absentBefore;$a=Clone $absentAfter
+    switch($fault){
+        'query' {$b.AgentExecution.Service.QueryStatus='INCONCLUSIVE'}
+        'absent-error' {$a.AgentExecution.Service.AbsenceError=5}
+        'installed-after' {$a.AgentExecution.Service=$downAfter.AgentExecution.Service}
+        'image' {$b.AgentExecution.ImagePaths=@()}
+        'audit' {$a.AgentExecution.Audit.CreationFlags=0}
+        'collector' {$b.AgentExecution.Processes=@()}
+        'sid' {$b.AgentExecution.Processes[0].TokenSids+= $b.AgentExecution.ServiceSid}
+    }
+    $result=Get-ServiceTimeline $b $a $fence
+    Check (-not $result.NotificationProof.Complete) ('Absent service must not waive '+$fault+' evidence.')
+    if($fault -eq 'audit'){Check ($result.AgentAbsenceProof.Verdict -ceq 'INCONCLUSIVE') 'Disabled auditing is INCONCLUSIVE, even with authenticated SCM absence.'}
+}
+$savedLogs=$script:absenceLogs
+foreach($fault in @('started','installed','system-clear','security-clear')){
+    $script:absenceLogs=Clone $savedLogs
+    switch($fault){
+        'started' {$script:absenceLogs.System.Xmls[1]=Make-AgentXml 'System' 102 7036 'Service Control Manager' '<Data Name="param1">SafeUpload Agent</Data><Data Name="param2">running</Data>'}
+        'installed' {$script:absenceLogs.System.Xmls[1]=Make-AgentXml 'System' 102 7045 'Service Control Manager' '<Data Name="ServiceName">SafeUploadAgent</Data>'}
+        'system-clear' {$script:absenceLogs.System.Xmls[1]=Make-AgentXml 'System' 102 104 'Microsoft-Windows-Eventlog'}
+        'security-clear' {$script:absenceLogs.Security.Xmls[1]=Make-AgentXml 'Security' 102 1102 'Microsoft-Windows-Eventlog'}
+    }
+    $b=if($fault -eq 'started'){$downBefore}else{$absentBefore}
+    $a=if($fault -eq 'started'){$downAfter}else{$absentAfter}
+    $result=Get-ServiceTimeline $b $a $fence
+    Check (-not $result.NotificationProof.Complete) ($fault+' in window cannot satisfy agent absence.')
+    if($fault -in @('started','installed')){
+        Check ($result.AgentAbsenceProof.ScmProof.Verdict -ceq 'FAIL' -and
+            @($result.Assertions | Where-Object {$_.Name -ceq 'AgentAbsenceScm' -and $_.Verdict -ceq 'FAIL'}).Count -eq 1) ($fault+' in window fails the SCM premise even with stopped/absent edges.')
+    }else{Check ($result.AgentAbsenceProof.Verdict -ceq 'INCONCLUSIVE') ($fault+' in window leaves absence INCONCLUSIVE.')}
+}
+$script:absenceLogs=$savedLogs
 # Stale/malformed record bytes can be unchanged without durable current-boot coverage.
 $staleBefore=Clone $downBefore;$staleAfter=Clone $downAfter
 foreach($snapshot in @($staleBefore,$staleAfter)){
@@ -404,4 +447,54 @@ $covered=Get-ServiceTimeline $coveredBefore $coveredAfter $fence
 Check ($null -eq $covered.AgentAbsenceProof -and @($covered.Assertions | Where-Object {$_.Name -eq 'NotificationExpectation' -and $_.Verdict -eq 'FAIL'}).Count -eq 1) 'Covered durable emissions keep their existing contradiction rule unchanged.'
 $script:absenceLogs=$null
 
-'ProofAdapterEvaluationChecks='+$script:checks+';PASS (host-safe synthetic evaluation and identity publication only)'
+# Exercise the actual collectors with synthetic OS APIs. This catches the
+# notify5 early-abort cascade without executing a Windows API on the host.
+Import-EvaluationFunctions (Join-Path $PSScriptRoot 'Test-StagedInvariantSuite.ps1') @('Initialize-AgentExecutionReader','Get-ProcessCreationAudit','Get-AgentLogAnchor','Get-AgentExecutionSnapshot','Read-AgentLogWindow','Get-ErrorChain')
+Add-Type -TypeDefinition @'
+using System;
+public sealed class SUFixtureProcess { public int Pid; public string Image; public string[] TokenSids; }
+public static class SUAgentExecution {
+ public static bool Installed=false;
+ public static bool ScmError=false;
+ public static uint[] Audit(){return new uint[]{1,0};}
+ public static bool ServiceExists(string name){if(ScmError)throw new Exception("fixture SCM access denied");return Installed;}
+ public static string ServiceSid(string name){return "S-1-5-80-1-2-3-4-5";}
+ public static SUFixtureProcess Process(int pid){return new SUFixtureProcess{Pid=pid,Image="fixture-powershell",TokenSids=new string[]{"S-1-5-18"}};}
+}
+'@
+function Get-BootId {return 'fixture-collector-boot'}
+function Get-CimInstance {
+    [CmdletBinding()]param([string]$ClassName,[string]$Filter)
+    if($ClassName -ceq 'Win32_Service'){throw 'fixture CIM service query denied'}
+    if($ClassName -cne 'Win32_Process'){throw 'Unexpected fixture CIM query'}
+    return @([pscustomobject]@{ProcessId=0},[pscustomobject]@{ProcessId=4},[pscustomobject]@{ProcessId=$PID})
+}
+$script:fixtureLogDisabled=$false
+function Get-WinEvent {
+    [CmdletBinding()]param([string]$ListLog,[string]$LogName,[switch]$Oldest,[int]$MaxEvents,[string]$FilterXPath)
+    if($ListLog){return [pscustomobject]@{IsEnabled=(-not $script:fixtureLogDisabled);SecurityDescriptor='fixture-sddl'}}
+    $id=if($Oldest){1}else{103}
+    $record=[pscustomobject]@{RecordId=$id;Channel=$LogName}
+    $record | Add-Member ScriptMethod ToXml {Make-AgentXml $this.Channel $this.RecordId}
+    return $record
+}
+$script:serviceDirectory=[IO.Path]::GetTempPath()
+$collected=Get-AgentExecutionSnapshot
+Check ($collected.Status -ceq 'OK' -and $collected.Service.Exists -eq $false -and $collected.Service.AbsenceError -eq 1060) 'An absent native SCM query must publish a complete absence receipt.'
+Check ($collected.ServiceSid -and @($collected.ImagePaths).Count -eq 1 -and @($collected.Processes | Where-Object {$_.Pid -eq $PID}).Count -eq 1) 'Service absence must still collect package image, SID and the collector token.'
+Check ($collected.InventoryEndQpc -ge $collected.InventoryStartQpc -and $collected.SystemEnd.NewestRecordId -eq 103 -and
+    $collected.SecurityEnd.OldestRecordId -eq 1) 'Service absence must still finish inventory and collect both first/last log anchors.'
+[SUAgentExecution]::ScmError=$true
+$collected=Get-AgentExecutionSnapshot
+Check ($collected.Status -ceq 'INCONCLUSIVE' -and ($collected.Errors -join ';') -like '*fixture SCM access denied*' -and
+    $collected.Processes.Count -eq 1 -and $collected.SystemEnd.Status -ceq 'OK' -and $collected.SecurityEnd.Status -ceq 'OK') 'SCM errors retain their cause and cannot suppress inventory or end anchors.'
+[SUAgentExecution]::ScmError=$false;[SUAgentExecution]::Installed=$true
+$collected=Get-AgentExecutionSnapshot
+Check ($collected.Status -ceq 'INCONCLUSIVE' -and $collected.Service.QueryStatus -ceq 'INCONCLUSIVE' -and $collected.SystemEnd.Status -ceq 'OK') 'An installed-service identity query failure stays incomplete with end anchors retained.'
+$missingAnchor=Read-AgentLogWindow $collected.SystemBegin $null 'System'
+Check ($missingAnchor.Status -ceq 'INCONCLUSIVE' -and $missingAnchor.Reason -like '*after log anchor missing*') 'A missing end anchor must name its edge rather than emit empty reasons.'
+$script:fixtureLogDisabled=$true
+$disabled=Get-AgentLogAnchor 'Security'
+Check ($disabled.Status -ceq 'INCONCLUSIVE' -and $disabled.Reason -ceq 'Log disabled.' -and $disabled.Errors.Count -gt 0) 'Log failures retain their actual error chain.'
+
+'ProofAdapterEvaluationChecks='+$script:checks+';PASS (host-safe synthetic evaluation, collector mocks and identity publication only)'

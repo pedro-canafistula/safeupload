@@ -13,6 +13,36 @@ $ProgressPreference = 'SilentlyContinue'
 $documents = Join-Path $env:USERPROFILE 'Documents'
 $checks = [ordered]@{}
 
+# Read independently of the suite/lifecycle export. Record both native values
+# so the wrapper can compare the pre-case and post-restoration baselines.
+try {
+    if(-not ('SUBaselineAudit' -as [type])){
+        Add-Type -TypeDefinition @'
+using System; using System.Runtime.InteropServices; using System.ComponentModel;
+public static class SUBaselineAudit {
+ [StructLayout(LayoutKind.Sequential)] struct Policy { public Guid Subcategory; public uint Flags; public Guid Category; }
+ [DllImport("advapi32.dll",SetLastError=true)] [return:MarshalAs(UnmanagedType.U1)] static extern bool AuditQuerySystemPolicy(Guid[] categories,uint count,out IntPtr policy);
+ [DllImport("advapi32.dll",SetLastError=true)] [return:MarshalAs(UnmanagedType.U1)] static extern bool AuditEnumeratePerUserPolicy(out IntPtr users);
+ [DllImport("advapi32.dll")] static extern void AuditFree(IntPtr buffer);
+ public static uint[] Read() {
+  IntPtr p;uint flags;Guid[] categories={new Guid("0cce922b-69ae-11d9-bed3-505054503030")};
+  if(!AuditQuerySystemPolicy(categories,1,out p))throw new Win32Exception(Marshal.GetLastWin32Error());
+  try{flags=((Policy)Marshal.PtrToStructure(p,typeof(Policy))).Flags;}finally{AuditFree(p);}
+  if(!AuditEnumeratePerUserPolicy(out p))throw new Win32Exception(Marshal.GetLastWin32Error());
+  try{return new uint[]{flags,(uint)Marshal.ReadInt32(p)};}finally{AuditFree(p);}
+ }
+}
+'@ -ErrorAction Stop
+    }
+    $audit=[SUBaselineAudit]::Read()
+    'ProcessCreationAuditFlags='+$audit[0]
+    'ProcessCreationAuditPerUserCount='+$audit[1]
+    $checks['ProcessCreationAuditRead']=($audit[0] -in @(0,1,2,3,4))
+}catch{
+    $checks['ProcessCreationAuditRead']=$false
+    'ProcessCreationAuditError='+$_.Exception.Message
+}
+
 $uuid = (Get-CimInstance Win32_ComputerSystemProduct).UUID
 $checks['DebuggeeIdentity'] = ($env:COMPUTERNAME -eq 'WIN10-DEBUGGED' -and $uuid -eq '9D44EEE8-81CF-4CC1-9FBA-7670F11DEF4D')
 $installedHash = (Get-FileHash -LiteralPath 'C:\Windows\System32\drivers\SafeUpload.sys' -Algorithm SHA256).Hash

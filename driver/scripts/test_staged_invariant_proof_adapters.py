@@ -42,6 +42,30 @@ def fixture():
 
 
 class ProofTests(unittest.TestCase):
+    def test_independent_audit_restoration(self):
+        with tempfile.TemporaryDirectory(prefix='audit-policy-proof-', dir='/tmp') as directory:
+            before, after = (Path(directory) / name for name in ('before.txt', 'after.txt'))
+            baseline = 'ProcessCreationAuditFlags=2\nProcessCreationAuditPerUserCount=0\n'
+            before.write_text(baseline)
+            after.write_text(baseline)
+            policy = {'CreationFlags': 2, 'PerUserPolicyCount': 0}
+            result = {'Restoration': {'ProcessCreationAudit': {
+                'Restored': True, 'Original': dict(policy), 'Final': dict(policy)}}}
+            Q.validate_audit_restoration(result, before, after)
+            after.write_text(baseline.replace('Flags=2', 'Flags=3'))
+            with self.assertRaisesRegex(RuntimeError, 'restoration mismatch'):
+                Q.validate_audit_restoration(result, before, after)
+            after.write_text(baseline)
+            result['Restoration']['ProcessCreationAudit']['Final']['CreationFlags'] = 3
+            with self.assertRaisesRegex(RuntimeError, 'differs from independent baseline'):
+                Q.validate_audit_restoration(result, before, after)
+            after.write_text(baseline + 'ProcessCreationAuditFlags=2\n')
+            with self.assertRaisesRegex(RuntimeError, 'Missing/duplicate independent audit value'):
+                Q.baseline_audit(after)
+            after.write_text('BaselineClean=True\n')
+            with self.assertRaisesRegex(RuntimeError, 'Missing/duplicate independent audit value'):
+                Q.baseline_audit(after)
+
     def test_only_external_promoted_after_restoration(self):
         result = fixture()
         Q.attest_external_coverage(result)

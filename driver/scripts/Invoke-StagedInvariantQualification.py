@@ -177,7 +177,9 @@ def build_inputs(args, commit, agent_commit, head):
     for leaf in ('StagedInvariantCases.psd1', 'StagedInvariantObserver.psm1', 'Test-StagedInvariantSuite.ps1',
                  'Invoke-StagedInvariantQualification.py', 'StagedInvariantProofAdapters.SelfCheck.ps1', 'test_staged_invariant_proof_adapters.py', 'StagedTestAgent.ps1', 'Invoke-DebuggeeExperiment.sh', 'Get-StagedBaseline.ps1', 'remote_ps.py'):
         path = SCRIPTS / leaf
-        if leaf in ('StagedInvariantObserver.psm1', 'StagedTestAgent.ps1', 'Get-StagedBaseline.ps1', 'remote_ps.py'):
+        # Baseline now records the case-owned audit setting; like the suite and
+        # wrapper, freeze its authorized working-tree bytes in provenance.
+        if leaf in ('StagedInvariantObserver.psm1', 'StagedTestAgent.ps1', 'remote_ps.py'):
             require(git('show', head + ':driver/scripts/' + leaf) == path.read_bytes(), 'Dirty shared executable: ' + leaf)
         pins['driver/scripts/' + leaf] = sha(path)
     provenance['BuildEvidenceDirectories'] = [str(work), str(agent_work)]
@@ -213,6 +215,28 @@ def clean_baseline(path):
     return text.splitlines().count('BaselineClean=True') == 1 and not re.search(r'^BaselineClean=(?!True$)', text, re.M)
 
 
+def baseline_audit(path):
+    text = path.read_text('utf-8-sig')
+    values = {}
+    for key in ('ProcessCreationAuditFlags', 'ProcessCreationAuditPerUserCount'):
+        matches = re.findall(r'^' + key + r'=(\d+)$', text, re.M)
+        require(len(matches) == 1, 'Missing/duplicate independent audit value: ' + key)
+        values[key] = int(matches[0])
+    return values
+
+
+def validate_audit_restoration(result, before_path, after_path):
+    before, after = baseline_audit(before_path), baseline_audit(after_path)
+    require(before == after, 'Independent process-creation audit restoration mismatch')
+    policy = result.get('Restoration', {}).get('ProcessCreationAudit') or {}
+    require(policy.get('Restored') is True, 'Guest audit restoration receipt missing')
+    for edge, baseline in (('Original', before), ('Final', after)):
+        receipt = policy.get(edge) or {}
+        require(receipt.get('CreationFlags') == baseline['ProcessCreationAuditFlags']
+                and receipt.get('PerUserPolicyCount') == baseline['ProcessCreationAuditPerUserCount'],
+                'Guest audit policy differs from independent baseline: ' + edge)
+
+
 def phase_gate(ev, name):
     for phase, lines in [('prepare', ['INVARIANT_PREPARED=True', 'CaseStatus=READY', 'BootPolicySeed=product-mode;ExitCode:0;PASS',
                                      'BootPolicyPrebootVerified=ParametersAcl:True;BootPolicyAcl:True;RecordBytes:16656;ExactRecord:True;PendingScopes:Absent;Start:3;PASS']),
@@ -226,6 +250,8 @@ def phase_gate(ev, name):
         lines = (ev / (name + '-' + phase + '-changed.txt')).read_text().splitlines()
         require(len(lines) == 1 and lines[0].startswith('BootIdentityChanged=True;'), 'Missing changed boot identity')
     require(clean_baseline(ev / (name + '-baseline.txt')) and clean_baseline(ev / (name + '-final-restored-state.txt')), 'Independent baseline failure')
+    require(baseline_audit(ev / (name + '-baseline.txt')) == baseline_audit(ev / (name + '-final-restored-state.txt')),
+            'Independent process-creation audit restoration mismatch')
     require((ev / (name + '-flush.txt')).read_text().splitlines().count('VolumeCacheWritten=True') == 1, 'Checkpoint flush missing/duplicate')
 
 
@@ -486,6 +512,7 @@ def run_case(args, case, mode, ev, files, package, tree_hash, provenance):
                 artifact = destination / relative
                 require(artifact.stat().st_size == entry['Length'] and sha(artifact) == entry['Sha256'], 'Copied raw artifact hash/length mismatch')
         validate_service_artifacts(result, destination, guest_root)
+        validate_audit_restoration(result, ev / (name + '-baseline.txt'), ev / (name + '-final-restored-state.txt'))
         result['AuthoritativeCaseExport'] = True
         result['Restoration'].update(Known=True, IndependentBaseline=str(ev / (name + '-final-restored-state.txt')),
                                      IndependentBaselineSha256=sha(ev / (name + '-final-restored-state.txt')))

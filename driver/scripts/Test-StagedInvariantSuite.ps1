@@ -758,6 +758,17 @@ public static class SUAgentExecution {
  [DllImport("advapi32.dll",SetLastError=true)] [return:MarshalAs(UnmanagedType.U1)] static extern bool AuditQuerySystemPolicy(Guid[] categories,uint count,out IntPtr policy);
  [DllImport("advapi32.dll",SetLastError=true)] [return:MarshalAs(UnmanagedType.U1)] static extern bool AuditEnumeratePerUserPolicy(out IntPtr users);
  [DllImport("advapi32.dll")] static extern void AuditFree(IntPtr buffer);
+ [DllImport("advapi32.dll",CharSet=CharSet.Unicode,SetLastError=true)] static extern IntPtr OpenSCManager(string machine,string database,uint access);
+ [DllImport("advapi32.dll",CharSet=CharSet.Unicode,SetLastError=true)] static extern IntPtr OpenService(IntPtr manager,string name,uint access);
+ [DllImport("advapi32.dll")] static extern bool CloseServiceHandle(IntPtr handle);
+ public static bool ServiceExists(string name) {
+  IntPtr manager=OpenSCManager(null,null,1);if(manager==IntPtr.Zero)throw new Win32Exception(Marshal.GetLastWin32Error());
+  try {
+   IntPtr service=OpenService(manager,name,4);
+   if(service!=IntPtr.Zero){CloseServiceHandle(service);return true;}
+   int error=Marshal.GetLastWin32Error();if(error==1060)return false;throw new Win32Exception(error);
+  }finally{CloseServiceHandle(manager);}
+ }
  static IntPtr TokenInfo(IntPtr t,int kind) {
   int size; GetTokenInformation(t,kind,IntPtr.Zero,0,out size);
   if(size<=0)throw new Win32Exception(Marshal.GetLastWin32Error());
@@ -798,6 +809,21 @@ public static class SUAgentExecution {
 }
 '@
 }
+function Get-ProcessCreationAudit {
+    Initialize-AgentExecutionReader
+    $audit=[SUAgentExecution]::Audit()
+    return [pscustomobject]@{CreationFlags=$audit[0];PerUserPolicyCount=$audit[1]}
+}
+function Set-ProcessCreationAudit([int]$Flags) {
+    if($Flags -notin @(0,1,2,3,4)){throw 'Unsupported process-creation audit flags.'}
+    $success=if(($Flags -band 1) -ne 0){'enable'}else{'disable'}
+    $failure=if(($Flags -band 2) -ne 0){'enable'}else{'disable'}
+    & auditpol.exe /set '/subcategory:{0cce922b-69ae-11d9-bed3-505054503030}' ('/success:'+$success) ('/failure:'+$failure) | Out-Host
+    if($LASTEXITCODE -ne 0){throw 'auditpol process-creation policy update failed.'}
+    $actual=Get-ProcessCreationAudit
+    if($actual.CreationFlags -ne $Flags){throw ('Process-creation audit readback mismatch: expected='+$Flags+'; actual='+$actual.CreationFlags)}
+    return $actual
+}
 function Get-AgentLogAnchor([string]$Name) {
     $start=[Diagnostics.Stopwatch]::GetTimestamp()
     try {
@@ -805,9 +831,10 @@ function Get-AgentLogAnchor([string]$Name) {
         if(-not $log.IsEnabled){throw 'Log disabled.'}
         $old=Get-WinEvent -LogName $Name -Oldest -MaxEvents 1 -ErrorAction Stop
         $last=Get-WinEvent -LogName $Name -MaxEvents 1 -ErrorAction Stop
+        if($null -eq $old.RecordId -or $null -eq $last.RecordId -or $old.RecordId -gt $last.RecordId){throw 'First/last log record IDs missing or out of order.'}
         return [pscustomobject]@{Status='OK';Name=$Name;StartQpc=$start;EndQpc=[Diagnostics.Stopwatch]::GetTimestamp();
             OldestRecordId=$old.RecordId;NewestRecordId=$last.RecordId;NewestXml=$last.ToXml();SecurityDescriptor=$log.SecurityDescriptor}
-    }catch{return [pscustomobject]@{Status='INCONCLUSIVE';Name=$Name;Reason=$_.Exception.Message;StartQpc=$start;EndQpc=[Diagnostics.Stopwatch]::GetTimestamp()}}
+    }catch{return [pscustomobject]@{Status='INCONCLUSIVE';Name=$Name;Reason=$_.Exception.Message;Errors=(Get-ErrorChain $_.Exception);StartQpc=$start;EndQpc=[Diagnostics.Stopwatch]::GetTimestamp()}}
 }
 function Get-AgentExecutionSnapshot {
     $result=[ordered]@{Status='INCONCLUSIVE';BootId=(Get-BootId);QpcFrequency=[Diagnostics.Stopwatch]::Frequency;
@@ -818,16 +845,24 @@ function Get-AgentExecutionSnapshot {
         # ordering, rather than UTC filtering, overcovers the QPC case window.
         $result.SystemBegin=Get-AgentLogAnchor 'System';$result.SecurityBegin=Get-AgentLogAnchor 'Security'
         $result.InventoryStartQpc=[Diagnostics.Stopwatch]::GetTimestamp()
-        $audit=[SUAgentExecution]::Audit();$result.Audit=@{CreationFlags=$audit[0];PerUserPolicyCount=$audit[1]}
-        $services=@(Get-CimInstance Win32_Service -Filter "Name='SafeUploadAgent'" -ErrorAction Stop)
-        if($services.Count -ne 1){throw 'SCM SafeUploadAgent service missing/ambiguous.'}
-        $service=$services[0]
-        $result.Service=@{Name=$service.Name;DisplayName=$service.DisplayName;State=$service.State;ProcessId=$service.ProcessId;PathName=$service.PathName;StartMode=$service.StartMode}
-        # Reject unresolved/ambiguous unquoted executable paths, not guesses.
-        $match=[regex]::Match($service.PathName,'^\s*(?:"(?<image>[A-Za-z]:\\[^"\r\n]+\.exe)"|(?<image>[A-Za-z]:\\[^\s"]+\.exe))(?:\s|$)','IgnoreCase')
-        if(-not $match.Success){throw 'SCM agent image path unresolved/ambiguous.'}
-        $result.ImagePaths=@([IO.Path]::GetFullPath($match.Groups['image'].Value),[IO.Path]::GetFullPath((Join-Path $serviceDirectory 'SafeUpload.Agent.Service.exe')))
+        try{$result.Audit=Get-ProcessCreationAudit}catch{$result.Errors+=('Audit policy: '+$_.Exception.Message)}
+        # Identity does not depend on installation. The extracted package is
+        # hash-pinned in Prepare; the service SID is deterministic for its name.
+        $result.ImagePaths=@([IO.Path]::GetFullPath((Join-Path $serviceDirectory 'SafeUpload.Agent.Service.exe')))
         $result.ServiceSid=[SUAgentExecution]::ServiceSid('SafeUploadAgent')
+        try {
+            $exists=[SUAgentExecution]::ServiceExists('SafeUploadAgent')
+            $result.Service=@{Name='SafeUploadAgent';Exists=$exists;QueryStatus='OK';QuerySource='OpenSCManager/OpenService';AbsenceError=$(if(-not $exists){1060}else{$null})}
+            if($exists){
+                $services=@(Get-CimInstance Win32_Service -Filter "Name='SafeUploadAgent'" -ErrorAction Stop)
+                if($services.Count -ne 1){throw 'Installed SCM service identity missing/ambiguous.'}
+                $service=$services[0]
+                foreach($field in @('DisplayName','State','ProcessId','PathName','StartMode')){$result.Service[$field]=$service.$field}
+                $match=[regex]::Match($service.PathName,'^\s*(?:"(?<image>[A-Za-z]:\\[^"\r\n]+\.exe)"|(?<image>[A-Za-z]:\\[^\s"]+\.exe))(?:\s|$)','IgnoreCase')
+                if(-not $match.Success){throw 'SCM agent image path unresolved/ambiguous.'}
+                $result.ImagePaths=@([IO.Path]::GetFullPath($match.Groups['image'].Value))+$result.ImagePaths
+            }
+        }catch{$result.Errors+=('SCM query: '+$_.Exception.Message);if($null -ne $result.Service){$result.Service.QueryStatus='INCONCLUSIVE'}}
         # PID 0/4 are kernel pseudo/system processes, not user-mode emitters.
         # Any other vanished, protected or inaccessible process defeats proof.
         foreach($process in @(Get-CimInstance Win32_Process -ErrorAction Stop)){
@@ -835,11 +870,14 @@ function Get-AgentExecutionSnapshot {
             try{$result.Processes+=[SUAgentExecution]::Process([int]$process.ProcessId)}
             catch{$result.Errors+=('Process inventory PID '+$process.ProcessId+': '+$_.Exception.Message)}
         }
-        $result.InventoryEndQpc=[Diagnostics.Stopwatch]::GetTimestamp()
-        if(@($result.Processes | Where-Object Pid -eq $PID).Count -ne 1){$result.Errors+='Collector process missing/duplicated in inventory.'}
-        $result.SystemEnd=Get-AgentLogAnchor 'System';$result.SecurityEnd=Get-AgentLogAnchor 'Security'
-        if($result.Errors.Count -eq 0){$result.Status='OK'}
     }catch{$result.Errors+=$_.Exception.Message}
+    finally {
+        $result.InventoryEndQpc=[Diagnostics.Stopwatch]::GetTimestamp()
+        if(@($result.Processes | Where-Object {$_.Pid -eq $PID}).Count -ne 1){$result.Errors+='Collector process missing/duplicated in inventory.'}
+        # Even an incomplete SCM/audit/inventory read must retain end anchors.
+        $result.SystemEnd=Get-AgentLogAnchor 'System';$result.SecurityEnd=Get-AgentLogAnchor 'Security'
+    }
+    if($result.Errors.Count -eq 0){$result.Status='OK'}
     $result.EndQpc=[Diagnostics.Stopwatch]::GetTimestamp();$result.EndBootId=Get-BootId
     return [pscustomobject]$result
 }
@@ -856,7 +894,10 @@ function ConvertFrom-AgentEventXml([string]$Xml,[string]$Channel) {
 }
 function Read-AgentLogWindow($Before,$After,[string]$Name) {
     try {
-        if($Before.Status -cne 'OK' -or $After.Status -cne 'OK'){throw ('Log anchors unavailable: before='+$Before.Reason+'; after='+$After.Reason)}
+        foreach($edge in @(@{Tag='before';Anchor=$Before},@{Tag='after';Anchor=$After})){
+            if($null -eq $edge.Anchor){throw ($Name+' '+$edge.Tag+' log anchor missing (collector did not publish it).')}
+            if($edge.Anchor.Status -cne 'OK'){throw ($Name+' '+$edge.Tag+' log anchor '+$edge.Anchor.Status+': '+$edge.Anchor.Reason)}
+        }
         if($null -eq $Before.NewestRecordId -or $null -eq $After.NewestRecordId -or
             $After.OldestRecordId -gt $Before.NewestRecordId -or $After.NewestRecordId -lt $Before.NewestRecordId){throw 'Log cleared/wrapped; starting record no longer retained.'}
         if(($After.NewestRecordId-$Before.NewestRecordId) -gt 20000){throw 'Log window exceeds 20000-record evidence bound.'}
@@ -918,24 +959,34 @@ function Test-NotificationLocationUnchanged($Before,$After,$Fence) {
     return [pscustomobject]@{Complete=$true;Reason='Authenticated notification location inventories byte-identical.'}
 }
 function Test-AgentDidNotRun($Before,$After,$Fence,[bool]$WindowKnown,$SystemLog,$SecurityLog) {
-    $failures=@();$scm=@();$creations=@()
+    $failures=@();$scm=@();$creations=@();$scmFailures=@();$contradictions=@();$systemContinuous=$false;$scmWindowKnown=$WindowKnown
     if(-not $WindowKnown){$failures+='QPC operation window is not bound to service snapshots.'}
     $b=$Before.AgentExecution;$a=$After.AgentExecution
     foreach($pair in @(@{Tag='before';Snapshot=$b},@{Tag='after';Snapshot=$a})){
         $s=$pair.Snapshot
-        if($null -eq $s){$failures+=('Agent '+$pair.Tag+' execution snapshot missing.');continue}
+        if($null -eq $s){$failures+=('Agent '+$pair.Tag+' execution snapshot missing.');$scmWindowKnown=$false;continue}
         if($s.Status -cne 'OK'){$failures+=('Agent '+$pair.Tag+' inventory incomplete: '+($s.Errors -join '; '))}
         if($s.BootId -cne $Fence.BootId -or $s.EndBootId -cne $Fence.BootId -or $s.QpcFrequency -ne $Fence.QpcFrequency -or
-            $null -eq $s.StartQpc -or $null -eq $s.EndQpc -or $s.StartQpc -gt $s.EndQpc){$failures+=('Agent '+$pair.Tag+' boot/QPC receipts missing/mismatched.')}
+            $null -eq $s.StartQpc -or $null -eq $s.EndQpc -or $s.StartQpc -gt $s.EndQpc){$failures+=('Agent '+$pair.Tag+' boot/QPC receipts missing/mismatched.');$scmWindowKnown=$false}
         if($null -eq $s.InventoryStartQpc -or $null -eq $s.InventoryEndQpc -or
             $s.InventoryStartQpc -lt $s.StartQpc -or $s.InventoryStartQpc -gt $s.InventoryEndQpc -or $s.InventoryEndQpc -gt $s.EndQpc){
             $failures+=('Agent '+$pair.Tag+' inventory QPC receipts missing/out of order.')
+            $scmWindowKnown=$false
         }
-        if($null -eq $s.Service -or $s.Service.Name -cne 'SafeUploadAgent' -or $s.Service.State -cne 'Stopped' -or
-            $null -eq $s.Service.ProcessId -or $s.Service.ProcessId -ne 0){$failures+=('SCM SafeUploadAgent '+$pair.Tag+' state is not authenticated Stopped/PID 0.')}
+        $service=$s.Service
+        if($null -eq $service -or $service.Name -cne 'SafeUploadAgent' -or $service.QueryStatus -cne 'OK' -or
+            $service.QuerySource -cne 'OpenSCManager/OpenService' -or $null -eq $service.Exists){
+            $scmFailures+=('SCM SafeUploadAgent '+$pair.Tag+' query unauthenticated/missing.')
+        }elseif(-not $service.Exists){
+            if($service.AbsenceError -ne 1060){$scmFailures+=('SCM '+$pair.Tag+' absence lacks ERROR_SERVICE_DOES_NOT_EXIST.')}
+        }elseif($service.State -cne 'Stopped' -or $null -eq $service.ProcessId -or $service.ProcessId -ne 0){
+            $scmFailures+=('SCM SafeUploadAgent '+$pair.Tag+' state is not authenticated Stopped/PID 0.')
+            if($service.State -ceq 'Running' -or $service.ProcessId -gt 0){$contradictions+=('Installed agent running at '+$pair.Tag+' edge.')}
+        }
         if($null -eq $s.Audit.CreationFlags -or ($s.Audit.CreationFlags -band 1) -eq 0 -or
             $null -eq $s.Audit.PerUserPolicyCount -or $s.Audit.PerUserPolicyCount -ne 0){$failures+=('Agent '+$pair.Tag+' process-creation success auditing missing/disabled or per-user overrides present.')}
-        if([string]::IsNullOrWhiteSpace($s.ServiceSid) -or @($s.ImagePaths).Count -lt 2 -or $null -eq $s.Processes){$failures+=('Agent '+$pair.Tag+' image/SID/inventory identity missing.')}
+        $requiredImages=if($service.Exists){2}else{1}
+        if([string]::IsNullOrWhiteSpace($s.ServiceSid) -or @($s.ImagePaths).Count -lt $requiredImages -or $null -eq $s.Processes){$failures+=('Agent '+$pair.Tag+' image/SID/inventory identity missing.')}
         if($null -eq $s.CollectedByPid -or @($s.Processes | Where-Object Pid -eq $s.CollectedByPid).Count -ne 1){$failures+=('Agent '+$pair.Tag+' inventory lacks its collector process.')}
         foreach($process in $s.Processes){
             if([string]::IsNullOrWhiteSpace($process.Image) -or @($process.TokenSids).Count -eq 0){$failures+=('Agent '+$pair.Tag+' PID '+$process.Pid+' image/token SIDs unavailable.')}
@@ -943,9 +994,11 @@ function Test-AgentDidNotRun($Before,$After,$Fence,[bool]$WindowKnown,$SystemLog
         }
     }
     if($null -ne $b -and $null -ne $a){
-        if($b.EndQpc -gt $Fence.ReleasedQpc -or $a.StartQpc -lt $Fence.CompletedQpc){$failures+='Agent inventory edges do not bracket whole operation window.'}
+        if($b.EndQpc -gt $Fence.ReleasedQpc -or $a.StartQpc -lt $Fence.CompletedQpc){$failures+='Agent inventory edges do not bracket whole operation window.';$scmWindowKnown=$false}
         if($b.ServiceSid -cne $a.ServiceSid -or ($b.ImagePaths -join '|') -ine ($a.ImagePaths -join '|') -or
             $b.Service.DisplayName -cne $a.Service.DisplayName -or $b.Service.PathName -cne $a.Service.PathName){$failures+='Agent SCM/image/SID identity changed between edges.'}
+        if($b.Service.Exists -ne $a.Service.Exists -or ($b.Service.Exists -and
+            ([string]::IsNullOrWhiteSpace($b.Service.DisplayName) -or [string]::IsNullOrWhiteSpace($b.Service.PathName)))){$scmFailures+='SCM installation/identity changed or missing between edges.'}
     }
     foreach($pair in @(@{Name='System';Proof=$SystemLog},@{Name='Security';Proof=$SecurityLog})){
         try {
@@ -971,7 +1024,12 @@ function Test-AgentDidNotRun($Before,$After,$Fence,[bool]$WindowKnown,$SystemLog
                             $scm+=$event
                             # Reject every agent SCM event (7036/7045/7040/errors
                             # etc.), rather than interpreting localized state text.
-                            $failures+=('SCM SafeUploadAgent activity '+$event.Id+' at record '+$event.RecordId+'.')
+                            $scmFailures+=('SCM SafeUploadAgent activity '+$event.Id+' at record '+$event.RecordId+'.')
+                            if($event.Id -in @(7036,7045)){
+                                # State-change/install contradicts the strict SCM
+                                # premise regardless of localized state wording.
+                                $contradictions+=('Agent service state-change/install in window at System record '+$event.RecordId+'.')
+                            }
                         }
                     }
                 }else{
@@ -987,7 +1045,8 @@ function Test-AgentDidNotRun($Before,$After,$Fence,[bool]$WindowKnown,$SystemLog
                     }
                 }
             }
-        }catch{$failures+=$_.Exception.Message}
+            if($pair.Name -ceq 'System'){$systemContinuous=$true}
+        }catch{$failures+=$_.Exception.Message;if($pair.Name -ceq 'System'){$scmFailures+=$_.Exception.Message}}
     }
     foreach($snapshot in @($Before.Notifications,$After.Notifications)){
         foreach($item in $snapshot.Entries){
@@ -998,7 +1057,13 @@ function Test-AgentDidNotRun($Before,$After,$Fence,[bool]$WindowKnown,$SystemLog
             }
         }
     }
-    return [pscustomobject]@{Complete=($failures.Count -eq 0);Reason=$(if($failures.Count){$failures -join ' '}else{'agent did not run in window'});
+    if(-not $scmWindowKnown){$scmFailures+='SCM snapshots/window receipts incomplete.'}
+    $failures+= $scmFailures
+    $scmComplete=$systemContinuous -and $scmFailures.Count -eq 0 -and $scmWindowKnown
+    $scmProof=[pscustomobject]@{Complete=$scmComplete;Verdict=$(if($contradictions.Count){'FAIL'}elseif($scmComplete){'PASS'}else{'INCONCLUSIVE'});
+        Reason=$(if($contradictions.Count){$contradictions -join ' '}elseif($scmComplete -and -not $b.Service.Exists){'Authenticated SCM service absent at both edges, never installed in window; continuous System log.'}elseif($scmComplete){'Installed service stopped/PID 0 at both edges, with no SCM activity in continuous System log.'}else{$scmFailures -join ' '})}
+    return [pscustomobject]@{Complete=($failures.Count -eq 0);Verdict=$(if($contradictions.Count){'FAIL'}elseif($failures.Count){'INCONCLUSIVE'}else{'PASS'});
+        ScmProof=$scmProof;Reason=$(if($failures.Count){$failures -join ' '}else{'agent did not run in window'});
         Failures=$failures;ScmEvents=$scm;ProcessCreations=$creations;SystemLog=$SystemLog;SecurityLog=$SecurityLog;
         Limitations='Trusted kernel, SCM, audit transport and privileged actors; inventories inspect primary user/group/restricted SIDs, not thread impersonation. 4688 does not expose group SIDs, so any creation defeats this proof. No claim about renamed/injected emitters, off-window activity or intermediate create/delete of notification files.'}
 }
@@ -1242,6 +1307,7 @@ function Get-ServiceTimeline($Before,$After,$Fence) {
         $systemLog=Read-AgentLogWindow $Before.AgentExecution.SystemBegin $After.AgentExecution.SystemEnd 'System'
         $securityLog=Read-AgentLogWindow $Before.AgentExecution.SecurityBegin $After.AgentExecution.SecurityEnd 'Security'
         $agentAbsence=Test-AgentDidNotRun $Before $After $Fence $windowKnown $systemLog $securityLog
+        $assertions+=@{Name='AgentAbsenceScm';Verdict=$agentAbsence.ScmProof.Verdict;Reason=$agentAbsence.ScmProof.Reason}
         $locationUnchanged=Test-NotificationLocationUnchanged $Before.Notifications $After.Notifications $Fence
         if($agentAbsence.Complete -and $locationUnchanged.Complete){
             $notificationProof=[pscustomobject]@{Complete=$true;Reason='agent did not run in window';Emissions=@();Source='AgentDidNotRunAndUnchangedLocation'}
@@ -1418,6 +1484,12 @@ function Restore-Suite([switch]$Rollback) {
     }
     # Each restoration step is independent, but failed steps retain recovery state.
     $steps=@(
+        @{Name='process-creation-audit';Action={
+            if($null -eq $state.OriginalProcessCreationAudit){throw 'Original process-creation audit policy missing; preserve recovery state.'}
+            $restored=Set-ProcessCreationAudit ([int]$state.OriginalProcessCreationAudit.CreationFlags)
+            if($restored.PerUserPolicyCount -ne $state.OriginalProcessCreationAudit.PerUserPolicyCount){throw 'Per-user audit policy count changed during case.'}
+            Save-State $restored (Join-Path $evidenceDirectory 'restored-process-creation-audit.clixml')
+        }},
         @{Name='driver';Action={Set-DemandStartAndRestoreDriver}},
         @{Name='policy';Action={Restore-PolicyFile}},
         @{Name='registry';Action={
@@ -1505,6 +1577,8 @@ if($Phase -eq 'Prepare'){
         if((Get-Service SafeUploadAgent).Status -ne 'Stopped'){throw 'Agent service must be stopped'}
         $originalAgentStart=[int](Get-ItemProperty $agentKey).Start
     }
+    $originalProcessCreationAudit=Get-ProcessCreationAudit
+    if($originalProcessCreationAudit.CreationFlags -notin @(0,1,2,3,4) -or $originalProcessCreationAudit.PerUserPolicyCount -ne 0){throw 'Unsupported audit setting or per-user audit overrides present; preserve policy.'}
     New-Item -ItemType Directory -Path $stateDirectory,$evidenceDirectory | Out-Null
     $actorUser='sui'+[guid]::NewGuid().ToString('N').Substring(0,12)
     $volume=@(Get-CimInstance Win32_Volume -Filter "DriveLetter='C:'")
@@ -1516,7 +1590,7 @@ if($Phase -eq 'Prepare'){
     $size=[int]$cVolumes[0].BlockSize*3
     $baseline=[Text.Encoding]::ASCII.GetBytes(('BASELINE-'+$RunName).PadRight($size,'B'))
     $state=@{CaseId=$CaseId;Mode=$Mode;RunName=$RunName;TableRevision=$table.TableRevision;PrepareBootId=(Get-BootId);
-        OriginalAgentStart=$originalAgentStart;OriginalPolicyBase64=[Convert]::ToBase64String([IO.File]::ReadAllBytes($policyPath));
+        OriginalAgentStart=$originalAgentStart;OriginalProcessCreationAudit=$originalProcessCreationAudit;OriginalPolicyBase64=[Convert]::ToBase64String([IO.File]::ReadAllBytes($policyPath));
         OriginalPolicyDirectorySddl=(Get-SecuritySddl (Split-Path -Parent $policyPath) $true);OriginalPolicyFileSddl=(Get-SecuritySddl $policyPath $false);
         BaselineBase64=[Convert]::ToBase64String($baseline);VolumeGuid=$volume[0].DeviceID;ActorUser=$actorUser;
         WriterToken=[guid]::NewGuid().ToString('N');CoordinatorToken=[guid]::NewGuid().ToString('N');ForbiddenBlocks=@();Inputs=$PSBoundParameters}
@@ -1528,6 +1602,11 @@ if($Phase -eq 'Prepare'){
         if($LASTEXITCODE -ne 0){throw 'State ACL failed'}
         & icacls.exe $evidenceDirectory /inheritance:r /grant:r '*S-1-5-18:(OI)(CI)F' '*S-1-5-32-544:(OI)(CI)F' | Out-Host
         if($LASTEXITCODE -ne 0){throw 'Evidence ACL failed'}
+        # Change only Process Creation, retaining its prior failure setting.
+        # Persist the prior policy before auditpol, including rollback failures.
+        $enabledAudit=Set-ProcessCreationAudit (([int]$originalProcessCreationAudit.CreationFlags -band 2) -bor 1)
+        if($enabledAudit.PerUserPolicyCount -ne 0){throw 'Per-user audit overrides appeared while enabling process creation.'}
+        Save-State $enabledAudit (Join-Path $evidenceDirectory 'enabled-process-creation-audit.clixml')
         # Only an installed service has a start type to pin (as Test-StagedBootStart does); S00 attempt 3 threw here on a
         # guest without one.
         if ($null -ne $originalAgentStart) { Set-AgentServiceStart 3 }
@@ -1656,6 +1735,10 @@ $value=$b.ToString().Split([char]0)[0]
     $state=Load-State $statePath
     if((Get-BootId) -ceq $state.AfterBootId -or [string]::IsNullOrWhiteSpace($state.AfterBootId)){throw 'Restoration reboot identity unavailable'}
     Assert-Hash $installedDriver $originalDriverHash;Assert-Hash $policyPath $ExpectedOriginalPolicySha256
+    $finalAudit=Get-ProcessCreationAudit
+    if($null -eq $state.OriginalProcessCreationAudit -or
+        $finalAudit.CreationFlags -ne $state.OriginalProcessCreationAudit.CreationFlags -or
+        $finalAudit.PerUserPolicyCount -ne $state.OriginalProcessCreationAudit.PerUserPolicyCount){throw 'Final process-creation audit policy residue'}
     if(-not [string]::IsNullOrWhiteSpace($state.ActorSid)){
         foreach($profile in @(Get-CimInstance Win32_UserProfile | Where-Object SID -ceq $state.ActorSid)){
             if($profile.Loaded){throw 'Actor profile loaded after the restoration reboot'}
@@ -1685,7 +1768,8 @@ $value=$b.ToString().Split([char]0)[0]
         CaseStatus='READY';QualificationScope=$row.QualificationScope;Verdict=$trial.Verdict;ForbiddenByteCount=$trial.ForbiddenByteCount;Trials=@($trial);
         InputHashes=@{Table=$ExpectedTableSha256;Observer=$ExpectedObserverSha256;Suite=$ExpectedSuiteSha256;Helper=$ExpectedHelperSha256;
             Feature=$ExpectedFeatureSha256;Inspector=$ExpectedInspectorSha256;ServicePackage=$ExpectedServicePackageSha256;ServiceTree=$ExpectedServiceTreeSha256};
-        BootIds=@{Prepare=$state.PrepareBootId;Active=$state.AfterBootId;Final=(Get-BootId)};Restoration=@{GuestChecks=$true;IndependentBaseline=$null;Known=$false};
+        BootIds=@{Prepare=$state.PrepareBootId;Active=$state.AfterBootId;Final=(Get-BootId)};Restoration=@{GuestChecks=$true;IndependentBaseline=$null;Known=$false;
+            ProcessCreationAudit=@{Original=$state.OriginalProcessCreationAudit;Final=$finalAudit;Restored=$true}};
         AuthoritativeCaseExport=$false;Reasons=@('Seed rows do not qualify Phase4; driver lower mutation ledger and live taint readback unavailable; notification absence requires authenticated durable coverage or whole-window agent absence plus an unchanged authenticated record location');
         Load=@{ComputerSystem=(Get-CimInstance Win32_ComputerSystem | Select-Object NumberOfLogicalProcessors,TotalPhysicalMemory);Cpu=(Get-CimInstance Win32_Processor | Select-Object Name,NumberOfCores);Disk=(Get-Disk | Select-Object Number,FriendlyName,BusType);ObserverPriority=[string][Diagnostics.Process]::GetCurrentProcess().PriorityClass}}
     Copy-Item -LiteralPath $statePath -Destination (Join-Path $evidenceDirectory 'lifecycle.clixml')

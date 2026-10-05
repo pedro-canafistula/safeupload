@@ -287,4 +287,14 @@ fi
 
 echo "== 4. independent restoration check"
 baseline_check "$ev/$name-final-restored-state.txt" >/dev/null
+for audit_field in ProcessCreationAuditFlags ProcessCreationAuditPerUserCount; do
+    before_audit=$(grep -E "^$audit_field=[0-9]+$" "$ev/$name-baseline.txt")
+    after_audit=$(grep -E "^$audit_field=[0-9]+$" "$ev/$name-final-restored-state.txt")
+    if [ -z "$before_audit" ] || [ "$before_audit" != "$after_audit" ] || [ "$(printf '%s\n' "$before_audit" | wc -l)" -ne 1 ]; then
+        echo "ProcessCreationAuditRestored=False;Field=$audit_field" | tee -a "$ev/$name-final-restored-state.txt"
+        record_recovery_required 'Process-creation audit policy differs from independent pre-case baseline'
+        exit 19
+    fi
+done
+echo 'ProcessCreationAuditRestored=True' | tee -a "$ev/$name-final-restored-state.txt"
 grep -E '^(BaselineClean|OriginalDriverHash|FilterUnloaded|VerifierOff|OriginalPolicyHash|ZeroAgentProcesses|ZeroTestTasks|NoGuidFixtureDirectories)=' "$ev/$name-final-restored-state.txt"
