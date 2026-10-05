@@ -12,8 +12,11 @@ CLEAN=win10-debug.safeupload-pre-boot-start-invariant-S00-observer-control-ordin
 NEW=win10-debug.safeupload-recovery-s01-bugcheck-20261005
 
 # Safety: the domain must currently run on the failed overlay, and that overlay must sit directly on CLEAN.
-$V domblklist win10-debug | grep -q " $FAILED\$" || { echo "vda is not the failed overlay; stop"; exit 1; }
-$V dumpxml win10-debug | grep -A3 "<backingStore type='file' index=" | grep -q "$IMG/$CLEAN" || { echo "unexpected backing chain; stop"; exit 1; }
+# Output is captured first: with pipefail, `virsh ... | grep -q` fails when grep exits early and virsh gets SIGPIPE.
+SOURCES=$($V dumpxml win10-debug | grep -o "source file='[^']*'" | cut -d"'" -f2)
+TOP=$(sed -n 1p <<<"$SOURCES"); PARENT=$(sed -n 2p <<<"$SOURCES")
+[ "$TOP" = "$FAILED" ] || { echo "vda is not the failed overlay ($TOP); stop"; exit 1; }
+[ "$PARENT" = "$IMG/$CLEAN" ] || { echo "the failed overlay's parent is not the clean checkpoint ($PARENT); stop"; exit 1; }
 
 $V pool-refresh default
 CAP=$($V vol-info --bytes --pool default "$CLEAN" | awk '/Capacity/{print $2}')
