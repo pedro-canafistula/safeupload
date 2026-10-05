@@ -2904,6 +2904,7 @@ static FLT_PREOP_CALLBACK_STATUS StageUnownedMutatingFsctl(PFLT_CALLBACK_DATA Da
 
         /* The alias scanner intentionally supports NTFS only. Do not let a cached/name-level out-of-scope result
          * stand in for alias coverage on network, removable, unknown, or other filesystem types. */
+        if (Objects->FileObject == NULL) goto Unresolved;
         status = SafeUploadStageCheckObjectAliases(Objects->Instance, Objects->FileObject,
             &name->Volume, kind, &protectedAlias);
         FltReleaseFileNameInformation(name);

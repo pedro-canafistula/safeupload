@@ -136,14 +136,12 @@ static VOID SafeUploadEpochDereference(_In_opt_ PSAFEUPLOAD_ADMISSION_EPOCH Epoc
         ExFreePoolWithTag(Epoch, SAFEUPLOAD_POOL_TAG);
 }
 
-/* Replace the accepting epoch atomically with respect to admission tokens.
- * The old current-epoch reference transfers to SafeUploadDrainingEpochs. */
-static NTSTATUS SafeUploadEpochCloseAndReplace(VOID)
+/* Pageable policy-update routines call these resident lock boundaries. */
+__declspec(noinline) static VOID SafeUploadEpochReplaceCurrent(_In_ PSAFEUPLOAD_ADMISSION_EPOCH Fresh)
 {
-    PSAFEUPLOAD_ADMISSION_EPOCH fresh, old;
+    PSAFEUPLOAD_ADMISSION_EPOCH old;
     KIRQL irql;
-    fresh = SafeUploadEpochAllocate();
-    if (fresh == NULL) return STATUS_INSUFFICIENT_RESOURCES;
+
     KeAcquireSpinLock(&SafeUploadEpochLock, &irql);
     old = SafeUploadCurrentEpoch;
     if (old != NULL) {
@@ -152,8 +150,48 @@ static NTSTATUS SafeUploadEpochCloseAndReplace(VOID)
             KeSetEvent(&old->Drained, IO_NO_INCREMENT, FALSE);
         InsertTailList(&SafeUploadDrainingEpochs, &old->DrainLink);
     }
-    SafeUploadCurrentEpoch = fresh;
+    SafeUploadCurrentEpoch = Fresh;
     KeReleaseSpinLock(&SafeUploadEpochLock, irql);
+}
+
+__declspec(noinline) static PSAFEUPLOAD_ADMISSION_EPOCH SafeUploadEpochReferenceDrainHead(VOID)
+{
+    PSAFEUPLOAD_ADMISSION_EPOCH epoch = NULL;
+    KIRQL irql;
+
+    KeAcquireSpinLock(&SafeUploadEpochLock, &irql);
+    if (!IsListEmpty(&SafeUploadDrainingEpochs)) {
+        epoch = CONTAINING_RECORD(SafeUploadDrainingEpochs.Flink,
+            SAFEUPLOAD_ADMISSION_EPOCH, DrainLink);
+        SafeUploadEpochReference(epoch);
+    }
+    KeReleaseSpinLock(&SafeUploadEpochLock, irql);
+    return epoch;
+}
+
+__declspec(noinline) static BOOLEAN SafeUploadEpochRemoveDrained(_In_ PSAFEUPLOAD_ADMISSION_EPOCH Epoch)
+{
+    KIRQL irql;
+    BOOLEAN removed = FALSE;
+
+    KeAcquireSpinLock(&SafeUploadEpochLock, &irql);
+    if (!IsListEmpty(&Epoch->DrainLink) && Epoch->DrainLink.Flink != &Epoch->DrainLink) {
+        RemoveEntryList(&Epoch->DrainLink);
+        InitializeListHead(&Epoch->DrainLink);
+        removed = TRUE;
+    }
+    KeReleaseSpinLock(&SafeUploadEpochLock, irql);
+    return removed;
+}
+
+/* Replace the accepting epoch atomically with respect to admission tokens.
+ * The old current-epoch reference transfers to SafeUploadDrainingEpochs. */
+static NTSTATUS SafeUploadEpochCloseAndReplace(VOID)
+{
+    PSAFEUPLOAD_ADMISSION_EPOCH fresh;
+    fresh = SafeUploadEpochAllocate();
+    if (fresh == NULL) return STATUS_INSUFFICIENT_RESOURCES;
+    SafeUploadEpochReplaceCurrent(fresh);
     return STATUS_SUCCESS;
 }
 
@@ -165,18 +203,9 @@ static NTSTATUS SafeUploadEpochDrainAll(VOID)
     if (forceTimeout) return STATUS_IO_TIMEOUT;
     for (;;) {
         PSAFEUPLOAD_ADMISSION_EPOCH epoch;
-        PLIST_ENTRY link;
-        KIRQL irql;
         ULONGLONG elapsed, remaining;
-        KeAcquireSpinLock(&SafeUploadEpochLock, &irql);
-        if (IsListEmpty(&SafeUploadDrainingEpochs)) {
-            KeReleaseSpinLock(&SafeUploadEpochLock, irql);
-            return STATUS_SUCCESS;
-        }
-        link = SafeUploadDrainingEpochs.Flink;
-        epoch = CONTAINING_RECORD(link, SAFEUPLOAD_ADMISSION_EPOCH, DrainLink);
-        SafeUploadEpochReference(epoch);
-        KeReleaseSpinLock(&SafeUploadEpochLock, irql);
+        epoch = SafeUploadEpochReferenceDrainHead();
+        if (epoch == NULL) return STATUS_SUCCESS;
         elapsed = KeQueryInterruptTime() - start;
         if (elapsed >= (ULONGLONG)SAFEUPLOAD_POLICY_DRAIN_TIMEOUT_100NS) {
             SafeUploadEpochDereference(epoch);
@@ -188,41 +217,47 @@ static NTSTATUS SafeUploadEpochDrainAll(VOID)
             SafeUploadEpochDereference(epoch);
             return STATUS_IO_TIMEOUT;
         }
-        KeAcquireSpinLock(&SafeUploadEpochLock, &irql);
-        if (!IsListEmpty(&epoch->DrainLink) && epoch->DrainLink.Flink != &epoch->DrainLink) {
-            RemoveEntryList(&epoch->DrainLink);
-            InitializeListHead(&epoch->DrainLink);
-            KeReleaseSpinLock(&SafeUploadEpochLock, irql);
+        if (SafeUploadEpochRemoveDrained(epoch)) {
             SafeUploadEpochDereference(epoch); /* drain-list ownership */
-        } else {
-            KeReleaseSpinLock(&SafeUploadEpochLock, irql);
         }
         SafeUploadEpochDereference(epoch); /* wait reference */
     }
 }
 
-NTSTATUS SafeUploadPolicyAdmissionAcquire(_Outptr_ PSAFEUPLOAD_ADMISSION_EPOCH_TOKEN *Token)
+__declspec(noinline) static NTSTATUS SafeUploadEpochAcquireCurrent(
+    _Inout_ PSAFEUPLOAD_ADMISSION_EPOCH_TOKEN Token)
 {
-    PSAFEUPLOAD_ADMISSION_EPOCH_TOKEN token;
     PSAFEUPLOAD_ADMISSION_EPOCH epoch;
     KIRQL irql;
-    *Token = NULL;
-    token = ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(*token), SAFEUPLOAD_POOL_TAG);
-    if (token == NULL) return STATUS_INSUFFICIENT_RESOURCES;
-    RtlZeroMemory(token, sizeof(*token));
+
     KeAcquireSpinLock(&SafeUploadEpochLock, &irql);
     epoch = SafeUploadCurrentEpoch;
     if (epoch == NULL || InterlockedCompareExchange(&epoch->Accepting, 0, 0) == 0) {
         KeReleaseSpinLock(&SafeUploadEpochLock, irql);
-        ExFreePoolWithTag(token, SAFEUPLOAD_POOL_TAG);
         return STATUS_RETRY;
     }
     SafeUploadEpochReference(epoch);
     InterlockedIncrement(&epoch->ActiveCallbacks);
-    token->Signature = SAFEUPLOAD_ADMISSION_EPOCH_TOKEN_SIGNATURE;
-    token->Epoch = epoch;
-    token->OperationKind = 1;
+    Token->Signature = SAFEUPLOAD_ADMISSION_EPOCH_TOKEN_SIGNATURE;
+    Token->Epoch = epoch;
+    Token->OperationKind = 1;
     KeReleaseSpinLock(&SafeUploadEpochLock, irql);
+    return STATUS_SUCCESS;
+}
+
+NTSTATUS SafeUploadPolicyAdmissionAcquire(_Outptr_ PSAFEUPLOAD_ADMISSION_EPOCH_TOKEN *Token)
+{
+    PSAFEUPLOAD_ADMISSION_EPOCH_TOKEN token;
+    NTSTATUS status;
+    *Token = NULL;
+    token = ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(*token), SAFEUPLOAD_POOL_TAG);
+    if (token == NULL) return STATUS_INSUFFICIENT_RESOURCES;
+    RtlZeroMemory(token, sizeof(*token));
+    status = SafeUploadEpochAcquireCurrent(token);
+    if (!NT_SUCCESS(status)) {
+        ExFreePoolWithTag(token, SAFEUPLOAD_POOL_TAG);
+        return status;
+    }
     *Token = token;
     return STATUS_SUCCESS;
 }
@@ -258,57 +293,41 @@ BOOLEAN SafeUploadPolicyAdmissionMustRetry(VOID)
 #pragma alloc_text(PAGE, SafeUploadPolicyActivationCutoffsResume)
 #endif
 
-static NTSTATUS SafeUploadPolicyActivationCutoffsPause(VOID)
+/* These lock boundaries stay in nonpaged code. Their pageable callers only
+ * prepare/consume state at PASSIVE_LEVEL; no caller raises IRQL in PAGE code. */
+__declspec(noinline) static VOID SafeUploadPolicySetActivationCutoffsPaused(_In_ BOOLEAN Paused)
 {
-    LARGE_INTEGER timeout;
     KIRQL irql;
-    NTSTATUS status;
 
-    PAGED_CODE();
     KeAcquireSpinLock(&SafeUploadActivationCutoffLock, &irql);
-    InterlockedExchange(&SafeUploadActivationCutoffsPaused, 1);
-    if (InterlockedCompareExchange(&SafeUploadActivationCutoffsActive, 0, 0) == 0)
+    InterlockedExchange(&SafeUploadActivationCutoffsPaused, Paused ? 1 : 0);
+    if (Paused && InterlockedCompareExchange(&SafeUploadActivationCutoffsActive, 0, 0) == 0)
         KeSetEvent(&SafeUploadActivationCutoffsDrained, IO_NO_INCREMENT, FALSE);
     KeReleaseSpinLock(&SafeUploadActivationCutoffLock, irql);
-
-    timeout.QuadPart = -SAFEUPLOAD_POLICY_DRAIN_TIMEOUT_100NS;
-    status = KeWaitForSingleObject(&SafeUploadActivationCutoffsDrained,
-        Executive, KernelMode, FALSE, &timeout);
-    return status == STATUS_SUCCESS ? STATUS_SUCCESS : STATUS_IO_TIMEOUT;
 }
 
-static VOID SafeUploadPolicyActivationCutoffsResume(VOID)
+__declspec(noinline) static NTSTATUS SafeUploadPolicyTryBeginActivationCutoff(VOID)
 {
     KIRQL irql;
-    PAGED_CODE();
-    KeAcquireSpinLock(&SafeUploadActivationCutoffLock, &irql);
-    InterlockedExchange(&SafeUploadActivationCutoffsPaused, 0);
-    KeReleaseSpinLock(&SafeUploadActivationCutoffLock, irql);
-    SafeUploadStageWritersQueueRecheck();
-}
+    NTSTATUS status = STATUS_SUCCESS;
 
-NTSTATUS SafeUploadPolicyActivationCutoffBegin(VOID)
-{
-    KIRQL irql;
-    PAGED_CODE();
     KeAcquireSpinLock(&SafeUploadActivationCutoffLock, &irql);
     if (InterlockedCompareExchange(&SafeUploadActivationCutoffsPaused, 0, 0) != 0 ||
         InterlockedCompareExchange(&SafeUploadPolicyFailedClosed, 0, 0) != 0 ||
         InterlockedCompareExchange(&SafeUploadPolicyFinalizing, 0, 0) != 0) {
-        KeReleaseSpinLock(&SafeUploadActivationCutoffLock, irql);
-        return STATUS_RETRY;
-    }
-    if (InterlockedIncrement(&SafeUploadActivationCutoffsActive) == 1)
+        status = STATUS_RETRY;
+    } else if (InterlockedIncrement(&SafeUploadActivationCutoffsActive) == 1) {
         KeClearEvent(&SafeUploadActivationCutoffsDrained);
+    }
     KeReleaseSpinLock(&SafeUploadActivationCutoffLock, irql);
-    return STATUS_SUCCESS;
+    return status;
 }
 
-VOID SafeUploadPolicyActivationCutoffEnd(VOID)
+__declspec(noinline) static VOID SafeUploadPolicyEndActivationCutoff(VOID)
 {
     KIRQL irql;
     LONG remaining;
-    PAGED_CODE();
+
     KeAcquireSpinLock(&SafeUploadActivationCutoffLock, &irql);
     remaining = InterlockedDecrement(&SafeUploadActivationCutoffsActive);
     if (remaining <= 0) {
@@ -318,21 +337,68 @@ VOID SafeUploadPolicyActivationCutoffEnd(VOID)
     KeReleaseSpinLock(&SafeUploadActivationCutoffLock, irql);
 }
 
+__declspec(noinline) static PSAFEUPLOAD_ADMISSION_EPOCH SafeUploadPolicyDetachCurrentEpoch(VOID)
+{
+    PSAFEUPLOAD_ADMISSION_EPOCH epoch;
+    KIRQL irql;
+
+    KeAcquireSpinLock(&SafeUploadEpochLock, &irql);
+    epoch = SafeUploadCurrentEpoch;
+    SafeUploadCurrentEpoch = NULL;
+    if (epoch != NULL) {
+        InterlockedExchange(&epoch->Accepting, 0);
+        if (InterlockedCompareExchange(&epoch->ActiveCallbacks, 0, 0) == 0)
+            KeSetEvent(&epoch->Drained, IO_NO_INCREMENT, FALSE);
+    }
+    KeReleaseSpinLock(&SafeUploadEpochLock, irql);
+    return epoch;
+}
+
+static NTSTATUS SafeUploadPolicyActivationCutoffsPause(VOID)
+{
+    LARGE_INTEGER timeout;
+    NTSTATUS status;
+
+    PAGED_CODE();
+    SafeUploadPolicySetActivationCutoffsPaused(TRUE);
+
+    timeout.QuadPart = -SAFEUPLOAD_POLICY_DRAIN_TIMEOUT_100NS;
+    status = KeWaitForSingleObject(&SafeUploadActivationCutoffsDrained,
+        Executive, KernelMode, FALSE, &timeout);
+    return status == STATUS_SUCCESS ? STATUS_SUCCESS : STATUS_IO_TIMEOUT;
+}
+
+static VOID SafeUploadPolicyActivationCutoffsResume(VOID)
+{
+    PAGED_CODE();
+    SafeUploadPolicySetActivationCutoffsPaused(FALSE);
+    SafeUploadStageWritersQueueRecheck();
+}
+
+NTSTATUS SafeUploadPolicyActivationCutoffBegin(VOID)
+{
+    PAGED_CODE();
+    return SafeUploadPolicyTryBeginActivationCutoff();
+}
+
+VOID SafeUploadPolicyActivationCutoffEnd(VOID)
+{
+    PAGED_CODE();
+    SafeUploadPolicyEndActivationCutoff();
+}
+
 VOID SafeUploadPolicyAdmissionForceNextTimeout(VOID)
 {
     InterlockedExchange(&SafeUploadForceNextEpochTimeout, 1);
 }
 
-NTSTATUS SafeUploadPolicyAdmissionEpochStatus(_Out_ PSAFEUPLOAD_ADMISSION_EPOCH_STATUS Status)
+__declspec(noinline) static VOID SafeUploadPolicyFillEpochStatus(_In_ BOOLEAN Pending,
+    _Out_ PSAFEUPLOAD_ADMISSION_EPOCH_STATUS Status)
 {
     PSAFEUPLOAD_ADMISSION_EPOCH epoch;
     KIRQL irql;
-    BOOLEAN pending;
     RtlZeroMemory(Status, sizeof(*Status));
     Status->StructSize = sizeof(*Status);
-    FltAcquirePushLockShared(&SafeUploadPolicyLock);
-    pending = SafeUploadPendingPolicy != NULL;
-    FltReleasePushLock(&SafeUploadPolicyLock);
     KeAcquireSpinLock(&SafeUploadEpochLock, &irql);
     epoch = SafeUploadCurrentEpoch;
     if (epoch != NULL) {
@@ -341,13 +407,24 @@ NTSTATUS SafeUploadPolicyAdmissionEpochStatus(_Out_ PSAFEUPLOAD_ADMISSION_EPOCH_
             InterlockedCompareExchange(&epoch->ActiveCallbacks, 0, 0));
     }
     Status->PolicyGeneration = (UINT32)InterlockedCompareExchange(&SafeUploadPolicyGeneration, 0, 0);
-    if (pending) Status->Flags |= SAFEUPLOAD_ADMISSION_EPOCH_FLAG_PENDING;
+    if (Pending) Status->Flags |= SAFEUPLOAD_ADMISSION_EPOCH_FLAG_PENDING;
     if (InterlockedCompareExchange(&SafeUploadPolicyFailedClosed, 0, 0) != 0)
         Status->Flags |= SAFEUPLOAD_ADMISSION_EPOCH_FLAG_FAILED_CLOSED;
     if (InterlockedCompareExchange(&SafeUploadPolicyFinalizing, 0, 0) != 0)
         Status->Flags |= SAFEUPLOAD_ADMISSION_EPOCH_FLAG_FINALIZING;
     Status->ChangeSequence = (UINT64)(UINT32)InterlockedCompareExchange(&SafeUploadEpochGeneration, 0, 0);
     KeReleaseSpinLock(&SafeUploadEpochLock, irql);
+}
+
+NTSTATUS SafeUploadPolicyAdmissionEpochStatus(_Out_ PSAFEUPLOAD_ADMISSION_EPOCH_STATUS Status)
+{
+    SAFEUPLOAD_ADMISSION_EPOCH_STATUS snapshot;
+    BOOLEAN pending;
+    FltAcquirePushLockShared(&SafeUploadPolicyLock);
+    pending = SafeUploadPendingPolicy != NULL;
+    FltReleasePushLock(&SafeUploadPolicyLock);
+    SafeUploadPolicyFillEpochStatus(pending, &snapshot);
+    RtlCopyMemory(Status, &snapshot, sizeof(snapshot));
     return STATUS_SUCCESS;
 }
 
@@ -568,7 +645,6 @@ Routine Description:
     const SAFEUPLOAD_POLICY *pending;
     PSAFEUPLOAD_ADMISSION_EPOCH epoch;
     PLIST_ENTRY link;
-    KIRQL irql;
 #endif
 
     PAGED_CODE();
@@ -585,15 +661,7 @@ Routine Description:
     FltReleasePushLock( &SafeUploadPolicyLock );
 
 #if SAFEUPLOAD_STAGING_PROTOTYPE
-    KeAcquireSpinLock(&SafeUploadEpochLock, &irql);
-    epoch = SafeUploadCurrentEpoch;
-    SafeUploadCurrentEpoch = NULL;
-    if (epoch != NULL) {
-        InterlockedExchange(&epoch->Accepting, 0);
-        if (InterlockedCompareExchange(&epoch->ActiveCallbacks, 0, 0) == 0)
-            KeSetEvent(&epoch->Drained, IO_NO_INCREMENT, FALSE);
-    }
-    KeReleaseSpinLock(&SafeUploadEpochLock, irql);
+    epoch = SafeUploadPolicyDetachCurrentEpoch();
     if (epoch != NULL) {
         NT_ASSERT(InterlockedCompareExchange(&epoch->ActiveCallbacks, 0, 0) == 0);
         SafeUploadEpochDereference(epoch);

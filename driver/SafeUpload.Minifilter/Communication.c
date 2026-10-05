@@ -1032,43 +1032,45 @@ Return Value:
         }
 
         if (command == SAFEUPLOAD_CONTROL_ADMISSION_CANARY_HOLD) {
-            SAFEUPLOAD_ADMISSION_CANARY_HOLD_REQUEST request;
+            PSAFEUPLOAD_ADMISSION_CANARY_HOLD_REQUEST request =
+                (PSAFEUPLOAD_ADMISSION_CANARY_HOLD_REQUEST)policy;
             PSAFEUPLOAD_ADMISSION_CANARY_HOLD_REPLY reply;
             UNICODE_STRING volumeName;
             ULONG index;
 
-            if (InputBufferLength != sizeof(request) || OutputBuffer == NULL ||
+            if (InputBufferLength != sizeof(*request) || OutputBuffer == NULL ||
                 OutputBufferLength != sizeof(*reply)) {
                 status = STATUS_INVALID_BUFFER_SIZE;
                 leave;
             }
-            RtlCopyMemory(&request, InputBuffer, sizeof(request));
-            if (request.Control.Version != SAFEUPLOAD_PROTOCOL_VERSION ||
-                request.Control.StructSize != sizeof(request) ||
-                request.Control.Command != command || request.Control.Reserved != 0 ||
-                request.Reserved != 0 || request.VolumeNameChars == 0 ||
-                request.VolumeNameChars >= SAFEUPLOAD_CANARY_VOLUME_CHARS ||
-                request.VolumeName[request.VolumeNameChars] != UNICODE_NULL ||
-                request.HoldMilliseconds == 0 ||
-                request.HoldMilliseconds > SAFEUPLOAD_CANARY_MAX_HOLD_MS) {
+            /* Reuse the existing pool scratch buffer instead of placing this fixed request on the stack. */
+            RtlCopyMemory(request, InputBuffer, sizeof(*request));
+            if (request->Control.Version != SAFEUPLOAD_PROTOCOL_VERSION ||
+                request->Control.StructSize != sizeof(*request) ||
+                request->Control.Command != command || request->Control.Reserved != 0 ||
+                request->Reserved != 0 || request->VolumeNameChars == 0 ||
+                request->VolumeNameChars >= SAFEUPLOAD_CANARY_VOLUME_CHARS ||
+                request->VolumeName[request->VolumeNameChars] != UNICODE_NULL ||
+                request->HoldMilliseconds == 0 ||
+                request->HoldMilliseconds > SAFEUPLOAD_CANARY_MAX_HOLD_MS) {
                 status = STATUS_INVALID_PARAMETER;
                 leave;
             }
-            for (index = 0; index < request.VolumeNameChars; ++index) {
-                if (request.VolumeName[index] == UNICODE_NULL) {
+            for (index = 0; index < request->VolumeNameChars; ++index) {
+                if (request->VolumeName[index] == UNICODE_NULL) {
                     status = STATUS_INVALID_PARAMETER;
                     leave;
                 }
             }
-            for (index = request.VolumeNameChars + 1; index < SAFEUPLOAD_CANARY_VOLUME_CHARS; ++index) {
-                if (request.VolumeName[index] != UNICODE_NULL) {
+            for (index = request->VolumeNameChars + 1; index < SAFEUPLOAD_CANARY_VOLUME_CHARS; ++index) {
+                if (request->VolumeName[index] != UNICODE_NULL) {
                     status = STATUS_INVALID_PARAMETER;
                     leave;
                 }
             }
-            volumeName.Buffer = request.VolumeName;
-            volumeName.Length = (USHORT)(request.VolumeNameChars * sizeof(WCHAR));
-            volumeName.MaximumLength = sizeof(request.VolumeName);
+            volumeName.Buffer = request->VolumeName;
+            volumeName.Length = (USHORT)(request->VolumeNameChars * sizeof(WCHAR));
+            volumeName.MaximumLength = sizeof(request->VolumeName);
 #pragma warning( suppress: 6001 )
             ProbeForWrite(OutputBuffer, sizeof(*reply), __alignof(SAFEUPLOAD_ADMISSION_CANARY_HOLD_REPLY));
             /* The 1 KB reply lives in pool, not on this already large dispatch frame. */
@@ -1079,7 +1081,7 @@ Return Value:
             }
             try {
                 status = SafeUploadStageAdmissionCanaryHold(&volumeName,
-                    request.HoldMilliseconds, reply);
+                    request->HoldMilliseconds, reply);
                 if (NT_SUCCESS(status)) {
                     RtlCopyMemory(OutputBuffer, reply, sizeof(*reply));
                     *ReturnOutputBufferLength = sizeof(*reply);
