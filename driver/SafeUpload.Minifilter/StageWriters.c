@@ -4261,7 +4261,8 @@ __declspec(noinline) static BOOLEAN StageRegistryBeginAliasProbe(_In_ PSTAGE_REG
     return began;
 }
 
-_IRQL_requires_max_(APC_LEVEL)
+/* Resident; only the entry spin lock and interlocked updates, so it may run under the scope-cache spin lock. */
+_IRQL_requires_max_(DISPATCH_LEVEL)
 __declspec(noinline) static VOID StageRegistryResolveAliasProbe(_In_ PSTAGE_REGISTRY_ENTRY Entry,
     _In_ BOOLEAN ClassificationSucceeded, _In_ BOOLEAN UnionScoped, _Out_ PBOOLEAN Activated)
 {
