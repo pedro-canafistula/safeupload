@@ -1,0 +1,25 @@
+Driver-off observer coordinator root verification
+Date: 2026-10-05
+Scope: offline source and isolated Windows builder checks only; VM recovery pending.
+
+Invoke-StagedObserverCorpus.ps1 SHA256=86A099AD380A0F29563624712B613982E550EDB4373FD2886BAEBA202F8C90FA
+Invoke-StagedObserverCorpus.BuilderCheck.ps1 SHA256=915EC39EC0E04A987158E0DD26FB9144893DB3A2D4427BCE03B8E919A49BE4A1
+Invoke-StagedObserverCorpusQualification.py SHA256=4AFB3C2E48B7A66B2B305FEEE05CF613803A2895E914E3F411AC70A72E63340B
+Test-StagedInvariantObserverCorpus.ps1 SHA256=9A50B8C8A8A7AEDB352D34F5B846ED4F72A581430CC533123FCA9008A5686728
+Test-StagedInvariantObserverCorpus.BuilderCheck.ps1 SHA256=7C6983EB0D3D32B7A05A0D487C50A7FFB38A62908E1F10545C606B6E77AD8C75
+StagedInvariantObserver.psm1 SHA256=4411CC06C522D62B6078F52689C0D2C681401795D8CB50603E8FFBD5ED5AE46E
+Invoke-DebuggeeExperiment.sh SHA256=9C9037655CB1E8A0C8ACE0A1EFC5BE410EEA4C561976E33E10EACEC06607C9DF
+Get-StagedBaseline.ps1 SHA256=E009A6975525DA254567CA570607BC180DF05A85D47610CA0444F77476342884
+UnchangedFromHead=driver/scripts/StagedInvariantObserver.psm1
+UnchangedFromHead=driver/scripts/Invoke-DebuggeeExperiment.sh
+UnchangedFromHead=driver/scripts/Get-StagedBaseline.ps1
+UnchangedFromHead=driver/scripts/Invoke-StagedInvariantQualification.py
+
+Root read the actual unfiltered builder stdout/stderr logs, not only process exit codes.
+Coordinator attempt-a: FAILED with PS5.1 typed List[object] object-array conversion; finally report also masked the first archive conversion. Both real helper/corpus-summary conversions were changed to ToArray, and the builder fixture was corrected.
+Coordinator attempt-b: old guarded source archive and child controls PASS. Attempt-c: final reviewed exact source, actual exclusive CreateDirectoryW declaration, duplicate ERROR_ALREADY_EXISTS=183, exits0/1/2+streams, 9-entry ZIP SHA/CRC readback, GUID TEMP cleanup all PASS.
+Corpus attempt-c: FAILED because the tracked BuilderCheck pin still named the earlier corpus. No corpus body executed. Tracked pin corrected. Attempt-d: exact corrected corpus parsed with zero errors, fixture C# compiled, nine literal reader controls PASS.
+Host final controls: production inspect_archive accepted complete synthetic PASS, early INCONCLUSIVE, nonmonotonic physical run order with VCN gap; seventeen malformed/contradictory synthetic archives rejected.
+Fresh independent Luna review hashes match final coordinator and host bytes. Root checked the review against source and retained evidence.
+Preserve-on-timeout decision: uncertain native descendants make forced termination a recovery stop. No fixture/evidence deletion or archive read racing a writer; host collection requires a unique post-close completion sentinel and verifies ZIP SHA. This is harness lifecycle policy, not driver admission/cutover/lost-tracking policy.
+No debuggee run; ObserverCorpus not VM-qualified; Phase4Suite=NOT_QUALIFIED; S01 and review-4 cases still pending. Four exact-source WDK builds for this source increment remain required after source commit.

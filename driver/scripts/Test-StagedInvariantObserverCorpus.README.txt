@@ -67,14 +67,73 @@ reparse child or ancestor is found or the owned path check fails. Evidence
 is never deleted by this script. Cleanup PASS/FAIL and disposal statuses are
 recorded; Status=ERROR or NOT_OPENED is not disposal success.
 
-The existing checkpoint wrapper must still establish independent
+The existing generic checkpoint wrapper must still establish independent
 BaselineClean=True and a successful volume-cache write before creating the
 checkpoint, pin source/module/script hashes, preserve its disk-only overlay
-chain, collect unfiltered stdout/stderr and exact case evidence, and run the
-restoration reboot plus a separate independent baseline afterward. A failed
-restoration prevents the next VM run. The wrapper adapter for this corpus is
-not yet written. Running this script directly cannot establish clean
-restoration or an authoritative Phase 4 case export.
+chain, collect unfiltered stdout/stderr and exact case evidence, and run a
+separate independent baseline restoration check afterward. This driver-off
+corpus does not change driver or policy state and needs no extra mandatory
+reboot. A failed restoration prevents the next VM run. The new host/guest
+adapter freezes inputs and archives evidence through that generic wrapper;
+running this script directly cannot establish clean restoration or an
+authoritative Phase 4 case export.
+
+Host adapter usage (from repository root):
+
+  python3 driver/scripts/Invoke-StagedObserverCorpusQualification.py --self-test
+  python3 driver/scripts/Invoke-StagedObserverCorpusQualification.py wp2 --prepare-only
+  python3 driver/scripts/Invoke-StagedObserverCorpusQualification.py wp2 --run-guid <printed-RunGuid>
+
+--self-test runs local synthetic/NotVM ZIP controls through the production
+host archive validator. It accepts a complete synthetic PASS archive, an early
+INCONCLUSIVE archive without PASS-only artifacts, and valid nonmonotonic
+physical run order with a logical VCN gap. Its 17 rejection controls cover:
+missing raw bytes, disposal, mutation sample, or a referenced artifact hash
+(4); missing/error/unstable/digest-mismatched readers and raw/API cross-check
+errors (5); unchanged target bytes, reused replacement FileId, or wrong held
+old bytes (3); classification facts without the actual one-byte image (1);
+and fake MFT/index touched counts or overlapping duplicate MFT/index maps
+(4). These are synthetic evidence checks, neither a PowerShell builder check
+nor VM qualification.
+
+Prepare-only writes frozen coordinator, corpus, and observer bytes plus a
+provenance manifest under driver/evidence/<current-date>/observer-corpus-
+<tag>-<RunGuid-prefix>-inputs; it does not contact the guest or builder. Run
+must use that exact GUID on the same calendar date. It checks frozen input,
+generic wrapper, and baseline hashes before the checkpoint. The wrapper's
+EXTRA_FILES and PRE_RUN_PS stage uniquely hash-named inputs only when absent.
+The guest starts a fresh PowerShell 5.1 child, retains raw stdout/stderr and
+the exact corpus summary, and stores all case evidence in a verified ZIP.
+It removes only its SafeUpload-corpus-fixtures-<RunGuid> and
+SafeUpload-corpus-evidence-<RunGuid> directories and staged inputs after
+ZIP verification. The ZIP remains on the guest for collection and is copied
+to the host evidence directory. The host rejects unsafe ZIP paths, duplicate
+entries, CRC or per-entry hash failures, omitted cases, count/exit mismatches,
+or an unclean independent restoration. Its verdict is ObserverCorpus only;
+Phase4Suite remains NOT_QUALIFIED even when all ten corpus cases PASS.
+For PASS it also requires each case's OK disposal and baseline identity,
+geometry/build, raw manifest with actual raw and logical bytes and matching
+references, required mutation samples, one-byte/4096-byte classification,
+MFT/index fragmentation controls, and recorded fail-closed decoder inputs
+and exception chains. Early INCONCLUSIVE evidence is retained without
+inventing missing PASS artifacts.
+
+A guest child timeout or forced kill leaves the GUID-owned fixture and
+evidence roots intact, emits RecoveryRequired, and does not archive or clean
+those roots while descendant writers could remain. The host also treats a
+generic wrapper timeout as restoration pending. It collects a guest ZIP on
+that path, or after another gate error, only if the gate has one exact
+completed coordinator marker with Cleanup=True and a closed ZIP SHA-256;
+the retrieved ZIP must match that hash. A missing marker means no ZIP copy
+from possibly in-flight evidence. Collection never changes the
+NOT_QUALIFIED verdict or substitutes for independent restoration.
+
+The adapter uses a nonblocking host flock at /tmp/safeupload-win10-debug.lock.
+Other VM adapters do not currently acquire that lock, so an operator must
+still serialize them with this run. A failed generic wrapper after checkpoint
+may require the wrapper's documented offline recovery step; this adapter
+never repoints a VM disk. Windows PowerShell 5.1 guest execution and the
+actual NTFS representations remain unvalidated until a checkpointed VM run.
 
 Builder-side validation can check script syntax on Windows PowerShell 5.1,
 module import/hash handling and intentional negative decoder calls. It cannot

@@ -1,0 +1,76 @@
+Driver-off observer coordinator final adversarial review
+Date: 2026-10-05
+Scope: uncommitted coordinator increment; source review plus local host-only
+synthetic self-test. No VM, network, builder, source edit, or commit was run.
+
+Reviewed exact source hashes
+----------------------------
+driver/scripts/Invoke-StagedObserverCorpus.ps1
+  SHA-256 86A099AD380A0F29563624712B613982E550EDB4373FD2886BAEBA202F8C90FA
+driver/scripts/Invoke-StagedObserverCorpusQualification.py
+  SHA-256 4AFB3C2E48B7A66B2B305FEEE05CF613803A2895E914E3F411AC70A72E63340B
+
+Disposition
+-----------
+No remaining source-level false-PASS or unsafe-cleanup blocker found in the
+reviewed increment. The earlier host-validator findings are addressed: PASS
+now checks reader evidence and stable identities/digests, mutation samples
+against expected bytes and transitions, the one-byte/4-KiB captures against
+their exact expected contents and representation, and MFT/index touched-run
+claims against captured run maps and raw container offsets. The latest guard
+rejects unordered/overlapping logical runs and physically overlapping
+allocated runs while allowing nonmonotonic physical placement and logical VCN
+gaps.
+
+The prior recovery-path collision finding is closed. The coordinator rejects
+existing RunGuid artifacts before creation, creates fixture/evidence roots
+exclusively, records which roots it created, and only writes a catch-path error
+archive after the child stopped, recovery is not required, and the owned
+evidence/archive paths pass reparse checks (Invoke-StagedObserverCorpus.ps1:
+148-171, 237-260). Existing collision paths are not mutated by that catch path.
+
+The coordinator's one-hour timeout and forced-termination paths do not archive
+or delete the fixture/evidence trees. They retain those trees and report
+recovery required; deletion only follows the non-timeout path after the child
+has exited and the archive is verified (Invoke-StagedObserverCorpus.ps1:
+185-206, 222-229, 247-265). The child is killed as a PowerShell process rather
+than through a Job Object. A native descendant could therefore outlive it, but
+the timeout branch preserves its inputs/evidence and emits no completion
+sentinel, so this remains a recovery/availability limitation rather than a
+false PASS or destructive cleanup path. No new Job Object is required to
+recover this known failure mode under the stated preserve-on-uncertain-stop
+decision.
+
+The host's timeout and fallback collection paths require a unique completion
+sentinel with Cleanup=True and a matching archive SHA before SCP. If the
+sentinel is absent, they skip the potentially in-flight ZIP. Host timeout
+always leaves BaselineClean=False and recovery required; collecting a closed
+ZIP never qualifies restoration (Qualification.py:1012-1082). The ordinary
+path still separately requires the wrapper's baseline and process-creation
+audit restoration evidence before exporting ObserverCorpus PASS.
+
+The new MFT/index run-map checks reject repeated or overlapping extents that
+could otherwise make one raw container count as touching two claimed runs.
+Synthetic controls exercise duplicate MFT and index maps and false touched-run
+offsets; another confirms nonmonotonic physical placement and VCN gaps remain
+accepted, avoiding an unnecessary placement-order restriction.
+
+Verification
+------------
+Ran only:
+
+  python3 driver/scripts/Invoke-StagedObserverCorpusQualification.py --self-test
+
+Result: PASS, Synthetic=True, NotVmQualification=True. The synthetic PASS and
+early INCONCLUSIVE controls were accepted; all 17 rejection controls were
+rejected, including absent/error readers, reader digest/identity mismatch,
+unchanged mutation, replacement FileId/retained-byte contradictions, missing
+raw/disposal/sample evidence, classification without the one-byte capture,
+false MFT/index touched offsets, duplicate/overlapping MFT/index maps, and a
+bad referenced hash. The valid nonmonotonic-physical/VCN-gap control passed.
+
+Latest retained Windows builder logs report coordinator attempt-c and corpus
+attempt-d PASS. Those are source/builder checks only. No guest/VM run was
+performed or qualified. ObserverCorpus remains offline-only; Phase4Suite stays
+NOT_QUALIFIED. The existing .ToArray() fixes address the observed PowerShell
+5.1 generic-list binder failures.

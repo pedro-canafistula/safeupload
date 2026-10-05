@@ -1,0 +1,16 @@
+Exact source hash mismatch; 
+corpus=9A50B8C8A8A7AEDB352D34F5B846ED4F72A581430CC533123FCA9008A5686728 
+observer=4411CC06C522D62B6078F52689C0D2C681401795D8CB50603E8FFBD5ED5AE46E
+At C:\Users\vika\Documents\observer-corpus-static-20261005-c\Test-StagedInvariantObserverCorpus.Bui
+lderCheck.ps1:25 char:5
++     throw ('Exact source hash mismatch; corpus='+$corpusHash+' observ ...
++     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : OperationStopped: (Exact source ha...E8FFBD5ED5AE46E:String) [], Run 
+   timeException
+    + FullyQualifiedErrorId : Exact source hash mismatch; corpus=9A50B8C8A8A7AEDB352D34F5B846ED4F7 
+   2A581430CC533123FCA9008A5686728 observer=4411CC06C522D62B6078F52689C0D2C681401795D8CB50603E8FF  
+  BD5ED5AE46E
+ 
+BuilderCheckExit=1
+#< CLIXML
+<Objs Version="1.1.0.1" xmlns="http://schemas.microsoft.com/powershell/2004/04"><Obj S="progress" RefId="0"><TN RefId="0"><T>System.Management.Automation.PSCustomObject</T><T>System.Object</T></TN><MS><I64 N="SourceId">1</I64><PR N="Record"><AV>Preparing modules for first use.</AV><AI>0</AI><Nil /><PI>-1</PI><PC>-1</PC><T>Completed</T><SR>-1</SR><SD> </SD></PR></MS></Obj></Objs>

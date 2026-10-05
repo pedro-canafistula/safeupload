@@ -543,7 +543,7 @@ try {
 } catch {Record 'OwnedFixtureCleanup' 'FAIL' $_.Exception.ToString() @{Fixture=$script:FixtureDir}}
 
 $counts=@{PASS=@($script:Results | Where-Object {$_.Status -eq 'PASS'}).Count;FAIL=@($script:Results | Where-Object {$_.Status -eq 'FAIL'}).Count;INCONCLUSIVE=@($script:Results | Where-Object {$_.Status -eq 'INCONCLUSIVE'}).Count}
-Save-Json (Join-Path $script:EvidenceDir 'summary.json') ([pscustomobject]@{Schema='InvariantObserverCorpus/1';RunGuid=$RunGuid;Counts=$counts;Results=@($script:Results);
+Save-Json (Join-Path $script:EvidenceDir 'summary.json') ([pscustomobject]@{Schema='InvariantObserverCorpus/1';RunGuid=$RunGuid;Counts=$counts;Results=$script:Results.ToArray();
     AuthoritativeCaseExport=$false;Phase4Suite='NOT_QUALIFIED';EvidenceDir=$script:EvidenceDir;FixturesRemoved=(-not(Test-Path -LiteralPath $script:FixtureDir))})
 Write-Output ('Corpus_Summary=pass:'+ $counts.PASS +';fail:'+ $counts.FAIL +';inconclusive:'+ $counts.INCONCLUSIVE +';Phase4Suite:NOT_QUALIFIED')
 if($counts.FAIL -gt 0){exit 1}

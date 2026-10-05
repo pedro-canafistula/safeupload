@@ -1,0 +1,113 @@
+Observer corpus adversarial review
+Date: 2026-10-05
+Reviewed commit: fb704ed2
+Scope: committed Test-StagedInvariantObserverCorpus.ps1, its committed README
+and BuilderCheck, plus the StagedInvariantObserver schema/implementation at the
+same commit. The working-tree README and uncommitted coordinator files were not
+reviewed. Read-only review; no VM, build, builder, or source edits.
+
+Disposition
+-----------
+I found no path in the committed corpus where a case can report PASS while its
+required canonical raw logical bytes, independent fixture bytes, or required
+reader pair is missing or mismatched. The result deliberately means that this
+single driver-off stimulus completed; both script and README explicitly prevent
+it from being treated as Phase 4 qualification. Temporal write-then-erase proof,
+clean restoration, and protection enforcement remain outside this corpus.
+
+The concrete ownership caveat is that RunGuid collision checking is not atomic.
+Lines 259-264 test both run directories and then create them with
+Directory.CreateDirectory. Two concurrent invocations with the same otherwise
+valid GUID can both pass the check and share the fixture/evidence directories;
+one can then delete the other's fixture during cleanup (532-543). The current
+interface relies on the caller providing a unique GUID and serializing runs.
+Do not treat the existence check as an exclusive run reservation.
+
+PASS/FAIL/INCONCLUSIVE assessment
+---------------------------------
+* `Check-Image` (154-161) requires canonical logical length and digest to match
+  independently generated expected bytes, reads the retained LogicalArtifact,
+  checks its digest against its own manifest field, and compares every artifact
+  byte to the expected byte array. Raw/API cross-check errors are INCONCLUSIVE.
+  Baseline additionally calls the observer's independent expected-image check
+  (131-140; observer baseline schema), then checks readers. This makes the
+  corpus PASS assertion depend on actual raw-decoded content rather than just a
+  pathname or API view.
+* `Assert-Readers` / `Assert-ReaderResult` (102-130) require one buffered and one
+  unbuffered reader for each present Current image, and one held reader for each
+  Retained image. Each must have successful status/results, stable Before/After
+  identity, matching full FileId/reference/volume serial to the raw image, and
+  matching logical length/digest. Missing/error/unstable evidence is
+  INCONCLUSIVE; a stable reader/raw byte disagreement is FAIL. The observer
+  returns capture errors separately from reader errors, and this harness checks
+  both: a successful Sample status alone cannot hide reader failure.
+* `Changed-Raw` (162-165) only compares ordered container digest lists, so it is
+  weak as a stand-alone location proof. In all three extent mutation cases it
+  is conjoined with `Check-Image` against a full independently generated image
+  that differs at the selected offset; therefore unrelated metadata/container
+  changes alone cannot produce PASS. The observer retains raw container
+  artifacts for every sample.
+* Each raw extent case selects from captured, non-hole DATA runs and mutates the
+  first byte at the selected run's VCN-derived offset. SparseMapping,
+  CompressedMapping, and FragmentedExtents each sample `First`, `Middle`, and
+  `Last`, check the complete raw-decoded expected image after each change, and
+  retain those sample artifacts (315-405). Compressed and fragmented cases
+  filter allocated runs to the file's EOF. Fewer than three actual extents or
+  unsupported representation yields INCONCLUSIVE. Thus these are observed
+  first/middle/last bytes, not a claim that the volume layout was forced.
+* DirectoryIndexGrowth records the pre-change and post-change parent index
+  artifacts, checks the new filename plus hidden attribute in the decoded
+  directory entries, and requires at least two allocation runs actually touched
+  before PASS (437-466). MftFragmentation similarly checks two MFT runs were
+  actually touched by captured MFT records (469-493). These availability gates
+  are correctly INCONCLUSIVE, not enforcement FAIL.
+* ReplacementEofSlack deterministically seeds different old/new file contents,
+  sets FileAllocationInfo on the old file before baseline, requires observed
+  allocation beyond EOF, and checks captured raw DATA bytes are zero from EOF
+  through allocation before replacement (409-434, 200-210). It uses
+  MoveFileEx(REPLACE_EXISTING|WRITE_THROUGH), requires a changed FileId, checks
+  the held old identity and bytes, then grows the new EOF and verifies the full
+  new logical image. When preallocation is normalized away or raw slack is
+  unavailable/nonzero, the result is INCONCLUSIVE. This is the known physical
+  slack availability gap, not evidence of an enforcement failure.
+* Malformed decoder copies are sourced from a captured real MFT record, then
+  written only as evidence files; the live volume is not modified. USA trailer
+  corruption, truncated record, incomplete run mapping, and short-read result
+  are each passed into the canonical decoder/validator (496-529). Acceptance is
+  FAIL; an unrecognized exception is INCONCLUSIVE. Decoder rejection is tested
+  against `ObservationException`/`OverflowException` including inner exceptions.
+* `Invoke-Case` (61-79) defaults PASS only after the body returns without
+  throwing, maps explicit `FAIL:` assertions to FAIL and other exceptions to
+  INCONCLUSIVE, and downgrades PASS if disposal evidence is not OK. The summary
+  exit code is 1 for any FAIL, 2 for any INCONCLUSIVE, and 0 only when all
+  invoked cases and owned-fixture cleanup pass. Evidence JSON uses CreateNew;
+  status.ndjson uses append mode/WriteThrough. Observer binary artifacts and
+  manifest are retained; fixture cleanup does not remove EvidenceRoot.
+
+BuilderCheck assessment
+-----------------------
+The committed hash pins match the exact committed files:
+corpus D5AD73C40B57DB02087BDEA4F0B2FE5B693C191FE2129751875AA3C993B74784 and
+observer 4411CC06C522D62B6078F52689C0D2C681401795D8CB50603E8FFBD5ED5AE46E.
+BuilderCheck parses the actual corpus AST, imports only the canonical observer
+module, extracts the actual reader assertion functions, and tests nine
+synthetic outcomes. It compiles but does not call the fixture-only P/Invokes.
+Its evidence is useful for reader-pair/result classification and source
+identity, not VM/runtime behavior; the README states that boundary accurately.
+The synthetic tests do not exercise `Check-Image`, disposal, append-only
+records, or cleanup, so BuilderCheck PASS must remain a source assertion check.
+
+Other limits / runtime preconditions
+------------------------------------
+The script requires an exact computer name, UUID, Windows build and update,
+Windows PowerShell 5.1, elevation, unloaded/stopped driver, fixed local NTFS,
+existing non-reparse roots, and a pinned observer hash (212-238). These are
+explicit preconditions, not hidden pass paths. The authored cases create
+fixture contents before opening the observer and compare their independently
+generated bytes at baseline. Fragmentation, compression representation, and
+preallocated slack remain volume-dependent as documented. The README also
+correctly says there is no real lower-admission/completion ledger, no temporal
+absence proof between samples, and no restoration adapter.
+
+Line references above refer to the committed `fb704ed2` script. No runtime
+results are inferred from source inspection.

@@ -12,7 +12,7 @@ $ErrorActionPreference='Stop'
 Set-StrictMode -Version 2.0
 if($PSVersionTable.PSVersion.Major -ne 5 -or $PSVersionTable.PSVersion.Minor -ne 1){throw 'Windows PowerShell 5.1 required'}
 
-$expectedCorpus='D5AD73C40B57DB02087BDEA4F0B2FE5B693C191FE2129751875AA3C993B74784'
+$expectedCorpus='9A50B8C8A8A7AEDB352D34F5B846ED4F72A581430CC533123FCA9008A5686728'
 $expectedObserver='4411CC06C522D62B6078F52689C0D2C681401795D8CB50603E8FFBD5ED5AE46E'
 $corpusBytes=[IO.File]::ReadAllBytes((Resolve-Path -LiteralPath $Corpus).ProviderPath)
 $observerPath=(Resolve-Path -LiteralPath $Observer).ProviderPath

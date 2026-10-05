@@ -1,0 +1,17 @@
+CoordinatorSha256=BAEB3361BF7CC601D5037C2B9B653C425706D7290131E8A4990ECDDBBA0D1C7C
+CoordinatorParseErrors=0
+ActualHelper=Write-NewJson;Line=49
+ActualHelper=Hash-Stream;Line=78
+ActualHelper=New-VerifiedArchive;Line=83
+ChildExit0=PASS;StdoutAndStderrPreserved=True
+ChildExit1=PASS;StdoutAndStderrPreserved=True
+ChildExit2=PASS;StdoutAndStderrPreserved=True
+ActualArchiveRoundTrip=PASS;Entries=9;ArchiveSha256=4ABB96491F1486E169AED219585C3D474DF5DC3E13B1DC0C11228FF7C547ADBB;CentralDirectoryCrcChecked=True
+BuilderCheckReport=C:\Users\vika\Documents\observer-coordinator-static-20261005-b\observer-coordinator-builder-check-4ceb74712f154105acacb4b3efbe7a91.json
+OwnedTemporaryTreeCleaned=True
+BuilderCoordinatorCheck=PASS;NotVmQualification=True
+BuilderCheckExit=0
+{"Schema":"ObserverCoordinatorBuilderCheck/1","RunGuid":"4ceb74712f154105acacb4b3efbe7a91","CoordinatorSha256":"BAEB3361BF7CC601D5037C2B9B653C425706D7290131E8A4990ECDDBBA0D1C7C","Passed":true,"NotVmQualification":true,"ChildRuns":[{"ExitExpected":0,"ExitActual":0,"Stdout":"stdout-0","Stderr":"stderr-0","HandleNonzero":true},{"ExitExpected":1,"ExitActual":1,"Stdout":"stdout-1","Stderr":"stderr-1","HandleNonzero":true},{"ExitExpected":2,"ExitActual":2,"Stdout":"stdout-2","Stderr":"stderr-2","HandleNonzero":true}],"ArchiveSha256":"4ABB96491F1486E169AED219585C3D474DF5DC3E13B1DC0C11228FF7C547ADBB","CentralDirectoryCrcChecked":true,"TempPath":"C:\\Users\\vika\\AppData\\Local\\Temp\\SafeUpload-coordinator-builder-check-4ceb74712f154105acacb4b3efbe7a91","TempCleanupPlanned":true,"Utc":"2026-10-05T12:32:53.3315660Z"}
+
+#< CLIXML
+<Objs Version="1.1.0.1" xmlns="http://schemas.microsoft.com/powershell/2004/04"><Obj S="progress" RefId="0"><TN RefId="0"><T>System.Management.Automation.PSCustomObject</T><T>System.Object</T></TN><MS><I64 N="SourceId">1</I64><PR N="Record"><AV>Preparing modules for first use.</AV><AI>0</AI><Nil /><PI>-1</PI><PC>-1</PC><T>Completed</T><SR>-1</SR><SD> </SD></PR></MS></Obj></Objs>

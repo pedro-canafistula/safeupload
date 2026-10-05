@@ -464,3 +464,23 @@ falsify the Phase 3 cutoff mechanism; the harness must test it, never reinterpre
   `59D78808F5AB37ECC4668DCB921715BE65E7FC00B87F469B269DBCBBA2749BE6`.
   Neither b23 nor b24 has a qualifying VM run; owner recovery and an independent clean baseline still
   precede S01. The new driver-off coordinator remains under offline review and is not VM-qualified.
+- **2026-10-05 WP2 coordinator offline increment (VM gates unchanged):** the new host/guest adapter freezes
+  corpus/observer/coordinator bytes, runs through the existing disk-checkpoint wrapper, retains child streams
+  and a verified evidence ZIP, and requires independent baseline/audit restoration before exporting an
+  ObserverCorpus result. Phase4Suite always remains NOT_QUALIFIED. Root read the actual Windows PowerShell
+  5.1 logs: final coordinator parsing, exclusive directory creation/duplicate rejection, child exits 0/1/2,
+  ZIP SHA/CRC readback and owned TEMP cleanup passed; the corrected corpus passed nine reader controls.
+  Earlier failures are retained: a generic-list array conversion and a stale tracked validation hash pin.
+  The host's production validator passed seventeen synthetic rejection controls plus positive controls;
+  these are explicitly not VM evidence. It requires matching fresh/retained readers, actual target byte
+  transitions, classification captures and MFT/index physical run coverage, with overlapping maps rejected.
+  A fresh independent Luna review found no remaining source blocker; root checked its claims against source
+  and raw logs (`evidence/2026-10-05/observer-coordinator-final-review.txt`,
+  `evidence/2026-10-05/observer-coordinator-root-validation.txt`).
+  **Unattended harness decision:** on timeout or forced child termination, preserve fixture/evidence trees
+  and report recovery required because native descendants may remain live. Do not archive or delete them
+  to make the failed run finish. Host recovery collection requires an already-complete coordinator marker
+  and matching ZIP SHA; collection never establishes restoration. This changes no driver admission,
+  cutover or lost-tracking policy. Four exact-source builds for this source increment remain required.
+  Owner recovery of the failed b22s01a overlay and a clean independent baseline still precede the next S01;
+  no corpus, b23/b24, review-4 or full Phase 4 VM qualification is claimed here.
