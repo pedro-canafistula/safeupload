@@ -726,6 +726,10 @@ SafeUploadCurrentPolicyGeneration (
     VOID
     );
 
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+VOID SafeUploadPolicyReadLiveSnapshot(_Out_ PULONG Generation, _Out_ PULONG Flags);
+#endif
+
 BOOLEAN
 SafeUploadPolicyClassifiesAllSources (
     VOID

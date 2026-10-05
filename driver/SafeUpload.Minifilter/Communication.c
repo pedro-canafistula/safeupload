@@ -779,6 +779,34 @@ Return Value:
             leave;
         }
 
+        if (command == SAFEUPLOAD_CONTROL_PROMOTION_TRACE_READ_BATCH) {
+            SAFEUPLOAD_PROMOTION_TRACE_REQUEST request;
+            PSAFEUPLOAD_PROMOTION_TRACE_BATCH batch = (PSAFEUPLOAD_PROMOTION_TRACE_BATCH)policy;
+            if (InputBufferLength != sizeof(request)) {
+                status = STATUS_INVALID_BUFFER_SIZE;
+                leave;
+            }
+            if (OutputBuffer == NULL || OutputBufferLength != sizeof(*batch)) {
+                status = OutputBufferLength < sizeof(*batch) ? STATUS_BUFFER_TOO_SMALL : STATUS_INVALID_BUFFER_SIZE;
+                leave;
+            }
+            RtlCopyMemory(&request, InputBuffer, sizeof(request));
+            if (request.Control.Version != SAFEUPLOAD_PROTOCOL_VERSION ||
+                request.Control.StructSize != sizeof(request) ||
+                request.Control.Command != command || request.Control.Reserved != 0) {
+                status = STATUS_REVISION_MISMATCH;
+                leave;
+            }
+#pragma warning( suppress: 6001 )
+            ProbeForWrite(OutputBuffer, sizeof(*batch), __alignof(SAFEUPLOAD_PROMOTION_TRACE_BATCH));
+            status = SafeUploadStageWritersPromotionTraceReadBatch(&request, batch);
+            if (NT_SUCCESS(status)) {
+                RtlCopyMemory(OutputBuffer, batch, sizeof(*batch));
+                *ReturnOutputBufferLength = sizeof(*batch);
+            }
+            leave;
+        }
+
         if (command == SAFEUPLOAD_CONTROL_ADMISSION_PROBE ||
             command == SAFEUPLOAD_CONTROL_REGISTRY_ENTRY) {
             PSAFEUPLOAD_ADMISSION_PROBE_REQUEST request =

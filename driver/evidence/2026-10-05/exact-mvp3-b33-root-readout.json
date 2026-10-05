@@ -1,0 +1,174 @@
+{
+  "sourceCommit": "85f13beffbbe401f93cbe396aa6dd73c8ed1c25a",
+  "notVmQualification": true,
+  "builder": "192.168.122.210",
+  "product": {
+    "result": "PASS_BUILD_ONLY",
+    "label": "mvp3-b33",
+    "archive": {
+      "zipSha256": "92073A0D99F2CF27776F676B7359CE274A4B75065D719597DE6FF4113788C9AC",
+      "manifestSha256": "658A11E44281A6077509CD33AABEE9B7D3843610F3FCA65F3763E257574F562C",
+      "count": 26,
+      "allArchiveAndGitShowBytesMatch": true,
+      "files": {
+        "driver/SafeUpload.Inspector/SafeUpload.Inspector.vcxproj": "861D652A2C0E0B94E8C67A039AAB3232595DF2CBED5A9450CC2D96F8A3B059BF",
+        "driver/SafeUpload.Inspector/main.c": "44ACFB381E6F7D69167F560683C7E2C87322C2968DA418FADF4778DEF4DFBF26",
+        "driver/SafeUpload.Minifilter/BootPolicy.c": "47ED57EB10E339BC912D6774429820A0A4122E72C963FEF12E88DD05EDD1536C",
+        "driver/SafeUpload.Minifilter/Communication.c": "6C7AA7CB4A3323F2E186CB90E77DBF6A89D28F19C13AD3E1462511734EAF8F34",
+        "driver/SafeUpload.Minifilter/Context.c": "A27B70EE4F432D1E5FC2733F9313A0ADC4A7E5EC2C8F1935C7FF84F7A8603E5F",
+        "driver/SafeUpload.Minifilter/Filter.c": "65D92C9C178BF0FD7AD840A240FF95462D8694452F39EFECF80A942CC731C202",
+        "driver/SafeUpload.Minifilter/Filter.h": "D91AA9660BA79CA6D9B1D1E6E53494489A1F070C84A72CA238C55C7023456F0C",
+        "driver/SafeUpload.Minifilter/Override.c": "BABBF6AED51162156B3BEC6DB523B38BB1725C1885C9BB5D8E7BD7AD087C5B87",
+        "driver/SafeUpload.Minifilter/Policy.c": "C70A58262EB3735AEEDF2D7BE9C0075F6E28C916489C58AF69BB361839416538",
+        "driver/SafeUpload.Minifilter/Protocol.h": "C60EB66F5A30325DD280C2C3843DB63118B7289AF53168439E77718EA42C2AF1",
+        "driver/SafeUpload.Minifilter/SafeUpload.Minifilter.vcxproj": "047161CCF371CC6046AC80B69C8B7932B700A23A92B0F7A2A322F03923CCFE53",
+        "driver/SafeUpload.Minifilter/SafeUpload.inf": "B6F0400E7751F9D70CB03A3FFCD9C53C976BDCA155451E41E2BC779741486F1D",
+        "driver/SafeUpload.Minifilter/SafeUpload.rc": "7B29C6CD59A4FEE84A98F8CD63F4A4B9A1DAAB4CE00F69F78B6F8861F1355EEB",
+        "driver/SafeUpload.Minifilter/Stage.h": "EC692848290112C43E8BCE756EB4A2544B6DBE07FC41215FAABC34AB5C01EB85",
+        "driver/SafeUpload.Minifilter/StageAdmission.c": "090A08C83D9F8A4F82CD5E01F4DE7757DC586757BAC05B43027F1AAAA11F40AE",
+        "driver/SafeUpload.Minifilter/StageAlias.c": "B92DDECD3D0176D81CE3DC9C4191CDF7B730EFD403D3845AEA58B7DB91E8256E",
+        "driver/SafeUpload.Minifilter/StageDirectory.c": "2E7085BF0F28267169A78A6CFB4355E3DCC82BE3B794359EE960C0DD82276BF1",
+        "driver/SafeUpload.Minifilter/StageFence.c": "6BE18CB02FF75423B77AA6D9408D9A56D941A0589FA0C6DA66AB63FFB397983E",
+        "driver/SafeUpload.Minifilter/StageProtocol.c": "FA180B4190DB1E459B0ED29ACECE52CFB26873F3D120AC9340551312B3D3617D",
+        "driver/SafeUpload.Minifilter/StageSecurity.c": "51C3C8383CCF692D254A4112BB08F9323DF392D26A6A85F1CAF8BC6013EB926A",
+        "driver/SafeUpload.Minifilter/StageSecurity.h": "F384DF8F53313CEBF72A91A7FA070C4FF4159F536DE4250C4986020E32871D38",
+        "driver/SafeUpload.Minifilter/StageStream.c": "9018B37886396E9D744794D725AC9A525D2893C014788B127DC6BB81F2A7EFD5",
+        "driver/SafeUpload.Minifilter/StageWriters.c": "F16879B914C7B7ABF712BD6415C014C6F634E117A71E80E4A66FEAF655E5CF00",
+        "driver/SafeUpload.Minifilter/Taint.c": "813BF44BFF1C9F527F5913287A08AD615C53B10F69535711935915808054F1A4",
+        "driver/SafeUpload.Minifilter/Txf.c": "D477CA468CD95366A8C70D42BBBF65C3DFBBB08A7F07E14516163DD3303F527B",
+        "driver/SafeUpload.WriterFixture/WriterFixture.cs": "A05267A1EFD680D4E01998C68FE3D561234690D21A5801CD9DDDA70BE7C91D72"
+      }
+    },
+    "summaryPath": "/tmp/claude-1000/exact-mvp3-b33/summary.txt",
+    "summarySha256": "3B5265EADD13574EC37C4B1A446E6D9F7D3849B6801CC2B0385C8F43E721666D",
+    "rawBuildPath": "/home/victor/Work/safeupload-staging/driver/evidence/2026-10-05/exact-mvp3-b33-build.txt",
+    "wdk": {
+      "normal": {
+        "path": "/tmp/claude-1000/exact-mvp3-b33/normal-wdk.txt",
+        "sha256": "8AF443F43CE3DB13B308D34C83D9DEEBDE4ECB5F6F076BE76BD2DBE8EE7EEA39",
+        "zeroWarningsErrors": true,
+        "codeAnalysis": true,
+        "apiValidator": true
+      },
+      "owned-feature": {
+        "path": "/tmp/claude-1000/exact-mvp3-b33/owned-feature-wdk.txt",
+        "sha256": "1A7DAD7E9D889F0A4A2433F42F7F4FAFB179C090C94E403183C866B97FF22B88",
+        "zeroWarningsErrors": true,
+        "codeAnalysis": true,
+        "apiValidator": true
+      },
+      "normal-release": {
+        "path": "/tmp/claude-1000/exact-mvp3-b33/normal-release-wdk.txt",
+        "sha256": "8DBDF73946077AF81E7E8EFAECF55BF11A6E1445463F1AA48EEC90590E4101C0",
+        "zeroWarningsErrors": true,
+        "codeAnalysis": true,
+        "apiValidator": true
+      },
+      "owned-feature-release": {
+        "path": "/tmp/claude-1000/exact-mvp3-b33/owned-feature-release-wdk.txt",
+        "sha256": "775D63B47236385F9D4E6C1265E3A8EF500D426F4E51C4277489F8BD9F995C76",
+        "zeroWarningsErrors": true,
+        "codeAnalysis": true,
+        "apiValidator": true
+      }
+    },
+    "inspectorLogs": {
+      "inspector-normal-release": {
+        "path": "/home/victor/Work/safeupload-staging/driver/evidence/2026-10-05/exact-mvp3-b33-inspector-normal-release.txt",
+        "sha256": "02108658E39AE863C8AEA00BC7392ED3975400617018017226DF428F7ACE90FE",
+        "zeroWarningsErrors": true
+      },
+      "inspector-feature-release": {
+        "path": "/home/victor/Work/safeupload-staging/driver/evidence/2026-10-05/exact-mvp3-b33-inspector-feature-release.txt",
+        "sha256": "FF4E7277FC76A685B7C9919E895BBA296D37166D23EEECC137B142A205F9C516",
+        "zeroWarningsErrors": true
+      }
+    },
+    "artifacts": {
+      "driver:normal": {
+        "file": "/tmp/claude-1000/exact-mvp3-b33/normal.sys",
+        "sha256": "5C2B703824A6624DC51809A26E5186FA5C729C4012BC6C8D9A1702153F1798CE",
+        "summary": "driver:normal : configuration=Debug feature=false exit=0 succeeded=True warnings=0 errors=0 apivalidator=True prefast=True artifact_sha256=5C2B703824A6624DC51809A26E5186FA5C729C4012BC6C8D9A1702153F1798CE"
+      },
+      "driver:owned-feature": {
+        "file": "/tmp/claude-1000/exact-mvp3-b33/owned-feature.sys",
+        "sha256": "1F5E02DE2A5A0C1FD8B0E77994ED35A3ECA144072E1EA1590BE5F4F115C3FD68",
+        "summary": "driver:owned-feature : configuration=Debug feature=true exit=0 succeeded=True warnings=0 errors=0 apivalidator=True prefast=True artifact_sha256=1F5E02DE2A5A0C1FD8B0E77994ED35A3ECA144072E1EA1590BE5F4F115C3FD68"
+      },
+      "driver:normal-release": {
+        "file": "/tmp/claude-1000/exact-mvp3-b33/normal-release.sys",
+        "sha256": "2891E8F30406A9F0557C501860509A2B359012BBD2C498CC79EE5FC027763347",
+        "summary": "driver:normal-release : configuration=Release feature=false exit=0 succeeded=True warnings=0 errors=0 apivalidator=True prefast=True artifact_sha256=2891E8F30406A9F0557C501860509A2B359012BBD2C498CC79EE5FC027763347"
+      },
+      "driver:owned-feature-release": {
+        "file": "/tmp/claude-1000/exact-mvp3-b33/owned-feature-release.sys",
+        "sha256": "6BA469B2A667D762D3CD2904E519ABED33F6FBC8DD6D5CEAA94AAF2494924DB4",
+        "summary": "driver:owned-feature-release : configuration=Release feature=true exit=0 succeeded=True warnings=0 errors=0 apivalidator=True prefast=True artifact_sha256=6BA469B2A667D762D3CD2904E519ABED33F6FBC8DD6D5CEAA94AAF2494924DB4"
+      },
+      "inspector-normal-release": {
+        "file": "/tmp/claude-1000/exact-mvp3-b33/inspector-normal-release.exe",
+        "sha256": "4B778A10AAFF9C5710F900F38535E8688AE7FA656D3A8FDB62B93C9114FE678E",
+        "summary": "inspector-normal-release : exit=0 succeeded=True warnings=0 errors=0 artifact_sha256=4B778A10AAFF9C5710F900F38535E8688AE7FA656D3A8FDB62B93C9114FE678E"
+      },
+      "inspector-feature-release": {
+        "file": "/tmp/claude-1000/exact-mvp3-b33/inspector-feature-release.exe",
+        "sha256": "BCCC172836F111FFA244918F3044217110F6500D86212C211C8F3C00B5E3662D",
+        "summary": "inspector-feature-release : exit=0 succeeded=True warnings=0 errors=0 artifact_sha256=BCCC172836F111FFA244918F3044217110F6500D86212C211C8F3C00B5E3662D"
+      },
+      "writer-fixture": {
+        "file": "/tmp/claude-1000/exact-mvp3-b33/writer-fixture.exe",
+        "sha256": "0E37F0EB265711CD3C4C5FECD295D0DBC90C17F8BED94428E5B4FC027227B44A",
+        "summary": "writer-fixture : exit=0 succeeded=True warnings=0 errors=0 artifact_sha256=0E37F0EB265711CD3C4C5FECD295D0DBC90C17F8BED94428E5B4FC027227B44A"
+      }
+    },
+    "signedUpper": {
+      "path": "/tmp/claude-1000/exact-mvp3-b33/SafeUpload-stage-prototype.sys",
+      "sha256": "3D55C54D0846C50BE418A95950206345B6BC17D4DAA04BADC151733716F6C456",
+      "signRow": "sign : exit=0 unsigned_sha256=1F5E02DE2A5A0C1FD8B0E77994ED35A3ECA144072E1EA1590BE5F4F115C3FD68 signed_sha256=3D55C54D0846C50BE418A95950206345B6BC17D4DAA04BADC151733716F6C456 signer=220DD82C37FCF36048D59E4F10113185D81D5DC7"
+    }
+  },
+  "lower": {
+    "result": "FAIL_COMPILE",
+    "label": "rv4-w01-b33",
+    "archive": {
+      "zipSha256": "88061BBBE05452C9F0DB4B3B65F71ED901A99C43A8725F898F6990CF317B2F61",
+      "manifestSha256": "1C0267A75CA9FDAC1C5EBC5551089B840334858556D2F62E33E87760F20DCC68",
+      "count": 3,
+      "allArchiveAndGitShowBytesMatch": true,
+      "files": {
+        "driver/SafeUpload.SectionFault/Fault.c": "7BE91336E3B71D696FE08AAC6789C6E7B8FBFAC04BBDA6C15AB5DF5F8D40A187",
+        "driver/SafeUpload.SectionFault/Protocol.h": "306B0E57FB206D7AB63B7793BDADA53B90AE769250D165E14E059C05E903B812",
+        "driver/SafeUpload.SectionFault/SafeUpload.SectionFault.vcxproj": "7027BA23B199ECE53BAC866DD81924131CE6EEB5000E1650A458D21F9CE50D7B"
+      }
+    },
+    "summaryPath": "/tmp/claude-1000/exact-section-fault-rv4-w01-b33/summary.txt",
+    "summarySha256": "13ABC74E16010BFD7A108B2ED05EA3324A62225285C778E77D9946FA74B5FE4D",
+    "rawBuildPath": "/home/victor/Work/safeupload-staging/driver/evidence/2026-10-05/section-fault-rv4-w01-b33-build.txt",
+    "provenancePath": "/home/victor/Work/safeupload-staging/driver/evidence/2026-10-05/section-fault-rv4-w01-b33-provenance.txt",
+    "wdk": {
+      "Debug": {
+        "path": "/tmp/claude-1000/exact-section-fault-rv4-w01-b33/Debug-wdk.txt",
+        "sha256": "5A2EFDD14D566075079A624984EC5067576A79A2B25E9D5FFCACBE5280DBA222",
+        "errors": 6,
+        "firstError": "C:\\Users\\vika\\Documents\\exact-section-fault-rv4-w01-b33\\src\\driver\\SafeUpload.SectionFault\\Fault.c(451,69): error C2146: syntax error: missing ')' before identifier 'Request' [C:\\Users\\vika\\Documents\\exact-section-fault-rv4-w01-b33\\src\\driver\\SafeUpload.SectionFault\\SafeUpload.SectionFault.vcxproj]"
+      },
+      "Release": {
+        "path": "/tmp/claude-1000/exact-section-fault-rv4-w01-b33/Release-wdk.txt",
+        "sha256": "4FA888302828781A411877FE2B170A9CA3B511FF6B2A3185974F832552297A15",
+        "errors": 6,
+        "firstError": "C:\\Users\\vika\\Documents\\exact-section-fault-rv4-w01-b33\\src\\driver\\SafeUpload.SectionFault\\Fault.c(451,69): error C2146: syntax error: missing ')' before identifier 'Request' [C:\\Users\\vika\\Documents\\exact-section-fault-rv4-w01-b33\\src\\driver\\SafeUpload.SectionFault\\SafeUpload.SectionFault.vcxproj]"
+      }
+    },
+    "rootCause": "Fault.c:451 uses undefined PSECTION_FAULT_WRITE_REQUEST; Protocol.h:39-44 defines only SECTION_FAULT_WRITE_REQUEST. Debug/Release each 6 errors; no linked SYS, signed SYS, sign log, or PDB.",
+    "pePdbResidency": "UNAVAILABLE_NO_LINKED_BINARY"
+  },
+  "RootIndependentChecks": {
+    "AllArchivedBytesMatchedGit85f13": true,
+    "AllRawWdkLogsFullyRead": true,
+    "BothInspectorRawLogsFullyRead": true,
+    "ProductFourConfigurations": "0 warnings / 0 errors with PREfast, DriverRecommendedRules and ApiValidator",
+    "LowerBothConfigurations": "FAILED 6 errors each, no linked or signed artifact",
+    "VmRun": false,
+    "Qualification": false
+  }
+}

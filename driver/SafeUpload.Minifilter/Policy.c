@@ -1194,6 +1194,16 @@ SafeUploadCurrentPolicyGeneration (
     return InterlockedCompareExchange( &SafeUploadPolicyGeneration, 0, 0 );
 }
 
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+VOID SafeUploadPolicyReadLiveSnapshot(_Out_ PULONG Generation, _Out_ PULONG Flags)
+{
+    FltAcquirePushLockShared(&SafeUploadPolicyLock);
+    *Generation = (ULONG)InterlockedCompareExchange(&SafeUploadPolicyGeneration, 0, 0);
+    *Flags = SafeUploadPolicy != NULL ? SafeUploadPolicy->Flags : 0;
+    FltReleasePushLock(&SafeUploadPolicyLock);
+}
+#endif
+
 
 BOOLEAN
 SafeUploadPolicyClassifiesAllSources (

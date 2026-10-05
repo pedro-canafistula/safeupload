@@ -174,6 +174,9 @@ _IRQL_requires_max_(DISPATCH_LEVEL)
 UINT32 SafeUploadStageSectionsInFlight(_In_opt_ PVOID SectionObjectPointer);
 _IRQL_requires_max_(APC_LEVEL)
 VOID SafeUploadStageWritersGetStatus(_Out_ PSAFEUPLOAD_WRITER_STATE_STATUS Status);
+NTSTATUS SafeUploadStageWritersPromotionTraceReadBatch(
+    _In_ const SAFEUPLOAD_PROMOTION_TRACE_REQUEST *Request,
+    _Out_ PSAFEUPLOAD_PROMOTION_TRACE_BATCH Batch);
 NTSTATUS SafeUploadStageWritersRegistryEvaluate(_In_ PFLT_INSTANCE Instance,
     _In_ PCUNICODE_STRING VolumeName, _In_ PCUNICODE_STRING NormalizedName,
     _In_ PFILE_OBJECT SourceObject,

@@ -448,7 +448,7 @@ static VOID FaultWriteFillReply(_Out_ SECTION_FAULT_WRITE_REPLY *Reply)
     Reply->IrpFlags = (UINT32)InterlockedCompareExchange(&FaultWriteIrpFlags, 0, 0);
 }
 
-static NTSTATUS FaultWriteMessage(_In_ PSECTION_FAULT_WRITE_REQUEST Request,
+static NTSTATUS FaultWriteMessage(_In_ SECTION_FAULT_WRITE_REQUEST *Request,
     _Out_ SECTION_FAULT_WRITE_REPLY *Reply)
 {
     PFILE_OBJECT file = NULL;

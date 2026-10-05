@@ -1,0 +1,33 @@
+# RV4 WP3A promotion-proof source review (fresh adversarial pass)
+Date: 2026-10-05
+Scope: source-only review of `/tmp/safeupload-rv4-promotion-proof-20261005`, based on `3011cc8bbfb4d241b66fa0ddaa651fd75b3ea9ff`, against `/home/victor/Work/safeupload-staging/driver/MVP-PLAN.md` and the isolated MVP continuation decision. No source edits, build, VM, install, commit, or runtime qualification performed.
+
+## Disposition
+
+**Acceptable as narrowly described feature-only source instrumentation for observing successful `ACTIVATING -> PROTECTED` CAS receipts; not WP3A qualification and not a complete Free(F) proof.** I found no source blocker in the bounded ring, batch reader, or Inspector completeness handling in this revision. The earlier QPC and omitted-field/cursor blockers are closed in the pinned source.
+
+The receipt is emitted only inside the existing successful compare-exchange branch, after the production CAS succeeds. The marker generation is read while holding `SectionLock`, which serializes marker/map mutation, and compared against the expected generation before the CAS. Existing checks in the caller and the final SectionLock-protected SOP/W checks remain production gates; instrumentation does not add or relax them. The four serialized predicate bits are only name match, SOP empty, no user-writable reference, and marker scan clear. They do not encode all Free(F) predicates. H/W/T/C/S/Unknown, rename/count/generation/policy and registry sequence values are explicitly described as independent samples, not a coherent tuple. The policy generation/flags snapshot is taken before RegistryLock; `RegistryChangeSequence` is sampled post-CAS and may include unrelated increments.
+
+The 256-entry ring is static nonpaged storage, sequence-aligned, bounded, and uses interlocked reservation/publication with a sequence check before and after reader copies. The writer performs no allocation, wait, or new lock acquisition; it runs under the existing SectionLock at DISPATCH_LEVEL. Contention increments observation loss only. The reader is PAGE/passive-level, returns at most four fixed entries, and flags gaps. The Inspector prints all entry and batch wire fields; pins snapshot/retention metadata; checks cursor, snapshot, contiguous sequence, bounded progress, and malformed responses; and exits nonzero/incomplete for gaps, any recorded loss/overwrite, or an overwritten prefix. This is conservative when concurrent writes move retention during a read.
+
+The additive protocol definitions do not change existing W ticket structures or the 232-byte W event ABI. Kernel producer/read handling and Inspector command dispatch are feature guarded; the project enables the macro only for `SafeUploadStagingPrototype=true`. Existing normal protocol structure layouts and hook guards are unchanged by this diff. These are source inspections only; no build was run.
+
+## Remaining blockers and limits
+
+- `TEST_DISABLE_TAINT` has no matching live kernel control/readback. The receipt correctly reports `0xffffffff` unavailable. Do not infer it was disabled or claim the live-policy requirement passed.
+- Marker/section boundary evidence, coherent epoch/Free(F) proof, service/permit/journal proof, and remaining W/M/C qualification are still open in the MVP plan. This receipt alone cannot close them.
+- No build or execution means compile correctness, runtime ring behavior, actual output, and verifier/IRQL qualification remain unverified. Treat this as source review only.
+- `Qpc` now stores the returned performance-counter reading (`KeQueryPerformanceCounter(NULL)`); no frequency is serialized, so the field supports raw counter ordering but not conversion to wall-clock time without an external frequency source. Ring sequence provides the definitive record order.
+
+## Exact current source SHA-256 pins
+
+```text
+ca1786f3ca58b0486b2127fde501fb7af904363afacf4c5b58f4cd6ece6acc1b  driver/SafeUpload.Minifilter/Protocol.h
+98d97f9c1ef00436097af6da531b98a51cb55ab7de6af67c820a4cc290f492c4  driver/SafeUpload.Minifilter/Filter.h
+98c6747665d12410312ca54076cdad4749459e0cee30bd8143cd9a42f891a57c  driver/SafeUpload.Minifilter/Policy.c
+c3b6be779c7b2c2e54a002fcebaaa874112a43597896c7fd004eadb451ba2c8f  driver/SafeUpload.Minifilter/Stage.h
+c7144406276e051adf8142685b366f7ce211484528024058038eeec91f59f162  driver/SafeUpload.Minifilter/StageWriters.c
+30c262411423db92cfe71ce1fdfc39d2873807c5351739bb65b558b38e3c426b  driver/SafeUpload.Minifilter/Communication.c
+cb55d5ae1f96568596c45a2773881e85fd2a2b1305d81e2ba6d9ec9ac16c4d04  driver/SafeUpload.Inspector/main.c
+83f37e40c4c85889444d9d33f7d5586922d77a68401fcac2d1a600d80a6e9838  driver/MVP-PLAN.md
+```

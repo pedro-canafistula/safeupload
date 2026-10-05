@@ -1,0 +1,4 @@
+PRE_RUN_PS: $ErrorActionPreference='Stop'; if(Test-Path -LiteralPath 'C:\Users\vika\Documents\Invoke-StagedObserverCorpus-86A099AD380A0F29.ps1'){throw 'Staged input collision: Invoke-StagedObserverCorpus-86A099AD380A0F29.ps1'}; if(Test-Path -LiteralPath 'C:\Users\vika\Documents\Test-StagedInvariantObserverCorpus-9A50B8C8A8A7AEDB.ps1'){throw 'Staged input collision: Test-StagedInvariantObserverCorpus-9A50B8C8A8A7AEDB.ps1'}; if(Test-Path -LiteralPath 'C:\Users\vika\Documents\StagedInvariantObserver-4411CC06C522D62B.psm1'){throw 'Staged input collision: StagedInvariantObserver-4411CC06C522D62B.psm1'}; 'PRE_RUN_OK=True'
+PRE_RUN attempt 1 failed (status 1); retrying
+PRE_RUN attempt 2 failed (status 1); retrying
+PRE_RUN attempt 3 failed (status 1); retrying

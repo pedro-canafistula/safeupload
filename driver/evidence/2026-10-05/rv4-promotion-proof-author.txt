@@ -1,0 +1,25 @@
+# RV4 WP3A promotion proof source follow-up
+
+Source-only in `/tmp/safeupload-rv4-promotion-proof-20261005`, based on `3011cc8bbfb4d241b66fa0ddaa651fd75b3ea9ff`. No build, VM, install, commit, or runtime qualification was performed.
+
+This follow-up closes source-review blockers in `rv4-promotion-proof-adversarial-review.txt`:
+
+- `Qpc` now stores the value returned by `KeQueryPerformanceCounter(NULL)`, the counter reading.
+- The Inspector emits every field from the promotion entry and batch, including marker generations, independent RegistryChangeSequence, rename/count fields, full cursor/snapshot/retention/loss metadata, predicate bits, and snapshot flags.
+- The reader pins the first batch snapshot and retention boundary, checks bounded cursor progress and contiguous event sequence numbers, rejects malformed/no-progress responses, and exits nonzero/incomplete on a gap, loss, overwrite, or omitted overwritten prefix. It prints an explicit final snapshot summary. It does not silently report a partial ring as complete.
+- Documentation now states that only the successful `ACTIVATING -> PROTECTED` CAS and its before/after state plus the expected-vs-at-CAS marker comparison are edge evidence. `PredicateFlags` cover four recorded facts only (name match, empty SOP, no user-writable reference, marker scan clear), not the complete Free(F) predicate. H/W/T/C/S/Unknown, rename/count/generation/policy and registry sequence values are independent samples; the policy read precedes RegistryLock and RegistryChangeSequence is post-CAS. `TEST_DISABLE_TAINT` remains unavailable and the corresponding live-policy requirement remains open.
+
+`git diff --check` passed. The wire schema sizes and W-trace schema were preserved; this is still an unbuilt, unexecuted source draft. Marker/section boundary, live taint readback, service/permit/journal proof, runtime execution and remaining W/M/C qualification remain open.
+
+Exact current source SHA-256:
+
+```text
+ca1786f3ca58b0486b2127fde501fb7af904363afacf4c5b58f4cd6ece6acc1b  driver/SafeUpload.Minifilter/Protocol.h
+98d97f9c1ef00436097af6da531b98a51cb55ab7de6af67c820a4cc290f492c4  driver/SafeUpload.Minifilter/Filter.h
+98c6747665d12410312ca54076cdad4749459e0cee30bd8143cd9a42f891a57c  driver/SafeUpload.Minifilter/Policy.c
+c3b6be779c7b2c2e54a002fcebaaa874112a43597896c7fd004eadb451ba2c8f  driver/SafeUpload.Minifilter/Stage.h
+c7144406276e051adf8142685b366f7ce211484528024058038eeec91f59f162  driver/SafeUpload.Minifilter/StageWriters.c
+30c262411423db92cfe71ce1fdfc39d2873807c5351739bb65b558b38e3c426b  driver/SafeUpload.Minifilter/Communication.c
+cb55d5ae1f96568596c45a2773881e85fd2a2b1305d81e2ba6d9ec9ac16c4d04  driver/SafeUpload.Inspector/main.c
+83f37e40c4c85889444d9d33f7d5586922d77a68401fcac2d1a600d80a6e9838  driver/MVP-PLAN.md
+```

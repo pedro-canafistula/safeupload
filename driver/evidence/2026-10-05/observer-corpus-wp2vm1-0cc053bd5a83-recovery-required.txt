@@ -1,0 +1,11 @@
+GUEST_RECOVERY_REQUIRED=True
+Reason=PRE_RUN failed after the checkpoint became active.
+Checkpoint=safeupload-pre-observer-corpus-wp2vm1-0cc053bd5a83-20261005
+ActiveOverlay=/var/lib/libvirt/images/win10-debug.safeupload-pre-observer-corpus-wp2vm1-0cc053bd5a83-20261005
+Domain=win10-debug
+ Type   Device   Target   Source
+---------------------------------------------------------------------------------------------------------------------------
+ file   disk     vda      /var/lib/libvirt/images/win10-debug.safeupload-pre-observer-corpus-wp2vm1-0cc053bd5a83-20261005
+ file   cdrom    sda      -
+ file   cdrom    sdb      -
+

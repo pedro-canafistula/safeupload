@@ -1633,6 +1633,123 @@ static int PrintAdmissionTrace(VOID)
             counters.LostEntries, cursor, snapshot);
     return 0;
 }
+
+static int PrintPromotionTrace(VOID)
+{
+    SAFEUPLOAD_PROMOTION_TRACE_REQUEST request;
+    SAFEUPLOAD_PROMOTION_TRACE_BATCH batch;
+    HANDLE port = INVALID_HANDLE_VALUE;
+    DWORD returned = 0;
+    UINT64 cursor = 0, snapshot = 0;
+    HRESULT hr;
+    ULONG i, j;
+    UINT64 firstAvailable = 0;
+    int exitCode = 0;
+    hr = FilterConnectCommunicationPort(SAFEUPLOAD_PORT_NAME, 0, NULL, 0, NULL, &port);
+    if (FAILED(hr)) return 2;
+    for (;;) {
+        ZeroMemory(&request, sizeof(request));
+        ZeroMemory(&batch, sizeof(batch));
+        request.Control.Version = SAFEUPLOAD_PROTOCOL_VERSION;
+        request.Control.StructSize = sizeof(request);
+        request.Control.Command = SAFEUPLOAD_CONTROL_PROMOTION_TRACE_READ_BATCH;
+        request.Cursor = cursor;
+        request.SnapshotSequence = snapshot;
+        hr = FilterSendMessage(port, &request, sizeof(request), &batch, sizeof(batch), &returned);
+        if (FAILED(hr) || returned != sizeof(batch) || batch.Version != SAFEUPLOAD_PROTOCOL_VERSION ||
+            batch.StructSize != sizeof(batch) || batch.EntryCount > SAFEUPLOAD_PROMOTION_TRACE_BATCH_ENTRIES ||
+            (batch.Flags & ~SAFEUPLOAD_PROMOTION_TRACE_BATCH_FLAG_GAP) != 0) {
+            wprintf(L"{\"promotionTraceError\":\"invalid_response\",\"hr\":%u,\"bytes\":%u}\n",
+                (UINT32)hr, returned);
+            exitCode = 3;
+            break;
+        }
+        if (cursor == 0) {
+            snapshot = batch.SnapshotSequence;
+            firstAvailable = batch.FirstAvailableSequence;
+        }
+        wprintf(L"{\"promotionTraceBatch\":true,\"version\":%u,\"structSize\":%u,"
+            L"\"cursor\":%llu,\"snapshotSequence\":%llu,\"nextCursor\":%llu,"
+            L"\"firstAvailableSequence\":%llu,\"entryCount\":%u,\"flags\":%u,"
+            L"\"lostEvents\":%llu,\"overwrittenEvents\":%llu}\n",
+            batch.Version, batch.StructSize, batch.Cursor, batch.SnapshotSequence, batch.NextCursor,
+            batch.FirstAvailableSequence, batch.EntryCount, batch.Flags,
+            batch.LostEvents, batch.OverwrittenEvents);
+        if (batch.SnapshotSequence != snapshot || batch.FirstAvailableSequence != firstAvailable ||
+            (cursor == 0 && batch.Cursor != firstAvailable) ||
+            (cursor != 0 && batch.Cursor != cursor)) {
+            wprintf(L"{\"promotionTraceError\":\"cursor_or_snapshot_invalid\"}\n");
+            exitCode = 3;
+            break;
+        }
+        if ((batch.Flags & SAFEUPLOAD_PROMOTION_TRACE_BATCH_FLAG_GAP) != 0 ||
+            batch.LostEvents != 0 || batch.OverwrittenEvents != 0 || firstAvailable > 1) {
+            wprintf(L"{\"promotionTraceIncomplete\":true,\"reason\":\"gap_or_lost_or_overwritten_prefix\"}\n");
+            exitCode = 4;
+            break;
+        }
+        if (batch.NextCursor < batch.Cursor ||
+            (UINT64)batch.EntryCount > (~(UINT64)0) - batch.Cursor ||
+            batch.NextCursor != batch.Cursor + batch.EntryCount) {
+            wprintf(L"{\"promotionTraceError\":\"cursor_or_snapshot_invalid\"}\n");
+            exitCode = 3;
+            break;
+        }
+        if ((snapshot == 0 && (batch.EntryCount != 0 || batch.Cursor != 0 ||
+                (batch.NextCursor != 0 && batch.NextCursor != 1))) ||
+            (snapshot != 0 && (firstAvailable == 0 || firstAvailable > snapshot + 1)) ||
+            (snapshot != 0 && batch.EntryCount == 0 && batch.Cursor <= snapshot)) {
+            wprintf(L"{\"promotionTraceError\":\"malformed_or_no_progress_snapshot\"}\n");
+            exitCode = 3;
+            break;
+        }
+        for (i = 0; i < batch.EntryCount; ++i) {
+            SAFEUPLOAD_PROMOTION_TRACE_ENTRY *e = &batch.Entries[i];
+            UINT64 expectedSequence = batch.Cursor + i;
+            if (e->Sequence != expectedSequence || e->Sequence > snapshot) {
+                wprintf(L"{\"promotionTraceError\":\"entry_sequence_invalid\",\"expected\":%llu,\"actual\":%llu}\n",
+                    expectedSequence, e->Sequence);
+                exitCode = 3;
+                break;
+            }
+            wprintf(L"{\"promotionTraceEntry\":true,\"sequence\":%llu,\"qpc\":%llu,"
+                L"\"instance\":\"0x%016llX\",\"sop\":\"0x%016llX\","
+                L"\"volumeSerial\":\"0x%016llX\",\"registryChangeSequence\":%llu,"
+                L"\"markerGenerationExpected\":%llu,\"markerGenerationAtCas\":%llu,\"fileId\":\"",
+                e->Sequence, e->Qpc, e->Instance, e->SectionObjectPointer,
+                e->VolumeSerialNumber, e->RegistryChangeSequence,
+                e->SopMarkerGenerationExpected, e->SopMarkerGenerationAtCas);
+            for (j = 0; j < ARRAYSIZE(e->FileId); ++j) wprintf(L"%02X", e->FileId[j]);
+            wprintf(L"\",\"stateBefore\":%u,\"stateAfter\":%u,\"Hsample\":%u,\"Wsample\":%u,"
+                L"\"Tsample\":%u,\"CforSopSample\":%u,\"lastSsample\":%u,"
+                L"\"unknownReasonsSample\":%u,\"renameInFlightSample\":%u,\"renameVersionSample\":%u,"
+                L"\"activationGenerationSample\":%u,\"policyGenerationSample\":%u,"
+                L"\"policyFlagsSample\":%u,\"testDisableTaint\":%u,\"spilledMutatingIoCountSample\":%u,"
+                L"\"unknownWriterCountSample\":%u,\"predicateFlags\":%u,\"snapshotFlags\":%u}\n",
+                e->StateBefore, e->StateAfter, e->H, e->W, e->T, e->CForSop,
+                e->LastS, e->UnknownReasons, e->RenameInFlight, e->RenameVersion, e->ActivationGeneration,
+                e->PolicyGeneration, e->CurrentPolicyFlags, e->TestDisableTaintState,
+                e->SpilledMutatingIoCount, e->UnknownWriterCount, e->PredicateFlags, e->SnapshotFlags);
+        }
+        if (exitCode != 0) break;
+        if (snapshot == 0 && batch.EntryCount == 0) {
+            cursor = batch.NextCursor;
+            break;
+        }
+        if (batch.NextCursor == cursor && snapshot != 0 && cursor <= snapshot) {
+            wprintf(L"{\"promotionTraceError\":\"cursor_did_not_advance\"}\n");
+            exitCode = 3;
+            break;
+        }
+        cursor = batch.NextCursor;
+        if (cursor > snapshot) break;
+    }
+    wprintf(L"{\"promotionTraceSummary\":true,\"snapshotSequence\":%llu,\"firstAvailableSequence\":%llu,"
+        L"\"nextCursor\":%llu,\"completeSnapshot\":%s}\n",
+        snapshot, firstAvailable, cursor, exitCode == 0 ? L"true" : L"false");
+    CloseHandle(port);
+    return exitCode;
+}
 #endif
 
 int __cdecl
@@ -1722,6 +1839,10 @@ Return Value:
 
     if (argc > 1 && _wcsicmp(argv[1], L"--admission-trace") == 0) {
         return PrintAdmissionTrace();
+    }
+
+    if (argc > 1 && _wcsicmp(argv[1], L"--promotion-trace") == 0) {
+        return PrintPromotionTrace();
     }
 
     if (argc > 1 && _wcsicmp(argv[1], L"--writer-state-status") == 0) {

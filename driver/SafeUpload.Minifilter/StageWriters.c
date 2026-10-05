@@ -44,6 +44,7 @@ Environment:
 #pragma alloc_text(PAGE, SafeUploadStageWritersPrepareRename)
 #pragma alloc_text(PAGE, SafeUploadStageWritersRegistryEvaluate)
 #pragma alloc_text(PAGE, SafeUploadStageWritersRegistrySnapshotByName)
+#pragma alloc_text(PAGE, SafeUploadStageWritersPromotionTraceReadBatch)
 #endif
 
 /* Separate node tag permits actual Verifier allocation failures to be attributed
@@ -406,6 +407,14 @@ static ULONGLONG RegistryEntrySequence;
 static ULONGLONG RegistryReclaimCursor;
 static STAGE_REGISTRY_SOP_SLOT RegistrySopSlots[SAFEUPLOAD_WRITER_REGISTRY_SOP_LIMIT];
 static volatile LONG64 RegistrySopMapGeneration;
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+/* Feature-only promotion receipts. Loss affects observation only. */
+DECLSPEC_ALIGN(8) static SAFEUPLOAD_PROMOTION_TRACE_ENTRY PromotionTraceRing[SAFEUPLOAD_PROMOTION_TRACE_RING_ENTRIES];
+static volatile LONG64 PromotionTraceNextSequence;
+static volatile LONG64 PromotionTraceLost;
+static volatile LONG64 PromotionTraceOverwritten;
+static volatile LONG PromotionTraceWriterBusy;
+#endif
 static KSPIN_LOCK RegistryCompactPoolLock;
 static PSTAGE_REGISTRY_ENTRY RegistryCompactPool;
 static PSTAGE_REGISTRY_ENTRY RegistryCompactFreeList;
@@ -446,7 +455,49 @@ __declspec(noinline) static UINT32 StageRegistrySnapshotC(_In_ PSTAGE_REGISTRY_E
 _IRQL_requires_(DISPATCH_LEVEL)
 _IRQL_requires_same_
 __declspec(noinline) static BOOLEAN StageRegistryTryPromoteStateNoInline(
-    _In_ PSTAGE_REGISTRY_ENTRY Entry, _In_ ULONGLONG ExpectedSopMarkerGeneration);
+    _In_ PSTAGE_REGISTRY_ENTRY Entry, _In_ ULONGLONG ExpectedSopMarkerGeneration,
+    _In_ ULONG PolicyGeneration, _In_ ULONG PolicyFlags, _In_ ULONG PredicateFlags);
+
+NTSTATUS SafeUploadStageWritersPromotionTraceReadBatch(
+    _In_ const SAFEUPLOAD_PROMOTION_TRACE_REQUEST *Request,
+    _Out_ PSAFEUPLOAD_PROMOTION_TRACE_BATCH Batch)
+{
+    UINT64 latest, snapshot, oldest, scan;
+    PAGED_CODE();
+    if (Request == NULL || Batch == NULL) return STATUS_INVALID_PARAMETER;
+    RtlZeroMemory(Batch, sizeof(*Batch));
+    latest = (UINT64)InterlockedCompareExchange64(&PromotionTraceNextSequence, 0, 0);
+    snapshot = Request->SnapshotSequence == 0 ? latest : Request->SnapshotSequence;
+    if (snapshot > latest || (Request->Cursor != 0 && Request->Cursor - 1 > snapshot))
+        return STATUS_INVALID_PARAMETER;
+    oldest = latest > SAFEUPLOAD_PROMOTION_TRACE_RING_ENTRIES ?
+        latest - SAFEUPLOAD_PROMOTION_TRACE_RING_ENTRIES + 1 : (latest == 0 ? 0 : 1);
+    scan = Request->Cursor == 0 ? oldest : Request->Cursor;
+    Batch->Version = SAFEUPLOAD_PROTOCOL_VERSION;
+    Batch->StructSize = sizeof(*Batch);
+    Batch->Cursor = scan;
+    Batch->SnapshotSequence = snapshot;
+    Batch->FirstAvailableSequence = oldest;
+    Batch->LostEvents = (UINT64)InterlockedCompareExchange64(&PromotionTraceLost, 0, 0);
+    Batch->OverwrittenEvents = (UINT64)InterlockedCompareExchange64(&PromotionTraceOverwritten, 0, 0);
+    if (Request->Cursor != 0 && Request->Cursor < oldest) Batch->Flags |= SAFEUPLOAD_PROMOTION_TRACE_BATCH_FLAG_GAP;
+    if (scan < oldest) scan = oldest;
+    while (scan != 0 && scan <= snapshot && Batch->EntryCount < SAFEUPLOAD_PROMOTION_TRACE_BATCH_ENTRIES) {
+        SAFEUPLOAD_PROMOTION_TRACE_ENTRY copy;
+        PSAFEUPLOAD_PROMOTION_TRACE_ENTRY slot = &PromotionTraceRing[(scan - 1) &
+            (SAFEUPLOAD_PROMOTION_TRACE_RING_ENTRIES - 1)];
+        UINT64 before = (UINT64)InterlockedCompareExchange64((volatile LONG64 *)&slot->Sequence, 0, 0);
+        if (before != scan) { Batch->Flags |= SAFEUPLOAD_PROMOTION_TRACE_BATCH_FLAG_GAP; break; }
+        RtlCopyMemory(&copy, slot, sizeof(copy));
+        KeMemoryBarrier();
+        if ((UINT64)InterlockedCompareExchange64((volatile LONG64 *)&slot->Sequence, 0, 0) != scan ||
+            copy.Sequence != scan) { Batch->Flags |= SAFEUPLOAD_PROMOTION_TRACE_BATCH_FLAG_GAP; break; }
+        Batch->Entries[Batch->EntryCount++] = copy;
+        ++scan;
+    }
+    Batch->NextCursor = scan;
+    return STATUS_SUCCESS;
+}
 
 static volatile LONG64 WriterPostCreateRuns;
 static volatile LONG64 WriterCounted;
@@ -4350,7 +4401,8 @@ __declspec(noinline) static VOID StageRegistryReleaseStateLock(
 _IRQL_requires_(DISPATCH_LEVEL)
 _IRQL_requires_same_
 __declspec(noinline) static BOOLEAN StageRegistryTryPromoteStateNoInline(
-    _In_ PSTAGE_REGISTRY_ENTRY Entry, _In_ ULONGLONG ExpectedSopMarkerGeneration)
+    _In_ PSTAGE_REGISTRY_ENTRY Entry, _In_ ULONGLONG ExpectedSopMarkerGeneration,
+    _In_ ULONG PolicyGeneration, _In_ ULONG PolicyFlags, _In_ ULONG PredicateFlags)
 {
     PSTAGE_REGISTRY_SOP_SLOT map;
     BOOLEAN mapFound = FALSE, sectionSlotsEmpty = TRUE;
@@ -4370,7 +4422,8 @@ __declspec(noinline) static BOOLEAN StageRegistryTryPromoteStateNoInline(
         if (section->Writable && section->SectionObjectPointer == sop)
             sectionSlotsEmpty = FALSE;
     }
-    if ((ULONGLONG)InterlockedCompareExchange64(&RegistrySopMapGeneration, 0, 0) ==
+    ULONGLONG markerGeneration = (ULONGLONG)InterlockedCompareExchange64(&RegistrySopMapGeneration, 0, 0);
+    if (markerGeneration ==
             ExpectedSopMarkerGeneration && sectionSlotsEmpty &&
         InterlockedCompareExchange(&Entry->W, 0, 0) == 0 &&
         InterlockedCompareExchange((volatile LONG *)&Entry->State,
@@ -4378,6 +4431,60 @@ __declspec(noinline) static BOOLEAN StageRegistryTryPromoteStateNoInline(
             SAFEUPLOAD_REGISTRY_STATE_ACTIVATING) == SAFEUPLOAD_REGISTRY_STATE_ACTIVATING) {
         InterlockedIncrement64(&RegistryChangeSequence);
         promoted = TRUE;
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+        {
+            SAFEUPLOAD_PROMOTION_TRACE_ENTRY event;
+            LARGE_INTEGER qpc;
+            if (InterlockedCompareExchange(&PromotionTraceWriterBusy, 1, 0) != 0) {
+                InterlockedIncrement64(&PromotionTraceLost);
+            } else {
+                LONGLONG sequence = InterlockedCompareExchange64(&PromotionTraceNextSequence, 0, 0) + 1;
+                PSAFEUPLOAD_PROMOTION_TRACE_ENTRY slot = &PromotionTraceRing[(sequence - 1) &
+                    (SAFEUPLOAD_PROMOTION_TRACE_RING_ENTRIES - 1)];
+                if ((UINT64)sequence > SAFEUPLOAD_PROMOTION_TRACE_RING_ENTRIES)
+                    InterlockedIncrement64(&PromotionTraceOverwritten);
+                RtlZeroMemory(&event, sizeof(event));
+                qpc = KeQueryPerformanceCounter(NULL);
+                event.Sequence = (UINT64)sequence;
+                event.Qpc = (UINT64)qpc.QuadPart;
+                event.Instance = (UINT64)(ULONG_PTR)Entry->Instance;
+                event.SectionObjectPointer = (UINT64)(ULONG_PTR)sop;
+                event.VolumeSerialNumber = Entry->VolumeSerial;
+                /* This post-CAS counter sample may include unrelated increments. */
+                event.RegistryChangeSequence = (UINT64)InterlockedCompareExchange64(&RegistryChangeSequence, 0, 0);
+                event.SopMarkerGenerationExpected = ExpectedSopMarkerGeneration;
+                event.SopMarkerGenerationAtCas = markerGeneration;
+                RtlCopyMemory(event.FileId, &Entry->FileId, sizeof(event.FileId));
+                event.StateBefore = SAFEUPLOAD_REGISTRY_STATE_ACTIVATING;
+                event.StateAfter = SAFEUPLOAD_REGISTRY_STATE_PROTECTED;
+                event.H = (UINT32)InterlockedCompareExchange(&Entry->H, 0, 0);
+                event.W = (UINT32)InterlockedCompareExchange(&Entry->W, 0, 0);
+                event.T = (UINT32)InterlockedCompareExchange(&Entry->T, 0, 0);
+                event.LastS = (UINT32)InterlockedCompareExchange(&Entry->LastSState, 0, 0);
+                event.UnknownReasons = (UINT32)InterlockedCompareExchange(&Entry->UnknownReasons, 0, 0);
+                event.RenameInFlight = (UINT32)InterlockedCompareExchange(&Entry->RenameInFlight, 0, 0);
+                event.RenameVersion = (UINT32)InterlockedCompareExchange(&Entry->RenameVersion, 0, 0);
+                event.ActivationGeneration = (UINT32)InterlockedCompareExchange(&Entry->ActivationGeneration, 0, 0);
+                event.PolicyGeneration = PolicyGeneration;
+                event.CurrentPolicyFlags = PolicyFlags;
+                event.TestDisableTaintState = SAFEUPLOAD_PROMOTION_TEST_DISABLE_TAINT_UNAVAILABLE;
+                event.CForSop = 0; /* independently checked as zero immediately before the CAS attempt */
+                event.UnknownWriterCount = mapFound && map != NULL ? map->UnknownWriterCount : 0;
+                event.SpilledMutatingIoCount = mapFound && map != NULL ? map->SpilledMutatingIoCount : 0;
+                event.PredicateFlags = PredicateFlags | SAFEUPLOAD_PROMOTION_BASIS_MARKER_SCAN_CLEAR;
+                /* Only the CAS branch and marker comparison are edge-exact; remaining fields are samples. */
+                event.SnapshotFlags = SAFEUPLOAD_PROMOTION_SNAPSHOT_NONCOHERENT;
+                InterlockedExchange64((volatile LONG64 *)&slot->Sequence, 0);
+                RtlCopyMemory((PUCHAR)slot + sizeof(slot->Sequence),
+                    (PUCHAR)&event + sizeof(event.Sequence), sizeof(event) - sizeof(event.Sequence));
+                KeMemoryBarrier();
+                InterlockedExchange64((volatile LONG64 *)&slot->Sequence, sequence);
+                KeMemoryBarrier();
+                InterlockedExchange64(&PromotionTraceNextSequence, sequence);
+                InterlockedExchange(&PromotionTraceWriterBusy, 0);
+            }
+        }
+#endif
     }
     StageReleaseSpinLock(&SectionLock, irql);
     return promoted;
@@ -4393,7 +4500,8 @@ __declspec(noinline) static VOID StageRegistryTryPromoteEntry(
     _In_ ULONG RenameVersion,
     _In_ ULONG CurrentGeneration,
     _In_ BOOLEAN SopEmpty,
-    _In_ ULONGLONG ExpectedSopMarkerGeneration)
+    _In_ ULONGLONG ExpectedSopMarkerGeneration,
+    _In_ ULONG PolicyGeneration, _In_ ULONG PolicyFlags)
 {
     PSAFEUPLOAD_INSTANCE_CONTEXT instanceContext = NULL;
     KIRQL renameLossIrql;
@@ -4445,7 +4553,10 @@ __declspec(noinline) static VOID StageRegistryTryPromoteEntry(
         StageRegistrySnapshotC(Entry, NULL, 0, NULL) == 0) {
         /* Serialize the final marker-generation check with marker insertion. A marker
          * discovered after the earlier PASSIVE scan must keep this promotion waiting. */
-        (VOID)StageRegistryTryPromoteStateNoInline(Entry, ExpectedSopMarkerGeneration);
+        (VOID)StageRegistryTryPromoteStateNoInline(Entry, ExpectedSopMarkerGeneration,
+            PolicyGeneration, PolicyFlags,
+            SAFEUPLOAD_PROMOTION_BASIS_NAME_MATCH | SAFEUPLOAD_PROMOTION_BASIS_SOP_EMPTY |
+            SAFEUPLOAD_PROMOTION_BASIS_NO_USER_WRITABLE);
     }
     StageReleaseSpinLock(&Entry->StateLock, irql);
     SafeUploadPolicyRenameLossGenerationLeave(renameLossIrql);
@@ -4626,6 +4737,8 @@ static VOID StageRegistryActivationProcess(_In_ PSTAGE_REGISTRY_ENTRY Entry,
     BOOLEAN markerWorkRemaining = FALSE;
     BOOLEAN aliasProbe, unionLinkScoped = FALSE, currentLinkScoped = FALSE, aliasActivated = FALSE;
     ULONG currentGeneration;
+    ULONG promotionPolicyGeneration = 0;
+    ULONG promotionPolicyFlags = 0;
     UINT32 sectionCount;
     NTSTATUS status;
 
@@ -4775,6 +4888,9 @@ static VOID StageRegistryActivationProcess(_In_ PSTAGE_REGISTRY_ENTRY Entry,
         StageRegistrySnapshotC(Entry, NULL, 0, NULL) != 0 ||
         sop->DataSectionObject != NULL || sop->SharedCacheMap != NULL) goto Exit;
 
+    /* Policy is sampled before RegistryLock to avoid introducing a lock-order edge.
+     * The receipt labels this as a sample, not an atomic part of the CAS predicate. */
+    SafeUploadPolicyReadLiveSnapshot(&promotionPolicyGeneration, &promotionPolicyFlags);
     FltAcquirePushLockExclusive(&RegistryLock);
     nameStillMatches = Entry->Compact ? Entry->StreamIdentityKnown :
         (Entry->NameChars == nameSnapshotChars && nameSnapshotChars != 0 &&
@@ -4784,7 +4900,8 @@ static VOID StageRegistryActivationProcess(_In_ PSTAGE_REGISTRY_ENTRY Entry,
     if ((ULONGLONG)InterlockedCompareExchange64(&RegistrySopMapGeneration, 0, 0) ==
             sopMarkerGeneration)
         StageRegistryTryPromoteEntry(Entry, nameStillMatches, nameSnapshotChars,
-            renameVersion, currentGeneration, sopEmpty, sopMarkerGeneration);
+            renameVersion, currentGeneration, sopEmpty, sopMarkerGeneration,
+            promotionPolicyGeneration, promotionPolicyFlags);
     FltReleasePushLock(&RegistryLock);
 
 Exit:
