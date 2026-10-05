@@ -1,0 +1,47 @@
+2356-  1960 | S_REGREL32 [size = 20] `Entry`
+2357-         type = 0x11CD (_LIST_ENTRY*), register = RSP, offset = 48
+2358-  1980 | S_END [size = 4]
+2359:  1984 | S_LPROC32 [size = 68] `SafeUploadAcquireSpinLock`
+2360-         parent = 0, end = 2144, addr = 0001:11856, code size = 37
+2361-         type = `0x14BE (void (unsigned __int64*, unsigne...)`, debug start = 14, debug end = 32, flags = noinline
+2362-  2052 | S_FRAMEPROC [size = 32]
+--
+3147- 11080 | S_REGREL32 [size = 20] `irql`
+3148-         type = 0x0020 (unsigned char), register = RSP, offset = 32
+3149- 11100 | S_END [size = 4]
+3150: 11104 | S_GPROC32 [size = 76] `SafeUploadPolicyRenameLossAdvance`
+3151-         parent = 0, end = 11368, addr = 0001:17920, code size = 173
+3152-         type = `0x1501 (void (volatile __int64*, _SAFEUP...)`, debug start = 18, debug end = 168, flags = noinline
+3153- 11180 | S_FRAMEPROC [size = 32]
+--
+3281- 12792 | S_REGREL32 [size = 24] `intervals`
+3282-         type = 0x0013 (__int64), register = RSP, offset = 32
+3283- 12816 | S_END [size = 4]
+3284: 12820 | S_LPROC32 [size = 80] `SafeUploadPolicyVolumeCacheMatchesLocked`
+3285-         parent = 0, end = 13104, addr = 0001:19360, code size = 426
+3286-         type = `0x1510 (unsigned char (_SAFEUPLOAD_VOLUM...)`, debug start = 18, debug end = 421, flags = noinline
+3287- 12900 | S_FRAMEPROC [size = 32]
+--
+3306-         type = 0x119C (_UNICODE_STRING), register = RSP, offset = 48
+3307- 13100 | S_END [size = 4]
+3308- 13104 | S_END [size = 4]
+3309: 13108 | S_LPROC32 [size = 80] `SafeUploadPolicyVolumeCacheQueryNoInline`
+3310-         parent = 0, end = 13364, addr = 0001:19792, code size = 141
+3311-         type = `0x14EE (unsigned char (_SAFEUPLOAD_VOLUM...)`, debug start = 13, debug end = 136, flags = noinline
+3312- 13188 | S_FRAMEPROC [size = 32]
+--
+3327- 13344 | S_REGREL32 [size = 20] `cache`
+3328-         type = 0x14B0 (_SAFEUPLOAD_VOLUME_SCOPE_CACHE*), register = RSP, offset = 48
+3329- 13364 | S_END [size = 4]
+3330: 13368 | S_LPROC32 [size = 68] `SafeUploadReleaseSpinLock`
+3331-         parent = 0, end = 13528, addr = 0001:19936, code size = 35
+3332-         type = `0x1512 (void (unsigned __int64*, unsigne...)`, debug start = 13, debug end = 30, flags = noinline
+3333- 13436 | S_FRAMEPROC [size = 32]
+--
+3413- 14224 | S_CALLSITEINFO [size = 16]
+3414-         type = 0x12DE (unsigned long (unsigned long, un...), addr = 0005:22894
+3415- 14240 | S_END [size = 4]
+3416: 14244 | S_LPROC32 [size = 76] `SafeUploadVolumeCachePathUnderPrefix`
+3417-         parent = 0, end = 14524, addr = 0001:19984, code size = 452
+3418-         type = `0x14DE (unsigned char (const _UNICODE_ST...)`, debug start = 14, debug end = 447, flags = noinline
+3419- 14320 | S_FRAMEPROC [size = 32]

@@ -1,0 +1,107 @@
+Test-StagedInvariantObserverCorpus.ps1 -- Phase 4 WP2 driver-off stimulus
+2026-10-05. Documentation only; this file is not a VM result.
+
+Invocation (Windows PowerShell 5.1, elevated, inside the existing checkpoint
+wrapper after its independent clean baseline):
+
+  powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Test-StagedInvariantObserverCorpus.ps1 `
+    -FixtureRoot C:\<existing-fixture-parent> `
+    -EvidenceRoot C:\<separate-existing-evidence-parent> `
+    -ExpectedObserverSha256 <64-hex-exact-module-hash> `
+    -RunGuid <32-hex-unique-run-guid>
+
+FixtureRoot and EvidenceRoot must be existing, distinct, nonnested directories
+on fixed local NTFS. The script creates observer-corpus-<RunGuid> under each;
+both names must be absent at entry. RunGuid is a 32-character hexadecimal GUID
+without dashes, owned by this one invocation. ExpectedObserverSha256 pins the
+exact StagedInvariantObserver.psm1 bytes to be tested. The script records its
+own hash, the observer hash, boot identity, build, fixture/evidence roots and
+DriverUnloaded assertion in provenance.json. It does not seed policy, start
+the driver, run the service, or replace the checkpoint wrapper.
+
+Preflight requires the recorded WIN10-DEBUGGED computer name and UUID
+9D44EEE8-81CF-4CC1-9FBA-7670F11DEF4D, Windows 10 19045.2965, an elevated
+token, SafeUpload absent from fltmc's loaded filters, the SafeUpload system
+driver in Stopped state, fixed local NTFS for both roots, and no reparse
+ancestor. Wrong environment, hash mismatch or reused RunGuid exits nonzero
+before any corpus case. A preflight failure before evidence creation may have
+only stderr; it is never a passed case.
+
+Result semantics:
+  PASS: this driver's-off corpus stimulus and observer checks completed for
+    that one case. It is not a Phase 4 protection verdict.
+  FAIL: observed byte/identity/metadata/reader mismatch, malformed input
+    accepted, unsafe cleanup, or another demonstrated check violation.
+  INCONCLUSIVE: missing/read-failed reader, unstable identity or raw capture,
+    unsupported decoder/fixture operation, required physical representation
+    not produced, absent fragmentation, or unavailable disposal evidence.
+The script exits 1 if any case FAILs, 2 if none FAIL but any are INCONCLUSIVE,
+and 0 only if every corpus case and owned cleanup PASS. Every summary carries
+Phase4Suite=NOT_QUALIFIED and AuthoritativeCaseExport=false. An exit 0 is not
+Phase4Suite=PASS, and an INCONCLUSIVE case must not be omitted from review.
+
+Cases are OneByteAndFourKiB, ResidentConversion, SparseMapping,
+CompressedMapping, FragmentedExtents, ReplacementEofSlack,
+DirectoryIndexGrowth, MftFragmentation and FailClosedDecoderCopies. Positive
+cases compare canonical raw logical images and independent fixture bytes,
+both fresh buffered and unbuffered reader results, and held readers for
+retained identities. First/middle/last allocated extent changes and directory
+name/hidden-attribute changes must be observed. The negative case corrupts
+copies of real captured MFT sectors and supplies truncated record/run and
+short-read inputs to the canonical observer decoder. It never corrupts the
+live NTFS volume. Accepting a malformed copy is FAIL; an unrelated exception
+type is INCONCLUSIVE.
+
+Evidence is immutable under EvidenceRoot\observer-corpus-<RunGuid>:
+provenance.json, append-only status.ndjson, summary.json; each case has
+baseline.json, sample-<sequence>-<phase>.json when sampled, disposal.json,
+and raw\ binary containers/logical images with manifest.ndjson written by
+the observer. OneByteAndFourKiB writes classification.json; MftFragmentation
+writes mft-runs.json; FailClosedDecoderCopies writes corrupt/truncated .bin
+inputs and negative-inputs.json with SHA-256, short-read arguments, actual
+nested exception types/messages/native fields, and the copied raw-record
+artifact references. These files are retained even if a case fails. The
+driver-off stimulus attempts to delete only FixtureRoot\observer-corpus-
+<RunGuid> after all observer contexts close; it refuses deletion if a
+reparse child or ancestor is found or the owned path check fails. Evidence
+is never deleted by this script. Cleanup PASS/FAIL and disposal statuses are
+recorded; Status=ERROR or NOT_OPENED is not disposal success.
+
+The existing checkpoint wrapper must still establish independent
+BaselineClean=True and a successful volume-cache write before creating the
+checkpoint, pin source/module/script hashes, preserve its disk-only overlay
+chain, collect unfiltered stdout/stderr and exact case evidence, and run the
+restoration reboot plus a separate independent baseline afterward. A failed
+restoration prevents the next VM run. The wrapper adapter for this corpus is
+not yet written. Running this script directly cannot establish clean
+restoration or an authoritative Phase 4 case export.
+
+Builder-side validation can check script syntax on Windows PowerShell 5.1,
+module import/hash handling and intentional negative decoder calls. It cannot
+prove actual VM NTFS representations, raw-volume I/O, sparse/compressed
+allocation, replacement and held-reader behavior, cleanup, or restoration.
+VM acceptance of a WP2 row requires the exact pinned observer/script on the
+target guest, observed representation and all reader/raw checks PASS, retained
+artifacts, checked disposal, and independently verified restoration.
+
+Exact-source builder assertion controls (no raw-volume or corpus-body calls):
+  powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Test-StagedInvariantObserverCorpus.BuilderCheck.ps1 `
+    -Corpus .\Test-StagedInvariantObserverCorpus.ps1 -Observer .\StagedInvariantObserver.psm1
+The check pins the current corpus/module hashes, extracts the actual assertion
+functions through the PowerShell AST, and tests nine literal synthetic outcomes.
+It also compiles the fixture-only C# without invoking it. Require zero parse
+errors, BuilderSyntheticCheck=PASS, NotVmQualification=True and child exit 0;
+preserve raw output. Source edits require deliberately updating the hash pin.
+
+Known open WP2 limits: MFT and directory-index fragmentation depend on the
+actual guest volume layout. The script records observed run counts and requires
+the decoder to touch two distinct runs; if the volume does not supply them,
+those cases are INCONCLUSIVE/NotReady rather than a manufactured PASS.
+NTFS sparse and compression allocation maps may also differ by volume and
+must be observed, not assumed. FileAllocationInfo preallocation can leave
+physical slack unspecified; the script currently requires zero raw slack and
+reports INCONCLUSIVE when it cannot prove it. That outcome needs runtime
+review, not a claim that all WP2 representations are complete. The corpus has
+no real lower-admission/completion ledger; it cannot detect a write followed
+by erase between samples or prove Phase 4's temporal NoUnapprovedByte rule.
+The future ledger/qualification adapter must supply that proof separately.

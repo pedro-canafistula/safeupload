@@ -1,0 +1,64 @@
+
+File: /tmp/claude-1000/exact-mvp3-b23/SafeUpload-stage-prototype.sys
+Format: COFF-x86-64
+Arch: x86_64
+AddressSize: 64bit
+DebugDirectory [
+  DebugEntry {
+    Characteristics: 0x0
+    TimeDateStamp: 2026-10-05 12:04:16 (0x6AC39240)
+    MajorVersion: 0x0
+    MinorVersion: 0x0
+    Type: CodeView (0x2)
+    SizeOfData: 0x79
+    AddressOfRawData: 0x27180
+    PointerToRawData: 0x25B80
+    PDBInfo {
+      PDBSignature: 0x53445352
+      PDBGUID: {1C4C1759-57E9-49EE-8466-0E6485C301CA}
+      PDBAge: 1
+      PDBFileName: C:\Users\vika\Documents\exact-mvp3-b23\src\driver\SafeUpload.Minifilter\x64\Debug\SafeUpload.pdb
+    }
+  }
+  DebugEntry {
+    Characteristics: 0x0
+    TimeDateStamp: 2026-10-05 12:04:16 (0x6AC39240)
+    MajorVersion: 0x0
+    MinorVersion: 0x0
+    Type: POGO (0xD)
+    SizeOfData: 0x1C4
+    AddressOfRawData: 0x271FC
+    PointerToRawData: 0x25BFC
+    RawData (
+      0000: 00000000 00100000 30380200 2E746578  |........08...tex|
+      0010: 74246D6E 00000000 30480200 90000000  |t$mn....0H......|
+      0020: 2E746578 74246D6E 24303000 C0480200  |.text$mn$00..H..|
+      0030: B0030000 2E746578 74246D6E 24323100  |.....text$mn$21.|
+      0040: 704C0200 00090000 2E746578 74247300  |pL.......text$s.|
+      0050: 70550200 6A000000 2E746578 74247800  |pU..j....text$x.|
+      0060: 00600200 A0060000 2E696461 74612435  |.`.......idata$5|
+      0070: 00000000 A0660200 80010000 2E303063  |.....f.......00c|
+      0080: 66670000 20680200 80000000 2E676669  |fg.. h.......gfi|
+      0090: 64730000 A0680200 E0080000 2E726461  |ds...h.......rda|
+      00A0: 74610000 80710200 68020000 2E726461  |ta...q..h....rda|
+      00B0: 7461247A 7A7A6462 67000000 E8730200  |ta$zzzdbg....s..|
+      00C0: F80B0000 2E786461 74610000 00800200  |.....xdata......|
+      00D0: 40000000 2E646174 61000000 40800200  |@....data...@...|
+      00E0: 80334E00 2E627373 00000000 00C05000  |.3N..bss......P.|
+      00F0: A4160000 2E706461 74610000 00E05000  |.....pdata....P.|
+      0100: A0550100 50414745 00000000 A0355200  |.U..PAGE.....5R.|
+      0110: C0080000 50414745 24730000 603E5200  |....PAGE$s..`>R.|
+      0120: 39000000 50414745 24780000 00405200  |9...PAGE$x...@R.|
+      0130: D0010000 494E4954 00000000 D0415200  |....INIT.....AR.|
+      0140: A4000000 494E4954 24730000 74425200  |....INIT$s..tBR.|
+      0150: 28000000 2E696461 74612432 00000000  |(....idata$2....|
+      0160: 9C425200 14000000 2E696461 74612433  |.BR......idata$3|
+      0170: 00000000 B0425200 98060000 2E696461  |.....BR......ida|
+      0180: 74612434 00000000 48495200 DA130000  |ta$4....HIR.....|
+      0190: 2E696461 74612436 00000000 00605200  |.idata$6.....`R.|
+      01A0: 60000000 2E727372 63243031 00000000  |`....rsrc$01....|
+      01B0: 60605200 A0020000 2E727372 63243032  |``R......rsrc$02|
+      01C0: 00000000                             |....|
+    )
+  }
+]

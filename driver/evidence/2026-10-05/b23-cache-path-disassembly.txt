@@ -1,0 +1,205 @@
+
+/tmp/claude-1000/exact-mvp3-b23/SafeUpload-stage-prototype.sys:	file format coff-x86-64
+
+Disassembly of section .text:
+
+0000000140001000 <.text>:
+140005600: 4c 89 44 24 18              	movq	%r8, 0x18(%rsp)
+140005605: 89 54 24 10                 	movl	%edx, 0x10(%rsp)
+140005609: 48 89 4c 24 08              	movq	%rcx, 0x8(%rsp)
+14000560e: 48 83 ec 48                 	subq	$0x48, %rsp
+140005612: 48 8d 54 24 20              	leaq	0x20(%rsp), %rdx
+140005617: 48 8d 0d 7a 91 03 00        	leaq	0x3917a(%rip), %rcx     # 0x14003e798
+14000561e: e8 2d e8 ff ff              	callq	0x140003e50 <.text+0x2e50>
+140005623: 48 8b 44 24 50              	movq	0x50(%rsp), %rax
+140005628: f0                          	lock
+140005629: 48 ff 00                    	incq	(%rax)
+14000562c: 33 c0                       	xorl	%eax, %eax
+14000562e: 89 44 24 24                 	movl	%eax, 0x24(%rsp)
+140005632: 48 8d 0d bf 0e 03 00        	leaq	0x30ebf(%rip), %rcx     # 0x1400364f8
+140005639: 33 c0                       	xorl	%eax, %eax
+14000563b: 8b 54 24 24                 	movl	0x24(%rsp), %edx
+14000563f: f0                          	lock
+140005640: 0f b1 11                    	cmpxchgl	%edx, (%rcx)
+140005643: 89 44 24 28                 	movl	%eax, 0x28(%rsp)
+140005647: 8b 44 24 28                 	movl	0x28(%rsp), %eax
+14000564b: 48 69 c0 6c e4 00 00        	imulq	$0xe46c, %rax, %rax     # imm = 0xE46C
+140005652: 48 8d 0d 47 91 03 00        	leaq	0x39147(%rip), %rcx     # 0x14003e7a0
+140005659: 48 03 c8                    	addq	%rax, %rcx
+14000565c: 48 8b c1                    	movq	%rcx, %rax
+14000565f: 48 89 44 24 30              	movq	%rax, 0x30(%rsp)
+140005664: 48 8b 44 24 30              	movq	0x30(%rsp), %rax
+140005669: 0f b6 40 09                 	movzbl	0x9(%rax), %eax
+14000566d: 85 c0                       	testl	%eax, %eax
+14000566f: 74 25                       	je	0x140005696 <.text+0x4696>
+140005671: 4c 8b 44 24 60              	movq	0x60(%rsp), %r8
+140005676: 8b 54 24 58                 	movl	0x58(%rsp), %edx
+14000567a: 48 8b 4c 24 30              	movq	0x30(%rsp), %rcx
+14000567f: e8 1c 05 00 00              	callq	0x140005ba0 <.text+0x4ba0>
+140005684: 0f b6 c0                    	movzbl	%al, %eax
+140005687: 85 c0                       	testl	%eax, %eax
+140005689: 74 0b                       	je	0x140005696 <.text+0x4696>
+14000568b: 48 8d 05 e6 59 05 00        	leaq	0x559e6(%rip), %rax     # 0x14005b078
+140005692: f0                          	lock
+140005693: 48 ff 00                    	incq	(%rax)
+140005696: 0f b6 54 24 20              	movzbl	0x20(%rsp), %edx
+14000569b: 48 8d 0d f6 90 03 00        	leaq	0x390f6(%rip), %rcx     # 0x14003e798
+1400056a2: e8 39 07 00 00              	callq	0x140005de0 <.text+0x4de0>
+1400056a7: 90                          	nop
+1400056a8: 48 83 c4 48                 	addq	$0x48, %rsp
+1400056ac: c3                          	retq
+
+/tmp/claude-1000/exact-mvp3-b23/SafeUpload-stage-prototype.sys:	file format coff-x86-64
+
+Disassembly of section .text:
+
+0000000140001000 <.text>:
+140005ba0: 4c 89 44 24 18              	movq	%r8, 0x18(%rsp)
+140005ba5: 89 54 24 10                 	movl	%edx, 0x10(%rsp)
+140005ba9: 48 89 4c 24 08              	movq	%rcx, 0x8(%rsp)
+140005bae: 48 83 ec 48                 	subq	$0x48, %rsp
+140005bb2: c6 44 24 20 00              	movb	$0x0, 0x20(%rsp)
+140005bb7: 48 83 7c 24 60 00           	cmpq	$0x0, 0x60(%rsp)
+140005bbd: 74 29                       	je	0x140005be8 <.text+0x4be8>
+140005bbf: 48 8b 44 24 60              	movq	0x60(%rsp), %rax
+140005bc4: 48 83 78 08 00              	cmpq	$0x0, 0x8(%rax)
+140005bc9: 74 1d                       	je	0x140005be8 <.text+0x4be8>
+140005bcb: 48 8b 44 24 60              	movq	0x60(%rsp), %rax
+140005bd0: 0f b7 00                    	movzwl	(%rax), %eax
+140005bd3: 85 c0                       	testl	%eax, %eax
+140005bd5: 74 11                       	je	0x140005be8 <.text+0x4be8>
+140005bd7: 48 8b 44 24 60              	movq	0x60(%rsp), %rax
+140005bdc: 0f b7 00                    	movzwl	(%rax), %eax
+140005bdf: 48 83 e0 01                 	andq	$0x1, %rax
+140005be3: 48 85 c0                    	testq	%rax, %rax
+140005be6: 74 75                       	je	0x140005c5d <.text+0x4c5d>
+140005be8: 48 8b 44 24 50              	movq	0x50(%rsp), %rax
+140005bed: 0f b6 40 08                 	movzbl	0x8(%rax), %eax
+140005bf1: 85 c0                       	testl	%eax, %eax
+140005bf3: 75 52                       	jne	0x140005c47 <.text+0x4c47>
+140005bf5: 48 8b 44 24 50              	movq	0x50(%rsp), %rax
+140005bfa: 83 38 00                    	cmpl	$0x0, (%rax)
+140005bfd: 75 48                       	jne	0x140005c47 <.text+0x4c47>
+140005bff: 83 7c 24 58 00              	cmpl	$0x0, 0x58(%rsp)
+140005c04: 75 0b                       	jne	0x140005c11 <.text+0x4c11>
+140005c06: 48 8b 44 24 50              	movq	0x50(%rsp), %rax
+140005c0b: 83 78 04 00                 	cmpl	$0x0, 0x4(%rax)
+140005c0f: 75 36                       	jne	0x140005c47 <.text+0x4c47>
+140005c11: 83 7c 24 58 02              	cmpl	$0x2, 0x58(%rsp)
+140005c16: 75 0f                       	jne	0x140005c27 <.text+0x4c27>
+140005c18: 48 8b 44 24 50              	movq	0x50(%rsp), %rax
+140005c1d: 8b 40 04                    	movl	0x4(%rax), %eax
+140005c20: 83 e0 01                    	andl	$0x1, %eax
+140005c23: 85 c0                       	testl	%eax, %eax
+140005c25: 75 20                       	jne	0x140005c47 <.text+0x4c47>
+140005c27: 83 7c 24 58 03              	cmpl	$0x3, 0x58(%rsp)
+140005c2c: 75 0f                       	jne	0x140005c3d <.text+0x4c3d>
+140005c2e: 48 8b 44 24 50              	movq	0x50(%rsp), %rax
+140005c33: 8b 40 04                    	movl	0x4(%rax), %eax
+140005c36: 83 e0 02                    	andl	$0x2, %eax
+140005c39: 85 c0                       	testl	%eax, %eax
+140005c3b: 75 0a                       	jne	0x140005c47 <.text+0x4c47>
+140005c3d: c7 44 24 28 00 00 00 00     	movl	$0x0, 0x28(%rsp)
+140005c45: eb 08                       	jmp	0x140005c4f <.text+0x4c4f>
+140005c47: c7 44 24 28 01 00 00 00     	movl	$0x1, 0x28(%rsp)
+140005c4f: 0f b6 44 24 28              	movzbl	0x28(%rsp), %eax
+140005c54: 88 44 24 20                 	movb	%al, 0x20(%rsp)
+140005c58: e9 e3 00 00 00              	jmp	0x140005d40 <.text+0x4d40>
+140005c5d: 48 8b 44 24 50              	movq	0x50(%rsp), %rax
+140005c62: 0f b6 40 08                 	movzbl	0x8(%rax), %eax
+140005c66: 85 c0                       	testl	%eax, %eax
+140005c68: 75 48                       	jne	0x140005cb2 <.text+0x4cb2>
+140005c6a: 83 7c 24 58 00              	cmpl	$0x0, 0x58(%rsp)
+140005c6f: 75 0b                       	jne	0x140005c7c <.text+0x4c7c>
+140005c71: 48 8b 44 24 50              	movq	0x50(%rsp), %rax
+140005c76: 83 78 04 00                 	cmpl	$0x0, 0x4(%rax)
+140005c7a: 75 36                       	jne	0x140005cb2 <.text+0x4cb2>
+140005c7c: 83 7c 24 58 02              	cmpl	$0x2, 0x58(%rsp)
+140005c81: 75 0f                       	jne	0x140005c92 <.text+0x4c92>
+140005c83: 48 8b 44 24 50              	movq	0x50(%rsp), %rax
+140005c88: 8b 40 04                    	movl	0x4(%rax), %eax
+140005c8b: 83 e0 01                    	andl	$0x1, %eax
+140005c8e: 85 c0                       	testl	%eax, %eax
+140005c90: 75 20                       	jne	0x140005cb2 <.text+0x4cb2>
+140005c92: 83 7c 24 58 03              	cmpl	$0x3, 0x58(%rsp)
+140005c97: 75 0f                       	jne	0x140005ca8 <.text+0x4ca8>
+140005c99: 48 8b 44 24 50              	movq	0x50(%rsp), %rax
+140005c9e: 8b 40 04                    	movl	0x4(%rax), %eax
+140005ca1: 83 e0 02                    	andl	$0x2, %eax
+140005ca4: 85 c0                       	testl	%eax, %eax
+140005ca6: 75 0a                       	jne	0x140005cb2 <.text+0x4cb2>
+140005ca8: c7 44 24 2c 00 00 00 00     	movl	$0x0, 0x2c(%rsp)
+140005cb0: eb 08                       	jmp	0x140005cba <.text+0x4cba>
+140005cb2: c7 44 24 2c 01 00 00 00     	movl	$0x1, 0x2c(%rsp)
+140005cba: 0f b6 44 24 2c              	movzbl	0x2c(%rsp), %eax
+140005cbf: 88 44 24 20                 	movb	%al, 0x20(%rsp)
+140005cc3: c7 44 24 24 00 00 00 00     	movl	$0x0, 0x24(%rsp)
+140005ccb: eb 0a                       	jmp	0x140005cd7 <.text+0x4cd7>
+140005ccd: 8b 44 24 24                 	movl	0x24(%rsp), %eax
+140005cd1: ff c0                       	incl	%eax
+140005cd3: 89 44 24 24                 	movl	%eax, 0x24(%rsp)
+140005cd7: 0f b6 44 24 20              	movzbl	0x20(%rsp), %eax
+140005cdc: 85 c0                       	testl	%eax, %eax
+140005cde: 75 60                       	jne	0x140005d40 <.text+0x4d40>
+140005ce0: 48 8b 44 24 50              	movq	0x50(%rsp), %rax
+140005ce5: 8b 00                       	movl	(%rax), %eax
+140005ce7: 39 44 24 24                 	cmpl	%eax, 0x24(%rsp)
+140005ceb: 73 53                       	jae	0x140005d40 <.text+0x4d40>
+140005ced: 8b 44 24 24                 	movl	0x24(%rsp), %eax
+140005cf1: 48 69 c0 0a 02 00 00        	imulq	$0x20a, %rax, %rax      # imm = 0x20A
+140005cf8: 48 8b 4c 24 50              	movq	0x50(%rsp), %rcx
+140005cfd: 48 8d 44 01 0c              	leaq	0xc(%rcx,%rax), %rax
+140005d02: 48 89 44 24 38              	movq	%rax, 0x38(%rsp)
+140005d07: 8b 44 24 24                 	movl	0x24(%rsp), %eax
+140005d0b: 48 69 c0 0a 02 00 00        	imulq	$0x20a, %rax, %rax      # imm = 0x20A
+140005d12: 48 8b 4c 24 50              	movq	0x50(%rsp), %rcx
+140005d17: 0f b7 44 01 0a              	movzwl	0xa(%rcx,%rax), %eax
+140005d1c: 66 89 44 24 32              	movw	%ax, 0x32(%rsp)
+140005d21: 0f b7 44 24 32              	movzwl	0x32(%rsp), %eax
+140005d26: 66 89 44 24 30              	movw	%ax, 0x30(%rsp)
+140005d2b: 48 8d 54 24 30              	leaq	0x30(%rsp), %rdx
+140005d30: 48 8b 4c 24 60              	movq	0x60(%rsp), %rcx
+140005d35: e8 d6 00 00 00              	callq	0x140005e10 <.text+0x4e10>
+140005d3a: 88 44 24 20                 	movb	%al, 0x20(%rsp)
+140005d3e: eb 8d                       	jmp	0x140005ccd <.text+0x4ccd>
+140005d40: 0f b6 44 24 20              	movzbl	0x20(%rsp), %eax
+140005d45: 48 83 c4 48                 	addq	$0x48, %rsp
+140005d49: c3                          	retq
+
+/tmp/claude-1000/exact-mvp3-b23/SafeUpload-stage-prototype.sys:	file format coff-x86-64
+
+Disassembly of section .text:
+
+0000000140001000 <.text>:
+140005d50: 48 89 54 24 10              	movq	%rdx, 0x10(%rsp)
+140005d55: 89 4c 24 08                 	movl	%ecx, 0x8(%rsp)
+140005d59: 48 83 ec 48                 	subq	$0x48, %rsp
+140005d5d: c6 44 24 20 00              	movb	$0x0, 0x20(%rsp)
+140005d62: 48 8d 54 24 21              	leaq	0x21(%rsp), %rdx
+140005d67: 48 8d 0d 2a 8a 03 00        	leaq	0x38a2a(%rip), %rcx     # 0x14003e798
+140005d6e: e8 dd e0 ff ff              	callq	0x140003e50 <.text+0x2e50>
+140005d73: 33 c0                       	xorl	%eax, %eax
+140005d75: 89 44 24 24                 	movl	%eax, 0x24(%rsp)
+140005d79: 48 8d 0d 78 07 03 00        	leaq	0x30778(%rip), %rcx     # 0x1400364f8
+140005d80: 33 c0                       	xorl	%eax, %eax
+140005d82: 8b 54 24 24                 	movl	0x24(%rsp), %edx
+140005d86: f0                          	lock
+140005d87: 0f b1 11                    	cmpxchgl	%edx, (%rcx)
+140005d8a: 89 44 24 28                 	movl	%eax, 0x28(%rsp)
+140005d8e: 8b 44 24 28                 	movl	0x28(%rsp), %eax
+140005d92: 48 69 c0 6c e4 00 00        	imulq	$0xe46c, %rax, %rax     # imm = 0xE46C
+140005d99: 48 8d 0d 00 8a 03 00        	leaq	0x38a00(%rip), %rcx     # 0x14003e7a0
+140005da0: 48 03 c8                    	addq	%rax, %rcx
+140005da3: 48 8b c1                    	movq	%rcx, %rax
+140005da6: 48 89 44 24 30              	movq	%rax, 0x30(%rsp)
+140005dab: 4c 8b 44 24 58              	movq	0x58(%rsp), %r8
+140005db0: 8b 54 24 50                 	movl	0x50(%rsp), %edx
+140005db4: 48 8b 4c 24 30              	movq	0x30(%rsp), %rcx
+140005db9: e8 e2 fd ff ff              	callq	0x140005ba0 <.text+0x4ba0>
+140005dbe: 88 44 24 20                 	movb	%al, 0x20(%rsp)
+140005dc2: 0f b6 54 24 21              	movzbl	0x21(%rsp), %edx
+140005dc7: 48 8d 0d ca 89 03 00        	leaq	0x389ca(%rip), %rcx     # 0x14003e798
+140005dce: e8 0d 00 00 00              	callq	0x140005de0 <.text+0x4de0>
+140005dd3: 0f b6 44 24 20              	movzbl	0x20(%rsp), %eax
+140005dd8: 48 83 c4 48                 	addq	$0x48, %rsp
+140005ddc: c3                          	retq

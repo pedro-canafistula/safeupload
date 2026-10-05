@@ -439,3 +439,20 @@ falsify the Phase 3 cutoff mechanism; the harness must test it, never reinterpre
   required. The debuggee still points to the failed b22s01a checkpoint overlay; a new VM run awaits the
   exact owner recovery above followed by an independent clean-baseline check. Offline observer-corpus
   implementation can proceed while waiting; it does not advance a VM acceptance gate.
+- **2026-10-05 b23 compiled review and WP2 offline increment:** the matching PDB GUID/age and linked PE
+  section map place the new comparator and its cache/lock call chain in nonpaged `.text`; the comparator's
+  disassembly contains no calls. Root checked the retained symbol/disassembly evidence. This proves linked
+  placement, not successful boot or runtime residency (`evidence/2026-10-05/b23-residency-review.txt`).
+  The new driver-off observer corpus adds actual resident conversion, 1-byte/4-KiB classification,
+  sparse/compressed/fragmented allocation, replacement/EOF/slack, directory-index and MFT cross-run checks,
+  and malformed copied raw-record/run/short-read controls. It uses the existing raw decoder and requires
+  matching fresh buffered/unbuffered and retained readers. Windows PowerShell 5.1 parsed the exact corpus
+  with zero errors, compiled the fixture stimulus, and passed nine literal assertion controls after a
+  validation-fixture type-alias fix; both attempts are retained at
+  `evidence/2026-10-05/observer-corpus-builder-attempt-a.txt` and `observer-corpus-builder-attempt-b.txt`.
+  No corpus VM run is claimed. Actual MFT/index fragmentation and raw slack may remain unavailable;
+  unproduced representations are INCONCLUSIVE. Temporal write-then-erase proof still needs the lower
+  ledger. The checkpoint coordinator is being authored separately; all Phase 4 acceptance gates stay open.
+  The review-4 fixture capability map (`evidence/2026-10-05/review4-fixture-capability-map.txt`) records the
+  exact reusable stimuli and missing lower-completion/W/marker receipts; older aggregate counters are not
+  substituted for the required races.

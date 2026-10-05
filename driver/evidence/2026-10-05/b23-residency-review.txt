@@ -1,0 +1,201 @@
+b23 residency and early-boot path review
+Date: 2026-10-05
+Reviewed source commit: 39406a55fc80d797bc92d203bd5297bce0040044
+Reviewed artifact directory: /tmp/claude-1000/exact-mvp3-b23
+Review mode: Read-only source/PE inspection. No build, VM access, dump transfer,
+kernel edit, or commit.
+
+Disposition
+-----------
+The b23 PE and matching PDB prove the comparator, cache matcher/query, rename-loss
+advance helper, and spin-lock acquire/release helpers are all in nonpaged `.text`.
+Signing did not alter any section's raw bytes between the signed feature driver and
+its unsigned counterpart. The disassembly confirms the cache matcher calls the
+comparator while the query takes/releases the lock around matching. This is compiled
+placement evidence, not a live residency/paging test.
+
+The b22 fault stack does not prove that StageAdmit entered at DISPATCH_LEVEL: the
+scope-cache spinlock raises IRQL before the cache comparator.
+The reported IRQL 2 is therefore the lock-held comparator IRQL. StageAdmit is only
+called from the IRP_MJ_CREATE arm of StageDispatchCore, and Microsoft documents
+minifilter pre-operation callbacks at PASSIVE_LEVEL or APC_LEVEL. Consequently,
+FltGetInstanceContext and FltGetFileNameInformation (both <= APC_LEVEL) are within
+their documented bounds on this callback path. Do not treat their lack of an explicit
+guard here as a defect. No concrete >APC caller to StageAdmit or the volume-context
+lookup was found.
+
+Proved binary facts
+-------------------
+* summary.txt records the b23 source archive/manifest hashes and four driver
+  build configurations with zero warnings and zero errors. The build console
+  pins source commit 39406a55fc80d797bc92d203bd5297bce0040044; the root
+  exact-input validation independently compares every archived source file.
+* `llvm-readobj` identifies both `SafeUpload-stage-prototype.sys` and `owned-feature.sys`
+  as AMD64 PE32+ native images. Their CodeView records both identify PDB GUID
+  `{1C4C1759-57E9-49EE-8466-0E6485C301CA}`, age 1, with PDB path
+  `C:\Users\vika\Documents\exact-mvp3-b23\src\driver\SafeUpload.Minifilter\x64\Debug\SafeUpload.pdb`.
+  The fetched `SafeUpload-b23.pdb` has the same GUID and age, proving it is the
+  matching PDB for those images.
+* Both images have `.text` at RVA 0x1000 with characteristics 0x68000020, including
+  `IMAGE_SCN_MEM_NOT_PAGED`; `PAGE` is at RVA 0x50E000 with characteristics
+  0x60000020 and lacks that flag. `.data` and `.rdata` are also marked
+  `IMAGE_SCN_MEM_NOT_PAGED`.
+* A raw-section hash comparison shows identical contents and RVAs for all eight PE
+  sections in signed and unsigned feature images, including `.text`, `PAGE`, and
+  `.data`. The signed image alone has a certificate table (RVA 0x40800, size 0x590);
+  the unsigned image has no certificate table. This proves signing did not change
+  section code/data. It does not identify which section contains a particular symbol.
+* The fetched artifact's signed hash is
+  02BDF87DC646D9D64D62EAE3E3C5DED5892F85C119FC04B8A528D9C86FCE79; unsigned is
+  B7DCE0177A506D5D48F8F7B529E3FDA6911B4B656484CA064558A3DDA2EE62A6.
+
+Source-only placement and storage conclusions
+----------------------------------------------
+The b23 source manifest lists Policy.c hash
+c70a58262eb3735aeedf2d7be9c0075f6e28c916489c58af69bb361839416538, matching this
+checkout. In Policy.c, SafeUploadVolumeCachePathUnderPrefix is `__declspec(noinline)`
+and is not placed in PAGE by the ALLOC_PRAGMA list. The explicit PAGE entries nearby
+are policy update/initialization routines and SafeUploadPolicyMayMatchVolume; the
+normal raised-IRQL path calls SafeUploadPolicyVolumeCacheQueryNoInline and its cache
+matcher, neither of which is assigned to PAGE. The b23 WDK link command merges
+`_TEXT` into `.text` and `_PAGE` into `PAGE`. The helper's source/default section
+agrees with the exact PDB symbol map below.
+
+The cache arrays and spin lock are static driver storage. Active and pending policy
+prefixes, plus boot prefixes, are copied into fixed cache entries before publishing
+the cache index under the lock (Policy.c:483-543). Per-instance volume names are
+embedded in instance contexts allocated from NonPagedPool (Context.c:321-325,
+356-367; Filter.h:264-269). SafeUploadPolicyMayMatchInstanceVolume retrieves the
+context before the cache lock and releases it after the query (Policy.c:683-701).
+FltGetInstanceContext is documented <= APC_LEVEL; FltReleaseContext permits
+DISPATCH_LEVEL for a NonPagedPool context. The call is therefore valid in the
+pre-operation callback's documented PASSIVE/APC range, while only the copied context
+name is read under the elevated cache lock. The cache comparator itself makes
+bounded reads and ASCII arithmetic and invokes no general RTL string function; its
+compiled section/RVA and call edges are verified below.
+
+PDB-to-PE map and compiled call path
+-----------------------------------
+`llvm-pdbutil dump --summary --section-headers SafeUpload-b23.pdb` reports GUID
+`{1C4C1759-57E9-49EE-8466-0E6485C301CA}`, age 1, and section 1 `.text` at RVA
+0x1000. Both signed and unsigned b23 PE CodeView records have the same GUID/age;
+the PE section header reports `.text` characteristics 0x68000020, including
+`IMAGE_SCN_MEM_NOT_PAGED`. The PDB segment:offset symbols map to this section as
+follows (offsets are hexadecimal after conversion from the PDB's decimal offsets):
+
+* `SafeUploadPolicyRenameLossAdvance`: segment 1 offset 0x4600, size 173 bytes;
+  RVA 0x5600-0x56AC.
+* `SafeUploadPolicyVolumeCacheMatchesLocked`: segment 1 offset 0x4BA0, size 426;
+  RVA 0x5BA0-0x5D49.
+* `SafeUploadPolicyVolumeCacheQueryNoInline`: segment 1 offset 0x4D50, size 141;
+  RVA 0x5D50-0x5DDC.
+* `SafeUploadAcquireSpinLock`: segment 1 offset 0x2E50, size 37; RVA
+  0x3E50-0x3E74. `SafeUploadReleaseSpinLock`: segment 1 offset 0x4DE0, size 35;
+  RVA 0x5DE0-0x5E02.
+* `SafeUploadVolumeCachePathUnderPrefix`: segment 1 offset 0x4E10, size 452;
+  RVA 0x5E10-0x5FD3.
+
+The disassembly at `b23-helper-disassembly.txt` shows the comparator's full code
+range and contains no CALL instruction: it performs argument/length validation,
+bounded UTF-16 loads, ASCII-only case folding/comparison, and the trailing
+backslash component-boundary check using local branches. `b23-cache-path-disassembly.txt`
+shows `SafeUploadPolicyVolumeCacheQueryNoInline` calling acquire (0x140003E50),
+the cache matcher (0x140005BA0), and release (0x140005DE0), in that order. The
+matcher directly calls the comparator at 0x140005E10 while the query's lock is
+held. `SafeUploadPolicyRenameLossAdvance` is also in this nonpaged section and
+disassembles calls to the same acquire, matcher, and release helpers. No call from
+the comparator or these lock-held matching helpers targets PAGE code.
+
+Raw retained command outputs: `b23-pdb-summary-sections.txt` (PDB GUID/age and
+section headers), `b23-pdb-cache-symbols.txt` (symbol records/segment offsets),
+`b23-pdb-symbols-full.txt` (complete PDB symbol dump),
+`b23-signed-debug-directory.txt` and `b23-unsigned-debug-directory.txt` (PE
+CodeView identity), `b23-helper-disassembly.txt`, and
+`b23-cache-path-disassembly.txt`. The map was made from the fetched builder PDB and
+the existing signed prototype image; no build or dump transfer was performed.
+
+Limit: a static PE section flag plus matching PDB proves linked placement, not
+that the pages remained resident in a particular boot or that runtime code/data
+were valid under all circumstances. The dump/disassembly does not replace VM
+qualification.
+
+Early-boot raised-IRQL finding
+-----------------------------
+The lock-held high-IRQL comparator is bounded and conservative: the valid volume name
+is compared against cached current/pending/boot prefixes; malformed or unknown volume
+identity is treated as potentially scoped according to cache flags/prefixes. ASCII
+matching enforces a backslash component boundary, so HarddiskVolume3 does not cover
+HarddiskVolume30. Non-ASCII code units yield "may match," which can overclassify but
+does not claim OUTSIDE when Unicode case equivalence is unknown.
+
+The prototype callback table registers all operations with flags 0
+(Filter.c:135-159); the legacy write callback separately skips paging I/O (163-170).
+However, paging I/O does not call StageAdmit: that function is reached only for
+IRP_MJ_CREATE in StageDispatchCore (StageStream.c:3186-3197). The b22 captured stack contains
+StageAdmit as an ancestor of the lock-held comparator fault;
+the stack proves the comparator ran at DISPATCH, but says nothing about the
+entry IRQL before the lock was acquired (b22 CPU1 analysis:100-109).
+
+StageAdmit calls FltGetFileNameInformation at StageStream.c:2584 and, if successful,
+FltParseFileNameInformation at 2601 before the read-only short-circuit at 2593. The
+documented pre-operation range is PASSIVE/APC, and both name APIs allow <= APC_LEVEL,
+so this is not an IRQL contract violation on the reachable callback path. References:
+https://learn.microsoft.com/en-us/windows-hardware/drivers/ifs/writing-preoperation-callback-routines
+https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/fltkernel/nf-fltkernel-fltgetfilenameinformation
+https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/fltkernel/nf-fltkernel-fltparsefilenameinformation
+https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/fltkernel/nf-fltkernel-fltgetinstancecontext
+https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/fltkernel/nf-fltkernel-fltreleasecontext
+
+Directory create and delete-on-close paths use the same name APIs, also within the
+pre-operation callback. The TxF helper guards its own PASSIVE-only name-query path
+and falls back to volume classification above PASSIVE (Txf.c:41-47, 89-90); this is
+additional source evidence that the volume-cache query is the raised-IRQL fallback.
+
+One distinct source question remains: general full-path policy matching calls
+SafeUploadPathUnderPrefix -> RtlPrefixUnicodeString (Policy.c:398-419); Microsoft
+documents that RTL routine at PASSIVE_LEVEL, while the policy matcher is annotated
+<= APC_LEVEL (Policy.c:1762-1785). The general pre-operation documentation allows
+APC_LEVEL callbacks, but this review did not establish whether the specific
+IRP_MJ_CREATE route can enter StageAdmit at APC_LEVEL or reproduce a call there.
+Keep this as an unqualified source-level question, separate from the proven b22
+fault, whose caller was the scope-cache matcher under a spinlock. No new acceptance
+or runtime claim is made about this adjacent general matcher.
+
+The intended read/image decision is clear in source: on a failed name lookup, a
+non-mutating create short-circuits to success (StageStream.c:2586-2599), and the
+dispatch comment says the boot snapshot scopes mutation only (3467-3481). A read-only
+create classified as non-mutating also does not acquire an admission epoch
+(StageEpochOperation at 3076-3099). Since StageAdmit is a pre-operation callback,
+the source/docs establish a maximum of APC_LEVEL rather than DISPATCH. Whether the
+specific create path can execute at APC and then enter the PASSIVE-only general
+matcher above remains unproved here; do not attribute that possibility to the b22
+DISPATCH fault.
+
+Paging source behavior is deliberately separate: `StageEpochOperation` covers only
+mutating creates and writable-section creates; paging writes are not an epoch
+operation. The touched-union helper explicitly bypasses IRP_PAGING_IO at 3112. In
+StageDispatchCore, unowned IRP_MJ_WRITE paging requests skip the physical-mutation
+gate at 3296-3315, and staged-stream paging requests use StageRoutePaging
+(StageStream.c:1958-1964). SET_INFORMATION / SET_EA / SET_SECURITY paging requests
+also pass through at 3324-3325 and 3371-3372. This is source-only evidence of the
+no-new-volume-scope-paging-refusal intent, not VM proof of the full mapped-I/O
+invariant. Staged-stream paging requests are separately routed through
+StageRoutePaging and may be refused for a read-only staged stream or rundown failure
+(StageStream.c:1845-1914); that is per-stream routing behavior, not the unresolved-name
+volume-scope refusal.
+
+Evidence limits
+---------------
+No b23 VM run, boot, Driver Verifier run, crash, or live module mapping was available;
+owner recovery is pending. The four zero-warning/zero-error build logs establish
+build completion only. The PE/PDB/disassembly prove linked section placement and
+call structure, but not live residency or correctness on a VM. The b22 dump proves
+the comparator ran with the scope-cache spinlock held at DISPATCH_LEVEL; it does
+not prove StageAdmit entered at DISPATCH_LEVEL. The residual general-matcher
+API-contract question is a source-based uncertainty, not a claim that b23
+bugchecked there. Do not treat this report as acceptance or runtime qualification.
+
+Root validation: compared PDB GUID/age to both PE CodeView records, checked
+segment-1 symbol offsets and disassembled helper/cache call edges against the
+retained raw outputs. PDB SHA256=9F07297AA6A148259F996BA8E127A1C529CD3A29E2DEDCD29DFB3A1402835F36.
+Source-commit attribution wording and captured-stack wording corrected by root.
