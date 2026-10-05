@@ -268,6 +268,13 @@ static VOID StageRegistryUnknownWorker(_In_ PFLT_GENERIC_WORKITEM WorkItem, _In_
 static BOOLEAN StageRegistryQueueInstanceUnknown(_In_ PFLT_INSTANCE Instance, _In_ LONG Reason);
 static BOOLEAN StageRegistryQueueEntryUnknown(_In_ PSTAGE_REGISTRY_ENTRY Entry, _In_ LONG Reason);
 static BOOLEAN StageRegistryQueueReclaim(VOID);
+static NTSTATUS StageRegistryResolveCompactStream(_In_ PSTAGE_REGISTRY_ENTRY Entry,
+    _In_ PFLT_INSTANCE Instance, _In_ PFLT_VOLUME Volume,
+    _Out_writes_(SAFEUPLOAD_WRITER_REGISTRY_NAME_CHARS) PWCH StreamBuffer,
+    _Out_ PUSHORT StreamChars);
+_IRQL_requires_max_(APC_LEVEL)
+__declspec(noinline) static BOOLEAN StageRegistryMarkSopUnknown(_In_ PFLT_INSTANCE Instance,
+    _In_ ULONGLONG VolumeSerial, _In_ const FILE_ID_128 *FileId, _In_opt_ PVOID SectionObjectPointer);
 
 #ifdef ALLOC_PRAGMA
 #pragma alloc_text(PAGE, SafeUploadStageWritersApplyPendingScope)
@@ -2819,7 +2826,7 @@ static NTSTATUS StageRegistryResolveCompactStream(_In_ PSTAGE_REGISTRY_ENTRY Ent
         stream = (PFILE_STREAM_INFORMATION)((PUCHAR)streams + offset);
         available = returned - offset;
         nextOffset = stream->NextEntryOffset;
-        if (available < FIELD_OFFSET(FILE_STREAM_INFORMATION, StreamName) ||
+        if (available < (ULONG)FIELD_OFFSET(FILE_STREAM_INFORMATION, StreamName) ||
             stream->StreamNameLength == 0 ||
             (stream->StreamNameLength & (sizeof(WCHAR) - 1)) != 0 ||
             stream->StreamNameLength > available - FIELD_OFFSET(FILE_STREAM_INFORMATION, StreamName)) {
