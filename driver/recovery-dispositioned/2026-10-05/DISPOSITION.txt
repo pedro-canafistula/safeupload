@@ -1,0 +1,6 @@
+Operator disposition, 2026-10-05 (victor bonato moved these files himself after "do it").
+These three W01-family latch files belong to W01 run 1 (run GUID ab961697cb5847fc86a2b265b3862df7).
+That run failed in Prepare on a parent-script ACL readback bug before any driver, policy, Verifier,
+lower filter, fixture file, child or writer was touched. Guest leftovers were removed and the
+independent baseline is BaselineClean=True (driver/evidence/2026-10-05/w01-run1-prepare-failure-guest-baseline.txt).
+The files sit here, outside the scanned evidence root, unmodified and tracked in git.
