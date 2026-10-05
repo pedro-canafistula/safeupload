@@ -270,6 +270,7 @@ typedef struct _SAFEUPLOAD_INSTANCE_CONTEXT {
     PSAFEUPLOAD_INSTANCE_TEARDOWN_TOKEN TeardownToken;
     volatile LONG WritersUntracked; /* Sticky for this attachment if a writer cannot get a context. */
     volatile LONG RegistryUnknownReasons;
+    volatile LONG64 RegistryDirectoryRenameGeneration; /* qualifies names resolved before a completed parent move */
     volatile LONG CanaryState;
     volatile LONG64 CanaryStartInterruptTime;
     NTSTATUS CanaryStatus;

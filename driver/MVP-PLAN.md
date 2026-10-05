@@ -204,6 +204,12 @@ start and stop handled, test-only unload restores the VM.
 - Pending policy plus one admission epoch held to lower completion on every admission path (create,
   write open, writable section, rename/link, set-information, delete, selected FSCTLs, publication),
   drained before the pending policy becomes current.
+- **Boot-path assertion:** before the service's first authenticated `SET_POLICY`, admission uses only the
+  `BootPolicy` snapshot. It may refuse a mutating open only when its resolved target is in that scope or
+  its unresolved target could be in that scope; the driver's private staging namespace keeps its own
+  access gate. Read-only opens and image loads outside the scope stay pass-through; an unavailable epoch
+  may not turn a known out-of-scope operation into a refusal. Writer-tracking loss only withholds
+  promotion and never refuses I/O.
 - Registry of streams that had a writer since boot; a stream in the added scope with H, S or C
   nonzero is Activating, otherwise Protected at once. Activating refuses new writers and publication
   into that file and is promoted when Free(F) and its cache is flushed. The service reports which file

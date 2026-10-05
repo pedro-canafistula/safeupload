@@ -103,10 +103,11 @@ VOID SafeUploadStageWritersSetCompletion(_In_ PVOID Reservation,
 BOOLEAN SafeUploadStageWritersIsReservation(_In_opt_ PVOID Context);
 VOID SafeUploadStageWritersCancelReservation(_In_opt_ PVOID Reservation);
 NTSTATUS SafeUploadStageWritersPrepareRename(_In_ PFLT_CALLBACK_DATA Data,
-    _In_ PCFLT_RELATED_OBJECTS FltObjects, _In_ PCUNICODE_STRING Destination,
+    _In_ PCFLT_RELATED_OBJECTS FltObjects, _In_ PCUNICODE_STRING Source,
+    _In_ PCUNICODE_STRING Destination,
     _In_ BOOLEAN LinkOperation, _Outptr_result_maybenull_ PVOID *RenameContext);
 BOOLEAN SafeUploadStageWritersIsRenameContext(_In_opt_ PVOID Context);
-VOID SafeUploadStageWritersCompleteRename(_In_opt_ PVOID Context,
+VOID SafeUploadStageWritersCompleteRename(_In_ PFLT_INSTANCE Instance, _In_opt_ PVOID Context,
     _In_ BOOLEAN Succeeded, _In_ BOOLEAN Draining);
 NTSTATUS SafeUploadStageWritersPostCreate(_In_ PFLT_CALLBACK_DATA Data,
     _In_ PCFLT_RELATED_OBJECTS FltObjects, _In_ FLT_POST_OPERATION_FLAGS Flags,
@@ -143,6 +144,9 @@ VOID SafeUploadStageWritersGetStatus(_Out_ PSAFEUPLOAD_WRITER_STATE_STATUS Statu
 NTSTATUS SafeUploadStageWritersRegistryEvaluate(_In_ PFLT_INSTANCE Instance,
     _In_ PCUNICODE_STRING VolumeName, _In_ PCUNICODE_STRING NormalizedName,
     _In_ PFILE_OBJECT SourceObject,
+    _Out_ PSAFEUPLOAD_REGISTRY_ENTRY_STATUS Status);
+BOOLEAN SafeUploadStageWritersRegistrySnapshotByName(_In_ PFLT_INSTANCE Instance,
+    _In_ PFLT_VOLUME Volume, _In_ PCUNICODE_STRING Name,
     _Out_ PSAFEUPLOAD_REGISTRY_ENTRY_STATUS Status);
 VOID SafeUploadStageWritersSetCapacity(_In_ UINT32 Capacity);
 VOID SafeUploadStageWritersRecordTxfRefused(VOID);
