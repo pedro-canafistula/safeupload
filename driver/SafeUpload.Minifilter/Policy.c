@@ -59,6 +59,12 @@ static BOOLEAN SafeUploadBootScopesActive;
 
 static volatile LONG SafeUploadPolicyGeneration = 0;
 
+static BOOLEAN SafeUploadPolicySnapshotMatchesDestination(
+    _In_opt_ const SAFEUPLOAD_POLICY *Policy,
+    _In_ SAFEUPLOAD_VOLUME_KIND VolumeKind,
+    _In_opt_ PCUNICODE_STRING NormalizedPath,
+    _In_ BOOLEAN IncludeAncestors);
+
 #if SAFEUPLOAD_STAGING_PROTOTYPE
 
 #define SAFEUPLOAD_POLICY_DRAIN_TIMEOUT_100NS (30LL * 10 * 1000 * 1000)
@@ -84,6 +90,15 @@ static volatile LONG SafeUploadEpochGeneration;
 static volatile LONG SafeUploadPolicyFailedClosed;
 static volatile LONG SafeUploadPolicyFinalizing;
 static volatile LONG SafeUploadForceNextEpochTimeout;
+
+/* A policy update pauses new per-file cutoffs and drains the active count before
+ * changing epochs. The worker holds no policy/update lock across cache I/O. */
+static KSPIN_LOCK SafeUploadActivationCutoffLock;
+static KEVENT SafeUploadActivationCutoffsDrained;
+static volatile LONG SafeUploadActivationCutoffsActive;
+static volatile LONG SafeUploadActivationCutoffsPaused;
+static NTSTATUS SafeUploadPolicyActivationCutoffsPause(VOID);
+static VOID SafeUploadPolicyActivationCutoffsResume(VOID);
 
 //
 //  The candidate snapshot while a policy update is in transition (from before
@@ -236,26 +251,71 @@ BOOLEAN SafeUploadPolicyAdmissionMustRetry(VOID)
         InterlockedCompareExchange(&SafeUploadPolicyFinalizing, 0, 0) != 0;
 }
 
+#ifdef ALLOC_PRAGMA
+#pragma alloc_text(PAGE, SafeUploadPolicyActivationCutoffBegin)
+#pragma alloc_text(PAGE, SafeUploadPolicyActivationCutoffEnd)
+#pragma alloc_text(PAGE, SafeUploadPolicyActivationCutoffsPause)
+#pragma alloc_text(PAGE, SafeUploadPolicyActivationCutoffsResume)
+#endif
+
+static NTSTATUS SafeUploadPolicyActivationCutoffsPause(VOID)
+{
+    LARGE_INTEGER timeout;
+    KIRQL irql;
+    NTSTATUS status;
+
+    PAGED_CODE();
+    KeAcquireSpinLock(&SafeUploadActivationCutoffLock, &irql);
+    InterlockedExchange(&SafeUploadActivationCutoffsPaused, 1);
+    if (InterlockedCompareExchange(&SafeUploadActivationCutoffsActive, 0, 0) == 0)
+        KeSetEvent(&SafeUploadActivationCutoffsDrained, IO_NO_INCREMENT, FALSE);
+    KeReleaseSpinLock(&SafeUploadActivationCutoffLock, irql);
+
+    timeout.QuadPart = -SAFEUPLOAD_POLICY_DRAIN_TIMEOUT_100NS;
+    status = KeWaitForSingleObject(&SafeUploadActivationCutoffsDrained,
+        Executive, KernelMode, FALSE, &timeout);
+    return status == STATUS_SUCCESS ? STATUS_SUCCESS : STATUS_IO_TIMEOUT;
+}
+
+static VOID SafeUploadPolicyActivationCutoffsResume(VOID)
+{
+    KIRQL irql;
+    PAGED_CODE();
+    KeAcquireSpinLock(&SafeUploadActivationCutoffLock, &irql);
+    InterlockedExchange(&SafeUploadActivationCutoffsPaused, 0);
+    KeReleaseSpinLock(&SafeUploadActivationCutoffLock, irql);
+    SafeUploadStageWritersQueueRecheck();
+}
+
 NTSTATUS SafeUploadPolicyActivationCutoffBegin(VOID)
 {
+    KIRQL irql;
     PAGED_CODE();
-    /* Pin the policy generation while a per-file cutoff runs. The policy apply
-     * phases already drained their old epoch before classifying this entry;
-     * paging writes during CcFlushCache are accounted by its SOP gate/counter. */
-    SafeUploadPolicyUpdateLockAcquire();
-    if (InterlockedCompareExchange(&SafeUploadPolicyFailedClosed, 0, 0) != 0) {
-        SafeUploadPolicyUpdateLockRelease();
+    KeAcquireSpinLock(&SafeUploadActivationCutoffLock, &irql);
+    if (InterlockedCompareExchange(&SafeUploadActivationCutoffsPaused, 0, 0) != 0 ||
+        InterlockedCompareExchange(&SafeUploadPolicyFailedClosed, 0, 0) != 0 ||
+        InterlockedCompareExchange(&SafeUploadPolicyFinalizing, 0, 0) != 0) {
+        KeReleaseSpinLock(&SafeUploadActivationCutoffLock, irql);
         return STATUS_RETRY;
     }
-    /* Keep the updater mutex through the flush pair so shrink cannot reopen
-     * the per-file paging gate in the middle of its cutoff. */
+    if (InterlockedIncrement(&SafeUploadActivationCutoffsActive) == 1)
+        KeClearEvent(&SafeUploadActivationCutoffsDrained);
+    KeReleaseSpinLock(&SafeUploadActivationCutoffLock, irql);
     return STATUS_SUCCESS;
 }
 
 VOID SafeUploadPolicyActivationCutoffEnd(VOID)
 {
+    KIRQL irql;
+    LONG remaining;
     PAGED_CODE();
-    SafeUploadPolicyUpdateLockRelease();
+    KeAcquireSpinLock(&SafeUploadActivationCutoffLock, &irql);
+    remaining = InterlockedDecrement(&SafeUploadActivationCutoffsActive);
+    if (remaining <= 0) {
+        if (remaining < 0) InterlockedExchange(&SafeUploadActivationCutoffsActive, 0);
+        KeSetEvent(&SafeUploadActivationCutoffsDrained, IO_NO_INCREMENT, FALSE);
+    }
+    KeReleaseSpinLock(&SafeUploadActivationCutoffLock, irql);
 }
 
 VOID SafeUploadPolicyAdmissionForceNextTimeout(VOID)
@@ -405,8 +465,6 @@ SafeUploadBuildStringTable (
 #if SAFEUPLOAD_STAGING_PROTOTYPE
     #pragma alloc_text(PAGE, SafeUploadPolicyCopyScope)
     #pragma alloc_text(PAGE, SafeUploadPolicySetPending)
-    #pragma alloc_text(PAGE, SafeUploadPolicyActivationCutoffBegin)
-    #pragma alloc_text(PAGE, SafeUploadPolicyActivationCutoffEnd)
 #endif
     #pragma alloc_text(PAGE, SafeUploadPolicyMayMatchVolume)
 #endif
@@ -436,11 +494,15 @@ Routine Description:
 #if SAFEUPLOAD_STAGING_PROTOTYPE
     KeInitializeMutex(&SafeUploadPolicyUpdateMutex, 0);
     KeInitializeSpinLock(&SafeUploadEpochLock);
+    KeInitializeSpinLock(&SafeUploadActivationCutoffLock);
+    KeInitializeEvent(&SafeUploadActivationCutoffsDrained, NotificationEvent, TRUE);
     InitializeListHead(&SafeUploadDrainingEpochs);
     SafeUploadEpochGeneration = 0;
     SafeUploadPolicyFailedClosed = 0;
     SafeUploadPolicyFinalizing = 0;
     SafeUploadForceNextEpochTimeout = 0;
+    SafeUploadActivationCutoffsActive = 0;
+    SafeUploadActivationCutoffsPaused = 0;
     SafeUploadCurrentEpoch = SafeUploadEpochAllocate();
 #endif
     SafeUploadPolicy = NULL;
@@ -673,10 +735,24 @@ SafeUploadSetPolicy (
 
 #if SAFEUPLOAD_STAGING_PROTOTYPE
     SafeUploadPolicyUpdateLockAcquire();
+
+    /* Let any already-running file cutoff finish while its paging writes can
+     * still use the accepting epoch. No policy lock is held while we wait. */
+    status = SafeUploadPolicyActivationCutoffsPause();
+    if (!NT_SUCCESS(status)) {
+        if (InterlockedCompareExchange(&SafeUploadPolicyFailedClosed, 0, 0) == 0)
+            SafeUploadPolicyActivationCutoffsResume();
+        SafeUploadPolicyUpdateLockRelease();
+        ExFreePoolWithTag(snapshot, SAFEUPLOAD_POOL_TAG);
+        return STATUS_IO_TIMEOUT;
+    }
+
     FltAcquirePushLockExclusive(&SafeUploadPolicyLock);
     if (SafeUploadPendingPolicy != NULL) {
         if (!RtlEqualMemory(&SafeUploadPendingPolicy->Data, Message, sizeof(*Message))) {
             FltReleasePushLock(&SafeUploadPolicyLock);
+            if (InterlockedCompareExchange(&SafeUploadPolicyFailedClosed, 0, 0) == 0)
+                SafeUploadPolicyActivationCutoffsResume();
             SafeUploadPolicyUpdateLockRelease();
             ExFreePoolWithTag(snapshot, SAFEUPLOAD_POOL_TAG);
             return STATUS_DEVICE_BUSY;
@@ -693,6 +769,8 @@ SafeUploadSetPolicy (
     FltReleasePushLock(&SafeUploadPolicyLock);
     if (!NT_SUCCESS(status)) {
         InterlockedExchange(&SafeUploadPolicyFinalizing, 0);
+        if (InterlockedCompareExchange(&SafeUploadPolicyFailedClosed, 0, 0) == 0)
+            SafeUploadPolicyActivationCutoffsResume();
         SafeUploadPolicyUpdateLockRelease();
         if (!alreadyPending) ExFreePoolWithTag(snapshot, SAFEUPLOAD_POOL_TAG);
         return status;
@@ -712,10 +790,17 @@ SafeUploadSetPolicy (
         SafeUploadPolicyUpdateLockRelease();
         return status;
     }
-    InterlockedExchange(&SafeUploadPolicyFinalizing, 0);
-    SafeUploadPolicyUpdateLockRelease();
-    SafeUploadTrace("policy candidate pending; epoch=%ld generation=%ld prefixes=%u flags=0x%X\n",
-        SafeUploadEpochGeneration, SafeUploadPolicyGeneration, snapshot->PrefixCount, snapshot->Flags);
+    {
+        ULONG prefixCount = snapshot->PrefixCount;
+        ULONG policyFlags = snapshot->Flags;
+        LONG epochGeneration = SafeUploadEpochGeneration;
+        LONG policyGeneration = SafeUploadPolicyGeneration;
+        InterlockedExchange(&SafeUploadPolicyFinalizing, 0);
+        SafeUploadPolicyActivationCutoffsResume();
+        SafeUploadPolicyUpdateLockRelease();
+        SafeUploadTrace("policy candidate pending; epoch=%ld generation=%ld prefixes=%u flags=0x%X\n",
+            epochGeneration, policyGeneration, prefixCount, policyFlags);
+    }
     return STATUS_SUCCESS;
 #else
     FltAcquirePushLockExclusive(&SafeUploadPolicyLock);
@@ -756,6 +841,14 @@ NTSTATUS SafeUploadFinalizeBootPolicy(_In_ CONST SAFEUPLOAD_POLICY_MESSAGE *Mess
     }
     FltReleasePushLock(&SafeUploadPolicyLock);
 
+    status = SafeUploadPolicyActivationCutoffsPause();
+    if (!NT_SUCCESS(status)) {
+        if (InterlockedCompareExchange(&SafeUploadPolicyFailedClosed, 0, 0) == 0)
+            SafeUploadPolicyActivationCutoffsResume();
+        SafeUploadPolicyUpdateLockRelease();
+        return STATUS_IO_TIMEOUT;
+    }
+
     InterlockedExchange(&SafeUploadPolicyFinalizing, 1);
     status = SafeUploadEpochCloseAndReplace();
     if (NT_SUCCESS(status)) status = SafeUploadEpochDrainAll();
@@ -784,11 +877,13 @@ NTSTATUS SafeUploadFinalizeBootPolicy(_In_ CONST SAFEUPLOAD_POLICY_MESSAGE *Mess
             ExFreePoolWithTag(previous, SAFEUPLOAD_POOL_TAG);
         InterlockedExchange(&SafeUploadPolicyFailedClosed, 0);
         InterlockedExchange(&SafeUploadPolicyFinalizing, 0);
+        SafeUploadPolicyActivationCutoffsResume();
         SafeUploadPolicyUpdateLockRelease();
         return STATUS_SUCCESS;
     }
     FltReleasePushLock(&SafeUploadPolicyLock);
     InterlockedExchange(&SafeUploadPolicyFailedClosed, 1);
+    InterlockedExchange(&SafeUploadPolicyFinalizing, 0);
     SafeUploadPolicyUpdateLockRelease();
     return status;
 #else
@@ -1106,6 +1201,15 @@ BOOLEAN SafeUploadPolicyHasDestinationScopes(_In_ SAFEUPLOAD_VOLUME_KIND VolumeK
             ((VolumeKind == SafeUploadVolumeUnknown || VolumeKind == SafeUploadVolumeNetwork) &&
              FlagOn(SafeUploadPolicy->Flags, SAFEUPLOAD_POLICY_FLAG_NETWORK));
     }
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    if (!hasScopes && SafeUploadPendingPolicy != NULL) {
+        hasScopes = SafeUploadPendingPolicy->PrefixCount != 0 ||
+            ((VolumeKind == SafeUploadVolumeUnknown || VolumeKind == SafeUploadVolumeRemovable) &&
+             FlagOn(SafeUploadPendingPolicy->Flags, SAFEUPLOAD_POLICY_FLAG_REMOVABLE)) ||
+            ((VolumeKind == SafeUploadVolumeUnknown || VolumeKind == SafeUploadVolumeNetwork) &&
+             FlagOn(SafeUploadPendingPolicy->Flags, SAFEUPLOAD_POLICY_FLAG_NETWORK));
+    }
+#endif
     if (!hasScopes && SafeUploadBootScopesActive) {
         hasScopes = SafeUploadBootScopes.PrefixCount != 0 || SafeUploadBootScopes.Overflow ||
             ((VolumeKind == SafeUploadVolumeUnknown || VolumeKind == SafeUploadVolumeRemovable) &&

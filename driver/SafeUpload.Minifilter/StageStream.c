@@ -2416,7 +2416,7 @@ static BOOLEAN StageDirectoryCreateCanMutate(_In_ PFLT_CALLBACK_DATA Data)
 /* Directory creates and metadata opens can change namespace state without a later SET_INFORMATION.
  * Resolve the target at PASSIVE_LEVEL; an unresolved name on a scoped volume is an admission refusal. */
 static FLT_PREOP_CALLBACK_STATUS StageAdmitDirectoryMutation(
-    _Inout_ PFLT_CALLBACK_DATA Data, _In_ PCFLT_RELATED_OBJECTS Objects, _In_ BOOLEAN Service)
+    _Inout_ PFLT_CALLBACK_DATA Data, _In_ PCFLT_RELATED_OBJECTS Objects)
 {
     PFLT_FILE_NAME_INFORMATION name = NULL;
     SAFEUPLOAD_VOLUME_KIND kind = StageVolumeKind(Objects->Instance);
@@ -2431,11 +2431,6 @@ static FLT_PREOP_CALLBACK_STATUS StageAdmitDirectoryMutation(
     } else {
         deny = SafeUploadPolicyMatchesCurrentOrPendingDestination(kind, &name->Name, TRUE) ||
             SafeUploadStageTouchesProtectedNamespace(name, kind);
-#if SAFEUPLOAD_STAGING_PROTOTYPE
-        if (!deny && !Service &&
-            SafeUploadPolicyMatchesCurrentOrPendingDestination(kind, &name->Name, TRUE) &&
-            SafeUploadStageWritersAdmissionUnknown(Objects->Instance)) deny = TRUE;
-#endif
     }
     if (name != NULL) FltReleaseFileNameInformation(name);
     if (!deny) return FLT_PREOP_SUCCESS_NO_CALLBACK;
@@ -2479,7 +2474,7 @@ static FLT_PREOP_CALLBACK_STATUS StageAdmit(PFLT_CALLBACK_DATA Data,
         disposition == FILE_OVERWRITE || disposition == FILE_OVERWRITE_IF;
     if (FlagOn(Data->Iopb->Parameters.Create.Options, FILE_DIRECTORY_FILE)) {
 #if SAFEUPLOAD_STAGING_PROTOTYPE
-        FLT_PREOP_CALLBACK_STATUS directoryResult = StageAdmitDirectoryMutation(Data, Objects, service);
+        FLT_PREOP_CALLBACK_STATUS directoryResult = StageAdmitDirectoryMutation(Data, Objects);
         if (directoryResult != FLT_PREOP_SUCCESS_NO_CALLBACK) return directoryResult;
         if (!service && FlagOn(Data->Iopb->Parameters.Create.Options, FILE_DELETE_ON_CLOSE))
             return StageDirectoryDeleteOnClose(Data, Objects);
@@ -2558,11 +2553,6 @@ static FLT_PREOP_CALLBACK_STATUS StageAdmit(PFLT_CALLBACK_DATA Data,
     }
 #if SAFEUPLOAD_STAGING_PROTOTYPE
     if (!privateNamespace && SafeUploadStageWritersNameActivating(Objects->Instance, &name->Name)) {
-        status = STATUS_ACCESS_DENIED; goto Complete;
-    }
-    if (!privateNamespace && (writer || service) &&
-        SafeUploadPolicyMatchesCurrentOrPendingDestination(kind, &name->Name, FALSE) &&
-        SafeUploadStageWritersAdmissionUnknown(Objects->Instance)) {
         status = STATUS_ACCESS_DENIED; goto Complete;
     }
 #endif
@@ -3033,11 +3023,28 @@ static BOOLEAN StageEpochOperationTouchesUnion(_In_ PFLT_CALLBACK_DATA Data,
     /* Section release only retires a C slot. Let it reach lower completion so
      * the epoch drain and any Activating promotion can make progress. */
     if (Data->Iopb->MajorFunction == IRP_MJ_RELEASE_FOR_SECTION_SYNCHRONIZATION) return FALSE;
-    if (FlagOn(Data->Iopb->IrpFlags, IRP_PAGING_IO) ||
-        KeGetCurrentIrql() != PASSIVE_LEVEL || IoGetTopLevelIrp() != NULL) {
+    if (FlagOn(Data->Iopb->IrpFlags, IRP_PAGING_IO)) {
+        PFILE_OBJECT fileObject = Data->Iopb->TargetFileObject;
+        PVOID sectionObjectPointer = fileObject != NULL ? fileObject->SectionObjectPointer : NULL;
+        BOOLEAN sopKnown;
+        BOOLEAN touchesUnion = SafeUploadStageWritersSopMatchesPolicy(
+            sectionObjectPointer, FALSE, &sopKnown);
+        /* Paging paths do not resolve names. A tracked SOP supplies its retained
+         * name; an untracked SOP is unresolved on any volume that has a scope. */
+        if (!touchesUnion)
+            touchesUnion = (BOOLEAN)(!sopKnown && SafeUploadPolicyHasDestinationScopes(kind));
+        if (touchesUnion && Data->Iopb->MajorFunction == IRP_MJ_WRITE) {
+            PVOID pagingContext = NULL;
+            if (!SafeUploadStageWritersPagingWriteBegin(sectionObjectPointer, &pagingContext) &&
+                pagingContext != NULL)
+                SafeUploadStageWritersPagingWriteEnd(pagingContext);
+        }
+        return touchesUnion;
+    }
+    if (KeGetCurrentIrql() != PASSIVE_LEVEL || IoGetTopLevelIrp() != NULL) {
         /* The policy push lock and name APIs are not safe on this path. Retry only when the
-         * mounted volume could contain a current/pending scope; paging I/O never queries a path. */
-        return SafeUploadPolicyMayMatchVolume(kind, Objects->Volume);
+         * mounted volume could contain a current/pending scope. */
+        return SafeUploadPolicyHasDestinationScopes(kind);
     }
     status = FltGetFileNameInformation(Data,
         FLT_FILE_NAME_NORMALIZED | FLT_FILE_NAME_QUERY_DEFAULT, &name);
@@ -3334,7 +3341,7 @@ FLT_PREOP_CALLBACK_STATUS SafeUploadStageDispatch(PFLT_CALLBACK_DATA Data,
         (fileObject == NULL || StageStreamForObject(fileObject) == NULL)) {
         PVOID pagingWriteContext = NULL;
         if (SafeUploadStageWritersPagingWriteBegin(fileObject != NULL ?
-                fileObject->SectionObjectPointer : NULL, Objects->Volume, &pagingWriteContext)) {
+                fileObject->SectionObjectPointer : NULL, &pagingWriteContext)) {
             Data->IoStatus.Status = STATUS_MEDIA_WRITE_PROTECTED;
             Data->IoStatus.Information = 0;
             SafeUploadPolicyAdmissionRelease(token);
@@ -3399,7 +3406,7 @@ static FLT_POSTOP_CALLBACK_STATUS StagePostOperationCore(PFLT_CALLBACK_DATA Data
         return FLT_POSTOP_FINISHED_PROCESSING;
     }
     if (Data->Iopb->MajorFunction == IRP_MJ_RELEASE_FOR_SECTION_SYNCHRONIZATION) {
-        SafeUploadStageSectionReleaseComplete(CompletionContext,
+        SafeUploadStageSectionReleaseComplete(Objects->Instance, CompletionContext,
             !FlagOn(Flags, FLTFL_POST_OPERATION_DRAINING) && NT_SUCCESS(Data->IoStatus.Status),
             FlagOn(Flags, FLTFL_POST_OPERATION_DRAINING));
         return FLT_POSTOP_FINISHED_PROCESSING;

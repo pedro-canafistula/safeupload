@@ -116,8 +116,10 @@ VOID SafeUploadStageWritersOnCleanup(_In_ PFLT_CALLBACK_DATA Data, _In_ PCFLT_RE
 BOOLEAN SafeUploadStageWritersNameActivating(_In_ PFLT_INSTANCE Instance, _In_ PCUNICODE_STRING Name);
 BOOLEAN SafeUploadStageWritersAdmissionUnknown(_In_ PFLT_INSTANCE Instance);
 BOOLEAN SafeUploadStageWritersIsActivatingSop(_In_opt_ PVOID SectionObjectPointer);
+BOOLEAN SafeUploadStageWritersSopMatchesPolicy(_In_opt_ PVOID SectionObjectPointer,
+    _In_ BOOLEAN IncludeAncestors, _Out_ PBOOLEAN Known);
 BOOLEAN SafeUploadStageWritersPagingWriteBegin(_In_opt_ PVOID SectionObjectPointer,
-    _In_opt_ PFLT_VOLUME Volume, _Outptr_result_maybenull_ PVOID *CompletionContext);
+    _Outptr_result_maybenull_ PVOID *CompletionContext);
 VOID SafeUploadStageWritersPagingWriteEnd(_In_opt_ PVOID CompletionContext);
 VOID SafeUploadStageWritersMutationDraining(_In_ PFLT_INSTANCE Instance,
     _In_opt_ PVOID SectionObjectPointer);
@@ -134,8 +136,8 @@ VOID SafeUploadStageSectionAcquireDraining(_In_opt_ PFLT_INSTANCE Instance,
     _In_opt_ PVOID CompletionContext);
 VOID SafeUploadStageSectionReleasePrepare(_In_ PFLT_CALLBACK_DATA Data,
     _Outptr_result_maybenull_ PVOID *CompletionContext);
-VOID SafeUploadStageSectionReleaseComplete(_In_opt_ PVOID CompletionContext,
-    _In_ BOOLEAN Succeeded, _In_ BOOLEAN Draining);
+VOID SafeUploadStageSectionReleaseComplete(_In_opt_ PFLT_INSTANCE Instance,
+    _In_opt_ PVOID CompletionContext, _In_ BOOLEAN Succeeded, _In_ BOOLEAN Draining);
 UINT32 SafeUploadStageSectionsInFlight(_In_opt_ PVOID SectionObjectPointer);
 VOID SafeUploadStageWritersGetStatus(_Out_ PSAFEUPLOAD_WRITER_STATE_STATUS Status);
 NTSTATUS SafeUploadStageWritersRegistryEvaluate(_In_ PFLT_INSTANCE Instance,

@@ -700,6 +700,8 @@ NTSTATUS SafeUploadPolicyAdmissionEpochStatus(_Out_ PSAFEUPLOAD_ADMISSION_EPOCH_
 VOID SafeUploadPolicyAdmissionForceNextTimeout(VOID);
 NTSTATUS SafeUploadPolicyActivationCutoffBegin(VOID);
 VOID SafeUploadPolicyActivationCutoffEnd(VOID);
+VOID SafeUploadStageWritersPagingWriteEnd(_In_opt_ PVOID CompletionContext);
+VOID SafeUploadStageWritersQueueRecheck(VOID);
 BOOLEAN SafeUploadPolicyEntryIsNewlyScoped(_In_ SAFEUPLOAD_VOLUME_KIND VolumeKind,
     _In_ PCUNICODE_STRING NormalizedPath);
 BOOLEAN SafeUploadPolicyEntryIsCurrentlyScoped(_In_ SAFEUPLOAD_VOLUME_KIND VolumeKind,
