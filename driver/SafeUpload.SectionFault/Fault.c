@@ -421,7 +421,7 @@ static VOID FaultWriteDisarmLocked(VOID)
     if (volume != NULL) FltObjectDereference(volume);
 }
 
-static VOID FaultWriteFillReply(_Out_ PSECTION_FAULT_WRITE_REPLY Reply)
+static VOID FaultWriteFillReply(_Out_ SECTION_FAULT_WRITE_REPLY *Reply)
 {
     KIRQL irql;
     RtlZeroMemory(Reply, sizeof(*Reply));
@@ -449,7 +449,7 @@ static VOID FaultWriteFillReply(_Out_ PSECTION_FAULT_WRITE_REPLY Reply)
 }
 
 static NTSTATUS FaultWriteMessage(_In_ PSECTION_FAULT_WRITE_REQUEST Request,
-    _Out_ PSECTION_FAULT_WRITE_REPLY Reply)
+    _Out_ SECTION_FAULT_WRITE_REPLY *Reply)
 {
     PFILE_OBJECT file = NULL;
     PFLT_VOLUME volume = NULL, attachedVolume = NULL;

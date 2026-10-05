@@ -1,0 +1,76 @@
+{
+  "Run": "boot-start-invariant-S01-denied-write-after-boot-boot-verifier-b31s01d",
+  "SourceCommit": "3011cc8bbfb4d241b66fa0ddaa651fd75b3ea9ff",
+  "ImplementedBuild": "mvp3-b31",
+  "VMObserved": {
+    "BootId": "WIN10-DEBUGGED/2026-10-05T10:47:36.5000000Z",
+    "ReadinessQpc": 660712164,
+    "ReleaseQpc": 2561708556,
+    "FirstAttemptQpc": 2564060620,
+    "QpcFrequency": 10000000,
+    "DenyCount": 101,
+    "NativeCode": 5,
+    "Actor": {
+      "Sid": "S-1-5-21-316478115-1595729549-2803163825-1038",
+      "BootId": "WIN10-DEBUGGED/2026-10-05T10:47:36.5000000Z",
+      "SessionId": 0,
+      "IsAdministrator": false,
+      "Pid": 3036,
+      "Elevated": false
+    },
+    "VerifierFlags": "0x001209bb",
+    "AllManifestArtifactsIndependentlyHashed": 59,
+    "DistinctForbiddenBlocksAbsent": 303,
+    "Errors": [],
+    "CFirstPublishedUnknown": {
+      "instance": "FFFF968CE4AC1010",
+      "volumeKind": 1,
+      "fileSystemType": 2,
+      "fileSystemStatus": 0,
+      "setupFlags": 5,
+      "trustState": 3,
+      "protectionStatus": "trusted",
+      "contextStatus": 0,
+      "canaryState": 2,
+      "canaryStatus": 0,
+      "canaryChecks": 15,
+      "canaryCleanupStatus": 0,
+      "instanceWritersUntracked": 1,
+      "volumeInfoStatus": 0,
+      "volumeFlags": 0,
+      "instanceRegistryUnknownReasons": "0x00000040",
+      "firstUnknownReason": "0x00000040",
+      "firstUnknownSite": 2333,
+      "volumeGuidStatus": 0,
+      "volumeGuid": "\\??\\Volume{f58c7564-1b1d-4c24-a05a-6f58cb85ec9c}"
+    }
+  },
+  "IndependentRestoration": {
+    "BaselineClean": true,
+    "Evidence": "driver/evidence/2026-10-05/boot-start-invariant-S01-denied-write-after-boot-boot-verifier-b31s01d-final-restored-state.txt",
+    "Sha256": "4CA10765322C97D6703B83745EF7375C1D43A0BD61CEB83F8F3316EE2B58DA7C"
+  },
+  "Qualification": {
+    "NarrowBootSafety": "root checks passed; independent review pending",
+    "FullPhase4": "INCONCLUSIVE",
+    "Phase3Increments3To5": "Not qualified"
+  },
+  "Limitations": [
+    "LiveTaintFlags",
+    "CadenceCoverage",
+    "PredicateCoverage",
+    "NoUnapprovedByte",
+    "ExternalCoverage"
+  ],
+  "InputHashes": {
+    "Feature": "A80C6285096B9BDD83A727964B4E9471188714DECD12D59ED2A5E8A033577E65",
+    "Suite": "F2C002221C48E10C863FC121E0E5A15EC07A041BAF453DAE1DE1C2A2474E0EB5",
+    "Observer": "4411CC06C522D62B6078F52689C0D2C681401795D8CB50603E8FFBD5ED5AE46E",
+    "Inspector": "904650E6F93F0021794E38E88127FB19ED5D3F406BB20DC148953FDB8D052F27",
+    "ServicePackage": "1525974FC6725186BC837BB74E41CF6ABE05EA191DF78DED827ECF60A72317E5",
+    "Helper": "4C9220B7D202255DC29EDB585DB3C51AED0B2284C06914E41E2C7C1BAA247699",
+    "ServiceTree": "87C1F8ECE5838D25F130E73864B38B09BE90A4DA3274432D8362D4EDE469A2B5",
+    "Table": "321C6C54C3EDD0E69B8B94DA5D4D56DBD951C00B3DAA7B44C28F63BA5DFE98B5"
+  },
+  "CaseSha256": "349EF64E2807EE107EEEE368F49089074D98EA1F2D35EE2E4B341A377094CBB4"
+}
