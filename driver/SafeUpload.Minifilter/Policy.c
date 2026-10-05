@@ -709,16 +709,18 @@ __declspec(noinline) VOID SafeUploadPolicyRenameLossSnapshot(_Out_ PULONGLONG Ge
 
 /* The caller holds this scope-cache boundary while publishing a resolved-name
  * state. Rename loss takes the same lock before advancing the generation. */
+_IRQL_raises_(DISPATCH_LEVEL)
 __declspec(noinline) BOOLEAN SafeUploadPolicyRenameLossGenerationEnter(
     _In_ volatile LONG64 *InstanceGeneration, _In_ ULONGLONG ExpectedGeneration,
-    _Out_ PKIRQL OldIrql)
+    _Out_ _At_(*OldIrql, _IRQL_saves_) PKIRQL OldIrql)
 {
     KeAcquireSpinLock(&SafeUploadVolumeScopeCacheLock, OldIrql);
     return (ULONGLONG)InterlockedCompareExchange64(InstanceGeneration, 0, 0) ==
         ExpectedGeneration;
 }
 
-__declspec(noinline) VOID SafeUploadPolicyRenameLossGenerationLeave(_In_ KIRQL OldIrql)
+_IRQL_requires_(DISPATCH_LEVEL)
+__declspec(noinline) VOID SafeUploadPolicyRenameLossGenerationLeave(_In_ _IRQL_restores_ KIRQL OldIrql)
 {
     KeReleaseSpinLock(&SafeUploadVolumeScopeCacheLock, OldIrql);
 }
@@ -768,12 +770,13 @@ __declspec(noinline) static BOOLEAN SafeUploadPolicyVolumeCacheQueryNoInline(
 
 /* Returns with the scope-cache spin lock held. The caller performs its
  * paging admission while holding that lock, then calls the matching leave. */
+_IRQL_raises_(DISPATCH_LEVEL)
 __declspec(noinline) VOID SafeUploadPolicyPagingCutoffEnter(
     _In_opt_ PFLT_INSTANCE Instance, _Out_ PBOOLEAN Applies,
     _Out_ PBOOLEAN VolumeMayMatch, _Out_ PULONGLONG RenameLossGeneration,
     _Out_ PBOOLEAN InstanceContextKnown,
     _Outptr_result_maybenull_ PSAFEUPLOAD_INSTANCE_CONTEXT *ContextReference,
-    _Out_ PKIRQL OldIrql)
+    _Out_ _At_(*OldIrql, _IRQL_saves_) PKIRQL OldIrql)
 {
     PSAFEUPLOAD_INSTANCE_CONTEXT context = NULL;
     WCHAR volumeNameBuffer[SAFEUPLOAD_MAX_PREFIX_CHARS];
@@ -811,7 +814,8 @@ __declspec(noinline) VOID SafeUploadPolicyPagingCutoffEnter(
     *Applies = cache->ScopeTransitionActive && *VolumeMayMatch;
 }
 
-__declspec(noinline) VOID SafeUploadPolicyPagingCutoffLeave(_In_ KIRQL OldIrql,
+_IRQL_requires_(DISPATCH_LEVEL)
+__declspec(noinline) VOID SafeUploadPolicyPagingCutoffLeave(_In_ _IRQL_restores_ KIRQL OldIrql,
     _In_opt_ PSAFEUPLOAD_INSTANCE_CONTEXT ContextReference)
 {
     KeReleaseSpinLock(&SafeUploadVolumeScopeCacheLock, OldIrql);

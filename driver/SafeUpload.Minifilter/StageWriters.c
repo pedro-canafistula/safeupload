@@ -1236,7 +1236,6 @@ NTSTATUS SafeUploadStageWritersPrepareRename(_In_ PFLT_CALLBACK_DATA Data,
             InterlockedIncrement64(&RegistryRenameFailures);
             return STATUS_SUCCESS;
         }
-        index = destinationBase.Length / sizeof(WCHAR);
     }
 
     RtlZeroMemory(&identity, sizeof(identity));

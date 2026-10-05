@@ -768,12 +768,14 @@ SafeUploadPolicyMayMatchVolume (
 
 BOOLEAN SafeUploadPolicyMayMatchInstanceVolume(_In_opt_ PFLT_INSTANCE Instance);
 BOOLEAN SafeUploadPolicyPagingCutoffApplies(_In_opt_ PFLT_INSTANCE Instance);
+_IRQL_raises_(DISPATCH_LEVEL)
 VOID SafeUploadPolicyPagingCutoffEnter(_In_opt_ PFLT_INSTANCE Instance,
     _Out_ PBOOLEAN Applies, _Out_ PBOOLEAN VolumeMayMatch,
     _Out_ PULONGLONG RenameLossGeneration, _Out_ PBOOLEAN InstanceContextKnown,
     _Outptr_result_maybenull_ PSAFEUPLOAD_INSTANCE_CONTEXT *ContextReference,
-    _Out_ PKIRQL OldIrql);
-VOID SafeUploadPolicyPagingCutoffLeave(_In_ KIRQL OldIrql,
+    _Out_ _At_(*OldIrql, _IRQL_saves_) PKIRQL OldIrql);
+_IRQL_requires_(DISPATCH_LEVEL)
+VOID SafeUploadPolicyPagingCutoffLeave(_In_ _IRQL_restores_ KIRQL OldIrql,
     _In_opt_ PSAFEUPLOAD_INSTANCE_CONTEXT ContextReference);
 VOID SafeUploadPolicyPagingFallbackBegin(_In_opt_ PFLT_INSTANCE Instance,
     _Out_ PVOID *Cookie, _Out_ PBOOLEAN Denied);
@@ -781,9 +783,11 @@ NTSTATUS SafeUploadPolicyPagingFallbackDrain(VOID);
 VOID SafeUploadPolicyRenameLossAdvance(_Inout_ volatile LONG64 *InstanceGeneration,
     _In_ SAFEUPLOAD_VOLUME_KIND VolumeKind, _In_opt_ PCUNICODE_STRING VolumeName);
 VOID SafeUploadPolicyRenameLossSnapshot(_Out_ PULONGLONG Generation);
+_IRQL_raises_(DISPATCH_LEVEL)
 BOOLEAN SafeUploadPolicyRenameLossGenerationEnter(_In_ volatile LONG64 *InstanceGeneration,
-    _In_ ULONGLONG ExpectedGeneration, _Out_ PKIRQL OldIrql);
-VOID SafeUploadPolicyRenameLossGenerationLeave(_In_ KIRQL OldIrql);
+    _In_ ULONGLONG ExpectedGeneration, _Out_ _At_(*OldIrql, _IRQL_saves_) PKIRQL OldIrql);
+_IRQL_requires_(DISPATCH_LEVEL)
+VOID SafeUploadPolicyRenameLossGenerationLeave(_In_ _IRQL_restores_ KIRQL OldIrql);
 BOOLEAN SafeUploadPolicyTryEndScopeTransition(_In_ ULONGLONG RenameLossSnapshot,
     _In_ BOOLEAN Finalizing);
 
