@@ -1,0 +1,39 @@
+Profiles:
+
+
+SID         : S-1-5-21-316478115-1595729549-2803163825-1035
+LocalPath   : C:\Users\sui30f56cbfa605
+Loaded      : False
+Special     : False
+LastUseTime : 
+
+SID         : S-1-5-21-316478115-1595729549-2803163825-1001
+LocalPath   : C:\Users\vika
+Loaded      : True
+Special     : False
+LastUseTime : 05/10/2026 08:45:45
+
+SID         : S-1-5-20
+LocalPath   : C:\Windows\ServiceProfiles\NetworkService
+Loaded      : True
+Special     : True
+LastUseTime : 05/10/2026 08:45:45
+
+SID         : S-1-5-19
+LocalPath   : C:\Windows\ServiceProfiles\LocalService
+Loaded      : True
+Special     : True
+LastUseTime : 05/10/2026 08:45:45
+
+SID         : S-1-5-18
+LocalPath   : C:\Windows\system32\config\systemprofile
+Loaded      : True
+Special     : True
+LastUseTime : 05/10/2026 08:45:45
+
+
+
+Test users:
+Test directories:
+BootPolicy parameters:
+False

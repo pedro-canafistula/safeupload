@@ -418,6 +418,40 @@ SafeUploadPathUnderPrefix (
                       Path->Buffer[prefixChars] == L'\\');
 }
 
+/* Volume-cache reads run while SafeUploadVolumeScopeCacheLock is held, at
+ * DISPATCH_LEVEL. RtlPrefixUnicodeString is PASSIVE_LEVEL-only, so this path
+ * compares the resident volume-root prefix without calling the general RTL
+ * string routines. Volume device names are ordinarily ASCII. If a compared
+ * code unit is outside ASCII, conservatively report "may match" rather than
+ * claim the volume is outside policy without Unicode case folding. */
+_IRQL_requires_max_(DISPATCH_LEVEL)
+__declspec(noinline) static BOOLEAN SafeUploadVolumeCachePathUnderPrefix(
+    _In_opt_ PCUNICODE_STRING Prefix, _In_opt_ PCUNICODE_STRING Path)
+{
+    USHORT index, prefixChars;
+
+    if (Prefix == NULL || Path == NULL || Prefix->Buffer == NULL || Path->Buffer == NULL ||
+        Prefix->Length == 0 || (Prefix->Length & (sizeof(WCHAR) - 1)) != 0 ||
+        (Path->Length & (sizeof(WCHAR) - 1)) != 0)
+        return TRUE;
+    if (Prefix->Length > Path->Length) return FALSE;
+
+    prefixChars = Prefix->Length / sizeof(WCHAR);
+    for (index = 0; index < prefixChars; ++index) {
+        WCHAR prefixChar = Prefix->Buffer[index];
+        WCHAR pathChar = Path->Buffer[index];
+
+        if (prefixChar > 0x7f || pathChar > 0x7f) return TRUE;
+        if (prefixChar >= L'a' && prefixChar <= L'z') prefixChar -= L'a' - L'A';
+        if (pathChar >= L'a' && pathChar <= L'z') pathChar -= L'a' - L'A';
+        if (prefixChar != pathChar) return FALSE;
+    }
+
+    if (Path->Length == Prefix->Length) return TRUE;
+    return (BOOLEAN)(Prefix->Buffer[prefixChars - 1] == L'\\' ||
+        Path->Buffer[prefixChars] == L'\\');
+}
+
 static VOID SafeUploadPolicyCacheAddPrefix(_Inout_ PSAFEUPLOAD_VOLUME_SCOPE_CACHE Cache,
     _In_ PCUNICODE_STRING Prefix)
 {
@@ -552,7 +586,7 @@ __declspec(noinline) static BOOLEAN SafeUploadPolicyVolumeCacheMatchesLocked(
             UNICODE_STRING prefix;
             prefix.Buffer = Cache->Prefixes[index].Text;
             prefix.Length = prefix.MaximumLength = Cache->Prefixes[index].Length;
-            mayMatch = SafeUploadPathUnderPrefix(VolumeName, &prefix);
+            mayMatch = SafeUploadVolumeCachePathUnderPrefix(VolumeName, &prefix);
         }
     }
     return mayMatch;

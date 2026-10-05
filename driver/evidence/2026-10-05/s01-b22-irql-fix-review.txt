@@ -1,0 +1,74 @@
+Fresh adversarial review: SafeUploadPathUnderPrefix IRQL fix
+Date: 2026-10-05
+Reviewed revision: HEAD e85f87d plus the dirty Policy.c diff present during review
+Scope: Static review only. No edits to driver code, build, VM run, or runtime qualification.
+
+Disposition
+-----------
+No blocking defect found in the reviewed 36-line Policy.c patch. The change removes
+the PASSIVE_LEVEL RTL prefix comparison from the cache query that runs under
+SafeUploadVolumeScopeCacheLock at DISPATCH_LEVEL. The replacement appears
+conservative for non-ASCII and malformed counted strings, while preserving the
+path-component boundary check for ordinary ASCII volume roots. This is not runtime
+qualification and does not establish the resulting binary's IRQL behavior.
+
+Crash evidence
+--------------
+driver/evidence/2026-10-05/s01-b22s01a-cdb-cpu1-analysis.txt:100-109 records
+bugcheck 0xA with Arg2=2 (DISPATCH_LEVEL), a page fault at nt!RtlPrefixUnicodeString,
+and the stack through SafeUploadPathUnderPrefix, SafeUploadPolicyVolumeCacheMatchesLocked,
+SafeUploadPolicyVolumeCacheQueryNoInline, SafeUploadPolicyMayMatchInstanceVolume,
+StageAdmit, and StageDispatchCore. This evidence supports the reported faulting call
+path; the conclusion here is based on the recorded CPU1 dump stack, not the synthetic
+!analyze 161 output mentioned in the review request.
+
+Patch and matching semantics
+----------------------------
+The diff adds SafeUploadVolumeCachePathUnderPrefix at Policy.c:421-453 and replaces
+the single call in SafeUploadPolicyVolumeCacheMatchesLocked at line 589. The argument
+order is intentional: VolumeName is the candidate root prefix and the cached policy
+path is the longer path.
+
+For ASCII, the routine folds only a-z to A-Z, matching the case-insensitive comparison
+needed for ordinary NT device names. It then requires exact equality or a backslash
+boundary. Thus `\\Device\\HarddiskVolume3\\scope` matches the root
+`\\Device\\HarddiskVolume3`, while `\\Device\\HarddiskVolume30\\scope` does not
+match that root. Length is compared in bytes before indexing; odd lengths and empty or
+null inputs conservatively return TRUE. A cached zero-length or oversized prefix is
+rejected by SafeUploadPolicyCacheAddPrefix at lines 455-468 and sets Overflow, which
+also keeps volume classification conservative.
+
+Any compared code unit above ASCII returns TRUE before a differing non-ASCII code
+unit can produce an OUTSIDE result. This can overclassify unusual volume/policy names,
+but cannot turn a potentially matching Unicode name into OUTSIDE based on missing
+Unicode case folding. A shorter candidate root returns FALSE before this fallback;
+that is sound for the counted-string prefix relation because case folding does not
+make a longer code-unit prefix fit inside a shorter path.
+
+IRQL, lock, and storage path
+---------------------------
+SafeUploadPolicyVolumeCacheQueryNoInline acquires the scope-cache spin lock and calls
+SafeUploadPolicyVolumeCacheMatchesLocked (Policy.c:668-680); rename-loss publication
+does the same under SafeUploadPolicyRenameLossAdvance (lines 598-613). The new helper
+contains only bounded reads, comparisons, branches, and ASCII arithmetic. It calls no
+RTL, Filter Manager, allocation, wait, or pageable helper. The helper and the cache
+match/query/rename helpers are not assigned to PAGE by Policy.c's ALLOC_PRAGMA block
+(lines 761-772); SafeUploadPolicyMayMatchVolume, which uses the original general
+comparison at PASSIVE_LEVEL, is the explicitly pageable function.
+
+The path data is resident by construction: the two cache arrays and lock are static
+driver storage (Policy.c:80-81); cache entries copy bounded prefixes into embedded
+arrays (lines 455-508); and VolumeName is copied into an instance context allocated
+from NonPagedPool (Context.c:321-325, 356-367; Filter.h:264-269). The DISPATCH query
+obtains that context, exposes its bounded embedded name in a stack UNICODE_STRING,
+queries the resident cache, then releases the context (Policy.c:683-701). Policy and
+boot scopes are copied into the cache before its index is published under the same
+lock (Policy.c:483-543), so this specific query does not traverse policy pool or boot
+scope storage while holding the spin lock.
+
+Residual limits
+---------------
+This review confirms only the source-level replacement and the data/lock path found
+in this checkout. It does not confirm the compiled image's section placement,
+annotations, or behavior under Driver Verifier, nor does it qualify the boot-read or
+paging guarantee at runtime. No code changes, build, or VM execution were performed.

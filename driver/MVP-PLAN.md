@@ -401,3 +401,28 @@ falsify the Phase 3 cutoff mechanism; the harness must test it, never reinterpre
   renames). Section-slot overflow uses only the fixed 64-slot table; beyond it the exact entry (or the instance) becomes sticky Unknown
   and the acquire still passes (no unbounded spill records). Accepted limit: capacity Unknown does not recover until reboot. Fast-I/O
   PREPARE_MDL_WRITE is disallowed so cached MDL writes are reissued as counted IRP writes.
+- **2026-10-05 continuation, b22 S01 boot-Verifier attempt (blocking):** exact archive/manifest validation matches
+  the driver tree at `c95a8eef` and current HEAD `e85f87d6`, not the older `4ea9b793` attribution. The signed
+  feature SHA-256 is `92D4FED4EF3C226DABD9AEC03C735E2599D2FCA6D5BD4C83E04C6A7FE00C9BE7`;
+  all four committed WDK logs remain 0 warnings/0 errors with PREfast/ApiValidator. The recovered guest's only
+  baseline residue was an unloaded orphan test-profile registration; the owner approved its guarded removal,
+  after which the independent baseline and the wrapper's baseline both returned `BaselineClean=True`.
+  S01 `b22s01a` reached product-policy preparation and the activating reboot under boot Verifier, then its display
+  showed `IRQL_NOT_LESS_OR_EQUAL`. The wrapper stopped with recovery required; no successful boot, readiness,
+  denied-write or independent restoration qualification is claimed. The external checkpoint and original memory
+  ELF are retained. CPU 1's captured stack confirms bugcheck `0xA`: the volume-scope-cache spin-lock path calls
+  `SafeUploadPathUnderPrefix` -> `RtlPrefixUnicodeString` at IRQL 2; that routine requires PASSIVE_LEVEL. CPU 0
+  is frozen in Verifier trimming and is not the faulting stack (the broad `!analyze` synthetic `0x161` bucket must
+  not replace `KiBugCheckData` or CPU 1's stack). Fix the resident cache comparison without widening admission
+  semantics, then get a fresh review, four builds and a new checkpointed boot qualification. Evidence:
+  `evidence/2026-10-05/s01-b22s01a-cdb-cpu1-analysis.txt`, `evidence/2026-10-05/phase4-suite-b22s01a-index.txt`,
+  `evidence/2026-10-05/boot-start-invariant-S01-denied-write-after-boot-boot-verifier-b22s01a-recovery-required.txt`.
+  Exact owner-run recovery: `evidence/2026-10-05/s01-b22s01a-rollback.sh`; the agent does not repoint VM disks.
+- **2026-10-05 design reconciliation (unattended, applies the existing decisions):** Phase 4 design v2
+  (`evidence/2026-10-05/phase4-suite-design-v2.txt`) supersedes v1's cutoff/paging-denial expectations with final
+  Free(F)/W promotion, conservative live-marker waiting and sticky fixed-section-capacity Unknown. It retains
+  every original case family, storage/outcome variant, observer, mode, latency, hand-back and release gate, and
+  adds explicit review-4 race/capacity families. Existing-writer bytes during Activating are recorded history;
+  the baseline must be bound to the proven promotion boundary. An unexplained Protected mutation is never
+  rebaselined. The current three Ready seed cases and 22 NotReady family placeholders do not qualify Phase 4;
+  lower mutation ledger, live taint readback, observer self-tests and full case implementations remain required.

@@ -1,0 +1,16 @@
+Volume-cache prefix helper mechanical check — 2026-10-05
+
+Result: PASS, 24/24 independent expected-result checks with GCC and Clang, each compiled with -std=c11 -O2 -Wall -Wextra -Werror -pedantic. No WDK build or VM operation was performed.
+
+Source under check: driver/SafeUpload.Minifilter/Policy.c, SHA-256 c70a58262eb3735aeedf2d7be9c0075f6e28c916489c58af69bb361839416538. The extraction script takes the actual complete SafeUploadVolumeCachePathUnderPrefix function at line 428 and immediate SafeUploadPolicyVolumeCacheMatchesLocked classifier at line 564. Extracted function hashes: helper cea86d2f4671e960cd49da53bf84213a200740105e6e63a3fd13c98d7690879a; classifier b80a0c24cee09a7d5963f517fb72755439af9791a0c5f9bf2752d86979549ed9. The helper body has no external function calls; the lexical call check finds only C if/for/sizeof/return syntax, and manual inspection finds only counted-buffer reads, ASCII folding, and comparisons (Policy.c:428-453).
+
+Vectors cover exact and mixed-case canonical NT device roots, a longer prefix, HarddiskVolume3 versus HarddiskVolume30, component backslash boundaries, a trailing prefix backslash, ASCII mismatch, and 260-WCHAR exact/longer-prefix bounds. Non-ASCII code units in either compared buffer return conservative may-match. Null descriptors/buffers, empty prefix, and odd byte lengths return may-match. Empty path returns false in the helper alone; the immediate classifier handles it before calling the helper and returns may-match when any cached prefix exists. Classifier null-path and normal matching vectors pass. Expectations are literal fixture values in the test source, independent of the extracted function logic.
+
+Resident call chain: SafeUploadPolicyMayMatchInstanceVolume creates a counted UNICODE_STRING from context->VolumeName only when VolumeNameChars is 1..260 (Policy.c:683-701); SafeUploadPolicyVolumeCacheQueryNoInline holds the scope-cache spin lock while calling SafeUploadPolicyVolumeCacheMatchesLocked (Policy.c:668-680), which calls the helper (Policy.c:585-590). The instance VolumeName array has 260 WCHARs (Filter.h:264-268; Protocol.h:378), and its context is allocated with NonPagedPool and filled via bounded FltGetVolumeName (Context.c:321-325, 354-366). Cache storage is static (Policy.c:61-82), and added prefixes are limited to its 260-WCHAR array and validated byte lengths (Policy.c:455-468). The helper and classifier have no PAGED_CODE() or pageable allocation. The comment at Policy.c:421-426 identifies this as a DISPATCH_LEVEL path.
+
+Reproduction:
+  python3 driver/scripts/test_volume_cache_prefix.py
+
+This generates output/mvp-continuation/volume-cache-prefix-check.c from the current Policy.c, compiles it with GCC and Clang, and runs each binary. Expected output: helper external calls []; checks=24 failures=0 twice.
+
+Host check limits: the shim uses 16-bit WCHAR and does not compile the WDK translation unit, inspect final PE section placement or kernel stacks, prove IRQL annotations under PREfast, or exercise boot Verifier and actual Filter Manager behavior. A fresh exact-source WDK build and S01 boot-Verifier run remain necessary.

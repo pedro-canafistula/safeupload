@@ -1,0 +1,25 @@
+S01 b22 IRQL fault and source correction
+Date: 2026-10-05
+Source HEAD: e85f87d658cbc66b43fc5eeffd719dff781bed24
+Faulting artifact: exact b22 S01 boot-Verifier artifact described by the focused CDB evidence
+
+Dump evidence
+-------------
+
+The S01 screenshot records IRQL_NOT_LESS_OR_EQUAL (0xA). CDB's CPU1 analysis at `driver/evidence/2026-10-05/s01-b22s01a-cdb-cpu1-analysis.txt:102-109` gives IRQL 2 and execute access (bugcheck arg2=2, arg3=8). The faulting instruction is `nt!RtlPrefixUnicodeString`. The stack is:
+
+`RtlPrefixUnicodeString -> SafeUploadPathUnderPrefix -> SafeUploadPolicyVolumeCacheMatchesLocked -> SafeUploadPolicyVolumeCacheQueryNoInline -> SafeUploadPolicyMayMatchInstanceVolume -> StageAdmit`.
+
+The request is a mount-manager worker create during boot. The cache query holds `SafeUploadVolumeScopeCacheLock` at DISPATCH_LEVEL (`driver/SafeUpload.Minifilter/Policy.c:634-646`). The code at `Policy.c:400-419` called `RtlPrefixUnicodeString(..., TRUE)` from that path. Microsoft's `RtlPrefixUnicodeString` DDI contract specifies PASSIVE_LEVEL: https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntddk/nf-ntddk-rtlprefixunicodestring.
+
+Correction
+----------
+
+`driver/SafeUpload.Minifilter/Policy.c:421-453` now has a dedicated DISPATCH-safe prefix comparator used only by the locked volume-cache classifier (`Policy.c:585-590`). It walks the counted resident buffers directly, folds ASCII a-z to A-Z, and preserves the existing path-component boundary rule. It calls no RTL Unicode comparison/folding API, acquires no extra lock, allocates nothing, and does not change the general PASSIVE-level path matcher or admission behavior.
+
+Malformed inputs (missing buffers, empty root prefix, or odd byte lengths) return “may match,” so the caller cannot classify an uncertain volume as outside policy. If a compared UTF-16 code unit is non-ASCII, the helper also returns “may match” instead of claiming the volume is outside without Unicode case folding. An ASCII mismatch returns outside; an ASCII match still requires exact length or a backslash component boundary. Ordinary `\\Device\\HarddiskVolumeN` volume roots retain case-insensitive ASCII matching.
+
+Review limits
+-------------
+
+This is the narrow source correction indicated by the dump stack. No build, test, commit, or VM operation was performed. The patch still needs independent review and a fresh S01 boot-Verifier run on the rebuilt exact artifact.

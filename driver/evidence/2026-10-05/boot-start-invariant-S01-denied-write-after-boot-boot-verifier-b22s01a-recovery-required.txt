@@ -1,0 +1,11 @@
+GUEST_RECOVERY_REQUIRED=True
+Reason=LastBootUpTime did not change after the first reboot request.
+Checkpoint=safeupload-pre-boot-start-invariant-S01-denied-write-after-boot-boot-verifier-b22s01a-20261005
+ActiveOverlay=/var/lib/libvirt/images/win10-debug.safeupload-pre-boot-start-invariant-S01-denied-write-after-boot-boot-verifier-b22s01a-20261005
+Domain=win10-debug
+ Type   Device   Target   Source
+--------------------------------------------------------------------------------------------------------------------------------------------------------------
+ file   disk     vda      /var/lib/libvirt/images/win10-debug.safeupload-pre-boot-start-invariant-S01-denied-write-after-boot-boot-verifier-b22s01a-20261005
+ file   cdrom    sda      -
+ file   cdrom    sdb      -
+

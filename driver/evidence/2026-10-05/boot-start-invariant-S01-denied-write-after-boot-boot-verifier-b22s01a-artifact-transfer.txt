@@ -1,0 +1,2 @@
+ssh: connect to host 192.168.122.51 port 22: No route to host
+scp: Connection closed
