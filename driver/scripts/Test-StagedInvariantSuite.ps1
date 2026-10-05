@@ -838,7 +838,7 @@ function Get-AgentLogAnchor([string]$Name) {
 }
 function Get-AgentExecutionSnapshot {
     $result=[ordered]@{Status='INCONCLUSIVE';BootId=(Get-BootId);QpcFrequency=[Diagnostics.Stopwatch]::Frequency;
-        StartQpc=[Diagnostics.Stopwatch]::GetTimestamp();Errors=@();Processes=@();CollectedByPid=$PID;Service=$null;Audit=$null;ServiceSid=$null;ImagePaths=@()}
+        StartQpc=[Diagnostics.Stopwatch]::GetTimestamp();Errors=@();Processes=@();MinimalProcesses=@();CollectedByPid=$PID;Service=$null;Audit=$null;ServiceSid=$null;ImagePaths=@()}
     try {
         Initialize-AgentExecutionReader
         # Begin anchors precede inventory; end anchors follow it. Record-ID
@@ -867,6 +867,13 @@ function Get-AgentExecutionSnapshot {
         # Any other vanished, protected or inaccessible process defeats proof.
         foreach($process in @(Get-CimInstance Win32_Process -ErrorAction Stop)){
             if($process.ProcessId -in @(0,4)){continue}
+            # 'Registry' and 'Memory Compression' are kernel-created minimal processes: no image, parent System, no user code, so they
+            # cannot be the agent; they refuse full queries (notify6: "A device attached to the system is not functioning"). Recorded,
+            # not inventoried. Any other unreadable process still defeats the proof.
+            if($process.Name -in @('Registry','Memory Compression') -and [string]::IsNullOrEmpty($process.ExecutablePath) -and
+               $process.ParentProcessId -eq 4){
+                $result.MinimalProcesses+=@{Pid=$process.ProcessId;Name=$process.Name;ParentPid=4};continue
+            }
             try{$result.Processes+=[SUAgentExecution]::Process([int]$process.ProcessId)}
             catch{$result.Errors+=('Process inventory PID '+$process.ProcessId+': '+$_.Exception.Message)}
         }
