@@ -1122,7 +1122,7 @@ static int PrintWriterStateStatus(_In_ BOOL RegistryStatus)
 
 #if defined(SAFEUPLOAD_STAGING_PROTOTYPE) && SAFEUPLOAD_STAGING_PROTOTYPE
     wprintf(L"{\"writerState\":true,\"registryStatus\":%s,\"postCreateRuns\":%llu,\"writeObjectsCounted\":%llu,\"writeObjectsReleased\":%llu,"
-            L"\"untrackedCreates\":%llu,\"cleanupUnmatched\":%llu,\"directoryCreatesSkipped\":%llu,"
+            L"\"untrackedCreates\":%llu,\"cleanupUnmatched\":%llu,\"directoryCreatesSkipped\":%llu,\"cleanupDirectoriesSkipped\":%lu,"
             L"\"sectionInFlightNow\":%lu,\"sectionInFlightInserted\":%llu,\"sectionInFlightReleased\":%llu,"
             L"\"sectionInFlightStuck\":%llu,\"sectionInFlightRemovedOnFailure\":%llu,"
             L"\"sectionInFlightMaxDepth\":%lu,\"pagingCreatesSkipped\":%llu,\"volumeCreatesSkipped\":%llu,"
@@ -1139,6 +1139,7 @@ static int PrintWriterStateStatus(_In_ BOOL RegistryStatus)
             RegistryStatus ? L"true" : L"false",
             status.PostCreateRuns, status.WriteObjectsCounted, status.WriteObjectsReleased,
             status.UntrackedCreates, status.CleanupUnmatched, status.DirectoryCreatesSkipped,
+            status.CleanupDirectoriesSkipped,
             status.SectionInFlightNow, status.SectionInFlightInserted, status.SectionInFlightReleased,
             status.SectionInFlightStuck, status.SectionInFlightRemovedOnFailure,
             status.SectionInFlightMaxDepth, status.PagingCreatesSkipped, status.VolumeCreatesSkipped,

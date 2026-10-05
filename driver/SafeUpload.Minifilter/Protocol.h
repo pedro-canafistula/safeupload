@@ -754,7 +754,7 @@ typedef struct _SAFEUPLOAD_WRITER_STATE_STATUS {
     UINT64 SectionInFlightStuck;     // entries older than the stuck threshold when sampled
     UINT64 SectionInFlightRemovedOnFailure;  // entries removed by post-operation because the acquire failed
     UINT32 SectionInFlightMaxDepth;
-    UINT32 Reserved;
+    UINT32 CleanupDirectoriesSkipped; // cleanups of write/delete-access directory handles, deliberately not tracked (formerly Reserved)
     UINT64 PagingCreatesSkipped;
     UINT64 VolumeCreatesSkipped;
     UINT32 StageStreams;

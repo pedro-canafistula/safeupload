@@ -509,6 +509,7 @@ __declspec(align(16)) static STAGE_MUTATING_IO_TICKET_CONTEXT MutatingIoTicketSl
     STAGE_MUTATING_IO_TICKET_SLOTS];
 static volatile LONG64 WriterUntrackedCreates;
 static volatile LONG64 WriterCleanupUnmatched;
+static volatile LONG WriterCleanupDirectoriesSkipped;
 static volatile LONG64 WriterDirectoryCreatesSkipped;
 static volatile LONG64 WriterPagingCreatesSkipped;
 static volatile LONG64 WriterVolumeCreatesSkipped;
@@ -2358,6 +2359,20 @@ static BOOLEAN StageWritersInstanceTearingDown(_In_ PFLT_INSTANCE Instance)
     return tearingDown;
 }
 
+/* Directory opens are deliberately never tracked at post-create (WriterDirectoryCreatesSkipped), so
+ * their write/delete-access cleanups can have no writer node. Classify them before an unmatched
+ * cleanup is treated as tracking loss; any failure to classify keeps the loss. */
+_IRQL_requires_max_(APC_LEVEL)
+static BOOLEAN StageWritersCleanupIsDirectory(_In_ PCFLT_RELATED_OBJECTS FltObjects,
+    _In_ PFILE_OBJECT FileObject)
+{
+    BOOLEAN directory = FALSE;
+    if (KeGetCurrentIrql() != PASSIVE_LEVEL) return FALSE;
+    if (!NT_SUCCESS(FltIsDirectory(FileObject, FltObjects->Instance, &directory)) || !directory) return FALSE;
+    InterlockedIncrement(&WriterCleanupDirectoriesSkipped);
+    return TRUE;
+}
+
 _IRQL_requires_max_(APC_LEVEL)
 __declspec(noinline) VOID SafeUploadStageWritersOnCleanup(
     _In_ PFLT_CALLBACK_DATA Data,
@@ -2377,6 +2392,7 @@ __declspec(noinline) VOID SafeUploadStageWritersOnCleanup(
 
     status = FltGetStreamContext(FltObjects->Instance, fileObject, (PFLT_CONTEXT *)&streamContext);
     if (!NT_SUCCESS(status)) {
+        if (StageWritersCleanupIsDirectory(FltObjects, fileObject)) return;
         InterlockedIncrement64(&WriterCleanupUnmatched);
         /* A handle that predates the driver has no node; only a trusted (boot-attached) instance treats that as loss. */
         if (!StageWritersInstanceTearingDown(FltObjects->Instance) && SafeUploadInstanceIsTrusted(FltObjects->Instance)) {
@@ -2414,7 +2430,7 @@ __declspec(noinline) VOID SafeUploadStageWritersOnCleanup(
         StageRegistryDereference(found->Entry);
         ExFreePoolWithTag(found, SAFEUPLOAD_WRITER_NODE_POOL_TAG);
         InterlockedIncrement64(&WriterReleased);
-    } else {
+    } else if (!StageWritersCleanupIsDirectory(FltObjects, fileObject)) {
         InterlockedIncrement64(&WriterCleanupUnmatched);
         /* A handle that predates the driver has no node; only a trusted (boot-attached) instance treats that as loss. */
         if (!tearingDown && SafeUploadInstanceIsTrusted(FltObjects->Instance)) {
@@ -5900,6 +5916,7 @@ __declspec(noinline) VOID SafeUploadStageWritersGetStatus(_Out_ PSAFEUPLOAD_WRIT
     snapshot.WriteObjectsReleased = (UINT64)InterlockedCompareExchange64(&WriterReleased, 0, 0);
     snapshot.UntrackedCreates = (UINT64)InterlockedCompareExchange64(&WriterUntrackedCreates, 0, 0);
     snapshot.CleanupUnmatched = (UINT64)InterlockedCompareExchange64(&WriterCleanupUnmatched, 0, 0);
+    snapshot.CleanupDirectoriesSkipped = (UINT32)InterlockedCompareExchange(&WriterCleanupDirectoriesSkipped, 0, 0);
     snapshot.DirectoryCreatesSkipped = (UINT64)InterlockedCompareExchange64(&WriterDirectoryCreatesSkipped, 0, 0);
     snapshot.PagingCreatesSkipped = (UINT64)InterlockedCompareExchange64(&WriterPagingCreatesSkipped, 0, 0);
     snapshot.VolumeCreatesSkipped = (UINT64)InterlockedCompareExchange64(&WriterVolumeCreatesSkipped, 0, 0);
