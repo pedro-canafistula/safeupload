@@ -306,20 +306,6 @@ Return Value:
     if (!NT_SUCCESS(status)) goto ClosePort;
 #endif
 
-#if SAFEUPLOAD_STAGING_PROTOTYPE
-    if (!SafeUploadData.BootStartMode) {
-        /* Preserve Phase 1 demand-load behavior. A boot-start load never
-         * performs synchronous volume enumeration or lower file I/O here. */
-        status = SafeUploadStageFenceRefresh( NULL );
-        if (!NT_SUCCESS( status )) {
-            SafeUploadTrace( "pre-start fence scan failed, status 0x%08X\n", status );
-            goto ClosePort;
-        }
-    } else {
-        SafeUploadTrace("boot-start mode: scan-based fence refresh is disabled\n");
-    }
-#endif
-
     status = FltStartFiltering( SafeUploadData.Filter );
 
     if (!NT_SUCCESS( status )) {
@@ -331,14 +317,6 @@ Return Value:
 
 #if SAFEUPLOAD_STAGING_PROTOTYPE
     SafeUploadStageAdmissionReady();
-    if (!SafeUploadData.BootStartMode) SafeUploadStageFenceStartRetries();
-#endif
-
-#if SAFEUPLOAD_STAGING_PROTOTYPE
-    if (!SafeUploadData.BootStartMode) {
-        /* Demand-start diagnostic path only; boot start remains registry-only. */
-        (VOID) SafeUploadStageFenceRefresh( NULL );
-    }
 #endif
 
     SafeUploadTrace( "loaded and filtering\n" );
@@ -544,17 +522,12 @@ Return Value:
 
 #if SAFEUPLOAD_STAGING_PROTOTYPE
     // Hold a nonblocking admission through the end of this callback. A voluntary unload cannot
-    // commit while this setup is running. Demand-start tests also queue their existing refresh.
+    // commit while this setup is running. Trust remains immutable for this attachment.
     if (!SafeUploadStageFenceSetupBegin()) {
         SafeUploadTrace("declining late volume attachment after unload commit\n");
         return STATUS_FLT_DO_NOT_ATTACH;
     }
     fenceSetupAdmitted = TRUE;
-    if (!SafeUploadData.BootStartMode && !SafeUploadStageFenceQueueRefresh( FltObjects->Volume )) {
-        SafeUploadTrace("declining late volume attachment: unload already committed\n");
-        SafeUploadStageFenceSetupEnd();
-        return STATUS_FLT_DO_NOT_ATTACH;
-    }
     status = SafeUploadSetInstanceContext( FltObjects, VolumeDeviceType, Flags, &volumeKind );
 #else
     status = SafeUploadSetInstanceContext( FltObjects, VolumeDeviceType, Flags, &volumeKind );
@@ -596,7 +569,7 @@ Return Value:
 #if SAFEUPLOAD_STAGING_PROTOTYPE
         /* Keep the normal callbacks active. Every feature-build destination gate treats a missing
          * instance context as Unknown, which matches configured network/removable flags and explicit
-         * prefixes; the fence admission above separately records supported-volume scan failures. */
+         * prefixes; the setup reservation above only serializes this callback against filter unload. */
         SafeUploadTrace( "instance context unavailable (status 0x%08X); retaining attachment with Unknown fallback\n",
                          status );
         volumeKind = SafeUploadVolumeUnknown;
@@ -658,9 +631,8 @@ Routine Description:
 
     Called when someone requests a manual detach of one of our instances
     ("fltmc detach"). The feature build refuses every manual detach because
-    Filter Manager provides no reservation here that can exclude a later scan
-    or attachment before teardown completes. This callback is not invoked for
-    mandatory unload or volume dismount.
+    trust and registry history are boot-lifetime state on an attached volume.
+    This callback is not invoked for mandatory unload or volume dismount.
 
     IRQL: PASSIVE_LEVEL.
 

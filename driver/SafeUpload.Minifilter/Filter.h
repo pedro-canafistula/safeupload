@@ -682,6 +682,34 @@ SafeUploadSetPolicy (
 
 NTSTATUS SafeUploadFinalizeBootPolicy(_In_ CONST SAFEUPLOAD_POLICY_MESSAGE *Message);
 
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+#define SAFEUPLOAD_ADMISSION_EPOCH_TOKEN_SIGNATURE 'tEpS'
+typedef struct _SAFEUPLOAD_ADMISSION_EPOCH SAFEUPLOAD_ADMISSION_EPOCH, *PSAFEUPLOAD_ADMISSION_EPOCH;
+typedef struct _SAFEUPLOAD_ADMISSION_EPOCH_TOKEN {
+    UINT32 Signature;
+    PSAFEUPLOAD_ADMISSION_EPOCH Epoch;
+    PVOID InnerCompletionContext;
+    PVOID PagingWriteContext;
+    UINT32 OperationKind;
+} SAFEUPLOAD_ADMISSION_EPOCH_TOKEN, *PSAFEUPLOAD_ADMISSION_EPOCH_TOKEN;
+
+NTSTATUS SafeUploadPolicyAdmissionAcquire(_Outptr_ PSAFEUPLOAD_ADMISSION_EPOCH_TOKEN *Token);
+VOID SafeUploadPolicyAdmissionRelease(_In_opt_ PSAFEUPLOAD_ADMISSION_EPOCH_TOKEN Token);
+BOOLEAN SafeUploadPolicyAdmissionMustRetry(VOID);
+NTSTATUS SafeUploadPolicyAdmissionEpochStatus(_Out_ PSAFEUPLOAD_ADMISSION_EPOCH_STATUS Status);
+VOID SafeUploadPolicyAdmissionForceNextTimeout(VOID);
+NTSTATUS SafeUploadPolicyActivationCutoffBegin(VOID);
+VOID SafeUploadPolicyActivationCutoffEnd(VOID);
+VOID SafeUploadStageWritersPagingWriteEnd(_In_opt_ PVOID CompletionContext);
+VOID SafeUploadStageWritersQueueRecheck(VOID);
+BOOLEAN SafeUploadPolicyEntryIsNewlyScoped(_In_ SAFEUPLOAD_VOLUME_KIND VolumeKind,
+    _In_ PCUNICODE_STRING NormalizedPath);
+BOOLEAN SafeUploadPolicyEntryIsCurrentlyScoped(_In_ SAFEUPLOAD_VOLUME_KIND VolumeKind,
+    _In_ PCUNICODE_STRING NormalizedPath);
+NTSTATUS SafeUploadStageWritersApplyPendingScope(VOID);
+VOID SafeUploadStageWritersReconcileCurrentScope(VOID);
+#endif
+
 BOOLEAN SafeUploadIsAuthenticatedClient(VOID);
 BOOLEAN SafeUploadInstanceIsTrusted(_In_ PFLT_INSTANCE Instance);
 BOOLEAN SafeUploadInstanceTrustGateSatisfied(_In_ PFLT_INSTANCE Instance);

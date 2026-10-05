@@ -115,8 +115,12 @@ static BOOLEAN StagePathMatchesScope(_In_ PUNICODE_STRING Name,
         RtlPrefixUnicodeString( &relative, &bootstrap, TRUE ) &&
         (relative.Length == bootstrap.Length || relative.Buffer[relativeChars - 1] == L'\\' ||
          bootstrap.Buffer[relativeChars] == L'\\')) return TRUE;
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    return SafeUploadPolicyMatchesCurrentOrPendingDestination(Kind, Name, IncludeAncestors);
+#else
     return IncludeAncestors ? SafeUploadPolicyTouchesDestinationNamespace( Kind, Name ) :
         SafeUploadPolicyMatchesDestination( Kind, Name );
+#endif
 }
 
 BOOLEAN SafeUploadStageProtectedPath(_In_ PUNICODE_STRING Name,
@@ -167,14 +171,7 @@ BOOLEAN SafeUploadPublicationRename(_In_ PFLT_VOLUME TargetVolume, _In_ PUNICODE
     ULONGLONG now = KeQueryInterruptTime();
 
     *QuarantineRefused = FALSE;
-#if SAFEUPLOAD_STAGING_PROTOTYPE
-    if (SafeUploadStageFenceVolumeQuarantined(TargetVolume)) {
-        *QuarantineRefused = TRUE;
-        return FALSE;
-    }
-#else
     UNREFERENCED_PARAMETER(TargetVolume);
-#endif
 
     FltAcquirePushLockExclusive( &SafeUploadPublicationLock );
     for (index = 0; index < RTL_NUMBER_OF( SafeUploadPublicationPermits ); ++index) {

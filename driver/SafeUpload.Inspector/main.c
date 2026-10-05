@@ -1240,6 +1240,180 @@ static int SetRegistryCapacity(_In_z_ PCWSTR Text)
     wprintf(L"{\"registryCapacity\":%u,\"status\":\"0x%08X\"}\n", capacity, hr);
     return SUCCEEDED(hr) && returned == 0 ? 0 : 3;
 }
+
+static VOID PrintJsonWide(_In_reads_(Chars) PCWSTR Text, _In_ ULONG Chars)
+{
+    ULONG index;
+    wprintf(L"\"");
+    for (index = 0; index < Chars; ++index) {
+        WCHAR ch = Text[index];
+        switch (ch) {
+        case L'"': wprintf(L"\\\""); break;
+        case L'\\': wprintf(L"\\\\"); break;
+        case L'\n': wprintf(L"\\n"); break;
+        case L'\r': wprintf(L"\\r"); break;
+        case L'\t': wprintf(L"\\t"); break;
+        default:
+            if (ch < 0x20) wprintf(L"\\u%04X", (UINT32)ch);
+            else putwchar(ch);
+            break;
+        }
+    }
+    wprintf(L"\"");
+}
+
+static int PrintActivatingStatus(VOID)
+{
+    HANDLE port = INVALID_HANDLE_VALUE;
+    PSAFEUPLOAD_ACTIVATING_STATUS_PAGE page = NULL;
+    PSAFEUPLOAD_ACTIVATING_ENTRY_STATUS entries = NULL;
+    SAFEUPLOAD_CONTROL control;
+    DWORD returned = 0;
+    UINT32 start, total = 0, pageGeneration = 0, entryCount = 0, attempt;
+    UINT64 changeSequence = 0;
+    BOOLEAN snapshotReady = FALSE, retrySnapshot;
+    HRESULT hr;
+    ULONG index;
+    int result = 0;
+    page = (PSAFEUPLOAD_ACTIVATING_STATUS_PAGE)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY,
+        sizeof(*page));
+    entries = (PSAFEUPLOAD_ACTIVATING_ENTRY_STATUS)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY,
+        (SIZE_T)SAFEUPLOAD_WRITER_REGISTRY_TOTAL_LIMIT * sizeof(*entries));
+    if (page == NULL || entries == NULL) {
+        if (page != NULL) HeapFree(GetProcessHeap(), 0, page);
+        if (entries != NULL) HeapFree(GetProcessHeap(), 0, entries);
+        return 2;
+    }
+    hr = FilterConnectCommunicationPort(SAFEUPLOAD_PORT_NAME, 0, NULL, 0, NULL, &port);
+    if (FAILED(hr)) {
+        fwprintf(stderr, L"ERRO: nao foi possivel conectar na porta (hr = 0x%08X).\n", hr);
+        HeapFree(GetProcessHeap(), 0, page);
+        HeapFree(GetProcessHeap(), 0, entries);
+        return 2;
+    }
+    for (attempt = 0; attempt < 5 && !snapshotReady; ++attempt) {
+        start = 0;
+        total = 0;
+        entryCount = 0;
+        pageGeneration = 0;
+        changeSequence = 0;
+        retrySnapshot = FALSE;
+        while (start <= SAFEUPLOAD_WRITER_REGISTRY_TOTAL_LIMIT) {
+            ZeroMemory(&control, sizeof(control));
+            ZeroMemory(page, sizeof(*page));
+            control.Version = SAFEUPLOAD_PROTOCOL_VERSION;
+            control.StructSize = sizeof(control);
+            control.Command = SAFEUPLOAD_CONTROL_ACTIVATING_STATUS;
+            control.Reserved = start;
+            returned = 0;
+            hr = FilterSendMessage(port, &control, sizeof(control), page, sizeof(*page), &returned);
+            if (FAILED(hr)) {
+                /* STATUS_RETRY may surface as either HRESULT_FROM_WIN32(ERROR_RETRY) or HRESULT_FROM_NT. */
+                if (hr == HRESULT_FROM_WIN32(ERROR_RETRY) || (DWORD)hr == 0xD000022D) {
+                    retrySnapshot = TRUE;
+                    break;
+                }
+                fwprintf(stderr, L"ERRO: resposta activating-status invalida (hr = 0x%08X, bytes = %u).\n", hr, returned);
+                result = 3;
+                break;
+            }
+            if (returned != sizeof(*page) || page->StructSize != sizeof(*page) ||
+                page->StartIndex != start || page->EntryCount > SAFEUPLOAD_ACTIVATING_STATUS_MAX_ENTRIES ||
+                page->TotalEntries > SAFEUPLOAD_WRITER_REGISTRY_TOTAL_LIMIT ||
+                page->NextIndex < start || page->NextIndex > page->TotalEntries ||
+                page->EntryCount != page->NextIndex - start) {
+                fwprintf(stderr, L"ERRO: resposta activating-status invalida (hr = 0x%08X, bytes = %u).\n", hr, returned);
+                result = 3;
+                break;
+            }
+            if (start == 0) {
+                total = page->TotalEntries;
+                pageGeneration = page->PolicyGeneration;
+                changeSequence = page->ChangeSequence;
+            } else if (page->TotalEntries != total || page->PolicyGeneration != pageGeneration ||
+                page->ChangeSequence != changeSequence) {
+                retrySnapshot = TRUE;
+                break;
+            }
+            if (entryCount + page->EntryCount > SAFEUPLOAD_WRITER_REGISTRY_TOTAL_LIMIT) {
+                result = 3;
+                break;
+            }
+            if (page->EntryCount != 0)
+                CopyMemory(&entries[entryCount], page->Entries,
+                    page->EntryCount * sizeof(SAFEUPLOAD_ACTIVATING_ENTRY_STATUS));
+            entryCount += page->EntryCount;
+            if (page->NextIndex <= start && start < total) {
+                retrySnapshot = TRUE;
+                break;
+            }
+            start = page->NextIndex;
+            if (start >= total) {
+                snapshotReady = TRUE;
+                break;
+            }
+        }
+        if (result != 0) break;
+        if (!retrySnapshot && !snapshotReady) result = 3;
+    }
+    if (!snapshotReady && result == 0) {
+        fwprintf(stderr, L"ERRO: activating-status mudou durante cinco leituras consecutivas.\n");
+        result = 3;
+    }
+    if (snapshotReady) {
+        BOOLEAN first = TRUE;
+        wprintf(L"{\"activatingStatus\":true,\"entries\":[");
+        for (index = 0; index < entryCount; ++index) {
+            PSAFEUPLOAD_ACTIVATING_ENTRY_STATUS entry = &entries[index];
+            ULONG byteIndex;
+            if (!first) wprintf(L",");
+            first = FALSE;
+            wprintf(L"{\"generation\":%u,\"state\":\"%s\",\"volumeSerial\":\"0x%016llX\",\"fileId\":\"",
+                entry->Generation, RegistryStateName(entry->State), entry->VolumeSerialNumber);
+            for (byteIndex = 0; byteIndex < ARRAYSIZE(entry->FileId); ++byteIndex)
+                wprintf(L"%02X", entry->FileId[byteIndex]);
+            wprintf(L"\",\"path\":");
+            PrintJsonWide(entry->Name, min(entry->NameChars, SAFEUPLOAD_WRITER_REGISTRY_NAME_CHARS));
+            wprintf(L",\"H\":%u,\"S\":\"%s\",\"C\":%u,\"T\":%u,\"cutoffFlushPairs\":%u,\"unknownReasons\":\"0x%08X\",\"flags\":%u,\"openerPids\":[",
+                entry->H, RegistrySName(entry->S), entry->C, entry->T, entry->CutoffFlushPairs,
+                entry->UnknownReasons, entry->Flags);
+            for (byteIndex = 0; byteIndex < entry->OpenerPidCount && byteIndex < ARRAYSIZE(entry->OpenerPids); ++byteIndex)
+                wprintf(L"%s%u", byteIndex == 0 ? L"" : L",", entry->OpenerPids[byteIndex]);
+            wprintf(L"]}");
+        }
+        wprintf(L"],\"totalEntries\":%u,\"policyGeneration\":%u,\"changeSequence\":%llu}\n",
+            total, pageGeneration, changeSequence);
+    }
+    CloseHandle(port);
+    HeapFree(GetProcessHeap(), 0, page);
+    HeapFree(GetProcessHeap(), 0, entries);
+    return result;
+}
+
+static int PrintAdmissionEpochStatus(VOID)
+{
+    SAFEUPLOAD_CONTROL control;
+    SAFEUPLOAD_ADMISSION_EPOCH_STATUS status;
+    HANDLE port = INVALID_HANDLE_VALUE;
+    DWORD returned = 0;
+    HRESULT hr;
+    hr = FilterConnectCommunicationPort(SAFEUPLOAD_PORT_NAME, 0, NULL, 0, NULL, &port);
+    if (FAILED(hr)) return 2;
+    ZeroMemory(&control, sizeof(control));
+    ZeroMemory(&status, sizeof(status));
+    control.Version = SAFEUPLOAD_PROTOCOL_VERSION;
+    control.StructSize = sizeof(control);
+    control.Command = SAFEUPLOAD_CONTROL_ADMISSION_EPOCH_STATUS;
+    hr = FilterSendMessage(port, &control, sizeof(control), &status, sizeof(status), &returned);
+    CloseHandle(port);
+    if (FAILED(hr) || returned != sizeof(status) || status.StructSize != sizeof(status)) {
+        fwprintf(stderr, L"ERRO: resposta admission-epoch-status invalida (hr = 0x%08X, bytes = %u).\n", hr, returned);
+        return 3;
+    }
+    wprintf(L"{\"admissionEpoch\":true,\"policyGeneration\":%u,\"epochGeneration\":%u,\"activeCallbacks\":%u,\"flags\":%u,\"changeSequence\":%llu}\n",
+        status.PolicyGeneration, status.EpochGeneration, status.ActiveCallbacks, status.Flags, status.ChangeSequence);
+    return 0;
+}
 #endif
 
 static int PrintFenceStatus(VOID)
@@ -1484,6 +1658,17 @@ Return Value:
     }
     if (argc > 1 && _wcsicmp(argv[1], L"--registry-status") == 0) {
         return PrintWriterStateStatus(TRUE);
+    }
+    if (argc > 1 && _wcsicmp(argv[1], L"--activating-status") == 0) {
+        return PrintActivatingStatus();
+    }
+    if (argc > 1 && _wcsicmp(argv[1], L"--epoch-status") == 0) {
+        return PrintAdmissionEpochStatus();
+    }
+    if (argc > 1 && _wcsicmp(argv[1], L"--admission-epoch-force-timeout") == 0) {
+        if (argc != 2) return 2;
+        return SendAdmissionTraceControl(SAFEUPLOAD_CONTROL_ADMISSION_EPOCH_FORCE_TIMEOUT,
+            L"admission epoch forced timeout", 0);
     }
     if (argc > 1 && _wcsicmp(argv[1], L"--registry-entry") == 0) {
         if (argc != 3) {

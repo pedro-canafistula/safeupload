@@ -596,6 +596,7 @@ Return Value:
     PSAFEUPLOAD_POLICY_MESSAGE policy = NULL;
 #if SAFEUPLOAD_STAGING_PROTOTYPE
     SAFEUPLOAD_CONTROL controlHeader;
+    PSAFEUPLOAD_ACTIVATING_STATUS_PAGE activatingPage = NULL;
 #endif
     NTSTATUS status = STATUS_SUCCESS;
     UINT32 command = 0;
@@ -1031,43 +1032,45 @@ Return Value:
         }
 
         if (command == SAFEUPLOAD_CONTROL_ADMISSION_CANARY_HOLD) {
-            SAFEUPLOAD_ADMISSION_CANARY_HOLD_REQUEST request;
+            PSAFEUPLOAD_ADMISSION_CANARY_HOLD_REQUEST request =
+                (PSAFEUPLOAD_ADMISSION_CANARY_HOLD_REQUEST)policy;
             PSAFEUPLOAD_ADMISSION_CANARY_HOLD_REPLY reply;
             UNICODE_STRING volumeName;
             ULONG index;
 
-            if (InputBufferLength != sizeof(request) || OutputBuffer == NULL ||
+            if (InputBufferLength != sizeof(*request) || OutputBuffer == NULL ||
                 OutputBufferLength != sizeof(*reply)) {
                 status = STATUS_INVALID_BUFFER_SIZE;
                 leave;
             }
-            RtlCopyMemory(&request, InputBuffer, sizeof(request));
-            if (request.Control.Version != SAFEUPLOAD_PROTOCOL_VERSION ||
-                request.Control.StructSize != sizeof(request) ||
-                request.Control.Command != command || request.Control.Reserved != 0 ||
-                request.Reserved != 0 || request.VolumeNameChars == 0 ||
-                request.VolumeNameChars >= SAFEUPLOAD_CANARY_VOLUME_CHARS ||
-                request.VolumeName[request.VolumeNameChars] != UNICODE_NULL ||
-                request.HoldMilliseconds == 0 ||
-                request.HoldMilliseconds > SAFEUPLOAD_CANARY_MAX_HOLD_MS) {
+            /* Reuse the existing pool scratch buffer instead of placing this fixed request on the stack. */
+            RtlCopyMemory(request, InputBuffer, sizeof(*request));
+            if (request->Control.Version != SAFEUPLOAD_PROTOCOL_VERSION ||
+                request->Control.StructSize != sizeof(*request) ||
+                request->Control.Command != command || request->Control.Reserved != 0 ||
+                request->Reserved != 0 || request->VolumeNameChars == 0 ||
+                request->VolumeNameChars >= SAFEUPLOAD_CANARY_VOLUME_CHARS ||
+                request->VolumeName[request->VolumeNameChars] != UNICODE_NULL ||
+                request->HoldMilliseconds == 0 ||
+                request->HoldMilliseconds > SAFEUPLOAD_CANARY_MAX_HOLD_MS) {
                 status = STATUS_INVALID_PARAMETER;
                 leave;
             }
-            for (index = 0; index < request.VolumeNameChars; ++index) {
-                if (request.VolumeName[index] == UNICODE_NULL) {
+            for (index = 0; index < request->VolumeNameChars; ++index) {
+                if (request->VolumeName[index] == UNICODE_NULL) {
                     status = STATUS_INVALID_PARAMETER;
                     leave;
                 }
             }
-            for (index = request.VolumeNameChars + 1; index < SAFEUPLOAD_CANARY_VOLUME_CHARS; ++index) {
-                if (request.VolumeName[index] != UNICODE_NULL) {
+            for (index = request->VolumeNameChars + 1; index < SAFEUPLOAD_CANARY_VOLUME_CHARS; ++index) {
+                if (request->VolumeName[index] != UNICODE_NULL) {
                     status = STATUS_INVALID_PARAMETER;
                     leave;
                 }
             }
-            volumeName.Buffer = request.VolumeName;
-            volumeName.Length = (USHORT)(request.VolumeNameChars * sizeof(WCHAR));
-            volumeName.MaximumLength = sizeof(request.VolumeName);
+            volumeName.Buffer = request->VolumeName;
+            volumeName.Length = (USHORT)(request->VolumeNameChars * sizeof(WCHAR));
+            volumeName.MaximumLength = sizeof(request->VolumeName);
 #pragma warning( suppress: 6001 )
             ProbeForWrite(OutputBuffer, sizeof(*reply), __alignof(SAFEUPLOAD_ADMISSION_CANARY_HOLD_REPLY));
             /* The 1 KB reply lives in pool, not on this already large dispatch frame. */
@@ -1078,7 +1081,7 @@ Return Value:
             }
             try {
                 status = SafeUploadStageAdmissionCanaryHold(&volumeName,
-                    request.HoldMilliseconds, reply);
+                    request->HoldMilliseconds, reply);
                 if (NT_SUCCESS(status)) {
                     RtlCopyMemory(OutputBuffer, reply, sizeof(*reply));
                     *ReturnOutputBufferLength = sizeof(*reply);
@@ -1152,6 +1155,71 @@ Return Value:
 #endif
 
 #if SAFEUPLOAD_STAGING_PROTOTYPE
+        if (command == SAFEUPLOAD_CONTROL_ACTIVATING_STATUS) {
+            if (InputBufferLength != sizeof(SAFEUPLOAD_CONTROL) || OutputBuffer == NULL ||
+                OutputBufferLength != sizeof(SAFEUPLOAD_ACTIVATING_STATUS_PAGE)) {
+                status = STATUS_INVALID_BUFFER_SIZE;
+                leave;
+            }
+            if (controlHeader.Version != SAFEUPLOAD_PROTOCOL_VERSION ||
+                controlHeader.StructSize != sizeof(SAFEUPLOAD_CONTROL) ||
+                controlHeader.Command != command) {
+                status = STATUS_REVISION_MISMATCH;
+                leave;
+            }
+#pragma warning( suppress: 6001 )
+            ProbeForWrite(OutputBuffer, sizeof(SAFEUPLOAD_ACTIVATING_STATUS_PAGE),
+                __alignof(SAFEUPLOAD_ACTIVATING_STATUS_PAGE));
+            activatingPage = ExAllocatePool2(POOL_FLAG_PAGED,
+                sizeof(*activatingPage), SAFEUPLOAD_POOL_TAG);
+            if (activatingPage == NULL) {
+                status = STATUS_INSUFFICIENT_RESOURCES;
+                leave;
+            }
+            status = SafeUploadStageWritersActivatingStatusPage(controlHeader.Reserved, activatingPage);
+            if (NT_SUCCESS(status)) {
+                RtlCopyMemory(OutputBuffer, activatingPage, sizeof(*activatingPage));
+                *ReturnOutputBufferLength = sizeof(*activatingPage);
+            }
+            leave;
+        }
+
+        if (command == SAFEUPLOAD_CONTROL_ADMISSION_EPOCH_STATUS) {
+            SAFEUPLOAD_ADMISSION_EPOCH_STATUS epochStatus;
+            if (InputBufferLength != sizeof(SAFEUPLOAD_CONTROL) || OutputBuffer == NULL ||
+                OutputBufferLength != sizeof(epochStatus)) {
+                status = STATUS_INVALID_BUFFER_SIZE;
+                leave;
+            }
+            if (controlHeader.Version != SAFEUPLOAD_PROTOCOL_VERSION ||
+                controlHeader.StructSize != sizeof(SAFEUPLOAD_CONTROL) ||
+                controlHeader.Command != command || controlHeader.Reserved != 0) {
+                status = STATUS_REVISION_MISMATCH;
+                leave;
+            }
+#pragma warning( suppress: 6001 )
+            ProbeForWrite(OutputBuffer, sizeof(epochStatus), __alignof(SAFEUPLOAD_ADMISSION_EPOCH_STATUS));
+            status = SafeUploadPolicyAdmissionEpochStatus(&epochStatus);
+            if (NT_SUCCESS(status)) {
+                RtlCopyMemory(OutputBuffer, &epochStatus, sizeof(epochStatus));
+                *ReturnOutputBufferLength = sizeof(epochStatus);
+            }
+            leave;
+        }
+
+        if (command == SAFEUPLOAD_CONTROL_ADMISSION_EPOCH_FORCE_TIMEOUT) {
+            if (InputBufferLength != sizeof(SAFEUPLOAD_CONTROL) || OutputBuffer != NULL ||
+                OutputBufferLength != 0 || controlHeader.Version != SAFEUPLOAD_PROTOCOL_VERSION ||
+                controlHeader.StructSize != sizeof(SAFEUPLOAD_CONTROL) ||
+                controlHeader.Command != command || controlHeader.Reserved != 0) {
+                status = STATUS_INVALID_PARAMETER;
+                leave;
+            }
+            SafeUploadPolicyAdmissionForceNextTimeout();
+            status = STATUS_SUCCESS;
+            leave;
+        }
+
         if (command == SAFEUPLOAD_CONTROL_WRITER_STATE_STATUS) {
             SAFEUPLOAD_CONTROL writerControl;
             SAFEUPLOAD_WRITER_STATE_STATUS writerStatus;
@@ -1294,6 +1362,10 @@ Return Value:
 
         status = GetExceptionCode();
     }
+
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    if (activatingPage != NULL) ExFreePoolWithTag(activatingPage, SAFEUPLOAD_POOL_TAG);
+#endif
 
     //
     //  Only the policy command has a policy to validate. Testing the status

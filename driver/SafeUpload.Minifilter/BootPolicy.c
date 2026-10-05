@@ -327,8 +327,8 @@ NTSTATUS SafeUploadReadBootPolicy(_In_ PUNICODE_STRING ServiceRegistryPath,
             startReturned >= FIELD_OFFSET(KEY_VALUE_PARTIAL_INFORMATION, Data) + sizeof(ULONG) &&
             startInformation->Type == REG_DWORD && startInformation->DataLength == sizeof(ULONG)) {
             RtlCopyMemory(&startValue, startInformation->Data, sizeof(startValue));
-            /* Demand-start remains the Phase 1 diagnostic path. Any boot,
-             * system-start, or unreadable mode avoids scan-based fence work. */
+            /* Demand-start remains the Phase 1 diagnostic path. The Phase 3
+             * admission path relies on the newly-mounted trust gate, not scans. */
             *BootStartMode = startValue != 3;
         }
         SafeUploadTrace("service start mode boot-scan-disabled=%u query-status=0x%08X\n",
