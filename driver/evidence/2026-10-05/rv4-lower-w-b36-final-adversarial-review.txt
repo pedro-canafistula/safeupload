@@ -1,0 +1,38 @@
+RV4 lower-W final fixture (source 6efd9cf3) — adversarial source review
+Date: 2026-10-05
+Reviewer: Codex gpt-6-luna (high), read-only; final answer saved verbatim by the orchestrator (read from the task output file).
+
+## Verdict: ACCEPT WITH CONDITIONS
+
+Source review only; I did not compile or run a VM. I found no demonstrated double completion, lost completion, or lock-order defect in the serialized one-write path. Exact-build VM use remains conditional on preserving the experiment’s sequencing and treating incomplete or ambiguous receipts as inconclusive.
+
+### Findings, ranked
+
+**1. High — Arm must finish before any write can reach this filter.**  
+[`Fault.c:512-521`](/home/victor/Work/safeupload-staging/driver/SafeUpload.SectionFault/Fault.c:512) publishes the arm before creating the worker. If a matching write races ahead of the arm reply and `PsCreateSystemThread` fails, `FaultWriteDisarmLocked` signals events but has no worker to remove and resume the queued write; its rundown wait can remain blocked. If worker creation succeeds, an early write can still be held before the controller has received the arm receipt. The plan’s requirement that the sole writer wait for successful arm completion is essential.
+
+**2. Medium — A 30-second watchdog does not bound completion or teardown.**  
+[`Fault.c:147-173`](/home/victor/Work/safeupload-staging/driver/SafeUpload.SectionFault/Fault.c:147) bounds the worker’s wait, then resumes or synthetically completes the queued operation. A resumed write can still stall below this filter. [`Fault.c:423-431`](/home/victor/Work/safeupload-staging/driver/SafeUpload.SectionFault/Fault.c:423) joins the worker and waits for callback rundown without a timeout, so disarm, disconnect, instance teardown, or unload can wait indefinitely for that lower completion. Preserve the pending writer and VM if that happens; classify the experiment as inconclusive.
+
+**3. Medium — The reply is not an atomic receipt snapshot.**  
+[`Fault.c:434-458`](/home/victor/Work/safeupload-staging/driver/SafeUpload.SectionFault/Fault.c:434) reads counters and fields separately while callback paths update them separately. A reply taken during completion can combine fields from different points in the transition. Also, [`Fault.c:274-280`](/home/victor/Work/safeupload-staging/driver/SafeUpload.SectionFault/Fault.c:274) records status and related fields before incrementing `LowerPosts`. For evidence, obtain a quiescent receipt after native writer completion and disarm/rundown; require the expected `LowerPosts`, zero `Canceled`, zero `SyntheticFailures`, zero `TimedOut`, and matching upper trace and IOCP evidence.
+
+**4. Low — The lower receipt identifies this filter’s post callback, not NTFS in isolation.**  
+[`Fault.c:269-285`](/home/victor/Work/safeupload-staging/driver/SafeUpload.SectionFault/Fault.c:269) records the status observed as completion passes this filter. Lower filters may affect that status, and the source does not prove this filter’s placement relative to SafeUpload or other filters. The experiment must independently verify placement. `LowerCallbackData` is only a correlation hint, not unique proof of an operation.
+
+### Requested commit-range assessment
+
+The status initializer at line 182 does not change the unarmed path: that path returns before the status is examined. The callback lock annotations and `KSTART_ROUTINE` declaration are analysis metadata. The `InterlockedCompareExchange` reads at lines 141 and 211 make reads of the held flag atomic; they are an intended concurrency change. The only new control-flow behavior is the checked `FltObjectReference` result at lines 659-663.
+
+That failed-reference path appears safe in the source: `FaultWriteQueueInitialized` remains false, so arm is rejected at line 475 and the worker’s queue access at line 150 is skipped. Release cannot find a held write; disarm does not use the queue; teardown’s instance match fails; unload only disarms. A later setup attempt is serialized by `FaultControl` and reinitializes the queue at lines 649-657. Since no attached instance can submit to this queue and no item was inserted, I found no source-level stale item or concurrent queue use in that retry path.
+
+Cancellation and synthetic completion are distinguished from a lower post in the receipt: cancellation increments `Canceled`, synthetic completion increments `SyntheticFailures`, and neither increments `LowerPosts`. The `LowerStatus` field alone can nevertheless look like a completion status, so it must not be used as proof without those counters and the post count.
+
+### Experiment-record limitations
+
+Record that the source review did not establish runtime cancellation interleavings, exact filter placement, lower filesystem behavior, alignment, native completion, or bounded teardown. A cancel, synthetic failure, timeout, missing lower post, or teardown stall is inconclusive. The queue’s setup-failure retry path was assessed from source only.
+
+SHA-256:
+
+- `Fault.c`: `3dabbdfd7b3373aa8379dbd737a18bf79bec9f165c3e54fec5bb3fb97ce8f4c3`
+- `Protocol.h`: `306b0e57fb206d7ab63b7793bdada53b90ae769250d165e14e059c05e903b812`
