@@ -396,3 +396,8 @@ falsify the Phase 3 cutoff mechanism; the harness must test it, never reinterpre
   Required VM cases: cleanup racing a pending noncached write, mutating SET_INFORMATION/FSCTL completion, in-scope/out-of-scope/
   undecidable overflow markers across a policy change, ADS and hard-link marker classification, and section spill acquire failure,
   release, marker binding, and identityless/allocation-loss fallback.
+- **2026-10-05 decision (unattended, from evidence/2026-10-05/phase3-w-review.txt): prefer deletion for availability-only findings.**
+  Live overflow markers block promotion on their instance until quiescent (no per-marker OUTSIDE classification: it raced in-flight
+  renames). Section-slot overflow uses only the fixed 64-slot table; beyond it the exact entry (or the instance) becomes sticky Unknown
+  and the acquire still passes (no unbounded spill records). Accepted limit: capacity Unknown does not recover until reboot. Fast-I/O
+  PREPARE_MDL_WRITE is disallowed so cached MDL writes are reissued as counted IRP writes.
