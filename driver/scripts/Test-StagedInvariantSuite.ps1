@@ -819,14 +819,14 @@ function ConvertFrom-ServiceJournalRecord($Record) {
         foreach($numeric in @(@{Name='Transfer.ProcessId';Value=$entry.Transfer.ProcessId;Min=1;Max=[int]::MaxValue},
             @{Name='Transfer.Destination';Value=$entry.Transfer.Destination;Min=0;Max=4},@{Name='State';Value=$entry.State;Min=0;Max=8},
             @{Name='DestinationGeneration';Value=$entry.DestinationGeneration;Min=0;Max=[long]::MaxValue},
-            @{Name='LastRenameTransactionId';Value=$entry.LastRenameTransactionId;Min=0;Max=[ulong]::MaxValue})){
+            @{Name='LastRenameTransactionId';Value=$entry.LastRenameTransactionId;Min=0;Max=[uint64]::MaxValue})){
             if($null -eq $numeric.Value -or $numeric.Value -is [string] -or $numeric.Value -is [bool] -or $numeric.Value -is [double] -or $numeric.Value -is [single] -or
                 ([string]$numeric.Value -notmatch '^\d+$') -or [decimal]$numeric.Value -lt $numeric.Min -or [decimal]$numeric.Value -gt $numeric.Max){
                 throw ('Invalid product journal '+$numeric.Name+'.')
             }
         }
         if($null -ne $entry.Transfer.SessionId -and ($entry.Transfer.SessionId -is [string] -or $entry.Transfer.SessionId -is [double] -or $entry.Transfer.SessionId -is [single] -or
-            [string]$entry.Transfer.SessionId -notmatch '^\d+$' -or [decimal]$entry.Transfer.SessionId -gt [uint]::MaxValue)){throw 'Invalid product journal Transfer.SessionId.'}
+            [string]$entry.Transfer.SessionId -notmatch '^\d+$' -or [decimal]$entry.Transfer.SessionId -gt [uint32]::MaxValue)){throw 'Invalid product journal Transfer.SessionId.'}
         if($entry.Transfer.ProcessName -isnot [string] -or [string]::IsNullOrWhiteSpace($entry.Transfer.ProcessName) -or $entry.Transfer.ProcessName.Length -gt 63){throw 'Invalid product journal Transfer.ProcessName.'}
         if([string]::IsNullOrWhiteSpace($entry.UpdatedAtUtc) -or [DateTimeOffset]::Parse($entry.UpdatedAtUtc) -eq [DateTimeOffset]::MinValue){throw 'Invalid journal update timestamp.'}
         if($entry.SealedOnce -isnot [bool] -or $entry.LastRenameCommitted -isnot [bool]){throw 'Invalid journal seal/rename boolean.'}
@@ -895,7 +895,7 @@ function Get-ServiceDestinationPaths($Entry) {
     if($null -ne $Entry.PendingRename){
         if($null -eq $Entry.PendingRename.TransactionId -or $Entry.PendingRename.TransactionId -is [string] -or $Entry.PendingRename.TransactionId -is [double] -or $Entry.PendingRename.TransactionId -is [single] -or
             [string]$Entry.PendingRename.TransactionId -notmatch '^\d+$' -or [decimal]$Entry.PendingRename.TransactionId -le 0 -or
-            [decimal]$Entry.PendingRename.TransactionId -gt [ulong]::MaxValue -or $Entry.PendingRename.SealedVersion -isnot [bool] -or
+            [decimal]$Entry.PendingRename.TransactionId -gt [uint64]::MaxValue -or $Entry.PendingRename.SealedVersion -isnot [bool] -or
             $Entry.PendingRename.SealedVersion -ne $Entry.SealedOnce){throw 'Invalid pending journal rename.'}
         $paths+=$Entry.PendingRename.DestinationPath
     }
