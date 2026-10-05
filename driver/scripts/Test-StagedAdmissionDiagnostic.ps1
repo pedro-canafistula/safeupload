@@ -1,6 +1,6 @@
 param(
     [Parameter(Mandatory = $true)]
-    [ValidateSet('preattach-immediate', 'preattach-protected-open', 'mmdoes-matrix', 'policy-transition', 'retained-section', 'section-eol', 'writer-count', 'registry-txf', 'canary-security', 'canary-newvolume', 'section-inflight', 'section-lower', 'section-teardown', 'writer-fault', 'primitive-cost', 'All')]
+    [ValidateSet('preattach-immediate', 'preattach-protected-open', 'mmdoes-matrix', 'policy-transition', 'retained-section', 'section-eol', 'writer-count', 'registry-txf', 'activating-epoch', 'canary-security', 'canary-newvolume', 'section-inflight', 'section-lower', 'section-teardown', 'writer-fault', 'primitive-cost', 'All')]
     [string] $Variant,
 
     [Parameter(Mandatory = $true)]
@@ -1074,19 +1074,13 @@ function Invoke-MappedWrite($View, [string] $Marker) {
     }
 }
 
-function New-ExpandedPolicyForFixture([string] $FixtureDirectory, [string] $PolicyBackup, [switch] $FixedScopesOnly) {
+function New-ExpandedPolicyForFixture([string] $FixtureDirectory, [string] $PolicyBackup, [string] $ScopePath = '') {
     $policyBytes = [IO.File]::ReadAllBytes($policyPath)
     [IO.File]::WriteAllBytes($PolicyBackup, $policyBytes)
     $policyDocument = [Text.Encoding]::UTF8.GetString($policyBytes) | ConvertFrom-Json
+    if ([string]::IsNullOrWhiteSpace($ScopePath)) { $ScopePath = $FixtureDirectory }
     $policyDocument.monitoredScopes.destinationPaths =
-        @($policyDocument.monitoredScopes.destinationPaths) + @($FixtureDirectory)
-    if ($FixedScopesOnly) {
-        # The scan-based fence (still in the admission path until Phase 3 increment 5) cannot cover whole removable or
-        # network volumes and rejects any policy transition that adds them (registry-txf run 10: SetPolicy NOT_SUPPORTED,
-        # StageFence CoverageRejected). Tests that need only a fixed-NTFS fixture scope leave them out.
-        $policyDocument.monitoredScopes.removableDrives = $false
-        $policyDocument.monitoredScopes.networkPaths = $false
-    }
+        @($policyDocument.monitoredScopes.destinationPaths) + @($ScopePath)
     $updatedBytes = [Text.Encoding]::UTF8.GetBytes(($policyDocument | ConvertTo-Json -Depth 10))
     return [pscustomobject]@{
         OriginalBytes = $policyBytes
@@ -1095,8 +1089,8 @@ function New-ExpandedPolicyForFixture([string] $FixtureDirectory, [string] $Poli
 }
 
 function Invoke-AdmissionProbe([string] $Path, [string] $Name, [int] $Timeout) {
-    # The reparse-free precondition was verified before the driver loaded. It is not repeated here: with a
-    # fence active the file itself may be quarantined and even a stat of it is refused.
+    # The reparse-free precondition was verified before the driver loaded. It is not repeated here so
+    # the probe does not race a policy transition or become an admission operation under test.
     if ($Path.Length -gt 260) {
         throw "Inspector probe path exceeds the 260-character command limit: $Path"
     }
@@ -1261,7 +1255,8 @@ function Dispose-ObserverResources(
         catch {
             $disposeText = Get-ErrorText $_
             if ($disposeText -match 'write protected') {
-                # A fenced stream refuses the final flush of its old view: an observation, not a restoration failure.
+                # A protected or Activating admission gate can refuse the final flush of an old view;
+                # record that observation separately from resource-restoration failures.
                 Write-Output ('ViewDisposeObserved=' + $disposeText)
             }
             else {
@@ -2720,6 +2715,7 @@ function Invoke-Variant([string] $SelectedVariant) {
     $agent = $null
     $runSucceeded = $false
     $registryTxfVariant = $SelectedVariant -eq 'registry-txf'
+    $activatingEpochVariant = $SelectedVariant -eq 'activating-epoch'
     $registryTxfSummaryEmitted = $false
     if ($registryTxfVariant) {
         $script:RegistryTxfChecksPassed = 0
@@ -2903,9 +2899,14 @@ function Invoke-Variant([string] $SelectedVariant) {
             }
             $runSucceeded = ($script:CanarySecurityChecksFailed -eq 0)
         }
-        elseif ($SelectedVariant -eq 'canary-newvolume') {
+        elseif ($SelectedVariant -eq 'canary-newvolume' -or $activatingEpochVariant) {
             if (-not $Verifier) { throw 'New-volume canary qualification requires runtime Verifier.' }
             $script:CNPassed = 0; $script:CNFailed = 0
+            if ($activatingEpochVariant) {
+                $script:AEPassed = 0; $script:AEFailed = 0
+                $script:AEOutcomeLines = New-Object System.Collections.Generic.List[string]
+                $aeRaw = @{}
+            }
             $cnDisks = New-Object System.Collections.ArrayList
             $cnRaw = @{}
             $cnFaultsMayBeEnabled = $false
@@ -2922,6 +2923,32 @@ function Invoke-Variant([string] $SelectedVariant) {
                 if ($Ok) { $script:CNPassed++ } else { $script:CNFailed++ }
                 Write-Output ('CN_' + $Name + '=' + $Facts + ';' + $(if ($Ok) { 'PASS' } else { 'FAIL' }))
                 if (-not $Ok) { throw ('New-volume canary check failed: ' + $Name) }
+            }
+            function Add-AEOutcome([string] $Name, [bool] $Ok, [string] $Facts) {
+                if ($Ok) { $script:AEPassed++ } else { $script:AEFailed++ }
+                [void]$script:AEOutcomeLines.Add('AE_' + $Name + '=' + $Facts + ';' + $(if ($Ok) { 'PASS' } else { 'FAIL' }))
+            }
+            function Read-AEEpochStatus([string] $Label) {
+                $response = Invoke-InspectorChecked -Arguments @('--epoch-status') -Timeout $InspectorTimeoutSeconds
+                $aeRaw[$Label + '-epoch.json'] = [string]$response.Stdout
+                return (ConvertFrom-Json -InputObject ([string]$response.Stdout).Trim())
+            }
+            function Read-AEActivatingStatus([string] $Label) {
+                $response = Invoke-InspectorChecked -Arguments @('--activating-status') -Timeout $InspectorTimeoutSeconds
+                $aeRaw[$Label + '-activating.json'] = [string]$response.Stdout
+                return (ConvertFrom-Json -InputObject ([string]$response.Stdout).Trim())
+            }
+            function Wait-AEEntry([string] $Leaf, [int] $TimeoutSeconds = 20) {
+                $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
+                do {
+                    $status = Read-AEActivatingStatus ('wait-' + $Leaf + '-' + $deadline.Ticks)
+                    $entry = @($status.entries | Where-Object {
+                        ([string]$_.path).EndsWith(('\' + $Leaf), [StringComparison]::OrdinalIgnoreCase)
+                    }) | Select-Object -First 1
+                    if ($null -ne $entry) { return $entry }
+                    Start-Sleep -Milliseconds 100
+                } while ([DateTime]::UtcNow -lt $deadline)
+                return $null
             }
             function Invoke-CNNative([string] $Exe, [string] $Arguments, [int] $Seconds = 30) {
                 $start = [Diagnostics.ProcessStartInfo]::new($Exe, $Arguments)
@@ -3143,6 +3170,230 @@ function Invoke-Variant([string] $SelectedVariant) {
                         $fresh.canaryChecks -eq 15 -and $fresh.canaryCleanupStatus -eq 0 -and $freshFiles.Count -eq 0 -and
                         ($fresh.setupFlags -band 4) -ne 0 -and $null -eq (Find-CNVolume $initial $first.Guid)) `
                         ((Get-CNCanaryFacts $fresh) + ';rootCanaryFiles:' + $freshFiles.Count)
+
+                    if ($activatingEpochVariant) {
+                        [void](Add-AEOutcome 'PromotionUsesTrustedNewVolume' ($fresh.volumeKind -eq 1 -and
+                            $fresh.fileSystemType -eq 2 -and $fresh.trustState -eq 3 -and
+                            ($fresh.setupFlags -band 4) -ne 0) (Get-CNCanaryFacts $fresh))
+                        $scopeDirectory = Join-Path 'S:\' ('SafeUpload-activating-' + $id)
+                        $cleanPath = Join-Path $scopeDirectory 'clean.maptest'
+                        $dirtyPath = Join-Path $scopeDirectory 'dirty.maptest'
+                        $cleanWriter = $null; $dirtyWriter = $null; $dirtyMap = $null; $dirtyView = $null
+                        try {
+                            [IO.Directory]::CreateDirectory($scopeDirectory) | Out-Null
+                            $cleanBytes = New-PaddedFixtureBytes ([Text.Encoding]::UTF8.GetBytes('AE CLEAN BASE ' + $id))
+                            $dirtyBytes = New-PaddedFixtureBytes ([Text.Encoding]::UTF8.GetBytes('AE DIRTY BASE ' + $id))
+                            [IO.File]::WriteAllBytes($cleanPath, $cleanBytes)
+                            [IO.File]::WriteAllBytes($dirtyPath, $dirtyBytes)
+
+                            # Establish a live baseline policy before creating pre-scope writer history.
+                            $baseLog = Join-Path $documents ('SafeUpload-activating-epoch-base-' + $id)
+                            [void]$agentLogs.Add($baseLog + '-out.log'); [void]$agentLogs.Add($baseLog + '-err.log')
+                            $agent = Start-TestAgentAndWaitForPolicy $baseLog '--Interception:StagingPrototype=false'
+                            Stop-StagedTestAgent $agent; $agent = $null
+
+                            $shareAll = [IO.FileShare]::ReadWrite -bor [IO.FileShare]::Delete
+                            $cleanWriter = [IO.FileStream]::new($cleanPath, [IO.FileMode]::Open,
+                                [IO.FileAccess]::ReadWrite, $shareAll)
+                            [void]$fileHandles.Add($cleanWriter)
+                            $cleanWriter.Position = 0; $cleanWriter.Write($cleanBytes, 0, $cleanBytes.Length)
+                            $cleanWriter.Flush($true)
+                            $dirtyWriter = [IO.FileStream]::new($dirtyPath, [IO.FileMode]::Open,
+                                [IO.FileAccess]::ReadWrite, $shareAll)
+                            [void]$fileHandles.Add($dirtyWriter)
+                            $dirtyWriter.Position = 0; $dirtyWriter.Write($dirtyBytes, 0, $dirtyBytes.Length)
+                            $dirtyWriter.Flush($true)
+                            $dirtyMap = [IO.MemoryMappedFiles.MemoryMappedFile]::CreateFromFile($dirtyWriter,
+                                ('Local\SafeUpload-AE-' + $id), [long]$dirtyBytes.Length,
+                                [IO.MemoryMappedFiles.MemoryMappedFileAccess]::ReadWrite,
+                                [IO.HandleInheritability]::None, $true)
+                            $dirtyView = $dirtyMap.CreateViewAccessor(0, [long]$dirtyBytes.Length,
+                                [IO.MemoryMappedFiles.MemoryMappedFileAccess]::ReadWrite)
+                            [void]$mappings.Add($dirtyMap); [void]$views.Add($dirtyView)
+
+                            $expandedPolicy = New-ExpandedPolicyForFixture $fixtureDirectory $policyBackup $scopeDirectory
+                            $policyBytes = $expandedPolicy.OriginalBytes
+                            [IO.File]::WriteAllBytes($policyPath, $expandedPolicy.UpdatedBytes)
+                            $beforeEpoch = Read-AEEpochStatus 'before-timeout'
+
+                            [void](Invoke-InspectorChecked -Arguments @('--admission-epoch-force-timeout') -Timeout $InspectorTimeoutSeconds)
+                            $timeoutLog = Join-Path $documents ('SafeUpload-activating-epoch-timeout-' + $id)
+                            [void]$agentLogs.Add($timeoutLog + '-out.log'); [void]$agentLogs.Add($timeoutLog + '-err.log')
+                            $ready = New-Object System.Threading.EventWaitHandle($false,
+                                [System.Threading.EventResetMode]::ManualReset, 'Global\SafeUploadServiceReady')
+                            $epochAgent = $null; $timeoutAgentAccepted = $false
+                            try {
+                                [void]$ready.Reset()
+                                $epochAgent = Start-StagedTestAgent $serviceDirectory $timeoutLog 'SafeUpload.Agent.Service.exe' '--Interception:StagingPrototype=false'
+                                [void]$epochAgent.Process.Handle
+                                $timeoutDeadline = [DateTime]::UtcNow.AddSeconds(20)
+                                do {
+                                    if ($ready.WaitOne(0)) { $timeoutAgentAccepted = $true; break }
+                                    if ($epochAgent.Process.HasExited) { break }
+                                    Start-Sleep -Milliseconds 100
+                                } while ([DateTime]::UtcNow -lt $timeoutDeadline)
+                            }
+                            finally {
+                                if ($null -ne $epochAgent) { Stop-StagedTestAgent $epochAgent; $epochAgent = $null }
+                                $ready.Dispose()
+                            }
+                            $timeoutEpoch = Read-AEEpochStatus 'after-timeout'
+                            $failedClosed = (($timeoutEpoch.flags -band 3) -eq 3)
+                            [void](Add-AEOutcome 'DrainTimeoutFailedClosed' (-not $timeoutAgentAccepted -and $failedClosed -and
+                                $timeoutEpoch.policyGeneration -eq $beforeEpoch.policyGeneration) `
+                                ('accepted:' + $timeoutAgentAccepted + ';beforeGeneration:' + $beforeEpoch.policyGeneration +
+                                ';afterGeneration:' + $timeoutEpoch.policyGeneration + ';flags:' + $timeoutEpoch.flags))
+
+                            $retryCode = [uint32]0; $retryOpened = $false; $retryHandle = $null
+                            try {
+                                $retryHandle = [IO.FileStream]::new($cleanPath, [IO.FileMode]::Open,
+                                    [IO.FileAccess]::Write, $shareAll)
+                                $retryOpened = $true
+                            }
+                            catch { $retryCode = [uint32]([int64]$_.Exception.HResult -band 0xFFFF) }
+                            finally { if ($null -ne $retryHandle) { $retryHandle.Dispose() } }
+                            [void](Add-AEOutcome 'UnionWriteReturnsRetry' (-not $retryOpened -and $retryCode -eq 1237) `
+                                ('opened:' + $retryOpened + ';win32Error:' + $retryCode))
+
+                            $retryLog = Join-Path $documents ('SafeUpload-activating-epoch-retry-' + $id)
+                            [void]$agentLogs.Add($retryLog + '-out.log'); [void]$agentLogs.Add($retryLog + '-err.log')
+                            $agent = Start-TestAgentAndWaitForPolicy $retryLog '--Interception:StagingPrototype=false'
+                            Stop-StagedTestAgent $agent; $agent = $null
+                            $finalEpoch = Read-AEEpochStatus 'after-retry'
+                            [void](Add-AEOutcome 'RetryFinalizesWholeCandidate' (($finalEpoch.flags -band 3) -eq 0 -and
+                                $finalEpoch.policyGeneration -gt $beforeEpoch.policyGeneration) `
+                                ('beforeGeneration:' + $beforeEpoch.policyGeneration + ';afterGeneration:' +
+                                $finalEpoch.policyGeneration + ';flags:' + $finalEpoch.flags))
+
+                            $cleanEntry = Wait-AEEntry 'clean.maptest'
+                            $dirtyEntry = Wait-AEEntry 'dirty.maptest'
+                            [void](Add-AEOutcome 'ScopeAdditionActivatesOpenWriters' ($null -ne $cleanEntry -and
+                                $null -ne $dirtyEntry -and $cleanEntry.state -eq 'Activating' -and
+                                $dirtyEntry.state -eq 'Activating' -and $cleanEntry.H -gt 0 -and
+                                $dirtyEntry.H -gt 0 -and $cleanEntry.openerPids.Count -gt 0) `
+                                ('cleanState:' + [string]$cleanEntry.state + ';cleanH:' + $cleanEntry.H +
+                                ';dirtyState:' + [string]$dirtyEntry.state + ';dirtyH:' + $dirtyEntry.H +
+                                ';cleanPids:' + (($cleanEntry.openerPids) -join ',')))
+
+                            $oldWriteSucceeded = $false; $oldWriteCode = [uint32]0
+                            try {
+                                $cleanWriter.Position = 0
+                                $cleanWriter.Write([byte[]]([Text.Encoding]::UTF8.GetBytes('POST-CUTOFF DIRECT WRITE')), 0, 24)
+                                $oldWriteSucceeded = $true
+                            }
+                            catch { $oldWriteCode = [uint32]([int64]$_.Exception.HResult -band 0xFFFF) }
+                            [void](Add-AEOutcome 'PreScopeHandleWriteDenied' (-not $oldWriteSucceeded -and
+                                $oldWriteCode -eq 5) ('writeSucceeded:' + $oldWriteSucceeded + ';win32Error:' + $oldWriteCode))
+
+                            $secondWriterDenied = $false; $secondWriterCode = [uint32]0; $secondHandle = $null
+                            try {
+                                $secondHandle = [IO.FileStream]::new($cleanPath, [IO.FileMode]::Open,
+                                    [IO.FileAccess]::Write, $shareAll)
+                            }
+                            catch {
+                                $secondWriterCode = [uint32]([int64]$_.Exception.HResult -band 0xFFFF)
+                                $secondWriterDenied = $secondWriterCode -eq 5
+                            }
+                            finally { if ($null -ne $secondHandle) { $secondHandle.Dispose() } }
+                            [void](Add-AEOutcome 'NewWriterRefused' $secondWriterDenied ('opened:' + ($null -ne $secondHandle) +
+                                ';win32Error:' + $secondWriterCode))
+
+                            $cutoffDeadline = [DateTime]::UtcNow.AddSeconds(20)
+                            do {
+                                $cutoffStatus = Read-AEActivatingStatus ('cutoff-' + $cutoffDeadline.Ticks)
+                                $cleanEntry = @($cutoffStatus.entries | Where-Object {
+                                    ([string]$_.path).EndsWith('\clean.maptest', [StringComparison]::OrdinalIgnoreCase)
+                                }) | Select-Object -First 1
+                                $dirtyEntry = @($cutoffStatus.entries | Where-Object {
+                                    ([string]$_.path).EndsWith('\dirty.maptest', [StringComparison]::OrdinalIgnoreCase)
+                                }) | Select-Object -First 1
+                                if ($null -ne $cleanEntry -and $null -ne $dirtyEntry -and
+                                    ($cleanEntry.flags -band 2) -ne 0 -and ($dirtyEntry.flags -band 2) -ne 0 -and
+                                    ($cleanEntry.flags -band 32) -ne 0 -and ($dirtyEntry.flags -band 32) -ne 0 -and
+                                    $cleanEntry.cutoffFlushPairs -eq 1 -and $dirtyEntry.cutoffFlushPairs -eq 1) { break }
+                                Start-Sleep -Milliseconds 100
+                            } while ([DateTime]::UtcNow -lt $cutoffDeadline)
+                            [void](Add-AEOutcome 'CutoffFlushPairRanOnceAndCompletedPerEntry' ($null -ne $cleanEntry -and
+                                $null -ne $dirtyEntry -and ($cleanEntry.flags -band 2) -ne 0 -and
+                                ($dirtyEntry.flags -band 2) -ne 0 -and ($cleanEntry.flags -band 32) -ne 0 -and
+                                ($dirtyEntry.flags -band 32) -ne 0 -and $cleanEntry.cutoffFlushPairs -eq 1 -and
+                                $dirtyEntry.cutoffFlushPairs -eq 1) ('cleanFlags:' + $(if ($null -ne $cleanEntry) { $cleanEntry.flags } else { 'missing' }) +
+                                ';cleanFlushPairs:' + $(if ($null -ne $cleanEntry) { $cleanEntry.cutoffFlushPairs } else { 'missing' }) +
+                                ';dirtyFlags:' + $(if ($null -ne $dirtyEntry) { $dirtyEntry.flags } else { 'missing' }) +
+                                ';dirtyFlushPairs:' + $(if ($null -ne $dirtyEntry) { $dirtyEntry.cutoffFlushPairs } else { 'missing' })))
+
+                            [void](Add-AEOutcome 'DirtyCandidateInitiallyCleanAtCutoff' ($null -ne $dirtyEntry -and
+                                ($dirtyEntry.flags -band 1) -eq 0) ('dirtyFlags:' +
+                                $(if ($null -ne $dirtyEntry) { $dirtyEntry.flags } else { 'missing' })))
+
+                            $dirtyPagingFlush = 'NOT_ATTEMPTED'; $dirtyPagingError = [uint32]0
+                            try {
+                                $dirtyView.Write([long]0, [byte]0x5A)
+                                $dirtyView.Flush()
+                                $dirtyWriter.Flush($true)
+                                $dirtyPagingFlush = 'RETURNED_SUCCESS'
+                            }
+                            catch {
+                                $dirtyPagingFlush = 'REFUSED'
+                                $dirtyPagingError = [uint32]([int64]$_.Exception.HResult -band 0xFFFF)
+                            }
+                            $dirtyDeadline = [DateTime]::UtcNow.AddSeconds(10)
+                            do {
+                                $dirtyEntry = Wait-AEEntry 'dirty.maptest' 1
+                                if ($null -ne $dirtyEntry -and ($dirtyEntry.flags -band 1) -ne 0) { break }
+                                Start-Sleep -Milliseconds 100
+                            } while ([DateTime]::UtcNow -lt $dirtyDeadline)
+                            [void](Add-AEOutcome 'PagingWriteDeniedAndMarkedDirty' ($null -ne $dirtyEntry -and
+                                $dirtyEntry.state -eq 'Activating' -and ($dirtyEntry.flags -band 35) -eq 35) `
+                                ('flush:' + $dirtyPagingFlush + ';win32Error:' + $dirtyPagingError +
+                                ';state:' + [string]$dirtyEntry.state + ';flags:' + $(if ($null -ne $dirtyEntry) { $dirtyEntry.flags } else { 'missing' })))
+
+                            try { $dirtyView.Dispose() } catch { }
+                            $dirtyView = $null
+                            try { $dirtyMap.Dispose() } catch { }
+                            $dirtyMap = $null
+                            try { $dirtyWriter.Dispose() } catch { }
+                            $dirtyWriter = $null
+
+                            $cleanFlush = 'SUCCESS'; $cleanFlushError = [uint32]0
+                            try { $cleanWriter.Flush($true) }
+                            catch {
+                                $cleanFlush = 'FAILED'
+                                $cleanFlushError = [uint32]([int64]$_.Exception.HResult -band 0xFFFF)
+                            }
+                            try { $cleanWriter.Dispose() } catch { $cleanFlush = 'FAILED_CLOSE' }
+                            $cleanWriter = $null
+                            $promoteDeadline = [DateTime]::UtcNow.AddSeconds(20)
+                            do {
+                                $cleanEntry = Wait-AEEntry 'clean.maptest' 1
+                                if ($null -ne $cleanEntry -and $cleanEntry.state -eq 'Protected') { break }
+                                Start-Sleep -Milliseconds 100
+                            } while ([DateTime]::UtcNow -lt $promoteDeadline)
+                            [void](Add-AEOutcome 'WriterCloseFlushPromotesCleanFile' ($cleanFlush -eq 'SUCCESS' -and
+                                $null -ne $cleanEntry -and $cleanEntry.state -eq 'Protected' -and
+                                $cleanEntry.cutoffFlushPairs -eq 1 -and
+                                $cleanEntry.H -eq 0 -and $cleanEntry.C -eq 0 -and $cleanEntry.T -eq 0 -and
+                                $cleanEntry.S -eq 'NO') ('flush:' + $cleanFlush + ';flushError:' + $cleanFlushError +
+                                ';state:' + [string]$cleanEntry.state + ';cutoffFlushPairs:' + $cleanEntry.cutoffFlushPairs +
+                                ';H:' + $cleanEntry.H + ';C:' +
+                                $cleanEntry.C + ';T:' + $cleanEntry.T + ';S:' + [string]$cleanEntry.S))
+                            $dirtyFinal = Wait-AEEntry 'dirty.maptest' 3
+                            [void](Add-AEOutcome 'DirtyAfterCutoffNeverPromotes' ($null -ne $dirtyFinal -and
+                                $dirtyFinal.state -eq 'Activating' -and ($dirtyFinal.flags -band 1) -ne 0) `
+                                ('state:' + [string]$dirtyFinal.state + ';flags:' +
+                                $(if ($null -ne $dirtyFinal) { $dirtyFinal.flags } else { 'missing' })))
+                        }
+                        catch {
+                            [void](Add-AEOutcome 'Unexpected' $false (Get-ErrorText $_))
+                            throw
+                        }
+                        finally {
+                            if ($null -ne $dirtyView) { try { $dirtyView.Dispose() } catch { } }
+                            if ($null -ne $dirtyMap) { try { $dirtyMap.Dispose() } catch { } }
+                            if ($null -ne $dirtyWriter) { try { $dirtyWriter.Dispose() } catch { } }
+                            if ($null -ne $cleanWriter) { try { $cleanWriter.Dispose() } catch { } }
+                        }
+                    }
 
                     # B. Compile and initialize SYSTEM before arming the timed hold. The held file is
                     # initially empty: mapping maximum 4096 extends it to the driver's intended PAGE_SIZE.
@@ -3403,10 +3654,19 @@ exit 0
                     try { [IO.File]::WriteAllText(($cnPrefix + '-' + $leaf), [string]$cnRaw[$leaf]) }
                     catch { $script:CNFailed++; [void]$restorationErrors.Add('Canary evidence write: ' + (Get-ErrorText $_)); Write-Output ('CN_EvidenceWrite=' + (Get-ErrorText $_) + ';FAIL') }
                 }
+                if ($activatingEpochVariant) {
+                    foreach ($leaf in $aeRaw.Keys) {
+                        try { [IO.File]::WriteAllText(($cnPrefix + '-activating-' + $leaf), [string]$aeRaw[$leaf]) }
+                        catch { $script:AEFailed++; [void]$restorationErrors.Add('Activating evidence write: ' + (Get-ErrorText $_)) }
+                    }
+                    foreach ($outcomeLine in $script:AEOutcomeLines) { Write-Output $outcomeLine }
+                    Write-Output ('AE_Summary=passed:' + $script:AEPassed + ';failed:' + $script:AEFailed)
+                }
                 Write-Output ('CanaryNewVolumeRawPrefix=' + $cnPrefix)
                 Write-Output ('CN_Summary=passed:' + $script:CNPassed + ';failed:' + $script:CNFailed)
             }
-            $runSucceeded = ($script:CNFailed -eq 0)
+            $runSucceeded = ($script:CNFailed -eq 0 -and
+                (-not $activatingEpochVariant -or $script:AEFailed -eq 0))
         }
         elseif ($SelectedVariant -eq 'mmdoes-matrix') {
             foreach ($name in @('A', 'B', 'C', 'D')) {
@@ -4351,7 +4611,7 @@ public static class SafeUploadEolNative
             }
             [void](Assert-RTEntry $txMutationPath 'Transaction_PreScopeWriter' $true 1 0 'no' 1 $false)
 
-            $expandedPolicy = New-ExpandedPolicyForFixture $fixtureDirectory $policyBackup -FixedScopesOnly
+            $expandedPolicy = New-ExpandedPolicyForFixture $fixtureDirectory $policyBackup
             $policyBytes = $expandedPolicy.OriginalBytes
             [IO.File]::WriteAllBytes($policyPath, $expandedPolicy.UpdatedBytes)
             Write-Output ('RT_ExpandedPolicySHA256=' + (Get-FileHash -LiteralPath $policyPath -Algorithm SHA256).Hash)

@@ -596,6 +596,7 @@ Return Value:
     PSAFEUPLOAD_POLICY_MESSAGE policy = NULL;
 #if SAFEUPLOAD_STAGING_PROTOTYPE
     SAFEUPLOAD_CONTROL controlHeader;
+    PSAFEUPLOAD_ACTIVATING_STATUS_PAGE activatingPage = NULL;
 #endif
     NTSTATUS status = STATUS_SUCCESS;
     UINT32 command = 0;
@@ -1152,6 +1153,71 @@ Return Value:
 #endif
 
 #if SAFEUPLOAD_STAGING_PROTOTYPE
+        if (command == SAFEUPLOAD_CONTROL_ACTIVATING_STATUS) {
+            if (InputBufferLength != sizeof(SAFEUPLOAD_CONTROL) || OutputBuffer == NULL ||
+                OutputBufferLength != sizeof(SAFEUPLOAD_ACTIVATING_STATUS_PAGE)) {
+                status = STATUS_INVALID_BUFFER_SIZE;
+                leave;
+            }
+            if (controlHeader.Version != SAFEUPLOAD_PROTOCOL_VERSION ||
+                controlHeader.StructSize != sizeof(SAFEUPLOAD_CONTROL) ||
+                controlHeader.Command != command) {
+                status = STATUS_REVISION_MISMATCH;
+                leave;
+            }
+#pragma warning( suppress: 6001 )
+            ProbeForWrite(OutputBuffer, sizeof(SAFEUPLOAD_ACTIVATING_STATUS_PAGE),
+                __alignof(SAFEUPLOAD_ACTIVATING_STATUS_PAGE));
+            activatingPage = ExAllocatePool2(POOL_FLAG_PAGED,
+                sizeof(*activatingPage), SAFEUPLOAD_POOL_TAG);
+            if (activatingPage == NULL) {
+                status = STATUS_INSUFFICIENT_RESOURCES;
+                leave;
+            }
+            status = SafeUploadStageWritersActivatingStatusPage(controlHeader.Reserved, activatingPage);
+            if (NT_SUCCESS(status)) {
+                RtlCopyMemory(OutputBuffer, activatingPage, sizeof(*activatingPage));
+                *ReturnOutputBufferLength = sizeof(*activatingPage);
+            }
+            leave;
+        }
+
+        if (command == SAFEUPLOAD_CONTROL_ADMISSION_EPOCH_STATUS) {
+            SAFEUPLOAD_ADMISSION_EPOCH_STATUS epochStatus;
+            if (InputBufferLength != sizeof(SAFEUPLOAD_CONTROL) || OutputBuffer == NULL ||
+                OutputBufferLength != sizeof(epochStatus)) {
+                status = STATUS_INVALID_BUFFER_SIZE;
+                leave;
+            }
+            if (controlHeader.Version != SAFEUPLOAD_PROTOCOL_VERSION ||
+                controlHeader.StructSize != sizeof(SAFEUPLOAD_CONTROL) ||
+                controlHeader.Command != command || controlHeader.Reserved != 0) {
+                status = STATUS_REVISION_MISMATCH;
+                leave;
+            }
+#pragma warning( suppress: 6001 )
+            ProbeForWrite(OutputBuffer, sizeof(epochStatus), __alignof(SAFEUPLOAD_ADMISSION_EPOCH_STATUS));
+            status = SafeUploadPolicyAdmissionEpochStatus(&epochStatus);
+            if (NT_SUCCESS(status)) {
+                RtlCopyMemory(OutputBuffer, &epochStatus, sizeof(epochStatus));
+                *ReturnOutputBufferLength = sizeof(epochStatus);
+            }
+            leave;
+        }
+
+        if (command == SAFEUPLOAD_CONTROL_ADMISSION_EPOCH_FORCE_TIMEOUT) {
+            if (InputBufferLength != sizeof(SAFEUPLOAD_CONTROL) || OutputBuffer != NULL ||
+                OutputBufferLength != 0 || controlHeader.Version != SAFEUPLOAD_PROTOCOL_VERSION ||
+                controlHeader.StructSize != sizeof(SAFEUPLOAD_CONTROL) ||
+                controlHeader.Command != command || controlHeader.Reserved != 0) {
+                status = STATUS_INVALID_PARAMETER;
+                leave;
+            }
+            SafeUploadPolicyAdmissionForceNextTimeout();
+            status = STATUS_SUCCESS;
+            leave;
+        }
+
         if (command == SAFEUPLOAD_CONTROL_WRITER_STATE_STATUS) {
             SAFEUPLOAD_CONTROL writerControl;
             SAFEUPLOAD_WRITER_STATE_STATUS writerStatus;
@@ -1294,6 +1360,10 @@ Return Value:
 
         status = GetExceptionCode();
     }
+
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    if (activatingPage != NULL) ExFreePoolWithTag(activatingPage, SAFEUPLOAD_POOL_TAG);
+#endif
 
     //
     //  Only the policy command has a policy to validate. Testing the status

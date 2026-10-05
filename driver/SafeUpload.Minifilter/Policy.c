@@ -61,16 +61,259 @@ static volatile LONG SafeUploadPolicyGeneration = 0;
 
 #if SAFEUPLOAD_STAGING_PROTOTYPE
 
+#define SAFEUPLOAD_POLICY_DRAIN_TIMEOUT_100NS (30LL * 10 * 1000 * 1000)
+
+struct _SAFEUPLOAD_ADMISSION_EPOCH {
+    LIST_ENTRY DrainLink;
+    volatile LONG References;
+    volatile LONG ActiveCallbacks;
+    volatile LONG Accepting;
+    UINT32 Generation;
+    KEVENT Drained;
+};
+
+static KSPIN_LOCK SafeUploadEpochLock;
+static KMUTEX SafeUploadPolicyUpdateMutex;
+#define SafeUploadPolicyUpdateLockAcquire() \
+    ((VOID)KeWaitForSingleObject(&SafeUploadPolicyUpdateMutex, Executive, KernelMode, FALSE, NULL))
+#define SafeUploadPolicyUpdateLockRelease() \
+    ((VOID)KeReleaseMutex(&SafeUploadPolicyUpdateMutex, FALSE))
+static PSAFEUPLOAD_ADMISSION_EPOCH SafeUploadCurrentEpoch;
+static LIST_ENTRY SafeUploadDrainingEpochs;
+static volatile LONG SafeUploadEpochGeneration;
+static volatile LONG SafeUploadPolicyFailedClosed;
+static volatile LONG SafeUploadPolicyFinalizing;
+static volatile LONG SafeUploadForceNextEpochTimeout;
+
 //
 //  The candidate snapshot while a policy update is in transition (from before
-//  its fence scan until the swap), guarded by SafeUploadPolicyLock. The
-//  Feature-only current-or-pending matching lets selected section and FSCTL
-//  admission checks classify against both snapshots. It does not reserve an
-//  operation through the lower file-system mutation or drain it before swap.
+//  the durable two-phase commit), guarded by SafeUploadPolicyLock. Admission
+//  checks match the current/pending union while epoch tokens drain lower I/O.
 //
 
 static const SAFEUPLOAD_POLICY *SafeUploadPendingPolicy = NULL;
 
+#endif
+
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+static PSAFEUPLOAD_ADMISSION_EPOCH SafeUploadEpochAllocate(VOID)
+{
+    PSAFEUPLOAD_ADMISSION_EPOCH epoch = ExAllocatePool2(POOL_FLAG_NON_PAGED,
+        sizeof(*epoch), SAFEUPLOAD_POOL_TAG);
+    if (epoch == NULL) return NULL;
+    RtlZeroMemory(epoch, sizeof(*epoch));
+    epoch->References = 1; /* Current-epoch or drain-list ownership. */
+    epoch->Accepting = 1;
+    epoch->Generation = (UINT32)InterlockedIncrement(&SafeUploadEpochGeneration);
+    KeInitializeEvent(&epoch->Drained, NotificationEvent, FALSE);
+    InitializeListHead(&epoch->DrainLink);
+    return epoch;
+}
+
+static VOID SafeUploadEpochReference(_In_ PSAFEUPLOAD_ADMISSION_EPOCH Epoch)
+{
+    InterlockedIncrement(&Epoch->References);
+}
+
+static VOID SafeUploadEpochDereference(_In_opt_ PSAFEUPLOAD_ADMISSION_EPOCH Epoch)
+{
+    if (Epoch != NULL && InterlockedDecrement(&Epoch->References) == 0)
+        ExFreePoolWithTag(Epoch, SAFEUPLOAD_POOL_TAG);
+}
+
+/* Replace the accepting epoch atomically with respect to admission tokens.
+ * The old current-epoch reference transfers to SafeUploadDrainingEpochs. */
+static NTSTATUS SafeUploadEpochCloseAndReplace(VOID)
+{
+    PSAFEUPLOAD_ADMISSION_EPOCH fresh, old;
+    KIRQL irql;
+    fresh = SafeUploadEpochAllocate();
+    if (fresh == NULL) return STATUS_INSUFFICIENT_RESOURCES;
+    KeAcquireSpinLock(&SafeUploadEpochLock, &irql);
+    old = SafeUploadCurrentEpoch;
+    if (old != NULL) {
+        InterlockedExchange(&old->Accepting, 0);
+        if (InterlockedCompareExchange(&old->ActiveCallbacks, 0, 0) == 0)
+            KeSetEvent(&old->Drained, IO_NO_INCREMENT, FALSE);
+        InsertTailList(&SafeUploadDrainingEpochs, &old->DrainLink);
+    }
+    SafeUploadCurrentEpoch = fresh;
+    KeReleaseSpinLock(&SafeUploadEpochLock, irql);
+    return STATUS_SUCCESS;
+}
+
+static NTSTATUS SafeUploadEpochDrainAll(VOID)
+{
+    LARGE_INTEGER timeout;
+    ULONGLONG start = KeQueryInterruptTime();
+    BOOLEAN forceTimeout = InterlockedExchange(&SafeUploadForceNextEpochTimeout, 0) != 0;
+    if (forceTimeout) return STATUS_IO_TIMEOUT;
+    for (;;) {
+        PSAFEUPLOAD_ADMISSION_EPOCH epoch;
+        PLIST_ENTRY link;
+        KIRQL irql;
+        ULONGLONG elapsed, remaining;
+        KeAcquireSpinLock(&SafeUploadEpochLock, &irql);
+        if (IsListEmpty(&SafeUploadDrainingEpochs)) {
+            KeReleaseSpinLock(&SafeUploadEpochLock, irql);
+            return STATUS_SUCCESS;
+        }
+        link = SafeUploadDrainingEpochs.Flink;
+        epoch = CONTAINING_RECORD(link, SAFEUPLOAD_ADMISSION_EPOCH, DrainLink);
+        SafeUploadEpochReference(epoch);
+        KeReleaseSpinLock(&SafeUploadEpochLock, irql);
+        elapsed = KeQueryInterruptTime() - start;
+        if (elapsed >= (ULONGLONG)SAFEUPLOAD_POLICY_DRAIN_TIMEOUT_100NS) {
+            SafeUploadEpochDereference(epoch);
+            return STATUS_IO_TIMEOUT;
+        }
+        remaining = (ULONGLONG)SAFEUPLOAD_POLICY_DRAIN_TIMEOUT_100NS - elapsed;
+        timeout.QuadPart = -(LONGLONG)remaining;
+        if (KeWaitForSingleObject(&epoch->Drained, Executive, KernelMode, FALSE, &timeout) != STATUS_SUCCESS) {
+            SafeUploadEpochDereference(epoch);
+            return STATUS_IO_TIMEOUT;
+        }
+        KeAcquireSpinLock(&SafeUploadEpochLock, &irql);
+        if (!IsListEmpty(&epoch->DrainLink) && epoch->DrainLink.Flink != &epoch->DrainLink) {
+            RemoveEntryList(&epoch->DrainLink);
+            InitializeListHead(&epoch->DrainLink);
+            KeReleaseSpinLock(&SafeUploadEpochLock, irql);
+            SafeUploadEpochDereference(epoch); /* drain-list ownership */
+        } else {
+            KeReleaseSpinLock(&SafeUploadEpochLock, irql);
+        }
+        SafeUploadEpochDereference(epoch); /* wait reference */
+    }
+}
+
+NTSTATUS SafeUploadPolicyAdmissionAcquire(_Outptr_ PSAFEUPLOAD_ADMISSION_EPOCH_TOKEN *Token)
+{
+    PSAFEUPLOAD_ADMISSION_EPOCH_TOKEN token;
+    PSAFEUPLOAD_ADMISSION_EPOCH epoch;
+    KIRQL irql;
+    *Token = NULL;
+    token = ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(*token), SAFEUPLOAD_POOL_TAG);
+    if (token == NULL) return STATUS_INSUFFICIENT_RESOURCES;
+    RtlZeroMemory(token, sizeof(*token));
+    KeAcquireSpinLock(&SafeUploadEpochLock, &irql);
+    epoch = SafeUploadCurrentEpoch;
+    if (epoch == NULL || InterlockedCompareExchange(&epoch->Accepting, 0, 0) == 0) {
+        KeReleaseSpinLock(&SafeUploadEpochLock, irql);
+        ExFreePoolWithTag(token, SAFEUPLOAD_POOL_TAG);
+        return STATUS_RETRY;
+    }
+    SafeUploadEpochReference(epoch);
+    InterlockedIncrement(&epoch->ActiveCallbacks);
+    token->Signature = SAFEUPLOAD_ADMISSION_EPOCH_TOKEN_SIGNATURE;
+    token->Epoch = epoch;
+    token->OperationKind = 1;
+    KeReleaseSpinLock(&SafeUploadEpochLock, irql);
+    *Token = token;
+    return STATUS_SUCCESS;
+}
+
+VOID SafeUploadPolicyAdmissionRelease(_In_opt_ PSAFEUPLOAD_ADMISSION_EPOCH_TOKEN Token)
+{
+    PSAFEUPLOAD_ADMISSION_EPOCH epoch;
+    if (Token == NULL || Token->Signature != SAFEUPLOAD_ADMISSION_EPOCH_TOKEN_SIGNATURE) return;
+    epoch = Token->Epoch;
+    Token->Signature = 0;
+    if (Token->PagingWriteContext != NULL) {
+        PVOID pagingContext = Token->PagingWriteContext;
+        Token->PagingWriteContext = NULL;
+        SafeUploadStageWritersPagingWriteEnd(pagingContext);
+    }
+    if (epoch != NULL && InterlockedDecrement(&epoch->ActiveCallbacks) == 0 &&
+        InterlockedCompareExchange(&epoch->Accepting, 0, 0) == 0)
+        KeSetEvent(&epoch->Drained, IO_NO_INCREMENT, FALSE);
+    SafeUploadEpochDereference(epoch);
+    ExFreePoolWithTag(Token, SAFEUPLOAD_POOL_TAG);
+}
+
+BOOLEAN SafeUploadPolicyAdmissionMustRetry(VOID)
+{
+    return InterlockedCompareExchange(&SafeUploadPolicyFailedClosed, 0, 0) != 0 ||
+        InterlockedCompareExchange(&SafeUploadPolicyFinalizing, 0, 0) != 0;
+}
+
+NTSTATUS SafeUploadPolicyActivationCutoffBegin(VOID)
+{
+    PAGED_CODE();
+    /* Pin the policy generation while a per-file cutoff runs. The policy apply
+     * phases already drained their old epoch before classifying this entry;
+     * paging writes during CcFlushCache are accounted by its SOP gate/counter. */
+    SafeUploadPolicyUpdateLockAcquire();
+    if (InterlockedCompareExchange(&SafeUploadPolicyFailedClosed, 0, 0) != 0) {
+        SafeUploadPolicyUpdateLockRelease();
+        return STATUS_RETRY;
+    }
+    /* Keep the updater mutex through the flush pair so shrink cannot reopen
+     * the per-file paging gate in the middle of its cutoff. */
+    return STATUS_SUCCESS;
+}
+
+VOID SafeUploadPolicyActivationCutoffEnd(VOID)
+{
+    PAGED_CODE();
+    SafeUploadPolicyUpdateLockRelease();
+}
+
+VOID SafeUploadPolicyAdmissionForceNextTimeout(VOID)
+{
+    InterlockedExchange(&SafeUploadForceNextEpochTimeout, 1);
+}
+
+NTSTATUS SafeUploadPolicyAdmissionEpochStatus(_Out_ PSAFEUPLOAD_ADMISSION_EPOCH_STATUS Status)
+{
+    PSAFEUPLOAD_ADMISSION_EPOCH epoch;
+    KIRQL irql;
+    BOOLEAN pending;
+    RtlZeroMemory(Status, sizeof(*Status));
+    Status->StructSize = sizeof(*Status);
+    FltAcquirePushLockShared(&SafeUploadPolicyLock);
+    pending = SafeUploadPendingPolicy != NULL;
+    FltReleasePushLock(&SafeUploadPolicyLock);
+    KeAcquireSpinLock(&SafeUploadEpochLock, &irql);
+    epoch = SafeUploadCurrentEpoch;
+    if (epoch != NULL) {
+        Status->EpochGeneration = epoch->Generation;
+        Status->ActiveCallbacks = (UINT32)max(0,
+            InterlockedCompareExchange(&epoch->ActiveCallbacks, 0, 0));
+    }
+    Status->PolicyGeneration = (UINT32)InterlockedCompareExchange(&SafeUploadPolicyGeneration, 0, 0);
+    if (pending) Status->Flags |= SAFEUPLOAD_ADMISSION_EPOCH_FLAG_PENDING;
+    if (InterlockedCompareExchange(&SafeUploadPolicyFailedClosed, 0, 0) != 0)
+        Status->Flags |= SAFEUPLOAD_ADMISSION_EPOCH_FLAG_FAILED_CLOSED;
+    if (InterlockedCompareExchange(&SafeUploadPolicyFinalizing, 0, 0) != 0)
+        Status->Flags |= SAFEUPLOAD_ADMISSION_EPOCH_FLAG_FINALIZING;
+    Status->ChangeSequence = (UINT64)(UINT32)InterlockedCompareExchange(&SafeUploadEpochGeneration, 0, 0);
+    KeReleaseSpinLock(&SafeUploadEpochLock, irql);
+    return STATUS_SUCCESS;
+}
+
+BOOLEAN SafeUploadPolicyEntryIsNewlyScoped(_In_ SAFEUPLOAD_VOLUME_KIND VolumeKind,
+    _In_ PCUNICODE_STRING NormalizedPath)
+{
+    BOOLEAN current, unionMatch;
+    FltAcquirePushLockShared(&SafeUploadPolicyLock);
+    current = SafeUploadPolicySnapshotMatchesDestination(SafeUploadPolicy, VolumeKind,
+        NormalizedPath, FALSE);
+    unionMatch = current || SafeUploadPolicySnapshotMatchesDestination(
+        SafeUploadPendingPolicy, VolumeKind, NormalizedPath, FALSE);
+    FltReleasePushLock(&SafeUploadPolicyLock);
+    return unionMatch && !current;
+}
+
+BOOLEAN SafeUploadPolicyEntryIsCurrentlyScoped(_In_ SAFEUPLOAD_VOLUME_KIND VolumeKind,
+    _In_ PCUNICODE_STRING NormalizedPath)
+{
+    BOOLEAN current;
+    FltAcquirePushLockShared(&SafeUploadPolicyLock);
+    current = SafeUploadPolicySnapshotMatchesDestination(SafeUploadPolicy, VolumeKind,
+        NormalizedPath, FALSE);
+    FltReleasePushLock(&SafeUploadPolicyLock);
+    return current;
+}
 #endif
 
 static
@@ -162,6 +405,8 @@ SafeUploadBuildStringTable (
 #if SAFEUPLOAD_STAGING_PROTOTYPE
     #pragma alloc_text(PAGE, SafeUploadPolicyCopyScope)
     #pragma alloc_text(PAGE, SafeUploadPolicySetPending)
+    #pragma alloc_text(PAGE, SafeUploadPolicyActivationCutoffBegin)
+    #pragma alloc_text(PAGE, SafeUploadPolicyActivationCutoffEnd)
 #endif
     #pragma alloc_text(PAGE, SafeUploadPolicyMayMatchVolume)
 #endif
@@ -188,6 +433,16 @@ Routine Description:
     PAGED_CODE();
 
     FltInitializePushLock( &SafeUploadPolicyLock );
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    KeInitializeMutex(&SafeUploadPolicyUpdateMutex, 0);
+    KeInitializeSpinLock(&SafeUploadEpochLock);
+    InitializeListHead(&SafeUploadDrainingEpochs);
+    SafeUploadEpochGeneration = 0;
+    SafeUploadPolicyFailedClosed = 0;
+    SafeUploadPolicyFinalizing = 0;
+    SafeUploadForceNextEpochTimeout = 0;
+    SafeUploadCurrentEpoch = SafeUploadEpochAllocate();
+#endif
     SafeUploadPolicy = NULL;
     SafeUploadPolicyGeneration = 0;
     SafeUploadBootScopesActive = FALSE;
@@ -247,6 +502,12 @@ Routine Description:
 --*/
 {
     PSAFEUPLOAD_POLICY previous;
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    const SAFEUPLOAD_POLICY *pending;
+    PSAFEUPLOAD_ADMISSION_EPOCH epoch;
+    PLIST_ENTRY link;
+    KIRQL irql;
+#endif
 
     PAGED_CODE();
 
@@ -254,8 +515,36 @@ Routine Description:
 
     previous = SafeUploadPolicy;
     SafeUploadPolicy = NULL;
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    pending = SafeUploadPendingPolicy;
+    SafeUploadPendingPolicy = NULL;
+#endif
 
     FltReleasePushLock( &SafeUploadPolicyLock );
+
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    KeAcquireSpinLock(&SafeUploadEpochLock, &irql);
+    epoch = SafeUploadCurrentEpoch;
+    SafeUploadCurrentEpoch = NULL;
+    if (epoch != NULL) {
+        InterlockedExchange(&epoch->Accepting, 0);
+        if (InterlockedCompareExchange(&epoch->ActiveCallbacks, 0, 0) == 0)
+            KeSetEvent(&epoch->Drained, IO_NO_INCREMENT, FALSE);
+    }
+    KeReleaseSpinLock(&SafeUploadEpochLock, irql);
+    if (epoch != NULL) {
+        NT_ASSERT(InterlockedCompareExchange(&epoch->ActiveCallbacks, 0, 0) == 0);
+        SafeUploadEpochDereference(epoch);
+    }
+    while (!IsListEmpty(&SafeUploadDrainingEpochs)) {
+        link = RemoveHeadList(&SafeUploadDrainingEpochs);
+        epoch = CONTAINING_RECORD(link, SAFEUPLOAD_ADMISSION_EPOCH, DrainLink);
+        NT_ASSERT(InterlockedCompareExchange(&epoch->ActiveCallbacks, 0, 0) == 0);
+        SafeUploadEpochDereference(epoch);
+    }
+    if (pending != NULL && pending != previous && pending != &SafeUploadBootSnapshot)
+        ExFreePoolWithTag((PVOID)pending, SAFEUPLOAD_POOL_TAG);
+#endif
 
     if (previous != NULL && previous != &SafeUploadBootSnapshot) {
 
@@ -343,228 +632,168 @@ NTSTATUS
 SafeUploadSetPolicy (
     _In_ CONST SAFEUPLOAD_POLICY_MESSAGE *Message
     )
-/*++
-
-Routine Description:
-
-    Validates a policy message and installs it as the current snapshot.
-
-    IRQL: PASSIVE_LEVEL.
-
-Arguments:
-
-    Message - The message, already copied out of user memory by the caller.
-        Every count in it is treated as hostile until checked.
-
-Return Value:
-
-    STATUS_SUCCESS, or a failure status leaving the previous policy in
-    place. A rejected policy never leaves the driver in a half-updated
-    state: the new snapshot is fully built before anything is swapped.
-
---*/
 {
     PSAFEUPLOAD_POLICY snapshot;
     PSAFEUPLOAD_POLICY previous;
 #if SAFEUPLOAD_STAGING_PROTOTYPE
-    BOOLEAN fenceTransition = FALSE;
+    BOOLEAN alreadyPending = FALSE;
+    NTSTATUS status;
 #endif
 
     PAGED_CODE();
-
-    //
-    //  Bounds first. These counts index fixed arrays, so a value past the
-    //  capacity would read beyond the message.
-    //
-
-    if (Message->ExtensionCount > SAFEUPLOAD_MAX_EXTENSIONS ||
+    if (Message == NULL || Message->ExtensionCount > SAFEUPLOAD_MAX_EXTENSIONS ||
         Message->PrefixCount > SAFEUPLOAD_MAX_PREFIXES ||
         Message->SourcePrefixCount > SAFEUPLOAD_MAX_SOURCE_PREFIXES ||
-        Message->ImageCount > SAFEUPLOAD_MAX_IMAGES) {
+        Message->ImageCount > SAFEUPLOAD_MAX_IMAGES) return STATUS_INVALID_PARAMETER;
 
-        return STATUS_INVALID_PARAMETER;
-    }
-
-    snapshot = (PSAFEUPLOAD_POLICY) ExAllocatePool2( POOL_FLAG_NON_PAGED,
-                                                     sizeof( SAFEUPLOAD_POLICY ),
-                                                     SAFEUPLOAD_POOL_TAG );
-
-    if (snapshot == NULL) {
-
-        return STATUS_INSUFFICIENT_RESOURCES;
-    }
-
-    //
-    //  The snapshot owns its own copy of the character data. The tables
-    //  built below point into that copy, never into the caller's buffer.
-    //
-
-    RtlCopyMemory( &snapshot->Data, Message, sizeof( SAFEUPLOAD_POLICY_MESSAGE ) );
-
+    snapshot = (PSAFEUPLOAD_POLICY)ExAllocatePool2(POOL_FLAG_NON_PAGED,
+        sizeof(SAFEUPLOAD_POLICY), SAFEUPLOAD_POOL_TAG);
+    if (snapshot == NULL) return STATUS_INSUFFICIENT_RESOURCES;
+    RtlCopyMemory(&snapshot->Data, Message, sizeof(SAFEUPLOAD_POLICY_MESSAGE));
     snapshot->ExtensionCount = Message->ExtensionCount;
     snapshot->PrefixCount = Message->PrefixCount;
     snapshot->SourcePrefixCount = Message->SourcePrefixCount;
     snapshot->ImageCount = Message->ImageCount;
     snapshot->Flags = Message->Flags;
-
-    //
-    //  Clamped here, once, rather than on every wait. Zero means the
-    //  client did not set one - an older client sending a zeroed Reserved
-    //  field looks exactly like that - and taking it literally would give
-    //  a zero-millisecond timeout, under which nothing is ever inspected.
-    //
-
     {
         UINT32 timeoutMs = Message->VerdictTimeoutMs;
-
-        if (timeoutMs == 0) {
-
-            timeoutMs = (UINT32) SAFEUPLOAD_VERDICT_TIMEOUT_MS;
-
-        } else if (timeoutMs < SAFEUPLOAD_VERDICT_TIMEOUT_MIN_MS) {
-
-            timeoutMs = SAFEUPLOAD_VERDICT_TIMEOUT_MIN_MS;
-
-        } else if (timeoutMs > SAFEUPLOAD_VERDICT_TIMEOUT_MAX_MS) {
-
-            timeoutMs = SAFEUPLOAD_VERDICT_TIMEOUT_MAX_MS;
-        }
-
-        snapshot->VerdictTimeoutIntervals = -((LONGLONG) timeoutMs * 10 * 1000);
+        if (timeoutMs == 0) timeoutMs = (UINT32)SAFEUPLOAD_VERDICT_TIMEOUT_MS;
+        else if (timeoutMs < SAFEUPLOAD_VERDICT_TIMEOUT_MIN_MS) timeoutMs = SAFEUPLOAD_VERDICT_TIMEOUT_MIN_MS;
+        else if (timeoutMs > SAFEUPLOAD_VERDICT_TIMEOUT_MAX_MS) timeoutMs = SAFEUPLOAD_VERDICT_TIMEOUT_MAX_MS;
+        snapshot->VerdictTimeoutIntervals = -((LONGLONG)timeoutMs * 10 * 1000);
     }
-
-    SafeUploadBuildStringTable( &snapshot->Data.Extensions[0][0],
-                                snapshot->ExtensionCount,
-                                SAFEUPLOAD_MAX_EXTENSION_CHARS,
-                                snapshot->Extensions );
-
-    SafeUploadBuildStringTable( &snapshot->Data.Prefixes[0][0],
-                                snapshot->PrefixCount,
-                                SAFEUPLOAD_MAX_PREFIX_CHARS,
-                                snapshot->Prefixes );
-
-    SafeUploadBuildStringTable( &snapshot->Data.SourcePrefixes[0][0],
-                                snapshot->SourcePrefixCount,
-                                SAFEUPLOAD_MAX_PREFIX_CHARS,
-                                snapshot->SourcePrefixes );
-
-    SafeUploadBuildStringTable( &snapshot->Data.Images[0][0],
-                                snapshot->ImageCount,
-                                SAFEUPLOAD_MAX_IMAGE_CHARS,
-                                snapshot->Images );
+    SafeUploadBuildStringTable(&snapshot->Data.Extensions[0][0], snapshot->ExtensionCount,
+        SAFEUPLOAD_MAX_EXTENSION_CHARS, snapshot->Extensions);
+    SafeUploadBuildStringTable(&snapshot->Data.Prefixes[0][0], snapshot->PrefixCount,
+        SAFEUPLOAD_MAX_PREFIX_CHARS, snapshot->Prefixes);
+    SafeUploadBuildStringTable(&snapshot->Data.SourcePrefixes[0][0], snapshot->SourcePrefixCount,
+        SAFEUPLOAD_MAX_PREFIX_CHARS, snapshot->SourcePrefixes);
+    SafeUploadBuildStringTable(&snapshot->Data.Images[0][0], snapshot->ImageCount,
+        SAFEUPLOAD_MAX_IMAGE_CHARS, snapshot->Images);
 
 #if SAFEUPLOAD_STAGING_PROTOTYPE
-
-    //
-    //  Scan the old-and-candidate scope union before publication. Keep the
-    //  previous policy current and the candidate pending until every required
-    //  scan succeeds. A scan failure leaves the previous policy current and
-    //  preserves the last successfully installed fence table.
-    //
-
-    if (!SafeUploadData.BootStartMode) {
-        NTSTATUS fenceStatus;
-
-        //
-        //  Both required scans and publication run under one refresh-mutex
-        //  reservation, so another refresh cannot interpose a fence install.
-        //  This does not synchronize section creation or future view mapping.
-        //
-
-        fenceTransition = SafeUploadStageFenceTransitionBegin();
-        if (!fenceTransition) {
-            ExFreePoolWithTag( snapshot, SAFEUPLOAD_POOL_TAG );
+    SafeUploadPolicyUpdateLockAcquire();
+    FltAcquirePushLockExclusive(&SafeUploadPolicyLock);
+    if (SafeUploadPendingPolicy != NULL) {
+        if (!RtlEqualMemory(&SafeUploadPendingPolicy->Data, Message, sizeof(*Message))) {
+            FltReleasePushLock(&SafeUploadPolicyLock);
+            SafeUploadPolicyUpdateLockRelease();
+            ExFreePoolWithTag(snapshot, SAFEUPLOAD_POOL_TAG);
             return STATUS_DEVICE_BUSY;
         }
-        SafeUploadPolicySetPending( snapshot );
-        fenceStatus = SafeUploadStageFenceRefresh( snapshot );
-
-        if (!NT_SUCCESS( fenceStatus )) {
-
-            SafeUploadPolicySetPending( NULL );             // before the snapshot is freed
-            if (fenceTransition) SafeUploadStageFenceTransitionEnd();
-            ExFreePoolWithTag( snapshot, SAFEUPLOAD_POOL_TAG );
-            return fenceStatus;
-        }
-
-        //  Reconcile once more while the old policy is still current and the
-        //  candidate remains pending. This catches some mappings that complete
-        //  after the first scan and makes scan failure observable before commit.
-        //  It is not a synchronization barrier for section creation or later
-        //  view mapping; the privacy transition remains unqualified.
-        fenceStatus = SafeUploadStageFenceRefresh( snapshot );
-        if (!NT_SUCCESS( fenceStatus )) {
-
-            SafeUploadPolicySetPending( NULL );             // before the snapshot is freed
-            if (fenceTransition) SafeUploadStageFenceTransitionEnd();
-            ExFreePoolWithTag( snapshot, SAFEUPLOAD_POOL_TAG );
-            return fenceStatus;
-        }
+        alreadyPending = TRUE;
+        ExFreePoolWithTag(snapshot, SAFEUPLOAD_POOL_TAG);
+        snapshot = (PSAFEUPLOAD_POLICY)SafeUploadPendingPolicy;
+    } else {
+        SafeUploadPendingPolicy = snapshot;
     }
-
-#endif
-
-    FltAcquirePushLockExclusive( &SafeUploadPolicyLock );
-
+    InterlockedExchange(&SafeUploadPolicyFinalizing, 1);
+    status = SafeUploadEpochCloseAndReplace();
+    if (!NT_SUCCESS(status) && !alreadyPending) SafeUploadPendingPolicy = NULL;
+    FltReleasePushLock(&SafeUploadPolicyLock);
+    if (!NT_SUCCESS(status)) {
+        InterlockedExchange(&SafeUploadPolicyFinalizing, 0);
+        SafeUploadPolicyUpdateLockRelease();
+        if (!alreadyPending) ExFreePoolWithTag(snapshot, SAFEUPLOAD_POOL_TAG);
+        return status;
+    }
+    status = SafeUploadEpochDrainAll();
+    if (!NT_SUCCESS(status)) {
+        InterlockedExchange(&SafeUploadPolicyFailedClosed, 1);
+        InterlockedExchange(&SafeUploadPolicyFinalizing, 0);
+        SafeUploadPolicyUpdateLockRelease();
+        return STATUS_IO_TIMEOUT;
+    }
+    InterlockedExchange(&SafeUploadPolicyFailedClosed, 0);
+    status = SafeUploadStageWritersApplyPendingScope();
+    if (!NT_SUCCESS(status)) {
+        InterlockedExchange(&SafeUploadPolicyFailedClosed, 1);
+        InterlockedExchange(&SafeUploadPolicyFinalizing, 0);
+        SafeUploadPolicyUpdateLockRelease();
+        return status;
+    }
+    InterlockedExchange(&SafeUploadPolicyFinalizing, 0);
+    SafeUploadPolicyUpdateLockRelease();
+    SafeUploadTrace("policy candidate pending; epoch=%ld generation=%ld prefixes=%u flags=0x%X\n",
+        SafeUploadEpochGeneration, SafeUploadPolicyGeneration, snapshot->PrefixCount, snapshot->Flags);
+    return STATUS_SUCCESS;
+#else
+    FltAcquirePushLockExclusive(&SafeUploadPolicyLock);
     previous = SafeUploadPolicy;
     SafeUploadPolicy = snapshot;
-    /* Keep the DriverEntry scope union live until the service confirms that
-     * its committed registry value is flushed and PendingScopes is removed. */
-#if SAFEUPLOAD_STAGING_PROTOTYPE
-    SafeUploadPendingPolicy = NULL;                         // the candidate is the current policy from here on
-#endif
-    (VOID) InterlockedIncrement( &SafeUploadPolicyGeneration );
-
-    FltReleasePushLock( &SafeUploadPolicyLock );
-
-    //
-    //  Freed only after the lock is dropped, and only once no reader can
-    //  still be holding it: readers take the lock shared, so releasing it
-    //  exclusively above means every one of them has finished.
-    //
-
-    if (previous != NULL && previous != &SafeUploadBootSnapshot) {
-
-        ExFreePoolWithTag( previous, SAFEUPLOAD_POOL_TAG );
-    }
-
-#if SAFEUPLOAD_STAGING_PROTOTYPE
-
-    //
-    //  Every required scan completed before publication. Do not run an
-    //  unchecked post-swap refresh: its failure would leave the candidate
-    //  committed while reporting success, and a post-commit rollback would
-    //  race readers. The transition is still not a proven barrier for section
-    //  creation or future view mapping.
-    //
-
-    if (fenceTransition) SafeUploadStageFenceTransitionEnd();
-
-#endif
-
-    SafeUploadTrace( "policy set: %u extensoes, %u prefixos, %u imagens, flags 0x%X, timeout %u ms\n",
-                     snapshot->ExtensionCount,
-                     snapshot->PrefixCount,
-                     snapshot->ImageCount,
-                     snapshot->Flags,
-                     (UINT32) (-snapshot->VerdictTimeoutIntervals / (10 * 1000)) );
-
+    (VOID)InterlockedIncrement(&SafeUploadPolicyGeneration);
+    FltReleasePushLock(&SafeUploadPolicyLock);
+    if (previous != NULL && previous != &SafeUploadBootSnapshot)
+        ExFreePoolWithTag(previous, SAFEUPLOAD_POOL_TAG);
+    SafeUploadTrace("policy set: %u extensoes, %u prefixos, %u imagens, flags 0x%X\n",
+        snapshot->ExtensionCount, snapshot->PrefixCount, snapshot->ImageCount, snapshot->Flags);
     return STATUS_SUCCESS;
+#endif
 }
 
 NTSTATUS SafeUploadFinalizeBootPolicy(_In_ CONST SAFEUPLOAD_POLICY_MESSAGE *Message)
 {
     NTSTATUS status = STATUS_SUCCESS;
-
     PAGED_CODE();
     if (!SafeUploadIsAuthenticatedClient()) return STATUS_ACCESS_DENIED;
     if (Message == NULL || Message->Control.Version != SAFEUPLOAD_PROTOCOL_VERSION ||
         Message->Control.StructSize != sizeof(*Message) || Message->Control.Command != SAFEUPLOAD_CONTROL_SET_POLICY ||
         Message->Control.Reserved != 0) return STATUS_INVALID_PARAMETER;
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    SafeUploadPolicyUpdateLockAcquire();
+    FltAcquirePushLockShared(&SafeUploadPolicyLock);
+    if (SafeUploadPendingPolicy == NULL) {
+        BOOLEAN alreadyCurrent = SafeUploadPolicy != NULL &&
+            RtlEqualMemory(&SafeUploadPolicy->Data, Message, sizeof(*Message));
+        FltReleasePushLock(&SafeUploadPolicyLock);
+        SafeUploadPolicyUpdateLockRelease();
+        return alreadyCurrent ? STATUS_SUCCESS : STATUS_REVISION_MISMATCH;
+    }
+    if (!RtlEqualMemory(&SafeUploadPendingPolicy->Data, Message, sizeof(*Message))) {
+        FltReleasePushLock(&SafeUploadPolicyLock);
+        SafeUploadPolicyUpdateLockRelease();
+        return STATUS_REVISION_MISMATCH;
+    }
+    FltReleasePushLock(&SafeUploadPolicyLock);
+
+    InterlockedExchange(&SafeUploadPolicyFinalizing, 1);
+    status = SafeUploadEpochCloseAndReplace();
+    if (NT_SUCCESS(status)) status = SafeUploadEpochDrainAll();
+    if (!NT_SUCCESS(status)) {
+        InterlockedExchange(&SafeUploadPolicyFailedClosed, 1);
+        InterlockedExchange(&SafeUploadPolicyFinalizing, 0);
+        SafeUploadPolicyUpdateLockRelease();
+        return status == STATUS_IO_TIMEOUT ? STATUS_IO_TIMEOUT : status;
+    }
 
     FltAcquirePushLockExclusive(&SafeUploadPolicyLock);
-    if (SafeUploadPolicy == NULL ||
-        !RtlEqualMemory(&SafeUploadPolicy->Data, Message, sizeof(*Message))) {
+    if (SafeUploadPendingPolicy == NULL ||
+        !RtlEqualMemory(&SafeUploadPendingPolicy->Data, Message, sizeof(*Message))) {
+        status = STATUS_REVISION_MISMATCH;
+    } else {
+        PSAFEUPLOAD_POLICY previous = SafeUploadPolicy;
+        SafeUploadPolicy = (PSAFEUPLOAD_POLICY)SafeUploadPendingPolicy;
+        SafeUploadPendingPolicy = NULL;
+        RtlZeroMemory(&SafeUploadBootScopes, sizeof(SafeUploadBootScopes));
+        SafeUploadBootScopesActive = FALSE;
+        SafeUploadData.BootPolicyState = SAFEUPLOAD_BOOT_POLICY_STATE_VALID;
+        (VOID)InterlockedIncrement(&SafeUploadPolicyGeneration);
+        FltReleasePushLock(&SafeUploadPolicyLock);
+        SafeUploadStageWritersReconcileCurrentScope();
+        if (previous != NULL && previous != &SafeUploadBootSnapshot)
+            ExFreePoolWithTag(previous, SAFEUPLOAD_POOL_TAG);
+        InterlockedExchange(&SafeUploadPolicyFailedClosed, 0);
+        InterlockedExchange(&SafeUploadPolicyFinalizing, 0);
+        SafeUploadPolicyUpdateLockRelease();
+        return STATUS_SUCCESS;
+    }
+    FltReleasePushLock(&SafeUploadPolicyLock);
+    InterlockedExchange(&SafeUploadPolicyFailedClosed, 1);
+    SafeUploadPolicyUpdateLockRelease();
+    return status;
+#else
+    FltAcquirePushLockExclusive(&SafeUploadPolicyLock);
+    if (SafeUploadPolicy == NULL || !RtlEqualMemory(&SafeUploadPolicy->Data, Message, sizeof(*Message))) {
         status = STATUS_REVISION_MISMATCH;
     } else {
         RtlZeroMemory(&SafeUploadBootScopes, sizeof(SafeUploadBootScopes));
@@ -573,8 +802,8 @@ NTSTATUS SafeUploadFinalizeBootPolicy(_In_ CONST SAFEUPLOAD_POLICY_MESSAGE *Mess
     }
     FltReleasePushLock(&SafeUploadPolicyLock);
     return status;
+#endif
 }
-
 
 LONG
 SafeUploadCurrentPolicyGeneration (
