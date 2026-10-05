@@ -89,9 +89,23 @@ static BOOLEAN StageTxfCreateMustRefuse(_In_ PFLT_CALLBACK_DATA Data,
     if (KeGetCurrentIrql() > APC_LEVEL)
         return SafeUploadPolicyMayMatchInstanceVolume(Objects->Instance);
     kind = StageTxfVolumeKind(Objects->Instance);
-    /* A file-ID create has no name to match; fail closed on any scoped volume. */
-    if (FlagOn(Data->Iopb->Parameters.Create.Options, FILE_OPEN_BY_FILE_ID))
-        return SafeUploadPolicyMayMatchInstanceVolume(Objects->Instance);
+    if (FlagOn(Data->Iopb->Parameters.Create.Options, FILE_OPEN_BY_FILE_ID)) {
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+        BOOLEAN inScope = TRUE;
+        NTSTATUS status;
+#endif
+        /* D6: TxF by-ID mutation follows P0-1 and the same all-link classifier as ordinary by-ID opens. */
+        if (!SafeUploadPolicyMayMatchInstanceVolume(Objects->Instance)) return FALSE;
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+        if (KeGetCurrentIrql() != PASSIVE_LEVEL || IoGetTopLevelIrp() != NULL ||
+            Objects->FileObject == NULL) return TRUE;
+        status = SafeUploadStageWritersClassifyById(Objects->Instance,
+            Objects->FileObject, &inScope);
+        return !NT_SUCCESS(status) || inScope;
+#else
+        return TRUE;
+#endif
+    }
     return StageTxfNameInScope(Data, Objects, TRUE, kind);
 }
 

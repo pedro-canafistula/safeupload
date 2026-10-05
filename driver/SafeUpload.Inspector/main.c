@@ -1063,7 +1063,7 @@ static int PrintWriterStateStatus(_In_ BOOL RegistryStatus)
             L"\"writersDroppedAtTeardown\":%llu,\"writersDroppedWhileMounted\":%llu,"
             L"\"instanceTeardownsDismount\":%llu,\"instanceTeardownsOther\":%llu,"
             L"\"stageStreams\":%u,\"stageFileObjects\":%u,\"lastUnloadVeto\":%u,\"lastUnloadStatus\":%u,"
-            L"\"txfRefused\":%llu,\"registryEntries\":%u,\"registryReservations\":%u,"
+            L"\"txfRefused\":%llu,\"registryEntries\":%u,\"registryNameTierEntries\":%u,\"registryCompactTierEntries\":%u,\"registryReservations\":%u,"
             L"\"registryOverflow\":%u,\"registryUnknownReasons\":\"0x%08X\","
             L"\"registryInstanceUnknown\":%u,\"registryCapacity\":%u,\"transactionAssociations\":%u,"
             L"\"registryCapacityFailures\":%llu,\"registryAllocationFailures\":%llu,"
@@ -1079,7 +1079,8 @@ static int PrintWriterStateStatus(_In_ BOOL RegistryStatus)
             status.WritersDroppedAtTeardown, status.WritersDroppedWhileMounted,
             status.InstanceTeardownsDismount, status.InstanceTeardownsOther,
             status.StageStreams, status.StageFileObjects, status.LastUnloadVeto, status.LastUnloadStatus,
-            status.TxfRefused, status.RegistryEntries, status.RegistryReservations,
+            status.TxfRefused, status.RegistryEntries, status.RegistryNameTierEntries,
+            status.RegistryCompactTierEntries, status.RegistryReservations,
             status.RegistryOverflow, status.RegistryUnknownReasons, status.RegistryInstanceUnknown,
             status.RegistryCapacity, status.TransactionAssociations, status.RegistryCapacityFailures,
             status.RegistryAllocationFailures, status.RegistryIdentityFailures,

@@ -118,6 +118,35 @@ static KTIMER FenceRetryTimer;
 static KDPC FenceRetryDpc;
 static EX_PUSH_LOCK FenceNameLock;
 static PFENCE_TABLE FenceTable;                         /* both locks held to replace; either to read */
+
+/* DPC and PASSIVE callers share only these resident SAL spin-lock helpers. */
+_IRQL_requires_max_(DISPATCH_LEVEL)
+_IRQL_raises_(DISPATCH_LEVEL)
+__declspec(noinline) static VOID FenceAcquireSpinLock(
+    _In_ PKSPIN_LOCK Lock, _Out_ _At_(*OldIrql, _IRQL_saves_) PKIRQL OldIrql)
+{
+    KeAcquireSpinLock(Lock, OldIrql);
+}
+
+_IRQL_requires_(DISPATCH_LEVEL)
+__declspec(noinline) static VOID FenceReleaseSpinLock(
+    _In_ PKSPIN_LOCK Lock, _In_ _IRQL_restores_ KIRQL OldIrql)
+{
+    KeReleaseSpinLock(Lock, OldIrql);
+}
+
+_IRQL_requires_(DISPATCH_LEVEL)
+__declspec(noinline) static VOID FenceAcquireSpinLockAtDpcLevel(_In_ PKSPIN_LOCK Lock)
+{
+    KeAcquireSpinLockAtDpcLevel(Lock);
+}
+
+_IRQL_requires_(DISPATCH_LEVEL)
+__declspec(noinline) static VOID FenceReleaseSpinLockFromDpcLevel(_In_ PKSPIN_LOCK Lock)
+{
+    KeReleaseSpinLockFromDpcLevel(Lock);
+}
+
 static BOOLEAN FenceInitialized;
 static volatile LONG FenceGeneration;
 static volatile LONG FenceLastStatus;
@@ -629,11 +658,11 @@ static VOID FenceReleaseVolumes(_In_ PFENCE_SCAN Scan)
 static __declspec(noinline) VOID FenceQuarantineAll(VOID)
 {
     KIRQL irql;
-    KeAcquireSpinLock(&FenceSopLock, &irql);
+    FenceAcquireSpinLock(&FenceSopLock, &irql);
     if (InterlockedExchange(&FenceQuarantineGlobal, TRUE) == FALSE) {
         InterlockedIncrement(&FenceQuarantineGeneration);
     }
-    KeReleaseSpinLock(&FenceSopLock, irql);
+    FenceReleaseSpinLock(&FenceSopLock, irql);
 }
 
 /* Used when a volume identity could not be retained. A later mutable volume snapshot cannot prove
@@ -641,14 +670,14 @@ static __declspec(noinline) VOID FenceQuarantineAll(VOID)
 static __declspec(noinline) VOID FenceQuarantineAllSticky(VOID)
 {
     KIRQL irql;
-    KeAcquireSpinLock(&FenceSopLock, &irql);
+    FenceAcquireSpinLock(&FenceSopLock, &irql);
     if (InterlockedExchange(&FenceQuarantineGlobal, TRUE) == FALSE) {
         InterlockedIncrement(&FenceQuarantineGeneration);
     }
     if (InterlockedExchange(&FenceQuarantineGlobalSticky, TRUE) == FALSE) {
         InterlockedIncrement(&FenceQuarantineGeneration);
     }
-    KeReleaseSpinLock(&FenceSopLock, irql);
+    FenceReleaseSpinLock(&FenceSopLock, irql);
 }
 
 /* The caller owns Reference on entry. This helper takes only spin locks and can therefore be
@@ -659,7 +688,7 @@ static __declspec(noinline) BOOLEAN FenceQuarantineStoreReferenced(_In_ PFLT_VOL
     BOOLEAN keepReference = FALSE;
     KIRQL irql;
 
-    KeAcquireSpinLock(&FenceSopLock, &irql);
+    FenceAcquireSpinLock(&FenceSopLock, &irql);
     for (index = 0; index < FENCE_MAX_QUARANTINED_VOLUMES; index += 1) {
         if (FenceQuarantine[index].Volume == Volume) break;
         if (FenceQuarantine[index].Volume == NULL && freeIndex == FENCE_MAX_QUARANTINED_VOLUMES) freeIndex = index;
@@ -680,7 +709,7 @@ static __declspec(noinline) BOOLEAN FenceQuarantineStoreReferenced(_In_ PFLT_VOL
             InterlockedIncrement(&FenceQuarantineGeneration);
         }
     }
-    KeReleaseSpinLock(&FenceSopLock, irql);
+    FenceReleaseSpinLock(&FenceSopLock, irql);
     return keepReference;
 }
 
@@ -741,7 +770,7 @@ static __declspec(noinline) VOID FenceClearQuarantine(VOID)
     ULONG index;
     KIRQL irql;
 
-    KeAcquireSpinLock(&FenceSopLock, &irql);
+    FenceAcquireSpinLock(&FenceSopLock, &irql);
     for (index = 0; index < FENCE_MAX_QUARANTINED_VOLUMES; index += 1) {
         release[index] = FenceQuarantine[index].Volume;
         FenceQuarantine[index].Volume = NULL;
@@ -752,7 +781,7 @@ static __declspec(noinline) VOID FenceClearQuarantine(VOID)
     if (InterlockedExchange(&FenceQuarantineGlobalSticky, FALSE) != FALSE) {
         InterlockedIncrement(&FenceQuarantineGeneration);
     }
-    KeReleaseSpinLock(&FenceSopLock, irql);
+    FenceReleaseSpinLock(&FenceSopLock, irql);
     for (index = 0; index < FENCE_MAX_QUARANTINED_VOLUMES; index += 1) {
         if (release[index] != NULL) FltObjectDereference(release[index]);
     }
@@ -781,13 +810,13 @@ static __declspec(noinline) VOID FenceClearScannedQuarantine(_In_ PFENCE_SCAN Sc
 
     /* Setup admission, late-attach queue ownership, and quarantine insertion use RetryLock. Holding
      * it before SopLock makes clearing a global fallback atomic against a just-admitted setup. */
-    KeAcquireSpinLock(&FenceRetryLock, &irql);
-    KeAcquireSpinLockAtDpcLevel(&FenceSopLock);
+    FenceAcquireSpinLock(&FenceRetryLock, &irql);
+    FenceAcquireSpinLockAtDpcLevel(&FenceSopLock);
     /* Queue/scan failures may add a quarantine after the remembered set was copied. Keep all
      * quarantine in that generation; the next retry will append and cover the new identity. */
     if ((ULONG)InterlockedCompareExchange(&FenceQuarantineGeneration, 0, 0) != quarantineGeneration) {
-        KeReleaseSpinLockFromDpcLevel(&FenceSopLock);
-        KeReleaseSpinLock(&FenceRetryLock, irql);
+        FenceReleaseSpinLockFromDpcLevel(&FenceSopLock);
+        FenceReleaseSpinLock(&FenceRetryLock, irql);
         return;
     }
     for (index = 0; index < FENCE_MAX_QUARANTINED_VOLUMES; index += 1) {
@@ -808,8 +837,8 @@ static __declspec(noinline) VOID FenceClearScannedQuarantine(_In_ PFENCE_SCAN Sc
         InterlockedIncrement(&FenceQuarantineGeneration);
     }
     if (releaseCount != 0) InterlockedIncrement(&FenceQuarantineGeneration);
-    KeReleaseSpinLockFromDpcLevel(&FenceSopLock);
-    KeReleaseSpinLock(&FenceRetryLock, irql);
+    FenceReleaseSpinLockFromDpcLevel(&FenceSopLock);
+    FenceReleaseSpinLock(&FenceRetryLock, irql);
 
     for (index = 0; index < releaseCount; index += 1) FltObjectDereference(release[index]);
 }
@@ -820,13 +849,13 @@ static __declspec(noinline) BOOLEAN FenceVolumeIsQuarantined(_In_opt_ PFLT_VOLUM
     KIRQL irql;
     BOOLEAN hit = FALSE;
 
-    KeAcquireSpinLock(&FenceSopLock, &irql);
+    FenceAcquireSpinLock(&FenceSopLock, &irql);
     hit = InterlockedCompareExchange(&FenceQuarantineGlobal, FALSE, FALSE) != FALSE;
     for (index = 0; !hit && index < FENCE_MAX_QUARANTINED_VOLUMES; index += 1) {
         if (FenceQuarantine[index].Volume != NULL &&
             (Volume == NULL || FenceQuarantine[index].Volume == Volume)) hit = TRUE;
     }
-    KeReleaseSpinLock(&FenceSopLock, irql);
+    FenceReleaseSpinLock(&FenceSopLock, irql);
     return hit;
 }
 
@@ -843,13 +872,13 @@ static __declspec(noinline) BOOLEAN FenceAnyRetryableQuarantine(VOID)
     BOOLEAN hit = FALSE;
     KIRQL irql;
 
-    KeAcquireSpinLock(&FenceSopLock, &irql);
+    FenceAcquireSpinLock(&FenceSopLock, &irql);
     hit = InterlockedCompareExchange(&FenceQuarantineGlobal, FALSE, FALSE) != FALSE &&
         InterlockedCompareExchange(&FenceQuarantineGlobalSticky, FALSE, FALSE) == FALSE;
     for (index = 0; !hit && index < FENCE_MAX_QUARANTINED_VOLUMES; index += 1) {
         if (FenceQuarantine[index].Volume != NULL) hit = TRUE;
     }
-    KeReleaseSpinLock(&FenceSopLock, irql);
+    FenceReleaseSpinLock(&FenceSopLock, irql);
     return hit;
 }
 
@@ -863,12 +892,12 @@ static __declspec(noinline) VOID FenceAppendQuarantinedVolumes(_In_ PFENCE_SCAN 
     ULONG index, scanIndex, rememberedCount = 0;
     KIRQL irql;
 
-    KeAcquireSpinLock(&FenceSopLock, &irql);
+    FenceAcquireSpinLock(&FenceSopLock, &irql);
     quarantineGeneration = (ULONG)InterlockedCompareExchange(&FenceQuarantineGeneration, 0, 0);
     for (index = 0; index < FENCE_MAX_QUARANTINED_VOLUMES; index += 1) {
         if (FenceQuarantine[index].Volume != NULL) remembered[rememberedCount++] = FenceQuarantine[index].Volume;
     }
-    KeReleaseSpinLock(&FenceSopLock, irql);
+    FenceReleaseSpinLock(&FenceSopLock, irql);
     /* The generation and remembered identities came from one locked snapshot. Store into the
      * paged scan only after lowering IRQL; a later insertion still invalidates this generation. */
     Scan->QuarantineGeneration = quarantineGeneration;
@@ -1046,12 +1075,12 @@ static __declspec(noinline) PFENCE_TABLE FenceDetachTable(VOID)
     KIRQL irql;
 
     FltAcquirePushLockExclusive(&FenceNameLock);
-    KeAcquireSpinLock(&FenceSopLock, &irql);
+    FenceAcquireSpinLock(&FenceSopLock, &irql);
     table = FenceTable;
     FenceTable = NULL;
     InterlockedExchange(&FenceEntryCount, 0);
     InterlockedExchange(&FenceNameCount, 0);
-    KeReleaseSpinLock(&FenceSopLock, irql);
+    FenceReleaseSpinLock(&FenceSopLock, irql);
     FltReleasePushLock(&FenceNameLock);
     return table;
 }
@@ -1088,12 +1117,12 @@ static __declspec(noinline) VOID FenceInstall(_In_ PFENCE_SCAN Scan)
      * the spin lock: a creator holding the name lock shared can never see the new section-pointer table
      * with the old names, or the reverse. */
     FltAcquirePushLockExclusive(&FenceNameLock);
-    KeAcquireSpinLock(&FenceSopLock, &irql);
+    FenceAcquireSpinLock(&FenceSopLock, &irql);
     old = FenceTable;
     FenceTable = installing;
     InterlockedExchange(&FenceEntryCount, streams);
     InterlockedExchange(&FenceNameCount, names);
-    KeReleaseSpinLock(&FenceSopLock, irql);
+    FenceReleaseSpinLock(&FenceSopLock, irql);
     FltReleasePushLock(&FenceNameLock);
     Scan->Table = NULL;                                                 /* installed: no longer the scan's */
     FenceFreeTable(old);
@@ -1349,7 +1378,7 @@ static VOID FenceRetryArmLocked(VOID)
 static VOID FenceRetryFinish(VOID)
 {
     KIRQL irql;
-    KeAcquireSpinLock(&FenceRetryLock, &irql);
+    FenceAcquireSpinLock(&FenceRetryLock, &irql);
     if (!FenceAnyRetryableQuarantine()) {
         FenceRetryDelaySeconds = FENCE_RETRY_INITIAL_SECONDS;
         InterlockedExchange(&FenceRetryPending, FALSE);
@@ -1357,7 +1386,7 @@ static VOID FenceRetryFinish(VOID)
     } else {
         FenceRetryArmLocked();
     }
-    KeReleaseSpinLock(&FenceRetryLock, irql);
+    FenceReleaseSpinLock(&FenceRetryLock, irql);
 }
 
 /* Reconcile once refresh serialization is released. A later failure may have re-added quarantine
@@ -1367,7 +1396,7 @@ static __declspec(noinline) VOID FenceRetryUpdateAfterRefresh(VOID)
 {
     BOOLEAN quarantined;
     KIRQL irql;
-    KeAcquireSpinLock(&FenceRetryLock, &irql);
+    FenceAcquireSpinLock(&FenceRetryLock, &irql);
     quarantined = FenceAnyRetryableQuarantine();
     if (quarantined) {
         if (InterlockedCompareExchange(&FenceRetryPending, FALSE, FALSE) == FALSE) FenceRetryArmLocked();
@@ -1383,13 +1412,13 @@ static __declspec(noinline) VOID FenceRetryUpdateAfterRefresh(VOID)
             InterlockedExchange(&FenceRetryTimerArmed, FALSE);
         }
     }
-    KeReleaseSpinLock(&FenceRetryLock, irql);
+    FenceReleaseSpinLock(&FenceRetryLock, irql);
 }
 
 static __declspec(noinline) VOID FenceRetryStopForUnload(VOID)
 {
     KIRQL irql;
-    KeAcquireSpinLock(&FenceRetryLock, &irql);
+    FenceAcquireSpinLock(&FenceRetryLock, &irql);
     InterlockedExchange(&FenceRetryStopping, TRUE);
     if (InterlockedCompareExchange(&FenceRetryTimerArmed, FALSE, FALSE) != FALSE) {
         if (KeCancelTimer(&FenceRetryTimer)) {
@@ -1397,7 +1426,7 @@ static __declspec(noinline) VOID FenceRetryStopForUnload(VOID)
         }
         InterlockedExchange(&FenceRetryTimerArmed, FALSE);
     }
-    KeReleaseSpinLock(&FenceRetryLock, irql);
+    FenceReleaseSpinLock(&FenceRetryLock, irql);
     /* KeCancelTimer cannot retire a DPC that has already been queued or started. */
     KeFlushQueuedDpcs();
 }
@@ -1405,29 +1434,29 @@ static __declspec(noinline) VOID FenceRetryStopForUnload(VOID)
 static __declspec(noinline) VOID FenceRetryResetAfterDrain(VOID)
 {
     KIRQL irql;
-    KeAcquireSpinLock(&FenceRetryLock, &irql);
+    FenceAcquireSpinLock(&FenceRetryLock, &irql);
     InterlockedExchange(&FenceRetryPending, FALSE);
     InterlockedExchange(&FenceRetryTimerArmed, FALSE);
-    KeReleaseSpinLock(&FenceRetryLock, irql);
+    FenceReleaseSpinLock(&FenceRetryLock, irql);
 }
 
 static __declspec(noinline) VOID FenceRetryResume(VOID)
 {
     KIRQL irql;
-    KeAcquireSpinLock(&FenceRetryLock, &irql);
+    FenceAcquireSpinLock(&FenceRetryLock, &irql);
     InterlockedExchange(&FenceRetryStopping, FALSE);
     if (InterlockedCompareExchange(&FenceRetryPending, FALSE, FALSE) == FALSE) FenceRetryArmLocked();
-    KeReleaseSpinLock(&FenceRetryLock, irql);
+    FenceReleaseSpinLock(&FenceRetryLock, irql);
 }
 
 VOID SafeUploadStageFenceStartRetries(VOID)
 {
     KIRQL irql;
     if (!FenceInitialized) return;
-    KeAcquireSpinLock(&FenceRetryLock, &irql);
+    FenceAcquireSpinLock(&FenceRetryLock, &irql);
     InterlockedExchange(&FenceRetryEnabled, TRUE);
     FenceRetryArmLocked();
-    KeReleaseSpinLock(&FenceRetryLock, irql);
+    FenceReleaseSpinLock(&FenceRetryLock, irql);
 }
 
 static VOID FenceRetryRefreshRoutine(_In_ PFLT_GENERIC_WORKITEM WorkItem,
@@ -1461,7 +1490,7 @@ static VOID FenceRetryTimerDpc(_In_ PKDPC Dpc, _In_opt_ PVOID DeferredContext,
     UNREFERENCED_PARAMETER(SystemArgument1);
     UNREFERENCED_PARAMETER(SystemArgument2);
 
-    KeAcquireSpinLockAtDpcLevel(&FenceRetryLock);
+    FenceAcquireSpinLockAtDpcLevel(&FenceRetryLock);
     InterlockedExchange(&FenceRetryTimerArmed, FALSE);
     if (InterlockedCompareExchange(&FenceRetryPending, FALSE, FALSE) == FALSE ||
         InterlockedCompareExchange(&FenceRetryStopping, FALSE, FALSE) != FALSE ||
@@ -1470,13 +1499,13 @@ static VOID FenceRetryTimerDpc(_In_ PKDPC Dpc, _In_opt_ PVOID DeferredContext,
         !FenceAnyRetryableQuarantine()) {
         if (!FenceAnyRetryableQuarantine()) FenceRetryDelaySeconds = FENCE_RETRY_INITIAL_SECONDS;
         InterlockedExchange(&FenceRetryPending, FALSE);
-        KeReleaseSpinLockFromDpcLevel(&FenceRetryLock);
+        FenceReleaseSpinLockFromDpcLevel(&FenceRetryLock);
         return;
     }
-    KeReleaseSpinLockFromDpcLevel(&FenceRetryLock);
+    FenceReleaseSpinLockFromDpcLevel(&FenceRetryLock);
 
     item = FltAllocateGenericWorkItem();
-    KeAcquireSpinLockAtDpcLevel(&FenceRetryLock);
+    FenceAcquireSpinLockAtDpcLevel(&FenceRetryLock);
     if (item == NULL ||
         InterlockedCompareExchange(&FenceRetryStopping, FALSE, FALSE) != FALSE ||
         InterlockedCompareExchange(&FenceRetryEnabled, FALSE, FALSE) == FALSE ||
@@ -1490,7 +1519,7 @@ static VOID FenceRetryTimerDpc(_In_ PKDPC Dpc, _In_opt_ PVOID DeferredContext,
         } else {
             FenceRetryArmLocked();
         }
-        KeReleaseSpinLockFromDpcLevel(&FenceRetryLock);
+        FenceReleaseSpinLockFromDpcLevel(&FenceRetryLock);
         if (item != NULL) FltFreeGenericWorkItem(item);
         return;
     }
@@ -1499,7 +1528,7 @@ static VOID FenceRetryTimerDpc(_In_ PKDPC Dpc, _In_opt_ PVOID DeferredContext,
      * the gate closes or rejected here; it cannot be queued after a CLOSED gate. */
     if (!FenceLateControlReserve()) {
         FenceRetryArmLocked();
-        KeReleaseSpinLockFromDpcLevel(&FenceRetryLock);
+        FenceReleaseSpinLockFromDpcLevel(&FenceRetryLock);
         FltFreeGenericWorkItem(item);
         return;
     }
@@ -1508,27 +1537,27 @@ static VOID FenceRetryTimerDpc(_In_ PKDPC Dpc, _In_opt_ PVOID DeferredContext,
     if (!NT_SUCCESS(status)) {
         FenceLateControlComplete();
         FenceRetryArmLocked();
-        KeReleaseSpinLockFromDpcLevel(&FenceRetryLock);
+        FenceReleaseSpinLockFromDpcLevel(&FenceRetryLock);
         FltFreeGenericWorkItem(item);
         return;
     }
-    KeReleaseSpinLockFromDpcLevel(&FenceRetryLock);
+    FenceReleaseSpinLockFromDpcLevel(&FenceRetryLock);
 }
 
 static __declspec(noinline) BOOLEAN FenceLateControlClose(VOID)
 {
     LONG64 oldValue, newValue;
     KIRQL irql;
-    KeAcquireSpinLock(&FenceRetryLock, &irql);
+    FenceAcquireSpinLock(&FenceRetryLock, &irql);
     for (;;) {
         oldValue = FenceLateControlRead();
         if ((oldValue & FENCE_LATE_GATE_MASK) != FENCE_LATE_GATE_OPEN) {
-            KeReleaseSpinLock(&FenceRetryLock, irql);
+            FenceReleaseSpinLock(&FenceRetryLock, irql);
             return FALSE;
         }
         newValue = (oldValue & ~FENCE_LATE_GATE_MASK) | FENCE_LATE_GATE_CLOSING;
         if (InterlockedCompareExchange64(&FenceLateControl, newValue, oldValue) == oldValue) {
-            KeReleaseSpinLock(&FenceRetryLock, irql);
+            FenceReleaseSpinLock(&FenceRetryLock, irql);
             return TRUE;
         }
     }
@@ -1538,16 +1567,16 @@ static __declspec(noinline) VOID FenceLateControlOpen(VOID)
 {
     LONG64 oldValue, newValue;
     KIRQL irql;
-    KeAcquireSpinLock(&FenceRetryLock, &irql);
+    FenceAcquireSpinLock(&FenceRetryLock, &irql);
     for (;;) {
         oldValue = FenceLateControlRead();
         if ((oldValue & FENCE_LATE_GATE_MASK) != FENCE_LATE_GATE_CLOSING) {
-            KeReleaseSpinLock(&FenceRetryLock, irql);
+            FenceReleaseSpinLock(&FenceRetryLock, irql);
             return;
         }
         newValue = oldValue & ~FENCE_LATE_GATE_MASK;
         if (InterlockedCompareExchange64(&FenceLateControl, newValue, oldValue) == oldValue) {
-            KeReleaseSpinLock(&FenceRetryLock, irql);
+            FenceReleaseSpinLock(&FenceRetryLock, irql);
             return;
         }
     }
@@ -1559,14 +1588,14 @@ __declspec(noinline) VOID SafeUploadStageFenceCommitUnload(VOID)
     KIRQL irql;
     (VOID)FenceLateControlClose();
     FenceRetryStopForUnload();
-    KeAcquireSpinLock(&FenceRetryLock, &irql);
+    FenceAcquireSpinLock(&FenceRetryLock, &irql);
     for (;;) {
         oldValue = FenceLateControlRead();
         if ((oldValue & FENCE_LATE_GATE_MASK) == FENCE_LATE_GATE_CLOSED) break;
         newValue = (oldValue & ~FENCE_LATE_GATE_MASK) | FENCE_LATE_GATE_CLOSED;
         if (InterlockedCompareExchange64(&FenceLateControl, newValue, oldValue) == oldValue) break;
     }
-    KeReleaseSpinLock(&FenceRetryLock, irql);
+    FenceReleaseSpinLock(&FenceRetryLock, irql);
 }
 
 static VOID FenceWaitForLateWorkers(VOID)
@@ -1593,7 +1622,7 @@ static __declspec(noinline) BOOLEAN FenceTryCommitUnloadNonPaged(VOID)
     KIRQL irql;
     BOOLEAN committed = FALSE;
 
-    KeAcquireSpinLock(&FenceRetryLock, &irql);
+    FenceAcquireSpinLock(&FenceRetryLock, &irql);
     oldValue = FenceLateControlRead();
     if ((oldValue & FENCE_LATE_GATE_MASK) == FENCE_LATE_GATE_CLOSING &&
         FENCE_LATE_WORK_COUNT(oldValue) == 0 &&
@@ -1608,7 +1637,7 @@ static __declspec(noinline) BOOLEAN FenceTryCommitUnloadNonPaged(VOID)
         newValue = (oldValue & ~FENCE_LATE_GATE_MASK) | FENCE_LATE_GATE_CLOSED;
         committed = InterlockedCompareExchange64(&FenceLateControl, newValue, oldValue) == oldValue;
     }
-    KeReleaseSpinLock(&FenceRetryLock, irql);
+    FenceReleaseSpinLock(&FenceRetryLock, irql);
     return committed;
 }
 
@@ -1624,21 +1653,21 @@ BOOLEAN SafeUploadStageFenceSetupBegin(VOID)
 {
     KIRQL irql;
     BOOLEAN admitted;
-    KeAcquireSpinLock(&FenceRetryLock, &irql);
+    FenceAcquireSpinLock(&FenceRetryLock, &irql);
     admitted = FenceLateControlReserveAttach();
     if (admitted) InterlockedIncrement(&FenceSetupInFlight);
-    KeReleaseSpinLock(&FenceRetryLock, irql);
+    FenceReleaseSpinLock(&FenceRetryLock, irql);
     return admitted;
 }
 
 VOID SafeUploadStageFenceSetupEnd(VOID)
 {
     KIRQL irql;
-    KeAcquireSpinLock(&FenceRetryLock, &irql);
+    FenceAcquireSpinLock(&FenceRetryLock, &irql);
     if (InterlockedCompareExchange(&FenceSetupInFlight, 0, 0) > 0) {
         InterlockedDecrement(&FenceSetupInFlight);
     }
-    KeReleaseSpinLock(&FenceRetryLock, irql);
+    FenceReleaseSpinLock(&FenceRetryLock, irql);
     FenceLateControlComplete();
 }
 
@@ -1742,7 +1771,7 @@ BOOLEAN SafeUploadStageFenceIsFenced(_In_opt_ PFILE_OBJECT FileObject)
     if (FileObject == NULL || InterlockedCompareExchange(&FenceEntryCount, 0, 0) == 0) return FALSE;
     sop = FileObject->SectionObjectPointer;
     if (sop == NULL) return FALSE;
-    KeAcquireSpinLock(&FenceSopLock, &irql);
+    FenceAcquireSpinLock(&FenceSopLock, &irql);
     if (FenceTable != NULL) {
         for (probes = 0, slot = FenceHash((ULONG_PTR)sop); probes < FENCE_HASH_SLOTS;
              probes += 1, slot = (slot + 1) & (FENCE_HASH_SLOTS - 1)) {
@@ -1751,7 +1780,7 @@ BOOLEAN SafeUploadStageFenceIsFenced(_In_opt_ PFILE_OBJECT FileObject)
             if (current == (ULONG_PTR)sop) { hit = TRUE; break; }
         }
     }
-    KeReleaseSpinLock(&FenceSopLock, irql);
+    FenceReleaseSpinLock(&FenceSopLock, irql);
     return hit;
 }
 
@@ -1801,11 +1830,11 @@ static VOID FenceLateRefreshRoutine(_In_ PFLT_GENERIC_WORKITEM WorkItem, _In_ PV
     }
     if (Context != NULL) FltObjectDereference(Context);
     FltFreeGenericWorkItem(WorkItem);
-    KeAcquireSpinLock(&FenceRetryLock, &irql);
+    FenceAcquireSpinLock(&FenceRetryLock, &irql);
     if (InterlockedCompareExchange(&FenceLateAttachOutstanding, 0, 0) > 0) {
         InterlockedDecrement(&FenceLateAttachOutstanding);
     }
-    KeReleaseSpinLock(&FenceRetryLock, irql);
+    FenceReleaseSpinLock(&FenceRetryLock, irql);
     FenceRetryUpdateAfterRefresh();
     FenceLateControlComplete();
 }
@@ -1820,14 +1849,14 @@ static __declspec(noinline) BOOLEAN FenceLateAttachQuarantine(_In_ PFLT_VOLUME V
     LONG64 control;
     KIRQL irql;
 
-    KeAcquireSpinLock(&FenceRetryLock, &irql);
+    FenceAcquireSpinLock(&FenceRetryLock, &irql);
     control = FenceLateControlRead();
     if ((control & FENCE_LATE_GATE_MASK) != FENCE_LATE_GATE_CLOSED) {
         admitted = TRUE;
         if (NT_SUCCESS(status)) keepReference = FenceQuarantineStoreReferenced(Volume);
         else FenceQuarantineAllSticky();
     }
-    KeReleaseSpinLock(&FenceRetryLock, irql);
+    FenceReleaseSpinLock(&FenceRetryLock, irql);
 
     if (NT_SUCCESS(status) && !keepReference) FltObjectDereference(Volume);
     if (admitted && (control & FENCE_LATE_GATE_MASK) == FENCE_LATE_GATE_OPEN) {
@@ -1901,14 +1930,14 @@ BOOLEAN SafeUploadStageFenceQueueRefresh(_In_ PFLT_VOLUME Volume)
             status, quarantined ? "retaining SafeUpload" : "unload commit already closed; declining");
         return quarantined;
     }
-    KeAcquireSpinLock(&FenceRetryLock, &irql);
+    FenceAcquireSpinLock(&FenceRetryLock, &irql);
     InterlockedIncrement(&FenceLateAttachOutstanding);
-    KeReleaseSpinLock(&FenceRetryLock, irql);
+    FenceReleaseSpinLock(&FenceRetryLock, irql);
     status = FltQueueGenericWorkItem(item, SafeUploadData.Filter, FenceLateRefreshRoutine, DelayedWorkQueue, Volume);
     if (!NT_SUCCESS(status)) {
-        KeAcquireSpinLock(&FenceRetryLock, &irql);
+        FenceAcquireSpinLock(&FenceRetryLock, &irql);
         InterlockedDecrement(&FenceLateAttachOutstanding);
-        KeReleaseSpinLock(&FenceRetryLock, irql);
+        FenceReleaseSpinLock(&FenceRetryLock, irql);
         FltObjectDereference(Volume);
         FltFreeGenericWorkItem(item);
         quarantined = FenceLateAttachQuarantine(Volume);

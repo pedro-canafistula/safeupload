@@ -78,6 +78,22 @@ static KEVENT StageWorkerStop;
 static HANDLE StageWorkerHandle;
 static BOOLEAN StageInitialized;
 
+/* Native spin-lock transitions are isolated from callers in resident SAL helpers. */
+_IRQL_requires_max_(DISPATCH_LEVEL)
+_IRQL_raises_(DISPATCH_LEVEL)
+__declspec(noinline) static VOID StageStreamAcquireSpinLock(
+    _In_ PKSPIN_LOCK Lock, _Out_ _At_(*OldIrql, _IRQL_saves_) PKIRQL OldIrql)
+{
+    KeAcquireSpinLock(Lock, OldIrql);
+}
+
+_IRQL_requires_(DISPATCH_LEVEL)
+__declspec(noinline) static VOID StageStreamReleaseSpinLock(
+    _In_ PKSPIN_LOCK Lock, _In_ _IRQL_restores_ KIRQL OldIrql)
+{
+    KeReleaseSpinLock(Lock, OldIrql);
+}
+
 #if SAFEUPLOAD_STAGING_PROTOTYPE
 // Static storage is nonpaged and gives the callback path a bounded ring with
 // no allocation or lifetime race. An odd control state means tracing is on.
@@ -963,12 +979,12 @@ static PSTAGE_STREAM StageStreamForObject(PFILE_OBJECT FileObject)
     KIRQL irql;
     PSTAGE_STREAM found = NULL;
     if (FileObject == NULL || FileObject->FsContext == NULL) return NULL;
-    KeAcquireSpinLock(&StageListLock, &irql);
+    StageStreamAcquireSpinLock(&StageListLock, &irql);
     for (link = StageStreams.Flink; link != &StageStreams; link = link->Flink) {
         PSTAGE_STREAM stream = CONTAINING_RECORD(link, STAGE_STREAM, Link);
         if (FileObject->FsContext == &stream->Header) { found = stream; break; }
     }
-    KeReleaseSpinLock(&StageListLock, irql);
+    StageStreamReleaseSpinLock(&StageListLock, irql);
     /* Streams remain allocated until unregister has drained all callbacks. */
     return found;
 }
@@ -1408,9 +1424,9 @@ static NTSTATUS StageCreate(PFLT_CALLBACK_DATA Data, PCFLT_RELATED_OBJECTS Objec
     StageRelease(&stream->Resource);
     if (!NT_SUCCESS(status)) goto Exit;
     if (newStream) {
-        KeAcquireSpinLock(&StageListLock, &irql);
+        StageStreamAcquireSpinLock(&StageListLock, &irql);
         InsertTailList(&StageStreams, &stream->Link);
-        KeReleaseSpinLock(&StageListLock, irql);
+        StageStreamReleaseSpinLock(&StageListLock, irql);
         StageStreamCount++;
         view->Current = stream;
     }
@@ -2374,6 +2390,9 @@ VOID SafeUploadStageFree(VOID)
         StageFreeStream(stream);
     }
     while (!IsListEmpty(&StageViews)) StageFreeView(CONTAINING_RECORD(RemoveHeadList(&StageViews), STAGE_VIEW, Link));
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    SafeUploadStageWritersUninitialize();
+#endif
     ExDeleteResourceLite(&StageNamespaceResource);
     StageInitialized = FALSE;
 }
@@ -2497,14 +2516,6 @@ static FLT_PREOP_CALLBACK_STATUS StageAdmit(PFLT_CALLBACK_DATA Data,
         return FLT_PREOP_SUCCESS_NO_CALLBACK;
     }
     kind = StageVolumeKind(Objects->Instance);
-#if SAFEUPLOAD_STAGING_PROTOTYPE
-    /* An open by file ID carries no name, so delete-on-close cannot be judged against the protected namespace. */
-    if (!service && FlagOn(Data->Iopb->Parameters.Create.Options, FILE_OPEN_BY_FILE_ID) &&
-        FlagOn(Data->Iopb->Parameters.Create.Options, FILE_DELETE_ON_CLOSE)) {
-        status = STATUS_ACCESS_DENIED;
-        goto Complete;
-    }
-#endif
     if (!service && FlagOn(Data->Iopb->Parameters.Create.Options, FILE_OPEN_BY_FILE_ID)) {
         UNICODE_STRING id = Objects->FileObject->FileName;
         StageAcquire(&StageNamespaceResource);
@@ -2527,19 +2538,37 @@ static FLT_PREOP_CALLBACK_STATUS StageAdmit(PFLT_CALLBACK_DATA Data,
             status = StageCreate(Data, Objects, privateName, kind, writer, expectedView, TRUE, &handled);
             goto Complete;
         }
-        /* Unknown writable IDs cannot bypass destination checks. Nonzero high
-         * halves are NTFS object IDs, including our private IDs: do not let an
-         * unknown private ID fall through into another object's namespace.
-         * Legacy physical read-only IDs keep the existing source inspection. */
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+        if (id.Length == sizeof(FILE_ID_128) &&
+            RtlCompareMemory((PUCHAR)id.Buffer + sizeof(ULONGLONG),
+                &zeroId, sizeof(zeroId)) != sizeof(zeroId)) {
+            status = STATUS_ACCESS_DENIED; goto Complete;
+        }
+        /* D6: P0-1 scopes are volume-specific; unrelated low-half IDs pass. */
+        if (!SafeUploadPolicyMayMatchInstanceVolume(Objects->Instance)) {
+            handled = FALSE;
+            goto Complete;
+        }
+        if (writer) {
+            BOOLEAN inScope = TRUE;
+            /* D6: classify all hard links at PASSIVE using a read-only by-ID open; ambiguity keeps the refusal. */
+            status = KeGetCurrentIrql() == PASSIVE_LEVEL && IoGetTopLevelIrp() == NULL ?
+                SafeUploadStageWritersClassifyById(Objects->Instance, Objects->FileObject, &inScope) :
+                STATUS_INVALID_DEVICE_STATE;
+            if (NT_SUCCESS(status) && !inScope) {
+                handled = FALSE;
+                goto Complete;
+            }
+            status = STATUS_ACCESS_DENIED;
+            goto Complete;
+        }
+#else
+        /* Keep the legacy production refusal for unknown mutating or high-half IDs. */
         if (writer || (id.Length == sizeof(FILE_ID_128) &&
             RtlCompareMemory((PUCHAR)id.Buffer + sizeof(ULONGLONG),
                 &zeroId, sizeof(zeroId)) != sizeof(zeroId))) {
-            status = STATUS_ACCESS_DENIED; goto Complete;
-        }
-#if SAFEUPLOAD_STAGING_PROTOTYPE
-        /* By-ID mutation has no name; never infer that it is outside an identified policy scope. */
-        if (SafeUploadPolicyMayMatchInstanceVolume(Objects->Instance)) {
-            status = STATUS_ACCESS_DENIED; goto Complete;
+            status = STATUS_ACCESS_DENIED;
+            goto Complete;
         }
 #endif
         handled = FALSE; goto Complete;

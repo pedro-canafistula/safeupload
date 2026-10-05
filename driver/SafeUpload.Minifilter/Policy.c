@@ -95,6 +95,22 @@ static volatile LONG64 SafeUploadScopeRenameLossGeneration;
 static volatile LONG SafeUploadPolicyGeneration = 0;
 #define SAFEUPLOAD_POLICY_DRAIN_TIMEOUT_100NS (30LL * 10 * 1000 * 1000)
 
+/* Spin-lock transitions stay in resident, annotated, non-inlined helpers. */
+_IRQL_requires_max_(DISPATCH_LEVEL)
+_IRQL_raises_(DISPATCH_LEVEL)
+__declspec(noinline) static VOID SafeUploadAcquireSpinLock(
+    _In_ PKSPIN_LOCK Lock, _Out_ _At_(*OldIrql, _IRQL_saves_) PKIRQL OldIrql)
+{
+    KeAcquireSpinLock(Lock, OldIrql);
+}
+
+_IRQL_requires_(DISPATCH_LEVEL)
+__declspec(noinline) static VOID SafeUploadReleaseSpinLock(
+    _In_ PKSPIN_LOCK Lock, _In_ _IRQL_restores_ KIRQL OldIrql)
+{
+    KeReleaseSpinLock(Lock, OldIrql);
+}
+
 static BOOLEAN SafeUploadPolicySnapshotMatchesDestination(
     _In_opt_ const SAFEUPLOAD_POLICY *Policy,
     _In_ SAFEUPLOAD_VOLUME_KIND VolumeKind,
@@ -175,7 +191,7 @@ __declspec(noinline) static VOID SafeUploadEpochReplaceCurrent(_In_ PSAFEUPLOAD_
     PSAFEUPLOAD_ADMISSION_EPOCH old;
     KIRQL irql;
 
-    KeAcquireSpinLock(&SafeUploadEpochLock, &irql);
+    SafeUploadAcquireSpinLock(&SafeUploadEpochLock, &irql);
     old = SafeUploadCurrentEpoch;
     if (old != NULL) {
         InterlockedExchange(&old->Accepting, 0);
@@ -184,7 +200,7 @@ __declspec(noinline) static VOID SafeUploadEpochReplaceCurrent(_In_ PSAFEUPLOAD_
         InsertTailList(&SafeUploadDrainingEpochs, &old->DrainLink);
     }
     SafeUploadCurrentEpoch = Fresh;
-    KeReleaseSpinLock(&SafeUploadEpochLock, irql);
+    SafeUploadReleaseSpinLock(&SafeUploadEpochLock, irql);
 }
 
 __declspec(noinline) static PSAFEUPLOAD_ADMISSION_EPOCH SafeUploadEpochReferenceDrainHead(VOID)
@@ -192,13 +208,13 @@ __declspec(noinline) static PSAFEUPLOAD_ADMISSION_EPOCH SafeUploadEpochReference
     PSAFEUPLOAD_ADMISSION_EPOCH epoch = NULL;
     KIRQL irql;
 
-    KeAcquireSpinLock(&SafeUploadEpochLock, &irql);
+    SafeUploadAcquireSpinLock(&SafeUploadEpochLock, &irql);
     if (!IsListEmpty(&SafeUploadDrainingEpochs)) {
         epoch = CONTAINING_RECORD(SafeUploadDrainingEpochs.Flink,
             SAFEUPLOAD_ADMISSION_EPOCH, DrainLink);
         SafeUploadEpochReference(epoch);
     }
-    KeReleaseSpinLock(&SafeUploadEpochLock, irql);
+    SafeUploadReleaseSpinLock(&SafeUploadEpochLock, irql);
     return epoch;
 }
 
@@ -207,13 +223,13 @@ __declspec(noinline) static BOOLEAN SafeUploadEpochRemoveDrained(_In_ PSAFEUPLOA
     KIRQL irql;
     BOOLEAN removed = FALSE;
 
-    KeAcquireSpinLock(&SafeUploadEpochLock, &irql);
+    SafeUploadAcquireSpinLock(&SafeUploadEpochLock, &irql);
     if (!IsListEmpty(&Epoch->DrainLink) && Epoch->DrainLink.Flink != &Epoch->DrainLink) {
         RemoveEntryList(&Epoch->DrainLink);
         InitializeListHead(&Epoch->DrainLink);
         removed = TRUE;
     }
-    KeReleaseSpinLock(&SafeUploadEpochLock, irql);
+    SafeUploadReleaseSpinLock(&SafeUploadEpochLock, irql);
     return removed;
 }
 
@@ -263,10 +279,10 @@ __declspec(noinline) static NTSTATUS SafeUploadEpochAcquireCurrent(
     PSAFEUPLOAD_ADMISSION_EPOCH epoch;
     KIRQL irql;
 
-    KeAcquireSpinLock(&SafeUploadEpochLock, &irql);
+    SafeUploadAcquireSpinLock(&SafeUploadEpochLock, &irql);
     epoch = SafeUploadCurrentEpoch;
     if (epoch == NULL || InterlockedCompareExchange(&epoch->Accepting, 0, 0) == 0) {
-        KeReleaseSpinLock(&SafeUploadEpochLock, irql);
+        SafeUploadReleaseSpinLock(&SafeUploadEpochLock, irql);
         return STATUS_RETRY;
     }
     SafeUploadEpochReference(epoch);
@@ -274,7 +290,7 @@ __declspec(noinline) static NTSTATUS SafeUploadEpochAcquireCurrent(
     Token->Signature = SAFEUPLOAD_ADMISSION_EPOCH_TOKEN_SIGNATURE;
     Token->Epoch = epoch;
     Token->OperationKind = 1;
-    KeReleaseSpinLock(&SafeUploadEpochLock, irql);
+    SafeUploadReleaseSpinLock(&SafeUploadEpochLock, irql);
     return STATUS_SUCCESS;
 }
 
@@ -340,11 +356,11 @@ __declspec(noinline) static VOID SafeUploadPolicySetActivationCutoffsPaused(_In_
 {
     KIRQL irql;
 
-    KeAcquireSpinLock(&SafeUploadActivationCutoffLock, &irql);
+    SafeUploadAcquireSpinLock(&SafeUploadActivationCutoffLock, &irql);
     InterlockedExchange(&SafeUploadActivationCutoffsPaused, Paused ? 1 : 0);
     if (Paused && InterlockedCompareExchange(&SafeUploadActivationCutoffsActive, 0, 0) == 0)
         KeSetEvent(&SafeUploadActivationCutoffsDrained, IO_NO_INCREMENT, FALSE);
-    KeReleaseSpinLock(&SafeUploadActivationCutoffLock, irql);
+    SafeUploadReleaseSpinLock(&SafeUploadActivationCutoffLock, irql);
 }
 
 __declspec(noinline) static NTSTATUS SafeUploadPolicyTryBeginActivationCutoff(VOID)
@@ -352,7 +368,7 @@ __declspec(noinline) static NTSTATUS SafeUploadPolicyTryBeginActivationCutoff(VO
     KIRQL irql;
     NTSTATUS status = STATUS_SUCCESS;
 
-    KeAcquireSpinLock(&SafeUploadActivationCutoffLock, &irql);
+    SafeUploadAcquireSpinLock(&SafeUploadActivationCutoffLock, &irql);
     if (InterlockedCompareExchange(&SafeUploadActivationCutoffsPaused, 0, 0) != 0 ||
         InterlockedCompareExchange(&SafeUploadPolicyFailedClosed, 0, 0) != 0 ||
         InterlockedCompareExchange(&SafeUploadPolicyFinalizing, 0, 0) != 0) {
@@ -360,7 +376,7 @@ __declspec(noinline) static NTSTATUS SafeUploadPolicyTryBeginActivationCutoff(VO
     } else if (InterlockedIncrement(&SafeUploadActivationCutoffsActive) == 1) {
         KeClearEvent(&SafeUploadActivationCutoffsDrained);
     }
-    KeReleaseSpinLock(&SafeUploadActivationCutoffLock, irql);
+    SafeUploadReleaseSpinLock(&SafeUploadActivationCutoffLock, irql);
     return status;
 }
 
@@ -369,13 +385,13 @@ __declspec(noinline) static VOID SafeUploadPolicyEndActivationCutoff(VOID)
     KIRQL irql;
     LONG remaining;
 
-    KeAcquireSpinLock(&SafeUploadActivationCutoffLock, &irql);
+    SafeUploadAcquireSpinLock(&SafeUploadActivationCutoffLock, &irql);
     remaining = InterlockedDecrement(&SafeUploadActivationCutoffsActive);
     if (remaining <= 0) {
         if (remaining < 0) InterlockedExchange(&SafeUploadActivationCutoffsActive, 0);
         KeSetEvent(&SafeUploadActivationCutoffsDrained, IO_NO_INCREMENT, FALSE);
     }
-    KeReleaseSpinLock(&SafeUploadActivationCutoffLock, irql);
+    SafeUploadReleaseSpinLock(&SafeUploadActivationCutoffLock, irql);
 }
 
 __declspec(noinline) static PSAFEUPLOAD_ADMISSION_EPOCH SafeUploadPolicyDetachCurrentEpoch(VOID)
@@ -383,7 +399,7 @@ __declspec(noinline) static PSAFEUPLOAD_ADMISSION_EPOCH SafeUploadPolicyDetachCu
     PSAFEUPLOAD_ADMISSION_EPOCH epoch;
     KIRQL irql;
 
-    KeAcquireSpinLock(&SafeUploadEpochLock, &irql);
+    SafeUploadAcquireSpinLock(&SafeUploadEpochLock, &irql);
     epoch = SafeUploadCurrentEpoch;
     SafeUploadCurrentEpoch = NULL;
     if (epoch != NULL) {
@@ -391,7 +407,7 @@ __declspec(noinline) static PSAFEUPLOAD_ADMISSION_EPOCH SafeUploadPolicyDetachCu
         if (InterlockedCompareExchange(&epoch->ActiveCallbacks, 0, 0) == 0)
             KeSetEvent(&epoch->Drained, IO_NO_INCREMENT, FALSE);
     }
-    KeReleaseSpinLock(&SafeUploadEpochLock, irql);
+    SafeUploadReleaseSpinLock(&SafeUploadEpochLock, irql);
     return epoch;
 }
 
@@ -413,6 +429,7 @@ static VOID SafeUploadPolicyActivationCutoffsResume(VOID)
 {
     PAGED_CODE();
     SafeUploadPolicySetActivationCutoffsPaused(FALSE);
+    /* D5: rescan enforced entries so any cutoff whose flush is incomplete retries after resume. */
     SafeUploadStageWritersQueueRecheck();
 }
 
@@ -440,7 +457,7 @@ __declspec(noinline) static VOID SafeUploadPolicyFillEpochStatus(_In_ BOOLEAN Pe
     KIRQL irql;
     RtlZeroMemory(Status, sizeof(*Status));
     Status->StructSize = sizeof(*Status);
-    KeAcquireSpinLock(&SafeUploadEpochLock, &irql);
+    SafeUploadAcquireSpinLock(&SafeUploadEpochLock, &irql);
     epoch = SafeUploadCurrentEpoch;
     if (epoch != NULL) {
         Status->EpochGeneration = epoch->Generation;
@@ -454,7 +471,7 @@ __declspec(noinline) static VOID SafeUploadPolicyFillEpochStatus(_In_ BOOLEAN Pe
     if (InterlockedCompareExchange(&SafeUploadPolicyFinalizing, 0, 0) != 0)
         Status->Flags |= SAFEUPLOAD_ADMISSION_EPOCH_FLAG_FINALIZING;
     Status->ChangeSequence = (UINT64)(UINT32)InterlockedCompareExchange(&SafeUploadEpochGeneration, 0, 0);
-    KeReleaseSpinLock(&SafeUploadEpochLock, irql);
+    SafeUploadReleaseSpinLock(&SafeUploadEpochLock, irql);
 }
 
 NTSTATUS SafeUploadPolicyAdmissionEpochStatus(_Out_ PSAFEUPLOAD_ADMISSION_EPOCH_STATUS Status)
@@ -596,7 +613,7 @@ __declspec(noinline) static VOID SafeUploadPolicyPublishScopeStateNoInline(
     PSAFEUPLOAD_VOLUME_SCOPE_CACHE previous;
     ULONG active;
     KIRQL irql;
-    KeAcquireSpinLock(&SafeUploadVolumeScopeCacheLock, &irql);
+    SafeUploadAcquireSpinLock(&SafeUploadVolumeScopeCacheLock, &irql);
     active = (ULONG)InterlockedCompareExchange(&SafeUploadVolumeScopeCacheIndex, 0, 0);
     previous = &SafeUploadVolumeScopeCaches[active];
     SafeUploadPolicyStartPagingFallbackCutoffLocked(
@@ -610,7 +627,7 @@ __declspec(noinline) static VOID SafeUploadPolicyPublishScopeStateNoInline(
     UNREFERENCED_PARAMETER(Finalizing);
 #endif
     InterlockedExchange(&SafeUploadVolumeScopeCacheIndex, (LONG)CacheIndex);
-    KeReleaseSpinLock(&SafeUploadVolumeScopeCacheLock, irql);
+    SafeUploadReleaseSpinLock(&SafeUploadVolumeScopeCacheLock, irql);
 }
 
 static VOID SafeUploadPolicyPrepareAndPublishScopeState(
@@ -630,7 +647,7 @@ __declspec(noinline) static VOID SafeUploadPolicySetTransitionStateNoInline(
 {
     PSAFEUPLOAD_VOLUME_SCOPE_CACHE cache;
     KIRQL irql;
-    KeAcquireSpinLock(&SafeUploadVolumeScopeCacheLock, &irql);
+    SafeUploadAcquireSpinLock(&SafeUploadVolumeScopeCacheLock, &irql);
     cache = &SafeUploadVolumeScopeCaches[
         (ULONG)InterlockedCompareExchange(&SafeUploadVolumeScopeCacheIndex, 0, 0)];
     SafeUploadPolicyStartPagingFallbackCutoffLocked(
@@ -641,7 +658,7 @@ __declspec(noinline) static VOID SafeUploadPolicySetTransitionStateNoInline(
 #else
     UNREFERENCED_PARAMETER(Finalizing);
 #endif
-    KeReleaseSpinLock(&SafeUploadVolumeScopeCacheLock, irql);
+    SafeUploadReleaseSpinLock(&SafeUploadVolumeScopeCacheLock, irql);
 }
 
 /* Orchestrator decision P0-1: unresolved refusals apply only when this cached
@@ -688,23 +705,23 @@ __declspec(noinline) VOID SafeUploadPolicyRenameLossAdvance(
     PSAFEUPLOAD_VOLUME_SCOPE_CACHE cache;
     ULONG active;
     KIRQL irql;
-    KeAcquireSpinLock(&SafeUploadVolumeScopeCacheLock, &irql);
+    SafeUploadAcquireSpinLock(&SafeUploadVolumeScopeCacheLock, &irql);
     InterlockedIncrement64(InstanceGeneration);
     active = (ULONG)InterlockedCompareExchange(&SafeUploadVolumeScopeCacheIndex, 0, 0);
     cache = &SafeUploadVolumeScopeCaches[active];
     if (cache->ScopeTransitionActive &&
         SafeUploadPolicyVolumeCacheMatchesLocked(cache, VolumeKind, VolumeName))
         InterlockedIncrement64(&SafeUploadScopeRenameLossGeneration);
-    KeReleaseSpinLock(&SafeUploadVolumeScopeCacheLock, irql);
+    SafeUploadReleaseSpinLock(&SafeUploadVolumeScopeCacheLock, irql);
 }
 
 __declspec(noinline) VOID SafeUploadPolicyRenameLossSnapshot(_Out_ PULONGLONG Generation)
 {
     KIRQL irql;
-    KeAcquireSpinLock(&SafeUploadVolumeScopeCacheLock, &irql);
+    SafeUploadAcquireSpinLock(&SafeUploadVolumeScopeCacheLock, &irql);
     *Generation = (ULONGLONG)InterlockedCompareExchange64(
         &SafeUploadScopeRenameLossGeneration, 0, 0);
-    KeReleaseSpinLock(&SafeUploadVolumeScopeCacheLock, irql);
+    SafeUploadReleaseSpinLock(&SafeUploadVolumeScopeCacheLock, irql);
 }
 
 /* The caller holds this scope-cache boundary while publishing a resolved-name
@@ -714,7 +731,7 @@ __declspec(noinline) BOOLEAN SafeUploadPolicyRenameLossGenerationEnter(
     _In_ volatile LONG64 *InstanceGeneration, _In_ ULONGLONG ExpectedGeneration,
     _Out_ _At_(*OldIrql, _IRQL_saves_) PKIRQL OldIrql)
 {
-    KeAcquireSpinLock(&SafeUploadVolumeScopeCacheLock, OldIrql);
+    SafeUploadAcquireSpinLock(&SafeUploadVolumeScopeCacheLock, OldIrql);
     return (ULONGLONG)InterlockedCompareExchange64(InstanceGeneration, 0, 0) ==
         ExpectedGeneration;
 }
@@ -722,7 +739,7 @@ __declspec(noinline) BOOLEAN SafeUploadPolicyRenameLossGenerationEnter(
 _IRQL_requires_(DISPATCH_LEVEL)
 __declspec(noinline) VOID SafeUploadPolicyRenameLossGenerationLeave(_In_ _IRQL_restores_ KIRQL OldIrql)
 {
-    KeReleaseSpinLock(&SafeUploadVolumeScopeCacheLock, OldIrql);
+    SafeUploadReleaseSpinLock(&SafeUploadVolumeScopeCacheLock, OldIrql);
 }
 
 /* Returns FALSE while leaving the cutoff closed if any relevant rename loss
@@ -734,7 +751,7 @@ __declspec(noinline) BOOLEAN SafeUploadPolicyTryEndScopeTransition(
     BOOLEAN unchanged;
     ULONG active;
     KIRQL irql;
-    KeAcquireSpinLock(&SafeUploadVolumeScopeCacheLock, &irql);
+    SafeUploadAcquireSpinLock(&SafeUploadVolumeScopeCacheLock, &irql);
     unchanged = (ULONGLONG)InterlockedCompareExchange64(
         &SafeUploadScopeRenameLossGeneration, 0, 0) == RenameLossSnapshot;
     if (unchanged) {
@@ -747,7 +764,7 @@ __declspec(noinline) BOOLEAN SafeUploadPolicyTryEndScopeTransition(
         UNREFERENCED_PARAMETER(Finalizing);
 #endif
     }
-    KeReleaseSpinLock(&SafeUploadVolumeScopeCacheLock, irql);
+    SafeUploadReleaseSpinLock(&SafeUploadVolumeScopeCacheLock, irql);
     return unchanged;
 }
 
@@ -759,12 +776,12 @@ __declspec(noinline) static BOOLEAN SafeUploadPolicyVolumeCacheQueryNoInline(
     BOOLEAN mayMatch = FALSE;
     ULONG active;
     KIRQL irql;
-    KeAcquireSpinLock(&SafeUploadVolumeScopeCacheLock, &irql);
+    SafeUploadAcquireSpinLock(&SafeUploadVolumeScopeCacheLock, &irql);
     active = (ULONG)InterlockedCompareExchange(&SafeUploadVolumeScopeCacheIndex, 0, 0);
     cache = &SafeUploadVolumeScopeCaches[active];
     if (!RequirePagingCutoff || cache->ScopeTransitionActive)
         mayMatch = SafeUploadPolicyVolumeCacheMatchesLocked(cache, VolumeKind, VolumeName);
-    KeReleaseSpinLock(&SafeUploadVolumeScopeCacheLock, irql);
+    SafeUploadReleaseSpinLock(&SafeUploadVolumeScopeCacheLock, irql);
     return mayMatch;
 }
 
@@ -800,7 +817,7 @@ __declspec(noinline) VOID SafeUploadPolicyPagingCutoffEnter(
             volumeNamePointer = &volumeName;
         }
     }
-    KeAcquireSpinLock(&SafeUploadVolumeScopeCacheLock, OldIrql);
+    SafeUploadAcquireSpinLock(&SafeUploadVolumeScopeCacheLock, OldIrql);
     if (context != NULL) {
         *InstanceContextKnown = TRUE;
 #if SAFEUPLOAD_STAGING_PROTOTYPE
@@ -818,7 +835,7 @@ _IRQL_requires_(DISPATCH_LEVEL)
 __declspec(noinline) VOID SafeUploadPolicyPagingCutoffLeave(_In_ _IRQL_restores_ KIRQL OldIrql,
     _In_opt_ PSAFEUPLOAD_INSTANCE_CONTEXT ContextReference)
 {
-    KeReleaseSpinLock(&SafeUploadVolumeScopeCacheLock, OldIrql);
+    SafeUploadReleaseSpinLock(&SafeUploadVolumeScopeCacheLock, OldIrql);
     if (ContextReference != NULL) FltReleaseContext(ContextReference);
 }
 
@@ -857,22 +874,22 @@ __declspec(noinline) static VOID SafeUploadPolicyPagingFallbackRelease(_In_ ULON
     LONG remaining;
     KIRQL irql;
     if (Slot > 1) return;
-    KeAcquireSpinLock(&SafeUploadVolumeScopeCacheLock, &irql);
+    SafeUploadAcquireSpinLock(&SafeUploadVolumeScopeCacheLock, &irql);
     remaining = InterlockedDecrement(&SafeUploadPagingFallbackCounts[Slot]);
     if (remaining <= 0) {
         if (remaining < 0) InterlockedExchange(&SafeUploadPagingFallbackCounts[Slot], 0);
         KeSetEvent(&SafeUploadPagingFallbackDrained[Slot], IO_NO_INCREMENT, FALSE);
     }
-    KeReleaseSpinLock(&SafeUploadVolumeScopeCacheLock, irql);
+    SafeUploadReleaseSpinLock(&SafeUploadVolumeScopeCacheLock, irql);
 }
 
 __declspec(noinline) static ULONG SafeUploadPolicyPagingFallbackDrainSlotSnapshot(VOID)
 {
     ULONG slot;
     KIRQL irql;
-    KeAcquireSpinLock(&SafeUploadVolumeScopeCacheLock, &irql);
+    SafeUploadAcquireSpinLock(&SafeUploadVolumeScopeCacheLock, &irql);
     slot = (ULONG)InterlockedCompareExchange(&SafeUploadPagingFallbackDrainSlot, 0, 0);
-    KeReleaseSpinLock(&SafeUploadVolumeScopeCacheLock, irql);
+    SafeUploadReleaseSpinLock(&SafeUploadVolumeScopeCacheLock, irql);
     return slot;
 }
 

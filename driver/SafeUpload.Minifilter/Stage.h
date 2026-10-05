@@ -115,10 +115,11 @@ NTSTATUS SafeUploadStageWritersPostCreate(_In_ PFLT_CALLBACK_DATA Data,
     _Out_opt_ PBOOLEAN LegacyCallbackRequired);
 VOID SafeUploadStageWritersOnCleanup(_In_ PFLT_CALLBACK_DATA Data, _In_ PCFLT_RELATED_OBJECTS FltObjects);
 BOOLEAN SafeUploadStageWritersNameActivating(_In_ PFLT_INSTANCE Instance, _In_ PCUNICODE_STRING Name);
-BOOLEAN SafeUploadStageWritersAdmissionUnknown(_In_ PFLT_INSTANCE Instance);
 BOOLEAN SafeUploadStageWritersIsActivatingSop(_In_opt_ PVOID SectionObjectPointer);
 BOOLEAN SafeUploadStageWritersSopMatchesPolicy(_In_opt_ PVOID SectionObjectPointer,
     _In_ BOOLEAN IncludeAncestors, _Out_ PBOOLEAN Known);
+NTSTATUS SafeUploadStageWritersClassifyById(_In_ PFLT_INSTANCE Instance,
+    _In_ PFILE_OBJECT FileObject, _Out_ PBOOLEAN InScope);
 BOOLEAN SafeUploadStageWritersPagingWriteBegin(_In_ PFLT_INSTANCE Instance,
     _In_opt_ PVOID SectionObjectPointer,
     _Outptr_result_maybenull_ PVOID *CompletionContext);
@@ -130,6 +131,7 @@ NTSTATUS SafeUploadStageWritersActivatingStatusPage(_In_ UINT32 StartIndex,
 UINT32 SafeUploadStageWritersSnapshot(_In_ PFLT_INSTANCE Instance, _In_ PFILE_OBJECT FileObject);
 /* C(F): writable CreateSections acquired and not yet released (observe-only). */
 VOID SafeUploadStageWritersInitialize(VOID);
+VOID SafeUploadStageWritersUninitialize(VOID);
 NTSTATUS SafeUploadStageSectionAcquired(_In_ PFLT_CALLBACK_DATA Data,
     _In_ PCFLT_RELATED_OBJECTS FltObjects,
     _Outptr_result_maybenull_ PVOID *CompletionContext);
