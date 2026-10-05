@@ -17,7 +17,7 @@ function Import-EvaluationFunctions([string]$File,[string[]]$Names) {
     }
 }
 Import-EvaluationFunctions (Join-Path $PSScriptRoot 'StagedInvariantObserver.psm1') @('New-IORecord','New-IOAssertion','Test-InvariantCadence','Test-InvariantMetadata','Test-InvariantExternalCoverage')
-Import-EvaluationFunctions (Join-Path $PSScriptRoot 'Test-StagedInvariantSuite.ps1') @('Wait-WriterIdentity','Get-ExpectedCheckpoint','Get-ServiceDestinationPaths','Test-ServiceFixtureEntry','ConvertFrom-NotificationRecord','Test-NotificationWindow','Get-ServiceTimeline')
+Import-EvaluationFunctions (Join-Path $PSScriptRoot 'Test-StagedInvariantSuite.ps1') @('Wait-WriterIdentity','Get-ExpectedCheckpoint','Test-ServiceJournalStateReachable','Assert-ServiceManifestPath','ConvertFrom-ServiceJournalRecord','Test-ServiceJournalDelta','Get-ServiceDestinationPaths','Test-ServiceFixtureEntry','ConvertFrom-NotificationRecord','Test-NotificationWindow','Get-ServiceTimeline')
 $script:checks=0
 function Check([bool]$Condition,[string]$Message){if(-not $Condition){throw $Message};$script:checks++}
 function Clone($Value){return ($Value | ConvertTo-Json -Depth 32 | ConvertFrom-Json)}
@@ -118,13 +118,63 @@ $after=Clone $before;$after.StartQpc=3000;$after.EndQpc=3100
 $service=Get-ServiceTimeline $before $after $fence
 Check (@($service.Assertions | Where-Object {$_.Name -eq 'JournalExpectation' -and $_.Verdict -ne 'PASS'}).Count -eq 0) 'Authenticated empty retained journal supports seed negative journal expectations.'
 Check (@($service.Assertions | Where-Object {$_.Name -eq 'NotificationExpectation' -and $_.Verdict -eq 'INCONCLUSIVE'}).Count -eq 3) 'Empty Application log must not fabricate notification proof.'
-$after.Journal=@([pscustomobject]@{Path='manifest';StateName='Released';Entry=@{Transfer=@{DestinationPath='C:\fixture\new.bin'};LastRenameTransactionId=0;LastRenameDestination=$null;LastRenameCommitted=$false}})
+function Make-JournalRecord($State=5) {
+    $entry=[ordered]@{Transfer=@{TransferId='be720217-aa27-4c72-8ed8-032d251ba11d';StagePath='C:\stage\new.bin';DestinationPath='C:\fixture\new.bin';Destination=2;ProcessId=123;ProcessName='fixture.exe';SessionId=1};
+        State=$State;Sha256Hex=('A'*64);UpdatedAtUtc='2026-10-04T22:00:00Z';SealedOnce=$true;DestinationGeneration=1;NamespaceTombstones=$null;PendingRename=$null;
+        LastRenameTransactionId=0;LastRenameDestination=$null;LastRenameCommitted=$false}
+    return [pscustomobject]@{Path='C:\journal\be720217aa274c728ed8032d251ba11d.json';Bytes=[Text.Encoding]::UTF8.GetBytes(($entry | ConvertTo-Json -Depth 32 -Compress))}
+}
+$after.Journal=@(Make-JournalRecord)
 $service=Get-ServiceTimeline $before $after $fence
 Check (@($service.Assertions | Where-Object {$_.Name -eq 'JournalExpectation' -and $_.Verdict -eq 'FAIL'}).Count -eq 3) 'New released manifest contradicts all three journal expectations.'
 $after.Status='INCONCLUSIVE'
 Check (@((Get-ServiceTimeline $before $after $fence).Assertions | Where-Object {$_.Name -eq 'JournalExpectation' -and $_.Verdict -eq 'FAIL'}).Count -eq 3) 'Partial snapshots must preserve authenticated positive contradictions.'
 $after.Journal=@()
 Check (@((Get-ServiceTimeline $before $after $fence).Assertions | Where-Object {$_.Name -eq 'JournalExpectation' -and $_.Verdict -eq 'INCONCLUSIVE'}).Count -eq 3) 'Unauthenticated snapshot cannot establish negative journal evidence.'
+# Pre-existing manifests are opaque even if legacy, released, malformed or
+# in the fixture namespace. Every entry is reported and compared by bytes.
+$legacy=[pscustomobject]@{Path='C:\journal\1807552b5e024c438a012a6a580b4de5.json';Bytes=[Text.Encoding]::UTF8.GetBytes('{"Transfer":{"TransferId":"1807552b-5e02-4c43-8a01-2a6a580b4de5","StagePath":"C:\\ProgramData\\SafeUpload\\staging\\1807552b5e024c438a012a6a580b4de5.txt","DestinationPath":"S:\\SafeUpload\\Escopo Monitorado\\safeupload-crossvolume-b341907236064b2bb4ffeea62520fc4a.txt.renamed.txt","Destination":0,"ProcessName":"powershell.exe","ProcessId":10472,"SessionId":0},"State":6,"Sha256Hex":"0FFEA1AF40A41CBA8889C64E1C0C4C85C8FE07C7F6EB273AD1DFABDD8343C99A","UpdatedAtUtc":"2026-10-01T03:29:01.338476+00:00","SealedOnce":true}')}
+$prior=Clone $before;$prior.Journal=@($legacy)
+$unchanged=Clone $prior;$unchanged.StartQpc=$after.StartQpc;$unchanged.EndQpc=$after.EndQpc
+$service=Get-ServiceTimeline $prior $unchanged $fence
+Check (@($service.Assertions | Where-Object {$_.Name -in @('JournalDelta','JournalExpectation') -and $_.Verdict -ne 'PASS'}).Count -eq 0) 'Unchanged legacy entry must PASS without current-schema parsing.'
+Check ($service.JournalDelta.Entries[0].Classification -ceq 'pre-existing, unchanged') 'Legacy entry must be explicitly recorded as pre-existing, unchanged.'
+$opaque=Clone $prior;$opaque.Journal[0].Bytes=[Text.Encoding]::UTF8.GetBytes('unparseable old payload');$opaqueAfter=Clone $opaque;$opaqueAfter.StartQpc=$after.StartQpc;$opaqueAfter.EndQpc=$after.EndQpc
+Check ((Test-ServiceJournalDelta $opaque $opaqueAfter $true).Complete) 'Pre-existing bytes must never be interpreted as current JSON.'
+$releasedBefore=Clone $prior;$releasedBefore.Journal=@(Make-JournalRecord)
+$releasedAfter=Clone $releasedBefore;$releasedAfter.StartQpc=$after.StartQpc;$releasedAfter.EndQpc=$after.EndQpc
+Check (@((Get-ServiceTimeline $releasedBefore $releasedAfter $fence).Assertions | Where-Object {$_.Name -eq 'JournalExpectation' -and $_.Verdict -ne 'PASS'}).Count -eq 0) 'Unchanged pre-existing released fixture entry must not count as a case-window transition.'
+$modified=Clone $unchanged;$modified.Journal[0].Bytes+=[byte]32
+$service=Get-ServiceTimeline $prior $modified $fence
+Check (@($service.Assertions | Where-Object {$_.Name -in @('JournalDelta','JournalExpectation') -and $_.Verdict -eq 'FAIL'}).Count -eq 4) 'Any modified pre-existing bytes must FAIL even outside the fixture and without parsing.'
+$removed=Clone $unchanged;$removed.Journal=@()
+Check ((Test-ServiceJournalDelta $prior $removed $true).Findings.Count -eq 1) 'Removal of a pre-existing entry from a complete after inventory must FAIL.'
+$malformed=Clone $after;$malformed.Status='OK';$malformed.Journal=@([pscustomobject]@{Path=$legacy.Path;Bytes=[Text.Encoding]::UTF8.GetBytes('invalid JSON')})
+$service=Get-ServiceTimeline $before $malformed $fence
+Check (@($service.Assertions | Where-Object {$_.Name -in @('JournalDelta','JournalExpectation') -and $_.Verdict -eq 'FAIL'}).Count -eq 4) 'New invalid JSON must FAIL independent of fixture path.'
+$unc=Make-JournalRecord;$uncEntry=[Text.Encoding]::UTF8.GetString($unc.Bytes) | ConvertFrom-Json
+$uncEntry.Transfer.DestinationPath='\\server\share\new.bin';$unc.Bytes=[Text.Encoding]::UTF8.GetBytes(($uncEntry | ConvertTo-Json -Depth 32 -Compress))
+Check ((ConvertFrom-ServiceJournalRecord $unc).DestinationPaths[0] -ceq '\\server\share\new.bin') 'Current journal path validation must admit canonical UNC destinations.'
+$invalid=Make-JournalRecord;$entry=[Text.Encoding]::UTF8.GetString($invalid.Bytes) | ConvertFrom-Json
+$entry.PSObject.Properties.Remove('DestinationGeneration');$invalid.Bytes=[Text.Encoding]::UTF8.GetBytes(($entry | ConvertTo-Json -Depth 32 -Compress))
+$malformed.Journal=@($invalid)
+$service=Get-ServiceTimeline $before $malformed $fence
+Check (($service.JournalDelta.Findings -join ' ') -like '*Missing current journal field: DestinationGeneration*') 'New legacy schema must identify the exact missing field.'
+$partialBefore=Clone $before;$partialBefore.Status='INCONCLUSIVE'
+$service=Get-ServiceTimeline $partialBefore $malformed $fence
+Check ($service.JournalDelta.Findings.Count -eq 0 -and @($service.Assertions | Where-Object {$_.Name -eq 'JournalExpectation' -and $_.Verdict -eq 'INCONCLUSIVE'}).Count -eq 3) 'Partial before inventory cannot classify uncollected legacy bytes as new.'
+$missingBytes=Clone $unchanged;$missingBytes.Journal[0].PSObject.Properties.Remove('Bytes')
+Check (-not (Test-ServiceJournalDelta $prior $missingBytes $true).Complete) 'Missing retained bytes must remain INCONCLUSIVE.'
+$entry=([Text.Encoding]::UTF8.GetString((Make-JournalRecord).Bytes) | ConvertFrom-Json);$entry.State=7;$entry.SealedOnce=$false
+$invalid.Bytes=[Text.Encoding]::UTF8.GetBytes(($entry | ConvertTo-Json -Depth 32 -Compress));$malformed.Journal=@($invalid)
+Check ((Test-ServiceJournalDelta $before $malformed $true).Findings[0] -like '*cannot be reached through current agent transitions*') 'A new unsealed Retained state is legacy recovery behavior, not a current reachable state.'
+$states=@(@{State=0;Sealed=$false},@{State=8;Sealed=$false})+@(1..7 | ForEach-Object {@{State=$_;Sealed=$true}})
+foreach($state in $states){Check (Test-ServiceJournalStateReachable $state.State $state.Sealed) ('Current transition graph must admit state '+$state.State)}
+# A valid new nonterminal state cannot prove absence of intermediate approval.
+$nonterminal=Make-JournalRecord 1;$malformed.Journal=@($nonterminal)
+$service=Get-ServiceTimeline $before $malformed $fence
+Check (@($service.Assertions | Where-Object {$_.Name -eq 'JournalExpectation' -and $_.Expectation -in @('NoApproved','NoReleased') -and $_.Verdict -eq 'INCONCLUSIVE'}).Count -eq 2) 'Latest-state snapshots must not fabricate strict intermediate transition history.'
+
 # Collection failures must identify the snapshot/object, not suggest a missing
 # fence when the operation window is actually complete (notify1 regression).
 $bad=Clone $before;$bad.Status='INCONCLUSIVE';$bad | Add-Member NoteProperty Errors @(@{Message='Service evidence object rejected: C:\ProgramData\SafeUpload; Non-exact journal ACE.'})

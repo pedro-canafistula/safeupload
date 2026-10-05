@@ -753,24 +753,10 @@ function Get-ServiceSnapshot([string]$Tag) {
                 $leaf='service-'+$Tag+'-'+$file.Name;$copy=Join-Path $evidenceDirectory $leaf
                 $stream=[IO.File]::Open($copy,[IO.FileMode]::CreateNew,[IO.FileAccess]::Write,[IO.FileShare]::Read)
                 try{$stream.Write($bytes,0,$bytes.Length);$stream.Flush($true)}finally{$stream.Dispose()}
-                $entry=[Text.UTF8Encoding]::new($false,$true).GetString($bytes) | ConvertFrom-Json
-                $id=[guid]::ParseExact($file.BaseName,'N');$states=@('Allocated','Sealed','Inspecting','Approved','Publishing','Released','Blocked','Retained','Unsealed')
-                if($id -eq [guid]::Empty -or [guid]$entry.Transfer.TransferId -ne $id -or $entry.Transfer.ProcessId -le 0 -or
-                    [string]::IsNullOrWhiteSpace($entry.Transfer.ProcessName) -or $entry.Transfer.ProcessName.Length -gt 63 -or
-                    $entry.Transfer.Destination -notin @(0,1,2,3,4) -or $null -eq $entry.DestinationGeneration -or $entry.DestinationGeneration -lt 0 -or $null -eq $entry.State -or
-                    ([string]$entry.State -notmatch '^[0-8]$') -or [string]::IsNullOrWhiteSpace($entry.UpdatedAtUtc)) {throw 'Invalid product journal identity/state.'}
-                if([DateTimeOffset]::Parse($entry.UpdatedAtUtc) -eq [DateTimeOffset]::MinValue){throw 'Invalid journal update timestamp.'}
-                if(($null -ne $entry.Sha256Hex -and $entry.Sha256Hex -notmatch '^[0-9a-fA-F]{64}$') -or
-                    ($entry.State -in @(1,2,3,4,5,6) -and $entry.SealedOnce -ne $true) -or
-                    ($entry.State -in @(0,8) -and $entry.SealedOnce -ne $false) -or
-                    ($entry.State -in @(4,5) -and $null -eq $entry.Sha256Hex)){throw 'Invalid product seal/publication evidence.'}
-                $destinations=@(Get-ServiceDestinationPaths $entry)
-                foreach($path in @($entry.Transfer.StagePath)+$destinations){
-                    if([string]::IsNullOrWhiteSpace($path) -or $path.Length -gt 511 -or $path -notmatch '^(?:[A-Za-z]:\\|\\\\[^\\]+\\[^\\]+\\)' -or
-                        [string]::IsNullOrWhiteSpace([IO.Path]::GetFileName($path)) -or [IO.Path]::GetFullPath($path) -ine $path){throw 'Invalid product manifest path.'}
-                }
+                # Collection authenticates and retains ALL bytes. Schema interpretation
+                # belongs to delta evaluation; a legacy entry must not truncate inventory.
                 $result.Journal+= [pscustomobject]@{Path=$file.FullName;Owner=$obj.Owner;Sddl=$obj.Sddl;Sha256=(Get-FileHash -LiteralPath $copy).Hash;
-                    Artifact=$copy;Length=$bytes.Length;Entry=$entry;DestinationPaths=$destinations;StateName=$states[[int]$entry.State]}
+                    Artifact=$copy;Length=$bytes.Length;Bytes=$bytes}
             }
         }
         $result.Status='OK'
@@ -789,10 +775,128 @@ function Get-ServiceSnapshot([string]$Tag) {
     Save-State $result (Join-Path $evidenceDirectory ('service-'+$Tag+'.clixml'))
     return [pscustomobject]$result
 }
+function Test-ServiceJournalStateReachable([int]$State,[bool]$SealedOnce) {
+    # StagedTransferJournal.IsTransitionAllowed. SealAsync has the same
+    # Allocated/Unsealed -> Sealed edges; a committed sealed rename returns
+    # to Sealed. Snapshots cannot attest the actual intermediate transitions.
+    $edges=@(@(0,1),@(0,8),@(8,1),@(1,2),@(1,7),@(2,3),@(2,6),@(6,2),@(2,7),@(3,7),@(3,4),@(4,5),@(4,7),@(7,2),@(2,1))
+    $pending=@(@{State=0;Sealed=$false});$seen=@{}
+    while($pending.Count){
+        $current=$pending[0];$pending=@($pending | Select-Object -Skip 1)
+        $key=([string]$current.State)+':'+$current.Sealed
+        if($seen.ContainsKey($key)){continue};$seen[$key]=$true
+        if($current.State -eq $State -and $current.Sealed -eq $SealedOnce){return $true}
+        foreach($edge in $edges){if($edge[0] -eq $current.State){$pending+=@{State=$edge[1];Sealed=($current.Sealed -or $edge[1] -eq 1)}}}
+    }
+    return $false
+}
+function Assert-ServiceManifestPath($Path) {
+    if($Path -isnot [string] -or [string]::IsNullOrWhiteSpace($Path) -or $Path.Length -gt 511 -or
+        $Path -notmatch '^(?:[A-Za-z]:\\|\\\\[^\\]+\\[^\\]+\\)' -or $Path -match '[/]|\\$|\\\.\.?($|\\)'){
+        throw 'Invalid product manifest path.'
+    }
+    # Use the agent's Windows normalization check on Windows. The lexical
+    # checks above also allow the pure adapter self-check on Linux.
+    if([Environment]::OSVersion.Platform -eq [PlatformID]::Win32NT -and
+        ([string]::IsNullOrEmpty([IO.Path]::GetFileName($Path)) -or [IO.Path]::GetFullPath($Path) -ine $Path)){
+        throw 'Invalid product manifest path normalization.'
+    }
+}
+function ConvertFrom-ServiceJournalRecord($Record) {
+    try {
+        if($null -eq $Record.Bytes){throw 'Retained journal bytes missing.'}
+        if($Record.Bytes.Length -gt 131072){throw 'Journal manifest exceeds the qualified size bound.'}
+        $entry=[Text.UTF8Encoding]::new($false,$true).GetString([byte[]]$Record.Bytes) | ConvertFrom-Json -ErrorAction Stop
+        $leaf=($Record.Path -split '[\\/]')[-1]
+        if($leaf -cnotmatch '^[0-9a-f]{32}\.json$'){throw 'Invalid manifest filename.'}
+        $id=[guid]::ParseExact($leaf.Substring(0,32),'N')
+        # Require the schema emitted by the current writer for NEW entries.
+        # Older schemas remain opaque when they predate the case window.
+        foreach($name in @('Transfer','State','Sha256Hex','UpdatedAtUtc','SealedOnce','DestinationGeneration','NamespaceTombstones','PendingRename','LastRenameTransactionId','LastRenameDestination','LastRenameCommitted')){
+            if($null -eq $entry.PSObject.Properties[$name]){throw ('Missing current journal field: '+$name+'.')}
+        }
+        if($id -eq [guid]::Empty -or $null -eq $entry.Transfer -or [guid]$entry.Transfer.TransferId -ne $id){throw 'Invalid product journal Transfer.TransferId.'}
+        foreach($numeric in @(@{Name='Transfer.ProcessId';Value=$entry.Transfer.ProcessId;Min=1;Max=[int]::MaxValue},
+            @{Name='Transfer.Destination';Value=$entry.Transfer.Destination;Min=0;Max=4},@{Name='State';Value=$entry.State;Min=0;Max=8},
+            @{Name='DestinationGeneration';Value=$entry.DestinationGeneration;Min=0;Max=[long]::MaxValue},
+            @{Name='LastRenameTransactionId';Value=$entry.LastRenameTransactionId;Min=0;Max=[ulong]::MaxValue})){
+            if($null -eq $numeric.Value -or $numeric.Value -is [string] -or $numeric.Value -is [bool] -or $numeric.Value -is [double] -or $numeric.Value -is [single] -or
+                ([string]$numeric.Value -notmatch '^\d+$') -or [decimal]$numeric.Value -lt $numeric.Min -or [decimal]$numeric.Value -gt $numeric.Max){
+                throw ('Invalid product journal '+$numeric.Name+'.')
+            }
+        }
+        if($null -ne $entry.Transfer.SessionId -and ($entry.Transfer.SessionId -is [string] -or $entry.Transfer.SessionId -is [double] -or $entry.Transfer.SessionId -is [single] -or
+            [string]$entry.Transfer.SessionId -notmatch '^\d+$' -or [decimal]$entry.Transfer.SessionId -gt [uint]::MaxValue)){throw 'Invalid product journal Transfer.SessionId.'}
+        if($entry.Transfer.ProcessName -isnot [string] -or [string]::IsNullOrWhiteSpace($entry.Transfer.ProcessName) -or $entry.Transfer.ProcessName.Length -gt 63){throw 'Invalid product journal Transfer.ProcessName.'}
+        if([string]::IsNullOrWhiteSpace($entry.UpdatedAtUtc) -or [DateTimeOffset]::Parse($entry.UpdatedAtUtc) -eq [DateTimeOffset]::MinValue){throw 'Invalid journal update timestamp.'}
+        if($entry.SealedOnce -isnot [bool] -or $entry.LastRenameCommitted -isnot [bool]){throw 'Invalid journal seal/rename boolean.'}
+        if(($null -ne $entry.Sha256Hex -and ($entry.Sha256Hex -isnot [string] -or $entry.Sha256Hex -cnotmatch '^[0-9a-fA-F]{64}$')) -or
+            ($entry.State -in @(1,2,3,4,5,6) -and -not $entry.SealedOnce) -or
+            ($entry.State -in @(0,8) -and $entry.SealedOnce) -or ($entry.State -in @(4,5) -and $null -eq $entry.Sha256Hex)){
+            throw 'Invalid product seal/publication evidence.'
+        }
+        if(-not (Test-ServiceJournalStateReachable $entry.State $entry.SealedOnce)){throw 'Journal state/seal cannot be reached through current agent transitions.'}
+        $destinations=@(Get-ServiceDestinationPaths $entry)
+        foreach($path in @($entry.Transfer.StagePath)+$destinations){Assert-ServiceManifestPath $path}
+        return [pscustomobject]@{Path=$Record.Path;Entry=$entry;StateName=@('Allocated','Sealed','Inspecting','Approved','Publishing','Released','Blocked','Retained','Unsealed')[[int]$entry.State];DestinationPaths=$destinations}
+    }catch{throw ('Invalid new product journal manifest '+$Record.Path+': '+$_.Exception.Message)}
+}
+function Test-ServiceJournalDelta($Before,$After,[bool]$WindowKnown) {
+    $failures=@();$findings=@();$records=@();$new=@()
+    if(-not $WindowKnown){$failures+='QPC operation fence missing or not bracketed by service snapshots; see OperationFence and snapshot QPC receipts.'}
+    foreach($item in @(@{Tag='before';Snapshot=$Before},@{Tag='after';Snapshot=$After})){
+        if($null -eq $item.Snapshot){$failures+=('Journal '+$item.Tag+' snapshot missing.')}
+        elseif($item.Snapshot.Status -cne 'OK'){
+            $failures+=('Journal '+$item.Tag+' snapshot '+$item.Snapshot.Status+': '+(@($item.Snapshot.Errors | ForEach-Object {$_.Message}) -join ' / '))
+        }
+        foreach($group in @($item.Snapshot.Journal | Group-Object Path)){
+            if($group.Count -gt 1){$findings+=('Duplicate journal path in '+$item.Tag+' snapshot: '+$group.Name)}
+        }
+    }
+    foreach($prior in $Before.Journal){
+        $matching=@($After.Journal | Where-Object Path -ieq $prior.Path)
+        if($matching.Count -ne 1){
+            $message='Prior journal manifest disappeared or duplicated: '+$prior.Path
+            if($After.Status -ceq 'OK'){$findings+=$message}else{$failures+=$message}
+            $records+=@{Path=$prior.Path;Classification='pre-existing, missing or duplicated'};continue
+        }
+        if($null -eq $prior.Bytes -or $null -eq $matching[0].Bytes){
+            $failures+=('Retained bytes unavailable for pre-existing journal entry: '+$prior.Path)
+            $records+=@{Path=$prior.Path;Classification='pre-existing, byte comparison unavailable'};continue
+        }
+        if([Convert]::ToBase64String([byte[]]$prior.Bytes) -cne [Convert]::ToBase64String([byte[]]$matching[0].Bytes)){
+            $findings+=('Pre-existing journal entry changed: '+$prior.Path)
+            $records+=@{Path=$prior.Path;Classification='pre-existing, modified'}
+        }else{$records+=@{Path=$prior.Path;Classification='pre-existing, unchanged';BeforeArtifact=$prior.Artifact;AfterArtifact=$matching[0].Artifact}}
+    }
+    foreach($record in $After.Journal){
+        if(@($Before.Journal | Where-Object Path -ieq $record.Path).Count){continue}
+        # A partial BEFORE inventory cannot establish when a file appeared;
+        # never misclassify an uncollected legacy file as new current schema.
+        if($Before.Status -cne 'OK'){
+            $failures+=('Journal entry creation window unknown: '+$record.Path)
+            $records+=@{Path=$record.Path;Classification='creation window unknown'};continue
+        }
+        if($null -eq $record.Bytes){
+            $failures+=('Retained bytes unavailable for new journal entry: '+$record.Path)
+            $records+=@{Path=$record.Path;Classification='new, bytes unavailable'};continue
+        }
+        try{
+            $parsed=ConvertFrom-ServiceJournalRecord $record;$new+=$parsed
+            $records+=@{Path=$record.Path;Classification='new, current schema and reachable state';StateName=$parsed.StateName}
+        }catch{
+            $findings+=$_.Exception.Message;$records+=@{Path=$record.Path;Classification='new, invalid';Reason=$_.Exception.Message}
+        }
+    }
+    return [pscustomobject]@{Complete=($failures.Count -eq 0 -and $findings.Count -eq 0);Failures=$failures;Findings=$findings;Entries=$records;NewEntries=$new}
+}
 function Get-ServiceDestinationPaths($Entry) {
     $paths=@($Entry.Transfer.DestinationPath)
     if($null -ne $Entry.PendingRename){
-        if($Entry.PendingRename.TransactionId -eq 0 -or $Entry.PendingRename.SealedVersion -ne $Entry.SealedOnce){throw 'Invalid pending journal rename.'}
+        if($null -eq $Entry.PendingRename.TransactionId -or $Entry.PendingRename.TransactionId -is [string] -or $Entry.PendingRename.TransactionId -is [double] -or $Entry.PendingRename.TransactionId -is [single] -or
+            [string]$Entry.PendingRename.TransactionId -notmatch '^\d+$' -or [decimal]$Entry.PendingRename.TransactionId -le 0 -or
+            [decimal]$Entry.PendingRename.TransactionId -gt [ulong]::MaxValue -or $Entry.PendingRename.SealedVersion -isnot [bool] -or
+            $Entry.PendingRename.SealedVersion -ne $Entry.SealedOnce){throw 'Invalid pending journal rename.'}
         $paths+=$Entry.PendingRename.DestinationPath
     }
     if($null -ne $Entry.LastRenameDestination){$paths+=$Entry.LastRenameDestination}
@@ -800,7 +904,8 @@ function Get-ServiceDestinationPaths($Entry) {
         ($Entry.LastRenameTransactionId -ne 0 -and $null -eq $Entry.LastRenameDestination)){throw 'Invalid completed journal rename.'}
     $count=0
     for($name=$Entry.NamespaceTombstones;$null -ne $name;$name=$name.Previous){
-        if(++$count -gt 16 -or $name.Generation -le 0){throw 'Invalid journal namespace history.'}
+        if(++$count -gt 16 -or $null -eq $name.Generation -or $name.Generation -is [string] -or $name.Generation -is [double] -or $name.Generation -is [single] -or
+            [string]$name.Generation -notmatch '^\d+$' -or [decimal]$name.Generation -le 0 -or [decimal]$name.Generation -gt [long]::MaxValue){throw 'Invalid journal namespace history.'}
         $paths+=$name.DestinationPath
     }
     return $paths
@@ -835,35 +940,27 @@ function Get-ServiceTimeline($Before,$After,$Fence) {
         $Before.QpcFrequency -eq $Fence.QpcFrequency -and $After.QpcFrequency -eq $Fence.QpcFrequency -and
         $Before.StartQpc -le $Before.EndQpc -and $Before.EndQpc -le $Fence.ReleasedQpc -and
         $Fence.ReleasedQpc -le $Fence.CompletedQpc -and $Fence.CompletedQpc -le $After.StartQpc -and $After.StartQpc -le $After.EndQpc)
-    $journalKnown=($windowKnown -and $Before.Status -ceq 'OK' -and $After.Status -ceq 'OK')
-    $journalFailures=@()
-    if(-not $windowKnown){$journalFailures+='QPC operation fence missing or not bracketed by service snapshots; see OperationFence and snapshot QPC receipts.'}
-    foreach($item in @(@{Tag='before';Snapshot=$Before},@{Tag='after';Snapshot=$After})){
-        if($null -eq $item.Snapshot){$journalFailures+=('Journal '+$item.Tag+' snapshot missing.')}
-        elseif($item.Snapshot.Status -cne 'OK'){
-            $journalFailures+=('Journal '+$item.Tag+' snapshot '+$item.Snapshot.Status+': '+(@($item.Snapshot.Errors | ForEach-Object {$_.Message}) -join ' / '))
-        }
-    }
-    $beforeCase=@($Before.Journal | Where-Object {Test-ServiceFixtureEntry $_})
-    $afterCase=@($After.Journal | Where-Object {Test-ServiceFixtureEntry $_})
-    # Manifests are durable and never deleted by the pinned product journal.
-    # Any missing prior manifest prevents negative timeline proof.
-    foreach($file in $Before.Journal){if(@($After.Journal | Where-Object Path -ceq $file.Path).Count -ne 1){$journalKnown=$false;$journalFailures+=('Prior journal manifest disappeared or duplicated: '+$file.Path)}}
-    $new=@($afterCase | Where-Object {$beforeCase.Path -notcontains $_.Path})
+    $journalDelta=Test-ServiceJournalDelta $Before $After $windowKnown
+    $journalKnown=$journalDelta.Complete
+    $journalFailures=@($journalDelta.Failures)+@($journalDelta.Findings)
+    $new=@($journalDelta.NewEntries | Where-Object {Test-ServiceFixtureEntry $_})
+    $deltaVerdict=if($journalDelta.Findings.Count){'FAIL'}elseif($journalKnown){'PASS'}else{'INCONCLUSIVE'}
+    $assertions+=@{Name='JournalDelta';Verdict=$deltaVerdict;Reason=$(if($journalKnown){'Authenticated byte delta; all pre-existing entries unchanged; all new entries satisfy current schema and reachable state.'}else{$journalFailures -join ' '})}
     foreach($expectation in $row.JournalExpectations) {
         $verdict='INCONCLUSIVE';$reason=$journalFailures -join ' '
-        $bad=@(@($beforeCase)+@($afterCase) | Where-Object {if($expectation -ceq 'NoApproved'){$_.StateName -in @('Approved','Publishing','Released')}elseif($expectation -ceq 'NoReleased'){$_.StateName -ceq 'Released'}else{$false}})
+        $bad=@($new | Where-Object {if($expectation -ceq 'NoApproved'){$_.StateName -in @('Approved','Publishing','Released')}elseif($expectation -ceq 'NoReleased'){$_.StateName -ceq 'Released'}else{$false}})
         if($journalKnown){
             if($expectation -ceq 'NoNewTransfer'){$verdict=if($new.Count){'FAIL'}else{'PASS'};$reason='Before/after authenticated product manifest inventory; new fixture transfers='+$new.Count}
             elseif($expectation -in @('NoApproved','NoReleased')){
                 if($bad.Count){$verdict='FAIL';$reason='Authenticated fixture manifest contradicts '+$expectation}
-                elseif($beforeCase.Count -eq 0 -and $afterCase.Count -eq 0){$verdict='PASS';$reason='No fixture transfer in the durable retained journal; therefore no fixture '+$expectation.Substring(2)+' transition.'}
+                elseif($new.Count -eq 0){$verdict='PASS';$reason='No new fixture transfer and all pre-existing entries byte-identical; therefore no fixture '+$expectation.Substring(2)+' transition.'}
                 else{$reason='Latest-state manifests are not an append-only transition history; an intermediate state cannot be excluded.'}
             }else{$reason='Unsupported journal expectation: '+$expectation}
         }
         # A trusted partial snapshot can still contain a positive contradiction.
         if($bad.Count){$verdict='FAIL';$reason='Authenticated fixture manifest contradicts '+$expectation+'; incomplete coverage cannot hide positive evidence.'}
         if($expectation -ceq 'NoNewTransfer' -and $windowKnown -and $Before.Status -ceq 'OK' -and $new.Count){$verdict='FAIL';$reason='Authenticated new fixture manifest contradicts NoNewTransfer.'}
+        if($journalDelta.Findings.Count){$verdict='FAIL';$reason=$journalDelta.Findings -join ' '}
         $assertions+=@{Name='JournalExpectation';Expectation=$expectation;Verdict=$verdict;Reason=$reason}
     }
     $notificationProof=Test-NotificationWindow $Before.Notifications $After.Notifications $Fence $windowKnown
@@ -891,8 +988,8 @@ function Get-ServiceTimeline($Before,$After,$Fence) {
     $timelineReason=if($verdict -eq 'PASS'){'Per-expectation results from authenticated product journal snapshots and durable notification chain; see ServiceEvidence.'}
         else{@($assertions | Where-Object Verdict -ne 'PASS' | ForEach-Object {$_.Reason} | Select-Object -Unique) -join ' '}
     $assertions+=@{Name='ActualServiceTimelines';Verdict=$verdict;Reason=$timelineReason}
-    $result=[pscustomobject]@{Source='AuthenticatedAgentJournalAndNotificationRecord';NotificationProof=$notificationProof;NotificationEmissions=$notificationProof.Emissions;TrustBoundary='SYSTEM-owned policy/journal; SYSTEM or Administrators-owned notification record; exact protected SYSTEM/Administrators DACL, no reparses, single-link bounded manifests, same-handle ACL and bytes; privileged local actors trusted';
-        Before=$Before;After=$After;OperationFence=$Fence;WindowBound=$windowKnown;JournalFailures=$journalFailures;ApplicationStatus=$eventStatus;ApplicationReason=$eventReason;ApplicationEvents=$events;Assertions=$assertions}
+    $result=[pscustomobject]@{Source='AuthenticatedAgentJournalAndNotificationRecord';NotificationProof=$notificationProof;NotificationEmissions=$notificationProof.Emissions;TrustBoundary='SYSTEM-owned policy; SYSTEM or Administrators-owned journal/notification record; exact protected SYSTEM/Administrators DACL, no reparses, single-link bounded manifests, same-handle ACL and bytes; privileged local actors trusted';
+        Before=$Before;After=$After;OperationFence=$Fence;WindowBound=$windowKnown;JournalDelta=$journalDelta;JournalFailures=$journalFailures;ApplicationStatus=$eventStatus;ApplicationReason=$eventReason;ApplicationEvents=$events;Assertions=$assertions}
     Save-State $result (Join-Path $evidenceDirectory 'service-timeline.clixml')
     return $result
 }
