@@ -1375,9 +1375,9 @@ static int PrintActivatingStatus(VOID)
                 wprintf(L"%02X", entry->FileId[byteIndex]);
             wprintf(L"\",\"path\":");
             PrintJsonWide(entry->Name, min(entry->NameChars, SAFEUPLOAD_WRITER_REGISTRY_NAME_CHARS));
-            wprintf(L",\"H\":%u,\"S\":\"%s\",\"C\":%u,\"T\":%u,\"cutoffFlushPairs\":%u,\"unknownReasons\":\"0x%08X\",\"flags\":%u,\"openerPids\":[",
-                entry->H, RegistrySName(entry->S), entry->C, entry->T, entry->CutoffFlushPairs,
-                entry->UnknownReasons, entry->Flags);
+            wprintf(L",\"H\":%u,\"S\":\"%s\",\"C\":%u,\"T\":%u,\"unknownReasons\":\"0x%08X\",\"openerPids\":[",
+                entry->H, RegistrySName(entry->S), entry->C, entry->T,
+                entry->UnknownReasons);
             for (byteIndex = 0; byteIndex < entry->OpenerPidCount && byteIndex < ARRAYSIZE(entry->OpenerPids); ++byteIndex)
                 wprintf(L"%s%u", byteIndex == 0 ? L"" : L",", entry->OpenerPids[byteIndex]);
             wprintf(L"]}");

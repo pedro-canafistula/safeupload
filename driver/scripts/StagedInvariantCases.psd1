@@ -167,7 +167,7 @@
         }
         @{
             CaseId = 'A05'; Revision = 1; Status = 'NotReady'
-            Variant = 'UnexpandedFamily'; Outcome = 'Unimplemented: Cutoff race'
+            Variant = 'UnexpandedFamily'; Outcome = 'Unimplemented: Activation-gate race'
             QualificationScope = 'Phase4; WP5 must expand all design variants'
             ActorSid = 'ResolveStandardUserTokenAtRuntime'; ActorSession = 'ResolveTokenSessionId'
             InitialPolicy = @{ Seed = 'Product'; LiveFlags = 'TEST_DISABLE_TAINT-required' }

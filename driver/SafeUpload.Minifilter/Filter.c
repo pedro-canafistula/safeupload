@@ -1438,6 +1438,7 @@ Return Value:
 
     PAGED_CODE();
 
+#if !SAFEUPLOAD_STAGING_PROTOTYPE
     if (FltObjects->Transaction != NULL &&
         SafeUploadStageTxfCreateMustRefuse(Data, FltObjects)) {
         SafeUploadStageTxfRecordRefused();
@@ -1445,6 +1446,7 @@ Return Value:
         Data->IoStatus.Information = 0;
         return FLT_PREOP_COMPLETE;
     }
+#endif
 
     SafeUploadCount( CreatesSeen );
 

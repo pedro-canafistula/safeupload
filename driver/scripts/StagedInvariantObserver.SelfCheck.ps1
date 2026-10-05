@@ -214,7 +214,7 @@ function SyntheticPredicate([string] $Variant) {
         if ($Variant -eq 'Partial') { $sample.Status='ERROR'; $sample.Captures[0].Status='ERROR' }
         $exactMetadata=[pscustomobject]@{ Raw=$metadata; Api=$identity; AccessRule='Exact'; SecurityId=0; Sddl='synthetic' }
         $expect=[pscustomobject]@{ Path='synthetic-file'; Kind='Final'; Version='Baseline'; Generation=0; FileId='synthetic-id'; ZeroPadding=$false; Metadata=$exactMetadata }
-        $timeline=[pscustomobject]@{ ForbiddenBlocks=@(); PreCutoffImages=@(); AllowedMutations=@(); ExpectedDenials=@(); AccountedGapSequences=@()
+        $timeline=[pscustomobject]@{ ForbiddenBlocks=@(); AllowedMutations=@(); ExpectedDenials=@(); AccountedGapSequences=@()
             WriterIdentities=@([pscustomobject]@{ Pid=11; Sid='S-1-5-21-1-2-3-1000'; SessionId=1; Elevated=$false; IsAdministrator=$false; BootId='fabricated' })
             Operations=@(for ($n=0; $n -le 100; $n++) { [pscustomobject]@{ Trial=$n; Class='writer-open-deny'; NativeCode=5; StartQpc=100+$n*10; EndQpc=101+$n*10 } })
             WriterFence=[pscustomobject]@{ Complete=$true; BootId='fabricated'; QpcFrequency=$frequency; ReleasedQpc=50; CompletedQpc=1500; ExpectedAttempts=101 }
@@ -323,7 +323,7 @@ function FixtureTimeline($Baseline, $Sample) {
     $dirs = @($Baseline.Images | Where-Object { $_.Role -eq 'Parent' } | ForEach-Object {
         [pscustomobject]@{ Path=$_.Path; Entries=$_.DirectoryEntries; Sddl=$_.Sddl; SecurityId=$_.SecurityId }
     })
-    return [pscustomobject]@{ ForbiddenBlocks=@(); PreCutoffImages=@(); AllowedMutations=@(); ExpectedDenials=@(); WriterIdentities=@(); AccountedGapSequences=@($Sample.Sequence)
+    return [pscustomobject]@{ ForbiddenBlocks=@(); AllowedMutations=@(); ExpectedDenials=@(); WriterIdentities=@(); AccountedGapSequences=@($Sample.Sequence)
         PlatformValidated=$true; ObserverIndependent=$false; StandardUserWriters=$false; ContinuousObservationComplete=$false; RestorationKnown=$false
         Checkpoints=@([pscustomobject]@{ Phase=$Sample.Phase; OperationSequence=$Sample.OperationSequence; State='Protected'; Storage=$storage; Directories=$dirs; ReadDenials=@() }) }
 }

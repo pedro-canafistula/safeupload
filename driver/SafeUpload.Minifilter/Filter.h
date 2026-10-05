@@ -252,7 +252,6 @@ typedef struct _SAFEUPLOAD_INSTANCE_TEARDOWN_TOKEN {
 #define SAFEUPLOAD_REGISTRY_UNKNOWN_TRUST       ((LONG)0x00000080)
 #define SAFEUPLOAD_REGISTRY_UNKNOWN_CREATE_IN_FLIGHT ((LONG)0x00000100)
 #define SAFEUPLOAD_REGISTRY_UNKNOWN_RENAME_IN_FLIGHT ((LONG)0x00000200)
-#define SAFEUPLOAD_REGISTRY_UNKNOWN_CUTOFF_FLUSH ((LONG)0x00000400)
 
 /* FltEnlistInTransaction requires a registered, non-NULL transaction context. */
 typedef struct _SAFEUPLOAD_TRANSACTION_CONTEXT {
@@ -694,7 +693,6 @@ typedef struct _SAFEUPLOAD_ADMISSION_EPOCH_TOKEN {
     UINT32 Signature;
     PSAFEUPLOAD_ADMISSION_EPOCH Epoch;
     PVOID InnerCompletionContext;
-    PVOID PagingWriteContext;
     UINT32 OperationKind;
 } SAFEUPLOAD_ADMISSION_EPOCH_TOKEN, *PSAFEUPLOAD_ADMISSION_EPOCH_TOKEN;
 
@@ -703,9 +701,6 @@ VOID SafeUploadPolicyAdmissionRelease(_In_opt_ PSAFEUPLOAD_ADMISSION_EPOCH_TOKEN
 BOOLEAN SafeUploadPolicyAdmissionMustRetry(VOID);
 NTSTATUS SafeUploadPolicyAdmissionEpochStatus(_Out_ PSAFEUPLOAD_ADMISSION_EPOCH_STATUS Status);
 VOID SafeUploadPolicyAdmissionForceNextTimeout(VOID);
-NTSTATUS SafeUploadPolicyActivationCutoffBegin(VOID);
-VOID SafeUploadPolicyActivationCutoffEnd(VOID);
-VOID SafeUploadStageWritersPagingWriteEnd(_In_opt_ PVOID CompletionContext);
 VOID SafeUploadStageWritersQueueRecheck(VOID);
 BOOLEAN SafeUploadPolicyEntryIsNewlyScoped(_In_ SAFEUPLOAD_VOLUME_KIND VolumeKind,
     _In_ PCUNICODE_STRING NormalizedPath);
@@ -768,19 +763,6 @@ SafeUploadPolicyMayMatchVolume (
     );
 
 BOOLEAN SafeUploadPolicyMayMatchInstanceVolume(_In_opt_ PFLT_INSTANCE Instance);
-BOOLEAN SafeUploadPolicyPagingCutoffApplies(_In_opt_ PFLT_INSTANCE Instance);
-_IRQL_raises_(DISPATCH_LEVEL)
-VOID SafeUploadPolicyPagingCutoffEnter(_In_opt_ PFLT_INSTANCE Instance,
-    _Out_ PBOOLEAN Applies, _Out_ PBOOLEAN VolumeMayMatch,
-    _Out_ PULONGLONG RenameLossGeneration, _Out_ PBOOLEAN InstanceContextKnown,
-    _Outptr_result_maybenull_ PSAFEUPLOAD_INSTANCE_CONTEXT *ContextReference,
-    _Out_ _At_(*OldIrql, _IRQL_saves_) PKIRQL OldIrql);
-_IRQL_requires_(DISPATCH_LEVEL)
-VOID SafeUploadPolicyPagingCutoffLeave(_In_ _IRQL_restores_ KIRQL OldIrql,
-    _In_opt_ PSAFEUPLOAD_INSTANCE_CONTEXT ContextReference);
-VOID SafeUploadPolicyPagingFallbackBegin(_In_opt_ PFLT_INSTANCE Instance,
-    _Out_ PVOID *Cookie, _Out_ PBOOLEAN Denied);
-NTSTATUS SafeUploadPolicyPagingFallbackDrain(VOID);
 VOID SafeUploadPolicyRenameLossAdvance(_Inout_ volatile LONG64 *InstanceGeneration,
     _In_ SAFEUPLOAD_VOLUME_KIND VolumeKind, _In_opt_ PCUNICODE_STRING VolumeName);
 VOID SafeUploadPolicyRenameLossSnapshot(_Out_ PULONGLONG Generation);

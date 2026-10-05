@@ -983,13 +983,6 @@ function Get-IOExpectedBytes($Baseline, $ApprovedImages, $Timeline, $Expectation
         if ($DigestOnly) { return [pscustomobject]@{ Length=$image[0].Length; Sha256=$image[0].Sha256 } }
         return ,(Read-IOArtifact $image[0].LogicalArtifact)
     }
-    if ($Expectation.Version -eq 'PreCutoff') {
-        $p = @($Timeline.PreCutoffImages | Where-Object { $_.Path -eq $Path })
-        if ($p.Count -ne 1 -or $p[0].StoredBeforeQpc -ge $p[0].EpochSwapQpc -or $p[0].Bytes -isnot [byte[]] -or
-            [StagedInvariant.Native]::Hash($p[0].Bytes) -cne $p[0].Sha256) { throw 'No independently specified pre-cutoff exception.' }
-        if ($DigestOnly) { return [pscustomobject]@{ Length=$p[0].Bytes.Length; Sha256=$p[0].Sha256 } }
-        return ,$p[0].Bytes
-    }
     $a = @($ApprovedImages | Where-Object { $_.Status -eq 'OK' -and $_.Approval.AttemptId -eq $Expectation.Version })
     if ($a.Count -ne 1) { throw 'Unknown/ambiguous approval version.' }
     $a = $a[0]
@@ -1154,7 +1147,7 @@ function Test-NoUnapprovedByte {
                         }
                     }
                     if ($expect.Kind -eq 'Temp') {
-                        if ($expect.Version -eq 'Baseline' -or $expect.Version -eq 'PreCutoff') { throw 'Temporary must have a real service grant.' }
+                        if ($expect.Version -eq 'Baseline') { throw 'Temporary must have a real service grant.' }
                         $grant = @($ApprovedImages | Where-Object { $_.Approval.AttemptId -eq $expect.Version })[0]
                         if ($grant.Approval.TempPath -cne $image.Path -or $grant.Time.Qpc -gt $s.Start.Qpc) { throw 'Temp grant path/time/expiry mismatch.' }
                         if ($image.Length -gt $approvedBytes.Length) { throw 'Temp exceeds snapshot EOF.' }
@@ -1258,8 +1251,7 @@ function Test-NoUnapprovedByte {
                 $range = [StagedInvariant.Native]::Slice($expected, [int]$entry.Offset, [int]$entry.Length)
                 if ([StagedInvariant.Native]::Hash($range) -cne $entry.PayloadSha256) { $assertions += New-IOAssertion 'LowerPayload' 'FAIL' 'Submitted lower payload not the authorized snapshot at these offsets.' $null $entry.Path }
                 if ($allow.Version -eq 'Baseline' -and $allow.Class -ne 'TrustedSetup') { throw 'Baseline cannot authorize a protected write.' }
-                if ($allow.Version -eq 'PreCutoff' -and ($allow.Class -ne 'SingleCutoffFlush' -or -not $allow.BeforeCutoffStores)) { throw 'Invalid cutoff-flush exception.' }
-                if ($allow.Version -ne 'Baseline' -and $allow.Version -ne 'PreCutoff') {
+                if ($allow.Version -ne 'Baseline') {
                     $a = @($ApprovedImages | Where-Object { $_.Approval.AttemptId -eq $allow.Version })[0]
                     if ($entry.AttemptId -ne $a.Approval.AttemptId -or $entry.PolicyGeneration -ne $a.Approval.PolicyGeneration -or
                         $entry.EpochGeneration -ne $a.Approval.EpochGeneration -or $entry.Qpc -ge $a.Approval.ExpiryQpc -or $entry.Qpc -gt $allow.RevokeQpc -or -not $allow.PermitActive) { throw 'Expired/revoked/stale permit at lower write.' }

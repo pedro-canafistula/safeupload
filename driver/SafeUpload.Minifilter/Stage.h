@@ -115,16 +115,14 @@ NTSTATUS SafeUploadStageWritersPostCreate(_In_ PFLT_CALLBACK_DATA Data,
     _Out_opt_ PBOOLEAN LegacyCallbackRequired);
 VOID SafeUploadStageWritersOnCleanup(_In_ PFLT_CALLBACK_DATA Data, _In_ PCFLT_RELATED_OBJECTS FltObjects);
 BOOLEAN SafeUploadStageWritersNameActivating(_In_ PFLT_INSTANCE Instance, _In_ PCUNICODE_STRING Name);
-BOOLEAN SafeUploadStageWritersIsActivatingSop(_In_opt_ PVOID SectionObjectPointer);
-BOOLEAN SafeUploadStageWritersSopMatchesPolicy(_In_opt_ PVOID SectionObjectPointer,
-    _In_ BOOLEAN IncludeAncestors, _Out_ PBOOLEAN Known);
+_IRQL_requires_max_(APC_LEVEL)
+BOOLEAN SafeUploadStageWritersIsTrackedWriter(_In_opt_ PFLT_INSTANCE Instance,
+    _In_opt_ PFILE_OBJECT FileObject);
+BOOLEAN SafeUploadStageWritersSopMatchesPolicy(_In_ PFLT_INSTANCE Instance,
+    _In_opt_ PVOID SectionObjectPointer, _In_ BOOLEAN IncludeAncestors);
 NTSTATUS SafeUploadStageWritersClassifyById(_In_ PFLT_INSTANCE Instance,
     _In_ PFILE_OBJECT FileObject, _Out_ PBOOLEAN InScope);
 _IRQL_requires_max_(APC_LEVEL)
-BOOLEAN SafeUploadStageWritersPagingWriteBegin(_In_ PFLT_INSTANCE Instance,
-    _In_opt_ PVOID SectionObjectPointer,
-    _Outptr_result_maybenull_ PVOID *CompletionContext);
-VOID SafeUploadStageWritersPagingWriteEnd(_In_opt_ PVOID CompletionContext);
 VOID SafeUploadStageWritersMutationDraining(_In_ PFLT_INSTANCE Instance,
     _In_opt_ PVOID SectionObjectPointer);
 NTSTATUS SafeUploadStageWritersActivatingStatusPage(_In_ UINT32 StartIndex,

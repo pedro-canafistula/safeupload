@@ -1253,15 +1253,7 @@ function Dispose-ObserverResources(
             $Views[$index].Dispose()
         }
         catch {
-            $disposeText = Get-ErrorText $_
-            if ($disposeText -match 'write protected') {
-                # A protected or Activating admission gate can refuse the final flush of an old view;
-                # record that observation separately from resource-restoration failures.
-                Write-Output ('ViewDisposeObserved=' + $disposeText)
-            }
-            else {
-                [void]$Errors.Add('View dispose: ' + $disposeText)
-            }
+            [void]$Errors.Add('View dispose: ' + (Get-ErrorText $_))
         }
     }
     for ($index = $Mappings.Count - 1; $index -ge 0; $index--) {
@@ -3278,12 +3270,13 @@ function Invoke-Variant([string] $SelectedVariant) {
                             $oldWriteSucceeded = $false; $oldWriteCode = [uint32]0
                             try {
                                 $cleanWriter.Position = 0
-                                $cleanWriter.Write([byte[]]([Text.Encoding]::UTF8.GetBytes('POST-CUTOFF DIRECT WRITE')), 0, 24)
+                                $directBytes = [Text.Encoding]::UTF8.GetBytes('POST-GATE DIRECT WRITE')
+                                $cleanWriter.Write($directBytes, 0, $directBytes.Length)
                                 $oldWriteSucceeded = $true
                             }
                             catch { $oldWriteCode = [uint32]([int64]$_.Exception.HResult -band 0xFFFF) }
-                            [void](Add-AEOutcome 'PreScopeHandleWriteDenied' (-not $oldWriteSucceeded -and
-                                $oldWriteCode -eq 5) ('writeSucceeded:' + $oldWriteSucceeded + ';win32Error:' + $oldWriteCode))
+                            [void](Add-AEOutcome 'ExistingWriterHandleRemainsUsable' $oldWriteSucceeded `
+                                ('writeSucceeded:' + $oldWriteSucceeded + ';win32Error:' + $oldWriteCode))
 
                             $secondWriterDenied = $false; $secondWriterCode = [uint32]0; $secondHandle = $null
                             try {
@@ -3298,33 +3291,26 @@ function Invoke-Variant([string] $SelectedVariant) {
                             [void](Add-AEOutcome 'NewWriterRefused' $secondWriterDenied ('opened:' + ($null -ne $secondHandle) +
                                 ';win32Error:' + $secondWriterCode))
 
-                            $cutoffDeadline = [DateTime]::UtcNow.AddSeconds(20)
-                            do {
-                                $cutoffStatus = Read-AEActivatingStatus ('cutoff-' + $cutoffDeadline.Ticks)
-                                $cleanEntry = @($cutoffStatus.entries | Where-Object {
-                                    ([string]$_.path).EndsWith('\clean.maptest', [StringComparison]::OrdinalIgnoreCase)
-                                }) | Select-Object -First 1
-                                $dirtyEntry = @($cutoffStatus.entries | Where-Object {
-                                    ([string]$_.path).EndsWith('\dirty.maptest', [StringComparison]::OrdinalIgnoreCase)
-                                }) | Select-Object -First 1
-                                if ($null -ne $cleanEntry -and $null -ne $dirtyEntry -and
-                                    ($cleanEntry.flags -band 2) -ne 0 -and ($dirtyEntry.flags -band 2) -ne 0 -and
-                                    ($cleanEntry.flags -band 32) -ne 0 -and ($dirtyEntry.flags -band 32) -ne 0 -and
-                                    $cleanEntry.cutoffFlushPairs -eq 1 -and $dirtyEntry.cutoffFlushPairs -eq 1) { break }
-                                Start-Sleep -Milliseconds 100
-                            } while ([DateTime]::UtcNow -lt $cutoffDeadline)
-                            [void](Add-AEOutcome 'CutoffFlushPairRanOnceAndCompletedPerEntry' ($null -ne $cleanEntry -and
-                                $null -ne $dirtyEntry -and ($cleanEntry.flags -band 2) -ne 0 -and
-                                ($dirtyEntry.flags -band 2) -ne 0 -and ($cleanEntry.flags -band 32) -ne 0 -and
-                                ($dirtyEntry.flags -band 32) -ne 0 -and $cleanEntry.cutoffFlushPairs -eq 1 -and
-                                $dirtyEntry.cutoffFlushPairs -eq 1) ('cleanFlags:' + $(if ($null -ne $cleanEntry) { $cleanEntry.flags } else { 'missing' }) +
-                                ';cleanFlushPairs:' + $(if ($null -ne $cleanEntry) { $cleanEntry.cutoffFlushPairs } else { 'missing' }) +
-                                ';dirtyFlags:' + $(if ($null -ne $dirtyEntry) { $dirtyEntry.flags } else { 'missing' }) +
-                                ';dirtyFlushPairs:' + $(if ($null -ne $dirtyEntry) { $dirtyEntry.cutoffFlushPairs } else { 'missing' })))
-
-                            [void](Add-AEOutcome 'DirtyCandidateInitiallyCleanAtCutoff' ($null -ne $dirtyEntry -and
-                                ($dirtyEntry.flags -band 1) -eq 0) ('dirtyFlags:' +
-                                $(if ($null -ne $dirtyEntry) { $dirtyEntry.flags } else { 'missing' })))
+                            $newSectionMap = $null; $newSectionView = $null
+                            $newSectionDenied = $false; $newSectionCode = [uint32]0
+                            try {
+                                $newSectionMap = [IO.MemoryMappedFiles.MemoryMappedFile]::CreateFromFile($cleanWriter,
+                                    ('Local\SafeUpload-AE-new-' + $id), [long]$cleanBytes.Length,
+                                    [IO.MemoryMappedFiles.MemoryMappedFileAccess]::ReadWrite,
+                                    [IO.HandleInheritability]::None, $true)
+                                $newSectionView = $newSectionMap.CreateViewAccessor(0, [long]$cleanBytes.Length,
+                                    [IO.MemoryMappedFiles.MemoryMappedFileAccess]::ReadWrite)
+                            }
+                            catch {
+                                $newSectionCode = [uint32]([int64]$_.Exception.HResult -band 0xFFFF)
+                                $newSectionDenied = $newSectionCode -eq 5
+                            }
+                            finally {
+                                if ($null -ne $newSectionView) { $newSectionView.Dispose() }
+                                if ($null -ne $newSectionMap) { $newSectionMap.Dispose() }
+                            }
+                            [void](Add-AEOutcome 'NewWritableSectionRefused' $newSectionDenied `
+                                ('created:' + (-not $newSectionDenied) + ';win32Error:' + $newSectionCode))
 
                             $dirtyPagingFlush = 'NOT_ATTEMPTED'; $dirtyPagingError = [uint32]0
                             try {
@@ -3337,16 +3323,12 @@ function Invoke-Variant([string] $SelectedVariant) {
                                 $dirtyPagingFlush = 'REFUSED'
                                 $dirtyPagingError = [uint32]([int64]$_.Exception.HResult -band 0xFFFF)
                             }
-                            $dirtyDeadline = [DateTime]::UtcNow.AddSeconds(10)
-                            do {
-                                $dirtyEntry = Wait-AEEntry 'dirty.maptest' 1
-                                if ($null -ne $dirtyEntry -and ($dirtyEntry.flags -band 1) -ne 0) { break }
-                                Start-Sleep -Milliseconds 100
-                            } while ([DateTime]::UtcNow -lt $dirtyDeadline)
-                            [void](Add-AEOutcome 'PagingWriteDeniedAndMarkedDirty' ($null -ne $dirtyEntry -and
-                                $dirtyEntry.state -eq 'Activating' -and ($dirtyEntry.flags -band 35) -eq 35) `
+                            $dirtyEntry = Wait-AEEntry 'dirty.maptest' 1
+                            [void](Add-AEOutcome 'ExistingMappedWriterPagingWritesContinue' `
+                                ($dirtyPagingFlush -eq 'RETURNED_SUCCESS' -and $null -ne $dirtyEntry -and
+                                 $dirtyEntry.state -eq 'Activating' -and $dirtyEntry.H -gt 0) `
                                 ('flush:' + $dirtyPagingFlush + ';win32Error:' + $dirtyPagingError +
-                                ';state:' + [string]$dirtyEntry.state + ';flags:' + $(if ($null -ne $dirtyEntry) { $dirtyEntry.flags } else { 'missing' })))
+                                ';state:' + [string]$dirtyEntry.state + ';H:' + $dirtyEntry.H))
 
                             try { $dirtyView.Dispose() } catch { }
                             $dirtyView = $null
@@ -3365,23 +3347,29 @@ function Invoke-Variant([string] $SelectedVariant) {
                             $cleanWriter = $null
                             $promoteDeadline = [DateTime]::UtcNow.AddSeconds(20)
                             do {
-                                $cleanEntry = Wait-AEEntry 'clean.maptest' 1
-                                if ($null -ne $cleanEntry -and $cleanEntry.state -eq 'Protected') { break }
+                                $cleanFinal = Wait-AEEntry 'clean.maptest' 1
+                                $dirtyFinal = Wait-AEEntry 'dirty.maptest' 1
+                                if ($null -ne $cleanFinal -and $null -ne $dirtyFinal -and
+                                    $cleanFinal.state -eq 'Protected' -and $dirtyFinal.state -eq 'Protected') { break }
                                 Start-Sleep -Milliseconds 100
                             } while ([DateTime]::UtcNow -lt $promoteDeadline)
-                            [void](Add-AEOutcome 'WriterCloseFlushPromotesCleanFile' ($cleanFlush -eq 'SUCCESS' -and
-                                $null -ne $cleanEntry -and $cleanEntry.state -eq 'Protected' -and
-                                $cleanEntry.cutoffFlushPairs -eq 1 -and
-                                $cleanEntry.H -eq 0 -and $cleanEntry.C -eq 0 -and $cleanEntry.T -eq 0 -and
-                                $cleanEntry.S -eq 'NO') ('flush:' + $cleanFlush + ';flushError:' + $cleanFlushError +
-                                ';state:' + [string]$cleanEntry.state + ';cutoffFlushPairs:' + $cleanEntry.cutoffFlushPairs +
-                                ';H:' + $cleanEntry.H + ';C:' +
-                                $cleanEntry.C + ';T:' + $cleanEntry.T + ';S:' + [string]$cleanEntry.S))
-                            $dirtyFinal = Wait-AEEntry 'dirty.maptest' 3
-                            [void](Add-AEOutcome 'DirtyAfterCutoffNeverPromotes' ($null -ne $dirtyFinal -and
-                                $dirtyFinal.state -eq 'Activating' -and ($dirtyFinal.flags -band 1) -ne 0) `
-                                ('state:' + [string]$dirtyFinal.state + ';flags:' +
-                                $(if ($null -ne $dirtyFinal) { $dirtyFinal.flags } else { 'missing' })))
+                            $cleanFinalFacts = if ($null -ne $cleanFinal) {
+                                [string]$cleanFinal.state + ':' + $cleanFinal.H + '/' + $cleanFinal.C + '/' +
+                                    $cleanFinal.T + '/' + [string]$cleanFinal.S
+                            } else { 'missing' }
+                            $dirtyFinalFacts = if ($null -ne $dirtyFinal) {
+                                [string]$dirtyFinal.state + ':' + $dirtyFinal.H + '/' + $dirtyFinal.C + '/' +
+                                    $dirtyFinal.T + '/' + [string]$dirtyFinal.S
+                            } else { 'missing' }
+                            [void](Add-AEOutcome 'FreeFPromotesAfterHandlesAndMappingsClose' `
+                                ($cleanFlush -eq 'SUCCESS' -and $null -ne $cleanFinal -and
+                                 $null -ne $dirtyFinal -and $cleanFinal.state -eq 'Protected' -and
+                                 $dirtyFinal.state -eq 'Protected' -and $cleanFinal.H -eq 0 -and
+                                 $dirtyFinal.H -eq 0 -and $cleanFinal.C -eq 0 -and $dirtyFinal.C -eq 0 -and
+                                 $cleanFinal.T -eq 0 -and $dirtyFinal.T -eq 0 -and
+                                 $cleanFinal.S -eq 'NO' -and $dirtyFinal.S -eq 'NO') `
+                                ('cleanFlush:' + $cleanFlush + ';clean:' + $cleanFinalFacts +
+                                ';dirty:' + $dirtyFinalFacts))
                         }
                         catch {
                             [void](Add-AEOutcome 'Unexpected' $false (Get-ErrorText $_))

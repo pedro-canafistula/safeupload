@@ -1471,7 +1471,7 @@ $value=$b.ToString().Split([char]0)[0]
         # No fabricated lower entries, actor-free bypass or live Flags proof.
         $trial.MutationLedger=@{Complete=$false;Overflow=$false;FirstSequence=0;LastSequence=0;Entries=@();Source='Unavailable: driver lower admission/completion mutation ledger readback; user-mode calls cannot substitute'}
         $trial.ExpectedTimeline=@{ForbiddenBlocks=@($state.ForbiddenBlocks | ForEach-Object {,[Convert]::FromBase64String($_)});
-            PreCutoffImages=@();Checkpoints=$checkpoints;AllowedMutations=@();ExpectedDenials=@();WriterIdentities=@($trial.Actor | Where-Object {$null -ne $_});
+            Checkpoints=$checkpoints;AllowedMutations=@();ExpectedDenials=@();WriterIdentities=@($trial.Actor | Where-Object {$null -ne $_});
             Operations=$trial.Operations;WriterFence=$trial.WriterFence;LastAccessPolicy=$trial.LastAccessPolicy;
             ExternalEvidence=[pscustomobject]@{Build=$trial.Platform.Build;PrepareBootId=$state.PrepareBootId;ActiveBootId=$trial.Platform.BootId;
                 ObserverPid=$trial.Platform.ObserverPid;ObserverSid=$trial.Platform.ObserverSid;ObserverProcess=$trial.Platform.ObserverProcess;

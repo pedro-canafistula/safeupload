@@ -70,7 +70,7 @@ typedef struct _SAFEUPLOAD_VOLUME_SCOPE_CACHE {
     ULONG PrefixCount;
     ULONG Flags;
     BOOLEAN Overflow;
-    BOOLEAN ScopeTransitionActive;
+    BOOLEAN ScopeApplyActive;
     SAFEUPLOAD_VOLUME_SCOPE_PREFIX Prefixes[SAFEUPLOAD_VOLUME_SCOPE_PREFIX_LIMIT];
 } SAFEUPLOAD_VOLUME_SCOPE_CACHE, *PSAFEUPLOAD_VOLUME_SCOPE_CACHE;
 
@@ -80,16 +80,8 @@ typedef struct _SAFEUPLOAD_VOLUME_SCOPE_CACHE {
 static KSPIN_LOCK SafeUploadVolumeScopeCacheLock;
 static SAFEUPLOAD_VOLUME_SCOPE_CACHE SafeUploadVolumeScopeCaches[2];
 static volatile LONG SafeUploadVolumeScopeCacheIndex;
-/* Token-allocation fallback paging I/O is counted in two cutoff generations:
- * the active slot freezes at the same lock boundary as a scope transition. */
-static volatile LONG SafeUploadPagingFallbackCounterIndex;
-static volatile LONG SafeUploadPagingFallbackDrainSlot;
-static volatile LONG SafeUploadPagingFallbackCounts[2];
-static KEVENT SafeUploadPagingFallbackDrained[2];
-#define SAFEUPLOAD_PAGING_FALLBACK_COOKIE_TAG ((ULONG_PTR)0x2)
-#define SAFEUPLOAD_PAGING_FALLBACK_COOKIE_MASK ((ULONG_PTR)0x3)
 /* P0-5: sequence couples instance rename-loss publication to expansion's
- * final transition cutoff without retaining any instance object here. */
+ * scope-apply completion without retaining any instance object here. */
 static volatile LONG64 SafeUploadScopeRenameLossGeneration;
 
 static volatile LONG SafeUploadPolicyGeneration = 0;
@@ -140,17 +132,6 @@ static volatile LONG SafeUploadEpochGeneration;
 static volatile LONG SafeUploadPolicyFailedClosed;
 static volatile LONG SafeUploadPolicyFinalizing;
 static volatile LONG SafeUploadForceNextEpochTimeout;
-
-/* A policy update pauses new per-file cutoffs and drains the active count before
- * changing epochs. The worker holds no policy/update lock across cache I/O. */
-static KSPIN_LOCK SafeUploadActivationCutoffLock;
-static KEVENT SafeUploadActivationCutoffsDrained;
-static volatile LONG SafeUploadActivationCutoffsActive;
-static volatile LONG SafeUploadActivationCutoffsPaused;
-static NTSTATUS SafeUploadPolicyActivationCutoffsPause(VOID);
-static VOID SafeUploadPolicyActivationCutoffsResume(VOID);
-__declspec(noinline) static VOID SafeUploadPolicyPagingFallbackRelease(_In_ ULONG Slot);
-__declspec(noinline) static ULONG SafeUploadPolicyPagingFallbackDrainSlotSnapshot(VOID);
 
 //
 //  The candidate snapshot while a policy update is in transition (from before
@@ -314,21 +295,10 @@ NTSTATUS SafeUploadPolicyAdmissionAcquire(_Outptr_ PSAFEUPLOAD_ADMISSION_EPOCH_T
 VOID SafeUploadPolicyAdmissionRelease(_In_opt_ PSAFEUPLOAD_ADMISSION_EPOCH_TOKEN Token)
 {
     PSAFEUPLOAD_ADMISSION_EPOCH epoch;
-    ULONG_PTR tokenValue = (ULONG_PTR)Token;
     if (Token == NULL) return;
-    if ((tokenValue & SAFEUPLOAD_PAGING_FALLBACK_COOKIE_MASK) ==
-            SAFEUPLOAD_PAGING_FALLBACK_COOKIE_TAG) {
-        SafeUploadPolicyPagingFallbackRelease((ULONG)((tokenValue >> 2) & 1));
-        return;
-    }
     if (Token->Signature != SAFEUPLOAD_ADMISSION_EPOCH_TOKEN_SIGNATURE) return;
     epoch = Token->Epoch;
     Token->Signature = 0;
-    if (Token->PagingWriteContext != NULL) {
-        PVOID pagingContext = Token->PagingWriteContext;
-        Token->PagingWriteContext = NULL;
-        SafeUploadStageWritersPagingWriteEnd(pagingContext);
-    }
     if (epoch != NULL && InterlockedDecrement(&epoch->ActiveCallbacks) == 0 &&
         InterlockedCompareExchange(&epoch->Accepting, 0, 0) == 0)
         KeSetEvent(&epoch->Drained, IO_NO_INCREMENT, FALSE);
@@ -340,58 +310,6 @@ BOOLEAN SafeUploadPolicyAdmissionMustRetry(VOID)
 {
     return InterlockedCompareExchange(&SafeUploadPolicyFailedClosed, 0, 0) != 0 ||
         InterlockedCompareExchange(&SafeUploadPolicyFinalizing, 0, 0) != 0;
-}
-
-#ifdef ALLOC_PRAGMA
-#pragma alloc_text(PAGE, SafeUploadPolicyActivationCutoffBegin)
-#pragma alloc_text(PAGE, SafeUploadPolicyActivationCutoffEnd)
-#pragma alloc_text(PAGE, SafeUploadPolicyActivationCutoffsPause)
-#pragma alloc_text(PAGE, SafeUploadPolicyActivationCutoffsResume)
-#pragma alloc_text(PAGE, SafeUploadPolicyPagingFallbackDrain)
-#endif
-
-/* These lock boundaries stay in nonpaged code. Their pageable callers only
- * prepare/consume state at PASSIVE_LEVEL; no caller raises IRQL in PAGE code. */
-__declspec(noinline) static VOID SafeUploadPolicySetActivationCutoffsPaused(_In_ BOOLEAN Paused)
-{
-    KIRQL irql;
-
-    SafeUploadAcquireSpinLock(&SafeUploadActivationCutoffLock, &irql);
-    InterlockedExchange(&SafeUploadActivationCutoffsPaused, Paused ? 1 : 0);
-    if (Paused && InterlockedCompareExchange(&SafeUploadActivationCutoffsActive, 0, 0) == 0)
-        KeSetEvent(&SafeUploadActivationCutoffsDrained, IO_NO_INCREMENT, FALSE);
-    SafeUploadReleaseSpinLock(&SafeUploadActivationCutoffLock, irql);
-}
-
-__declspec(noinline) static NTSTATUS SafeUploadPolicyTryBeginActivationCutoff(VOID)
-{
-    KIRQL irql;
-    NTSTATUS status = STATUS_SUCCESS;
-
-    SafeUploadAcquireSpinLock(&SafeUploadActivationCutoffLock, &irql);
-    if (InterlockedCompareExchange(&SafeUploadActivationCutoffsPaused, 0, 0) != 0 ||
-        InterlockedCompareExchange(&SafeUploadPolicyFailedClosed, 0, 0) != 0 ||
-        InterlockedCompareExchange(&SafeUploadPolicyFinalizing, 0, 0) != 0) {
-        status = STATUS_RETRY;
-    } else if (InterlockedIncrement(&SafeUploadActivationCutoffsActive) == 1) {
-        KeClearEvent(&SafeUploadActivationCutoffsDrained);
-    }
-    SafeUploadReleaseSpinLock(&SafeUploadActivationCutoffLock, irql);
-    return status;
-}
-
-__declspec(noinline) static VOID SafeUploadPolicyEndActivationCutoff(VOID)
-{
-    KIRQL irql;
-    LONG remaining;
-
-    SafeUploadAcquireSpinLock(&SafeUploadActivationCutoffLock, &irql);
-    remaining = InterlockedDecrement(&SafeUploadActivationCutoffsActive);
-    if (remaining <= 0) {
-        if (remaining < 0) InterlockedExchange(&SafeUploadActivationCutoffsActive, 0);
-        KeSetEvent(&SafeUploadActivationCutoffsDrained, IO_NO_INCREMENT, FALSE);
-    }
-    SafeUploadReleaseSpinLock(&SafeUploadActivationCutoffLock, irql);
 }
 
 __declspec(noinline) static PSAFEUPLOAD_ADMISSION_EPOCH SafeUploadPolicyDetachCurrentEpoch(VOID)
@@ -409,40 +327,6 @@ __declspec(noinline) static PSAFEUPLOAD_ADMISSION_EPOCH SafeUploadPolicyDetachCu
     }
     SafeUploadReleaseSpinLock(&SafeUploadEpochLock, irql);
     return epoch;
-}
-
-static NTSTATUS SafeUploadPolicyActivationCutoffsPause(VOID)
-{
-    LARGE_INTEGER timeout;
-    NTSTATUS status;
-
-    PAGED_CODE();
-    SafeUploadPolicySetActivationCutoffsPaused(TRUE);
-
-    timeout.QuadPart = -SAFEUPLOAD_POLICY_DRAIN_TIMEOUT_100NS;
-    status = KeWaitForSingleObject(&SafeUploadActivationCutoffsDrained,
-        Executive, KernelMode, FALSE, &timeout);
-    return status == STATUS_SUCCESS ? STATUS_SUCCESS : STATUS_IO_TIMEOUT;
-}
-
-static VOID SafeUploadPolicyActivationCutoffsResume(VOID)
-{
-    PAGED_CODE();
-    SafeUploadPolicySetActivationCutoffsPaused(FALSE);
-    /* D5: rescan enforced entries so any cutoff whose flush is incomplete retries after resume. */
-    SafeUploadStageWritersQueueRecheck();
-}
-
-NTSTATUS SafeUploadPolicyActivationCutoffBegin(VOID)
-{
-    PAGED_CODE();
-    return SafeUploadPolicyTryBeginActivationCutoff();
-}
-
-VOID SafeUploadPolicyActivationCutoffEnd(VOID)
-{
-    PAGED_CODE();
-    SafeUploadPolicyEndActivationCutoff();
 }
 
 VOID SafeUploadPolicyAdmissionForceNextTimeout(VOID)
@@ -570,7 +454,7 @@ static VOID SafeUploadPolicyCacheBuild(_In_ ULONG CacheIndex,
     PSAFEUPLOAD_VOLUME_SCOPE_CACHE cache = &SafeUploadVolumeScopeCaches[CacheIndex];
     ULONG index;
     RtlZeroMemory(cache, sizeof(*cache));
-    cache->ScopeTransitionActive = TransitionActive;
+    cache->ScopeApplyActive = TransitionActive;
     SafeUploadPolicyCacheAddSnapshot(cache, Current);
     SafeUploadPolicyCacheAddSnapshot(cache, Pending);
     if (BootActive) {
@@ -589,35 +473,15 @@ static VOID SafeUploadPolicyCacheBuild(_In_ ULONG CacheIndex,
     }
 }
 
-/* Caller holds SafeUploadVolumeScopeCacheLock. A pre-transition fallback
- * count moves to the frozen drain slot; later out-of-scope fallback writes
- * use the other slot and cannot postpone this transition's drain. */
-__declspec(noinline) static VOID SafeUploadPolicyStartPagingFallbackCutoffLocked(
-    _In_ BOOLEAN WasActive, _In_ BOOLEAN IsActive)
-{
-    LONG oldSlot, newSlot;
-    if (WasActive || !IsActive) return;
-    oldSlot = InterlockedCompareExchange(&SafeUploadPagingFallbackCounterIndex, 0, 0);
-    newSlot = oldSlot ^ 1;
-    InterlockedExchange(&SafeUploadPagingFallbackDrainSlot, oldSlot);
-    InterlockedExchange(&SafeUploadPagingFallbackCounterIndex, newSlot);
-}
-
 /* The inactive cache is built at PASSIVE_LEVEL. This short resident boundary
- * publishes it together with the matching policy pointers and cutoff bit. */
+ * publishes it together with the matching policy pointers and apply state. */
 __declspec(noinline) static VOID SafeUploadPolicyPublishScopeStateNoInline(
     _In_ ULONG CacheIndex, _In_opt_ PSAFEUPLOAD_POLICY Current,
     _In_opt_ const SAFEUPLOAD_POLICY *Pending, _In_ BOOLEAN BootActive,
     _In_ BOOLEAN Finalizing, _In_ BOOLEAN TransitionActive)
 {
-    PSAFEUPLOAD_VOLUME_SCOPE_CACHE previous;
-    ULONG active;
     KIRQL irql;
     SafeUploadAcquireSpinLock(&SafeUploadVolumeScopeCacheLock, &irql);
-    active = (ULONG)InterlockedCompareExchange(&SafeUploadVolumeScopeCacheIndex, 0, 0);
-    previous = &SafeUploadVolumeScopeCaches[active];
-    SafeUploadPolicyStartPagingFallbackCutoffLocked(
-        previous->ScopeTransitionActive, TransitionActive);
     SafeUploadPolicy = Current;
     SafeUploadPendingPolicy = Pending;
     SafeUploadBootScopesActive = BootActive;
@@ -650,9 +514,7 @@ __declspec(noinline) static VOID SafeUploadPolicySetTransitionStateNoInline(
     SafeUploadAcquireSpinLock(&SafeUploadVolumeScopeCacheLock, &irql);
     cache = &SafeUploadVolumeScopeCaches[
         (ULONG)InterlockedCompareExchange(&SafeUploadVolumeScopeCacheIndex, 0, 0)];
-    SafeUploadPolicyStartPagingFallbackCutoffLocked(
-        cache->ScopeTransitionActive, TransitionActive);
-    cache->ScopeTransitionActive = TransitionActive;
+    cache->ScopeApplyActive = TransitionActive;
 #if SAFEUPLOAD_STAGING_PROTOTYPE
     InterlockedExchange(&SafeUploadPolicyFinalizing, Finalizing ? 1 : 0);
 #else
@@ -661,9 +523,8 @@ __declspec(noinline) static VOID SafeUploadPolicySetTransitionStateNoInline(
     SafeUploadReleaseSpinLock(&SafeUploadVolumeScopeCacheLock, irql);
 }
 
-/* Orchestrator decision P0-1: unresolved refusals apply only when this cached
- * volume can contain a current, pending, or boot scope. The same resident
- * snapshot makes the P0-2 scope swap and paging cutoff one atomic observation. */
+/* Unresolved refusals apply only when this cached volume can contain a current,
+ * pending, or boot scope. The resident snapshot classifies policy admission. */
 __declspec(noinline) static BOOLEAN SafeUploadPolicyVolumeCacheMatchesLocked(
     _In_ PSAFEUPLOAD_VOLUME_SCOPE_CACHE Cache,
     _In_ SAFEUPLOAD_VOLUME_KIND VolumeKind, _In_opt_ PCUNICODE_STRING VolumeName)
@@ -695,9 +556,9 @@ __declspec(noinline) static BOOLEAN SafeUploadPolicyVolumeCacheMatchesLocked(
     return mayMatch;
 }
 
-/* P0-5: rename-loss publication and the expansion cutoff use the same short
+/* Rename-loss publication and the scope-apply generation use the same short
  * resident lock. The per-instance generation always advances; this shared
- * sequence advances only when an active transition can match that volume. */
+ * sequence advances only when an active apply can match that volume. */
 __declspec(noinline) VOID SafeUploadPolicyRenameLossAdvance(
     _Inout_ volatile LONG64 *InstanceGeneration,
     _In_ SAFEUPLOAD_VOLUME_KIND VolumeKind, _In_opt_ PCUNICODE_STRING VolumeName)
@@ -709,7 +570,7 @@ __declspec(noinline) VOID SafeUploadPolicyRenameLossAdvance(
     InterlockedIncrement64(InstanceGeneration);
     active = (ULONG)InterlockedCompareExchange(&SafeUploadVolumeScopeCacheIndex, 0, 0);
     cache = &SafeUploadVolumeScopeCaches[active];
-    if (cache->ScopeTransitionActive &&
+    if (cache->ScopeApplyActive &&
         SafeUploadPolicyVolumeCacheMatchesLocked(cache, VolumeKind, VolumeName))
         InterlockedIncrement64(&SafeUploadScopeRenameLossGeneration);
     SafeUploadReleaseSpinLock(&SafeUploadVolumeScopeCacheLock, irql);
@@ -742,8 +603,8 @@ __declspec(noinline) VOID SafeUploadPolicyRenameLossGenerationLeave(_In_ _IRQL_r
     SafeUploadReleaseSpinLock(&SafeUploadVolumeScopeCacheLock, OldIrql);
 }
 
-/* Returns FALSE while leaving the cutoff closed if any relevant rename loss
- * raced the caller's expansion scan. */
+/* Returns FALSE while leaving the apply active if a relevant rename loss
+ * raced the caller's scope scan. */
 __declspec(noinline) BOOLEAN SafeUploadPolicyTryEndScopeTransition(
     _In_ ULONGLONG RenameLossSnapshot, _In_ BOOLEAN Finalizing)
 {
@@ -757,7 +618,7 @@ __declspec(noinline) BOOLEAN SafeUploadPolicyTryEndScopeTransition(
     if (unchanged) {
         active = (ULONG)InterlockedCompareExchange(&SafeUploadVolumeScopeCacheIndex, 0, 0);
         cache = &SafeUploadVolumeScopeCaches[active];
-        cache->ScopeTransitionActive = FALSE;
+        cache->ScopeApplyActive = FALSE;
 #if SAFEUPLOAD_STAGING_PROTOTYPE
         InterlockedExchange(&SafeUploadPolicyFinalizing, Finalizing ? 1 : 0);
 #else
@@ -769,8 +630,7 @@ __declspec(noinline) BOOLEAN SafeUploadPolicyTryEndScopeTransition(
 }
 
 __declspec(noinline) static BOOLEAN SafeUploadPolicyVolumeCacheQueryNoInline(
-    _In_ SAFEUPLOAD_VOLUME_KIND VolumeKind, _In_opt_ PCUNICODE_STRING VolumeName,
-    _In_ BOOLEAN RequirePagingCutoff)
+    _In_ SAFEUPLOAD_VOLUME_KIND VolumeKind, _In_opt_ PCUNICODE_STRING VolumeName)
 {
     PSAFEUPLOAD_VOLUME_SCOPE_CACHE cache;
     BOOLEAN mayMatch = FALSE;
@@ -779,132 +639,10 @@ __declspec(noinline) static BOOLEAN SafeUploadPolicyVolumeCacheQueryNoInline(
     SafeUploadAcquireSpinLock(&SafeUploadVolumeScopeCacheLock, &irql);
     active = (ULONG)InterlockedCompareExchange(&SafeUploadVolumeScopeCacheIndex, 0, 0);
     cache = &SafeUploadVolumeScopeCaches[active];
-    if (!RequirePagingCutoff || cache->ScopeTransitionActive)
-        mayMatch = SafeUploadPolicyVolumeCacheMatchesLocked(cache, VolumeKind, VolumeName);
+    mayMatch = SafeUploadPolicyVolumeCacheMatchesLocked(cache, VolumeKind, VolumeName);
     SafeUploadReleaseSpinLock(&SafeUploadVolumeScopeCacheLock, irql);
     return mayMatch;
 }
-
-/* Returns with the scope-cache spin lock held. The caller performs its
- * paging admission while holding that lock, then calls the matching leave. */
-_IRQL_raises_(DISPATCH_LEVEL)
-__declspec(noinline) VOID SafeUploadPolicyPagingCutoffEnter(
-    _In_opt_ PFLT_INSTANCE Instance, _Out_ PBOOLEAN Applies,
-    _Out_ PBOOLEAN VolumeMayMatch, _Out_ PULONGLONG RenameLossGeneration,
-    _Out_ PBOOLEAN InstanceContextKnown,
-    _Outptr_result_maybenull_ PSAFEUPLOAD_INSTANCE_CONTEXT *ContextReference,
-    _Out_ _At_(*OldIrql, _IRQL_saves_) PKIRQL OldIrql)
-{
-    PSAFEUPLOAD_INSTANCE_CONTEXT context = NULL;
-    WCHAR volumeNameBuffer[SAFEUPLOAD_MAX_PREFIX_CHARS];
-    UNICODE_STRING volumeName;
-    PCUNICODE_STRING volumeNamePointer = NULL;
-    SAFEUPLOAD_VOLUME_KIND kind = SafeUploadVolumeUnknown;
-    PSAFEUPLOAD_VOLUME_SCOPE_CACHE cache;
-    ULONG active;
-    *ContextReference = NULL;
-    *RenameLossGeneration = 0;
-    *InstanceContextKnown = FALSE;
-    if (Instance != NULL && NT_SUCCESS(FltGetInstanceContext(Instance, (PFLT_CONTEXT *)&context))) {
-        *ContextReference = context;
-        kind = context->VolumeKind;
-        if (context->VolumeNameChars != 0 && context->VolumeNameChars <= SAFEUPLOAD_MAX_PREFIX_CHARS) {
-            RtlCopyMemory(volumeNameBuffer, context->VolumeName,
-                context->VolumeNameChars * sizeof(WCHAR));
-            volumeName.Buffer = volumeNameBuffer;
-            volumeName.Length = volumeName.MaximumLength =
-                (USHORT)(context->VolumeNameChars * sizeof(WCHAR));
-            volumeNamePointer = &volumeName;
-        }
-    }
-    SafeUploadAcquireSpinLock(&SafeUploadVolumeScopeCacheLock, OldIrql);
-    if (context != NULL) {
-        *InstanceContextKnown = TRUE;
-#if SAFEUPLOAD_STAGING_PROTOTYPE
-        *RenameLossGeneration = (ULONGLONG)InterlockedCompareExchange64(
-            &context->RegistryRenameLossGeneration, 0, 0);
-#endif
-    }
-    active = (ULONG)InterlockedCompareExchange(&SafeUploadVolumeScopeCacheIndex, 0, 0);
-    cache = &SafeUploadVolumeScopeCaches[active];
-    *VolumeMayMatch = SafeUploadPolicyVolumeCacheMatchesLocked(cache, kind, volumeNamePointer);
-    *Applies = cache->ScopeTransitionActive && *VolumeMayMatch;
-}
-
-_IRQL_requires_(DISPATCH_LEVEL)
-__declspec(noinline) VOID SafeUploadPolicyPagingCutoffLeave(_In_ _IRQL_restores_ KIRQL OldIrql,
-    _In_opt_ PSAFEUPLOAD_INSTANCE_CONTEXT ContextReference)
-{
-    SafeUploadReleaseSpinLock(&SafeUploadVolumeScopeCacheLock, OldIrql);
-    if (ContextReference != NULL) FltReleaseContext(ContextReference);
-}
-
-__declspec(noinline) VOID SafeUploadPolicyPagingFallbackBegin(_In_opt_ PFLT_INSTANCE Instance,
-    _Out_ PVOID *Cookie, _Out_ PBOOLEAN Denied)
-{
-    BOOLEAN applies, volumeMayMatch;
-    BOOLEAN instanceContextKnown;
-    ULONGLONG renameLossGeneration;
-    PSAFEUPLOAD_INSTANCE_CONTEXT contextReference = NULL;
-    KIRQL irql;
-    ULONG slot;
-    *Cookie = NULL;
-    *Denied = FALSE;
-    SafeUploadPolicyPagingCutoffEnter(Instance, &applies, &volumeMayMatch,
-        &renameLossGeneration, &instanceContextKnown, &contextReference, &irql);
-    if (applies) {
-        *Denied = TRUE;
-    } else {
-        /* Count the whole no-token paging request, not only known SOPs. This
-         * closes the allocation-failure race with a later scope publication. */
-        slot = (ULONG)InterlockedCompareExchange(&SafeUploadPagingFallbackCounterIndex, 0, 0);
-        if (InterlockedIncrement(&SafeUploadPagingFallbackCounts[slot]) == 1)
-            KeClearEvent(&SafeUploadPagingFallbackDrained[slot]);
-        *Cookie = (PVOID)((((ULONG_PTR)slot) << 2) | SAFEUPLOAD_PAGING_FALLBACK_COOKIE_TAG);
-    }
-    UNREFERENCED_PARAMETER(volumeMayMatch);
-    UNREFERENCED_PARAMETER(renameLossGeneration);
-    UNREFERENCED_PARAMETER(instanceContextKnown);
-    SafeUploadPolicyPagingCutoffLeave(irql, contextReference);
-}
-
-#if SAFEUPLOAD_STAGING_PROTOTYPE
-__declspec(noinline) static VOID SafeUploadPolicyPagingFallbackRelease(_In_ ULONG Slot)
-{
-    LONG remaining;
-    KIRQL irql;
-    if (Slot > 1) return;
-    SafeUploadAcquireSpinLock(&SafeUploadVolumeScopeCacheLock, &irql);
-    remaining = InterlockedDecrement(&SafeUploadPagingFallbackCounts[Slot]);
-    if (remaining <= 0) {
-        if (remaining < 0) InterlockedExchange(&SafeUploadPagingFallbackCounts[Slot], 0);
-        KeSetEvent(&SafeUploadPagingFallbackDrained[Slot], IO_NO_INCREMENT, FALSE);
-    }
-    SafeUploadReleaseSpinLock(&SafeUploadVolumeScopeCacheLock, irql);
-}
-
-__declspec(noinline) static ULONG SafeUploadPolicyPagingFallbackDrainSlotSnapshot(VOID)
-{
-    ULONG slot;
-    KIRQL irql;
-    SafeUploadAcquireSpinLock(&SafeUploadVolumeScopeCacheLock, &irql);
-    slot = (ULONG)InterlockedCompareExchange(&SafeUploadPagingFallbackDrainSlot, 0, 0);
-    SafeUploadReleaseSpinLock(&SafeUploadVolumeScopeCacheLock, irql);
-    return slot;
-}
-
-NTSTATUS SafeUploadPolicyPagingFallbackDrain(VOID)
-{
-    LARGE_INTEGER timeout;
-    ULONG slot;
-    PAGED_CODE();
-    slot = SafeUploadPolicyPagingFallbackDrainSlotSnapshot();
-    timeout.QuadPart = -SAFEUPLOAD_POLICY_DRAIN_TIMEOUT_100NS;
-    return KeWaitForSingleObject(&SafeUploadPagingFallbackDrained[slot],
-        Executive, KernelMode, FALSE, &timeout) == STATUS_SUCCESS ?
-        STATUS_SUCCESS : STATUS_IO_TIMEOUT;
-}
-#endif
 
 BOOLEAN SafeUploadPolicyMayMatchInstanceVolume(_In_opt_ PFLT_INSTANCE Instance)
 {
@@ -922,30 +660,9 @@ BOOLEAN SafeUploadPolicyMayMatchInstanceVolume(_In_opt_ PFLT_INSTANCE Instance)
             volumeNamePointer = &volumeName;
         }
     }
-    mayMatch = SafeUploadPolicyVolumeCacheQueryNoInline(kind, volumeNamePointer, FALSE);
+    mayMatch = SafeUploadPolicyVolumeCacheQueryNoInline(kind, volumeNamePointer);
     if (context != NULL) FltReleaseContext(context);
     return mayMatch;
-}
-
-BOOLEAN SafeUploadPolicyPagingCutoffApplies(_In_opt_ PFLT_INSTANCE Instance)
-{
-    PSAFEUPLOAD_INSTANCE_CONTEXT context = NULL;
-    UNICODE_STRING volumeName;
-    PCUNICODE_STRING volumeNamePointer = NULL;
-    SAFEUPLOAD_VOLUME_KIND kind = SafeUploadVolumeUnknown;
-    BOOLEAN applies;
-    if (Instance != NULL && NT_SUCCESS(FltGetInstanceContext(Instance, (PFLT_CONTEXT *)&context))) {
-        kind = context->VolumeKind;
-        if (context->VolumeNameChars != 0 && context->VolumeNameChars <= SAFEUPLOAD_MAX_PREFIX_CHARS) {
-            volumeName.Buffer = context->VolumeName;
-            volumeName.Length = volumeName.MaximumLength =
-                (USHORT)(context->VolumeNameChars * sizeof(WCHAR));
-            volumeNamePointer = &volumeName;
-        }
-    }
-    applies = SafeUploadPolicyVolumeCacheQueryNoInline(kind, volumeNamePointer, TRUE);
-    if (context != NULL) FltReleaseContext(context);
-    return applies;
 }
 
 /* Caller holds SafeUploadPolicyLock shared. Keep current, pending, and union
@@ -1043,24 +760,14 @@ Routine Description:
     KeInitializeSpinLock(&SafeUploadVolumeScopeCacheLock);
     SafeUploadVolumeScopeCacheIndex = 0;
     RtlZeroMemory(SafeUploadVolumeScopeCaches, sizeof(SafeUploadVolumeScopeCaches));
-    SafeUploadPagingFallbackCounterIndex = 0;
-    SafeUploadPagingFallbackDrainSlot = 0;
-    SafeUploadPagingFallbackCounts[0] = 0;
-    SafeUploadPagingFallbackCounts[1] = 0;
-    KeInitializeEvent(&SafeUploadPagingFallbackDrained[0], NotificationEvent, TRUE);
-    KeInitializeEvent(&SafeUploadPagingFallbackDrained[1], NotificationEvent, TRUE);
 #if SAFEUPLOAD_STAGING_PROTOTYPE
     KeInitializeMutex(&SafeUploadPolicyUpdateMutex, 0);
     KeInitializeSpinLock(&SafeUploadEpochLock);
-    KeInitializeSpinLock(&SafeUploadActivationCutoffLock);
-    KeInitializeEvent(&SafeUploadActivationCutoffsDrained, NotificationEvent, TRUE);
     InitializeListHead(&SafeUploadDrainingEpochs);
     SafeUploadEpochGeneration = 0;
     SafeUploadPolicyFailedClosed = 0;
     SafeUploadPolicyFinalizing = 0;
     SafeUploadForceNextEpochTimeout = 0;
-    SafeUploadActivationCutoffsActive = 0;
-    SafeUploadActivationCutoffsPaused = 0;
     SafeUploadCurrentEpoch = SafeUploadEpochAllocate();
 #endif
     SafeUploadPolicy = NULL;
@@ -1286,24 +993,10 @@ SafeUploadSetPolicy (
 
 #if SAFEUPLOAD_STAGING_PROTOTYPE
     SafeUploadPolicyUpdateLockAcquire();
-
-    /* Let any already-running file cutoff finish while its paging writes can
-     * still use the accepting epoch. No policy lock is held while we wait. */
-    status = SafeUploadPolicyActivationCutoffsPause();
-    if (!NT_SUCCESS(status)) {
-        if (InterlockedCompareExchange(&SafeUploadPolicyFailedClosed, 0, 0) == 0)
-            SafeUploadPolicyActivationCutoffsResume();
-        SafeUploadPolicyUpdateLockRelease();
-        ExFreePoolWithTag(snapshot, SAFEUPLOAD_POOL_TAG);
-        return STATUS_IO_TIMEOUT;
-    }
-
     FltAcquirePushLockExclusive(&SafeUploadPolicyLock);
     if (SafeUploadPendingPolicy != NULL) {
         if (!RtlEqualMemory(&SafeUploadPendingPolicy->Data, Message, sizeof(*Message))) {
             FltReleasePushLock(&SafeUploadPolicyLock);
-            if (InterlockedCompareExchange(&SafeUploadPolicyFailedClosed, 0, 0) == 0)
-                SafeUploadPolicyActivationCutoffsResume();
             SafeUploadPolicyUpdateLockRelease();
             ExFreePoolWithTag(snapshot, SAFEUPLOAD_POOL_TAG);
             return STATUS_DEVICE_BUSY;
@@ -1327,20 +1020,11 @@ SafeUploadSetPolicy (
     }
     FltReleasePushLock(&SafeUploadPolicyLock);
     if (!NT_SUCCESS(status)) {
-        if (InterlockedCompareExchange(&SafeUploadPolicyFailedClosed, 0, 0) == 0)
-            SafeUploadPolicyActivationCutoffsResume();
         SafeUploadPolicyUpdateLockRelease();
         if (!alreadyPending) ExFreePoolWithTag(snapshot, SAFEUPLOAD_POOL_TAG);
         return status;
     }
     status = SafeUploadEpochDrainAll();
-    if (!NT_SUCCESS(status)) {
-        InterlockedExchange(&SafeUploadPolicyFailedClosed, 1);
-        SafeUploadPolicySetTransitionStateNoInline(FALSE, TRUE);
-        SafeUploadPolicyUpdateLockRelease();
-        return STATUS_IO_TIMEOUT;
-    }
-    status = SafeUploadPolicyPagingFallbackDrain();
     if (!NT_SUCCESS(status)) {
         InterlockedExchange(&SafeUploadPolicyFailedClosed, 1);
         SafeUploadPolicySetTransitionStateNoInline(FALSE, TRUE);
@@ -1358,8 +1042,7 @@ SafeUploadSetPolicy (
             SafeUploadPolicyUpdateLockRelease();
             return status;
         }
-        /* P0-5: keep the shared cutoff closed and rescan if rename tracking was
-         * lost on any volume that can match this current/pending/boot union. */
+        /* Keep the apply scan active and rescan if a relevant rename was lost. */
         if (SafeUploadPolicyTryEndScopeTransition(renameLossSnapshot, FALSE)) break;
     }
     {
@@ -1367,7 +1050,6 @@ SafeUploadSetPolicy (
         ULONG policyFlags = snapshot->Flags;
         LONG epochGeneration = SafeUploadEpochGeneration;
         LONG policyGeneration = SafeUploadPolicyGeneration;
-        SafeUploadPolicyActivationCutoffsResume();
         SafeUploadPolicyUpdateLockRelease();
         SafeUploadTrace("policy candidate pending; epoch=%ld generation=%ld prefixes=%u flags=0x%X\n",
             epochGeneration, policyGeneration, prefixCount, policyFlags);
@@ -1413,18 +1095,9 @@ NTSTATUS SafeUploadFinalizeBootPolicy(_In_ CONST SAFEUPLOAD_POLICY_MESSAGE *Mess
     }
     FltReleasePushLock(&SafeUploadPolicyLock);
 
-    status = SafeUploadPolicyActivationCutoffsPause();
-    if (!NT_SUCCESS(status)) {
-        if (InterlockedCompareExchange(&SafeUploadPolicyFailedClosed, 0, 0) == 0)
-            SafeUploadPolicyActivationCutoffsResume();
-        SafeUploadPolicyUpdateLockRelease();
-        return STATUS_IO_TIMEOUT;
-    }
-
     SafeUploadPolicySetTransitionStateNoInline(TRUE, TRUE);
     status = SafeUploadEpochCloseAndReplace();
     if (NT_SUCCESS(status)) status = SafeUploadEpochDrainAll();
-    if (NT_SUCCESS(status)) status = SafeUploadPolicyPagingFallbackDrain();
     if (!NT_SUCCESS(status)) {
         InterlockedExchange(&SafeUploadPolicyFailedClosed, 1);
         SafeUploadPolicySetTransitionStateNoInline(FALSE, TRUE);
@@ -1448,14 +1121,12 @@ NTSTATUS SafeUploadFinalizeBootPolicy(_In_ CONST SAFEUPLOAD_POLICY_MESSAGE *Mess
             ULONGLONG renameLossSnapshot;
             SafeUploadPolicyRenameLossSnapshot(&renameLossSnapshot);
             SafeUploadStageWritersReconcileCurrentScope();
-            /* P0-5: finalization opens the same cutoff only after the current
-             * scope has absorbed every relevant rename-loss generation. */
+            /* Finalization ends only after the current scope absorbs relevant rename losses. */
             if (SafeUploadPolicyTryEndScopeTransition(renameLossSnapshot, FALSE)) break;
         }
         if (previous != NULL && previous != &SafeUploadBootSnapshot)
             ExFreePoolWithTag(previous, SAFEUPLOAD_POOL_TAG);
         InterlockedExchange(&SafeUploadPolicyFailedClosed, 0);
-        SafeUploadPolicyActivationCutoffsResume();
         SafeUploadPolicyUpdateLockRelease();
         return STATUS_SUCCESS;
     }

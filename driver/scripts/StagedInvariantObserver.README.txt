@@ -106,7 +106,7 @@ Inputs from the future real service/table/ledger adapter
     additionally has State='Approved'; Permit has Granted=true. Digest must be uppercase SHA-256. These fields
     are adapter evidence, NOT authentication merely because a caller sets them.
   ExpectedTimeline: ForbiddenBlocks (array of byte[]; use ,$block to preserve
-    a single block), PreCutoffImages, Checkpoints, AllowedMutations,
+    a single block), Checkpoints, AllowedMutations,
     ExpectedDenials, WriterIdentities, AccountedGapSequences, PlatformValidated,
     ObserverIndependent, StandardUserWriters, ContinuousObservationComplete,
     RestorationKnown. Adapter must substantiate every coverage boolean.
@@ -114,23 +114,21 @@ Inputs from the future real service/table/ledger adapter
     trusted orchestrator must collect/validate tokens and independent processes.
   Checkpoint: Phase, OperationSequence, State, Storage[], Directories[],
     ReadDenials[]. Storage: Path, Kind=Final/Temp/Absent, Version=Baseline/
-    PreCutoff/<AttemptId>, FileId, Generation, ZeroPadding, Metadata. Metadata:
+    <AttemptId>, FileId, Generation, ZeroPadding, Metadata. Metadata:
     Attributes, Creation, Modified, Changed, Accessed, Links, SecurityId, Sddl.
     Final may have Alternates[] (same schema) for old/new whole-image replacement.
     Temp additionally: WrittenRanges[] {Offset,Length,FileId,LowerCompleted},
     Unwritten=Zero/Baseline. Directories: Path, Entries (complete Name schema),
     SecurityId, Sddl; optional Alternates[] with the same directory schema for
     an accounted publication transition. ReadDenial: Path, Unbuffered, NativeCode; Activating only.
-  PreCutoffImage: Path, Bytes, Sha256, StoredBeforeQpc, EpochSwapQpc. No service
-    approval is minted. Expected bytes/digest must be committed before cutoff.
   MutationLedger: Complete, Overflow, FirstSequence, LastSequence, Entries[].
     Entry: Sequence, PostComplete, LowerAdmitted, DeniedBeforeLower, Qpc, Path,
     FileId, VolumeSerial, SopIdentity, EpochGeneration, Operation, Paging,
     Offset, Length, NativeResult, AttemptId, PolicyGeneration,
     DestinationGeneration, PayloadSha256. AllowedMutations/ExpectedDenials
     carry the same exact fields/Sequence. AllowedMutation additionally Version,
-    Generation, Class=TrustedSetup/SingleCutoffFlush/ExactMetadataTransition
-    or publication class, BeforeCutoffStores, PermitActive, RevokeQpc.
+    Generation, Class=TrustedSetup/ExactMetadataTransition or publication class,
+    PermitActive, RevokeQpc.
     Writes are independently range-hashed from the indicated image. Adapter
     must prove expiry, revoke/disconnect, one temp create/one rename consumption,
     grant principals and exact transitions; table records cannot mint permits.
