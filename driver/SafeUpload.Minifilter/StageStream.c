@@ -2712,7 +2712,7 @@ static FLT_PREOP_CALLBACK_STATUS StageExternalRename(PFLT_CALLBACK_DATA Data,
 #if SAFEUPLOAD_STAGING_PROTOTYPE
     if (allow && RegistryRenameContext != NULL) {
         BOOLEAN linkOperation = cls == FileLinkInformation || cls == FileLinkInformationEx;
-        (VOID)SafeUploadStageWritersPrepareRename(Data, Objects, &destination->Name,
+        (VOID)SafeUploadStageWritersPrepareRename(Data, Objects, &source->Name, &destination->Name,
             linkOperation, RegistryRenameContext);
     }
 #endif
@@ -3233,7 +3233,7 @@ static FLT_PREOP_CALLBACK_STATUS StageDispatchCore(PFLT_CALLBACK_DATA Data,
         result = SafeUploadPreSetInformation(Data, Objects, CompletionContext);
 #if SAFEUPLOAD_STAGING_PROTOTYPE
         if (result != FLT_PREOP_SUCCESS_NO_CALLBACK) {
-            SafeUploadStageWritersCompleteRename(registryRenameContext, FALSE, FALSE);
+            SafeUploadStageWritersCompleteRename(Objects->Instance, registryRenameContext, FALSE, FALSE);
             return result;
         }
         if (registryRenameContext != NULL) {
@@ -3401,7 +3401,7 @@ static FLT_POSTOP_CALLBACK_STATUS StagePostOperationCore(PFLT_CALLBACK_DATA Data
     }
     if (Data->Iopb->MajorFunction == IRP_MJ_SET_INFORMATION &&
         SafeUploadStageWritersIsRenameContext(CompletionContext)) {
-        SafeUploadStageWritersCompleteRename(CompletionContext,
+        SafeUploadStageWritersCompleteRename(Objects->Instance, CompletionContext,
             !FlagOn(Flags, FLTFL_POST_OPERATION_DRAINING) && Data->IoStatus.Status == STATUS_SUCCESS,
             FlagOn(Flags, FLTFL_POST_OPERATION_DRAINING));
         return FLT_POSTOP_FINISHED_PROCESSING;
