@@ -456,3 +456,11 @@ falsify the Phase 3 cutoff mechanism; the harness must test it, never reinterpre
   The review-4 fixture capability map (`evidence/2026-10-05/review4-fixture-capability-map.txt`) records the
   exact reusable stimuli and missing lower-completion/W/marker receipts; older aggregate counters are not
   substituted for the required races.
+- **2026-10-05 b24 build checkpoint:** the observer source increment `fb704ed2` has all four required
+  exact-source WDK builds at 0 warnings/0 errors with PREfast, DriverRecommendedRules and ApiValidator.
+  Root read the builder logs and validated all 26 source files, archive/manifest and artifact hashes
+  (`evidence/2026-10-05/exact-mvp3-b24-root-validation.txt`). The kernel source manifest is identical to
+  b23; this increment adds harness code only. Signed feature SHA-256:
+  `59D78808F5AB37ECC4668DCB921715BE65E7FC00B87F469B269DBCBBA2749BE6`.
+  Neither b23 nor b24 has a qualifying VM run; owner recovery and an independent clean baseline still
+  precede S01. The new driver-off coordinator remains under offline review and is not VM-qualified.
