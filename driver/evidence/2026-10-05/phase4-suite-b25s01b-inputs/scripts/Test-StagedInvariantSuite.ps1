@@ -405,7 +405,6 @@ finally { $key.Dispose(); $parent.Dispose() }
 }
 function Get-WriterBody {
 @'
-$env:TEMP='__TEMP__';$env:TMP=$env:TEMP
 Add-Type -TypeDefinition @"
 using System;
 using System.ComponentModel;
@@ -1683,7 +1682,7 @@ $value=$b.ToString().Split([char]0)[0]
         }
         $configPath=Join-Path $stateDirectory 'writer-config.clixml'
         Save-State @{ActorSid=$state.ActorSid;Payloads=$payloads;CreateNew=($CaseId -eq 'S02-agent-down-open-refused');Target=(Join-Path $protectedDirectory $(if($CaseId -eq 'S02-agent-down-open-refused'){'new.bin'}else{'marker.bin'}))} $configPath
-        $writerBody=(Get-WriterBody).Replace('__CONFIG__',(ConvertTo-PowerShellLiteral $configPath)).Replace('__IDENTITY__',(ConvertTo-PowerShellLiteral (Join-Path $actorDirectory 'identity.clixml'))).Replace('__GO__',(ConvertTo-PowerShellLiteral (Join-Path $actorDirectory 'go'))).Replace('__TEMP__',(ConvertTo-PowerShellLiteral $actorDirectory))
+        $writerBody=(Get-WriterBody).Replace('__CONFIG__',(ConvertTo-PowerShellLiteral $configPath)).Replace('__IDENTITY__',(ConvertTo-PowerShellLiteral (Join-Path $actorDirectory 'identity.clixml'))).Replace('__GO__',(ConvertTo-PowerShellLiteral (Join-Path $actorDirectory 'go')))
         $writerLauncher=Join-Path $stateDirectory 'writer.ps1'
         Write-DurableFile $writerLauncher (New-TaskLauncher $writerBody $state.WriterToken (Join-Path $actorDirectory 'completion.clixml')) -New
         foreach($path in @($configPath,$writerLauncher)){

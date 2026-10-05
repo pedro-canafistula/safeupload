@@ -494,3 +494,54 @@ falsify the Phase 3 cutoff mechanism; the harness must test it, never reinterpre
   `evidence/2026-10-05/observer-corpus-wp2prep1-d39d6c5358c4-inputs/provenance.json`; source selection
   was clean and no VM was touched. This is lifecycle preparation, not a case result. S01 remains first
   after owner rollback and independent clean-baseline verification; b25 has not run on the debuggee.
+
+## Current acceptance queue (2026-10-05 continuation)
+
+This queue applies the owner's priority: finish S01 and independent restoration first, then missing
+proof instrumentation and critical Phase 3 races, then complete end-to-end acceptance. Implemented,
+run on the VM, and qualified are separate states. A compiled fixture or a synthetic parser control
+does not close a VM requirement. The full contracts remain in `phase4-suite-design-v2.txt`.
+
+- **S01 b25s01b actual result:** the activating boot completed with the exact b25 feature driver under
+  boot Verifier (`0x1209bb`), changed boot identity, valid one-scope BootPolicy, and durable readiness
+  on trusted C: (canary checks 15). No bugcheck was observed. The writer task ran but its first
+  `Add-Type` failed: the compiler could not find `C:\Windows\TEMP\bhqubgdv.0.cs`, before token
+  identity publication. There are zero recorded operations, so scope denial is **not qualified**.
+  The precise temporary-file permission/lifecycle cause is not established by the retained evidence.
+  Independent restoration has a changed final boot, original driver/policy, Verifier off, no owned
+  actors/tasks/fixtures, restored process audit, and `BaselineClean=True`. Evidence prefix:
+  `evidence/2026-10-05/boot-start-invariant-S01-denied-write-after-boot-boot-verifier-b25s01b`;
+  inspect `-artifacts/actor/completion.clixml`, `-artifacts/readiness.json`, `-artifacts/case.json`,
+  `-final-restored-state.txt`, and `-root-readout.json`. The seed remains INCONCLUSIVE and Phase 4
+  remains unqualified. Trusted C: already reports `instanceWritersUntracked=1` at readiness; this
+  carried finding still requires diagnosis and a proof that promotion is usable after real boot.
+- **Unattended S01 harness decision:** direct only the writer process's TEMP/TMP to its already
+  writable actor fixture directory before compilation. This is necessary to execute the scope-denial
+  requirement with the existing standard-user token; do not grant it administrator rights, change
+  machine temporary-directory permissions, or weaken admission. Review and validate this narrow
+  change, then repeat checkpointed S01 and independent restoration. No diagnostic guard is needed
+  to rediscover the already retained compilation failure.
+
+| Work package / acceptance requirement | Implemented | Run on VM / qualified | Evidence required to close it |
+| --- | --- | --- | --- |
+| S01 boot safety and first protected write | Resident comparator fix and seed lifecycle in `39406a55` / `6174dfda`; writer temp repair pending | b25s01b boot/readiness and clean restoration ran; denial and complete gate open | Changed boot, active boot Verifier, exact policy/filter readiness preceding OS-verified standard-user attempts, native access-denied results, raw unchanged scope, separate clean restoration |
+| Preserve Phase 3 increments 1–2, registry-TxF 93/93 | Existing corpus | run 19 qualified on its original source; current source regression pending | Exact-source runtime-Verifier 93/93 corpus and independent restoration after S01 |
+| WP3A live proof instrumentation | Isolated W-ticket producer `f99989f1` and narrow upper-trace parser `eb6f3311`; lower fixture draft | Neither new instrumentation nor lower fixture has run on VM; no race qualified | Loss-detecting upper/lower identity and completion pairing, live taint flags, coherent promotion/epoch/Free boundary, marker/section receipts, real service permit/journal/notification coverage; gaps stay INCONCLUSIVE |
+| RV4-W01 / A05 cleanup versus pending noncached write | Aligned writer and exact-FO lower hold drafts | Pending | Actual cleanup/H=0 while W>0, Activating retained, matched lower success/failure/cancel/draining or explicit unavailable outcomes, raw images and promotion boundary; missing-completion Unknown and Protected control |
+| RV4-W02 mutating SET_INFORMATION/FSCTL and MDL retry | Existing native encodings only; completion fixture pending | Pending | Each metadata/FSCTL class, actual lower completion and same W ticket through rename transfer, cleanup race, disallowed fast MDL retried as counted IRP, exact names/IDs/metadata/raw runs |
+| RV4-M01/M02 overflow, ADS and hard-link classification across policy | Product paths exist; exact marker receipts and expanded cases pending | Pending | Distinct tier exhaustion, live inside/outside/undecidable marker wait, rename/link races, full identity/ADS binding, loss generation, safe quiescent retirement, sticky loss and independent-volume controls |
+| RV4-C01/C02 fixed section capacity, binding and fallback | Existing separate section HOLD/FAIL fixture; distinct-identity corpus pending | Pending | Exactly 64 identified slots and overflow, lower acquire failure/release/draining, exact-entry or instance sticky Unknown, binding/identity/allocation/no-SOP fallback, reboot reset and no false paging refusal |
+| WP2 independent observer qualification | Corpus and checkpoint coordinator in `fb704ed2` / `6174dfda`; builder-only controls passed | New corpus has not run on VM; temporal completeness open | Driver-off raw representation/reader/corruption self-tests on this VM and artifact, complete allocated extents/MFT/index/slack, cadence gaps, transient write-erase detection with lower ledger |
+| N-01 normal-build canary and trust | Isolated draft under review; capacity liveness defect open | Pending | Reviewed normal-build path, four exact builds, boot newly-mounted canary/trust, failed/late/detached controls; test hooks absent from normal |
+| N-02 installer path on Windows | Isolated source `fc0d7ff6`; mock validation only; stale agent test repair pending | Installer has not run on debuggee; not qualified | Owner-authorized real Windows install, native ACL/SCM/SYSTEM seed readbacks, no demand start, reboot and standard-user tamper controls, independent restoration |
+| Trusted C: tracking Unknown after boot | Finding retained in S00 and b25s01b readiness | Reproduced; unresolved | Identify exact tracking loss from live evidence, fix with fresh kernel review/builds, runtime Verifier and boot proof; do not reset Unknown or add a scan |
+| WP4 real saves and hand-back: C01–C05, B01–B02, X01 | Case-family placeholders; underlying owned-stream/inspection path exists | Complete acceptance pending | Cached/mapped/overwrite/replacement/rename, approve/block/justification, exact sealed version, safe user-only hand-back and failures, concurrent writers/readers, real app/service and raw observer |
+| WP5 policy and representations: A01–A05, P01–P03 plus all RV4 families | Case-family placeholders and older diagnostic stimuli | Complete acceptance pending | Handle/view/retained-section/duplicate holders; expansion/shrink epochs, TxF, cache barrier and every required storage/outcome variant bound to Protected transition |
+| WP6 lifecycle/refusals: R01–R03, P04–P06 | Seed agent-absence path only; other family placeholders | Complete acceptance pending | Restart mid-save and mid-policy, agent down at boot and reconnect, capacity/loss, boot/trust/install, authorization/refusal corpus |
+| WP7 complete Phase 4 gate | Table reserves S00–S02 plus 22 original families; RV4 variants still need expansion | No complete three-mode run qualified | Every expanded required case in ordinary, runtime-Verifier and boot-Verifier modes; zero unapproved bytes, real service outcomes, latency p95 ≤250 ms/max ≤1000 ms, separate restoration per case |
+| Phase 5 fresh adversarial running-system review | Pending | Pending | Fresh Luna attacks actual running system with harness, retained attack evidence, fixes with fresh review/builds, then rerun complete Phase 4 |
+| Remove obsolete StageFence after milestone review | Out of admission path | Deletion pending milestone dependency review | Source/dependency inspection showing no remaining dependency, coherent deletion and required builds |
+
+All original families remain required: S00–S02, A01–A05, C01–C05, B01–B02, R01–R03,
+P01–P06, X01, and expanded RV4-W01/W02/M01/M02/C01/C02. A seed-only S01 pass will close
+the immediate boot-safety gate, not the missing Phase 4 proof adapters or the full acceptance suite.

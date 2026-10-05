@@ -1,0 +1,45 @@
+# Independent S01 b25 readout
+
+## Decision
+
+The narrow S01 boot-start denial gate is **INCONCLUSIVE / NOT DEMONSTRATED**. Readiness and boot-verifier setup are evidenced, and the VM was subsequently restored to a clean baseline. The standard-user actor did not publish its identity record, so the harness never issued the `go` signal and recorded zero protected-file operations. There is no evidence that any attempted mutation returned native error 5. Do not count this run as an S01 pass or as a demonstrated policy failure. The wrapper's exit 1 and suite `INCONCLUSIVE` are consistent with this narrower conclusion; neither substitutes for the underlying records.
+
+## Independent evidence read
+
+I read the exact contract `output/mvp-continuation/s01-b25-retry-readout-contract.txt`, the `b25s01b` host checkpoint files, and the raw guest records under `driver/evidence/2026-10-05/boot-start-invariant-S01-denied-write-after-boot-boot-verifier-b25s01b-artifacts/`. The evidence directory contains `readiness.json`, `trial.clixml`, `case.json`, `case.guest-export.txt`, active/persistent Verifier records, lifecycle/restoration records and the final-restored-state capture. I did not access the VM or make guest calls.
+
+Preparation is evidenced by `prepare.txt` and `prerun-result.txt`: product-mode BootPolicy seed succeeded; exact preboot record readback reported 16,656 bytes, valid protected ACL, no PendingScopes, and one protected scope in the pinned S01 suite setup. At seed verification the service was temporarily Start=3; the captured preparation then successfully changed it to boot start (Start=0) and captured Verifier flags `0x001209bb` for `SafeUpload.sys` in Oneboot mode. `prerun-result.txt` says `PRE_RUN_OK=True`. The preboot check's Start=3 is a preparatory intermediate, not the after-configuration service state.
+
+There is direct evidence of an activating reboot: `reboot-1-changed.txt` changes boot identity from `WIN10-DEBUGGED/2026-10-05T09:47:16.5000000Z` to `...09:50:07.5000000Z`. The current-boot readiness record uses the latter identity and records QPC 674013109 at 10 MHz, valid BootPolicy protection, FilterReady=true, and a trusted, canary-passed NTFS C: volume whose GUID matches the readiness target. Its canary check count is 15 and status/cleanup are zero. The record also shows `instanceWritersUntracked=1` for that instance; this is a caveat for broader writer-ledger conclusions, not evidence of a denial attempt. The current-boot active Verifier evidence records flags `0x001209bb`, SafeUpload.sys loaded, and `RuntimeDriverEntryUnchecked=false`; the configured oneboot settings and active capture agree. A later startup-completion QPC is numerically larger, but it belongs to the same recorded BootId and QPC domain; it is not evidence of a clock-domain mismatch.
+
+The decisive failure is recorded in raw `trial.clixml` and the exported `case.guest-export.txt`: the bounded wait for `actor/identity.clixml` expired because the file did not exist. `Operations` is empty; `WriterFence.Complete` is false with 101 expected attempts; no actor provenance or writer identities are present; there are no expected native-status assertions or denial observations. The pinned suite source at `driver/scripts/Test-StagedInvariantSuite.ps1` places durable `readiness.json` before identity validation, validates the actor before writing `actor/go`, and starts its protected operation sequence only after that go record. Therefore readiness proves the gate was reached, but the absent identity/go means the actor did not attempt a mutating open. `ForbiddenByteCount=0` and unchanged samples only say no changed bytes were observed; they cannot establish access denial. The `CadenceGap` and `CadenceCoverage` records are also inconclusive because the required writer barrier/completion/QPC fence is absent.
+
+Restoration is separately evidenced. The second reboot changes identity from the active boot to `...09:56:40.5000000Z`. `final-restored-state.txt` has SHA-256 `5be7754ab10b005e3f08a9c1e39c5d1db68f117121d4a461f77a60b92b5c047b` and records `BaselineClean=True`, original installed driver and policy hashes matching the stated baseline, service Manual/Stopped, filter unloaded, Verifier off/not configured, process-creation audit restored, and no fixture process/task/user/profile/volume/canary residue. `restoration.clixml` is present. This supports clean restoration, independent of wrapper completion sentinels.
+
+## Blocking finding and bounded next step
+
+**Blocker:** no actor identity was produced after the bounded retry; consequently the writer fence is incomplete and zero mutating opens were performed. This is a harness/actor-start or identity-publication failure to diagnose, not a proven product denial failure. Preserve this failed overlay/evidence as required by the contract. The retained final-restoration record already shows a clean baseline; no disk recovery is indicated by this evidence. Diagnose the actor-side failure from its completion record, then obtain owner authorization for a new run on a freshly rechecked clean baseline. A passing retry must retain standard-user SID/PID/session/command provenance, readiness-before-go ordering, all 101 exact native error-5 results, and an independently clean final restoration. Do not infer or claim denial from the current zero-operation run.
+
+This run does not qualify the lower mutation ledger, full cadence or case coverage, Phase 3 increments 3–5, or full Phase 4. The evidence supports setup, boot/readiness, and final restoration only; it leaves the actual denied-write behavior unknown.
+
+## Principal artifact pins
+
+SHA-256 values below were recomputed from the retained local files:
+
+- `prepare.txt`: `afad3f5d7acda816423ff72cee802d449b6ba262a046461e7f079c1307919cf3`
+- `prerun.txt`: `d996d73216caedc3932915afd03e757d2229fdb8d31942da0347a03cd6ef473a`
+- `prerun-result.txt`: `ad9f0ae328f1a3234cfd654b794783e8bb19e43b9ba9d5db9a7da2c7a2f728f9`
+- `reboot-1-changed.txt`: `20946b706d169ca5c78e9887e908f543955556ec4cf1f37f7994df11c37aa55a`
+- `artifacts/readiness.json`: `485b58b46bed9fc801b82e8a2418801c6c707b6bbc80092867338bab9bb632c4`
+- `artifacts/trial.clixml`: `2dc3dcf98a1a04ffdc3c0fbe494e45ee28883af9ac762f6126731741b8b4c9c2`
+- `artifacts/case.json`: `917b5135f9c98520dff74393ae3e2f2f94f471f5577d34e8e70c2549b75feed4`
+- `artifacts/case.guest-export.txt`: `11cb6bda80cfef87405fe1e41696b4c567feee60fbd107db0f68eaf970585439`
+- `artifacts/restoration.clixml`: `7b784bc87176f46ce7bc4d844f961f9b8a487c7aac31866e7d6bd583845da343`
+- `final-restored-state.txt`: `5be7754ab10b005e3f08a9c1e39c5d1db68f117121d4a461f77a60b92b5c047b`
+
+Contract pins the main checkout at `1b0de37d9084bc67bb425e11ec512162bbab6716`, driver source at `6174dfda841132a0544dc1d96717207fc2392842`, and signed b25 feature SHA-256 `03A127AC8B41BADE8FB005B1E190CEC436B2BAF7361CDEF29BD725DD8B4D23CA`.
+
+
+## Later actor completion clarification
+
+The retained `artifacts/actor/completion.clixml` proves the scheduled actor task launched and returned a completion envelope with ExitCode=1 on the active BootId. Its first recorded error is the C# CodeDOM compiler failing because `C:\Windows\TEMP\bhqubgdv.0.cs` could not be found. This narrows the observed cause from a generic actor-start/identity-publication problem to compilation failure before identity publication. It still proves no protected operation and no error-5 denial. The final-restored-state record is already clean, so the earlier bounded next-step wording requiring disk recovery is superseded as described above.

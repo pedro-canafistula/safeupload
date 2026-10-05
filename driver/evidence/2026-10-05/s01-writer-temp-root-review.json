@@ -1,0 +1,9 @@
+{
+  "SuiteSha256": "F2C002221C48E10C863FC121E0E5A15EC07A041BAF453DAE1DE1C2A2474E0EB5",
+  "SourceDelta": "Only writer-process TEMP/TMP to existing actor directory plus escaped placeholder replacement.",
+  "AcceptanceRequirement": "S01 protected-scope denial after durable boot readiness.",
+  "RootRead": "Actual actor completion, case, readiness, independent baseline, source delta, builder checker, full raw-c and fresh Luna review.",
+  "Limits": "Exact temp ACL/lifecycle cause unproven. Builder compiler check ran as administrator; actual standard-user boot-Verifier proof remains required.",
+  "Authorization": "Current owner explicitly instructs finish S01. Clean restoration supported. A serial checkpointed retry is already authorized; no new approval needed. Owner-only disk repoint/install and stated baseline/failure-policy exceptions still apply.",
+  "KernelDelta": "None; existing source manifest must match b25 before run."
+}
