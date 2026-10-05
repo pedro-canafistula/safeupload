@@ -338,3 +338,8 @@ falsify the Phase 3 cutoff mechanism; the harness must test it, never reinterpre
   absent at both edges and never installed in the window: only the SCM assigns a per-service SID, to the process of the service it starts, so
   no process can carry it except through privileged token forgery, which the owner decision trusts. With the service installed, the gap still
   makes the proof INCONCLUSIVE; the agent image/user check always applies.
+- **2026-10-05 finding (blocking): the increments 3-5 driver is not boot-safe yet.** Seed case S01 (boot policy with one protected
+  scope) bugchecks 0xEF at the activating reboot: wininit.exe dies (exit 14001, SxS activation context) because early-boot I/O outside
+  any scope is refused or broken. Deterministic; increments 1-2 (mvp3-a10) boot the same policy fine. Invariant restated: at boot, with
+  only the BootPolicy snapshot, the driver may refuse only mutating access into protected scopes; reads, image loads and executes outside
+  any scope are never refused. Guest recovery needs an owner-run rollback: evidence/2026-10-05/s01-bugcheck-rollback.sh.
