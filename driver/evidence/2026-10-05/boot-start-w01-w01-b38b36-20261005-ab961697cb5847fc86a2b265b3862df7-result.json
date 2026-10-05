@@ -1,0 +1,25 @@
+{
+  "CopiedEvidence": {
+    "SafeUpload-rv4-w01-control-ab961697cb5847fc86a2b265b3862df7": 1,
+    "SafeUpload-w01-state-ab961697cb5847fc86a2b265b3862df7": 0,
+    "boot-start-w01-w01-b38b36-20261005-ab961697cb5847fc86a2b265b3862df7-afterboot.done.json": 1,
+    "boot-start-w01-w01-b38b36-20261005-ab961697cb5847fc86a2b265b3862df7-afterboot.err": 1,
+    "boot-start-w01-w01-b38b36-20261005-ab961697cb5847fc86a2b265b3862df7-afterboot.out": 1,
+    "boot-start-w01-w01-b38b36-20261005-ab961697cb5847fc86a2b265b3862df7-artifacts": 0,
+    "boot-start-w01-w01-b38b36-20261005-ab961697cb5847fc86a2b265b3862df7-finalize.done.json": 1,
+    "boot-start-w01-w01-b38b36-20261005-ab961697cb5847fc86a2b265b3862df7-finalize.err": 1,
+    "boot-start-w01-w01-b38b36-20261005-ab961697cb5847fc86a2b265b3862df7-finalize.out": 1,
+    "boot-start-w01-w01-b38b36-20261005-ab961697cb5847fc86a2b265b3862df7-prepare.done.json": 0,
+    "boot-start-w01-w01-b38b36-20261005-ab961697cb5847fc86a2b265b3862df7-prepare.err": 0,
+    "boot-start-w01-w01-b38b36-20261005-ab961697cb5847fc86a2b265b3862df7-prepare.out": 0
+  },
+  "ObservationJoins": null,
+  "Phase4": "NOT_QUALIFIED",
+  "Problems": [
+    "Wrapper/staging failure: 20"
+  ],
+  "RunName": "boot-start-w01-w01-b38b36-20261005-ab961697cb5847fc86a2b265b3862df7",
+  "SourceTransportRestorationGate": false,
+  "Verdict": "W01/A05 INCONCLUSIVE",
+  "WrapperExit": 20
+}

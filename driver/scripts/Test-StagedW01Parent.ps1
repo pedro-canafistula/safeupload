@@ -83,7 +83,9 @@ function Set-PrivateAcl([string]$Path,[bool]$Directory) {
         $a.AddAccessRule([Security.AccessControl.FileSystemAccessRule]::new([Security.Principal.SecurityIdentifier]::new($sid),[Security.AccessControl.FileSystemRights]::FullControl,$flags,[Security.AccessControl.PropagationFlags]::None,[Security.AccessControl.AccessControlType]::Allow))
     }
     Set-Acl -LiteralPath $Path -AclObject $a
-    if((Get-SecuritySddl $Path $Directory) -cne $a.GetSecurityDescriptorSddlForm([Security.AccessControl.AccessControlSections]::Owner -bor [Security.AccessControl.AccessControlSections]::Group -bor [Security.AccessControl.AccessControlSections]::Access)){throw 'Private ACL readback mismatch'}
+    # Windows adds the auto-inherited flag (D:P -> D:PAI) once the descriptor is applied; the owner, group, protection and every ACE must match exactly.
+    $expectedSddl=$a.GetSecurityDescriptorSddlForm([Security.AccessControl.AccessControlSections]::Owner -bor [Security.AccessControl.AccessControlSections]::Group -bor [Security.AccessControl.AccessControlSections]::Access)
+    if((Get-SecuritySddl $Path $Directory) -replace 'D:(P?)AI\(','D:$1(' -cne ($expectedSddl -replace 'D:(P?)AI\(','D:$1(')){throw 'Private ACL readback mismatch'}
 }
 function Assert-ReplacementAcl([string]$Path) {
     # A private child DACL alone cannot override DELETE_CHILD on an ancestor.
