@@ -255,7 +255,8 @@ NTSTATUS SafeUploadStageWritersClassifyById(_In_ PFLT_INSTANCE Instance,
     _In_ PFILE_OBJECT FileObject, _Out_ PBOOLEAN InScope);
 
 static NTSTATUS StageRegistryWaitPagingWritesDrained(_In_ PSTAGE_REGISTRY_ENTRY Entry);
-static BOOLEAN StageRegistrySetCutoffFlushAdmission(_In_ PSTAGE_REGISTRY_ENTRY Entry,
+_IRQL_requires_max_(APC_LEVEL)
+__declspec(noinline) static BOOLEAN StageRegistrySetCutoffFlushAdmission(_In_ PSTAGE_REGISTRY_ENTRY Entry,
     _In_ PFLT_INSTANCE Instance, _In_ BOOLEAN Enable, _In_ ULONGLONG ExpectedEpoch,
     _Out_ PULONGLONG Epoch);
 __declspec(noinline) static BOOLEAN StageRegistryBeginAliasProbe(_In_ PSTAGE_REGISTRY_ENTRY Entry);
@@ -2772,7 +2773,9 @@ static NTSTATUS StageRegistryResolveCompactStream(_In_ PSTAGE_REGISTRY_ENTRY Ent
     NTSTATUS status;
     PAGED_CODE();
     *StreamChars = 0;
-    if (StreamBuffer == NULL || Entry->StreamSuffixHash == 0) return STATUS_FILE_INVALID;
+    if (StreamBuffer == NULL) return STATUS_FILE_INVALID;
+    StreamBuffer[0] = UNICODE_NULL;
+    if (Entry->StreamSuffixHash == 0) return STATUS_FILE_INVALID;
     status = FltGetVolumeName(Volume, NULL, &needed);
     if (status != STATUS_BUFFER_TOO_SMALL || needed == 0 || needed > MAXUSHORT - 32)
         return STATUS_FLT_INSTANCE_NOT_FOUND;

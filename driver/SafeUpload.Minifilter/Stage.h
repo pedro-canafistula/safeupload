@@ -120,6 +120,7 @@ BOOLEAN SafeUploadStageWritersSopMatchesPolicy(_In_opt_ PVOID SectionObjectPoint
     _In_ BOOLEAN IncludeAncestors, _Out_ PBOOLEAN Known);
 NTSTATUS SafeUploadStageWritersClassifyById(_In_ PFLT_INSTANCE Instance,
     _In_ PFILE_OBJECT FileObject, _Out_ PBOOLEAN InScope);
+_IRQL_requires_max_(APC_LEVEL)
 BOOLEAN SafeUploadStageWritersPagingWriteBegin(_In_ PFLT_INSTANCE Instance,
     _In_opt_ PVOID SectionObjectPointer,
     _Outptr_result_maybenull_ PVOID *CompletionContext);
