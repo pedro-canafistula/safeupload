@@ -2447,8 +2447,8 @@ static NTSTATUS StageRegistryOpenIdentity(_In_ PSTAGE_REGISTRY_ENTRY Entry,
         if (!renameStable) status = STATUS_FILE_INVALID;
     }
 Exit:
-    ExFreePoolWithTag(buffer, SAFEUPLOAD_REGISTRY_POOL_TAG);
-    ExFreePoolWithTag(streamSnapshot, SAFEUPLOAD_REGISTRY_POOL_TAG);
+    if (buffer != NULL) ExFreePoolWithTag(buffer, SAFEUPLOAD_REGISTRY_POOL_TAG);
+    if (streamSnapshot != NULL) ExFreePoolWithTag(streamSnapshot, SAFEUPLOAD_REGISTRY_POOL_TAG);
     if (!NT_SUCCESS(status)) {
         if (*Object != NULL) { ObDereferenceObject(*Object); *Object = NULL; }
         if (*Handle != NULL) { FltClose(*Handle); *Handle = NULL; }
@@ -2500,7 +2500,7 @@ __declspec(noinline) static NTSTATUS StageRegistryOpenParentById(_In_ PFLT_INSTA
         !RtlEqualMemory(actual.FileId.Identifier, &ParentFileId, sizeof(ParentFileId)))
         status = STATUS_FILE_INVALID;
 Exit:
-    ExFreePoolWithTag(buffer, SAFEUPLOAD_REGISTRY_POOL_TAG);
+    if (buffer != NULL) ExFreePoolWithTag(buffer, SAFEUPLOAD_REGISTRY_POOL_TAG);
     if (!NT_SUCCESS(status)) {
         if (*Object != NULL) { ObDereferenceObject(*Object); *Object = NULL; }
         if (*Handle != NULL) { FltClose(*Handle); *Handle = NULL; }
@@ -2517,6 +2517,7 @@ __declspec(noinline) static VOID StageRegistryBuildLinkName(_In_ PCUNICODE_STRIN
     ULONG capacity = SAFEUPLOAD_MAX_PREFIX_CHARS + 1;
 
     PAGED_CODE();
+    Buffer[0] = UNICODE_NULL;
     LinkName->Buffer = Buffer;
     LinkName->Length = 0;
     LinkName->MaximumLength = (USHORT)(capacity * sizeof(WCHAR));
