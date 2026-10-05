@@ -1,0 +1,30 @@
+# RV4 W trace validator post-fix adversarial review
+
+Scope: fresh read-only source review of the frozen validator, self-test, README, and the pinned Inspector/kernel formatter contract. No code, build, VM, or runtime operation was performed by this reviewer.
+
+## Pins and evidence
+
+- Worktree HEAD: `937b568cfa7cdbdcf2c46256e914d851b9ede950`.
+- `driver/scripts/Validate-StagedWTrace.py`: SHA-256 `fdcbb6c65e059fe66a8cbefe664ce5ee63badbb64be34912751da14be0c104b0`.
+- `driver/scripts/Test-Validate-StagedWTrace.py`: SHA-256 `d7a07cdc9277bd92f10ee655aab21c1fee0b887db3a450e11a9ae8da37c65230`.
+- `driver/scripts/Validate-StagedWTrace.README.txt`: SHA-256 `91c00d7d0079d510defb0013fee97ae3f325b5a716a1e6a642187b3cdf07e6ca`.
+- Producer references recorded in the README: Inspector `main.c` `FFA47C60DAE5D600751C2C3F9E237799C79290029063390242EF59BCDF641FF6`, `Protocol.h` `C5AB6AA14D81D0D3D11004194BBC177FC443F4F0AA066F2D4E4414B59373CAFC`, `StageStream.c` `9018B37886396E9D744794D725AC9A525D2893C014788B127DC6BB81F2A7EFD5`, `StageWriters.c` `F8E9481DD25D8F61D6A7BBFA2822FF78758B8C2CD61CE9F8945976BA48CF0A78`.
+- The recorded raw fix2 control run reports self-test exit 0, one synthetic accepted upper pair, UTF-16 acceptance, qualification fields `NOT_QUALIFIED`, and rejection controls for duplicate keys, numeric errors, gaps/loss, identity/SOP mismatch, cached/paging/unaligned writes, failures/short or overlong completion, foreign W, recursive JSON, and oversized input. It also records that the literal two-line formatter capture alone is inconclusive. These controls are parser evidence only; I did not rerun them.
+
+## Disposition
+
+No blocking source defect found in the narrowed successful W01 upper-ledger check. The changes identified in the earlier review are present: the file is opened once and read at most `MAX_BYTES+1`; SOP is required, nonzero, and compared across the pair; caller flags must include `IRP_NOCACHE` and exclude `IRP_PAGING_IO`; range must match a caller-pinned power-of-two alignment; W_END requires exact success status and the full requested `ioInformation`; and the parser rejects foreign W tickets in the same complete window.
+
+The status output is deliberately `PAIRED_W01_SUCCESS_STATUS` only for that successful full-write case, with W01/W02/Phase4 always marked `NOT_QUALIFIED`. It is not an outcome-neutral lifecycle pairing tool: errors, cancellation, and short writes are inconclusive. This matches the narrowed README contract.
+
+## Residual documentation mismatch
+
+README lines 5-6 says both outputs always contain W01/W02/Phase4 qualification fields. For malformed CLI arguments, `argparse` exits before the `try`/structured-result path (`Validate-StagedWTrace.py:221-237`), so stderr contains usage/error text and there is no JSON output with those fields. This does not make a valid parsed trace pass falsely, but the output guarantee is broader than the implementation.
+
+Minimal fix: describe the qualification fields as present for successfully parsed invocations, or override argparse error handling to emit the same structured INCONCLUSIVE JSON for argument errors.
+
+## Evidence boundary
+
+The parser cannot authenticate a JSON capture as Inspector output or bind an external CLEAR receipt, observer epoch, exact controller target, target alignment source, or `FILE_FLAG_NO_BUFFERING` receipt. A syntactically valid hand-built trace with matching caller pins can be accepted. The README correctly assigns these to independent controller/kernel/fixture evidence; preserve that boundary in any use of `PAIRED_W01_SUCCESS_STATUS`.
+
+This check covers ordinary upper-filter IRP_MJ_WRITE/minor 0 only. It does not cover W02 metadata/draining cases, cross-filter or lower-arm IRP identity, lower completion/hold timing, raw bytes, or runtime qualification. No VM/runtime conclusion follows from this report.

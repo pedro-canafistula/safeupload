@@ -1,0 +1,205 @@
+
+File: /tmp/claude-1000/exact-mvp3-b27/SafeUpload-stage-prototype.sys
+Format: COFF-x86-64
+Arch: x86_64
+AddressSize: 64bit
+Sections [
+  Section {
+    Number: 1
+    Name: .text (2E 74 65 78 74 00 00 00)
+    VirtualSize: 0x2525A
+    VirtualAddress: 0x1000
+    RawDataSize: 152576
+    PointerToRawData: 0x400
+    PointerToRelocations: 0x0
+    PointerToLineNumbers: 0x0
+    RelocationCount: 0
+    LineNumberCount: 0
+    Characteristics [ (0x68000020)
+      IMAGE_SCN_CNT_CODE (0x20)
+      IMAGE_SCN_MEM_EXECUTE (0x20000000)
+      IMAGE_SCN_MEM_NOT_PAGED (0x8000000)
+      IMAGE_SCN_MEM_READ (0x40000000)
+    ]
+  }
+  Section {
+    Number: 2
+    Name: .rdata (2E 72 64 61 74 61 00 00)
+    VirtualSize: 0x1FF8
+    VirtualAddress: 0x27000
+    RawDataSize: 8192
+    PointerToRawData: 0x25800
+    PointerToRelocations: 0x0
+    PointerToLineNumbers: 0x0
+    RelocationCount: 0
+    LineNumberCount: 0
+    Characteristics [ (0x48000040)
+      IMAGE_SCN_CNT_INITIALIZED_DATA (0x40)
+      IMAGE_SCN_MEM_NOT_PAGED (0x8000000)
+      IMAGE_SCN_MEM_READ (0x40000000)
+    ]
+  }
+  Section {
+    Number: 3
+    Name: .data (2E 64 61 74 61 00 00 00)
+    VirtualSize: 0x68BBE0
+    VirtualAddress: 0x29000
+    RawDataSize: 512
+    PointerToRawData: 0x27800
+    PointerToRelocations: 0x0
+    PointerToLineNumbers: 0x0
+    RelocationCount: 0
+    LineNumberCount: 0
+    Characteristics [ (0xC8000040)
+      IMAGE_SCN_CNT_INITIALIZED_DATA (0x40)
+      IMAGE_SCN_MEM_NOT_PAGED (0x8000000)
+      IMAGE_SCN_MEM_READ (0x40000000)
+      IMAGE_SCN_MEM_WRITE (0x80000000)
+    ]
+  }
+  Section {
+    Number: 4
+    Name: .pdata (2E 70 64 61 74 61 00 00)
+    VirtualSize: 0x16EC
+    VirtualAddress: 0x6B5000
+    RawDataSize: 6144
+    PointerToRawData: 0x27A00
+    PointerToRelocations: 0x0
+    PointerToLineNumbers: 0x0
+    RelocationCount: 0
+    LineNumberCount: 0
+    Characteristics [ (0x48000040)
+      IMAGE_SCN_CNT_INITIALIZED_DATA (0x40)
+      IMAGE_SCN_MEM_NOT_PAGED (0x8000000)
+      IMAGE_SCN_MEM_READ (0x40000000)
+    ]
+  }
+  Section {
+    Number: 5
+    Name: PAGE (50 41 47 45 00 00 00 00)
+    VirtualSize: 0x15ED9
+    VirtualAddress: 0x6B7000
+    RawDataSize: 90112
+    PointerToRawData: 0x29200
+    PointerToRelocations: 0x0
+    PointerToLineNumbers: 0x0
+    RelocationCount: 0
+    LineNumberCount: 0
+    Characteristics [ (0x60000020)
+      IMAGE_SCN_CNT_CODE (0x20)
+      IMAGE_SCN_MEM_EXECUTE (0x20000000)
+      IMAGE_SCN_MEM_READ (0x40000000)
+    ]
+  }
+  Section {
+    Number: 6
+    Name: INIT (49 4E 49 54 00 00 00 00)
+    VirtualSize: 0x1D22
+    VirtualAddress: 0x6CD000
+    RawDataSize: 7680
+    PointerToRawData: 0x3F200
+    PointerToRelocations: 0x0
+    PointerToLineNumbers: 0x0
+    RelocationCount: 0
+    LineNumberCount: 0
+    Characteristics [ (0x62000020)
+      IMAGE_SCN_CNT_CODE (0x20)
+      IMAGE_SCN_MEM_DISCARDABLE (0x2000000)
+      IMAGE_SCN_MEM_EXECUTE (0x20000000)
+      IMAGE_SCN_MEM_READ (0x40000000)
+    ]
+  }
+  Section {
+    Number: 7
+    Name: .rsrc (2E 72 73 72 63 00 00 00)
+    VirtualSize: 0x300
+    VirtualAddress: 0x6CF000
+    RawDataSize: 1024
+    PointerToRawData: 0x41000
+    PointerToRelocations: 0x0
+    PointerToLineNumbers: 0x0
+    RelocationCount: 0
+    LineNumberCount: 0
+    Characteristics [ (0x42000040)
+      IMAGE_SCN_CNT_INITIALIZED_DATA (0x40)
+      IMAGE_SCN_MEM_DISCARDABLE (0x2000000)
+      IMAGE_SCN_MEM_READ (0x40000000)
+    ]
+  }
+  Section {
+    Number: 8
+    Name: .reloc (2E 72 65 6C 6F 63 00 00)
+    VirtualSize: 0x100
+    VirtualAddress: 0x6D0000
+    RawDataSize: 512
+    PointerToRawData: 0x41400
+    PointerToRelocations: 0x0
+    PointerToLineNumbers: 0x0
+    RelocationCount: 0
+    LineNumberCount: 0
+    Characteristics [ (0x42000040)
+      IMAGE_SCN_CNT_INITIALIZED_DATA (0x40)
+      IMAGE_SCN_MEM_DISCARDABLE (0x2000000)
+      IMAGE_SCN_MEM_READ (0x40000000)
+    ]
+  }
+]
+DebugDirectory [
+  DebugEntry {
+    Characteristics: 0x0
+    TimeDateStamp: 2026-10-05 13:38:41 (0x6AC3A861)
+    MajorVersion: 0x0
+    MinorVersion: 0x0
+    Type: CodeView (0x2)
+    SizeOfData: 0x79
+    AddressOfRawData: 0x28180
+    PointerToRawData: 0x26980
+    PDBInfo {
+      PDBSignature: 0x53445352
+      PDBGUID: {A0169C19-6022-4D72-B161-B6354BC57BC5}
+      PDBAge: 1
+      PDBFileName: C:\Users\vika\Documents\exact-mvp3-b27\src\driver\SafeUpload.Minifilter\x64\Debug\SafeUpload.pdb
+    }
+  }
+  DebugEntry {
+    Characteristics: 0x0
+    TimeDateStamp: 2026-10-05 13:38:41 (0x6AC3A861)
+    MajorVersion: 0x0
+    MinorVersion: 0x0
+    Type: POGO (0xD)
+    SizeOfData: 0x1C4
+    AddressOfRawData: 0x281FC
+    PointerToRawData: 0x269FC
+    RawData (
+      0000: 00000000 00100000 D0440200 2E746578  |.........D...tex|
+      0010: 74246D6E 00000000 D0540200 70000000  |t$mn.....T..p...|
+      0020: 2E746578 74246D6E 24303000 40550200  |.text$mn$00.@U..|
+      0030: B0030000 2E746578 74246D6E 24323100  |.....text$mn$21.|
+      0040: F0580200 00090000 2E746578 74247300  |.X.......text$s.|
+      0050: F0610200 6A000000 2E746578 74247800  |.a..j....text$x.|
+      0060: 00700200 A0060000 2E696461 74612435  |.p.......idata$5|
+      0070: 00000000 A0760200 80010000 2E303063  |.....v.......00c|
+      0080: 66670000 20780200 80000000 2E676669  |fg.. x.......gfi|
+      0090: 64730000 A0780200 E0080000 2E726461  |ds...x.......rda|
+      00A0: 74610000 80810200 68020000 2E726461  |ta......h....rda|
+      00B0: 7461247A 7A7A6462 67000000 E8830200  |ta$zzzdbg.......|
+      00C0: 100C0000 2E786461 74610000 00900200  |.....xdata......|
+      00D0: 40000000 2E646174 61000000 40900200  |@....data...@...|
+      00E0: A0BB6800 2E627373 00000000 00506B00  |..h..bss.....Pk.|
+      00F0: EC160000 2E706461 74610000 00706B00  |.....pdata...pk.|
+      0100: E0550100 50414745 00000000 E0C56C00  |.U..PAGE......l.|
+      0110: C0080000 50414745 24730000 A0CE6C00  |....PAGE$s....l.|
+      0120: 39000000 50414745 24780000 00D06C00  |9...PAGE$x....l.|
+      0130: D0010000 494E4954 00000000 D0D16C00  |....INIT......l.|
+      0140: A4000000 494E4954 24730000 74D26C00  |....INIT$s..t.l.|
+      0150: 28000000 2E696461 74612432 00000000  |(....idata$2....|
+      0160: 9CD26C00 14000000 2E696461 74612433  |..l......idata$3|
+      0170: 00000000 B0D26C00 98060000 2E696461  |......l......ida|
+      0180: 74612434 00000000 48D96C00 DA130000  |ta$4....H.l.....|
+      0190: 2E696461 74612436 00000000 00F06C00  |.idata$6......l.|
+      01A0: 60000000 2E727372 63243031 00000000  |`....rsrc$01....|
+      01B0: 60F06C00 A0020000 2E727372 63243032  |`.l......rsrc$02|
+      01C0: 00000000                             |....|
+    )
+  }
+]

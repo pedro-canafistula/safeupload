@@ -305,6 +305,12 @@ typedef struct _SAFEUPLOAD_RESPONSE {
 #define SAFEUPLOAD_ADMISSION_TRACE_EVENT_UNOWNED_NONPAGING_WRITE ((UINT32) 6)
 #define SAFEUPLOAD_ADMISSION_TRACE_EVENT_FILE_CLEANUP   ((UINT32) 7)
 #define SAFEUPLOAD_ADMISSION_TRACE_EVENT_FILE_CLOSE     ((UINT32) 8)
+#define SAFEUPLOAD_ADMISSION_TRACE_EVENT_W_BEGIN         ((UINT32) 9)
+#define SAFEUPLOAD_ADMISSION_TRACE_EVENT_W_END           ((UINT32) 10)
+
+#define SAFEUPLOAD_ADMISSION_TRACE_REGISTRY_SNAPSHOT_LOCKED       ((UINT32) 0x00000001) /* StateLock held during sample; not a whole-record seqlock */
+#define SAFEUPLOAD_ADMISSION_TRACE_REGISTRY_SNAPSHOT_EXACT_ID      ((UINT32) 0x00000002)
+#define SAFEUPLOAD_ADMISSION_TRACE_REGISTRY_SNAPSHOT_POST_RETIRE   ((UINT32) 0x00000004)
 
 #define SAFEUPLOAD_ADMISSION_TRACE_MMDOES_NOT_APPLICABLE ((UINT32) 0)
 #define SAFEUPLOAD_ADMISSION_TRACE_MMDOES_SKIPPED        ((UINT32) 1)
@@ -675,6 +681,11 @@ typedef struct _SAFEUPLOAD_ADMISSION_VOLUME_ENTRY {
     UINT32 VolumeGuidChars;
     UINT32 VolumeInfoStatus;
     UINT32 VolumeFlags;
+#if defined(SAFEUPLOAD_STAGING_PROTOTYPE) && SAFEUPLOAD_STAGING_PROTOTYPE
+    UINT32 InstanceRegistryUnknownReasons; /* Existing sticky per-instance mask; read-only evidence. */
+    UINT32 FirstUnknownReason; /* First successful context publication, not event chronology. */
+    UINT32 FirstUnknownSite; /* Origin line without file ID; use exact source and successful ContextStatus. */
+#endif
     WCHAR VolumeGuid[64];
 } SAFEUPLOAD_ADMISSION_VOLUME_ENTRY, *PSAFEUPLOAD_ADMISSION_VOLUME_ENTRY;
 
@@ -813,7 +824,7 @@ typedef struct _SAFEUPLOAD_ACTIVATING_ENTRY_STATUS {
     UINT32 S;
     UINT32 C;
     UINT32 T;
-    UINT32 Reserved0;
+    UINT32 W;
     UINT32 UnknownReasons;
     UINT32 ReservedFlags;
     UINT32 OpenerPidCount;
@@ -900,6 +911,24 @@ typedef struct _SAFEUPLOAD_ADMISSION_TRACE_ENTRY {
     UINT32 CanaryStatus;
     UINT32 CanaryChecks;
     UINT32 CanaryCleanupStatus;
+    UINT64 TicketSequence;          // W_BEGIN/W_END pair; zero for unrelated events
+    UINT64 CallbackData;            // opaque PFLT_CALLBACK_DATA identity for pairing with lower fixture
+    UINT64 VolumeSerialNumber;
+    UINT8 FileId[16];               // all zero when no exact registry identity was bound
+    UINT64 IoInformation;
+    UINT32 H;
+    UINT32 W;
+    UINT32 RegistryState;
+    UINT32 ActivationGeneration;   // independent aligned interlocked sample; not tuple-coherent with state/counts
+    UINT32 PolicyGeneration;
+    UINT32 IoStatus;
+    UINT32 OperationCode;           // FSCTL code or FILE_INFORMATION_CLASS when applicable
+    UINT32 CompletionFlags;         // bit0 post captured, bit1 draining, bit2 pre-lower retirement
+    UINT32 RegistryUnknownReasons;
+    UINT32 RegistrySnapshotFlags;   // StateLock held while sampling H/W/state; only W mutation is serialized; no whole-tuple seqlock
+    UINT64 WriteOffset;
+    UINT32 WriteLength;
+    UINT32 ReservedWrite;
 } SAFEUPLOAD_ADMISSION_TRACE_ENTRY, *PSAFEUPLOAD_ADMISSION_TRACE_ENTRY;
 
 typedef struct _SAFEUPLOAD_ADMISSION_TRACE_COUNTERS {
@@ -1171,11 +1200,19 @@ C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_ADMISSION_CANARY_HOLD_REQUEST, VolumeName ) =
 C_ASSERT( sizeof( SAFEUPLOAD_ADMISSION_CANARY_HOLD_REPLY ) == 1040 );
 C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_ADMISSION_CANARY_HOLD_REPLY, CanaryPath ) == 16 );
 C_ASSERT( sizeof( SAFEUPLOAD_ADMISSION_TRACE_REQUEST ) == 32 );
-C_ASSERT( sizeof( SAFEUPLOAD_ADMISSION_TRACE_ENTRY ) == 128 );
+C_ASSERT( sizeof( SAFEUPLOAD_ADMISSION_TRACE_ENTRY ) == 232 );
 C_ASSERT( sizeof( SAFEUPLOAD_ADMISSION_TRACE_COUNTERS ) == 56 );
-C_ASSERT( sizeof( SAFEUPLOAD_ADMISSION_TRACE_BATCH ) == 1128 );
+C_ASSERT( sizeof( SAFEUPLOAD_ADMISSION_TRACE_BATCH ) == 1960 );
+#if defined(SAFEUPLOAD_STAGING_PROTOTYPE) && SAFEUPLOAD_STAGING_PROTOTYPE
+C_ASSERT( sizeof( SAFEUPLOAD_ADMISSION_VOLUME_ENTRY ) == 208 );
+#else
 C_ASSERT( sizeof( SAFEUPLOAD_ADMISSION_VOLUME_ENTRY ) == 192 );
+#endif
+#if defined(SAFEUPLOAD_STAGING_PROTOTYPE) && SAFEUPLOAD_STAGING_PROTOTYPE
+C_ASSERT( sizeof( SAFEUPLOAD_ADMISSION_VOLUME_STATUS ) == 6672 );
+#else
 C_ASSERT( sizeof( SAFEUPLOAD_ADMISSION_VOLUME_STATUS ) == 6160 );
+#endif
 C_ASSERT( sizeof( SAFEUPLOAD_POLICY_MESSAGE ) >= sizeof( SAFEUPLOAD_ADMISSION_VOLUME_STATUS ) );
 C_ASSERT( sizeof( SAFEUPLOAD_POLICY_MESSAGE ) >= sizeof( SAFEUPLOAD_ADMISSION_CANARY_HOLD_REPLY ) );
 C_ASSERT( sizeof( SAFEUPLOAD_POLICY_MESSAGE ) >= sizeof( SAFEUPLOAD_ADMISSION_CANARY_HOLD_REQUEST ) );
@@ -1202,6 +1239,15 @@ C_ASSERT( sizeof( SAFEUPLOAD_POLICY_MESSAGE ) >=
 C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_ADMISSION_TRACE_ENTRY, EventKind ) == 40 );
 C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_ADMISSION_TRACE_ENTRY, ProbeStage ) == 104 );
 C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_ADMISSION_TRACE_ENTRY, ProbeStatus ) == 108 );
+C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_ADMISSION_TRACE_ENTRY, TicketSequence ) == 128 );
+C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_ADMISSION_TRACE_ENTRY, CallbackData ) == 136 );
+C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_ADMISSION_TRACE_ENTRY, VolumeSerialNumber ) == 144 );
+C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_ADMISSION_TRACE_ENTRY, FileId ) == 152 );
+C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_ADMISSION_TRACE_ENTRY, IoInformation ) == 168 );
+C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_ADMISSION_TRACE_ENTRY, RegistryUnknownReasons ) == 208 );
+C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_ADMISSION_TRACE_ENTRY, RegistrySnapshotFlags ) == 212 );
+C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_ADMISSION_TRACE_ENTRY, WriteOffset ) == 216 );
+C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_ADMISSION_TRACE_ENTRY, WriteLength ) == 224 );
 C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_ADMISSION_TRACE_BATCH, Entries ) == 104 );
 #endif
 

@@ -1,0 +1,24 @@
+RV4 W-ledger status-page IRQL helper review
+Date: 2026-10-05
+Reviewed source pin: driver/SafeUpload.Minifilter/StageWriters.c SHA-256 1C90C540AC5BF9F21148EEB6693F6A8946B8AA0F8097A6F64768EEA3CB369C9E (working-tree delta atop 937b568cfa7cdbdcf2c46256e914d851b9ede950).
+Scope: source-only review of the one-file helper delta and `rv4-w-ledger-status-page-irql-fix.txt`; no build or runtime work performed.
+
+Disposition: the IRQL/pageability approach is structurally sound, but this exact source pin has a likely hard C compile error in the new helper's FILE_ID_128 copy. Do not accept this pin or treat the earlier b26 build logs as evidence for it. The author has been notified; review the corrected hash afresh after the change.
+
+Blocking source finding
+
+At StageWriters.c:5666, `RtlCopyMemory(Output->FileId, &Entry->FileId, sizeof(Entry->FileId))` passes a `FILE_ID_128` struct value where the first argument requires a destination address. `FILE_ID_128` is a structure containing its 16-byte Identifier member; unlike an array member, the struct lvalue does not decay to a pointer. The likely minimal correction is `&Output->FileId` (or the address of its Identifier member), preserving the fixed-size copy. The following caller copy at :5703 correctly takes `&lockedSnapshot.FileId`, illustrating the required address form. This is a source-level type issue; I did not compile it.
+
+IRQL and lifetime review
+
+The intended fix addresses the previous feature-build C28150 pattern: the pageable status builder at :5674 remains explicitly assigned to PAGE and keeps `PAGED_CODE()` (:5680), while the new helper at :5658 has no PAGE pragma and is `__declspec(noinline)`. Its call chain uses the existing resident, noinline `StageRegistryAcquireStateLock` / `StageRegistryReleaseStateLock` (:4312-4324) and resident `StageAcquireSpinLock` / `StageReleaseSpinLock` (:462-477); none is placed in PAGE. The helper's `_IRQL_requires_max_(APC_LEVEL)` contract is compatible with acquiring the spin lock (which raises to DISPATCH_LEVEL) and restoring the prior IRQL before returning.
+
+The local `STAGE_ACTIVATING_LOCKED_SNAPSHOT` is a bounded 40-byte kernel-stack object. Kernel stack is nonpaged; the caller's page is paged, but all page writes from this locked sample occur after the helper returns and lowers IRQL (:5702-5708). The registry entry allocation is explicitly nonpaged (`ExAllocatePool2(POOL_FLAG_NON_PAGED, ...)` at :582), so the fields read under StateLock remain resident. The helper adds no new lock, is called while the pre-existing shared RegistryLock remains held, and preserves RegistryLock-to-StateLock ordering. It reads/writes only bounded scalar/identity data under the spin lock and releases it before the caller reads T/S/name/PID/section samples.
+
+The comment accurately limits the consistency claim: W and selected identity/state fields are sampled with StateLock held, but H and activation/state generations retain independent atomic-sample semantics; this is not a fully coherent H/W/state/generation tuple. The fix must retain that caveat and not change core locking merely for diagnostic output.
+
+Evidence limitation
+
+The status note reports only `git diff --check`; the prior b26 feature Debug/Release logs contain C28150 and predate this helper. No current build verifies placement, SAL, or the corrected copy. After fixing the struct address, compile both ordinary and owned-feature configurations against the exact source hash before relying on this as a WDK IRQL fix. No runtime behavior is established here.
+
+Review accuracy correction (2026-10-05): the source has `PAGED_CODE()` in SafeUploadStageWritersActivatingStatusPage, but no `#pragma alloc_text(PAGE, SafeUploadStageWritersActivatingStatusPage)` was present in the reviewed source. `PAGED_CODE()` asserts the IRQL contract; it does not prove physical placement in PAGE. The earlier sentence saying the function was explicitly assigned to PAGE was unsupported and is withdrawn. The corrected helper itself remains without a PAGE pragma. Check the exact WDK map/listing for actual section placement.

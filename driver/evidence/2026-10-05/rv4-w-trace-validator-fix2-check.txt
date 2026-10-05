@@ -1,0 +1,55 @@
+Final W01 upper-ledger validator post-review finite mechanical controls
+UTC=2026-10-05T13:46:23.820496+00:00
+Base commit=937b568cfa7cdbdcf2c46256e914d851b9ede950
+SHA256 FDCBB6C65E059FE66A8CBEFE664CE5EE63BADBB64BE34912751DA14BE0C104B0 driver/scripts/Validate-StagedWTrace.py
+SHA256 D7A07CDC9277BD92F10EE655AAB21C1FEE0B887DB3A450E11A9AE8DA37C65230 driver/scripts/Test-Validate-StagedWTrace.py
+SHA256 91C00D7D0079D510DEFB0013FEE97AE3F325B5A716A1E6A642187B3CDF07E6CA driver/scripts/Validate-StagedWTrace.README.txt
+SHA256 FFA47C60DAE5D600751C2C3F9E237799C79290029063390242EF59BCDF641FF6 driver/SafeUpload.Inspector/main.c
+SHA256 C5AB6AA14D81D0D3D11004194BBC177FC443F4F0AA066F2D4E4414B59373CAFC driver/SafeUpload.Minifilter/Protocol.h
+SHA256 9018B37886396E9D744794D725AC9A525D2893C014788B127DC6BB81F2A7EFD5 driver/SafeUpload.Minifilter/StageStream.c
+SHA256 F8E9481DD25D8F61D6A7BBFA2822FF78758B8C2CD61CE9F8945976BA48CF0A78 driver/SafeUpload.Minifilter/StageWriters.c
+SHA256 F0B278EA3F35FDF8B05955C4CED1B2771AF5B14BA578027E107537228C8900AD driver/evidence/2026-10-05/rv4-w-inspector-selftest-stdout-b.txt
+SHA256 FF0B7A766BA685C0E82736E7F3B874880028A7060C7C91F1B07E31935D8770A0 output/mvp-continuation/rv4-w-trace-validator-review.txt
+SHA256 D7461FB52FC80331D1EAD5154B8E5C5470807074B15A7153F4D0461E89E9AB69 output/mvp-continuation/rv4-w-trace-validator-fix-check.txt
+Selftest exit=0
+actual-formatter-shape-exact-u64=PAIRED_UPPER_ONLY
+utf16-bom-capture=PAIRED_UPPER_ONLY
+cli-qualification-fields=NOT_QUALIFIED
+duplicate-key=REJECTED
+float=REJECTED
+loss=REJECTED
+sequence-gap=REJECTED
+incomplete-window=REJECTED
+duplicate-ticket=REJECTED
+unmatched-ticket=REJECTED
+wrong-file-id=REJECTED
+wrong-serial=REJECTED
+wrong-request=REJECTED
+wrong-operation=REJECTED
+wrong-range=REJECTED
+wrong-post-flags=REJECTED
+missing-exact-snapshot=REJECTED
+unknown-reason=REJECTED
+zero-sop=REJECTED
+changed-sop=REJECTED
+cached-write=REJECTED
+paging-write=REJECTED
+unaligned-offset=REJECTED
+unaligned-length=REJECTED
+failure-status=REJECTED
+short-success=REJECTED
+overlong-success=REJECTED
+begin-information=REJECTED
+alignment-one-pin=REJECTED
+multiple-pair-pin=REJECTED
+offset-overflow=REJECTED
+bool-ticket=REJECTED
+foreign-w-ticket=REJECTED
+recursive-json=REJECTED
+bounded-input=REJECTED
+ValidatorSelfTest=PASS;WindowsVmQualification=False
+Selftest stderr=
+Literal formatter capture alone exit=2
+{"Phase4":"NOT_QUALIFIED","W01":"NOT_QUALIFIED","W02":"NOT_QUALIFIED","reason":"need W begin/end and final summary","upperLedger":"INCONCLUSIVE"}
+Literal stderr=
+No VM, driver, build, network, raw volume, lower ledger or runtime qualification executed.

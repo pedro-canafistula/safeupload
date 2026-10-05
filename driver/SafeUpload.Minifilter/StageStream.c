@@ -251,9 +251,25 @@ VOID SafeUploadStageAdmissionTraceRecord(
     (VOID)StageAdmissionTraceRecordInternal(Entry, FALSE);
 }
 
+VOID SafeUploadStageAdmissionTraceNoteLost(_In_ LONG TraceState)
+{
+    if (SafeUploadStageAdmissionTraceBegin(TraceState)) {
+        InterlockedIncrement64((volatile LONG64 *)&AdmissionTraceCounters.LostEntries);
+        SafeUploadStageAdmissionTraceEnd();
+    }
+}
+
+VOID SafeUploadStageAdmissionTraceNoteTicketLost(VOID)
+{
+    /* Caller holds recorder rundown or an outstanding ticket, so CLEAR cannot
+     * pass its off-state/drain check before this explicit loss is visible. */
+    InterlockedIncrement64((volatile LONG64 *)&AdmissionTraceCounters.LostEntries);
+}
+
 NTSTATUS SafeUploadStageAdmissionTraceControl(_In_ UINT32 Command, _In_ UINT32 Options)
 {
     LONG state;
+    LONG64 lostBeforeClose;
     BOOLEAN wasEnabled;
     NTSTATUS status = STATUS_SUCCESS;
 
@@ -277,6 +293,8 @@ NTSTATUS SafeUploadStageAdmissionTraceControl(_In_ UINT32 Command, _In_ UINT32 O
         }
     } else if (Command == SAFEUPLOAD_CONTROL_ADMISSION_TRACE_DISABLE ||
                Command == SAFEUPLOAD_CONTROL_ADMISSION_TRACE_CLEAR) {
+        lostBeforeClose = InterlockedCompareExchange64(
+            (volatile LONG64 *)&AdmissionTraceCounters.LostEntries, 0, 0);
         InterlockedExchange(&SafeUploadAdmissionTraceControlState,
                             StageAdmissionTraceNextState(state, FALSE));
         if (!AdmissionTraceRundownClosed) {
@@ -284,7 +302,24 @@ NTSTATUS SafeUploadStageAdmissionTraceControl(_In_ UINT32 Command, _In_ UINT32 O
             AdmissionTraceRundownClosed = TRUE;
         }
 
-        if (Command == SAFEUPLOAD_CONTROL_ADMISSION_TRACE_CLEAR) {
+        /* The off-state plus drained recorder rundown closes admission for new
+         * observer tickets. Refuse disable/clear while an already paired W
+         * ticket is live, then reopen recording so its matching end is retained. */
+        if (SafeUploadStageWritersObserverTicketsOutstanding() != 0 ||
+            InterlockedCompareExchange64((volatile LONG64 *)&AdmissionTraceCounters.LostEntries, 0, 0) !=
+                lostBeforeClose) {
+            /* A W_END may retire during the off-state window and record an
+             * explicit loss before dropping its outstanding count. Do not let
+             * CLEAR erase that loss and turn an unmatched pair into a clean run. */
+            if (wasEnabled) {
+                ExReInitializeRundownProtection(&AdmissionTraceRundown);
+                AdmissionTraceRundownClosed = FALSE;
+                state = InterlockedCompareExchange(&SafeUploadAdmissionTraceControlState, 0, 0);
+                InterlockedExchange(&SafeUploadAdmissionTraceControlState,
+                                    StageAdmissionTraceNextState(state, TRUE));
+            }
+            status = STATUS_DEVICE_BUSY;
+        } else if (Command == SAFEUPLOAD_CONTROL_ADMISSION_TRACE_CLEAR) {
             StageAdmissionTraceReset();
             if (wasEnabled) {
                 ExReInitializeRundownProtection(&AdmissionTraceRundown);
@@ -2960,7 +2995,7 @@ static FLT_PREOP_CALLBACK_STATUS StageUnownedMutatingFsctl(PFLT_CALLBACK_DATA Da
     if (!StageMutatingFsctl(code)) return FLT_PREOP_SUCCESS_NO_CALLBACK;
     if (FlagOn(Data->Iopb->IrpFlags, IRP_PAGING_IO)) return FLT_PREOP_SUCCESS_NO_CALLBACK;
     if (FLT_IS_FASTIO_OPERATION(Data)) return FLT_PREOP_DISALLOW_FASTIO;            /* retried as an IRP */
-    (VOID)SafeUploadStageWritersBeginMutatingIo(Objects->Instance, Objects->FileObject,
+    (VOID)SafeUploadStageWritersBeginMutatingIo(Data, Objects->Instance, Objects->FileObject,
         MutatingIoContext, &trackedWriter);
     if (trackedWriter)
         return FLT_PREOP_SUCCESS_NO_CALLBACK;
@@ -3298,7 +3333,7 @@ static FLT_PREOP_CALLBACK_STATUS StageDispatchCore(PFLT_CALLBACK_DATA Data,
             PVOID legacyContext = NULL;
             BOOLEAN trackedWriter = FALSE;
             if (FLT_IS_FASTIO_OPERATION(Data)) return FLT_PREOP_DISALLOW_FASTIO;
-            (VOID)SafeUploadStageWritersBeginMutatingIo(Objects->Instance, Objects->FileObject,
+            (VOID)SafeUploadStageWritersBeginMutatingIo(Data, Objects->Instance, Objects->FileObject,
                 &mutatingIoContext, &trackedWriter);
             result = StagePhysicalMutationEx(Data, Objects, FALSE, trackedWriter);
             if (result != FLT_PREOP_SUCCESS_NO_CALLBACK) {
@@ -3326,7 +3361,7 @@ static FLT_PREOP_CALLBACK_STATUS StageDispatchCore(PFLT_CALLBACK_DATA Data,
         if (cls != FilePositionInformation && FLT_IS_FASTIO_OPERATION(Data))
             return FLT_PREOP_DISALLOW_FASTIO;
         if (cls != FilePositionInformation)
-            (VOID)SafeUploadStageWritersBeginMutatingIo(Objects->Instance, Objects->FileObject,
+            (VOID)SafeUploadStageWritersBeginMutatingIo(Data, Objects->Instance, Objects->FileObject,
                 &mutatingIoContext, &trackedWriter);
         result = StageExternalRename(Data, Objects, trackedWriter, &registryRenameContext);
         if (result != FLT_PREOP_SUCCESS_NO_CALLBACK) {
@@ -3371,7 +3406,7 @@ static FLT_PREOP_CALLBACK_STATUS StageDispatchCore(PFLT_CALLBACK_DATA Data,
             if (FlagOn(Data->Iopb->IrpFlags, IRP_PAGING_IO))
                 return FLT_PREOP_SUCCESS_NO_CALLBACK;
             if (FLT_IS_FASTIO_OPERATION(Data)) return FLT_PREOP_DISALLOW_FASTIO;
-            (VOID)SafeUploadStageWritersBeginMutatingIo(Objects->Instance, Objects->FileObject,
+            (VOID)SafeUploadStageWritersBeginMutatingIo(Data, Objects->Instance, Objects->FileObject,
                 &mutatingIoContext, &trackedWriter);
             result = StagePhysicalMutationEx(Data, Objects, FALSE, trackedWriter);
             if (result != FLT_PREOP_SUCCESS_NO_CALLBACK) {
@@ -3529,6 +3564,7 @@ static FLT_POSTOP_CALLBACK_STATUS StagePostOperationCore(PFLT_CALLBACK_DATA Data
     }
     if (Data->Iopb->MajorFunction == IRP_MJ_SET_INFORMATION &&
         SafeUploadStageWritersIsRenameContext(CompletionContext)) {
+        SafeUploadStageWritersSetMutatingIoCompletion(CompletionContext, Data, Flags);
         SafeUploadStageWritersCompleteRename(Objects->Instance, CompletionContext,
             !FlagOn(Flags, FLTFL_POST_OPERATION_DRAINING) && Data->IoStatus.Status == STATUS_SUCCESS,
             FlagOn(Flags, FLTFL_POST_OPERATION_DRAINING));
@@ -3541,6 +3577,7 @@ static FLT_POSTOP_CALLBACK_STATUS StagePostOperationCore(PFLT_CALLBACK_DATA Data
          Data->Iopb->MajorFunction == IRP_MJ_FILE_SYSTEM_CONTROL) &&
         SafeUploadStageWritersIsMutatingIoContext(CompletionContext)) {
         /* Includes ordinary success/failure and POST_OPERATION_DRAINING. */
+        SafeUploadStageWritersSetMutatingIoCompletion(CompletionContext, Data, Flags);
         SafeUploadStageWritersEndMutatingIo(CompletionContext);
         return FLT_POSTOP_FINISHED_PROCESSING;
     }

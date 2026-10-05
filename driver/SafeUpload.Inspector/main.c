@@ -522,6 +522,8 @@ static PCWSTR AdmissionEventName(_In_ UINT32 EventKind)
         case SAFEUPLOAD_ADMISSION_TRACE_EVENT_EXPLICIT_PROBE: return L"explicit_probe";
         case SAFEUPLOAD_ADMISSION_TRACE_EVENT_FILE_CLEANUP: return L"file_cleanup";
         case SAFEUPLOAD_ADMISSION_TRACE_EVENT_FILE_CLOSE: return L"file_close";
+        case SAFEUPLOAD_ADMISSION_TRACE_EVENT_W_BEGIN: return L"w_begin";
+        case SAFEUPLOAD_ADMISSION_TRACE_EVENT_W_END: return L"w_end";
         default: return L"unknown";
     }
 }
@@ -570,6 +572,7 @@ static PCWSTR AdmissionAttachClassName(_In_ UINT32 AttachClass)
 
 static VOID PrintAdmissionTraceEntry(_In_ const SAFEUPLOAD_ADMISSION_TRACE_ENTRY *Entry)
 {
+    UINT32 byteIndex;
     wprintf(L"{\"sequence\":%llu,\"timestamp\":%llu,\"event\":\"%s\","
             L"\"pid\":%u,\"irql\":%u,\"instance\":\"0x%016llX\","
             L"\"targetFileObject\":\"0x%016llX\",\"sectionObjectPointer\":\"0x%016llX\","
@@ -581,7 +584,7 @@ static VOID PrintAdmissionTraceEntry(_In_ const SAFEUPLOAD_ADMISSION_TRACE_ENTRY
             L"\"probeStatus\":\"0x%08X\",\"probeStage\":%u,"
             L"\"writeObjects\":%u,\"writersUntracked\":%s,\"inFlightSections\":%u,"
             L"\"canaryState\":%u,\"canaryStatus\":\"0x%08X\",\"canaryChecks\":%u,"
-            L"\"canaryCleanupStatus\":\"0x%08X\"}\n",
+            L"\"canaryCleanupStatus\":\"0x%08X\"",
             Entry->Sequence, Entry->Timestamp, AdmissionEventName(Entry->EventKind),
             Entry->ProcessId, Entry->Irql, Entry->Instance, Entry->TargetFileObject,
             Entry->SectionObjectPointer, Entry->MajorFunction, Entry->MinorFunction,
@@ -596,6 +599,62 @@ static VOID PrintAdmissionTraceEntry(_In_ const SAFEUPLOAD_ADMISSION_TRACE_ENTRY
             (Entry->AdmissionRecordState & SAFEUPLOAD_WRITERS_UNTRACKED_BIT) != 0 ? L"true" : L"false",
             Entry->EventKind == SAFEUPLOAD_ADMISSION_TRACE_EVENT_EXPLICIT_PROBE ? Entry->SetupFlags : 0,
             Entry->CanaryState, Entry->CanaryStatus, Entry->CanaryChecks, Entry->CanaryCleanupStatus);
+    wprintf(L",\"ticketSequence\":%llu,\"callbackData\":\"0x%016llX\","
+            L"\"volumeSerial\":\"0x%016llX\",\"fileId\":\"",
+            Entry->TicketSequence, Entry->CallbackData, Entry->VolumeSerialNumber);
+    for (byteIndex = 0; byteIndex < ARRAYSIZE(Entry->FileId); ++byteIndex)
+        wprintf(L"%02X", Entry->FileId[byteIndex]);
+    wprintf(L"\",\"ioInformation\":%llu,\"H\":%u,\"W\":%u,\"registryState\":%u,"
+            L"\"activationGeneration\":%u,\"policyGeneration\":%u,"
+            L"\"ioStatus\":\"0x%08X\",\"operationCode\":%u,"
+            L"\"completionFlags\":\"0x%08X\",\"registryUnknownReasons\":\"0x%08X\","
+            L"\"registrySnapshotFlags\":\"0x%08X\",\"writeOffset\":%llu,"
+            L"\"writeLength\":%u,\"reservedWrite\":%u}\n",
+            Entry->IoInformation, Entry->H, Entry->W, Entry->RegistryState,
+            Entry->ActivationGeneration, Entry->PolicyGeneration, Entry->IoStatus,
+            Entry->OperationCode, Entry->CompletionFlags, Entry->RegistryUnknownReasons,
+            Entry->RegistrySnapshotFlags, Entry->WriteOffset, Entry->WriteLength,
+            Entry->ReservedWrite);
+}
+
+/* A literal formatter control: no filter connection, driver state, or file I/O. */
+static int PrintAdmissionTraceFormatSelfTest(VOID)
+{
+    SAFEUPLOAD_ADMISSION_TRACE_ENTRY entry;
+    UINT32 index;
+
+    ZeroMemory(&entry, sizeof(entry));
+    entry.Sequence = 42;
+    entry.Timestamp = 43;
+    entry.EventKind = SAFEUPLOAD_ADMISSION_TRACE_EVENT_W_BEGIN;
+    entry.TicketSequence = 9007199254740993ULL;
+    entry.CallbackData = 0x123456789ABCDEF0ULL;
+    entry.VolumeSerialNumber = 0x0102030405060708ULL;
+    for (index = 0; index < ARRAYSIZE(entry.FileId); ++index)
+        entry.FileId[index] = (UINT8)index;
+    entry.IoInformation = 4096;
+    entry.H = 0;
+    entry.W = 1;
+    entry.RegistryState = 2;
+    entry.ActivationGeneration = 17;
+    entry.PolicyGeneration = 18;
+    entry.IoStatus = 0;
+    entry.OperationCode = 0;
+    entry.CompletionFlags = 4;
+    entry.RegistryUnknownReasons = 0x10;
+    entry.RegistrySnapshotFlags = SAFEUPLOAD_ADMISSION_TRACE_REGISTRY_SNAPSHOT_LOCKED |
+        SAFEUPLOAD_ADMISSION_TRACE_REGISTRY_SNAPSHOT_EXACT_ID;
+    entry.WriteOffset = 8192;
+    entry.WriteLength = 4096;
+    PrintAdmissionTraceEntry(&entry);
+    entry.Sequence = 44;
+    entry.EventKind = SAFEUPLOAD_ADMISSION_TRACE_EVENT_W_END;
+    entry.W = 0;
+    entry.IoStatus = 0xC0000120;
+    entry.CompletionFlags = 3;
+    entry.RegistrySnapshotFlags |= SAFEUPLOAD_ADMISSION_TRACE_REGISTRY_SNAPSHOT_POST_RETIRE;
+    PrintAdmissionTraceEntry(&entry);
+    return 0;
 }
 
 static int SendAdmissionProbe(_In_z_ PCWSTR DosPath)
@@ -1006,11 +1065,18 @@ static int PrintAdmissionVolumeStatus(VOID)
             L"\"fileSystemStatus\":%u,\"setupFlags\":%u,\"trustState\":%u,\"protectionStatus\":\"%s\",\"contextStatus\":%u,"
             L"\"canaryState\":%u,\"canaryStatus\":%u,\"canaryChecks\":%u,\"canaryCleanupStatus\":%u,"
             L"\"instanceWritersUntracked\":%u,\"volumeInfoStatus\":%u,\"volumeFlags\":%u,"
+#if defined(SAFEUPLOAD_STAGING_PROTOTYPE) && SAFEUPLOAD_STAGING_PROTOTYPE
+            L"\"instanceRegistryUnknownReasons\":\"0x%08X\",\"firstUnknownReason\":\"0x%08X\",\"firstUnknownSite\":%u,"
+#endif
             L"\"volumeGuidStatus\":%u,\"volumeGuid\":\"",
             index == 0 ? L"" : L",", entry->Instance, entry->VolumeKind, entry->FileSystemType,
             entry->FileSystemStatus, setupFlags, trustState, protectionStatus, entry->ContextStatus, entry->CanaryState,
             entry->CanaryStatus, entry->CanaryChecks, entry->CanaryCleanupStatus,
-            entry->InstanceWritersUntracked, entry->VolumeInfoStatus, entry->VolumeFlags, entry->VolumeGuidStatus);
+            entry->InstanceWritersUntracked, entry->VolumeInfoStatus, entry->VolumeFlags,
+#if defined(SAFEUPLOAD_STAGING_PROTOTYPE) && SAFEUPLOAD_STAGING_PROTOTYPE
+            entry->InstanceRegistryUnknownReasons, entry->FirstUnknownReason, entry->FirstUnknownSite,
+#endif
+            entry->VolumeGuidStatus);
         for (character = 0; character < entry->VolumeGuidChars; ++character) {
             WCHAR value = entry->VolumeGuid[character];
             if (value == L'\\' || value == L'"') wprintf(L"\\%lc", value);
@@ -1375,8 +1441,8 @@ static int PrintActivatingStatus(VOID)
                 wprintf(L"%02X", entry->FileId[byteIndex]);
             wprintf(L"\",\"path\":");
             PrintJsonWide(entry->Name, min(entry->NameChars, SAFEUPLOAD_WRITER_REGISTRY_NAME_CHARS));
-            wprintf(L",\"H\":%u,\"S\":\"%s\",\"C\":%u,\"T\":%u,\"unknownReasons\":\"0x%08X\",\"openerPids\":[",
-                entry->H, RegistrySName(entry->S), entry->C, entry->T,
+            wprintf(L",\"H\":%u,\"S\":\"%s\",\"C\":%u,\"T\":%u,\"W\":%u,\"unknownReasons\":\"0x%08X\",\"openerPids\":[",
+                entry->H, RegistrySName(entry->S), entry->C, entry->T, entry->W,
                 entry->UnknownReasons);
             for (byteIndex = 0; byteIndex < entry->OpenerPidCount && byteIndex < ARRAYSIZE(entry->OpenerPids); ++byteIndex)
                 wprintf(L"%s%u", byteIndex == 0 ? L"" : L",", entry->OpenerPids[byteIndex]);
@@ -1616,6 +1682,10 @@ Return Value:
     }
 
 #if defined(SAFEUPLOAD_STAGING_PROTOTYPE) && SAFEUPLOAD_STAGING_PROTOTYPE
+    if (argc > 1 && _wcsicmp(argv[1], L"--admission-trace-format-selftest") == 0) {
+        return PrintAdmissionTraceFormatSelfTest();
+    }
+
     if (argc > 1 && _wcsicmp(argv[1], L"--admission-trace-enable") == 0) {
         return SendAdmissionTraceControl(SAFEUPLOAD_CONTROL_ADMISSION_TRACE_ENABLE,
                                          L"admission trace enable", 0);

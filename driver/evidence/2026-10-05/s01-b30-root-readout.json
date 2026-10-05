@@ -1,0 +1,56 @@
+{
+  "Run": "boot-start-invariant-S01-denied-write-after-boot-boot-verifier-b30s01c",
+  "SourceCommit": "6a833c91f4164de9c6aae009ffe7299cd12577de",
+  "ImplementedBuild": "mvp3-b30",
+  "VMObserved": {
+    "BootId": "WIN10-DEBUGGED/2026-10-05T10:12:36.5000000Z",
+    "ReadinessQpc": 626682325,
+    "ReleaseQpc": 2277718731,
+    "FirstAttemptQpc": 2278134449,
+    "QpcFrequency": 10000000,
+    "DenyCount": 101,
+    "NativeCode": 5,
+    "Actor": {
+      "Sid": "S-1-5-21-316478115-1595729549-2803163825-1037",
+      "BootId": "WIN10-DEBUGGED/2026-10-05T10:12:36.5000000Z",
+      "SessionId": 0,
+      "IsAdministrator": false,
+      "Pid": 5924,
+      "Elevated": false
+    },
+    "VerifierFlags": "0x001209bb",
+    "RawReferencesIndependentlyHashed": 55,
+    "ForbiddenByteCount": 0,
+    "Errors": [],
+    "AllManifestArtifactsIndependentlyHashed": 59,
+    "DistinctForbiddenBlocksAbsent": 303
+  },
+  "IndependentRestoration": {
+    "BaselineClean": true,
+    "Evidence": "/home/victor/Work/safeupload-staging/driver/evidence/2026-10-05/boot-start-invariant-S01-denied-write-after-boot-boot-verifier-b30s01c-final-restored-state.txt",
+    "Sha256": "BD4FA7ED42139DFA8E728146F6F563ADD4E98F35B91B13600E74C679E6A38553"
+  },
+  "Qualification": {
+    "NarrowBootSafety": "QUALIFIED: boot-Verifier S01 seed gate only",
+    "FullPhase4": "INCONCLUSIVE",
+    "Phase3Increments3To5": "Not qualified"
+  },
+  "Limitations": [
+    "Seed rows do not qualify Phase4; driver lower mutation ledger and live taint readback unavailable; notification absence requires authenticated durable coverage or whole-window agent absence plus an unchanged authenticated record location"
+  ],
+  "InputHashes": {
+    "Feature": "5182E4C0E562F498238EB4350F8B94C56E158B022F8A19B08E0FE4DD071D3689",
+    "Suite": "F2C002221C48E10C863FC121E0E5A15EC07A041BAF453DAE1DE1C2A2474E0EB5",
+    "Observer": "4411CC06C522D62B6078F52689C0D2C681401795D8CB50603E8FFBD5ED5AE46E",
+    "Inspector": "06090293A7B07E5205212A3A0ED7B5C2F0853743293168B9A1266C92C33C5A18",
+    "ServicePackage": "1525974FC6725186BC837BB74E41CF6ABE05EA191DF78DED827ECF60A72317E5",
+    "Helper": "4C9220B7D202255DC29EDB585DB3C51AED0B2284C06914E41E2C7C1BAA247699",
+    "ServiceTree": "87C1F8ECE5838D25F130E73864B38B09BE90A4DA3274432D8362D4EDE469A2B5",
+    "Table": "321C6C54C3EDD0E69B8B94DA5D4D56DBD951C00B3DAA7B44C28F63BA5DFE98B5"
+  },
+  "CaseSha256": "F180920E926E87AD407B2A816447ABB3C2A7E7438EFB171B8DB6717E5F423BE6",
+  "IndependentReview": {
+    "Evidence": "driver/evidence/2026-10-05/s01-b30-independent-review.txt",
+    "Sha256": "A7FE1FD3BF8CA7EE1D36528463F36D0F4C123CFF76204B2FD8DA8E45BD5FB793"
+  }
+}

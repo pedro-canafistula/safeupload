@@ -1,0 +1,19 @@
+{
+  "Schema": "InspectorFormatterBuilderValidation/1",
+  "SourceMainSha256": "FFA47C60DAE5D600751C2C3F9E237799C79290029063390242EF59BCDF641FF6",
+  "ProtocolSha256": "FC6F95D6D3963F7B5C0676D5486183DE99F258676E3F65C7EA2C395BE0C7CC54",
+  "NormalExit": 0,
+  "FeatureExit": 0,
+  "Warnings": 0,
+  "Errors": 0,
+  "NormalExeSha256": "ED4DFA03AB5B73C8029C8306528CCE3721F4B4B19BF16143D6681778C8FE2604",
+  "FeatureExeSha256": "D9D55F7013597FE488D270C4DC40B8C154D32AD0E289E5E940134E1DE4EC835A",
+  "SelfTestExit": 0,
+  "SelfTestRecords": 2,
+  "ExactTicketAbove2Pow53": 9007199254740993,
+  "ExactWriteOffset": 8192,
+  "ExactWriteLength": 4096,
+  "FullFileId": "000102030405060708090A0B0C0D0E0F",
+  "NoPortOrVm": true,
+  "InitialAttempt": "MSB8029; raw logs retained; GUID-owned output paths moved from TEMP to Documents"
+}

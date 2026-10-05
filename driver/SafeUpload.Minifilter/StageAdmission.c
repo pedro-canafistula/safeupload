@@ -201,6 +201,12 @@ NTSTATUS SafeUploadStageAdmissionVolumeStatus(_Out_ PSAFEUPLOAD_ADMISSION_VOLUME
                 entry->VolumeGuidChars = context->VolumeGuidChars;
                 RtlCopyMemory(entry->VolumeGuid, context->VolumeGuid, sizeof(entry->VolumeGuid));
                 entry->InstanceWritersUntracked = (UINT32)InterlockedCompareExchange(&context->WritersUntracked, 0, 0);
+                entry->InstanceRegistryUnknownReasons = (UINT32)InterlockedCompareExchange(&context->RegistryUnknownReasons, 0, 0);
+                {
+                    LONG64 firstUnknown = InterlockedCompareExchange64(&context->RegistryFirstUnknown, 0, 0);
+                    entry->FirstUnknownReason = (UINT32)(ULONGLONG)firstUnknown;
+                    entry->FirstUnknownSite = (UINT32)((ULONGLONG)firstUnknown >> 32);
+                }
                 /* Final state is published last. Pending/Running reports no partial results. */
                 entry->CanaryState = (UINT32)InterlockedCompareExchange(&context->CanaryState, 0, 0);
                 if (entry->CanaryState >= SAFEUPLOAD_CANARY_PASSED) {

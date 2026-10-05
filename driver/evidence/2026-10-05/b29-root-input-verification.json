@@ -1,0 +1,139 @@
+{
+  "commit": "eb6f331133212588e4eddff216cacc1851e23482",
+  "label": "mvp3-b29",
+  "builder": "192.168.122.210",
+  "notVmQualification": true,
+  "checks": {
+    "headExact": true,
+    "archiveHashMatchesSummary": true,
+    "manifestHashMatchesSummary": true,
+    "manifestSameB27": true,
+    "manifestPathsExactGitTree": true,
+    "archivePathsExactManifest": true,
+    "all26GitAndArchiveHashesMatch": true
+  },
+  "wdk": {
+    "normal": {
+      "rawLogSha256": "A88000AFCD7E2C60A497AE965389DD77D5DFC4B259553D98D2CA90A82ED44DAD",
+      "summary": "driver:normal : configuration=Debug feature=false exit=0 succeeded=True warnings=0 errors=0 apivalidator=True prefast=True artifact_sha256=F3F9CC08EA881345021AE134EDEC752261C4204AD5265078BC6D249572E1F331",
+      "rawBuildSucceeded": true,
+      "rawWarningCounts": [
+        "0"
+      ],
+      "rawErrorCounts": [
+        "0"
+      ],
+      "rawApiValidator": true,
+      "rawPrefastRules": true,
+      "artifactSha256": "F3F9CC08EA881345021AE134EDEC752261C4204AD5265078BC6D249572E1F331",
+      "pass": true
+    },
+    "owned-feature": {
+      "rawLogSha256": "02949377DCF30E13FDE720AE0C2184FC527585B038E69D9CFFFF25E1587FFAB4",
+      "summary": "driver:owned-feature : configuration=Debug feature=true exit=0 succeeded=True warnings=0 errors=0 apivalidator=True prefast=True artifact_sha256=F544A5B48DD6D80FB9F2457B827A7A14128CD22D3BF4B4F89E13887ECF8B434B",
+      "rawBuildSucceeded": true,
+      "rawWarningCounts": [
+        "0"
+      ],
+      "rawErrorCounts": [
+        "0"
+      ],
+      "rawApiValidator": true,
+      "rawPrefastRules": true,
+      "artifactSha256": "F544A5B48DD6D80FB9F2457B827A7A14128CD22D3BF4B4F89E13887ECF8B434B",
+      "pass": true
+    },
+    "normal-release": {
+      "rawLogSha256": "DB441A6B734C72DBB3FAC3F5A16EF770A205B89F57CEECF7DDF1CFB9A2C12CBB",
+      "summary": "driver:normal-release : configuration=Release feature=false exit=0 succeeded=True warnings=0 errors=0 apivalidator=True prefast=True artifact_sha256=A74E7B356B0FB3BCB2B302DC598DD060ABBE7CFB46DCF8DFD272B3FA8C3002C6",
+      "rawBuildSucceeded": true,
+      "rawWarningCounts": [
+        "0"
+      ],
+      "rawErrorCounts": [
+        "0"
+      ],
+      "rawApiValidator": true,
+      "rawPrefastRules": true,
+      "artifactSha256": "A74E7B356B0FB3BCB2B302DC598DD060ABBE7CFB46DCF8DFD272B3FA8C3002C6",
+      "pass": true
+    },
+    "owned-feature-release": {
+      "rawLogSha256": "B5681DFC06C2270050449044DCDA3CAA00406EDD1CD64123D027048E48AF36B9",
+      "summary": "driver:owned-feature-release : configuration=Release feature=true exit=0 succeeded=True warnings=0 errors=0 apivalidator=True prefast=True artifact_sha256=EF102039728252CD35F702EFEA61CF335D7B71C44EF00E5DC754C704F5C4AC5B",
+      "rawBuildSucceeded": true,
+      "rawWarningCounts": [
+        "0"
+      ],
+      "rawErrorCounts": [
+        "0"
+      ],
+      "rawApiValidator": true,
+      "rawPrefastRules": true,
+      "artifactSha256": "EF102039728252CD35F702EFEA61CF335D7B71C44EF00E5DC754C704F5C4AC5B",
+      "pass": true
+    }
+  },
+  "inspector": {
+    "inspector-normal-release": {
+      "rawLogSha256": "7EA2A91C6D2231D3A5C8568F86B09756B5B4D8A4A5B511C7C1643158B6B4071D",
+      "summary": "inspector-normal-release : exit=0 succeeded=True warnings=0 errors=0 artifact_sha256=62B379015A20631B3ACD57F86D45AC02C1D7AADA6821397C515D078EAC45CC6C",
+      "rawBuildSucceeded": true,
+      "rawWarningCounts": [
+        "0"
+      ],
+      "rawErrorCounts": [
+        "0"
+      ],
+      "artifactSha256": "62B379015A20631B3ACD57F86D45AC02C1D7AADA6821397C515D078EAC45CC6C",
+      "pass": true
+    },
+    "inspector-feature-release": {
+      "rawLogSha256": "F199B779497F579D9B07298646DB09DE8FF7D356D7D1E60EB8C6315FE870E286",
+      "summary": "inspector-feature-release : exit=0 succeeded=True warnings=0 errors=0 artifact_sha256=528B629F734A9625115EB13256581AD0CB8790007E86711AA11965FA2081A24F",
+      "rawBuildSucceeded": true,
+      "rawWarningCounts": [
+        "0"
+      ],
+      "rawErrorCounts": [
+        "0"
+      ],
+      "artifactSha256": "528B629F734A9625115EB13256581AD0CB8790007E86711AA11965FA2081A24F",
+      "pass": true
+    }
+  },
+  "artifacts": {
+    "writer-fixture": {
+      "summary": "writer-fixture : exit=0 succeeded=True warnings=0 errors=0 artifact_sha256=E5AC7AF0C3BCC049990965FCB89EFAFBD483402C60D77F891A307775BB7F5A14",
+      "sha256": "E5AC7AF0C3BCC049990965FCB89EFAFBD483402C60D77F891A307775BB7F5A14",
+      "pass": true
+    },
+    "sign": {
+      "summary": "sign : exit=0 unsigned_sha256=F544A5B48DD6D80FB9F2457B827A7A14128CD22D3BF4B4F89E13887ECF8B434B signed_sha256=F770857D16DE64D45536EA3EA61C54028CC5D3FF927518EE64F4E96A73B66CC2 signer=220DD82C37FCF36048D59E4F10113185D81D5DC7",
+      "sha256": "F770857D16DE64D45536EA3EA61C54028CC5D3FF927518EE64F4E96A73B66CC2",
+      "pass": true
+    }
+  },
+  "evidenceFiles": [
+    "/tmp/safeupload-rv4-w-ledger-20261005/driver/evidence/2026-10-05/exact-mvp3-b29-inspector-normal-release.txt",
+    "/tmp/safeupload-rv4-w-ledger-20261005/driver/evidence/2026-10-05/exact-mvp3-b29-inspector-feature-release.txt"
+  ],
+  "summaryRawLines": [
+    "LABEL=mvp3-b29",
+    "ARCHIVE_SHA256=414C5C93416352BD4B9D373E4317B2D572DB35309E0C403DE72EF76454C606AF",
+    "MANIFEST_SHA256=387BF99F08B736A33FF7F4FF901B71141B62BA1379FA9318D1DCB1324D18111B",
+    "BUILDER=DESKTOP-O1LP5DG",
+    "BUILD_END_UTC=2026-10-05T14:03:56.2697762Z",
+    "driver:normal : configuration=Debug feature=false exit=0 succeeded=True warnings=0 errors=0 apivalidator=True prefast=True artifact_sha256=F3F9CC08EA881345021AE134EDEC752261C4204AD5265078BC6D249572E1F331",
+    "driver:owned-feature : configuration=Debug feature=true exit=0 succeeded=True warnings=0 errors=0 apivalidator=True prefast=True artifact_sha256=F544A5B48DD6D80FB9F2457B827A7A14128CD22D3BF4B4F89E13887ECF8B434B",
+    "driver:normal-release : configuration=Release feature=false exit=0 succeeded=True warnings=0 errors=0 apivalidator=True prefast=True artifact_sha256=A74E7B356B0FB3BCB2B302DC598DD060ABBE7CFB46DCF8DFD272B3FA8C3002C6",
+    "driver:owned-feature-release : configuration=Release feature=true exit=0 succeeded=True warnings=0 errors=0 apivalidator=True prefast=True artifact_sha256=EF102039728252CD35F702EFEA61CF335D7B71C44EF00E5DC754C704F5C4AC5B",
+    "inspector-normal-release : exit=0 succeeded=True warnings=0 errors=0 artifact_sha256=62B379015A20631B3ACD57F86D45AC02C1D7AADA6821397C515D078EAC45CC6C",
+    "inspector-feature-release : exit=0 succeeded=True warnings=0 errors=0 artifact_sha256=528B629F734A9625115EB13256581AD0CB8790007E86711AA11965FA2081A24F",
+    "writer-fixture : exit=0 succeeded=True warnings=0 errors=0 artifact_sha256=E5AC7AF0C3BCC049990965FCB89EFAFBD483402C60D77F891A307775BB7F5A14",
+    "sign : exit=0 unsigned_sha256=F544A5B48DD6D80FB9F2457B827A7A14128CD22D3BF4B4F89E13887ECF8B434B signed_sha256=F770857D16DE64D45536EA3EA61C54028CC5D3FF927518EE64F4E96A73B66CC2 signer=220DD82C37FCF36048D59E4F10113185D81D5DC7"
+  ],
+  "manifestCount": 26,
+  "sourceMismatches": [],
+  "overallPass": true
+}

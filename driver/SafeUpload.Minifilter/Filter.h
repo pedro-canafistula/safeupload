@@ -272,6 +272,7 @@ typedef struct _SAFEUPLOAD_INSTANCE_CONTEXT {
     PSAFEUPLOAD_INSTANCE_TEARDOWN_TOKEN TeardownToken;
     volatile LONG WritersUntracked; /* Sticky for this attachment if a writer cannot get a context. */
     volatile LONG RegistryUnknownReasons;
+    DECLSPEC_ALIGN(8) volatile LONG64 RegistryFirstUnknown; /* First context publication: reason low32, origin line high32; not event chronology. */
     volatile LONG64 RegistryDirectoryRenameGeneration; /* qualifies names resolved before a completed parent move */
     volatile LONG64 RegistryRenameLossGeneration; /* makes all older retained names unresolved at expansion */
     volatile LONG CanaryState;

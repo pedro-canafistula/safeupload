@@ -1,0 +1,150 @@
+
+
+                          Summary                           
+============================================================
+  Block Size: 4096
+  Number of blocks: 261
+  Number of streams: 54
+  Signature: 1791207521
+  Age: 1
+  GUID: {A0169C19-6022-4D72-B161-B6354BC57BC5}
+  Features: 0x1
+  Has Debug Info: true
+  Has Types: true
+  Has IDs: true
+  Has Globals: true
+  Has Publics: true
+  Is incrementally linked: false
+  Has conflicting types: false
+  Is stripped: false
+
+
+                      Section Headers                       
+============================================================
+  
+  SECTION HEADER #1
+     .text name
+     2525A virtual size
+      1000 virtual address
+     25400 size of raw data
+       400 file pointer to raw data
+         0 file pointer to relocation table
+         0 file pointer to line numbers
+         0 number of relocations
+         0 number of line numbers
+  68000020 flags
+           IMAGE_SCN_CNT_CODE
+           IMAGE_SCN_MEM_NOT_PAGED
+           IMAGE_SCN_MEM_EXECUTE
+           IMAGE_SCN_MEM_READ
+  
+  SECTION HEADER #2
+    .rdata name
+      1FF8 virtual size
+     27000 virtual address
+      2000 size of raw data
+     25800 file pointer to raw data
+         0 file pointer to relocation table
+         0 file pointer to line numbers
+         0 number of relocations
+         0 number of line numbers
+  48000040 flags
+           IMAGE_SCN_CNT_INITIALIZED_DATA
+           IMAGE_SCN_MEM_NOT_PAGED
+           IMAGE_SCN_MEM_READ
+  
+  SECTION HEADER #3
+     .data name
+    68BBE0 virtual size
+     29000 virtual address
+       200 size of raw data
+     27800 file pointer to raw data
+         0 file pointer to relocation table
+         0 file pointer to line numbers
+         0 number of relocations
+         0 number of line numbers
+  C8000040 flags
+           IMAGE_SCN_CNT_INITIALIZED_DATA
+           IMAGE_SCN_MEM_NOT_PAGED
+           IMAGE_SCN_MEM_READ
+           IMAGE_SCN_MEM_WRITE
+  
+  SECTION HEADER #4
+    .pdata name
+      16EC virtual size
+    6B5000 virtual address
+      1800 size of raw data
+     27A00 file pointer to raw data
+         0 file pointer to relocation table
+         0 file pointer to line numbers
+         0 number of relocations
+         0 number of line numbers
+  48000040 flags
+           IMAGE_SCN_CNT_INITIALIZED_DATA
+           IMAGE_SCN_MEM_NOT_PAGED
+           IMAGE_SCN_MEM_READ
+  
+  SECTION HEADER #5
+      PAGE name
+     15ED9 virtual size
+    6B7000 virtual address
+     16000 size of raw data
+     29200 file pointer to raw data
+         0 file pointer to relocation table
+         0 file pointer to line numbers
+         0 number of relocations
+         0 number of line numbers
+  60000020 flags
+           IMAGE_SCN_CNT_CODE
+           IMAGE_SCN_MEM_EXECUTE
+           IMAGE_SCN_MEM_READ
+  
+  SECTION HEADER #6
+      INIT name
+      1D22 virtual size
+    6CD000 virtual address
+      1E00 size of raw data
+     3F200 file pointer to raw data
+         0 file pointer to relocation table
+         0 file pointer to line numbers
+         0 number of relocations
+         0 number of line numbers
+  62000020 flags
+           IMAGE_SCN_CNT_CODE
+           IMAGE_SCN_MEM_DISCARDABLE
+           IMAGE_SCN_MEM_EXECUTE
+           IMAGE_SCN_MEM_READ
+  
+  SECTION HEADER #7
+     .rsrc name
+       300 virtual size
+    6CF000 virtual address
+       400 size of raw data
+     41000 file pointer to raw data
+         0 file pointer to relocation table
+         0 file pointer to line numbers
+         0 number of relocations
+         0 number of line numbers
+  42000040 flags
+           IMAGE_SCN_CNT_INITIALIZED_DATA
+           IMAGE_SCN_MEM_DISCARDABLE
+           IMAGE_SCN_MEM_READ
+  
+  SECTION HEADER #8
+    .reloc name
+       100 virtual size
+    6D0000 virtual address
+       200 size of raw data
+     41400 file pointer to raw data
+         0 file pointer to relocation table
+         0 file pointer to line numbers
+         0 number of relocations
+         0 number of line numbers
+  42000040 flags
+           IMAGE_SCN_CNT_INITIALIZED_DATA
+           IMAGE_SCN_MEM_DISCARDABLE
+           IMAGE_SCN_MEM_READ
+
+                  Original Section Headers                  
+============================================================
+  PDB does not contain the requested image section header type

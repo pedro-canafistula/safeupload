@@ -1,0 +1,34 @@
+# b27 compiled-placement review: status snapshot helper
+
+Review scope: independent, source-and-artifact-only check of the b27 driver image and its matching PDB. This is a placement/call-chain review, not an installed-kernel or runtime qualification.
+
+## Pinned inputs
+
+- Source commit: `f99989f19cc6642cf59c7ab8f24b9b94d85f08fe`.
+- Source file: `driver/SafeUpload.Minifilter/StageWriters.c`, SHA-256 `a69fcf8f3ebedb9ca7ab121328ade7b42340b284e3ee705aa80226ae0ee0df92`.
+- Image: `/tmp/claude-1000/exact-mvp3-b27/owned-feature.sys`, SHA-256 `A36C8C769ADC2D7E40936DAE508A3B2DD03DA2C26773A47F3BBF6AFD3EFF0087`.
+- PDB: `SafeUpload.pdb`, SHA-256 `BE511CAA1DDEB69481399A2C9FEC35542B434161862891D6C818D96A539677A9`, GUID `{A0169C19-6022-4D72-B161-B6354BC57BC5}`, age 1. The PE CodeView debug directory carries the same GUID and age.
+- Root's b27 evidence readout reports the artifact/source archive checks complete, all four WDK configurations with zero warnings/errors, and `vmRun: false`, `runtimeQualification: NOT_QUALIFIED`. This review independently checked the PE section placement, symbol locations and helper disassembly; it did not rerun those builds.
+
+## Placement and call-chain result
+
+The compiled helper `StageRegistryActivatingStatusSnapshot` is PDB section 1, RVA `0x1b490`, size 418 bytes. PE section 1 is `.text` with `IMAGE_SCN_MEM_NOT_PAGED`. Therefore the b27 image places this helper in nonpaged code; this conclusion comes from the matched PDB address and PE section flags, not merely from `PAGED_CODE()` or a source pragma.
+
+The helper's disassembly contains two direct calls: `StageRegistryAcquireStateLock` at RVA `0x1b460` and `StageRegistryReleaseStateLock` at RVA `0x207f0`. Both symbols are also PDB section 1 in `.text`. Those wrappers call `StageAcquireSpinLock` and `StageReleaseSpinLock`, respectively; both are in `.text` as well. Their disassembly reaches the imported kernel spin-lock routines (`KeAcquireSpinLockRaiseToDpc`/`KeReleaseSpinLock` in the image import table). The helper has no other calls. Its bounded body copies the serial and 16-byte file ID, takes independent interlocked samples of generation/state/H/W, and releases the state lock before returning.
+
+The matching PDB puts `SafeUploadStageWritersActivatingStatusPage` in section 5 at `PAGE` offset `0x9e60` (RVA `0x6c0e60`); PE section 5 is named `PAGE` and lacks the nonpaged characteristic. The source contains `PAGED_CODE()` at the builder, but this review does not treat that assertion as physical placement evidence. The PDB-to-PE mapping establishes that the b27 builder is in PAGE. Thus this artifact has a pageable builder calling a nonpaged bounded snapshot helper, and the lock acquisition/copy/release sequence itself has no PAGE-section call in the compiled image.
+
+Source around `StageWriters.c:5645-5710` agrees with the disassembly: the helper is `noinline`, has `_IRQL_requires_max_(APC_LEVEL)`, writes into a local snapshot passed by the caller, and the caller copies the snapshot into the status page only after the helper has returned and released `StateLock`. The entry is traversed under shared `RegistryLock`, which also protects list membership/lifetime during this status walk. The helper takes only `StateLock`, preserving the existing RegistryLock-then-StateLock order.
+
+## Finding
+
+No compiled-placement blocker found for the bounded snapshot helper in this b27 artifact. The evidence supports the narrow claim that this helper and the lock-wrapper call chain are resident code and do not call the pageable status builder while holding `StateLock`.
+
+## Limits and remaining qualification
+
+- This does not establish runtime IRQL at every caller, lock contention behavior, deadlock freedom across the whole driver, or behavior on Windows. The annotations and image placement do not replace runtime validation.
+- The snapshot is intentionally not a coherent tuple: source says only W mutation is serialized by `StateLock`; H/state/generation and other fields retain independent-sample semantics. This review does not upgrade that contract.
+- The PDB proves symbol-to-section placement for this matching build. It does not prove the image was loaded or exercised in a target VM. No VM ran; runtime qualification remains `NOT_QUALIFIED`.
+
+
+Review accuracy correction: the initial draft attributed the builder's PAGE placement to a source allocation pragma. The pinned `StageWriters.c` has `PAGED_CODE()` in the builder but no `alloc_text(PAGE, SafeUploadStageWritersActivatingStatusPage)` pragma. The PAGE placement conclusion above is supported by the matching PDB segment and PE section headers only.

@@ -1,0 +1,16 @@
+RV4 W-ledger status-page IRQL helper post-fix review
+Date: 2026-10-05
+Reviewed source pin: driver/SafeUpload.Minifilter/StageWriters.c SHA-256 A69FCF8F3EBEDB9CA7AB121328ADE7B42340B284E3EE705AA80226AE0EE0DF92 (working-tree delta atop 937b568cfa7cdbdcf2c46256e914d851b9ede950).
+Scope: source-only fresh review of the corrected helper; no build or runtime work performed. The earlier `rv4-w-ledger-status-page-irql-review.txt` retains the finding against the prior 1C90 pin.
+
+Disposition
+
+The FILE_ID_128 source blocker from the previous pin is corrected: line 5666 now passes `&Output->FileId` to RtlCopyMemory. I found no remaining source-level blocker in this helper delta. This is not compile or runtime qualification; the new pin still requires exact WDK builds.
+
+The resident `__declspec(noinline)` helper at lines 5658-5672 has `_IRQL_requires_max_(APC_LEVEL)`, does not have a PAGE allocation pragma, and calls only the existing resident StateLock acquire/release helpers. It copies bounded fields from the nonpaged registry entry into a small local kernel-stack snapshot while StateLock is held, releases the lock/restores the caller IRQL, and the pageable status function then copies the local snapshot into the paged output buffer at lines 5702-5708. The status function remains in PAGE with `PAGED_CODE()`. The helper adds no lock and retains the existing RegistryLock-to-StateLock order used by its caller.
+
+The patch preserves the documented independent-sample semantics: StateLock serializes W updates and this diagnostic sample, while H/state/generation are not promoted to a fully coherent tuple. Remaining output fields continue to be sampled outside the StateLock. No core writer accounting or failure policy changes are introduced.
+
+Evidence limit: no compile was performed on A69FCF8F. Earlier b26 WDK feature Debug/Release logs, including C28150, predate this helper and cannot establish this revision's result. Run the exact normal and owned-feature WDK builds against this full hash before relying on compile or IRQL verification; no runtime claim follows from this review.
+
+Review accuracy correction (2026-10-05): although the status function retains `PAGED_CODE()`, this source does not contain `#pragma alloc_text(PAGE, SafeUploadStageWritersActivatingStatusPage)`. `PAGED_CODE()` is an IRQL assertion, not evidence that the function is physically linked into PAGE. Any sentence above saying it remains in PAGE is unsupported and withdrawn. Check the exact WDK map/listing for actual placement. The new helper has no PAGE pragma.

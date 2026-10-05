@@ -56,6 +56,8 @@ extern volatile LONG SafeUploadAdmissionTraceControlState;
 extern volatile LONG SafeUploadAdmissionTraceSectionEvents;
 BOOLEAN SafeUploadStageAdmissionTraceBegin(_In_ LONG TraceState);
 VOID SafeUploadStageAdmissionTraceRecord(_In_ const SAFEUPLOAD_ADMISSION_TRACE_ENTRY *Entry);
+VOID SafeUploadStageAdmissionTraceNoteLost(_In_ LONG TraceState);
+VOID SafeUploadStageAdmissionTraceNoteTicketLost(VOID);
 VOID SafeUploadStageAdmissionTraceEnd(VOID);
 NTSTATUS SafeUploadStageAdmissionTraceControl(_In_ UINT32 Command, _In_ UINT32 Options);
 NTSTATUS SafeUploadStageAdmissionTraceReadBatch(
@@ -97,7 +99,10 @@ BOOLEAN SafeUploadStageWritersWantPostCreate(_In_ PFLT_CALLBACK_DATA Data);
 NTSTATUS SafeUploadStageWritersReserveCreate(_In_ PFLT_CALLBACK_DATA Data,
     _In_ PCFLT_RELATED_OBJECTS FltObjects, _Outptr_result_maybenull_ PVOID *Reservation,
     _Out_ PBOOLEAN Required);
-VOID SafeUploadStageWritersTrackingLost(_In_opt_ PFLT_INSTANCE Instance, _In_ LONG Reason);
+VOID SafeUploadStageWritersTrackingLostAt(_In_opt_ PFLT_INSTANCE Instance, _In_ LONG Reason,
+    _In_ ULONG OriginSite);
+#define SafeUploadStageWritersTrackingLost(Instance, Reason) \
+    SafeUploadStageWritersTrackingLostAt((Instance), (Reason), (ULONG)__LINE__)
 VOID SafeUploadStageWritersSetCompletion(_In_ PVOID Reservation,
     _In_opt_ PVOID LegacyCompletionContext, _In_ BOOLEAN LegacyCallbackRequired);
 BOOLEAN SafeUploadStageWritersIsReservation(_In_opt_ PVOID Context);
@@ -120,13 +125,18 @@ _IRQL_requires_max_(APC_LEVEL)
 BOOLEAN SafeUploadStageWritersIsTrackedWriter(_In_opt_ PFLT_INSTANCE Instance,
     _In_opt_ PFILE_OBJECT FileObject);
 _IRQL_requires_max_(APC_LEVEL)
-BOOLEAN SafeUploadStageWritersBeginMutatingIo(_In_opt_ PFLT_INSTANCE Instance,
+BOOLEAN SafeUploadStageWritersBeginMutatingIo(_Inout_ PFLT_CALLBACK_DATA Data,
+    _In_opt_ PFLT_INSTANCE Instance,
     _In_opt_ PFILE_OBJECT FileObject, _Outptr_result_maybenull_ PVOID *CompletionContext,
     _Out_ PBOOLEAN TrackedWriter);
+_IRQL_requires_max_(DISPATCH_LEVEL)
+VOID SafeUploadStageWritersSetMutatingIoCompletion(_In_opt_ PVOID CompletionContext,
+    _In_ PFLT_CALLBACK_DATA Data, _In_ FLT_POST_OPERATION_FLAGS Flags);
 _IRQL_requires_max_(DISPATCH_LEVEL)
 BOOLEAN SafeUploadStageWritersIsMutatingIoContext(_In_opt_ PVOID CompletionContext);
 _IRQL_requires_max_(DISPATCH_LEVEL)
 VOID SafeUploadStageWritersEndMutatingIo(_In_opt_ PVOID CompletionContext);
+LONG SafeUploadStageWritersObserverTicketsOutstanding(VOID);
 _IRQL_requires_max_(APC_LEVEL)
 VOID SafeUploadStageWritersAttachMutatingIo(_In_opt_ PVOID RenameContext,
     _Inout_ PVOID *MutatingIoContext);

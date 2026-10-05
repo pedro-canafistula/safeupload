@@ -71,7 +71,10 @@ Environment:
 #define STAGE_COMPLETION_CONTEXT_TAG_MASK ((ULONG_PTR)0xF)
 #define STAGE_MUTATING_IO_ENTRY_TAG ((ULONG_PTR)0x4)
 #define STAGE_MUTATING_IO_MARKER_TAG ((ULONG_PTR)0x8)
+#define STAGE_MUTATING_IO_TICKET_TAG ((ULONG_PTR)0xC)
 #define STAGE_MUTATING_IO_MARKER_SIGNATURE 'mSwU'
+#define STAGE_MUTATING_IO_TICKET_SIGNATURE 'tSwU'
+#define STAGE_MUTATING_IO_TICKET_SLOTS 128
 #define STAGE_SECTION_ACQUIRE_FIXED_TAG ((ULONG_PTR)0x4)
 #define STAGE_SECTION_RELEASE_FIXED_TAG ((ULONG_PTR)0x8)
 
@@ -85,6 +88,20 @@ __declspec(align(16)) struct _STAGE_MUTATING_IO_MARKER_CONTEXT {
 };
 typedef struct _STAGE_MUTATING_IO_MARKER_CONTEXT
     STAGE_MUTATING_IO_MARKER_CONTEXT, *PSTAGE_MUTATING_IO_MARKER_CONTEXT;
+
+/* Optional test-build observer wrapper. It owns the original W token and one
+ * extra entry reference so post-edge identity remains valid after W retirement. */
+__declspec(align(16)) struct _STAGE_MUTATING_IO_TICKET_CONTEXT {
+    volatile LONG InUse;
+    ULONG Signature;
+    ULONG CompletionFlags;
+    PVOID InnerContext;
+    PSTAGE_REGISTRY_ENTRY EntryReference;
+    ULONGLONG TicketSequence;
+    SAFEUPLOAD_ADMISSION_TRACE_ENTRY Event;
+};
+typedef struct _STAGE_MUTATING_IO_TICKET_CONTEXT
+    STAGE_MUTATING_IO_TICKET_CONTEXT, *PSTAGE_MUTATING_IO_TICKET_CONTEXT;
 
 typedef struct _STAGE_WRITER_NODE {
     LIST_ENTRY Link;
@@ -112,7 +129,8 @@ __declspec(align(16)) struct _STAGE_REGISTRY_ENTRY {
     ULONGLONG RenameLossGeneration;
     ULONG FirstSeenGeneration;
     ULONG State;
-    ULONG ActivationGeneration;
+    /* Read/write with 32-bit Interlocked operations at every access site. */
+    volatile LONG ActivationGeneration;
     volatile LONG ActivationEnforced;
     volatile LONG ScopeScanNextLink;
     volatile LONG ScopeScanUnionScoped;
@@ -144,6 +162,7 @@ __declspec(align(16)) struct _STAGE_REGISTRY_ENTRY {
     PWCH StreamName;
     PSTAGE_REGISTRY_ENTRY PoolNext;
 };
+C_ASSERT((FIELD_OFFSET(STAGE_REGISTRY_ENTRY, ActivationGeneration) % sizeof(LONG)) == 0);
 
 typedef struct _STAGE_WRITER_RESERVATION {
     LIST_ENTRY Link;
@@ -248,6 +267,7 @@ typedef struct _STAGE_DEFERRED_INSTANCE_UNKNOWN {
     PFLT_INSTANCE Instance;         /* temporary rundown reference for direct instance losses */
     PSTAGE_REGISTRY_ENTRY Entry;    /* referenced until the worker safely reads its live Instance */
     LONG Reason;
+    ULONG OriginSite;               /* original source line, never the worker's location */
 } STAGE_DEFERRED_INSTANCE_UNKNOWN, *PSTAGE_DEFERRED_INSTANCE_UNKNOWN;
 
 static BOOLEAN StageRegistryEntryQuiescent(_In_ PSTAGE_REGISTRY_ENTRY Entry, _In_ PFLT_INSTANCE Instance,
@@ -282,8 +302,18 @@ static VOID StageRegistryRenameWorker(_In_ PFLT_GENERIC_WORKITEM WorkItem, _In_ 
     _In_opt_ PVOID Context);
 static VOID StageRegistryUnknownWorker(_In_ PFLT_GENERIC_WORKITEM WorkItem, _In_ PVOID FltObject,
     _In_opt_ PVOID Context);
-static BOOLEAN StageRegistryQueueInstanceUnknown(_In_ PFLT_INSTANCE Instance, _In_ LONG Reason);
-static BOOLEAN StageRegistryQueueEntryUnknown(_In_ PSTAGE_REGISTRY_ENTRY Entry, _In_ LONG Reason);
+static BOOLEAN StageRegistryQueueInstanceUnknown(_In_ PFLT_INSTANCE Instance, _In_ LONG Reason,
+    _In_ ULONG OriginSite);
+static BOOLEAN StageRegistryQueueEntryUnknown(_In_ PSTAGE_REGISTRY_ENTRY Entry, _In_ LONG Reason,
+    _In_ ULONG OriginSite);
+static VOID StageRegistryMarkUnknownAt(_In_opt_ PFLT_INSTANCE Instance,
+    _In_ LONG Reason, _In_ BOOLEAN MachineWide, _In_ ULONG OriginSite);
+static VOID StageRegistryMarkEntryUnknownAt(_In_ PSTAGE_REGISTRY_ENTRY Entry,
+    _In_ LONG Reason, _In_ ULONG OriginSite);
+#define StageRegistryMarkUnknown(Instance, Reason, MachineWide) \
+    StageRegistryMarkUnknownAt((Instance), (Reason), (MachineWide), (ULONG)__LINE__)
+#define StageRegistryMarkEntryUnknown(Entry, Reason) \
+    StageRegistryMarkEntryUnknownAt((Entry), (Reason), (ULONG)__LINE__)
 static BOOLEAN StageRegistryQueueReclaim(VOID);
 static KSPIN_LOCK SectionLock;
 _IRQL_requires_(DISPATCH_LEVEL)
@@ -421,6 +451,11 @@ __declspec(noinline) static BOOLEAN StageRegistryTryPromoteStateNoInline(
 static volatile LONG64 WriterPostCreateRuns;
 static volatile LONG64 WriterCounted;
 static volatile LONG64 WriterReleased;
+static volatile LONG64 MutatingIoTicketSequence;
+static volatile LONG MutatingIoTicketsOutstanding;
+DECLSPEC_ALIGN(8) static volatile LONG64 MutatingIoTicketSlotCursor;
+__declspec(align(16)) static STAGE_MUTATING_IO_TICKET_CONTEXT MutatingIoTicketSlots[
+    STAGE_MUTATING_IO_TICKET_SLOTS];
 static volatile LONG64 WriterUntrackedCreates;
 static volatile LONG64 WriterCleanupUnmatched;
 static volatile LONG64 WriterDirectoryCreatesSkipped;
@@ -695,8 +730,17 @@ __declspec(noinline) static VOID StageRegistryDereference(_In_opt_ PSTAGE_REGIST
     }
 }
 
-static VOID StageRegistryMarkUnknown(_In_opt_ PFLT_INSTANCE Instance,
-    _In_ LONG Reason, _In_ BOOLEAN MachineWide)
+static VOID StageRegistryRecordFirstUnknown(_Inout_ PSAFEUPLOAD_INSTANCE_CONTEXT Context,
+    _In_ LONG Reason, _In_ ULONG OriginSite)
+{
+    LONG64 packed;
+    if (OriginSite == 0) return;
+    packed = ((LONG64)OriginSite << 32) | (ULONG)Reason;
+    (VOID)InterlockedCompareExchange64(&Context->RegistryFirstUnknown, packed, 0);
+}
+
+static VOID StageRegistryMarkUnknownAt(_In_opt_ PFLT_INSTANCE Instance,
+    _In_ LONG Reason, _In_ BOOLEAN MachineWide, _In_ ULONG OriginSite)
 {
     PSAFEUPLOAD_INSTANCE_CONTEXT context = NULL;
     BOOLEAN instanceMarked = FALSE;
@@ -706,6 +750,7 @@ static VOID StageRegistryMarkUnknown(_In_opt_ PFLT_INSTANCE Instance,
         if (KeGetCurrentIrql() <= APC_LEVEL &&
             NT_SUCCESS(FltGetInstanceContext(Instance, (PFLT_CONTEXT *)&context))) {
             InterlockedOr(&context->RegistryUnknownReasons, Reason);
+            StageRegistryRecordFirstUnknown(context, Reason, OriginSite);
             if ((Reason & SAFEUPLOAD_REGISTRY_UNKNOWN_RENAME) != 0) {
                 UNICODE_STRING volumeName;
                 PCUNICODE_STRING volumeNamePointer = NULL;
@@ -725,7 +770,7 @@ static VOID StageRegistryMarkUnknown(_In_opt_ PFLT_INSTANCE Instance,
             instanceMarked = TRUE;
             FltReleaseContext(context);
         } else if (KeGetCurrentIrql() > APC_LEVEL) {
-            instanceMarked = StageRegistryQueueInstanceUnknown(Instance, Reason);
+            instanceMarked = StageRegistryQueueInstanceUnknown(Instance, Reason, OriginSite);
         }
     }
     /* An instance lookup failure is itself fail-closed at admission: callers that cannot read the
@@ -740,7 +785,8 @@ static VOID StageRegistryMarkUnknown(_In_opt_ PFLT_INSTANCE Instance,
     }
 }
 
-static VOID StageRegistryMarkEntryUnknown(_In_ PSTAGE_REGISTRY_ENTRY Entry, _In_ LONG Reason)
+static VOID StageRegistryMarkEntryUnknownAt(_In_ PSTAGE_REGISTRY_ENTRY Entry,
+    _In_ LONG Reason, _In_ ULONG OriginSite)
 {
     InterlockedOr(&Entry->UnknownReasons, Reason);
     if ((Reason & (SAFEUPLOAD_REGISTRY_UNKNOWN_RENAME | SAFEUPLOAD_REGISTRY_UNKNOWN_IDENTITY)) != 0)
@@ -759,14 +805,14 @@ static VOID StageRegistryMarkEntryUnknown(_In_ PSTAGE_REGISTRY_ENTRY Entry, _In_
         FltReleasePushLock(&RegistryLock);
         /* The reference was taken while serialized with retirement clearing Entry->Instance. */
         if (instance != NULL) {
-            StageRegistryMarkUnknown(instance, Reason, FALSE);
+            StageRegistryMarkUnknownAt(instance, Reason, FALSE, OriginSite);
             FltObjectDereference(instance);
         }
     } else {
         /* A set-information post-operation may run at DISPATCH_LEVEL. Keep the entry Unknown
          * immediately and defer instance lookup to PASSIVE_LEVEL; the worker reads Entry->Instance
          * under RegistryLock, serialized with the teardown unlink that clears it. */
-        if (!StageRegistryQueueEntryUnknown(Entry, Reason)) {
+        if (!StageRegistryQueueEntryUnknown(Entry, Reason, OriginSite)) {
             InterlockedOr((volatile LONG *)&RegistryUnknownReasons, Reason);
             InterlockedExchange(&WriterGlobalUnknown, 1);
         }
@@ -1028,11 +1074,12 @@ UINT32 SafeUploadStageWritersGlobalUnknown(VOID)
     return (UINT32)InterlockedCompareExchange(&WriterGlobalUnknown, 0, 0);
 }
 
-VOID SafeUploadStageWritersTrackingLost(_In_opt_ PFLT_INSTANCE Instance, _In_ LONG Reason)
+VOID SafeUploadStageWritersTrackingLostAt(_In_opt_ PFLT_INSTANCE Instance,
+    _In_ LONG Reason, _In_ ULONG OriginSite)
 {
     /* Tracking is a ledger: loss is recorded at the instance when identifiable,
      * and never converted into a refusal of the create that exposed the loss. */
-    StageRegistryMarkUnknown(Instance, Reason, FALSE);
+    StageRegistryMarkUnknownAt(Instance, Reason, FALSE, OriginSite);
 }
 
 VOID SafeUploadStageWritersInstanceTeardownStart(
@@ -2462,10 +2509,70 @@ __declspec(noinline) static BOOLEAN StageRegistryReserveMutatingIoMarker(
     return reserved;
 }
 
+_IRQL_requires_max_(DISPATCH_LEVEL)
+static VOID StageMutatingIoRecordTicket(_In_ PSTAGE_MUTATING_IO_TICKET_CONTEXT Ticket,
+    _In_ UINT32 EventKind)
+{
+    LONG traceState = SafeUploadAdmissionTraceControlState;
+    if ((traceState & 1) == 0 || !SafeUploadStageAdmissionTraceBegin(traceState)) {
+        SafeUploadStageAdmissionTraceNoteTicketLost();
+        return;
+    }
+    Ticket->Event.EventKind = EventKind;
+    SafeUploadStageAdmissionTraceRecord(&Ticket->Event);
+    SafeUploadStageAdmissionTraceEnd();
+}
+
+static VOID StageMutatingIoRefreshEntrySnapshot(_Inout_ SAFEUPLOAD_ADMISSION_TRACE_ENTRY *Event,
+    _In_opt_ PSTAGE_REGISTRY_ENTRY Entry, _In_ BOOLEAN PostRetirement)
+{
+    KIRQL irql;
+    if (Entry == NULL) return;
+    /* StateLock serializes the W begin/end counter transition. H, state, and
+     * unknown reasons are independent atomic samples; H writers do not all
+     * take StateLock. ActivationGeneration is independently interlocked and
+     * may change under RegistryLock while this callback is at DISPATCH_LEVEL.
+     * This is not a coherent whole-record tuple or seqlock snapshot. */
+    StageRegistryAcquireStateLock(Entry, &irql);
+    Event->H = (UINT32)max(0, InterlockedCompareExchange(&Entry->H, 0, 0));
+    Event->W = (UINT32)max(0, InterlockedCompareExchange(&Entry->W, 0, 0));
+    Event->RegistryState = (UINT32)InterlockedCompareExchange((volatile LONG *)&Entry->State, 0, 0);
+    Event->ActivationGeneration = (UINT32)InterlockedCompareExchange(
+        &Entry->ActivationGeneration, 0, 0);
+    Event->RegistryUnknownReasons = (UINT32)InterlockedCompareExchange(&Entry->UnknownReasons, 0, 0);
+    Event->VolumeSerialNumber = Entry->VolumeSerial;
+    RtlCopyMemory(Event->FileId, &Entry->FileId, sizeof(Entry->FileId));
+    Event->RegistrySnapshotFlags = SAFEUPLOAD_ADMISSION_TRACE_REGISTRY_SNAPSHOT_LOCKED |
+        SAFEUPLOAD_ADMISSION_TRACE_REGISTRY_SNAPSHOT_EXACT_ID |
+        (PostRetirement ? SAFEUPLOAD_ADMISSION_TRACE_REGISTRY_SNAPSHOT_POST_RETIRE : 0);
+    StageRegistryReleaseStateLock(Entry, irql);
+    /* PolicyGeneration is the current semantic policy epoch, sampled outside
+     * the entry lock because it is global and has its own atomic publication. */
+    Event->PolicyGeneration = (UINT32)SafeUploadCurrentPolicyGeneration();
+}
+
+static PSTAGE_MUTATING_IO_TICKET_CONTEXT StageMutatingIoTicketReserve(VOID)
+{
+    ULONG attempt;
+    ULONG start = (ULONG)InterlockedIncrement64(&MutatingIoTicketSlotCursor) &
+        (STAGE_MUTATING_IO_TICKET_SLOTS - 1);
+    for (attempt = 0; attempt < STAGE_MUTATING_IO_TICKET_SLOTS; ++attempt) {
+        PSTAGE_MUTATING_IO_TICKET_CONTEXT ticket = &MutatingIoTicketSlots[
+            (start + attempt) & (STAGE_MUTATING_IO_TICKET_SLOTS - 1)];
+        if (InterlockedCompareExchange(&ticket->InUse, 1, 0) == 0) {
+            RtlZeroMemory((PUCHAR)ticket + FIELD_OFFSET(STAGE_MUTATING_IO_TICKET_CONTEXT, Signature),
+                sizeof(*ticket) - FIELD_OFFSET(STAGE_MUTATING_IO_TICKET_CONTEXT, Signature));
+            InterlockedExchange(&ticket->InUse, 1);
+            return ticket;
+        }
+    }
+    return NULL;
+}
+
 _IRQL_requires_max_(APC_LEVEL)
-__declspec(noinline) BOOLEAN SafeUploadStageWritersBeginMutatingIo(_In_opt_ PFLT_INSTANCE Instance,
-    _In_opt_ PFILE_OBJECT FileObject, _Outptr_result_maybenull_ PVOID *CompletionContext,
-    _Out_ PBOOLEAN TrackedWriter)
+__declspec(noinline) BOOLEAN SafeUploadStageWritersBeginMutatingIo(_Inout_ PFLT_CALLBACK_DATA Data,
+    _In_opt_ PFLT_INSTANCE Instance, _In_opt_ PFILE_OBJECT FileObject,
+    _Outptr_result_maybenull_ PVOID *CompletionContext, _Out_ PBOOLEAN TrackedWriter)
 {
     PSAFEUPLOAD_STREAM_CONTEXT streamContext = NULL;
     PSTAGE_REGISTRY_ENTRY entry = NULL;
@@ -2475,14 +2582,26 @@ __declspec(noinline) BOOLEAN SafeUploadStageWritersBeginMutatingIo(_In_opt_ PFLT
     PVOID sectionObjectPointer = NULL;
     ULONG sopSlotIndex = 0;
     BOOLEAN markEntryUnknown = FALSE, markInstanceUnknown = FALSE;
+    BOOLEAN observerPermitHeld = FALSE;
     KIRQL irql;
+    LONG observerTraceState = 0;
     NTSTATUS status;
 
     *CompletionContext = NULL;
     *TrackedWriter = FALSE;
-    if (Instance == NULL || FileObject == NULL || KeGetCurrentIrql() > APC_LEVEL) return FALSE;
+    if (Data == NULL || Instance == NULL || FileObject == NULL || KeGetCurrentIrql() > APC_LEVEL) return FALSE;
+    /* The observer epoch begins at successful rundown acquisition. Hold this
+     * permit through the bounded core W admission and optional wrapper setup,
+     * so DISABLE/CLEAR cannot pass the callback between W increment and its
+     * observer ticket decision. It is released before the IRP is sent below. */
+    observerTraceState = InterlockedCompareExchange(&SafeUploadAdmissionTraceControlState, 0, 0);
+    if ((observerTraceState & 1) != 0)
+        observerPermitHeld = SafeUploadStageAdmissionTraceBegin(observerTraceState);
     status = FltGetStreamContext(Instance, FileObject, (PFLT_CONTEXT *)&streamContext);
-    if (!NT_SUCCESS(status)) return FALSE;
+    if (!NT_SUCCESS(status)) {
+        if (observerPermitHeld) SafeUploadStageAdmissionTraceEnd();
+        return FALSE;
+    }
 
     StageAcquireSpinLock(&streamContext->WriterLock, &irql);
     for (link = streamContext->WriterObjects.Flink;
@@ -2531,12 +2650,66 @@ __declspec(noinline) BOOLEAN SafeUploadStageWritersBeginMutatingIo(_In_opt_ PFLT
     StageReleaseSpinLock(&streamContext->WriterLock, irql);
     FltReleaseContext(streamContext);
 
+    if (observerPermitHeld && *TrackedWriter && *CompletionContext == NULL) {
+        /* The core W path could not produce a completion token for this
+         * tracked writer; retain an explicit observer loss under our permit. */
+        SafeUploadStageAdmissionTraceNoteTicketLost();
+    } else if (observerPermitHeld && *CompletionContext != NULL) {
+        PSTAGE_MUTATING_IO_TICKET_CONTEXT ticket = StageMutatingIoTicketReserve();
+        if (ticket != NULL) {
+                ULONG_PTR inner = (ULONG_PTR)*CompletionContext;
+                ULONG_PTR innerTag = inner & STAGE_COMPLETION_CONTEXT_TAG_MASK;
+                PSTAGE_REGISTRY_ENTRY ticketEntry = innerTag == STAGE_MUTATING_IO_ENTRY_TAG ?
+                    (PSTAGE_REGISTRY_ENTRY)(inner & ~STAGE_COMPLETION_CONTEXT_TAG_MASK) : NULL;
+                ticket->Signature = STAGE_MUTATING_IO_TICKET_SIGNATURE;
+                ticket->InnerContext = *CompletionContext;
+                ticket->TicketSequence = (ULONGLONG)InterlockedIncrement64(&MutatingIoTicketSequence);
+                InterlockedIncrement(&MutatingIoTicketsOutstanding);
+                ticket->Event.TicketSequence = ticket->TicketSequence;
+                ticket->Event.EventKind = SAFEUPLOAD_ADMISSION_TRACE_EVENT_W_BEGIN;
+                ticket->Event.Timestamp = 0;
+                ticket->Event.CallbackData = (UINT64)(ULONG_PTR)Data;
+                ticket->Event.Instance = (UINT64)(ULONG_PTR)Instance;
+                ticket->Event.TargetFileObject = (UINT64)(ULONG_PTR)FileObject;
+                ticket->Event.SectionObjectPointer = (UINT64)(ULONG_PTR)FileObject->SectionObjectPointer;
+                ticket->Event.ProcessId = FltGetRequestorProcessId(Data);
+                ticket->Event.Irql = KeGetCurrentIrql();
+                ticket->Event.MajorFunction = Data->Iopb->MajorFunction;
+                ticket->Event.MinorFunction = Data->Iopb->MinorFunction;
+                ticket->Event.IrpFlags = Data->Iopb->IrpFlags;
+                if (Data->Iopb->MajorFunction == IRP_MJ_WRITE) {
+                    ticket->Event.WriteOffset = (UINT64)Data->Iopb->Parameters.Write.ByteOffset.QuadPart;
+                    ticket->Event.WriteLength = Data->Iopb->Parameters.Write.Length;
+                } else if (Data->Iopb->MajorFunction == IRP_MJ_FILE_SYSTEM_CONTROL)
+                    ticket->Event.OperationCode = Data->Iopb->Parameters.FileSystemControl.Common.FsControlCode;
+                else if (Data->Iopb->MajorFunction == IRP_MJ_SET_INFORMATION)
+                    ticket->Event.OperationCode = Data->Iopb->Parameters.SetFileInformation.FileInformationClass;
+                ticket->Event.IoStatus = STATUS_PENDING;
+                ticket->Event.StreamContextState = ticketEntry != NULL ?
+                    SAFEUPLOAD_ADMISSION_TRACE_CONTEXT_PRESENT : SAFEUPLOAD_ADMISSION_TRACE_CONTEXT_UNKNOWN;
+                ticket->Event.IoInformation = 0;
+                if (ticketEntry != NULL) {
+                    StageRegistryReference(ticketEntry);
+                    ticket->EntryReference = ticketEntry;
+                    StageMutatingIoRefreshEntrySnapshot(&ticket->Event, ticketEntry, FALSE);
+                }
+                *CompletionContext = (PVOID)((ULONG_PTR)ticket | STAGE_MUTATING_IO_TICKET_TAG);
+                ticket->Event.EventKind = SAFEUPLOAD_ADMISSION_TRACE_EVENT_W_BEGIN;
+                SafeUploadStageAdmissionTraceRecord(&ticket->Event);
+        } else {
+            /* Do not drop the permit and reacquire it to report exhaustion:
+             * CLEAR could otherwise reset the ring between those operations. */
+            SafeUploadStageAdmissionTraceNoteTicketLost();
+        }
+    }
+
     if (markEntryUnknown) {
         StageRegistryMarkEntryUnknown(entry, SAFEUPLOAD_REGISTRY_UNKNOWN_CAPACITY);
     } else if (markInstanceUnknown) {
         /* Exact marker accounting was unavailable (missing identity or saturated table count). */
         StageRegistryMarkUnknown(Instance, SAFEUPLOAD_REGISTRY_UNKNOWN_CAPACITY, FALSE);
     }
+    if (observerPermitHeld) SafeUploadStageAdmissionTraceEnd();
     return *TrackedWriter;
 }
 
@@ -2545,7 +2718,46 @@ BOOLEAN SafeUploadStageWritersIsMutatingIoContext(_In_opt_ PVOID CompletionConte
 {
     ULONG_PTR tag = (ULONG_PTR)CompletionContext & STAGE_COMPLETION_CONTEXT_TAG_MASK;
     return CompletionContext != NULL &&
-        (tag == STAGE_MUTATING_IO_ENTRY_TAG || tag == STAGE_MUTATING_IO_MARKER_TAG);
+        (tag == STAGE_MUTATING_IO_ENTRY_TAG || tag == STAGE_MUTATING_IO_MARKER_TAG ||
+         tag == STAGE_MUTATING_IO_TICKET_TAG);
+}
+
+LONG SafeUploadStageWritersObserverTicketsOutstanding(VOID)
+{
+    return InterlockedCompareExchange(&MutatingIoTicketsOutstanding, 0, 0);
+}
+
+_IRQL_requires_max_(DISPATCH_LEVEL)
+VOID SafeUploadStageWritersSetMutatingIoCompletion(_In_opt_ PVOID CompletionContext,
+    _In_ PFLT_CALLBACK_DATA Data, _In_ FLT_POST_OPERATION_FLAGS Flags)
+{
+    ULONG_PTR value = (ULONG_PTR)CompletionContext;
+    PSTAGE_REGISTRY_RENAME_CONTEXT rename;
+    PSTAGE_MUTATING_IO_TICKET_CONTEXT ticket;
+    if (CompletionContext == NULL || Data == NULL) return;
+    if (SafeUploadStageWritersIsRenameContext(CompletionContext)) {
+        rename = (PSTAGE_REGISTRY_RENAME_CONTEXT)CompletionContext;
+        CompletionContext = rename->MutatingIoContext;
+        value = (ULONG_PTR)CompletionContext;
+    }
+    if ((value & STAGE_COMPLETION_CONTEXT_TAG_MASK) != STAGE_MUTATING_IO_TICKET_TAG) return;
+    ticket = (PSTAGE_MUTATING_IO_TICKET_CONTEXT)(value & ~STAGE_COMPLETION_CONTEXT_TAG_MASK);
+    if (ticket->Signature != STAGE_MUTATING_IO_TICKET_SIGNATURE) return;
+    ticket->Event.IoStatus = Data->IoStatus.Status;
+    ticket->Event.IoInformation = Data->IoStatus.Information;
+    ticket->Event.MajorFunction = Data->Iopb->MajorFunction;
+    ticket->Event.MinorFunction = Data->Iopb->MinorFunction;
+    ticket->Event.IrpFlags = Data->Iopb->IrpFlags;
+    ticket->Event.CallbackData = (UINT64)(ULONG_PTR)Data;
+    if (Data->Iopb->MajorFunction == IRP_MJ_WRITE) {
+        ticket->Event.WriteOffset = (UINT64)Data->Iopb->Parameters.Write.ByteOffset.QuadPart;
+        ticket->Event.WriteLength = Data->Iopb->Parameters.Write.Length;
+    } else if (Data->Iopb->MajorFunction == IRP_MJ_FILE_SYSTEM_CONTROL)
+        ticket->Event.OperationCode = Data->Iopb->Parameters.FileSystemControl.Common.FsControlCode;
+    else if (Data->Iopb->MajorFunction == IRP_MJ_SET_INFORMATION)
+        ticket->Event.OperationCode = Data->Iopb->Parameters.SetFileInformation.FileInformationClass;
+    ticket->Event.CompletionFlags = 1u | (FlagOn(Flags, FLTFL_POST_OPERATION_DRAINING) ? 2u : 0u);
+    ticket->CompletionFlags = ticket->Event.CompletionFlags;
 }
 
 _IRQL_requires_max_(DISPATCH_LEVEL)
@@ -2603,7 +2815,25 @@ __declspec(noinline) VOID SafeUploadStageWritersEndMutatingIo(_In_opt_ PVOID Com
     ULONG_PTR tag;
     if (CompletionContext == NULL) return;
     tag = value & STAGE_COMPLETION_CONTEXT_TAG_MASK;
-    if (tag == STAGE_MUTATING_IO_ENTRY_TAG) {
+    if (tag == STAGE_MUTATING_IO_TICKET_TAG) {
+        PSTAGE_MUTATING_IO_TICKET_CONTEXT ticket = (PSTAGE_MUTATING_IO_TICKET_CONTEXT)(value &
+            ~STAGE_COMPLETION_CONTEXT_TAG_MASK);
+        if (ticket->Signature == STAGE_MUTATING_IO_TICKET_SIGNATURE) {
+            PVOID innerContext = ticket->InnerContext;
+            SafeUploadStageWritersEndMutatingIo(innerContext);
+            StageMutatingIoRefreshEntrySnapshot(&ticket->Event, ticket->EntryReference, TRUE);
+            if ((ticket->CompletionFlags & 1u) == 0) {
+                ticket->Event.IoStatus = STATUS_PENDING;
+                ticket->Event.IoInformation = 0;
+                ticket->Event.CompletionFlags |= 4u; /* W retired before lower completion. */
+            }
+            StageMutatingIoRecordTicket(ticket, SAFEUPLOAD_ADMISSION_TRACE_EVENT_W_END);
+            if (ticket->EntryReference != NULL) StageRegistryDereference(ticket->EntryReference);
+            InterlockedDecrement(&MutatingIoTicketsOutstanding);
+            ticket->Signature = 0;
+            InterlockedExchange(&ticket->InUse, 0);
+        }
+    } else if (tag == STAGE_MUTATING_IO_ENTRY_TAG) {
         PSTAGE_REGISTRY_ENTRY entry = (PSTAGE_REGISTRY_ENTRY)(value &
             ~STAGE_COMPLETION_CONTEXT_TAG_MASK);
         StageRegistryEndMutatingIoEntry(entry);
@@ -4202,7 +4432,7 @@ __declspec(noinline) static VOID StageRegistryTryPromoteEntry(
         InterlockedCompareExchange(&Entry->RenameInFlight, 0, 0) == 0 &&
         !directoryRenameInFlight &&
         (ULONG)InterlockedCompareExchange(&Entry->RenameVersion, 0, 0) == RenameVersion &&
-        Entry->ActivationGeneration == CurrentGeneration &&
+        (ULONG)InterlockedCompareExchange(&Entry->ActivationGeneration, 0, 0) == CurrentGeneration &&
         InterlockedCompareExchange(&Entry->ActivationEnforced, 0, 0) != 0 &&
         InterlockedCompareExchange(&Entry->ScopeNameClassification, 0, 0) ==
             STAGE_SCOPE_CLASS_SCOPED &&
@@ -4586,6 +4816,7 @@ static VOID StageRegistryUnknownWorker(_In_ PFLT_GENERIC_WORKITEM WorkItem, _In_
     if (deferred != NULL && instance != NULL && NT_SUCCESS(FltGetInstanceContext(instance,
             (PFLT_CONTEXT *)&instanceContext))) {
         InterlockedOr(&instanceContext->RegistryUnknownReasons, deferred->Reason);
+        StageRegistryRecordFirstUnknown(instanceContext, deferred->Reason, deferred->OriginSite);
         if ((deferred->Reason & SAFEUPLOAD_REGISTRY_UNKNOWN_RENAME) != 0) {
             UNICODE_STRING volumeName;
             PCUNICODE_STRING volumeNamePointer = NULL;
@@ -4613,7 +4844,7 @@ static VOID StageRegistryUnknownWorker(_In_ PFLT_GENERIC_WORKITEM WorkItem, _In_
 }
 
 static BOOLEAN StageRegistryQueueDeferredUnknown(_In_opt_ PFLT_INSTANCE Instance,
-    _In_opt_ PSTAGE_REGISTRY_ENTRY Entry, _In_ LONG Reason)
+    _In_opt_ PSTAGE_REGISTRY_ENTRY Entry, _In_ LONG Reason, _In_ ULONG OriginSite)
 {
     PSTAGE_DEFERRED_INSTANCE_UNKNOWN deferred;
     PFLT_GENERIC_WORKITEM item;
@@ -4641,6 +4872,7 @@ static BOOLEAN StageRegistryQueueDeferredUnknown(_In_opt_ PFLT_INSTANCE Instance
         deferred->Entry = Entry;
     }
     deferred->Reason = Reason;
+    deferred->OriginSite = OriginSite;
     item = FltAllocateGenericWorkItem();
     if (item == NULL) {
         if (deferred->Instance != NULL) FltObjectDereference(deferred->Instance);
@@ -4662,14 +4894,16 @@ static BOOLEAN StageRegistryQueueDeferredUnknown(_In_opt_ PFLT_INSTANCE Instance
     return TRUE;
 }
 
-static BOOLEAN StageRegistryQueueInstanceUnknown(_In_ PFLT_INSTANCE Instance, _In_ LONG Reason)
+static BOOLEAN StageRegistryQueueInstanceUnknown(_In_ PFLT_INSTANCE Instance, _In_ LONG Reason,
+    _In_ ULONG OriginSite)
 {
-    return StageRegistryQueueDeferredUnknown(Instance, NULL, Reason);
+    return StageRegistryQueueDeferredUnknown(Instance, NULL, Reason, OriginSite);
 }
 
-static BOOLEAN StageRegistryQueueEntryUnknown(_In_ PSTAGE_REGISTRY_ENTRY Entry, _In_ LONG Reason)
+static BOOLEAN StageRegistryQueueEntryUnknown(_In_ PSTAGE_REGISTRY_ENTRY Entry, _In_ LONG Reason,
+    _In_ ULONG OriginSite)
 {
-    return StageRegistryQueueDeferredUnknown(NULL, Entry, Reason);
+    return StageRegistryQueueDeferredUnknown(NULL, Entry, Reason, OriginSite);
 }
 
 static BOOLEAN StageRegistryQueueReclaimWorkItem(VOID)
@@ -5351,7 +5585,8 @@ NTSTATUS SafeUploadStageWritersApplyPendingScope(VOID)
             continue;
         }
         if (StageRegistryBeginAliasProbe(entry)) {
-            entry->ActivationGeneration = (ULONG)SafeUploadCurrentPolicyGeneration() + 1;
+            InterlockedExchange(&entry->ActivationGeneration,
+                (LONG)((ULONG)SafeUploadCurrentPolicyGeneration() + 1));
             InterlockedIncrement64(&RegistryChangeSequence);
             queued = TRUE;
         }
@@ -5424,13 +5659,43 @@ VOID SafeUploadStageWritersReconcileCurrentScope(VOID)
             StageRegistryPrepareActivation(entry, TRUE);
             InterlockedIncrement64(&RegistryChangeSequence);
         } else if (StageRegistryBeginAliasProbe(entry)) {
-            entry->ActivationGeneration = (ULONG)SafeUploadCurrentPolicyGeneration();
+            InterlockedExchange(&entry->ActivationGeneration,
+                (LONG)(ULONG)SafeUploadCurrentPolicyGeneration());
             InterlockedIncrement64(&RegistryChangeSequence);
             recheck = TRUE;
         }
     }
     FltReleasePushLock(&RegistryLock);
     if (recheck) (VOID)StageRegistryQueueReclaim();
+}
+
+typedef struct _STAGE_ACTIVATING_LOCKED_SNAPSHOT {
+    ULONGLONG VolumeSerialNumber;
+    FILE_ID_128 FileId;
+    UINT32 Generation;
+    UINT32 State;
+    UINT32 H;
+    UINT32 W;
+} STAGE_ACTIVATING_LOCKED_SNAPSHOT, *PSTAGE_ACTIVATING_LOCKED_SNAPSHOT;
+
+/* Resident bounded copy for the pageable status builder. Output points to the
+ * caller's nonpaged kernel stack, not its paged status page. Only W mutation
+ * is serialized by StateLock; other fields keep independent-sample semantics. */
+_IRQL_requires_max_(APC_LEVEL)
+__declspec(noinline) static VOID StageRegistryActivatingStatusSnapshot(
+    _In_ PSTAGE_REGISTRY_ENTRY Entry,
+    _Out_ PSTAGE_ACTIVATING_LOCKED_SNAPSHOT Output)
+{
+    KIRQL stateIrql;
+    StageRegistryAcquireStateLock(Entry, &stateIrql);
+    Output->VolumeSerialNumber = Entry->VolumeSerial;
+    RtlCopyMemory(&Output->FileId, &Entry->FileId, sizeof(Entry->FileId));
+    Output->Generation = (UINT32)InterlockedCompareExchange(
+        &Entry->ActivationGeneration, 0, 0);
+    Output->State = (UINT32)InterlockedCompareExchange((volatile LONG *)&Entry->State, 0, 0);
+    Output->H = (UINT32)max(0, InterlockedCompareExchange(&Entry->H, 0, 0));
+    Output->W = (UINT32)max(0, InterlockedCompareExchange(&Entry->W, 0, 0));
+    StageRegistryReleaseStateLock(Entry, stateIrql);
 }
 
 NTSTATUS SafeUploadStageWritersActivatingStatusPage(_In_ UINT32 StartIndex,
@@ -5454,20 +5719,22 @@ NTSTATUS SafeUploadStageWritersActivatingStatusPage(_In_ UINT32 StartIndex,
         if (skipped++ < StartIndex || count == SAFEUPLOAD_ACTIVATING_STATUS_MAX_ENTRIES) continue;
         {
             PSAFEUPLOAD_ACTIVATING_ENTRY_STATUS output = &Page->Entries[count++];
+            STAGE_ACTIVATING_LOCKED_SNAPSHOT lockedSnapshot;
             ULONG index;
             UINT32 pidCount = 0;
             UINT32 openerPids[RTL_NUMBER_OF(output->OpenerPids)];
             UINT32 sectionPids[RTL_NUMBER_OF(output->OpenerPids)];
             UINT32 openerCount = 0, sectionPidCount = 0;
             UINT32 sectionCount, pidIndex;
-            output->VolumeSerialNumber = entry->VolumeSerial;
-            RtlCopyMemory(output->FileId, &entry->FileId, sizeof(entry->FileId));
-            output->Generation = entry->ActivationGeneration;
-            output->State = (UINT32)InterlockedCompareExchange((volatile LONG *)&entry->State, 0, 0);
-            output->H = (UINT32)max(0, InterlockedCompareExchange(&entry->H, 0, 0));
+            StageRegistryActivatingStatusSnapshot(entry, &lockedSnapshot);
+            output->VolumeSerialNumber = lockedSnapshot.VolumeSerialNumber;
+            RtlCopyMemory(output->FileId, &lockedSnapshot.FileId, sizeof(output->FileId));
+            output->Generation = lockedSnapshot.Generation;
+            output->State = lockedSnapshot.State;
+            output->H = lockedSnapshot.H;
+            output->W = lockedSnapshot.W;
             output->T = (UINT32)max(0, InterlockedCompareExchange(&entry->T, 0, 0));
             output->S = (UINT32)InterlockedCompareExchange(&entry->LastSState, 0, 0);
-            output->Reserved0 = 0;
             output->UnknownReasons = (ULONG)InterlockedCompareExchange(&entry->UnknownReasons, 0, 0);
             output->ReservedFlags = 0;
             output->NameChars = min((UINT32)entry->NameChars, (UINT32)SAFEUPLOAD_WRITER_REGISTRY_NAME_CHARS);
