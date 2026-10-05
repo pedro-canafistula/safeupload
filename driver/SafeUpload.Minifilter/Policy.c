@@ -696,10 +696,11 @@ SafeUploadSetPolicy (
     )
 {
     PSAFEUPLOAD_POLICY snapshot;
-    PSAFEUPLOAD_POLICY previous;
 #if SAFEUPLOAD_STAGING_PROTOTYPE
     BOOLEAN alreadyPending = FALSE;
     NTSTATUS status;
+#else
+    PSAFEUPLOAD_POLICY previous;   /* only the normal build swaps the snapshot in place */
 #endif
 
     PAGED_CODE();
