@@ -1145,9 +1145,9 @@ static VOID StageRegistryCompleteDirectoryRename(_In_ PFLT_INSTANCE Instance,
     PSAFEUPLOAD_INSTANCE_CONTEXT instanceContext = NULL;
     UNICODE_STRING oldName, newName;
     BOOLEAN uncertain, failed = FALSE, haveInstanceContext, recheck = FALSE;
-    WCHAR replacement[SAFEUPLOAD_WRITER_REGISTRY_NAME_CHARS];
 
-    PAGED_CODE();
+    /* Not placed in PAGE (no PAGED_CODE). Names are rewritten in place: the suffix is shifted with RtlMoveMemory (overlap-safe)
+     * before the new prefix is copied, so no 1 KB scratch buffer is needed on the stack (PREfast C6262) and no allocation can fail. */
     haveInstanceContext = NT_SUCCESS(FltGetInstanceContext(Instance,
         (PFLT_CONTEXT *)&instanceContext));
     oldName.Buffer = Rename->OldName;
@@ -1220,11 +1220,10 @@ static VOID StageRegistryCompleteDirectoryRename(_In_ PFLT_INSTANCE Instance,
                     failed = TRUE;
                     continue;
                 }
-                RtlCopyMemory(replacement, Rename->Name, Rename->NewNameChars * sizeof(WCHAR));
                 if (suffixChars != 0)
-                    RtlCopyMemory(replacement + Rename->NewNameChars,
+                    RtlMoveMemory(entry->Name + Rename->NewNameChars,
                         entry->Name + Rename->OldNameChars, suffixChars * sizeof(WCHAR));
-                RtlCopyMemory(entry->Name, replacement, newBytes);
+                RtlCopyMemory(entry->Name, Rename->Name, Rename->NewNameChars * sizeof(WCHAR));
                 if (newBytes < sizeof(entry->Name))
                     RtlZeroMemory((PUCHAR)entry->Name + newBytes, sizeof(entry->Name) - newBytes);
                 entry->NameChars = (USHORT)newChars;
@@ -1282,11 +1281,10 @@ static VOID StageRegistryCompleteDirectoryRename(_In_ PFLT_INSTANCE Instance,
                     failed = TRUE;
                     continue;
                 }
-                RtlCopyMemory(replacement, Rename->Name, Rename->NewNameChars * sizeof(WCHAR));
                 if (suffixChars != 0)
-                    RtlCopyMemory(replacement + Rename->NewNameChars,
+                    RtlMoveMemory(shell->Name + Rename->NewNameChars,
                         shell->Name + Rename->OldNameChars, suffixChars * sizeof(WCHAR));
-                RtlCopyMemory(shell->Name, replacement, newBytes);
+                RtlCopyMemory(shell->Name, Rename->Name, Rename->NewNameChars * sizeof(WCHAR));
                 if (newBytes < sizeof(shell->Name))
                     RtlZeroMemory((PUCHAR)shell->Name + newBytes, sizeof(shell->Name) - newBytes);
                 shell->NameChars = (USHORT)newChars;
@@ -3867,6 +3865,9 @@ BOOLEAN SafeUploadStageWritersRegistrySnapshotByName(_In_ PFLT_INSTANCE Instance
     PLIST_ENTRY link;
     PSTAGE_REGISTRY_ENTRY entry = NULL;
     BOOLEAN evaluated;
+    PAGED_CODE();
+    RtlZeroMemory(Result, sizeof(*Result));
+    Result->StructSize = sizeof(*Result);
     if (Instance == NULL || Volume == NULL || Name == NULL || Name->Buffer == NULL ||
         Name->Length == 0 || (Name->Length & 1) != 0) return FALSE;
 
