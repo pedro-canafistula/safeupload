@@ -1,0 +1,108 @@
+
+/tmp/claude-1000/exact-mvp3-b31/owned-feature.sys:	file format coff-x86-64
+
+Disassembly of section .text:
+
+0000000140001000 <.text>:
+14001b510: 48 89 54 24 10              	movq	%rdx, 0x10(%rsp)
+14001b515: 48 89 4c 24 08              	movq	%rcx, 0x8(%rsp)
+14001b51a: 56                          	pushq	%rsi
+14001b51b: 57                          	pushq	%rdi
+14001b51c: 48 83 ec 68                 	subq	$0x68, %rsp
+14001b520: 48 8d 54 24 20              	leaq	0x20(%rsp), %rdx
+14001b525: 48 8b 8c 24 80 00 00 00     	movq	0x80(%rsp), %rcx
+14001b52d: e8 ae ff ff ff              	callq	0x14001b4e0 <.text+0x1a4e0>
+14001b532: 48 8b 84 24 88 00 00 00     	movq	0x88(%rsp), %rax
+14001b53a: 48 8b 8c 24 80 00 00 00     	movq	0x80(%rsp), %rcx
+14001b542: 48 8b 49 40                 	movq	0x40(%rcx), %rcx
+14001b546: 48 89 08                    	movq	%rcx, (%rax)
+14001b549: 48 8b 84 24 88 00 00 00     	movq	0x88(%rsp), %rax
+14001b551: 48 8b 8c 24 80 00 00 00     	movq	0x80(%rsp), %rcx
+14001b559: 48 8d 78 08                 	leaq	0x8(%rax), %rdi
+14001b55d: 48 8d 71 4c                 	leaq	0x4c(%rcx), %rsi
+14001b561: b9 10 00 00 00              	movl	$0x10, %ecx
+14001b566: f3 a4                       	rep		movsb	(%rsi), %es:(%rdi)
+14001b568: 48 8b 84 24 80 00 00 00     	movq	0x80(%rsp), %rax
+14001b570: 48 83 c0 78                 	addq	$0x78, %rax
+14001b574: 33 c9                       	xorl	%ecx, %ecx
+14001b576: 48 89 44 24 30              	movq	%rax, 0x30(%rsp)
+14001b57b: 33 c0                       	xorl	%eax, %eax
+14001b57d: 48 8b 54 24 30              	movq	0x30(%rsp), %rdx
+14001b582: 48 8b 54 24 30              	movq	0x30(%rsp), %rdx
+14001b587: f0                          	lock
+14001b588: 0f b1 0a                    	cmpxchgl	%ecx, (%rdx)
+14001b58b: 48 8b 8c 24 88 00 00 00     	movq	0x88(%rsp), %rcx
+14001b593: 89 41 18                    	movl	%eax, 0x18(%rcx)
+14001b596: 48 8b 84 24 80 00 00 00     	movq	0x80(%rsp), %rax
+14001b59e: 48 83 c0 74                 	addq	$0x74, %rax
+14001b5a2: 33 c9                       	xorl	%ecx, %ecx
+14001b5a4: 48 89 44 24 38              	movq	%rax, 0x38(%rsp)
+14001b5a9: 33 c0                       	xorl	%eax, %eax
+14001b5ab: 48 8b 54 24 38              	movq	0x38(%rsp), %rdx
+14001b5b0: 48 8b 54 24 38              	movq	0x38(%rsp), %rdx
+14001b5b5: f0                          	lock
+14001b5b6: 0f b1 0a                    	cmpxchgl	%ecx, (%rdx)
+14001b5b9: 48 8b 8c 24 88 00 00 00     	movq	0x88(%rsp), %rcx
+14001b5c1: 89 41 1c                    	movl	%eax, 0x1c(%rcx)
+14001b5c4: 48 8b 84 24 80 00 00 00     	movq	0x80(%rsp), %rax
+14001b5cc: 48 83 c0 14                 	addq	$0x14, %rax
+14001b5d0: 33 c9                       	xorl	%ecx, %ecx
+14001b5d2: 48 89 44 24 40              	movq	%rax, 0x40(%rsp)
+14001b5d7: 33 c0                       	xorl	%eax, %eax
+14001b5d9: 48 8b 54 24 40              	movq	0x40(%rsp), %rdx
+14001b5de: 48 8b 54 24 40              	movq	0x40(%rsp), %rdx
+14001b5e3: f0                          	lock
+14001b5e4: 0f b1 0a                    	cmpxchgl	%ecx, (%rdx)
+14001b5e7: 85 c0                       	testl	%eax, %eax
+14001b5e9: 7d 0a                       	jge	0x14001b5f5 <.text+0x1a5f5>
+14001b5eb: c7 44 24 24 00 00 00 00     	movl	$0x0, 0x24(%rsp)
+14001b5f3: eb 2a                       	jmp	0x14001b61f <.text+0x1a61f>
+14001b5f5: 0f ae e8                    	lfence
+14001b5f8: 48 8b 84 24 80 00 00 00     	movq	0x80(%rsp), %rax
+14001b600: 48 83 c0 14                 	addq	$0x14, %rax
+14001b604: 33 c9                       	xorl	%ecx, %ecx
+14001b606: 48 89 44 24 48              	movq	%rax, 0x48(%rsp)
+14001b60b: 33 c0                       	xorl	%eax, %eax
+14001b60d: 48 8b 54 24 48              	movq	0x48(%rsp), %rdx
+14001b612: 48 8b 54 24 48              	movq	0x48(%rsp), %rdx
+14001b617: f0                          	lock
+14001b618: 0f b1 0a                    	cmpxchgl	%ecx, (%rdx)
+14001b61b: 89 44 24 24                 	movl	%eax, 0x24(%rsp)
+14001b61f: 48 8b 84 24 88 00 00 00     	movq	0x88(%rsp), %rax
+14001b627: 8b 4c 24 24                 	movl	0x24(%rsp), %ecx
+14001b62b: 89 48 20                    	movl	%ecx, 0x20(%rax)
+14001b62e: 48 8b 84 24 80 00 00 00     	movq	0x80(%rsp), %rax
+14001b636: 48 83 c0 18                 	addq	$0x18, %rax
+14001b63a: 33 c9                       	xorl	%ecx, %ecx
+14001b63c: 48 89 44 24 50              	movq	%rax, 0x50(%rsp)
+14001b641: 33 c0                       	xorl	%eax, %eax
+14001b643: 48 8b 54 24 50              	movq	0x50(%rsp), %rdx
+14001b648: 48 8b 54 24 50              	movq	0x50(%rsp), %rdx
+14001b64d: f0                          	lock
+14001b64e: 0f b1 0a                    	cmpxchgl	%ecx, (%rdx)
+14001b651: 85 c0                       	testl	%eax, %eax
+14001b653: 7d 0a                       	jge	0x14001b65f <.text+0x1a65f>
+14001b655: c7 44 24 28 00 00 00 00     	movl	$0x0, 0x28(%rsp)
+14001b65d: eb 2a                       	jmp	0x14001b689 <.text+0x1a689>
+14001b65f: 0f ae e8                    	lfence
+14001b662: 48 8b 84 24 80 00 00 00     	movq	0x80(%rsp), %rax
+14001b66a: 48 83 c0 18                 	addq	$0x18, %rax
+14001b66e: 33 c9                       	xorl	%ecx, %ecx
+14001b670: 48 89 44 24 58              	movq	%rax, 0x58(%rsp)
+14001b675: 33 c0                       	xorl	%eax, %eax
+14001b677: 48 8b 54 24 58              	movq	0x58(%rsp), %rdx
+14001b67c: 48 8b 54 24 58              	movq	0x58(%rsp), %rdx
+14001b681: f0                          	lock
+14001b682: 0f b1 0a                    	cmpxchgl	%ecx, (%rdx)
+14001b685: 89 44 24 28                 	movl	%eax, 0x28(%rsp)
+14001b689: 48 8b 84 24 88 00 00 00     	movq	0x88(%rsp), %rax
+14001b691: 8b 4c 24 28                 	movl	0x28(%rsp), %ecx
+14001b695: 89 48 24                    	movl	%ecx, 0x24(%rax)
+14001b698: 0f b6 54 24 20              	movzbl	0x20(%rsp), %edx
+14001b69d: 48 8b 8c 24 80 00 00 00     	movq	0x80(%rsp), %rcx
+14001b6a5: e8 66 52 00 00              	callq	0x140020910 <.text+0x1f910>
+14001b6aa: 90                          	nop
+14001b6ab: 48 83 c4 68                 	addq	$0x68, %rsp
+14001b6af: 5f                          	popq	%rdi
+14001b6b0: 5e                          	popq	%rsi
+14001b6b1: c3                          	retq

@@ -1,0 +1,17 @@
+
+/tmp/claude-1000/exact-mvp3-b31/owned-feature.sys:	file format coff-x86-64
+
+Disassembly of section .text:
+
+0000000140001000 <.text>:
+140020910: 88 54 24 10                 	movb	%dl, 0x10(%rsp)
+140020914: 48 89 4c 24 08              	movq	%rcx, 0x8(%rsp)
+140020919: 48 83 ec 28                 	subq	$0x28, %rsp
+14002091d: 48 8b 44 24 30              	movq	0x30(%rsp), %rax
+140020922: 48 05 d0 00 00 00           	addq	$0xd0, %rax
+140020928: 0f b6 54 24 38              	movzbl	0x38(%rsp), %edx
+14002092d: 48 8b c8                    	movq	%rax, %rcx
+140020930: e8 ab 54 fe ff              	callq	0x140005de0 <.text+0x4de0>
+140020935: 90                          	nop
+140020936: 48 83 c4 28                 	addq	$0x28, %rsp
+14002093a: c3                          	retq

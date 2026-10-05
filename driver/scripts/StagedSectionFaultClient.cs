@@ -9,6 +9,8 @@ using Microsoft.Win32.SafeHandles;
 
 public sealed class SafeUploadSectionFaultClient : IDisposable
 {
+    public const uint WriteArm = 5, WriteRelease = 6, WriteDisarm = 7, WriteStatus = 8,
+        WriteSyntheticFailure = 9;
     [DllImport("fltlib.dll", CharSet=CharSet.Unicode)]
     static extern int FilterVolumeInstanceFindFirst(string volume, int informationClass, byte[] buffer,
         uint bytes, out uint returned, out IntPtr find);
@@ -97,6 +99,13 @@ public sealed class SafeUploadSectionFaultClient : IDisposable
         public uint Version, Mode, CurrentHeld;
         public ulong Matched, Failed, Held, TimedOut, InvalidIrql, ArmedFileObject, ArmGeneration;
     }
+    public sealed class WriteState {
+        public uint Version, Mode, CurrentHeld, PostFlags;
+        public ulong ArmGeneration, Matched, Held, Released, LowerPosts, Canceled, TimedOut, ArmedFileObject;
+        public int LowerStatus;
+        public ulong LowerInformation, LowerCallbackData, SyntheticFailures, WriteOffset;
+        public uint WriteLength, IrpFlags;
+    }
     public State Send(uint command, IntPtr file) {
         byte[] input = new byte[16], output = new byte[72]; uint returned;
         Array.Copy(BitConverter.GetBytes(1u), 0, input, 0, 4);
@@ -112,6 +121,42 @@ public sealed class SafeUploadSectionFaultClient : IDisposable
             InvalidIrql=BitConverter.ToUInt64(output,40), ArmedFileObject=BitConverter.ToUInt64(output,48),
             CurrentHeld=BitConverter.ToUInt32(output,56), ArmGeneration=BitConverter.ToUInt64(output,64) };
     }
+    // Version-2 write commands are additive; the legacy v1 section wire format above is unchanged.
+    public WriteState SendWrite(uint command, SafeFileHandle file = null) {
+        byte[] input = new byte[24], output = new byte[128]; uint returned;
+        Array.Copy(BitConverter.GetBytes(2u), 0, input, 0, 4);
+        Array.Copy(BitConverter.GetBytes(command), 0, input, 4, 4);
+        bool fileReference = false;
+        int hr;
+        try {
+            if (file != null && !file.IsInvalid && !file.IsClosed) {
+                file.DangerousAddRef(ref fileReference);
+                Array.Copy(BitConverter.GetBytes(unchecked((ulong)file.DangerousGetHandle().ToInt64())), 0, input, 8, 8);
+            }
+            hr = FilterSendMessage(port, input, (uint)input.Length, output, (uint)output.Length, out returned);
+        } finally {
+            if (fileReference) file.DangerousRelease();
+        }
+        if (hr != 0) throw new COMException("Write fault control message", hr);
+        if (returned != output.Length || BitConverter.ToUInt32(output, 0) != 2 || BitConverter.ToUInt32(output, 84) != 0)
+            throw new InvalidOperationException("Write fault reply schema mismatch");
+        return new WriteState {
+            Version=BitConverter.ToUInt32(output,0), Mode=BitConverter.ToUInt32(output,4),
+            CurrentHeld=BitConverter.ToUInt32(output,8), PostFlags=BitConverter.ToUInt32(output,12),
+            ArmGeneration=BitConverter.ToUInt64(output,16), Matched=BitConverter.ToUInt64(output,24),
+            Held=BitConverter.ToUInt64(output,32), Released=BitConverter.ToUInt64(output,40),
+            LowerPosts=BitConverter.ToUInt64(output,48), Canceled=BitConverter.ToUInt64(output,56),
+            TimedOut=BitConverter.ToUInt64(output,64), ArmedFileObject=BitConverter.ToUInt64(output,72),
+            LowerStatus=BitConverter.ToInt32(output,80), LowerInformation=BitConverter.ToUInt64(output,88),
+            LowerCallbackData=BitConverter.ToUInt64(output,96), SyntheticFailures=BitConverter.ToUInt64(output,104),
+            WriteOffset=BitConverter.ToUInt64(output,112), WriteLength=BitConverter.ToUInt32(output,120),
+            IrpFlags=BitConverter.ToUInt32(output,124) };
+    }
+    public WriteState ArmNoncachedWrite(SafeFileHandle file) { return SendWrite(WriteArm, file); }
+    public WriteState ReleaseHeldWrite() { return SendWrite(WriteRelease); }
+    public WriteState FailHeldWriteBeforeDispatch() { return SendWrite(WriteSyntheticFailure); }
+    public WriteState ReadWriteStatus() { return SendWrite(WriteStatus); }
+    public WriteState DisarmWrite() { return SendWrite(WriteDisarm); }
     public void Dispose() { port.Dispose(); }
     // Both commands used while a lower callback is held read resident driver state only.
     public static string Inspector(string executable, string command) {

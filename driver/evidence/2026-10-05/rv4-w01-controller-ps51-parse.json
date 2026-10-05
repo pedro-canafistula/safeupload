@@ -1,0 +1,118 @@
+{
+  "id": "ab1287de665e4d788bdb1a2b042fc772",
+  "builder": "192.168.122.210",
+  "remoteDirectory": "C:/Users/vika/AppData/Local/Temp/SafeUpload-W01-Parse-ab1287de665e4d788bdb1a2b042fc772",
+  "scriptSourceSha256": "9ADC1E5F3A8F0DDBA291759B07CAA01C78C48ACBA028A29D1E9D7A1CD78971E6",
+  "clientSourceSha256": "75698352627EA64D8F8B2D6D6B27795AEB0975B22AC4052A079B02AD17671E9B",
+  "notVmQualification": true,
+  "scope": "PS5.1 Parser::ParseFile only; no dot source, driver, VM, service or installer calls",
+  "rawStdout": "/tmp/safeupload-rv4-lower-w-20261005/output/mvp-continuation/rv4-w01-controller-ps51-parse-ab1287de665e4d788bdb1a2b042fc772-stdout.txt",
+  "rawStderr": "/tmp/safeupload-rv4-lower-w-20261005/output/mvp-continuation/rv4-w01-controller-ps51-parse-ab1287de665e4d788bdb1a2b042fc772-stderr.txt",
+  "steps": [
+    {
+      "argv": [
+        "python3",
+        "/tmp/safeupload-rv4-lower-w-20261005/driver/scripts/remote_ps.py",
+        "192.168.122.210"
+      ],
+      "exit": 0,
+      "stdout": "OwnedCreated=True\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "scp",
+        "-F",
+        "/dev/null",
+        "-i",
+        "/home/victor/.ssh/id_ed25519",
+        "-o",
+        "BatchMode=yes",
+        "-o",
+        "ConnectTimeout=10",
+        "-o",
+        "LogLevel=ERROR",
+        "-o",
+        "StrictHostKeyChecking=accept-new",
+        "/tmp/safeupload-rv4-lower-w-20261005/driver/scripts/Test-StagedW01Diagnostic.ps1",
+        "vika@192.168.122.210:C:/Users/vika/AppData/Local/Temp/SafeUpload-W01-Parse-ab1287de665e4d788bdb1a2b042fc772/Test-StagedW01Diagnostic.ps1"
+      ],
+      "exit": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "scp",
+        "-F",
+        "/dev/null",
+        "-i",
+        "/home/victor/.ssh/id_ed25519",
+        "-o",
+        "BatchMode=yes",
+        "-o",
+        "ConnectTimeout=10",
+        "-o",
+        "LogLevel=ERROR",
+        "-o",
+        "StrictHostKeyChecking=accept-new",
+        "/tmp/safeupload-rv4-lower-w-20261005/driver/scripts/StagedSectionFaultClient.cs",
+        "vika@192.168.122.210:C:/Users/vika/AppData/Local/Temp/SafeUpload-W01-Parse-ab1287de665e4d788bdb1a2b042fc772/StagedSectionFaultClient.cs"
+      ],
+      "exit": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "python3",
+        "/tmp/safeupload-rv4-lower-w-20261005/driver/scripts/remote_ps.py",
+        "192.168.122.210"
+      ],
+      "exit": 0,
+      "stdout": "{\"PSVersion\":\"5.1.19041.6456\",\"ScriptShaBefore\":\"9ADC1E5F3A8F0DDBA291759B07CAA01C78C48ACBA028A29D1E9D7A1CD78971E6\",\"ScriptShaAfter\":\"9ADC1E5F3A8F0DDBA291759B07CAA01C78C48ACBA028A29D1E9D7A1CD78971E6\",\"ClientShaBefore\":\"75698352627EA64D8F8B2D6D6B27795AEB0975B22AC4052A079B02AD17671E9B\",\"ClientShaAfter\":\"75698352627EA64D8F8B2D6D6B27795AEB0975B22AC4052A079B02AD17671E9B\",\"ParseErrorCount\":0,\"Diagnostics\":[],\"TokenCount\":3936,\"FunctionNames\":[\"Save-Bytes\",\"Save-Text\",\"Request\",\"Wait-Receipt\",\"Inspect\",\"EntryById\",\"Assert-Pins\"],\"AstType\":\"System.Management.Automation.Language.ScriptBlockAst\",\"ParserOnly\":true,\"NotVmQualification\":true,\"Pass\":true}\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "python3",
+        "/tmp/safeupload-rv4-lower-w-20261005/driver/scripts/remote_ps.py",
+        "192.168.122.210"
+      ],
+      "exit": 0,
+      "stdout": "OwnedRemoved=True\n",
+      "stderr": ""
+    }
+  ],
+  "parseResult": {
+    "PSVersion": "5.1.19041.6456",
+    "ScriptShaBefore": "9ADC1E5F3A8F0DDBA291759B07CAA01C78C48ACBA028A29D1E9D7A1CD78971E6",
+    "ScriptShaAfter": "9ADC1E5F3A8F0DDBA291759B07CAA01C78C48ACBA028A29D1E9D7A1CD78971E6",
+    "ClientShaBefore": "75698352627EA64D8F8B2D6D6B27795AEB0975B22AC4052A079B02AD17671E9B",
+    "ClientShaAfter": "75698352627EA64D8F8B2D6D6B27795AEB0975B22AC4052A079B02AD17671E9B",
+    "ParseErrorCount": 0,
+    "Diagnostics": [],
+    "TokenCount": 3936,
+    "FunctionNames": [
+      "Save-Bytes",
+      "Save-Text",
+      "Request",
+      "Wait-Receipt",
+      "Inspect",
+      "EntryById",
+      "Assert-Pins"
+    ],
+    "AstType": "System.Management.Automation.Language.ScriptBlockAst",
+    "ParserOnly": true,
+    "NotVmQualification": true,
+    "Pass": true
+  },
+  "clientCompileCorroboration": {
+    "evidence": "/tmp/safeupload-rv4-lower-w-20261005/output/mvp-continuation/lower-w-client-compile-682942bcc9a142008b3c284208ab6f9b.json",
+    "sourceSha256": "75698352627EA64D8F8B2D6D6B27795AEB0975B22AC4052A079B02AD17671E9B",
+    "compileExit": 0,
+    "compilerStdoutBytes": 0,
+    "compilerStderrBytes": 0,
+    "downloadedDllSha256": "B8851392162EBDDA0029A7394848AC511B91F5553B291622B9DF80BE435379A8"
+  }
+}

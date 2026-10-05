@@ -1,0 +1,248 @@
+{
+  "pdbSha256": "8F0B756FD37005F375B8098D44F0E4830199C83645D0AAD2269EBDEB6F17F942",
+  "pdbGuid": "33D6A6BE-43F9-49A0-A2E5-701EB5B1F19D",
+  "pdbAge": 1,
+  "unsignedGuid": "33D6A6BE-43F9-49A0-A2E5-701EB5B1F19D",
+  "unsignedAge": 1,
+  "signedGuid": "33D6A6BE-43F9-49A0-A2E5-701EB5B1F19D",
+  "signedAge": 1,
+  "pdbMatchesBoth": true,
+  "sections": [
+    {
+      "number": 1,
+      "name": ".text",
+      "virtualSize": 152474,
+      "virtualAddress": 4096,
+      "rawSize": 152576,
+      "rawPointer": 1024,
+      "flags": 1744830496,
+      "unsignedRawSha256": "3F49941AF87752C0B721BF602E1403FE4CED5D532CA0A5F15A80EAC8F9DEB9F1",
+      "signedRawSha256": "3F49941AF87752C0B721BF602E1403FE4CED5D532CA0A5F15A80EAC8F9DEB9F1",
+      "sameRawBytes": true
+    },
+    {
+      "number": 2,
+      "name": ".rdata",
+      "virtualSize": 8224,
+      "virtualAddress": 159744,
+      "rawSize": 8704,
+      "rawPointer": 153600,
+      "flags": 1207959616,
+      "unsignedRawSha256": "4C721D0C17F5E7F928CE85C479B94AC1EB205F2DB778B4E9E03A4918839DC96C",
+      "signedRawSha256": "4C721D0C17F5E7F928CE85C479B94AC1EB205F2DB778B4E9E03A4918839DC96C",
+      "sameRawBytes": true
+    },
+    {
+      "number": 3,
+      "name": ".data",
+      "virtualSize": 6863840,
+      "virtualAddress": 172032,
+      "rawSize": 512,
+      "rawPointer": 162304,
+      "flags": 3355443264,
+      "unsignedRawSha256": "4E73A21E98A32568891C77196F0675387A8BFFED82395D3D35D7B7F5BAFE4AA6",
+      "signedRawSha256": "4E73A21E98A32568891C77196F0675387A8BFFED82395D3D35D7B7F5BAFE4AA6",
+      "sameRawBytes": true
+    },
+    {
+      "number": 4,
+      "name": ".pdata",
+      "virtualSize": 5880,
+      "virtualAddress": 7036928,
+      "rawSize": 6144,
+      "rawPointer": 162816,
+      "flags": 1207959616,
+      "unsignedRawSha256": "EE3130D7562C344D6CFDC31C930738BA7C3DDA1FB7A585597DEA5DA5538E5545",
+      "signedRawSha256": "EE3130D7562C344D6CFDC31C930738BA7C3DDA1FB7A585597DEA5DA5538E5545",
+      "sameRawBytes": true
+    },
+    {
+      "number": 5,
+      "name": "PAGE",
+      "virtualSize": 90169,
+      "virtualAddress": 7045120,
+      "rawSize": 90624,
+      "rawPointer": 168960,
+      "flags": 1610612768,
+      "unsignedRawSha256": "37A24E184BD60E127F922AC337494CAE1BFD6C97F2C7112D8C23982F9300FCD0",
+      "signedRawSha256": "37A24E184BD60E127F922AC337494CAE1BFD6C97F2C7112D8C23982F9300FCD0",
+      "sameRawBytes": true
+    },
+    {
+      "number": 6,
+      "name": "INIT",
+      "virtualSize": 7458,
+      "virtualAddress": 7139328,
+      "rawSize": 7680,
+      "rawPointer": 259584,
+      "flags": 1644167200,
+      "unsignedRawSha256": "24A3BA46B66E704CB7DEC186B3FCA1326883675CCAC0D557AEE22DC0601762E8",
+      "signedRawSha256": "24A3BA46B66E704CB7DEC186B3FCA1326883675CCAC0D557AEE22DC0601762E8",
+      "sameRawBytes": true
+    },
+    {
+      "number": 7,
+      "name": ".rsrc",
+      "virtualSize": 768,
+      "virtualAddress": 7147520,
+      "rawSize": 1024,
+      "rawPointer": 267264,
+      "flags": 1107296320,
+      "unsignedRawSha256": "C565D27239CA772B24506EF55A6E42BF65D89BE6418AF702AA62F3F98045D480",
+      "signedRawSha256": "C565D27239CA772B24506EF55A6E42BF65D89BE6418AF702AA62F3F98045D480",
+      "sameRawBytes": true
+    },
+    {
+      "number": 8,
+      "name": ".reloc",
+      "virtualSize": 256,
+      "virtualAddress": 7151616,
+      "rawSize": 512,
+      "rawPointer": 268288,
+      "flags": 1107296320,
+      "unsignedRawSha256": "DF113909B3888F1D32D71C438C99F8ADB91229C521D8A73A8CD68A7D5F87A980",
+      "signedRawSha256": "DF113909B3888F1D32D71C438C99F8ADB91229C521D8A73A8CD68A7D5F87A980",
+      "sameRawBytes": true
+    }
+  ],
+  "functions": {
+    "SafeUploadStageAdmissionTraceBegin": {
+      "sectionNumber": 1,
+      "sectionName": ".text",
+      "sectionOffset": 32768,
+      "codeSize": 84,
+      "rvaStart": 36864,
+      "rvaEndExclusive": 36948,
+      "fullyWithinNonpagedSection": true
+    },
+    "SafeUploadStageAdmissionTraceEnd": {
+      "sectionNumber": 1,
+      "sectionName": ".text",
+      "sectionOffset": 32864,
+      "codeSize": 23,
+      "rvaStart": 36960,
+      "rvaEndExclusive": 36983,
+      "fullyWithinNonpagedSection": true
+    },
+    "SafeUploadStageAdmissionTraceRecord": {
+      "sectionNumber": 1,
+      "sectionName": ".text",
+      "sectionOffset": 32912,
+      "codeSize": 27,
+      "rvaStart": 37008,
+      "rvaEndExclusive": 37035,
+      "fullyWithinNonpagedSection": true
+    },
+    "SafeUploadStageWritersActivatingStatusPage": {
+      "sectionNumber": 5,
+      "sectionName": "PAGE",
+      "sectionOffset": 40544,
+      "codeSize": 1482,
+      "rvaStart": 7085664,
+      "rvaEndExclusive": 7087146,
+      "fullyWithinNonpagedSection": false
+    },
+    "SafeUploadStageWritersAttachMutatingIo": {
+      "sectionNumber": 1,
+      "sectionName": ".text",
+      "sectionOffset": 96064,
+      "codeSize": 104,
+      "rvaStart": 100160,
+      "rvaEndExclusive": 100264,
+      "fullyWithinNonpagedSection": true
+    },
+    "SafeUploadStageWritersBeginMutatingIo": {
+      "sectionNumber": 1,
+      "sectionName": ".text",
+      "sectionOffset": 96176,
+      "codeSize": 1820,
+      "rvaStart": 100272,
+      "rvaEndExclusive": 102092,
+      "fullyWithinNonpagedSection": true
+    },
+    "SafeUploadStageWritersEndMutatingIo": {
+      "sectionNumber": 1,
+      "sectionName": ".text",
+      "sectionOffset": 99952,
+      "codeSize": 426,
+      "rvaStart": 104048,
+      "rvaEndExclusive": 104474,
+      "fullyWithinNonpagedSection": true
+    },
+    "SafeUploadStageWritersSetMutatingIoCompletion": {
+      "sectionNumber": 1,
+      "sectionName": ".text",
+      "sectionOffset": 105024,
+      "codeSize": 495,
+      "rvaStart": 109120,
+      "rvaEndExclusive": 109615,
+      "fullyWithinNonpagedSection": true
+    },
+    "StageMutatingIoRecordTicket": {
+      "sectionNumber": 1,
+      "sectionName": ".text",
+      "sectionOffset": 106848,
+      "codeSize": 98,
+      "rvaStart": 110944,
+      "rvaEndExclusive": 111042,
+      "fullyWithinNonpagedSection": true
+    },
+    "StageMutatingIoRefreshEntrySnapshot": {
+      "sectionNumber": 1,
+      "sectionName": ".text",
+      "sectionOffset": 106960,
+      "codeSize": 576,
+      "rvaStart": 111056,
+      "rvaEndExclusive": 111632,
+      "fullyWithinNonpagedSection": true
+    },
+    "StageMutatingIoTicketReserve": {
+      "sectionNumber": 1,
+      "sectionName": ".text",
+      "sectionOffset": 107536,
+      "codeSize": 197,
+      "rvaStart": 111632,
+      "rvaEndExclusive": 111829,
+      "fullyWithinNonpagedSection": true
+    },
+    "StageRegistryAcquireStateLock": {
+      "sectionNumber": 1,
+      "sectionName": ".text",
+      "sectionOffset": 107744,
+      "codeSize": 44,
+      "rvaStart": 111840,
+      "rvaEndExclusive": 111884,
+      "fullyWithinNonpagedSection": true
+    },
+    "StageRegistryActivatingStatusSnapshot": {
+      "sectionNumber": 1,
+      "sectionName": ".text",
+      "sectionOffset": 107792,
+      "codeSize": 418,
+      "rvaStart": 111888,
+      "rvaEndExclusive": 112306,
+      "fullyWithinNonpagedSection": true
+    },
+    "StageRegistryReleaseStateLock": {
+      "sectionNumber": 1,
+      "sectionName": ".text",
+      "sectionOffset": 129296,
+      "codeSize": 43,
+      "rvaStart": 133392,
+      "rvaEndExclusive": 133435,
+      "fullyWithinNonpagedSection": true
+    }
+  },
+  "allFunctionsNonpaged": false,
+  "allSectionRawBytesSame": true,
+  "requiredHotFunctionsNonpaged": true,
+  "outerStatusPageIsPageable": true,
+  "interpretation": "Outer status-page control handler is PAGE; internal lock-held snapshot helper, acquire/release, and W ticket paths listed above are fully in nonpaged .text. Static placement is not live VM residency proof.",
+  "commands": [
+    "llvm-readobj --sections --coff-debug-directory /tmp/claude-1000/exact-mvp3-b31/owned-feature.sys > unsigned-debug-directory.txt",
+    "llvm-readobj --sections --coff-debug-directory /tmp/claude-1000/exact-mvp3-b31/SafeUpload-stage-prototype.sys > signed-debug-directory.txt",
+    "llvm-pdbutil dump --summary --section-headers /tmp/claude-1000/exact-mvp3-b31/SafeUpload.pdb > pdb-summary-sections.txt",
+    "llvm-pdbutil dump --symbols /tmp/claude-1000/exact-mvp3-b31/SafeUpload.pdb > pdb-symbols-full.txt"
+  ],
+  "rawLocalDirectory": "/tmp/claude-1000/exact-mvp3-b31"
+}

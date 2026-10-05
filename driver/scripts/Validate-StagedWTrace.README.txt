@@ -79,3 +79,5 @@ Integration source: f99989f19cc6642cf59c7ab8f24b9b94d85f08fe, StageWriters.c
 A69FCF8F3EBEDB9CA7AB121328ADE7B42340B284E3EE705AA80226AE0EE0DF92.
 The historical formatter fixture above is retained; the later bounded status-page
 helper does not change the ticket formatter or W trace protocol.
+
+Control-transition prerequisite (main integration review 2026-10-05): the callback samples the trace epoch before acquiring recorder rundown. A callback crossing CLEAR/ENABLE can continue core W accounting without an observer ticket or loss increment. The controlled trial must prove target writer quiescence across those commands and trigger the selected operation only after their successful completion. The parser cannot establish that prerequisite; a zero loss count alone does not prove exhaustive temporal coverage. Unaccounted foreign W traffic remains INCONCLUSIVE.

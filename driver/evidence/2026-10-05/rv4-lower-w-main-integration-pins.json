@@ -1,0 +1,17 @@
+{
+  "Scope": "Controlled RV4-W01 diagnostic implementation; not VM qualification",
+  "Inputs": {
+    "driver/SafeUpload.SectionFault/Fault.c": "320B864D8EE9728C4ABBC95117D3D9A3A6A7A2E7BEB88A83404AF3947FDD70D8",
+    "driver/SafeUpload.SectionFault/Protocol.h": "306B0E57FB206D7AB63B7793BDADA53B90AE769250D165E14E059C05E903B812",
+    "driver/scripts/StagedSectionFaultClient.cs": "75698352627EA64D8F8B2D6D6B27795AEB0975B22AC4052A079B02AD17671E9B",
+    "driver/scripts/Test-StagedW01Diagnostic.ps1": "8021DDF7133DAD6F704098F6809133F238647D22649D45ECCB667FE755A949AA",
+    "driver/scripts/StagedW01Stimulus.cs": "D49ADCA401EEA6DC67D5C5C5128A43329A992BDA8813BC6DCB909C97CA14DCF0"
+  },
+  "Prerequisites": [
+    "freshly CreateNew owned target, hardlink count one",
+    "writer blocked until exact arm response",
+    "trusted boot upper and exact lower altitude",
+    "retain pending processes/storage/port on uncertainty",
+    "host upper/lower/cleanup/IOCP/raw join and independent restoration"
+  ]
+}

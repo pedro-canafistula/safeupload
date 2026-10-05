@@ -1,0 +1,7 @@
+RV4-W01 controller source-only correction, 2026-10-05
+Controller SHA-256: 87C7F3BC5B10FFD8430136FC5851CFEF47DA9F32F985A0EFA0536C57C4F802B4
+Plan SHA-256: 1DEA664B868EFCA055A6FCD45A921B477600136953D7CE9FF491717108E52424
+Lower client unchanged SHA-256: 75698352627EA64D8F8B2D6D6B27795AEB0975B22AC4052A079B02AD17671E9B
+Exact source changes: held status binds arm generation, armed FILE_OBJECT, range and IRP flags; it does not demand a callback-data value before the lower post callback publishes one. Successful lower post demands nonzero callback data, same generation, full 4096 bytes, and FLTFL_POST_OPERATION_DRAINING clear. The builder WDK 10.0.28000.0 fltKernel.h line 1869 defines that flag as 0x00000001.
+The child saves unfiltered full activating-status outputs for Protected control before activation, at activation and after completion, plus decoded before/after entries; it rejects change in the full entry (including ID, volume, state, H/W, generation and unknown reasons). It also serializes full decoded baseline/before/held/after observer captures, retaining existing raw artifacts. All H/state/W page samples remain provisional; verdict stays INCONCLUSIVE/NOT_QUALIFIED.
+Builder parser evidence: /tmp/safeupload-rv4-lower-w-20261005/output/mvp-continuation/rv4-w01-controller-ps51-parse-revised.json; PS 5.1.19041.6456, Parser::ParseFile only, exit 0, errors 0, pre/post source SHA match, no stderr. Unique builder temp cleanup exit 0. No controller/VM/filter execution or kernel/build changes.

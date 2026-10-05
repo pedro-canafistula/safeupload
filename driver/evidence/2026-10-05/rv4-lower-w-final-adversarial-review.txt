@@ -1,0 +1,48 @@
+# RV4 lower-W fixture: final adversarial source review
+
+Date: 2026-10-05. Scope: read-only source review of the isolated lower-W fixture. This is not a build, VM run, or runtime qualification.
+
+## Exact reviewed inputs
+
+- Checkout: `/tmp/safeupload-rv4-lower-w-20261005`, HEAD `f99989f19cc6642cf59c7ab8f24b9b94d85f08fe`.
+- `driver/SafeUpload.SectionFault/Fault.c`: SHA-256 `320b864d8ee9728c4abbc95117d3d9a3a6a7a2e7beb88a83404af3947fdd70d8`.
+- `driver/SafeUpload.SectionFault/Protocol.h`: SHA-256 `306b0e57fb206d7ab63b7793bdada53b90ae769250d165e14e059c05e903b812`.
+- `driver/scripts/StagedSectionFaultClient.cs`: SHA-256 `75698352627ea64d8f8b2d6d6b27795aeb0975b22ac4052a079b02ad17671e9b`.
+- Integration contract read: `output/mvp-continuation/rv4-lower-w-integration-contract-v1.txt`.
+- Earlier source authoring and review notes were checked to distinguish the already-fixed prepublication snapshot and client pinning findings from current findings.
+
+## Findings
+
+### No demonstrated double-owner release on the ordinary failed-insert path, but the exact race needs a qualified contract/test
+
+The current source reserves separate rundown references for the active preoperation and the eventual queued/cancel/post owner (`Fault.c:187-193, 204-213`). It snapshots `Data->Iopb` fields before queue publication (`194-198`), commits the candidate state before insertion (`214-227`), and transfers the queued reference only on `NT_SUCCESS` (`228-232`). The cancel callback releases the queued owner after its completion (`102-117`); normal post releases that owner (`259-275`). The preoperation owner remains live until its last local work is done (`244-256`). This is materially safer than the earlier one-reference/post-insert-Iopb version, and I do not find the earlier rundown-after-cancel race in the successful insertion path.
+
+The rollback path (`233-253`) assumes that a failing `FltCbdqInsertIo` has neither published the item nor invoked the cancel callback. The implementation-supplied `FaultCbdqInsertIo` always returns `STATUS_SUCCESS` (`64-70`), so the known failure class is queue-disabled during teardown. Microsoft documents `STATUS_FLT_CBDQ_DISABLED` as “not inserted,” which supports rollback for that case. Microsoft also documents an insert/cancel race and says the already-canceled case must invoke the queue cancellation routine immediately; the public API page does not spell out the full callback-versus-return ordering for every cancellation interleaving. Thus I cannot elevate the feared double-decrement/double-release to a proved defect on these pins, but neither source comments nor the author note prove all cancellation ownership interleavings. The qualification run must exercise cancel-before-insert, cancel-during-insert, and cancel-after-success and establish exactly one terminal owner/receipt per operation. Do not count this source review as that proof.
+
+Primary API references: [FltCbdqInsertIo](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/fltkernel/nf-fltkernel-fltcbdqinsertio) documents successful insertion, the disabled/not-inserted status, and the insert/cancel race; [FltCbdqInitialize](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/fltkernel/nf-fltkernel-fltcbdqinitialize) says Filter Manager removes a canceled queue item before calling `CbdqCompleteCanceledIo`; [FltCompletePendedPreOperation](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/fltkernel/nf-fltkernel-fltcompletependedpreoperation) confirms `FLT_PREOP_COMPLETE` stops dispatch below this filter and that `FLT_PREOP_SUCCESS_WITH_CALLBACK` resumes processing with the corresponding post callback.
+
+### Teardown is deliberately not bounded after lower dispatch
+
+The worker's two waits are each capped at 30 seconds (`Fault.c:126-140`). On release or timeout it removes the one queued operation and either completes it synthetically before dispatch (`147-156`) or resumes the same callback data below this filter with a post callback (`157-160`). Disarm then joins the worker and waits without timeout for callback rundown before dereferencing the pinned file and volume (`403-421`). The source comment accurately says the watchdog bounds time in the queue, while rundown still waits for the resumed I/O's lower post (`392-393`).
+
+That is the safe choice for callback-owned state: returning after a timeout and freeing the file/context while a lower operation can still complete would be unsafe. It means disconnect, instance teardown, unload, or startup failure can remain blocked indefinitely if the resumed filesystem I/O never completes. Treat a stalled disarm as RecoveryRequired/INCONCLUSIVE and preserve the VM/evidence; do not claim bounded teardown from the 30-second worker timer. This is a concrete operational limit, not a reason to force-release callback resources.
+
+### Cancellation, lower completion, and queue-drain conclusions
+
+- The cancellation callback sets `STATUS_CANCELLED`, `Information=0`, signals release, completes the pended operation with `FLT_PREOP_COMPLETE`, then retires the outstanding count and queued rundown reference (`102-117`). Per the documented completion contract, that does not send the operation to the filesystem or invoke this filter's own post callback. An upper SafeUpload completion may still run because the test filter must be below it. Require an actual matching user IOCP completion, one cancel receipt, and zero lower posts; the kernel status field alone is not completion proof.
+- The normal path removes the queued callback data and uses `FLT_PREOP_SUCCESS_WITH_CALLBACK` (`142-161`); its post records actual `Data->IoStatus`, information, flags, and callback-data address (`259-275`). This is a structurally valid lower-completion receipt, but the callback-data pointer is only a correlation hint. The controller must separately pair upper W_BEGIN/W_END, the same identity/range, raw bytes, and user IOCP completion under the integration contract.
+- The synthetic failure path is before filesystem dispatch and separately counted (`147-156`); it is not a real lower-filesystem error. The source does not force a true lower filesystem failure or a draining case. Those outcomes stay INCONCLUSIVE unless independently produced and observed.
+- Teardown disables the CBDQ before signaling and joining the worker (`659-673`). The worker performs one `FltCbdqRemoveNextIo` (`141-143`), which is sufficient for this one-shot design: `FaultWriteMode` is consumed before publication, and only one exact FO can be held. A preoperation racing disable either inserts before disable and is drained, or sees the documented disabled insertion result and rolls back. Microsoft says disabled queues should be drained by repeatedly removing until empty; runtime testing still must confirm the invariant that there can never be more than this single item.
+
+### Bounded source risks and prerequisites
+
+- Arm publishes `FaultWriteMode` and the referenced file/volume before creating the worker (`502-511`). The intended contract issues the stimulus only after the arm request has returned. Under that serialized stimulus, no candidate operation is issued during worker creation. If another thread can write through this exact `FILE_OBJECT` concurrently with the arm call, it could be pended before `PsCreateSystemThread` fails; the failure path disarms and waits rundown, but no worker exists to remove/resume the item. This race is outside the serialized stimulus contract but must remain excluded or be handled before claiming the arm interface is generally race-safe.
+- `FaultSetup` accepts only manual NTFS disk attachment, excludes removable media, and allows one instance (`627-657`). It does not prove this filter is below SafeUpload. The integration contract correctly requires a live Filter Manager instance/altitude inventory on the target volume before the result can be called lower-ledger evidence.
+- The preoperation accepts IRP-based, nonpaging `IRP_MJ_WRITE` with `IRP_NOCACHE`, exact target FO, and IRQL <= APC (`167-186`). It does not enforce device alignment; contract/harness must prove offset, length, buffer alignment and exact range from the observed request. A cached write or paging write is a no-match, not a failure result.
+- Client `SendWrite` now uses `SafeFileHandle.DangerousAddRef` while extracting the handle and sending the arm message, releasing it in `finally` (`StagedSectionFaultClient.cs:121-160`). This closes the handle-disposal race during the control call. It does not replace the integration contract's `DuplicateHandle` ownership rule or actual asynchronous stimulus completion.
+
+## Disposition
+
+The reviewed source has a coherent single-item lower-W test design and resolves the prior Iopb snapshot and client SafeHandle findings. I found no proved source-level IRQL violation in the accepted pre, cancel, worker, or post paths: pre rejects above APC; insert/remove use the supplied queue spin lock; completion with `FLT_PREOP_COMPLETE` is permitted through DISPATCH; worker-side resume is at PASSIVE; post/cancel paths are bounded atomic/event/rundown work. Queue cancellation and normal completion are correctly distinguished in the source.
+
+This remains an unbuilt, unexecuted fixture. The exact cancellation publication interleavings, callback ordering, one-item drain invariant, true lower post, instance placement, alignment, W pairing, and user IOCP completion all require exact Windows qualification. A cancel or worker timeout, synthetic error, missing post, or teardown stall is INCONCLUSIVE. No claim of runtime qualification or acceptance follows from this review.
