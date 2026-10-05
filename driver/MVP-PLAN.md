@@ -349,3 +349,15 @@ falsify the Phase 3 cutoff mechanism; the harness must test it, never reinterpre
   any scope is refused or broken. Deterministic; increments 1-2 (mvp3-a10) boot the same policy fine. Invariant restated: at boot, with
   only the BootPolicy snapshot, the driver may refuse only mutating access into protected scopes; reads, image loads and executes outside
   any scope are never refused. Guest recovery needs an owner-run rollback: evidence/2026-10-05/s01-bugcheck-rollback.sh.
+- **2026-10-05 decisions (unattended, from the Phase 3 milestone review, evidence/2026-10-05/phase3-milestone-review.txt; build mvp3-b11
+  5faa232e, 0/0 on all four builds, not yet run on the VM):**
+  - Refusals for an unresolved name, raised IRQL or a top-level IRP apply only on volumes that can hold a current, pending or boot scope
+    (cached, IRQL-safe per-volume classification). A volume proven outside every scope is never refused. (P0-1, P1-1)
+  - Adding a scope and admitting paging writes share one atomic cutoff. A paging write that starts after it is denied or makes the entry
+    permanently non-promotable; promotion never rests on a flush that may contain post-transition writes. (P0-2)
+  - Alternate data streams are tracked per file (file ID + section pointer + stream suffix), joined to candidate scopes at expansion, and
+    their paging writes are gated. An ADS open never marks the volume Unknown. A failed join keeps the candidate Unknown. (P0-3)
+  - Expansion classifies a file against every hard-link name (PASSIVE worker). If enumeration fails, the file stays gated. (P0-4)
+  - A lost directory-rename record advances a per-volume rename-loss generation; later expansions treat names older than it as
+    unresolved and gate them before the transition completes. (P0-5)
+  - The prototype TxF path no longer hard-codes a bootstrap scope; scope decisions use configured policy only. (P1-2)
