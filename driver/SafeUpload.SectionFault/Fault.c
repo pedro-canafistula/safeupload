@@ -50,8 +50,13 @@ static NTSTATUS FaultCbdqInsertIo(_Inout_ PFLT_CALLBACK_DATA_QUEUE Cbdq,
 static VOID FaultCbdqRemoveIo(_Inout_ PFLT_CALLBACK_DATA_QUEUE Cbdq, _In_ PFLT_CALLBACK_DATA Data);
 static PFLT_CALLBACK_DATA FaultCbdqPeekNextIo(_In_ PFLT_CALLBACK_DATA_QUEUE Cbdq,
     _In_opt_ PFLT_CALLBACK_DATA Data, _In_opt_ PVOID PeekContext);
-static VOID FaultCbdqAcquire(_Inout_ PFLT_CALLBACK_DATA_QUEUE Cbdq, _Out_opt_ PKIRQL Irql);
-static VOID FaultCbdqRelease(_Inout_ PFLT_CALLBACK_DATA_QUEUE Cbdq, _In_opt_ KIRQL Irql);
+_IRQL_requires_max_(DISPATCH_LEVEL)
+_IRQL_raises_(DISPATCH_LEVEL)
+static VOID FaultCbdqAcquire(_Inout_ PFLT_CALLBACK_DATA_QUEUE Cbdq,
+    _Out_ _At_(*Irql, _IRQL_saves_) PKIRQL Irql);
+_IRQL_requires_(DISPATCH_LEVEL)
+static VOID FaultCbdqRelease(_Inout_ PFLT_CALLBACK_DATA_QUEUE Cbdq, _In_ _IRQL_restores_ KIRQL Irql);
+static KSTART_ROUTINE FaultWriteWorker;
 static VOID FaultCbdqCompleteCanceledIo(_Inout_ PFLT_CALLBACK_DATA_QUEUE Cbdq,
     _In_ PFLT_CALLBACK_DATA Data);
 static VOID FaultWriteDisarmLocked(VOID);
@@ -86,13 +91,17 @@ static PFLT_CALLBACK_DATA FaultCbdqPeekNextIo(_In_ PFLT_CALLBACK_DATA_QUEUE Cbdq
     return CONTAINING_RECORD(entry, FLT_CALLBACK_DATA, QueueLinks);
 }
 
-static VOID FaultCbdqAcquire(_Inout_ PFLT_CALLBACK_DATA_QUEUE Cbdq, _Out_opt_ PKIRQL Irql)
+_IRQL_requires_max_(DISPATCH_LEVEL)
+_IRQL_raises_(DISPATCH_LEVEL)
+static VOID FaultCbdqAcquire(_Inout_ PFLT_CALLBACK_DATA_QUEUE Cbdq,
+    _Out_ _At_(*Irql, _IRQL_saves_) PKIRQL Irql)
 {
     UNREFERENCED_PARAMETER(Cbdq);
     KeAcquireSpinLock(&FaultWriteQueueLock, Irql);
 }
 
-static VOID FaultCbdqRelease(_Inout_ PFLT_CALLBACK_DATA_QUEUE Cbdq, _In_opt_ KIRQL Irql)
+_IRQL_requires_(DISPATCH_LEVEL)
+static VOID FaultCbdqRelease(_Inout_ PFLT_CALLBACK_DATA_QUEUE Cbdq, _In_ _IRQL_restores_ KIRQL Irql)
 {
     UNREFERENCED_PARAMETER(Cbdq);
     KeReleaseSpinLock(&FaultWriteQueueLock, Irql);
@@ -129,7 +138,7 @@ static VOID FaultWriteWorker(_In_ PVOID Context)
         KIRQL irql;
         InterlockedIncrement64(&FaultWriteTimedOut);
         KeAcquireSpinLock(&FaultLock, &irql);
-        if (FaultWriteCurrentHeld == 0) {
+        if (InterlockedCompareExchange(&FaultWriteCurrentHeld, 0, 0) == 0) {
             FaultWriteMode = 0;
             KeSetEvent(&FaultWriteRelease, IO_NO_INCREMENT, FALSE);
         }
@@ -198,7 +207,8 @@ static FLT_PREOP_CALLBACK_STATUS FaultPreWrite(_Inout_ PFLT_CALLBACK_DATA Data,
     writeIrpFlags = Data->Iopb->IrpFlags;
     KeAcquireSpinLock(&FaultLock, &irql);
     mode = FaultWriteMode;
-    if (mode != SECTION_FAULT_WRITE_ARM || FaultWriteFile != file || FaultWriteCurrentHeld != 0) {
+    if (mode != SECTION_FAULT_WRITE_ARM || FaultWriteFile != file ||
+        InterlockedCompareExchange(&FaultWriteCurrentHeld, 0, 0) != 0) {
         mode = 0;
     } else {
         /* Keep the pre-callback and queued operation as distinct rundown owners.
@@ -646,9 +656,11 @@ static NTSTATUS FaultSetup(_In_ PCFLT_RELATED_OBJECTS Objects, _In_ FLT_INSTANCE
             FaultCbdqInsertIo, FaultCbdqRemoveIo, FaultCbdqPeekNextIo,
             FaultCbdqAcquire, FaultCbdqRelease, FaultCbdqCompleteCanceledIo);
         if (NT_SUCCESS(status)) {
-            FltObjectReference(Objects->Instance);
-            FaultWriteInstance = Objects->Instance;
-            FaultWriteQueueInitialized = TRUE;
+            status = FltObjectReference(Objects->Instance);
+            if (NT_SUCCESS(status)) {
+                FaultWriteInstance = Objects->Instance;
+                FaultWriteQueueInitialized = TRUE;
+            }
         }
     }
     KeReleaseMutex(&FaultControl, FALSE);
