@@ -481,6 +481,8 @@ __declspec(noinline) static VOID SafeUploadPolicyPublishScopeStateNoInline(
     _In_ BOOLEAN Finalizing, _In_ BOOLEAN TransitionActive)
 {
     KIRQL irql;
+    /* Recorded in the cache by SafeUploadPolicyCacheBuild; no paging gate reads it here any more. */
+    UNREFERENCED_PARAMETER(TransitionActive);
     SafeUploadAcquireSpinLock(&SafeUploadVolumeScopeCacheLock, &irql);
     SafeUploadPolicy = Current;
     SafeUploadPendingPolicy = Pending;
