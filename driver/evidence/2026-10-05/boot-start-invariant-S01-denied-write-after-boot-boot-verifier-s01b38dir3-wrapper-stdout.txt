@@ -1,0 +1,163 @@
+== 1. baseline
+baseline clean
+== 2. checkpoint
+BackingChainDepth=106
+UTC=2026-10-05T17:09:32Z
+virsh -c qemu:///system snapshot-create-as --domain win10-debug --name safeupload-pre-boot-start-invariant-S01-denied-write-after-boot-boot-verifier-s01b38dir3-20261005 --description 'Clean original driver and policy before boot-start-invariant-S01-denied-write-after-boot-boot-verifier-s01b38dir3' --disk-only --no-metadata --diskspec vda,snapshot=external,file=/var/lib/libvirt/images/win10-debug.safeupload-pre-boot-start-invariant-S01-denied-write-after-boot-boot-verifier-s01b38dir3-20261005 --atomic
+Domain snapshot safeupload-pre-boot-start-invariant-S01-denied-write-after-boot-boot-verifier-s01b38dir3-20261005 created
+--- active disk after checkpoint
+ Target   Source
+-------------------------------------------------------------------------------------------------------------------------------------------------
+ vda      /var/lib/libvirt/images/win10-debug.safeupload-pre-boot-start-invariant-S01-denied-write-after-boot-boot-verifier-s01b38dir3-20261005
+ sda      -
+ sdb      -
+
+running
+
+== 3. run
+PRE_RUN_PS: $ErrorActionPreference='Stop';$d='C:\Users\vika\Documents';
+$p=Join-Path $d 'SafeUpload-stage-prototype-3A338D2046226507.sys';if((Test-Path -LiteralPath $p) -and (Get-FileHash $p).Hash -ne '3A338D2046226507EB890F0EA9ADC01C28B8F167E67C484993C7BC30F3BDE6E1'){throw 'Input collision'};
+$p=Join-Path $d 'inspector-feature-release-C28A8DA63B735DD0.exe';if((Test-Path -LiteralPath $p) -and (Get-FileHash $p).Hash -ne 'C28A8DA63B735DD0E29D2E69A3B83D38D351EC3591D940160F1B7D69F6390467'){throw 'Input collision'};
+$p=Join-Path $d 'StagedInvariantCases-321C6C54C3EDD0E6.psd1';if((Test-Path -LiteralPath $p) -and (Get-FileHash $p).Hash -ne '321C6C54C3EDD0E69B8B94DA5D4D56DBD951C00B3DAA7B44C28F63BA5DFE98B5'){throw 'Input collision'};
+$p=Join-Path $d 'StagedInvariantObserver-4411CC06C522D62B.psm1';if((Test-Path -LiteralPath $p) -and (Get-FileHash $p).Hash -ne '4411CC06C522D62B6078F52689C0D2C681401795D8CB50603E8FFBD5ED5AE46E'){throw 'Input collision'};
+$p=Join-Path $d 'StagedTestAgent-4C9220B7D202255D.ps1';if((Test-Path -LiteralPath $p) -and (Get-FileHash $p).Hash -ne '4C9220B7D202255DC29EDB585DB3C51AED0B2284C06914E41E2C7C1BAA247699'){throw 'Input collision'};
+$p=Join-Path $d 'stage-service-publish.zip';if((Test-Path -LiteralPath $p) -and (Get-FileHash $p).Hash -ne '1525974FC6725186BC837BB74E41CF6ABE05EA191DF78DED827ECF60A72317E5'){$old=(Get-FileHash $p).Hash;$keep=$p+'.preserved-'+$old;if(Test-Path -LiteralPath $keep){throw 'Preserved package collision'};Move-Item -LiteralPath $p -Destination $keep};
+$p=Join-Path $d 'Test-StagedInvariantSuite-6027A5161B02CEE6.ps1';if((Test-Path -LiteralPath $p) -and (Get-FileHash $p).Hash -ne '6027A5161B02CEE6C60C06667F0802B4D8CD79781BDDBBB7F840C8FD5B7F5FD9'){throw 'Input collision'};
+if(Test-Path -LiteralPath (Join-Path $d 'boot-start-invariant-S01-denied-write-after-boot-boot-verifier-s01b38dir3-artifacts')){throw 'Run-scoped guest evidence collision'};
+if(Test-Path -LiteralPath (Join-Path $d 'SafeUpload-invariant-state-boot-start-invariant-S01-denied-write-after-boot-boot-verifier-s01b38dir3')){throw 'Run-scoped guest evidence collision'};
+if(Test-Path -LiteralPath (Join-Path $d 'boot-start-invariant-S01-denied-write-after-boot-boot-verifier-s01b38dir3-prepare.out')){throw 'Run-scoped guest evidence collision'};
+if(Test-Path -LiteralPath (Join-Path $d 'boot-start-invariant-S01-denied-write-after-boot-boot-verifier-s01b38dir3-prepare.err')){throw 'Run-scoped guest evidence collision'};
+if(Test-Path -LiteralPath (Join-Path $d 'boot-start-invariant-S01-denied-write-after-boot-boot-verifier-s01b38dir3-afterboot.out')){throw 'Run-scoped guest evidence collision'};
+if(Test-Path -LiteralPath (Join-Path $d 'boot-start-invariant-S01-denied-write-after-boot-boot-verifier-s01b38dir3-afterboot.err')){throw 'Run-scoped guest evidence collision'};
+if(Test-Path -LiteralPath (Join-Path $d 'boot-start-invariant-S01-denied-write-after-boot-boot-verifier-s01b38dir3-finalize.out')){throw 'Run-scoped guest evidence collision'};
+if(Test-Path -LiteralPath (Join-Path $d 'boot-start-invariant-S01-denied-write-after-boot-boot-verifier-s01b38dir3-finalize.err')){throw 'Run-scoped guest evidence collision'};
+'PRE_RUN_OK=True'
+
+PRE_RUN_OK=True
+copied /tmp/claude-1000/exact-mvp3-b38/SafeUpload-stage-prototype.sys -> SafeUpload-stage-prototype-3A338D2046226507.sys sha256=3a338d2046226507eb890f0ea9adc01c28b8f167e67c484993c7bc30f3bde6e1
+copied /tmp/claude-1000/exact-mvp3-b38/inspector-feature-release.exe -> inspector-feature-release-C28A8DA63B735DD0.exe sha256=c28a8da63b735dd0e29d2e69a3b83d38d351ec3591d940160f1b7d69f6390467
+copied /home/victor/Work/safeupload-staging/driver/scripts/StagedInvariantCases.psd1 -> StagedInvariantCases-321C6C54C3EDD0E6.psd1 sha256=321c6c54c3edd0e69b8b94da5d4d56dbd951c00b3daa7b44c28f63ba5dfe98b5
+copied /home/victor/Work/safeupload-staging/driver/scripts/StagedInvariantObserver.psm1 -> StagedInvariantObserver-4411CC06C522D62B.psm1 sha256=4411cc06c522d62b6078f52689c0d2c681401795d8cb50603e8ffbd5ed5ae46e
+copied /home/victor/Work/safeupload-staging/driver/scripts/StagedTestAgent.ps1 -> StagedTestAgent-4C9220B7D202255D.ps1 sha256=4c9220b7d202255dc29edb585db3c51aed0b2284c06914e41e2c7c1baa247699
+copied /tmp/claude-1000/exact-agent-agent-mvp4-notify1/stage-service-publish.zip -> stage-service-publish.zip sha256=1525974fc6725186bc837bb74e41cf6abe05ea191df78ded827ecf60a72317e5
+processed file: C:\Users\vika\Documents\SafeUpload-invariant-state-boot-start-invariant-S01-denied-write-after-boot-boot-verifier-s01b38dir3
+Successfully processed 1 files; Failed processing 0 files
+processed file: C:\Users\vika\Documents\boot-start-invariant-S01-denied-write-after-boot-boot-verifier-s01b38dir3-artifacts
+Successfully processed 1 files; Failed processing 0 files
+The command was successfully executed.
+processed file: C:\Users\vika\Documents\SafeUpload-invariant-state-boot-start-invariant-S01-denied-write-after-boot-boot-verifier-s01b38dir3
+Successfully processed 1 files; Failed processing 0 files
+processed file: C:\Users\vika\Documents\SafeUpload-invariant-state-boot-start-invariant-S01-denied-write-after-boot-boot-verifier-s01b38dir3\actor
+Successfully processed 1 files; Failed processing 0 files
+processed file: C:\SafeUploadInvariant-boot-start-invariant-S01-denied-write-after-boot-boot-verifier-s01b38dir3
+Successfully processed 1 files; Failed processing 0 files
+PolicyAclVerified=True;Trustees=SYSTEM,Administrators;InheritedAces=0
+BootPolicySeed=product-mode;ExitCode:0;PASS
+BootPolicyPrebootVerified=ParametersAcl:True;BootPolicyAcl:True;RecordBytes:16656;ExactRecord:True;PendingScopes:Absent;Start:3;PASS
+processed file: C:\Users\vika\Documents\SafeUpload-invariant-state-boot-start-invariant-S01-denied-write-after-boot-boot-verifier-s01b38dir3\writer-config.clixml
+Successfully processed 1 files; Failed processing 0 files
+processed file: C:\Users\vika\Documents\SafeUpload-invariant-state-boot-start-invariant-S01-denied-write-after-boot-boot-verifier-s01b38dir3\writer.ps1
+Successfully processed 1 files; Failed processing 0 files
+[SC] ChangeServiceConfig SUCCESS
+Verifier Flags: 0x001209bb
+  Standard Flags:
+    [X] 0x00000001 Special pool.
+    [X] 0x00000002 Force IRQL checking.
+    [X] 0x00000008 Pool tracking.
+    [X] 0x00000010 I/O verification.
+    [X] 0x00000020 Deadlock detection.
+    [X] 0x00000080 DMA checking.
+    [X] 0x00000100 Security checks.
+    [X] 0x00000800 Miscellaneous checks.
+    [X] 0x00020000 DDI compliance checking.
+  Additional Flags:
+    [ ] 0x00000004 Randomized low resources simulation.
+    [ ] 0x00000200 Force pending I/O requests.
+    [ ] 0x00000400 IRP logging.
+    [ ] 0x00002000 Invariant MDL checking for stack.
+    [ ] 0x00004000 Invariant MDL checking for driver.
+    [ ] 0x00008000 Power framework delay fuzzing.
+    [ ] 0x00010000 Port/miniport interface checking.
+    [ ] 0x00040000 Systematic low resources simulation.
+    [ ] 0x00080000 DDI compliance checking (additional).
+    [ ] 0x00200000 NDIS/WIFI verification.
+    [ ] 0x00800000 Kernel synchronization delay fuzzing.
+    [ ] 0x01000000 VM switch verification.
+    [ ] 0x02000000 Code integrity checks.
+  Internal Flags:
+    [X] 0x00100000 Extended Verifier flags (internal).
+    [X] Indicates flag is enabled.
+  Boot Mode:
+    Persistent
+  Rules:
+    All rules are using default settings
+  Extensions:
+    wdm: rules.default
+  Verified Drivers:
+    SafeUpload.sys
+The system reboot is required for the changes to take effect.
+Verifier Flags: 0x001209bb
+  Standard Flags:
+    [X] 0x00000001 Special pool.
+    [X] 0x00000002 Force IRQL checking.
+    [X] 0x00000008 Pool tracking.
+    [X] 0x00000010 I/O verification.
+    [X] 0x00000020 Deadlock detection.
+    [X] 0x00000080 DMA checking.
+    [X] 0x00000100 Security checks.
+    [X] 0x00000800 Miscellaneous checks.
+    [X] 0x00020000 DDI compliance checking.
+  Additional Flags:
+    [ ] 0x00000004 Randomized low resources simulation.
+    [ ] 0x00000200 Force pending I/O requests.
+    [ ] 0x00000400 IRP logging.
+    [ ] 0x00002000 Invariant MDL checking for stack.
+    [ ] 0x00004000 Invariant MDL checking for driver.
+    [ ] 0x00008000 Power framework delay fuzzing.
+    [ ] 0x00010000 Port/miniport interface checking.
+    [ ] 0x00040000 Systematic low resources simulation.
+    [ ] 0x00080000 DDI compliance checking (additional).
+    [ ] 0x00200000 NDIS/WIFI verification.
+    [ ] 0x00800000 Kernel synchronization delay fuzzing.
+    [ ] 0x01000000 VM switch verification.
+    [ ] 0x02000000 Code integrity checks.
+  Internal Flags:
+    [X] 0x00100000 Extended Verifier flags (internal).
+    [X] Indicates flag is enabled.
+  Boot Mode:
+    Oneboot
+  Rules:
+    All rules are using default settings
+  Extensions:
+    wdm: rules.default
+  Verified Drivers:
+    SafeUpload.sys
+The system reboot is required for the changes to take effect.
+CaseStatus=READY
+INVARIANT_PREPARED=True
+HARNESS_RETURNED
+REBOOT_REQUESTED=True
+guest SSH returned after reboot (attempt 1)
+BootIdentityChanged=True;Before=2026-10-05T16:33:47.5000000Z;After=2026-10-05T17:09:58.5000000Z
+The command was successfully executed.
+[SC] ChangeServiceConfig SUCCESS
+No settings were changed.
+INVARIANT_CASE_COMPLETED=True
+INVARIANT_RESTORED=True
+HARNESS_RETURNED
+REBOOT_REQUESTED=True
+guest SSH returned after reboot (attempt 1)
+BootIdentityChanged=True;Before=2026-10-05T17:09:58.5000000Z;After=2026-10-05T17:20:27.5000000Z
+InvariantVerdict=FAIL
+INVARIANT_FINAL_STATE=True
+HARNESS_RETURNED
+== 4. independent restoration check
+ProcessCreationAuditRestored=True
+OriginalDriverHash=True
+FilterUnloaded=True
+VerifierOff=True
+OriginalPolicyHash=True
+ZeroAgentProcesses=True
+ZeroTestTasks=True
+NoGuidFixtureDirectories=True
+BaselineClean=True
