@@ -1,0 +1,54 @@
+Directory-handle cleanup classification (e4faa498 / b38) — adversarial source review
+Date: 2026-10-05
+Reviewer: Codex gpt-6-luna (high), read-only; final answer saved verbatim by the orchestrator.
+
+## Verdict: **ACCEPT WITH CONDITIONS** for the next boot capture
+
+The directory skip addresses a plausible source of the C: `Unknown(CLEANUP)` mark, and I found no ordinary rename, hard-link, reparse, or delete-pending mechanism that turns a regular NTFS file into a directory. But the review is source-only, and directory alternate streams create a real unresolved classification risk. Treat the boot capture as a targeted experiment, not proof that cleanup accounting is sound in general.
+
+### 1. Soundness: what can be hidden
+
+The helper runs only on the two unmatched paths: `FltGetStreamContext` failed, or a stream context exists but no node for this `FILE_OBJECT` was found. The `found != NULL` path is untouched: it removes the node and releases its writer accounting without calling the helper. See [StageWriters.c](/home/victor/Work/safeupload-staging/driver/SafeUpload.Minifilter/StageWriters.c:2362).
+
+- **Directory streams are the open question.** NTFS directories can have named `$DATA` alternate streams, and their directory index is the `$INDEX_ALLOCATION` stream. If `FltIsDirectory` reports TRUE for an ADS file object on a directory, its unmatched cleanup will now be skipped—even though that stream may contain data that this registry is intended to track. Microsoft’s NTFS specification confirms both directory ADS and directory index streams ([NTFS streams](https://learn.microsoft.com/en-us/openspecs/windows_protocols/ms-fscc/c54dec26-1551-4d3a-a0ea-4fa40f848eb3), [alternate data streams](https://learn.microsoft.com/en-us/openspecs/windows_protocols/ms-fscc/e2b19412-a925-4360-b009-86e3b8a020c8)). The source does not establish how `FltIsDirectory` classifies `dir:stream` versus `dir::$INDEX_ALLOCATION`; test those exact opens before treating this as generally sound.
+- **Ordinary directory handles match the new skip’s rationale.** Post-create deliberately skips `FILE_DIRECTORY_FILE` and objects for which `FltIsDirectory` returns TRUE; cleanup now applies the latter test on unmatched paths. If classification fails, the code preserves the old loss behavior.
+- **A regular file being misclassified is not an evident attacker-controlled path.** `FltIsDirectory` reports whether the already-open file object represents a directory and gets that information from Filter Manager’s cached stream metadata ([FltIsDirectory documentation](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/fltkernel/nf-fltkernel-fltisdirectory)). Hard links do not change the underlying object’s type. A reparse path that resolves to a directory should classify the resolved object as a directory; a reparse path that resolves to a regular file should not. Delete-pending does not, by itself, change the type of the still-open object. These are source-based conclusions, not runtime proof against a file-system or Filter Manager misclassification.
+- **The create/cleanup race is conservative when classification differs.** A tracked node reaches `found != NULL` and is always removed. If create skipped an object as a directory but cleanup later reports false or fails, cleanup records unmatched loss. The concerning case is repeated TRUE for an object that was actually a writer, especially a directory ADS or a systematic false positive. There is no independent type check in the new skip.
+
+The helper also skips the `found == NULL` case even when a stream context exists. That is intentional per the change’s stated goal, but a mismatched or missing node is itself a tracking anomaly; only a correct directory classification makes suppressing it safe.
+
+### 2. Calling `FltIsDirectory` from cleanup completion
+
+The helper checks for **exactly `PASSIVE_LEVEL`** before calling the API. That is stricter than the documented `<= APC_LEVEL` requirement, so the helper itself does not call `FltIsDirectory` at an unsupported IRQL. At APC or DISPATCH it falls back to the old unmatched accounting.
+
+The prototype registers a post-operation callback for cleanup and upgrades the legacy no-callback cleanup result to `FLT_PREOP_SUCCESS_WITH_CALLBACK`; it does not synchronize the operation. Generic minifilter post-operation callbacks may run at up to DISPATCH_LEVEL ([callback IRQL documentation](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/fltkernel/nc-fltkernel-pflt_post_operation_callback)). Thus the PASSIVE-only guard is necessary, and some cleanup events may not be classified.
+
+`FltIsDirectory` reads Filter Manager’s cached stream metadata; its documented behavior does not indicate that it issues `IRP_MJ_QUERY_INFORMATION`. I therefore see no source basis for a recursive query through this filter, or for re-entering its stage fence/epoch admission. In particular, while the cleanup post callback still holds the admission epoch token, the helper’s documented cached lookup does not appear to submit a new admitted I/O operation.
+
+Cleanup occurs before close, so the file object is still open when the helper runs; that matches the API requirement. Filter Manager’s callback objects remain valid during the callback. On a draining post callback, this code takes the separate draining branch and does not call the helper. A classification failure during other teardown races falls back to old behavior. The cost appears bounded to the unmatched paths: a cached classification lookup and, on a positive result, one interlocked counter increment. Runtime teardown behavior and the actual ADS classification still need proof.
+
+One inherited concern is that the surrounding cleanup path calls `FltGetStreamContext` before this helper. The new guard does not make that earlier call safe if the callback is at DISPATCH_LEVEL; this review did not establish the callback’s actual IRQL distribution on the target boot workload.
+
+### 3. Other plausible sources of unmatched C: cleanup
+
+The b31 evidence ties the first published C: Unknown reason to the no-stream-context cleanup branch, but it does not identify the file object, context lookup status, type, or event chronology. It reports `firstUnknownReason=0x40`, site 2333, and `contextStatus=0`; the plan explicitly says the object and lookup error remain unidentified ([readout](/home/victor/Work/safeupload-staging/driver/evidence/2026-10-05/s01-b31-root-readout.json), [MVP plan](/home/victor/Work/safeupload-staging/driver/MVP-PLAN.md:571)).
+
+Likely alternatives to directory handles include:
+
+- **Handles opened before filter attachment.** The code itself identifies these as unmatched cleanup candidates. Correlate a bounded cleanup receipt with create/post-create lifetime records; no observed create for the same file object supports this cause.
+- **Hive backing files or other boot/system files opened early.** Determine whether their write/delete-access cleanup had a matching successful post-create and writer-node insertion. Record lookup status and file-object identity correlation.
+- **`FO_STREAM_FILE` or other FsRtl-created special objects.** The exclusion helper checks `FO_VOLUME_OPEN` and paging files, but not `FO_STREAM_FILE` ([StageWriters.c](/home/victor/Work/safeupload-staging/driver/SafeUpload.Minifilter/StageWriters.c:1190)). Record the file-object flags and whether a create callback was observed. A stream-file flag with no create would distinguish this class.
+- **Swapfile or other special files not recognized by `FsRtlIsPagingFile`.** Record the paging-file predicate result, file-object flags, and whether create accounting installed a node. Do not infer that every system-managed file is covered by the paging-file exclusion.
+
+For a remaining non-directory unmatched event, the plan’s bounded first-event receipt is appropriate: include the lookup status, file-object flags (including `FO_STREAM_FILE`), `WriteAccess`/`DeleteAccess`, IRQL, `FltIsDirectory` status/result, and a safely obtained name tail if available. Join it to create/post-create records using a stable, privacy-safe object correlation value. This distinguishes “directory cleanup skipped” from “no create observed,” “create seen but no node,” and special-file-object cases without relying on the aggregate counter alone.
+
+### Conditions for the boot capture
+
+Proceed only as a **source-matched, bounded capture**. The proof should show C: remains trusted with `UnknownReasons == 0`, `cleanupDirectoriesSkipped > 0`, and explain any `cleanupUnmatched` count using the event receipt above. Exercise targeted controls for an ordinary file, a write/delete directory handle, a directory named `$DATA` ADS, and `::$INDEX_ALLOCATION`; include a matched-node cleanup to confirm that it is still accounted through `found != NULL`. If C: still records CLEANUP, retain the first non-directory unmatched receipt before considering another accounting change. No build or VM was run for this review.
+
+The status word remains at offset 100 in the reviewed change: the former `Reserved` word is renamed and its `C_ASSERT` updated; the Inspector prints the new counter.
+
+**Reviewed file hashes**
+
+- `StageWriters.c`: `c31efa7c525b127cea223e1b7269f5cf5c09ec92343584005019cbf6a3ced407`
+- `Protocol.h`: `2f92e222df7986b9994ce76acc9903d9d15c11289e43ee52530ae93f8b00e1f7`

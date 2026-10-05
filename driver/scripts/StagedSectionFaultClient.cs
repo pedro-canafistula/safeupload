@@ -166,7 +166,8 @@ public sealed class SafeUploadSectionFaultClient : IDisposable
             var output = process.StandardOutput.ReadToEndAsync();
             var error = process.StandardError.ReadToEndAsync();
             if (!process.WaitForExit(5000)) {
-                process.Kill(); process.WaitForExit(5000);
+                // A diagnostic timeout never terminates a guest process. Preserve
+                // pending inspection for checkpoint recovery; Dispose is not kill.
                 throw new InvalidOperationException("Memory inspector timed out: " + command);
             }
             if (!output.Wait(5000) || !error.Wait(5000)) throw new InvalidOperationException("Inspector pipe drain timed out");

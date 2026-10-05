@@ -180,6 +180,7 @@ public static class Rv4W01Duplicate {
         if([SafeUploadSectionFaultClient]::Identity($duplicate) -cne ($serial+$fileId)){throw 'Duplicated handle identity mismatch'}
         $client=[SafeUploadSectionFaultClient]::new()
         $arm=$client.ArmNoncachedWrite($duplicate)
+        $observed.LastLowerStatus=$arm
         $armGeneration=$arm.ArmGeneration
         if($arm.ArmedFileObject -eq 0 -or $armGeneration -eq 0 -or $arm.CurrentHeld -ne 0){throw 'Lower exact-FO arm failed'}
         $observed.Events+=@{Name='armed';Generation=[string]$armGeneration;FileObject=[string]$arm.ArmedFileObject}
@@ -211,7 +212,7 @@ public static class Rv4W01Duplicate {
     $observed.Events+=@{Name='issued';PayloadSha256=$issuedReceipt.PayloadSha256}
     $holdDeadline=[DateTime]::UtcNow.AddSeconds(5)
     do{
-        $status=$client.ReadWriteStatus()
+        $status=$client.ReadWriteStatus();$observed.LastLowerStatus=$status
         if($status.TimedOut -ne 0 -or $status.Canceled -ne 0 -or $status.SyntheticFailures -ne 0){throw 'Lower watchdog/cancel/synthetic path'}
         if($status.CurrentHeld -eq 1 -and $status.Held -eq 1 -and $status.ArmGeneration -eq $armGeneration){$held=$true;break}
         if([DateTime]::UtcNow -gt $holdDeadline){throw 'Matching lower hold unavailable'}
@@ -227,7 +228,7 @@ public static class Rv4W01Duplicate {
     Request 'close';[void](Wait-Receipt 'close-entered' 5)
     $cleanupDeadline=[DateTime]::UtcNow.AddSeconds(5)
     do{
-        $entry=EntryById $fileId;$status=$client.ReadWriteStatus()
+        $entry=EntryById $fileId;$status=$client.ReadWriteStatus();$observed.LastLowerStatus=$status
         if($status.TimedOut -ne 0 -or $status.CurrentHeld -ne 1){throw 'Lower hold lost before cleanup proof'}
         if($entry.state -ceq 'Activating' -and $entry.H -eq 0 -and $entry.W -gt 0){break}
         if([DateTime]::UtcNow -gt $cleanupDeadline){throw 'H=0/W>0 cleanup overlap unavailable'}
@@ -239,7 +240,7 @@ public static class Rv4W01Duplicate {
     if($heldSample.Status -cne 'OK'){throw 'Held raw capture failed'}
     $heldImage=@($heldSample.Images|Where-Object { $_.Path -ceq $Target -and $_.Role -ceq 'Current' })
     if($heldImage.Count -ne 1 -or $heldImage[0].Sha256 -cne $baseImage[0].Sha256){throw 'Held raw target changed before lower release'}
-    $entry=EntryById $fileId;$status=$client.ReadWriteStatus()
+    $entry=EntryById $fileId;$status=$client.ReadWriteStatus();$observed.LastLowerStatus=$status
     if($entry.state -cne 'Activating' -or $entry.H -ne 0 -or $entry.W -le 0 -or $status.CurrentHeld -ne 1 -or $status.TimedOut -ne 0){throw 'Cleanup/hold not retained through raw capture'}
     [void](Inspect '--admission-trace' 'held-upper-trace.jsonl') # Host must match file_cleanup and W_BEGIN exactly.
     if([DateTime]::UtcNow -ge $holdStarted.AddSeconds(20)){throw 'Held diagnostic exceeded 20s release budget'}
@@ -248,7 +249,7 @@ public static class Rv4W01Duplicate {
     $observed.Events+=@{Name='release';Generation=[string]$release.ArmGeneration}
     $postDeadline=[DateTime]::UtcNow.AddSeconds(8)
     do{
-        $post=$client.ReadWriteStatus()
+        $post=$client.ReadWriteStatus();$observed.LastLowerStatus=$post
         if($post.TimedOut -ne 0 -or $post.Canceled -ne 0 -or $post.SyntheticFailures -ne 0){throw 'Not a genuine lower completion'}
         if($post.LowerPosts -eq 1 -and $post.CurrentHeld -eq 0){break}
         if([DateTime]::UtcNow -gt $postDeadline){throw 'Genuine lower post unavailable'}
@@ -316,7 +317,13 @@ public static class Rv4W01Duplicate {
             }while(-not $settled)
         }
         $disarmed=$false
-        try{$client.DisarmWrite()|Out-Null;$disarmed=$true}
+        try{
+            $terminal=$client.DisarmWrite();$observed.LastLowerStatus=$terminal
+            if($terminal.CurrentHeld -ne 0 -or $terminal.Mode -ne 0 -or $terminal.ArmedFileObject -ne 0){throw 'Lower disarm reply is not terminal'}
+            # Durable final JSON is published only after port disposal and writer
+            # readback below. Parent never needs to open a potentially pending port.
+            $observed.LowerDisarmTerminal=$terminal;$disarmed=$true
+        }
         catch{$observed.Errors+=@{Type='Disarm';Message=$_.Exception.Message};$observed.RecoveryRequired=$true}
         if($disarmed){$client.Dispose()}
         else {
