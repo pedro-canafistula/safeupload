@@ -86,6 +86,26 @@ public static class SUActorLsa {
 }
 function Save-State($Value,[string]$Path) { Write-DurableFile $Path ([Management.Automation.PSSerializer]::Serialize($Value,32)) }
 function Load-State([string]$Path) { [Management.Automation.PSSerializer]::Deserialize([IO.File]::ReadAllText($Path)) }
+function Wait-WriterIdentity([string]$Path,[int]$Seconds=60) {
+    # Existence is not publication: CreateNew exposes the name before the writer
+    # has flushed/closed it. Allow its write handle and retry partial CLIXML too.
+    $deadline=[DateTime]::UtcNow.AddSeconds($Seconds);$reason='File not published.'
+    do {
+        $stream=$null;$reader=$null
+        try {
+            $stream=[IO.File]::Open($Path,[IO.FileMode]::Open,[IO.FileAccess]::Read,
+                ([IO.FileShare]::ReadWrite -bor [IO.FileShare]::Delete))
+            $reader=[IO.StreamReader]::new($stream)
+            $actor=[Management.Automation.PSSerializer]::Deserialize($reader.ReadToEnd())
+            if($null -eq $actor.Pid -or [string]::IsNullOrWhiteSpace($actor.Sid) -or
+                [string]::IsNullOrWhiteSpace($actor.BootId)){throw 'Incomplete writer identity.'}
+            return $actor
+        }catch{$reason=$_.Exception.Message}
+        finally{if($null -ne $reader){$reader.Dispose()}elseif($null -ne $stream){$stream.Dispose()}}
+        Start-Sleep -Milliseconds 100
+    }while([DateTime]::UtcNow -lt $deadline)
+    throw ('Writer identity unavailable after bounded retry: '+$Path+'; '+$reason)
+}
 function Get-BootId { $env:COMPUTERNAME+'/'+(Get-CimInstance Win32_OperatingSystem).LastBootUpTime.ToUniversalTime().ToString('o') }
 function Get-ErrorChain($Exception) {
     $chain=@();for($ex=$Exception;$null -ne $ex;$ex=$ex.InnerException){
@@ -539,13 +559,15 @@ public static class SUProofFile {
  public static SUProofObject Open(string path,bool directory,bool protect) { return Open(path,directory,protect,false,false); }
  public static SUProofObject Open(string path,bool directory,bool protect,bool live,bool trustedAdminOwner) {
   var h=CreateFile(path,0x80020000u,directory?3u:(live?7u:1u),IntPtr.Zero,3,0x02200000,IntPtr.Zero);
-  if(h.IsInvalid){int e=Marshal.GetLastWin32Error();h.Dispose();throw new Win32Exception(e);}
+  if(h.IsInvalid){int e=Marshal.GetLastWin32Error();h.Dispose();throw new Win32Exception(e,"Service evidence open failed: "+path+"; "+new Win32Exception(e).Message);}
   try {
    Info i;if(!GetFileInformationByHandle(h,out i))throw new Win32Exception(Marshal.GetLastWin32Error());
    if((i.Attributes&0x400)!=0 || ((i.Attributes&0x10)!=0)!=directory || (!directory && i.Links!=1))throw new IOException("Reparse/type/link-count journal object rejected.");
    IntPtr owner,group,dacl,sacl,sd;uint code=GetSecurityInfo(h,1,7,out owner,out group,out dacl,out sacl,out sd);
    if(code!=0)throw new Win32Exception((int)code);
-   FileSecurity security=new FileSecurity();try{byte[] bytes=new byte[GetSecurityDescriptorLength(sd)];Marshal.Copy(sd,bytes,0,bytes.Length);security.SetSecurityDescriptorBinaryForm(bytes);}finally{LocalFree(sd);}
+   // FileSecurity treats this as a non-container and loses OI/CI inheritance
+   // flags while projecting access rules. Decode directories as containers.
+   FileSystemSecurity security=directory?(FileSystemSecurity)new DirectorySecurity():new FileSecurity();try{byte[] bytes=new byte[GetSecurityDescriptorLength(sd)];Marshal.Copy(sd,bytes,0,bytes.Length);security.SetSecurityDescriptorBinaryForm(bytes);}finally{LocalFree(sd);}
    string sid=security.GetOwner(typeof(SecurityIdentifier)).Value;
    if(protect) {
     if((sid!="S-1-5-18" && (!trustedAdminOwner || sid!="S-1-5-32-544")) || !security.AreAccessRulesProtected)throw new IOException("Trusted owner and protected DACL required.");
@@ -560,7 +582,7 @@ public static class SUProofFile {
     if(!system || !admin)throw new IOException("Missing private journal trustee.");
    }
    return new SUProofObject{Handle=h,Path=path,Directory=directory,Owner=sid,Sddl=security.GetSecurityDescriptorSddlForm(AccessControlSections.Owner|AccessControlSections.Group|AccessControlSections.Access)};
-  }catch{h.Dispose();throw;}
+  }catch(Exception ex){h.Dispose();throw new IOException("Service evidence object rejected: "+path+"; "+ex.Message,ex);}
  }
  public static byte[] Read(SUProofObject o,int maximum) {
   // The same authenticated handle supplies all bytes; no path reopen/ACL repair.
@@ -614,27 +636,38 @@ function ConvertFrom-NotificationRecord($Segments,[byte[]]$HeadBytes) {
     }finally{$sha.Dispose()}
 }
 function Get-NotificationSnapshot([string]$Tag,[string]$BootId,[long]$MinimumQpc) {
-    $directory=Join-Path (Split-Path -Parent $policyPath) 'notifications'
+    $root=Split-Path -Parent $policyPath;$directory=Join-Path $root 'notifications'
     $deadline=[DateTime]::UtcNow.AddSeconds(4);$reason='Notification record unavailable.'
     do {
         $held=@()
+        $snapshot=[ordered]@{Status='INCONCLUSIVE';Directory=$directory;DirectoryExists=$null;ChildNames=@();Objects=@();
+            BootId=$BootId;QpcFrequency=[Diagnostics.Stopwatch]::Frequency;MinimumQpc=$MinimumQpc;ReadQpc=$null;
+            Entries=@();Head=$null;Artifacts=@();Errors=@();Reason=$reason}
         try {
             Initialize-ServiceEvidenceReader
             # Pin ancestors; read live files with write/delete sharing so evidence
             # collection cannot cause the agent to fail closed. Hash/head and
             # size checks reject torn reads and retry without repairing files.
-            $ancestors=@();for($cursor=$directory; -not [string]::IsNullOrWhiteSpace($cursor);$cursor=[IO.Path]::GetDirectoryName($cursor)){$ancestors=@($cursor)+$ancestors}
-            $objects=@()
+            $ancestors=@();for($cursor=$root; -not [string]::IsNullOrWhiteSpace($cursor);$cursor=[IO.Path]::GetDirectoryName($cursor)){$ancestors=@($cursor)+$ancestors}
             foreach($path in $ancestors){
-                $private=($path -ceq $directory -or $path -ceq (Split-Path -Parent $policyPath))
-                $obj=[SUProofFile]::Open($path,$true,$private,$false,($path -ceq $directory));$held+=$obj;$objects+=@{Path=$path;Owner=$obj.Owner;Sddl=$obj.Sddl}
+                $obj=[SUProofFile]::Open($path,$true,($path -ceq $root));$held+=$obj;$snapshot.Objects+=@{Path=$path;Owner=$obj.Owner;Sddl=$obj.Sddl}
             }
-            $names=@(Get-ChildItem -LiteralPath $directory -Force | Select-Object -ExpandProperty Name)
+            # Only claim absence after authenticating and pinning the parent.
+            # The seed-only product invocation does not initialize this writer.
+            $snapshot.DirectoryExists=Test-Path -LiteralPath $directory -ErrorAction Stop
+            if(-not $snapshot.DirectoryExists){
+                $snapshot.Reason='Authenticated notification directory absent: '+$directory+'. No durable emission coverage; --seed-boot-policy does not start the notification writer and seed trials require the agent down.'
+                $snapshot.ReadQpc=[Diagnostics.Stopwatch]::GetTimestamp()
+                return [pscustomobject]$snapshot
+            }
+            $obj=[SUProofFile]::Open($directory,$true,$true,$false,$true);$held+=$obj;$snapshot.Objects+=@{Path=$directory;Owner=$obj.Owner;Sddl=$obj.Sddl}
+            $names=@(Get-ChildItem -LiteralPath $directory -Force -ErrorAction Stop | Select-Object -ExpandProperty Name)
+            $snapshot.ChildNames=$names
             if($names -notcontains 'emissions.jsonl' -or $names -notcontains 'head.json' -or $names -notcontains 'writer.lock' -or
                 @($names | Where-Object {$_ -cnotin @('emissions.jsonl','previous.jsonl','head.json','writer.lock')}).Count){throw 'Missing/unrecognized notification record child.'}
             $files=@{}
             foreach($name in @('previous.jsonl','emissions.jsonl','head.json','writer.lock')){
-                if($names -contains $name){$obj=[SUProofFile]::Open((Join-Path $directory $name),$false,$true,$true,$true);$held+=$obj;$files[$name]=$obj;$objects+=@{Path=$obj.Path;Owner=$obj.Owner;Sddl=$obj.Sddl}}
+                if($names -contains $name){$obj=[SUProofFile]::Open((Join-Path $directory $name),$false,$true,$true,$true);$held+=$obj;$files[$name]=$obj;$snapshot.Objects+=@{Path=$obj.Path;Owner=$obj.Owner;Sddl=$obj.Sddl}}
             }
             if(([SUProofFile]::Read($files['writer.lock'],1)).Length -ne 0){throw 'Invalid notification writer lease.'}
             $segments=@();$headBytes=$null;$copies=@()
@@ -648,21 +681,34 @@ function Get-NotificationSnapshot([string]$Tag,[string]$BootId,[long]$MinimumQpc
             }
             $record=ConvertFrom-NotificationRecord $segments $headBytes
             $tail=$record.Entries[$record.Entries.Count-1].Entry
-            if($tail.BootId -cne $BootId -or $tail.QpcFrequency -ne [Diagnostics.Stopwatch]::Frequency -or $tail.Qpc -lt $MinimumQpc){throw 'Notification record has not covered snapshot fence in this boot.'}
+            # Retain authenticated stale records too. Missing current-boot
+            # coverage is an evaluation failure, not a reason to discard bytes.
             foreach($copy in $copies){
                 $stream=[IO.File]::Open($copy.Path,[IO.FileMode]::Create,[IO.FileAccess]::Write,[IO.FileShare]::Read)
                 try{$stream.Write($copy.Bytes,0,$copy.Bytes.Length);$stream.Flush($true)}finally{$stream.Dispose()}
+                $snapshot.Artifacts+=@{Artifact=$copy.Path;Length=$copy.Bytes.Length;Sha256=(Get-FileHash -LiteralPath $copy.Path).Hash}
             }
-            return [pscustomobject]@{Status='OK';BootId=$BootId;QpcFrequency=$tail.QpcFrequency;Entries=$record.Entries;Head=$record.Head;Objects=$objects;ReadQpc=[Diagnostics.Stopwatch]::GetTimestamp()}
-        }catch{$reason=$_.Exception.Message}
+            $snapshot.Entries=$record.Entries;$snapshot.Head=$record.Head;$snapshot.ReadQpc=[Diagnostics.Stopwatch]::GetTimestamp()
+            if($tail.BootId -cne $BootId){throw ('Notification tail boot mismatch: recorded='+$tail.BootId+'; required='+$BootId+'. Agent-down seed cannot supply a current-boot heartbeat.')}
+            if($tail.QpcFrequency -ne $snapshot.QpcFrequency){throw 'Notification tail QPC frequency mismatch.'}
+            if($tail.Qpc -lt $MinimumQpc){throw ('Notification tail precedes snapshot fence: tailQpc='+$tail.Qpc+'; minimumQpc='+$MinimumQpc+'; tailKind='+$tail.Kind+'. Agent-down seed has no live notification writer.')}
+            $snapshot.Status='OK';$snapshot.Reason='Authenticated notification record covers snapshot fence.'
+            return [pscustomobject]$snapshot
+        }catch{$reason=$_.Exception.Message;$snapshot.Reason=$reason;$snapshot.Errors=Get-ErrorChain $_.Exception}
         finally{foreach($obj in $held){$obj.Dispose()}}
         Start-Sleep -Milliseconds 100
     }while([DateTime]::UtcNow -lt $deadline)
-    return [pscustomobject]@{Status='INCONCLUSIVE';Reason=$reason;Entries=@()}
+    return [pscustomobject]$snapshot
 }
 function Test-NotificationWindow($Before,$After,$Fence,[bool]$WindowKnown) {
     try {
-        if(-not $WindowKnown -or $Before.Status -cne 'OK' -or $After.Status -cne 'OK'){throw 'Authenticated notification snapshots and complete QPC fence required.'}
+        $missing=@()
+        if(-not $WindowKnown){$missing+='QPC operation window is not bound to service snapshots.'}
+        foreach($item in @(@{Tag='before';Snapshot=$Before},@{Tag='after';Snapshot=$After})){
+            if($null -eq $item.Snapshot){$missing+=('Notification '+$item.Tag+' snapshot missing.')}
+            elseif($item.Snapshot.Status -cne 'OK'){$missing+=('Notification '+$item.Tag+' snapshot '+$item.Snapshot.Status+': '+$item.Snapshot.Reason)}
+        }
+        if($missing.Count){throw ($missing -join ' ')}
         if($Before.BootId -cne $Fence.BootId -or $After.BootId -cne $Fence.BootId -or
             $Before.QpcFrequency -ne $Fence.QpcFrequency -or $After.QpcFrequency -ne $Fence.QpcFrequency){throw 'Notification boot/frequency mismatch.'}
         $anchor=@($After.Entries | Where-Object {$_.Entry.Sequence -eq $Before.Head.Sequence -and $_.Hash -ceq $Before.Head.Sha256})
@@ -780,19 +826,30 @@ function Get-ServiceTimeline($Before,$After,$Fence) {
             Authentication='Windows Application provider XML; diagnostic only, not notification emission evidence'}}
         $eventStatus='OK';$eventReason='Application anchors retained; exact provider/RecordID window read. Notification expectations use the separate protected durable record.'
     }catch{$eventReason=$_.Exception.Message}
-    $windowKnown=($Fence.Complete -eq $true -and $Before.BootId -ceq $Fence.BootId -and $After.BootId -ceq $Fence.BootId -and
+    $windowKnown=($Fence.Complete -eq $true -and -not [string]::IsNullOrWhiteSpace($Fence.BootId) -and $Fence.QpcFrequency -gt 0 -and
+        $null -ne $Before.StartQpc -and $null -ne $Before.EndQpc -and $null -ne $After.StartQpc -and $null -ne $After.EndQpc -and
+        $null -ne $Fence.ReleasedQpc -and $null -ne $Fence.CompletedQpc -and
+        $Before.BootId -ceq $Fence.BootId -and $After.BootId -ceq $Fence.BootId -and
         $Before.QpcFrequency -eq $Fence.QpcFrequency -and $After.QpcFrequency -eq $Fence.QpcFrequency -and
         $Before.StartQpc -le $Before.EndQpc -and $Before.EndQpc -le $Fence.ReleasedQpc -and
         $Fence.ReleasedQpc -le $Fence.CompletedQpc -and $Fence.CompletedQpc -le $After.StartQpc -and $After.StartQpc -le $After.EndQpc)
     $journalKnown=($windowKnown -and $Before.Status -ceq 'OK' -and $After.Status -ceq 'OK')
+    $journalFailures=@()
+    if(-not $windowKnown){$journalFailures+='QPC operation fence missing or not bracketed by service snapshots; see OperationFence and snapshot QPC receipts.'}
+    foreach($item in @(@{Tag='before';Snapshot=$Before},@{Tag='after';Snapshot=$After})){
+        if($null -eq $item.Snapshot){$journalFailures+=('Journal '+$item.Tag+' snapshot missing.')}
+        elseif($item.Snapshot.Status -cne 'OK'){
+            $journalFailures+=('Journal '+$item.Tag+' snapshot '+$item.Snapshot.Status+': '+(@($item.Snapshot.Errors | ForEach-Object {$_.Message}) -join ' / '))
+        }
+    }
     $beforeCase=@($Before.Journal | Where-Object {Test-ServiceFixtureEntry $_})
     $afterCase=@($After.Journal | Where-Object {Test-ServiceFixtureEntry $_})
     # Manifests are durable and never deleted by the pinned product journal.
     # Any missing prior manifest prevents negative timeline proof.
-    foreach($file in $Before.Journal){if(@($After.Journal | Where-Object Path -ceq $file.Path).Count -ne 1){$journalKnown=$false}}
+    foreach($file in $Before.Journal){if(@($After.Journal | Where-Object Path -ceq $file.Path).Count -ne 1){$journalKnown=$false;$journalFailures+=('Prior journal manifest disappeared or duplicated: '+$file.Path)}}
     $new=@($afterCase | Where-Object {$beforeCase.Path -notcontains $_.Path})
     foreach($expectation in $row.JournalExpectations) {
-        $verdict='INCONCLUSIVE';$reason='Authenticated complete journal snapshots/QPC operation fence missing, or a prior manifest disappeared.'
+        $verdict='INCONCLUSIVE';$reason=$journalFailures -join ' '
         $bad=@(@($beforeCase)+@($afterCase) | Where-Object {if($expectation -ceq 'NoApproved'){$_.StateName -in @('Approved','Publishing','Released')}elseif($expectation -ceq 'NoReleased'){$_.StateName -ceq 'Released'}else{$false}})
         if($journalKnown){
             if($expectation -ceq 'NoNewTransfer'){$verdict=if($new.Count){'FAIL'}else{'PASS'};$reason='Before/after authenticated product manifest inventory; new fixture transfers='+$new.Count}
@@ -829,9 +886,11 @@ function Get-ServiceTimeline($Before,$After,$Fence) {
         $assertions+=@{Name='NotificationExpectation';Expectation=$expectation;Verdict=$verdict;Reason=$reason}
     }
     $verdict=if(@($assertions | Where-Object Verdict -eq 'FAIL').Count){'FAIL'}elseif(@($assertions | Where-Object Verdict -eq 'INCONCLUSIVE').Count){'INCONCLUSIVE'}else{'PASS'}
-    $assertions+=@{Name='ActualServiceTimelines';Verdict=$verdict;Reason='Per-expectation results from authenticated product journal snapshots and durable notification chain; see ServiceEvidence.'}
+    $timelineReason=if($verdict -eq 'PASS'){'Per-expectation results from authenticated product journal snapshots and durable notification chain; see ServiceEvidence.'}
+        else{@($assertions | Where-Object Verdict -ne 'PASS' | ForEach-Object {$_.Reason} | Select-Object -Unique) -join ' '}
+    $assertions+=@{Name='ActualServiceTimelines';Verdict=$verdict;Reason=$timelineReason}
     $result=[pscustomobject]@{Source='AuthenticatedAgentJournalAndNotificationRecord';NotificationProof=$notificationProof;NotificationEmissions=$notificationProof.Emissions;TrustBoundary='SYSTEM-owned policy/journal; SYSTEM or Administrators-owned notification record; exact protected SYSTEM/Administrators DACL, no reparses, single-link bounded manifests, same-handle ACL and bytes; privileged local actors trusted';
-        Before=$Before;After=$After;OperationFence=$Fence;WindowBound=$windowKnown;ApplicationStatus=$eventStatus;ApplicationReason=$eventReason;ApplicationEvents=$events;Assertions=$assertions}
+        Before=$Before;After=$After;OperationFence=$Fence;WindowBound=$windowKnown;JournalFailures=$journalFailures;ApplicationStatus=$eventStatus;ApplicationReason=$eventReason;ApplicationEvents=$events;Assertions=$assertions}
     Save-State $result (Join-Path $evidenceDirectory 'service-timeline.clixml')
     return $result
 }
@@ -876,9 +935,7 @@ $value=$b.ToString().Split([char]0)[0]
         if($CaseId -eq 'S00-observer-control'){
             Start-ScheduledTask -TaskName $writerTask
             $identityPath=Join-Path $actorDirectory 'identity.clixml'
-            $deadline=[DateTime]::UtcNow.AddSeconds(60)
-            while(-not(Test-Path -LiteralPath $identityPath)){if([DateTime]::UtcNow -gt $deadline){throw 'Writer identity unavailable'};Start-Sleep -Milliseconds 100}
-            $trial.ActorProvenance=Assert-ActorProcess (Load-State $identityPath)
+            $trial.ActorProvenance=Assert-ActorProcess (Wait-WriterIdentity $identityPath)
             Write-DurableFile (Join-Path $actorDirectory 'go') $RunName -New
             $writer=Wait-TaskCompletion $writerTask (Join-Path $actorDirectory 'completion.clixml') $state.WriterToken
             $trial.Actor=$writer.Value.Actor
@@ -901,10 +958,9 @@ $value=$b.ToString().Split([char]0)[0]
         $seq=1;$checkpoints+=Get-ExpectedCheckpoint $baseline 'BeforeOperation' $seq
         $samples+=Capture-InvariantSample $context $baseline 'BeforeOperation' $seq
         if($CaseId -ne 'S00-observer-control'){Start-ScheduledTask -TaskName $writerTask}
-        $identityPath=Join-Path $actorDirectory 'identity.clixml'
         $deadline=[DateTime]::UtcNow.AddSeconds(60)
-        while(-not(Test-Path -LiteralPath $identityPath)){if([DateTime]::UtcNow -gt $deadline){throw 'Writer identity unavailable'};Start-Sleep -Milliseconds 100}
-        $actor=Load-State $identityPath
+        # S00 is complete now; its completion envelope owns the final identity.
+        $actor=if($CaseId -eq 'S00-observer-control'){$writer.Value.Actor}else{Wait-WriterIdentity (Join-Path $actorDirectory 'identity.clixml')}
         if($actor.Sid -cne $state.ActorSid -or $actor.Elevated -or $actor.IsAdministrator -or $actor.Pid -eq $PID -or $actor.BootId -cne $context.BootId){throw 'Actor provenance invalid'}
         $trial.Actor=$actor
         if($CaseId -ne 'S00-observer-control'){$trial.ActorProvenance=Assert-ActorProcess $actor;Write-DurableFile (Join-Path $actorDirectory 'go') $RunName -New}

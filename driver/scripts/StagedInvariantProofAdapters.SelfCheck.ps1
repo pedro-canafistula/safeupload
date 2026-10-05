@@ -1,4 +1,5 @@
-# Pure evaluation tests. No Windows APIs, driver, service or guest operations.
+# Host-safe evaluation and temporary identity-publication tests. No Windows APIs,
+# driver, service or guest operations.
 # Run on Windows PowerShell 5.1 before qualification; Linux PS7 is authoring QA only.
 [CmdletBinding()]
 param()
@@ -16,10 +17,38 @@ function Import-EvaluationFunctions([string]$File,[string[]]$Names) {
     }
 }
 Import-EvaluationFunctions (Join-Path $PSScriptRoot 'StagedInvariantObserver.psm1') @('New-IORecord','New-IOAssertion','Test-InvariantCadence','Test-InvariantMetadata','Test-InvariantExternalCoverage')
-Import-EvaluationFunctions (Join-Path $PSScriptRoot 'Test-StagedInvariantSuite.ps1') @('Get-ExpectedCheckpoint','Get-ServiceDestinationPaths','Test-ServiceFixtureEntry','ConvertFrom-NotificationRecord','Test-NotificationWindow','Get-ServiceTimeline')
+Import-EvaluationFunctions (Join-Path $PSScriptRoot 'Test-StagedInvariantSuite.ps1') @('Wait-WriterIdentity','Get-ExpectedCheckpoint','Get-ServiceDestinationPaths','Test-ServiceFixtureEntry','ConvertFrom-NotificationRecord','Test-NotificationWindow','Get-ServiceTimeline')
 $script:checks=0
 function Check([bool]$Condition,[string]$Message){if(-not $Condition){throw $Message};$script:checks++}
 function Clone($Value){return ($Value | ConvertTo-Json -Depth 32 | ConvertFrom-Json)}
+# Name visibility, an open write handle and partial serialization are distinct
+# from complete identity publication. Exercise all three with temporary files.
+$identityDirectory=Join-Path ([IO.Path]::GetTempPath()) ('proof-identity-'+[guid]::NewGuid().ToString('N'))
+$null=[IO.Directory]::CreateDirectory($identityDirectory)
+$identityPath=Join-Path $identityDirectory 'identity.clixml';$identityWriter=$null;$publisher=$null
+try {
+    $identityBytes=[Text.Encoding]::UTF8.GetBytes([Management.Automation.PSSerializer]::Serialize(@{Pid=123;Sid='fixture-sid';BootId='fixture-boot'},32))
+    $identityWriter=[IO.FileStream]::new($identityPath,[IO.FileMode]::CreateNew,[IO.FileAccess]::Write,[IO.FileShare]::Read)
+    $identityWriter.Write($identityBytes,0,$identityBytes.Length);$identityWriter.Flush($true)
+    Check ((Wait-WriterIdentity $identityPath 2).Pid -eq 123) 'Identity read must share with an unclosed writer.'
+    $identityWriter.SetLength(0);$identityWriter.Position=0;$identityWriter.Write($identityBytes,0,40);$identityWriter.Flush($true)
+    $publisher=[PowerShell]::Create()
+    $null=$publisher.AddScript('param($writer,$bytes) Start-Sleep -Milliseconds 250; $writer.SetLength(0); $writer.Position=0; $writer.Write($bytes,0,$bytes.Length); $writer.Flush($true)').AddArgument($identityWriter).AddArgument($identityBytes)
+    $publication=$publisher.BeginInvoke()
+    Check ((Wait-WriterIdentity $identityPath 3).BootId -ceq 'fixture-boot') 'Partial identity must retry until complete publication.'
+    $null=$publisher.EndInvoke($publication)
+    if($publisher.HadErrors){throw ($publisher.Streams.Error | Out-String)}
+    $identityWriter.Dispose();$identityWriter=$null
+    foreach($badPath in @((Join-Path $identityDirectory 'missing.clixml'),$identityPath)){
+        if($badPath -ceq $identityPath){[IO.File]::WriteAllText($identityPath,'<Objs><broken>')}
+        $timer=[Diagnostics.Stopwatch]::StartNew();$refused=$false
+        try{$null=Wait-WriterIdentity $badPath 1}catch{$refused=$_.Exception.Message -like '*after bounded retry*'}
+        Check ($refused -and $timer.Elapsed.TotalSeconds -lt 5) 'Missing/malformed identity publication must have a bounded failure.'
+    }
+}finally{
+    if($null -ne $publisher){$publisher.Dispose()};if($null -ne $identityWriter){$identityWriter.Dispose()}
+    [IO.Directory]::Delete($identityDirectory,$true)
+}
 $boot='fixture/boot';$frequency=1000
 $baseline=[pscustomobject]@{CaseId='S00-observer-control';Build='19045.2965';ObserverPid=999;ObserverSid='S-1-5-18';Time=[pscustomobject]@{Qpc=10000;QpcFrequency=$frequency;BootId=$boot};Geometry=@{Guid='volume'};Images=@()}
 $operations=@(for($n=0;$n -le 100;$n++){[pscustomobject]@{Trial=$n;Class='writer-open-deny';NativeCode=5;StartQpc=100+$n*10;EndQpc=101+$n*10}})
@@ -96,6 +125,24 @@ $after.Status='INCONCLUSIVE'
 Check (@((Get-ServiceTimeline $before $after $fence).Assertions | Where-Object {$_.Name -eq 'JournalExpectation' -and $_.Verdict -eq 'FAIL'}).Count -eq 3) 'Partial snapshots must preserve authenticated positive contradictions.'
 $after.Journal=@()
 Check (@((Get-ServiceTimeline $before $after $fence).Assertions | Where-Object {$_.Name -eq 'JournalExpectation' -and $_.Verdict -eq 'INCONCLUSIVE'}).Count -eq 3) 'Unauthenticated snapshot cannot establish negative journal evidence.'
+# Collection failures must identify the snapshot/object, not suggest a missing
+# fence when the operation window is actually complete (notify1 regression).
+$bad=Clone $before;$bad.Status='INCONCLUSIVE';$bad | Add-Member NoteProperty Errors @(@{Message='Service evidence object rejected: C:\ProgramData\SafeUpload; Non-exact journal ACE.'})
+$good=Clone $after;$good.Status='OK'
+$service=Get-ServiceTimeline $bad $good $fence
+Check ($service.WindowBound -and $service.JournalFailures.Count -eq 1 -and $service.JournalFailures[0] -like '*Journal before snapshot*C:\ProgramData\SafeUpload*') 'Valid fence and rejected before ACL must be distinguished.'
+Check ($service.Assertions[-1].Reason -like '*Journal before snapshot*') 'Aggregate timeline must retain the specific collection failure.'
+$service=Get-ServiceTimeline $good $bad $fence
+Check (($service.JournalFailures -join ' ') -like '*Journal after snapshot*') 'Rejected after snapshot must be named.'
+$missing=Clone $fence;$missing.CompletedQpc=$null
+$service=Get-ServiceTimeline $before $good $missing
+Check (-not $service.WindowBound -and $service.JournalFailures[0] -like '*QPC operation fence*') 'Absent QPC receipts cannot be coerced to zero and pass.'
+$gone=Clone $before;$gone.Journal=@(@{Path='prior-manifest';Entry=@{Transfer=@{DestinationPath='C:\elsewhere\old.bin'};LastRenameTransactionId=0;LastRenameDestination=$null;LastRenameCommitted=$false}})
+$service=Get-ServiceTimeline $gone $good $fence
+Check (($service.JournalFailures -join ' ') -like '*Prior journal manifest disappeared or duplicated: prior-manifest*') 'Missing prior manifest must be identified.'
+$absent=[pscustomobject]@{Status='INCONCLUSIVE';Reason='Authenticated notification directory absent: C:\ProgramData\SafeUpload\notifications.';Entries=@()}
+$diagnostic=Test-NotificationWindow $absent $absent $fence $true
+Check (-not $diagnostic.Complete -and $diagnostic.Reason -like '*Notification before snapshot*directory absent*Notification after snapshot*directory absent*') 'Notification absence must retain both snapshot reasons without fabricating proof.'
 
 
 # Synthetic durable notification records, including raw line hashes and head.
@@ -183,4 +230,4 @@ Check ((Test-NotificationWindow $rb $ra $fence $true).Complete) 'Announced rotat
 $segments[0].Bytes=[Text.Encoding]::UTF8.GetBytes(($lines[2..4] -join "`n").Replace('"Kind":"Rotation"','"Kind":"Heartbeat"')+"`n")
 $refused=$false;try{$null=ConvertFrom-NotificationRecord $segments $headBytes}catch{$refused=$true}
 Check $refused 'Silent rotation prefix loss must be refused.'
-'ProofAdapterEvaluationChecks='+$script:checks+';PASS (synthetic evaluation only)'
+'ProofAdapterEvaluationChecks='+$script:checks+';PASS (host-safe synthetic evaluation and identity publication only)'

@@ -121,6 +121,23 @@ class ProofTests(unittest.TestCase):
             with self.assertRaises(RuntimeError):
                 Q.validate_service_artifacts(result, root, 'guest\\')
 
+    def test_stale_notification_bytes_remain_bound(self):
+        with tempfile.TemporaryDirectory(prefix='notification-proof-', dir='/tmp') as directory:
+            root = Path(directory)
+            artifact = root / 'notifications-before-emissions.jsonl'
+            artifact.write_text('{"Kind":"Stop"}\n')
+            record = {'Artifact': 'guest\\' + artifact.name, 'Length': artifact.stat().st_size,
+                      'Sha256': Q.sha(artifact)}
+            result = {'Trials': [{'ServiceBefore': {'Notifications': {
+                'Status': 'INCONCLUSIVE', 'Reason': 'Notification tail boot mismatch', 'Artifacts': [record]}}}]}
+            Q.validate_service_artifacts(result, root, 'guest\\')
+            artifact.write_text('{"Kind":"Start"}\n')
+            with self.assertRaises(RuntimeError):
+                Q.validate_service_artifacts(result, root, 'guest\\')
+            record['Artifact'] = 'guest\\..\\outside.jsonl'
+            with self.assertRaises(RuntimeError):
+                Q.validate_service_artifacts(result, root, 'guest\\')
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -337,15 +337,17 @@ def attest_external_coverage(result):
 def validate_service_artifacts(result, destination, guest_root):
     for trial in result.get('Trials', []):
         for snapshot in (trial.get('ServiceBefore') or {}, trial.get('ServiceAfter') or {}):
-            for record in snapshot.get('Journal', []):
+            records = list(snapshot.get('Journal', [])) + list((snapshot.get('Notifications') or {}).get('Artifacts', []))
+            for record in records:
                 path = record['Artifact']
                 require(path.startswith(guest_root), 'Service evidence outside owned guest evidence root')
                 relative = path[len(guest_root):].replace('\\', '/')
                 require('..' not in relative.split('/') and not relative.startswith('/'), 'Invalid service artifact path')
                 artifact = destination / relative
                 require(artifact.stat().st_size == record['Length'] and sha(artifact) == record['Sha256'],
-                        'Copied authenticated journal hash/length mismatch')
-                require(json.loads(artifact.read_text('utf-8-sig')) == record['Entry'], 'Journal JSON differs from retained bytes')
+                        'Copied authenticated service evidence hash/length mismatch')
+                if 'Entry' in record:
+                    require(json.loads(artifact.read_text('utf-8-sig')) == record['Entry'], 'Journal JSON differs from retained bytes')
 
 
 def case_gate(result, case, mode, name, params):
