@@ -876,7 +876,7 @@ NTSTATUS SafeUploadStageWritersReserveCreate(_In_ PFLT_CALLBACK_DATA Data,
     PFLT_FILE_NAME_INFORMATION name = NULL;
     PFLT_VOLUME volume = NULL;
     PSTAGE_WRITER_RESERVATION reservation = NULL;
-    PUNICODE_STRING fullName;
+    PUNICODE_STRING fullName = NULL;
     UNICODE_STRING registryName;
     FLT_FILESYSTEM_TYPE fs;
     SAFEUPLOAD_VOLUME_KIND kind;
@@ -983,7 +983,7 @@ PrepareReservation:
     reservation->StreamChars = pathResolved ? streamChars : 0;
     reservation->RenameLossGeneration = renameLossGeneration;
     reservation->Shell->NameChars = (USHORT)reservation->NameChars;
-    if (pathResolved && reservation->NameChars != 0)
+    if (pathResolved && fullName != NULL && reservation->NameChars != 0)
         RtlCopyMemory(reservation->Shell->Name, fullName->Buffer,
             reservation->NameChars * sizeof(WCHAR));
     reservation->Shell->StreamChars = (USHORT)reservation->StreamChars;
