@@ -361,3 +361,19 @@ falsify the Phase 3 cutoff mechanism; the harness must test it, never reinterpre
   - A lost directory-rename record advances a per-volume rename-loss generation; later expansions treat names older than it as
     unresolved and gate them before the transition completes. (P0-5)
   - The prototype TxF path no longer hard-codes a bootstrap scope; scope decisions use configured policy only. (P1-2)
+- **2026-10-05 decisions (unattended, from the fix-round re-review, evidence/2026-10-05/phase3-fix-review.txt; build mvp3-b14
+  15ae3f4d, 0/0 on all builds, not yet run on the VM):**
+  - Ledger, not gate, extended to paging writes: losing tracking never refuses a paging write. Instance Unknown only blocks promotion and
+    activation on that volume.
+  - Two-tier registry. Names are optional: the hard-link classifier derives every name from the file ID. When the name tier is full, a
+    file gets a compact record (volume, file ID, section pointer, stream flag and suffix hash; fixed pool 4x the name tier), classified
+    by ID at expansion and gated when in scope or undecidable. A full registry no longer drops ADS writers. Only when the compact tier
+    is also full does the owner rule "lost tracking => Unknown until reboot" apply (per section pointer when known, else per volume).
+    Accepted residual: a user holding thousands of live writable handles on a scoped volume can stop promotions there until reboot;
+    it never refuses I/O. (Flagged to the owner.)
+  - The activation worker's own cutoff flush is admitted by owner (thread + epoch), serialized at the paging admission boundary; a
+    failed flush is retried with bounded backoff, then stays Unknown. Denied tracked paging writes set the sticky DirtyAfterCutoff;
+    promotion requires it clear. Resumed cutoffs requeue reclaim.
+  - By-ID mutating opens follow the volume rule: pass on volumes that cannot hold a scope; on a possibly scoped volume, classify all
+    link names by ID at PASSIVE and refuse only in scope or undecidable.
+  - Link classification dedupes parent-name queries and runs a 32-identity budget per pass; unfinished identities stay gated.
