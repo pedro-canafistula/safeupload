@@ -43,6 +43,7 @@ Environment:
 #pragma alloc_text(PAGE, SafeUploadStageWritersInstanceTeardownStart)
 #pragma alloc_text(PAGE, SafeUploadStageWritersPrepareRename)
 #pragma alloc_text(PAGE, SafeUploadStageWritersRegistryEvaluate)
+#pragma alloc_text(PAGE, SafeUploadStageWritersRegistrySnapshotByName)
 #endif
 
 /* Separate node tag permits actual Verifier allocation failures to be attributed
@@ -2451,6 +2452,9 @@ static VOID StageRegistryActivationProcess(_In_ PSTAGE_REGISTRY_ENTRY Entry,
     entryName.Buffer = nameSnapshot;
     entryName.Length = entryName.MaximumLength = (USHORT)(nameSnapshotChars * sizeof(WCHAR));
 
+    /* RegistryLock was released after the name snapshot above, and the paging
+     * gate helper releases PagingWriteLock before returning. Keep identity and
+     * cache I/O outside both locks so diagnostic readers cannot queue behind I/O. */
     status = StageRegistryOpenIdentity(Entry, Instance, Volume, &handle, &object);
     if (!NT_SUCCESS(status)) {
         if (status == STATUS_FILE_INVALID || status == STATUS_OBJECT_NAME_NOT_FOUND ||
@@ -3774,6 +3778,126 @@ __declspec(noinline) static UINT32 StageRegistrySnapshotC(_In_ PSTAGE_REGISTRY_E
     return count;
 }
 
+/* Snapshot an Activating or transacted entry without opening the file or consulting the cache
+ * manager. Evaluate is diagnostic; it must not wait behind the activation flush or an active TxF
+ * transaction merely to report the already tracked H/S/C/T state. Caller owns Entry. */
+static BOOLEAN StageRegistrySnapshotPendingEntry(_In_ PSTAGE_REGISTRY_ENTRY Entry,
+    _In_ PFLT_INSTANCE Instance, _In_ PFLT_VOLUME Volume,
+    _In_ PCUNICODE_STRING Name, _Out_ PSAFEUPLOAD_REGISTRY_ENTRY_STATUS Result)
+{
+    UINT32 openerPids[8], sectionPids[8], openerPidCount = 0, sectionPidCount = 0;
+    UINT32 sectionCount, pidIndex;
+    ULONG unknown;
+    LONG h, t, renameVersion, renameInFlight;
+    UINT32 state;
+    BOOLEAN directoryRenameInFlight, reservationInFlight, unknownInstance = FALSE, trusted;
+    UNICODE_STRING entryName;
+    PSAFEUPLOAD_INSTANCE_CONTEXT instanceContext = NULL;
+
+    FltAcquirePushLockExclusive(&RegistryLock);
+    state = (UINT32)InterlockedCompareExchange((volatile LONG *)&Entry->State, 0, 0);
+    t = InterlockedCompareExchange(&Entry->T, 0, 0);
+    if (!Entry->Listed || Entry->Retired || Entry->Instance != Instance || Entry->Volume != Volume ||
+        (state != SAFEUPLOAD_REGISTRY_STATE_ACTIVATING && t == 0)) {
+        FltReleasePushLock(&RegistryLock);
+        return FALSE;
+    }
+
+    RtlZeroMemory(Result, sizeof(*Result));
+    Result->StructSize = sizeof(*Result);
+    Result->HistoryPresent = 1;
+    Result->FirstSeenGeneration = Entry->FirstSeenGeneration;
+    Result->VolumeSerialNumber = Entry->VolumeSerial;
+    RtlCopyMemory(Result->FileId, &Entry->FileId, sizeof(Entry->FileId));
+    h = InterlockedCompareExchange(&Entry->H, 0, 0);
+    t = InterlockedCompareExchange(&Entry->T, 0, 0);
+    Result->H = (UINT32)max(0, h);
+    Result->T = (UINT32)max(0, t);
+    Result->S = (UINT32)InterlockedCompareExchange(&Entry->LastSState, 0, 0);
+    unknown = (ULONG)InterlockedCompareExchange(&Entry->UnknownReasons, 0, 0);
+    renameVersion = InterlockedCompareExchange(&Entry->RenameVersion, 0, 0);
+    renameInFlight = InterlockedCompareExchange(&Entry->RenameInFlight, 0, 0);
+    entryName.Buffer = Entry->Name;
+    entryName.Length = entryName.MaximumLength = (USHORT)(Entry->NameChars * sizeof(WCHAR));
+    Result->NameMatches = (Entry->NameChars != 0 &&
+        RtlEqualUnicodeString(&entryName, Name, TRUE)) ? 1 : 0;
+    directoryRenameInFlight = StageRegistryDirectoryRenameInFlightLocked(Instance, &entryName);
+    reservationInFlight = StageRegistryHasCreateReservationLocked(Instance, Volume, Name);
+    if (renameInFlight != 0 || renameVersion !=
+        InterlockedCompareExchange(&Entry->RenameVersion, 0, 0) || directoryRenameInFlight)
+        unknown |= SAFEUPLOAD_REGISTRY_UNKNOWN_RENAME_IN_FLIGHT;
+    if (!Result->NameMatches) unknown |= SAFEUPLOAD_REGISTRY_UNKNOWN_RENAME;
+    if (reservationInFlight) unknown |= SAFEUPLOAD_REGISTRY_UNKNOWN_CREATE_IN_FLIGHT;
+    StageRegistryCopyOpeners(Entry, openerPids, RTL_NUMBER_OF(openerPids), &openerPidCount);
+    for (pidIndex = 0; pidIndex < openerPidCount; ++pidIndex)
+        StageRegistryAppendPid(Result, openerPids[pidIndex]);
+    sectionCount = StageRegistrySnapshotC(Entry, sectionPids,
+        RTL_NUMBER_OF(sectionPids), &sectionPidCount);
+    Result->C = sectionCount & ~SAFEUPLOAD_SECTIONS_UNTRACKED_BIT;
+    for (pidIndex = 0; pidIndex < sectionPidCount; ++pidIndex)
+        StageRegistryAppendPid(Result, sectionPids[pidIndex]);
+    if ((sectionCount & SAFEUPLOAD_SECTIONS_UNTRACKED_BIT) != 0)
+        unknown |= SAFEUPLOAD_REGISTRY_UNKNOWN_CAPACITY;
+    FltReleasePushLock(&RegistryLock);
+
+    if (NT_SUCCESS(FltGetInstanceContext(Instance, (PFLT_CONTEXT *)&instanceContext))) {
+        unknownInstance = InterlockedCompareExchange(&instanceContext->WritersUntracked, 0, 0) != 0 ||
+            InterlockedCompareExchange(&instanceContext->RegistryUnknownReasons, 0, 0) != 0;
+        FltReleaseContext(instanceContext);
+    } else {
+        unknownInstance = TRUE;
+    }
+    trusted = SafeUploadInstanceIsTrusted(Instance);
+    if (unknownInstance || SafeUploadStageWritersGlobalUnknown())
+        unknown |= SAFEUPLOAD_REGISTRY_UNKNOWN_IDENTITY;
+    if (!trusted) unknown |= SAFEUPLOAD_REGISTRY_UNKNOWN_TRUST;
+
+    Result->UnknownReasons = unknown;
+    Result->State = unknown != 0 || state != SAFEUPLOAD_REGISTRY_STATE_ACTIVATING ?
+        SAFEUPLOAD_REGISTRY_STATE_UNKNOWN : SAFEUPLOAD_REGISTRY_STATE_ACTIVATING;
+    Result->Free = (Result->H == 0 && Result->S == SAFEUPLOAD_REGISTRY_S_NO &&
+        Result->C == 0 && Result->T == 0 && unknown == 0) ? 1 : 0;
+    return TRUE;
+}
+
+BOOLEAN SafeUploadStageWritersRegistrySnapshotByName(_In_ PFLT_INSTANCE Instance,
+    _In_ PFLT_VOLUME Volume, _In_ PCUNICODE_STRING Name,
+    _Out_ PSAFEUPLOAD_REGISTRY_ENTRY_STATUS Result)
+{
+    PLIST_ENTRY link;
+    PSTAGE_REGISTRY_ENTRY entry = NULL;
+    BOOLEAN evaluated;
+    if (Instance == NULL || Volume == NULL || Name == NULL || Name->Buffer == NULL ||
+        Name->Length == 0 || (Name->Length & 1) != 0) return FALSE;
+
+    FltAcquirePushLockExclusive(&RegistryLock);
+    for (link = RegistryEntries.Flink; link != &RegistryEntries; link = link->Flink) {
+        PSTAGE_REGISTRY_ENTRY candidate = CONTAINING_RECORD(link, STAGE_REGISTRY_ENTRY, Link);
+        UNICODE_STRING candidateName;
+        UINT32 candidateState = (UINT32)InterlockedCompareExchange(
+            (volatile LONG *)&candidate->State, 0, 0);
+        LONG candidateT = InterlockedCompareExchange(&candidate->T, 0, 0);
+        if (candidate->Retired || candidate->Instance != Instance || candidate->Volume != Volume ||
+            (candidateState != SAFEUPLOAD_REGISTRY_STATE_ACTIVATING && candidateT == 0) ||
+            candidate->NameChars == 0 ||
+            candidate->NameChars > SAFEUPLOAD_WRITER_REGISTRY_NAME_CHARS ||
+            candidate->NameChars * sizeof(WCHAR) != Name->Length) continue;
+        candidateName.Buffer = candidate->Name;
+        candidateName.Length = candidateName.MaximumLength = (USHORT)(candidate->NameChars * sizeof(WCHAR));
+        if (RtlEqualUnicodeString(&candidateName, Name, TRUE)) {
+            entry = candidate;
+            StageRegistryReference(entry);
+            break;
+        }
+    }
+    FltReleasePushLock(&RegistryLock);
+    if (entry == NULL) return FALSE;
+
+    evaluated = StageRegistrySnapshotPendingEntry(entry, Instance, Volume, Name, Result);
+    StageRegistryDereference(entry);
+    return evaluated;
+}
+
 NTSTATUS SafeUploadStageWritersRegistryEvaluate(_In_ PFLT_INSTANCE Instance,
     _In_ PCUNICODE_STRING VolumeName, _In_ PCUNICODE_STRING NormalizedName,
     _In_ PFILE_OBJECT SourceObject, _Out_ PSAFEUPLOAD_REGISTRY_ENTRY_STATUS Result)
@@ -3802,12 +3926,24 @@ NTSTATUS SafeUploadStageWritersRegistryEvaluate(_In_ PFLT_INSTANCE Instance,
     NT_ASSERT(KeGetCurrentIrql() == PASSIVE_LEVEL);
     RtlZeroMemory(Result, sizeof(*Result));
     Result->StructSize = sizeof(*Result);
+
+    /* Resolve the instance volume without touching the file, then answer a
+     * tracked pending entry by name before any file-system query can wait on
+     * its activation flush or transaction. */
+    status = FltGetVolumeFromInstance(Instance, &volume);
+    if (!NT_SUCCESS(status)) return status;
+    if (SafeUploadStageWritersRegistrySnapshotByName(Instance, volume, NormalizedName, Result)) {
+        FltObjectDereference(volume);
+        return STATUS_SUCCESS;
+    }
+
     RtlZeroMemory(&identity, sizeof(identity));
     status = FltQueryInformationFile(Instance, SourceObject, &identity, sizeof(identity),
         FileIdInformation, &returned);
-    if (status != STATUS_SUCCESS || returned != sizeof(identity)) return STATUS_FILE_INVALID;
-    status = FltGetVolumeFromInstance(Instance, &volume);
-    if (!NT_SUCCESS(status)) return status;
+    if (status != STATUS_SUCCESS || returned != sizeof(identity)) {
+        FltObjectDereference(volume);
+        return STATUS_FILE_INVALID;
+    }
 
     FltAcquirePushLockExclusive(&RegistryLock);
     entry = StageRegistryFindByKeyLocked(Instance, volume, identity.VolumeSerialNumber, &identity.FileId);
@@ -3860,6 +3996,15 @@ NTSTATUS SafeUploadStageWritersRegistryEvaluate(_In_ PFLT_INSTANCE Instance,
             FltObjectDereference(volume);
             return STATUS_SUCCESS;
         }
+    }
+
+    /* Use the resident registry snapshot for Activating entries. The identity
+     * open below can wait on the stream's cutoff flush or its still-open TxF
+     * transaction, neither of which a diagnostic read should join. */
+    if (StageRegistrySnapshotPendingEntry(entry, Instance, volume, NormalizedName, Result)) {
+        StageRegistryDereference(entry);
+        FltObjectDereference(volume);
+        return STATUS_SUCCESS;
     }
 
     retainedName = ExAllocatePool2(POOL_FLAG_PAGED,

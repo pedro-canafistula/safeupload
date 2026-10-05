@@ -145,6 +145,9 @@ NTSTATUS SafeUploadStageWritersRegistryEvaluate(_In_ PFLT_INSTANCE Instance,
     _In_ PCUNICODE_STRING VolumeName, _In_ PCUNICODE_STRING NormalizedName,
     _In_ PFILE_OBJECT SourceObject,
     _Out_ PSAFEUPLOAD_REGISTRY_ENTRY_STATUS Status);
+BOOLEAN SafeUploadStageWritersRegistrySnapshotByName(_In_ PFLT_INSTANCE Instance,
+    _In_ PFLT_VOLUME Volume, _In_ PCUNICODE_STRING Name,
+    _Out_ PSAFEUPLOAD_REGISTRY_ENTRY_STATUS Status);
 VOID SafeUploadStageWritersSetCapacity(_In_ UINT32 Capacity);
 VOID SafeUploadStageWritersRecordTxfRefused(VOID);
 NTSTATUS SafeUploadStageTransactionNotification(_In_ PCFLT_RELATED_OBJECTS FltObjects,

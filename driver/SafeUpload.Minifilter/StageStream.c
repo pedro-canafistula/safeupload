@@ -888,6 +888,14 @@ static NTSTATUS StageRegistryEntryProbeWorkerBody(_In_ PCUNICODE_STRING VolumeNa
     if (!NT_SUCCESS(status)) goto Exit;
     status = FltGetVolumeInstanceFromName(SafeUploadData.Filter, volume, NULL, &instance);
     if (!NT_SUCCESS(status)) goto Exit;
+    /* A tracked Activating name can be answered from memory. Do this before
+     * opening the target: NTFS may block that open behind the very TxF
+     * transaction the diagnostic is meant to report. */
+    if (SafeUploadStageWritersRegistrySnapshotByName(
+            instance, volume, &fullName, Result)) {
+        status = STATUS_SUCCESS;
+        goto Exit;
+    }
     InitializeObjectAttributes(&attributes, &fullName,
         OBJ_KERNEL_HANDLE | OBJ_CASE_INSENSITIVE, NULL, NULL);
     status = FltCreateFileEx2(SafeUploadData.Filter, instance, &sourceHandle, &sourceObject,
@@ -2450,7 +2458,7 @@ static FLT_PREOP_CALLBACK_STATUS StageAdmit(PFLT_CALLBACK_DATA Data,
     ULONG disposition = Data->Iopb->Parameters.Create.Options >> 24;
     ULONG pid = FltGetRequestorProcessId(Data);
     BOOLEAN service = SafeUploadIsAuthenticatedClient() && pid == SafeUploadData.InspectorProcessId;
-    BOOLEAN writer, handled = TRUE, privateNamespace = FALSE;
+    BOOLEAN writer, writerAccess, handled = TRUE, privateNamespace = FALSE;
     UNICODE_STRING relative;
     UNICODE_STRING privatePrefix = RTL_CONSTANT_STRING(L"\\ProgramData\\SafeUpload\\staging\\");
     ULONGLONG zeroId = 0;
@@ -2466,10 +2474,11 @@ static FLT_PREOP_CALLBACK_STATUS StageAdmit(PFLT_CALLBACK_DATA Data,
         FlagOn(Data->Iopb->OperationFlags, SL_OPEN_TARGET_DIRECTORY) ||
         (Objects->FileObject->FileName.Length == 0 && Objects->FileObject->RelatedFileObject == NULL))
         return FLT_PREOP_SUCCESS_NO_CALLBACK;
-    writer = BooleanFlagOn(security->DesiredAccess, FILE_WRITE_DATA | FILE_APPEND_DATA | FILE_WRITE_EA |
+    writerAccess = BooleanFlagOn(security->DesiredAccess, FILE_WRITE_DATA | FILE_APPEND_DATA | FILE_WRITE_EA |
         FILE_WRITE_ATTRIBUTES | FILE_DELETE_CHILD | DELETE | WRITE_DAC | WRITE_OWNER | GENERIC_WRITE |
         GENERIC_ALL | MAXIMUM_ALLOWED) ||
-        FlagOn(Data->Iopb->Parameters.Create.Options, FILE_DELETE_ON_CLOSE) ||
+        FlagOn(Data->Iopb->Parameters.Create.Options, FILE_DELETE_ON_CLOSE);
+    writer = writerAccess ||
         disposition == FILE_CREATE || disposition == FILE_OPEN_IF || disposition == FILE_SUPERSEDE ||
         disposition == FILE_OVERWRITE || disposition == FILE_OVERWRITE_IF;
     if (FlagOn(Data->Iopb->Parameters.Create.Options, FILE_DIRECTORY_FILE)) {
@@ -2532,12 +2541,19 @@ static FLT_PREOP_CALLBACK_STATUS StageAdmit(PFLT_CALLBACK_DATA Data,
     status = FltGetFileNameInformation(Data, FLT_FILE_NAME_NORMALIZED | FLT_FILE_NAME_QUERY_DEFAULT, &name);
     if (!NT_SUCCESS(status)) {
 #if SAFEUPLOAD_STAGING_PROTOTYPE
-        /* Unknown names on a volume that can contain any protected scope fail closed. */
-        if (SafeUploadPolicyMayMatchVolume(kind, Objects->Volume)) {
+        /* A name-resolution failure is relevant only for a request that can mutate.
+         * Early boot image/manifest reads must pass even when C: has a boot scope. */
+        if (writer && SafeUploadPolicyMayMatchVolume(kind, Objects->Volume)) {
             status = STATUS_ACCESS_DENIED; goto Complete;
         }
 #endif
-        if (!writer || service) return FLT_PREOP_SUCCESS_NO_CALLBACK;
+        if (!writer || service) {
+            if (name != NULL) FltReleaseFileNameInformation(name);
+            return FLT_PREOP_SUCCESS_NO_CALLBACK;
+        }
+        /* Keep the existing fail-closed rule for unresolved user writes: the
+         * path cannot be ruled out as either a policy destination or the
+         * driver's private staging namespace. */
         status = STATUS_ACCESS_DENIED; goto Complete;
     }
     status = FltParseFileNameInformation(name);
@@ -2569,8 +2585,8 @@ static FLT_PREOP_CALLBACK_STATUS StageAdmit(PFLT_CALLBACK_DATA Data,
     }
     if (!privateNamespace && !SafeUploadStageProtectedName(name, kind)) {
         BOOLEAN protectedAlias = FALSE;
-        if (writer || BooleanFlagOn(security->DesiredAccess,
-            FILE_WRITE_ATTRIBUTES | FILE_WRITE_EA | DELETE | WRITE_DAC | WRITE_OWNER)) {
+        if (writerAccess || disposition == FILE_SUPERSEDE || disposition == FILE_OVERWRITE ||
+            disposition == FILE_OVERWRITE_IF) {
             status = SafeUploadStageCheckNamedAliases(Objects->Instance, name, kind, &protectedAlias);
             if (status != STATUS_SUCCESS || protectedAlias) { status = STATUS_ACCESS_DENIED; goto Complete; }
         }
@@ -3020,7 +3036,6 @@ static BOOLEAN StageEpochOperationTouchesUnion(_In_ PFLT_CALLBACK_DATA Data,
     SAFEUPLOAD_VOLUME_KIND kind = StageVolumeKind(Objects->Instance);
     BOOLEAN matched = FALSE;
     NTSTATUS status;
-    if (!SafeUploadPolicyAdmissionMustRetry()) return FALSE;
     /* Section release only retires a C slot. Let it reach lower completion so
      * the epoch drain and any Activating promotion can make progress. */
     if (Data->Iopb->MajorFunction == IRP_MJ_RELEASE_FOR_SECTION_SYNCHRONIZATION) return FALSE;
@@ -3056,7 +3071,9 @@ static BOOLEAN StageEpochOperationTouchesUnion(_In_ PFLT_CALLBACK_DATA Data,
         return SafeUploadPolicyMayMatchVolume(kind, Objects->Volume);
     }
     matched = SafeUploadPolicyMatchesCurrentOrPendingDestination(kind, &name->Name,
-        Data->Iopb->MajorFunction == IRP_MJ_SET_INFORMATION);
+        Data->Iopb->MajorFunction == IRP_MJ_SET_INFORMATION ||
+        (Data->Iopb->MajorFunction == IRP_MJ_CREATE &&
+         FlagOn(Data->Iopb->Parameters.Create.Options, FILE_DIRECTORY_FILE)));
     if (Data->Iopb->MajorFunction == IRP_MJ_SET_INFORMATION) {
         FILE_INFORMATION_CLASS cls = Data->Iopb->Parameters.SetFileInformation.FileInformationClass;
         if (cls == FileRenameInformation || cls == FileRenameInformationEx ||
@@ -3311,6 +3328,9 @@ FLT_PREOP_CALLBACK_STATUS SafeUploadStageDispatch(PFLT_CALLBACK_DATA Data,
     FLT_PREOP_CALLBACK_STATUS result;
     NTSTATUS status;
     PFILE_OBJECT fileObject = Data->Iopb->TargetFileObject;
+    /* Boot-path invariant: the boot snapshot scopes mutation only. Reads,
+     * image loads, and executes outside it do not acquire an epoch or enter
+     * Activating denial; loss of an epoch token cannot widen the scope gate. */
     if (!StageEpochOperation(Data)) {
         if (Data->Iopb->MajorFunction == IRP_MJ_READ || Data->Iopb->MajorFunction == IRP_MJ_MDL_READ) {
             result = StageGateUnownedActivatingRead(Data, fileObject);
@@ -3326,12 +3346,17 @@ FLT_PREOP_CALLBACK_STATUS SafeUploadStageDispatch(PFLT_CALLBACK_DATA Data,
     if (FLT_IS_FASTIO_OPERATION(Data)) return FLT_PREOP_DISALLOW_FASTIO;
     status = SafeUploadPolicyAdmissionAcquire(&token);
     if (!NT_SUCCESS(status)) {
-        Data->IoStatus.Status = status;
-        Data->IoStatus.Information = 0;
-        *CompletionContext = NULL;
-        return FLT_PREOP_COMPLETE;
+        /* An epoch serializes a policy swap; it is not an authorization result.
+         * If it is unavailable, refuse only an operation that can reach the
+         * current/pending protected union. Clearly out-of-scope mutations keep
+         * flowing, including during early boot before the service connects. */
+        if (StageEpochOperationTouchesUnion(Data, Objects)) {
+            if (SafeUploadPolicyAdmissionMustRetry()) return StageCompleteEpochRetry(Data);
+            return StageCompleteAccessDenied(Data);
+        }
+        return StageDispatchCore(Data, Objects, CompletionContext, NULL);
     }
-    if (StageEpochOperationTouchesUnion(Data, Objects)) {
+    if (SafeUploadPolicyAdmissionMustRetry() && StageEpochOperationTouchesUnion(Data, Objects)) {
         SafeUploadPolicyAdmissionRelease(token);
         *CompletionContext = NULL;
         return StageCompleteEpochRetry(Data);
