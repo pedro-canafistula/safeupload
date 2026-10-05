@@ -426,3 +426,16 @@ falsify the Phase 3 cutoff mechanism; the harness must test it, never reinterpre
   the baseline must be bound to the proven promotion boundary. An unexplained Protected mutation is never
   rebaselined. The current three Ready seed cases and 22 NotReady family placeholders do not qualify Phase 4;
   lower mutation ledger, live taint readback, observer self-tests and full case implementations remain required.
+- **2026-10-05 b23 build checkpoint (runtime qualification pending):** source `39406a55` replaces only the
+  resident scope-cache prefix comparator used under its spin lock. The general PASSIVE comparator remains
+  unchanged. A fresh adversarial source review found no blocking defect; the extracted production helper
+  passed 24 literal semantic vectors with GCC and Clang. Four exact-source WDK builds (normal/feature,
+  Debug/Release) passed with PREfast, DriverRecommendedRules and ApiValidator, zero warnings/errors;
+  the orchestrator read all four builder logs and validated the archive, manifest and signed artifact.
+  Signed feature SHA-256: `02BDF87DC646D9D64D62EAE3E3C5DED5892F85C119FC04B8A528D9C86FCE79`.
+  Evidence: `evidence/2026-10-05/exact-mvp3-b23-root-validation.txt`,
+  `evidence/2026-10-05/s01-b22-irql-fix-review.txt`,
+  `evidence/2026-10-05/volume-cache-prefix-check.txt`. Boot and runtime Verifier qualification remain
+  required. The debuggee still points to the failed b22s01a checkpoint overlay; a new VM run awaits the
+  exact owner recovery above followed by an independent clean-baseline check. Offline observer-corpus
+  implementation can proceed while waiting; it does not advance a VM acceptance gate.
