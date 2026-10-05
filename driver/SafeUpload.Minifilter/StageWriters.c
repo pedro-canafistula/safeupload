@@ -3096,7 +3096,7 @@ static BOOLEAN StageRegistrySopSnapshotQuiescent(_In_ PSTAGE_REGISTRY_SOP_SNAPSH
     HANDLE handle = NULL;
     PFILE_OBJECT object = NULL;
     PSECTION_OBJECT_POINTERS sop;
-    UINT32 sections, spilledWritable, spilledTotal;
+    UINT32 sections, spilledTotal;
     NTSTATUS status;
     BOOLEAN quiescent = FALSE;
 
