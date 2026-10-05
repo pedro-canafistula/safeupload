@@ -1,0 +1,15 @@
+SOURCE_MANIFEST_VERIFIED=26 files
+LABEL=mvp3-b3
+ARCHIVE_SHA256=A0A586AAAD01F8420D181829AC9C574A4BD24B87E032B035DBBAFE37CEAFADF2
+MANIFEST_SHA256=EB49762022D94D04B99E4C22C71323A7BE8C780EC35648317B42B6FB09675BC2
+BUILDER=DESKTOP-O1LP5DG
+BUILD_END_UTC=2026-10-05T01:41:00.2708844Z
+driver:normal : configuration=Debug feature=false exit=0 succeeded=True warnings=0 errors=0 apivalidator=True prefast=True artifact_sha256=D108BF79C12C5361AD21750B6AEB5A9CE8E333B9C602EE946F75EF45951B562F
+driver:owned-feature : configuration=Debug feature=true exit=1 succeeded=False warnings=0 errors=15 apivalidator=True prefast=True artifact_sha256=NONE
+driver:normal-release : configuration=Release feature=false exit=0 succeeded=True warnings=0 errors=0 apivalidator=True prefast=True artifact_sha256=6A24BDFC7B62E5CA877827C2A259AA59C52BD1B60F8B55F59183DD2FDAD554C0
+driver:owned-feature-release : configuration=Release feature=true exit=1 succeeded=False warnings=0 errors=15 apivalidator=True prefast=True artifact_sha256=NONE
+inspector-normal-release : exit=0 succeeded=True warnings=0 errors=0 artifact_sha256=81318AED58E437B4B31583D0E5BE8F66B0A1E7E17F9B0531E85E384F74462EEF
+inspector-feature-release : exit=0 succeeded=True warnings=0 errors=0 artifact_sha256=2A6AAC0E909BC02169DDDDD95E5DEE142C487D7595F12FC0A0DC6CEB52C58D6A
+writer-fixture : exit=0 succeeded=True warnings=0 errors=0 artifact_sha256=1ECC6AC99A0C54AE19FAB966FAAFC5813F106F724F8C70717BC342FB4459711C
+sign : SKIPPED (no feature Debug SYS)
+EXACT_BUILD_DONE

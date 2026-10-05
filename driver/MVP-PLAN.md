@@ -333,3 +333,8 @@ falsify the Phase 3 cutoff mechanism; the harness must test it, never reinterpre
   0, latency p95 1.3 ms. Verdict INCONCLUSIVE until the proof adapters exist (lower mutation ledger, metadata expectations, cadence accounting,
   live taint readback, service timelines). Open product finding: a trusted boot-attached C: reports writer tracking Unknown minutes after boot
   (suspected untracked open-by-ID writers); must be fixed before promotion can work on a real boot. Readout: evidence/2026-10-04/s00-attempt1-7-readout.txt.
+- **2026-10-05, unattended (test evidence, consistent with "admins/SYSTEM trusted"):** the Phase 4 notification-absence proof accepts process
+  creations in the case window without per-process service-SID evidence only when authenticated SCM evidence shows the SafeUploadAgent service
+  absent at both edges and never installed in the window: only the SCM assigns a per-service SID, to the process of the service it starts, so
+  no process can carry it except through privileged token forgery, which the owner decision trusts. With the service installed, the gap still
+  makes the proof INCONCLUSIVE; the agent image/user check always applies.

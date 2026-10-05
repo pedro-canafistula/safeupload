@@ -1,0 +1,3056 @@
+<Objs Version="1.1.0.1" xmlns="http://schemas.microsoft.com/powershell/2004/04">
+  <Obj RefId="0">
+    <TN RefId="0">
+      <T>System.Collections.Specialized.OrderedDictionary</T>
+      <T>System.Object</T>
+    </TN>
+    <DCT>
+      <En>
+        <S N="Key">Status</S>
+        <S N="Value">OK</S>
+      </En>
+      <En>
+        <S N="Key">Tag</S>
+        <S N="Value">before</S>
+      </En>
+      <En>
+        <S N="Key">BootId</S>
+        <S N="Value">WIN10-DEBUGGED/2026-10-05T01:49:20.5000000Z</S>
+      </En>
+      <En>
+        <S N="Key">QpcFrequency</S>
+        <I64 N="Value">10000000</I64>
+      </En>
+      <En>
+        <S N="Key">StartQpc</S>
+        <I64 N="Value">305516823</I64>
+      </En>
+      <En>
+        <S N="Key">Journal</S>
+        <Obj N="Value" RefId="1">
+          <TN RefId="1">
+            <T>System.Object[]</T>
+            <T>System.Array</T>
+            <T>System.Object</T>
+          </TN>
+          <LST>
+            <Obj RefId="2">
+              <TN RefId="2">
+                <T>System.Management.Automation.PSCustomObject</T>
+                <T>System.Object</T>
+              </TN>
+              <MS>
+                <S N="Path">C:\ProgramData\SafeUpload\staging-journal\1807552b5e024c438a012a6a580b4de5.json</S>
+                <S N="Owner">S-1-5-18</S>
+                <S N="Sddl">O:SYG:SYD:PAI(A;;FA;;;SY)(A;;FA;;;BA)</S>
+                <S N="Sha256">A9D51B0A2436705E0112E1666C359F5C4A662120612CDC3146EE1D8AD812A193</S>
+                <S N="Artifact">C:\Users\vika\Documents\boot-start-invariant-S02-agent-down-open-refused-ordinary-notify6-artifacts\service-before-1807552b5e024c438a012a6a580b4de5.json</S>
+                <I32 N="Length">518</I32>
+                <BA N="Bytes">eyJUcmFuc2ZlciI6eyJUcmFuc2ZlcklkIjoiMTgwNzU1MmItNWUwMi00YzQzLThhMDEtMmE2YTU4MGI0ZGU1IiwiU3RhZ2VQYXRoIjoiQzpcXFByb2dyYW1EYXRhXFxTYWZlVXBsb2FkXFxzdGFnaW5nXFwxODA3NTUyYjVlMDI0YzQzOGEwMTJhNmE1ODBiNGRlNS50eHQiLCJEZXN0aW5hdGlvblBhdGgiOiJTOlxcU2FmZVVwbG9hZFxcRXNjb3BvIE1vbml0b3JhZG9cXHNhZmV1cGxvYWQtY3Jvc3N2b2x1bWUtYjM0MTkwNzIzNjA2NGIyYmI0ZmZlZWE2MjUyMGZjNGEudHh0LnJlbmFtZWQudHh0IiwiRGVzdGluYXRpb24iOjAsIlByb2Nlc3NOYW1lIjoicG93ZXJzaGVsbC5leGUiLCJQcm9jZXNzSWQiOjEwNDcyLCJTZXNzaW9uSWQiOjB9LCJTdGF0ZSI6NiwiU2hhMjU2SGV4IjoiMEZGRUExQUY0MEE0MUNCQTg4ODlDNjRFMUMwQzRDODVDOEZFMDdDN0Y2RUIyNzNBRDFERkFCREQ4MzQzQzk5QSIsIlVwZGF0ZWRBdFV0YyI6IjIwMjYtMTAtMDFUMDM6Mjk6MDEuMzM4NDc2KzAwOjAwIiwiU2VhbGVkT25jZSI6dHJ1ZX0=</BA>
+              </MS>
+            </Obj>
+            <Obj RefId="3">
+              <TNRef RefId="2" />
+              <MS>
+                <S N="Path">C:\ProgramData\SafeUpload\staging-journal\3f64a3b0c3f142ef89fc0d076f7e994e.json</S>
+                <S N="Owner">S-1-5-32-544</S>
+                <S N="Sddl">O:BAG:S-1-5-21-316478115-1595729549-2803163825-513D:PAI(A;;FA;;;SY)(A;;FA;;;BA)</S>
+                <S N="Sha256">1BEBB74C62932574CEB5E4BE1B4FF1F0007BE5CA3433B8F3CA68D3CA7B03E554</S>
+                <S N="Artifact">C:\Users\vika\Documents\boot-start-invariant-S02-agent-down-open-refused-ordinary-notify6-artifacts\service-before-3f64a3b0c3f142ef89fc0d076f7e994e.json</S>
+                <I32 N="Length">489</I32>
+                <BA N="Bytes">eyJUcmFuc2ZlciI6eyJUcmFuc2ZlcklkIjoiM2Y2NGEzYjAtYzNmMS00MmVmLTg5ZmMtMGQwNzZmN2U5OTRlIiwiU3RhZ2VQYXRoIjoiQzpcXFNhZmVVcGxvYWRcXF9zdGFnaW5nXFwzZjY0YTNiMGMzZjE0MmVmODlmYzBkMDc2ZjdlOTk0ZS50eHQiLCJEZXN0aW5hdGlvblBhdGgiOiJTOlxcU2FmZVVwbG9hZFxcRXNjb3BvIE1vbml0b3JhZG9cXHNhZmV1cGxvYWQtbWFwcGVkLWM1YmYxMzcyN2ZmNTQzODA4YzkyMWIzNWY0NzVmZjE4LnR4dCIsIkRlc3RpbmF0aW9uIjowLCJQcm9jZXNzTmFtZSI6InBvd2Vyc2hlbGwuZXhlIiwiUHJvY2Vzc0lkIjo5NzY4LCJTZXNzaW9uSWQiOjB9LCJTdGF0ZSI6NSwiU2hhMjU2SGV4IjoiNjBEQUEzQTVGN0RCRkEyMDBGOEM4Mjg0MEVDRjVCNDI2NDBCNzBGM0I3MjE4QTRDNkJCRDY3REI1NDJFNzVBNCIsIlVwZGF0ZWRBdFV0YyI6IjIwMjYtMDktMzBUMjI6MDQ6MjMuNjcwODY4OCswMDowMCIsIlNlYWxlZE9uY2UiOnRydWV9</BA>
+              </MS>
+            </Obj>
+            <Obj RefId="4">
+              <TNRef RefId="2" />
+              <MS>
+                <S N="Path">C:\ProgramData\SafeUpload\staging-journal\48b5d80af9e94196a905ec25ae5c6e03.json</S>
+                <S N="Owner">S-1-5-18</S>
+                <S N="Sddl">O:SYG:SYD:PAI(A;;FA;;;SY)(A;;FA;;;BA)</S>
+                <S N="Sha256">023F2DEC41D661CCAAF0A22373E295F4CF87DA7AF6B1114DC9EE249FE7419DAF</S>
+                <S N="Artifact">C:\Users\vika\Documents\boot-start-invariant-S02-agent-down-open-refused-ordinary-notify6-artifacts\service-before-48b5d80af9e94196a905ec25ae5c6e03.json</S>
+                <I32 N="Length">629</I32>
+                <BA N="Bytes">eyJUcmFuc2ZlciI6eyJUcmFuc2ZlcklkIjoiNDhiNWQ4MGEtZjllOS00MTk2LWE5MDUtZWMyNWFlNWM2ZTAzIiwiU3RhZ2VQYXRoIjoiQzpcXFByb2dyYW1EYXRhXFxTYWZlVXBsb2FkXFxzdGFnaW5nXFw0OGI1ZDgwYWY5ZTk0MTk2YTkwNWVjMjVhZTVjNmUwMy50eHQiLCJEZXN0aW5hdGlvblBhdGgiOiJDOlxcU2FmZVVwbG9hZEJvb3RTdGFydFxcUHJvdGVjdGVkXFxhZ2VudC1kb3duLXNlY3Rpb24udHh0IiwiRGVzdGluYXRpb24iOjIsIlByb2Nlc3NOYW1lIjoicG93ZXJzaGVsbC5leGUiLCJQcm9jZXNzSWQiOjI0MzIsIlNlc3Npb25JZCI6MH0sIlN0YXRlIjo1LCJTaGEyNTZIZXgiOiJFMTJFMTE1QUNGNDU1MkIyNTY4QjU1RTkzQ0JEMzkzOTRDNEVGODFDODI0NDdGQUZDOTk3ODgyQTAyRDIzNjc3IiwiVXBkYXRlZEF0VXRjIjoiMjAyNi0xMC0wNFQwNDo0MjowOC4xMjgyNzI5KzAwOjAwIiwiU2VhbGVkT25jZSI6dHJ1ZSwiRGVzdGluYXRpb25HZW5lcmF0aW9uIjoxLCJOYW1lc3BhY2VUb21ic3RvbmVzIjpudWxsLCJQZW5kaW5nUmVuYW1lIjpudWxsLCJMYXN0UmVuYW1lVHJhbnNhY3Rpb25JZCI6MCwiTGFzdFJlbmFtZURlc3RpbmF0aW9uIjpudWxsLCJMYXN0UmVuYW1lQ29tbWl0dGVkIjpmYWxzZX0=</BA>
+              </MS>
+            </Obj>
+            <Obj RefId="5">
+              <TNRef RefId="2" />
+              <MS>
+                <S N="Path">C:\ProgramData\SafeUpload\staging-journal\5b063ae76fcf4e97adcd18ea4de9eaf4.json</S>
+                <S N="Owner">S-1-5-18</S>
+                <S N="Sddl">O:SYG:SYD:PAI(A;;FA;;;SY)(A;;FA;;;BA)</S>
+                <S N="Sha256">DB4AB033A451795E826A9C7F8B945A4AF1089BF24CC2C435CF928039960C57AB</S>
+                <S N="Artifact">C:\Users\vika\Documents\boot-start-invariant-S02-agent-down-open-refused-ordinary-notify6-artifacts\service-before-5b063ae76fcf4e97adcd18ea4de9eaf4.json</S>
+                <I32 N="Length">432</I32>
+                <BA N="Bytes">eyJUcmFuc2ZlciI6eyJUcmFuc2ZlcklkIjoiNWIwNjNhZTctNmZjZi00ZTk3LWFkY2QtMThlYTRkZTllYWY0IiwiU3RhZ2VQYXRoIjoiQzpcXFByb2dyYW1EYXRhXFxTYWZlVXBsb2FkXFxzdGFnaW5nXFw1YjA2M2FlNzZmY2Y0ZTk3YWRjZDE4ZWE0ZGU5ZWFmNC50eHQiLCJEZXN0aW5hdGlvblBhdGgiOiJDOlxcc2FmZXVwbG9hZFxcRXNjb3BvIE1vbml0b3JhZG9cXGR1cGxpY2F0ZS0xOWY0MjVjMzAzMjY0OGNjYjcwNTZjMjdiYTE5ZWNmZC50eHQiLCJEZXN0aW5hdGlvbiI6MiwiUHJvY2Vzc05hbWUiOiJwb3dlcnNoZWxsLmV4ZSIsIlByb2Nlc3NJZCI6NDk3MiwiU2Vzc2lvbklkIjowfSwiU3RhdGUiOjgsIlNoYTI1NkhleCI6bnVsbCwiVXBkYXRlZEF0VXRjIjoiMjAyNi0xMC0wMVQwMzo0MzozMi43MTQxOTg2KzAwOjAwIiwiU2VhbGVkT25jZSI6ZmFsc2V9</BA>
+              </MS>
+            </Obj>
+            <Obj RefId="6">
+              <TNRef RefId="2" />
+              <MS>
+                <S N="Path">C:\ProgramData\SafeUpload\staging-journal\6c2f1f1fe4154926af1c99c3b95adf39.json</S>
+                <S N="Owner">S-1-5-18</S>
+                <S N="Sddl">O:SYG:SYD:PAI(A;;FA;;;SY)(A;;FA;;;BA)</S>
+                <S N="Sha256">C1B39F78B92CE559EA05B429E48B17ED01AE3C5148604251E295286BF698E8FA</S>
+                <S N="Artifact">C:\Users\vika\Documents\boot-start-invariant-S02-agent-down-open-refused-ordinary-notify6-artifacts\service-before-6c2f1f1fe4154926af1c99c3b95adf39.json</S>
+                <I32 N="Length">550</I32>
+                <BA N="Bytes">eyJUcmFuc2ZlciI6eyJUcmFuc2ZlcklkIjoiNmMyZjFmMWYtZTQxNS00OTI2LWFmMWMtOTljM2I5NWFkZjM5IiwiU3RhZ2VQYXRoIjoiQzpcXFByb2dyYW1EYXRhXFxTYWZlVXBsb2FkXFxzdGFnaW5nXFw2YzJmMWYxZmU0MTU0OTI2YWYxYzk5YzNiOTVhZGYzOS50eHQiLCJEZXN0aW5hdGlvblBhdGgiOiJTOlxcU2FmZVVwbG9hZFxcRXNjb3BvIE1vbml0b3JhZG9cXHNhZmV1cGxvYWQtY3Jvc3N2b2x1bWUtODkzYTkzOGY1NTBmNDVkOGI5NzA3ZjZiNmJhMjExZjgudHh0IiwiRGVzdGluYXRpb24iOjAsIlByb2Nlc3NOYW1lIjoicG93ZXJzaGVsbC5leGUiLCJQcm9jZXNzSWQiOjM5ODgsIlNlc3Npb25JZCI6MH0sIlN0YXRlIjo3LCJTaGEyNTZIZXgiOm51bGwsIlVwZGF0ZWRBdFV0YyI6IjIwMjYtMTAtMDFUMTU6MDU6MzAuMDkwMzk4NSswMDowMCIsIlNlYWxlZE9uY2UiOnRydWUsIlBlbmRpbmdSZW5hbWUiOm51bGwsIkxhc3RSZW5hbWVUcmFuc2FjdGlvbklkIjowLCJMYXN0UmVuYW1lRGVzdGluYXRpb24iOm51bGwsIkxhc3RSZW5hbWVDb21taXR0ZWQiOmZhbHNlfQ==</BA>
+              </MS>
+            </Obj>
+            <Obj RefId="7">
+              <TNRef RefId="2" />
+              <MS>
+                <S N="Path">C:\ProgramData\SafeUpload\staging-journal\793c71e6c4cb4ea0be2665ac7f75e912.json</S>
+                <S N="Owner">S-1-5-18</S>
+                <S N="Sddl">O:SYG:SYD:PAI(A;;FA;;;SY)(A;;FA;;;BA)</S>
+                <S N="Sha256">AFC9A5EC085C2934F203C2504A98F0ACC42B0492F2C949D4DD978825124F9240</S>
+                <S N="Artifact">C:\Users\vika\Documents\boot-start-invariant-S02-agent-down-open-refused-ordinary-notify6-artifacts\service-before-793c71e6c4cb4ea0be2665ac7f75e912.json</S>
+                <I32 N="Length">630</I32>
+                <BA N="Bytes">eyJUcmFuc2ZlciI6eyJUcmFuc2ZlcklkIjoiNzkzYzcxZTYtYzRjYi00ZWEwLWJlMjYtNjVhYzdmNzVlOTEyIiwiU3RhZ2VQYXRoIjoiQzpcXFByb2dyYW1EYXRhXFxTYWZlVXBsb2FkXFxzdGFnaW5nXFw3OTNjNzFlNmM0Y2I0ZWEwYmUyNjY1YWM3Zjc1ZTkxMi50eHQiLCJEZXN0aW5hdGlvblBhdGgiOiJDOlxcU2FmZVVwbG9hZEJvb3RTdGFydFxcUHJvdGVjdGVkXFxhZ2VudC1yZXN0YXJ0LXN0YWdlLnR4dCIsIkRlc3RpbmF0aW9uIjoyLCJQcm9jZXNzTmFtZSI6InBvd2Vyc2hlbGwuZXhlIiwiUHJvY2Vzc0lkIjoyNDMyLCJTZXNzaW9uSWQiOjB9LCJTdGF0ZSI6NSwiU2hhMjU2SGV4IjoiRTEyRTExNUFDRjQ1NTJCMjU2OEI1NUU5M0NCRDM5Mzk0QzRFRjgxQzgyNDQ3RkFGQzk5Nzg4MkEwMkQyMzY3NyIsIlVwZGF0ZWRBdFV0YyI6IjIwMjYtMTAtMDRUMDQ6NDI6MjIuNzk2NTg0OSswMDowMCIsIlNlYWxlZE9uY2UiOnRydWUsIkRlc3RpbmF0aW9uR2VuZXJhdGlvbiI6MSwiTmFtZXNwYWNlVG9tYnN0b25lcyI6bnVsbCwiUGVuZGluZ1JlbmFtZSI6bnVsbCwiTGFzdFJlbmFtZVRyYW5zYWN0aW9uSWQiOjAsIkxhc3RSZW5hbWVEZXN0aW5hdGlvbiI6bnVsbCwiTGFzdFJlbmFtZUNvbW1pdHRlZCI6ZmFsc2V9</BA>
+              </MS>
+            </Obj>
+            <Obj RefId="8">
+              <TNRef RefId="2" />
+              <MS>
+                <S N="Path">C:\ProgramData\SafeUpload\staging-journal\8353c68e0b4c478194e303108d95e325.json</S>
+                <S N="Owner">S-1-5-18</S>
+                <S N="Sddl">O:SYG:SYD:PAI(A;;FA;;;SY)(A;;FA;;;BA)</S>
+                <S N="Sha256">6938C3B842830375E06753308FC4BEB0A3BC9F1E88984792401CE9B8C2D73D24</S>
+                <S N="Artifact">C:\Users\vika\Documents\boot-start-invariant-S02-agent-down-open-refused-ordinary-notify6-artifacts\service-before-8353c68e0b4c478194e303108d95e325.json</S>
+                <I32 N="Length">629</I32>
+                <BA N="Bytes">eyJUcmFuc2ZlciI6eyJUcmFuc2ZlcklkIjoiODM1M2M2OGUtMGI0Yy00NzgxLTk0ZTMtMDMxMDhkOTVlMzI1IiwiU3RhZ2VQYXRoIjoiQzpcXFByb2dyYW1EYXRhXFxTYWZlVXBsb2FkXFxzdGFnaW5nXFw4MzUzYzY4ZTBiNGM0NzgxOTRlMzAzMTA4ZDk1ZTMyNS50eHQiLCJEZXN0aW5hdGlvblBhdGgiOiJDOlxcU2FmZVVwbG9hZEJvb3RTdGFydFxcUHJvdGVjdGVkXFxhZ2VudC1kb3duLXNlY3Rpb24udHh0IiwiRGVzdGluYXRpb24iOjIsIlByb2Nlc3NOYW1lIjoicG93ZXJzaGVsbC5leGUiLCJQcm9jZXNzSWQiOjUxMDAsIlNlc3Npb25JZCI6MH0sIlN0YXRlIjo1LCJTaGEyNTZIZXgiOiJFMTJFMTE1QUNGNDU1MkIyNTY4QjU1RTkzQ0JEMzkzOTRDNEVGODFDODI0NDdGQUZDOTk3ODgyQTAyRDIzNjc3IiwiVXBkYXRlZEF0VXRjIjoiMjAyNi0xMC0wNFQwNTowNjoxOC45OTg0NjQyKzAwOjAwIiwiU2VhbGVkT25jZSI6dHJ1ZSwiRGVzdGluYXRpb25HZW5lcmF0aW9uIjoyLCJOYW1lc3BhY2VUb21ic3RvbmVzIjpudWxsLCJQZW5kaW5nUmVuYW1lIjpudWxsLCJMYXN0UmVuYW1lVHJhbnNhY3Rpb25JZCI6MCwiTGFzdFJlbmFtZURlc3RpbmF0aW9uIjpudWxsLCJMYXN0UmVuYW1lQ29tbWl0dGVkIjpmYWxzZX0=</BA>
+              </MS>
+            </Obj>
+            <Obj RefId="9">
+              <TNRef RefId="2" />
+              <MS>
+                <S N="Path">C:\ProgramData\SafeUpload\staging-journal\a6a894794b8940bdb3f2baf3d01d1222.json</S>
+                <S N="Owner">S-1-5-18</S>
+                <S N="Sddl">O:SYG:SYD:PAI(A;;FA;;;SY)(A;;FA;;;BA)</S>
+                <S N="Sha256">7A66BAE018F59F3A02AC68D3F53D0DABD8009E0074BDD026C0EF665D190BA93A</S>
+                <S N="Artifact">C:\Users\vika\Documents\boot-start-invariant-S02-agent-down-open-refused-ordinary-notify6-artifacts\service-before-a6a894794b8940bdb3f2baf3d01d1222.json</S>
+                <I32 N="Length">445</I32>
+                <BA N="Bytes">eyJUcmFuc2ZlciI6eyJUcmFuc2ZlcklkIjoiYTZhODk0NzktNGI4OS00MGJkLWIzZjItYmFmM2QwMWQxMjIyIiwiU3RhZ2VQYXRoIjoiQzpcXFByb2dyYW1EYXRhXFxTYWZlVXBsb2FkXFxzdGFnaW5nXFxhNmE4OTQ3OTRiODk0MGJkYjNmMmJhZjNkMDFkMTIyMi50eHQiLCJEZXN0aW5hdGlvblBhdGgiOiJTOlxcU2FmZVVwbG9hZFxcRXNjb3BvIE1vbml0b3JhZG9cXHNhZmV1cGxvYWQtY3Jvc3N2b2x1bWUtYjM0MTkwNzIzNjA2NGIyYmI0ZmZlZWE2MjUyMGZjNGEudHh0IiwiRGVzdGluYXRpb24iOjAsIlByb2Nlc3NOYW1lIjoicG93ZXJzaGVsbC5leGUiLCJQcm9jZXNzSWQiOjEwNDcyLCJTZXNzaW9uSWQiOjB9LCJTdGF0ZSI6NywiU2hhMjU2SGV4IjpudWxsLCJVcGRhdGVkQXRVdGMiOiIyMDI2LTEwLTAxVDAzOjI5OjAxLjM2NTg1NDMrMDA6MDAiLCJTZWFsZWRPbmNlIjp0cnVlfQ==</BA>
+              </MS>
+            </Obj>
+            <Obj RefId="10">
+              <TNRef RefId="2" />
+              <MS>
+                <S N="Path">C:\ProgramData\SafeUpload\staging-journal\b82dbe98fb6f419bab7505c0c2d166fa.json</S>
+                <S N="Owner">S-1-5-18</S>
+                <S N="Sddl">O:SYG:SYD:PAI(A;;FA;;;SY)(A;;FA;;;BA)</S>
+                <S N="Sha256">8D5F8A1727365C89A2A6E940A402C6E3D25DC9694F5227F686F4A203A18CE23F</S>
+                <S N="Artifact">C:\Users\vika\Documents\boot-start-invariant-S02-agent-down-open-refused-ordinary-notify6-artifacts\service-before-b82dbe98fb6f419bab7505c0c2d166fa.json</S>
+                <I32 N="Length">624</I32>
+                <BA N="Bytes">eyJUcmFuc2ZlciI6eyJUcmFuc2ZlcklkIjoiYjgyZGJlOTgtZmI2Zi00MTliLWFiNzUtMDVjMGMyZDE2NmZhIiwiU3RhZ2VQYXRoIjoiQzpcXFByb2dyYW1EYXRhXFxTYWZlVXBsb2FkXFxzdGFnaW5nXFxiODJkYmU5OGZiNmY0MTliYWI3NTA1YzBjMmQxNjZmYS50eHQiLCJEZXN0aW5hdGlvblBhdGgiOiJTOlxcU2FmZVVwbG9hZFxcRXNjb3BvIE1vbml0b3JhZG9cXHNhZmV1cGxvYWQtY3Jvc3N2b2x1bWUtODkzYTkzOGY1NTBmNDVkOGI5NzA3ZjZiNmJhMjExZjgudHh0LnJlbmFtZWQudHh0IiwiRGVzdGluYXRpb24iOjAsIlByb2Nlc3NOYW1lIjoicG93ZXJzaGVsbC5leGUiLCJQcm9jZXNzSWQiOjM5ODgsIlNlc3Npb25JZCI6MH0sIlN0YXRlIjo2LCJTaGEyNTZIZXgiOiIwRkZFQTFBRjQwQTQxQ0JBODg4OUM2NEUxQzBDNEM4NUM4RkUwN0M3RjZFQjI3M0FEMURGQUJERDgzNDNDOTlBIiwiVXBkYXRlZEF0VXRjIjoiMjAyNi0xMC0wMVQxNTowNTozMC4xMDUwNTc4KzAwOjAwIiwiU2VhbGVkT25jZSI6dHJ1ZSwiUGVuZGluZ1JlbmFtZSI6bnVsbCwiTGFzdFJlbmFtZVRyYW5zYWN0aW9uSWQiOjAsIkxhc3RSZW5hbWVEZXN0aW5hdGlvbiI6bnVsbCwiTGFzdFJlbmFtZUNvbW1pdHRlZCI6ZmFsc2V9</BA>
+              </MS>
+            </Obj>
+            <Obj RefId="11">
+              <TNRef RefId="2" />
+              <MS>
+                <S N="Path">C:\ProgramData\SafeUpload\staging-journal\cd28c71ef6d1492ba84956f30a8953b2.json</S>
+                <S N="Owner">S-1-5-18</S>
+                <S N="Sddl">O:SYG:SYD:PAI(A;;FA;;;SY)(A;;FA;;;BA)</S>
+                <S N="Sha256">A4368C75118AAC69F34BC9EF3B354730853944735C0C90A3535BDB00BE825844</S>
+                <S N="Artifact">C:\Users\vika\Documents\boot-start-invariant-S02-agent-down-open-refused-ordinary-notify6-artifacts\service-before-cd28c71ef6d1492ba84956f30a8953b2.json</S>
+                <I32 N="Length">630</I32>
+                <BA N="Bytes">eyJUcmFuc2ZlciI6eyJUcmFuc2ZlcklkIjoiY2QyOGM3MWUtZjZkMS00OTJiLWE4NDktNTZmMzBhODk1M2IyIiwiU3RhZ2VQYXRoIjoiQzpcXFByb2dyYW1EYXRhXFxTYWZlVXBsb2FkXFxzdGFnaW5nXFxjZDI4YzcxZWY2ZDE0OTJiYTg0OTU2ZjMwYTg5NTNiMi50eHQiLCJEZXN0aW5hdGlvblBhdGgiOiJDOlxcU2FmZVVwbG9hZEJvb3RTdGFydFxcUHJvdGVjdGVkXFxhZ2VudC1yZXN0YXJ0LXN0YWdlLnR4dCIsIkRlc3RpbmF0aW9uIjoyLCJQcm9jZXNzTmFtZSI6InBvd2Vyc2hlbGwuZXhlIiwiUHJvY2Vzc0lkIjo1MTAwLCJTZXNzaW9uSWQiOjB9LCJTdGF0ZSI6NSwiU2hhMjU2SGV4IjoiRTEyRTExNUFDRjQ1NTJCMjU2OEI1NUU5M0NCRDM5Mzk0QzRFRjgxQzgyNDQ3RkFGQzk5Nzg4MkEwMkQyMzY3NyIsIlVwZGF0ZWRBdFV0YyI6IjIwMjYtMTAtMDRUMDU6MDY6MzkuMDg3NjM2NCswMDowMCIsIlNlYWxlZE9uY2UiOnRydWUsIkRlc3RpbmF0aW9uR2VuZXJhdGlvbiI6MiwiTmFtZXNwYWNlVG9tYnN0b25lcyI6bnVsbCwiUGVuZGluZ1JlbmFtZSI6bnVsbCwiTGFzdFJlbmFtZVRyYW5zYWN0aW9uSWQiOjAsIkxhc3RSZW5hbWVEZXN0aW5hdGlvbiI6bnVsbCwiTGFzdFJlbmFtZUNvbW1pdHRlZCI6ZmFsc2V9</BA>
+              </MS>
+            </Obj>
+            <Obj RefId="12">
+              <TNRef RefId="2" />
+              <MS>
+                <S N="Path">C:\ProgramData\SafeUpload\staging-journal\cd55ed61668f4d1c93d4b78432516b81.json</S>
+                <S N="Owner">S-1-5-18</S>
+                <S N="Sddl">O:SYG:SYD:PAI(A;;FA;;;SY)(A;;FA;;;BA)</S>
+                <S N="Sha256">43AF6D382903E1CA20C6F4576BF5DE977E869422C2553A17B04D5E52CA5DA5AF</S>
+                <S N="Artifact">C:\Users\vika\Documents\boot-start-invariant-S02-agent-down-open-refused-ordinary-notify6-artifacts\service-before-cd55ed61668f4d1c93d4b78432516b81.json</S>
+                <I32 N="Length">444</I32>
+                <BA N="Bytes">eyJUcmFuc2ZlciI6eyJUcmFuc2ZlcklkIjoiY2Q1NWVkNjEtNjY4Zi00ZDFjLTkzZDQtYjc4NDMyNTE2YjgxIiwiU3RhZ2VQYXRoIjoiQzpcXFByb2dyYW1EYXRhXFxTYWZlVXBsb2FkXFxzdGFnaW5nXFxjZDU1ZWQ2MTY2OGY0ZDFjOTNkNGI3ODQzMjUxNmI4MS50eHQiLCJEZXN0aW5hdGlvblBhdGgiOiJTOlxcU2FmZVVwbG9hZFxcRXNjb3BvIE1vbml0b3JhZG9cXHNhZmV1cGxvYWQtY3Jvc3N2b2x1bWUtZjM5Nzg1MWNkZmYwNGY1ZmI0MjBiMzcwNTgzNWJkZDEudHh0IiwiRGVzdGluYXRpb24iOjAsIlByb2Nlc3NOYW1lIjoicG93ZXJzaGVsbC5leGUiLCJQcm9jZXNzSWQiOjY0OTIsIlNlc3Npb25JZCI6MH0sIlN0YXRlIjo3LCJTaGEyNTZIZXgiOm51bGwsIlVwZGF0ZWRBdFV0YyI6IjIwMjYtMTAtMDFUMDM6MzA6NDEuMTE2MDkxMSswMDowMCIsIlNlYWxlZE9uY2UiOnRydWV9</BA>
+              </MS>
+            </Obj>
+            <Obj RefId="13">
+              <TNRef RefId="2" />
+              <MS>
+                <S N="Path">C:\ProgramData\SafeUpload\staging-journal\d1c20a5d7e944ecba446759030e59c9f.json</S>
+                <S N="Owner">S-1-5-18</S>
+                <S N="Sddl">O:SYG:SYD:PAI(A;;FA;;;SY)(A;;FA;;;BA)</S>
+                <S N="Sha256">5EE725A75302C90685DB19FB4820E845277F981893D04E0DB109B50E5595D163</S>
+                <S N="Artifact">C:\Users\vika\Documents\boot-start-invariant-S02-agent-down-open-refused-ordinary-notify6-artifacts\service-before-d1c20a5d7e944ecba446759030e59c9f.json</S>
+                <I32 N="Length">518</I32>
+                <BA N="Bytes">eyJUcmFuc2ZlciI6eyJUcmFuc2ZlcklkIjoiZDFjMjBhNWQtN2U5NC00ZWNiLWE0NDYtNzU5MDMwZTU5YzlmIiwiU3RhZ2VQYXRoIjoiQzpcXFByb2dyYW1EYXRhXFxTYWZlVXBsb2FkXFxzdGFnaW5nXFxkMWMyMGE1ZDdlOTQ0ZWNiYTQ0Njc1OTAzMGU1OWM5Zi50eHQiLCJEZXN0aW5hdGlvblBhdGgiOiJTOlxcU2FmZVVwbG9hZFxcRXNjb3BvIE1vbml0b3JhZG9cXHNhZmV1cGxvYWQtY3Jvc3N2b2x1bWUtZjM5Nzg1MWNkZmYwNGY1ZmI0MjBiMzcwNTgzNWJkZDEudHh0LnJlbmFtZWQudHh0IiwiRGVzdGluYXRpb24iOjAsIlByb2Nlc3NOYW1lIjoicG93ZXJzaGVsbC5leGUiLCJQcm9jZXNzSWQiOjY0OTIsIlNlc3Npb25JZCI6MH0sIlN0YXRlIjo2LCJTaGEyNTZIZXgiOiIwRkZFQTFBRjQwQTQxQ0JBODg4OUM2NEUxQzBDNEM4NUM4RkUwN0M3RjZFQjI3M0FEMURGQUJERDgzNDNDOTlBIiwiVXBkYXRlZEF0VXRjIjoiMjAyNi0xMC0wMVQwMzozMDo0MS4xNDQ1MzY3KzAwOjAwIiwiU2VhbGVkT25jZSI6dHJ1ZX0=</BA>
+              </MS>
+            </Obj>
+            <Obj RefId="14">
+              <TNRef RefId="2" />
+              <MS>
+                <S N="Path">C:\ProgramData\SafeUpload\staging-journal\f1960b1f83e4400f9511d40ccff2f1e8.json</S>
+                <S N="Owner">S-1-5-18</S>
+                <S N="Sddl">O:SYG:SYD:PAI(A;;FA;;;SY)(A;;FA;;;BA)</S>
+                <S N="Sha256">6E6F38C8D0ECDC1F96CCCB92B5BF0E3C1B2763DDB40CC18BFAAF914E55FD8C26</S>
+                <S N="Artifact">C:\Users\vika\Documents\boot-start-invariant-S02-agent-down-open-refused-ordinary-notify6-artifacts\service-before-f1960b1f83e4400f9511d40ccff2f1e8.json</S>
+                <I32 N="Length">432</I32>
+                <BA N="Bytes">eyJUcmFuc2ZlciI6eyJUcmFuc2ZlcklkIjoiZjE5NjBiMWYtODNlNC00MDBmLTk1MTEtZDQwY2NmZjJmMWU4IiwiU3RhZ2VQYXRoIjoiQzpcXFByb2dyYW1EYXRhXFxTYWZlVXBsb2FkXFxzdGFnaW5nXFxmMTk2MGIxZjgzZTQ0MDBmOTUxMWQ0MGNjZmYyZjFlOC50eHQiLCJEZXN0aW5hdGlvblBhdGgiOiJDOlxcc2FmZXVwbG9hZFxcRXNjb3BvIE1vbml0b3JhZG9cXGR1cGxpY2F0ZS02MTkzYTk5NjE4MDY0NzNjOGZkYmJhNTg2Y2JiZTA1Yy50eHQiLCJEZXN0aW5hdGlvbiI6MiwiUHJvY2Vzc05hbWUiOiJwb3dlcnNoZWxsLmV4ZSIsIlByb2Nlc3NJZCI6MzcxNiwiU2Vzc2lvbklkIjowfSwiU3RhdGUiOjgsIlNoYTI1NkhleCI6bnVsbCwiVXBkYXRlZEF0VXRjIjoiMjAyNi0xMC0wMVQwMzo0NDo0OS43OTAwNTI5KzAwOjAwIiwiU2VhbGVkT25jZSI6ZmFsc2V9</BA>
+              </MS>
+            </Obj>
+          </LST>
+        </Obj>
+      </En>
+      <En>
+        <S N="Key">Objects</S>
+        <Obj N="Value" RefId="15">
+          <TNRef RefId="1" />
+          <LST>
+            <Obj RefId="16">
+              <TN RefId="3">
+                <T>System.Collections.Hashtable</T>
+                <T>System.Object</T>
+              </TN>
+              <DCT>
+                <En>
+                  <S N="Key">Path</S>
+                  <S N="Value">C:\</S>
+                </En>
+                <En>
+                  <S N="Key">Owner</S>
+                  <S N="Value">S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464</S>
+                </En>
+                <En>
+                  <S N="Key">Sddl</S>
+                  <S N="Value">O:S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464G:S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464D:PAI(A;;LC;;;AU)(A;OICIIO;SDGXGWGR;;;AU)(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;0x1200a9;;;BU)</S>
+                </En>
+              </DCT>
+            </Obj>
+            <Obj RefId="17">
+              <TNRef RefId="3" />
+              <DCT>
+                <En>
+                  <S N="Key">Path</S>
+                  <S N="Value">C:\ProgramData</S>
+                </En>
+                <En>
+                  <S N="Key">Owner</S>
+                  <S N="Value">S-1-5-18</S>
+                </En>
+                <En>
+                  <S N="Key">Sddl</S>
+                  <S N="Value">O:SYG:SYD:PAI(A;OICIIO;GA;;;CO)(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;0x1200a9;;;BU)(A;CI;DCLCRPCR;;;BU)</S>
+                </En>
+              </DCT>
+            </Obj>
+            <Obj RefId="18">
+              <TNRef RefId="3" />
+              <DCT>
+                <En>
+                  <S N="Key">Path</S>
+                  <S N="Value">C:\ProgramData\SafeUpload</S>
+                </En>
+                <En>
+                  <S N="Key">Owner</S>
+                  <S N="Value">S-1-5-18</S>
+                </En>
+                <En>
+                  <S N="Key">Sddl</S>
+                  <S N="Value">O:SYG:S-1-5-21-316478115-1595729549-2803163825-513D:PAI(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)</S>
+                </En>
+              </DCT>
+            </Obj>
+            <Obj RefId="19">
+              <TNRef RefId="3" />
+              <DCT>
+                <En>
+                  <S N="Key">Path</S>
+                  <S N="Value">C:\ProgramData\SafeUpload\staging-journal</S>
+                </En>
+                <En>
+                  <S N="Key">Owner</S>
+                  <S N="Value">S-1-5-32-544</S>
+                </En>
+                <En>
+                  <S N="Key">Sddl</S>
+                  <S N="Value">O:BAG:S-1-5-21-316478115-1595729549-2803163825-513D:PAI(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)</S>
+                </En>
+              </DCT>
+            </Obj>
+          </LST>
+        </Obj>
+      </En>
+      <En>
+        <S N="Key">Errors</S>
+        <Obj N="Value" RefId="20">
+          <TNRef RefId="1" />
+          <LST />
+        </Obj>
+      </En>
+      <En>
+        <S N="Key">Application</S>
+        <Obj N="Value" RefId="21">
+          <TNRef RefId="2" />
+          <MS>
+            <S N="Status">OK</S>
+            <I64 N="OldestRecordId">1</I64>
+            <I64 N="NewestRecordId">4340</I64>
+            <S N="NewestXml">&lt;Event xmlns='http://schemas.microsoft.com/win/2004/08/events/event'&gt;&lt;System&gt;&lt;Provider Name='Microsoft-Windows-CertificateServicesClient-CertEnroll' Guid='{54164045-7C50-4905-963F-E5BC1EEF0CCA}' EventSourceName='CertEnroll'/&gt;&lt;EventID Qualifiers='49754'&gt;86&lt;/EventID&gt;&lt;Version&gt;0&lt;/Version&gt;&lt;Level&gt;2&lt;/Level&gt;&lt;Task&gt;0&lt;/Task&gt;&lt;Opcode&gt;0&lt;/Opcode&gt;&lt;Keywords&gt;0x80000000000000&lt;/Keywords&gt;&lt;TimeCreated SystemTime='2026-10-05T01:49:41.5765385Z'/&gt;&lt;EventRecordID&gt;4340&lt;/EventRecordID&gt;&lt;Correlation/&gt;&lt;Execution ProcessID='0' ThreadID='0'/&gt;&lt;Channel&gt;Application&lt;/Channel&gt;&lt;Computer&gt;win10-debugged&lt;/Computer&gt;&lt;Security UserID='S-1-5-18'/&gt;&lt;/System&gt;&lt;EventData&gt;&lt;Data Name='Context'&gt;WORKGROUP\WIN10-DEBUGGED$&lt;/Data&gt;&lt;Data Name='Url'&gt;https://-KeyId-6fb293230d43047c7f7a5c281a7003c18b281c3a.microsoftaik.azure.net/templates/Aik/scep&lt;/Data&gt;&lt;Data Name='MessageText'&gt;GetCACaps_x000A_&lt;/Data&gt;&lt;Data Name='Method'&gt;GET(172ms)&lt;/Data&gt;&lt;Data Name='Stage'&gt;GetCACaps&lt;/Data&gt;&lt;Data Name='ErrorCode'&gt;The connection with the server was terminated abnormally 0x80072efe (WinHttp: 12030 ERROR_WINHTTP_CONNECTION_ERROR)&lt;/Data&gt;&lt;/EventData&gt;&lt;/Event&gt;</S>
+            <S N="OldestXml">&lt;Event xmlns='http://schemas.microsoft.com/win/2004/08/events/event'&gt;&lt;System&gt;&lt;Provider Name='Microsoft-Windows-Security-SPP' Guid='{E23B33B0-C8C9-472C-A5F9-F2BDFEA0F156}' EventSourceName='Software Protection Platform Service'/&gt;&lt;EventID Qualifiers='16384'&gt;1003&lt;/EventID&gt;&lt;Version&gt;0&lt;/Version&gt;&lt;Level&gt;4&lt;/Level&gt;&lt;Task&gt;0&lt;/Task&gt;&lt;Opcode&gt;0&lt;/Opcode&gt;&lt;Keywords&gt;0x80000000000000&lt;/Keywords&gt;&lt;TimeCreated SystemTime='2026-08-27T20:48:28.1668877Z'/&gt;&lt;EventRecordID&gt;1&lt;/EventRecordID&gt;&lt;Correlation/&gt;&lt;Execution ProcessID='0' ThreadID='0'/&gt;&lt;Channel&gt;Application&lt;/Channel&gt;&lt;Computer&gt;WIN-887F60KOSBV&lt;/Computer&gt;&lt;Security/&gt;&lt;/System&gt;&lt;EventData&gt;&lt;Data&gt;55c92734-d682-4d71-983e-d6ec3f16059f&lt;/Data&gt;&lt;Data&gt;_x000A_1: 040fa323-92b1-4baf-97a2-5b67feaefddb, 1, 0 [(0 [0xC004F014, 0, 0], [(?)(?)(?)(?)(?)(?)(?)(?)])(1 )(2 )(3 )]_x000A_2: 0724cb7d-3437-4cb7-93cb-830375d0079d, 1, 0 [(0 [0xC004F014, 0, 0], [(?)(?)(?)(?)(?)(?)(?)(?)])(1 )(2 )(3 )]_x000A_3: 0ad2ac98-7bb9-4201-8d92-312299201369, 1, 0 [(0 [0xC004F014, 0, 0], [(?)(?)(?)(?)(?)(?)(?)(?)])(1 )(2 )(3 )]_x000A_4: 1a9a717a-cf13-4ba5-83c3-0fe25fa868d5, 1, 0 [(0 [0xC004F014, 0, 0], [(?)(?)(?)(?)(?)(?)(?)(?)])(1 )(2 )(3 )]_x000A_5: 221a02da-e2a1-4b75-864c-0a4410a33fdf, 1, 0 [(0 [0xC004F014, 0, 0], [(?)(?)(?)(?)(?)(?)(?)(?)])(1 )(2 )(3 )]_x000A_6: 291ece0e-9c38-40ca-a9e1-32cc7ec19507, 1, 0 [(0 [0xC004F014, 0, 0], [(?)(?)(?)(?)(?)(?)(?)(?)])(1 )(2 )(3 )]_x000A_7: 2936d1d2-913a-4542-b54e-ce5a602a2a38, 1, 0 [(0 [0xC004F014, 0, 0], [(?)(?)(?)(?)(?)(?)(?)(?)])(1 )(2 )(3 )]_x000A_8: 2c293c26-a45a-4a2a-a350-c69a67097529, 1, 0 [(0 [0xC004F014, 0, 0], [(?)(?)(?)(?)(?)(?)(?)(?)])(1 )(2 )(3 )]_x000A_9: 2de67392-b7a7-462a-b1ca-108dd189f588, 1, 0 [(0 [0xC004F014, 0, 0], [(?)(?)(?)(?)(?)(?)(?)(?)])(1 )(2 )(3 )]_x000A_10: 2ffd8952-423e-4903-b993-72a1aa44cf82, 1, 0 [(0 [0xC004F014, 0, 0], [(?)(?)(?)(?)(?)(?)(?)(?)])(1 )(2 )(3 )]_x000A_11: 30a42c86-b7a0-4a34-8c90-ff177cb2acb7, 1, 0 [(0 [0xC004F014, 0, 0], [(?)(?)(?)(?)(?)(?)(?)(?)])(1 )(2 )(3 )]_x000A_12: 345a5db0-d94f-4e3b-a0c0-7c42f7bc3ebf, 1, 0 [(0 [0xC004F014, 0, 0], [(?)(?)(?)(?)(?)(?)(?)(?)])(1 )(2 )(3 )]_x000A_13: 3502365a-f88a-4ba4-822a-5769d3073b65, 1, 0 [(0 [0xC004F014, 0, 0], [(?)(?)(?)(?)(?)(?)(?)(?)])(1 )(2 )(3 )]_x000A_14: 377333b1-8b5d-48d6-9679-1225c872d37c, 1, 0 [(0 [0xC004F014, 0, 0], [(?)(?)(?)(?)(?)(?)(?)(?)])(1 )(2 )(3 )]_x000A_15: 3df374ef-d444-4494-a5a1-4b0d9fd0e203, 1, 0 [(0 [0xC004F014, 0, 0], [(?)(?)(?)(?)(?)(?)(?)(?)])(1 )(2 )(3 )]_x000A_16: 3f1afc82-f8ac-4f6c-8005-1d233e606eee, 1, 0 [(0 [0xC004F014, 0, 0], [(?)(?)(?)(?)(?)(?)(?)(?)])(1 )(2 )(3 )]_x000A_17: 49cd895b-53b2-4dc4-a5f7-b18aa019ad37, 1, 0 [(0 [0xC004F014, 0, 0], [(?)(?)(?)(?)(?)(?)(?)(?)])(1 )(2 )(3 )]_x000A_18: 4de7cb65-cdf1-4de9-8ae8-e3cce27b9f2c, 1, 0 [(0 )(1 )(2 [0xC004E003, 0, 0], [( 1 0xC004F034)( 1 0xC004F034)(?)(?)(?)(?)(?)(?)])(3 [0x00000000, 0, 0], [( 6 0xC004F009 0 0)( 1 0x00000000)( 6 0xC004F009 0 0)(?)(?)(?)( 10 0x00000000 msft:rm/algorithm/flags/1.0)( 11 0x00000000 0xC004F034)])]_x000A_19: 4f3da0d2-271d-4508-ae81-626b60809a38, 1, 0 [(0 [0xC004F014, 0, 0], [(?)(?)(?)(?)(?)(?)(?)(?)])(1 )(2 )(3 )]_x000A_20: 60b3ec1b-9545-4921-821f-311b129dd6f6, 1, 0 [(0 [0xC004F014, 0, 0], [(?)(?)(?)(?)(?)(?)(?)(?)])(1 )(2 )(3 )]_x000A_21: 613d217f-7f13-4268-9907-1662339531cd, 1, 0 [(0 [0xC004F014, 0, 0], [(?)(?)(?)(?)(?)(?)(?)(?)])(1 )(2 )(3 )]_x000A_22: 62f0c100-9c53-4e02-b886-a3528ddfe7f6, 1, 0 [(0 [0xC004F014, 0, 0], [(?)(?)(?)(?)(?)(?)(?)(?)])(1 )(2 )(3 )]_x000A_23: 6365275e-368d-46ca-a0ef-fc0404119333, 1, 0 [(0 [0xC004F014, 0, 0], [(?)(?)(?)(?)(?)(?)(?)(?)])(1 )(2 )(3 )]_x000A_24: 721f9237-9341-4453-a661-09e8baa6cca5, 1, 0 [(0 [0xC004F014, 0, 0], [(?)(?)(?)(?)(?)(?)(?)(?)])(1 )(2 )(3 )]_x000A_25: 73111121-5638-40f6-bc11-f1d7b0d64300, 1, 0 [(0 [0xC004F014, 0, 0], [(?)(?)(?)(?)(?)(?)(?)(?)])(1 )(2 )(3 )]_x000A_26: 7a802526-4c94-4bd1-ba14-835a1aca2120, 1, 0 [(0 [0xC004F014, 0, 0], [(?)(?)(?)(?)(?)(?)(?)(?)])(1 )(2 )(3 )]_x000A_27: 7cb546c0-c7d5-44d8-9a5c-69ecdd782b69, 1, 0 [(0 [0xC004F014, 0, 0], [(?)(?)(?)(?)(?)(?)(?)(?)])(1 )(2 )(3 )]_x000A_28: 82bbc092-bc50-4e16-8e18-b74fc486aec3, 1, 0 [(0 [0xC004F014, 0, 0], [(?)(?)(?)(?)(?)(?)(?)(?)])(1 )(2 )(3 )]_x000A_29: 8ab9bdd1-1f67-4997-82d9-8878520837d9, 1, 0 [(0 [0xC004F014, 0, 0], [(?)(?)(?)(?)(?)(?)(?)(?)])(1 )(2 )(3 )]_x000A_30: 8b351c9c-f398-4515-9900-09df49427262, 1, 0 [(0 [0xC004F014, 0, 0], [(?)(?)(?)(?)(?)(?)(?)(?)])(1 )(2 )(3 )]_x000A_31: 90da7373-1c51-430b-bf26-c97e9c5cdc31, 1, 0 [(0 [0xC004F014, 0, 0], [(?)(?)(?)(?)(?)(?)(?)(?)])(1 )(2 )(3 )]_x000A_32: 95dca82f-385d-4d39-b85b-5c73fa285d6f, 1, 0 [(0 [0xC004F014, 0, 0], [(?)(?)(?)(?)(?)(?)(?)(?)])(1 )(2 )(3 )]_x000A_33: a48938aa-62fa-4966-9d44-9f04da3f72f2, 1, 0 [(0 [0xC004F014, 0, 0], [(?)(?)(?)(?)(?)(?)(?)(?)])(1 )(2 )(3 )]_x000A_34: b0773a15-df3a-4312-9ad2-83d69648e356, 1, 0 [(0 [0xC004F014, 0, 0], [(?)(?)(?)(?)(?)(?)(?)(?)])(1 )(2 )(3 )]_x000A_35: b4bfe195-541e-4e64-ad23-6177f19e395e, 1, 0 [(0 [0xC004F014, 0, 0], [(?)(?)(?)(?)(?)(?)(?)(?)])(1 )(2 )(3 )]_x000A_36: b68e61d2-68ca-4757-be45-0cc2f3e68eee, 1, 0 [(0 [0xC004F014, 0, 0], [(?)(?)(?)(?)(?)(?)(?)(?)])(1 )(2 )(3 )]_x000A_37: bd3762d7-270d-4760-8fb3-d829ca45278a, 1, 0 [(0 [0xC004F014, 0, 0], [(?)(?)(?)(?)(?)(?)(?)(?)])(1 )(2 )(3 )]_x000A_38: c86d5194-4840-4dae-9c1c-0301003a5ab0, 1, 0 [(0 [0xC004F014, 0, 0], [(?)(?)(?)(?)(?)(?)(?)(?)])(1 )(2 )(3 )]_x000A_39: d552befb-48cc-4327-8f39-47d2d94f987c, 1, 0 [(0 [0xC004F014, 0, 0], [(?)(?)(?)(?)(?)(?)(?)(?)])(1 )(2 )(3 )]_x000A_40: d6eadb3b-5ca8-4a6b-986e-35b550756111, 1, 0 [(0 [0xC004F014, 0, 0], [(?)(?)(?)(?)(?)(?)(?)(?)])(1 )(2 )(3 )]_x000A_41: df96023b-dcd9-4be2-afa0-c6c871159ebe, 1, 0 [(0 [0xC004F014, 0, 0], [(?)(?)(?)(?)(?)(?)(?)(?)])(1 )(2 )(3 )]_x000A_42: e0c42288-980c-4788-a014-c080d2e1926e, 1, 0 [(0 [0xC004F014, 0, 0], [(?)(?)(?)(?)(?)(?)(?)(?)])(1 )(2 )(3 )]_x000A_43: e4db50ea-bda1-4566-b047-0ca50abc6f07, 1, 0 [(0 [0xC004F014, 0, 0], [(?)(?)(?)(?)(?)(?)(?)(?)])(1 )(2 )(3 )]_x000A_44: e558417a-5123-4f6f-91e7-385c1c7ca9d4, 1, 0 [(0 [0xC004F014, 0, 0], [(?)(?)(?)(?)(?)(?)(?)(?)])(1 )(2 )(3 )]_x000A_45: e7a950a2-e548-4f10-bf16-02ec848e0643, 1, 0 [(0 [0xC004F014, 0, 0], [(?)(?)(?)(?)(?)(?)(?)(?)])(1 )(2 )(3 )]_x000A_46: eb6d346f-1c60-4643-b960-40ec31596c45, 1, 0 [(0 [0xC004F014, 0, 0], [(?)(?)(?)(?)(?)(?)(?)(?)])(1 )(2 )(3 )]_x000A_47: ec868e65-fadf-4759-b23e-93fe37f2cc29, 1, 0 [(0 [0xC004F014, 0, 0], [(?)(?)(?)(?)(?)(?)(?)(?)])(1 )(2 )(3 )]_x000A_48: ef51e000-2659-4f25-8345-3de70a9cf4c4, 1, 0 [(0 [0xC004F014, 0, 0], [(?)(?)(?)(?)(?)(?)(?)(?)])(1 )(2 )(3 )]_x000A_49: f7af7d09-40e4-419c-a49b-eae366689ebd, 1, 0 [(0 [0xC004F014, 0, 0], [(?)(?)(?)(?)(?)(?)(?)(?)])(1 )(2 )(3 )]_x000A_50: fa755fe6-6739-40b9-8d84-6d0ea3b6d1ab, 1, 0 [(0 [0xC004F014, 0, 0], [(?)(?)(?)(?)(?)(?)(?)(?)])(1 )(2 )(3 )]_x000A_51: fe74f55b-0338-41d6-b267-4a201abe7285, 1, 0 [(0 [0xC004F014, 0, 0], [(?)(?)(?)(?)(?)(?)(?)(?)])(1 )(2 )(3 )]_x000A__x000A_&lt;/Data&gt;&lt;/EventData&gt;&lt;/Event&gt;</S>
+            <Obj N="Log" RefId="22">
+              <TN RefId="4">
+                <T>Selected.System.Diagnostics.Eventing.Reader.EventLogConfiguration</T>
+                <T>System.Management.Automation.PSCustomObject</T>
+                <T>System.Object</T>
+              </TN>
+              <MS>
+                <S N="LogName">Application</S>
+                <B N="IsEnabled">true</B>
+                <Obj N="LogMode" RefId="23">
+                  <TN RefId="5">
+                    <T>System.Diagnostics.Eventing.Reader.EventLogMode</T>
+                    <T>System.Enum</T>
+                    <T>System.ValueType</T>
+                    <T>System.Object</T>
+                  </TN>
+                  <ToString>Circular</ToString>
+                  <I32>0</I32>
+                </Obj>
+                <I64 N="RecordCount">4273</I64>
+                <I64 N="MaximumSizeInBytes">20971520</I64>
+                <S N="SecurityDescriptor">O:BAG:SYD:(A;;0x2;;;S-1-15-2-1)(A;;0x2;;;S-1-15-3-1024-3153509613-960666767-3724611135-2725662640-12138253-543910227-1950414635-4190290187)(A;;0xf0007;;;SY)(A;;0x7;;;BA)(A;;0x7;;;SO)(A;;0x3;;;IU)(A;;0x3;;;SU)(A;;0x3;;;S-1-5-3)(A;;0x3;;;S-1-5-33)(A;;0x1;;;S-1-5-32-573)</S>
+              </MS>
+            </Obj>
+          </MS>
+        </Obj>
+      </En>
+      <En>
+        <S N="Key">AgentProcesses</S>
+        <Obj N="Value" RefId="24">
+          <TNRef RefId="1" />
+          <LST />
+        </Obj>
+      </En>
+      <En>
+        <S N="Key">JournalAbsent</S>
+        <B N="Value">false</B>
+      </En>
+      <En>
+        <S N="Key">AgentExecution</S>
+        <Obj N="Value" RefId="25">
+          <TNRef RefId="2" />
+          <MS>
+            <S N="Status">INCONCLUSIVE</S>
+            <S N="BootId">WIN10-DEBUGGED/2026-10-05T01:49:20.5000000Z</S>
+            <I64 N="QpcFrequency">10000000</I64>
+            <I64 N="StartQpc">309224829</I64>
+            <Obj N="Errors" RefId="26">
+              <TNRef RefId="1" />
+              <LST>
+                <S>Process inventory PID 92: A device attached to the system is not functioning</S>
+                <S>Process inventory PID 1724: A device attached to the system is not functioning</S>
+              </LST>
+            </Obj>
+            <Obj N="Processes" RefId="27">
+              <TNRef RefId="1" />
+              <LST>
+                <Obj RefId="28">
+                  <TN RefId="6">
+                    <T>SUProcessProof</T>
+                    <T>System.Object</T>
+                  </TN>
+                  <ToString>SUProcessProof</ToString>
+                  <Props>
+                    <I32 N="Pid">344</I32>
+                    <S N="Image">C:\Windows\System32\smss.exe</S>
+                    <Obj N="TokenSids" RefId="29">
+                      <TN RefId="7">
+                        <T>System.String[]</T>
+                        <T>System.Array</T>
+                        <T>System.Object</T>
+                      </TN>
+                      <LST>
+                        <S>S-1-5-18</S>
+                        <S>S-1-5-32-544</S>
+                        <S>S-1-1-0</S>
+                        <S>S-1-5-11</S>
+                        <S>S-1-16-16384</S>
+                      </LST>
+                    </Obj>
+                  </Props>
+                </Obj>
+                <Obj RefId="30">
+                  <TNRef RefId="6" />
+                  <ToString>SUProcessProof</ToString>
+                  <Props>
+                    <I32 N="Pid">452</I32>
+                    <S N="Image">C:\Windows\System32\csrss.exe</S>
+                    <Obj N="TokenSids" RefId="31">
+                      <TNRef RefId="7" />
+                      <LST>
+                        <S>S-1-5-18</S>
+                        <S>S-1-5-32-544</S>
+                        <S>S-1-1-0</S>
+                        <S>S-1-5-11</S>
+                        <S>S-1-16-16384</S>
+                      </LST>
+                    </Obj>
+                  </Props>
+                </Obj>
+                <Obj RefId="32">
+                  <TNRef RefId="6" />
+                  <ToString>SUProcessProof</ToString>
+                  <Props>
+                    <I32 N="Pid">532</I32>
+                    <S N="Image">C:\Windows\System32\wininit.exe</S>
+                    <Obj N="TokenSids" RefId="33">
+                      <TNRef RefId="7" />
+                      <LST>
+                        <S>S-1-5-18</S>
+                        <S>S-1-5-32-544</S>
+                        <S>S-1-1-0</S>
+                        <S>S-1-5-11</S>
+                        <S>S-1-16-16384</S>
+                      </LST>
+                    </Obj>
+                  </Props>
+                </Obj>
+                <Obj RefId="34">
+                  <TNRef RefId="6" />
+                  <ToString>SUProcessProof</ToString>
+                  <Props>
+                    <I32 N="Pid">540</I32>
+                    <S N="Image">C:\Windows\System32\csrss.exe</S>
+                    <Obj N="TokenSids" RefId="35">
+                      <TNRef RefId="7" />
+                      <LST>
+                        <S>S-1-5-18</S>
+                        <S>S-1-5-32-544</S>
+                        <S>S-1-1-0</S>
+                        <S>S-1-5-11</S>
+                        <S>S-1-16-16384</S>
+                      </LST>
+                    </Obj>
+                  </Props>
+                </Obj>
+                <Obj RefId="36">
+                  <TNRef RefId="6" />
+                  <ToString>SUProcessProof</ToString>
+                  <Props>
+                    <I32 N="Pid">608</I32>
+                    <S N="Image">C:\Windows\System32\winlogon.exe</S>
+                    <Obj N="TokenSids" RefId="37">
+                      <TNRef RefId="7" />
+                      <LST>
+                        <S>S-1-5-18</S>
+                        <S>S-1-5-32-544</S>
+                        <S>S-1-1-0</S>
+                        <S>S-1-5-11</S>
+                        <S>S-1-16-16384</S>
+                      </LST>
+                    </Obj>
+                  </Props>
+                </Obj>
+                <Obj RefId="38">
+                  <TNRef RefId="6" />
+                  <ToString>SUProcessProof</ToString>
+                  <Props>
+                    <I32 N="Pid">672</I32>
+                    <S N="Image">C:\Windows\System32\services.exe</S>
+                    <Obj N="TokenSids" RefId="39">
+                      <TNRef RefId="7" />
+                      <LST>
+                        <S>S-1-5-18</S>
+                        <S>S-1-5-32-544</S>
+                        <S>S-1-1-0</S>
+                        <S>S-1-5-11</S>
+                        <S>S-1-16-16384</S>
+                      </LST>
+                    </Obj>
+                  </Props>
+                </Obj>
+                <Obj RefId="40">
+                  <TNRef RefId="6" />
+                  <ToString>SUProcessProof</ToString>
+                  <Props>
+                    <I32 N="Pid">696</I32>
+                    <S N="Image">C:\Windows\System32\lsass.exe</S>
+                    <Obj N="TokenSids" RefId="41">
+                      <TNRef RefId="7" />
+                      <LST>
+                        <S>S-1-5-18</S>
+                        <S>S-1-5-32-544</S>
+                        <S>S-1-1-0</S>
+                        <S>S-1-5-11</S>
+                        <S>S-1-16-16384</S>
+                      </LST>
+                    </Obj>
+                  </Props>
+                </Obj>
+                <Obj RefId="42">
+                  <TNRef RefId="6" />
+                  <ToString>SUProcessProof</ToString>
+                  <Props>
+                    <I32 N="Pid">796</I32>
+                    <S N="Image">C:\Windows\System32\svchost.exe</S>
+                    <Obj N="TokenSids" RefId="43">
+                      <TNRef RefId="7" />
+                      <LST>
+                        <S>S-1-5-18</S>
+                        <S>S-1-16-16384</S>
+                        <S>S-1-1-0</S>
+                        <S>S-1-5-32-545</S>
+                        <S>S-1-5-6</S>
+                        <S>S-1-5-11</S>
+                        <S>S-1-5-15</S>
+                        <S>S-1-5-80-1988685059-1921232356-378231328-2704142597-890457928</S>
+                        <S>S-1-5-80-1601830629-990752416-3372939810-977361409-3075122917</S>
+                        <S>S-1-5-80-2659457741-469498900-3203170401-3149177360-3048467625</S>
+                        <S>S-1-5-80-1230977110-1477712667-2747199032-477530733-939374687</S>
+                        <S>S-1-5-80-1981970923-922788642-3535304421-2999920573-318732269</S>
+                        <S>S-1-5-80-2343416411-2961288913-598565901-392633850-2111459193</S>
+                        <S>S-1-5-80-1662832393-3268938575-4001313665-1200257238-783911988</S>
+                        <S>S-1-5-5-0-37034</S>
+                        <S>S-1-2-0</S>
+                        <S>S-1-5-32-544</S>
+                      </LST>
+                    </Obj>
+                  </Props>
+                </Obj>
+                <Obj RefId="44">
+                  <TNRef RefId="6" />
+                  <ToString>SUProcessProof</ToString>
+                  <Props>
+                    <I32 N="Pid">804</I32>
+                    <S N="Image">C:\Windows\System32\fontdrvhost.exe</S>
+                    <Obj N="TokenSids" RefId="45">
+                      <TNRef RefId="7" />
+                      <LST>
+                        <S>S-1-5-96-0-1</S>
+                        <S>S-1-16-4096</S>
+                        <S>S-1-1-0</S>
+                        <S>S-1-5-32-545</S>
+                        <S>S-1-5-4</S>
+                        <S>S-1-2-1</S>
+                        <S>S-1-5-11</S>
+                        <S>S-1-5-15</S>
+                        <S>S-1-5-5-0-37209</S>
+                        <S>S-1-5-96-0</S>
+                      </LST>
+                    </Obj>
+                  </Props>
+                </Obj>
+                <Obj RefId="46">
+                  <TNRef RefId="6" />
+                  <ToString>SUProcessProof</ToString>
+                  <Props>
+                    <I32 N="Pid">812</I32>
+                    <S N="Image">C:\Windows\System32\fontdrvhost.exe</S>
+                    <Obj N="TokenSids" RefId="47">
+                      <TNRef RefId="7" />
+                      <LST>
+                        <S>S-1-5-96-0-0</S>
+                        <S>S-1-16-4096</S>
+                        <S>S-1-1-0</S>
+                        <S>S-1-5-32-545</S>
+                        <S>S-1-5-4</S>
+                        <S>S-1-5-11</S>
+                        <S>S-1-5-15</S>
+                        <S>S-1-5-5-0-37237</S>
+                        <S>S-1-5-96-0</S>
+                      </LST>
+                    </Obj>
+                  </Props>
+                </Obj>
+                <Obj RefId="48">
+                  <TNRef RefId="6" />
+                  <ToString>SUProcessProof</ToString>
+                  <Props>
+                    <I32 N="Pid">920</I32>
+                    <S N="Image">C:\Windows\System32\svchost.exe</S>
+                    <Obj N="TokenSids" RefId="49">
+                      <TNRef RefId="7" />
+                      <LST>
+                        <S>S-1-5-20</S>
+                        <S>S-1-16-16384</S>
+                        <S>S-1-1-0</S>
+                        <S>S-1-5-32-545</S>
+                        <S>S-1-5-6</S>
+                        <S>S-1-5-11</S>
+                        <S>S-1-5-15</S>
+                        <S>S-1-5-80-521322694-906040134-3864710659-1525148216-3451224162</S>
+                        <S>S-1-5-80-979556362-403687129-3954533659-2335141334-1547273080</S>
+                        <S>S-1-5-5-0-55882</S>
+                        <S>S-1-2-0</S>
+                      </LST>
+                    </Obj>
+                  </Props>
+                </Obj>
+                <Obj RefId="50">
+                  <TNRef RefId="6" />
+                  <ToString>SUProcessProof</ToString>
+                  <Props>
+                    <I32 N="Pid">972</I32>
+                    <S N="Image">C:\Windows\System32\svchost.exe</S>
+                    <Obj N="TokenSids" RefId="51">
+                      <TNRef RefId="7" />
+                      <LST>
+                        <S>S-1-5-18</S>
+                        <S>S-1-16-16384</S>
+                        <S>S-1-1-0</S>
+                        <S>S-1-5-32-545</S>
+                        <S>S-1-5-6</S>
+                        <S>S-1-5-11</S>
+                        <S>S-1-5-15</S>
+                        <S>S-1-5-80-1230977110-1477712667-2747199032-477530733-939374687</S>
+                        <S>S-1-5-5-0-57732</S>
+                        <S>S-1-2-0</S>
+                        <S>S-1-5-32-544</S>
+                      </LST>
+                    </Obj>
+                  </Props>
+                </Obj>
+                <Obj RefId="52">
+                  <TNRef RefId="6" />
+                  <ToString>SUProcessProof</ToString>
+                  <Props>
+                    <I32 N="Pid">420</I32>
+                    <S N="Image">C:\Windows\System32\LogonUI.exe</S>
+                    <Obj N="TokenSids" RefId="53">
+                      <TNRef RefId="7" />
+                      <LST>
+                        <S>S-1-5-18</S>
+                        <S>S-1-5-32-544</S>
+                        <S>S-1-1-0</S>
+                        <S>S-1-5-11</S>
+                        <S>S-1-16-16384</S>
+                      </LST>
+                    </Obj>
+                  </Props>
+                </Obj>
+                <Obj RefId="54">
+                  <TNRef RefId="6" />
+                  <ToString>SUProcessProof</ToString>
+                  <Props>
+                    <I32 N="Pid">404</I32>
+                    <S N="Image">C:\Windows\System32\dwm.exe</S>
+                    <Obj N="TokenSids" RefId="55">
+                      <TNRef RefId="7" />
+                      <LST>
+                        <S>S-1-5-90-0-1</S>
+                        <S>S-1-16-16384</S>
+                        <S>S-1-1-0</S>
+                        <S>S-1-5-32-545</S>
+                        <S>S-1-5-4</S>
+                        <S>S-1-2-1</S>
+                        <S>S-1-5-11</S>
+                        <S>S-1-5-15</S>
+                        <S>S-1-5-19</S>
+                        <S>S-1-2-0</S>
+                        <S>S-1-5-90-0</S>
+                      </LST>
+                    </Obj>
+                  </Props>
+                </Obj>
+                <Obj RefId="56">
+                  <TNRef RefId="6" />
+                  <ToString>SUProcessProof</ToString>
+                  <Props>
+                    <I32 N="Pid">884</I32>
+                    <S N="Image">C:\Windows\System32\svchost.exe</S>
+                    <Obj N="TokenSids" RefId="57">
+                      <TNRef RefId="7" />
+                      <LST>
+                        <S>S-1-5-18</S>
+                        <S>S-1-5-32-544</S>
+                        <S>S-1-1-0</S>
+                        <S>S-1-5-11</S>
+                        <S>S-1-16-16384</S>
+                      </LST>
+                    </Obj>
+                  </Props>
+                </Obj>
+                <Obj RefId="58">
+                  <TNRef RefId="6" />
+                  <ToString>SUProcessProof</ToString>
+                  <Props>
+                    <I32 N="Pid">940</I32>
+                    <S N="Image">C:\Windows\System32\svchost.exe</S>
+                    <Obj N="TokenSids" RefId="59">
+                      <TNRef RefId="7" />
+                      <LST>
+                        <S>S-1-5-18</S>
+                        <S>S-1-16-16384</S>
+                        <S>S-1-1-0</S>
+                        <S>S-1-5-32-545</S>
+                        <S>S-1-5-6</S>
+                        <S>S-1-2-1</S>
+                        <S>S-1-5-11</S>
+                        <S>S-1-5-15</S>
+                        <S>S-1-5-80-286057374-2594772386-1471686342-3682429118-820474675</S>
+                        <S>S-1-5-5-0-63309</S>
+                        <S>S-1-2-0</S>
+                        <S>S-1-5-32-544</S>
+                      </LST>
+                    </Obj>
+                  </Props>
+                </Obj>
+                <Obj RefId="60">
+                  <TNRef RefId="6" />
+                  <ToString>SUProcessProof</ToString>
+                  <Props>
+                    <I32 N="Pid">1044</I32>
+                    <S N="Image">C:\Windows\System32\svchost.exe</S>
+                    <Obj N="TokenSids" RefId="61">
+                      <TNRef RefId="7" />
+                      <LST>
+                        <S>S-1-5-19</S>
+                        <S>S-1-16-16384</S>
+                        <S>S-1-1-0</S>
+                        <S>S-1-5-32-545</S>
+                        <S>S-1-5-6</S>
+                        <S>S-1-2-1</S>
+                        <S>S-1-5-11</S>
+                        <S>S-1-5-15</S>
+                        <S>S-1-5-80-1021139062-1866602279-1255292388-1008060685-2498416891</S>
+                        <S>S-1-5-80-2970612574-78537857-698502321-558674196-1451644582</S>
+                        <S>S-1-5-80-639065985-1709096039-2702309040-2770678766-2981280942</S>
+                        <S>S-1-5-80-2661322625-712705077-2999183737-3043590567-590698655</S>
+                        <S>S-1-5-5-0-63297</S>
+                        <S>S-1-2-0</S>
+                        <S>S-1-5-33</S>
+                        <S>S-1-5-32-1488445330-856673777-1515413738-1380768593-2977925950-2228326386-886087428-2802422674</S>
+                        <S>S-1-5-32-383293015-3350740429-1839969850-1819881064-1569454686-4198502490-78857879-1413643331</S>
+                        <S>S-1-5-32-2035927579-283314533-3422103930-3587774809-765962649-3034203285-3544878962-607181067</S>
+                        <S>S-1-5-32-3659434007-2290108278-1125199667-3679670526-1293081662-2164323352-1777701501-2595986263</S>
+                        <S>S-1-5-32-11742800-2107441976-3443185924-4134956905-3840447964-3749968454-3843513199-670971053</S>
+                        <S>S-1-5-32-3523901360-1745872541-794127107-675934034-1867954868-1951917511-1111796624-2052600462</S>
+                        <S>S-1-5-80-1021139062-1866602279-1255292388-1008060685-2498416891</S>
+                        <S>S-1-5-80-2970612574-78537857-698502321-558674196-1451644582</S>
+                        <S>S-1-5-80-639065985-1709096039-2702309040-2770678766-2981280942</S>
+                        <S>S-1-5-80-2661322625-712705077-2999183737-3043590567-590698655</S>
+                        <S>S-1-1-0</S>
+                        <S>S-1-5-5-0-63297</S>
+                        <S>S-1-5-33</S>
+                      </LST>
+                    </Obj>
+                  </Props>
+                </Obj>
+                <Obj RefId="62">
+                  <TNRef RefId="6" />
+                  <ToString>SUProcessProof</ToString>
+                  <Props>
+                    <I32 N="Pid">1052</I32>
+                    <S N="Image">C:\Windows\System32\svchost.exe</S>
+                    <Obj N="TokenSids" RefId="63">
+                      <TNRef RefId="7" />
+                      <LST>
+                        <S>S-1-5-19</S>
+                        <S>S-1-16-16384</S>
+                        <S>S-1-1-0</S>
+                        <S>S-1-5-32-545</S>
+                        <S>S-1-5-6</S>
+                        <S>S-1-2-1</S>
+                        <S>S-1-5-11</S>
+                        <S>S-1-5-15</S>
+                        <S>S-1-5-80-172094073-716411664-54255058-185476446-2329512179</S>
+                        <S>S-1-5-5-0-63965</S>
+                        <S>S-1-2-0</S>
+                        <S>S-1-5-32-1488445330-856673777-1515413738-1380768593-2977925950-2228326386-886087428-2802422674</S>
+                        <S>S-1-5-32-383293015-3350740429-1839969850-1819881064-1569454686-4198502490-78857879-1413643331</S>
+                        <S>S-1-5-32-2035927579-283314533-3422103930-3587774809-765962649-3034203285-3544878962-607181067</S>
+                        <S>S-1-5-32-3659434007-2290108278-1125199667-3679670526-1293081662-2164323352-1777701501-2595986263</S>
+                        <S>S-1-5-32-11742800-2107441976-3443185924-4134956905-3840447964-3749968454-3843513199-670971053</S>
+                        <S>S-1-5-32-3523901360-1745872541-794127107-675934034-1867954868-1951917511-1111796624-2052600462</S>
+                      </LST>
+                    </Obj>
+                  </Props>
+                </Obj>
+                <Obj RefId="64">
+                  <TNRef RefId="6" />
+                  <ToString>SUProcessProof</ToString>
+                  <Props>
+                    <I32 N="Pid">1144</I32>
+                    <S N="Image">C:\Windows\System32\svchost.exe</S>
+                    <Obj N="TokenSids" RefId="65">
+                      <TNRef RefId="7" />
+                      <LST>
+                        <S>S-1-5-18</S>
+                        <S>S-1-16-16384</S>
+                        <S>S-1-1-0</S>
+                        <S>S-1-5-32-545</S>
+                        <S>S-1-5-6</S>
+                        <S>S-1-2-1</S>
+                        <S>S-1-5-11</S>
+                        <S>S-1-5-15</S>
+                        <S>S-1-5-80-3169048008-2586333165-76651690-3609634147-4147641610</S>
+                        <S>S-1-5-5-0-65890</S>
+                        <S>S-1-2-0</S>
+                        <S>S-1-5-32-544</S>
+                      </LST>
+                    </Obj>
+                  </Props>
+                </Obj>
+                <Obj RefId="66">
+                  <TNRef RefId="6" />
+                  <ToString>SUProcessProof</ToString>
+                  <Props>
+                    <I32 N="Pid">1152</I32>
+                    <S N="Image">C:\Windows\System32\svchost.exe</S>
+                    <Obj N="TokenSids" RefId="67">
+                      <TNRef RefId="7" />
+                      <LST>
+                        <S>S-1-5-19</S>
+                        <S>S-1-16-16384</S>
+                        <S>S-1-1-0</S>
+                        <S>S-1-5-32-545</S>
+                        <S>S-1-5-6</S>
+                        <S>S-1-2-1</S>
+                        <S>S-1-5-11</S>
+                        <S>S-1-5-15</S>
+                        <S>S-1-5-80-410965207-2550896871-1717734767-2321332215-3755966139</S>
+                        <S>S-1-5-80-3557709225-3446934100-2592608561-3401846376-4273827271</S>
+                        <S>S-1-5-5-0-66018</S>
+                        <S>S-1-2-0</S>
+                        <S>S-1-5-32-1488445330-856673777-1515413738-1380768593-2977925950-2228326386-886087428-2802422674</S>
+                        <S>S-1-5-32-383293015-3350740429-1839969850-1819881064-1569454686-4198502490-78857879-1413643331</S>
+                        <S>S-1-5-32-2035927579-283314533-3422103930-3587774809-765962649-3034203285-3544878962-607181067</S>
+                        <S>S-1-5-32-3659434007-2290108278-1125199667-3679670526-1293081662-2164323352-1777701501-2595986263</S>
+                        <S>S-1-5-32-11742800-2107441976-3443185924-4134956905-3840447964-3749968454-3843513199-670971053</S>
+                        <S>S-1-5-32-3523901360-1745872541-794127107-675934034-1867954868-1951917511-1111796624-2052600462</S>
+                      </LST>
+                    </Obj>
+                  </Props>
+                </Obj>
+                <Obj RefId="68">
+                  <TNRef RefId="6" />
+                  <ToString>SUProcessProof</ToString>
+                  <Props>
+                    <I32 N="Pid">1232</I32>
+                    <S N="Image">C:\Windows\System32\svchost.exe</S>
+                    <Obj N="TokenSids" RefId="69">
+                      <TNRef RefId="7" />
+                      <LST>
+                        <S>S-1-5-18</S>
+                        <S>S-1-16-16384</S>
+                        <S>S-1-1-0</S>
+                        <S>S-1-5-32-545</S>
+                        <S>S-1-5-6</S>
+                        <S>S-1-2-1</S>
+                        <S>S-1-5-11</S>
+                        <S>S-1-5-15</S>
+                        <S>S-1-5-80-4125092361-1567024937-842823819-2091237918-836075745</S>
+                        <S>S-1-5-5-0-68440</S>
+                        <S>S-1-2-0</S>
+                        <S>S-1-5-32-544</S>
+                      </LST>
+                    </Obj>
+                  </Props>
+                </Obj>
+                <Obj RefId="70">
+                  <TNRef RefId="6" />
+                  <ToString>SUProcessProof</ToString>
+                  <Props>
+                    <I32 N="Pid">1260</I32>
+                    <S N="Image">C:\Windows\System32\svchost.exe</S>
+                    <Obj N="TokenSids" RefId="71">
+                      <TNRef RefId="7" />
+                      <LST>
+                        <S>S-1-5-19</S>
+                        <S>S-1-16-16384</S>
+                        <S>S-1-1-0</S>
+                        <S>S-1-5-32-545</S>
+                        <S>S-1-5-6</S>
+                        <S>S-1-2-1</S>
+                        <S>S-1-5-11</S>
+                        <S>S-1-5-15</S>
+                        <S>S-1-5-80-4171086659-1617898341-2870161492-1466607281-2109097600</S>
+                        <S>S-1-5-5-0-69706</S>
+                        <S>S-1-2-0</S>
+                        <S>S-1-5-32-1488445330-856673777-1515413738-1380768593-2977925950-2228326386-886087428-2802422674</S>
+                        <S>S-1-5-32-383293015-3350740429-1839969850-1819881064-1569454686-4198502490-78857879-1413643331</S>
+                        <S>S-1-5-32-2035927579-283314533-3422103930-3587774809-765962649-3034203285-3544878962-607181067</S>
+                        <S>S-1-5-32-3659434007-2290108278-1125199667-3679670526-1293081662-2164323352-1777701501-2595986263</S>
+                        <S>S-1-5-32-11742800-2107441976-3443185924-4134956905-3840447964-3749968454-3843513199-670971053</S>
+                        <S>S-1-5-32-3523901360-1745872541-794127107-675934034-1867954868-1951917511-1111796624-2052600462</S>
+                      </LST>
+                    </Obj>
+                  </Props>
+                </Obj>
+                <Obj RefId="72">
+                  <TNRef RefId="6" />
+                  <ToString>SUProcessProof</ToString>
+                  <Props>
+                    <I32 N="Pid">1284</I32>
+                    <S N="Image">C:\Windows\System32\svchost.exe</S>
+                    <Obj N="TokenSids" RefId="73">
+                      <TNRef RefId="7" />
+                      <LST>
+                        <S>S-1-5-19</S>
+                        <S>S-1-16-16384</S>
+                        <S>S-1-1-0</S>
+                        <S>S-1-5-32-545</S>
+                        <S>S-1-5-6</S>
+                        <S>S-1-2-1</S>
+                        <S>S-1-5-11</S>
+                        <S>S-1-5-15</S>
+                        <S>S-1-5-80-880578595-1860270145-482643319-2788375705-1540778122</S>
+                        <S>S-1-5-5-0-70607</S>
+                        <S>S-1-2-0</S>
+                        <S>S-1-5-32-1488445330-856673777-1515413738-1380768593-2977925950-2228326386-886087428-2802422674</S>
+                        <S>S-1-5-32-383293015-3350740429-1839969850-1819881064-1569454686-4198502490-78857879-1413643331</S>
+                        <S>S-1-5-32-2035927579-283314533-3422103930-3587774809-765962649-3034203285-3544878962-607181067</S>
+                        <S>S-1-5-32-3659434007-2290108278-1125199667-3679670526-1293081662-2164323352-1777701501-2595986263</S>
+                        <S>S-1-5-32-11742800-2107441976-3443185924-4134956905-3840447964-3749968454-3843513199-670971053</S>
+                        <S>S-1-5-32-3523901360-1745872541-794127107-675934034-1867954868-1951917511-1111796624-2052600462</S>
+                      </LST>
+                    </Obj>
+                  </Props>
+                </Obj>
+                <Obj RefId="74">
+                  <TNRef RefId="6" />
+                  <ToString>SUProcessProof</ToString>
+                  <Props>
+                    <I32 N="Pid">1332</I32>
+                    <S N="Image">C:\Windows\System32\svchost.exe</S>
+                    <Obj N="TokenSids" RefId="75">
+                      <TNRef RefId="7" />
+                      <LST>
+                        <S>S-1-5-18</S>
+                        <S>S-1-5-32-544</S>
+                        <S>S-1-1-0</S>
+                        <S>S-1-5-11</S>
+                        <S>S-1-16-16384</S>
+                      </LST>
+                    </Obj>
+                  </Props>
+                </Obj>
+                <Obj RefId="76">
+                  <TNRef RefId="6" />
+                  <ToString>SUProcessProof</ToString>
+                  <Props>
+                    <I32 N="Pid">1416</I32>
+                    <S N="Image">C:\Windows\System32\svchost.exe</S>
+                    <Obj N="TokenSids" RefId="77">
+                      <TNRef RefId="7" />
+                      <LST>
+                        <S>S-1-5-19</S>
+                        <S>S-1-16-16384</S>
+                        <S>S-1-1-0</S>
+                        <S>S-1-5-32-545</S>
+                        <S>S-1-5-6</S>
+                        <S>S-1-2-1</S>
+                        <S>S-1-5-11</S>
+                        <S>S-1-5-15</S>
+                        <S>S-1-5-80-2310782386-4237065203-3688974353-390202159-3511571085</S>
+                        <S>S-1-5-5-0-73552</S>
+                        <S>S-1-2-0</S>
+                        <S>S-1-5-32-1488445330-856673777-1515413738-1380768593-2977925950-2228326386-886087428-2802422674</S>
+                        <S>S-1-5-32-383293015-3350740429-1839969850-1819881064-1569454686-4198502490-78857879-1413643331</S>
+                        <S>S-1-5-32-2035927579-283314533-3422103930-3587774809-765962649-3034203285-3544878962-607181067</S>
+                        <S>S-1-5-32-3659434007-2290108278-1125199667-3679670526-1293081662-2164323352-1777701501-2595986263</S>
+                        <S>S-1-5-32-11742800-2107441976-3443185924-4134956905-3840447964-3749968454-3843513199-670971053</S>
+                        <S>S-1-5-32-3523901360-1745872541-794127107-675934034-1867954868-1951917511-1111796624-2052600462</S>
+                      </LST>
+                    </Obj>
+                  </Props>
+                </Obj>
+                <Obj RefId="78">
+                  <TNRef RefId="6" />
+                  <ToString>SUProcessProof</ToString>
+                  <Props>
+                    <I32 N="Pid">1424</I32>
+                    <S N="Image">C:\Windows\System32\svchost.exe</S>
+                    <Obj N="TokenSids" RefId="79">
+                      <TNRef RefId="7" />
+                      <LST>
+                        <S>S-1-5-18</S>
+                        <S>S-1-5-32-544</S>
+                        <S>S-1-1-0</S>
+                        <S>S-1-5-11</S>
+                        <S>S-1-16-16384</S>
+                      </LST>
+                    </Obj>
+                  </Props>
+                </Obj>
+                <Obj RefId="80">
+                  <TNRef RefId="6" />
+                  <ToString>SUProcessProof</ToString>
+                  <Props>
+                    <I32 N="Pid">1508</I32>
+                    <S N="Image">C:\Windows\System32\svchost.exe</S>
+                    <Obj N="TokenSids" RefId="81">
+                      <TNRef RefId="7" />
+                      <LST>
+                        <S>S-1-5-19</S>
+                        <S>S-1-16-16384</S>
+                        <S>S-1-1-0</S>
+                        <S>S-1-5-32-545</S>
+                        <S>S-1-5-6</S>
+                        <S>S-1-2-1</S>
+                        <S>S-1-5-11</S>
+                        <S>S-1-5-15</S>
+                        <S>S-1-5-80-2940520708-3855866260-481812779-327648279-1710889582</S>
+                        <S>S-1-5-5-0-76452</S>
+                        <S>S-1-2-0</S>
+                        <S>S-1-5-32-1488445330-856673777-1515413738-1380768593-2977925950-2228326386-886087428-2802422674</S>
+                        <S>S-1-5-32-383293015-3350740429-1839969850-1819881064-1569454686-4198502490-78857879-1413643331</S>
+                        <S>S-1-5-32-2035927579-283314533-3422103930-3587774809-765962649-3034203285-3544878962-607181067</S>
+                        <S>S-1-5-32-3659434007-2290108278-1125199667-3679670526-1293081662-2164323352-1777701501-2595986263</S>
+                        <S>S-1-5-32-11742800-2107441976-3443185924-4134956905-3840447964-3749968454-3843513199-670971053</S>
+                        <S>S-1-5-32-3523901360-1745872541-794127107-675934034-1867954868-1951917511-1111796624-2052600462</S>
+                      </LST>
+                    </Obj>
+                  </Props>
+                </Obj>
+                <Obj RefId="82">
+                  <TNRef RefId="6" />
+                  <ToString>SUProcessProof</ToString>
+                  <Props>
+                    <I32 N="Pid">1544</I32>
+                    <S N="Image">C:\Windows\System32\svchost.exe</S>
+                    <Obj N="TokenSids" RefId="83">
+                      <TNRef RefId="7" />
+                      <LST>
+                        <S>S-1-5-18</S>
+                        <S>S-1-16-16384</S>
+                        <S>S-1-1-0</S>
+                        <S>S-1-5-32-545</S>
+                        <S>S-1-5-6</S>
+                        <S>S-1-2-1</S>
+                        <S>S-1-5-11</S>
+                        <S>S-1-5-15</S>
+                        <S>S-1-5-80-113310567-2163499630-2787090463-221477905-209227094</S>
+                        <S>S-1-5-5-0-77938</S>
+                        <S>S-1-2-0</S>
+                        <S>S-1-5-32-544</S>
+                      </LST>
+                    </Obj>
+                  </Props>
+                </Obj>
+                <Obj RefId="84">
+                  <TNRef RefId="6" />
+                  <ToString>SUProcessProof</ToString>
+                  <Props>
+                    <I32 N="Pid">1596</I32>
+                    <S N="Image">C:\Windows\System32\svchost.exe</S>
+                    <Obj N="TokenSids" RefId="85">
+                      <TNRef RefId="7" />
+                      <LST>
+                        <S>S-1-5-19</S>
+                        <S>S-1-16-16384</S>
+                        <S>S-1-1-0</S>
+                        <S>S-1-5-32-545</S>
+                        <S>S-1-5-6</S>
+                        <S>S-1-2-1</S>
+                        <S>S-1-5-11</S>
+                        <S>S-1-5-15</S>
+                        <S>S-1-5-80-2226967063-754826275-1661302337-2802353169-2369347280</S>
+                        <S>S-1-5-5-0-79760</S>
+                        <S>S-1-2-0</S>
+                        <S>S-1-5-32-1488445330-856673777-1515413738-1380768593-2977925950-2228326386-886087428-2802422674</S>
+                        <S>S-1-5-32-383293015-3350740429-1839969850-1819881064-1569454686-4198502490-78857879-1413643331</S>
+                        <S>S-1-5-32-2035927579-283314533-3422103930-3587774809-765962649-3034203285-3544878962-607181067</S>
+                        <S>S-1-5-32-3659434007-2290108278-1125199667-3679670526-1293081662-2164323352-1777701501-2595986263</S>
+                        <S>S-1-5-32-11742800-2107441976-3443185924-4134956905-3840447964-3749968454-3843513199-670971053</S>
+                        <S>S-1-5-32-3523901360-1745872541-794127107-675934034-1867954868-1951917511-1111796624-2052600462</S>
+                      </LST>
+                    </Obj>
+                  </Props>
+                </Obj>
+                <Obj RefId="86">
+                  <TNRef RefId="6" />
+                  <ToString>SUProcessProof</ToString>
+                  <Props>
+                    <I32 N="Pid">1644</I32>
+                    <S N="Image">C:\Windows\System32\svchost.exe</S>
+                    <Obj N="TokenSids" RefId="87">
+                      <TNRef RefId="7" />
+                      <LST>
+                        <S>S-1-5-18</S>
+                        <S>S-1-5-32-544</S>
+                        <S>S-1-1-0</S>
+                        <S>S-1-5-11</S>
+                        <S>S-1-16-16384</S>
+                      </LST>
+                    </Obj>
+                  </Props>
+                </Obj>
+                <Obj RefId="88">
+                  <TNRef RefId="6" />
+                  <ToString>SUProcessProof</ToString>
+                  <Props>
+                    <I32 N="Pid">1652</I32>
+                    <S N="Image">C:\Windows\System32\svchost.exe</S>
+                    <Obj N="TokenSids" RefId="89">
+                      <TNRef RefId="7" />
+                      <LST>
+                        <S>S-1-5-19</S>
+                        <S>S-1-16-16384</S>
+                        <S>S-1-1-0</S>
+                        <S>S-1-5-32-545</S>
+                        <S>S-1-5-6</S>
+                        <S>S-1-2-1</S>
+                        <S>S-1-5-11</S>
+                        <S>S-1-5-15</S>
+                        <S>S-1-5-80-1772571935-1555666882-3369284645-1675012128-2386634627</S>
+                        <S>S-1-5-5-0-80579</S>
+                        <S>S-1-2-0</S>
+                        <S>S-1-5-32-1488445330-856673777-1515413738-1380768593-2977925950-2228326386-886087428-2802422674</S>
+                        <S>S-1-5-32-383293015-3350740429-1839969850-1819881064-1569454686-4198502490-78857879-1413643331</S>
+                        <S>S-1-5-32-2035927579-283314533-3422103930-3587774809-765962649-3034203285-3544878962-607181067</S>
+                        <S>S-1-5-32-3659434007-2290108278-1125199667-3679670526-1293081662-2164323352-1777701501-2595986263</S>
+                        <S>S-1-5-32-11742800-2107441976-3443185924-4134956905-3840447964-3749968454-3843513199-670971053</S>
+                        <S>S-1-5-32-3523901360-1745872541-794127107-675934034-1867954868-1951917511-1111796624-2052600462</S>
+                      </LST>
+                    </Obj>
+                  </Props>
+                </Obj>
+                <Obj RefId="90">
+                  <TNRef RefId="6" />
+                  <ToString>SUProcessProof</ToString>
+                  <Props>
+                    <I32 N="Pid">1664</I32>
+                    <S N="Image">C:\Windows\System32\svchost.exe</S>
+                    <Obj N="TokenSids" RefId="91">
+                      <TNRef RefId="7" />
+                      <LST>
+                        <S>S-1-5-18</S>
+                        <S>S-1-5-32-544</S>
+                        <S>S-1-1-0</S>
+                        <S>S-1-5-11</S>
+                        <S>S-1-16-16384</S>
+                      </LST>
+                    </Obj>
+                  </Props>
+                </Obj>
+                <Obj RefId="92">
+                  <TNRef RefId="6" />
+                  <ToString>SUProcessProof</ToString>
+                  <Props>
+                    <I32 N="Pid">1704</I32>
+                    <S N="Image">C:\Windows\System32\svchost.exe</S>
+                    <Obj N="TokenSids" RefId="93">
+                      <TNRef RefId="7" />
+                      <LST>
+                        <S>S-1-5-20</S>
+                        <S>S-1-16-16384</S>
+                        <S>S-1-1-0</S>
+                        <S>S-1-5-32-545</S>
+                        <S>S-1-5-6</S>
+                        <S>S-1-2-1</S>
+                        <S>S-1-5-11</S>
+                        <S>S-1-5-15</S>
+                        <S>S-1-5-80-3141615172-2057878085-1754447212-2405740020-3916490453</S>
+                        <S>S-1-5-5-0-81788</S>
+                        <S>S-1-2-0</S>
+                      </LST>
+                    </Obj>
+                  </Props>
+                </Obj>
+                <Obj RefId="94">
+                  <TNRef RefId="6" />
+                  <ToString>SUProcessProof</ToString>
+                  <Props>
+                    <I32 N="Pid">1784</I32>
+                    <S N="Image">C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe</S>
+                    <Obj N="TokenSids" RefId="95">
+                      <TNRef RefId="7" />
+                      <LST>
+                        <S>S-1-5-18</S>
+                        <S>S-1-16-16384</S>
+                        <S>S-1-1-0</S>
+                        <S>S-1-5-32-545</S>
+                        <S>S-1-5-6</S>
+                        <S>S-1-2-1</S>
+                        <S>S-1-5-11</S>
+                        <S>S-1-5-15</S>
+                        <S>S-1-5-80-4125092361-1567024937-842823819-2091237918-836075745</S>
+                        <S>S-1-5-5-0-68440</S>
+                        <S>S-1-2-0</S>
+                        <S>S-1-5-32-544</S>
+                      </LST>
+                    </Obj>
+                  </Props>
+                </Obj>
+                <Obj RefId="96">
+                  <TNRef RefId="6" />
+                  <ToString>SUProcessProof</ToString>
+                  <Props>
+                    <I32 N="Pid">1800</I32>
+                    <S N="Image">C:\Windows\System32\svchost.exe</S>
+                    <Obj N="TokenSids" RefId="97">
+                      <TNRef RefId="7" />
+                      <LST>
+                        <S>S-1-5-18</S>
+                        <S>S-1-16-16384</S>
+                        <S>S-1-1-0</S>
+                        <S>S-1-5-32-545</S>
+                        <S>S-1-5-6</S>
+                        <S>S-1-2-1</S>
+                        <S>S-1-5-11</S>
+                        <S>S-1-5-15</S>
+                        <S>S-1-5-80-4259241309-1822918763-1176128033-1339750638-3428293995</S>
+                        <S>S-1-5-5-0-83569</S>
+                        <S>S-1-2-0</S>
+                        <S>S-1-5-32-544</S>
+                      </LST>
+                    </Obj>
+                  </Props>
+                </Obj>
+                <Obj RefId="98">
+                  <TNRef RefId="6" />
+                  <ToString>SUProcessProof</ToString>
+                  <Props>
+                    <I32 N="Pid">1844</I32>
+                    <S N="Image">C:\Windows\System32\svchost.exe</S>
+                    <Obj N="TokenSids" RefId="99">
+                      <TNRef RefId="7" />
+                      <LST>
+                        <S>S-1-5-18</S>
+                        <S>S-1-16-16384</S>
+                        <S>S-1-1-0</S>
+                        <S>S-1-5-32-545</S>
+                        <S>S-1-5-6</S>
+                        <S>S-1-2-1</S>
+                        <S>S-1-5-11</S>
+                        <S>S-1-5-15</S>
+                        <S>S-1-5-80-1580948945-3239616721-2529237571-3761093093-1214243633</S>
+                        <S>S-1-5-5-0-85138</S>
+                        <S>S-1-2-0</S>
+                        <S>S-1-5-32-544</S>
+                      </LST>
+                    </Obj>
+                  </Props>
+                </Obj>
+                <Obj RefId="100">
+                  <TNRef RefId="6" />
+                  <ToString>SUProcessProof</ToString>
+                  <Props>
+                    <I32 N="Pid">1856</I32>
+                    <S N="Image">C:\Windows\System32\svchost.exe</S>
+                    <Obj N="TokenSids" RefId="101">
+                      <TNRef RefId="7" />
+                      <LST>
+                        <S>S-1-5-19</S>
+                        <S>S-1-16-16384</S>
+                        <S>S-1-1-0</S>
+                        <S>S-1-5-32-545</S>
+                        <S>S-1-5-6</S>
+                        <S>S-1-2-1</S>
+                        <S>S-1-5-11</S>
+                        <S>S-1-5-15</S>
+                        <S>S-1-5-80-3655275221-2954682349-3644260495-855223267-1438849333</S>
+                        <S>S-1-5-5-0-85339</S>
+                        <S>S-1-2-0</S>
+                        <S>S-1-5-32-1488445330-856673777-1515413738-1380768593-2977925950-2228326386-886087428-2802422674</S>
+                        <S>S-1-5-32-383293015-3350740429-1839969850-1819881064-1569454686-4198502490-78857879-1413643331</S>
+                        <S>S-1-5-32-2035927579-283314533-3422103930-3587774809-765962649-3034203285-3544878962-607181067</S>
+                        <S>S-1-5-32-3659434007-2290108278-1125199667-3679670526-1293081662-2164323352-1777701501-2595986263</S>
+                        <S>S-1-5-32-11742800-2107441976-3443185924-4134956905-3840447964-3749968454-3843513199-670971053</S>
+                        <S>S-1-5-32-3523901360-1745872541-794127107-675934034-1867954868-1951917511-1111796624-2052600462</S>
+                      </LST>
+                    </Obj>
+                  </Props>
+                </Obj>
+                <Obj RefId="102">
+                  <TNRef RefId="6" />
+                  <ToString>SUProcessProof</ToString>
+                  <Props>
+                    <I32 N="Pid">1892</I32>
+                    <S N="Image">C:\Windows\System32\svchost.exe</S>
+                    <Obj N="TokenSids" RefId="103">
+                      <TNRef RefId="7" />
+                      <LST>
+                        <S>S-1-5-19</S>
+                        <S>S-1-16-16384</S>
+                        <S>S-1-1-0</S>
+                        <S>S-1-5-32-545</S>
+                        <S>S-1-5-6</S>
+                        <S>S-1-2-1</S>
+                        <S>S-1-5-11</S>
+                        <S>S-1-5-15</S>
+                        <S>S-1-5-80-3635958274-2059881490-2225992882-984577281-633327304</S>
+                        <S>S-1-5-5-0-86439</S>
+                        <S>S-1-2-0</S>
+                        <S>S-1-5-32-1488445330-856673777-1515413738-1380768593-2977925950-2228326386-886087428-2802422674</S>
+                        <S>S-1-5-32-383293015-3350740429-1839969850-1819881064-1569454686-4198502490-78857879-1413643331</S>
+                        <S>S-1-5-32-2035927579-283314533-3422103930-3587774809-765962649-3034203285-3544878962-607181067</S>
+                        <S>S-1-5-32-3659434007-2290108278-1125199667-3679670526-1293081662-2164323352-1777701501-2595986263</S>
+                        <S>S-1-5-32-11742800-2107441976-3443185924-4134956905-3840447964-3749968454-3843513199-670971053</S>
+                        <S>S-1-5-32-3523901360-1745872541-794127107-675934034-1867954868-1951917511-1111796624-2052600462</S>
+                      </LST>
+                    </Obj>
+                  </Props>
+                </Obj>
+                <Obj RefId="104">
+                  <TNRef RefId="6" />
+                  <ToString>SUProcessProof</ToString>
+                  <Props>
+                    <I32 N="Pid">1996</I32>
+                    <S N="Image">C:\Windows\System32\svchost.exe</S>
+                    <Obj N="TokenSids" RefId="105">
+                      <TNRef RefId="7" />
+                      <LST>
+                        <S>S-1-5-19</S>
+                        <S>S-1-16-16384</S>
+                        <S>S-1-1-0</S>
+                        <S>S-1-5-32-545</S>
+                        <S>S-1-5-6</S>
+                        <S>S-1-2-1</S>
+                        <S>S-1-5-11</S>
+                        <S>S-1-5-15</S>
+                        <S>S-1-5-80-2676549577-1911656217-2625096541-4178041876-1366760775</S>
+                        <S>S-1-5-5-0-93110</S>
+                        <S>S-1-2-0</S>
+                        <S>S-1-5-32-1488445330-856673777-1515413738-1380768593-2977925950-2228326386-886087428-2802422674</S>
+                        <S>S-1-5-32-383293015-3350740429-1839969850-1819881064-1569454686-4198502490-78857879-1413643331</S>
+                        <S>S-1-5-32-2035927579-283314533-3422103930-3587774809-765962649-3034203285-3544878962-607181067</S>
+                        <S>S-1-5-32-3659434007-2290108278-1125199667-3679670526-1293081662-2164323352-1777701501-2595986263</S>
+                        <S>S-1-5-32-11742800-2107441976-3443185924-4134956905-3840447964-3749968454-3843513199-670971053</S>
+                        <S>S-1-5-32-3523901360-1745872541-794127107-675934034-1867954868-1951917511-1111796624-2052600462</S>
+                      </LST>
+                    </Obj>
+                  </Props>
+                </Obj>
+                <Obj RefId="106">
+                  <TNRef RefId="6" />
+                  <ToString>SUProcessProof</ToString>
+                  <Props>
+                    <I32 N="Pid">1536</I32>
+                    <S N="Image">C:\Windows\System32\svchost.exe</S>
+                    <Obj N="TokenSids" RefId="107">
+                      <TNRef RefId="7" />
+                      <LST>
+                        <S>S-1-5-18</S>
+                        <S>S-1-16-16384</S>
+                        <S>S-1-1-0</S>
+                        <S>S-1-5-32-545</S>
+                        <S>S-1-5-6</S>
+                        <S>S-1-2-1</S>
+                        <S>S-1-5-11</S>
+                        <S>S-1-5-15</S>
+                        <S>S-1-5-80-4118144674-975173503-976751360-2062754009-4288402176</S>
+                        <S>S-1-5-5-0-96155</S>
+                        <S>S-1-2-0</S>
+                        <S>S-1-5-32-544</S>
+                      </LST>
+                    </Obj>
+                  </Props>
+                </Obj>
+                <Obj RefId="108">
+                  <TNRef RefId="6" />
+                  <ToString>SUProcessProof</ToString>
+                  <Props>
+                    <I32 N="Pid">2028</I32>
+                    <S N="Image">C:\Windows\System32\svchost.exe</S>
+                    <Obj N="TokenSids" RefId="109">
+                      <TNRef RefId="7" />
+                      <LST>
+                        <S>S-1-5-19</S>
+                        <S>S-1-16-16384</S>
+                        <S>S-1-1-0</S>
+                        <S>S-1-5-32-545</S>
+                        <S>S-1-5-6</S>
+                        <S>S-1-2-1</S>
+                        <S>S-1-5-11</S>
+                        <S>S-1-5-15</S>
+                        <S>S-1-5-80-4071458001-3563271761-1846288968-3700919931-3809667977</S>
+                        <S>S-1-5-5-0-97546</S>
+                        <S>S-1-2-0</S>
+                        <S>S-1-5-32-1488445330-856673777-1515413738-1380768593-2977925950-2228326386-886087428-2802422674</S>
+                        <S>S-1-5-32-383293015-3350740429-1839969850-1819881064-1569454686-4198502490-78857879-1413643331</S>
+                        <S>S-1-5-32-2035927579-283314533-3422103930-3587774809-765962649-3034203285-3544878962-607181067</S>
+                        <S>S-1-5-32-3659434007-2290108278-1125199667-3679670526-1293081662-2164323352-1777701501-2595986263</S>
+                        <S>S-1-5-32-11742800-2107441976-3443185924-4134956905-3840447964-3749968454-3843513199-670971053</S>
+                        <S>S-1-5-32-3523901360-1745872541-794127107-675934034-1867954868-1951917511-1111796624-2052600462</S>
+                      </LST>
+                    </Obj>
+                  </Props>
+                </Obj>
+                <Obj RefId="110">
+                  <TNRef RefId="6" />
+                  <ToString>SUProcessProof</ToString>
+                  <Props>
+                    <I32 N="Pid">1776</I32>
+                    <S N="Image">C:\Windows\System32\svchost.exe</S>
+                    <Obj N="TokenSids" RefId="111">
+                      <TNRef RefId="7" />
+                      <LST>
+                        <S>S-1-5-20</S>
+                        <S>S-1-16-16384</S>
+                        <S>S-1-1-0</S>
+                        <S>S-1-5-32-545</S>
+                        <S>S-1-5-6</S>
+                        <S>S-1-2-1</S>
+                        <S>S-1-5-11</S>
+                        <S>S-1-5-15</S>
+                        <S>S-1-5-80-859482183-879914841-863379149-1145462774-2388618682</S>
+                        <S>S-1-5-5-0-97526</S>
+                        <S>S-1-2-0</S>
+                      </LST>
+                    </Obj>
+                  </Props>
+                </Obj>
+                <Obj RefId="112">
+                  <TNRef RefId="6" />
+                  <ToString>SUProcessProof</ToString>
+                  <Props>
+                    <I32 N="Pid">2060</I32>
+                    <S N="Image">C:\Windows\System32\svchost.exe</S>
+                    <Obj N="TokenSids" RefId="113">
+                      <TNRef RefId="7" />
+                      <LST>
+                        <S>S-1-5-19</S>
+                        <S>S-1-16-16384</S>
+                        <S>S-1-1-0</S>
+                        <S>S-1-5-32-545</S>
+                        <S>S-1-5-6</S>
+                        <S>S-1-2-1</S>
+                        <S>S-1-5-11</S>
+                        <S>S-1-5-15</S>
+                        <S>S-1-5-80-4155767994-3874329934-3800885181-2130851812-726865888</S>
+                        <S>S-1-5-5-0-97856</S>
+                        <S>S-1-2-0</S>
+                        <S>S-1-5-32-1488445330-856673777-1515413738-1380768593-2977925950-2228326386-886087428-2802422674</S>
+                        <S>S-1-5-32-383293015-3350740429-1839969850-1819881064-1569454686-4198502490-78857879-1413643331</S>
+                        <S>S-1-5-32-2035927579-283314533-3422103930-3587774809-765962649-3034203285-3544878962-607181067</S>
+                        <S>S-1-5-32-3659434007-2290108278-1125199667-3679670526-1293081662-2164323352-1777701501-2595986263</S>
+                        <S>S-1-5-32-11742800-2107441976-3443185924-4134956905-3840447964-3749968454-3843513199-670971053</S>
+                        <S>S-1-5-32-3523901360-1745872541-794127107-675934034-1867954868-1951917511-1111796624-2052600462</S>
+                      </LST>
+                    </Obj>
+                  </Props>
+                </Obj>
+                <Obj RefId="114">
+                  <TNRef RefId="6" />
+                  <ToString>SUProcessProof</ToString>
+                  <Props>
+                    <I32 N="Pid">2068</I32>
+                    <S N="Image">C:\Windows\System32\svchost.exe</S>
+                    <Obj N="TokenSids" RefId="115">
+                      <TNRef RefId="7" />
+                      <LST>
+                        <S>S-1-5-19</S>
+                        <S>S-1-16-16384</S>
+                        <S>S-1-1-0</S>
+                        <S>S-1-5-32-545</S>
+                        <S>S-1-5-6</S>
+                        <S>S-1-2-1</S>
+                        <S>S-1-5-11</S>
+                        <S>S-1-5-15</S>
+                        <S>S-1-5-80-2455429942-3131183193-3617688776-595395669-3772047725</S>
+                        <S>S-1-5-5-0-98076</S>
+                        <S>S-1-2-0</S>
+                        <S>S-1-5-32-1488445330-856673777-1515413738-1380768593-2977925950-2228326386-886087428-2802422674</S>
+                        <S>S-1-5-32-383293015-3350740429-1839969850-1819881064-1569454686-4198502490-78857879-1413643331</S>
+                        <S>S-1-5-32-2035927579-283314533-3422103930-3587774809-765962649-3034203285-3544878962-607181067</S>
+                        <S>S-1-5-32-3659434007-2290108278-1125199667-3679670526-1293081662-2164323352-1777701501-2595986263</S>
+                        <S>S-1-5-32-11742800-2107441976-3443185924-4134956905-3840447964-3749968454-3843513199-670971053</S>
+                        <S>S-1-5-32-3523901360-1745872541-794127107-675934034-1867954868-1951917511-1111796624-2052600462</S>
+                      </LST>
+                    </Obj>
+                  </Props>
+                </Obj>
+                <Obj RefId="116">
+                  <TNRef RefId="6" />
+                  <ToString>SUProcessProof</ToString>
+                  <Props>
+                    <I32 N="Pid">2156</I32>
+                    <S N="Image">C:\Windows\System32\svchost.exe</S>
+                    <Obj N="TokenSids" RefId="117">
+                      <TNRef RefId="7" />
+                      <LST>
+                        <S>S-1-5-18</S>
+                        <S>S-1-16-16384</S>
+                        <S>S-1-1-0</S>
+                        <S>S-1-5-32-545</S>
+                        <S>S-1-5-6</S>
+                        <S>S-1-2-1</S>
+                        <S>S-1-5-11</S>
+                        <S>S-1-5-15</S>
+                        <S>S-1-5-80-1690854464-3758363787-3981977099-3843555589-1401248062</S>
+                        <S>S-1-5-5-0-101503</S>
+                        <S>S-1-2-0</S>
+                        <S>S-1-5-32-544</S>
+                      </LST>
+                    </Obj>
+                  </Props>
+                </Obj>
+                <Obj RefId="118">
+                  <TNRef RefId="6" />
+                  <ToString>SUProcessProof</ToString>
+                  <Props>
+                    <I32 N="Pid">2172</I32>
+                    <S N="Image">C:\Windows\System32\svchost.exe</S>
+                    <Obj N="TokenSids" RefId="119">
+                      <TNRef RefId="7" />
+                      <LST>
+                        <S>S-1-5-20</S>
+                        <S>S-1-16-16384</S>
+                        <S>S-1-1-0</S>
+                        <S>S-1-5-32-545</S>
+                        <S>S-1-5-6</S>
+                        <S>S-1-2-1</S>
+                        <S>S-1-5-11</S>
+                        <S>S-1-5-15</S>
+                        <S>S-1-5-80-3055155277-3816794035-3994065555-2874236192-2193176987</S>
+                        <S>S-1-5-5-0-101654</S>
+                        <S>S-1-2-0</S>
+                      </LST>
+                    </Obj>
+                  </Props>
+                </Obj>
+                <Obj RefId="120">
+                  <TNRef RefId="6" />
+                  <ToString>SUProcessProof</ToString>
+                  <Props>
+                    <I32 N="Pid">2180</I32>
+                    <S N="Image">C:\Windows\System32\svchost.exe</S>
+                    <Obj N="TokenSids" RefId="121">
+                      <TNRef RefId="7" />
+                      <LST>
+                        <S>S-1-5-18</S>
+                        <S>S-1-16-16384</S>
+                        <S>S-1-1-0</S>
+                        <S>S-1-5-32-545</S>
+                        <S>S-1-5-6</S>
+                        <S>S-1-2-1</S>
+                        <S>S-1-5-11</S>
+                        <S>S-1-5-15</S>
+                        <S>S-1-5-80-2617507558-3328795327-711547822-311560295-1636921165</S>
+                        <S>S-1-5-5-0-101862</S>
+                        <S>S-1-2-0</S>
+                        <S>S-1-5-32-544</S>
+                      </LST>
+                    </Obj>
+                  </Props>
+                </Obj>
+                <Obj RefId="122">
+                  <TNRef RefId="6" />
+                  <ToString>SUProcessProof</ToString>
+                  <Props>
+                    <I32 N="Pid">2216</I32>
+                    <S N="Image">C:\Windows\System32\svchost.exe</S>
+                    <Obj N="TokenSids" RefId="123">
+                      <TNRef RefId="7" />
+                      <LST>
+                        <S>S-1-5-19</S>
+                        <S>S-1-16-16384</S>
+                        <S>S-1-1-0</S>
+                        <S>S-1-5-32-545</S>
+                        <S>S-1-5-6</S>
+                        <S>S-1-2-1</S>
+                        <S>S-1-5-11</S>
+                        <S>S-1-5-15</S>
+                        <S>S-1-5-80-1383147646-27650227-2710666058-1662982300-1023958487</S>
+                        <S>S-1-5-80-3088073201-1464728630-1879813800-1107566885-823218052</S>
+                        <S>S-1-5-5-0-102327</S>
+                        <S>S-1-2-0</S>
+                        <S>S-1-5-33</S>
+                        <S>S-1-5-32-1488445330-856673777-1515413738-1380768593-2977925950-2228326386-886087428-2802422674</S>
+                        <S>S-1-5-32-383293015-3350740429-1839969850-1819881064-1569454686-4198502490-78857879-1413643331</S>
+                        <S>S-1-5-32-2035927579-283314533-3422103930-3587774809-765962649-3034203285-3544878962-607181067</S>
+                        <S>S-1-5-32-3659434007-2290108278-1125199667-3679670526-1293081662-2164323352-1777701501-2595986263</S>
+                        <S>S-1-5-32-11742800-2107441976-3443185924-4134956905-3840447964-3749968454-3843513199-670971053</S>
+                        <S>S-1-5-32-3523901360-1745872541-794127107-675934034-1867954868-1951917511-1111796624-2052600462</S>
+                        <S>S-1-5-80-1383147646-27650227-2710666058-1662982300-1023958487</S>
+                        <S>S-1-5-80-3088073201-1464728630-1879813800-1107566885-823218052</S>
+                        <S>S-1-1-0</S>
+                        <S>S-1-5-5-0-102327</S>
+                        <S>S-1-5-33</S>
+                      </LST>
+                    </Obj>
+                  </Props>
+                </Obj>
+                <Obj RefId="124">
+                  <TNRef RefId="6" />
+                  <ToString>SUProcessProof</ToString>
+                  <Props>
+                    <I32 N="Pid">2268</I32>
+                    <S N="Image">C:\Windows\System32\svchost.exe</S>
+                    <Obj N="TokenSids" RefId="125">
+                      <TNRef RefId="7" />
+                      <LST>
+                        <S>S-1-5-18</S>
+                        <S>S-1-16-16384</S>
+                        <S>S-1-1-0</S>
+                        <S>S-1-5-32-545</S>
+                        <S>S-1-5-6</S>
+                        <S>S-1-2-1</S>
+                        <S>S-1-5-11</S>
+                        <S>S-1-5-15</S>
+                        <S>S-1-5-80-1014140700-3308905587-3330345912-272242898-93311788</S>
+                        <S>S-1-5-5-0-103674</S>
+                        <S>S-1-2-0</S>
+                        <S>S-1-5-32-544</S>
+                      </LST>
+                    </Obj>
+                  </Props>
+                </Obj>
+                <Obj RefId="126">
+                  <TNRef RefId="6" />
+                  <ToString>SUProcessProof</ToString>
+                  <Props>
+                    <I32 N="Pid">2368</I32>
+                    <S N="Image">C:\Windows\System32\spoolsv.exe</S>
+                    <Obj N="TokenSids" RefId="127">
+                      <TNRef RefId="7" />
+                      <LST>
+                        <S>S-1-5-18</S>
+                        <S>S-1-16-16384</S>
+                        <S>S-1-1-0</S>
+                        <S>S-1-5-32-545</S>
+                        <S>S-1-5-6</S>
+                        <S>S-1-2-1</S>
+                        <S>S-1-5-11</S>
+                        <S>S-1-5-15</S>
+                        <S>S-1-5-80-3951239711-1671533544-1416304335-3763227691-3930497994</S>
+                        <S>S-1-5-5-0-107321</S>
+                        <S>S-1-2-0</S>
+                        <S>S-1-5-32-544</S>
+                      </LST>
+                    </Obj>
+                  </Props>
+                </Obj>
+                <Obj RefId="128">
+                  <TNRef RefId="6" />
+                  <ToString>SUProcessProof</ToString>
+                  <Props>
+                    <I32 N="Pid">2480</I32>
+                    <S N="Image">C:\Windows\System32\svchost.exe</S>
+                    <Obj N="TokenSids" RefId="129">
+                      <TNRef RefId="7" />
+                      <LST>
+                        <S>S-1-5-20</S>
+                        <S>S-1-16-16384</S>
+                        <S>S-1-1-0</S>
+                        <S>S-1-5-32-545</S>
+                        <S>S-1-5-6</S>
+                        <S>S-1-2-1</S>
+                        <S>S-1-5-11</S>
+                        <S>S-1-5-15</S>
+                        <S>S-1-5-80-719998295-2833700043-1566817583-4093942769-1414026312</S>
+                        <S>S-1-5-5-0-112206</S>
+                        <S>S-1-2-0</S>
+                      </LST>
+                    </Obj>
+                  </Props>
+                </Obj>
+                <Obj RefId="130">
+                  <TNRef RefId="6" />
+                  <ToString>SUProcessProof</ToString>
+                  <Props>
+                    <I32 N="Pid">2608</I32>
+                    <S N="Image">C:\Windows\System32\svchost.exe</S>
+                    <Obj N="TokenSids" RefId="131">
+                      <TNRef RefId="7" />
+                      <LST>
+                        <S>S-1-5-18</S>
+                        <S>S-1-16-16384</S>
+                        <S>S-1-1-0</S>
+                        <S>S-1-5-32-545</S>
+                        <S>S-1-5-6</S>
+                        <S>S-1-2-1</S>
+                        <S>S-1-5-11</S>
+                        <S>S-1-5-15</S>
+                        <S>S-1-5-80-3750560858-172214265-3889451188-1914796615-4100997547</S>
+                        <S>S-1-5-5-0-118345</S>
+                        <S>S-1-2-0</S>
+                        <S>S-1-5-32-544</S>
+                      </LST>
+                    </Obj>
+                  </Props>
+                </Obj>
+                <Obj RefId="132">
+                  <TNRef RefId="6" />
+                  <ToString>SUProcessProof</ToString>
+                  <Props>
+                    <I32 N="Pid">2644</I32>
+                    <S N="Image">C:\Windows\System32\CompatTelRunner.exe</S>
+                    <Obj N="TokenSids" RefId="133">
+                      <TNRef RefId="7" />
+                      <LST>
+                        <S>S-1-5-18</S>
+                        <S>S-1-16-16384</S>
+                        <S>S-1-1-0</S>
+                        <S>S-1-5-32-545</S>
+                        <S>S-1-5-6</S>
+                        <S>S-1-2-1</S>
+                        <S>S-1-5-11</S>
+                        <S>S-1-5-15</S>
+                        <S>S-1-5-80-4125092361-1567024937-842823819-2091237918-836075745</S>
+                        <S>S-1-5-5-0-68440</S>
+                        <S>S-1-2-0</S>
+                        <S>S-1-5-32-544</S>
+                      </LST>
+                    </Obj>
+                  </Props>
+                </Obj>
+                <Obj RefId="134">
+                  <TNRef RefId="6" />
+                  <ToString>SUProcessProof</ToString>
+                  <Props>
+                    <I32 N="Pid">2660</I32>
+                    <S N="Image">C:\Windows\System32\svchost.exe</S>
+                    <Obj N="TokenSids" RefId="135">
+                      <TNRef RefId="7" />
+                      <LST>
+                        <S>S-1-5-18</S>
+                        <S>S-1-16-16384</S>
+                        <S>S-1-1-0</S>
+                        <S>S-1-5-32-545</S>
+                        <S>S-1-5-6</S>
+                        <S>S-1-2-1</S>
+                        <S>S-1-5-11</S>
+                        <S>S-1-5-15</S>
+                        <S>S-1-5-80-62724632-2456781206-3863850748-1496050881-1042387526</S>
+                        <S>S-1-5-5-0-119729</S>
+                        <S>S-1-2-0</S>
+                        <S>S-1-5-32-544</S>
+                      </LST>
+                    </Obj>
+                  </Props>
+                </Obj>
+                <Obj RefId="136">
+                  <TNRef RefId="6" />
+                  <ToString>SUProcessProof</ToString>
+                  <Props>
+                    <I32 N="Pid">2668</I32>
+                    <S N="Image">C:\Program Files\Virtio-Win\Balloon\blnsvr.exe</S>
+                    <Obj N="TokenSids" RefId="137">
+                      <TNRef RefId="7" />
+                      <LST>
+                        <S>S-1-5-18</S>
+                        <S>S-1-5-32-544</S>
+                        <S>S-1-1-0</S>
+                        <S>S-1-5-11</S>
+                        <S>S-1-16-16384</S>
+                      </LST>
+                    </Obj>
+                  </Props>
+                </Obj>
+                <Obj RefId="138">
+                  <TNRef RefId="6" />
+                  <ToString>SUProcessProof</ToString>
+                  <Props>
+                    <I32 N="Pid">2692</I32>
+                    <S N="Image">C:\Windows\System32\svchost.exe</S>
+                    <Obj N="TokenSids" RefId="139">
+                      <TNRef RefId="7" />
+                      <LST>
+                        <S>S-1-5-20</S>
+                        <S>S-1-16-16384</S>
+                        <S>S-1-1-0</S>
+                        <S>S-1-5-32-545</S>
+                        <S>S-1-5-6</S>
+                        <S>S-1-2-1</S>
+                        <S>S-1-5-11</S>
+                        <S>S-1-5-15</S>
+                        <S>S-1-5-80-242729624-280608522-2219052887-3187409060-2225943459</S>
+                        <S>S-1-5-5-0-120303</S>
+                        <S>S-1-2-0</S>
+                      </LST>
+                    </Obj>
+                  </Props>
+                </Obj>
+                <Obj RefId="140">
+                  <TNRef RefId="6" />
+                  <ToString>SUProcessProof</ToString>
+                  <Props>
+                    <I32 N="Pid">2708</I32>
+                    <S N="Image">C:\Windows\System32\svchost.exe</S>
+                    <Obj N="TokenSids" RefId="141">
+                      <TNRef RefId="7" />
+                      <LST>
+                        <S>S-1-5-18</S>
+                        <S>S-1-16-16384</S>
+                        <S>S-1-1-0</S>
+                        <S>S-1-5-32-545</S>
+                        <S>S-1-5-6</S>
+                        <S>S-1-2-1</S>
+                        <S>S-1-5-11</S>
+                        <S>S-1-5-15</S>
+                        <S>S-1-5-80-2620808479-2171380039-3191355562-2070425692-3097948119</S>
+                        <S>S-1-5-5-0-120828</S>
+                        <S>S-1-2-0</S>
+                        <S>S-1-5-32-544</S>
+                      </LST>
+                    </Obj>
+                  </Props>
+                </Obj>
+                <Obj RefId="142">
+                  <TNRef RefId="6" />
+                  <ToString>SUProcessProof</ToString>
+                  <Props>
+                    <I32 N="Pid">2736</I32>
+                    <S N="Image">C:\Windows\System32\svchost.exe</S>
+                    <Obj N="TokenSids" RefId="143">
+                      <TNRef RefId="7" />
+                      <LST>
+                        <S>S-1-5-19</S>
+                        <S>S-1-16-16384</S>
+                        <S>S-1-1-0</S>
+                        <S>S-1-5-32-545</S>
+                        <S>S-1-5-6</S>
+                        <S>S-1-2-1</S>
+                        <S>S-1-5-11</S>
+                        <S>S-1-5-15</S>
+                        <S>S-1-5-80-2970612574-78537857-698502321-558674196-1451644582</S>
+                        <S>S-1-5-5-0-122135</S>
+                        <S>S-1-2-0</S>
+                        <S>S-1-5-33</S>
+                        <S>S-1-5-32-1488445330-856673777-1515413738-1380768593-2977925950-2228326386-886087428-2802422674</S>
+                        <S>S-1-5-32-383293015-3350740429-1839969850-1819881064-1569454686-4198502490-78857879-1413643331</S>
+                        <S>S-1-5-32-2035927579-283314533-3422103930-3587774809-765962649-3034203285-3544878962-607181067</S>
+                        <S>S-1-5-32-3659434007-2290108278-1125199667-3679670526-1293081662-2164323352-1777701501-2595986263</S>
+                        <S>S-1-5-32-11742800-2107441976-3443185924-4134956905-3840447964-3749968454-3843513199-670971053</S>
+                        <S>S-1-5-32-3523901360-1745872541-794127107-675934034-1867954868-1951917511-1111796624-2052600462</S>
+                        <S>S-1-5-80-2970612574-78537857-698502321-558674196-1451644582</S>
+                        <S>S-1-1-0</S>
+                        <S>S-1-5-5-0-122135</S>
+                        <S>S-1-5-33</S>
+                      </LST>
+                    </Obj>
+                  </Props>
+                </Obj>
+                <Obj RefId="144">
+                  <TNRef RefId="6" />
+                  <ToString>SUProcessProof</ToString>
+                  <Props>
+                    <I32 N="Pid">2828</I32>
+                    <S N="Image">C:\Windows\System32\svchost.exe</S>
+                    <Obj N="TokenSids" RefId="145">
+                      <TNRef RefId="7" />
+                      <LST>
+                        <S>S-1-5-18</S>
+                        <S>S-1-16-16384</S>
+                        <S>S-1-1-0</S>
+                        <S>S-1-5-32-545</S>
+                        <S>S-1-5-6</S>
+                        <S>S-1-2-1</S>
+                        <S>S-1-5-11</S>
+                        <S>S-1-5-15</S>
+                        <S>S-1-5-80-879696042-2351668846-370232824-2524288904-4023536711</S>
+                        <S>S-1-5-5-0-125581</S>
+                        <S>S-1-2-0</S>
+                        <S>S-1-5-32-544</S>
+                      </LST>
+                    </Obj>
+                  </Props>
+                </Obj>
+                <Obj RefId="146">
+                  <TNRef RefId="6" />
+                  <ToString>SUProcessProof</ToString>
+                  <Props>
+                    <I32 N="Pid">2836</I32>
+                    <S N="Image">C:\Program Files\Qemu-ga\qemu-ga.exe</S>
+                    <Obj N="TokenSids" RefId="147">
+                      <TNRef RefId="7" />
+                      <LST>
+                        <S>S-1-5-18</S>
+                        <S>S-1-5-32-544</S>
+                        <S>S-1-1-0</S>
+                        <S>S-1-5-11</S>
+                        <S>S-1-16-16384</S>
+                      </LST>
+                    </Obj>
+                  </Props>
+                </Obj>
+                <Obj RefId="148">
+                  <TNRef RefId="6" />
+                  <ToString>SUProcessProof</ToString>
+                  <Props>
+                    <I32 N="Pid">2848</I32>
+                    <S N="Image">C:\Windows\System32\svchost.exe</S>
+                    <Obj N="TokenSids" RefId="149">
+                      <TNRef RefId="7" />
+                      <LST>
+                        <S>S-1-5-19</S>
+                        <S>S-1-16-16384</S>
+                        <S>S-1-1-0</S>
+                        <S>S-1-5-32-545</S>
+                        <S>S-1-5-6</S>
+                        <S>S-1-2-1</S>
+                        <S>S-1-5-11</S>
+                        <S>S-1-5-15</S>
+                        <S>S-1-5-80-3435701886-799518250-3791383489-3228296122-2938884314</S>
+                        <S>S-1-5-5-0-126370</S>
+                        <S>S-1-2-0</S>
+                        <S>S-1-5-32-1488445330-856673777-1515413738-1380768593-2977925950-2228326386-886087428-2802422674</S>
+                        <S>S-1-5-32-383293015-3350740429-1839969850-1819881064-1569454686-4198502490-78857879-1413643331</S>
+                        <S>S-1-5-32-2035927579-283314533-3422103930-3587774809-765962649-3034203285-3544878962-607181067</S>
+                        <S>S-1-5-32-3659434007-2290108278-1125199667-3679670526-1293081662-2164323352-1777701501-2595986263</S>
+                        <S>S-1-5-32-11742800-2107441976-3443185924-4134956905-3840447964-3749968454-3843513199-670971053</S>
+                        <S>S-1-5-32-3523901360-1745872541-794127107-675934034-1867954868-1951917511-1111796624-2052600462</S>
+                      </LST>
+                    </Obj>
+                  </Props>
+                </Obj>
+                <Obj RefId="150">
+                  <TNRef RefId="6" />
+                  <ToString>SUProcessProof</ToString>
+                  <Props>
+                    <I32 N="Pid">2888</I32>
+                    <S N="Image">C:\Program Files\Spice Agent\vdservice.exe</S>
+                    <Obj N="TokenSids" RefId="151">
+                      <TNRef RefId="7" />
+                      <LST>
+                        <S>S-1-5-18</S>
+                        <S>S-1-5-32-544</S>
+                        <S>S-1-1-0</S>
+                        <S>S-1-5-11</S>
+                        <S>S-1-16-16384</S>
+                      </LST>
+                    </Obj>
+                  </Props>
+                </Obj>
+                <Obj RefId="152">
+                  <TNRef RefId="6" />
+                  <ToString>SUProcessProof</ToString>
+                  <Props>
+                    <I32 N="Pid">2912</I32>
+                    <S N="Image">C:\Windows\System32\OpenSSH\sshd.exe</S>
+                    <Obj N="TokenSids" RefId="153">
+                      <TNRef RefId="7" />
+                      <LST>
+                        <S>S-1-5-18</S>
+                        <S>S-1-5-32-544</S>
+                        <S>S-1-1-0</S>
+                        <S>S-1-5-11</S>
+                        <S>S-1-16-16384</S>
+                      </LST>
+                    </Obj>
+                  </Props>
+                </Obj>
+                <Obj RefId="154">
+                  <TNRef RefId="6" />
+                  <ToString>SUProcessProof</ToString>
+                  <Props>
+                    <I32 N="Pid">2956</I32>
+                    <S N="Image">C:\Windows\System32\svchost.exe</S>
+                    <Obj N="TokenSids" RefId="155">
+                      <TNRef RefId="7" />
+                      <LST>
+                        <S>S-1-5-18</S>
+                        <S>S-1-16-16384</S>
+                        <S>S-1-1-0</S>
+                        <S>S-1-5-32-545</S>
+                        <S>S-1-5-6</S>
+                        <S>S-1-2-1</S>
+                        <S>S-1-5-11</S>
+                        <S>S-1-5-15</S>
+                        <S>S-1-5-80-768763963-4214222998-2156221936-2953597973-713500239</S>
+                        <S>S-1-5-5-0-129998</S>
+                        <S>S-1-2-0</S>
+                        <S>S-1-5-32-544</S>
+                      </LST>
+                    </Obj>
+                  </Props>
+                </Obj>
+                <Obj RefId="156">
+                  <TNRef RefId="6" />
+                  <ToString>SUProcessProof</ToString>
+                  <Props>
+                    <I32 N="Pid">2984</I32>
+                    <S N="Image">C:\Windows\System32\svchost.exe</S>
+                    <Obj N="TokenSids" RefId="157">
+                      <TNRef RefId="7" />
+                      <LST>
+                        <S>S-1-5-18</S>
+                        <S>S-1-16-16384</S>
+                        <S>S-1-1-0</S>
+                        <S>S-1-5-32-545</S>
+                        <S>S-1-5-6</S>
+                        <S>S-1-2-1</S>
+                        <S>S-1-5-11</S>
+                        <S>S-1-5-15</S>
+                        <S>S-1-5-80-1938892561-4120931771-3580170924-3403102300-2651602529</S>
+                        <S>S-1-5-5-0-130020</S>
+                        <S>S-1-2-0</S>
+                        <S>S-1-5-32-544</S>
+                      </LST>
+                    </Obj>
+                  </Props>
+                </Obj>
+                <Obj RefId="158">
+                  <TNRef RefId="6" />
+                  <ToString>SUProcessProof</ToString>
+                  <Props>
+                    <I32 N="Pid">3036</I32>
+                    <S N="Image">C:\Program Files\Spice Agent\vdagent.exe</S>
+                    <Obj N="TokenSids" RefId="159">
+                      <TNRef RefId="7" />
+                      <LST>
+                        <S>S-1-5-18</S>
+                        <S>S-1-5-32-544</S>
+                        <S>S-1-1-0</S>
+                        <S>S-1-5-11</S>
+                        <S>S-1-16-16384</S>
+                      </LST>
+                    </Obj>
+                  </Props>
+                </Obj>
+                <Obj RefId="160">
+                  <TNRef RefId="6" />
+                  <ToString>SUProcessProof</ToString>
+                  <Props>
+                    <I32 N="Pid">2544</I32>
+                    <S N="Image">C:\Windows\System32\svchost.exe</S>
+                    <Obj N="TokenSids" RefId="161">
+                      <TNRef RefId="7" />
+                      <LST>
+                        <S>S-1-5-19</S>
+                        <S>S-1-16-16384</S>
+                        <S>S-1-1-0</S>
+                        <S>S-1-5-32-545</S>
+                        <S>S-1-5-6</S>
+                        <S>S-1-2-1</S>
+                        <S>S-1-5-11</S>
+                        <S>S-1-5-15</S>
+                        <S>S-1-5-80-3139157870-2983391045-3678747466-658725712-1809340420</S>
+                        <S>S-1-5-5-0-136411</S>
+                        <S>S-1-2-0</S>
+                        <S>S-1-5-32-1488445330-856673777-1515413738-1380768593-2977925950-2228326386-886087428-2802422674</S>
+                        <S>S-1-5-32-383293015-3350740429-1839969850-1819881064-1569454686-4198502490-78857879-1413643331</S>
+                        <S>S-1-5-32-2035927579-283314533-3422103930-3587774809-765962649-3034203285-3544878962-607181067</S>
+                        <S>S-1-5-32-3659434007-2290108278-1125199667-3679670526-1293081662-2164323352-1777701501-2595986263</S>
+                        <S>S-1-5-32-11742800-2107441976-3443185924-4134956905-3840447964-3749968454-3843513199-670971053</S>
+                        <S>S-1-5-32-3523901360-1745872541-794127107-675934034-1867954868-1951917511-1111796624-2052600462</S>
+                      </LST>
+                    </Obj>
+                  </Props>
+                </Obj>
+                <Obj RefId="162">
+                  <TNRef RefId="6" />
+                  <ToString>SUProcessProof</ToString>
+                  <Props>
+                    <I32 N="Pid">3276</I32>
+                    <S N="Image">C:\Windows\System32\svchost.exe</S>
+                    <Obj N="TokenSids" RefId="163">
+                      <TNRef RefId="7" />
+                      <LST>
+                        <S>S-1-5-18</S>
+                        <S>S-1-16-16384</S>
+                        <S>S-1-1-0</S>
+                        <S>S-1-5-32-545</S>
+                        <S>S-1-5-6</S>
+                        <S>S-1-2-1</S>
+                        <S>S-1-5-11</S>
+                        <S>S-1-5-15</S>
+                        <S>S-1-5-80-3256172449-2363790065-3617575471-4144056108-756904704</S>
+                        <S>S-1-5-80-1594061079-2000966165-462148798-751814865-2644087104</S>
+                        <S>S-1-5-80-4176366874-305252471-2256717057-2714189771-3552532790</S>
+                        <S>S-1-5-80-1954729425-4294152082-187165618-318331177-3831297489</S>
+                        <S>S-1-5-80-1691538513-4084330536-1620899472-1113280783-3554754292</S>
+                        <S>S-1-5-5-0-146751</S>
+                        <S>S-1-2-0</S>
+                        <S>S-1-5-32-544</S>
+                      </LST>
+                    </Obj>
+                  </Props>
+                </Obj>
+                <Obj RefId="164">
+                  <TNRef RefId="6" />
+                  <ToString>SUProcessProof</ToString>
+                  <Props>
+                    <I32 N="Pid">3292</I32>
+                    <S N="Image">C:\Windows\System32\svchost.exe</S>
+                    <Obj N="TokenSids" RefId="165">
+                      <TNRef RefId="7" />
+                      <LST>
+                        <S>S-1-5-19</S>
+                        <S>S-1-16-16384</S>
+                        <S>S-1-1-0</S>
+                        <S>S-1-5-32-545</S>
+                        <S>S-1-5-6</S>
+                        <S>S-1-2-1</S>
+                        <S>S-1-5-11</S>
+                        <S>S-1-5-15</S>
+                        <S>S-1-5-80-364023826-931424190-487969545-1024119571-74567675</S>
+                        <S>S-1-5-5-0-149716</S>
+                        <S>S-1-2-0</S>
+                        <S>S-1-5-32-1488445330-856673777-1515413738-1380768593-2977925950-2228326386-886087428-2802422674</S>
+                        <S>S-1-5-32-383293015-3350740429-1839969850-1819881064-1569454686-4198502490-78857879-1413643331</S>
+                        <S>S-1-5-32-2035927579-283314533-3422103930-3587774809-765962649-3034203285-3544878962-607181067</S>
+                        <S>S-1-5-32-3659434007-2290108278-1125199667-3679670526-1293081662-2164323352-1777701501-2595986263</S>
+                        <S>S-1-5-32-11742800-2107441976-3443185924-4134956905-3840447964-3749968454-3843513199-670971053</S>
+                        <S>S-1-5-32-3523901360-1745872541-794127107-675934034-1867954868-1951917511-1111796624-2052600462</S>
+                      </LST>
+                    </Obj>
+                  </Props>
+                </Obj>
+                <Obj RefId="166">
+                  <TNRef RefId="6" />
+                  <ToString>SUProcessProof</ToString>
+                  <Props>
+                    <I32 N="Pid">3348</I32>
+                    <S N="Image">C:\Windows\System32\svchost.exe</S>
+                    <Obj N="TokenSids" RefId="167">
+                      <TNRef RefId="7" />
+                      <LST>
+                        <S>S-1-5-19</S>
+                        <S>S-1-16-16384</S>
+                        <S>S-1-1-0</S>
+                        <S>S-1-5-32-545</S>
+                        <S>S-1-5-6</S>
+                        <S>S-1-2-1</S>
+                        <S>S-1-5-11</S>
+                        <S>S-1-5-15</S>
+                        <S>S-1-5-80-639065985-1709096039-2702309040-2770678766-2981280942</S>
+                        <S>S-1-5-5-0-154514</S>
+                        <S>S-1-2-0</S>
+                        <S>S-1-5-33</S>
+                        <S>S-1-5-32-1488445330-856673777-1515413738-1380768593-2977925950-2228326386-886087428-2802422674</S>
+                        <S>S-1-5-32-383293015-3350740429-1839969850-1819881064-1569454686-4198502490-78857879-1413643331</S>
+                        <S>S-1-5-32-2035927579-283314533-3422103930-3587774809-765962649-3034203285-3544878962-607181067</S>
+                        <S>S-1-5-32-3659434007-2290108278-1125199667-3679670526-1293081662-2164323352-1777701501-2595986263</S>
+                        <S>S-1-5-32-11742800-2107441976-3443185924-4134956905-3840447964-3749968454-3843513199-670971053</S>
+                        <S>S-1-5-32-3523901360-1745872541-794127107-675934034-1867954868-1951917511-1111796624-2052600462</S>
+                        <S>S-1-5-80-639065985-1709096039-2702309040-2770678766-2981280942</S>
+                        <S>S-1-1-0</S>
+                        <S>S-1-5-5-0-154514</S>
+                        <S>S-1-5-33</S>
+                      </LST>
+                    </Obj>
+                  </Props>
+                </Obj>
+                <Obj RefId="168">
+                  <TNRef RefId="6" />
+                  <ToString>SUProcessProof</ToString>
+                  <Props>
+                    <I32 N="Pid">3580</I32>
+                    <S N="Image">C:\Windows\System32\svchost.exe</S>
+                    <Obj N="TokenSids" RefId="169">
+                      <TNRef RefId="7" />
+                      <LST>
+                        <S>S-1-5-19</S>
+                        <S>S-1-16-16384</S>
+                        <S>S-1-1-0</S>
+                        <S>S-1-5-32-545</S>
+                        <S>S-1-5-6</S>
+                        <S>S-1-2-1</S>
+                        <S>S-1-5-11</S>
+                        <S>S-1-5-15</S>
+                        <S>S-1-5-80-3215268152-2863950836-530904203-4246843131-2183915461</S>
+                        <S>S-1-5-5-0-164006</S>
+                        <S>S-1-2-0</S>
+                        <S>S-1-5-32-1488445330-856673777-1515413738-1380768593-2977925950-2228326386-886087428-2802422674</S>
+                        <S>S-1-5-32-383293015-3350740429-1839969850-1819881064-1569454686-4198502490-78857879-1413643331</S>
+                        <S>S-1-5-32-2035927579-283314533-3422103930-3587774809-765962649-3034203285-3544878962-607181067</S>
+                        <S>S-1-5-32-3659434007-2290108278-1125199667-3679670526-1293081662-2164323352-1777701501-2595986263</S>
+                        <S>S-1-5-32-11742800-2107441976-3443185924-4134956905-3840447964-3749968454-3843513199-670971053</S>
+                        <S>S-1-5-32-3523901360-1745872541-794127107-675934034-1867954868-1951917511-1111796624-2052600462</S>
+                      </LST>
+                    </Obj>
+                  </Props>
+                </Obj>
+                <Obj RefId="170">
+                  <TNRef RefId="6" />
+                  <ToString>SUProcessProof</ToString>
+                  <Props>
+                    <I32 N="Pid">3600</I32>
+                    <S N="Image">C:\Windows\System32\wbem\WmiPrvSE.exe</S>
+                    <Obj N="TokenSids" RefId="171">
+                      <TNRef RefId="7" />
+                      <LST>
+                        <S>S-1-5-18</S>
+                        <S>S-1-16-16384</S>
+                        <S>S-1-1-0</S>
+                        <S>S-1-5-32-545</S>
+                        <S>S-1-5-6</S>
+                        <S>S-1-2-1</S>
+                        <S>S-1-5-11</S>
+                        <S>S-1-5-15</S>
+                        <S>S-1-5-80-3750560858-172214265-3889451188-1914796615-4100997547</S>
+                        <S>S-1-5-5-0-118345</S>
+                        <S>S-1-2-0</S>
+                        <S>S-1-5-32-544</S>
+                      </LST>
+                    </Obj>
+                  </Props>
+                </Obj>
+                <Obj RefId="172">
+                  <TNRef RefId="6" />
+                  <ToString>SUProcessProof</ToString>
+                  <Props>
+                    <I32 N="Pid">3612</I32>
+                    <S N="Image">C:\Windows\System32\wbem\WmiPrvSE.exe</S>
+                    <Obj N="TokenSids" RefId="173">
+                      <TNRef RefId="7" />
+                      <LST>
+                        <S>S-1-5-20</S>
+                        <S>S-1-16-16384</S>
+                        <S>S-1-1-0</S>
+                        <S>S-1-5-32-545</S>
+                        <S>S-1-5-6</S>
+                        <S>S-1-2-1</S>
+                        <S>S-1-5-11</S>
+                        <S>S-1-5-15</S>
+                        <S>S-1-5-86-615999462-62705297-2911207457-59056572-3668589837</S>
+                        <S>S-1-5-5-0-163781</S>
+                      </LST>
+                    </Obj>
+                  </Props>
+                </Obj>
+                <Obj RefId="174">
+                  <TNRef RefId="6" />
+                  <ToString>SUProcessProof</ToString>
+                  <Props>
+                    <I32 N="Pid">3804</I32>
+                    <S N="Image">C:\Windows\System32\svchost.exe</S>
+                    <Obj N="TokenSids" RefId="175">
+                      <TNRef RefId="7" />
+                      <LST>
+                        <S>S-1-5-20</S>
+                        <S>S-1-16-16384</S>
+                        <S>S-1-1-0</S>
+                        <S>S-1-5-32-545</S>
+                        <S>S-1-5-6</S>
+                        <S>S-1-2-1</S>
+                        <S>S-1-5-11</S>
+                        <S>S-1-5-15</S>
+                        <S>S-1-5-80-3044542841-3639452079-4096941652-1606687743-1256249853</S>
+                        <S>S-1-5-5-0-194592</S>
+                        <S>S-1-2-0</S>
+                      </LST>
+                    </Obj>
+                  </Props>
+                </Obj>
+                <Obj RefId="176">
+                  <TNRef RefId="6" />
+                  <ToString>SUProcessProof</ToString>
+                  <Props>
+                    <I32 N="Pid">3876</I32>
+                    <S N="Image">C:\Windows\System32\svchost.exe</S>
+                    <Obj N="TokenSids" RefId="177">
+                      <TNRef RefId="7" />
+                      <LST>
+                        <S>S-1-5-18</S>
+                        <S>S-1-16-16384</S>
+                        <S>S-1-1-0</S>
+                        <S>S-1-5-32-545</S>
+                        <S>S-1-5-6</S>
+                        <S>S-1-2-1</S>
+                        <S>S-1-5-11</S>
+                        <S>S-1-5-15</S>
+                        <S>S-1-5-80-1949724575-2387902436-65106593-1201171665-3967308604</S>
+                        <S>S-1-5-5-0-208281</S>
+                        <S>S-1-2-0</S>
+                        <S>S-1-5-32-544</S>
+                      </LST>
+                    </Obj>
+                  </Props>
+                </Obj>
+                <Obj RefId="178">
+                  <TNRef RefId="6" />
+                  <ToString>SUProcessProof</ToString>
+                  <Props>
+                    <I32 N="Pid">3912</I32>
+                    <S N="Image">C:\Windows\System32\svchost.exe</S>
+                    <Obj N="TokenSids" RefId="179">
+                      <TNRef RefId="7" />
+                      <LST>
+                        <S>S-1-5-18</S>
+                        <S>S-1-16-16384</S>
+                        <S>S-1-1-0</S>
+                        <S>S-1-5-32-545</S>
+                        <S>S-1-5-6</S>
+                        <S>S-1-2-1</S>
+                        <S>S-1-5-11</S>
+                        <S>S-1-5-15</S>
+                        <S>S-1-5-80-864916184-135290571-3087830041-1716922880-4237303741</S>
+                        <S>S-1-5-5-0-215563</S>
+                        <S>S-1-2-0</S>
+                        <S>S-1-5-32-544</S>
+                      </LST>
+                    </Obj>
+                  </Props>
+                </Obj>
+                <Obj RefId="180">
+                  <TNRef RefId="6" />
+                  <ToString>SUProcessProof</ToString>
+                  <Props>
+                    <I32 N="Pid">3992</I32>
+                    <S N="Image">C:\Windows\System32\svchost.exe</S>
+                    <Obj N="TokenSids" RefId="181">
+                      <TNRef RefId="7" />
+                      <LST>
+                        <S>S-1-5-18</S>
+                        <S>S-1-16-16384</S>
+                        <S>S-1-1-0</S>
+                        <S>S-1-5-32-545</S>
+                        <S>S-1-5-6</S>
+                        <S>S-1-2-1</S>
+                        <S>S-1-5-11</S>
+                        <S>S-1-5-15</S>
+                        <S>S-1-5-80-3355894222-2288616474-3163838539-1515771758-43395969</S>
+                        <S>S-1-5-5-0-220671</S>
+                        <S>S-1-2-0</S>
+                        <S>S-1-5-32-544</S>
+                      </LST>
+                    </Obj>
+                  </Props>
+                </Obj>
+                <Obj RefId="182">
+                  <TNRef RefId="6" />
+                  <ToString>SUProcessProof</ToString>
+                  <Props>
+                    <I32 N="Pid">4052</I32>
+                    <S N="Image">C:\Windows\System32\svchost.exe</S>
+                    <Obj N="TokenSids" RefId="183">
+                      <TNRef RefId="7" />
+                      <LST>
+                        <S>S-1-5-19</S>
+                        <S>S-1-16-16384</S>
+                        <S>S-1-1-0</S>
+                        <S>S-1-5-32-545</S>
+                        <S>S-1-5-6</S>
+                        <S>S-1-2-1</S>
+                        <S>S-1-5-11</S>
+                        <S>S-1-5-15</S>
+                        <S>S-1-5-80-486568272-975562994-1883531608-2732234258-332540751</S>
+                        <S>S-1-5-5-0-224908</S>
+                        <S>S-1-2-0</S>
+                        <S>S-1-5-32-1488445330-856673777-1515413738-1380768593-2977925950-2228326386-886087428-2802422674</S>
+                        <S>S-1-5-32-383293015-3350740429-1839969850-1819881064-1569454686-4198502490-78857879-1413643331</S>
+                        <S>S-1-5-32-2035927579-283314533-3422103930-3587774809-765962649-3034203285-3544878962-607181067</S>
+                        <S>S-1-5-32-3659434007-2290108278-1125199667-3679670526-1293081662-2164323352-1777701501-2595986263</S>
+                        <S>S-1-5-32-11742800-2107441976-3443185924-4134956905-3840447964-3749968454-3843513199-670971053</S>
+                        <S>S-1-5-32-3523901360-1745872541-794127107-675934034-1867954868-1951917511-1111796624-2052600462</S>
+                      </LST>
+                    </Obj>
+                  </Props>
+                </Obj>
+                <Obj RefId="184">
+                  <TNRef RefId="6" />
+                  <ToString>SUProcessProof</ToString>
+                  <Props>
+                    <I32 N="Pid">3084</I32>
+                    <S N="Image">C:\Windows\System32\svchost.exe</S>
+                    <Obj N="TokenSids" RefId="185">
+                      <TNRef RefId="7" />
+                      <LST>
+                        <S>S-1-5-18</S>
+                        <S>S-1-16-16384</S>
+                        <S>S-1-1-0</S>
+                        <S>S-1-5-32-545</S>
+                        <S>S-1-5-6</S>
+                        <S>S-1-2-1</S>
+                        <S>S-1-5-11</S>
+                        <S>S-1-5-15</S>
+                        <S>S-1-5-80-65843127-2189646064-2697706863-2125155322-3141006483</S>
+                        <S>S-1-5-5-0-227828</S>
+                        <S>S-1-2-0</S>
+                        <S>S-1-5-32-544</S>
+                      </LST>
+                    </Obj>
+                  </Props>
+                </Obj>
+                <Obj RefId="186">
+                  <TNRef RefId="6" />
+                  <ToString>SUProcessProof</ToString>
+                  <Props>
+                    <I32 N="Pid">3048</I32>
+                    <S N="Image">C:\Windows\System32\svchost.exe</S>
+                    <Obj N="TokenSids" RefId="187">
+                      <TNRef RefId="7" />
+                      <LST>
+                        <S>S-1-5-18</S>
+                        <S>S-1-16-16384</S>
+                        <S>S-1-1-0</S>
+                        <S>S-1-5-32-545</S>
+                        <S>S-1-5-6</S>
+                        <S>S-1-2-1</S>
+                        <S>S-1-5-11</S>
+                        <S>S-1-5-15</S>
+                        <S>S-1-5-80-2536636004-4072673470-1048721469-2703517266-1433793019</S>
+                        <S>S-1-5-5-0-232860</S>
+                        <S>S-1-2-0</S>
+                        <S>S-1-5-32-544</S>
+                      </LST>
+                    </Obj>
+                  </Props>
+                </Obj>
+                <Obj RefId="188">
+                  <TNRef RefId="6" />
+                  <ToString>SUProcessProof</ToString>
+                  <Props>
+                    <I32 N="Pid">2856</I32>
+                    <S N="Image">C:\Windows\System32\dasHost.exe</S>
+                    <Obj N="TokenSids" RefId="189">
+                      <TNRef RefId="7" />
+                      <LST>
+                        <S>S-1-5-19</S>
+                        <S>S-1-16-16384</S>
+                        <S>S-1-1-0</S>
+                        <S>S-1-5-32-545</S>
+                        <S>S-1-5-6</S>
+                        <S>S-1-2-1</S>
+                        <S>S-1-5-11</S>
+                        <S>S-1-5-15</S>
+                        <S>S-1-5-92-933257453-1117212482-1216340100-3328771170-0</S>
+                        <S>S-1-5-92-3339056971-1291069075-3798698925-2882100687-0</S>
+                        <S>S-1-5-92-1467204242-1103346305-4253404563-2848856930-0</S>
+                        <S>S-1-5-92-3101059759-1284816879-721976251-1813760811-0</S>
+                        <S>S-1-5-92-1465950962-1269850781-1201917113-1807638133-0</S>
+                        <S>S-1-5-92-772714260-1330759245-1607081917-2237938158-0</S>
+                        <S>S-1-5-92-507857385-1133792159-3243016362-2537263318-0</S>
+                        <S>S-1-5-21-2702878673-795188819-444038987-1031</S>
+                        <S>S-1-5-21-2702878673-795188819-444038987-1033</S>
+                        <S>S-1-5-21-2702878673-795188819-444038987-1447</S>
+                        <S>S-1-5-21-2702878673-795188819-444038987-1043</S>
+                        <S>S-1-5-32-1488445330-856673777-1515413738-1380768593-2977925950-2228326386-886087428-2802422674</S>
+                        <S>S-1-5-32-383293015-3350740429-1839969850-1819881064-1569454686-4198502490-78857879-1413643331</S>
+                        <S>S-1-5-32-2035927579-283314533-3422103930-3587774809-765962649-3034203285-3544878962-607181067</S>
+                        <S>S-1-5-32-3659434007-2290108278-1125199667-3679670526-1293081662-2164323352-1777701501-2595986263</S>
+                        <S>S-1-5-32-11742800-2107441976-3443185924-4134956905-3840447964-3749968454-3843513199-670971053</S>
+                        <S>S-1-5-32-3523901360-1745872541-794127107-675934034-1867954868-1951917511-1111796624-2052600462</S>
+                      </LST>
+                    </Obj>
+                  </Props>
+                </Obj>
+                <Obj RefId="190">
+                  <TNRef RefId="6" />
+                  <ToString>SUProcessProof</ToString>
+                  <Props>
+                    <I32 N="Pid">4184</I32>
+                    <S N="Image">C:\Windows\System32\conhost.exe</S>
+                    <Obj N="TokenSids" RefId="191">
+                      <TNRef RefId="7" />
+                      <LST>
+                        <S>S-1-5-18</S>
+                        <S>S-1-16-16384</S>
+                        <S>S-1-1-0</S>
+                        <S>S-1-5-32-545</S>
+                        <S>S-1-5-6</S>
+                        <S>S-1-2-1</S>
+                        <S>S-1-5-11</S>
+                        <S>S-1-5-15</S>
+                        <S>S-1-5-80-4125092361-1567024937-842823819-2091237918-836075745</S>
+                        <S>S-1-5-5-0-68440</S>
+                        <S>S-1-2-0</S>
+                        <S>S-1-5-32-544</S>
+                      </LST>
+                    </Obj>
+                  </Props>
+                </Obj>
+                <Obj RefId="192">
+                  <TNRef RefId="6" />
+                  <ToString>SUProcessProof</ToString>
+                  <Props>
+                    <I32 N="Pid">4196</I32>
+                    <S N="Image">C:\Windows\System32\conhost.exe</S>
+                    <Obj N="TokenSids" RefId="193">
+                      <TNRef RefId="7" />
+                      <LST>
+                        <S>S-1-5-18</S>
+                        <S>S-1-16-16384</S>
+                        <S>S-1-1-0</S>
+                        <S>S-1-5-32-545</S>
+                        <S>S-1-5-6</S>
+                        <S>S-1-2-1</S>
+                        <S>S-1-5-11</S>
+                        <S>S-1-5-15</S>
+                        <S>S-1-5-80-4125092361-1567024937-842823819-2091237918-836075745</S>
+                        <S>S-1-5-5-0-68440</S>
+                        <S>S-1-2-0</S>
+                        <S>S-1-5-32-544</S>
+                      </LST>
+                    </Obj>
+                  </Props>
+                </Obj>
+                <Obj RefId="194">
+                  <TNRef RefId="6" />
+                  <ToString>SUProcessProof</ToString>
+                  <Props>
+                    <I32 N="Pid">4392</I32>
+                    <S N="Image">C:\Windows\System32\sppsvc.exe</S>
+                    <Obj N="TokenSids" RefId="195">
+                      <TNRef RefId="7" />
+                      <LST>
+                        <S>S-1-5-20</S>
+                        <S>S-1-16-16384</S>
+                        <S>S-1-1-0</S>
+                        <S>S-1-5-32-545</S>
+                        <S>S-1-5-6</S>
+                        <S>S-1-2-1</S>
+                        <S>S-1-5-11</S>
+                        <S>S-1-5-15</S>
+                        <S>S-1-5-80-123231216-2592883651-3715271367-3753151631-4175906628</S>
+                        <S>S-1-5-5-0-242669</S>
+                        <S>S-1-2-0</S>
+                      </LST>
+                    </Obj>
+                  </Props>
+                </Obj>
+                <Obj RefId="196">
+                  <TNRef RefId="6" />
+                  <ToString>SUProcessProof</ToString>
+                  <Props>
+                    <I32 N="Pid">4624</I32>
+                    <S N="Image">C:\Windows\System32\svchost.exe</S>
+                    <Obj N="TokenSids" RefId="197">
+                      <TNRef RefId="7" />
+                      <LST>
+                        <S>S-1-5-19</S>
+                        <S>S-1-16-16384</S>
+                        <S>S-1-1-0</S>
+                        <S>S-1-5-32-545</S>
+                        <S>S-1-5-6</S>
+                        <S>S-1-2-1</S>
+                        <S>S-1-5-11</S>
+                        <S>S-1-5-15</S>
+                        <S>S-1-5-80-3765985997-1043742756-2756022526-3497566756-2081646175</S>
+                        <S>S-1-5-5-0-266764</S>
+                        <S>S-1-2-0</S>
+                        <S>S-1-5-32-1488445330-856673777-1515413738-1380768593-2977925950-2228326386-886087428-2802422674</S>
+                        <S>S-1-5-32-383293015-3350740429-1839969850-1819881064-1569454686-4198502490-78857879-1413643331</S>
+                        <S>S-1-5-32-2035927579-283314533-3422103930-3587774809-765962649-3034203285-3544878962-607181067</S>
+                        <S>S-1-5-32-3659434007-2290108278-1125199667-3679670526-1293081662-2164323352-1777701501-2595986263</S>
+                        <S>S-1-5-32-11742800-2107441976-3443185924-4134956905-3840447964-3749968454-3843513199-670971053</S>
+                        <S>S-1-5-32-3523901360-1745872541-794127107-675934034-1867954868-1951917511-1111796624-2052600462</S>
+                      </LST>
+                    </Obj>
+                  </Props>
+                </Obj>
+                <Obj RefId="198">
+                  <TNRef RefId="6" />
+                  <ToString>SUProcessProof</ToString>
+                  <Props>
+                    <I32 N="Pid">4708</I32>
+                    <S N="Image">C:\Windows\System32\SppExtComObj.Exe</S>
+                    <Obj N="TokenSids" RefId="199">
+                      <TNRef RefId="7" />
+                      <LST>
+                        <S>S-1-5-20</S>
+                        <S>S-1-16-16384</S>
+                        <S>S-1-1-0</S>
+                        <S>S-1-5-32-545</S>
+                        <S>S-1-5-6</S>
+                        <S>S-1-2-1</S>
+                        <S>S-1-5-11</S>
+                        <S>S-1-5-15</S>
+                        <S>S-1-5-80-123231216-2592883651-3715271367-3753151631-4175906628</S>
+                        <S>S-1-5-5-0-242669</S>
+                        <S>S-1-2-0</S>
+                      </LST>
+                    </Obj>
+                  </Props>
+                </Obj>
+                <Obj RefId="200">
+                  <TNRef RefId="6" />
+                  <ToString>SUProcessProof</ToString>
+                  <Props>
+                    <I32 N="Pid">4720</I32>
+                    <S N="Image">C:\Windows\System32\svchost.exe</S>
+                    <Obj N="TokenSids" RefId="201">
+                      <TNRef RefId="7" />
+                      <LST>
+                        <S>S-1-5-18</S>
+                        <S>S-1-16-16384</S>
+                        <S>S-1-1-0</S>
+                        <S>S-1-5-32-545</S>
+                        <S>S-1-5-6</S>
+                        <S>S-1-2-1</S>
+                        <S>S-1-5-11</S>
+                        <S>S-1-5-15</S>
+                        <S>S-1-5-80-1999281942-4196217620-51267815-1628483199-606183737</S>
+                        <S>S-1-5-5-0-270215</S>
+                        <S>S-1-2-0</S>
+                        <S>S-1-5-32-544</S>
+                      </LST>
+                    </Obj>
+                  </Props>
+                </Obj>
+                <Obj RefId="202">
+                  <TNRef RefId="6" />
+                  <ToString>SUProcessProof</ToString>
+                  <Props>
+                    <I32 N="Pid">4836</I32>
+                    <S N="Image">C:\Windows\System32\svchost.exe</S>
+                    <Obj N="TokenSids" RefId="203">
+                      <TNRef RefId="7" />
+                      <LST>
+                        <S>S-1-5-19</S>
+                        <S>S-1-16-16384</S>
+                        <S>S-1-1-0</S>
+                        <S>S-1-5-32-545</S>
+                        <S>S-1-5-6</S>
+                        <S>S-1-2-1</S>
+                        <S>S-1-5-11</S>
+                        <S>S-1-5-15</S>
+                        <S>S-1-5-80-2168654060-3115992504-1782388893-2584760693-2634250426</S>
+                        <S>S-1-5-5-0-275191</S>
+                        <S>S-1-2-0</S>
+                        <S>S-1-5-32-1488445330-856673777-1515413738-1380768593-2977925950-2228326386-886087428-2802422674</S>
+                        <S>S-1-5-32-383293015-3350740429-1839969850-1819881064-1569454686-4198502490-78857879-1413643331</S>
+                        <S>S-1-5-32-2035927579-283314533-3422103930-3587774809-765962649-3034203285-3544878962-607181067</S>
+                        <S>S-1-5-32-3659434007-2290108278-1125199667-3679670526-1293081662-2164323352-1777701501-2595986263</S>
+                        <S>S-1-5-32-11742800-2107441976-3443185924-4134956905-3840447964-3749968454-3843513199-670971053</S>
+                        <S>S-1-5-32-3523901360-1745872541-794127107-675934034-1867954868-1951917511-1111796624-2052600462</S>
+                      </LST>
+                    </Obj>
+                  </Props>
+                </Obj>
+                <Obj RefId="204">
+                  <TNRef RefId="6" />
+                  <ToString>SUProcessProof</ToString>
+                  <Props>
+                    <I32 N="Pid">4916</I32>
+                    <S N="Image">C:\Windows\System32\svchost.exe</S>
+                    <Obj N="TokenSids" RefId="205">
+                      <TNRef RefId="7" />
+                      <LST>
+                        <S>S-1-5-18</S>
+                        <S>S-1-5-32-544</S>
+                        <S>S-1-1-0</S>
+                        <S>S-1-5-11</S>
+                        <S>S-1-16-16384</S>
+                      </LST>
+                    </Obj>
+                  </Props>
+                </Obj>
+                <Obj RefId="206">
+                  <TNRef RefId="6" />
+                  <ToString>SUProcessProof</ToString>
+                  <Props>
+                    <I32 N="Pid">2236</I32>
+                    <S N="Image">C:\Windows\System32\OpenSSH\sshd.exe</S>
+                    <Obj N="TokenSids" RefId="207">
+                      <TNRef RefId="7" />
+                      <LST>
+                        <S>S-1-5-18</S>
+                        <S>S-1-5-32-544</S>
+                        <S>S-1-1-0</S>
+                        <S>S-1-5-11</S>
+                        <S>S-1-16-16384</S>
+                      </LST>
+                    </Obj>
+                  </Props>
+                </Obj>
+                <Obj RefId="208">
+                  <TNRef RefId="6" />
+                  <ToString>SUProcessProof</ToString>
+                  <Props>
+                    <I32 N="Pid">2168</I32>
+                    <S N="Image">C:\Windows\System32\conhost.exe</S>
+                    <Obj N="TokenSids" RefId="209">
+                      <TNRef RefId="7" />
+                      <LST>
+                        <S>S-1-5-18</S>
+                        <S>S-1-5-32-544</S>
+                        <S>S-1-1-0</S>
+                        <S>S-1-5-11</S>
+                        <S>S-1-16-16384</S>
+                      </LST>
+                    </Obj>
+                  </Props>
+                </Obj>
+                <Obj RefId="210">
+                  <TNRef RefId="6" />
+                  <ToString>SUProcessProof</ToString>
+                  <Props>
+                    <I32 N="Pid">5076</I32>
+                    <S N="Image">C:\Windows\System32\OpenSSH\sshd.exe</S>
+                    <Obj N="TokenSids" RefId="211">
+                      <TNRef RefId="7" />
+                      <LST>
+                        <S>S-1-5-21-316478115-1595729549-2803163825-1001</S>
+                        <S>S-1-5-21-316478115-1595729549-2803163825-513</S>
+                        <S>S-1-1-0</S>
+                        <S>S-1-5-114</S>
+                        <S>S-1-5-32-544</S>
+                        <S>S-1-5-32-545</S>
+                        <S>S-1-5-2</S>
+                        <S>S-1-5-11</S>
+                        <S>S-1-5-15</S>
+                        <S>S-1-5-113</S>
+                        <S>S-1-5-5-0-362669</S>
+                        <S>S-1-5-64-10</S>
+                        <S>S-1-16-12288</S>
+                      </LST>
+                    </Obj>
+                  </Props>
+                </Obj>
+                <Obj RefId="212">
+                  <TNRef RefId="6" />
+                  <ToString>SUProcessProof</ToString>
+                  <Props>
+                    <I32 N="Pid">5104</I32>
+                    <S N="Image">C:\Windows\System32\cmd.exe</S>
+                    <Obj N="TokenSids" RefId="213">
+                      <TNRef RefId="7" />
+                      <LST>
+                        <S>S-1-5-21-316478115-1595729549-2803163825-1001</S>
+                        <S>S-1-5-21-316478115-1595729549-2803163825-513</S>
+                        <S>S-1-1-0</S>
+                        <S>S-1-5-114</S>
+                        <S>S-1-5-32-544</S>
+                        <S>S-1-5-32-545</S>
+                        <S>S-1-5-2</S>
+                        <S>S-1-5-11</S>
+                        <S>S-1-5-15</S>
+                        <S>S-1-5-113</S>
+                        <S>S-1-5-5-0-362669</S>
+                        <S>S-1-5-64-10</S>
+                        <S>S-1-16-12288</S>
+                      </LST>
+                    </Obj>
+                  </Props>
+                </Obj>
+                <Obj RefId="214">
+                  <TNRef RefId="6" />
+                  <ToString>SUProcessProof</ToString>
+                  <Props>
+                    <I32 N="Pid">5084</I32>
+                    <S N="Image">C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe</S>
+                    <Obj N="TokenSids" RefId="215">
+                      <TNRef RefId="7" />
+                      <LST>
+                        <S>S-1-5-21-316478115-1595729549-2803163825-1001</S>
+                        <S>S-1-5-21-316478115-1595729549-2803163825-513</S>
+                        <S>S-1-1-0</S>
+                        <S>S-1-5-114</S>
+                        <S>S-1-5-32-544</S>
+                        <S>S-1-5-32-545</S>
+                        <S>S-1-5-2</S>
+                        <S>S-1-5-11</S>
+                        <S>S-1-5-15</S>
+                        <S>S-1-5-113</S>
+                        <S>S-1-5-5-0-362669</S>
+                        <S>S-1-5-64-10</S>
+                        <S>S-1-16-12288</S>
+                      </LST>
+                    </Obj>
+                  </Props>
+                </Obj>
+                <Obj RefId="216">
+                  <TNRef RefId="6" />
+                  <ToString>SUProcessProof</ToString>
+                  <Props>
+                    <I32 N="Pid">4424</I32>
+                    <S N="Image">C:\Windows\System32\wbem\WmiApSrv.exe</S>
+                    <Obj N="TokenSids" RefId="217">
+                      <TNRef RefId="7" />
+                      <LST>
+                        <S>S-1-5-18</S>
+                        <S>S-1-16-16384</S>
+                        <S>S-1-1-0</S>
+                        <S>S-1-5-32-545</S>
+                        <S>S-1-5-6</S>
+                        <S>S-1-2-1</S>
+                        <S>S-1-5-11</S>
+                        <S>S-1-5-15</S>
+                        <S>S-1-5-80-1851371743-411767070-3743290205-1090512353-603110601</S>
+                        <S>S-1-5-5-0-374548</S>
+                        <S>S-1-2-0</S>
+                        <S>S-1-5-32-544</S>
+                      </LST>
+                    </Obj>
+                  </Props>
+                </Obj>
+                <Obj RefId="218">
+                  <TNRef RefId="6" />
+                  <ToString>SUProcessProof</ToString>
+                  <Props>
+                    <I32 N="Pid">1768</I32>
+                    <S N="Image">C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe</S>
+                    <Obj N="TokenSids" RefId="219">
+                      <TNRef RefId="7" />
+                      <LST>
+                        <S>S-1-5-21-316478115-1595729549-2803163825-1001</S>
+                        <S>S-1-5-21-316478115-1595729549-2803163825-513</S>
+                        <S>S-1-1-0</S>
+                        <S>S-1-5-114</S>
+                        <S>S-1-5-32-544</S>
+                        <S>S-1-5-32-545</S>
+                        <S>S-1-5-2</S>
+                        <S>S-1-5-11</S>
+                        <S>S-1-5-15</S>
+                        <S>S-1-5-113</S>
+                        <S>S-1-5-5-0-362669</S>
+                        <S>S-1-5-64-10</S>
+                        <S>S-1-16-12288</S>
+                      </LST>
+                    </Obj>
+                  </Props>
+                </Obj>
+                <Obj RefId="220">
+                  <TNRef RefId="6" />
+                  <ToString>SUProcessProof</ToString>
+                  <Props>
+                    <I32 N="Pid">5160</I32>
+                    <S N="Image">C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe</S>
+                    <Obj N="TokenSids" RefId="221">
+                      <TNRef RefId="7" />
+                      <LST>
+                        <S>S-1-5-21-316478115-1595729549-2803163825-1001</S>
+                        <S>S-1-5-21-316478115-1595729549-2803163825-513</S>
+                        <S>S-1-1-0</S>
+                        <S>S-1-5-114</S>
+                        <S>S-1-5-32-544</S>
+                        <S>S-1-5-32-545</S>
+                        <S>S-1-5-2</S>
+                        <S>S-1-5-11</S>
+                        <S>S-1-5-15</S>
+                        <S>S-1-5-113</S>
+                        <S>S-1-5-5-0-362669</S>
+                        <S>S-1-5-64-10</S>
+                        <S>S-1-16-12288</S>
+                      </LST>
+                    </Obj>
+                  </Props>
+                </Obj>
+                <Obj RefId="222">
+                  <TNRef RefId="6" />
+                  <ToString>SUProcessProof</ToString>
+                  <Props>
+                    <I32 N="Pid">5168</I32>
+                    <S N="Image">C:\Windows\System32\conhost.exe</S>
+                    <Obj N="TokenSids" RefId="223">
+                      <TNRef RefId="7" />
+                      <LST>
+                        <S>S-1-5-21-316478115-1595729549-2803163825-1001</S>
+                        <S>S-1-5-21-316478115-1595729549-2803163825-513</S>
+                        <S>S-1-1-0</S>
+                        <S>S-1-5-114</S>
+                        <S>S-1-5-32-544</S>
+                        <S>S-1-5-32-545</S>
+                        <S>S-1-5-2</S>
+                        <S>S-1-5-11</S>
+                        <S>S-1-5-15</S>
+                        <S>S-1-5-113</S>
+                        <S>S-1-5-5-0-362669</S>
+                        <S>S-1-5-64-10</S>
+                        <S>S-1-16-12288</S>
+                      </LST>
+                    </Obj>
+                  </Props>
+                </Obj>
+                <Obj RefId="224">
+                  <TNRef RefId="6" />
+                  <ToString>SUProcessProof</ToString>
+                  <Props>
+                    <I32 N="Pid">5324</I32>
+                    <S N="Image">C:\Windows\System32\wbem\WmiPrvSE.exe</S>
+                    <Obj N="TokenSids" RefId="225">
+                      <TNRef RefId="7" />
+                      <LST>
+                        <S>S-1-5-19</S>
+                        <S>S-1-16-16384</S>
+                        <S>S-1-1-0</S>
+                        <S>S-1-5-32-545</S>
+                        <S>S-1-5-6</S>
+                        <S>S-1-2-1</S>
+                        <S>S-1-5-11</S>
+                        <S>S-1-5-15</S>
+                        <S>S-1-5-86-1544737700-199408000-2549878335-3519669259-381336952</S>
+                        <S>S-1-5-5-0-449303</S>
+                        <S>S-1-5-32-1488445330-856673777-1515413738-1380768593-2977925950-2228326386-886087428-2802422674</S>
+                        <S>S-1-5-32-383293015-3350740429-1839969850-1819881064-1569454686-4198502490-78857879-1413643331</S>
+                        <S>S-1-5-32-2035927579-283314533-3422103930-3587774809-765962649-3034203285-3544878962-607181067</S>
+                        <S>S-1-5-32-3659434007-2290108278-1125199667-3679670526-1293081662-2164323352-1777701501-2595986263</S>
+                        <S>S-1-5-32-11742800-2107441976-3443185924-4134956905-3840447964-3749968454-3843513199-670971053</S>
+                        <S>S-1-5-32-3523901360-1745872541-794127107-675934034-1867954868-1951917511-1111796624-2052600462</S>
+                      </LST>
+                    </Obj>
+                  </Props>
+                </Obj>
+              </LST>
+            </Obj>
+            <I32 N="CollectedByPid">1784</I32>
+            <Obj N="Service" RefId="226">
+              <TNRef RefId="3" />
+              <DCT>
+                <En>
+                  <S N="Key">AbsenceError</S>
+                  <I32 N="Value">1060</I32>
+                </En>
+                <En>
+                  <S N="Key">QuerySource</S>
+                  <S N="Value">OpenSCManager/OpenService</S>
+                </En>
+                <En>
+                  <S N="Key">Name</S>
+                  <S N="Value">SafeUploadAgent</S>
+                </En>
+                <En>
+                  <S N="Key">QueryStatus</S>
+                  <S N="Value">OK</S>
+                </En>
+                <En>
+                  <S N="Key">Exists</S>
+                  <B N="Value">false</B>
+                </En>
+              </DCT>
+            </Obj>
+            <Obj N="Audit" RefId="227">
+              <TNRef RefId="2" />
+              <MS>
+                <U32 N="CreationFlags">1</U32>
+                <U32 N="PerUserPolicyCount">0</U32>
+              </MS>
+            </Obj>
+            <S N="ServiceSid">S-1-5-80-2445692249-22211692-2238493510-3749888094-4283558424</S>
+            <Obj N="ImagePaths" RefId="228">
+              <TNRef RefId="1" />
+              <LST>
+                <S>C:\Users\vika\Documents\SafeUpload-invariant-state-boot-start-invariant-S02-agent-down-open-refused-ordinary-notify6\service\SafeUpload.Agent.Service.exe</S>
+              </LST>
+            </Obj>
+            <Obj N="SystemBegin" RefId="229">
+              <TNRef RefId="2" />
+              <MS>
+                <S N="Status">OK</S>
+                <S N="Name">System</S>
+                <I64 N="StartQpc">310078551</I64>
+                <I64 N="EndQpc">310389261</I64>
+                <I64 N="OldestRecordId">1</I64>
+                <I64 N="NewestRecordId">10812</I64>
+                <S N="NewestXml">&lt;Event xmlns='http://schemas.microsoft.com/win/2004/08/events/event'&gt;&lt;System&gt;&lt;Provider Name='Microsoft-Windows-TPM-WMI' Guid='{7d5387b0-cbe0-11da-a94d-0800200c9a66}'/&gt;&lt;EventID&gt;1025&lt;/EventID&gt;&lt;Version&gt;0&lt;/Version&gt;&lt;Level&gt;4&lt;/Level&gt;&lt;Task&gt;0&lt;/Task&gt;&lt;Opcode&gt;0&lt;/Opcode&gt;&lt;Keywords&gt;0x8000000000000000&lt;/Keywords&gt;&lt;TimeCreated SystemTime='2026-10-05T01:49:41.1290936Z'/&gt;&lt;EventRecordID&gt;10812&lt;/EventRecordID&gt;&lt;Correlation/&gt;&lt;Execution ProcessID='4208' ThreadID='4204'/&gt;&lt;Channel&gt;System&lt;/Channel&gt;&lt;Computer&gt;win10-debugged&lt;/Computer&gt;&lt;Security UserID='S-1-5-18'/&gt;&lt;/System&gt;&lt;EventData&gt;&lt;/EventData&gt;&lt;/Event&gt;</S>
+                <S N="SecurityDescriptor">O:BAG:SYD:(A;;0xf0007;;;SY)(A;;0x7;;;BA)(A;;0x3;;;BO)(A;;0x5;;;SO)(A;;0x1;;;IU)(A;;0x3;;;SU)(A;;0x1;;;S-1-5-3)(A;;0x2;;;S-1-5-33)(A;;0x1;;;S-1-5-32-573)</S>
+              </MS>
+            </Obj>
+            <Obj N="SecurityBegin" RefId="230">
+              <TNRef RefId="2" />
+              <MS>
+                <S N="Status">OK</S>
+                <S N="Name">Security</S>
+                <I64 N="StartQpc">310411061</I64>
+                <I64 N="EndQpc">310686954</I64>
+                <I64 N="OldestRecordId">79592</I64>
+                <I64 N="NewestRecordId">107725</I64>
+                <S N="NewestXml">&lt;Event xmlns='http://schemas.microsoft.com/win/2004/08/events/event'&gt;&lt;System&gt;&lt;Provider Name='Microsoft-Windows-Security-Auditing' Guid='{54849625-5478-4994-a5ba-3e3b0328c30d}'/&gt;&lt;EventID&gt;4688&lt;/EventID&gt;&lt;Version&gt;2&lt;/Version&gt;&lt;Level&gt;0&lt;/Level&gt;&lt;Task&gt;13312&lt;/Task&gt;&lt;Opcode&gt;0&lt;/Opcode&gt;&lt;Keywords&gt;0x8020000000000000&lt;/Keywords&gt;&lt;TimeCreated SystemTime='2026-10-05T01:49:48.2732597Z'/&gt;&lt;EventRecordID&gt;107725&lt;/EventRecordID&gt;&lt;Correlation/&gt;&lt;Execution ProcessID='4' ThreadID='200'/&gt;&lt;Channel&gt;Security&lt;/Channel&gt;&lt;Computer&gt;win10-debugged&lt;/Computer&gt;&lt;Security/&gt;&lt;/System&gt;&lt;EventData&gt;&lt;Data Name='SubjectUserSid'&gt;S-1-5-18&lt;/Data&gt;&lt;Data Name='SubjectUserName'&gt;WIN10-DEBUGGED$&lt;/Data&gt;&lt;Data Name='SubjectDomainName'&gt;WORKGROUP&lt;/Data&gt;&lt;Data Name='SubjectLogonId'&gt;0x3e7&lt;/Data&gt;&lt;Data Name='NewProcessId'&gt;0x1640&lt;/Data&gt;&lt;Data Name='NewProcessName'&gt;C:\Windows\Microsoft.NET\Framework64\v4.0.30319\cvtres.exe&lt;/Data&gt;&lt;Data Name='TokenElevationType'&gt;%%1936&lt;/Data&gt;&lt;Data Name='ProcessId'&gt;0x162c&lt;/Data&gt;&lt;Data Name='CommandLine'&gt;&lt;/Data&gt;&lt;Data Name='TargetUserSid'&gt;S-1-0-0&lt;/Data&gt;&lt;Data Name='TargetUserName'&gt;-&lt;/Data&gt;&lt;Data Name='TargetDomainName'&gt;-&lt;/Data&gt;&lt;Data Name='TargetLogonId'&gt;0x0&lt;/Data&gt;&lt;Data Name='ParentProcessName'&gt;C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe&lt;/Data&gt;&lt;Data Name='MandatoryLabel'&gt;S-1-16-16384&lt;/Data&gt;&lt;/EventData&gt;&lt;/Event&gt;</S>
+                <S N="SecurityDescriptor">O:BAG:SYD:(A;;0xf0005;;;SY)(A;;0x5;;;BA)(A;;0x1;;;S-1-5-32-573)</S>
+              </MS>
+            </Obj>
+            <I64 N="InventoryStartQpc">310695796</I64>
+            <I64 N="InventoryEndQpc">311531685</I64>
+            <Obj N="SystemEnd" RefId="231">
+              <TNRef RefId="2" />
+              <MS>
+                <S N="Status">OK</S>
+                <S N="Name">System</S>
+                <I64 N="StartQpc">311606836</I64>
+                <I64 N="EndQpc">311852963</I64>
+                <I64 N="OldestRecordId">1</I64>
+                <I64 N="NewestRecordId">10812</I64>
+                <S N="NewestXml">&lt;Event xmlns='http://schemas.microsoft.com/win/2004/08/events/event'&gt;&lt;System&gt;&lt;Provider Name='Microsoft-Windows-TPM-WMI' Guid='{7d5387b0-cbe0-11da-a94d-0800200c9a66}'/&gt;&lt;EventID&gt;1025&lt;/EventID&gt;&lt;Version&gt;0&lt;/Version&gt;&lt;Level&gt;4&lt;/Level&gt;&lt;Task&gt;0&lt;/Task&gt;&lt;Opcode&gt;0&lt;/Opcode&gt;&lt;Keywords&gt;0x8000000000000000&lt;/Keywords&gt;&lt;TimeCreated SystemTime='2026-10-05T01:49:41.1290936Z'/&gt;&lt;EventRecordID&gt;10812&lt;/EventRecordID&gt;&lt;Correlation/&gt;&lt;Execution ProcessID='4208' ThreadID='4204'/&gt;&lt;Channel&gt;System&lt;/Channel&gt;&lt;Computer&gt;win10-debugged&lt;/Computer&gt;&lt;Security UserID='S-1-5-18'/&gt;&lt;/System&gt;&lt;EventData&gt;&lt;/EventData&gt;&lt;/Event&gt;</S>
+                <S N="SecurityDescriptor">O:BAG:SYD:(A;;0xf0007;;;SY)(A;;0x7;;;BA)(A;;0x3;;;BO)(A;;0x5;;;SO)(A;;0x1;;;IU)(A;;0x3;;;SU)(A;;0x1;;;S-1-5-3)(A;;0x2;;;S-1-5-33)(A;;0x1;;;S-1-5-32-573)</S>
+              </MS>
+            </Obj>
+            <Obj N="SecurityEnd" RefId="232">
+              <TNRef RefId="2" />
+              <MS>
+                <S N="Status">OK</S>
+                <S N="Name">Security</S>
+                <I64 N="StartQpc">311863566</I64>
+                <I64 N="EndQpc">312108858</I64>
+                <I64 N="OldestRecordId">79592</I64>
+                <I64 N="NewestRecordId">107725</I64>
+                <S N="NewestXml">&lt;Event xmlns='http://schemas.microsoft.com/win/2004/08/events/event'&gt;&lt;System&gt;&lt;Provider Name='Microsoft-Windows-Security-Auditing' Guid='{54849625-5478-4994-a5ba-3e3b0328c30d}'/&gt;&lt;EventID&gt;4688&lt;/EventID&gt;&lt;Version&gt;2&lt;/Version&gt;&lt;Level&gt;0&lt;/Level&gt;&lt;Task&gt;13312&lt;/Task&gt;&lt;Opcode&gt;0&lt;/Opcode&gt;&lt;Keywords&gt;0x8020000000000000&lt;/Keywords&gt;&lt;TimeCreated SystemTime='2026-10-05T01:49:48.2732597Z'/&gt;&lt;EventRecordID&gt;107725&lt;/EventRecordID&gt;&lt;Correlation/&gt;&lt;Execution ProcessID='4' ThreadID='200'/&gt;&lt;Channel&gt;Security&lt;/Channel&gt;&lt;Computer&gt;win10-debugged&lt;/Computer&gt;&lt;Security/&gt;&lt;/System&gt;&lt;EventData&gt;&lt;Data Name='SubjectUserSid'&gt;S-1-5-18&lt;/Data&gt;&lt;Data Name='SubjectUserName'&gt;WIN10-DEBUGGED$&lt;/Data&gt;&lt;Data Name='SubjectDomainName'&gt;WORKGROUP&lt;/Data&gt;&lt;Data Name='SubjectLogonId'&gt;0x3e7&lt;/Data&gt;&lt;Data Name='NewProcessId'&gt;0x1640&lt;/Data&gt;&lt;Data Name='NewProcessName'&gt;C:\Windows\Microsoft.NET\Framework64\v4.0.30319\cvtres.exe&lt;/Data&gt;&lt;Data Name='TokenElevationType'&gt;%%1936&lt;/Data&gt;&lt;Data Name='ProcessId'&gt;0x162c&lt;/Data&gt;&lt;Data Name='CommandLine'&gt;&lt;/Data&gt;&lt;Data Name='TargetUserSid'&gt;S-1-0-0&lt;/Data&gt;&lt;Data Name='TargetUserName'&gt;-&lt;/Data&gt;&lt;Data Name='TargetDomainName'&gt;-&lt;/Data&gt;&lt;Data Name='TargetLogonId'&gt;0x0&lt;/Data&gt;&lt;Data Name='ParentProcessName'&gt;C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe&lt;/Data&gt;&lt;Data Name='MandatoryLabel'&gt;S-1-16-16384&lt;/Data&gt;&lt;/EventData&gt;&lt;/Event&gt;</S>
+                <S N="SecurityDescriptor">O:BAG:SYD:(A;;0xf0005;;;SY)(A;;0x5;;;BA)(A;;0x1;;;S-1-5-32-573)</S>
+              </MS>
+            </Obj>
+            <I64 N="EndQpc">312132282</I64>
+            <S N="EndBootId">WIN10-DEBUGGED/2026-10-05T01:49:20.5000000Z</S>
+          </MS>
+        </Obj>
+      </En>
+      <En>
+        <S N="Key">Notifications</S>
+        <Obj N="Value" RefId="233">
+          <TNRef RefId="2" />
+          <MS>
+            <S N="Status">INCONCLUSIVE</S>
+            <S N="LocationStatus">OK</S>
+            <Obj N="LocationFiles" RefId="234">
+              <TNRef RefId="1" />
+              <LST />
+            </Obj>
+            <S N="Directory">C:\ProgramData\SafeUpload\notifications</S>
+            <B N="DirectoryExists">false</B>
+            <Obj N="ChildNames" RefId="235">
+              <TNRef RefId="1" />
+              <LST />
+            </Obj>
+            <Obj N="Objects" RefId="236">
+              <TNRef RefId="1" />
+              <LST>
+                <Obj RefId="237">
+                  <TNRef RefId="3" />
+                  <DCT>
+                    <En>
+                      <S N="Key">Path</S>
+                      <S N="Value">C:\</S>
+                    </En>
+                    <En>
+                      <S N="Key">Owner</S>
+                      <S N="Value">S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464</S>
+                    </En>
+                    <En>
+                      <S N="Key">Sddl</S>
+                      <S N="Value">O:S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464G:S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464D:PAI(A;;LC;;;AU)(A;OICIIO;SDGXGWGR;;;AU)(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;0x1200a9;;;BU)</S>
+                    </En>
+                  </DCT>
+                </Obj>
+                <Obj RefId="238">
+                  <TNRef RefId="3" />
+                  <DCT>
+                    <En>
+                      <S N="Key">Path</S>
+                      <S N="Value">C:\ProgramData</S>
+                    </En>
+                    <En>
+                      <S N="Key">Owner</S>
+                      <S N="Value">S-1-5-18</S>
+                    </En>
+                    <En>
+                      <S N="Key">Sddl</S>
+                      <S N="Value">O:SYG:SYD:PAI(A;OICIIO;GA;;;CO)(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;0x1200a9;;;BU)(A;CI;DCLCRPCR;;;BU)</S>
+                    </En>
+                  </DCT>
+                </Obj>
+                <Obj RefId="239">
+                  <TNRef RefId="3" />
+                  <DCT>
+                    <En>
+                      <S N="Key">Path</S>
+                      <S N="Value">C:\ProgramData\SafeUpload</S>
+                    </En>
+                    <En>
+                      <S N="Key">Owner</S>
+                      <S N="Value">S-1-5-18</S>
+                    </En>
+                    <En>
+                      <S N="Key">Sddl</S>
+                      <S N="Value">O:SYG:S-1-5-21-316478115-1595729549-2803163825-513D:PAI(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)</S>
+                    </En>
+                  </DCT>
+                </Obj>
+              </LST>
+            </Obj>
+            <S N="BootId">WIN10-DEBUGGED/2026-10-05T01:49:20.5000000Z</S>
+            <I64 N="QpcFrequency">10000000</I64>
+            <I64 N="MinimumQpc">305516823</I64>
+            <I64 N="ReadQpc">312801742</I64>
+            <Obj N="Entries" RefId="240">
+              <TNRef RefId="1" />
+              <LST />
+            </Obj>
+            <Nil N="Head" />
+            <Obj N="Artifacts" RefId="241">
+              <TNRef RefId="1" />
+              <LST />
+            </Obj>
+            <Obj N="Errors" RefId="242">
+              <TNRef RefId="1" />
+              <LST />
+            </Obj>
+            <S N="Reason">Authenticated notification directory absent: C:\ProgramData\SafeUpload\notifications. No durable emission coverage; --seed-boot-policy does not start the notification writer and seed trials require the agent down.</S>
+          </MS>
+        </Obj>
+      </En>
+      <En>
+        <S N="Key">EndQpc</S>
+        <I64 N="Value">312816247</I64>
+      </En>
+    </DCT>
+  </Obj>
+</Objs>

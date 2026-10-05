@@ -1046,9 +1046,15 @@ function Test-AgentDidNotRun($Before,$After,$Fence,[bool]$WindowKnown,$SystemLog
                         $creations+=$event
                         if($b.ImagePaths -icontains $event.Data.NewProcessName -or $a.ImagePaths -icontains $event.Data.NewProcessName -or
                             $event.Data.SubjectUserSid -ceq $b.ServiceSid -or $event.Data.TargetUserSid -ceq $b.ServiceSid){$failures+=('Agent image/service SID process creation at Security record '+$event.RecordId+'.')}
-                        # 4688 authenticates image/user, not group/restricted SIDs.
-                        # No exemption for a benign-looking path or exited PID.
-                        $failures+=('Process created between inventories at Security record '+$event.RecordId+'; 4688 lacks token group/restricted service-SID evidence.')
+                        # 4688 authenticates image/user, not group/restricted SIDs. Only the SCM assigns a per-service SID, and only to the
+                        # service's own process when it starts that service. When authenticated SCM evidence shows the service absent at both
+                        # edges (and any install in the window is already a contradiction above), no process can carry that SID except by a
+                        # privileged token forgery, and administrators/SYSTEM are trusted by owner decision (MVP-PLAN). Only then is the group-SID
+                        # gap closed; with the service installed it still defeats the proof. The image/user check above always applies.
+                        $serviceNeverExisted=($null -ne $b.Service -and $null -ne $a.Service -and $b.Service.Exists -eq $false -and $a.Service.Exists -eq $false)
+                        if(-not $serviceNeverExisted){
+                            $failures+=('Process created between inventories at Security record '+$event.RecordId+'; 4688 lacks token group/restricted service-SID evidence.')
+                        }
                     }
                 }
             }
