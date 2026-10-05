@@ -308,6 +308,10 @@ static VOID StageRegistryUnknownWorker(_In_ PFLT_GENERIC_WORKITEM WorkItem, _In_
 static BOOLEAN StageRegistryQueueInstanceUnknown(_In_ PFLT_INSTANCE Instance, _In_ LONG Reason);
 static BOOLEAN StageRegistryQueueEntryUnknown(_In_ PSTAGE_REGISTRY_ENTRY Entry, _In_ LONG Reason);
 static BOOLEAN StageRegistryQueueReclaim(VOID);
+static KSPIN_LOCK SectionLock;
+_IRQL_requires_(DISPATCH_LEVEL)
+__declspec(noinline) static PSTAGE_REGISTRY_SOP_SLOT StageRegistryFindSopSlotLocked(
+    _In_ PVOID SectionObjectPointer, _Out_ PBOOLEAN Found);
 _IRQL_requires_max_(APC_LEVEL)
 __declspec(noinline) static VOID StageRegistryTrackUnknownWriter(_Inout_ PSTAGE_WRITER_RESERVATION Reservation,
     _In_ PFLT_CALLBACK_DATA Data, _In_ PCFLT_RELATED_OBJECTS FltObjects,

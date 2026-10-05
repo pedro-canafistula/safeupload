@@ -2769,12 +2769,12 @@ static FLT_PREOP_CALLBACK_STATUS StageExternalRename(PFLT_CALLBACK_DATA Data,
     if (!NT_SUCCESS(status)) goto Complete;
     status = FltParseFileNameInformation(destination);
     if (!NT_SUCCESS(status)) goto Complete;
-    allow = trackedWriter || (!SafeUploadStageTouchesProtectedNamespace(source, kind) &&
+    allow = TrackedWriter || (!SafeUploadStageTouchesProtectedNamespace(source, kind) &&
         !SafeUploadStageTouchesProtectedNamespace(destination, kind) &&
         !SafeUploadPolicyMatchesCurrentOrPendingDestination(kind, &source->Name, TRUE) &&
         !SafeUploadPolicyMatchesCurrentOrPendingDestination(kind, &destination->Name, TRUE));
     if (!allow) unresolved = FALSE;
-    if (allow && !trackedWriter) {
+    if (allow && !TrackedWriter) {
         BOOLEAN protectedAlias = FALSE;
         status = SafeUploadStageCheckObjectAliases(Objects->Instance, Objects->FileObject,
             &source->Volume, kind, &protectedAlias);
@@ -2799,7 +2799,7 @@ static FLT_PREOP_CALLBACK_STATUS StageExternalRename(PFLT_CALLBACK_DATA Data,
     }
 #endif
 Complete:
-    if (trackedWriter && !allow) {
+    if (TrackedWriter && !allow) {
         /* Keep the existing handle live. If the rename target cannot be classified, retain Unknown
          * so the identity cannot be promoted using its stale name. */
         SafeUploadStageWritersMutationDraining(Objects->Instance,
