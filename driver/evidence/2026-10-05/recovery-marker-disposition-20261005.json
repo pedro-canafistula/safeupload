@@ -1,0 +1,119 @@
+{
+  "Basis": [
+    "Each listed marker was written by an earlier failed run (Oct 4-5) of a different experiment family.",
+    "Every later run began with the wrapper independent baseline and the latest, S01 b38 run 3 (s01b38dir3), ended BaselineClean=True with Verifier off and original driver/policy.",
+    "The debuggee current disk is the s01b38dir3 overlay, not an overlay named by any listed marker.",
+    "This is an operator disposition by inference from later clean baselines; each old overlay was not individually inspected."
+  ],
+  "Date": "2026-10-05",
+  "IndependentBaseline": {
+    "Path": "driver/evidence/2026-10-05/boot-start-invariant-S01-denied-write-after-boot-boot-verifier-s01b38dir3-final-restored-state.txt",
+    "Sha256": "BDF8E033A200E4C2343C6023E77FA58447B6FBCEEAB40F072F7493C87229CA29"
+  },
+  "Operator": "victor bonato",
+  "OperatorInstruction": "\"Ok so scope the block and continue\" (reply to option 1: treat the old markers as resolved, block only on W01-family markers and on any marker not listed here)",
+  "Resolved": [
+    {
+      "Path": "2026-10-04/boot-start-invariant-S00-observer-control-ordinary-wp3s00b-recovery-required.txt",
+      "Reason": "PRE_RUN failed after the checkpoint became active.",
+      "Sha256": "BF0DFD145897DA7D21D4BE2C15A41FB866965747970B8D3F95E409687EBD8FFB"
+    },
+    {
+      "Path": "2026-10-04/boot-start-invariant-S00-observer-control-ordinary-wp3s00c-recovery-required.txt",
+      "Reason": "Prepare failed after the checkpoint became active.",
+      "Sha256": "38C19056653CD347A7AEF1AD8418CB7604B57F14498CEF24E220E4474866D2E9"
+    },
+    {
+      "Path": "2026-10-04/boot-start-invariant-S00-observer-control-ordinary-wp3s00e-recovery-required.txt",
+      "Reason": "AfterBoot harness failed or restoration was incomplete.",
+      "Sha256": "9DB3B27501DC3B15F5A5CD13B2FDE0BD51F03460597956CACA0C2DB09DDDB9AA"
+    },
+    {
+      "Path": "2026-10-04/boot-start-invariant-S00-observer-control-ordinary-wp3s00f-recovery-required.txt",
+      "Reason": "AfterBoot harness failed or restoration was incomplete.",
+      "Sha256": "63FD3945C34F60292DD885ABC5D113DACF524AAB2E538E81A5E63D5E1403F028"
+    },
+    {
+      "Path": "2026-10-04/boot-start-invariant-S01-denied-write-after-boot-ordinary-notify8b-recovery-required.txt",
+      "Reason": "LastBootUpTime did not change after the first reboot request.",
+      "Sha256": "5F9FE5F4D9CA505DEB45DD6B7A267F7B687A9AA436F22F86C56589E8D84D597D"
+    },
+    {
+      "Path": "2026-10-04/boot-start-invariant-S01-denied-write-after-boot-ordinary-wp4proof1-recovery-required.txt",
+      "Reason": "Prepare failed after the checkpoint became active.",
+      "Sha256": "E57B37388F49E8F74E9661C0EB4AE6C648E8403C4358C039FF04E240D41C660D"
+    },
+    {
+      "Path": "2026-10-04/boot-start-invariant-S01-denied-write-after-boot-ordinary-wp4proof2-recovery-required.txt",
+      "Reason": "Prepare failed after the checkpoint became active.",
+      "Sha256": "4D3F5E07E07730159F381DCAC9B8F9A3C1D0EE0B6076886F69A24A4C1A87AE8D"
+    },
+    {
+      "Path": "2026-10-04/boot-start-run12-recovery-required.txt",
+      "Reason": "AfterBoot harness failed or restoration was incomplete.",
+      "Sha256": "76812EE151EF6AA7CB20E557B4A1741F695D5B9A56E4EBD42C2AA1893E281749"
+    },
+    {
+      "Path": "2026-10-04/boot-start-run14-recovery-required.txt",
+      "Reason": "Prepare failed after the checkpoint became active.",
+      "Sha256": "23C80779F29D24E60C7EDC6BF3F43391B3C4A9595E8ED74B0B7EFF2B6FC43B7A"
+    },
+    {
+      "Path": "2026-10-04/boot-start-run2-recovery-required.txt",
+      "Reason": "PRE_RUN failed after the checkpoint became active.",
+      "Sha256": "5F5557D09E57879F667EF4414B0BE106C68E8646FF949266051E4E94CF9A2B82"
+    },
+    {
+      "Path": "2026-10-04/boot-start-run3-recovery-required.txt",
+      "Reason": "Prepare failed after the checkpoint became active.",
+      "Sha256": "ACAB3E7025A0585903D356104C2F229032A9ACC7D0D0DE33A7106E59A5D1BAC6"
+    },
+    {
+      "Path": "2026-10-04/boot-start-run4-recovery-required.txt",
+      "Reason": "Prepare failed after the checkpoint became active.",
+      "Sha256": "F89904550D80DF81BC3CDE58EEF63E6205DD04C75EFB7BFC82ED97D285B89D4D"
+    },
+    {
+      "Path": "2026-10-04/boot-start-run5-recovery-required.txt",
+      "Reason": "Prepare failed after the checkpoint became active.",
+      "Sha256": "DEA0BD26B59B9FA1DA4BD2AFFE43078F1DBAD2A06FAF76579D7A9DA0065288CC"
+    },
+    {
+      "Path": "2026-10-04/boot-start-run6-recovery-required.txt",
+      "Reason": "Prepare failed after the checkpoint became active.",
+      "Sha256": "14E63394AAC3B7400D159747E128E21B42B5F66059A66BE42C046D0C8E485056"
+    },
+    {
+      "Path": "2026-10-04/boot-start-run7-recovery-required.txt",
+      "Reason": "Prepare failed after the checkpoint became active.",
+      "Sha256": "3F3358E39FC230A644BFF625342755CA77411AECEECC00129EB067B593802768"
+    },
+    {
+      "Path": "2026-10-04/boot-start-run8-recovery-required.txt",
+      "Reason": "Prepare failed after the checkpoint became active.",
+      "Sha256": "975368D2CC409E6E829E5E1A76B5BCB1311B80190B259390F336BEDDB12F32AC"
+    },
+    {
+      "Path": "2026-10-04/boot-start-run9-recovery-required.txt",
+      "Reason": "AfterBoot harness failed or restoration was incomplete.",
+      "Sha256": "62B77C48E5447552B520536A859650330B07FEABEEDD9F841F1A32C8244F3041"
+    },
+    {
+      "Path": "2026-10-04/registry-txf-run4-recovery-required.txt",
+      "Reason": "The guest harness did not return within 5400 s; a guest command is hung.",
+      "Sha256": "D7D180A62A34A477DCD3E3961CF40C95B22F0479D95B753D05EDE683E6B0B2CE"
+    },
+    {
+      "Path": "2026-10-05/boot-start-invariant-S01-denied-write-after-boot-boot-verifier-b22s01a-recovery-required.txt",
+      "Reason": "LastBootUpTime did not change after the first reboot request.",
+      "Sha256": "4B0739E78DAE78E5E400604171C602635DF9E8D9C213E949343B3B4FDD25E39E"
+    },
+    {
+      "Path": "2026-10-05/observer-corpus-wp2vm1-0cc053bd5a83-recovery-required.txt",
+      "Reason": "PRE_RUN failed after the checkpoint became active.",
+      "Sha256": "506CEAAA8A4E83B5B09E3B91FA6B6EF7567AEC946C944A2C33903C9D229B27EE"
+    }
+  ],
+  "Rule": "A marker is resolved only if its path relative to driver/evidence AND its SHA-256 match an entry in Resolved. Any other marker, any modified marker, any marker whose name contains w01, and the active W01 lease still block. Pinned by SHA-256 in Invoke-StagedW01Diagnostic.py.",
+  "Schema": "RecoveryMarkerDisposition/1"
+}

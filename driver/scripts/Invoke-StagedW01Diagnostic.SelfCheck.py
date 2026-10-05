@@ -3,6 +3,7 @@
 from pathlib import Path
 import ast
 import importlib.util
+import json
 import re
 import subprocess
 import sys
@@ -161,6 +162,35 @@ def audit_host(source, module):
         root = Path(tmp); check(not module.recovery_markers(root), 'Empty recovery latch fails')
         (root / 'prior-recovery-required.txt').write_text('GUEST_RECOVERY_REQUIRED=True\n')
         check(module.recovery_markers(root), 'Prior recovery latch bypassed')
+        marker = root / 'prior-recovery-required.txt'
+        digest = module.sha(marker)
+        check(not module.recovery_markers(root, {'prior-recovery-required.txt': digest}), 'Exact operator-resolved marker still latches')
+        check(module.recovery_markers(root, {'prior-recovery-required.txt': '0' * 64}), 'Hash-mismatched disposition cleared a marker')
+        check(module.recovery_markers(root, {'other-recovery-required.txt': digest}), 'Path-mismatched disposition cleared a marker')
+        marker.write_text('GUEST_RECOVERY_REQUIRED=True\nmodified\n')
+        check(module.recovery_markers(root, {'prior-recovery-required.txt': digest}), 'Modified marker stayed cleared')
+        w01 = root / 'boot-start-w01-x-recovery-required.json'
+        w01.write_text('{}')
+        check(module.recovery_markers(root, {w01.name: module.sha(w01)}), 'W01-family marker was cleared by a disposition')
+        lease = root / 'w01-recovery-required-active.json'
+        lease.write_text('{}')
+        check(lease.name in [Path(x).name for x in module.recovery_markers(root, {lease.name: module.sha(lease)})], 'Active W01 lease was cleared')
+        note = root / 'note.json'
+        note.write_text(json.dumps({'Schema': 'RecoveryMarkerDisposition/1', 'Resolved': [{'Path': 'x', 'Sha256': '0' * 64}]}))
+        check(module.load_disposition(note, '0' * 64) == {}, 'Disposition with the wrong pinned hash was accepted')
+        check(module.load_disposition(root / 'missing.json') == {}, 'Missing disposition did not fail closed')
+        listed = root / 'listed.json'
+        listed.write_text('[1]')
+        check(module.load_disposition(listed, module.sha(listed)) == {}, 'Non-object disposition did not fail closed')
+        hidden = root / 'hidden'; hidden.mkdir()
+        (hidden / 'inner-recovery-required.txt').write_text('x')
+        outside = Path(tmp).parent / ('w01-link-target-' + root.name); outside.mkdir()
+        (outside / 'late-recovery-required.txt').write_text('x')
+        (root / 'linkdir').symlink_to(outside, target_is_directory=True)
+        check(any('symlink' in item for item in module.recovery_markers(root, {})), 'Symlinked directory could hide a marker')
+        (root / 'linkdir').unlink(); outside.joinpath('late-recovery-required.txt').unlink(); outside.rmdir()
+        real = module.load_disposition()
+        check(len(real) == 20 and all('w01' not in key.lower() for key in real), 'Pinned operator disposition not loaded exactly')
 
 
 def rejects(operation, message):

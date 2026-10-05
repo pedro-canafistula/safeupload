@@ -149,11 +149,39 @@ def checked_inputs(args):
     return files, hashes, provenance
 
 
-def recovery_markers(evidence):
+DISPOSITION = ROOT / 'driver/evidence/2026-10-05/recovery-marker-disposition-20261005.json'
+DISPOSITION_SHA256 = 'ABF1CFC284CFF588CC8CE871185F045A492EB71BAE0A749FF3A3142A796F53B2'
+
+
+def load_disposition(path=DISPOSITION, pinned=DISPOSITION_SHA256):
+    """Operator-resolved historical markers as {relative path: SHA-256}. Fails closed to {}."""
+    try:
+        if not path.is_file() or path.is_symlink() or sha(path) != pinned:
+            return {}
+        note = json.loads(path.read_text(encoding='utf-8'))
+        if not isinstance(note, dict) or note.get('Schema') != 'RecoveryMarkerDisposition/1':
+            return {}
+        return {item['Path']: item['Sha256'].upper() for item in note['Resolved']
+                if 'w01' not in item['Path'].lower()}
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
+        return {}
+
+
+def recovery_markers(evidence, resolved=None):
+    """Every recovery marker that still latches. Resolution is never inferred from a later
+    baseline: a marker is cleared only by an exact (relative path, SHA-256) operator entry, and a
+    W01-family marker or the active W01 lease can never be cleared."""
+    resolved = load_disposition() if resolved is None else resolved
     found = []
     for path in evidence.rglob('*'):
+        if path.is_symlink():
+            # rglob does not enter symlinked directories, so a marker could hide behind one: latch.
+            found.append(str(path) + ' (symlink under the evidence root)')
+            continue
         if path.is_file() and ('recovery-required' in path.name.lower() or 'recoveryrequired' in path.name.lower()):
-            # Never infer resolution from a later baseline; existence is a latch.
+            relative = str(path.relative_to(evidence))
+            if 'w01' not in relative.lower() and resolved.get(relative) == sha(path):
+                continue
             found.append(str(path))
     return found
 
