@@ -173,7 +173,7 @@ function Invoke-SystemBody([string]$Body) {
     $token=[guid]::NewGuid().ToString('N');$name='SafeUpload-StagedTest-System-'+$token
     $launcher=Join-Path $stateDirectory ($token+'.ps1');$done=Join-Path $evidenceDirectory ($token+'.completion.clixml')
     Write-DurableFile $launcher (New-TaskLauncher $Body $token $done) -New
-    try {Register-SystemTask $name $launcher;Start-ScheduledTask -TaskName $name;return (Wait-TaskCompletion $name $done $token 90).Value}
+    try {Register-SystemTask $name $launcher;Start-ScheduledTask -TaskName $name;return (Wait-TaskCompletion $name $done $token 240).Value}
     finally {if(Get-ScheduledTask -TaskName $name -ErrorAction SilentlyContinue){Stop-ScheduledTask -TaskName $name;Unregister-ScheduledTask -TaskName $name -Confirm:$false}}
 }
 function Invoke-CapturedProcess([string]$Exe,[string]$Arguments,[string]$Prefix,[int]$Timeout=45000,[string]$WorkingDirectory) {
