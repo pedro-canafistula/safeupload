@@ -264,6 +264,8 @@ typedef struct _SAFEUPLOAD_TRANSACTION_CONTEXT {
 typedef struct _SAFEUPLOAD_INSTANCE_CONTEXT {
 
     SAFEUPLOAD_VOLUME_KIND VolumeKind;
+    USHORT VolumeNameChars;
+    WCHAR VolumeName[SAFEUPLOAD_MAX_PREFIX_CHARS]; /* Cached NT volume name for resident scope classification. */
     FLT_INSTANCE_SETUP_FLAGS SetupFlags;
     volatile LONG TrustState; /* Monotonic per instance: canary pass is required; loss is sticky until reboot. */
 #if SAFEUPLOAD_STAGING_PROTOTYPE
@@ -271,6 +273,7 @@ typedef struct _SAFEUPLOAD_INSTANCE_CONTEXT {
     volatile LONG WritersUntracked; /* Sticky for this attachment if a writer cannot get a context. */
     volatile LONG RegistryUnknownReasons;
     volatile LONG64 RegistryDirectoryRenameGeneration; /* qualifies names resolved before a completed parent move */
+    volatile LONG64 RegistryRenameLossGeneration; /* makes all older retained names unresolved at expansion */
     volatile LONG CanaryState;
     volatile LONG64 CanaryStartInterruptTime;
     NTSTATUS CanaryStatus;
@@ -762,6 +765,27 @@ SafeUploadPolicyMayMatchVolume (
     _In_ SAFEUPLOAD_VOLUME_KIND VolumeKind,
     _In_opt_ PFLT_VOLUME Volume
     );
+
+BOOLEAN SafeUploadPolicyMayMatchInstanceVolume(_In_opt_ PFLT_INSTANCE Instance);
+BOOLEAN SafeUploadPolicyPagingCutoffApplies(_In_opt_ PFLT_INSTANCE Instance);
+VOID SafeUploadPolicyPagingCutoffEnter(_In_opt_ PFLT_INSTANCE Instance,
+    _Out_ PBOOLEAN Applies, _Out_ PBOOLEAN VolumeMayMatch,
+    _Out_ PULONGLONG RenameLossGeneration, _Out_ PBOOLEAN InstanceContextKnown,
+    _Outptr_result_maybenull_ PSAFEUPLOAD_INSTANCE_CONTEXT *ContextReference,
+    _Out_ PKIRQL OldIrql);
+VOID SafeUploadPolicyPagingCutoffLeave(_In_ KIRQL OldIrql,
+    _In_opt_ PSAFEUPLOAD_INSTANCE_CONTEXT ContextReference);
+VOID SafeUploadPolicyPagingFallbackBegin(_In_opt_ PFLT_INSTANCE Instance,
+    _Out_ PVOID *Cookie, _Out_ PBOOLEAN Denied);
+NTSTATUS SafeUploadPolicyPagingFallbackDrain(VOID);
+VOID SafeUploadPolicyRenameLossAdvance(_Inout_ volatile LONG64 *InstanceGeneration,
+    _In_ SAFEUPLOAD_VOLUME_KIND VolumeKind, _In_opt_ PCUNICODE_STRING VolumeName);
+VOID SafeUploadPolicyRenameLossSnapshot(_Out_ PULONGLONG Generation);
+BOOLEAN SafeUploadPolicyRenameLossGenerationEnter(_In_ volatile LONG64 *InstanceGeneration,
+    _In_ ULONGLONG ExpectedGeneration, _Out_ PKIRQL OldIrql);
+VOID SafeUploadPolicyRenameLossGenerationLeave(_In_ KIRQL OldIrql);
+BOOLEAN SafeUploadPolicyTryEndScopeTransition(_In_ ULONGLONG RenameLossSnapshot,
+    _In_ BOOLEAN Finalizing);
 
 BOOLEAN
 SafeUploadPolicyTouchesDestinationNamespace (

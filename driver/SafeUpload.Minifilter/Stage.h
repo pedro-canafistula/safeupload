@@ -119,7 +119,8 @@ BOOLEAN SafeUploadStageWritersAdmissionUnknown(_In_ PFLT_INSTANCE Instance);
 BOOLEAN SafeUploadStageWritersIsActivatingSop(_In_opt_ PVOID SectionObjectPointer);
 BOOLEAN SafeUploadStageWritersSopMatchesPolicy(_In_opt_ PVOID SectionObjectPointer,
     _In_ BOOLEAN IncludeAncestors, _Out_ PBOOLEAN Known);
-BOOLEAN SafeUploadStageWritersPagingWriteBegin(_In_opt_ PVOID SectionObjectPointer,
+BOOLEAN SafeUploadStageWritersPagingWriteBegin(_In_ PFLT_INSTANCE Instance,
+    _In_opt_ PVOID SectionObjectPointer,
     _Outptr_result_maybenull_ PVOID *CompletionContext);
 VOID SafeUploadStageWritersPagingWriteEnd(_In_opt_ PVOID CompletionContext);
 VOID SafeUploadStageWritersMutationDraining(_In_ PFLT_INSTANCE Instance,

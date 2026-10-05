@@ -62,6 +62,9 @@ Environment:
 #define SAFEUPLOAD_CUTOFF_PAGING_DRAIN_TIMEOUT_100NS (30LL * 10 * 1000 * 1000)
 #define STAGE_RECLAIM_QUEUED 0x1
 #define STAGE_RECLAIM_RESCAN 0x2
+#define STAGE_SCOPE_CLASS_UNRESOLVED 0
+#define STAGE_SCOPE_CLASS_OUTSIDE 1
+#define STAGE_SCOPE_CLASS_SCOPED 2
 
 typedef struct _STAGE_REGISTRY_ENTRY STAGE_REGISTRY_ENTRY, *PSTAGE_REGISTRY_ENTRY;
 
@@ -86,17 +89,21 @@ struct _STAGE_REGISTRY_ENTRY {
     SAFEUPLOAD_VOLUME_KIND VolumeKind;
     FILE_ID_128 FileId;
     PVOID volatile SectionObjectPointer; /* atomic pointer comparison only; never dereferenced */
+    ULONGLONG RenameLossGeneration;
     ULONG FirstSeenGeneration;
     ULONG State;
     ULONG ActivationGeneration;
     volatile LONG ActivationEnforced;
     volatile LONG CutoffStarted;
+    volatile LONG CutoffFlushStarted;
     volatile LONG CutoffComplete;
     volatile LONG CutoffFailed;
     volatile LONG PagingWriteGateClosed;
     volatile LONG PagingWritesInFlight;
     volatile LONG CutoffFlushPairs;
     volatile LONG DirtyAfterCutoff; /* Sticky until reboot; a later scope expansion cannot promote this stream. */
+    volatile LONG AliasProbePending;
+    volatile LONG ScopeNameClassification;
     volatile LONG StuckSProbe;
     volatile LONG LastSState;
     ULONGLONG Sequence;
@@ -110,6 +117,9 @@ struct _STAGE_REGISTRY_ENTRY {
     ULONG OpenerPids[8];
     ULONG OpenerPidReferences[8];
     WCHAR Name[SAFEUPLOAD_WRITER_REGISTRY_NAME_CHARS];
+    USHORT StreamChars;
+    BOOLEAN StreamIdentityKnown;
+    WCHAR StreamName[SAFEUPLOAD_WRITER_REGISTRY_NAME_CHARS];
 };
 
 typedef struct _STAGE_WRITER_RESERVATION {
@@ -122,6 +132,8 @@ typedef struct _STAGE_WRITER_RESERVATION {
     PSTAGE_WRITER_NODE Node;
     PVOID LegacyCompletionContext;
     ULONG NameChars;
+    ULONG StreamChars;
+    ULONGLONG RenameLossGeneration;
     BOOLEAN SlotReserved;
     BOOLEAN NameReserved;
     BOOLEAN Active;
@@ -139,6 +151,7 @@ typedef struct _STAGE_REGISTRY_RENAME_CONTEXT {
     ULONG NameChars;
     ULONG OldNameChars;
     ULONG NewNameChars;
+    ULONG NewStreamChars;
     BOOLEAN LinkOperation;
     BOOLEAN Ambiguous;
     BOOLEAN DirectoryRename;
@@ -147,6 +160,7 @@ typedef struct _STAGE_REGISTRY_RENAME_CONTEXT {
     volatile LONG Abandoned;
     WCHAR OldName[SAFEUPLOAD_WRITER_REGISTRY_NAME_CHARS];
     WCHAR Name[SAFEUPLOAD_WRITER_REGISTRY_NAME_CHARS];
+    WCHAR StreamName[SAFEUPLOAD_WRITER_REGISTRY_NAME_CHARS];
 } STAGE_REGISTRY_RENAME_CONTEXT, *PSTAGE_REGISTRY_RENAME_CONTEXT;
 
 typedef struct _STAGE_DEFERRED_RENAME {
@@ -181,9 +195,20 @@ typedef struct _STAGE_DEFERRED_INSTANCE_UNKNOWN {
 
 static BOOLEAN StageRegistryEntryQuiescent(_In_ PSTAGE_REGISTRY_ENTRY Entry, _In_ PFLT_INSTANCE Instance,
     _In_ PFLT_VOLUME Volume);
+static VOID StageRegistryPreparePagingActivation(_In_ PSTAGE_REGISTRY_ENTRY Entry, _In_ BOOLEAN Unknown);
 static NTSTATUS StageRegistryOpenIdentity(_In_ PSTAGE_REGISTRY_ENTRY Entry,
     _In_ PFLT_INSTANCE Instance, _In_ PFLT_VOLUME Volume, _Out_ PHANDLE Handle,
     _Outptr_result_nullonfailure_ PFILE_OBJECT *Object);
+static NTSTATUS StageRegistryOpenParentById(_In_ PFLT_INSTANCE Instance,
+    _In_ PFLT_VOLUME Volume, _In_ ULONGLONG VolumeSerial, _In_ ULONGLONG ParentFileId,
+    _Out_ PHANDLE Handle, _Outptr_result_nullonfailure_ PFILE_OBJECT *Object);
+static VOID StageRegistryBuildLinkName(_In_ PCUNICODE_STRING ParentName,
+    _In_reads_(ChildChars) PCWCH ChildName, _In_ ULONG ChildChars,
+    _In_reads_opt_(StreamChars) PCWCH StreamName, _In_ ULONG StreamChars,
+    _Out_writes_(SAFEUPLOAD_MAX_PREFIX_CHARS + 1) PWCH Buffer, _Out_ PUNICODE_STRING LinkName);
+static NTSTATUS StageRegistryClassifyAllLinkNames(_In_ PSTAGE_REGISTRY_ENTRY Entry,
+    _In_ PFLT_INSTANCE Instance, _In_ PFLT_VOLUME Volume,
+    _Out_ PBOOLEAN UnionScoped, _Out_ PBOOLEAN CurrentScoped);
 static VOID StageRegistryActivationProcess(_In_ PSTAGE_REGISTRY_ENTRY Entry,
     _In_ PFLT_INSTANCE Instance, _In_ PFLT_VOLUME Volume);
 static NTSTATUS StageRegistryWaitPagingWritesDrained(_In_ PSTAGE_REGISTRY_ENTRY Entry);
@@ -203,6 +228,9 @@ static BOOLEAN StageRegistryQueueReclaim(VOID);
 #pragma alloc_text(PAGE, SafeUploadStageWritersActivatingStatusPage)
 #pragma alloc_text(PAGE, StageRegistryEntryQuiescent)
 #pragma alloc_text(PAGE, StageRegistryOpenIdentity)
+#pragma alloc_text(PAGE, StageRegistryOpenParentById)
+#pragma alloc_text(PAGE, StageRegistryBuildLinkName)
+#pragma alloc_text(PAGE, StageRegistryClassifyAllLinkNames)
 #pragma alloc_text(PAGE, StageRegistryActivationProcess)
 #pragma alloc_text(PAGE, StageRegistryWaitPagingWritesDrained)
 #pragma alloc_text(PAGE, StageRegistryReclaimWorker)
@@ -284,6 +312,63 @@ static BOOLEAN StageRegistryNameHasPathPrefix(_In_ PCUNICODE_STRING Name,
     return Prefix->Buffer[prefixChars - 1] == L'\\' || Name->Buffer[prefixChars] == L'\\';
 }
 
+static UNICODE_STRING StageRegistryBaseName(_In_ PCUNICODE_STRING Name)
+{
+    UNICODE_STRING base = *Name;
+    USHORT chars, componentStart = 0, index;
+    if (Name->Buffer == NULL || (Name->Length & (sizeof(WCHAR) - 1)) != 0) return base;
+    chars = Name->Length / sizeof(WCHAR);
+    for (index = chars; index != 0; --index) {
+        if (Name->Buffer[index - 1] == L'\\') {
+            componentStart = index;
+            break;
+        }
+    }
+    for (index = componentStart; index < chars; ++index) {
+        if (Name->Buffer[index] == L':') {
+            base.Length = base.MaximumLength = (USHORT)(index * sizeof(WCHAR));
+            break;
+        }
+    }
+    return base;
+}
+
+static VOID StageRegistrySplitStreamName(_In_ PCUNICODE_STRING Name,
+    _Out_ PUNICODE_STRING BaseName, _Out_ PUNICODE_STRING StreamName)
+{
+    USHORT chars, componentStart = 0, index;
+    *BaseName = *Name;
+    *StreamName = *Name;
+    StreamName->Length = StreamName->MaximumLength = 0;
+    if (Name->Buffer == NULL || (Name->Length & (sizeof(WCHAR) - 1)) != 0) return;
+    chars = Name->Length / sizeof(WCHAR);
+    for (index = chars; index != 0; --index) {
+        if (Name->Buffer[index - 1] == L'\\') {
+            componentStart = index;
+            break;
+        }
+    }
+    for (index = componentStart; index < chars; ++index) {
+        if (Name->Buffer[index] == L':') {
+            BaseName->Length = BaseName->MaximumLength = (USHORT)(index * sizeof(WCHAR));
+            StreamName->Buffer = Name->Buffer + index;
+            StreamName->Length = StreamName->MaximumLength =
+                (USHORT)(Name->Length - index * sizeof(WCHAR));
+            return;
+        }
+    }
+}
+
+static ULONG StageRegistryNameStorageBytes(_In_ USHORT NameChars, _In_ USHORT StreamChars)
+{
+    return ((ULONG)NameChars + StreamChars) * sizeof(WCHAR);
+}
+
+static ULONG StageRegistryEntryNameStorageBytes(_In_ PSTAGE_REGISTRY_ENTRY Entry)
+{
+    return StageRegistryNameStorageBytes(Entry->NameChars, Entry->StreamChars);
+}
+
 static BOOLEAN StageRegistryPathPrefixesOverlap(_In_ PCUNICODE_STRING First,
     _In_ PCUNICODE_STRING Second)
 {
@@ -350,6 +435,8 @@ static BOOLEAN StageRegistryDirectoryRenameInFlightLocked(_In_ PFLT_INSTANCE Ins
 static VOID StageRegistrySetEntryUnknownLocked(_In_ PSTAGE_REGISTRY_ENTRY Entry, _In_ LONG Reason)
 {
     InterlockedOr(&Entry->UnknownReasons, Reason);
+    if ((Reason & (SAFEUPLOAD_REGISTRY_UNKNOWN_RENAME | SAFEUPLOAD_REGISTRY_UNKNOWN_IDENTITY)) != 0)
+        InterlockedExchange(&Entry->ScopeNameClassification, STAGE_SCOPE_CLASS_UNRESOLVED);
     InterlockedExchange((volatile LONG *)&Entry->State, SAFEUPLOAD_REGISTRY_STATE_UNKNOWN);
     InterlockedIncrement64(&RegistryChangeSequence);
 }
@@ -374,11 +461,26 @@ static VOID StageRegistryMarkUnknown(_In_opt_ PFLT_INSTANCE Instance,
 {
     PSAFEUPLOAD_INSTANCE_CONTEXT context = NULL;
     BOOLEAN instanceMarked = FALSE;
+    BOOLEAN renameGenerationAdvanced = FALSE;
     InterlockedOr((volatile LONG *)&RegistryUnknownReasons, Reason);
     if (Instance != NULL) {
         if (KeGetCurrentIrql() <= APC_LEVEL &&
             NT_SUCCESS(FltGetInstanceContext(Instance, (PFLT_CONTEXT *)&context))) {
             InterlockedOr(&context->RegistryUnknownReasons, Reason);
+            if ((Reason & SAFEUPLOAD_REGISTRY_UNKNOWN_RENAME) != 0) {
+                UNICODE_STRING volumeName;
+                PCUNICODE_STRING volumeNamePointer = NULL;
+                if (context->VolumeNameChars != 0 &&
+                    context->VolumeNameChars <= SAFEUPLOAD_MAX_PREFIX_CHARS) {
+                    volumeName.Buffer = context->VolumeName;
+                    volumeName.Length = volumeName.MaximumLength = (USHORT)(
+                        context->VolumeNameChars * sizeof(WCHAR));
+                    volumeNamePointer = &volumeName;
+                }
+                SafeUploadPolicyRenameLossAdvance(&context->RegistryRenameLossGeneration,
+                    context->VolumeKind, volumeNamePointer);
+                renameGenerationAdvanced = TRUE;
+            }
             if (InterlockedCompareExchange(&context->WritersUntracked, 1, 0) == 0)
                 InterlockedIncrement((volatile LONG *)&RegistryInstanceUnknown);
             instanceMarked = TRUE;
@@ -391,13 +493,19 @@ static VOID StageRegistryMarkUnknown(_In_opt_ PFLT_INSTANCE Instance,
      * instance context treat it as Unknown. Machine-wide Unknown is reserved for an explicit
      * machine-wide loss or an identity loss with no instance to scope it to. */
     if (MachineWide || Instance == NULL ||
-        (KeGetCurrentIrql() > APC_LEVEL && !instanceMarked))
+        (KeGetCurrentIrql() > APC_LEVEL && !instanceMarked) ||
+        ((Reason & SAFEUPLOAD_REGISTRY_UNKNOWN_RENAME) != 0 && !renameGenerationAdvanced)) {
+        /* P0-5: if the per-instance generation cannot be advanced, prevent
+         * promotion globally; scope admission still filters by volume. */
         InterlockedExchange(&WriterGlobalUnknown, 1);
+    }
 }
 
 static VOID StageRegistryMarkEntryUnknown(_In_ PSTAGE_REGISTRY_ENTRY Entry, _In_ LONG Reason)
 {
     InterlockedOr(&Entry->UnknownReasons, Reason);
+    if ((Reason & (SAFEUPLOAD_REGISTRY_UNKNOWN_RENAME | SAFEUPLOAD_REGISTRY_UNKNOWN_IDENTITY)) != 0)
+        InterlockedExchange(&Entry->ScopeNameClassification, STAGE_SCOPE_CLASS_UNRESOLVED);
     InterlockedExchange((volatile LONG *)&Entry->State, SAFEUPLOAD_REGISTRY_STATE_UNKNOWN);
     InterlockedIncrement64(&RegistryChangeSequence);
     /* Narrowest scope: a loss about this file (identity, transaction, section binding) stays on its entry, which is keyed by
@@ -490,13 +598,18 @@ __declspec(noinline) static VOID StageRegistryCopyOpeners(_In_ PSTAGE_REGISTRY_E
 }
 
 static PSTAGE_REGISTRY_ENTRY StageRegistryFindByKeyLocked(_In_ PFLT_INSTANCE Instance,
-    _In_ PFLT_VOLUME Volume, _In_ ULONGLONG VolumeSerial, _In_ const FILE_ID_128 *FileId)
+    _In_ PFLT_VOLUME Volume, _In_ ULONGLONG VolumeSerial, _In_ const FILE_ID_128 *FileId,
+    _In_opt_ PVOID SectionObjectPointer)
 {
     PLIST_ENTRY link;
+    /* P0-3: a named stream is a distinct live identity, keyed by this file ID
+     * and its SOP; its base path is joined to scopes during expansion. */
     for (link = RegistryEntries.Flink; link != &RegistryEntries; link = link->Flink) {
         PSTAGE_REGISTRY_ENTRY entry = CONTAINING_RECORD(link, STAGE_REGISTRY_ENTRY, Link);
         if (!entry->Retired && entry->Instance == Instance && entry->Volume == Volume &&
             entry->VolumeSerial == VolumeSerial &&
+            InterlockedCompareExchangePointer(
+                (PVOID volatile *)&entry->SectionObjectPointer, NULL, NULL) == SectionObjectPointer &&
             RtlEqualMemory(&entry->FileId, FileId, sizeof(entry->FileId))) return entry;
     }
     return NULL;
@@ -526,11 +639,13 @@ static ULONG StageRegistryInstanceCountLocked(_In_ PFLT_INSTANCE Instance)
 static VOID StageRegistryFinishReservationAccountingLocked(
     _Inout_ PSTAGE_WRITER_RESERVATION Reservation)
 {
+    ULONG nameBytes = StageRegistryNameStorageBytes((USHORT)Reservation->NameChars,
+        (USHORT)Reservation->StreamChars);
     if (!Reservation->Active) return;
     if (Reservation->SlotReserved && RegistryReservedSlots != 0) RegistryReservedSlots -= 1;
     Reservation->SlotReserved = FALSE;
-    if (Reservation->NameReserved && RegistryReservedNameBytes >= Reservation->NameChars * sizeof(WCHAR))
-        RegistryReservedNameBytes -= Reservation->NameChars * sizeof(WCHAR);
+    if (Reservation->NameReserved && RegistryReservedNameBytes >= nameBytes)
+        RegistryReservedNameBytes -= nameBytes;
     Reservation->NameReserved = FALSE;
     RemoveEntryList(&Reservation->Link);
     if (RegistryReservationCount != 0) RegistryReservationCount -= 1;
@@ -540,10 +655,12 @@ static VOID StageRegistryFinishReservationAccountingLocked(
 static VOID StageRegistryReleaseReservationCapacityLocked(
     _Inout_ PSTAGE_WRITER_RESERVATION Reservation)
 {
+    ULONG nameBytes = StageRegistryNameStorageBytes((USHORT)Reservation->NameChars,
+        (USHORT)Reservation->StreamChars);
     if (Reservation->SlotReserved && RegistryReservedSlots != 0) RegistryReservedSlots -= 1;
     Reservation->SlotReserved = FALSE;
-    if (Reservation->NameReserved && RegistryReservedNameBytes >= Reservation->NameChars * sizeof(WCHAR))
-        RegistryReservedNameBytes -= Reservation->NameChars * sizeof(WCHAR);
+    if (Reservation->NameReserved && RegistryReservedNameBytes >= nameBytes)
+        RegistryReservedNameBytes -= nameBytes;
     Reservation->NameReserved = FALSE;
 }
 
@@ -564,7 +681,7 @@ static PSTAGE_REGISTRY_ENTRY StageRegistryGetOrInsert(_In_ PSTAGE_WRITER_RESERVA
      * H=C=T=0 gap while the file ID is being bound. */
     StageRegistryReleaseReservationCapacityLocked(Reservation);
     entry = StageRegistryFindByKeyLocked(Reservation->Instance, Reservation->Volume,
-        Identity->VolumeSerialNumber, &Identity->FileId);
+        Identity->VolumeSerialNumber, &Identity->FileId, SectionObjectPointer);
     if (entry != NULL) {
         if (Reservation->Shell != NULL &&
             (InterlockedCompareExchange(&Reservation->Shell->UnknownReasons, 0, 0) &
@@ -581,11 +698,13 @@ static PSTAGE_REGISTRY_ENTRY StageRegistryGetOrInsert(_In_ PSTAGE_WRITER_RESERVA
         StageRegistryInstanceCountLocked(Reservation->Instance) >=
             min((ULONG)SAFEUPLOAD_WRITER_REGISTRY_INSTANCE_LIMIT, capacity) ||
         RegistryNameBytes + RegistryReservedNameBytes > SAFEUPLOAD_WRITER_REGISTRY_NAME_BUDGET -
-            Reservation->Shell->NameChars * sizeof(WCHAR)) {
+            StageRegistryEntryNameStorageBytes(Reservation->Shell)) {
         RegistryOverflow += 1;
         FltReleasePushLock(&RegistryLock);
         InterlockedIncrement64(&RegistryCapacityFailures);
-        StageRegistryMarkUnknown(Reservation->Instance, SAFEUPLOAD_REGISTRY_UNKNOWN_CAPACITY, FALSE);
+        if (Reservation->Shell == NULL || (Reservation->Shell->StreamIdentityKnown &&
+            Reservation->Shell->StreamChars == 0))
+            StageRegistryMarkUnknown(Reservation->Instance, SAFEUPLOAD_REGISTRY_UNKNOWN_CAPACITY, FALSE);
         StageRegistryQueueReclaim();
         return NULL;
     }
@@ -599,6 +718,7 @@ static PSTAGE_REGISTRY_ENTRY StageRegistryGetOrInsert(_In_ PSTAGE_WRITER_RESERVA
     entry->VolumeSerial = Identity->VolumeSerialNumber;
     entry->FileId = Identity->FileId;
     entry->SectionObjectPointer = SectionObjectPointer;
+    entry->RenameLossGeneration = Reservation->RenameLossGeneration;
     entry->FirstSeenGeneration = (ULONG)SafeUploadCurrentPolicyGeneration();
     entry->State = InterlockedCompareExchange(&entry->UnknownReasons, 0, 0) != 0 ?
         SAFEUPLOAD_REGISTRY_STATE_UNKNOWN : SAFEUPLOAD_REGISTRY_STATE_UNSCOPED;
@@ -611,7 +731,7 @@ static PSTAGE_REGISTRY_ENTRY StageRegistryGetOrInsert(_In_ PSTAGE_WRITER_RESERVA
     entry->References = 2; /* Registry history plus the reservation's bound-entry reference. */
     InsertTailList(&RegistryEntries, &entry->Link);
     RegistryEntryCount += 1;
-    RegistryNameBytes += entry->NameChars * sizeof(WCHAR);
+    RegistryNameBytes += StageRegistryEntryNameStorageBytes(entry);
     Reservation->BoundEntry = entry;
     {
         /* Reclaim before the limits are reached: at 3/4 of the instance or total limit. */
@@ -714,6 +834,7 @@ static BOOLEAN StageRegistryHasCreateReservationLocked(_In_ PFLT_INSTANCE Instan
     _In_ PFLT_VOLUME Volume, _In_ PCUNICODE_STRING NormalizedName)
 {
     PLIST_ENTRY link;
+    UNICODE_STRING baseName = StageRegistryBaseName(NormalizedName);
     for (link = RegistryReservations.Flink; link != &RegistryReservations; link = link->Flink) {
         PSTAGE_WRITER_RESERVATION reservation = CONTAINING_RECORD(link,
             STAGE_WRITER_RESERVATION, Link);
@@ -729,7 +850,7 @@ static BOOLEAN StageRegistryHasCreateReservationLocked(_In_ PFLT_INSTANCE Instan
             reservedName.Length = reservedName.MaximumLength =
                 (USHORT)(reservation->BoundEntry->NameChars * sizeof(WCHAR));
         } else continue;
-        if (RtlEqualUnicodeString(&reservedName, NormalizedName, TRUE)) return TRUE;
+        if (RtlEqualUnicodeString(&reservedName, &baseName, TRUE)) return TRUE;
     }
     return FALSE;
 }
@@ -756,10 +877,12 @@ NTSTATUS SafeUploadStageWritersReserveCreate(_In_ PFLT_CALLBACK_DATA Data,
     PFLT_VOLUME volume = NULL;
     PSTAGE_WRITER_RESERVATION reservation = NULL;
     PUNICODE_STRING fullName;
+    UNICODE_STRING registryName;
     FLT_FILESYSTEM_TYPE fs;
     SAFEUPLOAD_VOLUME_KIND kind;
-    ULONG index, capacity;
-    ULONGLONG directoryRenameGeneration;
+    ULONG capacity, baseNameChars = 0, streamChars = 0;
+    ULONGLONG directoryRenameGeneration, renameLossGeneration;
+    BOOLEAN pathResolved = FALSE;
     NTSTATUS status;
     PAGED_CODE();
     *ReservationOut = NULL;
@@ -777,6 +900,8 @@ NTSTATUS SafeUploadStageWritersReserveCreate(_In_ PFLT_CALLBACK_DATA Data,
     kind = instanceContext->VolumeKind;
     directoryRenameGeneration = (ULONGLONG)InterlockedCompareExchange64(
         &instanceContext->RegistryDirectoryRenameGeneration, 0, 0);
+    renameLossGeneration = (ULONGLONG)InterlockedCompareExchange64(
+        &instanceContext->RegistryRenameLossGeneration, 0, 0);
     if (instanceContext->TeardownToken == NULL ||
         InterlockedCompareExchange(&instanceContext->TeardownToken->State, 0, 0) !=
             SAFEUPLOAD_INSTANCE_STATE_ACTIVE) {
@@ -821,11 +946,18 @@ NTSTATUS SafeUploadStageWritersReserveCreate(_In_ PFLT_CALLBACK_DATA Data,
     if (!NT_SUCCESS(status) || name->Volume.Length > name->Name.Length ||
         name->Name.Length == 0 || (name->Name.Length & 1) != 0) goto RefuseIdentity;
     fullName = &name->Name;
-    for (index = name->Volume.Length / sizeof(WCHAR); index < fullName->Length / sizeof(WCHAR); ++index) {
-        if (fullName->Buffer[index] == L':') goto RefuseIdentity; /* ADS is outside the registry key. */
-    }
-    if (fullName->Length / sizeof(WCHAR) > SAFEUPLOAD_WRITER_REGISTRY_NAME_CHARS) goto RefuseIdentity;
+    if (name->Stream.Length > fullName->Length || (name->Stream.Length & 1) != 0)
+        goto RefuseIdentity;
+    baseNameChars = (fullName->Length - name->Stream.Length) / sizeof(WCHAR);
+    streamChars = name->Stream.Length / sizeof(WCHAR);
+    if (baseNameChars == 0 || baseNameChars > SAFEUPLOAD_WRITER_REGISTRY_NAME_CHARS ||
+        streamChars > SAFEUPLOAD_WRITER_REGISTRY_NAME_CHARS) goto RefuseIdentity;
+    registryName = *fullName;
+    registryName.Length = registryName.MaximumLength =
+        (USHORT)(fullName->Length - name->Stream.Length);
+    pathResolved = TRUE;
 
+PrepareReservation:
     reservation = ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(*reservation), SAFEUPLOAD_REGISTRY_POOL_TAG);
     if (reservation == NULL) goto RefuseAllocation;
     RtlZeroMemory(reservation, sizeof(*reservation));
@@ -847,9 +979,24 @@ NTSTATUS SafeUploadStageWritersReserveCreate(_In_ PFLT_CALLBACK_DATA Data,
     RtlZeroMemory(reservation->Shell, sizeof(*reservation->Shell));
     RtlZeroMemory(reservation->Node, sizeof(*reservation->Node));
     reservation->Shell->VolumeKind = kind;
-    reservation->NameChars = fullName->Length / sizeof(WCHAR);
+    reservation->NameChars = pathResolved ? baseNameChars : 0;
+    reservation->StreamChars = pathResolved ? streamChars : 0;
+    reservation->RenameLossGeneration = renameLossGeneration;
     reservation->Shell->NameChars = (USHORT)reservation->NameChars;
-    RtlCopyMemory(reservation->Shell->Name, fullName->Buffer, fullName->Length);
+    if (pathResolved && reservation->NameChars != 0)
+        RtlCopyMemory(reservation->Shell->Name, fullName->Buffer,
+            reservation->NameChars * sizeof(WCHAR));
+    reservation->Shell->StreamChars = (USHORT)reservation->StreamChars;
+    reservation->Shell->StreamIdentityKnown = pathResolved;
+    if (!pathResolved) {
+        /* P0-3: keep the post-create ID+SOP record, but never promote it
+         * without a stable base-name/stream join; do not poison the instance. */
+        reservation->Shell->UnknownReasons = SAFEUPLOAD_REGISTRY_UNKNOWN_IDENTITY;
+        reservation->Shell->State = SAFEUPLOAD_REGISTRY_STATE_UNKNOWN;
+    } else if (streamChars != 0) {
+        RtlCopyMemory(reservation->Shell->StreamName, name->Stream.Buffer,
+            streamChars * sizeof(WCHAR));
+    }
 
     status = FltGetInstanceContext(FltObjects->Instance, (PFLT_CONTEXT *)&instanceContext);
     if (!NT_SUCCESS(status)) {
@@ -873,11 +1020,16 @@ NTSTATUS SafeUploadStageWritersReserveCreate(_In_ PFLT_CALLBACK_DATA Data,
         status = STATUS_SUCCESS;
         goto Cleanup;
     }
-    if ((ULONGLONG)InterlockedCompareExchange64(
+    if (pathResolved && (ULONGLONG)InterlockedCompareExchange64(
             &instanceContext->RegistryDirectoryRenameGeneration, 0, 0) != directoryRenameGeneration &&
-        !StageRegistryDirectoryRenameInFlightLocked(FltObjects->Instance, fullName)) {
+        !StageRegistryDirectoryRenameInFlightLocked(FltObjects->Instance, &registryName)) {
         /* The name was resolved before a directory move completed and the
          * reservation arrived too late for that completion's bounded rewrite. */
+        StageRegistrySetEntryUnknownLocked(reservation->Shell, SAFEUPLOAD_REGISTRY_UNKNOWN_RENAME);
+        InterlockedIncrement64(&RegistryRenameFailures);
+    }
+    if (pathResolved && (ULONGLONG)InterlockedCompareExchange64(
+            &instanceContext->RegistryRenameLossGeneration, 0, 0) != renameLossGeneration) {
         StageRegistrySetEntryUnknownLocked(reservation->Shell, SAFEUPLOAD_REGISTRY_UNKNOWN_RENAME);
         InterlockedIncrement64(&RegistryRenameFailures);
     }
@@ -888,12 +1040,18 @@ NTSTATUS SafeUploadStageWritersReserveCreate(_In_ PFLT_CALLBACK_DATA Data,
     if (RegistryEntryCount + RegistryReservedSlots >= capacity ||
          StageRegistryInstanceCountLocked(FltObjects->Instance) >=
             min((ULONG)SAFEUPLOAD_WRITER_REGISTRY_INSTANCE_LIMIT, capacity) ||
-         RegistryNameBytes + RegistryReservedNameBytes + fullName->Length >
+         RegistryNameBytes + RegistryReservedNameBytes +
+            StageRegistryNameStorageBytes((USHORT)reservation->NameChars,
+                (USHORT)reservation->StreamChars) >
             SAFEUPLOAD_WRITER_REGISTRY_NAME_BUDGET) {
         RegistryOverflow += 1;
         FltReleasePushLock(&RegistryLock);
         InterlockedIncrement64(&RegistryCapacityFailures);
-        StageRegistryMarkUnknown(FltObjects->Instance, SAFEUPLOAD_REGISTRY_UNKNOWN_CAPACITY, FALSE);
+        /* P0-3: a known ADS capacity miss remains SOP-local at paging
+         * admission; only an unidentifiable/default-stream loss widens. */
+        if (!reservation->Shell->StreamIdentityKnown || reservation->Shell->StreamChars == 0)
+            StageRegistryMarkUnknown(FltObjects->Instance,
+                SAFEUPLOAD_REGISTRY_UNKNOWN_CAPACITY, FALSE);
         StageRegistryQueueReclaim();
         status = STATUS_SUCCESS;
         goto Cleanup;
@@ -901,24 +1059,26 @@ NTSTATUS SafeUploadStageWritersReserveCreate(_In_ PFLT_CALLBACK_DATA Data,
     InsertTailList(&RegistryReservations, &reservation->Link);
     reservation->Active = TRUE;
     RegistryReservationCount += 1;
-    RegistryReservedNameBytes += fullName->Length;
+    RegistryReservedNameBytes += StageRegistryNameStorageBytes((USHORT)reservation->NameChars,
+        (USHORT)reservation->StreamChars);
     reservation->NameReserved = TRUE;
     if (reservation->SlotReserved) RegistryReservedSlots += 1;
     FltReleasePushLock(&RegistryLock);
     FltReleaseContext(instanceContext);
     instanceContext = NULL;
-    FltReleaseFileNameInformation(name);
+    if (name != NULL) FltReleaseFileNameInformation(name);
     *ReservationOut = reservation;
     return STATUS_SUCCESS;
 
 RefuseIdentity:
     InterlockedIncrement64(&RegistryIdentityFailures);
-    StageRegistryMarkUnknown(FltObjects->Instance, SAFEUPLOAD_REGISTRY_UNKNOWN_IDENTITY, FALSE);
     status = STATUS_SUCCESS;
-    goto Cleanup;
+    pathResolved = FALSE;
+    goto PrepareReservation;
 RefuseAllocation:
     InterlockedIncrement64(&RegistryAllocationFailures);
-    StageRegistryMarkUnknown(FltObjects->Instance, SAFEUPLOAD_REGISTRY_UNKNOWN_ALLOCATION, FALSE);
+    if (!pathResolved || streamChars == 0)
+        StageRegistryMarkUnknown(FltObjects->Instance, SAFEUPLOAD_REGISTRY_UNKNOWN_ALLOCATION, FALSE);
     status = STATUS_SUCCESS;
 Cleanup:
     /* Every path here lost tracking (success returned above): Unknown is recorded, nothing is required, nothing is refused. */
@@ -985,7 +1145,8 @@ NTSTATUS SafeUploadStageWritersPrepareRename(_In_ PFLT_CALLBACK_DATA Data,
     PSTAGE_REGISTRY_RENAME_CONTEXT context = NULL;
     PFLT_VOLUME volume = NULL;
     BOOLEAN isDirectory = FALSE;
-    ULONG returned = 0, index;
+    UNICODE_STRING destinationBase = { 0 }, destinationStream = { 0 };
+    ULONG returned = 0;
     NTSTATUS status;
 
     PAGED_CODE();
@@ -1060,21 +1221,22 @@ NTSTATUS SafeUploadStageWritersPrepareRename(_In_ PFLT_CALLBACK_DATA Data,
         return STATUS_SUCCESS;
     }
 
-    if (!LinkOperation && (Destination == NULL || Destination->Length == 0 ||
-        (Destination->Length & 1) != 0 ||
-        Destination->Length / sizeof(WCHAR) > SAFEUPLOAD_WRITER_REGISTRY_NAME_CHARS)) {
+    if (!LinkOperation && (Destination == NULL || Destination->Buffer == NULL ||
+        Destination->Length == 0 || (Destination->Length & 1) != 0)) {
         StageRegistryMarkUnknown(FltObjects->Instance, SAFEUPLOAD_REGISTRY_UNKNOWN_RENAME, FALSE);
         InterlockedIncrement64(&RegistryRenameFailures);
         return STATUS_SUCCESS;
     }
     if (!LinkOperation) {
-        for (index = 0; index < Destination->Length / sizeof(WCHAR); ++index) {
-            if (Destination->Buffer[index] == L':') {
-                StageRegistryMarkUnknown(FltObjects->Instance, SAFEUPLOAD_REGISTRY_UNKNOWN_RENAME, FALSE);
-                InterlockedIncrement64(&RegistryRenameFailures);
-                return STATUS_SUCCESS;
-            }
+        StageRegistrySplitStreamName(Destination, &destinationBase, &destinationStream);
+        if (destinationBase.Length == 0 ||
+            destinationBase.Length / sizeof(WCHAR) > SAFEUPLOAD_WRITER_REGISTRY_NAME_CHARS ||
+            destinationStream.Length / sizeof(WCHAR) > SAFEUPLOAD_WRITER_REGISTRY_NAME_CHARS) {
+            StageRegistryMarkUnknown(FltObjects->Instance, SAFEUPLOAD_REGISTRY_UNKNOWN_RENAME, FALSE);
+            InterlockedIncrement64(&RegistryRenameFailures);
+            return STATUS_SUCCESS;
         }
+        index = destinationBase.Length / sizeof(WCHAR);
     }
 
     RtlZeroMemory(&identity, sizeof(identity));
@@ -1094,7 +1256,8 @@ NTSTATUS SafeUploadStageWritersPrepareRename(_In_ PFLT_CALLBACK_DATA Data,
 
     FltAcquirePushLockExclusive(&RegistryLock);
     entry = StageRegistryFindByKeyLocked(FltObjects->Instance, volume,
-        identity.VolumeSerialNumber, &identity.FileId);
+        identity.VolumeSerialNumber, &identity.FileId,
+        FltObjects->FileObject != NULL ? FltObjects->FileObject->SectionObjectPointer : NULL);
     if (entry != NULL) StageRegistryReference(entry);
     FltReleasePushLock(&RegistryLock);
     FltObjectDereference(volume);
@@ -1112,8 +1275,20 @@ NTSTATUS SafeUploadStageWritersPrepareRename(_In_ PFLT_CALLBACK_DATA Data,
     context->Entry = entry;
     context->LinkOperation = LinkOperation;
     if (!LinkOperation) {
-        context->NameChars = Destination->Length / sizeof(WCHAR);
-        RtlCopyMemory(context->Name, Destination->Buffer, Destination->Length);
+        context->NameChars = destinationBase.Length / sizeof(WCHAR);
+        context->NewStreamChars = destinationStream.Length / sizeof(WCHAR);
+        RtlCopyMemory(context->Name, destinationBase.Buffer, destinationBase.Length);
+        if (context->NewStreamChars != 0) {
+            RtlCopyMemory(context->StreamName, destinationStream.Buffer, destinationStream.Length);
+        } else {
+            /* A base-file rename carries each tracked stream with its file. */
+            FltAcquirePushLockShared(&RegistryLock);
+            context->NewStreamChars = entry->StreamChars;
+            if (context->NewStreamChars != 0)
+                RtlCopyMemory(context->StreamName, entry->StreamName,
+                    context->NewStreamChars * sizeof(WCHAR));
+            FltReleasePushLock(&RegistryLock);
+        }
     }
     FltAcquirePushLockExclusive(&RegistryLock);
     if (!entry->Listed || entry->Retired) {
@@ -1125,6 +1300,7 @@ NTSTATUS SafeUploadStageWritersPrepareRename(_In_ PFLT_CALLBACK_DATA Data,
     }
     context->Ambiguous = InterlockedIncrement(&entry->RenameInFlight) != 1;
     InterlockedIncrement(&entry->RenameVersion);
+    InterlockedExchange(&entry->ScopeNameClassification, STAGE_SCOPE_CLASS_UNRESOLVED);
     FltReleasePushLock(&RegistryLock);
     if (context->Ambiguous) StageRegistryMarkEntryUnknown(entry, SAFEUPLOAD_REGISTRY_UNKNOWN_RENAME);
     *RenameContext = context;
@@ -1202,7 +1378,7 @@ static VOID StageRegistryCompleteDirectoryRename(_In_ PFLT_INSTANCE Instance,
             {
                 ULONG suffixChars = entry->NameChars - Rename->OldNameChars;
                 ULONG newChars = Rename->NewNameChars + suffixChars;
-                ULONG oldBytes = entry->NameChars * sizeof(WCHAR);
+                ULONG oldBytes = StageRegistryEntryNameStorageBytes(entry);
                 ULONG newBytes;
                 if (newChars > SAFEUPLOAD_WRITER_REGISTRY_NAME_CHARS) {
                     StageRegistrySetEntryUnknownLocked(entry, SAFEUPLOAD_REGISTRY_UNKNOWN_RENAME);
@@ -1210,7 +1386,7 @@ static VOID StageRegistryCompleteDirectoryRename(_In_ PFLT_INSTANCE Instance,
                     failed = TRUE;
                     continue;
                 }
-                newBytes = newChars * sizeof(WCHAR);
+                newBytes = StageRegistryNameStorageBytes((USHORT)newChars, entry->StreamChars);
                 if (RegistryNameBytes < oldBytes || newBytes > SAFEUPLOAD_WRITER_REGISTRY_NAME_BUDGET ||
                     RegistryReservedNameBytes > SAFEUPLOAD_WRITER_REGISTRY_NAME_BUDGET - newBytes ||
                     RegistryNameBytes - oldBytes > SAFEUPLOAD_WRITER_REGISTRY_NAME_BUDGET -
@@ -1227,6 +1403,8 @@ static VOID StageRegistryCompleteDirectoryRename(_In_ PFLT_INSTANCE Instance,
                 if (newBytes < sizeof(entry->Name))
                     RtlZeroMemory((PUCHAR)entry->Name + newBytes, sizeof(entry->Name) - newBytes);
                 entry->NameChars = (USHORT)newChars;
+                InterlockedExchange(&entry->ScopeNameClassification,
+                    STAGE_SCOPE_CLASS_UNRESOLVED);
                 RegistryNameBytes = RegistryNameBytes - oldBytes + newBytes;
                 InterlockedIncrement(&entry->RenameVersion);
                 InterlockedIncrement64(&RegistryChangeSequence);
@@ -1265,14 +1443,16 @@ static VOID StageRegistryCompleteDirectoryRename(_In_ PFLT_INSTANCE Instance,
             {
                 ULONG suffixChars = reservation->NameChars - Rename->OldNameChars;
                 ULONG newChars = Rename->NewNameChars + suffixChars;
-                ULONG oldBytes = reservation->NameChars * sizeof(WCHAR);
+                ULONG oldBytes = StageRegistryNameStorageBytes((USHORT)reservation->NameChars,
+                    (USHORT)reservation->StreamChars);
                 ULONG newBytes;
                 if (newChars > SAFEUPLOAD_WRITER_REGISTRY_NAME_CHARS) {
                     StageRegistrySetEntryUnknownLocked(shell, SAFEUPLOAD_REGISTRY_UNKNOWN_RENAME);
                     failed = TRUE;
                     continue;
                 }
-                newBytes = newChars * sizeof(WCHAR);
+                newBytes = StageRegistryNameStorageBytes((USHORT)newChars,
+                    (USHORT)reservation->StreamChars);
                 if (RegistryReservedNameBytes < oldBytes ||
                     RegistryNameBytes > SAFEUPLOAD_WRITER_REGISTRY_NAME_BUDGET - newBytes ||
                     RegistryReservedNameBytes - oldBytes >
@@ -1411,16 +1591,28 @@ VOID SafeUploadStageWritersCompleteRename(_In_ PFLT_INSTANCE Instance, _In_opt_ 
         markUnknown = TRUE;
     } else if (Succeeded) {
         ULONG oldBytes, newBytes;
-        oldBytes = entry->NameChars * sizeof(WCHAR);
-        newBytes = rename->NameChars * sizeof(WCHAR);
-        if (entry->Retired || RegistryNameBytes < oldBytes ||
-            RegistryNameBytes - oldBytes > SAFEUPLOAD_WRITER_REGISTRY_NAME_BUDGET - newBytes) {
+        oldBytes = StageRegistryEntryNameStorageBytes(entry);
+        newBytes = StageRegistryNameStorageBytes((USHORT)rename->NameChars,
+            (USHORT)rename->NewStreamChars);
+        if (entry->Retired || rename->NameChars == 0 ||
+            rename->NameChars > SAFEUPLOAD_WRITER_REGISTRY_NAME_CHARS ||
+            rename->NewStreamChars > SAFEUPLOAD_WRITER_REGISTRY_NAME_CHARS ||
+            newBytes > SAFEUPLOAD_WRITER_REGISTRY_NAME_BUDGET || RegistryNameBytes < oldBytes ||
+            RegistryReservedNameBytes > SAFEUPLOAD_WRITER_REGISTRY_NAME_BUDGET - newBytes ||
+            RegistryNameBytes - oldBytes > SAFEUPLOAD_WRITER_REGISTRY_NAME_BUDGET -
+                RegistryReservedNameBytes - newBytes) {
             markUnknown = TRUE;
         } else {
-            RtlCopyMemory(entry->Name, rename->Name, newBytes);
-            if (newBytes < sizeof(entry->Name))
-                RtlZeroMemory((PUCHAR)entry->Name + newBytes, sizeof(entry->Name) - newBytes);
+            RtlZeroMemory(entry->Name, sizeof(entry->Name));
+            RtlCopyMemory(entry->Name, rename->Name, rename->NameChars * sizeof(WCHAR));
+            RtlZeroMemory(entry->StreamName, sizeof(entry->StreamName));
+            if (rename->NewStreamChars != 0)
+                RtlCopyMemory(entry->StreamName, rename->StreamName,
+                    rename->NewStreamChars * sizeof(WCHAR));
             entry->NameChars = (USHORT)rename->NameChars;
+            entry->StreamChars = (USHORT)rename->NewStreamChars;
+            InterlockedExchange(&entry->ScopeNameClassification,
+                STAGE_SCOPE_CLASS_UNRESOLVED);
             RegistryNameBytes = RegistryNameBytes - oldBytes + newBytes;
         }
     }
@@ -1643,7 +1835,9 @@ NTSTATUS SafeUploadStageWritersPostCreate(
 
 IdentityFailure:
     InterlockedIncrement64(&RegistryIdentityFailures);
-    StageRegistryMarkUnknown(reservation->Instance, SAFEUPLOAD_REGISTRY_UNKNOWN_IDENTITY, FALSE);
+    if (reservation->Shell == NULL || (reservation->Shell->StreamIdentityKnown &&
+        reservation->Shell->StreamChars == 0))
+        StageRegistryMarkUnknown(reservation->Instance, SAFEUPLOAD_REGISTRY_UNKNOWN_IDENTITY, FALSE);
 TrackingLost:
     /* Tracking this writer failed. The open is never refused or cancelled (the registry is a ledger, not a gate): the loss is
      * recorded above as entry, instance or machine Unknown, which withholds every protection claim and promotion. Scoped
@@ -1935,8 +2129,8 @@ static VOID StageRegistryRetireInstance(_In_ PFLT_INSTANCE Instance, _In_ BOOLEA
                 entry->Instance = NULL;
                 entry->Volume = NULL;
                 if (RegistryEntryCount != 0) RegistryEntryCount -= 1;
-                if (RegistryNameBytes >= entry->NameChars * sizeof(WCHAR))
-                    RegistryNameBytes -= entry->NameChars * sizeof(WCHAR);
+                if (RegistryNameBytes >= StageRegistryEntryNameStorageBytes(entry))
+                    RegistryNameBytes -= StageRegistryEntryNameStorageBytes(entry);
                 break;
             }
         }
@@ -2130,7 +2324,8 @@ __declspec(noinline) static BOOLEAN StageRegistryPruneLocked(_In_ PSTAGE_REGISTR
     Entry->Instance = NULL;
     Entry->Volume = NULL;
     if (RegistryEntryCount != 0) RegistryEntryCount -= 1;
-    if (RegistryNameBytes >= Entry->NameChars * sizeof(WCHAR)) RegistryNameBytes -= Entry->NameChars * sizeof(WCHAR);
+    if (RegistryNameBytes >= StageRegistryEntryNameStorageBytes(Entry))
+        RegistryNameBytes -= StageRegistryEntryNameStorageBytes(Entry);
     return TRUE;
 }
 
@@ -2140,49 +2335,23 @@ __declspec(noinline) static BOOLEAN StageRegistryPruneLocked(_In_ PSTAGE_REGISTR
 static BOOLEAN StageRegistryEntryQuiescent(_In_ PSTAGE_REGISTRY_ENTRY Entry, _In_ PFLT_INSTANCE Instance,
     _In_ PFLT_VOLUME Volume)
 {
-    UNICODE_STRING volumeName = { 0 }, name;
-    OBJECT_ATTRIBUTES attributes;
-    IO_STATUS_BLOCK io = { 0 };
-    FILE_ID_INFORMATION actual;
     HANDLE handle = NULL;
     PFILE_OBJECT object = NULL;
-    PWCHAR buffer = NULL;
-    ULONG needed = 0, bytes, returned = 0;
     BOOLEAN quiescent = FALSE;
     NTSTATUS status;
 
     PAGED_CODE();
     if (InterlockedCompareExchange(&Entry->PagingWritesInFlight, 0, 0) != 0) return FALSE;
-    status = FltGetVolumeName(Volume, NULL, &needed);
-    if (status != STATUS_BUFFER_TOO_SMALL || needed == 0 || needed > MAXUSHORT - 64) return FALSE;
-    bytes = needed + sizeof(WCHAR) + sizeof(ULONGLONG);
-    buffer = ExAllocatePool2(POOL_FLAG_PAGED, bytes, SAFEUPLOAD_REGISTRY_POOL_TAG);
-    if (buffer == NULL) return FALSE;
-    volumeName.Buffer = buffer;
-    volumeName.MaximumLength = (USHORT)needed;
-    status = FltGetVolumeName(Volume, &volumeName, NULL);
-    if (!NT_SUCCESS(status)) goto Exit;
-    buffer[volumeName.Length / sizeof(WCHAR)] = L'\\';
-    RtlCopyMemory((PUCHAR)buffer + volumeName.Length + sizeof(WCHAR), Entry->FileId.Identifier, sizeof(ULONGLONG));
-    name.Buffer = buffer;
-    name.Length = name.MaximumLength = (USHORT)(volumeName.Length + sizeof(WCHAR) + sizeof(ULONGLONG));
-    InitializeObjectAttributes(&attributes, &name, OBJ_KERNEL_HANDLE, NULL, NULL);
-    status = FltCreateFileEx2(SafeUploadData.Filter, Instance, &handle, &object, FILE_READ_ATTRIBUTES | SYNCHRONIZE,
-        &attributes, &io, NULL, 0, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, FILE_OPEN,
-        FILE_OPEN_BY_FILE_ID | FILE_NON_DIRECTORY_FILE | FILE_SYNCHRONOUS_IO_NONALERT | FILE_COMPLETE_IF_OPLOCKED,
-        NULL, 0, 0, NULL);
-    if (status == STATUS_INVALID_PARAMETER || status == STATUS_OBJECT_NAME_NOT_FOUND ||
-        status == STATUS_FILE_DELETED || status == STATUS_DELETE_PENDING) {
+    status = StageRegistryOpenIdentity(Entry, Instance, Volume, &handle, &object);
+    if (status == STATUS_OBJECT_NAME_NOT_FOUND || status == STATUS_FILE_DELETED ||
+        status == STATUS_DELETE_PENDING) {
         quiescent = TRUE; /* the file is gone (or going): no writer, mapping or cache can reach it */
         goto Exit;
     }
-    if (status != STATUS_SUCCESS || object == NULL) goto Exit;
-    RtlZeroMemory(&actual, sizeof(actual));
-    status = FltQueryInformationFile(Instance, object, &actual, sizeof(actual), FileIdInformation, &returned);
-    if (status != STATUS_SUCCESS || returned != sizeof(actual)) goto Exit;
-    if (actual.VolumeSerialNumber != Entry->VolumeSerial ||
-        !RtlEqualMemory(&actual.FileId, &Entry->FileId, sizeof(actual.FileId))) {
-        quiescent = TRUE; /* the reference now names another file: the tracked one is gone */
+    if (status != STATUS_SUCCESS || object == NULL || object->SectionObjectPointer == NULL) goto Exit;
+    if (object->SectionObjectPointer != InterlockedCompareExchangePointer(
+            (PVOID volatile *)&Entry->SectionObjectPointer, NULL, NULL)) {
+        quiescent = TRUE; /* the original stream incarnation is gone */
         goto Exit;
     }
     /* Our open holds the stream's one live SCB, so these pointers are current. No data section means no mapping (writable
@@ -2193,7 +2362,6 @@ static BOOLEAN StageRegistryEntryQuiescent(_In_ PSTAGE_REGISTRY_ENTRY Entry, _In
 Exit:
     if (object != NULL) ObDereferenceObject(object);
     if (handle != NULL) FltClose(handle);
-    ExFreePoolWithTag(buffer, SAFEUPLOAD_REGISTRY_POOL_TAG);
     return quiescent;
 }
 
@@ -2205,18 +2373,38 @@ static NTSTATUS StageRegistryOpenIdentity(_In_ PSTAGE_REGISTRY_ENTRY Entry,
     OBJECT_ATTRIBUTES attributes;
     IO_STATUS_BLOCK io = { 0 };
     FILE_ID_INFORMATION actual;
-    PWCHAR buffer = NULL;
-    ULONG needed = 0, bytes, returned = 0;
+    PWCHAR buffer = NULL, streamSnapshot = NULL;
+    ULONG needed = 0, bytes, returned = 0, streamBytes, renameVersion;
     NTSTATUS status;
     PAGED_CODE();
     *Handle = NULL;
     *Object = NULL;
+    streamSnapshot = ExAllocatePool2(POOL_FLAG_PAGED,
+        SAFEUPLOAD_WRITER_REGISTRY_NAME_CHARS * sizeof(WCHAR), SAFEUPLOAD_REGISTRY_POOL_TAG);
+    if (streamSnapshot == NULL) return STATUS_INSUFFICIENT_RESOURCES;
+    FltAcquirePushLockShared(&RegistryLock);
+    if (!Entry->Listed || Entry->Retired || !Entry->StreamIdentityKnown ||
+        Entry->StreamChars > SAFEUPLOAD_WRITER_REGISTRY_NAME_CHARS ||
+        InterlockedCompareExchange(&Entry->RenameInFlight, 0, 0) != 0) {
+        FltReleasePushLock(&RegistryLock);
+        status = STATUS_FILE_INVALID;
+        goto Exit;
+    }
+    /* ADS names are appended after the stable 64-bit file reference so the
+     * PASSIVE worker reopens the exact stream/SOP, never the base data stream. */
+    streamBytes = Entry->StreamChars * sizeof(WCHAR);
+    renameVersion = (ULONG)InterlockedCompareExchange(&Entry->RenameVersion, 0, 0);
+    if (streamBytes != 0) RtlCopyMemory(streamSnapshot, Entry->StreamName, streamBytes);
+    FltReleasePushLock(&RegistryLock);
     status = FltGetVolumeName(Volume, NULL, &needed);
-    if (status != STATUS_BUFFER_TOO_SMALL || needed == 0 || needed > MAXUSHORT - 64)
-        return STATUS_FLT_INSTANCE_NOT_FOUND;
-    bytes = needed + sizeof(WCHAR) + sizeof(ULONGLONG);
+    if (status != STATUS_BUFFER_TOO_SMALL || needed == 0 ||
+        needed > MAXUSHORT - 64 - streamBytes) {
+        status = STATUS_FLT_INSTANCE_NOT_FOUND;
+        goto Exit;
+    }
+    bytes = needed + sizeof(WCHAR) + sizeof(ULONGLONG) + streamBytes;
     buffer = ExAllocatePool2(POOL_FLAG_PAGED, bytes, SAFEUPLOAD_REGISTRY_POOL_TAG);
-    if (buffer == NULL) return STATUS_INSUFFICIENT_RESOURCES;
+    if (buffer == NULL) { status = STATUS_INSUFFICIENT_RESOURCES; goto Exit; }
     volumeName.Buffer = buffer;
     volumeName.MaximumLength = (USHORT)needed;
     status = FltGetVolumeName(Volume, &volumeName, NULL);
@@ -2224,8 +2412,12 @@ static NTSTATUS StageRegistryOpenIdentity(_In_ PSTAGE_REGISTRY_ENTRY Entry,
     buffer[volumeName.Length / sizeof(WCHAR)] = L'\\';
     RtlCopyMemory((PUCHAR)buffer + volumeName.Length + sizeof(WCHAR),
         Entry->FileId.Identifier, sizeof(ULONGLONG));
+    if (streamBytes != 0)
+        RtlCopyMemory((PUCHAR)buffer + volumeName.Length + sizeof(WCHAR) + sizeof(ULONGLONG),
+            streamSnapshot, streamBytes);
     name.Buffer = buffer;
-    name.Length = name.MaximumLength = (USHORT)(volumeName.Length + sizeof(WCHAR) + sizeof(ULONGLONG));
+    name.Length = name.MaximumLength = (USHORT)(volumeName.Length + sizeof(WCHAR) +
+        sizeof(ULONGLONG) + streamBytes);
     InitializeObjectAttributes(&attributes, &name, OBJ_KERNEL_HANDLE, NULL, NULL);
     status = FltCreateFileEx2(SafeUploadData.Filter, Instance, Handle, Object,
         FILE_READ_ATTRIBUTES | SYNCHRONIZE, &attributes, &io, NULL, 0,
@@ -2244,12 +2436,259 @@ static NTSTATUS StageRegistryOpenIdentity(_In_ PSTAGE_REGISTRY_ENTRY Entry,
             (PVOID volatile *)&Entry->SectionObjectPointer, NULL, NULL)) {
         status = STATUS_FILE_INVALID;
     }
+    if (NT_SUCCESS(status) && (*Object)->SectionObjectPointer == NULL)
+        status = STATUS_FILE_INVALID;
+    if (NT_SUCCESS(status)) {
+        BOOLEAN renameStable;
+        FltAcquirePushLockShared(&RegistryLock);
+        renameStable = Entry->Listed && !Entry->Retired &&
+            InterlockedCompareExchange(&Entry->RenameInFlight, 0, 0) == 0 &&
+            (ULONG)InterlockedCompareExchange(&Entry->RenameVersion, 0, 0) == renameVersion;
+        FltReleasePushLock(&RegistryLock);
+        if (!renameStable) status = STATUS_FILE_INVALID;
+    }
+Exit:
+    ExFreePoolWithTag(buffer, SAFEUPLOAD_REGISTRY_POOL_TAG);
+    ExFreePoolWithTag(streamSnapshot, SAFEUPLOAD_REGISTRY_POOL_TAG);
+    if (!NT_SUCCESS(status)) {
+        if (*Object != NULL) { ObDereferenceObject(*Object); *Object = NULL; }
+        if (*Handle != NULL) { FltClose(*Handle); *Handle = NULL; }
+    }
+    return status;
+}
+
+__declspec(noinline) static NTSTATUS StageRegistryOpenParentById(_In_ PFLT_INSTANCE Instance,
+    _In_ PFLT_VOLUME Volume, _In_ ULONGLONG VolumeSerial, _In_ ULONGLONG ParentFileId,
+    _Out_ PHANDLE Handle, _Outptr_result_nullonfailure_ PFILE_OBJECT *Object)
+{
+    UNICODE_STRING volumeName = { 0 }, name;
+    OBJECT_ATTRIBUTES attributes;
+    IO_STATUS_BLOCK io = { 0 };
+    FILE_ID_INFORMATION actual;
+    PWCHAR buffer = NULL;
+    ULONG needed = 0, bytes, returned = 0;
+    NTSTATUS status;
+
+    PAGED_CODE();
+    *Handle = NULL;
+    *Object = NULL;
+    if (ParentFileId == 0) return STATUS_FILE_INVALID;
+    status = FltGetVolumeName(Volume, NULL, &needed);
+    if (status != STATUS_BUFFER_TOO_SMALL || needed == 0 || needed > MAXUSHORT - 32)
+        return STATUS_FLT_INSTANCE_NOT_FOUND;
+    bytes = needed + sizeof(WCHAR) + sizeof(ParentFileId);
+    buffer = ExAllocatePool2(POOL_FLAG_PAGED, bytes, SAFEUPLOAD_REGISTRY_POOL_TAG);
+    if (buffer == NULL) return STATUS_INSUFFICIENT_RESOURCES;
+    volumeName.Buffer = buffer;
+    volumeName.MaximumLength = (USHORT)needed;
+    status = FltGetVolumeName(Volume, &volumeName, NULL);
+    if (!NT_SUCCESS(status)) goto Exit;
+    buffer[volumeName.Length / sizeof(WCHAR)] = L'\\';
+    RtlCopyMemory((PUCHAR)buffer + volumeName.Length + sizeof(WCHAR),
+        &ParentFileId, sizeof(ParentFileId));
+    name.Buffer = buffer;
+    name.Length = name.MaximumLength = (USHORT)(volumeName.Length + sizeof(WCHAR) + sizeof(ParentFileId));
+    InitializeObjectAttributes(&attributes, &name, OBJ_KERNEL_HANDLE, NULL, NULL);
+    status = FltCreateFileEx2(SafeUploadData.Filter, Instance, Handle, Object,
+        FILE_READ_ATTRIBUTES | SYNCHRONIZE, &attributes, &io, NULL, 0,
+        FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, FILE_OPEN,
+        FILE_OPEN_BY_FILE_ID | FILE_DIRECTORY_FILE | FILE_SYNCHRONOUS_IO_NONALERT |
+            FILE_COMPLETE_IF_OPLOCKED, NULL, 0, 0, NULL);
+    if (status != STATUS_SUCCESS || *Object == NULL) goto Exit;
+    status = FltQueryInformationFile(Instance, *Object, &actual, sizeof(actual),
+        FileIdInformation, &returned);
+    if (!NT_SUCCESS(status) || returned != sizeof(actual) || actual.VolumeSerialNumber != VolumeSerial ||
+        !RtlEqualMemory(actual.FileId.Identifier, &ParentFileId, sizeof(ParentFileId)))
+        status = STATUS_FILE_INVALID;
 Exit:
     ExFreePoolWithTag(buffer, SAFEUPLOAD_REGISTRY_POOL_TAG);
     if (!NT_SUCCESS(status)) {
         if (*Object != NULL) { ObDereferenceObject(*Object); *Object = NULL; }
         if (*Handle != NULL) { FltClose(*Handle); *Handle = NULL; }
     }
+    return status;
+}
+
+__declspec(noinline) static VOID StageRegistryBuildLinkName(_In_ PCUNICODE_STRING ParentName,
+    _In_reads_(ChildChars) PCWCH ChildName, _In_ ULONG ChildChars,
+    _In_reads_opt_(StreamChars) PCWCH StreamName, _In_ ULONG StreamChars,
+    _Out_writes_(SAFEUPLOAD_MAX_PREFIX_CHARS + 1) PWCH Buffer, _Out_ PUNICODE_STRING LinkName)
+{
+    ULONG parentChars, copyChars, used, childCopy, streamCopy;
+    ULONG capacity = SAFEUPLOAD_MAX_PREFIX_CHARS + 1;
+
+    PAGED_CODE();
+    LinkName->Buffer = Buffer;
+    LinkName->Length = 0;
+    LinkName->MaximumLength = (USHORT)(capacity * sizeof(WCHAR));
+    if (ParentName == NULL || ParentName->Buffer == NULL ||
+        (ParentName->Length & (sizeof(WCHAR) - 1)) != 0 || ChildName == NULL || ChildChars == 0 ||
+        (StreamChars != 0 && StreamName == NULL))
+        return;
+    parentChars = ParentName->Length / sizeof(WCHAR);
+    copyChars = min(parentChars, capacity);
+    if (copyChars != 0) RtlCopyMemory(Buffer, ParentName->Buffer, copyChars * sizeof(WCHAR));
+    used = copyChars;
+    if (parentChars <= SAFEUPLOAD_MAX_PREFIX_CHARS) {
+        if (used != 0 && Buffer[used - 1] != L'\\' && used < capacity)
+            Buffer[used++] = L'\\';
+        childCopy = min(ChildChars, capacity - used);
+        if (childCopy != 0) {
+            RtlCopyMemory(Buffer + used, ChildName, childCopy * sizeof(WCHAR));
+            used += childCopy;
+        }
+        if (childCopy == ChildChars && StreamChars != 0) {
+            streamCopy = min(StreamChars, capacity - used);
+            if (streamCopy != 0) {
+                RtlCopyMemory(Buffer + used, StreamName, streamCopy * sizeof(WCHAR));
+                used += streamCopy;
+            }
+        }
+    }
+    LinkName->Length = (USHORT)(used * sizeof(WCHAR));
+}
+
+/* P0-4: every expansion decision is based on the complete PASSIVE-level NTFS link list.
+ * A truncated or unresolvable list is a failed classification and remains enforced Unknown. */
+__declspec(noinline) static NTSTATUS StageRegistryClassifyAllLinkNames(_In_ PSTAGE_REGISTRY_ENTRY Entry,
+    _In_ PFLT_INSTANCE Instance, _In_ PFLT_VOLUME Volume,
+    _Out_ PBOOLEAN UnionScoped, _Out_ PBOOLEAN CurrentScoped)
+{
+    HANDLE fileHandle = NULL, parentHandle = NULL;
+    PFILE_OBJECT fileObject = NULL, parentObject = NULL;
+    PFLT_FILE_NAME_INFORMATION parentNameInfo = NULL;
+    PFILE_LINKS_INFORMATION links = NULL;
+    PWCH pathBuffer = NULL, streamSnapshot = NULL;
+    UNICODE_STRING linkName;
+    ULONG bufferBytes = 4096, returned = 0, recordIndex, offset, streamChars = 0;
+    ULONG startingRenameVersion;
+    BOOLEAN unionScoped = FALSE, currentScoped = FALSE, stable;
+    NTSTATUS status;
+
+    PAGED_CODE();
+    *UnionScoped = FALSE;
+    *CurrentScoped = FALSE;
+    if (IoGetTopLevelIrp() != NULL) return STATUS_INVALID_DEVICE_STATE;
+    streamSnapshot = ExAllocatePool2(POOL_FLAG_PAGED,
+        SAFEUPLOAD_WRITER_REGISTRY_NAME_CHARS * sizeof(WCHAR), SAFEUPLOAD_REGISTRY_POOL_TAG);
+    if (streamSnapshot == NULL) return STATUS_INSUFFICIENT_RESOURCES;
+    FltAcquirePushLockShared(&RegistryLock);
+    startingRenameVersion = (ULONG)InterlockedCompareExchange(&Entry->RenameVersion, 0, 0);
+    stable = Entry->Listed && !Entry->Retired &&
+        InterlockedCompareExchange(&Entry->RenameInFlight, 0, 0) == 0 &&
+        Entry->StreamIdentityKnown && Entry->StreamChars <= SAFEUPLOAD_WRITER_REGISTRY_NAME_CHARS;
+    if (stable) {
+        streamChars = Entry->StreamChars;
+        if (streamChars != 0)
+            RtlCopyMemory(streamSnapshot, Entry->StreamName, streamChars * sizeof(WCHAR));
+    }
+    FltReleasePushLock(&RegistryLock);
+    if (!stable) { status = STATUS_FILE_INVALID; goto Exit; }
+    status = StageRegistryOpenIdentity(Entry, Instance, Volume, &fileHandle, &fileObject);
+    if (!NT_SUCCESS(status)) goto Exit;
+    if (fileObject->SectionObjectPointer != InterlockedCompareExchangePointer(
+            (PVOID volatile *)&Entry->SectionObjectPointer, NULL, NULL)) {
+        status = STATUS_FILE_INVALID;
+        goto Exit;
+    }
+    links = ExAllocatePool2(POOL_FLAG_PAGED, bufferBytes, SAFEUPLOAD_REGISTRY_POOL_TAG);
+    if (links == NULL) { status = STATUS_INSUFFICIENT_RESOURCES; goto Exit; }
+    for (;;) {
+        returned = 0;
+        status = FltQueryInformationFile(Instance, fileObject, links, bufferBytes,
+            FileHardLinkInformation, &returned);
+        if (status == STATUS_SUCCESS) break;
+        if (status != STATUS_BUFFER_OVERFLOW && status != STATUS_BUFFER_TOO_SMALL) goto Exit;
+        if (bufferBytes >= 1024 * 1024) { status = STATUS_BUFFER_TOO_SMALL; goto Exit; }
+        bufferBytes = min(bufferBytes * 2, 1024 * 1024);
+        ExFreePoolWithTag(links, SAFEUPLOAD_REGISTRY_POOL_TAG);
+        links = ExAllocatePool2(POOL_FLAG_PAGED, bufferBytes, SAFEUPLOAD_REGISTRY_POOL_TAG);
+        if (links == NULL) { status = STATUS_INSUFFICIENT_RESOURCES; goto Exit; }
+    }
+    if (returned < FIELD_OFFSET(FILE_LINKS_INFORMATION, Entry) +
+            FIELD_OFFSET(FILE_LINK_ENTRY_INFORMATION, FileName) ||
+        links->BytesNeeded == 0 || links->BytesNeeded > bufferBytes || links->EntriesReturned == 0) {
+        status = STATUS_FILE_INVALID;
+        goto Exit;
+    }
+    pathBuffer = ExAllocatePool2(POOL_FLAG_PAGED,
+        (SAFEUPLOAD_MAX_PREFIX_CHARS + 1) * sizeof(WCHAR), SAFEUPLOAD_REGISTRY_POOL_TAG);
+    if (pathBuffer == NULL) { status = STATUS_INSUFFICIENT_RESOURCES; goto Exit; }
+    offset = FIELD_OFFSET(FILE_LINKS_INFORMATION, Entry);
+    for (recordIndex = 0; recordIndex < links->EntriesReturned; ++recordIndex) {
+        PFILE_LINK_ENTRY_INFORMATION link = (PFILE_LINK_ENTRY_INFORMATION)((PUCHAR)links + offset);
+        ULONG available = returned - offset;
+        ULONG nameBytes, minimumBytes, nextOffset = link->NextEntryOffset;
+        ULONGLONG parentId;
+        BOOLEAN linkCurrentScoped, linkUnionScoped;
+        if (link->FileNameLength == 0 || link->FileNameLength > MAXULONG / sizeof(WCHAR)) {
+            status = STATUS_FILE_INVALID;
+            goto Exit;
+        }
+        nameBytes = link->FileNameLength * sizeof(WCHAR);
+        minimumBytes = FIELD_OFFSET(FILE_LINK_ENTRY_INFORMATION, FileName) + nameBytes;
+        if (minimumBytes > available ||
+            (recordIndex + 1 < links->EntriesReturned &&
+             (nextOffset < minimumBytes || (nextOffset & 7) != 0 || nextOffset > available)) ||
+            (recordIndex + 1 == links->EntriesReturned && nextOffset != 0)) {
+            status = STATUS_FILE_INVALID;
+            goto Exit;
+        }
+        RtlCopyMemory(&parentId, &link->ParentFileId, sizeof(parentId));
+        status = StageRegistryOpenParentById(Instance, Volume, Entry->VolumeSerial, parentId,
+            &parentHandle, &parentObject);
+        if (!NT_SUCCESS(status)) goto Exit;
+        status = FltGetFileNameInformationUnsafe(parentObject, Instance,
+            FLT_FILE_NAME_NORMALIZED | FLT_FILE_NAME_QUERY_DEFAULT, &parentNameInfo);
+        if (!NT_SUCCESS(status) || parentNameInfo == NULL ||
+            !NT_SUCCESS(FltParseFileNameInformation(parentNameInfo))) {
+            status = STATUS_FILE_INVALID;
+            goto Exit;
+        }
+        StageRegistryBuildLinkName(&parentNameInfo->Name, link->FileName,
+            link->FileNameLength, NULL, 0, pathBuffer, &linkName);
+        if (linkName.Length == 0) { status = STATUS_FILE_INVALID; goto Exit; }
+        linkCurrentScoped = SafeUploadPolicyEntryIsCurrentlyScoped(Entry->VolumeKind, &linkName);
+        linkUnionScoped = linkCurrentScoped ||
+            SafeUploadPolicyEntryIsNewlyScoped(Entry->VolumeKind, &linkName);
+        currentScoped |= linkCurrentScoped;
+        unionScoped |= linkUnionScoped;
+        if (streamChars != 0) {
+            StageRegistryBuildLinkName(&parentNameInfo->Name, link->FileName,
+                link->FileNameLength, streamSnapshot, streamChars, pathBuffer, &linkName);
+            if (linkName.Length == 0) { status = STATUS_FILE_INVALID; goto Exit; }
+            linkCurrentScoped = SafeUploadPolicyEntryIsCurrentlyScoped(Entry->VolumeKind, &linkName);
+            linkUnionScoped = linkCurrentScoped ||
+                SafeUploadPolicyEntryIsNewlyScoped(Entry->VolumeKind, &linkName);
+            currentScoped |= linkCurrentScoped;
+            unionScoped |= linkUnionScoped;
+        }
+        FltReleaseFileNameInformation(parentNameInfo);
+        parentNameInfo = NULL;
+        ObDereferenceObject(parentObject);
+        parentObject = NULL;
+        FltClose(parentHandle);
+        parentHandle = NULL;
+        if (recordIndex + 1 < links->EntriesReturned) offset += nextOffset;
+    }
+    FltAcquirePushLockShared(&RegistryLock);
+    stable = Entry->Listed && !Entry->Retired &&
+        InterlockedCompareExchange(&Entry->RenameInFlight, 0, 0) == 0 &&
+        (ULONG)InterlockedCompareExchange(&Entry->RenameVersion, 0, 0) == startingRenameVersion;
+    FltReleasePushLock(&RegistryLock);
+    if (!stable) { status = STATUS_FILE_INVALID; goto Exit; }
+    *UnionScoped = unionScoped;
+    *CurrentScoped = currentScoped;
+    status = STATUS_SUCCESS;
+Exit:
+    if (parentNameInfo != NULL) FltReleaseFileNameInformation(parentNameInfo);
+    if (parentObject != NULL) ObDereferenceObject(parentObject);
+    if (parentHandle != NULL) FltClose(parentHandle);
+    if (fileObject != NULL) ObDereferenceObject(fileObject);
+    if (fileHandle != NULL) FltClose(fileHandle);
+    if (pathBuffer != NULL) ExFreePoolWithTag(pathBuffer, SAFEUPLOAD_REGISTRY_POOL_TAG);
+    if (links != NULL) ExFreePoolWithTag(links, SAFEUPLOAD_REGISTRY_POOL_TAG);
+    if (streamSnapshot != NULL) ExFreePoolWithTag(streamSnapshot, SAFEUPLOAD_REGISTRY_POOL_TAG);
     return status;
 }
 
@@ -2265,19 +2704,6 @@ static NTSTATUS StageRegistryWaitPagingWritesDrained(_In_ PSTAGE_REGISTRY_ENTRY 
         InterlockedCompareExchange(&Entry->PagingWritesInFlight, 0, 0) != 0)
         return STATUS_IO_TIMEOUT;
     return STATUS_SUCCESS;
-}
-
-/* Keep Entry's paging-write lock in resident code. Entry, its event, and the
- * registry sequence are nonpaged; pageable callers do file/cache work outside. */
-__declspec(noinline) static VOID StageRegistryClosePagingWriteGate(_In_ PSTAGE_REGISTRY_ENTRY Entry)
-{
-    KIRQL irql;
-
-    KeAcquireSpinLock(&Entry->PagingWriteLock, &irql);
-    InterlockedExchange(&Entry->PagingWriteGateClosed, 1);
-    if (InterlockedCompareExchange(&Entry->PagingWritesInFlight, 0, 0) == 0)
-        KeSetEvent(&Entry->PagingWritesDrained, IO_NO_INCREMENT, FALSE);
-    KeReleaseSpinLock(&Entry->PagingWriteLock, irql);
 }
 
 __declspec(noinline) static VOID StageRegistryMarkCutoffFailed(_In_ PSTAGE_REGISTRY_ENTRY Entry)
@@ -2309,12 +2735,32 @@ __declspec(noinline) static VOID StageRegistryTryPromoteEntry(
     _In_ ULONG CurrentGeneration,
     _In_ BOOLEAN SopEmpty)
 {
+    PSAFEUPLOAD_INSTANCE_CONTEXT instanceContext = NULL;
+    KIRQL renameLossIrql;
+    BOOLEAN renameLossStable;
     KIRQL irql;
     UNICODE_STRING entryName;
     BOOLEAN directoryRenameInFlight;
     entryName.Buffer = Entry->Name;
     entryName.Length = entryName.MaximumLength = (USHORT)(Entry->NameChars * sizeof(WCHAR));
     directoryRenameInFlight = StageRegistryDirectoryRenameInFlightLocked(Entry->Instance, &entryName);
+
+    if (!NT_SUCCESS(FltGetInstanceContext(Entry->Instance, (PFLT_CONTEXT *)&instanceContext))) {
+        StageRegistrySetEntryUnknownLocked(Entry, SAFEUPLOAD_REGISTRY_UNKNOWN_RENAME);
+        StageRegistryPreparePagingActivation(Entry, TRUE);
+        InterlockedExchange(&WriterGlobalUnknown, 1);
+        return;
+    }
+    renameLossStable = SafeUploadPolicyRenameLossGenerationEnter(
+        &instanceContext->RegistryRenameLossGeneration,
+        Entry->RenameLossGeneration, &renameLossIrql);
+    if (!renameLossStable) {
+        SafeUploadPolicyRenameLossGenerationLeave(renameLossIrql);
+        FltReleaseContext(instanceContext);
+        StageRegistrySetEntryUnknownLocked(Entry, SAFEUPLOAD_REGISTRY_UNKNOWN_RENAME);
+        StageRegistryPreparePagingActivation(Entry, TRUE);
+        return;
+    }
 
     KeAcquireSpinLock(&Entry->PagingWriteLock, &irql);
     if (Entry->Listed && !Entry->Retired &&
@@ -2331,6 +2777,8 @@ __declspec(noinline) static VOID StageRegistryTryPromoteEntry(
         (ULONG)InterlockedCompareExchange(&Entry->RenameVersion, 0, 0) == RenameVersion &&
         Entry->ActivationGeneration == CurrentGeneration &&
         InterlockedCompareExchange(&Entry->ActivationEnforced, 0, 0) != 0 &&
+        InterlockedCompareExchange(&Entry->ScopeNameClassification, 0, 0) ==
+            STAGE_SCOPE_CLASS_SCOPED &&
         Entry->NameChars == NameSnapshotChars && NameSnapshotChars != 0 && NameMatches &&
         SopEmpty &&
         StageRegistrySnapshotC(Entry, NULL, 0, NULL) == 0) {
@@ -2342,18 +2790,26 @@ __declspec(noinline) static VOID StageRegistryTryPromoteEntry(
         }
     }
     KeReleaseSpinLock(&Entry->PagingWriteLock, irql);
+    SafeUploadPolicyRenameLossGenerationLeave(renameLossIrql);
+    FltReleaseContext(instanceContext);
 }
 
-__declspec(noinline) static VOID StageRegistryPreparePagingActivation(_In_ PSTAGE_REGISTRY_ENTRY Entry)
+__declspec(noinline) static VOID StageRegistryPreparePagingActivation(
+    _In_ PSTAGE_REGISTRY_ENTRY Entry, _In_ BOOLEAN Unknown)
 {
     KIRQL irql;
 
     KeAcquireSpinLock(&Entry->PagingWriteLock, &irql);
-    InterlockedExchange((volatile LONG *)&Entry->State, SAFEUPLOAD_REGISTRY_STATE_ACTIVATING);
-    InterlockedExchange(&Entry->CutoffStarted, 0);
+    InterlockedExchange((volatile LONG *)&Entry->State, Unknown ?
+        SAFEUPLOAD_REGISTRY_STATE_UNKNOWN : SAFEUPLOAD_REGISTRY_STATE_ACTIVATING);
+    if (Unknown)
+        InterlockedExchange(&Entry->ScopeNameClassification, STAGE_SCOPE_CLASS_UNRESOLVED);
+    InterlockedExchange(&Entry->ActivationEnforced, 1);
+    InterlockedExchange(&Entry->CutoffStarted, 1);
+    InterlockedExchange(&Entry->CutoffFlushStarted, 0);
     InterlockedExchange(&Entry->CutoffComplete, 0);
     InterlockedExchange(&Entry->CutoffFailed, 0);
-    InterlockedExchange(&Entry->PagingWriteGateClosed, 0);
+    InterlockedExchange(&Entry->PagingWriteGateClosed, 1);
     InterlockedExchange(&Entry->CutoffFlushPairs, 0);
     InterlockedExchange(&Entry->StuckSProbe, 0);
     InterlockedExchange(&Entry->LastSState, SAFEUPLOAD_REGISTRY_S_UNKNOWN);
@@ -2361,6 +2817,142 @@ __declspec(noinline) static VOID StageRegistryPreparePagingActivation(_In_ PSTAG
         KeSetEvent(&Entry->PagingWritesDrained, IO_NO_INCREMENT, FALSE);
     else
         KeClearEvent(&Entry->PagingWritesDrained);
+    KeReleaseSpinLock(&Entry->PagingWriteLock, irql);
+}
+
+/* P0-4: entries on a possibly scoped volume stay paging-gated until a PASSIVE
+ * hard-link query proves every name outside the current/pending union. */
+__declspec(noinline) static BOOLEAN StageRegistryBeginAliasProbe(_In_ PSTAGE_REGISTRY_ENTRY Entry)
+{
+    KIRQL irql;
+    LONG state;
+    BOOLEAN began = FALSE;
+    KeAcquireSpinLock(&Entry->PagingWriteLock, &irql);
+    state = InterlockedCompareExchange((volatile LONG *)&Entry->State, 0, 0);
+    if (Entry->Listed && !Entry->Retired &&
+        (state == SAFEUPLOAD_REGISTRY_STATE_PROTECTED || state == SAFEUPLOAD_REGISTRY_STATE_UNSCOPED ||
+         state == SAFEUPLOAD_REGISTRY_STATE_ACTIVATING ||
+         (state == SAFEUPLOAD_REGISTRY_STATE_UNKNOWN && Entry->NameChars != 0 &&
+          Entry->StreamIdentityKnown))) {
+        InterlockedExchange(&Entry->AliasProbePending, 1);
+        InterlockedExchange(&Entry->ScopeNameClassification, STAGE_SCOPE_CLASS_UNRESOLVED);
+        began = TRUE;
+    }
+    KeReleaseSpinLock(&Entry->PagingWriteLock, irql);
+    return began;
+}
+
+__declspec(noinline) static VOID StageRegistryResolveAliasProbe(_In_ PSTAGE_REGISTRY_ENTRY Entry,
+    _In_ BOOLEAN ClassificationSucceeded, _In_ BOOLEAN UnionScoped, _Out_ PBOOLEAN Activated)
+{
+    KIRQL irql;
+    LONG state;
+    *Activated = FALSE;
+    KeAcquireSpinLock(&Entry->PagingWriteLock, &irql);
+    if (InterlockedCompareExchange(&Entry->AliasProbePending, 0, 0) != 0) {
+        if (!ClassificationSucceeded) {
+            InterlockedExchange(&Entry->ScopeNameClassification, STAGE_SCOPE_CLASS_UNRESOLVED);
+            InterlockedOr(&Entry->UnknownReasons, SAFEUPLOAD_REGISTRY_UNKNOWN_IDENTITY);
+            InterlockedExchange((volatile LONG *)&Entry->State, SAFEUPLOAD_REGISTRY_STATE_UNKNOWN);
+            InterlockedExchange(&Entry->ActivationEnforced, 1);
+            InterlockedExchange(&Entry->CutoffStarted, 1);
+            InterlockedExchange(&Entry->CutoffFlushStarted, 0);
+            InterlockedExchange(&Entry->CutoffComplete, 0);
+            InterlockedExchange(&Entry->CutoffFailed, 1);
+            InterlockedExchange(&Entry->PagingWriteGateClosed, 1);
+        } else if (UnionScoped) {
+            InterlockedExchange(&Entry->ScopeNameClassification, STAGE_SCOPE_CLASS_SCOPED);
+            InterlockedExchange(&Entry->ActivationEnforced, 1);
+            InterlockedExchange(&Entry->CutoffStarted, 1);
+            InterlockedExchange(&Entry->CutoffFlushStarted, 0);
+            InterlockedExchange(&Entry->CutoffComplete, 0);
+            InterlockedExchange(&Entry->CutoffFailed, 0);
+            InterlockedExchange(&Entry->PagingWriteGateClosed, 1);
+            if (InterlockedCompareExchange(&Entry->UnknownReasons, 0, 0) == 0) {
+                InterlockedExchange((volatile LONG *)&Entry->State, SAFEUPLOAD_REGISTRY_STATE_ACTIVATING);
+                InterlockedExchange(&Entry->CutoffFlushPairs, 0);
+                InterlockedExchange(&Entry->StuckSProbe, 0);
+                InterlockedExchange(&Entry->LastSState, SAFEUPLOAD_REGISTRY_S_UNKNOWN);
+                *Activated = TRUE;
+            } else {
+                InterlockedExchange((volatile LONG *)&Entry->State, SAFEUPLOAD_REGISTRY_STATE_UNKNOWN);
+                InterlockedExchange(&Entry->CutoffFailed, 1);
+            }
+            if (InterlockedCompareExchange(&Entry->PagingWritesInFlight, 0, 0) == 0)
+                KeSetEvent(&Entry->PagingWritesDrained, IO_NO_INCREMENT, FALSE);
+            else
+                KeClearEvent(&Entry->PagingWritesDrained);
+        } else {
+            InterlockedExchange(&Entry->ScopeNameClassification, STAGE_SCOPE_CLASS_OUTSIDE);
+            state = InterlockedCompareExchange((volatile LONG *)&Entry->State, 0, 0);
+            if (state == SAFEUPLOAD_REGISTRY_STATE_ACTIVATING ||
+                state == SAFEUPLOAD_REGISTRY_STATE_PROTECTED) {
+                InterlockedExchange(&Entry->ActivationEnforced, 0);
+                InterlockedExchange((volatile LONG *)&Entry->State, SAFEUPLOAD_REGISTRY_STATE_UNSCOPED);
+                InterlockedExchange(&Entry->CutoffStarted, 0);
+                InterlockedExchange(&Entry->CutoffFlushStarted, 0);
+                InterlockedExchange(&Entry->CutoffComplete, 0);
+                InterlockedExchange(&Entry->CutoffFailed, 0);
+                InterlockedExchange(&Entry->PagingWriteGateClosed, 0);
+                InterlockedExchange(&Entry->CutoffFlushPairs, 0);
+            } else if (state == SAFEUPLOAD_REGISTRY_STATE_UNKNOWN) {
+                InterlockedExchange(&Entry->ActivationEnforced, 0);
+                InterlockedExchange(&Entry->PagingWriteGateClosed, 0);
+            }
+        }
+        InterlockedExchange(&Entry->AliasProbePending, 0);
+        InterlockedIncrement64(&RegistryChangeSequence);
+    }
+    state = InterlockedCompareExchange((volatile LONG *)&Entry->State, 0, 0);
+    if (state == SAFEUPLOAD_REGISTRY_STATE_UNKNOWN)
+        InterlockedExchange(&Entry->PagingWriteGateClosed, 1);
+    KeReleaseSpinLock(&Entry->PagingWriteLock, irql);
+}
+
+__declspec(noinline) static BOOLEAN StageRegistryResolveAliasProbeForGeneration(
+    _In_ PSTAGE_REGISTRY_ENTRY Entry, _In_ PFLT_INSTANCE Instance,
+    _In_ BOOLEAN ClassificationSucceeded, _In_ BOOLEAN UnionScoped,
+    _Out_ PBOOLEAN Activated)
+{
+    PSAFEUPLOAD_INSTANCE_CONTEXT instanceContext = NULL;
+    KIRQL irql;
+    BOOLEAN stable;
+    NTSTATUS status;
+    *Activated = FALSE;
+    if (!ClassificationSucceeded) {
+        StageRegistryResolveAliasProbe(Entry, FALSE, FALSE, Activated);
+        return FALSE;
+    }
+    status = FltGetInstanceContext(Instance, (PFLT_CONTEXT *)&instanceContext);
+    if (!NT_SUCCESS(status)) {
+        StageRegistryMarkEntryUnknown(Entry, SAFEUPLOAD_REGISTRY_UNKNOWN_RENAME);
+        StageRegistryResolveAliasProbe(Entry, FALSE, FALSE, Activated);
+        return FALSE;
+    }
+    /* Cache-lock before PagingWriteLock matches paging admission and prevents
+     * a rename-loss increment from racing the gate's release on stale names. */
+    stable = SafeUploadPolicyRenameLossGenerationEnter(
+        &instanceContext->RegistryRenameLossGeneration,
+        Entry->RenameLossGeneration, &irql);
+    StageRegistryResolveAliasProbe(Entry, stable, stable && UnionScoped, Activated);
+    SafeUploadPolicyRenameLossGenerationLeave(irql);
+    FltReleaseContext(instanceContext);
+    if (!stable) {
+        /* The prior rename loss already advanced the instance generation. Keep
+         * this entry's name unresolved without publishing a second loss. */
+        InterlockedOr(&Entry->UnknownReasons, SAFEUPLOAD_REGISTRY_UNKNOWN_RENAME);
+        InterlockedExchange(&Entry->ScopeNameClassification, STAGE_SCOPE_CLASS_UNRESOLVED);
+    }
+    return stable;
+}
+
+__declspec(noinline) static VOID StageRegistrySetLinkScopeClassification(
+    _In_ PSTAGE_REGISTRY_ENTRY Entry, _In_ BOOLEAN Succeeded, _In_ BOOLEAN UnionScoped)
+{
+    KIRQL irql;
+    KeAcquireSpinLock(&Entry->PagingWriteLock, &irql);
+    InterlockedExchange(&Entry->ScopeNameClassification, !Succeeded ?
+        STAGE_SCOPE_CLASS_UNRESOLVED : (UnionScoped ? STAGE_SCOPE_CLASS_SCOPED : STAGE_SCOPE_CLASS_OUTSIDE));
     KeReleaseSpinLock(&Entry->PagingWriteLock, irql);
 }
 
@@ -2375,6 +2967,7 @@ __declspec(noinline) static VOID StageRegistryClearPagingActivation(_In_ PSTAGE_
     if (state == SAFEUPLOAD_REGISTRY_STATE_ACTIVATING || state == SAFEUPLOAD_REGISTRY_STATE_PROTECTED)
         InterlockedExchange((volatile LONG *)&Entry->State, SAFEUPLOAD_REGISTRY_STATE_UNSCOPED);
     InterlockedExchange(&Entry->CutoffStarted, 0);
+    InterlockedExchange(&Entry->CutoffFlushStarted, 0);
     InterlockedExchange(&Entry->CutoffComplete, 0);
     InterlockedExchange(&Entry->CutoffFailed, 0);
     InterlockedExchange(&Entry->PagingWriteGateClosed, 0);
@@ -2407,6 +3000,7 @@ static VOID StageRegistryActivationProcess(_In_ PSTAGE_REGISTRY_ENTRY Entry,
     BOOLEAN cached, freeNow = FALSE, currentlyScoped;
     BOOLEAN nameStillMatches, sopEmpty;
     BOOLEAN directoryRenameInFlight;
+    BOOLEAN aliasProbe, unionLinkScoped = FALSE, currentLinkScoped = FALSE, aliasActivated = FALSE;
     BOOLEAN cutoffEpochHeld = FALSE;
     ULONG currentGeneration;
     NTSTATUS status;
@@ -2414,11 +3008,13 @@ static VOID StageRegistryActivationProcess(_In_ PSTAGE_REGISTRY_ENTRY Entry,
     PAGED_CODE();
     if (!SafeUploadInstanceIsTrusted(Instance)) {
         StageRegistryMarkEntryUnknown(Entry, SAFEUPLOAD_REGISTRY_UNKNOWN_TRUST);
+        StageRegistryResolveAliasProbe(Entry, FALSE, FALSE, &aliasActivated);
         InterlockedIncrement64(&RegistryChangeSequence);
         return;
     }
     if (SafeUploadStageWritersGlobalUnknown() != 0) {
         StageRegistryMarkEntryUnknown(Entry, SAFEUPLOAD_REGISTRY_UNKNOWN_IDENTITY);
+        StageRegistryResolveAliasProbe(Entry, FALSE, FALSE, &aliasActivated);
         goto Exit;
     }
 
@@ -2426,17 +3022,19 @@ static VOID StageRegistryActivationProcess(_In_ PSTAGE_REGISTRY_ENTRY Entry,
         SAFEUPLOAD_WRITER_REGISTRY_NAME_CHARS * sizeof(WCHAR), SAFEUPLOAD_REGISTRY_POOL_TAG);
     if (nameSnapshot == NULL) {
         StageRegistryMarkEntryUnknown(Entry, SAFEUPLOAD_REGISTRY_UNKNOWN_ALLOCATION);
+        StageRegistryResolveAliasProbe(Entry, FALSE, FALSE, &aliasActivated);
         goto Exit;
     }
     FltAcquirePushLockShared(&RegistryLock);
     entryName.Buffer = Entry->Name;
     entryName.Length = entryName.MaximumLength = (USHORT)(Entry->NameChars * sizeof(WCHAR));
     directoryRenameInFlight = StageRegistryDirectoryRenameInFlightLocked(Entry->Instance, &entryName);
+    aliasProbe = InterlockedCompareExchange(&Entry->AliasProbePending, 0, 0) != 0;
     if (!Entry->Listed || Entry->Retired || Entry->NameChars == 0 ||
         Entry->NameChars > SAFEUPLOAD_WRITER_REGISTRY_NAME_CHARS ||
-        InterlockedCompareExchange((volatile LONG *)&Entry->State, 0, 0) !=
-            SAFEUPLOAD_REGISTRY_STATE_ACTIVATING ||
-        InterlockedCompareExchange(&Entry->ActivationEnforced, 0, 0) == 0 ||
+        (!aliasProbe && InterlockedCompareExchange((volatile LONG *)&Entry->State, 0, 0) !=
+            SAFEUPLOAD_REGISTRY_STATE_ACTIVATING) ||
+        (!aliasProbe && InterlockedCompareExchange(&Entry->ActivationEnforced, 0, 0) == 0) ||
         InterlockedCompareExchange(&Entry->RenameInFlight, 0, 0) != 0 ||
         directoryRenameInFlight) {
         FltReleasePushLock(&RegistryLock);
@@ -2450,6 +3048,32 @@ static VOID StageRegistryActivationProcess(_In_ PSTAGE_REGISTRY_ENTRY Entry,
     entryName.Buffer = nameSnapshot;
     entryName.Length = entryName.MaximumLength = (USHORT)(nameSnapshotChars * sizeof(WCHAR));
 
+    /* P0-4: the retained first-seen name is only a diagnostic hint. Every
+     * expansion and promotion check queries every NTFS link on a PASSIVE worker. */
+    status = StageRegistryClassifyAllLinkNames(Entry, Instance, Volume,
+        &unionLinkScoped, &currentLinkScoped);
+    if (!NT_SUCCESS(status)) {
+        if (aliasProbe) StageRegistryResolveAliasProbe(Entry, FALSE, FALSE, &aliasActivated);
+        else StageRegistryMarkEntryUnknown(Entry, SAFEUPLOAD_REGISTRY_UNKNOWN_IDENTITY);
+        InterlockedIncrement64(&RegistryChangeSequence);
+        goto Exit;
+    }
+    if (aliasProbe) {
+        /* P0-5: a rename loss racing the PASSIVE alias scan cannot be cleared
+         * by its stale result; the nonpaged helper serializes gate release. */
+        (VOID)StageRegistryResolveAliasProbeForGeneration(Entry, Instance,
+            TRUE, unionLinkScoped, &aliasActivated);
+        if (!aliasActivated) goto Exit;
+        /* The cutoff was atomically installed before AliasProbePending clears. */
+    } else if (!unionLinkScoped) {
+        StageRegistrySetLinkScopeClassification(Entry, TRUE, FALSE);
+        StageRegistryClearPagingActivation(Entry);
+        InterlockedIncrement64(&RegistryChangeSequence);
+        goto Exit;
+    } else {
+        StageRegistrySetLinkScopeClassification(Entry, TRUE, TRUE);
+    }
+
     /* RegistryLock was released after the name snapshot above, and the paging
      * gate helper releases PagingWriteLock before returning. Keep identity and
      * cache I/O outside both locks so diagnostic readers cannot queue behind I/O. */
@@ -2459,6 +3083,11 @@ static VOID StageRegistryActivationProcess(_In_ PSTAGE_REGISTRY_ENTRY Entry,
             status == STATUS_FILE_DELETED || status == STATUS_DELETE_PENDING)
             StageRegistryMarkEntryUnknown(Entry, SAFEUPLOAD_REGISTRY_UNKNOWN_IDENTITY);
         InterlockedIncrement64(&RegistryChangeSequence);
+        goto Exit;
+    }
+    if (object->SectionObjectPointer != InterlockedCompareExchangePointer(
+            (PVOID volatile *)&Entry->SectionObjectPointer, NULL, NULL)) {
+        StageRegistryMarkEntryUnknown(Entry, SAFEUPLOAD_REGISTRY_UNKNOWN_IDENTITY);
         goto Exit;
     }
     sop = object->SectionObjectPointer;
@@ -2474,30 +3103,35 @@ static VOID StageRegistryActivationProcess(_In_ PSTAGE_REGISTRY_ENTRY Entry,
         goto Exit;
     }
 
-    /* This is the single cutoff flush for this activation. The entry is not
-     * marked cutoff-complete until both cache and filter-manager flushes end. */
-    if (InterlockedCompareExchange(&Entry->CutoffStarted, 1, 0) == 0) {
+    /* The scope transition already closed the per-entry gate under the same
+     * lock used by paging admission. Drain earlier starts before either flush. */
+    if (InterlockedCompareExchange(&Entry->CutoffStarted, 0, 0) == 0 ||
+        InterlockedCompareExchange(&Entry->PagingWriteGateClosed, 0, 0) == 0) {
+        StageRegistryMarkEntryUnknown(Entry, SAFEUPLOAD_REGISTRY_UNKNOWN_IDENTITY);
+        goto Exit;
+    }
+    if (InterlockedCompareExchange(&Entry->CutoffComplete, 0, 0) == 0 &&
+        InterlockedCompareExchange(&Entry->CutoffFlushStarted, 1, 0) == 0) {
         InterlockedIncrement64(&RegistryChangeSequence);
         /* A short cutoff count prevents policy finalization from racing the
          * cache pair without holding a policy/global lock across file I/O. */
         status = SafeUploadPolicyActivationCutoffBegin();
         if (!NT_SUCCESS(status)) {
-            InterlockedExchange(&Entry->CutoffStarted, 0);
+            InterlockedExchange(&Entry->CutoffFlushStarted, 0);
             InterlockedIncrement64(&RegistryChangeSequence);
             goto Exit;
         }
         cutoffEpochHeld = TRUE;
-        RtlZeroMemory(&io, sizeof(io));
-        io.Status = STATUS_PENDING;
-        CcFlushCache(sop, NULL, 0, &io);
-        StageRegistryClosePagingWriteGate(Entry);
-        if (io.Status != STATUS_SUCCESS) {
+        status = StageRegistryWaitPagingWritesDrained(Entry);
+        if (!NT_SUCCESS(status)) {
             StageRegistryMarkCutoffFailed(Entry);
             InterlockedIncrement64(&RegistryChangeSequence);
             goto Exit;
         }
-        status = StageRegistryWaitPagingWritesDrained(Entry);
-        if (!NT_SUCCESS(status)) {
+        RtlZeroMemory(&io, sizeof(io));
+        io.Status = STATUS_PENDING;
+        CcFlushCache(sop, NULL, 0, &io);
+        if (io.Status != STATUS_SUCCESS) {
             StageRegistryMarkCutoffFailed(Entry);
             InterlockedIncrement64(&RegistryChangeSequence);
             goto Exit;
@@ -2570,7 +3204,7 @@ static VOID StageRegistryActivationProcess(_In_ PSTAGE_REGISTRY_ENTRY Entry,
         goto Exit;
     }
 
-    currentlyScoped = SafeUploadPolicyEntryIsCurrentlyScoped(volumeKind, &entryName);
+    currentlyScoped = currentLinkScoped;
     if (!currentlyScoped) goto Exit;
     if (InterlockedCompareExchange(&Entry->H, 0, 0) == 0 &&
         InterlockedCompareExchange(&Entry->T, 0, 0) == 0 &&
@@ -2619,6 +3253,19 @@ static VOID StageRegistryUnknownWorker(_In_ PFLT_GENERIC_WORKITEM WorkItem, _In_
     if (deferred != NULL && instance != NULL && NT_SUCCESS(FltGetInstanceContext(instance,
             (PFLT_CONTEXT *)&instanceContext))) {
         InterlockedOr(&instanceContext->RegistryUnknownReasons, deferred->Reason);
+        if ((deferred->Reason & SAFEUPLOAD_REGISTRY_UNKNOWN_RENAME) != 0) {
+            UNICODE_STRING volumeName;
+            PCUNICODE_STRING volumeNamePointer = NULL;
+            if (instanceContext->VolumeNameChars != 0 &&
+                instanceContext->VolumeNameChars <= SAFEUPLOAD_MAX_PREFIX_CHARS) {
+                volumeName.Buffer = instanceContext->VolumeName;
+                volumeName.Length = volumeName.MaximumLength = (USHORT)(
+                    instanceContext->VolumeNameChars * sizeof(WCHAR));
+                volumeNamePointer = &volumeName;
+            }
+            SafeUploadPolicyRenameLossAdvance(&instanceContext->RegistryRenameLossGeneration,
+                instanceContext->VolumeKind, volumeNamePointer);
+        }
         if (InterlockedCompareExchange(&instanceContext->WritersUntracked, 1, 0) == 0)
             InterlockedIncrement((volatile LONG *)&RegistryInstanceUnknown);
         FltReleaseContext(instanceContext);
@@ -2762,16 +3409,19 @@ static VOID StageRegistryReclaimWorker(_In_ PFLT_GENERIC_WORKITEM WorkItem, _In_
             UNICODE_STRING entryName;
             BOOLEAN activating = InterlockedCompareExchange((volatile LONG *)&entry->State, 0, 0) ==
                 SAFEUPLOAD_REGISTRY_STATE_ACTIVATING;
+            BOOLEAN aliasProbe = InterlockedCompareExchange(&entry->AliasProbePending, 0, 0) != 0;
             if (entry->Sequence <= cursor) continue;
             highestVisited = entry->Sequence;
             entryName.Buffer = entry->Name;
             entryName.Length = entryName.MaximumLength = (USHORT)(entry->NameChars * sizeof(WCHAR));
             if (entry->Retired || entry->Instance == NULL || entry->Volume == NULL ||
                 StageRegistryDirectoryRenameInFlightLocked(entry->Instance, &entryName) ||
-                (!activating && (InterlockedCompareExchange(&entry->H, 0, 0) != 0 ||
+                (!activating && !aliasProbe && (InterlockedCompareExchange(&entry->H, 0, 0) != 0 ||
                  InterlockedCompareExchange(&entry->T, 0, 0) != 0 ||
                  InterlockedCompareExchange(&entry->DirtyAfterCutoff, 0, 0) != 0 ||
                  InterlockedCompareExchange(&entry->UnknownReasons, 0, 0) != 0))) continue;
+            if (!activating && !aliasProbe && InterlockedCompareExchange(&entry->UnknownReasons, 0, 0) != 0)
+                continue;
             if (!NT_SUCCESS(FltObjectReference(entry->Instance))) continue;
             if (!NT_SUCCESS(FltObjectReference(entry->Volume))) { FltObjectDereference(entry->Instance); continue; }
             StageRegistryReference(entry);
@@ -2791,7 +3441,8 @@ static VOID StageRegistryReclaimWorker(_In_ PFLT_GENERIC_WORKITEM WorkItem, _In_
             PFLT_VOLUME entryVolume = NULL;
             BOOLEAN pruned = FALSE;
             BOOLEAN activationCandidate = InterlockedCompareExchange((volatile LONG *)&entry->State, 0, 0) ==
-                SAFEUPLOAD_REGISTRY_STATE_ACTIVATING;
+                SAFEUPLOAD_REGISTRY_STATE_ACTIVATING ||
+                InterlockedCompareExchange(&entry->AliasProbePending, 0, 0) != 0;
             BOOLEAN promotedThisPass = FALSE;
             if (activationCandidate) {
                 StageRegistryActivationProcess(entry, instances[index], volumes[index]);
@@ -3079,9 +3730,31 @@ __declspec(noinline) UINT32 SafeUploadStageSectionsInFlight(_In_opt_ PVOID Secti
     return count;
 }
 
+/* A live writable-section slot without an SOP registry binding is not Free:
+ * paging admission keeps it volume-scoped until identity can be joined. */
+__declspec(noinline) static BOOLEAN StageRegistrySectionSopUntracked(_In_opt_ PVOID SectionObjectPointer)
+{
+    ULONG index;
+    KIRQL irql;
+    BOOLEAN untracked = FALSE;
+    if (SectionObjectPointer == NULL) return FALSE;
+    KeAcquireSpinLock(&SectionLock, &irql);
+    for (index = 0; index < STAGE_SECTION_SLOTS; ++index) {
+        STAGE_SECTION_SLOT *slot = &SectionSlots[index];
+        if (slot->FileObject != NULL && slot->Writable &&
+            slot->SectionObjectPointer == SectionObjectPointer && slot->RegistryEntry == NULL) {
+            untracked = TRUE;
+            break;
+        }
+    }
+    KeReleaseSpinLock(&SectionLock, irql);
+    return untracked;
+}
+
 BOOLEAN SafeUploadStageWritersNameActivating(_In_ PFLT_INSTANCE Instance, _In_ PCUNICODE_STRING Name)
 {
     PLIST_ENTRY link;
+    UNICODE_STRING baseName = StageRegistryBaseName(Name);
     BOOLEAN activating = FALSE;
     if (Instance == NULL || Name == NULL || Name->Length == 0) return FALSE;
     FltAcquirePushLockShared(&RegistryLock);
@@ -3089,14 +3762,19 @@ BOOLEAN SafeUploadStageWritersNameActivating(_In_ PFLT_INSTANCE Instance, _In_ P
         PSTAGE_REGISTRY_ENTRY entry = CONTAINING_RECORD(link, STAGE_REGISTRY_ENTRY, Link);
         UNICODE_STRING entryName;
         if (entry->Retired || !entry->Listed || entry->Instance != Instance ||
-            InterlockedCompareExchange(&entry->ActivationEnforced, 0, 0) == 0 ||
+            (InterlockedCompareExchange(&entry->ActivationEnforced, 0, 0) == 0 &&
+             InterlockedCompareExchange(&entry->AliasProbePending, 0, 0) == 0) ||
             (InterlockedCompareExchange((volatile LONG *)&entry->State, 0, 0) !=
                 SAFEUPLOAD_REGISTRY_STATE_ACTIVATING &&
              InterlockedCompareExchange((volatile LONG *)&entry->State, 0, 0) !=
-                SAFEUPLOAD_REGISTRY_STATE_UNKNOWN)) continue;
+                SAFEUPLOAD_REGISTRY_STATE_UNKNOWN) ||
+            (InterlockedCompareExchange((volatile LONG *)&entry->State, 0, 0) ==
+                SAFEUPLOAD_REGISTRY_STATE_UNKNOWN &&
+             InterlockedCompareExchange(&entry->ScopeNameClassification, 0, 0) ==
+                STAGE_SCOPE_CLASS_OUTSIDE)) continue;
         entryName.Buffer = entry->Name;
         entryName.Length = entryName.MaximumLength = (USHORT)(entry->NameChars * sizeof(WCHAR));
-        if (RtlEqualUnicodeString(&entryName, Name, TRUE)) { activating = TRUE; break; }
+        if (RtlEqualUnicodeString(&entryName, &baseName, TRUE)) { activating = TRUE; break; }
     }
     FltReleasePushLock(&RegistryLock);
     return activating;
@@ -3130,8 +3808,12 @@ __declspec(noinline) static PSTAGE_REGISTRY_ENTRY StageRegistryReferenceSop(_In_
         if (RegistrySopSlots[index].SectionObjectPointer == Sop && current != NULL) {
             LONG state = InterlockedCompareExchange((volatile LONG *)&current->State, 0, 0);
             if (!ActivatingOnly ||
+                InterlockedCompareExchange(&current->AliasProbePending, 0, 0) != 0 ||
                 (InterlockedCompareExchange(&current->ActivationEnforced, 0, 0) != 0 &&
-                 (state == SAFEUPLOAD_REGISTRY_STATE_ACTIVATING || state == SAFEUPLOAD_REGISTRY_STATE_UNKNOWN))) {
+                 (state == SAFEUPLOAD_REGISTRY_STATE_ACTIVATING ||
+                  (state == SAFEUPLOAD_REGISTRY_STATE_UNKNOWN &&
+                   InterlockedCompareExchange(&current->ScopeNameClassification, 0, 0) !=
+                    STAGE_SCOPE_CLASS_OUTSIDE)))) {
                 StageRegistryReference(current);
                 entry = current;
                 break;
@@ -3162,7 +3844,16 @@ BOOLEAN SafeUploadStageWritersSopMatchesPolicy(_In_opt_ PVOID SectionObjectPoint
         if (entry->Listed && !entry->Retired &&
             InterlockedCompareExchangePointer((PVOID volatile *)&entry->SectionObjectPointer,
                 NULL, NULL) == SectionObjectPointer) {
-            if (entry->NameChars != 0 &&
+            if (InterlockedCompareExchange(&entry->AliasProbePending, 0, 0) != 0 ||
+                InterlockedCompareExchange(&entry->ScopeNameClassification, 0, 0) ==
+                    STAGE_SCOPE_CLASS_SCOPED) {
+                *Known = TRUE;
+                matches = TRUE;
+            } else if (InterlockedCompareExchange(&entry->ScopeNameClassification, 0, 0) ==
+                STAGE_SCOPE_CLASS_OUTSIDE) {
+                *Known = TRUE;
+                matches = FALSE;
+            } else if (entry->NameChars != 0 &&
                 entry->NameChars <= SAFEUPLOAD_WRITER_REGISTRY_NAME_CHARS) {
                 UNICODE_STRING name;
                 *Known = TRUE;
@@ -3182,55 +3873,89 @@ BOOLEAN SafeUploadStageWritersSopMatchesPolicy(_In_opt_ PVOID SectionObjectPoint
     return matches;
 }
 
-BOOLEAN SafeUploadStageWritersPagingWriteBegin(_In_opt_ PVOID SectionObjectPointer,
+__declspec(noinline) BOOLEAN SafeUploadStageWritersPagingWriteBegin(_In_ PFLT_INSTANCE Instance,
+    _In_opt_ PVOID SectionObjectPointer,
     _Outptr_result_maybenull_ PVOID *CompletionContext)
 {
     PSTAGE_REGISTRY_ENTRY entry;
     BOOLEAN denied = FALSE;
     BOOLEAN transferred = FALSE;
-    KIRQL irql;
+    BOOLEAN transitionApplies = FALSE;
+    BOOLEAN volumeMayMatch = FALSE;
+    BOOLEAN instanceContextKnown = FALSE;
+    BOOLEAN untrackedUnknown = FALSE;
+    KIRQL irql, cutoffIrql;
+    ULONGLONG renameLossGeneration = 0;
+    PSAFEUPLOAD_INSTANCE_CONTEXT contextReference = NULL;
     LONG state;
     *CompletionContext = NULL;
-    entry = StageRegistryReferenceSop(SectionObjectPointer, TRUE);
+    entry = StageRegistryReferenceSop(SectionObjectPointer, FALSE);
+    if (entry == NULL) untrackedUnknown = StageRegistrySectionSopUntracked(SectionObjectPointer) ||
+        SafeUploadStageWritersAdmissionUnknown(Instance);
+    /* P0-2: this lock is also held while policy publishes its scope transition.
+     * A write either entered before the cutoff and is drained, or is denied. */
+    SafeUploadPolicyPagingCutoffEnter(Instance, &transitionApplies, &volumeMayMatch,
+        &renameLossGeneration, &instanceContextKnown, &contextReference, &cutoffIrql);
+    if (transitionApplies) denied = TRUE;
+    else if (entry == NULL) denied = untrackedUnknown && volumeMayMatch;
     if (entry != NULL) {
         KeAcquireSpinLock(&entry->PagingWriteLock, &irql);
         state = InterlockedCompareExchange((volatile LONG *)&entry->State, 0, 0);
-        if (state == SAFEUPLOAD_REGISTRY_STATE_UNKNOWN || state == SAFEUPLOAD_REGISTRY_STATE_PROTECTED ||
-            InterlockedCompareExchange(&entry->PagingWriteGateClosed, 0, 0) != 0 ||
-            InterlockedCompareExchange(&entry->CutoffComplete, 0, 0) != 0 ||
-            InterlockedCompareExchange(&entry->CutoffFailed, 0, 0) != 0) {
+        if (volumeMayMatch && (!instanceContextKnown ||
+            entry->RenameLossGeneration != renameLossGeneration)) {
+            /* P0-5: a loss after expansion invalidates this SOP's remembered
+             * name before paging can use that stale scope classification. */
+            InterlockedOr(&entry->UnknownReasons, SAFEUPLOAD_REGISTRY_UNKNOWN_RENAME);
+            InterlockedExchange(&entry->ScopeNameClassification, STAGE_SCOPE_CLASS_UNRESOLVED);
+            InterlockedExchange((volatile LONG *)&entry->State, SAFEUPLOAD_REGISTRY_STATE_UNKNOWN);
+            InterlockedExchange(&entry->ActivationEnforced, 1);
+            InterlockedExchange(&entry->CutoffStarted, 1);
+            InterlockedExchange(&entry->CutoffFailed, 1);
+            InterlockedExchange(&entry->PagingWriteGateClosed, 1);
+            state = SAFEUPLOAD_REGISTRY_STATE_UNKNOWN;
             denied = TRUE;
-            if (InterlockedCompareExchange(&entry->PagingWriteGateClosed, 0, 0) != 0 ||
-                InterlockedCompareExchange(&entry->CutoffComplete, 0, 0) != 0) {
-                InterlockedExchange(&entry->DirtyAfterCutoff, 1);
-                InterlockedIncrement64(&RegistryChangeSequence);
-            }
-        } else if (state == SAFEUPLOAD_REGISTRY_STATE_ACTIVATING) {
+        }
+        if (denied) {
+            denied = TRUE;
+        } else if (volumeMayMatch &&
+            (state == SAFEUPLOAD_REGISTRY_STATE_PROTECTED ||
+             state == SAFEUPLOAD_REGISTRY_STATE_ACTIVATING ||
+             InterlockedCompareExchange(&entry->AliasProbePending, 0, 0) != 0 ||
+             (state == SAFEUPLOAD_REGISTRY_STATE_UNKNOWN &&
+              InterlockedCompareExchange(&entry->ScopeNameClassification, 0, 0) !=
+                STAGE_SCOPE_CLASS_OUTSIDE) ||
+             (state != SAFEUPLOAD_REGISTRY_STATE_UNKNOWN &&
+              (InterlockedCompareExchange(&entry->CutoffStarted, 0, 0) != 0 ||
+               InterlockedCompareExchange(&entry->PagingWriteGateClosed, 0, 0) != 0 ||
+               InterlockedCompareExchange(&entry->CutoffComplete, 0, 0) != 0 ||
+               InterlockedCompareExchange(&entry->CutoffFailed, 0, 0) != 0)))) {
+            denied = TRUE;
+        } else {
+            /* Count all tracked SOP writes so a candidate-volume cutoff can
+             * drain starts that entered before its shared atomic boundary. */
             if (InterlockedIncrement(&entry->PagingWritesInFlight) == 1)
                 KeClearEvent(&entry->PagingWritesDrained);
             *CompletionContext = entry; /* transfer the SOP lookup reference to the lower completion */
             transferred = TRUE;
         }
         KeReleaseSpinLock(&entry->PagingWriteLock, irql);
-        if (transferred) return FALSE;
-        StageRegistryDereference(entry);
-        if (denied) return TRUE;
     }
+    SafeUploadPolicyPagingCutoffLeave(cutoffIrql, contextReference);
+    if (transferred) return FALSE;
+    StageRegistryDereference(entry);
     return denied;
 }
 
-VOID SafeUploadStageWritersPagingWriteEnd(_In_opt_ PVOID CompletionContext)
+__declspec(noinline) VOID SafeUploadStageWritersPagingWriteEnd(_In_opt_ PVOID CompletionContext)
 {
     PSTAGE_REGISTRY_ENTRY entry = (PSTAGE_REGISTRY_ENTRY)CompletionContext;
     KIRQL irql;
     LONG remaining;
     if (entry == NULL) return;
     KeAcquireSpinLock(&entry->PagingWriteLock, &irql);
-    if (InterlockedCompareExchange(&entry->PagingWriteGateClosed, 0, 0) != 0 ||
-        InterlockedCompareExchange(&entry->CutoffComplete, 0, 0) != 0) {
-        InterlockedExchange(&entry->DirtyAfterCutoff, 1);
-        InterlockedIncrement64(&RegistryChangeSequence);
-    }
+    /* Every admission that crossed the shared transition lock was a
+     * pre-cutoff start; a later scope addition closes the gate and drains it
+     * before flushing, so this completion is safe to include in that flush. */
     remaining = InterlockedDecrement(&entry->PagingWritesInFlight);
     if (remaining <= 0) {
         if (remaining < 0) InterlockedExchange(&entry->PagingWritesInFlight, 0);
@@ -3260,38 +3985,37 @@ NTSTATUS SafeUploadStageWritersApplyPendingScope(VOID)
     FltAcquirePushLockExclusive(&RegistryLock);
     for (link = RegistryEntries.Flink; link != &RegistryEntries; link = link->Flink) {
         PSTAGE_REGISTRY_ENTRY entry = CONTAINING_RECORD(link, STAGE_REGISTRY_ENTRY, Link);
-        UNICODE_STRING name;
-        BOOLEAN newlyScoped = FALSE, nameUnresolved, volumeScoped;
-        LONG state;
+        PSAFEUPLOAD_INSTANCE_CONTEXT instanceContext = NULL;
+        BOOLEAN contextKnown, nameUnresolved, volumeScoped;
+        ULONGLONG renameLossGeneration = 0;
         if (entry->Retired || !entry->Listed || entry->Instance == NULL || entry->Volume == NULL) continue;
-        nameUnresolved = entry->NameChars == 0 ||
-            (InterlockedCompareExchange(&entry->UnknownReasons, 0, 0) & SAFEUPLOAD_REGISTRY_UNKNOWN_RENAME) != 0;
-        if (entry->NameChars != 0) {
-            name.Buffer = entry->Name;
-            name.Length = name.MaximumLength = (USHORT)(entry->NameChars * sizeof(WCHAR));
-            newlyScoped = SafeUploadPolicyEntryIsNewlyScoped(entry->VolumeKind, &name);
+        /* P0-4: aliases are not retained at link time, so probe every live file identity on a volume
+         * that may contain policy. The resident cutoff keeps mappings gated until PASSIVE enumeration. */
+        volumeScoped = SafeUploadPolicyMayMatchInstanceVolume(entry->Instance);
+        if (!volumeScoped) continue;
+        contextKnown = NT_SUCCESS(FltGetInstanceContext(entry->Instance,
+            (PFLT_CONTEXT *)&instanceContext));
+        if (contextKnown) {
+            renameLossGeneration = (ULONGLONG)InterlockedCompareExchange64(
+                &instanceContext->RegistryRenameLossGeneration, 0, 0);
+            FltReleaseContext(instanceContext);
         }
-        /* A lost path is scoped by its mounted volume: any current or candidate destination there makes this identity
-         * an enforced Unknown. This is the narrowest safe answer when rename history cannot identify its path. */
-        volumeScoped = nameUnresolved && SafeUploadPolicyMayMatchVolume(entry->VolumeKind, entry->Volume);
-        if (!newlyScoped && !volumeScoped) continue;
-        state = InterlockedCompareExchange((volatile LONG *)&entry->State, 0, 0);
-        if (volumeScoped) {
-            if (entry->NameChars == 0) {
-                InterlockedOr(&entry->UnknownReasons, SAFEUPLOAD_REGISTRY_UNKNOWN_RENAME);
-                /* With no path to index, this identity can alias any candidate
-                 * path on its mounted volume; the instance is the narrowest
-                 * reliable admission scope. */
-                StageRegistryMarkUnknown(entry->Instance, SAFEUPLOAD_REGISTRY_UNKNOWN_RENAME, FALSE);
-            }
-            InterlockedExchange((volatile LONG *)&entry->State, SAFEUPLOAD_REGISTRY_STATE_UNKNOWN);
-        } else if (state == SAFEUPLOAD_REGISTRY_STATE_PROTECTED || state == SAFEUPLOAD_REGISTRY_STATE_UNSCOPED) {
-            StageRegistryPreparePagingActivation(entry);
+        nameUnresolved = !contextKnown || entry->NameChars == 0 ||
+            (InterlockedCompareExchange(&entry->UnknownReasons, 0, 0) & SAFEUPLOAD_REGISTRY_UNKNOWN_RENAME) != 0 ||
+            entry->RenameLossGeneration != renameLossGeneration;
+        if (nameUnresolved) {
+            /* P0-5: one instance rename-loss generation invalidates every older retained name
+             * on a possibly scoped volume; gate its SOP before the cutoff can reopen. */
+            InterlockedOr(&entry->UnknownReasons, SAFEUPLOAD_REGISTRY_UNKNOWN_RENAME);
+            StageRegistryPreparePagingActivation(entry, TRUE);
+            InterlockedIncrement64(&RegistryChangeSequence);
+            continue;
         }
-        InterlockedExchange(&entry->ActivationEnforced, 1);
-        entry->ActivationGeneration = (ULONG)SafeUploadCurrentPolicyGeneration() + 1;
-        InterlockedIncrement64(&RegistryChangeSequence);
-        queued = TRUE;
+        if (StageRegistryBeginAliasProbe(entry)) {
+            entry->ActivationGeneration = (ULONG)SafeUploadCurrentPolicyGeneration() + 1;
+            InterlockedIncrement64(&RegistryChangeSequence);
+            queued = TRUE;
+        }
     }
     FltReleasePushLock(&RegistryLock);
     if (queued && !StageRegistryQueueReclaim()) {
@@ -3300,11 +4024,15 @@ NTSTATUS SafeUploadStageWritersApplyPendingScope(VOID)
         FltAcquirePushLockExclusive(&RegistryLock);
         for (link = RegistryEntries.Flink; link != &RegistryEntries; link = link->Flink) {
             PSTAGE_REGISTRY_ENTRY entry = CONTAINING_RECORD(link, STAGE_REGISTRY_ENTRY, Link);
-            if (InterlockedCompareExchange(&entry->ActivationEnforced, 0, 0) != 0 &&
+            if (InterlockedCompareExchange(&entry->AliasProbePending, 0, 0) != 0) {
+                BOOLEAN activated;
+                StageRegistryResolveAliasProbe(entry, FALSE, FALSE, &activated);
+            } else if (InterlockedCompareExchange(&entry->ActivationEnforced, 0, 0) != 0 &&
                 InterlockedCompareExchange((volatile LONG *)&entry->State, 0, 0) ==
                     SAFEUPLOAD_REGISTRY_STATE_ACTIVATING) {
                 InterlockedOr(&entry->UnknownReasons, SAFEUPLOAD_REGISTRY_UNKNOWN_ALLOCATION);
                 InterlockedExchange((volatile LONG *)&entry->State, SAFEUPLOAD_REGISTRY_STATE_UNKNOWN);
+                InterlockedExchange(&entry->PagingWriteGateClosed, 1);
                 InterlockedIncrement64(&RegistryChangeSequence);
             }
         }
@@ -3316,38 +4044,44 @@ NTSTATUS SafeUploadStageWritersApplyPendingScope(VOID)
 VOID SafeUploadStageWritersReconcileCurrentScope(VOID)
 {
     PLIST_ENTRY link;
-    BOOLEAN activating = FALSE;
+    BOOLEAN recheck = FALSE;
     PAGED_CODE();
     FltAcquirePushLockExclusive(&RegistryLock);
     for (link = RegistryEntries.Flink; link != &RegistryEntries; link = link->Flink) {
         PSTAGE_REGISTRY_ENTRY entry = CONTAINING_RECORD(link, STAGE_REGISTRY_ENTRY, Link);
-        UNICODE_STRING name;
-        BOOLEAN scoped, nameUnresolved;
-        LONG state;
-        if (entry->Retired || !entry->Listed || entry->Instance == NULL || entry->Volume == NULL ||
-            InterlockedCompareExchange(&entry->ActivationEnforced, 0, 0) == 0) continue;
-        nameUnresolved = entry->NameChars == 0 ||
-            (InterlockedCompareExchange(&entry->UnknownReasons, 0, 0) & SAFEUPLOAD_REGISTRY_UNKNOWN_RENAME) != 0;
-        if (nameUnresolved) {
-            scoped = SafeUploadPolicyMayMatchVolume(entry->VolumeKind, entry->Volume);
-        } else {
-            name.Buffer = entry->Name;
-            name.Length = name.MaximumLength = (USHORT)(entry->NameChars * sizeof(WCHAR));
-            scoped = SafeUploadPolicyEntryIsCurrentlyScoped(entry->VolumeKind, &name);
-        }
-        state = InterlockedCompareExchange((volatile LONG *)&entry->State, 0, 0);
+        PSAFEUPLOAD_INSTANCE_CONTEXT instanceContext = NULL;
+        BOOLEAN scoped, contextKnown, nameUnresolved;
+        ULONGLONG renameLossGeneration = 0;
+        if (entry->Retired || !entry->Listed || entry->Instance == NULL || entry->Volume == NULL) continue;
+        scoped = SafeUploadPolicyMayMatchInstanceVolume(entry->Instance);
         if (!scoped) {
-            /* A dirty-after-cutoff fact remains in history and prevents promotion if a later
-             * expansion reactivates this entry, but an out-of-scope shrink removes admission. */
-            StageRegistryClearPagingActivation(entry);
+            if (InterlockedCompareExchange(&entry->ActivationEnforced, 0, 0) != 0 &&
+                InterlockedCompareExchange(&entry->UnknownReasons, 0, 0) == 0)
+                StageRegistryClearPagingActivation(entry);
+            continue;
+        }
+        contextKnown = NT_SUCCESS(FltGetInstanceContext(entry->Instance,
+            (PFLT_CONTEXT *)&instanceContext));
+        if (contextKnown) {
+            renameLossGeneration = (ULONGLONG)InterlockedCompareExchange64(
+                &instanceContext->RegistryRenameLossGeneration, 0, 0);
+            FltReleaseContext(instanceContext);
+        }
+        nameUnresolved = !contextKnown || entry->NameChars == 0 ||
+            (InterlockedCompareExchange(&entry->UnknownReasons, 0, 0) & SAFEUPLOAD_REGISTRY_UNKNOWN_RENAME) != 0 ||
+            entry->RenameLossGeneration != renameLossGeneration;
+        if (nameUnresolved) {
+            InterlockedOr(&entry->UnknownReasons, SAFEUPLOAD_REGISTRY_UNKNOWN_RENAME);
+            StageRegistryPreparePagingActivation(entry, TRUE);
             InterlockedIncrement64(&RegistryChangeSequence);
-        } else if (state == SAFEUPLOAD_REGISTRY_STATE_ACTIVATING) {
+        } else if (StageRegistryBeginAliasProbe(entry)) {
             entry->ActivationGeneration = (ULONG)SafeUploadCurrentPolicyGeneration();
-            activating = TRUE;
+            InterlockedIncrement64(&RegistryChangeSequence);
+            recheck = TRUE;
         }
     }
     FltReleasePushLock(&RegistryLock);
-    if (activating) (VOID)StageRegistryQueueReclaim();
+    if (recheck) (VOID)StageRegistryQueueReclaim();
 }
 
 NTSTATUS SafeUploadStageWritersActivatingStatusPage(_In_ UINT32 StartIndex,
@@ -3789,7 +4523,7 @@ static BOOLEAN StageRegistrySnapshotPendingEntry(_In_ PSTAGE_REGISTRY_ENTRY Entr
     LONG h, t, renameVersion, renameInFlight;
     UINT32 state;
     BOOLEAN directoryRenameInFlight, reservationInFlight, unknownInstance = FALSE, trusted;
-    UNICODE_STRING entryName;
+    UNICODE_STRING entryName, baseName = StageRegistryBaseName(Name);
     PSAFEUPLOAD_INSTANCE_CONTEXT instanceContext = NULL;
 
     FltAcquirePushLockExclusive(&RegistryLock);
@@ -3818,7 +4552,7 @@ static BOOLEAN StageRegistrySnapshotPendingEntry(_In_ PSTAGE_REGISTRY_ENTRY Entr
     entryName.Buffer = Entry->Name;
     entryName.Length = entryName.MaximumLength = (USHORT)(Entry->NameChars * sizeof(WCHAR));
     Result->NameMatches = (Entry->NameChars != 0 &&
-        RtlEqualUnicodeString(&entryName, Name, TRUE)) ? 1 : 0;
+        RtlEqualUnicodeString(&entryName, &baseName, TRUE)) ? 1 : 0;
     directoryRenameInFlight = StageRegistryDirectoryRenameInFlightLocked(Instance, &entryName);
     reservationInFlight = StageRegistryHasCreateReservationLocked(Instance, Volume, Name);
     if (renameInFlight != 0 || renameVersion !=
@@ -3864,6 +4598,7 @@ BOOLEAN SafeUploadStageWritersRegistrySnapshotByName(_In_ PFLT_INSTANCE Instance
 {
     PLIST_ENTRY link;
     PSTAGE_REGISTRY_ENTRY entry = NULL;
+    UNICODE_STRING baseName;
     BOOLEAN evaluated;
     PAGED_CODE();
     RtlZeroMemory(Result, sizeof(*Result));
@@ -3871,6 +4606,7 @@ BOOLEAN SafeUploadStageWritersRegistrySnapshotByName(_In_ PFLT_INSTANCE Instance
     if (Instance == NULL || Volume == NULL || Name == NULL || Name->Buffer == NULL ||
         Name->Length == 0 || (Name->Length & 1) != 0) return FALSE;
 
+    baseName = StageRegistryBaseName(Name);
     FltAcquirePushLockExclusive(&RegistryLock);
     for (link = RegistryEntries.Flink; link != &RegistryEntries; link = link->Flink) {
         PSTAGE_REGISTRY_ENTRY candidate = CONTAINING_RECORD(link, STAGE_REGISTRY_ENTRY, Link);
@@ -3885,7 +4621,7 @@ BOOLEAN SafeUploadStageWritersRegistrySnapshotByName(_In_ PFLT_INSTANCE Instance
             candidate->NameChars * sizeof(WCHAR) != Name->Length) continue;
         candidateName.Buffer = candidate->Name;
         candidateName.Length = candidateName.MaximumLength = (USHORT)(candidate->NameChars * sizeof(WCHAR));
-        if (RtlEqualUnicodeString(&candidateName, Name, TRUE)) {
+        if (RtlEqualUnicodeString(&candidateName, &baseName, TRUE)) {
             entry = candidate;
             StageRegistryReference(entry);
             break;
@@ -3947,7 +4683,8 @@ NTSTATUS SafeUploadStageWritersRegistryEvaluate(_In_ PFLT_INSTANCE Instance,
     }
 
     FltAcquirePushLockExclusive(&RegistryLock);
-    entry = StageRegistryFindByKeyLocked(Instance, volume, identity.VolumeSerialNumber, &identity.FileId);
+    entry = StageRegistryFindByKeyLocked(Instance, volume, identity.VolumeSerialNumber,
+        &identity.FileId, SourceObject->SectionObjectPointer);
     if (entry != NULL) StageRegistryReference(entry);
     reservationInFlight = StageRegistryHasCreateReservationLocked(Instance, volume, NormalizedName);
     FltReleasePushLock(&RegistryLock);
@@ -3974,7 +4711,7 @@ NTSTATUS SafeUploadStageWritersRegistryEvaluate(_In_ PFLT_INSTANCE Instance,
          * or post-create bind that raced the name/volume checks above. */
         FltAcquirePushLockExclusive(&RegistryLock);
         entry = StageRegistryFindByKeyLocked(Instance, volume,
-            identity.VolumeSerialNumber, &identity.FileId);
+            identity.VolumeSerialNumber, &identity.FileId, SourceObject->SectionObjectPointer);
         if (entry != NULL) StageRegistryReference(entry);
         reservationInFlight = StageRegistryHasCreateReservationLocked(Instance, volume, NormalizedName);
         directoryRenameInFlight = StageRegistryDirectoryRenameInFlightLocked(Instance, NormalizedName);
@@ -4039,7 +4776,10 @@ NTSTATUS SafeUploadStageWritersRegistryEvaluate(_In_ PFLT_INSTANCE Instance,
             UNICODE_STRING retained;
             retained.Buffer = retainedName;
             retained.Length = retained.MaximumLength = (USHORT)(nameChars * sizeof(WCHAR));
-            Result->NameMatches = RtlEqualUnicodeString(&retained, NormalizedName, TRUE) ? 1 : 0;
+            {
+                UNICODE_STRING baseName = StageRegistryBaseName(NormalizedName);
+                Result->NameMatches = RtlEqualUnicodeString(&retained, &baseName, TRUE) ? 1 : 0;
+            }
             if (!Result->NameMatches) unknown |= SAFEUPLOAD_REGISTRY_UNKNOWN_RENAME;
         }
     }

@@ -2396,11 +2396,17 @@ static FLT_PREOP_CALLBACK_STATUS StageDirectoryDeleteOnClose(PFLT_CALLBACK_DATA 
 {
     PFLT_FILE_NAME_INFORMATION name = NULL;
     SAFEUPLOAD_VOLUME_KIND kind = StageVolumeKind(Objects->Instance);
-    BOOLEAN deny;
+    BOOLEAN deny, unresolved;
     NTSTATUS status = FltGetFileNameInformation(Data, FLT_FILE_NAME_NORMALIZED | FLT_FILE_NAME_QUERY_DEFAULT, &name);
 
-    deny = !NT_SUCCESS(status) || SafeUploadStageTouchesProtectedNamespace(name, kind);
+    unresolved = !NT_SUCCESS(status);
+    if (NT_SUCCESS(status)) {
+        status = name != NULL ? FltParseFileNameInformation(name) : STATUS_INVALID_PARAMETER;
+        unresolved = !NT_SUCCESS(status);
+    }
+    deny = unresolved || SafeUploadStageTouchesProtectedNamespace(name, kind);
     if (name != NULL) FltReleaseFileNameInformation(name);
+    if (unresolved && !SafeUploadPolicyMayMatchInstanceVolume(Objects->Instance)) deny = FALSE;
     if (!deny) return FLT_PREOP_SUCCESS_NO_CALLBACK;
     Data->IoStatus.Status = STATUS_ACCESS_DENIED;
     Data->IoStatus.Information = 0;
@@ -2435,7 +2441,7 @@ static FLT_PREOP_CALLBACK_STATUS StageAdmitDirectoryMutation(
         FLT_FILE_NAME_NORMALIZED | FLT_FILE_NAME_QUERY_DEFAULT, &name);
     if (NT_SUCCESS(status)) status = FltParseFileNameInformation(name);
     if (!NT_SUCCESS(status)) {
-        deny = SafeUploadPolicyMayMatchVolume(kind, Objects->Volume);
+        deny = SafeUploadPolicyMayMatchInstanceVolume(Objects->Instance);
     } else {
         deny = SafeUploadPolicyMatchesCurrentOrPendingDestination(kind, &name->Name, TRUE) ||
             SafeUploadStageTouchesProtectedNamespace(name, kind);
@@ -2532,7 +2538,7 @@ static FLT_PREOP_CALLBACK_STATUS StageAdmit(PFLT_CALLBACK_DATA Data,
         }
 #if SAFEUPLOAD_STAGING_PROTOTYPE
         /* By-ID mutation has no name; never infer that it is outside an identified policy scope. */
-        if (SafeUploadPolicyMayMatchVolume(kind, Objects->Volume)) {
+        if (SafeUploadPolicyMayMatchInstanceVolume(Objects->Instance)) {
             status = STATUS_ACCESS_DENIED; goto Complete;
         }
 #endif
@@ -2543,21 +2549,27 @@ static FLT_PREOP_CALLBACK_STATUS StageAdmit(PFLT_CALLBACK_DATA Data,
 #if SAFEUPLOAD_STAGING_PROTOTYPE
         /* A name-resolution failure is relevant only for a request that can mutate.
          * Early boot image/manifest reads must pass even when C: has a boot scope. */
-        if (writer && SafeUploadPolicyMayMatchVolume(kind, Objects->Volume)) {
+        if (writer && SafeUploadPolicyMayMatchInstanceVolume(Objects->Instance)) {
             status = STATUS_ACCESS_DENIED; goto Complete;
         }
 #endif
-        if (!writer || service) {
+        if (!writer || service || !SafeUploadPolicyMayMatchInstanceVolume(Objects->Instance)) {
             if (name != NULL) FltReleaseFileNameInformation(name);
             return FLT_PREOP_SUCCESS_NO_CALLBACK;
         }
-        /* Keep the existing fail-closed rule for unresolved user writes: the
-         * path cannot be ruled out as either a policy destination or the
-         * driver's private staging namespace. */
+        /* The private staging namespace has a separate resolved-name gate;
+         * an unresolved out-of-scope volume does not inherit a policy refusal. */
         status = STATUS_ACCESS_DENIED; goto Complete;
     }
     status = FltParseFileNameInformation(name);
-    if (!NT_SUCCESS(status)) goto Complete;
+    if (!NT_SUCCESS(status)) {
+        /* A parser failure is the same unresolved-name case as a query failure. */
+        if (!writer || service || !SafeUploadPolicyMayMatchInstanceVolume(Objects->Instance)) {
+            FltReleaseFileNameInformation(name);
+            return FLT_PREOP_SUCCESS_NO_CALLBACK;
+        }
+        goto Complete;
+    }
     relative.Buffer = (PWCH)((PUCHAR)name->Name.Buffer + name->Volume.Length);
     relative.Length = name->Name.Length - name->Volume.Length;
     relative.MaximumLength = relative.Length;
@@ -2637,6 +2649,7 @@ static FLT_PREOP_CALLBACK_STATUS StagePhysicalMutationEx(PFLT_CALLBACK_DATA Data
     PFLT_FILE_NAME_INFORMATION name = NULL;
     SAFEUPLOAD_VOLUME_KIND kind = StageVolumeKind(Objects->Instance);
     BOOLEAN protectedAlias = FALSE;
+    BOOLEAN unresolved = TRUE;
     BOOLEAN service = SafeUploadIsAuthenticatedClient() &&
         FltGetRequestorProcessId(Data) == SafeUploadData.InspectorProcessId;
     FLT_FILESYSTEM_TYPE fs;
@@ -2650,8 +2663,9 @@ static FLT_PREOP_CALLBACK_STATUS StagePhysicalMutationEx(PFLT_CALLBACK_DATA Data
     if (!NT_SUCCESS(status)) goto Complete;
     status = FltParseFileNameInformation(name);
     if (!NT_SUCCESS(status)) goto Complete;
- #if SAFEUPLOAD_STAGING_PROTOTYPE
+#if SAFEUPLOAD_STAGING_PROTOTYPE
     if (SafeUploadStageWritersNameActivating(Objects->Instance, &name->Name)) {
+        unresolved = FALSE;
         status = STATUS_ACCESS_DENIED;
         goto Complete;
     }
@@ -2659,11 +2673,16 @@ static FLT_PREOP_CALLBACK_STATUS StagePhysicalMutationEx(PFLT_CALLBACK_DATA Data
     /* The writer registry records history; current+pending policy is the
      * admission decision for every direct mutator, including old handles. */
     if (SafeUploadPolicyMatchesCurrentOrPendingDestination(kind, &name->Name, IncludeAncestors)) {
+        unresolved = FALSE;
         status = STATUS_ACCESS_DENIED;
         goto Complete;
     }
     if (!service && (IncludeAncestors ? SafeUploadStageTouchesProtectedNamespace(name, kind) :
-        SafeUploadStageProtectedName(name, kind))) { status = STATUS_ACCESS_DENIED; goto Complete; }
+        SafeUploadStageProtectedName(name, kind))) {
+        unresolved = FALSE;
+        status = STATUS_ACCESS_DENIED;
+        goto Complete;
+    }
     status = FltGetFileSystemType(Objects->Instance, &fs);
     if (!NT_SUCCESS(status)) goto Complete;
     if (fs != FLT_FSTYPE_NTFS) {
@@ -2672,9 +2691,14 @@ static FLT_PREOP_CALLBACK_STATUS StagePhysicalMutationEx(PFLT_CALLBACK_DATA Data
     }
     status = SafeUploadStageCheckObjectAliases(Objects->Instance, Objects->FileObject,
         &name->Volume, kind, &protectedAlias);
-    if (protectedAlias) status = STATUS_ACCESS_DENIED;
+    if (NT_SUCCESS(status)) {
+        unresolved = FALSE;
+        if (protectedAlias) status = STATUS_ACCESS_DENIED;
+    }
 Complete:
     if (name != NULL) FltReleaseFileNameInformation(name);
+    if (unresolved && !SafeUploadPolicyMayMatchInstanceVolume(Objects->Instance))
+        status = STATUS_SUCCESS;
     if (status == STATUS_SUCCESS) return FLT_PREOP_SUCCESS_NO_CALLBACK;
     Data->IoStatus.Status = STATUS_ACCESS_DENIED;
     Data->IoStatus.Information = 0;
@@ -2690,6 +2714,7 @@ static FLT_PREOP_CALLBACK_STATUS StageExternalRename(PFLT_CALLBACK_DATA Data,
     SAFEUPLOAD_VOLUME_KIND kind = StageVolumeKind(Objects->Instance);
     BOOLEAN allow = FALSE;
     BOOLEAN quarantineRefused = FALSE;
+    BOOLEAN unresolved = TRUE;
     NTSTATUS status;
     if (RegistryRenameContext != NULL) *RegistryRenameContext = NULL;
     ULONG length = Data->Iopb->Parameters.SetFileInformation.Length;
@@ -2701,23 +2726,36 @@ static FLT_PREOP_CALLBACK_STATUS StageExternalRename(PFLT_CALLBACK_DATA Data,
         rename->FileNameLength > length - (ULONG)FIELD_OFFSET(FILE_RENAME_INFORMATION, FileName)) goto Complete;
     status = FltGetFileNameInformation(Data, FLT_FILE_NAME_NORMALIZED | FLT_FILE_NAME_QUERY_DEFAULT, &source);
     if (!NT_SUCCESS(status)) goto Complete;
+    status = FltParseFileNameInformation(source);
+    if (!NT_SUCCESS(status)) goto Complete;
     status = FltGetDestinationFileNameInformation(Objects->Instance, Objects->FileObject,
         rename->RootDirectory, rename->FileName, rename->FileNameLength,
         FLT_FILE_NAME_NORMALIZED | FLT_FILE_NAME_QUERY_DEFAULT, &destination);
     if (!NT_SUCCESS(status)) goto Complete;
+    status = FltParseFileNameInformation(destination);
+    if (!NT_SUCCESS(status)) goto Complete;
 #if SAFEUPLOAD_STAGING_PROTOTYPE
     if (SafeUploadStageWritersNameActivating(Objects->Instance, &source->Name) ||
-        SafeUploadStageWritersNameActivating(Objects->Instance, &destination->Name)) goto Complete;
+        SafeUploadStageWritersNameActivating(Objects->Instance, &destination->Name)) {
+        unresolved = FALSE;
+        goto Complete;
+    }
 #endif
     allow = !SafeUploadStageTouchesProtectedNamespace(source, kind) &&
         !SafeUploadStageTouchesProtectedNamespace(destination, kind) &&
         !SafeUploadPolicyMatchesCurrentOrPendingDestination(kind, &source->Name, TRUE) &&
         !SafeUploadPolicyMatchesCurrentOrPendingDestination(kind, &destination->Name, TRUE);
+    if (!allow) unresolved = FALSE;
     if (allow) {
         BOOLEAN protectedAlias = FALSE;
         status = SafeUploadStageCheckObjectAliases(Objects->Instance, Objects->FileObject,
             &source->Volume, kind, &protectedAlias);
-        allow = status == STATUS_SUCCESS && !protectedAlias;
+        if (status == STATUS_SUCCESS) {
+            unresolved = FALSE;
+            allow = !protectedAlias;
+        } else {
+            allow = FALSE;
+        }
     }
     if (!allow && SafeUploadIsAuthenticatedClient() &&
         FltGetRequestorProcessId(Data) == SafeUploadData.InspectorProcessId &&
@@ -2735,6 +2773,9 @@ static FLT_PREOP_CALLBACK_STATUS StageExternalRename(PFLT_CALLBACK_DATA Data,
 Complete:
     if (source != NULL) FltReleaseFileNameInformation(source);
     if (destination != NULL) FltReleaseFileNameInformation(destination);
+    /* Orchestrator decision P0-1: unresolved rename state refuses only on a volume that can hold policy scope. */
+    if (!allow && unresolved && !SafeUploadPolicyMayMatchInstanceVolume(Objects->Instance))
+        allow = TRUE;
     if (allow) return FLT_PREOP_SUCCESS_NO_CALLBACK;
     Data->IoStatus.Status = quarantineRefused ? STATUS_SHARING_VIOLATION : STATUS_ACCESS_DENIED;
     Data->IoStatus.Information = 0;
@@ -2874,14 +2915,15 @@ static FLT_PREOP_CALLBACK_STATUS StageGateUnownedActivatingRead(
  * operations can mutate caller-selected physical objects, so they receive the same scope and alias checks as others.
  * Safe name and alias resolution is supported only for fixed NTFS objects at PASSIVE_LEVEL without a top-level IRP.
  * Reparse-changing FSCTLs also cover ancestors of a protected prefix, because turning a parent into a junction
- * redirects the protected namespace. When a safe alias check is unavailable, fail closed and count the unresolved
- * request; a cache hit naming an out-of-scope path does not prove that another hard-link name is out of scope. */
+ * redirects the protected namespace. When a safe alias check is unavailable, refuse only if the cached volume
+ * classifier says this instance could contain a current, pending, or boot scope. */
 static FLT_PREOP_CALLBACK_STATUS StageUnownedMutatingFsctl(PFLT_CALLBACK_DATA Data, PCFLT_RELATED_OBJECTS Objects)
 {
     PFLT_FILE_NAME_INFORMATION name = NULL;
     ULONG code;
     BOOLEAN ancestors;
     BOOLEAN protectedAlias = FALSE;
+    BOOLEAN unresolved = TRUE;
     FLT_FILESYSTEM_TYPE fs;
     SAFEUPLOAD_VOLUME_KIND kind;
     NTSTATUS status;
@@ -2925,14 +2967,18 @@ static FLT_PREOP_CALLBACK_STATUS StageUnownedMutatingFsctl(PFLT_CALLBACK_DATA Da
             &name->Volume, kind, &protectedAlias);
         FltReleaseFileNameInformation(name);
         name = NULL;
-        if (!NT_SUCCESS(status) || protectedAlias) goto Unresolved;
+        if (!NT_SUCCESS(status)) goto Unresolved;
+        unresolved = FALSE;
+        if (protectedAlias) return StageCompleteAccessDenied(Data);
         return FLT_PREOP_SUCCESS_NO_CALLBACK;
     }
 
-    /* At APC_LEVEL, in paging I/O, or with a top-level IRP, do not query a name. A cache hit with an out-of-scope
-     * name would still not prove that the object has no protected alias, so every selected mutation is denied. */
+    /* At APC_LEVEL, in paging I/O, or with a top-level IRP, do not query a name. */
 Unresolved:
     if (name != NULL) FltReleaseFileNameInformation(name);
+    /* Orchestrator decision P0-1: the unsafe-context and alias-loss fallback is volume-scoped. */
+    if (unresolved && !SafeUploadPolicyMayMatchInstanceVolume(Objects->Instance))
+        return FLT_PREOP_SUCCESS_NO_CALLBACK;
     return StageCompleteAccessDenied(Data);
 }
 #endif
@@ -2949,15 +2995,16 @@ Unresolved:
 static FLT_PREOP_CALLBACK_STATUS StageUnownedWritableSection(PFLT_CALLBACK_DATA Data, PCFLT_RELATED_OBJECTS Objects)
 {
     PFLT_FILE_NAME_INFORMATION name = NULL;
-    SAFEUPLOAD_VOLUME_KIND kind;
+    SAFEUPLOAD_VOLUME_KIND kind = StageVolumeKind(Objects->Instance);
     FLT_FILESYSTEM_TYPE fs;
+    BOOLEAN unresolved = TRUE;
     NTSTATUS status;
 
     if (Data->Iopb->Parameters.AcquireForSectionSynchronization.SyncType != SyncTypeCreateSection) return FLT_PREOP_SUCCESS_NO_CALLBACK;
     if (!FlagOn(Data->Iopb->Parameters.AcquireForSectionSynchronization.PageProtection,
             PAGE_READWRITE | PAGE_EXECUTE_READWRITE)) return FLT_PREOP_SUCCESS_NO_CALLBACK;
     if (FlagOn(Data->Iopb->Parameters.AcquireForSectionSynchronization.AllocationAttributes, SEC_IMAGE)) return FLT_PREOP_SUCCESS_NO_CALLBACK;
-    if (KeGetCurrentIrql() != PASSIVE_LEVEL) {
+    if (KeGetCurrentIrql() != PASSIVE_LEVEL || IoGetTopLevelIrp() != NULL) {
         goto Deny;
     }
     status = FltGetFileSystemType(Objects->Instance, &fs);
@@ -2969,7 +3016,6 @@ static FLT_PREOP_CALLBACK_STATUS StageUnownedWritableSection(PFLT_CALLBACK_DATA 
         /* Positively outside the qualified file-ID registry, but still subject to name/policy admission. */
         SafeUploadTrace("writable section outside the qualified registry; checking protected-name policy\n");
     }
-    kind = StageVolumeKind(Objects->Instance);
     status = FltGetFileNameInformation(Data, FLT_FILE_NAME_NORMALIZED | FLT_FILE_NAME_QUERY_DEFAULT, &name);
     if (!NT_SUCCESS(status)) goto Deny;
     /* The current+pending union is read under one shared policy-lock hold. Separate checks can straddle a shrink:
@@ -2977,11 +3023,17 @@ static FLT_PREOP_CALLBACK_STATUS StageUnownedWritableSection(PFLT_CALLBACK_DATA 
     if (!NT_SUCCESS(FltParseFileNameInformation(name))) goto Deny;
     if (SafeUploadStageWritersNameActivating(Objects->Instance, &name->Name) ||
         SafeUploadPolicyMatchesCurrentOrPendingDestination(kind, &name->Name, FALSE) ||
-        SafeUploadStageProtectedName(name, kind)) goto Deny;
+        SafeUploadStageProtectedName(name, kind)) {
+        unresolved = FALSE;
+        goto Deny;
+    }
+    unresolved = FALSE;
     FltReleaseFileNameInformation(name);
     return FLT_PREOP_SUCCESS_NO_CALLBACK;
  Deny:
     if (name != NULL) FltReleaseFileNameInformation(name);
+    if (unresolved && !SafeUploadPolicyMayMatchInstanceVolume(Objects->Instance))
+        return FLT_PREOP_SUCCESS_NO_CALLBACK;
     Data->IoStatus.Status = STATUS_ACCESS_DENIED;
     Data->IoStatus.Information = 0;
     return FLT_PREOP_COMPLETE;
@@ -3045,13 +3097,15 @@ static BOOLEAN StageEpochOperationTouchesUnion(_In_ PFLT_CALLBACK_DATA Data,
         BOOLEAN sopKnown;
         BOOLEAN touchesUnion = SafeUploadStageWritersSopMatchesPolicy(
             sectionObjectPointer, FALSE, &sopKnown);
-        /* Paging paths do not resolve names. A tracked SOP supplies its retained
-         * name; an untracked SOP is unresolved on any volume that has a scope. */
+        /* P1-1: an untracked SOP is unresolved only on a volume that can
+         * contain the current/pending/boot union. */
         if (!touchesUnion)
-            touchesUnion = (BOOLEAN)(!sopKnown && SafeUploadPolicyHasDestinationScopes(kind));
+            touchesUnion = (BOOLEAN)(!sopKnown &&
+                SafeUploadPolicyMayMatchInstanceVolume(Objects->Instance));
         if (touchesUnion && Data->Iopb->MajorFunction == IRP_MJ_WRITE) {
             PVOID pagingContext = NULL;
-            if (!SafeUploadStageWritersPagingWriteBegin(sectionObjectPointer, &pagingContext) &&
+            if (!SafeUploadStageWritersPagingWriteBegin(Objects->Instance,
+                sectionObjectPointer, &pagingContext) &&
                 pagingContext != NULL)
                 SafeUploadStageWritersPagingWriteEnd(pagingContext);
         }
@@ -3060,15 +3114,15 @@ static BOOLEAN StageEpochOperationTouchesUnion(_In_ PFLT_CALLBACK_DATA Data,
     if (KeGetCurrentIrql() != PASSIVE_LEVEL || IoGetTopLevelIrp() != NULL) {
         /* The policy push lock and name APIs are not safe on this path. Retry only when the
          * mounted volume could contain a current/pending scope. */
-        return SafeUploadPolicyHasDestinationScopes(kind);
+        return SafeUploadPolicyMayMatchInstanceVolume(Objects->Instance);
     }
     status = FltGetFileNameInformation(Data,
         FLT_FILE_NAME_NORMALIZED | FLT_FILE_NAME_QUERY_DEFAULT, &name);
-    if (!NT_SUCCESS(status)) return SafeUploadPolicyMayMatchVolume(kind, Objects->Volume);
+    if (!NT_SUCCESS(status)) return SafeUploadPolicyMayMatchInstanceVolume(Objects->Instance);
     status = FltParseFileNameInformation(name);
     if (!NT_SUCCESS(status)) {
         FltReleaseFileNameInformation(name);
-        return SafeUploadPolicyMayMatchVolume(kind, Objects->Volume);
+        return SafeUploadPolicyMayMatchInstanceVolume(Objects->Instance);
     }
     matched = SafeUploadPolicyMatchesCurrentOrPendingDestination(kind, &name->Name,
         Data->Iopb->MajorFunction == IRP_MJ_SET_INFORMATION ||
@@ -3083,13 +3137,13 @@ static BOOLEAN StageEpochOperationTouchesUnion(_In_ PFLT_CALLBACK_DATA Data,
             if (rename == NULL || length < (ULONG)FIELD_OFFSET(FILE_RENAME_INFORMATION, FileName) ||
                 rename->FileNameLength == 0 || (rename->FileNameLength & 1) ||
                 rename->FileNameLength > length - (ULONG)FIELD_OFFSET(FILE_RENAME_INFORMATION, FileName)) {
-                matched = SafeUploadPolicyMayMatchVolume(kind, Objects->Volume);
+                matched = SafeUploadPolicyMayMatchInstanceVolume(Objects->Instance);
             } else if (NT_SUCCESS(FltGetDestinationFileNameInformation(Objects->Instance,
                 Objects->FileObject, rename->RootDirectory, rename->FileName, rename->FileNameLength,
                 FLT_FILE_NAME_NORMALIZED | FLT_FILE_NAME_QUERY_DEFAULT, &destination))) {
                 if (SafeUploadPolicyMatchesCurrentOrPendingDestination(kind, &destination->Name, TRUE))
                     matched = TRUE;
-            } else if (SafeUploadPolicyMayMatchVolume(kind, Objects->Volume)) {
+            } else if (SafeUploadPolicyMayMatchInstanceVolume(Objects->Instance)) {
                 matched = TRUE;
             }
         }
@@ -3346,15 +3400,47 @@ FLT_PREOP_CALLBACK_STATUS SafeUploadStageDispatch(PFLT_CALLBACK_DATA Data,
     if (FLT_IS_FASTIO_OPERATION(Data)) return FLT_PREOP_DISALLOW_FASTIO;
     status = SafeUploadPolicyAdmissionAcquire(&token);
     if (!NT_SUCCESS(status)) {
+        PVOID pagingFallbackCookie = NULL;
+        BOOLEAN pagingFallbackDenied = FALSE;
+        BOOLEAN pagingWrite = Data->Iopb->MajorFunction == IRP_MJ_WRITE &&
+            FlagOn(Data->Iopb->IrpFlags, IRP_PAGING_IO);
+        if (pagingWrite) {
+            /* P0-2: serialize token-allocation fallback admission with the
+             * scope cutoff and retain a resident completion count to drain. */
+            SafeUploadPolicyPagingFallbackBegin(Objects->Instance,
+                &pagingFallbackCookie, &pagingFallbackDenied);
+            if (pagingFallbackDenied) {
+                Data->IoStatus.Status = STATUS_MEDIA_WRITE_PROTECTED;
+                Data->IoStatus.Information = 0;
+                return FLT_PREOP_COMPLETE;
+            }
+        }
         /* An epoch serializes a policy swap; it is not an authorization result.
          * If it is unavailable, refuse only an operation that can reach the
          * current/pending protected union. Clearly out-of-scope mutations keep
          * flowing, including during early boot before the service connects. */
         if (StageEpochOperationTouchesUnion(Data, Objects)) {
+            SafeUploadPolicyAdmissionRelease(
+                (PSAFEUPLOAD_ADMISSION_EPOCH_TOKEN)pagingFallbackCookie);
             if (SafeUploadPolicyAdmissionMustRetry()) return StageCompleteEpochRetry(Data);
             return StageCompleteAccessDenied(Data);
         }
-        return StageDispatchCore(Data, Objects, CompletionContext, NULL);
+        result = StageDispatchCore(Data, Objects, &innerContext, pagingFallbackCookie);
+        if (pagingFallbackCookie != NULL) {
+            if (result == FLT_PREOP_PENDING) {
+                /* StageRoutePaging owns the cookie through its lower completion. */
+                *CompletionContext = NULL;
+                return result;
+            }
+            if (pagingWrite && result == FLT_PREOP_SUCCESS_NO_CALLBACK) {
+                *CompletionContext = pagingFallbackCookie;
+                return FLT_PREOP_SUCCESS_WITH_CALLBACK;
+            }
+            SafeUploadPolicyAdmissionRelease(
+                (PSAFEUPLOAD_ADMISSION_EPOCH_TOKEN)pagingFallbackCookie);
+        }
+        *CompletionContext = innerContext;
+        return result;
     }
     if (SafeUploadPolicyAdmissionMustRetry() && StageEpochOperationTouchesUnion(Data, Objects)) {
         SafeUploadPolicyAdmissionRelease(token);
@@ -3366,7 +3452,7 @@ FLT_PREOP_CALLBACK_STATUS SafeUploadStageDispatch(PFLT_CALLBACK_DATA Data,
         FlagOn(Data->Iopb->IrpFlags, IRP_PAGING_IO) &&
         (fileObject == NULL || StageStreamForObject(fileObject) == NULL)) {
         PVOID pagingWriteContext = NULL;
-        if (SafeUploadStageWritersPagingWriteBegin(fileObject != NULL ?
+        if (SafeUploadStageWritersPagingWriteBegin(Objects->Instance, fileObject != NULL ?
                 fileObject->SectionObjectPointer : NULL, &pagingWriteContext)) {
             Data->IoStatus.Status = STATUS_MEDIA_WRITE_PROTECTED;
             Data->IoStatus.Information = 0;
@@ -3484,6 +3570,11 @@ FLT_POSTOP_CALLBACK_STATUS SafeUploadStagePostOperation(PFLT_CALLBACK_DATA Data,
             SafeUploadPolicyAdmissionRelease(token);
             return result;
         }
+    }
+    if (((ULONG_PTR)CompletionContext & 0x3) == 0x2) {
+        SafeUploadPolicyAdmissionRelease(
+            (PSAFEUPLOAD_ADMISSION_EPOCH_TOKEN)CompletionContext);
+        return FLT_POSTOP_FINISHED_PROCESSING;
     }
 #endif
     return StagePostOperationCore(Data, Objects, CompletionContext, Flags);

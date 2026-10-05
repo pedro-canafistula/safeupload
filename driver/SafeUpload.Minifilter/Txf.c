@@ -29,28 +29,6 @@ static UNICODE_STRING StageTxfBaseName(_In_ PFLT_FILE_NAME_INFORMATION Name)
     return base;
 }
 
-#if SAFEUPLOAD_STAGING_PROTOTYPE
-static BOOLEAN StageTxfMatchesBootstrap(_In_ PFLT_FILE_NAME_INFORMATION Name,
-    _In_ BOOLEAN IncludeAncestors)
-{
-    UNICODE_STRING bootstrap = RTL_CONSTANT_STRING(L"\\SafeUpload\\Escopo Monitorado");
-    UNICODE_STRING relative;
-    USHORT bootstrapChars = bootstrap.Length / sizeof(WCHAR), relativeChars;
-    if (Name->Volume.Length > Name->Name.Length || (Name->Volume.Length & 1) != 0) return TRUE;
-    relative.Buffer = (PWCH)((PUCHAR)Name->Name.Buffer + Name->Volume.Length);
-    relative.Length = Name->Name.Length - Name->Volume.Length;
-    relative.MaximumLength = relative.Length;
-    relativeChars = relative.Length / sizeof(WCHAR);
-    if (RtlPrefixUnicodeString(&bootstrap, &relative, TRUE) &&
-        (relative.Length == bootstrap.Length || relative.Buffer[bootstrapChars] == L'\\')) return TRUE;
-    if (IncludeAncestors && relative.Length != 0 &&
-        RtlPrefixUnicodeString(&relative, &bootstrap, TRUE) &&
-        (relative.Length == bootstrap.Length || relative.Buffer[relativeChars - 1] == L'\\' ||
-         bootstrap.Buffer[relativeChars] == L'\\')) return TRUE;
-    return FALSE;
-}
-#endif
-
 static BOOLEAN StageTxfNameInScope(_In_ PFLT_CALLBACK_DATA Data,
     _In_ PCFLT_RELATED_OBJECTS Objects, _In_ BOOLEAN IncludeAncestors,
     _In_ SAFEUPLOAD_VOLUME_KIND Kind)
@@ -60,29 +38,28 @@ static BOOLEAN StageTxfNameInScope(_In_ PFLT_CALLBACK_DATA Data,
     BOOLEAN inScope = FALSE;
     NTSTATUS status;
 
-    if (KeGetCurrentIrql() > APC_LEVEL) return TRUE;
+    if (KeGetCurrentIrql() > APC_LEVEL)
+        return SafeUploadPolicyMayMatchInstanceVolume(Objects->Instance);
     if (KeGetCurrentIrql() != PASSIVE_LEVEL || IoGetTopLevelIrp() != NULL)
-        return SafeUploadPolicyMayMatchVolume(Kind, Objects->Volume);
+        return SafeUploadPolicyMayMatchInstanceVolume(Objects->Instance);
     status = FltGetFileNameInformation(Data,
         FLT_FILE_NAME_NORMALIZED | FLT_FILE_NAME_QUERY_DEFAULT, &name);
-    if (!NT_SUCCESS(status)) return SafeUploadPolicyMayMatchVolume(Kind, Objects->Volume);
+    if (!NT_SUCCESS(status)) return SafeUploadPolicyMayMatchInstanceVolume(Objects->Instance);
     status = FltParseFileNameInformation(name);
     if (!NT_SUCCESS(status)) {
         FltReleaseFileNameInformation(name);
-        return SafeUploadPolicyMayMatchVolume(Kind, Objects->Volume);
+        return SafeUploadPolicyMayMatchInstanceVolume(Objects->Instance);
     }
 
     base = StageTxfBaseName(name);
-#if SAFEUPLOAD_STAGING_PROTOTYPE
-    inScope = StageTxfMatchesBootstrap(name, IncludeAncestors);
-#endif
+    /* P1-2: TxF follows only the authenticated current/pending/boot policy snapshot. */
     if (!inScope)
         inScope = SafeUploadPolicyMatchesCurrentOrPendingDestination(Kind, &base, IncludeAncestors);
 #if SAFEUPLOAD_STAGING_PROTOTYPE
     if (!inScope) {
         BOOLEAN protectedAlias = FALSE;
         status = SafeUploadStageCheckNamedAliases(Objects->Instance, name, Kind, &protectedAlias);
-        if (!NT_SUCCESS(status)) inScope = SafeUploadPolicyMayMatchVolume(Kind, Objects->Volume);
+        if (!NT_SUCCESS(status)) inScope = SafeUploadPolicyMayMatchInstanceVolume(Objects->Instance);
         else inScope = protectedAlias;
     }
 #endif
@@ -109,11 +86,12 @@ static BOOLEAN StageTxfCreateMustRefuse(_In_ PFLT_CALLBACK_DATA Data,
 {
     SAFEUPLOAD_VOLUME_KIND kind;
     if (Objects->Transaction == NULL || !StageTxfCreateMutates(Data)) return FALSE;
-    if (KeGetCurrentIrql() > APC_LEVEL) return TRUE;
+    if (KeGetCurrentIrql() > APC_LEVEL)
+        return SafeUploadPolicyMayMatchInstanceVolume(Objects->Instance);
     kind = StageTxfVolumeKind(Objects->Instance);
     /* A file-ID create has no name to match; fail closed on any scoped volume. */
     if (FlagOn(Data->Iopb->Parameters.Create.Options, FILE_OPEN_BY_FILE_ID))
-        return SafeUploadPolicyMayMatchVolume(kind, Objects->Volume);
+        return SafeUploadPolicyMayMatchInstanceVolume(Objects->Instance);
     return StageTxfNameInScope(Data, Objects, TRUE, kind);
 }
 
@@ -137,15 +115,16 @@ static BOOLEAN StageTxfSetInformationMustRefuse(_In_ PFLT_CALLBACK_DATA Data,
     if (cls != FileDispositionInformation && (ULONG)cls != 64 &&
         cls != FileRenameInformation && cls != FileRenameInformationEx &&
         cls != FileLinkInformation && cls != FileLinkInformationEx) return FALSE;
-    if (KeGetCurrentIrql() > APC_LEVEL) return TRUE;
+    if (KeGetCurrentIrql() > APC_LEVEL)
+        return SafeUploadPolicyMayMatchInstanceVolume(Objects->Instance);
     kind = StageTxfVolumeKind(Objects->Instance);
     if (KeGetCurrentIrql() != PASSIVE_LEVEL || IoGetTopLevelIrp() != NULL)
-        return SafeUploadPolicyMayMatchVolume(kind, Objects->Volume);
+        return SafeUploadPolicyMayMatchInstanceVolume(Objects->Instance);
 
     if (cls == FileDispositionInformation) {
         PFILE_DISPOSITION_INFORMATION disposition = Data->Iopb->Parameters.SetFileInformation.InfoBuffer;
         if (disposition == NULL || length < sizeof(*disposition))
-            return SafeUploadPolicyMayMatchVolume(kind, Objects->Volume);
+            return SafeUploadPolicyMayMatchInstanceVolume(Objects->Instance);
         if (!disposition->DeleteFile) return FALSE;
         return StageTxfNameInScope(Data, Objects, TRUE, kind);
     }
@@ -153,7 +132,7 @@ static BOOLEAN StageTxfSetInformationMustRefuse(_In_ PFLT_CALLBACK_DATA Data,
         PVOID dispositionEx = Data->Iopb->Parameters.SetFileInformation.InfoBuffer;
         ULONG dispositionFlags = 0;
         if (dispositionEx == NULL || length < sizeof(dispositionFlags))
-            return SafeUploadPolicyMayMatchVolume(kind, Objects->Volume);
+            return SafeUploadPolicyMayMatchInstanceVolume(Objects->Instance);
         RtlCopyMemory(&dispositionFlags, dispositionEx, sizeof(dispositionFlags));
         if (!FlagOn(dispositionFlags, 0x00000001)) return FALSE; /* FILE_DISPOSITION_DELETE */
         return StageTxfNameInScope(Data, Objects, TRUE, kind);
@@ -164,30 +143,25 @@ static BOOLEAN StageTxfSetInformationMustRefuse(_In_ PFLT_CALLBACK_DATA Data,
     if (rename == NULL || length < (ULONG)FIELD_OFFSET(FILE_RENAME_INFORMATION, FileName) ||
         rename->FileNameLength == 0 || (rename->FileNameLength & 1) != 0 ||
         rename->FileNameLength > length - (ULONG)FIELD_OFFSET(FILE_RENAME_INFORMATION, FileName))
-        return SafeUploadPolicyMayMatchVolume(kind, Objects->Volume);
+        return SafeUploadPolicyMayMatchInstanceVolume(Objects->Instance);
     status = FltGetDestinationFileNameInformation(Objects->Instance, Objects->FileObject,
         rename->RootDirectory, rename->FileName, rename->FileNameLength,
         FLT_FILE_NAME_NORMALIZED | FLT_FILE_NAME_QUERY_DEFAULT, &destination);
-    if (!NT_SUCCESS(status)) return SafeUploadPolicyMayMatchVolume(kind, Objects->Volume);
+    if (!NT_SUCCESS(status)) return SafeUploadPolicyMayMatchInstanceVolume(Objects->Instance);
     status = FltParseFileNameInformation(destination);
     if (!NT_SUCCESS(status)) {
         FltReleaseFileNameInformation(destination);
-        return SafeUploadPolicyMayMatchVolume(kind, Objects->Volume);
+        return SafeUploadPolicyMayMatchInstanceVolume(Objects->Instance);
     }
     {
         UNICODE_STRING base = StageTxfBaseName(destination);
-        BOOLEAN inScope = FALSE;
-#if SAFEUPLOAD_STAGING_PROTOTYPE
-        inScope = StageTxfMatchesBootstrap(destination, TRUE);
-#endif
-        if (!inScope)
-            inScope = SafeUploadPolicyMatchesCurrentOrPendingDestination(kind, &base, TRUE);
+        BOOLEAN inScope = SafeUploadPolicyMatchesCurrentOrPendingDestination(kind, &base, TRUE);
 #if SAFEUPLOAD_STAGING_PROTOTYPE
         if (!inScope) {
             BOOLEAN protectedAlias = FALSE;
             status = SafeUploadStageCheckNamedAliases(Objects->Instance,
                 destination, kind, &protectedAlias);
-            if (!NT_SUCCESS(status)) inScope = SafeUploadPolicyMayMatchVolume(kind, Objects->Volume);
+            if (!NT_SUCCESS(status)) inScope = SafeUploadPolicyMayMatchInstanceVolume(Objects->Instance);
             else inScope = protectedAlias;
         }
 #endif

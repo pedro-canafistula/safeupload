@@ -307,6 +307,7 @@ Return Value:
 --*/
 {
     PSAFEUPLOAD_INSTANCE_CONTEXT instanceContext = NULL;
+    UNICODE_STRING volumeName;
     NTSTATUS status;
 #if SAFEUPLOAD_STAGING_PROTOTYPE
     PSAFEUPLOAD_INSTANCE_TEARDOWN_TOKEN teardownToken = NULL;
@@ -352,6 +353,18 @@ Return Value:
 #endif
     instanceContext->VolumeKind = SafeUploadClassifyVolume( FltObjects->Volume,
                                                             VolumeDeviceType );
+    volumeName.Buffer = instanceContext->VolumeName;
+    volumeName.Length = 0;
+    volumeName.MaximumLength = sizeof(instanceContext->VolumeName);
+    status = FltGetVolumeName(FltObjects->Volume, &volumeName, NULL);
+    if (NT_SUCCESS(status) && volumeName.Length != 0 &&
+        volumeName.Length <= volumeName.MaximumLength &&
+        (volumeName.Length & (sizeof(WCHAR) - 1)) == 0) {
+        instanceContext->VolumeNameChars = volumeName.Length / sizeof(WCHAR);
+    } else {
+        RtlZeroMemory(instanceContext->VolumeName, sizeof(instanceContext->VolumeName));
+        instanceContext->VolumeNameChars = 0;
+    }
     if (!FlagOn(SetupFlags, FLTFL_INSTANCE_SETUP_NEWLY_MOUNTED_VOLUME) && SafeUploadData.BootStartMode) {
         DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL,
             "SafeUpload: volume instance attached after mount; protection pending reboot; volume remains Untrusted\n");

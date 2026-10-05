@@ -101,20 +101,9 @@ BOOLEAN SafeUploadPublicationCreate(_In_ PUNICODE_STRING Name,
 static BOOLEAN StagePathMatchesScope(_In_ PUNICODE_STRING Name,
     _In_ USHORT VolumeLength, _In_ SAFEUPLOAD_VOLUME_KIND Kind, _In_ BOOLEAN IncludeAncestors)
 {
-    UNICODE_STRING bootstrap = RTL_CONSTANT_STRING( L"\\SafeUpload\\Escopo Monitorado" );
-    UNICODE_STRING relative;
-    USHORT bootstrapChars = bootstrap.Length / sizeof(WCHAR), relativeChars;
     if (VolumeLength > Name->Length || (VolumeLength & 1)) return TRUE;
-    relative.Buffer = (PWCH) ((PUCHAR) Name->Buffer + VolumeLength);
-    relative.Length = Name->Length - VolumeLength;
-    relative.MaximumLength = relative.Length;
-    relativeChars = relative.Length / sizeof(WCHAR);
-    if (RtlPrefixUnicodeString( &bootstrap, &relative, TRUE ) &&
-        (relative.Length == bootstrap.Length || relative.Buffer[bootstrapChars] == L'\\')) return TRUE;
-    if (IncludeAncestors && relative.Length != 0 &&
-        RtlPrefixUnicodeString( &relative, &bootstrap, TRUE ) &&
-        (relative.Length == bootstrap.Length || relative.Buffer[relativeChars - 1] == L'\\' ||
-         bootstrap.Buffer[relativeChars] == L'\\')) return TRUE;
+    /* P1-2: a scope is established by current, pending, or boot policy, never
+     * by a volume-independent bootstrap path literal. */
 #if SAFEUPLOAD_STAGING_PROTOTYPE
     return SafeUploadPolicyMatchesCurrentOrPendingDestination(Kind, Name, IncludeAncestors);
 #else
