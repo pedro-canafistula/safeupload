@@ -377,3 +377,14 @@ falsify the Phase 3 cutoff mechanism; the harness must test it, never reinterpre
   - By-ID mutating opens follow the volume rule: pass on volumes that cannot hold a scope; on a possibly scoped volume, classify all
     link names by ID at PASSIVE and refuse only in scope or undecidable.
   - Link classification dedupes parent-name queries and runs a 32-identity budget per pass; unfinished identities stay gated.
+- **2026-10-05 decision (unattended): activation waits for Free(F); no paging-write cutoff.** Three review rounds
+  (phase3-milestone-review, phase3-fix-review, phase3-fix2-review) each found new holes in the epoch paging-write cutoff, ending at a
+  fundamental one: a filter cannot prove that a page flushed after the cutoff holds only pre-cutoff stores. Replaced by the owner's
+  original model: a file entering a scope becomes Activating. New writable opens and new writable section creations into it are refused,
+  but existing writers (handles, mappings, cached data, paging writes) are never refused. The file becomes Protected only when Free(F)
+  (H=0, no data section, no shared cache map, C=0, T=0) is observed after the Activating gate is in place, so no new writer can appear.
+  Bytes written before that point count as content that predates protection (baseline). Removed: owner-admitted cutoff flush,
+  DirtyAfterCutoff, volume-wide transition paging denial, paging-write gate. Paging I/O is never refused by the registry (ledger, not
+  gate), so the boot-safety invariant holds by construction. A file held open forever stays Activating and is reported. Unknown SOP
+  markers from overflow are pruned once their SOP is quiescent; while any marker on an instance is live and not provably out of scope,
+  promotion on that instance waits.
