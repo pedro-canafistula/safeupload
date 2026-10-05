@@ -6017,6 +6017,7 @@ Start-Sleep -Seconds 300
     catch {
         $runSucceeded = $false
         Write-Output ('RunError=' + (Get-ErrorText $_))
+        if ($script:InspectorTimedOut) { Write-Output ('InspectorTimeoutCommand=' + $script:InspectorTimeoutCommand) }
         if ($sectionTeardownVariant -and -not $sectionTeardownSummaryEmitted) {
             Write-Output ('ST_Execution=error:' + ((Get-ErrorText $_) -replace '[\r\n]+', ' ') + ';FAIL')
             $script:SectionTeardownFailed++
