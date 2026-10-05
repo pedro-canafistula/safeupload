@@ -142,13 +142,12 @@ NTSTATUS SafeUploadStageWritersActivatingStatusPage(_In_ UINT32 StartIndex,
 UINT32 SafeUploadStageWritersSnapshot(_In_ PFLT_INSTANCE Instance, _In_ PFILE_OBJECT FileObject);
 /* C(F): writable CreateSections acquired and not yet released (observe-only). */
 VOID SafeUploadStageWritersInitialize(VOID);
+_IRQL_requires_max_(APC_LEVEL)
 VOID SafeUploadStageWritersUninitialize(VOID);
 _IRQL_requires_max_(APC_LEVEL)
 NTSTATUS SafeUploadStageSectionAcquired(_In_ PFLT_CALLBACK_DATA Data,
     _In_ PCFLT_RELATED_OBJECTS FltObjects,
     _Outptr_result_maybenull_ PVOID *CompletionContext);
-_IRQL_requires_max_(DISPATCH_LEVEL)
-VOID SafeUploadStageSectionAcquireComplete(_In_opt_ PVOID CompletionContext);
 _IRQL_requires_max_(DISPATCH_LEVEL)
 VOID SafeUploadStageSectionAcquireFailed(_In_ PVOID CompletionContext);
 _IRQL_requires_max_(DISPATCH_LEVEL)
@@ -163,6 +162,7 @@ VOID SafeUploadStageSectionReleaseComplete(_In_opt_ PFLT_INSTANCE Instance,
     _In_opt_ PVOID CompletionContext, _In_ BOOLEAN Succeeded, _In_ BOOLEAN Draining);
 _IRQL_requires_max_(DISPATCH_LEVEL)
 UINT32 SafeUploadStageSectionsInFlight(_In_opt_ PVOID SectionObjectPointer);
+_IRQL_requires_max_(APC_LEVEL)
 VOID SafeUploadStageWritersGetStatus(_Out_ PSAFEUPLOAD_WRITER_STATE_STATUS Status);
 NTSTATUS SafeUploadStageWritersRegistryEvaluate(_In_ PFLT_INSTANCE Instance,
     _In_ PCUNICODE_STRING VolumeName, _In_ PCUNICODE_STRING NormalizedName,

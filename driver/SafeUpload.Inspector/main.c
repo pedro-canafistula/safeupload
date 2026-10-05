@@ -1058,7 +1058,7 @@ static int PrintWriterStateStatus(_In_ BOOL RegistryStatus)
     wprintf(L"{\"writerState\":true,\"registryStatus\":%s,\"postCreateRuns\":%llu,\"writeObjectsCounted\":%llu,\"writeObjectsReleased\":%llu,"
             L"\"untrackedCreates\":%llu,\"cleanupUnmatched\":%llu,\"directoryCreatesSkipped\":%llu,"
             L"\"sectionInFlightNow\":%lu,\"sectionInFlightInserted\":%llu,\"sectionInFlightReleased\":%llu,"
-            L"\"sectionInFlightOverflow\":%llu,\"sectionInFlightStuck\":%llu,\"sectionInFlightRemovedOnFailure\":%llu,"
+            L"\"sectionInFlightStuck\":%llu,\"sectionInFlightRemovedOnFailure\":%llu,"
             L"\"sectionInFlightMaxDepth\":%lu,\"pagingCreatesSkipped\":%llu,\"volumeCreatesSkipped\":%llu,"
             L"\"writersDroppedAtTeardown\":%llu,\"writersDroppedWhileMounted\":%llu,"
             L"\"instanceTeardownsDismount\":%llu,\"instanceTeardownsOther\":%llu,"
@@ -1074,7 +1074,7 @@ static int PrintWriterStateStatus(_In_ BOOL RegistryStatus)
             status.PostCreateRuns, status.WriteObjectsCounted, status.WriteObjectsReleased,
             status.UntrackedCreates, status.CleanupUnmatched, status.DirectoryCreatesSkipped,
             status.SectionInFlightNow, status.SectionInFlightInserted, status.SectionInFlightReleased,
-            status.SectionInFlightOverflow, status.SectionInFlightStuck, status.SectionInFlightRemovedOnFailure,
+            status.SectionInFlightStuck, status.SectionInFlightRemovedOnFailure,
             status.SectionInFlightMaxDepth, status.PagingCreatesSkipped, status.VolumeCreatesSkipped,
             status.WritersDroppedAtTeardown, status.WritersDroppedWhileMounted,
             status.InstanceTeardownsDismount, status.InstanceTeardownsOther,
@@ -1092,13 +1092,13 @@ static int PrintWriterStateStatus(_In_ BOOL RegistryStatus)
     wprintf(L"{\"writerState\":true,\"postCreateRuns\":%llu,\"writeObjectsCounted\":%llu,\"writeObjectsReleased\":%llu,"
             L"\"untrackedCreates\":%llu,\"cleanupUnmatched\":%llu,\"directoryCreatesSkipped\":%llu,"
             L"\"sectionInFlightNow\":%lu,\"sectionInFlightInserted\":%llu,\"sectionInFlightReleased\":%llu,"
-            L"\"sectionInFlightOverflow\":%llu,\"sectionInFlightStuck\":%llu,\"sectionInFlightRemovedOnFailure\":%llu,"
+            L"\"sectionInFlightStuck\":%llu,\"sectionInFlightRemovedOnFailure\":%llu,"
             L"\"sectionInFlightMaxDepth\":%lu,\"pagingCreatesSkipped\":%llu,\"volumeCreatesSkipped\":%llu,"
             L"\"stageStreams\":%u,\"stageFileObjects\":%u,\"lastUnloadVeto\":%u,\"lastUnloadStatus\":%u}\n",
             status.PostCreateRuns, status.WriteObjectsCounted, status.WriteObjectsReleased,
             status.UntrackedCreates, status.CleanupUnmatched, status.DirectoryCreatesSkipped,
             status.SectionInFlightNow, status.SectionInFlightInserted, status.SectionInFlightReleased,
-            status.SectionInFlightOverflow, status.SectionInFlightStuck, status.SectionInFlightRemovedOnFailure,
+            status.SectionInFlightStuck, status.SectionInFlightRemovedOnFailure,
             status.SectionInFlightMaxDepth, status.PagingCreatesSkipped, status.VolumeCreatesSkipped,
             status.StageStreams, status.StageFileObjects, status.LastUnloadVeto, status.LastUnloadStatus);
 #endif
