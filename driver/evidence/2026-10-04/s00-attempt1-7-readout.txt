@@ -27,3 +27,10 @@ Addendum - seed cases with the WP4 proof adapters (ordinary mode, driver mvp3-a1
   live taint readback, agent journal/notification expectations (the agent keeps no durable notification record), and in S01/S02 one or two
   cadence gaps not accounted against the timeline. Harness defects found here: Get-Volume cluster-size hardening; PowerShell comma-vs-minus
   precedence in the forbidden-block offsets (misdiagnosed once as the cluster size).
+
+Addendum - notify4 (agent agent-mvp4-notify1 with the durable notification record; suite with journal delta evaluation, cefb0bdc):
+  S00 166 PASS, S01 164 PASS, S02 164 PASS; ForbiddenByteCount 0 in all; independent BaselineClean=True.
+  JournalExpectation now PASSES in all three (authenticated journal, owner rule = agent's, pre-existing entries byte-identical,
+  new entries validated strictly). Remaining INCONCLUSIVE: NotificationExpectation (no record while the agent is down or seeding),
+  LiveTaintFlags (driver readback), PredicateCoverage/NoUnapprovedByte (lower mutation ledger), and in S01/S02 the cadence/external
+  intervals that only the lower ledger can bridge.

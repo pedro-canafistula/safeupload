@@ -1,0 +1,1312 @@
+<Objs Version="1.1.0.1" xmlns="http://schemas.microsoft.com/powershell/2004/04">
+  <Obj RefId="0">
+    <TN RefId="0">
+      <T>System.Collections.Hashtable</T>
+      <T>System.Object</T>
+    </TN>
+    <DCT>
+      <En>
+        <S N="Key">Value</S>
+        <Obj N="Value" RefId="1">
+          <TNRef RefId="0" />
+          <DCT>
+            <En>
+              <S N="Key">Actor</S>
+              <Obj N="Value" RefId="2">
+                <TNRef RefId="0" />
+                <DCT>
+                  <En>
+                    <S N="Key">Elevated</S>
+                    <B N="Value">false</B>
+                  </En>
+                  <En>
+                    <S N="Key">Pid</S>
+                    <I32 N="Value">5856</I32>
+                  </En>
+                  <En>
+                    <S N="Key">SessionId</S>
+                    <I32 N="Value">0</I32>
+                  </En>
+                  <En>
+                    <S N="Key">BootId</S>
+                    <S N="Value">WIN10-DEBUGGED/2026-10-05T00:35:36.5000000Z</S>
+                  </En>
+                  <En>
+                    <S N="Key">IsAdministrator</S>
+                    <B N="Value">false</B>
+                  </En>
+                  <En>
+                    <S N="Key">Sid</S>
+                    <S N="Value">S-1-5-21-316478115-1595729549-2803163825-1022</S>
+                  </En>
+                </DCT>
+              </Obj>
+            </En>
+            <En>
+              <S N="Key">Held</S>
+              <B N="Value">false</B>
+            </En>
+            <En>
+              <S N="Key">QpcFrequency</S>
+              <I64 N="Value">10000000</I64>
+            </En>
+            <En>
+              <S N="Key">ReleasedQpc</S>
+              <I64 N="Value">334997497</I64>
+            </En>
+            <En>
+              <S N="Key">Calls</S>
+              <Obj N="Value" RefId="3">
+                <TN RefId="1">
+                  <T>System.Object[]</T>
+                  <T>System.Array</T>
+                  <T>System.Object</T>
+                </TN>
+                <LST>
+                  <Obj RefId="4">
+                    <TN RefId="2">
+                      <T>SUCall</T>
+                      <T>System.Object</T>
+                    </TN>
+                    <ToString>SUCall</ToString>
+                    <Props>
+                      <S N="Class">writer-open-deny</S>
+                      <I32 N="NativeCode">5</I32>
+                      <I64 N="StartQpc">335120855</I64>
+                      <I64 N="EndQpc">335124011</I64>
+                      <I32 N="Trial">0</I32>
+                      <B N="Cold">true</B>
+                    </Props>
+                  </Obj>
+                  <Obj RefId="5">
+                    <TNRef RefId="2" />
+                    <ToString>SUCall</ToString>
+                    <Props>
+                      <S N="Class">writer-open-deny</S>
+                      <I32 N="NativeCode">5</I32>
+                      <I64 N="StartQpc">335136962</I64>
+                      <I64 N="EndQpc">335137617</I64>
+                      <I32 N="Trial">1</I32>
+                      <B N="Cold">false</B>
+                    </Props>
+                  </Obj>
+                  <Obj RefId="6">
+                    <TNRef RefId="2" />
+                    <ToString>SUCall</ToString>
+                    <Props>
+                      <S N="Class">writer-open-deny</S>
+                      <I32 N="NativeCode">5</I32>
+                      <I64 N="StartQpc">335138108</I64>
+                      <I64 N="EndQpc">335138494</I64>
+                      <I32 N="Trial">2</I32>
+                      <B N="Cold">false</B>
+                    </Props>
+                  </Obj>
+                  <Obj RefId="7">
+                    <TNRef RefId="2" />
+                    <ToString>SUCall</ToString>
+                    <Props>
+                      <S N="Class">writer-open-deny</S>
+                      <I32 N="NativeCode">5</I32>
+                      <I64 N="StartQpc">335138960</I64>
+                      <I64 N="EndQpc">335139426</I64>
+                      <I32 N="Trial">3</I32>
+                      <B N="Cold">false</B>
+                    </Props>
+                  </Obj>
+                  <Obj RefId="8">
+                    <TNRef RefId="2" />
+                    <ToString>SUCall</ToString>
+                    <Props>
+                      <S N="Class">writer-open-deny</S>
+                      <I32 N="NativeCode">5</I32>
+                      <I64 N="StartQpc">335139886</I64>
+                      <I64 N="EndQpc">335140260</I64>
+                      <I32 N="Trial">4</I32>
+                      <B N="Cold">false</B>
+                    </Props>
+                  </Obj>
+                  <Obj RefId="9">
+                    <TNRef RefId="2" />
+                    <ToString>SUCall</ToString>
+                    <Props>
+                      <S N="Class">writer-open-deny</S>
+                      <I32 N="NativeCode">5</I32>
+                      <I64 N="StartQpc">335140708</I64>
+                      <I64 N="EndQpc">335141067</I64>
+                      <I32 N="Trial">5</I32>
+                      <B N="Cold">false</B>
+                    </Props>
+                  </Obj>
+                  <Obj RefId="10">
+                    <TNRef RefId="2" />
+                    <ToString>SUCall</ToString>
+                    <Props>
+                      <S N="Class">writer-open-deny</S>
+                      <I32 N="NativeCode">5</I32>
+                      <I64 N="StartQpc">335141529</I64>
+                      <I64 N="EndQpc">335141883</I64>
+                      <I32 N="Trial">6</I32>
+                      <B N="Cold">false</B>
+                    </Props>
+                  </Obj>
+                  <Obj RefId="11">
+                    <TNRef RefId="2" />
+                    <ToString>SUCall</ToString>
+                    <Props>
+                      <S N="Class">writer-open-deny</S>
+                      <I32 N="NativeCode">5</I32>
+                      <I64 N="StartQpc">335142352</I64>
+                      <I64 N="EndQpc">335142727</I64>
+                      <I32 N="Trial">7</I32>
+                      <B N="Cold">false</B>
+                    </Props>
+                  </Obj>
+                  <Obj RefId="12">
+                    <TNRef RefId="2" />
+                    <ToString>SUCall</ToString>
+                    <Props>
+                      <S N="Class">writer-open-deny</S>
+                      <I32 N="NativeCode">5</I32>
+                      <I64 N="StartQpc">335143163</I64>
+                      <I64 N="EndQpc">335143561</I64>
+                      <I32 N="Trial">8</I32>
+                      <B N="Cold">false</B>
+                    </Props>
+                  </Obj>
+                  <Obj RefId="13">
+                    <TNRef RefId="2" />
+                    <ToString>SUCall</ToString>
+                    <Props>
+                      <S N="Class">writer-open-deny</S>
+                      <I32 N="NativeCode">5</I32>
+                      <I64 N="StartQpc">335144007</I64>
+                      <I64 N="EndQpc">335144372</I64>
+                      <I32 N="Trial">9</I32>
+                      <B N="Cold">false</B>
+                    </Props>
+                  </Obj>
+                  <Obj RefId="14">
+                    <TNRef RefId="2" />
+                    <ToString>SUCall</ToString>
+                    <Props>
+                      <S N="Class">writer-open-deny</S>
+                      <I32 N="NativeCode">5</I32>
+                      <I64 N="StartQpc">335144810</I64>
+                      <I64 N="EndQpc">335145179</I64>
+                      <I32 N="Trial">10</I32>
+                      <B N="Cold">false</B>
+                    </Props>
+                  </Obj>
+                  <Obj RefId="15">
+                    <TNRef RefId="2" />
+                    <ToString>SUCall</ToString>
+                    <Props>
+                      <S N="Class">writer-open-deny</S>
+                      <I32 N="NativeCode">5</I32>
+                      <I64 N="StartQpc">335145637</I64>
+                      <I64 N="EndQpc">335146002</I64>
+                      <I32 N="Trial">11</I32>
+                      <B N="Cold">false</B>
+                    </Props>
+                  </Obj>
+                  <Obj RefId="16">
+                    <TNRef RefId="2" />
+                    <ToString>SUCall</ToString>
+                    <Props>
+                      <S N="Class">writer-open-deny</S>
+                      <I32 N="NativeCode">5</I32>
+                      <I64 N="StartQpc">335146568</I64>
+                      <I64 N="EndQpc">335146932</I64>
+                      <I32 N="Trial">12</I32>
+                      <B N="Cold">false</B>
+                    </Props>
+                  </Obj>
+                  <Obj RefId="17">
+                    <TNRef RefId="2" />
+                    <ToString>SUCall</ToString>
+                    <Props>
+                      <S N="Class">writer-open-deny</S>
+                      <I32 N="NativeCode">5</I32>
+                      <I64 N="StartQpc">335147378</I64>
+                      <I64 N="EndQpc">335147735</I64>
+                      <I32 N="Trial">13</I32>
+                      <B N="Cold">false</B>
+                    </Props>
+                  </Obj>
+                  <Obj RefId="18">
+                    <TNRef RefId="2" />
+                    <ToString>SUCall</ToString>
+                    <Props>
+                      <S N="Class">writer-open-deny</S>
+                      <I32 N="NativeCode">5</I32>
+                      <I64 N="StartQpc">335148210</I64>
+                      <I64 N="EndQpc">335148583</I64>
+                      <I32 N="Trial">14</I32>
+                      <B N="Cold">false</B>
+                    </Props>
+                  </Obj>
+                  <Obj RefId="19">
+                    <TNRef RefId="2" />
+                    <ToString>SUCall</ToString>
+                    <Props>
+                      <S N="Class">writer-open-deny</S>
+                      <I32 N="NativeCode">5</I32>
+                      <I64 N="StartQpc">335149162</I64>
+                      <I64 N="EndQpc">335149544</I64>
+                      <I32 N="Trial">15</I32>
+                      <B N="Cold">false</B>
+                    </Props>
+                  </Obj>
+                  <Obj RefId="20">
+                    <TNRef RefId="2" />
+                    <ToString>SUCall</ToString>
+                    <Props>
+                      <S N="Class">writer-open-deny</S>
+                      <I32 N="NativeCode">5</I32>
+                      <I64 N="StartQpc">335150147</I64>
+                      <I64 N="EndQpc">335150511</I64>
+                      <I32 N="Trial">16</I32>
+                      <B N="Cold">false</B>
+                    </Props>
+                  </Obj>
+                  <Obj RefId="21">
+                    <TNRef RefId="2" />
+                    <ToString>SUCall</ToString>
+                    <Props>
+                      <S N="Class">writer-open-deny</S>
+                      <I32 N="NativeCode">5</I32>
+                      <I64 N="StartQpc">335151042</I64>
+                      <I64 N="EndQpc">335151396</I64>
+                      <I32 N="Trial">17</I32>
+                      <B N="Cold">false</B>
+                    </Props>
+                  </Obj>
+                  <Obj RefId="22">
+                    <TNRef RefId="2" />
+                    <ToString>SUCall</ToString>
+                    <Props>
+                      <S N="Class">writer-open-deny</S>
+                      <I32 N="NativeCode">5</I32>
+                      <I64 N="StartQpc">335151866</I64>
+                      <I64 N="EndQpc">335152221</I64>
+                      <I32 N="Trial">18</I32>
+                      <B N="Cold">false</B>
+                    </Props>
+                  </Obj>
+                  <Obj RefId="23">
+                    <TNRef RefId="2" />
+                    <ToString>SUCall</ToString>
+                    <Props>
+                      <S N="Class">writer-open-deny</S>
+                      <I32 N="NativeCode">5</I32>
+                      <I64 N="StartQpc">335152678</I64>
+                      <I64 N="EndQpc">335153118</I64>
+                      <I32 N="Trial">19</I32>
+                      <B N="Cold">false</B>
+                    </Props>
+                  </Obj>
+                  <Obj RefId="24">
+                    <TNRef RefId="2" />
+                    <ToString>SUCall</ToString>
+                    <Props>
+                      <S N="Class">writer-open-deny</S>
+                      <I32 N="NativeCode">5</I32>
+                      <I64 N="StartQpc">335153592</I64>
+                      <I64 N="EndQpc">335153951</I64>
+                      <I32 N="Trial">20</I32>
+                      <B N="Cold">false</B>
+                    </Props>
+                  </Obj>
+                  <Obj RefId="25">
+                    <TNRef RefId="2" />
+                    <ToString>SUCall</ToString>
+                    <Props>
+                      <S N="Class">writer-open-deny</S>
+                      <I32 N="NativeCode">5</I32>
+                      <I64 N="StartQpc">335154399</I64>
+                      <I64 N="EndQpc">335154753</I64>
+                      <I32 N="Trial">21</I32>
+                      <B N="Cold">false</B>
+                    </Props>
+                  </Obj>
+                  <Obj RefId="26">
+                    <TNRef RefId="2" />
+                    <ToString>SUCall</ToString>
+                    <Props>
+                      <S N="Class">writer-open-deny</S>
+                      <I32 N="NativeCode">5</I32>
+                      <I64 N="StartQpc">335155215</I64>
+                      <I64 N="EndQpc">335155620</I64>
+                      <I32 N="Trial">22</I32>
+                      <B N="Cold">false</B>
+                    </Props>
+                  </Obj>
+                  <Obj RefId="27">
+                    <TNRef RefId="2" />
+                    <ToString>SUCall</ToString>
+                    <Props>
+                      <S N="Class">writer-open-deny</S>
+                      <I32 N="NativeCode">5</I32>
+                      <I64 N="StartQpc">335156077</I64>
+                      <I64 N="EndQpc">335156458</I64>
+                      <I32 N="Trial">23</I32>
+                      <B N="Cold">false</B>
+                    </Props>
+                  </Obj>
+                  <Obj RefId="28">
+                    <TNRef RefId="2" />
+                    <ToString>SUCall</ToString>
+                    <Props>
+                      <S N="Class">writer-open-deny</S>
+                      <I32 N="NativeCode">5</I32>
+                      <I64 N="StartQpc">335156919</I64>
+                      <I64 N="EndQpc">335157270</I64>
+                      <I32 N="Trial">24</I32>
+                      <B N="Cold">false</B>
+                    </Props>
+                  </Obj>
+                  <Obj RefId="29">
+                    <TNRef RefId="2" />
+                    <ToString>SUCall</ToString>
+                    <Props>
+                      <S N="Class">writer-open-deny</S>
+                      <I32 N="NativeCode">5</I32>
+                      <I64 N="StartQpc">335157733</I64>
+                      <I64 N="EndQpc">335158101</I64>
+                      <I32 N="Trial">25</I32>
+                      <B N="Cold">false</B>
+                    </Props>
+                  </Obj>
+                  <Obj RefId="30">
+                    <TNRef RefId="2" />
+                    <ToString>SUCall</ToString>
+                    <Props>
+                      <S N="Class">writer-open-deny</S>
+                      <I32 N="NativeCode">5</I32>
+                      <I64 N="StartQpc">335158565</I64>
+                      <I64 N="EndQpc">335158940</I64>
+                      <I32 N="Trial">26</I32>
+                      <B N="Cold">false</B>
+                    </Props>
+                  </Obj>
+                  <Obj RefId="31">
+                    <TNRef RefId="2" />
+                    <ToString>SUCall</ToString>
+                    <Props>
+                      <S N="Class">writer-open-deny</S>
+                      <I32 N="NativeCode">5</I32>
+                      <I64 N="StartQpc">335159496</I64>
+                      <I64 N="EndQpc">335159884</I64>
+                      <I32 N="Trial">27</I32>
+                      <B N="Cold">false</B>
+                    </Props>
+                  </Obj>
+                  <Obj RefId="32">
+                    <TNRef RefId="2" />
+                    <ToString>SUCall</ToString>
+                    <Props>
+                      <S N="Class">writer-open-deny</S>
+                      <I32 N="NativeCode">5</I32>
+                      <I64 N="StartQpc">335160347</I64>
+                      <I64 N="EndQpc">335160727</I64>
+                      <I32 N="Trial">28</I32>
+                      <B N="Cold">false</B>
+                    </Props>
+                  </Obj>
+                  <Obj RefId="33">
+                    <TNRef RefId="2" />
+                    <ToString>SUCall</ToString>
+                    <Props>
+                      <S N="Class">writer-open-deny</S>
+                      <I32 N="NativeCode">5</I32>
+                      <I64 N="StartQpc">335161186</I64>
+                      <I64 N="EndQpc">335161543</I64>
+                      <I32 N="Trial">29</I32>
+                      <B N="Cold">false</B>
+                    </Props>
+                  </Obj>
+                  <Obj RefId="34">
+                    <TNRef RefId="2" />
+                    <ToString>SUCall</ToString>
+                    <Props>
+                      <S N="Class">writer-open-deny</S>
+                      <I32 N="NativeCode">5</I32>
+                      <I64 N="StartQpc">335161992</I64>
+                      <I64 N="EndQpc">335162381</I64>
+                      <I32 N="Trial">30</I32>
+                      <B N="Cold">false</B>
+                    </Props>
+                  </Obj>
+                  <Obj RefId="35">
+                    <TNRef RefId="2" />
+                    <ToString>SUCall</ToString>
+                    <Props>
+                      <S N="Class">writer-open-deny</S>
+                      <I32 N="NativeCode">5</I32>
+                      <I64 N="StartQpc">335162850</I64>
+                      <I64 N="EndQpc">335163240</I64>
+                      <I32 N="Trial">31</I32>
+                      <B N="Cold">false</B>
+                    </Props>
+                  </Obj>
+                  <Obj RefId="36">
+                    <TNRef RefId="2" />
+                    <ToString>SUCall</ToString>
+                    <Props>
+                      <S N="Class">writer-open-deny</S>
+                      <I32 N="NativeCode">5</I32>
+                      <I64 N="StartQpc">335163693</I64>
+                      <I64 N="EndQpc">335164071</I64>
+                      <I32 N="Trial">32</I32>
+                      <B N="Cold">false</B>
+                    </Props>
+                  </Obj>
+                  <Obj RefId="37">
+                    <TNRef RefId="2" />
+                    <ToString>SUCall</ToString>
+                    <Props>
+                      <S N="Class">writer-open-deny</S>
+                      <I32 N="NativeCode">5</I32>
+                      <I64 N="StartQpc">335164542</I64>
+                      <I64 N="EndQpc">335164901</I64>
+                      <I32 N="Trial">33</I32>
+                      <B N="Cold">false</B>
+                    </Props>
+                  </Obj>
+                  <Obj RefId="38">
+                    <TNRef RefId="2" />
+                    <ToString>SUCall</ToString>
+                    <Props>
+                      <S N="Class">writer-open-deny</S>
+                      <I32 N="NativeCode">5</I32>
+                      <I64 N="StartQpc">335165374</I64>
+                      <I64 N="EndQpc">335165730</I64>
+                      <I32 N="Trial">34</I32>
+                      <B N="Cold">false</B>
+                    </Props>
+                  </Obj>
+                  <Obj RefId="39">
+                    <TNRef RefId="2" />
+                    <ToString>SUCall</ToString>
+                    <Props>
+                      <S N="Class">writer-open-deny</S>
+                      <I32 N="NativeCode">5</I32>
+                      <I64 N="StartQpc">335166370</I64>
+                      <I64 N="EndQpc">335166824</I64>
+                      <I32 N="Trial">35</I32>
+                      <B N="Cold">false</B>
+                    </Props>
+                  </Obj>
+                  <Obj RefId="40">
+                    <TNRef RefId="2" />
+                    <ToString>SUCall</ToString>
+                    <Props>
+                      <S N="Class">writer-open-deny</S>
+                      <I32 N="NativeCode">5</I32>
+                      <I64 N="StartQpc">335167341</I64>
+                      <I64 N="EndQpc">335167740</I64>
+                      <I32 N="Trial">36</I32>
+                      <B N="Cold">false</B>
+                    </Props>
+                  </Obj>
+                  <Obj RefId="41">
+                    <TNRef RefId="2" />
+                    <ToString>SUCall</ToString>
+                    <Props>
+                      <S N="Class">writer-open-deny</S>
+                      <I32 N="NativeCode">5</I32>
+                      <I64 N="StartQpc">335168274</I64>
+                      <I64 N="EndQpc">335168682</I64>
+                      <I32 N="Trial">37</I32>
+                      <B N="Cold">false</B>
+                    </Props>
+                  </Obj>
+                  <Obj RefId="42">
+                    <TNRef RefId="2" />
+                    <ToString>SUCall</ToString>
+                    <Props>
+                      <S N="Class">writer-open-deny</S>
+                      <I32 N="NativeCode">5</I32>
+                      <I64 N="StartQpc">335169240</I64>
+                      <I64 N="EndQpc">335169614</I64>
+                      <I32 N="Trial">38</I32>
+                      <B N="Cold">false</B>
+                    </Props>
+                  </Obj>
+                  <Obj RefId="43">
+                    <TNRef RefId="2" />
+                    <ToString>SUCall</ToString>
+                    <Props>
+                      <S N="Class">writer-open-deny</S>
+                      <I32 N="NativeCode">5</I32>
+                      <I64 N="StartQpc">335170066</I64>
+                      <I64 N="EndQpc">335170414</I64>
+                      <I32 N="Trial">39</I32>
+                      <B N="Cold">false</B>
+                    </Props>
+                  </Obj>
+                  <Obj RefId="44">
+                    <TNRef RefId="2" />
+                    <ToString>SUCall</ToString>
+                    <Props>
+                      <S N="Class">writer-open-deny</S>
+                      <I32 N="NativeCode">5</I32>
+                      <I64 N="StartQpc">335170867</I64>
+                      <I64 N="EndQpc">335171218</I64>
+                      <I32 N="Trial">40</I32>
+                      <B N="Cold">false</B>
+                    </Props>
+                  </Obj>
+                  <Obj RefId="45">
+                    <TNRef RefId="2" />
+                    <ToString>SUCall</ToString>
+                    <Props>
+                      <S N="Class">writer-open-deny</S>
+                      <I32 N="NativeCode">5</I32>
+                      <I64 N="StartQpc">335171676</I64>
+                      <I64 N="EndQpc">335172026</I64>
+                      <I32 N="Trial">41</I32>
+                      <B N="Cold">false</B>
+                    </Props>
+                  </Obj>
+                  <Obj RefId="46">
+                    <TNRef RefId="2" />
+                    <ToString>SUCall</ToString>
+                    <Props>
+                      <S N="Class">writer-open-deny</S>
+                      <I32 N="NativeCode">5</I32>
+                      <I64 N="StartQpc">335172507</I64>
+                      <I64 N="EndQpc">335172865</I64>
+                      <I32 N="Trial">42</I32>
+                      <B N="Cold">false</B>
+                    </Props>
+                  </Obj>
+                  <Obj RefId="47">
+                    <TNRef RefId="2" />
+                    <ToString>SUCall</ToString>
+                    <Props>
+                      <S N="Class">writer-open-deny</S>
+                      <I32 N="NativeCode">5</I32>
+                      <I64 N="StartQpc">335173413</I64>
+                      <I64 N="EndQpc">335173782</I64>
+                      <I32 N="Trial">43</I32>
+                      <B N="Cold">false</B>
+                    </Props>
+                  </Obj>
+                  <Obj RefId="48">
+                    <TNRef RefId="2" />
+                    <ToString>SUCall</ToString>
+                    <Props>
+                      <S N="Class">writer-open-deny</S>
+                      <I32 N="NativeCode">5</I32>
+                      <I64 N="StartQpc">335174245</I64>
+                      <I64 N="EndQpc">335174601</I64>
+                      <I32 N="Trial">44</I32>
+                      <B N="Cold">false</B>
+                    </Props>
+                  </Obj>
+                  <Obj RefId="49">
+                    <TNRef RefId="2" />
+                    <ToString>SUCall</ToString>
+                    <Props>
+                      <S N="Class">writer-open-deny</S>
+                      <I32 N="NativeCode">5</I32>
+                      <I64 N="StartQpc">335175150</I64>
+                      <I64 N="EndQpc">335175502</I64>
+                      <I32 N="Trial">45</I32>
+                      <B N="Cold">false</B>
+                    </Props>
+                  </Obj>
+                  <Obj RefId="50">
+                    <TNRef RefId="2" />
+                    <ToString>SUCall</ToString>
+                    <Props>
+                      <S N="Class">writer-open-deny</S>
+                      <I32 N="NativeCode">5</I32>
+                      <I64 N="StartQpc">335175959</I64>
+                      <I64 N="EndQpc">335176316</I64>
+                      <I32 N="Trial">46</I32>
+                      <B N="Cold">false</B>
+                    </Props>
+                  </Obj>
+                  <Obj RefId="51">
+                    <TNRef RefId="2" />
+                    <ToString>SUCall</ToString>
+                    <Props>
+                      <S N="Class">writer-open-deny</S>
+                      <I32 N="NativeCode">5</I32>
+                      <I64 N="StartQpc">335176782</I64>
+                      <I64 N="EndQpc">335177136</I64>
+                      <I32 N="Trial">47</I32>
+                      <B N="Cold">false</B>
+                    </Props>
+                  </Obj>
+                  <Obj RefId="52">
+                    <TNRef RefId="2" />
+                    <ToString>SUCall</ToString>
+                    <Props>
+                      <S N="Class">writer-open-deny</S>
+                      <I32 N="NativeCode">5</I32>
+                      <I64 N="StartQpc">335177603</I64>
+                      <I64 N="EndQpc">335177951</I64>
+                      <I32 N="Trial">48</I32>
+                      <B N="Cold">false</B>
+                    </Props>
+                  </Obj>
+                  <Obj RefId="53">
+                    <TNRef RefId="2" />
+                    <ToString>SUCall</ToString>
+                    <Props>
+                      <S N="Class">writer-open-deny</S>
+                      <I32 N="NativeCode">5</I32>
+                      <I64 N="StartQpc">335178448</I64>
+                      <I64 N="EndQpc">335178803</I64>
+                      <I32 N="Trial">49</I32>
+                      <B N="Cold">false</B>
+                    </Props>
+                  </Obj>
+                  <Obj RefId="54">
+                    <TNRef RefId="2" />
+                    <ToString>SUCall</ToString>
+                    <Props>
+                      <S N="Class">writer-open-deny</S>
+                      <I32 N="NativeCode">5</I32>
+                      <I64 N="StartQpc">335179348</I64>
+                      <I64 N="EndQpc">335179731</I64>
+                      <I32 N="Trial">50</I32>
+                      <B N="Cold">false</B>
+                    </Props>
+                  </Obj>
+                  <Obj RefId="55">
+                    <TNRef RefId="2" />
+                    <ToString>SUCall</ToString>
+                    <Props>
+                      <S N="Class">writer-open-deny</S>
+                      <I32 N="NativeCode">5</I32>
+                      <I64 N="StartQpc">335180202</I64>
+                      <I64 N="EndQpc">335180567</I64>
+                      <I32 N="Trial">51</I32>
+                      <B N="Cold">false</B>
+                    </Props>
+                  </Obj>
+                  <Obj RefId="56">
+                    <TNRef RefId="2" />
+                    <ToString>SUCall</ToString>
+                    <Props>
+                      <S N="Class">writer-open-deny</S>
+                      <I32 N="NativeCode">5</I32>
+                      <I64 N="StartQpc">335181034</I64>
+                      <I64 N="EndQpc">335181411</I64>
+                      <I32 N="Trial">52</I32>
+                      <B N="Cold">false</B>
+                    </Props>
+                  </Obj>
+                  <Obj RefId="57">
+                    <TNRef RefId="2" />
+                    <ToString>SUCall</ToString>
+                    <Props>
+                      <S N="Class">writer-open-deny</S>
+                      <I32 N="NativeCode">5</I32>
+                      <I64 N="StartQpc">335181865</I64>
+                      <I64 N="EndQpc">335182231</I64>
+                      <I32 N="Trial">53</I32>
+                      <B N="Cold">false</B>
+                    </Props>
+                  </Obj>
+                  <Obj RefId="58">
+                    <TNRef RefId="2" />
+                    <ToString>SUCall</ToString>
+                    <Props>
+                      <S N="Class">writer-open-deny</S>
+                      <I32 N="NativeCode">5</I32>
+                      <I64 N="StartQpc">335182715</I64>
+                      <I64 N="EndQpc">335183095</I64>
+                      <I32 N="Trial">54</I32>
+                      <B N="Cold">false</B>
+                    </Props>
+                  </Obj>
+                  <Obj RefId="59">
+                    <TNRef RefId="2" />
+                    <ToString>SUCall</ToString>
+                    <Props>
+                      <S N="Class">writer-open-deny</S>
+                      <I32 N="NativeCode">5</I32>
+                      <I64 N="StartQpc">335183580</I64>
+                      <I64 N="EndQpc">335183966</I64>
+                      <I32 N="Trial">55</I32>
+                      <B N="Cold">false</B>
+                    </Props>
+                  </Obj>
+                  <Obj RefId="60">
+                    <TNRef RefId="2" />
+                    <ToString>SUCall</ToString>
+                    <Props>
+                      <S N="Class">writer-open-deny</S>
+                      <I32 N="NativeCode">5</I32>
+                      <I64 N="StartQpc">335184448</I64>
+                      <I64 N="EndQpc">335184829</I64>
+                      <I32 N="Trial">56</I32>
+                      <B N="Cold">false</B>
+                    </Props>
+                  </Obj>
+                  <Obj RefId="61">
+                    <TNRef RefId="2" />
+                    <ToString>SUCall</ToString>
+                    <Props>
+                      <S N="Class">writer-open-deny</S>
+                      <I32 N="NativeCode">5</I32>
+                      <I64 N="StartQpc">335185290</I64>
+                      <I64 N="EndQpc">335185646</I64>
+                      <I32 N="Trial">57</I32>
+                      <B N="Cold">false</B>
+                    </Props>
+                  </Obj>
+                  <Obj RefId="62">
+                    <TNRef RefId="2" />
+                    <ToString>SUCall</ToString>
+                    <Props>
+                      <S N="Class">writer-open-deny</S>
+                      <I32 N="NativeCode">5</I32>
+                      <I64 N="StartQpc">335186102</I64>
+                      <I64 N="EndQpc">335186480</I64>
+                      <I32 N="Trial">58</I32>
+                      <B N="Cold">false</B>
+                    </Props>
+                  </Obj>
+                  <Obj RefId="63">
+                    <TNRef RefId="2" />
+                    <ToString>SUCall</ToString>
+                    <Props>
+                      <S N="Class">writer-open-deny</S>
+                      <I32 N="NativeCode">5</I32>
+                      <I64 N="StartQpc">335186957</I64>
+                      <I64 N="EndQpc">335187322</I64>
+                      <I32 N="Trial">59</I32>
+                      <B N="Cold">false</B>
+                    </Props>
+                  </Obj>
+                  <Obj RefId="64">
+                    <TNRef RefId="2" />
+                    <ToString>SUCall</ToString>
+                    <Props>
+                      <S N="Class">writer-open-deny</S>
+                      <I32 N="NativeCode">5</I32>
+                      <I64 N="StartQpc">335187775</I64>
+                      <I64 N="EndQpc">335188162</I64>
+                      <I32 N="Trial">60</I32>
+                      <B N="Cold">false</B>
+                    </Props>
+                  </Obj>
+                  <Obj RefId="65">
+                    <TNRef RefId="2" />
+                    <ToString>SUCall</ToString>
+                    <Props>
+                      <S N="Class">writer-open-deny</S>
+                      <I32 N="NativeCode">5</I32>
+                      <I64 N="StartQpc">335188624</I64>
+                      <I64 N="EndQpc">335189018</I64>
+                      <I32 N="Trial">61</I32>
+                      <B N="Cold">false</B>
+                    </Props>
+                  </Obj>
+                  <Obj RefId="66">
+                    <TNRef RefId="2" />
+                    <ToString>SUCall</ToString>
+                    <Props>
+                      <S N="Class">writer-open-deny</S>
+                      <I32 N="NativeCode">5</I32>
+                      <I64 N="StartQpc">335189581</I64>
+                      <I64 N="EndQpc">335189980</I64>
+                      <I32 N="Trial">62</I32>
+                      <B N="Cold">false</B>
+                    </Props>
+                  </Obj>
+                  <Obj RefId="67">
+                    <TNRef RefId="2" />
+                    <ToString>SUCall</ToString>
+                    <Props>
+                      <S N="Class">writer-open-deny</S>
+                      <I32 N="NativeCode">5</I32>
+                      <I64 N="StartQpc">335190449</I64>
+                      <I64 N="EndQpc">335190826</I64>
+                      <I32 N="Trial">63</I32>
+                      <B N="Cold">false</B>
+                    </Props>
+                  </Obj>
+                  <Obj RefId="68">
+                    <TNRef RefId="2" />
+                    <ToString>SUCall</ToString>
+                    <Props>
+                      <S N="Class">writer-open-deny</S>
+                      <I32 N="NativeCode">5</I32>
+                      <I64 N="StartQpc">335191304</I64>
+                      <I64 N="EndQpc">335191679</I64>
+                      <I32 N="Trial">64</I32>
+                      <B N="Cold">false</B>
+                    </Props>
+                  </Obj>
+                  <Obj RefId="69">
+                    <TNRef RefId="2" />
+                    <ToString>SUCall</ToString>
+                    <Props>
+                      <S N="Class">writer-open-deny</S>
+                      <I32 N="NativeCode">5</I32>
+                      <I64 N="StartQpc">335192134</I64>
+                      <I64 N="EndQpc">335192507</I64>
+                      <I32 N="Trial">65</I32>
+                      <B N="Cold">false</B>
+                    </Props>
+                  </Obj>
+                  <Obj RefId="70">
+                    <TNRef RefId="2" />
+                    <ToString>SUCall</ToString>
+                    <Props>
+                      <S N="Class">writer-open-deny</S>
+                      <I32 N="NativeCode">5</I32>
+                      <I64 N="StartQpc">335193064</I64>
+                      <I64 N="EndQpc">335193430</I64>
+                      <I32 N="Trial">66</I32>
+                      <B N="Cold">false</B>
+                    </Props>
+                  </Obj>
+                  <Obj RefId="71">
+                    <TNRef RefId="2" />
+                    <ToString>SUCall</ToString>
+                    <Props>
+                      <S N="Class">writer-open-deny</S>
+                      <I32 N="NativeCode">5</I32>
+                      <I64 N="StartQpc">335193935</I64>
+                      <I64 N="EndQpc">335194319</I64>
+                      <I32 N="Trial">67</I32>
+                      <B N="Cold">false</B>
+                    </Props>
+                  </Obj>
+                  <Obj RefId="72">
+                    <TNRef RefId="2" />
+                    <ToString>SUCall</ToString>
+                    <Props>
+                      <S N="Class">writer-open-deny</S>
+                      <I32 N="NativeCode">5</I32>
+                      <I64 N="StartQpc">335194821</I64>
+                      <I64 N="EndQpc">335195182</I64>
+                      <I32 N="Trial">68</I32>
+                      <B N="Cold">false</B>
+                    </Props>
+                  </Obj>
+                  <Obj RefId="73">
+                    <TNRef RefId="2" />
+                    <ToString>SUCall</ToString>
+                    <Props>
+                      <S N="Class">writer-open-deny</S>
+                      <I32 N="NativeCode">5</I32>
+                      <I64 N="StartQpc">335195834</I64>
+                      <I64 N="EndQpc">335196228</I64>
+                      <I32 N="Trial">69</I32>
+                      <B N="Cold">false</B>
+                    </Props>
+                  </Obj>
+                  <Obj RefId="74">
+                    <TNRef RefId="2" />
+                    <ToString>SUCall</ToString>
+                    <Props>
+                      <S N="Class">writer-open-deny</S>
+                      <I32 N="NativeCode">5</I32>
+                      <I64 N="StartQpc">335196799</I64>
+                      <I64 N="EndQpc">335197158</I64>
+                      <I32 N="Trial">70</I32>
+                      <B N="Cold">false</B>
+                    </Props>
+                  </Obj>
+                  <Obj RefId="75">
+                    <TNRef RefId="2" />
+                    <ToString>SUCall</ToString>
+                    <Props>
+                      <S N="Class">writer-open-deny</S>
+                      <I32 N="NativeCode">5</I32>
+                      <I64 N="StartQpc">335197661</I64>
+                      <I64 N="EndQpc">335198014</I64>
+                      <I32 N="Trial">71</I32>
+                      <B N="Cold">false</B>
+                    </Props>
+                  </Obj>
+                  <Obj RefId="76">
+                    <TNRef RefId="2" />
+                    <ToString>SUCall</ToString>
+                    <Props>
+                      <S N="Class">writer-open-deny</S>
+                      <I32 N="NativeCode">5</I32>
+                      <I64 N="StartQpc">335198492</I64>
+                      <I64 N="EndQpc">335198845</I64>
+                      <I32 N="Trial">72</I32>
+                      <B N="Cold">false</B>
+                    </Props>
+                  </Obj>
+                  <Obj RefId="77">
+                    <TNRef RefId="2" />
+                    <ToString>SUCall</ToString>
+                    <Props>
+                      <S N="Class">writer-open-deny</S>
+                      <I32 N="NativeCode">5</I32>
+                      <I64 N="StartQpc">335199417</I64>
+                      <I64 N="EndQpc">335199798</I64>
+                      <I32 N="Trial">73</I32>
+                      <B N="Cold">false</B>
+                    </Props>
+                  </Obj>
+                  <Obj RefId="78">
+                    <TNRef RefId="2" />
+                    <ToString>SUCall</ToString>
+                    <Props>
+                      <S N="Class">writer-open-deny</S>
+                      <I32 N="NativeCode">5</I32>
+                      <I64 N="StartQpc">335200272</I64>
+                      <I64 N="EndQpc">335200628</I64>
+                      <I32 N="Trial">74</I32>
+                      <B N="Cold">false</B>
+                    </Props>
+                  </Obj>
+                  <Obj RefId="79">
+                    <TNRef RefId="2" />
+                    <ToString>SUCall</ToString>
+                    <Props>
+                      <S N="Class">writer-open-deny</S>
+                      <I32 N="NativeCode">5</I32>
+                      <I64 N="StartQpc">335201106</I64>
+                      <I64 N="EndQpc">335201459</I64>
+                      <I32 N="Trial">75</I32>
+                      <B N="Cold">false</B>
+                    </Props>
+                  </Obj>
+                  <Obj RefId="80">
+                    <TNRef RefId="2" />
+                    <ToString>SUCall</ToString>
+                    <Props>
+                      <S N="Class">writer-open-deny</S>
+                      <I32 N="NativeCode">5</I32>
+                      <I64 N="StartQpc">335201937</I64>
+                      <I64 N="EndQpc">335202295</I64>
+                      <I32 N="Trial">76</I32>
+                      <B N="Cold">false</B>
+                    </Props>
+                  </Obj>
+                  <Obj RefId="81">
+                    <TNRef RefId="2" />
+                    <ToString>SUCall</ToString>
+                    <Props>
+                      <S N="Class">writer-open-deny</S>
+                      <I32 N="NativeCode">5</I32>
+                      <I64 N="StartQpc">335202799</I64>
+                      <I64 N="EndQpc">335203229</I64>
+                      <I32 N="Trial">77</I32>
+                      <B N="Cold">false</B>
+                    </Props>
+                  </Obj>
+                  <Obj RefId="82">
+                    <TNRef RefId="2" />
+                    <ToString>SUCall</ToString>
+                    <Props>
+                      <S N="Class">writer-open-deny</S>
+                      <I32 N="NativeCode">5</I32>
+                      <I64 N="StartQpc">335203728</I64>
+                      <I64 N="EndQpc">335204109</I64>
+                      <I32 N="Trial">78</I32>
+                      <B N="Cold">false</B>
+                    </Props>
+                  </Obj>
+                  <Obj RefId="83">
+                    <TNRef RefId="2" />
+                    <ToString>SUCall</ToString>
+                    <Props>
+                      <S N="Class">writer-open-deny</S>
+                      <I32 N="NativeCode">5</I32>
+                      <I64 N="StartQpc">335204600</I64>
+                      <I64 N="EndQpc">335204972</I64>
+                      <I32 N="Trial">79</I32>
+                      <B N="Cold">false</B>
+                    </Props>
+                  </Obj>
+                  <Obj RefId="84">
+                    <TNRef RefId="2" />
+                    <ToString>SUCall</ToString>
+                    <Props>
+                      <S N="Class">writer-open-deny</S>
+                      <I32 N="NativeCode">5</I32>
+                      <I64 N="StartQpc">335205472</I64>
+                      <I64 N="EndQpc">335205844</I64>
+                      <I32 N="Trial">80</I32>
+                      <B N="Cold">false</B>
+                    </Props>
+                  </Obj>
+                  <Obj RefId="85">
+                    <TNRef RefId="2" />
+                    <ToString>SUCall</ToString>
+                    <Props>
+                      <S N="Class">writer-open-deny</S>
+                      <I32 N="NativeCode">5</I32>
+                      <I64 N="StartQpc">335206331</I64>
+                      <I64 N="EndQpc">335206698</I64>
+                      <I32 N="Trial">81</I32>
+                      <B N="Cold">false</B>
+                    </Props>
+                  </Obj>
+                  <Obj RefId="86">
+                    <TNRef RefId="2" />
+                    <ToString>SUCall</ToString>
+                    <Props>
+                      <S N="Class">writer-open-deny</S>
+                      <I32 N="NativeCode">5</I32>
+                      <I64 N="StartQpc">335207182</I64>
+                      <I64 N="EndQpc">335207545</I64>
+                      <I32 N="Trial">82</I32>
+                      <B N="Cold">false</B>
+                    </Props>
+                  </Obj>
+                  <Obj RefId="87">
+                    <TNRef RefId="2" />
+                    <ToString>SUCall</ToString>
+                    <Props>
+                      <S N="Class">writer-open-deny</S>
+                      <I32 N="NativeCode">5</I32>
+                      <I64 N="StartQpc">335208039</I64>
+                      <I64 N="EndQpc">335208397</I64>
+                      <I32 N="Trial">83</I32>
+                      <B N="Cold">false</B>
+                    </Props>
+                  </Obj>
+                  <Obj RefId="88">
+                    <TNRef RefId="2" />
+                    <ToString>SUCall</ToString>
+                    <Props>
+                      <S N="Class">writer-open-deny</S>
+                      <I32 N="NativeCode">5</I32>
+                      <I64 N="StartQpc">335208884</I64>
+                      <I64 N="EndQpc">335209345</I64>
+                      <I32 N="Trial">84</I32>
+                      <B N="Cold">false</B>
+                    </Props>
+                  </Obj>
+                  <Obj RefId="89">
+                    <TNRef RefId="2" />
+                    <ToString>SUCall</ToString>
+                    <Props>
+                      <S N="Class">writer-open-deny</S>
+                      <I32 N="NativeCode">5</I32>
+                      <I64 N="StartQpc">335209838</I64>
+                      <I64 N="EndQpc">335210212</I64>
+                      <I32 N="Trial">85</I32>
+                      <B N="Cold">false</B>
+                    </Props>
+                  </Obj>
+                  <Obj RefId="90">
+                    <TNRef RefId="2" />
+                    <ToString>SUCall</ToString>
+                    <Props>
+                      <S N="Class">writer-open-deny</S>
+                      <I32 N="NativeCode">5</I32>
+                      <I64 N="StartQpc">335210776</I64>
+                      <I64 N="EndQpc">335211167</I64>
+                      <I32 N="Trial">86</I32>
+                      <B N="Cold">false</B>
+                    </Props>
+                  </Obj>
+                  <Obj RefId="91">
+                    <TNRef RefId="2" />
+                    <ToString>SUCall</ToString>
+                    <Props>
+                      <S N="Class">writer-open-deny</S>
+                      <I32 N="NativeCode">5</I32>
+                      <I64 N="StartQpc">335211806</I64>
+                      <I64 N="EndQpc">335212208</I64>
+                      <I32 N="Trial">87</I32>
+                      <B N="Cold">false</B>
+                    </Props>
+                  </Obj>
+                  <Obj RefId="92">
+                    <TNRef RefId="2" />
+                    <ToString>SUCall</ToString>
+                    <Props>
+                      <S N="Class">writer-open-deny</S>
+                      <I32 N="NativeCode">5</I32>
+                      <I64 N="StartQpc">335212694</I64>
+                      <I64 N="EndQpc">335213663</I64>
+                      <I32 N="Trial">88</I32>
+                      <B N="Cold">false</B>
+                    </Props>
+                  </Obj>
+                  <Obj RefId="93">
+                    <TNRef RefId="2" />
+                    <ToString>SUCall</ToString>
+                    <Props>
+                      <S N="Class">writer-open-deny</S>
+                      <I32 N="NativeCode">5</I32>
+                      <I64 N="StartQpc">335214326</I64>
+                      <I64 N="EndQpc">335214867</I64>
+                      <I32 N="Trial">89</I32>
+                      <B N="Cold">false</B>
+                    </Props>
+                  </Obj>
+                  <Obj RefId="94">
+                    <TNRef RefId="2" />
+                    <ToString>SUCall</ToString>
+                    <Props>
+                      <S N="Class">writer-open-deny</S>
+                      <I32 N="NativeCode">5</I32>
+                      <I64 N="StartQpc">335215571</I64>
+                      <I64 N="EndQpc">335216179</I64>
+                      <I32 N="Trial">90</I32>
+                      <B N="Cold">false</B>
+                    </Props>
+                  </Obj>
+                  <Obj RefId="95">
+                    <TNRef RefId="2" />
+                    <ToString>SUCall</ToString>
+                    <Props>
+                      <S N="Class">writer-open-deny</S>
+                      <I32 N="NativeCode">5</I32>
+                      <I64 N="StartQpc">335216938</I64>
+                      <I64 N="EndQpc">335217441</I64>
+                      <I32 N="Trial">91</I32>
+                      <B N="Cold">false</B>
+                    </Props>
+                  </Obj>
+                  <Obj RefId="96">
+                    <TNRef RefId="2" />
+                    <ToString>SUCall</ToString>
+                    <Props>
+                      <S N="Class">writer-open-deny</S>
+                      <I32 N="NativeCode">5</I32>
+                      <I64 N="StartQpc">335217970</I64>
+                      <I64 N="EndQpc">335218346</I64>
+                      <I32 N="Trial">92</I32>
+                      <B N="Cold">false</B>
+                    </Props>
+                  </Obj>
+                  <Obj RefId="97">
+                    <TNRef RefId="2" />
+                    <ToString>SUCall</ToString>
+                    <Props>
+                      <S N="Class">writer-open-deny</S>
+                      <I32 N="NativeCode">5</I32>
+                      <I64 N="StartQpc">335218849</I64>
+                      <I64 N="EndQpc">335219383</I64>
+                      <I32 N="Trial">93</I32>
+                      <B N="Cold">false</B>
+                    </Props>
+                  </Obj>
+                  <Obj RefId="98">
+                    <TNRef RefId="2" />
+                    <ToString>SUCall</ToString>
+                    <Props>
+                      <S N="Class">writer-open-deny</S>
+                      <I32 N="NativeCode">5</I32>
+                      <I64 N="StartQpc">335219887</I64>
+                      <I64 N="EndQpc">335220314</I64>
+                      <I32 N="Trial">94</I32>
+                      <B N="Cold">false</B>
+                    </Props>
+                  </Obj>
+                  <Obj RefId="99">
+                    <TNRef RefId="2" />
+                    <ToString>SUCall</ToString>
+                    <Props>
+                      <S N="Class">writer-open-deny</S>
+                      <I32 N="NativeCode">5</I32>
+                      <I64 N="StartQpc">335220816</I64>
+                      <I64 N="EndQpc">335221187</I64>
+                      <I32 N="Trial">95</I32>
+                      <B N="Cold">false</B>
+                    </Props>
+                  </Obj>
+                  <Obj RefId="100">
+                    <TNRef RefId="2" />
+                    <ToString>SUCall</ToString>
+                    <Props>
+                      <S N="Class">writer-open-deny</S>
+                      <I32 N="NativeCode">5</I32>
+                      <I64 N="StartQpc">335221697</I64>
+                      <I64 N="EndQpc">335222081</I64>
+                      <I32 N="Trial">96</I32>
+                      <B N="Cold">false</B>
+                    </Props>
+                  </Obj>
+                  <Obj RefId="101">
+                    <TNRef RefId="2" />
+                    <ToString>SUCall</ToString>
+                    <Props>
+                      <S N="Class">writer-open-deny</S>
+                      <I32 N="NativeCode">5</I32>
+                      <I64 N="StartQpc">335222580</I64>
+                      <I64 N="EndQpc">335222966</I64>
+                      <I32 N="Trial">97</I32>
+                      <B N="Cold">false</B>
+                    </Props>
+                  </Obj>
+                  <Obj RefId="102">
+                    <TNRef RefId="2" />
+                    <ToString>SUCall</ToString>
+                    <Props>
+                      <S N="Class">writer-open-deny</S>
+                      <I32 N="NativeCode">5</I32>
+                      <I64 N="StartQpc">335223460</I64>
+                      <I64 N="EndQpc">335223833</I64>
+                      <I32 N="Trial">98</I32>
+                      <B N="Cold">false</B>
+                    </Props>
+                  </Obj>
+                  <Obj RefId="103">
+                    <TNRef RefId="2" />
+                    <ToString>SUCall</ToString>
+                    <Props>
+                      <S N="Class">writer-open-deny</S>
+                      <I32 N="NativeCode">5</I32>
+                      <I64 N="StartQpc">335224345</I64>
+                      <I64 N="EndQpc">335224725</I64>
+                      <I32 N="Trial">99</I32>
+                      <B N="Cold">false</B>
+                    </Props>
+                  </Obj>
+                  <Obj RefId="104">
+                    <TNRef RefId="2" />
+                    <ToString>SUCall</ToString>
+                    <Props>
+                      <S N="Class">writer-open-deny</S>
+                      <I32 N="NativeCode">5</I32>
+                      <I64 N="StartQpc">335225224</I64>
+                      <I64 N="EndQpc">335225609</I64>
+                      <I32 N="Trial">100</I32>
+                      <B N="Cold">false</B>
+                    </Props>
+                  </Obj>
+                </LST>
+              </Obj>
+            </En>
+          </DCT>
+        </Obj>
+      </En>
+      <En>
+        <S N="Key">ExitCode</S>
+        <I32 N="Value">0</I32>
+      </En>
+      <En>
+        <S N="Key">CompletedQpc</S>
+        <I64 N="Value">335895750</I64>
+      </En>
+      <En>
+        <S N="Key">Errors</S>
+        <Obj N="Value" RefId="105">
+          <TNRef RefId="1" />
+          <LST />
+        </Obj>
+      </En>
+      <En>
+        <S N="Key">Token</S>
+        <S N="Value">c4f37eb93e7b4a68b82265d02d62ea96</S>
+      </En>
+      <En>
+        <S N="Key">BootId</S>
+        <S N="Value">WIN10-DEBUGGED/2026-10-05T00:35:36.5000000Z</S>
+      </En>
+    </DCT>
+  </Obj>
+</Objs>

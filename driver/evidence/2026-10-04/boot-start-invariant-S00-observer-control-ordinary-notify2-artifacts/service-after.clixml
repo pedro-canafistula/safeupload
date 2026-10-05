@@ -1,0 +1,285 @@
+<Objs Version="1.1.0.1" xmlns="http://schemas.microsoft.com/powershell/2004/04">
+  <Obj RefId="0">
+    <TN RefId="0">
+      <T>System.Collections.Specialized.OrderedDictionary</T>
+      <T>System.Object</T>
+    </TN>
+    <DCT>
+      <En>
+        <S N="Key">Status</S>
+        <S N="Value">INCONCLUSIVE</S>
+      </En>
+      <En>
+        <S N="Key">Tag</S>
+        <S N="Value">after</S>
+      </En>
+      <En>
+        <S N="Key">BootId</S>
+        <S N="Value">WIN10-DEBUGGED/2026-10-05T00:02:31.5000000Z</S>
+      </En>
+      <En>
+        <S N="Key">QpcFrequency</S>
+        <I64 N="Value">10000000</I64>
+      </En>
+      <En>
+        <S N="Key">StartQpc</S>
+        <I64 N="Value">325345535</I64>
+      </En>
+      <En>
+        <S N="Key">Journal</S>
+        <Obj N="Value" RefId="1">
+          <TN RefId="1">
+            <T>System.Object[]</T>
+            <T>System.Array</T>
+            <T>System.Object</T>
+          </TN>
+          <LST />
+        </Obj>
+      </En>
+      <En>
+        <S N="Key">Objects</S>
+        <Obj N="Value" RefId="2">
+          <TNRef RefId="1" />
+          <LST>
+            <Obj RefId="3">
+              <TN RefId="2">
+                <T>System.Collections.Hashtable</T>
+                <T>System.Object</T>
+              </TN>
+              <DCT>
+                <En>
+                  <S N="Key">Path</S>
+                  <S N="Value">C:\</S>
+                </En>
+                <En>
+                  <S N="Key">Owner</S>
+                  <S N="Value">S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464</S>
+                </En>
+                <En>
+                  <S N="Key">Sddl</S>
+                  <S N="Value">O:S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464G:S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464D:PAI(A;;LC;;;AU)(A;OICIIO;SDGXGWGR;;;AU)(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;0x1200a9;;;BU)</S>
+                </En>
+              </DCT>
+            </Obj>
+            <Obj RefId="4">
+              <TNRef RefId="2" />
+              <DCT>
+                <En>
+                  <S N="Key">Path</S>
+                  <S N="Value">C:\ProgramData</S>
+                </En>
+                <En>
+                  <S N="Key">Owner</S>
+                  <S N="Value">S-1-5-18</S>
+                </En>
+                <En>
+                  <S N="Key">Sddl</S>
+                  <S N="Value">O:SYG:SYD:PAI(A;OICIIO;GA;;;CO)(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;0x1200a9;;;BU)(A;CI;DCLCRPCR;;;BU)</S>
+                </En>
+              </DCT>
+            </Obj>
+            <Obj RefId="5">
+              <TNRef RefId="2" />
+              <DCT>
+                <En>
+                  <S N="Key">Path</S>
+                  <S N="Value">C:\ProgramData\SafeUpload</S>
+                </En>
+                <En>
+                  <S N="Key">Owner</S>
+                  <S N="Value">S-1-5-18</S>
+                </En>
+                <En>
+                  <S N="Key">Sddl</S>
+                  <S N="Value">O:SYG:S-1-5-21-316478115-1595729549-2803163825-513D:PAI(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)</S>
+                </En>
+              </DCT>
+            </Obj>
+          </LST>
+        </Obj>
+      </En>
+      <En>
+        <S N="Key">Errors</S>
+        <Obj N="Value" RefId="6">
+          <TNRef RefId="1" />
+          <LST>
+            <Obj RefId="7">
+              <TN RefId="3">
+                <T>System.Management.Automation.PSCustomObject</T>
+                <T>System.Object</T>
+              </TN>
+              <MS>
+                <S N="Type">System.Management.Automation.MethodInvocationException</S>
+                <S N="Message">Exception calling "Open" with "3" argument(s): "Service evidence object rejected: C:\ProgramData\SafeUpload\staging-journal; Trusted owner and protected DACL required."</S>
+                <I32 N="HResult">-2146233087</I32>
+                <Nil N="NativeCode" />
+                <S N="Stack">   at System.Management.Automation.ExceptionHandlingOps.CheckActionPreference(FunctionContext funcContext, Exception exception)_x000D__x000A_   at System.Management.Automation.Interpreter.ActionCallInstruction`2.Run(InterpretedFrame frame)_x000D__x000A_   at System.Management.Automation.Interpreter.EnterTryCatchFinallyInstruction.Run(InterpretedFrame frame)_x000D__x000A_   at System.Management.Automation.Interpreter.EnterTryCatchFinallyInstruction.Run(InterpretedFrame frame)</S>
+              </MS>
+            </Obj>
+            <Obj RefId="8">
+              <TNRef RefId="3" />
+              <MS>
+                <S N="Type">System.IO.IOException</S>
+                <S N="Message">Service evidence object rejected: C:\ProgramData\SafeUpload\staging-journal; Trusted owner and protected DACL required.</S>
+                <I32 N="HResult">-2146232800</I32>
+                <Nil N="NativeCode" />
+                <S N="Stack">   at SUProofFile.Open(String path, Boolean directory, Boolean protect, Boolean live, Boolean trustedAdminOwner)_x000D__x000A_   at CallSite.Target(Closure , CallSite , Type , Object , Boolean , Boolean )</S>
+              </MS>
+            </Obj>
+            <Obj RefId="9">
+              <TNRef RefId="3" />
+              <MS>
+                <S N="Type">System.IO.IOException</S>
+                <S N="Message">Trusted owner and protected DACL required.</S>
+                <I32 N="HResult">-2146232800</I32>
+                <Nil N="NativeCode" />
+                <S N="Stack">   at SUProofFile.Open(String path, Boolean directory, Boolean protect, Boolean live, Boolean trustedAdminOwner)</S>
+              </MS>
+            </Obj>
+          </LST>
+        </Obj>
+      </En>
+      <En>
+        <S N="Key">Application</S>
+        <Obj N="Value" RefId="10">
+          <TNRef RefId="3" />
+          <MS>
+            <S N="Status">OK</S>
+            <I64 N="OldestRecordId">1</I64>
+            <I64 N="NewestRecordId">3705</I64>
+            <S N="NewestXml">&lt;Event xmlns='http://schemas.microsoft.com/win/2004/08/events/event'&gt;&lt;System&gt;&lt;Provider Name='Microsoft-Windows-Search-ProfileNotify' Guid='{FC6F77DD-769A-470E-BCF9-1B6555A118BE}' EventSourceName='Windows Search Service Profile Notification'/&gt;&lt;EventID Qualifiers='16384'&gt;5&lt;/EventID&gt;&lt;Version&gt;0&lt;/Version&gt;&lt;Level&gt;4&lt;/Level&gt;&lt;Task&gt;0&lt;/Task&gt;&lt;Opcode&gt;0&lt;/Opcode&gt;&lt;Keywords&gt;0x80000000000000&lt;/Keywords&gt;&lt;TimeCreated SystemTime='2026-10-05T00:02:58.5834001Z'/&gt;&lt;EventRecordID&gt;3705&lt;/EventRecordID&gt;&lt;Correlation/&gt;&lt;Execution ProcessID='0' ThreadID='0'/&gt;&lt;Channel&gt;Application&lt;/Channel&gt;&lt;Computer&gt;win10-debugged&lt;/Computer&gt;&lt;Security/&gt;&lt;/System&gt;&lt;EventData&gt;&lt;Data Name='User'&gt;WIN10-DEBUGGED\suif2e60aff43a7&lt;/Data&gt;&lt;Binary&gt;&lt;/Binary&gt;&lt;/EventData&gt;&lt;/Event&gt;</S>
+            <S N="OldestXml">&lt;Event xmlns='http://schemas.microsoft.com/win/2004/08/events/event'&gt;&lt;System&gt;&lt;Provider Name='Microsoft-Windows-Security-SPP' Guid='{E23B33B0-C8C9-472C-A5F9-F2BDFEA0F156}' EventSourceName='Software Protection Platform Service'/&gt;&lt;EventID Qualifiers='16384'&gt;1003&lt;/EventID&gt;&lt;Version&gt;0&lt;/Version&gt;&lt;Level&gt;4&lt;/Level&gt;&lt;Task&gt;0&lt;/Task&gt;&lt;Opcode&gt;0&lt;/Opcode&gt;&lt;Keywords&gt;0x80000000000000&lt;/Keywords&gt;&lt;TimeCreated SystemTime='2026-08-27T20:48:28.1668877Z'/&gt;&lt;EventRecordID&gt;1&lt;/EventRecordID&gt;&lt;Correlation/&gt;&lt;Execution ProcessID='0' ThreadID='0'/&gt;&lt;Channel&gt;Application&lt;/Channel&gt;&lt;Computer&gt;WIN-887F60KOSBV&lt;/Computer&gt;&lt;Security/&gt;&lt;/System&gt;&lt;EventData&gt;&lt;Data&gt;55c92734-d682-4d71-983e-d6ec3f16059f&lt;/Data&gt;&lt;Data&gt;_x000A_1: 040fa323-92b1-4baf-97a2-5b67feaefddb, 1, 0 [(0 [0xC004F014, 0, 0], [(?)(?)(?)(?)(?)(?)(?)(?)])(1 )(2 )(3 )]_x000A_2: 0724cb7d-3437-4cb7-93cb-830375d0079d, 1, 0 [(0 [0xC004F014, 0, 0], [(?)(?)(?)(?)(?)(?)(?)(?)])(1 )(2 )(3 )]_x000A_3: 0ad2ac98-7bb9-4201-8d92-312299201369, 1, 0 [(0 [0xC004F014, 0, 0], [(?)(?)(?)(?)(?)(?)(?)(?)])(1 )(2 )(3 )]_x000A_4: 1a9a717a-cf13-4ba5-83c3-0fe25fa868d5, 1, 0 [(0 [0xC004F014, 0, 0], [(?)(?)(?)(?)(?)(?)(?)(?)])(1 )(2 )(3 )]_x000A_5: 221a02da-e2a1-4b75-864c-0a4410a33fdf, 1, 0 [(0 [0xC004F014, 0, 0], [(?)(?)(?)(?)(?)(?)(?)(?)])(1 )(2 )(3 )]_x000A_6: 291ece0e-9c38-40ca-a9e1-32cc7ec19507, 1, 0 [(0 [0xC004F014, 0, 0], [(?)(?)(?)(?)(?)(?)(?)(?)])(1 )(2 )(3 )]_x000A_7: 2936d1d2-913a-4542-b54e-ce5a602a2a38, 1, 0 [(0 [0xC004F014, 0, 0], [(?)(?)(?)(?)(?)(?)(?)(?)])(1 )(2 )(3 )]_x000A_8: 2c293c26-a45a-4a2a-a350-c69a67097529, 1, 0 [(0 [0xC004F014, 0, 0], [(?)(?)(?)(?)(?)(?)(?)(?)])(1 )(2 )(3 )]_x000A_9: 2de67392-b7a7-462a-b1ca-108dd189f588, 1, 0 [(0 [0xC004F014, 0, 0], [(?)(?)(?)(?)(?)(?)(?)(?)])(1 )(2 )(3 )]_x000A_10: 2ffd8952-423e-4903-b993-72a1aa44cf82, 1, 0 [(0 [0xC004F014, 0, 0], [(?)(?)(?)(?)(?)(?)(?)(?)])(1 )(2 )(3 )]_x000A_11: 30a42c86-b7a0-4a34-8c90-ff177cb2acb7, 1, 0 [(0 [0xC004F014, 0, 0], [(?)(?)(?)(?)(?)(?)(?)(?)])(1 )(2 )(3 )]_x000A_12: 345a5db0-d94f-4e3b-a0c0-7c42f7bc3ebf, 1, 0 [(0 [0xC004F014, 0, 0], [(?)(?)(?)(?)(?)(?)(?)(?)])(1 )(2 )(3 )]_x000A_13: 3502365a-f88a-4ba4-822a-5769d3073b65, 1, 0 [(0 [0xC004F014, 0, 0], [(?)(?)(?)(?)(?)(?)(?)(?)])(1 )(2 )(3 )]_x000A_14: 377333b1-8b5d-48d6-9679-1225c872d37c, 1, 0 [(0 [0xC004F014, 0, 0], [(?)(?)(?)(?)(?)(?)(?)(?)])(1 )(2 )(3 )]_x000A_15: 3df374ef-d444-4494-a5a1-4b0d9fd0e203, 1, 0 [(0 [0xC004F014, 0, 0], [(?)(?)(?)(?)(?)(?)(?)(?)])(1 )(2 )(3 )]_x000A_16: 3f1afc82-f8ac-4f6c-8005-1d233e606eee, 1, 0 [(0 [0xC004F014, 0, 0], [(?)(?)(?)(?)(?)(?)(?)(?)])(1 )(2 )(3 )]_x000A_17: 49cd895b-53b2-4dc4-a5f7-b18aa019ad37, 1, 0 [(0 [0xC004F014, 0, 0], [(?)(?)(?)(?)(?)(?)(?)(?)])(1 )(2 )(3 )]_x000A_18: 4de7cb65-cdf1-4de9-8ae8-e3cce27b9f2c, 1, 0 [(0 )(1 )(2 [0xC004E003, 0, 0], [( 1 0xC004F034)( 1 0xC004F034)(?)(?)(?)(?)(?)(?)])(3 [0x00000000, 0, 0], [( 6 0xC004F009 0 0)( 1 0x00000000)( 6 0xC004F009 0 0)(?)(?)(?)( 10 0x00000000 msft:rm/algorithm/flags/1.0)( 11 0x00000000 0xC004F034)])]_x000A_19: 4f3da0d2-271d-4508-ae81-626b60809a38, 1, 0 [(0 [0xC004F014, 0, 0], [(?)(?)(?)(?)(?)(?)(?)(?)])(1 )(2 )(3 )]_x000A_20: 60b3ec1b-9545-4921-821f-311b129dd6f6, 1, 0 [(0 [0xC004F014, 0, 0], [(?)(?)(?)(?)(?)(?)(?)(?)])(1 )(2 )(3 )]_x000A_21: 613d217f-7f13-4268-9907-1662339531cd, 1, 0 [(0 [0xC004F014, 0, 0], [(?)(?)(?)(?)(?)(?)(?)(?)])(1 )(2 )(3 )]_x000A_22: 62f0c100-9c53-4e02-b886-a3528ddfe7f6, 1, 0 [(0 [0xC004F014, 0, 0], [(?)(?)(?)(?)(?)(?)(?)(?)])(1 )(2 )(3 )]_x000A_23: 6365275e-368d-46ca-a0ef-fc0404119333, 1, 0 [(0 [0xC004F014, 0, 0], [(?)(?)(?)(?)(?)(?)(?)(?)])(1 )(2 )(3 )]_x000A_24: 721f9237-9341-4453-a661-09e8baa6cca5, 1, 0 [(0 [0xC004F014, 0, 0], [(?)(?)(?)(?)(?)(?)(?)(?)])(1 )(2 )(3 )]_x000A_25: 73111121-5638-40f6-bc11-f1d7b0d64300, 1, 0 [(0 [0xC004F014, 0, 0], [(?)(?)(?)(?)(?)(?)(?)(?)])(1 )(2 )(3 )]_x000A_26: 7a802526-4c94-4bd1-ba14-835a1aca2120, 1, 0 [(0 [0xC004F014, 0, 0], [(?)(?)(?)(?)(?)(?)(?)(?)])(1 )(2 )(3 )]_x000A_27: 7cb546c0-c7d5-44d8-9a5c-69ecdd782b69, 1, 0 [(0 [0xC004F014, 0, 0], [(?)(?)(?)(?)(?)(?)(?)(?)])(1 )(2 )(3 )]_x000A_28: 82bbc092-bc50-4e16-8e18-b74fc486aec3, 1, 0 [(0 [0xC004F014, 0, 0], [(?)(?)(?)(?)(?)(?)(?)(?)])(1 )(2 )(3 )]_x000A_29: 8ab9bdd1-1f67-4997-82d9-8878520837d9, 1, 0 [(0 [0xC004F014, 0, 0], [(?)(?)(?)(?)(?)(?)(?)(?)])(1 )(2 )(3 )]_x000A_30: 8b351c9c-f398-4515-9900-09df49427262, 1, 0 [(0 [0xC004F014, 0, 0], [(?)(?)(?)(?)(?)(?)(?)(?)])(1 )(2 )(3 )]_x000A_31: 90da7373-1c51-430b-bf26-c97e9c5cdc31, 1, 0 [(0 [0xC004F014, 0, 0], [(?)(?)(?)(?)(?)(?)(?)(?)])(1 )(2 )(3 )]_x000A_32: 95dca82f-385d-4d39-b85b-5c73fa285d6f, 1, 0 [(0 [0xC004F014, 0, 0], [(?)(?)(?)(?)(?)(?)(?)(?)])(1 )(2 )(3 )]_x000A_33: a48938aa-62fa-4966-9d44-9f04da3f72f2, 1, 0 [(0 [0xC004F014, 0, 0], [(?)(?)(?)(?)(?)(?)(?)(?)])(1 )(2 )(3 )]_x000A_34: b0773a15-df3a-4312-9ad2-83d69648e356, 1, 0 [(0 [0xC004F014, 0, 0], [(?)(?)(?)(?)(?)(?)(?)(?)])(1 )(2 )(3 )]_x000A_35: b4bfe195-541e-4e64-ad23-6177f19e395e, 1, 0 [(0 [0xC004F014, 0, 0], [(?)(?)(?)(?)(?)(?)(?)(?)])(1 )(2 )(3 )]_x000A_36: b68e61d2-68ca-4757-be45-0cc2f3e68eee, 1, 0 [(0 [0xC004F014, 0, 0], [(?)(?)(?)(?)(?)(?)(?)(?)])(1 )(2 )(3 )]_x000A_37: bd3762d7-270d-4760-8fb3-d829ca45278a, 1, 0 [(0 [0xC004F014, 0, 0], [(?)(?)(?)(?)(?)(?)(?)(?)])(1 )(2 )(3 )]_x000A_38: c86d5194-4840-4dae-9c1c-0301003a5ab0, 1, 0 [(0 [0xC004F014, 0, 0], [(?)(?)(?)(?)(?)(?)(?)(?)])(1 )(2 )(3 )]_x000A_39: d552befb-48cc-4327-8f39-47d2d94f987c, 1, 0 [(0 [0xC004F014, 0, 0], [(?)(?)(?)(?)(?)(?)(?)(?)])(1 )(2 )(3 )]_x000A_40: d6eadb3b-5ca8-4a6b-986e-35b550756111, 1, 0 [(0 [0xC004F014, 0, 0], [(?)(?)(?)(?)(?)(?)(?)(?)])(1 )(2 )(3 )]_x000A_41: df96023b-dcd9-4be2-afa0-c6c871159ebe, 1, 0 [(0 [0xC004F014, 0, 0], [(?)(?)(?)(?)(?)(?)(?)(?)])(1 )(2 )(3 )]_x000A_42: e0c42288-980c-4788-a014-c080d2e1926e, 1, 0 [(0 [0xC004F014, 0, 0], [(?)(?)(?)(?)(?)(?)(?)(?)])(1 )(2 )(3 )]_x000A_43: e4db50ea-bda1-4566-b047-0ca50abc6f07, 1, 0 [(0 [0xC004F014, 0, 0], [(?)(?)(?)(?)(?)(?)(?)(?)])(1 )(2 )(3 )]_x000A_44: e558417a-5123-4f6f-91e7-385c1c7ca9d4, 1, 0 [(0 [0xC004F014, 0, 0], [(?)(?)(?)(?)(?)(?)(?)(?)])(1 )(2 )(3 )]_x000A_45: e7a950a2-e548-4f10-bf16-02ec848e0643, 1, 0 [(0 [0xC004F014, 0, 0], [(?)(?)(?)(?)(?)(?)(?)(?)])(1 )(2 )(3 )]_x000A_46: eb6d346f-1c60-4643-b960-40ec31596c45, 1, 0 [(0 [0xC004F014, 0, 0], [(?)(?)(?)(?)(?)(?)(?)(?)])(1 )(2 )(3 )]_x000A_47: ec868e65-fadf-4759-b23e-93fe37f2cc29, 1, 0 [(0 [0xC004F014, 0, 0], [(?)(?)(?)(?)(?)(?)(?)(?)])(1 )(2 )(3 )]_x000A_48: ef51e000-2659-4f25-8345-3de70a9cf4c4, 1, 0 [(0 [0xC004F014, 0, 0], [(?)(?)(?)(?)(?)(?)(?)(?)])(1 )(2 )(3 )]_x000A_49: f7af7d09-40e4-419c-a49b-eae366689ebd, 1, 0 [(0 [0xC004F014, 0, 0], [(?)(?)(?)(?)(?)(?)(?)(?)])(1 )(2 )(3 )]_x000A_50: fa755fe6-6739-40b9-8d84-6d0ea3b6d1ab, 1, 0 [(0 [0xC004F014, 0, 0], [(?)(?)(?)(?)(?)(?)(?)(?)])(1 )(2 )(3 )]_x000A_51: fe74f55b-0338-41d6-b267-4a201abe7285, 1, 0 [(0 [0xC004F014, 0, 0], [(?)(?)(?)(?)(?)(?)(?)(?)])(1 )(2 )(3 )]_x000A__x000A_&lt;/Data&gt;&lt;/EventData&gt;&lt;/Event&gt;</S>
+            <Obj N="Log" RefId="11">
+              <TN RefId="4">
+                <T>Selected.System.Diagnostics.Eventing.Reader.EventLogConfiguration</T>
+                <T>System.Management.Automation.PSCustomObject</T>
+                <T>System.Object</T>
+              </TN>
+              <MS>
+                <S N="LogName">Application</S>
+                <B N="IsEnabled">true</B>
+                <Obj N="LogMode" RefId="12">
+                  <TN RefId="5">
+                    <T>System.Diagnostics.Eventing.Reader.EventLogMode</T>
+                    <T>System.Enum</T>
+                    <T>System.ValueType</T>
+                    <T>System.Object</T>
+                  </TN>
+                  <ToString>Circular</ToString>
+                  <I32>0</I32>
+                </Obj>
+                <I64 N="RecordCount">3638</I64>
+                <I64 N="MaximumSizeInBytes">20971520</I64>
+                <S N="SecurityDescriptor">O:BAG:SYD:(A;;0x2;;;S-1-15-2-1)(A;;0x2;;;S-1-15-3-1024-3153509613-960666767-3724611135-2725662640-12138253-543910227-1950414635-4190290187)(A;;0xf0007;;;SY)(A;;0x7;;;BA)(A;;0x7;;;SO)(A;;0x3;;;IU)(A;;0x3;;;SU)(A;;0x3;;;S-1-5-3)(A;;0x3;;;S-1-5-33)(A;;0x1;;;S-1-5-32-573)</S>
+              </MS>
+            </Obj>
+          </MS>
+        </Obj>
+      </En>
+      <En>
+        <S N="Key">AgentProcesses</S>
+        <Obj N="Value" RefId="13">
+          <TNRef RefId="1" />
+          <LST />
+        </Obj>
+      </En>
+      <En>
+        <S N="Key">JournalAbsent</S>
+        <B N="Value">false</B>
+      </En>
+      <En>
+        <S N="Key">Notifications</S>
+        <Obj N="Value" RefId="14">
+          <TNRef RefId="3" />
+          <MS>
+            <S N="Status">INCONCLUSIVE</S>
+            <S N="Directory">C:\ProgramData\SafeUpload\notifications</S>
+            <B N="DirectoryExists">false</B>
+            <Obj N="ChildNames" RefId="15">
+              <TNRef RefId="1" />
+              <LST />
+            </Obj>
+            <Obj N="Objects" RefId="16">
+              <TNRef RefId="1" />
+              <LST>
+                <Obj RefId="17">
+                  <TNRef RefId="2" />
+                  <DCT>
+                    <En>
+                      <S N="Key">Path</S>
+                      <S N="Value">C:\</S>
+                    </En>
+                    <En>
+                      <S N="Key">Owner</S>
+                      <S N="Value">S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464</S>
+                    </En>
+                    <En>
+                      <S N="Key">Sddl</S>
+                      <S N="Value">O:S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464G:S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464D:PAI(A;;LC;;;AU)(A;OICIIO;SDGXGWGR;;;AU)(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;0x1200a9;;;BU)</S>
+                    </En>
+                  </DCT>
+                </Obj>
+                <Obj RefId="18">
+                  <TNRef RefId="2" />
+                  <DCT>
+                    <En>
+                      <S N="Key">Path</S>
+                      <S N="Value">C:\ProgramData</S>
+                    </En>
+                    <En>
+                      <S N="Key">Owner</S>
+                      <S N="Value">S-1-5-18</S>
+                    </En>
+                    <En>
+                      <S N="Key">Sddl</S>
+                      <S N="Value">O:SYG:SYD:PAI(A;OICIIO;GA;;;CO)(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;0x1200a9;;;BU)(A;CI;DCLCRPCR;;;BU)</S>
+                    </En>
+                  </DCT>
+                </Obj>
+                <Obj RefId="19">
+                  <TNRef RefId="2" />
+                  <DCT>
+                    <En>
+                      <S N="Key">Path</S>
+                      <S N="Value">C:\ProgramData\SafeUpload</S>
+                    </En>
+                    <En>
+                      <S N="Key">Owner</S>
+                      <S N="Value">S-1-5-18</S>
+                    </En>
+                    <En>
+                      <S N="Key">Sddl</S>
+                      <S N="Value">O:SYG:S-1-5-21-316478115-1595729549-2803163825-513D:PAI(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)</S>
+                    </En>
+                  </DCT>
+                </Obj>
+              </LST>
+            </Obj>
+            <S N="BootId">WIN10-DEBUGGED/2026-10-05T00:02:31.5000000Z</S>
+            <I64 N="QpcFrequency">10000000</I64>
+            <I64 N="MinimumQpc">325345535</I64>
+            <I64 N="ReadQpc">325922083</I64>
+            <Obj N="Entries" RefId="20">
+              <TNRef RefId="1" />
+              <LST />
+            </Obj>
+            <Nil N="Head" />
+            <Obj N="Artifacts" RefId="21">
+              <TNRef RefId="1" />
+              <LST />
+            </Obj>
+            <Obj N="Errors" RefId="22">
+              <TNRef RefId="1" />
+              <LST />
+            </Obj>
+            <S N="Reason">Authenticated notification directory absent: C:\ProgramData\SafeUpload\notifications. No durable emission coverage; --seed-boot-policy does not start the notification writer and seed trials require the agent down.</S>
+          </MS>
+        </Obj>
+      </En>
+      <En>
+        <S N="Key">EndQpc</S>
+        <I64 N="Value">325923470</I64>
+      </En>
+    </DCT>
+  </Obj>
+</Objs>
