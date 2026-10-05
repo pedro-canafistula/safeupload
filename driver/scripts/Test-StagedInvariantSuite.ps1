@@ -743,10 +743,12 @@ function Get-ServiceSnapshot([string]$Tag) {
         foreach($path in $ancestors){$obj=[SUProofFile]::Open($path,$true,($path -ceq $root));$held+=$obj;$result.Objects+=@{Path=$path;Owner=$obj.Owner;Sddl=$obj.Sddl}}
         $result.JournalAbsent=-not(Test-Path -LiteralPath $journal)
         if(-not $result.JournalAbsent) {
-            $obj=[SUProofFile]::Open($journal,$true,$true);$held+=$obj;$result.Objects+=@{Path=$journal;Owner=$obj.Owner;Sddl=$obj.Sddl}
+            # Same owner rule as the agent's RequireTrustedOwner: SYSTEM or BUILTIN\Administrators (notify2: the guest journal is
+            # owned by Administrators and the stricter SYSTEM-only check rejected genuine evidence).
+            $obj=[SUProofFile]::Open($journal,$true,$true,$false,$true);$held+=$obj;$result.Objects+=@{Path=$journal;Owner=$obj.Owner;Sddl=$obj.Sddl}
             foreach($file in @(Get-ChildItem -LiteralPath $journal -Force | Sort-Object Name)) {
                 if($file.Name -notmatch '^[0-9a-f]{32}\.json$'){throw 'Unrecognized journal child; snapshot is not complete.'}
-                $obj=[SUProofFile]::Open($file.FullName,$false,$true)
+                $obj=[SUProofFile]::Open($file.FullName,$false,$true,$false,$true)
                 try{$bytes=[SUProofFile]::Read($obj,131072)}finally{$obj.Dispose()}
                 $leaf='service-'+$Tag+'-'+$file.Name;$copy=Join-Path $evidenceDirectory $leaf
                 $stream=[IO.File]::Open($copy,[IO.FileMode]::CreateNew,[IO.FileAccess]::Write,[IO.FileShare]::Read)
