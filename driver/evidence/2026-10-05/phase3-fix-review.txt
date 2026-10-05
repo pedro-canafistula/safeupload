@@ -1,0 +1,125 @@
+Phase 3 review-fix round — adversarial source review
+Date: 2026-10-05
+Reviewed worktree: /home/victor/Work/safeupload-staging-wt-review
+HEAD: 94a1f6dc209e237aead5311d1e91b14eab5e46cd (detached)
+Code review range: edcc9046..5faa232e, driver/SafeUpload.Minifilter
+
+Scope and limits
+
+This is a source-only review. The filter source at HEAD matches 5faa232e; the difference after that commit is the design-decision text in driver/MVP-PLAN.md. I did not modify source, build, run tests, or run a VM. Therefore this review can establish callback, state, lock, and reference paths, but cannot establish actual MM/Cc retry behavior or whether a particular failure reproduces on Windows.
+
+Conclusion
+
+The round closes P0-4, P0-5, P1-1, and the specific P1-2 TxF bootstrap shortcut. P0-3 is fixed for ordinary ADS tracking but has a capacity-overflow hole. The ordinary name-resolution fallbacks addressed by P0-1 now use per-volume scope classification. P0-1 is not fully closed because by-ID mutators still fail before the out-of-scope test. P0-2's shared cutoff lock closes the original admission race, but the cutoff worker can deny its own flush; two further cutoff state/retry gaps remain.
+
+I found one standard-user-reachable sticky-Unknown denial-of-service at the registry capacity boundary. I found no unbounded allocation path, reference leak that pins an instance through FltpFreeInstance, new wait/I/O under the registry or spin locks, or lock-order cycle in the audited paths. No source path proves an MM/Cc deadlock; paging-write denials still need VM validation, and the self-denied cutoff flush below is a concrete functional failure.
+
+Prior findings: closure status
+
+P0-1 — Partially closed. The fixed name-based physical mutation and external rename fallbacks now pass unresolved operations when SafeUploadPolicyMayMatchInstanceVolume says the volume cannot carry a current/pending/boot scope: StageStream.c:2657-2705 and 2723-2782. The top-level/IRQL and name-query fallback in StageEpochOperationTouchesUnion is likewise per-volume: StageStream.c:3114-3125. This closes the reported scope-blind fallback cases. It does not make all admission paths obey the out-of-scope rule; see Finding 1 below.
+
+P0-2 — Original start-vs-scope-publication race is closed in the normal paging admission path: policy publication and paging admission share SafeUploadVolumeScopeCacheLock (Policy.c:591-613, 803-815), and tracked paging starts increment the in-flight count while holding the entry paging lock (StageWriters.c:3897-3943). Pre-cutoff completions drain outside locks (StageWriters.c:2695-2706, 3949-3965). The whole finding is not closed because the gate also denies the worker's required flush and because post-cutoff dirty state and retry handling are incomplete; see Findings 2-4.
+
+P0-3 — Closed for ordinary ADS identity/poisoning, but not capacity overflow. Reservation stores the base path and stream suffix separately, retaining unresolved identity on the file record rather than poisoning the instance (StageWriters.c:948-999). The worker reopens the exact ID+stream (StageWriters.c:2384-2425), and all-link classification checks both base and ADS names (StageWriters.c:2656-2664). An ADS capacity miss is deliberately not widened to instance Unknown (StageWriters.c:1050-1057), but it also leaves no persistent SOP record; see Finding 6. A normally resolved ADS does not make its sibling streams or whole volume Unknown.
+
+P0-4 — Closed for the missed-hard-link alias case. Expansion probes every live identity on a possibly scoped volume (StageWriters.c:3992-4018); the PASSIVE worker validates and classifies every returned link record (StageWriters.c:2551-2682). A failed/truncated/open-failed scan remains Unknown/gated (StageWriters.c:3053-3059; 2851-2862), rather than promoting from the first-seen name. The FileNameLength conversion at StageWriters.c:2624-2629 is in characters and correctly converts to bytes.
+
+P0-5 — Closed for the stale-name-after-rename-loss race. Rename-loss increments the instance generation under the same scope-cache lock used to end a scope transition (Policy.c:681-699, 730-751). Expansion compares the entry generation before probing (StageWriters.c:3996-4012); paging admission checks it before using a retained classification and closes the entry gate on mismatch (StageWriters.c:3904-3916). A loss racing the scan cannot release the gate from a stale result (StageWriters.c:2912-2946). Per-volume generation state is not represented by one global loss counter alone.
+
+P1-1 — Closed for the reported coarse paging fallback. Paging epoch fallback matches known SOPs to policy and treats an unknown SOP as unresolved only when that instance volume may carry policy (StageStream.c:3094-3112). Top-level/name-query fallback is also per-volume (3114-3125); outside-volume operations proceed when the epoch is unavailable (3418-3427). This does not cure the distinct by-ID issue in Finding 1.
+
+P1-2 — The reported TxF bootstrap-path match is removed: Txf.c:32-68 checks the current/pending/boot policy snapshot and named aliases, with errors falling back to per-volume scope possibility. I found no StageTxfMatchesBootstrap helper or hardcoded bootstrap destination in the TxF path. There is still a separate conservative by-ID TxF over-denial on a mixed scoped volume, included in Finding 1.
+
+Findings
+
+1. P1 — By-ID operations still refuse requests before proving the volume is in scope
+
+Code: StageStream.c:2502-2505 and 2530-2545; TxF counterpart Txf.c:84-95 (caller completes denied creates at Filter.c:1442-1444).
+
+Scenario: A standard user with ordinary read ACL permission opens an unrelated low-half file ID on C: while policy scopes a different C: directory. The writer/high-half check at StageStream.c:2534-2537 does not apply, but SafeUploadPolicyMayMatchInstanceVolume is true because some scope exists on C:, so StageAdmit returns ACCESS_DENIED at 2541-2543 without resolving the target path. A writable by-ID open is unconditionally refused at 2534-2537 even on a volume with no scope; FILE_DELETE_ON_CLOSE by ID is refused at 2502-2505. On a volume with one scoped directory, the TxF by-ID create path at Txf.c:92-95 also refuses based only on volume membership, including a target outside that directory (if the OS/filesystem and caller permit that TxF operation).
+
+Reachability: The ordinary by-ID path requires the caller to have permission to open the volume and target; no administrator check protects this branch. TxF requires a transaction and a by-ID mutating create. The source does not establish how often either API is used by boot-critical callers, so this is an out-of-scope I/O contract defect, not evidence that this caused the historical 0xEF.
+
+Minimal fix: Resolve the ID to a stable name and aliases at PASSIVE_LEVEL, then apply the same scope decision; if the target is conclusively outside every scope, let the physical operation pass. Preserve known private staging-ID handling and rejection of unknown high-half private IDs.
+
+2. P1 — The activation worker can deny its own cutoff flush and strand the stream
+
+Code: StageWriters.c:2812, 2863-2874, 3106-3157, and 3918-3932; StageStream.c:3451-3464.
+
+Scenario: A file has dirty cached data from before a service expands policy to include one of its hard-link names. Alias resolution sets the entry ACTIVATING and closes PagingWriteGate (StageWriters.c:2863-2874). The activation worker then calls CcFlushCache and FltFlushBuffers while that gate is closed (3131-3145). For a paging write reaching the no-stream-context path, StageStream calls PagingWriteBegin, which rejects ACTIVATING/gated entries and completes the paging write with STATUS_MEDIA_WRITE_PROTECTED (StageWriters.c:3920-3932; StageStream.c:3455-3461). The worker sees a failed flush, sets CutoffFailed (StageWriters.c:3133-3137), and the later `CutoffFlushStarted != 0 && CutoffComplete == 0` branch exits without retry (3149-3150). The entry remains gated and cannot promote. This is a concrete self-denial path; it can also prevent pre-cutoff cached data from being persisted by the intended cutoff pair.
+
+Reachability: A standard user can dirty/map a file before the authenticated service adds a scope containing one of its links. The scope update itself is service-controlled, but the failure affects ordinary preexisting user data on that update.
+
+Minimal fix: Make the cutoff flush's pre-cutoff pageouts admissible while still excluding later user writes, using an explicit cutoff/flush admission state that is serialized with the same boundary. Do not reopen a general paging-write window.
+
+Paging safety: The callback completes the denied IRP synchronously and does not wait while holding a spin lock. I found no direct lock deadlock in this path. The failed self-flush and permanent gate are proven from code; an actual MM/Cc deadlock or bugcheck is not.
+
+3. P2 — The permanent post-cutoff dirty marker has no writer
+
+Code: `DirtyAfterCutoff` is declared at StageWriters.c:104 and read by promotion/status paths at 3152-3157, 3184-3188, 3211-3216, and 4125-4126. No store to this field exists in the reviewed source (`rg` finds only the declaration and reads). The denied paging-write path is StageStream.c:3455-3461 / StageWriters.c:3918-3946 and does not set it.
+
+Scenario: A writable mapping issues a paging write after cutoff. The callback denies that write, but records no sticky “attempted after cutoff” state. A subsequent worker promotion decision can therefore rely only on cache/SOP emptiness predicates and the still-zero dirty bit. The source does not prove that Windows will later make those emptiness predicates true after a failed pageout, so I do not claim a demonstrated promotion bypass; it does prove the design's stated permanent-taint rule is not implemented.
+
+Minimal fix: Under PagingWriteLock, set DirtyAfterCutoff on every denied tracked paging write after cutoff, and preserve it for the lifetime of that entry. Confirm on a VM how failed pageouts affect the cache-object checks.
+
+4. P2 — A cutoff rejected during policy pause is reset but not guaranteed to be retried
+
+Code: StageWriters.c:3113-3123 resets CutoffFlushStarted and exits when ActivationCutoffBegin fails. Policy.c:1273-1275 pauses new cutoffs during a policy update, then resumes at 1353; finalization also pauses and resumes at 1399-1407 and 1441. The resume paths do not queue a reclaim/recheck.
+
+Scenario: ApplyPendingScope queues the one reclaim worker. It resolves an alias, closes that entry's gate, then reaches ActivationCutoffBegin while the update's pause is active. Begin returns STATUS_RETRY; the worker resets CutoffFlushStarted and exits. If no other reclaim request races in to set the queue's RESCAN bit, the policy update resumes without a new work item. The entry remains ACTIVATING/gated until unrelated activity happens to request a recheck.
+
+Reachability: This requires scheduling against a normal authenticated service policy update, not a user-controlled policy call. It is a file-specific availability race rather than a demonstrated security bypass.
+
+Minimal fix: On cutoff-pause resume, queue a reclaim pass for entries whose activation is enforced and whose flush has not started/completed, or make the failed begin path arrange a retry after the pause ends.
+
+5. P1 — A standard user can make a scoped volume's registry Unknown until remount/reload
+
+Code: Per-instance limit is 1,024 records (Protocol.h:288-291). A writer reservation is treated as capacity loss at StageWriters.c:1036-1057; lost default-stream tracking marks the instance Unknown at 1073-1085. `StageRegistryMarkUnknown` makes WritersUntracked and RegistryUnknownReasons sticky on the instance (459-487); the code itself describes the state as “Unknown until reboot” (918-923). When there is no SOP entry, paging admission combines this with candidate-volume membership and denies when both are true (StageWriters.c:3892-3900). Scope expansion also declines to classify/promote records on an Unknown instance (3094-3103).
+
+Scenario: On a fixed NTFS volume that has a scoped directory, a standard user creates 1,024 distinct files in a directory they own, opens each for writing, and keeps those handles live so their H counts prevent prune. A further default-stream writer exceeds the per-instance capacity and records Unknown. Subsequent pageouts for untracked files on that same volume take `entry == NULL`, `untrackedUnknown == TRUE`, and `volumeMayMatch == TRUE`, so PagingWriteBegin denies them. This includes unrelated names outside the scoped directory on that same volume. A later scope expansion also leaves candidate records Unknown because the instance reason is sticky. There is no automatic clear/rebuild of this instance state in the reviewed path; it lasts until a fresh instance context (for example, remount) or driver reload.
+
+Reachability: User-space only; it requires writable-file access on the volume and roughly 1,025 live writer records, but no policy-administration privilege. The limit is bounded and this is not unbounded pool exhaustion. It is a practical scripted resource-exhaustion attack, not a one-request trigger.
+
+Minimal fix: Avoid turning a user-triggerable ledger-capacity miss into a permanent instance-wide pageout deny. Prefer preserving the affected SOP/entry as the narrowest Unknown, and provide a bounded rescan/recovery mechanism; where identity is known to be outside all candidate scopes, do not consume protected-scope tracking capacity.
+
+6. P1 — A capacity-missed ADS can evade a later scope-expansion cutoff
+
+Code: StageWriters.c:1040-1057 drops a known-ADS reservation on capacity failure without marking the instance Unknown (`StreamIdentityKnown` and nonzero `StreamChars` take the no-mark branch). StageStream.c:3203-3224 then passes the physical create through when no reservation is returned. Scope expansion walks only `RegistryEntries` (StageWriters.c:3980-4018). For an untracked SOP, paging admission denies only when `untrackedUnknown` is true (StageWriters.c:3892-3900). The section slot is tied to acquire/release pairing and is removed on successful release (StageWriters.c:3554-3583, 3640-3687); the untracked-SOP check only consults those live slots (3735-3751). With a normal admission token, the paging path reaches this check without first resolving the file name (StageStream.c:3451-3464).
+
+Scenario: A standard user fills the per-instance registry with 1,024 live writer records, then opens a writable ADS on a file outside the current scope. The ADS is recognized as such, so the capacity miss does not poison the instance, but no ADS entry/reservation survives the create. The user keeps a writable mapping to that ADS. A service later expands policy to cover its containing directory. The alias worker cannot gate this identity because it is absent from `RegistryEntries`. After the shared transition ends, a paging write with a normal epoch token has no registry entry, no active untracked-section slot, and no instance Unknown; PagingWriteBegin therefore admits it. The existing mapping can continue writing pages to a now-scoped file after activation.
+
+Reachability: Requires a full instance table (about 1,024 live writer handles) and a later service policy expansion, but no policy-administration privilege for the caller. This is a conditional protected-file write bypass at the documented capacity boundary.
+
+Minimal fix: Preserve a bounded per-SOP Unknown record for known ADS capacity misses and keep paging admission gated until that exact stream is joined or retired. Do not silently lose the ADS identity; avoid widening all ADS misses to permanent instance-wide Unknown.
+
+7. P2 — Hard-link expansion has bounded memory but attacker-amplifiable metadata work
+
+Code: StageWriters.c:2594-2606 caps one link-list allocation at 1 MiB; 2618-2672 walks every record and opens/queries each parent separately (2637-2649). Scope application probes every registry entry on a candidate volume (3992-4018), and the registry permits up to 1,024 entries per instance/4,096 total (Protocol.h:288-291).
+
+Scenario: A user with permission to create many hard links on that volume causes a service scope expansion. For each tracked file identity, the PASSIVE worker walks every link and performs a parent-by-ID open plus normalized name query. The associated entry remains gated until that work completes. Repeating across many retained identities can make policy expansion and paging-write recovery spend substantial metadata I/O on user-created links.
+
+Reachability and bound: Standard-user filesystem permissions are sufficient if hard links are allowed. The scan buffer and registry are bounded, so I found no unbounded pool-growth path and no source basis to say one identity can be held Unknown forever solely by a large valid link list. This is bounded latency amplification, not a proven endless loop.
+
+Minimal fix: Deduplicate/reuse parent-name queries during one scan and budget work per worker pass; retain the safe gate and resume classification in later batches rather than allowing one large batch of user-controlled link metadata to monopolize expansion.
+
+Other regression checks and verified-correct paths
+
+• Scope-cache cutoff serialization: The inactive cache is built at PASSIVE_LEVEL and pointer/state publication is performed under the resident scope-cache spin lock (Policy.c:591-613). Paging fallback counters rotate under the same boundary (Policy.c:575-587, 825-851), then policy update drains accepted tokens/fallback pageouts before applying the candidate scope (Policy.c:1319-1337). I found no start that can cross publication without being either counted as pre-cutoff or denied as post-cutoff.
+
+• Boot/out-of-scope behavior: Name-based mutation failures, external rename failures, mutating FSCTL failures, unowned writable-section failures, and epoch fallback are passed when the cached volume is proven outside all current/pending/boot scopes (StageStream.c:2657-2705, 2723-2782, 2939-2982, 3007-3039, 3100-3125). The by-ID exceptions are listed in Finding 1. This source review does not identify the cause of the earlier wininit 0xEF.
+
+• Lock ordering: In audited nested paths, promotion takes RegistryLock, then the scope-cache lock, then PagingWriteLock, then the section snapshot lock (StageWriters.c:2730-2794). Paging admission takes scope-cache then PagingWriteLock (3897-3943); section-slot code drops SectionLock before querying registry/policy state. I found no reverse nested path forming a cycle against the stated order: registry push lock -> scope-cache spin -> entry paging spin -> section spin.
+
+• Waits and I/O: The paging-drain wait is in a PAGED worker at PASSIVE_LEVEL and occurs without RegistryLock or spin locks held (StageWriters.c:2695-2706, 3125). Identity opens, link queries, CcFlushCache, and FltFlushBuffers are likewise outside RegistryLock and PagingWriteLock (2553-2692, 3077-3145). The spin-locked callbacks only snapshot/update counters/state, release locks, then return or complete. No wait or file/cache I/O under a spin lock or RegistryLock was found in the reviewed changes.
+
+• IRQL/pageability: The hard-link and activation workers are PAGED and contain PAGED_CODE assertions (StageWriters.c:2568, 2983-2988); they are queued to DelayedWorkQueue. The paging admission helpers are resident/noinline lock-boundary routines, not marked PAGE. No newly added PAGED worker call was found on a DISPATCH_LEVEL completion path.
+
+• Instance/volume lifetime: Registry retirement removes SOP bindings, clears each entry's Instance and Volume pointers while serialized under RegistryLock, then dereferences those objects after releasing it (StageWriters.c:2103-2146). Temporary async worker references are released on completion/error paths. I found no entry history reference that retains a live instance through FltpFreeInstance.
+
+• Hard-link worker cleanup: Per-link parent name information/object/handle are released on each success iteration (StageWriters.c:2666-2671). The common exit releases any partially acquired parent/file name/object/handle and frees path, link-list, and stream snapshot buffers on all errors (2683-2691). StageRegistryOpenIdentity also closes/dereferences partial outputs on error (2449-2455). I found no leak or double-free in these paths.
+
+• Pool/capacity bounds: Valid ADS stream names are separately bounded; registry records/name bytes, policy prefixes, section slots, reclaim batches, and hard-link buffers all have fixed limits (Protocol.h:288-291, Policy.c:61-75, StageWriters.c:2005, 2267, 2594-2606). Capacity loss can still create the sticky-Unknown DoS in Finding 5; it does not create unbounded allocation. Rename-loss increments are fixed-width counters, not per-loss allocations.
+
+• TxF: Named TxF mutation checks use the same current/pending/boot snapshot and named alias result as ordinary mutation (Txf.c:54-64, 124-169, 261-269). No removed bootstrap shortcut remains. The by-ID conservative volume fallback is included in Finding 1.
+
+Disposition: Do not call the review-fix round fully closed until Findings 1-2 and 6 are addressed. Findings 3-5 and 7 need an explicit product decision or fixes, especially the standard-user sticky-Unknown denial-of-service. VM validation remains required for the paging/MM behavior; no build or run was performed for this review.
