@@ -827,11 +827,9 @@ _IRQL_requires_(PASSIVE_LEVEL)
 VOID SafeUploadStageFenceTransitionEnd( VOID );
 BOOLEAN SafeUploadStageFenceVolumeHasEntries( _In_opt_ PFLT_VOLUME Volume );
 BOOLEAN SafeUploadStageFenceVolumeBlocksDetach( _In_opt_ PFLT_VOLUME Volume );
-BOOLEAN SafeUploadStageFenceIsFenced( _In_opt_ PFILE_OBJECT FileObject );
 BOOLEAN SafeUploadStageFenceNameQuarantined( _In_ PCUNICODE_STRING NormalizedName );
 BOOLEAN SafeUploadStageFenceVolumeQuarantined( _In_opt_ PFLT_VOLUME Volume );
 VOID SafeUploadStageFenceCountOpenRefused( VOID );
-VOID SafeUploadStageFenceCountPagingDenied( VOID );
 VOID SafeUploadStageFenceCountSectionDenied( VOID );
 VOID SafeUploadStageFenceCountSectionUnresolved( VOID );
 VOID SafeUploadStageFenceCountFsctlUnresolved( VOID );

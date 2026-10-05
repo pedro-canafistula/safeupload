@@ -1,25 +1,21 @@
-/* Mapped-writable stream fence (feature build only).
+/* Mapped-writable stream diagnostics and protected-name quarantine (feature build only).
  *
- * A writable section that predates the filter or a policy scope never passes
- * through an admitted file object, so staging cannot redirect its writes.
  * A scan of the protected scopes finds streams whose section object pointers
  * report user-writable mapped views (documented MmDoesFileHaveUserWritableReferences
  * on a file object opened below this instance, or through the volume stack before
- * the filter is attached, with attribute access only) and registers them.
- * Registered streams are fenced in two ways:
- *   - while its fence entry remains installed and the filter stays on the stack, an
- *     unowned paging write to the stream's SectionObjectPointer is refused;
- *   - a protected open of the stream's name is refused, so no other reader is
- *     served the dirty mapped bytes through the filter.
- * These checks do not prove safety after an entry is retired or the filter is detached.
- * Both checks are in memory only: no I/O in the create or write path. Scans run at
- * PASSIVE_LEVEL with special kernel APCs enabled (the documented requirement of
- * FltQueryDirectoryFile and FltCreateFileEx2), serialized by a KMUTEX, never a fast mutex.
- * The fence is ONE immutable table installed atomically: readers of the pointer table
- * (spin lock) and of the name table (push lock) can never see two generations.
- * A scan that cannot prove its scope fails closed: a policy update is rejected, a load is
- * refused, and the previous fence stays. Once filtering, a failed scan quarantines covered fixed
- * local NTFS volumes for protected-name opens; it does not deny paging writes for unrelated streams.
+ * the filter is attached, with attribute access only) and registers them. A
+ * protected open of a retained stream name is refused so another reader is not
+ * served the dirty mapped bytes through the filter. This does not establish a
+ * Free(F) activation state; activation uses the writer registry.
+ *
+ * The name check is in memory only. Scans run at PASSIVE_LEVEL with special kernel
+ * APCs enabled (the documented requirement of FltQueryDirectoryFile and
+ * FltCreateFileEx2), serialized by a KMUTEX, never a fast mutex. The fence is ONE
+ * immutable table installed atomically: readers of the pointer table (spin lock)
+ * and of the name table (push lock) can never see two generations. A scan that
+ * cannot prove its scope fails closed: a policy update is rejected, a load is
+ * refused, and the previous fence stays. Once filtering, a failed scan quarantines
+ * covered fixed local NTFS volumes for protected-name opens.
  *
  * Lifecycle is unresolved. "No user-writable mapping remains" is not enough: the Memory Manager may
  * still hold dirty pages and write them back later. CcPurgeCacheSection does not purge mapped files
@@ -156,7 +152,6 @@ static volatile LONG FenceNameCount;
 static volatile LONG64 FenceRefreshStarted;
 static volatile LONG64 FenceRefreshCompleted;
 static volatile LONG64 FenceRefreshFailed;
-static volatile LONG64 FencePagingDenied;
 static volatile LONG64 FenceOpensRefused;
 static volatile LONG64 FenceDirectories;
 static volatile LONG64 FenceFiles;
@@ -654,7 +649,7 @@ static VOID FenceReleaseVolumes(_In_ PFENCE_SCAN Scan)
 }
 
 /* Quarantine applies at protected-name gates by volume identity. A retained reference prevents pointer reuse;
- * the paging path never consults quarantine. The global bit is reserved for an unknown volume set. */
+ * the global bit is reserved for an unknown volume set. */
 static __declspec(noinline) VOID FenceQuarantineAll(VOID)
 {
     KIRQL irql;
@@ -1761,29 +1756,6 @@ BOOLEAN SafeUploadStageFenceVolumeBlocksDetach(_In_opt_ PFLT_VOLUME Volume)
         SafeUploadStageFenceVolumeHasEntries(Volume);
 }
 
-BOOLEAN SafeUploadStageFenceIsFenced(_In_opt_ PFILE_OBJECT FileObject)
-{
-    PSECTION_OBJECT_POINTERS sop;
-    KIRQL irql;
-    ULONG slot, probes;
-    BOOLEAN hit = FALSE;
-
-    if (FileObject == NULL || InterlockedCompareExchange(&FenceEntryCount, 0, 0) == 0) return FALSE;
-    sop = FileObject->SectionObjectPointer;
-    if (sop == NULL) return FALSE;
-    FenceAcquireSpinLock(&FenceSopLock, &irql);
-    if (FenceTable != NULL) {
-        for (probes = 0, slot = FenceHash((ULONG_PTR)sop); probes < FENCE_HASH_SLOTS;
-             probes += 1, slot = (slot + 1) & (FENCE_HASH_SLOTS - 1)) {
-            ULONG_PTR current = FenceTable->Slots[slot] & ~FENCE_MAPPED_BIT;
-            if (current == 0) break;
-            if (current == (ULONG_PTR)sop) { hit = TRUE; break; }
-        }
-    }
-    FenceReleaseSpinLock(&FenceSopLock, irql);
-    return hit;
-}
-
 BOOLEAN SafeUploadStageFenceVolumeQuarantined(_In_opt_ PFLT_VOLUME Volume)
 {
     return FenceVolumeIsQuarantined(Volume);
@@ -1814,7 +1786,6 @@ BOOLEAN SafeUploadStageFenceHasEntries(VOID)
 }
 
 VOID SafeUploadStageFenceCountOpenRefused(VOID) { InterlockedIncrement64(&FenceOpensRefused); }
-VOID SafeUploadStageFenceCountPagingDenied(VOID) { InterlockedIncrement64(&FencePagingDenied); }
 VOID SafeUploadStageFenceCountSectionDenied(VOID) { InterlockedIncrement64(&FenceSectionsDenied); }
 VOID SafeUploadStageFenceCountSectionUnresolved(VOID) { InterlockedIncrement64(&FenceSectionUnresolved); }
 /* Every accepted attachment gets one work item; serialization in FenceRefreshMutex ensures each
@@ -1875,8 +1846,7 @@ BOOLEAN SafeUploadStageFenceQueueRefresh(_In_ PFLT_VOLUME Volume)
 
     if (Volume == NULL) return FALSE;
     /* Do not wait for work here: Filter Manager cautions against synchronization in InstanceSetup.
-     * That leaves an explicit attachment-to-scan paging-write window for covered volumes. The fence
-     * scanner has an intentionally narrow scope. Do not make a transient work-item or
+     * The fence scanner has an intentionally narrow scope. Do not make a transient work-item or
      * unload-gate failure detach SafeUpload from network, removable, or non-NTFS volumes: those
      * attachments still carry the ordinary policy callbacks, while this feature reports that the
      * volume is outside its mapped-stream fence coverage. */
@@ -1967,7 +1937,7 @@ VOID SafeUploadStageFenceGetStatus(_Out_ PSAFEUPLOAD_FENCE_STATUS Status)
     Status->RefreshStarted = (UINT64)InterlockedCompareExchange64(&FenceRefreshStarted, 0, 0);
     Status->RefreshCompleted = (UINT64)InterlockedCompareExchange64(&FenceRefreshCompleted, 0, 0);
     Status->RefreshFailed = (UINT64)InterlockedCompareExchange64(&FenceRefreshFailed, 0, 0);
-    Status->PagingWritesDenied = (UINT64)InterlockedCompareExchange64(&FencePagingDenied, 0, 0);
+    Status->PagingWritesDenied = 0; /* Reserved ABI field. */
     Status->OpensRefused = (UINT64)InterlockedCompareExchange64(&FenceOpensRefused, 0, 0);
     Status->DirectoriesScanned = (UINT64)InterlockedCompareExchange64(&FenceDirectories, 0, 0);
     Status->FilesScanned = (UINT64)InterlockedCompareExchange64(&FenceFiles, 0, 0);

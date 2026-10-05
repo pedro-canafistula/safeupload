@@ -687,9 +687,8 @@ typedef struct _SAFEUPLOAD_ADMISSION_VOLUME_STATUS {
 } SAFEUPLOAD_ADMISSION_VOLUME_STATUS, *PSAFEUPLOAD_ADMISSION_VOLUME_STATUS;
 
 /*
- *  Mapped-writable stream fence. A scan of the protected scopes registers streams that
- *  have user-writable mapped views; their unowned paging writes are refused and
- *  protected opens of their names are refused. STATUS reads this; REFRESH reruns the scan.
+ *  Mapped-writable stream diagnostics and protected-name quarantine. STATUS reads
+ *  this; REFRESH reruns the scan. PagingWritesDenied is reserved and always zero.
  */
 typedef struct _SAFEUPLOAD_FENCE_STATUS {
     UINT32 StructSize;
@@ -701,7 +700,7 @@ typedef struct _SAFEUPLOAD_FENCE_STATUS {
     UINT64 RefreshStarted;
     UINT64 RefreshCompleted;
     UINT64 RefreshFailed;
-    UINT64 PagingWritesDenied;
+    UINT64 PagingWritesDenied;        // reserved; always zero
     UINT64 OpensRefused;
     UINT64 DirectoriesScanned;
     UINT64 FilesScanned;

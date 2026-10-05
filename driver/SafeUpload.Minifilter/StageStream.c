@@ -2672,16 +2672,10 @@ Complete:
 }
 
 static FLT_PREOP_CALLBACK_STATUS StagePhysicalMutationEx(PFLT_CALLBACK_DATA Data,
-    PCFLT_RELATED_OBJECTS Objects, BOOLEAN IncludeAncestors);
-
-static FLT_PREOP_CALLBACK_STATUS StagePhysicalMutation(PFLT_CALLBACK_DATA Data,
-    PCFLT_RELATED_OBJECTS Objects)
-{
-    return StagePhysicalMutationEx(Data, Objects, FALSE);
-}
+    PCFLT_RELATED_OBJECTS Objects, BOOLEAN IncludeAncestors, BOOLEAN TrackedWriter);
 
 static FLT_PREOP_CALLBACK_STATUS StagePhysicalMutationEx(PFLT_CALLBACK_DATA Data,
-    PCFLT_RELATED_OBJECTS Objects, BOOLEAN IncludeAncestors)
+    PCFLT_RELATED_OBJECTS Objects, BOOLEAN IncludeAncestors, BOOLEAN TrackedWriter)
 {
     PFLT_FILE_NAME_INFORMATION name = NULL;
     SAFEUPLOAD_VOLUME_KIND kind = StageVolumeKind(Objects->Instance);
@@ -2691,12 +2685,13 @@ static FLT_PREOP_CALLBACK_STATUS StagePhysicalMutationEx(PFLT_CALLBACK_DATA Data
         FltGetRequestorProcessId(Data) == SafeUploadData.InspectorProcessId;
     FLT_FILESYSTEM_TYPE fs;
     NTSTATUS status = STATUS_ACCESS_DENIED;
-    /* H(F) keeps a writer admitted before the Activating gate usable through cleanup. */
-    if (SafeUploadStageWritersIsTrackedWriter(Objects->Instance, Objects->FileObject))
-        return FLT_PREOP_SUCCESS_NO_CALLBACK;
+    if (FlagOn(Data->Iopb->IrpFlags, IRP_PAGING_IO)) return FLT_PREOP_SUCCESS_NO_CALLBACK;
     /* Querying lower metadata is forbidden in fast I/O, paging/section paths
      * or with a top-level IRP. This direct-mutation path never gates paging I/O. */
     if (FLT_IS_FASTIO_OPERATION(Data)) return FLT_PREOP_DISALLOW_FASTIO;
+    /* H(F) keeps an admitted writer usable through cleanup. Its mutating IRP
+     * was counted before this check and is paired by post-operation. */
+    if (TrackedWriter) return FLT_PREOP_SUCCESS_NO_CALLBACK;
     if (KeGetCurrentIrql() != PASSIVE_LEVEL || IoGetTopLevelIrp() != NULL) goto Complete;
     status = FltGetFileNameInformation(Data, FLT_FILE_NAME_NORMALIZED | FLT_FILE_NAME_QUERY_DEFAULT, &name);
     if (!NT_SUCCESS(status)) goto Complete;
@@ -2745,14 +2740,14 @@ Complete:
 }
 
 static FLT_PREOP_CALLBACK_STATUS StageExternalRename(PFLT_CALLBACK_DATA Data,
-    PCFLT_RELATED_OBJECTS Objects, _Out_opt_ PVOID *RegistryRenameContext)
+    PCFLT_RELATED_OBJECTS Objects, _In_ BOOLEAN TrackedWriter,
+    _Out_opt_ PVOID *RegistryRenameContext)
 {
     FILE_INFORMATION_CLASS cls = Data->Iopb->Parameters.SetFileInformation.FileInformationClass;
     PFILE_RENAME_INFORMATION rename = Data->Iopb->Parameters.SetFileInformation.InfoBuffer;
     PFLT_FILE_NAME_INFORMATION source = NULL, destination = NULL;
     SAFEUPLOAD_VOLUME_KIND kind = StageVolumeKind(Objects->Instance);
     BOOLEAN allow = FALSE;
-    BOOLEAN trackedWriter = SafeUploadStageWritersIsTrackedWriter(Objects->Instance, Objects->FileObject);
     BOOLEAN quarantineRefused = FALSE;
     BOOLEAN unresolved = TRUE;
     NTSTATUS status;
@@ -2946,7 +2941,8 @@ static FLT_PREOP_CALLBACK_STATUS StageCompleteAccessDenied(_Inout_ PFLT_CALLBACK
  * Reparse-changing FSCTLs also cover ancestors of a protected prefix, because turning a parent into a junction
  * redirects the protected namespace. When a safe alias check is unavailable, refuse only if the cached volume
  * classifier says this instance could contain a current, pending, or boot scope. */
-static FLT_PREOP_CALLBACK_STATUS StageUnownedMutatingFsctl(PFLT_CALLBACK_DATA Data, PCFLT_RELATED_OBJECTS Objects)
+static FLT_PREOP_CALLBACK_STATUS StageUnownedMutatingFsctl(PFLT_CALLBACK_DATA Data,
+    PCFLT_RELATED_OBJECTS Objects, _Outptr_result_maybenull_ PVOID *MutatingIoContext)
 {
     PFLT_FILE_NAME_INFORMATION name = NULL;
     ULONG code;
@@ -2955,14 +2951,19 @@ static FLT_PREOP_CALLBACK_STATUS StageUnownedMutatingFsctl(PFLT_CALLBACK_DATA Da
     BOOLEAN unresolved = TRUE;
     FLT_FILESYSTEM_TYPE fs;
     SAFEUPLOAD_VOLUME_KIND kind;
+    BOOLEAN trackedWriter = FALSE;
     NTSTATUS status;
 
+    *MutatingIoContext = NULL;
     if (Data->Iopb->MinorFunction != IRP_MN_USER_FS_REQUEST) return FLT_PREOP_SUCCESS_NO_CALLBACK;
     code = Data->Iopb->Parameters.FileSystemControl.Common.FsControlCode;
     if (!StageMutatingFsctl(code)) return FLT_PREOP_SUCCESS_NO_CALLBACK;
-    if (SafeUploadStageWritersIsTrackedWriter(Objects->Instance, Objects->FileObject))
-        return FLT_PREOP_SUCCESS_NO_CALLBACK;
+    if (FlagOn(Data->Iopb->IrpFlags, IRP_PAGING_IO)) return FLT_PREOP_SUCCESS_NO_CALLBACK;
     if (FLT_IS_FASTIO_OPERATION(Data)) return FLT_PREOP_DISALLOW_FASTIO;            /* retried as an IRP */
+    (VOID)SafeUploadStageWritersBeginMutatingIo(Objects->Instance, Objects->FileObject,
+        MutatingIoContext, &trackedWriter);
+    if (trackedWriter)
+        return FLT_PREOP_SUCCESS_NO_CALLBACK;
     ancestors = StageReparseFsctl(code);
 
     if (KeGetCurrentIrql() == PASSIVE_LEVEL && IoGetTopLevelIrp() == NULL &&
@@ -3272,46 +3273,110 @@ static FLT_PREOP_CALLBACK_STATUS StageDispatchCore(PFLT_CALLBACK_DATA Data,
         }
 #endif
         if (!FlagOn(Data->Iopb->IrpFlags, IRP_PAGING_IO)) {
-            result = StagePhysicalMutation(Data, Objects);
-            if (result != FLT_PREOP_SUCCESS_NO_CALLBACK) return result;
-            return SafeUploadPreWrite(Data, Objects, CompletionContext);
+            PVOID mutatingIoContext = NULL;
+            PVOID legacyContext = NULL;
+            BOOLEAN trackedWriter = FALSE;
+            if (FLT_IS_FASTIO_OPERATION(Data)) return FLT_PREOP_DISALLOW_FASTIO;
+            (VOID)SafeUploadStageWritersBeginMutatingIo(Objects->Instance, Objects->FileObject,
+                &mutatingIoContext, &trackedWriter);
+            result = StagePhysicalMutationEx(Data, Objects, FALSE, trackedWriter);
+            if (result != FLT_PREOP_SUCCESS_NO_CALLBACK) {
+                SafeUploadStageWritersEndMutatingIo(mutatingIoContext);
+                return result;
+            }
+            result = SafeUploadPreWrite(Data, Objects, &legacyContext);
+            if (result != FLT_PREOP_SUCCESS_NO_CALLBACK) {
+                SafeUploadStageWritersEndMutatingIo(mutatingIoContext);
+                return result;
+            }
+            *CompletionContext = mutatingIoContext != NULL ? mutatingIoContext : legacyContext;
+            return *CompletionContext != NULL ? FLT_PREOP_SUCCESS_WITH_CALLBACK : result;
         }
         break;
     case IRP_MJ_SET_INFORMATION:
         {
         PVOID registryRenameContext = NULL;
-        result = StageExternalRename(Data, Objects, &registryRenameContext);
-        if (result != FLT_PREOP_SUCCESS_NO_CALLBACK) return result;
-        if (Data->Iopb->Parameters.SetFileInformation.FileInformationClass != FilePositionInformation) {
+        PVOID mutatingIoContext = NULL;
+        PVOID legacyContext = NULL;
+        FILE_INFORMATION_CLASS cls = Data->Iopb->Parameters.SetFileInformation.FileInformationClass;
+        BOOLEAN trackedWriter = FALSE;
+        if (FlagOn(Data->Iopb->IrpFlags, IRP_PAGING_IO))
+            return FLT_PREOP_SUCCESS_NO_CALLBACK;
+        if (cls != FilePositionInformation && FLT_IS_FASTIO_OPERATION(Data))
+            return FLT_PREOP_DISALLOW_FASTIO;
+        if (cls != FilePositionInformation)
+            (VOID)SafeUploadStageWritersBeginMutatingIo(Objects->Instance, Objects->FileObject,
+                &mutatingIoContext, &trackedWriter);
+        result = StageExternalRename(Data, Objects, trackedWriter, &registryRenameContext);
+        if (result != FLT_PREOP_SUCCESS_NO_CALLBACK) {
+            SafeUploadStageWritersEndMutatingIo(mutatingIoContext);
+            return result;
+        }
+        if (cls != FilePositionInformation) {
             /* Publication rename is checked/consumed by StageExternalRename. */
-            FILE_INFORMATION_CLASS cls = Data->Iopb->Parameters.SetFileInformation.FileInformationClass;
             if (cls != FileRenameInformation && cls != FileRenameInformationEx &&
                 cls != FileLinkInformation && cls != FileLinkInformationEx) {
-                result = StagePhysicalMutationEx(Data, Objects, TRUE);
-                if (result != FLT_PREOP_SUCCESS_NO_CALLBACK) return result;
+                result = StagePhysicalMutationEx(Data, Objects, TRUE, trackedWriter);
+                if (result != FLT_PREOP_SUCCESS_NO_CALLBACK) {
+                    SafeUploadStageWritersEndMutatingIo(mutatingIoContext);
+                    SafeUploadStageWritersCompleteRename(Objects->Instance,
+                        registryRenameContext, FALSE, FALSE);
+                    return result;
+                }
             }
         }
-        *CompletionContext = NULL;
-        result = SafeUploadPreSetInformation(Data, Objects, CompletionContext);
+        result = SafeUploadPreSetInformation(Data, Objects, &legacyContext);
 #if SAFEUPLOAD_STAGING_PROTOTYPE
         if (result != FLT_PREOP_SUCCESS_NO_CALLBACK) {
             SafeUploadStageWritersCompleteRename(Objects->Instance, registryRenameContext, FALSE, FALSE);
+            SafeUploadStageWritersEndMutatingIo(mutatingIoContext);
             return result;
         }
         if (registryRenameContext != NULL) {
+            SafeUploadStageWritersAttachMutatingIo(registryRenameContext, &mutatingIoContext);
             *CompletionContext = registryRenameContext;
             return FLT_PREOP_SUCCESS_WITH_CALLBACK;
         }
 #endif
+        *CompletionContext = mutatingIoContext != NULL ? mutatingIoContext : legacyContext;
+        if (*CompletionContext != NULL) return FLT_PREOP_SUCCESS_WITH_CALLBACK;
         return result;
         }
     case IRP_MJ_SET_EA:
     case IRP_MJ_SET_SECURITY:
-        return StagePhysicalMutation(Data, Objects);
+        {
+            PVOID mutatingIoContext = NULL;
+            BOOLEAN trackedWriter = FALSE;
+            if (FlagOn(Data->Iopb->IrpFlags, IRP_PAGING_IO))
+                return FLT_PREOP_SUCCESS_NO_CALLBACK;
+            if (FLT_IS_FASTIO_OPERATION(Data)) return FLT_PREOP_DISALLOW_FASTIO;
+            (VOID)SafeUploadStageWritersBeginMutatingIo(Objects->Instance, Objects->FileObject,
+                &mutatingIoContext, &trackedWriter);
+            result = StagePhysicalMutationEx(Data, Objects, FALSE, trackedWriter);
+            if (result != FLT_PREOP_SUCCESS_NO_CALLBACK) {
+                SafeUploadStageWritersEndMutatingIo(mutatingIoContext);
+                return result;
+            }
+            if (mutatingIoContext != NULL) {
+                *CompletionContext = mutatingIoContext;
+                return FLT_PREOP_SUCCESS_WITH_CALLBACK;
+            }
+            return result;
+        }
     case IRP_MJ_FILE_SYSTEM_CONTROL:
 #if SAFEUPLOAD_STAGING_PROTOTYPE
-        result = StageUnownedMutatingFsctl(Data, Objects);
-        if (result != FLT_PREOP_SUCCESS_NO_CALLBACK) return result;
+        {
+            PVOID mutatingIoContext = NULL;
+            result = StageUnownedMutatingFsctl(Data, Objects, &mutatingIoContext);
+            if (result != FLT_PREOP_SUCCESS_NO_CALLBACK) {
+                SafeUploadStageWritersEndMutatingIo(mutatingIoContext);
+                return result;
+            }
+            if (mutatingIoContext != NULL) {
+                *CompletionContext = mutatingIoContext;
+                return FLT_PREOP_SUCCESS_WITH_CALLBACK;
+            }
+        }
 #endif
         break;
     case IRP_MJ_ACQUIRE_FOR_SECTION_SYNCHRONIZATION:
@@ -3331,7 +3396,7 @@ static FLT_PREOP_CALLBACK_STATUS StageDispatchCore(PFLT_CALLBACK_DATA Data,
             }
             StageTraceWritableCreateSection(Data, Objects);
         } else {
-            SafeUploadStageSectionReleasePrepare(Data, &sectionInFlight);
+            SafeUploadStageSectionReleasePrepare(Data, Objects->Instance, &sectionInFlight);
         }
         {
             LONG traceState = SafeUploadAdmissionTraceControlState;
@@ -3438,7 +3503,7 @@ static FLT_POSTOP_CALLBACK_STATUS StagePostOperationCore(PFLT_CALLBACK_DATA Data
         } else if (!NT_SUCCESS(Data->IoStatus.Status)) {
             /* The acquire failed below us: no release follows, so drop the in-flight entry here. */
             SafeUploadStageSectionAcquireFailed(CompletionContext);
-        }
+        } else SafeUploadStageSectionAcquireComplete(CompletionContext);
         return FLT_POSTOP_FINISHED_PROCESSING;
     }
     if (Data->Iopb->MajorFunction == IRP_MJ_SET_INFORMATION &&
@@ -3446,6 +3511,16 @@ static FLT_POSTOP_CALLBACK_STATUS StagePostOperationCore(PFLT_CALLBACK_DATA Data
         SafeUploadStageWritersCompleteRename(Objects->Instance, CompletionContext,
             !FlagOn(Flags, FLTFL_POST_OPERATION_DRAINING) && Data->IoStatus.Status == STATUS_SUCCESS,
             FlagOn(Flags, FLTFL_POST_OPERATION_DRAINING));
+        return FLT_POSTOP_FINISHED_PROCESSING;
+    }
+    if ((Data->Iopb->MajorFunction == IRP_MJ_WRITE ||
+         Data->Iopb->MajorFunction == IRP_MJ_SET_INFORMATION ||
+         Data->Iopb->MajorFunction == IRP_MJ_SET_EA ||
+         Data->Iopb->MajorFunction == IRP_MJ_SET_SECURITY ||
+         Data->Iopb->MajorFunction == IRP_MJ_FILE_SYSTEM_CONTROL) &&
+        SafeUploadStageWritersIsMutatingIoContext(CompletionContext)) {
+        /* Includes ordinary success/failure and POST_OPERATION_DRAINING. */
+        SafeUploadStageWritersEndMutatingIo(CompletionContext);
         return FLT_POSTOP_FINISHED_PROCESSING;
     }
     if (Data->Iopb->MajorFunction == IRP_MJ_RELEASE_FOR_SECTION_SYNCHRONIZATION) {

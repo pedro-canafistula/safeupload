@@ -388,3 +388,11 @@ falsify the Phase 3 cutoff mechanism; the harness must test it, never reinterpre
   gate), so the boot-safety invariant holds by construction. A file held open forever stays Activating and is reported. Unknown SOP
   markers from overflow are pruned once their SOP is quiescent; while any marker on an instance is live and not provably out of scope,
   promotion on that instance waits.
+- **2026-10-05 review 4 disposition (source changes; VM qualification pending):** add per-entry W rundown for tracked nonpaging
+  mutating IRPs and require W=0 in final promotion serialization; classify live overflow SOP markers by file ID, all hard-link names,
+  ADS suffix, and current/pending/boot union; retain exact per-acquire section spill records so capacity state clears after matching
+  failure/release and stream quiescence. If there is no stable file identity or an exact completion record cannot be retained, keep
+  fail-safe Unknown sticky because scope/recovery cannot be proved; accepted availability limit. No paging I/O refusal is introduced.
+  Required VM cases: cleanup racing a pending noncached write, mutating SET_INFORMATION/FSCTL completion, in-scope/out-of-scope/
+  undecidable overflow markers across a policy change, ADS and hard-link marker classification, and section spill acquire failure,
+  release, marker binding, and identityless/allocation-loss fallback.
