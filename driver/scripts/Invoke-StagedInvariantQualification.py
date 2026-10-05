@@ -349,6 +349,33 @@ def validate_service_artifacts(result, destination, guest_root):
                 if 'Entry' in record:
                     require(json.loads(artifact.read_text('utf-8-sig')) == record['Entry'], 'Journal JSON differs from retained bytes')
 
+            notifications = snapshot.get('Notifications') or {}
+            if notifications.get('LocationStatus') == 'OK' and notifications.get('DirectoryExists'):
+                for file in notifications.get('LocationFiles', []):
+                    if file['Name'] == 'writer.lock':
+                        require(file.get('Bytes') == [], 'Notification writer lock bytes mismatch')
+                        continue
+                    matches = [r for r in notifications.get('Artifacts', []) if r.get('Name') == file['Name']]
+                    require(len(matches) == 1, 'Notification location bytes lack unique retained artifact')
+                    relative = matches[0]['Artifact'][len(guest_root):].replace('\\', '/')
+                    require(list((destination / relative).read_bytes()) == file.get('Bytes'),
+                            'Notification location bytes differ from retained artifact')
+
+        absence = (trial.get('ServiceEvidence') or {}).get('AgentAbsenceProof') or {}
+        for name in ('SystemLog', 'SecurityLog'):
+            record = absence.get(name) or {}
+            if not record.get('Artifact'):
+                continue
+            path = record['Artifact']
+            require(path.startswith(guest_root), 'Agent absence evidence outside owned guest evidence root')
+            relative = path[len(guest_root):].replace('\\', '/')
+            require('..' not in relative.split('/') and not relative.startswith('/'), 'Invalid agent absence artifact path')
+            artifact = destination / relative
+            require(artifact.stat().st_size == record['Length'] and sha(artifact) == record['Sha256'],
+                    'Copied agent absence evidence hash/length mismatch')
+            require(json.loads(artifact.read_text('utf-8-sig')) == record['Xmls'],
+                    'Agent absence event XML differs from retained bytes')
+
 
 def case_gate(result, case, mode, name, params):
     require(result.get('Schema') == 'StagedInvariantSuite/2' and result.get('CaseId') == case and result.get('Mode') == mode

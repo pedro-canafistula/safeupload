@@ -17,7 +17,7 @@ function Import-EvaluationFunctions([string]$File,[string[]]$Names) {
     }
 }
 Import-EvaluationFunctions (Join-Path $PSScriptRoot 'StagedInvariantObserver.psm1') @('New-IORecord','New-IOAssertion','Test-InvariantCadence','Test-InvariantMetadata','Test-InvariantExternalCoverage')
-Import-EvaluationFunctions (Join-Path $PSScriptRoot 'Test-StagedInvariantSuite.ps1') @('Wait-WriterIdentity','Get-ExpectedCheckpoint','Test-ServiceJournalStateReachable','Assert-ServiceManifestPath','ConvertFrom-ServiceJournalRecord','Test-ServiceJournalDelta','Get-ServiceDestinationPaths','Test-ServiceFixtureEntry','ConvertFrom-NotificationRecord','Test-NotificationWindow','Get-ServiceTimeline')
+Import-EvaluationFunctions (Join-Path $PSScriptRoot 'Test-StagedInvariantSuite.ps1') @('Wait-WriterIdentity','Get-ExpectedCheckpoint','Test-ServiceJournalStateReachable','Assert-ServiceManifestPath','ConvertFrom-ServiceJournalRecord','Test-ServiceJournalDelta','Get-ServiceDestinationPaths','Test-ServiceFixtureEntry','ConvertFrom-NotificationRecord','Test-NotificationWindow','ConvertFrom-AgentEventXml','Test-AgentLogContinuity','Read-AgentLogWindow','Test-NotificationLocationUnchanged','Test-AgentDidNotRun','Get-ServiceTimeline')
 $script:checks=0
 function Check([bool]$Condition,[string]$Message){if(-not $Condition){throw $Message};$script:checks++}
 function Clone($Value){return ($Value | ConvertTo-Json -Depth 32 | ConvertFrom-Json)}
@@ -111,6 +111,10 @@ Check ((Test-InvariantExternalCoverage $baseline $bad -SyntheticRun).Verdict -eq
 # Mock only transport for pure service expectation evaluation.
 function Save-State($Value,[string]$Path){}
 function Get-WinEvent {param($LogName,$FilterXPath) if($FilterXPath -match 'Provider'){return};$a=[pscustomobject]@{};$a | Add-Member ScriptMethod ToXml {'anchor'};return $a}
+function Read-AgentLogWindow($Before,$After,[string]$Name) {
+    if($null -ne $script:absenceLogs){return $script:absenceLogs.$Name}
+    return [pscustomobject]@{Status='INCONCLUSIVE';Reason='Synthetic log evidence missing.';Xmls=@()}
+}
 $script:evidenceDirectory=$PSScriptRoot;$script:protectedDirectory='C:\fixture'
 $script:row.JournalExpectations=@('NoNewTransfer','NoApproved','NoReleased');$script:row.NotificationExpectations=@('NoApproval','NoRelease','NoHandBack')
 $before=[pscustomobject]@{Status='OK';BootId=$boot;QpcFrequency=$frequency;StartQpc=0;EndQpc=10;Journal=@();Application=@{Status='OK';OldestRecordId=1;NewestRecordId=5;NewestXml='anchor'}}
@@ -280,4 +284,124 @@ Check ((Test-NotificationWindow $rb $ra $fence $true).Complete) 'Announced rotat
 $segments[0].Bytes=[Text.Encoding]::UTF8.GetBytes(($lines[2..4] -join "`n").Replace('"Kind":"Rotation"','"Kind":"Heartbeat"')+"`n")
 $refused=$false;try{$null=ConvertFrom-NotificationRecord $segments $headBytes}catch{$refused=$true}
 Check $refused 'Silent rotation prefix loss must be refused.'
+# Synthetic whole-window agent absence. Edge process samples alone, stopped SCM
+# state alone, empty provider queries and absent directories never suffice.
+function Make-AgentXml([string]$Channel,[long]$RecordId,[int]$Id=1,[string]$Provider='fixture',[string]$Data='') {
+    return '<Event xmlns="http://schemas.microsoft.com/win/2004/08/events/event"><System><Provider Name="'+$Provider+'"/><EventID>'+$Id+'</EventID><EventRecordID>'+$RecordId+'</EventRecordID><Channel>'+$Channel+'</Channel></System><EventData>'+$Data+'</EventData></Event>'
+}
+function Make-AgentLog([string]$Name) {
+    $xmls=@(101..103 | ForEach-Object {Make-AgentXml $Name $_})
+    return [pscustomobject]@{Status='OK';Name=$Name;Xmls=$xmls;Reason='Synthetic complete log.';
+        Before=[pscustomobject]@{Status='OK';StartQpc=1;EndQpc=2;NewestRecordId=101;OldestRecordId=1;NewestXml=$xmls[0]};
+        After=[pscustomobject]@{Status='OK';StartQpc=3006;EndQpc=3007;NewestRecordId=103;OldestRecordId=1;NewestXml=$xmls[2]}}
+}
+$script:absenceLogs=@{System=(Make-AgentLog 'System');Security=(Make-AgentLog 'Security')}
+$downBefore=Clone $before;$downAfter=Clone $after;$downAfter.Notifications=$null
+$execution=[pscustomobject]@{Status='OK';BootId=$boot;EndBootId=$boot;QpcFrequency=$frequency;StartQpc=1;EndQpc=8;InventoryStartQpc=3;InventoryEndQpc=5;
+    Errors=@();CollectedByPid=100;ServiceSid='S-1-5-80-1-2-3-4-5';ImagePaths=@('C:\installed\SafeUpload.Agent.Service.exe','C:\seed\SafeUpload.Agent.Service.exe');
+    Service=[pscustomobject]@{Name='SafeUploadAgent';DisplayName='SafeUpload Agent';State='Stopped';ProcessId=0;PathName='"C:\installed\SafeUpload.Agent.Service.exe"';StartMode='Disabled'};
+    Audit=[pscustomobject]@{CreationFlags=1;PerUserPolicyCount=0};Processes=@([pscustomobject]@{Pid=100;Image='C:\Windows\System32\powershell.exe';TokenSids=@('S-1-5-18','S-1-5-32-544')});
+    SystemBegin=$script:absenceLogs.System.Before;SecurityBegin=$script:absenceLogs.Security.Before}
+$downBefore | Add-Member NoteProperty AgentExecution $execution -Force
+$endExecution=Clone $execution;$endExecution.StartQpc=3001;$endExecution.EndQpc=3008;$endExecution.InventoryStartQpc=3003;$endExecution.InventoryEndQpc=3005
+$endExecution | Add-Member NoteProperty SystemEnd $script:absenceLogs.System.After
+$endExecution | Add-Member NoteProperty SecurityEnd $script:absenceLogs.Security.After
+$downAfter | Add-Member NoteProperty AgentExecution $endExecution -Force
+$location=[pscustomobject]@{Status='INCONCLUSIVE';LocationStatus='OK';BootId=$boot;QpcFrequency=$frequency;Directory='C:\ProgramData\SafeUpload\notifications';DirectoryExists=$false;
+    ReadQpc=9;Reason='Authenticated notification directory absent.';LocationFiles=@();Entries=@()}
+$downBefore.Notifications=$location;$downAfter.Notifications=Clone $location;$downAfter.Notifications.ReadQpc=3009
+$script:row.NotificationExpectations=@('ExpectedNone','NoApproval','NoRelease','NoHandBack','NoNotification','None')
+$none=Get-ServiceTimeline $downBefore $downAfter $fence
+Check ($none.AgentAbsenceProof.Complete -and $none.NotificationLocationProof.Complete) 'Whole-window stopped/no-process evidence and absent locations support absence.'
+Check (@($none.Assertions | Where-Object {$_.Name -eq 'NotificationExpectation' -and $_.Verdict -eq 'PASS' -and $_.Reason -ceq 'agent did not run in window'}).Count -eq 6) 'Every supported negative reports the exact agent-did-not-run reason.'
+# Stale/malformed record bytes can be unchanged without durable current-boot coverage.
+$staleBefore=Clone $downBefore;$staleAfter=Clone $downAfter
+foreach($snapshot in @($staleBefore,$staleAfter)){
+    $snapshot.Notifications.DirectoryExists=$true;$snapshot.Notifications.LocationFiles=@(@{Name='emissions.jsonl';Bytes=[byte[]](1,2,3)},@{Name='head.json';Bytes=[byte[]](4,5)})
+}
+Check ((Get-ServiceTimeline $staleBefore $staleAfter $fence).NotificationProof.Complete) 'Byte-identical authenticated stale location plus agent absence supports absence.'
+$staleAfter.Notifications.LocationFiles[0].Bytes=[byte[]](1,2,4)
+Check (-not (Get-ServiceTimeline $staleBefore $staleAfter $fence).NotificationProof.Complete) 'Changed record bytes defeat absence even if SCM stayed stopped.'
+foreach($fault in @('missing','partial','running','image','sid','restricted','unreadable','audit','override','boot','endboot','frequency','before-edge','after-edge','location','location-boot','location-qpc','appeared','location-path','null-receipt','identity','empty','writer-record','inventory-receipt','inventory-order')){
+    $b=Clone $downBefore;$a=Clone $downAfter
+    switch($fault){
+        'missing' {$b.AgentExecution=$null}
+        'partial' {$b.AgentExecution.Status='INCONCLUSIVE';$b.AgentExecution.Errors=@('PID 44 access denied')}
+        'running' {$a.AgentExecution.Service.State='Running';$a.AgentExecution.Service.ProcessId=55}
+        'image' {$b.AgentExecution.Processes[0].Image=$b.AgentExecution.ImagePaths[0]}
+        'sid' {$a.AgentExecution.Processes[0].TokenSids+= $a.AgentExecution.ServiceSid}
+        'restricted' {$b.AgentExecution.Processes[0].TokenSids=@($b.AgentExecution.ServiceSid)}
+        'unreadable' {$b.AgentExecution.Processes[0].TokenSids=@()}
+        'audit' {$b.AgentExecution.Audit.CreationFlags=0}
+        'override' {$a.AgentExecution.Audit.PerUserPolicyCount=1}
+        'boot' {$b.AgentExecution.BootId='other'}
+        'endboot' {$a.AgentExecution.EndBootId='other'}
+        'frequency' {$a.AgentExecution.QpcFrequency=7}
+        'before-edge' {$b.AgentExecution.EndQpc=$fence.ReleasedQpc+1}
+        'after-edge' {$a.AgentExecution.StartQpc=$fence.CompletedQpc-1}
+        'location' {$a.Notifications.LocationStatus='INCONCLUSIVE';$a.Notifications.Reason='Parent ACL rejected'}
+        'location-boot' {$a.Notifications.BootId='other'}
+        'location-qpc' {$b.Notifications.ReadQpc=$fence.ReleasedQpc+1}
+        'appeared' {$a.Notifications.DirectoryExists=$true}
+        'location-path' {$a.Notifications.Directory='C:\other'}
+        'null-receipt' {$a.AgentExecution.EndQpc=$null}
+        'identity' {$a.AgentExecution.ImagePaths[0]='C:\changed.exe'}
+        'empty' {$b.AgentExecution.Processes=@()}
+        'inventory-receipt' {$b.AgentExecution.InventoryEndQpc=$null}
+        'inventory-order' {$a.AgentExecution.InventoryStartQpc=$a.AgentExecution.InventoryEndQpc+1}
+        'writer-record' {$a.Notifications.Entries=@(@{Entry=@{BootId=$boot;QpcFrequency=$frequency;Qpc=1000;Sequence=7}})}
+    }
+    $result=Get-ServiceTimeline $b $a $fence
+    Check (-not $result.NotificationProof.Complete -and @($result.Assertions | Where-Object {$_.Name -eq 'NotificationExpectation' -and $_.Verdict -eq 'INCONCLUSIVE'}).Count -eq 6) ('Agent absence '+$fault+' must stay INCONCLUSIVE.')
+    if($fault -eq 'partial'){Check ($result.NotificationProof.Reason -like '*PID 44 access denied*') 'Exact inventory failure must reach the notification assertion.'}
+}
+foreach($fault in @('gap','duplicate','tail','clear104','clear1102','drop1101','policy4719','token4696','scm7036','scm7045','scm7040','agent-create','other-create','anchor','wrap','log-missing','edge','channel','scm-identity','log-stop','audit-stop','full','error')){
+    $savedLogs=$script:absenceLogs;$script:absenceLogs=Clone $savedLogs
+    $name='System';$id=1;$provider='fixture';$data=''
+    switch($fault){
+        'gap' {$script:absenceLogs.System.Xmls=@($script:absenceLogs.System.Xmls[0],$script:absenceLogs.System.Xmls[2])}
+        'duplicate' {$script:absenceLogs.System.Xmls[1]=$script:absenceLogs.System.Xmls[0]}
+        'tail' {$script:absenceLogs.Security.Xmls=@($script:absenceLogs.Security.Xmls[0..1])}
+        'clear104' {$id=104;$provider='Microsoft-Windows-Eventlog'}
+        'clear1102' {$name='Security';$id=1102;$provider='Microsoft-Windows-Eventlog'}
+        'drop1101' {$name='Security';$id=1101;$provider='Microsoft-Windows-Eventlog'}
+        'policy4719' {$name='Security';$id=4719;$provider='Microsoft-Windows-Security-Auditing'}
+        'log-stop' {$id=6006;$provider='EventLog'}
+        'audit-stop' {$name='Security';$id=1100;$provider='Microsoft-Windows-Eventlog'}
+        'full' {$name='Security';$id=1104;$provider='Microsoft-Windows-Eventlog'}
+        'error' {$name='Security';$id=1108;$provider='Microsoft-Windows-Eventlog'}
+        'token4696' {$name='Security';$id=4696;$provider='Microsoft-Windows-Security-Auditing'}
+        'scm7036' {$id=7036;$provider='Service Control Manager';$data='<Data Name="param1">SafeUpload Agent</Data><Data Name="param2">running</Data>'}
+        'scm7045' {$id=7045;$provider='Service Control Manager';$data='<Data Name="ServiceName">SafeUploadAgent</Data>'}
+        'scm7040' {$id=7040;$provider='Service Control Manager';$data='<Data Name="param1">SafeUpload Agent</Data>'}
+        'scm-identity' {$id=7036;$provider='Service Control Manager'}
+        'agent-create' {$name='Security';$id=4688;$provider='Microsoft-Windows-Security-Auditing';$data='<Data Name="NewProcessName">C:\installed\SafeUpload.Agent.Service.exe</Data>'}
+        'other-create' {$name='Security';$id=4688;$provider='Microsoft-Windows-Security-Auditing';$data='<Data Name="NewProcessName">C:\Windows\System32\benign.exe</Data>'}
+        'anchor' {$script:absenceLogs.System.Before.NewestXml='changed'}
+        'wrap' {$script:absenceLogs.System.After.OldestRecordId=102}
+        'log-missing' {$script:absenceLogs.Security.Status='INCONCLUSIVE';$script:absenceLogs.Security.Reason='Security read access denied'}
+        'edge' {$script:absenceLogs.System.Before.EndQpc=99}
+        'channel' {$script:absenceLogs.System.Xmls[1]=Make-AgentXml 'Application' 102}
+    }
+    if($id -ne 1){$script:absenceLogs.$name.Xmls[1]=Make-AgentXml $name 102 $id $provider $data}
+    # Use unchanged snapshot anchors, so a forged/new proof cannot rebind them.
+    $result=Get-ServiceTimeline $downBefore $downAfter $fence
+    Check (-not $result.NotificationProof.Complete) ('Agent absence log '+$fault+' must defeat proof.')
+    if($fault -eq 'other-create'){Check ($result.NotificationProof.Reason -like '*4688 lacks token group/restricted service-SID evidence*') 'Benign image names must not exempt unknown transient token SIDs.'}
+    if($fault -eq 'agent-create'){Check ($result.NotificationProof.Reason -like '*Agent image/service SID process creation*') 'Positive creation evidence must identify the agent.'}
+    $script:absenceLogs=$savedLogs
+}
+$badFence=Clone $fence;$badFence.Complete=$false
+Check (-not (Get-ServiceTimeline $downBefore $downAfter $badFence).NotificationProof.Complete) 'Agent absence cannot waive a missing case fence.'
+$script:row.NotificationExpectations=@('Unsupported')
+Check (@((Get-ServiceTimeline $downBefore $downAfter $fence).Assertions | Where-Object {$_.Name -eq 'NotificationExpectation' -and $_.Verdict -eq 'INCONCLUSIVE'}).Count -eq 1) 'Agent absence must not approve unsupported expectations.'
+# Even perfect stopped-edge evidence cannot suppress a real covered emission.
+$script:row.NotificationExpectations=@('ExpectedNone')
+$coveredBefore=Clone $downBefore;$coveredAfter=Clone $downAfter;$coveredBefore.Notifications=$nb;$coveredAfter.Notifications=$changed
+# $changed may be a damaged chain from the negative loop; restore positive bytes.
+$coveredAfter.Notifications=[pscustomobject]@{Status='OK';BootId=$boot;QpcFrequency=$frequency;Entries=$parsedPositive.Entries;Head=$parsedPositive.Head}
+$covered=Get-ServiceTimeline $coveredBefore $coveredAfter $fence
+Check ($null -eq $covered.AgentAbsenceProof -and @($covered.Assertions | Where-Object {$_.Name -eq 'NotificationExpectation' -and $_.Verdict -eq 'FAIL'}).Count -eq 1) 'Covered durable emissions keep their existing contradiction rule unchanged.'
+$script:absenceLogs=$null
+
 'ProofAdapterEvaluationChecks='+$script:checks+';PASS (host-safe synthetic evaluation and identity publication only)'

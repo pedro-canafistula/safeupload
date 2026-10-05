@@ -139,5 +139,47 @@ class ProofTests(unittest.TestCase):
                 Q.validate_service_artifacts(result, root, 'guest\\')
 
 
+    def test_notification_location_bytes_bound_to_artifact(self):
+        with tempfile.TemporaryDirectory(prefix='notification-location-proof-', dir='/tmp') as directory:
+            root = Path(directory)
+            artifact = root / 'notifications-before-head.json'
+            artifact.write_bytes(b'stale bytes')
+            record = {'Artifact': 'guest\\' + artifact.name, 'Length': artifact.stat().st_size,
+                      'Sha256': Q.sha(artifact), 'Name': 'head.json'}
+            location = {'Name': 'head.json', 'Bytes': list(artifact.read_bytes())}
+            snapshot = {'Notifications': {'LocationStatus': 'OK', 'DirectoryExists': True,
+                        'Artifacts': [record], 'LocationFiles': [location, {'Name': 'writer.lock', 'Bytes': []}]}}
+            result = {'Trials': [{'ServiceBefore': snapshot}]}
+            Q.validate_service_artifacts(result, root, 'guest\\')
+            location['Bytes'] = list(b'forged bytes')
+            with self.assertRaisesRegex(RuntimeError, 'location bytes differ'):
+                Q.validate_service_artifacts(result, root, 'guest\\')
+            location['Bytes'] = list(artifact.read_bytes())
+            snapshot['Notifications']['LocationFiles'][1]['Bytes'] = [1]
+            with self.assertRaisesRegex(RuntimeError, 'writer lock bytes mismatch'):
+                Q.validate_service_artifacts(result, root, 'guest\\')
+
+    def test_agent_absence_raw_xml_bound_to_artifact(self):
+        with tempfile.TemporaryDirectory(prefix='agent-absence-proof-', dir='/tmp') as directory:
+            root = Path(directory)
+            artifact = root / 'agent-absence-System.json'
+            xmls = ['<Event>SCM anchor</Event>', '<Event>SCM record</Event>']
+            artifact.write_text(json.dumps(xmls))
+            record = {'Artifact': 'guest\\' + artifact.name, 'Length': artifact.stat().st_size,
+                      'Sha256': Q.sha(artifact), 'Xmls': xmls}
+            result = {'Trials': [{'ServiceEvidence': {'AgentAbsenceProof': {'SystemLog': record}}}]}
+            Q.validate_service_artifacts(result, root, 'guest\\')
+            record['Xmls'] = ['<Event>forged projection</Event>']
+            with self.assertRaisesRegex(RuntimeError, 'event XML differs'):
+                Q.validate_service_artifacts(result, root, 'guest\\')
+            record['Xmls'] = xmls
+            artifact.write_text('[]')
+            with self.assertRaisesRegex(RuntimeError, 'hash/length mismatch'):
+                Q.validate_service_artifacts(result, root, 'guest\\')
+            record['Artifact'] = 'guest\\..\\outside.json'
+            with self.assertRaisesRegex(RuntimeError, 'Invalid agent absence artifact path'):
+                Q.validate_service_artifacts(result, root, 'guest\\')
+
+
 if __name__ == '__main__':
     unittest.main()

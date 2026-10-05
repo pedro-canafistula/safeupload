@@ -640,7 +640,7 @@ function Get-NotificationSnapshot([string]$Tag,[string]$BootId,[long]$MinimumQpc
     $deadline=[DateTime]::UtcNow.AddSeconds(4);$reason='Notification record unavailable.'
     do {
         $held=@()
-        $snapshot=[ordered]@{Status='INCONCLUSIVE';Directory=$directory;DirectoryExists=$null;ChildNames=@();Objects=@();
+        $snapshot=[ordered]@{Status='INCONCLUSIVE';LocationStatus='INCONCLUSIVE';LocationFiles=@();Directory=$directory;DirectoryExists=$null;ChildNames=@();Objects=@();
             BootId=$BootId;QpcFrequency=[Diagnostics.Stopwatch]::Frequency;MinimumQpc=$MinimumQpc;ReadQpc=$null;
             Entries=@();Head=$null;Artifacts=@();Errors=@();Reason=$reason}
         try {
@@ -656,6 +656,7 @@ function Get-NotificationSnapshot([string]$Tag,[string]$BootId,[long]$MinimumQpc
             # The seed-only product invocation does not initialize this writer.
             $snapshot.DirectoryExists=Test-Path -LiteralPath $directory -ErrorAction Stop
             if(-not $snapshot.DirectoryExists){
+                $snapshot.LocationStatus='OK'
                 $snapshot.Reason='Authenticated notification directory absent: '+$directory+'. No durable emission coverage; --seed-boot-policy does not start the notification writer and seed trials require the agent down.'
                 $snapshot.ReadQpc=[Diagnostics.Stopwatch]::GetTimestamp()
                 return [pscustomobject]$snapshot
@@ -671,24 +672,30 @@ function Get-NotificationSnapshot([string]$Tag,[string]$BootId,[long]$MinimumQpc
             }
             if(([SUProofFile]::Read($files['writer.lock'],1)).Length -ne 0){throw 'Invalid notification writer lease.'}
             $segments=@();$headBytes=$null;$copies=@()
+            $snapshot.LocationFiles=@(@{Name='writer.lock';Bytes=[byte[]]@()})
             foreach($name in @('previous.jsonl','emissions.jsonl','head.json')){
                 if(-not $files.ContainsKey($name)){continue}
                 $bound=if($name -ceq 'head.json'){4096}else{4194304}
                 $bytes=[SUProofFile]::Read($files[$name],$bound)
                 $artifact=Join-Path $evidenceDirectory ('notifications-'+$Tag+'-'+$name)
-                $copies+=@{Path=$artifact;Bytes=$bytes}
+                $copies+=@{Name=$name;Path=$artifact;Bytes=$bytes}
+                $snapshot.LocationFiles+=@{Name=$name;Bytes=$bytes}
                 if($name -ceq 'head.json'){$headBytes=$bytes}else{$segments+=@{Bytes=$bytes;Artifact=$artifact}}
             }
-            $record=ConvertFrom-NotificationRecord $segments $headBytes
-            $tail=$record.Entries[$record.Entries.Count-1].Entry
+            # Authenticate the complete raw location independently of durable coverage.
+            $afterNames=@(Get-ChildItem -LiteralPath $directory -Force -ErrorAction Stop | Select-Object -ExpandProperty Name | Sort-Object)
+            if((@($names | Sort-Object) -join '|') -cne ($afterNames -join '|')){throw 'Notification location inventory changed during read.'}
             # Retain authenticated stale records too. Missing current-boot
             # coverage is an evaluation failure, not a reason to discard bytes.
             foreach($copy in $copies){
                 $stream=[IO.File]::Open($copy.Path,[IO.FileMode]::Create,[IO.FileAccess]::Write,[IO.FileShare]::Read)
                 try{$stream.Write($copy.Bytes,0,$copy.Bytes.Length);$stream.Flush($true)}finally{$stream.Dispose()}
-                $snapshot.Artifacts+=@{Artifact=$copy.Path;Length=$copy.Bytes.Length;Sha256=(Get-FileHash -LiteralPath $copy.Path).Hash}
+                $snapshot.Artifacts+=@{Name=$copy.Name;Artifact=$copy.Path;Length=$copy.Bytes.Length;Sha256=(Get-FileHash -LiteralPath $copy.Path).Hash}
             }
-            $snapshot.Entries=$record.Entries;$snapshot.Head=$record.Head;$snapshot.ReadQpc=[Diagnostics.Stopwatch]::GetTimestamp()
+            $snapshot.LocationStatus='OK';$snapshot.ReadQpc=[Diagnostics.Stopwatch]::GetTimestamp()
+            $record=ConvertFrom-NotificationRecord $segments $headBytes
+            $tail=$record.Entries[$record.Entries.Count-1].Entry
+            $snapshot.Entries=$record.Entries;$snapshot.Head=$record.Head
             if($tail.BootId -cne $BootId){throw ('Notification tail boot mismatch: recorded='+$tail.BootId+'; required='+$BootId+'. Agent-down seed cannot supply a current-boot heartbeat.')}
             if($tail.QpcFrequency -ne $snapshot.QpcFrequency){throw 'Notification tail QPC frequency mismatch.'}
             if($tail.Qpc -lt $MinimumQpc){throw ('Notification tail precedes snapshot fence: tailQpc='+$tail.Qpc+'; minimumQpc='+$MinimumQpc+'; tailKind='+$tail.Kind+'. Agent-down seed has no live notification writer.')}
@@ -731,6 +738,271 @@ function Test-NotificationWindow($Before,$After,$Fence,[bool]$WindowKnown) {
     }catch{return [pscustomobject]@{Complete=$false;Reason=$_.Exception.Message;Emissions=@()}}
 }
 
+# Absence is a separate proof from the durable writer's heartbeat coverage.
+# Trusted OS/SCM/audit APIs and privileged local actors are the trust boundary.
+function Initialize-AgentExecutionReader {
+    if('SUAgentExecution' -as [type]){return}
+    Add-Type -TypeDefinition @'
+using System; using System.Text; using System.Collections.Generic; using System.ComponentModel;
+using System.Runtime.InteropServices; using System.Security.Principal; using System.Security.Cryptography;
+public sealed class SUProcessProof { public int Pid; public string Image; public string[] TokenSids; }
+public static class SUAgentExecution {
+ [StructLayout(LayoutKind.Sequential)] struct SidAttributes { public IntPtr Sid; public uint Attributes; }
+ [StructLayout(LayoutKind.Sequential)] struct TokenGroups { public uint Count; public SidAttributes First; }
+ [StructLayout(LayoutKind.Sequential)] struct AuditPolicy { public Guid Subcategory; public uint Flags; public Guid Category; }
+ [DllImport("kernel32.dll",SetLastError=true)] static extern IntPtr OpenProcess(uint access,bool inherit,int pid);
+ [DllImport("kernel32.dll",CharSet=CharSet.Unicode,SetLastError=true)] static extern bool QueryFullProcessImageName(IntPtr h,uint flags,StringBuilder b,ref int n);
+ [DllImport("kernel32.dll")] static extern bool CloseHandle(IntPtr h);
+ [DllImport("advapi32.dll",SetLastError=true)] static extern bool OpenProcessToken(IntPtr h,uint access,out IntPtr token);
+ [DllImport("advapi32.dll",SetLastError=true)] static extern bool GetTokenInformation(IntPtr h,int type,IntPtr buffer,int n,out int required);
+ [DllImport("advapi32.dll",SetLastError=true)] [return:MarshalAs(UnmanagedType.U1)] static extern bool AuditQuerySystemPolicy(Guid[] categories,uint count,out IntPtr policy);
+ [DllImport("advapi32.dll",SetLastError=true)] [return:MarshalAs(UnmanagedType.U1)] static extern bool AuditEnumeratePerUserPolicy(out IntPtr users);
+ [DllImport("advapi32.dll")] static extern void AuditFree(IntPtr buffer);
+ static IntPtr TokenInfo(IntPtr t,int kind) {
+  int size; GetTokenInformation(t,kind,IntPtr.Zero,0,out size);
+  if(size<=0)throw new Win32Exception(Marshal.GetLastWin32Error());
+  IntPtr b=Marshal.AllocHGlobal(size);
+  if(!GetTokenInformation(t,kind,b,size,out size)){int e=Marshal.GetLastWin32Error();Marshal.FreeHGlobal(b);throw new Win32Exception(e);}return b;
+ }
+ public static SUProcessProof Process(int pid) {
+  IntPtr p=OpenProcess(0x1000,false,pid);if(p==IntPtr.Zero)throw new Win32Exception(Marshal.GetLastWin32Error());IntPtr t=IntPtr.Zero;
+  try {
+   var b=new StringBuilder(32768);int n=b.Capacity;if(!QueryFullProcessImageName(p,0,b,ref n))throw new Win32Exception(Marshal.GetLastWin32Error());
+   if(!OpenProcessToken(p,8,out t))throw new Win32Exception(Marshal.GetLastWin32Error());
+   var sids=new List<string>();IntPtr info=TokenInfo(t,1);
+   try{sids.Add(new SecurityIdentifier(Marshal.ReadIntPtr(info)).Value);}finally{Marshal.FreeHGlobal(info);}
+   info=TokenInfo(t,2);
+   try {
+    int count=Marshal.ReadInt32(info);int offset=(int)Marshal.OffsetOf(typeof(TokenGroups),"First");int size=Marshal.SizeOf(typeof(SidAttributes));
+    for(int i=0;i<count;i++)sids.Add(new SecurityIdentifier(Marshal.ReadIntPtr(info,offset+i*size)).Value);
+   }finally{Marshal.FreeHGlobal(info);}
+   // Include restricted SIDs as well as user/groups; disabled groups still count.
+   info=TokenInfo(t,11);
+   try {
+    int count=Marshal.ReadInt32(info);int offset=(int)Marshal.OffsetOf(typeof(TokenGroups),"First");int size=Marshal.SizeOf(typeof(SidAttributes));
+    for(int i=0;i<count;i++)sids.Add(new SecurityIdentifier(Marshal.ReadIntPtr(info,offset+i*size)).Value);
+   }finally{Marshal.FreeHGlobal(info);}
+   return new SUProcessProof{Pid=pid,Image=b.ToString(),TokenSids=sids.ToArray()};
+  }finally{if(t!=IntPtr.Zero)CloseHandle(t);CloseHandle(p);}
+ }
+ public static string ServiceSid(string name) {
+  using(var sha=SHA1.Create()) {byte[] h=sha.ComputeHash(Encoding.Unicode.GetBytes(name.ToUpperInvariant()));string sid="S-1-5-80";for(int i=0;i<5;i++)sid+="-"+BitConverter.ToUInt32(h,i*4);return sid;}
+ }
+ public static uint[] Audit() {
+  IntPtr p; Guid[] g={new Guid("0cce922b-69ae-11d9-bed3-505054503030")}; // Process Creation, including 4696.
+  if(!AuditQuerySystemPolicy(g,1,out p))throw new Win32Exception(Marshal.GetLastWin32Error());uint flags;
+  try{flags=((AuditPolicy)Marshal.PtrToStructure(p,typeof(AuditPolicy))).Flags;}finally{AuditFree(p);}
+  if(!AuditEnumeratePerUserPolicy(out p))throw new Win32Exception(Marshal.GetLastWin32Error());
+  try{return new uint[]{flags,(uint)Marshal.ReadInt32(p)};}finally{AuditFree(p);}
+ }
+}
+'@
+}
+function Get-AgentLogAnchor([string]$Name) {
+    $start=[Diagnostics.Stopwatch]::GetTimestamp()
+    try {
+        $log=Get-WinEvent -ListLog $Name -ErrorAction Stop
+        if(-not $log.IsEnabled){throw 'Log disabled.'}
+        $old=Get-WinEvent -LogName $Name -Oldest -MaxEvents 1 -ErrorAction Stop
+        $last=Get-WinEvent -LogName $Name -MaxEvents 1 -ErrorAction Stop
+        return [pscustomobject]@{Status='OK';Name=$Name;StartQpc=$start;EndQpc=[Diagnostics.Stopwatch]::GetTimestamp();
+            OldestRecordId=$old.RecordId;NewestRecordId=$last.RecordId;NewestXml=$last.ToXml();SecurityDescriptor=$log.SecurityDescriptor}
+    }catch{return [pscustomobject]@{Status='INCONCLUSIVE';Name=$Name;Reason=$_.Exception.Message;StartQpc=$start;EndQpc=[Diagnostics.Stopwatch]::GetTimestamp()}}
+}
+function Get-AgentExecutionSnapshot {
+    $result=[ordered]@{Status='INCONCLUSIVE';BootId=(Get-BootId);QpcFrequency=[Diagnostics.Stopwatch]::Frequency;
+        StartQpc=[Diagnostics.Stopwatch]::GetTimestamp();Errors=@();Processes=@();CollectedByPid=$PID;Service=$null;Audit=$null;ServiceSid=$null;ImagePaths=@()}
+    try {
+        Initialize-AgentExecutionReader
+        # Begin anchors precede inventory; end anchors follow it. Record-ID
+        # ordering, rather than UTC filtering, overcovers the QPC case window.
+        $result.SystemBegin=Get-AgentLogAnchor 'System';$result.SecurityBegin=Get-AgentLogAnchor 'Security'
+        $result.InventoryStartQpc=[Diagnostics.Stopwatch]::GetTimestamp()
+        $audit=[SUAgentExecution]::Audit();$result.Audit=@{CreationFlags=$audit[0];PerUserPolicyCount=$audit[1]}
+        $services=@(Get-CimInstance Win32_Service -Filter "Name='SafeUploadAgent'" -ErrorAction Stop)
+        if($services.Count -ne 1){throw 'SCM SafeUploadAgent service missing/ambiguous.'}
+        $service=$services[0]
+        $result.Service=@{Name=$service.Name;DisplayName=$service.DisplayName;State=$service.State;ProcessId=$service.ProcessId;PathName=$service.PathName;StartMode=$service.StartMode}
+        # Reject unresolved/ambiguous unquoted executable paths, not guesses.
+        $match=[regex]::Match($service.PathName,'^\s*(?:"(?<image>[A-Za-z]:\\[^"\r\n]+\.exe)"|(?<image>[A-Za-z]:\\[^\s"]+\.exe))(?:\s|$)','IgnoreCase')
+        if(-not $match.Success){throw 'SCM agent image path unresolved/ambiguous.'}
+        $result.ImagePaths=@([IO.Path]::GetFullPath($match.Groups['image'].Value),[IO.Path]::GetFullPath((Join-Path $serviceDirectory 'SafeUpload.Agent.Service.exe')))
+        $result.ServiceSid=[SUAgentExecution]::ServiceSid('SafeUploadAgent')
+        # PID 0/4 are kernel pseudo/system processes, not user-mode emitters.
+        # Any other vanished, protected or inaccessible process defeats proof.
+        foreach($process in @(Get-CimInstance Win32_Process -ErrorAction Stop)){
+            if($process.ProcessId -in @(0,4)){continue}
+            try{$result.Processes+=[SUAgentExecution]::Process([int]$process.ProcessId)}
+            catch{$result.Errors+=('Process inventory PID '+$process.ProcessId+': '+$_.Exception.Message)}
+        }
+        $result.InventoryEndQpc=[Diagnostics.Stopwatch]::GetTimestamp()
+        if(@($result.Processes | Where-Object Pid -eq $PID).Count -ne 1){$result.Errors+='Collector process missing/duplicated in inventory.'}
+        $result.SystemEnd=Get-AgentLogAnchor 'System';$result.SecurityEnd=Get-AgentLogAnchor 'Security'
+        if($result.Errors.Count -eq 0){$result.Status='OK'}
+    }catch{$result.Errors+=$_.Exception.Message}
+    $result.EndQpc=[Diagnostics.Stopwatch]::GetTimestamp();$result.EndBootId=Get-BootId
+    return [pscustomobject]$result
+}
+function ConvertFrom-AgentEventXml([string]$Xml,[string]$Channel) {
+    [xml]$document=$Xml;$system=$document.Event.System
+    if([string]$system.Channel -cne $Channel -or [string]::IsNullOrWhiteSpace([string]$system.Provider.Name) -or
+        [string]$system.EventRecordID -notmatch '^\d+$'){throw ('Malformed '+$Channel+' event XML.')}
+    $data=@{};$values=@()
+    foreach($node in @($document.Event.EventData.Data)){
+        if($null -eq $node){continue};$values+=$node.InnerText
+        if(-not [string]::IsNullOrWhiteSpace([string]$node.Name)){$data[[string]$node.Name]=$node.InnerText}
+    }
+    return [pscustomobject]@{RecordId=[long]$system.EventRecordID;Id=[int]$system.EventID;Provider=[string]$system.Provider.Name;Data=$data;Values=$values;Xml=$Xml}
+}
+function Read-AgentLogWindow($Before,$After,[string]$Name) {
+    try {
+        if($Before.Status -cne 'OK' -or $After.Status -cne 'OK'){throw ('Log anchors unavailable: before='+$Before.Reason+'; after='+$After.Reason)}
+        if($null -eq $Before.NewestRecordId -or $null -eq $After.NewestRecordId -or
+            $After.OldestRecordId -gt $Before.NewestRecordId -or $After.NewestRecordId -lt $Before.NewestRecordId){throw 'Log cleared/wrapped; starting record no longer retained.'}
+        if(($After.NewestRecordId-$Before.NewestRecordId) -gt 20000){throw 'Log window exceeds 20000-record evidence bound.'}
+        $query='*[System[EventRecordID >= '+$Before.NewestRecordId+' and EventRecordID <= '+$After.NewestRecordId+']]'
+        $records=@(Get-WinEvent -LogName $Name -FilterXPath $query -MaxEvents 20002 -ErrorAction Stop | Sort-Object RecordId)
+        $xmls=@($records | ForEach-Object {$_.ToXml()})
+        $proof=[pscustomobject]@{Status='OK';Name=$Name;Before=$Before;After=$After;Xmls=$xmls;Reason='All-provider bounded record-ID window, with exact edge XML.'}
+        # Retain raw XML as an artifact bound again by the host transfer check.
+        $artifact=Join-Path $evidenceDirectory ('agent-absence-'+$Name+'.json')
+        Write-DurableFile $artifact (ConvertTo-Json -InputObject $xmls -Depth 4 -Compress) -New
+        $proof | Add-Member NoteProperty Artifact $artifact
+        $proof | Add-Member NoteProperty Length (Get-Item -LiteralPath $artifact).Length
+        $proof | Add-Member NoteProperty Sha256 (Get-FileHash -LiteralPath $artifact).Hash
+        return $proof
+    }catch{return [pscustomobject]@{Status='INCONCLUSIVE';Name=$Name;Reason=$_.Exception.Message;Xmls=@()}}
+}
+function Test-AgentLogContinuity($Proof,[string]$Name) {
+    if($null -eq $Proof -or $Proof.Status -cne 'OK'){throw ($Name+' log evidence unavailable: '+$Proof.Reason)}
+    $b=$Proof.Before;$a=$Proof.After
+    if($b.Status -cne 'OK' -or $a.Status -cne 'OK' -or $null -eq $b.NewestRecordId -or $null -eq $a.NewestRecordId -or
+        $null -eq $a.OldestRecordId -or $a.OldestRecordId -gt $b.NewestRecordId -or $a.NewestRecordId -lt $b.NewestRecordId -or
+        ($a.NewestRecordId-$b.NewestRecordId) -gt 20000){throw ($Name+' log anchors missing, cleared, wrapped, or oversized.')}
+    $events=@();$next=[long]$b.NewestRecordId
+    foreach($xml in $Proof.Xmls){
+        $event=ConvertFrom-AgentEventXml $xml $Name
+        if($event.RecordId -ne $next){throw ($Name+' log record-ID gap/duplicate at '+$next+'.')}
+        $next++;$events+=$event
+    }
+    if($next -ne $a.NewestRecordId+1 -or $events.Count -eq 0){throw ($Name+' log record-ID tail missing.')}
+    if($events[0].Xml -cne $b.NewestXml -or $events[$events.Count-1].Xml -cne $a.NewestXml){throw ($Name+' log edge XML changed/reused.')}
+    return ,$events
+}
+function Test-NotificationLocationUnchanged($Before,$After,$Fence) {
+    $failures=@()
+    foreach($pair in @(@{Tag='before';Snapshot=$Before},@{Tag='after';Snapshot=$After})){
+        $s=$pair.Snapshot
+        if($null -eq $s -or $s.LocationStatus -cne 'OK' -or $null -eq $s.DirectoryExists -or
+            $s.BootId -cne $Fence.BootId -or $s.QpcFrequency -ne $Fence.QpcFrequency -or $null -eq $s.ReadQpc){
+            $failures+=('Notification '+$pair.Tag+' location not authenticated: '+$s.Reason)
+        }
+    }
+    if($failures.Count){return [pscustomobject]@{Complete=$false;Reason=$failures -join ' '}}
+    if([string]::IsNullOrWhiteSpace($Before.Directory) -or $Before.ReadQpc -gt $Fence.ReleasedQpc -or $After.ReadQpc -lt $Fence.CompletedQpc -or
+        $Before.Directory -ine $After.Directory){return [pscustomobject]@{Complete=$false;Reason='Notification location receipts do not bracket window or paths differ.'}}
+    if($Before.DirectoryExists -ne $After.DirectoryExists){return [pscustomobject]@{Complete=$false;Reason='Notification record location appeared/disappeared.'}}
+    if(-not $Before.DirectoryExists){return [pscustomobject]@{Complete=$true;Reason='Authenticated notification location absent at both edges.'}}
+    # Raw same-handle bytes are compared even for stale/malformed records. The
+    # current-boot durable coverage status is intentionally independent.
+    $b=@($Before.LocationFiles);$a=@($After.LocationFiles)
+    if($null -eq $Before.LocationFiles -or $null -eq $After.LocationFiles -or $b.Count -ne $a.Count -or
+        @($b | ForEach-Object { $_.Name } | Sort-Object -Unique).Count -ne $b.Count -or @($a | ForEach-Object { $_.Name } | Sort-Object -Unique).Count -ne $a.Count){return [pscustomobject]@{Complete=$false;Reason='Notification location inventory missing/changed.'}}
+    foreach($file in $b){
+        $match=@($a | Where-Object {$_.Name -ceq $file.Name})
+        if($match.Count -ne 1 -or $null -eq $file.Bytes -or $null -eq $match[0].Bytes -or
+            [Convert]::ToBase64String([byte[]]$file.Bytes) -cne [Convert]::ToBase64String([byte[]]$match[0].Bytes)){
+            return [pscustomobject]@{Complete=$false;Reason='Notification location bytes missing/changed: '+$file.Name}
+        }
+    }
+    return [pscustomobject]@{Complete=$true;Reason='Authenticated notification location inventories byte-identical.'}
+}
+function Test-AgentDidNotRun($Before,$After,$Fence,[bool]$WindowKnown,$SystemLog,$SecurityLog) {
+    $failures=@();$scm=@();$creations=@()
+    if(-not $WindowKnown){$failures+='QPC operation window is not bound to service snapshots.'}
+    $b=$Before.AgentExecution;$a=$After.AgentExecution
+    foreach($pair in @(@{Tag='before';Snapshot=$b},@{Tag='after';Snapshot=$a})){
+        $s=$pair.Snapshot
+        if($null -eq $s){$failures+=('Agent '+$pair.Tag+' execution snapshot missing.');continue}
+        if($s.Status -cne 'OK'){$failures+=('Agent '+$pair.Tag+' inventory incomplete: '+($s.Errors -join '; '))}
+        if($s.BootId -cne $Fence.BootId -or $s.EndBootId -cne $Fence.BootId -or $s.QpcFrequency -ne $Fence.QpcFrequency -or
+            $null -eq $s.StartQpc -or $null -eq $s.EndQpc -or $s.StartQpc -gt $s.EndQpc){$failures+=('Agent '+$pair.Tag+' boot/QPC receipts missing/mismatched.')}
+        if($null -eq $s.InventoryStartQpc -or $null -eq $s.InventoryEndQpc -or
+            $s.InventoryStartQpc -lt $s.StartQpc -or $s.InventoryStartQpc -gt $s.InventoryEndQpc -or $s.InventoryEndQpc -gt $s.EndQpc){
+            $failures+=('Agent '+$pair.Tag+' inventory QPC receipts missing/out of order.')
+        }
+        if($null -eq $s.Service -or $s.Service.Name -cne 'SafeUploadAgent' -or $s.Service.State -cne 'Stopped' -or
+            $null -eq $s.Service.ProcessId -or $s.Service.ProcessId -ne 0){$failures+=('SCM SafeUploadAgent '+$pair.Tag+' state is not authenticated Stopped/PID 0.')}
+        if($null -eq $s.Audit.CreationFlags -or ($s.Audit.CreationFlags -band 1) -eq 0 -or
+            $null -eq $s.Audit.PerUserPolicyCount -or $s.Audit.PerUserPolicyCount -ne 0){$failures+=('Agent '+$pair.Tag+' process-creation success auditing missing/disabled or per-user overrides present.')}
+        if([string]::IsNullOrWhiteSpace($s.ServiceSid) -or @($s.ImagePaths).Count -lt 2 -or $null -eq $s.Processes){$failures+=('Agent '+$pair.Tag+' image/SID/inventory identity missing.')}
+        if($null -eq $s.CollectedByPid -or @($s.Processes | Where-Object Pid -eq $s.CollectedByPid).Count -ne 1){$failures+=('Agent '+$pair.Tag+' inventory lacks its collector process.')}
+        foreach($process in $s.Processes){
+            if([string]::IsNullOrWhiteSpace($process.Image) -or @($process.TokenSids).Count -eq 0){$failures+=('Agent '+$pair.Tag+' PID '+$process.Pid+' image/token SIDs unavailable.')}
+            if($s.ImagePaths -icontains $process.Image -or $process.TokenSids -contains $s.ServiceSid){$failures+=('Agent image or service SID exists at '+$pair.Tag+' edge: PID '+$process.Pid+'.')}
+        }
+    }
+    if($null -ne $b -and $null -ne $a){
+        if($b.EndQpc -gt $Fence.ReleasedQpc -or $a.StartQpc -lt $Fence.CompletedQpc){$failures+='Agent inventory edges do not bracket whole operation window.'}
+        if($b.ServiceSid -cne $a.ServiceSid -or ($b.ImagePaths -join '|') -ine ($a.ImagePaths -join '|') -or
+            $b.Service.DisplayName -cne $a.Service.DisplayName -or $b.Service.PathName -cne $a.Service.PathName){$failures+='Agent SCM/image/SID identity changed between edges.'}
+    }
+    foreach($pair in @(@{Name='System';Proof=$SystemLog},@{Name='Security';Proof=$SecurityLog})){
+        try {
+            $events=Test-AgentLogContinuity $pair.Proof $pair.Name
+            $begin=$b.($pair.Name+'Begin');$end=$a.($pair.Name+'End')
+            if($null -eq $begin -or $null -eq $end -or
+                $pair.Proof.Before.NewestXml -cne $begin.NewestXml -or $pair.Proof.After.NewestXml -cne $end.NewestXml -or
+                $pair.Proof.Before.EndQpc -ne $begin.EndQpc -or $pair.Proof.After.StartQpc -ne $end.StartQpc){throw ($pair.Name+' log proof does not match execution snapshot anchors.')}
+            # Anchors must enclose both process inventories, not merely the
+            # operation timestamps; this closes edge sampling races.
+            $first=$pair.Proof.Before;$last=$pair.Proof.After
+            if($null -eq $first.EndQpc -or $null -eq $last.StartQpc -or $null -eq $first.StartQpc -or $null -eq $last.EndQpc -or
+                $first.StartQpc -gt $first.EndQpc -or $last.StartQpc -gt $last.EndQpc -or
+                $null -eq $b.InventoryStartQpc -or $null -eq $a.InventoryEndQpc -or
+                $first.EndQpc -gt $b.InventoryStartQpc -or $last.StartQpc -lt $a.InventoryEndQpc){throw ($pair.Name+' log anchors do not enclose inventories.')}
+            foreach($event in $events){
+                if($pair.Name -ceq 'System'){
+                    if(($event.Provider -ceq 'Microsoft-Windows-Eventlog' -and $event.Id -in @(104,1100,1101,1102,1104,1108)) -or
+                        ($event.Provider -ceq 'EventLog' -and $event.Id -in @(6005,6006,6008))){throw ('System log clear/loss event '+$event.Id+' at record '+$event.RecordId+'.')}
+                    if($event.Provider -ceq 'Service Control Manager'){
+                        if($event.Values.Count -eq 0){throw ('SCM event without service identity at record '+$event.RecordId+'.')}
+                        if(@($event.Values | Where-Object {$_ -ieq 'SafeUploadAgent' -or $_ -ieq $b.Service.DisplayName -or $_ -ieq $a.Service.DisplayName}).Count){
+                            $scm+=$event
+                            # Reject every agent SCM event (7036/7045/7040/errors
+                            # etc.), rather than interpreting localized state text.
+                            $failures+=('SCM SafeUploadAgent activity '+$event.Id+' at record '+$event.RecordId+'.')
+                        }
+                    }
+                }else{
+                    if(($event.Provider -ceq 'Microsoft-Windows-Eventlog' -and $event.Id -in @(1100,1101,1102,1104,1108)) -or
+                        ($event.Provider -ceq 'Microsoft-Windows-Security-Auditing' -and $event.Id -in @(4719,4902,4906,4912,4696))){throw ('Security audit clear/loss/policy/token-change event '+$event.Id+' at record '+$event.RecordId+'.')}
+                    if($event.Provider -ceq 'Microsoft-Windows-Security-Auditing' -and $event.Id -eq 4688){
+                        $creations+=$event
+                        if($b.ImagePaths -icontains $event.Data.NewProcessName -or $a.ImagePaths -icontains $event.Data.NewProcessName -or
+                            $event.Data.SubjectUserSid -ceq $b.ServiceSid -or $event.Data.TargetUserSid -ceq $b.ServiceSid){$failures+=('Agent image/service SID process creation at Security record '+$event.RecordId+'.')}
+                        # 4688 authenticates image/user, not group/restricted SIDs.
+                        # No exemption for a benign-looking path or exited PID.
+                        $failures+=('Process created between inventories at Security record '+$event.RecordId+'; 4688 lacks token group/restricted service-SID evidence.')
+                    }
+                }
+            }
+        }catch{$failures+=$_.Exception.Message}
+    }
+    foreach($snapshot in @($Before.Notifications,$After.Notifications)){
+        foreach($item in $snapshot.Entries){
+            $entry=$item.Entry
+            if($entry.BootId -ceq $Fence.BootId -and $entry.QpcFrequency -eq $Fence.QpcFrequency -and
+                $null -ne $entry.Qpc -and $entry.Qpc -ge $Fence.ReleasedQpc -and $entry.Qpc -le $Fence.CompletedQpc){
+                $failures+=('Authenticated notification writer activity in window: sequence '+$entry.Sequence+'.')
+            }
+        }
+    }
+    return [pscustomobject]@{Complete=($failures.Count -eq 0);Reason=$(if($failures.Count){$failures -join ' '}else{'agent did not run in window'});
+        Failures=$failures;ScmEvents=$scm;ProcessCreations=$creations;SystemLog=$SystemLog;SecurityLog=$SecurityLog;
+        Limitations='Trusted kernel, SCM, audit transport and privileged actors; inventories inspect primary user/group/restricted SIDs, not thread impersonation. 4688 does not expose group SIDs, so any creation defeats this proof. No claim about renamed/injected emitters, off-window activity or intermediate create/delete of notification files.'}
+}
+
 function Get-ServiceSnapshot([string]$Tag) {
     $result=[ordered]@{Status='INCONCLUSIVE';Tag=$Tag;BootId=(Get-BootId);QpcFrequency=[Diagnostics.Stopwatch]::Frequency;StartQpc=[Diagnostics.Stopwatch]::GetTimestamp();
         Journal=@();Objects=@();Errors=@();Application=@();AgentProcesses=@(Get-CimInstance Win32_Process -Filter "Name='SafeUpload.Agent.Service.exe'" | Select-Object ProcessId,CommandLine);}
@@ -770,6 +1042,7 @@ function Get-ServiceSnapshot([string]$Tag) {
         $result.Application=[pscustomobject]@{Status='OK';OldestRecordId=$oldest.RecordId;NewestRecordId=$newest.RecordId;
             NewestXml=$newest.ToXml();OldestXml=$oldest.ToXml();Log=(Get-WinEvent -ListLog Application | Select-Object LogName,IsEnabled,LogMode,RecordCount,MaximumSizeInBytes,SecurityDescriptor)}
     }catch{$result.Application=[pscustomobject]@{Status='INCONCLUSIVE';Errors=(Get-ErrorChain $_.Exception)}}
+    $result.AgentExecution=Get-AgentExecutionSnapshot
     $result.Notifications=Get-NotificationSnapshot $Tag $result.BootId $result.StartQpc
     $result.EndQpc=[Diagnostics.Stopwatch]::GetTimestamp()
     Save-State $result (Join-Path $evidenceDirectory ('service-'+$Tag+'.clixml'))
@@ -964,6 +1237,18 @@ function Get-ServiceTimeline($Before,$After,$Fence) {
         $assertions+=@{Name='JournalExpectation';Expectation=$expectation;Verdict=$verdict;Reason=$reason}
     }
     $notificationProof=Test-NotificationWindow $Before.Notifications $After.Notifications $Fence $windowKnown
+    $agentAbsence=$null;$locationUnchanged=$null
+    if(-not $notificationProof.Complete){
+        $systemLog=Read-AgentLogWindow $Before.AgentExecution.SystemBegin $After.AgentExecution.SystemEnd 'System'
+        $securityLog=Read-AgentLogWindow $Before.AgentExecution.SecurityBegin $After.AgentExecution.SecurityEnd 'Security'
+        $agentAbsence=Test-AgentDidNotRun $Before $After $Fence $windowKnown $systemLog $securityLog
+        $locationUnchanged=Test-NotificationLocationUnchanged $Before.Notifications $After.Notifications $Fence
+        if($agentAbsence.Complete -and $locationUnchanged.Complete){
+            $notificationProof=[pscustomobject]@{Complete=$true;Reason='agent did not run in window';Emissions=@();Source='AgentDidNotRunAndUnchangedLocation'}
+        }else{
+            $notificationProof.Reason+=' Agent absence proof: '+$agentAbsence.Reason+' Notification location proof: '+$locationUnchanged.Reason
+        }
+    }
     foreach($expectation in $row.NotificationExpectations){
         $verdict='INCONCLUSIVE';$reason=$notificationProof.Reason
         if($notificationProof.Complete){
@@ -980,15 +1265,16 @@ function Get-ServiceTimeline($Before,$After,$Fence) {
                 default {$supported=$false;$reason='Unsupported notification expectation: '+$expectation}
             }
             if($supported -and $verdict -eq 'INCONCLUSIVE'){$verdict=if($bad.Count){'FAIL'}else{'PASS'}}
-            if($supported){$reason='Authenticated emission chain covers whole operation window; '+$expectation+' matching emissions='+$bad.Count+'. Scope is all agent emissions (conservative for fixture negatives).'}
+            if($supported -and $notificationProof.Source -ceq 'AgentDidNotRunAndUnchangedLocation'){$reason='agent did not run in window'}
+            elseif($supported){$reason='Authenticated emission chain covers whole operation window; '+$expectation+' matching emissions='+$bad.Count+'. Scope is all agent emissions (conservative for fixture negatives).'}
         }
         $assertions+=@{Name='NotificationExpectation';Expectation=$expectation;Verdict=$verdict;Reason=$reason}
     }
     $verdict=if(@($assertions | Where-Object Verdict -eq 'FAIL').Count){'FAIL'}elseif(@($assertions | Where-Object Verdict -eq 'INCONCLUSIVE').Count){'INCONCLUSIVE'}else{'PASS'}
-    $timelineReason=if($verdict -eq 'PASS'){'Per-expectation results from authenticated product journal snapshots and durable notification chain; see ServiceEvidence.'}
+    $timelineReason=if($verdict -eq 'PASS'){'Per-expectation results from authenticated product journal snapshots and whole-window notification proof; see ServiceEvidence.'}
         else{@($assertions | Where-Object Verdict -ne 'PASS' | ForEach-Object {$_.Reason} | Select-Object -Unique) -join ' '}
     $assertions+=@{Name='ActualServiceTimelines';Verdict=$verdict;Reason=$timelineReason}
-    $result=[pscustomobject]@{Source='AuthenticatedAgentJournalAndNotificationRecord';NotificationProof=$notificationProof;NotificationEmissions=$notificationProof.Emissions;TrustBoundary='SYSTEM-owned policy; SYSTEM or Administrators-owned journal/notification record; exact protected SYSTEM/Administrators DACL, no reparses, single-link bounded manifests, same-handle ACL and bytes; privileged local actors trusted';
+    $result=[pscustomobject]@{Source='AuthenticatedAgentJournalAndNotificationRecord';NotificationProof=$notificationProof;AgentAbsenceProof=$agentAbsence;NotificationLocationProof=$locationUnchanged;NotificationEmissions=$notificationProof.Emissions;TrustBoundary='SYSTEM-owned policy; SYSTEM or Administrators-owned journal/notification record; exact protected SYSTEM/Administrators DACL, no reparses, single-link bounded manifests, same-handle ACL and bytes; OS process/token/SCM/audit APIs trusted; privileged local actors trusted';
         Before=$Before;After=$After;OperationFence=$Fence;WindowBound=$windowKnown;JournalDelta=$journalDelta;JournalFailures=$journalFailures;ApplicationStatus=$eventStatus;ApplicationReason=$eventReason;ApplicationEvents=$events;Assertions=$assertions}
     Save-State $result (Join-Path $evidenceDirectory 'service-timeline.clixml')
     return $result
@@ -1400,7 +1686,7 @@ $value=$b.ToString().Split([char]0)[0]
         InputHashes=@{Table=$ExpectedTableSha256;Observer=$ExpectedObserverSha256;Suite=$ExpectedSuiteSha256;Helper=$ExpectedHelperSha256;
             Feature=$ExpectedFeatureSha256;Inspector=$ExpectedInspectorSha256;ServicePackage=$ExpectedServicePackageSha256;ServiceTree=$ExpectedServiceTreeSha256};
         BootIds=@{Prepare=$state.PrepareBootId;Active=$state.AfterBootId;Final=(Get-BootId)};Restoration=@{GuestChecks=$true;IndependentBaseline=$null;Known=$false};
-        AuthoritativeCaseExport=$false;Reasons=@('Seed rows do not qualify Phase4; driver lower mutation ledger and live taint readback unavailable; notification absence requires complete authenticated record coverage');
+        AuthoritativeCaseExport=$false;Reasons=@('Seed rows do not qualify Phase4; driver lower mutation ledger and live taint readback unavailable; notification absence requires authenticated durable coverage or whole-window agent absence plus an unchanged authenticated record location');
         Load=@{ComputerSystem=(Get-CimInstance Win32_ComputerSystem | Select-Object NumberOfLogicalProcessors,TotalPhysicalMemory);Cpu=(Get-CimInstance Win32_Processor | Select-Object Name,NumberOfCores);Disk=(Get-Disk | Select-Object Number,FriendlyName,BusType);ObserverPriority=[string][Diagnostics.Process]::GetCurrentProcess().PriorityClass}}
     Copy-Item -LiteralPath $statePath -Destination (Join-Path $evidenceDirectory 'lifecycle.clixml')
     Copy-Item -LiteralPath $actorDirectory -Destination (Join-Path $evidenceDirectory 'actor') -Recurse
