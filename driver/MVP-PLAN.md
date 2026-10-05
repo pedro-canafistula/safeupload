@@ -484,3 +484,13 @@ falsify the Phase 3 cutoff mechanism; the harness must test it, never reinterpre
   cutover or lost-tracking policy. Four exact-source builds for this source increment remain required.
   Owner recovery of the failed b22s01a overlay and a clean independent baseline still precede the next S01;
   no corpus, b23/b24, review-4 or full Phase 4 VM qualification is claimed here.
+- **2026-10-05 b25 build checkpoint:** coordinator source commit `6174dfda` has four exact-source WDK
+  configurations at zero warnings/errors with PREfast, DriverRecommendedRules and ApiValidator. Root
+  read all four builder logs and verified the 26 source files, archive/manifest, signing, Inspector and
+  WriterFixture artifacts (`evidence/2026-10-05/exact-mvp3-b25-root-validation.txt`). The driver source
+  manifest is unchanged from b23/b24. Signed feature SHA-256:
+  `03A127AC8B41BADE8FB005B1E190CEC436B2BAF7361CDEF29BD725DD8B4D23CA`.
+  A prepare-only observer package freezes three exact guest inputs at
+  `evidence/2026-10-05/observer-corpus-wp2prep1-d39d6c5358c4-inputs/provenance.json`; source selection
+  was clean and no VM was touched. This is lifecycle preparation, not a case result. S01 remains first
+  after owner rollback and independent clean-baseline verification; b25 has not run on the debuggee.
