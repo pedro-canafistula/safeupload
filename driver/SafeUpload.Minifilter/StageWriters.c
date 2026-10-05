@@ -74,11 +74,8 @@ Environment:
 #define STAGE_MUTATING_IO_MARKER_SIGNATURE 'mSwU'
 #define STAGE_SECTION_ACQUIRE_FIXED_TAG ((ULONG_PTR)0x4)
 #define STAGE_SECTION_RELEASE_FIXED_TAG ((ULONG_PTR)0x8)
-#define STAGE_SECTION_ACQUIRE_SPILL_TAG ((ULONG_PTR)0xC)
-#define STAGE_SECTION_RELEASE_SPILL_TAG ((ULONG_PTR)0xE)
 
 typedef struct _STAGE_REGISTRY_ENTRY STAGE_REGISTRY_ENTRY, *PSTAGE_REGISTRY_ENTRY;
-typedef struct _STAGE_SECTION_SPILL_RECORD STAGE_SECTION_SPILL_RECORD, *PSTAGE_SECTION_SPILL_RECORD;
 
 __declspec(align(16)) struct _STAGE_MUTATING_IO_MARKER_CONTEXT {
     ULONG Signature;
@@ -227,18 +224,7 @@ typedef struct _STAGE_REGISTRY_SOP_SLOT {
     FILE_ID_128 FileId;
     LONG UnknownReasons;
     ULONG UnknownWriterCount;
-    ULONG SpilledSectionAcquireCount;
-    ULONG SpilledSectionCount;
-    ULONG SpilledSectionReleasePending;
     ULONG SpilledMutatingIoCount;
-    ULONG ScopePolicyGeneration;
-    ULONG ScopeScanRenameVersion;
-    ULONG ScopeScanLinkCount;
-    LONG ScopeScanNextLink;
-    LONG ScopeScanUnionScoped;
-    LONG ScopeScanCurrentScoped;
-    LONG ScopeScanPending;
-    LONG ScopeClassification;
     BOOLEAN Unknown;
     BOOLEAN Deleted;
 } STAGE_REGISTRY_SOP_SLOT, *PSTAGE_REGISTRY_SOP_SLOT;
@@ -249,18 +235,7 @@ typedef struct _STAGE_REGISTRY_SOP_SNAPSHOT {
     ULONGLONG StreamSuffixHash;
     FILE_ID_128 FileId;
     ULONG UnknownWriterCount;
-    ULONG SpilledSectionAcquireCount;
-    ULONG SpilledSectionCount;
-    ULONG SpilledSectionReleasePending;
     ULONG SpilledMutatingIoCount;
-    ULONG ScopePolicyGeneration;
-    ULONG ScopeScanRenameVersion;
-    ULONG ScopeScanLinkCount;
-    LONG ScopeScanNextLink;
-    LONG ScopeScanUnionScoped;
-    LONG ScopeScanCurrentScoped;
-    LONG ScopeScanPending;
-    LONG ScopeClassification;
 } STAGE_REGISTRY_SOP_SNAPSHOT, *PSTAGE_REGISTRY_SOP_SNAPSHOT;
 
 typedef struct _STAGE_SCOPE_PARENT_NAME {
@@ -277,6 +252,7 @@ typedef struct _STAGE_DEFERRED_INSTANCE_UNKNOWN {
 
 static BOOLEAN StageRegistryEntryQuiescent(_In_ PSTAGE_REGISTRY_ENTRY Entry, _In_ PFLT_INSTANCE Instance,
     _In_ PFLT_VOLUME Volume);
+_IRQL_requires_max_(APC_LEVEL)
 static VOID StageRegistryPrepareActivation(_In_ PSTAGE_REGISTRY_ENTRY Entry, _In_ BOOLEAN Unknown);
 static NTSTATUS StageRegistryOpenIdentity(_In_ PSTAGE_REGISTRY_ENTRY Entry,
     _In_ PFLT_INSTANCE Instance, _In_ PFLT_VOLUME Volume, _Out_ PHANDLE Handle,
@@ -298,6 +274,7 @@ static VOID StageRegistryActivationProcess(_In_ PSTAGE_REGISTRY_ENTRY Entry,
 NTSTATUS SafeUploadStageWritersClassifyById(_In_ PFLT_INSTANCE Instance,
     _In_ PFILE_OBJECT FileObject, _Out_ PBOOLEAN InScope);
 
+_IRQL_requires_max_(APC_LEVEL)
 __declspec(noinline) static BOOLEAN StageRegistryBeginAliasProbe(_In_ PSTAGE_REGISTRY_ENTRY Entry);
 static VOID StageRegistryReclaimWorker(_In_ PFLT_GENERIC_WORKITEM WorkItem, _In_ PVOID FltObject,
     _In_opt_ PVOID Context);
@@ -327,18 +304,13 @@ __declspec(noinline) static VOID StageRegistryCopyUnknownSopChunk(_In_ PFLT_INST
 _IRQL_requires_max_(APC_LEVEL)
 __declspec(noinline) static BOOLEAN StageRegistryRetireUnknownSopIfSame(_In_ PFLT_INSTANCE Instance,
     _In_ PSTAGE_REGISTRY_SOP_SNAPSHOT Snapshot);
+_IRQL_requires_max_(DISPATCH_LEVEL)
+__declspec(noinline) static VOID StageRegistrySnapshotSections(_In_opt_ PVOID SectionObjectPointer,
+    _Out_ PUINT32 WritableCount, _Out_ PUINT32 TotalCount);
 _IRQL_requires_(PASSIVE_LEVEL)
 static BOOLEAN StageRegistryUnknownSopMarkersQuiescent(_In_ PFLT_INSTANCE Instance,
     _In_ PFLT_VOLUME Volume, _Inout_ PULONG WorkBudget,
     _Out_ PBOOLEAN WorkRemaining, _Out_ PULONGLONG Generation);
-_IRQL_requires_(PASSIVE_LEVEL)
-__declspec(noinline) static BOOLEAN StageRegistryClassifyUnknownSopSnapshot(
-    _Inout_ PSTAGE_REGISTRY_SOP_SNAPSHOT Snapshot, _In_ PFLT_INSTANCE Instance,
-    _In_ PFLT_VOLUME Volume, _Inout_ PULONG WorkBudget, _In_ ULONG PolicyGeneration,
-    _Out_ PBOOLEAN Outside, _Out_ PBOOLEAN WorkRemaining, _Out_ PBOOLEAN Changed);
-_IRQL_requires_max_(APC_LEVEL)
-__declspec(noinline) static BOOLEAN StageRegistryHasEntryForSop(
-    _In_ PFLT_INSTANCE Instance, _In_opt_ PVOID SectionObjectPointer);
 static BOOLEAN StageRegistrySopSnapshotQuiescent(_In_ PSTAGE_REGISTRY_SOP_SNAPSHOT Snapshot,
     _In_ PFLT_INSTANCE Instance, _In_ PFLT_VOLUME Volume);
 static NTSTATUS StageRegistryResolveCompactStream(_In_ PSTAGE_REGISTRY_ENTRY Entry,
@@ -363,7 +335,6 @@ __declspec(noinline) static BOOLEAN StageRegistryMarkSopUnknown(_In_ PFLT_INSTAN
 #pragma alloc_text(PAGE, SafeUploadStageWritersClassifyById)
 #pragma alloc_text(PAGE, StageRegistryActivationProcess)
 #pragma alloc_text(PAGE, StageRegistryUnknownSopMarkersQuiescent)
-#pragma alloc_text(PAGE, StageRegistryClassifyUnknownSopSnapshot)
 #pragma alloc_text(PAGE, StageRegistrySopSnapshotQuiescent)
 #pragma alloc_text(PAGE, StageRegistryReclaimWorker)
 #pragma alloc_text(PAGE, StageRegistryRenameWorker)
@@ -438,40 +409,6 @@ __declspec(noinline) static UINT32 StageRegistrySnapshotSpilledMutatingIo(
 _IRQL_requires_max_(DISPATCH_LEVEL)
 __declspec(noinline) static UINT32 StageRegistrySnapshotSpilledWriters(
     _In_ PSTAGE_REGISTRY_ENTRY Entry);
-_IRQL_requires_max_(DISPATCH_LEVEL)
-__declspec(noinline) static BOOLEAN StageRegistryReserveSpilledSection(
-    _In_opt_ PVOID SectionObjectPointer, _In_opt_ PFLT_INSTANCE Instance,
-    _In_ BOOLEAN Writable, _Inout_ PSTAGE_SECTION_SPILL_RECORD SpillRecord,
-    _Out_ PULONG SopSlotIndex, _Out_ PBOOLEAN IdentityKnown);
-_IRQL_requires_max_(DISPATCH_LEVEL)
-__declspec(noinline) static VOID StageRegistrySpilledSectionAcquireFailed(
-    _In_ ULONG SopSlotIndex, _In_opt_ PVOID SectionObjectPointer,
-    _In_opt_ PVOID InstanceIdentity, _In_ BOOLEAN Writable);
-_IRQL_requires_max_(DISPATCH_LEVEL)
-__declspec(noinline) static VOID StageRegistrySpilledSectionAcquireDraining(
-    _In_opt_ PFLT_INSTANCE Instance, _In_ ULONG SopSlotIndex,
-    _In_opt_ PVOID SectionObjectPointer);
-_IRQL_requires_max_(DISPATCH_LEVEL)
-__declspec(noinline) static VOID StageRegistrySpilledSectionReleaseComplete(
-    _In_opt_ PFLT_INSTANCE Instance, _In_ ULONG SopSlotIndex,
-    _In_opt_ PVOID SectionObjectPointer, _In_ BOOLEAN Writable,
-    _In_ BOOLEAN Succeeded, _In_ BOOLEAN Draining);
-_IRQL_requires_max_(DISPATCH_LEVEL)
-__declspec(noinline) static VOID StageRegistrySpilledSectionSnapshot(
-    _In_opt_ PVOID SectionObjectPointer, _Out_ PUINT32 WritableCount,
-    _Out_ PUINT32 TotalCount);
-_IRQL_requires_max_(APC_LEVEL)
-__declspec(noinline) static PSTAGE_SECTION_SPILL_RECORD StageRegistryDetachOneInstanceSpill(
-    _In_ PFLT_INSTANCE Instance, _Out_ PBOOLEAN Detached);
-_IRQL_requires_max_(DISPATCH_LEVEL)
-__declspec(noinline) static VOID StageRegistryStoreUnknownSopClassification(
-    _In_ PFLT_INSTANCE Instance, _In_ PSTAGE_REGISTRY_SOP_SNAPSHOT Snapshot,
-    _In_ PSTAGE_REGISTRY_ENTRY Probe, _In_ ULONG PolicyGeneration,
-    _In_ LONG Classification, _Out_ PBOOLEAN Changed);
-_IRQL_requires_max_(DISPATCH_LEVEL)
-__declspec(noinline) static VOID StageRegistrySopScopeClassification(
-    _In_ PFLT_INSTANCE Instance, _In_ PVOID SectionObjectPointer,
-    _In_ ULONG PolicyGeneration, _Out_ PBOOLEAN Known, _Out_ PBOOLEAN Outside);
 _IRQL_requires_max_(DISPATCH_LEVEL)
 __declspec(noinline) static UINT32 StageRegistrySnapshotC(_In_ PSTAGE_REGISTRY_ENTRY Entry,
     _Out_writes_opt_(Capacity) PUINT32 ProcessIds, _In_ ULONG Capacity,
@@ -837,6 +774,7 @@ static VOID StageRegistryMarkEntryUnknown(_In_ PSTAGE_REGISTRY_ENTRY Entry, _In_
 }
 
 /* Entry is nonpaged; keep HolderLock operations out of pageable create/cleanup callers. */
+_IRQL_requires_max_(APC_LEVEL)
 __declspec(noinline) static VOID StageRegistryAddOpener(_In_ PSTAGE_REGISTRY_ENTRY Entry, _In_ ULONG ProcessId)
 {
     ULONG index;
@@ -861,6 +799,7 @@ __declspec(noinline) static VOID StageRegistryAddOpener(_In_ PSTAGE_REGISTRY_ENT
     StageReleaseSpinLock(&Entry->HolderLock, irql);
 }
 
+_IRQL_requires_max_(APC_LEVEL)
 __declspec(noinline) static VOID StageRegistryRemoveOpener(_In_ PSTAGE_REGISTRY_ENTRY Entry, _In_ ULONG ProcessId)
 {
     ULONG index;
@@ -886,6 +825,7 @@ __declspec(noinline) static VOID StageRegistryRemoveOpener(_In_ PSTAGE_REGISTRY_
 }
 
 /* ProcessIds and Count are resident scratch; pageable status buffers are filled after this returns. */
+_IRQL_requires_max_(APC_LEVEL)
 __declspec(noinline) static VOID StageRegistryCopyOpeners(_In_ PSTAGE_REGISTRY_ENTRY Entry,
     _Out_writes_(Capacity) PUINT32 ProcessIds, _In_ ULONG Capacity, _Out_ PUINT32 Count)
 {
@@ -2513,8 +2453,6 @@ __declspec(noinline) static BOOLEAN StageRegistryReserveMutatingIoMarker(
         slot->SpilledMutatingIoCount != MAXULONG) {
         index = (ULONG)(slot - RegistrySopSlots);
         slot->SpilledMutatingIoCount += 1;
-        slot->ScopeClassification = STAGE_SCOPE_CLASS_UNRESOLVED;
-        slot->ScopePolicyGeneration = 0;
         InterlockedIncrement64(&RegistrySopMapGeneration);
         InterlockedIncrement64(&RegistryChangeSequence);
         *SopSlotIndex = index;
@@ -2700,7 +2638,7 @@ VOID SafeUploadStageWritersAttachMutatingIo(_In_opt_ PVOID RenameContext,
  * A spin lock makes slot identity, stream identity and counters one atomic snapshot. Releases match
  * only the acquiring thread and file object, newest first; no cross-thread fallback can undercount.
  * Failed acquires carry their exact slot to post-operation, which may run on another thread.
- * Overflow uses exact per-acquire spill records; only loss of identity or the completion pair is sticky Unknown.
+ * A full table makes the bound entry or instance Unknown until reboot and passes the acquire through.
  * Nothing expires an old entry or treats a missing release as proof of writer freedom. */
 
 #define STAGE_SECTION_SLOTS 64
@@ -2721,34 +2659,13 @@ typedef struct _STAGE_SECTION_SLOT {
     BOOLEAN ReleasePending;
 } STAGE_SECTION_SLOT;
 
-__declspec(align(16)) struct _STAGE_SECTION_SPILL_RECORD {
-    LIST_ENTRY Link;
-    ULONG Signature;
-    PFILE_OBJECT FileObject;       /* identity only; the I/O keeps it alive through post-operation */
-    PVOID Thread;
-    PVOID InstanceIdentity;        /* non-owning identity token */
-    PVOID SectionObjectPointer;
-    ULONG SopSlotIndex;
-    ULONGLONG Sequence;
-    BOOLEAN Writable;
-    BOOLEAN AcquirePending;
-    BOOLEAN ReleasePending;
-    BOOLEAN AcquireOutcomeUnknown;
-    BOOLEAN ReleaseOutcomeUnknown;
-    BOOLEAN Retiring;
-};
-
-#define STAGE_SECTION_SPILL_SIGNATURE 'pSwU'
-
 static KSPIN_LOCK SectionLock;
 __declspec(align(16)) static STAGE_SECTION_SLOT SectionSlots[STAGE_SECTION_SLOTS];
-static LIST_ENTRY SectionSpills;
 static ULONG SectionNow;
 static ULONG SectionMaxDepth;
 static ULONGLONG SectionSequence;
 static UINT64 SectionInserted;
 static UINT64 SectionReleased;
-static UINT64 SectionOverflow;
 static UINT64 SectionRemovedOnFailure;
 
 _IRQL_requires_(DISPATCH_LEVEL)
@@ -2788,6 +2705,7 @@ __declspec(noinline) static VOID StageRegistryRemoveSopSlotLocked(
 
 /* Enumeration is split into fixed-size lock holds. The returned binding reference
  * is dropped by the caller after SectionLock has been released. */
+_IRQL_requires_max_(APC_LEVEL)
 __declspec(noinline) static PSTAGE_REGISTRY_ENTRY StageRegistryDetachOneInstanceSectionBinding(
     _In_ PFLT_INSTANCE Instance, _Out_ PBOOLEAN Detached)
 {
@@ -2827,34 +2745,6 @@ __declspec(noinline) static PSTAGE_REGISTRY_ENTRY StageRegistryDetachOneInstance
     }
     StageReleaseSpinLock(&SectionLock, irql);
     return entry;
-}
-
-_IRQL_requires_max_(APC_LEVEL)
-__declspec(noinline) static PSTAGE_SECTION_SPILL_RECORD StageRegistryDetachOneInstanceSpill(
-    _In_ PFLT_INSTANCE Instance, _Out_ PBOOLEAN Detached)
-{
-    PSTAGE_SECTION_SPILL_RECORD spill = NULL;
-    PLIST_ENTRY link;
-    KIRQL irql;
-    *Detached = FALSE;
-    StageAcquireSpinLock(&SectionLock, &irql);
-    for (link = SectionSpills.Flink; link != &SectionSpills; link = link->Flink) {
-        PSTAGE_SECTION_SPILL_RECORD candidate = CONTAINING_RECORD(link,
-            STAGE_SECTION_SPILL_RECORD, Link);
-        if (candidate->Signature != STAGE_SECTION_SPILL_SIGNATURE ||
-            candidate->InstanceIdentity != (PVOID)Instance) continue;
-        if (candidate->AcquirePending || candidate->ReleasePending) {
-            candidate->Retiring = TRUE;
-            continue;
-        }
-        RemoveEntryList(&candidate->Link);
-        candidate->Signature = 0;
-        spill = candidate;
-        *Detached = TRUE;
-        break;
-    }
-    StageReleaseSpinLock(&SectionLock, irql);
-    return spill;
 }
 
 /* D2 overflow markers retain only SOP+file identity and a non-owning instance
@@ -3048,18 +2938,7 @@ __declspec(noinline) static VOID StageRegistryCopyUnknownSopChunk(_In_ PFLT_INST
         snapshot->StreamSuffixHash = slot->StreamSuffixHash;
         snapshot->FileId = slot->FileId;
         snapshot->UnknownWriterCount = slot->UnknownWriterCount;
-        snapshot->SpilledSectionAcquireCount = slot->SpilledSectionAcquireCount;
-        snapshot->SpilledSectionCount = slot->SpilledSectionCount;
-        snapshot->SpilledSectionReleasePending = slot->SpilledSectionReleasePending;
         snapshot->SpilledMutatingIoCount = slot->SpilledMutatingIoCount;
-        snapshot->ScopePolicyGeneration = slot->ScopePolicyGeneration;
-        snapshot->ScopeScanRenameVersion = slot->ScopeScanRenameVersion;
-        snapshot->ScopeScanLinkCount = slot->ScopeScanLinkCount;
-        snapshot->ScopeScanNextLink = slot->ScopeScanNextLink;
-        snapshot->ScopeScanUnionScoped = slot->ScopeScanUnionScoped;
-        snapshot->ScopeScanCurrentScoped = slot->ScopeScanCurrentScoped;
-        snapshot->ScopeScanPending = slot->ScopeScanPending;
-        snapshot->ScopeClassification = slot->ScopeClassification;
     }
     StageReleaseSpinLock(&SectionLock, irql);
 }
@@ -3075,8 +2954,6 @@ __declspec(noinline) static BOOLEAN StageRegistryRetireUnknownSopIfSame(_In_ PFL
     slot = StageRegistryFindSopSlotLocked(Snapshot->SectionObjectPointer, &found);
     sameIdentity = found && slot != NULL && slot->Unknown &&
         slot->InstanceIdentity == (PVOID)Instance && slot->UnknownWriterCount == 0 &&
-        slot->SpilledSectionAcquireCount == 0 && slot->SpilledSectionCount == 0 &&
-        slot->SpilledSectionReleasePending == 0 &&
         slot->SpilledMutatingIoCount == 0 &&
         slot->VolumeSerial == Snapshot->VolumeSerial &&
         slot->StreamSuffixHash == Snapshot->StreamSuffixHash &&
@@ -3096,13 +2973,12 @@ static BOOLEAN StageRegistrySopSnapshotQuiescent(_In_ PSTAGE_REGISTRY_SOP_SNAPSH
     HANDLE handle = NULL;
     PFILE_OBJECT object = NULL;
     PSECTION_OBJECT_POINTERS sop;
-    UINT32 sections, spilledTotal;
+    UINT32 sections, totalSections;
     NTSTATUS status;
     BOOLEAN quiescent = FALSE;
 
     PAGED_CODE();
-    if (Snapshot->UnknownWriterCount != 0 || Snapshot->SpilledSectionAcquireCount != 0 ||
-        Snapshot->SpilledSectionReleasePending != 0 || Snapshot->SpilledMutatingIoCount != 0)
+    if (Snapshot->UnknownWriterCount != 0 || Snapshot->SpilledMutatingIoCount != 0)
         return FALSE;
     RtlZeroMemory(&probe, sizeof(probe));
     probe.Listed = TRUE;
@@ -3128,163 +3004,14 @@ static BOOLEAN StageRegistrySopSnapshotQuiescent(_In_ PSTAGE_REGISTRY_SOP_SNAPSH
         quiescent = TRUE; /* The old SCB incarnation is gone; NTFS reused its file ID. */
         goto Exit;
     }
-    StageRegistrySpilledSectionSnapshot(sop, &sections, &spilledTotal);
+    StageRegistrySnapshotSections(sop, &sections, &totalSections);
     quiescent = MmDoesFileHaveUserWritableReferences(sop) == FALSE &&
-        (sections & SAFEUPLOAD_SECTIONS_UNTRACKED_BIT) == 0 && sections == 0 && spilledTotal == 0 &&
+        (sections & SAFEUPLOAD_SECTIONS_UNTRACKED_BIT) == 0 && sections == 0 && totalSections == 0 &&
         sop->DataSectionObject == NULL && sop->SharedCacheMap == NULL;
 Exit:
     if (object != NULL) ObDereferenceObject(object);
     if (handle != NULL) FltClose(handle);
     return quiescent;
-}
-
-_IRQL_requires_max_(DISPATCH_LEVEL)
-__declspec(noinline) static VOID StageRegistryStoreUnknownSopClassification(
-    _In_ PFLT_INSTANCE Instance, _In_ PSTAGE_REGISTRY_SOP_SNAPSHOT Snapshot,
-    _In_ PSTAGE_REGISTRY_ENTRY Probe, _In_ ULONG PolicyGeneration,
-    _In_ LONG Classification, _Out_ PBOOLEAN Changed)
-{
-    PSTAGE_REGISTRY_SOP_SLOT slot;
-    BOOLEAN found = FALSE;
-    KIRQL irql;
-    *Changed = FALSE;
-    StageAcquireSpinLock(&SectionLock, &irql);
-    slot = StageRegistryFindSopSlotLocked(Snapshot->SectionObjectPointer, &found);
-    if (found && slot != NULL && slot->Unknown &&
-        slot->InstanceIdentity == (PVOID)Instance &&
-        slot->VolumeSerial == Snapshot->VolumeSerial &&
-        slot->StreamSuffixHash == Snapshot->StreamSuffixHash &&
-        RtlEqualMemory(&slot->FileId, &Snapshot->FileId, sizeof(slot->FileId))) {
-        if (slot->ScopePolicyGeneration != PolicyGeneration ||
-            slot->ScopeClassification != Classification ||
-            slot->ScopeScanRenameVersion != Probe->ScopeScanRenameVersion ||
-            slot->ScopeScanLinkCount != Probe->ScopeScanLinkCount ||
-            slot->ScopeScanNextLink != Probe->ScopeScanNextLink ||
-            slot->ScopeScanUnionScoped != Probe->ScopeScanUnionScoped ||
-            slot->ScopeScanCurrentScoped != Probe->ScopeScanCurrentScoped ||
-            slot->ScopeScanPending != Probe->ScopeScanPending) {
-            slot->ScopePolicyGeneration = PolicyGeneration;
-            slot->ScopeClassification = Classification;
-            slot->ScopeScanRenameVersion = Probe->ScopeScanRenameVersion;
-            slot->ScopeScanLinkCount = Probe->ScopeScanLinkCount;
-            slot->ScopeScanNextLink = Probe->ScopeScanNextLink;
-            slot->ScopeScanUnionScoped = Probe->ScopeScanUnionScoped;
-            slot->ScopeScanCurrentScoped = Probe->ScopeScanCurrentScoped;
-            slot->ScopeScanPending = Probe->ScopeScanPending;
-            InterlockedIncrement64(&RegistrySopMapGeneration);
-            InterlockedIncrement64(&RegistryChangeSequence);
-            *Changed = TRUE;
-        }
-    }
-    StageReleaseSpinLock(&SectionLock, irql);
-}
-
-_IRQL_requires_max_(DISPATCH_LEVEL)
-__declspec(noinline) static VOID StageRegistrySopScopeClassification(
-    _In_ PFLT_INSTANCE Instance, _In_ PVOID SectionObjectPointer,
-    _In_ ULONG PolicyGeneration, _Out_ PBOOLEAN Known, _Out_ PBOOLEAN Outside)
-{
-    PSTAGE_REGISTRY_SOP_SLOT slot;
-    BOOLEAN found = FALSE;
-    KIRQL irql;
-    *Known = FALSE;
-    *Outside = FALSE;
-    StageAcquireSpinLock(&SectionLock, &irql);
-    slot = StageRegistryFindSopSlotLocked(SectionObjectPointer, &found);
-    if (found && slot != NULL && slot->Unknown &&
-        slot->InstanceIdentity == (PVOID)Instance &&
-        slot->ScopePolicyGeneration == PolicyGeneration &&
-        slot->ScopeClassification != STAGE_SCOPE_CLASS_UNRESOLVED &&
-        slot->ScopeScanPending == 0) {
-        *Known = TRUE;
-        *Outside = slot->ScopeClassification == STAGE_SCOPE_CLASS_OUTSIDE;
-    }
-    StageReleaseSpinLock(&SectionLock, irql);
-}
-
-_IRQL_requires_(PASSIVE_LEVEL)
-__declspec(noinline) static BOOLEAN StageRegistryClassifyUnknownSopSnapshot(
-    _Inout_ PSTAGE_REGISTRY_SOP_SNAPSHOT Snapshot, _In_ PFLT_INSTANCE Instance,
-    _In_ PFLT_VOLUME Volume, _Inout_ PULONG WorkBudget, _In_ ULONG PolicyGeneration,
-    _Out_ PBOOLEAN Outside, _Out_ PBOOLEAN WorkRemaining, _Out_ PBOOLEAN Changed)
-{
-    STAGE_REGISTRY_ENTRY probe;
-    PSAFEUPLOAD_INSTANCE_CONTEXT instanceContext = NULL;
-    BOOLEAN unionScoped = FALSE, currentScoped = FALSE, known;
-    LONG classification = STAGE_SCOPE_CLASS_UNRESOLVED;
-    NTSTATUS status;
-    ULONG generationAfter;
-
-    PAGED_CODE();
-    *Outside = FALSE;
-    *WorkRemaining = FALSE;
-    *Changed = FALSE;
-    if (Snapshot->ScopePolicyGeneration == PolicyGeneration &&
-        Snapshot->ScopeClassification != STAGE_SCOPE_CLASS_UNRESOLVED &&
-        Snapshot->ScopeScanPending == 0) {
-        *Outside = Snapshot->ScopeClassification == STAGE_SCOPE_CLASS_OUTSIDE;
-        return TRUE;
-    }
-    RtlZeroMemory(&probe, sizeof(probe));
-    probe.Listed = TRUE;
-    probe.StreamIdentityKnown = TRUE;
-    probe.Compact = TRUE;
-    probe.CompactStream = Snapshot->StreamSuffixHash != 0;
-    probe.StreamSuffixHash = Snapshot->StreamSuffixHash;
-    probe.Instance = Instance;
-    probe.Volume = Volume;
-    probe.VolumeSerial = Snapshot->VolumeSerial;
-    probe.FileId = Snapshot->FileId;
-    probe.SectionObjectPointer = Snapshot->SectionObjectPointer;
-    if (!NT_SUCCESS(FltGetInstanceContext(Instance, (PFLT_CONTEXT *)&instanceContext)))
-        return FALSE;
-    probe.VolumeKind = instanceContext->VolumeKind;
-    FltReleaseContext(instanceContext);
-    if (Snapshot->ScopePolicyGeneration == PolicyGeneration) {
-        probe.RenameVersion = Snapshot->ScopeScanRenameVersion;
-        probe.ScopeScanRenameVersion = Snapshot->ScopeScanRenameVersion;
-        probe.ScopeScanPolicyGeneration = Snapshot->ScopePolicyGeneration;
-        probe.ScopeScanLinkCount = Snapshot->ScopeScanLinkCount;
-        probe.ScopeScanNextLink = Snapshot->ScopeScanNextLink;
-        probe.ScopeScanUnionScoped = Snapshot->ScopeScanUnionScoped;
-        probe.ScopeScanCurrentScoped = Snapshot->ScopeScanCurrentScoped;
-        probe.ScopeScanPending = Snapshot->ScopeScanPending;
-    }
-    status = StageRegistryClassifyAllLinkNames(&probe, Instance, Volume, WorkBudget,
-        &unionScoped, &currentScoped);
-    if (status == STATUS_MORE_ENTRIES) {
-        *WorkRemaining = TRUE;
-    } else if (NT_SUCCESS(status)) {
-        classification = unionScoped ? STAGE_SCOPE_CLASS_SCOPED : STAGE_SCOPE_CLASS_OUTSIDE;
-    } else {
-        probe.ScopeScanNextLink = 0;
-        probe.ScopeScanUnionScoped = 0;
-        probe.ScopeScanCurrentScoped = 0;
-        probe.ScopeScanPending = 0;
-    }
-    generationAfter = (ULONG)SafeUploadCurrentPolicyGeneration();
-    if (generationAfter != PolicyGeneration) {
-        classification = STAGE_SCOPE_CLASS_UNRESOLVED;
-        probe.ScopeScanNextLink = 0;
-        probe.ScopeScanUnionScoped = 0;
-        probe.ScopeScanCurrentScoped = 0;
-        probe.ScopeScanPending = 0;
-        *WorkRemaining = TRUE;
-    }
-    StageRegistryStoreUnknownSopClassification(Instance, Snapshot, &probe,
-        PolicyGeneration, classification, Changed);
-    Snapshot->ScopePolicyGeneration = PolicyGeneration;
-    Snapshot->ScopeClassification = classification;
-    Snapshot->ScopeScanRenameVersion = probe.ScopeScanRenameVersion;
-    Snapshot->ScopeScanLinkCount = probe.ScopeScanLinkCount;
-    Snapshot->ScopeScanNextLink = probe.ScopeScanNextLink;
-    Snapshot->ScopeScanUnionScoped = probe.ScopeScanUnionScoped;
-    Snapshot->ScopeScanCurrentScoped = probe.ScopeScanCurrentScoped;
-    Snapshot->ScopeScanPending = probe.ScopeScanPending;
-    known = classification != STAGE_SCOPE_CLASS_UNRESOLVED &&
-        probe.ScopeScanPending == 0;
-    *Outside = known && classification == STAGE_SCOPE_CLASS_OUTSIDE;
-    return known;
 }
 
 _IRQL_requires_(PASSIVE_LEVEL)
@@ -3294,7 +3021,7 @@ static BOOLEAN StageRegistryUnknownSopMarkersQuiescent(_In_ PFLT_INSTANCE Instan
 {
     PSTAGE_REGISTRY_SOP_SNAPSHOT snapshots;
     ULONGLONG startingGeneration, expectedGeneration;
-    ULONG base, index, snapshotCount, policyGeneration;
+    ULONG base, index, snapshotCount;
     BOOLEAN liveMarker = FALSE;
 
     PAGED_CODE();
@@ -3307,45 +3034,28 @@ static BOOLEAN StageRegistryUnknownSopMarkersQuiescent(_In_ PFLT_INSTANCE Instan
     if (snapshots == NULL) return FALSE;
     startingGeneration = (ULONGLONG)InterlockedCompareExchange64(&RegistrySopMapGeneration, 0, 0);
     expectedGeneration = startingGeneration;
-    policyGeneration = (ULONG)SafeUploadCurrentPolicyGeneration();
     for (base = 0; base < RTL_NUMBER_OF(RegistrySopSlots); base += SAFEUPLOAD_REGISTRY_SOP_SCAN_CHUNK) {
         StageRegistryCopyUnknownSopChunk(Instance, base, snapshots, &snapshotCount);
 
         for (index = 0; index < snapshotCount; ++index) {
             PSTAGE_REGISTRY_SOP_SNAPSHOT snapshot = &snapshots[index];
-            BOOLEAN outside = FALSE, classificationKnown = FALSE;
-            BOOLEAN changed = FALSE, markerWorkRemaining = FALSE;
-            BOOLEAN streamQuiescent;
-            if (snapshot->ScopePolicyGeneration == policyGeneration &&
-                snapshot->ScopeClassification != STAGE_SCOPE_CLASS_UNRESOLVED &&
-                snapshot->ScopeScanPending == 0) {
-                classificationKnown = TRUE;
-                outside = snapshot->ScopeClassification == STAGE_SCOPE_CLASS_OUTSIDE;
-            } else if (*WorkBudget != 0) {
-                classificationKnown = StageRegistryClassifyUnknownSopSnapshot(snapshot,
-                    Instance, Volume, WorkBudget, policyGeneration, &outside,
-                    &markerWorkRemaining, &changed);
-            } else {
-                markerWorkRemaining = TRUE;
-            }
-            if (changed) expectedGeneration += 1;
-            if (markerWorkRemaining) *WorkRemaining = TRUE;
-            streamQuiescent = StageRegistrySopSnapshotQuiescent(snapshot, Instance, Volume);
-            if (streamQuiescent && StageRegistryRetireUnknownSopIfSame(Instance, snapshot)) {
-                expectedGeneration += 1;
-            } else if (!streamQuiescent && (!classificationKnown || !outside)) {
+            if (*WorkBudget == 0) {
+                *WorkRemaining = TRUE;
                 liveMarker = TRUE;
-            } else if (streamQuiescent) {
-                liveMarker = TRUE; /* concurrent marker update prevented exact retirement */
+                continue;
+            }
+            *WorkBudget -= 1;
+            if (StageRegistrySopSnapshotQuiescent(snapshot, Instance, Volume) &&
+                StageRegistryRetireUnknownSopIfSame(Instance, snapshot)) {
+                expectedGeneration += 1;
+            } else {
+                /* Every live or identity-ambiguous marker blocks this instance until proven quiescent. */
+                liveMarker = TRUE;
             }
         }
     }
     *Generation = (ULONGLONG)InterlockedCompareExchange64(&RegistrySopMapGeneration, 0, 0);
-    if (*Generation != expectedGeneration) liveMarker = TRUE; /* concurrent marker insert/update/removal */
-    if ((ULONG)SafeUploadCurrentPolicyGeneration() != policyGeneration) {
-        *WorkRemaining = TRUE;
-        liveMarker = TRUE;
-    }
+    if (*Generation != expectedGeneration) liveMarker = TRUE; /* concurrent marker insertion, mutation, or retirement */
     ExFreePoolWithTag(snapshots, SAFEUPLOAD_REGISTRY_POOL_TAG);
     return !liveMarker;
 }
@@ -3412,12 +3122,6 @@ static VOID StageRegistryRetireInstance(_In_ PFLT_INSTANCE Instance, _In_ BOOLEA
         PSTAGE_REGISTRY_ENTRY entry = StageRegistryDetachOneInstanceSectionBinding(Instance, &detached);
         if (!detached) break;
         StageRegistryDereference(entry); /* The map or exact C slot reference, if one was bound. */
-    }
-    for (;;) {
-        BOOLEAN detached = FALSE;
-        PSTAGE_SECTION_SPILL_RECORD spill = StageRegistryDetachOneInstanceSpill(Instance, &detached);
-        if (!detached) break;
-        ExFreePoolWithTag(spill, SAFEUPLOAD_REGISTRY_POOL_TAG);
     }
     StageRegistryClearUnknownSopBindings(Instance);
 
@@ -3545,8 +3249,7 @@ __declspec(noinline) static BOOLEAN StageRegistryAssociateSectionPointer(_In_ PS
             if (sameIdentity) {
                 LONG stickyReasons = map->UnknownReasons & ~SAFEUPLOAD_REGISTRY_UNKNOWN_CAPACITY;
                 if (stickyReasons != 0) StageRegistrySetEntryUnknownLocked(Entry, stickyReasons);
-            } else if (map->UnknownWriterCount != 0 || map->SpilledSectionAcquireCount != 0 ||
-                map->SpilledSectionReleasePending != 0 || map->SpilledMutatingIoCount != 0) {
+            } else if (map->UnknownWriterCount != 0 || map->SpilledMutatingIoCount != 0) {
                 pointerConflict = TRUE;
             }
             if (!pointerConflict) {
@@ -3561,8 +3264,7 @@ __declspec(noinline) static BOOLEAN StageRegistryAssociateSectionPointer(_In_ PS
                 InterlockedIncrement64(&RegistrySopMapGeneration);
             }
         } else if (map->Entry != Entry && map->Entry != NULL &&
-            (map->UnknownWriterCount != 0 || map->SpilledSectionAcquireCount != 0 ||
-             map->SpilledSectionReleasePending != 0 || map->SpilledMutatingIoCount != 0)) {
+            (map->UnknownWriterCount != 0 || map->SpilledMutatingIoCount != 0)) {
             pointerConflict = TRUE;
         } else if (map->Entry != Entry && map->Entry != NULL) {
             /* NTFS can reuse an SCB address after the old stream is gone. */
@@ -3602,7 +3304,7 @@ __declspec(noinline) static BOOLEAN StageRegistryAssociateSectionPointer(_In_ PS
             }
         }
     } else if (map == NULL && !pointerConflict) {
-        /* The Entry itself retains SOP+file identity; per-acquire section spills remain exact. */
+        /* The Entry itself retains SOP+file identity when the bounded map is full. */
         ok = TRUE;
     }
     StageReleaseSpinLock(&SectionLock, irql);
@@ -3629,6 +3331,7 @@ __declspec(noinline) static BOOLEAN StageRegistryAssociateSectionPointer(_In_ PS
  * to drop (at most one, since every pointer occupies one slot) through *MapReference. The caller drops the history
  * reference and *MapReference after releasing the lock. */
 /* Called by the pageable reclaim worker; keep its SectionLock operation resident. */
+_IRQL_requires_max_(APC_LEVEL)
 __declspec(noinline) static BOOLEAN StageRegistryPruneLocked(_In_ PSTAGE_REGISTRY_ENTRY Entry, _Out_ PSTAGE_REGISTRY_ENTRY *MapReference,
     _Out_ PFLT_INSTANCE *InstanceReference, _Out_ PFLT_VOLUME *VolumeReference)
 {
@@ -3662,27 +3365,10 @@ __declspec(noinline) static BOOLEAN StageRegistryPruneLocked(_In_ PSTAGE_REGISTR
         if (SectionSlots[index].RegistryEntry == Entry) { busy = TRUE; break; }
     }
     if (!busy) {
-        PLIST_ENTRY spillLink;
-        PVOID sop = InterlockedCompareExchangePointer(
-            (PVOID volatile *)&Entry->SectionObjectPointer, NULL, NULL);
-        for (spillLink = SectionSpills.Flink; spillLink != &SectionSpills;
-             spillLink = spillLink->Flink) {
-            PSTAGE_SECTION_SPILL_RECORD spill = CONTAINING_RECORD(spillLink,
-                STAGE_SECTION_SPILL_RECORD, Link);
-            if (spill->Signature == STAGE_SECTION_SPILL_SIGNATURE &&
-                spill->SectionObjectPointer == sop) {
-                busy = TRUE;
-                break;
-            }
-        }
-    }
-    if (!busy) {
         map = StageRegistryFindSopSlotLocked(InterlockedCompareExchangePointer(
             (PVOID volatile *)&Entry->SectionObjectPointer, NULL, NULL), &mapFound);
         if (mapFound && map->Entry == Entry) {
-            if (map->UnknownWriterCount != 0 || map->SpilledSectionAcquireCount != 0 ||
-                map->SpilledSectionCount != 0 ||
-                map->SpilledSectionReleasePending != 0 || map->SpilledMutatingIoCount != 0) {
+            if (map->UnknownWriterCount != 0 || map->SpilledMutatingIoCount != 0) {
                 busy = TRUE;
             } else {
                 *MapReference = map->Entry;
@@ -4437,8 +4123,7 @@ __declspec(noinline) static BOOLEAN StageRegistryTryPromoteStateNoInline(
     _In_ PSTAGE_REGISTRY_ENTRY Entry, _In_ ULONGLONG ExpectedSopMarkerGeneration)
 {
     PSTAGE_REGISTRY_SOP_SLOT map;
-    PLIST_ENTRY spillLink;
-    BOOLEAN mapFound = FALSE, spillCountsEmpty = TRUE;
+    BOOLEAN mapFound = FALSE, sectionSlotsEmpty = TRUE;
     ULONG index;
     KIRQL irql;
     BOOLEAN promoted = FALSE;
@@ -4448,22 +4133,15 @@ __declspec(noinline) static BOOLEAN StageRegistryTryPromoteStateNoInline(
     StageAcquireSpinLock(&SectionLock, &irql);
     map = StageRegistryFindSopSlotLocked(sop, &mapFound);
     if (mapFound && map != NULL && map->Entry == Entry)
-        spillCountsEmpty = map->UnknownWriterCount == 0 && map->SpilledSectionCount == 0 &&
+        sectionSlotsEmpty = map->UnknownWriterCount == 0 &&
             map->SpilledMutatingIoCount == 0;
-    for (index = 0; spillCountsEmpty && index < STAGE_SECTION_SLOTS; ++index) {
+    for (index = 0; sectionSlotsEmpty && index < STAGE_SECTION_SLOTS; ++index) {
         STAGE_SECTION_SLOT *section = &SectionSlots[index];
         if (section->Writable && section->SectionObjectPointer == sop)
-            spillCountsEmpty = FALSE;
-    }
-    for (spillLink = SectionSpills.Flink; spillCountsEmpty &&
-         spillLink != &SectionSpills; spillLink = spillLink->Flink) {
-        PSTAGE_SECTION_SPILL_RECORD spill = CONTAINING_RECORD(spillLink,
-            STAGE_SECTION_SPILL_RECORD, Link);
-        if (spill->Signature == STAGE_SECTION_SPILL_SIGNATURE && spill->Writable &&
-            spill->SectionObjectPointer == sop) spillCountsEmpty = FALSE;
+            sectionSlotsEmpty = FALSE;
     }
     if ((ULONGLONG)InterlockedCompareExchange64(&RegistrySopMapGeneration, 0, 0) ==
-            ExpectedSopMarkerGeneration && spillCountsEmpty &&
+            ExpectedSopMarkerGeneration && sectionSlotsEmpty &&
         InterlockedCompareExchange(&Entry->W, 0, 0) == 0 &&
         InterlockedCompareExchange((volatile LONG *)&Entry->State,
             SAFEUPLOAD_REGISTRY_STATE_PROTECTED,
@@ -4477,6 +4155,7 @@ __declspec(noinline) static BOOLEAN StageRegistryTryPromoteStateNoInline(
 
 /* RegistryLock remains held by the pageable caller, stabilizing the name and
  * list membership. Name comparison is done there because its snapshot is paged. */
+_IRQL_requires_max_(APC_LEVEL)
 __declspec(noinline) static VOID StageRegistryTryPromoteEntry(
     _In_ PSTAGE_REGISTRY_ENTRY Entry,
     _In_ BOOLEAN NameMatches,
@@ -4543,6 +4222,7 @@ __declspec(noinline) static VOID StageRegistryTryPromoteEntry(
     FltReleaseContext(instanceContext);
 }
 
+_IRQL_requires_max_(APC_LEVEL)
 __declspec(noinline) static VOID StageRegistryPrepareActivation(
     _In_ PSTAGE_REGISTRY_ENTRY Entry, _In_ BOOLEAN Unknown)
 {
@@ -4560,6 +4240,7 @@ __declspec(noinline) static VOID StageRegistryPrepareActivation(
 
 /* Entries stay behind the open and section admission gate until a PASSIVE
  * hard-link query proves every name outside the current/pending union. */
+_IRQL_requires_max_(APC_LEVEL)
 __declspec(noinline) static BOOLEAN StageRegistryBeginAliasProbe(_In_ PSTAGE_REGISTRY_ENTRY Entry)
 {
     KIRQL irql;
@@ -4580,6 +4261,8 @@ __declspec(noinline) static BOOLEAN StageRegistryBeginAliasProbe(_In_ PSTAGE_REG
     return began;
 }
 
+/* Resident; only the entry spin lock and interlocked updates, so it may run under the scope-cache spin lock. */
+_IRQL_requires_max_(DISPATCH_LEVEL)
 __declspec(noinline) static VOID StageRegistryResolveAliasProbe(_In_ PSTAGE_REGISTRY_ENTRY Entry,
     _In_ BOOLEAN ClassificationSucceeded, _In_ BOOLEAN UnionScoped, _Out_ PBOOLEAN Activated)
 {
@@ -4669,6 +4352,7 @@ __declspec(noinline) static BOOLEAN StageRegistryResolveAliasProbeForGeneration(
     return stable;
 }
 
+_IRQL_requires_max_(APC_LEVEL)
 __declspec(noinline) static VOID StageRegistrySetLinkScopeClassification(
     _In_ PSTAGE_REGISTRY_ENTRY Entry, _In_ BOOLEAN Succeeded, _In_ BOOLEAN UnionScoped)
 {
@@ -4679,6 +4363,7 @@ __declspec(noinline) static VOID StageRegistrySetLinkScopeClassification(
     StageReleaseSpinLock(&Entry->StateLock, irql);
 }
 
+_IRQL_requires_max_(APC_LEVEL)
 __declspec(noinline) static VOID StageRegistryClearActivation(_In_ PSTAGE_REGISTRY_ENTRY Entry)
 {
     KIRQL irql;
@@ -4834,8 +4519,7 @@ static VOID StageRegistryActivationProcess(_In_ PSTAGE_REGISTRY_ENTRY Entry,
     sopEmpty = sop->DataSectionObject == NULL && sop->SharedCacheMap == NULL;
     if (userWritable || !sopEmpty) goto Exit;
 
-    /* Live markers hold this instance only while scoped or undecidable. Outside markers stay
-     * recorded until their own stream quiesces, but do not stall unrelated entries. */
+    /* Every live unknown marker holds this instance until exact quiescence and identity-safe retirement. */
     if (!StageRegistryUnknownSopMarkersQuiescent(Instance, Volume, &markerWorkBudget,
             &markerWorkRemaining, &sopMarkerGeneration)) {
         if (markerWorkRemaining) InterlockedExchange(&Entry->ScopeScanPending, 1);
@@ -5211,29 +4895,14 @@ VOID SafeUploadStageWritersInitialize(VOID)
     InitializeListHead(&RegistryReservations);
     InitializeListHead(&TransactionAssociations);
     InitializeListHead(&RegistryDirectoryRenames);
-    InitializeListHead(&SectionSpills);
 }
 
-VOID SafeUploadStageWritersUninitialize(VOID)
+_IRQL_requires_max_(APC_LEVEL)
+__declspec(noinline) VOID SafeUploadStageWritersUninitialize(VOID)
 {
     PSTAGE_REGISTRY_ENTRY pool;
-    PSTAGE_SECTION_SPILL_RECORD spill;
-    LIST_ENTRY pendingSpills;
     KIRQL irql;
     BOOLEAN allReturned;
-    InitializeListHead(&pendingSpills);
-    StageAcquireSpinLock(&SectionLock, &irql);
-    while (!IsListEmpty(&SectionSpills)) {
-        PLIST_ENTRY link = RemoveHeadList(&SectionSpills);
-        InsertTailList(&pendingSpills, link);
-    }
-    StageReleaseSpinLock(&SectionLock, irql);
-    while (!IsListEmpty(&pendingSpills)) {
-        spill = CONTAINING_RECORD(RemoveHeadList(&pendingSpills),
-            STAGE_SECTION_SPILL_RECORD, Link);
-        spill->Signature = 0;
-        ExFreePoolWithTag(spill, SAFEUPLOAD_REGISTRY_POOL_TAG);
-    }
     pool = RegistryCompactPool;
     if (pool == NULL) return;
     StageAcquireSpinLock(&RegistryCompactPoolLock, &irql);
@@ -5260,222 +4929,46 @@ static BOOLEAN StageSectionWritable(_In_ PFLT_CALLBACK_DATA Data)
 }
 
 _IRQL_requires_max_(APC_LEVEL)
-__declspec(noinline) static BOOLEAN StageRegistryHasEntryForSop(
+__declspec(noinline) static PSTAGE_REGISTRY_ENTRY StageRegistryReferenceEntryForSop(
     _In_ PFLT_INSTANCE Instance, _In_opt_ PVOID SectionObjectPointer)
 {
     PLIST_ENTRY link;
-    BOOLEAN found = FALSE;
-    if (Instance == NULL || SectionObjectPointer == NULL) return FALSE;
+    PSTAGE_REGISTRY_ENTRY result = NULL;
+    if (Instance == NULL || SectionObjectPointer == NULL) return NULL;
     FltAcquirePushLockShared(&RegistryLock);
     for (link = RegistryEntries.Flink; link != &RegistryEntries; link = link->Flink) {
         PSTAGE_REGISTRY_ENTRY entry = CONTAINING_RECORD(link, STAGE_REGISTRY_ENTRY, Link);
         if (entry->Listed && !entry->Retired && entry->Instance == Instance &&
             InterlockedCompareExchangePointer((PVOID volatile *)&entry->SectionObjectPointer,
                 NULL, NULL) == SectionObjectPointer) {
-            found = TRUE;
+            StageRegistryReference(entry);
+            result = entry;
             break;
         }
     }
     FltReleasePushLock(&RegistryLock);
-    return found;
+    return result;
 }
 
 _IRQL_requires_max_(DISPATCH_LEVEL)
-__declspec(noinline) static BOOLEAN StageRegistryReserveSpilledSection(
-    _In_opt_ PVOID SectionObjectPointer, _In_opt_ PFLT_INSTANCE Instance,
-    _In_ BOOLEAN Writable, _Inout_ PSTAGE_SECTION_SPILL_RECORD SpillRecord,
-    _Out_ PULONG SopSlotIndex, _Out_ PBOOLEAN IdentityKnown)
+__declspec(noinline) static VOID StageRegistrySnapshotSections(
+    _In_opt_ PVOID SectionObjectPointer, _Out_ PUINT32 WritableCount, _Out_ PUINT32 TotalCount)
 {
-    PSTAGE_REGISTRY_SOP_SLOT slot;
-    KIRQL irql;
-    BOOLEAN found = FALSE, reserved = FALSE;
-    *SopSlotIndex = 0;
-    *IdentityKnown = FALSE;
-    if (SectionObjectPointer == NULL || Instance == NULL || SpillRecord == NULL) return FALSE;
-    StageAcquireSpinLock(&SectionLock, &irql);
-    slot = StageRegistryFindSopSlotLocked(SectionObjectPointer, &found);
-    if (found && slot != NULL &&
-        ((slot->Unknown && slot->InstanceIdentity == (PVOID)Instance) ||
-         (slot->Entry != NULL && slot->Entry->Instance == Instance))) {
-        *IdentityKnown = TRUE;
-        if (slot->SpilledSectionAcquireCount == MAXULONG ||
-            (Writable && slot->SpilledSectionCount == MAXULONG)) {
-            /* The exact per-acquire record remains the source when this summary counter saturates. */
-            *SopSlotIndex = MAXULONG;
-            SpillRecord->SopSlotIndex = MAXULONG;
-        } else {
-            *SopSlotIndex = (ULONG)(slot - RegistrySopSlots);
-            slot->SpilledSectionAcquireCount += 1;
-            if (Writable) slot->SpilledSectionCount += 1;
-            SpillRecord->SopSlotIndex = *SopSlotIndex;
-            InterlockedIncrement64(&RegistrySopMapGeneration);
-            InterlockedIncrement64(&RegistryChangeSequence);
-        }
-    } else if (!found) {
-        /* The per-acquire record remains exact even when the bounded SOP map is full. */
-        *SopSlotIndex = MAXULONG;
-        SpillRecord->SopSlotIndex = MAXULONG;
-    } else {
-        StageReleaseSpinLock(&SectionLock, irql);
-        return FALSE;
-    }
-    SpillRecord->Sequence = ++SectionSequence;
-    InsertTailList(&SectionSpills, &SpillRecord->Link);
-    reserved = TRUE;
-    StageReleaseSpinLock(&SectionLock, irql);
-    return reserved;
-}
-
-_IRQL_requires_max_(DISPATCH_LEVEL)
-__declspec(noinline) static VOID StageRegistrySpilledSectionAcquireFailed(
-    _In_ ULONG SopSlotIndex, _In_opt_ PVOID SectionObjectPointer,
-    _In_opt_ PVOID InstanceIdentity, _In_ BOOLEAN Writable)
-{
-    PSTAGE_REGISTRY_SOP_SLOT slot;
-    KIRQL irql;
-    BOOLEAN recheck = FALSE;
-    if (SopSlotIndex >= RTL_NUMBER_OF(RegistrySopSlots)) return;
-    StageAcquireSpinLock(&SectionLock, &irql);
-    slot = &RegistrySopSlots[SopSlotIndex];
-    if (slot->SectionObjectPointer == SectionObjectPointer &&
-        ((slot->Unknown && slot->InstanceIdentity == InstanceIdentity) ||
-         (slot->Entry != NULL && (PVOID)slot->Entry->Instance == InstanceIdentity)) &&
-        slot->SpilledSectionAcquireCount != 0 &&
-        (!Writable || slot->SpilledSectionCount != 0)) {
-        slot->SpilledSectionAcquireCount -= 1;
-        if (Writable) slot->SpilledSectionCount -= 1;
-        InterlockedIncrement64(&RegistrySopMapGeneration);
-        InterlockedIncrement64(&RegistryChangeSequence);
-        recheck = slot->SpilledSectionCount == 0;
-    }
-    StageReleaseSpinLock(&SectionLock, irql);
-    if (recheck) SafeUploadStageWritersQueueRecheck();
-}
-
-_IRQL_requires_max_(DISPATCH_LEVEL)
-__declspec(noinline) static VOID StageRegistrySpilledSectionAcquireDraining(
-    _In_opt_ PFLT_INSTANCE Instance, _In_ ULONG SopSlotIndex,
-    _In_opt_ PVOID SectionObjectPointer)
-{
-    PSTAGE_REGISTRY_SOP_SLOT slot;
-    PSTAGE_REGISTRY_ENTRY entry = NULL;
-    KIRQL irql;
-    if (SopSlotIndex < RTL_NUMBER_OF(RegistrySopSlots)) {
-        StageAcquireSpinLock(&SectionLock, &irql);
-        slot = &RegistrySopSlots[SopSlotIndex];
-        if (slot->SectionObjectPointer == SectionObjectPointer &&
-            slot->SpilledSectionCount != 0 &&
-            ((slot->Unknown && slot->InstanceIdentity == (PVOID)Instance) ||
-             (slot->Entry != NULL && slot->Entry->Instance == Instance))) {
-            entry = slot->Entry;
-            StageRegistryReference(entry);
-        }
-        StageReleaseSpinLock(&SectionLock, irql);
-    }
-    if (entry != NULL) {
-        StageRegistryMarkEntryUnknown(entry, SAFEUPLOAD_REGISTRY_UNKNOWN_TEARDOWN);
-        StageRegistryDereference(entry);
-    } else {
-        /* Draining hides whether lower completed the acquire; retain the spill and sticky Unknown. */
-        StageRegistryMarkUnknown(Instance, SAFEUPLOAD_REGISTRY_UNKNOWN_TEARDOWN, FALSE);
-    }
-}
-
-_IRQL_requires_max_(DISPATCH_LEVEL)
-__declspec(noinline) static VOID StageRegistrySpilledSectionReleaseComplete(
-    _In_opt_ PFLT_INSTANCE Instance, _In_ ULONG SopSlotIndex,
-    _In_opt_ PVOID SectionObjectPointer, _In_ BOOLEAN Writable,
-    _In_ BOOLEAN Succeeded, _In_ BOOLEAN Draining)
-{
-    PSTAGE_REGISTRY_SOP_SLOT slot;
-    PSTAGE_REGISTRY_ENTRY entry = NULL;
-    KIRQL irql;
-    BOOLEAN recheck = FALSE, lostPairing = FALSE;
-    if (SopSlotIndex >= RTL_NUMBER_OF(RegistrySopSlots)) {
-        return;
-    }
-    StageAcquireSpinLock(&SectionLock, &irql);
-    slot = &RegistrySopSlots[SopSlotIndex];
-    if (slot->SectionObjectPointer != SectionObjectPointer ||
-        !((slot->Unknown && slot->InstanceIdentity == (PVOID)Instance) ||
-          (slot->Entry != NULL && slot->Entry->Instance == Instance)) ||
-        slot->SpilledSectionReleasePending == 0) {
-        lostPairing = TRUE;
-    } else {
-        slot->SpilledSectionReleasePending -= 1;
-        if (Succeeded && !Draining) {
-            if (slot->SpilledSectionAcquireCount == 0 ||
-                (Writable && slot->SpilledSectionCount == 0)) {
-                lostPairing = TRUE;
-            } else {
-                slot->SpilledSectionAcquireCount -= 1;
-                if (Writable) slot->SpilledSectionCount -= 1;
-                InterlockedIncrement64(&RegistrySopMapGeneration);
-                InterlockedIncrement64(&RegistryChangeSequence);
-                recheck = slot->SpilledSectionCount == 0;
-            }
-        } else if (Draining) {
-            entry = slot->Entry;
-            if (entry != NULL) StageRegistryReference(entry);
-        }
-    }
-    StageReleaseSpinLock(&SectionLock, irql);
-    if (entry != NULL) {
-        StageRegistryMarkEntryUnknown(entry, SAFEUPLOAD_REGISTRY_UNKNOWN_TEARDOWN);
-        StageRegistryDereference(entry);
-    } else if (Draining || lostPairing) {
-        StageRegistryMarkUnknown(Instance, SAFEUPLOAD_REGISTRY_UNKNOWN_TEARDOWN, FALSE);
-    }
-    if (recheck) SafeUploadStageWritersQueueRecheck();
-}
-
-_IRQL_requires_max_(DISPATCH_LEVEL)
-__declspec(noinline) static VOID StageRegistrySpilledSectionSnapshot(
-    _In_opt_ PVOID SectionObjectPointer, _Out_ PUINT32 WritableCount,
-    _Out_ PUINT32 TotalCount)
-{
-    PSTAGE_REGISTRY_SOP_SLOT slot;
-    BOOLEAN found = FALSE;
-    ULONG_PTR writable = 0, total = 0, spilledWritable = 0, spilledTotal = 0;
-    ULONG index;
-    PLIST_ENTRY link;
+    ULONG index, writable = 0, total = 0;
     KIRQL irql;
     *WritableCount = 0;
     *TotalCount = 0;
     if (SectionObjectPointer == NULL) return;
     StageAcquireSpinLock(&SectionLock, &irql);
     for (index = 0; index < STAGE_SECTION_SLOTS; ++index) {
-        STAGE_SECTION_SLOT *fixed = &SectionSlots[index];
-        if (fixed->FileObject == NULL || fixed->SectionObjectPointer != SectionObjectPointer) continue;
-        total += 1;
-        if (fixed->Writable) writable += 1;
-    }
-    for (link = SectionSpills.Flink; link != &SectionSpills; link = link->Flink) {
-        PSTAGE_SECTION_SPILL_RECORD spill = CONTAINING_RECORD(link,
-            STAGE_SECTION_SPILL_RECORD, Link);
-        if (spill->Signature != STAGE_SECTION_SPILL_SIGNATURE ||
-            spill->SectionObjectPointer != SectionObjectPointer) continue;
-        if (spilledTotal != MAXULONG) spilledTotal += 1;
-        if (spill->Writable && spilledWritable != MAXULONG) spilledWritable += 1;
-    }
-    slot = StageRegistryFindSopSlotLocked(SectionObjectPointer, &found);
-    if (found && slot != NULL) {
-        if (spilledTotal < slot->SpilledSectionAcquireCount)
-            spilledTotal = slot->SpilledSectionAcquireCount;
-        if (spilledWritable < slot->SpilledSectionCount)
-            spilledWritable = slot->SpilledSectionCount;
+        STAGE_SECTION_SLOT *slot = &SectionSlots[index];
+        if (slot->FileObject == NULL || slot->SectionObjectPointer != SectionObjectPointer) continue;
+        ++total;
+        if (slot->Writable) ++writable;
     }
     StageReleaseSpinLock(&SectionLock, irql);
-    if (MAXULONG - total < spilledTotal || total + spilledTotal > MAXULONG)
-        total = MAXULONG;
-    else
-        total += spilledTotal;
-    if (MAXULONG - writable < spilledWritable || writable + spilledWritable > MAXULONG)
-        writable = SAFEUPLOAD_SECTIONS_UNTRACKED_BIT;
-    else
-        writable += spilledWritable;
-    *WritableCount = (UINT32)writable;
-    *TotalCount = (UINT32)total;
+    *WritableCount = writable;
+    *TotalCount = total;
 }
 
 _IRQL_requires_max_(APC_LEVEL)
@@ -5487,13 +4980,11 @@ __declspec(noinline) NTSTATUS SafeUploadStageSectionAcquired(_In_ PFLT_CALLBACK_
     PVOID sop, thread;
     BOOLEAN writable;
     STAGE_SECTION_SLOT *record = NULL;
-    PSTAGE_SECTION_SPILL_RECORD spillRecord = NULL;
     PSTAGE_REGISTRY_SOP_SLOT sopMap;
-    ULONG index;
-    ULONG processId;
+    ULONG index, processId;
     KIRQL irql;
     LONGLONG now;
-    BOOLEAN sopMapFound, spillIdentityKnown = FALSE;
+    BOOLEAN sopMapFound;
 
     *CompletionContext = NULL;
     if (fileObject == NULL) {
@@ -5537,53 +5028,19 @@ __declspec(noinline) NTSTATUS SafeUploadStageSectionAcquired(_In_ PFLT_CALLBACK_
         record = slot;
         break;
     }
-    if (record == NULL) {
-        SectionOverflow += 1;
-        InterlockedIncrement64(&RegistryChangeSequence);
-    }
     StageReleaseSpinLock(&SectionLock, irql);
     if (record == NULL) {
-        spillRecord = ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(*spillRecord),
-            SAFEUPLOAD_REGISTRY_POOL_TAG);
-        if (spillRecord != NULL) {
-            RtlZeroMemory(spillRecord, sizeof(*spillRecord));
-            spillRecord->Signature = STAGE_SECTION_SPILL_SIGNATURE;
-            spillRecord->FileObject = fileObject;
-            spillRecord->Thread = thread;
-            spillRecord->InstanceIdentity = FltObjects->Instance;
-            spillRecord->SectionObjectPointer = sop;
-            spillRecord->SopSlotIndex = MAXULONG;
-            spillRecord->Writable = writable;
-            spillRecord->AcquirePending = TRUE;
-        }
-        if (spillRecord != NULL && StageRegistryReserveSpilledSection(sop,
-                FltObjects->Instance, writable, spillRecord, &index, &spillIdentityKnown)) {
-            *CompletionContext = (PVOID)((ULONG_PTR)spillRecord |
-                STAGE_SECTION_ACQUIRE_SPILL_TAG);
-            if (index == MAXULONG && !spillIdentityKnown &&
-                !StageRegistryHasEntryForSop(FltObjects->Instance, sop)) {
-                /* Keep the exact acquire/release pair, but no file ID exists to classify this SOP. */
-                StageRegistryMarkUnknown(FltObjects->Instance,
-                    SAFEUPLOAD_REGISTRY_UNKNOWN_CAPACITY, FALSE);
-            }
-            spillRecord = NULL; /* SectionSpills owns it until the matching release. */
-        } else if (KeGetCurrentIrql() <= APC_LEVEL) {
-            /* Without a stable SOP entry or capacity for its pair record, exact recovery is impossible. */
-            if (spillRecord != NULL) ExFreePoolWithTag(spillRecord, SAFEUPLOAD_REGISTRY_POOL_TAG);
-            spillRecord = NULL;
+        PSTAGE_REGISTRY_ENTRY entry = StageRegistryReferenceEntryForSop(FltObjects->Instance, sop);
+        InterlockedIncrement64(&RegistryCapacityFailures);
+        if (entry != NULL) {
+            StageRegistryMarkEntryUnknown(entry, SAFEUPLOAD_REGISTRY_UNKNOWN_CAPACITY);
+            StageRegistryDereference(entry);
+        } else {
             StageRegistryMarkUnknown(FltObjects->Instance,
                 SAFEUPLOAD_REGISTRY_UNKNOWN_CAPACITY, FALSE);
-        } else {
-            if (spillRecord != NULL) ExFreePoolWithTag(spillRecord, SAFEUPLOAD_REGISTRY_POOL_TAG);
-            spillRecord = NULL;
-            InterlockedOr((volatile LONG *)&RegistryUnknownReasons,
-                SAFEUPLOAD_REGISTRY_UNKNOWN_CAPACITY);
-            if (!StageRegistryQueueInstanceUnknown(FltObjects->Instance,
-                    SAFEUPLOAD_REGISTRY_UNKNOWN_CAPACITY))
-                InterlockedExchange(&WriterGlobalUnknown, 1);
         }
-        InterlockedIncrement64(&RegistryCapacityFailures);
-        /* Exact SOP spills retire on acquire failure/release; identityless loss stays sticky. */
+        /* Capacity loss stays Unknown until reboot or instance teardown; passing the acquire preserves write availability. */
+        /* No slot means NULL context: failed-acquire cleanup and a release without an exact fixed-slot match are no-ops. */
         return STATUS_SUCCESS;
     }
     *CompletionContext = (PVOID)((ULONG_PTR)record | STAGE_SECTION_ACQUIRE_FIXED_TAG);
@@ -5596,7 +5053,7 @@ static PSTAGE_REGISTRY_ENTRY StageSectionRemoveSlot(_Inout_ STAGE_SECTION_SLOT *
 {
     PSTAGE_REGISTRY_ENTRY entry = Slot->RegistryEntry;
     if (Slot->Writable) {
-        SectionNow -= 1;
+        if (SectionNow != 0) SectionNow -= 1;
         if (Failed) SectionRemovedOnFailure += 1;
         else SectionReleased += 1;
         InterlockedIncrement64(&RegistryChangeSequence);
@@ -5612,8 +5069,7 @@ __declspec(noinline) VOID SafeUploadStageSectionReleasePrepare(_In_ PFLT_CALLBAC
 {
     PFILE_OBJECT fileObject = Data->Iopb->TargetFileObject;
     PVOID thread = PsGetCurrentThread();
-    STAGE_SECTION_SLOT *fixedRecord = NULL;
-    PSTAGE_SECTION_SPILL_RECORD spillRecord = NULL;
+    STAGE_SECTION_SLOT *record = NULL;
     ULONGLONG latestSequence = 0;
     ULONG index;
     KIRQL irql;
@@ -5626,43 +5082,13 @@ __declspec(noinline) VOID SafeUploadStageSectionReleasePrepare(_In_ PFLT_CALLBAC
         if (slot->FileObject == fileObject && slot->Thread == thread &&
             slot->InstanceIdentity == (PVOID)Instance && !slot->ReleasePending &&
             slot->Sequence > latestSequence) {
-            fixedRecord = slot;
-            spillRecord = NULL;
+            record = slot;
             latestSequence = slot->Sequence;
         }
     }
-    {
-        PLIST_ENTRY link;
-        for (link = SectionSpills.Flink; link != &SectionSpills; link = link->Flink) {
-            PSTAGE_SECTION_SPILL_RECORD candidate = CONTAINING_RECORD(link,
-                STAGE_SECTION_SPILL_RECORD, Link);
-            if (candidate->Signature == STAGE_SECTION_SPILL_SIGNATURE &&
-                candidate->FileObject == fileObject && candidate->Thread == thread &&
-                candidate->InstanceIdentity == (PVOID)Instance &&
-                !candidate->AcquirePending && !candidate->ReleasePending &&
-                !candidate->AcquireOutcomeUnknown && !candidate->ReleaseOutcomeUnknown &&
-                !candidate->Retiring &&
-                candidate->Sequence > latestSequence) {
-                spillRecord = candidate;
-                fixedRecord = NULL;
-                latestSequence = candidate->Sequence;
-            }
-        }
-    }
-    if (fixedRecord != NULL) {
-        fixedRecord->ReleasePending = TRUE;
-        *CompletionContext = (PVOID)((ULONG_PTR)fixedRecord | STAGE_SECTION_RELEASE_FIXED_TAG);
-    } else if (spillRecord != NULL) {
-        if (spillRecord->SopSlotIndex < RTL_NUMBER_OF(RegistrySopSlots)) {
-            PSTAGE_REGISTRY_SOP_SLOT map = &RegistrySopSlots[spillRecord->SopSlotIndex];
-            if (map->SectionObjectPointer == spillRecord->SectionObjectPointer &&
-                ((map->Unknown && map->InstanceIdentity == (PVOID)Instance) ||
-                 (map->Entry != NULL && map->Entry->Instance == Instance)) &&
-                map->SpilledSectionReleasePending < map->SpilledSectionAcquireCount)
-                map->SpilledSectionReleasePending += 1;
-        }
-        spillRecord->ReleasePending = TRUE;
-        *CompletionContext = (PVOID)((ULONG_PTR)spillRecord | STAGE_SECTION_RELEASE_SPILL_TAG);
+    if (record != NULL) {
+        record->ReleasePending = TRUE;
+        *CompletionContext = (PVOID)((ULONG_PTR)record | STAGE_SECTION_RELEASE_FIXED_TAG);
     }
     StageReleaseSpinLock(&SectionLock, irql);
 }
@@ -5675,60 +5101,8 @@ __declspec(noinline) VOID SafeUploadStageSectionReleaseComplete(_In_opt_ PFLT_IN
     KIRQL irql;
     if (CompletionContext == NULL) return;
     tag = (ULONG_PTR)CompletionContext & STAGE_COMPLETION_CONTEXT_TAG_MASK;
-    if (tag == STAGE_SECTION_RELEASE_SPILL_TAG) {
-        PSTAGE_SECTION_SPILL_RECORD spill = (PSTAGE_SECTION_SPILL_RECORD)((ULONG_PTR)CompletionContext &
-            ~STAGE_COMPLETION_CONTEXT_TAG_MASK);
-        BOOLEAN removed = FALSE, retired = FALSE;
-        ULONG slotIndex = spill->SopSlotIndex;
-        BOOLEAN writable = spill->Writable;
-        if (Draining) {
-            StageAcquireSpinLock(&SectionLock, &irql);
-            if (spill->Signature == STAGE_SECTION_SPILL_SIGNATURE && spill->ReleasePending &&
-                spill->Retiring) {
-                RemoveEntryList(&spill->Link);
-                spill->Signature = 0;
-                removed = TRUE;
-                retired = TRUE;
-            } else if (spill->Signature == STAGE_SECTION_SPILL_SIGNATURE && spill->ReleasePending) {
-                spill->ReleasePending = FALSE;
-                spill->ReleaseOutcomeUnknown = TRUE;
-            }
-            StageReleaseSpinLock(&SectionLock, irql);
-            if (retired) {
-                ExFreePoolWithTag(spill, SAFEUPLOAD_REGISTRY_POOL_TAG);
-                return;
-            }
-            StageRegistrySpilledSectionReleaseComplete(Instance, slotIndex,
-                spill->SectionObjectPointer, writable, FALSE, TRUE);
-            if (slotIndex == MAXULONG)
-                StageRegistryMarkUnknown(Instance, SAFEUPLOAD_REGISTRY_UNKNOWN_TEARDOWN, FALSE);
-            return;
-        }
-        StageAcquireSpinLock(&SectionLock, &irql);
-        if (spill->Signature == STAGE_SECTION_SPILL_SIGNATURE && spill->ReleasePending) {
-            if (spill->Retiring) {
-                RemoveEntryList(&spill->Link);
-                spill->Signature = 0;
-                removed = TRUE;
-                retired = TRUE;
-            } else if (Succeeded) {
-                RemoveEntryList(&spill->Link);
-                spill->Signature = 0;
-                removed = TRUE;
-            } else {
-                spill->ReleasePending = FALSE;
-            }
-        }
-        StageReleaseSpinLock(&SectionLock, irql);
-        if (!retired)
-            StageRegistrySpilledSectionReleaseComplete(Instance, slotIndex,
-                spill->SectionObjectPointer, writable, Succeeded && removed, FALSE);
-        if (!retired && removed && slotIndex == MAXULONG)
-            SafeUploadStageWritersQueueRecheck();
-        if (removed) ExFreePoolWithTag(spill, SAFEUPLOAD_REGISTRY_POOL_TAG);
-        return;
-    }
-    if (tag == STAGE_SECTION_RELEASE_FIXED_TAG) {
+    if (tag != STAGE_SECTION_RELEASE_FIXED_TAG) return;
+    {
         STAGE_SECTION_SLOT *slot = (STAGE_SECTION_SLOT *)((ULONG_PTR)CompletionContext &
             ~STAGE_COMPLETION_CONTEXT_TAG_MASK);
         PSTAGE_REGISTRY_ENTRY removed = NULL;
@@ -5760,30 +5134,6 @@ __declspec(noinline) VOID SafeUploadStageSectionReleaseComplete(_In_opt_ PFLT_IN
     }
 }
 
-_IRQL_requires_max_(DISPATCH_LEVEL)
-__declspec(noinline) VOID SafeUploadStageSectionAcquireComplete(_In_opt_ PVOID CompletionContext)
-{
-    ULONG_PTR tag;
-    PSTAGE_SECTION_SPILL_RECORD spill;
-    KIRQL irql;
-    BOOLEAN removed = FALSE;
-    if (CompletionContext == NULL) return;
-    tag = (ULONG_PTR)CompletionContext & STAGE_COMPLETION_CONTEXT_TAG_MASK;
-    if (tag != STAGE_SECTION_ACQUIRE_SPILL_TAG) return;
-    spill = (PSTAGE_SECTION_SPILL_RECORD)((ULONG_PTR)CompletionContext &
-        ~STAGE_COMPLETION_CONTEXT_TAG_MASK);
-    StageAcquireSpinLock(&SectionLock, &irql);
-    if (spill->Signature == STAGE_SECTION_SPILL_SIGNATURE && spill->AcquirePending) {
-        spill->AcquirePending = FALSE;
-        if (spill->Retiring && !spill->ReleasePending) {
-            RemoveEntryList(&spill->Link);
-            spill->Signature = 0;
-            removed = TRUE;
-        }
-    }
-    StageReleaseSpinLock(&SectionLock, irql);
-    if (removed) ExFreePoolWithTag(spill, SAFEUPLOAD_REGISTRY_POOL_TAG);
-}
 
 _IRQL_requires_max_(DISPATCH_LEVEL)
 __declspec(noinline) VOID SafeUploadStageSectionAcquireFailed(_In_ PVOID CompletionContext)
@@ -5792,27 +5142,8 @@ __declspec(noinline) VOID SafeUploadStageSectionAcquireFailed(_In_ PVOID Complet
     KIRQL irql;
     if (CompletionContext == NULL) return;
     tag = (ULONG_PTR)CompletionContext & STAGE_COMPLETION_CONTEXT_TAG_MASK;
-    if (tag == STAGE_SECTION_ACQUIRE_SPILL_TAG) {
-        PSTAGE_SECTION_SPILL_RECORD spill = (PSTAGE_SECTION_SPILL_RECORD)((ULONG_PTR)CompletionContext &
-            ~STAGE_COMPLETION_CONTEXT_TAG_MASK);
-        ULONG slotIndex = spill->SopSlotIndex;
-        BOOLEAN writable = spill->Writable, removed = FALSE;
-        StageAcquireSpinLock(&SectionLock, &irql);
-        if (spill->Signature == STAGE_SECTION_SPILL_SIGNATURE && spill->AcquirePending) {
-            RemoveEntryList(&spill->Link);
-            spill->Signature = 0;
-            removed = TRUE;
-        }
-        StageReleaseSpinLock(&SectionLock, irql);
-        if (removed) {
-            StageRegistrySpilledSectionAcquireFailed(slotIndex,
-                spill->SectionObjectPointer, spill->InstanceIdentity, writable);
-            if (writable || slotIndex == MAXULONG) SafeUploadStageWritersQueueRecheck();
-            ExFreePoolWithTag(spill, SAFEUPLOAD_REGISTRY_POOL_TAG);
-        }
-        return;
-    }
-    if (tag == STAGE_SECTION_ACQUIRE_FIXED_TAG) {
+    if (tag != STAGE_SECTION_ACQUIRE_FIXED_TAG) return;
+    {
         STAGE_SECTION_SLOT *slot = (STAGE_SECTION_SLOT *)((ULONG_PTR)CompletionContext &
             ~STAGE_COMPLETION_CONTEXT_TAG_MASK);
         PSTAGE_REGISTRY_ENTRY removed;
@@ -5826,42 +5157,15 @@ __declspec(noinline) VOID SafeUploadStageSectionAcquireFailed(_In_ PVOID Complet
     }
 }
 
-/* A draining acquire/release cannot reveal whether lower retained the section. Keep its exact spill
- * record and Unknown reason; only an identityless SOP loss requires sticky instance Unknown. */
 _IRQL_requires_max_(DISPATCH_LEVEL)
 __declspec(noinline) VOID SafeUploadStageSectionAcquireDraining(_In_opt_ PFLT_INSTANCE Instance,
     _In_opt_ PVOID CompletionContext)
 {
     ULONG_PTR tag;
-    KIRQL irql;
     if (CompletionContext == NULL) return;
     tag = (ULONG_PTR)CompletionContext & STAGE_COMPLETION_CONTEXT_TAG_MASK;
-    if (tag == STAGE_SECTION_ACQUIRE_SPILL_TAG) {
-        PSTAGE_SECTION_SPILL_RECORD spill = (PSTAGE_SECTION_SPILL_RECORD)((ULONG_PTR)CompletionContext &
-            ~STAGE_COMPLETION_CONTEXT_TAG_MASK);
-        BOOLEAN retired = FALSE;
-        StageAcquireSpinLock(&SectionLock, &irql);
-        if (spill->Signature == STAGE_SECTION_SPILL_SIGNATURE && spill->AcquirePending &&
-            spill->Retiring) {
-            spill->AcquirePending = FALSE;
-            RemoveEntryList(&spill->Link);
-            spill->Signature = 0;
-            retired = TRUE;
-        } else if (spill->Signature == STAGE_SECTION_SPILL_SIGNATURE && spill->AcquirePending) {
-            spill->AcquirePending = FALSE;
-            spill->AcquireOutcomeUnknown = TRUE;
-        }
-        StageReleaseSpinLock(&SectionLock, irql);
-        if (retired) {
-            ExFreePoolWithTag(spill, SAFEUPLOAD_REGISTRY_POOL_TAG);
-            return;
-        }
-        if (spill->SopSlotIndex < RTL_NUMBER_OF(RegistrySopSlots))
-            StageRegistrySpilledSectionAcquireDraining(Instance, spill->SopSlotIndex,
-                spill->SectionObjectPointer);
-        else
-            StageRegistryMarkUnknown(Instance, SAFEUPLOAD_REGISTRY_UNKNOWN_TEARDOWN, FALSE);
-    } else if (tag == STAGE_SECTION_ACQUIRE_FIXED_TAG) {
+    if (tag != STAGE_SECTION_ACQUIRE_FIXED_TAG) return;
+    {
         STAGE_SECTION_SLOT *slot = (STAGE_SECTION_SLOT *)((ULONG_PTR)CompletionContext &
             ~STAGE_COMPLETION_CONTEXT_TAG_MASK);
         if (slot->RegistryEntry != NULL)
@@ -5875,11 +5179,11 @@ __declspec(noinline) VOID SafeUploadStageSectionAcquireDraining(_In_opt_ PFLT_IN
 _IRQL_requires_max_(DISPATCH_LEVEL)
 __declspec(noinline) UINT32 SafeUploadStageSectionsInFlight(_In_opt_ PVOID SectionObjectPointer)
 {
-    UINT32 count = 0, total = 0;
+    UINT32 writableCount, totalCount;
     if (SectionObjectPointer == NULL) return SAFEUPLOAD_SECTIONS_UNTRACKED_BIT;
-    StageRegistrySpilledSectionSnapshot(SectionObjectPointer, &count, &total);
-    UNREFERENCED_PARAMETER(total);
-    return count;
+    StageRegistrySnapshotSections(SectionObjectPointer, &writableCount, &totalCount);
+    UNREFERENCED_PARAMETER(totalCount);
+    return writableCount;
 }
 
 /* A live writable-section slot without an SOP registry binding is not Free:
@@ -5954,11 +5258,7 @@ BOOLEAN SafeUploadStageWritersSopMatchesPolicy(_In_ PFLT_INSTANCE Instance,
     if (Instance == NULL || SectionObjectPointer == NULL) return FALSE;
     entry = StageRegistryReferenceSop(SectionObjectPointer);
     if (entry == NULL) {
-        BOOLEAN known = FALSE, outside = FALSE;
-        StageRegistrySopScopeClassification(Instance, SectionObjectPointer,
-            (ULONG)SafeUploadCurrentPolicyGeneration(), &known, &outside);
-        if (known && outside) return FALSE;
-        /* An in-scope or undecidable overflow marker stays fail closed for this SOP. */
+        /* Unknown markers have no per-SOP scope cache; fail closed on a volume that may be scoped. */
         return StageRegistryUnknownSopForInstance(Instance, SectionObjectPointer) &&
             SafeUploadPolicyMayMatchInstanceVolume(Instance);
     }
@@ -6201,7 +5501,8 @@ NTSTATUS SafeUploadStageWritersActivatingStatusPage(_In_ UINT32 StartIndex,
     return STATUS_SUCCESS;
 }
 
-/* The pageable control dispatcher calls this status snapshot; keep SectionLock resident. */
+/* The pageable control dispatcher calls this status snapshot; RegistryLock bounds it at APC_LEVEL. */
+_IRQL_requires_max_(APC_LEVEL)
 __declspec(noinline) VOID SafeUploadStageWritersGetStatus(_Out_ PSAFEUPLOAD_WRITER_STATE_STATUS Status)
 {
     SAFEUPLOAD_WRITER_STATE_STATUS snapshot = {0};
@@ -6250,7 +5551,6 @@ __declspec(noinline) VOID SafeUploadStageWritersGetStatus(_Out_ PSAFEUPLOAD_WRIT
     snapshot.SectionInFlightMaxDepth = SectionMaxDepth;
     snapshot.SectionInFlightInserted = SectionInserted;
     snapshot.SectionInFlightReleased = SectionReleased;
-    snapshot.SectionInFlightOverflow = SectionOverflow;
     snapshot.SectionInFlightRemovedOnFailure = SectionRemovedOnFailure;
     for (index = 0; index < STAGE_SECTION_SLOTS; index += 1) {
         STAGE_SECTION_SLOT *slot = &SectionSlots[index];
@@ -6560,11 +5860,8 @@ __declspec(noinline) static UINT32 StageRegistrySnapshotC(_In_ PSTAGE_REGISTRY_E
     _Out_writes_opt_(Capacity) PUINT32 ProcessIds, _In_ ULONG Capacity,
     _Out_opt_ PUINT32 ProcessIdCount)
 {
-    PSTAGE_REGISTRY_SOP_SLOT map;
     ULONG index;
     UINT32 count = 0;
-    UINT32 spilledWritable = 0;
-    BOOLEAN mapFound = FALSE;
     KIRQL irql;
     if (ProcessIdCount != NULL) *ProcessIdCount = 0;
     StageAcquireSpinLock(&SectionLock, &irql);
@@ -6581,38 +5878,6 @@ __declspec(noinline) static UINT32 StageRegistrySnapshotC(_In_ PSTAGE_REGISTRY_E
                     ProcessIds[(*ProcessIdCount)++] = slot->ProcessId;
             }
         }
-    }
-    {
-        PLIST_ENTRY link;
-        PVOID sop = InterlockedCompareExchangePointer(
-            (PVOID volatile *)&Entry->SectionObjectPointer, NULL, NULL);
-        for (link = SectionSpills.Flink; link != &SectionSpills; link = link->Flink) {
-            PSTAGE_SECTION_SPILL_RECORD spill = CONTAINING_RECORD(link,
-                STAGE_SECTION_SPILL_RECORD, Link);
-            if (spill->Signature == STAGE_SECTION_SPILL_SIGNATURE &&
-                spill->Writable && spill->SectionObjectPointer == sop) {
-                if (spilledWritable == MAXULONG) {
-                    count = SAFEUPLOAD_SECTIONS_UNTRACKED_BIT;
-                    break;
-                }
-                spilledWritable += 1;
-            }
-        }
-    }
-    map = StageRegistryFindSopSlotLocked(InterlockedCompareExchangePointer(
-        (PVOID volatile *)&Entry->SectionObjectPointer, NULL, NULL), &mapFound);
-    if (mapFound && map != NULL && map->Entry == Entry) {
-        if (spilledWritable < map->SpilledSectionCount)
-            spilledWritable = map->SpilledSectionCount;
-        if (MAXULONG - count < spilledWritable)
-            count = SAFEUPLOAD_SECTIONS_UNTRACKED_BIT;
-        else
-            count += spilledWritable;
-    } else if (spilledWritable != 0 && count != SAFEUPLOAD_SECTIONS_UNTRACKED_BIT) {
-        if (MAXULONG - count < spilledWritable)
-            count = SAFEUPLOAD_SECTIONS_UNTRACKED_BIT;
-        else
-            count += spilledWritable;
     }
     StageReleaseSpinLock(&SectionLock, irql);
     return count;

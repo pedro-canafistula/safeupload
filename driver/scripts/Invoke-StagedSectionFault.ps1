@@ -31,7 +31,7 @@ function Read-UpperStats {
     $raw=[SafeUploadSectionFaultClient]::Inspector($Inspector,'--writer-state-status')
     $state=$raw|ConvertFrom-Json
     foreach($field in @('writerState','sectionInFlightNow','sectionInFlightInserted','sectionInFlightReleased',
-        'sectionInFlightRemovedOnFailure','sectionInFlightOverflow','sectionInFlightStuck',
+        'sectionInFlightRemovedOnFailure','sectionInFlightStuck','registryCapacityFailures',
         'writersDroppedAtTeardown','writersDroppedWhileMounted','instanceTeardownsDismount','instanceTeardownsOther')) {
         if ($state.PSObject.Properties.Name -notcontains $field) { throw ('Missing upper status: '+$field) }
     }
@@ -43,7 +43,7 @@ function Get-UpperStats([switch]$AllowIntentionalHold) {
     # The caller brackets this snapshot with same-FO/generation CurrentHeld=1 proof.
     $heldSnapshot = $AllowIntentionalHold -and $state.sectionInFlightNow -eq 1 -and
         $state.sectionInFlightStuck -ge 0 -and $state.sectionInFlightStuck -le 1
-    if ($state.writerState -ne $true -or $state.sectionInFlightOverflow -ne 0 -or
+    if ($state.writerState -ne $true -or
         ($state.sectionInFlightStuck -ne 0 -and -not $heldSnapshot)) {
         throw 'Upper section tracking is unknown or stuck.'
     }
@@ -98,7 +98,7 @@ function Get-STTraceRows([string]$Name,[switch]$AllowIncomplete) {
 function Get-STWriterStats {
     $state=Invoke-STInspector '--writer-state-status'|ConvertFrom-Json
     foreach($field in @('sectionInFlightNow','sectionInFlightInserted','sectionInFlightReleased',
-        'sectionInFlightOverflow','sectionInFlightStuck','sectionInFlightRemovedOnFailure',
+        'sectionInFlightStuck','sectionInFlightRemovedOnFailure','registryCapacityFailures',
         'writersDroppedAtTeardown','writersDroppedWhileMounted','instanceTeardownsDismount','instanceTeardownsOther')) {
         if($null -eq $state.$field){throw ('Writer status missing '+$field)}
     }
@@ -339,13 +339,13 @@ function Invoke-SectionTeardownScenario {
         $nestedCountersOk=([int64]$nestedAtRest.sectionInFlightInserted-[int64]$nestedBefore.sectionInFlightInserted) -eq 2 -and
             ([int64]$nestedAtRest.sectionInFlightReleased-[int64]$nestedBefore.sectionInFlightReleased) -eq 2 -and
             $nestedAtRest.sectionInFlightNow -eq [int64]$nestedBefore.sectionInFlightNow -and
-            $nestedAtRest.sectionInFlightOverflow -eq 0 -and $nestedAtRest.sectionInFlightStuck -eq 0 -and
+            $nestedAtRest.sectionInFlightStuck -eq 0 -and
             $nestedGlobal.writerGlobalUnknown -eq 0 -and $t2Completed -and $threadPairingOk
         [void](Add-STOutcome 'NestedConservation' $nestedCountersOk `
             ('t1Thread:'+ $t1.NativeThreadId +';t2Thread:'+ $t2.NativeThreadId +';distinctThreads:'+ $threadPairingOk+
                 ';insertedDelta:'+([int64]$nestedAtRest.sectionInFlightInserted-[int64]$nestedBefore.sectionInFlightInserted)+
                 ';releasedDelta:'+([int64]$nestedAtRest.sectionInFlightReleased-[int64]$nestedBefore.sectionInFlightReleased)+
-                ';now:'+$nestedAtRest.sectionInFlightNow+';overflow:'+$nestedAtRest.sectionInFlightOverflow+
+                ';now:'+$nestedAtRest.sectionInFlightNow+
                 ';stuck:'+$nestedAtRest.sectionInFlightStuck+';writerGlobalUnknown:'+$nestedGlobal.writerGlobalUnknown))
         foreach($threadWorker in $script:STNestedThreads){try{$threadWorker.Dispose()}catch{$result.Errors+=('Nested thread dispose: '+$_.Exception.Message)}}
         $script:STNestedThreads=@()
@@ -546,7 +546,7 @@ function Invoke-SectionTeardownScenario {
                 ';volumeEntry:'+$(if($entryAfterDetach){'flags:'+ $entryAfterDetach.volumeFlags}else{'absent'})+
                 ';writerGlobalUnknown:'+$statusAfterDetach.writerGlobalUnknown+';sectionNow:'+$afterDetachStats.sectionInFlightNow+
                 ';inserted:'+$afterDetachStats.sectionInFlightInserted+';released:'+$afterDetachStats.sectionInFlightReleased+
-                ';stuck:'+$afterDetachStats.sectionInFlightStuck+';overflow:'+$afterDetachStats.sectionInFlightOverflow))
+                ';stuck:'+$afterDetachStats.sectionInFlightStuck))
 
         $slotDelta=[int64]$afterDetachStats.sectionInFlightNow-[int64]$vhdxBefore.sectionInFlightNow
         $insertDelta=[int64]$afterDetachStats.sectionInFlightInserted-[int64]$vhdxBefore.sectionInFlightInserted
@@ -897,7 +897,7 @@ try {
     $result.Hold=@{Before=$before;During=$during;After=$after;Arm=$armed;Held=$stillHeld;Released=$released}
     if ($Capacity) {
         # Intentionally exceed the production table's 64 slots. This is a separate
-        # negative qualification: overflow must remain Unknown after all native work drains.
+        # Fixed-table capacity loss must remain Unknown after all native work drains.
         Assert-LowerAttachment
         Reset-UpperTrace
         $capacityBefore=Get-UpperStats
@@ -922,12 +922,12 @@ try {
             ([Convert]::ToUInt32($_.pageProtection.Substring(2),16) -band 0xCC) -ne 0 })
         $capacityStillHeld=$client.Send(0,[IntPtr]::Zero)
         if ($capacityAcquires.Count -ne 66 -or $capacityDuring.writerState -ne $true -or
-            $capacityDuring.sectionInFlightOverflow -le $capacityBefore.sectionInFlightOverflow -or
+            $capacityDuring.registryCapacityFailures -le $capacityBefore.registryCapacityFailures -or
             $capacityDuring.sectionInFlightNow -le 0 -or $capacityDuring.sectionInFlightNow -gt 64 -or
             $capacityStillHeld.CurrentHeld -ne 66 -or $capacityStillHeld.ArmedFileObject -ne $capacityArm.ArmedFileObject -or
             $capacityStillHeld.ArmGeneration -ne $capacityArm.ArmGeneration -or
             $capacityStillHeld.TimedOut -ne $capacityArm.TimedOut -or $capacityStillHeld.InvalidIrql -ne $capacityArm.InvalidIrql) {
-            throw 'Intentional table overflow was not attributable to the held callbacks.'
+            throw 'Fixed-table capacity loss was not attributable to the held callbacks.'
         }
         [void]$client.Send(3,[IntPtr]::Zero)
         $drainDeadline=[DateTime]::UtcNow.AddSeconds(10)
@@ -941,11 +941,11 @@ try {
         [void]$client.Send(4,[IntPtr]::Zero)
         # A later successful mapping must not clear sticky uncertainty.
         $mapping=[SafeUploadSectionFaultMapping]::new($file.SafeFileHandle)
-        if ( -not $mapping.Wait(10000) -or $mapping.WorkerError -or -not $mapping.Created) { throw 'Post-overflow mapping did not succeed.' }
+        if ( -not $mapping.Wait(10000) -or $mapping.WorkerError -or -not $mapping.Created) { throw 'Post-capacity mapping did not succeed.' }
         $capacityAfter=Read-UpperStats
-        if ($capacityAfter.sectionInFlightOverflow -lt $capacityDuring.sectionInFlightOverflow -or
-            $capacityAfter.sectionInFlightNow -ne $capacityDuring.sectionInFlightNow -or
-            $capacityAfter.sectionInFlightRemovedOnFailure -ne $capacityBefore.sectionInFlightRemovedOnFailure) { throw 'Overflow uncertainty did not remain sticky.' }
+        if ($capacityAfter.registryCapacityFailures -lt $capacityDuring.registryCapacityFailures -or
+            $capacityAfter.sectionInFlightNow -ne $capacityBefore.sectionInFlightNow -or
+            $capacityAfter.sectionInFlightRemovedOnFailure -ne $capacityBefore.sectionInFlightRemovedOnFailure) { throw 'Capacity loss left stale slots or changed failure accounting.' }
         # File-ID S/H/C probes are allowed only after every held callback and mapping has drained.
         Reset-UpperTrace
         [void][SafeUploadSectionFaultClient]::Inspector($Inspector,('--admission-probe "'+$Fixture+'"'))

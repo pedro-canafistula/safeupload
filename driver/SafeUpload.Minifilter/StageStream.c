@@ -3253,10 +3253,31 @@ static FLT_PREOP_CALLBACK_STATUS StageDispatchCore(PFLT_CALLBACK_DATA Data,
     case IRP_MJ_MDL_READ_COMPLETE:
         /* Completion releases a previously returned MDL; do not block the release path. */
         break;
+    case IRP_MJ_PREPARE_MDL_WRITE:
+        /* PREPARE_MDL_WRITE fast I/O bypasses W. A retry uses IRP_MJ_WRITE below, which counts
+         * W through completion for IRP_MN_MDL and IRP_MN_COMPLETE_MDL too. */
+        if (FLT_IS_FASTIO_OPERATION(Data)) {
+            FLT_FILESYSTEM_TYPE fileSystemType;
+            BOOLEAN trackedWriter = SafeUploadStageWritersIsTrackedWriter(
+                Objects->Instance, Objects->FileObject);
+            if (trackedWriter) return FLT_PREOP_DISALLOW_FASTIO;
+            if (StageVolumeKind(Objects->Instance) == SafeUploadVolumeFixed &&
+                SafeUploadPolicyMayMatchInstanceVolume(Objects->Instance)) {
+                NTSTATUS fileSystemStatus = FltGetFileSystemType(Objects->Instance,
+                    &fileSystemType);
+                if (!NT_SUCCESS(fileSystemStatus) || fileSystemType == FLT_FSTYPE_NTFS)
+                    return FLT_PREOP_DISALLOW_FASTIO;
+            }
+        }
+        break;
+    case IRP_MJ_MDL_WRITE_COMPLETE:
+        /* Completion releases the prepared MDL; the write request owns W rundown. */
+        break;
 #endif
     case IRP_MJ_WRITE:
 #if SAFEUPLOAD_STAGING_PROTOTYPE
         {
+            /* IRP_MN_MDL and IRP_MN_COMPLETE_MDL remain IRP_MJ_WRITE requests and take W here. */
             LONG traceState = SafeUploadAdmissionTraceControlState;
             if ((traceState & 1) != 0 && SafeUploadStageAdmissionTraceBegin(traceState)) {
                 SAFEUPLOAD_ADMISSION_TRACE_ENTRY entry;
@@ -3503,7 +3524,7 @@ static FLT_POSTOP_CALLBACK_STATUS StagePostOperationCore(PFLT_CALLBACK_DATA Data
         } else if (!NT_SUCCESS(Data->IoStatus.Status)) {
             /* The acquire failed below us: no release follows, so drop the in-flight entry here. */
             SafeUploadStageSectionAcquireFailed(CompletionContext);
-        } else SafeUploadStageSectionAcquireComplete(CompletionContext);
+        }
         return FLT_POSTOP_FINISHED_PROCESSING;
     }
     if (Data->Iopb->MajorFunction == IRP_MJ_SET_INFORMATION &&

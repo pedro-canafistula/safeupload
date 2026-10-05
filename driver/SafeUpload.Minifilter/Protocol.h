@@ -736,7 +736,7 @@ typedef struct _SAFEUPLOAD_WRITER_STATE_STATUS {
     UINT64 DirectoryCreatesSkipped;  // write-access opens of directories, not counted
     UINT64 SectionInFlightInserted;
     UINT64 SectionInFlightReleased;
-    UINT64 SectionInFlightOverflow;  // acquires that found the in-flight table full (fail closed)
+    UINT64 RetiredSectionOverflow;   // always 0: formerly the fixed-table overflow count (overflow now marks Unknown)
     UINT64 SectionInFlightStuck;     // entries older than the stuck threshold when sampled
     UINT64 SectionInFlightRemovedOnFailure;  // entries removed by post-operation because the acquire failed
     UINT32 SectionInFlightMaxDepth;
@@ -1181,6 +1181,8 @@ C_ASSERT( sizeof( SAFEUPLOAD_POLICY_MESSAGE ) >= sizeof( SAFEUPLOAD_ADMISSION_CA
 C_ASSERT( sizeof( SAFEUPLOAD_POLICY_MESSAGE ) >= sizeof( SAFEUPLOAD_ADMISSION_CANARY_HOLD_REQUEST ) );
 C_ASSERT( sizeof( SAFEUPLOAD_POLICY_MESSAGE ) >= sizeof( SAFEUPLOAD_ADMISSION_TRACE_BATCH ) );
 C_ASSERT( sizeof( SAFEUPLOAD_FENCE_STATUS ) == 144 );
+C_ASSERT( (ULONG)FIELD_OFFSET( SAFEUPLOAD_WRITER_STATE_STATUS, RetiredSectionOverflow ) == 72 );
+C_ASSERT( (ULONG)FIELD_OFFSET( SAFEUPLOAD_WRITER_STATE_STATUS, Reserved ) == 100 );
 C_ASSERT( (ULONG)FIELD_OFFSET( SAFEUPLOAD_WRITER_STATE_STATUS, TxfRefused ) == 168 );
 C_ASSERT( (ULONG)FIELD_OFFSET( SAFEUPLOAD_WRITER_STATE_STATUS, RegistryPruned ) == 264 );
 C_ASSERT( (ULONG)FIELD_OFFSET( SAFEUPLOAD_WRITER_STATE_STATUS, RegistryNameTierEntries ) == 280 );

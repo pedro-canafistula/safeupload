@@ -5773,7 +5773,7 @@ Start-Sleep -Seconds 300
             Wait-AdmissionCanary $stormFiles[0] $rawTraceA
             Write-Output ('X3_Stats0=inserted:' + $s0.sectionInFlightInserted + ';released:' + $s0.sectionInFlightReleased +
                 ';removedOnFailure:' + $s0.sectionInFlightRemovedOnFailure + ';now:' + $s0.sectionInFlightNow +
-                ';overflow:' + $s0.sectionInFlightOverflow + ';stuck:' + $s0.sectionInFlightStuck)
+                ';stuck:' + $s0.sectionInFlightStuck)
 
             $single = [SafeUploadSectionStress]::Run($stormFiles, 1, 500, $false)
             $s1 = Get-WriterStateStats
@@ -5787,7 +5787,7 @@ Start-Sleep -Seconds 300
                 ';insertedDelta:' + ([int64]$s2.sectionInFlightInserted - [int64]$s1.sectionInFlightInserted) +
                 ';releasedDelta:' + ([int64]$s2.sectionInFlightReleased - [int64]$s1.sectionInFlightReleased) +
                 ';removedOnFailureDelta:' + ([int64]$s2.sectionInFlightRemovedOnFailure - [int64]$s1.sectionInFlightRemovedOnFailure) +
-                ';maxDepth:' + $s2.sectionInFlightMaxDepth + ';overflowDelta:' + ([int64]$s2.sectionInFlightOverflow - [int64]$s1.sectionInFlightOverflow))
+                ';maxDepth:' + $s2.sectionInFlightMaxDepth)
 
             # Failure injection: a writable mapping of an empty file with no size fails inside Mm.
             $failed = 0
@@ -5813,7 +5813,7 @@ Start-Sleep -Seconds 300
             $s4 = Get-WriterStateStats
             Write-Output ('X3_AtRest=inserted:' + $s4.sectionInFlightInserted + ';released:' + $s4.sectionInFlightReleased +
                 ';removedOnFailure:' + $s4.sectionInFlightRemovedOnFailure + ';now:' + $s4.sectionInFlightNow +
-                ';overflow:' + $s4.sectionInFlightOverflow + ';stuck:' + $s4.sectionInFlightStuck + ';maxDepth:' + $s4.sectionInFlightMaxDepth)
+                ';stuck:' + $s4.sectionInFlightStuck + ';maxDepth:' + $s4.sectionInFlightMaxDepth)
             [void](Invoke-AdmissionProbe $stormFiles[0] 'X3_Probe' $t)
             $traceX = Get-LightTrace (Invoke-InspectorChecked -Arguments @('--admission-trace') -Timeout $t) $rawTraceA
             $probeX = @($traceX.Entries | Where-Object { $_.Ev -eq 'explicit_probe' })
@@ -5826,12 +5826,12 @@ Start-Sleep -Seconds 300
             $conserved = ([int64]$s4.sectionInFlightInserted - [int64]$s4.sectionInFlightReleased - [int64]$s4.sectionInFlightRemovedOnFailure - [int64]$s4.sectionInFlightNow)
             $tracked = ([int64]$s2.sectionInFlightInserted - [int64]$s1.sectionInFlightInserted)
             Write-Output ('X3_Verdict=conservationResidual:' + $conserved + ';stormTrackedSections:' + $tracked +
-                ';overflow:' + $s4.sectionInFlightOverflow + ';stuck:' + $s4.sectionInFlightStuck + ';now:' + $s4.sectionInFlightNow)
+                ';stuck:' + $s4.sectionInFlightStuck + ';now:' + $s4.sectionInFlightNow)
             if ($RequireAllVolumeCanaries) { Wait-AllVolumeCanaries ($rawTraceA + '-final-volumes.json') }
             [void](Invoke-InspectorChecked -Arguments @('--admission-trace-disable') -Timeout $t)
             $traceEnabled = $false
             # The storm creates 2400 writable sections; other processes may add a few. Read-only sections must not be tracked.
-            $ok = ($conserved -eq 0) -and ([int64]$s4.sectionInFlightOverflow -eq 0) -and ([int64]$s4.sectionInFlightStuck -eq 0) -and
+            $ok = ($conserved -eq 0) -and ([int64]$s4.sectionInFlightStuck -eq 0) -and
                 ([int64]$s4.sectionInFlightNow -eq 0) -and ($tracked -ge 2400) -and ($tracked -lt 3000) -and ($storm -eq 0) -and
                 ($single -eq 0) -and ($failed -eq 20) -and ($shared -eq 0) -and ($sharedTracked -ge 2400) -and ($sharedTracked -lt 3000) -and $probeOk
             Write-Output ('X3_Result=' + $(if ($ok) { 'PASS' } else { 'FAIL' }))
