@@ -195,7 +195,7 @@ def main():
     with tempfile.TemporaryDirectory(prefix='w01-pycompile-') as tmp:
         env = dict(__import__('os').environ, PYTHONPYCACHEPREFIX=tmp)
         subprocess.run([sys.executable, '-m', 'py_compile', *map(str, files)], env=env, check=True)
-    print('W01 Linux self-check PASS: pending-path structure, unlimited tasks, required pins, host transport, seven rejection controls; ' + str(len(files)) + ' Python scripts compiled.')
+    print('W01 Linux self-check: structural checks completed (no verdict): pending-path structure, unlimited tasks, required pins, host transport, seven rejection controls; ' + str(len(files)) + ' Python scripts compiled.')
     print('PowerShell 5.1 parse, native compilation and VM execution NOT VERIFIED. W01/A05 INCONCLUSIVE; Phase4=NOT_QUALIFIED')
 
 
