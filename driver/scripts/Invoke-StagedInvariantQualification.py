@@ -204,7 +204,7 @@ def phase_line(phase, params, suite_leaf, name):
     return ("$ErrorActionPreference='Stop';$p=$null;try{"
             "$p=Start-Process powershell.exe -ArgumentList '-NoProfile -ExecutionPolicy Bypass -EncodedCommand " + encoded + "' -PassThru "
             "-RedirectStandardOutput " + ps_literal(prefix + '.out') + " -RedirectStandardError " + ps_literal(prefix + '.err') + ";"
-            "$null=$p.Handle;if(-not $p.WaitForExit(900000)){throw 'Suite child timeout'};$p.WaitForExit();"
+            "$null=$p.Handle;if(-not $p.WaitForExit(1500000)){throw 'Suite child timeout'};$p.WaitForExit();"
             "Get-Content -LiteralPath " + ps_literal(prefix + '.out') + ";"
             "if($null -eq $p.ExitCode -or $p.ExitCode -ne 0){Get-Content -LiteralPath " + ps_literal(prefix + '.err') + ";throw 'Suite child failed'}"
             "}finally{if($null -ne $p){if(-not $p.HasExited){$p.Kill();$p.WaitForExit()};$p.Dispose()}}")

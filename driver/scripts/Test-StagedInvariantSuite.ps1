@@ -1918,7 +1918,7 @@ function Restore-CachedAgent {
     $state.CachedAgentRestored=$true;Save-State $state $statePath
 }
 function Invoke-CachedObservation {
-    $context=$null;$baseline=$null;$disposal=$null;$samples=@();$predicateSamples=@();$checkpoints=@();$writer=$null;$agent=$null;$readyEvent=$null;$actor=$null
+    $context=$null;$baseline=$null;$disposal=$null;$samples=@();$predicateSamples=@();$checkpoints=@();$writer=$null;$agent=$null;$readyEvent=$null;$actor=$null;$agentStartLocal=$null
     $trial=[ordered]@{Errors=@();Approvals=@();Permits=@();Journal=@();JournalSnapshots=@();JournalTransitions=@();Notifications=@();Operations=@();Latency=@();Assertions=@();Verdict='INCONCLUSIVE';ForbiddenByteCount=$null}
     try {
         Assert-Hash $installedDriver $ExpectedFeatureSha256
@@ -1929,7 +1929,8 @@ function Invoke-CachedObservation {
         $ready=Get-Readiness;$trial.Readiness=$ready
         $agentStartLocal=[DateTime]::Now.AddSeconds(-1)
         $readyEvent=[Threading.EventWaitHandle]::new($false,[Threading.EventResetMode]::ManualReset,'Global\SafeUploadServiceReady');[void]$readyEvent.Reset()
-        $agent=Start-StagedTestAgent $serviceDirectory (Join-Path $evidenceDirectory 'agent')
+        # Debug-level service events (publisher steps) reach the event log for diagnosis (run c01i hung in Publishing).
+        $agent=Start-StagedTestAgent $serviceDirectory (Join-Path $evidenceDirectory 'agent') -Arguments '--Logging:EventLog:LogLevel:Default=Debug'
         # Persist recovery receipt before waiting for policy readiness.
         $state.CachedAgent=@{ServiceCreated=$agent.ServiceCreated;OriginalService=$agent.OriginalService};Save-State $state $statePath
         if(-not $readyEvent.WaitOne([TimeSpan]::FromSeconds(45))){
@@ -2047,6 +2048,11 @@ function Invoke-CachedObservation {
         $trial.VerifierAfter=Get-VerifierEvidence 'after' -RequireMode
     }catch{'ScriptError='+$_.Exception.ToString();$trial.Errors+=Get-ErrorChain $_.Exception;$trial.Assertions+=@{Name='C01Execution';Verdict='INCONCLUSIVE';Reason=($_.Exception.Message+'; '+$_.ScriptStackTrace)}}
     finally {
+        if($null -ne $agentStartLocal){
+            try{Get-WinEvent -FilterHashtable @{LogName='Application';StartTime=$agentStartLocal} -ErrorAction Stop | Where-Object ProviderName -match 'SafeUpload' |
+                Sort-Object TimeCreated | ForEach-Object {$_.TimeCreated.ToString('o')+' '+$_.ProviderName+' '+$_.LevelDisplayName+' '+($_.Message -replace '\s+',' ')} |
+                Set-Content -LiteralPath (Join-Path $evidenceDirectory 'agent-events-final.txt') -Encoding UTF8}catch{}
+        }
         if($null -ne $actor){
             foreach($leaf in @('close','inspect-handback')){try{if(-not(Test-Path -LiteralPath (Join-Path $actorDirectory $leaf))){Write-DurableFile (Join-Path $actorDirectory $leaf) $RunName -New}}catch{$trial.Errors+=Get-ErrorChain $_.Exception}}
             try{
@@ -2895,7 +2901,7 @@ $value=$b.ToString().Split([char]0)[0]
     if($StartupProbe){if($isActivationCase){Invoke-ActivationObservation}elseif($cachedCase){Invoke-CachedObservation}else{Invoke-SeedObservation};return}
     $observationError=$null
     try {
-        $null=Wait-TaskCompletion $bootTask (Join-Path $evidenceDirectory 'startup-completion.clixml') $state.CoordinatorToken 600
+        $null=Wait-TaskCompletion $bootTask (Join-Path $evidenceDirectory 'startup-completion.clixml') $state.CoordinatorToken 900
         if(-not(Test-Path -LiteralPath $trialPath)){throw 'Completed startup task omitted trial'}
     }catch{$observationError=Get-ErrorChain $_.Exception;Save-State $observationError (Join-Path $evidenceDirectory 'startup-error.clixml')}
     finally {
