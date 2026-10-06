@@ -713,6 +713,14 @@ public sealed class MinifilterInterceptor : BackgroundService
             if (status != lastStatus || !string.Equals(decision.Reason, lastReason, StringComparison.Ordinal) ||
                 decision.NativePolicyGeneration != lastPublishedGeneration)
             {
+                // Protection that cannot be confirmed is an operator-visible event; the default
+                // service event-log filter keeps warnings, so Pending/Degraded carry their reason.
+                if (status == AdmissionCoverageStatus.Ready)
+                    _logger.LogInformation("Admission coverage Ready (native generation {Generation}).",
+                        decision.NativePolicyGeneration);
+                else
+                    _logger.LogWarning("Admission coverage {Status}: {Reason} (native generation {Generation}).",
+                        status, decision.Reason, decision.NativePolicyGeneration);
                 _hub.Publish(new StatusNotification(policyVersion, activeCategories,
                     ProtectionActive: true, AuditOnly: auditOnly,
                     AdmissionCoverage: status, AdmissionCoverageReason: decision.Reason,
