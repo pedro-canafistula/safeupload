@@ -39,6 +39,12 @@ The pre-strip agent source (snapshot D: 327/327 normal, 356/356 feature tests) w
 ([verification](evidence/2026-10-06/exact-agent-matrix-admission-ready-20261006d-independent-root-readout.json)).
 The stripped tree needs its own four driver builds and agent matrix before it is used on the VM.
 
+**MVP release gate scope (owner decision, 2026-10-06):** the expanded proof families P01-P06 and all
+RV4 families (W01/W02, M01/M02, C01/C02 capacity/binding) are deferred to post-MVP. The MVP gate is the
+Phase 4 workload rows S00-S02, C01-C05, A01-A05, B01-B02, R01-R03 and X01 in ordinary, runtime-Verifier
+and boot-Verifier modes, with independent restoration and the latency budget, then the Phase 5 review.
+Deferred work is not dropped: it stays in the tracker and is the first hardening milestone after the MVP.
+
 **Process decision (orchestrator, 2026-10-06, from the owner's "MVP ASAP" priority):** stop iterating verifiers of verifiers:
 one exact build per increment, one VM run per case with checkpoint and independent restoration, and
 one milestone review. Evidence stays, but no new layer of tooling unless a run actually failed on it.
