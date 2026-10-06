@@ -3145,6 +3145,12 @@ static BOOLEAN StageEpochOperation(_In_ PFLT_CALLBACK_DATA Data)
         return Data->Iopb->Parameters.AcquireForSectionSynchronization.SyncType == SyncTypeCreateSection &&
             FlagOn(Data->Iopb->Parameters.AcquireForSectionSynchronization.PageProtection,
                 PAGE_READWRITE | PAGE_EXECUTE_READWRITE);
+    case IRP_MJ_SET_INFORMATION:
+        /* Namespace and metadata mutations must drain with the policy snapshot
+         * they were admitted under. FilePositionInformation only changes a
+         * handle-local cursor and does not enter the lower mutation path. */
+        return Data->Iopb->Parameters.SetFileInformation.FileInformationClass !=
+            FilePositionInformation;
     default:
         return FALSE;
     }

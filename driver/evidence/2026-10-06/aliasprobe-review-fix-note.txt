@@ -1,0 +1,75 @@
+SafeUpload alias-probe adversarial review fix
+Date: 2026-10-06
+Worktree: wt/aliasfix2 (based on cee178e5)
+
+P0-1 — Rename/link crossing policy publication
+
+StageStream.c now admits every mutating SET_INFORMATION class except
+FilePositionInformation to the existing policy admission epoch. The token is
+retained through the lower operation and the post-operation callback, including
+the tracked rename completion path. Thus an operation checked against the old
+policy must finish before policy activation scans and finalizes; an operation
+that starts after candidate publication sees the current/pending union.
+
+StageWriters.c now starts alias classification after successful tracked file,
+link, and directory renames for full-name entries as well as compact entries.
+Admission coverage includes AliasProbePending and RenameInFlight entries even
+when ActivationEnforced is clear and counts them as not ready. File rename
+admission also advances the registry change sequence when RenameInFlight starts.
+
+This closes the reviewed sequence: an admitted lower rename cannot outlive the
+old-snapshot drain, successful completion schedules an alias recheck, and Ready
+cannot omit the pending rename/probe. The destination check still refuses a
+rename/link that starts after the new destination is present in the pending
+policy.
+
+P0-2 — TxF-isolated names classified as outside
+
+Each registry entry now has an internal TransactionVersion. Enlistment and
+terminal removal update T and this version under the entry state spin lock while
+RegistryLock is held. Alias scans capture the version, reject results if T is
+live or the version changed, and publish Outside only while the same committed
+view remains current. The no-name by-ID statuses, compact-stream no-name result,
+and volume-root sharing-violation shortcut all pass through these guards. The
+volume-root shortcut also requires a stable, non-Unknown recorded name.
+
+An entry with a pending alias probe is activation-enforced while T is live.
+The reclaim worker defers that entry without immediately rescheduling itself;
+commit-finalize and rollback both remove T, reset the reclaim cursor, and queue
+classification again against the now-committed view. A stale scan that overlaps
+either terminal notification cannot clear the gate because its transaction
+version no longer matches.
+
+This closes the reviewed sequence: a transaction-private ADS cannot use a
+nontransacted not-found result to clear activation, Ready counts the pending
+entry, and commit or rollback schedules a fresh classification. If that fresh
+classification cannot prove a result, existing Unknown handling keeps the
+entry fail-closed.
+
+P2 — Header-only FileHardLinkInformation success
+
+StageWriters.c now treats EntriesReturned == 0 as STATUS_FILE_INVALID. The
+activation path records the failed classification as Unknown; a header-only
+success no longer proves that the identity has no names.
+
+Deadlock, IRQL, and limits
+
+The pre-operation path does not wait for policy activation while holding an
+epoch token. The update path releases the policy push lock before draining; an
+already-admitted rename can proceed to lower completion. The existing drain has
+a fixed timeout and leaves policy failed-closed on timeout, so a lower-stack
+wait cannot block the update indefinitely. New work targeting the current or
+pending protected union retries before reaching the filesystem.
+
+The new transaction and alias-resolution helpers use resident interlocked and
+spin-locked state only. The PASSIVE-level hard-link and by-ID work remains in
+the existing pageable worker and does not run while a spin lock is held. The
+version fence adds no filesystem enumeration, timer, wire field, or Control 24
+layout change; the alias recheck uses the existing bounded per-identity worker.
+
+Residual risk: WDK matrix builds, PREfast, ApiValidator, and the Driver Verifier
+VM suite were not available in this worktree. The orchestrator should run those
+checks, especially commit/rollback timing, rename/link drain, and the resulting
+Unknown behavior for header-only link responses. A failed worker queue remains
+fail-closed through ActivationEnforced/AliasProbePending and cannot produce a
+Ready receipt.
