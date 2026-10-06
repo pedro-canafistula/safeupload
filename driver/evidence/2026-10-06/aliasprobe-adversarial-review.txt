@@ -1,0 +1,70 @@
+SafeUpload alias-probe change — adversarial review
+Commit: f30375a2ea4f99342703508aa07a2c89f0ca3a28
+Parent: f0069859
+Review scope: requested commit paths and aliasprobe-unknown-fix-note.txt
+
+Disposition: BLOCK. I found two P0 paths where a standard user can cause a tracked writer to acquire a protected name after the probe boundary while admission coverage can still report Ready. No build, VM, or runtime tests were run; this is a source review.
+
+P0-1 — Rename/link can cross policy publication after its destination check
+
+Files/lines:
+- driver/SafeUpload.Minifilter/StageStream.c:2809-2821, 2841-2845
+- driver/SafeUpload.Minifilter/StageStream.c:3127-3150, 3396-3438
+- driver/SafeUpload.Minifilter/StageWriters.c:1819-1824, 5135-5144, 2153-2195, 6463-6479
+- driver/SafeUpload.Minifilter/StageStream.c:2727-2730
+
+Sequence:
+1. A standard user has a tracked writer open outside the current policy. The user submits a rename or hard-link SET_INFORMATION whose destination will become protected in an imminent policy update. At the pre-operation check, the destination is outside current and pending policy, so StageExternalRename allows it and StageRegistryPrepareRename records RenameInFlight and increments RenameVersion.
+2. SET_INFORMATION does not acquire the policy admission epoch: StageEpochOperation handles CREATE and section synchronization only, then returns FALSE for SET_INFORMATION. The service can therefore publish/finalize the new scope without draining this lower rename/link operation.
+3. Hold the lower operation in flight across the policy change (for example, with filesystem/oplock contention). The alias-probe worker sees RenameInFlight at StageRegistryActivationProcess:5135-5144 and exits without resolving AliasProbePending or setting ActivationEnforced. For an initially UNSCOPED entry, BeginAliasProbe only sets AliasProbePending; it does not turn on ActivationEnforced.
+4. Admission coverage skips every entry with ActivationEnforced == 0 before it checks AliasProbePending or RenameInFlight (6463-6476). The pending probe is therefore absent from the receipt, and the destination can be reported Ready while the rename is still outstanding.
+5. The operation completes into the protected folder. The named-entry completion path updates the stored name and leaves the scope class unresolved, but it does not queue a recheck for a normal named entry (the recheck path at 2195 is only set for the compact-stream branch). A tracked writer's later nonpaging mutations pass the unconditional TrackedWriter return in StagePhysicalMutationEx:2727-2730.
+
+Impact: a pre-existing writer gains a protected name after Ready and can write unapproved bytes through its existing handle. This is a policy-transition TOCTOU in the new destination refusal; the rename/link was checked before the candidate scope existed and is not serialized with publication.
+
+Minimal fix: include rename/link SET_INFORMATION in the admission epoch and retain the token through lower completion, so policy activation drains any operation admitted under the old snapshot before it scans/finalizes. Also requeue alias classification after every successful tracked rename/link, including full-name entries. Coverage should not skip an unscoped entry with AliasProbePending or RenameInFlight.
+
+P0-2 — TxF-isolated ADS is mistaken for a stream with no name
+
+Files/lines:
+- driver/SafeUpload.Minifilter/Txf.c:84-110, 118-184
+- driver/SafeUpload.Minifilter/StageWriters.c:4290-4295, 4133-4144, 4371-4384, 5186-5199, 6689-6690, 6767-6778, 6463-6479
+
+Sequence:
+1. Before the destination is in current or pending policy, a standard user opens an NTFS file transactionally and creates/writes a named ADS at a path that will become protected. The TxF create check allows the operation while that path is outside current/pending policy. Post-create tracks the stream and holds Entry->T for the live transaction association.
+2. During scope activation, the worker's file-ID/ADS open is nontransacted: StageRegistryOpenIdentity supplies no transaction create context. TxF gives nontransacted handles the committed view; a transaction-created stream is not visible to them until commit. The exact ADS open can therefore return STATUS_OBJECT_NAME_NOT_FOUND, or compact-stream enumeration can complete without the transactional suffix.
+3. The new no-name handling treats that result as proof of no current name using only the same PFLT_VOLUME pointer and nonzero recorded serial. StageRegistryActivationProcess then resolves the alias probe outside and clears activation. This branch does not check Entry->T. For the initially unscoped writer, ActivationEnforced remains zero; admission coverage skips it, so T does not hold Ready.
+4. The user commits after the destination reports Ready. TxF publishes the previously transaction-private ADS and its bytes under the protected path. The commit notification only schedules a recheck when the entry is ACTIVATING; the outside result leaves this entry UNSCOPED.
+
+Impact: a standard user can make a stream that has a transaction-visible name gain a protected name after Ready. This uses the new no-name classification, not a mere file-ID reuse assumption. MVP-PLAN.md lists TxF as out of scope, but this build admits and tracks TxF writers outside active scopes; the Ready invariant needs an enforced boundary for them.
+
+Minimal fix: never resolve a no-name result as OUTSIDE while Entry->T is nonzero. Keep the entry activation-enforced and not-ready until transaction terminal notification, then re-run alias classification against the committed view (and make rollback terminal notification recheck too). Alternatively, fail closed for transacted mutations on any volume that could later hold policy scope.
+
+P1
+
+No additional P1 finding. For committed, nontransacted NTFS identities, an open-by-ID failure is not shown here to arise merely because another hard link is in a different directory: the probe opens by volume-relative file reference and then enumerates all hard-link parents. A successful open is checked against the full FILE_ID_INFORMATION and the original SectionObjectPointer. Rename/version instability is checked before scan publication. STATUS_DELETE_PENDING is deliberately excluded from the no-name status set.
+
+The direct answer to the file-ID status question is: TxF can create the relevant transaction-isolated view; I found no standard-user sequence on ordinary committed NTFS where file-ID reuse, a surviving hard link, or an oplock alone makes the same live stream's by-ID open look absent. A surviving hard link should remain discoverable by ID and then by FileHardLinkInformation. File-ID reuse cannot rebind a successful open without passing the full ID and SOP checks; a live writer object also remains tied to its original stream. A fixed-volume dismount/remount route was not established for a standard user. The rename race above is a separate policy-publication gap, not a false by-ID status.
+
+P2 — Header-only FileHardLinkInformation is accepted as proof of no names without a qualified NTFS contract
+
+File/lines: driver/SafeUpload.Minifilter/StageWriters.c:4433-4452.
+
+The code converts STATUS_SUCCESS with EntriesReturned == 0, returned == header size, and BytesNeeded == header size into noRemainingNames. MS-FSCC says FileHardLinkInformation must return at least one name; EntriesReturned == 0 means there was insufficient room to return any entry. The note itself says this Windows 10 NTFS behavior still needs an orchestrator run. I found no source-only standard-user way to force NTFS to return this shape while a committed protected alias exists, so this is not a demonstrated P0/P1 exploit; it is an unqualified fail-open proof assumption.
+
+Minimal fix: keep this response Unknown unless an exact supported NTFS build demonstrates and documents that this exact header-only success means zero live names. Otherwise require an independent no-link proof. Do not treat a generic zero-entry response as absence.
+
+Focused questions / non-findings
+
+- Paging-file spoofing: no standard-user spoof found. FsRtlIsPagingFile takes the reopened FILE_OBJECT, not a path or user-supplied attribute. In this code the result only selects the diagnostic step name (PagingFile versus Outside); the actual OUTSIDE decision comes from complete alias classification. A fake file named pagefile.sys does not become a paging file.
+- IO_IGNORE_SHARE_ACCESS_CHECK / attribute-only opens: the new open is internal, kernel-handle, FILE_READ_ATTRIBUTES | SYNCHRONIZE, and uses an exact recorded ID; no returned handle or write access is exposed to the requester. IO_IGNORE_SHARE_ACCESS_CHECK suppresses I/O-manager share accounting for the probe, while the filesystem may still enforce its checks. I found no new access an attacker can use. The tradeoff is that the probe can read metadata despite a user's restrictive share mode, which is the intended compatibility behavior.
+- Control 25 path disclosure: no standard-user leak found. PortConnect accepts only a LocalSystem primary user SID, and PortMessage binds calls to the accepted Inspector PID. The port DACL is the default SYSTEM/Administrators descriptor; the service-SID check applies to policy-changing commands, not Control 25 itself. Admins/SYSTEM are trusted by the stated model. The fix note's “service-SID bound” description is therefore imprecise, but the actual checks still exclude a standard local user.
+- Kernel safety: I found no changed-path IRQL/paged-at-DISPATCH, reference leak, use-after-free, or lock-order defect in this source pass. The P0s above are authorization/readiness logic defects.
+
+References checked
+
+- Microsoft [TxF basic concepts](https://learn.microsoft.com/en-us/windows/win32/fileio/txf-basic-concepts): nontransacted handles do not see transaction changes until commit.
+- Microsoft [TxF programming considerations](https://learn.microsoft.com/en-us/windows/win32/fileio/programming-considerations-for-transacted-fileio-): file/stream/namespace changes are transactional and isolated until commit.
+- Microsoft [MS-FSCC FileHardLinkInformation](https://learn.microsoft.com/en-us/openspecs/windows_protocols/ms-fscc/46021e52-29b1-475c-b6d3-fe5497d23277): at least one name must be returned; zero entries indicate insufficient room.
+- Microsoft [FltCreateFileEx2](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/fltkernel/nf-fltkernel-fltcreatefileex2): transaction context is explicit; IO_IGNORE_SHARE_ACCESS_CHECK behavior and filesystem caveat.
+- Microsoft [FsRtlIsPagingFile](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/nf-ntifs-fsrtlispagingfile): object-based paging-file predicate and post-create caveat.

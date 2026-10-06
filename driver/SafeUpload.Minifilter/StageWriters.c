@@ -118,6 +118,7 @@ __declspec(align(16)) struct _STAGE_REGISTRY_ENTRY {
     volatile LONG H;
     volatile LONG W;                 /* admitted mutating IRPs still below the filter */
     volatile LONG T;
+    volatile LONG TransactionVersion; /* invalidates alias results across TxF enlist/terminal */
     volatile LONG RenameInFlight;
     volatile LONG RenameVersion;
     volatile LONG UnknownReasons;
@@ -805,6 +806,38 @@ static VOID StageRegistrySetEntryUnknownLocked(_In_ PSTAGE_REGISTRY_ENTRY Entry,
 static VOID StageRegistryReference(_In_ PSTAGE_REGISTRY_ENTRY Entry)
 {
     InterlockedIncrement(&Entry->References);
+}
+
+/* Caller holds RegistryLock. StateLock serializes the TxF boundary with alias
+ * publication, so a scan from before commit/rollback cannot clear its gate. */
+_IRQL_requires_max_(APC_LEVEL)
+__declspec(noinline) static LONG StageRegistryTransactionAssociationChange(
+    _In_ PSTAGE_REGISTRY_ENTRY Entry, _In_ BOOLEAN Add)
+{
+    KIRQL irql;
+    LONG transactions, state;
+
+    StageAcquireSpinLock(&Entry->StateLock, &irql);
+    transactions = Add ? InterlockedIncrement(&Entry->T) : InterlockedDecrement(&Entry->T);
+    InterlockedIncrement(&Entry->TransactionVersion);
+    InterlockedExchange(&Entry->ScopeScanPending, 0);
+    InterlockedExchange(&Entry->ScopeScanNextLink, 0);
+    InterlockedExchange(&Entry->ScopeScanUnionScoped, 0);
+    InterlockedExchange(&Entry->ScopeScanCurrentScoped, 0);
+    Entry->ScopeScanLinkCount = 0;
+    state = InterlockedCompareExchange((volatile LONG *)&Entry->State, 0, 0);
+    if (Add && (InterlockedCompareExchange(&Entry->AliasProbePending, 0, 0) != 0 ||
+            InterlockedCompareExchange(&Entry->ActivationEnforced, 0, 0) != 0 ||
+            state == SAFEUPLOAD_REGISTRY_STATE_ACTIVATING)) {
+        InterlockedExchange(&Entry->AliasProbePending, 1);
+        InterlockedExchange(&Entry->ScopeNameClassification, STAGE_SCOPE_CLASS_UNRESOLVED);
+        InterlockedExchange(&Entry->ActivationEnforced, 1);
+        if (state != SAFEUPLOAD_REGISTRY_STATE_UNKNOWN)
+            InterlockedExchange((volatile LONG *)&Entry->State, SAFEUPLOAD_REGISTRY_STATE_ACTIVATING);
+        InterlockedExchange(&Entry->LastSState, SAFEUPLOAD_REGISTRY_S_UNKNOWN);
+    }
+    StageReleaseSpinLock(&Entry->StateLock, irql);
+    return transactions;
 }
 
 __declspec(noinline) static VOID StageRegistryDereference(_In_opt_ PSTAGE_REGISTRY_ENTRY Entry)
@@ -1826,6 +1859,7 @@ NTSTATUS SafeUploadStageWritersPrepareRename(_In_ PFLT_CALLBACK_DATA Data,
     context->Ambiguous = InterlockedIncrement(&entry->RenameInFlight) != 1;
     InterlockedIncrement(&entry->RenameVersion);
     InterlockedExchange(&entry->ScopeNameClassification, STAGE_SCOPE_CLASS_UNRESOLVED);
+    InterlockedIncrement64(&RegistryChangeSequence);
     FltReleasePushLock(&RegistryLock);
     if (context->Ambiguous) StageRegistryMarkEntryUnknown(entry, SAFEUPLOAD_REGISTRY_UNKNOWN_RENAME);
     *RenameContext = context;
@@ -1899,6 +1933,7 @@ static VOID StageRegistryCompleteDirectoryRename(_In_ PFLT_INSTANCE Instance,
                 continue;
             }
             if (!Succeeded || !oldMatch) continue;
+            if (StageRegistryBeginAliasProbe(entry)) recheck = TRUE;
 
             /* A concurrent file rename makes this entry's final path ambiguous;
              * keep the loss on this file instead of guessing a combined name. */
@@ -2112,6 +2147,8 @@ VOID SafeUploadStageWritersCompleteRename(_In_ PFLT_INSTANCE Instance, _In_opt_ 
     }
     entry = rename->Entry;
     if (KeGetCurrentIrql() > APC_LEVEL) {
+        if (StageRegistryQueueDeferredRename(Instance, rename, Succeeded, Draining))
+            return;
         if (Draining || Succeeded) {
             StageRegistryMarkEntryUnknown(entry, SAFEUPLOAD_REGISTRY_UNKNOWN_RENAME);
             InterlockedIncrement64(&RegistryRenameFailures);
@@ -2194,6 +2231,7 @@ VOID SafeUploadStageWritersCompleteRename(_In_ PFLT_INSTANCE Instance, _In_opt_ 
     if (markUnknown) {
         StageRegistrySetEntryUnknownLocked(entry, SAFEUPLOAD_REGISTRY_UNKNOWN_RENAME);
     }
+    if (Succeeded && !Draining && !recheck && StageRegistryBeginAliasProbe(entry)) recheck = TRUE;
     FltReleasePushLock(&RegistryLock);
     if (markUnknown) {
         StageRegistryMarkEntryUnknown(entry, SAFEUPLOAD_REGISTRY_UNKNOWN_RENAME);
@@ -3581,7 +3619,7 @@ static VOID StageRegistryRetireInstance(_In_ PFLT_INSTANCE Instance, _In_ BOOLEA
                 RemoveEntryList(&association->Link);
                 association->Listed = FALSE;
                 if (RegistryAssociationCount != 0) RegistryAssociationCount -= 1;
-                InterlockedDecrement(&association->Entry->T);
+                (VOID)StageRegistryTransactionAssociationChange(association->Entry, FALSE);
                 InterlockedIncrement64(&RegistryChangeSequence);
                 association->CompletionStatus = STATUS_SUCCESS;
                 InterlockedExchange(&association->State, SAFEUPLOAD_TX_ASSOC_TERMINAL);
@@ -4336,6 +4374,8 @@ static BOOLEAN StageRegistryEntryIsVolumeRootFile(_In_ PSTAGE_REGISTRY_ENTRY Ent
     FltAcquirePushLockShared(&RegistryLock);
     if (Entry->Listed && !Entry->Retired && !Entry->Compact && !Entry->CompactStream &&
         Entry->StreamChars == 0 && Entry->NameChars != 0 &&
+        InterlockedCompareExchange(&Entry->UnknownReasons, 0, 0) == 0 &&
+        InterlockedCompareExchange(&Entry->RenameInFlight, 0, 0) == 0 &&
         Entry->NameChars <= SAFEUPLOAD_WRITER_REGISTRY_NAME_CHARS) {
         nameChars = (USHORT)Entry->NameChars;
         RtlCopyMemory(nameBuffer, Entry->Name, nameChars * sizeof(WCHAR));
@@ -4376,7 +4416,7 @@ __declspec(noinline) static NTSTATUS StageRegistryClassifyAllLinkNames(_In_ PSTA
     PWCH pathBuffer = NULL, streamSnapshot = NULL;
     UNICODE_STRING linkName, parentName;
     ULONG bufferBytes = 4096, returned = 0, recordIndex, offset, streamChars = 0;
-    ULONG startingRenameVersion, startingPolicyGeneration, savedNextLink = 0;
+    ULONG startingRenameVersion, startingTransactionVersion, startingPolicyGeneration, savedNextLink = 0;
     ULONGLONG streamSuffixHash = 0;
     ULONG savedUnionScoped = 0, savedCurrentScoped = 0, savedLinkCount = 0;
     ULONG nextLink = 0, cacheCount = 0, cacheIndex;
@@ -4408,6 +4448,13 @@ __declspec(noinline) static NTSTATUS StageRegistryClassifyAllLinkNames(_In_ PSTA
     if (streamSnapshot == NULL) { status = STATUS_INSUFFICIENT_RESOURCES; goto Exit; }
     FltAcquirePushLockShared(&RegistryLock);
     startingRenameVersion = (ULONG)InterlockedCompareExchange(&Entry->RenameVersion, 0, 0);
+    startingTransactionVersion = (ULONG)InterlockedCompareExchange(
+        &Entry->TransactionVersion, 0, 0);
+    if (InterlockedCompareExchange(&Entry->T, 0, 0) != 0) {
+        FltReleasePushLock(&RegistryLock);
+        status = STATUS_MORE_ENTRIES;
+        goto Exit;
+    }
     stable = Entry->Listed && !Entry->Retired &&
         (Entry->Instance == NULL || Entry->Instance == Instance) &&
         (Entry->Volume == NULL || Entry->Volume == Volume) &&
@@ -4512,19 +4559,10 @@ __declspec(noinline) static NTSTATUS StageRegistryClassifyAllLinkNames(_In_ PSTA
         goto Exit;
     }
     if (links->EntriesReturned == 0) {
-        /* The query buffer is 4 KiB, larger than any NTFS link-entry record.
-         * Accept only NTFS's complete header-only empty result; zero entries in
-         * a short/oversized response still means we cannot classify the name. */
-        if (returned != (ULONG)FIELD_OFFSET(FILE_LINKS_INFORMATION, Entry) ||
-            links->BytesNeeded != (ULONG)FIELD_OFFSET(FILE_LINKS_INFORMATION, Entry)) {
-            status = STATUS_FILE_INVALID;
-            goto Exit;
-        }
-        noRemainingNames = TRUE;
-        unionScoped = FALSE;
-        currentScoped = FALSE;
-        resultStep = SAFEUPLOAD_ACTIVATING_CLASSIFY_STEP_NO_NAMES;
-        goto PublishResult;
+        /* MS-FSCC requires at least one entry. Header-only success is not a
+         * qualified proof that the live identity has no names. */
+        status = STATUS_FILE_INVALID;
+        goto Exit;
     }
     if (returned < FIELD_OFFSET(FILE_LINKS_INFORMATION, Entry) +
             FIELD_OFFSET(FILE_LINK_ENTRY_INFORMATION, FileName) || links->BytesNeeded == 0) {
@@ -4651,6 +4689,13 @@ PublishResult:
         partial = TRUE;
     }
     FltAcquirePushLockExclusive(&RegistryLock);
+    if (InterlockedCompareExchange(&Entry->T, 0, 0) != 0 ||
+        (ULONG)InterlockedCompareExchange(&Entry->TransactionVersion, 0, 0) !=
+            startingTransactionVersion) {
+        FltReleasePushLock(&RegistryLock);
+        status = STATUS_MORE_ENTRIES;
+        goto Exit;
+    }
     stable = Entry->Listed && !Entry->Retired &&
         InterlockedCompareExchange(&Entry->RenameInFlight, 0, 0) == 0 &&
         (ULONG)InterlockedCompareExchange(&Entry->RenameVersion, 0, 0) == startingRenameVersion;
@@ -5024,6 +5069,13 @@ __declspec(noinline) static BOOLEAN StageRegistryBeginAliasProbe(_In_ PSTAGE_REG
           (Entry->NameChars != 0 || Entry->Compact) && Entry->StreamIdentityKnown))) {
         InterlockedExchange(&Entry->AliasProbePending, 1);
         InterlockedExchange(&Entry->ScopeNameClassification, STAGE_SCOPE_CLASS_UNRESOLVED);
+        if (InterlockedCompareExchange(&Entry->T, 0, 0) != 0) {
+            InterlockedExchange(&Entry->ActivationEnforced, 1);
+            if (state != SAFEUPLOAD_REGISTRY_STATE_UNKNOWN)
+                InterlockedExchange((volatile LONG *)&Entry->State,
+                    SAFEUPLOAD_REGISTRY_STATE_ACTIVATING);
+            InterlockedExchange(&Entry->LastSState, SAFEUPLOAD_REGISTRY_S_UNKNOWN);
+        }
         began = TRUE;
     }
     StageReleaseSpinLock(&Entry->StateLock, irql);
@@ -5032,8 +5084,10 @@ __declspec(noinline) static BOOLEAN StageRegistryBeginAliasProbe(_In_ PSTAGE_REG
 
 /* Resident; only the entry spin lock and interlocked updates, so it may run under the scope-cache spin lock. */
 _IRQL_requires_max_(DISPATCH_LEVEL)
-__declspec(noinline) static VOID StageRegistryResolveAliasProbe(_In_ PSTAGE_REGISTRY_ENTRY Entry,
-    _In_ BOOLEAN ClassificationSucceeded, _In_ BOOLEAN UnionScoped, _Out_ PBOOLEAN Activated)
+__declspec(noinline) static VOID StageRegistryResolveAliasProbeVersioned(
+    _In_ PSTAGE_REGISTRY_ENTRY Entry, _In_ BOOLEAN ClassificationSucceeded,
+    _In_ BOOLEAN UnionScoped, _In_ BOOLEAN CheckTransactionVersion,
+    _In_ ULONG ExpectedTransactionVersion, _Out_ PBOOLEAN Activated)
 {
     KIRQL irql;
     LONG state;
@@ -5041,7 +5095,20 @@ __declspec(noinline) static VOID StageRegistryResolveAliasProbe(_In_ PSTAGE_REGI
     SafeUploadStageAdmissionCoverageBegin();
     StageAcquireSpinLock(&Entry->StateLock, &irql);
     if (InterlockedCompareExchange(&Entry->AliasProbePending, 0, 0) != 0) {
-        if (!ClassificationSucceeded) {
+        if (InterlockedCompareExchange(&Entry->T, 0, 0) != 0 ||
+            (CheckTransactionVersion && (ULONG)InterlockedCompareExchange(
+                &Entry->TransactionVersion, 0, 0) != ExpectedTransactionVersion)) {
+            /* TxF hides uncommitted aliases from this nontransacted probe. Keep
+             * the entry gated, including after a terminal event invalidated a
+             * scan that started before the committed view became visible. */
+            InterlockedExchange(&Entry->ScopeNameClassification, STAGE_SCOPE_CLASS_UNRESOLVED);
+            InterlockedExchange(&Entry->ActivationEnforced, 1);
+            state = InterlockedCompareExchange((volatile LONG *)&Entry->State, 0, 0);
+            if (state != SAFEUPLOAD_REGISTRY_STATE_UNKNOWN)
+                InterlockedExchange((volatile LONG *)&Entry->State,
+                    SAFEUPLOAD_REGISTRY_STATE_ACTIVATING);
+            InterlockedExchange(&Entry->LastSState, SAFEUPLOAD_REGISTRY_S_UNKNOWN);
+        } else if (!ClassificationSucceeded) {
             InterlockedExchange(&Entry->ScopeNameClassification, STAGE_SCOPE_CLASS_UNRESOLVED);
             InterlockedOr(&Entry->UnknownReasons, SAFEUPLOAD_REGISTRY_UNKNOWN_IDENTITY);
             InterlockedExchange((volatile LONG *)&Entry->State, SAFEUPLOAD_REGISTRY_STATE_UNKNOWN);
@@ -5074,6 +5141,14 @@ __declspec(noinline) static VOID StageRegistryResolveAliasProbe(_In_ PSTAGE_REGI
     SafeUploadStageAdmissionCoverageEnd();
 }
 
+_IRQL_requires_max_(DISPATCH_LEVEL)
+__declspec(noinline) static VOID StageRegistryResolveAliasProbe(_In_ PSTAGE_REGISTRY_ENTRY Entry,
+    _In_ BOOLEAN ClassificationSucceeded, _In_ BOOLEAN UnionScoped, _Out_ PBOOLEAN Activated)
+{
+    StageRegistryResolveAliasProbeVersioned(Entry, ClassificationSucceeded,
+        UnionScoped, FALSE, 0, Activated);
+}
+
 /* D1: instance-level ledger loss cancels an unclassified probe without turning it into an I/O gate. */
 _IRQL_requires_max_(APC_LEVEL)
 __declspec(noinline) static VOID StageRegistryCancelAliasProbeForInstanceUnknown(
@@ -5090,6 +5165,7 @@ _IRQL_requires_max_(APC_LEVEL)
 __declspec(noinline) static BOOLEAN StageRegistryResolveAliasProbeForGeneration(
     _In_ PSTAGE_REGISTRY_ENTRY Entry, _In_ PFLT_INSTANCE Instance,
     _In_ BOOLEAN ClassificationSucceeded, _In_ BOOLEAN UnionScoped,
+    _In_ ULONG ExpectedTransactionVersion,
     _Out_ PBOOLEAN Activated)
 {
     PSAFEUPLOAD_INSTANCE_CONTEXT instanceContext = NULL;
@@ -5098,7 +5174,8 @@ __declspec(noinline) static BOOLEAN StageRegistryResolveAliasProbeForGeneration(
     NTSTATUS status;
     *Activated = FALSE;
     if (!ClassificationSucceeded) {
-        StageRegistryResolveAliasProbe(Entry, FALSE, FALSE, Activated);
+        StageRegistryResolveAliasProbeVersioned(Entry, FALSE, FALSE,
+            TRUE, ExpectedTransactionVersion, Activated);
         return FALSE;
     }
     status = FltGetInstanceContext(Instance, (PFLT_CONTEXT *)&instanceContext);
@@ -5106,7 +5183,8 @@ __declspec(noinline) static BOOLEAN StageRegistryResolveAliasProbeForGeneration(
         StageRegistryRecordClassificationResult(Entry, status,
             SAFEUPLOAD_ACTIVATING_CLASSIFY_STEP_OTHER);
         StageRegistryMarkEntryUnknown(Entry, SAFEUPLOAD_REGISTRY_UNKNOWN_RENAME);
-        StageRegistryResolveAliasProbe(Entry, FALSE, FALSE, Activated);
+        StageRegistryResolveAliasProbeVersioned(Entry, FALSE, FALSE,
+            TRUE, ExpectedTransactionVersion, Activated);
         return FALSE;
     }
     /* Cache-lock before StateLock prevents rename-loss publication from
@@ -5114,7 +5192,8 @@ __declspec(noinline) static BOOLEAN StageRegistryResolveAliasProbeForGeneration(
     stable = SafeUploadPolicyRenameLossGenerationEnter(
         &instanceContext->RegistryRenameLossGeneration,
         Entry->RenameLossGeneration, &irql);
-    StageRegistryResolveAliasProbe(Entry, stable, stable && UnionScoped, Activated);
+    StageRegistryResolveAliasProbeVersioned(Entry, stable, stable && UnionScoped,
+        TRUE, ExpectedTransactionVersion, Activated);
     SafeUploadPolicyRenameLossGenerationLeave(irql);
     FltReleaseContext(instanceContext);
     if (!stable) {
@@ -5130,14 +5209,43 @@ __declspec(noinline) static BOOLEAN StageRegistryResolveAliasProbeForGeneration(
 }
 
 _IRQL_requires_max_(APC_LEVEL)
-__declspec(noinline) static VOID StageRegistrySetLinkScopeClassification(
-    _In_ PSTAGE_REGISTRY_ENTRY Entry, _In_ BOOLEAN Succeeded, _In_ BOOLEAN UnionScoped)
+__declspec(noinline) static BOOLEAN StageRegistrySetLinkScopeClassificationVersioned(
+    _In_ PSTAGE_REGISTRY_ENTRY Entry, _In_ BOOLEAN Succeeded, _In_ BOOLEAN UnionScoped,
+    _In_ ULONG ExpectedTransactionVersion)
 {
     KIRQL irql;
+    LONG state;
+    BOOLEAN stable = TRUE;
+
     StageAcquireSpinLock(&Entry->StateLock, &irql);
-    InterlockedExchange(&Entry->ScopeNameClassification, !Succeeded ?
-        STAGE_SCOPE_CLASS_UNRESOLVED : (UnionScoped ? STAGE_SCOPE_CLASS_SCOPED : STAGE_SCOPE_CLASS_OUTSIDE));
+    if (InterlockedCompareExchange(&Entry->T, 0, 0) != 0 ||
+        (ULONG)InterlockedCompareExchange(&Entry->TransactionVersion, 0, 0) !=
+            ExpectedTransactionVersion) {
+        InterlockedExchange(&Entry->ScopeNameClassification, STAGE_SCOPE_CLASS_UNRESOLVED);
+        InterlockedExchange(&Entry->AliasProbePending, 1);
+        InterlockedExchange(&Entry->ActivationEnforced, 1);
+        state = InterlockedCompareExchange((volatile LONG *)&Entry->State, 0, 0);
+        if (state != SAFEUPLOAD_REGISTRY_STATE_UNKNOWN)
+            InterlockedExchange((volatile LONG *)&Entry->State, SAFEUPLOAD_REGISTRY_STATE_ACTIVATING);
+        InterlockedExchange(&Entry->LastSState, SAFEUPLOAD_REGISTRY_S_UNKNOWN);
+        stable = FALSE;
+    } else if (!Succeeded) {
+        InterlockedExchange(&Entry->ScopeNameClassification, STAGE_SCOPE_CLASS_UNRESOLVED);
+        stable = FALSE;
+    } else {
+        InterlockedExchange(&Entry->ScopeNameClassification,
+            UnionScoped ? STAGE_SCOPE_CLASS_SCOPED : STAGE_SCOPE_CLASS_OUTSIDE);
+        if (!UnionScoped) {
+            InterlockedExchange(&Entry->ActivationEnforced, 0);
+            state = InterlockedCompareExchange((volatile LONG *)&Entry->State, 0, 0);
+            if (state == SAFEUPLOAD_REGISTRY_STATE_ACTIVATING ||
+                state == SAFEUPLOAD_REGISTRY_STATE_PROTECTED)
+                InterlockedExchange((volatile LONG *)&Entry->State,
+                    SAFEUPLOAD_REGISTRY_STATE_UNSCOPED);
+        }
+    }
     StageReleaseSpinLock(&Entry->StateLock, irql);
+    return stable;
 }
 
 _IRQL_requires_max_(APC_LEVEL)
@@ -5165,13 +5273,14 @@ static VOID StageRegistryActivationProcess(_In_ PSTAGE_REGISTRY_ENTRY Entry,
     UNICODE_STRING entryName = { 0 };
     USHORT nameSnapshotChars = 0;
     ULONG renameVersion = 0;
+    ULONG transactionVersion = 0;
     ULONG markerWorkBudget = SAFEUPLOAD_SCOPE_SCAN_PARENT_BUDGET;
     ULONGLONG sopMarkerGeneration = 0;
     LONG instanceUnknownReasons = 0;
     BOOLEAN currentlyScoped, nameStillMatches, sopEmpty, userWritable;
     BOOLEAN directoryRenameInFlight;
     BOOLEAN markerWorkRemaining = FALSE;
-    BOOLEAN aliasProbe, noLinkNames = FALSE, unionLinkScoped = FALSE;
+    BOOLEAN aliasProbe, transactionActive, noLinkNames = FALSE, unionLinkScoped = FALSE;
     BOOLEAN currentLinkScoped = FALSE, aliasActivated = FALSE;
     BOOLEAN noNamesProvenByIdentity = FALSE;
     ULONG currentGeneration;
@@ -5207,6 +5316,8 @@ static VOID StageRegistryActivationProcess(_In_ PSTAGE_REGISTRY_ENTRY Entry,
     entryName.Length = entryName.MaximumLength = (USHORT)(Entry->NameChars * sizeof(WCHAR));
     directoryRenameInFlight = StageRegistryDirectoryRenameInFlightLocked(Entry->Instance, &entryName);
     aliasProbe = InterlockedCompareExchange(&Entry->AliasProbePending, 0, 0) != 0;
+    transactionVersion = (ULONG)InterlockedCompareExchange(&Entry->TransactionVersion, 0, 0);
+    transactionActive = InterlockedCompareExchange(&Entry->T, 0, 0) != 0;
     if (!Entry->Listed || Entry->Retired ||
         (!Entry->Compact && (Entry->NameChars == 0 ||
          Entry->NameChars > SAFEUPLOAD_WRITER_REGISTRY_NAME_CHARS)) ||
@@ -5223,6 +5334,11 @@ static VOID StageRegistryActivationProcess(_In_ PSTAGE_REGISTRY_ENTRY Entry,
     if (nameSnapshotChars != 0)
         RtlCopyMemory(nameSnapshot, Entry->Name, nameSnapshotChars * sizeof(WCHAR));
     FltReleasePushLock(&RegistryLock);
+    if (transactionActive) {
+        /* Nontransacted by-ID opens see only the committed TxF view. */
+        StageRegistryPrepareActivation(Entry, FALSE);
+        goto Exit;
+    }
     entryName.Buffer = nameSnapshot;
     entryName.Length = entryName.MaximumLength = (USHORT)(nameSnapshotChars * sizeof(WCHAR));
 
@@ -5232,8 +5348,14 @@ static VOID StageRegistryActivationProcess(_In_ PSTAGE_REGISTRY_ENTRY Entry,
         &noLinkNames, &unionLinkScoped, &currentLinkScoped);
     if (status == STATUS_MORE_ENTRIES) goto Exit;
     if (!NT_SUCCESS(status)) {
-        if (aliasProbe) StageRegistryResolveAliasProbe(Entry, FALSE, FALSE, &aliasActivated);
-        else StageRegistryMarkEntryUnknown(Entry, SAFEUPLOAD_REGISTRY_UNKNOWN_IDENTITY);
+        if (aliasProbe) StageRegistryResolveAliasProbeVersioned(Entry, FALSE, FALSE,
+            TRUE, transactionVersion, &aliasActivated);
+        else if (!StageRegistrySetLinkScopeClassificationVersioned(Entry, FALSE, FALSE,
+                transactionVersion) && InterlockedCompareExchange(&Entry->T, 0, 0) == 0 &&
+            (ULONG)InterlockedCompareExchange(&Entry->TransactionVersion, 0, 0) ==
+                transactionVersion) {
+            StageRegistryMarkEntryUnknown(Entry, SAFEUPLOAD_REGISTRY_UNKNOWN_IDENTITY);
+        }
         InterlockedIncrement64(&RegistryChangeSequence);
         goto Exit;
     }
@@ -5244,15 +5366,15 @@ static VOID StageRegistryActivationProcess(_In_ PSTAGE_REGISTRY_ENTRY Entry,
     if (aliasProbe) {
         /* Publish Activating before the first H/S/C/T and SOP read. */
         (VOID)StageRegistryResolveAliasProbeForGeneration(Entry, Instance,
-            TRUE, unionLinkScoped, &aliasActivated);
+            TRUE, unionLinkScoped, transactionVersion, &aliasActivated);
         if (!aliasActivated) goto Exit;
-    } else if (!unionLinkScoped) {
-        StageRegistrySetLinkScopeClassification(Entry, TRUE, FALSE);
-        StageRegistryClearActivation(Entry);
-        InterlockedIncrement64(&RegistryChangeSequence);
-        goto Exit;
     } else {
-        StageRegistrySetLinkScopeClassification(Entry, TRUE, TRUE);
+        if (!StageRegistrySetLinkScopeClassificationVersioned(Entry, TRUE,
+                unionLinkScoped, transactionVersion)) goto Exit;
+        if (!unionLinkScoped) {
+            InterlockedIncrement64(&RegistryChangeSequence);
+            goto Exit;
+        }
     }
 
     currentlyScoped = currentLinkScoped;
@@ -5264,9 +5386,9 @@ static VOID StageRegistryActivationProcess(_In_ PSTAGE_REGISTRY_ENTRY Entry,
         if (noNamesProvenByIdentity && Entry->Volume == Volume && Entry->VolumeSerial != 0) {
             StageRegistryRecordClassificationResult(Entry, status,
                 openFailureStep);
-            StageRegistrySetLinkScopeClassification(Entry, TRUE, FALSE);
-            StageRegistryClearActivation(Entry);
-            InterlockedIncrement64(&RegistryChangeSequence);
+            if (StageRegistrySetLinkScopeClassificationVersioned(Entry, TRUE, FALSE,
+                    transactionVersion))
+                InterlockedIncrement64(&RegistryChangeSequence);
             goto Exit;
         }
         StageRegistryRecordClassificationResult(Entry, status, openFailureStep);
@@ -5579,6 +5701,8 @@ static VOID StageRegistryReclaimWorker(_In_ PFLT_GENERIC_WORKITEM WorkItem, _In_
             entryName.Length = entryName.MaximumLength = (USHORT)(entry->NameChars * sizeof(WCHAR));
             if (entry->Retired || entry->Instance == NULL || entry->Volume == NULL ||
                 StageRegistryDirectoryRenameInFlightLocked(entry->Instance, &entryName) ||
+                ((activating || aliasProbe) &&
+                 InterlockedCompareExchange(&entry->T, 0, 0) != 0) ||
                 (!activating && !aliasProbe && (InterlockedCompareExchange(&entry->H, 0, 0) != 0 ||
                  InterlockedCompareExchange(&entry->T, 0, 0) != 0 ||
                  InterlockedCompareExchange(&entry->UnknownReasons, 0, 0) != 0))) continue;
@@ -5612,8 +5736,9 @@ static VOID StageRegistryReclaimWorker(_In_ PFLT_GENERIC_WORKITEM WorkItem, _In_
                     unfinishedScan = TRUE;
                     if (firstUnfinishedSequence == 0) firstUnfinishedSequence = entry->Sequence;
                 }
-                if (InterlockedCompareExchange(&entry->ScopeScanPending, 0, 0) != 0 ||
-                    InterlockedCompareExchange(&entry->AliasProbePending, 0, 0) != 0) {
+                if ((InterlockedCompareExchange(&entry->ScopeScanPending, 0, 0) != 0 ||
+                     InterlockedCompareExchange(&entry->AliasProbePending, 0, 0) != 0) &&
+                    InterlockedCompareExchange(&entry->T, 0, 0) == 0) {
                     unfinishedScan = TRUE;
                     if (firstUnfinishedSequence == 0) firstUnfinishedSequence = entry->Sequence;
                 }
@@ -6323,7 +6448,10 @@ VOID SafeUploadStageWritersReconcileCurrentScope(VOID)
         scoped = SafeUploadPolicyMayMatchInstanceVolume(entry->Instance);
         if (!scoped) {
             if (InterlockedCompareExchange(&entry->ActivationEnforced, 0, 0) != 0 &&
-                InterlockedCompareExchange(&entry->UnknownReasons, 0, 0) == 0)
+                InterlockedCompareExchange(&entry->UnknownReasons, 0, 0) == 0 &&
+                InterlockedCompareExchange(&entry->T, 0, 0) == 0 &&
+                InterlockedCompareExchange(&entry->AliasProbePending, 0, 0) == 0 &&
+                InterlockedCompareExchange(&entry->RenameInFlight, 0, 0) == 0)
                 StageRegistryClearActivation(entry);
             continue;
         }
@@ -6535,17 +6663,20 @@ NTSTATUS SafeUploadStageWritersAdmissionCoverage(_In_ UINT32 PolicyGeneration,
         PSTAGE_REGISTRY_ENTRY entry = CONTAINING_RECORD(link, STAGE_REGISTRY_ENTRY, Link);
         STAGE_ACTIVATING_LOCKED_SNAPSHOT snapshot;
         ULONG unknown, scanPending, aliasPending, renameInFlight;
-        if (entry->Retired || !entry->Listed ||
-            InterlockedCompareExchange(&entry->ActivationEnforced, 0, 0) == 0) continue;
+        if (entry->Retired || !entry->Listed) continue;
+        aliasPending = (ULONG)InterlockedCompareExchange(&entry->AliasProbePending, 0, 0);
+        renameInFlight = (ULONG)InterlockedCompareExchange(&entry->RenameInFlight, 0, 0);
+        if (InterlockedCompareExchange(&entry->ActivationEnforced, 0, 0) == 0 &&
+            aliasPending == 0 && renameInFlight == 0) continue;
         ++entries;
         StageRegistryActivatingStatusSnapshot(entry, &snapshot);
         unknown = (ULONG)InterlockedCompareExchange(&entry->UnknownReasons, 0, 0);
         scanPending = (ULONG)InterlockedCompareExchange(&entry->ScopeScanPending, 0, 0);
-        aliasPending = (ULONG)InterlockedCompareExchange(&entry->AliasProbePending, 0, 0);
-        renameInFlight = (ULONG)InterlockedCompareExchange(&entry->RenameInFlight, 0, 0);
         if (snapshot.State == SAFEUPLOAD_REGISTRY_STATE_UNKNOWN || unknown != 0) {
             ++notReady;
             ++unknownEntries;
+        } else if (aliasPending != 0 || renameInFlight != 0) {
+            ++notReady;
         } else if (snapshot.State != SAFEUPLOAD_REGISTRY_STATE_PROTECTED ||
             snapshot.Generation != PolicyGeneration || scanPending != 0 ||
             aliasPending != 0 || renameInFlight != 0) {
@@ -6761,7 +6892,7 @@ Retry:
     association->Listed = TRUE;
     KeInitializeEvent(&association->StateChanged, NotificationEvent, alreadyEnlisted);
     StageRegistryReference(Entry);
-    InterlockedIncrement(&Entry->T);
+    (VOID)StageRegistryTransactionAssociationChange(Entry, TRUE);
     InterlockedIncrement64(&RegistryChangeSequence);
     InsertTailList(&TransactionAssociations, &association->Link);
     RegistryAssociationCount += 1;
@@ -6797,7 +6928,7 @@ Retry:
             RemoveEntryList(&association->Link);
             association->Listed = FALSE;
             if (RegistryAssociationCount != 0) RegistryAssociationCount -= 1;
-            InterlockedDecrement(&Entry->T);
+            (VOID)StageRegistryTransactionAssociationChange(Entry, FALSE);
             InterlockedIncrement64(&RegistryChangeSequence);
             dropTableReference = TRUE;
         }
@@ -6810,6 +6941,10 @@ Retry:
     if (dropTableReference) StageRegistryAssociationDereference(association);
     if (!NT_SUCCESS(status)) {
         StageRegistryMarkEntryUnknown(Entry, SAFEUPLOAD_REGISTRY_UNKNOWN_TRANSACTION);
+        if (InterlockedCompareExchange(&Entry->AliasProbePending, 0, 0) != 0) {
+            InterlockedExchange(&RegistryReclaimResetCursor, 1);
+            (VOID)StageRegistryQueueReclaim();
+        }
     }
     StageRegistryAssociationDereference(association);
     return status;
@@ -6837,11 +6972,13 @@ NTSTATUS SafeUploadStageTransactionNotification(_In_ PCFLT_RELATED_OBJECTS FltOb
             association->Listed = FALSE;
             InsertTailList(&retired, &association->Link);
             if (RegistryAssociationCount != 0) RegistryAssociationCount -= 1;
-            InterlockedDecrement(&association->Entry->T);
+            (VOID)StageRegistryTransactionAssociationChange(association->Entry, FALSE);
             InterlockedIncrement64(&RegistryChangeSequence);
             if (InterlockedCompareExchange(&association->Entry->T, 0, 0) == 0 &&
-                InterlockedCompareExchange((volatile LONG *)&association->Entry->State, 0, 0) ==
-                    SAFEUPLOAD_REGISTRY_STATE_ACTIVATING) recheck = TRUE;
+                (InterlockedCompareExchange((volatile LONG *)&association->Entry->State, 0, 0) ==
+                    SAFEUPLOAD_REGISTRY_STATE_ACTIVATING ||
+                 InterlockedCompareExchange(&association->Entry->AliasProbePending, 0, 0) != 0))
+                recheck = TRUE;
             association->CompletionStatus = STATUS_SUCCESS;
             InterlockedExchange(&association->State, SAFEUPLOAD_TX_ASSOC_TERMINAL);
             KeSetEvent(&association->StateChanged, IO_NO_INCREMENT, FALSE);
@@ -6850,7 +6987,12 @@ NTSTATUS SafeUploadStageTransactionNotification(_In_ PCFLT_RELATED_OBJECTS FltOb
     }
     FltReleasePushLock(&RegistryLock);
 
-    if (recheck) (VOID)StageRegistryQueueReclaim();
+    if (recheck) {
+        /* The worker may have advanced past an entry it skipped while T was
+         * live. Start a fresh bounded pass against the committed view. */
+        InterlockedExchange(&RegistryReclaimResetCursor, 1);
+        (VOID)StageRegistryQueueReclaim();
+    }
 
     while (!IsListEmpty(&retired)) {
         PSTAGE_TX_ASSOCIATION association = CONTAINING_RECORD(RemoveHeadList(&retired),
