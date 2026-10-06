@@ -599,6 +599,7 @@ Return Value:
 #if SAFEUPLOAD_STAGING_PROTOTYPE
     SAFEUPLOAD_CONTROL controlHeader;
     PSAFEUPLOAD_ACTIVATING_STATUS_PAGE activatingPage = NULL;
+    PSAFEUPLOAD_ACTIVATING_DIAGNOSTIC_STATUS_PAGE activatingDiagnosticPage = NULL;
     PSAFEUPLOAD_ADMISSION_COVERAGE_STATUS coverageStatus = NULL;
 #endif
     NTSTATUS status = STATUS_SUCCESS;
@@ -1246,6 +1247,37 @@ Return Value:
             leave;
         }
 
+        if (command == SAFEUPLOAD_CONTROL_ACTIVATING_DIAGNOSTIC_STATUS) {
+            if (InputBufferLength != sizeof(SAFEUPLOAD_CONTROL) || OutputBuffer == NULL ||
+                OutputBufferLength != sizeof(SAFEUPLOAD_ACTIVATING_DIAGNOSTIC_STATUS_PAGE)) {
+                status = STATUS_INVALID_BUFFER_SIZE;
+                leave;
+            }
+            if (controlHeader.Version != SAFEUPLOAD_PROTOCOL_VERSION ||
+                controlHeader.StructSize != sizeof(SAFEUPLOAD_CONTROL) ||
+                controlHeader.Command != command) {
+                status = STATUS_REVISION_MISMATCH;
+                leave;
+            }
+#pragma warning( suppress: 6001 )
+            ProbeForWrite(OutputBuffer, sizeof(SAFEUPLOAD_ACTIVATING_DIAGNOSTIC_STATUS_PAGE),
+                __alignof(SAFEUPLOAD_ACTIVATING_DIAGNOSTIC_STATUS_PAGE));
+            activatingDiagnosticPage = ExAllocatePool2(POOL_FLAG_PAGED,
+                sizeof(*activatingDiagnosticPage), SAFEUPLOAD_POOL_TAG);
+            if (activatingDiagnosticPage == NULL) {
+                status = STATUS_INSUFFICIENT_RESOURCES;
+                leave;
+            }
+            status = SafeUploadStageWritersActivatingDiagnosticStatusPage(
+                controlHeader.Reserved, activatingDiagnosticPage);
+            if (NT_SUCCESS(status)) {
+                RtlCopyMemory(OutputBuffer, activatingDiagnosticPage,
+                    sizeof(*activatingDiagnosticPage));
+                *ReturnOutputBufferLength = sizeof(*activatingDiagnosticPage);
+            }
+            leave;
+        }
+
         if (command == SAFEUPLOAD_CONTROL_ADMISSION_EPOCH_STATUS) {
             SAFEUPLOAD_ADMISSION_EPOCH_STATUS epochStatus;
             if (InputBufferLength != sizeof(SAFEUPLOAD_CONTROL) || OutputBuffer == NULL ||
@@ -1427,6 +1459,8 @@ Return Value:
 
 #if SAFEUPLOAD_STAGING_PROTOTYPE
     if (activatingPage != NULL) ExFreePoolWithTag(activatingPage, SAFEUPLOAD_POOL_TAG);
+    if (activatingDiagnosticPage != NULL)
+        ExFreePoolWithTag(activatingDiagnosticPage, SAFEUPLOAD_POOL_TAG);
     if (coverageStatus != NULL) ExFreePoolWithTag(coverageStatus, SAFEUPLOAD_POOL_TAG);
 #endif
 

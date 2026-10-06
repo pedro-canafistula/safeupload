@@ -2785,6 +2785,8 @@ static FLT_PREOP_CALLBACK_STATUS StageExternalRename(PFLT_CALLBACK_DATA Data,
     BOOLEAN allow = FALSE;
     BOOLEAN quarantineRefused = FALSE;
     BOOLEAN unresolved = TRUE;
+    BOOLEAN destinationProtected = FALSE;
+    BOOLEAN linkOperation = cls == FileLinkInformation || cls == FileLinkInformationEx;
     NTSTATUS status;
     if (RegistryRenameContext != NULL) *RegistryRenameContext = NULL;
     ULONG length = Data->Iopb->Parameters.SetFileInformation.Length;
@@ -2808,6 +2810,15 @@ static FLT_PREOP_CALLBACK_STATUS StageExternalRename(PFLT_CALLBACK_DATA Data,
         !SafeUploadStageTouchesProtectedNamespace(destination, kind) &&
         !SafeUploadPolicyMatchesCurrentOrPendingDestination(kind, &source->Name, TRUE) &&
         !SafeUploadPolicyMatchesCurrentOrPendingDestination(kind, &destination->Name, TRUE));
+    /* A pre-existing tracked handle does not authorize adding a fresh name
+     * under a current or pending protected destination. Refuse before the
+     * filesystem can publish the new link or rename. */
+    destinationProtected = SafeUploadStageTouchesProtectedNamespace(destination, kind) ||
+        SafeUploadPolicyMatchesCurrentOrPendingDestination(kind, &destination->Name, TRUE);
+    if (destinationProtected) {
+        allow = FALSE;
+        unresolved = FALSE;
+    }
     if (!allow) unresolved = FALSE;
     if (allow && !TrackedWriter) {
         BOOLEAN protectedAlias = FALSE;
@@ -2820,7 +2831,8 @@ static FLT_PREOP_CALLBACK_STATUS StageExternalRename(PFLT_CALLBACK_DATA Data,
             allow = FALSE;
         }
     }
-    if (!allow && SafeUploadIsAuthenticatedClient() &&
+    if (!allow && source != NULL && destination != NULL &&
+        SafeUploadIsAuthenticatedClient() &&
         FltGetRequestorProcessId(Data) == SafeUploadData.InspectorProcessId &&
         (cls == FileRenameInformation || cls == FileRenameInformationEx)) {
         allow = SafeUploadPublicationRename(Objects->Volume, &source->Name, &destination->Name,
@@ -2828,18 +2840,23 @@ static FLT_PREOP_CALLBACK_STATUS StageExternalRename(PFLT_CALLBACK_DATA Data,
     }
 #if SAFEUPLOAD_STAGING_PROTOTYPE
     if (allow && RegistryRenameContext != NULL) {
-        BOOLEAN linkOperation = cls == FileLinkInformation || cls == FileLinkInformationEx;
         (VOID)SafeUploadStageWritersPrepareRename(Data, Objects, &source->Name, &destination->Name,
             linkOperation, RegistryRenameContext);
     }
 #endif
 Complete:
-    if (TrackedWriter && !allow) {
+    if (TrackedWriter && !allow && !destinationProtected) {
         /* Keep the existing handle live. If the rename target cannot be classified, retain Unknown
-         * so the identity cannot be promoted using its stale name. */
+         * so the identity cannot be promoted using its stale name. A rename or
+         * hard-link whose destination is unresolved on a volume that can hold
+         * policy scope must also fail before the filesystem publishes it. */
         SafeUploadStageWritersMutationDraining(Objects->Instance,
             Objects->FileObject != NULL ? Objects->FileObject->SectionObjectPointer : NULL);
-        allow = TRUE;
+        if (unresolved && SafeUploadPolicyMayMatchInstanceVolume(Objects->Instance)) {
+            allow = FALSE;
+        } else {
+            allow = TRUE;
+        }
     }
     if (source != NULL) FltReleaseFileNameInformation(source);
     if (destination != NULL) FltReleaseFileNameInformation(destination);

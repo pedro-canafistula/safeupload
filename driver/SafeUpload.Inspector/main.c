@@ -1394,11 +1394,28 @@ static VOID PrintJsonWide(_In_reads_(Chars) PCWSTR Text, _In_ ULONG Chars)
     wprintf(L"\"");
 }
 
+static PCWSTR ActivatingClassificationStepName(UINT32 Step)
+{
+    switch (Step) {
+    case SAFEUPLOAD_ACTIVATING_CLASSIFY_STEP_NONE: return L"None";
+    case SAFEUPLOAD_ACTIVATING_CLASSIFY_STEP_OPEN_BY_ID: return L"OpenById";
+    case SAFEUPLOAD_ACTIVATING_CLASSIFY_STEP_LINK_QUERY: return L"LinkQuery";
+    case SAFEUPLOAD_ACTIVATING_CLASSIFY_STEP_PARENT_OPEN: return L"ParentOpen";
+    case SAFEUPLOAD_ACTIVATING_CLASSIFY_STEP_NAME_BUILD: return L"NameBuild";
+    case SAFEUPLOAD_ACTIVATING_CLASSIFY_STEP_OTHER: return L"Other";
+    case SAFEUPLOAD_ACTIVATING_CLASSIFY_STEP_NO_NAMES: return L"NoNames";
+    case SAFEUPLOAD_ACTIVATING_CLASSIFY_STEP_PAGING_FILE: return L"PagingFile";
+    case SAFEUPLOAD_ACTIVATING_CLASSIFY_STEP_OUTSIDE: return L"Outside";
+    case SAFEUPLOAD_ACTIVATING_CLASSIFY_STEP_NOT_RUN: return L"NotRun";
+    default: return L"UnknownStep";
+    }
+}
+
 static int PrintActivatingStatus(VOID)
 {
     HANDLE port = INVALID_HANDLE_VALUE;
-    PSAFEUPLOAD_ACTIVATING_STATUS_PAGE page = NULL;
-    PSAFEUPLOAD_ACTIVATING_ENTRY_STATUS entries = NULL;
+    PSAFEUPLOAD_ACTIVATING_DIAGNOSTIC_STATUS_PAGE page = NULL;
+    PSAFEUPLOAD_ACTIVATING_DIAGNOSTIC_ENTRY_STATUS entries = NULL;
     SAFEUPLOAD_CONTROL control;
     DWORD returned = 0;
     UINT32 start, total = 0, pageGeneration = 0, entryCount = 0, attempt, pagesRead;
@@ -1410,9 +1427,9 @@ static int PrintActivatingStatus(VOID)
     HRESULT hr;
     ULONG index;
     int result = 0;
-    page = (PSAFEUPLOAD_ACTIVATING_STATUS_PAGE)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY,
+    page = (PSAFEUPLOAD_ACTIVATING_DIAGNOSTIC_STATUS_PAGE)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY,
         sizeof(*page));
-    entries = (PSAFEUPLOAD_ACTIVATING_ENTRY_STATUS)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY,
+    entries = (PSAFEUPLOAD_ACTIVATING_DIAGNOSTIC_ENTRY_STATUS)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY,
         (SIZE_T)SAFEUPLOAD_WRITER_REGISTRY_ALL_LIMIT * sizeof(*entries));
     if (page == NULL || entries == NULL) {
         if (page != NULL) HeapFree(GetProcessHeap(), 0, page);
@@ -1446,7 +1463,7 @@ static int PrintActivatingStatus(VOID)
             ZeroMemory(page, sizeof(*page));
             control.Version = SAFEUPLOAD_PROTOCOL_VERSION;
             control.StructSize = sizeof(control);
-            control.Command = SAFEUPLOAD_CONTROL_ACTIVATING_STATUS;
+            control.Command = SAFEUPLOAD_CONTROL_ACTIVATING_DIAGNOSTIC_STATUS;
             control.Reserved = start;
             returned = 0;
             hr = FilterSendMessage(port, &control, sizeof(control), page, sizeof(*page), &returned);
@@ -1485,7 +1502,7 @@ static int PrintActivatingStatus(VOID)
             }
             if (page->EntryCount != 0)
                 CopyMemory(&entries[entryCount], page->Entries,
-                    page->EntryCount * sizeof(SAFEUPLOAD_ACTIVATING_ENTRY_STATUS));
+                    page->EntryCount * sizeof(SAFEUPLOAD_ACTIVATING_DIAGNOSTIC_ENTRY_STATUS));
             entryCount += page->EntryCount;
             if (page->NextIndex <= start && start < total) {
                 retrySnapshot = TRUE;
@@ -1508,7 +1525,8 @@ static int PrintActivatingStatus(VOID)
         BOOLEAN first = TRUE;
         wprintf(L"{\"activatingStatus\":true,\"entries\":[");
         for (index = 0; index < entryCount; ++index) {
-            PSAFEUPLOAD_ACTIVATING_ENTRY_STATUS entry = &entries[index];
+            PSAFEUPLOAD_ACTIVATING_DIAGNOSTIC_ENTRY_STATUS diagnostic = &entries[index];
+            PSAFEUPLOAD_ACTIVATING_ENTRY_STATUS entry = &diagnostic->Entry;
             ULONG byteIndex;
             if (!first) wprintf(L",");
             first = FALSE;
@@ -1518,9 +1536,13 @@ static int PrintActivatingStatus(VOID)
                 wprintf(L"%02X", entry->FileId[byteIndex]);
             wprintf(L"\",\"path\":");
             PrintJsonWide(entry->Name, min(entry->NameChars, SAFEUPLOAD_WRITER_REGISTRY_NAME_CHARS));
-            wprintf(L",\"H\":%u,\"S\":\"%s\",\"C\":%u,\"T\":%u,\"W\":%u,\"unknownReasons\":\"0x%08X\",\"openerPids\":[",
+            wprintf(L",\"H\":%u,\"S\":\"%s\",\"C\":%u,\"T\":%u,\"W\":%u,\"unknownReasons\":\"0x%08X\","
+                L"\"classificationStatus\":\"0x%08X\",\"classificationStep\":\"%s\","
+                L"\"classificationStepCode\":%u,\"openerPids\":[",
                 entry->H, RegistrySName(entry->S), entry->C, entry->T, entry->W,
-                entry->UnknownReasons);
+                entry->UnknownReasons, (UINT32)diagnostic->ClassificationStatus,
+                ActivatingClassificationStepName(diagnostic->ClassificationStep),
+                diagnostic->ClassificationStep);
             for (byteIndex = 0; byteIndex < entry->OpenerPidCount && byteIndex < ARRAYSIZE(entry->OpenerPids); ++byteIndex)
                 wprintf(L"%s%u", byteIndex == 0 ? L"" : L",", entry->OpenerPids[byteIndex]);
             wprintf(L"]}");

@@ -158,6 +158,7 @@ VOID SafeUploadStageWritersAttachMutatingIo(_In_opt_ PVOID RenameContext,
 _IRQL_requires_max_(APC_LEVEL)
 BOOLEAN SafeUploadStageWritersSopMatchesPolicy(_In_ PFLT_INSTANCE Instance,
     _In_opt_ PFILE_OBJECT FileObject, _In_ BOOLEAN IncludeAncestors);
+_IRQL_requires_(PASSIVE_LEVEL)
 NTSTATUS SafeUploadStageWritersClassifyById(_In_ PFLT_INSTANCE Instance,
     _In_ PFILE_OBJECT FileObject, _Out_ PBOOLEAN InScope);
 _IRQL_requires_max_(APC_LEVEL)
@@ -165,6 +166,8 @@ VOID SafeUploadStageWritersMutationDraining(_In_ PFLT_INSTANCE Instance,
     _In_opt_ PVOID SectionObjectPointer);
 NTSTATUS SafeUploadStageWritersActivatingStatusPage(_In_ UINT32 StartIndex,
     _Out_ PSAFEUPLOAD_ACTIVATING_STATUS_PAGE Page);
+NTSTATUS SafeUploadStageWritersActivatingDiagnosticStatusPage(_In_ UINT32 StartIndex,
+    _Out_ PSAFEUPLOAD_ACTIVATING_DIAGNOSTIC_STATUS_PAGE Page);
 NTSTATUS SafeUploadStageWritersAdmissionCoverage(_In_ UINT32 PolicyGeneration,
     _Out_ PULONGLONG RegistrySequenceStart, _Out_ PULONGLONG RegistrySequenceEnd,
     _Out_ PUINT32 WriterEntries, _Out_ PUINT32 WriterEntriesNotReady,
