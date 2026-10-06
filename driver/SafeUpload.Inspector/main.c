@@ -1095,6 +1095,69 @@ Exit:
     return result;
 }
 
+#if defined(SAFEUPLOAD_STAGING_PROTOTYPE) && SAFEUPLOAD_STAGING_PROTOTYPE
+/* Read-only Control 24 receipt: the evidence the service's readiness evaluator
+ * consumes, printed whole so a Pending/Degraded destination can be explained. */
+static int PrintAdmissionCoverageStatus(void)
+{
+    SAFEUPLOAD_CONTROL control;
+    PSAFEUPLOAD_ADMISSION_COVERAGE_STATUS status;
+    HANDLE port = INVALID_HANDLE_VALUE;
+    DWORD returned = 0;
+    UINT32 index, character;
+    HRESULT hr;
+    int result = 3;
+    status = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(*status));
+    if (status == NULL) return 4;
+    hr = FilterConnectCommunicationPort(SAFEUPLOAD_PORT_NAME, 0, NULL, 0, NULL, &port);
+    if (FAILED(hr)) goto Exit;
+    ZeroMemory(&control, sizeof(control));
+    control.Version = SAFEUPLOAD_PROTOCOL_VERSION;
+    control.StructSize = sizeof(control);
+    control.Command = SAFEUPLOAD_CONTROL_ADMISSION_COVERAGE;
+    hr = FilterSendMessage(port, &control, sizeof(control), status, sizeof(*status), &returned);
+    if (FAILED(hr) || returned != sizeof(*status) || status->StructSize != sizeof(*status) ||
+        status->ScopeCount > SAFEUPLOAD_ADMISSION_COVERAGE_MAX_SCOPES) goto Exit;
+    for (index = 0; index < status->ScopeCount; ++index) {
+        if (status->Scopes[index].PrefixChars > SAFEUPLOAD_MAX_PREFIX_CHARS) goto Exit;
+    }
+    wprintf(L"{\"state\":%u,\"reason\":%u,\"flags\":\"0x%08X\",\"policyGeneration\":%u,\"policyGenerationEnd\":%u,"
+        L"\"policyFlags\":\"0x%08X\",\"bootPolicyState\":%u,\"scopeCount\":%u,\"expectedScopeCount\":%u,"
+        L"\"epochGeneration\":%u,\"epochFlags\":\"0x%08X\",\"epochActiveCallbacks\":%u,\"epochFlagsEnd\":\"0x%08X\","
+        L"\"enumeratedInstances\":%u,\"setupInFlight\":%u,\"teardownInFlight\":%u,\"coverageChangesInFlight\":%u,"
+        L"\"writerGlobalUnknown\":%u,\"writerEntries\":%u,\"writerEntriesNotReady\":%u,\"writerEntriesUnknown\":%u,"
+        L"\"futureMountGateReady\":%u,\"topologySequence\":[%llu,%llu],\"coverageSequence\":[%llu,%llu],\"scopes\":[",
+        status->State, status->Reason, status->Flags, status->PolicyGeneration, status->PolicyGenerationEnd,
+        status->PolicyFlags, status->BootPolicyState, status->ScopeCount, status->ExpectedScopeCount,
+        status->EpochGeneration, status->EpochFlags, status->EpochActiveCallbacks, status->EpochFlagsEnd,
+        status->EnumeratedInstances, status->SetupInFlight, status->TeardownInFlight, status->CoverageChangesInFlight,
+        status->WriterGlobalUnknown, status->WriterEntries, status->WriterEntriesNotReady, status->WriterEntriesUnknown,
+        status->FutureMountGateReady, status->TopologySequenceStart, status->TopologySequenceEnd,
+        status->CoverageSequenceStart, status->CoverageSequenceEnd);
+    for (index = 0; index < status->ScopeCount; ++index) {
+        const SAFEUPLOAD_ADMISSION_COVERAGE_SCOPE *scope = &status->Scopes[index];
+        wprintf(L"%s{\"kind\":%u,\"index\":%u,\"resolution\":%u,\"state\":%u,\"reason\":%u,"
+            L"\"matchingInstances\":%u,\"uniqueVolumes\":%u,\"readyInstances\":%u,\"prefix\":\"",
+            index == 0 ? L"" : L",", scope->ScopeKind, scope->ScopeIndex, scope->Resolution, scope->State,
+            scope->Reason, scope->MatchingInstances, scope->UniqueVolumes, scope->ReadyInstances);
+        for (character = 0; character < scope->PrefixChars; ++character) {
+            WCHAR value = scope->Prefix[character];
+            if (value == L'\\' || value == L'"') wprintf(L"\\%lc", value);
+            else if (value < 32 || value > 126) wprintf(L"\\u%04X", (unsigned)value);
+            else wprintf(L"%lc", value);
+        }
+        wprintf(L"\"}");
+    }
+    wprintf(L"]}\n");
+    result = 0;
+Exit:
+    if (result != 0) wprintf(L"ERRO: resposta de admission-coverage invalida (hr = 0x%08X, bytes = %u).\n", hr, returned);
+    if (port != INVALID_HANDLE_VALUE) CloseHandle(port);
+    HeapFree(GetProcessHeap(), 0, status);
+    return result;
+}
+#endif
+
 static int PrintWriterStateStatus(_In_ BOOL RegistryStatus)
 {
     SAFEUPLOAD_CONTROL control;
@@ -1893,6 +1956,11 @@ Return Value:
     if (argc > 1 && _wcsicmp(argv[1], L"--admission-volume-status") == 0) {
         return PrintAdmissionVolumeStatus(FALSE);
     }
+#if defined(SAFEUPLOAD_STAGING_PROTOTYPE) && SAFEUPLOAD_STAGING_PROTOTYPE
+    if (argc > 1 && _wcsicmp(argv[1], L"--admission-coverage") == 0) {
+        return PrintAdmissionCoverageStatus();
+    }
+#endif
     if (argc > 1 && _wcsicmp(argv[1], L"--admission-volume-observe") == 0) {
         return PrintAdmissionVolumeStatus(TRUE);
     }
