@@ -4,6 +4,7 @@
 [CmdletBinding()]
 param()
 $ErrorActionPreference='Stop'
+try {
 function Import-EvaluationFunctions([string]$File,[string[]]$Names) {
     $tokens=$null;$errors=$null
     $ast=[Management.Automation.Language.Parser]::ParseFile($File,[ref]$tokens,[ref]$errors)
@@ -17,7 +18,7 @@ function Import-EvaluationFunctions([string]$File,[string[]]$Names) {
     }
 }
 Import-EvaluationFunctions (Join-Path $PSScriptRoot 'StagedInvariantObserver.psm1') @('New-IORecord','New-IOAssertion','Test-InvariantCadence','Test-InvariantMetadata','Test-InvariantExternalCoverage')
-Import-EvaluationFunctions (Join-Path $PSScriptRoot 'Test-StagedInvariantSuite.ps1') @('Wait-WriterIdentity','Get-ExpectedCheckpoint','Test-ServiceJournalStateReachable','Assert-ServiceManifestPath','ConvertFrom-ServiceJournalRecord','Test-ServiceJournalDelta','Get-ServiceDestinationPaths','Test-ServiceFixtureEntry','ConvertFrom-NotificationRecord','Test-NotificationWindow','ConvertFrom-AgentEventXml','Test-AgentLogContinuity','Read-AgentLogWindow','Test-NotificationLocationUnchanged','Test-AgentDidNotRun','Get-ServiceTimeline')
+Import-EvaluationFunctions (Join-Path $PSScriptRoot 'Test-StagedInvariantSuite.ps1') @('Wait-WriterIdentity','Get-ExpectedCheckpoint','Test-ServiceJournalStateReachable','Assert-ServiceManifestPath','ConvertFrom-ServiceJournalRecord','Test-ServiceJournalDelta','Get-ServiceDestinationPaths','Test-ServiceFixtureEntry','ConvertFrom-NotificationRecord','Test-NotificationWindow','ConvertFrom-AgentEventXml','Test-AgentLogContinuity','Read-AgentLogWindow','Test-NotificationLocationUnchanged','Test-AgentDidNotRun','Get-ServiceTimeline','Test-CachedJournalSequence','Test-CachedNotifications','Test-CachedHandBackAcl','Test-CachedSample','Get-WriterBody')
 $script:checks=0
 function Check([bool]$Condition,[string]$Message){if(-not $Condition){throw $Message};$script:checks++}
 function Clone($Value){return ($Value | ConvertTo-Json -Depth 32 | ConvertFrom-Json)}
@@ -497,4 +498,76 @@ $script:fixtureLogDisabled=$true
 $disabled=Get-AgentLogAnchor 'Security'
 Check ($disabled.Status -ceq 'INCONCLUSIVE' -and $disabled.Reason -ceq 'Log disabled.' -and $disabled.Errors.Count -gt 0) 'Log failures retain their actual error chain.'
 
+# C01 extends these existing checks; no guest execution or synthetic approvals.
+$digest='A'*64
+$approve=@(foreach($name in @('Allocated','Sealed','Inspecting','Approved','Publishing','Released')){
+    [pscustomobject]@{StateName=$name;SealedOnce=($name -cne 'Allocated');Sha256Hex=$(if($name -cin @('Approved','Publishing','Released')){$digest}else{$null})}
+})
+Check (@(Test-CachedJournalSequence $approve 'APPROVE' $digest | ForEach-Object {$_} | Where-Object Verdict -cne 'PASS').Count -eq 0) 'C01 full observed approval state/digest order passes.'
+$skipped=@($approve | Where-Object StateName -cne 'Approved')
+Check ((Test-CachedJournalSequence $skipped 'APPROVE' $digest)[0].Verdict -ceq 'INCONCLUSIVE') 'C01 polling must not infer a skipped Approved transition.'
+$reordered=@($approve[0],$approve[2],$approve[1],$approve[3],$approve[4],$approve[5])
+Check ((Test-CachedJournalSequence $reordered 'APPROVE' $digest)[0].Verdict -ceq 'FAIL') 'C01 observed reversed transitions fail.'
+$blocked=@($approve[0],$approve[1],$approve[2],[pscustomobject]@{StateName='Blocked';SealedOnce=$true;Sha256Hex=$digest})
+Check ((Test-CachedJournalSequence $blocked 'BLOCK' $digest)[0].Verdict -ceq 'PASS') 'C01 observed block path passes.'
+Check ((Test-CachedJournalSequence @($blocked+$approve[3]) 'BLOCK' $digest)[0].Verdict -ceq 'FAIL') 'C01 cannot approve a Block variant.'
+$wrong=Clone $approve;$wrong[-1].Sha256Hex='B'*64
+Check ((Test-CachedJournalSequence $wrong 'APPROVE' $digest)[1].Verdict -ceq 'FAIL') 'C01 changed sealed digest fails.'
+$notification=[pscustomobject]@{Complete=$true;Reason='fixture complete';Emissions=@(@{Entry=[pscustomobject]@{Kind='Transfer';TransferId='fixture-transfer';Phase='Released';TargetSessionId=0}})}
+Check ((Test-CachedNotifications $notification 'fixture-transfer' 0 'APPROVE' $digest)[0].Verdict -ceq 'PASS') 'C01 correlates outcome event by transfer/session.'
+Check ((Test-CachedNotifications $notification 'fixture-transfer' 0 'APPROVE' $digest)[1].Verdict -ceq 'INCONCLUSIVE') 'C01 cannot manufacture missing notification digest from the journal.'
+Check ((Test-CachedNotifications $notification 'other-transfer' 0 'APPROVE' $digest)[0].Verdict -ceq 'FAIL') 'C01 requires the owning transfer notification.'
+Check ((Test-CachedNotifications $notification 'fixture-transfer' 1 'APPROVE' $digest)[0].Verdict -ceq 'FAIL') 'C01 wrong session notification fails.'
+Check ((Test-CachedNotifications $notification 'fixture-transfer' 0 'BLOCK' $digest)[0].Verdict -ceq 'FAIL') 'C01 Released contradicts Block even with incomplete coverage.'
+$notification.Emissions+=@{Entry=[pscustomobject]@{Kind='Event';EventId='fixture-transfer';Phase='Blocked';TargetSessionId=0}}
+Check ((Test-CachedNotifications $notification 'fixture-transfer' 0 'APPROVE' $digest)[0].Verdict -ceq 'FAIL') 'C01 Blocked audit emission contradicts Approve.'
+$notification.Emissions=@($notification.Emissions[0])
+$notification.Complete=$false
+Check ((Test-CachedNotifications $notification 'fixture-transfer' 0 'APPROVE' $digest)[0].Verdict -ceq 'INCONCLUSIVE') 'C01 incomplete durable notification window stays inconclusive.'
+$body=Get-WriterBody;$bodyTokens=$null;$bodyErrors=$null
+$bodyAst=[Management.Automation.Language.Parser]::ParseInput($body,[ref]$bodyTokens,[ref]$bodyErrors)
+Check ($bodyErrors.Count -eq 0) 'Generated cached/seed actor script parses.'
+$native=@($bodyAst.FindAll({param($node) $node -is [Management.Automation.Language.StringConstantExpressionAst] -and $node.Value -like '*public static class SUWriter*'},$true))
+Check ($native.Count -eq 1) 'Actor native cached helper is retained in the existing writer body.'
+Add-Type -TypeDefinition $native[0].Value
+Check ($null -ne ('SUWriter' -as [type])) 'Cached writer native declarations compile without calling Windows APIs.'
+if([Environment]::OSVersion.Platform -eq [PlatformID]::Win32NT){
+    $sid='S-1-5-21-1-2-3-1000'
+    Check (Test-CachedHandBackAcl ('O:SYG:SYD:P(A;;FA;;;SY)(A;;FA;;;'+$sid+')') $sid) 'H exact actor/SYSTEM explicit protected ACL passes.'
+    Check (-not (Test-CachedHandBackAcl ('O:SYG:SYD:P(A;;FA;;;SY)(A;;FA;;;'+$sid+')(A;;FR;;;BU)') $sid)) 'H extra user grant fails.'
+    Check (-not (Test-CachedHandBackAcl ('O:SYG:SYD:P(A;;FA;;;SY)(A;ID;FA;;;'+$sid+')') $sid)) 'H inherited user grant fails.'
+}
+# Compile the existing observer helper for its pure hash/byte comparison only.
+# Neither native readers nor the NTFS decoder are called by these fixtures.
+Import-Module (Join-Path $PSScriptRoot 'StagedInvariantObserver.psm1') -Force -DisableNameChecking
+$sampleDirectory=Join-Path ([IO.Path]::GetTempPath()) ('c01-sample-'+[guid]::NewGuid().ToString('N'));$null=[IO.Directory]::CreateDirectory($sampleDirectory)
+try{
+    $script:protectedDirectory=$sampleDirectory;$final=Join-Path $sampleDirectory 'cached.txt'
+    $imageA=[Text.Encoding]::ASCII.GetBytes('patterned-A!');$hash=[StagedInvariant.Native]::Hash($imageA)
+    $artifactPath=Join-Path $sampleDirectory 'raw.bin';[IO.File]::WriteAllBytes($artifactPath,$imageA)
+    $artifact=@{Path=$artifactPath;Length=$imageA.Length;Sha256=$hash}
+    $marker=[pscustomobject]@{Name='marker.bin';Reference=4;Eof=12;Attributes=32}
+    $parent=[pscustomobject]@{Role='Parent';Path=$sampleDirectory;DirectoryEntries=@($marker)}
+    $base=[pscustomobject]@{Geometry=@{Cluster=4};Images=@($parent)}
+    $absent=[pscustomobject]@{Role='Current';Path=$final;Absent=$true}
+    $s=[pscustomobject]@{Status='OK';Phase='FlushedHandleHeld';Sequence=1;Captures=@(@{Images=@($parent,$absent)});
+        C01Readers=@(@{Status='ERROR';NativeCode=2;Unbuffered=$false},@{Status='ERROR';NativeCode=2;Unbuffered=$true})}
+    Check (@(Test-CachedSample $s $base $false $imageA | ForEach-Object {$_} | Where-Object Verdict -cne 'PASS').Count -eq 0) 'C01 raw/index plus both missing-name opens prove held absence.'
+    $bad=Clone $s;$bad.C01Readers[1].NativeCode=5
+    Check (@(Test-CachedSample $bad $base $false $imageA | ForEach-Object {$_} | Where-Object Verdict -ceq 'INCONCLUSIVE').Count -gt 0) 'C01 access-denied read cannot substitute for raw final absence.'
+    $bad=Clone $s;$bad.Captures[0].Images[1].Absent=$false
+    Check (@(Test-CachedSample $bad $base $false $imageA | ForEach-Object {$_} | Where-Object Verdict -ceq 'FAIL').Count -gt 0) 'C01 final appearance while held fails.'
+    $releasedParent=Clone $parent;$releasedParent.DirectoryEntries+= [pscustomobject]@{Name='cached.txt';Reference=5;Eof=12;Attributes=32}
+    $released=[pscustomobject]@{Role='Current';Path=$final;Absent=$false;Length=12;Sha256=$hash;LogicalArtifact=$artifact;
+        Runs=@(@{Vcn=0;Lcn=10;Clusters=3});Containers=@(@{Kind='DATA';Offset=40;Length=12;Artifact=$artifact})}
+    $s.Phase='FinalQuiescence';$s.Captures=@(@{Images=@($releasedParent,$released)});$s.C01Readers=@(@{Status='OK';NativeCode=0;Unbuffered=$false;Result=@{Digest=$hash;Length=12}},@{Status='OK';NativeCode=0;Unbuffered=$true;Result=@{Digest=$hash;Length=12}})
+    Check (@(Test-CachedSample $s $base $true $imageA | ForEach-Object {$_} | Where-Object Verdict -cne 'PASS').Count -eq 0) 'C01 approved whole raw image/extents/readers and final-only listing pass.'
+    $wrong=[byte[]]$imageA.Clone();$wrong[5]=[byte][char]'X';[IO.File]::WriteAllBytes($artifactPath,$wrong)
+    $released.Containers[0].Artifact=@{Path=$artifactPath;Length=12;Sha256=[StagedInvariant.Native]::Hash($wrong)}
+    $extent=@(Test-CachedSample $s $base $true $imageA | ForEach-Object {$_} | Where-Object Name -ceq 'C01ReleasedRawExtent')
+    Check ($extent.Count -eq 1 -and $extent[0].Verdict -ceq 'FAIL' -and $extent[0].ForbiddenByteCount -eq 1) 'C01 raw extent comparator counts exactly one changed byte.'
+    $releasedParent.DirectoryEntries+= [pscustomobject]@{Name='.safeupload-left.pending';Reference=6;Eof=12;Attributes=32}
+    Check (@(Test-CachedSample $s $base $true $imageA | ForEach-Object {$_} | Where-Object { $_.Name -ceq 'C01PublicListing' -and $_.Verdict -ceq 'FAIL' }).Count -gt 0) 'C01 lingering publication temporary fails.'
+}finally{[IO.Directory]::Delete($sampleDirectory,$true)}
 'ProofAdapterEvaluationChecks='+$script:checks+';PASS (host-safe synthetic evaluation, collector mocks and identity publication only)'
+}catch{'ScriptError='+$_.Exception.ToString();throw}

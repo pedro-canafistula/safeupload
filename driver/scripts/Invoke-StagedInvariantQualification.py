@@ -31,7 +31,6 @@ import xml.etree.ElementTree as ET
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPTS = ROOT / 'driver/scripts'
 MODES = ('ordinary', 'runtime-verifier', 'boot-verifier')
-SIGNER = '220DD82C37FCF36048D59E4F10113185D81D5DC7'
 SENTINELS = {
     'BOOT_START_PREPARED_SENTINEL': 'INVARIANT_PREPARED=True',
     'BOOT_START_CASE_SENTINEL': 'INVARIANT_CASE_COMPLETED=True',
@@ -135,7 +134,8 @@ def build_inputs(args, commit, agent_commit, head):
     feature = work / 'SafeUpload-stage-prototype.sys'
     inspector = work / 'inspector-feature-release.exe'
     signed = unique_row(summary, 'sign')
-    require(signed.get('exit') == '0' and signed.get('signer') == SIGNER and signed.get('signed_sha256') == sha(feature)
+    signer = signed.get('signer', '')
+    require(signed.get('exit') == '0' and re.fullmatch(r'[A-F0-9]{40}', signer) and signed.get('signed_sha256') == sha(feature)
             and signed.get('unsigned_sha256') == sha(work / 'owned-feature.sys'), 'Signed/unsigned driver/signer gate')
     require(unique_row(summary, 'inspector-feature-release').get('artifact_sha256') == sha(inspector), 'Inspector artifact mismatch')
     agent_work = Path('/tmp/claude-1000/exact-agent-' + args.agent_label)
@@ -169,7 +169,7 @@ def build_inputs(args, commit, agent_commit, head):
     }
     provenance = {'SourceCommit': commit, 'AgentSourceCommit': agent_commit, 'HarnessBaseCommit': head,
                   'HarnessSourceMode': 'sha256-pinned-working-tree', 'SignedSha256': sha(feature),
-                  'UnsignedSha256': sha(work / 'owned-feature.sys'), 'Signer': SIGNER,
+                  'UnsignedSha256': sha(work / 'owned-feature.sys'), 'Signer': signer,
                   'SourceManifests': {str(work): sha(work / 'src.manifest'), str(agent_work): sha(agent_work / 'src.manifest')},
                   'ServiceTreeSha256': tree_hash, 'BuildSummarySha256': sha(work / 'summary.txt'),
                   'AgentSummarySha256': sha(agent_work / 'summary.txt'), 'WriterFixtureSha256': sha(work / 'writer-fixture.exe')}
@@ -362,7 +362,8 @@ def attest_external_coverage(result):
 
 def validate_service_artifacts(result, destination, guest_root):
     for trial in result.get('Trials', []):
-        for snapshot in (trial.get('ServiceBefore') or {}, trial.get('ServiceAfter') or {}):
+        for snapshot in [trial.get('ServiceBefore') or {}, trial.get('ServiceAfter') or {},
+                         *trial.get('JournalSnapshots', []), {'Journal': (trial.get('HandBack') or {}).get('Files', [])}]:
             records = list(snapshot.get('Journal', [])) + list((snapshot.get('Notifications') or {}).get('Artifacts', []))
             for record in records:
                 path = record['Artifact']
@@ -436,7 +437,8 @@ def run_case(args, case, mode, ev, files, package, tree_hash, provenance):
     name = f'boot-start-invariant-{case}-{mode}-{args.tag}'
     require(not list(ev.glob(name + '*')), 'Evidence collision: ' + name)
     params = {'CaseId': case, 'Mode': mode, 'RunName': name, 'ExpectedOriginalPolicySha256': args.policy_sha.upper(),
-              'ExpectedServicePackageSha256': sha(package), 'ExpectedServiceTreeSha256': tree_hash}
+              'ExpectedServicePackageSha256': sha(package), 'ExpectedServiceTreeSha256': tree_hash,
+              'ExpectedSignerThumbprint': provenance['Signer']}
     transfers = []
     for param, (path, hash_param) in files.items():
         leaf = path.stem + '-' + sha(path)[:16] + path.suffix

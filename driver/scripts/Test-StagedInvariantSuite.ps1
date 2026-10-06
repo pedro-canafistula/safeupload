@@ -19,6 +19,7 @@ param(
     [Parameter(Mandatory=$true)][ValidatePattern('^[A-Fa-f0-9]{64}$')][string]$ExpectedHelperSha256,
     [Parameter(Mandatory=$true)][ValidatePattern('^[A-Fa-f0-9]{64}$')][string]$ExpectedSuiteSha256,
     [Parameter(Mandatory=$true)][ValidatePattern('^[A-Fa-f0-9]{64}$')][string]$ExpectedServiceTreeSha256,
+    [ValidatePattern('^[A-Fa-f0-9]{40}$')][string]$ExpectedSignerThumbprint='220DD82C37FCF36048D59E4F10113185D81D5DC7',
     [Parameter(Mandatory=$true)][ValidatePattern('^[A-Za-z0-9._-]+$')][string]$FeatureDriverFileName,
     [Parameter(Mandatory=$true)][ValidatePattern('^[A-Za-z0-9._-]+$')][string]$InspectorFileName,
     [Parameter(Mandatory=$true)][ValidatePattern('^[A-Za-z0-9._-]+$')][string]$TableFileName,
@@ -29,6 +30,7 @@ param(
 )
 $ErrorActionPreference='Stop'
 $ProgressPreference='SilentlyContinue'
+try {
 $documents=Split-Path -Parent $PSCommandPath
 $stateDirectory=Join-Path $documents ('SafeUpload-invariant-state-'+$RunName)
 $statePath=Join-Path $stateDirectory 'state.clixml'
@@ -150,6 +152,7 @@ try {
 '@
     $suffix=@'
 } catch {
+    'ScriptError='+$_.Exception.ToString()
     $code=1;for($ex=$_.Exception;$null -ne $ex;$ex=$ex.InnerException){$chain+=@{Type=$ex.GetType().FullName;Message=$ex.Message;HResult=$ex.HResult;Stack=$ex.StackTrace}}
 } finally {
     $record=@{Token='__TOKEN__';BootId=(Get-BootId);ExitCode=$code;Errors=$chain;Value=$value;CompletedQpc=[Diagnostics.Stopwatch]::GetTimestamp()}
@@ -420,9 +423,31 @@ public static class SUWriter {
  [DllImport("kernel32.dll", SetLastError=true)] static extern bool WriteFile(IntPtr h,byte[] b,uint n,out uint w,IntPtr o);
  [DllImport("kernel32.dll", SetLastError=true)] static extern bool FlushFileBuffers(IntPtr h);
  [DllImport("kernel32.dll", SetLastError=true)] static extern bool CloseHandle(IntPtr h);
+ [DllImport("kernel32.dll", SetLastError=true)] static extern bool ReadFile(IntPtr h,byte[] b,uint n,out uint r,IntPtr o);
+ [DllImport("kernel32.dll", SetLastError=true)] static extern bool SetFilePointerEx(IntPtr h,long d,out long p,uint m);
  [DllImport("advapi32.dll", SetLastError=true)] static extern bool GetTokenInformation(IntPtr h,int c,out int v,int n,out int r);
  public static bool Elevated(IntPtr token) { int v,r; if(!GetTokenInformation(token,20,out v,4,out r))throw new Win32Exception(Marshal.GetLastWin32Error());return v!=0; }
  static SUCall Call(string c,int code,long start,long end,int trial) {return new SUCall{Class=c,NativeCode=code,StartQpc=start,EndQpc=end,Trial=trial,Cold=trial==0};}
+ public static IntPtr OpenHeld(string path,out SUCall call) {
+  long start=Stopwatch.GetTimestamp();var h=CreateFileW(path,0xC0000000,7,IntPtr.Zero,1,0x80,IntPtr.Zero);
+  int code=h==new IntPtr(-1)?Marshal.GetLastWin32Error():0;
+  call=Call("writer-open",code,start,Stopwatch.GetTimestamp(),0);return h;
+ }
+ public static SUCall WriteHeld(IntPtr h,byte[] bytes) {
+  uint written;long start=Stopwatch.GetTimestamp();bool ok=WriteFile(h,bytes,(uint)bytes.Length,out written,IntPtr.Zero);
+  int code=ok?(written==bytes.Length?0:29):Marshal.GetLastWin32Error();return Call("cached-write",code,start,Stopwatch.GetTimestamp(),0);
+ }
+ public static SUCall FlushHeld(IntPtr h) {
+  long start=Stopwatch.GetTimestamp();bool ok=FlushFileBuffers(h);int code=ok?0:Marshal.GetLastWin32Error();return Call("flush",code,start,Stopwatch.GetTimestamp(),0);
+ }
+ public static byte[] ReadPrivate(IntPtr h,int length) {
+  long position;if(!SetFilePointerEx(h,0,out position,0))throw new Win32Exception(Marshal.GetLastWin32Error());
+  byte[] bytes=new byte[length];uint read;if(!ReadFile(h,bytes,(uint)length,out read,IntPtr.Zero))throw new Win32Exception(Marshal.GetLastWin32Error());
+  if(read!=length)throw new System.IO.IOException("Private read was short.");return bytes;
+ }
+ public static SUCall CloseHeld(IntPtr h) {
+  long start=Stopwatch.GetTimestamp();bool ok=CloseHandle(h);int code=ok?0:Marshal.GetLastWin32Error();return Call("close",code,start,Stopwatch.GetTimestamp(),0);
+ }
  public static SUCall[] Attempt(string path,byte[] bytes,bool create,int trial) {
   var results=new System.Collections.Generic.List<SUCall>();
   long start=Stopwatch.GetTimestamp(); IntPtr h=CreateFileW(path,0x40000000,7,IntPtr.Zero,create?1u:3u,0x80,IntPtr.Zero);
@@ -444,12 +469,51 @@ try {
     $actor=@{Pid=$PID;Sid=$identity.User.Value;Elevated=[SUWriter]::Elevated($identity.Token);
         IsAdministrator=(@($identity.Groups | Where-Object Value -eq 'S-1-5-32-544').Count -gt 0);
         SessionId=[Diagnostics.Process]::GetCurrentProcess().SessionId;BootId=(Get-BootId)}
+    if($config.CachedCase){
+        $actor.Profile=[Environment]::GetFolderPath([Environment+SpecialFolder]::UserProfile)
+        if([string]::IsNullOrWhiteSpace($actor.Profile)){throw 'Actor profile unavailable for hand-back contract H'}
+        $handBackRoot=Join-Path $actor.Profile 'SafeUpload\_bloqueados'
+        function Get-ActorHandBack {
+            $files=@()
+            if(Test-Path -LiteralPath $handBackRoot){
+                foreach($file in @(Get-ChildItem -LiteralPath $handBackRoot -Force)){
+                    if($file.PSIsContainer){throw 'Unexpected directory in actor hand-back location'}
+                    $files+=@{Path=$file.FullName;Length=$file.Length;Sha256=(Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash}
+                }
+            };return ,$files
+        }
+        $actor.HandBackBefore=Get-ActorHandBack
+    }
     if($actor.Elevated -or $actor.IsAdministrator -or $actor.Sid -cne $config.ActorSid){throw 'Writer token is not the expected standard user'}
     Write-DurableFile '__IDENTITY__' ([Management.Automation.PSSerializer]::Serialize($actor,32)) -New
     $deadline=[DateTime]::UtcNow.AddSeconds(180)
     while(-not(Test-Path -LiteralPath '__GO__')){if([DateTime]::UtcNow -gt $deadline){throw 'Writer barrier timed out'};Start-Sleep -Milliseconds 10}
     $releasedQpc=[Diagnostics.Stopwatch]::GetTimestamp()
     $calls=@()
+    if($config.CachedCase){
+        $h=[IntPtr]::Zero;$privateDigest=$null;$openCall=$null
+        try {
+            $bytes=[Convert]::FromBase64String($config.Payloads[0])
+            $h=[SUWriter]::OpenHeld($config.Target,[ref]$openCall);$calls+= $openCall
+            if($openCall.NativeCode -ne 0){throw ('Cached create failed: Win32='+$openCall.NativeCode)}
+            $calls+= [SUWriter]::WriteHeld($h,$bytes);$calls+= [SUWriter]::FlushHeld($h)
+            if(@($calls | Where-Object NativeCode -ne 0).Count){throw 'Cached write/flush failed; see held/closed operation receipt'}
+            $hash=[Security.Cryptography.SHA256]::Create()
+            try{$privateDigest=[BitConverter]::ToString($hash.ComputeHash([SUWriter]::ReadPrivate($h,$bytes.Length))).Replace('-','')}finally{$hash.Dispose()}
+            $held=@{Pid=$PID;Sid=$actor.Sid;BootId=$actor.BootId;Token=$config.Token;Calls=$calls;PrivateSha256=$privateDigest;Qpc=[Diagnostics.Stopwatch]::GetTimestamp();ReleasedQpc=$releasedQpc}
+            Write-DurableFile (Join-Path $config.CoordinationDirectory 'held.clixml') ([Management.Automation.PSSerializer]::Serialize($held,32)) -New
+            $deadline=[DateTime]::UtcNow.AddSeconds(180)
+            while(-not(Test-Path -LiteralPath (Join-Path $config.CoordinationDirectory 'close'))){if([DateTime]::UtcNow -gt $deadline){throw 'Cached writer close barrier timed out after 180 seconds'};Start-Sleep -Milliseconds 10}
+        } finally {
+            if($h -ne [IntPtr]::Zero -and $h -ne [IntPtr]::new(-1)){$calls+= [SUWriter]::CloseHeld($h)}
+            $closed=@{Pid=$PID;Sid=$actor.Sid;BootId=$actor.BootId;Token=$config.Token;Calls=$calls;Qpc=[Diagnostics.Stopwatch]::GetTimestamp();ReleasedQpc=$releasedQpc}
+            Write-DurableFile (Join-Path $config.CoordinationDirectory 'closed.clixml') ([Management.Automation.PSSerializer]::Serialize($closed,32)) -New
+        }
+        $deadline=[DateTime]::UtcNow.AddSeconds(180)
+        while(-not(Test-Path -LiteralPath (Join-Path $config.CoordinationDirectory 'inspect-handback'))){if([DateTime]::UtcNow -gt $deadline){throw 'Cached writer hand-back barrier timed out after 180 seconds'};Start-Sleep -Milliseconds 10}
+        $handBackAfter=Get-ActorHandBack
+        $value=@{Actor=$actor;Calls=$calls;PrivateSha256=$privateDigest;HandBackAfter=$handBackAfter;QpcFrequency=[Diagnostics.Stopwatch]::Frequency;ReleasedQpc=$releasedQpc;Held=$false}
+    }else{
     # One cold attempt followed by 100 calls without per-call test holds. Payload
     # generation, serialization, observer waits and process startup are not timed.
     for($trial=0;$trial -le 100;$trial++) {
@@ -457,6 +521,7 @@ try {
         $calls+= [SUWriter]::Attempt($config.Target,$bytes,$config.CreateNew,$trial)
     }
     $value=@{Actor=$actor;Calls=$calls;QpcFrequency=[Diagnostics.Stopwatch]::Frequency;ReleasedQpc=$releasedQpc;Held=$false}
+    }
 }finally{$identity.Dispose()}
 '@
 }
@@ -1082,7 +1147,7 @@ function Test-AgentDidNotRun($Before,$After,$Fence,[bool]$WindowKnown,$SystemLog
         Limitations='Trusted kernel, SCM, audit transport and privileged actors; inventories inspect primary user/group/restricted SIDs, not thread impersonation. 4688 does not expose group SIDs, so any creation defeats this proof. No claim about renamed/injected emitters, off-window activity or intermediate create/delete of notification files.'}
 }
 
-function Get-ServiceSnapshot([string]$Tag) {
+function Get-ServiceSnapshot([string]$Tag,[switch]$JournalOnly) {
     $result=[ordered]@{Status='INCONCLUSIVE';Tag=$Tag;BootId=(Get-BootId);QpcFrequency=[Diagnostics.Stopwatch]::Frequency;StartQpc=[Diagnostics.Stopwatch]::GetTimestamp();
         Journal=@();Objects=@();Errors=@();Application=@();AgentProcesses=@(Get-CimInstance Win32_Process -Filter "Name='SafeUpload.Agent.Service.exe'" | Select-Object ProcessId,CommandLine);}
     $held=@();$root=Split-Path -Parent $policyPath;$journal=Join-Path $root 'staging-journal'
@@ -1099,7 +1164,7 @@ function Get-ServiceSnapshot([string]$Tag) {
             $obj=[SUProofFile]::Open($journal,$true,$true,$false,$true);$held+=$obj;$result.Objects+=@{Path=$journal;Owner=$obj.Owner;Sddl=$obj.Sddl}
             foreach($file in @(Get-ChildItem -LiteralPath $journal -Force | Sort-Object Name)) {
                 if($file.Name -notmatch '^[0-9a-f]{32}\.json$'){throw 'Unrecognized journal child; snapshot is not complete.'}
-                $obj=[SUProofFile]::Open($file.FullName,$false,$true,$false,$true)
+                $obj=[SUProofFile]::Open($file.FullName,$false,$true,[bool]$JournalOnly,$true)
                 try{$bytes=[SUProofFile]::Read($obj,131072)}finally{$obj.Dispose()}
                 $leaf='service-'+$Tag+'-'+$file.Name;$copy=Join-Path $evidenceDirectory $leaf
                 $stream=[IO.File]::Open($copy,[IO.FileMode]::CreateNew,[IO.FileAccess]::Write,[IO.FileShare]::Read)
@@ -1113,6 +1178,7 @@ function Get-ServiceSnapshot([string]$Tag) {
         $result.Status='OK'
     }catch{$result.Errors+=Get-ErrorChain $_.Exception}
     finally{foreach($obj in $held){$obj.Dispose()}}
+    if($JournalOnly){$result.EndQpc=[Diagnostics.Stopwatch]::GetTimestamp();return [pscustomobject]$result}
     # Record IDs delimit all providers in Application; provider absence is an
     # empty query result, not proof that a notification was never emitted.
     try {
@@ -1368,6 +1434,418 @@ function Assert-ActorProcess($Actor) {
     if(@(Get-LocalGroupMember -SID 'S-1-5-32-544' | Where-Object {$_.SID.Value -ceq $state.ActorSid}).Count -ne 0){throw 'Writer has administrator membership'}
     return [pscustomobject]@{Pid=$process.ProcessId;SessionId=$process.SessionId;OwnerSid=$owner.Sid;CommandLine=$process.CommandLine;Task=(Get-ScheduledTask -TaskName $writerTask | Select-Object TaskName,Principal,State)}
 }
+function Test-CachedJournalSequence($Transitions,[string]$Outcome,[string]$Digest) {
+    $assertions=@();$expected=if($Outcome -ceq 'APPROVE'){@('Allocated','Sealed','Inspecting','Approved','Publishing','Released')}else{@('Allocated','Sealed','Inspecting','Blocked')}
+    $names=@($Transitions | ForEach-Object {$_.StateName})
+    $missing=@($expected | Where-Object {$names -cnotcontains $_})
+    $bad=@($names | Where-Object {$_ -cnotin $expected})
+    $position=-1;$ordered=$true
+    foreach($name in $names){$next=[array]::IndexOf($expected,$name);if($next -le $position){$ordered=$false};$position=$next}
+    $assertions+=@{Name='C01JournalOrder';Verdict=$(if($bad.Count -or -not $ordered){'FAIL'}elseif($missing.Count){'INCONCLUSIVE'}else{'PASS'});
+        Reason=('Observed='+($names -join ' -> ')+'; missing='+($missing -join ',')+'. Latest-state journal polling cannot reconstruct skipped transitions.');Transitions=$Transitions}
+    $sealed=@($Transitions | Where-Object {$_.SealedOnce -and $null -ne $_.Sha256Hex})
+    $wrong=@($sealed | Where-Object {$_.Sha256Hex -cne $Digest})
+    $assertions+=@{Name='C01SealedDigest';Verdict=$(if($wrong.Count){'FAIL'}elseif($sealed.Count){'PASS'}else{'INCONCLUSIVE'});Reason='Every observed sealed digest must equal independently generated whole image A.'}
+    $identities=@($Transitions | Where-Object {$null -ne $_.TransferId} | ForEach-Object {([string]$_.TransferId)+':'+$_.DestinationGeneration} | Sort-Object -Unique)
+    if($identities.Count -gt 1){$assertions+=@{Name='C01JournalIdentity';Verdict='FAIL';Reason='Transfer ID/destination generation changed within one cached write.'}}
+    return ,$assertions
+}
+function Test-CachedNotifications($Proof,[string]$TransferId,[int]$SessionId,[string]$Outcome,[string]$Digest) {
+    $assertions=@();$correlated=@($Proof.Emissions | ForEach-Object {$_.Entry} | Where-Object {
+        ($_.Kind -ceq 'Transfer' -and $_.TransferId -ieq $TransferId) -or ($_.Kind -ceq 'Event' -and $_.EventId -ieq $TransferId)})
+    $entries=@($correlated | Where-Object Kind -ceq 'Transfer')
+    $wanted=if($Outcome -ceq 'APPROVE'){'Released'}else{'Blocked'}
+    $found=@($entries | Where-Object {$_.Phase -ceq $wanted})
+    $bad=@($correlated | Where-Object {($_.TargetSessionId -ne $SessionId) -or ($Outcome -ceq 'BLOCK' -and $_.Phase -cin @('Approved','Publishing','Released')) -or ($Outcome -ceq 'APPROVE' -and $_.Phase -ceq 'Blocked')})
+    $assertions+=@{Name='C01OutcomeNotification';Verdict=$(if($bad.Count){'FAIL'}elseif(-not $Proof.Complete){'INCONCLUSIVE'}elseif(-not $found.Count){'FAIL'}else{'PASS'});
+        Reason=('Required='+$wanted+'; matching='+$found.Count+'; contradictory/session mismatch='+$bad.Count+'; '+$Proof.Reason)}
+    if($Outcome -ceq 'APPROVE'){
+        $digests=@($found | Where-Object {$null -ne $_.PSObject.Properties['Sha256Hex']})
+        $assertions+=@{Name='C01ReleasedNotificationDigest';Verdict=$(if(@($digests | Where-Object Sha256Hex -cne $Digest).Count){'FAIL'}elseif($digests.Count -and $Proof.Complete){'PASS'}else{'INCONCLUSIVE'});
+            Reason='Released must identify A digest. Current durable NotificationRecord and TransferNotification omit content digest; journal correlation alone does not satisfy this contract.'}
+    }else{
+        $paths=@($found | Where-Object {-not [string]::IsNullOrWhiteSpace($_.HandBackPath)})
+        $assertions+=@{Name='C01BlockedNotificationHandBackPath';Verdict=$(if($paths.Count -and $Proof.Complete){'PASS'}else{'INCONCLUSIVE'});
+            Reason='Blocked must identify verified actor hand-back path. Current notification adapter/contract has no hand-back path field.'}
+    };return ,$assertions
+}
+function Get-CachedJournalObservation([string]$Tag,$Actor) {
+    $snapshot=Get-ServiceSnapshot $Tag -JournalOnly
+    $entries=@();$errors=@($snapshot.Errors)
+    foreach($record in $snapshot.Journal){
+        if(@($trial.ServiceBefore.Journal | Where-Object Path -ieq $record.Path).Count){continue}
+        try {
+            $parsed=ConvertFrom-ServiceJournalRecord $record
+            if($parsed.DestinationPaths -icontains (Join-Path $protectedDirectory 'cached.txt')){
+                if($parsed.Entry.Transfer.ProcessId -ne $Actor.Pid -or $parsed.Entry.Transfer.SessionId -ne $Actor.SessionId){throw 'C01 transfer writer PID/session mismatch'}
+                $entries+= [pscustomobject]@{StateName=$parsed.StateName;State=[int]$parsed.Entry.State;TransferId=$parsed.Entry.Transfer.TransferId;
+                    SealedOnce=$parsed.Entry.SealedOnce;Sha256Hex=$parsed.Entry.Sha256Hex;DestinationGeneration=$parsed.Entry.DestinationGeneration;
+                    UpdatedAtUtc=$parsed.Entry.UpdatedAtUtc;StartQpc=$snapshot.StartQpc;EndQpc=$snapshot.EndQpc;Artifact=$record.Artifact;Record=$record}
+            }
+        }catch{$errors+=Get-ErrorChain $_.Exception}
+    }
+    return [pscustomobject]@{Status=$(if($snapshot.Status -ceq 'OK' -and -not $errors.Count){'OK'}else{'INCONCLUSIVE'});Entries=$entries;Errors=$errors;Snapshot=$snapshot}
+}
+function Capture-CachedSample($Context,$Baseline,[string]$PhaseName,[long]$Sequence) {
+    $sample=Capture-InvariantSample $Context $Baseline $PhaseName $Sequence
+    # The shared observer records raw absence via the parent index, but only
+    # opens supplemental readers for existing files. C01 also needs both
+    # native fresh opens to attest ERROR_FILE_NOT_FOUND for an absent final.
+    $readers=@();$path=Join-Path $protectedDirectory 'cached.txt'
+    foreach($raw in @($false,$true)){
+        try{$reader=[StagedInvariant.Native]::Fresh($path,$raw,$Context.Geometry.Alignment);$readers+=@{Unbuffered=$raw;Status='OK';Result=$reader;NativeCode=0}}
+        catch{
+            $code=$null;for($ex=$_.Exception;$null -ne $ex;$ex=$ex.InnerException){if($null -ne $ex.PSObject.Properties['NativeCode']){$code=$ex.NativeCode}}
+            $readers+=@{Unbuffered=$raw;Status='ERROR';NativeCode=$code;Reason=$_.Exception.ToString()}
+        }
+    }
+    $sample | Add-Member NoteProperty C01Readers $readers
+    return $sample
+}
+function Test-CachedSample($Sample,$Baseline,[bool]$Released,[byte[]]$ImageA) {
+    $assertions=@();$path=Join-Path $protectedDirectory 'cached.txt';$digest=[StagedInvariant.Native]::Hash($ImageA)
+    if($Sample.Status -cne 'OK'){$assertions+=@{Name='C01RawCapture';Verdict='INCONCLUSIVE';Reason=('Incomplete raw sample '+$Sample.Phase+': '+($Sample.Error | Out-String))}}
+    foreach($capture in $Sample.Captures){
+        foreach($image in @($capture.Images | Where-Object {$_.Role -ceq 'Current' -and $_.Path -ceq $path})){
+            if(-not $Released){
+                $assertions+=@{Name='C01RawFinalAbsent';Verdict=$(if($image.Absent){'PASS'}else{'FAIL'});Reason=('Raw final must remain absent in '+$Sample.Phase);Sequence=$Sample.Sequence}
+            }elseif($image.Absent){$assertions+=@{Name='C01ReleasedImage';Verdict='FAIL';Reason='Released final absent in raw parent index.'}}
+            else{
+                $good=$image.Length -eq $ImageA.Length -and $image.Sha256 -ceq $digest
+                $assertions+=@{Name='C01ReleasedImage';Verdict=$(if($good){'PASS'}else{'FAIL'});Reason='Raw logical length and SHA-256 must equal all of A.'}
+                try{
+                    $logical=[IO.File]::ReadAllBytes($image.LogicalArtifact.Path)
+                    if($logical.Length -ne $image.LogicalArtifact.Length -or [StagedInvariant.Native]::Hash($logical) -cne $image.LogicalArtifact.Sha256){throw 'Raw logical artifact hash/length mismatch'}
+                    $assertions+=@{Name='C01ReleasedLogicalBytes';Verdict=$(if([StagedInvariant.Native]::CountDifferences($ImageA,$logical)){'FAIL'}else{'PASS'});Reason='Retained whole raw logical artifact compared byte for byte to independently generated A.'}
+                }catch{$assertions+=@{Name='C01ReleasedLogicalBytes';Verdict='INCONCLUSIVE';Reason=$_.Exception.Message}}
+                # Same VCN-to-volume extent positioning as Test-NoUnapprovedByte.
+                # Fixture is exactly three clusters: no unexplained allocation slack.
+                $covered=0
+                foreach($container in @($image.Containers | Where-Object Kind -ceq 'DATA')){
+                    try {
+                        $raw=[IO.File]::ReadAllBytes($container.Artifact.Path)
+                        if($raw.Length -ne $container.Artifact.Length -or [StagedInvariant.Native]::Hash($raw) -cne $container.Artifact.Sha256){throw 'Retained raw extent hash/length mismatch'}
+                        $run=@($image.Runs | Where-Object {$_.Lcn -ge 0 -and $container.Offset -ge $_.Lcn*$Baseline.Geometry.Cluster -and $container.Offset+$container.Length -le ($_.Lcn+$_.Clusters)*$Baseline.Geometry.Cluster})
+                        if($run.Count -ne 1){throw 'Cannot position C01 raw extent'}
+                        $offset=$run[0].Vcn*$Baseline.Geometry.Cluster+$container.Offset-$run[0].Lcn*$Baseline.Geometry.Cluster
+                        if($offset -lt 0 -or $offset+$raw.Length -gt $ImageA.Length){throw 'Raw allocation outside exact cluster-aligned A; no slack oracle available'}
+                        $want=New-Object byte[] $raw.Length;[Array]::Copy($ImageA,[long]$offset,$want,[long]0,[long]$raw.Length)
+                        $different=[StagedInvariant.Native]::CountDifferences($want,$raw);$covered+=$raw.Length
+                        $assertions+=@{Name='C01ReleasedRawExtent';Verdict=$(if($different){'FAIL'}else{'PASS'});Reason=('Raw extent at '+$container.Offset+'; differing bytes='+$different);ForbiddenByteCount=$different}
+                    }catch{$assertions+=@{Name='C01ReleasedRawExtent';Verdict='INCONCLUSIVE';Reason=$_.Exception.Message}}
+                }
+                if($covered -ne $ImageA.Length){$assertions+=@{Name='C01RawExtentCoverage';Verdict='INCONCLUSIVE';Reason=('Expected '+$ImageA.Length+' allocated data bytes; compared '+$covered)}}
+            }
+        }
+        foreach($parent in @($capture.Images | Where-Object Role -ceq 'Parent')){
+            $before=@($Baseline.Images | Where-Object {$_.Role -ceq 'Parent' -and $_.Path -ceq $parent.Path})[0]
+            $actual=@($parent.DirectoryEntries | Where-Object {$_.Name -notin @('.','..')})
+            $old=@($before.DirectoryEntries | Where-Object {$_.Name -notin @('.','..')})
+            $extras=@($actual | Where-Object {$_.Name -cnotin $old.Name -and (-not $Released -or $_.Name -cne 'cached.txt')})
+            $missing=@($old | Where-Object {$_.Name -cnotin $actual.Name})
+            $changed=@($old | Where-Object {$prior=$_;@($actual | Where-Object {$_.Name -ceq $prior.Name -and $_.Reference -eq $prior.Reference -and $_.Eof -eq $prior.Eof -and $_.Attributes -eq $prior.Attributes}).Count -ne 1})
+            $assertions+=@{Name='C01PublicListing';Verdict=$(if($extras.Count -or $missing.Count -or $changed.Count){'FAIL'}else{'PASS'});Reason=('Raw names/IDs: unexpected='+($extras.Name -join ',')+'; missing='+($missing.Name -join ',')+'; changed='+($changed.Name -join ','));Sequence=$Sample.Sequence}
+        }
+    }
+    if(-not @($Sample.Captures | ForEach-Object {$_.Images} | Where-Object {$_.Role -ceq 'Current' -and $_.Path -ceq $path}).Count){$assertions+=@{Name='C01RawFinalCoverage';Verdict='INCONCLUSIVE';Reason='No raw final/absence image retained.'}}
+    if(-not @($Sample.Captures | ForEach-Object {$_.Images} | Where-Object Role -ceq 'Parent').Count){$assertions+=@{Name='C01RawListingCoverage';Verdict='INCONCLUSIVE';Reason='No raw parent-directory listing retained.'}}
+    foreach($reader in $Sample.C01Readers){
+        $good=if($Released){$reader.Status -ceq 'OK' -and $reader.Result.Digest -ceq $digest -and $reader.Result.Length -eq $ImageA.Length}else{$reader.Status -ceq 'ERROR' -and $reader.NativeCode -eq 2}
+        $verdict=if($good){'PASS'}elseif($reader.Status -ceq 'OK' -or $reader.NativeCode -eq 2){'FAIL'}else{'INCONCLUSIVE'}
+        $assertions+=@{Name='C01IndependentReader';Verdict=$verdict;Reason=('Uncached='+$reader.Unbuffered+'; expected='+$(if($Released){'whole A'}else{'Win32:2'})+'; native='+$reader.NativeCode+'; '+$reader.Reason);Sequence=$Sample.Sequence}
+    }
+    if(@($Sample.C01Readers).Count -ne 2 -or @($Sample.C01Readers | Where-Object Unbuffered).Count -ne 1){$assertions+=@{Name='C01ReaderCoverage';Verdict='INCONCLUSIVE';Reason='Exactly one fresh and one uncached receipt required.'}}
+    return ,$assertions
+}
+function Test-CachedHandBackAcl([string]$Sddl,[string]$Sid) {
+    $security=[Security.AccessControl.RawSecurityDescriptor]::new($Sddl)
+    $rules=@($security.DiscretionaryAcl);$trustees=@($rules | ForEach-Object {$_.SecurityIdentifier.Value})
+    if(($security.ControlFlags -band [Security.AccessControl.ControlFlags]::DiscretionaryAclProtected) -eq 0 -or $rules.Count -ne 2 -or
+        (@($trustees | Sort-Object) -join ';') -cne (@($Sid,'S-1-5-18' | Sort-Object) -join ';')){return $false}
+    foreach($rule in $rules){if($rule.AceType -ne [Security.AccessControl.AceType]::AccessAllowed -or
+        ([int]$rule.AceFlags -band [int][Security.AccessControl.AceFlags]::Inherited) -ne 0 -or ($rule.AccessMask -band 1) -eq 0){return $false}}
+    return $true
+}
+function Get-CachedHandBack($Actor,$OwnerFiles,[string]$Digest,[int]$Length) {
+    $assertions=@();$objects=@();$root=Join-Path $Actor.Profile 'SafeUpload\_bloqueados';$held=@();$new=@()
+    try {
+        Initialize-ServiceEvidenceReader
+        $ancestors=@();for($cursor=$Actor.Profile; -not [string]::IsNullOrWhiteSpace($cursor);$cursor=[IO.Path]::GetDirectoryName($cursor)){$ancestors=@($cursor)+$ancestors}
+        foreach($path in $ancestors){$held+= [SUProofFile]::Open($path,$true,$false)}
+        foreach($path in @((Join-Path $Actor.Profile 'SafeUpload'),$root)){
+            if(Test-Path -LiteralPath $path){$held+= [SUProofFile]::Open($path,$true,$false)}else{
+                return [pscustomobject]@{Root=$root;Files=@();Assertions=@(@{Name='C01HandBack';Verdict=$(if($row.Outcome -ceq 'BLOCK'){'FAIL'}else{'PASS'});Reason=('Actor hand-back location absent: '+$path)});SecondUserAccess='NotChecked: harness owns one standard user only'}
+            }
+        }
+        $before=@($Actor.HandBackBefore);$files=@(Get-ChildItem -LiteralPath $root -Force)
+        foreach($file in $files){
+            if($file.PSIsContainer){throw 'Unexpected hand-back subdirectory'}
+            $obj=[SUProofFile]::Open($file.FullName,$false,$false);$held+=$obj
+            $bytes=[SUProofFile]::Read($obj,20971520);$hash=[StagedInvariant.Native]::Hash($bytes)
+            $artifact=Join-Path $evidenceDirectory ('handback-'+$objects.Count+'.bin')
+            $stream=[IO.File]::Open($artifact,[IO.FileMode]::CreateNew,[IO.FileAccess]::Write,[IO.FileShare]::Read)
+            try{$stream.Write($bytes,0,$bytes.Length);$stream.Flush($true)}finally{$stream.Dispose()}
+            $objects+=@{Path=$file.FullName;Owner=$obj.Owner;Sddl=$obj.Sddl;Length=$bytes.Length;Sha256=$hash;SingleLink=$true;NoReparse=$true;Artifact=$artifact}
+            $prior=@($before | Where-Object Path -ceq $file.FullName)
+            if($prior.Count){if($prior[0].Sha256 -cne $hash -or $prior[0].Length -ne $bytes.Length){$assertions+=@{Name='C01HandBackNoOverwrite';Verdict='FAIL';Reason=('Existing hand-back changed: '+$file.FullName)}};continue}
+            $new+=$file.FullName
+            $owner=@($OwnerFiles | Where-Object Path -ceq $file.FullName)
+            $good=$bytes.Length -eq $Length -and $hash -ceq $Digest -and $obj.Owner -in @($Actor.Sid,'S-1-5-18') -and (Test-CachedHandBackAcl $obj.Sddl $Actor.Sid) -and
+                $owner.Count -eq 1 -and $owner[0].Sha256 -ceq $Digest -and $owner[0].Length -eq $Length
+            $assertions+=@{Name='C01HandBackH';Verdict=$(if($good){'PASS'}else{'FAIL'});Reason=('Exact A/owner access/only owner+SYSTEM explicit ACL/single link/no reparse: '+$file.FullName)}
+        }
+        $good=if($row.Outcome -ceq 'BLOCK'){$new.Count -eq 1}else{$new.Count -eq 0}
+        $assertions+=@{Name='C01HandBackCount';Verdict=$(if($good){'PASS'}else{'FAIL'});Reason=('New actor hand-back files='+$new.Count+'; required='+$(if($row.Outcome -ceq 'BLOCK'){1}else{0}))}
+    }catch{$assertions+=@{Name='C01HandBackH';Verdict=$(if($_.Exception.ToString() -like '*Reparse/type/link-count*' -or $_.Exception.Message -ceq 'Unexpected hand-back subdirectory'){'FAIL'}else{'INCONCLUSIVE'});Reason=$_.Exception.ToString()}}
+    finally{foreach($obj in $held){$obj.Dispose()}}
+    return [pscustomobject]@{Root=$root;Files=$objects;Assertions=$assertions;SecondUserAccess='NotChecked: harness owns one standard user only';SafeRelativeCreation='NotChecked: product creation receipt unavailable';WindowClosureAndRestart='Deferred: interactive app/session required'}
+}
+function Save-CachedProductState {
+    $backup=Join-Path $stateDirectory 'product-backup'
+    New-Item -ItemType Directory -Path $backup | Out-Null
+    $body="function Get-SecuritySddl { ${function:Get-SecuritySddl} }`n"
+    $body+=@'
+$root='C:\ProgramData\SafeUpload';$backup='__BACKUP__';$records=@();$roots=@('staging','staging-journal','notifications','queue.jsonl')
+foreach($leaf in $roots){
+    $path=Join-Path $root $leaf
+    if(-not(Test-Path -LiteralPath $path)){continue}
+    $items=@(Get-Item -LiteralPath $path -Force)
+    if($items[0].PSIsContainer){$items+=@(Get-ChildItem -LiteralPath $path -Recurse -Force)}
+    foreach($item in $items){
+        if(($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0){throw 'Product backup contains reparse point; preserve baseline'}
+        $rel=$item.FullName.Substring($root.Length+1);$copy=Join-Path $backup $rel
+        if($item.PSIsContainer){New-Item -ItemType Directory -Path $copy -Force | Out-Null}else{[void][IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($copy));Copy-Item -LiteralPath $item.FullName -Destination $copy}
+        $records+=@{Relative=$rel;Directory=$item.PSIsContainer;Sddl=(Get-SecuritySddl $item.FullName $item.PSIsContainer);
+            Hash=$(if(-not $item.PSIsContainer){(Get-FileHash -LiteralPath $item.FullName -Algorithm SHA256).Hash}else{$null})}
+    }
+}
+$value=@{Roots=$roots;Records=$records}
+'@
+    return Invoke-SystemBody ($body.Replace('__BACKUP__',(ConvertTo-PowerShellLiteral $backup)))
+}
+function Restore-CachedProductState {
+    if($null -eq $state.CachedProductBackup){return}
+    if(@(Get-Process SafeUpload.Agent.Service -ErrorAction SilentlyContinue).Count){throw 'Cannot restore product files while the agent is running; preserve backup'}
+    $body="function Get-SecuritySddl { ${function:Get-SecuritySddl} }`n"
+    $body+=@'
+$state=[Management.Automation.PSSerializer]::Deserialize([IO.File]::ReadAllText('__STATE__'))
+$root='C:\ProgramData\SafeUpload';$backup='__BACKUP__'
+# Restore in place: remove only items the run created, rewrite surviving files' bytes (keeping their
+# security descriptor), recreate only removed items, and apply a saved ACL only where it differs.
+# Delete-and-recopy changed DACL control flags on queue.jsonl (run c01a, 2026-10-06).
+$known=@{};foreach($record in $state.CachedProductBackup.Records){$known[$record.Relative]=$record}
+foreach($leaf in $state.CachedProductBackup.Roots){
+    $path=Join-Path $root $leaf;if(-not(Test-Path -LiteralPath $path)){continue}
+    $items=@(Get-Item -LiteralPath $path -Force);if($items[0].PSIsContainer){$items+=@(Get-ChildItem -LiteralPath $path -Recurse -Force)}
+    foreach($item in @($items | Sort-Object { $_.FullName.Length } -Descending)){
+        if(($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0){throw ('Product restoration found a reparse point: '+$item.FullName)}
+        $rel=$item.FullName.Substring($root.Length+1)
+        if(-not $known.ContainsKey($rel) -or $known[$rel].Directory -ne $item.PSIsContainer){Remove-Item -LiteralPath $item.FullName -Recurse -Force}
+    }
+}
+foreach($record in @($state.CachedProductBackup.Records | Sort-Object { $_.Relative.Length })){
+    $path=Join-Path $root $record.Relative;$existed=Test-Path -LiteralPath $path
+    if($record.Directory){if(-not $existed){New-Item -ItemType Directory -Path $path | Out-Null}}
+    else{
+        $bytes=[IO.File]::ReadAllBytes((Join-Path $backup $record.Relative))
+        if($existed){$stream=[IO.File]::Open($path,[IO.FileMode]::Open,[IO.FileAccess]::Write,[IO.FileShare]::None);try{$stream.SetLength(0);$stream.Write($bytes,0,$bytes.Length);$stream.Flush($true)}finally{$stream.Dispose()}}
+        else{[IO.File]::WriteAllBytes($path,$bytes)}
+        if((Get-FileHash -LiteralPath $path).Hash -cne $record.Hash){throw ('Product restoration hash mismatch: '+$path)}
+    }
+}
+foreach($record in @($state.CachedProductBackup.Records | Sort-Object { $_.Relative.Length } -Descending)){
+    $path=Join-Path $root $record.Relative
+    if((Get-SecuritySddl $path $record.Directory) -ceq $record.Sddl){continue}
+    $acl=if($record.Directory){[Security.AccessControl.DirectorySecurity]::new()}else{[Security.AccessControl.FileSecurity]::new()}
+    $acl.SetSecurityDescriptorSddlForm($record.Sddl);Set-Acl -LiteralPath $path -AclObject $acl
+}
+foreach($leaf in $state.CachedProductBackup.Roots){
+    $path=Join-Path $root $leaf;$expected=@($state.CachedProductBackup.Records | Where-Object {$_.Relative -ceq $leaf -or $_.Relative.StartsWith($leaf+'\')})
+    $actual=@();if(Test-Path -LiteralPath $path){$actual=@(Get-Item -LiteralPath $path -Force);if($actual[0].PSIsContainer){$actual+=@(Get-ChildItem -LiteralPath $path -Recurse -Force)}}
+    if($actual.Count -ne $expected.Count){throw ('Product restoration inventory mismatch: '+$leaf)}
+    foreach($record in $expected){
+        $restored=Join-Path $root $record.Relative
+        if((Get-SecuritySddl $restored $record.Directory) -cne $record.Sddl){throw ('Product restoration ACL mismatch: '+$restored)}
+        if(-not $record.Directory -and (Get-FileHash -LiteralPath $restored).Hash -cne $record.Hash){throw ('Product restoration content mismatch: '+$restored)}
+    }
+}
+$value='ProductStateRestored'
+'@
+    $null=Invoke-SystemBody ($body.Replace('__STATE__',(ConvertTo-PowerShellLiteral $statePath)).Replace('__BACKUP__',(ConvertTo-PowerShellLiteral (Join-Path $stateDirectory 'product-backup'))))
+}
+function Restore-CachedAgent {
+    if($null -eq $state.CachedAgent -or $state.CachedAgentRestored){return}
+    $service=Get-Service SafeUploadAgent -ErrorAction SilentlyContinue
+    if($null -ne $service -and $service.Status -ne 'Stopped'){
+        Stop-Service SafeUploadAgent -ErrorAction Stop
+        $service.WaitForStatus([ServiceProcess.ServiceControllerStatus]::Stopped,[TimeSpan]::FromSeconds(30))
+    }
+    if($state.CachedAgent.ServiceCreated){& sc.exe delete SafeUploadAgent | Out-Host;if($LASTEXITCODE -ne 0){throw 'C01 service removal failed'}}
+    else{Restore-StagedAgentService 'SafeUploadAgent' 'HKLM:\SYSTEM\CurrentControlSet\Services\SafeUploadAgent' $state.CachedAgent.OriginalService}
+    $state.CachedAgentRestored=$true;Save-State $state $statePath
+}
+function Invoke-CachedObservation {
+    $context=$null;$baseline=$null;$disposal=$null;$samples=@();$predicateSamples=@();$checkpoints=@();$writer=$null;$agent=$null;$readyEvent=$null;$actor=$null
+    $trial=[ordered]@{Errors=@();Approvals=@();Permits=@();Journal=@();JournalSnapshots=@();JournalTransitions=@();Notifications=@();Operations=@();Latency=@();Assertions=@();Verdict='INCONCLUSIVE';ForbiddenByteCount=$null}
+    try {
+        Assert-Hash $installedDriver $ExpectedFeatureSha256
+        if((Get-ItemProperty "HKLM:\$registryService").Start -ne 0 -or (Get-BootId) -ceq $state.PrepareBootId){throw 'C01 requires a new boot with Start=0'}
+        if(@(Get-Process SafeUpload.Agent.Service -ErrorAction SilentlyContinue).Count){throw 'Unexpected agent before C01 startup'}
+        if($Mode -eq 'runtime-verifier'){& verifier.exe /volatile /flags 0x13B /adddriver SafeUpload.sys | Out-Host;if($LASTEXITCODE -ne 0){throw 'Runtime Verifier arm failed'}}
+        $trial.VerifierBefore=Get-VerifierEvidence 'before' -RequireMode
+        $ready=Get-Readiness;$trial.Readiness=$ready
+        $agentStartLocal=[DateTime]::Now.AddSeconds(-1)
+        $readyEvent=[Threading.EventWaitHandle]::new($false,[Threading.EventResetMode]::ManualReset,'Global\SafeUploadServiceReady');[void]$readyEvent.Reset()
+        $agent=Start-StagedTestAgent $serviceDirectory (Join-Path $evidenceDirectory 'agent')
+        # Persist recovery receipt before waiting for policy readiness.
+        $state.CachedAgent=@{ServiceCreated=$agent.ServiceCreated;OriginalService=$agent.OriginalService};Save-State $state $statePath
+        if(-not $readyEvent.WaitOne([TimeSpan]::FromSeconds(45))){
+            # The service logs each coverage transition with its reason; keep them as the diagnosis.
+            try{Get-WinEvent -FilterHashtable @{LogName='Application';StartTime=$agentStartLocal} -ErrorAction Stop | Where-Object ProviderName -match 'SafeUpload' |
+                ForEach-Object {$_.TimeCreated.ToString('o')+' '+$_.ProviderName+' '+$_.LevelDisplayName+' '+($_.Message -replace '\s+',' ')} |
+                Set-Content -LiteralPath (Join-Path $evidenceDirectory 'agent-events.txt') -Encoding UTF8}catch{}
+            throw 'C01 agent policy/coverage Ready signal timed out after 45 seconds'
+        }
+        $readback=Get-BootPolicyReadback
+        if($ready.VolumeGuid -cne $state.VolumeGuid -or $readback.RecordBase64 -cne $state.ExpectedBootRecord -or -not $readback.AclValid -or $readback.PendingPresent){throw 'C01 dedicated fixed-NTFS policy/volume readback mismatch'}
+        $trial.Policy=@{SeedRecord=$readback;LiveFlags=$null;TaintDisabledConfirmed=$false}
+        Write-DurableFile (Join-Path $evidenceDirectory 'readiness.json') ($ready | ConvertTo-Json -Depth 32) -New
+        $trial.ServiceBefore=Get-ServiceSnapshot 'before';$trial.LastAccessBefore=Get-LastAccessEvidence
+        $context=Open-InvariantObserver $ready.VolumeGuid $protectedDirectory (Join-Path $evidenceDirectory 'raw') $CaseId
+        if($context.Status -cne 'OK'){throw ($context.Error | Out-String)}
+        $expected=@{'marker.bin'=[Convert]::FromBase64String($state.BaselineBase64);'cached.txt'=$null}
+        $baseline=Capture-InvariantBaseline $context @('marker.bin','cached.txt') $expected
+        $baseline | Add-Member NoteProperty CaptureStartedFileTime ([DateTime]::UtcNow.ToFileTimeUtc())
+        if($baseline.Status -cne 'OK'){throw ($baseline.Error | Out-String)}
+        $process=Get-CimInstance Win32_Process -Filter ('ProcessId='+$PID);$owner=Invoke-CimMethod -InputObject $process -MethodName GetOwnerSid
+        if($owner.ReturnValue -ne 0 -or $owner.Sid -cne $context.ObserverSid){throw 'C01 observer OS SID mismatch'}
+        $trial.Platform=@{Build=$context.Build;BootId=$context.BootId;ObserverPid=$context.ObserverPid;ObserverSid=$context.ObserverSid;
+            ObserverProcess=@{Pid=$process.ProcessId;OwnerSid=$owner.Sid;SessionId=$process.SessionId;CommandLine=$process.CommandLine}}
+        $trial.Geometry=$context.Geometry;$trial.DecoderVersion=$context.DecoderVersion;$trial.ObserverModuleSha256=$context.ModuleSha256
+        $imageA=[Convert]::FromBase64String($state.CachedImageBase64);$digest=[StagedInvariant.Native]::Hash($imageA);$trial.ImageA=@{Sha256=$digest;Length=$imageA.Length;Fixture=$state.CachedFixture}
+        $sequence=1;$sample=Capture-CachedSample $context $baseline 'BeforeOperation' $sequence;$samples+= $sample;$predicateSamples+= $sample;$checkpoints+=Get-ExpectedCheckpoint $baseline $sample.Phase $sequence
+        $trial.Assertions+=Test-CachedSample $sample $baseline $false $imageA
+        Start-ScheduledTask -TaskName $writerTask
+        $actor=Wait-WriterIdentity (Join-Path $actorDirectory 'identity.clixml');$trial.Actor=$actor
+        if($actor.Sid -cne $state.ActorSid -or $actor.Elevated -or $actor.IsAdministrator -or $actor.Pid -eq $PID -or $actor.BootId -cne $context.BootId){throw 'C01 actor token/boot provenance invalid'}
+        $trial.ActorProvenance=Assert-ActorProcess $actor
+        $profiles=@(Get-CimInstance Win32_UserProfile | Where-Object SID -ceq $actor.Sid)
+        if($profiles.Count -ne 1 -or $profiles[0].LocalPath -ine $actor.Profile){throw 'C01 actor profile does not match OS SID profile binding'}
+        if(@($trial.ServiceBefore.Journal | Where-Object {try{(ConvertFrom-ServiceJournalRecord $_).DestinationPaths -icontains (Join-Path $protectedDirectory 'cached.txt')}catch{$false}}).Count){throw 'C01 final already claimed in service journal'}
+        Write-DurableFile (Join-Path $actorDirectory 'go') $RunName -New
+        $held=Wait-WriterIdentity (Join-Path $actorDirectory 'held.clixml') 60
+        if($held.Pid -ne $actor.Pid -or $held.Sid -cne $actor.Sid -or $held.Token -cne $state.WriterToken -or $held.BootId -cne $context.BootId){throw 'C01 held receipt identity/token mismatch'}
+        $trial.HeldReceipt=$held;$trial.Operations=@($held.Calls)
+        $trial.Assertions+=@{Name='C01PrivateRead';Verdict=$(if($held.PrivateSha256 -ceq $digest){'PASS'}else{'FAIL'});Reason='Whole private cached handle read must equal A after flush.'}
+        for($n=0;$n -lt 3;$n++){
+            $poll=Get-CachedJournalObservation ('held-'+$n) $actor;$trial.JournalSnapshots+= $poll.Snapshot
+            if($poll.Status -cne 'OK' -or $poll.Entries.Count -ne 1){$trial.Assertions+=@{Name='C01HeldJournal';Verdict='INCONCLUSIVE';Reason=('Expected one authenticated Allocated transfer while held; '+($poll.Errors | Out-String))}}
+            foreach($entry in $poll.Entries){
+                if(-not $trial.JournalTransitions.Count -or $trial.JournalTransitions[-1].State -ne $entry.State){$trial.JournalTransitions+= $entry}
+                $trial.Assertions+=@{Name='C01SealAfterClose';Verdict=$(if($entry.State -eq 0 -and -not $entry.SealedOnce){'PASS'}else{'FAIL'});Reason=('Held writer must remain Allocated/unsealed; observed '+$entry.StateName)}
+            }
+            $sequence++;$sample=Capture-CachedSample $context $baseline 'FlushedHandleHeld' $sequence;$samples+= $sample;$predicateSamples+= $sample;$checkpoints+=Get-ExpectedCheckpoint $baseline $sample.Phase $sequence
+            $trial.Assertions+=Test-CachedSample $sample $baseline $false $imageA
+            Start-Sleep -Milliseconds 10
+        }
+        $trial.CloseBarrierQpc=[Diagnostics.Stopwatch]::GetTimestamp();Write-DurableFile (Join-Path $actorDirectory 'close') $RunName -New
+        $closed=Wait-WriterIdentity (Join-Path $actorDirectory 'closed.clixml') 60
+        if($closed.Pid -ne $actor.Pid -or $closed.Token -cne $state.WriterToken -or $closed.Sid -cne $actor.Sid -or $closed.BootId -cne $context.BootId){throw 'C01 close receipt identity/token mismatch'}
+        $trial.ClosedReceipt=$closed;$trial.Operations=@($closed.Calls)
+        $good=($trial.Operations.Class -join ',') -ceq 'writer-open,cached-write,flush,close' -and @($trial.Operations | Where-Object NativeCode -ne 0).Count -eq 0
+        $trial.Assertions+=@{Name='ExactNativeStatus';Verdict=$(if($good){'PASS'}else{'FAIL'});Reason=($row.StatusClasses -join ';')}
+        if(-not $good){throw 'C01 actor native write/flush/close failed'}
+        if($trial.Operations[0].StartQpc -lt $ready.Qpc -or $trial.Operations[-1].StartQpc -lt $trial.CloseBarrierQpc){throw 'C01 operation/readiness/close QPC order invalid'}
+        $wanted=if($row.Outcome -ceq 'APPROVE'){'Released'}else{'Blocked'};$deadline=[DateTime]::UtcNow.AddSeconds(120);$pollNumber=0;$terminal=$null
+        do {
+            $poll=Get-CachedJournalObservation ('outcome-'+$pollNumber) $actor;$trial.JournalSnapshots+= $poll.Snapshot;$pollNumber++
+            if($poll.Status -cne 'OK'){$trial.Assertions+=@{Name='C01JournalPoll';Verdict='INCONCLUSIVE';Reason=($poll.Errors | Out-String)}}
+            if($poll.Entries.Count -gt 1){throw 'C01 destination has multiple transfer manifests'}
+            foreach($entry in $poll.Entries){
+                if($trial.JournalTransitions.Count -and $trial.JournalTransitions[0].TransferId -ine $entry.TransferId){throw 'C01 transfer identity changed while waiting'}
+                if(-not $trial.JournalTransitions.Count -or $trial.JournalTransitions[-1].State -ne $entry.State){$trial.JournalTransitions+= $entry}
+                if($entry.StateName -ceq $wanted){$terminal=$entry}
+            }
+            $sequence++;$sample=Capture-CachedSample $context $baseline 'OutcomeWait' $sequence;$samples+= $sample
+            if($row.Outcome -ceq 'BLOCK'){$predicateSamples+= $sample;$checkpoints+=Get-ExpectedCheckpoint $baseline $sample.Phase $sequence;$trial.Assertions+=Test-CachedSample $sample $baseline $false $imageA}
+            if($null -ne $terminal){break};Start-Sleep -Milliseconds 10
+        }while([DateTime]::UtcNow -lt $deadline)
+        $trial.Assertions+=Test-CachedJournalSequence $trial.JournalTransitions $row.Outcome $digest
+        if($null -eq $terminal){throw ('C01 journal timeout after 120 seconds: expected '+$wanted+'; last observed='+($trial.JournalTransitions.StateName -join ' -> '))}
+        $trial.TransferId=$terminal.TransferId
+        # Allow asynchronous post-Blocked hand-back work a bounded grace period.
+        # No service copy is fabricated by the harness.
+        if($row.Outcome -ceq 'BLOCK'){
+            $blockedEntry=ConvertFrom-ServiceJournalRecord $terminal.Record
+            $stage=$null
+            try{
+                $stage=[SUProofFile]::Open($blockedEntry.Entry.Transfer.StagePath,$false,$true,$false,$true)
+                $blockedBytes=[SUProofFile]::Read($stage,20971520)
+                $trial.Assertions+=@{Name='C01BlockedStageRetained';Verdict=$(if($blockedBytes.Length -eq $imageA.Length -and [StagedInvariant.Native]::Hash($blockedBytes) -ceq $digest){'PASS'}else{'FAIL'});Reason='Blocked sealed snapshot remains private and equals exact A during the available window.'}
+            }catch{$trial.Assertions+=@{Name='C01BlockedStageRetained';Verdict='INCONCLUSIVE';Reason=$_.Exception.ToString()}}
+            finally{if($null -ne $stage){$stage.Dispose()}}
+            $handBackDeadline=[DateTime]::UtcNow.AddSeconds(10);$handBackRoot=Join-Path $actor.Profile 'SafeUpload\_bloqueados'
+            do{if(Test-Path -LiteralPath $handBackRoot){if(@(Get-ChildItem -LiteralPath $handBackRoot -File -Force).Count){break}};Start-Sleep -Milliseconds 100}while([DateTime]::UtcNow -lt $handBackDeadline)
+        }
+        Write-DurableFile (Join-Path $actorDirectory 'inspect-handback') $RunName -New
+        $writer=Wait-TaskCompletion $writerTask (Join-Path $actorDirectory 'completion.clixml') $state.WriterToken 60
+        $trial.HandBack=Get-CachedHandBack $actor $writer.Value.HandBackAfter $digest $imageA.Length;$trial.Assertions+=@($trial.HandBack.Assertions)
+        $sequence++;$sample=Capture-CachedSample $context $baseline 'FinalQuiescence' $sequence;$samples+= $sample
+        $trial.Assertions+=Test-CachedSample $sample $baseline ($row.Outcome -ceq 'APPROVE') $imageA
+        if($row.Outcome -ceq 'BLOCK'){$predicateSamples+= $sample;$checkpoints+=Get-ExpectedCheckpoint $baseline $sample.Phase $sequence}
+        $trial.Latency=Get-LatencyVerdict $trial.Operations $row.LatencyClasses $writer.Value.QpcFrequency
+        $trial.Repetitions=$row.Repetitions;$trial.OperationClassTimeline=$row.StatusClasses
+        $trial.Assertions+=@{Name='C01UnheldLatency';Verdict='INCONCLUSIVE';Reason='One coordinated functional write only; 100 unheld latency repetitions deferred.'}
+        $trial.LastAccessAfter=Get-LastAccessEvidence
+        $fence=[pscustomobject]@{Complete=$true;BootId=$context.BootId;QpcFrequency=$writer.Value.QpcFrequency;ReleasedQpc=$writer.Value.ReleasedQpc;CompletedQpc=[Diagnostics.Stopwatch]::GetTimestamp()}
+        $trial.ServiceAfter=Get-ServiceSnapshot 'after'
+        $delta=Test-ServiceJournalDelta $trial.ServiceBefore $trial.ServiceAfter $true
+        $proof=Test-NotificationWindow $trial.ServiceBefore.Notifications $trial.ServiceAfter.Notifications $fence $true
+        $trial.ServiceEvidence=@{JournalDelta=$delta;NotificationProof=$proof;OperationFence=$fence;TrustBoundary='Existing SYSTEM/Administrators same-handle proof adapters'}
+        $trial.Journal=$trial.ServiceAfter.Journal;$trial.Notifications=$proof.Emissions
+        $trial.Assertions+=@{Name='JournalDelta';Verdict=$(if($delta.Findings.Count){'FAIL'}elseif($delta.Complete){'PASS'}else{'INCONCLUSIVE'});Reason=(@($delta.Failures)+@($delta.Findings) -join '; ')}
+        $trial.Assertions+=Test-CachedNotifications $proof $terminal.TransferId $actor.SessionId $row.Outcome $digest
+        $trial.VerifierAfter=Get-VerifierEvidence 'after' -RequireMode
+    }catch{'ScriptError='+$_.Exception.ToString();$trial.Errors+=Get-ErrorChain $_.Exception;$trial.Assertions+=@{Name='C01Execution';Verdict='INCONCLUSIVE';Reason=($_.Exception.Message+'; '+$_.ScriptStackTrace)}}
+    finally {
+        if($null -ne $actor){
+            foreach($leaf in @('close','inspect-handback')){try{if(-not(Test-Path -LiteralPath (Join-Path $actorDirectory $leaf))){Write-DurableFile (Join-Path $actorDirectory $leaf) $RunName -New}}catch{$trial.Errors+=Get-ErrorChain $_.Exception}}
+            try{
+                if(Test-Path -LiteralPath (Join-Path $actorDirectory 'closed.clixml')){
+                    $receipt=Wait-WriterIdentity (Join-Path $actorDirectory 'closed.clixml') 1
+                    if($receipt.Pid -eq $actor.Pid -and $receipt.Token -ceq $state.WriterToken -and $receipt.BootId -ceq $actor.BootId){
+                        $trial.Operations=@($receipt.Calls)
+                        if(@($receipt.Calls | Where-Object NativeCode -ne 0).Count){$trial.Assertions+=@{Name='ExactNativeStatus';Verdict='FAIL';Reason=('Unexpected native failure: '+(@($receipt.Calls | ForEach-Object {$_.Class+'=Win32:'+$_.NativeCode}) -join '; '))}}
+                    }
+                }
+            }catch{$trial.Errors+=Get-ErrorChain $_.Exception}
+        }
+        if($null -ne $context -and $context.Status -ceq 'OK'){$disposal=Close-InvariantObserver $context}
+        if($null -ne $readyEvent){$readyEvent.Dispose()}
+        try{Restore-CachedAgent}catch{$trial.Errors+=Get-ErrorChain $_.Exception;$trial.Assertions+=@{Name='C01AgentRestoration';Verdict='INCONCLUSIVE';Reason=$_.Exception.ToString()}}
+        $trial.Baseline=$baseline;$trial.Samples=$samples;$trial.PredicateSamples=$predicateSamples;$trial.Disposal=$disposal
+        $trial.WriterFence=@{Complete=($null -ne $writer -and $writer.ExitCode -eq 0);BootId=$writer.BootId;QpcFrequency=$writer.Value.QpcFrequency;ReleasedQpc=$writer.Value.ReleasedQpc;CompletedQpc=$writer.CompletedQpc;ExpectedAttempts=1}
+        $trial.LastAccessPolicy=@{Status=$(if($null -ne $trial.LastAccessBefore.Value -and $null -ne $trial.LastAccessAfter.Value){'OK'}else{'INCONCLUSIVE'});Before=$trial.LastAccessBefore;After=$trial.LastAccessAfter}
+        $trial.MutationLedger=@{Complete=$false;Overflow=$false;Entries=@();Source='Unavailable: existing lower admission/completion adapter'}
+        $trial.ExpectedTimeline=@{ForbiddenBlocks=@($state.ForbiddenBlocks | ForEach-Object {,[Convert]::FromBase64String($_)});Checkpoints=$checkpoints;AllowedMutations=@();ExpectedDenials=@();
+            WriterIdentities=@($trial.Actor | Where-Object {$null -ne $_});Operations=$trial.Operations;WriterFence=$trial.WriterFence;LastAccessPolicy=$trial.LastAccessPolicy;
+            ExternalEvidence=@{Build=$trial.Platform.Build;PrepareBootId=$state.PrepareBootId;ActiveBootId=$trial.Platform.BootId;ObserverPid=$trial.Platform.ObserverPid;ObserverSid=$trial.Platform.ObserverSid;ObserverProcess=$trial.Platform.ObserverProcess;ActorProvenance=$trial.ActorProvenance;Restoration=@{Known=$false}}}
+        if($null -ne $baseline -and $predicateSamples.Count){
+            # S01's exact retained-artifact forbidden block / raw extent predicate.
+            # APPROVE covers pre-close samples here; post-close bytes are compared
+            # above, without inventing an authenticated publication permit.
+            $trial.Predicate=Test-NoUnapprovedByte $baseline @() $predicateSamples $trial.MutationLedger $trial.ExpectedTimeline
+            $trial.ForbiddenByteCount=$trial.Predicate.ForbiddenByteCount;$trial.Assertions+=@($trial.Predicate.Assertions)
+            $trial.ForbiddenByteCount+= [long](@($trial.Assertions | Where-Object {$_.Name -ceq 'C01ReleasedRawExtent' -and $_.ContainsKey('ForbiddenByteCount')} | Measure-Object ForbiddenByteCount -Sum).Sum)
+        }
+        $trial.Assertions+=@{Name='LiveTaintFlags';Verdict='INCONCLUSIVE';Reason='Live TEST_DISABLE_TAINT readback unavailable; BootPolicy.Flags is not a live proof.'}
+        $trial.Assertions+=@{Name='C01PublicationAndTemporalCoverage';Verdict='INCONCLUSIVE';Reason='Lower mutation ledger, authenticated permit/snapshot grant and continuous coverage unavailable. APPROVE post-close samples are retained but cannot establish pre-permit absence from latest-state polling.'}
+        if($null -eq $trial.ServiceEvidence){$trial.Assertions+=@{Name='ActualServiceTimelines';Verdict='INCONCLUSIVE';Reason='C01 authenticated service window incomplete; see exact execution error and partial journal artifacts.'}}
+        if($null -eq $disposal -or $disposal.Status -cne 'OK'){$trial.Assertions+=@{Name='Disposal';Verdict='INCONCLUSIVE';Reason='Checked observer disposal missing/failed.'}}
+        $trial.Verdict=if(@($trial.Assertions | Where-Object Verdict -ceq 'FAIL').Count -or @($trial.Latency | Where-Object Verdict -ceq 'FAIL').Count){'FAIL'}else{'INCONCLUSIVE'}
+        Save-State $trial $trialPath
+    }
+}
 function Invoke-SeedObservation {
     $context=$null;$samples=@();$checkpoints=@();$baseline=$null;$disposal=$null;$writer=$null
     $trial=[ordered]@{Errors=@();Approvals=@();Permits=@();Journal=@();Notifications=@();Operations=@();Latency=@();Assertions=@();Verdict='INCONCLUSIVE';ForbiddenByteCount=0}
@@ -1498,6 +1976,7 @@ function Restore-Suite([switch]$Rollback) {
     }
     # Each restoration step is independent, but failed steps retain recovery state.
     $steps=@(
+        @{Name='cached-agent';Action={Restore-CachedAgent}},
         @{Name='process-creation-audit';Action={
             if($null -eq $state.OriginalProcessCreationAudit){throw 'Original process-creation audit policy missing; preserve recovery state.'}
             $restored=Set-ProcessCreationAudit ([int]$state.OriginalProcessCreationAudit.CreationFlags)
@@ -1505,6 +1984,7 @@ function Restore-Suite([switch]$Rollback) {
             Save-State $restored (Join-Path $evidenceDirectory 'restored-process-creation-audit.clixml')
         }},
         @{Name='driver';Action={Set-DemandStartAndRestoreDriver}},
+        @{Name='cached-product-state';Action={Restore-CachedProductState}},
         @{Name='policy';Action={Restore-PolicyFile}},
         @{Name='registry';Action={
             $null=Invoke-SystemBody @'
@@ -1569,7 +2049,8 @@ $matchesRows=@($table.Cases | Where-Object CaseId -ceq $CaseId)
 if($matchesRows.Count -ne 1){throw 'Unknown/duplicate CaseId'}
 $row=$matchesRows[0]
 foreach($field in $table.RowSchema.Required){if(-not $row.ContainsKey($field)){throw "Case schema missing $field"}}
-if($row.Status -ne 'Ready' -or $CaseId -notin @('S00-observer-control','S01-denied-write-after-boot','S02-agent-down-open-refused')){'CaseStatus=NOT_READY';throw "Case $CaseId is not implemented"}
+$cachedCase=$CaseId -in @('C01-approve-absent','C01-block-absent')
+if($row.Status -ne 'Ready' -or $CaseId -notin @('S00-observer-control','S01-denied-write-after-boot','S02-agent-down-open-refused','C01-approve-absent','C01-block-absent')){'CaseStatus=NOT_READY';throw "Case $CaseId is not implemented"}
 if($StartupProbe -and $Phase -ne 'AfterBoot'){throw 'StartupProbe requires AfterBoot'}
 
 if($Phase -eq 'Prepare'){
@@ -1581,7 +2062,7 @@ if($Phase -eq 'Prepare'){
     Assert-Hash $policyPath $ExpectedOriginalPolicySha256
     Assert-Hash $featureDriver $ExpectedFeatureSha256
     $signature=Get-AuthenticodeSignature -LiteralPath $featureDriver
-    if($signature.Status.ToString() -cne 'Valid' -or $signature.SignerCertificate.Thumbprint -cne '220DD82C37FCF36048D59E4F10113185D81D5DC7'){throw 'Feature signature gate failed'}
+    if($signature.Status.ToString() -cne 'Valid' -or $signature.SignerCertificate.Thumbprint -cne $ExpectedSignerThumbprint.ToUpperInvariant()){throw ('Feature signature gate failed: require Valid signature and exact build signer '+$ExpectedSignerThumbprint+'; guest trust must be installed by orchestrator')}
     Assert-Hash (Join-Path $documents 'stage-service-publish.zip') $ExpectedServicePackageSha256
     if((Get-ItemProperty "HKLM:\$registryService").Start -ne 3 -or (& fltmc.exe filters | Out-String) -match '(?m)^SafeUpload\s' -or
         @(Get-Process SafeUpload.Agent.Service -ErrorAction SilentlyContinue).Count -ne 0){throw 'Expected unloaded demand-start driver and stopped agent'}
@@ -1644,9 +2125,11 @@ if($Phase -eq 'Prepare'){
         try{$stream.Write($baseline,0,$baseline.Length);$stream.Flush($true)}finally{$stream.Dispose()}
         $state.FixtureSddl=Get-SecuritySddl $protectedDirectory $true
         $scopes=if($CaseId -eq 'S00-observer-control'){@()}else{@($protectedDirectory)}
+        if($cachedCase){$state.CachedProductBackup=Save-CachedProductState;Save-State $state $statePath}
         Set-ProtectedPolicyAcl
-        $policy=@{version=1;activeCategories=@('Cpf');monitoredScopes=@{extensions=@('.bin');destinationPaths=@($scopes);removableDrives=$false;networkPaths=$false};
-            maxFileSizeMb=20;inspectionTimeoutSeconds=5;failOpen=$false;excludedProcesses=@('System','SafeUpload.Agent.App');auditOnly=$false;overrideAllowed=$false}
+        $extensions=@(if($cachedCase){'.txt'}else{'.bin'})
+        $policy=@{version=1;activeCategories=@('Cpf');monitoredScopes=@{extensions=$extensions;destinationPaths=@($scopes);removableDrives=$false;networkPaths=$false};
+            maxFileSizeMb=20;inspectionTimeoutSeconds=5;failOpen=$false;excludedProcesses=@('System','SafeUpload.Agent.App');auditOnly=$false;overrideAllowed=($cachedCase -and $row.Outcome -ceq 'BLOCK')}
         Write-DurableFile $policyPath ($policy | ConvertTo-Json -Depth 6)
         Copy-Item -LiteralPath $featureDriver -Destination $installedDriver
         Assert-Hash $installedDriver $ExpectedFeatureSha256
@@ -1681,8 +2164,25 @@ $value=$b.ToString().Split([char]0)[0]
                 }
             };$payloads+=[Convert]::ToBase64String($bytes)
         }
+        if($cachedCase){
+            # .txt uses PlainTextExtractor. Only CPF is enabled, so benign
+            # alphabetic padding is Approved and this valid-checkdigit test
+            # CPF is Blocked by real DigitRules/CpfValidator inspection.
+            $bytes=[Text.Encoding]::ASCII.GetBytes(('C01 patterned benign image '+$RunName+"`n").PadRight($size,'P'))
+            $state.ForbiddenBlocks=@()
+            foreach($offset in @(0,[int]($size/2),($size-128))){
+                $block=[Text.Encoding]::ASCII.GetBytes(('C01-'+$RunName+'-offset-'+$offset+"`n").PadRight(128,'A'))
+                if($block.Length -ne 128){throw 'C01 patterned block exceeds 128 bytes'}
+                [Array]::Copy($block,0,$bytes,$offset,128);$state.ForbiddenBlocks+= [Convert]::ToBase64String($block)
+            }
+            if($row.Outcome -ceq 'BLOCK'){$sensitive=[Text.Encoding]::ASCII.GetBytes("`nCPF 529.982.247-25`n");[Array]::Copy($sensitive,0,$bytes,256,$sensitive.Length)}
+            $state.CachedImageBase64=[Convert]::ToBase64String($bytes)
+            $state.CachedFixture=if($row.Outcome -ceq 'BLOCK'){'PlainTextExtractor/Cpf; synthetic valid-checkdigit 529.982.247-25'}else{'PlainTextExtractor/Cpf; no CPF candidate'}
+            $payloads=@($state.CachedImageBase64)
+        }
         $configPath=Join-Path $stateDirectory 'writer-config.clixml'
-        Save-State @{ActorSid=$state.ActorSid;Payloads=$payloads;CreateNew=($CaseId -eq 'S02-agent-down-open-refused');Target=(Join-Path $protectedDirectory $(if($CaseId -eq 'S02-agent-down-open-refused'){'new.bin'}else{'marker.bin'}))} $configPath
+        Save-State @{ActorSid=$state.ActorSid;Payloads=$payloads;CachedCase=$cachedCase;Token=$state.WriterToken;CoordinationDirectory=$actorDirectory;
+            CreateNew=($CaseId -eq 'S02-agent-down-open-refused');Target=(Join-Path $protectedDirectory $(if($cachedCase){'cached.txt'}elseif($CaseId -eq 'S02-agent-down-open-refused'){'new.bin'}else{'marker.bin'}))} $configPath
         $writerBody=(Get-WriterBody).Replace('__CONFIG__',(ConvertTo-PowerShellLiteral $configPath)).Replace('__IDENTITY__',(ConvertTo-PowerShellLiteral (Join-Path $actorDirectory 'identity.clixml'))).Replace('__GO__',(ConvertTo-PowerShellLiteral (Join-Path $actorDirectory 'go'))).Replace('__TEMP__',(ConvertTo-PowerShellLiteral $actorDirectory))
         $writerLauncher=Join-Path $stateDirectory 'writer.ps1'
         Write-DurableFile $writerLauncher (New-TaskLauncher $writerBody $state.WriterToken (Join-Path $actorDirectory 'completion.clixml')) -New
@@ -1719,6 +2219,7 @@ $value=$b.ToString().Split([char]0)[0]
         Save-State $state $statePath
         'CaseStatus=READY';'INVARIANT_PREPARED=True'
     }catch{
+        'ScriptError='+$_.Exception.ToString()
         Write-DurableFile (Join-Path $evidenceDirectory 'prepare-error.txt') ($_.Exception.ToString()+"`n"+$_.ScriptStackTrace) -New
         try{Restore-Suite -Rollback}
         finally{
@@ -1731,7 +2232,7 @@ $value=$b.ToString().Split([char]0)[0]
 }elseif($Phase -eq 'AfterBoot'){
     $state=Load-State $statePath
     if($state.CaseId -cne $CaseId -or $state.Mode -cne $Mode -or $state.RunName -cne $RunName){throw 'State identity mismatch'}
-    if($StartupProbe){Invoke-SeedObservation;return}
+    if($StartupProbe){if($cachedCase){Invoke-CachedObservation}else{Invoke-SeedObservation};return}
     $observationError=$null
     try {
         $null=Wait-TaskCompletion $bootTask (Join-Path $evidenceDirectory 'startup-completion.clixml') $state.CoordinatorToken 600
@@ -1771,7 +2272,7 @@ $value=$b.ToString().Split([char]0)[0]
     if((Get-SecuritySddl $policyPath $false) -cne $state.OriginalPolicyFileSddl -or
         (Get-SecuritySddl (Split-Path -Parent $policyPath) $true) -cne $state.OriginalPolicyDirectorySddl){throw 'Restored policy ACL mismatch'}
     $trial=if(Test-Path -LiteralPath $trialPath){Load-State $trialPath}else{@{Verdict='INCONCLUSIVE';ForbiddenByteCount=$null;Reasons=@('Startup task did not export observations')}}
-    if($null -ne $trial.Baseline -and @($trial.Samples).Count -gt 0){
+    if(-not $cachedCase -and $null -ne $trial.Baseline -and @($trial.Samples).Count -gt 0){
         $trial.Assertions=@($trial.Assertions | Where-Object {$trial.Predicate.Assertions.Name -notcontains $_.Name})
         $trial.Predicate=Test-NoUnapprovedByte $trial.Baseline @() $trial.Samples $trial.MutationLedger $trial.ExpectedTimeline
         $trial.Assertions+=@($trial.Predicate.Assertions)
@@ -1784,7 +2285,7 @@ $value=$b.ToString().Split([char]0)[0]
             Feature=$ExpectedFeatureSha256;Inspector=$ExpectedInspectorSha256;ServicePackage=$ExpectedServicePackageSha256;ServiceTree=$ExpectedServiceTreeSha256};
         BootIds=@{Prepare=$state.PrepareBootId;Active=$state.AfterBootId;Final=(Get-BootId)};Restoration=@{GuestChecks=$true;IndependentBaseline=$null;Known=$false;
             ProcessCreationAudit=@{Original=$state.OriginalProcessCreationAudit;Final=$finalAudit;Restored=$true}};
-        AuthoritativeCaseExport=$false;Reasons=@('Seed rows do not qualify Phase4; driver lower mutation ledger and live taint readback unavailable; notification absence requires authenticated durable coverage or whole-window agent absence plus an unchanged authenticated record location');
+        AuthoritativeCaseExport=$false;Reasons=@('Functional/seed rows do not qualify full Phase4: lower mutation ledger, live taint and full temporal/permit evidence unavailable; C01 is one coordinated absent-final write, no approved B or interactive JUSTIFY/restart/window-closure qualification');
         Load=@{ComputerSystem=(Get-CimInstance Win32_ComputerSystem | Select-Object NumberOfLogicalProcessors,TotalPhysicalMemory);Cpu=(Get-CimInstance Win32_Processor | Select-Object Name,NumberOfCores);Disk=(Get-Disk | Select-Object Number,FriendlyName,BusType);ObserverPriority=[string][Diagnostics.Process]::GetCurrentProcess().PriorityClass}}
     Copy-Item -LiteralPath $statePath -Destination (Join-Path $evidenceDirectory 'lifecycle.clixml')
     Copy-Item -LiteralPath $actorDirectory -Destination (Join-Path $evidenceDirectory 'actor') -Recurse
@@ -1793,4 +2294,8 @@ $value=$b.ToString().Split([char]0)[0]
     Write-DurableFile (Join-Path $evidenceDirectory 'case.json') ($result | ConvertTo-Json -Depth 32) -New
     'InvariantVerdict='+$result.Verdict
     'INVARIANT_FINAL_STATE=True'
+}
+}catch{
+    'ScriptError='+$_.Exception.ToString()
+    throw
 }

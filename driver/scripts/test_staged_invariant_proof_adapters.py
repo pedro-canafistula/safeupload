@@ -42,6 +42,38 @@ def fixture():
 
 
 class ProofTests(unittest.TestCase):
+    def test_c01_rows_ready_and_justify_deferred(self):
+        rows = Q.table_rows(Q.SCRIPTS / 'StagedInvariantCases.psd1')
+        for name in ('C01-approve-absent', 'C01-block-absent'):
+            self.assertEqual('Ready', rows[name]['Status'])
+        self.assertEqual('NotReady', rows['C01']['Status'])
+
+    def test_c01_polled_journal_bytes_remain_bound(self):
+        with tempfile.TemporaryDirectory(prefix='c01-journal-proof-', dir='/tmp') as directory:
+            root = Path(directory)
+            artifact = root / 'service-outcome-1-transfer.json'
+            artifact.write_text('{"State": 2}\n')
+            record = {'Artifact': 'guest\\' + artifact.name, 'Length': artifact.stat().st_size,
+                      'Sha256': Q.sha(artifact)}
+            result = {'Trials': [{'JournalSnapshots': [{'Journal': [record]}]}]}
+            Q.validate_service_artifacts(result, root, 'guest\\')
+            artifact.write_text('{"State": 5}\n')
+            with self.assertRaisesRegex(RuntimeError, 'hash/length mismatch'):
+                Q.validate_service_artifacts(result, root, 'guest\\')
+
+    def test_c01_hand_back_bytes_remain_bound(self):
+        with tempfile.TemporaryDirectory(prefix='c01-handback-proof-', dir='/tmp') as directory:
+            root = Path(directory)
+            artifact = root / 'handback-0.bin'
+            artifact.write_bytes(b'whole image A')
+            record = {'Artifact': 'guest\\' + artifact.name, 'Length': artifact.stat().st_size,
+                      'Sha256': Q.sha(artifact)}
+            result = {'Trials': [{'HandBack': {'Files': [record]}}]}
+            Q.validate_service_artifacts(result, root, 'guest\\')
+            artifact.write_bytes(b'wrong image A')
+            with self.assertRaisesRegex(RuntimeError, 'hash/length mismatch'):
+                Q.validate_service_artifacts(result, root, 'guest\\')
+
     def test_independent_audit_restoration(self):
         with tempfile.TemporaryDirectory(prefix='audit-policy-proof-', dir='/tmp') as directory:
             before, after = (Path(directory) / name for name in ('before.txt', 'after.txt'))
