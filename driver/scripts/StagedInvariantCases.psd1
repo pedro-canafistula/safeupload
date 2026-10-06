@@ -110,46 +110,64 @@
             Cleanup = @('CloseObserver', 'StopOwnedTasks', 'RemoveOwnedUser', 'RestoreDriver', 'RestorePolicyBytesAndAcls', 'RemoveOwnedBootPolicy', 'RestoreAgentConfig', 'ResetVerifier', 'RemoveFixtureAndState', 'RestorationReboot', 'IndependentBaseline')
         }
         @{
-            CaseId = 'A01'; Revision = 1; Status = 'NotReady'
-            Variant = 'UnexpandedFamily'; Outcome = 'Unimplemented: Pre-scope handle'
-            QualificationScope = 'Phase4; WP5 must expand all design variants'
+            CaseId = 'A01'; Revision = 2; Status = 'Ready'
+            Variant = 'fixed-NTFS-pre-scope-write-handle-runtime-scope-add-supported-text-target'
+            Outcome = 'ACTIVATING_THEN_STAGED; pre-protection old-handle mutation is permitted and captured; post-promotion write remains private before approval'
+            QualificationScope = 'Phase4A01SingleHandleVariant; noncached/EOF/allocation/disposition/rename/link variants deferred'
             ActorSid = 'ResolveStandardUserTokenAtRuntime'; ActorSession = 'ResolveTokenSessionId'
-            InitialPolicy = @{ Seed = 'Product'; LiveFlags = 'TEST_DISABLE_TAINT-required' }
-            Scopes = @('Unimplemented'); Setup = @('WP5: design section 4.1 A01')
-            Actions = @('Unimplemented'); Barriers = @('Unimplemented')
-            ExpectedTimeline = @('Unimplemented'); StatusClasses = @('Unimplemented')
-            JournalExpectations = @('Unimplemented'); NotificationExpectations = @('Unimplemented')
-            AllowedDirectoryTransitions = @('Unimplemented'); LatencyClasses = @('Unimplemented')
-            Repetitions = @{ Coordinated = 1; Unheld = 100; DeterministicSeed = 4003 }
-            Cleanup = @('Unimplemented; common restoration still mandatory')
+            InitialPolicy = @{ Seed = 'Product'; InitialDestinationPaths = @(); RuntimeDestinationPath = 'FixtureScope'; RuntimeUpdate = 'Real MinifilterInterceptor startup plus BootPolicyRegistryWriter pending-union/SET_POLICY/finalize'; LiveFlags = 'TEST_DISABLE_TAINT-required' }
+            Scopes = @('FixtureScope')
+            Setup = @('BootAttachedTrustedFixedNtfs', 'StandardUserCreatesMarkerTxtPAndKeepsWriteHandleWhileUnscoped', 'IndependentRawCapturePBeforeRuntimePolicyUpdate')
+            Actions = @('AddScopeThroughRealServicePolicyPath', 'RequireExactActivatingStatusAndPendingReadiness', 'DenyNewWritableOpen', 'DenyNewWritableSectionAcquire', 'CachedWriteTaggedUThroughOldHandleWhileActivating', 'ReleaseLastOldHandle', 'RequireFreeAndProtectedPromotion', 'CaptureRawPromotionImage', 'StandardUserWritesSyntheticCpfToSupportedTxtThroughOwnedStream', 'RequireBlockedJournalAndProductStagingPath', 'RequireRawDestinationUnchangedUntilApproval')
+            Barriers = @('BootIdentityChanged', 'FilterReady', 'ValidEmptyBootPolicy', 'NewlyMounted', 'CanaryPassed', 'Trusted', 'PFlushedAndRawCapturedBeforeEpoch', 'PendingUnionAndAdmissionEpochAdvanced', 'ActivatingStatusAndServicePending', 'OldHandleWriteAndLowerCompletion', 'LastHandleClosed', 'FreePredicate-H-S-C-T-W-Zero-And-SameFileId-SOP', 'PromotionTraceAndProtectedStatus', 'ServiceCoverageReady', 'RawPromotionCapture', 'StagedWriteClosed', 'PostPromotionRawExtentComparison', 'FinalQuiescence')
+            ExpectedTimeline = @('UnscopedSetup', 'BootTrusted', 'PAndOpenHandleWhileUnscoped', 'RawPBeforeEpochSwap', 'RuntimePolicyPendingUnion', 'AdmissionEpochSwap', 'Activating:H>0:HolderPidKnown', 'ServiceReadiness:Pending', 'NewWritableOpen:AccessDenied', 'NewWritableSection:AccessDenied', 'OldHandleU:PreProtectionMutationAllowed', 'LastHandleRelease', 'Free(F):H=0:S=NO:C=0:T=0:W=0', 'Promotion:Protected', 'ServiceReadiness:Ready', 'RawImageAtPromotion', 'PostPromotionUnapprovedWrite:RoutedToOwnedStream', 'RawDestinationUnchangedBeforeApproval')
+            StatusClasses = @('NewWriteOpen=Win32:5', 'NewWritableSection=Win32:5+SectionInFlightInsertedDelta:1+RemovedOnFailureDelta:1', 'OldHolderWrite=Win32:0', 'OldHolderFlush=Win32:0', 'HolderClose=Win32:0', 'Promotion=RegistryState:Protected;Free:True;H:0;S:NO;C:0;T:0;W:0', 'Readiness=PendingThenReady', 'PostPromotionStageOpenWriteFlushClose=Win32:0', 'PostPromotionJournal=Blocked;StagePath=ProductStagingRoot', 'RawDestinationDeltaAfterProtected=0')
+            JournalExpectations = @('NewOwnedStreamForExactDestination', 'NoApproved', 'NoReleased')
+            NotificationExpectations = @('CurrentPipeStatusPending', 'CurrentPipeStatusReady')
+            AllowedDirectoryTransitions = @('SameDestinationFileIdAndActiveNameAtPromotionAndAfterUnapprovedStagedWrite')
+            LatencyClasses = @()
+            Repetitions = @{ Coordinated = 1; Unheld = 0; DeterministicSeed = 4011 }
+            Cleanup = @('CloseObserver', 'ReleaseActorHolder', 'StopTestServiceAndRestoreServiceConfig', 'StopOwnedTasks', 'RestoreDriver', 'RestorePolicyBytesAndAcls', 'RemoveOwnedBootPolicy', 'RestoreAgentConfig', 'ResetVerifier', 'RemoveFixtureAndState', 'RestorationReboot', 'IndependentBaseline')
         }
         @{
-            CaseId = 'A02'; Revision = 1; Status = 'NotReady'
-            Variant = 'UnexpandedFamily'; Outcome = 'Unimplemented: Pre-scope mapped view'
-            QualificationScope = 'Phase4; WP5 must expand all design variants'
+            CaseId = 'A02'; Revision = 2; Status = 'Ready'
+            Variant = 'fixed-NTFS-pre-scope-writable-view-source-handle-closed-runtime-scope-add-supported-text-target'
+            Outcome = 'ACTIVATING_THEN_STAGED; retained-view paging mutation is permitted and captured before promotion; post-promotion write remains private before approval'
+            QualificationScope = 'Phase4A02SingleLateStoreVariant; no-store and additional reconnect repetitions deferred'
             ActorSid = 'ResolveStandardUserTokenAtRuntime'; ActorSession = 'ResolveTokenSessionId'
-            InitialPolicy = @{ Seed = 'Product'; LiveFlags = 'TEST_DISABLE_TAINT-required' }
-            Scopes = @('Unimplemented'); Setup = @('WP5: design section 4.1 A02')
-            Actions = @('Unimplemented'); Barriers = @('Unimplemented')
-            ExpectedTimeline = @('Unimplemented'); StatusClasses = @('Unimplemented')
-            JournalExpectations = @('Unimplemented'); NotificationExpectations = @('Unimplemented')
-            AllowedDirectoryTransitions = @('Unimplemented'); LatencyClasses = @('Unimplemented')
-            Repetitions = @{ Coordinated = 1; Unheld = 100; DeterministicSeed = 4003 }
-            Cleanup = @('Unimplemented; common restoration still mandatory')
+            InitialPolicy = @{ Seed = 'Product'; InitialDestinationPaths = @(); RuntimeDestinationPath = 'FixtureScope'; RuntimeUpdate = 'Real MinifilterInterceptor startup plus BootPolicyRegistryWriter pending-union/SET_POLICY/finalize'; LiveFlags = 'TEST_DISABLE_TAINT-required' }
+            Scopes = @('FixtureScope')
+            Setup = @('BootAttachedTrustedFixedNtfs', 'StandardUserCreatesAndFlushesMarkerTxtPWhileUnscoped', 'CreatesPAGE_READWRITEView', 'ClosesSourceFileHandleAndRetainsMappedView', 'IndependentRawCapturePBeforeRuntimePolicyUpdate')
+            Actions = @('AddScopeThroughRealServicePolicyPathWhileViewLives', 'RequireSYesAndExactActivatingStatusAndPendingReadiness', 'DenyNewWritableOpen', 'DenyNewWritableSectionAcquire', 'StoreTaggedUThroughOldViewAndFlushViewWhileActivating', 'ReleaseViewAndSection', 'RequireFreeAndProtectedPromotion', 'CaptureRawPromotionImage', 'StandardUserWritesSyntheticCpfToSupportedTxtThroughOwnedStream', 'RequireBlockedJournalAndProductStagingPath', 'RequireRawDestinationUnchangedUntilApproval')
+            Barriers = @('BootIdentityChanged', 'FilterReady', 'ValidEmptyBootPolicy', 'NewlyMounted', 'CanaryPassed', 'Trusted', 'SourceHandleClosedAndPFlushed', 'RawPBeforeEpochSwap', 'PendingUnionAndAdmissionEpochAdvanced', 'SYesAndActivatingStatusAndServicePending', 'ViewStoreFlushAndPagingLowerCompletion', 'LastViewAndSectionRelease', 'FreePredicate-H-S-C-T-W-Zero-And-SameFileId-SOP', 'PromotionTraceAndProtectedStatus', 'ServiceCoverageReady', 'RawPromotionCapture', 'StagedWriteClosed', 'PostPromotionRawExtentComparison', 'FinalQuiescence')
+            ExpectedTimeline = @('UnscopedSetup', 'BootTrusted', 'PAndWritableViewWhileUnscoped', 'SourceHandleClosed', 'RawPBeforeEpochSwap', 'RuntimePolicyPendingUnion', 'AdmissionEpochSwap', 'Activating:S=YES:ActorOwnsRetainedView', 'ServiceReadiness:Pending', 'NewWritableOpen:AccessDenied', 'NewWritableSection:AccessDenied', 'OldViewUAndPagingWrite:PreProtectionMutationAllowed', 'LastViewAndSectionRelease', 'Free(F):H=0:S=NO:C=0:T=0:W=0', 'Promotion:Protected', 'ServiceReadiness:Ready', 'RawImageAtPromotion', 'PostPromotionUnapprovedWrite:RoutedToOwnedStream', 'RawDestinationUnchangedBeforeApproval')
+            StatusClasses = @('NewWriteOpen=Win32:5', 'NewWritableSection=Win32:5+SectionInFlightInsertedDelta:1+RemovedOnFailureDelta:1', 'ViewStore=Win32:0', 'FlushViewOfFile=Win32:0', 'HolderRelease=Win32:0', 'Promotion=RegistryState:Protected;Free:True;H:0;S:NO;C:0;T:0;W:0', 'Readiness=PendingThenReady', 'PostPromotionStageOpenWriteFlushClose=Win32:0', 'PostPromotionJournal=Blocked;StagePath=ProductStagingRoot', 'RawDestinationDeltaAfterProtected=0')
+            JournalExpectations = @('NewOwnedStreamForExactDestination', 'NoApproved', 'NoReleased')
+            NotificationExpectations = @('CurrentPipeStatusPending', 'CurrentPipeStatusReady')
+            AllowedDirectoryTransitions = @('SameDestinationFileIdAndActiveNameAtPromotionAndAfterUnapprovedStagedWrite')
+            LatencyClasses = @()
+            Repetitions = @{ Coordinated = 1; Unheld = 0; DeterministicSeed = 4012 }
+            Cleanup = @('CloseObserver', 'ReleaseActorHolder', 'StopTestServiceAndRestoreServiceConfig', 'StopOwnedTasks', 'RestoreDriver', 'RestorePolicyBytesAndAcls', 'RemoveOwnedBootPolicy', 'RestoreAgentConfig', 'ResetVerifier', 'RemoveFixtureAndState', 'RestorationReboot', 'IndependentBaseline')
         }
         @{
-            CaseId = 'A03'; Revision = 1; Status = 'NotReady'
-            Variant = 'UnexpandedFamily'; Outcome = 'Unimplemented: Retained section'
-            QualificationScope = 'Phase4; WP5 must expand all design variants'
+            CaseId = 'A03'; Revision = 2; Status = 'Ready'
+            Variant = 'fixed-NTFS-retained-PAGE_READWRITE-section-no-view-runtime-scope-add-supported-text-target'
+            Outcome = 'ACTIVATING_THEN_STAGED; first late view store is permitted and captured before promotion; post-promotion write remains private before approval'
+            QualificationScope = 'Phase4A03SingleLateStoreVariant; no-store and additional reconnect repetitions deferred'
             ActorSid = 'ResolveStandardUserTokenAtRuntime'; ActorSession = 'ResolveTokenSessionId'
-            InitialPolicy = @{ Seed = 'Product'; LiveFlags = 'TEST_DISABLE_TAINT-required' }
-            Scopes = @('Unimplemented'); Setup = @('WP5: design section 4.1 A03')
-            Actions = @('Unimplemented'); Barriers = @('Unimplemented')
-            ExpectedTimeline = @('Unimplemented'); StatusClasses = @('Unimplemented')
-            JournalExpectations = @('Unimplemented'); NotificationExpectations = @('Unimplemented')
-            AllowedDirectoryTransitions = @('Unimplemented'); LatencyClasses = @('Unimplemented')
-            Repetitions = @{ Coordinated = 1; Unheld = 100; DeterministicSeed = 4003 }
-            Cleanup = @('Unimplemented; common restoration still mandatory')
+            InitialPolicy = @{ Seed = 'Product'; InitialDestinationPaths = @(); RuntimeDestinationPath = 'FixtureScope'; RuntimeUpdate = 'Real MinifilterInterceptor startup plus BootPolicyRegistryWriter pending-union/SET_POLICY/finalize'; LiveFlags = 'TEST_DISABLE_TAINT-required' }
+            Scopes = @('FixtureScope')
+            Setup = @('BootAttachedTrustedFixedNtfs', 'StandardUserCreatesAndFlushesMarkerTxtPWhileUnscoped', 'CreatesPAGE_READWRITESectionWithoutView', 'ClosesSourceFileHandleAndRetainsSection', 'IndependentRawCapturePBeforeRuntimePolicyUpdate')
+            Actions = @('AddScopeThroughRealServicePolicyPathWhileSectionLives', 'RequireSYesAndExactActivatingStatusAndPendingReadiness', 'CreateFirstViewAfterEpochSwap', 'DenyNewWritableOpen', 'DenyNewWritableSectionAcquire', 'StoreTaggedUThroughLateViewAndFlushViewWhileActivating', 'ReleaseViewAndSection', 'RequireFreeAndProtectedPromotion', 'CaptureRawPromotionImage', 'StandardUserWritesSyntheticCpfToSupportedTxtThroughOwnedStream', 'RequireBlockedJournalAndProductStagingPath', 'RequireRawDestinationUnchangedUntilApproval')
+            Barriers = @('BootIdentityChanged', 'FilterReady', 'ValidEmptyBootPolicy', 'NewlyMounted', 'CanaryPassed', 'Trusted', 'SectionRetainedWithoutViewAndPFlushed', 'RawPBeforeEpochSwap', 'PendingUnionAndAdmissionEpochAdvanced', 'SYesAndActivatingStatusAndServicePending', 'FirstViewMappedAfterEpoch', 'LateViewStoreFlushAndPagingLowerCompletion', 'LastViewAndSectionRelease', 'FreePredicate-H-S-C-T-W-Zero-And-SameFileId-SOP', 'PromotionTraceAndProtectedStatus', 'ServiceCoverageReady', 'RawPromotionCapture', 'StagedWriteClosed', 'PostPromotionRawExtentComparison', 'FinalQuiescence')
+            ExpectedTimeline = @('UnscopedSetup', 'BootTrusted', 'PAndWritableSectionWithoutViewWhileUnscoped', 'SourceHandleClosed', 'RawPBeforeEpochSwap', 'RuntimePolicyPendingUnion', 'AdmissionEpochSwap', 'Activating:S=YES:ActorOwnsRetainedSection', 'ServiceReadiness:Pending', 'FirstViewMappedAfterEpochWithoutNewAcquire', 'NewWritableOpen:AccessDenied', 'NewWritableSection:AccessDenied', 'LateViewUAndPagingWrite:PreProtectionMutationAllowed', 'LastViewAndSectionRelease', 'Free(F):H=0:S=NO:C=0:T=0:W=0', 'Promotion:Protected', 'ServiceReadiness:Ready', 'RawImageAtPromotion', 'PostPromotionUnapprovedWrite:RoutedToOwnedStream', 'RawDestinationUnchangedBeforeApproval')
+            StatusClasses = @('NewWriteOpen=Win32:5', 'NewWritableSection=Win32:5+SectionInFlightInsertedDelta:1+RemovedOnFailureDelta:1', 'LateMap=Win32:0', 'LateViewStore=Win32:0', 'FlushViewOfFile=Win32:0', 'HolderRelease=Win32:0', 'Promotion=RegistryState:Protected;Free:True;H:0;S:NO;C:0;T:0;W:0', 'Readiness=PendingThenReady', 'PostPromotionStageOpenWriteFlushClose=Win32:0', 'PostPromotionJournal=Blocked;StagePath=ProductStagingRoot', 'RawDestinationDeltaAfterProtected=0')
+            JournalExpectations = @('NewOwnedStreamForExactDestination', 'NoApproved', 'NoReleased')
+            NotificationExpectations = @('CurrentPipeStatusPending', 'CurrentPipeStatusReady')
+            AllowedDirectoryTransitions = @('SameDestinationFileIdAndActiveNameAtPromotionAndAfterUnapprovedStagedWrite')
+            LatencyClasses = @()
+            Repetitions = @{ Coordinated = 1; Unheld = 0; DeterministicSeed = 4013 }
+            Cleanup = @('CloseObserver', 'ReleaseActorHolder', 'StopTestServiceAndRestoreServiceConfig', 'StopOwnedTasks', 'RestoreDriver', 'RestorePolicyBytesAndAcls', 'RemoveOwnedBootPolicy', 'RestoreAgentConfig', 'ResetVerifier', 'RemoveFixtureAndState', 'RestorationReboot', 'IndependentBaseline')
         }
         @{
             CaseId = 'A04'; Revision = 1; Status = 'NotReady'

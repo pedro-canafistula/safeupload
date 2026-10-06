@@ -319,6 +319,7 @@ def attest_external_coverage(result):
         actor = trial.get('Actor') or {}
         provenance = trial.get('ActorProvenance') or {}
         observer = platform.get('ObserverProcess') or {}
+        activating_case = result.get('CaseId') in ('A01', 'A02', 'A03')
         if baseline.get('Build') != '19045.2965' or evidence.get('Build') != baseline.get('Build'):
             problems.append('Build 19045.2965 attestation missing.')
         if (len({boot.get(k) for k in ('Prepare', 'Active', 'Final')}) != 3
@@ -339,7 +340,14 @@ def attest_external_coverage(result):
                 or provenance.get('SessionId') != actor.get('SessionId')
                 or timeline.get('WriterIdentities') != [actor]):
             problems.append('OS independent standard-user writer/session provenance missing.')
-        if not actor_cadence_complete(trial):
+        if activating_case:
+            holder = trial.get('HolderSetup') or {}
+            if (holder.get('Pid') != actor.get('Pid') or holder.get('Sid') != actor.get('Sid')
+                    or holder.get('SessionId') != actor.get('SessionId')
+                    or not isinstance(holder.get('CreateQpc'), int) or not isinstance(holder.get('CompleteQpc'), int)
+                    or holder['CreateQpc'] > holder['CompleteQpc']):
+                problems.append('Activation holder setup is not bound to the standard-user process identity/QPC interval.')
+        elif not actor_cadence_complete(trial):
             problems.append('Synchronous actor cadence has unaccounted intervals.')
         if (restoration.get('Known') is not True or restoration.get('GuestChecks') is not True
                 or not restoration.get('IndependentBaseline') or not restoration.get('IndependentBaselineSha256')):
@@ -414,6 +422,26 @@ def case_gate(result, case, mode, name, params):
     require(len(result.get('Trials', [])) == 1, 'Missing/ambiguous seed trial')
     boot = result.get('BootIds', {})
     require(all(isinstance(boot.get(k), str) and boot[k] for k in ('Prepare', 'Active', 'Final')) and len(set(boot.values())) == 3, 'Case boot identities incomplete')
+    if case in ('A01', 'A02', 'A03'):
+        required = {
+            'RuntimePendingUnionAndAdmissionEpoch', 'ServiceReadinessPendingWhileHolderLives',
+            'ExactActivatingWriterEvidence', 'NewWritableOpenDenied', 'NewWritableSectionDenied',
+            'NewWritableSectionAdmissionCallback', 'NoObservedReadyWhileHolderLives',
+            'OldHolderMutationAllowedAndRecorded', 'OldHolderStillActivatingAfterMutation',
+            'OldHolderLowerCompletion', 'FreeAndProtectedAfterLastHolder', 'PromotionTraceForSameFileId',
+            'ServiceReadinessReadyAfterPromotion', 'PostPromotionUnapprovedWriteRoutedToOwnedStream',
+            'OwnedStreamJournalForExactDestination', 'PostPromotionRawDestinationUnchanged', 'Disposal',
+        }
+        passed = (result.get('Verdict') == 'PASS' and result.get('CaseStatus') == 'READY'
+                  and result.get('ForbiddenByteCount') == 0)
+        for trial in result['Trials']:
+            assertions = trial.get('Assertions', [])
+            names = {item.get('Name') for item in assertions}
+            passed &= (trial.get('Verdict') == 'PASS' and trial.get('ForbiddenByteCount') == 0
+                       and trial.get('Disposal', {}).get('Status') == 'OK' and not trial.get('Errors')
+                       and required <= names and bool(assertions)
+                       and all(item.get('Verdict') == 'PASS' for item in assertions))
+        return bool(passed)
     passed = (result.get('Verdict') == 'PASS' and result.get('CaseStatus') == 'READY' and result.get('ForbiddenByteCount') == 0)
     for trial in result['Trials']:
         passed &= (trial.get('Verdict') == 'PASS' and trial.get('ForbiddenByteCount') == 0 and
