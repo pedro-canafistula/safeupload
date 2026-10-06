@@ -3667,7 +3667,13 @@ FLT_POSTOP_CALLBACK_STATUS SafeUploadStagePostOperation(PFLT_CALLBACK_DATA Data,
     PCFLT_RELATED_OBJECTS Objects, PVOID CompletionContext, FLT_POST_OPERATION_FLAGS Flags)
 {
 #if SAFEUPLOAD_STAGING_PROTOTYPE
-    if (((ULONG_PTR)CompletionContext & 1) != 0) {
+    /* Epoch tokens are pool allocations. A context that is not a system-range address is
+     * an inner context passed through unwrapped (operations outside the epoch, or a failed
+     * epoch acquire): the legacy create passes its volume kind (1 fixed, 2 removable,
+     * 3 network, optionally | SAFEUPLOAD_POSTCREATE_OVERRIDE), whose low bits collide with
+     * the token tags (run c01g: bugcheck 0x3B dereferencing token (1 & ~1) == NULL). */
+    BOOLEAN systemAddress = (ULONG_PTR)CompletionContext >= (ULONG_PTR)MmSystemRangeStart;
+    if (systemAddress && ((ULONG_PTR)CompletionContext & 1) != 0) {
         PSAFEUPLOAD_ADMISSION_EPOCH_TOKEN token = (PSAFEUPLOAD_ADMISSION_EPOCH_TOKEN)
             ((ULONG_PTR)CompletionContext & ~(ULONG_PTR)1);
         FLT_POSTOP_CALLBACK_STATUS result;
@@ -3680,7 +3686,7 @@ FLT_POSTOP_CALLBACK_STATUS SafeUploadStagePostOperation(PFLT_CALLBACK_DATA Data,
             return result;
         }
     }
-    if (((ULONG_PTR)CompletionContext & 0x3) == 0x2) {
+    if (systemAddress && ((ULONG_PTR)CompletionContext & 0x3) == 0x2) {
         SafeUploadPolicyAdmissionRelease(
             (PSAFEUPLOAD_ADMISSION_EPOCH_TOKEN)CompletionContext);
         return FLT_POSTOP_FINISHED_PROCESSING;
