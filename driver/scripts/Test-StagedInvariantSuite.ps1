@@ -1704,6 +1704,12 @@ function Invoke-CachedObservation {
             try{Get-WinEvent -FilterHashtable @{LogName='Application';StartTime=$agentStartLocal} -ErrorAction Stop | Where-Object ProviderName -match 'SafeUpload' |
                 ForEach-Object {$_.TimeCreated.ToString('o')+' '+$_.ProviderName+' '+$_.LevelDisplayName+' '+($_.Message -replace '\s+',' ')} |
                 Set-Content -LiteralPath (Join-Path $evidenceDirectory 'agent-events.txt') -Encoding UTF8}catch{}
+            # The port takes one connection: stop the agent, then read the driver's own view of the
+            # coverage receipt and writer registry. Restore-CachedAgent accepts a stopped service.
+            try{Stop-Service SafeUploadAgent -ErrorAction Stop;(Get-Service SafeUploadAgent).WaitForStatus([ServiceProcess.ServiceControllerStatus]::Stopped,[TimeSpan]::FromSeconds(30))}catch{}
+            foreach($query in '--admission-coverage','--activating-status','--registry-status'){
+                try{[void](Invoke-CapturedProcess $inspectorPath $query (Join-Path $evidenceDirectory ('ready-timeout'+$query)))}catch{}
+            }
             throw 'C01 agent policy/coverage Ready signal timed out after 45 seconds'
         }
         $readback=Get-BootPolicyReadback
