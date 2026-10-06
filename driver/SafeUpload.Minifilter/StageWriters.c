@@ -368,6 +368,9 @@ static NTSTATUS StageRegistryResolveCompactStream(_In_ PSTAGE_REGISTRY_ENTRY Ent
     _Out_ PUSHORT StreamChars, _Out_ PBOOLEAN NoNamesProven,
     _Out_opt_ PUINT32 FailureStep);
 static BOOLEAN StageRegistryOpenByIdMeansNoName(_In_ NTSTATUS Status);
+_IRQL_requires_(PASSIVE_LEVEL)
+static BOOLEAN StageRegistryEntryIsVolumeRootFile(_In_ PSTAGE_REGISTRY_ENTRY Entry,
+    _In_ PFLT_VOLUME Volume);
 _IRQL_requires_max_(APC_LEVEL)
 __declspec(noinline) static BOOLEAN StageRegistryMarkSopUnknown(_In_ PFLT_INSTANCE Instance,
     _In_ ULONGLONG VolumeSerial, _In_ const FILE_ID_128 *FileId,
@@ -385,6 +388,7 @@ __declspec(noinline) static BOOLEAN StageRegistryMarkSopUnknown(_In_ PFLT_INSTAN
 #pragma alloc_text(PAGE, StageRegistryOpenParentById)
 #pragma alloc_text(PAGE, StageRegistryBuildLinkName)
 #pragma alloc_text(PAGE, StageRegistryClassifyAllLinkNames)
+#pragma alloc_text(PAGE, StageRegistryEntryIsVolumeRootFile)
 #pragma alloc_text(PAGE, SafeUploadStageWritersClassifyById)
 #pragma alloc_text(PAGE, StageRegistryActivationProcess)
 #pragma alloc_text(PAGE, StageRegistryUnknownSopMarkersQuiescent)
@@ -4303,6 +4307,58 @@ static BOOLEAN StageRegistryOpenByIdMeansNoName(_In_ NTSTATUS Status)
         Status == STATUS_INVALID_PARAMETER;
 }
 
+/* NTFS refuses every open of an active paging or dedicated dump file, even an
+ * attribute-only open that ignores share access (run c01f: \swapfile.sys and
+ * \dedicateddump.sys, created by the session manager before any logon). Such a stream
+ * cannot gain a hard link (linking needs an open), and standard users cannot create,
+ * rename or link files directly under a volume root (C:\ grants them only
+ * FILE_ADD_SUBDIRECTORY). So a sharing-violation identity open of a default-stream
+ * entry whose recorded name is a direct child of this volume's root proves the stream
+ * has no name inside a protected scope. Every other sharing violation stays Unknown. */
+_IRQL_requires_(PASSIVE_LEVEL)
+static BOOLEAN StageRegistryEntryIsVolumeRootFile(_In_ PSTAGE_REGISTRY_ENTRY Entry,
+    _In_ PFLT_VOLUME Volume)
+{
+    UNICODE_STRING volumeName = { 0 }, entryName;
+    PWCH nameBuffer = NULL;
+    USHORT nameChars = 0, index, volumeChars;
+    ULONG needed = 0;
+    BOOLEAN result = FALSE;
+    NTSTATUS status;
+
+    PAGED_CODE();
+    nameBuffer = ExAllocatePool2(POOL_FLAG_PAGED,
+        SAFEUPLOAD_WRITER_REGISTRY_NAME_CHARS * sizeof(WCHAR), SAFEUPLOAD_REGISTRY_POOL_TAG);
+    volumeName.MaximumLength = 128 * sizeof(WCHAR);
+    volumeName.Buffer = ExAllocatePool2(POOL_FLAG_PAGED, volumeName.MaximumLength,
+        SAFEUPLOAD_REGISTRY_POOL_TAG);
+    if (nameBuffer == NULL || volumeName.Buffer == NULL) goto Exit;
+    FltAcquirePushLockShared(&RegistryLock);
+    if (Entry->Listed && !Entry->Retired && !Entry->Compact && !Entry->CompactStream &&
+        Entry->StreamChars == 0 && Entry->NameChars != 0 &&
+        Entry->NameChars <= SAFEUPLOAD_WRITER_REGISTRY_NAME_CHARS) {
+        nameChars = (USHORT)Entry->NameChars;
+        RtlCopyMemory(nameBuffer, Entry->Name, nameChars * sizeof(WCHAR));
+    }
+    FltReleasePushLock(&RegistryLock);
+    if (nameChars == 0) goto Exit;
+    status = FltGetVolumeName(Volume, &volumeName, &needed);
+    if (!NT_SUCCESS(status) || volumeName.Length == 0) goto Exit;
+    volumeChars = volumeName.Length / sizeof(WCHAR);
+    entryName.Buffer = nameBuffer;
+    entryName.Length = entryName.MaximumLength = (USHORT)(nameChars * sizeof(WCHAR));
+    if (nameChars <= volumeChars + 1 || nameBuffer[volumeChars] != L'\\' ||
+        !RtlPrefixUnicodeString(&volumeName, &entryName, TRUE)) goto Exit;
+    for (index = volumeChars + 1; index < nameChars; ++index) {
+        if (nameBuffer[index] == L'\\' || nameBuffer[index] == L':') goto Exit;
+    }
+    result = TRUE;
+Exit:
+    if (volumeName.Buffer != NULL) ExFreePoolWithTag(volumeName.Buffer, SAFEUPLOAD_REGISTRY_POOL_TAG);
+    if (nameBuffer != NULL) ExFreePoolWithTag(nameBuffer, SAFEUPLOAD_REGISTRY_POOL_TAG);
+    return result;
+}
+
 /* P0-4: every expansion decision is based on the complete PASSIVE-level NTFS link list.
  * A truncated or unresolvable list is a failed classification and remains enforced Unknown. */
 _IRQL_requires_(PASSIVE_LEVEL)
@@ -4384,6 +4440,16 @@ __declspec(noinline) static NTSTATUS StageRegistryClassifyAllLinkNames(_In_ PSTA
          * only an attempted ID open (or an exact, complete compact-stream
          * enumeration) can prove this recorded identity has no current name. */
         if (noNamesProvenByIdentity && Entry->Volume == Volume && Entry->VolumeSerial != 0) {
+            reportedStatus = status;
+            noRemainingNames = TRUE;
+            unionScoped = FALSE;
+            currentScoped = FALSE;
+            status = STATUS_SUCCESS;
+            goto PublishResult;
+        }
+        if (status == STATUS_SHARING_VIOLATION && !compactStream && streamChars == 0 &&
+            Entry->Volume == Volume && Entry->VolumeSerial != 0 &&
+            StageRegistryEntryIsVolumeRootFile(Entry, Volume)) {
             reportedStatus = status;
             noRemainingNames = TRUE;
             unionScoped = FALSE;
