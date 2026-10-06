@@ -45,6 +45,24 @@ Phase 4 workload rows S00-S02, C01-C05, A01-A05, B01-B02, R01-R03 and X01 in ord
 and boot-Verifier modes, with independent restoration and the latency budget, then the Phase 5 review.
 Deferred work is not dropped: it stays in the tracker and is the first hardening milestone after the MVP.
 
+**2026-10-06 evening progress (orchestrator):**
+- Phase 4 suite: C01 (cached write, APPROVE/BLOCK, absent final) and A01-A03 (pre-scope handle, view,
+  retained section through Activating) implemented and merged (`612dff79`); 8 cases now runnable.
+- First C01 VM runs found a product blocker, not a harness one: on a real boot the service never reported
+  coverage Ready because out-of-scope system writers stayed Unknown(IDENTITY) after the activation alias
+  probe (pagefile/swapfile/dedicateddump, deleted temp files, locked state files). Fixed in steps with evidence
+  per entry (Inspector `--admission-coverage`, Control 25 classification status): name-gone statuses incl.
+  NTFS's STATUS_INVALID_PARAMETER for a freed file reference (verified on 19045), SL_OPEN_PAGING_FILE
+  exclusion, and sharing-violation identities whose only name is a volume-root file (standard users cannot
+  create files there). Unknown entries per run: 20 -> 22 -> 2 -> (c01g pending).
+- Fresh adversarial review of the alias-probe change: BLOCK, two P0 accepted and being fixed:
+  rename/link SET_INFORMATION not drained by the admission epoch (pre-existing, affects runtime scope
+  expansion) and TxF-private streams misread as name-less; plus P2 header-only hard-link result.
+- Staged hand-back implemented (`07853914`): per-user `_bloqueados` copy bound to the requestor SID, read-only
+  user ACE, cleanup only after re-verification and window close. Fresh review found 1 P0 (session reuse), 3 P1,
+  2 P2; all fixed before merge. Windows-only bugs found on the builder: CreateFile disposition 1 vs 3, real
+  profiles are SYSTEM-owned, kernel32 rename rejects RootDirectory.
+
 **Process decision (orchestrator, 2026-10-06, from the owner's "MVP ASAP" priority):** stop iterating verifiers of verifiers:
 one exact build per increment, one VM run per case with checkpoint and independent restoration, and
 one milestone review. Evidence stays, but no new layer of tooling unless a run actually failed on it.
