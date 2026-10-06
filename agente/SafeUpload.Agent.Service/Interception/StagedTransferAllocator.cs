@@ -116,7 +116,9 @@ public sealed class StagedTransferAllocator
         uint disposition,
         StagedTransfer? previous,
         CancellationToken cancellationToken,
-        Guid? tombstoneOwner = null)
+        Guid? tombstoneOwner = null,
+        string? requestorSid = null,
+        long? requestorProcessCreationTime = null)
     {
         string fullDestination = Path.GetFullPath(destinationPath);
         if (string.IsNullOrEmpty(Path.GetFileName(fullDestination)) ||
@@ -140,7 +142,11 @@ public sealed class StagedTransferAllocator
             destination,
             processName,
             processId,
-            sessionId);
+            sessionId)
+        {
+            RequestorSid = requestorSid,
+            RequestorProcessCreationTime = requestorProcessCreationTime
+        };
 
         if (disposition > 5)
         {
@@ -152,6 +158,8 @@ public sealed class StagedTransferAllocator
             (!string.Equals(previous.DestinationPath, fullDestination,
                 StringComparison.OrdinalIgnoreCase) ||
              previous.ProcessId != processId ||
+             !string.Equals(previous.RequestorSid, requestorSid, StringComparison.OrdinalIgnoreCase) ||
+             previous.RequestorProcessCreationTime != requestorProcessCreationTime ||
              !string.Equals(Path.GetDirectoryName(previous.StagePath), _root,
                  StringComparison.OrdinalIgnoreCase)))
         {

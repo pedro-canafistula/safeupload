@@ -107,16 +107,33 @@ public sealed class NotificationRecord : INotificationRecord, IDisposable
                 if (notification is TransferNotification candidate &&
                     (candidate.TransferId == Guid.Empty || !Enum.IsDefined(candidate.Phase)))
                     throw new InvalidDataException("Invalid transfer notification identity/phase.");
+                if (notification is TransferNotification transfer &&
+                    ((transfer.PublishedSha256Hex is { } digest &&
+                      (digest.Length != 64 || !digest.All(Uri.IsHexDigit))) ||
+                     (transfer.SnapshotSha256Hex is { } snapshotDigest &&
+                      (snapshotDigest.Length != 64 || !snapshotDigest.All(Uri.IsHexDigit))) ||
+                     (transfer.Phase == TransferPhase.Released &&
+                      transfer.PublishedSha256Hex is null) ||
+                     (transfer.Phase == TransferPhase.Blocked &&
+                      (transfer.PublishedSha256Hex is not null || transfer.SnapshotSha256Hex is null)) ||
+                     (transfer.Phase != TransferPhase.Blocked && transfer.SnapshotSha256Hex is not null) ||
+                     (transfer.Phase == TransferPhase.Blocked &&
+                      (transfer.HandbackVerified is null ||
+                       (transfer.HandbackVerified == true && string.IsNullOrWhiteSpace(transfer.HandbackPath)) ||
+                       (transfer.HandbackVerified == false && transfer.HandbackPath is not null))) ||
+                     (transfer.Phase != TransferPhase.Blocked &&
+                      (transfer.HandbackPath is not null || transfer.HandbackVerified is not null))))
+                    throw new InvalidDataException("Invalid staged hand-back notification evidence.");
                 if (notification is EventNotification audit && audit.Event.EventId == Guid.Empty)
                     throw new InvalidDataException("Invalid audit notification identity.");
-                var (kind, transfer, eventId, phase) = notification switch
+                var (kind, transferId, eventId, phase) = notification switch
                 {
                     TransferNotification t => ("Transfer", (Guid?)t.TransferId, (Guid?)null, t.Phase.ToString()),
                     EventNotification e => ("Event", (Guid?)null, (Guid?)e.Event.EventId, e.Event.Verdict.ToString()),
                     StatusNotification => ("Status", (Guid?)null, (Guid?)null, (string?)null),
                     _ => throw new InvalidDataException("Unknown notification kind.")
                 };
-                Write(kind, transfer, eventId, phase, targetSessionId);
+                Write(kind, transferId, eventId, phase, targetSessionId);
             }
             catch { _failed = true; throw; }
         }

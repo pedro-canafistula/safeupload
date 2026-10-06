@@ -101,6 +101,24 @@ public class NotificationProtocolTests
             NotificationProtocol.Deserialize(line.TrimEnd('\n')));
     }
 
+    [Fact]
+    public void Blocked_staged_handback_digest_and_verified_path_survive_the_notification_pipe()
+    {
+        var original = new TransferNotification(
+            Guid.Parse("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"),
+            "report.txt", TransferPhase.Blocked, OverrideAllowed: true,
+            SnapshotSha256Hex: new string('A', 64),
+            HandbackPath: @"C:\Users\sample\SafeUpload\_bloqueados\version.txt",
+            HandbackVerified: true);
+
+        string line = NotificationProtocol.Serialize(original);
+        var restored = Assert.IsType<TransferNotification>(
+            NotificationProtocol.Deserialize(line.TrimEnd('\n')));
+        Assert.Equal(original.SnapshotSha256Hex, restored.SnapshotSha256Hex);
+        Assert.Equal(original.HandbackPath, restored.HandbackPath);
+        Assert.True(restored.HandbackVerified);
+    }
+
     /// <summary>
     /// Todo campo da HU-04 precisa atravessar o canal intacto.
     ///

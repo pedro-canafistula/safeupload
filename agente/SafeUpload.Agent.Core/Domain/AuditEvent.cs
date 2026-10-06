@@ -54,4 +54,5 @@ public sealed record AuditEvent(
     string? NotInspectedReason,
     int PolicyVersion,
     long ElapsedMs,
-    bool Dispatched);
+    bool Dispatched,
+    string? PublishedSha256Hex = null);

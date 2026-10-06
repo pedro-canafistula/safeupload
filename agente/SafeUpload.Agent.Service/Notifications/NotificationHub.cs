@@ -78,7 +78,7 @@ public sealed class NotificationHub
     /// chamá-lo ao perder a conexão, senão o hub acumula filas de aplicativos
     /// que já morreram.
     /// </returns>
-    public NotificationSubscription Subscribe(uint? sessionId = null)
+    public NotificationSubscription Subscribe(uint? sessionId = null, string? userSid = null)
     {
         // DropOldest e não Wait: escrever nunca pode bloquear quem publica.
         var channel = Channel.CreateBounded<AgentNotification>(
@@ -89,7 +89,7 @@ public sealed class NotificationHub
                 SingleWriter = false
             });
 
-        var subscription = new Subscription(channel, sessionId);
+        var subscription = new Subscription(channel, sessionId, userSid);
 
         lock (_gate)
         {
@@ -101,7 +101,8 @@ public sealed class NotificationHub
 
             foreach (var buffered in _replay)
             {
-                if (Targets(subscription, buffered.TargetSessionId) && TryRecord(buffered.Notification, buffered.TargetSessionId))
+                if (Targets(subscription, buffered.TargetSessionId, buffered.TargetUserSid) &&
+                    TryRecord(buffered.Notification, buffered.TargetSessionId))
                 {
                     channel.Writer.TryWrite(buffered.Notification);
                 }
@@ -120,9 +121,13 @@ public sealed class NotificationHub
     /// conectados — que é o caminho percorrido hoje, porque a origem de uma
     /// operação detectada por <c>FileSystemWatcher</c> não é determinável.
     /// </param>
-    public void Publish(AgentNotification notification, uint? targetSessionId = null)
+    public void Publish(AgentNotification notification, uint? targetSessionId = null,
+        string? targetUserSid = null)
     {
         ArgumentNullException.ThrowIfNull(notification);
+        if (notification is TransferNotification { Phase: TransferPhase.Blocked } &&
+            (targetSessionId is null || targetUserSid is null))
+            return;
 
         lock (_gate)
         {
@@ -136,13 +141,13 @@ public sealed class NotificationHub
             {
                 // Só evento entra na janela de reprodução. Estado não precisa:
                 // quem conecta já recebe o estado corrente.
-                _replay.Add(new Buffered(notification, targetSessionId, _clock.GetUtcNow()));
+                _replay.Add(new Buffered(notification, targetSessionId, targetUserSid, _clock.GetUtcNow()));
                 PruneReplay();
             }
 
             foreach (var subscription in _subscriptions)
             {
-                if (Targets(subscription, targetSessionId))
+                if (Targets(subscription, targetSessionId, targetUserSid))
                 {
                     // TryWrite devolve falso apenas se o canal estiver fechado;
                     // com DropOldest ele nunca recusa por lotação.
@@ -172,15 +177,18 @@ public sealed class NotificationHub
     }
 
     /// <summary>
-    /// Uma mensagem sem sessão de destino vai para todos; com sessão, só para
-    /// quem está nela. Um assinante de sessão desconhecida recebe tudo — é o
-    /// caso do aplicativo cuja sessão o sistema não soube informar, e deixá-lo
-    /// sem notificação nenhuma seria pior do que mostrar demais.
+    /// A notification with a user SID requires an exact session and SID
+    /// match. Other messages keep their legacy session-only routing, including
+    /// delivery to a subscriber whose session is unknown.
     /// </summary>
-    private static bool Targets(Subscription subscription, uint? targetSessionId) =>
-        targetSessionId is null
-        || subscription.SessionId is null
-        || subscription.SessionId == targetSessionId;
+    private static bool Targets(Subscription subscription, uint? targetSessionId, string? targetUserSid)
+    {
+        if (targetUserSid is not null)
+            return targetSessionId is not null && subscription.SessionId == targetSessionId &&
+                string.Equals(subscription.UserSid, targetUserSid, StringComparison.OrdinalIgnoreCase);
+        return targetSessionId is null || subscription.SessionId is null ||
+            subscription.SessionId == targetSessionId;
+    }
 
     private void PruneReplay()
     {
@@ -204,9 +212,10 @@ public sealed class NotificationHub
         subscription.Channel.Writer.TryComplete();
     }
 
-    private sealed record Subscription(Channel<AgentNotification> Channel, uint? SessionId);
+    private sealed record Subscription(Channel<AgentNotification> Channel, uint? SessionId, string? UserSid);
 
-    private sealed record Buffered(AgentNotification Notification, uint? TargetSessionId, DateTimeOffset At);
+    private sealed record Buffered(AgentNotification Notification, uint? TargetSessionId,
+        string? TargetUserSid, DateTimeOffset At);
 }
 
 /// <summary>

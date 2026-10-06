@@ -38,6 +38,24 @@ public sealed class StagedTransferAllocatorTests : IDisposable
     }
 
     [Fact]
+    public async Task Allocation_persists_requestor_sid_and_process_creation_time()
+    {
+        string root = Path.Combine(_workspace.Root, "stage");
+        var journal = new StagedTransferJournal(Path.Combine(_workspace.Root, "journal"));
+        var allocator = new StagedTransferAllocator(root, journal);
+        string sid = "S-1-5-21-111-222-333-1000";
+
+        StagedTransfer transfer = await allocator.AllocateAsync(
+            Path.Combine(_workspace.Root, "destination", "bound.txt"), DestinationKind.Cloud,
+            "word.exe", 17, 2, 2, null, CancellationToken.None,
+            requestorSid: sid, requestorProcessCreationTime: 638953632000000000);
+
+        TransferJournalEntry entry = await journal.ReadAsync(transfer.TransferId, CancellationToken.None);
+        Assert.Equal(sid, entry.Transfer.RequestorSid);
+        Assert.Equal<long?>(638953632000000000, entry.Transfer.RequestorProcessCreationTime);
+    }
+
+    [Fact]
     public async Task Backing_file_has_its_own_private_acl_and_restart_removes_extra_grants()
     {
         if (!OperatingSystem.IsWindows()) return;

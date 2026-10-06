@@ -13,6 +13,7 @@ namespace SafeUpload.Agent.Tests;
 
 public sealed class StagedTransferPublisherTests : IDisposable
 {
+    private const string TestRequestorSid = "S-1-5-21-111-222-333-1000";
     private readonly TestWorkspace _workspace = new();
     private readonly string _stagingRoot;
     private readonly NotificationHub _notifications = NotificationTestHub.Create();
@@ -31,7 +32,8 @@ public sealed class StagedTransferPublisherTests : IDisposable
             ExtractorRegistry.CreateDefault(),
             new VerdictCache());
 
-        _publisher = new StagedTransferPublisher(inspector, _notifications, _journal, _stagingRoot, new TestPublicationGate());
+        _publisher = new StagedTransferPublisher(inspector, _notifications, _journal, _stagingRoot,
+            new TestPublicationGate(), sessionUserSidResolver: _ => TestRequestorSid);
     }
 
     public void Dispose() => _workspace.Dispose();
@@ -44,12 +46,13 @@ public sealed class StagedTransferPublisherTests : IDisposable
         bool cancel, bool failRevoke)
     {
         using var cancellation = new CancellationTokenSource();
-        using var subscription = _notifications.Subscribe();
+        using var subscription = _notifications.Subscribe(7, TestRequestorSid);
         var gate = new FinalizationPublicationGate(cancel ? cancellation : null, failRevoke);
         var publisher = new StagedTransferPublisher(new InspectionService(
             new LocalPolicyStore(_workspace.PolicyFile), new LocalQueueAuditSink(_workspace.QueueFile),
             ExtractorRegistry.CreateDefault(), new VerdictCache()),
-            _notifications, _journal, _stagingRoot, gate);
+            _notifications, _journal, _stagingRoot, gate,
+            sessionUserSidResolver: _ => TestRequestorSid);
         var transfer = Transfer("committed.txt", "approved committed version");
 
         Assert.Equal(StagedTransferOutcome.Released,
@@ -190,7 +193,9 @@ public sealed class StagedTransferPublisherTests : IDisposable
         var broker = new StagedJustifications();
         var publisher = new StagedTransferPublisher(new InspectionService(store,
             new LocalQueueAuditSink(_workspace.QueueFile), ExtractorRegistry.CreateDefault(),
-            new VerdictCache()), _notifications, _journal, _stagingRoot, new TestPublicationGate(), broker);
+            new VerdictCache()), _notifications, _journal, _stagingRoot, new TestPublicationGate(), broker,
+            handbackCopier: new SuccessfulHandbackCopier(_workspace.Root),
+            sessionUserSidResolver: _ => TestRequestorSid);
         var original = Transfer("justify.txt", "CPF: 529.982.247-25");
         // Transfer() journals immediately; give this independent transfer an
         // authenticated notification session before journaling it.
@@ -200,11 +205,16 @@ public sealed class StagedTransferPublisherTests : IDisposable
             TransferJournalState.Sealed, null, CancellationToken.None);
         Assert.Equal(StagedTransferOutcome.Blocked,
             await publisher.PublishAsync(transfer, CancellationToken.None));
-        Assert.True(broker.TryConsume(transfer.TransferId.ToString("D"), 8, out var wrongSession));
+        Assert.True(broker.TryConsume(transfer.TransferId.ToString("D"), 8, TestRequestorSid,
+            out var wrongSession));
         Assert.Null(wrongSession);
-        Assert.True(broker.TryConsume(transfer.TransferId.ToString("D"), 7, out var publish));
+        Assert.True(broker.TryConsume(transfer.TransferId.ToString("D"), 7, "S-1-5-21-999-888-777-1000",
+            out var wrongUser));
+        Assert.Null(wrongUser);
+        Assert.True(broker.TryConsume(transfer.TransferId.ToString("D"), 7, TestRequestorSid,
+            out var publish));
         Assert.NotNull(publish);
-        Assert.False(broker.TryConsume(transfer.TransferId.ToString("D"), 7, out _));
+        Assert.False(broker.TryConsume(transfer.TransferId.ToString("D"), 7, TestRequestorSid, out _));
         if (changeBytes) await File.WriteAllTextAsync(transfer.StagePath, "changed bytes");
         if (changePolicy)
         {
@@ -228,6 +238,20 @@ public sealed class StagedTransferPublisherTests : IDisposable
         public void Dispose() { }
     }
 
+    private sealed class SuccessfulHandbackCopier(string root) : IStagedHandbackCopier
+    {
+        public Task<string> CopyVerifiedAsync(StagedTransfer transfer, FileStream sealedSnapshot,
+            long length, string sha256Hex, CancellationToken token) => Task.FromResult(Path.Combine(
+            root, "handback", transfer.TransferId.ToString("N") + Path.GetExtension(transfer.DestinationPath)));
+
+        public IDisposable OpenVerifiedReadLease(StagedTransfer transfer, string handbackPath,
+            long length, string sha256Hex) => new NoopLease();
+
+        public void CleanupUncommittedTemporary(StagedTransfer transfer) { }
+
+        private sealed class NoopLease : IDisposable { public void Dispose() { } }
+    }
+
     private StagedTransfer Transfer(string name, string content, DestinationKind kind = DestinationKind.RemovableDrive)
     {
         string stage = Path.Combine(_stagingRoot, name);
@@ -238,7 +262,8 @@ public sealed class StagedTransferPublisherTests : IDisposable
         var transfer = new StagedTransfer(
             Guid.NewGuid(), stage, destination,
             kind,
-            "explorer.exe", 4242, null);
+            "explorer.exe", 4242, 7)
+        { RequestorSid = TestRequestorSid };
         _journal.CreateAsync(transfer, CancellationToken.None).GetAwaiter().GetResult();
         _journal.TransitionAsync(transfer.TransferId,
             TransferJournalState.Allocated, TransferJournalState.Sealed,
@@ -260,8 +285,10 @@ public sealed class StagedTransferPublisherTests : IDisposable
             (await _journal.ReadAsync(transfer.TransferId, CancellationToken.None)).State);
         var audit = await new LocalQueueAuditSink(_workspace.QueueFile)
             .ReadRecentAsync(10, CancellationToken.None);
-        Assert.Single(audit);
-        Assert.Equal(Verdict.Blocked, audit[0].Verdict);
+        Assert.Equal(2, audit.Count);
+        Assert.Contains(audit, item => item.Verdict == Verdict.Blocked);
+        Assert.Contains(audit, item => item.Verdict == Verdict.Retained &&
+            item.NotInspectedReason == "handback_failed");
     }
 
     [Theory]
@@ -356,6 +383,7 @@ public sealed class StagedTransferPublisherTests : IDisposable
     public async Task Inspected_clean_content_is_released()
     {
         var transfer = Transfer("clean.txt", "Relatorio sem dados pessoais.");
+        using var subscription = _notifications.Subscribe(7, TestRequestorSid);
 
         var outcome = await _publisher.PublishAsync(transfer, CancellationToken.None);
 
@@ -369,6 +397,16 @@ public sealed class StagedTransferPublisherTests : IDisposable
         Assert.Single(audit);
         Assert.Equal(Verdict.Approved, audit[0].Verdict);
         Assert.Equal(transfer.TransferId, audit[0].EventId);
+        string digest = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(
+            await File.ReadAllBytesAsync(transfer.DestinationPath)));
+        Assert.Equal(digest, audit[0].PublishedSha256Hex);
+        var notifications = new List<TransferNotification>();
+        while (subscription.Reader.TryRead(out var notification))
+            if (notification is TransferNotification transferNotification)
+                notifications.Add(transferNotification);
+        TransferNotification released = Assert.Single(notifications,
+            notification => notification.Phase == TransferPhase.Released);
+        Assert.Equal(digest, released.PublishedSha256Hex);
     }
 
     [Fact]
@@ -535,11 +573,12 @@ public sealed class StagedTransferPublisherTests : IDisposable
         var gate = new RecordingPublicationGate(false);
         var publisher = new StagedTransferPublisher(new InspectionService(store,
             new LocalQueueAuditSink(_workspace.QueueFile), registry, new VerdictCache()),
-            _notifications, _journal, _stagingRoot, gate);
+            _notifications, _journal, _stagingRoot, gate,
+            sessionUserSidResolver: _ => TestRequestorSid);
         string content = failure == "size" ? new string('x', 1024 * 1024 + 1) : "Clean fixture bytes.";
         var transfer = Transfer("negative-" + failure + ".txt", content);
         await File.WriteAllTextAsync(transfer.DestinationPath, "public original");
-        using var subscription = _notifications.Subscribe();
+        using var subscription = _notifications.Subscribe(7, TestRequestorSid);
         try
         {
             Assert.Equal(StagedTransferOutcome.Retained,

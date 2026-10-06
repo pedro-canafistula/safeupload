@@ -402,6 +402,10 @@ public sealed class MinifilterInterceptor : BackgroundService
                 return (PortVerdict.Deny, null);
             }
 
+            int requestorProcessId = checked((int)request.RequestorProcessId);
+            SessionResolver.ProcessIdentity requestor =
+                SessionResolver.GetRequiredProcessIdentity(requestorProcessId);
+
             var kind = ClassifyStagedDestination(request.TypedFlags);
             Policy policy = _policyStore.LoadAsync(CancellationToken.None).GetAwaiter().GetResult();
             var destinationOperation = new FileOperation(destination, Path.GetFileName(destination),
@@ -419,7 +423,10 @@ public sealed class MinifilterInterceptor : BackgroundService
                     return (PortVerdict.Deny, null);
                 var ownerEntry = _stageJournal.ReadAsync(ownerId, CancellationToken.None)
                     .GetAwaiter().GetResult();
-                if (ownerEntry.Transfer.ProcessId != checked((int)request.RequestorProcessId))
+                if (ownerEntry.Transfer.ProcessId != requestorProcessId ||
+                    !string.Equals(ownerEntry.Transfer.RequestorSid, requestor.UserSid.Value,
+                        StringComparison.OrdinalIgnoreCase) ||
+                    ownerEntry.Transfer.RequestorProcessCreationTime != requestor.CreationTimeFileTime)
                     return (PortVerdict.Deny, null);
                 tombstoneOwner = ownerId;
                 processName = ownerEntry.Transfer.ProcessName;
@@ -438,7 +445,10 @@ public sealed class MinifilterInterceptor : BackgroundService
                 if (!prior.SealedOnce ||
                     !string.Equals(prior.Transfer.DestinationPath, destination,
                         StringComparison.OrdinalIgnoreCase) ||
-                    prior.Transfer.ProcessId != checked((int)request.RequestorProcessId))
+                    prior.Transfer.ProcessId != requestorProcessId ||
+                    !string.Equals(prior.Transfer.RequestorSid, requestor.UserSid.Value,
+                        StringComparison.OrdinalIgnoreCase) ||
+                    prior.Transfer.RequestorProcessCreationTime != requestor.CreationTimeFileTime)
                 {
                     return (PortVerdict.Deny, null);
                 }
@@ -447,10 +457,11 @@ public sealed class MinifilterInterceptor : BackgroundService
             }
             var transfer = _stageAllocator.AllocateAsync(
                 destination, kind, processName,
-                checked((int) request.RequestorProcessId),
-                SessionResolver.TryGetSessionId(checked((int) request.RequestorProcessId)),
+                requestorProcessId,
+                requestor.SessionId,
                 request.Reserved, previous,
-                CancellationToken.None, tombstoneOwner).GetAwaiter().GetResult();
+                CancellationToken.None, tombstoneOwner, requestor.UserSid.Value,
+                requestor.CreationTimeFileTime).GetAwaiter().GetResult();
             return (PortVerdict.Allow, Path.GetFileName(transfer.StagePath));
         }
         catch (Exception ex)
@@ -510,7 +521,46 @@ public sealed class MinifilterInterceptor : BackgroundService
             foreach (var entry in await _stageJournal.ReadPendingAsync(cancellationToken)
                          .ConfigureAwait(false))
             {
-                if (entry.PendingRename is not null || entry.State != TransferJournalState.Sealed) continue;
+                if (entry.PendingRename is not null) continue;
+                if (entry.State == TransferJournalState.Blocked)
+                {
+                    try
+                    {
+                        await _stagePublisher.ProcessBlockedCleanupAsync(entry, cancellationToken)
+                            .ConfigureAwait(false);
+                    }
+                    catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                    {
+                        throw;
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Falha ao limpar estagio bloqueado {TransferId}.",
+                            entry.Transfer.TransferId);
+                    }
+                    continue;
+                }
+                if (entry.State == TransferJournalState.Released &&
+                    entry.HandbackState == StagedHandbackState.Verified &&
+                    entry.JustificationWindowClosed && !entry.StageDeleted)
+                {
+                    try
+                    {
+                        await _stagePublisher.ProcessBlockedCleanupAsync(entry, cancellationToken)
+                            .ConfigureAwait(false);
+                    }
+                    catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                    {
+                        throw;
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Falha ao limpar estagio publicado {TransferId}.",
+                            entry.Transfer.TransferId);
+                    }
+                    continue;
+                }
+                if (entry.State != TransferJournalState.Sealed) continue;
 
                 try
                 {
@@ -570,9 +620,20 @@ public sealed class MinifilterInterceptor : BackgroundService
                 requireProtectedParent: true, requireSystemIdentity: true);
             _stagePublisher = new StagedTransferPublisher(
                 _inspection, _hub, _stageJournal, root,
-                new StagedPublicationGate(port), _stagedJustifications, _logger);
+                new StagedPublicationGate(port), _stagedJustifications, _logger,
+                _policyStore);
             _stageJournal.RetainInterruptedAsync(stoppingToken).GetAwaiter().GetResult();
             _stageJournal.ReconcilePublishingAsync(stoppingToken).GetAwaiter().GetResult();
+            foreach (TransferJournalEntry entry in _stageJournal.ReadPendingAsync(stoppingToken)
+                         .GetAwaiter().GetResult())
+            {
+                if (entry.State == TransferJournalState.Blocked)
+                    _stagePublisher.RecoverBlockedAsync(entry, stoppingToken).GetAwaiter().GetResult();
+                else if (entry.State == TransferJournalState.Released &&
+                         entry.HandbackState == StagedHandbackState.Verified &&
+                         entry.JustificationWindowClosed && !entry.StageDeleted)
+                    _stagePublisher.ProcessBlockedCleanupAsync(entry, stoppingToken).GetAwaiter().GetResult();
+            }
             return true;
         }
         catch (Exception ex)

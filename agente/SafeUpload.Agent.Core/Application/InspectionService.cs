@@ -105,8 +105,10 @@ public sealed class InspectionService
         Verdict outcome,
         string? reason,
         CancellationToken cancellationToken,
-        Guid? eventId = null)
-        => AuditAsync(operation, inspection with { Verdict = outcome, Reason = reason }, cancellationToken, eventId);
+        Guid? eventId = null,
+        string? publishedSha256Hex = null)
+        => AuditAsync(operation, inspection with { Verdict = outcome, Reason = reason },
+            cancellationToken, eventId, publishedSha256Hex);
 
     private async Task<InspectionResult> InspectCoreAsync(
         FileOperation operation, bool auditAndCache, CancellationToken cancellationToken)
@@ -303,7 +305,8 @@ public sealed class InspectionService
         FileOperation operation,
         InspectionResult result,
         CancellationToken cancellationToken,
-        Guid? eventId = null)
+        Guid? eventId = null,
+        string? publishedSha256Hex = null)
     {
         var auditEvent = new AuditEvent(
             eventId ?? Guid.NewGuid(),
@@ -322,7 +325,8 @@ public sealed class InspectionService
             result.Reason,
             result.PolicyVersion,
             result.ElapsedMs,
-            Dispatched: false);
+            Dispatched: false,
+            PublishedSha256Hex: publishedSha256Hex);
 
         try
         {

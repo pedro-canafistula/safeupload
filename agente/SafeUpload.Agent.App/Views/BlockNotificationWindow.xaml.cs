@@ -46,13 +46,17 @@ public partial class BlockNotificationWindow : Window
         IReadOnlyList<Finding> findings,
         string? justificationEventId = null,
         bool quarantined = false,
-        bool staged = false)
+        bool staged = false,
+        string? handbackPath = null,
+        bool? handbackVerified = null,
+        string? snapshotSha256Hex = null)
     {
         ArgumentNullException.ThrowIfNull(findings);
 
         InitializeComponent();
 
-        Add(fileName, findings, justificationEventId, quarantined, staged);
+        Add(fileName, findings, justificationEventId, quarantined, staged,
+            handbackPath, handbackVerified, snapshotSha256Hex);
 
         // A área útil exclui a barra de tarefas, então a notificação não fica
         // escondida atrás dela nem em telas com a barra em outra borda.
@@ -67,7 +71,10 @@ public partial class BlockNotificationWindow : Window
         IReadOnlyList<Finding> findings,
         string? justificationEventId = null,
         bool quarantined = false,
-        bool staged = false)
+        bool staged = false,
+        string? handbackPath = null,
+        bool? handbackVerified = null,
+        string? snapshotSha256Hex = null)
     {
         ArgumentNullException.ThrowIfNull(findings);
 
@@ -99,7 +106,9 @@ public partial class BlockNotificationWindow : Window
         _staged = staged;
         QuarantineText.Visibility = quarantined ? Visibility.Visible : Visibility.Collapsed;
         QuarantineText.Text = staged
-            ? "O arquivo permanece guardado localmente pelo SafeUpload e não foi enviado ao destino."
+            ? handbackVerified == true && !string.IsNullOrWhiteSpace(handbackPath)
+                ? $"Devolvido para: {handbackPath}\nSHA-256: {snapshotSha256Hex ?? "indisponível"}"
+                : "Não foi possível devolver o arquivo com segurança. A versão permanece no staging protegido do SafeUpload e não foi enviada ao destino."
             : "O arquivo foi retirado da pasta monitorada e guardado em SafeUpload\\_bloqueados na sua pasta de usuário.";
         JustificationPanel.Visibility = justificationEventId is null
             ? Visibility.Collapsed

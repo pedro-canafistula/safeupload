@@ -103,8 +103,12 @@ public sealed class StagedTransferJournal
             throw new ArgumentException("A transfer needs a nonempty ID.", nameof(transfer));
         }
 
+        DateTimeOffset createdAtUtc = DateTimeOffset.UtcNow;
         var entry = new TransferJournalEntry(
-            transfer, TransferJournalState.Allocated, null, DateTimeOffset.UtcNow);
+            transfer, TransferJournalState.Allocated, null, createdAtUtc)
+        {
+            StateHistory = [new TransferJournalStateChange(TransferJournalState.Allocated, createdAtUtc)]
+        };
         ValidateEntry(entry, transfer.TransferId);
         string path = ManifestPath(transfer.TransferId);
         string temporary = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
@@ -123,7 +127,11 @@ public sealed class StagedTransferJournal
                 if (claims.Length != 1 || !claims[0].Tombstone ||
                     claims[0].Entry.Transfer.TransferId != tombstoneOwner ||
                     claims[0].Entry.Transfer.ProcessId != transfer.ProcessId ||
-                    claims[0].Entry.Transfer.SessionId != transfer.SessionId)
+                    claims[0].Entry.Transfer.SessionId != transfer.SessionId ||
+                    !string.Equals(claims[0].Entry.Transfer.RequestorSid, transfer.RequestorSid,
+                        StringComparison.OrdinalIgnoreCase) ||
+                    claims[0].Entry.Transfer.RequestorProcessCreationTime !=
+                        transfer.RequestorProcessCreationTime)
                     throw new IOException("No current committed tombstone belongs to this writer and session.");
             }
             entry = entry with { DestinationGeneration = checked(versions.Select(e => e.Generation)
@@ -191,7 +199,14 @@ public sealed class StagedTransferJournal
             !Enum.IsDefined(entry.State) || !Enum.IsDefined(transfer.Destination) ||
             transfer.ProcessId <= 0 || string.IsNullOrWhiteSpace(transfer.ProcessName) ||
             transfer.ProcessName.Length > 63 || entry.DestinationGeneration < 0 ||
-            entry.UpdatedAtUtc == default)
+            entry.BlockedPolicyVersion < 0 ||
+            (entry.State == TransferJournalState.Blocked && entry.BlockedPolicyVersion <= 0 &&
+                transfer.RequestorSid is not null) ||
+            entry.UpdatedAtUtc == default ||
+            (transfer.RequestorSid is { } requestorSid &&
+                (requestorSid.Length > 184 || !requestorSid.StartsWith("S-", StringComparison.OrdinalIgnoreCase) ||
+                 requestorSid.Any(char.IsWhiteSpace))) ||
+            (transfer.RequestorProcessCreationTime is <= 0))
             throw new InvalidDataException("The transfer manifest has invalid identity or state.");
         RequireManifestPath(transfer.StagePath);
         RequireManifestPath(transfer.DestinationPath);
@@ -202,7 +217,8 @@ public sealed class StagedTransferJournal
             TransferJournalState.Blocked;
         if ((requiresSeal && !entry.SealedOnce) ||
             (entry.State is TransferJournalState.Allocated or TransferJournalState.Unsealed && entry.SealedOnce) ||
-            (entry.State is TransferJournalState.Publishing or TransferJournalState.Released && entry.Sha256Hex is null))
+            ((entry.State is TransferJournalState.Publishing or TransferJournalState.Released or
+                TransferJournalState.Blocked) && entry.Sha256Hex is null))
             throw new InvalidDataException("The transfer manifest has invalid seal/publication evidence.");
         if (entry.PendingRename is { } rename)
         {
@@ -223,6 +239,48 @@ public sealed class StagedTransferJournal
             if (++count > 16 || name.Generation <= 0)
                 throw new InvalidDataException("The transfer manifest has invalid namespace history.");
         }
+
+        if (entry.StateHistory is { Count: > 0 } history)
+        {
+            if (history.Count > TransferJournalEntry.MaximumStateHistory ||
+                history[0].State != TransferJournalState.Allocated ||
+                history[^1].State != entry.State)
+                throw new InvalidDataException("The transfer manifest has invalid state history.");
+            for (int index = 0; index < history.Count; index++)
+            {
+                TransferJournalStateChange change = history[index];
+                if (!Enum.IsDefined(change.State) || change.OccurredAtUtc == default ||
+                    change.OccurredAtUtc.Offset != TimeSpan.Zero ||
+                    (index > 0 && (change.OccurredAtUtc <= history[index - 1].OccurredAtUtc ||
+                        !IsTransitionAllowed(history[index - 1].State, change.State))))
+                    throw new InvalidDataException("The transfer manifest has invalid state history.");
+            }
+        }
+        else if (entry.StateHistory is null || entry.StateHistory.Count != 0)
+        {
+            throw new InvalidDataException("The transfer manifest has invalid state history.");
+        }
+
+        if (!Enum.IsDefined(entry.HandbackState))
+            throw new InvalidDataException("The transfer manifest has an invalid hand-back state.");
+        if (entry.HandbackPath is not null) RequireManifestPath(entry.HandbackPath);
+        if (entry.HandbackFailureReason is { Length: > 256 } ||
+            (entry.HandbackState == StagedHandbackState.Verified && entry.HandbackPath is null) ||
+            (entry.HandbackState != StagedHandbackState.Verified && entry.HandbackPath is not null) ||
+            (entry.HandbackLength is < 0) ||
+            (entry.HandbackState == StagedHandbackState.Verified && entry.HandbackLength is null &&
+                transfer.RequestorSid is not null) ||
+            (entry.HandbackState != StagedHandbackState.Verified && entry.HandbackLength is not null) ||
+            (entry.HandbackState == StagedHandbackState.Failed && entry.HandbackFailureReason is null) ||
+            (entry.HandbackState != StagedHandbackState.Failed && entry.HandbackFailureReason is not null) ||
+            (entry.JustificationExpiresAtUtc is { } expiry && expiry.Offset != TimeSpan.Zero) ||
+            (entry.HandbackLastAttemptAtUtc is { } attempt && attempt.Offset != TimeSpan.Zero) ||
+            (entry.StageCleanupStarted && (entry.HandbackState != StagedHandbackState.Verified ||
+                !entry.JustificationWindowClosed)) ||
+            (entry.StageDeleted && (entry.State is not (TransferJournalState.Blocked or TransferJournalState.Released) ||
+                entry.HandbackState != StagedHandbackState.Verified || !entry.JustificationWindowClosed ||
+                entry.StageCleanupStarted)))
+            throw new InvalidDataException("The transfer manifest has invalid hand-back evidence.");
     }
 
     private static void RequireManifestPath(string? path)
@@ -261,7 +319,9 @@ public sealed class StagedTransferJournal
         TransferJournalState next,
         string? sha256Hex,
         CancellationToken cancellationToken,
-        StagedTransfer? expectedTransfer = null)
+        StagedTransfer? expectedTransfer = null,
+        BlockedTransferEvidence? blockedEvidence = null,
+        bool closeJustificationWindow = false)
     {
         if (!IsTransitionAllowed(expected, next))
         {
@@ -283,6 +343,12 @@ public sealed class StagedTransferJournal
                 throw new InvalidOperationException(
                     $"Transfer {transferId} is {current.State}; expected {expected}.");
             }
+            if (next == TransferJournalState.Inspecting &&
+                (current.StageCleanupStarted || current.StageDeleted))
+                throw new IOException("Staging cleanup has already started.");
+            if (expected == TransferJournalState.Blocked && next == TransferJournalState.Inspecting &&
+                current.JustificationWindowClosed)
+                throw new IOException("The justification window is already closed.");
 
             // Old prototype manifests can say Retained after recovering an
             // Allocated transfer. Missing SealedOnce deserializes as false;
@@ -293,18 +359,49 @@ public sealed class StagedTransferJournal
             }
 
             string? digest = sha256Hex ?? current.Sha256Hex;
-            if (next is TransferJournalState.Publishing or TransferJournalState.Released &&
+            if ((next is TransferJournalState.Publishing or TransferJournalState.Released or
+                    TransferJournalState.Blocked) &&
                 (digest is null || digest.Length != 64 || !digest.All(Uri.IsHexDigit)))
             {
-                throw new InvalidOperationException("Publishing requires the sealed content digest.");
+                throw new InvalidOperationException("Publication and blocked transfers require the sealed content digest.");
             }
+            if (next == TransferJournalState.Blocked &&
+                (blockedEvidence is null || blockedEvidence.PolicyVersion <= 0))
+                throw new InvalidOperationException("A blocked transfer needs a positive policy version.");
 
+            IReadOnlyList<TransferJournalStateChange> history = next == current.State
+                ? current.StateHistory : AppendState(current, next);
+            DateTimeOffset updatedAtUtc = next == current.State
+                ? current.UpdatedAtUtc : history.Count == 0
+                    ? DateTimeOffset.UtcNow : history[^1].OccurredAtUtc;
             var updated = current with
             {
                 State = next,
                 Sha256Hex = digest,
                 SealedOnce = current.SealedOnce || next == TransferJournalState.Sealed,
-                UpdatedAtUtc = DateTimeOffset.UtcNow
+                UpdatedAtUtc = updatedAtUtc,
+                StateHistory = history,
+                BlockedPolicyVersion = next == TransferJournalState.Blocked
+                    ? blockedEvidence?.PolicyVersion ?? throw new InvalidOperationException(
+                        "A blocked transfer needs its policy version.")
+                    : current.BlockedPolicyVersion,
+                JustificationExpiresAtUtc = next == TransferJournalState.Blocked
+                    ? blockedEvidence?.JustificationExpiresAtUtc
+                    : current.JustificationExpiresAtUtc,
+                JustificationWindowClosed = next == TransferJournalState.Blocked
+                    ? blockedEvidence?.WindowClosed ?? throw new InvalidOperationException(
+                        "A blocked transfer needs its justification window state.")
+                    : closeJustificationWindow ? true
+                    : current.JustificationWindowClosed,
+                HandbackState = next == TransferJournalState.Blocked
+                    ? StagedHandbackState.NotAttempted : current.HandbackState,
+                HandbackPath = next == TransferJournalState.Blocked ? null : current.HandbackPath,
+                HandbackLength = next == TransferJournalState.Blocked ? null : current.HandbackLength,
+                HandbackFailureReason = next == TransferJournalState.Blocked ? null : current.HandbackFailureReason,
+                HandbackLastAttemptAtUtc = next == TransferJournalState.Blocked
+                    ? null : current.HandbackLastAttemptAtUtc,
+                StageDeleted = next == TransferJournalState.Blocked ? false : current.StageDeleted,
+                StageCleanupStarted = next == TransferJournalState.Blocked ? false : current.StageCleanupStarted
             };
             await ReplaceAsync(ManifestPath(transferId), updated, cancellationToken)
                 .ConfigureAwait(false);
@@ -330,14 +427,19 @@ public sealed class StagedTransferJournal
                 !string.Equals(current.Transfer.StagePath, Path.GetFullPath(stagePath),
                     StringComparison.OrdinalIgnoreCase) || current.PendingRename is not null)
                 throw new IOException("The seal does not identify an available version owned by this writer.");
+            if (current.StageCleanupStarted || current.StageDeleted)
+                throw new IOException("The staged version is being cleaned up or has already been removed.");
             if (current.SealedOnce) return current;
             if (current.State is not (TransferJournalState.Allocated or TransferJournalState.Unsealed))
                 throw new IOException("The version cannot be sealed from its current state.");
+            IReadOnlyList<TransferJournalStateChange> history =
+                AppendState(current, TransferJournalState.Sealed);
             var updated = current with
             {
                 State = TransferJournalState.Sealed,
                 SealedOnce = true,
-                UpdatedAtUtc = DateTimeOffset.UtcNow
+                UpdatedAtUtc = history.Count == 0 ? DateTimeOffset.UtcNow : history[^1].OccurredAtUtc,
+                StateHistory = history
             };
             await ReplaceAsync(ManifestPath(id), updated, token).ConfigureAwait(false);
             return updated;
@@ -356,11 +458,14 @@ public sealed class StagedTransferJournal
             var current = await ReadCoreAsync(id, token).ConfigureAwait(false);
             if (current.Transfer.ProcessId != ownerProcessId)
                 throw new IOException("The staged version belongs to another writer.");
+            if (current.StageCleanupStarted || current.StageDeleted)
+                throw new IOException("The staged version is being cleaned up or has already been removed.");
             var pending = new StagedRename(transactionId, destination, sealedVersion);
             if (current.PendingRename == pending) return current;
             if (current.PendingRename is not null || current.LastRenameTransactionId == transactionId ||
                 current.State is TransferJournalState.Inspecting or
-                    TransferJournalState.Approved or TransferJournalState.Publishing)
+                    TransferJournalState.Approved or TransferJournalState.Publishing ||
+                (current.State == TransferJournalState.Blocked && !current.JustificationWindowClosed))
                 throw new IOException("The staged version is busy.");
             if (sealedVersion != current.SealedOnce)
                 throw new IOException("The kernel and journal disagree about the version seal.");
@@ -418,6 +523,10 @@ public sealed class StagedTransferJournal
                 tombstones = new StagedNameTombstone(current.Transfer.DestinationPath,
                     checked(current.DestinationGeneration + 1), tombstones);
             }
+            bool stateChanged = commit && pending.SealedVersion &&
+                current.State != TransferJournalState.Sealed;
+            IReadOnlyList<TransferJournalStateChange> history = stateChanged
+                ? AppendState(current, TransferJournalState.Sealed) : current.StateHistory;
             var updated = current with
             {
                 Transfer = commit ? current.Transfer with { DestinationPath = destination } : current.Transfer,
@@ -429,7 +538,9 @@ public sealed class StagedTransferJournal
                 LastRenameTransactionId = transactionId,
                 LastRenameDestination = destination,
                 LastRenameCommitted = commit,
-                UpdatedAtUtc = DateTimeOffset.UtcNow
+                UpdatedAtUtc = stateChanged && history.Count > 0
+                    ? history[^1].OccurredAtUtc : DateTimeOffset.UtcNow,
+                StateHistory = history
             };
             await ReplaceAsync(ManifestPath(id), updated, token).ConfigureAwait(false);
             return updated;
@@ -450,13 +561,180 @@ public sealed class StagedTransferJournal
             }
 
             var entry = await ReadAsync(id, cancellationToken).ConfigureAwait(false);
-            if (entry.PendingRename is not null || entry.State != TransferJournalState.Released)
+            bool releaseCleanupPending = entry.State == TransferJournalState.Released &&
+                entry.HandbackState == StagedHandbackState.Verified &&
+                entry.JustificationWindowClosed && !entry.StageDeleted;
+            if (entry.PendingRename is not null || entry.State != TransferJournalState.Released || releaseCleanupPending)
             {
                 entries.Add(entry);
             }
         }
 
         return entries;
+    }
+
+    public async Task<TransferJournalEntry> BeginHandbackAttemptAsync(Guid id,
+        CancellationToken token)
+    {
+        await _gate.WaitAsync(token).ConfigureAwait(false);
+        try
+        {
+            var current = await ReadCoreAsync(id, token).ConfigureAwait(false);
+            if (current.State != TransferJournalState.Blocked || current.StageCleanupStarted ||
+                current.HandbackState == StagedHandbackState.Verified)
+                throw new IOException("The blocked version is not available for hand-back.");
+            var updated = current with
+            {
+                HandbackState = StagedHandbackState.Copying,
+                HandbackFailureReason = null,
+                HandbackLastAttemptAtUtc = DateTimeOffset.UtcNow,
+                UpdatedAtUtc = DateTimeOffset.UtcNow
+            };
+            await ReplaceAsync(ManifestPath(id), updated, token).ConfigureAwait(false);
+            return updated;
+        }
+        finally { _gate.Release(); }
+    }
+
+    public async Task<TransferJournalEntry> CompleteHandbackAsync(Guid id,
+        string? verifiedPath, long? verifiedLength, string? failureReason, CancellationToken token)
+    {
+        bool verified = verifiedPath is not null;
+        if (verified == (failureReason is not null) || verified != verifiedLength.HasValue ||
+            (verifiedLength is < 0))
+            throw new ArgumentException("Supply either a verified path or a failure reason.");
+        if (verified) RequireManifestPath(verifiedPath);
+        if (failureReason is { Length: > 256 }) failureReason = failureReason[..256];
+
+        await _gate.WaitAsync(token).ConfigureAwait(false);
+        try
+        {
+            var current = await ReadCoreAsync(id, token).ConfigureAwait(false);
+            if (current.State != TransferJournalState.Blocked || current.StageCleanupStarted)
+                throw new IOException("The blocked version is no longer available for hand-back.");
+            var updated = current with
+            {
+                HandbackState = verified ? StagedHandbackState.Verified : StagedHandbackState.Failed,
+                HandbackPath = verifiedPath,
+                HandbackLength = verifiedLength,
+                HandbackFailureReason = failureReason,
+                UpdatedAtUtc = DateTimeOffset.UtcNow
+            };
+            await ReplaceAsync(ManifestPath(id), updated, token).ConfigureAwait(false);
+            return updated;
+        }
+        finally { _gate.Release(); }
+    }
+
+    /// <summary>
+    /// Permanently invalidates a previously verified hand-back after recovery
+    /// or cleanup detects a missing, changed, or unlockable returned file.
+    /// The closed window and Failed marker prevent automatic recopy loops.
+    /// </summary>
+    public async Task<(TransferJournalEntry Entry, bool Invalidated)> InvalidateHandbackAsync(Guid id,
+        string failureReason, CancellationToken token)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(failureReason);
+        if (failureReason.Length > 256) failureReason = failureReason[..256];
+        await _gate.WaitAsync(token).ConfigureAwait(false);
+        try
+        {
+            var current = await ReadCoreAsync(id, token).ConfigureAwait(false);
+            if (current.State is not (TransferJournalState.Blocked or TransferJournalState.Released))
+                throw new IOException("The transfer is not eligible for hand-back invalidation.");
+            if (current.HandbackState == StagedHandbackState.Failed) return (current, false);
+            if (current.HandbackState != StagedHandbackState.Verified)
+                throw new IOException("Only a verified hand-back can be invalidated.");
+            var updated = current with
+            {
+                HandbackState = StagedHandbackState.Failed,
+                HandbackPath = null,
+                HandbackLength = null,
+                HandbackFailureReason = failureReason,
+                JustificationWindowClosed = true,
+                StageCleanupStarted = false,
+                UpdatedAtUtc = DateTimeOffset.UtcNow
+            };
+            await ReplaceAsync(ManifestPath(id), updated, token).ConfigureAwait(false);
+            return (updated, true);
+        }
+        finally { _gate.Release(); }
+    }
+
+    public async Task<TransferJournalEntry> CloseJustificationWindowAsync(Guid id,
+        DateTimeOffset nowUtc, CancellationToken token, bool force = false)
+    {
+        if (nowUtc.Offset != TimeSpan.Zero) throw new ArgumentException("Time must be UTC.", nameof(nowUtc));
+        await _gate.WaitAsync(token).ConfigureAwait(false);
+        try
+        {
+            var current = await ReadCoreAsync(id, token).ConfigureAwait(false);
+            if (current.State != TransferJournalState.Blocked || current.JustificationWindowClosed ||
+                (!force && current.JustificationExpiresAtUtc is { } expiry && expiry > nowUtc)) return current;
+            var updated = current with { JustificationWindowClosed = true, UpdatedAtUtc = nowUtc };
+            await ReplaceAsync(ManifestPath(id), updated, token).ConfigureAwait(false);
+            return updated;
+        }
+        finally { _gate.Release(); }
+    }
+
+    public async Task<TransferJournalEntry> TryBeginStageCleanupAsync(Guid id,
+        CancellationToken token)
+    {
+        await _gate.WaitAsync(token).ConfigureAwait(false);
+        try
+        {
+            var current = await ReadCoreAsync(id, token).ConfigureAwait(false);
+            if (current.State is not (TransferJournalState.Blocked or TransferJournalState.Released) ||
+                current.PendingRename is not null ||
+                current.HandbackState != StagedHandbackState.Verified ||
+                !current.JustificationWindowClosed || current.StageDeleted)
+                return current;
+            if (current.StageCleanupStarted) return current;
+            var updated = current with { StageCleanupStarted = true, UpdatedAtUtc = DateTimeOffset.UtcNow };
+            await ReplaceAsync(ManifestPath(id), updated, token).ConfigureAwait(false);
+            return updated;
+        }
+        finally { _gate.Release(); }
+    }
+
+    public async Task<TransferJournalEntry> CompleteStageCleanupAsync(Guid id,
+        CancellationToken token)
+    {
+        await _gate.WaitAsync(token).ConfigureAwait(false);
+        try
+        {
+            var current = await ReadCoreAsync(id, token).ConfigureAwait(false);
+            if (current.State is not (TransferJournalState.Blocked or TransferJournalState.Released) ||
+                current.HandbackState != StagedHandbackState.Verified ||
+                !current.JustificationWindowClosed || !current.StageCleanupStarted)
+                throw new IOException("Staging cleanup prerequisites are not satisfied.");
+            var updated = current with
+            {
+                StageDeleted = true,
+                StageCleanupStarted = false,
+                UpdatedAtUtc = DateTimeOffset.UtcNow
+            };
+            await ReplaceAsync(ManifestPath(id), updated, token).ConfigureAwait(false);
+            return updated;
+        }
+        finally { _gate.Release(); }
+    }
+
+    private static IReadOnlyList<TransferJournalStateChange> AppendState(
+        TransferJournalEntry current, TransferJournalState next)
+    {
+        if (current.StateHistory.Count == 0 && current.State != TransferJournalState.Allocated)
+            return Array.Empty<TransferJournalStateChange>(); // Preserve empty legacy history without inventing a chain.
+        List<TransferJournalStateChange> history = current.StateHistory.Count > 0
+            ? current.StateHistory.ToList()
+            : [new(current.State, current.UpdatedAtUtc.ToUniversalTime())];
+        if (history.Count >= TransferJournalEntry.MaximumStateHistory)
+            throw new InvalidOperationException("Transfer state history is full.");
+        DateTimeOffset timestamp = DateTimeOffset.UtcNow;
+        if (timestamp <= history[^1].OccurredAtUtc) timestamp = history[^1].OccurredAtUtc.AddTicks(1);
+        history.Add(new TransferJournalStateChange(next, timestamp));
+        return history;
     }
 
     // Called under _gate. A single flushed manifest both selects a generation
@@ -705,6 +983,8 @@ public sealed class StagedTransferJournal
         (TransferJournalState.Inspecting, TransferJournalState.Approved) => true,
         (TransferJournalState.Inspecting, TransferJournalState.Blocked) => true,
         (TransferJournalState.Blocked, TransferJournalState.Inspecting) => true,
+        (TransferJournalState.Blocked, TransferJournalState.Sealed) => true,
+        (TransferJournalState.Retained, TransferJournalState.Sealed) => true,
         (TransferJournalState.Inspecting, TransferJournalState.Retained) => true,
         (TransferJournalState.Approved, TransferJournalState.Retained) => true,
         (TransferJournalState.Approved, TransferJournalState.Publishing) => true,
@@ -722,6 +1002,8 @@ public sealed record TransferJournalEntry(
     string? Sha256Hex,
     DateTimeOffset UpdatedAtUtc)
 {
+    public const int MaximumStateHistory = 64;
+    public IReadOnlyList<TransferJournalStateChange> StateHistory { get; init; } = [];
     public bool SealedOnce { get; init; }
     public long DestinationGeneration { get; init; }
     public StagedNameTombstone? NamespaceTombstones { get; init; }
@@ -729,6 +1011,75 @@ public sealed record TransferJournalEntry(
     public ulong LastRenameTransactionId { get; init; }
     public string? LastRenameDestination { get; init; }
     public bool LastRenameCommitted { get; init; }
+    public int BlockedPolicyVersion { get; init; }
+    public DateTimeOffset? JustificationExpiresAtUtc { get; init; }
+    public bool JustificationWindowClosed { get; init; }
+    public StagedHandbackState HandbackState { get; init; }
+    public string? HandbackPath { get; init; }
+    public long? HandbackLength { get; init; }
+    public string? HandbackFailureReason { get; init; }
+    public DateTimeOffset? HandbackLastAttemptAtUtc { get; init; }
+    public bool StageCleanupStarted { get; init; }
+    public bool StageDeleted { get; init; }
+
+    public bool Equals(TransferJournalEntry? other)
+    {
+        if (ReferenceEquals(this, other)) return true;
+        return other is not null && Transfer == other.Transfer && State == other.State &&
+            Sha256Hex == other.Sha256Hex && UpdatedAtUtc == other.UpdatedAtUtc &&
+            StateHistory.SequenceEqual(other.StateHistory) && SealedOnce == other.SealedOnce &&
+            DestinationGeneration == other.DestinationGeneration && NamespaceTombstones == other.NamespaceTombstones &&
+            PendingRename == other.PendingRename && LastRenameTransactionId == other.LastRenameTransactionId &&
+            LastRenameDestination == other.LastRenameDestination && LastRenameCommitted == other.LastRenameCommitted &&
+            BlockedPolicyVersion == other.BlockedPolicyVersion &&
+            JustificationExpiresAtUtc == other.JustificationExpiresAtUtc &&
+            JustificationWindowClosed == other.JustificationWindowClosed && HandbackState == other.HandbackState &&
+            HandbackPath == other.HandbackPath && HandbackLength == other.HandbackLength &&
+            HandbackFailureReason == other.HandbackFailureReason &&
+            HandbackLastAttemptAtUtc == other.HandbackLastAttemptAtUtc &&
+            StageCleanupStarted == other.StageCleanupStarted && StageDeleted == other.StageDeleted;
+    }
+
+    public override int GetHashCode()
+    {
+        var hash = new HashCode();
+        hash.Add(Transfer);
+        hash.Add(State);
+        hash.Add(Sha256Hex);
+        hash.Add(UpdatedAtUtc);
+        foreach (TransferJournalStateChange change in StateHistory) hash.Add(change);
+        hash.Add(SealedOnce);
+        hash.Add(DestinationGeneration);
+        hash.Add(NamespaceTombstones);
+        hash.Add(PendingRename);
+        hash.Add(LastRenameTransactionId);
+        hash.Add(LastRenameDestination);
+        hash.Add(LastRenameCommitted);
+        hash.Add(BlockedPolicyVersion);
+        hash.Add(JustificationExpiresAtUtc);
+        hash.Add(JustificationWindowClosed);
+        hash.Add(HandbackState);
+        hash.Add(HandbackPath);
+        hash.Add(HandbackLength);
+        hash.Add(HandbackFailureReason);
+        hash.Add(HandbackLastAttemptAtUtc);
+        hash.Add(StageCleanupStarted);
+        hash.Add(StageDeleted);
+        return hash.ToHashCode();
+    }
+}
+
+public sealed record TransferJournalStateChange(TransferJournalState State, DateTimeOffset OccurredAtUtc);
+
+public sealed record BlockedTransferEvidence(int PolicyVersion,
+    DateTimeOffset? JustificationExpiresAtUtc, bool WindowClosed);
+
+public enum StagedHandbackState
+{
+    NotAttempted,
+    Copying,
+    Verified,
+    Failed
 }
 
 // Linked records provide value equality across serialization/reply-loss retries.

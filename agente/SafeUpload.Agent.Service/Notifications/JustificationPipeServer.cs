@@ -99,7 +99,9 @@ public sealed class JustificationPipeServer : BackgroundService
 
     private async Task ServeAsync(NamedPipeServerStream pipe, CancellationToken stoppingToken)
     {
-        uint? sessionId = SessionResolver.TryGetClientSessionId(pipe.SafePipeHandle);
+        SessionResolver.ProcessIdentity? client = SessionResolver.TryGetClientIdentity(pipe.SafePipeHandle);
+        uint? sessionId = client?.SessionId;
+        string? clientSid = client?.UserSid.Value;
 
         try
         {
@@ -122,7 +124,7 @@ public sealed class JustificationPipeServer : BackgroundService
             bool accepted = false;
             if (request is not null)
             {
-                try { accepted = await HandleAsync(request, sessionId, stoppingToken).ConfigureAwait(false); }
+                try { accepted = await HandleAsync(request, sessionId, clientSid, stoppingToken).ConfigureAwait(false); }
                 catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { throw; }
                 catch (Exception ex)
                 {
@@ -159,6 +161,7 @@ public sealed class JustificationPipeServer : BackgroundService
     private async Task<bool> HandleAsync(
         JustificationRequest request,
         uint? sessionId,
+        string? clientSid,
         CancellationToken cancellationToken)
     {
         Policy policy = await _policyStore.LoadAsync(cancellationToken).ConfigureAwait(false);
@@ -178,7 +181,7 @@ public sealed class JustificationPipeServer : BackgroundService
             return false;
         }
 
-        if (_staged.TryConsume(request.EventId, sessionId, out var publish))
+        if (_staged.TryConsume(request.EventId, sessionId, clientSid, out var publish))
         {
             if (publish is null) return false;
             await _auditSink.RecordOverrideAsync(request.EventId,
