@@ -471,6 +471,11 @@ try {
         SessionId=[Diagnostics.Process]::GetCurrentProcess().SessionId;BootId=(Get-BootId)}
     if($config.CachedCase){
         $actor.Profile=[Environment]::GetFolderPath([Environment+SpecialFolder]::UserProfile)
+        if([string]::IsNullOrWhiteSpace($actor.Profile)){
+            # Batch-logon tasks run without a loaded profile; the registered profile is what the service uses.
+            $registered=Get-ItemProperty -LiteralPath ('HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList\'+$identity.User.Value) -ErrorAction SilentlyContinue
+            if($null -ne $registered){$actor.Profile=[Environment]::ExpandEnvironmentVariables([string]$registered.ProfileImagePath)}
+        }
         if([string]::IsNullOrWhiteSpace($actor.Profile)){throw 'Actor profile unavailable for hand-back contract H'}
         $handBackRoot=Join-Path $actor.Profile 'SafeUpload\_bloqueados'
         function Get-ActorHandBack {
@@ -1904,7 +1909,11 @@ function Restore-CachedAgent {
         Stop-Service SafeUploadAgent -ErrorAction Stop
         $service.WaitForStatus([ServiceProcess.ServiceControllerStatus]::Stopped,[TimeSpan]::FromSeconds(30))
     }
-    if($state.CachedAgent.ServiceCreated){& sc.exe delete SafeUploadAgent | Out-Host;if($LASTEXITCODE -ne 0){throw 'C01 service removal failed'}}
+    if($state.CachedAgent.ServiceCreated){
+        & sc.exe delete SafeUploadAgent | Out-Host;$deleteExit=$LASTEXITCODE
+        # 1060: already gone; 1072: already marked for deletion (removed when the last handle closes).
+        if($deleteExit -notin @(0,1060,1072)){throw ('C01 service removal failed: sc.exe '+$deleteExit)}
+    }
     else{Restore-StagedAgentService 'SafeUploadAgent' 'HKLM:\SYSTEM\CurrentControlSet\Services\SafeUploadAgent' $state.CachedAgent.OriginalService}
     $state.CachedAgentRestored=$true;Save-State $state $statePath
 }
@@ -2743,6 +2752,16 @@ if($Phase -eq 'Prepare'){
         Add-LocalGroupMember -SID 'S-1-5-32-545' -Member $actorUser
         Set-ActorBatchLogon $state.ActorSid $true
         if(@(Get-LocalGroupMember -SID 'S-1-5-32-544' | Where-Object SID -eq $user.SID).Count -ne 0){throw 'Actor administrator membership'}
+        if($cachedCase){
+            # A batch-logon task gets no loaded profile (run c01h: empty UserProfile folder), but hand-back
+            # contract H needs the profile a real user has after first logon. Create it explicitly; the
+            # actor-profile restoration step removes it.
+            if(-not ('SUProfile' -as [type])){Add-Type -TypeDefinition 'using System;using System.Runtime.InteropServices;using System.Text;public static class SUProfile{[DllImport("userenv.dll",CharSet=CharSet.Unicode)]public static extern int CreateProfile(string sid,string user,StringBuilder path,uint cch);}'}
+            $profilePath=[Text.StringBuilder]::new(260)
+            $hr=[SUProfile]::CreateProfile($state.ActorSid,$actorUser,$profilePath,260)
+            if($hr -ne 0){throw ('Actor profile creation failed: 0x'+$hr.ToString('X8'))}
+            $state.ActorProfile=$profilePath.ToString()
+        }
         & icacls.exe $stateDirectory /grant ('*'+$state.ActorSid+':RX') | Out-Host
         if($LASTEXITCODE -ne 0){throw 'Actor traversal ACL failed'}
         & icacls.exe $actorDirectory /grant ('*'+$state.ActorSid+':(OI)(CI)M') | Out-Host
