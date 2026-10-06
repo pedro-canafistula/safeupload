@@ -150,9 +150,10 @@ public sealed class NotificationPipeServer : BackgroundService
     {
         // A sessao do aplicativo que conectou, para nao entregar a uma sessao
         // o bloqueio ocorrido em outra.
-        var sessionId = SessionResolver.TryGetClientSessionId(pipe.SafePipeHandle);
+        SessionResolver.ProcessIdentity? client = SessionResolver.TryGetClientIdentity(pipe.SafePipeHandle);
+        uint? sessionId = client?.SessionId;
 
-        using var subscription = _hub.Subscribe(sessionId);
+        using var subscription = _hub.Subscribe(sessionId, client?.UserSid.Value);
 
         try
         {

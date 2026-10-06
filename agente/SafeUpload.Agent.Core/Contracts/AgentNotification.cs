@@ -39,7 +39,11 @@ public sealed record TransferNotification(
     string FileName,
     TransferPhase Phase,
     IReadOnlyList<Finding>? Findings = null,
-    bool OverrideAllowed = false) : AgentNotification
+    bool OverrideAllowed = false,
+    string? PublishedSha256Hex = null,
+    string? HandbackPath = null,
+    bool? HandbackVerified = null,
+    string? SnapshotSha256Hex = null) : AgentNotification
 {
     public const string TypeName = "transfer";
 }

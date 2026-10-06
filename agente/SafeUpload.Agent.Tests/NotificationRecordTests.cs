@@ -21,7 +21,8 @@ public sealed class NotificationRecordTests : IDisposable
         DirectoryPath, NullLogger<NotificationRecord>.Instance, limit, "test/boot", testIdentity: true);
     private static NotificationHub Hub(INotificationRecord record, ILogger<NotificationHub>? logger = null) => new(
         record, logger ?? NullLogger<NotificationHub>.Instance);
-    private static TransferNotification Transfer() => new(Guid.NewGuid(), "fixture.txt", TransferPhase.Released);
+    private static TransferNotification Transfer() => new(Guid.NewGuid(), "fixture.txt",
+        TransferPhase.Released, PublishedSha256Hex: new string('A', 64));
     private List<NotificationRecordEntry> Entries() => new[] { "previous.jsonl", "emissions.jsonl" }
         .SelectMany(name => File.Exists(Path.Combine(DirectoryPath, name))
             ? File.ReadAllLines(Path.Combine(DirectoryPath, name)).Select(s => JsonSerializer.Deserialize<NotificationRecordEntry>(s)!)
@@ -53,6 +54,14 @@ public sealed class NotificationRecordTests : IDisposable
         Assert.NotNull(hub.CurrentStatus);
         Assert.Equal(2, ordering.Count);
         Assert.All(ordering, beforeDelivery => Assert.True(beforeDelivery));
+    }
+
+    [Fact]
+    public void Released_transfer_requires_its_published_digest()
+    {
+        using var record = Record();
+        Assert.Throws<InvalidDataException>(() => record.Append(
+            new TransferNotification(Guid.NewGuid(), "fixture.txt", TransferPhase.Released), null));
     }
 
     [Fact]

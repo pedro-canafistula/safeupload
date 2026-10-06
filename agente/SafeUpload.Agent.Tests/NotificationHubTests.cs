@@ -286,6 +286,33 @@ public class NotificationHubTests
         Assert.True(desconhecida.Reader.TryRead(out _));
     }
 
+    [Fact]
+    public void Staged_blocked_notification_requires_matching_session_and_user_sid()
+    {
+        const string ownerSid = "S-1-5-21-111-222-333-1000";
+        var hub = NotificationTestHub.Create();
+        using var owner = hub.Subscribe(sessionId: 7, userSid: ownerSid);
+        using var otherUserInSameSession = hub.Subscribe(sessionId: 7,
+            userSid: "S-1-5-21-999-888-777-1000");
+        using var otherSessionSameUser = hub.Subscribe(sessionId: 8, userSid: ownerSid);
+        using var unknown = hub.Subscribe(sessionId: null);
+        var blocked = new TransferNotification(Guid.NewGuid(), "report.txt", TransferPhase.Blocked,
+            SnapshotSha256Hex: new string('A', 64));
+
+        hub.Publish(blocked);
+        Assert.False(owner.Reader.TryRead(out _));
+        Assert.False(otherUserInSameSession.Reader.TryRead(out _));
+        Assert.False(otherSessionSameUser.Reader.TryRead(out _));
+        Assert.False(unknown.Reader.TryRead(out _));
+
+        hub.Publish(blocked, targetSessionId: 7, targetUserSid: ownerSid);
+
+        Assert.True(owner.Reader.TryRead(out _));
+        Assert.False(otherUserInSameSession.Reader.TryRead(out _));
+        Assert.False(otherSessionSameUser.Reader.TryRead(out _));
+        Assert.False(unknown.Reader.TryRead(out _));
+    }
+
     /// <summary>Relógio de teste, avançado à mão.</summary>
     private sealed class RelogioControlado(DateTimeOffset inicio) : TimeProvider
     {

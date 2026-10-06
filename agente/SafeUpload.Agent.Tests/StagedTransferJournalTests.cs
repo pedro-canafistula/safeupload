@@ -3,6 +3,7 @@ using System.Security.AccessControl;
 using System.Security.Principal;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Text.Json.Nodes;
 using SafeUpload.Agent.Core.Domain;
 using SafeUpload.Agent.Service.Interception;
 
@@ -247,7 +248,8 @@ public sealed class StagedTransferJournalTests : IDisposable
         await journal.TransitionAsync(first.TransferId, TransferJournalState.Sealed,
             TransferJournalState.Inspecting, null, CancellationToken.None);
         await journal.TransitionAsync(first.TransferId, TransferJournalState.Inspecting,
-            TransferJournalState.Blocked, new string('A', 64), CancellationToken.None);
+            TransferJournalState.Blocked, new string('A', 64), CancellationToken.None,
+            blockedEvidence: new BlockedTransferEvidence(1, null, WindowClosed: true));
         var second = first with { TransferId = Guid.NewGuid(), StagePath = first.StagePath + ".next" };
         var next = await journal.CreateAsync(second, CancellationToken.None);
         Assert.True(next.DestinationGeneration > created.DestinationGeneration);
@@ -260,6 +262,26 @@ public sealed class StagedTransferJournalTests : IDisposable
             TransferJournalState.Blocked, TransferJournalState.Inspecting, null, CancellationToken.None));
         var third = await Journal().CreateAsync(second with { TransferId = Guid.NewGuid() }, CancellationToken.None);
         Assert.True(third.DestinationGeneration > next.DestinationGeneration + 1);
+    }
+
+    [Fact]
+    public async Task Blocked_transition_requires_a_positive_policy_version()
+    {
+        var journal = Journal();
+        var transfer = Transfer();
+        await journal.CreateAsync(transfer, CancellationToken.None);
+        await journal.SealAsync(transfer.TransferId, transfer.ProcessId, transfer.StagePath,
+            CancellationToken.None);
+        await journal.TransitionAsync(transfer.TransferId, TransferJournalState.Sealed,
+            TransferJournalState.Inspecting, null, CancellationToken.None);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => journal.TransitionAsync(
+            transfer.TransferId, TransferJournalState.Inspecting, TransferJournalState.Blocked,
+            new string('A', 64), CancellationToken.None,
+            blockedEvidence: new BlockedTransferEvidence(0, null, WindowClosed: true)));
+
+        Assert.Equal(TransferJournalState.Inspecting,
+            (await journal.ReadAsync(transfer.TransferId, CancellationToken.None)).State);
     }
 
     [Fact]
@@ -645,5 +667,100 @@ public sealed class StagedTransferJournalTests : IDisposable
             (await journal.ReadAsync(transfer.TransferId, CancellationToken.None)).State);
         Assert.Equal(sameContent ? approved : "changed by another writer",
             await File.ReadAllTextAsync(transfer.DestinationPath));
+    }
+
+    [Fact]
+    public async Task State_history_round_trips_the_release_timeline_in_utc_order()
+    {
+        var transfer = Transfer();
+        var journal = Journal();
+        await journal.CreateAsync(transfer, CancellationToken.None);
+        await journal.TransitionAsync(transfer.TransferId, TransferJournalState.Allocated,
+            TransferJournalState.Sealed, null, CancellationToken.None);
+        await journal.TransitionAsync(transfer.TransferId, TransferJournalState.Sealed,
+            TransferJournalState.Inspecting, null, CancellationToken.None);
+        await journal.TransitionAsync(transfer.TransferId, TransferJournalState.Inspecting,
+            TransferJournalState.Approved, null, CancellationToken.None);
+        string digest = new('A', 64);
+        await journal.TransitionAsync(transfer.TransferId, TransferJournalState.Approved,
+            TransferJournalState.Publishing, digest, CancellationToken.None);
+        await journal.TransitionAsync(transfer.TransferId, TransferJournalState.Publishing,
+            TransferJournalState.Released, null, CancellationToken.None);
+
+        var restored = await Journal().ReadAsync(transfer.TransferId, CancellationToken.None);
+        Assert.Equal(new[]
+        {
+            TransferJournalState.Allocated, TransferJournalState.Sealed,
+            TransferJournalState.Inspecting, TransferJournalState.Approved,
+            TransferJournalState.Publishing, TransferJournalState.Released
+        }, restored.StateHistory.Select(change => change.State));
+        Assert.All(restored.StateHistory, change => Assert.Equal(TimeSpan.Zero, change.OccurredAtUtc.Offset));
+        Assert.True(restored.StateHistory.Zip(restored.StateHistory.Skip(1),
+            (left, right) => right.OccurredAtUtc > left.OccurredAtUtc).All(static monotone => monotone));
+    }
+
+    [Fact]
+    public async Task Older_manifest_without_state_history_remains_readable_and_migrates_on_next_transition()
+    {
+        var transfer = Transfer();
+        var journal = Journal();
+        await journal.CreateAsync(transfer, CancellationToken.None);
+        string manifest = Path.Combine(_workspace.Root, "journal", transfer.TransferId.ToString("N") + ".json");
+        JsonObject document = JsonNode.Parse(await File.ReadAllTextAsync(manifest))!.AsObject();
+        document.Remove("StateHistory");
+        await File.WriteAllTextAsync(manifest, document.ToJsonString());
+
+        var legacy = await journal.ReadAsync(transfer.TransferId, CancellationToken.None);
+        Assert.Empty(legacy.StateHistory);
+        await journal.TransitionAsync(transfer.TransferId, TransferJournalState.Allocated,
+            TransferJournalState.Sealed, null, CancellationToken.None);
+        var migrated = await journal.ReadAsync(transfer.TransferId, CancellationToken.None);
+        Assert.Equal(new[] { TransferJournalState.Allocated, TransferJournalState.Sealed },
+            migrated.StateHistory.Select(change => change.State));
+    }
+
+    [Theory]
+    [InlineData("nonmonotone")]
+    [InlineData("wrong-final-state")]
+    [InlineData("invalid-seed")]
+    [InlineData("too-long")]
+    public async Task Invalid_state_history_is_rejected(string corruption)
+    {
+        var transfer = Transfer();
+        var journal = Journal();
+        TransferJournalEntry entry = await journal.CreateAsync(transfer, CancellationToken.None);
+        entry = corruption switch
+        {
+            "nonmonotone" => entry with
+            {
+                StateHistory =
+                [
+                    new(TransferJournalState.Allocated, entry.UpdatedAtUtc),
+                    new(TransferJournalState.Allocated, entry.UpdatedAtUtc)
+                ]
+            },
+            "wrong-final-state" => entry with
+            {
+                StateHistory = [new(TransferJournalState.Sealed, entry.UpdatedAtUtc)]
+            },
+            "invalid-seed" => entry with
+            {
+                State = TransferJournalState.Released,
+                Sha256Hex = new string('A', 64),
+                SealedOnce = true,
+                StateHistory = [new(TransferJournalState.Released, entry.UpdatedAtUtc)]
+            },
+            "too-long" => entry with
+            {
+                StateHistory = Enumerable.Range(0, TransferJournalEntry.MaximumStateHistory + 1)
+                    .Select(index => new TransferJournalStateChange(TransferJournalState.Allocated,
+                        entry.UpdatedAtUtc.AddTicks(index))).ToArray()
+            },
+            _ => throw new ArgumentException(corruption)
+        };
+        string manifest = Path.Combine(_workspace.Root, "journal", transfer.TransferId.ToString("N") + ".json");
+        await File.WriteAllTextAsync(manifest, System.Text.Json.JsonSerializer.Serialize(entry));
+        await Assert.ThrowsAsync<InvalidDataException>(() => journal.ReadAsync(
+            transfer.TransferId, CancellationToken.None));
     }
 }

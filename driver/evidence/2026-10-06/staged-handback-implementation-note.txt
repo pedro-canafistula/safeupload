@@ -1,0 +1,84 @@
+SafeUpload staged blocked hand-back implementation note
+Date: 2026-10-06
+Worktree: wt/handback (base 24c3c4cc)
+
+Security changes in this round
+------------------------------
+At StageAllocate, the service opens the requesting PID with
+PROCESS_QUERY_LIMITED_INFORMATION, reads TokenUser and TokenSessionId, and
+records the process creation FILETIME with the requestor SID in the transfer
+manifest. Failure to read that identity denies allocation. The minifilter
+checks the SID and process creation time again when reusing a staged version
+or committed tombstone. Hand-back, recovery, cleanup, and all staged
+notification routing require the current WTS session SID to equal the
+persisted requestor SID. Missing or mismatched identity retains staging,
+records a retained audit outcome, and suppresses notification delivery.
+Justification and notification pipe clients are identified by the connected
+pipe client's PID and process token; a justification also has to match both
+the recorded session and SID. Manifests without a requestor SID remain
+readable but cannot trigger automatic hand-back or notification delivery.
+
+The hand-back file and its two private directories have an explicit SYSTEM
+owner and a protected DACL with only FILE_GENERIC_READ for the profile user
+and FullControl for SYSTEM. The existing private-directory ACL is upgraded
+only when it matches the prior recognized user/SYSTEM ACL. File verification
+checks the SYSTEM owner, exact protected DACL, non-reparse type, one hard link,
+length, and SHA-256. Recovery and cleanup reopen the canonical path through
+the same handle-relative verified profile walk. The verified file handle is
+held with sharing that permits reads but denies write and delete while staging
+is removed. Missing, changed, or unlockable verified copies become Failed,
+are audited once, retain staging, and are never recopied automatically.
+
+Policy destinations and registered sync roots are resolved component by
+component from an opened volume root. The comparison uses volume serial and
+the complete 128-bit file ID, including for path aliases. The destination's
+actual opened ancestor handles are checked again after directory creation.
+An unresolved policy scope, profile, user hive, or registered sync root fails
+closed. Conventional OneDrive, Dropbox, and Google Drive profile folders,
+per-user provider registrations, and machine SyncRootManager registrations
+are checked. Providers that do not register roots through those sources
+cannot be identified by this implementation.
+
+Staged Blocked notifications are never broadcast. The hub delivers staged
+notifications only to a subscriber whose session and authenticated pipe-token
+SID match the transfer SID. A missing owner suppresses the event; the blocked
+and retained audit outcomes are still written through the inspection audit
+sink.
+
+Hand-back temporary files use a constrained per-transfer service prefix.
+Every uncommitted failure marks the opened file for deletion by handle, with a
+FILE_DISPOSITION_INFO_EX path and a legacy handle-based fallback. Failed
+transfers also allow recovery to remove only that exact service temporary via
+a verified directory handle; cleanup never overwrites a final copy.
+
+Nonempty journal histories must start at Allocated and finish at the current
+state; empty legacy histories remain readable. TransferJournalEntry equality
+and hashing compare history entries by sequence contents so serialization does
+not change record equality. The blocked state continues to require a positive
+policy version because its durable outcome must identify the policy that
+blocked the bytes.
+
+Windows build failures and their fixes
+--------------------------------------
+The prior normal Debug run reported 333/341 passing tests. Five journal and
+allocator equality failures came from reference equality on the new history
+list; value-based sequence equality/hash now preserves the existing assertions.
+The blocked-transition fixture omitted BlockedTransferEvidence.PolicyVersion;
+the positive-version invariant was kept and the fixture now supplies version
+1. Two hand-back tests failed to open the volume root because the root open
+requested more access than the elevated admin test account had. OpenVolumeRoot
+now asks only for FILE_READ_ATTRIBUTES, FILE_TRAVERSE, and SYNCHRONIZE while
+retaining backup semantics and FILE_OPEN_REPARSE_POINT.
+
+Verification status
+-------------------
+Coverage was added or adjusted for SID and session mismatch, legacy manifests
+without a SID, authenticated notification routing/no broadcast, read-only
+hand-back ACLs, changed-copy re-verification before cleanup, temporary deletion
+on failure, identity aliases and protected/sync-root refusal, history seeds,
+and requestor identity persistence. These current changes have not been
+compiled or run here because this environment has no .NET SDK or Windows.
+The four-profile Windows build, zero warnings/errors, full test suite, actual
+NT handle-relative behavior and ACL enforcement under a second user, process
+token/PID behavior, sync-provider registry layouts, and restart recovery all
+remain for the orchestrator to verify.

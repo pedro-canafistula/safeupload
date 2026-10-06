@@ -128,7 +128,7 @@ public partial class App : System.Windows.Application
                 break;
             case TransferPhase.Released:
                 _tray.ShowBalloon("SafeUpload: envio concluído",
-                    $"{fileName} foi analisado e enviado ao destino.");
+                    $"{fileName} foi analisado e enviado ao destino. SHA-256: {transfer.PublishedSha256Hex ?? "indisponível"}");
                 break;
             case TransferPhase.Retained:
                 _tray.ShowBalloon("SafeUpload: envio pendente",
@@ -150,11 +150,15 @@ public partial class App : System.Windows.Application
         var findings = transfer.Findings ?? [];
         if (_notification is { IsLoaded: true })
         {
-            _notification.Add(transfer.FileName, findings, eventId, quarantined: true, staged: true);
+            _notification.Add(transfer.FileName, findings, eventId, quarantined: true, staged: true,
+                handbackPath: transfer.HandbackPath, handbackVerified: transfer.HandbackVerified,
+                snapshotSha256Hex: transfer.SnapshotSha256Hex);
             return;
         }
         _notification = new BlockNotificationWindow(transfer.FileName, findings,
-            eventId, quarantined: true, staged: true);
+            eventId, quarantined: true, staged: true,
+            handbackPath: transfer.HandbackPath, handbackVerified: transfer.HandbackVerified,
+            snapshotSha256Hex: transfer.SnapshotSha256Hex);
         _notification.Closed += (_, _) => _notification = null;
         if (_panel is { IsVisible: true }) _notification.Owner = _panel;
         _notification.Show();

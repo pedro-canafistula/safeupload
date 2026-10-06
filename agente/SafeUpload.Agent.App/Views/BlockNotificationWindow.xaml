@@ -119,6 +119,7 @@
                 <TextBlock x:Name="QuarantineText"
                            Style="{StaticResource MutedText}"
                            Text="O arquivo foi retirado da pasta monitorada e guardado em SafeUpload\_bloqueados na sua pasta de usuário."
+                           TextWrapping="Wrap"
                            Margin="0,0,0,16" />
 
                 <StackPanel x:Name="JustificationPanel"
