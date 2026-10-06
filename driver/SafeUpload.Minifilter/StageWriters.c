@@ -1262,12 +1262,15 @@ VOID SafeUploadStageWritersInstanceContextFreed(
     }
 }
 
-static BOOLEAN StageWritersExcludedObject(_In_ PFILE_OBJECT FileObject)
+static BOOLEAN StageWritersExcludedObject(_In_ PFLT_CALLBACK_DATA Data, _In_ PFILE_OBJECT FileObject)
 {
     /* Paging files do not support stream contexts, and volume handles are outside the
-     * regular-file writer registry. FsRtlIsPagingFile can return FALSE in post-create,
-     * so activation also checks the reopened stream after the file system marks it. */
-    return FlagOn(FileObject->Flags, FO_VOLUME_OPEN) || FsRtlIsPagingFile(FileObject);
+     * regular-file writer registry. FsRtlIsPagingFile can return FALSE in post-create
+     * (run c01e tracked swapfile.sys), so the create's SL_OPEN_PAGING_FILE flag, which
+     * only the memory manager sets, is checked too; activation also checks the
+     * reopened stream after the file system marks it. */
+    return FlagOn(FileObject->Flags, FO_VOLUME_OPEN) ||
+        FlagOn(Data->Iopb->OperationFlags, SL_OPEN_PAGING_FILE) || FsRtlIsPagingFile(FileObject);
 }
 
 static VOID StageWritersCountExcludedCreate(_In_ PFILE_OBJECT FileObject)
@@ -1352,7 +1355,7 @@ NTSTATUS SafeUploadStageWritersReserveCreate(_In_ PFLT_CALLBACK_DATA Data,
     *Required = FALSE;
     if (!StageWriterCreateCanMutate(Data) || fileObject == NULL ||
         FlagOn(Data->Iopb->Parameters.Create.Options, FILE_DIRECTORY_FILE)) return STATUS_SUCCESS;
-    if (StageWritersExcludedObject(fileObject)) {
+    if (StageWritersExcludedObject(Data, fileObject)) {
         StageWritersCountExcludedCreate(fileObject);
         return STATUS_SUCCESS;
     }
@@ -2320,7 +2323,7 @@ NTSTATUS SafeUploadStageWritersPostCreate(
         SafeUploadStageWritersCancelReservation(reservation);
         return STATUS_SUCCESS; /* excluded objects are simply not tracked; the legacy post-create still runs */
     }
-    if (StageWritersExcludedObject(fileObject)) {
+    if (StageWritersExcludedObject(Data, fileObject)) {
         StageWritersCountExcludedCreate(fileObject);
         SafeUploadStageWritersCancelReservation(reservation);
         return STATUS_SUCCESS; /* excluded objects are simply not tracked; the legacy post-create still runs */
@@ -4289,9 +4292,15 @@ __declspec(noinline) static VOID StageRegistryRecordClassificationResult(
 
 static BOOLEAN StageRegistryOpenByIdMeansNoName(_In_ NTSTATUS Status)
 {
-    /* DELETE_PENDING alone does not prove that the namespace link is gone. */
+    /* DELETE_PENDING alone does not prove that the namespace link is gone.
+     * NTFS (the only MVP file system) answers an open by a file reference whose MFT
+     * record is free or reused with STATUS_INVALID_PARAMETER: verified on 19045,
+     * OpenFileById of a live file succeeds and of the same ID after delete fails 87.
+     * Only the by-ID opens consult this predicate, and their request form succeeds
+     * for live entries, so the status means the recorded stream no longer exists. */
     return Status == STATUS_FILE_DELETED || Status == STATUS_OBJECT_NAME_NOT_FOUND ||
-        Status == STATUS_OBJECT_PATH_NOT_FOUND || Status == STATUS_NO_SUCH_FILE;
+        Status == STATUS_OBJECT_PATH_NOT_FOUND || Status == STATUS_NO_SUCH_FILE ||
+        Status == STATUS_INVALID_PARAMETER;
 }
 
 /* P0-4: every expansion decision is based on the complete PASSIVE-level NTFS link list.
