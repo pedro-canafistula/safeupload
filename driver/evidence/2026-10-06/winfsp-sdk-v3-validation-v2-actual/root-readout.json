@@ -1,0 +1,25 @@
+{
+  "Verdict": "RETAINED_SDK_FULL_INVENTORY_VALIDATED_NOT_RUNTIME_QUALIFIED",
+  "ActualRemoteExitCode": 0,
+  "SDKRoot": "C:\\Users\\vika\\Documents\\SafeUploadWinFspSdk-20261006-ef9bea72fc3545d985354fa5a939179b\\DYNAMIC",
+  "OutputFileCount": 112,
+  "OutputDirectoryCount": 31,
+  "PriorExtractionFailureRetained": true,
+  "MSIExtractionRepeated": false,
+  "BuildActorsBeforeAfterEmpty": true,
+  "WindowsInstallerNaturallyStopped": true,
+  "SourceMSIBeforeAfterPublisherValid": true,
+  "RuntimeInstalled": false,
+  "RuntimeQualified": false,
+  "MappingPrivacyQualified": false,
+  "Pins": {
+    "driver/evidence/2026-10-06/winfsp-sdk-v3-validation-v2-actual/stdout.json": "8e3eb233fea442d9cbcec37f6d4b32e24f83098437a6df8a1a5f49389046a131",
+    "driver/evidence/2026-10-06/winfsp-sdk-v3-validation-v2-actual/stderr.txt": "5fac1e349309e76e42f64381996245ccfa5a50f54c11a4f1c7d0b5617b426a34",
+    "driver/evidence/2026-10-06/winfsp-sdk-v3-validation-v2-actual/exit.json": "91b6fc8c249710a051881dca9330b7842db48f932b6304e6371b79f65c643d7f",
+    "driver/evidence/2026-10-06/winfsp-sdk-v3-validation-v2-actual/caller.ps1": "7636c06de09471ea27d708b359d208abee6ed232a04146c0cd39396c10083fc1",
+    "driver/evidence/2026-10-06/winfsp-sdk-v3-validation-v2-actual/execution-inputs.json": "bedbe99d34e72b1fcd33038f9f90f89d8074b98d689e6cb59842c95fba705aa2",
+    "driver/evidence/2026-10-06/winfsp-sdk-v3-retained-validation-v2-review-luna.txt": "a3205c893be5cb013c5bda8b635f71606dd78cec1146492bfccbd1bfa24d29dd",
+    "driver/evidence/2026-10-06/winfsp-sdk-v3-validation-v2-ps51-parse/root-readout.json": "a04470e77f0f589cc0916d32e41dae6a186ed29b30d18c1916441462bd02a172",
+    "driver/evidence/2026-10-06/winfsp-sdk-v3-retained-validation-v2/source-manifest-v2.sha256": "58821767781d5db0e7e111c9e99d84d8e26e702e38f0ae181ead34c3ff789340"
+  }
+}

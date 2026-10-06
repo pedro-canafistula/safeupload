@@ -1,0 +1,61 @@
+{
+  "Mode": "ValidateOnlyExistingRetainedTargetV2",
+  "RunGuid": "ef9bea72fc3545d985354fa5a939179b",
+  "ValidatorSourceSHA256": "1e425c6f2314499b9d5ce7c075359bcc49a8b7a1c7ef85c5b3c8ac6288cb3f4e",
+  "Supersedes": {
+    "Package": "winfsp-sdk-v3-retained-validation-v1",
+    "ValidatorSourceSHA256": "acbd5aa42868c989f7f93040f8427cc5e127d090142e383fbfef0b4893d3da94",
+    "Reason": "V1 mutated directory-snapshot state through $script scope; explicit IDictionary parameter avoids dynamic-scriptblock scope dependence."
+  },
+  "ExpectedRetainedLogIdentity": "D6632F7F:00070000000DEE4D",
+  "RetainedTargetPath": "C:\\Users\\vika\\Documents\\SafeUploadWinFspSdk-20261006-ef9bea72fc3545d985354fa5a939179b",
+  "RetainedTargetIdentity": "D6632F7F:00060000000DEE49",
+  "RetainedLogPath": "C:\\Users\\vika\\Documents\\SafeUploadWinFspSdk-20261006-ef9bea72fc3545d985354fa5a939179b.msi.log",
+  "RetainedLogBytes": 338400,
+  "RetainedLogSHA256": "46E05B92C953B1D9062E608607CB130DC68EACB327663A8842D4BCA3DDF22159",
+  "SourceMSIIdentity": "D6632F7F:00030000000DEDF1",
+  "SourceMSIBytes": 2207744,
+  "SourceMSISHA256": "2ECB5C89405488A95BBD8A01875E02C48534FD37BBDFD84488F7590464D65944",
+  "ExtractionSourceSHA256": "0e0b17a56c528834c91745fbf0e54661561ae7e62c0acde113982f16e5df41cf",
+  "ExtractionStdoutSHA256": "661c152bf5dfe8d605da06fbd2ae22b599d5e685b88a680cf5de18f1a2397c75",
+  "ExtractionExitSHA256": "7f1ba10d97031722ae486d06bc4299438addcb5b6f3a9779cfd6d6d942ab048b",
+  "ExtractionFailureRootReadoutSHA256": "7a96011cb297b13109f473809e8769318de0c34339f3c160af72f6b6932cdf84",
+  "PostReturnActorDiagnosticStdoutSHA256": "6dddc59ed5787569fded34930fdb6c398f156659f6827b015174951d15ba8451",
+  "RetainedLogIdentityCapture": {
+    "StdoutSHA256": "1b38d2bf332d6cb5dec4fd54a661d6ed5b209d7d79095b5de0e47f774cf401a5",
+    "StderrSHA256": "5fac1e349309e76e42f64381996245ccfa5a50f54c11a4f1c7d0b5617b426a34",
+    "ExitSHA256": "09786a014d5358d3ac90ac8819d45cc441c3911a2330a602d7e01aae1fd3915c",
+    "CallerSHA256": "8b1f49bc9ca37d7c322bff53fd473781258650592216cde39326479f81ac485f",
+    "ActualRemoteExitCode": 0,
+    "ReadOnly": true,
+    "FileHeldReadOnlyShareRead": true
+  },
+  "NaturalDrainCapture": {
+    "StdoutSHA256": "6264c1781b53d83f13a81ea9132e06130b4c9b8ab6540fdf6f38d1f1e9fa37f4",
+    "StderrSHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "ExitSHA256": "09786a014d5358d3ac90ac8819d45cc441c3911a2330a602d7e01aae1fd3915c",
+    "CallerSHA256": "70750509f5ef766c082d1f1d89dd6fe3d146894491485baec9ec0f69c892d204",
+    "ActualRemoteExitCode": 0,
+    "Processes": [],
+    "WindowsInstallerService": {
+      "State": "Stopped",
+      "StartMode": "Manual",
+      "ProcessId": 0,
+      "PathName": "C:\\Windows\\system32\\msiexec.exe /V"
+    },
+    "ServiceConfigurationChanged": false,
+    "ProcessStoppedByUs": false
+  },
+  "RequiredValidationGates": {
+    "BuildActorsBeforeAndAfter": [],
+    "WindowsInstallerServiceBeforeAndAfter": "Stopped/Manual/PID0",
+    "WinFspPackagesDriversServicesBeforeAndAfter": [],
+    "MSIExtractionRepeated": false,
+    "OutputDeleted": false,
+    "ProcessOrServiceStopped": false,
+    "ServiceConfigurationChanged": false,
+    "ExtractedProgramsExecuted": false,
+    "RuntimeQualified": false,
+    "MappingPrivacyQualified": false
+  }
+}

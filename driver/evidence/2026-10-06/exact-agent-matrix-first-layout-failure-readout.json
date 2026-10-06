@@ -1,0 +1,13 @@
+{
+  "UTC": "2026-10-06T15:33:00.108858+00:00",
+  "FailedLabel": "admission-rpc-20261006a",
+  "NormalDebugServiceBuild": "exit=0 warnings=0 errors=0",
+  "MatrixGate": "NOT_PASSED",
+  "Failure": "Root relocated outputs with --artifacts-path outside agente ancestor. Existing source-contract installer test could not locate agente/scripts. PS5.1 native stderr with Stop also interrupted full test logging.",
+  "OriginalTestSource": "agente/SafeUpload.Agent.Tests/InstallSafeUploadAgentScriptTests.cs",
+  "OriginalTestSourceSHA256": "5abee2bfc42260762cd24d9815c23a24a5f3cacfc0c88573a2395626d6ef78fc",
+  "ProductSourceChangedForThisFailure": false,
+  "Correction": "Separate verified full source copy per profile preserving normal bin/obj layout; native command completes and writes TRX before exit/warnings gate; no test discovery workaround or skip.",
+  "FailedArchiveAndLogsRetained": true,
+  "RecoveryStateUnchanged": true
+}

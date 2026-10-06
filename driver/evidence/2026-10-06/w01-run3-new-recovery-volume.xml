@@ -1,0 +1,38 @@
+<volume type='file'>
+  <name>win10-debug.safeupload-w01-run3-ff67c01b-recovery-20261006.qcow2</name>
+  <key>/var/lib/libvirt/images/win10-debug.safeupload-w01-run3-ff67c01b-recovery-20261006.qcow2</key>
+  <capacity unit='bytes'>128849018880</capacity>
+  <allocation unit='bytes'>200704</allocation>
+  <physical unit='bytes'>198528</physical>
+  <target>
+    <path>/var/lib/libvirt/images/win10-debug.safeupload-w01-run3-ff67c01b-recovery-20261006.qcow2</path>
+    <format type='qcow2'/>
+    <permissions>
+      <mode>0600</mode>
+      <owner>0</owner>
+      <group>0</group>
+    </permissions>
+    <timestamps>
+      <atime>1791299985.801092454</atime>
+      <mtime>1791299985.800092456</mtime>
+      <ctime>1791299985.800092456</ctime>
+      <btime>0</btime>
+    </timestamps>
+  </target>
+  <backingStore>
+    <path>/var/lib/libvirt/images/win10-debug.safeupload-w01-run2-fe004c32-recovery-20261006.qcow2</path>
+    <format type='qcow2'/>
+    <permissions>
+      <mode>0600</mode>
+      <owner>958</owner>
+      <group>958</group>
+    </permissions>
+    <timestamps>
+      <atime>1791298210.358230900</atime>
+      <mtime>1791298210.091231563</mtime>
+      <ctime>1791298210.251231165</ctime>
+      <btime>0</btime>
+    </timestamps>
+  </backingStore>
+</volume>
+

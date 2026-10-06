@@ -1,0 +1,82 @@
+{
+  "UTC": "2026-10-06T14:46:04.361289+00:00",
+  "DiskOnlyRecoveryApplied": true,
+  "IndependentFunctionalRestorationVerified": true,
+  "ExactFourMarkerDispositionApplied": true,
+  "DispositionRecord": "driver/recovery-dispositioned/2026-10-06/w01-run2-fe004c32/disposition.json",
+  "DispositionRecordSHA256": "e23b1a8bd2a36f1777c18a254feb20369d28fbdc8171e2f8077f6b64643dec15",
+  "FailedDiskRetained": true,
+  "FailedRAMPreservationProven": false,
+  "W01Verdict": "INCONCLUSIVE",
+  "Phase4": "NOT_QUALIFIED",
+  "Evidence": {
+    "driver/evidence/2026-10-06/w01-run2-disk-only-preexecution.json": {
+      "Bytes": 31620,
+      "SHA256": "4e28b899d7293b803db2cdc06e0e4238d96bb13bcd9aa966ff3c1315463e66cc"
+    },
+    "driver/evidence/2026-10-06/w01-run2-disk-only-recovery-amendment.txt": {
+      "Bytes": 1088,
+      "SHA256": "bdce5f66e668c2c0555798745d5d38d965a3c0439c46d5c7d84bf3344d12937e"
+    },
+    "driver/evidence/2026-10-06/w01-run2-new-recovery-volume-readout.json": {
+      "Bytes": 465,
+      "SHA256": "e50c8eb19ace2ae18833cec093eca676fe2893572d512178305f1ff93c0b0b61"
+    },
+    "driver/evidence/2026-10-06/w01-run2-new-recovery-volume.xml": {
+      "Bytes": 1308,
+      "SHA256": "2a24a88656a0ef6eacc80a6e8f6439399bcdb135c4c1cb88d10948b6da6bd97b"
+    },
+    "driver/evidence/2026-10-06/w01-run2-recovery-after-host-reboot.json": {
+      "Bytes": 2879,
+      "SHA256": "2c7200e85b8de07c6dbaeff60587f395f6db660822c974f7a3a93def505a6391"
+    },
+    "driver/evidence/2026-10-06/w01-run2-recovery-baseline-first.stderr.txt": {
+      "Bytes": 0,
+      "SHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "driver/evidence/2026-10-06/w01-run2-recovery-baseline-first.stdout.txt": {
+      "Bytes": 662,
+      "SHA256": "e1fcca77bd34a9d8e4ddddb0c14da358f2af193be82e22881e21968c6a3015cc"
+    },
+    "driver/evidence/2026-10-06/w01-run2-recovery-baseline-second.stderr.txt": {
+      "Bytes": 0,
+      "SHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "driver/evidence/2026-10-06/w01-run2-recovery-baseline-second.stdout.txt": {
+      "Bytes": 2114,
+      "SHA256": "eb049b6579ccfea1fc9defc690b4d791b338b1e8fbfa042f86f9b0d34ed07a19"
+    },
+    "driver/evidence/2026-10-06/w01-run2-recovery-defined-readout.json": {
+      "Bytes": 189,
+      "SHA256": "0c76fc4db6010f5240dcf19c86ef45d16c93d7b603bee2f9ccc1625543eddfe1"
+    },
+    "driver/evidence/2026-10-06/w01-run2-recovery-defined.xml": {
+      "Bytes": 8374,
+      "SHA256": "d358dd60fd70f0108edd796cebb845997a8295a3849303bb5b25de8ef60bea27"
+    },
+    "driver/evidence/2026-10-06/w01-run2-recovery-live-qmp.json": {
+      "Bytes": 489784,
+      "SHA256": "cf11b51e377b43849d42cd87be6a08deff7f79c67baa469305751bf5e180619f"
+    },
+    "driver/evidence/2026-10-06/w01-run2-recovery-live-readout.json": {
+      "Bytes": 290,
+      "SHA256": "ff55067ce5165c94aa985a82560869928f4cda818579cdffd367dca90c969a67"
+    },
+    "driver/evidence/2026-10-06/w01-run2-recovery-live.xml": {
+      "Bytes": 80249,
+      "SHA256": "9a93c5b40c131b6eb9e588bfea4f70fc53fb4543195787642aab67dab9e0e378"
+    },
+    "driver/evidence/2026-10-06/w01-run2-recovery-postbaseline-live.xml": {
+      "Bytes": 80249,
+      "SHA256": "9a93c5b40c131b6eb9e588bfea4f70fc53fb4543195787642aab67dab9e0e378"
+    },
+    "driver/evidence/2026-10-06/w01-run2-recovery-postbaseline-qmp.json": {
+      "Bytes": 489785,
+      "SHA256": "d697fccf81db5798b2b0bf5f1a771e0acd69517d5edb1fb67f19042ef8e9d391"
+    },
+    "driver/evidence/2026-10-06/w01-run2-recovery-postbaseline-readout.json": {
+      "Bytes": 877,
+      "SHA256": "ebeeedfab324e4ad681a85fc81979f9bfb913a22575bcaaa3a5ab6079da74c4e"
+    }
+  }
+}

@@ -1,0 +1,46 @@
+{
+  "Verdict": "EXTRACTION_NATIVE_SUCCESS_COMPLETION_VERIFICATION_FAILED_OUTPUT_RETAINED",
+  "MSINativeExit": 0,
+  "ActualRemoteExit": 1,
+  "Failure": "Installer/build actors remain after extraction process exit",
+  "SDKQualified": false,
+  "RuntimeInstalled": false,
+  "MappingPrivacyQualified": false,
+  "RetainedTarget": "C:\\Users\\vika\\Documents\\SafeUploadWinFspSdk-20261006-ef9bea72fc3545d985354fa5a939179b",
+  "TargetIdentity": "D6632F7F:00060000000DEE49",
+  "RetainedLog": {
+    "SHA256": "46E05B92C953B1D9062E608607CB130DC68EACB327663A8842D4BCA3DDF22159",
+    "Attributes": 32,
+    "Bytes": 338400,
+    "Identity": "D6632F7F:00070000000DEE4D",
+    "Path": "C:\\Users\\vika\\Documents\\SafeUploadWinFspSdk-20261006-ef9bea72fc3545d985354fa5a939179b.msi.log",
+    "ProcessOrServiceChanged": false,
+    "FileHeldReadOnlyShareRead": true
+  },
+  "SourceMSIIdentity": "D6632F7F:00030000000DEDF1",
+  "SourceMSIHashBeforeAfterEqual": true,
+  "SourceMSISignatureAfterNotYetChecked": true,
+  "BuildActorsAfter": [
+    "msiexec|2272"
+  ],
+  "WindowsInstallerLogCompleteDoesNotProveIdle": true,
+  "NextStep": "Separately reviewed validate-only completion after natural process/service drain; no repeat extraction or forced process/service stop",
+  "Pins": {
+    "driver/evidence/2026-10-06/winfsp-sdk-v3-actual-extraction/stdout.json": "661c152bf5dfe8d605da06fbd2ae22b599d5e685b88a680cf5de18f1a2397c75",
+    "driver/evidence/2026-10-06/winfsp-sdk-v3-actual-extraction/stderr.txt": "cb921a93df99082e488a7dd63a888406ec45950abeb85ab12f25f1b4e60b6e77",
+    "driver/evidence/2026-10-06/winfsp-sdk-v3-actual-extraction/exit.json": "7f1ba10d97031722ae486d06bc4299438addcb5b6f3a9779cfd6d6d942ab048b",
+    "driver/evidence/2026-10-06/winfsp-sdk-v3-actual-extraction/caller.ps1": "1844f029a645ee2e7bab5e6e8fefde134c218777d95965e11d037843c95c4304",
+    "driver/evidence/2026-10-06/winfsp-sdk-v3-actual-extraction/execution-inputs.json": "6fd3afa5cc15ff6843ba0d78f601e24a308e9fa0a1610d90e26999ec8d62d59b",
+    "driver/evidence/2026-10-06/winfsp-sdk-v3-retained-log-identity/stdout.json": "1b38d2bf332d6cb5dec4fd54a661d6ed5b209d7d79095b5de0e47f774cf401a5",
+    "driver/evidence/2026-10-06/winfsp-sdk-v3-retained-log-identity/stderr.txt": "5fac1e349309e76e42f64381996245ccfa5a50f54c11a4f1c7d0b5617b426a34",
+    "driver/evidence/2026-10-06/winfsp-sdk-v3-retained-log-identity/exit.json": "09786a014d5358d3ac90ac8819d45cc441c3911a2330a602d7e01aae1fd3915c",
+    "driver/evidence/2026-10-06/winfsp-sdk-v3-retained-log-identity/caller.ps1": "8b1f49bc9ca37d7c322bff53fd473781258650592216cde39326479f81ac485f",
+    "driver/evidence/2026-10-06/winfsp-sdk-v3-post-return-actor-diagnostic/stdout.json": "6dddc59ed5787569fded34930fdb6c398f156659f6827b015174951d15ba8451",
+    "driver/evidence/2026-10-06/winfsp-sdk-v3-post-return-actor-diagnostic/stderr.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "driver/evidence/2026-10-06/winfsp-sdk-v3-post-return-actor-diagnostic/exit.json": "09786a014d5358d3ac90ac8819d45cc441c3911a2330a602d7e01aae1fd3915c",
+    "driver/evidence/2026-10-06/winfsp-sdk-v3-post-return-actor-diagnostic/caller.ps1": "70750509f5ef766c082d1f1d89dd6fe3d146894491485baec9ec0f69c892d204",
+    "driver/evidence/2026-10-06/winfsp-builder-sdk-extraction-plan-v3/extract-sdk-v3.ps1": "0e0b17a56c528834c91745fbf0e54661561ae7e62c0acde113982f16e5df41cf",
+    "driver/evidence/2026-10-06/winfsp-sdk-v3-independent-review-luna.md": "5032e7ae663a588ccf2d1b92b6c104de0f2a88904c19f39964f98f955af45d4b",
+    "driver/evidence/2026-10-06/signing-builder-trusted-v10-checkpoint-verification-seal.json": "5de94b5076d620e3932b2951c3dce9844861d27b12eb75f7ec9592b6222da049"
+  }
+}

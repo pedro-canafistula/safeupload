@@ -1,0 +1,3 @@
+sources\baseline-check-v11.ps1 ParseErrors=0
+sources\signing-guard-helpers-v8.ps1 ParseErrors=0
+ExactPinsVerified=True

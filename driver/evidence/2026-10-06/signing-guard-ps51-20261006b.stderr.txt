@@ -1,0 +1,10 @@
+C:\Users\vika\AppData\Local\Temp\remote_ps_48af4b17bab74b0398dce646d2678acf.ps1 : Exception 
+calling "SetSecurityDescriptorSddlForm" with "2" argument(s): "The SDDL string contains an invalid 
+sid or a sid that cannot be translated.
+Parameter name: sddlForm"
+    + CategoryInfo          : NotSpecified: (:) [Write-Error], WriteErrorException
+    + FullyQualifiedErrorId : Microsoft.PowerShell.Commands.WriteErrorException,remote_ps_48af4b17 
+   bab74b0398dce646d2678acf.ps1
+ 
+#< CLIXML
+<Objs Version="1.1.0.1" xmlns="http://schemas.microsoft.com/powershell/2004/04"><Obj S="progress" RefId="0"><TN RefId="0"><T>System.Management.Automation.PSCustomObject</T><T>System.Object</T></TN><MS><I64 N="SourceId">1</I64><PR N="Record"><AV>Preparing modules for first use.</AV><AI>0</AI><Nil /><PI>-1</PI><PC>-1</PC><T>Completed</T><SR>-1</SR><SD> </SD></PR></MS></Obj></Objs>

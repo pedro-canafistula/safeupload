@@ -1,0 +1,37 @@
+{
+  "Purpose": "NATIVE_HOST_COMPILE_ONLY_NOT_RUNTIME_QUALIFICATION",
+  "Provenance": {
+    "SourceKind": "worktree",
+    "BaseCommit": "577dddfe05ad18b8b643969eed6cc0f78e36fd89",
+    "CapturedUTC": "2026-10-06T20:44:42.749439+00:00",
+    "ArchiveSHA256": "8c3213b52e30fe279d5d9d0533b55b28e7ba182ee004c48bb4f71ca816ec873b",
+    "ManifestSHA256": "cb7fb62a5dfa72ac36a2f0e022bfa8abecb7eaa95a9752f71524d3ed393136e5",
+    "ProjectIndexSHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "Files": 4,
+    "ChangedFromBaseCommit": [
+      "driver/SafeUpload.OwnedFspHost/OwnerHostBrokerV2.h",
+      "driver/SafeUpload.OwnedFspHost/README.md",
+      "driver/SafeUpload.OwnedFspHost/SafeUpload.OwnedFspHost.cpp",
+      "driver/SafeUpload.OwnedFspHost/SafeUpload.OwnedFspHost.vcxproj"
+    ],
+    "BuildToolsSHA256": {
+      "driver/scripts/Build-ExactOwnedHost.ps1": "4fadaec007d534740e2d79603073353a04e0aefbb7192ae837df23b9961a2a07",
+      "driver/scripts/remote_ps.py": "71e39bb56a5b5c89b3e00131e24d05377624219a34ae47dd68a4db74c0560351",
+      "driver/scripts/Prepare-ExactWorktreeSource.py": "67386727e63ac8ff961548101276bdaa4b9bf0d0f970d23e801a915e6adff107",
+      "driver/scripts/Invoke-ExactOwnedHostBuild.py": "1e126a7e9ee9f999fbeb3fefd0be3d579aeb0f49ad914e2e901d516d2d2d71e1"
+    },
+    "ReviewedUntrackedSHA256": {
+      "driver/SafeUpload.OwnedFspHost/SafeUpload.OwnedFspHost.cpp": "13b6005cee460e1fd4501eedc0180d257932670edf48ea3381ba57d6c350ea3d",
+      "driver/SafeUpload.OwnedFspHost/OwnerHostBrokerV2.h": "f485bbeb952ca1ad5b7ecc455125102c7a549695136f0c5ce584785d2a635a67",
+      "driver/SafeUpload.OwnedFspHost/SafeUpload.OwnedFspHost.vcxproj": "e9065668bac53e2119269558b44ddd1f01cb2581a2d8ac06448e243d5d4c748a",
+      "driver/SafeUpload.OwnedFspHost/README.md": "9cf48de5c1c2020b743d96c3e9da77136636d7c74a6baabc724d792b1ab80234"
+    },
+    "CaptureCheck": "two reads; byte and file metadata equality",
+    "NetworkOperationsDuringPreparation": 0
+  },
+  "SdkManifestSHA256": "5e4b5de30d991fb9b171ac76cc57f3db9500c43b71b0f97645f62bbb544ed613",
+  "SdkInventorySHA256": "8e3eb233fea442d9cbcec37f6d4b32e24f83098437a6df8a1a5f49389046a131",
+  "HostExecuted": false,
+  "RuntimeInstalled": false,
+  "GitMutation": false
+}

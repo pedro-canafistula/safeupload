@@ -1,0 +1,29 @@
+{
+  "Verdict": "WINFSP_SDK_ADMIN_IMAGE_SOURCE_PARSE_AND_TABLE_GUARDS_PASS",
+  "SourceSHA256": "693517f2a9c03304a628b643e10ac6c316245a9c9ee1aa31700bbd0b9fef8b01",
+  "PS51ParseErrors": 0,
+  "ActualParseRemoteExitCode": 0,
+  "AdminExecuteSequence": [
+    "CostInitialize",
+    "FileCost",
+    "CostFinalize",
+    "InstallValidate",
+    "InstallInitialize",
+    "InstallAdminPackage",
+    "InstallFiles",
+    "InstallFinalize"
+  ],
+  "AdminCustomOrServiceActionsPresent": false,
+  "ExtractionExecuted": false,
+  "IndependentReviewPending": true,
+  "TrustedCheckpointPending": true,
+  "EvidencePins": {
+    "driver/evidence/2026-10-06/winfsp-msi-v2.2B4-admin-tables.stdout.json": "24fbc291b6c3964ebf5065bf39c31f7251e2b90ccef4f003bb49d9d2942cc2b5",
+    "driver/evidence/2026-10-06/winfsp-msi-v2.2B4-admin-tables.stderr.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "driver/evidence/2026-10-06/winfsp-msi-v2.2B4-admin-tables.exit.json": "ae99555775375a5046a43f28b75bf993a66f824792b9e283f425adf765bf233e",
+    "driver/evidence/2026-10-06/winfsp-msi-v2.2B4-admin-tables-source.ps1": "54c8479899ecd75c5c5203416d86b1a0b9fc5935928929a31f4262d25d9f0521",
+    "driver/evidence/2026-10-06/winfsp-builder-sdk-extraction-ps51-parse.stdout.json": "9260e4a7ffbb6e31d1e427d339eda4d9c2d2646ef57ea0508f7f3e7dff32ae27",
+    "driver/evidence/2026-10-06/winfsp-builder-sdk-extraction-ps51-parse.stderr.txt": "a3639af5e23464fc391dae127fd5493f02c8178068a35866d9c7fdd35dcd623f",
+    "driver/evidence/2026-10-06/winfsp-builder-sdk-extraction-ps51-parse.exit.json": "5e8e7aafcc44a295c400e37d3d2cc4372154e895e6fabc23786d7eadd8bb6162"
+  }
+}

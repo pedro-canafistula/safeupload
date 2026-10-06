@@ -1,0 +1,20 @@
+{
+  "UTC": "2026-10-06T17:54:49.327707+00:00",
+  "Verdict": "V8_MEMORY_FIXTURE_AND_SEVEN_PS51_PARSES_PASS",
+  "ProductionAndFixtureParseErrors": 0,
+  "FixtureStatus": "V8_MEMORY_ONLY_FIXTURE_PASS",
+  "StderrEmpty": false,
+  "StderrAssessment": "392 retained bytes: CLIXML module-initialization progress only; no Error stream",
+  "PublicValidationTempRemoved": true,
+  "VmContactedByRootRunner": true,
+  "FixtureDiskReads": "Pinned helper only",
+  "KeyOrCertificateStoreOrTargetAclTouched": false,
+  "KeyCreatedOrTrustImported": false,
+  "EvidencePins": {
+    "driver/evidence/2026-10-06/signing-guard-ps51-20261006v8a.stdout.txt": "af14708fa1be3a443968becf4ffd2c6257ab1f0284e6d2787ec42f418540f774",
+    "driver/evidence/2026-10-06/signing-guard-ps51-20261006v8a.stderr.txt": "a3639af5e23464fc391dae127fd5493f02c8178068a35866d9c7fdd35dcd623f",
+    "driver/evidence/2026-10-06/signing-guard-ps51-20261006v8a-staging.stdout.txt": "bf5067f300ff8c5b06d102e0ae98bf0c7e4fbb0ecad6dfb6cdaacd4fade35b97",
+    "driver/evidence/2026-10-06/signing-guard-ps51-20261006v8a-staging.stderr.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "driver/evidence/2026-10-06/exact-mvp20261006admissioncap2-signing-key-recovery-sha256-v8.txt": "308b16cfe401f63a7fc338ea7cf81990c0ca5c71ebfbc43cbe3772b0a14621d6"
+  }
+}

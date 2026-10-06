@@ -1,0 +1,19 @@
+{
+  "UTC": "2026-10-06T17:58:50.830148+00:00",
+  "Verdict": "V8_MINT_AND_SPLIT_INDEPENDENT_PUBLIC_STATE_VERIFIED",
+  "Thumbprint": "A6D6CE1AA28835D509160A80ADB7894869AADF38",
+  "CreationMetadataSHA256": "51701037AF41FCC19101E26DD2D632934D20B94190D42782474F68F05ABDFC1E",
+  "PublicCerSHA256": "47E7069980A60CBCF4DFF61F0F2D3F02EDCF97C2976708790B49D03A09243B2A",
+  "AllSixStoreDeltaExactlyLocalMachineMy": true,
+  "OriginalBaselineAndBackupHashesRetained": true,
+  "ActualKeySddlMatchesPristine": true,
+  "KeyChallengeVerified": true,
+  "NoAclWrite": true,
+  "NoPrivateExport": true,
+  "TrustImported": false,
+  "ArtifactSigned": false,
+  "ColdKeyRecoveryProven": false,
+  "CombinedReadProbe": "Initial inventory captured; later combined metadata record absent. Only the exact hash-pinned read-only probe process was terminated; split independent reads completed successfully.",
+  "IndependentPublicMetadataCoveredBySplitReads": true,
+  "CombinedReadProbeExit": 1
+}

@@ -1,0 +1,14 @@
+[
+    {
+        "FullName":  "C:\\Users\\vika\\Documents\\Build-SectionFault-mvp3-b36.ps1",
+        "Length":  4307
+    },
+    {
+        "FullName":  "C:\\Users\\vika\\Documents\\exact-section-fault-mvp3-b36.manifest",
+        "Length":  342
+    },
+    {
+        "FullName":  "C:\\Users\\vika\\Documents\\exact-section-fault-mvp3-b36.zip",
+        "Length":  9587
+    }
+]

@@ -1,0 +1,10 @@
+{
+  "Purpose": "DIAGNOSTIC_COMPILE_ONLY_NOT_SECURITY_OR_RUNTIME_APPROVAL",
+  "NewInputs": {
+    "driver/SafeUpload.Minifilter/OwnerCommunication.c": "cec059b0bfa0abfe30f93a5af089fa94cd762e60cfff70ebbbf732b5e5be0a7d",
+    "driver/SafeUpload.Minifilter/StageOwnerEcp.c": "b75d1678994bcfe3a1f7c62d5443fe781c3e04e33b19791f2a3159413bce2c0c",
+    "driver/SafeUpload.Minifilter/StageOwnerEcp.h": "a0f8bb2a21bff1058a67b85d268a35643caf779b07953d964646b31766ff0c80"
+  },
+  "Author": "Luna; current integration knowingly incomplete; author paused for snapshot",
+  "GitMutation": false
+}

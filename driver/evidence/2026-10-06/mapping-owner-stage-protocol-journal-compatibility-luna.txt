@@ -1,0 +1,134 @@
+# Owner-only stage: protocol and journal compatibility map
+
+Review artifact, 2026-10-06. Read-only source analysis against the current
+protocol-v18 driver/service. This is a compatibility checklist for a future
+implementation; no source, wire contract, journal, or build input is changed
+here. It is subordinate to the supported-filesystem-owner architecture
+decision in `mapping-owner-stage-fs-owner-addendum-luna.txt`.
+
+## Current compatibility surface
+
+- The shared kernel/managed contract is version 18. `SAFEUPLOAD_REQUEST` is
+  1,192 bytes, with `Path` at offset 40 and `ImageName` at offset 1,064. The
+  request's `Reserved` field is already the original create disposition for
+  stage allocation; it cannot be redefined as an owner flag. The current
+  managed mirror performs exact struct-size and offset assertions.
+- Current request flags include `StageFollowup=0x20`, `StageRemovable=0x40`,
+  `StageNetwork=0x80`, and `StageTombstoneCreate=0x100`. The new owner bit must
+  be a previously unused value and unknown bits must be rejected on both
+  sides.
+- The service currently starts the publication loop over entries in state
+  `Sealed`, and `SealAsync` moves an ordinary `Allocated` or `Unsealed` entry
+  directly to `Sealed`. `TransferJournalEntry` has destination generation,
+  process/session, names, seal digest, and rename/tombstone metadata, but does
+  not bind an entry to an immutable owner-scope epoch or stable physical
+  destination identity.
+- Allocation currently resolves/copies by destination path. Kernel-side
+  admission captures a physical/parent identity, but the current request and
+  durable journal do not bind that identity to the service allocation and
+  later source copy. Reopening a mutable path later leaves a rename/replacement
+  TOCTOU gap. String path equality is not an identity proof.
+
+## Required protocol transition
+
+1. Bump the shared protocol to v19 for the new owner-aware stage request layout.
+   Keep v18 operation/field semantics unchanged. Do not silently interpret a
+   v18 allocation as owner-capable. Owner readiness remains false and owner
+   writes fail closed unless the driver, service, and persisted owner-scope
+   record report the same v19 contract.
+2. Add an explicit `StageOwnerOnly` request flag (proposed next unused bit
+   `0x200`) and reject every unknown request flag. Keep `Reserved` as create
+   disposition and continue validating its legal disposition values.
+3. Append fixed-width fields, preserving existing offsets and natural
+   alignment: owner-scope epoch (`UINT64`), immutable policy/activation
+   generation (`UINT64`, zero while policy is inactive), scope digest (32
+   bytes), identity-kind/version, original volume identity, target file ID
+   when it exists, and parent file ID plus leaf/name-slot identity for a
+   create/replacement. Bind the original normalized logical name and stream
+   name as well. Use an explicit fixed-width identity record with C `C_ASSERT`
+   and managed `sizeof`/`OffsetOf` checks; do not use native pointers, enums,
+   `BOOLEAN`, `ULONG_PTR`, or path-only identity.
+4. The service verifies the owner epoch and digest against the protected
+   immutable `OwnerScopes` record on every owner allocation/follow-up/seal/
+   rename/tombstone request. PID/name are audit attributes, not authorization.
+   A separate owner allocator role/channel (or equivalently isolated,
+   cryptographically authenticated role handshake) can create an owner-only
+   stage; that role grants no inspection, approval, permit, or publication
+   authority. The current generic authenticated policy client is insufficient
+   as the owner role by itself.
+5. Tie backing allocation and initial-content seeding to the same stable target
+   object/namespace transaction the kernel admitted. Existing targets require
+   a referenced/revalidated target identity while bytes/metadata are seeded;
+   new targets require the stable parent identity and a serialized name-slot
+   claim. Rename/replacement carries both source and target identities.
+   Any reparse, ambiguous alias, identity drift, inaccessible identity, stale
+   epoch, or service/kernel scope-digest mismatch refuses the create without
+   falling through to a writable public open. Never query by path once and
+   treat that as proof for a later path-based read.
+6. Update both protocol mirrors and every producer/consumer atomically:
+   `Protocol.h`, managed `Protocol.cs`, contract size/offset checks, driver
+   request constructors and response validation, service dispatch/validation,
+   and fixture/diagnostic encoders. A protocol mismatch is a hard owner-mode
+   refusal, not an ordinary fail-open verdict.
+
+## Required durable-journal transition
+
+- Add append-only `OwnerPendingPolicy` state without renumbering the existing
+  enum values. Persist `OwnerOnly`, `OwnerScopeEpoch`, `OwnerScopeDigest`,
+  `ActivationPolicyGeneration` (initially zero), stable target/parent identity,
+  and namespace generation in the immutable transfer record. Legacy manifests
+  deserialize as `OwnerOnly=false`; never infer ownership from a path, PID, or
+  missing field.
+- Owner-only allocation durably creates the private backing ACL and `Allocated`
+  manifest before returning its basename. On clean drain/seal, it becomes
+  `OwnerPendingPolicy`, with `SealedOnce` and content digest recorded. This
+  state is never returned by `ReadPending` as inspectable/publishable, never
+  receives an approval/publication permit, and is excluded by the publication
+  loop even if a later bug enumerates it.
+- When policy is activated, a single guarded, durable promotion may transition
+  only an `OwnerPendingPolicy` entry whose exact stable destination identity,
+  name generation, owner epoch/digest, and current policy generation all
+  match. Promotion writes `Sealed` and the accepted activation generation as
+  one atomic manifest replacement. Normal inspection, approval, one-use permit,
+  publication, and release then use the existing state machine. A changed or
+  nonmatching target stays private and retained.
+- Apply the owner metadata and immutability checks to every state-changing
+  path: initial allocation, follow-up overwrite/create, tombstone create,
+  rename prepare/commit/abort, seal retry, retention/recovery, reconciliation,
+  and publication claim/transition. A follow-up generation cannot inherit
+  approval from an earlier generation. A rename cannot move an owner-only
+  entry outside its owner scope or change the identity without a new verified
+  transaction.
+- Startup recovery preserves owner-only state exactly. Interrupted
+  `Allocated` becomes nonpublishable unsealed/retained state; it must not be
+  promoted because policy happens to be active after restart. `OwnerPendingPolicy`
+  survives restart and only the explicit exact-identity promotion can make it
+  inspectable. Missing/invalid owner fields, unknown state, bad digest, owner
+  epoch rollback, or manifest/journal ACL loss means NotReady and no publication.
+- Write journal schema/version migration tests for current v18-era manifests,
+  missing legacy fields, unknown states, replayed epoch, digest mismatch,
+  target replacement, pending rename, tombstone ownership, crash at every
+  durable boundary, and promotion retry. Keep old approved/released entries
+  readable under their previous meaning.
+
+## Scope and readiness compatibility
+
+`OwnerReady`, policy active, inspectable `Sealed`, and publishable `Approved`
+must be four distinct facts. The boot record must be immutable and complete
+before the owner gate can become ready. Policy expansion is allowed only inside
+that candidate scope and only after the owner is already interposed; an
+expansion outside it requires a clean restart and another explicit readiness
+proof. A service disconnect, journal failure, incompatible client, stale owner
+epoch, unsupported volume adapter, or incomplete scope makes new scoped writes
+refuse/NotReady. It may never fall through to an unowned public writable
+object.
+
+## Review blocker
+
+This compatibility map does not authorize adding fields to the current
+protocol. The current minifilter `StageCreate` manufactures an upper stream and
+sets `FILE_OBJECT.SectionObjectPointer`; the Microsoft file-object contract
+reserves that member to filesystems, and the section-pointer contract says
+filters treat it as opaque. Resolve the filesystem owner described in the
+companion addendum before implementing these protocol/journal changes. Do not
+use a version bump to legitimize an unsupported SOP owner.

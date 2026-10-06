@@ -1,0 +1,65 @@
+{
+  "UTC": "2026-10-06T18:18:19.234131+00:00",
+  "UUID": "c6440689-d11c-4c63-a463-f3722b7ddb69",
+  "Parent": "/var/lib/libvirt/images/win10-clean.safeupload-signer-fallback-recovery3-20261006.qcow2",
+  "Child": "/var/lib/libvirt/images/win10-clean.safeupload-signer-key-bearing-v8-retry1-20261006.qcow2",
+  "RetainedFailedInitialDisk": "/var/lib/libvirt/images/win10-clean.safeupload-signer-key-bearing-v8-20261006.qcow2",
+  "RetainedFailedInitialDiskStat": {
+    "Device": 31,
+    "Inode": 631160,
+    "Bytes": 515768320,
+    "MtimeNS": 1791310666845145513,
+    "Mode": 384,
+    "UID": 958,
+    "GID": 958
+  },
+  "ParentIdentitySizeMtimeModeUnchanged": true,
+  "ParentStatBefore": {
+    "Device": 31,
+    "Inode": 631064,
+    "Bytes": 838598656,
+    "MtimeNS": 1791309846699340375,
+    "Mode": 384,
+    "UID": 958,
+    "GID": 958
+  },
+  "ParentStatAfter": {
+    "Device": 31,
+    "Inode": 631064,
+    "Bytes": 838598656,
+    "MtimeNS": 1791309846699340375,
+    "Mode": 384,
+    "UID": 958,
+    "GID": 958
+  },
+  "ParentOwnershipTransition": "libvirt-qemu ownership unchanged",
+  "ParentQcow2ReadOnly": true,
+  "ChildMode": "0600",
+  "ColdBootFromKeyBearingParent": true,
+  "FailedTrustBranchRetained": true,
+  "IndependentGuestBaselinePending": true,
+  "CertificateOrTrustChanged": false,
+  "CheckpointScope": "System disk and signing state; fresh sibling from the verified mint baseline",
+  "FirmwareTpmRamCheckpointed": false,
+  "FullVmRollbackClaimed": false,
+  "SharedNvramPath": "/var/lib/libvirt/qemu/nvram/win10_VARS.fd",
+  "SharedNvramMetadataBefore": {
+    "Device": 31,
+    "Inode": 276369,
+    "Bytes": 540672,
+    "MtimeNS": 1791310670168133504,
+    "Mode": 384,
+    "UID": 958,
+    "GID": 958
+  },
+  "SharedNvramMetadataAfter": {
+    "Device": 31,
+    "Inode": 276369,
+    "Bytes": 540672,
+    "MtimeNS": 1791310685885076765,
+    "Mode": 384,
+    "UID": 958,
+    "GID": 958
+  },
+  "SharedNvramContentHashAvailable": false
+}

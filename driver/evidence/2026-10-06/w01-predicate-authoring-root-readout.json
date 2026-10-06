@@ -1,0 +1,63 @@
+{
+  "UTC": "2026-10-06T14:47:12.704321+00:00",
+  "Builder": "DESKTOP-O1LP5DG",
+  "BuilderUUID": "c6440689-d11c-4c63-a463-f3722b7ddb69",
+  "PowerShell": "5.1.19041.6456",
+  "ParseErrors": {
+    "Parent": 0,
+    "Child": 0
+  },
+  "ProducerShapedHighBitCallbackPositive": true,
+  "ExactUInt64JSONType": "System.Decimal",
+  "NegativeControlsRejected": [
+    "MissingNativeError",
+    "MissingBytes",
+    "ErrorsNonempty",
+    "MissingCaptureComplete",
+    "EmbeddedCompletionBytes",
+    "EmbeddedCompletionRun",
+    "ChildExitFailure",
+    "MissingWriterPid",
+    "NullWriterPid",
+    "DuplicateArmed",
+    "ForeignOpenedFile",
+    "FractionalDecimal",
+    "NegativeDecimal",
+    "OverflowDecimal",
+    "FloatingPointCallback",
+    "LauncherFailure",
+    "LauncherError"
+  ],
+  "StderrOnlyModuleProgress": true,
+  "Exit": 0,
+  "FullParentOrChildExecuted": false,
+  "LinuxStructuralSelfCheck": "PASS, 26 Python scripts compiled",
+  "BashSyntax": "PASS",
+  "GitDiffCheck": "PASS",
+  "SourcePins": {
+    "driver/scripts/Test-StagedW01Parent.ps1": {
+      "SHA256": "ca95e5b69432d53715242330af391e387adbba1a55a72424f0bf311a1d2f1bcf",
+      "Bytes": 86732
+    },
+    "driver/scripts/Test-StagedW01Diagnostic.ps1": {
+      "SHA256": "bf325b86fb422ded6701f69a465f47c3d9de517e6ac52efadc702aafddd8248d",
+      "Bytes": 24819
+    },
+    "driver/scripts/Invoke-DebuggeeExperiment.sh": {
+      "SHA256": "d172acda3947d1d528b84506b7aabdcbb33341ffc48687b0a398b32b555559f2",
+      "Bytes": 17893
+    },
+    "driver/scripts/Invoke-StagedW01Diagnostic.py": {
+      "SHA256": "e90118c4a3ba49ea5d7d5f59606671dcc52cdc83ed47e47f27b8883200de7582",
+      "Bytes": 39847
+    },
+    "driver/scripts/Invoke-StagedW01Diagnostic.SelfCheck.py": {
+      "SHA256": "80728531c1ed721ca989570450895dc454f455a979c2c27aa131339402f7ba79",
+      "Bytes": 20291
+    }
+  },
+  "ControlsSHA256": "ce88852dc86eea1d209d121b0fe6a2f3f86b107cd2626b40ae8a5a60dcc49a3c",
+  "W01Verdict": "INCONCLUSIVE",
+  "Phase4": "NOT_QUALIFIED",
+  "RuntimeProof": false
+}

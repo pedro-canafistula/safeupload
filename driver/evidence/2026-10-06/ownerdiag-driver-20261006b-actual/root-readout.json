@@ -1,0 +1,39 @@
+{
+  "Verdict": "DIAGNOSTIC_DRIVER_FEATURE_COMPILE_FAILED",
+  "ActualRemoteExitCode": 0,
+  "FeatureDebugReleaseErrorsEach": 3,
+  "UniqueFailures": [
+    "OwnerScopes slot length pointer type mismatch",
+    "OwnerScopes returned byte-count signedness mismatch"
+  ],
+  "NormalDebugRelease": "0 warnings/errors; PREfast/ApiValidator present",
+  "InspectorsAndWriter": "0 warnings/errors",
+  "FeatureSignedArtifact": false,
+  "ProductInstalled": false,
+  "MappingPrivacyQualified": false,
+  "Pins": {
+    "driver/evidence/2026-10-06/ownerdiag-driver-20261006b-actual/execution-inputs.json": "c20ba01a6b7fe013b5120c4cf2ca1ca2289f6b04ddf8e47e5d6dc7d3511c6b46",
+    "driver/evidence/2026-10-06/ownerdiag-driver-20261006b-actual/preflight.ps1": "402df646ea03b8ee2cedf5b6e4d629fc8665b4ef1637def3d2c3603f9f8f4fbe",
+    "driver/evidence/2026-10-06/ownerdiag-driver-20261006b-actual/preflight.stdout.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "driver/evidence/2026-10-06/ownerdiag-driver-20261006b-actual/preflight.stderr.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "driver/evidence/2026-10-06/ownerdiag-driver-20261006b-actual/preflight.exit.json": "bfab54bdedbb4a112a6e2001d605f01c513d7799f2d6cbfffa82ce50109f60e4",
+    "driver/evidence/2026-10-06/ownerdiag-driver-20261006b-actual/build.ps1": "bdf985b2e83ef93451b97e06fbf9af990677ca0a758dbc5bc1ef70a5b3a734cd",
+    "driver/evidence/2026-10-06/ownerdiag-driver-20261006b-actual/build.stdout.txt": "8c68266e5c75994927660905887679c0d7dda86a373eece11180418273744598",
+    "driver/evidence/2026-10-06/ownerdiag-driver-20261006b-actual/build.stderr.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "driver/evidence/2026-10-06/ownerdiag-driver-20261006b-actual/build.exit.json": "bfab54bdedbb4a112a6e2001d605f01c513d7799f2d6cbfffa82ce50109f60e4",
+    "driver/evidence/2026-10-06/ownerdiag-driver-20261006b-actual/fetch-readout.json": "db694e1ab0cf32f95f643becf3535c3eb28e3fdfcd28571a8a1d8179bb0c4ffd",
+    "driver/evidence/2026-10-06/ownerdiag-driver-20261006b-actual/out/summary.txt": "deae7fc689cf3e33b86f0b0d670ec785eb08bd5fdd79e6dcc0199d759bd05727",
+    "driver/evidence/2026-10-06/ownerdiag-driver-20261006b-actual/out/writer-fixture.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "driver/evidence/2026-10-06/ownerdiag-driver-20261006b-actual/out/writer-fixture.exe": "17f6175fa31e8b56adeb2ec912b6da8c3525e01b360bdd998cef7b14a7802f7b",
+    "driver/evidence/2026-10-06/ownerdiag-driver-20261006b-actual/out/normal-wdk.txt": "4c426cccb55c01034309a1bc5def81a6bb9ecaccbc259675d88bf6adc137b344",
+    "driver/evidence/2026-10-06/ownerdiag-driver-20261006b-actual/out/normal.sys": "dd3cd1bf6e2da071bf7676410be0b2fa0ca38a17c3825d6e77c74207cf6b4bf3",
+    "driver/evidence/2026-10-06/ownerdiag-driver-20261006b-actual/out/normal-release-wdk.txt": "9e3ad6d3e47cca44de53df3c5deee4b95d67fef949771d7bdb21b5ba953c466a",
+    "driver/evidence/2026-10-06/ownerdiag-driver-20261006b-actual/out/normal-release.sys": "c6bb951499b51365279607154ce2dedfa5d70d084f2391648ca424e7c879bf0d",
+    "driver/evidence/2026-10-06/ownerdiag-driver-20261006b-actual/out/owned-feature-wdk.txt": "dc3bc5ec2d9d5da8543eea90b1bf2998e26e0cbbb8d179c79b996efa56829f7f",
+    "driver/evidence/2026-10-06/ownerdiag-driver-20261006b-actual/out/owned-feature-release-wdk.txt": "452f03c44c560a32af5fb1759d059b7dcb8fdd4750d39846a921c22f0799471a",
+    "driver/evidence/2026-10-06/ownerdiag-driver-20261006b-actual/out/inspector-feature-release.txt": "9e448043aeb208862c3ee919c59d0f73c88f2bbc62284256d1c64c01eadca801",
+    "driver/evidence/2026-10-06/ownerdiag-driver-20261006b-actual/out/inspector-feature-release.exe": "bf15f3d12f86003f36547fd4f9ca092ae62b76ec5d2a7e387ae577bd9f57b2be",
+    "driver/evidence/2026-10-06/ownerdiag-driver-20261006b-actual/out/inspector-normal-release.txt": "c7ea613974b94e2541f52c8ac6731900f5bd98d518141fbe57109d991c97cdcb",
+    "driver/evidence/2026-10-06/ownerdiag-driver-20261006b-actual/out/inspector-normal-release.exe": "51ce90b8cd6657041df6d8b5ac28e069e9dbcf8ac7977d0f70356b4f102fb85f"
+  }
+}

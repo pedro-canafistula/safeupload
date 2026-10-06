@@ -1,0 +1,13 @@
+PowerShellVersion=5.1.19041.6456
+exact-mvp20261006admissioncap2-replacement-trust-debuggee-v7.ps1 ParseErrors=0
+exact-mvp20261006admissioncap2-signing-guard-fixture-v7.ps1 ParseErrors=0
+exact-mvp20261006admissioncap2-replacement-trust-rollback-v7.ps1 ParseErrors=0
+exact-mvp20261006admissioncap2-key-bearing-cold-challenge-v7.ps1 ParseErrors=0
+exact-mvp20261006admissioncap2-replacement-trust-builder-root-v7.ps1 ParseErrors=0
+signing-guard-helpers-v7.ps1 ParseErrors=0
+exact-mvp20261006admissioncap2-replacement-create-machine-key-v7.ps1 ParseErrors=0
+SelfCheckException=System.Management.Automation.MethodInvocationException
+SelfCheckScriptStack=at <ScriptBlock>, C:\Users\vika\AppData\Local\Temp\SafeUpload-signing-guard-ps51-34ae08613bc042888b4f185906510daa\exact-mvp20261006admissioncap2-signing-guard-fixture-v7.ps1: line 85
+at <ScriptBlock>, C:\Users\vika\AppData\Local\Temp\remote_ps_48af4b17bab74b0398dce646d2678acf.ps1: line 9
+SelfCheckExit=1
+ValidationTempAbsent=True

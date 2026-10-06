@@ -1,7 +1,9 @@
 <# Builds the private qualification companion from a verified exact Git archive. Never installs it. #>
 param([Parameter(Mandatory)][ValidatePattern('^[A-Za-z0-9._-]{3,60}$')][string]$Label,
     [Parameter(Mandatory)][ValidatePattern('^[0-9a-fA-F]{64}$')][string]$ArchiveHash,
-    [Parameter(Mandatory)][ValidatePattern('^[0-9a-fA-F]{64}$')][string]$ManifestHash)
+    [Parameter(Mandatory)][ValidatePattern('^[0-9a-fA-F]{64}$')][string]$ManifestHash,
+    [Parameter(Mandatory)][ValidatePattern('^[0-9a-fA-F]{40}$')][string]$CertificateThumbprint,
+    [ValidateSet('CurrentUser','LocalMachine')][string]$CertificateStoreLocation='CurrentUser')
 $ErrorActionPreference='Stop'
 $uuid=(Get-CimInstance Win32_ComputerSystemProduct -ErrorAction Stop).UUID
 if($env:COMPUTERNAME -ne 'DESKTOP-O1LP5DG' -or $uuid -ne 'C6440689-D11C-4C63-A463-F3722B7DDB69'){throw 'Builder identity mismatch'}
@@ -18,35 +20,70 @@ $msbuild='C:\Program Files\Microsoft Visual Studio\18\Community\MSBuild\Current\
 $rules='C:\Program Files (x86)\Windows Kits\10\CodeAnalysis\DriverRecommendedRules.ruleset'
 $sign='C:\Program Files (x86)\Windows Kits\10\bin\10.0.28000.0\x64\signtool.exe'
 $summary=@(('SOURCE_MANIFEST_VERIFIED='+$seen),('BUILDER='+$env:COMPUTERNAME),('BUILDER_UUID='+$uuid),('ARCHIVE_SHA256='+$ArchiveHash),('MANIFEST_SHA256='+$ManifestHash))
+function Invoke-NativeToLog([string] $Executable, [string[]] $Arguments, [string] $Log) {
+    if (-not (Test-Path -LiteralPath $Executable -PathType Leaf)) { throw 'Native build tool missing.' }
+    $previousErrorPreference = $ErrorActionPreference
+    try {
+        # PS 5.1 converts redirected native stderr to ErrorRecords. Complete
+        # the process and retain its actual stderr before evaluating its exit.
+        $ErrorActionPreference = 'Continue'
+        & $Executable @Arguments > $Log 2>&1
+        $nativeExit = $LASTEXITCODE
+    } finally { $ErrorActionPreference = $previousErrorPreference }
+    return $nativeExit
+}
 Push-Location $src
 try{
 foreach($configuration in @('Debug','Release')){
  $log=Join-Path $out ($configuration+'-wdk.txt')
- & $msbuild 'driver\SafeUpload.SectionFault\SafeUpload.SectionFault.vcxproj' /t:Rebuild "/p:Configuration=$configuration" /p:Platform=x64 /p:SafeUploadSectionFaultTest=true /warnaserror /p:RunCodeAnalysis=true /p:EnablePREfast=true "/p:CodeAnalysisRuleSet=$rules" > $log 2>&1
- $exit=$LASTEXITCODE;$text=[IO.File]::ReadAllText($log)
+ $exit=Invoke-NativeToLog $msbuild @('driver\SafeUpload.SectionFault\SafeUpload.SectionFault.vcxproj','/t:Rebuild',"/p:Configuration=$configuration",'/p:Platform=x64','/p:SafeUploadSectionFaultTest=true','/warnaserror','/p:RunCodeAnalysis=true','/p:EnablePREfast=true',"/p:CodeAnalysisRuleSet=$rules") $log
+ $text=[IO.File]::ReadAllText($log)
  $w=([regex]::Matches($text,'(?m)^\s*(\d+) Warning\(s\)')|ForEach-Object {$_.Groups[1].Value}) -join ','
  $e=([regex]::Matches($text,'(?m)^\s*(\d+) Error\(s\)')|ForEach-Object {$_.Groups[1].Value}) -join ','
  $summary+="$configuration : exit=$exit warnings=$w errors=$e prefast=$($text -match 'DriverRecommendedRules') apivalidator=$($text -match 'ApiValidator')"
  if($exit -eq 0){Copy-Item "driver\SafeUpload.SectionFault\x64\$configuration\SafeUploadSectionFault.sys" (Join-Path $out ($configuration+'.sys'))}
 }
-if(Test-Path (Join-Path $out 'Debug.sys')){
- $sys=Join-Path $out 'SafeUploadSectionFault.sys';Copy-Item (Join-Path $out 'Debug.sys') $sys
- & $sign sign /fd sha256 /sha1 220DD82C37FCF36048D59E4F10113185D81D5DC7 $sys > (Join-Path $out 'sign.txt') 2>&1
- $summary+='SignExit='+$LASTEXITCODE;$summary+='SignedSHA256='+(Get-FileHash $sys -Algorithm SHA256).Hash
-}
 }finally{Pop-Location}
-# The builder has the signing private key but does not trust this test root.
-# Record chain verification; the debuggee requires Valid and the pinned signer before installation.
-if(Test-Path (Join-Path $out 'SafeUploadSectionFault.sys')) {
- $ErrorActionPreference='Continue'
- & $sign verify /pa (Join-Path $out 'SafeUploadSectionFault.sys') >> (Join-Path $out 'sign.txt') 2>&1
- $verifyExit=$LASTEXITCODE
- $ErrorActionPreference='Stop'
- $signature=Get-AuthenticodeSignature (Join-Path $out 'SafeUploadSectionFault.sys')
- $summary+='BuilderSignatureVerifyExit='+$verifyExit
- $summary+='BuilderSignatureStatus='+$signature.Status
- $summary+='SignerThumbprint='+$signature.SignerCertificate.Thumbprint
+$unsigned = Join-Path $out 'Debug.sys'
+if (Test-Path -LiteralPath $unsigned) {
+    $signed = Join-Path $out 'SafeUploadSectionFault.sys'
+    if (Test-Path -LiteralPath $signed) { throw 'Signing destination already exists.' }
+    $unsignedHash = (Get-FileHash -LiteralPath $unsigned -Algorithm SHA256).Hash
+    Copy-Item -LiteralPath $unsigned -Destination $signed
+    $copyHash = (Get-FileHash -LiteralPath $signed -Algorithm SHA256).Hash
+    if ($copyHash -cne $unsignedHash) { throw 'Unsigned signing-copy hash mismatch.' }
+    $signArguments = @('sign', '/fd', 'sha256', '/sha1', $CertificateThumbprint)
+    if ($CertificateStoreLocation -ceq 'LocalMachine') { $signArguments += '/sm' }
+    $signArguments += $signed
+    $signExit = Invoke-NativeToLog $sign $signArguments (Join-Path $out 'sign.txt')
+    if ((Get-FileHash -LiteralPath $unsigned -Algorithm SHA256).Hash -cne $unsignedHash) {
+        throw 'Original unsigned artifact changed during signing.'
+    }
+    $outputHash = (Get-FileHash -LiteralPath $signed -Algorithm SHA256).Hash
+    $signedHash = 'NONE'
+    $signatureValid = $false
+    $signatureStatus = 'SigningFailed'
+    $actualSigner = 'NONE'
+    if ($signExit -eq 0) {
+        try {
+            $signature = Get-AuthenticodeSignature -LiteralPath $signed
+            $signatureStatus = $signature.Status.ToString()
+            if ($null -ne $signature.SignerCertificate) { $actualSigner = $signature.SignerCertificate.Thumbprint }
+            $signatureValid = $signatureStatus -ceq 'Valid' -and $actualSigner -ceq $CertificateThumbprint.ToUpperInvariant()
+            if ($signatureValid) { $signedHash = $outputHash }
+        } catch { $signatureStatus = 'VerificationFailed' }
+    }
+    @{ UTC = [DateTime]::UtcNow.ToString('o'); SignExit = $signExit;
+        SignatureStatus = $signatureStatus; ExpectedSigner = $CertificateThumbprint;
+        CertificateStoreLocation = $CertificateStoreLocation;
+        ActualSigner = $actualSigner; SignatureValid = $signatureValid;
+        UnsignedSHA256 = $unsignedHash; SigningCopySHA256Before = $copyHash;
+        UnsignedArtifactUnchanged = $true;
+        OutputSHA256 = $outputHash; SignedSHA256 = $signedHash } |
+        ConvertTo-Json | Set-Content -LiteralPath (Join-Path $out 'signature-verification.json') -Encoding UTF8
+     $summary += "sign : exit=$signExit unsigned_sha256=$unsignedHash signing_copy_sha256=$copyHash unsigned_unchanged=True store=$CertificateStoreLocation output_sha256=$outputHash signed_sha256=$signedHash signature_valid=$signatureValid signer=$CertificateThumbprint"
 }
+else { $summary += 'sign : SKIPPED (no companion Debug SYS)' }
 
 $summary+='BUILD_END_UTC='+[DateTime]::UtcNow.ToString('o');$summary|Set-Content (Join-Path $out 'summary.txt') -Encoding UTF8
 $summary

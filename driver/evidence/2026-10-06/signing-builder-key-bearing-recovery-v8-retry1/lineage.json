@@ -1,0 +1,29 @@
+{
+  "V8MintMetadataPath": "driver/evidence/2026-10-06/replacement-machine-key-v8-public-metadata.json",
+  "V8MintMetadataSha256": "51701037af41fcc19101e26dd2d632934d20b94190d42782474f68f05abdfc1e",
+  "V8PublicCerPath": "driver/evidence/2026-10-06/SafeUploadTest-Recovery-20261006-v8.cer",
+  "V8PublicCerSha256": "47e7069980a60cbcf4dff61f0f2d3f02edcf97c2976708790b49d03a09243b2a",
+  "HealthyParent": "/var/lib/libvirt/images/win10-clean.safeupload-signer-fallback-recovery3-20261006.qcow2",
+  "RetainedFailedInitialDisk": "/var/lib/libvirt/images/win10-clean.safeupload-signer-key-bearing-v8-20261006.qcow2",
+  "FreshRetryChild": "/var/lib/libvirt/images/win10-clean.safeupload-signer-key-bearing-v8-retry1-20261006.qcow2",
+  "PriorCheckpointManifestSha256": "6aca834b6bcbbd14c5c4c7df17f45c7e7b327ad8872fb956057511f45da8a143",
+  "TrustFailureCapture": {
+    "Path": "driver/evidence/2026-10-06/signing-builder-v8-failed-trust-root-readout.json",
+    "Sha256": "e48aff481fb9a181b2a1dd88c62766bc07162607bb963f60696472f66b63ba37",
+    "Verdict": "FAILED_V8_TRUST_CAPTURE_PINNED",
+    "SixStoresExactlyMintBaseline": true,
+    "CurrentKeySddlExactlyMint": true,
+    "ArtifactSigningAttempted": false,
+    "UnderlyingTrustErrorCaptured": false,
+    "RawEvidencePaths": [
+      "driver/evidence/2026-10-06/signing-builder-trust-v8-20261006a.stdout.txt",
+      "driver/evidence/2026-10-06/signing-builder-trust-v8-20261006a.stderr.txt",
+      "driver/evidence/2026-10-06/signing-builder-v8-failed-trust-current-baseline.stdout.json",
+      "driver/evidence/2026-10-06/signing-builder-v8-failed-trust-current-baseline.stderr.txt",
+      "driver/evidence/2026-10-06/signing-builder-v8-failed-trust-current-public.stdout.txt",
+      "driver/evidence/2026-10-06/signing-builder-v8-failed-trust-current-public.stderr.txt"
+    ],
+    "TrustAttemptScriptPath": "driver/evidence/2026-10-06/exact-mvp20261006admissioncap2-replacement-trust-builder-root-v8.ps1",
+    "TrustAttemptScriptSha256": "4c8a541e40d5ccb7b283a19a39bd2857051fd5fd5070c3d4aa62628408a7ee98"
+  }
+}

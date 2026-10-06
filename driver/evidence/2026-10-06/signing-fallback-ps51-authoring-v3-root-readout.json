@@ -1,0 +1,34 @@
+{
+  "UTC": "2026-10-06T16:47:49.0047964Z",
+  "PowerShellVersion": "5.1.19041.6456",
+  "Results": [
+    {
+      "ParseErrors": 0,
+      "Name": "exact-mvp20261006admissioncap2-replacement-create-machine-key.ps1",
+      "SourceSHA256": "da2e948373d42d322cf3904faf10c3173bff03a385806717c3b6edf5dda65518"
+    },
+    {
+      "ParseErrors": 0,
+      "Name": "exact-mvp20261006admissioncap2-replacement-trust-builder-root.ps1",
+      "SourceSHA256": "1f408c7928988b06bb5d3178bbfd753ca4ee588b6b9bd4b9f7e40f2915f444bc"
+    },
+    {
+      "ParseErrors": 0,
+      "Name": "exact-mvp20261006admissioncap2-replacement-trust-debuggee.ps1",
+      "SourceSHA256": "487e15bb9fc6f213f0391d9f001d45a75f310f05123e8a178d7542f2c71153b5"
+    },
+    {
+      "ParseErrors": 0,
+      "Name": "exact-mvp20261006admissioncap2-replacement-trust-rollback.ps1",
+      "SourceSHA256": "23a4c3dc1c6e784390bce93e84ebde4171302fa2ee289fe8aae78b56b727a8a7"
+    }
+  ],
+  "MutationScriptsExecuted": false,
+  "StderrClassification": "Module first-use progress only; raw CLIXML retained",
+  "RuntimeSigningQualified": false,
+  "EvidencePins": {
+    "driver/evidence/2026-10-06/signing-fallback-ps51-authoring-v3.stdout.json": "bc93d358a1c194fbb6541ad128cbd433bc2497f8750487d16707650b14cdad30",
+    "driver/evidence/2026-10-06/signing-fallback-ps51-authoring-v3.stderr.txt": "a3639af5e23464fc391dae127fd5493f02c8178068a35866d9c7fdd35dcd623f",
+    "driver/evidence/2026-10-06/signing-fallback-ps51-authoring-v3.ps1": "91086fca923ba155dea8bd49d7f9abc7aece9dcde8a445990103ed0e9d5fa271"
+  }
+}

@@ -31,23 +31,38 @@ Normal staging stays compiled out and taint enforcement remains.
       **546 independent destination-byte samples**, no leak and exit 0.
 - [x] Exact 64-link control admitted; 65-link write refused with existing bytes
       preserved. Final independent original-driver/policy/Verifier restoration.
-- [x] Reproduce the pre-attachment writable-section leak on the current feature
-      SYS after closing the source file handle before attachment. A fresh
-      post-attach file object reads the unapproved mapped write; [gate](evidence/2026-10-02/physical-mapping-handle-closed-gate.txt),
+- [x] Historical pre-attachment writable-section leak reproduction, closed
+      source handle, dated 2 October 2026; [gate](evidence/2026-10-02/physical-mapping-handle-closed-gate.txt),
       [independent restoration](evidence/2026-10-02/physical-mapping-handle-closed-final-restored-state.txt).
-- [x] Reproduce a writable section that predates the agent's first policy push
-      and a later real-agent scope expansion: the old view changes the protected
-      destination after expansion; [gate](evidence/2026-10-02/policy-transition-eof-map-gate.txt),
+- [x] Historical policy-expansion mapping reproduction, dated 2 October 2026;
+      [gate](evidence/2026-10-02/policy-transition-eof-map-gate.txt),
       [independent restoration](evidence/2026-10-02/policy-transition-eof-map-final-restored-state.txt).
-      Earlier harness failures are excluded (see the follow-up below).
+- [ ] Reproduce and close both writable-mapping leaks against the exact current
+      feature source. Luna's 5 October audit found no exact-current-source mapping
+      verdict; the current `StageStream` path lets unowned paging writes pass.
+  - [x] Correct the pre-attachment harness so refused writes/flushes, incomplete
+        disposal, denied readers, missing post-write `FlushFileBuffers`, moved or
+        invalid extents, or incomplete raw-byte evidence cannot report BLOCKED;
+        preserve the fixture and any driver backup if final handle release fails.
+  - [x] Add an offline control that rejects the historical refused-flush/refused-reader
+        false pass; Linux structural self-check passes, but is not a PS parser or VM result.
+  - [x] Independently review the corrected harness and parse it in Windows
+        PowerShell 5.1; compile its native declarations without calling them
+        ([authoring validation](evidence/2026-10-05/mapgate-authoring-validation.txt)).
+  - [x] Build the exact current worktree's four driver configurations and both
+        Inspectors with zero warnings/errors; independently match all 26 source
+        files and downloaded artifact hashes
+        ([readout](evidence/2026-10-05/exact-mvp20261005mapgate-root-readout.json)).
+  - [ ] Rerun both leak repros with current-source driver/Inspector pins and
+        separate restoration. Compilation and authoring checks close no leak.
 - [x] Observe-only admission diagnostic implemented, reviewed, built clean and run on the
       debuggee (feature only, default off; see "Slice 1" below). It answers the four
       unknowns; **no leak is blocked by it**.
-- [x] Mapped-writable stream fence (feature build only): both existing repro scripts
-      **BLOCKED** (Verifier on and off), fixture E closed at section creation, the
-      dirty-page lifecycle leak found and fixed, 15-cycle race test and soak under the
-      Verifier with independent restorations; see "Slice 2" below. **The residual limits
-      listed there remain open.**
+- [ ] Mapped-writable stream privacy is not qualified for the current source.
+      Historical runs emitted BLOCKED after refused flushes/readers and lacked a
+      full raw-extent comparison; those results are now INCONCLUSIVE. The
+      existing stream fence, lifecycle, race and soak results remain historical
+      evidence only; see the source-gap assessment below.
 - [x] Physical mutation gates for old handles (feature build only): mutating FSCTLs and
       `FILE_DELETE_ON_CLOSE` on protected names, proven by an A/B test (five bypasses
       REPRODUCED without the gate, all BLOCKED with it); see "Slice 3" below.
@@ -901,10 +916,10 @@ VM results on run 12. Every row: baseline check, disk-only checkpoint, the run, 
 
 | Run | What it shows | Evidence | Result |
 | --- | --- | --- | --- |
-| `Test-StagedPreAttachmentMapping.ps1` | leak (a), no agent, Verifier on | [gate](evidence/2026-10-02/fence8-repro-a-verifier-gate.txt) | **BLOCKED** (flush refused, both fresh observers refused) |
-| same, Verifier off | | [gate](evidence/2026-10-02/fence8-repro-a-gate.txt) | **BLOCKED** |
-| `Test-StagedPolicyTransitionMapping.ps1` | leak (b), real agent, policy expansion, Verifier on | [gate](evidence/2026-10-02/fence8-repro-b-verifier-gate.txt) | **BLOCKED** |
-| same, Verifier off | | [gate](evidence/2026-10-02/fence8-repro-b-gate.txt) | **BLOCKED** |
+| `Test-StagedPreAttachmentMapping.ps1` | Historical leak (a), no agent, Verifier on | [gate](evidence/2026-10-02/fence8-repro-a-verifier-gate.txt) | Legacy script emitted BLOCKED after refused flush/readers; **INCONCLUSIVE** under the corrected measurement gate |
+| same, Verifier off | | [gate](evidence/2026-10-02/fence8-repro-a-gate.txt) | Legacy script emitted BLOCKED after refused flush/readers; **INCONCLUSIVE** |
+| `Test-StagedPolicyTransitionMapping.ps1` | Historical leak (b), real agent, policy expansion, Verifier on | [gate](evidence/2026-10-02/fence8-repro-b-verifier-gate.txt) | Legacy script emitted BLOCKED after refused flush/readers; no complete raw extent comparison; **INCONCLUSIVE** |
+| same, Verifier off | | [gate](evidence/2026-10-02/fence8-repro-b-gate.txt) | Legacy script emitted BLOCKED after refused flush/readers; no complete raw extent comparison; **INCONCLUSIVE** |
 | `Test-StagedFenceControls.ps1`, both modes | A and D fenced; B (read-only map) and C (no map) open; F out of scope not fenced; **E (mapping created after attach through an old handle) refused at creation** | [Verifier](evidence/2026-10-02/fence8-controls-verifier-gate.txt), [plain](evidence/2026-10-02/fence8-controls-gate.txt) | as designed |
 | `Test-StagedFenceLifecycle.ps1`, Verifier | does unapproved data reach the disk after release or unload | [gate](evidence/2026-10-02/fence8-lifecycle-verifier-gate.txt) | **No** (`Verdict_UnapprovedBytesReachedDisk=False`) |
 | `Test-StagedFenceRaces.ps1`, Verifier | 15 load/unload cycles, mappings created at random moments around the load | [gate](evidence/2026-10-02/fence9-races-verifier-gate.txt) | 167 pre-load views all refused a write and flush, 0 views created after load, 4,054 creations refused, **0 writes succeeded**, 0 load failures, 0 unload refusals |
@@ -920,9 +935,9 @@ Final runs after the review 3 fixes and after slice 3 (below): the same ten runs
 
 | Build | Evidence | Result |
 | --- | --- | --- |
-| run 14 (review 3 fixes), source of the slice 2 claims | `fence11-*`: [controls V](evidence/2026-10-02/fence11-controls-verifier-gate.txt), [leak a V](evidence/2026-10-02/fence11-repro-a-verifier-gate.txt), [leak b V](evidence/2026-10-02/fence11-repro-b-verifier-gate.txt), [lifecycle V](evidence/2026-10-02/fence11-lifecycle-verifier-gate.txt), [soak V](evidence/2026-10-02/fence11-soak-verifier-gate.txt), [races V](evidence/2026-10-02/fence11-races-verifier-gate.txt), [policy race V](evidence/2026-10-02/fence11-policyrace-verifier-gate.txt), plain [controls](evidence/2026-10-02/fence11-controls-gate.txt), [leak a](evidence/2026-10-02/fence11-repro-a-gate.txt), [leak b](evidence/2026-10-02/fence11-repro-b-gate.txt) | leak a and b BLOCKED (both modes), E refused, lifecycle `Verdict_UnapprovedBytesReachedDisk=False`, soak 5/5, races 166 pre-load views refused / 3,990 creations refused / 0 writes succeeded, policy race 0 writes succeeded |
-| run 15 (slice 3 included) | `fence13-*` (same ten) | identical results: leak a and b BLOCKED, E refused, lifecycle False, soak 5/5, races 179 / 3,918 / 0, policy race 0 |
-| run 16 (slice 3 review fixes, current) | `fence15-*` (same ten) | identical results: leak a and b BLOCKED, E refused, lifecycle False, soak 5/5, races 179 / 4,006 / 0, policy race 0; gates test all BLOCKED with controls allowed (`fence14-gates-run16*`) |
+| run 14 (review 3 fixes), source of the slice 2 claims | `fence11-*`: [controls V](evidence/2026-10-02/fence11-controls-verifier-gate.txt), [leak a V](evidence/2026-10-02/fence11-repro-a-verifier-gate.txt), [leak b V](evidence/2026-10-02/fence11-repro-b-verifier-gate.txt), [lifecycle V](evidence/2026-10-02/fence11-lifecycle-verifier-gate.txt), [soak V](evidence/2026-10-02/fence11-soak-verifier-gate.txt), [races V](evidence/2026-10-02/fence11-races-verifier-gate.txt), [policy race V](evidence/2026-10-02/fence11-policyrace-verifier-gate.txt), plain [controls](evidence/2026-10-02/fence11-controls-gate.txt), [leak a](evidence/2026-10-02/fence11-repro-a-gate.txt), [leak b](evidence/2026-10-02/fence11-repro-b-gate.txt) | leak a/b scripts emitted BLOCKED after refused mapped flushes and incomplete observations; both mapping verdicts are **INCONCLUSIVE** under the corrected gate. Other recorded control/lifecycle/soak/race results remain historical |
+| run 15 (slice 3 included) | `fence13-*` (same ten) | same mapping-measurement defect: a/b are **INCONCLUSIVE**; other recorded control/lifecycle/soak/race results remain historical |
+| run 16 (slice 3 review fixes) | `fence15-*` (same ten) | same mapping-measurement defect: a/b are **INCONCLUSIVE**; other recorded control/lifecycle/soak/race results remain historical; gates test all BLOCKED with controls allowed (`fence14-gates-run16*`) |
 
 **Residual limits (documented, NOT claimed fixed):**
 - Removable and network scopes are not scanned (`volumeScopesSkipped`, `complete:false`); item 4 owns them.

@@ -1,0 +1,23 @@
+{
+  "UTC": "2026-10-06T17:25:56.912209+00:00",
+  "Verdict": "V5_GUARD_FAILED_RETAINED_AND_ORIGINAL_BASELINE_RESTORED_TWICE",
+  "FailedThumbprint": "DF864DD743809E379FAEE81EFD8D35F7D9BE75EA",
+  "OriginalErrorMessage": "ACL verification found a removed or rewritten ACE.",
+  "BeforeAclCapturedOnFailure": false,
+  "AfterAclPublicMetadataCaptured": true,
+  "KeyChallengeExecuted": false,
+  "PublicCerExported": false,
+  "TrustImported": false,
+  "SourceSignerRepinned": false,
+  "FailedKeyUsable": false,
+  "EvidencePins": {
+    "driver/evidence/2026-10-06/signing-create-v5-20261006a.stdout.txt": "5737af68c43c2cedcb100489c013a48b0ad6dcbe9767f6288e1fc2bf27687046",
+    "driver/evidence/2026-10-06/signing-create-v5-20261006a.stderr.txt": "0d3e1b1c8a46351e9d18449aeed86b3e05e5050a9302275ef2d54e3f46039694",
+    "driver/evidence/2026-10-06/signing-create-v5-20261006a-staging.stdout.txt": "bf5067f300ff8c5b06d102e0ae98bf0c7e4fbb0ecad6dfb6cdaacd4fade35b97",
+    "driver/evidence/2026-10-06/signing-create-v5-20261006a-staging.stderr.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "driver/evidence/2026-10-06/signing-builder-failed-v5-public-acl-metadata.ps1": "595c16c39ed02eb1b263276153d0922d005b4f8b36c4c56e9d0968260cb5c55e",
+    "driver/evidence/2026-10-06/signing-builder-failed-v5-public-acl-metadata.stdout.json": "966e6b9953da0365967c6b124df6e47a4478ba521fb769f9d80f0185618b41ec",
+    "driver/evidence/2026-10-06/signing-builder-failed-v5-public-acl-metadata.stderr.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "driver/evidence/2026-10-06/signing-builder-postmint-recovery-v5/guest-baseline-root-readout.json": "4e7f0daa0a68c51d847f5dab3cc20d888366c0b47cf416ae30c6b03cbac337d5"
+  }
+}

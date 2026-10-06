@@ -1,0 +1,20 @@
+Independent source review — WinFsp SDK retained-output validator V2
+Date: 2026-10-06
+Verdict: STATIC_SOURCE_PASS; execution remains gated on fresh Windows PowerShell 5.1 parse/binding evidence.
+
+Reviewed exact pins:
+- Validator: driver/evidence/2026-10-06/winfsp-sdk-v3-retained-validation-v2/validate-retained-sdk-v3-v2.ps1
+  SHA-256 1e425c6f2314499b9d5ce7c075359bcc49a8b7a1c7ef85c5b3c8ac6288cb3f4e
+- Inputs: validation-inputs-v2.json
+  SHA-256 e99bc4097e53983f0abbf6ca61e6736dc057695bf538726998118abccb4db8f5
+- Plan: validation-plan-v2.txt
+  SHA-256 fbe5f2ebc4c4d3fde5509556ebaf2b3eb06b63dc5f8d92eba082a8ccb3e5a62d
+- Source manifest: source-manifest-v2.sha256
+  SHA-256 58821767781d5db0e7e111c9e99d84d8e26e702e38f0ae181ead34c3ff789340
+  All 14 manifest entries verified with sha256sum -c.
+
+V1 remains frozen and unapproved for execution. Its inventory routine stores directory snapshots through `$script:directorySnapshots`, a scope dependency that is not reliable when the body is invoked from a dynamic scriptblock. V2 removes that dependency: `Get-QuarantinedTreeInventory` receives an explicit `[System.Collections.IDictionary]` `$Snapshots` parameter, permits the initially empty collection, and the caller passes its initialized local hashtable. The same parameter is used for writes and the final stability comparison.
+
+The V2 source is still a validate-only check of the already retained extraction. Its file opens and metadata calls are read-only; the source has no installer invocation, target/log write or deletion, process/service stop, service-configuration mutation, or extracted-program execution path. Existing identity, MSI signature/hash, actor/service, installed WinFsp inventory, no-reparse, full tree hash, directory stability, and SDK header/library-root checks remain in place. Its output explicitly leaves runtime and mapping privacy unqualified.
+
+This review is static only. I did not run the V2 validator or assert that its explicit hashtable parameter binds under Windows PowerShell 5.1. The historical V1 parse does not apply to V2. Require exact-source V2 PS5.1 parse/Add-Type and a fresh empty-hashtable binding check before its one validate-only run.

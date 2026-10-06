@@ -44,6 +44,15 @@ public sealed record TransferNotification(
     public const string TypeName = "transfer";
 }
 
+/// <summary>Current admission-gate coverage for the accepted minifilter policy.</summary>
+public enum AdmissionCoverageStatus
+{
+    NotAvailable,
+    Pending,
+    Ready,
+    Degraded
+}
+
 /// <summary>
 /// O estado da proteção agora.
 ///
@@ -64,7 +73,10 @@ public sealed record StatusNotification(
     int PolicyVersion,
     int ActiveCategories,
     bool ProtectionActive,
-    bool AuditOnly = false) : AgentNotification
+    bool AuditOnly = false,
+    AdmissionCoverageStatus AdmissionCoverage = AdmissionCoverageStatus.NotAvailable,
+    string? AdmissionCoverageReason = null,
+    uint? NativePolicyGeneration = null) : AgentNotification
 {
     /// <summary>Discriminador desta mensagem no NDJSON.</summary>
     public const string TypeName = "status";

@@ -116,13 +116,35 @@ def audit_parent(source):
     check(finalize.index('$state.Restored -ne $true') < finalize.index(removes[0].strip()), 'Finalize removal before restored assertion')
     check(finalize.index('$state.RecoveryRequired -ne $false') < finalize.index(removes[0].strip()), 'Finalize removal with RecoveryRequired')
     after = source[source.index("}elseif($Phase -eq 'AfterBoot')"):source.index("}else{\n    $state=[Management.Automation.PSSerializer]")]
-    sequence = ["if(-not(Test-TerminalState)){Recovery", 'Freeze-Artifacts', 'Restore-TerminalRun', "'W01_CASE_COMPLETED=True';'W01_RESTORED=True'"]
+    sequence = ["if(-not(Test-TerminalState)){Recovery", '$state.DiagnosticCompleted=[bool]$outcome.Completed', 'Freeze-Artifacts', 'Restore-TerminalRun', "('W01_DIAGNOSTIC_COMPLETED='+[string]$state.DiagnosticCompleted)", "'W01_RESTORED=True'"]
     offsets = [after.index(item) for item in sequence]
     check(offsets == sorted(offsets), 'Unsafe AfterBoot freeze/restore/sentinel order')
+    check("if($state.DiagnosticCompleted){'W01_CASE_COMPLETED=True'}" in after, 'CASE sentinel is not conditional on diagnostic success')
     check(len(re.findall(r'(?m)^\s*Restore-TerminalRun\s*$', source)) == 1, 'Unexpected restoration call site')
     check('finally' not in code_mask(after), 'Restoration reachable through AfterBoot finally')
     check('write.request' not in code_mask(source), 'Parent can publish write request')
     check(not re.search(r"Request\s+['\"]write|Write-\w+.*['\"]write\.request", source), 'Parent owns write trigger')
+    predicate = function_body(source, 'Get-W01DiagnosticDisposition')[0]
+    check(not re.search(r'\[(?:int|long|uint|ulong)\]\s*\(', code_mask(predicate), re.I), 'Diagnostic predicate casts before required-field validation')
+    integer_parser = function_body(source, 'ConvertTo-W01Integer')[0]
+    check("$Value -is [decimal]" in integer_parser and '18446744073709551615' in integer_parser and
+          '[decimal]::Truncate($Value)' in integer_parser,
+          'Lossless UInt64-range Decimal handling is missing')
+    for item in ('Get-W01FieldValue', 'ConvertTo-W01Integer', 'Rv4W01Diagnostic/1', 'Rv4W01LauncherEvidence/1',
+                 "'Errors'", "'capture-complete'", "'CompletionSource' 'IOCP'", "'Bytes' 4096", "'FileId128Hex'", "'VolumeSerialHex'"):
+        check(item in predicate, 'Pure diagnostic predicate missing producer control: ' + item)
+    check(re.search(r'function\s+Get-W01DiagnosticDisposition\(\[object\]\$Diagnostic,\[object\]\$ChildExit,\[object\]\$LauncherEvidence,\[object\]\$Opened,\[object\]\$Issued,\[object\]\$Completed,\[object\]\$Closed,', source) is not None,
+          'Pure diagnostic predicate signature does not match raw producers plus sourced launcher evidence')
+    check('Get-W01DiagnosticDisposition $diag $done $launcherEvidence $opened $issued $completed $closed $RunGuid $expectedBoot $state.TargetIdentity.FileIdHex $state.TargetIdentity.VolumeSerialHex' in after,
+          'AfterBoot predicate arguments do not match signature order')
+    check("Get-W01FieldValue $Diagnostic 'LowerDisarmTerminal'" in predicate, 'Lower terminal input is not read from its child producer')
+    trace_enable = "$null=Inspect '--admission-trace-enable' 'trace-enable-control.json'"
+    control_probe = "$null=Inspect ('--admission-probe \"'+$control+'\"') 'protected-control-probe.json'"
+    child_start = '$state.ChildStarted=$true;Save-State;Start-ScheduledTask -TaskName $childTask'
+    check(after.count(trace_enable) == 1 and after.count(control_probe) == 1 and after.count(child_start) == 1,
+          'AfterBoot trace-enable/probe/child-start controls are missing or duplicated')
+    check(after.index(trace_enable) < after.index(control_probe) < after.index(child_start),
+          'Observer trace is not enabled before protected-control probe and child start')
     params = source[:source.index("$ErrorActionPreference='Stop'")]
     hashes = re.findall(r'\$Expected\w+Sha256', params)
     check(set(hashes) == {'$Expected' + n + 'Sha256' for n in ('InputManifest','Feature','Lower','Inspector','Stimulus','Client','Child','Observer','Suite','ServicePackage','ServiceTree','Bytes','OriginalDriver','OriginalPolicy')}, 'Missing required hash pins')
@@ -158,6 +180,9 @@ def audit_host(source, module):
         check(encoded_length < 7000, 'remote_ps long-script cleanup can run while pending')
     for item in ('require(expected == hashes', 'recovery_markers(evroot)', 'finally:\n        copies = collect_guest', "sha(source) != hashes[key]", 'input-staging-verified.json', "name = 'boot-start-w01-", 'source_transport_gate', 'frozen-manifest.json'):
         check(item in source, 'Missing host invariant: ' + item)
+    check("'StrictHostKeyChecking=yes'" in source, 'Host delivery accepts an unverified SSH key')
+    check("afterboot_diagnostic_status(after_lines)" in source and "case['DiagnosticCompleted'] is True" in source and "case['DiagnosticFailureReason']" in source,
+          'Host gate loses failed-diagnostic disposition or restoration evidence')
     with tempfile.TemporaryDirectory(prefix='w01-recovery-check-') as tmp:
         root = Path(tmp); check(not module.recovery_markers(root), 'Empty recovery latch fails')
         (root / 'prior-recovery-required.txt').write_text('GUEST_RECOVERY_REQUIRED=True\n')
@@ -196,7 +221,7 @@ def audit_host(source, module):
 def rejects(operation, message):
     try:
         operation()
-    except AssertionError:
+    except (AssertionError, RuntimeError):
         return
     raise AssertionError('Negative structural control accepted: ' + message)
 
@@ -207,10 +232,36 @@ def main():
     spec = importlib.util.spec_from_file_location('w01_host', host_path)
     module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
     audit_parent(parent); audit_host(host, module)
+    wrapper = (SCRIPTS / 'Invoke-DebuggeeExperiment.sh').read_text()
+    check('if [[ "$name" == boot-start-w01-* ]]; then' in wrapper and
+          'BOOT_START_CASE_SENTINEL:-BootStartX4AndE1=True' in wrapper and
+          'BOOT_START_RESTORED_SENTINEL:-BOOT_RESTORED=True' in wrapper,
+          'W01 restoration gate changed other boot-start transport cases')
+    returned = 'HARNESS_RETURNED'
+    restored = module.SENTINELS['RESTORED']
+    case = module.SENTINELS['CASE']
+    diagnostic_true = module.W01_DIAGNOSTIC_TRUE
+    diagnostic_false = module.W01_DIAGNOSTIC_FALSE
+    check(module.afterboot_diagnostic_status([returned, restored, diagnostic_true, case]) is True,
+          'Producer-shaped successful after-boot disposition rejected')
+    check(module.afterboot_diagnostic_status([returned, restored, diagnostic_false]) is False,
+          'Producer-shaped failed diagnostic did not preserve safe restoration')
+    rejects(lambda: module.afterboot_diagnostic_status([returned, restored, diagnostic_false, case]),
+            'failed diagnostic with CASE sentinel')
+    rejects(lambda: module.afterboot_diagnostic_status([returned, restored, diagnostic_true]),
+            'successful diagnostic without CASE sentinel')
+    rejects(lambda: module.afterboot_diagnostic_status([returned, diagnostic_false]),
+            'diagnostic failure without restoration sentinel')
+    rejects(lambda: module.afterboot_diagnostic_status([returned, restored]),
+            'missing explicit diagnostic disposition')
+    rejects(lambda: module.afterboot_diagnostic_status([returned, restored, diagnostic_false, 'W01_DIAGNOSTIC_COMPLETED=unknown']),
+            'malformed duplicate diagnostic disposition')
     for leaf in ('Test-StagedW01Diagnostic.ps1', 'StagedSectionFaultClient.cs', 'StagedInvariantObserver.psm1', 'StagedW01Stimulus.cs'):
         source = (SCRIPTS / leaf).read_text()
         check(not re.search(FORBIDDEN, source), 'Pending-path dependency terminates: ' + leaf)
     child = (SCRIPTS / 'Test-StagedW01Diagnostic.ps1').read_text()
+    check("Schema='Rv4W01Diagnostic/1';RunGuid=$runGuid;BootId=(Get-CimInstance Win32_OperatingSystem).LastBootUpTime.ToUniversalTime().ToString('o')" in child,
+          'Child diagnostic producer does not emit its boot identity')
     order = [child.index('$terminal=$client.DisarmWrite()'), child.index("throw 'Lower disarm reply is not terminal'"), child.index('$observed.LowerDisarmTerminal=$terminal'), child.index('if($disarmed){$client.Dispose()}'), child.index("Save-Text (Join-Path $EvidenceDirectory 'rv4-w01-diagnostic.json')")]
     check(order == sorted(order), 'Child lower terminal receipt precedes actual disarm/disconnect')
     rejects(lambda: audit_parent(parent.replace("    if(-not(Test-TerminalState)){throw 'Restoration refused: terminal predicate false'}", "    $null=Native 'fltmc.exe' @('unload','SafeUploadSectionFault')\n    if(-not(Test-TerminalState)){throw 'Restoration refused: terminal predicate false'}")), 'lower unload before guard')
@@ -225,7 +276,7 @@ def main():
     with tempfile.TemporaryDirectory(prefix='w01-pycompile-') as tmp:
         env = dict(__import__('os').environ, PYTHONPYCACHEPREFIX=tmp)
         subprocess.run([sys.executable, '-m', 'py_compile', *map(str, files)], env=env, check=True)
-    print('W01 Linux self-check: structural checks completed (no verdict): pending-path structure, unlimited tasks, required pins, host transport, seven rejection controls; ' + str(len(files)) + ' Python scripts compiled.')
+    print('W01 Linux self-check: structural checks completed (no verdict): pending-path structure, unlimited tasks, required pins, host transport, producer-shaped restoration controls and negative controls; ' + str(len(files)) + ' Python scripts compiled.')
     print('PowerShell 5.1 parse, native compilation and VM execution NOT VERIFIED. W01/A05 INCONCLUSIVE; Phase4=NOT_QUALIFIED')
 
 

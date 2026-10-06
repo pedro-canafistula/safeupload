@@ -1,0 +1,11 @@
+GUEST_RECOVERY_REQUIRED=True
+Reason=W01 AfterBoot phase transport failed/pended or safe restoration evidence was incomplete.
+Checkpoint=safeupload-pre-boot-start-w01-w01-b38b36-20261006c-ff67c01b990e41ff9af89b5a9959757c-20261006
+ActiveOverlay=/var/lib/libvirt/images/win10-debug.safeupload-pre-boot-start-w01-w01-b38b36-20261006c-ff67c01b990e41ff9af89b5a9959757c-20261006
+Domain=win10-debug
+ Type   Device   Target   Source
+------------------------------------------------------------------------------------------------------------------------------------------------------------
+ file   disk     vda      /var/lib/libvirt/images/win10-debug.safeupload-pre-boot-start-w01-w01-b38b36-20261006c-ff67c01b990e41ff9af89b5a9959757c-20261006
+ file   cdrom    sda      -
+ file   cdrom    sdb      -
+

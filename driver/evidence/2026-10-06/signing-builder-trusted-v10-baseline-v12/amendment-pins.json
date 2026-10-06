@@ -1,0 +1,55 @@
+{
+  "Status": "V12_PINNED_SCHEMA_AUDIT_AMENDMENT_REVIEW",
+  "ReadyForExecution": false,
+  "FrozenV10PackageManifestPath": "driver/evidence/2026-10-06/signing-builder-trusted-v10-checkpoint/source-manifest.sha256",
+  "FrozenV10PackageManifestSha256": "49574cb4ae56014eabfd325f6cb16ed893efb6e300a8565b47634cb4e0aa5f11",
+  "FrozenV10BaselinePath": "driver/evidence/2026-10-06/signing-builder-trusted-v10-checkpoint/baseline-check-v10.ps1",
+  "FrozenV10BaselineSha256": "369c4cfa978ef38d63daeae1d846d44791388488ea9fd123e98573c300e04dbe",
+  "IndependentV10ReviewNotePath": "driver/evidence/2026-10-06/signing-builder-trusted-v10-checkpoint-independent-review-luna.md",
+  "IndependentV10ReviewNoteSha256": "034b605b0f0a368589fdecd55459412fcc24c98a795890bfd30916b578cc1be5",
+  "FrozenV11ManifestPath": "driver/evidence/2026-10-06/signing-builder-trusted-v10-baseline-v11/source-manifest.sha256",
+  "FrozenV11ManifestSha256": "130ba3da770e3c7edd9fb8539f2ac3dfb9c445ffc9ab1fdb103baca183466f4b",
+  "FrozenV11BaselinePath": "driver/evidence/2026-10-06/signing-builder-trusted-v10-baseline-v11/baseline-check-v11.ps1",
+  "FrozenV11BaselineSha256": "30c62dfc0993db4cb762a23a01039ec0165dc0ba46f3ad1027022c52d7dda496",
+  "V11FailureRootReadoutPath": "driver/evidence/2026-10-06/signing-builder-trusted-v11-baseline-failure-root-readout.json",
+  "V11FailureRootReadoutSha256": "518a9fa3dfbacf81f32512ea5c5b88758970e6d8b3d766efcf89603e84e2c8d8",
+  "V11FailureExitPath": "driver/evidence/2026-10-06/signing-builder-trusted-v11-execution/pre-shutdown.exit.json",
+  "V11FailureExitSha256": "4df5d1b6920fbc4c8eb78aec7114f08826463bacf7db7bf91e6dbdd8d075e8b3",
+  "V11FailureStderrPath": "driver/evidence/2026-10-06/signing-builder-trusted-v11-execution/pre-shutdown.stderr.txt",
+  "V11FailureStderrSha256": "90326332379995ff8d765a39fa2bdf1b3a1ef74c5984c10cfaf64fca9b5073f1",
+  "V11FailureStdoutPath": "driver/evidence/2026-10-06/signing-builder-trusted-v11-execution/pre-shutdown.stdout.txt",
+  "V11FailureStdoutSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "V12BaselinePath": "driver/evidence/2026-10-06/signing-builder-trusted-v10-baseline-v12/baseline-check-v12.ps1",
+  "V12BaselineSha256": "df9337aa46ad06c6440f59d7a2b0caf88fad86f555c4f219b72bf758150fe985",
+  "AclHelperPath": "driver/evidence/2026-10-06/signing-builder-trusted-v10-baseline-v12/signing-guard-helpers-v8.ps1",
+  "AclHelperSha256": "9585e1acd512f9532de032c6ce2df251fa774acc83d27cfc6afceb437ce64c42",
+  "SchemaAuditInventoryPath": "driver/evidence/2026-10-06/signing-builder-trusted-v10-baseline-v12/schema-audit-inventory.json",
+  "SchemaAuditInventorySha256": "68a658d59c41f0f8bd14ca3e41e4331ff933a6fe9f59fab6c557ca1840be1c8d",
+  "V11SchemaFailure": {
+    "RecordZeroActualThumbprintField": "NewThumbprint",
+    "MissingAssumedFields": [
+      "Thumbprint",
+      "KeyAclUnchanged"
+    ],
+    "ActualAclFields": [
+      "KeyAclSddl",
+      "KeyAclOwner",
+      "KeyAclGroup",
+      "KeyAclProtected",
+      "KeyAclCanonical",
+      "KeyAclRules"
+    ],
+    "HostCheckpointAttempted": false,
+    "TrustModified": false
+  },
+  "V12AclMapping": {
+    "RawSddl": "KeyAclSddl -> snapshot.Sddl",
+    "RawOwnerSid": "KeyAclOwner -> snapshot.OwnerSid",
+    "RawGroupSid": "KeyAclGroup -> snapshot.GroupSid",
+    "ProtectionAndCanonicality": "KeyAclProtected/KeyAclCanonical -> snapshot.AreAccessRulesProtected/AreAccessRulesCanonical",
+    "OrderedRows": "KeyAclRules -> exact ordered SID|Allow|Rights|None|None|Inherited rows in all four mint/trust snapshots",
+    "LiveAclAndRootAssertionRetained": true
+  },
+  "ParserAndReadOnlyBaselineValidation": "Pending exact V12 source parse and baseline check by root.",
+  "VmKeyTrustSigningBuildActions": false
+}

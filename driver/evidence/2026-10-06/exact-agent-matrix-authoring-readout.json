@@ -1,0 +1,12 @@
+{
+  "UTC": "2026-10-06T15:13:55.171363+00:00",
+  "Source": "driver/scripts/Build-ExactAgentMatrix.ps1",
+  "SHA256": "4aa6858e829161ffa022374cf31878e9550c2a3e32be6cadf7a5b8d8b622752d",
+  "RemoteExit": 0,
+  "Stdout": "driver/evidence/2026-10-06/exact-agent-matrix-authoring.stdout.txt",
+  "Stderr": "driver/evidence/2026-10-06/exact-agent-matrix-authoring.stderr.txt",
+  "ScriptExecuted": false,
+  "ScriptParsedOnly": true,
+  "AgentSourcesUploaded": false,
+  "MatrixBuildRun": false
+}

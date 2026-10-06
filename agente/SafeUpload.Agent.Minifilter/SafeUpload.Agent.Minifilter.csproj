@@ -22,4 +22,12 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
+  <PropertyGroup Condition="'$(SafeUploadAdmissionEvidence)' == 'true'">
+    <DefineConstants>$(DefineConstants);SAFEUPLOAD_ADMISSION_EVIDENCE</DefineConstants>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(SafeUploadAdmissionEvidence)' == 'true'">
+    <InternalsVisibleTo Include="SafeUpload.Agent.Tests" />
+  </ItemGroup>
+
 </Project>

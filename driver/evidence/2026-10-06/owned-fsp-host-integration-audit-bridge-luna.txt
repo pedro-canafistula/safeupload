@@ -1,0 +1,38 @@
+SafeUpload owned-FSP host integration audit
+Date: 2026-10-06
+Reviewer: bridge_fixture_finish_luna
+Scope: source-only integration review; no product edits, build, VM, or runtime qualification.
+
+This is a review of the following current authoring snapshot, not a source freeze:
+
+  driver/SafeUpload.Minifilter/OwnerCommunication.c      e4fd74ad479ed06c2dfcb3770bf5b5ead2a60132cf136d295040c63def4fb45f
+  driver/SafeUpload.Minifilter/StageOwnerEcp.c            0dfba2ab023a7ebe67ddcd4f5a5e97a7cf7128b090902065a60257dcc86218b5
+  driver/SafeUpload.Minifilter/StageOwnerEcp.h            a0f8bb2a21bff1058a67b85d268a35643caf779b07953d964646b31766ff0c80
+  driver/SafeUpload.Minifilter/Context.c                 dca448002be19c305faf15e4ae329d3e412a396ca28ca74ee2f913c092584d22
+  driver/SafeUpload.Minifilter/StageStream.c              8dc8895efcd545caa1fbe7ab428bd6b897a262e77b947cebadcebf81d0aa46fc
+  driver/SafeUpload.Minifilter/Filter.c                   610f93aeff528e36f0b1ae02a5c6506bff4b83d3efaaf55c7bd3fce557cd450e
+  driver/SafeUpload.OwnedFspHost/SafeUpload.OwnedFspHost.cpp ef546f806181b1b3d77a8df7f8e11cbf53c4f5f781f70d8944d42ce56c28fe29
+  agente/SafeUpload.Agent.Service/Interception/OwnerAllocationEndpoint.cs a32a7ea978d1d920cb4023aaa853c308c9cf72a2f8eb8ba8bf87425fbf8a2d36
+  agente/SafeUpload.Agent.Service/Interception/OwnerScopeRegistry.cs 3d76ff86d617fe5ac7031dc2ffe8c935234bf96bb85e76b450275d4c2dd1e42e
+  agente/SafeUpload.Agent.Service/Interception/OwnerGenerationRegistry.cs caced39eac8890e2f1761225131975471f18795216db7b80cee8394a372db438
+  agente/SafeUpload.Agent.Service/Interception/BootPolicyRegistryWriter.cs 7b20c114cab27da897a3b5479d0e96041a475fced5a2e051c6c72e66fa5453c9
+  agente/SafeUpload.Agent.Service/Interception/BootPolicySeeder.cs a96ebb89a2c702fd242d191562f70febeaae05e40f70435ced7523663da62016
+  agente/SafeUpload.Agent.Service/Interception/MinifilterInterceptor.cs 529496b1f429f5ebc06a5d61725d2a952040742ee765a854b6520b88a8dd6b12
+
+Findings
+
+1. The native host is intentionally inert: it includes the WinFsp interface type but creates no filesystem/volume or dispatcher and returns ERROR_NOT_READY. The managed endpoint registers a configured volume device name, then receives kernel allocation requests and replies with only a stage basename. OwnerGenerationRegistry is private to the agent service. There is no host-to-service broker or call path for obtaining a private backing object, I/O, flush, or final-close receipts. Host callback implementation must wait for a frozen C ABI and explicit ownership/lifetime contract.
+
+2. The existing pre-ready kernel gate is scoped to IRP_MJ_CREATE on an instance marked WinFsp. It runs before ordinary staging dispatch; invalid/missing ECP denies, while FspFileSystemCreate/control-device bootstrap is outside this attached-volume callback path. Registration resolves the requested volume name to a filter volume and instance and sets OwnerFspReady only after checking the WinFsp filesystem and immutable scope digest.
+
+3. The WinFsp classification helper is currently Boolean. It returns FALSE for both a known non-WinFsp volume and errors such as property-buffer allocation failure, FltGetVolumeProperties failure, or invalid/truncated output. Context.c caches that result as OwnerWinFspVolume; StageStream.c then skips the owner Create deny gate. Preserve three outcomes: known WinFsp (gate), known other filesystem (normal path), and unknown (fail closed for that attachment or otherwise ensure this instance cannot expose the FSP host). Do not solve this with a global Create denial that would block unrelated filesystems or WinFsp control-plane bootstrap.
+
+4. Startup must use the generated volume identity, not a static configuration guess. Safe sequence: construct WinFsp with every callback default-deny; start its dispatcher while no user mountpoint/route is published; send the exact generated volume name and a fresh startup nonce to the service; have the service register and verify that exact attached/classified instance and immutable OwnerScopes; enable the host route/publish only after a matching acknowledgement. On service-port loss, deny new opens before clearing route state; retain already-open private backing references until their actual final close and cache flush are accounted for.
+
+5. The redirect happens before the original filesystem Create reaches NTFS. The allocation request captures destination identity and disposition; the kernel grant retains desired access/share for the redirected Create check. This host/service path does not carry the original security descriptor or demonstrate an equivalent access check for the original requestor token. Preserve the original ACL/access and sharing contract before claiming authorized writes; identity/PID matching alone is not an ACL check.
+
+6. Current OwnerScope and allocation admission accepts fixed local NTFS/Cloud only. The implementation cannot report full-scope readiness while other destinations remain accepted by policy but lack a route.
+
+No per-volume device-security-descriptor override was found in the public WinFsp API. The exact upstream source examined was WinFsp commit fde790d8ea41283606d1c56b557608a17e455f59: `src/sys/volume.c` creates the volume device without a caller-supplied SDDL; `inc/winfsp/fsctl.h` volume parameters have no device-SD member; `src/dll/fsctl.c` FspFsctlCreateVolume exposes no SD parameter. The namespace DACL behavior also depends on FILE_DEVICE_SECURE_OPEN. Do not rely on an invented volume DACL or use it in place of the one-use ECP gate.
+
+Required integration qualification after the broker and runtime code are frozen: (a) before registration, an ordinary direct open of the exact FSP volume is denied, while the FSP control-plane bootstrap succeeds; (b) an ordinary user writes a protected original file, the minifilter reparses that create with its one-use ECP, and the exact authorized create reaches the host; (c) a direct create against the same FSP volume without ECP is denied; (d) after broker disconnect, new opens fail while already-open private content stays on its private route until real close/flush completion; (e) test unknown volume-property results do not bypass the gate. These checks establish routing behavior only; they do not by themselves prove a mapping privacy guarantee.

@@ -1,0 +1,100 @@
+{
+  "summary.txt": {
+    "Fetched": true,
+    "FetchExit": 0,
+    "SHA256": "43a922dd31ee85479d670fc96b648e09464326d1f0a0ddd6988bc91b0b381494",
+    "Bytes": 1581
+  },
+  "signature-verification.json": {
+    "Fetched": false,
+    "FetchExit": 1
+  },
+  "sign.txt": {
+    "Fetched": false,
+    "FetchExit": 1
+  },
+  "SafeUpload-stage-prototype.sys": {
+    "Fetched": false,
+    "FetchExit": 1
+  },
+  "writer-fixture.txt": {
+    "Fetched": true,
+    "FetchExit": 0,
+    "SHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "Bytes": 0
+  },
+  "writer-fixture.exe": {
+    "Fetched": true,
+    "FetchExit": 0,
+    "SHA256": "623142a4b465f6e521f144d45cbdc422f08c2030c241822f670a68fabd873e1a",
+    "Bytes": 4608
+  },
+  "normal-wdk.txt": {
+    "Fetched": true,
+    "FetchExit": 0,
+    "SHA256": "bf3387bc97be872c27b2783ae51ad081dd385718f6eee2691584f5ccfd96e9d0",
+    "Bytes": 13012
+  },
+  "normal.sys": {
+    "Fetched": true,
+    "FetchExit": 0,
+    "SHA256": "0586b19b9f66c7e8179e9b2b186cc32524f958e2a829de7bf8a24b5be8be08b7",
+    "Bytes": 50688
+  },
+  "normal-release-wdk.txt": {
+    "Fetched": true,
+    "FetchExit": 0,
+    "SHA256": "15f7cf79005227cd63fee61474aee565112c7d4755f6bf6b4d0ca7a87bb96961",
+    "Bytes": 12926
+  },
+  "normal-release.sys": {
+    "Fetched": true,
+    "FetchExit": 0,
+    "SHA256": "36c34e5166650ebb4851676901e016b27ee8f7d6d2a318ab83aea0525490c86a",
+    "Bytes": 41984
+  },
+  "owned-feature-wdk.txt": {
+    "Fetched": true,
+    "FetchExit": 0,
+    "SHA256": "13a1ae1840fbcafc51dedec8902741486540c1d4f813f4d9a9b92c987221d938",
+    "Bytes": 15588
+  },
+  "owned-feature.sys": {
+    "Fetched": false,
+    "FetchExit": 1
+  },
+  "owned-feature-release-wdk.txt": {
+    "Fetched": true,
+    "FetchExit": 0,
+    "SHA256": "e55bf0786ae7e23082cfa24f10ea97185f4ed678ee4002ba54cdb0f41d74c806",
+    "Bytes": 15544
+  },
+  "owned-feature-release.sys": {
+    "Fetched": false,
+    "FetchExit": 1
+  },
+  "inspector-feature-release.txt": {
+    "Fetched": true,
+    "FetchExit": 0,
+    "SHA256": "79340d819e58efefdba4f30c0b9b96bce36e0d61fba0b1f751f7c6e83ac3b1f6",
+    "Bytes": 6350
+  },
+  "inspector-feature-release.exe": {
+    "Fetched": true,
+    "FetchExit": 0,
+    "SHA256": "a8c8e07b74f8d496cb19d49127afc6021d8132c9e17451e9c57e44ebfe7d19d4",
+    "Bytes": 194560
+  },
+  "inspector-normal-release.txt": {
+    "Fetched": true,
+    "FetchExit": 0,
+    "SHA256": "2767e1e0c24db5207a4bfb8bb803f7e0e125d2c8b66f0d64eda533beb2e86859",
+    "Bytes": 6496
+  },
+  "inspector-normal-release.exe": {
+    "Fetched": true,
+    "FetchExit": 0,
+    "SHA256": "406e8767867a1d10e726d703e38d900da054eb69d3cc5e831cf38b739e728066",
+    "Bytes": 155648
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "driver/evidence/2026-10-06/signing-builder-key-bearing-recovery-v8-retry2/execute-checkpoint.py": "ad141e77a687f814aa529d74668f07321bd2ce26ef2190b5b30fabf04c7d004a",
+  "driver/evidence/2026-10-06/signing-builder-key-bearing-recovery-v8-retry2/inputs.json": "7dfcd0292a8c41d593aa097afd4ad2b38160857455623cc90309d02b5d8f3c8e",
+  "driver/evidence/2026-10-06/signing-builder-key-bearing-recovery-v8-retry2/domain-initial.xml": "307dcd0c6e46355cbc87d325a75af0ba45dd2a918742eb175eab0b7d366000f7",
+  "driver/evidence/2026-10-06/signing-builder-key-bearing-recovery-v8-retry2/domain-child.xml": "f13301c960f7d511bc77706ee0dca56edbb07e534cd338074b5894296d273b0b",
+  "driver/evidence/2026-10-06/signing-builder-key-bearing-recovery-v8-retry2/volume-child.xml": "795385079e04630f49a489e4111407834bbae26ce94f605fe80b1d2f12c2ce28",
+  "driver/evidence/2026-10-06/signing-builder-key-bearing-recovery-v8-retry2/baseline-check.ps1": "872a752a52db723dc0b5f3f78f4847ea57f8dbfbe55b1cbe70d118559ca54f08",
+  "driver/evidence/2026-10-06/signing-builder-key-bearing-recovery-v8-retry2/cold-key-challenge-command.txt": "467f5ae3502d79c0e601ad5261f3d5aefd769200054a36e26cf85387f9a5e0d7",
+  "driver/evidence/2026-10-06/signing-builder-key-bearing-recovery-v8-retry2/plan.md": "01f058362271649cf9e0820b6cc0c3365e173fa0d4ff52ef5e32d103f09e5bea",
+  "driver/evidence/2026-10-06/signing-builder-key-bearing-recovery-v8-retry2/lineage.json": "629fcbe5bb31d7174f91b87a0818c99bed0d52f3cd32587bf1e60b95f5dfd62a"
+}

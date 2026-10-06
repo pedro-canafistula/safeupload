@@ -1,0 +1,12 @@
+{
+  "UUID": "c6440689-d11c-4c63-a463-f3722b7ddb69",
+  "Parent": "/var/lib/libvirt/images/win10-clean.safeupload-architecture-20261001",
+  "Child": "/var/lib/libvirt/images/win10-clean.safeupload-signer-fallback-pre-20261006.qcow2",
+  "InputPins": {
+    "driver/evidence/2026-10-06/signing-builder-checkpoint-preflight-domain-inactive.xml": "dcad6eddab9d8dc9797b3364dc6829f02d6474b596d30d5f421190df8479641a",
+    "driver/evidence/2026-10-06/signing-builder-checkpoint-plan/domain-child.xml": "cd4bf4b80671c1e3461ec6f7c218422ecb2d2c91490ba4ebdc2c49fa2ee7725f",
+    "driver/evidence/2026-10-06/signing-builder-checkpoint-plan/volume-child.xml": "11e964d5c12259e0952fb9a551fadab0b7a86f28e444365bf8d229798992608a",
+    "driver/evidence/2026-10-06/signing-builder-prefallback-baseline.stdout.json": "3b56f978cebd2a882e742b7890a6186c3901c5ba9fa5d47f0d6884bd7198d1c9"
+  },
+  "Applied": false
+}

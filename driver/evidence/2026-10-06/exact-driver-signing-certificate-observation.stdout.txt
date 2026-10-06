@@ -1,0 +1,15 @@
+{
+    "CertInLocalMachineMy":  false,
+    "NotBefore":  "\/Date(1788453434000)\/",
+    "HasPrivateKey":  true,
+    "CertInCurrentUserRoot":  false,
+    "Thumbprint":  "220DD82C37FCF36048D59E4F10113185D81D5DC7",
+    "UTC":  "2026-10-06T15:45:13.5829157Z",
+    "NotAfter":  "\/Date(1883148434000)\/",
+    "EnhancedKeyUsage":  [
+                             null
+                         ],
+    "Subject":  "CN=SafeUpload Test Signing",
+    "LocalTime":  "2026-10-06T16:45:13.5829157+01:00",
+    "User":  "DESKTOP-O1LP5DG\\vika"
+}

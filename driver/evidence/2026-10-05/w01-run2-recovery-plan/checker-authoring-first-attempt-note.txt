@@ -1,0 +1,1 @@
+First attempt was not accepted as clean evidence: UTF-8 BOM in stdin became an interior token after remote_ps.py prepended its preference. Windows reported ?$ErrorActionPreference=Stop as an unrecognized command. Later parser/helper sentinels were emitted, but validation was repeated after stripping only a leading BOM before prefixing. No checker or baseline was invoked.

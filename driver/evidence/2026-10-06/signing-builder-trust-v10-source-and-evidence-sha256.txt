@@ -1,0 +1,13 @@
+235f1c14cfcbd402c4fb7f464a7c2af2c54bcc67ac78ecb57f0b815903ca749a  driver/evidence/2026-10-06/exact-mvp20261006admissioncap2-machine-root-trust-builder-root-v10-candidate.ps1
+9585e1acd512f9532de032c6ce2df251fa774acc83d27cfc6afceb437ce64c42  driver/evidence/2026-10-06/signing-guard-helpers-v8.ps1
+6cac6f59c640c6fb045f61b87be1bb4deeeea451c80cd067ae022180a0a01a9f  driver/evidence/2026-10-06/signing-process-capture-v9.ps1
+bdc9c9491dfdbdae6366061455aad23b3211b4d329dba8019ea61398a4330ccd  driver/evidence/2026-10-06/signing-process-fixture-v9-20261006b-root-readout.json
+a4b6891a282a4c7c8ded28acf9e173323a81e409f789f299c9c6f1ac068342f2  driver/evidence/2026-10-06/signing-v10-trust-ps51-parse-b.stdout.txt
+a3639af5e23464fc391dae127fd5493f02c8178068a35866d9c7fdd35dcd623f  driver/evidence/2026-10-06/signing-v10-trust-ps51-parse-b.stderr.txt
+c63d038082d4b390e8528c2cef7fe1934b47f62b513a15832bad5c9e4c113088  driver/evidence/2026-10-06/signing-cold-challenge-v8-20261006c.stdout.txt
+3ec14f6af6883fae2fa51e4945da12a8390d12e599e384231c1c061bdc4ba93e  driver/evidence/2026-10-06/signing-cold-challenge-v8-public-receipt-c.json
+f940d145b5e8126c0666cf06413969cb548fb67c8620f7ff7b0510615e1ba61c  driver/evidence/2026-10-06/signing-builder-v8-cold-challenge-c-root-readout.json
+328f49eea19d1b222ceadbdc8008bb7b9eb4d86d39f37ded118d5001929a071d  driver/evidence/2026-10-06/signing-builder-key-bearing-recovery-v8-retry2/host-readout.json
+fc894f1490442dd359b0fee24047530676320f3273d763777ada91072113756f  driver/evidence/2026-10-06/signing-builder-key-bearing-recovery-v8-retry2/guest-baseline-root-readout.json
+51701037af41fcc19101e26dd2d632934d20b94190d42782474f68f05abdfc1e  driver/evidence/2026-10-06/replacement-machine-key-v8-public-metadata.json
+47e7069980a60cbcf4dff61f0f2d3f02edcf97c2976708790b49d03a09243b2a  driver/evidence/2026-10-06/SafeUploadTest-Recovery-20261006-v8.cer

@@ -1,0 +1,3 @@
+﻿$ErrorActionPreference='Stop'
+if((Get-FileHash -LiteralPath 'C:\Users\vika\Documents\Frozen-driver-ownerdiag-20261006a.ps1' -Algorithm SHA256).Hash -ne 'ff537d9426c5539fdfbd976ed77e55ee90f2a64501f17d463aa926f09cebd5d6'){throw 'Build tool changed'}
+& 'C:\Users\vika\Documents\Frozen-driver-ownerdiag-20261006a.ps1' -Label 'driver-ownerdiag-20261006a' -ArchiveSha256 '6d6ecf61f37158d37218607212ec9fba4ce513512736efc6b9f9482f8c9408e4' -ManifestSha256 '55546c90f1883bb3208daa0011703bec8a18a89276359875eca6d02f3ccb3d5a' -CertificateThumbprint 'A6D6CE1AA28835D509160A80ADB7894869AADF38' -CertificateStoreLocation LocalMachine -OwnerWinFspPrototype true

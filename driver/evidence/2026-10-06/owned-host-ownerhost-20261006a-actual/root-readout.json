@@ -1,0 +1,37 @@
+{
+  "Verdict": "NATIVE_HOST_COMPILE_FAILED",
+  "ActualRemoteExitCode": 1,
+  "HostExecuted": false,
+  "RuntimeInstalled": false,
+  "RuntimeQualified": false,
+  "Summary": [
+    "LABEL=ownerhost-20261006a",
+    "BUILDER=DESKTOP-O1LP5DG",
+    "SOURCE_MANIFEST_VERIFIED=4",
+    "ARCHIVE_SHA256=F589CF79D1CE97AFB4B55B0A4C4E4B6A760C0CAA137209A04189BBE5F1D4AFB8",
+    "MANIFEST_SHA256=64ED6460324EAF03EF7137C068F5C8710B30FF2F86FC5002F6C3EDEF85F1DE60",
+    "SDK_MANIFEST_SHA256=5E4B5DE30D991FB9B171AC76CC57F3DB9500C43B71B0F97645F62BBB544ED613",
+    "debug: exit=1 succeeded=False warnings=0 errors=5 artifact_sha256=NONE",
+    "release: exit=1 succeeded=False warnings=0 errors=5 artifact_sha256=NONE",
+    "NativeHostCompileGate=False",
+    "HostExecuted=False",
+    "RuntimeInstalled=False",
+    "RuntimeQualified=False",
+    "BUILD_END_UTC=2026-10-06T20:42:18.8503333Z"
+  ],
+  "Pins": {
+    "driver/evidence/2026-10-06/owned-host-ownerhost-20261006a-actual/build.exit.json": "f25416ed89e27a5468eb5168d26e8846ee86b1de1a57351a9682aa98b857945b",
+    "driver/evidence/2026-10-06/owned-host-ownerhost-20261006a-actual/build.ps1": "3b842cc1115216dbf5166d10629cf7472dfa422491f88a91f5823c6aebe22284",
+    "driver/evidence/2026-10-06/owned-host-ownerhost-20261006a-actual/build.stderr.txt": "6e4f171beb86b936346cd40894026650f5b424b86a6153e8d3ac4fd3a87c1013",
+    "driver/evidence/2026-10-06/owned-host-ownerhost-20261006a-actual/build.stdout.txt": "2ee5d854de865b5b96e07e931f7c226e8cb57e682803fe3d69b30e3e0f342982",
+    "driver/evidence/2026-10-06/owned-host-ownerhost-20261006a-actual/execution-inputs.json": "e773322aecddab69ca25df8d07f0815f63fb8b7fd3f3cab41d00f03ce8c79246",
+    "driver/evidence/2026-10-06/owned-host-ownerhost-20261006a-actual/fetch-readout.json": "2f24971b7cd4eed5af1f9c86621219864d6615db3665efd00cca6b52fec5ef6f",
+    "driver/evidence/2026-10-06/owned-host-ownerhost-20261006a-actual/out/debug-build.txt": "504f432cbc0b60f39d9f0e029eb5c2cfe9af1b9bfeb0dff6f820038c815a5789",
+    "driver/evidence/2026-10-06/owned-host-ownerhost-20261006a-actual/out/release-build.txt": "e85435a6eb7ddb0f31322baae794747c6f1c7ce508da9c6d1b4a3561b087a350",
+    "driver/evidence/2026-10-06/owned-host-ownerhost-20261006a-actual/out/summary.txt": "f3d257d8bd3d23d883605e0fef2731f46624ac583a3cc0ee975fa0ba1c8faae5",
+    "driver/evidence/2026-10-06/owned-host-ownerhost-20261006a-actual/preflight.exit.json": "bfab54bdedbb4a112a6e2001d605f01c513d7799f2d6cbfffa82ce50109f60e4",
+    "driver/evidence/2026-10-06/owned-host-ownerhost-20261006a-actual/preflight.ps1": "b0241fca32a1aa08e278b2e4f06a9eb5352c9463ab675715b238402dd9397d99",
+    "driver/evidence/2026-10-06/owned-host-ownerhost-20261006a-actual/preflight.stderr.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "driver/evidence/2026-10-06/owned-host-ownerhost-20261006a-actual/preflight.stdout.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  }
+}

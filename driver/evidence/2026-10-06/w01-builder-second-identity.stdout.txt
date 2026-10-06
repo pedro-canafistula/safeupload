@@ -1,0 +1,5 @@
+PSVersion=5.1.19041.6456
+Json={"LowerCallbackData":18446603336221204481}
+ParsedType=System.Decimal
+ParsedText=18446603336221204481
+Exact=True

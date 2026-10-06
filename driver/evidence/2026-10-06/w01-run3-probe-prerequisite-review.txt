@@ -1,0 +1,92 @@
+W01 run 3 protected-control probe prerequisite review
+Date: 2026-10-06
+Run: boot-start-w01-w01-b38b36-20261006c-ff67c01b990e41ff9af89b5a9959757c
+RunGuid: ff67c01b990e41ff9af89b5a9959757c
+Disposition: W01/A05 INCONCLUSIVE; Phase4 NOT_QUALIFIED. The child did not start.
+
+Finding
+-------
+The pinned b38 feature driver starts admission tracing disabled. In
+SafeUploadStageInitialize, StageStream.c resets
+SafeUploadAdmissionTraceControlState to 0 (line 2300). The first operation in
+StageAdmissionProbeWorkerBody reads that state and returns
+STATUS_DEVICE_NOT_READY when its enabled bit is clear (lines 559-560). The
+run's pinned AfterBoot parent input invokes --admission-probe for the protected
+control without first issuing --admission-trace-enable (line 855). Therefore
+the Inspector reaches FilterSendMessage but the explicit probe is rejected by
+the trace-state prerequisite before volume/path lookup. The later not-ready
+branches at StageStream.c:611-614 and :685-691 require an enabled trace state
+that changed during the probe; the pinned run's initialization and command
+ordering do not support those as the cause here.
+
+The observed result is HRESULT 0x80070015 (HRESULT_FROM_WIN32(ERROR_NOT_READY,
+21)), written by Inspector after FilterConnectCommunicationPort succeeded and
+FilterSendMessage returned. Its exit-code logic returns 3 for a failed HRESULT
+or nonzero reply length. This is consistent with the first driver guard above.
+The exact command line and correctly quoted C: path are retained; stderr is
+empty. This is not evidence of a path-resolution or file-identity failure.
+
+Pinned source and harness evidence
+----------------------------------
+Upper source commit from provenance.json: 6f312cd64df889ec59e25d2c463cbc6f4426c33b
+  driver/SafeUpload.Minifilter/StageStream.c SHA-256:
+    9018B37886396E9D744794D725AC9A525D2893C014788B127DC6BB81F2A7EFD5
+  driver/SafeUpload.Minifilter/Communication.c SHA-256:
+    30C262411423DB92CFE71CE1FDFC39D2873807C5351739BB65B558B38E3C426B
+  driver/SafeUpload.Inspector/main.c SHA-256:
+    9871B4B85D0DEAD2D1D8430A83B2999A7B837A9D93A55C15DBF813D47E01F3D4
+  Guest Inspector image SHA-256: C28A8DA63B735DD0E29D2E69A3B83D38D351EC3591D940160F1B7D69F6390467
+
+Relevant source flow:
+  StageStream.c:559-560: disabled trace returns STATUS_DEVICE_NOT_READY.
+  StageStream.c:2297-2303: trace controls/rundown initialize and state resets to 0.
+  Communication.c:929-930: ADMISSION_PROBE dispatch calls
+    SafeUploadStageAdmissionProbe.
+  StageStream.c:828-857: work item returns worker status to the message caller.
+  Inspector/main.c:743-750: connects, sends the probe, prints the returned
+    HRESULT; exit code is 3 on failed HRESULT or nonzero returned bytes.
+
+Exact run input parent source SHA-256: CA95E5B69432D53715242330AF391E387ADBBA1A55A72424F0BF311A1D2F1BCF
+The sibling retained Invoke-StagedSectionFault.ps1 (SHA-256
+12AAF0754C1453564D56A687491EBBE971279CC63D4FB3B4BD78B9085E10D446) has the
+established pattern: Reset-UpperTrace issues trace-enable before each explicit
+probe (lines 67-68, 115-116). The public Inspector controls include
+--admission-trace-enable and --admission-probe.
+
+Captured guest receipts
+-----------------------
+Artifacts directory:
+  driver/evidence/2026-10-06/boot-start-w01-w01-b38b36-20261006c-ff67c01b990e41ff9af89b5a9959757c-guest/boot-start-w01-w01-b38b36-20261006c-ff67c01b990e41ff9af89b5a9959757c-artifacts/
+
+  protected-control-probe.json SHA-256:
+    C86FC15ADC6ED9D0AE0ABD7729C0F69A816C664D01E638E2E0BC1DD9636E7CDB
+    Content: {"admissionProbe":"sent","status":"0x80070015"}
+  protected-control-probe.json.err SHA-256:
+    E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855 (empty)
+  inspector-processes.json SHA-256:
+    EEB8362DD7DFBE5D303F8D113E584AECA5A3C237CACEBC91521B4ED2FB3AD89B
+    The protected-control Inspector exited 3 at 2026-10-06T14:51:46.2074474Z;
+    recorded arguments were --admission-probe
+    "C:\SafeUpload-rv4-w01-protected-ff67c01b990e41ff9af89b5a9959757c\protected-control.bin".
+  RecoveryRequired.json SHA-256:
+    726571E089C31DB3893D617B85C77D33ADC98F015B8F97F9257BF08978AA0D19
+    Reason: Inspector failed; PID=5588; ExitCode=3.
+  state.clixml SHA-256:
+    501E79475838293A134C81A2588C937C5EF98D0F2C55BA66FB79602AC721A1BC
+    RecoveryRequired=True; ChildStarted=False; Restored=False.
+  Recovery lifecycle sidecar SHA-256:
+    501E79475838293A134C81A2588C937C5EF98D0F2C55BA66FB79602AC721A1BC
+    Length 48,897 bytes; marker reports CreateNew, WriteThrough, FlushToDisk,
+    and private ACL verification succeeded. Its generic LowerStatus text is
+    not evidence of an observed lower-port state.
+
+Authorized bounded harness change
+---------------------------------
+Issue the existing Inspector --admission-trace-enable command, through the
+tracked Inspect helper, before the protected-control probe and retain its
+output as trace-enable-control.json. Do not clear/reset the trace, change
+trust/readiness checks, alter the diagnostic workload, or change driver/product
+code. The existing terminal restoration dominator and failure classification
+remain in force. Add a SelfCheck assertion that this enable precedes both the
+probe and child start. No VM execution or source build is represented by this
+review.

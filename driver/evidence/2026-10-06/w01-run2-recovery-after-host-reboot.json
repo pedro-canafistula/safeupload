@@ -1,0 +1,46 @@
+{
+  "ObservedUTC": "2026-10-06T14:32:59.962081+00:00",
+  "OriginalApproval": "Approve recovery and marker disposition after verification",
+  "PreparedPlan": "../2026-10-05/w01-run2-recovery-plan/plan.json",
+  "ExternalStateChanged": true,
+  "DomainState": "shut off (unknown)",
+  "DomainUUID": "9d44eee8-81cf-4cc1-9fba-7670f11def4d",
+  "AllThreeDomainsStopped": true,
+  "PersistentVdaStillFailedOverlay": true,
+  "FailedOverlay": "/var/lib/libvirt/images/win10-debug.safeupload-pre-boot-start-w01-w01-b38b36-20261005b-fe004c32b19e4cc88a0cf42389818d7b-20261005",
+  "FailedOverlayBytes": 328990720,
+  "PlannedMemorySaveExists": false,
+  "AlternativeSaveSearchRoots": [
+    "/var/lib/libvirt/images",
+    "/var/lib/libvirt/qemu/save",
+    "output",
+    "/tmp"
+  ],
+  "AlternativeSaveFilesFound": [],
+  "LiveFailedMemoryPreservationProven": false,
+  "HostBootReceipts": [
+    " -1 d83d2c40b0b244fabdb530698d59f101 Fri 2026-10-02 10:06:01 -03 Mon 2026-10-05 23:56:29 -03",
+    "  0 543d989335cd4d279a88c57741feb630 Tue 2026-10-06 11:29:11 -03 Tue 2026-10-06 11:32:56 -03"
+  ],
+  "LibvirtStopJournal": "Oct 05 23:56:27 victor-omrchy systemd[1]: Stopping libvirt legacy monolithic daemon...\nOct 05 23:56:28 victor-omrchy libvirtd[1209]: internal error: Child process (/usr/bin/swtpm_ioctl --unix /run/libvirt/qemu/swtpm/1-win10-swtpm.sock -s) unexpected exit status 1: Connect failed: Connection refused\nOct 05 23:56:28 victor-omrchy systemd[1]: libvirtd.service: Deactivated successfully.\nOct 05 23:56:28 victor-omrchy systemd[1]: libvirtd.service: Unit process 1533 (dnsmasq) remains running after unit stopped.\nOct 05 23:56:28 victor-omrchy systemd[1]: libvirtd.service: Unit process 1534 (dnsmasq) remains running after unit stopped.\nOct 05 23:56:28 victor-omrchy systemd[1]: Stopped libvirt legacy monolithic daemon.\nOct 05 23:56:28 victor-omrchy systemd[1]: libvirtd.service: Consumed 9min 13.899s CPU time over 3d 13h 50min 23.874s wall clock time, 4G memory peak, 37M memory swap peak.\n",
+  "PriorFrozenParentStat": {
+    "Device": 31,
+    "Inode": 628168,
+    "Bytes": 291831808,
+    "MtimeNS": 1791231097533423899,
+    "CtimeNS": 1791231097762423485
+  },
+  "CurrentFrozenParentStat": {
+    "Device": 31,
+    "Inode": 628168,
+    "Bytes": 291831808,
+    "MtimeNS": 1791231097533423899,
+    "CtimeNS": 1791231097762423485
+  },
+  "FrozenParentStatUnchanged": true,
+  "OriginalProposal18ArtifactsAnd4MarkersUnchanged": true,
+  "RecoveryApplied": false,
+  "MarkerDispositionApplied": false,
+  "NextAction": "The approved running-VM save precondition no longer holds. Preserve stopped failed disk and all markers. Ask whether a saved RAM image exists elsewhere or whether owner accepts disk-only preserved-branch recovery; independent original baseline still required before exact marker disposition.",
+  "MvpVerdict": "Not qualified; full definition of done remains open"
+}

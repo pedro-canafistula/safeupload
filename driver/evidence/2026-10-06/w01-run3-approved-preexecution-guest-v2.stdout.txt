@@ -1,0 +1,59 @@
+{
+    "UTC":  "2026-10-06T15:18:16.7554487Z",
+    "GuestUUID":  "9D44EEE8-81CF-4CC1-9FBA-7670F11DEF4D",
+    "BootId":  "2026-10-06T14:50:37.5000000Z",
+    "RunGuid":  "ff67c01b990e41ff9af89b5a9959757c",
+    "StateSHA256":  "501E79475838293A134C81A2588C937C5EF98D0F2C55BA66FB79602AC721A1BC",
+    "TaskName":  "SafeUpload-W01Phase-boot-start-w01-w01-b38b36-20261006c-ff67c01b990e41ff9af89b5a9959757c-AfterBoot",
+    "TaskState":  "Ready",
+    "TaskAction":  {
+                       "Execute":  "powershell.exe",
+                       "Arguments":  "-NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"C:\\Users\\vika\\Documents\\w01-ff67c01b990e41ff9af89b5a9959757c-phase-AfterBoot.ps1\""
+                   },
+    "TaskLastRunTime":  "\/Date(1791298311000)\/",
+    "TaskLastTaskResult":  0,
+    "W01Actors":  0,
+    "Inspectors":  [
+                       {
+                           "PID":  5540,
+                           "Birth":  "2026-10-06T14:51:45.8638250Z",
+                           "Executable":  "C:\\Users\\vika\\Documents\\w01-ff67c01b990e41ff9af89b5a9959757c-inspector-feature-release.exe",
+                           "CommandLine":  "\"C:\\Users\\vika\\Documents\\w01-ff67c01b990e41ff9af89b5a9959757c-inspector-feature-release.exe\" --admission-volume-status ",
+                           "ExitCode":  0,
+                           "Status":  "Exited",
+                           "SameInstanceStillRunning":  false,
+                           "CurrentPidInstances":  [
+
+                                                   ]
+                       },
+                       {
+                           "PID":  5588,
+                           "Birth":  "2026-10-06T14:51:46.0849370Z",
+                           "Executable":  "C:\\Users\\vika\\Documents\\w01-ff67c01b990e41ff9af89b5a9959757c-inspector-feature-release.exe",
+                           "CommandLine":  "\"C:\\Users\\vika\\Documents\\w01-ff67c01b990e41ff9af89b5a9959757c-inspector-feature-release.exe\" --admission-probe \"C:\\SafeUpload-rv4-w01-protected-ff67c01b990e41ff9af89b5a9959757c\\protected-control.bin\" ",
+                           "ExitCode":  3,
+                           "Status":  "Exited",
+                           "SameInstanceStillRunning":  false,
+                           "CurrentPidInstances":  [
+
+                                                   ]
+                       }
+                   ],
+    "RecordedPhaseParentPID":  4212,
+    "RecordedPhaseParentStillPresent":  false,
+    "Services":  [
+                     {
+                         "Name":  "SafeUpload",
+                         "State":  "Running",
+                         "StartMode":  "Boot"
+                     },
+                     {
+                         "Name":  "SafeUploadSectionFault",
+                         "State":  "Running",
+                         "StartMode":  "Manual"
+                     }
+                 ],
+    "KernelGlobalPortEnumeration":  false,
+    "PreRecoveryGuestGuardsPassed":  true
+}
+Run3PreRecoveryGuestGuards=True

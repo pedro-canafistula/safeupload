@@ -11,6 +11,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
+    <DefineConstants Condition="'$(SafeUploadAdmissionEvidence)' == 'true'">$(DefineConstants);SAFEUPLOAD_ADMISSION_EVIDENCE</DefineConstants>
   </PropertyGroup>
 
   <ItemGroup>
@@ -26,7 +27,8 @@
 
   <ItemGroup>
     <ProjectReference Include="..\SafeUpload.Agent.Core\SafeUpload.Agent.Core.csproj" />
-    <ProjectReference Include="..\SafeUpload.Agent.Service\SafeUpload.Agent.Service.csproj" />
+    <ProjectReference Include="..\SafeUpload.Agent.Service\SafeUpload.Agent.Service.csproj"
+                      AdditionalProperties="SafeUploadAdmissionEvidence=$(SafeUploadAdmissionEvidence)" />
   </ItemGroup>
 
 </Project>

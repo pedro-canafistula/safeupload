@@ -55,7 +55,7 @@ SafeUploadPortMessage (
     _Out_ PULONG ReturnOutputBufferLength
     );
 
-static BOOLEAN SafeUploadCurrentProcessHasAgentServiceSid(VOID);
+BOOLEAN SafeUploadCurrentProcessHasAgentServiceSid(VOID);
 
 #ifdef ALLOC_PRAGMA
     #pragma alloc_text(PAGE, SafeUploadCreateCommunicationPort)
@@ -85,7 +85,7 @@ static const struct _SAFEUPLOAD_AGENT_SERVICE_SID {
     {80, 2445692249, 22211692, 2238493510, 3749888094, 4283558424}
 };
 
-static BOOLEAN SafeUploadCurrentProcessHasAgentServiceSid(VOID)
+BOOLEAN SafeUploadCurrentProcessHasAgentServiceSid(VOID)
 {
     typedef NTSTATUS (NTAPI *PSAFEUPLOAD_RTL_CREATE_SERVICE_SID)(
         PUNICODE_STRING ServiceName, PSID ServiceSid, PULONG ServiceSidLength);
@@ -208,6 +208,7 @@ Return Value:
                          status );
     }
 
+
     return status;
 }
 
@@ -241,6 +242,7 @@ Return Value:
 --*/
 {
     PAGED_CODE();
+
 
     /* A connected port is not an accepted policy. Drop authorization before
      * either endpoint is closed, including DriverEntry failure cleanup. */
@@ -597,6 +599,7 @@ Return Value:
 #if SAFEUPLOAD_STAGING_PROTOTYPE
     SAFEUPLOAD_CONTROL controlHeader;
     PSAFEUPLOAD_ACTIVATING_STATUS_PAGE activatingPage = NULL;
+    PSAFEUPLOAD_ADMISSION_COVERAGE_STATUS coverageStatus = NULL;
 #endif
     NTSTATUS status = STATUS_SUCCESS;
     UINT32 command = 0;
@@ -1037,7 +1040,8 @@ Return Value:
             leave;
         }
 
-        if (command == SAFEUPLOAD_CONTROL_ADMISSION_VOLUME_STATUS) {
+        if (command == SAFEUPLOAD_CONTROL_ADMISSION_VOLUME_STATUS ||
+            command == SAFEUPLOAD_CONTROL_ADMISSION_VOLUME_OBSERVE) {
             PSAFEUPLOAD_ADMISSION_VOLUME_STATUS volumeStatus = (PSAFEUPLOAD_ADMISSION_VOLUME_STATUS)policy;
             if (InputBufferLength != sizeof(SAFEUPLOAD_CONTROL) || OutputBuffer == NULL ||
                 OutputBufferLength != sizeof(*volumeStatus)) {
@@ -1051,10 +1055,40 @@ Return Value:
             }
 #pragma warning( suppress: 6001 )
             ProbeForWrite(OutputBuffer, sizeof(*volumeStatus), __alignof(SAFEUPLOAD_ADMISSION_VOLUME_STATUS));
-            status = SafeUploadStageAdmissionVolumeStatus(volumeStatus);
+            status = SafeUploadStageAdmissionVolumeStatus(volumeStatus,
+                command == SAFEUPLOAD_CONTROL_ADMISSION_VOLUME_STATUS);
             if (NT_SUCCESS(status)) {
                 RtlCopyMemory(OutputBuffer, volumeStatus, sizeof(*volumeStatus));
                 *ReturnOutputBufferLength = sizeof(*volumeStatus);
+            }
+            leave;
+        }
+
+        if (command == SAFEUPLOAD_CONTROL_ADMISSION_COVERAGE) {
+            if (InputBufferLength != sizeof(SAFEUPLOAD_CONTROL) || OutputBuffer == NULL ||
+                OutputBufferLength != sizeof(SAFEUPLOAD_ADMISSION_COVERAGE_STATUS)) {
+                status = STATUS_INVALID_BUFFER_SIZE;
+                leave;
+            }
+            if (controlHeader.Version != SAFEUPLOAD_PROTOCOL_VERSION ||
+                controlHeader.StructSize != sizeof(SAFEUPLOAD_CONTROL) ||
+                controlHeader.Command != command || controlHeader.Reserved != 0) {
+                status = STATUS_REVISION_MISMATCH;
+                leave;
+            }
+#pragma warning( suppress: 6001 )
+            ProbeForWrite(OutputBuffer, sizeof(SAFEUPLOAD_ADMISSION_COVERAGE_STATUS),
+                __alignof(SAFEUPLOAD_ADMISSION_COVERAGE_STATUS));
+            coverageStatus = ExAllocatePool2(POOL_FLAG_PAGED,
+                sizeof(*coverageStatus), SAFEUPLOAD_POOL_TAG);
+            if (coverageStatus == NULL) {
+                status = STATUS_INSUFFICIENT_RESOURCES;
+                leave;
+            }
+            status = SafeUploadStageAdmissionCoverageStatus(coverageStatus);
+            if (NT_SUCCESS(status)) {
+                RtlCopyMemory(OutputBuffer, coverageStatus, sizeof(*coverageStatus));
+                *ReturnOutputBufferLength = sizeof(*coverageStatus);
             }
             leave;
         }
@@ -1393,6 +1427,7 @@ Return Value:
 
 #if SAFEUPLOAD_STAGING_PROTOTYPE
     if (activatingPage != NULL) ExFreePoolWithTag(activatingPage, SAFEUPLOAD_POOL_TAG);
+    if (coverageStatus != NULL) ExFreePoolWithTag(coverageStatus, SAFEUPLOAD_POOL_TAG);
 #endif
 
     //

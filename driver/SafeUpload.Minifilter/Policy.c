@@ -85,6 +85,11 @@ static volatile LONG SafeUploadVolumeScopeCacheIndex;
 static volatile LONG64 SafeUploadScopeRenameLossGeneration;
 
 static volatile LONG SafeUploadPolicyGeneration = 0;
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+/* Independent generation for the exact policy/boot scope pointers published
+ * to admission readers. It is not the epoch or writer-registry sequence. */
+static volatile LONG64 SafeUploadPolicyCoverageSequence;
+#endif
 #define SAFEUPLOAD_POLICY_DRAIN_TIMEOUT_100NS (30LL * 10 * 1000 * 1000)
 
 /* Spin-lock transitions stay in resident, annotated, non-inlined helpers. */
@@ -523,6 +528,7 @@ __declspec(noinline) static VOID SafeUploadPolicyPublishScopeStateNoInline(
     SafeUploadBootScopesActive = BootActive;
 #if SAFEUPLOAD_STAGING_PROTOTYPE
     InterlockedExchange(&SafeUploadPolicyFinalizing, Finalizing ? 1 : 0);
+    InterlockedIncrement64(&SafeUploadPolicyCoverageSequence);
 #else
     UNREFERENCED_PARAMETER(Finalizing);
 #endif
@@ -767,6 +773,8 @@ SafeUploadBuildStringTable (
 #if SAFEUPLOAD_STAGING_PROTOTYPE
     #pragma alloc_text(PAGE, SafeUploadPolicyCopyScope)
     #pragma alloc_text(PAGE, SafeUploadPolicySetPending)
+    #pragma alloc_text(PAGE, SafeUploadPolicyAdmissionCoverageSnapshot)
+    #pragma alloc_text(PAGE, SafeUploadPolicyAdmissionCoverageMetadata)
 #endif
     #pragma alloc_text(PAGE, SafeUploadPolicyMayMatchVolume)
 #endif
@@ -809,6 +817,9 @@ Routine Description:
     SafeUploadPolicy = NULL;
     SafeUploadPendingPolicy = NULL;
     SafeUploadPolicyGeneration = 0;
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    InterlockedExchange64(&SafeUploadPolicyCoverageSequence, 0);
+#endif
     SafeUploadBootScopesActive = FALSE;
     SafeUploadData.AuthenticatedClient = 0;
     SafeUploadData.BootPolicyState = bootPolicyState;
@@ -1200,6 +1211,158 @@ VOID SafeUploadPolicyReadLiveSnapshot(_Out_ PULONG Generation, _Out_ PULONG Flag
     FltAcquirePushLockShared(&SafeUploadPolicyLock);
     *Generation = (ULONG)InterlockedCompareExchange(&SafeUploadPolicyGeneration, 0, 0);
     *Flags = SafeUploadPolicy != NULL ? SafeUploadPolicy->Flags : 0;
+    FltReleasePushLock(&SafeUploadPolicyLock);
+}
+
+static NTSTATUS SafeUploadPolicyCoverageAppendPrefix(
+    _Inout_ PSAFEUPLOAD_ADMISSION_COVERAGE_STATUS Status,
+    _In_ UINT32 ScopeIndex, _In_ PCUNICODE_STRING Prefix)
+{
+    PSAFEUPLOAD_ADMISSION_COVERAGE_SCOPE scope;
+    UINT32 chars;
+    if (Prefix == NULL || Prefix->Buffer == NULL || Prefix->Length == 0 ||
+        (Prefix->Length & (sizeof(WCHAR) - 1)) != 0 ||
+        Prefix->Length > sizeof(((PSAFEUPLOAD_ADMISSION_COVERAGE_SCOPE)0)->Prefix))
+        return STATUS_INVALID_PARAMETER;
+    if (Status->ScopeCount >= SAFEUPLOAD_ADMISSION_COVERAGE_MAX_SCOPES)
+        return STATUS_BUFFER_TOO_SMALL;
+    chars = Prefix->Length / sizeof(WCHAR);
+    scope = &Status->Scopes[Status->ScopeCount++];
+    scope->ScopeKind = SAFEUPLOAD_ADMISSION_COVERAGE_SCOPE_PREFIX;
+    scope->ScopeIndex = ScopeIndex;
+    scope->Resolution = SAFEUPLOAD_ADMISSION_COVERAGE_RESOLUTION_UNKNOWN;
+    scope->State = SAFEUPLOAD_ADMISSION_COVERAGE_STATE_PENDING;
+    scope->Reason = SAFEUPLOAD_ADMISSION_COVERAGE_REASON_NONE;
+    scope->PrefixChars = chars;
+    RtlCopyMemory(scope->Prefix, Prefix->Buffer, Prefix->Length);
+    return STATUS_SUCCESS;
+}
+
+/* Copy the exact current, pending and still-durable boot destination set while
+ * the policy lock is held. A pending union is reported explicitly and is
+ * never eligible for Ready; the post-final-ACK snapshot contains only current. */
+NTSTATUS SafeUploadPolicyAdmissionCoverageSnapshot(
+    _Inout_ PSAFEUPLOAD_ADMISSION_COVERAGE_STATUS Status)
+{
+    PSAFEUPLOAD_POLICY policies[2];
+    ULONG policyIndex, prefixIndex, scopeIndex = 0, flags = 0;
+    NTSTATUS status = STATUS_SUCCESS;
+    PCUNICODE_STRING prefix;
+    UNICODE_STRING bootPrefix;
+
+    PAGED_CODE();
+    if (Status == NULL) return STATUS_INVALID_PARAMETER;
+    FltAcquirePushLockShared(&SafeUploadPolicyLock);
+    Status->StructSize = sizeof(*Status);
+    Status->ProtocolVersion = SAFEUPLOAD_PROTOCOL_VERSION;
+    Status->PolicyGeneration = (ULONG)InterlockedCompareExchange(&SafeUploadPolicyGeneration, 0, 0);
+    Status->PolicyFlags = SafeUploadPolicy != NULL ? SafeUploadPolicy->Flags : 0;
+    Status->BootPolicyState = SafeUploadData.BootPolicyState;
+    Status->PolicyScopeSequenceStart = (UINT64)InterlockedCompareExchange64(
+        &SafeUploadPolicyCoverageSequence, 0, 0);
+    if (SafeUploadPendingPolicy != NULL) Status->Flags |= SAFEUPLOAD_ADMISSION_COVERAGE_FLAG_POLICY_PENDING;
+    if (SafeUploadBootScopes.Overflow) Status->Flags |= SAFEUPLOAD_ADMISSION_COVERAGE_FLAG_POLICY_SCOPE_OVERFLOW;
+
+    if (SafeUploadPendingPolicy != NULL) {
+        ULONG count = SafeUploadPolicy != NULL ? SafeUploadPolicy->PrefixCount : 0;
+        count += SafeUploadPendingPolicy->PrefixCount;
+        if (SafeUploadBootScopesActive) count += SafeUploadBootScopes.PrefixCount;
+        flags = (SafeUploadPolicy != NULL ? SafeUploadPolicy->Flags : 0) |
+            SafeUploadPendingPolicy->Flags |
+            (SafeUploadBootScopesActive ? SafeUploadBootScopes.Flags : 0);
+        /* The shared policy/boot wire bits have identical values. The union
+         * above deliberately makes one check cover both sources. */
+        if (FlagOn(flags, SAFEUPLOAD_POLICY_FLAG_REMOVABLE)) ++count;
+        if (FlagOn(flags, SAFEUPLOAD_POLICY_FLAG_NETWORK)) ++count;
+        Status->ExpectedScopeCount = count;
+        /* A candidate union is explicitly Pending. Its complete scopes are
+         * evaluated after the final ACK, when the new current snapshot is
+         * authoritative. No partial candidate list can produce Ready. */
+        goto Exit;
+    }
+
+    policies[0] = SafeUploadPolicy;
+    policies[1] = NULL;
+    for (policyIndex = 0; policyIndex < RTL_NUMBER_OF(policies); ++policyIndex) {
+        PSAFEUPLOAD_POLICY policy = policies[policyIndex];
+        if (policy == NULL) continue;
+        flags |= policy->Flags;
+        for (prefixIndex = 0; prefixIndex < policy->PrefixCount; ++prefixIndex) {
+            prefix = &policy->Prefixes[prefixIndex];
+            status = SafeUploadPolicyCoverageAppendPrefix(Status, scopeIndex++, prefix);
+            if (!NT_SUCCESS(status)) goto Exit;
+        }
+    }
+
+    if (SafeUploadBootScopesActive) {
+        flags |= SafeUploadBootScopes.Flags;
+        for (prefixIndex = 0; prefixIndex < SafeUploadBootScopes.PrefixCount; ++prefixIndex) {
+            bootPrefix.Buffer = SafeUploadBootScopes.Prefixes[prefixIndex];
+            bootPrefix.Length = (USHORT)(SafeUploadBootScopes.PrefixChars[prefixIndex] * sizeof(WCHAR));
+            bootPrefix.MaximumLength = bootPrefix.Length;
+            status = SafeUploadPolicyCoverageAppendPrefix(Status, scopeIndex++, &bootPrefix);
+            if (!NT_SUCCESS(status)) goto Exit;
+        }
+    }
+
+    if (FlagOn(flags, SAFEUPLOAD_POLICY_FLAG_REMOVABLE)) {
+        PSAFEUPLOAD_ADMISSION_COVERAGE_SCOPE scope;
+        if (Status->ScopeCount >= SAFEUPLOAD_ADMISSION_COVERAGE_MAX_SCOPES) {
+            status = STATUS_BUFFER_TOO_SMALL;
+            goto Exit;
+        }
+        scope = &Status->Scopes[Status->ScopeCount++];
+        scope->ScopeKind = SAFEUPLOAD_ADMISSION_COVERAGE_SCOPE_REMOVABLE;
+        scope->Resolution = SAFEUPLOAD_ADMISSION_COVERAGE_RESOLUTION_NOT_APPLICABLE;
+        scope->State = SAFEUPLOAD_ADMISSION_COVERAGE_STATE_PENDING;
+    }
+    if (FlagOn(flags, SAFEUPLOAD_POLICY_FLAG_NETWORK)) {
+        PSAFEUPLOAD_ADMISSION_COVERAGE_SCOPE scope;
+        if (Status->ScopeCount >= SAFEUPLOAD_ADMISSION_COVERAGE_MAX_SCOPES) {
+            status = STATUS_BUFFER_TOO_SMALL;
+            goto Exit;
+        }
+        scope = &Status->Scopes[Status->ScopeCount++];
+        scope->ScopeKind = SAFEUPLOAD_ADMISSION_COVERAGE_SCOPE_NETWORK;
+        scope->Resolution = SAFEUPLOAD_ADMISSION_COVERAGE_RESOLUTION_NOT_APPLICABLE;
+        scope->State = SAFEUPLOAD_ADMISSION_COVERAGE_STATE_PENDING;
+    }
+    Status->ExpectedScopeCount = Status->ScopeCount;
+
+Exit:
+    FltReleasePushLock(&SafeUploadPolicyLock);
+    return status;
+}
+
+VOID SafeUploadPolicyAdmissionCoverageMetadata(
+    _Out_ PULONG Generation, _Out_ PULONG Flags, _Out_ PULONG BootPolicyState,
+    _Out_ PULONG ScopeCount, _Out_ PULONG EpochPending,
+    _Out_ PULONGLONG ScopeSequence)
+{
+    ULONG count = 0, scopeFlags = 0;
+    PAGED_CODE();
+    FltAcquirePushLockShared(&SafeUploadPolicyLock);
+    if (SafeUploadPolicy != NULL) {
+        count += SafeUploadPolicy->PrefixCount;
+        scopeFlags |= SafeUploadPolicy->Flags;
+    }
+    if (SafeUploadPendingPolicy != NULL) {
+        count += SafeUploadPendingPolicy->PrefixCount;
+        scopeFlags |= SafeUploadPendingPolicy->Flags;
+    }
+    if (SafeUploadBootScopesActive) {
+        count += SafeUploadBootScopes.PrefixCount;
+        scopeFlags |= SafeUploadBootScopes.Flags;
+    }
+    /* These aliases intentionally share bit positions in the boot and live policy flags. */
+    if (FlagOn(scopeFlags, SAFEUPLOAD_POLICY_FLAG_REMOVABLE)) ++count;
+    if (FlagOn(scopeFlags, SAFEUPLOAD_POLICY_FLAG_NETWORK)) ++count;
+    *Generation = (ULONG)InterlockedCompareExchange(&SafeUploadPolicyGeneration, 0, 0);
+    *Flags = SafeUploadPolicy != NULL ? SafeUploadPolicy->Flags : 0;
+    *BootPolicyState = SafeUploadData.BootPolicyState;
+    *ScopeCount = count;
+    *EpochPending = SafeUploadPendingPolicy != NULL ? 1 : 0;
+    *ScopeSequence = (UINT64)InterlockedCompareExchange64(&SafeUploadPolicyCoverageSequence, 0, 0);
     FltReleasePushLock(&SafeUploadPolicyLock);
 }
 #endif

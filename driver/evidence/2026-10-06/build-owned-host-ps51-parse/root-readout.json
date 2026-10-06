@@ -1,0 +1,9 @@
+{
+  "ActualRemoteExitCode": 0,
+  "InputPins": {
+    "driver/scripts/Build-ExactOwnedHost.ps1": "4fadaec007d534740e2d79603073353a04e0aefbb7192ae837df23b9961a2a07"
+  },
+  "ProductScriptExecuted": false,
+  "BuildStarted": false,
+  "TrustChanged": false
+}

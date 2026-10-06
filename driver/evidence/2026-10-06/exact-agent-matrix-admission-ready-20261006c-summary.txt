@@ -1,0 +1,23 @@
+﻿LABEL=admission-ready-20261006c
+BUILDER=DESKTOP-O1LP5DG
+SOURCE_MANIFEST_VERIFIED=133
+ARCHIVE_SHA256=04F33FC77FC36E9D146FA5E995642202F529681B25AB8B32C6592AF4521C6DF9
+MANIFEST_SHA256=FE005DCBF87216CB8A08E46C5EF7DB8BA2CD791356374673A1FA68EFD1BBB939
+normal-debug-build: exit=0 warnings=0 errors=0
+normal-debug-tests: exit=0 warnings=0 errors=0
+normal-debug: tests_passed=324
+normal-release-build: exit=0 warnings=0 errors=0
+normal-release-tests: exit=0 warnings=0 errors=0
+normal-release: tests_passed=324
+normal-release-publish: exit=0 warnings=0 errors=0
+normal-release: package_sha256=F67A0F3F474ABF73E00F74B1848F2AFDDD95057544DFECBCEB33DB2293B8CA8F
+feature-debug-build: exit=0 warnings=0 errors=0
+feature-debug-tests: exit=0 warnings=0 errors=0
+feature-debug: tests_passed=353
+feature-release-build: exit=0 warnings=0 errors=0
+feature-release-tests: exit=0 warnings=0 errors=0
+feature-release: tests_passed=353
+feature-release-publish: exit=0 warnings=0 errors=0
+feature-release: package_sha256=78283357D199DED0FF89C61C69C9CB88F4DDE4928BBBC4F37333A744A0EFD37E
+AgentMatrixGate=True
+BUILD_END_UTC=2026-10-06T17:29:35.3490562Z

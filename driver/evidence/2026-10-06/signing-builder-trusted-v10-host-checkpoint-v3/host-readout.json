@@ -1,0 +1,48 @@
+{
+  "UTC": "2026-10-06T19:46:46.904812+00:00",
+  "UUID": "c6440689-d11c-4c63-a463-f3722b7ddb69",
+  "Parent": "/var/lib/libvirt/images/win10-clean.safeupload-signer-key-bearing-v8-retry2-20261006.qcow2",
+  "Child": "/var/lib/libvirt/images/win10-clean.safeupload-signer-trusted-v10-20261006.qcow2",
+  "ParentStatBefore": {
+    "Device": 31,
+    "Inode": 631436,
+    "Bytes": 553123840,
+    "MtimeNS": 1791315980673093978,
+    "Mode": 384,
+    "UID": 958,
+    "GID": 958
+  },
+  "ParentStatAfter": {
+    "Device": 31,
+    "Inode": 631436,
+    "Bytes": 553123840,
+    "MtimeNS": 1791315980673093978,
+    "Mode": 384,
+    "UID": 958,
+    "GID": 958
+  },
+  "ParentIdentitySizeMtimeModeOwnershipUnchanged": true,
+  "ParentQcow2ReadOnly": true,
+  "ChildMode": "0600",
+  "ChildOwnerUid": 958,
+  "ChildGroupGid": 958,
+  "BackingChain": [
+    "/var/lib/libvirt/images/win10-clean.safeupload-signer-trusted-v10-20261006.qcow2",
+    "/var/lib/libvirt/images/win10-clean.safeupload-signer-key-bearing-v8-retry2-20261006.qcow2",
+    "/var/lib/libvirt/images/win10-clean.safeupload-signer-fallback-recovery3-20261006.qcow2",
+    "/var/lib/libvirt/images/win10-clean.safeupload-architecture-20261001",
+    "/var/lib/libvirt/images/win10-clean.turn-defender-off",
+    "/var/lib/libvirt/images/win10-clean.Before SecKnowledgeBase",
+    "/var/lib/libvirt/images/win10-clean.qcow2"
+  ],
+  "FailedRetry1ExcludedFromBackingChain": true,
+  "ColdBootFromHealthyRetry2Parent": true,
+  "GuestReadOnlyBaselinePending": true,
+  "CertificateOrTrustChanged": false,
+  "PrivateKeyExported": false,
+  "BuildOrSignAttempted": false,
+  "CheckpointScope": "System disk and trusted signing state",
+  "FirmwareTpmRamCheckpointed": false,
+  "SharedNvramCheckpointed": false,
+  "FullVmRollbackClaimed": false
+}

@@ -1,0 +1,13 @@
+﻿LABEL=driver-ownerdiag-20261006f
+ARCHIVE_SHA256=818BE69AF70CD73AF08E6813A1987CAF81C6A5A791E93D3E409B1677DFB04D37
+MANIFEST_SHA256=9181D4262B21FF4640D6537803EA95B76CABD6E1BA7259A2C9F097A3AE729B7F
+BUILDER=DESKTOP-O1LP5DG
+BUILD_END_UTC=2026-10-06T20:47:51.1782844Z
+driver:normal : configuration=Debug feature=false owner_fsp=false exit=0 succeeded=True warnings=0 errors=0 apivalidator=True prefast=True artifact_sha256=74544CAC516F206CD0073EA0DE11C6D736CECEA71F52058937FE0CE758619D51
+driver:owned-feature : configuration=Debug feature=true owner_fsp=true exit=0 succeeded=True warnings=0 errors=0 apivalidator=True prefast=True artifact_sha256=4D16175ABB20C6067E86456D630C92A56FCE881754C8550DA88BF94A32956C4C
+driver:normal-release : configuration=Release feature=false owner_fsp=false exit=0 succeeded=True warnings=0 errors=0 apivalidator=True prefast=True artifact_sha256=0A3A43D9635A37ABDE34AC3736D0CFB86F7278DDE57BC1A103E365C6AF565690
+driver:owned-feature-release : configuration=Release feature=true owner_fsp=true exit=0 succeeded=True warnings=0 errors=0 apivalidator=True prefast=True artifact_sha256=591348BB58A8C0877C0A1A43523BC126E9B392FB5ECE36D1906269CD95482AD3
+inspector-normal-release : owner_fsp=false exit=0 succeeded=True warnings=0 errors=0 artifact_sha256=23846010A209AA17EA26E36C9DD7C6429B3AB0283113DEFA61468FC18053BD9B
+inspector-feature-release : owner_fsp=true exit=0 succeeded=True warnings=0 errors=0 artifact_sha256=4C11A4F1ED9DB56DEED6044E12745257303796753CF19ED4FFA35D06AFCA4079
+writer-fixture : exit=0 succeeded=True warnings=0 errors=0 artifact_sha256=9E0CB62C7614FFCCFE1A08604DE6B12AFDED72157F4F4136C50976B062E3D191
+sign : exit=0 unsigned_sha256=4D16175ABB20C6067E86456D630C92A56FCE881754C8550DA88BF94A32956C4C signing_copy_sha256=4D16175ABB20C6067E86456D630C92A56FCE881754C8550DA88BF94A32956C4C unsigned_unchanged=True store=LocalMachine output_sha256=376E51FE52C0C37FB340DC81F441F2A3299D34D6F3B99E0E2255F53575DE1D0D signed_sha256=376E51FE52C0C37FB340DC81F441F2A3299D34D6F3B99E0E2255F53575DE1D0D signature_valid=True signer=A6D6CE1AA28835D509160A80ADB7894869AADF38

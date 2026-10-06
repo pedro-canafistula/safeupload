@@ -1,0 +1,15 @@
+{
+  "Purpose": "DIAGNOSTIC_COMPILE_NOT_FINAL_SOURCE_QUALIFICATION",
+  "Snapshot": "/home/victor/Work/safeupload-staging/output/exact-owner-diagnostic/driver-ownerdiag-20261006e",
+  "ProvenanceSHA256": "c85b8e78b373673f92eaa32598b85a973813cecb23a2736a08e85891265ea405",
+  "FrozenBuildTools": {
+    "driver/scripts/Build-ExactSource.ps1": "ff537d9426c5539fdfbd976ed77e55ee90f2a64501f17d463aa926f09cebd5d6",
+    "driver/scripts/remote_ps.py": "71e39bb56a5b5c89b3e00131e24d05377624219a34ae47dd68a4db74c0560351",
+    "driver/scripts/Invoke-ExactSourceBuild.sh": "5630091e233d34a5df4e4411d318663ea46e36a232e2fc9cd1189eb42b747a3e",
+    "driver/scripts/Prepare-ExactWorktreeSource.py": "67386727e63ac8ff961548101276bdaa4b9bf0d0f970d23e801a915e6adff107"
+  },
+  "OwnerPrototypeEnabledForFeatureOnly": true,
+  "KnownExpectedManagedIncompleteCaller": false,
+  "NoProductInstallation": true,
+  "GitMutation": false
+}

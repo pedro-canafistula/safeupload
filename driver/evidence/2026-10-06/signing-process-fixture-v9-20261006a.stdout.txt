@@ -1,0 +1,8 @@
+PowerShellVersion=5.1.19041.6456
+signing-guard-helpers-v8.ps1 ParseErrors=0
+signing-process-capture-v9.ps1 ParseErrors=0
+exact-mvp20261006admissioncap2-replacement-trust-builder-root-v9.ps1 ParseErrors=0
+signing-process-capture-v9-fixture.ps1 ParseErrors=0
+{"Status":"V9_PROCESS_CAPTURE_FIXTURE_PASS","HelperSha256":"6cac6f59c640c6fb045f61b87be1bb4deeeea451c80cd067ae022180a0a01a9f","SuccessExitCode":0,"SuccessStdoutCaptured":true,"FailureExitCode":7,"FailureStderrCaptured":true,"LaunchFailurePreserved":true,"LaunchFailureType":"System.Management.Automation.MethodInvocationException","TrustOrStoreOperationsPerformed":false,"KeyOrAclOperationsPerformed":false}
+SelfCheckExit=0
+ValidationTempAbsent=True

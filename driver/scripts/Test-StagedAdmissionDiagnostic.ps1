@@ -2509,7 +2509,12 @@ function Get-WriterStateStats {
 }
 
 function Wait-AdmissionCanary([string] $Path, [string] $RawPath) {
-    if ($RequireAllVolumeCanaries) { Wait-AllVolumeCanaries ($RawPath + '-volumes.json') }
+    if ($RequireAllVolumeCanaries) {
+        if ($SelectedVariant -eq 'registry-txf') {
+            Wait-AllVolumeCanaries ($RawPath + '-volumes.json') -RequireEveryInstanceTerminal
+        }
+        else { Wait-AllVolumeCanaries ($RawPath + '-volumes.json') }
+    }
     if (-not $RequireCanary) { return }
     for ($attempt = 0; $attempt -lt 20; $attempt++) {
         [void](Invoke-AdmissionProbe $Path ('Canary_' + $attempt) $InspectorTimeoutSeconds)
@@ -2531,7 +2536,11 @@ function Wait-AdmissionCanary([string] $Path, [string] $RawPath) {
     throw 'Volume canary did not reach its passed state (inspect retained raw canary probes).'
 }
 
-function Wait-AllVolumeCanaries([string] $RawPath) {
+function Wait-AllVolumeCanaries([string] $RawPath, [switch] $RequireEveryInstanceTerminal) {
+    if ($RequireEveryInstanceTerminal) {
+        $script:AllVolumeCanaryTerminalProof = $false
+        $script:AllVolumeCanaryInstanceKey = ''
+    }
     $volumes = @(Get-CimInstance Win32_Volume -Filter 'DriveType=3' -ErrorAction Stop |
         Where-Object FileSystem -eq 'NTFS')
     $expected = @($volumes | ForEach-Object {
@@ -2543,8 +2552,11 @@ function Wait-AllVolumeCanaries([string] $RawPath) {
     }
     Write-Output ('IndependentFixedNtfsGuids=' + ($expected -join ';'))
     for ($attempt = 0; $attempt -lt 60; ++$attempt) {
-        $response = Invoke-InspectorChecked -Arguments @('--admission-volume-status') -Timeout $InspectorTimeoutSeconds
-        [IO.File]::WriteAllText(($RawPath + '-' + $attempt), [string]$response.Stdout)
+        $volumeStatusCommand = if ($RequireEveryInstanceTerminal -or $SelectedVariant -eq 'registry-txf') {
+            '--admission-volume-observe'
+        } else { '--admission-volume-status' }
+        $response = Invoke-InspectorChecked -Arguments @($volumeStatusCommand) -Timeout $InspectorTimeoutSeconds
+        [IO.File]::WriteAllBytes(($RawPath + '-' + $attempt), [byte[]]$response.StdoutBytes)
         $status = ConvertFrom-Json -InputObject ([string]$response.Stdout).Trim()
         if ($null -eq $status.admissionVolumes -or $null -eq $status.writerGlobalUnknown -or
             $null -eq $status.bootPolicyState) {
@@ -2568,6 +2580,12 @@ function Wait-AllVolumeCanaries([string] $RawPath) {
         } | Sort-Object)
         if (($actual -join ';') -ne ($expected -join ';')) { throw 'Attached fixed NTFS set differs from independent volume set.' }
         $pending = $false
+        if ($RequireEveryInstanceTerminal) {
+            $lostCanaries = @($status.admissionVolumes | Where-Object { [int]$_.trustState -eq 4 })
+            if ($lostCanaries.Count -gt 0) { throw 'An attached instance has CANARY_LOST trust.' }
+            $nonterminalCanaries = @($status.admissionVolumes | Where-Object { [int]$_.canaryState -lt 2 })
+            if ($nonterminalCanaries.Count -gt 0) { $pending = $true }
+        }
         foreach ($entry in $eligible) {
             if ($entry.instanceWritersUntracked -ne 0) { throw 'Instance writer tracking is unknown.' }
             if ($entry.canaryState -lt 2) { $pending = $true; continue }
@@ -2576,6 +2594,20 @@ function Wait-AllVolumeCanaries([string] $RawPath) {
         }
         if (-not $pending) {
             Write-Output ('AllVolumeCanaries=PASS;count:' + $eligible.Count)
+            if ($RequireEveryInstanceTerminal) {
+                $terminalInstances = @($status.admissionVolumes | ForEach-Object { [string]$_.instance } | Sort-Object)
+                if (@($terminalInstances | Where-Object { [string]::IsNullOrWhiteSpace($_) }).Count -gt 0 -or
+                    @($terminalInstances | Select-Object -Unique).Count -ne $terminalInstances.Count) {
+                    throw 'All-instance canary barrier has missing or duplicate instance identities.'
+                }
+                foreach ($instanceId in $terminalInstances) {
+                    if ($instanceId -notmatch '^[0-9A-Fa-f]{16}$') {
+                        throw 'All-instance canary barrier has a malformed instance identity.'
+                    }
+                }
+                $script:AllVolumeCanaryInstanceKey = $terminalInstances -join ';'
+                $script:AllVolumeCanaryTerminalProof = $true
+            }
             return
         }
         Start-Sleep -Milliseconds 100
@@ -4210,6 +4242,9 @@ public static class SafeUploadEolNative
             $runSucceeded = $true
         }
         elseif ($SelectedVariant -eq 'registry-txf') {
+            if (-not $RequireAllVolumeCanaries) {
+                throw 'Registry-TxF snapshots require -RequireAllVolumeCanaries so every attached canary is terminal before status queries.'
+            }
             $t = $InspectorTimeoutSeconds
             Initialize-EolNative
             Initialize-RegistryTxfNative
@@ -4237,6 +4272,160 @@ public static class SafeUploadEolNative
                 if (-not $state.registryStatus -or $null -eq $state.txfRefused -or
                     $null -eq $state.registryUnknownReasons) { throw 'Registry status fields are incomplete.' }
                 return $state
+            }
+            function Write-RTStateSnapshot([string] $Label) {
+                if ($Label -notmatch '^[A-Za-z0-9_-]+$') { throw 'Unsafe registry-TxF snapshot label.' }
+                if (-not $script:AllVolumeCanaryTerminalProof) {
+                    throw 'Registry-TxF status snapshots require a completed all-instance canary barrier.'
+                }
+                $snapshotBase = $rawTraceA + '-rt-' + $Label
+                $registryPath = $snapshotBase + '-registry.json'
+                $volumePath = $snapshotBase + '-admission-volume.json'
+
+                $registryStartedUtc = [DateTime]::UtcNow.ToString('o')
+                $registryResult = Invoke-InspectorChecked -Arguments @('--registry-status') -Timeout $t
+                $registryCompletedUtc = [DateTime]::UtcNow.ToString('o')
+                $registryBytes = [byte[]]$registryResult.StdoutBytes
+                [IO.File]::WriteAllBytes($registryPath, $registryBytes)
+                [IO.File]::WriteAllText(($snapshotBase + '-registry-capture.json'),
+                    (ConvertTo-Json -InputObject ([pscustomobject]@{
+                        command = '--registry-status'
+                        startedUtc = $registryStartedUtc
+                        completedUtc = $registryCompletedUtc
+                        sha256 = (Get-Sha256Hex $registryBytes)
+                    }) -Compress))
+                $registryText = [string]$registryResult.Stdout
+                $registry = ConvertFrom-Json -InputObject $registryText
+                if (-not $registry.registryStatus -or $null -eq $registry.txfRefused -or
+                    $null -eq $registry.registryUnknownReasons -or $null -eq $registry.registryInstanceUnknown) {
+                    throw 'Registry-TxF snapshot is missing required registry fields.'
+                }
+
+                $volumeStartedUtc = [DateTime]::UtcNow.ToString('o')
+                $volumeResult = Invoke-InspectorChecked -Arguments @('--admission-volume-observe') -Timeout $t
+                $volumeCompletedUtc = [DateTime]::UtcNow.ToString('o')
+                $volumeBytes = [byte[]]$volumeResult.StdoutBytes
+                [IO.File]::WriteAllBytes($volumePath, $volumeBytes)
+                [IO.File]::WriteAllText(($snapshotBase + '-admission-volume-capture.json'),
+                    (ConvertTo-Json -InputObject ([pscustomobject]@{
+                        command = '--admission-volume-observe'
+                        startedUtc = $volumeStartedUtc
+                        completedUtc = $volumeCompletedUtc
+                        sha256 = (Get-Sha256Hex $volumeBytes)
+                    }) -Compress))
+                $volumeText = [string]$volumeResult.Stdout
+                $volume = ConvertFrom-Json -InputObject $volumeText
+                if ($null -eq $volume.admissionVolumes -or $null -eq $volume.writerGlobalUnknown -or
+                    $null -eq $volume.bootPolicyState) {
+                    throw 'Registry-TxF snapshot is missing required admission-volume fields.'
+                }
+
+                $globalUnknown = [uint32]0
+                if (-not [uint32]::TryParse([string]$volume.writerGlobalUnknown, [ref]$globalUnknown) -or
+                    $globalUnknown -gt 1) { throw 'Registry-TxF snapshot has an invalid writerGlobalUnknown value.' }
+                $volumeEntries = @($volume.admissionVolumes)
+                $volumeCount = $volumeEntries.Count
+                if ($volumeCount -eq 0) { throw 'Registry-TxF snapshot has no admission-volume entries.' }
+                foreach ($entry in $volumeEntries) {
+                    foreach ($field in @('instance', 'trustState', 'canaryState')) {
+                        if ($null -eq $entry.PSObject.Properties[$field]) {
+                            throw ('Registry-TxF snapshot entry is missing ' + $field + '.')
+                        }
+                    }
+                    $trustValue = [int]$entry.trustState
+                    $canaryValue = [int]$entry.canaryState
+                    if ($trustValue -lt 0 -or $trustValue -gt 6 -or $canaryValue -lt 0 -or $canaryValue -gt 5) {
+                        throw 'Registry-TxF snapshot entry has an invalid trust/canary state.'
+                    }
+                }
+                $nonterminalCanaries = @($volumeEntries | Where-Object { [int]$_.canaryState -lt 2 }).Count
+                $lostCanaries = @($volume.admissionVolumes | Where-Object { [int]$_.trustState -eq 4 }).Count
+                $currentCanaryInstances = @($volumeEntries | ForEach-Object { [string]$_.instance } | Sort-Object)
+                $currentCanaryInstanceKey = $currentCanaryInstances -join ';'
+                if (@($currentCanaryInstances | Where-Object { [string]::IsNullOrWhiteSpace($_) }).Count -gt 0 -or
+                    @($currentCanaryInstances | Select-Object -Unique).Count -ne $currentCanaryInstances.Count) {
+                    throw 'Admission-volume snapshot has missing or duplicate instance identities.'
+                }
+                foreach ($instanceId in $currentCanaryInstances) {
+                    if ($instanceId -notmatch '^[0-9A-Fa-f]{16}$') {
+                        throw 'Admission-volume snapshot has a malformed instance identity.'
+                    }
+                }
+                if ($nonterminalCanaries -gt 0 -or $lostCanaries -gt 0 -or
+                    $currentCanaryInstanceKey -cne $script:AllVolumeCanaryInstanceKey) {
+                    throw ('Admission-volume snapshot is not protected by the all-instance terminal canary barrier; no corpus case may follow. nonterminal=' +
+                        $nonterminalCanaries + ';lost=' + $lostCanaries + ';instanceSetStable=' +
+                        ($currentCanaryInstanceKey -ceq $script:AllVolumeCanaryInstanceKey))
+                }
+
+                $targetDrive = [IO.Path]::GetPathRoot($RegistryTxfCorpus[0]).TrimEnd('\')
+                $targetGuid = ''
+                $targetEntry = $null
+                try {
+                    $targetVolumes = @(Get-CimInstance Win32_Volume -Filter ("DriveLetter='{0}'" -f $targetDrive) -ErrorAction Stop)
+                    if ($targetVolumes.Count -eq 1) {
+                        $targetGuidMatch = [regex]::Match([string]$targetVolumes[0].DeviceID, '(?i)\{[0-9a-f-]{36}\}')
+                        if ($targetGuidMatch.Success) { $targetGuid = $targetGuidMatch.Value }
+                    }
+                    if ($targetGuid.Length -gt 0) {
+                        $targetEntries = @($volume.admissionVolumes | Where-Object {
+                            $entryGuid = [regex]::Match([string]$_.volumeGuid, '(?i)\{[0-9a-f-]{36}\}')
+                            $_.volumeGuidStatus -eq 0 -and $entryGuid.Success -and
+                                $entryGuid.Value -ieq $targetGuid
+                        })
+                        if ($targetEntries.Count -eq 1) { $targetEntry = $targetEntries[0] }
+                    }
+                }
+                catch {
+                    $targetEntry = $null
+                }
+                $targetAttribution = 'UNKNOWN'
+                $targetReasons = 'unknown'
+                $targetFirstReason = 'unknown'
+                $targetFirstSite = 'unknown'
+                $targetTrustState = 'unknown'
+                $targetCanaryState = 'unknown'
+                if ($null -ne $targetEntry) {
+                    $requiredTargetFields = @('contextStatus', 'fileSystemStatus', 'volumeInfoStatus',
+                        'volumeGuidStatus', 'instanceRegistryUnknownReasons', 'firstUnknownReason', 'firstUnknownSite')
+                    $targetFieldsPresent = $true
+                    foreach ($field in $requiredTargetFields) {
+                        if ($null -eq $targetEntry.PSObject.Properties[$field]) { $targetFieldsPresent = $false }
+                    }
+                    $reasonMaskText = [string]$targetEntry.instanceRegistryUnknownReasons
+                    $firstReasonText = [string]$targetEntry.firstUnknownReason
+                    $firstSiteValue = [uint32]0
+                    $firstSiteValid = [uint32]::TryParse([string]$targetEntry.firstUnknownSite, [ref]$firstSiteValue)
+                    $reasonFieldsValid = $reasonMaskText -match '^0x[0-9A-Fa-f]{8}$' -and
+                        $firstReasonText -match '^0x[0-9A-Fa-f]{8}$' -and $firstSiteValid
+                    if ($targetFieldsPresent -and $reasonFieldsValid -and $targetEntry.contextStatus -eq 0 -and
+                        $targetEntry.fileSystemStatus -eq 0 -and $targetEntry.volumeInfoStatus -eq 0 -and
+                        $targetEntry.volumeGuidStatus -eq 0) {
+                        $targetAttribution = 'COMPLETE'
+                        $targetReasons = $reasonMaskText
+                        $targetFirstReason = $firstReasonText
+                        $targetFirstSite = [string]$firstSiteValue
+                        $targetTrustState = [string]$targetEntry.trustState
+                        $targetCanaryState = [string]$targetEntry.canaryState
+                    }
+                }
+                Write-Host ('RT_StateSnapshot=' + $Label + ';consistency:sequential-interval' +
+                    ';registryPath:' + $registryPath + ';registryStartedUtc:' + $registryStartedUtc +
+                    ';registryCompletedUtc:' + $registryCompletedUtc +
+                    ';admissionVolumePath:' + $volumePath + ';admissionVolumeStartedUtc:' + $volumeStartedUtc +
+                    ';admissionVolumeCompletedUtc:' + $volumeCompletedUtc +
+                    ';txfRefused:' + $registry.txfRefused +
+                    ';registryUnknownReasons:' + $registry.registryUnknownReasons +
+                    ';registryInstanceUnknown:' + $registry.registryInstanceUnknown +
+                    ';writerGlobalUnknown:' + $globalUnknown + ';bootPolicyState:' + $volume.bootPolicyState +
+                    ';admissionVolumeCount:' + $volumeCount + ';targetVolumeGuid:' +
+                    $(if ($targetGuid.Length -gt 0) { $targetGuid } else { 'unknown' }) +
+                    ';targetUnknownAttribution:' + $targetAttribution + ';targetInstanceUnknownReasons:' + $targetReasons +
+                    ';targetFirstUnknownReason:' + $targetFirstReason + ';targetFirstUnknownSite:' + $targetFirstSite +
+                    ';targetTrustState:' + $targetTrustState + ';targetCanaryState:' + $targetCanaryState)
+                if ($globalUnknown -ne 0) {
+                    throw 'writerGlobalUnknown became set; status evidence is retained and no corpus case may follow.'
+                }
             }
             function Get-RTEntry([string] $Path) {
                 $result = Invoke-InspectorChecked -Arguments @('--registry-entry', $Path) -Timeout $t
@@ -4429,11 +4618,14 @@ public static class SafeUploadEolNative
             $traceEnabled = $true
             [void](Invoke-InspectorChecked -Arguments @('--admission-trace-clear') -Timeout $t)
             Wait-AdmissionCanary $RegistryTxfCorpus[0] $rawTraceA
+            Write-RTStateSnapshot 'AfterCanary'
 
             for ($index = 0; $index -lt 20; $index++) {
                 $path = $RegistryTxfCorpus[$index]
                 if ($index -lt 4) {
+                    if ($index -eq 0) { Write-RTStateSnapshot 'BeforeNeverWritten_0' }
                     [void](Assert-RTEntry $path ('NeverWritten_' + $index) $false 0 0 'no' 0 $true)
+                    if ($index -eq 0) { Write-RTStateSnapshot 'AfterNeverWritten_0' }
                     continue
                 }
                 $stream = [IO.FileStream]::new($path, [IO.FileMode]::Open, [IO.FileAccess]::ReadWrite,
@@ -6011,7 +6203,10 @@ Start-Sleep -Seconds 300
             $script:SectionTeardownFailed++
         }
         if ($filterLoaded) {
-            foreach ($command in @('--writer-state-status','--admission-fence-status','--admission-volume-status')) {
+            $volumeDiagnosticCommand = if ($SelectedVariant -eq 'registry-txf') {
+                '--admission-volume-observe'
+            } else { '--admission-volume-status' }
+            foreach ($command in @('--writer-state-status','--admission-fence-status',$volumeDiagnosticCommand)) {
                 try {
                     $diagnostic = Invoke-InspectorChecked -Arguments @($command) -Timeout $InspectorTimeoutSeconds
                     Write-Output ('RunErrorDiagnostic_' + $command + '=' + ([string]$diagnostic.Stdout).Trim())

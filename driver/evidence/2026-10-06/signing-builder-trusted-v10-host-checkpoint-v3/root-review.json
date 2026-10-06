@@ -1,0 +1,18 @@
+{
+  "Verdict": "ROOT_REVIEW_PASS",
+  "PinnedHelperSha256": "12a67e8a58a020c7777754645dd3f07fc0e80f4676660dc60eeb802d7d962b4c",
+  "PinnedExecutionPinsSha256": "65b4d7818802c9e4bde2a1263edaafc072a3bf00db6a69955d1659a5a08245b3",
+  "PinnedSourceManifestSha256": "71157767b4945084036f179b3c07a188d53640ebd4a33a49b8e855250e1a982b",
+  "ManifestRowsVerified": 47,
+  "ActualReadOnlyPreflightExitCode": 0,
+  "ActualPreflightSHA256": "66abdd8ad584c8d2f8c3dbe4ff8480f286a3477a9400f35fdde5f259bf576e48",
+  "PersistentConfigOnlyVdaSourcePermitted": true,
+  "LiveRuntimeProjectionNarrowlyValidated": true,
+  "FullBackingChainRequired": true,
+  "StartAttemptMarkerFsyncedBeforeStart": true,
+  "PreStartRestoreRequiresExactDefinitionAndNoStartAttempt": true,
+  "IndependentReviewStillPending": true,
+  "HostMutationAttempted": false,
+  "FullBackingChainCheckedBeforeShutdown": true,
+  "FreshGuestBaselineReadoutSHA256": "20c605b43cf33cdf42e49388d917776e40c0f31e8d55efd4b9b541a54eecc445"
+}

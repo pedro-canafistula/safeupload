@@ -1,0 +1,6 @@
+{
+  "driver/SafeUpload.OwnedFspHost/SafeUpload.OwnedFspHost.cpp": "759c06cae771879deeb35c59adc71e01f054de3a860ca631c3a23f89986d0091",
+  "driver/SafeUpload.OwnedFspHost/OwnerHostBrokerV2.h": "f485bbeb952ca1ad5b7ecc455125102c7a549695136f0c5ce584785d2a635a67",
+  "driver/SafeUpload.OwnedFspHost/SafeUpload.OwnedFspHost.vcxproj": "32004584ee40c7565e2f12b577ab85a212fbb2e534e06f774ee5e0f9bbed780f",
+  "driver/SafeUpload.OwnedFspHost/README.md": "b623f9990d4014cc4dc17e6fd976c8189945e0f4374567116fac19f3a7c61317"
+}

@@ -997,7 +997,7 @@ Exit:
     return result;
 }
 
-static int PrintAdmissionVolumeStatus(VOID)
+static int PrintAdmissionVolumeStatus(_In_ BOOL ObserveOnly)
 {
     SAFEUPLOAD_CONTROL control;
     PSAFEUPLOAD_ADMISSION_VOLUME_STATUS status;
@@ -1014,7 +1014,8 @@ static int PrintAdmissionVolumeStatus(VOID)
     ZeroMemory(&control, sizeof(control));
     control.Version = SAFEUPLOAD_PROTOCOL_VERSION;
     control.StructSize = sizeof(control);
-    control.Command = SAFEUPLOAD_CONTROL_ADMISSION_VOLUME_STATUS;
+    control.Command = ObserveOnly ? SAFEUPLOAD_CONTROL_ADMISSION_VOLUME_OBSERVE :
+        SAFEUPLOAD_CONTROL_ADMISSION_VOLUME_STATUS;
     hr = FilterSendMessage(port, &control, sizeof(control), status, sizeof(*status), &returned);
     if (FAILED(hr) || returned != sizeof(*status) || status->StructSize != sizeof(*status) ||
         status->EntryCount > SAFEUPLOAD_ADMISSION_VOLUME_MAX_ENTRIES ||
@@ -1337,7 +1338,10 @@ static int PrintActivatingStatus(VOID)
     PSAFEUPLOAD_ACTIVATING_ENTRY_STATUS entries = NULL;
     SAFEUPLOAD_CONTROL control;
     DWORD returned = 0;
-    UINT32 start, total = 0, pageGeneration = 0, entryCount = 0, attempt;
+    UINT32 start, total = 0, pageGeneration = 0, entryCount = 0, attempt, pagesRead;
+    const UINT32 maximumPagesPerSnapshot =
+        (SAFEUPLOAD_WRITER_REGISTRY_ALL_LIMIT + SAFEUPLOAD_ACTIVATING_STATUS_MAX_ENTRIES - 1) /
+        SAFEUPLOAD_ACTIVATING_STATUS_MAX_ENTRIES;
     UINT64 changeSequence = 0;
     BOOLEAN snapshotReady = FALSE, retrySnapshot;
     HRESULT hr;
@@ -1346,7 +1350,7 @@ static int PrintActivatingStatus(VOID)
     page = (PSAFEUPLOAD_ACTIVATING_STATUS_PAGE)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY,
         sizeof(*page));
     entries = (PSAFEUPLOAD_ACTIVATING_ENTRY_STATUS)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY,
-        (SIZE_T)SAFEUPLOAD_WRITER_REGISTRY_TOTAL_LIMIT * sizeof(*entries));
+        (SIZE_T)SAFEUPLOAD_WRITER_REGISTRY_ALL_LIMIT * sizeof(*entries));
     if (page == NULL || entries == NULL) {
         if (page != NULL) HeapFree(GetProcessHeap(), 0, page);
         if (entries != NULL) HeapFree(GetProcessHeap(), 0, entries);
@@ -1363,10 +1367,18 @@ static int PrintActivatingStatus(VOID)
         start = 0;
         total = 0;
         entryCount = 0;
+        pagesRead = 0;
         pageGeneration = 0;
         changeSequence = 0;
         retrySnapshot = FALSE;
-        while (start <= SAFEUPLOAD_WRITER_REGISTRY_TOTAL_LIMIT) {
+        while (start <= SAFEUPLOAD_WRITER_REGISTRY_ALL_LIMIT) {
+            if (pagesRead >= maximumPagesPerSnapshot) {
+                fwprintf(stderr, L"ERRO: activating-status excedeu o limite de %u paginas.\n",
+                    maximumPagesPerSnapshot);
+                result = 3;
+                break;
+            }
+            pagesRead += 1;
             ZeroMemory(&control, sizeof(control));
             ZeroMemory(page, sizeof(*page));
             control.Version = SAFEUPLOAD_PROTOCOL_VERSION;
@@ -1387,7 +1399,7 @@ static int PrintActivatingStatus(VOID)
             }
             if (returned != sizeof(*page) || page->StructSize != sizeof(*page) ||
                 page->StartIndex != start || page->EntryCount > SAFEUPLOAD_ACTIVATING_STATUS_MAX_ENTRIES ||
-                page->TotalEntries > SAFEUPLOAD_WRITER_REGISTRY_TOTAL_LIMIT ||
+                page->TotalEntries > SAFEUPLOAD_WRITER_REGISTRY_ALL_LIMIT ||
                 page->NextIndex < start || page->NextIndex > page->TotalEntries ||
                 page->EntryCount != page->NextIndex - start) {
                 fwprintf(stderr, L"ERRO: resposta activating-status invalida (hr = 0x%08X, bytes = %u).\n", hr, returned);
@@ -1403,7 +1415,8 @@ static int PrintActivatingStatus(VOID)
                 retrySnapshot = TRUE;
                 break;
             }
-            if (entryCount + page->EntryCount > SAFEUPLOAD_WRITER_REGISTRY_TOTAL_LIMIT) {
+            if (entryCount > SAFEUPLOAD_WRITER_REGISTRY_ALL_LIMIT ||
+                page->EntryCount > SAFEUPLOAD_WRITER_REGISTRY_ALL_LIMIT - entryCount) {
                 result = 3;
                 break;
             }
@@ -1878,7 +1891,10 @@ Return Value:
         return SetRegistryCapacity(argv[2]);
     }
     if (argc > 1 && _wcsicmp(argv[1], L"--admission-volume-status") == 0) {
-        return PrintAdmissionVolumeStatus();
+        return PrintAdmissionVolumeStatus(FALSE);
+    }
+    if (argc > 1 && _wcsicmp(argv[1], L"--admission-volume-observe") == 0) {
+        return PrintAdmissionVolumeStatus(TRUE);
     }
 
     if (argc > 1 && _wcsicmp(argv[1], L"--admission-fence-status") == 0) {

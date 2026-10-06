@@ -8,6 +8,7 @@
 using System;
 using System.ComponentModel;
 using System.Runtime.InteropServices;
+using System.Threading;
 using Microsoft.Win32.SafeHandles;
 
 namespace SafeUpload.Agent.Minifilter;
@@ -36,16 +37,35 @@ public struct FilterReplyHeader
     public ulong MessageId;
 }
 
-public sealed class FilterPort : IDisposable
+public sealed partial class FilterPort : IDisposable
+#if SAFEUPLOAD_ADMISSION_EVIDENCE
+    , IAdmissionEvidenceSender
+#endif
 {
     private const int StatusSuccess = 0;
 
+    private readonly object _sendLifecycle = new();
+    private readonly SemaphoreSlim _sendGate = new(1, 1);
     private SafeFileHandle? _handle;
+    private bool _acceptingSends = true;
+    private bool _disposed;
+    private int _activeSenders;
 
-    private FilterPort(SafeFileHandle handle) => _handle = handle;
+#if SAFEUPLOAD_ADMISSION_EVIDENCE
+    private readonly IAdmissionEvidenceNativeSender? _admissionEvidenceNativeSender = null;
+#endif
+
+    private FilterPort(SafeFileHandle handle, string portName)
+    {
+        _handle = handle;
+        _ = portName;
+    }
 
     public static FilterPort Connect(string portName = Contract.PortName)
     {
+#if SAFEUPLOAD_ADMISSION_EVIDENCE
+        AdmissionEvidenceWire.VerifyLayout();
+#endif
         int hr = FilterConnectCommunicationPort(
             portName, 0, IntPtr.Zero, 0, IntPtr.Zero, out SafeFileHandle handle);
 
@@ -60,11 +80,68 @@ public sealed class FilterPort : IDisposable
             throw new Win32Exception(hr, $"FilterConnectCommunicationPort falhou: 0x{hr:X8}");
         }
 
-        return new FilterPort(handle);
+        return new FilterPort(handle, portName);
     }
 
     private SafeFileHandle Handle =>
         _handle ?? throw new ObjectDisposedException(nameof(FilterPort));
+
+    // All synchronous FilterSendMessage calls share this lease. Dispose first
+    // rejects new senders, then waits for accepted senders (including those
+    // queued on _sendGate) to drain before closing the native handle. The
+    // blocking FilterGetMessage receive deliberately does not use this gate.
+    private SendLease EnterSend()
+    {
+        lock (_sendLifecycle)
+        {
+            if (!_acceptingSends)
+            {
+                throw new ObjectDisposedException(nameof(FilterPort));
+            }
+
+            checked { _activeSenders++; }
+        }
+
+        bool gateTaken = false;
+        try
+        {
+            _sendGate.Wait();
+            gateTaken = true;
+            return new SendLease(this, Handle);
+        }
+        catch
+        {
+            if (gateTaken) _sendGate.Release();
+            CompleteSend();
+            throw;
+        }
+    }
+
+    private void ExitSend()
+    {
+        _sendGate.Release();
+        CompleteSend();
+    }
+
+    private void CompleteSend()
+    {
+        lock (_sendLifecycle)
+        {
+            _activeSenders--;
+            if (_activeSenders == 0) Monitor.PulseAll(_sendLifecycle);
+        }
+    }
+
+    private sealed class SendLease(FilterPort owner, SafeFileHandle handle) : IDisposable
+    {
+        private FilterPort? _owner = owner;
+        public SafeFileHandle Handle { get; } = handle;
+
+        public void Dispose()
+        {
+            Interlocked.Exchange(ref _owner, null)?.ExitSend();
+        }
+    }
 
     /// <summary>
     /// Blocks until the driver sends a request.
@@ -177,6 +254,7 @@ public sealed class FilterPort : IDisposable
     /// </summary>
     public unsafe void SetPolicy(in SafeUploadPolicyMessage policy, bool finalizeDurableBootScopes = false)
     {
+        using var send = EnterSend();
         fixed (SafeUploadPolicyMessage* p = &policy)
         {
             p->Control.Version = Contract.Version;
@@ -184,7 +262,7 @@ public sealed class FilterPort : IDisposable
             p->Control.Command = ControlCommand.SetPolicy;
             p->Control.Reserved = finalizeDurableBootScopes ? Contract.FinalizeDurableBootScopes : 0;
 
-            int hr = FilterSendMessage(Handle, (IntPtr) p, (uint) sizeof(SafeUploadPolicyMessage),
+            int hr = FilterSendMessage(send.Handle, (IntPtr) p, (uint) sizeof(SafeUploadPolicyMessage),
                                        IntPtr.Zero, 0, out _);
 
             if (hr != 0)
@@ -193,6 +271,7 @@ public sealed class FilterPort : IDisposable
             }
         }
     }
+
 
     /// <summary>
     /// Concede uma excecao: um processo, um caminho de destino exato, por um
@@ -235,7 +314,8 @@ public sealed class FilterPort : IDisposable
             message.Path[i] = ntPath[i];
         }
 
-        int hr = FilterSendMessage(Handle, (IntPtr) (&message), (uint) sizeof(SafeUploadOverrideMessage),
+        using var send = EnterSend();
+        int hr = FilterSendMessage(send.Handle, (IntPtr) (&message), (uint) sizeof(SafeUploadOverrideMessage),
                                    IntPtr.Zero, 0, out _);
 
         if (hr != 0)
@@ -270,7 +350,8 @@ public sealed class FilterPort : IDisposable
         for (int i = 0; i < digest.Length; ++i) message.Digest[i] = digest[i];
         for (int i = 0; i < temporaryPath.Length; ++i) message.TemporaryPath[i] = temporaryPath[i];
         for (int i = 0; i < destinationPath.Length; ++i) message.DestinationPath[i] = destinationPath[i];
-        int hr = FilterSendMessage(Handle, (IntPtr)(&message), (uint)sizeof(SafeUploadPublicationMessage),
+        using var send = EnterSend();
+        int hr = FilterSendMessage(send.Handle, (IntPtr)(&message), (uint)sizeof(SafeUploadPublicationMessage),
             IntPtr.Zero, 0, out _);
         if (hr != 0) throw new Win32Exception(hr, $"Publication permit refused: 0x{hr:X8}");
     }
@@ -287,7 +368,8 @@ public sealed class FilterPort : IDisposable
 
         SafeUploadCounters counters = default;
 
-        int hr = FilterSendMessage(Handle, (IntPtr) (&control), (uint) sizeof(SafeUploadControl),
+        using var send = EnterSend();
+        int hr = FilterSendMessage(send.Handle, (IntPtr) (&control), (uint) sizeof(SafeUploadControl),
                                    (IntPtr) (&counters), (uint) sizeof(SafeUploadCounters), out _);
 
         if (hr != 0)
@@ -300,8 +382,33 @@ public sealed class FilterPort : IDisposable
 
     public void Dispose()
     {
-        _handle?.Dispose();
-        _handle = null;
+        SafeFileHandle? handle;
+        lock (_sendLifecycle)
+        {
+            if (!_acceptingSends)
+            {
+                while (!_disposed) Monitor.Wait(_sendLifecycle);
+                return;
+            }
+
+            _acceptingSends = false;
+            while (_activeSenders != 0) Monitor.Wait(_sendLifecycle);
+            handle = _handle;
+            _handle = null;
+        }
+
+        try
+        {
+            handle?.Dispose();
+        }
+        finally
+        {
+            lock (_sendLifecycle)
+            {
+                _disposed = true;
+                Monitor.PulseAll(_sendLifecycle);
+            }
+        }
     }
 
     [DllImport("fltlib.dll", CharSet = CharSet.Unicode)]

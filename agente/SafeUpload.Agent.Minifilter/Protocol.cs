@@ -49,6 +49,9 @@ public static class Contract
     public const uint FinalizeDurableBootScopes = 1;
     public const int CountersSize = 184;
     public const int OverrideMessageSize = 1056;
+    public const int AdmissionCoverageMaxScopes = 98;
+    public const int AdmissionCoverageScopeSize = 556;
+    public const int AdmissionCoverageStatusSize = 54664;
 
     /// <summary>
     /// Throws if any managed structure fails to match the size the driver
@@ -68,6 +71,10 @@ public static class Contract
         Check(nameof(SafeUploadCounters), sizeof(SafeUploadCounters), CountersSize);
         Check(nameof(SafeUploadOverrideMessage), sizeof(SafeUploadOverrideMessage), OverrideMessageSize);
         Check(nameof(SafeUploadPublicationMessage), sizeof(SafeUploadPublicationMessage), 2128);
+        Check(nameof(SafeUploadAdmissionCoverageScope), sizeof(SafeUploadAdmissionCoverageScope),
+              AdmissionCoverageScopeSize);
+        Check(nameof(SafeUploadAdmissionCoverageStatus), sizeof(SafeUploadAdmissionCoverageStatus),
+              AdmissionCoverageStatusSize);
         CheckOffset(nameof(SafeUploadPublicationMessage) + ".TemporaryPath",
                     (int) Marshal.OffsetOf<SafeUploadPublicationMessage>(nameof(SafeUploadPublicationMessage.TemporaryPath)), 80);
 
@@ -87,6 +94,8 @@ public static class Contract
                     (int) Marshal.OffsetOf<SafeUploadPolicyMessage>(nameof(SafeUploadPolicyMessage.Images)), 17704);
         CheckOffset(nameof(SafeUploadCounters) + ".TaintHits",
                     (int) Marshal.OffsetOf<SafeUploadCounters>(nameof(SafeUploadCounters.TaintHits)), 96);
+        CheckOffset(nameof(SafeUploadAdmissionCoverageStatus) + ".Scopes",
+                    (int) Marshal.OffsetOf<SafeUploadAdmissionCoverageStatus>(nameof(SafeUploadAdmissionCoverageStatus.Scopes)), 176);
     }
 
     private static void Check(string name, int actual, int expected)
@@ -188,6 +197,100 @@ public static class ControlCommand
     public const uint GetCounters = 2;
     public const uint GrantOverride = 3;
     public const uint StagePublication = 4;
+    public const uint AdmissionCoverage = 24;
+}
+
+
+public static class AdmissionCoverageContract
+{
+    public const uint Pending = 0;
+    public const uint Ready = 1;
+    public const uint Degraded = 2;
+    public const uint PrefixScope = 1;
+    public const uint RemovableScope = 2;
+    public const uint NetworkScope = 3;
+    public const uint UnknownResolution = 0;
+    public const uint AbsentResolution = 1;
+    public const uint UniqueResolution = 2;
+    public const uint AmbiguousResolution = 3;
+    public const uint NotApplicableResolution = 4;
+    public const uint CompleteFlag = 0x00000001;
+    public const uint StableFlag = 0x00000002;
+    public const uint FutureGateFlag = 0x00000004;
+    public const uint PolicyPendingFlag = 0x00000008;
+    public const uint RegistryCompleteFlag = 0x00000010;
+    public const uint PolicyScopeOverflowFlag = 0x00000020;
+}
+
+[StructLayout(LayoutKind.Sequential, Pack = 8)]
+public unsafe struct SafeUploadAdmissionCoverageScope
+{
+    public uint ScopeKind;
+    public uint ScopeIndex;
+    public uint Resolution;
+    public uint State;
+    public uint Reason;
+    public uint MatchingInstances;
+    public uint UniqueVolumes;
+    public uint ReadyInstances;
+    public uint PrefixChars;
+    public fixed char Prefix[Contract.MaxPrefixChars];
+
+    public string ReadPrefix()
+    {
+        uint chars = Math.Min(PrefixChars, (uint) Contract.MaxPrefixChars);
+        fixed (char* value = Prefix) return new string(value, 0, (int) chars);
+    }
+}
+
+[StructLayout(LayoutKind.Sequential, Pack = 8)]
+public unsafe struct SafeUploadAdmissionCoverageStatus
+{
+    public uint StructSize;
+    public uint ProtocolVersion;
+    public uint State;
+    public uint Flags;
+    public uint PolicyGeneration;
+    public uint PolicyFlags;
+    public uint BootPolicyState;
+    public uint ScopeCount;
+    public uint ExpectedScopeCount;
+    public uint PolicyGenerationEnd;
+    public uint PolicyFlagsEnd;
+    public uint BootPolicyStateEnd;
+    public uint EpochGeneration;
+    public uint EpochFlags;
+    public uint EpochActiveCallbacks;
+    public uint EpochGenerationEnd;
+    public uint EpochFlagsEnd;
+    public uint EpochActiveCallbacksEnd;
+    public uint EnumeratedInstances;
+    public uint SetupInFlight;
+    public uint TeardownInFlight;
+    public uint CoverageChangesInFlight;
+    public uint WriterGlobalUnknown;
+    public uint WriterEntries;
+    public uint WriterEntriesNotReady;
+    public uint WriterEntriesUnknown;
+    public uint FutureMountGateReady;
+    public uint Reason;
+    public ulong PolicyScopeSequenceStart;
+    public ulong PolicyScopeSequenceEnd;
+    public ulong TopologySequenceStart;
+    public ulong TopologySequenceEnd;
+    public ulong CoverageSequenceStart;
+    public ulong CoverageSequenceEnd;
+    public ulong RegistrySequenceStart;
+    public ulong RegistrySequenceEnd;
+    public fixed byte Scopes[Contract.AdmissionCoverageMaxScopes * Contract.AdmissionCoverageScopeSize];
+
+    public SafeUploadAdmissionCoverageScope GetScope(int index)
+    {
+        if ((uint) index >= ScopeCount || index >= Contract.AdmissionCoverageMaxScopes)
+            throw new ArgumentOutOfRangeException(nameof(index));
+        fixed (byte* data = Scopes)
+            return ((SafeUploadAdmissionCoverageScope*) data)[index];
+    }
 }
 
 [StructLayout(LayoutKind.Sequential, Pack = 8)]
@@ -206,6 +309,16 @@ public unsafe struct SafeUploadRequest
     public fixed char ImageName[Contract.MaxImageNameChars];
 
     public RequestFlags TypedFlags => (RequestFlags) Flags;
+
+    public bool HasKnownFlags
+    {
+        get
+        {
+            const uint v18Known = 0x000001ff;
+            const uint known = v18Known;
+            return (Flags & ~known) == 0;
+        }
+    }
 
     public string GetPath()
     {
@@ -253,6 +366,7 @@ public struct SafeUploadControl
     public uint Command;
     public uint Reserved;
 }
+
 
 [StructLayout(LayoutKind.Sequential, Pack = 8)]
 public unsafe struct SafeUploadPolicyMessage

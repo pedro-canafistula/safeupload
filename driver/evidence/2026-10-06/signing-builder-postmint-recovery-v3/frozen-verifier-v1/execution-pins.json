@@ -1,0 +1,5 @@
+{
+  "driver/evidence/2026-10-06/signing-builder-postmint-recovery-v3/execute-checkpoint.py": "00fb810d1eb22121a36efaaa2319890e08d1756f9f474ba94f9ce8edf77cd440",
+  "driver/evidence/2026-10-06/signing-builder-postmint-recovery-v3/inputs.json": "743ad8552594bd91cdf19275a6853f83cc0e4960ea4f738976562e6c8caa5114",
+  "driver/evidence/2026-10-06/signing-builder-postmint-recovery-v3/baseline-check.ps1": "ee578eb82282a5aaa32cde5c90cfaee82a4064f70d4590ad426279f51136b92e"
+}

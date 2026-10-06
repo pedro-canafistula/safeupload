@@ -1,0 +1,37 @@
+<volume type="file">
+  <name>win10-clean.safeupload-signer-fallback-recovery3-20261006.qcow2</name>
+  <key>/var/lib/libvirt/images/win10-clean.safeupload-signer-fallback-recovery3-20261006.qcow2</key>
+  <capacity unit="bytes">128849018880</capacity>
+  <allocation unit="bytes">200704</allocation>
+  <physical unit="bytes">198528</physical>
+  <target>
+    <path>/var/lib/libvirt/images/win10-clean.safeupload-signer-fallback-recovery3-20261006.qcow2</path>
+    <format type="qcow2" />
+    <permissions>
+      <mode>0600</mode>
+      <owner>958</owner>
+      <group>958</group>
+    </permissions>
+    <timestamps>
+      <atime>1791309222.661387687</atime>
+      <mtime>1791309222.657553382</mtime>
+      <ctime>1791309222.659553376</ctime>
+      <btime>0</btime>
+    </timestamps>
+  </target>
+  <backingStore>
+    <path>/var/lib/libvirt/images/win10-clean.safeupload-architecture-20261001</path>
+    <format type="qcow2" />
+    <permissions>
+      <mode>0600</mode>
+      <owner>958</owner>
+      <group>958</group>
+    </permissions>
+    <timestamps>
+      <atime>1791305742.478503258</atime>
+      <mtime>1791305679.383568997</mtime>
+      <ctime>1791305742.429503317</ctime>
+      <btime>0</btime>
+    </timestamps>
+  </backingStore>
+</volume>

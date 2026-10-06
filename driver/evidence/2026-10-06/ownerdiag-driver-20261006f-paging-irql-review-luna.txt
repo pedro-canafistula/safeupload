@@ -1,0 +1,87 @@
+Independent static review: ownerdiag feature-F paging / IRQL
+Date: 2026-10-06
+
+Verdict: placement and reviewed lock-balance checks pass for the pinned source
+slice. This is a source/PDB review only. The archive labels itself as unsigned;
+the PDB readout records ProductInstalled=false and RuntimeQualified=false. No
+runtime or installation claim follows from this review.
+
+Exact evidence pins
+------------------
+Source archive:
+  output/exact-owner-diagnostic/driver-ownerdiag-20261006f/src.zip
+  SHA-256 818be69af70cd73af08e6813a1987caf81c6a5a791e93d3e409b1677dfb04d37
+Archive manifest:
+  output/exact-owner-diagnostic/driver-ownerdiag-20261006f/src.manifest
+  SHA-256 9181d4262b21ff4640d6537803ea95b76cabd6e1ba7259a2c9f097a3ae729b7f
+Unsigned feature SYS SHA-256:
+  4d16175abb20c6067e86456d630c92a56fce881754c8550da88bf94a32956c4c
+PDB:
+  driver/evidence/2026-10-06/ownerdiag-driver-20261006f-pdb/SafeUpload.pdb
+  SHA-256 ce6a13cbf2301b8e5367268213a69bbcc23e7d131f449be1af19032d750e83d5
+  RSDS GUID 213A631A-9968-458D-95A7-0C709B6CD6D5, age 1
+PDB dump SHA-256 4978ef502b2324fd70f89439499c4f74f8b54bebd62aceb27ffd618cd94bb0f4
+PDB root-readout SHA-256 86cc32be9c0f17753083aec2f3b841b4d666d89b4b383f62cbe9215fa5426651
+
+Reviewed source hashes from the exact archive:
+  StageOwnerEcp.c       f6de5a207f833984fc556720f4915a9ab99c8dcf7cb85df12302de8f7792ea7c
+  StageAdmission.c      b0b12c9713ed7be5947ebb98249f1c895a9b7e2b1cf788dc2f2e03dceec6d5a5
+  StageWriters.c        566a05cbc2b1a0e758f73828bec233254b52025c245a01bd47ce56d0d5097719
+  StageStream.c         81755df5b5b24d1c076d0fe206e036048537610492685bcbd3fd9a1ca3ce063a
+  Context.c             a070144d9ce2efbd3b7bea0f62a92ad0a8d68c0ef39849505de85066b5141a3a
+  Filter.c              0aed993e604bec9e1def69c38418ec2656d30edb8fb29a05ac970324fa22f7df
+  OwnerCommunication.c  8c8c49c49b040f2e2687582df5060f06b4baa9ea0ddea6fe87e1bbc61943ee79
+  Stage.h               4859691fb498a7f897afbf1d5387f15dbf58211a2b23eb01c4246a268c940455
+  Filter.h              5945dc5960f5bfd39d10553c5f3c13e22e59c091d91ecc095cf99b8397ef4995
+
+Placement findings
+------------------
+The PE/PDB readout identifies PAGE as section 5, characteristics 0x60000020
+(code, execute, read; not discardable). PDB procedure records place the owner
+ECP functions in that section, including SafeUploadOwnerAuthorizeFspCreate,
+SafeUploadOwnerRegisterFspVolume, SafeUploadOwnerClassifyVolume,
+SafeUploadOwnerIssueCreateGrant, SafeUploadOwnerAttachCreateEcp,
+SafeUploadOwnerDisconnect, and SafeUploadOwnerTeardownInstance. StageOwnerEcp.c
+sets code_seg("PAGE") before its implementation and resets it at EOF. Its
+pageable routines contain PAGED_CODE checks. The instance-admission and
+coverage status routines are explicitly allocated to PAGE and check
+PAGED_CODE. They are status/control paths, not the high-IRQL write-completion
+path.
+
+The paging-write admission wrapper SafeUploadStageWritersBeginPagingIo and
+SafeUploadStageDispatch are in .text. The wrapper declares APC_LEVEL maximum;
+the shared admission helper checks KeGetCurrentIrql() <= APC_LEVEL before
+touching stream contexts. EndMutatingIo/completion helpers and the section/SOP
+spin-lock updates remain in .text and are annotated or implemented for up to
+DISPATCH_LEVEL. The reviewed path does not call a PAGE helper from its
+DISPATCH_LEVEL completion callback.
+
+Lock-balance findings
+---------------------
+The OwnerFspLock wrappers disable normal kernel APC delivery with
+KeEnterCriticalRegion before ExAcquirePushLockShared/Exclusive and pair every
+release with ExReleasePushLock followed by KeLeaveCriticalRegion. I followed
+all conditional exits in BuildFspTargetName, BindRequestToGeneration,
+LookupGeneration, ReleaseEpoch, GetScope, IssueCreateGrant,
+AuthorizeFspCreate, Disconnect, and TeardownInstance; each acquired scope has
+a release on every return/goto path. Referenced process, instance, grant, and
+route objects are released after dropping OwnerFspLock on the reviewed paths.
+The paging W-count path uses the separate StateLock/SectionLock spin-lock
+wrappers and releases them before queuing rechecks or marking uncertain state.
+No unmatched critical-region or push-lock release was found in this slice.
+
+Review boundary / hardening item
+-------------------------------
+StageOwnerEnsureLockInitialized uses an interlocked 0 -> -1 -> 1 state and
+YieldProcessor while another caller is in the short nonblocking initialization
+sequence. SafeUploadOwnerAuthorizeFspCreate can reach it from the WinFsp
+IRP_MJ_CREATE pre-operation path before owner registration. This review did
+not establish a deadlock: the winning initialization has no blocking calls,
+and the function is explicitly pageable/APC-safe. Eager initialization at
+DriverEntry before FltStartFiltering would nevertheless remove the first-use
+spin and avoid any possible reentrant APC waiting on an interrupted
+initializer. Treat this as hardening, not as an observed runtime failure.
+
+The archive has no executed target evidence. This note makes no statement
+about actual runtime IRQL distribution, attach/unload races, FSP access,
+mapping privacy, or policy readiness.

@@ -1,0 +1,31 @@
+UTC=2026-10-06T02:43:08.3601030Z
+Host=WIN10-DEBUGGED
+UUID=9D44EEE8-81CF-4CC1-9FBA-7670F11DEF4D
+BootId=2026-10-05T21:00:21.0702440Z
+StateSha256=5E98EEAEA253453C4590005F9077A6F5F1C557B9AA5948D891581C2370936413
+RunGuid=fe004c32b19e4cc88a0cf42389818d7b
+RunName=boot-start-w01-w01-b38b36-20261005b-fe004c32b19e4cc88a0cf42389818d7b
+RecoveryRequired=True
+ChildStarted=False
+AgentTouched=False
+Frozen=False
+Restored=False
+AllW01PhaseTaskCount=1
+W01Task=SafeUpload-W01Phase-boot-start-w01-w01-b38b36-20261005b-fe004c32b19e4cc88a0cf42389818d7b-AfterBoot;State=Ready
+W01ActorCount=0
+FiltersReadOnlyBegin
+
+Filter Name                     Num Instances    Altitude    Frame
+------------------------------  -------------  ------------  -----
+bindflt                                 0       409800         0
+SafeUpload                              4       321410         0
+SafeUploadSectionFault                  1       321409         0
+storqosflt                              0       244000         0
+wcifs                                   0       189900         0
+CldFlt                                  1       180451         0
+FileCrypt                               0       141100         0
+luafv                                   1       135000         0
+npsvctrig                               1        46000         0
+Wof                                     2        40700         0
+FileInfo                                4        40500         0
+FiltersReadOnlyEnd

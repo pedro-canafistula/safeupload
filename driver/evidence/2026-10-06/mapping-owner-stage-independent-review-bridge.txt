@@ -1,0 +1,115 @@
+# Independent review: owner-stage M1/M2 architecture
+
+Read-only architecture review, 2026-10-06. This records an independent
+technical verdict on the frozen owner-stage plan and its two follow-up notes.
+No product, VM, signer, build, protocol, or repro source was changed or run.
+
+## Pinned inputs
+
+| Artifact | SHA-256 |
+|---|---|
+| `driver/evidence/2026-10-06/mapping-owner-stage-m1-m2-integration-plan-luna.txt` | `8c453a70fa240e9c01090fda52b01b2384e40d8fa6f579972148c3bc79887b01` |
+| `driver/evidence/2026-10-06/mapping-owner-stage-fs-owner-addendum-luna.txt` | `136ab9ab1523356a2beb5b2dcc3e47e0c73572dd82b624a16a8dd2b3925753fe` |
+| `driver/evidence/2026-10-06/mapping-owner-stage-protocol-journal-compatibility-luna.txt` | `2932e84855bc42342df0b2730ccad8e257f4fe0a5c8232f2ece55dbc9014d252` |
+| `driver/SafeUpload.Minifilter/StageStream.c` | `94c02659fd6420e40ac8cc8c1db6ea6af7b12dea4ec92b00e89f5b5b219c0321` |
+| `driver/SafeUpload.Minifilter/Stage.h` | `4859691fb498a7f897afbf1d5387f15dbf58211a2b23eb01c4246a268c940455` |
+| `driver/SafeUpload.Minifilter/StageWriters.c` | `566a05cbc2b1a0e758f73828bec233254b52025c245a01bd47ce56d0d5097719` |
+| `driver/evidence/2026-10-06/mapping-ownership-before-section-luna-review.txt` | `dcf9de107eed615416d542a3e73ce983983d1cace3ea28d604a8a523100900eb` |
+| `output/mvp-continuation/winfsp-cleanup-w01-question-review.txt` | `cf1e1672c04f6b1d2ff87ff023500c2df23731b28816b9dde7bb828e3368514b` |
+
+The canonical DOD remains the user's request in
+`/home/victor/.codex/attachments/c478f92e-2f53-4c9f-9289-6b6e446cc18d/pasted-text-1.txt`:
+taint and unsupported capabilities remain guarded; normal builds compile
+staging out; all mapping, adapter, observer, recovery, Verifier, stress, and
+latency gates remain required.
+
+## Verdict
+
+The addendum now uses the right boundary: the current synthetic upper-SOP path
+is **unproven under the reviewed DDI contract**, not conclusively prohibited.
+Microsoft recognizes that a filter may implement a layered filesystem by
+owning file objects and issuing lower creates. That ECP-specific carveout does
+not answer whether this minifilter may set the application's
+`SectionObjectPointer`, allocate the per-stream SOP, set cache-support state,
+or call Cache Manager APIs on that object. Do not extend or qualify the current
+path until that exact question has an authoritative source-level answer.
+
+The converse is also important: this evidence does not yet justify committing
+to a WinFsp/native-FSD rewrite. A true filesystem owner is a valid fallback if
+the layered-filter contract cannot be established, but its logical namespace
+must still preserve every existing identity, access-control, privacy, raw
+observer, and destination requirement. Neither path may narrow policy scope or
+mark full readiness from a local-NTFS prototype.
+
+## Contract and implementation comparison
+
+The current `StageCreate` completes creates above NTFS and sets the
+application `FILE_OBJECT`'s `FsContext`, `FsContext2`, `SectionObjectPointer`,
+and `FO_CACHE_SUPPORTED`; `StageInitializeCache` calls
+`CcInitializeCacheMap` on that file object. `StageOpenBacking` separately opens
+the private NTFS stage. Microsoft documents that `FILE_OBJECT.SectionObjectPointer`
+is set only by file systems, that a file system or redirector allocates one
+SOP per stream and filter drivers treat its members as opaque, and that file
+systems call `CcInitializeCacheMap`. These are the direct DDI statements to
+resolve against the layered-filter category, not merely against ordinary
+minifilter pass-through behavior.
+
+The category is real: Microsoft’s system-defined ECP guidance describes a
+filter that owns file objects and issues lower `IRP_MJ_CREATE` operations as a
+layered filesystem. It says such a filter should propagate the original ECP
+list to its lower creates. In the pinned current source, `StageOpenBacking`
+calls `FltCreateFileEx2` with a null `DriverContext`; `StageStream.c` contains
+no ECP-list retrieval or propagation. The DDI documents an `IO_DRIVER_CREATE_CONTEXT`
+for passing ECPs to `FltCreateFileEx2`. Therefore, if the existing design is
+reviewed as a layered filesystem, ECP propagation is a concrete source gap to
+close, alongside the SOP/Cache Manager ownership question. The carveout does
+not itself authorize SOP allocation or Cache Manager use.
+
+No Microsoft sample located in this review demonstrates a minifilter owning
+the application stream's SOP and initializing its cache map. The Microsoft
+cache examples returned are CDFS/FAT filesystem implementations; this absence
+is not evidence that a layered filter cannot do it. Microsoft primary pages
+reviewed on 2026-10-06:
+
+- [`FILE_OBJECT`](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/ns-wdm-_file_object): `SectionObjectPointer` and `FO_CACHE_SUPPORTED` ownership wording.
+- [`SECTION_OBJECT_POINTERS`](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/ns-wdm-_section_object_pointers): one SOP per stream, allocation responsibilities, filter opacity.
+- [`CcInitializeCacheMap`](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/nf-ntifs-ccinitializecachemap): says file systems call it.
+- [`System-defined ECPs`](https://learn.microsoft.com/en-us/windows-hardware/drivers/ifs/system-defined-ecps): layered-filesystem carveout and ECP-list propagation.
+- [`FltCreateFileEx2`](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/fltkernel/nf-fltkernel-fltcreatefileex2): optional `IO_DRIVER_CREATE_CONTEXT` and ECP support.
+- [Microsoft SimRep sample](https://learn.microsoft.com/en-us/samples/microsoft/windows-driver-samples/simrep-file-system-minifilter-driver/): create-time name redirection; it does not demonstrate private-section ownership or private backing ACL design.
+
+## Upstream comparison and decision path
+
+The required upstream reuse check was performed for the concrete question:
+does WinFsp lifecycle evidence let this minifilter retire its mapped-stream
+state on Cleanup/Close? The reviewed source/test is `winfsp/winfsp` commit
+`fde790d8ea41283606d1c56b557608a17e455f59` (v2.2B4), recorded in the pinned
+local study above. It shows a filesystem owning its FileNode/cache state,
+separating Cleanup from Close, and retaining state for mapped views/write
+behind. This supports retaining backing past Cleanup/Close; it does not show
+NTFS or a minifilter's SOP behavior and does not establish the current
+implementation's contract.
+
+WinFsp documents mapped I/O, but also lists hard links, short names,
+`FILE_OPEN_BY_FILE_ID`, volume read/write, and several NTFS-specific operations
+as unsupported or incompatible. This changes the next action: treat WinFsp as
+a candidate for a bounded architecture proof, not a compatible drop-in. Before
+selecting it, demonstrate the original logical path, volume serial, full file
+ID, parent/name-slot identity, aliases, ADS, rename/replacement, and required
+native queries while the actual file object belongs to the logical owner.
+Also show independent buffered/uncached observers see the approved public
+generation, the raw original-volume observer sees unchanged bytes and extents,
+and direct access to private backing remains denied across owner/filter
+failure. Repeat across every already supported adapter; a local fixed-NTFS
+success cannot enable USB, UNC/SMB, or sync paths.
+
+Recommended next step is a written DDI review of the existing layered-filter
+design covering: who allocates/initializes the app stream SOP; whether setting
+that field and `FO_CACHE_SUPPORTED` is valid for this owned filter object;
+Cache Manager callback/teardown obligations; ECP retrieval/propagation; and
+whether section creation, paging flush, and close lifetimes obey those
+contracts. If this cannot be established, select a true filesystem owner and
+prove its identity and adapter compatibility before product implementation.
+Keep early ownership separate from policy activation and publication, retain
+`OwnerPendingPolicy`, and preserve taint/unsupported/default-off gates until
+the complete DOD is met. No runtime or privacy pass is claimed here.

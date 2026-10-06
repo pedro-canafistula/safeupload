@@ -1,0 +1,17 @@
+{
+  "Purpose": "COMPILE_TOOL_AUTHORING_NOT_PRODUCT_QUALIFICATION",
+  "HostHelperPS51ParseErrors": 0,
+  "PythonSyntax": "PASS",
+  "GitDiffCheck": "PASS",
+  "SdkCompileInputsFromValidatedInventory": 4,
+  "AgentMatrixVerifierRefactoredWithoutChangingChecks": true,
+  "NativeHostCompiled": false,
+  "HostExecuted": false,
+  "Pins": {
+    "driver/scripts/Build-ExactOwnedHost.ps1": "4fadaec007d534740e2d79603073353a04e0aefbb7192ae837df23b9961a2a07",
+    "driver/scripts/Invoke-ExactOwnedHostBuild.py": "1e126a7e9ee9f999fbeb3fefd0be3d579aeb0f49ad914e2e901d516d2d2d71e1",
+    "driver/scripts/Invoke-ExactAgentMatrixBuild.py": "b4561d2daff77295eebb968a17167118f5dd1a389ab5e4574dc1253812394f87",
+    "driver/evidence/2026-10-06/build-owned-host-ps51-parse/root-readout.json": "b50ebdda1f58337d698c8b131d2bda7ac31210d3ede9121b8d2e5faa7b9aeb13",
+    "driver/evidence/2026-10-06/owned-host-sdk-build-inputs/root-readout.json": "90a3d80a3111921cfa6a70fb86bdd916a0fb803071d275f8dfd98f80c711eb66"
+  }
+}

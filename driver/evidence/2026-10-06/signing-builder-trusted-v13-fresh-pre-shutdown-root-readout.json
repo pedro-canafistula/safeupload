@@ -1,0 +1,21 @@
+{
+  "Verdict": "V13_FRESH_PRE_SHUTDOWN_BASELINE_ACTUAL_PASS",
+  "ActualRemoteExitCode": 0,
+  "AllFieldsEqualPreviousBaselineExceptUTC": true,
+  "BootTimeUnchanged": true,
+  "GuestUTC": "2026-10-06T19:41:16.7027172Z",
+  "ComparedFieldCount": 37,
+  "EvidencePins": {
+    "driver/evidence/2026-10-06/signing-builder-trusted-v13-execution/pre-shutdown-caller.ps1": "80f1e88505804c87de2ee1819f789ab4bd02988a048c8a1554f0be147d748e51",
+    "driver/evidence/2026-10-06/signing-builder-trusted-v13-execution/pre-shutdown.stdout.txt": "49e9b84472e34b8caecfab9d980e1845ce9e1d3bb355307515b5b8ad7441e6a5",
+    "driver/evidence/2026-10-06/signing-builder-trusted-v13-execution/pre-shutdown.stderr.txt": "a3639af5e23464fc391dae127fd5493f02c8178068a35866d9c7fdd35dcd623f",
+    "driver/evidence/2026-10-06/signing-builder-trusted-v13-execution/pre-shutdown.exit.json": "eeff6ed641d8c6380c92013d4bd66299c27379054f96e27c62cd127f7647809d",
+    "driver/evidence/2026-10-06/signing-builder-trusted-v13-execution/pre-shutdown-fresh-caller.ps1": "80f1e88505804c87de2ee1819f789ab4bd02988a048c8a1554f0be147d748e51",
+    "driver/evidence/2026-10-06/signing-builder-trusted-v13-execution/pre-shutdown-fresh.stdout.txt": "19f4f2f488ddd84e75e4f22ad7245c9d5827981ad75a435fec82076f2b7b72c1",
+    "driver/evidence/2026-10-06/signing-builder-trusted-v13-execution/pre-shutdown-fresh.stderr.txt": "a3639af5e23464fc391dae127fd5493f02c8178068a35866d9c7fdd35dcd623f",
+    "driver/evidence/2026-10-06/signing-builder-trusted-v13-execution/pre-shutdown-fresh.exit.json": "eeff6ed641d8c6380c92013d4bd66299c27379054f96e27c62cd127f7647809d"
+  },
+  "HostMutationAttempted": false,
+  "PrivateKeyExported": false,
+  "TrustChanged": false
+}

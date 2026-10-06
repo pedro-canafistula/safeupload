@@ -1,0 +1,41 @@
+<volume type='file'>
+  <name>win10-clean.safeupload-architecture-20261001</name>
+  <key>/var/lib/libvirt/images/win10-clean.safeupload-architecture-20261001</key>
+  <capacity unit='bytes'>128849018880</capacity>
+  <allocation unit='bytes'>45122523136</allocation>
+  <physical unit='bytes'>45122584576</physical>
+  <target>
+    <path>/var/lib/libvirt/images/win10-clean.safeupload-architecture-20261001</path>
+    <format type='qcow2'/>
+    <permissions>
+      <mode>0600</mode>
+      <owner>958</owner>
+      <group>958</group>
+    </permissions>
+    <timestamps>
+      <atime>1791305298.595429831</atime>
+      <mtime>1791305305.080442396</mtime>
+      <ctime>1791305305.080442396</ctime>
+      <btime>0</btime>
+    </timestamps>
+    <compat>1.1</compat>
+    <clusterSize unit='B'>65536</clusterSize>
+    <features/>
+  </target>
+  <backingStore>
+    <path>/var/lib/libvirt/images/win10-clean.turn-defender-off</path>
+    <format type='qcow2'/>
+    <permissions>
+      <mode>0600</mode>
+      <owner>958</owner>
+      <group>958</group>
+    </permissions>
+    <timestamps>
+      <atime>1791304710.572131741</atime>
+      <mtime>1790871963.426649637</mtime>
+      <ctime>1790871963.456649593</ctime>
+      <btime>0</btime>
+    </timestamps>
+  </backingStore>
+</volume>
+

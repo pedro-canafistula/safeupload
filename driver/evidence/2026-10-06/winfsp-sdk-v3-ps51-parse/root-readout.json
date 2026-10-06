@@ -1,0 +1,9 @@
+{
+  "ActualRemoteExitCode": 0,
+  "InputPins": {
+    "driver/evidence/2026-10-06/winfsp-builder-sdk-extraction-plan-v3/extract-sdk-v3.ps1": "0e0b17a56c528834c91745fbf0e54661561ae7e62c0acde113982f16e5df41cf"
+  },
+  "ProductScriptExecuted": false,
+  "BuildStarted": false,
+  "TrustChanged": false
+}

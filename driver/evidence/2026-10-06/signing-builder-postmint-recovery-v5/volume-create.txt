@@ -1,0 +1,2 @@
+Vol win10-clean.safeupload-signer-fallback-recovery2-20261006.qcow2 created from /home/victor/Work/safeupload-staging/driver/evidence/2026-10-06/signing-builder-postmint-recovery-v5/volume-child.xml
+

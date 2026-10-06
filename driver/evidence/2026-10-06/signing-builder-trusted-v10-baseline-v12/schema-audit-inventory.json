@@ -1,0 +1,2256 @@
+{
+  "Status": "V12_ACTUAL_PINNED_SCHEMA_INVENTORY",
+  "Source": "Exact local copies of the SHA-pinned V10 trusted checkpoint evidence used by baseline-check-v12.ps1",
+  "Inputs": [
+    {
+      "path": "driver/evidence/2026-10-06/replacement-machine-key-v8-public-metadata.json",
+      "sha256": "51701037af41fcc19101e26dd2d632934d20b94190d42782474f68f05abdfc1e",
+      "schema": {
+        "type": "object",
+        "keys": {
+          "Status": {
+            "type": "string"
+          },
+          "UTC": {
+            "type": "string"
+          },
+          "ComputerName": {
+            "type": "string"
+          },
+          "UUID": {
+            "type": "string"
+          },
+          "User": {
+            "type": "string"
+          },
+          "SID": {
+            "type": "string"
+          },
+          "Thumbprint": {
+            "type": "string"
+          },
+          "Subject": {
+            "type": "string"
+          },
+          "Issuer": {
+            "type": "string"
+          },
+          "NotBeforeUtc": {
+            "type": "string"
+          },
+          "NotAfterUtc": {
+            "type": "string"
+          },
+          "Store": {
+            "type": "string"
+          },
+          "Provider": {
+            "type": "string"
+          },
+          "Algorithm": {
+            "type": "string"
+          },
+          "KeySize": {
+            "type": "integer"
+          },
+          "PublicKeyOid": {
+            "type": "string"
+          },
+          "SignatureAlgorithmOid": {
+            "type": "string"
+          },
+          "IssuerEqualsSubject": {
+            "type": "boolean"
+          },
+          "BasicConstraintsCount": {
+            "type": "integer"
+          },
+          "BasicConstraintsCA": {
+            "type": "boolean"
+          },
+          "IsMachineKey": {
+            "type": "boolean"
+          },
+          "IsEphemeral": {
+            "type": "boolean"
+          },
+          "ExportPolicy": {
+            "type": "string"
+          },
+          "PrivateKeyMaterialExported": {
+            "type": "boolean"
+          },
+          "KeyContainerUniqueName": {
+            "type": "string"
+          },
+          "KeyFilePath": {
+            "type": "string"
+          },
+          "KeyAclSnapshotBefore": {
+            "type": "object",
+            "keys": {
+              "Sddl": {
+                "type": "string"
+              },
+              "Owner": {
+                "type": "string"
+              },
+              "Group": {
+                "type": "string"
+              },
+              "OwnerSid": {
+                "type": "string"
+              },
+              "GroupSid": {
+                "type": "string"
+              },
+              "AreAccessRulesProtected": {
+                "type": "boolean"
+              },
+              "AreAccessRulesCanonical": {
+                "type": "boolean"
+              },
+              "OrderedAceRows": {
+                "type": "array",
+                "count": 3,
+                "itemShape": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "KeyAclSnapshotAfter": {
+            "type": "object",
+            "keys": {
+              "Sddl": {
+                "type": "string"
+              },
+              "Owner": {
+                "type": "string"
+              },
+              "Group": {
+                "type": "string"
+              },
+              "OwnerSid": {
+                "type": "string"
+              },
+              "GroupSid": {
+                "type": "string"
+              },
+              "AreAccessRulesProtected": {
+                "type": "boolean"
+              },
+              "AreAccessRulesCanonical": {
+                "type": "boolean"
+              },
+              "OrderedAceRows": {
+                "type": "array",
+                "count": 3,
+                "itemShape": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "KeyAclUnchanged": {
+            "type": "boolean"
+          },
+          "DefaultAclPrincipals": {
+            "type": "array",
+            "count": 3,
+            "itemShape": {
+              "type": "string"
+            }
+          },
+          "CreatorOwnerKeptAsLiteralProviderAce": {
+            "type": "boolean"
+          },
+          "EffectiveAdministratorsMembership": {
+            "type": "boolean"
+          },
+          "NoAclWrite": {
+            "type": "boolean"
+          },
+          "EnhancedKeyUsageOids": {
+            "type": "array",
+            "count": 1,
+            "itemShape": {
+              "type": "string"
+            }
+          },
+          "KeyUsage": {
+            "type": "string"
+          },
+          "PublicCerPath": {
+            "type": "string"
+          },
+          "PublicCerSHA256": {
+            "type": "string"
+          },
+          "PreMintAllStoreThumbprints": {
+            "type": "object",
+            "keys": {
+              "Cert:\\CurrentUser\\My": {
+                "type": "array",
+                "count": 3,
+                "itemShape": {
+                  "type": "string"
+                }
+              },
+              "Cert:\\CurrentUser\\Root": {
+                "type": "array",
+                "count": 34,
+                "itemShape": {
+                  "type": "string"
+                }
+              },
+              "Cert:\\CurrentUser\\TrustedPublisher": {
+                "type": "array",
+                "count": 2,
+                "itemShape": {
+                  "type": "string"
+                }
+              },
+              "Cert:\\LocalMachine\\My": {
+                "type": "array",
+                "count": 0,
+                "itemShape": null
+              },
+              "Cert:\\LocalMachine\\Root": {
+                "type": "array",
+                "count": 34,
+                "itemShape": {
+                  "type": "string"
+                }
+              },
+              "Cert:\\LocalMachine\\TrustedPublisher": {
+                "type": "array",
+                "count": 2,
+                "itemShape": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "PostMintAllStoreThumbprints": {
+            "type": "object",
+            "keys": {
+              "Cert:\\CurrentUser\\My": {
+                "type": "array",
+                "count": 3,
+                "itemShape": {
+                  "type": "string"
+                }
+              },
+              "Cert:\\CurrentUser\\Root": {
+                "type": "array",
+                "count": 34,
+                "itemShape": {
+                  "type": "string"
+                }
+              },
+              "Cert:\\CurrentUser\\TrustedPublisher": {
+                "type": "array",
+                "count": 2,
+                "itemShape": {
+                  "type": "string"
+                }
+              },
+              "Cert:\\LocalMachine\\My": {
+                "type": "array",
+                "count": 1,
+                "itemShape": {
+                  "type": "string"
+                }
+              },
+              "Cert:\\LocalMachine\\Root": {
+                "type": "array",
+                "count": 34,
+                "itemShape": {
+                  "type": "string"
+                }
+              },
+              "Cert:\\LocalMachine\\TrustedPublisher": {
+                "type": "array",
+                "count": 2,
+                "itemShape": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "TestSigningBefore": {
+            "type": "string"
+          },
+          "TestSigningAfter": {
+            "type": "string"
+          },
+          "ChallengeSignatureVerified": {
+            "type": "boolean"
+          },
+          "ChallengeSignaturePersistedOrExported": {
+            "type": "boolean"
+          },
+          "PersistentTrustChanged": {
+            "type": "boolean"
+          }
+        }
+      }
+    },
+    {
+      "path": "driver/evidence/2026-10-06/signing-builder-trust-v10-public-receipt.json",
+      "sha256": "ac22de20b6845a524de4fbb157514171eef02ef5678384c5c36225aea8306daa",
+      "schema": {
+        "type": "object",
+        "keys": {
+          "Status": {
+            "type": "string"
+          },
+          "UTC": {
+            "type": "string"
+          },
+          "ComputerName": {
+            "type": "string"
+          },
+          "UUID": {
+            "type": "string"
+          },
+          "User": {
+            "type": "string"
+          },
+          "Thumbprint": {
+            "type": "string"
+          },
+          "Subject": {
+            "type": "string"
+          },
+          "Issuer": {
+            "type": "string"
+          },
+          "CertificateAuthority": {
+            "type": "boolean"
+          },
+          "CerSha256": {
+            "type": "string"
+          },
+          "CreationMetadataSha256": {
+            "type": "string"
+          },
+          "Store": {
+            "type": "string"
+          },
+          "AddStoreMethod": {
+            "type": "string"
+          },
+          "CertutilExitCode": {
+            "type": "integer"
+          },
+          "CertutilStdout": {
+            "type": "string"
+          },
+          "CertutilStderr": {
+            "type": "string"
+          },
+          "BeforeAllStoreThumbprints": {
+            "type": "object",
+            "keys": {
+              "Cert:\\CurrentUser\\My": {
+                "type": "array",
+                "count": 3,
+                "itemShape": {
+                  "type": "string"
+                }
+              },
+              "Cert:\\CurrentUser\\Root": {
+                "type": "array",
+                "count": 34,
+                "itemShape": {
+                  "type": "string"
+                }
+              },
+              "Cert:\\CurrentUser\\TrustedPublisher": {
+                "type": "array",
+                "count": 2,
+                "itemShape": {
+                  "type": "string"
+                }
+              },
+              "Cert:\\LocalMachine\\My": {
+                "type": "array",
+                "count": 1,
+                "itemShape": {
+                  "type": "string"
+                }
+              },
+              "Cert:\\LocalMachine\\Root": {
+                "type": "array",
+                "count": 34,
+                "itemShape": {
+                  "type": "string"
+                }
+              },
+              "Cert:\\LocalMachine\\TrustedPublisher": {
+                "type": "array",
+                "count": 2,
+                "itemShape": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "AfterAllStoreThumbprints": {
+            "type": "object",
+            "keys": {
+              "Cert:\\CurrentUser\\My": {
+                "type": "array",
+                "count": 3,
+                "itemShape": {
+                  "type": "string"
+                }
+              },
+              "Cert:\\CurrentUser\\Root": {
+                "type": "array",
+                "count": 35,
+                "itemShape": {
+                  "type": "string"
+                }
+              },
+              "Cert:\\CurrentUser\\TrustedPublisher": {
+                "type": "array",
+                "count": 2,
+                "itemShape": {
+                  "type": "string"
+                }
+              },
+              "Cert:\\LocalMachine\\My": {
+                "type": "array",
+                "count": 1,
+                "itemShape": {
+                  "type": "string"
+                }
+              },
+              "Cert:\\LocalMachine\\Root": {
+                "type": "array",
+                "count": 35,
+                "itemShape": {
+                  "type": "string"
+                }
+              },
+              "Cert:\\LocalMachine\\TrustedPublisher": {
+                "type": "array",
+                "count": 2,
+                "itemShape": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "KeyAclBeforeTrust": {
+            "type": "object",
+            "keys": {
+              "Sddl": {
+                "type": "string"
+              },
+              "Owner": {
+                "type": "string"
+              },
+              "Group": {
+                "type": "string"
+              },
+              "OwnerSid": {
+                "type": "string"
+              },
+              "GroupSid": {
+                "type": "string"
+              },
+              "AreAccessRulesProtected": {
+                "type": "boolean"
+              },
+              "AreAccessRulesCanonical": {
+                "type": "boolean"
+              },
+              "OrderedAceRows": {
+                "type": "array",
+                "count": 3,
+                "itemShape": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "KeyAclAfterTrust": {
+            "type": "object",
+            "keys": {
+              "Sddl": {
+                "type": "string"
+              },
+              "Owner": {
+                "type": "string"
+              },
+              "Group": {
+                "type": "string"
+              },
+              "OwnerSid": {
+                "type": "string"
+              },
+              "GroupSid": {
+                "type": "string"
+              },
+              "AreAccessRulesProtected": {
+                "type": "boolean"
+              },
+              "AreAccessRulesCanonical": {
+                "type": "boolean"
+              },
+              "OrderedAceRows": {
+                "type": "array",
+                "count": 3,
+                "itemShape": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "TestSigningBefore": {
+            "type": "string"
+          },
+          "TestSigningAfter": {
+            "type": "string"
+          },
+          "OnlyApprovedLocalMachineRootDelta": {
+            "type": "boolean"
+          },
+          "CurrentUserRootIsExpectedMergedView": {
+            "type": "boolean"
+          },
+          "TrustedPublisherChanged": {
+            "type": "boolean"
+          },
+          "LocalMachineMyUnchanged": {
+            "type": "boolean"
+          },
+          "KeyAclCheckedUnchanged": {
+            "type": "boolean"
+          },
+          "NoAclWrite": {
+            "type": "boolean"
+          },
+          "CreationMetadataStatus": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    {
+      "path": "driver/evidence/2026-10-06/signing-builder-trust-v10-root-readout.json",
+      "sha256": "546e4af933179b58781f4c928c74740077083e40012306247653b51fc4116901",
+      "schema": {
+        "type": "object",
+        "keys": {
+          "UTC": {
+            "type": "string"
+          },
+          "Verdict": {
+            "type": "string"
+          },
+          "TrustRemoteExitCode": {
+            "type": "integer"
+          },
+          "IndependentRemoteExitCode": {
+            "type": "integer"
+          },
+          "Thumbprint": {
+            "type": "string"
+          },
+          "OnlyMachineRootAndMergedCurrentUserRootChanged": {
+            "type": "boolean"
+          },
+          "AllOtherStoresExactlyMint": {
+            "type": "boolean"
+          },
+          "KeyAclOrderedAndSddlExactlyMint": {
+            "type": "boolean"
+          },
+          "OriginalFilesAndCertificateRetained": {
+            "type": "boolean"
+          },
+          "TestSigningNo": {
+            "type": "boolean"
+          },
+          "ArtifactSigningAttempted": {
+            "type": "boolean"
+          },
+          "PrivateKeyExported": {
+            "type": "boolean"
+          },
+          "EvidencePins": {
+            "type": "object",
+            "keys": {
+              "driver/evidence/2026-10-06/signing-builder-trust-v10-20261006a.stdout.txt": {
+                "type": "string"
+              },
+              "driver/evidence/2026-10-06/signing-builder-trust-v10-20261006a.stderr.txt": {
+                "type": "string"
+              },
+              "driver/evidence/2026-10-06/signing-builder-v10-post-trust-independent.stdout.json": {
+                "type": "string"
+              },
+              "driver/evidence/2026-10-06/signing-builder-v10-post-trust-independent.stderr.txt": {
+                "type": "string"
+              },
+              "output/signing-builder-trust-v10-20261006a/root-run.json": {
+                "type": "string"
+              },
+              "driver/evidence/2026-10-06/signing-builder-trust-v10-public-receipt.json": {
+                "type": "string"
+              },
+              "driver/evidence/2026-10-06/signing-builder-trust-v10-source-and-evidence-sha256.txt": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "path": "driver/evidence/2026-10-06/signing-cold-challenge-v8-public-receipt-c.json",
+      "sha256": "3ec14f6af6883fae2fa51e4945da12a8390d12e599e384231c1c061bdc4ba93e",
+      "schema": {
+        "type": "object",
+        "keys": {
+          "Status": {
+            "type": "string"
+          },
+          "UTC": {
+            "type": "string"
+          },
+          "ComputerName": {
+            "type": "string"
+          },
+          "UUID": {
+            "type": "string"
+          },
+          "User": {
+            "type": "string"
+          },
+          "SID": {
+            "type": "string"
+          },
+          "Thumbprint": {
+            "type": "string"
+          },
+          "Subject": {
+            "type": "string"
+          },
+          "Provider": {
+            "type": "string"
+          },
+          "KeySize": {
+            "type": "integer"
+          },
+          "ExportPolicy": {
+            "type": "string"
+          },
+          "IsMachineKey": {
+            "type": "boolean"
+          },
+          "IsEphemeral": {
+            "type": "boolean"
+          },
+          "EffectiveAdministratorsMembership": {
+            "type": "boolean"
+          },
+          "DefaultAclPrincipals": {
+            "type": "array",
+            "count": 3,
+            "itemShape": {
+              "type": "string"
+            }
+          },
+          "CreatorOwnerKeptAsLiteralProviderAce": {
+            "type": "boolean"
+          },
+          "KeyAclUnchangedFromMint": {
+            "type": "boolean"
+          },
+          "NoAclWrite": {
+            "type": "boolean"
+          },
+          "PrivateKeyMaterialExported": {
+            "type": "boolean"
+          },
+          "TrustChanged": {
+            "type": "boolean"
+          },
+          "BuildOrArtifactSignAttempted": {
+            "type": "boolean"
+          },
+          "ChallengeSignaturePersistedOrExported": {
+            "type": "boolean"
+          },
+          "CreationMetadataSha256": {
+            "type": "string"
+          },
+          "PublicCerSha256": {
+            "type": "string"
+          },
+          "EnhancedKeyUsageOids": {
+            "type": "array",
+            "count": 1,
+            "itemShape": {
+              "type": "string"
+            }
+          },
+          "TestSigningBefore": {
+            "type": "string"
+          },
+          "TestSigningAfter": {
+            "type": "string"
+          },
+          "PreChallengeAllStoreThumbprints": {
+            "type": "object",
+            "keys": {
+              "Cert:\\CurrentUser\\My": {
+                "type": "array",
+                "count": 3,
+                "itemShape": {
+                  "type": "string"
+                }
+              },
+              "Cert:\\CurrentUser\\Root": {
+                "type": "array",
+                "count": 34,
+                "itemShape": {
+                  "type": "string"
+                }
+              },
+              "Cert:\\CurrentUser\\TrustedPublisher": {
+                "type": "array",
+                "count": 2,
+                "itemShape": {
+                  "type": "string"
+                }
+              },
+              "Cert:\\LocalMachine\\My": {
+                "type": "array",
+                "count": 1,
+                "itemShape": {
+                  "type": "string"
+                }
+              },
+              "Cert:\\LocalMachine\\Root": {
+                "type": "array",
+                "count": 34,
+                "itemShape": {
+                  "type": "string"
+                }
+              },
+              "Cert:\\LocalMachine\\TrustedPublisher": {
+                "type": "array",
+                "count": 2,
+                "itemShape": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "PostChallengeAllStoreThumbprints": {
+            "type": "object",
+            "keys": {
+              "Cert:\\CurrentUser\\My": {
+                "type": "array",
+                "count": 3,
+                "itemShape": {
+                  "type": "string"
+                }
+              },
+              "Cert:\\CurrentUser\\Root": {
+                "type": "array",
+                "count": 34,
+                "itemShape": {
+                  "type": "string"
+                }
+              },
+              "Cert:\\CurrentUser\\TrustedPublisher": {
+                "type": "array",
+                "count": 2,
+                "itemShape": {
+                  "type": "string"
+                }
+              },
+              "Cert:\\LocalMachine\\My": {
+                "type": "array",
+                "count": 1,
+                "itemShape": {
+                  "type": "string"
+                }
+              },
+              "Cert:\\LocalMachine\\Root": {
+                "type": "array",
+                "count": 34,
+                "itemShape": {
+                  "type": "string"
+                }
+              },
+              "Cert:\\LocalMachine\\TrustedPublisher": {
+                "type": "array",
+                "count": 2,
+                "itemShape": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "path": "driver/evidence/2026-10-06/signing-builder-v8-cold-challenge-c-root-readout.json",
+      "sha256": "f940d145b5e8126c0666cf06413969cb548fb67c8620f7ff7b0510615e1ba61c",
+      "schema": {
+        "type": "object",
+        "keys": {
+          "UTC": {
+            "type": "string"
+          },
+          "Verdict": {
+            "type": "string"
+          },
+          "Thumbprint": {
+            "type": "string"
+          },
+          "CerSha256": {
+            "type": "string"
+          },
+          "MetadataSha256": {
+            "type": "string"
+          },
+          "ReceiptSHA256": {
+            "type": "string"
+          },
+          "RemoteExitCode": {
+            "type": "integer"
+          },
+          "StoresUnchanged": {
+            "type": "boolean"
+          },
+          "KeyAclUnchanged": {
+            "type": "boolean"
+          },
+          "NoPrivateExport": {
+            "type": "boolean"
+          },
+          "NoTrust": {
+            "type": "boolean"
+          },
+          "NoArtifactSign": {
+            "type": "boolean"
+          },
+          "StderrAssessment": {
+            "type": "string"
+          },
+          "EvidencePins": {
+            "type": "object",
+            "keys": {
+              "driver/evidence/2026-10-06/signing-cold-challenge-v8-20261006c.stdout.txt": {
+                "type": "string"
+              },
+              "driver/evidence/2026-10-06/signing-cold-challenge-v8-20261006c.stderr.txt": {
+                "type": "string"
+              },
+              "driver/evidence/2026-10-06/signing-cold-challenge-v8-public-receipt-c.json": {
+                "type": "string"
+              },
+              "driver/evidence/2026-10-06/signing-builder-key-bearing-recovery-v8-retry2/host-readout.json": {
+                "type": "string"
+              },
+              "driver/evidence/2026-10-06/signing-builder-key-bearing-recovery-v8-retry2/guest-baseline-root-readout.json": {
+                "type": "string"
+              },
+              "output/signing-cold-challenge-v8-20261006c/root-run.json": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "path": "driver/evidence/2026-10-06/signing-artifact-proof-v10-post-sign-independent.stdout.json",
+      "sha256": "abbd29d85a527798722bf7c48432fff6165825651bf5510a32dc9e34b26a0282",
+      "schema": {
+        "type": "jsonl",
+        "recordCount": 2,
+        "records": [
+          {
+            "type": "object",
+            "keys": {
+              "KeyAclSddl": {
+                "type": "string"
+              },
+              "KeyAclOwner": {
+                "type": "string"
+              },
+              "KeyAclGroup": {
+                "type": "string"
+              },
+              "KeyAclProtected": {
+                "type": "boolean"
+              },
+              "KeyAclCanonical": {
+                "type": "boolean"
+              },
+              "KeyAclRules": {
+                "type": "array",
+                "count": 3,
+                "itemShape": {
+                  "type": "object",
+                  "keys": {
+                    "SID": {
+                      "type": "string"
+                    },
+                    "Rights": {
+                      "type": "integer"
+                    },
+                    "Type": {
+                      "type": "string"
+                    },
+                    "Inherited": {
+                      "type": "boolean"
+                    },
+                    "Inheritance": {
+                      "type": "integer"
+                    },
+                    "Propagation": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              },
+              "UTC": {
+                "type": "string"
+              },
+              "BootTimeUtc": {
+                "type": "string"
+              },
+              "Verdict": {
+                "type": "string"
+              },
+              "ComputerName": {
+                "type": "string"
+              },
+              "UUID": {
+                "type": "string"
+              },
+              "SID": {
+                "type": "string"
+              },
+              "EffectiveAdministratorsMembership": {
+                "type": "boolean"
+              },
+              "Stores": {
+                "type": "object",
+                "keys": {
+                  "CurrentUser\\My": {
+                    "type": "array",
+                    "count": 3,
+                    "itemShape": {
+                      "type": "string"
+                    }
+                  },
+                  "CurrentUser\\Root": {
+                    "type": "array",
+                    "count": 35,
+                    "itemShape": {
+                      "type": "string"
+                    }
+                  },
+                  "CurrentUser\\TrustedPublisher": {
+                    "type": "array",
+                    "count": 2,
+                    "itemShape": {
+                      "type": "string"
+                    }
+                  },
+                  "LocalMachine\\My": {
+                    "type": "array",
+                    "count": 1,
+                    "itemShape": {
+                      "type": "string"
+                    }
+                  },
+                  "LocalMachine\\Root": {
+                    "type": "array",
+                    "count": 35,
+                    "itemShape": {
+                      "type": "string"
+                    }
+                  },
+                  "LocalMachine\\TrustedPublisher": {
+                    "type": "array",
+                    "count": 2,
+                    "itemShape": {
+                      "type": "string"
+                    }
+                  }
+                }
+              },
+              "AllSixStoresMatchMintPlusExactMachineRootAndMergedUserRoot": {
+                "type": "boolean"
+              },
+              "NewThumbprint": {
+                "type": "string"
+              },
+              "NewCertificateInLocalMachineMy": {
+                "type": "boolean"
+              },
+              "NewCertificateAbsentFromOtherThreeStores": {
+                "type": "boolean"
+              },
+              "NewCertificateHasPrivateKeyAssociation": {
+                "type": "boolean"
+              },
+              "NewCertificatePublicCerSha256": {
+                "type": "string"
+              },
+              "CreationMetadataSha256": {
+                "type": "string"
+              },
+              "OriginalFiles": {
+                "type": "array",
+                "count": 2,
+                "itemShape": {
+                  "type": "object",
+                  "keys": {
+                    "Path": {
+                      "type": "string"
+                    },
+                    "Length": {
+                      "type": "integer"
+                    },
+                    "SHA256": {
+                      "type": "string"
+                    }
+                  }
+                }
+              },
+              "OriginalCertificate": {
+                "type": "object",
+                "keys": {
+                  "Thumbprint": {
+                    "type": "string"
+                  },
+                  "Subject": {
+                    "type": "string"
+                  },
+                  "HasPrivateKey": {
+                    "type": "boolean"
+                  }
+                }
+              },
+              "TestSigning": {
+                "type": "string"
+              },
+              "BuildProcesses": {
+                "type": "array",
+                "count": 0,
+                "itemShape": null
+              },
+              "OnlyApprovedMachineRootAndMergedUserRootAddedSinceMintEvidence": {
+                "type": "boolean"
+              },
+              "StateMutated": {
+                "type": "boolean"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "keys": {
+              "Status": {
+                "type": "string"
+              },
+              "SignedPath": {
+                "type": "string"
+              },
+              "SignedSHA256": {
+                "type": "string"
+              },
+              "AuthenticodeStatus": {
+                "type": "string"
+              },
+              "SignerThumbprint": {
+                "type": "string"
+              },
+              "UnsignedSHA256": {
+                "type": "string"
+              },
+              "UnsignedAuthenticodeStatus": {
+                "type": "string"
+              },
+              "NoSigningAttempted": {
+                "type": "boolean"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "path": "driver/evidence/2026-10-06/signing-artifact-proof-v10-post-sign-independent.stderr.txt",
+      "sha256": "a3639af5e23464fc391dae127fd5493f02c8178068a35866d9c7fdd35dcd623f",
+      "schema": {
+        "type": "binary-or-text",
+        "bytes": 392
+      }
+    },
+    {
+      "path": "driver/evidence/2026-10-06/signing-artifact-proof-v10-root-readout.json",
+      "sha256": "155ce22a721fb17b2200bc788c60d63fb06fcda5786720550cda1fc75f7820e5",
+      "schema": {
+        "type": "object",
+        "keys": {
+          "UTC": {
+            "type": "string"
+          },
+          "Verdict": {
+            "type": "string"
+          },
+          "ArtifactWorkflowExitCode": {
+            "type": "integer"
+          },
+          "IndependentRemoteExitCode": {
+            "type": "integer"
+          },
+          "SignedArtifactSHA256": {
+            "type": "string"
+          },
+          "UnsignedSHA256": {
+            "type": "string"
+          },
+          "AuthenticodeStatus": {
+            "type": "string"
+          },
+          "SignerThumbprint": {
+            "type": "string"
+          },
+          "UnsignedUnchanged": {
+            "type": "boolean"
+          },
+          "StoresMatchReviewedTrustBaseline": {
+            "type": "boolean"
+          },
+          "KeyAclMatchesMint": {
+            "type": "boolean"
+          },
+          "TestSigningNo": {
+            "type": "boolean"
+          },
+          "PrivateKeyExported": {
+            "type": "boolean"
+          },
+          "DriverInstalledOrLoaded": {
+            "type": "boolean"
+          },
+          "EvidencePins": {
+            "type": "object",
+            "keys": {
+              "driver/evidence/2026-10-06/signing-artifact-proof-v10-20261006a.stdout.txt": {
+                "type": "string"
+              },
+              "driver/evidence/2026-10-06/signing-artifact-proof-v10-20261006a.stderr.txt": {
+                "type": "string"
+              },
+              "driver/evidence/2026-10-06/signing-artifact-proof-v10-post-sign-independent.stdout.json": {
+                "type": "string"
+              },
+              "driver/evidence/2026-10-06/signing-artifact-proof-v10-post-sign-independent.stderr.txt": {
+                "type": "string"
+              },
+              "output/signing-artifact-proof-v10-20261006a/root-run.json": {
+                "type": "string"
+              },
+              "output/signing-artifact-proof-v10-20261006a/public-proof/owned-feature.signed.sys": {
+                "type": "string"
+              },
+              "output/signing-artifact-proof-v10-20261006a/public-proof/artifact-signature-proof.json": {
+                "type": "string"
+              },
+              "output/signing-artifact-proof-v10-20261006a/public-proof/artifact-signature-proof.sha256": {
+                "type": "string"
+              },
+              "output/signing-artifact-proof-v10-20261006a/public-proof/cold-challenge-receipt.json": {
+                "type": "string"
+              },
+              "output/signing-artifact-proof-v10-20261006a/public-proof/builder-trust-receipt.json": {
+                "type": "string"
+              },
+              "driver/evidence/2026-10-06/exact-mvp20261006ready4-artifact-sign-proof-v10-source-manifest.sha256": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "path": "output/signing-artifact-proof-v10-20261006a/public-proof/artifact-signature-proof.json",
+      "sha256": "f007f1bb9522ec38c7ea043b62546409aaa9ab6731fd331724a2ab396d7e710a",
+      "schema": {
+        "type": "object",
+        "keys": {
+          "Status": {
+            "type": "string"
+          },
+          "UTC": {
+            "type": "string"
+          },
+          "ProofGuid": {
+            "type": "string"
+          },
+          "BuilderComputerName": {
+            "type": "string"
+          },
+          "BuilderUUID": {
+            "type": "string"
+          },
+          "SigningUser": {
+            "type": "string"
+          },
+          "SigningUserSid": {
+            "type": "string"
+          },
+          "EnabledAdministratorsInSigningPowerShell": {
+            "type": "boolean"
+          },
+          "SigningPowerShellProcessId": {
+            "type": "integer"
+          },
+          "SignToolProcessId": {
+            "type": "integer"
+          },
+          "SamePowerShellCheckedIdentityAndStartedSignTool": {
+            "type": "boolean"
+          },
+          "SignToolExitCode": {
+            "type": "integer"
+          },
+          "SignToolPath": {
+            "type": "string"
+          },
+          "SignToolStore": {
+            "type": "string"
+          },
+          "SignToolSelection": {
+            "type": "string"
+          },
+          "BuildExactSourceSha256": {
+            "type": "string"
+          },
+          "SignToolThumbprint": {
+            "type": "string"
+          },
+          "AuthenticodeStatus": {
+            "type": "string"
+          },
+          "AuthenticodeSignerThumbprint": {
+            "type": "string"
+          },
+          "UnsignedArtifactSHA256": {
+            "type": "string"
+          },
+          "UnsignedArtifactUnchangedAfterSign": {
+            "type": "boolean"
+          },
+          "SignedArtifactSHA256": {
+            "type": "string"
+          },
+          "ColdReceiptSHA256": {
+            "type": "string"
+          },
+          "ColdReceiptStatus": {
+            "type": "string"
+          },
+          "BuilderTrustReceiptSHA256": {
+            "type": "string"
+          },
+          "BuilderTrustReceiptStatus": {
+            "type": "string"
+          },
+          "BuilderTrustStore": {
+            "type": "string"
+          },
+          "BuilderTrustMethod": {
+            "type": "string"
+          },
+          "BuilderTrustLocalMachineRootOnly": {
+            "type": "boolean"
+          },
+          "BuilderTrustCurrentUserRootExpectedMergedView": {
+            "type": "boolean"
+          },
+          "BuilderTrustNativeExitCode": {
+            "type": "integer"
+          },
+          "SignerScriptSHA256": {
+            "type": "string"
+          },
+          "V8AclHelperSHA256": {
+            "type": "string"
+          },
+          "V8ColdChallengeScriptSHA256": {
+            "type": "string"
+          },
+          "V10BuilderTrustScriptSHA256": {
+            "type": "string"
+          },
+          "V8MetadataSHA256": {
+            "type": "string"
+          },
+          "V8PublicCerSHA256": {
+            "type": "string"
+          },
+          "KeyAclMatchesMintBeforeAndAfterSnapshots": {
+            "type": "boolean"
+          },
+          "KeyAclChanged": {
+            "type": "boolean"
+          },
+          "TrustChangedBySigner": {
+            "type": "boolean"
+          },
+          "CurrentSixStoreInventoryStillMatchesReviewedTrustReceipt": {
+            "type": "boolean"
+          }
+        }
+      }
+    },
+    {
+      "path": "output/signing-artifact-proof-v10-20261006a/public-proof/artifact-signature-proof.sha256",
+      "sha256": "8e51d83991a97fe274ba30b1fe1138984a6a6e3b6cd1fa452a704c3aa35fb028",
+      "schema": {
+        "type": "sha256-manifest",
+        "entries": [
+          {
+            "sha256": "30AE04A0033FE80577F608D1FE8E10A06CF2FAA2CA034F88D1B848C3630CB14D",
+            "name": "owned-feature.signed.sys"
+          },
+          {
+            "sha256": "F007F1BB9522EC38C7EA043B62546409AAA9AB6731FD331724A2AB396D7E710A",
+            "name": "artifact-signature-proof.json"
+          },
+          {
+            "sha256": "3EC14F6AF6883FAE2FA51E4945DA12A8390D12E599E384231C1C061BDC4BA93E",
+            "name": "cold-challenge-receipt.json"
+          },
+          {
+            "sha256": "AC22DE20B6845A524DE4FBB157514171EEF02EF5678384C5C36225AEA8306DAA",
+            "name": "builder-trust-receipt.json"
+          }
+        ]
+      }
+    },
+    {
+      "path": "output/signing-artifact-proof-v10-20261006a/public-proof/builder-trust-receipt.json",
+      "sha256": "ac22de20b6845a524de4fbb157514171eef02ef5678384c5c36225aea8306daa",
+      "schema": {
+        "type": "object",
+        "keys": {
+          "Status": {
+            "type": "string"
+          },
+          "UTC": {
+            "type": "string"
+          },
+          "ComputerName": {
+            "type": "string"
+          },
+          "UUID": {
+            "type": "string"
+          },
+          "User": {
+            "type": "string"
+          },
+          "Thumbprint": {
+            "type": "string"
+          },
+          "Subject": {
+            "type": "string"
+          },
+          "Issuer": {
+            "type": "string"
+          },
+          "CertificateAuthority": {
+            "type": "boolean"
+          },
+          "CerSha256": {
+            "type": "string"
+          },
+          "CreationMetadataSha256": {
+            "type": "string"
+          },
+          "Store": {
+            "type": "string"
+          },
+          "AddStoreMethod": {
+            "type": "string"
+          },
+          "CertutilExitCode": {
+            "type": "integer"
+          },
+          "CertutilStdout": {
+            "type": "string"
+          },
+          "CertutilStderr": {
+            "type": "string"
+          },
+          "BeforeAllStoreThumbprints": {
+            "type": "object",
+            "keys": {
+              "Cert:\\CurrentUser\\My": {
+                "type": "array",
+                "count": 3,
+                "itemShape": {
+                  "type": "string"
+                }
+              },
+              "Cert:\\CurrentUser\\Root": {
+                "type": "array",
+                "count": 34,
+                "itemShape": {
+                  "type": "string"
+                }
+              },
+              "Cert:\\CurrentUser\\TrustedPublisher": {
+                "type": "array",
+                "count": 2,
+                "itemShape": {
+                  "type": "string"
+                }
+              },
+              "Cert:\\LocalMachine\\My": {
+                "type": "array",
+                "count": 1,
+                "itemShape": {
+                  "type": "string"
+                }
+              },
+              "Cert:\\LocalMachine\\Root": {
+                "type": "array",
+                "count": 34,
+                "itemShape": {
+                  "type": "string"
+                }
+              },
+              "Cert:\\LocalMachine\\TrustedPublisher": {
+                "type": "array",
+                "count": 2,
+                "itemShape": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "AfterAllStoreThumbprints": {
+            "type": "object",
+            "keys": {
+              "Cert:\\CurrentUser\\My": {
+                "type": "array",
+                "count": 3,
+                "itemShape": {
+                  "type": "string"
+                }
+              },
+              "Cert:\\CurrentUser\\Root": {
+                "type": "array",
+                "count": 35,
+                "itemShape": {
+                  "type": "string"
+                }
+              },
+              "Cert:\\CurrentUser\\TrustedPublisher": {
+                "type": "array",
+                "count": 2,
+                "itemShape": {
+                  "type": "string"
+                }
+              },
+              "Cert:\\LocalMachine\\My": {
+                "type": "array",
+                "count": 1,
+                "itemShape": {
+                  "type": "string"
+                }
+              },
+              "Cert:\\LocalMachine\\Root": {
+                "type": "array",
+                "count": 35,
+                "itemShape": {
+                  "type": "string"
+                }
+              },
+              "Cert:\\LocalMachine\\TrustedPublisher": {
+                "type": "array",
+                "count": 2,
+                "itemShape": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "KeyAclBeforeTrust": {
+            "type": "object",
+            "keys": {
+              "Sddl": {
+                "type": "string"
+              },
+              "Owner": {
+                "type": "string"
+              },
+              "Group": {
+                "type": "string"
+              },
+              "OwnerSid": {
+                "type": "string"
+              },
+              "GroupSid": {
+                "type": "string"
+              },
+              "AreAccessRulesProtected": {
+                "type": "boolean"
+              },
+              "AreAccessRulesCanonical": {
+                "type": "boolean"
+              },
+              "OrderedAceRows": {
+                "type": "array",
+                "count": 3,
+                "itemShape": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "KeyAclAfterTrust": {
+            "type": "object",
+            "keys": {
+              "Sddl": {
+                "type": "string"
+              },
+              "Owner": {
+                "type": "string"
+              },
+              "Group": {
+                "type": "string"
+              },
+              "OwnerSid": {
+                "type": "string"
+              },
+              "GroupSid": {
+                "type": "string"
+              },
+              "AreAccessRulesProtected": {
+                "type": "boolean"
+              },
+              "AreAccessRulesCanonical": {
+                "type": "boolean"
+              },
+              "OrderedAceRows": {
+                "type": "array",
+                "count": 3,
+                "itemShape": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "TestSigningBefore": {
+            "type": "string"
+          },
+          "TestSigningAfter": {
+            "type": "string"
+          },
+          "OnlyApprovedLocalMachineRootDelta": {
+            "type": "boolean"
+          },
+          "CurrentUserRootIsExpectedMergedView": {
+            "type": "boolean"
+          },
+          "TrustedPublisherChanged": {
+            "type": "boolean"
+          },
+          "LocalMachineMyUnchanged": {
+            "type": "boolean"
+          },
+          "KeyAclCheckedUnchanged": {
+            "type": "boolean"
+          },
+          "NoAclWrite": {
+            "type": "boolean"
+          },
+          "CreationMetadataStatus": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    {
+      "path": "output/signing-artifact-proof-v10-20261006a/public-proof/cold-challenge-receipt.json",
+      "sha256": "3ec14f6af6883fae2fa51e4945da12a8390d12e599e384231c1c061bdc4ba93e",
+      "schema": {
+        "type": "object",
+        "keys": {
+          "Status": {
+            "type": "string"
+          },
+          "UTC": {
+            "type": "string"
+          },
+          "ComputerName": {
+            "type": "string"
+          },
+          "UUID": {
+            "type": "string"
+          },
+          "User": {
+            "type": "string"
+          },
+          "SID": {
+            "type": "string"
+          },
+          "Thumbprint": {
+            "type": "string"
+          },
+          "Subject": {
+            "type": "string"
+          },
+          "Provider": {
+            "type": "string"
+          },
+          "KeySize": {
+            "type": "integer"
+          },
+          "ExportPolicy": {
+            "type": "string"
+          },
+          "IsMachineKey": {
+            "type": "boolean"
+          },
+          "IsEphemeral": {
+            "type": "boolean"
+          },
+          "EffectiveAdministratorsMembership": {
+            "type": "boolean"
+          },
+          "DefaultAclPrincipals": {
+            "type": "array",
+            "count": 3,
+            "itemShape": {
+              "type": "string"
+            }
+          },
+          "CreatorOwnerKeptAsLiteralProviderAce": {
+            "type": "boolean"
+          },
+          "KeyAclUnchangedFromMint": {
+            "type": "boolean"
+          },
+          "NoAclWrite": {
+            "type": "boolean"
+          },
+          "PrivateKeyMaterialExported": {
+            "type": "boolean"
+          },
+          "TrustChanged": {
+            "type": "boolean"
+          },
+          "BuildOrArtifactSignAttempted": {
+            "type": "boolean"
+          },
+          "ChallengeSignaturePersistedOrExported": {
+            "type": "boolean"
+          },
+          "CreationMetadataSha256": {
+            "type": "string"
+          },
+          "PublicCerSha256": {
+            "type": "string"
+          },
+          "EnhancedKeyUsageOids": {
+            "type": "array",
+            "count": 1,
+            "itemShape": {
+              "type": "string"
+            }
+          },
+          "TestSigningBefore": {
+            "type": "string"
+          },
+          "TestSigningAfter": {
+            "type": "string"
+          },
+          "PreChallengeAllStoreThumbprints": {
+            "type": "object",
+            "keys": {
+              "Cert:\\CurrentUser\\My": {
+                "type": "array",
+                "count": 3,
+                "itemShape": {
+                  "type": "string"
+                }
+              },
+              "Cert:\\CurrentUser\\Root": {
+                "type": "array",
+                "count": 34,
+                "itemShape": {
+                  "type": "string"
+                }
+              },
+              "Cert:\\CurrentUser\\TrustedPublisher": {
+                "type": "array",
+                "count": 2,
+                "itemShape": {
+                  "type": "string"
+                }
+              },
+              "Cert:\\LocalMachine\\My": {
+                "type": "array",
+                "count": 1,
+                "itemShape": {
+                  "type": "string"
+                }
+              },
+              "Cert:\\LocalMachine\\Root": {
+                "type": "array",
+                "count": 34,
+                "itemShape": {
+                  "type": "string"
+                }
+              },
+              "Cert:\\LocalMachine\\TrustedPublisher": {
+                "type": "array",
+                "count": 2,
+                "itemShape": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "PostChallengeAllStoreThumbprints": {
+            "type": "object",
+            "keys": {
+              "Cert:\\CurrentUser\\My": {
+                "type": "array",
+                "count": 3,
+                "itemShape": {
+                  "type": "string"
+                }
+              },
+              "Cert:\\CurrentUser\\Root": {
+                "type": "array",
+                "count": 34,
+                "itemShape": {
+                  "type": "string"
+                }
+              },
+              "Cert:\\CurrentUser\\TrustedPublisher": {
+                "type": "array",
+                "count": 2,
+                "itemShape": {
+                  "type": "string"
+                }
+              },
+              "Cert:\\LocalMachine\\My": {
+                "type": "array",
+                "count": 1,
+                "itemShape": {
+                  "type": "string"
+                }
+              },
+              "Cert:\\LocalMachine\\Root": {
+                "type": "array",
+                "count": 34,
+                "itemShape": {
+                  "type": "string"
+                }
+              },
+              "Cert:\\LocalMachine\\TrustedPublisher": {
+                "type": "array",
+                "count": 2,
+                "itemShape": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "path": "output/signing-artifact-proof-v10-20261006a/public-proof/owned-feature.signed.sys",
+      "sha256": "30ae04a0033fe80577f608d1fe8e10a06cf2faa2ca034f88d1b848c3630cb14d",
+      "schema": {
+        "type": "binary-or-text",
+        "bytes": 290656
+      }
+    },
+    {
+      "path": "output/signing-artifact-proof-v10-20261006a/root-run.json",
+      "sha256": "7652a3b1a0b2158b48e8a5e66b024f816864bc204a0fba92ea0cea4de0cd1d94",
+      "schema": {
+        "type": "object",
+        "keys": {
+          "SourcePins": {
+            "type": "object",
+            "keys": {
+              "exact-mvp20261006ready4-artifact-sign-proof-v10.ps1": {
+                "type": "string"
+              },
+              "signing-guard-helpers-v8.ps1": {
+                "type": "string"
+              },
+              "exact-mvp20261006admissioncap2-key-bearing-cold-challenge-v8.ps1": {
+                "type": "string"
+              },
+              "exact-mvp20261006admissioncap2-machine-root-trust-builder-root-v10-candidate.ps1": {
+                "type": "string"
+              },
+              "signing-cold-challenge-v8-public-receipt-c.json": {
+                "type": "string"
+              },
+              "signing-builder-trust-v10-public-receipt.json": {
+                "type": "string"
+              },
+              "owned-feature.sys": {
+                "type": "string"
+              }
+            }
+          },
+          "RemoteProofRoot": {
+            "type": "string"
+          },
+          "ExitCode": {
+            "type": "integer"
+          },
+          "ArtifactSigningWorkflowAttempted": {
+            "type": "boolean"
+          },
+          "ArtifactSignAttempted": {
+            "type": "boolean"
+          },
+          "DriverInstalled": {
+            "type": "boolean"
+          },
+          "TrustChangedByCaller": {
+            "type": "boolean"
+          },
+          "PrivateKeyExported": {
+            "type": "boolean"
+          },
+          "SignToolExitCode": {
+            "type": "integer"
+          },
+          "AuthenticodeStatus": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    {
+      "path": "driver/evidence/2026-10-06/signing-builder-trusted-v11-baseline-failure-root-readout.json",
+      "sha256": "518a9fa3dfbacf81f32512ea5c5b88758970e6d8b3d766efcf89603e84e2c8d8",
+      "schema": {
+        "type": "object",
+        "keys": {
+          "UTC": {
+            "type": "string"
+          },
+          "Verdict": {
+            "type": "string"
+          },
+          "ActualRemoteExitCode": {
+            "type": "integer"
+          },
+          "PS51ParseErrors": {
+            "type": "integer"
+          },
+          "Cause": {
+            "type": "string"
+          },
+          "SourceSHA256": {
+            "type": "string"
+          },
+          "ActualJsonL0Keys": {
+            "type": "array",
+            "count": 27,
+            "itemShape": {
+              "type": "string"
+            }
+          },
+          "HostCheckpointAttempted": {
+            "type": "boolean"
+          },
+          "TrustModified": {
+            "type": "boolean"
+          },
+          "ArtifactSigningAttempted": {
+            "type": "boolean"
+          },
+          "PrivateKeyExported": {
+            "type": "boolean"
+          },
+          "EvidencePins": {
+            "type": "object",
+            "keys": {
+              "driver/evidence/2026-10-06/signing-builder-trusted-v11-execution/staging.stdout.txt": {
+                "type": "string"
+              },
+              "driver/evidence/2026-10-06/signing-builder-trusted-v11-execution/staging.stderr.txt": {
+                "type": "string"
+              },
+              "driver/evidence/2026-10-06/signing-builder-trusted-v11-execution/staging.exit.json": {
+                "type": "string"
+              },
+              "driver/evidence/2026-10-06/signing-builder-trusted-v11-execution/ps51-parse-and-input-pins.stdout.txt": {
+                "type": "string"
+              },
+              "driver/evidence/2026-10-06/signing-builder-trusted-v11-execution/ps51-parse-and-input-pins.stderr.txt": {
+                "type": "string"
+              },
+              "driver/evidence/2026-10-06/signing-builder-trusted-v11-execution/ps51-parse-and-input-pins.exit.json": {
+                "type": "string"
+              },
+              "driver/evidence/2026-10-06/signing-builder-trusted-v11-execution/guest-inputs.json": {
+                "type": "string"
+              },
+              "driver/evidence/2026-10-06/signing-builder-trusted-v11-execution/pre-shutdown-caller.ps1": {
+                "type": "string"
+              },
+              "driver/evidence/2026-10-06/signing-builder-trusted-v11-execution/pre-shutdown.stdout.txt": {
+                "type": "string"
+              },
+              "driver/evidence/2026-10-06/signing-builder-trusted-v11-execution/pre-shutdown.stderr.txt": {
+                "type": "string"
+              },
+              "driver/evidence/2026-10-06/signing-builder-trusted-v11-execution/pre-shutdown.exit.json": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "path": "driver/evidence/2026-10-06/signing-builder-trusted-v11-execution/pre-shutdown.stdout.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "schema": {
+        "type": "binary-or-text",
+        "bytes": 0
+      }
+    },
+    {
+      "path": "driver/evidence/2026-10-06/signing-builder-trusted-v11-execution/pre-shutdown.stderr.txt",
+      "sha256": "90326332379995ff8d765a39fa2bdf1b3a1ef74c5984c10cfaf64fca9b5073f1",
+      "schema": {
+        "type": "binary-or-text",
+        "bytes": 1007
+      }
+    },
+    {
+      "path": "driver/evidence/2026-10-06/signing-builder-trusted-v11-execution/pre-shutdown.exit.json",
+      "sha256": "4df5d1b6920fbc4c8eb78aec7114f08826463bacf7db7bf91e6dbdd8d075e8b3",
+      "schema": {
+        "type": "object",
+        "keys": {
+          "ActualRemoteExitCode": {
+            "type": "integer"
+          },
+          "ReadOnlyBaseline": {
+            "type": "boolean"
+          }
+        }
+      }
+    },
+    {
+      "path": "driver/evidence/2026-10-06/signing-builder-trusted-v11-execution/ps51-parse-and-input-pins.stdout.txt",
+      "sha256": "327009e9a8dba17c40a14a59de81d03bc1f5aab971828f0886c7024719c0c48f",
+      "schema": {
+        "type": "binary-or-text",
+        "bytes": 122
+      }
+    },
+    {
+      "path": "driver/evidence/2026-10-06/signing-builder-trusted-v11-execution/ps51-parse-and-input-pins.stderr.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "schema": {
+        "type": "binary-or-text",
+        "bytes": 0
+      }
+    },
+    {
+      "path": "driver/evidence/2026-10-06/signing-builder-trusted-v11-execution/ps51-parse-and-input-pins.exit.json",
+      "sha256": "eeff6ed641d8c6380c92013d4bd66299c27379054f96e27c62cd127f7647809d",
+      "schema": {
+        "type": "object",
+        "keys": {
+          "ActualRemoteExitCode": {
+            "type": "integer"
+          },
+          "ReadOnlyBaseline": {
+            "type": "boolean"
+          }
+        }
+      }
+    },
+    {
+      "path": "driver/evidence/2026-10-06/signing-builder-trusted-v10-baseline-v11/source-manifest.sha256",
+      "sha256": "130ba3da770e3c7edd9fb8539f2ac3dfb9c445ffc9ab1fdb103baca183466f4b",
+      "schema": {
+        "type": "sha256-manifest",
+        "entries": [
+          {
+            "sha256": "30c62dfc0993db4cb762a23a01039ec0165dc0ba46f3ad1027022c52d7dda496",
+            "name": "driver/evidence/2026-10-06/signing-builder-trusted-v10-baseline-v11/baseline-check-v11.ps1"
+          },
+          {
+            "sha256": "9585e1acd512f9532de032c6ce2df251fa774acc83d27cfc6afceb437ce64c42",
+            "name": "driver/evidence/2026-10-06/signing-builder-trusted-v10-baseline-v11/signing-guard-helpers-v8.ps1"
+          },
+          {
+            "sha256": "a0ac770170b7cbf5b2d99f7a99625025a14b542e0a6be4ae9280f4e11abbfea1",
+            "name": "driver/evidence/2026-10-06/signing-builder-trusted-v10-baseline-v11/amendment-pins.json"
+          },
+          {
+            "sha256": "4f994e20850d04a11bed6eb1fdbc4214838951a21aec6f52814c474a937a25a9",
+            "name": "driver/evidence/2026-10-06/signing-builder-trusted-v10-baseline-v11/amendment-plan.md"
+          },
+          {
+            "sha256": "49574cb4ae56014eabfd325f6cb16ed893efb6e300a8565b47634cb4e0aa5f11",
+            "name": "driver/evidence/2026-10-06/signing-builder-trusted-v10-checkpoint/source-manifest.sha256"
+          },
+          {
+            "sha256": "369c4cfa978ef38d63daeae1d846d44791388488ea9fd123e98573c300e04dbe",
+            "name": "driver/evidence/2026-10-06/signing-builder-trusted-v10-checkpoint/baseline-check-v10.ps1"
+          },
+          {
+            "sha256": "034b605b0f0a368589fdecd55459412fcc24c98a795890bfd30916b578cc1be5",
+            "name": "driver/evidence/2026-10-06/signing-builder-trusted-v10-checkpoint-independent-review-luna.md"
+          },
+          {
+            "sha256": "016f0552b056a698e40b37934e47ad2379f1fe8789ff2be68005718624140b3b",
+            "name": "driver/evidence/2026-10-06/signing-builder-trusted-v10-baseline-failure-root-readout.json"
+          },
+          {
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "name": "driver/evidence/2026-10-06/signing-builder-trusted-v10-execution/pre-shutdown.stdout.txt"
+          },
+          {
+            "sha256": "62edb1ef1c0777a41bc8260f30bb1d5ef888538289a32911c816053b78f31c86",
+            "name": "driver/evidence/2026-10-06/signing-builder-trusted-v10-execution/pre-shutdown.stderr.txt"
+          },
+          {
+            "sha256": "4df5d1b6920fbc4c8eb78aec7114f08826463bacf7db7bf91e6dbdd8d075e8b3",
+            "name": "driver/evidence/2026-10-06/signing-builder-trusted-v10-execution/pre-shutdown.exit.json"
+          },
+          {
+            "sha256": "e570e6c144e88a78bf6b04b9d05243e8f4025993aae1d9436c36190448dc8002",
+            "name": "driver/evidence/2026-10-06/signing-builder-trusted-v10-execution/ps51-parse-and-input-pins.stdout.txt"
+          },
+          {
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "name": "driver/evidence/2026-10-06/signing-builder-trusted-v10-execution/ps51-parse-and-input-pins.stderr.txt"
+          },
+          {
+            "sha256": "eeff6ed641d8c6380c92013d4bd66299c27379054f96e27c62cd127f7647809d",
+            "name": "driver/evidence/2026-10-06/signing-builder-trusted-v10-execution/ps51-parse-and-input-pins.exit.json"
+          },
+          {
+            "sha256": "ae977b89a25b5318fb1b8a40e850500afd894665354cb5984d6abff9c39e4b7e",
+            "name": "driver/evidence/2026-10-06/signing-builder-trusted-v10-execution/staging.stdout.txt"
+          },
+          {
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "name": "driver/evidence/2026-10-06/signing-builder-trusted-v10-execution/staging.stderr.txt"
+          },
+          {
+            "sha256": "eeff6ed641d8c6380c92013d4bd66299c27379054f96e27c62cd127f7647809d",
+            "name": "driver/evidence/2026-10-06/signing-builder-trusted-v10-execution/staging.exit.json"
+          },
+          {
+            "sha256": "d68dce577d5e495d8874721686bdd28b82c39ac07c56eef8971395bf2ab76825",
+            "name": "driver/evidence/2026-10-06/signing-builder-trusted-v10-execution/pre-shutdown-caller.ps1"
+          },
+          {
+            "sha256": "030e9914ded4ae92dc8d82447e942adc9a08f137a6e6450b6bbd833c67cdf8e4",
+            "name": "driver/evidence/2026-10-06/signing-builder-trusted-v10-execution/guest-inputs.json"
+          }
+        ]
+      }
+    },
+    {
+      "path": "driver/evidence/2026-10-06/signing-builder-trusted-v10-baseline-v11/baseline-check-v11.ps1",
+      "sha256": "30c62dfc0993db4cb762a23a01039ec0165dc0ba46f3ad1027022c52d7dda496",
+      "schema": {
+        "type": "binary-or-text",
+        "bytes": 24912
+      }
+    },
+    {
+      "path": "driver/evidence/2026-10-06/signing-builder-trusted-v10-checkpoint/source-manifest.sha256",
+      "sha256": "49574cb4ae56014eabfd325f6cb16ed893efb6e300a8565b47634cb4e0aa5f11",
+      "schema": {
+        "type": "sha256-manifest",
+        "entries": [
+          {
+            "sha256": "1221ec75b5dbca229a86315cfef4725e85c18eb50e8288e9f139aae0f9b48916",
+            "name": "driver/evidence/2026-10-06/exact-mvp20261006ready4-artifact-sign-proof-v10-source-manifest.sha256"
+          },
+          {
+            "sha256": "de29f2e9770e8c478770af33b04f194b0d810185bafac64b6c91652a5e0a7d8d",
+            "name": "driver/evidence/2026-10-06/exact-mvp20261006ready4-artifact-sign-proof-v10.ps1"
+          },
+          {
+            "sha256": "a3639af5e23464fc391dae127fd5493f02c8178068a35866d9c7fdd35dcd623f",
+            "name": "driver/evidence/2026-10-06/signing-artifact-proof-v10-post-sign-independent.stderr.txt"
+          },
+          {
+            "sha256": "abbd29d85a527798722bf7c48432fff6165825651bf5510a32dc9e34b26a0282",
+            "name": "driver/evidence/2026-10-06/signing-artifact-proof-v10-post-sign-independent.stdout.json"
+          },
+          {
+            "sha256": "155ce22a721fb17b2200bc788c60d63fb06fcda5786720550cda1fc75f7820e5",
+            "name": "driver/evidence/2026-10-06/signing-artifact-proof-v10-root-readout.json"
+          },
+          {
+            "sha256": "6aca834b6bcbbd14c5c4c7df17f45c7e7b327ad8872fb956057511f45da8a143",
+            "name": "driver/evidence/2026-10-06/signing-builder-key-bearing-checkpoint-v8/execution-pins.json"
+          },
+          {
+            "sha256": "1d80af7fc2658a7c54b968ca2c3c16c7e1848035229eda8c79982e53b93e6eb5",
+            "name": "driver/evidence/2026-10-06/signing-builder-key-bearing-checkpoint-v8/guest-baseline-root-readout.json"
+          },
+          {
+            "sha256": "353e74a63e0a3473fe9821b23b4864716cfe0ea0dcd11f00d4a934ef01ca670f",
+            "name": "driver/evidence/2026-10-06/signing-builder-key-bearing-checkpoint-v8/host-readout.json"
+          },
+          {
+            "sha256": "ffdfd88160d2008893efbfcef8b5d2313f20e4dcbc460b225d02f257ebce5d7c",
+            "name": "driver/evidence/2026-10-06/signing-builder-key-bearing-recovery-v8-retry2/execution-manifest.sha256"
+          },
+          {
+            "sha256": "7d920d1baed70672f9b862da073542e0f9c1796c916f48e8f6c07093ce1af77a",
+            "name": "driver/evidence/2026-10-06/signing-builder-key-bearing-recovery-v8-retry2/execution-pins.json"
+          },
+          {
+            "sha256": "fc894f1490442dd359b0fee24047530676320f3273d763777ada91072113756f",
+            "name": "driver/evidence/2026-10-06/signing-builder-key-bearing-recovery-v8-retry2/guest-baseline-root-readout.json"
+          },
+          {
+            "sha256": "328f49eea19d1b222ceadbdc8008bb7b9eb4d86d39f37ded118d5001929a071d",
+            "name": "driver/evidence/2026-10-06/signing-builder-key-bearing-recovery-v8-retry2/host-readout.json"
+          },
+          {
+            "sha256": "629fcbe5bb31d7174f91b87a0818c99bed0d52f3cd32587bf1e60b95f5dfd62a",
+            "name": "driver/evidence/2026-10-06/signing-builder-key-bearing-recovery-v8-retry2/lineage.json"
+          },
+          {
+            "sha256": "ac22de20b6845a524de4fbb157514171eef02ef5678384c5c36225aea8306daa",
+            "name": "driver/evidence/2026-10-06/signing-builder-trust-v10-public-receipt.json"
+          },
+          {
+            "sha256": "546e4af933179b58781f4c928c74740077083e40012306247653b51fc4116901",
+            "name": "driver/evidence/2026-10-06/signing-builder-trust-v10-root-readout.json"
+          },
+          {
+            "sha256": "3838699bcce00b01f159eaa1f6a724d8a25b3f6a0281aae3318faaad06af6126",
+            "name": "driver/evidence/2026-10-06/signing-builder-trust-v10-source-and-evidence-sha256.txt"
+          },
+          {
+            "sha256": "369c4cfa978ef38d63daeae1d846d44791388488ea9fd123e98573c300e04dbe",
+            "name": "driver/evidence/2026-10-06/signing-builder-trusted-v10-checkpoint/baseline-check-v10.ps1"
+          },
+          {
+            "sha256": "c893d3d7ecb4af19768758ad9f957dffe022c0bfaa1376251b8cff43c1bfcfd4",
+            "name": "driver/evidence/2026-10-06/signing-builder-trusted-v10-checkpoint/baseline-source-origin-v10.ps1"
+          },
+          {
+            "sha256": "07f4fa882b2b95b23f0ebb1aa35f27bee79651757ee344c7179e4f1929e7f944",
+            "name": "driver/evidence/2026-10-06/signing-builder-trusted-v10-checkpoint/inputs.json"
+          },
+          {
+            "sha256": "ebe94f4e702bfbcce99b232dcd69625b1a92bde223b4c422a3ca51a83f845a9b",
+            "name": "driver/evidence/2026-10-06/signing-builder-trusted-v10-checkpoint/plan.md"
+          },
+          {
+            "sha256": "9585e1acd512f9532de032c6ce2df251fa774acc83d27cfc6afceb437ce64c42",
+            "name": "driver/evidence/2026-10-06/signing-builder-trusted-v10-checkpoint/signing-guard-helpers-v8.ps1"
+          },
+          {
+            "sha256": "f940d145b5e8126c0666cf06413969cb548fb67c8620f7ff7b0510615e1ba61c",
+            "name": "driver/evidence/2026-10-06/signing-builder-v8-cold-challenge-c-root-readout.json"
+          },
+          {
+            "sha256": "3ec14f6af6883fae2fa51e4945da12a8390d12e599e384231c1c061bdc4ba93e",
+            "name": "driver/evidence/2026-10-06/signing-cold-challenge-v8-public-receipt-c.json"
+          },
+          {
+            "sha256": "f007f1bb9522ec38c7ea043b62546409aaa9ab6731fd331724a2ab396d7e710a",
+            "name": "output/signing-artifact-proof-v10-20261006a/public-proof/artifact-signature-proof.json"
+          },
+          {
+            "sha256": "8e51d83991a97fe274ba30b1fe1138984a6a6e3b6cd1fa452a704c3aa35fb028",
+            "name": "output/signing-artifact-proof-v10-20261006a/public-proof/artifact-signature-proof.sha256"
+          },
+          {
+            "sha256": "ac22de20b6845a524de4fbb157514171eef02ef5678384c5c36225aea8306daa",
+            "name": "output/signing-artifact-proof-v10-20261006a/public-proof/builder-trust-receipt.json"
+          },
+          {
+            "sha256": "3ec14f6af6883fae2fa51e4945da12a8390d12e599e384231c1c061bdc4ba93e",
+            "name": "output/signing-artifact-proof-v10-20261006a/public-proof/cold-challenge-receipt.json"
+          },
+          {
+            "sha256": "30ae04a0033fe80577f608d1fe8e10a06cf2faa2ca034f88d1b848c3630cb14d",
+            "name": "output/signing-artifact-proof-v10-20261006a/public-proof/owned-feature.signed.sys"
+          },
+          {
+            "sha256": "7652a3b1a0b2158b48e8a5e66b024f816864bc204a0fba92ea0cea4de0cd1d94",
+            "name": "output/signing-artifact-proof-v10-20261006a/root-run.json"
+          },
+          {
+            "sha256": "537ef465fb90f3e90bed4a8798db4a73415f3c6e953ae41392148d9412dec513",
+            "name": "output/signing-artifact-proof-v10-20261006a/root-validation.ps1"
+          },
+          {
+            "sha256": "235f1c14cfcbd402c4fb7f464a7c2af2c54bcc67ac78ecb57f0b815903ca749a",
+            "name": "output/signing-builder-trust-v10-20261006a/exact-mvp20261006admissioncap2-machine-root-trust-builder-root-v10-candidate.ps1"
+          },
+          {
+            "sha256": "9585e1acd512f9532de032c6ce2df251fa774acc83d27cfc6afceb437ce64c42",
+            "name": "output/signing-builder-trust-v10-20261006a/signing-guard-helpers-v8.ps1"
+          },
+          {
+            "sha256": "6cac6f59c640c6fb045f61b87be1bb4deeeea451c80cd067ae022180a0a01a9f",
+            "name": "output/signing-builder-trust-v10-20261006a/signing-process-capture-v9.ps1"
+          }
+        ]
+      }
+    },
+    {
+      "path": "driver/evidence/2026-10-06/signing-builder-trusted-v10-checkpoint/baseline-check-v10.ps1",
+      "sha256": "369c4cfa978ef38d63daeae1d846d44791388488ea9fd123e98573c300e04dbe",
+      "schema": {
+        "type": "binary-or-text",
+        "bytes": 24036
+      }
+    },
+    {
+      "path": "driver/evidence/2026-10-06/signing-builder-trusted-v10-checkpoint-independent-review-luna.md",
+      "sha256": "034b605b0f0a368589fdecd55459412fcc24c98a795890bfd30916b578cc1be5",
+      "schema": {
+        "type": "binary-or-text",
+        "bytes": 2766
+      }
+    }
+  ]
+}

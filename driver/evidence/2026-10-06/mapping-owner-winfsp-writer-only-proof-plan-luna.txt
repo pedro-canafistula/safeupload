@@ -1,0 +1,210 @@
+# Writer-only WinFsp owner proof plan
+
+Frozen design/proof boundary, 2026-10-06. This plan authorizes only local
+reversible source preparation and a feature-gated proof slice after independent
+review. It authorizes no VM installation, driver load, trust change, production
+cutover, or change to taint/unsupported-capability policy. The canonical MVP
+completion boundary and original mapping repro predicates remain in force.
+
+## Exact route to prove
+
+For the first proof, protect one local fixed-NTFS source scope on the pinned
+Windows 10 22H2 build. Keep independent buffered/uncached readers and physical
+raw observers on the original NTFS path. Every candidate writable open is
+owned from its first create, including before policy activation. A read-only
+reopen by the same active writer owner resolves to that owner's same private
+generation. A different owner gets a different internal FSP file name and
+therefore a separate WinFsp FileNode/SOP/cache. The original NTFS bytes and
+allocated extents remain the approved public generation until the existing
+inspection, approval, permit, and publication sequence commits an exact
+journaled generation.
+
+The feature-only SafeUpload pre-create route must not manufacture a
+FILE_OBJECT, FCB, FsContext, or SectionObjectPointer for the application. It
+must prepare one durable owner grant and allocate through the real
+`StagedTransferAllocator`/`StagedTransferJournal`, then use the reviewed
+Minifilter create-reparse route to the protected WinFsp namespace. WinFsp owns
+the returned application stream and its cache/section. The WinFsp service
+backs it with the allocator-created NTFS file under the service-only backing
+ACL. Early versions are journaled `OwnerPendingPolicy`; they cannot enter the
+inspection/publication worker until a matching policy epoch promotes them.
+The code proof must call the actual SafeUpload allocator and journal, not a
+standalone fake allocation or second test journal.
+
+The create grant is not the hidden path or a PID. SafeUpload's kernel
+pre-create creates a driver-defined, one-use ECP containing an opaque grant
+identifier and binds it in kernel state to the referenced requestor process
+object/lifetime, source volume GUID and full 128-bit file identity (or parent
+identity plus reserved new-name slot), stream, disposition, access, owner
+epoch, target generation, and committed policy/scope digest. The redirected
+WinFsp-volume create must observe the same ECP as kernel-originated, reject an
+ECP from user mode, match it to the exact process object and FSP path, and
+consume it once before the FSD receives the create. WinFsp's process ID and
+caller `GrantedAccess` are secondary cross-checks only. Direct opening a
+private FSP name without the live grant fails closed. The proof must retain
+the original non-SafeUpload ECP list required by create semantics and must
+not fabricate any system-defined ECP, token, `AccessState`, or requestor mode.
+Whether Filter Manager carries the custom ECP through this exact simulated
+reparse and exposes it at the WinFsp-volume instance is an explicit executable
+gate; no successful test means no grantless/PID-only fallback.
+
+## Source integration boundary
+
+The feature hook is `StageDispatchCore`/`StageAdmit` before the current
+`StageCreate` path in `driver/SafeUpload.Minifilter/StageStream.c`. The owner
+branch may inspect and reserve the source name/identity there, but must not
+call the old custom-upper-SOP `StageCreate` completion path. It must share the
+current admission refusal rules for unresolved names, aliases, ADS,
+file-ID-only opens, reparse ambiguity, TxF, directory and unsupported create
+options. Owner candidate scopes are a separate immutable, authenticated
+boot-time scope superset, loaded before filtering without a filesystem scan.
+Missing/incomplete scope, grant, mount, owner service, journal, or recovery
+state means NotReady and a fail-closed candidate mutation.
+
+Protocol changes are versioned and fixed-width across
+`driver/SafeUpload.Minifilter/Protocol.h` and
+`agente/SafeUpload.Agent.Minifilter/Protocol.cs`. The authenticated minifilter
+port sends the exact source identity and owner epoch; service allocation
+returns a durable generation identifier and opaque FSP name, not an authority
+based on caller path text. `MinifilterInterceptor` validates the immutable
+owner-scope record. `StagedTransferAllocator` creates the private data file
+and flushed journal record atomically enough to recover as private on every
+crash boundary. `StagedTransferJournal` records source identity, owner grant
+binding, destination generation, and `OwnerPendingPolicy`; it preserves this
+state through recovery, and promotes only an exact scope/epoch/identity match
+to the existing `Sealed` pipeline. Policy activation never scans directories.
+
+The WinFsp host lives in the existing SafeUpload service boundary or a new
+explicit companion service whose authenticated RPC only calls that same
+allocator/journal. Its callbacks use per-node state for a single owner
+generation and per-open state only for handles. The FSP internal name is
+stable across that owner's repeated opens and differs across writer owners and
+successor generations. It performs logical destination access checks using
+the captured destination security descriptor and the originating granted
+access, revalidates source identity before seeding and publication, and never
+opens the private backing under an application token. Flush, EOF/allocation,
+rename/replacement, delete, cleanup/close, streams, notifications and recovery
+must be explicit operations; unsupported semantics fail closed. A retained
+section remains attached to its original private generation across policy
+expansion. A policy boundary may not rebind it; post-boundary data must enter a
+successor private generation before any policy-approved commit.
+
+`StageAdmissionCoverage`/boot readiness must separately report owner mount,
+allocator/journal health and exact candidate-scope coverage. The owner starts
+before application writable opens; policy/inspection/publication may start
+later as authorized. Late attach with a pre-existing public writable section
+remains NotReady. Taint remains enabled and every current unsupported feature
+stays guarded. Normal Debug/Release continue compiling staging and the owner
+path out. No WinFsp MSI, service, driver, or test runs on a VM until a separate
+checkpoint-bound deployment review.
+
+## Proof gates before expanding beyond the prototype
+
+1. **Pinned dependency/platform:** use the official WinFsp `v2.2B4` tag/source
+   commit `fde790d8ea41283606d1c56b557608a17e455f59` and official installer
+   SHA-256 `2ECB5C89405488A95BBD8A01875E02C48534FD37BBDFD84488F7590464D65944`.
+   It is a prerelease; it fixes security issues and mapping/rename/forced-stop
+   deadlocks reported after stable `v2.1` but is not thereby product-qualified.
+   The latest stable listed is WinFsp 2025 `v2.1`, MSI SHA-256
+   `073A70E00F77423E34BED98B86E600DEF93393BA5822204FAC57A29324DB9F7A`.
+   Record exact builder and guest installed-file/service/driver inventories
+   before any install; the current workspace has no SDK/link target or WinFsp
+   product project. A distribution license decision is required before
+   bundling/rebranding; WinFsp source is GPLv3 with a FLOSS exception and a
+   commercial license path.
+2. **Authenticated reparse handoff:** on a checkpointed target, prove the
+   exact source create's driver-generated ECP reaches the WinFsp-instance
+   pre-create, matches the registered process object/source identity/epoch,
+   is single-use, and fails under direct path, forged user ECP, stale grant,
+   wrong process, wrong source object, wrong owner generation, and service
+   restart. Retain ECP bytes only if nonsecret/opaque ID metadata; never expose
+   keys or credentials.
+3. **Actual data plane and journal:** create/open through `StageAdmit`,
+   `StagedTransferAllocator`, `StagedTransferJournal`, the WinFsp callback and
+   its real service-only NTFS backing. Show durable `OwnerPendingPolicy`
+   before policy, no inspection/publication, exact recovery state after a
+   forced process stop, and exact one-generation promotion only after active
+   policy approval.
+4. **M1/M2 cache isolation:** run the original successful mapped write,
+   `FlushViewOfFile`, disposal, `FlushFileBuffers`, independent buffered and
+   uncached reader, and full raw-extent assertions unchanged. The observer
+   opens must be separate processes. M2 retains the original section over
+   policy expansion and maps/writes afterward. Add a simultaneous two-owner
+   control proving different FSP names/FileNodes and no cross-reader dirty
+   marker; same-owner reopen must reuse the same generation/node. A missing
+   successful write or flush, missing observer, changed raw byte/extent, or
+   unreadable state is not a privacy pass.
+5. **Identity and bypass compatibility:** retain the original normalized
+   logical name, parent/file identity binding, aliases, replacement/rename,
+   delete, open-by-ID and direct-private-path refusal contracts. Existing M1
+   repro scripts assert source NTFS LCN/raw bytes but do not assert that the
+   writer handle's physical device object equals NTFS; same physical writer
+   device is therefore not inferred as a standalone gate from those scripts.
+   However stable full source identity, rename, alias, file-ID, access-check,
+   and publication behavior are existing SafeUpload compatibility gates and
+   remain required. WinFsp documents no hard links, 8.3 names, or
+   `FILE_OPEN_BY_FILE_ID`, and its callback `IndexNumber` is 64-bit: any gap
+   stays explicitly refused until a correct translation is implemented and
+   tested. Do not synthesize raw extents or weaken current identity assertions.
+6. **Lifetime/fault model:** mapped views survive file-handle cleanup. Prove
+   the private generation remains retained through section release; owner
+   service/driver crash, shutdown, reboot and recovery never expose backing or
+   publish an unapproved generation. A service stop during live sections
+   fences future candidate writes and leaves the exact retained generation
+   recoverable. Pass the relevant WinFsp upstream tests plus SafeUpload's own
+   service/journal tests, Driver Verifier, boot Verifier, and the unchanged
+   MVP matrix.
+7. **Destination boundary:** the prototype covers only pinned local fixed
+   NTFS. It changes no USB, UNC/SMB, or real sync-client gate. These remain
+   separate acceptance rows with volume/device identity, SMB lease/reconnect,
+   token/credential and sync reparse/bypass tests. In particular a client-side
+   redirect does not protect a remote SMB server or another remote writer.
+
+## Requirements versus the earlier implementation preference
+
+Hard acceptance retained here: no unapproved byte reaches the physical
+destination; original raw physical extent stays unchanged until approval;
+successful map/write/view-flush/file-flush and independent buffered/uncached
+observations; private-stage denial; source identity and supported rename,
+alias, file-ID, recovery and service semantics; all currently supported
+destination rows remain in the MVP. The application writer's lower
+`DEVICE_OBJECT` being the same NTFS object as the public reader is not asserted
+by the two current M1/M2 scripts, so it is an implementation preference unless
+another canonical test explicitly asserts it. Reparse can change that visible
+device identity; all exact query/rename/application contracts must be measured
+and kept. Any confirmed canonical same-device assertion blocks this route
+rather than being deleted.
+
+## Frozen input pins
+
+Current integration source snapshot (SHA-256):
+
+```
+94c02659fd6420e40ac8cc8c1db6ea6af7b12dea4ec92b00e89f5b5b219c0321  driver/SafeUpload.Minifilter/StageStream.c
+b0b12c9713ed7be5947ebb98249f1c895a9b7e2b1cf788dc2f2e03dceec6d5a5  driver/SafeUpload.Minifilter/StageAdmission.c
+fa180b4190db1e459b0ed29acece52cfb26873f3d120ac9340551312b3d3617d  driver/SafeUpload.Minifilter/StageProtocol.c
+0c32fa8ada8b3ac6ea712dd325f8a18cbeea6a5f016552b58b6b172036f1bc27  driver/SafeUpload.Minifilter/Protocol.h
+2600466c3818b1f56c2032e6ec8d6c1fa30c82bd80f751de66a2ffc811f7012f  agente/SafeUpload.Agent.Minifilter/Protocol.cs
+ff0e01ce20883ccc15dfbbe9480bce141ee50f0f121051b359abc72fd1aac5e3  agente/SafeUpload.Agent.Service/Interception/MinifilterInterceptor.cs
+45c631fde5e64ad3af652e60e8ba7ee236a0b899dc11535b36da38887a374143  agente/SafeUpload.Agent.Service/Interception/StagedTransferAllocator.cs
+8a4a5079176df67764d23d7b423506ca382f96a77995586d1092d777cc48d9ec  agente/SafeUpload.Agent.Service/Interception/StagedTransferJournal.cs
+91466e74086eab8e691d32446e8b8fbee8aea09854c8b85812374b57d4820aba  driver/evidence/2026-10-06/mapping-owner-winfsp-owner-feasibility-luna.txt
+136ab9ab1523356a2beb5b2dcc3e47e0c73572dd82b624a16a8dd2b3925753fe  driver/evidence/2026-10-06/mapping-owner-stage-fs-owner-addendum-luna.txt
+2932e84855bc42342df0b2730ccad8e257f4fe0a5c8232f2ece55dbc9014d252  driver/evidence/2026-10-06/mapping-owner-stage-protocol-journal-compatibility-luna.txt
+```
+
+## Primary source references
+
+- Microsoft SimRep sample: <https://learn.microsoft.com/en-us/samples/microsoft/windows-driver-samples/simrep-file-system-minifilter-driver/>
+- Microsoft ECP guidance and layered-filesystem carveout:
+  <https://learn.microsoft.com/en-us/windows-hardware/drivers/ifs/system-defined-ecps>
+- Microsoft `FltSetEcpListIntoCallbackData`:
+  <https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/fltkernel/nf-fltkernel-fltsetecplistintocallbackdata>
+- Microsoft `FltIsEcpFromUserMode`:
+  <https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/fltkernel/nf-fltkernel-fltisecpfromusermode>
+- WinFsp releases and published hashes: <https://github.com/winfsp/winfsp/releases/>
+- WinFsp API/file-node rules: <https://winfsp.dev/doc/WinFsp-API-winfsp.h/>
+- WinFsp NTFS compatibility limits: <https://winfsp.dev/doc/NTFS-Compatibility/>
+- WinFsp native API/service tutorial and Developer package:
+  <https://winfsp.dev/doc/WinFsp-Tutorial/>
+- WinFsp source license/provenance: <https://winfsp.dev/src/>

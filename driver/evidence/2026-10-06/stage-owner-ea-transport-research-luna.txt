@@ -1,0 +1,99 @@
+SafeUpload owner EA transport: documented-lifetime review
+Date: 2026-10-06
+Reviewer: independent source research; no product edits or runtime test
+
+Conclusion
+
+The kernel one-use ECP grant remains the only authorization source. A private
+EA may be considered as a service-side correlation value, but the ECP
+automatic-cleanup guarantee does not establish the lifetime or ownership of a
+separate EaBuffer allocation merely because a pointer to it is stored in ECP
+context. I found no Microsoft documentation that transfers EaBuffer ownership
+to the ECP list or guarantees cleanup of an allocation referenced by its
+context. Do not claim that design is safe without an explicit ownership rule
+or a targeted Windows test.
+
+Microsoft documents IRP_MJ_CREATE EaBuffer/EaLength as a caller-supplied
+FILE_FULL_EA_INFORMATION buffer. When a minifilter changes I/O parameters it
+must call FltSetCallbackDataDirty; the current filter's own postoperation sees
+the original input parameters, so replacement-buffer cleanup state must be
+carried separately in CompletionContext. FLT_PREOP_COMPLETE skips the current
+minifilter's postoperation callback. In contrast, when an ECP list/context is
+attached while processing IRP_MJ_CREATE, the I/O Manager automatically
+cleans up that ECP list/context at create completion and propagates it across
+reparse processing. That documented guarantee is specific to ECP list/context
+memory, not any other allocation reachable through a pointer in the context.
+
+If implementation still needs an EA correlation value, the narrower option
+to investigate is to preserve the kernel ECP through the source reparse, then
+clone/augment the EA only in the target WinFsp create preoperation after the
+one-use grant is validated. Mark the modified callback data dirty and return
+FLT_PREOP_SUCCESS_WITH_CALLBACK with a completion context that owns/frees the
+EA clone after the target create completes. This avoids adding a separate EA
+buffer in the source branch that completes STATUS_REPARSE without a post
+callback. It remains an option, not a proven lifetime contract: validate on
+Windows that FltMgr forwards the replacement EA buffer through reparse to
+WinFsp and that its system-buffer handling remains valid until the post
+callback.
+
+EA parsing must be bounded and preserve every caller-provided EA entry/value;
+reject malformed lists, reserved-name collisions/duplicates, or unsupported
+create dispositions rather than silently discarding caller semantics. The
+ticket must be bound to the consumed kernel grant and exact owner path, and
+must never be accepted as authority by itself. Ensure WinFsp's
+ExtendedAttributes volume capability is enabled; WinFsp rejects EA on a
+volume without it and rejects FILE_NO_EA_KNOWLEDGE. Its atomic-create ECP
+path rejects any nonempty EA. The target user-mode CreateEx callback receives
+the copied EA buffer; Open has no EA argument. The default managed
+CreateEx implementation delegates to Create and ignores EA, so the service
+would need an explicit CreateEx override. WinFsp's transaction request buffer
+also imposes a finite total size limit, which must include the original EAs,
+ticket, name and security descriptor. Stable owner-generation names remain
+the lookup key for name-only callbacks; EA is not a universal open ticket.
+
+Primary Microsoft sources
+
+* `FltAllocateExtraCreateParameterList` documents auto-cleanup and propagation
+  across reparse for ECP list/context attached while processing create:
+  https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/fltkernel/nf-fltkernel-fltallocateextracreateparameterlist
+* Create callback EaBuffer/EaLength definition:
+  https://learn.microsoft.com/en-us/windows-hardware/drivers/ifs/flt-parameters-for-irp-mj-create
+* Parameter mutation, FltSetCallbackDataDirty, original inputs in own post,
+  and CompletionContext behavior:
+  https://learn.microsoft.com/en-us/windows-hardware/drivers/ifs/modifying-the-parameters-for-an-i-o-operation
+* FLT_PREOP_COMPLETE does not call the current filter's post callback:
+  https://learn.microsoft.com/en-us/windows-hardware/drivers/ifs/completing-an-i-o-operation-in-a-preoperation-callback-routine
+* Safe access to user buffers:
+  https://learn.microsoft.com/en-us/windows-hardware/drivers/ifs/accessing-user-buffers
+
+Pinned WinFsp source inspected
+
+Checkout `/tmp/safeupload-winfsp-v2.2B4-review`, commit
+`fde790d8ea41283606d1c56b557608a17e455f59`.
+
+* `src/sys/create.c` SHA-256
+  `826eadf0becab3390f991dc1da6d135d31e16a845b1bb932103e97cfaab1c4d6`:
+  validates EAs, checks ExtendedAttributes and FILE_NO_EA_KNOWLEDGE, rejects
+  EA for atomic-create ECP, copies the EA bytes into the transaction request,
+  and passes the request buffer to CreateEx.
+* `src/dll/fsop.c` SHA-256
+  `93039189ca9ea74667e1c171c358619d83729e3c3f8a4d7e7297a8f3febcaa19`:
+  CreateEx receives the EA request view after create checks; Open has no EA
+  argument.
+* `src/dll/security.c` SHA-256
+  `08ee22844550b588d26b680f670476be59831c82fddf3c25b41a85a04ec6eec9`:
+  security lookup is a name-based callback before CreateEx.
+* `inc/winfsp/winfsp.h` SHA-256
+  `b8e5c3320bfb58d086ee622dd13370eb38a49e1142877c9d8af827515f916540`:
+  public FspFileSystemGetOperationContext API exposes the active transaction
+  context only during callback dispatch. It does not change the fact that
+  Open has no EA argument; any context read must be synchronous and copied,
+  never retained as a request pointer.
+* `src/dotnet/FileSystemHost.cs` SHA-256
+  `819b91f32b9e4e3b7c88d803aba031976c9801fa0f2ab60972c7b1a341848de3` and
+  `src/dotnet/Interop.cs` SHA-256
+  `a3fea21346ae393713f4307f398e5462b11338ad966b991bd838f2b4eebe0267`:
+  managed callback shape passes EA to CreateEx but not Open.
+
+No source, VM, host, build, signing, trust, or git state was changed by this
+review. No EA/reparse runtime test was performed.

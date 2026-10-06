@@ -1,0 +1,10 @@
+{
+  "ActualRemoteExitCode": 0,
+  "InputPins": {
+    "driver/scripts/Build-ExactSource.ps1": "ff537d9426c5539fdfbd976ed77e55ee90f2a64501f17d463aa926f09cebd5d6",
+    "driver/scripts/Build-ExactAgentMatrix.ps1": "2cbe579f26be5d8e22e7932212bcb577459c30d8c1daeda6a66e7b31c1537b8a"
+  },
+  "ProductScriptExecuted": false,
+  "BuildStarted": false,
+  "TrustChanged": false
+}

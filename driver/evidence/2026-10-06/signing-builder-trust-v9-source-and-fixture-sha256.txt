@@ -1,0 +1,12 @@
+dd25f7ae5ac38db00f37da30e951f029ca1bef1e95f436e6f6c26d8b10cccc7a  driver/evidence/2026-10-06/exact-mvp20261006admissioncap2-replacement-trust-builder-root-v9.ps1
+6cac6f59c640c6fb045f61b87be1bb4deeeea451c80cd067ae022180a0a01a9f  driver/evidence/2026-10-06/signing-process-capture-v9.ps1
+3e1fad6693fc296a4163395e9a3ab557e5226feabc666876143b80220dfd097e  driver/evidence/2026-10-06/signing-process-capture-v9-fixture.ps1
+9585e1acd512f9532de032c6ce2df251fa774acc83d27cfc6afceb437ce64c42  driver/evidence/2026-10-06/signing-guard-helpers-v8.ps1
+9292776dbdfafc1a99b92b93ab498e2b67df9291fa8bdf24309abcdd16903408  driver/evidence/2026-10-06/signing-process-fixture-v9-20261006b.stdout.txt
+e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  driver/evidence/2026-10-06/signing-process-fixture-v9-20261006b.stderr.txt
+bdc9c9491dfdbdae6366061455aad23b3211b4d329dba8019ea61398a4330ccd  driver/evidence/2026-10-06/signing-process-fixture-v9-20261006b-root-readout.json
+51701037af41fcc19101e26dd2d632934d20b94190d42782474f68f05abdfc1e  driver/evidence/2026-10-06/replacement-machine-key-v8-public-metadata.json
+47e7069980a60cbcf4dff61f0f2d3f02edcf97c2976708790b49d03a09243b2a  driver/evidence/2026-10-06/SafeUploadTest-Recovery-20261006-v8.cer
+3dedd54ae93e600d2ff041c64eb30ce56fdbfa376e4667a1571e8e67d4d2a03a  driver/evidence/2026-10-06/signing-builder-key-bearing-recovery-v8-retry1/execution-pins.json
+957fa3066ad673b8dcfde47de0536cf5e0ed067c97308616fb4365f2c581ffa3  driver/evidence/2026-10-06/signing-builder-key-bearing-recovery-v8-retry1/host-readout.json
+4d89fb0291da3115a2102f7528c430c9a1682faab15cee862b4b99ed0b48b487  driver/evidence/2026-10-06/signing-builder-key-bearing-recovery-v8-retry1/guest-baseline-root-readout.json

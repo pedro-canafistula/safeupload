@@ -1,0 +1,11 @@
+{
+  "UTC": "2026-10-06T15:19:45.845961+00:00",
+  "NewChild": "/var/lib/libvirt/images/win10-debug.safeupload-w01-run3-ff67c01b-recovery-20261006.qcow2",
+  "Backing": "/var/lib/libvirt/images/win10-debug.safeupload-w01-run2-fe004c32-recovery-20261006.qcow2",
+  "Format": "qcow2",
+  "CapacityBytes": 128849018880,
+  "LibvirtVolumeReadbackVerified": true,
+  "ParentStatMatches": true,
+  "FailedDiskRetained": true,
+  "RAMRetained": true
+}

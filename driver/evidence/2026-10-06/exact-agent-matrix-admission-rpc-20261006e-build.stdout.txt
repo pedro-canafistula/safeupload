@@ -1,0 +1,23 @@
+LABEL=admission-rpc-20261006e
+BUILDER=DESKTOP-O1LP5DG
+SOURCE_MANIFEST_VERIFIED=131
+ARCHIVE_SHA256=DABA60CB8F7360E11778A297D8A5C72FD29B87B4B10D732300AC674BDF0E1537
+MANIFEST_SHA256=5EBA69EA0A2C31343C114BB20CD99D3593D0DF69CB66C15E2CC9845CA86B7D9F
+normal-debug-build: exit=0 warnings=0 errors=0
+normal-debug-tests: exit=0 warnings=0 errors=0
+normal-debug: tests_passed=315
+normal-release-build: exit=0 warnings=0 errors=0
+normal-release-tests: exit=0 warnings=0 errors=0
+normal-release: tests_passed=315
+normal-release-publish: exit=0 warnings=0 errors=0
+normal-release: package_sha256=A62E6217DE97A99D1169FD30ED58AF9F8B003C0BC04193AB4281E48683E40A62
+feature-debug-build: exit=0 warnings=0 errors=0
+feature-debug-tests: exit=0 warnings=0 errors=0
+feature-debug: tests_passed=344
+feature-release-build: exit=0 warnings=0 errors=0
+feature-release-tests: exit=0 warnings=0 errors=0
+feature-release: tests_passed=344
+feature-release-publish: exit=0 warnings=0 errors=0
+feature-release: package_sha256=60D84A3BF4F0F5070B9BFCCF7D31920332460EB4EA165FA2551738C74FE239E1
+AgentMatrixGate=True
+BUILD_END_UTC=2026-10-06T16:06:44.8014335Z

@@ -1,0 +1,5 @@
+PowerShellVersion=5.1.19041.6456
+Invoke-AdmissionEvidenceCapture.SelfCheck.ps1 ParseErrors=0
+Invoke-AdmissionEvidenceCapture.ps1 ParseErrors=0
+SelfCheckExit=1
+ValidationTempAbsent=True

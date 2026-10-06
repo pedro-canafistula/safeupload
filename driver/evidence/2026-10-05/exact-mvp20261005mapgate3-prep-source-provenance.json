@@ -1,0 +1,24 @@
+{
+  "SourceKind": "worktree",
+  "BaseCommit": "577dddfe05ad18b8b643969eed6cc0f78e36fd89",
+  "CapturedUTC": "2026-10-06T02:24:06.638973+00:00",
+  "ArchiveSHA256": "708bedfd031d9bae73e26fffc7c95a7a792ccddfbfa240d48730d0abfe7d843c",
+  "ManifestSHA256": "1fa29f8b8145baa3ddf8f87e4f74b4294e76443572d72cbf8f9c5f7ed2011758",
+  "ProjectIndexSHA256": "c4a89bdc811ab8a8254c678cace8dec79f12025a8775d3af4f1973c27edaa2a3",
+  "Files": 26,
+  "ChangedFromBaseCommit": [
+    "driver/SafeUpload.Inspector/main.c",
+    "driver/SafeUpload.Minifilter/Communication.c",
+    "driver/SafeUpload.Minifilter/Protocol.h",
+    "driver/SafeUpload.Minifilter/Stage.h",
+    "driver/SafeUpload.Minifilter/StageAdmission.c"
+  ],
+  "BuildToolsSHA256": {
+    "driver/scripts/Build-ExactSource.ps1": "5d777e0a5ede325afaad0479942c6e2b51d9e13b1b1021e8e0c6dab1d4baf640",
+    "driver/scripts/remote_ps.py": "e2c56d1b576ca81fdeece36a0ced72f17bd4bd87fd7871550564dbd68ada0ffb",
+    "driver/scripts/Invoke-ExactSourceBuild.sh": "29d358356aa406e3e933ce85f01557a61529f22cdadeefbb4a827b94d738c959",
+    "driver/scripts/Prepare-ExactWorktreeSource.py": "697c7f0416412a9c2b45430a31dd6b796ad78ac89f136b492a002e0388326f72"
+  },
+  "CaptureCheck": "two reads; byte and file metadata equality",
+  "NetworkOperationsDuringPreparation": 0
+}

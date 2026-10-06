@@ -1,0 +1,10 @@
+{
+  "UTC": "2026-10-06T14:40:34.288152+00:00",
+  "Checks": {
+    "Uuid": true,
+    "NewSource": true,
+    "AllOtherConfigurationExact": true,
+    "StillStopped": true
+  },
+  "Pass": true
+}

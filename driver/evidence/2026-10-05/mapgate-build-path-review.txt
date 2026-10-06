@@ -1,0 +1,28 @@
+Bounded security source review: Luna 6 max, builder_provenance_review.
+Scope: exact current-worktree source capture and delivery to the existing local
+Windows builder. No reviewer export, VM mutation, or test execution.
+
+Destination attribution: strict existing SSH host key; local libvirt win10 UUID
+c6440689-d11c-4c63-a463-f3722b7ddb69; DHCP/NIC 52:54:00:63:87:7a and .210;
+live Windows name DESKTOP-O1LP5DG and matching UUID/MAC. Retained live identity
+is builder-live-identity-mapgate.json. Identity is rechecked before source upload
+and before guest build writes. This resolves the prior unverified-destination
+finding for this specific builder; it grants no arbitrary remote destination.
+
+Review findings addressed before export: anchored no-follow directory-FD reads;
+ignored/untracked inputs rejected; Windows name/component case collisions rejected;
+stored ZIP; hardlinks rejected; capture JSON held by the caller; original source
+and tool hashes rechecked before preflight and immediately before SCP; no repinning
+of modified files; uploaded build script hash checked remotely; strict host-key
+checks; both preflight and evidence-log pipeline statuses must succeed.
+
+Final disposition: no remaining blocker in the stated trusted-local-owner threat
+model. The victor-owned snapshot parent is mode 0700. This does not defend against
+a malicious same-UID actor rewriting the running interpreter or shell.
+
+Root executed 15 disposable-repository tests (exact-worktree-capture-selfcheck.txt),
+an actual Windows identity success/mismatch control, the four WDK builds plus both
+Inspectors/writer fixture, and a separate unchanged-source agent test/publish.
+Exact build source/artifact checks are exact-mvp20261005mapgate-root-readout.json.
+Agent checks are exact-agent-agent-mapgate20261005-root-readout.json (314/314).
+Neither build workflow installed the artifacts on the recovery-required debuggee.

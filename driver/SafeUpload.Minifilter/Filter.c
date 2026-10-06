@@ -104,6 +104,12 @@ static BOOLEAN SafeUploadFailClosedProtectedCreate(_Inout_ PFLT_CALLBACK_DATA Da
     _In_ PCFLT_RELATED_OBJECTS FltObjects);
 static FLT_PREOP_CALLBACK_STATUS SafeUploadPreAcquireSection(_Inout_ PFLT_CALLBACK_DATA Data,
     _In_ PCFLT_RELATED_OBJECTS FltObjects, _Flt_CompletionContext_Outptr_ PVOID *CompletionContext);
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+static VOID SafeUploadInstanceTeardownStart(_In_ PCFLT_RELATED_OBJECTS FltObjects,
+    _In_ FLT_INSTANCE_TEARDOWN_FLAGS Reason);
+static VOID SafeUploadInstanceTeardownComplete(_In_ PCFLT_RELATED_OBJECTS FltObjects,
+    _In_ FLT_INSTANCE_TEARDOWN_FLAGS Reason);
+#endif
 
 #ifdef ALLOC_PRAGMA
     #pragma alloc_text(INIT, DriverEntry)
@@ -123,6 +129,10 @@ static FLT_PREOP_CALLBACK_STATUS SafeUploadPreAcquireSection(_Inout_ PFLT_CALLBA
     #pragma alloc_text(PAGE, SafeUploadPreSetInformation)
     #pragma alloc_text(PAGE, SafeUploadFailClosedProtectedCreate)
     #pragma alloc_text(PAGE, SafeUploadPreAcquireSection)
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    #pragma alloc_text(PAGE, SafeUploadInstanceTeardownStart)
+    #pragma alloc_text(PAGE, SafeUploadInstanceTeardownComplete)
+#endif
 
 #endif
 
@@ -190,11 +200,15 @@ CONST FLT_REGISTRATION FilterRegistration = {
     SafeUploadInstanceSetup,            //  InstanceSetup
     SafeUploadInstanceQueryTeardown,    //  InstanceQueryTeardown
 #if SAFEUPLOAD_STAGING_PROTOTYPE
-    SafeUploadStageWritersInstanceTeardownStart,
+    SafeUploadInstanceTeardownStart,
 #else
     NULL,                               //  InstanceTeardownStart
 #endif
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    SafeUploadInstanceTeardownComplete,
+#else
     NULL,                               //  InstanceTeardownComplete
+#endif
 #if SAFEUPLOAD_STAGING_PROTOTYPE
     SafeUploadStageGenerateName,
     SafeUploadStageNormalizeComponent,
@@ -272,6 +286,7 @@ Return Value:
     SafeUploadInitializePolicy( RegistryPath );
     SafeUploadInitializeTaint();
     SafeUploadInitializeOverrides();
+
 
 #if SAFEUPLOAD_STAGING_PROTOTYPE
     status = SafeUploadStageInitialize();
@@ -528,6 +543,7 @@ Return Value:
         return STATUS_FLT_DO_NOT_ATTACH;
     }
     fenceSetupAdmitted = TRUE;
+    SafeUploadStageAdmissionTopologyBegin();
     status = SafeUploadSetInstanceContext( FltObjects, VolumeDeviceType, Flags, &volumeKind );
 #else
     status = SafeUploadSetInstanceContext( FltObjects, VolumeDeviceType, Flags, &volumeKind );
@@ -615,9 +631,31 @@ Return Value:
 
 #if SAFEUPLOAD_STAGING_PROTOTYPE
     if (fenceSetupAdmitted) SafeUploadStageFenceSetupEnd();
+    if (fenceSetupAdmitted) SafeUploadStageAdmissionTopologyEnd();
 #endif
     return STATUS_SUCCESS;
 }
+
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+static VOID SafeUploadInstanceTeardownStart(_In_ PCFLT_RELATED_OBJECTS FltObjects,
+    _In_ FLT_INSTANCE_TEARDOWN_FLAGS Reason)
+{
+    PAGED_CODE();
+    /* Publish retirement before the ledger/context is torn down. The receipt
+     * remains unstable until InstanceTeardownComplete after outstanding I/O. */
+    SafeUploadStageAdmissionTopologyTeardownBegin();
+    SafeUploadStageWritersInstanceTeardownStart(FltObjects, Reason);
+}
+
+static VOID SafeUploadInstanceTeardownComplete(_In_ PCFLT_RELATED_OBJECTS FltObjects,
+    _In_ FLT_INSTANCE_TEARDOWN_FLAGS Reason)
+{
+    PAGED_CODE();
+    UNREFERENCED_PARAMETER(FltObjects);
+    UNREFERENCED_PARAMETER(Reason);
+    SafeUploadStageAdmissionTopologyTeardownEnd();
+}
+#endif
 
 
 NTSTATUS
@@ -1308,7 +1346,7 @@ static BOOLEAN SafeUploadFailClosedProtectedCreate(_Inout_ PFLT_CALLBACK_DATA Da
     PFLT_FILE_NAME_INFORMATION name = NULL;
     PSAFEUPLOAD_INSTANCE_CONTEXT instanceContext = NULL;
     SAFEUPLOAD_VOLUME_KIND kind = SafeUploadVolumeUnknown;
-    BOOLEAN protectedName = FALSE;
+    BOOLEAN protectedName = FALSE, admissionGateReady;
     NTSTATUS status;
 
     PAGED_CODE();
@@ -1323,7 +1361,13 @@ static BOOLEAN SafeUploadFailClosedProtectedCreate(_Inout_ PFLT_CALLBACK_DATA Da
     /* An open that begins while the authenticated service is connected on a
      * trusted instance keeps the existing policy path. With no destination
      * scopes there is no reason to normalize every unrelated boot write. */
-    if ((SafeUploadIsAuthenticatedClient() && SafeUploadInstanceTrustGateSatisfied(FltObjects->Instance)) ||
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    admissionGateReady = SafeUploadInstanceAdmissionGateSatisfied(FltObjects->Instance);
+#else
+    admissionGateReady = SafeUploadInstanceTrustGateSatisfied(FltObjects->Instance);
+#endif
+    if ((SafeUploadIsAuthenticatedClient() && SafeUploadInstanceTrustGateSatisfied(FltObjects->Instance) &&
+         admissionGateReady) ||
         !SafeUploadPolicyHasDestinationScopes(kind)) return FALSE;
 
     status = FltGetFileNameInformation(Data,
@@ -1331,13 +1375,15 @@ static BOOLEAN SafeUploadFailClosedProtectedCreate(_Inout_ PFLT_CALLBACK_DATA Da
     if (NT_SUCCESS(status) && name != NULL && NT_SUCCESS(FltParseFileNameInformation(name))) {
         protectedName = SafeUploadPolicyMatchesDestination(kind, &name->Name);
     } else {
-        /* A volume-kind scope remains identifiable without a path. A
-         * path-prefix scope is not widened to the rest of a fixed volume. */
-        protectedName = SafeUploadPolicyMatchesDestination(kind, NULL);
+        /* A failed target-name query is Unknown when this volume may contain
+         * a configured prefix. Do not turn that uncertainty into an
+         * out-of-scope result before the per-instance admission gate. */
+        protectedName = SafeUploadPolicyMatchesDestination(kind, NULL) ||
+            SafeUploadPolicyMayMatchVolume(kind, FltObjects->Volume);
     }
     if (name != NULL) FltReleaseFileNameInformation(name);
 
-    return protectedName && (!SafeUploadInstanceTrustGateSatisfied(FltObjects->Instance) ||
+    return protectedName && (!admissionGateReady || !SafeUploadInstanceTrustGateSatisfied(FltObjects->Instance) ||
         !SafeUploadIsAuthenticatedClient());
 }
 
@@ -1348,7 +1394,7 @@ static FLT_PREOP_CALLBACK_STATUS SafeUploadPreAcquireSection(_Inout_ PFLT_CALLBA
     PFLT_FILE_NAME_INFORMATION name = NULL;
     PSAFEUPLOAD_INSTANCE_CONTEXT instanceContext = NULL;
     SAFEUPLOAD_VOLUME_KIND kind = SafeUploadVolumeUnknown;
-    BOOLEAN protectedName = FALSE;
+    BOOLEAN protectedName = FALSE, admissionGateReady;
     NTSTATUS status;
 
     *CompletionContext = NULL;
@@ -1365,17 +1411,24 @@ static FLT_PREOP_CALLBACK_STATUS SafeUploadPreAcquireSection(_Inout_ PFLT_CALLBA
         kind = instanceContext->VolumeKind;
         FltReleaseContext(instanceContext);
     }
-    if ((SafeUploadIsAuthenticatedClient() && SafeUploadInstanceTrustGateSatisfied(FltObjects->Instance)) ||
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    admissionGateReady = SafeUploadInstanceAdmissionGateSatisfied(FltObjects->Instance);
+#else
+    admissionGateReady = SafeUploadInstanceTrustGateSatisfied(FltObjects->Instance);
+#endif
+    if ((SafeUploadIsAuthenticatedClient() && SafeUploadInstanceTrustGateSatisfied(FltObjects->Instance) &&
+         admissionGateReady) ||
         !SafeUploadPolicyHasDestinationScopes(kind)) return FLT_PREOP_SUCCESS_NO_CALLBACK;
     status = FltGetFileNameInformation(Data,
         FLT_FILE_NAME_NORMALIZED | FLT_FILE_NAME_QUERY_DEFAULT, &name);
     if (NT_SUCCESS(status) && name != NULL && NT_SUCCESS(FltParseFileNameInformation(name)))
         protectedName = SafeUploadPolicyMatchesDestination(kind, &name->Name);
     else
-        protectedName = SafeUploadPolicyMatchesDestination(kind, NULL);
+        protectedName = SafeUploadPolicyMatchesDestination(kind, NULL) ||
+            SafeUploadPolicyMayMatchVolume(kind, FltObjects->Volume);
     if (name != NULL) FltReleaseFileNameInformation(name);
 
-    if (protectedName && (!SafeUploadInstanceTrustGateSatisfied(FltObjects->Instance) ||
+    if (protectedName && (!admissionGateReady || !SafeUploadInstanceTrustGateSatisfied(FltObjects->Instance) ||
         !SafeUploadIsAuthenticatedClient())) {
         Data->IoStatus.Status = STATUS_ACCESS_DENIED;
         Data->IoStatus.Information = 0;

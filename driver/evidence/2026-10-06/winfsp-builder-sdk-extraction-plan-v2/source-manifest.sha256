@@ -1,0 +1,12 @@
+8ee29726c404e26647049918298debf77501fd56ee015da940a6cc515cf6a4c4  driver/evidence/2026-10-06/winfsp-builder-sdk-extraction-plan-v2/extract-sdk-v2.ps1
+f6d01e1a3367ec66179a6180cc4ee8aec5042a9f9aab63e269e3fb2d34fb80a2  driver/evidence/2026-10-06/winfsp-builder-sdk-extraction-plan-v2/plan.txt
+728324ca6ec3b0617928d9bbd189cf1adccf7c4337078f8f8b4a44a3fc9ecfbc  driver/evidence/2026-10-06/winfsp-builder-sdk-extraction-plan/source-manifest.sha256
+e582e919eb4adb7e483ea7b97e2a7301401363f0b3f9b69cffea749859c6876a  driver/evidence/2026-10-06/winfsp-v22b4-dependency-preflight-root-readout.json
+961adb9c79521e3c836463126dac71a08f4d72c2a56245ac0630884570949370  driver/evidence/2026-10-06/winfsp-msi-v2.2B4-signature.stdout.txt
+e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  driver/evidence/2026-10-06/winfsp-msi-v2.2B4-signature.stderr.txt
+0d5bccf90c66ed06beb1cdbeb5fcb9e382647b55f0b37001a34e48d15617dfb2  driver/evidence/2026-10-06/winfsp-msi-v2.2B4-signature.exit.json
+417b9cd8315bd5d8b4ba2e930dfb32ea206699277c5ab1c47e9bed6515522fd8  driver/evidence/2026-10-06/winfsp-msi-v2.2B4-signature-readonly-source.ps1
+24fbc291b6c3964ebf5065bf39c31f7251e2b90ccef4f003bb49d9d2942cc2b5  driver/evidence/2026-10-06/winfsp-msi-v2.2B4-admin-tables.stdout.json
+e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  driver/evidence/2026-10-06/winfsp-msi-v2.2B4-admin-tables.stderr.txt
+ae99555775375a5046a43f28b75bf993a66f824792b9e283f425adf765bf233e  driver/evidence/2026-10-06/winfsp-msi-v2.2B4-admin-tables.exit.json
+54c8479899ecd75c5c5203416d86b1a0b9fc5935928929a31f4262d25d9f0521  driver/evidence/2026-10-06/winfsp-msi-v2.2B4-admin-tables-source.ps1

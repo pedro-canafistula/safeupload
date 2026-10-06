@@ -1,0 +1,12 @@
+{
+  "Path": "/var/lib/libvirt/qemu/nvram/win10_VARS.fd",
+  "Stat": {
+    "Device": 31,
+    "Inode": 276369,
+    "Bytes": 540672,
+    "MtimeNS": 1791310670168133504,
+    "Mode": 384,
+    "UID": 958,
+    "GID": 958
+  }
+}

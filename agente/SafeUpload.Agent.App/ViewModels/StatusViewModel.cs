@@ -121,6 +121,24 @@ public sealed class StatusViewModel : ObservableObject
             SecurityCaption = "MONITORANDO SEM BLOQUEIO";
             MonitoringState = "AUDITANDO";
         }
+        else if (status.ProtectionActive && status.AdmissionCoverage == AdmissionCoverageStatus.Pending)
+        {
+            SecurityState = "Cobertura pendente";
+            SecurityCaption = "GATES DE DESTINO EM AVALIAÇÃO";
+            MonitoringState = "INTERCEPTANDO";
+        }
+        else if (status.ProtectionActive && status.AdmissionCoverage == AdmissionCoverageStatus.Degraded)
+        {
+            SecurityState = "Cobertura incompleta";
+            SecurityCaption = "ALGUNS DESTINOS NÃO ESTÃO PRONTOS";
+            MonitoringState = "VERIFICAR DESTINOS";
+        }
+        else if (status.ProtectionActive && status.AdmissionCoverage == AdmissionCoverageStatus.Ready)
+        {
+            SecurityState = "Gates de destino prontos";
+            SecurityCaption = "ESCOPO ACEITO COM GATES ATIVOS";
+            MonitoringState = "INTERCEPTANDO";
+        }
         else if (status.ProtectionActive)
         {
             SecurityState = "Protegido";

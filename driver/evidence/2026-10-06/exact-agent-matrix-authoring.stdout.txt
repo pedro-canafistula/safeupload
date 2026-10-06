@@ -1,0 +1,4 @@
+{"ComputerName":"DESKTOP-O1LP5DG","UUID":"C6440689-D11C-4C63-A463-F3722B7DDB69","Adapters":[{"Name":"Ethernet","MacAddress":"52-54-00-63-87-7A","Status":"Up"}]}
+PowerShellVersion=5.1.19041.6456
+MatrixParserErrors=0
+10.0.400 [C:\Program Files\dotnet\sdk]

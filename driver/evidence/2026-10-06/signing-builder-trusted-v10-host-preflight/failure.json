@@ -1,0 +1,1 @@
+{"Verdict":"READ_ONLY_PREFLIGHT_INCOMPLETE","Cause":"qemu-img cannot open mode0600 qemu-owned live disk as victor; XML/UUID/jobs/QMP were captured but no complete preflight claimed.","StateMutated":false}

@@ -1,0 +1,38 @@
+<volume type='file'>
+  <name>win10-debug.safeupload-w01-run2-fe004c32-recovery-20261006.qcow2</name>
+  <key>/var/lib/libvirt/images/win10-debug.safeupload-w01-run2-fe004c32-recovery-20261006.qcow2</key>
+  <capacity unit='bytes'>128849018880</capacity>
+  <allocation unit='bytes'>200704</allocation>
+  <physical unit='bytes'>198528</physical>
+  <target>
+    <path>/var/lib/libvirt/images/win10-debug.safeupload-w01-run2-fe004c32-recovery-20261006.qcow2</path>
+    <format type='qcow2'/>
+    <permissions>
+      <mode>0600</mode>
+      <owner>0</owner>
+      <group>0</group>
+    </permissions>
+    <timestamps>
+      <atime>1791297586.799578197</atime>
+      <mtime>1791297586.798578200</mtime>
+      <ctime>1791297586.798578200</ctime>
+      <btime>0</btime>
+    </timestamps>
+  </target>
+  <backingStore>
+    <path>/var/lib/libvirt/images/win10-debug.safeupload-pre-boot-start-invariant-S01-denied-write-after-boot-boot-verifier-s01b38dir3-20261005</path>
+    <format type='qcow2'/>
+    <permissions>
+      <mode>0600</mode>
+      <owner>958</owner>
+      <group>958</group>
+    </permissions>
+    <timestamps>
+      <atime>1791231097.872423286</atime>
+      <mtime>1791231097.533423899</mtime>
+      <ctime>1791231097.762423485</ctime>
+      <btime>0</btime>
+    </timestamps>
+  </backingStore>
+</volume>
+

@@ -1,0 +1,157 @@
+{
+  "UTC": "2026-10-06T16:06:52.911753+00:00",
+  "AgentMatrixGate": "PASS",
+  "Tests": {
+    "normal-debug": 315,
+    "normal-release": 315,
+    "feature-debug": 344,
+    "feature-release": 344
+  },
+  "Provenance": {
+    "SourceKind": "worktree",
+    "BaseCommit": "577dddfe05ad18b8b643969eed6cc0f78e36fd89",
+    "CapturedUTC": "2026-10-06T16:04:36.319183+00:00",
+    "ArchiveSHA256": "daba60cb8f7360e11778a297d8a5c72fd29b87b4b10d732300ac674bdf0e1537",
+    "ManifestSHA256": "5eba69ea0a2c31343c114bb20cd99d3593d0df69cb66c15e2cc9845ca86b7d9f",
+    "ProjectIndexSHA256": "b214cc4a5077070c260130d9b91abb7eb0165dbf59f78e677a6187fdb203ecee",
+    "Files": 131,
+    "ChangedFromBaseCommit": [
+      "agente/SafeUpload.Agent.Minifilter/AdmissionEvidence.cs",
+      "agente/SafeUpload.Agent.Minifilter/FilterPort.cs",
+      "agente/SafeUpload.Agent.Minifilter/SafeUpload.Agent.Minifilter.csproj",
+      "agente/SafeUpload.Agent.Service/Diagnostics/AdmissionEvidenceCapture.cs",
+      "agente/SafeUpload.Agent.Service/Diagnostics/AdmissionEvidenceEndpoint.cs",
+      "agente/SafeUpload.Agent.Service/Diagnostics/AdmissionEvidenceProtocol.cs",
+      "agente/SafeUpload.Agent.Service/Diagnostics/AdmissionEvidenceRunLedger.cs",
+      "agente/SafeUpload.Agent.Service/Interception/MinifilterInterceptor.cs",
+      "agente/SafeUpload.Agent.Service/Program.cs",
+      "agente/SafeUpload.Agent.Service/SafeUpload.Agent.Service.csproj",
+      "agente/SafeUpload.Agent.Tests/AdmissionEvidenceEndpointTests.cs",
+      "agente/SafeUpload.Agent.Tests/AdmissionEvidenceWireTests.cs",
+      "agente/SafeUpload.Agent.Tests/SafeUpload.Agent.Tests.csproj"
+    ],
+    "BuildToolsSHA256": {
+      "driver/scripts/Build-ExactAgentMatrix.ps1": "a04724507a2eabc90c541759c6135f7f3d06786e8dfefb5eb0eac2a34d382cb0",
+      "driver/scripts/remote_ps.py": "71e39bb56a5b5c89b3e00131e24d05377624219a34ae47dd68a4db74c0560351",
+      "driver/scripts/Prepare-ExactWorktreeSource.py": "826413f78d42ed7c273dc9711a8cdff5f91101ab3de2b98cf48e046b493edfca",
+      "driver/scripts/Prepare-ExactAgentWorktreeSource.py": "137002d23758ca8bd700abce891c2e3e0f7b43614eedfd38ffa944ba0b27de83",
+      "driver/scripts/Invoke-ExactAgentMatrixBuild.py": "a14e6d0ba4fe6fa5202c49b69188c5495e4ee5d34e989ecc85c52bdf936b9257"
+    },
+    "ReviewedUntrackedSHA256": {
+      "agente/SafeUpload.Agent.Minifilter/AdmissionEvidence.cs": "b384778d2c5ecd68ed39d1831f41d2ac38bddadbfcfe5f8c93cf50129eb29a84",
+      "agente/SafeUpload.Agent.Tests/AdmissionEvidenceWireTests.cs": "bdd54ada7c00629a23f7e5e19da818ef8ad94a3a4aa37f88b384fff417d48297",
+      "agente/SafeUpload.Agent.Service/Diagnostics/AdmissionEvidenceProtocol.cs": "ce72ead170e767af36a3887219d413f5e6cc1b022224ad4acce9c8221fd416cf",
+      "agente/SafeUpload.Agent.Service/Diagnostics/AdmissionEvidenceCapture.cs": "064f86d0e1f7d456694992fe125b79602b9156d63c102c29a2ba95b141a0b1eb",
+      "agente/SafeUpload.Agent.Service/Diagnostics/AdmissionEvidenceEndpoint.cs": "4a675b6d2f9d8795f3520e562e753c6156b5d161e0743477a9d056ec9ed4475f",
+      "agente/SafeUpload.Agent.Service/Diagnostics/AdmissionEvidenceRunLedger.cs": "ad791bc1e55e09d1617bb3333d644fbfc7c575c58b38c5e3522686bff502b84d",
+      "agente/SafeUpload.Agent.Tests/AdmissionEvidenceEndpointTests.cs": "db98d291e9d9f0e7b6215568a21a92be35dffa80d5cc858a2af2d9d7c6b549b2"
+    },
+    "CaptureCheck": "two reads; byte and file metadata equality",
+    "NetworkOperationsDuringPreparation": 0
+  },
+  "Fetched": {
+    "summary.txt": {
+      "Fetched": true,
+      "Bytes": 1148,
+      "SHA256": "0919f000b86d12952f2d58cca2215063fc49750c913376552203d20de7fb97ec"
+    },
+    "dotnet-info.txt": {
+      "Fetched": true,
+      "Bytes": 2696,
+      "SHA256": "560a57cd44c346ce185ddd6573f1e43eda687f1ab6648d6561c1549a036e9327"
+    },
+    "normal-debug-build.txt": {
+      "Fetched": true,
+      "Bytes": 2624,
+      "SHA256": "32fe83e122f833219402d1a9cd77dd8a839ff886a12faa85dabe0593126a7a8c"
+    },
+    "normal-debug-tests.txt": {
+      "Fetched": true,
+      "Bytes": 3274,
+      "SHA256": "7796e11a93a99f2baf00d4b41c47a5304bf3f9262a215dd5e6e6b14fa21b8edc"
+    },
+    "normal-debug-results/agent-tests.trx": {
+      "Fetched": true,
+      "Bytes": 494155,
+      "SHA256": "8eb4108a755d29ee919bafb5d347384388bf6013858ce6b23d74c210b2dad309"
+    },
+    "normal-release-build.txt": {
+      "Fetched": true,
+      "Bytes": 2652,
+      "SHA256": "6ef367865606bb4494820741e20c5780424b412c83eb136ac93bd5976c219626"
+    },
+    "normal-release-tests.txt": {
+      "Fetched": true,
+      "Bytes": 3322,
+      "SHA256": "2a23f2f9997cee47ce5f98e85233ec41dffc012d014c6554fc4e7e5bde7d9c35"
+    },
+    "normal-release-results/agent-tests.trx": {
+      "Fetched": true,
+      "Bytes": 496675,
+      "SHA256": "b18fcd97e6dd7f070bca04021b3785d94ae767e77f5b1ab8035a407842cf61a9"
+    },
+    "normal-release-publish.txt": {
+      "Fetched": true,
+      "Bytes": 2756,
+      "SHA256": "a7a80633dc994d62a2d69a16d8f0eddf070d62a6eb0128b0b884e91c225d9009"
+    },
+    "normal-release-package-manifest.txt": {
+      "Fetched": true,
+      "Bytes": 471,
+      "SHA256": "c8ce3f9b11b8e66e531156e67368e734b8a81b66a316b5bd23cf0a52b0b5ea9a"
+    },
+    "normal-release-service-publish.zip": {
+      "Fetched": true,
+      "Bytes": 36371333,
+      "SHA256": "a62e6217de97a99d1169fd30ed58af9f8b003c0bc04193ab4281e48683e40a62"
+    },
+    "feature-debug-build.txt": {
+      "Fetched": true,
+      "Bytes": 2628,
+      "SHA256": "f2a85bc7c214caccfd68ca32207eaae25dc503bfd02aaae8551e9eccfae9c434"
+    },
+    "feature-debug-tests.txt": {
+      "Fetched": true,
+      "Bytes": 3288,
+      "SHA256": "951ee219e721b84d5a2f717abea589339f144887ca4429ba0cf59a2226bf4405"
+    },
+    "feature-debug-results/agent-tests.trx": {
+      "Fetched": true,
+      "Bytes": 541326,
+      "SHA256": "081c24ef8801e82c958d903836583d6f556cf3a99c1de2dc21836f08085f3ae4"
+    },
+    "feature-release-build.txt": {
+      "Fetched": true,
+      "Bytes": 2664,
+      "SHA256": "90ed468ae03bae0de7d475244539b5e7414942d7a625fea74f0879e74da8dded"
+    },
+    "feature-release-tests.txt": {
+      "Fetched": true,
+      "Bytes": 3336,
+      "SHA256": "843bd03c4e98e4849c64648d1f863f29cb940e42784bc820c9cf9b8e0c6850ca"
+    },
+    "feature-release-results/agent-tests.trx": {
+      "Fetched": true,
+      "Bytes": 544078,
+      "SHA256": "312502e6472bb67e5034256d8cf91be5d40580ebc425abf9f91c395202bbefda"
+    },
+    "feature-release-publish.txt": {
+      "Fetched": true,
+      "Bytes": 2772,
+      "SHA256": "a7582b990db6fc2d81a43832f80489b7a4a6c1306c2875ae249dd19edb0883ca"
+    },
+    "feature-release-package-manifest.txt": {
+      "Fetched": true,
+      "Bytes": 471,
+      "SHA256": "962f9d5e75eb486dba5631e2f7d705087d18b6c1a54f1892d3eb562877a99d52"
+    },
+    "feature-release-service-publish.zip": {
+      "Fetched": true,
+      "Bytes": 36413400,
+      "SHA256": "60d84a3bf4f0f5070b9bfccf7d31920332460eb4ea165fa2551738c74fe239e1"
+    }
+  },
+  "ServiceInstalled": false,
+  "RuntimeQualification": false,
+  "GitMutation": false
+}

@@ -1,0 +1,24 @@
+RunGuid=ff67c01b990e41ff9af89b5a9959757c
+ChildStarted=False
+AgentTouched=False
+Frozen=False
+Restored=False
+RecoveryRequired=True
+RecoveryReason=System.Management.Automation.RuntimeException: Inspector failed; PID=5588; ExitCode=3
+Task=SafeUpload-W01Phase-boot-start-w01-w01-b38b36-20261006c-ff67c01b990e41ff9af89b5a9959757c-AfterBoot;State=Ready
+W01Actors=0
+[
+    {
+        "Name":  "SafeUpload",
+        "State":  "Running",
+        "StartMode":  "Boot"
+    },
+    {
+        "Name":  "SafeUploadSectionFault",
+        "State":  "Running",
+        "StartMode":  "Manual"
+    }
+]
+GuestReportedUtc=2026-10-06T14:54:36.2734482Z
+FailedBootId=2026-10-06T14:50:37.5000000Z
+PreChildFailureExternalQuiescenceVerified=True

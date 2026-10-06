@@ -1,0 +1,28 @@
+{
+  "V8MintMetadataPath": "driver/evidence/2026-10-06/replacement-machine-key-v8-public-metadata.json",
+  "V8MintMetadataSha256": "51701037af41fcc19101e26dd2d632934d20b94190d42782474f68f05abdfc1e",
+  "V8PublicCerPath": "driver/evidence/2026-10-06/SafeUploadTest-Recovery-20261006-v8.cer",
+  "V8PublicCerSha256": "47e7069980a60cbcf4dff61f0f2d3f02edcf97c2976708790b49d03a09243b2a",
+  "HealthyParent": "/var/lib/libvirt/images/win10-clean.safeupload-signer-fallback-recovery3-20261006.qcow2",
+  "RetainedFailedInitialDisk": "/var/lib/libvirt/images/win10-clean.safeupload-signer-key-bearing-v8-retry1-20261006.qcow2",
+  "FreshRetryChild": "/var/lib/libvirt/images/win10-clean.safeupload-signer-key-bearing-v8-retry2-20261006.qcow2",
+  "PriorCheckpointManifestSha256": "6aca834b6bcbbd14c5c4c7df17f45c7e7b327ad8872fb956057511f45da8a143",
+  "TrustFailureCapture": {
+    "Path": "driver/evidence/2026-10-06/signing-builder-v9-failed-trust-root-readout.json",
+    "Sha256": "57600cdd67ae9fd5818596a36632934fd9c30b36158c43b4c5b519e772777179",
+    "Verdict": "FAILED_V9_TRUST_CAPTURE_PINNED",
+    "SixStoresExactlyMintBaseline": true,
+    "CurrentKeySddlExactlyMint": true,
+    "ArtifactSigningAttempted": false,
+    "UnderlyingTrustErrorCaptured": true,
+    "RawEvidencePaths": [
+      "driver/evidence/2026-10-06/signing-builder-trust-v9-20261006a.stdout.txt",
+      "driver/evidence/2026-10-06/signing-builder-trust-v9-20261006a.stderr.txt",
+      "driver/evidence/2026-10-06/signing-builder-v9-failed-trust-independent.stdout.json",
+      "driver/evidence/2026-10-06/signing-builder-v9-failed-trust-independent.stderr.txt",
+      "output/signing-builder-trust-v9-20261006a/root-run.json"
+    ],
+    "TrustAttemptScriptPath": "driver/evidence/2026-10-06/exact-mvp20261006admissioncap2-replacement-trust-builder-root-v9.ps1",
+    "TrustAttemptScriptSha256": "dd25f7ae5ac38db00f37da30e951f029ca1bef1e95f436e6f6c26d8b10cccc7a"
+  }
+}

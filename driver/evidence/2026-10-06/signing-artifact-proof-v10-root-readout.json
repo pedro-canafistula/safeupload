@@ -1,0 +1,29 @@
+{
+  "UTC": "2026-10-06T18:45:41.023835+00:00",
+  "Verdict": "READY4_SIGNED_COPY_AND_INDEPENDENT_SIGNATURE_VERIFIED",
+  "ArtifactWorkflowExitCode": 0,
+  "IndependentRemoteExitCode": 0,
+  "SignedArtifactSHA256": "30AE04A0033FE80577F608D1FE8E10A06CF2FAA2CA034F88D1B848C3630CB14D",
+  "UnsignedSHA256": "8C19FE05135E10AABACABC433F0DC5CB68A53CCBD7A3CC82052D0D9804586FC9",
+  "AuthenticodeStatus": "Valid",
+  "SignerThumbprint": "A6D6CE1AA28835D509160A80ADB7894869AADF38",
+  "UnsignedUnchanged": true,
+  "StoresMatchReviewedTrustBaseline": true,
+  "KeyAclMatchesMint": true,
+  "TestSigningNo": true,
+  "PrivateKeyExported": false,
+  "DriverInstalledOrLoaded": false,
+  "EvidencePins": {
+    "driver/evidence/2026-10-06/signing-artifact-proof-v10-20261006a.stdout.txt": "33b388baaebe500642f56fdebc9c191d2708645cdf83d4ad889e95e8cbde0b5e",
+    "driver/evidence/2026-10-06/signing-artifact-proof-v10-20261006a.stderr.txt": "a3639af5e23464fc391dae127fd5493f02c8178068a35866d9c7fdd35dcd623f",
+    "driver/evidence/2026-10-06/signing-artifact-proof-v10-post-sign-independent.stdout.json": "abbd29d85a527798722bf7c48432fff6165825651bf5510a32dc9e34b26a0282",
+    "driver/evidence/2026-10-06/signing-artifact-proof-v10-post-sign-independent.stderr.txt": "a3639af5e23464fc391dae127fd5493f02c8178068a35866d9c7fdd35dcd623f",
+    "output/signing-artifact-proof-v10-20261006a/root-run.json": "7652a3b1a0b2158b48e8a5e66b024f816864bc204a0fba92ea0cea4de0cd1d94",
+    "output/signing-artifact-proof-v10-20261006a/public-proof/owned-feature.signed.sys": "30ae04a0033fe80577f608d1fe8e10a06cf2faa2ca034f88d1b848c3630cb14d",
+    "output/signing-artifact-proof-v10-20261006a/public-proof/artifact-signature-proof.json": "f007f1bb9522ec38c7ea043b62546409aaa9ab6731fd331724a2ab396d7e710a",
+    "output/signing-artifact-proof-v10-20261006a/public-proof/artifact-signature-proof.sha256": "8e51d83991a97fe274ba30b1fe1138984a6a6e3b6cd1fa452a704c3aa35fb028",
+    "output/signing-artifact-proof-v10-20261006a/public-proof/cold-challenge-receipt.json": "3ec14f6af6883fae2fa51e4945da12a8390d12e599e384231c1c061bdc4ba93e",
+    "output/signing-artifact-proof-v10-20261006a/public-proof/builder-trust-receipt.json": "ac22de20b6845a524de4fbb157514171eef02ef5678384c5c36225aea8306daa",
+    "driver/evidence/2026-10-06/exact-mvp20261006ready4-artifact-sign-proof-v10-source-manifest.sha256": "1221ec75b5dbca229a86315cfef4725e85c18eb50e8288e9f139aae0f9b48916"
+  }
+}

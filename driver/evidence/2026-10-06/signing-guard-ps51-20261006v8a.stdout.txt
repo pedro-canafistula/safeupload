@@ -1,0 +1,11 @@
+PowerShellVersion=5.1.19041.6456
+exact-mvp20261006admissioncap2-replacement-create-machine-key-v8.ps1 ParseErrors=0
+exact-mvp20261006admissioncap2-signing-guard-fixture-v8.ps1 ParseErrors=0
+exact-mvp20261006admissioncap2-replacement-trust-builder-root-v8.ps1 ParseErrors=0
+exact-mvp20261006admissioncap2-key-bearing-cold-challenge-v8.ps1 ParseErrors=0
+signing-guard-helpers-v8.ps1 ParseErrors=0
+exact-mvp20261006admissioncap2-replacement-trust-debuggee-v8.ps1 ParseErrors=0
+exact-mvp20261006admissioncap2-replacement-trust-rollback-v8.ps1 ParseErrors=0
+{"Status":"V8_MEMORY_ONLY_FIXTURE_PASS","PowerShellVersion":"5.1.19041.6456","FileOrKeyOpened":false,"CertificateStoreRead":false,"FilesystemAclReadOrWritten":false,"TrustChanged":false,"VmContacted":false,"ExactAdministratorsOwnerAndCapturedCreatorOwnerSystemAdministratorsAclAccepted":true,"CapturedFullControlMaskOnlyAccepted":true,"UnapprovedOwnerSidRejectedEvenWithOtherwiseExactDacl":true,"TypedOwnerAndGroupSidsReadFromInMemoryDescriptor":true,"CreatorOwnerKeptAsLiteralProviderAce":true,"VikaOrUnexpectedPrincipalAndExtraAceRejected":true,"MissingDuplicateDenyInheritedOrInheritableAceRejected":true,"UnprotectedOrNoncanonicalAclRejected":true,"SddlTypedOwnerAndGroupSidOwnerGroupProtectionCanonicalityAndOrderedAceDriftRejected":true,"TypedEkuPositiveAccepted":true,"DuplicateExtensionsAndPurposesRejected":true,"MalformedEkuRejected":true}
+SelfCheckExit=0
+ValidationTempAbsent=True

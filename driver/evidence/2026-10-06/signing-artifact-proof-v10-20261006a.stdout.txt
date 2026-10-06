@@ -1,0 +1,6 @@
+exact-mvp20261006admissioncap2-key-bearing-cold-challenge-v8.ps1 ParseErrors=0
+signing-guard-helpers-v8.ps1 ParseErrors=0
+exact-mvp20261006ready4-artifact-sign-proof-v10.ps1 ParseErrors=0
+exact-mvp20261006admissioncap2-machine-root-trust-builder-root-v10-candidate.ps1 ParseErrors=0
+{"Status":"READY4_ARTIFACT_SIGNED_COPY_VALID","ProofGuid":"013EDB49-6C6F-4C50-85CB-568816EA49AA","PublicProofDirectory":"C:\\Users\\vika\\Documents\\SafeUploadArtifactProof-20261006-0587de21f61947eabe873c04d17f5179\\public\\013EDB49-6C6F-4C50-85CB-568816EA49AA","SignedArtifactSHA256":"30AE04A0033FE80577F608D1FE8E10A06CF2FAA2CA034F88D1B848C3630CB14D","ProofJsonSHA256":"F007F1BB9522EC38C7EA043B62546409AAA9AB6731FD331724A2AB396D7E710A","ProofManifestSHA256":"8E51D83991A97FE274BA30B1FE1138984A6A6E3B6CD1FA452A704C3AA35FB028","UnsignedArtifactSHA256":"8C19FE05135E10AABACABC433F0DC5CB68A53CCBD7A3CC82052D0D9804586FC9","SignToolExitCode":0,"AuthenticodeStatus":"Valid","AuthenticodeSignerThumbprint":"A6D6CE1AA28835D509160A80ADB7894869AADF38"}
+ArtifactProofExit=0

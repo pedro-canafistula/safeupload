@@ -174,13 +174,33 @@ function Inventory([string]$Label,[bool]$WithLower) {
     }
 }
 function Inspect([string]$Command,[string]$Leaf) {
-    # No process termination on deadline. A stalled inspector leaves the phase
-    # task alive; the host transport deadline records recovery without stopping it.
-    $p=Start-Process -FilePath $inputs.Inspector.Path -ArgumentList $Command -PassThru -RedirectStandardOutput (Join-Path $evidenceDirectory $Leaf) -RedirectStandardError (Join-Path $evidenceDirectory ($Leaf+'.err'))
+    # Record the exact launch and PID before the bounded wait. A timeout preserves
+    # the read-only Inspector and leaves its identity in both state and evidence.
+    if($null -eq $state.Inspectors){$state.Inspectors=@()}
+    $stdout=Join-Path $evidenceDirectory $Leaf;$stderr=Join-Path $evidenceDirectory ($Leaf+'.err')
+    $launchUtc=[DateTime]::UtcNow.ToString('o')
+    $launchLine='"'+$inputs.Inspector.Path+'" '+$Command
+    $p=Start-Process -FilePath $inputs.Inspector.Path -ArgumentList $Command -PassThru -RedirectStandardOutput $stdout -RedirectStandardError $stderr
     $null=$p.Handle
-    if(-not $p.WaitForExit(10000)){throw ('Inspector pending, PID='+$p.Id)}
-    if($p.ExitCode -ne 0){throw 'Inspector failed'}
-    return [IO.File]::ReadAllText((Join-Path $evidenceDirectory $Leaf))
+    $entry=@{ProcessId=[int]$p.Id;Executable=$inputs.Inspector.Path;ArgumentList=$Command;LaunchCommandLine=$launchLine;ObservedCommandLine=$null;CreationDate=$null;ParentProcessId=$null;LaunchUtc=$launchUtc;Stdout=$stdout;Stderr=$stderr;TimeoutSeconds=10;Status='Running';TimedOut=$false;ExitCode=$null}
+    $state.Inspectors=@($state.Inspectors)+@($entry)
+    try{
+        $row=Get-CimInstance Win32_Process -Filter ('ProcessId='+[int]$p.Id) -ErrorAction Stop
+        if($null -ne $row){$entry.ObservedCommandLine=$row.CommandLine;$entry.CreationDate=$row.CreationDate;$entry.ParentProcessId=$row.ParentProcessId}
+    }catch{$entry.ProcessReadbackError=$_.Exception.Message}
+    Save-State
+    Save-Json 'inspector-processes.json' @{Schema='Rv4W01InspectorProcesses/1';RunGuid=$RunGuid;Processes=@($state.Inspectors)}
+    if(-not $p.WaitForExit(10000)){
+        $entry.Status='Pending';$entry.TimedOut=$true;$entry.ObservedUtc=[DateTime]::UtcNow.ToString('o')
+        Save-State
+        Save-Json 'inspector-processes.json' @{Schema='Rv4W01InspectorProcesses/1';RunGuid=$RunGuid;Processes=@($state.Inspectors)}
+        throw ('Inspector pending; PID='+$p.Id+'; CommandLine='+$launchLine)
+    }
+    $p.Refresh();$entry.Status='Exited';$entry.ExitCode=[int]$p.ExitCode;$entry.ObservedUtc=[DateTime]::UtcNow.ToString('o')
+    Save-State
+    Save-Json 'inspector-processes.json' @{Schema='Rv4W01InspectorProcesses/1';RunGuid=$RunGuid;Processes=@($state.Inspectors)}
+    if($p.ExitCode -ne 0){throw ('Inspector failed; PID='+$p.Id+'; ExitCode='+$p.ExitCode)}
+    return [IO.File]::ReadAllText($stdout)
 }
 function Register-UnlimitedTask([string]$Name,[string]$Launcher) {
     if(Get-ScheduledTask -TaskName $Name -ErrorAction SilentlyContinue){throw 'Owned task collision'}
@@ -203,14 +223,54 @@ function Read-Receipt([string]$Name) {
 function Recovery([string]$Reason) {
     if($null -eq $state){$state=@{RunName=$RunName;RunGuid=$RunGuid}}
     $state.RecoveryRequired=$true;$state.RecoveryReason=$Reason
-    $procs=@(Get-CimInstance Win32_Process|Where-Object {$_.CommandLine -like ('*'+$RunGuid+'*') -or $_.Name -eq 'SafeUpload.Agent.Service.exe'}|Select-Object ProcessId,ParentProcessId,CreationDate,Name,CommandLine)
+    $state.RecoveryUtc=[DateTime]::UtcNow.ToString('o')
+    $stateSaveError=$null;$processInventoryError=$null;$sidecarPath=$null;$sidecarLength=$null;$sidecarSha256=$null;$sidecarAclVerified=$false
+    $sidecarErrors=New-Object 'System.Collections.Generic.List[string]';$originalLifecycleError=$null;$markerWriteError=$null
+    $procs=@();$inspectorRecords=@($state.Inspectors)
+    try{$procs=@(Get-CimInstance Win32_Process|Where-Object {$_.CommandLine -like ('*'+$RunGuid+'*') -or $_.Name -eq 'SafeUpload.Agent.Service.exe'}|Select-Object ProcessId,ParentProcessId,CreationDate,Name,CommandLine)}catch{$processInventoryError=$_.Exception.ToString()}
+    if(Test-Path -LiteralPath $stateDirectory){try{Save-State}catch{$stateSaveError=$_.Exception.ToString()}}
+    # Preserve a separate, uniquely named recovery lifecycle even if Finalize
+    # already removed the live state directory. The immutable original copy is
+    # retained as final-lifecycle.clixml; this sidecar records the failed state.
+    # Write-Bytes uses CreateNew, WriteThrough and Flush(true); the evidence
+    # directory already has a private SYSTEM/Administrators-only ACL.
+    try{
+        $sidecarLeaf='recovery-lifecycle-'+$RunGuid+'-'+[guid]::NewGuid().ToString('N')+'.clixml'
+        $sidecarPath=Join-Path $evidenceDirectory $sidecarLeaf
+        $serialized=[Management.Automation.PSSerializer]::Serialize($state,32)
+        $sidecarBytes=[Text.UTF8Encoding]::new($false).GetBytes($serialized)
+        Write-Bytes $sidecarPath $sidecarBytes -New
+    }catch{[void]$sidecarErrors.Add(('Serialize/CreateNew/Flush: '+$_.Exception.ToString()))}
+    if($sidecarPath -and (Test-Path -LiteralPath $sidecarPath)){
+        try{Set-PrivateAcl $sidecarPath $false;$sidecarAclVerified=$true}
+        catch{[void]$sidecarErrors.Add(('Private ACL readback: '+$_.Exception.ToString()))}
+        try{$sidecarLength=(Get-Item -LiteralPath $sidecarPath -ErrorAction Stop).Length}
+        catch{[void]$sidecarErrors.Add(('Byte length readback: '+$_.Exception.ToString()))}
+        try{$sidecarSha256=(Get-FileHash -LiteralPath $sidecarPath -Algorithm SHA256 -ErrorAction Stop).Hash}
+        catch{[void]$sidecarErrors.Add(('SHA-256 readback: '+$_.Exception.ToString()))}
+    }
     $lower='Unknown: child may own the sole port; parent does not connect while pending'
     $generation='Unknown';$childRecovery=$null
     foreach($leaf in @('recovery-required.json','disarm-recovery-required.json','rv4-w01-diagnostic.json')){
         $path=Join-Path $childEvidence $leaf
         if(Test-Path -LiteralPath $path){try{$childRecovery=[IO.File]::ReadAllText($path)|ConvertFrom-Json;$arms=@($childRecovery.Events|Where-Object Name -eq 'armed');if($arms.Count -eq 1){$generation=$arms[0].Generation};if($null -ne $childRecovery.LastLowerStatus){$lower=$childRecovery.LastLowerStatus}}catch{}}
     }
-    if(Test-Path -LiteralPath $stateDirectory){Save-State};Save-Json 'RecoveryRequired.json' @{RecoveryRequired=$true;Reason=$Reason;RunName=$RunName;RunGuid=$RunGuid;Pids=$procs;ArmGeneration=$generation;LowerStatus=$lower;ChildRecovery=$childRecovery;Checkpoint=$CheckpointName;Overlay=$CheckpointOverlay;Utc=[DateTime]::UtcNow.ToString('o');Verdict='W01/A05 INCONCLUSIVE';Phase4='NOT_QUALIFIED'}
+    $originalLifecycle=$null;$originalLifecyclePath=Join-Path $evidenceDirectory 'final-lifecycle.clixml'
+    if(Test-Path -LiteralPath $originalLifecyclePath){
+        try{$originalLifecycle=@{Path='final-lifecycle.clixml';Length=(Get-Item -LiteralPath $originalLifecyclePath -ErrorAction Stop).Length;Sha256=(Get-FileHash -LiteralPath $originalLifecyclePath -Algorithm SHA256 -ErrorAction Stop).Hash}}
+        catch{$originalLifecycleError=$_.Exception.ToString()}
+    }
+    $sidecarError=if($sidecarErrors.Count){$sidecarErrors -join ' | '}else{$null}
+    $marker=@{RecoveryRequired=$true;Reason=$Reason;RunName=$RunName;RunGuid=$RunGuid;Pids=$procs;Inspectors=$inspectorRecords;ArmGeneration=$generation;LowerStatus=$lower;ChildRecovery=$childRecovery;Checkpoint=$CheckpointName;Overlay=$CheckpointOverlay;Utc=[DateTime]::UtcNow.ToString('o');StateSaveError=$stateSaveError;ProcessInventoryError=$processInventoryError;RecoveryLifecycle=$(if($sidecarPath){@{Path=(Split-Path -Leaf $sidecarPath);Exists=(Test-Path -LiteralPath $sidecarPath);Length=$sidecarLength;Sha256=$sidecarSha256;CreateNew=$true;WriteThrough=$true;FlushToDisk=$true;PrivateAclVerified=$sidecarAclVerified}}else{$null});RecoveryLifecyclePath=$(if($sidecarPath){Split-Path -Leaf $sidecarPath}else{$null});RecoveryLifecycleError=$sidecarError;OriginalLifecycle=$originalLifecycle;OriginalLifecycleError=$originalLifecycleError;Verdict='W01/A05 INCONCLUSIVE';Phase4='NOT_QUALIFIED'}
+    # Always attempt the canonical latch after independently capturing every
+    # preceding error. If that path itself is unavailable, retain a unique
+    # recovery marker rather than allowing a second Recovery call to overwrite it.
+    try{Write-Text (Join-Path $evidenceDirectory 'RecoveryRequired.json') ($marker|ConvertTo-Json -Depth 32)}
+    catch{
+        $markerWriteError=$_.Exception.ToString();$marker.RecoveryMarkerError=$markerWriteError
+        try{Write-Text (Join-Path $evidenceDirectory ('RecoveryRequired-'+$RunGuid+'-'+[guid]::NewGuid().ToString('N')+'.json')) ($marker|ConvertTo-Json -Depth 32) -New}
+        catch{$markerWriteError+=' | fallback marker: '+$_.Exception.ToString()}
+    }
     'GUEST_RECOVERY_REQUIRED=True';'W01/A05 INCONCLUSIVE';'Phase4=NOT_QUALIFIED'
 }
 function Start-PolicyAgent {
@@ -240,6 +300,9 @@ function Test-TerminalState {
         $done=[IO.File]::ReadAllText((Join-Path $childEvidence 'child-exited.json'))|ConvertFrom-Json
         $d=[IO.File]::ReadAllText((Join-Path $childEvidence 'rv4-w01-diagnostic.json'))|ConvertFrom-Json
         if($done.RunGuid -cne $RunGuid -or $done.BootId -cne (Boot-Id) -or $done.Exited -ne $true -or $d.RunGuid -cne $RunGuid -or $d.RecoveryRequired -ne $false -or $d.WriterExited -ne $true -or $null -eq $d.WriterPid){return $false}
+        $donePidField=Get-W01FieldValue $done 'Pid';$writerPidField=Get-W01FieldValue $d 'WriterPid'
+        $donePidValue=if($donePidField.Present){ConvertTo-W01Integer $donePidField.Value}else{$null};$writerPidValue=if($writerPidField.Present){ConvertTo-W01Integer $writerPidField.Value}else{$null}
+        if($null -eq $donePidValue -or -not $donePidValue.Valid -or $donePidValue.Value -lt 1 -or $donePidValue.Value -gt 2147483647 -or $null -eq $writerPidValue -or -not $writerPidValue.Valid -or $writerPidValue.Value -lt 1 -or $writerPidValue.Value -gt 2147483647){return $false}
         if(Get-Process -Id ([int]$done.Pid) -ErrorAction SilentlyContinue){return $false}
         if(Get-Process -Id ([int]$d.WriterPid) -ErrorAction SilentlyContinue){return $false}
         if((Test-Path -LiteralPath (Join-Path $receiptRoot 'recovery-required.receipt')) -or (Test-Path -LiteralPath (Join-Path $childEvidence 'recovery-required.json')) -or (Test-Path -LiteralPath (Join-Path $childEvidence 'disarm-recovery-required.json'))){return $false}
@@ -257,6 +320,192 @@ function Test-TerminalState {
         Save-Json 'terminal-observation-error.json' @{Error=$_.Exception.ToString()}
         return $false
     }
+}
+function Get-W01FieldValue([object]$Object,[string]$Name) {
+    if($null -eq $Object){return [pscustomobject]@{Present=$false;Value=$null}}
+    if($Object -is [System.Collections.IDictionary]){
+        foreach($key in $Object.Keys){if([string]$key -ceq $Name){return [pscustomobject]@{Present=$true;Value=$Object[$key]}}}
+        return [pscustomobject]@{Present=$false;Value=$null}
+    }
+    $property=$Object.PSObject.Properties[$Name]
+    if($null -eq $property){return [pscustomobject]@{Present=$false;Value=$null}}
+    return [pscustomobject]@{Present=$true;Value=$property.Value}
+}
+function ConvertTo-W01Integer([object]$Value) {
+    if($null -eq $Value){return [pscustomobject]@{Valid=$false;Value=$null}}
+    $text=$null
+    if($Value -is [string]){
+        if($Value -notmatch '^-?(0|[1-9][0-9]*)$'){return [pscustomobject]@{Valid=$false;Value=$null}}
+        $text=$Value
+    }elseif($Value -is [decimal]){
+        $unsignedMaximum=[decimal]::Parse('18446744073709551615',[Globalization.CultureInfo]::InvariantCulture)
+        if($Value -lt [decimal]::Zero -or $Value -gt $unsignedMaximum -or $Value -ne [decimal]::Truncate($Value)){return [pscustomobject]@{Valid=$false;Value=$null}}
+        return [pscustomobject]@{Valid=$true;Value=$Value}
+    }else{
+        $typeName=$Value.GetType().FullName
+        if(@('System.Byte','System.SByte','System.Int16','System.UInt16','System.Int32','System.UInt32','System.Int64','System.UInt64') -notcontains $typeName){return [pscustomobject]@{Valid=$false;Value=$null}}
+        $text=[Convert]::ToString($Value,[Globalization.CultureInfo]::InvariantCulture)
+    }
+    $number=[decimal]0
+    $valid=[decimal]::TryParse($text,[Globalization.NumberStyles]::Integer,[Globalization.CultureInfo]::InvariantCulture,[ref]$number)
+    return [pscustomobject]@{Valid=$valid;Value=$(if($valid){$number}else{$null})}
+}
+function ConvertTo-W01Token([object]$Value) {
+    if($null -eq $Value){return [pscustomobject]@{Valid=$false;Value=$null}}
+    if($Value -is [string]){
+        if($Value.Length -eq 0){return [pscustomobject]@{Valid=$false;Value=$null}}
+        return [pscustomobject]@{Valid=$true;Value=$Value}
+    }
+    $parsed=ConvertTo-W01Integer $Value
+    if(-not $parsed.Valid){return [pscustomobject]@{Valid=$false;Value=$null}}
+    return [pscustomobject]@{Valid=$true;Value=[Convert]::ToString($Value,[Globalization.CultureInfo]::InvariantCulture)}
+}
+function Get-W01DiagnosticDisposition([object]$Diagnostic,[object]$ChildExit,[object]$LauncherEvidence,[object]$Opened,[object]$Issued,[object]$Completed,[object]$Closed,[string]$ExpectedRunGuid,[string]$ExpectedBootId,[string]$ExpectedFileIdHex,[string]$ExpectedVolumeSerialHex) {
+    # Pure predicate: all file, task and receipt reads are performed by the caller.
+    # Required fields are presence/type checked before numeric conversion; this
+    # function never turns a missing/null field into a default zero.
+    $reasons=New-Object 'System.Collections.Generic.List[string]'
+    $checkText={param($ReasonList,$Object,$Name,$Expected,$Label)
+        $field=Get-W01FieldValue $Object $Name
+        if(-not $field.Present -or $null -eq $field.Value -or $field.Value -isnot [string] -or $field.Value -cne $Expected){[void]$ReasonList.Add($Label)}
+    }
+    $checkBoolean={param($ReasonList,$Object,$Name,$Expected,$Label)
+        $field=Get-W01FieldValue $Object $Name
+        if(-not $field.Present -or $field.Value -isnot [bool] -or $field.Value -ne $Expected){[void]$ReasonList.Add($Label)}
+    }
+    $checkInteger={param($ReasonList,$Object,$Name,$Expected,$Minimum,$Maximum,$Label)
+        $field=Get-W01FieldValue $Object $Name
+        $parsed=if($field.Present){ConvertTo-W01Integer $field.Value}else{$null}
+        if(-not $field.Present -or $null -eq $field.Value -or $null -eq $parsed -or -not $parsed.Valid -or $parsed.Value -lt $Minimum -or $parsed.Value -gt $Maximum -or ($null -ne $Expected -and $parsed.Value -ne [decimal]$Expected)){[void]$ReasonList.Add($Label)}
+    }
+    if($null -eq $Diagnostic){[void]$reasons.Add('child diagnostic missing')}
+    if($null -eq $ChildExit){[void]$reasons.Add('child exit receipt missing')}
+    if($null -eq $LauncherEvidence){[void]$reasons.Add('launcher task evidence missing')}
+    if($null -eq $Opened){[void]$reasons.Add('opened receipt missing')}
+    if($null -eq $Issued){[void]$reasons.Add('issued receipt missing')}
+    if($null -eq $Completed){[void]$reasons.Add('completed receipt missing')}
+    if($null -eq $Closed){[void]$reasons.Add('closed receipt missing')}
+    if($ExpectedRunGuid -notmatch '^[a-f0-9]{32}$'){[void]$reasons.Add('expected run identity invalid')}
+    if([string]::IsNullOrWhiteSpace($ExpectedBootId)){[void]$reasons.Add('expected boot identity missing')}
+    if($ExpectedFileIdHex -notmatch '^[A-Fa-f0-9]{32}$'){[void]$reasons.Add('expected file identity invalid')}
+    if($ExpectedVolumeSerialHex -notmatch '^[A-Fa-f0-9]{16}$'){[void]$reasons.Add('expected volume identity invalid')}
+
+    & $checkText $reasons $Diagnostic 'Schema' 'Rv4W01Diagnostic/1' 'child diagnostic schema missing/foreign'
+    & $checkText $reasons $Diagnostic 'RunGuid' $ExpectedRunGuid 'child diagnostic run identity mismatch'
+    & $checkText $reasons $Diagnostic 'BootId' $ExpectedBootId 'child diagnostic boot identity mismatch'
+    & $checkText $reasons $Diagnostic 'Verdict' 'INCONCLUSIVE' 'child diagnostic verdict changed'
+    & $checkBoolean $reasons $Diagnostic 'NotVmQualification' $true 'child qualification boundary missing'
+    & $checkBoolean $reasons $Diagnostic 'RecoveryRequired' $false 'child recovery state incomplete'
+    & $checkBoolean $reasons $Diagnostic 'WriterExited' $true 'writer exit evidence missing'
+    & $checkInteger $reasons $Diagnostic 'WriterPid' $null 1 2147483647 'writer PID missing/invalid'
+    & $checkText $reasons $ChildExit 'RunGuid' $ExpectedRunGuid 'child exit run identity mismatch'
+    & $checkText $reasons $ChildExit 'BootId' $ExpectedBootId 'child exit boot identity mismatch'
+    & $checkBoolean $reasons $ChildExit 'Exited' $true 'child launcher exit evidence missing'
+    & $checkInteger $reasons $ChildExit 'Pid' $null 1 2147483647 'child launcher PID missing/invalid'
+    & $checkInteger $reasons $ChildExit 'ExitCode' 0 0 0 'child launcher exit code is not zero'
+    & $checkText $reasons $LauncherEvidence 'Schema' 'Rv4W01LauncherEvidence/1' 'launcher evidence schema missing/foreign'
+    & $checkText $reasons $LauncherEvidence 'TaskName' ('SafeUpload-StagedTest-W01-'+$ExpectedRunGuid) 'launcher task identity mismatch'
+    & $checkText $reasons $LauncherEvidence 'TaskState' 'Ready' 'launcher task is not terminal'
+    & $checkInteger $reasons $LauncherEvidence 'TaskLastResult' 0 0 0 'launcher task result is not zero'
+    & $checkBoolean $reasons $LauncherEvidence 'LauncherErrorPresent' $false 'launcher error receipt present'
+    foreach($receipt in @(@('opened',$Opened),@('issued',$Issued),@('completed',$Completed),@('closed',$Closed))){
+        & $checkText $reasons $receipt[1] 'Schema' 'Rv4W01StimulusDraft/1' ('foreign receipt schema: '+$receipt[0])
+        & $checkText $reasons $receipt[1] 'RunGuid' $ExpectedRunGuid ('foreign receipt run identity: '+$receipt[0])
+    }
+    & $checkText $reasons $Opened 'FileId128Hex' $ExpectedFileIdHex 'opened file identity mismatch'
+    & $checkText $reasons $Opened 'VolumeSerialHex' $ExpectedVolumeSerialHex 'opened volume identity mismatch'
+    & $checkText $reasons $Opened 'Offset' '0' 'opened offset mismatch'
+    & $checkInteger $reasons $Opened 'ProcessId' $null 1 2147483647 'opened writer PID missing/invalid'
+    & $checkInteger $reasons $Opened 'Length' 4096 4096 4096 'opened length mismatch'
+    & $checkText $reasons $Issued 'WriteCall' 'PENDING' 'write was not natively pending'
+    & $checkInteger $reasons $Issued 'WriteCallError' 997 997 997 'pending write error mismatch'
+    & $checkText $reasons $Issued 'Offset' '0' 'issued offset mismatch'
+    & $checkInteger $reasons $Issued 'Length' 4096 4096 4096 'issued length mismatch'
+    $payload=Get-W01FieldValue $Issued 'PayloadSha256'
+    if(-not $payload.Present -or $null -eq $payload.Value -or $payload.Value -isnot [string] -or $payload.Value -notmatch '^[A-Fa-f0-9]{64}$'){[void]$reasons.Add('issued payload digest missing/invalid')}
+    & $checkText $reasons $Completed 'CompletionSource' 'IOCP' 'completion source is not IOCP'
+    & $checkText $reasons $Completed 'Success' 'True' 'IOCP success is not true'
+    & $checkInteger $reasons $Completed 'NativeError' 0 0 0 'IOCP native error missing/nonzero'
+    & $checkInteger $reasons $Completed 'Bytes' 4096 4096 4096 'IOCP byte count missing/incomplete'
+    & $checkText $reasons $Completed 'DeadlineExceeded' 'False' 'IOCP deadline status missing/failed'
+    & $checkText $reasons $Closed 'CloseRequested' 'True' 'writer close request missing'
+    & $checkText $reasons $Closed 'NativeCloseSucceeded' 'True' 'native writer close failed'
+    & $checkText $reasons $Closed 'WasNativePending' 'True' 'writer was not pending at close'
+
+    $errorField=Get-W01FieldValue $Diagnostic 'Errors'
+    if(-not $errorField.Present -or $null -eq $errorField.Value -or $errorField.Value -isnot [System.Array] -or $errorField.Value.Count -ne 0){[void]$reasons.Add('child diagnostic error inventory missing/nonempty')}
+    $eventField=Get-W01FieldValue $Diagnostic 'Events';$events=@();$eventByName=@{}
+    if(-not $eventField.Present -or $null -eq $eventField.Value -or $eventField.Value -isnot [System.Array]){[void]$reasons.Add('child event inventory missing/invalid')}
+    else{$events=$eventField.Value}
+    $expectedEvents=@('baseline','armed','activating','issued','held','cleanup-overlap','release','lower-post','after-raw','capture-complete')
+    foreach($name in $expectedEvents){
+        $matchedEvents=@()
+        foreach($event in $events){$eventName=Get-W01FieldValue $event 'Name';if($eventName.Present -and $eventName.Value -is [string] -and $eventName.Value -ceq $name){$matchedEvents+=@($event)}}
+        if($matchedEvents.Count -ne 1){[void]$reasons.Add(('expected child event missing/duplicate: '+$name))}else{$eventByName[$name]=$matchedEvents[0]}
+    }
+    if($events.Count -ne $expectedEvents.Count){[void]$reasons.Add('unexpected child event inventory length')}
+    if($eventByName.ContainsKey('capture-complete')){& $checkText $reasons $eventByName['capture-complete'] 'Note' 'Host must run exact W parser and cross-check lower, IOCP, raw, control and restoration; no local PASS' 'capture-complete producer note missing/changed'}
+    if($eventByName.ContainsKey('issued')){
+        $eventPayload=Get-W01FieldValue $eventByName['issued'] 'PayloadSha256'
+        if(-not $payload.Present -or -not $eventPayload.Present -or $null -eq $payload.Value -or $null -eq $eventPayload.Value -or $payload.Value -isnot [string] -or $eventPayload.Value -isnot [string] -or $payload.Value -cne $eventPayload.Value){[void]$reasons.Add('issued child event/receipt payload identity mismatch')}
+    }
+    if($eventByName.ContainsKey('cleanup-overlap')){
+        & $checkInteger $reasons $eventByName['cleanup-overlap'] 'H' 0 0 0 'cleanup H count mismatch'
+        & $checkInteger $reasons $eventByName['cleanup-overlap'] 'W' $null 1 ([decimal]::MaxValue) 'cleanup W count missing/zero'
+    }
+    if($eventByName.ContainsKey('held')){
+        & $checkText $reasons $eventByName['held'] 'Generation' (Get-W01FieldValue $eventByName['armed'] 'Generation').Value 'held arm generation mismatch'
+        & $checkText $reasons $eventByName['held'] 'FileObject' (Get-W01FieldValue $eventByName['armed'] 'FileObject').Value 'held file object mismatch'
+        & $checkText $reasons $eventByName['held'] 'Offset' '0' 'held offset mismatch'
+        & $checkInteger $reasons $eventByName['held'] 'Length' 4096 4096 4096 'held length mismatch'
+        & $checkInteger $reasons $eventByName['held'] 'IrpFlags' $null 0 2147483647 'held IRP flags missing/invalid'
+        $irp=Get-W01FieldValue $eventByName['held'] 'IrpFlags';$irpValue=if($irp.Present){ConvertTo-W01Integer $irp.Value}else{$null}
+        if($null -eq $irpValue -or -not $irpValue.Valid -or $irpValue.Value -gt 2147483647 -or (([long]$irpValue.Value -band 1) -eq 0) -or (([long]$irpValue.Value -band 2) -ne 0)){[void]$reasons.Add('held IRP flags are not exact noncached/nonpaging')}
+    }
+    if($eventByName.ContainsKey('release')){
+        $armedGeneration=Get-W01FieldValue $eventByName['armed'] 'Generation';$releaseGeneration=Get-W01FieldValue $eventByName['release'] 'Generation'
+        $armedToken=if($armedGeneration.Present){ConvertTo-W01Token $armedGeneration.Value}else{$null};$releaseToken=if($releaseGeneration.Present){ConvertTo-W01Token $releaseGeneration.Value}else{$null}
+        if($null -eq $armedToken -or -not $armedToken.Valid -or $null -eq $releaseToken -or -not $releaseToken.Valid -or $armedToken.Value -cne $releaseToken.Value){[void]$reasons.Add('release arm generation mismatch')}
+    }
+    if($eventByName.ContainsKey('lower-post')){
+        & $checkInteger $reasons $eventByName['lower-post'] 'Status' 0 0 0 'lower post status missing/nonzero'
+        & $checkInteger $reasons $eventByName['lower-post'] 'Information' 4096 4096 4096 'lower post byte count missing/incomplete'
+        & $checkInteger $reasons $eventByName['lower-post'] 'PostFlags' 0 0 0 'lower post was draining'
+        & $checkInteger $reasons $eventByName['lower-post'] 'CallbackData' $null 1 ([decimal]::MaxValue) 'lower post callback identity missing/zero'
+    }
+    if($eventByName.ContainsKey('after-raw')){
+        & $checkText $reasons $eventByName['after-raw'] 'Status' 'OK' 'post-write raw capture incomplete'
+        $embedded=Get-W01FieldValue $eventByName['after-raw'] 'Completion'
+        if(-not $embedded.Present -or $null -eq $embedded.Value){[void]$reasons.Add('after-raw IOCP completion copy missing')}
+        else{foreach($fieldName in @('Schema','RunGuid','Utc','CompletionSource','Success','NativeError','Bytes','DeadlineExceeded')){
+            $actual=Get-W01FieldValue $Completed $fieldName;$copy=Get-W01FieldValue $embedded.Value $fieldName
+            if(-not $actual.Present -or -not $copy.Present -or $null -eq $actual.Value -or $null -eq $copy.Value -or [string]$actual.Value -cne [string]$copy.Value){[void]$reasons.Add(('after-raw IOCP field differs/missing: '+$fieldName))}
+        }}
+    }
+    $terminalField=Get-W01FieldValue $Diagnostic 'LowerDisarmTerminal';$terminal=if($terminalField.Present){$terminalField.Value}else{$null}
+    if(-not $terminalField.Present -or $null -eq $terminal){[void]$reasons.Add('child lower disarm terminal receipt missing')}
+    & $checkInteger $reasons $terminal 'CurrentHeld' 0 0 0 'terminal held count nonzero/missing'
+    & $checkInteger $reasons $terminal 'Mode' 0 0 0 'terminal mode nonzero/missing'
+    & $checkInteger $reasons $terminal 'ArmedFileObject' 0 0 0 'terminal armed file object nonzero/missing'
+    & $checkInteger $reasons $terminal 'LowerPosts' 1 1 1 'terminal lower post count mismatch'
+    & $checkInteger $reasons $terminal 'LowerStatus' 0 0 0 'terminal lower status mismatch'
+    & $checkInteger $reasons $terminal 'LowerInformation' 4096 4096 4096 'terminal lower information mismatch'
+    & $checkInteger $reasons $terminal 'LowerCallbackData' $null 1 ([decimal]::MaxValue) 'terminal lower callback identity missing/zero'
+    & $checkInteger $reasons $terminal 'TimedOut' 0 0 0 'terminal lower timeout count nonzero/missing'
+    & $checkInteger $reasons $terminal 'Canceled' 0 0 0 'terminal lower cancel count nonzero/missing'
+    & $checkInteger $reasons $terminal 'SyntheticFailures' 0 0 0 'terminal synthetic failure count nonzero/missing'
+    $armedGeneration=Get-W01FieldValue $eventByName['armed'] 'Generation';$heldGeneration=Get-W01FieldValue $eventByName['held'] 'Generation';$terminalGeneration=Get-W01FieldValue $terminal 'ArmGeneration'
+    $armedToken=if($armedGeneration.Present){ConvertTo-W01Token $armedGeneration.Value}else{$null};$heldToken=if($heldGeneration.Present){ConvertTo-W01Token $heldGeneration.Value}else{$null};$terminalToken=if($terminalGeneration.Present){ConvertTo-W01Token $terminalGeneration.Value}else{$null}
+    if($null -eq $armedToken -or -not $armedToken.Valid -or $null -eq $heldToken -or -not $heldToken.Valid -or $null -eq $terminalToken -or -not $terminalToken.Valid -or $armedToken.Value -cne $heldToken.Value -or $armedToken.Value -cne $terminalToken.Value){[void]$reasons.Add('terminal arm generation mismatch')}
+    $armedFile=Get-W01FieldValue $eventByName['armed'] 'FileObject';$heldFile=Get-W01FieldValue $eventByName['held'] 'FileObject';$armedFileToken=if($armedFile.Present){ConvertTo-W01Token $armedFile.Value}else{$null};$heldFileToken=if($heldFile.Present){ConvertTo-W01Token $heldFile.Value}else{$null}
+    if($null -eq $armedFileToken -or -not $armedFileToken.Valid -or $null -eq $heldFileToken -or -not $heldFileToken.Valid -or $armedFileToken.Value -cne $heldFileToken.Value){[void]$reasons.Add('armed/held file object mismatch')}
+    $writerPid=Get-W01FieldValue $Diagnostic 'WriterPid';$openedPid=Get-W01FieldValue $Opened 'ProcessId'
+    $writerPidValue=if($writerPid.Present){ConvertTo-W01Integer $writerPid.Value}else{$null};$openedPidValue=if($openedPid.Present){ConvertTo-W01Integer $openedPid.Value}else{$null}
+    if($null -eq $writerPidValue -or -not $writerPidValue.Valid -or $null -eq $openedPidValue -or -not $openedPidValue.Valid -or $writerPidValue.Value -ne $openedPidValue.Value){[void]$reasons.Add('child writer/opened process identity mismatch')}
+    $postCallback=Get-W01FieldValue $eventByName['lower-post'] 'CallbackData';$terminalCallback=Get-W01FieldValue $terminal 'LowerCallbackData'
+    $postCallbackValue=if($postCallback.Present){ConvertTo-W01Integer $postCallback.Value}else{$null};$terminalCallbackValue=if($terminalCallback.Present){ConvertTo-W01Integer $terminalCallback.Value}else{$null}
+    if($null -eq $postCallbackValue -or -not $postCallbackValue.Valid -or $null -eq $terminalCallbackValue -or -not $terminalCallbackValue.Valid -or $postCallbackValue.Value -ne $terminalCallbackValue.Value){[void]$reasons.Add('lower post/terminal callback identity mismatch')}
+    return [pscustomobject]@{Completed=($reasons.Count -eq 0);Reason=$(if($reasons.Count -eq 0){'None'}else{$reasons -join '; '})}
 }
 function Freeze-Artifacts {
     $frozen=Join-Path $evidenceDirectory 'frozen';New-Item -ItemType Directory -Path $frozen|Out-Null
@@ -603,6 +852,8 @@ if($Phase -eq 'Prepare'){
         $vg=[regex]::Match($state.VolumeGuid,'\{[0-9a-fA-F-]+\}').Value
         $vs=@($volumeStatus.admissionVolumes|Where-Object {$_.volumeGuidStatus -eq 0 -and ([string]$_.volumeGuid).ToLowerInvariant().Contains($vg.ToLowerInvariant())})
         if($vg.Length -eq 0 -or $vs.Count -ne 1 -or $volumeStatus.bootPolicyState -ne 1 -or $volumeStatus.writerGlobalUnknown -ne 0 -or $vs[0].trustState -ne 3 -or $vs[0].canaryState -ne 2 -or $vs[0].contextStatus -ne 0 -or ($vs[0].setupFlags -band 4) -eq 0 -or $vs[0].instanceWritersUntracked -ne 0 -or $vs[0].instanceRegistryUnknownReasons -cne '0x00000000'){throw 'Boot volume trust/readiness/Unknown not proven; no child/write'}
+        # The explicit admission probe requires the observer trace gate to be enabled.
+        $null=Inspect '--admission-trace-enable' 'trace-enable-control.json'
         $null=Inspect ('--admission-probe "'+$control+'"') 'protected-control-probe.json'
         $snapshot=(Inspect '--activating-status' 'protected-control-status.json')|ConvertFrom-Json
         $entries=@($snapshot.entries|Where-Object fileId -ceq $state.ControlIdentity.FileIdHex)
@@ -639,9 +890,30 @@ if($Phase -eq 'Prepare'){
             Start-Sleep -Milliseconds 250
         }while([DateTime]::UtcNow -lt $deadline)
         if(-not(Test-TerminalState)){Recovery 'Completion deadline: diagnostic/writer/lower terminal state pending or unknown';return}
+        # Safe terminal state is an independent restoration gate. Build a
+        # separate diagnostic disposition; missing/failed diagnostic evidence
+        # makes CASE incomplete but does not prevent safe restoration.
+        $done=$null;$diag=$null;$launcherEvidence=$null;$opened=$null;$issued=$null;$completed=$null;$closed=$null;$readError=$null
+        try{
+            $done=[IO.File]::ReadAllText((Join-Path $childEvidence 'child-exited.json'))|ConvertFrom-Json
+            $diag=[IO.File]::ReadAllText((Join-Path $childEvidence 'rv4-w01-diagnostic.json'))|ConvertFrom-Json
+            $opened=Read-Receipt 'opened';$issued=Read-Receipt 'issued';$completed=Read-Receipt 'completed';$closed=Read-Receipt 'closed'
+            $taskInfo=Get-ScheduledTaskInfo -TaskName $childTask -ErrorAction Stop
+            $task=Get-ScheduledTask -TaskName $childTask -ErrorAction Stop
+            $launcherEvidence=[ordered]@{Schema='Rv4W01LauncherEvidence/1';TaskName=$childTask;TaskState=[string]$task.State;TaskLastResult=$taskInfo.LastTaskResult;LauncherErrorPresent=[bool](Test-Path -LiteralPath (Join-Path $childEvidence 'child-error.txt'))}
+        }catch{$readError=$_.Exception.ToString()}
+        if($readError){$outcome=[pscustomobject]@{Completed=$false;Reason=('diagnostic evidence read incomplete: '+$readError)}}
+        else{
+            $expectedBoot=Boot-Id
+            $outcome=Get-W01DiagnosticDisposition $diag $done $launcherEvidence $opened $issued $completed $closed $RunGuid $expectedBoot $state.TargetIdentity.FileIdHex $state.TargetIdentity.VolumeSerialHex
+        }
+        $state.DiagnosticCompleted=[bool]$outcome.Completed;$state.DiagnosticFailureReason=[string]$outcome.Reason;Save-State
+        Save-Json 'diagnostic-disposition.json' @{RunGuid=$RunGuid;DiagnosticCompleted=$state.DiagnosticCompleted;Reason=$state.DiagnosticFailureReason;ChildExit=$done;LauncherEvidence=$launcherEvidence;ChildDiagnostic=$diag;Opened=$opened;Issued=$issued;Completed=$completed;Closed=$closed;LowerTerminal=$(if($diag){$diag.LowerDisarmTerminal}else{$null});EvidenceReadError=$readError}
         Freeze-Artifacts
         Restore-TerminalRun
-        'W01_CASE_COMPLETED=True';'W01_RESTORED=True';'W01/A05 INCONCLUSIVE';'Phase4=NOT_QUALIFIED'
+        if($state.DiagnosticCompleted){'W01_CASE_COMPLETED=True'}
+        ('W01_DIAGNOSTIC_COMPLETED='+[string]$state.DiagnosticCompleted)
+        'W01_RESTORED=True';'W01/A05 INCONCLUSIVE';'Phase4=NOT_QUALIFIED'
     }catch{Recovery ($_.Exception.ToString());return}
 }else{
     $state=[Management.Automation.PSSerializer]::Deserialize([IO.File]::ReadAllText($statePath))
@@ -667,13 +939,15 @@ if($Phase -eq 'Prepare'){
         foreach($name in $mv.Keys){if($mv[$name].Kind -cne $state.OriginalMemoryVerifier[$name].Kind -or ($mv[$name].Value|ConvertTo-Json -Compress) -cne ($state.OriginalMemoryVerifier[$name].Value|ConvertTo-Json -Compress)){throw 'Persisted Verifier values differ'}}
         if((Get-SecuritySddl $installedDriver $false) -cne $state.OriginalDriverSddl -or (Get-SecuritySddl $policyPath $false) -cne $state.OriginalPolicyFileSddl -or (Get-SecuritySddl (Split-Path -Parent $policyPath) $true) -cne $state.OriginalPolicyDirectorySddl){throw 'Original ACL not restored'}
         Copy-Item -LiteralPath $statePath -Destination (Join-Path $evidenceDirectory 'final-lifecycle.clixml')
+        $lifecycleHash=(Get-FileHash -LiteralPath (Join-Path $evidenceDirectory 'final-lifecycle.clixml') -Algorithm SHA256).Hash
         # No pending actor survives safe restoration; state removal is confined
         # to Finalize after the independently changed restoration boot identity.
         Remove-Item -LiteralPath $stateDirectory -Recurse -Force
         $baseline=& $inputs.Baseline.Path -ExpectedOriginal $ExpectedOriginalDriverSha256 -ExpectedPolicy $ExpectedOriginalPolicySha256|Out-String
         Write-Text (Join-Path $evidenceDirectory 'independent-guest-baseline.txt') $baseline
         if(@($baseline -split '[\r\n]+'|Where-Object {$_ -ceq 'BaselineClean=True'}).Count -ne 1){throw 'Independent baseline not clean'}
-        Save-Json 'case.json' @{RunName=$RunName;RunGuid=$RunGuid;Verdict='W01/A05 INCONCLUSIVE';Phase4='NOT_QUALIFIED';GuestRestorationVerified=$true;IndependentExternalBaseline='Host must join wrapper pre/post receipts';Inputs=$state.Inputs;BootIds=@($state.PrepareBootId,$state.AfterBootId,(Boot-Id))}
+        if($state.DiagnosticCompleted -notin @($true,$false)){throw 'Diagnostic disposition missing from restored lifecycle'}
+        Save-Json 'case.json' @{RunName=$RunName;RunGuid=$RunGuid;Verdict='W01/A05 INCONCLUSIVE';Phase4='NOT_QUALIFIED';GuestRestorationVerified=$true;DiagnosticCompleted=[bool]$state.DiagnosticCompleted;DiagnosticFailureReason=[string]$state.DiagnosticFailureReason;FinalLifecyclePath='final-lifecycle.clixml';FinalLifecycleSha256=$lifecycleHash;IndependentExternalBaseline='Host must join wrapper pre/post receipts';Inputs=$state.Inputs;BootIds=@($state.PrepareBootId,$state.AfterBootId,(Boot-Id))}
         'W01_FINAL_STATE=True';'W01/A05 INCONCLUSIVE';'Phase4=NOT_QUALIFIED'
     }catch{Recovery ($_.Exception.ToString());return}
 }

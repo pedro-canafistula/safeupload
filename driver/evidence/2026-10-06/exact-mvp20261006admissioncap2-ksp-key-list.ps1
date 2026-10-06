@@ -1,0 +1,6 @@
+$ErrorActionPreference='Stop';$product=Get-CimInstance Win32_ComputerSystemProduct
+if($env:COMPUTERNAME -cne 'DESKTOP-O1LP5DG' -or $product.UUID -cne 'C6440689-D11C-4C63-A463-F3722B7DDB69'){throw 'Builder identity mismatch.'}
+$providers=@('Microsoft Software Key Storage Provider','Microsoft Smart Card Key Storage Provider','Microsoft Platform Crypto Provider')
+$rows=@();$certutil=Join-Path $env:windir 'System32\certutil.exe'
+foreach($provider in $providers){$g=[Guid]::NewGuid().ToString('N');$o=Join-Path $env:TEMP ('safeupload-ksp-'+$g+'.stdout.bin');$e=Join-Path $env:TEMP ('safeupload-ksp-'+$g+'.stderr.bin');$a='-user -csp "'+$provider+'" -key';$p=Start-Process -FilePath $certutil -ArgumentList $a -NoNewWindow -Wait -PassThru -RedirectStandardOutput $o -RedirectStandardError $e;$ob=[IO.File]::ReadAllBytes($o);$eb=[IO.File]::ReadAllBytes($e);$rows += [ordered]@{Provider=$provider;Exit=$p.ExitCode;StdoutBase64=[Convert]::ToBase64String($ob);StderrBase64=[Convert]::ToBase64String($eb)}}
+[ordered]@{Status='Completed';UTC=[DateTime]::UtcNow.ToString('o');ComputerName=$env:COMPUTERNAME;UUID=$product.UUID;User=[Security.Principal.WindowsIdentity]::GetCurrent().Name;Results=$rows}|ConvertTo-Json -Depth 8 -Compress

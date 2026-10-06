@@ -1,0 +1,46 @@
+{
+  "driver": {
+    "Snapshot": "/home/victor/Work/safeupload-staging/output/exact-owner-diagnostic/driver-ownerdiag-20261006f",
+    "Provenance": {
+      "SourceKind": "worktree",
+      "BaseCommit": "577dddfe05ad18b8b643969eed6cc0f78e36fd89",
+      "CapturedUTC": "2026-10-06T20:45:10.084811+00:00",
+      "ArchiveSHA256": "818be69af70cd73af08e6813a1987caf81c6a5a791e93d3e409b1677dfb04d37",
+      "ManifestSHA256": "9181d4262b21ff4640d6537803ea95b76cabd6e1ba7259a2c9f097a3ae729b7f",
+      "ProjectIndexSHA256": "c4a89bdc811ab8a8254c678cace8dec79f12025a8775d3af4f1973c27edaa2a3",
+      "Files": 29,
+      "ChangedFromBaseCommit": [
+        "driver/SafeUpload.Inspector/SafeUpload.Inspector.vcxproj",
+        "driver/SafeUpload.Inspector/main.c",
+        "driver/SafeUpload.Minifilter/BootPolicy.c",
+        "driver/SafeUpload.Minifilter/Communication.c",
+        "driver/SafeUpload.Minifilter/Context.c",
+        "driver/SafeUpload.Minifilter/Filter.c",
+        "driver/SafeUpload.Minifilter/Filter.h",
+        "driver/SafeUpload.Minifilter/OwnerCommunication.c",
+        "driver/SafeUpload.Minifilter/Policy.c",
+        "driver/SafeUpload.Minifilter/Protocol.h",
+        "driver/SafeUpload.Minifilter/SafeUpload.Minifilter.vcxproj",
+        "driver/SafeUpload.Minifilter/Stage.h",
+        "driver/SafeUpload.Minifilter/StageAdmission.c",
+        "driver/SafeUpload.Minifilter/StageOwnerEcp.c",
+        "driver/SafeUpload.Minifilter/StageOwnerEcp.h",
+        "driver/SafeUpload.Minifilter/StageStream.c",
+        "driver/SafeUpload.Minifilter/StageWriters.c"
+      ],
+      "BuildToolsSHA256": {
+        "driver/scripts/Build-ExactSource.ps1": "ff537d9426c5539fdfbd976ed77e55ee90f2a64501f17d463aa926f09cebd5d6",
+        "driver/scripts/remote_ps.py": "71e39bb56a5b5c89b3e00131e24d05377624219a34ae47dd68a4db74c0560351",
+        "driver/scripts/Invoke-ExactSourceBuild.sh": "5630091e233d34a5df4e4411d318663ea46e36a232e2fc9cd1189eb42b747a3e",
+        "driver/scripts/Prepare-ExactWorktreeSource.py": "67386727e63ac8ff961548101276bdaa4b9bf0d0f970d23e801a915e6adff107"
+      },
+      "ReviewedUntrackedSHA256": {
+        "driver/SafeUpload.Minifilter/OwnerCommunication.c": "8c8c49c49b040f2e2687582df5060f06b4baa9ea0ddea6fe87e1bbc61943ee79",
+        "driver/SafeUpload.Minifilter/StageOwnerEcp.c": "f6de5a207f833984fc556720f4915a9ab99c8dcf7cb85df12302de8f7792ea7c",
+        "driver/SafeUpload.Minifilter/StageOwnerEcp.h": "8a1cea994539b5acb420b1afc9b45daf252706457b923f0b31c8214a2ea7d383"
+      },
+      "CaptureCheck": "two reads; byte and file metadata equality",
+      "NetworkOperationsDuringPreparation": 0
+    }
+  }
+}

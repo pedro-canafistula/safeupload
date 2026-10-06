@@ -1,0 +1,696 @@
+<domain type='kvm' id='10'>
+  <name>win10-debug</name>
+  <uuid>9d44eee8-81cf-4cc1-9fba-7670f11def4d</uuid>
+  <metadata xmlns:ns0="http://libosinfo.org/xmlns/libvirt/domain/1.0">
+    <ns0:libosinfo>
+      <ns0:os id="http://microsoft.com/win/10"/>
+    </ns0:libosinfo>
+  </metadata>
+  <memory unit='KiB'>8388608</memory>
+  <currentMemory unit='KiB'>8388608</currentMemory>
+  <vcpu placement='static'>4</vcpu>
+  <resource>
+    <partition>/machine</partition>
+  </resource>
+  <os firmware='efi'>
+    <type arch='x86_64' machine='pc-q35-11.1'>hvm</type>
+    <firmware>
+      <feature enabled='no' name='enrolled-keys'/>
+      <feature enabled='no' name='secure-boot'/>
+    </firmware>
+    <loader readonly='yes' type='pflash' format='raw'>/usr/share/edk2/x64/OVMF_CODE.4m.fd</loader>
+    <nvram template='/usr/share/edk2/x64/OVMF_VARS.4m.fd' templateFormat='raw' format='raw'>/var/lib/libvirt/qemu/nvram/flare_VARS.fd</nvram>
+    <boot dev='hd'/>
+  </os>
+  <features>
+    <acpi/>
+    <apic/>
+    <hyperv mode='custom'>
+      <relaxed state='on'/>
+      <vapic state='on'/>
+      <spinlocks state='on' retries='8191'/>
+      <vpindex state='on'/>
+      <runtime state='on'/>
+      <synic state='on'/>
+      <stimer state='on'/>
+      <vendor_id state='on' value='KVMKVMKVM'/>
+      <frequencies state='on'/>
+      <tlbflush state='on'/>
+      <ipi state='on'/>
+      <avic state='on'/>
+    </hyperv>
+    <vmport state='off'/>
+    <smm state='on'/>
+  </features>
+  <cpu mode='host-passthrough' check='none' migratable='on'/>
+  <clock offset='localtime'>
+    <timer name='rtc' tickpolicy='catchup'/>
+    <timer name='pit' tickpolicy='delay'/>
+    <timer name='hpet' present='no'/>
+    <timer name='hypervclock' present='yes'/>
+  </clock>
+  <on_poweroff>destroy</on_poweroff>
+  <on_reboot>restart</on_reboot>
+  <on_crash>destroy</on_crash>
+  <pm>
+    <suspend-to-mem enabled='no'/>
+    <suspend-to-disk enabled='no'/>
+  </pm>
+  <devices>
+    <emulator>/usr/bin/qemu-system-x86_64</emulator>
+    <disk type='file' device='disk'>
+      <driver name='qemu' type='qcow2' discard='unmap'/>
+      <source file='/var/lib/libvirt/images/win10-debug.safeupload-pre-boot-start-w01-w01-b38b36-20261005b-fe004c32b19e4cc88a0cf42389818d7b-20261005' index='112'/>
+      <backingStore type='file' index='111'>
+        <format type='qcow2'/>
+        <source file='/var/lib/libvirt/images/win10-debug.safeupload-pre-boot-start-w01-w01-b38b36-20261005-ab961697cb5847fc86a2b265b3862df7-20261005'/>
+        <backingStore type='file' index='110'>
+          <format type='qcow2'/>
+          <source file='/var/lib/libvirt/images/win10-debug.safeupload-pre-boot-start-invariant-S01-denied-write-after-boot-boot-verifier-s01b38dir3-20261005'/>
+          <backingStore type='file' index='109'>
+            <format type='qcow2'/>
+            <source file='/var/lib/libvirt/images/win10-debug.safeupload-pre-boot-start-invariant-S01-denied-write-after-boot-boot-verifier-s01b38dir2-20261005'/>
+            <backingStore type='file' index='108'>
+              <format type='qcow2'/>
+              <source file='/var/lib/libvirt/images/win10-debug.safeupload-pre-boot-start-invariant-S01-denied-write-after-boot-boot-verifier-s01b38dir-20261005'/>
+              <backingStore type='file' index='107'>
+                <format type='qcow2'/>
+                <source file='/var/lib/libvirt/images/win10-debug.safeupload-pre-observer-corpus-wp2vm1-0cc053bd5a83-20261005'/>
+                <backingStore type='file' index='106'>
+                  <format type='qcow2'/>
+                  <source file='/var/lib/libvirt/images/win10-debug.safeupload-pre-boot-start-invariant-S01-denied-write-after-boot-boot-verifier-b31s01d-20261005'/>
+                  <backingStore type='file' index='105'>
+                    <format type='qcow2'/>
+                    <source file='/var/lib/libvirt/images/win10-debug.safeupload-pre-registry-txf-run20-20261005'/>
+                    <backingStore type='file' index='104'>
+                      <format type='qcow2'/>
+                      <source file='/var/lib/libvirt/images/win10-debug.safeupload-pre-boot-start-invariant-S01-denied-write-after-boot-boot-verifier-b30s01c-20261005'/>
+                      <backingStore type='file' index='103'>
+                        <format type='qcow2'/>
+                        <source file='/var/lib/libvirt/images/win10-debug.safeupload-pre-boot-start-invariant-S01-denied-write-after-boot-boot-verifier-b25s01b-20261005'/>
+                        <backingStore type='file' index='3'>
+                          <format type='qcow2'/>
+                          <source file='/var/lib/libvirt/images/win10-debug.safeupload-recovery-b22s01a-20261005'/>
+                          <backingStore type='file' index='4'>
+                            <format type='qcow2'/>
+                            <source file='/var/lib/libvirt/images/win10-debug.safeupload-recovery-s01-bugcheck-20261005'/>
+                            <backingStore type='file' index='5'>
+                              <format type='qcow2'/>
+                              <source file='/var/lib/libvirt/images/win10-debug.safeupload-pre-boot-start-invariant-S00-observer-control-ordinary-notify8b-20261004'/>
+                              <backingStore type='file' index='6'>
+                                <format type='qcow2'/>
+                                <source file='/var/lib/libvirt/images/win10-debug.safeupload-pre-registry-txf-p3b-run3-20261004'/>
+                                <backingStore type='file' index='7'>
+                                  <format type='qcow2'/>
+                                  <source file='/var/lib/libvirt/images/win10-debug.safeupload-pre-registry-txf-p3b-run2-20261004'/>
+                                  <backingStore type='file' index='8'>
+                                    <format type='qcow2'/>
+                                    <source file='/var/lib/libvirt/images/win10-debug.safeupload-pre-registry-txf-p3b-run1-20261004'/>
+                                    <backingStore type='file' index='9'>
+                                      <format type='qcow2'/>
+                                      <source file='/var/lib/libvirt/images/win10-debug.safeupload-pre-boot-start-invariant-S02-agent-down-open-refused-ordinary-notify7-20261004'/>
+                                      <backingStore type='file' index='10'>
+                                        <format type='qcow2'/>
+                                        <source file='/var/lib/libvirt/images/win10-debug.safeupload-pre-boot-start-invariant-S01-denied-write-after-boot-ordinary-notify7-20261004'/>
+                                        <backingStore type='file' index='11'>
+                                          <format type='qcow2'/>
+                                          <source file='/var/lib/libvirt/images/win10-debug.safeupload-pre-boot-start-invariant-S00-observer-control-ordinary-notify7-20261004'/>
+                                          <backingStore type='file' index='12'>
+                                            <format type='qcow2'/>
+                                            <source file='/var/lib/libvirt/images/win10-debug.safeupload-pre-boot-start-invariant-S02-agent-down-open-refused-ordinary-notify6-20261004'/>
+                                            <backingStore type='file' index='13'>
+                                              <format type='qcow2'/>
+                                              <source file='/var/lib/libvirt/images/win10-debug.safeupload-pre-boot-start-invariant-S01-denied-write-after-boot-ordinary-notify6-20261004'/>
+                                              <backingStore type='file' index='14'>
+                                                <format type='qcow2'/>
+                                                <source file='/var/lib/libvirt/images/win10-debug.safeupload-pre-boot-start-invariant-S00-observer-control-ordinary-notify6-20261004'/>
+                                                <backingStore type='file' index='15'>
+                                                  <format type='qcow2'/>
+                                                  <source file='/var/lib/libvirt/images/win10-debug.safeupload-pre-boot-start-invariant-S02-agent-down-open-refused-ordinary-notify5-20261004'/>
+                                                  <backingStore type='file' index='16'>
+                                                    <format type='qcow2'/>
+                                                    <source file='/var/lib/libvirt/images/win10-debug.safeupload-pre-boot-start-invariant-S01-denied-write-after-boot-ordinary-notify5-20261004'/>
+                                                    <backingStore type='file' index='17'>
+                                                      <format type='qcow2'/>
+                                                      <source file='/var/lib/libvirt/images/win10-debug.safeupload-pre-boot-start-invariant-S00-observer-control-ordinary-notify5-20261004'/>
+                                                      <backingStore type='file' index='18'>
+                                                        <format type='qcow2'/>
+                                                        <source file='/var/lib/libvirt/images/win10-debug.safeupload-pre-boot-start-invariant-S02-agent-down-open-refused-ordinary-notify4-20261004'/>
+                                                        <backingStore type='file' index='19'>
+                                                          <format type='qcow2'/>
+                                                          <source file='/var/lib/libvirt/images/win10-debug.safeupload-pre-boot-start-invariant-S01-denied-write-after-boot-ordinary-notify4-20261004'/>
+                                                          <backingStore type='file' index='20'>
+                                                            <format type='qcow2'/>
+                                                            <source file='/var/lib/libvirt/images/win10-debug.safeupload-pre-boot-start-invariant-S00-observer-control-ordinary-notify4-20261004'/>
+                                                            <backingStore type='file' index='21'>
+                                                              <format type='qcow2'/>
+                                                              <source file='/var/lib/libvirt/images/win10-debug.safeupload-pre-boot-start-invariant-S02-agent-down-open-refused-ordinary-notify3-20261004'/>
+                                                              <backingStore type='file' index='22'>
+                                                                <format type='qcow2'/>
+                                                                <source file='/var/lib/libvirt/images/win10-debug.safeupload-pre-boot-start-invariant-S01-denied-write-after-boot-ordinary-notify3-20261004'/>
+                                                                <backingStore type='file' index='23'>
+                                                                  <format type='qcow2'/>
+                                                                  <source file='/var/lib/libvirt/images/win10-debug.safeupload-pre-boot-start-invariant-S00-observer-control-ordinary-notify3-20261004'/>
+                                                                  <backingStore type='file' index='24'>
+                                                                    <format type='qcow2'/>
+                                                                    <source file='/var/lib/libvirt/images/win10-debug.safeupload-pre-boot-start-invariant-S02-agent-down-open-refused-ordinary-notify2-20261004'/>
+                                                                    <backingStore type='file' index='25'>
+                                                                      <format type='qcow2'/>
+                                                                      <source file='/var/lib/libvirt/images/win10-debug.safeupload-pre-boot-start-invariant-S01-denied-write-after-boot-ordinary-notify2-20261004'/>
+                                                                      <backingStore type='file' index='26'>
+                                                                        <format type='qcow2'/>
+                                                                        <source file='/var/lib/libvirt/images/win10-debug.safeupload-pre-boot-start-invariant-S00-observer-control-ordinary-notify2-20261004'/>
+                                                                        <backingStore type='file' index='27'>
+                                                                          <format type='qcow2'/>
+                                                                          <source file='/var/lib/libvirt/images/win10-debug.safeupload-pre-boot-start-invariant-S02-agent-down-open-refused-ordinary-notify1-20261004'/>
+                                                                          <backingStore type='file' index='28'>
+                                                                            <format type='qcow2'/>
+                                                                            <source file='/var/lib/libvirt/images/win10-debug.safeupload-pre-boot-start-invariant-S01-denied-write-after-boot-ordinary-notify1-20261004'/>
+                                                                            <backingStore type='file' index='29'>
+                                                                              <format type='qcow2'/>
+                                                                              <source file='/var/lib/libvirt/images/win10-debug.safeupload-pre-boot-start-invariant-S00-observer-control-ordinary-notify1-20261004'/>
+                                                                              <backingStore type='file' index='30'>
+                                                                                <format type='qcow2'/>
+                                                                                <source file='/var/lib/libvirt/images/win10-debug.safeupload-pre-boot-start-invariant-S02-agent-down-open-refused-ordinary-wp4proof3-20261004'/>
+                                                                                <backingStore type='file' index='31'>
+                                                                                  <format type='qcow2'/>
+                                                                                  <source file='/var/lib/libvirt/images/win10-debug.safeupload-pre-boot-start-invariant-S01-denied-write-after-boot-ordinary-wp4proof3-20261004'/>
+                                                                                  <backingStore type='file' index='32'>
+                                                                                    <format type='qcow2'/>
+                                                                                    <source file='/var/lib/libvirt/images/win10-debug.safeupload-pre-boot-start-invariant-S01-denied-write-after-boot-ordinary-wp4proof2-20261004'/>
+                                                                                    <backingStore type='file' index='33'>
+                                                                                      <format type='qcow2'/>
+                                                                                      <source file='/var/lib/libvirt/images/win10-debug.safeupload-pre-boot-start-invariant-S01-denied-write-after-boot-ordinary-wp4proof1-20261004'/>
+                                                                                      <backingStore type='file' index='34'>
+                                                                                        <format type='qcow2'/>
+                                                                                        <source file='/var/lib/libvirt/images/win10-debug.safeupload-pre-boot-start-invariant-S00-observer-control-ordinary-wp4proof1-20261004'/>
+                                                                                        <backingStore type='file' index='35'>
+                                                                                          <format type='qcow2'/>
+                                                                                          <source file='/var/lib/libvirt/images/win10-debug.safeupload-pre-boot-start-invariant-S00-observer-control-ordinary-wp3s00g-20261004'/>
+                                                                                          <backingStore type='file' index='36'>
+                                                                                            <format type='qcow2'/>
+                                                                                            <source file='/var/lib/libvirt/images/win10-debug.safeupload-pre-boot-start-invariant-S00-observer-control-ordinary-wp3s00f-20261004'/>
+                                                                                            <backingStore type='file' index='37'>
+                                                                                              <format type='qcow2'/>
+                                                                                              <source file='/var/lib/libvirt/images/win10-debug.safeupload-pre-boot-start-invariant-S00-observer-control-ordinary-wp3s00e-20261004'/>
+                                                                                              <backingStore type='file' index='38'>
+                                                                                                <format type='qcow2'/>
+                                                                                                <source file='/var/lib/libvirt/images/win10-debug.safeupload-pre-boot-start-invariant-S00-observer-control-ordinary-wp3s00d-20261004'/>
+                                                                                                <backingStore type='file' index='39'>
+                                                                                                  <format type='qcow2'/>
+                                                                                                  <source file='/var/lib/libvirt/images/win10-debug.safeupload-pre-boot-start-invariant-S00-observer-control-ordinary-wp3s00c-20261004'/>
+                                                                                                  <backingStore type='file' index='40'>
+                                                                                                    <format type='qcow2'/>
+                                                                                                    <source file='/var/lib/libvirt/images/win10-debug.safeupload-pre-boot-start-invariant-S00-observer-control-ordinary-wp3s00b-20261004'/>
+                                                                                                    <backingStore type='file' index='41'>
+                                                                                                      <format type='qcow2'/>
+                                                                                                      <source file='/var/lib/libvirt/images/win10-debug.safeupload-pre-registry-txf-run19-20261004'/>
+                                                                                                      <backingStore type='file' index='42'>
+                                                                                                        <format type='qcow2'/>
+                                                                                                        <source file='/var/lib/libvirt/images/win10-debug.safeupload-pre-registry-txf-run18-20261004'/>
+                                                                                                        <backingStore type='file' index='43'>
+                                                                                                          <format type='qcow2'/>
+                                                                                                          <source file='/var/lib/libvirt/images/win10-debug.safeupload-pre-registry-txf-run17-20261004'/>
+                                                                                                          <backingStore type='file' index='44'>
+                                                                                                            <format type='qcow2'/>
+                                                                                                            <source file='/var/lib/libvirt/images/win10-debug.safeupload-pre-registry-txf-run16-20261004'/>
+                                                                                                            <backingStore type='file' index='45'>
+                                                                                                              <format type='qcow2'/>
+                                                                                                              <source file='/var/lib/libvirt/images/win10-debug.safeupload-pre-registry-txf-run15-20261004'/>
+                                                                                                              <backingStore type='file' index='46'>
+                                                                                                                <format type='qcow2'/>
+                                                                                                                <source file='/var/lib/libvirt/images/win10-debug.safeupload-pre-registry-txf-run14-20261004'/>
+                                                                                                                <backingStore type='file' index='47'>
+                                                                                                                  <format type='qcow2'/>
+                                                                                                                  <source file='/var/lib/libvirt/images/win10-debug.safeupload-pre-registry-txf-run13-20261004'/>
+                                                                                                                  <backingStore type='file' index='48'>
+                                                                                                                    <format type='qcow2'/>
+                                                                                                                    <source file='/var/lib/libvirt/images/win10-debug.safeupload-pre-registry-txf-run12-20261004'/>
+                                                                                                                    <backingStore type='file' index='49'>
+                                                                                                                      <format type='qcow2'/>
+                                                                                                                      <source file='/var/lib/libvirt/images/win10-debug.safeupload-pre-registry-txf-run11-20261004'/>
+                                                                                                                      <backingStore type='file' index='50'>
+                                                                                                                        <format type='qcow2'/>
+                                                                                                                        <source file='/var/lib/libvirt/images/win10-debug.safeupload-pre-registry-txf-run10-20261004'/>
+                                                                                                                        <backingStore type='file' index='51'>
+                                                                                                                          <format type='qcow2'/>
+                                                                                                                          <source file='/var/lib/libvirt/images/win10-debug.safeupload-pre-registry-txf-run9-20261004'/>
+                                                                                                                          <backingStore type='file' index='52'>
+                                                                                                                            <format type='qcow2'/>
+                                                                                                                            <source file='/var/lib/libvirt/images/win10-debug.safeupload-pre-registry-txf-run8-20261004'/>
+                                                                                                                            <backingStore type='file' index='53'>
+                                                                                                                              <format type='qcow2'/>
+                                                                                                                              <source file='/var/lib/libvirt/images/win10-debug.safeupload-pre-registry-txf-run7-20261004'/>
+                                                                                                                              <backingStore type='file' index='54'>
+                                                                                                                                <format type='qcow2'/>
+                                                                                                                                <source file='/var/lib/libvirt/images/win10-debug.safeupload-pre-registry-txf-run6-20261004'/>
+                                                                                                                                <backingStore type='file' index='55'>
+                                                                                                                                  <format type='qcow2'/>
+                                                                                                                                  <source file='/var/lib/libvirt/images/win10-debug.safeupload-pre-registry-txf-run5-20261004'/>
+                                                                                                                                  <backingStore type='file' index='56'>
+                                                                                                                                    <format type='qcow2'/>
+                                                                                                                                    <source file='/var/lib/libvirt/images/win10-debug.safeupload-pre-registry-txf-run4-20261004'/>
+                                                                                                                                    <backingStore type='file' index='57'>
+                                                                                                                                      <format type='qcow2'/>
+                                                                                                                                      <source file='/var/lib/libvirt/images/win10-debug.safeupload-pre-registry-txf-run3-20261004'/>
+                                                                                                                                      <backingStore type='file' index='58'>
+                                                                                                                                        <format type='qcow2'/>
+                                                                                                                                        <source file='/var/lib/libvirt/images/win10-debug.safeupload-pre-registry-txf-run2-20261004'/>
+                                                                                                                                        <backingStore type='file' index='59'>
+                                                                                                                                          <format type='qcow2'/>
+                                                                                                                                          <source file='/var/lib/libvirt/images/win10-debug.safeupload-pre-registry-txf-run1-20261004'/>
+                                                                                                                                          <backingStore type='file' index='60'>
+                                                                                                                                            <format type='qcow2'/>
+                                                                                                                                            <source file='/var/lib/libvirt/images/win10-debug.safeupload-pre-observer-selfcheck-live-run7-20261004'/>
+                                                                                                                                            <backingStore type='file' index='61'>
+                                                                                                                                              <format type='qcow2'/>
+                                                                                                                                              <source file='/var/lib/libvirt/images/win10-debug.safeupload-pre-observer-selfcheck-live-run6-20261004'/>
+                                                                                                                                              <backingStore type='file' index='62'>
+                                                                                                                                                <format type='qcow2'/>
+                                                                                                                                                <source file='/var/lib/libvirt/images/win10-debug.safeupload-pre-observer-selfcheck-live-run5-20261004'/>
+                                                                                                                                                <backingStore type='file' index='63'>
+                                                                                                                                                  <format type='qcow2'/>
+                                                                                                                                                  <source file='/var/lib/libvirt/images/win10-debug.safeupload-pre-observer-selfcheck-live-run4-20261004'/>
+                                                                                                                                                  <backingStore type='file' index='64'>
+                                                                                                                                                    <format type='qcow2'/>
+                                                                                                                                                    <source file='/var/lib/libvirt/images/win10-debug.safeupload-pre-observer-selfcheck-live-run3-20261004'/>
+                                                                                                                                                    <backingStore type='file' index='65'>
+                                                                                                                                                      <format type='qcow2'/>
+                                                                                                                                                      <source file='/var/lib/libvirt/images/win10-debug.safeupload-pre-observer-selfcheck-live-run2-20261004'/>
+                                                                                                                                                      <backingStore type='file' index='66'>
+                                                                                                                                                        <format type='qcow2'/>
+                                                                                                                                                        <source file='/var/lib/libvirt/images/win10-debug.safeupload-pre-observer-selfcheck-live-run1-20261004'/>
+                                                                                                                                                        <backingStore type='file' index='67'>
+                                                                                                                                                          <format type='qcow2'/>
+                                                                                                                                                          <source file='/var/lib/libvirt/images/win10-debug.safeupload-pre-boot-start-run15-20261004'/>
+                                                                                                                                                          <backingStore type='file' index='68'>
+                                                                                                                                                            <format type='qcow2'/>
+                                                                                                                                                            <source file='/var/lib/libvirt/images/win10-debug.safeupload-pre-boot-start-run14-20261004'/>
+                                                                                                                                                            <backingStore type='file' index='69'>
+                                                                                                                                                              <format type='qcow2'/>
+                                                                                                                                                              <source file='/var/lib/libvirt/images/win10-debug.safeupload-pre-boot-start-run13-20261004'/>
+                                                                                                                                                              <backingStore type='file' index='70'>
+                                                                                                                                                                <format type='qcow2'/>
+                                                                                                                                                                <source file='/var/lib/libvirt/images/win10-debug.safeupload-pre-boot-start-run12-20261004'/>
+                                                                                                                                                                <backingStore type='file' index='71'>
+                                                                                                                                                                  <format type='qcow2'/>
+                                                                                                                                                                  <source file='/var/lib/libvirt/images/win10-debug.safeupload-pre-boot-start-run9-20261004'/>
+                                                                                                                                                                  <backingStore type='file' index='72'>
+                                                                                                                                                                    <format type='qcow2'/>
+                                                                                                                                                                    <source file='/var/lib/libvirt/images/win10-debug.safeupload-pre-boot-start-run8-20261004'/>
+                                                                                                                                                                    <backingStore type='file' index='73'>
+                                                                                                                                                                      <format type='qcow2'/>
+                                                                                                                                                                      <source file='/var/lib/libvirt/images/win10-debug.safeupload-pre-boot-start-run7-20261004'/>
+                                                                                                                                                                      <backingStore type='file' index='74'>
+                                                                                                                                                                        <format type='qcow2'/>
+                                                                                                                                                                        <source file='/var/lib/libvirt/images/win10-debug.safeupload-pre-boot-start-run6-20261004'/>
+                                                                                                                                                                        <backingStore type='file' index='75'>
+                                                                                                                                                                          <format type='qcow2'/>
+                                                                                                                                                                          <source file='/var/lib/libvirt/images/win10-debug.safeupload-pre-boot-start-run5-20261004'/>
+                                                                                                                                                                          <backingStore type='file' index='76'>
+                                                                                                                                                                            <format type='qcow2'/>
+                                                                                                                                                                            <source file='/var/lib/libvirt/images/win10-debug.safeupload-pre-boot-start-run4-20261004'/>
+                                                                                                                                                                            <backingStore type='file' index='77'>
+                                                                                                                                                                              <format type='qcow2'/>
+                                                                                                                                                                              <source file='/var/lib/libvirt/images/win10-debug.safeupload-pre-boot-start-run3-20261004'/>
+                                                                                                                                                                              <backingStore type='file' index='78'>
+                                                                                                                                                                                <format type='qcow2'/>
+                                                                                                                                                                                <source file='/var/lib/libvirt/images/win10-debug.safeupload-pre-boot-start-run2-20261004'/>
+                                                                                                                                                                                <backingStore type='file' index='79'>
+                                                                                                                                                                                  <format type='qcow2'/>
+                                                                                                                                                                                  <source file='/var/lib/libvirt/images/win10-debug.safeupload-pre-boot-start-run1-20261004'/>
+                                                                                                                                                                                  <backingStore type='file' index='80'>
+                                                                                                                                                                                    <format type='qcow2'/>
+                                                                                                                                                                                    <source file='/var/lib/libvirt/images/win10-debug.safeupload-pre-section-teardown-run12-review-verifier-20261003'/>
+                                                                                                                                                                                    <backingStore type='file' index='81'>
+                                                                                                                                                                                      <format type='qcow2'/>
+                                                                                                                                                                                      <source file='/var/lib/libvirt/images/win10-debug.safeupload-pre-writer-count-run22-review-verifier-20261003'/>
+                                                                                                                                                                                      <backingStore type='file' index='82'>
+                                                                                                                                                                                        <format type='qcow2'/>
+                                                                                                                                                                                        <source file='/var/lib/libvirt/images/win10-debug.safeupload-pre-section-teardown-run11-review-verifier-20261003'/>
+                                                                                                                                                                                        <backingStore type='file' index='83'>
+                                                                                                                                                                                          <format type='qcow2'/>
+                                                                                                                                                                                          <source file='/var/lib/libvirt/images/win10-debug.safeupload-pre-writer-count-run21-scoped-verifier-20261003'/>
+                                                                                                                                                                                          <backingStore type='file' index='84'>
+                                                                                                                                                                                            <format type='qcow2'/>
+                                                                                                                                                                                            <source file='/var/lib/libvirt/images/win10-debug.safeupload-pre-section-teardown-run10-verifier-20261003'/>
+                                                                                                                                                                                            <backingStore type='file' index='85'>
+                                                                                                                                                                                              <format type='qcow2'/>
+                                                                                                                                                                                              <source file='/var/lib/libvirt/images/win10-debug.safeupload-pre-section-teardown-run9-verifier-20261003'/>
+                                                                                                                                                                                              <backingStore type='file' index='86'>
+                                                                                                                                                                                                <format type='qcow2'/>
+                                                                                                                                                                                                <source file='/var/lib/libvirt/images/win10-debug.safeupload-pre-section-teardown-run8-verifier-20261003'/>
+                                                                                                                                                                                                <backingStore type='file' index='87'>
+                                                                                                                                                                                                  <format type='qcow2'/>
+                                                                                                                                                                                                  <source file='/var/lib/libvirt/images/win10-debug.safeupload-pre-section-teardown-run7-verifier-20261003'/>
+                                                                                                                                                                                                  <backingStore type='file' index='88'>
+                                                                                                                                                                                                    <format type='qcow2'/>
+                                                                                                                                                                                                    <source file='/var/lib/libvirt/images/win10-debug.safeupload-pre-section-teardown-run6-verifier-20261003'/>
+                                                                                                                                                                                                    <backingStore type='file' index='89'>
+                                                                                                                                                                                                      <format type='qcow2'/>
+                                                                                                                                                                                                      <source file='/var/lib/libvirt/images/win10-debug.safeupload-pre-section-teardown-run5-verifier-20261003'/>
+                                                                                                                                                                                                      <backingStore type='file' index='90'>
+                                                                                                                                                                                                        <format type='qcow2'/>
+                                                                                                                                                                                                        <source file='/var/lib/libvirt/images/win10-debug.safeupload-pre-section-teardown-run4-verifier-20261003'/>
+                                                                                                                                                                                                        <backingStore type='file' index='91'>
+                                                                                                                                                                                                          <format type='qcow2'/>
+                                                                                                                                                                                                          <source file='/var/lib/libvirt/images/win10-debug.safeupload-pre-section-teardown-run3-verifier-20261003'/>
+                                                                                                                                                                                                          <backingStore type='file' index='92'>
+                                                                                                                                                                                                            <format type='qcow2'/>
+                                                                                                                                                                                                            <source file='/var/lib/libvirt/images/win10-debug.safeupload-pre-section-teardown-run2-verifier-20261003'/>
+                                                                                                                                                                                                            <backingStore type='file' index='93'>
+                                                                                                                                                                                                              <format type='qcow2'/>
+                                                                                                                                                                                                              <source file='/var/lib/libvirt/images/win10-debug.safeupload-pre-writer-fault-run7-regression-20261003'/>
+                                                                                                                                                                                                              <backingStore type='file' index='94'>
+                                                                                                                                                                                                                <format type='qcow2'/>
+                                                                                                                                                                                                                <source file='/var/lib/libvirt/images/win10-debug.safeupload-pre-section-lower-run8-regression-verifier-20261003'/>
+                                                                                                                                                                                                                <backingStore type='file' index='95'>
+                                                                                                                                                                                                                  <format type='qcow2'/>
+                                                                                                                                                                                                                  <source file='/var/lib/libvirt/images/win10-debug.safeupload-pre-primitive-cost-run3-regression-20261003'/>
+                                                                                                                                                                                                                  <backingStore type='file' index='96'>
+                                                                                                                                                                                                                    <format type='qcow2'/>
+                                                                                                                                                                                                                    <source file='/var/lib/libvirt/images/win10-debug.safeupload-pre-canary-security-run6-regression-verifier-20261003'/>
+                                                                                                                                                                                                                    <backingStore type='file' index='97'>
+                                                                                                                                                                                                                      <format type='qcow2'/>
+                                                                                                                                                                                                                      <source file='/var/lib/libvirt/images/win10-debug.safeupload-pre-section-lower-run7-regression-verifier-20261003'/>
+                                                                                                                                                                                                                      <backingStore type='file' index='98'>
+                                                                                                                                                                                                                        <format type='qcow2'/>
+                                                                                                                                                                                                                        <source file='/var/lib/libvirt/images/win10-debug.safeupload-pre-writer-fault-run6-regression-20261003'/>
+                                                                                                                                                                                                                        <backingStore type='file' index='99'>
+                                                                                                                                                                                                                          <format type='qcow2'/>
+                                                                                                                                                                                                                          <source file='/var/lib/libvirt/images/win10-debug.safeupload-pre-writer-count-run20-regression-verifier-20261003'/>
+                                                                                                                                                                                                                          <backingStore type='file' index='100'>
+                                                                                                                                                                                                                            <format type='qcow2'/>
+                                                                                                                                                                                                                            <source file='/var/lib/libvirt/images/win10-debug.safeupload-pre-section-teardown-run1-verifier-20261003'/>
+                                                                                                                                                                                                                            <backingStore type='file' index='101'>
+                                                                                                                                                                                                                              <format type='qcow2'/>
+                                                                                                                                                                                                                              <source file='/var/lib/libvirt/images/win10-debug.safeupload-pre-writer-count-run19-regression-verifier-20261003'/>
+                                                                                                                                                                                                                              <backingStore type='file' index='102'>
+                                                                                                                                                                                                                                <format type='qcow2'/>
+                                                                                                                                                                                                                                <source file='/var/lib/libvirt/images/flare.qcow2'/>
+                                                                                                                                                                                                                                <backingStore/>
+                                                                                                                                                                                                                              </backingStore>
+                                                                                                                                                                                                                            </backingStore>
+                                                                                                                                                                                                                          </backingStore>
+                                                                                                                                                                                                                        </backingStore>
+                                                                                                                                                                                                                      </backingStore>
+                                                                                                                                                                                                                    </backingStore>
+                                                                                                                                                                                                                  </backingStore>
+                                                                                                                                                                                                                </backingStore>
+                                                                                                                                                                                                              </backingStore>
+                                                                                                                                                                                                            </backingStore>
+                                                                                                                                                                                                          </backingStore>
+                                                                                                                                                                                                        </backingStore>
+                                                                                                                                                                                                      </backingStore>
+                                                                                                                                                                                                    </backingStore>
+                                                                                                                                                                                                  </backingStore>
+                                                                                                                                                                                                </backingStore>
+                                                                                                                                                                                              </backingStore>
+                                                                                                                                                                                            </backingStore>
+                                                                                                                                                                                          </backingStore>
+                                                                                                                                                                                        </backingStore>
+                                                                                                                                                                                      </backingStore>
+                                                                                                                                                                                    </backingStore>
+                                                                                                                                                                                  </backingStore>
+                                                                                                                                                                                </backingStore>
+                                                                                                                                                                              </backingStore>
+                                                                                                                                                                            </backingStore>
+                                                                                                                                                                          </backingStore>
+                                                                                                                                                                        </backingStore>
+                                                                                                                                                                      </backingStore>
+                                                                                                                                                                    </backingStore>
+                                                                                                                                                                  </backingStore>
+                                                                                                                                                                </backingStore>
+                                                                                                                                                              </backingStore>
+                                                                                                                                                            </backingStore>
+                                                                                                                                                          </backingStore>
+                                                                                                                                                        </backingStore>
+                                                                                                                                                      </backingStore>
+                                                                                                                                                    </backingStore>
+                                                                                                                                                  </backingStore>
+                                                                                                                                                </backingStore>
+                                                                                                                                              </backingStore>
+                                                                                                                                            </backingStore>
+                                                                                                                                          </backingStore>
+                                                                                                                                        </backingStore>
+                                                                                                                                      </backingStore>
+                                                                                                                                    </backingStore>
+                                                                                                                                  </backingStore>
+                                                                                                                                </backingStore>
+                                                                                                                              </backingStore>
+                                                                                                                            </backingStore>
+                                                                                                                          </backingStore>
+                                                                                                                        </backingStore>
+                                                                                                                      </backingStore>
+                                                                                                                    </backingStore>
+                                                                                                                  </backingStore>
+                                                                                                                </backingStore>
+                                                                                                              </backingStore>
+                                                                                                            </backingStore>
+                                                                                                          </backingStore>
+                                                                                                        </backingStore>
+                                                                                                      </backingStore>
+                                                                                                    </backingStore>
+                                                                                                  </backingStore>
+                                                                                                </backingStore>
+                                                                                              </backingStore>
+                                                                                            </backingStore>
+                                                                                          </backingStore>
+                                                                                        </backingStore>
+                                                                                      </backingStore>
+                                                                                    </backingStore>
+                                                                                  </backingStore>
+                                                                                </backingStore>
+                                                                              </backingStore>
+                                                                            </backingStore>
+                                                                          </backingStore>
+                                                                        </backingStore>
+                                                                      </backingStore>
+                                                                    </backingStore>
+                                                                  </backingStore>
+                                                                </backingStore>
+                                                              </backingStore>
+                                                            </backingStore>
+                                                          </backingStore>
+                                                        </backingStore>
+                                                      </backingStore>
+                                                    </backingStore>
+                                                  </backingStore>
+                                                </backingStore>
+                                              </backingStore>
+                                            </backingStore>
+                                          </backingStore>
+                                        </backingStore>
+                                      </backingStore>
+                                    </backingStore>
+                                  </backingStore>
+                                </backingStore>
+                              </backingStore>
+                            </backingStore>
+                          </backingStore>
+                        </backingStore>
+                      </backingStore>
+                    </backingStore>
+                  </backingStore>
+                </backingStore>
+              </backingStore>
+            </backingStore>
+          </backingStore>
+        </backingStore>
+      </backingStore>
+      <target dev='vda' bus='virtio'/>
+      <alias name='virtio-disk0'/>
+      <address type='pci' domain='0x0000' bus='0x04' slot='0x00' function='0x0'/>
+    </disk>
+    <disk type='file' device='cdrom'>
+      <driver name='qemu' type='raw'/>
+      <source index='2'/>
+      <target dev='sda' bus='sata'/>
+      <readonly/>
+      <alias name='sata0-0-0'/>
+      <address type='drive' controller='0' bus='0' target='0' unit='0'/>
+    </disk>
+    <disk type='file' device='cdrom'>
+      <driver name='qemu' type='raw'/>
+      <source index='1'/>
+      <target dev='sdb' bus='sata'/>
+      <readonly/>
+      <alias name='sata0-0-1'/>
+      <address type='drive' controller='0' bus='0' target='0' unit='1'/>
+    </disk>
+    <controller type='usb' index='0' model='qemu-xhci' ports='15'>
+      <alias name='usb'/>
+      <address type='pci' domain='0x0000' bus='0x02' slot='0x00' function='0x0'/>
+    </controller>
+    <controller type='pci' index='0' model='pcie-root'>
+      <alias name='pcie.0'/>
+    </controller>
+    <controller type='pci' index='1' model='pcie-root-port'>
+      <model name='pcie-root-port'/>
+      <target chassis='1' port='0x10'/>
+      <alias name='pci.1'/>
+      <address type='pci' domain='0x0000' bus='0x00' slot='0x02' function='0x0' multifunction='on'/>
+    </controller>
+    <controller type='pci' index='2' model='pcie-root-port'>
+      <model name='pcie-root-port'/>
+      <target chassis='2' port='0x11'/>
+      <alias name='pci.2'/>
+      <address type='pci' domain='0x0000' bus='0x00' slot='0x02' function='0x1'/>
+    </controller>
+    <controller type='pci' index='3' model='pcie-root-port'>
+      <model name='pcie-root-port'/>
+      <target chassis='3' port='0x12'/>
+      <alias name='pci.3'/>
+      <address type='pci' domain='0x0000' bus='0x00' slot='0x02' function='0x2'/>
+    </controller>
+    <controller type='pci' index='4' model='pcie-root-port'>
+      <model name='pcie-root-port'/>
+      <target chassis='4' port='0x13'/>
+      <alias name='pci.4'/>
+      <address type='pci' domain='0x0000' bus='0x00' slot='0x02' function='0x3'/>
+    </controller>
+    <controller type='pci' index='5' model='pcie-root-port'>
+      <model name='pcie-root-port'/>
+      <target chassis='5' port='0x14'/>
+      <alias name='pci.5'/>
+      <address type='pci' domain='0x0000' bus='0x00' slot='0x02' function='0x4'/>
+    </controller>
+    <controller type='pci' index='6' model='pcie-root-port'>
+      <model name='pcie-root-port'/>
+      <target chassis='6' port='0x15'/>
+      <alias name='pci.6'/>
+      <address type='pci' domain='0x0000' bus='0x00' slot='0x02' function='0x5'/>
+    </controller>
+    <controller type='pci' index='7' model='pcie-root-port'>
+      <model name='pcie-root-port'/>
+      <target chassis='7' port='0x16'/>
+      <alias name='pci.7'/>
+      <address type='pci' domain='0x0000' bus='0x00' slot='0x02' function='0x6'/>
+    </controller>
+    <controller type='pci' index='8' model='pcie-root-port'>
+      <model name='pcie-root-port'/>
+      <target chassis='8' port='0x17'/>
+      <alias name='pci.8'/>
+      <address type='pci' domain='0x0000' bus='0x00' slot='0x02' function='0x7'/>
+    </controller>
+    <controller type='pci' index='9' model='pcie-root-port'>
+      <model name='pcie-root-port'/>
+      <target chassis='9' port='0x18'/>
+      <alias name='pci.9'/>
+      <address type='pci' domain='0x0000' bus='0x00' slot='0x03' function='0x0' multifunction='on'/>
+    </controller>
+    <controller type='pci' index='10' model='pcie-root-port'>
+      <model name='pcie-root-port'/>
+      <target chassis='10' port='0x19'/>
+      <alias name='pci.10'/>
+      <address type='pci' domain='0x0000' bus='0x00' slot='0x03' function='0x1'/>
+    </controller>
+    <controller type='pci' index='11' model='pcie-root-port'>
+      <model name='pcie-root-port'/>
+      <target chassis='11' port='0x1a'/>
+      <alias name='pci.11'/>
+      <address type='pci' domain='0x0000' bus='0x00' slot='0x03' function='0x2'/>
+    </controller>
+    <controller type='pci' index='12' model='pcie-root-port'>
+      <model name='pcie-root-port'/>
+      <target chassis='12' port='0x1b'/>
+      <alias name='pci.12'/>
+      <address type='pci' domain='0x0000' bus='0x00' slot='0x03' function='0x3'/>
+    </controller>
+    <controller type='pci' index='13' model='pcie-root-port'>
+      <model name='pcie-root-port'/>
+      <target chassis='13' port='0x1c'/>
+      <alias name='pci.13'/>
+      <address type='pci' domain='0x0000' bus='0x00' slot='0x03' function='0x4'/>
+    </controller>
+    <controller type='pci' index='14' model='pcie-root-port'>
+      <model name='pcie-root-port'/>
+      <target chassis='14' port='0x1d'/>
+      <alias name='pci.14'/>
+      <address type='pci' domain='0x0000' bus='0x00' slot='0x03' function='0x5'/>
+    </controller>
+    <controller type='sata' index='0'>
+      <alias name='ide'/>
+      <address type='pci' domain='0x0000' bus='0x00' slot='0x1f' function='0x2'/>
+    </controller>
+    <controller type='virtio-serial' index='0'>
+      <alias name='virtio-serial0'/>
+      <address type='pci' domain='0x0000' bus='0x03' slot='0x00' function='0x0'/>
+    </controller>
+    <interface type='network'>
+      <mac address='52:54:00:aa:dd:07'/>
+      <source network='default' portid='f99699da-2197-46fe-9e0f-feddf1d39292' bridge='virbr0'/>
+      <target dev='vnet9'/>
+      <model type='e1000e'/>
+      <alias name='net0'/>
+      <address type='pci' domain='0x0000' bus='0x01' slot='0x00' function='0x0'/>
+    </interface>
+    <serial type='pty'>
+      <source path='/dev/pts/1'/>
+      <target type='isa-serial' port='0'>
+        <model name='isa-serial'/>
+      </target>
+      <alias name='serial0'/>
+    </serial>
+    <console type='pty' tty='/dev/pts/1'>
+      <source path='/dev/pts/1'/>
+      <target type='serial' port='0'/>
+      <alias name='serial0'/>
+    </console>
+    <channel type='spicevmc'>
+      <target type='virtio' name='com.redhat.spice.0' state='connected'/>
+      <alias name='channel0'/>
+      <address type='virtio-serial' controller='0' bus='0' port='1'/>
+    </channel>
+    <input type='tablet' bus='usb'>
+      <alias name='input0'/>
+      <address type='usb' bus='0' port='1'/>
+    </input>
+    <input type='mouse' bus='ps2'>
+      <alias name='input1'/>
+    </input>
+    <input type='keyboard' bus='ps2'>
+      <alias name='input2'/>
+    </input>
+    <tpm model='tpm-crb'>
+      <backend type='emulator' version='2.0'>
+        <profile name='default-v1'/>
+      </backend>
+      <alias name='tpm0'/>
+    </tpm>
+    <graphics type='spice' port='5901' autoport='yes' listen='127.0.0.1'>
+      <listen type='address' address='127.0.0.1'/>
+      <image compression='off'/>
+    </graphics>
+    <sound model='ich9'>
+      <alias name='sound0'/>
+      <address type='pci' domain='0x0000' bus='0x00' slot='0x1b' function='0x0'/>
+    </sound>
+    <audio id='1' type='spice'/>
+    <video>
+      <model type='qxl' ram='65536' vram='65536' vgamem='16384' heads='1' primary='yes'/>
+      <alias name='video0'/>
+      <address type='pci' domain='0x0000' bus='0x00' slot='0x01' function='0x0'/>
+    </video>
+    <redirdev bus='usb' type='spicevmc'>
+      <alias name='redir0'/>
+      <address type='usb' bus='0' port='2'/>
+    </redirdev>
+    <redirdev bus='usb' type='spicevmc'>
+      <alias name='redir1'/>
+      <address type='usb' bus='0' port='3'/>
+    </redirdev>
+    <watchdog model='itco' action='reset'>
+      <alias name='watchdog0'/>
+    </watchdog>
+    <memballoon model='virtio'>
+      <alias name='balloon0'/>
+      <address type='pci' domain='0x0000' bus='0x05' slot='0x00' function='0x0'/>
+    </memballoon>
+  </devices>
+  <seclabel type='dynamic' model='dac' relabel='yes'>
+    <label>+958:+958</label>
+    <imagelabel>+958:+958</imagelabel>
+  </seclabel>
+</domain>
+

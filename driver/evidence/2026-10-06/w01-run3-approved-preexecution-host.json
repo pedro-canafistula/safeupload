@@ -1,0 +1,79 @@
+{
+  "persistentSource": "/var/lib/libvirt/images/win10-debug.safeupload-pre-boot-start-w01-w01-b38b36-20261006c-ff67c01b990e41ff9af89b5a9959757c-20261006",
+  "liveSource": "/var/lib/libvirt/images/win10-debug.safeupload-pre-boot-start-w01-w01-b38b36-20261006c-ff67c01b990e41ff9af89b5a9959757c-20261006",
+  "LiveTop": "/var/lib/libvirt/images/win10-debug.safeupload-pre-boot-start-w01-w01-b38b36-20261006c-ff67c01b990e41ff9af89b5a9959757c-20261006",
+  "ImmediateBacking": "/var/lib/libvirt/images/win10-debug.safeupload-w01-run2-fe004c32-recovery-20261006.qcow2",
+  "ParentStatBefore": {
+    "Device": 31,
+    "Inode": 629165,
+    "Bytes": 227147776,
+    "MtimeNS": 1791298210091231563,
+    "CtimeNS": 1791298210251231165
+  },
+  "RetainedFailedDiskStat": {
+    "Device": 31,
+    "Inode": 629303,
+    "Bytes": 311099392,
+    "MtimeNS": 1791299857245367089,
+    "CtimeNS": 1791299857245367089
+  },
+  "FreeBytes": 332917841920,
+  "OtherDomainReferences": {
+    "win10": {
+      "State": "running",
+      "DiskSources": [
+        "/var/lib/libvirt/images/win10-clean.safeupload-architecture-20261001",
+        "/var/lib/libvirt/images/win10-clean.turn-defender-off",
+        "/var/lib/libvirt/images/win10-clean.Before SecKnowledgeBase",
+        "/var/lib/libvirt/images/win10-clean.qcow2",
+        "/var/lib/libvirt/images/SecKnowledgeBase.iso",
+        null
+      ]
+    },
+    "flare": {
+      "State": "shut off",
+      "DiskSources": [
+        "/var/lib/libvirt/images/flare.snapshot1",
+        "/var/lib/libvirt/images/flare.04-flare-installed",
+        "/var/lib/libvirt/images/flare.03-defenses-off",
+        "/var/lib/libvirt/images/flare.02-drivers",
+        "/var/lib/libvirt/images/flare.01-bare-windows",
+        "/var/lib/libvirt/images/flare.qcow2"
+      ]
+    }
+  },
+  "Markers": [
+    {
+      "Path": "driver/evidence/w01-recovery-required-active.json",
+      "Bytes": 410,
+      "SHA256": "c47cd78eb4b397ababc223c0bab24eed5374ffc1f5506374e22a18fc7425665f"
+    },
+    {
+      "Path": "driver/evidence/2026-10-06/boot-start-w01-w01-b38b36-20261006c-ff67c01b990e41ff9af89b5a9959757c-recovery-required.txt",
+      "Bytes": 793,
+      "SHA256": "fdf9920c4edc4773964d8295259d4b714b3f9fccd1eb01a0d4d351595652003c"
+    },
+    {
+      "Path": "driver/evidence/2026-10-06/boot-start-w01-w01-b38b36-20261006c-ff67c01b990e41ff9af89b5a9959757c-recovery-required.json",
+      "Bytes": 1540,
+      "SHA256": "47e3701f5319c994c87fc764bec7fc48f06debd2b42746bdd4a4c3af0a378cd4"
+    },
+    {
+      "Path": "driver/evidence/2026-10-06/boot-start-w01-w01-b38b36-20261006c-ff67c01b990e41ff9af89b5a9959757c-guest/boot-start-w01-w01-b38b36-20261006c-ff67c01b990e41ff9af89b5a9959757c-artifacts/RecoveryRequired.json",
+      "Bytes": 5529,
+      "SHA256": "726571e089c31db3893d617b85c77d33adc98f015b8f97f9257bf08978aa0d19"
+    }
+  ],
+  "domain-recovery-planned.xmlSchemaValidation": "driver/evidence/2026-10-06/w01-run3-recovery-plan/domain-recovery-planned.xml validates\n",
+  "recovery-volume-planned.xmlSchemaValidation": "driver/evidence/2026-10-06/w01-run3-recovery-plan/recovery-volume-planned.xml validates\n",
+  "ParentStatAfter": {
+    "Device": 31,
+    "Inode": 629165,
+    "Bytes": 227147776,
+    "MtimeNS": 1791298210091231563,
+    "CtimeNS": 1791298210251231165
+  },
+  "UTC": "2026-10-06T15:17:48.514949+00:00",
+  "HostGuardsPassed": true,
+  "RecoveryApplied": false
+}

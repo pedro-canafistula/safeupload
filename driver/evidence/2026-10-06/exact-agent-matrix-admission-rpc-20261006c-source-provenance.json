@@ -1,0 +1,42 @@
+{
+  "SourceKind": "worktree",
+  "BaseCommit": "577dddfe05ad18b8b643969eed6cc0f78e36fd89",
+  "CapturedUTC": "2026-10-06T15:51:56.111218+00:00",
+  "ArchiveSHA256": "572900005ce1928b5f7c58cfd88a160a750cd04e39614665a4513010d76ccaad",
+  "ManifestSHA256": "3e22066d97ee632c7512a21a4fb4e26f7618c822de796ceb487c95af148ebd98",
+  "ProjectIndexSHA256": "b214cc4a5077070c260130d9b91abb7eb0165dbf59f78e677a6187fdb203ecee",
+  "Files": 131,
+  "ChangedFromBaseCommit": [
+    "agente/SafeUpload.Agent.Minifilter/AdmissionEvidence.cs",
+    "agente/SafeUpload.Agent.Minifilter/FilterPort.cs",
+    "agente/SafeUpload.Agent.Minifilter/SafeUpload.Agent.Minifilter.csproj",
+    "agente/SafeUpload.Agent.Service/Diagnostics/AdmissionEvidenceCapture.cs",
+    "agente/SafeUpload.Agent.Service/Diagnostics/AdmissionEvidenceEndpoint.cs",
+    "agente/SafeUpload.Agent.Service/Diagnostics/AdmissionEvidenceProtocol.cs",
+    "agente/SafeUpload.Agent.Service/Diagnostics/AdmissionEvidenceRunLedger.cs",
+    "agente/SafeUpload.Agent.Service/Interception/MinifilterInterceptor.cs",
+    "agente/SafeUpload.Agent.Service/Program.cs",
+    "agente/SafeUpload.Agent.Service/SafeUpload.Agent.Service.csproj",
+    "agente/SafeUpload.Agent.Tests/AdmissionEvidenceEndpointTests.cs",
+    "agente/SafeUpload.Agent.Tests/AdmissionEvidenceWireTests.cs",
+    "agente/SafeUpload.Agent.Tests/SafeUpload.Agent.Tests.csproj"
+  ],
+  "BuildToolsSHA256": {
+    "driver/scripts/Build-ExactAgentMatrix.ps1": "a04724507a2eabc90c541759c6135f7f3d06786e8dfefb5eb0eac2a34d382cb0",
+    "driver/scripts/remote_ps.py": "71e39bb56a5b5c89b3e00131e24d05377624219a34ae47dd68a4db74c0560351",
+    "driver/scripts/Prepare-ExactWorktreeSource.py": "826413f78d42ed7c273dc9711a8cdff5f91101ab3de2b98cf48e046b493edfca",
+    "driver/scripts/Prepare-ExactAgentWorktreeSource.py": "137002d23758ca8bd700abce891c2e3e0f7b43614eedfd38ffa944ba0b27de83",
+    "driver/scripts/Invoke-ExactAgentMatrixBuild.py": "a14e6d0ba4fe6fa5202c49b69188c5495e4ee5d34e989ecc85c52bdf936b9257"
+  },
+  "ReviewedUntrackedSHA256": {
+    "agente/SafeUpload.Agent.Minifilter/AdmissionEvidence.cs": "b384778d2c5ecd68ed39d1831f41d2ac38bddadbfcfe5f8c93cf50129eb29a84",
+    "agente/SafeUpload.Agent.Tests/AdmissionEvidenceWireTests.cs": "bdd54ada7c00629a23f7e5e19da818ef8ad94a3a4aa37f88b384fff417d48297",
+    "agente/SafeUpload.Agent.Service/Diagnostics/AdmissionEvidenceProtocol.cs": "ce72ead170e767af36a3887219d413f5e6cc1b022224ad4acce9c8221fd416cf",
+    "agente/SafeUpload.Agent.Service/Diagnostics/AdmissionEvidenceCapture.cs": "064f86d0e1f7d456694992fe125b79602b9156d63c102c29a2ba95b141a0b1eb",
+    "agente/SafeUpload.Agent.Service/Diagnostics/AdmissionEvidenceEndpoint.cs": "4a675b6d2f9d8795f3520e562e753c6156b5d161e0743477a9d056ec9ed4475f",
+    "agente/SafeUpload.Agent.Service/Diagnostics/AdmissionEvidenceRunLedger.cs": "ad791bc1e55e09d1617bb3333d644fbfc7c575c58b38c5e3522686bff502b84d",
+    "agente/SafeUpload.Agent.Tests/AdmissionEvidenceEndpointTests.cs": "1efca9a73d2eeb32a61993ff72d66d5a6395bb16162e73c0d4db1c1661e67d7c"
+  },
+  "CaptureCheck": "two reads; byte and file metadata equality",
+  "NetworkOperationsDuringPreparation": 0
+}

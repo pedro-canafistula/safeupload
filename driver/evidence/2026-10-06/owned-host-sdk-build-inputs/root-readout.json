@@ -1,0 +1,13 @@
+{
+  "Purpose": "NATIVE_HOST_COMPILE_INPUTS_ONLY",
+  "SdkRoot": "C:\\Users\\vika\\Documents\\SafeUploadWinFspSdk-20261006-ef9bea72fc3545d985354fa5a939179b\\DYNAMIC",
+  "ValidatedInventorySHA256": "8e3eb233fea442d9cbcec37f6d4b32e24f83098437a6df8a1a5f49389046a131",
+  "SdkManifestSHA256": "5e4b5de30d991fb9b171ac76cc57f3db9500c43b71b0f97645f62bbb544ed613",
+  "CompileInputs": {
+    "lib/winfsp-x64.lib": "41ee9db17da0196aed067605caa719443142f74c0fa8e7800d2acb3fabf78354",
+    "inc/winfsp/fsctl.h": "f03bbbef67430335b8f36544d62c2abfa8b3b2823ca325d8b542b5bebed832b1",
+    "inc/winfsp/launch.h": "b1725fbe8389e3f2c2892e51f60d06ff81eb2ed71cc0cbd34376b4e72612ee1c",
+    "inc/winfsp/winfsp.h": "b8e5c3320bfb58d086ee622dd13370eb38a49e1142877c9d8af827515f916540"
+  },
+  "RuntimeQualified": false
+}

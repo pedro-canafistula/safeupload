@@ -1,0 +1,17 @@
+﻿LABEL=agent-ownerdiag-20261006e
+BUILDER=DESKTOP-O1LP5DG
+SOURCE_MANIFEST_VERIFIED=140
+ARCHIVE_SHA256=4CD25D82916672D43383649F2C7E062B9422028EAEFED5BC1BC0C65271A27258
+MANIFEST_SHA256=CB5BF0971940AA1D3EEC2514395629EF332311A991F7CA8E8261FA379758A8BA
+normal-debug-build: exit=0 warnings=0 errors=0
+normal-debug-test-build: exit=0 warnings=0 errors=0
+normal-release-build: exit=0 warnings=0 errors=0
+normal-release-test-build: exit=0 warnings=0 errors=0
+feature-debug-build: exit=0 warnings=0 errors=0
+feature-debug-test-build: exit=0 warnings=0 errors=0
+feature-release-build: exit=0 warnings=0 errors=0
+feature-release-test-build: exit=0 warnings=0 errors=0
+DiagnosticCompileGate=True
+TestsExecuted=False
+AgentMatrixGate=False
+BUILD_END_UTC=2026-10-06T20:45:58.7307498Z

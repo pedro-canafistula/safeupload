@@ -3086,8 +3086,7 @@ static FLT_PREOP_CALLBACK_STATUS StageUnownedWritableSection(PFLT_CALLBACK_DATA 
     /* The current+pending union is read under one shared policy-lock hold. Separate checks can straddle a shrink:
      * pending misses the old-only scope, then the swap publishes the new current policy before the current check. */
     if (!NT_SUCCESS(FltParseFileNameInformation(name))) goto Deny;
-    if (SafeUploadStageWritersSopMatchesPolicy(Objects->Instance, Objects->FileObject != NULL ?
-            Objects->FileObject->SectionObjectPointer : NULL, FALSE) ||
+    if (SafeUploadStageWritersSopMatchesPolicy(Objects->Instance, Objects->FileObject, FALSE) ||
         SafeUploadStageWritersNameActivating(Objects->Instance, &name->Name) ||
         SafeUploadPolicyMatchesCurrentOrPendingDestination(kind, &name->Name, FALSE) ||
         SafeUploadStageProtectedName(name, kind)) {
@@ -3328,7 +3327,36 @@ static FLT_PREOP_CALLBACK_STATUS StageDispatchCore(PFLT_CALLBACK_DATA Data,
             }
         }
 #endif
-        if (!FlagOn(Data->Iopb->IrpFlags, IRP_PAGING_IO)) {
+        if (FlagOn(Data->Iopb->IrpFlags, IRP_PAGING_IO)) {
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+            PVOID mutatingIoContext = NULL;
+            BOOLEAN exactSopTracked = FALSE;
+            PFILE_OBJECT fileObject = Data->Iopb->TargetFileObject;
+
+            /* Owned-stage file objects were routed through StagePreOperation
+             * above. A public physical FILE_OBJECT can still receive paging
+             * writes from a writable section opened while the filter was
+             * attached. Keep its exact writer/SOP mutation ticket alive until
+             * lower completion, then deny that paging write when the SOP
+             * belongs to the current or pending protected scope (including Activating).
+             * This path does not infer section lifetime from Cleanup or Close. */
+            (VOID)SafeUploadStageWritersBeginPagingIo(Data, Objects->Instance,
+                fileObject, &mutatingIoContext, &exactSopTracked);
+            if (exactSopTracked && fileObject != NULL && SafeUploadStageWritersSopMatchesPolicy(
+                    Objects->Instance, fileObject, FALSE)) {
+                SafeUploadStageWritersEndMutatingIo(mutatingIoContext);
+                return StageCompleteAccessDenied(Data);
+            }
+            if (mutatingIoContext != NULL) {
+                *CompletionContext = mutatingIoContext;
+                return FLT_PREOP_SUCCESS_WITH_CALLBACK;
+            }
+#else
+            /* Normal builds keep owned-stream staging compiled out. */
+#endif
+            break;
+        }
+        {
             PVOID mutatingIoContext = NULL;
             PVOID legacyContext = NULL;
             BOOLEAN trackedWriter = FALSE;
@@ -3348,7 +3376,6 @@ static FLT_PREOP_CALLBACK_STATUS StageDispatchCore(PFLT_CALLBACK_DATA Data,
             *CompletionContext = mutatingIoContext != NULL ? mutatingIoContext : legacyContext;
             return *CompletionContext != NULL ? FLT_PREOP_SUCCESS_WITH_CALLBACK : result;
         }
-        break;
     case IRP_MJ_SET_INFORMATION:
         {
         PVOID registryRenameContext = NULL;

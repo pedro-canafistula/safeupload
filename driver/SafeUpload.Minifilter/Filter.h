@@ -229,6 +229,7 @@ typedef struct _SAFEUPLOAD_BOOT_SCOPE_SET {
     WCHAR Prefixes[SAFEUPLOAD_BOOT_SCOPE_MAX_PREFIXES][SAFEUPLOAD_MAX_PREFIX_CHARS];
 } SAFEUPLOAD_BOOT_SCOPE_SET, *PSAFEUPLOAD_BOOT_SCOPE_SET;
 
+
 #if SAFEUPLOAD_STAGING_PROTOTYPE
 /* Shared by the instance and its stream contexts so teardown state outlives either context. */
 typedef struct _SAFEUPLOAD_INSTANCE_TEARDOWN_TOKEN {
@@ -260,6 +261,7 @@ typedef struct _SAFEUPLOAD_TRANSACTION_CONTEXT {
 } SAFEUPLOAD_TRANSACTION_CONTEXT, *PSAFEUPLOAD_TRANSACTION_CONTEXT;
 #define SAFEUPLOAD_TRANSACTION_CONTEXT_SIGNATURE 'xUwS'
 #endif
+
 
 typedef struct _SAFEUPLOAD_INSTANCE_CONTEXT {
 
@@ -712,8 +714,12 @@ VOID SafeUploadStageWritersReconcileCurrentScope(VOID);
 #endif
 
 BOOLEAN SafeUploadIsAuthenticatedClient(VOID);
+BOOLEAN SafeUploadCurrentProcessHasAgentServiceSid(VOID);
 BOOLEAN SafeUploadInstanceIsTrusted(_In_ PFLT_INSTANCE Instance);
 BOOLEAN SafeUploadInstanceTrustGateSatisfied(_In_ PFLT_INSTANCE Instance);
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+BOOLEAN SafeUploadInstanceAdmissionGateSatisfied(_In_ PFLT_INSTANCE Instance);
+#endif
 VOID SafeUploadInstanceCheckCanaryDeadline(_Inout_ PSAFEUPLOAD_INSTANCE_CONTEXT Context);
 BOOLEAN SafeUploadPolicyHasDestinationScopes(_In_ SAFEUPLOAD_VOLUME_KIND VolumeKind);
 BOOLEAN SafeUploadPolicyMatchesCurrentOrPendingDestination(
@@ -728,6 +734,12 @@ SafeUploadCurrentPolicyGeneration (
 
 #if SAFEUPLOAD_STAGING_PROTOTYPE
 VOID SafeUploadPolicyReadLiveSnapshot(_Out_ PULONG Generation, _Out_ PULONG Flags);
+NTSTATUS SafeUploadPolicyAdmissionCoverageSnapshot(
+    _Inout_ PSAFEUPLOAD_ADMISSION_COVERAGE_STATUS Status);
+VOID SafeUploadPolicyAdmissionCoverageMetadata(
+    _Out_ PULONG Generation, _Out_ PULONG Flags, _Out_ PULONG BootPolicyState,
+    _Out_ PULONG ScopeCount, _Out_ PULONG EpochPending,
+    _Out_ PULONGLONG ScopeSequence);
 #endif
 
 BOOLEAN

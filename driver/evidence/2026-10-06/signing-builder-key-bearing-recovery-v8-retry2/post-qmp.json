@@ -1,0 +1,376 @@
+{
+  "return": [
+    {
+      "device": "",
+      "locked": false,
+      "removable": false,
+      "inserted": {
+        "iops_rd": 0,
+        "detect_zeroes": "off",
+        "active": true,
+        "image": {
+          "limits": {
+            "request-alignment": 1,
+            "min-mem-alignment": 1,
+            "opt-mem-alignment": 4096,
+            "max-iov": 1024
+          },
+          "virtual-size": 3653632,
+          "filename": "/usr/share/edk2/x64/OVMF_CODE.secboot.4m.fd",
+          "format": "raw",
+          "actual-size": 3653632,
+          "dirty-flag": false
+        },
+        "iops_wr": 0,
+        "ro": true,
+        "children": [
+          {
+            "node-name": "libvirt-pflash0-storage",
+            "child": "file"
+          }
+        ],
+        "node-name": "libvirt-pflash0-format",
+        "backing_file_depth": 0,
+        "drv": "raw",
+        "iops": 0,
+        "bps_wr": 0,
+        "write_threshold": 0,
+        "encrypted": false,
+        "bps": 0,
+        "bps_rd": 0,
+        "cache": {
+          "no-flush": false,
+          "direct": false,
+          "writeback": true
+        },
+        "file": "/usr/share/edk2/x64/OVMF_CODE.secboot.4m.fd"
+      },
+      "qdev": "/machine/system.flash0",
+      "type": "unknown"
+    },
+    {
+      "device": "",
+      "locked": false,
+      "removable": false,
+      "inserted": {
+        "iops_rd": 0,
+        "detect_zeroes": "off",
+        "active": true,
+        "image": {
+          "limits": {
+            "request-alignment": 1,
+            "min-mem-alignment": 1,
+            "opt-mem-alignment": 4096,
+            "max-iov": 1024
+          },
+          "virtual-size": 540672,
+          "filename": "/var/lib/libvirt/qemu/nvram/win10_VARS.fd",
+          "format": "file",
+          "actual-size": 540672,
+          "format-specific": {
+            "type": "file",
+            "data": {}
+          },
+          "dirty-flag": false
+        },
+        "iops_wr": 0,
+        "ro": false,
+        "children": [],
+        "node-name": "libvirt-pflash1-storage",
+        "backing_file_depth": 0,
+        "drv": "file",
+        "iops": 0,
+        "bps_wr": 0,
+        "write_threshold": 0,
+        "encrypted": false,
+        "bps": 0,
+        "bps_rd": 0,
+        "cache": {
+          "no-flush": false,
+          "direct": false,
+          "writeback": true
+        },
+        "file": "/var/lib/libvirt/qemu/nvram/win10_VARS.fd"
+      },
+      "qdev": "/machine/system.flash1",
+      "type": "unknown"
+    },
+    {
+      "io-status": "ok",
+      "device": "",
+      "locked": false,
+      "removable": false,
+      "inserted": {
+        "iops_rd": 0,
+        "detect_zeroes": "off",
+        "active": true,
+        "image": {
+          "backing-image": {
+            "backing-image": {
+              "backing-image": {
+                "backing-image": {
+                  "backing-image": {
+                    "limits": {
+                      "write-zeroes-alignment": 65536,
+                      "request-alignment": 1,
+                      "min-mem-alignment": 1,
+                      "discard-alignment": 65536,
+                      "opt-mem-alignment": 4096,
+                      "max-iov": 1024
+                    },
+                    "virtual-size": 128849018880,
+                    "filename": "/var/lib/libvirt/images/win10-clean.qcow2",
+                    "cluster-size": 65536,
+                    "format": "qcow2",
+                    "actual-size": 89178804224,
+                    "format-specific": {
+                      "type": "qcow2",
+                      "data": {
+                        "compat": "1.1",
+                        "compression-type": "zlib",
+                        "lazy-refcounts": false,
+                        "refcount-bits": 16,
+                        "corrupt": false,
+                        "extended-l2": false
+                      }
+                    },
+                    "dirty-flag": false
+                  },
+                  "limits": {
+                    "write-zeroes-alignment": 65536,
+                    "request-alignment": 1,
+                    "min-mem-alignment": 1,
+                    "discard-alignment": 65536,
+                    "opt-mem-alignment": 4096,
+                    "max-iov": 1024
+                  },
+                  "backing-filename-format": "qcow2",
+                  "virtual-size": 128849018880,
+                  "filename": "/var/lib/libvirt/images/win10-clean.Before SecKnowledgeBase",
+                  "cluster-size": 65536,
+                  "format": "qcow2",
+                  "actual-size": 3095793664,
+                  "format-specific": {
+                    "type": "qcow2",
+                    "data": {
+                      "compat": "1.1",
+                      "compression-type": "zlib",
+                      "lazy-refcounts": false,
+                      "refcount-bits": 16,
+                      "corrupt": false,
+                      "extended-l2": false
+                    }
+                  },
+                  "full-backing-filename": "/var/lib/libvirt/images/win10-clean.qcow2",
+                  "backing-filename": "/var/lib/libvirt/images/win10-clean.qcow2",
+                  "dirty-flag": false
+                },
+                "limits": {
+                  "write-zeroes-alignment": 65536,
+                  "request-alignment": 1,
+                  "min-mem-alignment": 1,
+                  "discard-alignment": 65536,
+                  "opt-mem-alignment": 4096,
+                  "max-iov": 1024
+                },
+                "backing-filename-format": "qcow2",
+                "virtual-size": 128849018880,
+                "filename": "/var/lib/libvirt/images/win10-clean.turn-defender-off",
+                "cluster-size": 65536,
+                "format": "qcow2",
+                "actual-size": 47922614272,
+                "format-specific": {
+                  "type": "qcow2",
+                  "data": {
+                    "compat": "1.1",
+                    "compression-type": "zlib",
+                    "lazy-refcounts": false,
+                    "refcount-bits": 16,
+                    "corrupt": false,
+                    "extended-l2": false
+                  }
+                },
+                "full-backing-filename": "/var/lib/libvirt/images/win10-clean.Before SecKnowledgeBase",
+                "backing-filename": "/var/lib/libvirt/images/win10-clean.Before SecKnowledgeBase",
+                "dirty-flag": false
+              },
+              "limits": {
+                "write-zeroes-alignment": 65536,
+                "request-alignment": 1,
+                "min-mem-alignment": 1,
+                "discard-alignment": 65536,
+                "opt-mem-alignment": 4096,
+                "max-iov": 1024
+              },
+              "backing-filename-format": "qcow2",
+              "virtual-size": 128849018880,
+              "filename": "/var/lib/libvirt/images/win10-clean.safeupload-architecture-20261001",
+              "cluster-size": 65536,
+              "format": "qcow2",
+              "actual-size": 45122588672,
+              "format-specific": {
+                "type": "qcow2",
+                "data": {
+                  "compat": "1.1",
+                  "compression-type": "zlib",
+                  "lazy-refcounts": false,
+                  "refcount-bits": 16,
+                  "corrupt": false,
+                  "extended-l2": false
+                }
+              },
+              "full-backing-filename": "/var/lib/libvirt/images/win10-clean.turn-defender-off",
+              "backing-filename": "/var/lib/libvirt/images/win10-clean.turn-defender-off",
+              "dirty-flag": false
+            },
+            "limits": {
+              "write-zeroes-alignment": 65536,
+              "request-alignment": 1,
+              "min-mem-alignment": 1,
+              "discard-alignment": 65536,
+              "opt-mem-alignment": 4096,
+              "max-iov": 1024
+            },
+            "backing-filename-format": "qcow2",
+            "virtual-size": 128849018880,
+            "filename": "/var/lib/libvirt/images/win10-clean.safeupload-signer-fallback-recovery3-20261006.qcow2",
+            "cluster-size": 65536,
+            "format": "qcow2",
+            "actual-size": 838537216,
+            "format-specific": {
+              "type": "qcow2",
+              "data": {
+                "compat": "1.1",
+                "compression-type": "zlib",
+                "lazy-refcounts": false,
+                "refcount-bits": 16,
+                "corrupt": false,
+                "extended-l2": false
+              }
+            },
+            "full-backing-filename": "/var/lib/libvirt/images/win10-clean.safeupload-architecture-20261001",
+            "backing-filename": "/var/lib/libvirt/images/win10-clean.safeupload-architecture-20261001",
+            "dirty-flag": false
+          },
+          "limits": {
+            "write-zeroes-alignment": 65536,
+            "request-alignment": 1,
+            "min-mem-alignment": 1,
+            "discard-alignment": 65536,
+            "opt-mem-alignment": 4096,
+            "max-iov": 1024
+          },
+          "backing-filename-format": "qcow2",
+          "virtual-size": 128849018880,
+          "filename": "/var/lib/libvirt/images/win10-clean.safeupload-signer-key-bearing-v8-retry2-20261006.qcow2",
+          "cluster-size": 65536,
+          "format": "qcow2",
+          "actual-size": 33427456,
+          "format-specific": {
+            "type": "qcow2",
+            "data": {
+              "compat": "1.1",
+              "compression-type": "zlib",
+              "lazy-refcounts": false,
+              "refcount-bits": 16,
+              "corrupt": false,
+              "extended-l2": false
+            }
+          },
+          "full-backing-filename": "/var/lib/libvirt/images/win10-clean.safeupload-signer-fallback-recovery3-20261006.qcow2",
+          "backing-filename": "/var/lib/libvirt/images/win10-clean.safeupload-signer-fallback-recovery3-20261006.qcow2",
+          "dirty-flag": false
+        },
+        "iops_wr": 0,
+        "ro": false,
+        "children": [
+          {
+            "node-name": "libvirt-4-format",
+            "child": "backing"
+          },
+          {
+            "node-name": "libvirt-3-storage",
+            "child": "file"
+          }
+        ],
+        "node-name": "libvirt-3-format",
+        "backing_file_depth": 5,
+        "drv": "qcow2",
+        "iops": 0,
+        "bps_wr": 0,
+        "write_threshold": 0,
+        "backing_file": "/var/lib/libvirt/images/win10-clean.safeupload-signer-fallback-recovery3-20261006.qcow2",
+        "encrypted": false,
+        "bps": 0,
+        "bps_rd": 0,
+        "cache": {
+          "no-flush": false,
+          "direct": false,
+          "writeback": true
+        },
+        "file": "/var/lib/libvirt/images/win10-clean.safeupload-signer-key-bearing-v8-retry2-20261006.qcow2"
+      },
+      "qdev": "/machine/peripheral/virtio-disk0/virtio-backend",
+      "type": "unknown"
+    },
+    {
+      "io-status": "ok",
+      "device": "",
+      "locked": false,
+      "removable": true,
+      "inserted": {
+        "iops_rd": 0,
+        "detect_zeroes": "off",
+        "active": true,
+        "image": {
+          "limits": {
+            "request-alignment": 1,
+            "min-mem-alignment": 1,
+            "opt-mem-alignment": 4096,
+            "max-iov": 1024
+          },
+          "virtual-size": 485173248,
+          "filename": "/var/lib/libvirt/images/SecKnowledgeBase.iso",
+          "format": "file",
+          "actual-size": 485175296,
+          "format-specific": {
+            "type": "file",
+            "data": {}
+          },
+          "dirty-flag": false
+        },
+        "iops_wr": 0,
+        "ro": true,
+        "children": [],
+        "node-name": "libvirt-2-storage",
+        "backing_file_depth": 0,
+        "drv": "file",
+        "iops": 0,
+        "bps_wr": 0,
+        "write_threshold": 0,
+        "encrypted": false,
+        "bps": 0,
+        "bps_rd": 0,
+        "cache": {
+          "no-flush": false,
+          "direct": false,
+          "writeback": true
+        },
+        "file": "/var/lib/libvirt/images/SecKnowledgeBase.iso"
+      },
+      "qdev": "sata0-0-0",
+      "tray_open": false,
+      "type": "unknown"
+    },
+    {
+      "io-status": "ok",
+      "device": "",
+      "locked": false,
+      "removable": true,
+      "qdev": "scsi0-0-1",
+      "tray_open": false,
+      "type": "unknown"
+    }
+  ],
+  "id": "libvirt-20"
+}

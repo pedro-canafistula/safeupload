@@ -1,0 +1,21 @@
+{
+  "UTC": "2026-10-06T18:28:38.678905+00:00",
+  "Verdict": "FAILED_V9_TRUST_CAPTURE_PINNED",
+  "TrustRemoteExitCode": 1,
+  "OriginalUnderlyingErrorCaptured": true,
+  "NativeExitCode": -2147024846,
+  "NativeFailureCode": "0x80070032 ERROR_NOT_SUPPORTED",
+  "AllSixStoresExactlyMintBaseline": true,
+  "CurrentKeySddlExactlyMint": true,
+  "ArtifactSigningAttempted": false,
+  "FailedChildMustBeRetained": true,
+  "MetadataSHA256": "51701037af41fcc19101e26dd2d632934d20b94190d42782474f68f05abdfc1e",
+  "PublicCerSHA256": "47E7069980A60CBCF4DFF61F0F2D3F02EDCF97C2976708790B49D03A09243B2A",
+  "EvidencePins": {
+    "driver/evidence/2026-10-06/signing-builder-trust-v9-20261006a.stdout.txt": "6ec7afcc5436bccb6779b902b995496e9562fd420ecf34f5df6d9414d08edc5a",
+    "driver/evidence/2026-10-06/signing-builder-trust-v9-20261006a.stderr.txt": "ad803ac2a7f1654b9e38f6ca26015f95170cd6e18ea394c8b98e02301f2cc232",
+    "driver/evidence/2026-10-06/signing-builder-v9-failed-trust-independent.stdout.json": "41eedc7c4e5cbd37e1a3aeeebfb47b4e4c0d8c0bf231dd1a9318dce58e210143",
+    "driver/evidence/2026-10-06/signing-builder-v9-failed-trust-independent.stderr.txt": "a3639af5e23464fc391dae127fd5493f02c8178068a35866d9c7fdd35dcd623f",
+    "output/signing-builder-trust-v9-20261006a/root-run.json": "766d4379a31ed4e5fd3b792f9d023327c4b45e69d20a6b45173b37b844757563"
+  }
+}

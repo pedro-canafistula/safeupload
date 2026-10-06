@@ -1,0 +1,259 @@
+Admission coverage readiness: source-only design
+Date: 2026-10-06
+Scope: read-only source audit and implementation contract; no product edits,
+builds, VM runs, or runtime qualification.
+
+Finding
+-------
+
+The service publishes `StatusNotification(ProtectionActive: true)` and sets
+`ReadySignal.ServiceEvent` after its accepted policy path returns
+(`MinifilterInterceptor.cs`, current hash below). This is after policy push
+completion, not merely after the first candidate callback: the current
+`BootPolicyRegistryWriter.Apply` sequence writes the old/new pending-scope
+union, calls candidate `SetPolicy`, commits and clears pending registry state,
+then calls final `SetPolicy`. Both callbacks have returned before the status
+is published. The status still has no read-back of native scope coverage.
+`StatusNotification` carries only `ProtectionActive` and `AuditOnly`, and the
+UI maps the former directly to “Protegido / DISPOSITIVO SEGURO”. The
+`ReadySignal` comment promises only that policy has entered. Therefore the
+current signal is a policy-accepted/service-connected signal, not evidence
+that every accepted destination has a supported, current admission gate.
+
+Keep three notions separate: service/port connectivity, accepted policy
+generation, and destination admission coverage. The endpoint's
+`ReadyClaim=false` remains correct. Admission coverage can become Ready; that
+state must not be described as byte-privacy proof while retained writable
+sections and pass-through paging I/O remain open gates.
+
+Proposed receipt and state contract
+-----------------------------------
+
+Add a bounded, read-only coverage receipt to the existing sole FilterPort.
+Do not create another FilterPort or use diagnostic Controls 19/20/23 as an
+implicit readiness claim. Control 24 is unused in the pinned `Protocol.h`
+snapshot and is one possible command number. The receipt should include the
+exact accepted destination-scope set (or a collision-resistant digest plus
+bounded scope indexes), native policy and epoch generations/flags, boot-policy
+state, a volume-topology sequence, an admission-coverage sequence, writer
+registry snapshot identity, and explicit complete/stable indicators. It may
+return stable volume GUIDs and scope indexes/reasons; it need not disclose
+device paths or file names. Every error, truncation, version mismatch,
+unknown flag, unsupported format, incomplete page set, or sequence mismatch
+must make the receipt non-Ready.
+
+The current status commands do not supply that contract. Control 20 exposes
+`PolicyGeneration`, `EpochGeneration`, epoch flags, and `ActiveCallbacks`, but
+its `ChangeSequence` is currently just a copy of `EpochGeneration`; it is not a
+volume-topology or admission-coverage sequence. Control 23 enumerates at most
+32 current instances and exposes context, volume GUID, filesystem, canary,
+trust, writer-unknown, and volume-flag fields. It does not resolve each policy
+prefix to those instances, and `FltEnumerateInstances` can race setup or
+teardown. Any enumeration/capacity failure is an error, not a partial list.
+Control 19 pages activation-enforced registry entries and carries a writer
+`RegistryChangeSequence`, but its per-entry H/S/C/T/W/unknown fields are
+diagnostic samples. Neither Control 19 nor the per-name Control 17 `Free` bit
+is a complete volume-coverage receipt or a coherent substitute for the
+native admission predicate. In particular, the writer registry sequence does
+not version volume topology or the policy epoch.
+
+The service binds this receipt to its accepted user `PolicyVersion` and the
+native `PolicyGeneration` observed after the final policy callback. It keeps
+connectivity and policy acceptance visible while the coverage enum is
+`Pending`; it reports `Ready` only for the same accepted generation and a
+complete stable receipt. Use `Degraded` for known absent, ambiguous,
+unsupported, failed, or incomplete scope coverage, with a bounded reason per
+scope. Do not encode Pending as `ProtectionActive=false`, whose current
+meaning is “service is up but not watching,” and do not turn Ready into a
+fixed false constant. No configured destination scope must be explicitly
+reported as `NoScope`/Degraded rather than passing vacuously.
+
+For fixed destination prefixes, resolve the exact policy bytes accepted by
+the driver against attached instance volume roots in native NT device-name
+space, using component-boundary comparisons. Each prefix produces one
+resolution: `Unique` only when exactly one stable volume GUID owns the path;
+`Absent` when no attached instance resolves it; `Ambiguous` for more than one
+candidate; `Unknown` when enumeration, volume-name or GUID identity fails.
+Keep unresolved prefixes in the receipt; never drop them to make coverage
+pass. Aggregate duplicate attached instances by stable volume identity only
+after checking every matching instance's gate.
+
+For a resolved volume, require supported filesystem/type, successful volume
+identity, current passing canary with all required check bits and cleanup
+success, matching sticky trust state, valid boot/policy state, no failed or
+finalizing transition, and no relevant global/per-instance unknown flags.
+Any canary Pending/Running/Failed state, missing check, non-success cleanup,
+unsupported filesystem, invalid identity, or unknown volume status prevents
+Ready. A later matching receipt after canary completion and valid identity
+must transition Pending to Ready. This gives a positive path without changing
+the accepted full policy scope.
+
+For removable/network policy flags, assess every current matching instance
+and require a future-mount gate. `FltStartFiltering` or the current global
+`SafeUploadStageAdmissionReady` bit alone does not prove that gate. The
+feature-build `SafeUploadInstanceTrustGateSatisfied` has a demand-start
+compatibility bypass (`return TRUE` when `BootStartMode` is false); the
+existing authenticated-service fast path in `SafeUploadFailClosedProtectedCreate`
+and `SafeUploadPreAcquireSection` can therefore skip that trust check in the
+demand-start test configuration. The new destination admission gate must be
+checked before that fast path and must not inherit the compatibility bypass.
+Do not treat the current trust helper as proof of destination coverage.
+
+A matching newly attached volume must publish a per-instance Pending gate
+before `InstanceSetup` returns. The supported write-create and unowned
+writable-section paths must test this gate before accepting the authenticated
+service fast path. Pending, Unknown, and Unsupported outcomes deny only the
+policy-matching operations on that instance; unrelated volumes remain usable.
+For path-prefix-only policy, do not turn a target-name query failure into an
+implicit outside-scope result on an instance that `SafeUploadPolicyMayMatchVolume`
+marks as possibly in scope. The current null-path matcher only widens to
+volume-kind flags, so the new admission path needs an explicit `Unknown`
+result and fail-closed outcome for that operation when its target cannot be
+classified.
+The current canary worker supports fixed NTFS only. A removable, network, or
+other unsupported instance included by the accepted full-scope policy stays
+Degraded until its own supported admission gate exists; do not remove that
+scope or label the whole machine Ready around it. Once that supported canary
+and gate pass, refresh must permit a real Pending-to-Ready transition. The
+current public-stream paging-write pass-through and retained-map lifetime
+gaps remain blockers to any broader privacy claim.
+
+Generation and dynamic readiness
+--------------------------------
+
+Do not hold the policy push lock while enumerating instances or reading
+per-volume contexts. Copy the exact accepted scope list, boot/pending state,
+policy generation, and epoch state under the policy lock; enumerate and
+reference instances only after releasing it. `Context.c` captures each
+instance's `VolumeName`, `VolumeGuid`, and initial trust/canary state during
+setup, but this source snapshot has no topology generation. `StageAdmission.c`
+queries the current instance list but does not recheck a topology generation.
+`StageWriters.c`'s `RegistryChangeSequence` is for writer-registry changes and
+does not cover instance topology, canary/trust publication, or accepted policy
+scope changes. These sequences must remain distinct.
+
+Add a monotonic topology sequence and in-flight setup/teardown counters. Begin
+the topology change before a setup can become enumerable; install the new
+instance's Pending gate and context before the callback returns; close the
+in-flight setup count only after that publication. On teardown, publish the
+instance as retiring and advance topology before it can be counted Ready.
+Include completion updates so a receipt overlapping either callback sees a
+changed sequence or nonzero in-flight count. Add a separate coverage-change
+sequence for canary/trust/gate state transitions and relevant writer-registry
+gate transitions; do not repurpose Control 20 `ChangeSequence`. For a receipt,
+compare policy generation, epoch generation/flags, topology sequence,
+coverage sequence, and writer-registry snapshot identity before and after the
+snapshot. Require zero setup/teardown operations in flight. Any mismatch,
+active policy pending/finalizing/failed-closed flag, or query/capacity failure
+returns Pending/Degraded with no Ready verdict.
+
+The native scope resolver must compare the accepted UTF-16 policy prefix to
+the captured NT device volume root with an exact component boundary (`root`
+or `root + "\\"`), so `HarddiskVolume1` cannot match
+`HarddiskVolume10`. It resolves each configured prefix to zero, one, or
+multiple stable volume GUIDs, and checks every instance on each matching
+volume. Removable/network flags additionally select every instance whose
+classified volume kind matches; an unknown kind or failed root/GUID query
+cannot be counted outside scope. Do not drop unresolved prefixes or scopes.
+
+For an in-scope instance require successful context, filesystem, volume GUID,
+and volume-information queries; a known supported filesystem/type; attached
+volume flags; valid boot-policy state where boot scopes apply; passing canary
+state/status, all `SAFEUPLOAD_CANARY_CHECKS_ALL` bits, successful cleanup, and
+the canary-passed trust state; plus zero instance/global writer-unknown and
+registry-unknown reasons. Unknown bits, unknown enum values, or an unsupported
+volume are non-Ready. The current per-volume canary is limited to fixed NTFS,
+so other in-scope types cannot pass until their admission gate is implemented.
+
+The receipt must account for the complete activation-enforced writer-entry
+set under one stable writer-registry snapshot. It may return bounded counts
+by scope/volume rather than file names, but its native implementation must
+match every entry to the accepted scope internally and prove that no
+in-scope entry is `UNKNOWN` or still `ACTIVATING`. A relevant entry only
+counts as covered after the native exact `Free(F)` predicate has permitted
+its transition to `PROTECTED`; a sampled all-zero H/S/C/T/W tuple or an
+`ACTIVATING` status page is not enough. The source's promotion predicate also
+checks active writers, rename/reservation state, spilled writer/mutating-I/O
+state, section tracking, user-writable references, empty data/shared-cache
+section pointers, marker quiescence, exact name/scope, and unknown reasons.
+Do not reconstruct that predicate in user mode from Control 19's sampled
+fields or use Control 17's point query as an aggregate. Any missing page,
+changed writer sequence, unknown entry, or unaccounted entry blocks Ready.
+
+Re-read all sequences after the snapshot. Run refresh only after the final
+policy ACK (candidate apply, durable commit/clear, then final SET_POLICY ACK)
+and on policy, instance, canary/trust, or admission-state changes; a bounded
+service poll on the existing port can recover missed notifications. Bind the
+receipt to the service's accepted user `PolicyVersion` and candidate scope
+fingerprint. The service and UI should report connectivity and policy
+acceptance separately from `Pending`, `Ready`, and `Degraded`.
+`StatusViewModel.ApplyStatus` must not map the existing `ProtectionActive`
+Boolean directly to “Protegido / DISPOSITIVO SEGURO”: show Pending or
+Degraded until coverage is Ready, and present Ready as admission coverage
+only. Keep AuditOnly separately visible as monitoring without blocking. Fire
+the one-shot `ServiceReady` event only for the same accepted policy generation
+whose complete receipt is Ready. The driver admission gate remains
+authoritative while the UI refresh catches up.
+
+Scope for a first implementation
+-------------------------------
+
+- Native protocol and query: `driver/SafeUpload.Minifilter/Protocol.h`,
+  `Communication.c`, `Policy.c`, and `StageAdmission.c`.
+- Future-instance/gate state: `Context.c` and the relevant create/section
+  admission sites in `Filter.c`/`StageAdmission.c`; preserve the supported
+  operation boundary and record unsupported outcomes.
+- Managed receipt reader/evaluator: `agente/SafeUpload.Agent.Minifilter/
+  Protocol.cs` and `FilterPort.cs`, then service update sequencing in
+  `MinifilterInterceptor.cs` and `BootPolicyRegistryWriter.cs`.
+- Status contract and presentation: `AgentNotification.cs`,
+  `StatusViewModel.cs`, and `ReadySignal.cs`. Present connectivity,
+  policy-accepted, Pending/Ready/Degraded, and AuditOnly distinctly; use a
+  bounded localized reason. Set the one-shot `ServiceReady` event only when
+  the current accepted generation reaches Ready.
+- Tests: pure evaluator cases and notification/view-state mapping tests;
+  native receipt tests for generation/sequence changes, complete versus
+  truncated enumeration, exact prefix boundaries, absent/duplicate/unknown
+  resolution, unsupported/current/future volumes, canary/trust/cleanup and
+  unknown flags. Include Pending-to-Ready after successful canary and
+  downgrade after a new mount, dismount, trust loss, or query failure. Verify
+  scoped create/writable-section denial while a matching instance is Pending
+  or Unsupported, and unaffected nonmatching-volume operations. Test Ready
+  only for a stable, nonempty complete coverage set.
+
+This design does not authorize claiming retained-view closure or byte
+privacy. The pinned WinFsp and Microsoft DDI comparison in
+`winfsp-cleanup-w01-question-review.txt` shows why cleanup/close is only a
+recheck hint and the current acquire/release slot is not durable per-view
+lifetime evidence.
+
+Pinned source snapshot
+----------------------
+
+The hashes below pin the exact local worktree state reviewed for this design.
+The fixture/test matrix is not a substitute for this source-level conclusion.
+
+| Source | SHA-256 |
+|---|---|
+| `driver/SafeUpload.Minifilter/Protocol.h` | `438bebbfab63727a52f31ec4a81e74f53eeccd988ccdb8a13e80dcf90e03f7fb` |
+| `driver/SafeUpload.Minifilter/Policy.c` | `98c6747665d12410312ca54076cdad4749459e0cee30bd8143cd9a42f891a57c` |
+| `driver/SafeUpload.Minifilter/StageAdmission.c` | `3e2f412667461df5a6b89ac481ae75bcd581a8f428fbde8ef08a7000e31d209d` |
+| `driver/SafeUpload.Minifilter/Communication.c` | `9023ebf40146b384f35d03e461fc7ed461833ad5f55a209049ad32b4adc57043` |
+| `driver/SafeUpload.Minifilter/Filter.c` | `65d92c9c178bf0fd7ad840a240ff95462d8694452f39efecf80a942cc731c202` |
+| `driver/SafeUpload.Minifilter/Context.c` | `a27b70ee4f432d1e5fc2733f9313a0adc4a7e5ec2c8f1935c7ff84f7a8603e5f` |
+| `driver/SafeUpload.Minifilter/StageWriters.c` | `c31efa7c525b127cea223e1b7269f5cf5c09ec92343584005019cbf6a3ced407` |
+| `agente/SafeUpload.Agent.Service/Interception/MinifilterPolicyFactory.cs` | `1da2a0a1360d9d953f8d0b4136bf9fd54900f62ee803e7cfec7555b3683d6599` |
+| `agente/SafeUpload.Agent.Minifilter/PolicyBuilder.cs` | `f4a4de6c8d96051f97f0b20a68ff163e9c4ca703796762ea015e8378f000922a` |
+| `agente/SafeUpload.Agent.Minifilter/Protocol.cs` | `32ed23500b208b2258b48b3e17a49677f1e64f302a0fdee230adc022be21a962` |
+| `agente/SafeUpload.Agent.Minifilter/FilterPort.cs` | `ec6a7e8cdd4bee4f89abdba40859be56b3ec139a833ff5c6b42e66a0b2e3f0d9` |
+| `agente/SafeUpload.Agent.Service/Interception/MinifilterInterceptor.cs` | `97a1ba9d43982e2db3059806a96428dfa782bb6e3651fa685be54b2468c4ce4c` |
+| `agente/SafeUpload.Agent.Service/Interception/BootPolicyRegistryWriter.cs` | `1eea1a15f3ba29c0b0751a3c5b0470d54b0d9db06f9a84be9f4ca78ea594195c` |
+| `agente/SafeUpload.Agent.Core/Contracts/AgentNotification.cs` | `3a940c24ea63663b50f542f07ca3562b634d3ea535db11fd309f859c5af2a679` |
+| `agente/SafeUpload.Agent.App/ViewModels/StatusViewModel.cs` | `79d491506ba86a42f23c7706d57e4f3fc354351421f28ec91bb61e17bb9366ed` |
+| `agente/SafeUpload.Agent.Minifilter/ReadySignal.cs` | `92645f5f4484dcccc1982e2ec0da84201bcea4337e32bd15682cf6b7e1f1edb2` |
+
+Primary comparison pins: WinFsp `winfsp/winfsp` commit
+`fde790d8ea41283606d1c56b557608a17e455f59`; Microsoft DDI pages
+`FLT_PARAMETERS` (last updated 2023-08-28) and section synchronization
+acquire/release (last updated 2023-03-14), accessed 2026-10-06. See the
+WinFsp question review for immutable source URLs and exact applicability.

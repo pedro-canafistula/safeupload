@@ -1,0 +1,26 @@
+{
+  "UTC": "2026-10-06T17:28:16.581309+00:00",
+  "PowerShell51ParseErrors": 0,
+  "StderrRetained": "CLIXML module preparation progress only; no Error records",
+  "InvalidSignerInputsRejectedBeforeFilesystemOrNetwork": [
+    {
+      "Input": "SAFEUPLOAD_SIGNING_THUMBPRINT",
+      "Exit": 1,
+      "Error": "Invalid signing thumbprint"
+    },
+    {
+      "Input": "SAFEUPLOAD_SIGNING_STORE_LOCATION",
+      "Exit": 1,
+      "Error": "Invalid signing store"
+    }
+  ],
+  "TargetBuildScriptExecutedOnVm": false,
+  "ActualBuildOrSigningPassed": false,
+  "SourcePins": {
+    "driver/scripts/Build-ExactSectionFault.ps1": "1a9a5ff6641ef1db7537e79b6b9723742b8f21d8dc891cf392118fda568bee5f",
+    "driver/scripts/Invoke-ExactSectionFaultBuild.py": "367bb81a19c2d68e039a73ea316182d4acf2b68a2d59c7339bb6d2802d465520",
+    "driver/evidence/2026-10-06/exact-section-fault-machine-store-authoring.ps1": "4afc58c6c05ea1c27f1da5149deccec6d6eebb4b2721f87d88f78e4a49bef2be",
+    "driver/evidence/2026-10-06/exact-section-fault-machine-store-authoring.stdout.json": "7579eefe2c26bcfdd1d48c636ab4b49ca65e717cec967cda4bea54b42f831778",
+    "driver/evidence/2026-10-06/exact-section-fault-machine-store-authoring.stderr.txt": "a3639af5e23464fc391dae127fd5493f02c8178068a35866d9c7fdd35dcd623f"
+  }
+}

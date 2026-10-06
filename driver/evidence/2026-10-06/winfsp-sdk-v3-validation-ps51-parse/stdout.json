@@ -1,0 +1,17 @@
+{
+    "TrustChanged":  false,
+    "ProductScriptExecuted":  false,
+    "Files":  [
+                  {
+                      "SHA256":  "acbd5aa42868c989f7f93040f8427cc5e127d090142e383fbfef0b4893d3da94",
+                      "DirectoryBindingPassed":  true,
+                      "Path":  "driver/evidence/2026-10-06/winfsp-sdk-v3-actual-extraction/validate-retained-sdk-v3.ps1",
+                      "ParseErrors":  0,
+                      "NativeCSharpCompilePassed":  true,
+                      "NativeFilesystemCallsExecuted":  false
+                  }
+              ],
+    "PSVersion":  "5.1.19041.6456",
+    "Computer":  "DESKTOP-O1LP5DG",
+    "BuildStarted":  false
+}

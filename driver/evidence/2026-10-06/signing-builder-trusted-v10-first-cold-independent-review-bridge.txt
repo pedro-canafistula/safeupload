@@ -1,0 +1,89 @@
+Independent first-cold evidence review
+Date: 2026-10-06
+Reviewer: bridge fixture finish
+Verdict: FIRST_COLD_ACTUAL_EVIDENCE_PASS; SUPPLEMENTAL_SHUTDOWN_PINS_RECORDED
+
+Reviewed root readout
+
+`driver/evidence/2026-10-06/signing-builder-trusted-v10-first-cold-root-readout.json`
+SHA-256:
+d4b714c647219958a3b6711ff2af5ef238016638a7ac143402de2b252b2ac04f
+
+All 19 hashes in its `EvidencePins` matched. The review attestation's four
+`ReviewEvidencePins` also matched. Host shutdown, child create/start, and
+post-start host verification actual exit records are all zero, their stderr
+files are empty, and the logged helper arguments bind the exact reviewed V3
+helper/execution-pins and review attestation.
+
+Guest V13 actual baseline
+
+The first post-start guest caller is pinned by the root readout. Its actual
+remote exit code is zero and its baseline verdict is
+`V10_TRUSTED_SIGNER_CHECKPOINT_BASELINE_PASS`. I independently parsed the
+pre-shutdown and first-cold JSON outputs and compared every field except
+`UTC` and `BootTimeUtc`: all 36 nonvolatile fields are equal. The output
+reports matching six certificate-store inventories, key ACL equal to mint
+and trust snapshots, no trust change, no private-key export, no state
+mutation, TestSigning `No`, and no build processes.
+
+The host readout reports an exact seven-image chain: trusted-V10 child,
+healthy retry2 parent, Recovery3, and the four captured ancestors. The
+failed retry1 image is absent. Its complete parent stat before and after the
+cold boot is identical. The raw QMP output independently contains the same
+chain, and the single qcow2-format node for retry2 is read-only. Raw host
+evidence hashes:
+
+- `host-readout.json`: `f3741a045ccb5d7a00819a5b39aa0c8db20dbd78368de271fd6e4b9f851af956`
+- `post-qmp.json`: `4f37009106694c5bbe213e76c62fb021edd70671cef8ad1efaa6627656633009`
+- `verified-named-block-nodes.json`: `a4398854080c1249c8b00bccd668f74e742bee114aafa9f912d27661189f1b9c`
+- `post-live.xml`: `243baa9847e9e38c24e0f7f602f843420a0aa9a10119cd2062e32acb3ac9372a`
+
+The guest boot-time field moved backward from
+`2026-10-06T18:32:16.7975570Z` to `2026-10-06T15:46:41.5000000Z`. The root
+readout records that change and explicitly makes no clock-monotonicity claim;
+I make no chronology inference from those timestamps.
+
+Supplemental normal-shutdown evidence
+
+The root readout's 19-pin list omits the separate ACPI-fallback guest
+shutdown command and its output files. The files are present and are pinned
+here so the claimed normal guest shutdown remains reviewable:
+
+- `first-cold-acpi-fallback-guest-command/caller.ps1`:
+  `d081d4670c105c995c1ad9c86b4a83570a327ceabff45faddcc24f6f85037f69`
+- `first-cold-acpi-fallback-guest-command/stdout.txt`:
+  `ec16aa746114789727375767548895dd9dfe5bc91ba83baa3c9de1ec87f18c3b`
+- `first-cold-acpi-fallback-guest-command/stderr.txt`:
+  `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855`
+- `first-cold-acpi-fallback-guest-command/exit.json`:
+  `09b3207b518cdd8739f4dc02f8afb86093a7fbe89f924e27389c4b22b29a1d71`
+
+The command verifies the builder hostname/UUID, caller SID, enabled local
+administrator membership, and absence of build/installer actors; it runs
+`shutdown.exe /s /t 0`, contains no `/f`, and checks the native exit code.
+The recorded remote exit is zero and stderr is empty. The subsequent
+host-side create/start phase also required the VM to be shut off. Include
+these four pins in any amended root readout or final evidence manifest.
+
+Second-cold continuation source review
+
+The prepared `/tmp/safeupload-trusted-v10-guest-shutdown.py` SHA-256 is
+`9acb1a367a8babdc2e6ad49c9f78762f3ce55d8d9859c835131d701cc63e44df`.
+For the `second-cold-shutdown` label it currently checks reviewer-evidence
+hashes and guest identity/no-actors, but does not itself require the exact
+first-cold PASS readout and its pinned evidence before requesting another
+shutdown. Add that gate or have the caller enforce it with recorded evidence.
+
+The prepared `/tmp/safeupload-trusted-v10-second-cold-start.py` SHA-256 is
+`8a7accc5a632a5cc0b57f0472cfc12a3c749d6ea8b863ea1a294ed40a82a6a4b`. It
+pins the first-cold readout/evidence, confirms UUID, shut-off state, child
+source, parent stat, child permissions, and durably writes a start marker.
+Before relying on a second-cold result, add a post-start host check for
+running state, the exact full QMP chain, and the retry2 qcow2 node being
+read-only. Its persistent XML comparator currently removes `backingStore`
+nodes, so that comparison alone does not establish the backing chain. The
+script has not been executed or approved for the second start. These are
+continuation gates, not findings against the completed first cold pass.
+
+No guest shutdown/start, libvirt command, host mutation, key/trust operation,
+build, or signing action was performed by this reviewer.

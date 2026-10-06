@@ -1,0 +1,8 @@
+{
+  "Status": "FROZEN_READY_FOR_ROOT_REVIEW",
+  "ReadyForExecution": true,
+  "Reason": "All required failed-trust capture evidence is pinned; root must review before running any phase.",
+  "ManifestSha256": "3dedd54ae93e600d2ff041c64eb30ce56fdbfa376e4667a1571e8e67d4d2a03a",
+  "NoVmOperationsPerformed": true,
+  "HistoricalV8CheckpointManifestSha256": "6aca834b6bcbbd14c5c4c7df17f45c7e7b327ad8872fb956057511f45da8a143"
+}

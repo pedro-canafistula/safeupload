@@ -1,0 +1,9 @@
+PowerShellVersion=5.1.19041.6456
+Invoke-AdmissionEvidenceCapture.SelfCheck.ps1 ParseErrors=0
+Invoke-AdmissionEvidenceCapture.ps1 ParseErrors=0
+SelfCheckException=System.TimeoutException
+SelfCheckScriptStack=at Write-AdmissionEvidencePipeWithDeadline, C:\Users\vika\AppData\Local\Temp\SafeUpload-client-ps51-23710258add44e17a922e56e1c118add\Invoke-AdmissionEvidenceCapture.ps1: line 611
+at <ScriptBlock>, C:\Users\vika\AppData\Local\Temp\SafeUpload-client-ps51-23710258add44e17a922e56e1c118add\Invoke-AdmissionEvidenceCapture.SelfCheck.ps1: line 551
+at <ScriptBlock>, <No file>: line 9
+SelfCheckExit=1
+ValidationTempAbsent=True

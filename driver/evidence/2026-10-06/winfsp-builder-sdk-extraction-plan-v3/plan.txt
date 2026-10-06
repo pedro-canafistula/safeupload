@@ -1,0 +1,135 @@
+WinFsp 2.2B4 builder-only administrative-image extraction (v3)
+Status: authored for independent review; not executed or PowerShell-parsed.
+
+Purpose and boundary
+
+This package obtains the WinFsp development headers and x64 import library
+from the already reviewed official MSI on the isolated trusted V10 builder.
+It uses Windows Installer administrative-image mode (`msiexec /a`) into one
+fresh GUID-named quarantine directory. The MSI is a complete administrative
+image containing drivers, DLLs, EXEs, scripts, sample sources, headers, and
+libraries. No extracted executable, DLL, script, or driver is invoked. The
+package does not install WinFsp, start a service, load a driver, change trust,
+touch the signing key, build product code, or claim runtime or privacy
+qualification. The resulting SDK root is emitted explicitly for a later
+feature-only native host build.
+
+Pinned source
+
+The only accepted MSI path is
+`C:\Users\vika\Documents\SafeUploadDependencyReview-WinFsp-v2.2B4-20261006\winfsp-2.2.26215.msi`.
+The read-only signature receipt pins 2,207,744 bytes, SHA-256
+`2ECB5C89405488A95BBD8A01875E02C48534FD37BBDFD84488F7590464D65944`,
+Authenticode `Valid`, and the exact NAVIMATICS signer thumbprint
+`75C6C88B0B6C4556F13FCE3B081FC9051EAE457E`. The source also requires the
+captured exact signer subject. The MSI tables were opened read-only and
+`InstallerExecuted=false`; the exact eight-row AdminExecuteSequence is pinned
+and re-read from the held MSI before extraction. That sequence contains only
+the eight standard actions listed in the script. The administrative-table
+receipt also shows no service/driver/custom action in the reviewed active
+sequence. The verifier fails closed on any sequence difference.
+
+Path and file identity controls
+
+The caller supplies only a fresh lowercase 32-hex GUID. The script fixes the
+source and parent paths, rejects a wrong builder UUID/name/SID or a
+non-elevated token, and constructs the target under
+`C:\Users\vika\Documents\SafeUploadWinFspSdk-20261006-<guid>` with an
+adjacent retained `.msi.log`. It opens every component from `C:\` through the
+source directory and output parent with no-follow directory handles; those
+handles reject reparse points and omit `FILE_SHARE_DELETE`, preventing
+ancestor rename/removal during the operation. The MSI is opened before its
+hash, signature, and table checks with read access and read-only sharing; its
+held handle denies write/delete opens through `msiexec` and the post-check.
+The script captures volume serial/file ID identities and reopens all pinned
+paths to compare identities before reporting success.
+
+The target is created exclusively with `CreateDirectoryW`, then held through
+a no-follow directory handle. The log is created exclusively with a temporary
+read/write handle, then reopened as read-only with read/write sharing and no
+delete sharing; the two handles' volume/file IDs must match before the
+creator handle closes. Windows Installer can then write its log while the
+path remains pinned. Target and log are never deleted on error. After process
+exit the log byte count and SHA-256 are captured, and an empty log fails the
+result. A nonzero MSI exit, changed source
+digest/signature/identity, installed WinFsp package/driver/service, or
+unexpected build actors makes the result fail and retains all output.
+
+Every target directory is enumerated without following entries. The script
+opens each entry with `FILE_FLAG_OPEN_REPARSE_POINT`, rejects reparse points
+for files and directories, records volume/file ID and all directory names,
+hashes every file through a held read-only handle, and repeats the directory
+name snapshots before returning. It derives exactly one `WinFspSdkRoot` only
+when the same root contains `inc\winfsp\winfsp.h` and
+`lib\winfsp-x64.lib`. The JSON result includes the full file/directory
+inventory, before/after installation checks, process exit, source and log
+hashes, and SDK root. The inventory contains paths and hashes, not file
+contents.
+
+Execution gates and caller flow
+
+This package is not ready for execution until the trusted V10 host checkpoint
+has been independently reviewed, created as a fresh child over healthy
+retry2, host-verified, and the guest has passed the required pinned V13
+read-only baseline on that child. The exact v3 source must then pass the
+Windows PowerShell 5.1 parser with zero errors and be independently reviewed
+before the root operator runs it in an elevated PowerShell 5.1 session on
+that builder. The operator generates a fresh GUID and supplies only
+`-RunGuid <guidN>`. The package does not perform those prerequisite VM/host
+phases.
+
+After extraction, root reviews the retained JSON result and complete public
+inventory, verifies no installation/service/driver or unrelated state change,
+and passes the exact emitted SDK root explicitly to a feature-only native
+host build. Any build remains a separate operation. Runtime installation on
+the debuggee, service/driver start, changes to boot/security settings, or a
+privacy claim requires separate authorization and evidence.
+
+Frozen historical v1
+
+The v1 package remains unchanged at
+`driver/evidence/2026-10-06/winfsp-builder-sdk-extraction-plan/`; its
+source-manifest SHA-256 is
+`728324ca6ec3b0617928d9bbd189cf1adccf7c4337078f8f8b4a44a3fc9ecfbc` and its
+script SHA-256 is
+`693517f2a9c03304a628b643e10ac6c316245a9c9ee1aa31700bbd0b9fef8b01`.
+Version 2 is a separate package and does not rewrite that history.
+
+Evidence pins
+
+The source-manifest SHA-256 covers this script and plan plus the original
+signature receipt/exit/source, read-only MSI tables/exit/source, official
+dependency preflight, v1 historical manifest, frozen v2 package manifest,
+and v2's actual PS5.1 parse and parameter-binding records. V3 differs from
+frozen v2 only in the source parent calculation: it uses
+`[IO.Path]::GetDirectoryName($msiPath)` instead of the ambiguous
+`Split-Path -LiteralPath ... -Parent` parameter set.
+
+Frozen history and tested v2 correction
+
+V1 remains unchanged; its source-manifest SHA-256 is
+`728324ca6ec3b0617928d9bbd189cf1adccf7c4337078f8f8b4a44a3fc9ecfbc`.
+V2 remains unchanged at
+`driver/evidence/2026-10-06/winfsp-builder-sdk-extraction-plan-v2/`; its
+source-manifest SHA-256 is
+`7965cb6c9bf5f11962f64ae116a22ba8c5ed558597267beeb1e2c7cde11286c4` and
+script SHA-256 is
+`8ee29726c404e26647049918298debf77501fd56ee015da940a6cc515cf6a4c4`.
+The exact v2 script parsed successfully in Windows PowerShell 5.1
+(`winfsp-sdk-v2-ps51-parse` readout SHA-256
+`84a094384d2cb31ee75ec98ccba612d7a276ec448b5be9f8b0dd345423c95275`,
+recording `ParseErrors=0` and source SHA `8ee29726c404e26647049918298debf77501fd56ee015da940a6cc515cf6a4c4`).
+A separate actual Windows parameter check (`winfsp-sdk-v2-ps51-binding-failure`)
+returned `AmbiguousParameterSet` for `Split-Path -LiteralPath $msiPath -Parent`
+at line 19. Its raw caller, stdout, stderr, and root readout are pinned in the
+v3 source manifest. The root readout records native remote exit code 1 and
+`RequestedCatchExitCode=3`; those are distinct values. It also records
+`StringOnlyCheck=true`, `ExtractionScriptExecuted=false`,
+`MSIExtractionAttempted=false`, and `VMStateChanged=false`. The v2 parse PASS
+does not qualify invocation behavior; v3 fixes this exact runtime binding
+issue and requires a fresh exact-source PowerShell 5.1 parse and caller
+parameter check before any extraction. The v2 sources and failure records
+are historical and must not be rewritten.
+
+No MSI execution, host mutation, VM operation, build, signing, trust operation,
+or extracted-binary execution occurred while authoring v3.

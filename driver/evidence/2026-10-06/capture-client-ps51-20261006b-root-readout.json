@@ -1,0 +1,26 @@
+{
+  "SourcePins": {
+    "Invoke-AdmissionEvidenceCapture.ps1": "f27b7a9d3c567a295a359d8416fecd5073c03f3ed6485818f45f14a80fd69ce3",
+    "Invoke-AdmissionEvidenceCapture.SelfCheck.ps1": "93689d132d89c728205cf667150191c36b57642b876b0671719f23dc0a29e4ff"
+  },
+  "RemoteTemp": "C:\\Users\\vika\\AppData\\Local\\Temp\\SafeUpload-client-ps51-0376c1c3f51c4cae89998e1a05578aea",
+  "ExitCode": 1,
+  "LivePipeOpened": false,
+  "ServiceModified": false,
+  "KeyStoreModified": false,
+  "CapturedUtc": "2026-10-06T16:22:04.374495+00:00",
+  "Verdict": "AUTHORING_FAILED",
+  "PowerShellVersion": "5.1.19041.6456",
+  "ParseErrors": 0,
+  "SelfCheckExit": 1,
+  "Failure": "Parser assigns undeclared PSCustomObject frame-state properties",
+  "TempCleanupVerified": true,
+  "RuntimeQualification": false,
+  "EvidencePins": {
+    "output/capture-client-ps51-20261006b/Invoke-AdmissionEvidenceCapture.ps1": "f27b7a9d3c567a295a359d8416fecd5073c03f3ed6485818f45f14a80fd69ce3",
+    "output/capture-client-ps51-20261006b/Invoke-AdmissionEvidenceCapture.SelfCheck.ps1": "93689d132d89c728205cf667150191c36b57642b876b0671719f23dc0a29e4ff",
+    "output/capture-client-ps51-20261006b/root-validation.ps1": "19ddee8c7ae63c5649452baf7f8d45d084b8bfd2edb1f870ebfabaf3e1b35249",
+    "driver/evidence/2026-10-06/capture-client-ps51-20261006b.stdout.txt": "0faf0fcc26a67b57bc25af41aed9d2626193db3d331538e0a4db756f438afc60",
+    "driver/evidence/2026-10-06/capture-client-ps51-20261006b.stderr.txt": "8b93026698a3ac883fa6a8528d30cadfe70603f690db5851bb6704a12f5c8382"
+  }
+}

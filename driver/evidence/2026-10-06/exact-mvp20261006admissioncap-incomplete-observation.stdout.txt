@@ -1,0 +1,106 @@
+[
+    {
+        "Name":  "inspector-feature-release.exe",
+        "Length":  194560,
+        "LastWriteTimeUtc":  "\/Date(1791301298786)\/"
+    },
+    {
+        "Name":  "inspector-feature-release.txt",
+        "Length":  6236,
+        "LastWriteTimeUtc":  "\/Date(1791301298833)\/"
+    },
+    {
+        "Name":  "inspector-normal-release.exe",
+        "Length":  155648,
+        "LastWriteTimeUtc":  "\/Date(1791301297739)\/"
+    },
+    {
+        "Name":  "inspector-normal-release.txt",
+        "Length":  6454,
+        "LastWriteTimeUtc":  "\/Date(1791301297786)\/"
+    },
+    {
+        "Name":  "normal-release-wdk.txt",
+        "Length":  12878,
+        "LastWriteTimeUtc":  "\/Date(1791301274301)\/"
+    },
+    {
+        "Name":  "normal-release.sys",
+        "Length":  40960,
+        "LastWriteTimeUtc":  "\/Date(1791301273270)\/"
+    },
+    {
+        "Name":  "normal-wdk.txt",
+        "Length":  12964,
+        "LastWriteTimeUtc":  "\/Date(1791301244317)\/"
+    },
+    {
+        "Name":  "normal.sys",
+        "Length":  49664,
+        "LastWriteTimeUtc":  "\/Date(1791301243067)\/"
+    },
+    {
+        "Name":  "owned-feature-release-wdk.txt",
+        "Length":  15050,
+        "LastWriteTimeUtc":  "\/Date(1791301296692)\/"
+    },
+    {
+        "Name":  "owned-feature-release.sys",
+        "Length":  176640,
+        "LastWriteTimeUtc":  "\/Date(1791301295067)\/"
+    },
+    {
+        "Name":  "owned-feature-wdk.txt",
+        "Length":  15092,
+        "LastWriteTimeUtc":  "\/Date(1791301265942)\/"
+    },
+    {
+        "Name":  "owned-feature.sys",
+        "Length":  271872,
+        "LastWriteTimeUtc":  "\/Date(1791301264395)\/"
+    },
+    {
+        "Name":  "SafeUpload-stage-prototype.sys",
+        "Length":  271872,
+        "LastWriteTimeUtc":  "\/Date(1791301264395)\/"
+    },
+    {
+        "Name":  "sign.txt",
+        "Length":  0,
+        "LastWriteTimeUtc":  "\/Date(1791301299223)\/"
+    },
+    {
+        "Name":  "writer-fixture.exe",
+        "Length":  4608,
+        "LastWriteTimeUtc":  "\/Date(1791301299192)\/"
+    },
+    {
+        "Name":  "writer-fixture.txt",
+        "Length":  0,
+        "LastWriteTimeUtc":  "\/Date(1791301298895)\/"
+    }
+]
+{
+    "FullName":  "C:\\Program Files (x86)\\Windows Kits\\10\\bin\\10.0.28000.0\\x64\\signtool.exe",
+    "Length":  551368
+}
+[
+    {
+        "Thumbprint":  "4D9B77E38E9A0A762EE2BEDB7C515E36318BF31D",
+        "Subject":  "CN=\"WDKTestCert vika,134334568665621698\"",
+        "NotAfter":  "\/Date(2104531200000)\/",
+        "HasPrivateKey":  true
+    },
+    {
+        "Thumbprint":  "220DD82C37FCF36048D59E4F10113185D81D5DC7",
+        "Subject":  "CN=SafeUpload Test Signing",
+        "NotAfter":  "\/Date(1883148434000)\/",
+        "HasPrivateKey":  true
+    },
+    {
+        "Thumbprint":  "039A84611926EF1AC5D399D6A94A394A4A75E54D",
+        "Subject":  "CN=localhost",
+        "NotAfter":  "\/Date(1819921318000)\/",
+        "HasPrivateKey":  true
+    }
+]

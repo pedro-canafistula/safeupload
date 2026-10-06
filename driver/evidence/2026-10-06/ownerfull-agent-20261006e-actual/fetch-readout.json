@@ -1,0 +1,110 @@
+{
+  "summary.txt": {
+    "Fetched": true,
+    "FetchExit": 0,
+    "SHA256": "feccbadfc8fee2c7884dae78d444b78dda2d2ebe72f664c526d4e5ab391eded0",
+    "Bytes": 830
+  },
+  "dotnet-info.txt": {
+    "Fetched": true,
+    "FetchExit": 0,
+    "SHA256": "560a57cd44c346ce185ddd6573f1e43eda687f1ab6648d6561c1549a036e9327",
+    "Bytes": 2696
+  },
+  "normal-debug-build.txt": {
+    "Fetched": true,
+    "FetchExit": 0,
+    "SHA256": "8607882155059250083784656537236e5999e0cadf3c54fbb2bb3fe5e42e23bb",
+    "Bytes": 2642
+  },
+  "normal-debug-tests.txt": {
+    "Fetched": true,
+    "FetchExit": 0,
+    "SHA256": "dffeb4f54c5032f9bed1d1e3e317863e46ff50848aecbab0381057c25bd296d2",
+    "Bytes": 3302
+  },
+  "normal-debug-results/agent-tests.trx": {
+    "Fetched": true,
+    "FetchExit": 0,
+    "SHA256": "dbe019a23fc86b5f776cd72521e1bbbd8b3519cceff9c0a9efcc65fd8a6405fa",
+    "Bytes": 517745
+  },
+  "normal-release-build.txt": {
+    "Fetched": true,
+    "FetchExit": 0,
+    "SHA256": "cc7b5199ee5b3c763160548bbe08693569d8393f21325f7820c4fe211e714803",
+    "Bytes": 2680
+  },
+  "normal-release-tests.txt": {
+    "Fetched": true,
+    "FetchExit": 0,
+    "SHA256": "1723c5bb803b8de19b1a823ce7bb2220b05d20bd9a3a3d981f7ad3a53c26d560",
+    "Bytes": 3350
+  },
+  "normal-release-results/agent-tests.trx": {
+    "Fetched": true,
+    "FetchExit": 0,
+    "SHA256": "8905c7ad562e459c07cd4761b7242a02c9843bddefba82faea95044f47a92370",
+    "Bytes": 520377
+  },
+  "feature-debug-build.txt": {
+    "Fetched": true,
+    "FetchExit": 0,
+    "SHA256": "35bb25c8d40b2f03bc4c47ee772a38ac893173f08438e864d60dbf428a5b6f83",
+    "Bytes": 2656
+  },
+  "feature-debug-tests.txt": {
+    "Fetched": true,
+    "FetchExit": 0,
+    "SHA256": "b92aab0e7e1538b0ebd8bbe074730a7cd7ed6aae1abc071526c2ea1f6735dfa5",
+    "Bytes": 6936
+  },
+  "feature-debug-results/agent-tests.trx": {
+    "Fetched": true,
+    "FetchExit": 0,
+    "SHA256": "39ac25f0ccf4e7a9a5a9a67e8535fd3c58422a73585b63fa23043444f8b252aa",
+    "Bytes": 598920
+  },
+  "feature-release-build.txt": {
+    "Fetched": false,
+    "FetchExit": 1
+  },
+  "feature-release-tests.txt": {
+    "Fetched": false,
+    "FetchExit": 1
+  },
+  "feature-release-results/agent-tests.trx": {
+    "Fetched": false,
+    "FetchExit": 1
+  },
+  "normal-release-publish.txt": {
+    "Fetched": true,
+    "FetchExit": 0,
+    "SHA256": "a14f9df9fb21bffc4ba0acab2422784edd7f41c1c7f4439d2308b8b0c1edfe99",
+    "Bytes": 2784
+  },
+  "normal-release-package-manifest.txt": {
+    "Fetched": true,
+    "FetchExit": 0,
+    "SHA256": "79fa86d7d578cb1c3ed9415bf3b081040f9c0e1bbdd1652561c8352ed436316a",
+    "Bytes": 471
+  },
+  "normal-release-service-publish.zip": {
+    "Fetched": true,
+    "FetchExit": 0,
+    "SHA256": "f8c5de1dabe1c0ad9fb2cf5c595dc3376cc5b2efab7bf0bad0addcf881b5e71d",
+    "Bytes": 36385370
+  },
+  "feature-release-publish.txt": {
+    "Fetched": false,
+    "FetchExit": 1
+  },
+  "feature-release-package-manifest.txt": {
+    "Fetched": false,
+    "FetchExit": 1
+  },
+  "feature-release-service-publish.zip": {
+    "Fetched": false,
+    "FetchExit": 1
+  }
+}

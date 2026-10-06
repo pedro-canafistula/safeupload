@@ -1,0 +1,17 @@
+{
+  "UTC": "2026-10-06T18:33:14.618510+00:00",
+  "RemoteExitCode": 0,
+  "Result": {
+    "PowerShellVersion": "5.1.19041.6456",
+    "SourceSHA256": "f1a617b10a92f8b7f1babf9e38750d6b590ff131330bb6bf942c50c9bd0ba299",
+    "ParseErrors": 0,
+    "SourceExecuted": false,
+    "TrustChanged": false,
+    "ArtifactSigningAttempted": false
+  },
+  "StderrAssessment": "Empty or retained module-initialization CLIXML progress only",
+  "EvidencePins": {
+    "driver/evidence/2026-10-06/signing-v10-trust-ps51-parse.stdout.txt": "9fb1af0496c93ac6fdf87ce4f8ca4d55bdc0ed9553dad89c320e2faf2edf9c32",
+    "driver/evidence/2026-10-06/signing-v10-trust-ps51-parse.stderr.txt": "a3639af5e23464fc391dae127fd5493f02c8178068a35866d9c7fdd35dcd623f"
+  }
+}

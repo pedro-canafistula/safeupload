@@ -78,6 +78,9 @@ static VOID SafeUploadInstanceContextCleanup(
     #pragma alloc_text(PAGE, SafeUploadInstanceIsTrusted)
     #pragma alloc_text(PAGE, SafeUploadGetOrCreateStreamContext)
     #pragma alloc_text(PAGE, SafeUploadMarkHandleForWrite)
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    #pragma alloc_text(PAGE, SafeUploadInstanceAdmissionGateSatisfied)
+#endif
 #endif
 
 ///////////////////////////////////////////////////////////////////////////
@@ -431,12 +434,15 @@ VOID SafeUploadInstanceCheckCanaryDeadline(_Inout_ PSAFEUPLOAD_INSTANCE_CONTEXT 
     started = InterlockedCompareExchange64(&Context->CanaryStartInterruptTime, 0, 0);
     if (started == 0) return;
     now = KeQueryInterruptTime();
-    if (now >= (ULONGLONG)started && now - (ULONGLONG)started >= timeout &&
-        InterlockedCompareExchange(&Context->TrustState,
-            SAFEUPLOAD_VOLUME_TRUST_CANARY_LOST, SAFEUPLOAD_VOLUME_TRUST_CANARY_PENDING) ==
-            SAFEUPLOAD_VOLUME_TRUST_CANARY_PENDING) {
-        DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL,
-            "SafeUpload: startup canary timed out; volume remains Untrusted until reboot\n");
+    if (now >= (ULONGLONG)started && now - (ULONGLONG)started >= timeout) {
+        SafeUploadStageAdmissionCoverageBegin();
+        if (InterlockedCompareExchange(&Context->TrustState,
+                SAFEUPLOAD_VOLUME_TRUST_CANARY_LOST, SAFEUPLOAD_VOLUME_TRUST_CANARY_PENDING) ==
+                SAFEUPLOAD_VOLUME_TRUST_CANARY_PENDING) {
+            DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL,
+                "SafeUpload: startup canary timed out; volume remains Untrusted until reboot\n");
+        }
+        SafeUploadStageAdmissionCoverageEnd();
     }
 #else
     UNREFERENCED_PARAMETER(Context);
@@ -473,6 +479,43 @@ BOOLEAN SafeUploadInstanceTrustGateSatisfied(_In_ PFLT_INSTANCE Instance)
 #endif
     return SafeUploadInstanceIsTrusted(Instance);
 }
+
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+/* The legacy demand-start diagnostic trust shortcut is intentionally excluded
+ * here. This is the per-instance destination admission gate used before the
+ * authenticated service fast path and by the coverage receipt. */
+BOOLEAN SafeUploadInstanceAdmissionGateSatisfied(_In_ PFLT_INSTANCE Instance)
+{
+    PSAFEUPLOAD_INSTANCE_CONTEXT context = NULL;
+    BOOLEAN ready = FALSE;
+    PAGED_CODE();
+    if (Instance == NULL || !NT_SUCCESS(FltGetInstanceContext(Instance, (PFLT_CONTEXT *)&context)))
+        return FALSE;
+
+    SafeUploadInstanceCheckCanaryDeadline(context);
+    if (context->VolumeKind == SafeUploadVolumeFixed &&
+        context->FileSystemStatus == STATUS_SUCCESS &&
+        context->FileSystemType == FLT_FSTYPE_NTFS &&
+        context->VolumeNameChars != 0 &&
+        context->VolumeNameChars <= SAFEUPLOAD_MAX_PREFIX_CHARS &&
+        context->VolumeGuidStatus == STATUS_SUCCESS &&
+        context->VolumeGuidChars != 0 &&
+        context->VolumeGuidChars < RTL_NUMBER_OF(context->VolumeGuid) &&
+        InterlockedCompareExchange(&context->TrustState, 0, 0) == SAFEUPLOAD_VOLUME_TRUST_CANARY_PASSED &&
+        InterlockedCompareExchange(&context->CanaryState, 0, 0) == SAFEUPLOAD_CANARY_PASSED &&
+        context->CanaryStatus == STATUS_SUCCESS &&
+        context->CanaryChecks == SAFEUPLOAD_CANARY_CHECKS_ALL &&
+        context->CanaryCleanupStatus == STATUS_SUCCESS &&
+        InterlockedCompareExchange(&context->WritersUntracked, 0, 0) == 0 &&
+        InterlockedCompareExchange(&context->RegistryUnknownReasons, 0, 0) == 0 &&
+        SafeUploadStageWritersGlobalUnknown() == 0) {
+        ready = TRUE;
+    }
+
+    FltReleaseContext(context);
+    return ready;
+}
+#endif
 
 ///////////////////////////////////////////////////////////////////////////
 //

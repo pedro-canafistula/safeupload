@@ -1,0 +1,9 @@
+{
+  "ActualRemoteExitCode": 0,
+  "InputPins": {
+    "driver/evidence/2026-10-06/winfsp-sdk-v3-actual-extraction/validate-retained-sdk-v3.ps1": "acbd5aa42868c989f7f93040f8427cc5e127d090142e383fbfef0b4893d3da94"
+  },
+  "ProductScriptExecuted": false,
+  "BuildStarted": false,
+  "TrustChanged": false
+}

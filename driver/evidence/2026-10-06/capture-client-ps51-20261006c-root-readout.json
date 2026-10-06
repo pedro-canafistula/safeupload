@@ -1,0 +1,29 @@
+{
+  "SourcePins": {
+    "Invoke-AdmissionEvidenceCapture.ps1": "1a8587681766156537d634d259b03f844922432c5049617de989243ad2732d6c",
+    "Invoke-AdmissionEvidenceCapture.SelfCheck.ps1": "c8ce62f2e767b8b6a96889a8f49a960ee27261e15896fed7c5678ab3cee94fee"
+  },
+  "RemoteTemp": "C:\\Users\\vika\\AppData\\Local\\Temp\\SafeUpload-client-ps51-9af642605c58473ba226bf0d25b948fe",
+  "ExitCode": 0,
+  "LivePipeOpened": false,
+  "ServiceModified": false,
+  "KeyStoreModified": false,
+  "CapturedUtc": "2026-10-06T16:23:51.139174+00:00",
+  "Verdict": "AUTHORING_PASS",
+  "PowerShellVersion": "5.1.19041.6456",
+  "ParseErrors": 0,
+  "SelfCheckExit": 0,
+  "StderrEmpty": true,
+  "TempCleanupVerified": true,
+  "RuntimeQualification": false,
+  "SourceSecurityReview": "PENDING",
+  "LiveIdentityOrAclValidation": false,
+  "EvidencePins": {
+    "output/capture-client-ps51-20261006c/Invoke-AdmissionEvidenceCapture.ps1": "1a8587681766156537d634d259b03f844922432c5049617de989243ad2732d6c",
+    "output/capture-client-ps51-20261006c/Invoke-AdmissionEvidenceCapture.SelfCheck.ps1": "c8ce62f2e767b8b6a96889a8f49a960ee27261e15896fed7c5678ab3cee94fee",
+    "output/capture-client-ps51-20261006c/root-validation.ps1": "82cfb119ab682922157d809c37e387973b08b80c3e563d5e1f75298d28b2aec7",
+    "driver/evidence/2026-10-06/capture-client-ps51-20261006c.stdout.txt": "67bb1f2c7f44508f01983eb46daf36be5c92047614f98d1d11139480a6793b81",
+    "driver/evidence/2026-10-06/capture-client-ps51-20261006c.stderr.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "driver/evidence/2026-10-06/capture-client-builder-ancestor-acls.stdout.json": "f3c989025f25f3c410f9869c0913f631120619306c014ab0dd88cacaa4edccf7"
+  }
+}

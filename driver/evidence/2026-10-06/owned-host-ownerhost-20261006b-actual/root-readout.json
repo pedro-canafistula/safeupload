@@ -1,0 +1,39 @@
+{
+  "Verdict": "NATIVE_HOST_COMPILE_PASS",
+  "ActualRemoteExitCode": 0,
+  "HostExecuted": false,
+  "RuntimeInstalled": false,
+  "RuntimeQualified": false,
+  "Summary": [
+    "LABEL=ownerhost-20261006b",
+    "BUILDER=DESKTOP-O1LP5DG",
+    "SOURCE_MANIFEST_VERIFIED=4",
+    "ARCHIVE_SHA256=8C3213B52E30FE279D5D9D0533B55B28E7BA182EE004C48BB4F71CA816EC873B",
+    "MANIFEST_SHA256=CB7FB62A5DFA72AC36A2F0E022BFA8ABECB7EAA95A9752F71524D3ED393136E5",
+    "SDK_MANIFEST_SHA256=5E4B5DE30D991FB9B171AC76CC57F3DB9500C43B71B0F97645F62BBB544ED613",
+    "debug: exit=0 succeeded=True warnings=0 errors=0 artifact_sha256=0283747C4179CBF0DBB3C2A843FA6ECDEC316C3F43D7EB8DF84ABD587E1F7A9D",
+    "release: exit=0 succeeded=True warnings=0 errors=0 artifact_sha256=CCA39D1DB44488DAA3D23F6369C24B8E96EDC69B11161F4F0BF8C6B57E359B13",
+    "NativeHostCompileGate=True",
+    "HostExecuted=False",
+    "RuntimeInstalled=False",
+    "RuntimeQualified=False",
+    "BUILD_END_UTC=2026-10-06T20:44:49.4909352Z"
+  ],
+  "Pins": {
+    "driver/evidence/2026-10-06/owned-host-ownerhost-20261006b-actual/build.exit.json": "bfab54bdedbb4a112a6e2001d605f01c513d7799f2d6cbfffa82ce50109f60e4",
+    "driver/evidence/2026-10-06/owned-host-ownerhost-20261006b-actual/build.ps1": "91838fd3b03956e5811f3bcd90efb50d6b7fa0956d3f8395bda1ba087291ad0e",
+    "driver/evidence/2026-10-06/owned-host-ownerhost-20261006b-actual/build.stderr.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "driver/evidence/2026-10-06/owned-host-ownerhost-20261006b-actual/build.stdout.txt": "428957c93cfa880b2bf9da66a4b58d0defa2b55260bbee4bdff678071f4099e7",
+    "driver/evidence/2026-10-06/owned-host-ownerhost-20261006b-actual/execution-inputs.json": "f6b4046a76d29386fe7380a268608c6fd64fe46ed9e40a9473d2b2d7f48997c1",
+    "driver/evidence/2026-10-06/owned-host-ownerhost-20261006b-actual/fetch-readout.json": "eaf4a8059d9d65a180b48edcca91e0ab91a9db2b2ff0034a20452a7c6177dbb5",
+    "driver/evidence/2026-10-06/owned-host-ownerhost-20261006b-actual/out/debug/SafeUpload.OwnedFspHost.exe": "0283747c4179cbf0dbb3c2a843fa6ecdec316c3f43d7eb8df84abd587e1f7a9d",
+    "driver/evidence/2026-10-06/owned-host-ownerhost-20261006b-actual/out/debug-build.txt": "27d368670590c12ba83507c17ccb774f55bb2bec6135027f2d62bd22d4394a14",
+    "driver/evidence/2026-10-06/owned-host-ownerhost-20261006b-actual/out/release/SafeUpload.OwnedFspHost.exe": "cca39d1db44488daa3d23f6369c24b8e96edc69b11161f4f0bf8c6b57e359b13",
+    "driver/evidence/2026-10-06/owned-host-ownerhost-20261006b-actual/out/release-build.txt": "b47b262dbe94f6805e77adebe9254210a8767803dee977326931bbba70de374c",
+    "driver/evidence/2026-10-06/owned-host-ownerhost-20261006b-actual/out/summary.txt": "5be1d0cd1b2122f6e753b3472934a1ac041c004fe8feffdfe72f1d47ff9d8cb6",
+    "driver/evidence/2026-10-06/owned-host-ownerhost-20261006b-actual/preflight.exit.json": "bfab54bdedbb4a112a6e2001d605f01c513d7799f2d6cbfffa82ce50109f60e4",
+    "driver/evidence/2026-10-06/owned-host-ownerhost-20261006b-actual/preflight.ps1": "6e9ccfd4c749179183be8df6cac8bd074178325b531bf8390f7eaa26c0ce898e",
+    "driver/evidence/2026-10-06/owned-host-ownerhost-20261006b-actual/preflight.stderr.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "driver/evidence/2026-10-06/owned-host-ownerhost-20261006b-actual/preflight.stdout.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  }
+}

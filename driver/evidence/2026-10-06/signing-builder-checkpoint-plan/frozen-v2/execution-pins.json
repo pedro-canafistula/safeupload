@@ -1,0 +1,5 @@
+{
+  "driver/evidence/2026-10-06/signing-builder-checkpoint-plan/execute-checkpoint.py": "61268a3e240555d75e7f4c75e297248e115d4927be764af64453989ccdecef84",
+  "driver/evidence/2026-10-06/signing-builder-checkpoint-plan/inputs.json": "1b19a7d954e5bcc80282be3a804d2711ee326bdd114e0a48b71dc48d2e6a49be",
+  "driver/evidence/2026-10-06/signing-builder-checkpoint-plan/baseline-check.ps1": "ee578eb82282a5aaa32cde5c90cfaee82a4064f70d4590ad426279f51136b92e"
+}

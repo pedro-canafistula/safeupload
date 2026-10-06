@@ -77,7 +77,17 @@ NTSTATUS SafeUploadStageOpenByIdentity(_In_ PFLT_INSTANCE Instance,
     _Out_ PHANDLE Handle, _Outptr_result_nullonfailure_ PFILE_OBJECT *Object,
     _Out_ PUINT32 ProbeStage);
 VOID SafeUploadStageAdmissionReady(VOID);
-NTSTATUS SafeUploadStageAdmissionVolumeStatus(_Out_ PSAFEUPLOAD_ADMISSION_VOLUME_STATUS Status);
+VOID SafeUploadStageAdmissionTopologyBegin(VOID);
+VOID SafeUploadStageAdmissionTopologyEnd(VOID);
+VOID SafeUploadStageAdmissionTopologyTeardownBegin(VOID);
+VOID SafeUploadStageAdmissionTopologyTeardownEnd(VOID);
+VOID SafeUploadStageAdmissionCoverageBegin(VOID);
+VOID SafeUploadStageAdmissionCoverageEnd(VOID);
+NTSTATUS SafeUploadStageAdmissionCoverageStatus(
+    _Out_ PSAFEUPLOAD_ADMISSION_COVERAGE_STATUS Status);
+NTSTATUS SafeUploadStageAdmissionVolumeStatus(
+    _Out_ PSAFEUPLOAD_ADMISSION_VOLUME_STATUS Status,
+    _In_ BOOLEAN EnforceCanaryDeadline);
 NTSTATUS SafeUploadStageAdmissionCanaryHold(_In_ PCUNICODE_STRING VolumeName,
     _In_ UINT32 HoldMilliseconds, _Out_ PSAFEUPLOAD_ADMISSION_CANARY_HOLD_REPLY Reply);
 VOID SafeUploadStageAdmissionCanaryHoldCancel(VOID);
@@ -129,6 +139,11 @@ BOOLEAN SafeUploadStageWritersBeginMutatingIo(_Inout_ PFLT_CALLBACK_DATA Data,
     _In_opt_ PFLT_INSTANCE Instance,
     _In_opt_ PFILE_OBJECT FileObject, _Outptr_result_maybenull_ PVOID *CompletionContext,
     _Out_ PBOOLEAN TrackedWriter);
+_IRQL_requires_max_(APC_LEVEL)
+BOOLEAN SafeUploadStageWritersBeginPagingIo(_Inout_ PFLT_CALLBACK_DATA Data,
+    _In_opt_ PFLT_INSTANCE Instance,
+    _In_opt_ PFILE_OBJECT FileObject, _Outptr_result_maybenull_ PVOID *CompletionContext,
+    _Out_ PBOOLEAN ExactSopTracked);
 _IRQL_requires_max_(DISPATCH_LEVEL)
 VOID SafeUploadStageWritersSetMutatingIoCompletion(_In_opt_ PVOID CompletionContext,
     _In_ PFLT_CALLBACK_DATA Data, _In_ FLT_POST_OPERATION_FLAGS Flags);
@@ -140,8 +155,9 @@ LONG SafeUploadStageWritersObserverTicketsOutstanding(VOID);
 _IRQL_requires_max_(APC_LEVEL)
 VOID SafeUploadStageWritersAttachMutatingIo(_In_opt_ PVOID RenameContext,
     _Inout_ PVOID *MutatingIoContext);
+_IRQL_requires_max_(APC_LEVEL)
 BOOLEAN SafeUploadStageWritersSopMatchesPolicy(_In_ PFLT_INSTANCE Instance,
-    _In_opt_ PVOID SectionObjectPointer, _In_ BOOLEAN IncludeAncestors);
+    _In_opt_ PFILE_OBJECT FileObject, _In_ BOOLEAN IncludeAncestors);
 NTSTATUS SafeUploadStageWritersClassifyById(_In_ PFLT_INSTANCE Instance,
     _In_ PFILE_OBJECT FileObject, _Out_ PBOOLEAN InScope);
 _IRQL_requires_max_(APC_LEVEL)
@@ -149,6 +165,13 @@ VOID SafeUploadStageWritersMutationDraining(_In_ PFLT_INSTANCE Instance,
     _In_opt_ PVOID SectionObjectPointer);
 NTSTATUS SafeUploadStageWritersActivatingStatusPage(_In_ UINT32 StartIndex,
     _Out_ PSAFEUPLOAD_ACTIVATING_STATUS_PAGE Page);
+NTSTATUS SafeUploadStageWritersAdmissionCoverage(_In_ UINT32 PolicyGeneration,
+    _Out_ PULONGLONG RegistrySequenceStart, _Out_ PULONGLONG RegistrySequenceEnd,
+    _Out_ PUINT32 WriterEntries, _Out_ PUINT32 WriterEntriesNotReady,
+    _Out_ PUINT32 WriterEntriesUnknown, _Out_ PUINT32 GlobalUnknown);
+_IRQL_requires_(PASSIVE_LEVEL)
+BOOLEAN SafeUploadStageWritersAdmissionCoverageCurrent(
+    _Out_ PULONGLONG RegistrySequence, _Out_ PUINT32 GlobalUnknown);
 UINT32 SafeUploadStageWritersSnapshot(_In_ PFLT_INSTANCE Instance, _In_ PFILE_OBJECT FileObject);
 /* C(F): writable CreateSections acquired and not yet released (observe-only). */
 VOID SafeUploadStageWritersInitialize(VOID);

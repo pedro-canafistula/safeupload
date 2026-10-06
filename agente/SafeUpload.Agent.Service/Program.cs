@@ -5,6 +5,9 @@ using SafeUpload.Agent.Core.Infrastructure;
 using SafeUpload.Agent.Core.Infrastructure.Extraction;
 using System.Runtime.Versioning;
 using System.Security.Principal;
+#if SAFEUPLOAD_ADMISSION_EVIDENCE
+using SafeUpload.Agent.Service.Diagnostics;
+#endif
 
 namespace SafeUpload.Agent.Service;
 
@@ -73,6 +76,9 @@ public static class Program
         builder.Services.AddSingleton<PendingOverrides>();
         builder.Services.AddSingleton<StagedJustifications>();
         builder.Services.AddSingleton<OverrideGrantDispatcher>();
+#if SAFEUPLOAD_ADMISSION_EVIDENCE
+        builder.Services.AddSingleton<AdmissionEvidenceEndpoint>();
+#endif
 
         // O gatilho. A partir daqui a protecao existe sem interface nenhuma
         // aberta, que e o ponto de separar os dois processos.
@@ -152,4 +158,5 @@ public static class Program
             return 1;
         }
     }
+
 }

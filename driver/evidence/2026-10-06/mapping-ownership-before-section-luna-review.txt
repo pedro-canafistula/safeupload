@@ -1,0 +1,158 @@
+# Mapping privacy requires ownership before section creation
+
+Read-only architecture review, 2026-10-06. This note records a separate
+conclusion from the earlier mapping investigation; it does not edit or replace
+that history, either repro, or product source. No VM, build, signer, or runtime
+operation was performed. No implementation or runtime-qualification claim is
+made.
+
+## Verdict
+
+There is no supported minifilter operation in the reviewed Microsoft contracts
+that takes an already-created public NTFS section/view and rebinds it to a
+private stream, revokes its writable views, or splits its existing shared
+cache state into separate reader and writer generations. Therefore, if M1's
+successful mapped write is made through a section whose `SECTION_OBJECT_POINTERS`
+(SOP) was created for the public NTFS stream before any privacy owner was
+active, the combined requirements are incompatible: the mapped write and
+flush must succeed, yet neither that shared section/cache nor the public
+destination may reveal the unapproved bytes. This is a hard architecture
+condition, not a missing counter or a test scheduling issue.
+
+The same condition applies to M2. A retained section handle can create its
+first view after policy expansion. If its section was originally created on
+the public destination stream, accepting the new policy cannot retroactively
+move it. Expansion may become Ready only if that section was already backed
+by a private transaction object from the first open, or after the handle and
+all relevant views have actually gone away and the object is reopened under
+the owner. The latter cannot satisfy the retained-handle M2 stimulus.
+
+Mapped CPU stores update the section's shared pages before a paging write
+reaches the filter. Diverting or completing paging I/O protects lower bytes
+but does not isolate another view of that same section. A new buffered open
+can also encounter shared cache state. The paging-write path is consequently
+not a privacy boundary, even if a raw-device observer remains unchanged.
+
+## Smallest viable architecture
+
+Keep a privacy owner attached before the first relevant create/open and section
+creation. A supported minifilter route is create-time namespace redirection to
+a real private file-system backing object (for example, SimRep-style pre-create
+reparse). The backing file system then creates the transaction file object and
+its SOP; the filter routes the writer to that private generation and routes
+independent approved reads to the immutable approved generation. Flushes and
+paging writes from the retained writer section complete against its transaction
+backing. Approval publishes a new generation using a durable, recoverable
+commit path. Raw and uncached observers continue to inspect the real lower
+destination independently; before approval its bytes and allocation remain
+unchanged.
+
+To honor no-scan policy expansion, every writable open on a candidate mounted
+volume must receive a private branch on first open, even when the current
+policy does not yet cover its path. Otherwise, a section opened before
+expansion may still be bound to a public SOP. A future policy update can then
+reclassify already-owned logical identities without enumerating the
+filesystem; files with no prior open are redirected when their first create
+arrives. This is broad default staging across the candidate volume, or an
+equivalent namespace owner, rather than a narrow current-policy-only hook.
+
+The implementation must preserve a stable logical identity while redirecting
+physical I/O: map volume plus full file ID, stream/ADS, aliases and generation
+to approved and transaction backing; virtualize identity, metadata, directory,
+rename, link, and file-ID opens; prevent raw/unsupported bypasses; hold the
+transaction backing beyond Cleanup/Close; and make approval, crash recovery,
+and destination publication atomic and auditable. Each supported adapter
+(fixed NTFS, USB, UNC/SMB, and sync-client paths) needs its own lower commit,
+removal/reconnect, and independent observer qualification. A local NTFS
+reparse-to-sidecar design is a concrete starting point, not evidence that
+those other adapters are supported.
+
+The existing M1 observer contract should remain intact: successful mapped
+write/flush, release, successful flush-buffer call, fresh buffered and
+uncached reads, stable base LCN, and full raw baseline comparison. To make it
+a valid privacy test, the owner must already redirect the fixture's writable
+open before the mapping is created; then the test can delay service/policy
+activation while retaining the mapping. If “pre-attachment” requires the
+section to be created on the public NTFS SOP before any owner/filter exists,
+that exact test cannot both pass the successful-write gate and prove full
+privacy. Do not reinterpret denial as a pass. M2 can retain the old section
+handle and create a view after expansion only if the old handle already maps
+to the transaction generation.
+
+Until that ownership layer is implemented and qualified, retain taint and
+keep unsupported destinations/capabilities disabled. Do not mark M1/M2
+closed based on a lower paging-write guard, a census, a “Ready” receipt, or a
+successful raw-only check. An identity census cannot split or retarget the
+section; the user's no-scan rule also rules out using directory enumeration
+as the missing ownership mechanism.
+
+## Contract evidence and inference boundary
+
+- Microsoft documents that one `SECTION_OBJECT_POINTERS` belongs to a file
+  stream and all file objects for that stream share it; the file system or
+  redirector allocates/sets it, while file-system filters treat its members as
+  opaque. This supports treating the public SOP as file-system-owned state.
+- `MmDoesFileHaveUserWritableReferences` takes that exact SOP and reports
+  whether writable mapped references exist, including after file and section
+  handles close. Its documented use is detection/gating for transactions; it
+  does not return a replacement SOP or revoke a view.
+- `MmCanFileBeTruncated` is a reference/quiescence predicate for truncation.
+  A false result can identify mapped views, write probes, image sections, or
+  data-section references. It has no retarget/rebind operation.
+- `CcPurgeCacheSection` explicitly will not purge mapped files and requires
+  exclusive file ownership plus no mapped or pinned byte. The minifilter does
+  not own NTFS's FCB resource. It cannot safely purge shared public cache data
+  through this contract.
+- `FltCreateSectionForDataScan` creates a new section backed by the supplied
+  file object. The inference is limited: this is a separate scanning section,
+  not a documented operation for replacing an application's existing
+  section.
+- Microsoft’s SimRep sample demonstrates supported minifilter create-time
+  redirection to an alternate path using reparse behavior. This can arrange
+  the correct backing before a section exists; it does not repair a section
+  created before redirection.
+- Pinned WinFsp source/test review at commit
+  `fde790d8ea41283606d1c56b557608a17e455f59` is recorded in
+  `output/mvp-continuation/winfsp-cleanup-w01-question-review.txt`. It shows
+  cleanup and close are distinct and mappings can outlive the user handle.
+  WinFsp owns its file node/cache and is not evidence of NTFS minifilter
+  rebind behavior. Its contribution changes the implementation action only:
+  retain transaction backing past Cleanup/Close and treat those callbacks as
+  recheck hints, not section-lifetime proof.
+
+The conclusion that no supported minifilter rebinds an extant application
+section is an inference from the documented SOP ownership and the reviewed
+DDI operations (which create new opens/sections or inspect references); no
+Microsoft page states that negative proposition verbatim. The inference does
+not rule out a file system/redirector or a create-time virtual namespace that
+owns the file object before section creation.
+
+## Pinned local study
+
+The local source and prior-note snapshots read for this review were:
+
+| Artifact | SHA-256 |
+|---|---|
+| `driver/SafeUpload.Minifilter/StageStream.c` | `94c02659fd6420e40ac8cc8c1db6ea6af7b12dea4ec92b00e89f5b5b219c0321` |
+| `driver/SafeUpload.Minifilter/StageWriters.c` | `566a05cbc2b1a0e758f73828bec233254b52025c245a01bd47ce56d0d5097719` |
+| `driver/evidence/2026-10-06/mapping-leak-architecture-investigation.txt` | `a984a26d88738dd6af192e3e1373d67bcb3cf3b61876b798102cd00002d1c355` |
+| `output/mvp-continuation/winfsp-cleanup-w01-question-review.txt` | `cf1e1672c04f6b1d2ff87ff023500c2df23731b28816b9dde7bb828e3368514b` |
+| `driver/scripts/Test-StagedPreAttachmentMapping.ps1` | `1c493c8a0489c1315347336d15fc0dcd7accb963fb9981c661ba5600931b4dd0` |
+| `driver/scripts/Test-StagedPolicyTransitionMapping.ps1` | `094f149ce4f96f8139e951f05103c2bf95ff90995a15e8184dfa55a4b4606c81` |
+
+The implementation’s private StageStream path assigns a private section
+pointer to its owned file object; that only applies to file objects routed to
+the owner before mapping. The public paging path is still a matched-SOP gate.
+The separate mapping-leak investigation provides detailed per-test code
+locations and did not change either script.
+
+## Primary references
+
+- [SECTION_OBJECT_POINTERS](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/ns-wdm-_section_object_pointers)
+- [MmDoesFileHaveUserWritableReferences](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/nf-ntifs-mmdoesfilehaveuserwritablereferences)
+- [MmCanFileBeTruncated](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/nf-ntifs-mmcanfilebetruncated)
+- [CcPurgeCacheSection](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/nf-ntifs-ccpurgecachesection)
+- [FltCreateSectionForDataScan](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/fltkernel/nf-fltkernel-fltcreatesectionfordatascan)
+- [Memory Mapped Files in a File System Filter Driver](https://learn.microsoft.com/en-us/windows-hardware/drivers/ifs/memory-mapped-files-in-a-file-system-filter-driver)
+- [SimRep File System Minifilter Driver sample](https://learn.microsoft.com/en-us/samples/microsoft/windows-driver-samples/simrep-file-system-minifilter-driver/)
+- [IoReplaceFileObjectName](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/nf-ntifs-ioreplacefileobjectname)

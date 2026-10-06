@@ -1,0 +1,86 @@
+{
+  "UTC": "2026-10-06T15:13:12.511164+00:00",
+  "ApprovalReplyQuestionId": "call_yo9LETHDmwoqVajJ1eqgJxhf",
+  "ReplyCondition": "disk-only after overnight host restart; failed RAM unproven",
+  "ActiveRunGuid": "ff67c01b990e41ff9af89b5a9959757c",
+  "DomainUUID": "9d44eee8-81cf-4cc1-9fba-7670f11def4d",
+  "DomainState": "running",
+  "DomainDisks": " Type   Device   Target   Source\n------------------------------------------------------------------------------------------------------------------------------------------------------------\n file   disk     vda      /var/lib/libvirt/images/win10-debug.safeupload-pre-boot-start-w01-w01-b38b36-20261006c-ff67c01b990e41ff9af89b5a9959757c-20261006\n file   cdrom    sda      -\n file   cdrom    sdb      -\n\n",
+  "HostBootId": "543d9893-35cd-4d27-9a88-c57741feb630",
+  "ParentStat": {
+    "Device": 31,
+    "Inode": 629165,
+    "Bytes": 227147776,
+    "MtimeNS": 1791298210091231563,
+    "CtimeNS": 1791298210251231165
+  },
+  "ParentStatMatchesPrepared": true,
+  "PreparedArtifacts": {
+    "domain-persistent-before.xml": {
+      "Bytes": 8614,
+      "SHA256": "5018025763fab3a6a9c9b7a5b914979635521106b5e946b9a3a5e94f786bd42d",
+      "MatchesPrepared": true
+    },
+    "domain-live-before.xml": {
+      "Bytes": 81367,
+      "SHA256": "5b0f9e9b82106a7c6612fed061adde97302300e3ecea42573fb159a7104a35c5",
+      "MatchesPrepared": true
+    },
+    "domain-qmp-before.json": {
+      "Bytes": 497555,
+      "SHA256": "773e743b25dc1436ab9c058cf210ff04a055d2044adaa7b1e0614a9a5140516f",
+      "MatchesPrepared": true
+    },
+    "failed-volume-before.xml": {
+      "Bytes": 1480,
+      "SHA256": "4f85a469d630d1764c4342bab89de89a1e521ab97c6c4671ba3c725e239ffc6c",
+      "MatchesPrepared": true
+    },
+    "parent-volume-before.xml": {
+      "Bytes": 1405,
+      "SHA256": "9a46562033bbd4febe225db13fd8799516a6cc5df9240c2cd453e39c98666821",
+      "MatchesPrepared": true
+    },
+    "latched-marker-inventory.json": {
+      "Bytes": 1076,
+      "SHA256": "8ac9caf7719d189968b78131941e9fb69651ec2a0ab2f04f0bab7eae738443e9",
+      "MatchesPrepared": true
+    },
+    "host-observation.json": {
+      "Bytes": 1371,
+      "SHA256": "c0391db3b21563d3eed21286f65ae13d9dc157a4cc6311d89c7f1ae1c029dbc8",
+      "MatchesPrepared": true
+    },
+    "Invoke-W01RecoveryBaselineCheck.ps1": {
+      "Bytes": 16890,
+      "SHA256": "15c43a9f4fda540437868c91cbd2e2cfbc2c6da81044ce05fd7b4d7e1fda677c",
+      "MatchesPrepared": true
+    },
+    "domain-recovery-planned.xml": {
+      "Bytes": 8503,
+      "SHA256": "e8dcc7236132a07749a8c98b9c8ae8656d7d092cf1d8769d8fbd14e84a4454e7",
+      "MatchesPrepared": true
+    },
+    "recovery-volume-planned.xml": {
+      "Bytes": 421,
+      "SHA256": "c879861e08b8527fd79c937f27a0b4bb16d3f92a5f75f2302ffe07ecef76456b",
+      "MatchesPrepared": true
+    },
+    "recovery-procedure.txt": {
+      "Bytes": 14166,
+      "SHA256": "a7aab2cb8908b2c3ef9481472c54ecb7871e7f347da5695f5bab3ccc2bd6c373",
+      "MatchesPrepared": true
+    },
+    "storage-pool-before.xml": {
+      "Bytes": 455,
+      "SHA256": "59634fe8a6c5bb58d040ade101ab38c0a71fd00fb3e6c979648f343b8b89ea9b",
+      "MatchesPrepared": true
+    }
+  },
+  "CurrentRunRecoveryApplied": false,
+  "MarkerDispositionApplied": false,
+  "ApprovalScopeClarificationPending": true,
+  "Reason": "The active run3 failed VM is running. The approved disk-only exception describes a stopped/restarted incident; run2 disk-only recovery is already completed. Do not discard live run3 RAM or reuse run2 approval for run3.",
+  "W01": "INCONCLUSIVE",
+  "Phase4": "NOT_QUALIFIED"
+}

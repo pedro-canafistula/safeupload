@@ -1,0 +1,45 @@
+{
+  "CheckedUTC": "2026-10-06T02:27:57.522933+00:00",
+  "Run": "boot-start-invariant-S01-denied-write-after-boot-boot-verifier-s01b38dir3",
+  "RawManifestSHA256": "BA7A66211BF9777282FC9E47C3EA5A0B0CD02A4215CDD3D4B010F07B58D1F6B3",
+  "CaseSHA256": "DFD1BA286FCD1C2AB4AEB89961F01F6D757DD5427435635A18ACAF7CB923F52C",
+  "RawArtifactsHashed": 49,
+  "DistinctForbidden128ByteBlocksAbsent": 303,
+  "MarkerLogicalImages": [
+    {
+      "Name": "logical-ea3772c9e4a04fc1b284e6db4c30706f.bin",
+      "SHA256": "5F920B5E63EC4D8C5E5050668691EB5D36E166C2A7C55BFD8CC46DC44E16BC21",
+      "Length": 12288
+    },
+    {
+      "Name": "logical-700f52323fa64bd980e0b23672f3ed37.bin",
+      "SHA256": "5F920B5E63EC4D8C5E5050668691EB5D36E166C2A7C55BFD8CC46DC44E16BC21",
+      "Length": 12288
+    },
+    {
+      "Name": "logical-83b7bca20808420ab151b9880d354306.bin",
+      "SHA256": "5F920B5E63EC4D8C5E5050668691EB5D36E166C2A7C55BFD8CC46DC44E16BC21",
+      "Length": 12288
+    },
+    {
+      "Name": "logical-16610a9e69194ce9a98cecdb1679d87f.bin",
+      "SHA256": "5F920B5E63EC4D8C5E5050668691EB5D36E166C2A7C55BFD8CC46DC44E16BC21",
+      "Length": 12288
+    },
+    {
+      "Name": "logical-3791dac537284d7ebb0781744dd163bb.bin",
+      "SHA256": "5F920B5E63EC4D8C5E5050668691EB5D36E166C2A7C55BFD8CC46DC44E16BC21",
+      "Length": 12288
+    }
+  ],
+  "DeniedOpens": 101,
+  "Latency": {
+    "Verdict": "FAIL",
+    "P95Ms": 3.3747,
+    "MaxMs": 1888.5479
+  },
+  "RestorationEvidenceSHA256": "BDF8E033A200E4C2343C6023E77FA58447B6FBCEEAB40F072F7493C87229CA29",
+  "RecordedBaselineClean": true,
+  "Disposition": "Forbidden marker blocks absent from retained sampled bytes; latency FAIL preserved. Full Phase4 remains unqualified; no temporal completeness or mutation-ledger proof.",
+  "IndependentReviewer": "Luna6 max, mapping_gap_luna; root repeated raw hash/block and operation checks"
+}

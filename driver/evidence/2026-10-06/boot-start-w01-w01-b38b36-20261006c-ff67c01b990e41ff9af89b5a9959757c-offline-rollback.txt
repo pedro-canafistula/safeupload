@@ -1,0 +1,1 @@
+Could not determine the checkpoint overlay backing file: /var/lib/libvirt/images/win10-debug.safeupload-pre-boot-start-w01-w01-b38b36-20261006c-ff67c01b990e41ff9af89b5a9959757c-20261006

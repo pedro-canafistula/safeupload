@@ -1,0 +1,39 @@
+{
+  "UTC": "2026-10-06T17:30:34.588189+00:00",
+  "Verdict": "AGENT_CURRENT_SOURCE_AND_PACKAGE_VERIFIED",
+  "CurrentSourceFiles": 133,
+  "AllSourceArchiveAndWorktreeHashesMatch": true,
+  "Tests": {
+    "normal-debug": 324,
+    "normal-release": 324,
+    "feature-debug": 353,
+    "feature-release": 353
+  },
+  "TenBuildTestPublishLogsZeroWarningsErrors": true,
+  "ReleasePackageContentsVerified": true,
+  "PackageSHA256": {
+    "normal": "f67a0f3f474abf73e00f74b1848f2afddd95057544dfecbceb33db2293b8ca8f",
+    "feature": "78283357d199ded0ff89c61c69c9cb88f4dde4928bbbc4f37333a744a0efd37e"
+  },
+  "ServiceInstalled": false,
+  "RuntimeQualified": false,
+  "EvidencePins": {
+    "output/exact-agent-matrix/admission-ready-20261006c/source-provenance.json": "06e1af964088a5a7563b48d242334a4e6106b80d9ff640dfac70e4d31e8c0a61",
+    "output/exact-agent-matrix/admission-ready-20261006c/src.zip": "04f33fc77fc36e9d146fa5e995642202f529681b25ab8b32c6592af4521c6df9",
+    "output/exact-agent-matrix/admission-ready-20261006c/src.manifest": "fe005dcbf87216cb8a08e46c5ef7db8ba2cd791356374673a1fa68efd1bbb939",
+    "output/exact-agent-matrix/admission-ready-20261006c/out/summary.txt": "5f743eb54903992c51333c6f4a051746c06120a2b6011a64a26baf8f47647928"
+  },
+  "ActualTenBuildTestPublishLogsIndependentlyChecked": true,
+  "BuildTestPublishLogPins": {
+    "output/exact-agent-matrix/admission-ready-20261006c/out/normal-debug-build.txt": "847f28e9e769ad3925b1aec9fc87e2182fd6598e0bf1c0a295a346679294e7fd",
+    "output/exact-agent-matrix/admission-ready-20261006c/out/normal-debug-tests.txt": "60c83d7fda836682ae2d4a84622f192954df3e809e5f015a82db4d6e0be089f8",
+    "output/exact-agent-matrix/admission-ready-20261006c/out/normal-release-build.txt": "5c44abbdbb34794ab63affb45b551b82d0431ec0375adffb0c4bdcf279741ed7",
+    "output/exact-agent-matrix/admission-ready-20261006c/out/normal-release-tests.txt": "ec77da10dcebac4e9c215e10742eef12e7b2c658f9f1bf1baaba6c18621f65e5",
+    "output/exact-agent-matrix/admission-ready-20261006c/out/normal-release-publish.txt": "d3d1d735a72b18abf4d57314bfa0682fbeaf40f8a7a213e27588d2d3bbc46429",
+    "output/exact-agent-matrix/admission-ready-20261006c/out/feature-debug-build.txt": "a3d9a382ee58d6c4d8db4360b2992dcf85683480e119404afaf10c915044b248",
+    "output/exact-agent-matrix/admission-ready-20261006c/out/feature-debug-tests.txt": "6f9afe6fc7e6d8de0cd9488a45d1fd9af66ac3227cdd103a1b146ee8646b0d1d",
+    "output/exact-agent-matrix/admission-ready-20261006c/out/feature-release-build.txt": "675985addf5dbbe1f8936831b9fafcdbbb2493c59f910ff83efff73105599f4f",
+    "output/exact-agent-matrix/admission-ready-20261006c/out/feature-release-tests.txt": "0ee38548595293f8279fe639287499a4c34032e1e32d3baae1d3e9b4f915cab4",
+    "output/exact-agent-matrix/admission-ready-20261006c/out/feature-release-publish.txt": "29bf3691d2cabffcbd8f30daa490fc2720b71c3b35623b64ec2a92c8eb34e5fb"
+  }
+}

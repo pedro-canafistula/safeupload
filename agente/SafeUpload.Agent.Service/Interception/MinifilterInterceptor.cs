@@ -6,6 +6,9 @@ using SafeUpload.Agent.Minifilter;
 using SafeUpload.Agent.Service.Notifications;
 using SafeUpload.Agent.Core.Infrastructure;
 using PortVerdict = SafeUpload.Agent.Minifilter.Verdict;
+#if SAFEUPLOAD_ADMISSION_EVIDENCE
+using SafeUpload.Agent.Service.Diagnostics;
+#endif
 
 namespace SafeUpload.Agent.Service.Interception;
 
@@ -63,6 +66,12 @@ public sealed class MinifilterInterceptor : BackgroundService
     private bool _auditOnly;
     private int _policyVersion;
     private int _activeCategories;
+    private string[] _acceptedCoveragePrefixes = Array.Empty<string>();
+    private uint _acceptedCoveragePolicyFlags;
+#if SAFEUPLOAD_ADMISSION_EVIDENCE
+    private readonly AdmissionEvidenceEndpoint _admissionEvidence;
+    private byte[]? _acceptedPolicyFingerprint;
+#endif
 
     /// <summary>Compõe o interceptador.</summary>
     public MinifilterInterceptor(
@@ -74,7 +83,11 @@ public sealed class MinifilterInterceptor : BackgroundService
         OverrideGrantDispatcher grants,
         StagedJustifications stagedJustifications,
         IConfiguration configuration,
-        ILogger<MinifilterInterceptor> logger)
+        ILogger<MinifilterInterceptor> logger
+#if SAFEUPLOAD_ADMISSION_EVIDENCE
+        , AdmissionEvidenceEndpoint admissionEvidence
+#endif
+        )
     {
         _inspection = inspection ?? throw new ArgumentNullException(nameof(inspection));
         _policyStore = policyStore ?? throw new ArgumentNullException(nameof(policyStore));
@@ -85,6 +98,9 @@ public sealed class MinifilterInterceptor : BackgroundService
         _stagedJustifications = stagedJustifications ?? throw new ArgumentNullException(nameof(stagedJustifications));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _stagingEnabled = configuration.GetValue<bool>("Interception:StagingPrototype");
+#if SAFEUPLOAD_ADMISSION_EVIDENCE
+        _admissionEvidence = admissionEvidence ?? throw new ArgumentNullException(nameof(admissionEvidence));
+#endif
     }
 
     /// <inheritdoc />
@@ -185,49 +201,67 @@ public sealed class MinifilterInterceptor : BackgroundService
                 return;
             }
 
-            if (_stagingEnabled)
+            if (_stagingEnabled && _stageAllocator is null)
             {
-                try
-                {
-                    string root = Path.Combine(AgentPaths.RootDirectory, "staging");
-                    string journal = Path.Combine(AgentPaths.RootDirectory, "staging-journal");
-                    _stageJournal = new StagedTransferJournal(journal, requireProtectedParent: true);
-                    _stageAllocator = new StagedTransferAllocator(root, _stageJournal,
-                        requireProtectedParent: true, requireSystemIdentity: true);
-                    _stagePublisher = new StagedTransferPublisher(
-                        _inspection, _hub, _stageJournal, root,
-                        new StagedPublicationGate(port), _stagedJustifications, _logger);
-                    _stageJournal.RetainInterruptedAsync(stoppingToken).GetAwaiter().GetResult();
-                    _stageJournal.ReconcilePublishingAsync(stoppingToken).GetAwaiter().GetResult();
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogCritical(ex, "Falha ao recuperar o diario de transferencias.");
-                    return;
-                }
+                if (!InitializeStagingSubsystem(port, stoppingToken)) return;
             }
 
             _grants.Bind(port);
+#if SAFEUPLOAD_ADMISSION_EVIDENCE
+            IAdmissionEvidenceSender? evidenceSender = port as IAdmissionEvidenceSender;
+            bool evidenceBound = false;
+#endif
             using var publishCancellation =
                 CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
-            Task? publishTask = _stagePublisher is null ? null :
-                Task.Run(() => PublishSealedLoopAsync(publishCancellation.Token),
-                    publishCancellation.Token);
+            Task? publishTask = null;
+            Task? coverageTask = null;
             try
             {
+#if SAFEUPLOAD_ADMISSION_EVIDENCE
+                evidenceBound = _stagingEnabled && evidenceSender is not null &&
+                    _acceptedPolicyFingerprint is { Length: 32 } &&
+                    _admissionEvidence.TryBind(evidenceSender, _policyVersion, _acceptedPolicyFingerprint);
+#endif
+                publishTask = _stagePublisher is null ? null :
+                    Task.Run(() => PublishSealedLoopAsync(publishCancellation.Token),
+                        publishCancellation.Token);
+
                 _logger.LogInformation("Minifiltro conectado. Interceptando em modo kernel.");
 
                 _hub.Publish(new StatusNotification(
-                    _policyVersion, _activeCategories, ProtectionActive: true, AuditOnly: _auditOnly));
+                    _policyVersion, _activeCategories, ProtectionActive: true, AuditOnly: _auditOnly,
+                    AdmissionCoverage: _stagingEnabled ? AdmissionCoverageStatus.Pending :
+                        AdmissionCoverageStatus.NotAvailable,
+                    AdmissionCoverageReason: _stagingEnabled ? "CoveragePending" : null));
 
-                ReadySignal.Announce(ReadySignal.ServiceEvent);
+                if (_stagingEnabled)
+                {
+                    string[] expectedPrefixes = _acceptedCoveragePrefixes;
+                    uint expectedFlags = _acceptedCoveragePolicyFlags;
+                    int acceptedPolicyVersion = _policyVersion;
+                    int acceptedCategories = _activeCategories;
+                    bool acceptedAuditOnly = _auditOnly;
+                    coverageTask = Task.Run(() => PublishAdmissionCoverageLoopAsync(port,
+                        expectedPrefixes, expectedFlags, acceptedPolicyVersion,
+                        acceptedCategories, acceptedAuditOnly, publishCancellation.Token),
+                        publishCancellation.Token);
+                }
+                else
+                {
+                    ReadySignal.Announce(ReadySignal.ServiceEvent);
+                }
 
                 while (!stoppingToken.IsCancellationRequested &&
                        port.TryGetMessage(out SafeUploadRequest request, out ulong messageId, stoppingToken))
                 {
                     uint verdict;
                     string? stageName = null;
-                    if (request.Operation == Operation.StageAllocate)
+                    if (request.Version != Contract.Version || request.StructSize != Contract.RequestSize ||
+                        (request.Operation != Operation.StageDiagnostic && !request.HasKnownFlags))
+                    {
+                        verdict = PortVerdict.Deny;
+                    }
+                    else if (request.Operation == Operation.StageAllocate)
                     {
                         (verdict, stageName) = AllocateStage(request);
                     }
@@ -264,6 +298,19 @@ public sealed class MinifilterInterceptor : BackgroundService
             }
             finally
             {
+#if SAFEUPLOAD_ADMISSION_EVIDENCE
+                if (evidenceBound && evidenceSender is not null)
+                {
+                    try
+                    {
+                        _admissionEvidence.UnbindAsync(evidenceSender).GetAwaiter().GetResult();
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Admission evidence endpoint failed to drain before FilterPort close.");
+                    }
+                }
+#endif
                 publishCancellation.Cancel();
                 if (publishTask is not null)
                 {
@@ -275,10 +322,20 @@ public sealed class MinifilterInterceptor : BackgroundService
                             "Processamento de transferencias seladas interrompido.");
                     }
                 }
+                if (coverageTask is not null)
+                {
+                    try { coverageTask.GetAwaiter().GetResult(); }
+                    catch (OperationCanceledException) { }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Admission coverage monitor stopped before FilterPort close.");
+                    }
+                }
                 _grants.Unbind(port);
                 _stagedJustifications.Clear();
                 _hub.Publish(new StatusNotification(
-                    _policyVersion, _activeCategories, ProtectionActive: false));
+                    _policyVersion, _activeCategories, ProtectionActive: false,
+                    AdmissionCoverage: AdmissionCoverageStatus.NotAvailable));
             }
         }
 
@@ -330,6 +387,7 @@ public sealed class MinifilterInterceptor : BackgroundService
     private (uint Verdict, string? StageName) AllocateStage(SafeUploadRequest request)
     {
         if (_stageAllocator is null || request.Version != Contract.Version ||
+            !request.HasKnownFlags ||
             request.TypedFlags.HasFlag(RequestFlags.PathTruncated) ||
             request.TypedFlags.HasFlag(RequestFlags.PathNotNormalized))
         {
@@ -500,8 +558,38 @@ public sealed class MinifilterInterceptor : BackgroundService
     /// está desconectado. A atualização só fica ativa depois da gravação
     /// durável e da aceitação pela porta autenticada.
     /// </summary>
-    private bool TryPushPolicy(FilterPort port)
+
+    private bool InitializeStagingSubsystem(FilterPort port, CancellationToken stoppingToken)
     {
+        try
+        {
+            string root = Path.Combine(AgentPaths.RootDirectory, "staging");
+            string journal = Path.Combine(AgentPaths.RootDirectory, "staging-journal");
+            _stageJournal = new StagedTransferJournal(journal, requireProtectedParent: true);
+            _stageAllocator = new StagedTransferAllocator(root, _stageJournal,
+                requireProtectedParent: true, requireSystemIdentity: true);
+            _stagePublisher = new StagedTransferPublisher(
+                _inspection, _hub, _stageJournal, root,
+                new StagedPublicationGate(port), _stagedJustifications, _logger);
+            _stageJournal.RetainInterruptedAsync(stoppingToken).GetAwaiter().GetResult();
+            _stageJournal.ReconcilePublishingAsync(stoppingToken).GetAwaiter().GetResult();
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogCritical(ex, "Falha ao recuperar o diario de transferencias.");
+            return false;
+        }
+    }
+
+    private bool TryPushPolicy(FilterPort port
+        )
+    {
+#if SAFEUPLOAD_ADMISSION_EVIDENCE
+        // Never let a later failed push reuse fingerprint metadata from an
+        // earlier accepted candidate when considering endpoint binding.
+        _acceptedPolicyFingerprint = null;
+#endif
         try
         {
             Policy policy = _policyStore.LoadAsync(CancellationToken.None).GetAwaiter().GetResult();
@@ -509,6 +597,12 @@ public sealed class MinifilterInterceptor : BackgroundService
             _budget = policy.InspectionTimeout;
 
             SafeUploadPolicyMessage driverPolicy = MinifilterPolicyFactory.Build(policy);
+            string[] candidateCoveragePrefixes = AdmissionCoverageEvaluator.GetExpectedPrefixes(driverPolicy);
+            uint candidateCoveragePolicyFlags = driverPolicy.Flags;
+#if SAFEUPLOAD_ADMISSION_EVIDENCE
+            byte[] candidatePolicyFingerprint =
+                AdmissionEvidencePolicyFingerprint.ComputeCanonicalCandidateFingerprint(driverPolicy);
+#endif
             var bootPolicyWriter = new BootPolicyRegistryWriter(new WindowsBootPolicyRegistryBackend());
             _bootPolicyGate.Wait();
             try
@@ -525,6 +619,11 @@ public sealed class MinifilterInterceptor : BackgroundService
             _auditOnly = policy.AuditOnly;
             _policyVersion = policy.Version;
             _activeCategories = policy.ActiveCategories.Count;
+            _acceptedCoveragePrefixes = candidateCoveragePrefixes;
+            _acceptedCoveragePolicyFlags = candidateCoveragePolicyFlags;
+#if SAFEUPLOAD_ADMISSION_EVIDENCE
+            _acceptedPolicyFingerprint = candidatePolicyFingerprint;
+#endif
 
             _logger.LogInformation(
                 "Politica v{Version} empurrada ao driver: {Extensions} extensoes, " +
@@ -553,6 +652,78 @@ public sealed class MinifilterInterceptor : BackgroundService
         {
             _logger.LogError(ex, "Falha ao empurrar a politica. O driver ficaria carregado sem inspecionar nada.");
             return false;
+        }
+    }
+
+    private async Task PublishAdmissionCoverageLoopAsync(
+        FilterPort port,
+        IReadOnlyList<string> expectedPrefixes,
+        uint expectedPolicyFlags,
+        int policyVersion,
+        int activeCategories,
+        bool auditOnly,
+        CancellationToken cancellationToken)
+    {
+        uint boundNativeGeneration = 0;
+        AdmissionCoverageStatus? lastStatus = AdmissionCoverageStatus.Pending;
+        string? lastReason = "CoveragePending";
+        uint lastPublishedGeneration = 0;
+        bool announcedReady = false;
+        string? lastQueryFailure = null;
+
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            AdmissionCoverageDecision decision;
+            try
+            {
+                AdmissionCoverageReceipt receipt = port.GetAdmissionCoverageStatus();
+                decision = AdmissionCoverageEvaluator.Evaluate(receipt, expectedPrefixes,
+                    expectedPolicyFlags, boundNativeGeneration);
+                if (boundNativeGeneration == 0 && decision.NativePolicyGeneration != 0)
+                    boundNativeGeneration = decision.NativePolicyGeneration;
+                lastQueryFailure = null;
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                break;
+            }
+            catch (Exception ex)
+            {
+                if (lastQueryFailure != ex.GetType().Name)
+                {
+                    _logger.LogWarning(ex, "Admission coverage receipt is unavailable; status remains degraded.");
+                    lastQueryFailure = ex.GetType().Name;
+                }
+                decision = new AdmissionCoverageDecision(
+                    AdmissionCoverageReadiness.Degraded, "CoverageQueryFailed", boundNativeGeneration);
+            }
+
+            AdmissionCoverageStatus status = decision.Readiness switch
+            {
+                AdmissionCoverageReadiness.Ready => AdmissionCoverageStatus.Ready,
+                AdmissionCoverageReadiness.Pending => AdmissionCoverageStatus.Pending,
+                _ => AdmissionCoverageStatus.Degraded
+            };
+            if (status == AdmissionCoverageStatus.Ready && !announcedReady)
+            {
+                ReadySignal.Announce(ReadySignal.ServiceEvent);
+                announcedReady = true;
+            }
+
+            if (status != lastStatus || !string.Equals(decision.Reason, lastReason, StringComparison.Ordinal) ||
+                decision.NativePolicyGeneration != lastPublishedGeneration)
+            {
+                _hub.Publish(new StatusNotification(policyVersion, activeCategories,
+                    ProtectionActive: true, AuditOnly: auditOnly,
+                    AdmissionCoverage: status, AdmissionCoverageReason: decision.Reason,
+                    NativePolicyGeneration: decision.NativePolicyGeneration == 0 ? null :
+                        decision.NativePolicyGeneration));
+                lastStatus = status;
+                lastReason = decision.Reason;
+                lastPublishedGeneration = decision.NativePolicyGeneration;
+            }
+
+            await Task.Delay(TimeSpan.FromMilliseconds(500), cancellationToken).ConfigureAwait(false);
         }
     }
 

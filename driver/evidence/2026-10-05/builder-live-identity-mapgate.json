@@ -1,0 +1,21 @@
+{
+  "UTC": "2026-10-06T02:17:43.348703+00:00",
+  "Domain": "win10",
+  "DomainUUID": "c6440689-d11c-4c63-a463-f3722b7ddb69",
+  "Guest": {
+    "ComputerName": "DESKTOP-O1LP5DG",
+    "UUID": "C6440689-D11C-4C63-A463-F3722B7DDB69",
+    "Adapters": [
+      {
+        "Name": "Ethernet",
+        "MacAddress": "52-54-00-63-87-7A",
+        "Status": "Up"
+      }
+    ]
+  },
+  "HostKey": "256 SHA256:2ctkXp0pDArVOD38dtrnEENUX9goKnpySKWETqDObYo 192.168.122.210 (ED25519)",
+  "DHCP": " Expiry Time           MAC address         Protocol   IP address           Hostname          Client ID or DUID\n-------------------------------------------------------------------------------------------------------------------\n 2026-10-06 00:00:53   52:54:00:63:87:7a   ipv4       192.168.122.210/24   DESKTOP-O1LP5DG   01:52:54:00:63:87:7a\n 2026-10-06 00:03:47   52:54:00:aa:dd:07   ipv4       192.168.122.232/24   -                 01:52:54:00:aa:dd:07\n\n",
+  "DomainInterfaces": " Interface   Type      Source    Model    MAC\n-------------------------------------------------------------\n vnet0       network   default   virtio   52:54:00:63:87:7a\n\n",
+  "SourceExported": false,
+  "GuestModified": false
+}

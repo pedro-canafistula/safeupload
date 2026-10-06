@@ -1,0 +1,85 @@
+{
+  "summary.txt": {
+    "Fetched": true,
+    "Bytes": 369,
+    "SHA256": "f957207f45bbccefa9480916fde983445e7b0648c3627498acf38ad825e2f8f3"
+  },
+  "dotnet-info.txt": {
+    "Fetched": true,
+    "Bytes": 2696,
+    "SHA256": "560a57cd44c346ce185ddd6573f1e43eda687f1ab6648d6561c1549a036e9327"
+  },
+  "normal-debug-build.txt": {
+    "Fetched": true,
+    "Bytes": 3492,
+    "SHA256": "64e1d676961d96d2810da2e10c3836ca5f8e604b59a0f3bcc9953eba53508b98"
+  },
+  "normal-debug-tests.txt": {
+    "Fetched": false,
+    "Exit": 1
+  },
+  "normal-debug-results/agent-tests.trx": {
+    "Fetched": false,
+    "Exit": 1
+  },
+  "normal-release-build.txt": {
+    "Fetched": false,
+    "Exit": 1
+  },
+  "normal-release-tests.txt": {
+    "Fetched": false,
+    "Exit": 1
+  },
+  "normal-release-results/agent-tests.trx": {
+    "Fetched": false,
+    "Exit": 1
+  },
+  "normal-release-publish.txt": {
+    "Fetched": false,
+    "Exit": 1
+  },
+  "normal-release-package-manifest.txt": {
+    "Fetched": false,
+    "Exit": 1
+  },
+  "normal-release-service-publish.zip": {
+    "Fetched": false,
+    "Exit": 1
+  },
+  "feature-debug-build.txt": {
+    "Fetched": false,
+    "Exit": 1
+  },
+  "feature-debug-tests.txt": {
+    "Fetched": false,
+    "Exit": 1
+  },
+  "feature-debug-results/agent-tests.trx": {
+    "Fetched": false,
+    "Exit": 1
+  },
+  "feature-release-build.txt": {
+    "Fetched": false,
+    "Exit": 1
+  },
+  "feature-release-tests.txt": {
+    "Fetched": false,
+    "Exit": 1
+  },
+  "feature-release-results/agent-tests.trx": {
+    "Fetched": false,
+    "Exit": 1
+  },
+  "feature-release-publish.txt": {
+    "Fetched": false,
+    "Exit": 1
+  },
+  "feature-release-package-manifest.txt": {
+    "Fetched": false,
+    "Exit": 1
+  },
+  "feature-release-service-publish.zip": {
+    "Fetched": false,
+    "Exit": 1
+  }
+}

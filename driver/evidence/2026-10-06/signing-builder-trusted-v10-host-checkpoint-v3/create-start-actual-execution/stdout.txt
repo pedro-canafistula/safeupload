@@ -1,0 +1,1 @@
+TrustedV10ColdChildStarted=True; HostVerificationPending=True; GuestReadOnlyBaselinePending=True

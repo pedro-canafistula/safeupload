@@ -1,0 +1,19 @@
+{
+    "TrustChanged":  false,
+    "ProductScriptExecuted":  false,
+    "Files":  [
+                  {
+                      "Path":  "driver/scripts/Build-ExactSource.ps1",
+                      "SHA256":  "ff537d9426c5539fdfbd976ed77e55ee90f2a64501f17d463aa926f09cebd5d6",
+                      "ParseErrors":  0
+                  },
+                  {
+                      "Path":  "driver/scripts/Build-ExactAgentMatrix.ps1",
+                      "SHA256":  "e52b3afe2080212ad9507185b1612d204e01112230342bd62b7e2e1b8f6c78c2",
+                      "ParseErrors":  0
+                  }
+              ],
+    "PSVersion":  "5.1.19041.6456",
+    "Computer":  "DESKTOP-O1LP5DG",
+    "BuildStarted":  false
+}

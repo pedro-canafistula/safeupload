@@ -1,0 +1,103 @@
+W01 harness diagnostic disposition review
+Host date: 2026-10-06 (America/Sao_Paulo)
+Status: harness source work only; W01/A05 remains INCONCLUSIVE and Phase4 remains NOT_QUALIFIED.
+
+Scope
+  driver/scripts/Test-StagedW01Parent.ps1
+  driver/scripts/Test-StagedW01Diagnostic.ps1
+  driver/scripts/Invoke-DebuggeeExperiment.sh
+  driver/scripts/Invoke-StagedW01Diagnostic.py
+  driver/scripts/Invoke-StagedW01Diagnostic.SelfCheck.py
+
+Disposition contract
+  Test-TerminalState remains the restoration safety gate. Restore-TerminalRun still
+  rechecks terminal state and frozen evidence before mutation. AfterBoot records the
+  separate diagnostic result before freezing; it emits W01_CASE_COMPLETED=True only
+  when that result is true, and emits W01_DIAGNOSTIC_COMPLETED=True/False plus
+  W01_RESTORED=True only after guarded restoration succeeds.
+
+  Get-W01DiagnosticDisposition is a pure predicate with this signature:
+    Diagnostic, ChildExit, LauncherEvidence, Opened, Issued, Completed, Closed,
+    ExpectedRunGuid, ExpectedBootId, ExpectedFileIdHex, ExpectedVolumeSerialHex
+  Its first two objects come from the actual child JSON producers. LauncherEvidence
+  is separately populated from Get-ScheduledTaskInfo and Get-ScheduledTask, plus
+  Test-Path for child-error.txt. Read-Receipt supplies the four exact receipt
+  hashtables. LowerDisarmTerminal is read from Diagnostic itself. Required fields
+  are presence/type checked before numeric parsing; missing/null values cannot
+  become zero. Success requires the child schema, run and boot identities, empty
+  error array, complete exact event inventory, capture-complete event, child and
+  task exit zero, no launcher error, matching file/volume/process identities,
+  matching issued digest, full IOCP success for 4096 bytes, and matching lower
+  post/disarm terminal identities and counts.
+
+Transport and host disposition
+  The changed after-boot transport rule applies only to boot-start-w01-* names.
+  It requires a completed phase transport, HARNESS_RETURNED, explicit diagnostic
+  true/false, and W01_RESTORED=True. CASE must exist exactly once on diagnostic
+  success and be absent on diagnostic failure. Other boot-start names keep their
+  prior generic CASE/RESTORED checks.
+
+  The host accepts diagnostic-false only as an incomplete result. It still requires
+  changed boot identities, clean independent pre/post baselines, finalized guest
+  restoration, and the recorded final-lifecycle.clixml length/hash. Diagnostic-false
+  skips observation success joins and never changes the INCONCLUSIVE/NOT_QUALIFIED
+  boundary. SSH host-key checking is strict.
+
+  Finalize keeps the pre-existing order: copy final-lifecycle.clixml, then remove
+  the live state directory, then run the independent baseline. A later recovery
+  path writes a unique CreateNew/write-through/flush recovery-lifecycle clixml with
+  RecoveryRequired=true, records its hash/length/ACL/readback errors in the recovery
+  marker, and preserves the original lifecycle copy.
+
+No-VM validation
+  PASS: python3 driver/scripts/Invoke-StagedW01Diagnostic.SelfCheck.py
+        Structural checks and producer-shaped after-boot controls passed; 26 Python
+        scripts compiled. Its output explicitly leaves W01/A05 INCONCLUSIVE and
+        Phase4 NOT_QUALIFIED.
+  PASS: bash -n driver/scripts/Invoke-DebuggeeExperiment.sh
+  PASS: git diff --check for the five scoped source files.
+  PASS: authorized builder Windows PowerShell 5.1.19041.6456 ParseFile reported
+  zero errors for Parent and Child. The producer-shaped high-bit callback JSON
+  round-trip yielded exact System.Decimal and the positive predicate completed.
+  All 17 predicate negative controls were rejected. Builder readout:
+  w01-predicate-authoring-root-readout.json; fixture runner:
+  w01-predicate-authoring-controls.ps1; runner stdout/stderr are retained beside
+  the readout. The builder readout records UTC=2026-10-06T14:47:12.704321+00:00,
+  BuilderUUID=c6440689-d11c-4c63-a463-f3722b7ddb69, and Exit=0. It states that the
+  full Parent and Child were not executed. Native compilation and VM execution
+  were not run.
+
+Producer-shaped host gate controls
+  Accept true + CASE + RESTORED + HARNESS_RETURNED.
+  Accept false + no CASE + RESTORED + HARNESS_RETURNED.
+  Reject true without CASE; false with CASE; missing RESTORED; missing diagnostic
+  state; and malformed/duplicate diagnostic state.
+
+PowerShell predicate controls for the builder
+  Positive fixture: child JSON has Schema=Rv4W01Diagnostic/1, RunGuid, BootId,
+  Verdict=INCONCLUSIVE, NotVmQualification=true, RecoveryRequired=false,
+  WriterExited=true, WriterPid, empty Errors, the ten emitted event names exactly
+  once, and LowerDisarmTerminal. Child exit JSON has RunGuid, BootId, Exited=true,
+  Pid, ExitCode=0. LauncherEvidence has Schema=Rv4W01LauncherEvidence/1, exact task
+  name, TaskState=Ready, TaskLastResult=0, LauncherErrorPresent=false. Opened,
+  Issued, Completed and Closed are exact Read-Receipt hashtables; after-raw.Completion
+  copies Schema, RunGuid, Utc, CompletionSource=IOCP, Success=True, NativeError=0,
+  Bytes=4096 and DeadlineExceeded=False. Identities, lower callback, generation,
+  range, pending-write and close fields match the source producers.
+  The authorized builder's PowerShell 5.1 JSON round-trip probe parsed
+  LowerCallbackData=18446603336221204481 as System.Decimal and retained its exact
+  integer value. The predicate accepts exact nonnegative Decimal integers only
+  through UInt64.MaxValue; it rejects fractions, negative Decimals, and values
+  above UInt64.MaxValue. The high-bit value is included in the positive fixture.
+  Negative controls: omit NativeError or Bytes; make Errors nonempty; omit
+  capture-complete; mismatch embedded IOCP bytes or RunGuid; set child ExitCode
+  nonzero; remove/null WriterPid; duplicate armed event; foreign opened file ID;
+  fractional, negative or overflowing Decimal; floating-point callback; task
+  failure; launcher error. All 17 builder controls returned the expected rejection.
+
+Source SHA-256 snapshot
+  Test-StagedW01Parent.ps1  CA95E5B69432D53715242330AF391E387ADBBA1A55A72424F0BF311A1D2F1BCF
+  Test-StagedW01Diagnostic.ps1  BF325B86FB422DED6701F69A465F47C3D9DE517E6AC52EFADC702AAFDDD8248D
+  Invoke-DebuggeeExperiment.sh  D172ACDA3947D1D528B84506B7AABDCBB33341FFC48687B0A398B32B555559F2
+  Invoke-StagedW01Diagnostic.py  E90118C4A3BA49EA5D7D5F59606671DCC52CDC83ED47E47F27B8883200DE7582
+  Invoke-StagedW01Diagnostic.SelfCheck.py  80728531C1ED721CA989570450895DC454F455A979C2C27AA131339402F7BA79

@@ -1,0 +1,32 @@
+{
+  "Checks": {
+    "CleanBaseline": true,
+    "VolumeCacheFlushed": true,
+    "ExpectedAtomicCheckpoint": true,
+    "NoActiveDomainWritesFrozenParent": true
+  },
+  "EvidenceSHA256": {
+    "boot-start-w01-w01-b38b36-20261005b-fe004c32b19e4cc88a0cf42389818d7b-baseline.txt": "7f2b62115ff03407db3b6368af04f43ba378d4a7e5c56a2f4773bb69d42c3cfb",
+    "boot-start-w01-w01-b38b36-20261005b-fe004c32b19e4cc88a0cf42389818d7b-flush.txt": "8a03e4696e63aa189f0ff2a131ff163d40fed47728b8931e9db39197495ea995",
+    "boot-start-w01-w01-b38b36-20261005b-fe004c32b19e4cc88a0cf42389818d7b-checkpoint.txt": "e8996733539ab1e52d2addcecdecc5a08b523af9a6e2d2abe5b96d6f87766e52",
+    "boot-start-w01-w01-b38b36-20261005b-fe004c32b19e4cc88a0cf42389818d7b-provenance.json": "6d004b4a7fb9cb26379a8bb06de97516d15a990758e94e1ff9d77a24b95263de",
+    "boot-start-w01-w01-b38b36-20261005b-fe004c32b19e4cc88a0cf42389818d7b-recovery-required.json": "ce2572dbdeed1f5ef47f7142ca0decb5c46b40f07032c733eac1af312f9ac8d0"
+  },
+  "ActiveDiskSources": {
+    "win10": [
+      "/var/lib/libvirt/images/win10-clean.safeupload-architecture-20261001",
+      "/var/lib/libvirt/images/SecKnowledgeBase.iso"
+    ],
+    "win10-debug": [
+      "/var/lib/libvirt/images/win10-debug.safeupload-pre-boot-start-w01-w01-b38b36-20261005b-fe004c32b19e4cc88a0cf42389818d7b-20261005"
+    ]
+  },
+  "MemoryPreservationVerified": false,
+  "RestorationVerified": false,
+  "PlannedParent": "/var/lib/libvirt/images/win10-debug.safeupload-pre-boot-start-invariant-S01-denied-write-after-boot-boot-verifier-s01b38dir3-20261005",
+  "PreW01ParentEvidenceSHA256": {
+    "boot-start-w01-w01-b38b36-20261005-ab961697cb5847fc86a2b265b3862df7-baseline.txt": "5557bfac764e6e0f69940ae3aa57dde79c4ac16bab8ea866f276a63395f92aa3",
+    "boot-start-w01-w01-b38b36-20261005-ab961697cb5847fc86a2b265b3862df7-flush.txt": "8a03e4696e63aa189f0ff2a131ff163d40fed47728b8931e9db39197495ea995",
+    "boot-start-w01-w01-b38b36-20261005-ab961697cb5847fc86a2b265b3862df7-checkpoint.txt": "1858f6c2382bd189a46f2c477ea7c72eebaf63039b225161f8454107ab8f6f90"
+  }
+}

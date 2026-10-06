@@ -1,0 +1,20 @@
+{
+  "UTC": "2026-10-06T15:14:26.031506+00:00",
+  "SourceSHA256": {
+    "driver/scripts/Prepare-ExactWorktreeSource.py": "826413f78d42ed7c273dc9711a8cdff5f91101ab3de2b98cf48e046b493edfca",
+    "driver/scripts/Prepare-ExactWorktreeSource.SelfCheck.py": "98d0466c990c92ad218124567baceca24ee57edfcd1c80e145522986dadf786b",
+    "driver/scripts/Prepare-ExactAgentWorktreeSource.py": "46ffb7cca4bedead91bf8ce68936898d51a378f9abf574a045d953081ed5c974",
+    "driver/scripts/Build-ExactAgentMatrix.ps1": "4aa6858e829161ffa022374cf31878e9550c2a3e32be6cadf7a5b8d8b622752d"
+  },
+  "CaptureSelfChecks": 25,
+  "CaptureSelfChecksExit": 0,
+  "CaptureSelfCheckLog": "driver/evidence/2026-10-06/exact-agent-worktree-capture-selfcheck.txt",
+  "PowerShellAuthoringReadout": "driver/evidence/2026-10-06/exact-agent-matrix-authoring-readout.json",
+  "BuilderSDK": "10.0.400",
+  "NoSourceArchiveCapturedYet": true,
+  "AgentSourcesUploaded": false,
+  "AgentMatrixBuildComplete": false,
+  "GitMutation": false,
+  "SecurityReviewPending": true,
+  "RecoveryScopeReadout": "driver/evidence/2026-10-06/w01-run3-disk-only-approval-scope-readout.json"
+}

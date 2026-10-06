@@ -1,0 +1,24 @@
+{
+  "UTC": "2026-10-06T18:59:37.809787+00:00",
+  "Verdict": "V10_BASELINE_VERIFIER_FAILED_BEFORE_HOST_MUTATION",
+  "ActualRemoteExitCode": 1,
+  "PS51ParseErrors": 0,
+  "Cause": "Verifier lowercases Get-FileSha256 output but compares case-sensitively against uppercase metadata hash at line 134. This failure alone does not indicate actual key/file drift. Versioned amendment required.",
+  "HostCheckpointAttempted": false,
+  "TrustModified": false,
+  "ArtifactSigningAttempted": false,
+  "PrivateKeyExported": false,
+  "EvidencePins": {
+    "driver/evidence/2026-10-06/signing-builder-trusted-v10-execution/staging.stdout.txt": "ae977b89a25b5318fb1b8a40e850500afd894665354cb5984d6abff9c39e4b7e",
+    "driver/evidence/2026-10-06/signing-builder-trusted-v10-execution/staging.stderr.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "driver/evidence/2026-10-06/signing-builder-trusted-v10-execution/staging.exit.json": "eeff6ed641d8c6380c92013d4bd66299c27379054f96e27c62cd127f7647809d",
+    "driver/evidence/2026-10-06/signing-builder-trusted-v10-execution/ps51-parse-and-input-pins.stdout.txt": "e570e6c144e88a78bf6b04b9d05243e8f4025993aae1d9436c36190448dc8002",
+    "driver/evidence/2026-10-06/signing-builder-trusted-v10-execution/ps51-parse-and-input-pins.stderr.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "driver/evidence/2026-10-06/signing-builder-trusted-v10-execution/ps51-parse-and-input-pins.exit.json": "eeff6ed641d8c6380c92013d4bd66299c27379054f96e27c62cd127f7647809d",
+    "driver/evidence/2026-10-06/signing-builder-trusted-v10-execution/guest-inputs.json": "030e9914ded4ae92dc8d82447e942adc9a08f137a6e6450b6bbd833c67cdf8e4",
+    "driver/evidence/2026-10-06/signing-builder-trusted-v10-execution/pre-shutdown-caller.ps1": "d68dce577d5e495d8874721686bdd28b82c39ac07c56eef8971395bf2ab76825",
+    "driver/evidence/2026-10-06/signing-builder-trusted-v10-execution/pre-shutdown.stdout.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "driver/evidence/2026-10-06/signing-builder-trusted-v10-execution/pre-shutdown.stderr.txt": "62edb1ef1c0777a41bc8260f30bb1d5ef888538289a32911c816053b78f31c86",
+    "driver/evidence/2026-10-06/signing-builder-trusted-v10-execution/pre-shutdown.exit.json": "4df5d1b6920fbc4c8eb78aec7114f08826463bacf7db7bf91e6dbdd8d075e8b3"
+  }
+}

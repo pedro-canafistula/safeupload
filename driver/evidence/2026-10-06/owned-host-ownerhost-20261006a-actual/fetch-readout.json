@@ -1,0 +1,28 @@
+{
+  "summary.txt": {
+    "Fetched": true,
+    "FetchExit": 0,
+    "SHA256": "f3d257d8bd3d23d883605e0fef2731f46624ac583a3cc0ee975fa0ba1c8faae5",
+    "Bytes": 619
+  },
+  "debug-build.txt": {
+    "Fetched": true,
+    "FetchExit": 0,
+    "SHA256": "504f432cbc0b60f39d9f0e029eb5c2cfe9af1b9bfeb0dff6f820038c815a5789",
+    "Bytes": 11472
+  },
+  "release-build.txt": {
+    "Fetched": true,
+    "FetchExit": 0,
+    "SHA256": "e85435a6eb7ddb0f31322baae794747c6f1c7ce508da9c6d1b4a3561b087a350",
+    "Bytes": 11484
+  },
+  "debug/SafeUpload.OwnedFspHost.exe": {
+    "Fetched": false,
+    "FetchExit": 1
+  },
+  "release/SafeUpload.OwnedFspHost.exe": {
+    "Fetched": false,
+    "FetchExit": 1
+  }
+}

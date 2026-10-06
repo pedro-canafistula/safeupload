@@ -1,0 +1,362 @@
+Live admission evidence RPC through the existing FilterPort
+============================================================
+
+Date: 2026-10-06
+Status: design review only. No product code or test harness was changed; no build,
+test, VM, network, remote-machine, or commit operation was performed. This note
+does not claim implementation or privacy qualification.
+
+Decision and current evidence
+-----------------------------
+
+Add a feature/test-only service capture endpoint that sends a fixed set of
+read-only status controls through the `FilterPort` already connected and owned
+by `MinifilterInterceptor`. Keep `MaxConnections == 1`, the active service
+connection, and its SYSTEM process identity unchanged. A second Inspector
+connection cannot collect the needed live post-ack/prewrite evidence and would
+race inspection verdicts. Do not stop/reconnect the service to collect status.
+
+The authoritative 2026-10-05/06 source readout says both runtime mapping privacy
+verdicts are missing and both byte-privacy gates remain open. Keep the normal
+process-taint path, unsupported-capability behavior, and current policy scopes
+until the byte evidence and the remaining definition-of-done gates close and the
+user approves cutover. The status RPC is diagnostic evidence; it cannot count a
+pending/unknown/missing response as a privacy or functional pass.
+
+The prohibited substitutions remain prohibited: no FileObject-CLOSE section
+lifetime fix, filesystem/registry scan, volume-wide paging-write denial,
+Unknown reset, forceTrust, unsupported-policy narrowing, or permanently false
+ready state. `driver/evidence/2026-10-05/mapping-current-source-root-readout.json`
+lines 4-28 is authoritative on these findings. Its upstream WinFsp pin is only
+an early-close stimulus reference, not NTFS filter evidence.
+
+Seven fixed capture hooks from the expanded mapping harness
+----------------------------------------------------------
+
+Use these exact seven capture positions from
+`driver/scripts/Test-StagedPolicyTransitionMapping.ps1` (SHA-256
+`094f149ce4f96f8139e951f05103c2bf95ff90995a15e8184dfa55a4b4606c81`). The
+script does not currently expose an RPC hook enum; these names define the
+feature/test integration contract and do not claim the captures exist today.
+The first slot is deliberately before the expanded-agent launch. At lines
+1188-1199 the harness stops the baseline agent, writes the expanded policy, and
+then starts the expanded-policy agent. Therefore that prelaunch slot has no live
+service-owned port in the current sequence. Its live-RPC availability is
+unresolved: do not fabricate a reply, open a second port, or add a stop/reconnect
+to satisfy it. Resolve this capture position before implementation. Slots 2-7
+fall in the live expanded-agent interval, from its policy acknowledgment at
+line 1200 until the planned service stop at line 1370; they can use the same
+existing connection.
+
+1. `before_expanded_launch` — after the expanded policy file is written and
+   hashed, immediately before `Start-TestAgentAndWaitForPolicy $updatedLog`
+   (lines 1193-1199). No live service/FilterPort is available here in the
+   current harness. Mark unavailable/unresolved; this is not a successful or
+   failed driver-status result.
+2. `expanded_policy_post_ack` — immediately after
+   `Start-TestAgentAndWaitForPolicy $updatedLog` returns and the accepted-policy
+   marker is reached (lines 1199-1201).
+3. `expansion_prewrite` — after preparing the changed buffer, immediately
+   before the old, pre-expansion `$view.WriteArray` (lines 1202-1206).
+4. `expansion_postflush` — after that old-view write and its `view.Flush()`
+   attempt/outcome, before the retained-section branch (lines 1211-1220).
+5. `before_retained_map_view` — immediately before the retained pre-expansion
+   section handle's first `MapViewOfFile` call (lines 1225-1228). This observes
+   the still-existing section before it acquires its first view.
+6. `after_retained_view_before_write` — immediately after `MapViewOfFile`
+   succeeds and the retained write buffer is prepared, before `Marshal.Copy`
+   writes into that view (lines 1227-1234). This separates view creation from
+   the mapped write.
+7. `retained_section_postflush` — after the retained view's
+   `FlushViewOfFile` and `FlushFileBuffers` attempts (lines 1237-1242).
+
+Each capture request names exactly one target volume and file identity. The
+expanded mapping script also exercises a separate `$retainedTarget`; if its
+activation state is needed, give it a separate seven-hook identity stream and
+never merge or alias it with the expansion target. Control 23 returns the whole
+attached-instance inventory, so each receipt can bind its matching volume GUID
+while retaining the complete response.
+
+The active W01 diagnostic is separate and remains untouched. Its source-only
+copy `driver/evidence/2026-10-06/boot-start-w01-w01-b38b36-20261006c-ff67c01b990e41ff9af89b5a9959757c-inputs/Test-StagedW01Diagnostic.ps1`
+has SHA-256 `bf325b86fb422ded6701f69a465f47c3d9de517e6ac52efadc702aafddd8248d`.
+The proposed seven mapping hook names above come from the actual expanded
+policy-transition mapping script, not from W01's separate event ledger.
+
+Connection, service bridge, and named-pipe authorization
+--------------------------------------------------------
+
+The driver creates the communication port with Filter Manager's SYSTEM/admin
+descriptor and `MaxConnections` exactly 1 (`Communication.c:132-196`); connect
+accepts LocalSystem and records the sole client PID (`:311-337`); every message
+is bound to that PID (`:615-621`). Policy, publication, and grant controls also
+check the Agent service SID (`:692-704`). Do not change the connection count,
+client authentication model, or connect/disconnect lifecycle.
+
+`MinifilterInterceptor` connects once at `:161-177`, pushes policy through that
+port at `:179-186`, binds grants on it at `:210`, and holds the port until its
+`using` scope ends. Bind a singleton capture dispatcher to this same port after
+policy acceptance and before the ready loop; unbind it in the same shutdown
+path (`:265-281`). Never call `FilterPort.Connect()` from the harness or RPC
+server. The service thread's blocking `FilterGetMessage` behavior is documented
+at `:90-109`; status requests should run on a separate bounded test worker so
+the receive loop is not used as a diagnostic work queue.
+
+The existing notification pipe is one-way service-to-tray and grants
+BuiltinUsers read/write access (`NotificationPipeServer.cs:111-143`). The
+justification pipe is duplex but also grants BuiltinUsers read/write and has
+event/override semantics (`JustificationPipeServer.cs:100-143,219-254`). Neither
+is an acceptable raw evidence channel. Add a separate test-only duplex pipe
+whose DACL permits only SYSTEM, Administrators, and the service owner; reject
+remote clients at pipe creation and validate the connected client's process
+token/SID before serving a request. Do not route this RPC through the UI,
+notification bus, general logs, or user-accessible pipes: status includes target
+paths and process IDs. The driver will still see the service's LocalSystem
+process as the sole caller; an admin test client is authorized only to ask the
+service broker for this fixed diagnostic capture.
+
+Compile the pipe server, dispatcher, command IDs/structures, and RPC route out
+of normal Agent builds. The driver already gates staging code with
+`SafeUploadStagingPrototype` (`SafeUpload.Minifilter.vcxproj:55-84`), but the
+Agent currently has only the runtime `Interception:StagingPrototype` option
+(`MinifilterInterceptor.cs:87`) and no matching compile-time diagnostic gate.
+Add a test/feature build property for Agent code as part of any implementation;
+runtime configuration alone must not leave a reachable diagnostic endpoint in
+normal builds. Mirror driver `sizeof` and `offsetof` assertions in the feature
+Agent assembly before connecting, following the base contract pattern in
+`agente/SafeUpload.Agent.Minifilter/Protocol.cs:1-90`.
+
+Wire request and lossless receipts
+----------------------------------
+
+Use one bounded `Capture` operation, not a caller-selected control command. A
+length-prefixed binary request is suitable: schema version, operation, run GUID,
+the fixed hook enum above, volume device name, relative path, volume GUID,
+expected 64-bit volume serial, and expected 16-byte FileID. Require at most 260
+UTF-16 characters for the volume device name and relative path, at most 63
+characters for the volume GUID (the driver field is 64 WCHARs including room
+for termination), a 16-byte FileID, and an overall request no larger than 4 KiB.
+Reject unknown versions/fields, invalid enum values, duplicate/out-of-order
+hook ordinals for a run, embedded NUL, ADS colons, malformed `\\Device\\`
+volume names, relative paths without a leading slash or with a trailing slash,
+and any target identity that does not match the returned driver identity.
+These limits mirror Control 17's variable-tail request and validation in
+`Protocol.h:650-658` and `Communication.c:810-935`.
+
+The service should hard-code this per-hook sequence on its bound port:
+
+1. Control 20 epoch status before capture.
+2. Control 23 volume observation.
+3. Control 19 full activating-status page walk, including its stable-snapshot
+   retry behavior.
+4. Control 17 registry-entry lookup for the requested path.
+5. Control 23 again, to bracket the volume observation.
+6. Control 20 epoch status after capture.
+
+Control 19 is paged, not a direct FileID query. Preserve every raw page, every
+retry attempt, and the exact page start index. Reuse the Inspector's structural
+checks and up-to-five stable snapshot attempts (`SafeUpload.Inspector/main.c:
+1340-1448`): page size/offset/count/next bounds, total-entry bound, consistent
+total/policy generation/change sequence, and STATUS_RETRY handling. Require
+the exact `(volume serial, FileID)` match in the completed snapshot. Do not
+return a filtered or reconstructed page in place of the raw replies.
+
+Send each call/page result as its own length-prefixed response frame with the
+run/hook, command ID, attempt/page index, exact input length and SHA-256,
+FilterSendMessage HRESULT, UTC start/end timestamps, monotonic start/end ticks,
+returned length, returned-byte SHA-256, and the exact returned payload bytes.
+Include service PID/SID, port-bind generation, expected target identity, decoded
+target identity, and decoded policy/epoch generations in a final summary frame.
+Hash the bytes actually returned by the driver before parsing; do not
+re-serialize a decoded struct and label that serialization “raw.” If a send
+fails, return its HRESULT/error and no reply payload (`RawPresent=false`); do
+not hash the zero-initialized output buffer. Bound each raw frame by the
+protocol's `<64 KiB` page limit. Existing limits permit up to 4096 activating
+entries, 32/page, 128 pages per attempt, and five attempts: cap and stream at
+40 MiB raw Control 19 data per capture, 280 MiB per seven-hook target run, and
+never buffer the whole run in service memory. Exceeding any bound produces an
+incomplete/inconclusive receipt, never Ready.
+
+Control 17/19/23/20 roles and constraints
+-----------------------------------------
+
+- Control 17 (`REGISTRY_ENTRY`) takes a path, returns the 104-byte
+  `SAFEUPLOAD_REGISTRY_ENTRY_STATUS`, and includes state/H/S/C/T/unknown,
+  serial/FileID, PIDs and name match, but not W or activation generation
+  (`Protocol.h:804-820`; size assertions at `:1296-1299`). It is a consistency
+  read, not terminal readiness. A protected path can still return ACTIVATING
+  because the promotion/barrier is a later increment (`StageWriters.c:6653-6659`).
+- Control 19 (`ACTIVATING_STATUS`) carries per-entry serial/FileID/generation,
+  state/H/W/S/C/T/unknown and page policy generation/change sequence
+  (`Protocol.h:822-854`; dispatcher `Communication.c:1188-1214`; snapshot
+  `StageWriters.c:5834-5901`). A page walk must finish stably before reporting
+  a target state.
+- Control 23 (`ADMISSION_VOLUME_OBSERVE`) returns the current volume status
+  without the canary-deadline transition (`Protocol.h:277-290`). The dispatcher
+  calls `SafeUploadStageAdmissionVolumeStatus(..., FALSE)` for 23 and `TRUE`
+  for mutating legacy status 13 (`Communication.c:1040-1060`). Never issue
+  Control 13 from this endpoint. Control 23's response is 6672 bytes in the
+  feature protocol (`Protocol.h:672-703,1280-1284`), has at most 32 attached
+  instances, includes global WriterUnknown/boot-policy state and per-volume
+  context/trust/canary/unknown data, and fails rather than returning partial
+  output on instance overflow (`StageAdmission.c:163-227`).
+- Control 20 (`ADMISSION_EPOCH_STATUS`) is the additional read-only policy
+  transition bracket. Its generation and PENDING/FAILED_CLOSED/FINALIZING flags
+  are in `Protocol.h:856-867`; dispatch is `Communication.c:1217+` and
+  `Policy.c:341-365`.
+
+`FilterPort` currently has no generic feature diagnostics, no shared control
+send lock, and no in-flight disposal barrier (`FilterPort.cs:43-67,301-304`).
+The receive uses its own overlapped event so concurrent FilterSendMessage can
+wake the receive (`:79-109`); grants/publication also send on the same port
+(`OverrideGrantDispatcher.cs:5-59`, `StagedPublicationGate.cs:10-21`). Serialize
+all FilterSendMessage operations per port, including grants/publication and
+the diagnostic sequence. Add stop-accepting, dispatcher unbind, and an
+in-flight-send drain before `FilterPort.Dispose()`. Shutdown must not close the
+handle while a diagnostic call is active.
+
+Readiness contract and unresolved supported-volume scope
+--------------------------------------------------------
+
+Do not report the service Ready event or `ProtectionActive:true` as evidence
+that a target file or every destination is admitted. The service publishes
+that notification and event after policy push (`MinifilterInterceptor.cs:
+220-223`); the driver explicitly logs accepted policy as `candidate pending`
+(`Policy.c:1088-1093`) and later finalizes/publishes with a generation increment
+(`Policy.c:1151-1155`). The UI maps `ProtectionActive` directly to “Protegido”
+(`StatusViewModel.cs:124-128`). Keep service/control-plane active distinct from
+per-volume and per-file `Pending`, `Ready`, `Unknown`, `Unsupported`, or
+`Unavailable`; the current UI and service-ready signal overstate the state.
+
+For one hook capture, require the two Control 20 replies to show the same
+PolicyGeneration and EpochGeneration, with no PENDING, FAILED_CLOSED, or
+FINALIZING flags; require Control 19's stable PolicyGeneration to match both.
+Bind that generation to the policy hash/version accepted by this service
+connection, and invalidate the binding on any later policy push. Control 17 has
+no generation; Control 23 has no generation or sequence. The bracketing 23
+payloads should match byte-for-byte for a stable observation; any change,
+missing/ambiguous volume GUID, incomplete table, or non-success status remains
+inconclusive. These sequential calls are not an atomic kernel snapshot; retain
+per-call timestamps and do not claim otherwise.
+
+For target-file `Ready`, require exactly one matching `(volume serial, 16-byte
+FileID)` entry in the stable Control 19 snapshot, state PROTECTED, no Unknown
+bits, activation generation equal to current PolicyGeneration, and counters/
+section state satisfying the actual terminal gate (H/W/T/C zero and S=NO as
+applicable). Control 17's missing W/generation means it cannot override an
+ACTIVATING, UNKNOWN, absent, or mismatched Control 19 result. Retained writable
+sections can legitimately hold activation open: current activation checks
+H/W/T, section count C, `MmDoesFileHaveUserWritableReferences`, and section/cache
+pointers (`StageWriters.c:4861-4905`). Continue only for the bounded capture
+window; persistent ACTIVATING is Pending/INCONCLUSIVE, not forced to pass and
+not a reason to replace readiness with forever-false.
+
+For target-volume readiness, require the requested target volume to be present
+exactly once in a complete Control 23 response; successful filesystem/context/
+volume metadata and GUID queries; a currently supported filesystem and volume
+kind; trusted canary-passed state; successful canary/cleanup statuses and all
+canary checks; zero per-instance WritersUntracked and RegistryUnknownReasons;
+zero global WriterGlobalUnknown; and valid boot-policy state when applicable.
+For service-wide readiness, apply those checks to every policy-relevant,
+currently attached destination volume; an unsupported or untrusted attached
+destination in current scope blocks the aggregate claim. Any pending, failed,
+unsupported, detached, missing, untrusted, unknown, or truncated result cannot
+qualify as Ready. The final product contract still needs to define “all
+supported volumes”: Control 23 covers currently attached instances, not
+future/unmounted removable or network destinations. Keep current policy scopes
+and represent those absent scopes as unavailable/pending until the product
+explicitly defines them; do not silently narrow the scope.
+
+Latency blocker: Control 17's path helper may synchronously open the file and
+query identity (`StageStream.c:909-980`); the path query can be slow, and the
+driver comment says the in-memory pending-name check exists to avoid a query
+blocked by a TxF transaction (`:942-955`). FilterSendMessage is synchronous and
+the current FilterPort surface has no cancellation for these sends. A pipe
+timeout or `Task.WaitAsync` does not cancel a native call, so it cannot prove a
+bounded capture or safe disposal. Measure worst-case latency under the mapping,
+transaction, oplock, and volume cases before using this path. If the bound is
+not demonstrated, the remaining design choice is a feature-only exact-ID
+in-memory registry snapshot control; do not add filesystem/registry scans.
+
+Before implementation, resolve three integration choices: how to represent the
+`before_expanded_launch` slot when no service-owned port is connected; what
+measured Control 17 latency bound is acceptable for a live capture; and whether
+product readiness means all currently attached policy-relevant destinations or
+also future/unmounted removable/network destinations. The first slot must stay
+explicitly unavailable until a supported design answers it; no synthetic
+success or second-port workaround is acceptable.
+
+Readiness must also remain separate from raw-byte privacy. The existing mapping
+test requires successful mapped write/flush, disposal, independent buffered and
+uncached reads, stable raw extents and all raw samples before BLOCKED
+(`Test-StagedPreAttachmentMapping.ps1:6-12,250-252,292-364`; expanded mapping
+gates include `Test-StagedPolicyTransitionMapping.ps1:1300-1309,1321-1366`).
+Those gates remain unchanged and open. The W01 upstream workload pin remains
+`ebd50e1956dbf7c12db5b897fa9af5dce8f61675`, `rdwr-test.c` SHA-256
+`e652cf81b616d01a1b2e4ae0fc81476329b582c8945a89a2cfc889c05dbd844a`; it is
+stimulus reuse only.
+
+Meaningful verification before any implementation claim
+-------------------------------------------------------
+
+1. Build normal Agent and driver variants. Verify the RPC pipe name, route,
+   feature structures, and test dispatcher are absent from normal artifacts;
+   confirm staging control structures are included only by the feature/test
+   build and match C `sizeof`/`offsetof` assertions. Confirm the harness creates
+   no second `FilterConnectCommunicationPort` call and does not stop/reconnect
+   the service to collect the seven captures.
+2. Pipe authorization tests: SYSTEM/admin callers can make a capture;
+   BuiltinUsers/standard-user/restricted-token clients and remote clients are
+   rejected; raw paths/PIDs are never sent to the tray, user-readable pipes, or
+   ordinary logs; no request can select Control 13 or any mutating control.
+3. Request/wire tests: oversize frames, wrong schema, malformed/duplicate hook,
+   out-of-order hook, invalid UTF-16 lengths, NUL, ADS, slash, volume prefix,
+   bad GUID/serial/FileID, target alias, altered input hash, truncated response,
+   wrong struct size, unknown enum, invalid page count/next index, changing
+   total/generation/change sequence, retry exhaustion, duplicate target match,
+   failed send, disconnect, and response-cap exhaustion. Rehash every received
+   payload offline and verify the hash/length equals the raw frame. Error frames
+   must have no raw reply payload.
+4. Feature integration on an approved isolated VM: hold the service's one
+   connection open through all seven capture hooks; verify same service
+   PID/SID/bind-generation and uninterrupted verdict traffic; preserve every
+   17/19-page/23/20 response, target identity, timings, and errors; exercise
+   pending epoch, canary pending/failure, unsupported/detached/untrusted volume,
+   global/per-instance Unknown, incomplete enumeration, ACTIVATING-to-PROTECTED,
+   missing/mismatched identity, status-send failure, and shutdown with an
+   in-flight request. Every failure is Pending/Unknown/INCONCLUSIVE, never pass.
+   Then run the existing independent raw-byte gates unchanged.
+
+Current-source anchors and SHA-256
+----------------------------------
+
+Hashes below identify the exact source/evidence inspected for this note.
+
+| File | SHA-256 |
+|---|---|
+| `driver/evidence/2026-10-05/mapping-current-source-root-readout.json` | `a0db24d0ea15396b97672681e487e23372893fb3106b03e5cb10572b0fab1a51` |
+| `driver/SafeUpload.Minifilter/Communication.c` | `9023ebf40146b384f35d03e461fc7ed461833ad5f55a209049ad32b4adc57043` |
+| `driver/SafeUpload.Minifilter/Protocol.h` | `438bebbfab63727a52f31ec4a81e74f53eeccd988ccdb8a13e80dcf90e03f7fb` |
+| `driver/SafeUpload.Minifilter/StageAdmission.c` | `3e2f412667461df5a6b89ac481ae75bcd581a8f428fbde8ef08a7000e31d209d` |
+| `driver/SafeUpload.Minifilter/StageWriters.c` | `c31efa7c525b127cea223e1b7269f5cf5c09ec92343584005019cbf6a3ced407` |
+| `driver/SafeUpload.Minifilter/StageStream.c` | `9018b37886396e9d744794d725ac9a525d2893c014788b127dc6bb81f2a7efd5` |
+| `driver/SafeUpload.Minifilter/Policy.c` | `98c6747665d12410312ca54076cdad4749459e0cee30bd8143cd9a42f891a57c` |
+| `driver/SafeUpload.Minifilter/SafeUpload.Minifilter.vcxproj` | `047161ccf371cc6046ac80b69c8b7932b700a23a92b0f7a2a322f03923ccfe53` |
+| `driver/SafeUpload.Inspector/main.c` | `19af0ed277ed80092a26bdaab410d92329b2f0ef40685e54475fe375b35b3713` |
+| `agente/SafeUpload.Agent.Service/Interception/MinifilterInterceptor.cs` | `8ec0037e18b37dc7bd3f47f5526a79ee3691f87b041becd6d0b876b66bc95686` |
+| `agente/SafeUpload.Agent.Minifilter/FilterPort.cs` | `c4fa4878f1bcee241350ae63838aabd24af4647591892cff7a347dba2366069b` |
+| `agente/SafeUpload.Agent.Minifilter/Protocol.cs` | `32ed23500b208b2258b48b3e17a49677f1e64f302a0fdee230adc022be21a962` |
+| `agente/SafeUpload.Agent.Service/Notifications/NotificationPipeServer.cs` | `b48744a16ac0275ad0fd4022b83182ccba9c47b82a0fc79a86b2461c4eef1c08` |
+| `agente/SafeUpload.Agent.Service/Notifications/JustificationPipeServer.cs` | `8f9f7cb6f29684aed704e5a6b59022a50633ef11c3560fc859e25790a72059d8` |
+| `agente/SafeUpload.Agent.Service/SafeUpload.Agent.Service.csproj` | `cf52c125eb701196c8311d5849d22cda5c5847103462a4b19610c3d4ef38a9b7` |
+| `agente/SafeUpload.Agent.Minifilter/SafeUpload.Agent.Minifilter.csproj` | `33882b8feb9235914022f1ee1f1b8f43be60ede3b3d1f7e6eef9e613d0c4a677` |
+| `agente/SafeUpload.Agent.App/ViewModels/StatusViewModel.cs` | `79d491506ba86a42f23c7706d57e4f3fc354351421f28ec91bb61e17bb9366ed` |
+| `driver/scripts/Test-StagedPolicyTransitionMapping.ps1` | `094f149ce4f96f8139e951f05103c2bf95ff90995a15e8184dfa55a4b4606c81` |
+| `driver/evidence/2026-10-06/boot-start-w01-w01-b38b36-20261006c-ff67c01b990e41ff9af89b5a9959757c-inputs/Test-StagedW01Diagnostic.ps1` | `bf325b86fb422ded6701f69a465f47c3d9de517e6ac52efadc702aafddd8248d` |
+| `driver/evidence/2026-10-03/retained-section-findings.txt` | `99a3191dec71f7d97ae54007fd308fc70d0d084c772243148c0fc12960969b5b` |
+| `output/mvp-continuation/upstream-workload-pins.json` | `f28c0ee33c9b2f1b66e3428c83af97b7aeb69584a4d9a60b1f7b75653a48d7ce` |
+
+Exact safety findings: `retained-section-findings.txt:52-56,67` records writer
+Cleanup/CLOSE while a writable section survives and rejects CLOSE as its
+lifetime signal (O5/I3). Preserve the existing counter/section gates; do not
+infer section lifetime from the writer file object.

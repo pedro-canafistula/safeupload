@@ -1,0 +1,22 @@
+{
+  "UTC": "2026-10-06T18:06:33.316355+00:00",
+  "Verdict": "V8_COLD_RECOVERED_KEY_CHALLENGE_VERIFIED",
+  "Thumbprint": "A6D6CE1AA28835D509160A80ADB7894869AADF38",
+  "CerSha256": "47E7069980A60CBCF4DFF61F0F2D3F02EDCF97C2976708790B49D03A09243B2A",
+  "MetadataSha256": "51701037AF41FCC19101E26DD2D632934D20B94190D42782474F68F05ABDFC1E",
+  "ReceiptSHA256": "46bc0bdeed04d164aafd9efb59fda3c2ab4dab5bcb31e52903931c766d60bd98",
+  "RemoteExitCode": 0,
+  "StoresUnchanged": true,
+  "KeyAclUnchanged": true,
+  "NoPrivateExport": true,
+  "NoTrust": true,
+  "NoArtifactSign": true,
+  "StderrAssessment": "Empty",
+  "EvidencePins": {
+    "driver/evidence/2026-10-06/signing-cold-challenge-v8-20261006a.stdout.txt": "337fa6c7c1bdfe6c70bc2175af6a1954e488cdb97baf6051d606626cc73f0371",
+    "driver/evidence/2026-10-06/signing-cold-challenge-v8-20261006a.stderr.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "driver/evidence/2026-10-06/signing-cold-challenge-v8-public-receipt.json": "46bc0bdeed04d164aafd9efb59fda3c2ab4dab5bcb31e52903931c766d60bd98",
+    "driver/evidence/2026-10-06/signing-builder-key-bearing-checkpoint-v8/host-readout.json": "353e74a63e0a3473fe9821b23b4864716cfe0ea0dcd11f00d4a934ef01ca670f",
+    "driver/evidence/2026-10-06/signing-builder-key-bearing-checkpoint-v8/guest-baseline-root-readout.json": "1d80af7fc2658a7c54b968ca2c3c16c7e1848035229eda8c79982e53b93e6eb5"
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "UTC": "2026-10-06T17:25:24.302302+00:00",
+  "Verdict": "ORIGINAL_SIGNING_BASELINE_RESTORED_TWICE",
+  "RestoredBoot": "2026-10-06T13:24:36.5000000Z",
+  "AllSixStoresMatch": true,
+  "OriginalFilesAndCertificateMatch": true,
+  "TestSigningUnchangedNo": true,
+  "NoBuildProcesses": true,
+  "StderrEmptyBoth": true,
+  "FailedCertificateAbsent": true,
+  "FailedDiskRetainedRestricted": {
+    "UTC": "2026-10-06T17:24:44.316805+00:00",
+    "Path": "/var/lib/libvirt/images/win10-clean.safeupload-signer-fallback-recovery1-20261006.qcow2",
+    "Bytes": 422576128,
+    "Mode": "0o600",
+    "UID": 958,
+    "GID": 958,
+    "Inode": 630615,
+    "MtimeNS": 1791307465594218339,
+    "FailedThumbprint": "DF864DD743809E379FAEE81EFD8D35F7D9BE75EA",
+    "KeyUsable": false
+  },
+  "TrustMutated": false,
+  "FullVmRollbackClaimed": false,
+  "EvidencePins": {
+    "driver/evidence/2026-10-06/signing-builder-postmint-recovery-v5/post-start-baseline-first.stdout.json": "e3cfa1496b4c20f6a63480e762ff0d740aa0127f8bb4faec65a1f76fa25094a3",
+    "driver/evidence/2026-10-06/signing-builder-postmint-recovery-v5/post-start-baseline-first.stderr.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "driver/evidence/2026-10-06/signing-builder-postmint-recovery-v5/post-start-baseline-second.stdout.json": "278b20dc9a2885dccb1232097efe0c6db2551232505fb3ce1859a3734d629452",
+    "driver/evidence/2026-10-06/signing-builder-postmint-recovery-v5/post-start-baseline-second.stderr.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "driver/evidence/2026-10-06/signing-builder-postmint-recovery-v5/host-readout.json": "f5efe684de35e81d9c5c976bd5ebc50a40c0dca4d92147898df8842078f7e38b",
+    "driver/evidence/2026-10-06/signing-builder-postmint-recovery-v5/failed-disk-retained-stat.json": "cacea9bae1b4531431222dbe7fab6b8b1f21ee8667ecaf558587558c818ade98"
+  }
+}

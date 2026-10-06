@@ -1,0 +1,8 @@
+{
+    "StderrPreserved":  true,
+    "ErrorPreferenceRestored":  true,
+    "NativeFailureExit":  7,
+    "SourceSHA256":  "924fd290282e50ae89cfd7d357a14bee73a87fce4da7c05bba50ba884178957d",
+    "UTC":  "2026-10-06T15:47:15.8173129Z",
+    "PowerShellSyntaxErrors":  0
+}

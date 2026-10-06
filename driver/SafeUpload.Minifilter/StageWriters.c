@@ -344,6 +344,8 @@ static BOOLEAN StageRegistryUnknownSopMarkersQuiescent(_In_ PFLT_INSTANCE Instan
     _Out_ PBOOLEAN WorkRemaining, _Out_ PULONGLONG Generation);
 static BOOLEAN StageRegistrySopSnapshotQuiescent(_In_ PSTAGE_REGISTRY_SOP_SNAPSHOT Snapshot,
     _In_ PFLT_INSTANCE Instance, _In_ PFLT_VOLUME Volume);
+_IRQL_requires_max_(DISPATCH_LEVEL)
+__declspec(noinline) static PSTAGE_REGISTRY_ENTRY StageRegistryReferenceSop(_In_opt_ PVOID Sop);
 static NTSTATUS StageRegistryResolveCompactStream(_In_ PSTAGE_REGISTRY_ENTRY Entry,
     _In_ PFLT_INSTANCE Instance, _In_ PFLT_VOLUME Volume,
     _Out_writes_(SAFEUPLOAD_WRITER_REGISTRY_NAME_CHARS) PWCH StreamBuffer,
@@ -370,6 +372,8 @@ __declspec(noinline) static BOOLEAN StageRegistryMarkSopUnknown(_In_ PFLT_INSTAN
 #pragma alloc_text(PAGE, StageRegistryReclaimWorker)
 #pragma alloc_text(PAGE, StageRegistryRenameWorker)
 #pragma alloc_text(PAGE, StageRegistryUnknownWorker)
+#pragma alloc_text(PAGE, SafeUploadStageWritersAdmissionCoverage)
+#pragma alloc_text(PAGE, SafeUploadStageWritersAdmissionCoverageCurrent)
 #endif
 
 static EX_PUSH_LOCK RegistryLock;
@@ -759,11 +763,13 @@ static BOOLEAN StageRegistryDirectoryRenameInFlightLocked(_In_ PFLT_INSTANCE Ins
  * tracking-loss fallback; neither path vetoes the rename I/O. */
 static VOID StageRegistrySetEntryUnknownLocked(_In_ PSTAGE_REGISTRY_ENTRY Entry, _In_ LONG Reason)
 {
+    SafeUploadStageAdmissionCoverageBegin();
     InterlockedOr(&Entry->UnknownReasons, Reason);
     if ((Reason & (SAFEUPLOAD_REGISTRY_UNKNOWN_RENAME | SAFEUPLOAD_REGISTRY_UNKNOWN_IDENTITY)) != 0)
         InterlockedExchange(&Entry->ScopeNameClassification, STAGE_SCOPE_CLASS_UNRESOLVED);
     InterlockedExchange((volatile LONG *)&Entry->State, SAFEUPLOAD_REGISTRY_STATE_UNKNOWN);
     InterlockedIncrement64(&RegistryChangeSequence);
+    SafeUploadStageAdmissionCoverageEnd();
 }
 
 static VOID StageRegistryReference(_In_ PSTAGE_REGISTRY_ENTRY Entry)
@@ -791,12 +797,25 @@ static VOID StageRegistryRecordFirstUnknown(_Inout_ PSAFEUPLOAD_INSTANCE_CONTEXT
     (VOID)InterlockedCompareExchange64(&Context->RegistryFirstUnknown, packed, 0);
 }
 
+/* Publish a loss that cannot be scoped to one live instance. Admission's
+ * receipt brackets this update and rechecks RegistryChangeSequence after its
+ * writer census, so it cannot report a stale Ready snapshot. */
+static VOID StageRegistryPublishGlobalUnknown(_In_ LONG Reason)
+{
+    SafeUploadStageAdmissionCoverageBegin();
+    InterlockedOr((volatile LONG *)&RegistryUnknownReasons, Reason);
+    InterlockedExchange(&WriterGlobalUnknown, 1);
+    InterlockedIncrement64(&RegistryChangeSequence);
+    SafeUploadStageAdmissionCoverageEnd();
+}
+
 static VOID StageRegistryMarkUnknownAt(_In_opt_ PFLT_INSTANCE Instance,
     _In_ LONG Reason, _In_ BOOLEAN MachineWide, _In_ ULONG OriginSite)
 {
     PSAFEUPLOAD_INSTANCE_CONTEXT context = NULL;
     BOOLEAN instanceMarked = FALSE;
     BOOLEAN renameGenerationAdvanced = FALSE;
+    SafeUploadStageAdmissionCoverageBegin();
     InterlockedOr((volatile LONG *)&RegistryUnknownReasons, Reason);
     if (Instance != NULL) {
         if (KeGetCurrentIrql() <= APC_LEVEL &&
@@ -828,18 +847,20 @@ static VOID StageRegistryMarkUnknownAt(_In_opt_ PFLT_INSTANCE Instance,
     /* An instance lookup failure is itself fail-closed at admission: callers that cannot read the
      * instance context treat it as Unknown. Machine-wide Unknown is reserved for an explicit
      * machine-wide loss or an identity loss with no instance to scope it to. */
-    if (MachineWide || Instance == NULL ||
-        (KeGetCurrentIrql() > APC_LEVEL && !instanceMarked) ||
+    if (MachineWide || !instanceMarked ||
         ((Reason & SAFEUPLOAD_REGISTRY_UNKNOWN_RENAME) != 0 && !renameGenerationAdvanced)) {
         /* P0-5: if the per-instance generation cannot be advanced, prevent
          * promotion globally; scope admission still filters by volume. */
         InterlockedExchange(&WriterGlobalUnknown, 1);
     }
+    InterlockedIncrement64(&RegistryChangeSequence);
+    SafeUploadStageAdmissionCoverageEnd();
 }
 
 static VOID StageRegistryMarkEntryUnknownAt(_In_ PSTAGE_REGISTRY_ENTRY Entry,
     _In_ LONG Reason, _In_ ULONG OriginSite)
 {
+    SafeUploadStageAdmissionCoverageBegin();
     InterlockedOr(&Entry->UnknownReasons, Reason);
     if ((Reason & (SAFEUPLOAD_REGISTRY_UNKNOWN_RENAME | SAFEUPLOAD_REGISTRY_UNKNOWN_IDENTITY)) != 0)
         InterlockedExchange(&Entry->ScopeNameClassification, STAGE_SCOPE_CLASS_UNRESOLVED);
@@ -848,7 +869,10 @@ static VOID StageRegistryMarkEntryUnknownAt(_In_ PSTAGE_REGISTRY_ENTRY Entry,
     /* Narrowest scope: a loss about this file (identity, transaction, section binding) stays on its entry, which is keyed by
      * file ID and can never be Free. A file rename whose final name is lost widens because scope classification is name
      * based; a directory rename with retained names uses the locked prefix rewrite and can keep overflow entry-local. */
-    if ((Reason & SAFEUPLOAD_REGISTRY_UNKNOWN_RENAME) == 0) return;
+    if ((Reason & SAFEUPLOAD_REGISTRY_UNKNOWN_RENAME) == 0) {
+        SafeUploadStageAdmissionCoverageEnd();
+        return;
+    }
     if (KeGetCurrentIrql() <= APC_LEVEL) {
         PFLT_INSTANCE instance = NULL;
         FltAcquirePushLockExclusive(&RegistryLock);
@@ -865,10 +889,10 @@ static VOID StageRegistryMarkEntryUnknownAt(_In_ PSTAGE_REGISTRY_ENTRY Entry,
          * immediately and defer instance lookup to PASSIVE_LEVEL; the worker reads Entry->Instance
          * under RegistryLock, serialized with the teardown unlink that clears it. */
         if (!StageRegistryQueueEntryUnknown(Entry, Reason, OriginSite)) {
-            InterlockedOr((volatile LONG *)&RegistryUnknownReasons, Reason);
-            InterlockedExchange(&WriterGlobalUnknown, 1);
+            StageRegistryPublishGlobalUnknown(Reason);
         }
     }
+    SafeUploadStageAdmissionCoverageEnd();
 }
 
 /* Entry is nonpaged; keep HolderLock operations out of pageable create/cleanup callers. */
@@ -1010,6 +1034,7 @@ static VOID StageRegistryFinishReservationAccountingLocked(
     RemoveEntryList(&Reservation->Link);
     if (RegistryReservationCount != 0) RegistryReservationCount -= 1;
     Reservation->Active = FALSE;
+    InterlockedIncrement64(&RegistryChangeSequence);
 }
 
 static VOID StageRegistryReleaseReservationCapacityLocked(
@@ -1106,6 +1131,7 @@ static PSTAGE_REGISTRY_ENTRY StageRegistryGetOrInsert(_In_ PSTAGE_WRITER_RESERVA
         RegistryEntryCount += 1;
         RegistryNameBytes += StageRegistryEntryNameStorageBytes(entry);
     }
+    InterlockedIncrement64(&RegistryChangeSequence);
     Reservation->BoundEntry = entry;
     {
         /* Reclaim before the limits are reached: at 3/4 of the instance or total limit. */
@@ -1124,6 +1150,29 @@ static PSTAGE_REGISTRY_ENTRY StageRegistryGetOrInsert(_In_ PSTAGE_WRITER_RESERVA
 UINT32 SafeUploadStageWritersGlobalUnknown(VOID)
 {
     return (UINT32)InterlockedCompareExchange(&WriterGlobalUnknown, 0, 0);
+}
+
+/* Pageable confirmation sampled after the admission census. RegistryLock
+ * serializes the sample with registry mutations; the caller also checks the
+ * coverage in-flight counter for unscoped/high-IRQL tracking-loss updates. */
+_IRQL_requires_(PASSIVE_LEVEL)
+BOOLEAN SafeUploadStageWritersAdmissionCoverageCurrent(
+    _Out_ PULONGLONG RegistrySequence, _Out_ PUINT32 GlobalUnknown)
+{
+    ULONGLONG before, after;
+    UINT32 unknown;
+    PAGED_CODE();
+    NT_ASSERT(KeGetCurrentIrql() == PASSIVE_LEVEL);
+    if (RegistrySequence == NULL || GlobalUnknown == NULL) return FALSE;
+    FltAcquirePushLockShared(&RegistryLock);
+    before = (ULONGLONG)InterlockedCompareExchange64(&RegistryChangeSequence, 0, 0);
+    unknown = SafeUploadStageWritersGlobalUnknown();
+    KeMemoryBarrier();
+    after = (ULONGLONG)InterlockedCompareExchange64(&RegistryChangeSequence, 0, 0);
+    FltReleasePushLock(&RegistryLock);
+    *RegistrySequence = after;
+    *GlobalUnknown = unknown;
+    return before == after;
 }
 
 VOID SafeUploadStageWritersTrackingLostAt(_In_opt_ PFLT_INSTANCE Instance,
@@ -1183,7 +1232,7 @@ VOID SafeUploadStageWritersInstanceContextFreed(
     if (Published && InterlockedCompareExchange(&Token->State,
             SAFEUPLOAD_INSTANCE_STATE_UNKNOWN, SAFEUPLOAD_INSTANCE_STATE_ACTIVE) ==
             SAFEUPLOAD_INSTANCE_STATE_ACTIVE) {
-        InterlockedExchange(&WriterGlobalUnknown, 1);
+        StageRegistryPublishGlobalUnknown(SAFEUPLOAD_REGISTRY_UNKNOWN_TEARDOWN);
     }
 }
 
@@ -1453,6 +1502,9 @@ PrepareReservation:
         RegistryOverflow += 1;
         InterlockedIncrement64(&RegistryCapacityFailures);
         FltReleasePushLock(&RegistryLock);
+        /* The rejected ledger reservation is already a scoped tracking loss;
+         * publish it before post-create can later mark the exact stream. */
+        StageRegistryMarkUnknown(FltObjects->Instance, SAFEUPLOAD_REGISTRY_UNKNOWN_CAPACITY, FALSE);
         FltReleaseContext(instanceContext);
         instanceContext = NULL;
         if (name != NULL) FltReleaseFileNameInformation(name);
@@ -1480,13 +1532,13 @@ PrepareReservation:
         RegistryReservedSlots += 1;
     }
     if (reservation->UnknownReasons != 0) {
-        InterlockedOr(&reservation->Shell->UnknownReasons, reservation->UnknownReasons);
-        reservation->Shell->State = SAFEUPLOAD_REGISTRY_STATE_UNKNOWN;
+        StageRegistrySetEntryUnknownLocked(reservation->Shell, reservation->UnknownReasons);
     }
     reservation->SlotReserved = TRUE;
     InsertTailList(&RegistryReservations, &reservation->Link);
     reservation->Active = TRUE;
     RegistryReservationCount += 1;
+    InterlockedIncrement64(&RegistryChangeSequence);
     FltReleasePushLock(&RegistryLock);
     FltReleaseContext(instanceContext);
     instanceContext = NULL;
@@ -1921,8 +1973,7 @@ static VOID StageRegistryCompleteDirectoryRename(_In_ PFLT_INSTANCE Instance,
         InterlockedIncrement64(&RegistryChangeSequence);
     } else {
         /* Lost completion-list membership is itself an identity tracking loss. */
-        InterlockedOr((volatile LONG *)&RegistryUnknownReasons, SAFEUPLOAD_REGISTRY_UNKNOWN_RENAME);
-        InterlockedExchange(&WriterGlobalUnknown, 1);
+        StageRegistryPublishGlobalUnknown(SAFEUPLOAD_REGISTRY_UNKNOWN_RENAME);
         failed = TRUE;
     }
     FltReleasePushLock(&RegistryLock);
@@ -1934,8 +1985,7 @@ static VOID StageRegistryCompleteDirectoryRename(_In_ PFLT_INSTANCE Instance,
         failed = TRUE;
     }
     if (Rename->InstanceIdentity != (PVOID)Instance) {
-        InterlockedOr((volatile LONG *)&RegistryUnknownReasons, SAFEUPLOAD_REGISTRY_UNKNOWN_RENAME);
-        InterlockedExchange(&WriterGlobalUnknown, 1);
+        StageRegistryPublishGlobalUnknown(SAFEUPLOAD_REGISTRY_UNKNOWN_RENAME);
         failed = TRUE;
     }
     if (failed) InterlockedIncrement64(&RegistryRenameFailures);
@@ -2006,8 +2056,7 @@ VOID SafeUploadStageWritersCompleteRename(_In_ PFLT_INSTANCE Instance, _In_opt_ 
                 /* Keep the range Unknown if deferred completion could not be
                  * queued. Publishing global Unknown before Abandoned lets a
                  * later PASSIVE registry walk safely reclaim this context. */
-                InterlockedOr((volatile LONG *)&RegistryUnknownReasons, SAFEUPLOAD_REGISTRY_UNKNOWN_RENAME);
-                InterlockedExchange(&WriterGlobalUnknown, 1);
+                StageRegistryPublishGlobalUnknown(SAFEUPLOAD_REGISTRY_UNKNOWN_RENAME);
                 StageRegistryMarkUnknown(Instance, SAFEUPLOAD_REGISTRY_UNKNOWN_RENAME, FALSE);
                 InterlockedExchange(&rename->Abandoned, 1);
             }
@@ -2098,8 +2147,7 @@ VOID SafeUploadStageWritersCompleteRename(_In_ PFLT_INSTANCE Instance, _In_opt_ 
     }
     InterlockedIncrement(&entry->RenameVersion);
     if (markUnknown) {
-        InterlockedOr(&entry->UnknownReasons, SAFEUPLOAD_REGISTRY_UNKNOWN_RENAME);
-        InterlockedExchange((volatile LONG *)&entry->State, SAFEUPLOAD_REGISTRY_STATE_UNKNOWN);
+        StageRegistrySetEntryUnknownLocked(entry, SAFEUPLOAD_REGISTRY_UNKNOWN_RENAME);
     }
     FltReleasePushLock(&RegistryLock);
     if (markUnknown) {
@@ -2457,8 +2505,7 @@ VOID SafeUploadStageWritersFreeContext(_Inout_ PSAFEUPLOAD_STREAM_CONTEXT Stream
         if (node->Entry == NULL) {
             /* Its exact cleanup was lost. Keep the marker live and fail closed for promotion. */
             if (tokenState != SAFEUPLOAD_INSTANCE_STATE_TEARING_DOWN) {
-                InterlockedOr((volatile LONG *)&RegistryUnknownReasons, SAFEUPLOAD_REGISTRY_UNKNOWN_CLEANUP);
-                InterlockedExchange(&WriterGlobalUnknown, 1);
+                StageRegistryPublishGlobalUnknown(SAFEUPLOAD_REGISTRY_UNKNOWN_CLEANUP);
             }
         } else if (tokenState != SAFEUPLOAD_INSTANCE_STATE_TEARING_DOWN) {
             /* This node still identifies the exact lost writer. Mark it before
@@ -2637,19 +2684,23 @@ static PSTAGE_MUTATING_IO_TICKET_CONTEXT StageMutatingIoTicketReserve(VOID)
 }
 
 _IRQL_requires_max_(APC_LEVEL)
-__declspec(noinline) BOOLEAN SafeUploadStageWritersBeginMutatingIo(_Inout_ PFLT_CALLBACK_DATA Data,
+__declspec(noinline) static BOOLEAN StageWritersBeginMutatingIo(_Inout_ PFLT_CALLBACK_DATA Data,
     _In_opt_ PFLT_INSTANCE Instance, _In_opt_ PFILE_OBJECT FileObject,
-    _Outptr_result_maybenull_ PVOID *CompletionContext, _Out_ PBOOLEAN TrackedWriter)
+    _Outptr_result_maybenull_ PVOID *CompletionContext, _Out_ PBOOLEAN TrackedWriter,
+    _In_ BOOLEAN IncludeRegistrySopFallback)
 {
     PSAFEUPLOAD_STREAM_CONTEXT streamContext = NULL;
     PSTAGE_REGISTRY_ENTRY entry = NULL;
+    PSTAGE_REGISTRY_ENTRY streamRegistryEntry = NULL;
     PSTAGE_WRITER_NODE found = NULL;
     PSTAGE_MUTATING_IO_MARKER_CONTEXT markerContext = NULL;
     PLIST_ENTRY link;
     PVOID sectionObjectPointer = NULL;
     ULONG sopSlotIndex = 0;
     BOOLEAN markEntryUnknown = FALSE, markInstanceUnknown = FALSE;
+    BOOLEAN wAdmissionFailed = FALSE;
     BOOLEAN observerPermitHeld = FALSE;
+    PSTAGE_REGISTRY_ENTRY unknownEntryReference = NULL;
     KIRQL irql;
     LONG observerTraceState = 0;
     NTSTATUS status;
@@ -2665,59 +2716,114 @@ __declspec(noinline) BOOLEAN SafeUploadStageWritersBeginMutatingIo(_Inout_ PFLT_
     if ((observerTraceState & 1) != 0)
         observerPermitHeld = SafeUploadStageAdmissionTraceBegin(observerTraceState);
     status = FltGetStreamContext(Instance, FileObject, (PFLT_CONTEXT *)&streamContext);
-    if (!NT_SUCCESS(status)) {
-        if (observerPermitHeld) SafeUploadStageAdmissionTraceEnd();
-        return FALSE;
-    }
-
-    StageAcquireSpinLock(&streamContext->WriterLock, &irql);
-    for (link = streamContext->WriterObjects.Flink;
-         link != &streamContext->WriterObjects; link = link->Flink) {
-        PSTAGE_WRITER_NODE node = CONTAINING_RECORD(link, STAGE_WRITER_NODE, Link);
-        if (node->FileObject == FileObject) {
-            found = node;
-            break;
-        }
-    }
-    if (found != NULL) {
-        *TrackedWriter = TRUE;
-        entry = found->Entry;
-        sectionObjectPointer = found->SectionObjectPointer;
-        if (entry != NULL) {
-            KIRQL stateIrql;
-            StageRegistryAcquireStateLock(entry, &stateIrql);
-            if (InterlockedCompareExchange(&entry->W, 0, 0) < MAXLONG) {
-                StageRegistryReference(entry);
-                InterlockedIncrement(&entry->W);
-                InterlockedIncrement64(&RegistryChangeSequence);
-                *CompletionContext = (PVOID)((ULONG_PTR)entry | STAGE_MUTATING_IO_ENTRY_TAG);
-            } else {
-                markEntryUnknown = TRUE;
-            }
-            StageRegistryReleaseStateLock(entry, stateIrql);
-        } else {
-            markerContext = ExAllocatePool2(POOL_FLAG_NON_PAGED,
-                sizeof(*markerContext), SAFEUPLOAD_REGISTRY_POOL_TAG);
-            if (markerContext != NULL && StageRegistryReserveMutatingIoMarker(Instance,
-                    sectionObjectPointer, &sopSlotIndex)) {
-                markerContext->Signature = STAGE_MUTATING_IO_MARKER_SIGNATURE;
-                markerContext->SopSlotIndex = sopSlotIndex;
-                markerContext->SectionObjectPointer = sectionObjectPointer;
-                markerContext->InstanceIdentity = Instance;
-                *CompletionContext = (PVOID)((ULONG_PTR)markerContext |
-                    STAGE_MUTATING_IO_MARKER_TAG);
-                markerContext = NULL;
-            } else {
-                if (markerContext != NULL) ExFreePoolWithTag(markerContext, SAFEUPLOAD_REGISTRY_POOL_TAG);
-                markerContext = NULL;
-                markInstanceUnknown = TRUE;
+    if (NT_SUCCESS(status)) {
+        StageAcquireSpinLock(&streamContext->WriterLock, &irql);
+        for (link = streamContext->WriterObjects.Flink;
+             link != &streamContext->WriterObjects; link = link->Flink) {
+            PSTAGE_WRITER_NODE node = CONTAINING_RECORD(link, STAGE_WRITER_NODE, Link);
+            if (node->FileObject == FileObject) {
+                found = node;
+                break;
             }
         }
+        if (found == NULL && IncludeRegistrySopFallback) {
+            streamRegistryEntry = (PSTAGE_REGISTRY_ENTRY)InterlockedCompareExchangePointer(
+                (PVOID volatile *)&streamContext->WriterRegistryEntry, NULL, NULL);
+            if (streamRegistryEntry != NULL) StageRegistryReference(streamRegistryEntry);
+        }
+        if (found != NULL) {
+            /* The paging-only caller uses this output as proof that a complete
+             * registry entry, rather than an overflow marker, bound the SOP. */
+            *TrackedWriter = IncludeRegistrySopFallback ? found->Entry != NULL : TRUE;
+            entry = found->Entry;
+            sectionObjectPointer = found->SectionObjectPointer;
+            if (entry != NULL) {
+                KIRQL stateIrql;
+                StageRegistryAcquireStateLock(entry, &stateIrql);
+                if (InterlockedCompareExchange(&entry->W, 0, 0) < MAXLONG) {
+                    StageRegistryReference(entry);
+                    InterlockedIncrement(&entry->W);
+                    InterlockedIncrement64(&RegistryChangeSequence);
+                    *CompletionContext = (PVOID)((ULONG_PTR)entry | STAGE_MUTATING_IO_ENTRY_TAG);
+                } else {
+                    markEntryUnknown = TRUE;
+                    wAdmissionFailed = IncludeRegistrySopFallback;
+                }
+                StageRegistryReleaseStateLock(entry, stateIrql);
+            } else {
+                markerContext = ExAllocatePool2(POOL_FLAG_NON_PAGED,
+                    sizeof(*markerContext), SAFEUPLOAD_REGISTRY_POOL_TAG);
+                if (markerContext != NULL && StageRegistryReserveMutatingIoMarker(Instance,
+                        sectionObjectPointer, &sopSlotIndex)) {
+                    markerContext->Signature = STAGE_MUTATING_IO_MARKER_SIGNATURE;
+                    markerContext->SopSlotIndex = sopSlotIndex;
+                    markerContext->SectionObjectPointer = sectionObjectPointer;
+                    markerContext->InstanceIdentity = Instance;
+                    *CompletionContext = (PVOID)((ULONG_PTR)markerContext |
+                        STAGE_MUTATING_IO_MARKER_TAG);
+                    markerContext = NULL;
+                } else {
+                    if (markerContext != NULL) ExFreePoolWithTag(markerContext, SAFEUPLOAD_REGISTRY_POOL_TAG);
+                    markerContext = NULL;
+                    markInstanceUnknown = TRUE;
+                    wAdmissionFailed = IncludeRegistrySopFallback;
+                }
+            }
+        }
+        StageReleaseSpinLock(&streamContext->WriterLock, irql);
+        FltReleaseContext(streamContext);
     }
-    StageReleaseSpinLock(&streamContext->WriterLock, irql);
-    FltReleaseContext(streamContext);
 
-    if (observerPermitHeld && *TrackedWriter && *CompletionContext == NULL) {
+    /* Cleanup removes the per-FILE_OBJECT H node even though a writable mapped
+     * view can continue to issue paging writes. For that one path, a live
+     * exact SOP binding can keep W through lower completion. This fallback is
+     * opt-in for paging writes so unrelated direct mutators retain their
+     * existing TrackedWriter exemption semantics. */
+    if (found == NULL && IncludeRegistrySopFallback &&
+        *CompletionContext == NULL && FileObject->SectionObjectPointer != NULL) {
+        PSTAGE_REGISTRY_ENTRY sopEntry = StageRegistryReferenceSop(
+            FileObject->SectionObjectPointer);
+        if (sopEntry == NULL) {
+            sopEntry = streamRegistryEntry;
+            streamRegistryEntry = NULL;
+        } else if (streamRegistryEntry != NULL) {
+            StageRegistryDereference(streamRegistryEntry);
+            streamRegistryEntry = NULL;
+        }
+        if (sopEntry != NULL) {
+            BOOLEAN admitted = FALSE;
+            FltAcquirePushLockShared(&RegistryLock);
+            if (sopEntry->Listed && !sopEntry->Retired &&
+                sopEntry->Instance == Instance &&
+                InterlockedCompareExchangePointer(
+                    (PVOID volatile *)&sopEntry->SectionObjectPointer, NULL, NULL) ==
+                    FileObject->SectionObjectPointer) {
+                *TrackedWriter = TRUE;
+                KIRQL stateIrql;
+                StageRegistryAcquireStateLock(sopEntry, &stateIrql);
+                if (InterlockedCompareExchange(&sopEntry->W, 0, 0) < MAXLONG) {
+                    InterlockedIncrement(&sopEntry->W);
+                    InterlockedIncrement64(&RegistryChangeSequence);
+                    *CompletionContext = (PVOID)((ULONG_PTR)sopEntry |
+                        STAGE_MUTATING_IO_ENTRY_TAG);
+                    admitted = TRUE;
+                } else {
+                    entry = sopEntry;
+                    markEntryUnknown = TRUE;
+                    wAdmissionFailed = TRUE;
+                    unknownEntryReference = sopEntry;
+                }
+                StageRegistryReleaseStateLock(sopEntry, stateIrql);
+            }
+            FltReleasePushLock(&RegistryLock);
+            if (!admitted && unknownEntryReference == NULL)
+                StageRegistryDereference(sopEntry);
+        }
+    }
+    if (streamRegistryEntry != NULL) StageRegistryDereference(streamRegistryEntry);
+
+    if (observerPermitHeld && (*TrackedWriter || wAdmissionFailed) &&
+        *CompletionContext == NULL) {
         /* The core W path could not produce a completion token for this
          * tracked writer; retain an explicit observer loss under our permit. */
         SafeUploadStageAdmissionTraceNoteTicketLost();
@@ -2772,12 +2878,32 @@ __declspec(noinline) BOOLEAN SafeUploadStageWritersBeginMutatingIo(_Inout_ PFLT_
 
     if (markEntryUnknown) {
         StageRegistryMarkEntryUnknown(entry, SAFEUPLOAD_REGISTRY_UNKNOWN_CAPACITY);
+        if (unknownEntryReference != NULL)
+            StageRegistryDereference(unknownEntryReference);
     } else if (markInstanceUnknown) {
         /* Exact marker accounting was unavailable (missing identity or saturated table count). */
         StageRegistryMarkUnknown(Instance, SAFEUPLOAD_REGISTRY_UNKNOWN_CAPACITY, FALSE);
     }
     if (observerPermitHeld) SafeUploadStageAdmissionTraceEnd();
     return *TrackedWriter;
+}
+
+_IRQL_requires_max_(APC_LEVEL)
+__declspec(noinline) BOOLEAN SafeUploadStageWritersBeginMutatingIo(_Inout_ PFLT_CALLBACK_DATA Data,
+    _In_opt_ PFLT_INSTANCE Instance, _In_opt_ PFILE_OBJECT FileObject,
+    _Outptr_result_maybenull_ PVOID *CompletionContext, _Out_ PBOOLEAN TrackedWriter)
+{
+    return StageWritersBeginMutatingIo(Data, Instance, FileObject, CompletionContext,
+        TrackedWriter, FALSE);
+}
+
+_IRQL_requires_max_(APC_LEVEL)
+__declspec(noinline) BOOLEAN SafeUploadStageWritersBeginPagingIo(_Inout_ PFLT_CALLBACK_DATA Data,
+    _In_opt_ PFLT_INSTANCE Instance, _In_opt_ PFILE_OBJECT FileObject,
+    _Outptr_result_maybenull_ PVOID *CompletionContext, _Out_ PBOOLEAN ExactSopTracked)
+{
+    return StageWritersBeginMutatingIo(Data, Instance, FileObject, CompletionContext,
+        ExactSopTracked, TRUE);
 }
 
 _IRQL_requires_max_(DISPATCH_LEVEL)
@@ -3164,11 +3290,13 @@ __declspec(noinline) static VOID StageRegistryTrackUnknownWriter(_Inout_ PSTAGE_
     node->SectionObjectPointer = FileObject->SectionObjectPointer;
     if (marker) {
         node->Entry = NULL;
+        SafeUploadStageAdmissionCoverageBegin();
         StageAcquireSpinLock(&streamContext->WriterLock, &irql);
         InterlockedExchange(&streamContext->WritersUntracked, 1);
         InsertTailList(&streamContext->WriterObjects, &node->Link);
         InterlockedIncrement64(&RegistryChangeSequence);
         StageReleaseSpinLock(&streamContext->WriterLock, irql);
+        SafeUploadStageAdmissionCoverageEnd();
         inserted = TRUE;
     } else if (entry != NULL) {
         node->Entry = entry;
@@ -3458,8 +3586,7 @@ static VOID StageRegistryRetireInstance(_In_ PFLT_INSTANCE Instance, _In_ BOOLEA
         if (Dismount) InterlockedIncrement64(&RegistryDroppedAtDismount);
         else {
             InterlockedIncrement64(&RegistryDroppedWhileMounted);
-            InterlockedExchange(&WriterGlobalUnknown, 1);
-            InterlockedOr((volatile LONG *)&RegistryUnknownReasons, SAFEUPLOAD_REGISTRY_UNKNOWN_TEARDOWN);
+            StageRegistryPublishGlobalUnknown(SAFEUPLOAD_REGISTRY_UNKNOWN_TEARDOWN);
         }
         if (volumeReference != NULL) FltObjectDereference(volumeReference);
         if (instanceReference != NULL) FltObjectDereference(instanceReference);
@@ -3616,9 +3743,9 @@ __declspec(noinline) static BOOLEAN StageRegistryAssociateSectionPointer(_In_ PS
 
 /* ---- Pruning: the registry holds only files that may still be live -------------------------------------------------
  * An entry exists to remember a possible writer. Once a file has no writer handle, no writable section in flight, no
- * transaction, no rename in flight, AND its live stream has neither a data section nor a shared cache map (so no mapping
- * and no dirty cache can still write to it), the entry says nothing an absent entry would not: it is removed. The registry
- * is then bounded by concurrency, not uptime (owner-approved 2026-10-04; run 10 filled 1,024 entries within minutes).
+ * transaction, no rename in flight, AND MmCanFileBeTruncated on its exact live SOP says the entire file can be
+ * truncated, the entry says nothing an absent entry would not: it is removed. The registry is then bounded by
+ * concurrency, not uptime (owner-approved 2026-10-04; run 10 filled 1,024 entries within minutes).
  * Entries that carry an Unknown reason are never pruned: they record a loss. No timers and no file-system scan: one
  * reclaim worker runs when an instance or the total crosses 3/4 of its limit, or on a capacity failure. */
 
@@ -3726,11 +3853,12 @@ static BOOLEAN StageRegistryEntryQuiescent(_In_ PSTAGE_REGISTRY_ENTRY Entry, _In
         quiescent = TRUE; /* the original stream incarnation is gone */
         goto Exit;
     }
-    /* Our open holds the stream's one live SCB, so these pointers are current. No data section means no mapping (writable
-     * or not); no shared cache map means no dirty cached data. */
-    quiescent = object->SectionObjectPointer != NULL &&
-        object->SectionObjectPointer->DataSectionObject == NULL &&
-        object->SectionObjectPointer->SharedCacheMap == NULL;
+    /* Use the documented exact-SOP memory-manager predicate, not the opaque
+     * SECTION_OBJECT_POINTERS members as a lifetime signal. With NewFileSize
+     * NULL, MmCanFileBeTruncated refuses quiescence while a mapped view,
+     * outstanding write probe, image section, or user reference to the data
+     * section remains. */
+    quiescent = MmCanFileBeTruncated(object->SectionObjectPointer, NULL);
 Exit:
     if (object != NULL) ObDereferenceObject(object);
     if (handle != NULL) FltClose(handle);
@@ -4532,7 +4660,7 @@ __declspec(noinline) static VOID StageRegistryTryPromoteEntry(
     if (!NT_SUCCESS(FltGetInstanceContext(Entry->Instance, (PFLT_CONTEXT *)&instanceContext))) {
         StageRegistrySetEntryUnknownLocked(Entry, SAFEUPLOAD_REGISTRY_UNKNOWN_RENAME);
         StageRegistryPrepareActivation(Entry, TRUE);
-        InterlockedExchange(&WriterGlobalUnknown, 1);
+        StageRegistryPublishGlobalUnknown(SAFEUPLOAD_REGISTRY_UNKNOWN_RENAME);
         return;
     }
     renameLossStable = SafeUploadPolicyRenameLossGenerationEnter(
@@ -4626,6 +4754,7 @@ __declspec(noinline) static VOID StageRegistryResolveAliasProbe(_In_ PSTAGE_REGI
     KIRQL irql;
     LONG state;
     *Activated = FALSE;
+    SafeUploadStageAdmissionCoverageBegin();
     StageAcquireSpinLock(&Entry->StateLock, &irql);
     if (InterlockedCompareExchange(&Entry->AliasProbePending, 0, 0) != 0) {
         if (!ClassificationSucceeded) {
@@ -4658,6 +4787,7 @@ __declspec(noinline) static VOID StageRegistryResolveAliasProbe(_In_ PSTAGE_REGI
         InterlockedIncrement64(&RegistryChangeSequence);
     }
     StageReleaseSpinLock(&Entry->StateLock, irql);
+    SafeUploadStageAdmissionCoverageEnd();
 }
 
 /* D1: instance-level ledger loss cancels an unclassified probe without turning it into an I/O gate. */
@@ -4703,8 +4833,11 @@ __declspec(noinline) static BOOLEAN StageRegistryResolveAliasProbeForGeneration(
     if (!stable) {
         /* The prior rename loss already advanced the instance generation. Keep
          * this entry's name unresolved without publishing a second loss. */
+        SafeUploadStageAdmissionCoverageBegin();
         InterlockedOr(&Entry->UnknownReasons, SAFEUPLOAD_REGISTRY_UNKNOWN_RENAME);
         InterlockedExchange(&Entry->ScopeNameClassification, STAGE_SCOPE_CLASS_UNRESOLVED);
+        InterlockedIncrement64(&RegistryChangeSequence);
+        SafeUploadStageAdmissionCoverageEnd();
     }
     return stable;
 }
@@ -4935,6 +5068,7 @@ static VOID StageRegistryUnknownWorker(_In_ PFLT_GENERIC_WORKITEM WorkItem, _In_
     PSTAGE_DEFERRED_INSTANCE_UNKNOWN deferred = (PSTAGE_DEFERRED_INSTANCE_UNKNOWN)Context;
     PSAFEUPLOAD_INSTANCE_CONTEXT instanceContext = NULL;
     PFLT_INSTANCE instance = deferred != NULL ? deferred->Instance : NULL;
+    BOOLEAN instanceMarked = FALSE;
     UNREFERENCED_PARAMETER(FltObject);
     PAGED_CODE();
     if (deferred != NULL)
@@ -4965,9 +5099,20 @@ static VOID StageRegistryUnknownWorker(_In_ PFLT_GENERIC_WORKITEM WorkItem, _In_
         }
         if (InterlockedCompareExchange(&instanceContext->WritersUntracked, 1, 0) == 0)
             InterlockedIncrement((volatile LONG *)&RegistryInstanceUnknown);
+        instanceMarked = TRUE;
         FltReleaseContext(instanceContext);
     }
     if (deferred != NULL) {
+        if (instanceMarked) {
+            InterlockedIncrement64(&RegistryChangeSequence);
+        } else {
+            /* The queued target disappeared or its context could not be read;
+             * retain a machine-wide fail-closed signal after the pending ticket. */
+            StageRegistryPublishGlobalUnknown(deferred->Reason);
+        }
+        /* Queueing holds this ticket until the sticky unknown state is visible.
+         * Thus a census cannot cross a deferred loss and still return Ready. */
+        SafeUploadStageAdmissionCoverageEnd();
         if (instance != NULL) FltObjectDereference(instance);
         if (deferred->Entry != NULL) StageRegistryDereference(deferred->Entry);
         ExFreePoolWithTag(deferred, SAFEUPLOAD_REGISTRY_POOL_TAG);
@@ -5014,9 +5159,13 @@ static BOOLEAN StageRegistryQueueDeferredUnknown(_In_opt_ PFLT_INSTANCE Instance
         ExReleaseRundownProtection(&SafeUploadData.ChannelRundown);
         return FALSE;
     }
+    /* Keep admission incomplete until the worker has published per-instance
+     * state, or widened to global Unknown if it cannot resolve the target. */
+    SafeUploadStageAdmissionCoverageBegin();
     status = FltQueueGenericWorkItem(item, SafeUploadData.Filter, StageRegistryUnknownWorker,
         DelayedWorkQueue, deferred);
     if (!NT_SUCCESS(status)) {
+        SafeUploadStageAdmissionCoverageEnd();
         FltFreeGenericWorkItem(item);
         if (deferred->Instance != NULL) FltObjectDereference(deferred->Instance);
         if (deferred->Entry != NULL) StageRegistryDereference(deferred->Entry);
@@ -5617,45 +5766,148 @@ __declspec(noinline) static BOOLEAN StageRegistryUnknownSopForInstance(
     return unknownMarker;
 }
 
+_IRQL_requires_max_(APC_LEVEL)
 BOOLEAN SafeUploadStageWritersSopMatchesPolicy(_In_ PFLT_INSTANCE Instance,
-    _In_opt_ PVOID SectionObjectPointer, _In_ BOOLEAN IncludeAncestors)
+    _In_opt_ PFILE_OBJECT FileObject, _In_ BOOLEAN IncludeAncestors)
 {
-    PSTAGE_REGISTRY_ENTRY entry;
+#define STAGE_SOP_POLICY_RETRIES 2
+    PSAFEUPLOAD_STREAM_CONTEXT streamContext = NULL;
+    PSTAGE_REGISTRY_ENTRY entry = NULL;
     BOOLEAN matches = FALSE;
-    if (Instance == NULL || SectionObjectPointer == NULL) return FALSE;
-    entry = StageRegistryReferenceSop(SectionObjectPointer);
+    PVOID sectionObjectPointer;
+    PWCHAR nameBuffer = NULL;
+    ULONG attempt;
+
+    if (Instance == NULL || FileObject == NULL) return FALSE;
+    sectionObjectPointer = FileObject->SectionObjectPointer;
+    if (sectionObjectPointer == NULL) return FALSE;
+    entry = StageRegistryReferenceSop(sectionObjectPointer);
+    if (entry == NULL && NT_SUCCESS(FltGetStreamContext(Instance,
+            FileObject, (PFLT_CONTEXT *)&streamContext))) {
+        KIRQL irql;
+        StageAcquireSpinLock(&streamContext->WriterLock, &irql);
+        entry = (PSTAGE_REGISTRY_ENTRY)InterlockedCompareExchangePointer(
+            (PVOID volatile *)&streamContext->WriterRegistryEntry, NULL, NULL);
+        if (entry != NULL) StageRegistryReference(entry);
+        StageReleaseSpinLock(&streamContext->WriterLock, irql);
+        FltReleaseContext(streamContext);
+    }
     if (entry == NULL) {
         /* Unknown markers have no per-SOP scope cache; fail closed on a volume that may be scoped. */
-        return StageRegistryUnknownSopForInstance(Instance, SectionObjectPointer) &&
+        return StageRegistryUnknownSopForInstance(Instance, sectionObjectPointer) &&
             SafeUploadPolicyMayMatchInstanceVolume(Instance);
     }
-    FltAcquirePushLockShared(&RegistryLock);
-    if (entry->Listed && !entry->Retired && entry->Instance == Instance &&
-        InterlockedCompareExchangePointer((PVOID volatile *)&entry->SectionObjectPointer,
-            NULL, NULL) == SectionObjectPointer) {
-        if (InterlockedCompareExchange(&entry->AliasProbePending, 0, 0) != 0 ||
-            InterlockedCompareExchange((volatile LONG *)&entry->State, 0, 0) ==
-                SAFEUPLOAD_REGISTRY_STATE_PROTECTED ||
-            InterlockedCompareExchange(&entry->ScopeNameClassification, 0, 0) ==
-                STAGE_SCOPE_CLASS_SCOPED) {
+
+    /* This path runs in paging and section-synchronization callbacks. Keep its
+     * bounded name snapshot off the kernel stack and nonpaged so it remains
+     * valid even when entered at APC_LEVEL. If storage is exhausted, treat the
+     * exact SOP as protected whenever the instance can match the active policy. */
+    nameBuffer = (PWCHAR)ExAllocatePool2(POOL_FLAG_NON_PAGED,
+        SAFEUPLOAD_WRITER_REGISTRY_NAME_CHARS * sizeof(WCHAR), SAFEUPLOAD_REGISTRY_POOL_TAG);
+    if (nameBuffer == NULL) {
+        matches = SafeUploadPolicyMayMatchInstanceVolume(Instance);
+        StageRegistryDereference(entry);
+        return matches;
+    }
+
+    /* Policy helpers acquire SafeUploadPolicyLock. Snapshot the bounded entry
+     * name under RegistryLock, drop that lock before policy matching, and
+     * validate a negative result against the same rename/classification state.
+     * This preserves the registry anchor through the check without creating a
+     * RegistryLock -> SafeUploadPolicyLock edge. */
+    for (attempt = 0; attempt < STAGE_SOP_POLICY_RETRIES; ++attempt) {
+        USHORT nameChars = 0;
+        SAFEUPLOAD_VOLUME_KIND volumeKind = SafeUploadVolumeUnknown;
+        LONG state = SAFEUPLOAD_REGISTRY_STATE_UNSCOPED;
+        LONG scopeClass = STAGE_SCOPE_CLASS_UNRESOLVED;
+        LONG unknownReasons = 0, aliasPending = 0, activationEnforced = 0;
+        LONG renameInFlight = 0, renameVersion = 0;
+        BOOLEAN valid = FALSE, copyName = FALSE, stable = FALSE;
+
+        FltAcquirePushLockShared(&RegistryLock);
+        if (entry->Listed && !entry->Retired && entry->Instance == Instance &&
+            InterlockedCompareExchangePointer((PVOID volatile *)&entry->SectionObjectPointer,
+                NULL, NULL) == sectionObjectPointer) {
+            valid = TRUE;
+            state = InterlockedCompareExchange((volatile LONG *)&entry->State, 0, 0);
+            scopeClass = InterlockedCompareExchange(&entry->ScopeNameClassification, 0, 0);
+            unknownReasons = InterlockedCompareExchange(&entry->UnknownReasons, 0, 0);
+            aliasPending = InterlockedCompareExchange(&entry->AliasProbePending, 0, 0);
+            activationEnforced = InterlockedCompareExchange(&entry->ActivationEnforced, 0, 0);
+            renameInFlight = InterlockedCompareExchange(&entry->RenameInFlight, 0, 0);
+            renameVersion = InterlockedCompareExchange(&entry->RenameVersion, 0, 0);
+            volumeKind = entry->VolumeKind;
+            if (entry->Name != NULL && entry->NameChars != 0 &&
+                entry->NameChars <= SAFEUPLOAD_WRITER_REGISTRY_NAME_CHARS) {
+                nameChars = entry->NameChars;
+                RtlCopyMemory(nameBuffer, entry->Name, nameChars * sizeof(WCHAR));
+                copyName = TRUE;
+            }
+        }
+        FltReleasePushLock(&RegistryLock);
+
+        if (!valid) break;
+        if (aliasPending != 0 || state == SAFEUPLOAD_REGISTRY_STATE_PROTECTED ||
+            scopeClass == STAGE_SCOPE_CLASS_SCOPED) {
             matches = TRUE;
-        } else if (InterlockedCompareExchange(&entry->ScopeNameClassification, 0, 0) ==
-            STAGE_SCOPE_CLASS_OUTSIDE) {
+            break;
+        }
+        if (unknownReasons != 0 || renameInFlight != 0) {
+            /* The exact SOP is known, but its current name proof is unstable
+             * or tainted. Keep it behind the gate only on a possibly scoped
+             * volume; do the policy-cache query after releasing RegistryLock. */
+            matches = SafeUploadPolicyMayMatchInstanceVolume(Instance);
+            break;
+        }
+        if (scopeClass == STAGE_SCOPE_CLASS_OUTSIDE) {
             matches = FALSE;
-        } else if (entry->NameChars != 0 &&
-            entry->NameChars <= SAFEUPLOAD_WRITER_REGISTRY_NAME_CHARS) {
+            break;
+        }
+        if (copyName) {
             UNICODE_STRING name;
-            name.Buffer = entry->Name;
-            name.Length = name.MaximumLength = (USHORT)(entry->NameChars * sizeof(WCHAR));
+            name.Buffer = nameBuffer;
+            name.Length = name.MaximumLength = (USHORT)(nameChars * sizeof(WCHAR));
             matches = SafeUploadPolicyMatchesCurrentOrPendingDestination(
-                entry->VolumeKind, &name, IncludeAncestors);
-        } else if (InterlockedCompareExchange(&entry->ActivationEnforced, 0, 0) != 0) {
+                volumeKind, &name, IncludeAncestors);
+            if (matches) break; /* A stale positive only denies this write. */
+
+            FltAcquirePushLockShared(&RegistryLock);
+            stable = entry->Listed && !entry->Retired && entry->Instance == Instance &&
+                InterlockedCompareExchangePointer((PVOID volatile *)&entry->SectionObjectPointer,
+                    NULL, NULL) == sectionObjectPointer &&
+                InterlockedCompareExchange(&entry->RenameInFlight, 0, 0) == 0 &&
+                InterlockedCompareExchange(&entry->RenameVersion, 0, 0) == renameVersion &&
+                InterlockedCompareExchange((volatile LONG *)&entry->State, 0, 0) == state &&
+                InterlockedCompareExchange(&entry->ScopeNameClassification, 0, 0) == scopeClass &&
+                InterlockedCompareExchange(&entry->UnknownReasons, 0, 0) == unknownReasons &&
+                InterlockedCompareExchange(&entry->AliasProbePending, 0, 0) == aliasPending &&
+                InterlockedCompareExchange(&entry->ActivationEnforced, 0, 0) == activationEnforced &&
+                entry->VolumeKind == volumeKind && entry->Name != NULL &&
+                entry->NameChars == nameChars &&
+                RtlEqualMemory(entry->Name, nameBuffer, nameChars * sizeof(WCHAR));
+            FltReleasePushLock(&RegistryLock);
+            if (stable) break;
+            continue;
+        }
+        if (activationEnforced != 0) {
             /* An unresolved name explicitly classified for activation stays fail closed. */
             matches = TRUE;
+            break;
         }
+        matches = FALSE;
+        break;
     }
-    FltReleasePushLock(&RegistryLock);
+    if (attempt == STAGE_SOP_POLICY_RETRIES && !matches) {
+        /* Repeated rename churn cannot turn a negative stale snapshot into
+         * permission. Unknown volume scope remains fail closed. */
+        matches = SafeUploadPolicyMayMatchInstanceVolume(Instance);
+    }
+    ExFreePoolWithTag(nameBuffer, SAFEUPLOAD_REGISTRY_POOL_TAG);
     StageRegistryDereference(entry);
+    if (!matches)
+        matches = StageRegistryUnknownSopForInstance(Instance, sectionObjectPointer) &&
+            SafeUploadPolicyMayMatchInstanceVolume(Instance);
+#undef STAGE_SOP_POLICY_RETRIES
     return matches;
 }
 
@@ -5712,7 +5964,7 @@ NTSTATUS SafeUploadStageWritersApplyPendingScope(VOID)
         if (nameUnresolved) {
             /* P0-5: one instance rename-loss generation invalidates every older retained name
              * on a possibly scoped volume; publish the identity gate before completing the apply. */
-            InterlockedOr(&entry->UnknownReasons, SAFEUPLOAD_REGISTRY_UNKNOWN_RENAME);
+            StageRegistrySetEntryUnknownLocked(entry, SAFEUPLOAD_REGISTRY_UNKNOWN_RENAME);
             StageRegistryPrepareActivation(entry, TRUE);
             InterlockedIncrement64(&RegistryChangeSequence);
             continue;
@@ -5737,8 +5989,7 @@ NTSTATUS SafeUploadStageWritersApplyPendingScope(VOID)
             } else if (InterlockedCompareExchange(&entry->ActivationEnforced, 0, 0) != 0 &&
                 InterlockedCompareExchange((volatile LONG *)&entry->State, 0, 0) ==
                     SAFEUPLOAD_REGISTRY_STATE_ACTIVATING) {
-                InterlockedOr(&entry->UnknownReasons, SAFEUPLOAD_REGISTRY_UNKNOWN_ALLOCATION);
-                InterlockedExchange((volatile LONG *)&entry->State, SAFEUPLOAD_REGISTRY_STATE_UNKNOWN);
+                StageRegistrySetEntryUnknownLocked(entry, SAFEUPLOAD_REGISTRY_UNKNOWN_ALLOCATION);
                 InterlockedIncrement64(&RegistryChangeSequence);
             }
         }
@@ -5788,7 +6039,7 @@ VOID SafeUploadStageWritersReconcileCurrentScope(VOID)
             (InterlockedCompareExchange(&entry->UnknownReasons, 0, 0) & SAFEUPLOAD_REGISTRY_UNKNOWN_RENAME) != 0 ||
             entry->RenameLossGeneration != renameLossGeneration;
         if (nameUnresolved) {
-            InterlockedOr(&entry->UnknownReasons, SAFEUPLOAD_REGISTRY_UNKNOWN_RENAME);
+            StageRegistrySetEntryUnknownLocked(entry, SAFEUPLOAD_REGISTRY_UNKNOWN_RENAME);
             StageRegistryPrepareActivation(entry, TRUE);
             InterlockedIncrement64(&RegistryChangeSequence);
         } else if (StageRegistryBeginAliasProbe(entry)) {
@@ -5898,6 +6149,67 @@ NTSTATUS SafeUploadStageWritersActivatingStatusPage(_In_ UINT32 StartIndex,
     endSequence = (UINT64)InterlockedCompareExchange64(&RegistryChangeSequence, 0, 0);
     if (startSequence != endSequence) return STATUS_RETRY;
     Page->ChangeSequence = endSequence;
+    return STATUS_SUCCESS;
+}
+
+/* Build a compact, private summary from the complete activation-enforced
+ * registry set. `PROTECTED` is accepted only after StageRegistry's exact
+ * promotion predicate succeeds; the sampled H/W/S/C/T tuple is not used as
+ * a substitute. Reservations, unknown entries, stale generations, and an
+ * unstable registry sequence all prevent a Ready receipt. */
+NTSTATUS SafeUploadStageWritersAdmissionCoverage(_In_ UINT32 PolicyGeneration,
+    _Out_ PULONGLONG RegistrySequenceStart, _Out_ PULONGLONG RegistrySequenceEnd,
+    _Out_ PUINT32 WriterEntries,
+    _Out_ PUINT32 WriterEntriesNotReady, _Out_ PUINT32 WriterEntriesUnknown,
+    _Out_ PUINT32 GlobalUnknown)
+{
+    PLIST_ENTRY link;
+    UINT32 entries = 0, notReady = 0, unknownEntries = 0;
+    UINT32 globalBefore, globalAfter;
+    UINT64 startSequence, endSequence;
+    PAGED_CODE();
+    if (RegistrySequenceStart == NULL || RegistrySequenceEnd == NULL || WriterEntries == NULL ||
+        WriterEntriesNotReady == NULL || WriterEntriesUnknown == NULL || GlobalUnknown == NULL)
+        return STATUS_INVALID_PARAMETER;
+
+    startSequence = (UINT64)InterlockedCompareExchange64(&RegistryChangeSequence, 0, 0);
+    globalBefore = SafeUploadStageWritersGlobalUnknown();
+    FltAcquirePushLockShared(&RegistryLock);
+    if (RegistryReservationCount != 0) {
+        entries += RegistryReservationCount;
+        notReady += RegistryReservationCount;
+    }
+    for (link = RegistryEntries.Flink; link != &RegistryEntries; link = link->Flink) {
+        PSTAGE_REGISTRY_ENTRY entry = CONTAINING_RECORD(link, STAGE_REGISTRY_ENTRY, Link);
+        STAGE_ACTIVATING_LOCKED_SNAPSHOT snapshot;
+        ULONG unknown, scanPending, aliasPending, renameInFlight;
+        if (entry->Retired || !entry->Listed ||
+            InterlockedCompareExchange(&entry->ActivationEnforced, 0, 0) == 0) continue;
+        ++entries;
+        StageRegistryActivatingStatusSnapshot(entry, &snapshot);
+        unknown = (ULONG)InterlockedCompareExchange(&entry->UnknownReasons, 0, 0);
+        scanPending = (ULONG)InterlockedCompareExchange(&entry->ScopeScanPending, 0, 0);
+        aliasPending = (ULONG)InterlockedCompareExchange(&entry->AliasProbePending, 0, 0);
+        renameInFlight = (ULONG)InterlockedCompareExchange(&entry->RenameInFlight, 0, 0);
+        if (snapshot.State == SAFEUPLOAD_REGISTRY_STATE_UNKNOWN || unknown != 0) {
+            ++notReady;
+            ++unknownEntries;
+        } else if (snapshot.State != SAFEUPLOAD_REGISTRY_STATE_PROTECTED ||
+            snapshot.Generation != PolicyGeneration || scanPending != 0 ||
+            aliasPending != 0 || renameInFlight != 0) {
+            ++notReady;
+        }
+    }
+    FltReleasePushLock(&RegistryLock);
+    globalAfter = SafeUploadStageWritersGlobalUnknown();
+    endSequence = (UINT64)InterlockedCompareExchange64(&RegistryChangeSequence, 0, 0);
+    if (globalBefore != globalAfter || startSequence != endSequence) return STATUS_RETRY;
+    *RegistrySequenceStart = startSequence;
+    *RegistrySequenceEnd = endSequence;
+    *WriterEntries = entries;
+    *WriterEntriesNotReady = notReady;
+    *WriterEntriesUnknown = unknownEntries;
+    *GlobalUnknown = globalAfter;
     return STATUS_SUCCESS;
 }
 

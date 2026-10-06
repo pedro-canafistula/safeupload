@@ -1,0 +1,289 @@
+Live admission evidence endpoint: source design and review note
+===============================================================
+
+Date: 2026-10-06
+Status: feature/test-only service source has been added for review. It has not
+been built or run in this environment; no driver/VM qualification or product
+readiness claim is made here. The local environment has no installed .NET SDK.
+The endpoint remains diagnostic evidence plumbing. Both raw-byte privacy gates
+remain open.
+
+Scope and safety boundary
+-------------------------
+
+The feature uses only the already-connected `FilterPort` held by
+`MinifilterInterceptor`. The driver intentionally creates its communication
+port with `MaxConnections == 1` (`driver/SafeUpload.Minifilter/Communication.c:
+185-196`). The service keeps that connection, client PID, SYSTEM identity, and
+receive/verdict loop. The endpoint never calls `FilterPort.Connect`, asks for a
+second connection, stops the service, or reconnects it. Control messages share
+the FilterPort send gate; endpoint unbind stops new captures and drains its
+calls before the port is disposed. The receive loop is not used as an evidence
+queue.
+
+The endpoint, request parser, frame protocol, capture walker, run ledger, and
+sender API compile only under the explicit
+`SafeUploadAdmissionEvidence=true` property and
+`SAFEUPLOAD_ADMISSION_EVIDENCE` symbol. Normal Service and Minifilter builds
+leave the property unset. `Program.cs` registers the endpoint only in feature
+builds, and the conditional interceptor dependency binds it after policy push
+and staging recovery, before the normal ProtectionActive notification and
+ServiceReady event. It unbinds and drains in the existing port lifetime.
+Runtime binding also requires `Interception:StagingPrototype` and LocalSystem.
+
+The pipe is `\\.\pipe\SafeUploadAdmissionEvidence.Capture`. Native
+`CreateNamedPipeW` creates one duplex, overlapped, byte-mode instance with
+`FILE_FLAG_FIRST_PIPE_INSTANCE` and `PIPE_REJECT_REMOTE_CLIENTS` in `dwPipeMode`
+(not `PipeOptions`). Its protected DACL grants only SYSTEM and Builtin
+Administrators. Before reading any allocation-controlled body, the server caps
+the length at 4 KiB and applies a five-second request-read deadline. After the
+bounded message is read, it obtains the actual client PID from
+`GetNamedPipeClientProcessId`, impersonates the client to read the actual token
+SID/admin membership, and confirms that PID is still live. PID/SID request
+claims are not accepted. The service logs only generic exception types; raw
+Control 19 data (which can contain names and PIDs) is sent only over this
+SYSTEM/admin pipe, never the tray, ordinary user pipes, or logs.
+
+The binary `SAER` request carries schema version, hook ordinal, Run GUID,
+Request GUID, one native volume GUID, 64-bit volume serial, and 16-byte FileID.
+It has strict UTF-8/canonical volume GUID validation, exact body length, no
+unknown flags or trailing fields, and a 4 KiB ceiling. It has no path, caller
+PID, or selectable command field. The endpoint permits only read-only Control
+19 (paged ActivatingStatus), 20 (EpochStatus), and 23 (VolumeObserve). It does
+not expose Control 17 path lookup, Control 13, arbitrary filter controls, or
+any writer/policy mutator.
+
+The seven mapping hook positions
+--------------------------------
+
+The fixed ordinal names correspond to the actual expanded mapping stimulus in
+`driver/scripts/Test-StagedPolicyTransitionMapping.ps1`, SHA-256
+`094f149ce4f96f8139e951f05103c2bf95ff90995a15e8184dfa55a4b4606c81`:
+
+1. `BeforeExpandedLaunch`: policy is written and hashed, immediately before
+   expanded-agent launch at line 1199. The harness stopped the baseline agent
+   at 1188, so there is no live service-owned port here. This slot is explicitly
+   unavailable and integration remains unresolved. A request receives
+   `PRELAUNCH_HOOK_UNAVAILABLE`; it is not a driver result. Do not invent a
+   reply, start a second port, or stop/reconnect the service to fill it.
+2. `ExpandedPolicyPostAck`: after the accepted-policy marker at lines
+   1199-1200.
+3. `ExpansionPrewrite`: after buffer preparation and immediately before the
+   old view's `$view.WriteArray` at lines 1202-1206.
+4. `ExpansionPostflush`: after that write/flush attempt and outcome, before the
+   retained-section branch at lines 1211-1220.
+5. `BeforeRetainedMapView`: immediately before the retained pre-expansion
+   section's first `MapViewOfFile` at lines 1225-1228.
+6. `AfterRetainedViewBeforeWrite`: after view creation and buffer preparation,
+   before `Marshal.Copy` at lines 1227-1234. This is the boundary needed to
+   distinguish a view acquired under the expanded policy from a later write.
+7. `RetainedSectionPostflush`: after `FlushViewOfFile` and
+   `FlushFileBuffers` attempts at lines 1237-1242.
+
+Slots 2-7 are inside the live expanded-agent interval and can use the same
+service connection. The separate retained target must use its own identity
+stream: the ledger key is `(RunId, native volume GUID, volume serial, FileID)`.
+It never merges two targets that share a Run GUID. Each target begins at
+ordinal 2. Hook 1 does not yield evidence and cannot contribute to a
+seven-hook-complete claim.
+
+The service reserves each accepted request ID and ordinal before its first
+status read. A successful capture can be followed by the next ordinal. Any
+incomplete, disconnected, canceled, or aborted capture terminalizes that
+target's Run GUID; retrying it or proceeding to a later hook returns
+`RUN_TERMINAL_CAPTURE_INCOMPLETE_NEW_RUN_REQUIRED`. A new Run GUID is required.
+There is no automatic retry pretending to reproduce a missed write/view
+boundary. The other target identity can continue its own 2-7 sequence. The
+ledger retains at most 128 target records for the entire FilterPort binding,
+with no time-based expiration or eviction; a full ledger returns
+`RUN_LIMIT_REACHED`. Only bind/unbind clears those tombstones, so restarting a
+target with the same Run GUID cannot become valid merely by waiting 20 minutes.
+
+Wire receipts and bounded snapshot
+----------------------------------
+
+For each accepted hook, the service streams a distinct `SAEF` length-prefixed
+`BindingReceipt` frame, the original bind-time Control 20 receipt, then one
+`RawCall` frame per actual call in this sequence:
+
+1. Control 20 before the sample.
+2. Control 23 before the sample.
+3. Control 19 page walk, including each retry/page.
+4. Control 23 after the sample.
+5. Control 20 after the sample.
+
+The retained bind-time reply repeats in each independent client stream only as
+the distinct `BindingReceipt` kind, with the original UTC and monotonic
+timestamps and binding generation. It is not a new FilterSendMessage call.
+Initial Control 20 failure/malformed data is preserved as that receipt and does
+not prevent raw live capture. Its baseline generation fields are null, never
+invented zeroes, and the capture outcome is incomplete. Pending/unknown states
+are not filtered by any Ready gate.
+
+Each call frame keeps exact available raw input and raw reply bytes, explicit
+reply availability, HRESULT, returned-length field, wire-validation error,
+command, attempt/page index, UTC start/end, Stopwatch start/end ticks and
+frequency, Run/Request IDs, local binding generation, accepted policy version,
+and canonical candidate-policy fingerprint. SHA-256 covers the bytes actually
+present in each raw field before parsing. A native failure does not expose the
+uninitialized output buffer as a reply. A successful over-reported length
+retains only the bounded output buffer and records that it is truncated;
+`BytesReturned` preserves the driver-reported length. Each individual frame is
+below 64 KiB. Frames stream to the pipe; the service never buffers a whole
+seven-hook run.
+
+The active protocol bound is
+`SAFEUPLOAD_WRITER_REGISTRY_ALL_LIMIT = 20,480`, confirmed in
+`StageWriters.c:5844` and in the Control 19 dispatcher at
+`Communication.c:1188-1214`. This is the combined regular+compact registry
+entry limit; Inspector's old 4096-entry cap is stale for the combined maximum
+and is not used. Control 19 returns 32 entries/page, 36,136 bytes/page, at most
+640 pages per attempt, and at most five stable-snapshot attempts. The worst
+complete five-walk byte count is `36,136 * 640 * 5 = 115,635,200` bytes
+(about 110.3 MiB); the per-capture raw Control 19 budget is 128 MiB. The walker
+checks exact input/start/next/count bounds, consistent total, policy
+generation, and change sequence across pages; retry HRESULTs trigger another
+bounded attempt. Every activating entry's `ReservedFlags` word at entry offset
+56 must be zero, including entries that do not match the requested target; a
+nonzero value makes the page invalid while retaining its exact raw call
+receipt. A complete stable page walk remains a coherent raw
+observation when the requested `(volume serial, FileID)` appears zero or
+multiple times. `TargetEntryMatches` reports the count and `TargetAssessment`
+is `Absent`, `Unique`, or `Ambiguous`; it is `Unavailable` when the page walk
+is incomplete. Target state/generation/H/S/C/T/W/unknown-reason fields are
+populated only for `Unique`. Control 23 similarly preserves a structurally
+valid complete volume list when the requested GUID appears zero or multiple
+times. Its independent `VolumeGuidAssessmentBefore` and
+`VolumeGuidAssessmentAfter` fields report `Absent`, `Unique`, `Ambiguous`, or
+`Unavailable`. A complete capture requires both valid volume reads to be
+byte-identical, not exactly one GUID match. These attribution fields do not
+qualify readiness or either byte-privacy gate.
+
+These are independent observations from different controls: Control 19 matches
+the requested serial and FileID, while Control 23 matches the requested GUID.
+The current wire contract does not provide an atomic kernel-backed mapping
+between serial and GUID. If two volumes can share a serial, the pair of
+successful observations does not prove that all three identity fields refer
+to the same volume. Preserve that correlation limitation in interpretation;
+do not treat the per-control assessments as a full-tuple identity proof.
+
+In a `RawCall` frame, flag bit 0 means the frame contains captured reply bytes;
+flag bit 1 means the `BytesReturned` numeric field is defined by the native
+call (`HRESULT == 0`). The numeric value is retained even on failure, but must
+be ignored when bit 1 is clear. Other flag bits are reserved and consumers
+must reject them.
+
+Each frame write has a ten-second cancellable backpressure deadline, and the
+whole capture has a five-minute cancellation deadline. The five-minute cap
+allows about 0.37 MiB/s for the maximum 110.3 MiB five-walk Control 19 payload.
+slower readers or unusually slow full captures become incomplete rather than
+holding the single-instance endpoint indefinitely. Frames stream directly to
+the pipe and completed earlier frames remain available to the reader. If a
+write is canceled, the current frame may be partial and no synthetic receipt,
+summary, or error is appended; the endpoint closes the connection and
+terminalizes the reserved run target. `WriteAsync` is the cancellable boundary;
+the service avoids `FlushFileBuffers`, which can wait for pipe consumption.
+The cancellation token cannot interrupt a synchronous `FilterSendMessage`
+already in progress, so the five-minute deadline is enforced at the next
+asynchronous output boundary after such a call returns.
+
+Control 23 dispatch invokes `SafeUploadStageAdmissionVolumeStatus` with the
+legacy canary-deadline mutator disabled for command 23, while Control 13 uses
+the mutating path (`Communication.c:1040-1060`). Control 13 is absent from the
+feature enum and endpoint. Control 17 is also absent: its path-based helper may
+synchronously open/query the file and has no cancellation boundary. A timeout
+around `FilterSendMessage` cannot cancel that native work. If a later readiness
+design wants Control 17, first measure its worst-case latency under mapping,
+transaction, oplock, and volume conditions; no acceptable bound is established
+here.
+
+Generation and readiness limits
+-------------------------------
+
+The local binding generation is an endpoint lifetime counter, not a kernel
+generation. The summary retains actual nullable Control 20 policy/epoch
+generations and Control 19's page generation separately. A per-hook capture is
+incomplete if the before/after Control 20 generations do not match each other,
+the valid bind-time baseline, or Control 19. A detected generation drift
+disables further evidence sends on that binding. The accepted service policy
+version is separate from a `CanonicalCandidatePolicyFingerprint`: it hashes
+the candidate message after normalizing `Control.Reserved=0`. Final durable
+scope acceptance uses `Reserved=1`; this fingerprint is not a hash of that
+final wire call. The fingerprint is recorded only after `TryPushPolicy`
+returns from accepted policy persistence/push, and cleared before every new
+push attempt to prevent stale metadata from binding.
+
+`MinifilterInterceptor` still publishes `ProtectionActive:true` and the
+ServiceReady event after policy push; the driver can acknowledge the policy as
+candidate-pending, while UI maps `ProtectionActive` to “Protegido”. This
+service/UI mismatch is not corrected in this endpoint increment. Each summary
+sets `ReadyClaim=false`; `EvidenceCaptured` means only that the bounded
+observations were captured coherently, not that the file or volume is
+protected. No target or service-wide Ready claim is implemented. In
+particular, raw Control 23 observation does not yet define the full product
+contract for supported policy-relevant volumes: it lists currently attached
+instances, not future/unmounted removable or network destinations. Trust,
+canary, Unknown, unsupported-volume, and aggregate policy semantics remain
+unresolved. Pending, unknown, absent, unsupported, or incomplete data must not
+be converted into a privacy pass.
+
+Do not use this endpoint to alter the current taint workflow or mapping gates.
+The source readout records both runtime mapping privacy verdicts missing, both
+byte-privacy gates open, and staged service acknowledgment preceding final
+per-file promotion. The `Close`-as-section-lifetime idea remains rejected by
+`retained-section-findings.txt` O5/I3. No scans, volume-wide paging-write
+denial, forced trust, Unknown reset, unsupported-policy narrowing, or
+permanently false Ready workaround is introduced here.
+
+Verification status and exact sources
+-------------------------------------
+
+Feature tests assert normal-build reflection absence and feature-build type
+presence for the service endpoint/protocol/coordinator and Minifilter sender
+API. They cover strict request identity/framing, pre-allocation bounds, private
+pipe auth policy, run terminalization and target separation, stable paged
+capture/retry receipts, absent/unique/ambiguous target and volume attribution,
+reserved-field rejection with raw-page preservation, bounded backpressure
+cancellation with incomplete-run terminalization, raw hashes, invalid initial
+epoch preservation, generation-drift invalidation, bounded run-ledger
+retention through capacity and explicit binding clear, and in-flight send
+drain. Worker A's separate
+`AdmissionEvidenceWireTests.cs` covers ABI sizes/offsets, command allowlist,
+input/response validation, defensive raw copies, native failure, short and
+over-reported replies, send serialization, and FilterPort disposal drain.
+The initial source-freeze snapshot was later run as exact matrix D. Its
+feature-Debug test run executed 344 tests: 341 passed and three endpoint tests
+failed on frame-body offsets that counted the four-byte outer length prefix.
+The endpoint test assertions were corrected after an independent writer/read
+layout audit; a fresh full matrix against that corrected source remains
+outstanding. The approved isolated-VM integration and unchanged independent
+byte gates also remain outstanding. This note does not claim implementation
+qualification.
+
+| Source | SHA-256 at source freeze |
+|---|---|
+| `driver/evidence/2026-10-05/mapping-current-source-root-readout.json` | `a0db24d0ea15396b97672681e487e23372893fb3106b03e5cb10572b0fab1a51` |
+| `driver/scripts/Test-StagedPolicyTransitionMapping.ps1` | `094f149ce4f96f8139e951f05103c2bf95ff90995a15e8184dfa55a4b4606c81` |
+| `driver/SafeUpload.Minifilter/Communication.c` | `9023ebf40146b384f35d03e461fc7ed461833ad5f55a209049ad32b4adc57043` |
+| `driver/SafeUpload.Minifilter/Protocol.h` | `438bebbfab63727a52f31ec4a81e74f53eeccd988ccdb8a13e80dcf90e03f7fb` |
+| `driver/SafeUpload.Minifilter/StageWriters.c` | `c31efa7c525b127cea223e1b7269f5cf5c09ec92343584005019cbf6a3ced407` |
+| `driver/SafeUpload.Minifilter/StageAdmission.c` | `3e2f412667461df5a6b89ac481ae75bcd581a8f428fbde8ef08a7000e31d209d` |
+| `driver/SafeUpload.Minifilter/Policy.c` | `98c6747665d12410312ca54076cdad4749459e0cee30bd8143cd9a42f891a57c` |
+| `agente/SafeUpload.Agent.Service/Diagnostics/AdmissionEvidenceProtocol.cs` | `ce72ead170e767af36a3887219d413f5e6cc1b022224ad4acce9c8221fd416cf` |
+| `agente/SafeUpload.Agent.Service/Diagnostics/AdmissionEvidenceCapture.cs` | `064f86d0e1f7d456694992fe125b79602b9156d63c102c29a2ba95b141a0b1eb` |
+| `agente/SafeUpload.Agent.Service/Diagnostics/AdmissionEvidenceEndpoint.cs` | `4a675b6d2f9d8795f3520e562e753c6156b5d161e0743477a9d056ec9ed4475f` |
+| `agente/SafeUpload.Agent.Service/Diagnostics/AdmissionEvidenceRunLedger.cs` | `ad791bc1e55e09d1617bb3333d644fbfc7c575c58b38c5e3522686bff502b84d` |
+| `agente/SafeUpload.Agent.Service/Interception/MinifilterInterceptor.cs` | `97a1ba9d43982e2db3059806a96428dfa782bb6e3651fa685be54b2468c4ce4c` |
+| `agente/SafeUpload.Agent.Service/Program.cs` | `d9d037d67ef92a2a280f351da9c8dad61e375c2f746f60fa71c212e2a3863ed7` |
+| `agente/SafeUpload.Agent.Service/SafeUpload.Agent.Service.csproj` | `6dfa54f78b03aa4870d6c4d48380a2a0e18af1c1c09c8ccb326a75242e934bf9` |
+| `agente/SafeUpload.Agent.Minifilter/AdmissionEvidence.cs` | `b384778d2c5ecd68ed39d1831f41d2ac38bddadbfcfe5f8c93cf50129eb29a84` |
+| `agente/SafeUpload.Agent.Minifilter/FilterPort.cs` | `ec6a7e8cdd4bee4f89abdba40859be56b3ec139a833ff5c6b42e66a0b2e3f0d9` |
+| `agente/SafeUpload.Agent.Minifilter/SafeUpload.Agent.Minifilter.csproj` | `72437f7fecfa5b75a1058602554f94d66ed5929c1957850aba159003b5e6bd84` |
+| `agente/SafeUpload.Agent.Tests/AdmissionEvidenceEndpointTests.cs` | `db98d291e9d9f0e7b6215568a21a92be35dffa80d5cc858a2af2d9d7c6b549b2` |
+| `agente/SafeUpload.Agent.Tests/AdmissionEvidenceWireTests.cs` | `bdd54ada7c00629a23f7e5e19da818ef8ad94a3a4aa37f88b384fff417d48297` |
+| `agente/SafeUpload.Agent.Tests/SafeUpload.Agent.Tests.csproj` | `9546f8832af9237f87db30f45199c4674d506f2fa5e9e7f436a4d5b88f6a9644` |
+
+All implementation-source hashes above remain those captured at the original
+source freeze. The endpoint-test row is refreshed to the corrected test-only
+source; matrix D's archive and provenance still identify the earlier test hash
+`01c397b98a4670561149498fdb0ce99d641f04131385b17bcf8e0e01501853a1`.

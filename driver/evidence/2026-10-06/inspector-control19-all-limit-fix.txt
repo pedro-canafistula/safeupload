@@ -1,0 +1,62 @@
+Inspector Control 19 ALL_LIMIT correction
+==========================================
+
+Date: 2026-10-06
+Status: source-only correction; build and runtime validation pending.
+This work did not use a VM, network, remote machine, or commit.
+
+Producer contract inspected
+---------------------------
+
+`driver/SafeUpload.Minifilter/Protocol.h:292,294-295` defines:
+
+* `SAFEUPLOAD_WRITER_REGISTRY_TOTAL_LIMIT` = 4,096.
+* `SAFEUPLOAD_WRITER_REGISTRY_COMPACT_LIMIT` = four times TOTAL_LIMIT = 16,384.
+* `SAFEUPLOAD_WRITER_REGISTRY_ALL_LIMIT` = TOTAL_LIMIT + COMPACT_LIMIT = 20,480.
+
+In `driver/SafeUpload.Minifilter/StageWriters.c:5834-5896`, the activating
+status producer rejects only `StartIndex > ALL_LIMIT`, counts every
+non-retired entry with `ActivationEnforced != 0` from the shared registry list,
+emits at most `SAFEUPLOAD_ACTIVATING_STATUS_MAX_ENTRIES` (32) entries per page,
+sets `NextIndex` from `StartIndex + EntryCount` (clamped to total), and returns
+`STATUS_RETRY` if the registry change sequence changes during the snapshot.
+The registry status records regular plus compact-tier entries in the combined
+count (`StageWriters.c:5938-5940`).
+
+Inspector correction
+--------------------
+
+`driver/SafeUpload.Inspector/main.c` now sizes its retained entry array to
+ALL_LIMIT; bounds the page start, reported TotalEntries, and accumulated entry
+count to ALL_LIMIT; and checks accumulated capacity with subtraction after
+checking the current count, avoiding an overflowing `entryCount + pageCount`
+test. It derives a per-snapshot request ceiling as
+`ceil(ALL_LIMIT / 32) = 640` and resets that counter for each of the existing
+five stable-snapshot attempts. A response sequence that makes progress too
+slowly cannot cause unbounded sends: the attempt fails closed with exit code 3
+once it exceeds this producer-derived page ceiling.
+
+The existing page checks remain: exact returned/page sizes, matching start
+index, at most 32 entries, total/index ordering, count matching index movement,
+stable total/policy generation/change sequence, retry on STATUS_RETRY or a
+non-progressing page, and completion only after the walk reaches total. For a
+successful producer response, a full 20,480-entry inventory takes at most 640
+pages per attempt. Five attempts therefore issue no more than 3,200 page sends.
+Allocation is bounded by `(SIZE_T)20,480 * sizeof(SAFEUPLOAD_ACTIVATING_ENTRY_STATUS)`
+(about 23.1 MB with the current 1,128-byte entry layout), with existing
+allocation-failure handling.
+
+`SetRegistryCapacity` still uses TOTAL_LIMIT / 4,096. That is a separate
+Control 18 mutation whose driver-side capacity bound is also TOTAL_LIMIT; this
+change is limited to the Control 19 read-only status walk. The changed function
+is inside the existing `SAFEUPLOAD_STAGING_PROTOTYPE` preprocessor guard, and
+the Inspector project defines that macro only when
+`SafeUploadStagingPrototype=true`. Thus the normal Inspector build omits this
+status function and does not require the staging-only constants; the feature
+Inspector build imports those constants from the shared `Protocol.h`.
+
+Source review only; no build or Inspector execution has been performed here.
+Root will run a fresh Inspector build after the earlier build gate is recorded
+as historical. The current shared `main.c` authoring snapshot, including the
+pre-existing admission-volume-observe change elsewhere in that file, has
+SHA-256 `74e840a1246aee08842e29607641d829c5181f8d3affb14efb0bf6bfd546e41f`.

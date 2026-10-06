@@ -1,0 +1,23 @@
+{
+  "UTC": "2026-10-06T18:39:20.010092+00:00",
+  "Verdict": "V10_BUILDER_MACHINE_ROOT_ONLY_TRUST_INDEPENDENTLY_VERIFIED",
+  "TrustRemoteExitCode": 0,
+  "IndependentRemoteExitCode": 0,
+  "Thumbprint": "A6D6CE1AA28835D509160A80ADB7894869AADF38",
+  "OnlyMachineRootAndMergedCurrentUserRootChanged": true,
+  "AllOtherStoresExactlyMint": true,
+  "KeyAclOrderedAndSddlExactlyMint": true,
+  "OriginalFilesAndCertificateRetained": true,
+  "TestSigningNo": true,
+  "ArtifactSigningAttempted": false,
+  "PrivateKeyExported": false,
+  "EvidencePins": {
+    "driver/evidence/2026-10-06/signing-builder-trust-v10-20261006a.stdout.txt": "960b8e1790b582774788d423253937b9c8a2a036192251bc039200523d6cfbeb",
+    "driver/evidence/2026-10-06/signing-builder-trust-v10-20261006a.stderr.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "driver/evidence/2026-10-06/signing-builder-v10-post-trust-independent.stdout.json": "f14f599ed0d8d824a7fc44700fe56f88ad6345b0d8af23c177deee4ec1327ccb",
+    "driver/evidence/2026-10-06/signing-builder-v10-post-trust-independent.stderr.txt": "a3639af5e23464fc391dae127fd5493f02c8178068a35866d9c7fdd35dcd623f",
+    "output/signing-builder-trust-v10-20261006a/root-run.json": "c1de9dcccadd01b19d408f04d74305d7dabc288cde5632eb3ea8be2e5f4f4edd",
+    "driver/evidence/2026-10-06/signing-builder-trust-v10-public-receipt.json": "ac22de20b6845a524de4fbb157514171eef02ef5678384c5c36225aea8306daa",
+    "driver/evidence/2026-10-06/signing-builder-trust-v10-source-and-evidence-sha256.txt": "3838699bcce00b01f159eaa1f6a724d8a25b3f6a0281aae3318faaad06af6126"
+  }
+}

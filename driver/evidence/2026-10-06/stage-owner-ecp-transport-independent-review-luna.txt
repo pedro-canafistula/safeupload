@@ -1,0 +1,97 @@
+SafeUpload owner-create ECP transport source review
+Date: 2026-10-06
+Reviewer: independent read-only source review
+
+Scope and exact source pins
+---------------------------
+StageOwnerEcp.c SHA-256: 689055fa010a8498f1a68741d06353271ce41ecce4ce8815757d74e24cf6e154
+StageOwnerEcp.h SHA-256: 6199f0fb90c900e9d353332460493186ed3bf37cbe9f1f3eb2d689b86b4c1d6d
+SafeUpload.Minifilter.vcxproj SHA-256: c20659e36ca74473245a2f0879bd4dc31b1c2f6d890a1d19cdb05a80180f9293
+Filter.h SHA-256: 407dd75df92ee082a692aa93e2c5655a1edec8f82f292d6f77f4abcfb920ac9a
+Filter.c SHA-256: c2d08926899113e83166546e72836b98c96b222f74523887904a58fa5ce43d36
+
+Verdict
+-------
+Static transport-flow review: PASS, with the WDK prototype compile gate still
+pending. The two ECP functions have matching guarded declarations/definitions.
+The transport envelope is fixed-size (version, structure size, grant GUID,
+owner epoch); its comment correctly says those opaque values are not authority
+without a separately checked one-use kernel grant. No consumer, grant table,
+source-process/file identity binding, reparse hookup, or UI path is present in
+this slice. It supports no runtime or privacy qualification by itself.
+
+Ownership and ECP-list handling
+-------------------------------
+`SafeUploadOwnerAttachCreateEcp` obtains the callback's existing list first.
+When one exists, it checks for this ECP type and refuses a duplicate, appends
+only its newly allocated ECP, and leaves the OS-owned list and other ECPs
+attached. When none exists, it allocates a new list. If ECP allocation fails,
+it frees only a newly allocated list. If insertion fails, it separately frees
+the uninserted context and frees the list only when it owns that new list. If
+attaching that new list fails, it frees the still-unattached list and its
+inserted element. On success, ownership stays with Filter Manager for the
+create operation's completion. This matches Microsoft's ECP guidance for
+inserting into an existing/new list while processing IRP_MJ_CREATE and its
+completion cleanup/reparse propagation behavior.
+
+`SafeUploadOwnerReadCreateEcp` zeroes the output before lookup, handles an
+absent list/type as STATUS_NOT_FOUND, rejects user-mode-origin ECPs, requires
+the exact context byte size/version/structure size, rejects empty grant/epoch
+GUIDs, then copies only the fixed-size envelope. It does not accept a PID or
+variable-length caller buffer as authority.
+
+IRQL and bounds
+---------------
+Both entry points reject IRQL above APC_LEVEL before calling Filter Manager.
+The allocation, find, insert, set, free, and user-origin test routines used
+here are documented at IRQL <= APC_LEVEL; the default ECP/list allocations
+are paged. The fixed context has no dynamic length or unbounded traversal.
+`FltGetEcpListFromCallbackData` is valid for IRP-based create data; on any
+other callback type the code propagates the failure rather than granting a
+fallback. The reader also initializes its out value before all exits.
+
+Prototype build gate and remaining check
+----------------------------------------
+The project includes StageOwnerEcp.c/.h and defines
+SAFEUPLOAD_OWNED_WINFSP_PROTOTYPE only when both
+SafeUploadStagingPrototype=true and SafeUploadOwnedWinFspPrototype=true.
+The project treats compiler warnings as errors. The required compile-only
+gate is therefore an x64 WDK build with both properties explicitly enabled,
+capturing exact inputs, compiler diagnostics, and output hashes. No build was
+run as part of this review.
+
+One item for that gate: `FltAllocateExtraCreateParameter` receives
+`(ULONG)sizeof(SAFEUPLOAD_OWNER_CREATE_ECP)`, while the `StructSize` field
+assignment uses `sizeof(*ecp)` without an explicit cast. Confirm the exact
+WDK build is warning-free under `/W4` and warnings-as-errors (notably any
+C4267); if it warns, the bounded structure-size assignment can use an
+explicit `(ULONG)` cast. This is a compile check, not a discovered runtime
+ownership or authorization defect.
+
+The functions are not wired from Filter.c and have no current caller. Future
+integration must invoke them only while SafeUploadData.Filter is registered
+and within the current IRP_MJ_CREATE callback lifetime. A successful kernel
+origin check is only a transport-origin check: the eventual consumer must
+validate the grant against a kernel-owned one-use table, referenced process
+object, source namespace identity, owner generation, scope, and exact target.
+
+Primary API references
+----------------------
+Microsoft Learn, FltGetEcpListFromCallbackData:
+https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/fltkernel/nf-fltkernel-fltgetecplistfromcallbackdata
+Microsoft Learn, FltAllocateExtraCreateParameter:
+https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/fltkernel/nf-fltkernel-fltallocateextracreateparameter
+Microsoft Learn, FltAllocateExtraCreateParameterList:
+https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/fltkernel/nf-fltkernel-fltallocateextracreateparameterlist
+Microsoft Learn, FltInsertExtraCreateParameter:
+https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/fltkernel/nf-fltkernel-fltinsertextracreateparameter
+Microsoft Learn, FltSetEcpListIntoCallbackData:
+https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/fltkernel/nf-fltkernel-fltsetecplistintocallbackdata
+Microsoft Learn, FltFreeExtraCreateParameter and FltFreeExtraCreateParameterList:
+https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/fltkernel/nf-fltkernel-fltfreeextracreateparameter
+https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/fltkernel/nf-fltkernel-fltfreeextracreateparameterlist
+Microsoft Learn, FltIsEcpFromUserMode:
+https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/fltkernel/nf-fltkernel-fltisecpfromusermode
+
+This note is a static review only. No source, VM, host, trust, key, or git
+state was changed, and no build or runtime behavior is claimed.

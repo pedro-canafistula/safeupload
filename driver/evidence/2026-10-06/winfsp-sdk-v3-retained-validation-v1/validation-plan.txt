@@ -1,0 +1,92 @@
+WinFsp SDK v3 retained-output validation (read-only)
+Status: authored for independent review; not executed or PowerShell-parsed.
+
+Purpose and boundary
+
+The v3 MSI administrative extraction returned native exit 0 and recorded the
+complete standard AdminExecuteSequence, unchanged MSI bytes, and empty
+WinFsp package/driver/service inventories. Its verifier exited 1 because
+`msiexec|2272` remained after the client process returned. A read-only
+diagnostic pinned PID 2272 as the Manual/Running Windows Installer service
+process (`msiexec.exe /V`, parent PID 684). It confirmed all eight standard
+actions, ADMIN, server/client engine return 0, and the successful completion
+line in the unchanged 338,400-byte log. This shows extraction completion; it
+does not show that the service process was idle. The validator therefore
+requires every listed installer/build actor to be absent and `msiserver` to be
+stopped before and after inspection. It neither waits for, stops, nor
+reconfigures that service. Until natural drain, a run fails closed before it
+walks or hashes the retained output.
+
+This script only validates the existing target and log. It does not invoke
+Windows Installer, repeat extraction, delete or write any target/log entry,
+stop a process/service, change service configuration, or execute extracted
+content. It verifies the already signed MSI's identity, size, SHA-256 and
+Authenticode signer; holds read-only handles; checks pinned source/output
+ancestor identities; verifies the retained target and log identities, log
+length and digest; rejects reparse points and alternate data streams; and
+hashes all regular files in a stable complete directory inventory. It derives
+one SDK root only when that root contains both `inc\winfsp\winfsp.h` and
+`lib\winfsp-x64.lib`. The required `ExpectedRetainedLogIdentity` is supplied
+from the separately captured, hash-pinned read-only file-identity record; the
+script compares it to the opened log handle and includes both values in its
+JSON result.
+
+Pinned extraction identity
+
+The one target is
+`C:\Users\vika\Documents\SafeUploadWinFspSdk-20261006-ef9bea72fc3545d985354fa5a939179b`,
+directory identity `D6632F7F:00060000000DEE49`. Its adjacent retained MSI log
+must remain 338,400 bytes with SHA-256
+`46E05B92C953B1D9062E608607CB130DC68EACB327663A8842D4BCA3DDF22159`; its
+file-ID identity is `D6632F7F:00070000000DEE4D`, captured through a
+read-only handle. The source MSI remains at its original signed path,
+identity `D6632F7F:00030000000DEDF1`, size 2,207,744 bytes and SHA-256
+`2ECB5C89405488A95BBD8A01875E02C48534FD37BBDFD84488F7590464D65944`, with
+Authenticode `Valid` and the exact pinned NAVIMATICS signer.
+
+Historical evidence pins
+
+The failed actual extraction record is `winfsp-sdk-v3-actual-extraction/`:
+stdout SHA-256 `661c152bf5dfe8d605da06fbd2ae22b599d5e685b88a680cf5de18f1a2397c75`,
+exit SHA-256 `7f1ba10d97031722ae486d06bc4299438addcb5b6f3a9779cfd6d6d942ab048b`,
+caller SHA-256 `1844f029a645ee2e7bab5e6e8fefde134c218777d95965e11d037843c95c4304`,
+and source SHA-256
+`0e0b17a56c528834c91745fbf0e54661561ae7e62c0acde113982f16e5df41cf`.
+The actor diagnostic is `winfsp-sdk-v3-post-return-actor-diagnostic/`:
+stdout SHA-256 `6dddc59ed5787569fded34930fdb6c398f156659f6827b015174951d15ba8451`,
+exit SHA-256 `09786a014d5358d3ac90ac8819d45cc441c3911a2330a602d7e01aae1fd3915c`,
+caller SHA-256 `70750509f5ef766c082d1f1d89dd6fe3d146894491485baec9ec0f69c892d204`,
+and empty stderr SHA-256
+`e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855`.
+The source-bound failure root readout is
+`failure-root-readout.json` SHA-256
+`7a96011cb297b13109f473809e8769318de0c34339f3c160af72f6b6932cdf84`.
+It records native extraction exit 0, validator exit 1, the pinned target and
+log identities, the unresolved `msiexec|2272` actor, no service/process
+mutation, and no SDK/runtime/privacy qualification. The separate retained-log
+identity capture returned remote exit 0 and records the same path, identity,
+bytes, digest, and read-only share mode. Its stdout SHA-256 is
+`1b38d2bf332d6cb5dec4fd54a661d6ed5b209d7d79095b5de0e47f774cf401a5`.
+`validation-inputs.json` pins that exact file identity for the script's one
+required parameter, and the validation caller must include the exact parameter
+value in its own hash-pinned invocation record. The root's later read-only
+natural-drain capture returned remote exit 0 with no MSI/build actors and
+`msiserver` Stopped/Manual/PID 0; it did not stop the process or change service
+configuration. Its stdout SHA-256 is
+`6264c1781b53d83f13a81ea9132e06130b4c9b8ab6540fdf6f38d1f1e9fa37f4`.
+The live script still performs its own before/after actor and service checks;
+the prior capture is not substituted for those runtime gates.
+The original run's PowerShell 5.1 parse and static review remain historical
+evidence only; this new validator requires its own exact-source parse and
+independent review before use.
+
+Result meaning
+
+Only `WINFSP_SDK_RETAINED_OUTPUT_VALIDATED` with empty before/after actor
+inventories, stopped Windows Installer service, unchanged empty WinFsp
+installed inventories, exact MSI/log/target identities, and complete hashes
+qualifies this retained SDK directory as an input for a later feature-only
+host build. This result does not qualify an installed runtime, service,
+driver, live system, mapping behavior, privacy, or product build. The trusted
+signer checkpoint parent and all key/trust state are outside this script's
+scope and are not modified.

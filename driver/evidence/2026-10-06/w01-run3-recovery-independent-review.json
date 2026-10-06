@@ -1,0 +1,54 @@
+{
+  "UTC": "2026-10-06T15:25:29Z",
+  "Reviewer": "gpt-6-luna max, independent read-only recovery audit",
+  "Scope": "Run3 preservation and recovery evidence, independent functional-baseline checks, and conditional four-marker disposition",
+  "RunGuid": "ff67c01b990e41ff9af89b5a9959757c",
+  "Checks": {
+    "ExecutionEvidence37PinsMatchBytesAndSHA256": true,
+    "InitialLauncherAuthoringFailureStoppedBeforeMutation": true,
+    "CorrectedLauncherMatchesRetainedTransportHash": true,
+    "OwnerApprovedRunAndScopeRecorded": true,
+    "SaveCommandExitZero": true,
+    "SavedMemoryImageReadbackVerified": true,
+    "SavedImageUUIDAndFailedVDASourceMatch": true,
+    "DomainShutOffAfterSave": true,
+    "FailedRAMImageRetainedWithStat": true,
+    "FailedDiskRetained": true,
+    "ParentStatUnchanged": true,
+    "FreshChildUsesPinnedRun2RecoveryParent": true,
+    "FirstIndependentBaselineExitZeroEmptyStderrOneSentinel": true,
+    "SecondIndependentBaselineExitZeroEmptyStderr": true,
+    "SecondBaselineMatchesOriginalInEverySemanticFieldExceptUTC": true,
+    "VerificationInputsRemovedAndExternalQuiescenceVerified": true,
+    "FourMarkerInventoryAndDispositionHashesMatch": true,
+    "AllFourOriginalMarkerPathsAbsent": true,
+    "MarkerContentsRetained": true,
+    "W01RemainsInconclusiveAndPhase4NotQualified": true
+  },
+  "PreservedRAM": {
+    "ProvenBySaveAndReadback": true,
+    "FileBytes": 3790626837,
+    "ContentSHA256Available": false,
+    "ContentSHA256": null,
+    "Reason": "The save image is root-owned and the recorded noninteractive privileged hash attempt required a password. No content hash is claimed.",
+    "CompletionRecordTiming": "The save-completion record reports command exit 0 at 15:19:07Z while its inherited SaveCompletionVerified flag is still false. The separate preserved-memory readout at 15:19:30Z then verifies save-image readback, exact UUID and failed vda source, nonempty image stat, and shut-off state. I treat the earlier false flag as pre-readback status, not as final readback evidence."
+  },
+  "MarkerDisposition": {
+    "Count": 4,
+    "Record": "driver/recovery-dispositioned/2026-10-06/w01-run3-ff67c01b/disposition.json",
+    "PayloadsDeleted": false,
+    "OriginalPathsAbsent": true,
+    "RetainedBytesAndSHA256MatchInventory": true
+  },
+  "Conclusion": "PASS for the authorized preservation, recovery, baseline-verification, and exact marker-disposition scope. No recovery-evidence or marker-integrity blocker found.",
+  "Qualification": {
+    "W01": "INCONCLUSIVE",
+    "Phase4": "NOT_QUALIFIED",
+    "NextVMCaseAuthorizedByThisReview": false
+  },
+  "ReviewerActions": {
+    "VMOrRemoteActions": false,
+    "SourceEdits": false,
+    "RAMContentHashClaimed": false
+  }
+}

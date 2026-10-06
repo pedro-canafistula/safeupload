@@ -1,0 +1,11 @@
+{
+  "Verdict": "V12_INVENTORY_LOOKUP_CALLSITE_REFINEMENT",
+  "PriorReadoutSHA256": "fc6ccd09b013faf1b833880511aad1058adbf106199c52df12fac611af0bb776",
+  "SourceSHA256": "df9337aa46ad06c6440f59d7a2b0caf88fad86f555c4f219b72bf758150fe985",
+  "PriorReadoutPreserved": true,
+  "Correction": "V12 does not compare postSignBase.Stores through Get-Thumbs. It schema-checks that raw inventory only. The current live store inventory is an OrderedDictionary; line451 passes it to Get-Thumbs, which incorrectly reads PSObject.Properties instead of dictionary keys. The short-key versus Cert-prefixed raw input formats are real but do not explain this captured failure callsite. V13 must verify exact helper behavior in a Windows PowerShell fixture.",
+  "LiveCallsiteLine": 451,
+  "UnderlyingKeyOrStoreDriftEstablished": false,
+  "RuntimeFixturePending": true,
+  "HostCheckpointAttempted": false
+}

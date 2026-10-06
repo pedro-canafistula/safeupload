@@ -1,0 +1,219 @@
+{
+  "UTC": "2026-10-06T14:49:30.000979+00:00",
+  "All30OriginalBuildEvidencePinsMatched": true,
+  "ArchiveRetrievedFromVerifiedBuilder": "output/w01-build-input-recovery-20261006/lower/src.zip",
+  "BuilderUUID": "c6440689-d11c-4c63-a463-f3722b7ddb69",
+  "Artifacts": [
+    {
+      "OriginalPath": "/tmp/claude-1000/exact-agent-agent-mvp4-notify1/agent-tests.trx",
+      "RecoveredPath": "output/w01-build-input-recovery-20261006/agent/agent-tests.trx",
+      "Source": "driver/evidence/2026-10-05/phase4-suite-s01b38dir3-inputs/exact-agent-agent-mvp4-notify1/agent-tests.trx",
+      "SHA256": "C942949D3B91AD13E435535EA98680F28B4DB0DF29B9DBFF6E53FFC0263216A1",
+      "Bytes": 470650
+    },
+    {
+      "OriginalPath": "/tmp/claude-1000/exact-agent-agent-mvp4-notify1/dotnet-info.txt",
+      "RecoveredPath": "output/w01-build-input-recovery-20261006/agent/dotnet-info.txt",
+      "Source": "driver/evidence/2026-10-05/phase4-suite-s01b38dir3-inputs/exact-agent-agent-mvp4-notify1/dotnet-info.txt",
+      "SHA256": "560A57CD44C346CE185DDD6573F1E43EDA687F1AB6648D6561C1549A036E9327",
+      "Bytes": 2696
+    },
+    {
+      "OriginalPath": "/tmp/claude-1000/exact-agent-agent-mvp4-notify1/package-manifest.txt",
+      "RecoveredPath": "output/w01-build-input-recovery-20261006/agent/package-manifest.txt",
+      "Source": "driver/evidence/2026-10-05/phase4-suite-s01b38dir3-inputs/exact-agent-agent-mvp4-notify1/package-manifest.txt",
+      "SHA256": "D559FB291041CB8CB31C27E64FDFF99DD29F02148027A7C16ACB58328E02A1DD",
+      "Bytes": 471
+    },
+    {
+      "OriginalPath": "/tmp/claude-1000/exact-agent-agent-mvp4-notify1/publish.txt",
+      "RecoveredPath": "output/w01-build-input-recovery-20261006/agent/publish.txt",
+      "Source": "driver/evidence/2026-10-05/phase4-suite-s01b38dir3-inputs/exact-agent-agent-mvp4-notify1/publish.txt",
+      "SHA256": "217609713C8D669046A7054A12F47AF8FFE3F2943558597AD22A1F6CA245B373",
+      "Bytes": 2234
+    },
+    {
+      "OriginalPath": "/tmp/claude-1000/exact-agent-agent-mvp4-notify1/src.manifest",
+      "RecoveredPath": "output/w01-build-input-recovery-20261006/agent/src.manifest",
+      "Source": "driver/evidence/2026-10-05/phase4-suite-s01b38dir3-inputs/exact-agent-agent-mvp4-notify1/src.manifest",
+      "SHA256": "215F7AF212BCEC26C8A40830D16B230E55073B227C43C8394C91464115566F71",
+      "Bytes": 15316
+    },
+    {
+      "OriginalPath": "/tmp/claude-1000/exact-agent-agent-mvp4-notify1/src.zip",
+      "RecoveredPath": "output/w01-build-input-recovery-20261006/agent/src.zip",
+      "Source": "driver/evidence/2026-10-05/phase4-suite-s01b38dir3-inputs/exact-agent-agent-mvp4-notify1/src.zip",
+      "SHA256": "307528D76354B955260268449FF56ECF8AE3CB7BF843BCBBBD2D614D1EEEF6EF",
+      "Bytes": 263967
+    },
+    {
+      "OriginalPath": "/tmp/claude-1000/exact-agent-agent-mvp4-notify1/stage-service-publish.zip",
+      "RecoveredPath": "output/w01-build-input-recovery-20261006/agent/stage-service-publish.zip",
+      "Source": "driver/evidence/2026-10-05/boot-start-w01-w01-b38b36-20261005-ab961697cb5847fc86a2b265b3862df7-inputs/stage-service-publish.zip",
+      "SHA256": "1525974FC6725186BC837BB74E41CF6ABE05EA191DF78DED827ECF60A72317E5",
+      "Bytes": 36369983
+    },
+    {
+      "OriginalPath": "/tmp/claude-1000/exact-agent-agent-mvp4-notify1/summary.txt",
+      "RecoveredPath": "output/w01-build-input-recovery-20261006/agent/summary.txt",
+      "Source": "driver/evidence/2026-10-05/phase4-suite-s01b38dir3-inputs/exact-agent-agent-mvp4-notify1/summary.txt",
+      "SHA256": "98997213B2E0227C7D8435DE7A1E80064274776B7B605F4CEEB8F418D130B6C9",
+      "Bytes": 503
+    },
+    {
+      "OriginalPath": "/tmp/claude-1000/exact-agent-agent-mvp4-notify1/tests.txt",
+      "RecoveredPath": "output/w01-build-input-recovery-20261006/agent/tests.txt",
+      "Source": "driver/evidence/2026-10-05/phase4-suite-s01b38dir3-inputs/exact-agent-agent-mvp4-notify1/tests.txt",
+      "SHA256": "BF72BC260B08648E0CC12331EF8ACAAEE230CC2EB4787E49A0F116A14DA32652",
+      "Bytes": 3580
+    },
+    {
+      "OriginalPath": "/tmp/claude-1000/exact-mvp3-b38/SafeUpload-stage-prototype.sys",
+      "RecoveredPath": "output/w01-build-input-recovery-20261006/upper/SafeUpload-stage-prototype.sys",
+      "Source": "driver/evidence/2026-10-05/boot-start-w01-w01-b38b36-20261005-ab961697cb5847fc86a2b265b3862df7-inputs/SafeUpload-stage-prototype.sys",
+      "SHA256": "3A338D2046226507EB890F0EA9ADC01C28B8F167E67C484993C7BC30F3BDE6E1",
+      "Bytes": 273296
+    },
+    {
+      "OriginalPath": "/tmp/claude-1000/exact-mvp3-b38/inspector-feature-release.exe",
+      "RecoveredPath": "output/w01-build-input-recovery-20261006/upper/inspector-feature-release.exe",
+      "Source": "driver/evidence/2026-10-05/boot-start-w01-w01-b38b36-20261005-ab961697cb5847fc86a2b265b3862df7-inputs/inspector-feature-release.exe",
+      "SHA256": "C28A8DA63B735DD0E29D2E69A3B83D38D351EC3591D940160F1B7D69F6390467",
+      "Bytes": 194560
+    },
+    {
+      "OriginalPath": "/tmp/claude-1000/exact-mvp3-b38/inspector-normal-release.exe",
+      "RecoveredPath": "output/w01-build-input-recovery-20261006/upper/inspector-normal-release.exe",
+      "Source": "driver/evidence/2026-10-05/phase4-suite-s01b38dir3-inputs/exact-mvp3-b38/inspector-normal-release.exe",
+      "SHA256": "59E5797F8C9071C120090CA8672853128377815954ED1C772F6ACB4B91210AF7",
+      "Bytes": 155648
+    },
+    {
+      "OriginalPath": "/tmp/claude-1000/exact-mvp3-b38/normal-release-wdk.txt",
+      "RecoveredPath": "output/w01-build-input-recovery-20261006/upper/normal-release-wdk.txt",
+      "Source": "driver/evidence/2026-10-05/phase4-suite-s01b38dir3-inputs/exact-mvp3-b38/normal-release-wdk.txt",
+      "SHA256": "1EEB6463D25A17C27DFDB1D48AF5A31018BB5634207CAC5D9EEAB90DE12D3DF2",
+      "Bytes": 12638
+    },
+    {
+      "OriginalPath": "/tmp/claude-1000/exact-mvp3-b38/normal-wdk.txt",
+      "RecoveredPath": "output/w01-build-input-recovery-20261006/upper/normal-wdk.txt",
+      "Source": "driver/evidence/2026-10-05/phase4-suite-s01b38dir3-inputs/exact-mvp3-b38/normal-wdk.txt",
+      "SHA256": "337735E3D25AB36948ED9B3354668BBC9FAFD5EBEF8A2DC3F170CDEC419CFF57",
+      "Bytes": 12724
+    },
+    {
+      "OriginalPath": "/tmp/claude-1000/exact-mvp3-b38/owned-feature-release-wdk.txt",
+      "RecoveredPath": "output/w01-build-input-recovery-20261006/upper/owned-feature-release-wdk.txt",
+      "Source": "driver/evidence/2026-10-05/phase4-suite-s01b38dir3-inputs/exact-mvp3-b38/owned-feature-release-wdk.txt",
+      "SHA256": "0F973AA1A0EE0196B3B08F27A577A4682C78AF516F32CE2DF5890F1AD6F5144B",
+      "Bytes": 14720
+    },
+    {
+      "OriginalPath": "/tmp/claude-1000/exact-mvp3-b38/owned-feature-wdk.txt",
+      "RecoveredPath": "output/w01-build-input-recovery-20261006/upper/owned-feature-wdk.txt",
+      "Source": "driver/evidence/2026-10-05/phase4-suite-s01b38dir3-inputs/exact-mvp3-b38/owned-feature-wdk.txt",
+      "SHA256": "4ABA793E440CD56EC69362F2B440FC3D3B883F326695BD736488BFE5E292665D",
+      "Bytes": 14762
+    },
+    {
+      "OriginalPath": "/tmp/claude-1000/exact-mvp3-b38/owned-feature.sys",
+      "RecoveredPath": "output/w01-build-input-recovery-20261006/upper/owned-feature.sys",
+      "Source": "driver/evidence/2026-10-05/phase4-suite-s01b38dir3-inputs/exact-mvp3-b38/owned-feature.sys",
+      "SHA256": "664AF07D28C1F01A008A75AF436796D8BB00C660A5094AB2F704E6C8F37A1362",
+      "Bytes": 271872
+    },
+    {
+      "OriginalPath": "/tmp/claude-1000/exact-mvp3-b38/sign.txt",
+      "RecoveredPath": "output/w01-build-input-recovery-20261006/upper/sign.txt",
+      "Source": "driver/evidence/2026-10-05/phase4-suite-s01b38dir3-inputs/exact-mvp3-b38/sign.txt",
+      "SHA256": "FE5BA13861FD1FC62FF640D30863D14014D08A469F2E4FBBA9B34E3C98302B5C",
+      "Bytes": 258
+    },
+    {
+      "OriginalPath": "/tmp/claude-1000/exact-mvp3-b38/src.manifest",
+      "RecoveredPath": "output/w01-build-input-recovery-20261006/upper/src.manifest",
+      "Source": "driver/evidence/2026-10-05/phase4-suite-s01b38dir3-inputs/exact-mvp3-b38/src.manifest",
+      "SHA256": "657C2FE4E43341549415A613308E1D92B786B3580D14145305E6249B5E22E629",
+      "Bytes": 2830
+    },
+    {
+      "OriginalPath": "/tmp/claude-1000/exact-mvp3-b38/src.zip",
+      "RecoveredPath": "output/w01-build-input-recovery-20261006/upper/src.zip",
+      "Source": "driver/evidence/2026-10-05/phase4-suite-s01b38dir3-inputs/exact-mvp3-b38/src.zip",
+      "SHA256": "C2F473A63BDB61380C48ABF73E23C121615504E1C8A014B1E6D7F2A53F19AFBB",
+      "Bytes": 257259
+    },
+    {
+      "OriginalPath": "/tmp/claude-1000/exact-mvp3-b38/summary.txt",
+      "RecoveredPath": "output/w01-build-input-recovery-20261006/upper/summary.txt",
+      "Source": "driver/evidence/2026-10-05/phase4-suite-s01b38dir3-inputs/exact-mvp3-b38/summary.txt",
+      "SHA256": "0B3A20562CD0087A2E953B17CDC35272965ED64C476B9DDC852CD01C33667EE5",
+      "Bytes": 1770
+    },
+    {
+      "OriginalPath": "/tmp/claude-1000/exact-mvp3-b38/writer-fixture.exe",
+      "RecoveredPath": "output/w01-build-input-recovery-20261006/upper/writer-fixture.exe",
+      "Source": "driver/evidence/2026-10-05/phase4-suite-s01b38dir3-inputs/exact-mvp3-b38/writer-fixture.exe",
+      "SHA256": "B7B797772C2A998603337A309C046AB96694B1BE743269DEBCC9CFED935DD3B8",
+      "Bytes": 4608
+    },
+    {
+      "OriginalPath": "/tmp/claude-1000/exact-mvp3-b38/writer-fixture.txt",
+      "RecoveredPath": "output/w01-build-input-recovery-20261006/upper/writer-fixture.txt",
+      "Source": "driver/evidence/2026-10-05/phase4-suite-s01b38dir3-inputs/exact-mvp3-b38/writer-fixture.txt",
+      "SHA256": "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855",
+      "Bytes": 0
+    },
+    {
+      "OriginalPath": "/tmp/claude-1000/exact-section-fault-mvp3-b36/Debug-wdk.txt",
+      "RecoveredPath": "output/w01-build-input-recovery-20261006/lower/Debug-wdk.txt",
+      "Source": "driver/evidence/2026-10-05/section-fault-mvp3-b36-Debug-wdk.txt",
+      "SHA256": "DBC5D455593C109145A82209D32CC3DFD829EE7E2B987F11E70F08744E4DCBF7",
+      "Bytes": 11230
+    },
+    {
+      "OriginalPath": "/tmp/claude-1000/exact-section-fault-mvp3-b36/Release-wdk.txt",
+      "RecoveredPath": "output/w01-build-input-recovery-20261006/lower/Release-wdk.txt",
+      "Source": "driver/evidence/2026-10-05/section-fault-mvp3-b36-Release-wdk.txt",
+      "SHA256": "984C9848E1A723A66D528002B35EF436A0E803C768782705A4299B27FBC8AA99",
+      "Bytes": 11206
+    },
+    {
+      "OriginalPath": "/tmp/claude-1000/exact-section-fault-mvp3-b36/SafeUploadSectionFault.sys",
+      "RecoveredPath": "output/w01-build-input-recovery-20261006/lower/SafeUploadSectionFault.sys",
+      "Source": "driver/evidence/2026-10-05/boot-start-w01-w01-b38b36-20261005-ab961697cb5847fc86a2b265b3862df7-inputs/SafeUploadSectionFault.sys",
+      "SHA256": "C58433FB3431566BB545173FB7F4772DAA2C6B9E20CF057C0A985595EE93E386",
+      "Bytes": 18320
+    },
+    {
+      "OriginalPath": "/tmp/claude-1000/exact-section-fault-mvp3-b36/sign.txt",
+      "RecoveredPath": "output/w01-build-input-recovery-20261006/lower/sign.txt",
+      "Source": "driver/evidence/2026-10-05/section-fault-mvp3-b36-sign.txt",
+      "SHA256": "52E19D1BE644636EA48E092CE3528EC8A51D552A46E5075F9BBB7F971A58F89A",
+      "Bytes": 1726
+    },
+    {
+      "OriginalPath": "/tmp/claude-1000/exact-section-fault-mvp3-b36/src.manifest",
+      "RecoveredPath": "output/w01-build-input-recovery-20261006/lower/src.manifest",
+      "Source": "driver/evidence/2026-10-05/section-fault-mvp3-b36-source-manifest.txt",
+      "SHA256": "34031B7C07F0BDCDD6859424525B5628B115A09A38BEAF7D840051A71F3154E7",
+      "Bytes": 342
+    },
+    {
+      "OriginalPath": "/tmp/claude-1000/exact-section-fault-mvp3-b36/src.zip",
+      "RecoveredPath": "output/w01-build-input-recovery-20261006/lower/src.zip",
+      "Source": "output/w01-build-input-recovery-20261006/lower/src.zip",
+      "SHA256": "FFBF209145EDC70FD17C7AF907050C41CB1AE270F864956185099342D2A9D475",
+      "Bytes": 9587
+    },
+    {
+      "OriginalPath": "/tmp/claude-1000/exact-section-fault-mvp3-b36/summary.txt",
+      "RecoveredPath": "output/w01-build-input-recovery-20261006/lower/summary.txt",
+      "Source": "driver/evidence/2026-10-05/section-fault-mvp3-b36-summary.txt",
+      "SHA256": "621054C9C4A7710998F784F3A1286B5269E95731C4246710E0F5D060DC117FD9",
+      "Bytes": 667
+    }
+  ],
+  "VMCaseStarted": false
+}

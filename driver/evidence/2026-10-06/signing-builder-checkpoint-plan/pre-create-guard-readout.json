@@ -1,0 +1,22 @@
+{
+  "UTC": "2026-10-06T16:55:30.650944+00:00",
+  "GuardStops": [
+    {
+      "Phase": "create-start",
+      "Error": "Clean shutdown has not completed",
+      "ExitCode": 1,
+      "DiskCreated": false
+    },
+    {
+      "Phase": "create-start",
+      "Error": "domjobinfo rejected on shutoff domain",
+      "ExitCode": 1,
+      "DiskCreated": false
+    }
+  ],
+  "GuestGracefulShutdownExit": 0,
+  "VmState": "shut off",
+  "KeyOrTrustMutated": false,
+  "PriorExecutionManifest": "d8c29252b5165b40d1fa6a0703b2b05fb08ffecf185564690ef542c1041f9e86",
+  "NewExecutionManifest": "7884b9459544b68f264153d35d1092b62af90b0101a1f1b644558d71264647c4"
+}

@@ -1,0 +1,14 @@
+﻿{
+    "SignExit":  1,
+    "UnsignedArtifactUnchanged":  true,
+    "SigningCopySHA256Before":  "8C19FE05135E10AABACABC433F0DC5CB68A53CCBD7A3CC82052D0D9804586FC9",
+    "ActualSigner":  "NONE",
+    "UTC":  "2026-10-06T17:46:20.2995993Z",
+    "OutputSHA256":  "8C19FE05135E10AABACABC433F0DC5CB68A53CCBD7A3CC82052D0D9804586FC9",
+    "UnsignedSHA256":  "8C19FE05135E10AABACABC433F0DC5CB68A53CCBD7A3CC82052D0D9804586FC9",
+    "CertificateStoreLocation":  "CurrentUser",
+    "SignatureStatus":  "SigningFailed",
+    "SignedSHA256":  "NONE",
+    "ExpectedSigner":  "220DD82C37FCF36048D59E4F10113185D81D5DC7",
+    "SignatureValid":  false
+}

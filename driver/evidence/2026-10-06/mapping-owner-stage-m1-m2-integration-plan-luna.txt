@@ -1,0 +1,158 @@
+# Private ownership before mapped sections: integrated M1/M2 plan
+
+Design plan, 2026-10-06. This records the smallest coherent path against the
+current implementation. It does not change product source or either repro,
+and makes no build, runtime, or qualification claim.
+
+## Boundary and decision
+
+The owner-approved setup is: the privacy owner runs before application writable
+opens; an initial restart is allowed; policy inspection and publication may be
+activated afterward. The owner allocator therefore must be available before
+the fixture open, but it must not treat allocation as policy approval or publish
+an owner-only version. If “service activation afterward” meant that no service
+process or durable allocator may run before the first open, the current
+StageStream path cannot meet it: every new StageCreate synchronously requests a
+flushed service Allocated journal entry and stage basename, and StageSeal also
+uses that service channel. A kernel-owned durable allocator/journal would be a
+different, substantially larger architecture. This plan uses a narrowly scoped
+allocation-only service role before the open, with policy/inspection/publication
+still delayed.
+
+The existing owned-stream architecture is the integration point. It leaves the
+application handle on the destination stack, gives the application a distinct
+SafeUpload upper stream with a private section/cache object, and routes paging
+and flush I/O to a real private NTFS stage file. It does not borrow the public
+destination's NTFS FCB or SOP. This matches the original same-stack decision in
+`STAGED-WRITES.md`; the rejected cross-volume reparse experiment changed visible
+volume identity and left the user able to read the private stage after filter
+unload. The custom upper SOP is SafeUpload's private stream state, not the
+public destination SOP. Keep this distinction explicit and rerun its exact
+mapping/Verifier qualification on the new source.
+
+## Existing hooks and required changes
+
+1. **Bounded owner scope before filtering.** `BootPolicy.c` currently loads the
+   authenticated boot/current/pending destination scopes; it has no separate
+   owner-candidate scope. Add a protected, versioned `OwnerScopes` record to
+   the same LocalSystem/TrustedInstaller policy boundary. It is a finite list
+   of canonical local fixed-NTFS prefixes that is a superset of every policy
+   scope the MVP may activate, including the M1/M2 fixtures. Load and validate
+   it before `FltStartFiltering`; do not enumerate the filesystem. Missing,
+   malformed, incomplete, or unsupported owner scope means `OwnerReady=false`
+   and candidate writes fail closed. Policy expansion outside this set is
+   refused and cannot report Ready until owner scope is expanded at reboot.
+
+2. **Route before any public writable object or section.** In feature builds,
+   `Filter.c` sends creates through `StageDispatchCore`, which calls
+   `StageAdmit` before `SafeUploadPreCreate` and the public-writer reservation.
+   Add an owner-candidate check there, before the current-policy pass-through.
+   A mutating create under an owner prefix must enter the existing `StageCreate`
+   path and receive a distinct private `STAGE_STREAM`/SOP before the create
+   completes; it must never fall through to NTFS. Read-only opens outside the
+   active policy remain on the approved public generation. Preserve unresolved
+   name, alias, ADS, by-ID, reparse, TxF, directory, and unsupported-option
+   refusal behavior; do not broaden supported filesystems or adapters.
+
+3. **Durable owner allocation, separate from policy.** `StageCreate` calls
+   `SafeUploadStageAllocate` before opening its private noncached backing and
+   before returning the upper file object. Extend that request with an explicit
+   owner-only mode and make the service validate it against the same protected
+   `OwnerScopes` record and supported-volume rules. The service must flush the
+   exact private-file ACL and `Allocated` journal entry before returning a
+   basename. Owner-only allocation must not set active policy, authorize a
+   publication permit, scan, inspect, or publish. Require the connected service
+   identity for this operation; a generic SYSTEM connection alone is not the
+   owner allocator.
+
+4. **Permit private writes before policy activation.** The private stream's
+   writable section gate is in `StagePreOperation` for
+   `IRP_MJ_ACQUIRE_FOR_SECTION_SYNCHRONIZATION`; today it also requires an
+   authenticated policy client. Add a narrowly tagged owner-only state bound
+   to the verified owner scope, trusted newly mounted NTFS instance, durable
+   allocation, and live stream generation. Such a stream may create writable
+   sections and may write/flush only through its private StageStream cache and
+   backing. Every non-owned/public stream retains the existing trust and active
+   policy gates. If ownership cannot be proved, refuse the create before the
+   destination filesystem receives a writable object.
+
+5. **Hold early generations out of publication.** The worker in `StageStream.c`
+   drains only after no upper file objects and `MmCanFileBeTruncated` confirms
+   the private SOP is quiescent, purges its cache, waits for paging rundown,
+   flushes the private backing, then asks the service to seal. Today a successful
+   seal enters `Sealed`, and `PublishSealedLoopAsync` starts inspection and
+   publication for every such entry. Add an append-only journal state or
+   durable owner-only flag such as `OwnerPendingPolicy`: owner-only sealing
+   records an immutable private version but is not eligible for inspection or
+   publication. After the active policy is durably accepted, the service may
+   promote only owner-pending entries whose exact destination and generation
+   are now in policy to normal `Sealed`; the existing inspection, approval,
+   permit, and publication path then applies. Nonmatching entries remain private
+   and retained. Recovery must preserve the nonpublishable state across crashes.
+
+6. **Readiness and lifetime.** Report owner readiness separately from policy
+   activation. Owner readiness requires the bounded scope record, newly mounted
+   volume canary, allocator/journal availability, and complete candidate-scope
+   coverage. It does not mean the policy is active or a version is approved.
+   The existing per-process `StageView` means its writer sees its private
+   generation; another process sees the current public approved generation.
+   WinFsp's pinned cleanup/close study is lifecycle guidance only: retain
+   generation state beyond Cleanup and Close, and reclaim only after the exact
+   section/cache and paging work are gone. Do not use a cleanup notification as
+   proof that a retained mapping has ended. A late/manual attach with preexisting
+   public writable mappings stays NotReady until reboot; the owner-approved
+   initial restart is the boundary for a clean start.
+
+## Repro and proof changes
+
+- **M1:** start the boot owner before creating/opening the fixture writable;
+  let the allocation-only owner create a private upper stream; create the
+  writable section and close the source handle; delay active policy, inspection,
+  and publication. Preserve successful mapped write, view flush, release,
+  successful `FlushFileBuffers`, independent buffered and uncached reads,
+  unchanged full raw bytes, and stable base allocation. The observer readers
+  must run in a separate process: today's M1 helper reopens in the same
+  PowerShell process and would see its own per-process private `StageView`.
+  This becomes a pre-policy activation test, not a pre-owner/pre-attachment
+  test.
+- **M2:** start the owner before any fixture open. Open and create the retained
+  writable section while the fixture is outside the active policy but inside
+  the immutable owner candidate scope. Expand policy while retaining its
+  section handle, create the first view afterward, and require successful write,
+  view flush, and file-buffer flush. Expansion must keep the same private
+  generation/SOP; it must not re-open or rebind the section. Run buffered,
+  uncached, and raw observers from separate observer processes while the
+  writer mapping is held. `Ready`/publication stays pending until owner drain,
+  then promotion and inspection are tied to the exact sealed generation.
+- **Security and regression:** exercise owner-scope boundaries, all existing
+  path/identity refusal cases, aliases, rename/link, ADS, file-ID opens,
+  concurrent owner processes, service loss/restart, policy expansion, stage
+  capacity/allocation errors, and crash recovery. A failed allocation, unknown
+  identity, incomplete scope, or lost journal record is a refusal/NotReady
+  result, never a privacy pass. Verify private-stage ACLs and direct-name
+  isolation after driver/service restart. Keep taint and unsupported destinations
+  guarded; regular builds continue compiling staging out.
+
+## Acceptance boundary
+
+This change cannot close the two mapping DOD items by source inspection alone.
+The exact M1/M2 successful-operation predicates and independent observers remain
+mandatory. The larger MVP DOD remains unchanged: four normal/feature Debug/Release
+builds with zero warnings/errors, managed tests after service/journal changes,
+both corrected repros, runtime and boot Verifier, independent raw observers,
+USB/UNC/real-sync qualification, recovery/restoration, and the remaining
+functional, crash, stress, and latency gates. The qualified Ready4 source and
+artifacts become historical after any source change; all builds and guest
+qualification must pin the new exact tree. No taint removal or unsupported
+capability enablement follows from this integration plan.
+
+## Sources inspected
+
+`driver/MVP-PLAN.md`; `driver/STAGED-WRITES.md`; `driver/SafeUpload.Minifilter/Filter.c`,
+`StageStream.c`, `StageProtocol.c`, `StageAdmission.c`, `BootPolicy.c`, and
+`StageWriters.c`; `agente/SafeUpload.Agent.Service/Interception/MinifilterInterceptor.cs`,
+`StagedTransferJournal.cs`, and `StagedTransferPublisher.cs`; the owner decision
+`owner-early-protection-requirement.json`; both mapping repros; the
+`mapping-ownership-before-section-luna-review.txt`,
+`mapping-leak-architecture-investigation.txt`, and pinned WinFsp cleanup/close
+review. The code paths were inspected read-only.

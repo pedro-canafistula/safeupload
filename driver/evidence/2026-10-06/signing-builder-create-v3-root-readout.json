@@ -1,0 +1,21 @@
+{
+  "Verdict": "POSTMINT_GUARD_FAILED",
+  "AttemptExitCode": 1,
+  "FailedThumbprint": "CD10B2C8AD4F578759350CA8C03EA5064C692192",
+  "FailedDisk": "/var/lib/libvirt/images/win10-clean.safeupload-signer-fallback-pre-20261006.qcow2",
+  "FailureDiagnosis": "PowerShell EnhancedKeyUsageRepresentation.ObjectId is a string; V3 incorrectly read ObjectId.Value. Guard rejected the intended code-signing EKU before private-key challenge or trust.",
+  "PrivateKeyUsed": false,
+  "PrivateKeyExported": false,
+  "PublicCerExported": false,
+  "TrustMutated": false,
+  "SignerPinsChanged": false,
+  "DriverInstalled": false,
+  "RequiredNextStep": "Retain failed disk and evidence; restore fresh child of verified clean parent and compare all six certificate stores before retry.",
+  "EvidencePins": {
+    "driver/evidence/2026-10-06/signing-builder-create-v3-execution.ps1": "ba14b22f972b0245c4b464daa7b1b31495bf7fe724ada337fc1b9010c2e48310",
+    "driver/evidence/2026-10-06/signing-builder-create-v3-execution.stdout.json": "2d4df3a720f7ea3f52f0f7eae9033baf8bb3394055911382a487065cc272adbd",
+    "driver/evidence/2026-10-06/signing-builder-create-v3-execution.stderr.txt": "97e841b96f58cdacdda69e43c4ec5184a97135176cf291ada958933616193470",
+    "driver/evidence/2026-10-06/signing-builder-failed-v3-public-metadata.stdout.json": "8b7e8f8797369deaeb93a6879ae777ee8498203bcfdf8cf22aab671f30e0157a",
+    "driver/evidence/2026-10-06/signing-builder-failed-v3-public-metadata.stderr.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  }
+}

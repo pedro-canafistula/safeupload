@@ -1,0 +1,180 @@
+Admission evidence private RPC capture client
+==============================================
+
+Date: 2026-10-06
+Status: authoring and local fake-pipe self-check passed on the pinned builder.
+Revision E passed Windows PowerShell 5.1.19041.6456 parsing and the
+protocol/model/local fake-pipe self-check. Both scripts had zero parser errors,
+the self-check exited 0, stderr was empty, and hash-guarded Temp cleanup was
+verified. The run readout is `driver/evidence/2026-10-06/capture-client-ps51-20261006e-root-readout.json`.
+This qualifies authoring and local fake-pipe behavior only. The client has not
+been checked against the live service, real process identity, target handles,
+or actual evidence-path ACLs. Service integration, VM runs, and mapping-gate
+qualification remain outstanding. The client is raw diagnostic evidence only;
+it makes no Ready or privacy claim.
+
+Files in this source increment
+------------------------------
+
+* `driver/scripts/Invoke-AdmissionEvidenceCapture.ps1` is the private-pipe
+  client and standalone helper support.
+* `driver/scripts/Invoke-AdmissionEvidenceCapture.SelfCheck.ps1` constructs
+  producer-shaped frames and checks the parser, models, and transport using
+  fresh random local named-pipe pairs, never the service pipe.
+* This note records their intended bounds and verification instructions.
+
+The existing mapping harness `driver/scripts/Test-StagedPolicyTransitionMapping.ps1`
+was left unchanged. The implementation note for the feature-only service
+endpoint remains at `driver/evidence/2026-10-06/live-admission-evidence-endpoint-implementation-note.txt`.
+
+Capture contract
+----------------
+
+The caller supplies an already-open target `FileStream`, a previously tracked
+service `ProcessIdentity`, a stable target Run GUID, a one-use Request GUID, a
+safe target label, and a shared binding-continuity object. The helper sends
+only hook ordinals 2 through 7. Hook 1 is rejected because the baseline
+service has already been stopped before the expanded agent starts. It does
+not open a FilterPort, start or stop a service, retry a request, reconnect,
+or send any control other than the exact SAER request to the existing local
+pipe.
+
+The request file retains the exact length-prefixed SAER request buffer
+submitted in the single pipe-write attempt. A timeout after dispatch can mean
+some or all of that request reached the service, so delivery is marked
+`REQUEST_DELIVERY_INDETERMINATE` and never retried. The response file retains
+each byte returned from the pipe, including length prefixes and any partial
+final frame. Both use `CREATE_NEW`, an exclusive handle, a protected
+SYSTEM/Administrators DACL, and durable flushes.
+The client verifies the request bytes against the exact send buffer and
+verifies the response file hash and length against bytes incrementally hashed
+as they were read. A private JSON receipt records the request/response hashes,
+frame kinds and count, summary attribution, service process identity checks,
+and before/after target identity checks. No raw frame content is copied to
+console output or general logs.
+
+Evidence is written only beneath a unique direct child of canonical Program
+Files named for the Run GUID, on a local fixed NTFS volume. The helper checks
+all ancestors for missing paths and reparse points, verifies trusted ancestor
+owners and mutation ACEs, and verifies the run directory and files have a
+protected DACL with exactly SYSTEM and Builtin Administrators full control.
+Evidence leaves are derived from the safe label, hook, and Request GUID; they
+are never overwritten. Files and the containing directory are checked again
+after capture to detect ACL or reparse-path changes.
+
+The target volume GUID, 64-bit volume serial, and 128-bit FILE_ID_INFO value
+come from the caller's existing open target handle. The helper compares this
+tuple before send and after capture. The required service identity contains
+PID, process birth FILETIME, absolute image path, image SHA-256, and the image
+file's volume GUID/serial/FileID tuple. The helper rechecks that identity
+before capture, independently reads `GetNamedPipeServerProcessId` before
+sending, and rechecks the process identity after capture. A mismatch preserves
+any bytes already collected and marks the receipt incomplete.
+
+The response reader enforces the service's five-minute whole transport
+deadline, 64 KiB per-frame body ceiling, 10,000-frame limit, 160 MiB total
+response ceiling, 128 MiB raw Control 19 ceiling, 640 pages per attempt, and
+five Control 19 attempts. A complete stream requires the binding receipt
+followed by Control 20, Control 23, one or more Control 19 page calls, Control
+23, and Control 20 before a summary. The endpoint may instead produce an
+incomplete summary after a valid prefix when a send is unavailable; such a
+receipt remains incomplete and is never treated as a captured snapshot. The
+reader checks call hashes, reply-availability flags, reserved bits,
+command/input bounds, ordered page/attempt indices, request and target
+correlation, and a stable binding generation, accepted policy version, and
+canonical candidate-policy fingerprint across all frames and the shared
+target streams.
+
+The client opens the pipe with asynchronous I/O for its single request write.
+It bounds `WriteAsync` with the same stopwatch deadline and disposes the pipe
+if the operation does not finish, recording request delivery as indeterminate
+after dispatch. Response reads avoid unsupported `PipeStream` timeout setters:
+the client polls `PeekNamedPipe` at most every 10 ms, reads no more than the
+observed available bytes, and persists each returned chunk immediately. Broken
+or disconnected pipe errors are EOF; a deadline or early EOF leaves already
+read partial bytes in the raw response file. The same deadline also bounds
+terminal close confirmation.
+
+Summary JSON is strict UTF-8 with the exact producer property set: duplicate,
+unknown, missing, or malformed fields fail closed. Control 19 target matches
+and Control 23 volume-GUID matches keep their independent `Unavailable`,
+`Absent`, `Unique`, and `Ambiguous` assessments and counts. A count of zero or
+multiple matches does not make a stream incomplete by itself. `EvidenceCaptured`
+requires the producer's stable snapshot, byte-identical before/after Control
+23 frames, stable binding generations, and raw bytes consistent with the
+Control 19 frames. Every result keeps `ReadyClaim=false`; incomplete or
+ambiguous evidence remains diagnostic and is not interpreted as a privacy
+pass.
+
+Self-check invocation
+---------------------
+
+Run from the repository root on a 64-bit Windows host with Windows PowerShell
+5.1:
+
+    powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File .\driver\scripts\Invoke-AdmissionEvidenceCapture.SelfCheck.ps1
+
+The self-check is isolated to the PowerShell process. It uses in-memory
+producer-shaped SAEF frames, byte arrays, `MemoryStream` objects, and fresh
+random local fake named-pipe pairs that are closed by `finally` blocks. It
+never opens the admission service pipe, inspects a live process, accesses the
+FilterPort, creates evidence files, or starts/stops/configures a service or
+VM. The pipe tests cover exact request/response roundtrip with a background
+overlapped fake peer that reads the complete request then writes its reply,
+using 4 KiB pipe buffers, unsupported timeout setter behavior, a delayed
+fragmented reply followed by EOF with every partial byte retained, a
+silent-peer response deadline with no invented bytes, and a backpressured
+asynchronous write deadline that closes the client handle and marks delivery
+indeterminate. There are no persistent artifacts to clean up.
+Close the PowerShell process after the check to unload its in-memory helper
+assemblies and release its pipe handles.
+
+Coverage includes exact SAER layout and hook rejection; producer-shaped
+binding/raw-call/summary frames; ordering and binding continuity; raw SHA-256
+validation; oversized and malformed frames; partial-read retention; a missing
+summary; target and service identity tuple comparisons; summary duplicate and
+unknown-field rejection; independent absent/unique/ambiguous attribution;
+raw Control 19 byte/page/attempt bounds; and SYSTEM/Administrators plus
+trusted-ancestor ACL models. The transport checks use only the random local
+fake pipe names described above.
+
+No PowerShell executable is available in the authoring environment. The first
+builder-side attempt
+on the earlier candidate failed in the ACL self-check because its
+FileSystemRights enum namespace was incorrect. This revision corrects that
+namespace and narrows the parent ACL mask to explicit mutation rights; its
+model now accepts benign ReadAndExecute ACEs at Program Files and an
+AppendData ACE at a non-direct ancestor while rejecting direct-parent
+creation, replacement, deletion, and ACL/owner-change rights. A second
+builder-side attempt parsed and loaded the helper but exposed four frame-state
+properties assigned by the parser that were missing from its initial object;
+revision C declared them and passed its model self-check. Final review then
+found unsupported .NET Framework pipe timeout setters, so this revision uses
+deadline-bounded overlapped writes and `PeekNamedPipe`-bounded reads and adds
+the fake local-pipe tests above. The builder-side revision D run parsed and
+loaded both scripts, then exposed that the fake peer was not reading during
+the bounded write. Revision E runs a background peer transaction that reads
+the full request before writing its reply while the client advances to response
+reading, using the production endpoint's 4 KiB buffers. Revision E passed on
+the pinned builder: both scripts parsed with zero errors, the self-check
+printed `PipeTransport=LocalFakePipe` and exited 0, stderr was empty, and the
+hash-guarded temporary upload directory was absent afterward. The retained
+stdout and empty stderr are
+`driver/evidence/2026-10-06/capture-client-ps51-20261006e.stdout.txt` and
+`driver/evidence/2026-10-06/capture-client-ps51-20261006e.stderr.txt`.
+The ACL checks exercise models only, and identity checks use producer-shaped
+fixtures; this run does not verify an actual process, open target, live private
+pipe, or filesystem ACL. No live service, FilterPort, VM, network endpoint,
+build, or integration run was touched. The service note's remaining
+correlation limitation also applies:
+Control 19 matches serial and FileID while Control 23 matches volume GUID, and
+the wire contract does not provide an atomic kernel mapping between those
+observations. Control 23 covers attached instances, not future or unmounted
+destinations. Neither observation closes a byte-privacy gate.
+
+Source SHA-256 at freeze
+-----------------------
+
+* `driver/scripts/Invoke-AdmissionEvidenceCapture.ps1`: `938523022ee2da923398042b36221adc89dd4c1f91e01422147f9c94dad9e052`.
+* `driver/scripts/Invoke-AdmissionEvidenceCapture.SelfCheck.ps1`: `d990a1c4cd61d7eb6f573e4af6d9342d3804fa032dbe99ddd0c80d201afc3afe`.
+* This note's digest is reported separately with the freeze message.

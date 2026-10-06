@@ -1,0 +1,22 @@
+
+The following certificates were considered:
+    Issued to: WDKTestCert vika,134334568665621698
+    Issued by: WDKTestCert vika,134334568665621698
+    Expires:   Tue Sep 09 01:00:00 2036
+    SHA1 hash: 4D9B77E38E9A0A762EE2BEDB7C515E36318BF31D
+
+    Issued to: SafeUpload Test Signing
+    Issued by: SafeUpload Test Signing
+    Expires:   Mon Sep 03 17:47:14 2029
+    SHA1 hash: 220DD82C37FCF36048D59E4F10113185D81D5DC7
+
+    Friendly Name: ASP.NET Core HTTPS development certificate
+    Issued to: localhost
+    Issued by: localhost
+    Expires:   Thu Sep 02 22:41:58 2027
+    SHA1 hash: 039A84611926EF1AC5D399D6A94A394A4A75E54D
+
+After EKU filter, 2 certs were left.
+After expiry filter, 2 certs were left.
+After Hash filter, 1 certs were left.
+After Private Key filter, 0 certs were left.
