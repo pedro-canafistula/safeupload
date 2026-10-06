@@ -1,0 +1,85 @@
+== 1. baseline
+baseline clean
+== 2. checkpoint
+BackingChainDepth=108
+UTC=2026-10-05T20:59:55Z
+virsh -c qemu:///system snapshot-create-as --domain win10-debug --name safeupload-pre-boot-start-w01-w01-b38b36-20261005b-fe004c32b19e4cc88a0cf42389818d7b-20261005 --description 'Clean original driver and policy before boot-start-w01-w01-b38b36-20261005b-fe004c32b19e4cc88a0cf42389818d7b' --disk-only --no-metadata --diskspec vda,snapshot=external,file=/var/lib/libvirt/images/win10-debug.safeupload-pre-boot-start-w01-w01-b38b36-20261005b-fe004c32b19e4cc88a0cf42389818d7b-20261005 --atomic
+Domain snapshot safeupload-pre-boot-start-w01-w01-b38b36-20261005b-fe004c32b19e4cc88a0cf42389818d7b-20261005 created
+--- active disk after checkpoint
+ Target   Source
+--------------------------------------------------------------------------------------------------------------------------------------------
+ vda      /var/lib/libvirt/images/win10-debug.safeupload-pre-boot-start-w01-w01-b38b36-20261005b-fe004c32b19e4cc88a0cf42389818d7b-20261005
+ sda      -
+ sdb      -
+
+running
+
+== 3. run
+copied /home/victor/Work/safeupload-staging/driver/evidence/2026-10-05/boot-start-w01-w01-b38b36-20261005b-fe004c32b19e4cc88a0cf42389818d7b-inputs/Test-StagedW01Diagnostic.ps1 -> w01-fe004c32b19e4cc88a0cf42389818d7b-Test-StagedW01Diagnostic.ps1 sha256=c793cc32d29cb0307412cb5eab2be7cfb264f577d8d2179042deb654e179ad0e
+copied /home/victor/Work/safeupload-staging/driver/evidence/2026-10-05/boot-start-w01-w01-b38b36-20261005b-fe004c32b19e4cc88a0cf42389818d7b-inputs/StagedSectionFaultClient.cs -> w01-fe004c32b19e4cc88a0cf42389818d7b-StagedSectionFaultClient.cs sha256=849002d8ca685b0e7bab22f257b041262e681e17c00ef0070bf6f37e63d2e116
+copied /home/victor/Work/safeupload-staging/driver/evidence/2026-10-05/boot-start-w01-w01-b38b36-20261005b-fe004c32b19e4cc88a0cf42389818d7b-inputs/Invoke-StagedSectionFault.ps1 -> w01-fe004c32b19e4cc88a0cf42389818d7b-Invoke-StagedSectionFault.ps1 sha256=12aaf0754c1453564d56a687491ebbe971279cc63d4fb3b4bd78b9085e10d446
+copied /home/victor/Work/safeupload-staging/driver/evidence/2026-10-05/boot-start-w01-w01-b38b36-20261005b-fe004c32b19e4cc88a0cf42389818d7b-inputs/StagedW01Stimulus.cs -> w01-fe004c32b19e4cc88a0cf42389818d7b-StagedW01Stimulus.cs sha256=d49adca401eea6dc67d5c5c5128a43329a992bda8813bc6dcb909c97ca14dcf0
+copied /home/victor/Work/safeupload-staging/driver/evidence/2026-10-05/boot-start-w01-w01-b38b36-20261005b-fe004c32b19e4cc88a0cf42389818d7b-inputs/StagedInvariantObserver.psm1 -> w01-fe004c32b19e4cc88a0cf42389818d7b-StagedInvariantObserver.psm1 sha256=4411cc06c522d62b6078f52689c0d2c681401795d8cb50603e8ffbd5ed5ae46e
+copied /home/victor/Work/safeupload-staging/driver/evidence/2026-10-05/boot-start-w01-w01-b38b36-20261005b-fe004c32b19e4cc88a0cf42389818d7b-inputs/Get-StagedBaseline.ps1 -> w01-fe004c32b19e4cc88a0cf42389818d7b-Get-StagedBaseline.ps1 sha256=e009a6975525da254567ca570607bc180df05a85d47610ca0444f77476342884
+copied /home/victor/Work/safeupload-staging/driver/evidence/2026-10-05/boot-start-w01-w01-b38b36-20261005b-fe004c32b19e4cc88a0cf42389818d7b-inputs/Invoke-DebuggeeExperiment.sh -> w01-fe004c32b19e4cc88a0cf42389818d7b-Invoke-DebuggeeExperiment.sh sha256=9c9037655cb1e8a0c8ace0a1efc5be410eea4c561976e33e10eacec06607c9df
+copied /home/victor/Work/safeupload-staging/driver/evidence/2026-10-05/boot-start-w01-w01-b38b36-20261005b-fe004c32b19e4cc88a0cf42389818d7b-inputs/remote_ps.py -> w01-fe004c32b19e4cc88a0cf42389818d7b-remote_ps.py sha256=3f2f48b1cc8680287dc61760c4ba5314e71f2bfeb8d041d3596a0bc664fb7cce
+copied /home/victor/Work/safeupload-staging/driver/evidence/2026-10-05/boot-start-w01-w01-b38b36-20261005b-fe004c32b19e4cc88a0cf42389818d7b-inputs/Validate-StagedWTrace.py -> w01-fe004c32b19e4cc88a0cf42389818d7b-Validate-StagedWTrace.py sha256=fdcbb6c65e059fe66a8cbefe664ce5ee63badbb64be34912751da14be0c104b0
+copied /home/victor/Work/safeupload-staging/driver/evidence/2026-10-05/boot-start-w01-w01-b38b36-20261005b-fe004c32b19e4cc88a0cf42389818d7b-inputs/Invoke-StagedW01Diagnostic.py -> w01-fe004c32b19e4cc88a0cf42389818d7b-Invoke-StagedW01Diagnostic.py sha256=bfdc8d3ed75bf36fe8c498f45c1d2334fb038f79967c8e96b7c98b81ae3dc66d
+copied /home/victor/Work/safeupload-staging/driver/evidence/2026-10-05/boot-start-w01-w01-b38b36-20261005b-fe004c32b19e4cc88a0cf42389818d7b-inputs/Invoke-StagedW01Diagnostic.SelfCheck.py -> w01-fe004c32b19e4cc88a0cf42389818d7b-Invoke-StagedW01Diagnostic.SelfCheck.py sha256=65afae3db3fdcb328c64595acc7aceb00cb967362eeaa343786c9106267e0183
+copied /home/victor/Work/safeupload-staging/driver/evidence/2026-10-05/boot-start-w01-w01-b38b36-20261005b-fe004c32b19e4cc88a0cf42389818d7b-inputs/SafeUpload-stage-prototype.sys -> w01-fe004c32b19e4cc88a0cf42389818d7b-SafeUpload-stage-prototype.sys sha256=3a338d2046226507eb890f0ea9adc01c28b8f167e67c484993c7bc30f3bde6e1
+copied /home/victor/Work/safeupload-staging/driver/evidence/2026-10-05/boot-start-w01-w01-b38b36-20261005b-fe004c32b19e4cc88a0cf42389818d7b-inputs/SafeUploadSectionFault.sys -> w01-fe004c32b19e4cc88a0cf42389818d7b-SafeUploadSectionFault.sys sha256=c58433fb3431566bb545173fb7f4772daa2c6b9e20cf057c0a985595ee93e386
+copied /home/victor/Work/safeupload-staging/driver/evidence/2026-10-05/boot-start-w01-w01-b38b36-20261005b-fe004c32b19e4cc88a0cf42389818d7b-inputs/inspector-feature-release.exe -> w01-fe004c32b19e4cc88a0cf42389818d7b-inspector-feature-release.exe sha256=c28a8da63b735dd0e29d2e69a3b83d38d351ec3591d940160f1b7d69f6390467
+copied /home/victor/Work/safeupload-staging/driver/evidence/2026-10-05/boot-start-w01-w01-b38b36-20261005b-fe004c32b19e4cc88a0cf42389818d7b-inputs/StagedW01Stimulus.exe -> w01-fe004c32b19e4cc88a0cf42389818d7b-StagedW01Stimulus.exe sha256=b4eebe3d1e7673fe60fef98d181d8cf699acacc29f69bc1a1cf70aa6d83c2c8c
+copied /home/victor/Work/safeupload-staging/driver/evidence/2026-10-05/boot-start-w01-w01-b38b36-20261005b-fe004c32b19e4cc88a0cf42389818d7b-inputs/stage-service-publish.zip -> w01-fe004c32b19e4cc88a0cf42389818d7b-stage-service-publish.zip sha256=1525974fc6725186bc837bb74e41cf6abe05ea191df78ded827ecf60a72317e5
+copied /home/victor/Work/safeupload-staging/driver/evidence/2026-10-05/boot-start-w01-w01-b38b36-20261005b-fe004c32b19e4cc88a0cf42389818d7b-inputs/expected-old.bin -> w01-fe004c32b19e4cc88a0cf42389818d7b-expected-old.bin sha256=71c8483d09e507861ac4f5884a1f1eb96c61c2afc2e5d2ebb5caec31ffa5b26f
+copied /home/victor/Work/safeupload-staging/driver/evidence/2026-10-05/boot-start-w01-w01-b38b36-20261005b-fe004c32b19e4cc88a0cf42389818d7b-inputs/inputs.json -> w01-fe004c32b19e4cc88a0cf42389818d7b-inputs.json sha256=f3551a10890d504494ad88e672d58a033de9884157547a7fbc9201248ee460ee
+copied /home/victor/Work/safeupload-staging/driver/evidence/2026-10-05/boot-start-w01-w01-b38b36-20261005b-fe004c32b19e4cc88a0cf42389818d7b-checkpoint.txt -> w01-fe004c32b19e4cc88a0cf42389818d7b-checkpoint.txt sha256=e8996733539ab1e52d2addcecdecc5a08b523af9a6e2d2abe5b96d6f87766e52
+copied /home/victor/Work/safeupload-staging/driver/evidence/2026-10-05/boot-start-w01-w01-b38b36-20261005b-fe004c32b19e4cc88a0cf42389818d7b-inputs/phase-Prepare.ps1 -> w01-fe004c32b19e4cc88a0cf42389818d7b-phase-Prepare.ps1 sha256=080834dc9d856ef8ef94114b62495cb0a00e33472fe535eeb3c9d4c862e261e2
+copied /home/victor/Work/safeupload-staging/driver/evidence/2026-10-05/boot-start-w01-w01-b38b36-20261005b-fe004c32b19e4cc88a0cf42389818d7b-inputs/transport-Prepare.ps1 -> w01-fe004c32b19e4cc88a0cf42389818d7b-transport-Prepare.ps1 sha256=894d47c055a9f1dc790bd342d3d4eacd59bb3201f7e5c6437021540309c4c6af
+copied /home/victor/Work/safeupload-staging/driver/evidence/2026-10-05/boot-start-w01-w01-b38b36-20261005b-fe004c32b19e4cc88a0cf42389818d7b-inputs/phase-AfterBoot.ps1 -> w01-fe004c32b19e4cc88a0cf42389818d7b-phase-AfterBoot.ps1 sha256=73fa017ecc125db4da5277875a6e62aad6067a8a821f7309f06748b4d61084ed
+copied /home/victor/Work/safeupload-staging/driver/evidence/2026-10-05/boot-start-w01-w01-b38b36-20261005b-fe004c32b19e4cc88a0cf42389818d7b-inputs/transport-AfterBoot.ps1 -> w01-fe004c32b19e4cc88a0cf42389818d7b-transport-AfterBoot.ps1 sha256=6c193e853b54c924b9b71366502154225579fe05f1637688230ee6cd60d5884d
+copied /home/victor/Work/safeupload-staging/driver/evidence/2026-10-05/boot-start-w01-w01-b38b36-20261005b-fe004c32b19e4cc88a0cf42389818d7b-inputs/phase-Finalize.ps1 -> w01-fe004c32b19e4cc88a0cf42389818d7b-phase-Finalize.ps1 sha256=f2801e50467ac19741b1ef017d3feb6d7e0cd178c722a1fc23c4c57d47194518
+copied /home/victor/Work/safeupload-staging/driver/evidence/2026-10-05/boot-start-w01-w01-b38b36-20261005b-fe004c32b19e4cc88a0cf42389818d7b-inputs/transport-Finalize.ps1 -> w01-fe004c32b19e4cc88a0cf42389818d7b-transport-Finalize.ps1 sha256=5a1e3b1fb1df1d86b169b8d47674842751e869e6959e8ac8b2bb7873fb285edd
+PolicyAclVerified=True;Trustees=SYSTEM,Administrators;InheritedAces=0
+W01_PREPARED=True
+HARNESS_RETURNED
+REBOOT_REQUESTED=True
+guest SSH returned after reboot (attempt 1)
+BootIdentityChanged=True;Before=2026-10-05T17:20:27.5000000Z;After=2026-10-05T21:00:16.5000000Z
+GUEST_RECOVERY_REQUIRED=True
+W01/A05 INCONCLUSIVE
+Phase4=NOT_QUALIFIED
+HARNESS_THREW: Safe phase sentinel missing; retain phase task
+AFTER-BOOT RESTORATION FAILED; preserve checkpoint and inspect guest state
+GUEST_RECOVERY_REQUIRED=True
+Reason=AfterBoot harness failed or restoration was incomplete.
+Checkpoint=safeupload-pre-boot-start-w01-w01-b38b36-20261005b-fe004c32b19e4cc88a0cf42389818d7b-20261005
+ActiveOverlay=/var/lib/libvirt/images/win10-debug.safeupload-pre-boot-start-w01-w01-b38b36-20261005b-fe004c32b19e4cc88a0cf42389818d7b-20261005
+Domain=win10-debug
+ Type   Device   Target   Source
+------------------------------------------------------------------------------------------------------------------------------------------------------------
+ file   disk     vda      /var/lib/libvirt/images/win10-debug.safeupload-pre-boot-start-w01-w01-b38b36-20261005b-fe004c32b19e4cc88a0cf42389818d7b-20261005
+ file   cdrom    sda      -
+ file   cdrom    sdb      -
+
+qemu-img: Could not open '/var/lib/libvirt/images/win10-debug.safeupload-pre-boot-start-w01-w01-b38b36-20261005b-fe004c32b19e4cc88a0cf42389818d7b-20261005': Could not open '/var/lib/libvirt/images/win10-debug.safeupload-pre-boot-start-w01-w01-b38b36-20261005b-fe004c32b19e4cc88a0cf42389818d7b-20261005': Permission denied
+qemu-img: Could not open '/var/lib/libvirt/images/win10-debug.safeupload-pre-boot-start-w01-w01-b38b36-20261005b-fe004c32b19e4cc88a0cf42389818d7b-20261005': Could not open '/var/lib/libvirt/images/win10-debug.safeupload-pre-boot-start-w01-w01-b38b36-20261005b-fe004c32b19e4cc88a0cf42389818d7b-20261005': Permission denied
+Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+    import json,sys; print(json.load(sys.stdin).get("backing-filename", ""))
+                           ~~~~~~~~~^^^^^^^^^^^
+  File "/usr/lib/python3.14/json/__init__.py", line 298, in load
+    return loads(fp.read(),
+        cls=cls, object_hook=object_hook,
+        parse_float=parse_float, parse_int=parse_int,
+        parse_constant=parse_constant, object_pairs_hook=object_pairs_hook, **kw)
+  File "/usr/lib/python3.14/json/__init__.py", line 352, in loads
+    return _default_decoder.decode(s)
+           ~~~~~~~~~~~~~~~~~~~~~~~^^^
+  File "/usr/lib/python3.14/json/decoder.py", line 345, in decode
+    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+               ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.14/json/decoder.py", line 363, in raw_decode
+    raise JSONDecodeError("Expecting value", s, err.value) from None
+json.decoder.JSONDecodeError: Expecting value: line 1 column 1 (char 0)
+Could not determine the checkpoint overlay backing file: /var/lib/libvirt/images/win10-debug.safeupload-pre-boot-start-w01-w01-b38b36-20261005b-fe004c32b19e4cc88a0cf42389818d7b-20261005

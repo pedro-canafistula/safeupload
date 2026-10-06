@@ -142,7 +142,8 @@ function Verifier-Evidence([string]$Label,[switch]$Active) {
     Save-Json ('verifier-'+$Label+'.json') @{Active=$q;Settings=$s}
     if($Active){
         foreach($name in @('SafeUpload.sys','SafeUploadSectionFault.sys')){
-            if(@([regex]::Matches($q,'(?im)^\s*MODULE:\s+'+[regex]::Escape($name)+'\s+\(load:\s*[1-9][0-9]*\s*/\s*unload:\s*0\)')).Count -ne 1 -or $s -notmatch [regex]::Escape($name)){throw ('Active/configured Verifier missing: '+$name)}
+            # A one-boot Verifier configuration is consumed by the boot that applied it, so /querysettings no longer names the drivers; the live /query module list and exact flags are the evidence here.
+            if(@([regex]::Matches($q,'(?im)^\s*MODULE:\s+'+[regex]::Escape($name)+'\s+\(load:\s*[1-9][0-9]*\s*/\s*unload:\s*0\)')).Count -ne 1){throw ('Active Verifier missing: '+$name)}
         }
         $flags=@([regex]::Matches($q,'(?im)^\s*Verifier Flags:\s+0x([0-9a-f]+)\s*$'))
         if($flags.Count -ne 1 -or [Convert]::ToUInt32($flags[0].Groups[1].Value,16) -ne $state.VerifierFlags){throw 'Active Verifier flags mismatch'}

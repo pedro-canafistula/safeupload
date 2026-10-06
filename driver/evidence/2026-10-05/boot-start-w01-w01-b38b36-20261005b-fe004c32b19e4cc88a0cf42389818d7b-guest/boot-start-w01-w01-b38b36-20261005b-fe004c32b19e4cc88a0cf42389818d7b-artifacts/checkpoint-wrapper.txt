@@ -1,0 +1,12 @@
+UTC=2026-10-05T20:59:55Z
+virsh -c qemu:///system snapshot-create-as --domain win10-debug --name safeupload-pre-boot-start-w01-w01-b38b36-20261005b-fe004c32b19e4cc88a0cf42389818d7b-20261005 --description 'Clean original driver and policy before boot-start-w01-w01-b38b36-20261005b-fe004c32b19e4cc88a0cf42389818d7b' --disk-only --no-metadata --diskspec vda,snapshot=external,file=/var/lib/libvirt/images/win10-debug.safeupload-pre-boot-start-w01-w01-b38b36-20261005b-fe004c32b19e4cc88a0cf42389818d7b-20261005 --atomic
+Domain snapshot safeupload-pre-boot-start-w01-w01-b38b36-20261005b-fe004c32b19e4cc88a0cf42389818d7b-20261005 created
+--- active disk after checkpoint
+ Target   Source
+--------------------------------------------------------------------------------------------------------------------------------------------
+ vda      /var/lib/libvirt/images/win10-debug.safeupload-pre-boot-start-w01-w01-b38b36-20261005b-fe004c32b19e4cc88a0cf42389818d7b-20261005
+ sda      -
+ sdb      -
+
+running
+
