@@ -63,6 +63,16 @@ Deferred work is not dropped: it stays in the tracker and is the first hardening
   2 P2; all fixed before merge. Windows-only bugs found on the builder: CreateFile disposition 1 vs 3, real
   profiles are SYSTEM-owned, kernel32 rename rejects RootDirectory.
 
+**2026-10-06 late (handoff):** C01 APPROVE under runtime Verifier now reaches coverage Ready (c01h), stages the
+actor's write and gets it inspected and approved, then hangs in Publishing with a 0-byte `.safeupload-<id>.pending`
+(c01i). Suspected cause, NOT yet confirmed: the 10-06 known-SOP paging-write refusal in `StageDispatchCore` denies
+paging writes for any tracked SOP in a protected scope, including the service's own permitted publication file
+(written cached + write-through). Next: read run c01j's `agent-events-final.txt` (debug publisher steps), then
+exempt permitted publication streams from that refusal (mark the stream at `SafeUploadPublicationCreate`) or
+publish non-cached. Also fixed on this path today: alias-probe Unknowns (20 -> 0), epoch-token decode bugcheck
+0x3B (`ba8006e9`), actor profile and restoration harness issues. Hand-back runtime (C01 BLOCK) and A01-A03 not yet
+run on the VM.
+
 **Process decision (orchestrator, 2026-10-06, from the owner's "MVP ASAP" priority):** stop iterating verifiers of verifiers:
 one exact build per increment, one VM run per case with checkpoint and independent restoration, and
 one milestone review. Evidence stays, but no new layer of tooling unless a run actually failed on it.
