@@ -175,7 +175,7 @@ def build_inputs(args, commit, agent_commit, head):
                   'AgentSummarySha256': sha(agent_work / 'summary.txt'), 'WriterFixtureSha256': sha(work / 'writer-fixture.exe')}
     pins = {}
     for leaf in ('StagedInvariantCases.psd1', 'StagedInvariantObserver.psm1', 'Test-StagedInvariantSuite.ps1',
-                 'Invoke-StagedInvariantQualification.py', 'StagedInvariantProofAdapters.SelfCheck.ps1', 'test_staged_invariant_proof_adapters.py', 'StagedTestAgent.ps1', 'Invoke-DebuggeeExperiment.sh', 'Get-StagedBaseline.ps1', 'remote_ps.py'):
+                 'Invoke-StagedInvariantQualification.py', 'StagedInvariantProofAdapters.SelfCheck.ps1', 'test_staged_invariant_proof_adapters.py', 'test_staged_a04_gate.py', 'StagedInvariantActivationDuplicate.SelfCheck.ps1', 'StagedTestAgent.ps1', 'Invoke-DebuggeeExperiment.sh', 'Get-StagedBaseline.ps1', 'remote_ps.py'):
         path = SCRIPTS / leaf
         # Baseline now records the case-owned audit setting; like the suite and
         # wrapper, freeze its authorized working-tree bytes in provenance.
@@ -319,7 +319,7 @@ def attest_external_coverage(result):
         actor = trial.get('Actor') or {}
         provenance = trial.get('ActorProvenance') or {}
         observer = platform.get('ObserverProcess') or {}
-        activating_case = result.get('CaseId') in ('A01', 'A02', 'A03')
+        activating_case = result.get('CaseId') in ('A01', 'A02', 'A03', 'A04')
         if baseline.get('Build') != '19045.2965' or evidence.get('Build') != baseline.get('Build'):
             problems.append('Build 19045.2965 attestation missing.')
         if (len({boot.get(k) for k in ('Prepare', 'Active', 'Final')}) != 3
@@ -392,6 +392,8 @@ def validate_service_artifacts(result, destination, guest_root):
     for trial in result.get('Trials', []):
         for snapshot in [trial.get('ServiceBefore') or {}, trial.get('ServiceAfter') or {},
                          *trial.get('JournalSnapshots', []), {'Journal': (trial.get('HandBack') or {}).get('Files', [])},
+                         {'Journal': [(trial.get('DuplicateSetup') or {})['PhysicalObjectArtifact']]
+                          if (trial.get('DuplicateSetup') or {}).get('PhysicalObjectArtifact') else []},
                          {'Journal': [r['Terminal']['Record'] for r in (trial.get('DedicatedLatency') or {}).get('Rounds', [])
                                       if r.get('Terminal') and r['Terminal'].get('Record')]}]:
             records = list(snapshot.get('Journal', [])) + list((snapshot.get('Notifications') or {}).get('Artifacts', []))
@@ -448,6 +450,87 @@ ACTIVATION_REQUIRED_ASSERTIONS = {
     'OwnedStreamJournalForExactDestination', 'PostPromotionRawDestinationUnchanged', 'Disposal',
 }
 
+A04_REQUIRED_ASSERTIONS = ACTIVATION_REQUIRED_ASSERTIONS | frozenset((
+    'CrossProcessSameFileObject', 'ParentCloseKeepsSingleHAndActivating',
+    'ChildMutationExactRawU', 'ChildLastCloseExactlyOneCleanup',
+    'PromotionStableExactU', 'NoJournalAtChildMutationCheckpoints', 'NoHandBackAtChildMutationCheckpoints',
+    'A04PublicationAndTemporalCoverage', 'NeverReadyWholeHolderInterval',
+    'PostPromotionHeldOwnedWrite', 'HeldOwnedSaveNoApproval', 'ApprovedFinalRawImageA',
+))
+
+
+def activation_duplicate_provenance(result):
+    """Bind both actual OS processes and every native duplicate position receipt."""
+    try:
+        trial = result['Trials'][0]
+        primary, child, setup = trial['Actor'], trial['DuplicateActor'], trial['DuplicateSetup']
+        boot = result['BootIds']['Active']
+        for actor in (primary, child):
+            if (type(actor['Pid']) is not int or actor['Pid'] <= 0
+                    or type(actor['SessionId']) is not int or actor['SessionId'] < 0
+                    or actor['OwnerSid'] != actor['Sid'] or actor['Elevated'] is not False
+                    or actor['IsAdministrator'] is not False):
+                return False
+        if not primary['CommandLine'].endswith('\\writer.ps1"'):
+            return False
+        if (primary['Pid'] == child['Pid'] or primary['Sid'] != child['Sid']
+                or primary['SessionId'] != child['SessionId'] or primary['BootId'] != boot
+                or child['BootId'] != boot or child['OwnerSid'] != child['Sid']
+                or child['Elevated'] is not False or child['IsAdministrator'] is not False
+                or not re.fullmatch(r'S-1-5-21-[0-9]+-[0-9]+-[0-9]+-[0-9]+', child['Sid'])
+                or not child['CommandLine'].endswith('\\duplicate-writer.ps1"')
+                or setup['SameFileObject'] is not True):
+            return False
+        receipts = [(setup['Duplicate'], primary), (setup['Adopt'], child),
+                    (setup['ParentPosition'], primary), (setup['ChildQuery'], child),
+                    (setup['ChildPosition'], child), (setup['ParentQuery'], primary)]
+        previous = 0
+        frequency = setup['Duplicate']['QpcFrequency']
+        if type(frequency) is not int or frequency <= 0:
+            return False
+        for receipt, actor in receipts:
+            if (type(receipt['Pid']) is not int or receipt['Pid'] != actor['Pid'] or receipt['BootId'] != boot
+                    or type(receipt['QpcFrequency']) is not int or receipt['QpcFrequency'] != frequency
+                    or type(receipt['NativeCode']) is not int or receipt['NativeCode'] != 0
+                    or type(receipt['StartQpc']) is not int or type(receipt['EndQpc']) is not int
+                    or not previous <= receipt['StartQpc'] <= receipt['EndQpc']):
+                return False
+            previous = receipt['EndQpc']
+        physical = setup['PhysicalObjectProof']
+        artifact = setup['PhysicalObjectArtifact']
+        if (artifact['Entry'] != physical or type(artifact['Length']) is not int or artifact['Length'] <= 0
+                or not re.fullmatch(r'[A-F0-9]{64}', artifact['Sha256'])
+                or not artifact['Artifact'].endswith('activation-trusted-physical-object.json')):
+            return False
+        if (physical['Status'] != 'OK' or physical['CollectedBySid'] != 'S-1-5-18'
+                or type(physical['CollectedByPid']) is not int or physical['CollectedByPid'] <= 0
+                or physical['CollectedByPid'] in (primary['Pid'], child['Pid'])
+                or physical['Source'] != 'NtQuerySystemInformation/SystemExtendedHandleInformation'
+                or physical['BootId'] != boot or physical['QpcFrequency'] != frequency
+                or type(physical['StartQpc']) is not int or type(physical['EndQpc']) is not int
+                or not previous <= physical['StartQpc'] <= physical['EndQpc']
+                or physical['PrimaryPid'] != primary['Pid'] or physical['ChildPid'] != child['Pid']
+                or physical['SourceHandle'] != setup['Duplicate']['SourceHandle']
+                or physical['RemoteHandle'] != setup['Duplicate']['RemoteHandle']
+                or not re.fullmatch(r'0x[0-9A-Fa-f]{16}', physical['Object'])
+                or physical['Object'] == '0x0000000000000000'
+                or type(physical['ObjectTypeIndex']) is not int or physical['ObjectTypeIndex'] <= 0
+                or type(physical['InventoryCount']) is not int or physical['InventoryCount'] < 2):
+            return False
+        return (type(setup['Duplicate']['TargetPid']) is int
+                and type(setup['Duplicate']['SourceHandle']) is int
+                and type(setup['Duplicate']['RemoteHandle']) is int
+                and type(setup['Adopt']['RemoteHandle']) is int
+                and setup['Duplicate']['TargetPid'] == child['Pid']
+                and setup['Duplicate']['SourceHandle'] > 0
+                and setup['Duplicate']['RemoteHandle'] > 0
+                and setup['Duplicate']['RemoteHandle'] == setup['Adopt']['RemoteHandle']
+                and setup['ParentPosition']['Position'] == setup['ChildQuery']['Position'] == 317
+                and setup['ChildPosition']['Position'] == setup['ParentQuery']['Position'] == 619)
+    except (KeyError, TypeError, ValueError, IndexError):
+        return False
+
+
 def case_gate(result, case, mode, name, params):
     require(result.get('Schema') == 'StagedInvariantSuite/2' and result.get('CaseId') == case and result.get('Mode') == mode
             and result.get('RunName') == name, 'Case JSON schema/run identity mismatch')
@@ -458,8 +541,8 @@ def case_gate(result, case, mode, name, params):
     require(len(result.get('Trials', [])) == 1, 'Missing/ambiguous seed trial')
     boot = result.get('BootIds', {})
     require(all(isinstance(boot.get(k), str) and boot[k] for k in ('Prepare', 'Active', 'Final')) and len(set(boot.values())) == 3, 'Case boot identities incomplete')
-    if case in ('A01', 'A02', 'A03'):
-        required = ACTIVATION_REQUIRED_ASSERTIONS
+    if case in ('A01', 'A02', 'A03', 'A04'):
+        required = A04_REQUIRED_ASSERTIONS if case == 'A04' else ACTIVATION_REQUIRED_ASSERTIONS
         passed = (result.get('Verdict') == 'PASS' and result.get('CaseStatus') == 'READY'
                   and result.get('ForbiddenByteCount') == 0)
         for trial in result['Trials']:
@@ -469,6 +552,8 @@ def case_gate(result, case, mode, name, params):
                        and trial.get('Disposal', {}).get('Status') == 'OK' and not trial.get('Errors')
                        and required <= names and bool(assertions)
                        and all(item.get('Verdict') == 'PASS' for item in assertions))
+        if case == 'A04':
+            passed &= activation_duplicate_provenance(result)
         return bool(passed)
     passed = (result.get('Verdict') == 'PASS' and result.get('CaseStatus') == 'READY' and result.get('ForbiddenByteCount') == 0)
     for trial in result['Trials']:
@@ -789,9 +874,12 @@ def mvp_case_gate(result, latency_evidence=None):
         assertions = trial.get('Assertions', [])
         if not assertions:
             blockers.add('Assertions')
-        if result.get('CaseId') in ('A01', 'A02', 'A03'):
-            missing = ACTIVATION_REQUIRED_ASSERTIONS - {a.get('Name') for a in assertions}
+        if result.get('CaseId') in ('A01', 'A02', 'A03', 'A04'):
+            required = A04_REQUIRED_ASSERTIONS if result['CaseId'] == 'A04' else ACTIVATION_REQUIRED_ASSERTIONS
+            missing = required - {a.get('Name') for a in assertions}
             blockers.update('Missing:' + name for name in missing)
+            if result['CaseId'] == 'A04' and not activation_duplicate_provenance(result):
+                blockers.add('DuplicateActorProvenance')
         assertions = assertions + predicate.get('Assertions', [])
         classes = [c.get('Class') for c in trial.get('Latency', [])]
         latency_ok = (mvp_seed_latency_passed(result, trial)

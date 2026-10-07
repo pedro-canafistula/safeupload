@@ -1,0 +1,2 @@
+DuplicateControlParseErrors=0
+NativeDuplicateControl=PASS;ParentPid=1628;ChildPid=5232;TrustedPhysicalObject=PASS;SeparateOpensRejected=PASS;SameFileObjectTwoWayPosition=PASS;ParentCloseChildWrite=PASS;WholeImage=PASS;OwnedHeldWrite=PASS;Qualification=False

@@ -1317,3 +1317,78 @@ The safe W01 checkpoint parent was written by Sol and checked by root: Windows P
   real blocked overwrite with forbidden0 and clean restoration; only three
   hand-back requirements and dedicated latency remain. No unknown journal
   child in this rerun, so prior atomic-temp hypothesis still unproved.
+- A04 implementation design (stimulus validated, final review/runtime pending): same-SID distinct
+  standard-user processes, actual cross-process DuplicateHandle plus two-way
+  shared file position proves one FO. Parent close must keep H1/Activating and
+  no cleanup; opener PID remains opener only. Child U must match independent
+  full raw P+U and lower-write ranges, last close one cleanup for that FO before
+  Free/Protected. Both task/config/launcher/command routes get checked cleanup.
+  Reuse activation observer, separate per-actor State sequence/directory; persist
+  whole State, never nested actor in place of State. Post-promotion held benign
+  owned write then actual Approved/Released still being added before Ready.
+  Correct discovered Inspector trace PID field use: actual JSON is pid, not
+  processId; exact A01/A04 lower attribution must use emitted schema.
+  Microsoft DuplicateHandle remarks support same-object/shared-position control:
+  https://learn.microsoft.com/en-us/windows/win32/api/handleapi/nf-handleapi-duplicatehandle
+
+- A04 validation audit: AdmissionTraceWrite uses KeQuerySystemTime (FILETIME),
+  while actor release StartQpc/EndQpc are performance-counter ticks. Comparing
+  those numbers would always prevent the final-cleanup proof. Before runtime,
+  clear the authenticated loss-free trace immediately before child CloseHandle,
+  keep old write/physicalFO receipts separately, then bind the post-clear single
+  cleanup to exact child PID and the same nonzero physicalFO. No cross-clock
+  comparison and no wall-clock deadline. Add mismatch/duplicate/missing/zeroFO
+  controls. Require exact H=1,S=NO,C=T=W=0 for all A04 live holder checkpoints;
+  duplication shares one file object rather than increasing writable-open count.
+
+- A04 Luna review1 REJECT: profile only existed for C paths; initial actor
+  timeout5min was below the sum of A04 native/lifecycle bounds; raw extent
+  difference accepted incomplete samples; temporal deferrals could be omitted;
+  journal child-window filtering ignored other PIDs. Fix before runtime.
+  Actor native replies are diagnostic stimuli, not authenticated physicalFO
+  proof: split read-only trusted command directories from user-writable replies
+  and add SYSTEM NtQuerySystemInformation extended handle-table proof of both
+  actual PIDs/handles sharing one nonzero kernel object. Tie child lower-write
+  FO to that trusted object too. No new product or protection mechanism.
+  Window edge samples do not claim complete temporal absence; names explicitly
+  say AtCheckpoints and whole-window marker remains required INCONCLUSIVE.
+  Luna narrow review2 accepts corrected clock binding, rejects ambiguous primary
+  launcher suffix writer.ps1 that also matches duplicate-writer.ps1. Anchor path
+  separator and add negative primary-using-child-launcher control.
+
+- A04 trusted physicalFO helper uses x64 extended-handle layout16-byte header/
+  40-byte entries with bounded64MiB allocations; fail closed on native status,
+  missing/duplicate handles, zero/different objects or type indices. Windows10
+  harness only: internal API/layout can change, no product use. Microsoft
+  reference https://learn.microsoft.com/en-us/windows/win32/api/winternl/nf-winternl-ntquerysysteminformation
+  and primary header https://github.com/winsiderss/phnt/blob/master/ntexapi.h
+  SYSTEM receipt stored in private trusted JSON, copied length/SHA/parsed entry
+  bound by host validator; actor-reported native positions alone never prove FO.
+  Builder genuine duplicate physicalFO PASS, independent same-path opens rejected
+  (sol-a04-native-control3.txt), Qualification=False. Pinned WinFsp review likewise
+  documents duplicate handles sharing one file object in FileSystemBase.cs294.
+
+- A04 actor, duplicate and startup coordinator now all have45min bounds,
+  coordinator join2760s, covering aggregate Inspector/status/lifecycle worst
+  bounds plus restoration overhead. Correct commands vs replies routing is
+  tested with real temporary files, independent sequence persistence and
+  cross-actor/action rejection. Any PID journal transfer at exact destination
+  fails checkpoint absence; missing interval coverage is required and explicit.
+
+- A04 Luna review3 rejects one remaining journal-alias false-PASS: use
+  normalized DestinationPaths (current/pending/committed/tombstoned rename
+  destinations), not only Transfer.DestinationPath. Add all three non-current
+  alias controls with the real normalization helper and unrelated PID.
+  Other reviewed fixes present; final follow-up and runtime still required.
+
+- [x] A04 stimulus implemented and validated, table Ready revision2; runtime
+  qualification pending. Windows PS5.1 final parser0/proof266/native88 PASS
+  (sol-harness-windows-validation-aj.txt), Python adapter18/MVP7/latency10/
+  A04ten PASS. Genuine builder two-process native duplicate plus trusted
+  physicalFO and separate-open negative PASS, Qualification=False. All Luna
+  rejection findings corrected; final scoped alias follow-up ACCEPT
+  (sol-a04-review4.txt), prior reviews retained. Both actors/commands/physicalFO
+  and complete raw U/A/actual journal/cleanup have explicit required proofs;
+  temporal gaps remain required INCONCLUSIVE. No runtime qualification claim.
+
+- [x] Merged A04 with seed-tail/latency corrections and dedicated-only 240-minute bounds; both A04 45-minute bounds and all four seed-tail controls retained. Windows PS5.1 parser clean, proof 270 and native observer 88 PASS; Python adapter18/MVP7/dedicated10/seed6/A04-10 PASS. Evidence: `driver/evidence/2026-10-07/sol-harness-windows-validation-ak.txt`, `sol-merged-python-*.txt`, `sol-merged-a04-seed-latency-pins.json`. Actual A04 runtime qualification remains pending.

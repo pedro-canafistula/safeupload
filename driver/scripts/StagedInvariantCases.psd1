@@ -170,18 +170,24 @@
             Cleanup = @('CloseObserver', 'ReleaseActorHolder', 'StopTestServiceAndRestoreServiceConfig', 'StopOwnedTasks', 'RestoreDriver', 'RestorePolicyBytesAndAcls', 'RemoveOwnedBootPolicy', 'RestoreAgentConfig', 'ResetVerifier', 'RemoveFixtureAndState', 'RestorationReboot', 'IndependentBaseline')
         }
         @{
-            CaseId = 'A04'; Revision = 1; Status = 'NotReady'
-            Variant = 'UnexpandedFamily'; Outcome = 'Unimplemented: Duplicated handle'
-            QualificationScope = 'Phase4; WP5 must expand all design variants'
-            ActorSid = 'ResolveStandardUserTokenAtRuntime'; ActorSession = 'ResolveTokenSessionId'
-            InitialPolicy = @{ Seed = 'Product'; LiveFlags = 'TEST_DISABLE_TAINT-required' }
-            Scopes = @('Unimplemented'); Setup = @('WP5: design section 4.1 A04')
-            Actions = @('Unimplemented'); Barriers = @('Unimplemented')
-            ExpectedTimeline = @('Unimplemented'); StatusClasses = @('Unimplemented')
-            JournalExpectations = @('Unimplemented'); NotificationExpectations = @('Unimplemented')
-            AllowedDirectoryTransitions = @('Unimplemented'); LatencyClasses = @('Unimplemented')
-            Repetitions = @{ Coordinated = 1; Unheld = 100; DeterministicSeed = 4003 }
-            Cleanup = @('Unimplemented; common restoration still mandatory')
+            CaseId = 'A04'; Revision = 2; Status = 'Ready'
+            Variant = 'fixed-NTFS-real-cross-process-duplicated-physical-file-object-runtime-scope-add'
+            Outcome = 'ACTIVATING_THEN_STAGED_APPROVED; child P+U captured before Free/Protected, subsequent benign owned save Released'
+            QualificationScope = 'Phase4A04Functional; exact duplicate/cleanup/raw U/actual Approved evidence, complete lower permit and temporal coverage still required'
+            ActorSid = 'ResolveTwoSameSidStandardUserProcessesAtRuntime'; ActorSession = 'ResolveAndBindBothTokenSessionIds'
+            InitialPolicy = @{ Seed = 'Product'; InitialDestinationPaths = @(); RuntimeDestinationPath = 'FixtureScope'; RuntimeUpdate = 'Real MinifilterInterceptor startup plus BootPolicyRegistryWriter pending-union/SET_POLICY/finalize'; LiveFlags = 'TEST_DISABLE_TAINT-required' }
+            Scopes = @('FixtureScope')
+            Setup = @('BootAttachedTrustedFixedNtfs', 'PrimaryCreatesFlushesPhysicalPWhileUnscoped', 'DistinctStandardUserChild', 'NativeDuplicateHandleIntoChild', 'TwoWaySharedFilePositionProvesSameFO', 'IndependentRawPBeforeEpoch')
+            Actions = @('AddScopeThroughRealServicePolicyPathWhileBothReferencesLive', 'ExactActivatingH1AndOriginalOpenerPid', 'ParentCloseHasNoTargetCleanupAndKeepsH1', 'ChildNewWritableOpenAndSectionDenied', 'ChildTaggedOldObjectWriteFlushAndLowerCompletion', 'ExactRawPPlusUAndNoJournalOrHandBack', 'ChildLastCloseOneCleanupSameFO', 'RequireFreeProtectedAndStableExactU', 'PostPromotionBenignOwnedWriteFlushHeldPrivateImageA', 'RawUUnchangedBeforeApproval', 'OwnedLastCloseThenActualApprovedReleasedAndFinalWholeA')
+            Barriers = @('BootIdentityChanged', 'StandardUserBothPidSidSessionBootBound', 'DuplicateSameFOTwoWayPosition', 'RawPBeforeEpochSwap', 'PendingUnionAndAdmissionEpochAdvanced', 'ExactH1AndActivatingPending', 'ParentCloseNoCleanup', 'ChildMutationComplete', 'ExactRawU', 'LastChildCleanup', 'Free-H-S-C-T-W-Zero', 'PromotionStableU', 'ServiceReady', 'OwnedHeldBeforeApproval', 'OwnedFinalClose', 'ActualReleasedWholeA', 'FinalQuiescence')
+            ExpectedTimeline = @('UnscopedP', 'SamePhysicalFOTwoProcesses', 'RuntimeScopeAdded', 'ActivatingH1WithOriginalOpenerPid', 'ParentClose:H1NoCleanup', 'ChildNewWriteAndSection:Denied', 'ChildOldWriteU:AllowedPreProtection', 'NoJournalReleaseOrHandBack', 'ChildLastClose:ExactlyOneCleanup', 'WDrainThenFree', 'ProtectedSameFileIdWithStableU', 'ServiceReady', 'HeldOwnedSaveA:AllocatedAndPrivate', 'BeforeApproval:RawUUnchanged', 'CloseThenSealedInspectingApprovedPublishingReleased', 'FinalRawA')
+            StatusClasses = @('DuplicateHandle=Win32:0', 'AdoptRemoteHandle=Win32:0', 'SharedPosition=317Then619BothWays', 'ParentClose=Win32:0;TargetCleanup:0;H:1;State:Activating', 'NewWriteOpen=Win32:5', 'NewWritableSection=Win32:5+SectionAcquireAndFailedRetireDelta:1', 'ChildWriteAndFlush=Win32:0', 'ChildRawImage=ExactPPlusU', 'ChildLastClose=Win32:0;TargetCleanup:1;SameFO', 'Promotion=Protected;Free:True;H:0;S:NO;C:0;T:0;W:0', 'PostPromotionHeldSave=Win32:0;PrivateWholeA;Allocated', 'PreApprovalRawDelta=0', 'Journal=AllocatedSealedInspectingApprovedPublishingReleased;ExactA', 'FinalRawWholeA')
+            JournalExpectations = @('NoNewExactTransferWhileOldDuplicateLives', 'OnePostPromotionOwnedTransferForPrimaryAndExactTarget', 'ActualApprovedReleasedWholeA')
+            NotificationExpectations = @('CurrentPipeStatusPending', 'NoObservedReadyWhileChildLives', 'CurrentPipeStatusReadyAfterPromotion')
+            AllowedDirectoryTransitions = @('SameDestinationFileIdAndNameThroughOldChildMutationAndPromotion', 'ApprovedOwnedPublicationOnly')
+            LatencyClasses = @()
+            Repetitions = @{ Coordinated = 1; Unheld = 0; DeterministicSeed = 4014 }
+            Cleanup = @('ReleaseBothActorsAndProveTaskCompletion', 'CloseObserverAndNotificationCapture', 'StopRestoreTestService', 'StopBothOwnedTasks', 'RestoreDriverPolicyAclsBootPolicyAuditProductState', 'ResetVerifier', 'RemoveActorAccountProfileFixturesAndBothRoutes', 'RestorationReboot', 'IndependentBaseline')
         }
         @{
             CaseId = 'A05'; Revision = 1; Status = 'NotReady'

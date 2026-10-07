@@ -18,10 +18,38 @@ function Import-EvaluationFunctions([string]$File,[string[]]$Names) {
     }
 }
 Import-EvaluationFunctions (Join-Path $PSScriptRoot 'StagedInvariantObserver.psm1') @('New-IORecord','New-IOAssertion','Test-InvariantCadence','Test-InvariantMetadata','Test-InvariantExternalCoverage')
-Import-EvaluationFunctions (Join-Path $PSScriptRoot 'Test-StagedInvariantSuite.ps1') @('Get-ActivationPendingEntry','ConvertFrom-NtfsLastAccessOutput','Wait-WriterIdentity','Load-State','Get-ActivatingWriterBody','Get-ExpectedCheckpoint','Test-ServiceJournalStateReachable','Assert-ServiceManifestPath','ConvertFrom-ServiceJournalRecord','Test-ServiceJournalDelta','Get-ServiceDestinationPaths','Test-ServiceFixtureEntry','Get-NotificationTailCoverage','ConvertFrom-NotificationRecord','Test-NotificationWindow','ConvertFrom-AgentEventXml','Test-AgentLogContinuity','Read-AgentLogWindow','Test-NotificationLocationUnchanged','Test-AgentDidNotRun','Get-ServiceTimeline','Test-CachedJournalSequence','Test-CachedNotifications','Test-CachedHandBackAcl','Test-CachedSample','Test-CachedImage','Test-CachedActorCalls','Add-CachedHeldJournal','Test-CachedNamespaceCommit','Get-WriterBody','Get-ActivationActorIdentity')
+Import-EvaluationFunctions (Join-Path $PSScriptRoot 'Test-StagedInvariantSuite.ps1') @('Test-ActivationChildWindow','Add-ActivationAssertion','Test-ActivationDuplicateCleanup','Test-ActivationRawWholeImage','Get-ActivationSha256','Get-ActivationPendingEntry','ConvertFrom-NtfsLastAccessOutput','Wait-WriterIdentity','Load-State','Get-ActivatingWriterBody','Get-ExpectedCheckpoint','Test-ServiceJournalStateReachable','Assert-ServiceManifestPath','ConvertFrom-ServiceJournalRecord','Test-ServiceJournalDelta','Get-ServiceDestinationPaths','Test-ServiceFixtureEntry','Get-NotificationTailCoverage','ConvertFrom-NotificationRecord','Test-NotificationWindow','ConvertFrom-AgentEventXml','Test-AgentLogContinuity','Read-AgentLogWindow','Test-NotificationLocationUnchanged','Test-AgentDidNotRun','Get-ServiceTimeline','Test-CachedJournalSequence','Test-CachedNotifications','Test-CachedHandBackAcl','Test-CachedSample','Test-CachedImage','Test-CachedActorCalls','Add-CachedHeldJournal','Test-CachedNamespaceCommit','Get-WriterBody','Get-ActivationActorIdentity','Publish-ActivationActorCommand')
 $script:checks=0
 function Check([bool]$Condition,[string]$Message){if(-not $Condition){throw $Message};$script:checks++}
 function Clone($Value){return ($Value | ConvertTo-Json -Depth 32 | ConvertFrom-Json)}
+# Kernel FILETIME and actor QPC are separate clocks; post-clear physicalFO/PID
+# binding qualifies independently of their unrelated numerical values.
+$childFixture=@{Pid=123;BootId='fixture'};$releaseFixture=@{Pid=123;BootId='fixture';NativeCode=0;HolderReleased=$true;StartQpc=100;EndQpc=200}
+$cleanupFixture=@{Entries=@(@{event='file_cleanup';pid=123;targetFileObject='0x0000000000000123';timestamp=134000000000000000})}
+$writeFixture=@{CompletedWritePairs=@(@{Begin=@{targetFileObject='0x0000000000000123'}})}
+Check ((Test-ActivationDuplicateCleanup $cleanupFixture $writeFixture $childFixture $releaseFixture).Verdict -ceq 'PASS') 'Exact post-clear child physicalFO cleanup accepts independent FILETIME/QPC domains.'
+foreach($bad in @(@{Entries=@()},@{Entries=@($cleanupFixture.Entries[0],$cleanupFixture.Entries[0])},@{Entries=@(@{event='file_cleanup';pid=124;targetFileObject='0x0000000000000123'})},@{Entries=@(@{event='file_cleanup';pid=123;targetFileObject='0x0000000000000124'})})){
+ Check ((Test-ActivationDuplicateCleanup $bad $writeFixture $childFixture $releaseFixture).Verdict -ceq 'INCONCLUSIVE') 'Missing/duplicate/wrong PID/physicalFO cleanup cannot qualify.'
+}
+$badWrites=@{CompletedWritePairs=@(@{Begin=@{targetFileObject='0x0000000000000000'}})}
+Check ((Test-ActivationDuplicateCleanup $cleanupFixture $badWrites $childFixture $releaseFixture).Verdict -ceq 'INCONCLUSIVE') 'Zero physicalFO cannot qualify.'
+$badRelease=Clone $releaseFixture;$badRelease.NativeCode=5
+Check ((Test-ActivationDuplicateCleanup $cleanupFixture $writeFixture $childFixture $badRelease).Verdict -ceq 'INCONCLUSIVE') 'Failed native close cannot qualify.'
+
+# Full raw P+U checks use the final successful image, not failed retry frames.
+$rawFixturePath=Join-Path ([IO.Path]::GetTempPath()) ('a04-raw-'+[guid]::NewGuid().ToString('N'))
+$rawBytes=[Text.Encoding]::ASCII.GetBytes('known P plus U')
+try{
+ [IO.File]::WriteAllBytes($rawFixturePath,$rawBytes)
+ $rawFixture=@{Status='OK';Images=@(@{Role='Current';Path='target';Absent=$false;LogicalArtifact=@{Path=$rawFixturePath;Length=$rawBytes.Length;Sha256=(Get-ActivationSha256 $rawBytes)}})}
+ Check ((Test-ActivationRawWholeImage $rawFixture 'target' $rawBytes).Verdict -ceq 'PASS') 'Exact independently constructed whole raw U passes.'
+ $wrong=[byte[]]$rawBytes.Clone();$wrong[0]=[byte]($wrong[0]+1)
+ Check ((Test-ActivationRawWholeImage $rawFixture 'target' $wrong).Verdict -ceq 'FAIL') 'Whole raw U mismatch fails.'
+ $rawFixture.Images[0].LogicalArtifact.Sha256='wrong'
+ Check ((Test-ActivationRawWholeImage $rawFixture 'target' $rawBytes).Verdict -ceq 'INCONCLUSIVE') 'Corrupt retained raw U artifact cannot qualify.'
+ $rawFixture.Status='ERROR'
+ Check ((Test-ActivationRawWholeImage $rawFixture 'target' $rawBytes).Verdict -ceq 'INCONCLUSIVE') 'Failed raw sample cannot qualify U.'
+}finally{if(Test-Path $rawFixturePath){Remove-Item -LiteralPath $rawFixturePath -Force}}
 # Valid historical/fence-short records are missing coverage, not read errors.
 $tailFixture=@{BootId='old';QpcFrequency=1000;Qpc=10}
 $tailProof=Get-NotificationTailCoverage $tailFixture 'active' 1000 20
@@ -746,5 +774,55 @@ Check $rejected 'Unrelated process command line must still be rejected.'
 $script:activationProcess.CommandLine=('powershell.exe -File "'+(Join-Path $stateDirectory 'writer.ps1')+'"');$script:activationProcess.SessionId=1;$rejected=$false
 try{$null=Get-ActivationActorIdentity}catch{$rejected=$_.Exception.Message -like '*OS process provenance mismatch*'}
 Check $rejected 'Activation actor session mismatch must still be rejected.'
+# Exact-destination journal contradictions from any PID must fail, even when
+# that process is neither of the two intended native actors.
+function Test-ServiceJournalDelta {return $script:childDeltaFixture}
+$script:childDeltaFixture=@{Complete=$true;Findings=@();NewEntries=@(@{Entry=@{Transfer=@{DestinationPath='target';ProcessId=999}};DestinationPaths=@('target')})}
+$beforeFixture=@{Status='OK';BootId='fixture';EndQpc=1};$afterFixture=@{Status='OK';BootId='fixture';StartQpc=4};$mutationFixture=@{StartQpc=2;EndQpc=3}
+$handBefore=@{Sid='user';Root='root';BootId='fixture';Qpc=1;Files=@()};$handAfter=@{Sid='user';Root='root';BootId='fixture';Qpc=4;Files=@()};$childFixture=@{Pid=124;Sid='user';BootId='fixture'}
+$trialFixture=@{Assertions=@()};Test-ActivationChildWindow $trialFixture $beforeFixture $afterFixture $mutationFixture $handBefore $handAfter 'target' @{Pid=123} $childFixture
+Check (@($trialFixture.Assertions|Where-Object {$_.Name -ceq 'NoJournalAtChildMutationCheckpoints' -and $_.Verdict -ceq 'FAIL'}).Count -eq 1) 'Other PID exact-destination transfer is contradictory evidence.'
+# Pending/committed/tombstoned rename aliases cannot erase a target hit.
+foreach($kind in @('PendingRename','LastRenameDestination','NamespaceTombstones')){
+ $manifestFixture=[Text.Encoding]::UTF8.GetString((Make-JournalRecord).Bytes)|ConvertFrom-Json
+ $manifestFixture.Transfer.DestinationPath='C:\elsewhere\source.txt';$manifestFixture.Transfer.ProcessId=999;$normalizedTarget='C:\fixture\renamed.txt'
+ if($kind -ceq 'PendingRename'){$manifestFixture.PendingRename=@{TransactionId=123;SealedVersion=$true;DestinationPath=$normalizedTarget}}
+ elseif($kind -ceq 'LastRenameDestination'){$manifestFixture.LastRenameTransactionId=123;$manifestFixture.LastRenameDestination=$normalizedTarget;$manifestFixture.LastRenameCommitted=$true}
+ else{$manifestFixture.NamespaceTombstones=@{Generation=1;DestinationPath=$normalizedTarget;Previous=$null}}
+ $normalizedFixture=@{Entry=$manifestFixture;DestinationPaths=@(Get-ServiceDestinationPaths $manifestFixture)}
+ $script:childDeltaFixture=@{Complete=$true;Findings=@();NewEntries=@($normalizedFixture)};$trialFixture=@{Assertions=@()}
+ Test-ActivationChildWindow $trialFixture $beforeFixture $afterFixture $mutationFixture $handBefore $handAfter $normalizedTarget @{Pid=123} $childFixture
+ Check (@($trialFixture.Assertions|Where-Object {$_.Name -ceq 'NoJournalAtChildMutationCheckpoints' -and $_.Verdict -ceq 'FAIL'}).Count -eq 1) ('Normalized '+$kind+' target alias must fail journal checkpoint absence.')
+}
+$script:childDeltaFixture=@{Complete=$false;Findings=@();NewEntries=@()};$trialFixture=@{Assertions=@()};Test-ActivationChildWindow $trialFixture $beforeFixture $afterFixture $mutationFixture $handBefore $handAfter 'target' @{Pid=123} $childFixture
+Check (@($trialFixture.Assertions|Where-Object {$_.Name -ceq 'NoJournalAtChildMutationCheckpoints' -and $_.Verdict -ceq 'INCONCLUSIVE'}).Count -eq 1) 'Incomplete journal cannot establish even checkpoint absence.'
+
+# Commands and replies use distinct routes; both sequence counters persist in
+# the shared state, and one actor cannot substitute the other actor's receipt.
+$routeDirectory=Join-Path ([IO.Path]::GetTempPath()) ('a04-route-'+[guid]::NewGuid().ToString('N'))
+$null=New-Item -ItemType Directory -Path $routeDirectory
+function Save-State($Value,[string]$Path){$Value|Export-Clixml -LiteralPath $Path}
+try{
+ $statePath=Join-Path $routeDirectory 'state.clixml';$state=@{ActivationActors=@{}}
+ foreach($key in @('Primary','Duplicate')){
+  $replies=Join-Path $routeDirectory ($key+'-replies');$commands=Join-Path $routeDirectory ($key+'-commands');$null=New-Item -ItemType Directory -Path $replies,$commands
+  $state.ActivationActors[$key]=@{Directory=$replies;CommandDirectory=$commands;NextSequence=1;ExpectedPid=$(if($key -ceq 'Primary'){123}else{124})}
+  Save-State @{Sequence=1;Action='position-holder';BootId='fixture-active';Pid=$state.ActivationActors[$key].ExpectedPid;NativeCode=0} (Join-Path $replies 'reply-0001.clixml')
+ }
+ $primaryReply=Publish-ActivationActorCommand $state 'position-holder' @{Offset=317}
+ Check ($primaryReply.Pid -eq 123 -and $state.ActivationActors.Primary.NextSequence -eq 2 -and $state.ActivationActors.Duplicate.NextSequence -eq 1) 'Primary reply route and independent sequence update.'
+ $childReply=Publish-ActivationActorCommand $state 'position-holder' @{Offset=619} 'Duplicate'
+ Check ($childReply.Pid -eq 124 -and $state.ActivationActors.Primary.NextSequence -eq 2 -and $state.ActivationActors.Duplicate.NextSequence -eq 2) 'Child reply route and independent sequence update.'
+ $persisted=Load-State $statePath
+ Check ($persisted.ActivationActors.Primary.NextSequence -eq 2 -and $persisted.ActivationActors.Duplicate.NextSequence -eq 2) 'Shared state preserves both actor counters.'
+ Check ((Test-Path (Join-Path $state.ActivationActors.Primary.CommandDirectory 'command-0001.clixml')) -and (Test-Path (Join-Path $state.ActivationActors.Duplicate.CommandDirectory 'command-0001.clixml')) -and -not(Test-Path (Join-Path $state.ActivationActors.Primary.Directory 'command-0001.clixml'))) 'Commands use only trusted read-only command routes.'
+ Save-State @{Sequence=2;Action='position-holder';BootId='fixture-active';Pid=123;NativeCode=0} (Join-Path $state.ActivationActors.Duplicate.Directory 'reply-0002.clixml');$rejected=$false
+ try{$null=Publish-ActivationActorCommand $state 'position-holder' @{Offset=0} 'Duplicate'}catch{$rejected=$_.Exception.Message -like '*PID mismatch*'}
+ Check $rejected 'Other actor PID cannot substitute child reply.'
+ Save-State @{Sequence=3;Action='wrong-action';BootId='fixture-active';Pid=124;NativeCode=0} (Join-Path $state.ActivationActors.Duplicate.Directory 'reply-0003.clixml');$rejected=$false
+ try{$null=Publish-ActivationActorCommand $state 'position-holder' @{Offset=0} 'Duplicate'}catch{$rejected=$_.Exception.Message -like '*mismatch*'}
+ Check $rejected 'Wrong command action cannot substitute child reply.'
+}finally{Remove-Item -LiteralPath $routeDirectory -Recurse -Force}
+
 'ProofAdapterEvaluationChecks='+$script:checks+';PASS (host-safe synthetic evaluation, collector mocks and identity publication only)'
 }catch{'ScriptError='+$_.Exception.ToString();throw}
