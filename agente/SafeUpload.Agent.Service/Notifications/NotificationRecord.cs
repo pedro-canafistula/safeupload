@@ -126,6 +126,10 @@ public sealed class NotificationRecord : INotificationRecord, IDisposable
                     throw new InvalidDataException("Invalid staged hand-back notification evidence.");
                 if (notification is EventNotification audit && audit.Event.EventId == Guid.Empty)
                     throw new InvalidDataException("Invalid audit notification identity.");
+                string? contentDigest = (notification as TransferNotification) is { } outcome
+                    ? outcome.PublishedSha256Hex ?? outcome.SnapshotSha256Hex : null;
+                string? handBackPath = notification is TransferNotification { HandbackVerified: true } returned
+                    ? returned.HandbackPath : null;
                 var (kind, transferId, eventId, phase) = notification switch
                 {
                     TransferNotification t => ("Transfer", (Guid?)t.TransferId, (Guid?)null, t.Phase.ToString()),
@@ -133,7 +137,7 @@ public sealed class NotificationRecord : INotificationRecord, IDisposable
                     StatusNotification => ("Status", (Guid?)null, (Guid?)null, (string?)null),
                     _ => throw new InvalidDataException("Unknown notification kind.")
                 };
-                Write(kind, transferId, eventId, phase, targetSessionId);
+                Write(kind, transferId, eventId, phase, targetSessionId, contentDigest, handBackPath);
             }
             catch { _failed = true; throw; }
         }
@@ -167,7 +171,8 @@ public sealed class NotificationRecord : INotificationRecord, IDisposable
         if (_failed || _disposed) throw new IOException("Notification record is closed after a failure or shutdown.");
     }
 
-    private void Write(string kind, Guid? transfer, Guid? eventId, string? phase, uint? session)
+    private void Write(string kind, Guid? transfer, Guid? eventId, string? phase, uint? session,
+        string? digest = null, string? handBackPath = null)
     {
         RequireDirectory();
         if (File.Exists(Active))
@@ -189,16 +194,18 @@ public sealed class NotificationRecord : INotificationRecord, IDisposable
                 _dropped = dropped;
             }
         }
-        WriteLine(kind, transfer, eventId, phase, session, _dropped);
+        WriteLine(kind, transfer, eventId, phase, session, _dropped, digest, handBackPath);
     }
 
-    private void WriteLine(string kind, Guid? transfer, Guid? eventId, string? phase, uint? session, long dropped)
+    private void WriteLine(string kind, Guid? transfer, Guid? eventId, string? phase, uint? session, long dropped,
+        string? digest = null, string? handBackPath = null)
     {
         if (!File.Exists(Active)) { using var created = Create(Active); }
         using var file = Open(Active, writable: true);
         var entry = new NotificationRecordEntry(1, checked(_sequence + 1), _boot, _instance,
             DateTimeOffset.UtcNow, Stopwatch.GetTimestamp(), Stopwatch.Frequency,
-            kind, transfer, eventId, phase, session, _hash, dropped);
+            kind, transfer, eventId, phase, session, _hash, dropped)
+        { Sha256Hex = digest, HandBackPath = handBackPath };
         byte[] bytes = JsonSerializer.SerializeToUtf8Bytes(entry);
         if (bytes.Length + 1 > MaximumLineBytes || file.Length + bytes.Length + 1 > _limit)
             throw new InvalidDataException("Notification record size bound exceeded.");
@@ -384,7 +391,13 @@ public sealed class NotificationRecord : INotificationRecord, IDisposable
 
 public sealed record NotificationRecordEntry(int Version, long Sequence, string BootId, string InstanceId,
     DateTimeOffset Utc, long Qpc, long QpcFrequency, string Kind, Guid? TransferId, Guid? EventId,
-    string? Phase, uint? TargetSessionId, string PreviousSha256, long DroppedThroughSequence);
+    string? Phase, uint? TargetSessionId, string PreviousSha256, long DroppedThroughSequence)
+{
+    // Transfer outcomes carry the content digest (published or blocked snapshot) and, for a
+    // verified hand-back, its path, so the durable record alone proves what was released.
+    public string? Sha256Hex { get; init; }
+    public string? HandBackPath { get; init; }
+}
 public sealed record NotificationRecordHead(int Version, long Sequence, string Sha256);
 
 internal sealed class UnavailableNotificationRecord(Exception error) : INotificationRecord

@@ -121,6 +121,14 @@ public sealed class NotificationHub
     /// conectados — que é o caminho percorrido hoje, porque a origem de uma
     /// operação detectada por <c>FileSystemWatcher</c> não é determinável.
     /// </param>
+    // Durable audit only: used when the owner's session cannot be bound to its SID (for
+    // example session 0, where no interactive user or agent UI exists). Nothing is delivered.
+    public void RecordOnly(AgentNotification notification, uint targetSessionId)
+    {
+        ArgumentNullException.ThrowIfNull(notification);
+        lock (_gate) { _ = TryRecord(notification, targetSessionId); }
+    }
+
     public void Publish(AgentNotification notification, uint? targetSessionId = null,
         string? targetUserSid = null)
     {

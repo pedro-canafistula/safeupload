@@ -608,6 +608,8 @@ public sealed class StagedTransferPublisher
     {
         if (TryGetBoundSession(transfer, out uint sessionId, out string sid))
             _notifications.Publish(notification, sessionId, sid);
+        else if (transfer.SessionId is { } ownerSession)
+            _notifications.RecordOnly(notification, ownerSession);
     }
 
     private async Task<TransferJournalEntry> RecordOwnerIdentityFailureAsync(
