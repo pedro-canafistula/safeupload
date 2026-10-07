@@ -1,0 +1,7 @@
+# The only debuggee VMs harness scripts may target: libvirt domain, guest address.
+# Select one with SAFEUPLOAD_DEBUGGEE=<domain> (default win10-debug). All are clones of
+# the same clean 19045.2965 disk with the same memory size; see driver/MVP-PLAN.md.
+win10-debug 192.168.122.51
+win10-debug2 192.168.122.52
+win10-debug3 192.168.122.53
+win10-debug4 192.168.122.54

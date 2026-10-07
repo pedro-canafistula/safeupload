@@ -4,8 +4,11 @@ import base64
 import subprocess
 import sys
 
-if len(sys.argv) != 2 or sys.argv[1] not in {"192.168.122.51", "192.168.122.210"}:
-    raise SystemExit("Expected the recorded SafeUpload debuggee or builder address")
+import pathlib
+DEBUGGEES = {line.split()[1] for line in (pathlib.Path(__file__).resolve().parent / "debuggees.txt").read_text().splitlines()
+             if line.strip() and not line.startswith("#")}
+if len(sys.argv) != 2 or sys.argv[1] not in DEBUGGEES | {"192.168.122.210"}:
+    raise SystemExit("Expected a recorded SafeUpload debuggee (debuggees.txt) or the builder address")
 # A PowerShell source file may carry a UTF-8 BOM. Remove its leading marker
 # before prepending our progress preference, so it cannot become an interior token.
 script = sys.stdin.read().removeprefix("\ufeff")

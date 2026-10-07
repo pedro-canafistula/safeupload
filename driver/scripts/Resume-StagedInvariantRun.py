@@ -18,10 +18,10 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPTS = ROOT / 'driver/scripts'
-HOST = '192.168.122.51'
 spec = importlib.util.spec_from_file_location('runner', SCRIPTS / 'Invoke-StagedInvariantQualification.py')
 Q = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(Q)
+HOST = None  # the run's recorded debuggee address, set from its provenance
 
 
 def clean(text):  # same filter as the wrapper's clean()
@@ -45,6 +45,8 @@ def main():
     ev = hits[0].parent
     provenance = json.loads(hits[0].read_text())
     params = provenance['Parameters']
+    global HOST
+    HOST = provenance.get('Debuggee', {}).get('Address', '192.168.122.51')  # runs before debuggees.txt all used .51
     case, mode = params['CaseId'], params['Mode']
     for leaf in ('after-boot', 'reboot-restore-before', 'reboot-restore-requested'):
         Q.require((ev / (name + '-' + leaf + '.txt')).exists(), 'Run did not reach the restoration reboot: ' + leaf)

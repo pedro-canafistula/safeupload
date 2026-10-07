@@ -175,17 +175,28 @@ def build_inputs(args, commit, agent_commit, head):
                   'AgentSummarySha256': sha(agent_work / 'summary.txt'), 'WriterFixtureSha256': sha(work / 'writer-fixture.exe')}
     pins = {}
     for leaf in ('StagedInvariantCases.psd1', 'StagedInvariantObserver.psm1', 'Test-StagedInvariantSuite.ps1',
-                 'Invoke-StagedInvariantQualification.py', 'StagedInvariantProofAdapters.SelfCheck.ps1', 'test_staged_invariant_proof_adapters.py', 'test_staged_a04_gate.py', 'StagedInvariantActivationDuplicate.SelfCheck.ps1', 'StagedTestAgent.ps1', 'Invoke-DebuggeeExperiment.sh', 'Get-StagedBaseline.ps1', 'remote_ps.py'):
+                 'Invoke-StagedInvariantQualification.py', 'StagedInvariantProofAdapters.SelfCheck.ps1', 'test_staged_invariant_proof_adapters.py', 'test_staged_a04_gate.py', 'StagedInvariantActivationDuplicate.SelfCheck.ps1', 'StagedTestAgent.ps1', 'Invoke-DebuggeeExperiment.sh', 'Get-StagedBaseline.ps1', 'remote_ps.py', 'debuggees.txt'):
         path = SCRIPTS / leaf
         # Baseline now records the case-owned audit setting; like the suite and
         # wrapper, freeze its authorized working-tree bytes in provenance.
-        if leaf in ('StagedInvariantObserver.psm1', 'StagedTestAgent.ps1', 'remote_ps.py'):
+        if leaf in ('StagedInvariantObserver.psm1', 'StagedTestAgent.ps1', 'remote_ps.py', 'debuggees.txt'):
             require(git('show', head + ':driver/scripts/' + leaf) == path.read_bytes(), 'Dirty shared executable: ' + leaf)
         pins['driver/scripts/' + leaf] = sha(path)
     provenance['BuildEvidenceDirectories'] = [str(work), str(agent_work)]
+    provenance['Debuggee'] = dict(zip(('Domain', 'Address'), debuggee()))
     provenance['Pins'] = pins
     provenance['ArtifactPins'] = {str(path): sha(path) for path in (feature, inspector, package, work / 'writer-fixture.exe')}
     return files, package, tree_hash, provenance
+
+
+def debuggee():
+    """The selected debuggee (SAFEUPLOAD_DEBUGGEE, default win10-debug) from the recorded list."""
+    name = os.environ.get('SAFEUPLOAD_DEBUGGEE', 'win10-debug')
+    for line in (SCRIPTS / 'debuggees.txt').read_text().splitlines():
+        fields = line.split()
+        if len(fields) == 2 and not line.startswith('#') and fields[0] == name:
+            return fields[0], fields[1]
+    raise RuntimeError('Unknown debuggee: ' + name)
 
 
 def ps_literal(value):
@@ -1051,14 +1062,14 @@ def run_case(args, case, mode, ev, files, package, tree_hash, provenance):
         scp = ['scp', '-F', '/dev/null', '-i', '/home/victor/.ssh/id_ed25519', '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=10',
                '-o', 'StrictHostKeyChecking=accept-new']
         with (ev / (name + '-artifact-transfer.txt')).open('x') as log:
-            copied = subprocess.call(scp + ['-r', 'vika@192.168.122.51:C:/Users/vika/Documents/' + name + '-artifacts', str(destination)], stdout=log, stderr=log)
+            copied = subprocess.call(scp + ['-r', 'vika@' + provenance['Debuggee']['Address'] + ':C:/Users/vika/Documents/' + name + '-artifacts', str(destination)], stdout=log, stderr=log)
             transport_complete = copied == 0
             if copied == 0:
                 transport = destination / 'transport'
                 transport.mkdir()
                 for phase in ('prepare', 'afterboot', 'finalize'):
                     for suffix in ('.out', '.err'):
-                        transport_complete &= subprocess.call(scp + ['vika@192.168.122.51:C:/Users/vika/Documents/' + name + '-' + phase + suffix,
+                        transport_complete &= subprocess.call(scp + ['vika@' + provenance['Debuggee']['Address'] + ':C:/Users/vika/Documents/' + name + '-' + phase + suffix,
                                                str(transport / (phase + suffix))], stdout=log, stderr=log) == 0
         require(status == 0, 'Wrapper failed; stop serial runs; retain checkpoint/recovery-required evidence: ' + name)
         phase_gate(ev, name)

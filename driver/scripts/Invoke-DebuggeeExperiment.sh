@@ -22,7 +22,9 @@
 set -uo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/../.."
 name="${1:?experiment name}"; harness="${2:?harness script}"; invocation="${3:?PowerShell invocation line}"
-day="$(date +%F)"; stamp="$(date +%Y%m%d)"; ev="driver/evidence/$day"; host=192.168.122.51
+day="$(date +%F)"; stamp="$(date +%Y%m%d)"; ev="driver/evidence/$day"
+dom="${SAFEUPLOAD_DEBUGGEE:-win10-debug}"; host=$(awk -v d="$dom" '$1==d{print $2}' driver/scripts/debuggees.txt)
+[ -n "$host" ] || { echo "Unknown debuggee $dom (driver/scripts/debuggees.txt)"; exit 2; }
 mkdir -p "$ev"
 scp_opts=(-F /dev/null -i /home/victor/.ssh/id_ed25519 -o BatchMode=yes -o ConnectTimeout=10 -o LogLevel=ERROR -o StrictHostKeyChecking=accept-new)
 guest_docs='C:/Users/vika/Documents'
@@ -51,22 +53,22 @@ grep -qx 'VolumeCacheWritten=True' "$ev/$name-flush.txt" || {
 
 echo "== 2. checkpoint"
 # Each run stacks one external overlay; libvirt refuses chains deeper than 200. Stop early with a clear reason.
-depth=$(virsh -c qemu:///system dumpxml win10-debug | grep -c '<backingStore type')
+depth=$(virsh -c qemu:///system dumpxml "$dom" | grep -c '<backingStore type')
 echo "BackingChainDepth=$depth"
 [ "$depth" -lt 190 ] || { echo "BACKING CHAIN TOO DEEP ($depth layers); flatten it (virsh blockpull) before more runs"; exit 13; }
-snap="safeupload-pre-$name-$stamp"; overlay="/var/lib/libvirt/images/win10-debug.$snap"
+snap="safeupload-pre-$name-$stamp"; overlay="/var/lib/libvirt/images/$dom.$snap"
 [ -e "$overlay" ] && { echo "overlay already exists: $overlay"; exit 11; }
 {
   echo "UTC=$(date -u +%FT%TZ)"
-  echo "virsh -c qemu:///system snapshot-create-as --domain win10-debug --name $snap --description 'Clean original driver and policy before $name' --disk-only --no-metadata --diskspec vda,snapshot=external,file=$overlay --atomic"
-  virsh -c qemu:///system snapshot-create-as --domain win10-debug --name "$snap" \
+  echo "virsh -c qemu:///system snapshot-create-as --domain $dom --name $snap --description 'Clean original driver and policy before $name' --disk-only --no-metadata --diskspec vda,snapshot=external,file=$overlay --atomic"
+  virsh -c qemu:///system snapshot-create-as --domain $dom --name "$snap" \
       --description "Clean original driver and policy before $name" --disk-only --no-metadata \
       --diskspec "vda,snapshot=external,file=$overlay" --atomic 2>&1
   echo "--- active disk after checkpoint"
-  virsh -c qemu:///system domblklist win10-debug 2>&1
-  virsh -c qemu:///system domstate win10-debug 2>&1
+  virsh -c qemu:///system domblklist "$dom" 2>&1
+  virsh -c qemu:///system domstate "$dom" 2>&1
 } | tee "$ev/$name-checkpoint.txt"
-grep -q "$overlay" <(virsh -c qemu:///system domblklist win10-debug) || {
+grep -q "$overlay" <(virsh -c qemu:///system domblklist "$dom") || {
     echo "CHECKPOINT NOT ACTIVE; aborting"
     exit 12
 }
@@ -93,15 +95,15 @@ write_offline_rollback_step() {
         echo 'These commands are recorded for an operator. The wrapper will not repoint VM disks.'
         echo 'Run only after inspecting the guest and deciding to roll it back to the checkpoint parent.'
         echo '1. Stop the VM if it is running:'
-        echo 'virsh -c qemu:///system destroy win10-debug'
+        echo "virsh -c qemu:///system destroy $dom"
         echo '2. Confirm the current vda source:'
-        echo 'virsh -c qemu:///system domblklist win10-debug --details'
+        echo "virsh -c qemu:///system domblklist $dom --details"
         echo '3. Remove vda from the persistent VM definition:'
-        echo 'virsh -c qemu:///system detach-disk win10-debug vda --config'
+        echo "virsh -c qemu:///system detach-disk $dom vda --config"
         echo '4. Attach the checkpoint parent disk as vda:'
-        echo "virsh -c qemu:///system attach-disk win10-debug $quoted_backing vda --driver qemu --subdriver $format --targetbus virtio --config"
+        echo "virsh -c qemu:///system attach-disk $dom $quoted_backing vda --driver qemu --subdriver $format --targetbus virtio --config"
         echo '5. Verify the persistent vda source before starting the VM:'
-        echo 'virsh -c qemu:///system domblklist win10-debug --details'
+        echo "virsh -c qemu:///system domblklist $dom --details"
         echo "CheckpointOverlay=$overlay"
         echo "CheckpointParent=$backing"
         echo "CheckpointParentFormat=$format"
@@ -114,8 +116,8 @@ record_recovery_required() {  # $1 concise reason
         echo "Reason=$1"
         echo "Checkpoint=$snap"
         echo "ActiveOverlay=$overlay"
-        echo "Domain=win10-debug"
-        virsh -c qemu:///system domblklist win10-debug --details
+        echo "Domain=$dom"
+        virsh -c qemu:///system domblklist "$dom" --details
         qemu-img info --backing-chain "$overlay"
     } | tee "$ev/$name-recovery-required.txt"
     write_offline_rollback_step || true
