@@ -5,6 +5,18 @@ an authenticated unchanged notification location. Supported negative
 expectations then report exactly `agent did not run in window`. An unsupported
 expectation still stays INCONCLUSIVE.
 
+R03 opts into this route only for `r03-offline-before` through
+`r03-offline-after`, before starting the real agent. Unlike the seed rows, R03
+has an installed service. Its disabled/stopped/PID-zero edges and continuous
+System log with no agent SCM activity establish the same trusted-SCM premise
+for excluding a transient service SID. Non-agent 4688 events must retain image
+and subject SID identity; agent image/SID creations still defeat the proof.
+Complete process inventories, auditing, log continuity, boot/QPC binding and
+the authenticated unchanged location remain required. Historical notification
+bytes alone never pass. Other installed-service windows retain the existing
+creation rule. R03 online or mixed windows cannot use this fallback; the fresh
+online save still requires the current-boot durable notification chain.
+
 The window is the complete writer release/completion fence, bounded by the
 service snapshots' QPC receipts, frequency and boot identity. No claim is made
 about execution elsewhere in the boot or outside this case window. Collectors
@@ -58,11 +70,14 @@ The non-execution route relies on:
   host binds the guest restoration receipts to those independent values.
   Success auditing must be enabled at both edges, with continuous Security
   evidence and no policy-change/loss events across the window.
-  **Every 4688 creation between the inventories defeats this
-  conservative route**, even for a benign image. 4688 exposes image/user
+  Outside the absent-service seed premise and the explicit R03 disabled
+  offline premise above, every 4688 creation between the inventories defeats
+  this conservative route, even for a benign image. 4688 exposes image/user
   identity but does not include token group or restricted SIDs, so it cannot
   exclude a transient process carrying the service SID. There is deliberately
-  no assumption that a PID that has already exited had a harmless token.
+  no assumption that a PID that has already exited had a harmless token;
+  the two scoped exceptions depend on authenticated SCM evidence under the
+  existing privileged-local-actor trust boundary.
 
 The location route authenticates and pins the existing ancestors with the
 same native file reader as the durable record. It neither initializes nor

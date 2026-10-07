@@ -1711,10 +1711,11 @@ function Test-NotificationLocationUnchanged($Before,$After,$Fence) {
     }
     return [pscustomobject]@{Complete=$true;Reason='Authenticated notification location inventories byte-identical.'}
 }
-function Test-AgentDidNotRun($Before,$After,$Fence,[bool]$WindowKnown,$SystemLog,$SecurityLog) {
+function Test-AgentDidNotRun($Before,$After,$Fence,[bool]$WindowKnown,$SystemLog,$SecurityLog,[switch]$R03Offline) {
     $failures=@();$scm=@();$creations=@();$scmFailures=@();$contradictions=@();$systemContinuous=$false;$scmWindowKnown=$WindowKnown
     if(-not $WindowKnown){$failures+='QPC operation window is not bound to service snapshots.'}
     $b=$Before.AgentExecution;$a=$After.AgentExecution
+    $r03OfflineWindow=($R03Offline -and $CaseId -ceq 'R03' -and $Before.Tag -ceq 'r03-offline-before' -and $After.Tag -ceq 'r03-offline-after')
     foreach($pair in @(@{Tag='before';Snapshot=$b},@{Tag='after';Snapshot=$a})){
         $s=$pair.Snapshot
         if($null -eq $s){$failures+=('Agent '+$pair.Tag+' execution snapshot missing.');$scmWindowKnown=$false;continue}
@@ -1736,6 +1737,7 @@ function Test-AgentDidNotRun($Before,$After,$Fence,[bool]$WindowKnown,$SystemLog
             $scmFailures+=('SCM SafeUploadAgent '+$pair.Tag+' state is not authenticated Stopped/PID 0.')
             if($service.State -ceq 'Running' -or $service.ProcessId -gt 0){$contradictions+=('Installed agent running at '+$pair.Tag+' edge.')}
         }
+        if($r03OfflineWindow -and $service.StartMode -cne 'Disabled'){$failures+=('R03 offline agent '+$pair.Tag+' start mode is not Disabled.')}
         if($null -eq $s.Audit.CreationFlags -or ($s.Audit.CreationFlags -band 1) -eq 0 -or
             $null -eq $s.Audit.PerUserPolicyCount -or $s.Audit.PerUserPolicyCount -ne 0){$failures+=('Agent '+$pair.Tag+' process-creation success auditing missing/disabled or per-user overrides present.')}
         $requiredImages=if($service.Exists){2}else{1}
@@ -1796,9 +1798,17 @@ function Test-AgentDidNotRun($Before,$After,$Fence,[bool]$WindowKnown,$SystemLog
                         # service's own process when it starts that service. When authenticated SCM evidence shows the service absent at both
                         # edges (and any install in the window is already a contradiction above), no process can carry that SID except by a
                         # privileged token forgery, and administrators/SYSTEM are trusted by owner decision (MVP-PLAN). Only then is the group-SID
-                        # gap closed; with the service installed it still defeats the proof. The image/user check above always applies.
+                        # gap closed. Other installed-service windows retain the conservative creation rule below. The image/user check
+                        # above always applies.
                         $serviceNeverExisted=($null -ne $b.Service -and $null -ne $a.Service -and $b.Service.Exists -eq $false -and $a.Service.Exists -eq $false)
-                        if(-not $serviceNeverExisted){
+                        # R03 alone has an installed but disabled offline service. Apply the same trusted-SCM SID premise as the seed
+                        # rows only with disabled/stopped/PID-zero edges and a continuous System window with no agent SCM activity.
+                        # Image/user-SID creation checks above, full inventories, auditing and Security continuity still apply.
+                        $r03ServiceDisabled=($r03OfflineWindow -and $systemContinuous -and $scmWindowKnown -and $scmFailures.Count -eq 0 -and
+                            $b.Service.Exists -eq $true -and $a.Service.Exists -eq $true -and
+                            $b.Service.StartMode -ceq 'Disabled' -and $a.Service.StartMode -ceq 'Disabled' -and
+                            -not [string]::IsNullOrWhiteSpace($event.Data.NewProcessName) -and -not [string]::IsNullOrWhiteSpace($event.Data.SubjectUserSid))
+                        if(-not ($serviceNeverExisted -or $r03ServiceDisabled)){
                             $failures+=('Process created between inventories at Security record '+$event.RecordId+'; 4688 lacks token group/restricted service-SID evidence.')
                         }
                     }
@@ -1824,7 +1834,7 @@ function Test-AgentDidNotRun($Before,$After,$Fence,[bool]$WindowKnown,$SystemLog
     return [pscustomobject]@{Complete=($failures.Count -eq 0);Verdict=$(if($contradictions.Count){'FAIL'}elseif($failures.Count){'INCONCLUSIVE'}else{'PASS'});
         ScmProof=$scmProof;Reason=$(if($failures.Count){$failures -join ' '}else{'agent did not run in window'});
         Failures=$failures;ScmEvents=$scm;ProcessCreations=$creations;SystemLog=$SystemLog;SecurityLog=$SecurityLog;
-        Limitations='Trusted kernel, SCM, audit transport and privileged actors; inventories inspect primary user/group/restricted SIDs, not thread impersonation. 4688 does not expose group SIDs, so any creation defeats this proof. No claim about renamed/injected emitters, off-window activity or intermediate create/delete of notification files.'}
+        Limitations='Trusted kernel, SCM, audit transport and privileged actors; inventories inspect primary user/group/restricted SIDs, not thread impersonation. 4688 does not expose group SIDs; non-agent creations require the absent-service or R03 disabled-offline SCM premise. No claim about renamed/injected emitters, off-window activity or intermediate create/delete of notification files.'}
 }
 
 function Get-ServiceSnapshot([string]$Tag,[switch]$JournalOnly) {
@@ -2015,7 +2025,7 @@ function Test-ServiceFixtureEntry($Record) {
     }
     return $false
 }
-function Get-ServiceTimeline($Before,$After,$Fence) {
+function Get-ServiceTimeline($Before,$After,$Fence,[switch]$R03Offline) {
     $assertions=@();$events=@();$eventStatus='INCONCLUSIVE';$eventReason='Application log anchors unavailable.'
     try {
         if($Before.Application.Status -cne 'OK' -or $After.Application.Status -cne 'OK' -or $Before.BootId -cne $After.BootId -or
@@ -2063,10 +2073,11 @@ function Get-ServiceTimeline($Before,$After,$Fence) {
     }
     $notificationProof=Test-NotificationWindow $Before.Notifications $After.Notifications $Fence $windowKnown
     $agentAbsence=$null;$locationUnchanged=$null
-    if(-not $notificationProof.Complete){
+    $allowAgentAbsence=($CaseId -cne 'R03' -or ($R03Offline -and $Before.Tag -ceq 'r03-offline-before' -and $After.Tag -ceq 'r03-offline-after'))
+    if(-not $notificationProof.Complete -and $allowAgentAbsence){
         $systemLog=Read-AgentLogWindow $Before.AgentExecution.SystemBegin $After.AgentExecution.SystemEnd 'System'
         $securityLog=Read-AgentLogWindow $Before.AgentExecution.SecurityBegin $After.AgentExecution.SecurityEnd 'Security'
-        $agentAbsence=Test-AgentDidNotRun $Before $After $Fence $windowKnown $systemLog $securityLog
+        $agentAbsence=Test-AgentDidNotRun $Before $After $Fence $windowKnown $systemLog $securityLog -R03Offline:$R03Offline
         $assertions+=@{Name='AgentAbsenceScm';Verdict=$agentAbsence.ScmProof.Verdict;Reason=$agentAbsence.ScmProof.Reason}
         $locationUnchanged=Test-NotificationLocationUnchanged $Before.Notifications $After.Notifications $Fence
         if($agentAbsence.Complete -and $locationUnchanged.Complete){
@@ -4175,7 +4186,7 @@ function Invoke-R03Observation {
         $trial.Assertions+=Test-CachedSample $sample $baseline $false $imageA
         $trial.OfflineServiceAfter=Get-ServiceSnapshot 'r03-offline-after'
         $offlineFence=[pscustomobject]@{Complete=$true;BootId=$actor.BootId;QpcFrequency=$ready.QpcFrequency;ReleasedQpc=$offline.ReleasedQpc;CompletedQpc=$offline.CompletedQpc}
-        $trial.OfflineServiceEvidence=Get-ServiceTimeline $trial.ServiceBefore $trial.OfflineServiceAfter $offlineFence
+        $trial.OfflineServiceEvidence=Get-ServiceTimeline $trial.ServiceBefore $trial.OfflineServiceAfter $offlineFence -R03Offline
         $trial.Assertions+=@($trial.OfflineServiceEvidence.Assertions)
         $delta=$trial.OfflineServiceEvidence.JournalDelta
         $trial.Assertions+=@{Name='R03OfflineJournalUnchanged';Verdict=$(if($delta.NewEntries.Count -or $delta.Findings.Count){'FAIL'}elseif($delta.Complete){'PASS'}else{'INCONCLUSIVE'});Reason='All authenticated journal records unchanged; no new transfer anywhere while agent absent.';Evidence=$delta}

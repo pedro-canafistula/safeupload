@@ -563,6 +563,89 @@ $coveredBefore=Clone $downBefore;$coveredAfter=Clone $downAfter;$coveredBefore.N
 $coveredAfter.Notifications=[pscustomobject]@{Status='OK';BootId=$boot;QpcFrequency=$frequency;Entries=$parsedPositive.Entries;Head=$parsedPositive.Head}
 $covered=Get-ServiceTimeline $coveredBefore $coveredAfter $fence
 Check ($null -eq $covered.AgentAbsenceProof -and @($covered.Assertions | Where-Object {$_.Name -eq 'NotificationExpectation' -and $_.Verdict -eq 'FAIL'}).Count -eq 1) 'Covered durable emissions keep their existing contradiction rule unchanged.'
+
+# R03's installed Disabled service can use the seed non-execution/location route
+# only in its explicitly tagged offline window. Retain real historical chain bytes.
+$savedCaseId=$script:CaseId;$savedExpectations=$script:row.NotificationExpectations;$savedLogs=$script:absenceLogs
+$script:CaseId='R03';$script:row.NotificationExpectations=@('NoNotification','NoApproval','NoRelease','NoHandBack')
+$r03Before=Clone $downBefore;$r03After=Clone $downAfter
+$r03Before | Add-Member NoteProperty Tag 'r03-offline-before' -Force
+$r03After | Add-Member NoteProperty Tag 'r03-offline-after' -Force
+$currentBoot=$boot;$boot='previous-boot';$historical=Make-Notifications;$boot=$currentBoot
+$historicalParsed=ConvertFrom-NotificationRecord $historical.Segments $historical.HeadBytes
+$historicalTail=Get-NotificationTailCoverage $historicalParsed.Entries[-1].Entry $boot $frequency $fence.CompletedQpc
+Check ($historicalTail.HistoricalTail -and $historicalTail.Status -ceq 'INCONCLUSIVE') 'R03 historical chain alone has no current-boot coverage.'
+foreach($snapshot in @($r03Before,$r03After)){
+    $n=$snapshot.Notifications;$n.DirectoryExists=$true;$n.Reason=$historicalTail.Reason
+    $n.Entries=$historicalParsed.Entries
+    $n.LocationFiles=@(@{Name='emissions.jsonl';Bytes=$historical.Segments[0].Bytes},@{Name='head.json';Bytes=$historical.HeadBytes},@{Name='writer.lock';Bytes=[byte[]]@()})
+}
+$script:absenceLogs=Clone $savedLogs
+$script:absenceLogs.Security.Xmls[1]=Make-AgentXml 'Security' 102 4688 'Microsoft-Windows-Security-Auditing' '<Data Name="NewProcessName">C:\Windows\System32\benign.exe</Data><Data Name="SubjectUserSid">S-1-5-18</Data>'
+$r03=Get-ServiceTimeline $r03Before $r03After $fence -R03Offline
+Check ($r03.AgentAbsenceProof.Complete -and $r03.NotificationLocationProof.Complete -and $r03.NotificationProof.Source -ceq 'AgentDidNotRunAndUnchangedLocation') 'R03 historical tail plus complete disabled-agent non-execution and unchanged location supports offline absence.'
+Check (@($r03.Assertions | Where-Object {$_.Name -ceq 'NotificationExpectation' -and $_.Verdict -ceq 'PASS' -and $_.Reason -ceq 'agent did not run in window'}).Count -eq 4 -and $r03.Assertions[-1].Verdict -ceq 'PASS') 'R03 offline negatives and ActualServiceTimelines PASS through the existing fallback.'
+foreach($fault in @('before-running','after-running','image','sid','audit','inventory','enabled-before','enabled-after','bytes','inventory-change','location-acl','location-appeared','location-qpc','current-record','fence')){
+    $b=Clone $r03Before;$a=Clone $r03After;$f=Clone $fence
+    switch($fault){
+        'before-running' {$b.AgentExecution.Service.State='Running';$b.AgentExecution.Service.ProcessId=55}
+        'after-running' {$a.AgentExecution.Service.State='Running';$a.AgentExecution.Service.ProcessId=55}
+        'image' {$b.AgentExecution.Processes[0].Image=$b.AgentExecution.ImagePaths[0]}
+        'sid' {$a.AgentExecution.Processes[0].TokenSids+=$a.AgentExecution.ServiceSid}
+        'audit' {$a.AgentExecution.Audit.CreationFlags=0}
+        'inventory' {$b.AgentExecution.Status='INCONCLUSIVE';$b.AgentExecution.Errors=@('PID unreadable')}
+        'enabled-before' {$b.AgentExecution.Service.StartMode='Manual'}
+        'enabled-after' {$a.AgentExecution.Service.StartMode='Manual'}
+        'bytes' {$a.Notifications.LocationFiles[0].Bytes[0]=0}
+        'inventory-change' {$a.Notifications.LocationFiles=@($a.Notifications.LocationFiles[0..1])}
+        'location-acl' {$a.Notifications.LocationStatus='INCONCLUSIVE'}
+        'location-appeared' {$b.Notifications.DirectoryExists=$false}
+        'location-qpc' {$a.Notifications.ReadQpc=$f.CompletedQpc-1}
+        'current-record' {$a.Notifications.Entries[0].Entry.BootId=$boot;$a.Notifications.Entries[0].Entry.Qpc=1000}
+        'fence' {$f.Complete=$false}
+    }
+    $result=Get-ServiceTimeline $b $a $f -R03Offline
+    Check (-not $result.NotificationProof.Complete -and @($result.Assertions | Where-Object {$_.Name -ceq 'NotificationExpectation' -and $_.Verdict -ceq 'PASS'}).Count -eq 0 -and $result.Assertions[-1].Verdict -cne 'PASS') ('R03 offline '+$fault+' cannot PASS.')
+}
+foreach($fault in @('scm-start','scm-install','scm-mode','agent-create','sid-create','unknown-create','system-clear','security-clear','policy-change','log-gap')){
+    $script:absenceLogs=Clone $savedLogs
+    switch($fault){
+        'scm-start' {$script:absenceLogs.System.Xmls[1]=Make-AgentXml 'System' 102 7036 'Service Control Manager' '<Data Name="param1">SafeUpload Agent</Data><Data Name="param2">running</Data>'}
+        'scm-install' {$script:absenceLogs.System.Xmls[1]=Make-AgentXml 'System' 102 7045 'Service Control Manager' '<Data Name="ServiceName">SafeUploadAgent</Data>'}
+        'scm-mode' {$script:absenceLogs.System.Xmls[1]=Make-AgentXml 'System' 102 7040 'Service Control Manager' '<Data Name="param1">SafeUpload Agent</Data>'}
+        'agent-create' {$script:absenceLogs.Security.Xmls[1]=Make-AgentXml 'Security' 102 4688 'Microsoft-Windows-Security-Auditing' '<Data Name="NewProcessName">C:\installed\SafeUpload.Agent.Service.exe</Data><Data Name="SubjectUserSid">S-1-5-18</Data>'}
+        'sid-create' {$script:absenceLogs.Security.Xmls[1]=Make-AgentXml 'Security' 102 4688 'Microsoft-Windows-Security-Auditing' '<Data Name="NewProcessName">C:\Windows\System32\benign.exe</Data><Data Name="SubjectUserSid">S-1-5-80-1-2-3-4-5</Data>'}
+        'unknown-create' {$script:absenceLogs.Security.Xmls[1]=Make-AgentXml 'Security' 102 4688 'Microsoft-Windows-Security-Auditing'}
+        'system-clear' {$script:absenceLogs.System.Xmls[1]=Make-AgentXml 'System' 102 104 'Microsoft-Windows-Eventlog'}
+        'security-clear' {$script:absenceLogs.Security.Xmls[1]=Make-AgentXml 'Security' 102 1102 'Microsoft-Windows-Eventlog'}
+        'policy-change' {$script:absenceLogs.Security.Xmls[1]=Make-AgentXml 'Security' 102 4719 'Microsoft-Windows-Security-Auditing'}
+        'log-gap' {$script:absenceLogs.System.Xmls=@($script:absenceLogs.System.Xmls[0],$script:absenceLogs.System.Xmls[2])}
+    }
+    $result=Get-ServiceTimeline $r03Before $r03After $fence -R03Offline
+    Check (-not $result.NotificationProof.Complete -and $result.Assertions[-1].Verdict -cne 'PASS') ('R03 offline '+$fault+' defeats absence even with unchanged historical bytes.')
+}
+$script:absenceLogs=Clone $savedLogs
+$script:absenceLogs.Security.Xmls[1]=Make-AgentXml 'Security' 102 4688 'Microsoft-Windows-Security-Auditing' '<Data Name="NewProcessName">C:\Windows\System32\benign.exe</Data><Data Name="SubjectUserSid">S-1-5-18</Data>'
+Check (-not (Get-ServiceTimeline $r03Before $r03After $fence).NotificationProof.Complete) 'R03 fallback requires explicit offline opt-in.'
+$script:CaseId='S02'
+Check (-not (Get-ServiceTimeline $r03Before $r03After $fence -R03Offline).NotificationProof.Complete) 'R03 disabled-service premise cannot relax seed/other installed-service windows.'
+$script:CaseId='R03'
+$onlineBefore=Clone $r03Before;$onlineAfter=Clone $r03After;$onlineBefore.Tag='r03-online-before';$onlineAfter.Tag='r03-online-after'
+# Even perfect non-execution receipts cannot substitute for online current-boot coverage.
+$script:absenceLogs=Clone $savedLogs
+foreach($pair in @(@{Before=$onlineBefore;After=$onlineAfter},@{Before=$r03Before;After=$onlineAfter},@{Before=$onlineBefore;After=$r03After})){
+    $result=Get-ServiceTimeline $pair.Before $pair.After $fence -R03Offline
+    Check (-not $result.NotificationProof.Complete -and $null -eq $result.AgentAbsenceProof -and $result.Assertions[-1].Verdict -cne 'PASS') 'Online or mixed R03 tags cannot invoke the offline fallback.'
+}
+$onlineProof=Test-NotificationWindow $onlineBefore.Notifications $onlineAfter.Notifications $fence $true
+Check (-not $onlineProof.Complete) 'R03 online save still requires current-boot durable notification coverage.'
+$script:row.NotificationExpectations=@('Unsupported')
+Check (@((Get-ServiceTimeline $r03Before $r03After $fence -R03Offline).Assertions | Where-Object {$_.Name -ceq 'NotificationExpectation' -and $_.Verdict -ceq 'INCONCLUSIVE'}).Count -eq 1) 'R03 offline absence cannot approve unsupported expectations.'
+$script:row.NotificationExpectations=@('NoNotification')
+$b=Clone $r03Before;$a=Clone $r03After;$b.Notifications=$nb;$a.Notifications=$coveredAfter.Notifications
+$result=Get-ServiceTimeline $b $a $fence -R03Offline
+Check ($null -eq $result.AgentAbsenceProof -and @($result.Assertions | Where-Object {$_.Name -ceq 'NotificationExpectation' -and $_.Verdict -ceq 'FAIL'}).Count -eq 1) 'R03 covered emission remains FAIL and cannot be hidden by the offline fallback.'
+$script:CaseId=$savedCaseId;$script:row.NotificationExpectations=$savedExpectations;$script:absenceLogs=$savedLogs
 $script:absenceLogs=$null
 
 # Exercise the actual collectors with synthetic OS APIs. This catches the
