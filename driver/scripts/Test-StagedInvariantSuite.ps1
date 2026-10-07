@@ -3681,6 +3681,47 @@ function Test-ActivationRawWholeImage($Sample,[string]$Path,[byte[]]$Expected) {
     }catch{return [pscustomobject]@{Verdict='INCONCLUSIVE';Reason=$_.Exception.Message}}
 }
 
+function Test-ActivationRetiredPromotion($Snapshot,$Trace,$Release,[string]$FileId,[string]$VolumeSerial,[uint32]$PolicyGeneration,[string]$BootId) {
+    # Free alone cannot prove promotion after resident history retires.
+    try {
+        $r=$Snapshot.Record
+        foreach($field in @('registryEntry','historyPresent','nameMatches','fileId','volumeSerial','state','free','S','H','C','T','unknownReasons')){
+            if($null -eq $r.$field){throw ('Current promotion field missing: '+$field)}
+        }
+        if(-not $r.registryEntry -or $r.historyPresent -or -not $r.nameMatches -or
+            $r.fileId -ine $FileId -or $r.volumeSerial -cne $VolumeSerial -or
+            $r.state -cne 'Protected' -or -not $r.free -or $r.S -cne 'NO' -or
+            [long]$r.H -ne 0 -or [long]$r.C -ne 0 -or [long]$r.T -ne 0 -or
+            $r.unknownReasons -cne '0x00000000' -or
+            $Release.NativeCode -ne 0 -or -not $Release.HolderReleased -or
+            $Release.BootId -cne $BootId -or $Release.QpcFrequency -ne [Diagnostics.Stopwatch]::Frequency -or
+            [long]$Release.StartQpc -le 0 -or [long]$Release.EndQpc -lt [long]$Release.StartQpc -or
+            [long]$Snapshot.Qpc -lt [long]$Release.EndQpc -or -not $Trace.Summary.completeSnapshot -or
+            [long]$Trace.Summary.firstAvailableSequence -ne 1){
+            throw 'Retired promotion lacks a complete bound current identity/release/trace snapshot.'
+        }
+        $edges=@($Trace.Entries | Where-Object {$_.fileId -ieq $FileId -and [uint32]$_.stateBefore -eq 1 -and [uint32]$_.stateAfter -eq 2})
+        if($edges.Count -ne 1){throw 'Retired history needs exactly one actual same-ID promotion CAS.'}
+        $e=$edges[0]
+        foreach($field in @('volumeSerial','policyGenerationSample','activationGenerationSample','qpc','markerGenerationExpected','markerGenerationAtCas','Hsample','Wsample','Tsample','CforSopSample','lastSsample','unknownReasonsSample','renameInFlightSample','spilledMutatingIoCountSample','unknownWriterCountSample','predicateFlags','snapshotFlags','testDisableTaint','policyFlagsSample')){
+            if($null -eq $e.$field){throw ('Native CAS field missing: '+$field)}
+        }
+        if($e.volumeSerial -cne $VolumeSerial -or [uint32]$e.policyGenerationSample -ne $PolicyGeneration -or
+            [uint32]$e.activationGenerationSample -ne $PolicyGeneration -or
+            [long]$e.qpc -lt [long]$Release.StartQpc -or [long]$e.qpc -gt [long]$Snapshot.Qpc -or
+            [uint64]$e.markerGenerationExpected -ne [uint64]$e.markerGenerationAtCas -or
+            [long]$e.Hsample -ne 0 -or [long]$e.Wsample -ne 0 -or [long]$e.Tsample -ne 0 -or
+            [long]$e.CforSopSample -ne 0 -or [long]$e.lastSsample -ne 1 -or
+            [long]$e.unknownReasonsSample -ne 0 -or [long]$e.renameInFlightSample -ne 0 -or
+            [long]$e.spilledMutatingIoCountSample -ne 0 -or [long]$e.unknownWriterCountSample -ne 0 -or
+            ([uint32]$e.predicateFlags -band 15) -ne 15 -or ([uint32]$e.predicateFlags -band (-bnot 31)) -ne 0 -or
+            [uint32]$e.snapshotFlags -ne 1 -or [uint32]$e.testDisableTaint -ne 1 -or
+            ([uint32]$e.policyFlagsSample -band 32) -ne 32){
+            throw 'Retired history CAS samples, generation, timing or predicate basis do not match.'
+        }
+        return [pscustomobject]@{Verdict='PASS';Reason='Complete actual same-ID native CAS is in this actor release/current Protected-Free query window; resident history was retired. Counter fields remain labelled samples.';Current=$Snapshot;Release=$Release;Trace=$Trace;Edge=$e;ResidentHistory=$false}
+    }catch{return [pscustomobject]@{Verdict='INCONCLUSIVE';Reason=$_.Exception.Message;Current=$Snapshot;Release=$Release;Trace=$Trace;ResidentHistory=$false}}
+}
 function Invoke-ActivationApprovedSave($Trial,$Actor,$Context,$Baseline,$PromotionSample,[byte[]]$ImageU,[string]$Target) {
     $before=Get-ServiceSnapshot 'a04-before-approved-held-save';$Trial.ServiceBefore=$before
     $payload=[Text.Encoding]::ASCII.GetBytes(('APPROVE-A04-'+$RunName).PadRight(96,'Q'));$offset=[long]([int]($ImageU.Length/2)+256)
@@ -4016,8 +4057,14 @@ function Invoke-ActivationObservation {
         $deadline=([Diagnostics.Stopwatch]::GetTimestamp()+[long]((90)*[Diagnostics.Stopwatch]::Frequency));$promoted=$null;$promotedGood=$false;$promotionReason='No registry-entry sample received after last-holder release.'
         do{
             try{$promoted=Get-ActivationEntry $target 'post-release-registry-entry';$r=$promoted.Record
-                $promotedGood=($r.registryEntry -and $r.historyPresent -and $r.nameMatches -and $r.fileId -ieq $fileId -and $r.state -ceq 'Protected' -and $r.free -and
+                $currentProtectedFree=($r.registryEntry -and $r.nameMatches -and $r.fileId -ieq $fileId -and $r.state -ceq 'Protected' -and $r.free -and
                     [uint32]$r.H -eq 0 -and $r.S -ceq 'NO' -and [uint32]$r.C -eq 0 -and [uint32]$r.T -eq 0 -and $r.unknownReasons -ceq '0x00000000')
+                $promotedGood=$currentProtectedFree -and $r.historyPresent
+                if($currentProtectedFree -and -not $r.historyPresent){
+                    $retiredTrace=ConvertFrom-ActivationPromotionTrace (Invoke-ActivationInspector '--promotion-trace' (Join-Path $evidenceDirectory ('activation-retired-history-trace-'+[guid]::NewGuid().ToString('N'))) 45000) $fileId
+                    $trial.RetiredPromotionProof=Test-ActivationRetiredPromotion $promoted $retiredTrace $release $fileId ('0x'+([uint64]$context.Geometry.Serial).ToString('X16')) $candidatePolicyGeneration $context.BootId
+                    $promotedGood=$trial.RetiredPromotionProof.Verdict -ceq 'PASS' -and [Diagnostics.Stopwatch]::GetTimestamp() -le $deadline
+                }
                 if($promotedGood){break}
                 if($r.state -ceq 'Unknown' -and -not $trial.PromotionWaitDiagnostic){
                     try{$trial.PromotionWaitDiagnostic=@{Target=(Get-ActivationPendingEntry $ntPath $fileId 'promotion-unknown-target' $target);WriterState=(Get-ActivationWriterState 'promotion-unknown-writer-state')}}
@@ -4040,7 +4087,7 @@ function Invoke-ActivationObservation {
             throw ('Promotion timeout after last-holder release: '+$promotionReason)
         }
         Add-ActivationAssertion $trial 'FreeAndProtectedAfterLastHolder' 'PASS'`
-            'Exact registry entry for the same file ID reached Protected/Free with H=0, S=NO, C=0, T=0 and no unknown reason after the last actor holder was released.' $promoted.Record
+            'Current same-file-ID native query is Protected/Free with H=0, S=NO, C=0, T=0 and no unknown reason; absent resident history also requires a complete actual same-ID CAS receipt in this actor release/query window.' @{Current=$promoted;RetiredHistory=$trial.RetiredPromotionProof}
 
         $promotionText=Invoke-ActivationInspector '--promotion-trace' (Join-Path $evidenceDirectory 'activation-promotion-trace') 45000
         $promotionTrace=ConvertFrom-ActivationPromotionTrace $promotionText $fileId
@@ -4181,7 +4228,7 @@ function Invoke-ActivationObservation {
         if($traceEnabled){try{$disablePrefix=Join-Path $evidenceDirectory ('activation-trace-final-disable-'+[guid]::NewGuid().ToString('N'));$null=Invoke-ActivationInspector '--admission-trace-disable' $disablePrefix 45000;$traceEnabled=$false}catch{$trial.Errors+=Get-ErrorChain $_.Exception}}
         if($null -ne $context -and $context.Status -eq 'OK'){$trial.Disposal=Close-InvariantObserver $context}
         else{$trial.Disposal=[pscustomobject]@{Status='INCONCLUSIVE';Reason='Raw observer was not opened successfully.'}}
-        if($trial.Disposal.Status -ne 'OK'){Add-ActivationAssertion $trial 'Disposal' 'INCONCLUSIVE' 'Checked raw observer disposal is missing or failed.' $trial.Disposal}
+        Add-ActivationAssertion $trial 'Disposal' $(if($trial.Disposal.Status -ceq 'OK'){'PASS'}else{'INCONCLUSIVE'}) 'Checked raw observer disposal must report OK without errors.' $trial.Disposal
         if(@($trial.Assertions | Where-Object Name -eq 'LiveTaintFlags').Count -eq 0){Add-ActivationAssertion $trial 'LiveTaintFlags' 'INCONCLUSIVE' 'No promotion/readback was available to verify current live TEST_DISABLE_TAINT flags.' $null}
         if(@($trial.Assertions | Where-Object Name -eq 'NeverReadyWholeHolderInterval').Count -eq 0){Add-ActivationAssertion $trial 'NeverReadyWholeHolderInterval' 'INCONCLUSIVE' 'No authenticated, loss-detecting per-file readiness event stream covers the holder interval.' $null}
         $trial.Baseline=$baseline;$trial.Samples=$samples

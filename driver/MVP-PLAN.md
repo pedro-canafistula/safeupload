@@ -1810,3 +1810,15 @@ readiness, raw destination, taint, errors and restoration gates; add no deferral
 Record retirement explicitly rather than pretending the current entry is resident.
 Also emit a PASS disposal assertion only from the already checked OK disposal
 record, which the existing A-row gate requires but its producer currently omits.
+
+Coverage repair exact source `cb66c0e0`, build `mvp4-goal-cache5`, passes all
+four WDK configurations with PREfast/ApiValidator, both inspector builds and
+writer fixture, zero warnings/errors and valid signing. Signed driver SHA256
+`8BBD37087A8FB6116CB67BABB7BECD0DA79B6F78441156D348A3968A19A3CC9D`.
+All27 build input digests match the candidate source. The pruned-history
+adapter has33 additional rejection/positive controls,362 total PASS. Final
+Windows PowerShell5.1 gate `goal-pruned2` passes all14 self-checks and host56
+tests pass. Table10 increments A01-A03 to revision6 and A04 to revision7.
+Actual native CAS remains mandatory; a Free-only, lost/incomplete, duplicate,
+wrong-ID/generation/volume/timing, missing-field or nonzero-counter result
+cannot qualify. A fresh supported-VM run remains required for these changes.

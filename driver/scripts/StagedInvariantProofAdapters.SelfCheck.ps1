@@ -18,10 +18,35 @@ function Import-EvaluationFunctions([string]$File,[string[]]$Names) {
     }
 }
 Import-EvaluationFunctions (Join-Path $PSScriptRoot 'StagedInvariantObserver.psm1') @('New-IORecord','New-IOAssertion','Test-InvariantCadence','Test-InvariantMetadata','Test-InvariantExternalCoverage')
-Import-EvaluationFunctions (Join-Path $PSScriptRoot 'Test-StagedInvariantSuite.ps1') @('Test-ActivationChildWindow','Add-ActivationAssertion','Test-ActivationDuplicateCleanup','Test-ActivationRawWholeImage','Get-ActivationSha256','Get-ActivationPendingEntry','Get-ActivationFullPendingEntry','ConvertFrom-NtfsLastAccessOutput','Wait-WriterIdentity','Load-State','Get-ActivatingWriterBody','Get-ExpectedCheckpoint','Test-ServiceJournalStateReachable','Assert-ServiceManifestPath','ConvertFrom-ServiceJournalRecord','Test-ServiceJournalDelta','Get-ServiceDestinationPaths','Test-ServiceFixtureEntry','Get-NotificationTailCoverage','Get-NotificationFenceWaitDecision','ConvertFrom-NotificationRecord','Test-NotificationWindow','ConvertFrom-AgentEventXml','Test-AgentLogContinuity','Read-AgentLogWindow','Test-NotificationLocationUnchanged','Test-AgentDidNotRun','Get-ServiceTimeline','Test-CachedJournalSequence','Test-CachedNotifications','Test-CachedHandBackAcl','Test-CachedSample','Test-CachedImage','Test-CachedActorCalls','Add-CachedHeldJournal','Test-CachedNamespaceCommit','Get-B02JustificationClientBody','Get-WriterBody','Get-ActivationActorIdentity','Publish-ActivationActorCommand')
+Import-EvaluationFunctions (Join-Path $PSScriptRoot 'Test-StagedInvariantSuite.ps1') @('Test-ActivationRetiredPromotion','Test-ActivationChildWindow','Add-ActivationAssertion','Test-ActivationDuplicateCleanup','Test-ActivationRawWholeImage','Get-ActivationSha256','Get-ActivationPendingEntry','Get-ActivationFullPendingEntry','ConvertFrom-NtfsLastAccessOutput','Wait-WriterIdentity','Load-State','Get-ActivatingWriterBody','Get-ExpectedCheckpoint','Test-ServiceJournalStateReachable','Assert-ServiceManifestPath','ConvertFrom-ServiceJournalRecord','Test-ServiceJournalDelta','Get-ServiceDestinationPaths','Test-ServiceFixtureEntry','Get-NotificationTailCoverage','Get-NotificationFenceWaitDecision','ConvertFrom-NotificationRecord','Test-NotificationWindow','ConvertFrom-AgentEventXml','Test-AgentLogContinuity','Read-AgentLogWindow','Test-NotificationLocationUnchanged','Test-AgentDidNotRun','Get-ServiceTimeline','Test-CachedJournalSequence','Test-CachedNotifications','Test-CachedHandBackAcl','Test-CachedSample','Test-CachedImage','Test-CachedActorCalls','Add-CachedHeldJournal','Test-CachedNamespaceCommit','Get-B02JustificationClientBody','Get-WriterBody','Get-ActivationActorIdentity','Publish-ActivationActorCommand')
 $script:checks=0
 function Check([bool]$Condition,[string]$Message){if(-not $Condition){throw $Message};$script:checks++}
 function Clone($Value){return ($Value | ConvertTo-Json -Depth 32 | ConvertFrom-Json)}
+# A retired entry needs the actual native same-ID CAS; Free alone is not proof.
+$retiredId='AA'*16;$retiredSerial='0x0000000000000011'
+$retiredCurrent=@{Record=@{registryEntry=$true;historyPresent=$false;nameMatches=$true;fileId=$retiredId;volumeSerial=$retiredSerial;state='Protected';free=$true;S='NO';H=0;C=0;T=0;unknownReasons='0x00000000'};Qpc=600}
+$retiredRelease=@{NativeCode=0;HolderReleased=$true;BootId='fixture';QpcFrequency=[Diagnostics.Stopwatch]::Frequency;StartQpc=500;EndQpc=510}
+$retiredEdge=@{fileId=$retiredId;volumeSerial=$retiredSerial;stateBefore=1;stateAfter=2;policyGenerationSample=1;activationGenerationSample=1;qpc=550;markerGenerationExpected=3;markerGenerationAtCas=3;Hsample=0;Wsample=0;Tsample=0;CforSopSample=0;lastSsample=1;unknownReasonsSample=0;renameInFlightSample=0;spilledMutatingIoCountSample=0;unknownWriterCountSample=0;predicateFlags=31;snapshotFlags=1;testDisableTaint=1;policyFlagsSample=48}
+$retiredTrace=@{Summary=@{completeSnapshot=$true;firstAvailableSequence=1};Entries=@($retiredEdge)}
+Check ((Test-ActivationRetiredPromotion $retiredCurrent $retiredTrace $retiredRelease $retiredId $retiredSerial 1 'fixture').Verdict -ceq 'PASS') 'Retired history requires complete native same-ID CAS in the exact release/query window.'
+foreach($field in @('Hsample','Wsample','Tsample','CforSopSample','unknownReasonsSample','renameInFlightSample','spilledMutatingIoCountSample','unknownWriterCountSample')){
+ $bad=Clone $retiredTrace;$bad.Entries[0].$field=1
+ Check ((Test-ActivationRetiredPromotion $retiredCurrent $bad $retiredRelease $retiredId $retiredSerial 1 'fixture').Verdict -ceq 'INCONCLUSIVE') ('Retired history rejects nonzero CAS '+$field+'.')
+}
+foreach($bad in @(@{Summary=$retiredTrace.Summary;Entries=@()},@{Summary=$retiredTrace.Summary;Entries=@($retiredEdge,$retiredEdge)},@{Summary=@{completeSnapshot=$false;firstAvailableSequence=1};Entries=@($retiredEdge)},@{Summary=@{completeSnapshot=$true;firstAvailableSequence=2};Entries=@($retiredEdge)})){
+ Check ((Test-ActivationRetiredPromotion $retiredCurrent $bad $retiredRelease $retiredId $retiredSerial 1 'fixture').Verdict -ceq 'INCONCLUSIVE') 'Missing/duplicate/incomplete/lost native CAS cannot be replaced by current Free.'
+}
+foreach($change in @(@('fileId','wrong'),@('volumeSerial','wrong'),@('policyGenerationSample',2),@('activationGenerationSample',2),@('qpc',499),@('qpc',601),@('markerGenerationAtCas',4),@('lastSsample',2),@('predicateFlags',13),@('predicateFlags',63),@('snapshotFlags',0),@('testDisableTaint',0),@('policyFlagsSample',16))){
+ $bad=Clone $retiredTrace;$bad.Entries[0].($change[0])=$change[1]
+ Check ((Test-ActivationRetiredPromotion $retiredCurrent $bad $retiredRelease $retiredId $retiredSerial 1 'fixture').Verdict -ceq 'INCONCLUSIVE') ('Retired history rejects CAS '+$change[0]+'='+$change[1]+'.')
+}
+$bad=Clone $retiredTrace;$bad.Entries[0].PSObject.Properties.Remove('Wsample')
+Check ((Test-ActivationRetiredPromotion $retiredCurrent $bad $retiredRelease $retiredId $retiredSerial 1 'fixture').Verdict -ceq 'INCONCLUSIVE') 'Missing native W sample cannot default to zero.'
+foreach($change in @(@('NativeCode',5),@('BootId','old'),@('HolderReleased',$false),@('QpcFrequency',1),@('StartQpc',0),@('EndQpc',499))){
+ $bad=Clone $retiredRelease;$bad.($change[0])=$change[1]
+ Check ((Test-ActivationRetiredPromotion $retiredCurrent $retiredTrace $bad $retiredId $retiredSerial 1 'fixture').Verdict -ceq 'INCONCLUSIVE') ('Retired history rejects release '+$change[0]+'.')
+}
+
 # Kernel FILETIME and actor QPC are separate clocks; post-clear physicalFO/PID
 # binding qualifies independently of their unrelated numerical values.
 $childFixture=@{Pid=123;BootId='fixture'};$releaseFixture=@{Pid=123;BootId='fixture';NativeCode=0;HolderReleased=$true;StartQpc=100;EndQpc=200}
