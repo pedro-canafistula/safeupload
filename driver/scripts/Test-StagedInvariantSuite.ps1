@@ -836,7 +836,11 @@ function Get-ActivationWriterState([string]$Tag) { return (Get-ActivationInspect
 function Get-ActivationEntry([string]$Path,[string]$Tag) { return (Get-ActivationInspectorJson ('--registry-entry "'+$Path+'"') $Tag) }
 function Get-ActivationPendingEntry([string]$NtPath,[string]$FileId,[string]$Tag) {
     $snapshot=Get-ActivationInspectorJson '--activating-status' $Tag
-    $entries=@($snapshot.Record.entries | Where-Object {$_.path -ieq $NtPath -and $_.fileId -ieq $FileId})
+    $allEntries=@($snapshot.Record.entries)
+    if($snapshot.Record.activatingStatus -ne $true -or
+        ($snapshot.Record.totalEntries -isnot [int] -and $snapshot.Record.totalEntries -isnot [long]) -or
+        $snapshot.Record.totalEntries -ne $allEntries.Count){throw 'Activating snapshot complete machine-wide count mismatch'}
+    $entries=@($allEntries | Where-Object {$_.path -ieq $NtPath -and $_.fileId -ieq $FileId})
     return [pscustomobject]@{Snapshot=$snapshot;Entries=$entries}
 }
 function Receive-ActivationStatusFrame($Capture,[string]$Line) {
@@ -2829,7 +2833,7 @@ function Invoke-ActivationObservation {
         }
         $entry=$activating.Entries[0]
         $holderStateGood=($activating.Snapshot.Record.policyGeneration -eq $candidatePolicyGeneration -and
-            $activating.Snapshot.Record.totalEntries -eq $activating.Entries.Count -and
+            $activating.Snapshot.Record.totalEntries -eq @($activating.Snapshot.Record.entries).Count -and
             $entry.state -ceq 'Activating' -and $entry.fileId -ieq $fileId -and $entry.path -ieq $ntPath -and
             [uint32]$entry.generation -gt 0 -and [uint32]$entry.W -eq 0 -and $entry.unknownReasons -ceq '0x00000000')
         if($CaseId -eq 'A01'){$holderStateGood=$holderStateGood -and [uint32]$entry.H -gt 0 -and $entry.openerPids -contains [int]$actor.Pid}

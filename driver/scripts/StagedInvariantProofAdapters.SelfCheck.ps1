@@ -18,10 +18,25 @@ function Import-EvaluationFunctions([string]$File,[string[]]$Names) {
     }
 }
 Import-EvaluationFunctions (Join-Path $PSScriptRoot 'StagedInvariantObserver.psm1') @('New-IORecord','New-IOAssertion','Test-InvariantCadence','Test-InvariantMetadata','Test-InvariantExternalCoverage')
-Import-EvaluationFunctions (Join-Path $PSScriptRoot 'Test-StagedInvariantSuite.ps1') @('ConvertFrom-NtfsLastAccessOutput','Wait-WriterIdentity','Load-State','Get-ActivatingWriterBody','Get-ExpectedCheckpoint','Test-ServiceJournalStateReachable','Assert-ServiceManifestPath','ConvertFrom-ServiceJournalRecord','Test-ServiceJournalDelta','Get-ServiceDestinationPaths','Test-ServiceFixtureEntry','ConvertFrom-NotificationRecord','Test-NotificationWindow','ConvertFrom-AgentEventXml','Test-AgentLogContinuity','Read-AgentLogWindow','Test-NotificationLocationUnchanged','Test-AgentDidNotRun','Get-ServiceTimeline','Test-CachedJournalSequence','Test-CachedNotifications','Test-CachedHandBackAcl','Test-CachedSample','Test-CachedImage','Test-CachedActorCalls','Add-CachedHeldJournal','Test-CachedNamespaceCommit','Get-WriterBody','Get-ActivationActorIdentity')
+Import-EvaluationFunctions (Join-Path $PSScriptRoot 'Test-StagedInvariantSuite.ps1') @('Get-ActivationPendingEntry','ConvertFrom-NtfsLastAccessOutput','Wait-WriterIdentity','Load-State','Get-ActivatingWriterBody','Get-ExpectedCheckpoint','Test-ServiceJournalStateReachable','Assert-ServiceManifestPath','ConvertFrom-ServiceJournalRecord','Test-ServiceJournalDelta','Get-ServiceDestinationPaths','Test-ServiceFixtureEntry','ConvertFrom-NotificationRecord','Test-NotificationWindow','ConvertFrom-AgentEventXml','Test-AgentLogContinuity','Read-AgentLogWindow','Test-NotificationLocationUnchanged','Test-AgentDidNotRun','Get-ServiceTimeline','Test-CachedJournalSequence','Test-CachedNotifications','Test-CachedHandBackAcl','Test-CachedSample','Test-CachedImage','Test-CachedActorCalls','Add-CachedHeldJournal','Test-CachedNamespaceCommit','Get-WriterBody','Get-ActivationActorIdentity')
 $script:checks=0
 function Check([bool]$Condition,[string]$Message){if(-not $Condition){throw $Message};$script:checks++}
 function Clone($Value){return ($Value | ConvertTo-Json -Depth 32 | ConvertFrom-Json)}
+# Machine-wide page completeness and exact target uniqueness are separate.
+function Get-ActivationInspectorJson { return [pscustomobject]@{Record=$script:activatingFixture} }
+$script:activatingFixture=@{activatingStatus=$true;totalEntries=3;entries=@(
+    @{path='target';fileId='id';S='YES'},@{path='outside1';fileId='other1'},@{path='outside2';fileId='other2'})}
+$selected=Get-ActivationPendingEntry 'target' 'id' 'fixture'
+Check ($selected.Entries.Count -eq 1 -and $selected.Snapshot.Record.totalEntries -eq 3) 'Unrelated machine-wide entries must not invalidate the one exact target.'
+$script:activatingFixture.totalEntries=4
+$rejected=$false;try{$null=Get-ActivationPendingEntry 'target' 'id' 'fixture'}catch{$rejected=$true}
+Check $rejected 'Incomplete machine-wide page count must fail.'
+$script:activatingFixture.totalEntries=3
+$script:activatingFixture.entries[2]=@{path='target';fileId='id'}
+Check ((Get-ActivationPendingEntry 'target' 'id' 'fixture').Entries.Count -eq 2) 'Duplicate exact target remains ambiguous for caller rejection.'
+$script:activatingFixture.entries[2]=@{path='target';fileId='other'}
+Check ((Get-ActivationPendingEntry 'target' 'id' 'fixture').Entries.Count -eq 1) 'A path with another identity must not become an exact target.'
+Remove-Item Function:\Get-ActivationInspectorJson
 # Name visibility, an open write handle and partial serialization are distinct
 # from complete identity publication. Exercise all three with temporary files.
 $identityDirectory=Join-Path ([IO.Path]::GetTempPath()) ('proof-identity-'+[guid]::NewGuid().ToString('N'))

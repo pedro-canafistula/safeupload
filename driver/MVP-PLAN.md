@@ -1184,3 +1184,31 @@ The safe W01 checkpoint parent was written by Sol and checked by root: Windows P
   builds/review/negative runtime evidence. Same visible native boundary repeats
   without new stack evidence; move to other Ready cases per handoff. The prior
   dump localizes b13 only; do not assert b14 waits on the same lower IRP.
+
+- Dedicated latency design: reuse the same C01-C04 native actor and product
+  lifecycle behind a pinned explicit latency-only option, only APPROVE variants.
+  One cold plus100 warm complete native repetitions, no functional rename/close
+  holds. Preserve extending mapped source-close/view lifetime, whole private
+  image checks and every native status. Fresh absent names for cached/mapped;
+  existing target for overwrite/replacement and fresh replacement temp names.
+  Wait outside measured native calls for each actual same-actor transfer to
+  reach durable Released with exact image before admitting the next repetition.
+  Do not synthesize permits or treat these waits as native latency. Dedicated
+  result cannot qualify a functional case: explicit unallowlisted marker remains
+  INCONCLUSIVE. Export StagedInvariantLatency/1 only with complete native round
+  evidence, actual service identity/image and independent clean restoration;
+  pin Feature/Inspector/service package/tree and exact mode. Preserve errors
+  and budget failures. No change to functional contracts or strict gate.
+- A03 sol-a03r1 reaches complete activating snapshot, but harness FAIL compares
+  machine-wide totalEntries221 against exact target match count1. The target
+  itself is correct: Activating, S=YES, H/C/T/W0, unknownReasons0, exact path/ID,
+  accepted policyGeneration1; 220 unrelated registry entries are included by
+  design. Fix the erroneous equality to the complete page array count, preserve
+  exact one target and every holder field. Add explicit snapshot count/type
+  validation before filtering and controls for unrelated entries, incomplete
+  count, duplicate target and path/identity mismatch. Contract unchanged; this
+  is a harness predicate repair, not reclassification of the recorded FAIL.
+
+- [x] A03 count predicate repair: Windows PS5.1 parser0, proof244, native88
+  PASS (`sol-harness-windows-validation-z.txt`); Python adapter18 and MVP7
+  controls PASS. Runtime rerun pending; original sol-a03r1 FAIL retained.
