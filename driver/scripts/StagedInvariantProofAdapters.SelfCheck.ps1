@@ -262,6 +262,52 @@ $bad=Clone $policy;$bad.After.UpdatesDisabled=$false
 Check (@(Test-InvariantMetadata $image $expect $samples[0] $bad | Where-Object Verdict -eq 'INCONCLUSIVE').Count -gt 0) 'Enabled/disabled label change invalidates tolerance.'
 $bad=Clone $policy;$bad.After.Value=0
 Check (@(Test-InvariantMetadata $image $expect $samples[0] $bad | Where-Object Verdict -eq 'INCONCLUSIVE').Count -gt 0) 'Policy change invalidates tolerance.'
+# Capture the same real ending receipt on successful and interrupted trials.
+# Only the transport is mocked; the policy finalizer and observer are real.
+Import-EvaluationFunctions (Join-Path $PSScriptRoot 'Test-StagedInvariantSuite.ps1') @('Complete-LastAccessEvidence','Get-ErrorChain')
+$script:lastAccessReceipt=Clone $policy.After;$script:lastAccessFailure=$false
+function Get-LastAccessEvidence {
+    if($script:lastAccessFailure){throw 'LastAccess query transport failed'}
+    return $script:lastAccessReceipt
+}
+foreach($interrupted in @($false,$true)){
+    $partial=[ordered]@{Errors=@();LastAccessBefore=(Clone $policy.Before)}
+    try{if($interrupted){throw 'BLOCK expiry recovery service Ready QPC timeout'}}
+    catch{$partial.Errors+=Get-ErrorChain $_.Exception}
+    finally{Complete-LastAccessEvidence $partial}
+    Check ($partial.LastAccessAfter.Qpc -eq 20000 -and $partial.LastAccessPolicy.After.Qpc -eq 20000 -and
+        $partial.LastAccessPolicy.Before.Qpc -eq 0 -and $partial.LastAccessPolicy.Status -ceq 'OK') 'Finalization retains two independent policy receipts after success or execution failure.'
+    Check (@(Test-InvariantMetadata $image $expect $samples[0] $partial.LastAccessPolicy | Where-Object Verdict -cne 'PASS').Count -eq 0) 'Real paired finalization receipt binds the retained sample.'
+    Check ($partial.Errors.Count -eq [int]$interrupted -and (-not $interrupted -or $partial.Errors[0].Message -ceq 'BLOCK expiry recovery service Ready QPC timeout')) 'Metadata finalization never removes the original execution error.'
+}
+$script:lastAccessReceipt=Clone $policy.After;$script:lastAccessReceipt.Value=2;$script:lastAccessReceipt.UpdatesDisabled=$false
+$enabled=[ordered]@{Errors=@();LastAccessBefore=(Clone $script:lastAccessReceipt)};$enabled.LastAccessBefore.Qpc=0
+Complete-LastAccessEvidence $enabled
+Check (@(Test-InvariantMetadata $image $expect $samples[0] $enabled.LastAccessPolicy | Where-Object Verdict -cne 'PASS').Count -eq 0) 'System-managed value2 binds the same bounded read-side rule after finalization.'
+foreach($field in @('boot','volume','lateBefore','earlyAfter','policy','missingValue')){
+    $script:lastAccessReceipt=Clone $policy.After;$partial=[ordered]@{Errors=@();LastAccessBefore=(Clone $policy.Before)}
+    switch($field){
+        'boot'{$script:lastAccessReceipt.BootId='other'} 'volume'{$script:lastAccessReceipt.VolumeGuid='other'}
+        'lateBefore'{$partial.LastAccessBefore.Qpc=$samples[0].Start.Qpc+1} 'earlyAfter'{$script:lastAccessReceipt.Qpc=$samples[0].End.Qpc-1}
+        'policy'{$script:lastAccessReceipt.Value=2;$script:lastAccessReceipt.UpdatesDisabled=$false} 'missingValue'{$script:lastAccessReceipt.Value=$null}
+    }
+    Complete-LastAccessEvidence $partial
+    Check (@(Test-InvariantMetadata $image $expect $samples[0] $partial.LastAccessPolicy | Where-Object Verdict -ceq 'INCONCLUSIVE').Count -gt 0) ('Finalized receipt cannot conceal wrong/missing binding: '+$field)
+}
+$partial=[ordered]@{Errors=@(@{Message='original execution error'});LastAccessBefore=(Clone $policy.Before);LastAccessAfter=(Clone $policy.After)}
+$script:lastAccessFailure=$true
+Complete-LastAccessEvidence $partial
+Check ($null -eq $partial.LastAccessAfter -and $partial.LastAccessPolicy.Status -ceq 'INCONCLUSIVE' -and $partial.Errors.Count -eq 2 -and
+    $partial.Errors[0].Message -ceq 'original execution error' -and $partial.Errors[1].Message -ceq 'LastAccess query transport failed') 'Failed final query records its error and cannot reuse an older ending receipt.'
+Check (@(Test-InvariantMetadata $image $expect $samples[0] $partial.LastAccessPolicy | Where-Object Verdict -ceq 'INCONCLUSIVE').Count -gt 0) 'Failed final query cannot authorize metadata tolerance.'
+$script:lastAccessFailure=$false
+$tokens=$null;$errors=$null;$suiteAst=[Management.Automation.Language.Parser]::ParseFile((Join-Path $PSScriptRoot 'Test-StagedInvariantSuite.ps1'),[ref]$tokens,[ref]$errors)
+foreach($name in @('Invoke-CachedObservation','Invoke-SeedObservation','Invoke-R03Observation')){
+    $fn=@($suiteAst.FindAll({param($n)$n -is [Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -ceq $name},$false))[0]
+    $finalizers=@($fn.Body.FindAll({param($n)$n -is [Management.Automation.Language.TryStatementAst] -and $null -ne $n.Finally -and
+        $n.Finally.Extent.Text.Contains('Complete-LastAccessEvidence $trial')},$false))
+    Check ($finalizers.Count -eq 1) ('Real metadata consumer always finalizes its policy receipt: '+$name)
+}
 $external=[pscustomobject]@{WriterIdentities=@([pscustomobject]@{Pid=1000;Sid='S-1-5-21-1-2-3-1000';SessionId=1;Elevated=$false;IsAdministrator=$false;BootId=$boot});CadenceProof=[pscustomobject]@{Complete=$true}
     ExternalEvidence=[pscustomobject]@{Provenance='SyntheticTestEvidence';Build=$baseline.Build;PrepareBootId='fixture/prepare';ActiveBootId=$boot;ObserverPid=$baseline.ObserverPid;ObserverSid=$baseline.ObserverSid
         ActorProvenance=[pscustomobject]@{OwnerSid='S-1-5-21-1-2-3-1000';Pid=1000;SessionId=1};ObserverProcess=[pscustomobject]@{OwnerSid=$baseline.ObserverSid;Pid=$baseline.ObserverPid};Restoration=[pscustomobject]@{Known=$true}}}

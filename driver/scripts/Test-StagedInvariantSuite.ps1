@@ -1295,6 +1295,17 @@ function Get-LastAccessEvidence {
         RegistryValue=(Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem').NtfsDisableLastAccessUpdate;
         Note='Query only: set disablelastaccess changes machine policy and may require reboot. No default is assumed.'}
 }
+function Complete-LastAccessEvidence($Trial) {
+    # Run in each metadata consumer's finally, after its last retained sample.
+    # An execution error (p1b2's BLOCK restart timeout) must not skip the real
+    # ending receipt or replace it with the beginning receipt. The observer
+    # still validates unchanged policy, volume, boot and the full QPC window.
+    $Trial.LastAccessAfter=$null
+    try{$Trial.LastAccessAfter=Get-LastAccessEvidence}
+    catch{$Trial.Errors+=Get-ErrorChain $_.Exception}
+    $Trial.LastAccessPolicy=@{Status=$(if($null -ne $Trial.LastAccessBefore.Value -and $null -ne $Trial.LastAccessAfter.Value){'OK'}else{'INCONCLUSIVE'});
+        Before=$Trial.LastAccessBefore;After=$Trial.LastAccessAfter}
+}
 function Initialize-ServiceEvidenceReader {
     if('SUProofFile' -as [type]){return}
     # Separate harness helper. Nothing in the NTFS decoder is modified.
@@ -3208,7 +3219,6 @@ function Invoke-CachedObservation {
         if($DedicatedUnheldLatency -and -not $cachedDenial){
             $trial.Assertions+=@{Name='DedicatedLatencyOnly';Verdict='INCONCLUSIVE';Reason='Separate unheld native latency experiment; no functional protection qualification.'}
             $writer=Invoke-DedicatedLatencyObservation $trial $actor $ready $context $digest $imageA.Length
-            $trial.LastAccessAfter=Get-LastAccessEvidence
             $trial.ServiceAfter=Get-ServiceSnapshot 'latency-after' -RetryTransientJournal;$trial.Journal=$trial.ServiceAfter.Journal
             $trial.VerifierAfter=Get-VerifierEvidence 'after' -RequireMode
             return
@@ -3225,7 +3235,7 @@ function Invoke-CachedObservation {
             if($DedicatedUnheldLatency){
                 $trial.Assertions+=@{Name='DedicatedLatencyOnly';Verdict='INCONCLUSIVE';Reason='Separate unheld denied-rename latency experiment; no functional protection qualification.'}
                 $writer=Invoke-DedicatedDeniedRenameLatencyObservation $trial $actor $context $baseline $externalContext $externalBaseline $imageA
-                $trial.LastAccessAfter=Get-LastAccessEvidence;$trial.ServiceAfter=Get-ServiceSnapshot 'latency-denied-after' -RetryTransientJournal;$trial.Journal=$trial.ServiceAfter.Journal
+                $trial.ServiceAfter=Get-ServiceSnapshot 'latency-denied-after' -RetryTransientJournal;$trial.Journal=$trial.ServiceAfter.Journal
                 $trial.VerifierAfter=Get-VerifierEvidence 'after' -RequireMode
                 return
             }
@@ -3370,7 +3380,6 @@ function Invoke-CachedObservation {
         $trial.Latency=Get-LatencyVerdict $trial.Operations $row.LatencyClasses $writer.Value.QpcFrequency
         $trial.Repetitions=$row.Repetitions;$trial.OperationClassTimeline=$row.StatusClasses
         if($CaseId -cnotin @('R01','B01')){$trial.Assertions+=@{Name='C01UnheldLatency';Verdict='INCONCLUSIVE';Reason='One coordinated functional write only; 100 unheld latency repetitions deferred.'}}
-        $trial.LastAccessAfter=Get-LastAccessEvidence
         $fence=[pscustomobject]@{Complete=$true;BootId=$context.BootId;QpcFrequency=$writer.Value.QpcFrequency;ReleasedQpc=$writer.Value.ReleasedQpc;CompletedQpc=[Diagnostics.Stopwatch]::GetTimestamp()}
         $trial.ServiceAfter=Get-ServiceSnapshot 'after'
         $delta=Test-ServiceJournalDelta $trial.ServiceBefore $trial.ServiceAfter $true
@@ -3407,6 +3416,7 @@ function Invoke-CachedObservation {
         $trial.VerifierAfter=Get-VerifierEvidence 'after' -RequireMode
     }catch{'ScriptError='+$_.Exception.ToString();$trial.Errors+=Get-ErrorChain $_.Exception;$trial.Assertions+=@{Name='C01Execution';Verdict='INCONCLUSIVE';Reason=($_.Exception.Message+'; '+$_.ScriptStackTrace)}}
     finally {
+        Complete-LastAccessEvidence $trial
         if($null -ne $agentStartLocal){
             try{Get-WinEvent -FilterHashtable @{LogName='Application';StartTime=$agentStartLocal} -ErrorAction Stop | Where-Object ProviderName -match 'SafeUpload' |
                 Sort-Object TimeCreated | ForEach-Object {$_.TimeCreated.ToString('o')+' '+$_.ProviderName+' '+$_.LevelDisplayName+' '+($_.Message -replace '\s+',' ')} |
@@ -3444,7 +3454,6 @@ function Invoke-CachedObservation {
             if(-not $samples.Count){$trial.Assertions+=@{Name='R01OfflineNewCoverage';Verdict='INCONCLUSIVE';Reason='No raw/fresh/uncached offline create-name absence samples retained.'}}
         }
         $trial.WriterFence=@{Complete=($null -ne $writer -and $writer.ExitCode -eq 0);BootId=$writer.BootId;QpcFrequency=$writer.Value.QpcFrequency;ReleasedQpc=$writer.Value.ReleasedQpc;CompletedQpc=$writer.CompletedQpc;ExpectedAttempts=1}
-        $trial.LastAccessPolicy=@{Status=$(if($null -ne $trial.LastAccessBefore.Value -and $null -ne $trial.LastAccessAfter.Value){'OK'}else{'INCONCLUSIVE'});Before=$trial.LastAccessBefore;After=$trial.LastAccessAfter}
         $trial.MutationLedger=@{Complete=$false;Overflow=$false;Entries=@();Source='Unavailable: existing lower admission/completion adapter'}
         $trial.ExpectedTimeline=@{ForbiddenBlocks=@($state.ForbiddenBlocks | ForEach-Object {,[Convert]::FromBase64String($_)});Checkpoints=$checkpoints;AllowedMutations=@();ExpectedDenials=@();
             WriterIdentities=@($trial.Actor | Where-Object {$null -ne $_});Operations=$trial.Operations;WriterFence=$trial.WriterFence;LastAccessPolicy=$trial.LastAccessPolicy;
@@ -3562,7 +3571,6 @@ $value=$b.ToString().Split([char]0)[0]
         $trial.FinalCacheFlush=Flush-InvariantFinalVolume
         $seq++;$checkpoints+=Get-ExpectedCheckpoint $baseline 'FinalQuiescence' $seq
         $samples+=Capture-InvariantSample $context $baseline 'FinalQuiescence' $seq
-        $trial.LastAccessAfter=Get-LastAccessEvidence
         $trial.ServiceAfter=Get-ServiceSnapshot 'after'
         $serviceFence=[pscustomobject]@{Complete=($writer.ExitCode -eq 0 -and $writer.Value.Held -eq $false);BootId=$writer.BootId;
             QpcFrequency=$writer.Value.QpcFrequency;ReleasedQpc=$writer.Value.ReleasedQpc;CompletedQpc=$writer.CompletedQpc}
@@ -3580,11 +3588,11 @@ $value=$b.ToString().Split([char]0)[0]
         if($trial.Operations[0].StartQpc -lt $ready.Qpc){throw 'Attempt precedes durable readiness'}
     }catch{$trial.Errors+=Get-ErrorChain $_.Exception}
     finally {
+        Complete-LastAccessEvidence $trial
         if($null -ne $context -and $context.Status -eq 'OK'){$disposal=Close-InvariantObserver $context}
         $trial.Baseline=$baseline;$trial.Samples=$samples;$trial.Disposal=$disposal
         $trial.WriterFence=[pscustomobject]@{Complete=($null -ne $writer -and $writer.ExitCode -eq 0 -and $writer.Value.Held -eq $false);
             BootId=$writer.BootId;QpcFrequency=$writer.Value.QpcFrequency;ReleasedQpc=$writer.Value.ReleasedQpc;CompletedQpc=$writer.CompletedQpc;ExpectedAttempts=101}
-        $trial.LastAccessPolicy=[pscustomobject]@{Status=$(if($null -ne $trial.LastAccessBefore.Value -and $null -ne $trial.LastAccessAfter.Value){'OK'}else{'INCONCLUSIVE'});Before=$trial.LastAccessBefore;After=$trial.LastAccessAfter}
         # No fabricated lower entries, actor-free bypass or live Flags proof.
         $trial.MutationLedger=@{Complete=$false;Overflow=$false;FirstSequence=0;LastSequence=0;Entries=@();Source='Unavailable: driver lower admission/completion mutation ledger readback; user-mode calls cannot substitute'}
         $trial.ExpectedTimeline=@{ForbiddenBlocks=@($state.ForbiddenBlocks | ForEach-Object {,[Convert]::FromBase64String($_)});
@@ -4975,6 +4983,7 @@ function Invoke-R03Observation {
         $trial.VerifierAfter=Get-VerifierEvidence 'after' -RequireMode
     }catch{$trial.Errors+=Get-ErrorChain $_.Exception;$trial.Assertions+=@{Name='R03Execution';Verdict='INCONCLUSIVE';Reason=($_.Exception.Message+'; '+$_.ScriptStackTrace)}}
     finally{
+        Complete-LastAccessEvidence $trial
         if($null -ne $actor -and $null -eq $writer){
             try{if(-not(Test-Path -LiteralPath (Join-Path $actorDirectory 'cancel'))){Write-DurableFile (Join-Path $actorDirectory 'cancel') $RunName -New};Stop-ScheduledTask -TaskName $writerTask}catch{$trial.Errors+=Get-ErrorChain $_.Exception}
         }
@@ -4984,8 +4993,6 @@ function Invoke-R03Observation {
             $afterCounters=Get-ActivationTaintCounters 'r03-after';$trial.TaintCounterWindow=Get-ActivationTaintCounterDelta $trial.TaintCounterBefore $afterCounters
             $trial.Assertions+=@{Name='R03TaintCountersUnchanged';Verdict=$(if($trial.TaintCounterWindow.NoCounterChanges){'PASS'}else{'FAIL'});Reason='Actual machine-wide Inspector taint recorded/lookups/hits/tainted-renames counters have zero deltas over offline and online mutations.';Evidence=$trial.TaintCounterWindow}
         }catch{$trial.Assertions+=@{Name='R03TaintCountersUnchanged';Verdict='INCONCLUSIVE';Reason=$_.Exception.Message}}
-        $trial.LastAccessAfter=Get-LastAccessEvidence
-        $trial.LastAccessPolicy=@{Status=$(if($null -ne $trial.LastAccessBefore.Value -and $null -ne $trial.LastAccessAfter.Value){'OK'}else{'INCONCLUSIVE'});Before=$trial.LastAccessBefore;After=$trial.LastAccessAfter}
         if($null -ne $baseline){foreach($sample in $samples){$trial.Assertions+=Test-R03BaseSample $sample $baseline ([Convert]::FromBase64String($state.BaselineBase64)) $trial.LastAccessPolicy}}
         if($null -ne $context -and $context.Status -ceq 'OK'){$trial.Disposal=Close-InvariantObserver $context}
         else{$trial.Disposal=@{Status='INCONCLUSIVE';Reason='R03 observer unavailable'}}
