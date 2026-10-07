@@ -18,7 +18,7 @@ function Import-EvaluationFunctions([string]$File,[string[]]$Names) {
     }
 }
 Import-EvaluationFunctions (Join-Path $PSScriptRoot 'StagedInvariantObserver.psm1') @('New-IORecord','New-IOAssertion','Test-InvariantCadence','Test-InvariantMetadata','Test-InvariantExternalCoverage')
-Import-EvaluationFunctions (Join-Path $PSScriptRoot 'Test-StagedInvariantSuite.ps1') @('Test-ActivationChildWindow','Add-ActivationAssertion','Test-ActivationDuplicateCleanup','Test-ActivationRawWholeImage','Get-ActivationSha256','Get-ActivationPendingEntry','ConvertFrom-NtfsLastAccessOutput','Wait-WriterIdentity','Load-State','Get-ActivatingWriterBody','Get-ExpectedCheckpoint','Test-ServiceJournalStateReachable','Assert-ServiceManifestPath','ConvertFrom-ServiceJournalRecord','Test-ServiceJournalDelta','Get-ServiceDestinationPaths','Test-ServiceFixtureEntry','Get-NotificationTailCoverage','ConvertFrom-NotificationRecord','Test-NotificationWindow','ConvertFrom-AgentEventXml','Test-AgentLogContinuity','Read-AgentLogWindow','Test-NotificationLocationUnchanged','Test-AgentDidNotRun','Get-ServiceTimeline','Test-CachedJournalSequence','Test-CachedNotifications','Test-CachedHandBackAcl','Test-CachedSample','Test-CachedImage','Test-CachedActorCalls','Add-CachedHeldJournal','Test-CachedNamespaceCommit','Get-WriterBody','Get-ActivationActorIdentity','Publish-ActivationActorCommand')
+Import-EvaluationFunctions (Join-Path $PSScriptRoot 'Test-StagedInvariantSuite.ps1') @('Test-ActivationChildWindow','Add-ActivationAssertion','Test-ActivationDuplicateCleanup','Test-ActivationRawWholeImage','Get-ActivationSha256','Get-ActivationPendingEntry','Get-ActivationFullPendingEntry','ConvertFrom-NtfsLastAccessOutput','Wait-WriterIdentity','Load-State','Get-ActivatingWriterBody','Get-ExpectedCheckpoint','Test-ServiceJournalStateReachable','Assert-ServiceManifestPath','ConvertFrom-ServiceJournalRecord','Test-ServiceJournalDelta','Get-ServiceDestinationPaths','Test-ServiceFixtureEntry','Get-NotificationTailCoverage','ConvertFrom-NotificationRecord','Test-NotificationWindow','ConvertFrom-AgentEventXml','Test-AgentLogContinuity','Read-AgentLogWindow','Test-NotificationLocationUnchanged','Test-AgentDidNotRun','Get-ServiceTimeline','Test-CachedJournalSequence','Test-CachedNotifications','Test-CachedHandBackAcl','Test-CachedSample','Test-CachedImage','Test-CachedActorCalls','Add-CachedHeldJournal','Test-CachedNamespaceCommit','Get-WriterBody','Get-ActivationActorIdentity','Publish-ActivationActorCommand')
 $script:checks=0
 function Check([bool]$Condition,[string]$Message){if(-not $Condition){throw $Message};$script:checks++}
 function Clone($Value){return ($Value | ConvertTo-Json -Depth 32 | ConvertFrom-Json)}
@@ -65,16 +65,36 @@ Check $rejected 'Same-boot QPC frequency mismatch remains a collector error.'
 function Get-ActivationInspectorJson { return [pscustomobject]@{Record=$script:activatingFixture} }
 $script:activatingFixture=@{activatingStatus=$true;totalEntries=3;entries=@(
     @{path='target';fileId='id';S='YES'},@{path='outside1';fileId='other1'},@{path='outside2';fileId='other2'})}
-$selected=Get-ActivationPendingEntry 'target' 'id' 'fixture'
+$selected=Get-ActivationFullPendingEntry 'target' 'id' 'fixture'
 Check ($selected.Entries.Count -eq 1 -and $selected.Snapshot.Record.totalEntries -eq 3) 'Unrelated machine-wide entries must not invalidate the one exact target.'
 $script:activatingFixture.totalEntries=4
-$rejected=$false;try{$null=Get-ActivationPendingEntry 'target' 'id' 'fixture'}catch{$rejected=$true}
+$rejected=$false;try{$null=Get-ActivationFullPendingEntry 'target' 'id' 'fixture'}catch{$rejected=$true}
 Check $rejected 'Incomplete machine-wide page count must fail.'
 $script:activatingFixture.totalEntries=3
 $script:activatingFixture.entries[2]=@{path='target';fileId='id'}
-Check ((Get-ActivationPendingEntry 'target' 'id' 'fixture').Entries.Count -eq 2) 'Duplicate exact target remains ambiguous for caller rejection.'
+Check ((Get-ActivationFullPendingEntry 'target' 'id' 'fixture').Entries.Count -eq 2) 'Duplicate exact target remains ambiguous for caller rejection.'
 $script:activatingFixture.entries[2]=@{path='target';fileId='other'}
-Check ((Get-ActivationPendingEntry 'target' 'id' 'fixture').Entries.Count -eq 1) 'A path with another identity must not become an exact target.'
+Check ((Get-ActivationFullPendingEntry 'target' 'id' 'fixture').Entries.Count -eq 1) 'A path with another identity must not become an exact target.'
+# Exact-target point reads explicitly distinguish scope from machine-wide pages.
+$script:activatingFixture=@{activatingTarget=$true;requestedPath='target';matchCount=1;flags=0;policyGeneration=2;
+ entries=@(@{path='target';fileId=('a'*32);generation=2;H=1;S='NO';C=0;T=0;W=0})}
+$targetFixture=Clone $script:activatingFixture
+Check ((Get-ActivationPendingEntry 'target' ('a'*32) 'fixture' 'C:\fixture').Entries.Count -eq 1) 'One exact target is complete without a machine-wide page claim.'
+Check ((Get-ActivationPendingEntry 'target' ('b'*32) 'fixture' 'C:\fixture').Entries.Count -eq 0) 'Different file ID is not the target.'
+$script:activatingFixture.matchCount=0;$script:activatingFixture.entries=@()
+Check ((Get-ActivationPendingEntry 'target' ('a'*32) 'fixture' 'C:\fixture').Entries.Count -eq 0) 'Missing history is absent evidence.'
+foreach($field in @('activatingTarget','requestedPath','matchCount','flags','policyGeneration')){
+ $script:activatingFixture=Clone $targetFixture
+ switch($field){'activatingTarget'{$script:activatingFixture.activatingTarget=$false}'requestedPath'{$script:activatingFixture.requestedPath='wrong'}'matchCount'{$script:activatingFixture.matchCount=2}'flags'{$script:activatingFixture.flags=1}'policyGeneration'{$script:activatingFixture.policyGeneration=0}}
+ $rejected=$false;try{$null=Get-ActivationPendingEntry 'target' ('a'*32) 'fixture' 'C:\fixture'}catch{$rejected=$true}
+ Check $rejected ('Wrong exact-target header fails: '+$field)
+}
+$script:activatingFixture=Clone $targetFixture;$script:activatingFixture.entries[0].W='0'
+$rejected=$false;try{$null=Get-ActivationPendingEntry 'target' ('a'*32) 'fixture' 'C:\fixture'}catch{$rejected=$true}
+Check $rejected 'String counter is not native target evidence.'
+$script:activatingFixture=Clone $targetFixture;$script:activatingFixture.entries=@()
+$rejected=$false;try{$null=Get-ActivationPendingEntry 'target' ('a'*32) 'fixture' 'C:\fixture'}catch{$rejected=$true}
+Check $rejected 'One claimed match must include one retained entry.'
 Remove-Item Function:\Get-ActivationInspectorJson
 # Name visibility, an open write handle and partial serialization are distinct
 # from complete identity publication. Exercise all three with temporary files.

@@ -654,7 +654,8 @@ Return Value:
         command = controlHeader.Command;
 
         if (command == SAFEUPLOAD_CONTROL_ADMISSION_PROBE ||
-            command == SAFEUPLOAD_CONTROL_REGISTRY_ENTRY) {
+            command == SAFEUPLOAD_CONTROL_REGISTRY_ENTRY ||
+            command == SAFEUPLOAD_CONTROL_ACTIVATING_TARGET_STATUS) {
             ULONG maximumProbeSize = (ULONG)FIELD_OFFSET( SAFEUPLOAD_ADMISSION_PROBE_REQUEST, Strings ) +
                 (2UL * (ULONG)SAFEUPLOAD_ADMISSION_PROBE_MAX_STRING_CHARS * (ULONG)sizeof( WCHAR ));
 
@@ -812,10 +813,12 @@ Return Value:
         }
 
         if (command == SAFEUPLOAD_CONTROL_ADMISSION_PROBE ||
-            command == SAFEUPLOAD_CONTROL_REGISTRY_ENTRY) {
+            command == SAFEUPLOAD_CONTROL_REGISTRY_ENTRY ||
+            command == SAFEUPLOAD_CONTROL_ACTIVATING_TARGET_STATUS) {
             PSAFEUPLOAD_ADMISSION_PROBE_REQUEST request =
                 (PSAFEUPLOAD_ADMISSION_PROBE_REQUEST)policy;
             PSAFEUPLOAD_REGISTRY_ENTRY_STATUS registryReply = NULL;
+            PSAFEUPLOAD_ACTIVATING_TARGET_STATUS targetReply = NULL;
             UNICODE_STRING volumeName;
             UNICODE_STRING relativePath;
             UNICODE_STRING volumePrefix = RTL_CONSTANT_STRING( L"\\Device\\" );
@@ -833,7 +836,9 @@ Return Value:
                 InputBufferLength > maximumProbeSize ||
                 (command == SAFEUPLOAD_CONTROL_ADMISSION_PROBE ?
                     (OutputBuffer != NULL || OutputBufferLength != 0) :
-                    (OutputBuffer == NULL || OutputBufferLength != sizeof(SAFEUPLOAD_REGISTRY_ENTRY_STATUS)))) {
+                    (OutputBuffer == NULL || OutputBufferLength !=
+                        (command == SAFEUPLOAD_CONTROL_ACTIVATING_TARGET_STATUS ?
+                            sizeof(SAFEUPLOAD_ACTIVATING_TARGET_STATUS) : sizeof(SAFEUPLOAD_REGISTRY_ENTRY_STATUS))))) {
                 status = STATUS_INVALID_BUFFER_SIZE;
                 leave;
             }
@@ -852,6 +857,20 @@ Return Value:
                 registryReply = (PSAFEUPLOAD_REGISTRY_ENTRY_STATUS)((PUCHAR)policy +
                     sizeof(*policy) - sizeof(*registryReply));
                 RtlZeroMemory(registryReply, sizeof(*registryReply));
+            }
+
+            if (command == SAFEUPLOAD_CONTROL_ACTIVATING_TARGET_STATUS) {
+                C_ASSERT(sizeof(SAFEUPLOAD_POLICY_MESSAGE) >=
+                    FIELD_OFFSET(SAFEUPLOAD_ADMISSION_PROBE_REQUEST, Strings) +
+                    2 * SAFEUPLOAD_ADMISSION_PROBE_MAX_STRING_CHARS * sizeof(WCHAR) +
+                    sizeof(SAFEUPLOAD_ACTIVATING_TARGET_STATUS));
+                C_ASSERT((sizeof(SAFEUPLOAD_POLICY_MESSAGE) - sizeof(SAFEUPLOAD_ACTIVATING_TARGET_STATUS)) %
+                    __alignof(SAFEUPLOAD_ACTIVATING_TARGET_STATUS) == 0);
+#pragma warning(suppress: 6001)
+                ProbeForWrite(OutputBuffer, sizeof(SAFEUPLOAD_ACTIVATING_TARGET_STATUS),
+                    __alignof(SAFEUPLOAD_ACTIVATING_TARGET_STATUS));
+                targetReply = (PSAFEUPLOAD_ACTIVATING_TARGET_STATUS)((PUCHAR)policy +
+                    sizeof(*policy) - sizeof(*targetReply));
             }
 
             // This bounded request is larger than the control header; copy it
@@ -932,6 +951,15 @@ Return Value:
 
             if (command == SAFEUPLOAD_CONTROL_ADMISSION_PROBE) {
                 status = SafeUploadStageAdmissionProbe(&volumeName, &relativePath);
+            } else if (command == SAFEUPLOAD_CONTROL_ACTIVATING_TARGET_STATUS) {
+                UNICODE_STRING normalizedName;
+                normalizedName.Buffer = request->Strings;
+                normalizedName.Length = normalizedName.MaximumLength = (USHORT)stringBytes;
+                status = SafeUploadStageWritersActivatingTargetStatus(&normalizedName, targetReply);
+                if (NT_SUCCESS(status)) {
+                    RtlCopyMemory(OutputBuffer, targetReply, sizeof(*targetReply));
+                    *ReturnOutputBufferLength = sizeof(*targetReply);
+                }
             } else {
                 status = SafeUploadStageRegistryEntryProbe(&volumeName, &relativePath, registryReply);
                 if (NT_SUCCESS(status)) {

@@ -168,6 +168,8 @@ NTSTATUS SafeUploadStageWritersActivatingStatusPage(_In_ UINT32 StartIndex,
     _Out_ PSAFEUPLOAD_ACTIVATING_STATUS_PAGE Page);
 NTSTATUS SafeUploadStageWritersActivatingDiagnosticStatusPage(_In_ UINT32 StartIndex,
     _Out_ PSAFEUPLOAD_ACTIVATING_DIAGNOSTIC_STATUS_PAGE Page);
+NTSTATUS SafeUploadStageWritersActivatingTargetStatus(_In_ PCUNICODE_STRING Name,
+    _Out_ PSAFEUPLOAD_ACTIVATING_TARGET_STATUS Result);
 NTSTATUS SafeUploadStageWritersAdmissionCoverage(_In_ UINT32 PolicyGeneration,
     _Out_ PULONGLONG RegistrySequenceStart, _Out_ PULONGLONG RegistrySequenceEnd,
     _Out_ PUINT32 WriterEntries, _Out_ PUINT32 WriterEntriesNotReady,

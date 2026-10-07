@@ -25,7 +25,7 @@ public static class StagedProofProxyWire
         {
             2 => 184, 5 or 6 or 7 => 0, 8 => 1960, 12 => 288, 17 => 104,
             19 => 36136, 20 => 32, 22 => 672, 23 => 6672,
-            24 => Contract.AdmissionCoverageStatusSize, 25 => 36392,
+            24 => Contract.AdmissionCoverageStatusSize, 25 => 36392, 26 => 1168,
             _ => throw new InvalidDataException("Prototype proof control is not allowed."),
         };
         if (outputBytes != expected)
@@ -35,7 +35,7 @@ public static class StagedProofProxyWire
             if (input.Length != 32 || reserved != 0)
                 throw new InvalidDataException("Invalid trace paging request.");
         }
-        else if (command == 17)
+        else if (command is 17 or 26)
         {
             if (input.Length < 28 || reserved != 0)
                 throw new InvalidDataException("Invalid registry probe request.");
