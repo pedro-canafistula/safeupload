@@ -87,7 +87,15 @@ public static class SUActorLsa {
     if ($code -ne 0 -and -not ((-not $Grant) -and $code -eq 2)) { throw ('SeBatchLogonRight ' + $(if ($Grant) { 'grant' } else { 'revoke' }) + ' failed: ' + $code) }
 }
 function Save-State($Value,[string]$Path) { Write-DurableFile $Path ([Management.Automation.PSSerializer]::Serialize($Value,32)) }
-function Load-State([string]$Path) { [Management.Automation.PSSerializer]::Deserialize([IO.File]::ReadAllText($Path)) }
+function Load-State([string]$Path) {
+    # The observation task and AfterBoot share state.clixml; a read can meet the other's
+    # write handle or a partial file (run c01b1). Retry briefly on a monotonic clock.
+    $watch=[Diagnostics.Stopwatch]::StartNew()
+    while($true){
+        try{return [Management.Automation.PSSerializer]::Deserialize([IO.File]::ReadAllText($Path))}
+        catch{if($watch.ElapsedMilliseconds -ge 10000 -or -not (Test-Path -LiteralPath $Path)){throw};Start-Sleep -Milliseconds 50}
+    }
+}
 function Wait-WriterIdentity([string]$Path,[int]$Seconds=60) {
     # Existence is not publication: CreateNew exposes the name before the writer
     # has flushed/closed it. Allow its write handle and retry partial CLIXML too.
@@ -2930,7 +2938,7 @@ $value=$b.ToString().Split([char]0)[0]
     finally {
         # StartupProbe updates actor/service recovery fields in its own process.
         # Re-read after its completion before restoration or those fields are lost.
-        if($isActivationCase){$state=Load-State $statePath}
+        if($isActivationCase -or $cachedCase){$state=Load-State $statePath}
         $state.AfterBootId=Get-BootId
         Save-State $state $statePath
         Restore-Suite
