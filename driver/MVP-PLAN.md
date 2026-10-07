@@ -1939,3 +1939,14 @@ the batch wrapper before it runs.
   (P2) the pre-existing SOP-lifetime premise in StageRegistryAssociateSectionPointer is a target-build precondition, not a
   documented NTFS contract. **The v2 pair (driver 9b964be9, agent d9501a71) is the MVP sweep build**; v1 and older runs
   are diagnostics only.
+- **Owner decision (2026-10-07): classify reads by content only while process taint is on.** The service policy set
+  `ClassifyAllSources`, so every read open of a supported file type anywhere waited on a synchronous agent inspection whose
+  only consumer is process taint. With taint off (MVP qualification) that is pure cost, and in dedicated latency runs the
+  load stalled the service ~11 s until the driver's verdict request timed out and a user create was denied after 5.5 s
+  (C01 l2c1, C02 goallatmap1). Agent `63664ffd` (branch `feat/mvp-reads-with-taint`) requests read classification only
+  when taint is enabled; a taint-on configuration keeps today's behavior and its stall risk is a recorded known issue
+  (post-MVP: bounded/asynchronous source classification). Destination scope, staging and admission gates are unchanged.
+  The MVP sweep pair becomes driver `9b964be9` + this agent once its exact build and test matrix pass.
+- First full v2-driver runtime-Verifier pass (old agent d9501a71): 5/23 pass (A02, A05, R01, S00, S01); C01-C04 APPROVE
+  wait only on dedicated latency; readiness flapping (Pending after each write) blocks A01/A03/X01 assertions; R03 and
+  both C03/C04 BLOCK rows lost their live-taint receipt. These are re-measured on the new agent before more fixes.
