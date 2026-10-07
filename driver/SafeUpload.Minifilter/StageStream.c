@@ -3429,17 +3429,13 @@ static FLT_PREOP_CALLBACK_STATUS StageDispatchCore(PFLT_CALLBACK_DATA Data,
             /* Owned-stage file objects were routed through StagePreOperation
              * above. A public physical FILE_OBJECT can still receive paging
              * writes from a writable section opened while the filter was
-             * attached. Keep its exact writer/SOP mutation ticket alive until
-             * lower completion, then deny that paging write when the SOP
-             * belongs to the current or pending protected scope (including Activating).
+             * attached. Keep its exact writer/SOP mutation ticket (W) alive
+             * until lower completion; never refuse it. Paging I/O is a ledger,
+             * not a gate (2026-10-05 decision): an old writer finishes under the
+             * rights it was granted and its file stays Activating until Free(F).
              * This path does not infer section lifetime from Cleanup or Close. */
             (VOID)SafeUploadStageWritersBeginPagingIo(Data, Objects->Instance,
                 fileObject, &mutatingIoContext, &exactSopTracked);
-            if (exactSopTracked && fileObject != NULL && SafeUploadStageWritersSopMatchesPolicy(
-                    Objects->Instance, fileObject, FALSE)) {
-                SafeUploadStageWritersEndMutatingIo(mutatingIoContext);
-                return StageCompleteAccessDenied(Data);
-            }
             if (mutatingIoContext != NULL) {
                 *CompletionContext = mutatingIoContext;
                 return FLT_PREOP_SUCCESS_WITH_CALLBACK;
