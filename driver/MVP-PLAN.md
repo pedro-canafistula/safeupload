@@ -1891,3 +1891,16 @@ the batch wrapper before it runs.
   `SAFEUPLOAD_DEBUGGEE` selects one; provenance records it. Setup: `New-ParallelDebuggees.sh`.
 - Order of work: fix while only runtime-Verifier runs; once it is green, run ordinary and boot-Verifier
   without product changes in between; dedicated latency per write path and mode with other VMs idle.
+- [x] Luna reclaim-churn analysis ([analysis](evidence/2026-10-07/luna-reclaim-churn-analysis.md)): every close and
+  every successful cleanup on the system calls the global lifetime recheck, which restarts the registry sweep,
+  so ~2.5-3k passes/s follow unrelated file-system activity (high confidence in the source defect, medium that it
+  alone explains the rate; no per-callsite counters). The same global wakeups are what currently retry an
+  Activating target that exited at CacheRetained. **Decision (orchestrator): not fixed for the MVP.** Scoping the
+  wakeup to tracked SOPs (Luna's patch) needs a replacement retry for CacheRetained or a file can stay Activating
+  (a liveness regression), and any driver change resets every passed cell. The churn costs CPU, not the invariant.
+  Post-MVP item, and a release-note known issue.
+- A02/A03 `rv1s2`/`rv1s3`: the live-holder checkpoint required S=YES while H=1, but the driver samples S only
+  at H=0 (same excess as the A04 correction); now YES or Unknown, NO fails, section/view proof stays the strict
+  H=0/S=YES check (`3ea267a7`). A01 `rv1s1`: all activation proofs pass; the post-promotion write was routed to an
+  owned stream, but the single immediate journal snapshot still saw Allocated. A01-A03 now poll up to 120 s for the
+  exact transfer to leave Allocated/Sealed/Inspecting, as A04 does.

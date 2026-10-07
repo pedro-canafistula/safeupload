@@ -4200,14 +4200,24 @@ function Invoke-ActivationObservation {
         $trial.Operations+=@($stageReply.Calls);$trial.PostPromotionWrite=$stageReply
         $stageApiGood=($stageReply.NativeCode -eq 0 -and $stageReply.FlushCode -eq 0 -and $stageReply.CloseCode -eq 0 -and [long]$stageReply.BytesWritten -eq $stagePayload.Length)
         $stageSample=Capture-InvariantSample $context $baseline 'AfterUnapprovedPostPromotionWrite' 4;$samples+=$stageSample
-        $samplesAfter=Get-ServiceSnapshot 'activation-after-unapproved-write'
-        $trial.ServiceAfter=$samplesAfter
-        $windowKnown=($serviceBefore.Status -ceq 'OK' -and $samplesAfter.Status -ceq 'OK' -and
-            $serviceBefore.BootId -ceq $samplesAfter.BootId -and $serviceBefore.QpcFrequency -eq $samplesAfter.QpcFrequency -and
-            $serviceBefore.EndQpc -le $stageReply.StartQpc -and $stageReply.EndQpc -le $samplesAfter.StartQpc -and
-            $serviceBefore.BootId -ceq $stageReply.BootId -and $serviceBefore.QpcFrequency -eq $stageReply.QpcFrequency)
-        $journalDelta=Test-ServiceJournalDelta $serviceBefore $samplesAfter $windowKnown
-        $newTransfers=@($journalDelta.NewEntries | Where-Object {$_.Entry.Transfer.DestinationPath -ieq $target -and [int]$_.Entry.Transfer.ProcessId -eq [int]$actor.Pid})
+        # The service seals, inspects and blocks asynchronously after the actor's close (rv1s1 saw the exact transfer
+        # still Allocated in a single immediate snapshot). Poll, as A04 does, until the exact transfer leaves
+        # Allocated/Sealed/Inspecting or 120 s pass; every snapshot is retained under its own tag.
+        $samplesAfter=$null;$journalDelta=$null;$newTransfers=@();$windowKnown=$false;$afterPolls=0
+        $afterDeadline=[Diagnostics.Stopwatch]::GetTimestamp()+[long](120*[Diagnostics.Stopwatch]::Frequency)
+        do{
+            $samplesAfter=Get-ServiceSnapshot ('activation-after-unapproved-write-'+$afterPolls);$afterPolls++
+            $windowKnown=($serviceBefore.Status -ceq 'OK' -and $samplesAfter.Status -ceq 'OK' -and
+                $serviceBefore.BootId -ceq $samplesAfter.BootId -and $serviceBefore.QpcFrequency -eq $samplesAfter.QpcFrequency -and
+                $serviceBefore.EndQpc -le $stageReply.StartQpc -and $stageReply.EndQpc -le $samplesAfter.StartQpc -and
+                $serviceBefore.BootId -ceq $stageReply.BootId -and $serviceBefore.QpcFrequency -eq $stageReply.QpcFrequency)
+            $journalDelta=Test-ServiceJournalDelta $serviceBefore $samplesAfter $windowKnown
+            $newTransfers=@($journalDelta.NewEntries | Where-Object {$_.Entry.Transfer.DestinationPath -ieq $target -and [int]$_.Entry.Transfer.ProcessId -eq [int]$actor.Pid})
+            if($journalDelta.Complete -and ($newTransfers.Count -gt 1 -or
+                ($newTransfers.Count -eq 1 -and $newTransfers[0].StateName -cnotin @('Allocated','Sealed','Inspecting')))){break}
+            Start-Sleep -Milliseconds 500
+        }while([Diagnostics.Stopwatch]::GetTimestamp() -lt $afterDeadline)
+        $trial.ServiceAfter=$samplesAfter;$trial.ServiceAfterPolls=$afterPolls
         $stagePathProof=$null
         if($newTransfers.Count -eq 1){$stagePathProof=Get-ActivationOwnedStagePathProof $newTransfers[0].Entry.Transfer}
         $journalRouted=($journalDelta.Complete -and $newTransfers.Count -eq 1 -and $newTransfers[0].StateName -ceq 'Blocked' -and $stagePathProof.Verdict -ceq 'PASS')

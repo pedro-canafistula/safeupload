@@ -110,7 +110,7 @@
             Cleanup = @('CloseObserver', 'StopOwnedTasks', 'RemoveOwnedUser', 'RestoreDriver', 'RestorePolicyBytesAndAcls', 'RemoveOwnedBootPolicy', 'RestoreAgentConfig', 'ResetVerifier', 'RemoveFixtureAndState', 'RestorationReboot', 'IndependentBaseline')
         }
         @{
-            CaseId = 'A01'; Revision = 6; Status = 'Ready'
+            CaseId = 'A01'; Revision = 7; Status = 'Ready'
             Variant = 'fixed-NTFS-pre-scope-write-handle-runtime-scope-add-supported-text-target'
             Outcome = 'ACTIVATING_THEN_STAGED; pre-protection old-handle mutation is permitted and captured; post-promotion write remains private before approval'
             QualificationScope = 'Phase4A01SingleHandleVariant; noncached/EOF/allocation/disposition/rename/link variants deferred'
