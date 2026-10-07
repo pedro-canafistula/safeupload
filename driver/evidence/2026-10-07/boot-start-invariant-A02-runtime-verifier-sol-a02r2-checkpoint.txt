@@ -1,0 +1,12 @@
+UTC=2026-10-07T06:43:47Z
+virsh -c qemu:///system snapshot-create-as --domain win10-debug --name safeupload-pre-boot-start-invariant-A02-runtime-verifier-sol-a02r2-20261007 --description 'Clean original driver and policy before boot-start-invariant-A02-runtime-verifier-sol-a02r2' --disk-only --no-metadata --diskspec vda,snapshot=external,file=/var/lib/libvirt/images/win10-debug.safeupload-pre-boot-start-invariant-A02-runtime-verifier-sol-a02r2-20261007 --atomic
+Domain snapshot safeupload-pre-boot-start-invariant-A02-runtime-verifier-sol-a02r2-20261007 created
+--- active disk after checkpoint
+ Target   Source
+---------------------------------------------------------------------------------------------------------------------------
+ vda      /var/lib/libvirt/images/win10-debug.safeupload-pre-boot-start-invariant-A02-runtime-verifier-sol-a02r2-20261007
+ sda      -
+ sdb      -
+
+running
+
