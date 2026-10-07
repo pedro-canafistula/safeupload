@@ -1,0 +1,34 @@
+<Objs Version="1.1.0.1" xmlns="http://schemas.microsoft.com/powershell/2004/04">
+  <Obj RefId="0">
+    <TN RefId="0">
+      <T>System.Collections.Hashtable</T>
+      <T>System.Object</T>
+    </TN>
+    <DCT>
+      <En>
+        <S N="Key">Elevated</S>
+        <B N="Value">false</B>
+      </En>
+      <En>
+        <S N="Key">Pid</S>
+        <I32 N="Value">5980</I32>
+      </En>
+      <En>
+        <S N="Key">SessionId</S>
+        <I32 N="Value">0</I32>
+      </En>
+      <En>
+        <S N="Key">BootId</S>
+        <S N="Value">WIN10-DEBUGGED/2026-10-07T06:05:13.5000000Z</S>
+      </En>
+      <En>
+        <S N="Key">IsAdministrator</S>
+        <B N="Value">false</B>
+      </En>
+      <En>
+        <S N="Key">Sid</S>
+        <S N="Value">S-1-5-21-316478115-1595729549-2803163825-1062</S>
+      </En>
+    </DCT>
+  </Obj>
+</Objs>

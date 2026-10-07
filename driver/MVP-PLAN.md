@@ -1212,3 +1212,14 @@ The safe W01 checkpoint parent was written by Sol and checked by root: Windows P
 - [x] A03 count predicate repair: Windows PS5.1 parser0, proof244, native88
   PASS (`sol-harness-windows-validation-z.txt`); Python adapter18 and MVP7
   controls PASS. Runtime rerun pending; original sol-a03r1 FAIL retained.
+
+- [x] A03 count-corrected rerun sol-a03r2 is INCONCLUSIVE, both gates false,
+  independent restoration clean. It stops earlier: activating-status changed
+  during all five Inspector attempts, same bounded snapshot failure as A01r6.
+  P/raw capture, epoch advancement and SYSTEM current Pending remain receipts;
+  count repair was not reached in this rerun. Do not claim corrected contract
+  passed. SSH read-only progress timed out during the restoration reboot;
+  wrapper final baseline is clean (second baseline retained). Suspected-crash
+  private dump setup stopped on missing pool directory before any capture or
+  guest mutation. No crash/dump/recovery claim. Per handoff, move to other Ready
+  rows after recurring global snapshot churn without new information.

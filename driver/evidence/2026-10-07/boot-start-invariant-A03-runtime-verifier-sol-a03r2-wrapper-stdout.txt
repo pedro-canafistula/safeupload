@@ -1,0 +1,89 @@
+== 1. baseline
+baseline clean
+== 2. checkpoint
+BackingChainDepth=144
+UTC=2026-10-07T06:04:51Z
+virsh -c qemu:///system snapshot-create-as --domain win10-debug --name safeupload-pre-boot-start-invariant-A03-runtime-verifier-sol-a03r2-20261007 --description 'Clean original driver and policy before boot-start-invariant-A03-runtime-verifier-sol-a03r2' --disk-only --no-metadata --diskspec vda,snapshot=external,file=/var/lib/libvirt/images/win10-debug.safeupload-pre-boot-start-invariant-A03-runtime-verifier-sol-a03r2-20261007 --atomic
+Domain snapshot safeupload-pre-boot-start-invariant-A03-runtime-verifier-sol-a03r2-20261007 created
+--- active disk after checkpoint
+ Target   Source
+---------------------------------------------------------------------------------------------------------------------------
+ vda      /var/lib/libvirt/images/win10-debug.safeupload-pre-boot-start-invariant-A03-runtime-verifier-sol-a03r2-20261007
+ sda      -
+ sdb      -
+
+running
+
+== 3. run
+PRE_RUN_PS: $ErrorActionPreference='Stop';$d='C:\Users\vika\Documents';
+$p=Join-Path $d 'SafeUpload-stage-prototype-C2AF9A15F086E25F.sys';if((Test-Path -LiteralPath $p) -and (Get-FileHash $p).Hash -ne 'C2AF9A15F086E25FB757F3F088B2E7826789DCE0D5D4EBA38C797CF27A2D5FF4'){throw 'Input collision'};
+$p=Join-Path $d 'inspector-feature-release-D08C34EB1063AB46.exe';if((Test-Path -LiteralPath $p) -and (Get-FileHash $p).Hash -ne 'D08C34EB1063AB462EC533ACF8C5E5B0432A3FF54F39742C8F70E0F04161EEE2'){throw 'Input collision'};
+$p=Join-Path $d 'StagedInvariantCases-D1AA6692325CAE62.psd1';if((Test-Path -LiteralPath $p) -and (Get-FileHash $p).Hash -ne 'D1AA6692325CAE623B236691AAEEF3A4D31D0DB585AFC6DDA2503EC2B99C0AAB'){throw 'Input collision'};
+$p=Join-Path $d 'StagedInvariantObserver-5210C6FCC9058D9F.psm1';if((Test-Path -LiteralPath $p) -and (Get-FileHash $p).Hash -ne '5210C6FCC9058D9F6FD52E0C2505654F4779875A82771AFC3558D838250CC81A'){throw 'Input collision'};
+$p=Join-Path $d 'StagedTestAgent-4C9220B7D202255D.ps1';if((Test-Path -LiteralPath $p) -and (Get-FileHash $p).Hash -ne '4C9220B7D202255DC29EDB585DB3C51AED0B2284C06914E41E2C7C1BAA247699'){throw 'Input collision'};
+$p=Join-Path $d 'stage-service-publish.zip';if((Test-Path -LiteralPath $p) -and (Get-FileHash $p).Hash -ne '8362EA475FF372C05209F35FC2347866CFB9727F647D5220395C965A94148D90'){$old=(Get-FileHash $p).Hash;$keep=$p+'.preserved-'+$old;if(Test-Path -LiteralPath $keep){throw 'Preserved package collision'};Move-Item -LiteralPath $p -Destination $keep};
+$p=Join-Path $d 'Test-StagedInvariantSuite-717F968B64059A44.ps1';if((Test-Path -LiteralPath $p) -and (Get-FileHash $p).Hash -ne '717F968B64059A44AAC158AB6EFC44788025BCA3CA5AACEAD55D5098F5F42B74'){throw 'Input collision'};
+if(Test-Path -LiteralPath (Join-Path $d 'boot-start-invariant-A03-runtime-verifier-sol-a03r2-artifacts')){throw 'Run-scoped guest evidence collision'};
+if(Test-Path -LiteralPath (Join-Path $d 'SafeUpload-invariant-state-boot-start-invariant-A03-runtime-verifier-sol-a03r2')){throw 'Run-scoped guest evidence collision'};
+if(Test-Path -LiteralPath (Join-Path $d 'boot-start-invariant-A03-runtime-verifier-sol-a03r2-prepare.out')){throw 'Run-scoped guest evidence collision'};
+if(Test-Path -LiteralPath (Join-Path $d 'boot-start-invariant-A03-runtime-verifier-sol-a03r2-prepare.err')){throw 'Run-scoped guest evidence collision'};
+if(Test-Path -LiteralPath (Join-Path $d 'boot-start-invariant-A03-runtime-verifier-sol-a03r2-afterboot.out')){throw 'Run-scoped guest evidence collision'};
+if(Test-Path -LiteralPath (Join-Path $d 'boot-start-invariant-A03-runtime-verifier-sol-a03r2-afterboot.err')){throw 'Run-scoped guest evidence collision'};
+if(Test-Path -LiteralPath (Join-Path $d 'boot-start-invariant-A03-runtime-verifier-sol-a03r2-finalize.out')){throw 'Run-scoped guest evidence collision'};
+if(Test-Path -LiteralPath (Join-Path $d 'boot-start-invariant-A03-runtime-verifier-sol-a03r2-finalize.err')){throw 'Run-scoped guest evidence collision'};
+'PRE_RUN_OK=True'
+
+PRE_RUN_OK=True
+copied /tmp/claude-1000/exact-mvp4-sol-b13/SafeUpload-stage-prototype.sys -> SafeUpload-stage-prototype-C2AF9A15F086E25F.sys sha256=c2af9a15f086e25fb757f3f088b2e7826789dce0d5d4eba38c797cf27a2d5ff4
+copied /tmp/claude-1000/exact-mvp4-sol-b13/inspector-feature-release.exe -> inspector-feature-release-D08C34EB1063AB46.exe sha256=d08c34eb1063ab462ec533acf8c5e5b0432a3ff54f39742c8f70e0f04161eee2
+copied /home/victor/Work/safeupload-staging/driver/scripts/StagedInvariantCases.psd1 -> StagedInvariantCases-D1AA6692325CAE62.psd1 sha256=d1aa6692325cae623b236691aaeef3a4d31d0db585afc6dda2503ec2b99c0aab
+copied /home/victor/Work/safeupload-staging/driver/scripts/StagedInvariantObserver.psm1 -> StagedInvariantObserver-5210C6FCC9058D9F.psm1 sha256=5210c6fcc9058d9f6fd52e0c2505654f4779875a82771afc3558d838250cc81a
+copied /home/victor/Work/safeupload-staging/driver/scripts/StagedTestAgent.ps1 -> StagedTestAgent-4C9220B7D202255D.ps1 sha256=4c9220b7d202255dc29edb585db3c51aed0b2284c06914e41e2c7c1baa247699
+copied /tmp/claude-1000/exact-agent-agent-mvp4-sol-b19/stage-service-publish.zip -> stage-service-publish.zip sha256=8362ea475ff372c05209f35fc2347866cfb9727f647d5220395c965a94148d90
+processed file: C:\Users\vika\Documents\SafeUpload-invariant-state-boot-start-invariant-A03-runtime-verifier-sol-a03r2
+Successfully processed 1 files; Failed processing 0 files
+processed file: C:\Users\vika\Documents\boot-start-invariant-A03-runtime-verifier-sol-a03r2-artifacts
+Successfully processed 1 files; Failed processing 0 files
+The command was successfully executed.
+processed file: C:\Users\vika\Documents\SafeUpload-invariant-state-boot-start-invariant-A03-runtime-verifier-sol-a03r2
+Successfully processed 1 files; Failed processing 0 files
+processed file: C:\Users\vika\Documents\SafeUpload-invariant-state-boot-start-invariant-A03-runtime-verifier-sol-a03r2\actor
+Successfully processed 1 files; Failed processing 0 files
+processed file: C:\SafeUploadInvariant-boot-start-invariant-A03-runtime-verifier-sol-a03r2
+Successfully processed 1 files; Failed processing 0 files
+PolicyAclVerified=True;Trustees=SYSTEM,Administrators;InheritedAces=0
+BootPolicySeed=product-mode;ExitCode:0;PASS
+BootPolicyPrebootVerified=ParametersAcl:True;BootPolicyAcl:True;RecordBytes:16656;ExactRecord:True;PendingScopes:Absent;Start:3;PASS
+processed file: C:\Users\vika\Documents\SafeUpload-invariant-state-boot-start-invariant-A03-runtime-verifier-sol-a03r2\writer-config.clixml
+Successfully processed 1 files; Failed processing 0 files
+processed file: C:\Users\vika\Documents\SafeUpload-invariant-state-boot-start-invariant-A03-runtime-verifier-sol-a03r2\writer.ps1
+Successfully processed 1 files; Failed processing 0 files
+[SC] ChangeServiceConfig SUCCESS
+CaseStatus=READY
+INVARIANT_PREPARED=True
+HARNESS_RETURNED
+REBOOT_REQUESTED=True
+guest SSH returned after reboot (attempt 1)
+BootIdentityChanged=True;Before=2026-10-07T06:03:11.5000000Z;After=2026-10-07T06:05:13.5000000Z
+The command was successfully executed.
+[SC] ChangeServiceConfig SUCCESS
+No settings were changed.
+INVARIANT_CASE_COMPLETED=True
+INVARIANT_RESTORED=True
+HARNESS_RETURNED
+REBOOT_REQUESTED=True
+guest SSH returned after reboot (attempt 1)
+BootIdentityChanged=True;Before=2026-10-07T06:05:13.5000000Z;After=2026-10-07T06:07:57.5000000Z
+InvariantVerdict=INCONCLUSIVE
+INVARIANT_FINAL_STATE=True
+HARNESS_RETURNED
+== 4. independent restoration check
+ProcessCreationAuditRestored=True
+OriginalDriverHash=True
+FilterUnloaded=True
+VerifierOff=True
+OriginalPolicyHash=True
+ZeroAgentProcesses=True
+ZeroTestTasks=True
+NoGuidFixtureDirectories=True
+BaselineClean=True
