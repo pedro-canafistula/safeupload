@@ -932,3 +932,13 @@ The safe W01 checkpoint parent was written by Sol and checked by root: Windows P
   idle retention with unchanged receipt, disconnect invalidation and checked
   closure (`sol-notification-stream-builder-validation.txt`). Fixture seeds a
   synthetic connection; production SYSTEM authentication remains a VM requirement.
+
+- Diagnostic connect decision (A01 `sol-a01r5`): the prototype endpoint serves
+  one request and closes/recreates its single pipe instance. Adjacent Inspector
+  calls can reach the short no-instance/busy interval. Bound connection retries
+  for ERROR_FILE_NOT_FOUND/ERROR_PIPE_BUSY with the existing ten-second monotonic
+  diagnostic deadline, authenticate SYSTEM after opening, and never retry a
+  delivered request or fall back to a competing driver port. Other native
+  connection errors fail immediately. This is Inspector-only transport; kernel
+  product behavior is unchanged. New exact four-configuration WDK/Inspector
+  build, independent Luna review, then runtime-Verifier qualification required.
