@@ -57,10 +57,31 @@ def fixture(case='C01-approve-absent'):
             InputHashes={k:'B'*64 for k in Q.MVP_BUILD_HASHES}, Restoration=dict(Known=True, GuestChecks=True), BootIds=dict(Active='active'),
             Trials=[dict(Errors=[], Disposal=dict(Status='OK'), DedicatedLatency=observation, Actor=actor,
                 Platform=dict(Build='19045.2965', BootId='active'), ActorProvenance=dict(Pid=1234, OwnerSid=actor['Sid'], SessionId=0),
-                ImageA=dict(Sha256='A'*64, Length=12288), Assertions=[dict(Name='DedicatedLatencyOnly', Verdict='INCONCLUSIVE')], Operations=calls)])
+                ImageA=dict(Sha256='A'*64, Length=12288), Assertions=[dict(Name='DedicatedLatencyOnly', Verdict='INCONCLUSIVE'),
+                    dict(Name='LiveTaintFlags', Verdict='PASS')], Operations=calls)])
 
 
 class DedicatedLatencyTests(unittest.TestCase):
+    def test_real_cli_selection_accepts_denied_rename_and_rejects_other_variants(self):
+        self.assertEqual(set(CLASSES), Q.DEDICATED_LATENCY_CASES)
+        for case in CLASSES:
+            self.assertTrue(Q.dedicated_latency_selection_valid([case], ['runtime-verifier']))
+        for cases, modes, diagnostic, evidence in ((['C05'], ['ordinary'], 0, None),
+                (['C05-denied-external-rename'], ['ordinary', 'boot-verifier'], 0, None),
+                (list(CLASSES), ['ordinary'], 0, None),
+                (['C05-denied-external-rename'], ['ordinary'], 600, None),
+                (['C05-denied-external-rename'], ['ordinary'], 0, Path('receipt.json'))):
+            self.assertFalse(Q.dedicated_latency_selection_valid(cases, modes, diagnostic, evidence))
+
+    def test_dedicated_receipt_requires_unique_pass_live_taint(self):
+        for kind in ('missing', 'duplicate', 'inconclusive', 'fail'):
+            result=fixture();assertions=result['Trials'][0]['Assertions']
+            if kind=='missing': assertions.pop()
+            elif kind=='duplicate': assertions.append(assertions[-1].copy())
+            else: assertions[-1]['Verdict']=kind.upper()
+            with self.subTest(kind=kind):
+                self.assertNotEqual('PASS', Q.export_dedicated_latency(result)['Verdict'])
+
     def test_denied_rename_requires_exact_status_and_every_independent_round_proof(self):
         changes = [lambda r: r['Receipt']['Calls'][1].update(NativeCode=0),
                    lambda r: r['Receipt']['Calls'][1].update(NativeCode=32),

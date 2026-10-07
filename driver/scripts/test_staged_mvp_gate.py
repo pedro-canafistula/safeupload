@@ -26,6 +26,7 @@ def fixture():
 def latency(result):
     return {'Schema': 'StagedInvariantLatency/1', 'RunName': 'dedicated-real-run',
             'WritePath': 'cached-write', 'Mode': result['Mode'], 'RestorationClean': True,
+            'LiveTaintFlagsPassed': True,
             'InputHashes': result['InputHashes'].copy(), 'Errors': [],
             'Latency': [{'Class': 'cached-write', 'Verdict': 'PASS', 'Samples': [
                 {'Cold': n == 0, 'Held': False, 'Ms': 10} for n in range(101)]}]}
@@ -94,6 +95,9 @@ class MvpGateTests(unittest.TestCase):
                      lambda e: e.update(Mode='ordinary'),
                      lambda e: e['InputHashes'].update(Feature='C' * 64),
                      lambda e: e.update(RestorationClean=False),
+                     lambda e: e.update(LiveTaintFlagsPassed=False),
+                     lambda e: e.pop('LiveTaintFlagsPassed'),
+                     lambda e: e.update(LiveTaintFlagsPassed=1),
                      lambda e: [s.update(Cold=False) for s in e['Latency'][0]['Samples']]]
         for change in mutations:
             evidence = latency(result)

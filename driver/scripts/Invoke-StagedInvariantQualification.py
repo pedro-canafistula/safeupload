@@ -579,6 +579,13 @@ MVP_DEFERRED_EXACT = frozenset((
     'ExternalCoverage', 'NeverReadyWholeHolderInterval',
 ))
 MVP_BUILD_HASHES = ('Feature', 'Inspector', 'ServicePackage', 'ServiceTree')
+DEDICATED_LATENCY_CASES = frozenset(('C01-approve-absent', 'C02-approve-absent',
+                                  'C03-approve-existing', 'C04-approve', 'C05-denied-external-rename'))
+
+
+def dedicated_latency_selection_valid(cases, modes, diagnostic_seconds=0, latency_evidence=None):
+    return (len(cases) == 1 and set(cases) <= DEDICATED_LATENCY_CASES and len(modes) == 1
+            and not diagnostic_seconds and not latency_evidence)
 
 
 def mvp_write_path(case):
@@ -593,6 +600,7 @@ def mvp_latency_passed(evidence, result, classes):
     if (evidence.get('WritePath') != mvp_write_path(result.get('CaseId', ''))
             or evidence.get('Mode') != result.get('Mode')
             or evidence.get('RestorationClean') is not True
+            or evidence.get('LiveTaintFlagsPassed') is not True
             or evidence.get('Errors') or not evidence.get('RunName')):
         return False
     if any(not re.fullmatch(r'[A-F0-9]{64}', result.get('InputHashes', {}).get(k, ''))
@@ -707,6 +715,10 @@ def export_dedicated_latency(result):
                 and any(a.get('Name') == 'DedicatedLatencyOnly' and a.get('Verdict') == 'INCONCLUSIVE'
                         for a in trial['Assertions']), 'Dedicated rounds/platform/provenance/disposal incomplete')
         require(not any(a.get('Verdict') == 'FAIL' for a in trial['Assertions']), 'Dedicated assertion failure')
+        taint = [a for a in trial['Assertions'] if a.get('Name') == 'LiveTaintFlags']
+        require(len(taint) == 1 and taint[0].get('Verdict') == 'PASS',
+                'Dedicated live taint disable proof missing, ambiguous or not PASS')
+        evidence['LiveTaintFlagsPassed'] = True
         digest = observation['Digest']
         require(re.fullmatch(r'[A-F0-9]{64}', digest) and observation['Length'] > 0
                 and trial['ImageA']['Sha256'] == digest and trial['ImageA']['Length'] == observation['Length'],
@@ -1103,9 +1115,8 @@ def main():
             (set(cases) <= {'C02-approve-absent', 'C02-block-absent'} and modes == ['runtime-verifier']),
             'Mapped stack diagnostic requires only C02 cases in runtime-Verifier mode')
     require(not args.dedicated_unheld_latency or
-            (len(cases) == 1 and set(cases) <= {'C01-approve-absent', 'C02-approve-absent', 'C03-approve-existing', 'C04-approve'}
-             and len(modes) == 1 and not args.mapped_stack_diagnostic_seconds and not args.mvp_latency_evidence),
-            'Dedicated latency requires one APPROVE C01-C04 case/mode without diagnostic/evidence options')
+            dedicated_latency_selection_valid(cases, modes, args.mapped_stack_diagnostic_seconds, args.mvp_latency_evidence),
+            'Dedicated latency requires one APPROVE C01-C04 or denied C05 case/mode without diagnostic/evidence options')
     files, package, tree_hash, provenance = build_inputs(args, commit, agent_commit, head)
     args.mvp_latency_record = None
     if args.mvp_latency_evidence:

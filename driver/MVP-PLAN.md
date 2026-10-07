@@ -1618,3 +1618,23 @@ This implements the already-required cache barrier while preserving the stronger
 empty-cache gate. The queued-above-filter paging-write boundary remains the
 explicit post-MVP hardening item; no new completeness claim is made. Fresh exact
 WDK builds and actual A-row promotion/raw evidence remain required.
+
+Cache-barrier candidate `d8c44d2e` built as `mvp4-goal-cache1`: four WDK configs,
+both Inspectors and fixture PASS, all warnings/errors zero, PREfast/ApiValidator
+clean, signature valid. No activation qualification is claimed before its VM
+run. Service source is unchanged from exact `d9501a71`/`agent-goal-taint2` and
+the passing isolated normal/feature matrix. Source self-review checks PASSIVE
+execution, no registry/state/section lock around flush, exact STATUS_SUCCESS,
+post-flush empty-SOP and all existing final CAS predicates. Runtime behavior
+with the observer's held read handle remains to be measured; a retained pointer
+continues to withhold promotion. Fresh independent review remains pending.
+
+Host review found C05 was still excluded by the CLI selection check although
+the guest and exporter supported it. One shared explicit supported-case set now
+drives selection, covered by positive C05 and negative variant/multi-mode/option
+controls. Dedicated export and MVP sidecar consumption also require a unique
+PASS live-taint-disable receipt; old/unattested latency receipts cannot qualify.
+56 host tests PASS. Windows gate `goal-c05lat-4` PASS: zero parse errors and all
+14 self-checks, including 101 real native ACL-denied rename sequences on the
+builder (stimulus control only), and 329 proof-adapter controls. C05 runtime
+latency qualification remains pending.
