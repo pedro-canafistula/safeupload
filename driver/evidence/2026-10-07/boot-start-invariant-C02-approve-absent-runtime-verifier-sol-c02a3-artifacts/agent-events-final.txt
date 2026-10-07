@@ -1,0 +1,9 @@
+﻿2026-10-07T06:59:36.8080461+01:00 SafeUpload.Agent.Service Information Category: Microsoft.Extensions.Hosting.Internal.Host EventId: 1 Hosting starting 
+2026-10-07T06:59:36.8480453+01:00 SafeUploadAgent Information Service started successfully.
+2026-10-07T06:59:37.1660472+01:00 SafeUpload.Agent.Service Information Category: Microsoft.Hosting.Lifetime EventId: 0 Application started. Hosting environment: Production; Content root path: C:\Users\vika\Documents\SafeUpload-invariant-state-boot-start-invariant-C02-approve-absent-runtime-verifier-sol-c02a3\service\ 
+2026-10-07T06:59:37.1680469+01:00 SafeUpload.Agent.Service Information Category: Microsoft.Extensions.Hosting.Internal.Host EventId: 2 Hosting started 
+2026-10-07T06:59:37.1720452+01:00 SafeUpload.Agent.Service Information Category: SafeUpload.Agent.Service.Notifications.NotificationPipeServer EventId: 0 Canal de notificacao em \\.\pipe\SafeUpload.Agent 
+2026-10-07T06:59:37.2600481+01:00 SafeUpload.Agent.Service Information Category: SafeUpload.Agent.Service.Interception.MinifilterInterceptor EventId: 0 Prazo: motor 5000 ms (RN-012), kernel espera 5500 ms. 
+2026-10-07T06:59:37.2600481+01:00 SafeUpload.Agent.Service Information Category: SafeUpload.Agent.Service.Interception.MinifilterInterceptor EventId: 0 Politica v1 empurrada ao driver: 1 extensoes, 1 destinos, classificacao de fontes em todos os volumes. 
+2026-10-07T06:59:37.6500450+01:00 SafeUpload.Agent.Service Information Category: SafeUpload.Agent.Service.Interception.MinifilterInterceptor EventId: 0 Minifiltro conectado. Interceptando em modo kernel. 
+2026-10-07T06:59:37.7040459+01:00 SafeUpload.Agent.Service Information Category: SafeUpload.Agent.Service.Interception.MinifilterInterceptor EventId: 0 Admission coverage Ready (native generation 1). 

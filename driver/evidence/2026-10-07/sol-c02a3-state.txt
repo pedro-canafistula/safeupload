@@ -1,0 +1,19 @@
+identity.clixml={"Elevated":false,"HandBackBefore":[],"Sid":"S-1-5-21-316478115-1595729549-2803163825-1061","SessionId":0,"Profile":"C:\\Users\\sui5e3f59a61ed4","IsAdministrator":false,"BootId":"WIN10-DEBUGGED/2026-10-07T05:59:15.5000000Z","Pid":5992}
+native-create-section-start.clixml={"Sid":"S-1-5-21-316478115-1595729549-2803163825-1061","Qpc":419901792,"Token":"1f6f1cdf90374b07a206886fd7c33b55","ReleasedQpc":418840204,"BootId":"WIN10-DEBUGGED/2026-10-07T05:59:15.5000000Z","Calls":[{"Class":"writer-open","NativeCode":0,"StartQpc":419151617,"EndQpc":419877778,"Trial":0,"Cold":true}],"PrivateSha256":null,"Phase":"create-section","Pid":5992}
+Verdict=INCONCLUSIVE
+[
+    {
+        "Type":  "System.Management.Automation.RuntimeException",
+        "Message":  "Writer identity unavailable after bounded retry: C:\\Users\\vika\\Documents\\SafeUpload-invariant-state-boot-start-invariant-C02-approve-absent-runtime-verifier-sol-c02a3\\actor\\held.clixml; Exception calling \"Open\" with \"4\" argument(s): \"Could not find file \u0027C:\\Users\\vika\\Documents\\SafeUpload-invariant-state-boot-start-invariant-C02-approve-absent-runtime-verifier-sol-c02a3\\actor\\held.clixml\u0027.\"",
+        "HResult":  -2146233087,
+        "NativeCode":  null,
+        "Stack":  null
+    },
+    {
+        "Type":  "System.Management.Automation.RuntimeException",
+        "Message":  "Actor did not complete cooperative cancellation within 15 seconds; task stopped, native release evidence incomplete",
+        "HResult":  -2146233087,
+        "NativeCode":  null,
+        "Stack":  null
+    }
+]

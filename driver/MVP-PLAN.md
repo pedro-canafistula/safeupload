@@ -1173,3 +1173,14 @@ The safe W01 checkpoint parent was written by Sol and checked by root: Windows P
   remaining pool scan was stopped using exact owned cdb PID/command guards;
   complete specific IRP/stack evidence and partial scan preserved.
 
+
+- [x] C02 candidate b14 runtime `sol-c02a3` still stalls before CreateFileMapping
+  returns: only writer-open Win32:0 completed, no mapped view/source-close
+  receipts. Actor required forced stop; release evidence incomplete. Both gates
+  remain false, forbidden count0 on the available pre-operation samples;
+  independent restoration BaselineClean=True. No claim of mapping protection or
+  latency. Runtime did not satisfy Luna acceptance conditions, so revert the
+  candidate source to exact-reviewed b13 (847a21da) before pushing. Keep b14
+  builds/review/negative runtime evidence. Same visible native boundary repeats
+  without new stack evidence; move to other Ready cases per handoff. The prior
+  dump localizes b13 only; do not assert b14 waits on the same lower IRP.

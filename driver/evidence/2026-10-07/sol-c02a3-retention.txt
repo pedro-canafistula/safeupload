@@ -1,0 +1,40 @@
+{
+  "OmittedFromGitButRetainedOnDisk": [
+    {
+      "Path": "driver/evidence/2026-10-07/phase4-suite-sol-c02a3-inputs/exact-mvp4-sol-b14/normal-release.sys",
+      "Bytes": 41984,
+      "Sha256": "173778BA1FBC827A5914131A86136F749281D86317A991FF925DCF003CCF402B",
+      "Reason": "RepositoryIgnore"
+    },
+    {
+      "Path": "driver/evidence/2026-10-07/phase4-suite-sol-c02a3-inputs/exact-mvp4-sol-b14/owned-feature-release.sys",
+      "Bytes": 188416,
+      "Sha256": "BD1740064A39C4B44F53761AC446A26A0264198EBE93543D926E41C02C06A40B",
+      "Reason": "RepositoryIgnore"
+    },
+    {
+      "Path": "driver/evidence/2026-10-07/phase4-suite-sol-c02a3-inputs/exact-mvp4-sol-b14/normal.sys",
+      "Bytes": 50688,
+      "Sha256": "181386E1E29B213A2AE166D0E8787DD806E846C68E18E03A21BF7FC509F8B374",
+      "Reason": "RepositoryIgnore"
+    },
+    {
+      "Path": "driver/evidence/2026-10-07/phase4-suite-sol-c02a3-inputs/exact-mvp4-sol-b14/owned-feature.sys",
+      "Bytes": 295936,
+      "Sha256": "B5BEC665E93F6661D97869334B0C453166E3E91D516D473BE3339B875C1C3D64",
+      "Reason": "RepositoryIgnore"
+    },
+    {
+      "Path": "driver/evidence/2026-10-07/phase4-suite-sol-c02a3-inputs/exact-mvp4-sol-b14/SafeUpload-stage-prototype.sys",
+      "Bytes": 297824,
+      "Sha256": "5752B047BCF756ED0C8ADE64737C848A11654DBBF9F155C569A6BD20567F3204",
+      "Reason": "RepositoryIgnore"
+    },
+    {
+      "Path": "driver/evidence/2026-10-07/phase4-suite-sol-c02a3-inputs/exact-agent-agent-mvp4-sol-b19/stage-service-publish.zip",
+      "Bytes": 36476707,
+      "Sha256": "8362EA475FF372C05209F35FC2347866CFB9727F647D5220395C965A94148D90",
+      "Reason": "Over20MiB"
+    }
+  ]
+}
