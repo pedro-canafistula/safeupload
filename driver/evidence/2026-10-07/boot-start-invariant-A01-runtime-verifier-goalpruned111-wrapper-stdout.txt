@@ -1,0 +1,75 @@
+== 1. baseline
+baseline clean
+== 2. checkpoint
+BackingChainDepth=0
+UTC=2026-10-07T16:59:19Z
+virsh -c qemu:///system snapshot-create-as --domain win10-debug --name safeupload-pre-boot-start-invariant-A01-runtime-verifier-goalpruned111-20261007 --description 'Clean original driver and policy before boot-start-invariant-A01-runtime-verifier-goalpruned111' --disk-only --no-metadata --diskspec vda,snapshot=external,file=/var/lib/libvirt/images/win10-debug.safeupload-pre-boot-start-invariant-A01-runtime-verifier-goalpruned111-20261007 --atomic
+Domain snapshot safeupload-pre-boot-start-invariant-A01-runtime-verifier-goalpruned111-20261007 created
+--- active disk after checkpoint
+ Target   Source
+-------------------------------------------------------------------------------------------------------------------------------
+ vda      /var/lib/libvirt/images/win10-debug.safeupload-pre-boot-start-invariant-A01-runtime-verifier-goalpruned111-20261007
+ sda      -
+ sdb      -
+
+running
+
+== 3. run
+PRE_RUN_PS: $ErrorActionPreference='Stop';$d='C:\Users\vika\Documents';
+$p=Join-Path $d 'SafeUpload-stage-prototype-8BBD37087A8FB611.sys';if((Test-Path -LiteralPath $p) -and (Get-FileHash $p).Hash -ne '8BBD37087A8FB6116CB67BABB7BECD0DA79B6F78441156D348A3968A19A3CC9D'){throw 'Input collision'};
+$p=Join-Path $d 'inspector-feature-release-8BB6FACB99D8C870.exe';if((Test-Path -LiteralPath $p) -and (Get-FileHash $p).Hash -ne '8BB6FACB99D8C87051B391656F1807BB03D5449998D0999BD9351BE3BD52E765'){throw 'Input collision'};
+$p=Join-Path $d 'StagedInvariantCases-EF20A3467BF07F25.psd1';if((Test-Path -LiteralPath $p) -and (Get-FileHash $p).Hash -ne 'EF20A3467BF07F25CB9EAA5EE32BB184E311051C08B123066672418DB9ED1D50'){throw 'Input collision'};
+$p=Join-Path $d 'StagedInvariantObserver-3B2DC87477BC9461.psm1';if((Test-Path -LiteralPath $p) -and (Get-FileHash $p).Hash -ne '3B2DC87477BC94612227F6EADCE3D90DDAB8154E0C1FBE326590299349B67CDA'){throw 'Input collision'};
+$p=Join-Path $d 'StagedTestAgent-4C9220B7D202255D.ps1';if((Test-Path -LiteralPath $p) -and (Get-FileHash $p).Hash -ne '4C9220B7D202255DC29EDB585DB3C51AED0B2284C06914E41E2C7C1BAA247699'){throw 'Input collision'};
+$p=Join-Path $d 'stage-service-publish.zip';if((Test-Path -LiteralPath $p) -and (Get-FileHash $p).Hash -ne '39E75934FA45866E5C532DCA081E94C01F9D3D68FE9B2488797D9CA1AAAA6E08'){$old=(Get-FileHash $p).Hash;$keep=$p+'.preserved-'+$old;if(Test-Path -LiteralPath $keep){throw 'Preserved package collision'};Move-Item -LiteralPath $p -Destination $keep};
+$p=Join-Path $d 'Test-StagedInvariantSuite-E54714FFBAC5A36A.ps1';if((Test-Path -LiteralPath $p) -and (Get-FileHash $p).Hash -ne 'E54714FFBAC5A36A4E18D67CE28021FEF614B0340475AD0231178A24D050F41B'){throw 'Input collision'};
+if(Test-Path -LiteralPath (Join-Path $d 'boot-start-invariant-A01-runtime-verifier-goalpruned111-artifacts')){throw 'Run-scoped guest evidence collision'};
+if(Test-Path -LiteralPath (Join-Path $d 'SafeUpload-invariant-state-boot-start-invariant-A01-runtime-verifier-goalpruned111')){throw 'Run-scoped guest evidence collision'};
+if(Test-Path -LiteralPath (Join-Path $d 'boot-start-invariant-A01-runtime-verifier-goalpruned111-prepare.out')){throw 'Run-scoped guest evidence collision'};
+if(Test-Path -LiteralPath (Join-Path $d 'boot-start-invariant-A01-runtime-verifier-goalpruned111-prepare.err')){throw 'Run-scoped guest evidence collision'};
+if(Test-Path -LiteralPath (Join-Path $d 'boot-start-invariant-A01-runtime-verifier-goalpruned111-afterboot.out')){throw 'Run-scoped guest evidence collision'};
+if(Test-Path -LiteralPath (Join-Path $d 'boot-start-invariant-A01-runtime-verifier-goalpruned111-afterboot.err')){throw 'Run-scoped guest evidence collision'};
+if(Test-Path -LiteralPath (Join-Path $d 'boot-start-invariant-A01-runtime-verifier-goalpruned111-finalize.out')){throw 'Run-scoped guest evidence collision'};
+if(Test-Path -LiteralPath (Join-Path $d 'boot-start-invariant-A01-runtime-verifier-goalpruned111-finalize.err')){throw 'Run-scoped guest evidence collision'};
+'PRE_RUN_OK=True'
+
+PRE_RUN_OK=True
+copied /tmp/claude-1000/exact-mvp4-goal-cache5/SafeUpload-stage-prototype.sys -> SafeUpload-stage-prototype-8BBD37087A8FB611.sys sha256=8bbd37087a8fb6116cb67babb7becd0da79b6f78441156d348a3968a19a3cc9d
+copied /tmp/claude-1000/exact-mvp4-goal-cache5/inspector-feature-release.exe -> inspector-feature-release-8BB6FACB99D8C870.exe sha256=8bb6facb99d8c87051b391656f1807bb03d5449998d0999bd9351be3bd52e765
+copied /home/victor/Work/safeupload-staging/driver/scripts/StagedInvariantCases.psd1 -> StagedInvariantCases-EF20A3467BF07F25.psd1 sha256=ef20a3467bf07f25cb9eaa5ee32bb184e311051c08b123066672418db9ed1d50
+copied /home/victor/Work/safeupload-staging/driver/scripts/StagedInvariantObserver.psm1 -> StagedInvariantObserver-3B2DC87477BC9461.psm1 sha256=3b2dc87477bc94612227f6eadce3d90ddab8154e0c1fbe326590299349b67cda
+copied /home/victor/Work/safeupload-staging/driver/scripts/StagedTestAgent.ps1 -> StagedTestAgent-4C9220B7D202255D.ps1 sha256=4c9220b7d202255dc29edb585db3c51aed0b2284c06914e41e2c7c1baa247699
+copied /tmp/claude-1000/exact-agent-agent-goal-taint2/stage-service-publish.zip -> stage-service-publish.zip sha256=39e75934fa45866e5c532dca081e94c01f9d3d68fe9b2488797d9ca1aaaa6e08
+processed file: C:\Users\vika\Documents\SafeUpload-invariant-state-boot-start-invariant-A01-runtime-verifier-goalpruned111
+Successfully processed 1 files; Failed processing 0 files
+processed file: C:\Users\vika\Documents\boot-start-invariant-A01-runtime-verifier-goalpruned111-artifacts
+Successfully processed 1 files; Failed processing 0 files
+The command was successfully executed.
+processed file: C:\Users\vika\Documents\SafeUpload-invariant-state-boot-start-invariant-A01-runtime-verifier-goalpruned111
+Successfully processed 1 files; Failed processing 0 files
+processed file: C:\Users\vika\Documents\SafeUpload-invariant-state-boot-start-invariant-A01-runtime-verifier-goalpruned111\actor
+Successfully processed 1 files; Failed processing 0 files
+processed file: C:\SafeUploadInvariant-boot-start-invariant-A01-runtime-verifier-goalpruned111
+Successfully processed 1 files; Failed processing 0 files
+PolicyAclVerified=True;Trustees=SYSTEM,Administrators;InheritedAces=0
+BootPolicySeed=product-mode;ExitCode:0;PASS
+BootPolicyPrebootVerified=ParametersAcl:True;BootPolicyAcl:True;RecordBytes:16656;ExactRecord:True;PendingScopes:Absent;Start:3;PASS
+processed file: C:\Users\vika\Documents\SafeUpload-invariant-state-boot-start-invariant-A01-runtime-verifier-goalpruned111\writer-config.clixml
+Successfully processed 1 files; Failed processing 0 files
+processed file: C:\Users\vika\Documents\SafeUpload-invariant-state-boot-start-invariant-A01-runtime-verifier-goalpruned111\writer.ps1
+Successfully processed 1 files; Failed processing 0 files
+[SC] ChangeServiceConfig SUCCESS
+CaseStatus=READY
+INVARIANT_PREPARED=True
+HARNESS_RETURNED
+REBOOT_REQUESTED=True
+guest SSH returned after reboot (attempt 1)
+BootIdentityChanged=True;Before=2026-10-07T12:53:44.5000000Z;After=2026-10-07T12:59:30.5000000Z
+The command was successfully executed.
+[SC] ChangeServiceConfig SUCCESS
+No settings were changed.
+INVARIANT_CASE_COMPLETED=True
+INVARIANT_RESTORED=True
+HARNESS_RETURNED
+REBOOT_REQUESTED=True
+guest SSH returned after reboot (attempt 1)

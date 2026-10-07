@@ -1,0 +1,6 @@
+MANUAL_RESUME=True
+Reason=Host orchestrator exited while waiting for the restoration reboot; guest phases Prepare/AfterBoot had completed.
+Tool=driver/scripts/Resume-StagedInvariantRun.py
+ToolSha256=396253A9B95BB85EAB60485EB24E70C72C0CD08C045F039414FD42024F11C59F
+BootBefore=2026-10-07T12:59:30.5000000Z
+BootAfter=2026-10-07T13:02:20.5000000Z

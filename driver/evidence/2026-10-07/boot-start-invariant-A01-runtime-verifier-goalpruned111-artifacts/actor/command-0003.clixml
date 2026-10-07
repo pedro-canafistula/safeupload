@@ -1,0 +1,93 @@
+<Objs Version="1.1.0.1" xmlns="http://schemas.microsoft.com/powershell/2004/04">
+  <Obj RefId="0">
+    <TN RefId="0">
+      <T>System.Collections.Hashtable</T>
+      <T>System.Object</T>
+    </TN>
+    <DCT>
+      <En>
+        <S N="Key">Changes</S>
+        <Obj N="Value" RefId="1">
+          <TN RefId="1">
+            <T>System.Object[]</T>
+            <T>System.Array</T>
+            <T>System.Object</T>
+          </TN>
+          <LST>
+            <Obj RefId="2">
+              <TNRef RefId="0" />
+              <DCT>
+                <En>
+                  <S N="Key">Offset</S>
+                  <I64 N="Value">64</I64>
+                </En>
+                <En>
+                  <S N="Key">Length</S>
+                  <I32 N="Value">96</I32>
+                </En>
+                <En>
+                  <S N="Key">PayloadSha256</S>
+                  <S N="Value">4E3A5EC3C6AC4D225A537D8A00FB3DA4C8D153D372189B9EF746B62982C5F617</S>
+                </En>
+                <En>
+                  <S N="Key">BytesBase64</S>
+                  <S N="Value">QUNULUEwMS1ib290LXN0YXJ0LWludmFyaWFudC1BMDEtcnVudGltZS12ZXJpZmllci1nb2FscHJ1bmVkMTExLTBVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV</S>
+                </En>
+              </DCT>
+            </Obj>
+            <Obj RefId="3">
+              <TNRef RefId="0" />
+              <DCT>
+                <En>
+                  <S N="Key">Offset</S>
+                  <I64 N="Value">6144</I64>
+                </En>
+                <En>
+                  <S N="Key">Length</S>
+                  <I32 N="Value">96</I32>
+                </En>
+                <En>
+                  <S N="Key">PayloadSha256</S>
+                  <S N="Value">B90BD4610267A2F22B9631BD9A93F04C19CBDCEB50226BBF35145C946BCAE1B8</S>
+                </En>
+                <En>
+                  <S N="Key">BytesBase64</S>
+                  <S N="Value">QUNULUEwMS1ib290LXN0YXJ0LWludmFyaWFudC1BMDEtcnVudGltZS12ZXJpZmllci1nb2FscHJ1bmVkMTExLTFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV</S>
+                </En>
+              </DCT>
+            </Obj>
+            <Obj RefId="4">
+              <TNRef RefId="0" />
+              <DCT>
+                <En>
+                  <S N="Key">Offset</S>
+                  <I64 N="Value">12128</I64>
+                </En>
+                <En>
+                  <S N="Key">Length</S>
+                  <I32 N="Value">96</I32>
+                </En>
+                <En>
+                  <S N="Key">PayloadSha256</S>
+                  <S N="Value">2BE04F2C8B6D5311CBF56FB4E5E107AB94607736E44601D1D34C62182D54B8BB</S>
+                </En>
+                <En>
+                  <S N="Key">BytesBase64</S>
+                  <S N="Value">QUNULUEwMS1ib290LXN0YXJ0LWludmFyaWFudC1BMDEtcnVudGltZS12ZXJpZmllci1nb2FscHJ1bmVkMTExLTJVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV</S>
+                </En>
+              </DCT>
+            </Obj>
+          </LST>
+        </Obj>
+      </En>
+      <En>
+        <S N="Key">Sequence</S>
+        <I32 N="Value">3</I32>
+      </En>
+      <En>
+        <S N="Key">Action</S>
+        <S N="Value">write-old</S>
+      </En>
+    </DCT>
+  </Obj>
+</Objs>

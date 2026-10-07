@@ -109,6 +109,22 @@ try {
     Check-IO 'ActivationReaderRebindNegativeLengthRejected' {
         (Open-InvariantActivationReader $readerContext $readerIdentity.FileId ('A'*64) -1).Status -ceq 'ERROR'
     }
+    # Raw MFT times lag the handle's (lazy $STANDARD_INFORMATION write); identity and layout must still match exactly.
+    $identityHandle=[StagedInvariant.Native]::Open($readerFixture,$false,$false)
+    try{$handleIdentity=[StagedInvariant.Native]::GetIdentity($identityHandle);$lagged=[StagedInvariant.Native]::GetIdentity($identityHandle)}finally{$identityHandle.Dispose()}
+    $lagged.Modified-=10000000;$lagged.Changed-=10000000;$lagged.Accessed-=10000000
+    Check-IO 'RawVersusHandleIdentityIgnoresLazyTimes' {
+        [StagedInvariant.Native]::SameRawAndHandleIdentity($lagged,$handleIdentity) -and -not [StagedInvariant.Native]::SameIdentity($lagged,$handleIdentity)
+    }
+    $mutations=@{FileId={param($x)$x.FileId='0'*32};Reference={param($x)$x.Reference++};VolumeSerial={param($x)$x.VolumeSerial=$x.VolumeSerial -bxor 1};
+        Eof={param($x)$x.Eof++};Allocation={param($x)$x.Allocation+=4096};Attributes={param($x)$x.Attributes=$x.Attributes -bxor 1};
+        Links={param($x)$x.Links++};DeletePending={param($x)$x.DeletePending=$true}}
+    foreach($field in $mutations.Keys){
+        $identityHandle=[StagedInvariant.Native]::Open($readerFixture,$false,$false)
+        try{$changed=[StagedInvariant.Native]::GetIdentity($identityHandle)}finally{$identityHandle.Dispose()}
+        & $mutations[$field] $changed
+        Check-IO ('RawVersusHandleIdentityRejects'+$field) { -not [StagedInvariant.Native]::SameRawAndHandleIdentity($changed,$handleIdentity) }
+    }
 }finally{
     if($null -ne $readerHandle){$readerHandle.Dispose()}
     if(Test-Path -LiteralPath $readerFixture){Remove-Item -LiteralPath $readerFixture -Force}

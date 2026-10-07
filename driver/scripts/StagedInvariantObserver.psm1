@@ -271,6 +271,9 @@ namespace StagedInvariant {
    return x;
   }
   public static bool SameIdentity(Identity a,Identity b) { return a.VolumeSerial==b.VolumeSerial && a.FileId==b.FileId && a.Reference==b.Reference && a.Eof==b.Eof && a.Allocation==b.Allocation && a.Attributes==b.Attributes && a.Links==b.Links && a.DeletePending==b.DeletePending && a.Modified==b.Modified && a.Changed==b.Changed; }
+  // Raw-decoded MFT identity versus a live handle: NTFS writes $STANDARD_INFORMATION times to the MFT record lazily (a writer's
+  // cleanup updates them in memory first; goalpruned111), so only identity and layout are comparable across those two sources.
+  public static bool SameRawAndHandleIdentity(Identity raw,Identity handle) { return raw.VolumeSerial==handle.VolumeSerial && raw.FileId==handle.FileId && raw.Reference==handle.Reference && raw.Eof==handle.Eof && raw.Allocation==handle.Allocation && raw.Attributes==handle.Attributes && raw.Links==handle.Links && !raw.DeletePending && !handle.DeletePending && !handle.Directory; }
   public static Run[] DecodeRetrievalPage(byte[] output,int returned,long start) {
    Require(output!=null && returned>=16 && returned<=output.Length,"Retrieval","Short extent header"); uint count=U32(output,0); long vcn=I64(output,8);
    Require(count>0 && count<=128 && returned>=16+count*16 && vcn==start && start>=0,"Retrieval","Bad extent count/start/progress");
@@ -1259,11 +1262,12 @@ function Open-InvariantActivationReader {
             $before.Logical.Length -ne $ExpectedLength){throw 'Raw U changed across the activation reader gap.'}
         $handle=[StagedInvariant.Native]::Open($entry.Original.Path,$false,$false)
         $identity=[StagedInvariant.Native]::GetIdentity($handle)
-        if(-not [StagedInvariant.Native]::SameIdentity($before.Identity,$identity)){throw 'Reopened activation reader resolved a different raw identity/layout.'}
+        if(-not [StagedInvariant.Native]::SameRawAndHandleIdentity($before.Identity,$identity)){
+            throw ('Reopened activation reader resolved a different raw identity/layout. Raw='+($before.Identity|ConvertTo-Json -Compress)+' Handle='+($identity|ConvertTo-Json -Compress))}
         $after=[StagedInvariant.Native]::CapturePinned($Context.Volume,$entry.NativeOriginal)
         if([StagedInvariant.Native]::Fingerprint($before) -cne [StagedInvariant.Native]::Fingerprint($after) -or
             $after.Digest -cne $ExpectedSha256 -or
-            -not [StagedInvariant.Native]::SameIdentity($after.Identity,[StagedInvariant.Native]::GetIdentity($handle))){
+            -not [StagedInvariant.Native]::SameRawAndHandleIdentity($after.Identity,[StagedInvariant.Native]::GetIdentity($handle))){
             throw 'Raw/native identity, layout or U bytes changed while rebinding the activation reader.'
         }
         $entry.Handle=$handle;$keep=$true;$release.Rebound=$true
