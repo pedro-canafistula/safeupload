@@ -8,6 +8,7 @@ using System.IO;
 using System.Text;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using Microsoft.Win32.SafeHandles;
@@ -53,8 +54,14 @@ namespace StagedInvariant {
   public NameEntry[] Names; public NameEntry[] FileNames; public uint SecurityId; public Identity RawMetadata; public Attribute[] Attributes; public string[] CrossCheckErrors;
  }
  public sealed class Reader { public Identity Before, After; public string Digest, Status; public long Length; public int NativeCode; }
+ public sealed class MftRefresh {
+  public uint RequestedRecord; public long StartQpc, EndQpc, QpcFrequency;
+  public string Status, Reason; public Run[] OldRuns, NewRuns; public Container[] Containers;
+ }
  public sealed class Volume : IDisposable {
   public Handle Raw; public Geometry Geometry; public Run[] MftRuns; public Container[] BootstrapContainers;
+  public List<MftRefresh> MftRefreshes=new List<MftRefresh>();
+  public Exception MftMapFailure;
   public void Dispose() { if (Raw!=null) Raw.Dispose(); }
  }
  public static class Native {
@@ -151,13 +158,7 @@ namespace StagedInvariant {
     byte[] n=Io(v.Raw,0x90064,null,128); Require(n.Length>=96,"VolumeData","Truncated NTFS volume data");
     Require(U64(n,0)==g.Serial && U32(n,40)==g.Sector && U32(n,44)==g.Cluster && U32(n,48)==g.RecordSize && I64(n,64)==g.MftLcn && I64(n,8)*g.Sector==g.TotalBytes,"VolumeData","Boot/FSCTL geometry mismatch");
     byte[] mft=ReadAligned(v.Raw,checked(g.MftLcn*g.Cluster),g.RecordSize,g.Alignment,false,0); AddContainer(bootstrap,"MFT_BOOTSTRAP",checked(g.MftLcn*g.Cluster),mft); Record m=DecodeRecord(mft,g.Sector,0); CrossRecord(v,m,bootstrap);
-    Require(m.BaseReference==0 && (m.Flags&1)!=0,"MFT","Invalid base MFT record");
-    List<Run> runs=new List<Run>(); foreach(Attribute at in m.Attributes) if(at.Type==0x80 && at.Name=="" && at.NonResident) runs.AddRange(at.Runs);
-    Require(runs.Count>0 && runs[0].Vcn==0,"MFT","No bootstrap runlist"); v.MftRuns=runs.ToArray();
-    // Extension records must be reachable using the already-known bootstrap runs.
-    List<Container> discard=bootstrap; List<Record> records=new List<Record>(); records.Add(m);
-    Attribute[] all=ResolveAttributes(v,m,records,discard); List<Attribute> data=Select(all,0x80,"");
-    v.MftRuns=MergeRuns(data); Require(v.MftRuns.Length>0 && v.MftRuns[0].Vcn==0,"MFT","Incomplete MFT runs"); v.BootstrapContainers=bootstrap.ToArray(); return v;
+    v.MftRuns=BuildMftRuns(v,m,bootstrap); v.BootstrapContainers=bootstrap.ToArray(); return v;
    } catch(Exception e) {
     ObservationException failure=e as ObservationException; if(failure==null) failure=new ObservationException("OpenVolume",e.Message,e); failure.Containers=bootstrap.ToArray();
     try { v.Dispose(); } catch(Exception close) { ObservationException both=new ObservationException("OpenVolumeCleanup","Open and cleanup failed",new AggregateException(failure,close)); both.Containers=bootstrap.ToArray(); throw both; } throw failure;
@@ -318,9 +319,73 @@ namespace StagedInvariant {
    }
    Require(cursor==end,"Map","Truncated run mapping; kind="+kind+"; logicalOffset="+offset+"; length="+length+"; cursor="+cursor+"; mappedEnd="+(runs.Length==0?0:checked(runs[runs.Length-1].NextVcn*cluster))); return output;
   }
-  static Record ReadRecord(Volume v,uint number,List<Container> containers) {
-   try { Record r=DecodeRecord(ReadMapped(v,v.MftRuns,checked((long)number*v.Geometry.RecordSize),v.Geometry.RecordSize,containers,"MFT"),v.Geometry.Sector,number); CrossRecord(v,r,containers); return r; }
+  static long MftMappedEnd(Volume v,Run[] runs) { return runs.Length==0?0:checked(runs[runs.Length-1].NextVcn*v.Geometry.Cluster); }
+  static void ValidateMftRuns(Volume v,Run[] runs) {
+   Require(runs!=null && runs.Length>0 && runs.Length<=MaxRuns,"MFT","Missing/capped MFT runs"); long next=0;
+   foreach(Run r in runs) {
+    Require(r.Vcn==next && r.NextVcn>r.Vcn && r.Lcn>=0,"MFT","Gapped/overlapping/sparse MFT runs");
+    Require(checked((r.Lcn+r.Clusters)*v.Geometry.Cluster)<=v.Geometry.TotalBytes,"MFT","MFT physical bounds"); next=r.NextVcn;
+   }
+   Require(runs[0].Lcn==v.Geometry.MftLcn && MftMappedEnd(v,runs)>=v.Geometry.RecordSize,"MFT","MFT bootstrap location/length mismatch");
+  }
+  static Run[] BuildMftRuns(Volume v,Record root,List<Container> containers) {
+   Require(root.Number==0 && root.BaseReference==0 && (root.Flags&3)==1,"MFT","Invalid base MFT record");
+   // Use only this newly decoded bootstrap map to reach extension records.
+   // Neither bootstrap nor refresh may recursively refresh an incomplete map.
+   Volume candidate=new Volume { Raw=v.Raw,Geometry=v.Geometry,MftRuns=MergeRuns(Select(root.Attributes,0x80,"")) };
+   ValidateMftRuns(candidate,candidate.MftRuns);
+   List<Record> records=new List<Record>(); records.Add(root);
+   List<Attribute> data=Select(ResolveAttributes(candidate,root,records,containers,false),0x80,"");
+   foreach(Attribute a in data) Require(a.Flags==0 && a.CompressionUnit==0,"MFT","Sparse/compressed/encrypted MFT unsupported");
+   Run[] runs=MergeRuns(data); ValidateMftRuns(candidate,runs); return runs;
+  }
+  static void ValidateMftPrefix(Volume v,Run[] oldRuns,Run[] newRuns) {
+   ValidateMftRuns(v,oldRuns); ValidateMftRuns(v,newRuns);
+   Require(MftMappedEnd(v,newRuns)>=MftMappedEnd(v,oldRuns),"MftRefresh","Refreshed MFT map shrank");
+   // Compare physical addresses at every boundary, allowing equivalent splits
+   // or coalescing of runs, including extension of the final cached run.
+   int i=0,j=0; long cursor=0;
+   while(i<oldRuns.Length) {
+    Run x=oldRuns[i],y=newRuns[j];
+    Require(checked(x.Lcn+cursor-x.Vcn)==checked(y.Lcn+cursor-y.Vcn),"MftRefresh","Changed cached MFT map prefix at VCN="+cursor);
+    cursor=Math.Min(x.NextVcn,y.NextVcn); if(cursor==x.NextVcn)i++; if(cursor==y.NextVcn)j++;
+   }
+  }
+  static Run[] RebuildMftRuns(Volume v,List<Container> containers) {
+   long offset=checked(v.Geometry.MftLcn*v.Geometry.Cluster);
+   byte[] raw=ReadAligned(v.Raw,offset,v.Geometry.RecordSize,v.Geometry.Alignment,false,0);
+   AddContainer(containers,"MFT_REFRESH_RECORD_ZERO",offset,raw);
+   Record root=DecodeRecord(raw,v.Geometry.Sector,0); CrossRecord(v,root,containers);
+   return BuildMftRuns(v,root,containers);
+  }
+  static Record ReadRecordCore(Volume v,uint number,bool allowRefresh,Func<List<Container>,Run[]> rebuild,Func<Record> capture) {
+   if(v.MftMapFailure!=null) throw new ObservationException("MftRefresh","Prior MFT refresh rejected; observer map unavailable.",v.MftMapFailure);
+   long end=checked(((long)number+1)*v.Geometry.RecordSize);
+   if(end>MftMappedEnd(v,v.MftRuns)) {
+    Require(allowRefresh,"Map","Truncated run mapping while resolving MFT bootstrap; requested record="+number);
+    MftRefresh refresh=new MftRefresh { RequestedRecord=number,OldRuns=v.MftRuns,NewRuns=new Run[0],Status="ERROR",
+     StartQpc=Stopwatch.GetTimestamp(),QpcFrequency=Stopwatch.Frequency };
+    List<Container> evidence=new List<Container>(); v.MftRefreshes.Add(refresh);
+    try {
+     refresh.NewRuns=rebuild(evidence); ValidateMftPrefix(v,refresh.OldRuns,refresh.NewRuns);
+     Require(end<=MftMappedEnd(v,refresh.NewRuns),"MftRefresh","Still-truncated MFT map after one refresh; requested record="+number+"; mappedEnd="+MftMappedEnd(v,refresh.NewRuns));
+     v.MftRuns=refresh.NewRuns; refresh.Status="OK"; refresh.Reason="Cached MFT prefix preserved; requested record covered.";
+    } catch(Exception e) { refresh.Reason=e.Message; v.MftMapFailure=e; throw; }
+    finally { refresh.EndQpc=Stopwatch.GetTimestamp(); refresh.Containers=evidence.ToArray(); }
+   }
+   return capture();
+  }
+  static Record ReadRecord(Volume v,uint number,List<Container> containers,bool allowRefresh=true) {
+   try { return ReadRecordCore(v,number,allowRefresh,
+    delegate(List<Container> evidence) { return RebuildMftRuns(v,evidence); },
+    delegate { Record r=DecodeRecord(ReadMapped(v,v.MftRuns,checked((long)number*v.Geometry.RecordSize),v.Geometry.RecordSize,containers,"MFT"),v.Geometry.Sector,number); CrossRecord(v,r,containers); return r; }); }
    catch(ObservationException cause) { ObservationException failure=new ObservationException("MftRecord","Requested record="+number+"; "+cause.Message,cause); failure.Containers=containers.ToArray(); throw failure; }
+  }
+  // Synthetic records exercise the same one-refresh/prefix/coverage path without raw I/O.
+  public static Record SelfCheckMftRefresh(Volume v,uint number,byte[] rawZero,byte[] rawTarget) {
+   return ReadRecordCore(v,number,true,
+    delegate(List<Container> evidence) { AddContainer(evidence,"MFT_REFRESH_RECORD_ZERO",checked(v.Geometry.MftLcn*v.Geometry.Cluster),rawZero); return BuildMftRuns(v,DecodeRecord(rawZero,v.Geometry.Sector,0),evidence); },
+    delegate { return DecodeRecord(rawTarget,v.Geometry.Sector,number); });
   }
   // Private-stage fallback only. The source is the trusted NTFS metadata
   // cache, explicitly not an on-disk MFT/index proof. No stage-file open.
@@ -374,7 +439,7 @@ namespace StagedInvariant {
     data.Length>=12+v.Geometry.RecordSize,"CachedRecord","FSCTL lower-record fallback/length mismatch");
    return DecodeCachedRecord(Slice(data,12,v.Geometry.RecordSize),v.Geometry.Sector,number);
   }
-  static Attribute[] ResolveAttributes(Volume v,Record baseRecord,List<Record> records,List<Container> containers) {
+  static Attribute[] ResolveAttributes(Volume v,Record baseRecord,List<Record> records,List<Container> containers,bool allowMftRefresh=true) {
    List<Attribute> all=new List<Attribute>(baseRecord.Attributes); List<Attribute> lists=Select(baseRecord.Attributes,0x20,"");
    Require(lists.Count<=1,"AttributeList","Split attribute list unsupported"); if(lists.Count==0) return all.ToArray();
    Attribute list=lists[0]; byte[] bytes=list.NonResident?ReadStream(v,lists,containers,"ATTRIBUTE_LIST"):list.Value;
@@ -383,7 +448,7 @@ namespace StagedInvariant {
     uint type=e.Type; string name=e.Name; long start=e.StartVcn; ulong reference=e.Reference; ushort id=e.Id;
     uint number=checked((uint)(reference&0x0000FFFFFFFFFFFFUL));
     Record target=null; foreach(Record rec in records) if(rec.Number==number) target=rec;
-    if(target==null) { Require(records.Count<MaxRecords && !loaded.Contains(reference),"AttributeList","Record cap/cycle"); target=ReadRecord(v,number,containers); ValidateExtension(baseRecord,target,reference); records.Add(target); loaded.Add(reference); all.AddRange(target.Attributes); }
+    if(target==null) { Require(records.Count<MaxRecords && !loaded.Contains(reference),"AttributeList","Record cap/cycle"); target=ReadRecord(v,number,containers,allowMftRefresh); ValidateExtension(baseRecord,target,reference); records.Add(target); loaded.Add(reference); all.AddRange(target.Attributes); }
     ValidateExtension(baseRecord,target,reference);
     int matches=0; foreach(Attribute at in target.Attributes) if(at.Type==type && at.Id==id && at.Name==name && (at.NonResident?at.StartVcn==start:start==0)) matches++;
     Require(matches==1,"AttributeList","Unresolved/duplicate entry");
@@ -650,6 +715,20 @@ function Save-IOImage($Context, $Image, [string] $Path, [string] $Role) {
             RawSha256 = [StagedInvariant.Native]::Hash($_.Raw); FixedSha256 = [StagedInvariant.Native]::Hash($_.Fixed) } })
         Containers = $containers; LogicalArtifact = $logical; Fingerprint = [StagedInvariant.Native]::Fingerprint($Image) }
 }
+function Save-IOMftRefreshes($Context) {
+    $saved=@()
+    while($Context.SavedMftRefreshCount -lt $Context.Volume.MftRefreshes.Count){
+        $refresh=$Context.Volume.MftRefreshes[$Context.SavedMftRefreshCount];$containers=@()
+        foreach($c in $refresh.Containers){
+            $containers+=[pscustomobject]@{Kind=$c.Kind;Offset=$c.Offset;Length=[long]$c.Bytes.Length;Artifact=(Save-IOBytes $Context $c.Bytes $c.Kind)}
+        }
+        $saved+=New-IORecord 'MftRefresh' @{RequestedRecord=$refresh.RequestedRecord;Status=$refresh.Status;Reason=$refresh.Reason;
+            StartQpc=$refresh.StartQpc;EndQpc=$refresh.EndQpc;QpcFrequency=$refresh.QpcFrequency;
+            OldRuns=@($refresh.OldRuns);NewRuns=@($refresh.NewRuns);Containers=$containers}
+        $Context.SavedMftRefreshCount++
+    }
+    return $saved
+}
 function Read-InvariantPrivateSnapshot {
     [CmdletBinding()] param([Parameter(Mandatory=$true)]$Context,[Parameter(Mandatory=$true)][string]$Path)
     Assert-IOContext $Context
@@ -687,6 +766,7 @@ function Read-InvariantPrivateSnapshot {
         $saved | Add-Member -NotePropertyName DataSource -NotePropertyValue $(if($native.Resident){$metadataSource+'ResidentData'}else{'RawVolumeNonresidentRuns'})
         $saved | Add-Member -NotePropertyName RawAttempt -NotePropertyValue $rawAttempt
         $saved | Add-Member -NotePropertyName StagePath -NotePropertyValue $full
+        $saved | Add-Member -NotePropertyName MftRefreshes -NotePropertyValue @(Save-IOMftRefreshes $Context)
         return $saved
     } catch {
         for($error=$_.Exception;$null -ne $error;$error=$error.InnerException){
@@ -752,7 +832,7 @@ function Open-InvariantObserver {
             DecoderVersion = 'bounded-ntfs-v1'; ModuleSha256 = [StagedInvariant.Native]::LoadedModuleHash; BootId = $env:COMPUTERNAME + '/' + $boot; Build = $build
             TargetBuildSupported = ($build -eq '19045.2965'); ObserverPid = $PID
             ObserverSid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
-            BaselineCaptured = $false; BootstrapArtifacts = @(); InitialScope = $null; Handles = @{}; Publications = @(); NextSequence = [long]0; LastSampleQpc = [long]0; LastSampleStartQpc = [long]0; Errors = @() }
+            BaselineCaptured = $false; BootstrapArtifacts = @(); InitialScope = $null; SavedMftRefreshCount=0; Handles = @{}; Publications = @(); NextSequence = [long]0; LastSampleQpc = [long]0; LastSampleStartQpc = [long]0; Errors = @() }
         foreach ($c in $volume.BootstrapContainers) {
             $context.BootstrapArtifacts += [pscustomobject]@{ Offset=$c.Offset; Kind=$c.Kind; Artifact=(Save-IOBytes $context $c.Bytes $c.Kind) }
         }
@@ -851,7 +931,7 @@ function Get-IOCapture($Context, [string[]] $Names, [switch] $Retained) {
         if (@($images | Where-Object { $null -ne $_.PSObject.Properties['CrossCheckErrors'] -and $_.CrossCheckErrors.Count -gt 0 }).Count -gt 0) {
             throw [StagedInvariant.ObservationException]::new('CrossCheck','Raw/API EOF, allocation or runlist cross-check failed.',0)
         }
-        return New-IORecord 'Capture' @{ Status = 'OK'; Images = $images; Readers = $readers; Error = $null }
+        return New-IORecord 'Capture' @{ Status = 'OK'; Images = $images; Readers = $readers; MftRefreshes=@(Save-IOMftRefreshes $Context); Error = $null }
     } catch {
         # Archive even containers read immediately before a decoder failure.
         $caught = $_.Exception
@@ -876,7 +956,7 @@ function Get-IOCapture($Context, [string[]] $Names, [switch] $Retained) {
                 if ($partial.Count -gt 0) { $images += New-IORecord 'PartialContainer' @{ Role='Partial'; Path=$null; Containers=$partial } }
             }
         }
-        return New-IORecord 'Capture' @{ Status = 'ERROR'; Images = $images; Readers = $readers; Error = (New-IOError 'Capture' $caught) }
+        return New-IORecord 'Capture' @{ Status = 'ERROR'; Images = $images; Readers = $readers; MftRefreshes=@(Save-IOMftRefreshes $Context); Error = (New-IOError 'Capture' $caught) }
     } finally {
         foreach ($handle in $held) { try { $handle.Dispose() } catch { $Context.Errors += New-IOError 'CaptureCleanup' $_.Exception } }
     }
@@ -912,7 +992,7 @@ function Capture-InvariantBaseline {
             } finally { if (-not $keep) { $h.Dispose() } }
         }
         return New-IORecord 'Baseline' @{ Schema = 'StagedInvariant/1'; Status = 'OK'; CaseId = $Context.CaseId; Time = (Get-IOTime $Context)
-            Names = $DestinationNames; Images = $capture.Images; Readers = $capture.Readers; Geometry = $Context.Geometry; Build = $Context.Build; ObserverPid = $Context.ObserverPid; ObserverSid = $Context.ObserverSid; Error = $null }
+            Names = $DestinationNames; Images = $capture.Images; Readers = $capture.Readers; MftRefreshes=$capture.MftRefreshes; Geometry = $Context.Geometry; Build = $Context.Build; ObserverPid = $Context.ObserverPid; ObserverSid = $Context.ObserverSid; Error = $null }
     } catch { return New-IORecord 'Baseline' @{ Status = 'ERROR'; Error = (New-IOError 'Baseline' $_.Exception) } }
 }
 function Register-InvariantPublication {
@@ -999,13 +1079,13 @@ function Capture-InvariantSample {
         return New-IORecord 'Sample' @{ Schema = 'StagedInvariant/1'; Status = $capture.Status; CaseId = $Context.CaseId
             Sequence = $Context.NextSequence; OperationSequence = $OperationSequence; Phase = $Phase; Start = $start; End = $end
             GapMs = $gap; CadenceMs=$cadence; DurationMs = $watch.Elapsed.TotalMilliseconds; Attempts = $attempts; Captures = $captures
-            Images = $capture.Images; Readers = $capture.Readers; Error = $capture.Error; CleanupErrors = @($Context.Errors) }
+            Images = $capture.Images; Readers = $capture.Readers; MftRefreshes=@($captures | ForEach-Object { $_.MftRefreshes }); Error = $capture.Error; CleanupErrors = @($Context.Errors) }
     } catch {
         $errorRecord=New-IOError 'Sample' $_.Exception; $end=$null; $sequence=$null; $images=@(); $readers=@()
         if ($null -ne $capture) { $images=$capture.Images; $readers=$capture.Readers }
         if ($null -ne $start) { $end=Get-IOTime $Context; $Context.NextSequence++; $sequence=$Context.NextSequence; $Context.LastSampleQpc=$end.Qpc; $Context.LastSampleStartQpc=$start.Qpc }
         return New-IORecord 'Sample' @{ Status='ERROR'; Phase=$Phase; OperationSequence=$OperationSequence; Sequence=$sequence; Start=$start; End=$end; GapMs=$null; CadenceMs=$null; DurationMs=$(if ($null -ne $start) {1000.0*($end.Qpc-$start.Qpc)/$start.QpcFrequency} else {$null})
-            Captures=$captures; Attempts=$attempts; Images=$images; Readers=$readers; CleanupErrors=@(); Error=$errorRecord }
+            Captures=$captures; Attempts=$attempts; Images=$images; Readers=$readers; MftRefreshes=@($captures | ForEach-Object { $_.MftRefreshes }); CleanupErrors=@(); Error=$errorRecord }
     }
 }
 function Read-IOArtifact($Artifact) {

@@ -24,6 +24,10 @@ API (positional order also supported)
     public temp write. ApprovalRecord field list below. No fixture token counts.
   Capture-InvariantSample Context Baseline Phase OperationSequence
     Full raw/reader capture; retains original and observed approved final IDs.
+    A record beyond the cached $MFT map triggers one raw record-0 refresh,
+    checked fixups and extension decoding, then one record capture using the
+    new map. Every previously mapped cluster must retain its physical address.
+    A rejected refresh invalidates this context's raw MFT map for later reads.
     Stable bracket required. Retries only instability, <=10 attempts, with a
     2-second retry-entry deadline. Native synchronous I/O cannot be interrupted
     at that deadline. Actual duration/gaps and every partial attempt survive.
@@ -47,13 +51,17 @@ Result schema (JSON fields; PascalCase; optional fields on failure)
     Cluster, RecordSize, IndexSize, MftLcn, TotalBytes.
   Time: Utc, Qpc, QpcFrequency, BootId. BootId = machine/OS boot UTC identity.
   Baseline: Schema, Status, CaseId, Time, Names, Images, Readers, Geometry, Build,
-    ObserverPid, ObserverSid, Error; failed capture may include Partial.
+    ObserverPid, ObserverSid, MftRefreshes, Error; failed capture may include Partial.
   ApprovedImage: Status, Time, Approval, Length, Sha256, SnapshotArtifact, Error.
   Sample: Schema, Status, CaseId, Sequence, OperationSequence, Phase, Start, End,
     GapMs (idle interval after preceding pass), CadenceMs (start-to-start),
     DurationMs, Attempts, Captures,
-    Images, Readers, Error, CleanupErrors. Attempt: Attempt, StartQpc, EndQpc,
-    Status, Error. Capture: Status, Images, Readers, Error.
+    Images, Readers, MftRefreshes, Error, CleanupErrors. Attempt: Attempt, StartQpc, EndQpc,
+    Status, Error. Capture: Status, Images, Readers, MftRefreshes, Error.
+  MftRefresh: RequestedRecord, Status, Reason, StartQpc, EndQpc, QpcFrequency,
+    OldRuns, NewRuns, Containers. Refresh records and extensions are archived
+    separately from the subject's physical containers. A failed decode may
+    leave NewRuns empty; raw bytes and the rejection reason remain evidence.
   StorageImage: Path, Role, Absent (Current only), Identity, RawMetadata,
     Resident, CrossCheckErrors, Length, Sha256, Runs, Attributes, FileNames,
     DirectoryEntries,

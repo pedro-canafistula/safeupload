@@ -11,6 +11,15 @@ about execution elsewhere in the boot or outside this case window. Collectors
 retain facts; evaluators establish coverage rather than trusting an empty
 provider query or a stopped-service flag alone.
 
+The shared notification snapshot collector polls the existing authenticated
+reader until a same-boot, same-frequency tail record or heartbeat reaches the
+snapshot's minimum QPC fence, with a 30-second Stopwatch/QPC budget. Its
+`FenceWait` evidence records the start, deadline, end, elapsed time, each
+authenticated tail QPC and the covered/timeout result. Only the terminal
+snapshot's bytes are copied to artifacts. A timeout remains INCONCLUSIVE;
+historical tails and reader errors cannot provide coverage. An authenticated
+absent directory returns immediately for the existing non-execution route.
+
 The non-execution route relies on:
 
 - Native OpenSCManager/OpenService queries of SafeUploadAgent at both edges.

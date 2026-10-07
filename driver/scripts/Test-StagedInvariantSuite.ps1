@@ -1278,15 +1278,27 @@ function Get-NotificationTailCoverage($Tail,[string]$BootId,[long]$Frequency,[lo
     if($Tail.Qpc -lt $MinimumQpc){return [pscustomobject]@{Status='INCONCLUSIVE';HistoricalTail=$false;RecordedBootId=$Tail.BootId;Reason=('Authenticated notification tail precedes snapshot fence: tailQpc='+$Tail.Qpc+'; minimumQpc='+$MinimumQpc+'. No heartbeat covers the fence.')}}
     return [pscustomobject]@{Status='OK';HistoricalTail=$false;RecordedBootId=$Tail.BootId;Reason='Authenticated notification record covers snapshot fence.'}
 }
+function Get-NotificationFenceWaitDecision($Coverage,[long]$NowQpc,[long]$DeadlineQpc) {
+    # Coverage is produced only by the authenticated reader and retains the
+    # same boot/frequency/fence requirements used by assertion evaluation.
+    if($Coverage.Status -cnotin @('OK','INCONCLUSIVE')){throw 'Invalid notification fence coverage status.'}
+    if($NowQpc -gt $DeadlineQpc){return 'TimedOut'}
+    if($Coverage.Status -ceq 'OK'){return 'Covered'}
+    if($NowQpc -ge $DeadlineQpc){return 'TimedOut'}
+    return 'Wait'
+}
 
 function Get-NotificationSnapshot([string]$Tag,[string]$BootId,[long]$MinimumQpc) {
     $root=Split-Path -Parent $policyPath;$directory=Join-Path $root 'notifications'
-    $deadline=([Diagnostics.Stopwatch]::GetTimestamp()+[long]((4)*[Diagnostics.Stopwatch]::Frequency));$reason='Notification record unavailable.'
+    $start=[Diagnostics.Stopwatch]::GetTimestamp();$frequency=[Diagnostics.Stopwatch]::Frequency
+    $deadline=$start+[long](30*$frequency);$readDeadline=$start+[long](4*$frequency);$reason='Notification record unavailable.'
+    $wait=[ordered]@{StartQpc=$start;DeadlineQpc=$deadline;EndQpc=$null;QpcFrequency=$frequency;MinimumQpc=$MinimumQpc;
+        TimeoutSeconds=30;PollMilliseconds=100;DurationMs=$null;Covered=$false;TimedOut=$false;Attempts=@()}
     do {
         $held=@()
         $snapshot=[ordered]@{Status='INCONCLUSIVE';LocationStatus='INCONCLUSIVE';LocationFiles=@();Directory=$directory;DirectoryExists=$null;ChildNames=@();Objects=@();
             BootId=$BootId;QpcFrequency=[Diagnostics.Stopwatch]::Frequency;MinimumQpc=$MinimumQpc;ReadQpc=$null;
-            Entries=@();Head=$null;Artifacts=@();Errors=@();Reason=$reason}
+            Entries=@();Head=$null;Artifacts=@();Errors=@();Reason=$reason;FenceWait=$wait}
         try {
             Initialize-ServiceEvidenceReader
             # Pin ancestors; read live files with write/delete sharing so evidence
@@ -1303,14 +1315,16 @@ function Get-NotificationSnapshot([string]$Tag,[string]$BootId,[long]$MinimumQpc
                 $snapshot.LocationStatus='OK'
                 $snapshot.Reason='Authenticated notification directory absent: '+$directory+'. No durable emission coverage; --seed-boot-policy does not start the notification writer and seed trials require the agent down.'
                 $snapshot.ReadQpc=[Diagnostics.Stopwatch]::GetTimestamp()
+                $wait.Attempts+=@{ReadQpc=$snapshot.ReadQpc;Decision='Unavailable';Authenticated=$false;Reason=$snapshot.Reason}
                 return [pscustomobject]$snapshot
             }
             $obj=[SUProofFile]::Open($directory,$true,$true,$false,$true);$held+=$obj;$snapshot.Objects+=@{Path=$directory;Owner=$obj.Owner;Sddl=$obj.Sddl}
             $names=@(Get-ChildItem -LiteralPath $directory -Force -ErrorAction Stop | Select-Object -ExpandProperty Name)
             # head.tmp exists only while the writer replaces head.json within one append (run c01o); wait it out.
-            $headWait=[Diagnostics.Stopwatch]::StartNew()
-            while($names -ccontains 'head.tmp' -and $headWait.ElapsedMilliseconds -lt 2000){
-                Start-Sleep -Milliseconds 25
+            $headDeadline=[Math]::Min($deadline,[Diagnostics.Stopwatch]::GetTimestamp()+[long](2*$frequency))
+            while($names -ccontains 'head.tmp' -and [Diagnostics.Stopwatch]::GetTimestamp() -lt $headDeadline){
+                $headRemaining=1000.0*($headDeadline-[Diagnostics.Stopwatch]::GetTimestamp())/$frequency
+                if($headRemaining -gt 0){Start-Sleep -Milliseconds ([int][Math]::Min(25,[Math]::Ceiling($headRemaining)))}
                 $names=@(Get-ChildItem -LiteralPath $directory -Force -ErrorAction Stop | Select-Object -ExpandProperty Name)
             }
             $snapshot.ChildNames=$names
@@ -1335,13 +1349,6 @@ function Get-NotificationSnapshot([string]$Tag,[string]$BootId,[long]$MinimumQpc
             # Authenticate the complete raw location independently of durable coverage.
             $afterNames=@(Get-ChildItem -LiteralPath $directory -Force -ErrorAction Stop | Select-Object -ExpandProperty Name | Sort-Object)
             if((@($names | Sort-Object) -join '|') -cne ($afterNames -join '|')){throw 'Notification location inventory changed during read.'}
-            # Retain authenticated stale records too. Missing current-boot
-            # coverage is an evaluation failure, not a reason to discard bytes.
-            foreach($copy in $copies){
-                $stream=[IO.File]::Open($copy.Path,[IO.FileMode]::Create,[IO.FileAccess]::Write,[IO.FileShare]::Read)
-                try{$stream.Write($copy.Bytes,0,$copy.Bytes.Length);$stream.Flush($true)}finally{$stream.Dispose()}
-                $snapshot.Artifacts+=@{Name=$copy.Name;Artifact=$copy.Path;Length=$copy.Bytes.Length;Sha256=(Get-FileHash -LiteralPath $copy.Path).Hash}
-            }
             $snapshot.LocationStatus='OK';$snapshot.ReadQpc=[Diagnostics.Stopwatch]::GetTimestamp()
             $record=ConvertFrom-NotificationRecord $segments $headBytes
             $tail=$record.Entries[$record.Entries.Count-1].Entry
@@ -1349,11 +1356,48 @@ function Get-NotificationSnapshot([string]$Tag,[string]$BootId,[long]$MinimumQpc
             $coverage=Get-NotificationTailCoverage $tail $BootId $snapshot.QpcFrequency $MinimumQpc
             $snapshot.Status=$coverage.Status;$snapshot.Reason=$coverage.Reason
             $snapshot.HistoricalTail=$coverage.HistoricalTail;$snapshot.RecordedBootId=$coverage.RecordedBootId
-            return [pscustomobject]$snapshot
-        }catch{$reason=$_.Exception.Message;$snapshot.Reason=$reason;$snapshot.Errors=Get-ErrorChain $_.Exception}
-        finally{foreach($obj in $held){$obj.Dispose()}}
-        Start-Sleep -Milliseconds 100
+            $now=[Diagnostics.Stopwatch]::GetTimestamp();$decision=Get-NotificationFenceWaitDecision $coverage $now $deadline
+            $wait.Attempts+=@{ReadQpc=$now;Decision=$decision;Authenticated=$true;TailQpc=$tail.Qpc;TailBootId=$tail.BootId;TailQpcFrequency=$tail.QpcFrequency;Reason=$coverage.Reason}
+            $wait.Covered=$decision -ceq 'Covered';$wait.TimedOut=$decision -ceq 'TimedOut'
+            if($wait.TimedOut -and $coverage.Status -ceq 'OK'){
+                $snapshot.Status='INCONCLUSIVE';$snapshot.Reason='Authenticated notification fence coverage arrived after the QPC wait deadline.'
+            }
+            # Permit the same bounded torn-read retries after a valid short tail.
+            $readDeadline=[Math]::Min($deadline,$now+[long](4*$frequency))
+            # Retain only the terminal authenticated snapshot. Intermediate tail
+            # QPCs are recorded above; polling does not repeatedly flush copies.
+            foreach($copy in $copies){
+                if($decision -ceq 'Wait'){continue}
+                $stream=[IO.File]::Open($copy.Path,[IO.FileMode]::Create,[IO.FileAccess]::Write,[IO.FileShare]::Read)
+                try{$stream.Write($copy.Bytes,0,$copy.Bytes.Length);$stream.Flush($true)}finally{$stream.Dispose()}
+                $snapshot.Artifacts+=@{Name=$copy.Name;Artifact=$copy.Path;Length=$copy.Bytes.Length;Sha256=(Get-FileHash -LiteralPath $copy.Path).Hash}
+            }
+            if($decision -cne 'Wait'){return [pscustomobject]$snapshot}
+        }catch{
+            $reason=$_.Exception.Message;$snapshot.Status='INCONCLUSIVE';$snapshot.Reason=$reason;$snapshot.Errors=Get-ErrorChain $_.Exception
+            $wait.Covered=$false
+            $wait.Attempts+=@{ReadQpc=[Diagnostics.Stopwatch]::GetTimestamp();Decision='ReadError';Authenticated=$false;Reason=$reason}
+            if([Diagnostics.Stopwatch]::GetTimestamp() -ge $readDeadline){return [pscustomobject]$snapshot}
+        }
+        finally{
+            foreach($obj in $held){$obj.Dispose()}
+            $wait.EndQpc=[Diagnostics.Stopwatch]::GetTimestamp();$wait.DurationMs=1000.0*($wait.EndQpc-$start)/$frequency
+        }
+        # Sleep only within the remaining QPC budget.
+        $remainingMs=[Math]::Max(0,1000.0*($deadline-[Diagnostics.Stopwatch]::GetTimestamp())/$frequency)
+        if($remainingMs -gt 0){Start-Sleep -Milliseconds ([int][Math]::Min(100,[Math]::Ceiling($remainingMs)))}
     }while([Diagnostics.Stopwatch]::GetTimestamp() -lt $deadline)
+    # Retain the last authenticated short read when the deadline elapsed in
+    # the polling sleep, preserving its INCONCLUSIVE coverage reason.
+    if($snapshot.Errors.Count -eq 0 -and $snapshot.Entries.Count -gt 0){
+        $wait.TimedOut=$true
+        foreach($copy in $copies){
+            $stream=[IO.File]::Open($copy.Path,[IO.FileMode]::Create,[IO.FileAccess]::Write,[IO.FileShare]::Read)
+            try{$stream.Write($copy.Bytes,0,$copy.Bytes.Length);$stream.Flush($true)}finally{$stream.Dispose()}
+            $snapshot.Artifacts+=@{Name=$copy.Name;Artifact=$copy.Path;Length=$copy.Bytes.Length;Sha256=(Get-FileHash -LiteralPath $copy.Path).Hash}
+        }
+    }
+    $wait.EndQpc=[Diagnostics.Stopwatch]::GetTimestamp();$wait.DurationMs=1000.0*($wait.EndQpc-$start)/$frequency
     return [pscustomobject]$snapshot
 }
 function Test-NotificationWindow($Before,$After,$Fence,[bool]$WindowKnown) {

@@ -18,7 +18,7 @@ function Import-EvaluationFunctions([string]$File,[string[]]$Names) {
     }
 }
 Import-EvaluationFunctions (Join-Path $PSScriptRoot 'StagedInvariantObserver.psm1') @('New-IORecord','New-IOAssertion','Test-InvariantCadence','Test-InvariantMetadata','Test-InvariantExternalCoverage')
-Import-EvaluationFunctions (Join-Path $PSScriptRoot 'Test-StagedInvariantSuite.ps1') @('Test-ActivationChildWindow','Add-ActivationAssertion','Test-ActivationDuplicateCleanup','Test-ActivationRawWholeImage','Get-ActivationSha256','Get-ActivationPendingEntry','Get-ActivationFullPendingEntry','ConvertFrom-NtfsLastAccessOutput','Wait-WriterIdentity','Load-State','Get-ActivatingWriterBody','Get-ExpectedCheckpoint','Test-ServiceJournalStateReachable','Assert-ServiceManifestPath','ConvertFrom-ServiceJournalRecord','Test-ServiceJournalDelta','Get-ServiceDestinationPaths','Test-ServiceFixtureEntry','Get-NotificationTailCoverage','ConvertFrom-NotificationRecord','Test-NotificationWindow','ConvertFrom-AgentEventXml','Test-AgentLogContinuity','Read-AgentLogWindow','Test-NotificationLocationUnchanged','Test-AgentDidNotRun','Get-ServiceTimeline','Test-CachedJournalSequence','Test-CachedNotifications','Test-CachedHandBackAcl','Test-CachedSample','Test-CachedImage','Test-CachedActorCalls','Add-CachedHeldJournal','Test-CachedNamespaceCommit','Get-WriterBody','Get-ActivationActorIdentity','Publish-ActivationActorCommand')
+Import-EvaluationFunctions (Join-Path $PSScriptRoot 'Test-StagedInvariantSuite.ps1') @('Test-ActivationChildWindow','Add-ActivationAssertion','Test-ActivationDuplicateCleanup','Test-ActivationRawWholeImage','Get-ActivationSha256','Get-ActivationPendingEntry','Get-ActivationFullPendingEntry','ConvertFrom-NtfsLastAccessOutput','Wait-WriterIdentity','Load-State','Get-ActivatingWriterBody','Get-ExpectedCheckpoint','Test-ServiceJournalStateReachable','Assert-ServiceManifestPath','ConvertFrom-ServiceJournalRecord','Test-ServiceJournalDelta','Get-ServiceDestinationPaths','Test-ServiceFixtureEntry','Get-NotificationTailCoverage','Get-NotificationFenceWaitDecision','ConvertFrom-NotificationRecord','Test-NotificationWindow','ConvertFrom-AgentEventXml','Test-AgentLogContinuity','Read-AgentLogWindow','Test-NotificationLocationUnchanged','Test-AgentDidNotRun','Get-ServiceTimeline','Test-CachedJournalSequence','Test-CachedNotifications','Test-CachedHandBackAcl','Test-CachedSample','Test-CachedImage','Test-CachedActorCalls','Add-CachedHeldJournal','Test-CachedNamespaceCommit','Get-WriterBody','Get-ActivationActorIdentity','Publish-ActivationActorCommand')
 $script:checks=0
 function Check([bool]$Condition,[string]$Message){if(-not $Condition){throw $Message};$script:checks++}
 function Clone($Value){return ($Value | ConvertTo-Json -Depth 32 | ConvertFrom-Json)}
@@ -60,6 +60,27 @@ $tailFixture.Qpc=20
 Check ((Get-NotificationTailCoverage $tailFixture 'active' 1000 20).Status -ceq 'OK') 'Current same-frequency tail covers fence.'
 $tailFixture.QpcFrequency=1001;$rejected=$false;try{$null=Get-NotificationTailCoverage $tailFixture 'active' 1000 20}catch{$rejected=$_.Exception.Message -ceq 'Notification tail QPC frequency mismatch.'}
 Check $rejected 'Same-boot QPC frequency mismatch remains a collector error.'
+# Predicate controls use fixed QPC values; no sleeps or wall-clock deadlines.
+$tailFixture=@{BootId='active';QpcFrequency=1000;Qpc=19}
+$coverage=Get-NotificationTailCoverage $tailFixture 'active' 1000 20
+Check ((Get-NotificationFenceWaitDecision $coverage 99 100) -ceq 'Wait') 'Authenticated fence-short tail waits before the QPC deadline.'
+Check ((Get-NotificationFenceWaitDecision $coverage 100 100) -ceq 'TimedOut') 'Fence-short tail at the exact deadline times out INCONCLUSIVE.'
+Check ((Get-NotificationFenceWaitDecision $coverage 101 100) -ceq 'TimedOut') 'Fence-short tail after the deadline cannot qualify.'
+foreach($kind in @('Transfer','Heartbeat')){
+    $tailFixture=@{BootId='active';QpcFrequency=1000;Qpc=20;Kind=$kind}
+    $coverage=Get-NotificationTailCoverage $tailFixture 'active' 1000 20
+    Check ((Get-NotificationFenceWaitDecision $coverage 99 100) -ceq 'Covered') ('Authenticated '+$kind+' at the fence finishes the wait.')
+}
+$tailFixture.Qpc=21
+Check ((Get-NotificationFenceWaitDecision (Get-NotificationTailCoverage $tailFixture 'active' 1000 20) 99 100) -ceq 'Covered') 'Newer authenticated tail covers the fence.'
+Check ((Get-NotificationFenceWaitDecision (Get-NotificationTailCoverage $tailFixture 'active' 1000 20) 100 100) -ceq 'Covered') 'Covered tail at the exact deadline is within the QPC budget.'
+Check ((Get-NotificationFenceWaitDecision (Get-NotificationTailCoverage $tailFixture 'active' 1000 20) 101 100) -ceq 'TimedOut') 'Coverage collected after the QPC deadline remains INCONCLUSIVE.'
+$tailFixture.BootId='old';$tailFixture.Qpc=100000
+$coverage=Get-NotificationTailCoverage $tailFixture 'active' 1000 20
+Check ((Get-NotificationFenceWaitDecision $coverage 99 100) -ceq 'Wait') 'A high QPC in a historical boot never covers the active fence.'
+Check ((Get-NotificationFenceWaitDecision $coverage 100 100) -ceq 'TimedOut') 'Historical tail still times out without current-boot coverage.'
+$rejected=$false;try{$null=Get-NotificationFenceWaitDecision @{Status='ERROR'} 99 100}catch{$rejected=$true}
+Check $rejected 'A reader failure is not authenticated coverage eligible to finish the wait.'
 
 # Machine-wide page completeness and exact target uniqueness are separate.
 function Get-ActivationInspectorJson { return [pscustomobject]@{Record=$script:activatingFixture} }
