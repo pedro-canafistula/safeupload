@@ -296,14 +296,22 @@ public sealed class StagedTransferPublisher
             _logger?.LogDebug("Requesting kernel publication permission for {TransferId}.", transfer.TransferId);
             using var permit = _publicationGate.Authorize(transfer, temporaryDestination, digest);
             _logger?.LogDebug("Creating approved publication file for {TransferId}.", transfer.TransferId);
-            await using (var output = StagedDestinationFile.Create(temporaryDestination))
+            using (var output = StagedDestinationFile.CreateUnbuffered(temporaryDestination))
             {
-                _logger?.LogDebug("Approved publication file opened for {TransferId}.", transfer.TransferId);
-                await inspectedFile.CopyToAsync(output, cancellationToken).ConfigureAwait(false);
-                _logger?.LogDebug("Approved publication bytes copied for {TransferId}.", transfer.TransferId);
-                _logger?.LogDebug("Renaming approved publication file for {TransferId}.", transfer.TransferId);
-                StagedDestinationFile.Commit(output, temporaryDestination, destinationPath);
-                committed = true;
+                try
+                {
+                    _logger?.LogDebug("Approved publication file opened for {TransferId}.", transfer.TransferId);
+                    await StagedDestinationFile.WriteUnbufferedAsync(output, inspectedFile, cancellationToken)
+                        .ConfigureAwait(false);
+                    _logger?.LogDebug("Approved publication bytes copied for {TransferId}.", transfer.TransferId);
+                    _logger?.LogDebug("Renaming approved publication file for {TransferId}.", transfer.TransferId);
+                    StagedDestinationFile.CommitHandle(output, destinationPath);
+                    committed = true;
+                }
+                finally
+                {
+                    if (!committed) StagedDestinationFile.TryDeleteUncommitted(output);
+                }
             }
             _logger?.LogDebug("Approved publication rename completed for {TransferId}.", transfer.TransferId);
         }
@@ -318,7 +326,9 @@ public sealed class StagedTransferPublisher
         catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
         {
             _logger?.LogWarning(ex, "Staged publication failed for {TransferId}.", transfer.TransferId);
-            try { File.Delete(temporaryDestination); } catch (IOException) { }
+            // The handle already marked an uncommitted temporary for deletion; reopening the
+            // name can be refused (its permit is spent), and nothing here may skip Retained.
+            try { File.Delete(temporaryDestination); } catch (Exception) { }
             await _journal.TransitionAsync(transfer.TransferId,
                 TransferJournalState.Publishing, TransferJournalState.Retained,
                 null, CancellationToken.None).ConfigureAwait(false);
