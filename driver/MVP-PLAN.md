@@ -1706,3 +1706,21 @@ thread recheck, bounded scan continuation and the CAS rescan handshake intact.
 No worker I/O changes and no promotion predicate changes are authorized by
 this repair. This source path explains a potential feedback loop; runtime
 comparison is required to establish whether it caused the observed churn.
+
+`goald2` S00/runtime-Verifier completes with ForbiddenByteCount0 and clean
+independent restoration. LastAccessPolicy is OK under the repaired numeric-bit
+parser; no metadata assertion fails. Writer-open p95 is4.8123ms, but one of
+101 native samples took1205.5617ms, exceeding the existing max1000ms gate.
+Verdict FAIL and MvpGatePassed false are retained; no threshold or sample is
+removed. Compact hash-bound A01/S00 readout: `goal-cache2-runtime-readout.json`.
+
+Self-wakeup candidate `d0f92f67` built as `mvp4-goal-cache4`: four WDK
+configurations, both Inspectors and fixture PASS; zero warnings/errors,
+PREfast/ApiValidator clean, signature valid. Signed feature driver SHA256
+`A3D1E261E59AE14F59AD7EB4D0F921BAE32E709BB695DE9CED123FB55DDCB7B4`.
+56 host tests and Windows PS5.1 `goal-reclaim1` all14 self-checks PASS. Service
+source remains unchanged from the passing exact taint2 build/matrix. Runtime
+comparison of worker pass counts and promotion remains required. Source
+inspection also confirms service boot-policy finalization occurs before its
+coverage-readiness loop; goald1 coverage flags do not contain POLICY_PENDING.
+A pending-policy finalize/readiness cycle is not established by this evidence.
