@@ -4988,7 +4988,7 @@ __declspec(noinline) static VOID StageRegistryTryPromoteEntry(
     _In_ BOOLEAN SopEmpty,
     _In_ ULONGLONG ExpectedSopMarkerGeneration,
     _In_ ULONG PolicyGeneration, _In_ ULONG PolicyFlags,
-    _In_ BOOLEAN CacheFlushedAndPurged)
+    _In_ BOOLEAN CacheFlushedAndPurged, _In_ BOOLEAN IncarnationReplaced)
 {
     PSAFEUPLOAD_INSTANCE_CONTEXT instanceContext = NULL;
     KIRQL renameLossIrql;
@@ -5044,7 +5044,8 @@ __declspec(noinline) static VOID StageRegistryTryPromoteEntry(
             PolicyGeneration, PolicyFlags,
             SAFEUPLOAD_PROMOTION_BASIS_NAME_MATCH | SAFEUPLOAD_PROMOTION_BASIS_SOP_EMPTY |
             SAFEUPLOAD_PROMOTION_BASIS_NO_USER_WRITABLE |
-            (CacheFlushedAndPurged ? SAFEUPLOAD_PROMOTION_BASIS_CACHE_FLUSH_PURGE : 0));
+            (CacheFlushedAndPurged ? SAFEUPLOAD_PROMOTION_BASIS_CACHE_FLUSH_PURGE : 0) |
+            (IncarnationReplaced ? SAFEUPLOAD_PROMOTION_BASIS_INCARNATION_REPLACED : 0));
     }
     StageReleaseSpinLock(&Entry->StateLock, irql);
     SafeUploadPolicyRenameLossGenerationLeave(renameLossIrql);
@@ -5277,6 +5278,20 @@ __declspec(noinline) static VOID StageRegistryClearActivation(_In_ PSTAGE_REGIST
     StageReleaseSpinLock(&Entry->StateLock, irql);
 }
 
+/* No handle, mutating I/O, transaction, rename, spilled writer, spilled mutating I/O or in-flight writable
+ * section is accounted to this entry. Sampled; the promotion CAS rechecks under the state lock. */
+_IRQL_requires_max_(APC_LEVEL)
+static BOOLEAN StageRegistryEntryHoldsNoWriterState(_In_ PSTAGE_REGISTRY_ENTRY Entry)
+{
+    return InterlockedCompareExchange(&Entry->H, 0, 0) == 0 &&
+        InterlockedCompareExchange(&Entry->W, 0, 0) == 0 &&
+        InterlockedCompareExchange(&Entry->T, 0, 0) == 0 &&
+        InterlockedCompareExchange(&Entry->RenameInFlight, 0, 0) == 0 &&
+        StageRegistrySnapshotSpilledWriters(Entry) == 0 &&
+        StageRegistrySnapshotSpilledMutatingIo(Entry) == 0 &&
+        StageRegistrySnapshotC(Entry, NULL, 0, NULL) == 0;
+}
+
 static VOID StageRegistryActivationProcess(_In_ PSTAGE_REGISTRY_ENTRY Entry,
     _In_ PFLT_INSTANCE Instance, _In_ PFLT_VOLUME Volume, _Inout_ PULONG WorkBudget)
 {
@@ -5299,6 +5314,7 @@ static VOID StageRegistryActivationProcess(_In_ PSTAGE_REGISTRY_ENTRY Entry,
     BOOLEAN currentLinkScoped = FALSE, aliasActivated = FALSE;
     BOOLEAN cacheFlushedAndPurged = FALSE;
     BOOLEAN noNamesProvenByIdentity = FALSE;
+    BOOLEAN incarnationReplaced = FALSE;
     ULONG currentGeneration;
     ULONG promotionPolicyGeneration = 0;
     ULONG promotionPolicyFlags = 0;
@@ -5398,6 +5414,28 @@ static VOID StageRegistryActivationProcess(_In_ PSTAGE_REGISTRY_ENTRY Entry,
 
     status = StageRegistryOpenIdentity(Entry, Instance, Volume, &handle, &object,
         &openFailureStep, &noNamesProvenByIdentity, FALSE);
+    if (status == STATUS_FILE_INVALID && !noNamesProvenByIdentity &&
+        StageRegistryEntryHoldsNoWriterState(Entry)) {
+        /* The exact-SOP open failed. If the same volume serial and file ID now open with a different
+         * section-object pointer, the recorded stream incarnation is gone: NTFS keeps one SCB per live
+         * stream and every handle, section or view keeps it alive (the rule
+         * StageRegistryAssociateSectionPointer rebinds on). A non-cached publication's SCB can be torn
+         * down before this pass (C01 latency l4c1: Unknown after round 62, later creates refused). With
+         * no writer state left on the entry, nothing pre-scope can still reach the stream through the old
+         * incarnation; S and the cache barrier below are evaluated on the live stream, and the final
+         * counter recheck and CAS are unchanged. Any other failure keeps the fail-closed path. */
+        status = StageRegistryOpenIdentity(Entry, Instance, Volume, &handle, &object,
+            &openFailureStep, &noNamesProvenByIdentity, TRUE);
+        if (NT_SUCCESS(status) && object->SectionObjectPointer != NULL &&
+            object->SectionObjectPointer != InterlockedCompareExchangePointer(
+                (PVOID volatile *)&Entry->SectionObjectPointer, NULL, NULL)) {
+            incarnationReplaced = TRUE;
+        } else if (NT_SUCCESS(status)) {
+            ObDereferenceObject(object); object = NULL;
+            FltClose(handle); handle = NULL;
+            status = STATUS_FILE_INVALID;
+        }
+    }
     if (!NT_SUCCESS(status)) {
         if (noNamesProvenByIdentity && Entry->Volume == Volume && Entry->VolumeSerial != 0) {
             StageRegistryRecordClassificationResult(Entry, status,
@@ -5412,8 +5450,8 @@ static VOID StageRegistryActivationProcess(_In_ PSTAGE_REGISTRY_ENTRY Entry,
         InterlockedIncrement64(&RegistryChangeSequence);
         goto Exit;
     }
-    if (object->SectionObjectPointer == NULL || object->SectionObjectPointer !=
-        InterlockedCompareExchangePointer((PVOID volatile *)&Entry->SectionObjectPointer, NULL, NULL)) {
+    if (object->SectionObjectPointer == NULL || (!incarnationReplaced && object->SectionObjectPointer !=
+        InterlockedCompareExchangePointer((PVOID volatile *)&Entry->SectionObjectPointer, NULL, NULL))) {
         StageRegistryRecordClassificationResult(Entry, STATUS_FILE_INVALID,
             SAFEUPLOAD_ACTIVATING_CLASSIFY_STEP_OPEN_BY_ID);
         StageRegistryMarkEntryUnknown(Entry, SAFEUPLOAD_REGISTRY_UNKNOWN_IDENTITY);
@@ -5502,6 +5540,8 @@ static VOID StageRegistryActivationProcess(_In_ PSTAGE_REGISTRY_ENTRY Entry,
         StageRegistrySnapshotSpilledMutatingIo(Entry) != 0 ||
         StageRegistrySnapshotC(Entry, NULL, 0, NULL) != 0 ||
         sop->DataSectionObject != NULL || sop->SharedCacheMap != NULL) goto Exit;
+    if (incarnationReplaced && InterlockedCompareExchangePointer(
+            (PVOID volatile *)&Entry->SectionObjectPointer, NULL, NULL) == sop) goto Exit;
 
     /* Policy is sampled before RegistryLock to avoid introducing a lock-order edge.
      * The receipt labels this as a sample, not an atomic part of the CAS predicate. */
@@ -5516,7 +5556,8 @@ static VOID StageRegistryActivationProcess(_In_ PSTAGE_REGISTRY_ENTRY Entry,
             sopMarkerGeneration)
         StageRegistryTryPromoteEntry(Entry, nameStillMatches, nameSnapshotChars,
             renameVersion, currentGeneration, sopEmpty, sopMarkerGeneration,
-            promotionPolicyGeneration, promotionPolicyFlags, cacheFlushedAndPurged);
+            promotionPolicyGeneration, promotionPolicyFlags, cacheFlushedAndPurged,
+            incarnationReplaced);
     FltReleasePushLock(&RegistryLock);
 
 Exit:
