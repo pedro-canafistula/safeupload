@@ -1,0 +1,9 @@
+## ACCEPT
+
+Suitable for the mandatory gated runtime stage only; this does **not** qualify MVP or release.
+
+**Source findings: none.** The target control is feature-gated, uses bounded pool scratch, validates the request through the existing native checks, and scans only listed entries under the shared registry lock. It counts every exact-name match, clears the diagnostic on ambiguity, and retries on policy-generation change. The sequence endpoints remain diagnostic samples, with no coherence claim. The extracted copy helper preserves the existing page behavior and copies paged output fields outside the spinlocks. See [Communication.c](/tmp/safeupload-sol-next/driver/SafeUpload.Minifilter/Communication.c:817) and [StageWriters.c](/tmp/safeupload-sol-next/driver/SafeUpload.Minifilter/StageWriters.c:6648).
+
+The A04 correction matches the stated design: it removes `S=NO` only at the three live-holder checkpoints, while preserving the sampled `S` value and the H=1, C/T/W, identity, opener, cleanup, readiness, write, and raw-image checks. Final Free/Protected evidence still requires `S=NO` and the other zero counters. I found no false-pass or contract weakening in that change; see [Test-StagedInvariantSuite.ps1](/tmp/safeupload-sol-next/driver/scripts/Test-StagedInvariantSuite.ps1:3147) and [the final Free check](/tmp/safeupload-sol-next/driver/scripts/Test-StagedInvariantSuite.ps1:3305).
+
+I performed read-only diff and source inspection only. The pending builds, feature matrix, exact-target negative controls, and actual driver runtime remain required gates; no runtime acceptance is inferred.

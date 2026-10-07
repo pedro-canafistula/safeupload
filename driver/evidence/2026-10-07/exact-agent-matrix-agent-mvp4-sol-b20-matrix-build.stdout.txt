@@ -1,0 +1,23 @@
+LABEL=agent-mvp4-sol-b20-matrix
+BUILDER=DESKTOP-O1LP5DG
+SOURCE_MANIFEST_VERIFIED=137
+ARCHIVE_SHA256=EBD66A1DBF3C80D2C89E0B35A4BCC1EB128637ABD648FB139003406D4666AFA6
+MANIFEST_SHA256=6C0D4063C9FAA14A6724FCB0277B91AE99F27E2C28AEE424344355879821C9FE
+normal-debug-build: exit=0 warnings=0 errors=0
+normal-debug-tests: exit=0 warnings=0 errors=0
+normal-debug: tests_passed=353
+normal-release-build: exit=0 warnings=0 errors=0
+normal-release-tests: exit=0 warnings=0 errors=0
+normal-release: tests_passed=353
+normal-release-publish: exit=0 warnings=0 errors=0
+normal-release: package_sha256=03AAC5C0BE39B40D81DB81A2B8BBD57CA172FA5C4FBD157CED1BB4770BD677AC
+feature-debug-build: exit=0 warnings=0 errors=0
+feature-debug-tests: exit=0 warnings=0 errors=0
+feature-debug: tests_passed=417
+feature-release-build: exit=0 warnings=0 errors=0
+feature-release-tests: exit=0 warnings=0 errors=0
+feature-release: tests_passed=417
+feature-release-publish: exit=0 warnings=0 errors=0
+feature-release: package_sha256=29442B09AE4A2FA457D30F4FB4A8563703B9159F1FF40899C8C58349ADA122F0
+AgentMatrixGate=True
+BUILD_END_UTC=2026-10-07T07:30:24.8185694Z
