@@ -1,0 +1,105 @@
+<Objs Version="1.1.0.1" xmlns="http://schemas.microsoft.com/powershell/2004/04">
+  <Obj RefId="0">
+    <TN RefId="0">
+      <T>System.Collections.Hashtable</T>
+      <T>System.Object</T>
+    </TN>
+    <DCT>
+      <En>
+        <S N="Key">Pid</S>
+        <I32 N="Value">6104</I32>
+      </En>
+      <En>
+        <S N="Key">SectionLive</S>
+        <B N="Value">false</B>
+      </En>
+      <En>
+        <S N="Key">Sid</S>
+        <S N="Value">S-1-5-21-316478115-1595729549-2803163825-1070</S>
+      </En>
+      <En>
+        <S N="Key">BootId</S>
+        <S N="Value">WIN10-DEBUGGED/2026-10-07T06:37:57.5000000Z</S>
+      </En>
+      <En>
+        <S N="Key">Qpc</S>
+        <I64 N="Value">515162301</I64>
+      </En>
+      <En>
+        <S N="Key">Token</S>
+        <S N="Value">a7aa9cd136f440c191975e22fed6ba7c</S>
+      </En>
+      <En>
+        <S N="Key">Calls</S>
+        <Obj N="Value" RefId="1">
+          <TN RefId="1">
+            <T>System.Object[]</T>
+            <T>System.Array</T>
+            <T>System.Object</T>
+          </TN>
+          <LST>
+            <Obj RefId="2">
+              <TN RefId="2">
+                <T>SUCall</T>
+                <T>System.Object</T>
+              </TN>
+              <ToString>SUCall</ToString>
+              <Props>
+                <S N="Class">writer-open</S>
+                <I32 N="NativeCode">0</I32>
+                <I64 N="StartQpc">514948271</I64>
+                <I64 N="EndQpc">515126755</I64>
+                <I32 N="Trial">0</I32>
+                <B N="Cold">true</B>
+              </Props>
+            </Obj>
+            <Obj RefId="3">
+              <TNRef RefId="2" />
+              <ToString>SUCall</ToString>
+              <Props>
+                <S N="Class">cached-write</S>
+                <I32 N="NativeCode">0</I32>
+                <I64 N="StartQpc">515127444</I64>
+                <I64 N="EndQpc">515144463</I64>
+                <I32 N="Trial">0</I32>
+                <B N="Cold">true</B>
+              </Props>
+            </Obj>
+            <Obj RefId="4">
+              <TNRef RefId="2" />
+              <ToString>SUCall</ToString>
+              <Props>
+                <S N="Class">flush</S>
+                <I32 N="NativeCode">0</I32>
+                <I64 N="StartQpc">515144575</I64>
+                <I64 N="EndQpc">515156487</I64>
+                <I32 N="Trial">0</I32>
+                <B N="Cold">true</B>
+              </Props>
+            </Obj>
+          </LST>
+        </Obj>
+      </En>
+      <En>
+        <S N="Key">SourceClosed</S>
+        <B N="Value">false</B>
+      </En>
+      <En>
+        <S N="Key">PrivateSha256</S>
+        <S N="Value">09B6013CC5EC62DB92177C75A9F6431935A94B7409B2057FDDC22942C4972204</S>
+      </En>
+      <En>
+        <S N="Key">ReleasedQpc</S>
+        <I64 N="Value">451504033</I64>
+      </En>
+      <En>
+        <S N="Key">WriterKind</S>
+        <S N="Value">cached</S>
+      </En>
+      <En>
+        <S N="Key">ViewLive</S>
+        <B N="Value">false</B>
+      </En>
+    </DCT>
+  </Obj>
+</Objs>
