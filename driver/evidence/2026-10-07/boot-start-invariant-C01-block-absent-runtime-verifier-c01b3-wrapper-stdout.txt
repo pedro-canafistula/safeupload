@@ -64,3 +64,26 @@ INVARIANT_PREPARED=True
 HARNESS_RETURNED
 REBOOT_REQUESTED=True
 guest SSH returned after reboot (attempt 1)
+BootIdentityChanged=True;Before=2026-10-07T03:15:03.5000000Z;After=2026-10-07T03:21:33.5000000Z
+The command was successfully executed.
+[SC] ChangeServiceConfig SUCCESS
+No settings were changed.
+INVARIANT_CASE_COMPLETED=True
+INVARIANT_RESTORED=True
+HARNESS_RETURNED
+REBOOT_REQUESTED=True
+guest SSH returned after reboot (attempt 1)
+BootIdentityChanged=True;Before=2026-10-07T03:21:33.5000000Z;After=2026-10-07T03:24:42.5000000Z
+InvariantVerdict=INCONCLUSIVE
+INVARIANT_FINAL_STATE=True
+HARNESS_RETURNED
+== 4. independent restoration check
+ProcessCreationAuditRestored=True
+OriginalDriverHash=True
+FilterUnloaded=True
+VerifierOff=True
+OriginalPolicyHash=True
+ZeroAgentProcesses=True
+ZeroTestTasks=True
+NoGuidFixtureDirectories=True
+BaselineClean=True

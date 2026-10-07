@@ -77,6 +77,50 @@ run on the VM.
 one exact build per increment, one VM run per case with checkpoint and independent restoration, and
 one milestone review. Evidence stays, but no new layer of tooling unless a run actually failed on it.
 
+**2026-10-07 early (orchestrator, handoff to Sol overnight):**
+- C01 APPROVE under runtime Verifier: run c01o, 83 PASS, 0 FAIL, ForbiddenByteCount 0, released raw image
+  exactly A, restoration clean. The 10-06 Publishing hang was the known-SOP paging-write refusal hitting the
+  service's own cached publication write; the service now publishes non-cached and write-through on the
+  permitted handle (`ba6ac1e0`). There is no driver exemption, and the driver is unchanged at `326eb512` (build mvp4-b10).
+- C01 BLOCK under runtime Verifier: run c01b3 (agent-mvp4-b17 from `12ad8e96`), 131 PASS, 0 FAIL, 21
+  INCONCLUSIVE, ForbiddenByteCount 0, hand-back delivered and verified, restoration clean.
+- **Decision (orchestrator): the hand-back is bound to the requestor SID, not to a session.** The SID is
+  persisted at allocation from the requesting process token. Session binding is kept only for UI delivery and
+  justification (`f58b2856`). Why: run c01b2 showed that a session-0 requestor never binds, and a logoff or
+  reboot would otherwise invalidate a verified copy. The SID is the identity that already defeats session reuse.
+- A01 run a01r1 stopped because the harness never armed runtime Verifier on the activation path. Fixed in
+  `7d8f4c49`, not yet rerun.
+- C02-C05 (7 variants, Sol) merged in `eb9e10c7`. Windows PowerShell 5.1: 0 parse errors, 224/224 self-checks.
+  None has run on the VM yet.
+- Harness gap: C01BlockedStageRetained is INCONCLUSIVE because the admin harness gets "Access is denied"
+  opening `C:\ProgramData\SafeUpload\staging\<id>.txt`.
+- New helper `driver/scripts/Invoke-StagedSuiteBatch.sh` runs cases serially with a guarded rollback.
+  Untested: watch the first rollback it performs.
+
+**MVP gate (orchestrator decision, 2026-10-07; the owner should confirm):** the strict `GatePassed` and
+`Phase4Suite` gates stay exactly as they are, and they remain the post-MVP target. The MVP release uses a
+separate per-run `MvpGatePassed`, computed by the runner. It requires all of the following:
+- no FAIL anywhere
+- `ForbiddenByteCount == 0`
+- `RestorationClean`
+- Disposal OK and no Errors
+- every assertion PASS, except INCONCLUSIVE on this fixed allowlist of proofs that need instrumentation
+  deferred to post-MVP:
+  - driver lower admission/completion mutation ledger: `PredicateCoverage`, `NoUnapprovedByte`,
+    `*PublicationAndTemporalCoverage`
+  - host-independent cadence: `CadenceCoverage`, `CadenceGap`, `ExternalCoverage`
+  - authenticated per-file readiness event stream: `NeverReadyWholeHolderInterval`
+  - `*UnheldLatency`, only when a dedicated latency run for the same write path passes (at least 100 unheld
+    samples, p95 <= 250 ms, max <= 1000 ms)
+  - `LiveTaintFlags`, only until live evidence replaces it: Inspector counters showing that no taint
+    decision occurred during the run. That evidence is MVP work, not deferred.
+
+The runner records the names it tolerated (`MvpDeferred`). Any other INCONCLUSIVE fails the MVP gate. For
+the MVP, NoUnapprovedByte is therefore evidenced by sampled raw-volume, fresh and uncached reads across the
+window plus the raw final image, not by a continuous proof; the release notes must say so. C01-C05 are
+covered by their Ready variants. Any umbrella-row variant still NotReady is implemented if cheap; otherwise it
+is recorded here as deferred, with the reason.
+
 ## Goal
 
 Target platform for the MVP (owner decision 2026-10-03): **Windows 10 22H2, build 19045.2965 only**, the

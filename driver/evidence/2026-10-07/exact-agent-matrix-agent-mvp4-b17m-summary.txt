@@ -1,0 +1,23 @@
+﻿LABEL=agent-mvp4-b17m
+BUILDER=DESKTOP-O1LP5DG
+SOURCE_MANIFEST_VERIFIED=135
+ARCHIVE_SHA256=00B8657794E14443529987F181DDE1A65240F6727F04923DB5D0296F51BB376E
+MANIFEST_SHA256=6E6F751BD08A54C3D81A97EE225C4D2E25BD08E757D6486E5613536B66E39D50
+normal-debug-build: exit=0 warnings=0 errors=0
+normal-debug-tests: exit=0 warnings=0 errors=0
+normal-debug: tests_passed=353
+normal-release-build: exit=0 warnings=0 errors=0
+normal-release-tests: exit=0 warnings=0 errors=0
+normal-release: tests_passed=353
+normal-release-publish: exit=0 warnings=0 errors=0
+normal-release: package_sha256=4BD7226D0CFB2C0EB21DBBE5EC77C684E24B16735836B51F0DE3AD6E83724518
+feature-debug-build: exit=0 warnings=0 errors=0
+feature-debug-tests: exit=0 warnings=0 errors=0
+feature-debug: tests_passed=382
+feature-release-build: exit=0 warnings=0 errors=0
+feature-release-tests: exit=0 warnings=0 errors=0
+feature-release: tests_passed=382
+feature-release-publish: exit=0 warnings=0 errors=0
+feature-release: package_sha256=0D4A5290F3ACE94F0C1D3E209AA6C9E9017447335E53C5CE1DCBC3AF341FFAFC
+AgentMatrixGate=True
+BUILD_END_UTC=2026-10-07T03:23:11.2017832Z

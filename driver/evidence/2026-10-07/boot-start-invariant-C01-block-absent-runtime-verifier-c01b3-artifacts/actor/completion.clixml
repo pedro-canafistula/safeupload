@@ -1,0 +1,188 @@
+<Objs Version="1.1.0.1" xmlns="http://schemas.microsoft.com/powershell/2004/04">
+  <Obj RefId="0">
+    <TN RefId="0">
+      <T>System.Collections.Hashtable</T>
+      <T>System.Object</T>
+    </TN>
+    <DCT>
+      <En>
+        <S N="Key">Value</S>
+        <Obj N="Value" RefId="1">
+          <TNRef RefId="0" />
+          <DCT>
+            <En>
+              <S N="Key">HandBackAfter</S>
+              <Obj N="Value" RefId="2">
+                <TN RefId="1">
+                  <T>System.Object[]</T>
+                  <T>System.Array</T>
+                  <T>System.Object</T>
+                </TN>
+                <LST>
+                  <Obj RefId="3">
+                    <TNRef RefId="0" />
+                    <DCT>
+                      <En>
+                        <S N="Key">Path</S>
+                        <S N="Value">C:\Users\sui37fbabfeeb50\SafeUpload\_bloqueados\b41ad0f73d904209bc20ad4a6c736e2c.txt</S>
+                      </En>
+                      <En>
+                        <S N="Key">Sha256</S>
+                        <S N="Value">3921BB4BBF9C41724A65B418A6BE898839B96FB3D967ECB56F549EB0DEC65E8F</S>
+                      </En>
+                      <En>
+                        <S N="Key">Length</S>
+                        <I64 N="Value">12288</I64>
+                      </En>
+                    </DCT>
+                  </Obj>
+                </LST>
+              </Obj>
+            </En>
+            <En>
+              <S N="Key">ReleasedQpc</S>
+              <I64 N="Value">551763370</I64>
+            </En>
+            <En>
+              <S N="Key">Calls</S>
+              <Obj N="Value" RefId="4">
+                <TNRef RefId="1" />
+                <LST>
+                  <Obj RefId="5">
+                    <TN RefId="2">
+                      <T>SUCall</T>
+                      <T>System.Object</T>
+                    </TN>
+                    <ToString>SUCall</ToString>
+                    <Props>
+                      <S N="Class">writer-open</S>
+                      <I32 N="NativeCode">0</I32>
+                      <I64 N="StartQpc">551914703</I64>
+                      <I64 N="EndQpc">552587727</I64>
+                      <I32 N="Trial">0</I32>
+                      <B N="Cold">true</B>
+                    </Props>
+                  </Obj>
+                  <Obj RefId="6">
+                    <TNRef RefId="2" />
+                    <ToString>SUCall</ToString>
+                    <Props>
+                      <S N="Class">cached-write</S>
+                      <I32 N="NativeCode">0</I32>
+                      <I64 N="StartQpc">552634977</I64>
+                      <I64 N="EndQpc">552709254</I64>
+                      <I32 N="Trial">0</I32>
+                      <B N="Cold">true</B>
+                    </Props>
+                  </Obj>
+                  <Obj RefId="7">
+                    <TNRef RefId="2" />
+                    <ToString>SUCall</ToString>
+                    <Props>
+                      <S N="Class">flush</S>
+                      <I32 N="NativeCode">0</I32>
+                      <I64 N="StartQpc">552729232</I64>
+                      <I64 N="EndQpc">552746762</I64>
+                      <I32 N="Trial">0</I32>
+                      <B N="Cold">true</B>
+                    </Props>
+                  </Obj>
+                  <Obj RefId="8">
+                    <TNRef RefId="2" />
+                    <ToString>SUCall</ToString>
+                    <Props>
+                      <S N="Class">close</S>
+                      <I32 N="NativeCode">0</I32>
+                      <I64 N="StartQpc">573705900</I64>
+                      <I64 N="EndQpc">573724881</I64>
+                      <I32 N="Trial">0</I32>
+                      <B N="Cold">true</B>
+                    </Props>
+                  </Obj>
+                </LST>
+              </Obj>
+            </En>
+            <En>
+              <S N="Key">PrivateSha256</S>
+              <S N="Value">3921BB4BBF9C41724A65B418A6BE898839B96FB3D967ECB56F549EB0DEC65E8F</S>
+            </En>
+            <En>
+              <S N="Key">Held</S>
+              <B N="Value">false</B>
+            </En>
+            <En>
+              <S N="Key">Actor</S>
+              <Obj N="Value" RefId="9">
+                <TNRef RefId="0" />
+                <DCT>
+                  <En>
+                    <S N="Key">SessionId</S>
+                    <I32 N="Value">0</I32>
+                  </En>
+                  <En>
+                    <S N="Key">Pid</S>
+                    <I32 N="Value">6084</I32>
+                  </En>
+                  <En>
+                    <S N="Key">Elevated</S>
+                    <B N="Value">false</B>
+                  </En>
+                  <En>
+                    <S N="Key">Profile</S>
+                    <S N="Value">C:\Users\sui37fbabfeeb50</S>
+                  </En>
+                  <En>
+                    <S N="Key">Sid</S>
+                    <S N="Value">S-1-5-21-316478115-1595729549-2803163825-1045</S>
+                  </En>
+                  <En>
+                    <S N="Key">IsAdministrator</S>
+                    <B N="Value">false</B>
+                  </En>
+                  <En>
+                    <S N="Key">BootId</S>
+                    <S N="Value">WIN10-DEBUGGED/2026-10-07T03:21:33.5000000Z</S>
+                  </En>
+                  <En>
+                    <S N="Key">HandBackBefore</S>
+                    <Obj N="Value" RefId="10">
+                      <TNRef RefId="1" />
+                      <LST />
+                    </Obj>
+                  </En>
+                </DCT>
+              </Obj>
+            </En>
+            <En>
+              <S N="Key">QpcFrequency</S>
+              <I64 N="Value">10000000</I64>
+            </En>
+          </DCT>
+        </Obj>
+      </En>
+      <En>
+        <S N="Key">ExitCode</S>
+        <I32 N="Value">0</I32>
+      </En>
+      <En>
+        <S N="Key">CompletedQpc</S>
+        <I64 N="Value">631796080</I64>
+      </En>
+      <En>
+        <S N="Key">Errors</S>
+        <Obj N="Value" RefId="11">
+          <TNRef RefId="1" />
+          <LST />
+        </Obj>
+      </En>
+      <En>
+        <S N="Key">Token</S>
+        <S N="Value">7567ee89a06545d7a136c5bef6ead677</S>
+      </En>
+      <En>
+        <S N="Key">BootId</S>
+        <S N="Value">WIN10-DEBUGGED/2026-10-07T03:21:33.5000000Z</S>
+      </En>
+    </DCT>
+  </Obj>
+</Objs>
