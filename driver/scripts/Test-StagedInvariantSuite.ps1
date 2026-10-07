@@ -3567,8 +3567,9 @@ try{
     $calls=@()
     foreach($kind in @('read','write','list')){
         $path=if($kind -ceq 'list'){$probe.Folder}else{$probe.File};$start=[Diagnostics.Stopwatch]::GetTimestamp()
-        $code=if($kind -ceq 'list'){[SUSecondUser]::List($path)}else{[SUSecondUser]::Open($path,($kind -ceq 'write'))}
-        $calls+=@{Class=$kind;Path=$path;NativeCode=$code;StartQpc=$start;EndQpc=[Diagnostics.Stopwatch]::GetTimestamp()}
+        # Not $code: the task launcher's exit status variable shares this scope (b18r6 exited 5).
+        $nativeCode=if($kind -ceq 'list'){[SUSecondUser]::List($path)}else{[SUSecondUser]::Open($path,($kind -ceq 'write'))}
+        $calls+=@{Class=$kind;Path=$path;NativeCode=$nativeCode;StartQpc=$start;EndQpc=[Diagnostics.Stopwatch]::GetTimestamp()}
     }
     $value=@{Pid=$PID;Sid=$actor.Sid;BootId=$actor.BootId;Token=$token;Actor=$actor;Calls=$calls;Qpc=[Diagnostics.Stopwatch]::GetTimestamp()}
     Write-DurableFile (Join-Path $directory 'probe.clixml') ([Management.Automation.PSSerializer]::Serialize($value,32)) -New
