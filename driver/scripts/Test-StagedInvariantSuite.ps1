@@ -135,8 +135,9 @@ function Assert-Hash([string]$Path,[string]$Hash) {
         (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash -cne $Hash.ToUpperInvariant()){throw "Input hash mismatch: $Path"}
 }
 function Assert-Platform {
+    # win10-debug and its identical clones win10-debug2/3 (driver/scripts/debuggees.txt, MVP-PLAN 2026-10-07).
     $w=Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion'
-    if($env:COMPUTERNAME -cne 'WIN10-DEBUGGED' -or (Get-CimInstance Win32_ComputerSystemProduct).UUID -cne '9D44EEE8-81CF-4CC1-9FBA-7670F11DEF4D' -or
+    if($env:COMPUTERNAME -cne 'WIN10-DEBUGGED' -or (Get-CimInstance Win32_ComputerSystemProduct).UUID -cnotin @('9D44EEE8-81CF-4CC1-9FBA-7670F11DEF4D','9D6E3F02-B40A-49F0-A77F-439714F8F308','FFCB9530-146B-43B1-8AF7-2B5CC8EDE2E3') -or
         $w.CurrentBuildNumber -ne '19045' -or $w.UBR -ne 2965){throw 'Wrong debuggee/platform'}
 }
 function ConvertTo-PowerShellLiteral([string]$Value){$Value.Replace("'","''")}

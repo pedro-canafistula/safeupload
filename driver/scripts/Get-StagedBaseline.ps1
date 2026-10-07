@@ -44,7 +44,8 @@ public static class SUBaselineAudit {
 }
 
 $uuid = (Get-CimInstance Win32_ComputerSystemProduct).UUID
-$checks['DebuggeeIdentity'] = ($env:COMPUTERNAME -eq 'WIN10-DEBUGGED' -and $uuid -eq '9D44EEE8-81CF-4CC1-9FBA-7670F11DEF4D')
+# win10-debug and its identical clones win10-debug2/3 (driver/scripts/debuggees.txt, MVP-PLAN 2026-10-07).
+$checks['DebuggeeIdentity'] = ($env:COMPUTERNAME -eq 'WIN10-DEBUGGED' -and $uuid -cin @('9D44EEE8-81CF-4CC1-9FBA-7670F11DEF4D','9D6E3F02-B40A-49F0-A77F-439714F8F308','FFCB9530-146B-43B1-8AF7-2B5CC8EDE2E3'))
 $installedHash = (Get-FileHash -LiteralPath 'C:\Windows\System32\drivers\SafeUpload.sys' -Algorithm SHA256).Hash
 $checks['OriginalDriverHash'] = ($installedHash -eq $ExpectedOriginal)
 $filterInventory = & fltmc.exe filters 2>&1 | Out-String

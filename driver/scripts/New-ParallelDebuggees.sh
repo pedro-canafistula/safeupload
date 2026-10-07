@@ -4,7 +4,7 @@
 # Requires win10-debug cleanly shut down from a BaselineClean=True state. Its current top overlay
 # becomes the read-only common base; win10-debug and each clone win10-debug2..<count> get their own
 # new qcow2 overlay on it (nothing is copied or deleted), the same memory size, and their own MAC
-# and UEFI variable store (libvirt seeds it from win10-debug's store). Clones keep the guest's static
+# and UEFI variable store (seeded from the firmware's default variables). Clones keep the guest's static
 # address .51 until reconfigured one at a time (see driver/MVP-PLAN.md); never start two before that.
 set -euo pipefail
 count="${1:?count}"; mib="${2:?memory MiB}"
@@ -41,7 +41,10 @@ if n > 1:
     r.find('name').text = dom; r.remove(r.find('uuid'))
     macs = r.findall('devices/interface/mac'); assert len(macs) == 1
     macs[0].set('address', '52:54:00:aa:dd:%02x' % (0x10 + n))
-    v = r.find('os/nvram'); v.set('template', nvram); v.set('templateFormat', 'raw')
+    # libvirt's EFI auto-selection rejects a custom template; the clone's store is seeded from the
+    # firmware's default vars and Windows boots through the ESP fallback loader.
+    v = r.find('os/nvram')
+    for a in ('template', 'templateFormat'): v.attrib.pop(a, None)
     v.text = '/var/lib/libvirt/qemu/nvram/%s_VARS.fd' % dom
 t.write(out)
 PY

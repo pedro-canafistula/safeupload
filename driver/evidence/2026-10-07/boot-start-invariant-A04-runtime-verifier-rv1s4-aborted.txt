@@ -1,0 +1,5 @@
+RUN_ABORTED=True
+Reason=Owner request 2026-10-07: stop the serial sweep now and switch to parallel debuggees; killed during AfterBoot.
+UTC=2026-10-07T17:28:34Z
+NotAResult=True
+ROLLED_BACK /var/lib/libvirt/images/win10-debug.safeupload-pre-boot-start-invariant-A04-runtime-verifier-rv1s4-20261007 -> /var/lib/libvirt/images/win10-debug.safeupload-recovery-boot-start-invariant-A04-runtime-verifier-rv1s4.qcow2 (parent /var/lib/libvirt/images/win10-debug.safeupload-pre-boot-start-invariant-A03-runtime-verifier-rv1s3-20261007 kept)
