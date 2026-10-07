@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Run Phase 4 cases serially on the debuggee, one runner invocation per case, with automatic recovery.
+# Optional EXTRA_RUNNER_ARGS (e.g. --dedicated-unheld-latency) is passed to every runner call.
 # Usage: driver/scripts/Invoke-StagedSuiteBatch.sh <driver_label> <driver_commit> <agent_label> <agent_commit> <mode> <tagprefix> CASE...
 # For each case: verify the baseline, run it, summarize the gate fields, and if the run left a
 # recovery-required marker, roll the guest back to the run's pre-run checkpoint (the failed overlay's
@@ -51,7 +52,7 @@ for case in "$@"; do
     baseline "$ev/batch-$tag-pre-baseline.txt" || { log "STOP: baseline not clean before $tag"; exit 2; }
     log "run $tag $case $mode"
     python3 driver/scripts/Invoke-StagedInvariantQualification.py "$tag" "$driver_label" "$driver_commit" "$agent_label" "$policy" \
-        --cases "$case" --modes "$mode" --agent-source-commit "$agent_commit" > "$ev/batch-$tag-runner.log" 2>&1
+        --cases "$case" --modes "$mode" --agent-source-commit "$agent_commit" ${EXTRA_RUNNER_ARGS:-} > "$ev/batch-$tag-runner.log" 2>&1
     day=$(date +%F); ev=driver/evidence/$day; mkdir -p "$ev"
     index=$(ls -t driver/evidence/*/phase4-suite-"$tag"-index.txt 2>/dev/null | head -1)
     summary=$( [ -n "$index" ] && grep -o '"Verdict": "[A-Z]*"\|"GatePassed": [a-z]*\|"RestorationClean": [a-z]*\|"ForbiddenByteCount": [0-9a-z]*' "$index" | tr '\n' ' ')
