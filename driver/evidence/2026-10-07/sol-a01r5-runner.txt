@@ -1,0 +1,6 @@
+Running A01 / runtime-verifier
+SelectedInvariantGate=FAIL
+Phase4Suite=FAIL
+CompleteTableAndModes=False
+SelectedMvpGate=FAIL
+MvpSuite=FAIL
