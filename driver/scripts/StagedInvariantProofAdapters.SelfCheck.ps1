@@ -18,7 +18,7 @@ function Import-EvaluationFunctions([string]$File,[string[]]$Names) {
     }
 }
 Import-EvaluationFunctions (Join-Path $PSScriptRoot 'StagedInvariantObserver.psm1') @('New-IORecord','New-IOAssertion','Test-InvariantCadence','Test-InvariantMetadata','Test-InvariantExternalCoverage')
-Import-EvaluationFunctions (Join-Path $PSScriptRoot 'Test-StagedInvariantSuite.ps1') @('Wait-WriterIdentity','Load-State','Get-ActivatingWriterBody','Get-ExpectedCheckpoint','Test-ServiceJournalStateReachable','Assert-ServiceManifestPath','ConvertFrom-ServiceJournalRecord','Test-ServiceJournalDelta','Get-ServiceDestinationPaths','Test-ServiceFixtureEntry','ConvertFrom-NotificationRecord','Test-NotificationWindow','ConvertFrom-AgentEventXml','Test-AgentLogContinuity','Read-AgentLogWindow','Test-NotificationLocationUnchanged','Test-AgentDidNotRun','Get-ServiceTimeline','Test-CachedJournalSequence','Test-CachedNotifications','Test-CachedHandBackAcl','Test-CachedSample','Test-CachedImage','Test-CachedActorCalls','Add-CachedHeldJournal','Test-CachedNamespaceCommit','Get-WriterBody','Get-ActivationActorIdentity')
+Import-EvaluationFunctions (Join-Path $PSScriptRoot 'Test-StagedInvariantSuite.ps1') @('ConvertFrom-NtfsLastAccessOutput','Wait-WriterIdentity','Load-State','Get-ActivatingWriterBody','Get-ExpectedCheckpoint','Test-ServiceJournalStateReachable','Assert-ServiceManifestPath','ConvertFrom-ServiceJournalRecord','Test-ServiceJournalDelta','Get-ServiceDestinationPaths','Test-ServiceFixtureEntry','ConvertFrom-NotificationRecord','Test-NotificationWindow','ConvertFrom-AgentEventXml','Test-AgentLogContinuity','Read-AgentLogWindow','Test-NotificationLocationUnchanged','Test-AgentDidNotRun','Get-ServiceTimeline','Test-CachedJournalSequence','Test-CachedNotifications','Test-CachedHandBackAcl','Test-CachedSample','Test-CachedImage','Test-CachedActorCalls','Add-CachedHeldJournal','Test-CachedNamespaceCommit','Get-WriterBody','Get-ActivationActorIdentity')
 $script:checks=0
 function Check([bool]$Condition,[string]$Message){if(-not $Condition){throw $Message};$script:checks++}
 function Clone($Value){return ($Value | ConvertTo-Json -Depth 32 | ConvertFrom-Json)}
@@ -96,7 +96,16 @@ Check ($result.Count -eq 1 -and $result[0].Verdict -eq 'INCONCLUSIVE' -and $resu
 $bad=Clone $expect;$bad.Metadata=$null
 $result=@(Test-InvariantMetadata $image $bad $samples[0] $null)
 Check ($result.Count -eq 1 -and $result[0].Verdict -eq 'INCONCLUSIVE' -and $result[0].Reason -ceq 'Exact per-fixture metadata expectation missing.') 'Null metadata must be INCONCLUSIVE without throwing.'
-$policy=[pscustomobject]@{Status='OK';Before=[pscustomobject]@{Value=3;BootId=$boot;VolumeGuid='volume';Qpc=0};After=[pscustomobject]@{Value=3;BootId=$boot;VolumeGuid='volume';Qpc=20000}}
+$policy=[pscustomobject]@{Status='OK';Before=[pscustomobject]@{Value=2;Management='System';UpdatesDisabled=$true;BootId=$boot;VolumeGuid='volume';Qpc=0};After=[pscustomobject]@{Value=2;Management='System';UpdatesDisabled=$true;BootId=$boot;VolumeGuid='volume';Qpc=20000}}
+foreach($pair in @(@(0,'User','Enabled'),@(1,'User','Disabled'),@(2,'System','Disabled'),@(3,'System','Enabled'))){
+    $text='DisableLastAccess = '+$pair[0]+'  ('+$pair[1]+' Managed, '+$pair[2]+')'
+    $parsed=ConvertFrom-NtfsLastAccessOutput $text 0
+    Check ($parsed.Value -eq $pair[0] -and $parsed.Management -ceq $pair[1] -and $parsed.UpdatesDisabled -eq ($pair[2] -ceq 'Disabled')) 'Exact fsutil mode label must determine disabled state.'
+}
+foreach($text in @('DisableLastAccess = 2','DisableLastAccess = 2 (system managed, disabled)','DisableLastAccess = 2 (System Managed, Unknown)',"DisableLastAccess = 2 (System Managed, Disabled)`nDisableLastAccess = 2 (System Managed, Disabled)")){
+    Check ($null -eq (ConvertFrom-NtfsLastAccessOutput $text 0).UpdatesDisabled) 'Missing/ambiguous fsutil mode label cannot authorize tolerance.'
+}
+Check ($null -eq (ConvertFrom-NtfsLastAccessOutput 'DisableLastAccess = 2 (System Managed, Disabled)' 1).UpdatesDisabled) 'Failed fsutil command cannot authorize tolerance.'
 $image.Identity.Accessed=$time+10000
 $assertions=@(Test-InvariantMetadata $image $expect $samples[0] $policy)
 Check (@($assertions | Where-Object Verdict -ne 'PASS').Count -eq 0) 'Named bounded LastAccess divergence should be allowed.'
@@ -107,6 +116,10 @@ Check (@(Test-InvariantMetadata $bad $expect $samples[0] $policy | Where-Object 
 $bad=Clone $image;$bad.Identity.Accessed=$time+[TimeSpan]::FromMinutes(2).Ticks
 Check (@(Test-InvariantMetadata $bad $expect $samples[0] $policy | Where-Object Verdict -eq 'FAIL').Count -gt 0) 'Future API Accessed must fail.'
 Check (@(Test-InvariantMetadata $image $expect $samples[0] $null | Where-Object Verdict -eq 'INCONCLUSIVE').Count -gt 0) 'Absent policy cannot authorize Accessed tolerance.'
+$bad=Clone $policy;$bad.Before.PSObject.Properties.Remove('UpdatesDisabled')
+Check (@(Test-InvariantMetadata $image $expect $samples[0] $bad | Where-Object Verdict -eq 'INCONCLUSIVE').Count -gt 0) 'Historical numeric-only policy cannot authorize tolerance.'
+$bad=Clone $policy;$bad.After.UpdatesDisabled=$false
+Check (@(Test-InvariantMetadata $image $expect $samples[0] $bad | Where-Object Verdict -eq 'INCONCLUSIVE').Count -gt 0) 'Enabled/disabled label change invalidates tolerance.'
 $bad=Clone $policy;$bad.After.Value=0
 Check (@(Test-InvariantMetadata $image $expect $samples[0] $bad | Where-Object Verdict -eq 'INCONCLUSIVE').Count -gt 0) 'Policy change invalidates tolerance.'
 $external=[pscustomobject]@{WriterIdentities=@([pscustomobject]@{Pid=1000;Sid='S-1-5-21-1-2-3-1000';SessionId=1;Elevated=$false;IsAdministrator=$false;BootId=$boot});CadenceProof=[pscustomobject]@{Complete=$true}

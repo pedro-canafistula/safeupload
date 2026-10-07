@@ -1093,18 +1093,20 @@ function Test-InvariantMetadata($Image, $Expectation, $Sample, $Policy) {
             # LastAccess is the only permitted divergence. Both values remain bounded;
             # disabled disk updates must retain exactly the baseline disk value.
             $known=($m.AccessWindowStartFileTime -gt 0 -and $Policy.Status -ceq 'OK' -and $Policy.Before.Value -eq $Policy.After.Value -and
-                $Policy.Before.Value -in @(0,1,2,3) -and $Policy.Before.BootId -ceq $Sample.Start.BootId -and
+                $Policy.Before.Value -in @(0,1,2,3) -and $Policy.Before.UpdatesDisabled -is [bool] -and
+                $Policy.After.UpdatesDisabled -is [bool] -and $Policy.Before.UpdatesDisabled -eq $Policy.After.UpdatesDisabled -and
+                $Policy.Before.Management -in @('User','System') -and $Policy.Before.Management -ceq $Policy.After.Management -and $Policy.Before.BootId -ceq $Sample.Start.BootId -and
                 $Policy.After.BootId -ceq $Sample.Start.BootId -and $Policy.Before.VolumeGuid -ceq $m.VolumeGuid -and
                 $Policy.After.VolumeGuid -ceq $m.VolumeGuid -and $Policy.Before.Qpc -le $Sample.Start.Qpc -and $Policy.After.Qpc -ge $Sample.End.Qpc)
             if(-not $known) { $complete=$false;$assertions+=New-IOAssertion 'MetadataCrossCheck' 'INCONCLUSIVE' 'Accessed: fsutil disablelastaccess policy missing, changed, or not bound to this volume/boot/window.' $Sample.Sequence $Image.Path;continue }
             $raw=[long]$Image.RawMetadata.Accessed;$api=[long]$Image.Identity.Accessed
             $upper=[DateTime]::Parse($Sample.End.Utc).ToUniversalTime().ToFileTimeUtc()
-            $disabled=($Policy.Before.Value -in @(1,3))
+            $disabled=$Policy.Before.UpdatesDisabled
             $good=($m.AccessWindowStartFileTime -gt 0 -and $raw -ge $m.Raw.Accessed -and $api -ge $m.Api.Accessed -and $raw -le $api -and $api -le $upper)
             if($api -ne $m.Api.Accessed){$good=$good -and $api -ge $m.AccessWindowStartFileTime}
             if($disabled){$good=$good -and $raw -eq $m.Raw.Accessed}
             else{$good=$good -and ($api-$raw) -le [TimeSpan]::FromHours(1).Ticks}
-            $reason='Accessed: '+$m.AccessReason+'; fsutil='+$Policy.Before.Value+'; raw='+$raw+'; API='+$api+'; baselineRaw='+$m.Raw.Accessed+'; baselineAPI='+$m.Api.Accessed+'; upper='+$upper
+            $reason='Accessed: '+$m.AccessReason+'; fsutil='+$Policy.Before.Value+'; updatesDisabled='+$disabled+'; raw='+$raw+'; API='+$api+'; baselineRaw='+$m.Raw.Accessed+'; baselineAPI='+$m.Api.Accessed+'; upper='+$upper
             $assertions+=New-IOAssertion 'MetadataCrossCheck' $(if($good){'PASS'}else{'FAIL'}) $reason $Sample.Sequence $Image.Path
             $assertions+=New-IOAssertion 'FileMetadata' $(if($good){'PASS'}else{'FAIL'}) $reason $Sample.Sequence $Image.Path
         } else {

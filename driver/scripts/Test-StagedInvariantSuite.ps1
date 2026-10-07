@@ -1057,11 +1057,16 @@ function Get-ExpectedCheckpoint($Baseline,[string]$PhaseName,[long]$Sequence) {
     }
     return [pscustomobject]@{Phase=$PhaseName;OperationSequence=$Sequence;State=$row.ExpectedTimeline[2];Storage=$storage;Directories=$dirs;ReadDenials=@()}
 }
+function ConvertFrom-NtfsLastAccessOutput([string]$Text,[int]$ExitCode) {
+    $matches=[regex]::Matches($Text,'(?m)^\s*DisableLastAccess\s*=\s*([0-3])\s*\((User|System) Managed, (Enabled|Disabled)\)\s*$')
+    if($ExitCode -ne 0 -or $matches.Count -ne 1){return [pscustomobject]@{Value=$null;Management=$null;UpdatesDisabled=$null}}
+    return [pscustomobject]@{Value=[int]$matches[0].Groups[1].Value;Management=$matches[0].Groups[2].Value;UpdatesDisabled=($matches[0].Groups[3].Value -ceq 'Disabled')}
+}
 function Get-LastAccessEvidence {
     $text=(& fsutil.exe behavior query disablelastaccess 2>&1 | Out-String);$code=$LASTEXITCODE
-    $matches=[regex]::Matches($text,'(?im)^\s*DisableLastAccess\s*=\s*([0-3])\b')
+    $parsed=ConvertFrom-NtfsLastAccessOutput $text $code
     return [pscustomobject]@{Command='fsutil.exe behavior query disablelastaccess';Output=$text;ExitCode=$code;
-        Value=$(if($code -eq 0 -and $matches.Count -eq 1){[int]$matches[0].Groups[1].Value}else{$null});
+        Value=$parsed.Value;Management=$parsed.Management;UpdatesDisabled=$parsed.UpdatesDisabled;
         BootId=(Get-BootId);VolumeGuid=$state.VolumeGuid;Qpc=[Diagnostics.Stopwatch]::GetTimestamp();
         RegistryValue=(Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem').NtfsDisableLastAccessUpdate;
         Note='Query only: set disablelastaccess changes machine policy and may require reboot. No default is assumed.'}
