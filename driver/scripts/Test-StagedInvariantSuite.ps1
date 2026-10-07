@@ -1181,6 +1181,7 @@ public sealed class SUProofObject : IDisposable {
  public SafeFileHandle Handle; public string Path, Sddl, Owner; public bool Directory;
  public void Dispose() { if(Handle!=null) Handle.Dispose(); }
 }
+public sealed class SUProofTail { public byte[] Bytes; public long Offset; }
 public static class SUProofFile {
  [StructLayout(LayoutKind.Sequential)] struct Info { public uint Attributes; public System.Runtime.InteropServices.ComTypes.FILETIME Creation,Access,Write; public uint Volume,High,Low,Links,IdHigh,IdLow; }
  [DllImport("kernel32.dll",CharSet=CharSet.Unicode,SetLastError=true)] static extern SafeFileHandle CreateFile(string p,uint a,uint s,IntPtr z,uint d,uint f,IntPtr t);
@@ -1225,6 +1226,19 @@ public static class SUProofFile {
    if(stream.Length>maximum)throw new IOException("Product evidence size bound exceeded.");
    byte[] b=new byte[(int)stream.Length];int offset=0,n;while(offset<b.Length && (n=stream.Read(b,offset,b.Length-offset))>0)offset+=n;
    if(offset!=b.Length || stream.Length!=b.Length)throw new IOException("Short/unstable product evidence read.");return b;
+  }
+ }
+ public static SUProofTail ReadTail(SUProofObject o,int maximum) {
+  // A fixed suffix is only a transfer-discovery hint. Round qualification
+  // still uses the complete authenticated manifest retained in a snapshot.
+  SafeFileHandle copy;if(!DuplicateHandle(GetCurrentProcess(),o.Handle,GetCurrentProcess(),out copy,0,false,2))throw new Win32Exception(Marshal.GetLastWin32Error());
+  using(var stream=new FileStream(copy,FileAccess.Read,4096,false)) {
+   long length=stream.Length;if(length>4194304)throw new IOException("Notification segment size bound exceeded.");
+   long offset=Math.Max(0,length-maximum);stream.Position=offset;
+   byte[] b=new byte[(int)(length-offset)];int total=0,n;
+   while(total<b.Length && (n=stream.Read(b,total,b.Length-total))>0)total+=n;
+   if(total!=b.Length)throw new IOException("Short notification tail read.");
+   return new SUProofTail{Bytes=b,Offset=offset};
   }
  }
 }
@@ -1729,9 +1743,42 @@ function Test-AgentDidNotRun($Before,$After,$Fence,[bool]$WindowKnown,$SystemLog
         Limitations='Trusted kernel, SCM, audit transport and privileged actors; inventories inspect primary user/group/restricted SIDs, not thread impersonation. 4688 does not expose group SIDs, so any creation defeats this proof. No claim about renamed/injected emitters, off-window activity or intermediate create/delete of notification files.'}
 }
 
-function Get-ServiceSnapshot([string]$Tag,[switch]$JournalOnly) {
+function Test-LatencyTransientIoError($Exception) {
+    # Classify native codes, never localized messages or schema/ACL failures.
+    for($ex=$Exception;$null -ne $ex;$ex=$ex.InnerException){
+        if($ex -is [ComponentModel.Win32Exception] -and $ex.NativeErrorCode -in @(5,32,33)){return $true}
+        if($ex.HResult -in @(-2147024891,-2147024864,-2147024863)){return $true}
+        if($null -ne $ex.PSObject.Properties['NativeCode'] -and $ex.NativeCode -in @(5,32,33)){return $true}
+    }
+    return $false
+}
+function Invoke-LatencyJournalIo([scriptblock]$Body,[string]$Action,[string]$Path,$Retries,[long]$Deadline=0,[switch]$Enabled) {
+    if(-not $Enabled){return (& $Body)}
+    $start=[Diagnostics.Stopwatch]::GetTimestamp();$limit=$start+[long](2*[Diagnostics.Stopwatch]::Frequency)
+    if($Deadline -gt 0){$limit=[Math]::Min($limit,$Deadline)}
+    $failures=@()
+    while($true){
+        try{
+            $value=& $Body
+            foreach($failure in $failures){$failure.Outcome='Recovered';$failure.RecoveryQpc=[Diagnostics.Stopwatch]::GetTimestamp()}
+            return $value
+        }catch{
+            $now=[Diagnostics.Stopwatch]::GetTimestamp();$retryable=Test-LatencyTransientIoError $_.Exception
+            $failure=[pscustomobject]@{Action=$Action;Path=$Path;StartQpc=$start;FailureQpc=$now;DeadlineQpc=$limit;
+                Retryable=$retryable;Errors=(Get-ErrorChain $_.Exception);Outcome='Retrying';RecoveryQpc=$null}
+            [void]$Retries.Add($failure);$failures+= $failure
+            if(-not $retryable -or $now -ge $limit){
+                foreach($item in $failures){$item.Outcome=if($retryable){'Persistent'}else{'NotRetryable'}}
+                throw
+            }
+            Start-Sleep -Milliseconds ([int][Math]::Max(1,[Math]::Min(25,($limit-$now)*1000/[Diagnostics.Stopwatch]::Frequency)))
+            if([Diagnostics.Stopwatch]::GetTimestamp() -ge $limit){foreach($item in $failures){$item.Outcome='Persistent'};throw}
+        }
+    }
+}
+function Get-ServiceSnapshot([string]$Tag,[switch]$JournalOnly,[switch]$RetryTransientJournal) {
     $result=[ordered]@{Status='INCONCLUSIVE';Tag=$Tag;BootId=(Get-BootId);QpcFrequency=[Diagnostics.Stopwatch]::Frequency;StartQpc=[Diagnostics.Stopwatch]::GetTimestamp();
-        Journal=@();Objects=@();Errors=@();Application=@();AgentProcesses=@(Get-CimInstance Win32_Process -Filter "Name='SafeUpload.Agent.Service.exe'" | Select-Object ProcessId,CommandLine);}
+        Journal=@();Objects=@();Errors=@();Retries=(New-Object 'Collections.Generic.List[object]');Application=@();AgentProcesses=@(Get-CimInstance Win32_Process -Filter "Name='SafeUpload.Agent.Service.exe'" | Select-Object ProcessId,CommandLine);}
     $held=@();$root=Split-Path -Parent $policyPath;$journal=Join-Path $root 'staging-journal'
     try {
         Initialize-ServiceEvidenceReader
@@ -1746,14 +1793,24 @@ function Get-ServiceSnapshot([string]$Tag,[switch]$JournalOnly) {
             $obj=[SUProofFile]::Open($journal,$true,$true,$false,$true);$held+=$obj;$result.Objects+=@{Path=$journal;Owner=$obj.Owner;Sddl=$obj.Sddl}
             foreach($file in @(Get-ChildItem -LiteralPath $journal -Force | Sort-Object Name)) {
                 if($file.Name -notmatch '^[0-9a-f]{32}\.json$'){throw ('Unrecognized journal child; snapshot is not complete. Name='+$file.Name+'; Attributes='+[string]$file.Attributes)}
-                $obj=[SUProofFile]::Open($file.FullName,$false,$true,[bool]$JournalOnly,$true)
-                try{$bytes=[SUProofFile]::Read($obj,131072)}finally{$obj.Dispose()}
+                $read=Invoke-LatencyJournalIo {
+                    $obj=[SUProofFile]::Open($file.FullName,$false,$true,([bool]$JournalOnly -or [bool]$RetryTransientJournal),$true)
+                    try{[pscustomobject]@{Bytes=[SUProofFile]::Read($obj,131072);Owner=$obj.Owner;Sddl=$obj.Sddl}}finally{$obj.Dispose()}
+                } 'SnapshotRead' $file.FullName $result.Retries -Enabled:$RetryTransientJournal
+                $bytes=$read.Bytes
                 $leaf='service-'+$Tag+'-'+$file.Name;$copy=Join-Path $evidenceDirectory $leaf
-                $stream=[IO.File]::Open($copy,[IO.FileMode]::CreateNew,[IO.FileAccess]::Write,[IO.FileShare]::Read)
-                try{$stream.Write($bytes,0,$bytes.Length);$stream.Flush($true)}finally{$stream.Dispose()}
+                if($RetryTransientJournal -and (Test-Path -LiteralPath $copy)){throw ('Snapshot artifact already exists: '+$copy)}
+                $copyHash=Invoke-LatencyJournalIo {
+                    # Retry overwrites only this attempt's partial artifact; retain
+                    # exactly one durable copy of the same authenticated bytes.
+                    $fileMode=if($RetryTransientJournal){[IO.FileMode]::Create}else{[IO.FileMode]::CreateNew}
+                    $stream=[IO.File]::Open($copy,$fileMode,[IO.FileAccess]::Write,[IO.FileShare]::Read)
+                    try{$stream.Write($bytes,0,$bytes.Length);$stream.Flush($true)}finally{$stream.Dispose()}
+                    (Get-FileHash -LiteralPath $copy -ErrorAction Stop).Hash
+                } 'SnapshotCopy' $copy $result.Retries -Enabled:$RetryTransientJournal
                 # Collection authenticates and retains ALL bytes. Schema interpretation
                 # belongs to delta evaluation; a legacy entry must not truncate inventory.
-                $result.Journal+= [pscustomobject]@{Path=$file.FullName;Owner=$obj.Owner;Sddl=$obj.Sddl;Sha256=(Get-FileHash -LiteralPath $copy).Hash;
+                $result.Journal+= [pscustomobject]@{Path=$file.FullName;Owner=$read.Owner;Sddl=$read.Sddl;Sha256=$copyHash;
                     Artifact=$copy;Length=$bytes.Length;Bytes=$bytes}
             }
         }
@@ -2076,9 +2133,9 @@ function Test-CachedNotifications($Proof,[string]$TransferId,[int]$SessionId,[st
             Reason=('Every Blocked emission must name the exact independently verified actor hand-back file; paths='+$paths.Count+'; verified='+$verified.Count+'. Missing hand-back/notification coverage remains INCONCLUSIVE.')}
     };return ,$assertions
 }
-function Get-CachedJournalObservation([string]$Tag,$Actor,[string[]]$Paths=@(),[string[]]$ExcludedIds=@()) {
+function Get-CachedJournalObservation([string]$Tag,$Actor,[string[]]$Paths=@(),[string[]]$ExcludedIds=@(),[switch]$RetryTransientJournal) {
     if(-not $Paths.Count){$Paths=@((Join-Path $protectedDirectory 'cached.txt'));if($cachedKind -ceq 'replacement'){$Paths+= (Join-Path $protectedDirectory 'save.tmp.txt')}}
-    $snapshot=Get-ServiceSnapshot $Tag -JournalOnly
+    $snapshot=Get-ServiceSnapshot $Tag -JournalOnly -RetryTransientJournal:$RetryTransientJournal
     $entries=@();$errors=@($snapshot.Errors)
     foreach($record in $snapshot.Journal){
         if(@($trial.ServiceBefore.Journal | Where-Object Path -ieq $record.Path).Count){continue}
@@ -2095,6 +2152,94 @@ function Get-CachedJournalObservation([string]$Tag,$Actor,[string[]]$Paths=@(),[
         }catch{$errors+=Get-ErrorChain $_.Exception}
     }
     return [pscustomobject]@{Status=$(if($snapshot.Status -ceq 'OK' -and -not $errors.Count){'OK'}else{'INCONCLUSIVE'});Entries=$entries;Errors=$errors;Snapshot=$snapshot}
+}
+function Get-LatencyTransferHints($Tails,[string]$BootId,[string]$InstanceId,[long]$MinimumQpc,[long]$Frequency,[int]$SessionId,$ExcludedIds=@{}) {
+    # Authenticated bounded suffixes discover names only. They are neither a
+    # complete emission chain nor qualifying round evidence. Partial boundary
+    # lines are ignored until the next poll; complete malformed lines fail.
+    if(@($Tails).Count -gt 2){throw 'Latency notification tail count exceeds bound'}
+    $ids=@{};$utf8=[Text.UTF8Encoding]::new($false,$true)
+    foreach($tail in $Tails){
+        [byte[]]$bytes=$tail.Bytes
+        if($null -eq $bytes -or $bytes.Length -gt 65536 -or $tail.Offset -lt 0){throw 'Invalid latency notification tail bound'}
+        $start=0;$skipFirst=$tail.Offset -gt 0
+        for($i=0;$i -lt $bytes.Length;$i++){
+            if($bytes[$i] -ne 10){continue}
+            if($skipFirst){$start=$i+1;$skipFirst=$false;continue}
+            $length=$i-$start
+            if($length -le 0 -or $length -ge 16384){throw 'Invalid latency notification line size'}
+            $entry=$utf8.GetString($bytes,$start,$length) | ConvertFrom-Json -ErrorAction Stop;$start=$i+1
+            if($entry.Version -ne 1 -or $entry.Kind -cnotin @('Start','Heartbeat','Stop','Rotation','Transfer','Event','Status') -or
+                $null -eq $entry.Qpc -or $entry.Qpc -lt 0 -or [string]::IsNullOrWhiteSpace($entry.BootId)){throw 'Invalid latency notification hint'}
+            if($entry.BootId -cne $BootId -or $entry.Qpc -lt $MinimumQpc){continue}
+            if($entry.InstanceId -cne $InstanceId -or $entry.QpcFrequency -ne $Frequency -or $entry.Kind -cin @('Start','Stop')){throw 'Latency notification service instance/clock changed'}
+            if($entry.Kind -cne 'Transfer' -or $null -eq $entry.TargetSessionId -or $entry.TargetSessionId -ne $SessionId){continue}
+            $id=[guid]::Parse($entry.TransferId)
+            if($id -eq [guid]::Empty -or $entry.Phase -cnotin @('Analyzing','Released','Blocked','Retained')){throw 'Invalid latency notification transfer hint'}
+            $key=$id.ToString('D')
+            if(-not $ExcludedIds.ContainsKey($key)){$ids[$key]=$true}
+        }
+    }
+    return @($ids.Keys)
+}
+function ConvertFrom-LatencyManifestRecord($Record,$Actor,[string[]]$Paths,[string]$TransferId,[string]$Digest) {
+    $parsed=ConvertFrom-ServiceJournalRecord $Record;$transfer=$parsed.Entry.Transfer
+    if([guid]$transfer.TransferId -ne [guid]$TransferId){throw 'Dedicated completion transfer ID mismatch'}
+    if(-not @($parsed.DestinationPaths | Where-Object {$_ -iin $Paths}).Count){return $null}
+    if($transfer.ProcessId -ne $Actor.Pid -or $transfer.SessionId -ne $Actor.SessionId -or $transfer.RequestorSid -cne $Actor.Sid){throw 'Dedicated completion actor PID/session/SID mismatch'}
+    if($parsed.StateName -cin @('Blocked','Retained','Unsealed')){throw ('Dedicated expected APPROVE but observed '+$parsed.StateName)}
+    $history=@($parsed.Entry.StateHistory | Where-Object {$null -ne $_} | ForEach-Object {@('Allocated','Sealed','Inspecting','Approved','Publishing','Released','Blocked','Retained','Unsealed')[[int]$_.State]})
+    if($parsed.StateName -ceq 'Released' -and (-not $parsed.Entry.SealedOnce -or $parsed.Entry.Sha256Hex -cne $Digest -or
+        ($history -join ',') -cne 'Allocated,Sealed,Inspecting,Approved,Publishing,Released')){throw 'Dedicated Released whole-image/history evidence missing'}
+    return [pscustomobject]@{StateName=$parsed.StateName;State=[int]$parsed.Entry.State;TransferId=$transfer.TransferId;History=$history;
+        SealedOnce=$parsed.Entry.SealedOnce;Sha256Hex=$parsed.Entry.Sha256Hex;DestinationGeneration=$parsed.Entry.DestinationGeneration;
+        UpdatedAtUtc=$parsed.Entry.UpdatedAtUtc;StartQpc=$Record.StartQpc;EndQpc=$Record.EndQpc;Artifact=$Record.Artifact;Record=$Record}
+}
+function Get-LatencyCompletionObservation($Probe,$Actor,[string[]]$Paths,[string]$Digest,[long]$Deadline,$ExcludedIds) {
+    $held=@();$root=Split-Path -Parent $policyPath;$journal=Join-Path $root 'staging-journal';$start=[Diagnostics.Stopwatch]::GetTimestamp()
+    try{
+        Initialize-ServiceEvidenceReader
+        $ancestors=@();for($cursor=$root; -not [string]::IsNullOrWhiteSpace($cursor);$cursor=[IO.Path]::GetDirectoryName($cursor)){$ancestors=@($cursor)+$ancestors}
+        foreach($path in $ancestors){$held+= [SUProofFile]::Open($path,$true,($path -ceq $root))}
+        $held+= [SUProofFile]::Open($journal,$true,$true,$false,$true)
+        $ids=@($Probe.TransferId | Where-Object {-not [string]::IsNullOrWhiteSpace($_)})
+        if(-not $ids.Count){
+            $directory=Join-Path $root 'notifications';$held+= [SUProofFile]::Open($directory,$true,$true,$false,$true);$tails=@()
+            foreach($name in @('previous.jsonl','emissions.jsonl')){
+                $path=Join-Path $directory $name
+                $tail=Invoke-LatencyJournalIo {
+                    $obj=$null
+                    try{
+                        try{$obj=[SUProofFile]::Open($path,$false,$true,$true,$true)}catch{
+                            # Optional previous segment, or active name briefly
+                            # absent during rotation. These are discovery hints.
+                            for($ex=$_.Exception;$null -ne $ex;$ex=$ex.InnerException){if($ex -is [ComponentModel.Win32Exception] -and $ex.NativeErrorCode -in @(2,3)){return $null}}
+                            throw
+                        }
+                        [SUProofFile]::ReadTail($obj,65536)
+                    }finally{if($null -ne $obj){$obj.Dispose()}}
+                } 'CompletionTailRead' $path $Probe.Retries $Deadline -Enabled
+                if($null -ne $tail){$tails+= $tail;$Probe.TailBytesRead+=$tail.Bytes.Length}
+            }
+            $ids=@(Get-LatencyTransferHints $tails $Probe.BootId $Probe.InstanceId $Probe.MinimumQpc $Probe.QpcFrequency $Actor.SessionId $ExcludedIds)
+        }
+        $matches=@()
+        foreach($id in $ids){
+            if([Diagnostics.Stopwatch]::GetTimestamp() -ge $Deadline){throw 'Dedicated completion QPC deadline expired'}
+            $path=Join-Path $journal (([guid]$id).ToString('N')+'.json')
+            $record=Invoke-LatencyJournalIo {
+                $obj=[SUProofFile]::Open($path,$false,$true,$true,$true)
+                try{[pscustomobject]@{Path=$path;Bytes=[SUProofFile]::Read($obj,131072);Owner=$obj.Owner;Sddl=$obj.Sddl;
+                    StartQpc=$start;EndQpc=[Diagnostics.Stopwatch]::GetTimestamp();Artifact=$null}}finally{$obj.Dispose()}
+            } 'CompletionManifestRead' $path $Probe.Retries $Deadline -Enabled
+            $Probe.ManifestReads++
+            $entry=ConvertFrom-LatencyManifestRecord $record $Actor $Paths $id $Digest
+            if($null -ne $entry){$matches+= $entry}
+        }
+        if($matches.Count -gt 1){throw 'Dedicated round has ambiguous transfers'}
+        if($matches.Count){$Probe.TransferId=$matches[0].TransferId;return $matches[0]}
+        return $null
+    }finally{foreach($obj in $held){$obj.Dispose()}}
 }
 function Capture-CachedSample($Context,$Baseline,[string]$PhaseName,[long]$Sequence,[string]$TargetPath=(Join-Path $protectedDirectory 'cached.txt')) {
     $sample=Capture-InvariantSample $Context $Baseline $PhaseName $Sequence
@@ -2419,14 +2564,30 @@ function Capture-CachedExternalSample($Context,$Baseline,[string]$PhaseName,[lon
 }
 function Invoke-DedicatedLatencyObservation($Trial,$Actor,$Ready,$Context,[string]$Digest,[int]$Length) {
     $Trial.DedicatedLatency=@{Complete=$false;Held=$false;Rounds=@();Digest=$Digest;Length=$Length;QpcFrequency=[Diagnostics.Stopwatch]::Frequency}
-    $knownIds=@();$previousQpc=$Ready.Qpc
-    Write-DurableFile (Join-Path $actorDirectory 'go') $RunName -New
+    # Released manifests precede their notifications. A delayed emission must
+    # not select an earlier transfer at a reused overwrite/replacement path.
+    # Build the baseline exclusion once, then use constant-time ID lookups.
+    $knownIds=@();$knownIdSet=@{};$previousQpc=$Ready.Qpc
+    foreach($record in $Trial.ServiceBefore.Journal){
+        $leaf=($record.Path -split '[\\/]')[-1]
+        if($leaf -cmatch '^[0-9a-f]{32}\.json$'){$knownIdSet[([guid]::ParseExact($leaf.Substring(0,32),'N')).ToString('D')]=$true}
+    }
+    $notificationTail=@($Trial.ServiceBefore.Notifications.Entries)[-1].Entry
+    if($Trial.ServiceBefore.Status -cne 'OK' -or $Trial.ServiceBefore.Notifications.LocationStatus -cne 'OK' -or
+        $null -eq $notificationTail -or $notificationTail.BootId -cne $Context.BootId -or
+        $notificationTail.QpcFrequency -ne [Diagnostics.Stopwatch]::Frequency){throw 'Dedicated authenticated before-run discovery anchor unavailable'}
+    # Publish barriers by rename only after the durable write is closed. Name
+    # existence must never let native calls overlap a barrier/snapshot Flush.
+    $barrier=Join-Path $actorDirectory 'go';Write-DurableFile ($barrier+'.pending') $RunName -New
+    $nativeNotBeforeQpc=[Diagnostics.Stopwatch]::GetTimestamp();$Trial.DedicatedLatency.InitialIoCompletedQpc=$nativeNotBeforeQpc
+    [IO.File]::Move(($barrier+'.pending'),$barrier)
     for($round=0;$round -le 100;$round++){
         $prefix='round-'+$round.ToString('D3')+'-'
         $target=Join-Path $protectedDirectory $(if($cachedKind -cin @('cached','mapped')){'latency-'+$round.ToString('D3')+'.txt'}else{'cached.txt'})
         $openPath=if($cachedKind -ceq 'replacement'){Join-Path $protectedDirectory ('latency-'+$round.ToString('D3')+'.tmp.txt')}else{$target}
         $closed=Wait-WriterIdentity (Join-Path $actorDirectory ($prefix+'closed.clixml')) 60
-        $roundRecord=@{Trial=$round;Receipt=$closed;PrivateReceipt=$null;Terminal=$null;PublicationVerifiedQpc=$null;ValidationStatus='Incomplete'}
+        $roundRecord=@{Trial=$round;Receipt=$closed;PrivateReceipt=$null;Terminal=$null;PublicationVerifiedQpc=$null;ValidationStatus='Incomplete';
+            NativeNotBeforeQpc=$nativeNotBeforeQpc;Snapshot=$null;SnapshotCompletedQpc=$null;IoCompletedQpc=$null;PublicReaders=@();CompletionProbe=$null}
         $Trial.DedicatedLatency.Rounds+= $roundRecord
         $Trial.Operations+= @($closed.Calls)
         if($closed.Pid -ne $Actor.Pid -or $closed.Sid -cne $Actor.Sid -or $closed.BootId -cne $Context.BootId -or $closed.Token -cne $state.WriterToken -or
@@ -2435,32 +2596,48 @@ function Invoke-DedicatedLatencyObservation($Trial,$Actor,$Ready,$Context,[strin
         if(($calls.Class -join ',') -cne ($row.LatencyClasses -join ',')){throw ('Dedicated native class sequence incomplete: '+$round)}
         foreach($call in $calls){
             if($call.NativeCode -ne 0 -or $call.Trial -ne $round -or $call.Cold -ne ($round -eq 0) -or
-                $call.StartQpc -lt $previousQpc -or $call.EndQpc -lt $call.StartQpc -or $call.EndQpc -gt $closed.Qpc){throw ('Dedicated native status/QPC mismatch: '+$round)}
+                $call.StartQpc -lt $previousQpc -or $call.StartQpc -lt $nativeNotBeforeQpc -or $call.EndQpc -lt $call.StartQpc -or $call.EndQpc -gt $closed.Qpc){throw ('Dedicated native status/QPC mismatch: '+$round)}
             $previousQpc=$call.EndQpc
         }
         $held=Wait-WriterIdentity (Join-Path $actorDirectory ($prefix+'held.clixml')) 1
         $roundRecord.PrivateReceipt=$held
         if($held.Pid -ne $Actor.Pid -or $held.Sid -cne $Actor.Sid -or $held.BootId -cne $Context.BootId -or $held.Token -cne $state.WriterToken -or $held.PrivateSha256 -cne $Digest){throw 'Dedicated private image provenance mismatch'}
         if($cachedKind -ceq 'mapped' -and (-not $held.SourceClosed -or -not $held.ViewLive -or -not $held.SectionLive)){throw 'Dedicated mapped lifetime contract incomplete'}
-        $terminal=$null;$deadline=[Diagnostics.Stopwatch]::GetTimestamp()+[long](120*[Diagnostics.Stopwatch]::Frequency);$pollNumber=0
+        $terminal=$null;$deadline=[Diagnostics.Stopwatch]::GetTimestamp()+[long](120*[Diagnostics.Stopwatch]::Frequency)
+        $probe=@{TransferId=$null;BootId=$Context.BootId;InstanceId=$notificationTail.InstanceId;MinimumQpc=$calls[0].StartQpc;
+            QpcFrequency=[Diagnostics.Stopwatch]::Frequency;PollCount=0;TailBytesRead=0L;ManifestReads=0;DeadlineQpc=$deadline;Retries=(New-Object 'Collections.Generic.List[object]')}
+        $roundRecord.CompletionProbe=$probe
         do {
-            $poll=Get-CachedJournalObservation ($prefix+'outcome-'+$pollNumber) $Actor @($target,$openPath) $knownIds
-            $pollNumber++;$Trial.JournalSnapshots+= $poll.Snapshot
-            if($poll.Status -cne 'OK'){throw ('Dedicated authenticated journal incomplete: '+((@($poll.Errors)+@($poll.Snapshot.Errors | ForEach-Object Message)) -join '; '))}
-            if($poll.Entries.Count -gt 1){throw 'Dedicated round has ambiguous transfers'}
-            foreach($entry in $poll.Entries){
-                if($entry.StateName -cin @('Blocked','Retained','Unsealed')){throw ('Dedicated expected APPROVE but observed '+$entry.StateName)}
-                if($entry.StateName -ceq 'Released'){$terminal=$entry}
-            }
+            $probe.PollCount++
+            $entry=Get-LatencyCompletionObservation $probe $Actor @($target,$openPath) $Digest $deadline $knownIdSet
+            if($null -ne $entry -and $entry.StateName -ceq 'Released'){$terminal=$entry}
             if($null -ne $terminal){break};Start-Sleep -Milliseconds 50
         }while([Diagnostics.Stopwatch]::GetTimestamp() -lt $deadline)
-        if($null -eq $terminal -or -not $terminal.SealedOnce -or $terminal.Sha256Hex -cne $Digest -or
-            ($terminal.History -join ',') -cne 'Allocated,Sealed,Inspecting,Approved,Publishing,Released'){throw ('Dedicated Released whole-image/history evidence missing: '+$round)}
-        $roundRecord.Terminal=$terminal;$roundRecord.PublicationVerifiedQpc=[Diagnostics.Stopwatch]::GetTimestamp();$roundRecord.ValidationStatus='Complete'
+        if($null -eq $terminal){throw ('Dedicated Released completion QPC deadline expired: '+$round)}
+        # Exactly one full retained authenticated journal snapshot per terminal
+        # round. Discovery hints cannot qualify any sample or replace this proof.
+        $poll=Get-CachedJournalObservation ($prefix+'terminal') $Actor @($target,$openPath) $knownIds -RetryTransientJournal
+        $Trial.JournalSnapshots+= $poll.Snapshot;$roundRecord.Snapshot=$poll.Snapshot;$roundRecord.SnapshotCompletedQpc=$poll.Snapshot.EndQpc
+        if($poll.Status -cne 'OK' -or $poll.Entries.Count -ne 1){throw ('Dedicated authenticated terminal journal incomplete/ambiguous: '+($poll.Errors | Out-String))}
+        $record=$poll.Entries[0].Record
+        $record | Add-Member NoteProperty StartQpc $poll.Snapshot.StartQpc -Force
+        $record | Add-Member NoteProperty EndQpc $poll.Snapshot.EndQpc -Force
+        $terminal=ConvertFrom-LatencyManifestRecord $record $Actor @($target) $probe.TransferId $Digest
+        if($null -eq $terminal -or $terminal.StateName -cne 'Released'){throw 'Dedicated retained terminal manifest differs from completion detection'}
+        $roundRecord.Terminal=$terminal
+        foreach($raw in @($false,$true)){
+            $reader=Invoke-LatencyJournalIo {[StagedInvariant.Native]::Fresh($target,$raw,$Context.Geometry.Alignment)} 'PublicImageRead' $target $probe.Retries -Enabled
+            $roundRecord.PublicReaders+= [pscustomobject]@{Unbuffered=$raw;Result=$reader;EndQpc=[Diagnostics.Stopwatch]::GetTimestamp()}
+            if($reader.Status -cne 'OK' -or $reader.Length -ne $Length -or $reader.Digest -cne $Digest){throw 'Dedicated exact public whole image differs'}
+        }
+        $roundRecord.PublicationVerifiedQpc=[Diagnostics.Stopwatch]::GetTimestamp();$roundRecord.ValidationStatus='Complete'
         $knownIds+= $terminal.TransferId
+        $knownIdSet[([guid]$terminal.TransferId).ToString('D')]=$true
         # No native holder is live here. Release next repetition only after the
         # authenticated product transfer has reached exact Released image A.
-        Write-DurableFile (Join-Path $actorDirectory ($prefix+'next')) $RunName -New
+        $barrier=Join-Path $actorDirectory ($prefix+'next');Write-DurableFile ($barrier+'.pending') $RunName -New
+        $nativeNotBeforeQpc=[Diagnostics.Stopwatch]::GetTimestamp();$roundRecord.IoCompletedQpc=$nativeNotBeforeQpc;$previousQpc=$nativeNotBeforeQpc
+        [IO.File]::Move(($barrier+'.pending'),$barrier)
     }
     $writer=Wait-TaskCompletion $writerTask (Join-Path $actorDirectory 'completion.clixml') $state.WriterToken 60
     if($writer.ExitCode -ne 0 -or $writer.Value.Held -ne $false -or $writer.Value.Actor.Pid -ne $Actor.Pid -or $writer.Value.Actor.Sid -cne $Actor.Sid -or
@@ -2508,7 +2685,7 @@ function Invoke-CachedObservation {
         if($ready.VolumeGuid -cne $state.VolumeGuid -or $readback.RecordBase64 -cne $state.ExpectedBootRecord -or -not $readback.AclValid -or $readback.PendingPresent){throw 'C01 dedicated fixed-NTFS policy/volume readback mismatch'}
         $trial.Policy=@{SeedRecord=$readback;LiveFlags=$null;TaintDisabledConfirmed=$false}
         Write-DurableFile (Join-Path $evidenceDirectory 'readiness.json') ($ready | ConvertTo-Json -Depth 32) -New
-        $trial.ServiceBefore=Get-ServiceSnapshot 'before';$trial.LastAccessBefore=Get-LastAccessEvidence
+        $trial.ServiceBefore=Get-ServiceSnapshot 'before' -RetryTransientJournal:([bool]$state.DedicatedUnheldLatency);$trial.LastAccessBefore=Get-LastAccessEvidence
         $context=Open-InvariantObserver $ready.VolumeGuid $protectedDirectory (Join-Path $evidenceDirectory 'raw') $CaseId
         if($context.Status -cne 'OK'){throw ($context.Error | Out-String)}
         Start-ScheduledTask -TaskName $writerTask
@@ -2524,7 +2701,7 @@ function Invoke-CachedObservation {
             if(@($trial.SeedBase.Assertions | Where-Object Verdict -cne 'PASS').Count){throw 'Approved B seed evidence incomplete/failed; no main mutation attempted'}
             $trial.SetupCacheFlush=Flush-InvariantSetupVolume
             # Exclude the proven Released B transfer from the A window, never a dirty baseline.
-            $trial.ServiceBefore=Get-ServiceSnapshot 'before-A';$trial.LastAccessBefore=Get-LastAccessEvidence
+            $trial.ServiceBefore=Get-ServiceSnapshot 'before-A' -RetryTransientJournal:([bool]$state.DedicatedUnheldLatency);$trial.LastAccessBefore=Get-LastAccessEvidence
         }
         $expected=@{'marker.bin'=[Convert]::FromBase64String($state.BaselineBase64);'cached.txt'=$imageB};$names=@('marker.bin','cached.txt')
         if($cachedKind -ceq 'replacement'){$expected['save.tmp.txt']=$null;$names+= 'save.tmp.txt'}
@@ -2543,7 +2720,7 @@ function Invoke-CachedObservation {
             $trial.Assertions+=@{Name='DedicatedLatencyOnly';Verdict='INCONCLUSIVE';Reason='Separate unheld native latency experiment; no functional protection qualification.'}
             $writer=Invoke-DedicatedLatencyObservation $trial $actor $ready $context $digest $imageA.Length
             $trial.LastAccessAfter=Get-LastAccessEvidence
-            $trial.ServiceAfter=Get-ServiceSnapshot 'latency-after';$trial.Journal=$trial.ServiceAfter.Journal
+            $trial.ServiceAfter=Get-ServiceSnapshot 'latency-after' -RetryTransientJournal;$trial.Journal=$trial.ServiceAfter.Journal
             $trial.VerifierAfter=Get-VerifierEvidence 'after' -RequireMode
             return
         }
