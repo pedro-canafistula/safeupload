@@ -4344,13 +4344,17 @@ __declspec(noinline) static VOID StageRegistryRecordClassificationResult(
     _In_ PSTAGE_REGISTRY_ENTRY Entry, _In_ NTSTATUS Status, _In_ UINT32 Step)
 {
     KIRQL irql;
+    BOOLEAN changed;
     /* Temporary by-ID classifiers have no registry lifetime or diagnostic row. */
     if (Entry->Instance == NULL) return;
     StageAcquireSpinLock(&Entry->StateLock, &irql);
-    InterlockedExchange(&Entry->ClassificationStatus, Status);
-    InterlockedExchange(&Entry->ClassificationStep, (LONG)Step);
+    changed = InterlockedExchange(&Entry->ClassificationStatus, Status) != Status;
+    changed = InterlockedExchange(&Entry->ClassificationStep, (LONG)Step) != (LONG)Step || changed;
     StageReleaseSpinLock(&Entry->StateLock, irql);
-    InterlockedIncrement64(&RegistryChangeSequence);
+    /* Only a changed row moves the snapshot sequence. An entry held at the same step (C04 latency v3a1: one
+     * Activating entry at the cache barrier on every worker pass) otherwise kept every coverage and
+     * activating-status snapshot answering STATUS_RETRY. */
+    if (changed) InterlockedIncrement64(&RegistryChangeSequence);
 }
 
 static BOOLEAN StageRegistryOpenByIdMeansNoName(_In_ NTSTATUS Status)
@@ -5552,16 +5556,22 @@ static VOID StageRegistryActivationProcess(_In_ PSTAGE_REGISTRY_ENTRY Entry,
          * and purge path; never use the unsupported StageFence purge helper.
          * Failure or a retained section keeps the published Activating gate. */
         status = FltFlushBuffers2(Instance, object, FLT_FLUSH_TYPE_FLUSH_AND_PURGE, NULL);
-        StageRegistryRecordClassificationResult(Entry, status,
-            SAFEUPLOAD_ACTIVATING_CLASSIFY_STEP_FLUSH_PURGE);
-        if (status != STATUS_SUCCESS) goto Exit;
+        if (status != STATUS_SUCCESS) {
+            StageRegistryRecordClassificationResult(Entry, status,
+                SAFEUPLOAD_ACTIVATING_CLASSIFY_STEP_FLUSH_PURGE);
+            goto Exit;
+        }
         cacheFlushedAndPurged = TRUE;
+        /* One row per outcome, so an entry held here on every pass leaves its row (and the snapshot
+         * sequence) unchanged. */
         if (object->SectionObjectPointer != sop ||
             sop->DataSectionObject != NULL || sop->SharedCacheMap != NULL) {
             StageRegistryRecordClassificationResult(Entry, STATUS_SUCCESS,
                 SAFEUPLOAD_ACTIVATING_CLASSIFY_STEP_CACHE_RETAINED);
             goto Exit;
         }
+        StageRegistryRecordClassificationResult(Entry, STATUS_SUCCESS,
+            SAFEUPLOAD_ACTIVATING_CLASSIFY_STEP_FLUSH_PURGE);
     }
 
     /* Every live unknown marker holds this instance until exact quiescence and identity-safe retirement. */
