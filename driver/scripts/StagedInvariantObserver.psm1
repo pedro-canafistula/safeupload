@@ -8,12 +8,13 @@ using System.IO;
 using System.Text;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using Microsoft.Win32.SafeHandles;
 namespace StagedInvariant {
  public sealed class ObservationException : Exception {
-  public string Phase; public int NativeCode; public Container[] Containers; public Image PartialImage;
+  public string Phase, NativeNtStatus; public int NativeCode; public Container[] Containers; public Image PartialImage;
   public ObservationException(string phase, string message, int code) : base(message) { Phase=phase; NativeCode=code; }
   public ObservationException(string phase, string message, Exception inner) : base(message,inner) { Phase=phase; NativeCode=0; }
  }
@@ -53,8 +54,14 @@ namespace StagedInvariant {
   public NameEntry[] Names; public NameEntry[] FileNames; public uint SecurityId; public Identity RawMetadata; public Attribute[] Attributes; public string[] CrossCheckErrors;
  }
  public sealed class Reader { public Identity Before, After; public string Digest, Status; public long Length; public int NativeCode; }
+ public sealed class MftRefresh {
+  public uint RequestedRecord; public long StartQpc, EndQpc, QpcFrequency;
+  public string Status, Reason; public Run[] OldRuns, NewRuns; public Container[] Containers;
+ }
  public sealed class Volume : IDisposable {
   public Handle Raw; public Geometry Geometry; public Run[] MftRuns; public Container[] BootstrapContainers;
+  public List<MftRefresh> MftRefreshes=new List<MftRefresh>();
+  public Exception MftMapFailure;
   public void Dispose() { if (Raw!=null) Raw.Dispose(); }
  }
  public static class Native {
@@ -73,7 +80,14 @@ namespace StagedInvariant {
   [DllImport("kernel32.dll",CharSet=CharSet.Unicode,SetLastError=true)] [return:MarshalAs(UnmanagedType.Bool)] static extern bool GetVolumeInformationW(string p,StringBuilder n,uint nn,out uint serial,out uint max,out uint flags,StringBuilder fs,uint nf);
   [DllImport("kernel32.dll",CharSet=CharSet.Unicode,SetLastError=true)] static extern uint QueryDosDeviceW(string p,StringBuilder b,uint n);
   [DllImport("ntdll.dll")] static extern int RtlDecompressBuffer(ushort format,[Out] byte[] output,uint capacity,byte[] input,uint size,out uint final);
-  public static ObservationException Error(string phase) { int n=Marshal.GetLastWin32Error(); return new ObservationException(phase,new Win32Exception(n).Message,n); }
+  [DllImport("ntdll.dll")] static extern uint RtlGetLastNtStatus();
+  public static ObservationException Error(string phase) {
+   // Capture the thread's NT status before formatting, cleanup or another native call.
+   // RtlGetLastNtStatus does not replace the CLR's cached SetLastError value.
+   uint status=RtlGetLastNtStatus(); int code=Marshal.GetLastWin32Error();
+   string hex="0x"+status.ToString("X8");
+   return new ObservationException(phase,new Win32Exception(code).Message+"; Win32="+code+"; RtlGetLastNtStatus="+hex,code) { NativeNtStatus=hex };
+  }
   public static void Require(bool ok,string phase,string message) { if (!ok) throw new ObservationException(phase,message,0); }
   static void Bounds(byte[] b,int o,int n) { Require(b!=null && o>=0 && n>=0 && o<=b.Length-n,"Decode","Truncated or out-of-bounds field"); }
   public static ushort U16(byte[] b,int o) { Bounds(b,o,2); return BitConverter.ToUInt16(b,o); }
@@ -89,7 +103,9 @@ namespace StagedInvariant {
    if(p==new IntPtr(-1)) throw Error("CreateFileW"); return new Handle(p);
   }
   static byte[] Io(Handle h,uint code,byte[] input,int length) {
-   byte[] b=new byte[length]; uint n; if(!DeviceIoControl(h.Value,code,input,(uint)(input==null?0:input.Length),b,(uint)b.Length,out n,IntPtr.Zero)) throw Error("DeviceIoControl:"+code);
+   byte[] b=new byte[length]; uint n; if(!DeviceIoControl(h.Value,code,input,(uint)(input==null?0:input.Length),b,(uint)b.Length,out n,IntPtr.Zero)) {
+    ObservationException failure=Error("DeviceIoControl"); failure.Phase+=":"+code; throw failure;
+   }
    Require(n<=b.Length,"DeviceIoControl","Invalid output length"); return Slice(b,0,(int)n);
   }
   public static void ValidateTransfer(long buffer,long offset,int length,int alignment) {
@@ -151,13 +167,7 @@ namespace StagedInvariant {
     byte[] n=Io(v.Raw,0x90064,null,128); Require(n.Length>=96,"VolumeData","Truncated NTFS volume data");
     Require(U64(n,0)==g.Serial && U32(n,40)==g.Sector && U32(n,44)==g.Cluster && U32(n,48)==g.RecordSize && I64(n,64)==g.MftLcn && I64(n,8)*g.Sector==g.TotalBytes,"VolumeData","Boot/FSCTL geometry mismatch");
     byte[] mft=ReadAligned(v.Raw,checked(g.MftLcn*g.Cluster),g.RecordSize,g.Alignment,false,0); AddContainer(bootstrap,"MFT_BOOTSTRAP",checked(g.MftLcn*g.Cluster),mft); Record m=DecodeRecord(mft,g.Sector,0); CrossRecord(v,m,bootstrap);
-    Require(m.BaseReference==0 && (m.Flags&1)!=0,"MFT","Invalid base MFT record");
-    List<Run> runs=new List<Run>(); foreach(Attribute at in m.Attributes) if(at.Type==0x80 && at.Name=="" && at.NonResident) runs.AddRange(at.Runs);
-    Require(runs.Count>0 && runs[0].Vcn==0,"MFT","No bootstrap runlist"); v.MftRuns=runs.ToArray();
-    // Extension records must be reachable using the already-known bootstrap runs.
-    List<Container> discard=bootstrap; List<Record> records=new List<Record>(); records.Add(m);
-    Attribute[] all=ResolveAttributes(v,m,records,discard); List<Attribute> data=Select(all,0x80,"");
-    v.MftRuns=MergeRuns(data); Require(v.MftRuns.Length>0 && v.MftRuns[0].Vcn==0,"MFT","Incomplete MFT runs"); v.BootstrapContainers=bootstrap.ToArray(); return v;
+    v.MftRuns=BuildMftRuns(v,m,bootstrap); v.BootstrapContainers=bootstrap.ToArray(); return v;
    } catch(Exception e) {
     ObservationException failure=e as ObservationException; if(failure==null) failure=new ObservationException("OpenVolume",e.Message,e); failure.Containers=bootstrap.ToArray();
     try { v.Dispose(); } catch(Exception close) { ObservationException both=new ObservationException("OpenVolumeCleanup","Open and cleanup failed",new AggregateException(failure,close)); both.Containers=bootstrap.ToArray(); throw both; } throw failure;
@@ -239,7 +249,10 @@ namespace StagedInvariant {
    // Decompress into a buffer larger than the unit: RtlDecompressBuffer reports success with a truncated result when the
    // output buffer is too small, so over-long (malformed) data would pass for a unit-sized buffer. Require EXACTLY the unit.
    byte[] big=new byte[outputLength+8192]; uint final; int status=RtlDecompressBuffer(2,big,(uint)big.Length,input,(uint)input.Length,out final);
-   if(status!=0) throw new ObservationException("LZNT1","RtlDecompressBuffer NTSTATUS",status);
+   if(status!=0) {
+    ObservationException failure=Error("LZNT1"); failure.NativeCode=status;
+    throw new ObservationException("LZNT1","RtlDecompressBuffer returned NTSTATUS=0x"+unchecked((uint)status).ToString("X8")+"; RtlGetLastNtStatus="+failure.NativeNtStatus,status) { NativeNtStatus=failure.NativeNtStatus };
+   }
    Require(final==outputLength,"LZNT1","Decompressed length is not exactly the unit");
    byte[] output=new byte[outputLength]; Buffer.BlockCopy(big,0,output,0,outputLength); return output;
   }
@@ -254,7 +267,7 @@ namespace StagedInvariant {
    x.Allocation=I64(standard,0); x.Eof=I64(standard,8); x.Links=U32(standard,16); x.DeletePending=standard[20]!=0; x.Directory=standard[21]!=0;
    x.Creation=I64(basic,0); x.Accessed=I64(basic,8); x.Modified=I64(basic,16); x.Changed=I64(basic,24); x.Attributes=U32(basic,32);
    Require(x.Allocation>=0 && x.Eof>=0 && x.Eof<=MaxImage && (x.Attributes&0x4400)==0 && (x.Directory || x.Links<=1),"Identity","EFS/reparse/hardlink/size ambiguity");
-   byte[] cs=new byte[4]; if(!GetFileInformationByHandleEx(h.Value,23,cs,4)) { int code=Marshal.GetLastWin32Error(); if(code!=87 || x.Directory) throw new ObservationException("FileCaseSensitiveInfo",new Win32Exception(code).Message,code); } else Require(U32(cs,0)==0,"Identity","Case-sensitive fixture");
+   byte[] cs=new byte[4]; if(!GetFileInformationByHandleEx(h.Value,23,cs,4)) { ObservationException failure=Error("FileCaseSensitiveInfo"); if(failure.NativeCode!=87 || x.Directory) throw failure; } else Require(U32(cs,0)==0,"Identity","Case-sensitive fixture");
    return x;
   }
   public static bool SameIdentity(Identity a,Identity b) { return a.VolumeSerial==b.VolumeSerial && a.FileId==b.FileId && a.Reference==b.Reference && a.Eof==b.Eof && a.Allocation==b.Allocation && a.Attributes==b.Attributes && a.Links==b.Links && a.DeletePending==b.DeletePending && a.Modified==b.Modified && a.Changed==b.Changed; }
@@ -282,9 +295,9 @@ namespace StagedInvariant {
    List<Run> runs=new List<Run>(); long start=0;
    for(int page=0;page<MaxRuns;page++) {
     byte[] input=BitConverter.GetBytes(start),output=new byte[16+16*128]; uint returned;
-    bool ok=DeviceIoControl(h.Value,0x90073,input,8,output,(uint)output.Length,out returned,IntPtr.Zero); int code=ok?0:Marshal.GetLastWin32Error();
+    bool ok=DeviceIoControl(h.Value,0x90073,input,8,output,(uint)output.Length,out returned,IntPtr.Zero); ObservationException failure=ok?null:Error("Retrieval"); int code=ok?0:failure.NativeCode;
     if(!ok && code==38) { Require(start==0,"Retrieval","Unexpected EOF while paging"); return new Run[0]; }
-    if(!ok && code!=234) throw new ObservationException("Retrieval",new Win32Exception(code).Message,code);
+    if(!ok && code!=234) throw failure;
     Run[] pageRuns=DecodeRetrievalPage(output,(int)returned,start); Require(runs.Count+pageRuns.Length<=MaxRuns,"Retrieval","Run cap"); runs.AddRange(pageRuns);
     long next=pageRuns[pageRuns.Length-1].NextVcn; Require(next>start,"Retrieval","Nonprogressing page"); start=next; if(ok) return runs.ToArray();
    }
@@ -318,9 +331,73 @@ namespace StagedInvariant {
    }
    Require(cursor==end,"Map","Truncated run mapping; kind="+kind+"; logicalOffset="+offset+"; length="+length+"; cursor="+cursor+"; mappedEnd="+(runs.Length==0?0:checked(runs[runs.Length-1].NextVcn*cluster))); return output;
   }
-  static Record ReadRecord(Volume v,uint number,List<Container> containers) {
-   try { Record r=DecodeRecord(ReadMapped(v,v.MftRuns,checked((long)number*v.Geometry.RecordSize),v.Geometry.RecordSize,containers,"MFT"),v.Geometry.Sector,number); CrossRecord(v,r,containers); return r; }
+  static long MftMappedEnd(Volume v,Run[] runs) { return runs.Length==0?0:checked(runs[runs.Length-1].NextVcn*v.Geometry.Cluster); }
+  static void ValidateMftRuns(Volume v,Run[] runs) {
+   Require(runs!=null && runs.Length>0 && runs.Length<=MaxRuns,"MFT","Missing/capped MFT runs"); long next=0;
+   foreach(Run r in runs) {
+    Require(r.Vcn==next && r.NextVcn>r.Vcn && r.Lcn>=0,"MFT","Gapped/overlapping/sparse MFT runs");
+    Require(checked((r.Lcn+r.Clusters)*v.Geometry.Cluster)<=v.Geometry.TotalBytes,"MFT","MFT physical bounds"); next=r.NextVcn;
+   }
+   Require(runs[0].Lcn==v.Geometry.MftLcn && MftMappedEnd(v,runs)>=v.Geometry.RecordSize,"MFT","MFT bootstrap location/length mismatch");
+  }
+  static Run[] BuildMftRuns(Volume v,Record root,List<Container> containers) {
+   Require(root.Number==0 && root.BaseReference==0 && (root.Flags&3)==1,"MFT","Invalid base MFT record");
+   // Use only this newly decoded bootstrap map to reach extension records.
+   // Neither bootstrap nor refresh may recursively refresh an incomplete map.
+   Volume candidate=new Volume { Raw=v.Raw,Geometry=v.Geometry,MftRuns=MergeRuns(Select(root.Attributes,0x80,"")) };
+   ValidateMftRuns(candidate,candidate.MftRuns);
+   List<Record> records=new List<Record>(); records.Add(root);
+   List<Attribute> data=Select(ResolveAttributes(candidate,root,records,containers,false),0x80,"");
+   foreach(Attribute a in data) Require(a.Flags==0 && a.CompressionUnit==0,"MFT","Sparse/compressed/encrypted MFT unsupported");
+   Run[] runs=MergeRuns(data); ValidateMftRuns(candidate,runs); return runs;
+  }
+  static void ValidateMftPrefix(Volume v,Run[] oldRuns,Run[] newRuns) {
+   ValidateMftRuns(v,oldRuns); ValidateMftRuns(v,newRuns);
+   Require(MftMappedEnd(v,newRuns)>=MftMappedEnd(v,oldRuns),"MftRefresh","Refreshed MFT map shrank");
+   // Compare physical addresses at every boundary, allowing equivalent splits
+   // or coalescing of runs, including extension of the final cached run.
+   int i=0,j=0; long cursor=0;
+   while(i<oldRuns.Length) {
+    Run x=oldRuns[i],y=newRuns[j];
+    Require(checked(x.Lcn+cursor-x.Vcn)==checked(y.Lcn+cursor-y.Vcn),"MftRefresh","Changed cached MFT map prefix at VCN="+cursor);
+    cursor=Math.Min(x.NextVcn,y.NextVcn); if(cursor==x.NextVcn)i++; if(cursor==y.NextVcn)j++;
+   }
+  }
+  static Run[] RebuildMftRuns(Volume v,List<Container> containers) {
+   long offset=checked(v.Geometry.MftLcn*v.Geometry.Cluster);
+   byte[] raw=ReadAligned(v.Raw,offset,v.Geometry.RecordSize,v.Geometry.Alignment,false,0);
+   AddContainer(containers,"MFT_REFRESH_RECORD_ZERO",offset,raw);
+   Record root=DecodeRecord(raw,v.Geometry.Sector,0); CrossRecord(v,root,containers);
+   return BuildMftRuns(v,root,containers);
+  }
+  static Record ReadRecordCore(Volume v,uint number,bool allowRefresh,Func<List<Container>,Run[]> rebuild,Func<Record> capture) {
+   if(v.MftMapFailure!=null) throw new ObservationException("MftRefresh","Prior MFT refresh rejected; observer map unavailable.",v.MftMapFailure);
+   long end=checked(((long)number+1)*v.Geometry.RecordSize);
+   if(end>MftMappedEnd(v,v.MftRuns)) {
+    Require(allowRefresh,"Map","Truncated run mapping while resolving MFT bootstrap; requested record="+number);
+    MftRefresh refresh=new MftRefresh { RequestedRecord=number,OldRuns=v.MftRuns,NewRuns=new Run[0],Status="ERROR",
+     StartQpc=Stopwatch.GetTimestamp(),QpcFrequency=Stopwatch.Frequency };
+    List<Container> evidence=new List<Container>(); v.MftRefreshes.Add(refresh);
+    try {
+     refresh.NewRuns=rebuild(evidence); ValidateMftPrefix(v,refresh.OldRuns,refresh.NewRuns);
+     Require(end<=MftMappedEnd(v,refresh.NewRuns),"MftRefresh","Still-truncated MFT map after one refresh; requested record="+number+"; mappedEnd="+MftMappedEnd(v,refresh.NewRuns));
+     v.MftRuns=refresh.NewRuns; refresh.Status="OK"; refresh.Reason="Cached MFT prefix preserved; requested record covered.";
+    } catch(Exception e) { refresh.Reason=e.Message; v.MftMapFailure=e; throw; }
+    finally { refresh.EndQpc=Stopwatch.GetTimestamp(); refresh.Containers=evidence.ToArray(); }
+   }
+   return capture();
+  }
+  static Record ReadRecord(Volume v,uint number,List<Container> containers,bool allowRefresh=true) {
+   try { return ReadRecordCore(v,number,allowRefresh,
+    delegate(List<Container> evidence) { return RebuildMftRuns(v,evidence); },
+    delegate { Record r=DecodeRecord(ReadMapped(v,v.MftRuns,checked((long)number*v.Geometry.RecordSize),v.Geometry.RecordSize,containers,"MFT"),v.Geometry.Sector,number); CrossRecord(v,r,containers); return r; }); }
    catch(ObservationException cause) { ObservationException failure=new ObservationException("MftRecord","Requested record="+number+"; "+cause.Message,cause); failure.Containers=containers.ToArray(); throw failure; }
+  }
+  // Synthetic records exercise the same one-refresh/prefix/coverage path without raw I/O.
+  public static Record SelfCheckMftRefresh(Volume v,uint number,byte[] rawZero,byte[] rawTarget) {
+   return ReadRecordCore(v,number,true,
+    delegate(List<Container> evidence) { AddContainer(evidence,"MFT_REFRESH_RECORD_ZERO",checked(v.Geometry.MftLcn*v.Geometry.Cluster),rawZero); return BuildMftRuns(v,DecodeRecord(rawZero,v.Geometry.Sector,0),evidence); },
+    delegate { return DecodeRecord(rawTarget,v.Geometry.Sector,number); });
   }
   // Private-stage fallback only. The source is the trusted NTFS metadata
   // cache, explicitly not an on-disk MFT/index proof. No stage-file open.
@@ -358,8 +435,8 @@ namespace StagedInvariant {
    for(int page=0;page<64;page++) {
     byte[] bytes=new byte[65536];
     if(!GetFileInformationByHandleEx(directory.Value,page==0?11:10,bytes,(uint)bytes.Length)) {
-     int code=Marshal.GetLastWin32Error(); if(code==18) {Require(selected!=0,"PrivateDirectory","Private name absent in cached directory");return selected;}
-     throw new ObservationException("PrivateDirectory",new Win32Exception(code).Message,code);
+     ObservationException failure=Error("PrivateDirectory"); if(failure.NativeCode==18) {Require(selected!=0,"PrivateDirectory","Private name absent in cached directory");return selected;}
+     throw failure;
     }
     AddContainer(containers,"KERNEL_DIRECTORY_QUERY",-1,bytes);
     int count; ulong found=DecodePrivateDirectoryPage(bytes,leaf,out count); total=checked(total+count);
@@ -374,7 +451,7 @@ namespace StagedInvariant {
     data.Length>=12+v.Geometry.RecordSize,"CachedRecord","FSCTL lower-record fallback/length mismatch");
    return DecodeCachedRecord(Slice(data,12,v.Geometry.RecordSize),v.Geometry.Sector,number);
   }
-  static Attribute[] ResolveAttributes(Volume v,Record baseRecord,List<Record> records,List<Container> containers) {
+  static Attribute[] ResolveAttributes(Volume v,Record baseRecord,List<Record> records,List<Container> containers,bool allowMftRefresh=true) {
    List<Attribute> all=new List<Attribute>(baseRecord.Attributes); List<Attribute> lists=Select(baseRecord.Attributes,0x20,"");
    Require(lists.Count<=1,"AttributeList","Split attribute list unsupported"); if(lists.Count==0) return all.ToArray();
    Attribute list=lists[0]; byte[] bytes=list.NonResident?ReadStream(v,lists,containers,"ATTRIBUTE_LIST"):list.Value;
@@ -383,7 +460,7 @@ namespace StagedInvariant {
     uint type=e.Type; string name=e.Name; long start=e.StartVcn; ulong reference=e.Reference; ushort id=e.Id;
     uint number=checked((uint)(reference&0x0000FFFFFFFFFFFFUL));
     Record target=null; foreach(Record rec in records) if(rec.Number==number) target=rec;
-    if(target==null) { Require(records.Count<MaxRecords && !loaded.Contains(reference),"AttributeList","Record cap/cycle"); target=ReadRecord(v,number,containers); ValidateExtension(baseRecord,target,reference); records.Add(target); loaded.Add(reference); all.AddRange(target.Attributes); }
+    if(target==null) { Require(records.Count<MaxRecords && !loaded.Contains(reference),"AttributeList","Record cap/cycle"); target=ReadRecord(v,number,containers,allowMftRefresh); ValidateExtension(baseRecord,target,reference); records.Add(target); loaded.Add(reference); all.AddRange(target.Attributes); }
     ValidateExtension(baseRecord,target,reference);
     int matches=0; foreach(Attribute at in target.Attributes) if(at.Type==type && at.Id==id && at.Name==name && (at.NonResident?at.StartVcn==start:start==0)) matches++;
     Require(matches==1,"AttributeList","Unresolved/duplicate entry");
@@ -473,6 +550,85 @@ namespace StagedInvariant {
    } catch(Exception cause) {
     ObservationException failure=cause as ObservationException; if(failure==null) failure=new ObservationException("Capture",cause.Message,cause); failure.Containers=containers.ToArray();
     if(image!=null && image.Logical!=null) { image.Containers=containers.ToArray(); image.Digest=Hash(image.Logical); image.CrossCheckErrors=issues.ToArray(); failure.PartialImage=image; }
+    throw failure;
+   }
+  }
+  public static bool UsesPinnedExtents(string caseId) { return caseId=="A01" || caseId=="A02" || caseId=="A03" || caseId=="A05" || caseId=="R02"; }
+  public static void ValidatePinnedLayout(Image original,Image current) {
+   Require(original!=null && current!=null && original.CrossCheckErrors.Length==0 && current.CrossCheckErrors.Length==0,
+    "PinnedLayout","Missing or invalid pre-epoch/current raw image");
+   Identity a=original.Identity,b=current.Identity;
+   Require(a.VolumeSerial==b.VolumeSerial && a.FileId==b.FileId && a.Reference==b.Reference && !a.Directory && !b.Directory &&
+    a.Eof==b.Eof && a.Allocation==b.Allocation && a.Attributes==b.Attributes && a.Links==b.Links && original.Resident==current.Resident && SameRuns(original.Runs,current.Runs),
+    "PinnedLayout","Pre-epoch identity, EOF, allocation or DATA extents changed");
+   List<Attribute> oldData=Select(original.Attributes,0x80,""),newData=Select(current.Attributes,0x80,"");
+   Require(oldData.Count>0 && oldData.Count==newData.Count,"PinnedLayout","DATA attribute count changed");
+   for(int i=0;i<oldData.Count;i++) {
+    Attribute x=oldData[i],y=newData[i];
+    Require(x.RecordReference==y.RecordReference && x.Id==y.Id && x.NonResident==y.NonResident && x.StartVcn==y.StartVcn && x.LastVcn==y.LastVcn &&
+     x.Eof==y.Eof && x.Allocation==y.Allocation && x.ValidData==y.ValidData && x.Flags==y.Flags && x.CompressionUnit==y.CompressionUnit && SameRuns(x.Runs,y.Runs),
+     "PinnedLayout","Pre-epoch DATA representation changed");
+   }
+   Require(original.Records.Length==current.Records.Length && original.FileNames.Length==current.FileNames.Length,"PinnedLayout","Record/name binding changed");
+   for(int i=0;i<original.Records.Length;i++) {
+    Record x=original.Records[i],y=current.Records[i];
+    Require(x.Number==y.Number && x.Sequence==y.Sequence && x.BaseReference==y.BaseReference && U16(x.Fixed,18)==U16(y.Fixed,18),"PinnedLayout","MFT record identity/link count changed");
+   }
+   for(int i=0;i<original.FileNames.Length;i++) {
+    NameEntry x=original.FileNames[i],y=current.FileNames[i];
+    Require(x.Name==y.Name && x.Namespace==y.Namespace && x.Reference==y.Reference && x.Parent==y.Parent,"PinnedLayout","FILE_NAME binding changed");
+   }
+  }
+  static Image ReadPinnedMetadata(Volume v,Image original,List<Container> containers) {
+   Require(original.Identity.VolumeSerial==v.Geometry.Serial,"PinnedLayout","Different volume serial");
+   uint number=checked((uint)(original.Identity.Reference&0x0000FFFFFFFFFFFFUL));
+   Record basis=ReadRecord(v,number,containers); List<Record> records=new List<Record>(); records.Add(basis);
+   Require(basis.BaseReference==0 && basis.Sequence==(ushort)(original.Identity.Reference>>48) && (basis.Flags&2)==0,"PinnedLayout","Raw MFT identity/type changed");
+   Attribute[] attrs=ResolveAttributes(v,basis,records,containers); Attribute standard=null; List<NameEntry> names=new List<NameEntry>();
+   foreach(Attribute at in attrs) {
+    if(at.Type==0x10) { Require(standard==null && !at.NonResident && at.Value.Length>=72,"PinnedLayout","Invalid STANDARD_INFORMATION"); standard=at; }
+    if(at.Type==0x30) { Require(!at.NonResident,"PinnedLayout","Nonresident FILE_NAME"); names.Add(DecodeName(at.Value,0,at.Value.Length,original.Identity.Reference)); }
+    if(at.Type==0x80) Require(at.Name=="","PinnedLayout","ADS ambiguity");
+   }
+   Require(standard!=null && names.Count>0 && (U32(standard.Value,32)&0x4410)==0,"PinnedLayout","Missing metadata or reparse/EFS/directory ambiguity");
+   List<Attribute> data=Select(attrs,0x80,""); Require(data.Count>0,"PinnedLayout","Missing DATA");
+   ulong reference=((ulong)basis.Sequence<<48)|basis.Number; byte[] id=new byte[16]; Buffer.BlockCopy(BitConverter.GetBytes(reference),0,id,0,8);
+   Identity identity=new Identity {VolumeSerial=v.Geometry.Serial,Reference=reference,FileId=BitConverter.ToString(id).Replace("-",""),
+    Eof=data[0].Eof,Allocation=data[0].NonResident?data[0].Allocation:original.Identity.Allocation,Attributes=U32(standard.Value,32),Links=original.Identity.Links,
+    Creation=I64(standard.Value,0),Modified=I64(standard.Value,8),Changed=I64(standard.Value,16),Accessed=I64(standard.Value,24)};
+   // Link count and every FILE_NAME are checked against the original raw records below.
+   Image image=new Image {Identity=identity,RawMetadata=identity,SecurityId=U32(standard.Value,52),Attributes=attrs,FileNames=names.ToArray(),Names=new NameEntry[0],
+    Resident=!data[0].NonResident,Runs=data[0].NonResident?MergeRuns(data):new Run[0],Records=records.ToArray(),CrossCheckErrors=new string[0]};
+   ValidatePinnedLayout(original,image); return image;
+  }
+  public static Image CapturePinned(Volume v,Image original) {
+   return CapturePinnedCore(v,original,delegate(List<Container> containers) { return ReadPinnedMetadata(v,original,containers); });
+  }
+  // Explicit synthetic control seam; production capture always decodes raw MFT
+  // records. Both paths use the same validation and physical DATA read code.
+  public static Image SelfCheckPinnedCapture(Volume v,Image original,Image[] metadata) {
+   int next=0;
+   return CapturePinnedCore(v,original,delegate(List<Container> containers) {
+    Require(metadata!=null && next<metadata.Length,"SelfCheck","Missing synthetic metadata bracket"); return metadata[next++];
+   });
+  }
+  static Image CapturePinnedCore(Volume v,Image original,Func<List<Container>,Image> readMetadata) {
+   List<Container> containers=new List<Container>(); Image image=null;
+   try {
+    image=readMetadata(containers); ValidatePinnedLayout(original,image);
+    // Nonresident data always uses the pre-epoch map. Resident data comes from
+    // the fresh raw MFT record at the pinned reference, never the old value.
+    image.Logical=ReadStream(v,Select(image.Resident?image.Attributes:original.Attributes,0x80,""),containers,"DATA");
+    Image after=readMetadata(containers); ValidatePinnedLayout(original,after);
+    byte[] repeat=ReadStream(v,Select(after.Resident?after.Attributes:original.Attributes,0x80,""),containers,"DATA_REPEAT");
+    Require(Hash(image.Logical)==Hash(repeat),"Stability","Pinned raw bytes changed across bracket");
+    // Bracket both physical reads with independently decoded current raw layout.
+    ValidatePinnedLayout(original,readMetadata(containers));
+    image.Digest=Hash(image.Logical); image.Containers=containers.ToArray(); return image;
+   } catch(Exception cause) {
+    ObservationException failure=cause as ObservationException; if(failure==null) failure=new ObservationException("PinnedCapture",cause.Message,cause);
+    failure.Containers=containers.ToArray();
+    if(image!=null && image.Logical!=null) { image.Containers=containers.ToArray(); image.Digest=Hash(image.Logical); failure.PartialImage=image; }
     throw failure;
    }
   }
@@ -597,19 +753,19 @@ function Get-IOTime($Context) {
         QpcFrequency = [Diagnostics.Stopwatch]::Frequency; BootId = $Context.BootId }
 }
 function New-IOError([string] $Phase, $Exception) {
-    $chain = @(); $code = $null; $nativePhase = $null
+    $chain = @(); $code = $null; $nativePhase = $null; $ntStatus=$null
     $queue=[Collections.Generic.Queue[Exception]]::new(); $seen=[Collections.Generic.HashSet[Exception]]::new()
     $queue.Enqueue($Exception)
     while ($queue.Count -gt 0) {
         $e=$queue.Dequeue(); if (-not $seen.Add($e)) { continue }
-        $node=[ordered]@{ Type=$e.GetType().FullName; Message=$e.Message; HResult=$e.HResult; Stack=$e.StackTrace; NativeCode=$null; NativePhase=$null }
-        if ($e -is [StagedInvariant.ObservationException]) { $code=$e.NativeCode; $nativePhase=$e.Phase; $node.NativeCode=$code; $node.NativePhase=$nativePhase }
+        $node=[ordered]@{ Type=$e.GetType().FullName; Message=$e.Message; HResult=$e.HResult; Stack=$e.StackTrace; NativeCode=$null; NativePhase=$null; NativeNtStatus=$null }
+        if ($e -is [StagedInvariant.ObservationException]) { $code=$e.NativeCode; $nativePhase=$e.Phase; $node.NativeCode=$code; $node.NativePhase=$nativePhase; $node.NativeNtStatus=$e.NativeNtStatus; if($null -ne $e.NativeNtStatus){$ntStatus=$e.NativeNtStatus} }
         if ($e -is [ComponentModel.Win32Exception]) { $code=$e.NativeErrorCode; $node.NativeCode=$code }
         $chain += [pscustomobject]$node
         if ($null -ne $e.InnerException) { $queue.Enqueue($e.InnerException) }
         if ($e -is [AggregateException]) { foreach ($inner in $e.InnerExceptions) { $queue.Enqueue($inner) } }
     }
-    return New-IORecord 'Error' @{ Phase = $Phase; NativePhase = $nativePhase; NativeCode = $code; Chain = $chain; Verdict = 'INCONCLUSIVE' }
+    return New-IORecord 'Error' @{ Phase = $Phase; NativePhase = $nativePhase; NativeCode = $code; NativeNtStatus=$ntStatus; Chain = $chain; Verdict = 'INCONCLUSIVE' }
 }
 function Assert-IOContext($Context) {
     if ($null -eq $Context -or $Context.Status -ne 'OK' -or $Context.Closed) { throw 'A live successful observer context is required.' }
@@ -650,6 +806,20 @@ function Save-IOImage($Context, $Image, [string] $Path, [string] $Role) {
             RawSha256 = [StagedInvariant.Native]::Hash($_.Raw); FixedSha256 = [StagedInvariant.Native]::Hash($_.Fixed) } })
         Containers = $containers; LogicalArtifact = $logical; Fingerprint = [StagedInvariant.Native]::Fingerprint($Image) }
 }
+function Save-IOMftRefreshes($Context) {
+    $saved=@()
+    while($Context.SavedMftRefreshCount -lt $Context.Volume.MftRefreshes.Count){
+        $refresh=$Context.Volume.MftRefreshes[$Context.SavedMftRefreshCount];$containers=@()
+        foreach($c in $refresh.Containers){
+            $containers+=[pscustomobject]@{Kind=$c.Kind;Offset=$c.Offset;Length=[long]$c.Bytes.Length;Artifact=(Save-IOBytes $Context $c.Bytes $c.Kind)}
+        }
+        $saved+=New-IORecord 'MftRefresh' @{RequestedRecord=$refresh.RequestedRecord;Status=$refresh.Status;Reason=$refresh.Reason;
+            StartQpc=$refresh.StartQpc;EndQpc=$refresh.EndQpc;QpcFrequency=$refresh.QpcFrequency;
+            OldRuns=@($refresh.OldRuns);NewRuns=@($refresh.NewRuns);Containers=$containers}
+        $Context.SavedMftRefreshCount++
+    }
+    return $saved
+}
 function Read-InvariantPrivateSnapshot {
     [CmdletBinding()] param([Parameter(Mandatory=$true)]$Context,[Parameter(Mandatory=$true)][string]$Path)
     Assert-IOContext $Context
@@ -687,6 +857,7 @@ function Read-InvariantPrivateSnapshot {
         $saved | Add-Member -NotePropertyName DataSource -NotePropertyValue $(if($native.Resident){$metadataSource+'ResidentData'}else{'RawVolumeNonresidentRuns'})
         $saved | Add-Member -NotePropertyName RawAttempt -NotePropertyValue $rawAttempt
         $saved | Add-Member -NotePropertyName StagePath -NotePropertyValue $full
+        $saved | Add-Member -NotePropertyName MftRefreshes -NotePropertyValue @(Save-IOMftRefreshes $Context)
         return $saved
     } catch {
         for($error=$_.Exception;$null -ne $error;$error=$error.InnerException){
@@ -704,12 +875,13 @@ function Assert-IOParentMatch($Image, $Parent, [string] $Leaf) {
     $names = @($Image.FileNames | Where-Object { $_.Name -ceq $Leaf -and $_.Parent -eq $Parent.Identity.Reference -and $_.Namespace -ne 2 })
     if ($names.Count -ne 1) { throw 'Raw FILE_NAME parent/name does not match parent index.' }
 }
-function Get-IOPath($Context, [string] $Name) {
+function Get-IOPath($Context, [string] $Name, [switch]$SkipTargetMetadata) {
     if ([string]::IsNullOrWhiteSpace($Name) -or [IO.Path]::IsPathRooted($Name) -or $Name.Contains(':')) { throw 'Destination must be a nonempty relative path without ADS.' }
     $path = [IO.Path]::GetFullPath((Join-Path $Context.ScopePath $Name))
     if (-not $path.StartsWith($Context.ScopePath + '\', [StringComparison]::OrdinalIgnoreCase)) { throw 'Destination escapes scope.' }
     # Check every ancestor; a junction on an intermediate directory is also ambiguous.
     $parent = $path
+    if($SkipTargetMetadata){$parent=[IO.Path]::GetDirectoryName($path)}
     while ($parent.Length -ge $Context.ScopePath.Length) {
         if (Test-Path -LiteralPath $parent) {
             $item = Get-Item -LiteralPath $parent -Force
@@ -752,7 +924,7 @@ function Open-InvariantObserver {
             DecoderVersion = 'bounded-ntfs-v1'; ModuleSha256 = [StagedInvariant.Native]::LoadedModuleHash; BootId = $env:COMPUTERNAME + '/' + $boot; Build = $build
             TargetBuildSupported = ($build -eq '19045.2965'); ObserverPid = $PID
             ObserverSid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
-            BaselineCaptured = $false; BootstrapArtifacts = @(); InitialScope = $null; Handles = @{}; Publications = @(); NextSequence = [long]0; LastSampleQpc = [long]0; LastSampleStartQpc = [long]0; Errors = @() }
+            BaselineCaptured = $false; BootstrapArtifacts = @(); InitialScope = $null; SavedMftRefreshCount=0; Handles = @{}; Publications = @(); NextSequence = [long]0; LastSampleQpc = [long]0; LastSampleStartQpc = [long]0; Errors = @() }
         foreach ($c in $volume.BootstrapContainers) {
             $context.BootstrapArtifacts += [pscustomobject]@{ Offset=$c.Offset; Kind=$c.Kind; Artifact=(Save-IOBytes $context $c.Bytes $c.Kind) }
         }
@@ -775,12 +947,29 @@ function Open-InvariantObserver {
         return New-IORecord 'Context' @{ Schema = 'StagedInvariant/1'; Status = 'ERROR'; Closed = $true; Error = $errorRecord }
     }
 }
-function Get-IOCapture($Context, [string[]] $Names, [switch] $Retained) {
-    $images = @(); $parents = @{}; $readers = @(); $held = @(); $lookups = @(); $before=$null; $path=$null; $currentLookup=$false
+function Get-IONamedOpenDiagnostic([string]$Path) {
+    $start=[Diagnostics.Stopwatch]::GetTimestamp();$h=$null;$errors=@()
+    try { $h=[StagedInvariant.Native]::Open($Path,$false,$false) }
+    catch { $errors+=New-IOError 'NamedOpenDiagnostic' $_.Exception }
+    finally { if($null -ne $h){try{$h.Dispose()}catch{$errors+=New-IOError 'NamedOpenDiagnosticCleanup' $_.Exception}} }
+    return New-IORecord 'NamedOpenDiagnostic' @{Path=$Path;StartQpc=$start;EndQpc=[Diagnostics.Stopwatch]::GetTimestamp();QpcFrequency=[Diagnostics.Stopwatch]::Frequency;
+        DesiredAccess='GENERIC_READ';ShareMode=7;Disposition='OPEN_EXISTING';Flags=0;Status=$(if($errors.Count){'ERROR'}else{'OK'});DiagnosticErrors=$errors;DiagnosticOnly=$true}
+}
+function Save-IOPinnedImage($Context,$Image,[string]$Path,[string]$Role) {
+    # A named ACL query is also unnecessary for a raw sample. Do not present
+    # the old ACL as a current security observation.
+    $saved=Save-IOImage $Context $Image $null $Role;$saved.Path=$Path
+    $saved | Add-Member NoteProperty IdentitySource 'RawMft'
+    $saved | Add-Member NoteProperty DataSource $(if($Image.Resident){'RawMftResidentData'}else{'RawVolumePreEpochExtents'})
+    $saved | Add-Member NoteProperty LayoutValidation 'PreEpochIdentityEofAllocationAndDataMapBeforeBetweenAfterReads'
+    return $saved
+}
+function Get-IOCapture($Context, [string[]] $Names, [switch] $Retained, [switch]$PinnedExtents) {
+    $images = @(); $parents = @{}; $readers = @(); $diagnostics=@(); $held = @(); $lookups = @(); $before=$null; $path=$null; $currentLookup=$false
     try {
         foreach ($name in $Names) {
             $before=$null; $currentLookup=$true
-            $path = Get-IOPath $Context $name; $parentPath = [IO.Path]::GetDirectoryName($path)
+            $path = Get-IOPath $Context $name -SkipTargetMetadata:$PinnedExtents; $parentPath = [IO.Path]::GetDirectoryName($path)
             if (-not $parents.ContainsKey($parentPath)) {
                 $ph = [StagedInvariant.Native]::Open($parentPath, $false, $true)
                 $held += $ph
@@ -788,6 +977,17 @@ function Get-IOCapture($Context, [string[]] $Names, [switch] $Retained) {
                 $images += Save-IOImage $Context $parents[$parentPath].Before $parentPath 'Parent'
             }
             $parent = $parents[$parentPath].Before
+            if($PinnedExtents) {
+                $pins=@($Context.Handles.Values | Where-Object {$_.Original.Path -ceq $path})
+                if($pins.Count -ne 1 -or $null -eq $pins[0].NativeOriginal){throw 'Exactly one validated pre-epoch target identity/map is required.'}
+                $diagnostics+=Get-IONamedOpenDiagnostic $path
+                $before=[StagedInvariant.Native]::CapturePinned($Context.Volume,$pins[0].NativeOriginal)
+                Assert-IOParentMatch $before $parent ([IO.Path]::GetFileName($path))
+                $lookups+=@{PinnedOriginal=$pins[0].NativeOriginal;Before=$before;Path=$path}
+                $saved=Save-IOPinnedImage $Context $before $path 'Current'
+                $saved | Add-Member NoteProperty Absent $false;$images+=$saved
+                continue
+            }
             # Native create reports exact missing-name status; Test-Path access failures cannot prove absence.
             $h = $null
             try { $h = [StagedInvariant.Native]::Open($path, $false, $false) }
@@ -816,9 +1016,16 @@ function Get-IOCapture($Context, [string[]] $Names, [switch] $Retained) {
         if ($Retained) {
             $currentLookup=$false
             foreach ($key in @($Context.Handles.Keys)) {
-                $entry = $Context.Handles[$key]; $before = [StagedInvariant.Native]::Capture($Context.Volume, $entry.Handle)
-                $lookups += @{ Handle = $entry.Handle; Before = $before; Path = $null }
-                $retainedImage = Save-IOImage $Context $before $null ('Retained:' + $key)
+                $entry = $Context.Handles[$key]
+                if($PinnedExtents){
+                    $before=[StagedInvariant.Native]::CapturePinned($Context.Volume,$entry.NativeOriginal)
+                    $lookups+=@{PinnedOriginal=$entry.NativeOriginal;Before=$before;Path=$null}
+                }else{
+                    $before = [StagedInvariant.Native]::Capture($Context.Volume, $entry.Handle)
+                    $lookups += @{ Handle = $entry.Handle; Before = $before; Path = $null }
+                }
+                if($PinnedExtents){$retainedImage=Save-IOPinnedImage $Context $before $null ('Retained:' + $key)}
+                else{$retainedImage = Save-IOImage $Context $before $null ('Retained:' + $key)}
                 $retainedImage | Add-Member -NotePropertyName RetainedVersion -NotePropertyValue $entry.Version
                 $images += $retainedImage
                 try { $readers += New-IORecord 'FreshReader' @{ Path=$null; Role='Retained'; FileId=$key; Unbuffered=$false; Status='OK'; Result=([StagedInvariant.Native]::ReadHeld($entry.Handle)); Error=$null } }
@@ -833,10 +1040,12 @@ function Get-IOCapture($Context, [string[]] $Names, [switch] $Retained) {
         }
         # Bracket content with raw identities/maps/records and each affected directory index.
         foreach ($l in $lookups) {
-            $after = [StagedInvariant.Native]::Capture($Context.Volume, $l.Handle)
+            if($l.ContainsKey('PinnedOriginal')){$after=[StagedInvariant.Native]::CapturePinned($Context.Volume,$l.PinnedOriginal)}
+            else{$after = [StagedInvariant.Native]::Capture($Context.Volume, $l.Handle)}
             if ([StagedInvariant.Native]::Fingerprint($l.Before) -ne [StagedInvariant.Native]::Fingerprint($after) -or
                 $l.Before.Digest -ne $after.Digest) { throw [StagedInvariant.ObservationException]::new('Stability', 'Content/layout changed across bracket.', 0) }
             if ($null -ne $l.Path) {
+                if($l.ContainsKey('PinnedOriginal')){Assert-IOParentMatch $after $parents[[IO.Path]::GetDirectoryName($l.Path)].Before ([IO.Path]::GetFileName($l.Path));continue}
                 $newLookup = [StagedInvariant.Native]::Open($l.Path, $false, $false)
                 try { if (-not [StagedInvariant.Native]::SameIdentity($l.Before.Identity, [StagedInvariant.Native]::GetIdentity($newLookup))) {
                     throw [StagedInvariant.ObservationException]::new('Stability', 'Path generation changed across bracket.', 0) }
@@ -851,12 +1060,12 @@ function Get-IOCapture($Context, [string[]] $Names, [switch] $Retained) {
         if (@($images | Where-Object { $null -ne $_.PSObject.Properties['CrossCheckErrors'] -and $_.CrossCheckErrors.Count -gt 0 }).Count -gt 0) {
             throw [StagedInvariant.ObservationException]::new('CrossCheck','Raw/API EOF, allocation or runlist cross-check failed.',0)
         }
-        return New-IORecord 'Capture' @{ Status = 'OK'; Images = $images; Readers = $readers; Error = $null }
+        return New-IORecord 'Capture' @{ Status = 'OK'; Images = $images; Readers = $readers; NamedOpenDiagnostics=$diagnostics; MftRefreshes=@(Save-IOMftRefreshes $Context); Error = $null }
     } catch {
         # Archive even containers read immediately before a decoder failure.
         $caught = $_.Exception
         if ($currentLookup -and $null -ne $before) {
-            $partialImage=Save-IOImage $Context $before $path 'Current'
+            if($PinnedExtents){$partialImage=Save-IOPinnedImage $Context $before $path 'Current'}else{$partialImage=Save-IOImage $Context $before $path 'Current'}
             $partialImage | Add-Member -NotePropertyName Absent -NotePropertyValue $false
             $images += $partialImage
         }
@@ -865,7 +1074,7 @@ function Get-IOCapture($Context, [string[]] $Names, [switch] $Retained) {
                 $partialPath=$path; $partialRole='Current'
                 if (-not $currentLookup) { $partialPath=$null; $partialRole='Retained:' + $key }
                 if ($e.PartialImage.Identity.Directory) { $partialPath=$parentPath; $partialRole='Parent' }
-                $decoded=Save-IOImage $Context $e.PartialImage $partialPath $partialRole
+                if($PinnedExtents){$decoded=Save-IOPinnedImage $Context $e.PartialImage $partialPath $partialRole}else{$decoded=Save-IOImage $Context $e.PartialImage $partialPath $partialRole}
                 if ($partialRole -like 'Retained:*') { $decoded | Add-Member -NotePropertyName RetainedVersion -NotePropertyValue $entry.Version }
                 if ($partialRole -eq 'Current') { $decoded | Add-Member -NotePropertyName Absent -NotePropertyValue $false }
                 $images += $decoded
@@ -876,7 +1085,7 @@ function Get-IOCapture($Context, [string[]] $Names, [switch] $Retained) {
                 if ($partial.Count -gt 0) { $images += New-IORecord 'PartialContainer' @{ Role='Partial'; Path=$null; Containers=$partial } }
             }
         }
-        return New-IORecord 'Capture' @{ Status = 'ERROR'; Images = $images; Readers = $readers; Error = (New-IOError 'Capture' $caught) }
+        return New-IORecord 'Capture' @{ Status = 'ERROR'; Images = $images; Readers = $readers; NamedOpenDiagnostics=$diagnostics; MftRefreshes=@(Save-IOMftRefreshes $Context); Error = (New-IOError 'Capture' $caught) }
     } finally {
         foreach ($handle in $held) { try { $handle.Dispose() } catch { $Context.Errors += New-IOError 'CaptureCleanup' $_.Exception } }
     }
@@ -908,11 +1117,16 @@ function Capture-InvariantBaseline {
             try {
                 if (-not [StagedInvariant.Native]::SameIdentity($image.Identity, [StagedInvariant.Native]::GetIdentity($h))) { throw 'Baseline changed before retaining handle.' }
                 if ($Context.Handles.ContainsKey($image.Identity.FileId)) { throw 'Duplicate/rebaseline destination identity.' }
-                $Context.Handles[$image.Identity.FileId] = @{ Handle = $h; Original = $image; Version = 'Baseline' }; $keep = $true
+                $nativeOriginal=$null
+                if([StagedInvariant.Native]::UsesPinnedExtents($Context.CaseId)){
+                    $nativeOriginal=[StagedInvariant.Native]::Capture($Context.Volume,$h)
+                    if($nativeOriginal.CrossCheckErrors.Length -ne 0 -or [StagedInvariant.Native]::Fingerprint($nativeOriginal) -cne $image.Fingerprint -or $nativeOriginal.Digest -cne $image.Sha256){throw 'Pre-epoch identity/map changed before pinning.'}
+                }
+                $Context.Handles[$image.Identity.FileId] = @{ Handle = $h; Original = $image; NativeOriginal=$nativeOriginal; Version = 'Baseline' }; $keep = $true
             } finally { if (-not $keep) { $h.Dispose() } }
         }
         return New-IORecord 'Baseline' @{ Schema = 'StagedInvariant/1'; Status = 'OK'; CaseId = $Context.CaseId; Time = (Get-IOTime $Context)
-            Names = $DestinationNames; Images = $capture.Images; Readers = $capture.Readers; Geometry = $Context.Geometry; Build = $Context.Build; ObserverPid = $Context.ObserverPid; ObserverSid = $Context.ObserverSid; Error = $null }
+            Names = $DestinationNames; Images = $capture.Images; Readers = $capture.Readers; MftRefreshes=$capture.MftRefreshes; Geometry = $Context.Geometry; Build = $Context.Build; ObserverPid = $Context.ObserverPid; ObserverSid = $Context.ObserverSid; Error = $null }
     } catch { return New-IORecord 'Baseline' @{ Status = 'ERROR'; Error = (New-IOError 'Baseline' $_.Exception) } }
 }
 function Register-InvariantPublication {
@@ -972,7 +1186,7 @@ function Capture-InvariantSample {
         $start = Get-IOTime $Context; $attempts = @(); $captures = @(); $watch = [Diagnostics.Stopwatch]::StartNew()
         for ($i = 0; $i -lt 10 -and $watch.ElapsedMilliseconds -lt 2000; $i++) {
             $begin = [Diagnostics.Stopwatch]::GetTimestamp()
-            $capture = Get-IOCapture $Context $Baseline.Names -Retained
+            $capture = Get-IOCapture $Context $Baseline.Names -Retained -PinnedExtents:([StagedInvariant.Native]::UsesPinnedExtents($Context.CaseId))
             $captures += $capture
             $attempts += [pscustomobject]@{ Attempt = $i + 1; StartQpc = $begin; EndQpc = [Diagnostics.Stopwatch]::GetTimestamp(); Status = $capture.Status; Error = $capture.Error }
             if ($capture.Status -eq 'OK') { break }
@@ -999,13 +1213,13 @@ function Capture-InvariantSample {
         return New-IORecord 'Sample' @{ Schema = 'StagedInvariant/1'; Status = $capture.Status; CaseId = $Context.CaseId
             Sequence = $Context.NextSequence; OperationSequence = $OperationSequence; Phase = $Phase; Start = $start; End = $end
             GapMs = $gap; CadenceMs=$cadence; DurationMs = $watch.Elapsed.TotalMilliseconds; Attempts = $attempts; Captures = $captures
-            Images = $capture.Images; Readers = $capture.Readers; Error = $capture.Error; CleanupErrors = @($Context.Errors) }
+            Images = $capture.Images; Readers = $capture.Readers; NamedOpenDiagnostics=@($captures | ForEach-Object {$_.NamedOpenDiagnostics}); MftRefreshes=@($captures | ForEach-Object { $_.MftRefreshes }); Error = $capture.Error; CleanupErrors = @($Context.Errors) }
     } catch {
         $errorRecord=New-IOError 'Sample' $_.Exception; $end=$null; $sequence=$null; $images=@(); $readers=@()
         if ($null -ne $capture) { $images=$capture.Images; $readers=$capture.Readers }
         if ($null -ne $start) { $end=Get-IOTime $Context; $Context.NextSequence++; $sequence=$Context.NextSequence; $Context.LastSampleQpc=$end.Qpc; $Context.LastSampleStartQpc=$start.Qpc }
         return New-IORecord 'Sample' @{ Status='ERROR'; Phase=$Phase; OperationSequence=$OperationSequence; Sequence=$sequence; Start=$start; End=$end; GapMs=$null; CadenceMs=$null; DurationMs=$(if ($null -ne $start) {1000.0*($end.Qpc-$start.Qpc)/$start.QpcFrequency} else {$null})
-            Captures=$captures; Attempts=$attempts; Images=$images; Readers=$readers; CleanupErrors=@(); Error=$errorRecord }
+            Captures=$captures; Attempts=$attempts; Images=$images; Readers=$readers; NamedOpenDiagnostics=@($captures | ForEach-Object {$_.NamedOpenDiagnostics}); MftRefreshes=@($captures | ForEach-Object { $_.MftRefreshes }); CleanupErrors=@(); Error=$errorRecord }
     }
 }
 function Read-IOArtifact($Artifact) {

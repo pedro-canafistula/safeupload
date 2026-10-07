@@ -124,8 +124,10 @@ function Wait-WriterIdentity([string]$Path,[int]$Seconds=60) {
 function Get-BootId { $env:COMPUTERNAME+'/'+(Get-CimInstance Win32_OperatingSystem).LastBootUpTime.ToUniversalTime().ToString('o') }
 function Get-ErrorChain($Exception) {
     $chain=@();for($ex=$Exception;$null -ne $ex;$ex=$ex.InnerException){
-        $native=$null;if($ex -is [ComponentModel.Win32Exception]){$native=$ex.NativeErrorCode}
-        $chain+= [pscustomobject]@{Type=$ex.GetType().FullName;Message=$ex.Message;HResult=$ex.HResult;NativeCode=$native;Stack=$ex.StackTrace}
+        $native=$null;$ntStatus=$null;if($ex -is [ComponentModel.Win32Exception]){$native=$ex.NativeErrorCode}
+        if($null -ne $ex.PSObject.Properties['NativeCode']){$native=$ex.NativeCode}
+        if($null -ne $ex.PSObject.Properties['NativeNtStatus']){$ntStatus=$ex.NativeNtStatus}
+        $chain+= [pscustomobject]@{Type=$ex.GetType().FullName;Message=$ex.Message;HResult=$ex.HResult;NativeCode=$native;NativeNtStatus=$ntStatus;Stack=$ex.StackTrace}
     };return ,$chain
 }
 function Assert-Hash([string]$Path,[string]$Hash) {
@@ -1292,15 +1294,56 @@ function Get-NotificationTailCoverage($Tail,[string]$BootId,[long]$Frequency,[lo
     if($Tail.Qpc -lt $MinimumQpc){return [pscustomobject]@{Status='INCONCLUSIVE';HistoricalTail=$false;RecordedBootId=$Tail.BootId;Reason=('Authenticated notification tail precedes snapshot fence: tailQpc='+$Tail.Qpc+'; minimumQpc='+$MinimumQpc+'. No heartbeat covers the fence.')}}
     return [pscustomobject]@{Status='OK';HistoricalTail=$false;RecordedBootId=$Tail.BootId;Reason='Authenticated notification record covers snapshot fence.'}
 }
+function Get-NotificationFenceWaitDecision($Coverage,[long]$NowQpc,[long]$DeadlineQpc) {
+    # Coverage is produced only by the authenticated reader and retains the
+    # same boot/frequency/fence requirements used by assertion evaluation.
+    if($Coverage.Status -cnotin @('OK','INCONCLUSIVE')){throw 'Invalid notification fence coverage status.'}
+    if($NowQpc -gt $DeadlineQpc){return 'TimedOut'}
+    if($Coverage.Status -ceq 'OK'){return 'Covered'}
+    if($NowQpc -ge $DeadlineQpc){return 'TimedOut'}
+    return 'Wait'
+}
+
+function Get-NotificationInventoryDecision([string[]]$Names,[long]$NowQpc,$Wait) {
+    $unknown=@($Names | Where-Object {$_ -cnotin @('emissions.jsonl','previous.jsonl','head.json','writer.lock')})
+    $missing=@(@('emissions.jsonl','head.json','writer.lock') | Where-Object {$Names -cnotcontains $_})
+    $onlyHead=$unknown.Count -eq 1 -and $unknown[0] -ceq 'head.tmp' -and $missing.Count -eq 0
+    if($onlyHead -and ($null -eq $Wait.StartQpc -or $Wait.Cleared)){
+        $Wait.StartQpc=$NowQpc;$Wait.DeadlineQpc=[Math]::Min($Wait.OuterDeadlineQpc,$NowQpc+[long](5*$Wait.QpcFrequency))
+        $Wait.Cleared=$false;$Wait.TimedOut=$false
+        $Wait.Windows+=@([ordered]@{StartQpc=$Wait.StartQpc;DeadlineQpc=$Wait.DeadlineQpc;EndQpc=$null;DurationMs=$null;Cleared=$false;TimedOut=$false})
+    }
+    $decision='Accept';$reason=$null
+    if($missing.Count -or ($unknown.Count -and -not $onlyHead)){$decision='Reject'}
+    elseif($null -ne $Wait.StartQpc -and ($onlyHead -or -not $Wait.Cleared) -and $NowQpc -ge $Wait.DeadlineQpc){$decision='Reject';$Wait.TimedOut=$true}
+    elseif($onlyHead){$decision='Wait'}
+    if($decision -cne 'Accept'){
+        $reason='Missing/unrecognized notification record child. Unknown='+ (ConvertTo-Json -InputObject $unknown -Compress)+'; Missing='+ (ConvertTo-Json -InputObject $missing -Compress)
+        if($Wait.TimedOut){$reason+='; head.tmp did not clear within the QPC-bounded 5 s wait.'}
+    }
+    $receipt=[pscustomobject]@{ReadQpc=$NowQpc;ChildNames=@($Names);UnknownChildNames=$unknown;MissingChildNames=$missing;Decision=$decision;Reason=$reason}
+    $Wait.Observations+=@($receipt)
+    if($null -ne $Wait.StartQpc -and (-not $Wait.Cleared -or $decision -cne 'Accept')){
+        $Wait.EndQpc=$NowQpc;$Wait.DurationMs=1000.0*($NowQpc-$Wait.StartQpc)/$Wait.QpcFrequency;$Wait.Cleared=$decision -ceq 'Accept'
+        $window=$Wait.Windows[$Wait.Windows.Count-1]
+        $window.EndQpc=$Wait.EndQpc;$window.DurationMs=$Wait.DurationMs;$window.Cleared=$Wait.Cleared;$window.TimedOut=$Wait.TimedOut
+    }
+    return $receipt
+}
 
 function Get-NotificationSnapshot([string]$Tag,[string]$BootId,[long]$MinimumQpc) {
     $root=Split-Path -Parent $policyPath;$directory=Join-Path $root 'notifications'
-    $deadline=([Diagnostics.Stopwatch]::GetTimestamp()+[long]((4)*[Diagnostics.Stopwatch]::Frequency));$reason='Notification record unavailable.'
+    $start=[Diagnostics.Stopwatch]::GetTimestamp();$frequency=[Diagnostics.Stopwatch]::Frequency
+    $deadline=$start+[long](30*$frequency);$readDeadline=$start+[long](4*$frequency);$reason='Notification record unavailable.'
+    $wait=[ordered]@{StartQpc=$start;DeadlineQpc=$deadline;EndQpc=$null;QpcFrequency=$frequency;MinimumQpc=$MinimumQpc;
+        TimeoutSeconds=30;PollMilliseconds=100;DurationMs=$null;Covered=$false;TimedOut=$false;Attempts=@()}
+    $inventoryWait=[ordered]@{StartQpc=$null;DeadlineQpc=$null;OuterDeadlineQpc=$deadline;EndQpc=$null;QpcFrequency=$frequency;
+        TimeoutSeconds=5;PollMilliseconds=25;DurationMs=$null;Cleared=$false;TimedOut=$false;Windows=@();Observations=@()}
     do {
-        $held=@()
-        $snapshot=[ordered]@{Status='INCONCLUSIVE';LocationStatus='INCONCLUSIVE';LocationFiles=@();Directory=$directory;DirectoryExists=$null;ChildNames=@();Objects=@();
+        $held=@();$inventoryRetry=$false;$inventoryRejected=$false
+        $snapshot=[ordered]@{Status='INCONCLUSIVE';LocationStatus='INCONCLUSIVE';LocationFiles=@();Directory=$directory;DirectoryExists=$null;ChildNames=@();AfterChildNames=@();UnknownChildNames=@();MissingChildNames=@();Objects=@();
             BootId=$BootId;QpcFrequency=[Diagnostics.Stopwatch]::Frequency;MinimumQpc=$MinimumQpc;ReadQpc=$null;
-            Entries=@();Head=$null;Artifacts=@();Errors=@();Reason=$reason}
+            Entries=@();Head=$null;Artifacts=@();Errors=@();Reason=$reason;FenceWait=$wait;InventoryWait=$inventoryWait}
         try {
             Initialize-ServiceEvidenceReader
             # Pin ancestors; read live files with write/delete sharing so evidence
@@ -1317,19 +1360,18 @@ function Get-NotificationSnapshot([string]$Tag,[string]$BootId,[long]$MinimumQpc
                 $snapshot.LocationStatus='OK'
                 $snapshot.Reason='Authenticated notification directory absent: '+$directory+'. No durable emission coverage; --seed-boot-policy does not start the notification writer and seed trials require the agent down.'
                 $snapshot.ReadQpc=[Diagnostics.Stopwatch]::GetTimestamp()
+                $wait.Attempts+=@{ReadQpc=$snapshot.ReadQpc;Decision='Unavailable';Authenticated=$false;Reason=$snapshot.Reason}
                 return [pscustomobject]$snapshot
             }
             $obj=[SUProofFile]::Open($directory,$true,$true,$false,$true);$held+=$obj;$snapshot.Objects+=@{Path=$directory;Owner=$obj.Owner;Sddl=$obj.Sddl}
             $names=@(Get-ChildItem -LiteralPath $directory -Force -ErrorAction Stop | Select-Object -ExpandProperty Name)
-            # head.tmp exists only while the writer replaces head.json within one append (run c01o); wait it out.
-            $headWait=[Diagnostics.Stopwatch]::StartNew()
-            while($names -ccontains 'head.tmp' -and $headWait.ElapsedMilliseconds -lt 2000){
-                Start-Sleep -Milliseconds 25
-                $names=@(Get-ChildItem -LiteralPath $directory -Force -ErrorAction Stop | Select-Object -ExpandProperty Name)
-            }
             $snapshot.ChildNames=$names
-            if($names -notcontains 'emissions.jsonl' -or $names -notcontains 'head.json' -or $names -notcontains 'writer.lock' -or
-                @($names | Where-Object {$_ -cnotin @('emissions.jsonl','previous.jsonl','head.json','writer.lock')}).Count){throw 'Missing/unrecognized notification record child.'}
+            $inventory=Get-NotificationInventoryDecision $names ([Diagnostics.Stopwatch]::GetTimestamp()) $inventoryWait
+            $snapshot.UnknownChildNames=$inventory.UnknownChildNames;$snapshot.MissingChildNames=$inventory.MissingChildNames
+            if($inventory.Decision -cne 'Accept'){
+                $inventoryRetry=$inventory.Decision -ceq 'Wait';$inventoryRejected=-not $inventoryRetry
+                throw $inventory.Reason
+            }
             $files=@{}
             foreach($name in @('previous.jsonl','emissions.jsonl','head.json','writer.lock')){
                 if($names -contains $name){$obj=[SUProofFile]::Open((Join-Path $directory $name),$false,$true,$true,$true);$held+=$obj;$files[$name]=$obj;$snapshot.Objects+=@{Path=$obj.Path;Owner=$obj.Owner;Sddl=$obj.Sddl}}
@@ -1348,14 +1390,14 @@ function Get-NotificationSnapshot([string]$Tag,[string]$BootId,[long]$MinimumQpc
             }
             # Authenticate the complete raw location independently of durable coverage.
             $afterNames=@(Get-ChildItem -LiteralPath $directory -Force -ErrorAction Stop | Select-Object -ExpandProperty Name | Sort-Object)
-            if((@($names | Sort-Object) -join '|') -cne ($afterNames -join '|')){throw 'Notification location inventory changed during read.'}
-            # Retain authenticated stale records too. Missing current-boot
-            # coverage is an evaluation failure, not a reason to discard bytes.
-            foreach($copy in $copies){
-                $stream=[IO.File]::Open($copy.Path,[IO.FileMode]::Create,[IO.FileAccess]::Write,[IO.FileShare]::Read)
-                try{$stream.Write($copy.Bytes,0,$copy.Bytes.Length);$stream.Flush($true)}finally{$stream.Dispose()}
-                $snapshot.Artifacts+=@{Name=$copy.Name;Artifact=$copy.Path;Length=$copy.Bytes.Length;Sha256=(Get-FileHash -LiteralPath $copy.Path).Hash}
+            $snapshot.AfterChildNames=$afterNames
+            $inventory=Get-NotificationInventoryDecision $afterNames ([Diagnostics.Stopwatch]::GetTimestamp()) $inventoryWait
+            $snapshot.UnknownChildNames=$inventory.UnknownChildNames;$snapshot.MissingChildNames=$inventory.MissingChildNames
+            if($inventory.Decision -cne 'Accept'){
+                $inventoryRetry=$inventory.Decision -ceq 'Wait';$inventoryRejected=-not $inventoryRetry
+                throw $inventory.Reason
             }
+            if((@($names | Sort-Object) -join '|') -cne ($afterNames -join '|')){throw 'Notification location inventory changed during read.'}
             $snapshot.LocationStatus='OK';$snapshot.ReadQpc=[Diagnostics.Stopwatch]::GetTimestamp()
             $record=ConvertFrom-NotificationRecord $segments $headBytes
             $tail=$record.Entries[$record.Entries.Count-1].Entry
@@ -1363,11 +1405,64 @@ function Get-NotificationSnapshot([string]$Tag,[string]$BootId,[long]$MinimumQpc
             $coverage=Get-NotificationTailCoverage $tail $BootId $snapshot.QpcFrequency $MinimumQpc
             $snapshot.Status=$coverage.Status;$snapshot.Reason=$coverage.Reason
             $snapshot.HistoricalTail=$coverage.HistoricalTail;$snapshot.RecordedBootId=$coverage.RecordedBootId
-            return [pscustomobject]$snapshot
-        }catch{$reason=$_.Exception.Message;$snapshot.Reason=$reason;$snapshot.Errors=Get-ErrorChain $_.Exception}
-        finally{foreach($obj in $held){$obj.Dispose()}}
-        Start-Sleep -Milliseconds 100
+            $now=[Diagnostics.Stopwatch]::GetTimestamp();$decision=Get-NotificationFenceWaitDecision $coverage $now $deadline
+            $wait.Attempts+=@{ReadQpc=$now;Decision=$decision;Authenticated=$true;TailQpc=$tail.Qpc;TailBootId=$tail.BootId;TailQpcFrequency=$tail.QpcFrequency;Reason=$coverage.Reason}
+            $wait.Covered=$decision -ceq 'Covered';$wait.TimedOut=$decision -ceq 'TimedOut'
+            if($wait.TimedOut -and $coverage.Status -ceq 'OK'){
+                $snapshot.Status='INCONCLUSIVE';$snapshot.Reason='Authenticated notification fence coverage arrived after the QPC wait deadline.'
+            }
+            # Permit the same bounded torn-read retries after a valid short tail.
+            $readDeadline=[Math]::Min($deadline,$now+[long](4*$frequency))
+            # Retain only the terminal authenticated snapshot. Intermediate tail
+            # QPCs are recorded above; polling does not repeatedly flush copies.
+            foreach($copy in $copies){
+                if($decision -ceq 'Wait'){continue}
+                $stream=[IO.File]::Open($copy.Path,[IO.FileMode]::Create,[IO.FileAccess]::Write,[IO.FileShare]::Read)
+                try{$stream.Write($copy.Bytes,0,$copy.Bytes.Length);$stream.Flush($true)}finally{$stream.Dispose()}
+                $snapshot.Artifacts+=@{Name=$copy.Name;Artifact=$copy.Path;Length=$copy.Bytes.Length;Sha256=(Get-FileHash -LiteralPath $copy.Path).Hash}
+            }
+            if($decision -cne 'Wait'){return [pscustomobject]$snapshot}
+        }catch{
+            $reason=$_.Exception.Message;$snapshot.Status='INCONCLUSIVE';$snapshot.Reason=$reason
+            $wait.Covered=$false
+            if($inventoryRetry){
+                # Release all handles, then re-authenticate and re-read the entire
+                # snapshot. A transient inventory alone is not a collector error.
+                $wait.Attempts+=@{ReadQpc=[Diagnostics.Stopwatch]::GetTimestamp();Decision='HeadTmpWait';Authenticated=$false;Reason=$reason}
+            }else{
+                $snapshot.Errors=Get-ErrorChain $_.Exception
+                $wait.Attempts+=@{ReadQpc=[Diagnostics.Stopwatch]::GetTimestamp();Decision='ReadError';Authenticated=$false;Reason=$reason}
+                if($inventoryRejected -or [Diagnostics.Stopwatch]::GetTimestamp() -ge $readDeadline){return [pscustomobject]$snapshot}
+            }
+        }
+        finally{
+            foreach($obj in $held){$obj.Dispose()}
+            $wait.EndQpc=[Diagnostics.Stopwatch]::GetTimestamp();$wait.DurationMs=1000.0*($wait.EndQpc-$start)/$frequency
+        }
+        # Sleep only within the remaining QPC budget.
+        $pollDeadline=$deadline;$pollMs=100
+        if($inventoryRetry){$pollDeadline=$inventoryWait.DeadlineQpc;$pollMs=$inventoryWait.PollMilliseconds}
+        $remainingMs=[Math]::Max(0,1000.0*($pollDeadline-[Diagnostics.Stopwatch]::GetTimestamp())/$frequency)
+        if($remainingMs -gt 0){Start-Sleep -Milliseconds ([int][Math]::Min($pollMs,[Math]::Ceiling($remainingMs)))}
     }while([Diagnostics.Stopwatch]::GetTimestamp() -lt $deadline)
+    if($inventoryRetry){
+        $inventoryWait.TimedOut=$true;$inventoryWait.EndQpc=[Diagnostics.Stopwatch]::GetTimestamp()
+        $inventoryWait.DurationMs=1000.0*($inventoryWait.EndQpc-$inventoryWait.StartQpc)/$frequency
+        $window=$inventoryWait.Windows[$inventoryWait.Windows.Count-1];$window.EndQpc=$inventoryWait.EndQpc;$window.DurationMs=$inventoryWait.DurationMs;$window.TimedOut=$true
+        $snapshot.Reason+='; head.tmp did not clear within the QPC-bounded 5 s wait.'
+        $snapshot.Errors=Get-ErrorChain ([InvalidOperationException]::new($snapshot.Reason))
+    }
+    # Retain the last authenticated short read when the deadline elapsed in
+    # the polling sleep, preserving its INCONCLUSIVE coverage reason.
+    if($snapshot.Errors.Count -eq 0 -and $snapshot.Entries.Count -gt 0){
+        $wait.TimedOut=$true
+        foreach($copy in $copies){
+            $stream=[IO.File]::Open($copy.Path,[IO.FileMode]::Create,[IO.FileAccess]::Write,[IO.FileShare]::Read)
+            try{$stream.Write($copy.Bytes,0,$copy.Bytes.Length);$stream.Flush($true)}finally{$stream.Dispose()}
+            $snapshot.Artifacts+=@{Name=$copy.Name;Artifact=$copy.Path;Length=$copy.Bytes.Length;Sha256=(Get-FileHash -LiteralPath $copy.Path).Hash}
+        }
+    }
+    $wait.EndQpc=[Diagnostics.Stopwatch]::GetTimestamp();$wait.DurationMs=1000.0*($wait.EndQpc-$start)/$frequency
     return [pscustomobject]$snapshot
 }
 function Test-NotificationWindow($Before,$After,$Fence,[bool]$WindowKnown) {
@@ -1630,10 +1725,11 @@ function Test-NotificationLocationUnchanged($Before,$After,$Fence) {
     }
     return [pscustomobject]@{Complete=$true;Reason='Authenticated notification location inventories byte-identical.'}
 }
-function Test-AgentDidNotRun($Before,$After,$Fence,[bool]$WindowKnown,$SystemLog,$SecurityLog) {
+function Test-AgentDidNotRun($Before,$After,$Fence,[bool]$WindowKnown,$SystemLog,$SecurityLog,[switch]$R03Offline) {
     $failures=@();$scm=@();$creations=@();$scmFailures=@();$contradictions=@();$systemContinuous=$false;$scmWindowKnown=$WindowKnown
     if(-not $WindowKnown){$failures+='QPC operation window is not bound to service snapshots.'}
     $b=$Before.AgentExecution;$a=$After.AgentExecution
+    $r03OfflineWindow=($R03Offline -and $CaseId -ceq 'R03' -and $Before.Tag -ceq 'r03-offline-before' -and $After.Tag -ceq 'r03-offline-after')
     foreach($pair in @(@{Tag='before';Snapshot=$b},@{Tag='after';Snapshot=$a})){
         $s=$pair.Snapshot
         if($null -eq $s){$failures+=('Agent '+$pair.Tag+' execution snapshot missing.');$scmWindowKnown=$false;continue}
@@ -1655,6 +1751,7 @@ function Test-AgentDidNotRun($Before,$After,$Fence,[bool]$WindowKnown,$SystemLog
             $scmFailures+=('SCM SafeUploadAgent '+$pair.Tag+' state is not authenticated Stopped/PID 0.')
             if($service.State -ceq 'Running' -or $service.ProcessId -gt 0){$contradictions+=('Installed agent running at '+$pair.Tag+' edge.')}
         }
+        if($r03OfflineWindow -and $service.StartMode -cne 'Disabled'){$failures+=('R03 offline agent '+$pair.Tag+' start mode is not Disabled.')}
         if($null -eq $s.Audit.CreationFlags -or ($s.Audit.CreationFlags -band 1) -eq 0 -or
             $null -eq $s.Audit.PerUserPolicyCount -or $s.Audit.PerUserPolicyCount -ne 0){$failures+=('Agent '+$pair.Tag+' process-creation success auditing missing/disabled or per-user overrides present.')}
         $requiredImages=if($service.Exists){2}else{1}
@@ -1715,9 +1812,17 @@ function Test-AgentDidNotRun($Before,$After,$Fence,[bool]$WindowKnown,$SystemLog
                         # service's own process when it starts that service. When authenticated SCM evidence shows the service absent at both
                         # edges (and any install in the window is already a contradiction above), no process can carry that SID except by a
                         # privileged token forgery, and administrators/SYSTEM are trusted by owner decision (MVP-PLAN). Only then is the group-SID
-                        # gap closed; with the service installed it still defeats the proof. The image/user check above always applies.
+                        # gap closed. Other installed-service windows retain the conservative creation rule below. The image/user check
+                        # above always applies.
                         $serviceNeverExisted=($null -ne $b.Service -and $null -ne $a.Service -and $b.Service.Exists -eq $false -and $a.Service.Exists -eq $false)
-                        if(-not $serviceNeverExisted){
+                        # R03 alone has an installed but disabled offline service. Apply the same trusted-SCM SID premise as the seed
+                        # rows only with disabled/stopped/PID-zero edges and a continuous System window with no agent SCM activity.
+                        # Image/user-SID creation checks above, full inventories, auditing and Security continuity still apply.
+                        $r03ServiceDisabled=($r03OfflineWindow -and $systemContinuous -and $scmWindowKnown -and $scmFailures.Count -eq 0 -and
+                            $b.Service.Exists -eq $true -and $a.Service.Exists -eq $true -and
+                            $b.Service.StartMode -ceq 'Disabled' -and $a.Service.StartMode -ceq 'Disabled' -and
+                            -not [string]::IsNullOrWhiteSpace($event.Data.NewProcessName) -and -not [string]::IsNullOrWhiteSpace($event.Data.SubjectUserSid))
+                        if(-not ($serviceNeverExisted -or $r03ServiceDisabled)){
                             $failures+=('Process created between inventories at Security record '+$event.RecordId+'; 4688 lacks token group/restricted service-SID evidence.')
                         }
                     }
@@ -1743,7 +1848,7 @@ function Test-AgentDidNotRun($Before,$After,$Fence,[bool]$WindowKnown,$SystemLog
     return [pscustomobject]@{Complete=($failures.Count -eq 0);Verdict=$(if($contradictions.Count){'FAIL'}elseif($failures.Count){'INCONCLUSIVE'}else{'PASS'});
         ScmProof=$scmProof;Reason=$(if($failures.Count){$failures -join ' '}else{'agent did not run in window'});
         Failures=$failures;ScmEvents=$scm;ProcessCreations=$creations;SystemLog=$SystemLog;SecurityLog=$SecurityLog;
-        Limitations='Trusted kernel, SCM, audit transport and privileged actors; inventories inspect primary user/group/restricted SIDs, not thread impersonation. 4688 does not expose group SIDs, so any creation defeats this proof. No claim about renamed/injected emitters, off-window activity or intermediate create/delete of notification files.'}
+        Limitations='Trusted kernel, SCM, audit transport and privileged actors; inventories inspect primary user/group/restricted SIDs, not thread impersonation. 4688 does not expose group SIDs; non-agent creations require the absent-service or R03 disabled-offline SCM premise. No claim about renamed/injected emitters, off-window activity or intermediate create/delete of notification files.'}
 }
 
 function Test-LatencyTransientIoError($Exception) {
@@ -1977,7 +2082,7 @@ function Test-ServiceFixtureEntry($Record) {
     }
     return $false
 }
-function Get-ServiceTimeline($Before,$After,$Fence) {
+function Get-ServiceTimeline($Before,$After,$Fence,[switch]$R03Offline) {
     $assertions=@();$events=@();$eventStatus='INCONCLUSIVE';$eventReason='Application log anchors unavailable.'
     try {
         if($Before.Application.Status -cne 'OK' -or $After.Application.Status -cne 'OK' -or $Before.BootId -cne $After.BootId -or
@@ -2025,10 +2130,11 @@ function Get-ServiceTimeline($Before,$After,$Fence) {
     }
     $notificationProof=Test-NotificationWindow $Before.Notifications $After.Notifications $Fence $windowKnown
     $agentAbsence=$null;$locationUnchanged=$null
-    if(-not $notificationProof.Complete){
+    $allowAgentAbsence=($CaseId -cne 'R03' -or ($R03Offline -and $Before.Tag -ceq 'r03-offline-before' -and $After.Tag -ceq 'r03-offline-after'))
+    if(-not $notificationProof.Complete -and $allowAgentAbsence){
         $systemLog=Read-AgentLogWindow $Before.AgentExecution.SystemBegin $After.AgentExecution.SystemEnd 'System'
         $securityLog=Read-AgentLogWindow $Before.AgentExecution.SecurityBegin $After.AgentExecution.SecurityEnd 'Security'
-        $agentAbsence=Test-AgentDidNotRun $Before $After $Fence $windowKnown $systemLog $securityLog
+        $agentAbsence=Test-AgentDidNotRun $Before $After $Fence $windowKnown $systemLog $securityLog -R03Offline:$R03Offline
         $assertions+=@{Name='AgentAbsenceScm';Verdict=$agentAbsence.ScmProof.Verdict;Reason=$agentAbsence.ScmProof.Reason}
         $locationUnchanged=Test-NotificationLocationUnchanged $Before.Notifications $After.Notifications $Fence
         if($agentAbsence.Complete -and $locationUnchanged.Complete){
@@ -2257,7 +2363,7 @@ function Capture-CachedSample($Context,$Baseline,[string]$PhaseName,[long]$Seque
             try{$reader=[StagedInvariant.Native]::Fresh($path,$raw,$Context.Geometry.Alignment);$readers+=@{Unbuffered=$raw;Status='OK';Result=$reader;NativeCode=0}}
             catch{
                 $code=$null;for($ex=$_.Exception;$null -ne $ex;$ex=$ex.InnerException){if($null -ne $ex.PSObject.Properties['NativeCode']){$code=$ex.NativeCode}}
-                $readers+=@{Unbuffered=$raw;Status='ERROR';NativeCode=$code;Reason=$_.Exception.ToString()}
+                $readers+=@{Unbuffered=$raw;Status='ERROR';NativeCode=$code;ErrorChain=(Get-ErrorChain $_.Exception);Reason=$_.Exception.ToString()}
             }
         }
         $sample | Add-Member NoteProperty $target.Property $readers
@@ -4283,7 +4389,7 @@ function Invoke-R03Observation {
         $trial.Assertions+=Test-CachedSample $sample $baseline $false $imageA
         $trial.OfflineServiceAfter=Get-ServiceSnapshot 'r03-offline-after'
         $offlineFence=[pscustomobject]@{Complete=$true;BootId=$actor.BootId;QpcFrequency=$ready.QpcFrequency;ReleasedQpc=$offline.ReleasedQpc;CompletedQpc=$offline.CompletedQpc}
-        $trial.OfflineServiceEvidence=Get-ServiceTimeline $trial.ServiceBefore $trial.OfflineServiceAfter $offlineFence
+        $trial.OfflineServiceEvidence=Get-ServiceTimeline $trial.ServiceBefore $trial.OfflineServiceAfter $offlineFence -R03Offline
         $trial.Assertions+=@($trial.OfflineServiceEvidence.Assertions)
         $delta=$trial.OfflineServiceEvidence.JournalDelta
         $trial.Assertions+=@{Name='R03OfflineJournalUnchanged';Verdict=$(if($delta.NewEntries.Count -or $delta.Findings.Count){'FAIL'}elseif($delta.Complete){'PASS'}else{'INCONCLUSIVE'});Reason='All authenticated journal records unchanged; no new transfer anywhere while agent absent.';Evidence=$delta}

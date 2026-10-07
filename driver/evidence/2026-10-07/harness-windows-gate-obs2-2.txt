@@ -1,0 +1,35 @@
+Test-StagedInvariantSuite.ps1:ParseErrors=0;SHA256=B76714DC2CE384C81F4EEC195BA5FFDA8518139EB4AD2D89537B96A3B836FE4B
+StagedInvariantObserver.psm1:ParseErrors=0;SHA256=FE14DE83914724D648420D88B429993261E279944B90E10211C748C91BA69DD0
+StagedInvariantCases.psd1:ParseErrors=0;SHA256=3E8AE0588FDC39145C4BF3C1B3A67497CE2210108884A345061AF46D3D2AA2C2
+Build-ExactAgent.ps1:ParseErrors=0;SHA256=DB9C56E61F2AE111ED0798C460302DCDCB1717B6EC483DF486378BB942888212
+StagedInvariantActivationDuplicate.SelfCheck.ps1:ParseErrors=0;SHA256=2F39BAB352D3DF3479B4A6DE6B9795123D0D13998DDDFC686E6456DA2D06B9DD
+StagedInvariantCoreVariants.SelfCheck.ps1:ParseErrors=0;SHA256=45759CD0C20374010F12D6B108D5C3836FBB4B1A92DA89B220640013FE69317C
+StagedInvariantLatency.SelfCheck.ps1:ParseErrors=0;SHA256=18F2A449123E4066B5630F7417554AF450998A5C37EEB7CBF2F57CD33B25F886
+StagedInvariantObserver.SelfCheck.ps1:ParseErrors=0;SHA256=D487818D03FEA63989B6EA6D84D0A824D4B3766FD195070174428BE5CFE15E6F
+StagedInvariantProofAdapters.SelfCheck.ps1:ParseErrors=0;SHA256=A9C9E0141F1B473D919FC2E1D3AB75A6BB6110CF9E3548E5537BAFA653FDC6E1
+StagedInvariantR03.SelfCheck.ps1:ParseErrors=0;SHA256=637B432FF8417B3AABC50B5D5357B57B11A8F1515BD86308F2BF59E221E36DD7
+StagedInvariantRobustness.SelfCheck.ps1:ParseErrors=0;SHA256=B6C21C145A94BF07A1C746C428809B99F7B02B12364F6E379E58B6D78B558B2F
+StagedInvariantRowsA.SelfCheck.ps1:ParseErrors=0;SHA256=CE6DF2EA535B79B75B3904FB2F8C17060E8E8909696E61479166F92C7D235758
+  StagedInvariantActivationDuplicate.SelfCheck.ps1> NativeDuplicateControl=PASS;ParentPid=752;ChildPid=3120;TrustedPhysicalObject=PASS;SeparateOpensRejected=PASS;SameFileObjectTwoWayPosition=PASS;ParentCloseChildWrite=PASS;WholeImage=PASS;OwnedHeldWrite=PASS;Qualification=False
+StagedInvariantActivationDuplicate.SelfCheck.ps1:Exit=0
+  StagedInvariantCoreVariants.SelfCheck.ps1> CoreVariantsSelfCheck=PASS;Controls=52;Qualification=False
+StagedInvariantCoreVariants.SelfCheck.ps1:Exit=0
+  StagedInvariantLatency.SelfCheck.ps1> NativeLatencyStimulus=overwrite;CompleteRounds=101;PASS;Qualification=False
+  StagedInvariantLatency.SelfCheck.ps1> NativeLatencyStimulus=replacement;CompleteRounds=101;PASS;Qualification=False
+  StagedInvariantLatency.SelfCheck.ps1> NativeLatencyStimulusGate=PASS;Qualification=False
+StagedInvariantLatency.SelfCheck.ps1:Exit=0
+  StagedInvariantObserver.SelfCheck.ps1> IO_PredicateLostArtifactCannotHideViolation=synthetic;PASS
+  StagedInvariantObserver.SelfCheck.ps1> IO_PredicateLostCompletion=synthetic;PASS
+  StagedInvariantObserver.SelfCheck.ps1> IO_Summary=passed:95;failed:0
+StagedInvariantObserver.SelfCheck.ps1:Exit=0
+  StagedInvariantProofAdapters.SelfCheck.ps1> ProofAdapterEvaluationChecks=291;PASS (host-safe synthetic evaluation, collector mocks and identity publication only)
+StagedInvariantProofAdapters.SelfCheck.ps1:Exit=0
+  StagedInvariantR03.SelfCheck.ps1> StagedInvariantR03SelfCheck: checks=29; PASS
+StagedInvariantR03.SelfCheck.ps1:Exit=0
+  StagedInvariantRobustness.SelfCheck.ps1> RobustnessSelfCheck=FAIL;System.Management.Automation.RuntimeException: Existing raw DATA coverage/hash/byte assertions all pass for exact U: [{"Verdict":"PASS","Name":"PinnedControlImage","Reason":"Raw logical length and SHA-256 must equal the complete independent image."},{"Verdict":"PASS","Name":"PinnedControlLogicalBytes","Reason":"Retained whole raw logical artifact compared byte for byte to independent image."},{"Verdict":"PASS","Name":"PinnedControlRawExtent","Reason":"Raw extent at 8192; differing bytes=0","ForbiddenByteCount":0},{"Verdict":"PASS","Name":"PinnedControlRawExtent","Reason":"Raw extent at 16384; differing bytes=0","ForbiddenByteCount":0},{"Verdict":"INCONCLUSIVE","Name":"PinnedControlRawExtentCoverage","Reason":"Expected 8192 allocated data bytes; compared 8192; complete VCN coverage without gaps/overlap=False"}];at Check, C:\Users\vika\Documents\harness-gate-obs2-2\StagedInvariantRobustness.SelfCheck.ps1: line 18
+  StagedInvariantRobustness.SelfCheck.ps1> at <ScriptBlock>, C:\Users\vika\Documents\harness-gate-obs2-2\StagedInvariantRobustness.SelfCheck.ps1: line 100
+StagedInvariantRobustness.SelfCheck.ps1:Exit=1
+  StagedInvariantRowsA.SelfCheck.ps1> StagedInvariantRowsASelfCheck: checks=72; PASS
+StagedInvariantRowsA.SelfCheck.ps1:Exit=0
+PSVersion=5.1.19041.6456
+HarnessWindowsGate=FAIL

@@ -68,6 +68,71 @@ if ($PSBoundParameters.ContainsKey('Live') -and [string]::IsNullOrWhiteSpace($Li
 try { Import-Module (Join-Path $PSScriptRoot 'StagedInvariantObserver.psm1') -Force -DisableNameChecking -ErrorAction Stop }
 catch { Report-IO 'Import' $false $_.Exception.ToString(); Write-Output ('IO_Summary=passed:' + $script:Passed + ';failed:' + $script:Failed); exit 1 }
 $record = TinyRecord $false; $nonresident = TinyRecord $true; $root = TinyRoot
+function MftFixtureVolume {
+    $v=[StagedInvariant.Volume]::new()
+    $v.Geometry=[StagedInvariant.Geometry]::new();$v.Geometry.Sector=512;$v.Geometry.Cluster=1024
+    $v.Geometry.RecordSize=1024;$v.Geometry.MftLcn=10;$v.Geometry.TotalBytes=1048576
+    $a=[StagedInvariant.Run]::new();$a.Vcn=0;$a.NextVcn=2;$a.Lcn=10
+    $b=[StagedInvariant.Run]::new();$b.Vcn=2;$b.NextVcn=4;$b.Lcn=20
+    $v.MftRuns=[StagedInvariant.Run[]]@($a,$b);return $v
+}
+function MftFixtureRecord([byte[]]$Runs,[int]$Clusters) {
+    $b=TinyRecord $true;Put32 $b 44 0;Put16 $b 68 0;Put64 $b 80 ($Clusters-1)
+    Put64 $b 96 ($Clusters*1024);Put64 $b 104 ($Clusters*1024);Put64 $b 112 ($Clusters*1024)
+    [Array]::Clear($b,120,16);[Array]::Copy($Runs,0,$b,120,$Runs.Length);return ,$b
+}
+$mftGrowth=MftFixtureRecord ([byte[]]@(0x11,1,10,0x11,1,1,0x11,4,9,0)) 6
+$mftTarget=TinyRecord $false;Put32 $mftTarget 44 4
+Check-IO 'MftGrowthRefreshSucceedsOnce' {
+    $v=MftFixtureVolume;$r=[StagedInvariant.Native]::SelfCheckMftRefresh($v,4,$mftGrowth,$mftTarget)
+    $r.Number -eq 4 -and $v.MftRefreshes.Count -eq 1 -and $v.MftRefreshes[0].Status -ceq 'OK' -and
+        $v.MftRefreshes[0].OldRuns[1].NextVcn -eq 4 -and $v.MftRefreshes[0].NewRuns[2].NextVcn -eq 6 -and
+        $v.MftRefreshes[0].Containers.Count -eq 1 -and $v.MftRefreshes[0].EndQpc -ge $v.MftRefreshes[0].StartQpc
+}
+Check-IO 'MftChangedPrefixRejected' {
+    $v=MftFixtureVolume;$old=$v.MftRuns;$bad=MftFixtureRecord ([byte[]]@(0x11,2,10,0x11,4,11,0)) 6
+    $rejected=$false
+    try{$null=[StagedInvariant.Native]::SelfCheckMftRefresh($v,4,$bad,$mftTarget)}catch{$rejected=$_.Exception.InnerException.Message -like 'Changed cached MFT map prefix*'}
+    $rejected -and [object]::ReferenceEquals($old,$v.MftRuns) -and $v.MftRefreshes.Count -eq 1 -and
+        $v.MftRefreshes[0].Status -ceq 'ERROR' -and $v.MftRefreshes[0].NewRuns[1].Lcn -eq 21
+}
+Check-IO 'MftStillTruncatedRejected' {
+    $v=MftFixtureVolume;$old=$v.MftRuns;$short=MftFixtureRecord ([byte[]]@(0x11,2,10,0x11,2,10,0)) 4
+    $rejected=$false
+    try{$null=[StagedInvariant.Native]::SelfCheckMftRefresh($v,4,$short,$mftTarget)}catch{$rejected=$_.Exception.InnerException.Message -like 'Still-truncated MFT map after one refresh*'}
+    $rejected -and [object]::ReferenceEquals($old,$v.MftRuns) -and $v.MftRefreshes.Count -eq 1 -and $v.MftRefreshes[0].Status -ceq 'ERROR'
+}
+Check-IO 'MftRefreshCorruptFixupRejected' {
+    $v=MftFixtureVolume;$old=$v.MftRuns;$bad=[byte[]]$mftGrowth.Clone();Put16 $bad 1022 0x1234
+    $rejected=$false
+    try{$null=[StagedInvariant.Native]::SelfCheckMftRefresh($v,4,$bad,$mftTarget)}catch{$rejected=$_.Exception.InnerException.Phase -ceq 'USA'}
+    $rejected -and [object]::ReferenceEquals($old,$v.MftRuns) -and $v.MftRefreshes.Count -eq 1 -and
+        $v.MftRefreshes[0].Status -ceq 'ERROR' -and $v.MftRefreshes[0].Containers.Count -eq 1
+}
+Check-IO 'MftCoveredRecordDoesNotRefresh' {
+    $v=MftFixtureVolume;$target=TinyRecord $false;Put32 $target 44 3
+    $r=[StagedInvariant.Native]::SelfCheckMftRefresh($v,3,([byte[]]@(0)),$target)
+    $r.Number -eq 3 -and $v.MftRefreshes.Count -eq 0
+}
+Check-IO 'MftRejectedRefreshPreventsLaterCachedReads' {
+    $v=MftFixtureVolume;$bad=MftFixtureRecord ([byte[]]@(0x11,2,10,0x11,4,11,0)) 6
+    try{$null=[StagedInvariant.Native]::SelfCheckMftRefresh($v,4,$bad,$mftTarget)}catch{}
+    $target=TinyRecord $false;Put32 $target 44 3;$rejected=$false
+    try{$null=[StagedInvariant.Native]::SelfCheckMftRefresh($v,3,$mftGrowth,$target)}catch{$rejected=$_.Exception.InnerException.Message -like 'Prior MFT refresh rejected*'}
+    $rejected -and $v.MftRefreshes.Count -eq 1 -and $null -ne $v.MftMapFailure
+}
+Check-IO 'MftRefreshEvidenceRetainsBothMapsAndRawRecord' {
+    $dir=Join-Path ([IO.Path]::GetTempPath()) ('mft-refresh-'+[guid]::NewGuid().ToString('N'));[void][IO.Directory]::CreateDirectory($dir)
+    try{
+        $v=MftFixtureVolume;$null=[StagedInvariant.Native]::SelfCheckMftRefresh($v,4,$mftGrowth,$mftTarget)
+        $context=[pscustomobject]@{Volume=$v;EvidenceDirectory=$dir;SavedMftRefreshCount=0}
+        $saved=@(& (Get-Module StagedInvariantObserver) {param($c) Save-IOMftRefreshes $c} $context)
+        $again=@(& (Get-Module StagedInvariantObserver) {param($c) Save-IOMftRefreshes $c} $context)
+        $saved.Count -eq 1 -and $saved[0].OldRuns.Count -eq 2 -and $saved[0].NewRuns.Count -eq 3 -and
+            $saved[0].Containers[0].Offset -eq 10240 -and $again.Count -eq 0 -and
+            [StagedInvariant.Native]::Hash([IO.File]::ReadAllBytes($saved[0].Containers[0].Artifact.Path)) -ceq [StagedInvariant.Native]::Hash($mftGrowth)
+    }finally{[IO.Directory]::Delete($dir,$true)}
+}
 Check-IO 'CachedFileRecordUsesAppliedFixups' {
     $fixed=[StagedInvariant.Native]::DecodeRecord($record,512,7).Fixed
     $cached=[StagedInvariant.Native]::DecodeCachedRecord($fixed,512,7)

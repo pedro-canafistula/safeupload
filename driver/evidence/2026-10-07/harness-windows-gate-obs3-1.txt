@@ -1,0 +1,34 @@
+Test-StagedInvariantSuite.ps1:ParseErrors=0;SHA256=3C4B6BAD4D76E40DF07D08396AF6CD27E698F521838D28046AE47E5355E51FE3
+StagedInvariantObserver.psm1:ParseErrors=0;SHA256=1392B8F8D62C9F04941313AD2E73E0F6C217950ABFF65B9371AC6F72C727E457
+StagedInvariantCases.psd1:ParseErrors=0;SHA256=3E8AE0588FDC39145C4BF3C1B3A67497CE2210108884A345061AF46D3D2AA2C2
+Build-ExactAgent.ps1:ParseErrors=0;SHA256=DB9C56E61F2AE111ED0798C460302DCDCB1717B6EC483DF486378BB942888212
+StagedInvariantActivationDuplicate.SelfCheck.ps1:ParseErrors=0;SHA256=2F39BAB352D3DF3479B4A6DE6B9795123D0D13998DDDFC686E6456DA2D06B9DD
+StagedInvariantCoreVariants.SelfCheck.ps1:ParseErrors=0;SHA256=45759CD0C20374010F12D6B108D5C3836FBB4B1A92DA89B220640013FE69317C
+StagedInvariantLatency.SelfCheck.ps1:ParseErrors=0;SHA256=18F2A449123E4066B5630F7417554AF450998A5C37EEB7CBF2F57CD33B25F886
+StagedInvariantObserver.SelfCheck.ps1:ParseErrors=0;SHA256=D487818D03FEA63989B6EA6D84D0A824D4B3766FD195070174428BE5CFE15E6F
+StagedInvariantProofAdapters.SelfCheck.ps1:ParseErrors=0;SHA256=D828B2B96548E2CF27C0350B680EC773C1CB244DD4D8B4FECFCAE4713FFC5BF1
+StagedInvariantR03.SelfCheck.ps1:ParseErrors=0;SHA256=637B432FF8417B3AABC50B5D5357B57B11A8F1515BD86308F2BF59E221E36DD7
+StagedInvariantRobustness.SelfCheck.ps1:ParseErrors=0;SHA256=4268C2C8CB7422B9F39A25300C337D5C5633522EF7CD7A0CE255EA6A89F24CBE
+StagedInvariantRowsA.SelfCheck.ps1:ParseErrors=0;SHA256=CE6DF2EA535B79B75B3904FB2F8C17060E8E8909696E61479166F92C7D235758
+  StagedInvariantActivationDuplicate.SelfCheck.ps1> NativeDuplicateControl=PASS;ParentPid=1516;ChildPid=4904;TrustedPhysicalObject=PASS;SeparateOpensRejected=PASS;SameFileObjectTwoWayPosition=PASS;ParentCloseChildWrite=PASS;WholeImage=PASS;OwnedHeldWrite=PASS;Qualification=False
+StagedInvariantActivationDuplicate.SelfCheck.ps1:Exit=0
+  StagedInvariantCoreVariants.SelfCheck.ps1> CoreVariantsSelfCheck=PASS;Controls=52;Qualification=False
+StagedInvariantCoreVariants.SelfCheck.ps1:Exit=0
+  StagedInvariantLatency.SelfCheck.ps1> NativeLatencyStimulus=overwrite;CompleteRounds=101;PASS;Qualification=False
+  StagedInvariantLatency.SelfCheck.ps1> NativeLatencyStimulus=replacement;CompleteRounds=101;PASS;Qualification=False
+  StagedInvariantLatency.SelfCheck.ps1> NativeLatencyStimulusGate=PASS;Qualification=False
+StagedInvariantLatency.SelfCheck.ps1:Exit=0
+  StagedInvariantObserver.SelfCheck.ps1> IO_PredicateLostArtifactCannotHideViolation=synthetic;PASS
+  StagedInvariantObserver.SelfCheck.ps1> IO_PredicateLostCompletion=synthetic;PASS
+  StagedInvariantObserver.SelfCheck.ps1> IO_Summary=passed:95;failed:0
+StagedInvariantObserver.SelfCheck.ps1:Exit=0
+  StagedInvariantProofAdapters.SelfCheck.ps1> ProofAdapterEvaluationChecks=327;PASS (host-safe synthetic evaluation, collector mocks and identity publication only)
+StagedInvariantProofAdapters.SelfCheck.ps1:Exit=0
+  StagedInvariantR03.SelfCheck.ps1> StagedInvariantR03SelfCheck: checks=29; PASS
+StagedInvariantR03.SelfCheck.ps1:Exit=0
+  StagedInvariantRobustness.SelfCheck.ps1> RobustnessSelfCheck=PASS;Checks=89
+StagedInvariantRobustness.SelfCheck.ps1:Exit=0
+  StagedInvariantRowsA.SelfCheck.ps1> StagedInvariantRowsASelfCheck: checks=72; PASS
+StagedInvariantRowsA.SelfCheck.ps1:Exit=0
+PSVersion=5.1.19041.6456
+HarnessWindowsGate=PASS
