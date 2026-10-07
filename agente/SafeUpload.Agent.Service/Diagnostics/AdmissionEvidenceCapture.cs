@@ -107,6 +107,34 @@ internal sealed class AdmissionEvidenceBinding
         }
     }
 
+    internal bool TrySendStagedProof(byte[] request, int outputBytes, out AdmissionEvidenceReply? reply)
+    {
+        byte[] input = (byte[])request.Clone();
+        StagedProofProxyWire.Validate(input, outputBytes);
+        lock (_lifetime)
+        {
+            if (!_accepting || Sender is not IStagedProofSender)
+            {
+                reply = null;
+                return false;
+            }
+            _inFlight++;
+        }
+        try
+        {
+            reply = ((IStagedProofSender)Sender).SendStagedProof(input, outputBytes);
+            return true;
+        }
+        finally
+        {
+            lock (_lifetime)
+            {
+                _inFlight--;
+                if (_inFlight == 0) Monitor.PulseAll(_lifetime);
+            }
+        }
+    }
+
     internal void StopAcceptingAndDrain()
     {
         lock (_lifetime)

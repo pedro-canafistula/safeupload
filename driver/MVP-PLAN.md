@@ -797,3 +797,64 @@ The safe W01 checkpoint parent was written by Sol and checked by root: Windows P
 - [x] Pre-reboot P fixture repair passes Windows 5.1 validation: 0 parse errors,
   229 adapter checks and 77 observer checks (`evidence/2026-10-07/sol-harness-windows-validation-e.txt`);
   Python MVP (7) and proof adapter (18) tests pass. VM qualification pending.
+
+- [x] C01 BLOCK `sol-c01b4` completed/restored clean with forbidden byte count 0,
+  but MVP gate remains false (`evidence/2026-10-07/phase4-suite-sol-c01b4-index.txt`).
+  `C01BlockedStageRetained` failed to locate the name in the raw parent index; the
+  terminal journal had StageDeleted=false, verified hand-back and a closed
+  justification window (session 0 is not the actor's interactive WTS session).
+  Preserve this distinction; absence from one raw capture does not prove deletion.
+  Second-user hand-back denial, safe relative creation receipt, window/restart
+  proof and dedicated latency also remain unallowlisted blockers.
+- [ ] Prototype diagnostic relay: keep service port ownership and continuity; use
+  a separate SUPF wire branch in the existing feature-only diagnostic pipe, with
+  an explicit default-off `Diagnostics:StagedProofProxy` switch and SYSTEM-only
+  caller. Allow only observation and admission-trace instrumentation controls;
+  prohibit policy/publication/override/capacity/fault/trust mutations. Normal builds
+  exclude it. Existing capture protocol stays read-only (19/20/23). Inspector
+  requires explicit environment opt-in and verifies the server SYSTEM token.
+  New exact agent feature build/matrix, four driver builds, Windows gates and
+  independent Luna review precede using these artifacts on the guest.
+
+- [x] Independent Luna source review ACCEPT WITH CONDITIONS: `evidence/2026-10-07/sol-proxy-luna-review.txt`.
+  It found no authorization/framing/allowlist or A-fixture-contract blocker.
+  Response I/O deadlines do not cancel a synchronous native service send; preserve
+  the send lease through actual completion and do not claim a whole-request bound.
+- [x] First hash-pinned feature agent candidate compiles/tests/publishes with zero
+  warnings (`evidence/2026-10-07/sol-proxy-agent-candidate-validation.txt`).
+  This is not the committed exact-build/matrix gate and is never installed.
+- [ ] Review conditions: added all allowed control mappings, disconnected/backpressured
+  readers, binding drift, expired response deadline during slow native send, and
+  shutdown drain regressions. Exact Windows test/build and fresh follow-up review pending.
+- [x] C02 APPROVE `sol-c02a1` attempted on original exact b10/b17 artifacts; restored
+  clean, sampled forbidden bytes 0 (`evidence/2026-10-07/phase4-suite-sol-c02a1-index.txt`).
+  Mapped actor never published its held receipt and did not cooperatively cancel.
+  Native operation localization is required before calling this a product bug.
+
+- [x] Exact driver/Inspector build `mvp4-sol-b11` at `6a20c49f` passed all four WDK
+  configurations with 0 warnings/errors, PREfast and ApiValidator clean; Inspector
+  normal/feature Release builds also clean (`evidence/2026-10-07/exact-mvp4-sol-b11-summary.txt`).
+- [ ] Exact agent `agent-mvp4-sol-b18` failed a new timing-sensitive cancellation
+  regression; its isolated rerun passed (`sol-expired-test-diagnostic.txt`). Replace
+  the 20 ms timer assumption with explicit cancellation while native send is held.
+  Retain native stderr and exit status in build helper even when tests fail (PS 5.1
+  ErrorAction=Stop previously aborted before saving the test status). Rebuild with
+  a fresh label; do not use the failed artifact or call it a passing gate.
+
+- [x] Exact feature agent `agent-mvp4-sol-b19` at `b0e7f8be` passes all 416 tests,
+  publish exit=0/warnings=0 (`evidence/2026-10-07/sol-agent-b19-build.txt`).
+- [x] Exact agent matrix `sol-agent-b19-matrix` PASS: normal Debug/Release 353/353,
+  feature Debug/Release 416/416 (`evidence/2026-10-07/sol-agent-b19-matrix.txt`).
+- [x] Fresh Luna follow-up ACCEPT WITH CONDITIONS (`sol-proxy-luna-review2.txt`).
+  Decision: preserve the existing absolute five-second response cutoff from
+  request handling, including validation/native-send elapsed time. It controls
+  response I/O eligibility and never cancels or bounds native send completion;
+  timeout means incomplete diagnostic evidence, with no successful fallback.
+  An expired response/canceled reader cannot abandon the service port lease.
+  Deterministic cancellation regression fixes only test scheduling assumptions.
+- [x] C03 APPROVE `sol-c03a1` restored independently clean but stopped at raw
+  baseline parent-index/file-reference binding after the real service approved
+  initial B (`evidence/2026-10-07/phase4-suite-sol-c03a1-index.txt`).
+  No valid baseline exists; forbidden count is unknown, not zero.
+- [ ] Runtime-Verifier A01 requalification on gated `mvp4-sol-b11`/`6a20c49f`
+  and `agent-mvp4-sol-b19`/`b0e7f8be`, with real service-owned relay continuity.

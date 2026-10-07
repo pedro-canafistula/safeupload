@@ -770,9 +770,18 @@ function Get-NtDevicePath([string]$DosPath) {
     if([SUActivationDevice]::QueryDosDevice($drive,$builder,$builder.Capacity) -eq 0){throw ('QueryDosDevice failed for '+$drive+': '+[Runtime.InteropServices.Marshal]::GetLastWin32Error())}
     return $builder.ToString().Split([char]0)[0]+$DosPath.Substring(2)
 }
+function Invoke-ActivationInspector([string]$Argument,[string]$Prefix,[int]$Timeout=45000) {
+    $previous=$env:SAFEUPLOAD_STAGED_PROOF_PROXY
+    try {
+        if($state.AgentServiceStarted){$env:SAFEUPLOAD_STAGED_PROOF_PROXY='1'}else{Remove-Item Env:SAFEUPLOAD_STAGED_PROOF_PROXY -ErrorAction SilentlyContinue}
+        return Invoke-CapturedProcess $inspectorPath $Argument $Prefix $Timeout
+    }finally{
+        if($null -eq $previous){Remove-Item Env:SAFEUPLOAD_STAGED_PROOF_PROXY -ErrorAction SilentlyContinue}else{$env:SAFEUPLOAD_STAGED_PROOF_PROXY=$previous}
+    }
+}
 function Get-ActivationInspectorJson([string]$Argument,[string]$Tag) {
     $prefix=Join-Path $evidenceDirectory ('activation-'+$Tag+'-'+[guid]::NewGuid().ToString('N'))
-    $out=Invoke-CapturedProcess $inspectorPath $Argument $prefix 45000
+    $out=Invoke-ActivationInspector $Argument $prefix 45000
     $lines=@($out -split "`r?`n" | Where-Object {-not [string]::IsNullOrWhiteSpace($_)})
     if($lines.Count -ne 1){throw ('Inspector output was not one JSON record: '+$Argument)}
     $record=$lines[0]|ConvertFrom-Json -ErrorAction Stop
@@ -2596,9 +2605,9 @@ function Invoke-ActivationObservation {
             ObserverProcess=@{Pid=$observerProcess.ProcessId;OwnerSid=$observerOwner.Sid;SessionId=$observerProcess.SessionId;CommandLine=$observerProcess.CommandLine}}
 
         $clearPrefix=Join-Path $evidenceDirectory ('activation-trace-clear-'+[guid]::NewGuid().ToString('N'))
-        $null=Invoke-CapturedProcess $inspectorPath '--admission-trace-clear' $clearPrefix 45000
+        $null=Invoke-ActivationInspector '--admission-trace-clear' $clearPrefix 45000
         $enablePrefix=Join-Path $evidenceDirectory ('activation-trace-enable-'+[guid]::NewGuid().ToString('N'))
-        $null=Invoke-CapturedProcess $inspectorPath '--admission-trace-enable-sections-lifetime' $enablePrefix 45000
+        $null=Invoke-ActivationInspector '--admission-trace-enable-sections-lifetime' $enablePrefix 45000
         $traceEnabled=$true
 
         Start-ScheduledTask -TaskName $writerTask
@@ -2634,7 +2643,7 @@ function Invoke-ActivationObservation {
         $runtimePolicy.version=[int]$runtimePolicy.version+1
         $runtimePolicy.monitoredScopes.destinationPaths=@($protectedDirectory)
         Write-DurableFile $policyPath ($runtimePolicy | ConvertTo-Json -Depth 8)
-        $agent=Start-StagedTestAgent $serviceDirectory (Join-Path $evidenceDirectory 'activation-agent')
+        $agent=Start-StagedTestAgent $serviceDirectory (Join-Path $evidenceDirectory 'activation-agent') -Arguments '--Diagnostics:StagedProofProxy=true'
         $state.AgentServiceStarted=$true;$state.AgentServiceCreated=[bool]$agent.ServiceCreated;$state.AgentOriginalService=$agent.OriginalService
         Save-State $state $statePath
 
@@ -2726,7 +2735,7 @@ function Invoke-ActivationObservation {
         }
 
         $clearOldPrefix=Join-Path $evidenceDirectory ('activation-old-write-trace-clear-'+[guid]::NewGuid().ToString('N'))
-        $null=Invoke-CapturedProcess $inspectorPath '--admission-trace-clear' $clearOldPrefix 45000
+        $null=Invoke-ActivationInspector '--admission-trace-clear' $clearOldPrefix 45000
         $changes=@();$changeOffsets=@(64,[int]($pBytes.Length/2),($pBytes.Length-160));$changeIndex=0
         foreach($offset in $changeOffsets){$tag=('ACT-'+$CaseId+'-'+$RunName+'-'+$changeIndex);$payload=[Text.Encoding]::ASCII.GetBytes($tag.PadRight(96,'U'))
             $changes+=@{Offset=[long]$offset;BytesBase64=[Convert]::ToBase64String($payload);PayloadSha256=(Get-ActivationSha256 $payload);Length=$payload.Length};$changeIndex++}
@@ -2744,7 +2753,7 @@ function Invoke-ActivationObservation {
             $preReason=if($preDifference.Status -ne 'OK'){$preDifference.Reason}elseif([long]$preDifference.DifferingBytes -gt 0){'Raw allocated DATA extents changed before promotion; those allowed pre-protection bytes are recorded here and excluded from ForbiddenByteCount.'}else{'Old-holder API and lower write evidence exist, but this raw capture shows no persisted DATA-byte delta before release.'}
             Add-ActivationAssertion $trial 'PreProtectionRawMutation' $preVerdict $preReason $preDifference
         }
-        $traceText=Invoke-CapturedProcess $inspectorPath '--admission-trace' (Join-Path $evidenceDirectory 'activation-old-holder-admission-trace') 45000
+        $traceText=Invoke-ActivationInspector '--admission-trace' (Join-Path $evidenceDirectory 'activation-old-holder-admission-trace') 45000
         $trace=ConvertFrom-ActivationTrace $traceText $fileId
         $trial.OldHolderAdmissionTrace=$trace
         $lowerCorrelations=@()
@@ -2763,7 +2772,7 @@ function Invoke-ActivationObservation {
             $(if($lowerWriteEvidence){'Loss-free admission trace contains paired successful lower W_BEGIN/W_END records for the exact target file ID whose byte ranges overlap every known user-mode mutation; A01 also matches the actor PID. A02/A03 accept paging-system PID for the retained section writes.'}else{'The loss-free trace did not correlate a successful lower W_BEGIN/W_END range to every known old-holder mutation on the exact target file ID; user-mode success does not replace lower completion evidence.'})`
             @{Trace=$trace;RangeCorrelations=$lowerCorrelations;PayloadSha256Available=$trace.PayloadSha256Available;ActorOperations=$oldWrite.Calls}
         $traceDisablePrefix=Join-Path $evidenceDirectory ('activation-trace-disable-before-release-'+[guid]::NewGuid().ToString('N'))
-        $null=Invoke-CapturedProcess $inspectorPath '--admission-trace-disable' $traceDisablePrefix 45000
+        $null=Invoke-ActivationInspector '--admission-trace-disable' $traceDisablePrefix 45000
         $traceEnabled=$false
 
         $activatingAfterWrite=Get-ActivationPendingEntry $ntPath $fileId 'after-old-holder-mutation'
@@ -2807,7 +2816,7 @@ function Invoke-ActivationObservation {
         Add-ActivationAssertion $trial 'FreeAndProtectedAfterLastHolder' 'PASS'`
             'Exact registry entry for the same file ID reached Protected/Free with H=0, S=NO, C=0, T=0 and no unknown reason after the last actor holder was released.' $promoted.Record
 
-        $promotionText=Invoke-CapturedProcess $inspectorPath '--promotion-trace' (Join-Path $evidenceDirectory 'activation-promotion-trace') 45000
+        $promotionText=Invoke-ActivationInspector '--promotion-trace' (Join-Path $evidenceDirectory 'activation-promotion-trace') 45000
         $promotionTrace=ConvertFrom-ActivationPromotionTrace $promotionText $fileId
         $promotionEdges=@($promotionTrace.Entries | Where-Object {[uint32]$_.stateBefore -eq 1 -and [uint32]$_.stateAfter -eq 2})
         $promotionExact=($promotionEdges.Count -eq 1 -and [uint32]$promotionEdges[0].Hsample -eq 0 -and
@@ -2916,7 +2925,7 @@ function Invoke-ActivationObservation {
             try{Stop-StagedTestAgent $agent;$state.AgentServiceStarted=$false;Save-State $state $statePath;$agent=$null}
             catch{$trial.Errors+=Get-ErrorChain $_.Exception;Add-ActivationAssertion $trial 'AgentServiceCleanup' 'INCONCLUSIVE' ('Could not stop/restore the test SafeUploadAgent service: '+$_.Exception.Message) $null}
         }
-        if($traceEnabled){try{$disablePrefix=Join-Path $evidenceDirectory ('activation-trace-final-disable-'+[guid]::NewGuid().ToString('N'));$null=Invoke-CapturedProcess $inspectorPath '--admission-trace-disable' $disablePrefix 45000;$traceEnabled=$false}catch{$trial.Errors+=Get-ErrorChain $_.Exception}}
+        if($traceEnabled){try{$disablePrefix=Join-Path $evidenceDirectory ('activation-trace-final-disable-'+[guid]::NewGuid().ToString('N'));$null=Invoke-ActivationInspector '--admission-trace-disable' $disablePrefix 45000;$traceEnabled=$false}catch{$trial.Errors+=Get-ErrorChain $_.Exception}}
         if($null -ne $context -and $context.Status -eq 'OK'){$trial.Disposal=Close-InvariantObserver $context}
         else{$trial.Disposal=[pscustomobject]@{Status='INCONCLUSIVE';Reason='Raw observer was not opened successfully.'}}
         if($trial.Disposal.Status -ne 'OK'){Add-ActivationAssertion $trial 'Disposal' 'INCONCLUSIVE' 'Checked raw observer disposal is missing or failed.' $trial.Disposal}

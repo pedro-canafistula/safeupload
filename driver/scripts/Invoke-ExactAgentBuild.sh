@@ -4,6 +4,8 @@ set -uo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/../.."
 label="${1:?label}"; commit="${2:-HEAD}"
 [[ "$label" =~ ^[A-Za-z0-9._-]{3,60}$ ]] || exit 2
+feature_arg=""
+if [[ "${SAFEUPLOAD_ADMISSION_EVIDENCE_BUILD:-false}" == true ]]; then feature_arg="-AdmissionEvidence"; fi
 full="$(git rev-parse --verify "$commit^{commit}")" || exit 2
 work="/tmp/claude-1000/exact-agent-$label"
 [[ ! -e "$work" ]] || { echo 'Existing agent evidence directory'; exit 2; }
@@ -24,7 +26,7 @@ printf 'SourceCommit=%s\nArchiveSHA256=%s\nManifestSHA256=%s\n' "$full" "$zip_sh
 sha256sum driver/scripts/Build-ExactAgent.ps1 driver/scripts/Invoke-ExactAgentBuild.sh >> "$ev/exact-agent-$label-provenance.txt"
 cp "$work/src.manifest" "$ev/exact-agent-$label-source-manifest.txt"
 python3 driver/scripts/remote_ps.py 192.168.122.210 <<PS > "$ev/exact-agent-$label-build.txt" 2>&1
-& 'C:\Users\vika\Documents\Build-ExactAgent-$label.ps1' -Label '$label' -ArchiveSha256 '$zip_sha' -ManifestSha256 '$man_sha'
+& 'C:\Users\vika\Documents\Build-ExactAgent-$label.ps1' -Label '$label' -ArchiveSha256 '$zip_sha' -ManifestSha256 '$man_sha' $feature_arg
 PS
 for f in summary.txt tests.txt agent-tests.trx publish.txt package-manifest.txt dotnet-info.txt stage-service-publish.zip; do
     scp "${opts[@]}" "$d/exact-agent-$label/out/$f" "$work/$f" 2>/dev/null || echo "not fetched: $f"
