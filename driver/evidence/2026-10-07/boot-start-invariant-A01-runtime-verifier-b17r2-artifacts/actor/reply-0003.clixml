@@ -1,0 +1,95 @@
+<Objs Version="1.1.0.1" xmlns="http://schemas.microsoft.com/powershell/2004/04">
+  <Obj RefId="0">
+    <TN RefId="0">
+      <T>System.Collections.Hashtable</T>
+      <T>System.Object</T>
+    </TN>
+    <DCT>
+      <En>
+        <S N="Key">QpcFrequency</S>
+        <I64 N="Value">10000000</I64>
+      </En>
+      <En>
+        <S N="Key">Action</S>
+        <S N="Value">write-old</S>
+      </En>
+      <En>
+        <S N="Key">BootId</S>
+        <S N="Value">WIN10-DEBUGGED/2026-10-07T08:56:31.5000000Z</S>
+      </En>
+      <En>
+        <S N="Key">Error</S>
+        <S N="Value">System.Management.Automation.RuntimeException: Old holder write failed: Win32 5</S>
+      </En>
+      <En>
+        <S N="Key">EndQpc</S>
+        <I64 N="Value">509429289</I64>
+      </En>
+      <En>
+        <S N="Key">NativeCode</S>
+        <Nil N="Value" />
+      </En>
+      <En>
+        <S N="Key">Calls</S>
+        <Obj N="Value" RefId="1">
+          <TN RefId="1">
+            <T>System.Object[]</T>
+            <T>System.Array</T>
+            <T>System.Object</T>
+          </TN>
+          <LST>
+            <Obj RefId="2">
+              <TNRef RefId="0" />
+              <DCT>
+                <En>
+                  <S N="Key">EndQpc</S>
+                  <I64 N="Value">509235922</I64>
+                </En>
+                <En>
+                  <S N="Key">PayloadSha256</S>
+                  <S N="Value">EC8DA7A445E30701CB73A869B83EC51D7A1C95FEE7E099822A1D57D59DA39E88</S>
+                </En>
+                <En>
+                  <S N="Key">StartQpc</S>
+                  <I64 N="Value">509073606</I64>
+                </En>
+                <En>
+                  <S N="Key">Paging</S>
+                  <B N="Value">false</B>
+                </En>
+                <En>
+                  <S N="Key">Length</S>
+                  <I32 N="Value">96</I32>
+                </En>
+                <En>
+                  <S N="Key">Offset</S>
+                  <I64 N="Value">64</I64>
+                </En>
+                <En>
+                  <S N="Key">NativeCode</S>
+                  <I32 N="Value">5</I32>
+                </En>
+              </DCT>
+            </Obj>
+          </LST>
+        </Obj>
+      </En>
+      <En>
+        <S N="Key">FlushCode</S>
+        <Nil N="Value" />
+      </En>
+      <En>
+        <S N="Key">Sequence</S>
+        <I32 N="Value">3</I32>
+      </En>
+      <En>
+        <S N="Key">Pid</S>
+        <I32 N="Value">5972</I32>
+      </En>
+      <En>
+        <S N="Key">StartQpc</S>
+        <I64 N="Value">509034269</I64>
+      </En>
+    </DCT>
+  </Obj>
+</Objs>

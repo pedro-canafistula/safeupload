@@ -1,0 +1,18 @@
+<Objs Version="1.1.0.1" xmlns="http://schemas.microsoft.com/powershell/2004/04">
+  <Obj RefId="0">
+    <TN RefId="0">
+      <T>System.Collections.Hashtable</T>
+      <T>System.Object</T>
+    </TN>
+    <DCT>
+      <En>
+        <S N="Key">Sequence</S>
+        <I32 N="Value">4</I32>
+      </En>
+      <En>
+        <S N="Key">Action</S>
+        <S N="Value">exit-worker</S>
+      </En>
+    </DCT>
+  </Obj>
+</Objs>

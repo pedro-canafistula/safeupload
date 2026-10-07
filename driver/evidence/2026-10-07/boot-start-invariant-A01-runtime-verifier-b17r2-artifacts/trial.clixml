@@ -1,0 +1,3253 @@
+<Objs Version="1.1.0.1" xmlns="http://schemas.microsoft.com/powershell/2004/04">
+  <Obj RefId="0">
+    <TN RefId="0">
+      <T>System.Collections.Specialized.OrderedDictionary</T>
+      <T>System.Object</T>
+    </TN>
+    <DCT>
+      <En>
+        <S N="Key">Errors</S>
+        <Obj N="Value" RefId="1">
+          <TN RefId="1">
+            <T>System.Object[]</T>
+            <T>System.Array</T>
+            <T>System.Object</T>
+          </TN>
+          <LST>
+            <Obj RefId="2">
+              <TN RefId="2">
+                <T>System.Management.Automation.PSCustomObject</T>
+                <T>System.Object</T>
+              </TN>
+              <MS>
+                <S N="Type">System.Management.Automation.RuntimeException</S>
+                <S N="Message">Activation actor write-old failed: System.Management.Automation.RuntimeException: Old holder write failed: Win32 5</S>
+                <I32 N="HResult">-2146233087</I32>
+                <Nil N="NativeCode" />
+                <Nil N="Stack" />
+              </MS>
+            </Obj>
+            <Obj RefId="3">
+              <TNRef RefId="2" />
+              <MS>
+                <S N="Type">System.Management.Automation.RuntimeException</S>
+                <S N="Message">Task failed: SafeUpload-StagedTest-Writer-boot-start-invariant-A01-runtime-verifier-b17r2; LastTaskResult=5; _x000D__x000A_Name                           Value                                                                                   _x000D__x000A_----                           -----                                                                                   _x000D__x000A_Token                          380c01db1eb544b8b54f492368441703                                                        _x000D__x000A_BootId                         WIN10-DEBUGGED/2026-10-07T08:56:31.5000000Z                                             _x000D__x000A_Errors                         {}                                                                                      _x000D__x000A_Value                                                                                                                  _x000D__x000A_CompletedQpc                   513653868                                                                               _x000D__x000A_ExitCode                       5                                                                                       _x000D__x000A__x000D__x000A__x000D__x000A_</S>
+                <I32 N="HResult">-2146233087</I32>
+                <Nil N="NativeCode" />
+                <Nil N="Stack" />
+              </MS>
+            </Obj>
+          </LST>
+        </Obj>
+      </En>
+      <En>
+        <S N="Key">Assertions</S>
+        <Obj N="Value" RefId="4">
+          <TNRef RefId="1" />
+          <LST>
+            <Obj RefId="5">
+              <TNRef RefId="2" />
+              <MS>
+                <S N="Name">PFlushedAndRawCapturedBeforeEpoch</S>
+                <S N="Verdict">PASS</S>
+                <S N="Reason">Standard-user holder flushed P; independent raw extents matched the independently supplied P bytes before policy update.</S>
+                <Obj N="Evidence" RefId="6">
+                  <TN RefId="3">
+                    <T>System.Collections.Hashtable</T>
+                    <T>System.Object</T>
+                  </TN>
+                  <DCT>
+                    <En>
+                      <S N="Key">FileId</S>
+                      <S N="Value">B4730200000006000000000000000000</S>
+                    </En>
+                    <En>
+                      <S N="Key">NtPath</S>
+                      <S N="Value">\Device\HarddiskVolume3\SafeUploadInvariant-boot-start-invariant-A01-runtime-verifier-b17r2\marker.txt</S>
+                    </En>
+                    <En>
+                      <S N="Key">CaptureTime</S>
+                      <Obj N="Value" RefId="7">
+                        <TNRef RefId="0" />
+                        <DCT>
+                          <En>
+                            <S N="Key">Utc</S>
+                            <S N="Value">2026-10-07T08:57:15.8255243Z</S>
+                          </En>
+                          <En>
+                            <S N="Key">Qpc</S>
+                            <I64 N="Value">445392658</I64>
+                          </En>
+                          <En>
+                            <S N="Key">QpcFrequency</S>
+                            <I64 N="Value">10000000</I64>
+                          </En>
+                          <En>
+                            <S N="Key">BootId</S>
+                            <S N="Value">WIN10-DEBUGGED/2026-10-07T08:56:31.5000000Z</S>
+                          </En>
+                        </DCT>
+                      </Obj>
+                    </En>
+                    <En>
+                      <S N="Key">Length</S>
+                      <I64 N="Value">12288</I64>
+                    </En>
+                    <En>
+                      <S N="Key">DosPath</S>
+                      <S N="Value">C:\SafeUploadInvariant-boot-start-invariant-A01-runtime-verifier-b17r2\marker.txt</S>
+                    </En>
+                    <En>
+                      <S N="Key">Status</S>
+                      <S N="Value">OK</S>
+                    </En>
+                    <En>
+                      <S N="Key">Image</S>
+                      <Obj N="Value" RefId="8">
+                        <TN RefId="4">
+                          <T>StagedInvariant.StorageImage</T>
+                          <T>System.Management.Automation.PSCustomObject</T>
+                          <T>System.Object</T>
+                        </TN>
+                        <MS>
+                          <S N="Path">C:\SafeUploadInvariant-boot-start-invariant-A01-runtime-verifier-b17r2\marker.txt</S>
+                          <Obj N="Runs" RefId="9">
+                            <TNRef RefId="1" />
+                            <LST>
+                              <Obj RefId="10">
+                                <TN RefId="5">
+                                  <T>StagedInvariant.Run</T>
+                                  <T>System.Object</T>
+                                </TN>
+                                <ToString>StagedInvariant.Run</ToString>
+                                <Props>
+                                  <I64 N="Clusters">3</I64>
+                                  <I64 N="Vcn">0</I64>
+                                  <I64 N="NextVcn">3</I64>
+                                  <I64 N="Lcn">2987987</I64>
+                                </Props>
+                              </Obj>
+                            </LST>
+                          </Obj>
+                          <B N="Resident">false</B>
+                          <Obj N="LogicalArtifact" RefId="11">
+                            <TN RefId="6">
+                              <T>StagedInvariant.Artifact</T>
+                              <T>System.Management.Automation.PSCustomObject</T>
+                              <T>System.Object</T>
+                            </TN>
+                            <MS>
+                              <Obj N="Path" RefId="12">
+                                <S>C:\Users\vika\Documents\boot-start-invariant-A01-runtime-verifier-b17r2-artifacts\raw\logical-da388092c70a4c7ea3ad8dcd25bb7441.bin</S>
+                              </Obj>
+                              <I64 N="Length">12288</I64>
+                              <S N="Sha256">94124D3DD6FC2126FBAD1FD5056A85786002EEE1B00B84BD93B55736B03C3DB6</S>
+                              <S N="Kind">logical</S>
+                            </MS>
+                          </Obj>
+                          <S N="Sha256">94124D3DD6FC2126FBAD1FD5056A85786002EEE1B00B84BD93B55736B03C3DB6</S>
+                          <Obj N="Containers" RefId="13">
+                            <TNRef RefId="1" />
+                            <LST>
+                              <Obj RefId="14">
+                                <TNRef RefId="2" />
+                                <MS>
+                                  <I64 N="Offset">3385774080</I64>
+                                  <I64 N="Length">1024</I64>
+                                  <S N="Kind">MFT</S>
+                                  <Obj N="Artifact" RefId="15">
+                                    <TNRef RefId="6" />
+                                    <MS>
+                                      <Obj N="Path" RefId="16">
+                                        <S>C:\Users\vika\Documents\boot-start-invariant-A01-runtime-verifier-b17r2-artifacts\raw\MFT-e2513042df9644efa3b894417a0c25ed.bin</S>
+                                      </Obj>
+                                      <I64 N="Length">1024</I64>
+                                      <S N="Sha256">9032B7A1B347E128A369433EEA4A7A3F0BEE7112ADA83D6A3639EFA214D487F2</S>
+                                      <S N="Kind">MFT</S>
+                                    </MS>
+                                  </Obj>
+                                </MS>
+                              </Obj>
+                              <Obj RefId="17">
+                                <TNRef RefId="2" />
+                                <MS>
+                                  <I64 N="Offset">12238794752</I64>
+                                  <I64 N="Length">12288</I64>
+                                  <S N="Kind">DATA</S>
+                                  <Obj N="Artifact" RefId="18">
+                                    <TNRef RefId="6" />
+                                    <MS>
+                                      <Obj N="Path" RefId="19">
+                                        <S>C:\Users\vika\Documents\boot-start-invariant-A01-runtime-verifier-b17r2-artifacts\raw\DATA-6f1c8957224f49d58fa779ab26f9e628.bin</S>
+                                      </Obj>
+                                      <I64 N="Length">12288</I64>
+                                      <S N="Sha256">94124D3DD6FC2126FBAD1FD5056A85786002EEE1B00B84BD93B55736B03C3DB6</S>
+                                      <S N="Kind">DATA</S>
+                                    </MS>
+                                  </Obj>
+                                </MS>
+                              </Obj>
+                            </LST>
+                          </Obj>
+                          <I64 N="Length">12288</I64>
+                          <S N="Role">Current</S>
+                          <Obj N="CrossCheckErrors" RefId="20">
+                            <TNRef RefId="1" />
+                            <LST />
+                          </Obj>
+                          <Obj N="DirectoryEntries" RefId="21">
+                            <TNRef RefId="1" />
+                            <LST />
+                          </Obj>
+                          <Obj N="Identity" RefId="22">
+                            <TN RefId="7">
+                              <T>StagedInvariant.Identity</T>
+                              <T>System.Object</T>
+                            </TN>
+                            <ToString>StagedInvariant.Identity</ToString>
+                            <Props>
+                              <U64 N="VolumeSerial">5392606751128498047</U64>
+                              <U64 N="Reference">1688849860424628</U64>
+                              <S N="FileId">B4730200000006000000000000000000</S>
+                              <I64 N="Allocation">12288</I64>
+                              <I64 N="Eof">12288</I64>
+                              <I64 N="Creation">134358369726076262</I64>
+                              <I64 N="Modified">134358370330035222</I64>
+                              <I64 N="Changed">134358370330035222</I64>
+                              <I64 N="Accessed">134358370330035222</I64>
+                              <U32 N="Attributes">32</U32>
+                              <U32 N="Links">1</U32>
+                              <B N="Directory">false</B>
+                              <B N="DeletePending">false</B>
+                            </Props>
+                          </Obj>
+                          <Obj N="FileNames" RefId="23">
+                            <TNRef RefId="1" />
+                            <LST>
+                              <Obj RefId="24">
+                                <TN RefId="8">
+                                  <T>StagedInvariant.NameEntry</T>
+                                  <T>System.Object</T>
+                                </TN>
+                                <ToString>StagedInvariant.NameEntry</ToString>
+                                <Props>
+                                  <S N="Name">marker.txt</S>
+                                  <By N="Namespace">3</By>
+                                  <U64 N="Reference">1688849860424628</U64>
+                                  <U64 N="Parent">1688849860424618</U64>
+                                  <I64 N="Allocated">0</I64>
+                                  <I64 N="Eof">0</I64>
+                                  <U32 N="Attributes">32</U32>
+                                  <I64 N="Creation">134358369726076262</I64>
+                                  <I64 N="Modified">134358369726076262</I64>
+                                  <I64 N="Changed">134358369726076262</I64>
+                                  <I64 N="Accessed">134358369726076262</I64>
+                                </Props>
+                              </Obj>
+                            </LST>
+                          </Obj>
+                          <Obj N="Records" RefId="25">
+                            <TNRef RefId="1" />
+                            <LST>
+                              <Obj RefId="26">
+                                <TNRef RefId="2" />
+                                <MS>
+                                  <U32 N="Number">160692</U32>
+                                  <U16 N="Sequence">6</U16>
+                                  <U64 N="BaseReference">0</U64>
+                                  <S N="RawSha256">9032B7A1B347E128A369433EEA4A7A3F0BEE7112ADA83D6A3639EFA214D487F2</S>
+                                  <S N="FixedSha256">486992E819DEA3A1B449BD57C939520EE1F770F8BC7AFD0AB9A37393660DC18A</S>
+                                </MS>
+                              </Obj>
+                            </LST>
+                          </Obj>
+                          <Obj N="RawMetadata" RefId="27">
+                            <TNRef RefId="7" />
+                            <ToString>StagedInvariant.Identity</ToString>
+                            <Props>
+                              <U64 N="VolumeSerial">0</U64>
+                              <U64 N="Reference">0</U64>
+                              <Nil N="FileId" />
+                              <I64 N="Allocation">0</I64>
+                              <I64 N="Eof">0</I64>
+                              <I64 N="Creation">134358369726076262</I64>
+                              <I64 N="Modified">134358370330035222</I64>
+                              <I64 N="Changed">134358370330035222</I64>
+                              <I64 N="Accessed">134358370330035222</I64>
+                              <U32 N="Attributes">32</U32>
+                              <U32 N="Links">1</U32>
+                              <B N="Directory">false</B>
+                              <B N="DeletePending">false</B>
+                            </Props>
+                          </Obj>
+                          <U32 N="SecurityId">4471</U32>
+                          <S N="Sddl">O:BAG:S-1-5-21-316478115-1595729549-2803163825-513D:AI(A;ID;0x1301bf;;;S-1-5-21-316478115-1595729549-2803163825-1078)(A;ID;FA;;;BA)(A;ID;FA;;;SY)(A;ID;0x1200a9;;;BU)(A;ID;0x1301bf;;;AU)</S>
+                          <Obj N="Attributes" RefId="28">
+                            <TNRef RefId="1" />
+                            <LST>
+                              <Obj RefId="29">
+                                <TNRef RefId="2" />
+                                <MS>
+                                  <U32 N="Type">16</U32>
+                                  <U16 N="Id">0</U16>
+                                  <U16 N="Flags">0</U16>
+                                  <S N="Name"></S>
+                                  <U64 N="RecordReference">1688849860424628</U64>
+                                  <B N="NonResident">false</B>
+                                  <I64 N="StartVcn">0</I64>
+                                  <I64 N="LastVcn">0</I64>
+                                  <I64 N="Allocation">72</I64>
+                                  <I64 N="Eof">72</I64>
+                                  <I64 N="ValidData">72</I64>
+                                  <U16 N="CompressionUnit">0</U16>
+                                  <Obj N="Runs" RefId="30">
+                                    <TNRef RefId="1" />
+                                    <LST />
+                                  </Obj>
+                                </MS>
+                              </Obj>
+                              <Obj RefId="31">
+                                <TNRef RefId="2" />
+                                <MS>
+                                  <U32 N="Type">48</U32>
+                                  <U16 N="Id">2</U16>
+                                  <U16 N="Flags">0</U16>
+                                  <S N="Name"></S>
+                                  <U64 N="RecordReference">1688849860424628</U64>
+                                  <B N="NonResident">false</B>
+                                  <I64 N="StartVcn">0</I64>
+                                  <I64 N="LastVcn">0</I64>
+                                  <I64 N="Allocation">86</I64>
+                                  <I64 N="Eof">86</I64>
+                                  <I64 N="ValidData">86</I64>
+                                  <U16 N="CompressionUnit">0</U16>
+                                  <Obj N="Runs" RefId="32">
+                                    <TNRef RefId="1" />
+                                    <LST />
+                                  </Obj>
+                                </MS>
+                              </Obj>
+                              <Obj RefId="33">
+                                <TNRef RefId="2" />
+                                <MS>
+                                  <U32 N="Type">128</U32>
+                                  <U16 N="Id">3</U16>
+                                  <U16 N="Flags">0</U16>
+                                  <S N="Name"></S>
+                                  <U64 N="RecordReference">1688849860424628</U64>
+                                  <B N="NonResident">true</B>
+                                  <I64 N="StartVcn">0</I64>
+                                  <I64 N="LastVcn">2</I64>
+                                  <I64 N="Allocation">12288</I64>
+                                  <I64 N="Eof">12288</I64>
+                                  <I64 N="ValidData">12288</I64>
+                                  <U16 N="CompressionUnit">0</U16>
+                                  <Obj N="Runs" RefId="34">
+                                    <TNRef RefId="1" />
+                                    <LST>
+                                      <Ref RefId="10" />
+                                    </LST>
+                                  </Obj>
+                                </MS>
+                              </Obj>
+                            </LST>
+                          </Obj>
+                          <S N="Fingerprint">D82BE00A716C0771D84788A0F3936501F4FB4FD106C8B9BA143F1B0CD62A19E9</S>
+                          <B N="Absent">false</B>
+                        </MS>
+                      </Obj>
+                    </En>
+                    <En>
+                      <S N="Key">Sha256</S>
+                      <S N="Value">94124D3DD6FC2126FBAD1FD5056A85786002EEE1B00B84BD93B55736B03C3DB6</S>
+                    </En>
+                  </DCT>
+                </Obj>
+              </MS>
+            </Obj>
+            <Obj RefId="35">
+              <TNRef RefId="2" />
+              <MS>
+                <S N="Name">RuntimePendingUnionAndAdmissionEpoch</S>
+                <S N="Verdict">PASS</S>
+                <S N="Reason">Runtime SafeUploadAgent startup runs MinifilterInterceptor.TryPushPolicy and BootPolicyRegistryWriter.Apply (pending union, authenticated SET_POLICY, durable commit/clear, final SET_POLICY); require stable advanced policy/epoch generations, flags zero and no active callbacks.</S>
+                <Obj N="Evidence" RefId="36">
+                  <TNRef RefId="3" />
+                  <DCT>
+                    <En>
+                      <S N="Key">TimeoutReason</S>
+                      <S N="Value">Admission epoch did not advance to a stable quiescent snapshot within 45s.</S>
+                    </En>
+                    <En>
+                      <S N="Key">ServiceCreated</S>
+                      <B N="Value">true</B>
+                    </En>
+                    <En>
+                      <S N="Key">CandidatePath</S>
+                      <S N="Value">C:\SafeUploadInvariant-boot-start-invariant-A01-runtime-verifier-b17r2\marker.txt</S>
+                    </En>
+                    <En>
+                      <S N="Key">After</S>
+                      <Obj N="Value" RefId="37">
+                        <TNRef RefId="2" />
+                        <MS>
+                          <B N="admissionEpoch">true</B>
+                          <I32 N="policyGeneration">1</I32>
+                          <I32 N="epochGeneration">3</I32>
+                          <I32 N="activeCallbacks">0</I32>
+                          <I32 N="flags">0</I32>
+                          <I32 N="changeSequence">3</I32>
+                        </MS>
+                      </Obj>
+                    </En>
+                    <En>
+                      <S N="Key">Before</S>
+                      <Obj N="Value" RefId="38">
+                        <TNRef RefId="2" />
+                        <MS>
+                          <B N="admissionEpoch">true</B>
+                          <I32 N="policyGeneration">0</I32>
+                          <I32 N="epochGeneration">1</I32>
+                          <I32 N="activeCallbacks">0</I32>
+                          <I32 N="flags">0</I32>
+                          <I32 N="changeSequence">1</I32>
+                        </MS>
+                      </Obj>
+                    </En>
+                    <En>
+                      <S N="Key">ServicePid</S>
+                      <I32 N="Value">5276</I32>
+                    </En>
+                    <En>
+                      <S N="Key">Stable</S>
+                      <B N="Value">true</B>
+                    </En>
+                  </DCT>
+                </Obj>
+              </MS>
+            </Obj>
+            <Obj RefId="39">
+              <TNRef RefId="2" />
+              <MS>
+                <S N="Name">ServiceReadinessPendingWhileHolderLives</S>
+                <S N="Verdict">PASS</S>
+                <S N="Reason">Authenticated current StatusNotification from the LocalSystem product pipe reported Pending for the accepted destination policy generation while the pre-scope holder remained live.</S>
+                <Obj N="Evidence" RefId="40">
+                  <TNRef RefId="3" />
+                  <DCT>
+                    <En>
+                      <S N="Key">ServerPid</S>
+                      <U32 N="Value">5276</U32>
+                    </En>
+                    <En>
+                      <S N="Key">PolicyGeneration</S>
+                      <I32 N="Value">1</I32>
+                    </En>
+                    <En>
+                      <S N="Key">ServerSid</S>
+                      <S N="Value">S-1-5-18</S>
+                    </En>
+                    <En>
+                      <S N="Key">Reason</S>
+                      <S N="Value">WriterPromotionPending</S>
+                    </En>
+                    <En>
+                      <S N="Key">Coverage</S>
+                      <S N="Value">Pending</S>
+                    </En>
+                    <En>
+                      <S N="Key">Qpc</S>
+                      <I64 N="Value">476938477</I64>
+                    </En>
+                  </DCT>
+                </Obj>
+              </MS>
+            </Obj>
+            <Obj RefId="41">
+              <TNRef RefId="2" />
+              <MS>
+                <S N="Name">ExactActivatingWriterEvidence</S>
+                <S N="Verdict">PASS</S>
+                <S N="Reason">Exact-target Inspector point sample identifies the exact NT path, stable file ID, policy generation, Activating state, H&gt;0, and the standard-user actor opener PID._x000A_</S>
+                <Obj N="Evidence" RefId="42">
+                  <TNRef RefId="3" />
+                  <DCT>
+                    <En>
+                      <S N="Key">ExpectedNtPath</S>
+                      <S N="Value">\Device\HarddiskVolume3\SafeUploadInvariant-boot-start-invariant-A01-runtime-verifier-b17r2\marker.txt</S>
+                    </En>
+                    <En>
+                      <S N="Key">ExpectedFileId</S>
+                      <S N="Value">B4730200000006000000000000000000</S>
+                    </En>
+                    <En>
+                      <S N="Key">Snapshot</S>
+                      <Obj N="Value" RefId="43">
+                        <TNRef RefId="2" />
+                        <MS>
+                          <B N="activatingTarget">true</B>
+                          <S N="requestedPath">\Device\HarddiskVolume3\SafeUploadInvariant-boot-start-invariant-A01-runtime-verifier-b17r2\marker.txt</S>
+                          <I32 N="matchCount">1</I32>
+                          <I32 N="policyGeneration">1</I32>
+                          <I32 N="flags">0</I32>
+                          <I32 N="sequenceStart">17243</I32>
+                          <I32 N="sequenceEnd">17243</I32>
+                          <Obj N="entries" RefId="44">
+                            <TNRef RefId="1" />
+                            <LST>
+                              <Obj RefId="45">
+                                <TNRef RefId="2" />
+                                <MS>
+                                  <I32 N="generation">1</I32>
+                                  <S N="state">Activating</S>
+                                  <S N="volumeSerial">0x4AD66344D6632F7F</S>
+                                  <S N="fileId">B4730200000006000000000000000000</S>
+                                  <S N="path">\Device\HarddiskVolume3\SafeUploadInvariant-boot-start-invariant-A01-runtime-verifier-b17r2\marker.txt</S>
+                                  <I32 N="H">1</I32>
+                                  <S N="S">Unknown</S>
+                                  <I32 N="C">0</I32>
+                                  <I32 N="T">0</I32>
+                                  <I32 N="W">0</I32>
+                                  <S N="unknownReasons">0x00000000</S>
+                                  <S N="classificationStatus">0x00000000</S>
+                                  <S N="classificationStep">None</S>
+                                  <I32 N="classificationStepCode">0</I32>
+                                  <Obj N="openerPids" RefId="46">
+                                    <TNRef RefId="1" />
+                                    <LST>
+                                      <I32>5972</I32>
+                                    </LST>
+                                  </Obj>
+                                </MS>
+                              </Obj>
+                            </LST>
+                          </Obj>
+                        </MS>
+                      </Obj>
+                    </En>
+                    <En>
+                      <S N="Key">Entry</S>
+                      <Ref N="Value" RefId="45" />
+                    </En>
+                    <En>
+                      <S N="Key">ActorPid</S>
+                      <I32 N="Value">5972</I32>
+                    </En>
+                  </DCT>
+                </Obj>
+              </MS>
+            </Obj>
+            <Obj RefId="47">
+              <TNRef RefId="2" />
+              <MS>
+                <S N="Name">NewWritableOpenDenied</S>
+                <S N="Verdict">PASS</S>
+                <S N="Reason">Standard-user CreateFileW(GENERIC_WRITE, OPEN_EXISTING) returned Win32 5; contract D requires exact access denied 5.</S>
+                <Obj N="Evidence" RefId="48">
+                  <TN RefId="9">
+                    <T>Deserialized.System.Collections.Hashtable</T>
+                    <T>Deserialized.System.Object</T>
+                  </TN>
+                  <DCT>
+                    <En>
+                      <S N="Key">Calls</S>
+                      <Obj N="Value" RefId="49">
+                        <TN RefId="10">
+                          <T>Deserialized.System.Object[]</T>
+                          <T>Deserialized.System.Array</T>
+                          <T>Deserialized.System.Object</T>
+                        </TN>
+                        <LST />
+                      </Obj>
+                    </En>
+                    <En>
+                      <S N="Key">Action</S>
+                      <S N="Value">probe-new-writers</S>
+                    </En>
+                    <En>
+                      <S N="Key">SectionCode</S>
+                      <I32 N="Value">5</I32>
+                    </En>
+                    <En>
+                      <S N="Key">Pid</S>
+                      <I32 N="Value">5972</I32>
+                    </En>
+                    <En>
+                      <S N="Key">QpcFrequency</S>
+                      <I64 N="Value">10000000</I64>
+                    </En>
+                    <En>
+                      <S N="Key">OpenCode</S>
+                      <I32 N="Value">5</I32>
+                    </En>
+                    <En>
+                      <S N="Key">StartQpc</S>
+                      <I64 N="Value">487434999</I64>
+                    </En>
+                    <En>
+                      <S N="Key">FlushCode</S>
+                      <Nil N="Value" />
+                    </En>
+                    <En>
+                      <S N="Key">Sequence</S>
+                      <I32 N="Value">2</I32>
+                    </En>
+                    <En>
+                      <S N="Key">Error</S>
+                      <Nil N="Value" />
+                    </En>
+                    <En>
+                      <S N="Key">EndQpc</S>
+                      <I64 N="Value">487534824</I64>
+                    </En>
+                    <En>
+                      <S N="Key">BootId</S>
+                      <S N="Value">WIN10-DEBUGGED/2026-10-07T08:56:31.5000000Z</S>
+                    </En>
+                    <En>
+                      <S N="Key">NativeCode</S>
+                      <I32 N="Value">0</I32>
+                    </En>
+                    <En>
+                      <S N="Key">SectionSourceOpenCode</S>
+                      <I32 N="Value">0</I32>
+                    </En>
+                  </DCT>
+                </Obj>
+              </MS>
+            </Obj>
+            <Obj RefId="50">
+              <TNRef RefId="2" />
+              <MS>
+                <S N="Name">NewWritableSectionDenied</S>
+                <S N="Verdict">PASS</S>
+                <S N="Reason">The read-only source open succeeded, PAGE_READWRITE section creation returned exact Win32 access denied 5, and Inspector counters show the corresponding failed section-acquire callback._x000A_</S>
+                <Obj N="Evidence" RefId="51">
+                  <TNRef RefId="3" />
+                  <DCT>
+                    <En>
+                      <S N="Key">SectionInFlightInsertedDelta</S>
+                      <U64 N="Value">1</U64>
+                    </En>
+                    <En>
+                      <S N="Key">WriterStateBefore</S>
+                      <Obj N="Value" RefId="52">
+                        <TNRef RefId="2" />
+                        <MS>
+                          <B N="writerState">true</B>
+                          <B N="registryStatus">false</B>
+                          <I32 N="postCreateRuns">1534</I32>
+                          <I32 N="writeObjectsCounted">683</I32>
+                          <I32 N="writeObjectsReleased">451</I32>
+                          <I32 N="untrackedCreates">0</I32>
+                          <I32 N="cleanupUnmatched">0</I32>
+                          <I32 N="directoryCreatesSkipped">320</I32>
+                          <I32 N="cleanupDirectoriesSkipped">198</I32>
+                          <I32 N="sectionInFlightNow">0</I32>
+                          <I32 N="sectionInFlightInserted">34</I32>
+                          <I32 N="sectionInFlightReleased">34</I32>
+                          <I32 N="sectionInFlightStuck">0</I32>
+                          <I32 N="sectionInFlightRemovedOnFailure">0</I32>
+                          <I32 N="sectionInFlightMaxDepth">1</I32>
+                          <I32 N="pagingCreatesSkipped">5</I32>
+                          <I32 N="volumeCreatesSkipped">41</I32>
+                          <I32 N="writersDroppedAtTeardown">0</I32>
+                          <I32 N="writersDroppedWhileMounted">0</I32>
+                          <I32 N="instanceTeardownsDismount">28</I32>
+                          <I32 N="instanceTeardownsOther">0</I32>
+                          <I32 N="stageStreams">0</I32>
+                          <I32 N="stageFileObjects">0</I32>
+                          <I32 N="lastUnloadVeto">0</I32>
+                          <I32 N="lastUnloadStatus">0</I32>
+                          <I32 N="txfRefused">0</I32>
+                          <I32 N="registryEntries">222</I32>
+                          <I32 N="registryNameTierEntries">222</I32>
+                          <I32 N="registryCompactTierEntries">0</I32>
+                          <I32 N="registryReservations">0</I32>
+                          <I32 N="registryOverflow">0</I32>
+                          <S N="registryUnknownReasons">0x00000000</S>
+                          <I32 N="registryInstanceUnknown">0</I32>
+                          <I32 N="registryCapacity">4096</I32>
+                          <I32 N="transactionAssociations">0</I32>
+                          <I32 N="registryCapacityFailures">0</I32>
+                          <I32 N="registryAllocationFailures">0</I32>
+                          <I32 N="registryIdentityFailures">9</I32>
+                          <I32 N="registryTransactionFailures">0</I32>
+                          <I32 N="registryRenameFailures">0</I32>
+                          <I32 N="registryDroppedAtDismount">0</I32>
+                          <I32 N="registryDroppedWhileMounted">0</I32>
+                          <I32 N="registryPruned">957</I32>
+                          <I32 N="registryReclaimPasses">150057</I32>
+                        </MS>
+                      </Obj>
+                    </En>
+                    <En>
+                      <S N="Key">Probe</S>
+                      <Ref N="Value" RefId="48" />
+                    </En>
+                    <En>
+                      <S N="Key">SectionInFlightRemovedOnFailureDelta</S>
+                      <U64 N="Value">1</U64>
+                    </En>
+                    <En>
+                      <S N="Key">WriterStateAfter</S>
+                      <Obj N="Value" RefId="53">
+                        <TNRef RefId="2" />
+                        <MS>
+                          <B N="writerState">true</B>
+                          <B N="registryStatus">false</B>
+                          <I32 N="postCreateRuns">1540</I32>
+                          <I32 N="writeObjectsCounted">688</I32>
+                          <I32 N="writeObjectsReleased">456</I32>
+                          <I32 N="untrackedCreates">0</I32>
+                          <I32 N="cleanupUnmatched">0</I32>
+                          <I32 N="directoryCreatesSkipped">321</I32>
+                          <I32 N="cleanupDirectoriesSkipped">199</I32>
+                          <I32 N="sectionInFlightNow">0</I32>
+                          <I32 N="sectionInFlightInserted">35</I32>
+                          <I32 N="sectionInFlightReleased">34</I32>
+                          <I32 N="sectionInFlightStuck">0</I32>
+                          <I32 N="sectionInFlightRemovedOnFailure">1</I32>
+                          <I32 N="sectionInFlightMaxDepth">1</I32>
+                          <I32 N="pagingCreatesSkipped">5</I32>
+                          <I32 N="volumeCreatesSkipped">41</I32>
+                          <I32 N="writersDroppedAtTeardown">0</I32>
+                          <I32 N="writersDroppedWhileMounted">0</I32>
+                          <I32 N="instanceTeardownsDismount">28</I32>
+                          <I32 N="instanceTeardownsOther">0</I32>
+                          <I32 N="stageStreams">0</I32>
+                          <I32 N="stageFileObjects">0</I32>
+                          <I32 N="lastUnloadVeto">0</I32>
+                          <I32 N="lastUnloadStatus">0</I32>
+                          <I32 N="txfRefused">0</I32>
+                          <I32 N="registryEntries">222</I32>
+                          <I32 N="registryNameTierEntries">222</I32>
+                          <I32 N="registryCompactTierEntries">0</I32>
+                          <I32 N="registryReservations">0</I32>
+                          <I32 N="registryOverflow">0</I32>
+                          <S N="registryUnknownReasons">0x00000000</S>
+                          <I32 N="registryInstanceUnknown">0</I32>
+                          <I32 N="registryCapacity">4096</I32>
+                          <I32 N="transactionAssociations">0</I32>
+                          <I32 N="registryCapacityFailures">0</I32>
+                          <I32 N="registryAllocationFailures">0</I32>
+                          <I32 N="registryIdentityFailures">9</I32>
+                          <I32 N="registryTransactionFailures">0</I32>
+                          <I32 N="registryRenameFailures">0</I32>
+                          <I32 N="registryDroppedAtDismount">0</I32>
+                          <I32 N="registryDroppedWhileMounted">0</I32>
+                          <I32 N="registryPruned">962</I32>
+                          <I32 N="registryReclaimPasses">150661</I32>
+                        </MS>
+                      </Obj>
+                    </En>
+                  </DCT>
+                </Obj>
+              </MS>
+            </Obj>
+            <Obj RefId="54">
+              <TNRef RefId="2" />
+              <MS>
+                <S N="Name">NewWritableSectionAdmissionCallback</S>
+                <S N="Verdict">PASS</S>
+                <S N="Reason">Inspector section-acquire counters show exactly one acquire slot inserted and removed on the failed PAGE_READWRITE section request.</S>
+                <Obj N="Evidence" RefId="55">
+                  <TNRef RefId="3" />
+                  <DCT>
+                    <En>
+                      <S N="Key">SectionInFlightInsertedDelta</S>
+                      <U64 N="Value">1</U64>
+                    </En>
+                    <En>
+                      <S N="Key">SourceOpenCode</S>
+                      <I32 N="Value">0</I32>
+                    </En>
+                    <En>
+                      <S N="Key">SectionInFlightRemovedOnFailureDelta</S>
+                      <U64 N="Value">1</U64>
+                    </En>
+                    <En>
+                      <S N="Key">SectionCode</S>
+                      <I32 N="Value">5</I32>
+                    </En>
+                  </DCT>
+                </Obj>
+              </MS>
+            </Obj>
+            <Obj RefId="56">
+              <TNRef RefId="2" />
+              <MS>
+                <S N="Name">ActivationObservationCompleted</S>
+                <S N="Verdict">INCONCLUSIVE</S>
+                <S N="Reason">A case stopped at the first missing/invalid bounded observation: Activation actor write-old failed: System.Management.Automation.RuntimeException: Old holder write failed: Win32 5</S>
+              </MS>
+            </Obj>
+            <Obj RefId="57">
+              <TNRef RefId="2" />
+              <MS>
+                <S N="Name">ActorCleanup</S>
+                <S N="Verdict">INCONCLUSIVE</S>
+                <S N="Reason">Could not prove the activation actor exited and released all handles: Task failed: SafeUpload-StagedTest-Writer-boot-start-invariant-A01-runtime-verifier-b17r2; LastTaskResult=5; _x000D__x000A_Name                           Value                                                                                   _x000D__x000A_----                           -----                                                                                   _x000D__x000A_Token                          380c01db1eb544b8b54f492368441703                                                        _x000D__x000A_BootId                         WIN10-DEBUGGED/2026-10-07T08:56:31.5000000Z                                             _x000D__x000A_Errors                         {}                                                                                      _x000D__x000A_Value                                                                                                                  _x000D__x000A_CompletedQpc                   513653868                                                                               _x000D__x000A_ExitCode                       5                                                                                       _x000D__x000A__x000D__x000A__x000D__x000A_</S>
+              </MS>
+            </Obj>
+            <Obj RefId="58">
+              <TNRef RefId="2" />
+              <MS>
+                <S N="Name">LiveTaintFlags</S>
+                <S N="Verdict">INCONCLUSIVE</S>
+                <S N="Reason">No promotion/readback was available to verify current live TEST_DISABLE_TAINT flags.</S>
+              </MS>
+            </Obj>
+            <Obj RefId="59">
+              <TNRef RefId="2" />
+              <MS>
+                <S N="Name">NeverReadyWholeHolderInterval</S>
+                <S N="Verdict">INCONCLUSIVE</S>
+                <S N="Reason">No authenticated, loss-detecting per-file readiness event stream covers the holder interval.</S>
+              </MS>
+            </Obj>
+          </LST>
+        </Obj>
+      </En>
+      <En>
+        <S N="Key">Samples</S>
+        <Obj N="Value" RefId="60">
+          <TNRef RefId="1" />
+          <LST>
+            <Obj RefId="61">
+              <TN RefId="11">
+                <T>StagedInvariant.Sample</T>
+                <T>System.Management.Automation.PSCustomObject</T>
+                <T>System.Object</T>
+              </TN>
+              <MS>
+                <Obj N="Attempts" RefId="62">
+                  <TNRef RefId="1" />
+                  <LST>
+                    <Obj RefId="63">
+                      <TNRef RefId="2" />
+                      <MS>
+                        <I32 N="Attempt">1</I32>
+                        <I64 N="StartQpc">447576016</I64>
+                        <I64 N="EndQpc">449030939</I64>
+                        <S N="Status">OK</S>
+                        <Nil N="Error" />
+                      </MS>
+                    </Obj>
+                  </LST>
+                </Obj>
+                <Nil N="CadenceMs" />
+                <S N="CaseId">A01</S>
+                <Nil N="Error" />
+                <S N="Phase">PBeforeRuntimePolicyUpdate</S>
+                <I64 N="Sequence">1</I64>
+                <S N="Status">OK</S>
+                <Nil N="GapMs" />
+                <Obj N="End" RefId="64">
+                  <TNRef RefId="0" />
+                  <DCT>
+                    <En>
+                      <S N="Key">Utc</S>
+                      <S N="Value">2026-10-07T08:57:16.1915240Z</S>
+                    </En>
+                    <En>
+                      <S N="Key">Qpc</S>
+                      <I64 N="Value">449058430</I64>
+                    </En>
+                    <En>
+                      <S N="Key">QpcFrequency</S>
+                      <I64 N="Value">10000000</I64>
+                    </En>
+                    <En>
+                      <S N="Key">BootId</S>
+                      <S N="Value">WIN10-DEBUGGED/2026-10-07T08:56:31.5000000Z</S>
+                    </En>
+                  </DCT>
+                </Obj>
+                <Db N="DurationMs">157.81550000000001</Db>
+                <I64 N="OperationSequence">1</I64>
+                <Obj N="Images" RefId="65">
+                  <TNRef RefId="1" />
+                  <LST>
+                    <Obj RefId="66">
+                      <TNRef RefId="4" />
+                      <MS>
+                        <S N="Path">C:\SafeUploadInvariant-boot-start-invariant-A01-runtime-verifier-b17r2</S>
+                        <Obj N="Runs" RefId="67">
+                          <TNRef RefId="1" />
+                          <LST />
+                        </Obj>
+                        <B N="Resident">true</B>
+                        <Obj N="LogicalArtifact" RefId="68">
+                          <TNRef RefId="6" />
+                          <MS>
+                            <Obj N="Path" RefId="69">
+                              <S>C:\Users\vika\Documents\boot-start-invariant-A01-runtime-verifier-b17r2-artifacts\raw\logical-0d3331043c97463b9cc5ff86d117f1cb.bin</S>
+                            </Obj>
+                            <I64 N="Length">0</I64>
+                            <S N="Sha256">E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855</S>
+                            <S N="Kind">logical</S>
+                          </MS>
+                        </Obj>
+                        <S N="Sha256">E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855</S>
+                        <Obj N="Containers" RefId="70">
+                          <TNRef RefId="1" />
+                          <LST>
+                            <Obj RefId="71">
+                              <TNRef RefId="2" />
+                              <MS>
+                                <I64 N="Offset">3385763840</I64>
+                                <I64 N="Length">1024</I64>
+                                <S N="Kind">MFT</S>
+                                <Obj N="Artifact" RefId="72">
+                                  <TNRef RefId="6" />
+                                  <MS>
+                                    <Obj N="Path" RefId="73">
+                                      <S>C:\Users\vika\Documents\boot-start-invariant-A01-runtime-verifier-b17r2-artifacts\raw\MFT-d318599ff7424023ab52a82d04fdafc1.bin</S>
+                                    </Obj>
+                                    <I64 N="Length">1024</I64>
+                                    <S N="Sha256">51AADB8BBBF193AB1448EBCB783F8400764E95F675410DBA7B07CFDAB33275D3</S>
+                                    <S N="Kind">MFT</S>
+                                  </MS>
+                                </Obj>
+                              </MS>
+                            </Obj>
+                          </LST>
+                        </Obj>
+                        <I64 N="Length">0</I64>
+                        <S N="Role">Parent</S>
+                        <Obj N="CrossCheckErrors" RefId="74">
+                          <TNRef RefId="1" />
+                          <LST />
+                        </Obj>
+                        <Obj N="DirectoryEntries" RefId="75">
+                          <TNRef RefId="1" />
+                          <LST>
+                            <Obj RefId="76">
+                              <TNRef RefId="8" />
+                              <ToString>StagedInvariant.NameEntry</ToString>
+                              <Props>
+                                <S N="Name">marker.txt</S>
+                                <By N="Namespace">3</By>
+                                <U64 N="Reference">1688849860424628</U64>
+                                <U64 N="Parent">1688849860424618</U64>
+                                <I64 N="Allocated">12288</I64>
+                                <I64 N="Eof">12288</I64>
+                                <U32 N="Attributes">32</U32>
+                                <I64 N="Creation">134358369726076262</I64>
+                                <I64 N="Modified">134358370330035222</I64>
+                                <I64 N="Changed">134358370330035222</I64>
+                                <I64 N="Accessed">134358370330035222</I64>
+                              </Props>
+                            </Obj>
+                          </LST>
+                        </Obj>
+                        <Obj N="Identity" RefId="77">
+                          <TNRef RefId="7" />
+                          <ToString>StagedInvariant.Identity</ToString>
+                          <Props>
+                            <U64 N="VolumeSerial">5392606751128498047</U64>
+                            <U64 N="Reference">1688849860424618</U64>
+                            <S N="FileId">AA730200000006000000000000000000</S>
+                            <I64 N="Allocation">0</I64>
+                            <I64 N="Eof">0</I64>
+                            <I64 N="Creation">134358369714536259</I64>
+                            <I64 N="Modified">134358369726076262</I64>
+                            <I64 N="Changed">134358369726076262</I64>
+                            <I64 N="Accessed">134358370360495217</I64>
+                            <U32 N="Attributes">16</U32>
+                            <U32 N="Links">1</U32>
+                            <B N="Directory">true</B>
+                            <B N="DeletePending">false</B>
+                          </Props>
+                        </Obj>
+                        <Obj N="FileNames" RefId="78">
+                          <TNRef RefId="1" />
+                          <LST>
+                            <Obj RefId="79">
+                              <TNRef RefId="8" />
+                              <ToString>StagedInvariant.NameEntry</ToString>
+                              <Props>
+                                <S N="Name">SAB5D6~1</S>
+                                <By N="Namespace">2</By>
+                                <U64 N="Reference">1688849860424618</U64>
+                                <U64 N="Parent">1407374883553285</U64>
+                                <I64 N="Allocated">0</I64>
+                                <I64 N="Eof">0</I64>
+                                <U32 N="Attributes">268435456</U32>
+                                <I64 N="Creation">134358369714536259</I64>
+                                <I64 N="Modified">134358369714536259</I64>
+                                <I64 N="Changed">134358369714536259</I64>
+                                <I64 N="Accessed">134358369714536259</I64>
+                              </Props>
+                            </Obj>
+                            <Obj RefId="80">
+                              <TNRef RefId="8" />
+                              <ToString>StagedInvariant.NameEntry</ToString>
+                              <Props>
+                                <S N="Name">SafeUploadInvariant-boot-start-invariant-A01-runtime-verifier-b17r2</S>
+                                <By N="Namespace">1</By>
+                                <U64 N="Reference">1688849860424618</U64>
+                                <U64 N="Parent">1407374883553285</U64>
+                                <I64 N="Allocated">0</I64>
+                                <I64 N="Eof">0</I64>
+                                <U32 N="Attributes">268435456</U32>
+                                <I64 N="Creation">134358369714536259</I64>
+                                <I64 N="Modified">134358369714536259</I64>
+                                <I64 N="Changed">134358369714536259</I64>
+                                <I64 N="Accessed">134358369714536259</I64>
+                              </Props>
+                            </Obj>
+                          </LST>
+                        </Obj>
+                        <Obj N="Records" RefId="81">
+                          <TNRef RefId="1" />
+                          <LST>
+                            <Obj RefId="82">
+                              <TNRef RefId="2" />
+                              <MS>
+                                <U32 N="Number">160682</U32>
+                                <U16 N="Sequence">6</U16>
+                                <U64 N="BaseReference">0</U64>
+                                <S N="RawSha256">51AADB8BBBF193AB1448EBCB783F8400764E95F675410DBA7B07CFDAB33275D3</S>
+                                <S N="FixedSha256">4BAA5B7E70EB46BE08D8EB52FF0A17F42FA80295F182307C695C003A56CF110D</S>
+                              </MS>
+                            </Obj>
+                          </LST>
+                        </Obj>
+                        <Obj N="RawMetadata" RefId="83">
+                          <TNRef RefId="7" />
+                          <ToString>StagedInvariant.Identity</ToString>
+                          <Props>
+                            <U64 N="VolumeSerial">0</U64>
+                            <U64 N="Reference">0</U64>
+                            <Nil N="FileId" />
+                            <I64 N="Allocation">0</I64>
+                            <I64 N="Eof">0</I64>
+                            <I64 N="Creation">134358369714536259</I64>
+                            <I64 N="Modified">134358369726076262</I64>
+                            <I64 N="Changed">134358369726076262</I64>
+                            <I64 N="Accessed">134358370330015278</I64>
+                            <U32 N="Attributes">16</U32>
+                            <U32 N="Links">1</U32>
+                            <B N="Directory">false</B>
+                            <B N="DeletePending">false</B>
+                          </Props>
+                        </Obj>
+                        <U32 N="SecurityId">4470</U32>
+                        <S N="Sddl">O:BAG:S-1-5-21-316478115-1595729549-2803163825-513D:AI(A;OICI;0x1301bf;;;S-1-5-21-316478115-1595729549-2803163825-1078)(A;OICIID;FA;;;BA)(A;OICIID;FA;;;SY)(A;OICIID;0x1200a9;;;BU)(A;ID;0x1301bf;;;AU)(A;OICIIOID;SDGXGWGR;;;AU)</S>
+                        <Obj N="Attributes" RefId="84">
+                          <TNRef RefId="1" />
+                          <LST>
+                            <Obj RefId="85">
+                              <TNRef RefId="2" />
+                              <MS>
+                                <U32 N="Type">16</U32>
+                                <U16 N="Id">0</U16>
+                                <U16 N="Flags">0</U16>
+                                <S N="Name"></S>
+                                <U64 N="RecordReference">1688849860424618</U64>
+                                <B N="NonResident">false</B>
+                                <I64 N="StartVcn">0</I64>
+                                <I64 N="LastVcn">0</I64>
+                                <I64 N="Allocation">72</I64>
+                                <I64 N="Eof">72</I64>
+                                <I64 N="ValidData">72</I64>
+                                <U16 N="CompressionUnit">0</U16>
+                                <Obj N="Runs" RefId="86">
+                                  <TNRef RefId="1" />
+                                  <LST />
+                                </Obj>
+                              </MS>
+                            </Obj>
+                            <Obj RefId="87">
+                              <TNRef RefId="2" />
+                              <MS>
+                                <U32 N="Type">48</U32>
+                                <U16 N="Id">3</U16>
+                                <U16 N="Flags">0</U16>
+                                <S N="Name"></S>
+                                <U64 N="RecordReference">1688849860424618</U64>
+                                <B N="NonResident">false</B>
+                                <I64 N="StartVcn">0</I64>
+                                <I64 N="LastVcn">0</I64>
+                                <I64 N="Allocation">82</I64>
+                                <I64 N="Eof">82</I64>
+                                <I64 N="ValidData">82</I64>
+                                <U16 N="CompressionUnit">0</U16>
+                                <Obj N="Runs" RefId="88">
+                                  <TNRef RefId="1" />
+                                  <LST />
+                                </Obj>
+                              </MS>
+                            </Obj>
+                            <Obj RefId="89">
+                              <TNRef RefId="2" />
+                              <MS>
+                                <U32 N="Type">48</U32>
+                                <U16 N="Id">2</U16>
+                                <U16 N="Flags">0</U16>
+                                <S N="Name"></S>
+                                <U64 N="RecordReference">1688849860424618</U64>
+                                <B N="NonResident">false</B>
+                                <I64 N="StartVcn">0</I64>
+                                <I64 N="LastVcn">0</I64>
+                                <I64 N="Allocation">200</I64>
+                                <I64 N="Eof">200</I64>
+                                <I64 N="ValidData">200</I64>
+                                <U16 N="CompressionUnit">0</U16>
+                                <Obj N="Runs" RefId="90">
+                                  <TNRef RefId="1" />
+                                  <LST />
+                                </Obj>
+                              </MS>
+                            </Obj>
+                            <Obj RefId="91">
+                              <TNRef RefId="2" />
+                              <MS>
+                                <U32 N="Type">144</U32>
+                                <U16 N="Id">1</U16>
+                                <U16 N="Flags">0</U16>
+                                <S N="Name">$I30</S>
+                                <U64 N="RecordReference">1688849860424618</U64>
+                                <B N="NonResident">false</B>
+                                <I64 N="StartVcn">0</I64>
+                                <I64 N="LastVcn">0</I64>
+                                <I64 N="Allocation">152</I64>
+                                <I64 N="Eof">152</I64>
+                                <I64 N="ValidData">152</I64>
+                                <U16 N="CompressionUnit">0</U16>
+                                <Obj N="Runs" RefId="92">
+                                  <TNRef RefId="1" />
+                                  <LST />
+                                </Obj>
+                              </MS>
+                            </Obj>
+                          </LST>
+                        </Obj>
+                        <S N="Fingerprint">48B3C8E82AEA4CFBF35263E3C686AC39B9946BEDFECE700BAD85B70AC5A97E13</S>
+                      </MS>
+                    </Obj>
+                    <Obj RefId="93">
+                      <TNRef RefId="4" />
+                      <MS>
+                        <S N="Path">C:\SafeUploadInvariant-boot-start-invariant-A01-runtime-verifier-b17r2\marker.txt</S>
+                        <Obj N="Runs" RefId="94">
+                          <TNRef RefId="1" />
+                          <LST>
+                            <Obj RefId="95">
+                              <TNRef RefId="5" />
+                              <ToString>StagedInvariant.Run</ToString>
+                              <Props>
+                                <I64 N="Clusters">3</I64>
+                                <I64 N="Vcn">0</I64>
+                                <I64 N="NextVcn">3</I64>
+                                <I64 N="Lcn">2987987</I64>
+                              </Props>
+                            </Obj>
+                          </LST>
+                        </Obj>
+                        <B N="Resident">false</B>
+                        <Obj N="LogicalArtifact" RefId="96">
+                          <TNRef RefId="6" />
+                          <MS>
+                            <Obj N="Path" RefId="97">
+                              <S>C:\Users\vika\Documents\boot-start-invariant-A01-runtime-verifier-b17r2-artifacts\raw\logical-587eae2c669a4d1f936aa7516fa4e0af.bin</S>
+                            </Obj>
+                            <I64 N="Length">12288</I64>
+                            <S N="Sha256">94124D3DD6FC2126FBAD1FD5056A85786002EEE1B00B84BD93B55736B03C3DB6</S>
+                            <S N="Kind">logical</S>
+                          </MS>
+                        </Obj>
+                        <S N="Sha256">94124D3DD6FC2126FBAD1FD5056A85786002EEE1B00B84BD93B55736B03C3DB6</S>
+                        <Obj N="Containers" RefId="98">
+                          <TNRef RefId="1" />
+                          <LST>
+                            <Obj RefId="99">
+                              <TNRef RefId="2" />
+                              <MS>
+                                <I64 N="Offset">3385774080</I64>
+                                <I64 N="Length">1024</I64>
+                                <S N="Kind">MFT</S>
+                                <Obj N="Artifact" RefId="100">
+                                  <TNRef RefId="6" />
+                                  <MS>
+                                    <Obj N="Path" RefId="101">
+                                      <S>C:\Users\vika\Documents\boot-start-invariant-A01-runtime-verifier-b17r2-artifacts\raw\MFT-86dab01deb4a40d19517dc18685509c9.bin</S>
+                                    </Obj>
+                                    <I64 N="Length">1024</I64>
+                                    <S N="Sha256">9032B7A1B347E128A369433EEA4A7A3F0BEE7112ADA83D6A3639EFA214D487F2</S>
+                                    <S N="Kind">MFT</S>
+                                  </MS>
+                                </Obj>
+                              </MS>
+                            </Obj>
+                            <Obj RefId="102">
+                              <TNRef RefId="2" />
+                              <MS>
+                                <I64 N="Offset">12238794752</I64>
+                                <I64 N="Length">12288</I64>
+                                <S N="Kind">DATA</S>
+                                <Obj N="Artifact" RefId="103">
+                                  <TNRef RefId="6" />
+                                  <MS>
+                                    <Obj N="Path" RefId="104">
+                                      <S>C:\Users\vika\Documents\boot-start-invariant-A01-runtime-verifier-b17r2-artifacts\raw\DATA-cc0acdf0ac774031afc9830367cab2ee.bin</S>
+                                    </Obj>
+                                    <I64 N="Length">12288</I64>
+                                    <S N="Sha256">94124D3DD6FC2126FBAD1FD5056A85786002EEE1B00B84BD93B55736B03C3DB6</S>
+                                    <S N="Kind">DATA</S>
+                                  </MS>
+                                </Obj>
+                              </MS>
+                            </Obj>
+                          </LST>
+                        </Obj>
+                        <I64 N="Length">12288</I64>
+                        <S N="Role">Current</S>
+                        <Obj N="CrossCheckErrors" RefId="105">
+                          <TNRef RefId="1" />
+                          <LST />
+                        </Obj>
+                        <Obj N="DirectoryEntries" RefId="106">
+                          <TNRef RefId="1" />
+                          <LST />
+                        </Obj>
+                        <Obj N="Identity" RefId="107">
+                          <TNRef RefId="7" />
+                          <ToString>StagedInvariant.Identity</ToString>
+                          <Props>
+                            <U64 N="VolumeSerial">5392606751128498047</U64>
+                            <U64 N="Reference">1688849860424628</U64>
+                            <S N="FileId">B4730200000006000000000000000000</S>
+                            <I64 N="Allocation">12288</I64>
+                            <I64 N="Eof">12288</I64>
+                            <I64 N="Creation">134358369726076262</I64>
+                            <I64 N="Modified">134358370330035222</I64>
+                            <I64 N="Changed">134358370330035222</I64>
+                            <I64 N="Accessed">134358370357655235</I64>
+                            <U32 N="Attributes">32</U32>
+                            <U32 N="Links">1</U32>
+                            <B N="Directory">false</B>
+                            <B N="DeletePending">false</B>
+                          </Props>
+                        </Obj>
+                        <Obj N="FileNames" RefId="108">
+                          <TNRef RefId="1" />
+                          <LST>
+                            <Obj RefId="109">
+                              <TNRef RefId="8" />
+                              <ToString>StagedInvariant.NameEntry</ToString>
+                              <Props>
+                                <S N="Name">marker.txt</S>
+                                <By N="Namespace">3</By>
+                                <U64 N="Reference">1688849860424628</U64>
+                                <U64 N="Parent">1688849860424618</U64>
+                                <I64 N="Allocated">0</I64>
+                                <I64 N="Eof">0</I64>
+                                <U32 N="Attributes">32</U32>
+                                <I64 N="Creation">134358369726076262</I64>
+                                <I64 N="Modified">134358369726076262</I64>
+                                <I64 N="Changed">134358369726076262</I64>
+                                <I64 N="Accessed">134358369726076262</I64>
+                              </Props>
+                            </Obj>
+                          </LST>
+                        </Obj>
+                        <Obj N="Records" RefId="110">
+                          <TNRef RefId="1" />
+                          <LST>
+                            <Obj RefId="111">
+                              <TNRef RefId="2" />
+                              <MS>
+                                <U32 N="Number">160692</U32>
+                                <U16 N="Sequence">6</U16>
+                                <U64 N="BaseReference">0</U64>
+                                <S N="RawSha256">9032B7A1B347E128A369433EEA4A7A3F0BEE7112ADA83D6A3639EFA214D487F2</S>
+                                <S N="FixedSha256">486992E819DEA3A1B449BD57C939520EE1F770F8BC7AFD0AB9A37393660DC18A</S>
+                              </MS>
+                            </Obj>
+                          </LST>
+                        </Obj>
+                        <Obj N="RawMetadata" RefId="112">
+                          <TNRef RefId="7" />
+                          <ToString>StagedInvariant.Identity</ToString>
+                          <Props>
+                            <U64 N="VolumeSerial">0</U64>
+                            <U64 N="Reference">0</U64>
+                            <Nil N="FileId" />
+                            <I64 N="Allocation">0</I64>
+                            <I64 N="Eof">0</I64>
+                            <I64 N="Creation">134358369726076262</I64>
+                            <I64 N="Modified">134358370330035222</I64>
+                            <I64 N="Changed">134358370330035222</I64>
+                            <I64 N="Accessed">134358370330035222</I64>
+                            <U32 N="Attributes">32</U32>
+                            <U32 N="Links">1</U32>
+                            <B N="Directory">false</B>
+                            <B N="DeletePending">false</B>
+                          </Props>
+                        </Obj>
+                        <U32 N="SecurityId">4471</U32>
+                        <S N="Sddl">O:BAG:S-1-5-21-316478115-1595729549-2803163825-513D:AI(A;ID;0x1301bf;;;S-1-5-21-316478115-1595729549-2803163825-1078)(A;ID;FA;;;BA)(A;ID;FA;;;SY)(A;ID;0x1200a9;;;BU)(A;ID;0x1301bf;;;AU)</S>
+                        <Obj N="Attributes" RefId="113">
+                          <TNRef RefId="1" />
+                          <LST>
+                            <Obj RefId="114">
+                              <TNRef RefId="2" />
+                              <MS>
+                                <U32 N="Type">16</U32>
+                                <U16 N="Id">0</U16>
+                                <U16 N="Flags">0</U16>
+                                <S N="Name"></S>
+                                <U64 N="RecordReference">1688849860424628</U64>
+                                <B N="NonResident">false</B>
+                                <I64 N="StartVcn">0</I64>
+                                <I64 N="LastVcn">0</I64>
+                                <I64 N="Allocation">72</I64>
+                                <I64 N="Eof">72</I64>
+                                <I64 N="ValidData">72</I64>
+                                <U16 N="CompressionUnit">0</U16>
+                                <Obj N="Runs" RefId="115">
+                                  <TNRef RefId="1" />
+                                  <LST />
+                                </Obj>
+                              </MS>
+                            </Obj>
+                            <Obj RefId="116">
+                              <TNRef RefId="2" />
+                              <MS>
+                                <U32 N="Type">48</U32>
+                                <U16 N="Id">2</U16>
+                                <U16 N="Flags">0</U16>
+                                <S N="Name"></S>
+                                <U64 N="RecordReference">1688849860424628</U64>
+                                <B N="NonResident">false</B>
+                                <I64 N="StartVcn">0</I64>
+                                <I64 N="LastVcn">0</I64>
+                                <I64 N="Allocation">86</I64>
+                                <I64 N="Eof">86</I64>
+                                <I64 N="ValidData">86</I64>
+                                <U16 N="CompressionUnit">0</U16>
+                                <Obj N="Runs" RefId="117">
+                                  <TNRef RefId="1" />
+                                  <LST />
+                                </Obj>
+                              </MS>
+                            </Obj>
+                            <Obj RefId="118">
+                              <TNRef RefId="2" />
+                              <MS>
+                                <U32 N="Type">128</U32>
+                                <U16 N="Id">3</U16>
+                                <U16 N="Flags">0</U16>
+                                <S N="Name"></S>
+                                <U64 N="RecordReference">1688849860424628</U64>
+                                <B N="NonResident">true</B>
+                                <I64 N="StartVcn">0</I64>
+                                <I64 N="LastVcn">2</I64>
+                                <I64 N="Allocation">12288</I64>
+                                <I64 N="Eof">12288</I64>
+                                <I64 N="ValidData">12288</I64>
+                                <U16 N="CompressionUnit">0</U16>
+                                <Obj N="Runs" RefId="119">
+                                  <TNRef RefId="1" />
+                                  <LST>
+                                    <Ref RefId="95" />
+                                  </LST>
+                                </Obj>
+                              </MS>
+                            </Obj>
+                          </LST>
+                        </Obj>
+                        <S N="Fingerprint">D82BE00A716C0771D84788A0F3936501F4FB4FD106C8B9BA143F1B0CD62A19E9</S>
+                        <B N="Absent">false</B>
+                      </MS>
+                    </Obj>
+                    <Obj RefId="120">
+                      <TNRef RefId="4" />
+                      <MS>
+                        <S N="Path"></S>
+                        <Obj N="Runs" RefId="121">
+                          <TNRef RefId="1" />
+                          <LST>
+                            <Obj RefId="122">
+                              <TNRef RefId="5" />
+                              <ToString>StagedInvariant.Run</ToString>
+                              <Props>
+                                <I64 N="Clusters">3</I64>
+                                <I64 N="Vcn">0</I64>
+                                <I64 N="NextVcn">3</I64>
+                                <I64 N="Lcn">2987987</I64>
+                              </Props>
+                            </Obj>
+                          </LST>
+                        </Obj>
+                        <B N="Resident">false</B>
+                        <Obj N="LogicalArtifact" RefId="123">
+                          <TNRef RefId="6" />
+                          <MS>
+                            <Obj N="Path" RefId="124">
+                              <S>C:\Users\vika\Documents\boot-start-invariant-A01-runtime-verifier-b17r2-artifacts\raw\logical-24927cb4b5aa43f582d00be7359f6b17.bin</S>
+                            </Obj>
+                            <I64 N="Length">12288</I64>
+                            <S N="Sha256">94124D3DD6FC2126FBAD1FD5056A85786002EEE1B00B84BD93B55736B03C3DB6</S>
+                            <S N="Kind">logical</S>
+                          </MS>
+                        </Obj>
+                        <S N="Sha256">94124D3DD6FC2126FBAD1FD5056A85786002EEE1B00B84BD93B55736B03C3DB6</S>
+                        <Obj N="Containers" RefId="125">
+                          <TNRef RefId="1" />
+                          <LST>
+                            <Obj RefId="126">
+                              <TNRef RefId="2" />
+                              <MS>
+                                <I64 N="Offset">3385774080</I64>
+                                <I64 N="Length">1024</I64>
+                                <S N="Kind">MFT</S>
+                                <Obj N="Artifact" RefId="127">
+                                  <TNRef RefId="6" />
+                                  <MS>
+                                    <Obj N="Path" RefId="128">
+                                      <S>C:\Users\vika\Documents\boot-start-invariant-A01-runtime-verifier-b17r2-artifacts\raw\MFT-026b2ed70c4c4e8ca34249b24941e1fd.bin</S>
+                                    </Obj>
+                                    <I64 N="Length">1024</I64>
+                                    <S N="Sha256">9032B7A1B347E128A369433EEA4A7A3F0BEE7112ADA83D6A3639EFA214D487F2</S>
+                                    <S N="Kind">MFT</S>
+                                  </MS>
+                                </Obj>
+                              </MS>
+                            </Obj>
+                            <Obj RefId="129">
+                              <TNRef RefId="2" />
+                              <MS>
+                                <I64 N="Offset">12238794752</I64>
+                                <I64 N="Length">12288</I64>
+                                <S N="Kind">DATA</S>
+                                <Obj N="Artifact" RefId="130">
+                                  <TNRef RefId="6" />
+                                  <MS>
+                                    <Obj N="Path" RefId="131">
+                                      <S>C:\Users\vika\Documents\boot-start-invariant-A01-runtime-verifier-b17r2-artifacts\raw\DATA-231481822e35402bbc7432685dfef0a8.bin</S>
+                                    </Obj>
+                                    <I64 N="Length">12288</I64>
+                                    <S N="Sha256">94124D3DD6FC2126FBAD1FD5056A85786002EEE1B00B84BD93B55736B03C3DB6</S>
+                                    <S N="Kind">DATA</S>
+                                  </MS>
+                                </Obj>
+                              </MS>
+                            </Obj>
+                          </LST>
+                        </Obj>
+                        <I64 N="Length">12288</I64>
+                        <S N="Role">Retained:B4730200000006000000000000000000</S>
+                        <Obj N="CrossCheckErrors" RefId="132">
+                          <TNRef RefId="1" />
+                          <LST />
+                        </Obj>
+                        <Obj N="DirectoryEntries" RefId="133">
+                          <TNRef RefId="1" />
+                          <LST />
+                        </Obj>
+                        <Obj N="Identity" RefId="134">
+                          <TNRef RefId="7" />
+                          <ToString>StagedInvariant.Identity</ToString>
+                          <Props>
+                            <U64 N="VolumeSerial">5392606751128498047</U64>
+                            <U64 N="Reference">1688849860424628</U64>
+                            <S N="FileId">B4730200000006000000000000000000</S>
+                            <I64 N="Allocation">12288</I64>
+                            <I64 N="Eof">12288</I64>
+                            <I64 N="Creation">134358369726076262</I64>
+                            <I64 N="Modified">134358370330035222</I64>
+                            <I64 N="Changed">134358370330035222</I64>
+                            <I64 N="Accessed">134358370361055237</I64>
+                            <U32 N="Attributes">32</U32>
+                            <U32 N="Links">1</U32>
+                            <B N="Directory">false</B>
+                            <B N="DeletePending">false</B>
+                          </Props>
+                        </Obj>
+                        <Obj N="FileNames" RefId="135">
+                          <TNRef RefId="1" />
+                          <LST>
+                            <Obj RefId="136">
+                              <TNRef RefId="8" />
+                              <ToString>StagedInvariant.NameEntry</ToString>
+                              <Props>
+                                <S N="Name">marker.txt</S>
+                                <By N="Namespace">3</By>
+                                <U64 N="Reference">1688849860424628</U64>
+                                <U64 N="Parent">1688849860424618</U64>
+                                <I64 N="Allocated">0</I64>
+                                <I64 N="Eof">0</I64>
+                                <U32 N="Attributes">32</U32>
+                                <I64 N="Creation">134358369726076262</I64>
+                                <I64 N="Modified">134358369726076262</I64>
+                                <I64 N="Changed">134358369726076262</I64>
+                                <I64 N="Accessed">134358369726076262</I64>
+                              </Props>
+                            </Obj>
+                          </LST>
+                        </Obj>
+                        <Obj N="Records" RefId="137">
+                          <TNRef RefId="1" />
+                          <LST>
+                            <Obj RefId="138">
+                              <TNRef RefId="2" />
+                              <MS>
+                                <U32 N="Number">160692</U32>
+                                <U16 N="Sequence">6</U16>
+                                <U64 N="BaseReference">0</U64>
+                                <S N="RawSha256">9032B7A1B347E128A369433EEA4A7A3F0BEE7112ADA83D6A3639EFA214D487F2</S>
+                                <S N="FixedSha256">486992E819DEA3A1B449BD57C939520EE1F770F8BC7AFD0AB9A37393660DC18A</S>
+                              </MS>
+                            </Obj>
+                          </LST>
+                        </Obj>
+                        <Obj N="RawMetadata" RefId="139">
+                          <TNRef RefId="7" />
+                          <ToString>StagedInvariant.Identity</ToString>
+                          <Props>
+                            <U64 N="VolumeSerial">0</U64>
+                            <U64 N="Reference">0</U64>
+                            <Nil N="FileId" />
+                            <I64 N="Allocation">0</I64>
+                            <I64 N="Eof">0</I64>
+                            <I64 N="Creation">134358369726076262</I64>
+                            <I64 N="Modified">134358370330035222</I64>
+                            <I64 N="Changed">134358370330035222</I64>
+                            <I64 N="Accessed">134358370330035222</I64>
+                            <U32 N="Attributes">32</U32>
+                            <U32 N="Links">1</U32>
+                            <B N="Directory">false</B>
+                            <B N="DeletePending">false</B>
+                          </Props>
+                        </Obj>
+                        <U32 N="SecurityId">4471</U32>
+                        <Nil N="Sddl" />
+                        <Obj N="Attributes" RefId="140">
+                          <TNRef RefId="1" />
+                          <LST>
+                            <Obj RefId="141">
+                              <TNRef RefId="2" />
+                              <MS>
+                                <U32 N="Type">16</U32>
+                                <U16 N="Id">0</U16>
+                                <U16 N="Flags">0</U16>
+                                <S N="Name"></S>
+                                <U64 N="RecordReference">1688849860424628</U64>
+                                <B N="NonResident">false</B>
+                                <I64 N="StartVcn">0</I64>
+                                <I64 N="LastVcn">0</I64>
+                                <I64 N="Allocation">72</I64>
+                                <I64 N="Eof">72</I64>
+                                <I64 N="ValidData">72</I64>
+                                <U16 N="CompressionUnit">0</U16>
+                                <Obj N="Runs" RefId="142">
+                                  <TNRef RefId="1" />
+                                  <LST />
+                                </Obj>
+                              </MS>
+                            </Obj>
+                            <Obj RefId="143">
+                              <TNRef RefId="2" />
+                              <MS>
+                                <U32 N="Type">48</U32>
+                                <U16 N="Id">2</U16>
+                                <U16 N="Flags">0</U16>
+                                <S N="Name"></S>
+                                <U64 N="RecordReference">1688849860424628</U64>
+                                <B N="NonResident">false</B>
+                                <I64 N="StartVcn">0</I64>
+                                <I64 N="LastVcn">0</I64>
+                                <I64 N="Allocation">86</I64>
+                                <I64 N="Eof">86</I64>
+                                <I64 N="ValidData">86</I64>
+                                <U16 N="CompressionUnit">0</U16>
+                                <Obj N="Runs" RefId="144">
+                                  <TNRef RefId="1" />
+                                  <LST />
+                                </Obj>
+                              </MS>
+                            </Obj>
+                            <Obj RefId="145">
+                              <TNRef RefId="2" />
+                              <MS>
+                                <U32 N="Type">128</U32>
+                                <U16 N="Id">3</U16>
+                                <U16 N="Flags">0</U16>
+                                <S N="Name"></S>
+                                <U64 N="RecordReference">1688849860424628</U64>
+                                <B N="NonResident">true</B>
+                                <I64 N="StartVcn">0</I64>
+                                <I64 N="LastVcn">2</I64>
+                                <I64 N="Allocation">12288</I64>
+                                <I64 N="Eof">12288</I64>
+                                <I64 N="ValidData">12288</I64>
+                                <U16 N="CompressionUnit">0</U16>
+                                <Obj N="Runs" RefId="146">
+                                  <TNRef RefId="1" />
+                                  <LST>
+                                    <Ref RefId="122" />
+                                  </LST>
+                                </Obj>
+                              </MS>
+                            </Obj>
+                          </LST>
+                        </Obj>
+                        <S N="Fingerprint">D82BE00A716C0771D84788A0F3936501F4FB4FD106C8B9BA143F1B0CD62A19E9</S>
+                        <S N="RetainedVersion">Baseline</S>
+                      </MS>
+                    </Obj>
+                    <Obj RefId="147">
+                      <TN RefId="12">
+                        <T>StagedInvariant.HistoricalContainer</T>
+                        <T>System.Management.Automation.PSCustomObject</T>
+                        <T>System.Object</T>
+                      </TN>
+                      <MS>
+                        <S N="OriginalSha256">9032B7A1B347E128A369433EEA4A7A3F0BEE7112ADA83D6A3639EFA214D487F2</S>
+                        <S N="OriginalFileId">B4730200000006000000000000000000</S>
+                        <Obj N="Artifact" RefId="148">
+                          <TNRef RefId="6" />
+                          <MS>
+                            <Obj N="Path" RefId="149">
+                              <S>C:\Users\vika\Documents\boot-start-invariant-A01-runtime-verifier-b17r2-artifacts\raw\historical-3c9e458a92fd423688d379f72193ef69.bin</S>
+                            </Obj>
+                            <I64 N="Length">1024</I64>
+                            <S N="Sha256">9032B7A1B347E128A369433EEA4A7A3F0BEE7112ADA83D6A3639EFA214D487F2</S>
+                            <S N="Kind">historical</S>
+                          </MS>
+                        </Obj>
+                        <S N="Kind">MFT</S>
+                        <S N="Role">Historical</S>
+                        <I64 N="Offset">3385774080</I64>
+                        <I64 N="Length">1024</I64>
+                      </MS>
+                    </Obj>
+                    <Obj RefId="150">
+                      <TNRef RefId="12" />
+                      <MS>
+                        <S N="OriginalSha256">94124D3DD6FC2126FBAD1FD5056A85786002EEE1B00B84BD93B55736B03C3DB6</S>
+                        <S N="OriginalFileId">B4730200000006000000000000000000</S>
+                        <Obj N="Artifact" RefId="151">
+                          <TNRef RefId="6" />
+                          <MS>
+                            <Obj N="Path" RefId="152">
+                              <S>C:\Users\vika\Documents\boot-start-invariant-A01-runtime-verifier-b17r2-artifacts\raw\historical-43a22e62f6c044d284078d989040d580.bin</S>
+                            </Obj>
+                            <I64 N="Length">12288</I64>
+                            <S N="Sha256">94124D3DD6FC2126FBAD1FD5056A85786002EEE1B00B84BD93B55736B03C3DB6</S>
+                            <S N="Kind">historical</S>
+                          </MS>
+                        </Obj>
+                        <S N="Kind">DATA</S>
+                        <S N="Role">Historical</S>
+                        <I64 N="Offset">12238794752</I64>
+                        <I64 N="Length">12288</I64>
+                      </MS>
+                    </Obj>
+                  </LST>
+                </Obj>
+                <Obj N="Captures" RefId="153">
+                  <TNRef RefId="1" />
+                  <LST>
+                    <Obj RefId="154">
+                      <TN RefId="13">
+                        <T>StagedInvariant.Capture</T>
+                        <T>System.Management.Automation.PSCustomObject</T>
+                        <T>System.Object</T>
+                      </TN>
+                      <MS>
+                        <Ref N="Images" RefId="65" />
+                        <S N="Status">OK</S>
+                        <Nil N="Error" />
+                        <Obj N="Readers" RefId="155">
+                          <TNRef RefId="1" />
+                          <LST>
+                            <Obj RefId="156">
+                              <TN RefId="14">
+                                <T>StagedInvariant.FreshReader</T>
+                                <T>System.Management.Automation.PSCustomObject</T>
+                                <T>System.Object</T>
+                              </TN>
+                              <MS>
+                                <S N="Path">C:\SafeUploadInvariant-boot-start-invariant-A01-runtime-verifier-b17r2\marker.txt</S>
+                                <Obj N="Result" RefId="157">
+                                  <TN RefId="15">
+                                    <T>StagedInvariant.Reader</T>
+                                    <T>System.Object</T>
+                                  </TN>
+                                  <ToString>StagedInvariant.Reader</ToString>
+                                  <Props>
+                                    <Obj N="Before" RefId="158">
+                                      <TNRef RefId="7" />
+                                      <ToString>StagedInvariant.Identity</ToString>
+                                      <Props>
+                                        <U64 N="VolumeSerial">5392606751128498047</U64>
+                                        <U64 N="Reference">1688849860424628</U64>
+                                        <S N="FileId">B4730200000006000000000000000000</S>
+                                        <I64 N="Allocation">12288</I64>
+                                        <I64 N="Eof">12288</I64>
+                                        <I64 N="Creation">134358369726076262</I64>
+                                        <I64 N="Modified">134358370330035222</I64>
+                                        <I64 N="Changed">134358370330035222</I64>
+                                        <I64 N="Accessed">134358370357655235</I64>
+                                        <U32 N="Attributes">32</U32>
+                                        <U32 N="Links">1</U32>
+                                        <B N="Directory">false</B>
+                                        <B N="DeletePending">false</B>
+                                      </Props>
+                                    </Obj>
+                                    <Obj N="After" RefId="159">
+                                      <TNRef RefId="7" />
+                                      <ToString>StagedInvariant.Identity</ToString>
+                                      <Props>
+                                        <U64 N="VolumeSerial">5392606751128498047</U64>
+                                        <U64 N="Reference">1688849860424628</U64>
+                                        <S N="FileId">B4730200000006000000000000000000</S>
+                                        <I64 N="Allocation">12288</I64>
+                                        <I64 N="Eof">12288</I64>
+                                        <I64 N="Creation">134358369726076262</I64>
+                                        <I64 N="Modified">134358370330035222</I64>
+                                        <I64 N="Changed">134358370330035222</I64>
+                                        <I64 N="Accessed">134358370361055237</I64>
+                                        <U32 N="Attributes">32</U32>
+                                        <U32 N="Links">1</U32>
+                                        <B N="Directory">false</B>
+                                        <B N="DeletePending">false</B>
+                                      </Props>
+                                    </Obj>
+                                    <S N="Digest">94124D3DD6FC2126FBAD1FD5056A85786002EEE1B00B84BD93B55736B03C3DB6</S>
+                                    <S N="Status">OK</S>
+                                    <I64 N="Length">12288</I64>
+                                    <I32 N="NativeCode">0</I32>
+                                  </Props>
+                                </Obj>
+                                <Nil N="Error" />
+                                <S N="Status">OK</S>
+                                <B N="Unbuffered">false</B>
+                              </MS>
+                            </Obj>
+                            <Obj RefId="160">
+                              <TNRef RefId="14" />
+                              <MS>
+                                <S N="Path">C:\SafeUploadInvariant-boot-start-invariant-A01-runtime-verifier-b17r2\marker.txt</S>
+                                <Obj N="Result" RefId="161">
+                                  <TNRef RefId="15" />
+                                  <ToString>StagedInvariant.Reader</ToString>
+                                  <Props>
+                                    <Obj N="Before" RefId="162">
+                                      <TNRef RefId="7" />
+                                      <ToString>StagedInvariant.Identity</ToString>
+                                      <Props>
+                                        <U64 N="VolumeSerial">5392606751128498047</U64>
+                                        <U64 N="Reference">1688849860424628</U64>
+                                        <S N="FileId">B4730200000006000000000000000000</S>
+                                        <I64 N="Allocation">12288</I64>
+                                        <I64 N="Eof">12288</I64>
+                                        <I64 N="Creation">134358369726076262</I64>
+                                        <I64 N="Modified">134358370330035222</I64>
+                                        <I64 N="Changed">134358370330035222</I64>
+                                        <I64 N="Accessed">134358370361055237</I64>
+                                        <U32 N="Attributes">32</U32>
+                                        <U32 N="Links">1</U32>
+                                        <B N="Directory">false</B>
+                                        <B N="DeletePending">false</B>
+                                      </Props>
+                                    </Obj>
+                                    <Obj N="After" RefId="163">
+                                      <TNRef RefId="7" />
+                                      <ToString>StagedInvariant.Identity</ToString>
+                                      <Props>
+                                        <U64 N="VolumeSerial">5392606751128498047</U64>
+                                        <U64 N="Reference">1688849860424628</U64>
+                                        <S N="FileId">B4730200000006000000000000000000</S>
+                                        <I64 N="Allocation">12288</I64>
+                                        <I64 N="Eof">12288</I64>
+                                        <I64 N="Creation">134358369726076262</I64>
+                                        <I64 N="Modified">134358370330035222</I64>
+                                        <I64 N="Changed">134358370330035222</I64>
+                                        <I64 N="Accessed">134358370361055237</I64>
+                                        <U32 N="Attributes">32</U32>
+                                        <U32 N="Links">1</U32>
+                                        <B N="Directory">false</B>
+                                        <B N="DeletePending">false</B>
+                                      </Props>
+                                    </Obj>
+                                    <S N="Digest">94124D3DD6FC2126FBAD1FD5056A85786002EEE1B00B84BD93B55736B03C3DB6</S>
+                                    <S N="Status">OK</S>
+                                    <I64 N="Length">12288</I64>
+                                    <I32 N="NativeCode">0</I32>
+                                  </Props>
+                                </Obj>
+                                <Nil N="Error" />
+                                <S N="Status">OK</S>
+                                <B N="Unbuffered">true</B>
+                              </MS>
+                            </Obj>
+                            <Obj RefId="164">
+                              <TNRef RefId="14" />
+                              <MS>
+                                <B N="Unbuffered">false</B>
+                                <Nil N="Error" />
+                                <Nil N="Path" />
+                                <Obj N="Result" RefId="165">
+                                  <TNRef RefId="15" />
+                                  <ToString>StagedInvariant.Reader</ToString>
+                                  <Props>
+                                    <Obj N="Before" RefId="166">
+                                      <TNRef RefId="7" />
+                                      <ToString>StagedInvariant.Identity</ToString>
+                                      <Props>
+                                        <U64 N="VolumeSerial">5392606751128498047</U64>
+                                        <U64 N="Reference">1688849860424628</U64>
+                                        <S N="FileId">B4730200000006000000000000000000</S>
+                                        <I64 N="Allocation">12288</I64>
+                                        <I64 N="Eof">12288</I64>
+                                        <I64 N="Creation">134358369726076262</I64>
+                                        <I64 N="Modified">134358370330035222</I64>
+                                        <I64 N="Changed">134358370330035222</I64>
+                                        <I64 N="Accessed">134358370361055237</I64>
+                                        <U32 N="Attributes">32</U32>
+                                        <U32 N="Links">1</U32>
+                                        <B N="Directory">false</B>
+                                        <B N="DeletePending">false</B>
+                                      </Props>
+                                    </Obj>
+                                    <Obj N="After" RefId="167">
+                                      <TNRef RefId="7" />
+                                      <ToString>StagedInvariant.Identity</ToString>
+                                      <Props>
+                                        <U64 N="VolumeSerial">5392606751128498047</U64>
+                                        <U64 N="Reference">1688849860424628</U64>
+                                        <S N="FileId">B4730200000006000000000000000000</S>
+                                        <I64 N="Allocation">12288</I64>
+                                        <I64 N="Eof">12288</I64>
+                                        <I64 N="Creation">134358369726076262</I64>
+                                        <I64 N="Modified">134358370330035222</I64>
+                                        <I64 N="Changed">134358370330035222</I64>
+                                        <I64 N="Accessed">134358370361395213</I64>
+                                        <U32 N="Attributes">32</U32>
+                                        <U32 N="Links">1</U32>
+                                        <B N="Directory">false</B>
+                                        <B N="DeletePending">false</B>
+                                      </Props>
+                                    </Obj>
+                                    <S N="Digest">94124D3DD6FC2126FBAD1FD5056A85786002EEE1B00B84BD93B55736B03C3DB6</S>
+                                    <S N="Status">OK</S>
+                                    <I64 N="Length">12288</I64>
+                                    <I32 N="NativeCode">0</I32>
+                                  </Props>
+                                </Obj>
+                                <S N="Role">Retained</S>
+                                <S N="Status">OK</S>
+                                <S N="FileId">B4730200000006000000000000000000</S>
+                              </MS>
+                            </Obj>
+                          </LST>
+                        </Obj>
+                      </MS>
+                    </Obj>
+                  </LST>
+                </Obj>
+                <Obj N="Start" RefId="168">
+                  <TNRef RefId="0" />
+                  <DCT>
+                    <En>
+                      <S N="Key">Utc</S>
+                      <S N="Value">2026-10-07T08:57:16.0415250Z</S>
+                    </En>
+                    <En>
+                      <S N="Key">Qpc</S>
+                      <I64 N="Value">447556470</I64>
+                    </En>
+                    <En>
+                      <S N="Key">QpcFrequency</S>
+                      <I64 N="Value">10000000</I64>
+                    </En>
+                    <En>
+                      <S N="Key">BootId</S>
+                      <S N="Value">WIN10-DEBUGGED/2026-10-07T08:56:31.5000000Z</S>
+                    </En>
+                  </DCT>
+                </Obj>
+                <S N="Schema">StagedInvariant/1</S>
+                <Obj N="CleanupErrors" RefId="169">
+                  <TNRef RefId="1" />
+                  <LST />
+                </Obj>
+                <Ref N="Readers" RefId="155" />
+              </MS>
+            </Obj>
+          </LST>
+        </Obj>
+      </En>
+      <En>
+        <S N="Key">Operations</S>
+        <Obj N="Value" RefId="170">
+          <TNRef RefId="1" />
+          <LST />
+        </Obj>
+      </En>
+      <En>
+        <S N="Key">Verdict</S>
+        <S N="Value">INCONCLUSIVE</S>
+      </En>
+      <En>
+        <S N="Key">ForbiddenByteCount</S>
+        <Nil N="Value" />
+      </En>
+      <En>
+        <S N="Key">Reasons</S>
+        <Obj N="Value" RefId="171">
+          <TNRef RefId="1" />
+          <LST />
+        </Obj>
+      </En>
+      <En>
+        <S N="Key">VerifierBefore</S>
+        <Obj N="Value" RefId="172">
+          <TNRef RefId="2" />
+          <MS>
+            <S N="Active">_x000D__x000A_Time Stamp: 10/07/2026 09:56:54.255_x000D__x000A__x000D__x000A_Verifier Flags: 0x0000013b_x000D__x000A__x000D__x000A_  Standard Flags:_x000D__x000A__x000D__x000A_    [X] 0x00000001 Special pool._x000D__x000A_    [X] 0x00000002 Force IRQL checking._x000D__x000A_    [X] 0x00000008 Pool tracking._x000D__x000A_    [X] 0x00000010 I/O verification._x000D__x000A_    [X] 0x00000020 Deadlock detection._x000D__x000A_    [ ] 0x00000080 DMA checking._x000D__x000A_    [X] 0x00000100 Security checks._x000D__x000A_    [ ] 0x00000800 Miscellaneous checks._x000D__x000A_    [ ] 0x00020000 DDI compliance checking._x000D__x000A__x000D__x000A_  Additional Flags:_x000D__x000A__x000D__x000A_    [ ] 0x00000004 Randomized low resources simulation._x000D__x000A_    [ ] 0x00000200 Force pending I/O requests._x000D__x000A_    [ ] 0x00000400 IRP logging._x000D__x000A_    [ ] 0x00002000 Invariant MDL checking for stack._x000D__x000A_    [ ] 0x00004000 Invariant MDL checking for driver._x000D__x000A_    [ ] 0x00008000 Power framework delay fuzzing._x000D__x000A_    [ ] 0x00010000 Port/miniport interface checking._x000D__x000A_    [ ] 0x00040000 Systematic low resources simulation._x000D__x000A_    [ ] 0x00080000 DDI compliance checking (additional)._x000D__x000A_    [ ] 0x00200000 NDIS/WIFI verification._x000D__x000A_    [ ] 0x00800000 Kernel synchronization delay fuzzing._x000D__x000A_    [ ] 0x01000000 VM switch verification._x000D__x000A_    [ ] 0x02000000 Code integrity checks._x000D__x000A__x000D__x000A_    [X] Indicates flag is enabled._x000D__x000A__x000D__x000A_  Verifier Statistics Summary_x000D__x000A__x000D__x000A_    Raise IRQLs:                                     0_x000D__x000A_    Acquire Spin Locks:                              0_x000D__x000A_    Synchronize Executions:                          0_x000D__x000A_    Trims:                                          16_x000D__x000A__x000D__x000A_    Pool Allocations Attempted:                    811_x000D__x000A_    Pool Allocations Succeeded:                    811_x000D__x000A_    Pool Allocations Succeeded SpecialPool:          0_x000D__x000A_    Pool Allocations With No Tag:                    0_x000D__x000A_    Pool Allocations Not Tracked:                  760_x000D__x000A_    Pool Allocations Failed:                         0_x000D__x000A_    Pool Allocations Failed Deliberately:            0_x000D__x000A__x000D__x000A_  Driver Verification List_x000D__x000A__x000D__x000A_    MODULE: SafeUpload.sys (load: 1 / unload: 0)_x000D__x000A__x000D__x000A_      Pool Allocation Statistics: ( NonPaged / Paged )_x000D__x000A__x000D__x000A_        Current Pool Allocations:  (        0 /        0 )_x000D__x000A_        Current Pool Bytes:        (        0 /        0 )_x000D__x000A_        Peak Pool Allocations:     (        1 /        0 )_x000D__x000A_        Peak Pool Bytes:           (     3184 /        0 )_x000D__x000A_        Contiguous Memory Bytes:              0_x000D__x000A_        Peak Contiguous Memory Bytes:         0_x000D__x000A_</S>
+            <S N="Settings">_x000D__x000A_Verifier Flags: 0x00000000_x000D__x000A__x000D__x000A_  Standard Flags:_x000D__x000A__x000D__x000A_    [ ] 0x00000001 Special pool._x000D__x000A_    [ ] 0x00000002 Force IRQL checking._x000D__x000A_    [ ] 0x00000008 Pool tracking._x000D__x000A_    [ ] 0x00000010 I/O verification._x000D__x000A_    [ ] 0x00000020 Deadlock detection._x000D__x000A_    [ ] 0x00000080 DMA checking._x000D__x000A_    [ ] 0x00000100 Security checks._x000D__x000A_    [ ] 0x00000800 Miscellaneous checks._x000D__x000A_    [ ] 0x00020000 DDI compliance checking._x000D__x000A__x000D__x000A_  Additional Flags:_x000D__x000A__x000D__x000A_    [ ] 0x00000004 Randomized low resources simulation._x000D__x000A_    [ ] 0x00000200 Force pending I/O requests._x000D__x000A_    [ ] 0x00000400 IRP logging._x000D__x000A_    [ ] 0x00002000 Invariant MDL checking for stack._x000D__x000A_    [ ] 0x00004000 Invariant MDL checking for driver._x000D__x000A_    [ ] 0x00008000 Power framework delay fuzzing._x000D__x000A_    [ ] 0x00010000 Port/miniport interface checking._x000D__x000A_    [ ] 0x00040000 Systematic low resources simulation._x000D__x000A_    [ ] 0x00080000 DDI compliance checking (additional)._x000D__x000A_    [ ] 0x00200000 NDIS/WIFI verification._x000D__x000A_    [ ] 0x00800000 Kernel synchronization delay fuzzing._x000D__x000A_    [ ] 0x01000000 VM switch verification._x000D__x000A_    [ ] 0x02000000 Code integrity checks._x000D__x000A__x000D__x000A_    [X] Indicates flag is enabled._x000D__x000A__x000D__x000A_  Boot Mode:_x000D__x000A__x000D__x000A_    Persistent_x000D__x000A__x000D__x000A_  Rules:_x000D__x000A__x000D__x000A_    All rules are using default settings_x000D__x000A__x000D__x000A_  Verified Drivers:_x000D__x000A__x000D__x000A_    None_x000D__x000A_</S>
+            <Obj N="ActiveFlags" RefId="173">
+              <TNRef RefId="1" />
+              <LST>
+                <U32>315</U32>
+              </LST>
+            </Obj>
+            <I32 N="ActiveExit">0</I32>
+            <I32 N="SettingsExit">0</I32>
+            <B N="RuntimeDriverEntryUnchecked">true</B>
+          </MS>
+        </Obj>
+      </En>
+      <En>
+        <S N="Key">ReadinessBefore</S>
+        <Obj N="Value" RefId="174">
+          <TNRef RefId="2" />
+          <MS>
+            <S N="BootId">WIN10-DEBUGGED/2026-10-07T08:56:31.5000000Z</S>
+            <I64 N="Qpc">233260750</I64>
+            <I64 N="QpcFrequency">10000000</I64>
+            <S N="Utc">2026-10-07T08:56:54.6115235Z</S>
+            <S N="VolumeGuid">\\?\Volume{f58c7564-1b1d-4c24-a05a-6f58cb85ec9c}\</S>
+            <Obj N="Status" RefId="175">
+              <TNRef RefId="2" />
+              <MS>
+                <I32 N="writerGlobalUnknown">0</I32>
+                <I32 N="bootPolicyState">1</I32>
+                <S N="bootPolicyProtectionStatus">valid</S>
+                <Obj N="admissionVolumes" RefId="176">
+                  <TNRef RefId="1" />
+                  <LST>
+                    <Obj RefId="177">
+                      <TNRef RefId="2" />
+                      <MS>
+                        <S N="instance">FFFFC58D2B1E4050</S>
+                        <I32 N="volumeKind">3</I32>
+                        <I32 N="fileSystemType">13</I32>
+                        <I32 N="fileSystemStatus">0</I32>
+                        <I32 N="setupFlags">5</I32>
+                        <I32 N="trustState">4</I32>
+                        <S N="protectionStatus">untrusted</S>
+                        <I32 N="contextStatus">0</I32>
+                        <I32 N="canaryState">4</I32>
+                        <I64 N="canaryStatus">3221225659</I64>
+                        <I32 N="canaryChecks">0</I32>
+                        <I32 N="canaryCleanupStatus">0</I32>
+                        <I32 N="instanceWritersUntracked">0</I32>
+                        <I32 N="volumeInfoStatus">0</I32>
+                        <I32 N="volumeFlags">0</I32>
+                        <S N="instanceRegistryUnknownReasons">0x00000000</S>
+                        <S N="firstUnknownReason">0x00000000</S>
+                        <I32 N="firstUnknownSite">0</I32>
+                        <I64 N="volumeGuidStatus">3221225488</I64>
+                        <S N="volumeGuid"></S>
+                      </MS>
+                    </Obj>
+                    <Obj RefId="178">
+                      <TNRef RefId="2" />
+                      <MS>
+                        <S N="instance">FFFFC58D2B3A3010</S>
+                        <I32 N="volumeKind">1</I32>
+                        <I32 N="fileSystemType">2</I32>
+                        <I32 N="fileSystemStatus">0</I32>
+                        <I32 N="setupFlags">5</I32>
+                        <I32 N="trustState">3</I32>
+                        <S N="protectionStatus">trusted</S>
+                        <I32 N="contextStatus">0</I32>
+                        <I32 N="canaryState">2</I32>
+                        <I32 N="canaryStatus">0</I32>
+                        <I32 N="canaryChecks">15</I32>
+                        <I32 N="canaryCleanupStatus">0</I32>
+                        <I32 N="instanceWritersUntracked">0</I32>
+                        <I32 N="volumeInfoStatus">0</I32>
+                        <I32 N="volumeFlags">0</I32>
+                        <S N="instanceRegistryUnknownReasons">0x00000000</S>
+                        <S N="firstUnknownReason">0x00000000</S>
+                        <I32 N="firstUnknownSite">0</I32>
+                        <I32 N="volumeGuidStatus">0</I32>
+                        <S N="volumeGuid">\??\Volume{f58c7564-1b1d-4c24-a05a-6f58cb85ec9c}</S>
+                      </MS>
+                    </Obj>
+                    <Obj RefId="179">
+                      <TNRef RefId="2" />
+                      <MS>
+                        <S N="instance">FFFFC58D2B536010</S>
+                        <I32 N="volumeKind">1</I32>
+                        <I32 N="fileSystemType">3</I32>
+                        <I32 N="fileSystemStatus">0</I32>
+                        <I32 N="setupFlags">5</I32>
+                        <I32 N="trustState">4</I32>
+                        <S N="protectionStatus">untrusted</S>
+                        <I32 N="contextStatus">0</I32>
+                        <I32 N="canaryState">4</I32>
+                        <I64 N="canaryStatus">3221225659</I64>
+                        <I32 N="canaryChecks">0</I32>
+                        <I32 N="canaryCleanupStatus">0</I32>
+                        <I32 N="instanceWritersUntracked">0</I32>
+                        <I32 N="volumeInfoStatus">0</I32>
+                        <I32 N="volumeFlags">0</I32>
+                        <S N="instanceRegistryUnknownReasons">0x00000000</S>
+                        <S N="firstUnknownReason">0x00000000</S>
+                        <I32 N="firstUnknownSite">0</I32>
+                        <I32 N="volumeGuidStatus">0</I32>
+                        <S N="volumeGuid">\??\Volume{7ea913f9-8621-4fb0-8169-6285b4322329}</S>
+                      </MS>
+                    </Obj>
+                    <Obj RefId="180">
+                      <TNRef RefId="2" />
+                      <MS>
+                        <S N="instance">FFFFC58D2BED3010</S>
+                        <I32 N="volumeKind">1</I32>
+                        <I32 N="fileSystemType">2</I32>
+                        <I32 N="fileSystemStatus">0</I32>
+                        <I32 N="setupFlags">5</I32>
+                        <I32 N="trustState">3</I32>
+                        <S N="protectionStatus">trusted</S>
+                        <I32 N="contextStatus">0</I32>
+                        <I32 N="canaryState">2</I32>
+                        <I32 N="canaryStatus">0</I32>
+                        <I32 N="canaryChecks">15</I32>
+                        <I32 N="canaryCleanupStatus">0</I32>
+                        <I32 N="instanceWritersUntracked">0</I32>
+                        <I32 N="volumeInfoStatus">0</I32>
+                        <I32 N="volumeFlags">0</I32>
+                        <S N="instanceRegistryUnknownReasons">0x00000000</S>
+                        <S N="firstUnknownReason">0x00000000</S>
+                        <I32 N="firstUnknownSite">0</I32>
+                        <I32 N="volumeGuidStatus">0</I32>
+                        <S N="volumeGuid">\??\Volume{eaf511cc-cf01-403b-a803-6fb5471aaecd}</S>
+                      </MS>
+                    </Obj>
+                  </LST>
+                </Obj>
+              </MS>
+            </Obj>
+            <Ref N="Entry" RefId="178" />
+            <S N="FilterInstances">_x000D__x000A_Instances for SafeUpload filter:_x000D__x000A__x000D__x000A_Volume Name                              Altitude        Instance Name       Frame  VlStatus_x000D__x000A_-------------------------------------  ------------  ----------------------  -----  --------_x000D__x000A_\Device\Mup                               321410     SafeUpload Instance       0    _x000D__x000A_C:                                        321410     SafeUpload Instance       0    _x000D__x000A_                                          321410     SafeUpload Instance       0    _x000D__x000A_                                          321410     SafeUpload Instance       0    _x000D__x000A_</S>
+            <B N="FilterReady">true</B>
+          </MS>
+        </Obj>
+      </En>
+      <En>
+        <S N="Key">BootPolicyBefore</S>
+        <Obj N="Value" RefId="181">
+          <TN RefId="16">
+            <T>Deserialized.System.Management.Automation.PSCustomObject</T>
+            <T>Deserialized.System.Object</T>
+          </TN>
+          <MS>
+            <B N="AclValid">true</B>
+            <B N="BootPolicyAclValid">true</B>
+            <B N="ParametersAclValid">true</B>
+            <S N="Owner">S-1-5-18</S>
+            <I32 N="RecordBytes">16656</I32>
+            <S N="RecordBase64">AQAAABBBAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA</S>
+            <I32 N="DriverStart">0</I32>
+            <U32 N="PrefixCount">0</U32>
+            <U32 N="Flags">0</U32>
+            <U32 N="StructSize">16656</U32>
+            <U32 N="Version">1</U32>
+            <B N="PendingPresent">false</B>
+            <S N="Prefix"></S>
+            <Obj N="Prefixes" RefId="182">
+              <TNRef RefId="10" />
+              <LST />
+            </Obj>
+          </MS>
+        </Obj>
+      </En>
+      <En>
+        <S N="Key">Platform</S>
+        <Obj N="Value" RefId="183">
+          <TNRef RefId="3" />
+          <DCT>
+            <En>
+              <S N="Key">ObserverSid</S>
+              <S N="Value">S-1-5-18</S>
+            </En>
+            <En>
+              <S N="Key">ObserverPid</S>
+              <I32 N="Value">1620</I32>
+            </En>
+            <En>
+              <S N="Key">Build</S>
+              <S N="Value">19045.2965</S>
+            </En>
+            <En>
+              <S N="Key">ObserverProcess</S>
+              <Obj N="Value" RefId="184">
+                <TNRef RefId="3" />
+                <DCT>
+                  <En>
+                    <S N="Key">CommandLine</S>
+                    <S N="Value">"powershell.exe" -NoProfile -ExecutionPolicy Bypass -File "C:\Users\vika\Documents\SafeUpload-invariant-state-boot-start-invariant-A01-runtime-verifier-b17r2\startup.ps1"</S>
+                  </En>
+                  <En>
+                    <S N="Key">Pid</S>
+                    <U32 N="Value">1620</U32>
+                  </En>
+                  <En>
+                    <S N="Key">OwnerSid</S>
+                    <S N="Value">S-1-5-18</S>
+                  </En>
+                  <En>
+                    <S N="Key">SessionId</S>
+                    <U32 N="Value">0</U32>
+                  </En>
+                </DCT>
+              </Obj>
+            </En>
+            <En>
+              <S N="Key">BootId</S>
+              <S N="Value">WIN10-DEBUGGED/2026-10-07T08:56:31.5000000Z</S>
+            </En>
+          </DCT>
+        </Obj>
+      </En>
+      <En>
+        <S N="Key">Actor</S>
+        <Obj N="Value" RefId="185">
+          <TNRef RefId="2" />
+          <MS>
+            <I32 N="Pid">5972</I32>
+            <S N="Sid">S-1-5-21-316478115-1595729549-2803163825-1078</S>
+            <B N="Elevated">false</B>
+            <B N="IsAdministrator">false</B>
+            <I32 N="SessionId">0</I32>
+            <S N="BootId">WIN10-DEBUGGED/2026-10-07T08:56:31.5000000Z</S>
+            <S N="OwnerSid">S-1-5-21-316478115-1595729549-2803163825-1078</S>
+            <S N="CommandLine">"powershell.exe" -NoProfile -ExecutionPolicy Bypass -File "C:\Users\vika\Documents\SafeUpload-invariant-state-boot-start-invariant-A01-runtime-verifier-b17r2\writer.ps1"</S>
+            <Obj N="Task" RefId="186">
+              <TN RefId="17">
+                <T>Selected.Microsoft.Management.Infrastructure.CimInstance</T>
+                <T>System.Management.Automation.PSCustomObject</T>
+                <T>System.Object</T>
+              </TN>
+              <MS>
+                <S N="TaskName">SafeUpload-StagedTest-Writer-boot-start-invariant-A01-runtime-verifier-b17r2</S>
+                <Obj N="Principal" RefId="187">
+                  <TN RefId="18">
+                    <T>Microsoft.Management.Infrastructure.CimInstance#Root/Microsoft/Windows/TaskScheduler/MSFT_TaskPrincipal2</T>
+                    <T>Microsoft.Management.Infrastructure.CimInstance#ROOT/Microsoft/Windows/TaskScheduler/MSFT_TaskPrincipal</T>
+                    <T>Microsoft.Management.Infrastructure.CimInstance#MSFT_TaskPrincipal2</T>
+                    <T>Microsoft.Management.Infrastructure.CimInstance#MSFT_TaskPrincipal</T>
+                    <T>Microsoft.Management.Infrastructure.CimInstance</T>
+                    <T>System.Object</T>
+                  </TN>
+                  <ToString>MSFT_TaskPrincipal2</ToString>
+                  <Props>
+                    <Nil N="DisplayName" />
+                    <Nil N="GroupId" />
+                    <S N="Id">Author</S>
+                    <I32 N="LogonType">1</I32>
+                    <I32 N="RunLevel">0</I32>
+                    <S N="UserId">sui3d0b60ff7a88</S>
+                    <I32 N="ProcessTokenSidType">2</I32>
+                    <Nil N="RequiredPrivilege" />
+                    <Nil N="PSComputerName" />
+                  </Props>
+                  <MS>
+                    <Obj N="__ClassMetadata" RefId="188">
+                      <TN RefId="19">
+                        <T>System.Collections.ArrayList</T>
+                        <T>System.Object</T>
+                      </TN>
+                      <LST>
+                        <Obj RefId="189">
+                          <MS>
+                            <S N="ClassName">MSFT_TaskPrincipal</S>
+                            <S N="Namespace">ROOT/Microsoft/Windows/TaskScheduler</S>
+                            <S N="ServerName">WIN10-DEBUGGED</S>
+                            <I32 N="Hash">-125844808</I32>
+                            <S N="MiXml">&lt;CLASS NAME="MSFT_TaskPrincipal"&gt;&lt;PROPERTY NAME="DisplayName" TYPE="string"&gt;&lt;/PROPERTY&gt;&lt;PROPERTY NAME="GroupId" TYPE="string"&gt;&lt;/PROPERTY&gt;&lt;PROPERTY NAME="Id" TYPE="string"&gt;&lt;/PROPERTY&gt;&lt;PROPERTY NAME="LogonType" TYPE="sint32"&gt;&lt;QUALIFIER NAME="read" TYPE="boolean"&gt;&lt;VALUE&gt;true&lt;/VALUE&gt;&lt;/QUALIFIER&gt;&lt;QUALIFIER NAME="ValueMap" TYPE="string"&gt;&lt;VALUE.ARRAY&gt;&lt;VALUE&gt;0&lt;/VALUE&gt;&lt;VALUE&gt;1&lt;/VALUE&gt;&lt;VALUE&gt;2&lt;/VALUE&gt;&lt;VALUE&gt;3&lt;/VALUE&gt;&lt;VALUE&gt;4&lt;/VALUE&gt;&lt;VALUE&gt;5&lt;/VALUE&gt;&lt;VALUE&gt;6&lt;/VALUE&gt;&lt;/VALUE.ARRAY&gt;&lt;/QUALIFIER&gt;&lt;QUALIFIER NAME="Values" TYPE="string"&gt;&lt;VALUE.ARRAY&gt;&lt;VALUE&gt;1&lt;/VALUE&gt;&lt;VALUE&gt;2&lt;/VALUE&gt;&lt;VALUE&gt;3&lt;/VALUE&gt;&lt;VALUE&gt;4&lt;/VALUE&gt;&lt;VALUE&gt;5&lt;/VALUE&gt;&lt;VALUE&gt;6&lt;/VALUE&gt;&lt;VALUE&gt;7&lt;/VALUE&gt;&lt;/VALUE.ARRAY&gt;&lt;/QUALIFIER&gt;&lt;/PROPERTY&gt;&lt;PROPERTY NAME="RunLevel" TYPE="sint32"&gt;&lt;/PROPERTY&gt;&lt;PROPERTY NAME="UserId" TYPE="string"&gt;&lt;/PROPERTY&gt;&lt;/CLASS&gt;</S>
+                          </MS>
+                        </Obj>
+                        <Obj RefId="190">
+                          <MS>
+                            <S N="ClassName">MSFT_TaskPrincipal2</S>
+                            <S N="Namespace">Root/Microsoft/Windows/TaskScheduler</S>
+                            <S N="ServerName">WIN10-DEBUGGED</S>
+                            <I32 N="Hash">-125846888</I32>
+                            <S N="MiXml">&lt;CLASS NAME="MSFT_TaskPrincipal2" SUPERCLASS="MSFT_TaskPrincipal"&gt;&lt;PROPERTY NAME="ProcessTokenSidType" TYPE="sint32"&gt;&lt;QUALIFIER NAME="read" TYPE="boolean"&gt;&lt;VALUE&gt;true&lt;/VALUE&gt;&lt;/QUALIFIER&gt;&lt;QUALIFIER NAME="ValueMap" TYPE="string"&gt;&lt;VALUE.ARRAY&gt;&lt;VALUE&gt;0&lt;/VALUE&gt;&lt;VALUE&gt;1&lt;/VALUE&gt;&lt;VALUE&gt;2&lt;/VALUE&gt;&lt;/VALUE.ARRAY&gt;&lt;/QUALIFIER&gt;&lt;QUALIFIER NAME="Values" TYPE="string"&gt;&lt;VALUE.ARRAY&gt;&lt;VALUE&gt;109&lt;/VALUE&gt;&lt;VALUE&gt;110&lt;/VALUE&gt;&lt;VALUE&gt;111&lt;/VALUE&gt;&lt;/VALUE.ARRAY&gt;&lt;/QUALIFIER&gt;&lt;/PROPERTY&gt;&lt;PROPERTY.ARRAY NAME="RequiredPrivilege" TYPE="string"&gt;&lt;/PROPERTY.ARRAY&gt;&lt;/CLASS&gt;</S>
+                          </MS>
+                        </Obj>
+                      </LST>
+                    </Obj>
+                    <S N="RunLevel">Limited</S>
+                    <S N="LogonType">Password</S>
+                    <S N="ProcessTokenSidType">Default</S>
+                  </MS>
+                </Obj>
+                <Obj N="State" RefId="191">
+                  <TN RefId="20">
+                    <T>Microsoft.PowerShell.Cmdletization.GeneratedTypes.ScheduledTask.StateEnum</T>
+                    <T>System.Enum</T>
+                    <T>System.ValueType</T>
+                    <T>System.Object</T>
+                  </TN>
+                  <ToString>Running</ToString>
+                  <I32>4</I32>
+                </Obj>
+              </MS>
+            </Obj>
+          </MS>
+        </Obj>
+      </En>
+      <En>
+        <S N="Key">ActorProvenance</S>
+        <Obj N="Value" RefId="192">
+          <TNRef RefId="3" />
+          <DCT>
+            <En>
+              <S N="Key">CommandLine</S>
+              <S N="Value">"powershell.exe" -NoProfile -ExecutionPolicy Bypass -File "C:\Users\vika\Documents\SafeUpload-invariant-state-boot-start-invariant-A01-runtime-verifier-b17r2\writer.ps1"</S>
+            </En>
+            <En>
+              <S N="Key">Pid</S>
+              <I32 N="Value">5972</I32>
+            </En>
+            <En>
+              <S N="Key">Task</S>
+              <Ref N="Value" RefId="186" />
+            </En>
+            <En>
+              <S N="Key">OwnerSid</S>
+              <S N="Value">S-1-5-21-316478115-1595729549-2803163825-1078</S>
+            </En>
+            <En>
+              <S N="Key">SessionId</S>
+              <I32 N="Value">0</I32>
+            </En>
+          </DCT>
+        </Obj>
+      </En>
+      <En>
+        <S N="Key">HolderSetup</S>
+        <Obj N="Value" RefId="193">
+          <TNRef RefId="3" />
+          <DCT>
+            <En>
+              <S N="Key">CreateQpc</S>
+              <I64 N="Value">416988398</I64>
+            </En>
+            <En>
+              <S N="Key">Sid</S>
+              <S N="Value">S-1-5-21-316478115-1595729549-2803163825-1078</S>
+            </En>
+            <En>
+              <S N="Key">SessionId</S>
+              <I32 N="Value">0</I32>
+            </En>
+            <En>
+              <S N="Key">NativeCode</S>
+              <I32 N="Value">0</I32>
+            </En>
+            <En>
+              <S N="Key">HolderKind</S>
+              <S N="Value">fixed-NTFS-pre-scope-write-handle-runtime-scope-add-supported-text-target</S>
+            </En>
+            <En>
+              <S N="Key">SourceHandleClosed</S>
+              <B N="Value">false</B>
+            </En>
+            <En>
+              <S N="Key">Pid</S>
+              <I32 N="Value">5972</I32>
+            </En>
+            <En>
+              <S N="Key">CompleteQpc</S>
+              <I64 N="Value">417225082</I64>
+            </En>
+            <En>
+              <S N="Key">CaseId</S>
+              <S N="Value">A01</S>
+            </En>
+          </DCT>
+        </Obj>
+      </En>
+      <En>
+        <S N="Key">SetupCacheFlush</S>
+        <Obj N="Value" RefId="194">
+          <TNRef RefId="3" />
+          <DCT>
+            <En>
+              <S N="Key">EndQpc</S>
+              <I64 N="Value">442459396</I64>
+            </En>
+            <En>
+              <S N="Key">VolumeGuid</S>
+              <S N="Value">\\?\Volume{f58c7564-1b1d-4c24-a05a-6f58cb85ec9c}\</S>
+            </En>
+            <En>
+              <S N="Key">Purpose</S>
+              <S N="Value">TrustedSetupBeforeObservation</S>
+            </En>
+            <En>
+              <S N="Key">StartQpc</S>
+              <I64 N="Value">439281347</I64>
+            </En>
+            <En>
+              <S N="Key">QpcFrequency</S>
+              <I64 N="Value">10000000</I64>
+            </En>
+          </DCT>
+        </Obj>
+      </En>
+      <En>
+        <S N="Key">PreScopeP</S>
+        <Ref N="Value" RefId="6" />
+      </En>
+      <En>
+        <S N="Key">TaintCounterBefore</S>
+        <Obj N="Value" RefId="195">
+          <TNRef RefId="3" />
+          <DCT>
+            <En>
+              <S N="Key">QpcFrequency</S>
+              <I64 N="Value">10000000</I64>
+            </En>
+            <En>
+              <S N="Key">Raw</S>
+              <S N="Value">CreatesSeen             : 103040_x000D__x000A_CreatesPastCheapGates   : 0_x000D__x000A_ScopeEvaluations        : 47_x000D__x000A_UserModeRoundTrips      : 0_x000D__x000A_CacheHits               : 6_x000D__x000A_DeniedPreCreate         : 0_x000D__x000A_DeniedPostCreate        : 0_x000D__x000A_DeniedRename            : 0_x000D__x000A_AllowedWithoutInspection: 3_x000D__x000A_TaintsRecorded          : 0_x000D__x000A_TaintLookups            : 0_x000D__x000A_TaintHits               : 0_x000D__x000A_SetInformationSeen      : 1524_x000D__x000A_RenamesSeen             : 0_x000D__x000A_RenamesFromTainted      : 0_x000D__x000A_ClassesSeen             : 0000000000000403 0000000000186410_x000D__x000A_  classes vistas        : 4=FileBasicInformation 10=FileRenameInformation 13=FileDispositionInformation 14=FilePositionInformation 19=FileEndOfFileInformation 20=FileAllocationInformation 64=FileDispositionInformationEx 65=FileRenameInformationEx_x000D__x000A__x000D__x000A_Passaram das portas baratas: 0.0000% dos creates_x000D__x000A_Acerto de cache            : 11.3%_x000D__x000A_</S>
+            </En>
+            <En>
+              <S N="Key">BootId</S>
+              <S N="Value">WIN10-DEBUGGED/2026-10-07T08:56:31.5000000Z</S>
+            </En>
+            <En>
+              <S N="Key">Scope</S>
+              <S N="Value">MachineWideDiagnostic;NoTargetAttribution</S>
+            </En>
+            <En>
+              <S N="Key">EndQpc</S>
+              <I64 N="Value">450118392</I64>
+            </En>
+            <En>
+              <S N="Key">Values</S>
+              <Obj N="Value" RefId="196">
+                <TNRef RefId="3" />
+                <DCT>
+                  <En>
+                    <S N="Key">TaintsRecorded</S>
+                    <S N="Value">0</S>
+                  </En>
+                  <En>
+                    <S N="Key">TaintLookups</S>
+                    <S N="Value">0</S>
+                  </En>
+                  <En>
+                    <S N="Key">RenamesFromTainted</S>
+                    <S N="Value">0</S>
+                  </En>
+                  <En>
+                    <S N="Key">TaintHits</S>
+                    <S N="Value">0</S>
+                  </En>
+                </DCT>
+              </Obj>
+            </En>
+            <En>
+              <S N="Key">StdErrPath</S>
+              <S N="Value">C:\Users\vika\Documents\boot-start-invariant-A01-runtime-verifier-b17r2-artifacts\activation-taint-before-window-f87cee07d79a44c2980f09642dc10f27.err</S>
+            </En>
+            <En>
+              <S N="Key">StartQpc</S>
+              <I64 N="Value">449355052</I64>
+            </En>
+            <En>
+              <S N="Key">StdOutPath</S>
+              <S N="Value">C:\Users\vika\Documents\boot-start-invariant-A01-runtime-verifier-b17r2-artifacts\activation-taint-before-window-f87cee07d79a44c2980f09642dc10f27.out</S>
+            </En>
+          </DCT>
+        </Obj>
+      </En>
+      <En>
+        <S N="Key">ServicePending</S>
+        <Obj N="Value" RefId="197">
+          <TNRef RefId="2" />
+          <MS>
+            <S N="Status">OK</S>
+            <Nil N="Reason" />
+            <S N="Tag">while-holder-after-runtime-policy</S>
+            <I64 N="StartQpc">474760980</I64>
+            <I64 N="EndQpc">476938477</I64>
+            <I64 N="QpcFrequency">10000000</I64>
+            <S N="BootId">WIN10-DEBUGGED/2026-10-07T08:56:31.5000000Z</S>
+            <U32 N="ServerPid">5276</U32>
+            <S N="ServerSid">S-1-5-18</S>
+            <Obj N="Value" RefId="198">
+              <TNRef RefId="2" />
+              <MS>
+                <S N="type">status</S>
+                <I32 N="policyVersion">2</I32>
+                <I32 N="activeCategories">1</I32>
+                <B N="protectionActive">true</B>
+                <B N="auditOnly">false</B>
+                <S N="admissionCoverage">Pending</S>
+                <S N="admissionCoverageReason">WriterPromotionPending</S>
+                <I32 N="nativePolicyGeneration">1</I32>
+              </MS>
+            </Obj>
+            <I64 N="StatusReceiptQpc">476780397</I64>
+            <I32 N="StatusSequence">1</I32>
+            <S N="ConnectionId">0ac3db209b7d41ce90a8504ed92860eb</S>
+            <B N="FirstConnectionSnapshot">true</B>
+            <B N="RetainedStreamState">false</B>
+            <B N="WholeIntervalLossFree">false</B>
+          </MS>
+        </Obj>
+      </En>
+      <En>
+        <S N="Key">NewWriterProbe</S>
+        <Ref N="Value" RefId="48" />
+      </En>
+      <En>
+        <S N="Key">ReadinessSamplesWhileHolder</S>
+        <Obj N="Value" RefId="199">
+          <TNRef RefId="1" />
+          <LST>
+            <Ref RefId="197" />
+            <Obj RefId="200">
+              <TNRef RefId="2" />
+              <MS>
+                <S N="Status">OK</S>
+                <Nil N="Reason" />
+                <S N="Tag">holder-readiness-0</S>
+                <I64 N="StartQpc">488997145</I64>
+                <I64 N="EndQpc">490030790</I64>
+                <I64 N="QpcFrequency">10000000</I64>
+                <S N="BootId">WIN10-DEBUGGED/2026-10-07T08:56:31.5000000Z</S>
+                <U32 N="ServerPid">5276</U32>
+                <S N="ServerSid">S-1-5-18</S>
+                <Obj N="Value" RefId="201">
+                  <TNRef RefId="2" />
+                  <MS>
+                    <S N="type">status</S>
+                    <I32 N="policyVersion">2</I32>
+                    <I32 N="activeCategories">1</I32>
+                    <B N="protectionActive">true</B>
+                    <B N="auditOnly">false</B>
+                    <S N="admissionCoverage">Pending</S>
+                    <S N="admissionCoverageReason">WriterPromotionPending</S>
+                    <I32 N="nativePolicyGeneration">1</I32>
+                  </MS>
+                </Obj>
+                <I64 N="StatusReceiptQpc">490010075</I64>
+                <I32 N="StatusSequence">1</I32>
+                <S N="ConnectionId">b5414ba28da64cd2abb30acc10ad6eb0</S>
+                <B N="FirstConnectionSnapshot">true</B>
+                <B N="RetainedStreamState">false</B>
+                <B N="WholeIntervalLossFree">false</B>
+              </MS>
+            </Obj>
+            <Obj RefId="202">
+              <TNRef RefId="2" />
+              <MS>
+                <S N="Status">OK</S>
+                <Nil N="Reason" />
+                <S N="Tag">holder-readiness-1</S>
+                <I64 N="StartQpc">497199624</I64>
+                <I64 N="EndQpc">498328882</I64>
+                <I64 N="QpcFrequency">10000000</I64>
+                <S N="BootId">WIN10-DEBUGGED/2026-10-07T08:56:31.5000000Z</S>
+                <U32 N="ServerPid">5276</U32>
+                <S N="ServerSid">S-1-5-18</S>
+                <Obj N="Value" RefId="203">
+                  <TNRef RefId="2" />
+                  <MS>
+                    <S N="type">status</S>
+                    <I32 N="policyVersion">2</I32>
+                    <I32 N="activeCategories">1</I32>
+                    <B N="protectionActive">true</B>
+                    <B N="auditOnly">false</B>
+                    <S N="admissionCoverage">Pending</S>
+                    <S N="admissionCoverageReason">WriterPromotionPending</S>
+                    <I32 N="nativePolicyGeneration">1</I32>
+                  </MS>
+                </Obj>
+                <I64 N="StatusReceiptQpc">498327697</I64>
+                <I32 N="StatusSequence">1</I32>
+                <S N="ConnectionId">cabc39ca74474b90aa9cf0fdea109e7d</S>
+                <B N="FirstConnectionSnapshot">true</B>
+                <B N="RetainedStreamState">false</B>
+                <B N="WholeIntervalLossFree">false</B>
+              </MS>
+            </Obj>
+            <Obj RefId="204">
+              <TNRef RefId="2" />
+              <MS>
+                <S N="Status">OK</S>
+                <Nil N="Reason" />
+                <S N="Tag">holder-readiness-2</S>
+                <I64 N="StartQpc">501347875</I64>
+                <I64 N="EndQpc">502329284</I64>
+                <I64 N="QpcFrequency">10000000</I64>
+                <S N="BootId">WIN10-DEBUGGED/2026-10-07T08:56:31.5000000Z</S>
+                <U32 N="ServerPid">5276</U32>
+                <S N="ServerSid">S-1-5-18</S>
+                <Obj N="Value" RefId="205">
+                  <TNRef RefId="2" />
+                  <MS>
+                    <S N="type">status</S>
+                    <I32 N="policyVersion">2</I32>
+                    <I32 N="activeCategories">1</I32>
+                    <B N="protectionActive">true</B>
+                    <B N="auditOnly">false</B>
+                    <S N="admissionCoverage">Pending</S>
+                    <S N="admissionCoverageReason">WriterPromotionPending</S>
+                    <I32 N="nativePolicyGeneration">1</I32>
+                  </MS>
+                </Obj>
+                <I64 N="StatusReceiptQpc">502327518</I64>
+                <I32 N="StatusSequence">1</I32>
+                <S N="ConnectionId">f0db653011054e378d6a8c2f6772dd58</S>
+                <B N="FirstConnectionSnapshot">true</B>
+                <B N="RetainedStreamState">false</B>
+                <B N="WholeIntervalLossFree">false</B>
+              </MS>
+            </Obj>
+          </LST>
+        </Obj>
+      </En>
+      <En>
+        <S N="Key">TaintCounterWindow</S>
+        <Obj N="Value" RefId="206">
+          <TNRef RefId="3" />
+          <DCT>
+            <En>
+              <S N="Key">ProvesNoTaintDecision</S>
+              <B N="Value">false</B>
+            </En>
+            <En>
+              <S N="Key">Deltas</S>
+              <Obj N="Value" RefId="207">
+                <TNRef RefId="3" />
+                <DCT>
+                  <En>
+                    <S N="Key">TaintsRecorded</S>
+                    <S N="Value">0</S>
+                  </En>
+                  <En>
+                    <S N="Key">TaintLookups</S>
+                    <S N="Value">305</S>
+                  </En>
+                  <En>
+                    <S N="Key">RenamesFromTainted</S>
+                    <S N="Value">0</S>
+                  </En>
+                  <En>
+                    <S N="Key">TaintHits</S>
+                    <S N="Value">0</S>
+                  </En>
+                </DCT>
+              </Obj>
+            </En>
+            <En>
+              <S N="Key">After</S>
+              <Obj N="Value" RefId="208">
+                <TNRef RefId="3" />
+                <DCT>
+                  <En>
+                    <S N="Key">QpcFrequency</S>
+                    <I64 N="Value">10000000</I64>
+                  </En>
+                  <En>
+                    <S N="Key">Raw</S>
+                    <S N="Value">CreatesSeen             : 120178_x000D__x000A_CreatesPastCheapGates   : 0_x000D__x000A_ScopeEvaluations        : 49_x000D__x000A_UserModeRoundTrips      : 0_x000D__x000A_CacheHits               : 6_x000D__x000A_DeniedPreCreate         : 0_x000D__x000A_DeniedPostCreate        : 0_x000D__x000A_DeniedRename            : 0_x000D__x000A_AllowedWithoutInspection: 3_x000D__x000A_TaintsRecorded          : 0_x000D__x000A_TaintLookups            : 305_x000D__x000A_TaintHits               : 0_x000D__x000A_SetInformationSeen      : 2551_x000D__x000A_RenamesSeen             : 14_x000D__x000A_RenamesFromTainted      : 0_x000D__x000A_ClassesSeen             : 0000000000000403 0000000000186410_x000D__x000A_  classes vistas        : 4=FileBasicInformation 10=FileRenameInformation 13=FileDispositionInformation 14=FilePositionInformation 19=FileEndOfFileInformation 20=FileAllocationInformation 64=FileDispositionInformationEx 65=FileRenameInformationEx_x000D__x000A__x000D__x000A_Passaram das portas baratas: 0.0000% dos creates_x000D__x000A_Acerto de cache            : 10.9%_x000D__x000A_</S>
+                  </En>
+                  <En>
+                    <S N="Key">BootId</S>
+                    <S N="Value">WIN10-DEBUGGED/2026-10-07T08:56:31.5000000Z</S>
+                  </En>
+                  <En>
+                    <S N="Key">Scope</S>
+                    <S N="Value">MachineWideDiagnostic;NoTargetAttribution</S>
+                  </En>
+                  <En>
+                    <S N="Key">EndQpc</S>
+                    <I64 N="Value">545963423</I64>
+                  </En>
+                  <En>
+                    <S N="Key">Values</S>
+                    <Obj N="Value" RefId="209">
+                      <TNRef RefId="3" />
+                      <DCT>
+                        <En>
+                          <S N="Key">TaintsRecorded</S>
+                          <S N="Value">0</S>
+                        </En>
+                        <En>
+                          <S N="Key">TaintLookups</S>
+                          <S N="Value">305</S>
+                        </En>
+                        <En>
+                          <S N="Key">RenamesFromTainted</S>
+                          <S N="Value">0</S>
+                        </En>
+                        <En>
+                          <S N="Key">TaintHits</S>
+                          <S N="Value">0</S>
+                        </En>
+                      </DCT>
+                    </Obj>
+                  </En>
+                  <En>
+                    <S N="Key">StdErrPath</S>
+                    <S N="Value">C:\Users\vika\Documents\boot-start-invariant-A01-runtime-verifier-b17r2-artifacts\activation-taint-after-window-af2bc31f91d84448be8b6e5bcb865289.err</S>
+                  </En>
+                  <En>
+                    <S N="Key">StartQpc</S>
+                    <I64 N="Value">544875706</I64>
+                  </En>
+                  <En>
+                    <S N="Key">StdOutPath</S>
+                    <S N="Value">C:\Users\vika\Documents\boot-start-invariant-A01-runtime-verifier-b17r2-artifacts\activation-taint-after-window-af2bc31f91d84448be8b6e5bcb865289.out</S>
+                  </En>
+                </DCT>
+              </Obj>
+            </En>
+            <En>
+              <S N="Key">Before</S>
+              <Ref N="Value" RefId="195" />
+            </En>
+            <En>
+              <S N="Key">NoCounterChanges</S>
+              <B N="Value">false</B>
+            </En>
+            <En>
+              <S N="Key">Status</S>
+              <S N="Value">OK</S>
+            </En>
+            <En>
+              <S N="Key">LiveTestDisableTaint</S>
+              <S N="Value">Unavailable</S>
+            </En>
+          </DCT>
+        </Obj>
+      </En>
+      <En>
+        <S N="Key">NotificationStatusHistory</S>
+        <Obj N="Value" RefId="210">
+          <TNRef RefId="1" />
+          <LST>
+            <Obj RefId="211">
+              <TNRef RefId="3" />
+              <DCT>
+                <En>
+                  <S N="Key">Value</S>
+                  <Ref N="Value" RefId="198" />
+                </En>
+                <En>
+                  <S N="Key">HolderLive</S>
+                  <B N="Value">true</B>
+                </En>
+                <En>
+                  <S N="Key">FirstConnectionSnapshot</S>
+                  <B N="Value">true</B>
+                </En>
+                <En>
+                  <S N="Key">ConnectionId</S>
+                  <S N="Value">0ac3db209b7d41ce90a8504ed92860eb</S>
+                </En>
+                <En>
+                  <S N="Key">Sequence</S>
+                  <I32 N="Value">1</I32>
+                </En>
+                <En>
+                  <S N="Key">ReceiptQpc</S>
+                  <I64 N="Value">476780397</I64>
+                </En>
+              </DCT>
+            </Obj>
+            <Obj RefId="212">
+              <TNRef RefId="3" />
+              <DCT>
+                <En>
+                  <S N="Key">Value</S>
+                  <Ref N="Value" RefId="201" />
+                </En>
+                <En>
+                  <S N="Key">HolderLive</S>
+                  <B N="Value">true</B>
+                </En>
+                <En>
+                  <S N="Key">FirstConnectionSnapshot</S>
+                  <B N="Value">true</B>
+                </En>
+                <En>
+                  <S N="Key">ConnectionId</S>
+                  <S N="Value">b5414ba28da64cd2abb30acc10ad6eb0</S>
+                </En>
+                <En>
+                  <S N="Key">Sequence</S>
+                  <I32 N="Value">1</I32>
+                </En>
+                <En>
+                  <S N="Key">ReceiptQpc</S>
+                  <I64 N="Value">490010075</I64>
+                </En>
+              </DCT>
+            </Obj>
+            <Obj RefId="213">
+              <TNRef RefId="3" />
+              <DCT>
+                <En>
+                  <S N="Key">Value</S>
+                  <Ref N="Value" RefId="203" />
+                </En>
+                <En>
+                  <S N="Key">HolderLive</S>
+                  <B N="Value">true</B>
+                </En>
+                <En>
+                  <S N="Key">FirstConnectionSnapshot</S>
+                  <B N="Value">true</B>
+                </En>
+                <En>
+                  <S N="Key">ConnectionId</S>
+                  <S N="Value">cabc39ca74474b90aa9cf0fdea109e7d</S>
+                </En>
+                <En>
+                  <S N="Key">Sequence</S>
+                  <I32 N="Value">1</I32>
+                </En>
+                <En>
+                  <S N="Key">ReceiptQpc</S>
+                  <I64 N="Value">498327697</I64>
+                </En>
+              </DCT>
+            </Obj>
+            <Obj RefId="214">
+              <TNRef RefId="3" />
+              <DCT>
+                <En>
+                  <S N="Key">Value</S>
+                  <Ref N="Value" RefId="205" />
+                </En>
+                <En>
+                  <S N="Key">HolderLive</S>
+                  <B N="Value">true</B>
+                </En>
+                <En>
+                  <S N="Key">FirstConnectionSnapshot</S>
+                  <B N="Value">true</B>
+                </En>
+                <En>
+                  <S N="Key">ConnectionId</S>
+                  <S N="Value">f0db653011054e378d6a8c2f6772dd58</S>
+                </En>
+                <En>
+                  <S N="Key">Sequence</S>
+                  <I32 N="Value">1</I32>
+                </En>
+                <En>
+                  <S N="Key">ReceiptQpc</S>
+                  <I64 N="Value">502327518</I64>
+                </En>
+              </DCT>
+            </Obj>
+          </LST>
+        </Obj>
+      </En>
+      <En>
+        <S N="Key">Disposal</S>
+        <Obj N="Value" RefId="215">
+          <TN RefId="21">
+            <T>StagedInvariant.Disposal</T>
+            <T>System.Management.Automation.PSCustomObject</T>
+            <T>System.Object</T>
+          </TN>
+          <MS>
+            <S N="Status">OK</S>
+            <Obj N="Errors" RefId="216">
+              <TNRef RefId="1" />
+              <LST />
+            </Obj>
+            <Obj N="Time" RefId="217">
+              <TNRef RefId="0" />
+              <DCT>
+                <En>
+                  <S N="Key">Utc</S>
+                  <S N="Value">2026-10-07T08:57:26.5575208Z</S>
+                </En>
+                <En>
+                  <S N="Key">Qpc</S>
+                  <I64 N="Value">552716317</I64>
+                </En>
+                <En>
+                  <S N="Key">QpcFrequency</S>
+                  <I64 N="Value">10000000</I64>
+                </En>
+                <En>
+                  <S N="Key">BootId</S>
+                  <S N="Value">WIN10-DEBUGGED/2026-10-07T08:56:31.5000000Z</S>
+                </En>
+              </DCT>
+            </Obj>
+          </MS>
+        </Obj>
+      </En>
+      <En>
+        <S N="Key">Baseline</S>
+        <Obj N="Value" RefId="218">
+          <TN RefId="22">
+            <T>StagedInvariant.Baseline</T>
+            <T>System.Management.Automation.PSCustomObject</T>
+            <T>System.Object</T>
+          </TN>
+          <MS>
+            <Obj N="Names" RefId="219">
+              <TN RefId="23">
+                <T>System.String[]</T>
+                <T>System.Array</T>
+                <T>System.Object</T>
+              </TN>
+              <LST>
+                <S>marker.txt</S>
+              </LST>
+            </Obj>
+            <S N="Build">19045.2965</S>
+            <I32 N="ObserverPid">1620</I32>
+            <Obj N="Readers" RefId="220">
+              <TNRef RefId="1" />
+              <LST>
+                <Obj RefId="221">
+                  <TNRef RefId="14" />
+                  <MS>
+                    <S N="Path">C:\SafeUploadInvariant-boot-start-invariant-A01-runtime-verifier-b17r2\marker.txt</S>
+                    <Obj N="Result" RefId="222">
+                      <TNRef RefId="15" />
+                      <ToString>StagedInvariant.Reader</ToString>
+                      <Props>
+                        <Obj N="Before" RefId="223">
+                          <TNRef RefId="7" />
+                          <ToString>StagedInvariant.Identity</ToString>
+                          <Props>
+                            <U64 N="VolumeSerial">5392606751128498047</U64>
+                            <U64 N="Reference">1688849860424628</U64>
+                            <S N="FileId">B4730200000006000000000000000000</S>
+                            <I64 N="Allocation">12288</I64>
+                            <I64 N="Eof">12288</I64>
+                            <I64 N="Creation">134358369726076262</I64>
+                            <I64 N="Modified">134358370330035222</I64>
+                            <I64 N="Changed">134358370330035222</I64>
+                            <I64 N="Accessed">134358370330035222</I64>
+                            <U32 N="Attributes">32</U32>
+                            <U32 N="Links">1</U32>
+                            <B N="Directory">false</B>
+                            <B N="DeletePending">false</B>
+                          </Props>
+                        </Obj>
+                        <Obj N="After" RefId="224">
+                          <TNRef RefId="7" />
+                          <ToString>StagedInvariant.Identity</ToString>
+                          <Props>
+                            <U64 N="VolumeSerial">5392606751128498047</U64>
+                            <U64 N="Reference">1688849860424628</U64>
+                            <S N="FileId">B4730200000006000000000000000000</S>
+                            <I64 N="Allocation">12288</I64>
+                            <I64 N="Eof">12288</I64>
+                            <I64 N="Creation">134358369726076262</I64>
+                            <I64 N="Modified">134358370330035222</I64>
+                            <I64 N="Changed">134358370330035222</I64>
+                            <I64 N="Accessed">134358370357615216</I64>
+                            <U32 N="Attributes">32</U32>
+                            <U32 N="Links">1</U32>
+                            <B N="Directory">false</B>
+                            <B N="DeletePending">false</B>
+                          </Props>
+                        </Obj>
+                        <S N="Digest">94124D3DD6FC2126FBAD1FD5056A85786002EEE1B00B84BD93B55736B03C3DB6</S>
+                        <S N="Status">OK</S>
+                        <I64 N="Length">12288</I64>
+                        <I32 N="NativeCode">0</I32>
+                      </Props>
+                    </Obj>
+                    <Nil N="Error" />
+                    <S N="Status">OK</S>
+                    <B N="Unbuffered">false</B>
+                  </MS>
+                </Obj>
+                <Obj RefId="225">
+                  <TNRef RefId="14" />
+                  <MS>
+                    <S N="Path">C:\SafeUploadInvariant-boot-start-invariant-A01-runtime-verifier-b17r2\marker.txt</S>
+                    <Obj N="Result" RefId="226">
+                      <TNRef RefId="15" />
+                      <ToString>StagedInvariant.Reader</ToString>
+                      <Props>
+                        <Obj N="Before" RefId="227">
+                          <TNRef RefId="7" />
+                          <ToString>StagedInvariant.Identity</ToString>
+                          <Props>
+                            <U64 N="VolumeSerial">5392606751128498047</U64>
+                            <U64 N="Reference">1688849860424628</U64>
+                            <S N="FileId">B4730200000006000000000000000000</S>
+                            <I64 N="Allocation">12288</I64>
+                            <I64 N="Eof">12288</I64>
+                            <I64 N="Creation">134358369726076262</I64>
+                            <I64 N="Modified">134358370330035222</I64>
+                            <I64 N="Changed">134358370330035222</I64>
+                            <I64 N="Accessed">134358370357615216</I64>
+                            <U32 N="Attributes">32</U32>
+                            <U32 N="Links">1</U32>
+                            <B N="Directory">false</B>
+                            <B N="DeletePending">false</B>
+                          </Props>
+                        </Obj>
+                        <Obj N="After" RefId="228">
+                          <TNRef RefId="7" />
+                          <ToString>StagedInvariant.Identity</ToString>
+                          <Props>
+                            <U64 N="VolumeSerial">5392606751128498047</U64>
+                            <U64 N="Reference">1688849860424628</U64>
+                            <S N="FileId">B4730200000006000000000000000000</S>
+                            <I64 N="Allocation">12288</I64>
+                            <I64 N="Eof">12288</I64>
+                            <I64 N="Creation">134358369726076262</I64>
+                            <I64 N="Modified">134358370330035222</I64>
+                            <I64 N="Changed">134358370330035222</I64>
+                            <I64 N="Accessed">134358370357655235</I64>
+                            <U32 N="Attributes">32</U32>
+                            <U32 N="Links">1</U32>
+                            <B N="Directory">false</B>
+                            <B N="DeletePending">false</B>
+                          </Props>
+                        </Obj>
+                        <S N="Digest">94124D3DD6FC2126FBAD1FD5056A85786002EEE1B00B84BD93B55736B03C3DB6</S>
+                        <S N="Status">OK</S>
+                        <I64 N="Length">12288</I64>
+                        <I32 N="NativeCode">0</I32>
+                      </Props>
+                    </Obj>
+                    <Nil N="Error" />
+                    <S N="Status">OK</S>
+                    <B N="Unbuffered">true</B>
+                  </MS>
+                </Obj>
+              </LST>
+            </Obj>
+            <Obj N="Images" RefId="229">
+              <TNRef RefId="1" />
+              <LST>
+                <Obj RefId="230">
+                  <TNRef RefId="4" />
+                  <MS>
+                    <S N="Path">C:\SafeUploadInvariant-boot-start-invariant-A01-runtime-verifier-b17r2</S>
+                    <Obj N="Runs" RefId="231">
+                      <TNRef RefId="1" />
+                      <LST />
+                    </Obj>
+                    <B N="Resident">true</B>
+                    <Obj N="LogicalArtifact" RefId="232">
+                      <TNRef RefId="6" />
+                      <MS>
+                        <Obj N="Path" RefId="233">
+                          <S>C:\Users\vika\Documents\boot-start-invariant-A01-runtime-verifier-b17r2-artifacts\raw\logical-76fc326a431d47cd9ad084a3a796c96b.bin</S>
+                        </Obj>
+                        <I64 N="Length">0</I64>
+                        <S N="Sha256">E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855</S>
+                        <S N="Kind">logical</S>
+                      </MS>
+                    </Obj>
+                    <S N="Sha256">E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855</S>
+                    <Obj N="Containers" RefId="234">
+                      <TNRef RefId="1" />
+                      <LST>
+                        <Obj RefId="235">
+                          <TNRef RefId="2" />
+                          <MS>
+                            <I64 N="Offset">3385763840</I64>
+                            <I64 N="Length">1024</I64>
+                            <S N="Kind">MFT</S>
+                            <Obj N="Artifact" RefId="236">
+                              <TNRef RefId="6" />
+                              <MS>
+                                <Obj N="Path" RefId="237">
+                                  <S>C:\Users\vika\Documents\boot-start-invariant-A01-runtime-verifier-b17r2-artifacts\raw\MFT-d7cb2e1eb164430490ab9dcfe43408ea.bin</S>
+                                </Obj>
+                                <I64 N="Length">1024</I64>
+                                <S N="Sha256">51AADB8BBBF193AB1448EBCB783F8400764E95F675410DBA7B07CFDAB33275D3</S>
+                                <S N="Kind">MFT</S>
+                              </MS>
+                            </Obj>
+                          </MS>
+                        </Obj>
+                      </LST>
+                    </Obj>
+                    <I64 N="Length">0</I64>
+                    <S N="Role">Parent</S>
+                    <Obj N="CrossCheckErrors" RefId="238">
+                      <TNRef RefId="1" />
+                      <LST />
+                    </Obj>
+                    <Obj N="DirectoryEntries" RefId="239">
+                      <TNRef RefId="1" />
+                      <LST>
+                        <Obj RefId="240">
+                          <TNRef RefId="8" />
+                          <ToString>StagedInvariant.NameEntry</ToString>
+                          <Props>
+                            <S N="Name">marker.txt</S>
+                            <By N="Namespace">3</By>
+                            <U64 N="Reference">1688849860424628</U64>
+                            <U64 N="Parent">1688849860424618</U64>
+                            <I64 N="Allocated">12288</I64>
+                            <I64 N="Eof">12288</I64>
+                            <U32 N="Attributes">32</U32>
+                            <I64 N="Creation">134358369726076262</I64>
+                            <I64 N="Modified">134358370330035222</I64>
+                            <I64 N="Changed">134358370330035222</I64>
+                            <I64 N="Accessed">134358370330035222</I64>
+                          </Props>
+                        </Obj>
+                      </LST>
+                    </Obj>
+                    <Obj N="Identity" RefId="241">
+                      <TNRef RefId="7" />
+                      <ToString>StagedInvariant.Identity</ToString>
+                      <Props>
+                        <U64 N="VolumeSerial">5392606751128498047</U64>
+                        <U64 N="Reference">1688849860424618</U64>
+                        <S N="FileId">AA730200000006000000000000000000</S>
+                        <I64 N="Allocation">0</I64>
+                        <I64 N="Eof">0</I64>
+                        <I64 N="Creation">134358369714536259</I64>
+                        <I64 N="Modified">134358369726076262</I64>
+                        <I64 N="Changed">134358369726076262</I64>
+                        <I64 N="Accessed">134358370355935229</I64>
+                        <U32 N="Attributes">16</U32>
+                        <U32 N="Links">1</U32>
+                        <B N="Directory">true</B>
+                        <B N="DeletePending">false</B>
+                      </Props>
+                    </Obj>
+                    <Obj N="FileNames" RefId="242">
+                      <TNRef RefId="1" />
+                      <LST>
+                        <Obj RefId="243">
+                          <TNRef RefId="8" />
+                          <ToString>StagedInvariant.NameEntry</ToString>
+                          <Props>
+                            <S N="Name">SAB5D6~1</S>
+                            <By N="Namespace">2</By>
+                            <U64 N="Reference">1688849860424618</U64>
+                            <U64 N="Parent">1407374883553285</U64>
+                            <I64 N="Allocated">0</I64>
+                            <I64 N="Eof">0</I64>
+                            <U32 N="Attributes">268435456</U32>
+                            <I64 N="Creation">134358369714536259</I64>
+                            <I64 N="Modified">134358369714536259</I64>
+                            <I64 N="Changed">134358369714536259</I64>
+                            <I64 N="Accessed">134358369714536259</I64>
+                          </Props>
+                        </Obj>
+                        <Obj RefId="244">
+                          <TNRef RefId="8" />
+                          <ToString>StagedInvariant.NameEntry</ToString>
+                          <Props>
+                            <S N="Name">SafeUploadInvariant-boot-start-invariant-A01-runtime-verifier-b17r2</S>
+                            <By N="Namespace">1</By>
+                            <U64 N="Reference">1688849860424618</U64>
+                            <U64 N="Parent">1407374883553285</U64>
+                            <I64 N="Allocated">0</I64>
+                            <I64 N="Eof">0</I64>
+                            <U32 N="Attributes">268435456</U32>
+                            <I64 N="Creation">134358369714536259</I64>
+                            <I64 N="Modified">134358369714536259</I64>
+                            <I64 N="Changed">134358369714536259</I64>
+                            <I64 N="Accessed">134358369714536259</I64>
+                          </Props>
+                        </Obj>
+                      </LST>
+                    </Obj>
+                    <Obj N="Records" RefId="245">
+                      <TNRef RefId="1" />
+                      <LST>
+                        <Obj RefId="246">
+                          <TNRef RefId="2" />
+                          <MS>
+                            <U32 N="Number">160682</U32>
+                            <U16 N="Sequence">6</U16>
+                            <U64 N="BaseReference">0</U64>
+                            <S N="RawSha256">51AADB8BBBF193AB1448EBCB783F8400764E95F675410DBA7B07CFDAB33275D3</S>
+                            <S N="FixedSha256">4BAA5B7E70EB46BE08D8EB52FF0A17F42FA80295F182307C695C003A56CF110D</S>
+                          </MS>
+                        </Obj>
+                      </LST>
+                    </Obj>
+                    <Obj N="RawMetadata" RefId="247">
+                      <TNRef RefId="7" />
+                      <ToString>StagedInvariant.Identity</ToString>
+                      <Props>
+                        <U64 N="VolumeSerial">0</U64>
+                        <U64 N="Reference">0</U64>
+                        <Nil N="FileId" />
+                        <I64 N="Allocation">0</I64>
+                        <I64 N="Eof">0</I64>
+                        <I64 N="Creation">134358369714536259</I64>
+                        <I64 N="Modified">134358369726076262</I64>
+                        <I64 N="Changed">134358369726076262</I64>
+                        <I64 N="Accessed">134358370330015278</I64>
+                        <U32 N="Attributes">16</U32>
+                        <U32 N="Links">1</U32>
+                        <B N="Directory">false</B>
+                        <B N="DeletePending">false</B>
+                      </Props>
+                    </Obj>
+                    <U32 N="SecurityId">4470</U32>
+                    <S N="Sddl">O:BAG:S-1-5-21-316478115-1595729549-2803163825-513D:AI(A;OICI;0x1301bf;;;S-1-5-21-316478115-1595729549-2803163825-1078)(A;OICIID;FA;;;BA)(A;OICIID;FA;;;SY)(A;OICIID;0x1200a9;;;BU)(A;ID;0x1301bf;;;AU)(A;OICIIOID;SDGXGWGR;;;AU)</S>
+                    <Obj N="Attributes" RefId="248">
+                      <TNRef RefId="1" />
+                      <LST>
+                        <Obj RefId="249">
+                          <TNRef RefId="2" />
+                          <MS>
+                            <U32 N="Type">16</U32>
+                            <U16 N="Id">0</U16>
+                            <U16 N="Flags">0</U16>
+                            <S N="Name"></S>
+                            <U64 N="RecordReference">1688849860424618</U64>
+                            <B N="NonResident">false</B>
+                            <I64 N="StartVcn">0</I64>
+                            <I64 N="LastVcn">0</I64>
+                            <I64 N="Allocation">72</I64>
+                            <I64 N="Eof">72</I64>
+                            <I64 N="ValidData">72</I64>
+                            <U16 N="CompressionUnit">0</U16>
+                            <Obj N="Runs" RefId="250">
+                              <TNRef RefId="1" />
+                              <LST />
+                            </Obj>
+                          </MS>
+                        </Obj>
+                        <Obj RefId="251">
+                          <TNRef RefId="2" />
+                          <MS>
+                            <U32 N="Type">48</U32>
+                            <U16 N="Id">3</U16>
+                            <U16 N="Flags">0</U16>
+                            <S N="Name"></S>
+                            <U64 N="RecordReference">1688849860424618</U64>
+                            <B N="NonResident">false</B>
+                            <I64 N="StartVcn">0</I64>
+                            <I64 N="LastVcn">0</I64>
+                            <I64 N="Allocation">82</I64>
+                            <I64 N="Eof">82</I64>
+                            <I64 N="ValidData">82</I64>
+                            <U16 N="CompressionUnit">0</U16>
+                            <Obj N="Runs" RefId="252">
+                              <TNRef RefId="1" />
+                              <LST />
+                            </Obj>
+                          </MS>
+                        </Obj>
+                        <Obj RefId="253">
+                          <TNRef RefId="2" />
+                          <MS>
+                            <U32 N="Type">48</U32>
+                            <U16 N="Id">2</U16>
+                            <U16 N="Flags">0</U16>
+                            <S N="Name"></S>
+                            <U64 N="RecordReference">1688849860424618</U64>
+                            <B N="NonResident">false</B>
+                            <I64 N="StartVcn">0</I64>
+                            <I64 N="LastVcn">0</I64>
+                            <I64 N="Allocation">200</I64>
+                            <I64 N="Eof">200</I64>
+                            <I64 N="ValidData">200</I64>
+                            <U16 N="CompressionUnit">0</U16>
+                            <Obj N="Runs" RefId="254">
+                              <TNRef RefId="1" />
+                              <LST />
+                            </Obj>
+                          </MS>
+                        </Obj>
+                        <Obj RefId="255">
+                          <TNRef RefId="2" />
+                          <MS>
+                            <U32 N="Type">144</U32>
+                            <U16 N="Id">1</U16>
+                            <U16 N="Flags">0</U16>
+                            <S N="Name">$I30</S>
+                            <U64 N="RecordReference">1688849860424618</U64>
+                            <B N="NonResident">false</B>
+                            <I64 N="StartVcn">0</I64>
+                            <I64 N="LastVcn">0</I64>
+                            <I64 N="Allocation">152</I64>
+                            <I64 N="Eof">152</I64>
+                            <I64 N="ValidData">152</I64>
+                            <U16 N="CompressionUnit">0</U16>
+                            <Obj N="Runs" RefId="256">
+                              <TNRef RefId="1" />
+                              <LST />
+                            </Obj>
+                          </MS>
+                        </Obj>
+                      </LST>
+                    </Obj>
+                    <S N="Fingerprint">48B3C8E82AEA4CFBF35263E3C686AC39B9946BEDFECE700BAD85B70AC5A97E13</S>
+                  </MS>
+                </Obj>
+                <Ref RefId="8" />
+              </LST>
+            </Obj>
+            <Nil N="Error" />
+            <Ref N="Time" RefId="7" />
+            <Obj N="Geometry" RefId="257">
+              <TN RefId="24">
+                <T>StagedInvariant.Geometry</T>
+                <T>System.Object</T>
+              </TN>
+              <ToString>StagedInvariant.Geometry</ToString>
+              <Props>
+                <I32 N="Sector">512</I32>
+                <I32 N="PhysicalSector">512</I32>
+                <I32 N="Alignment">512</I32>
+                <I32 N="Cluster">4096</I32>
+                <I32 N="RecordSize">1024</I32>
+                <I32 N="IndexSize">4096</I32>
+                <I64 N="MftLcn">786432</I64>
+                <I64 N="TotalBytes">128168321024</I64>
+                <U64 N="Serial">5392606751128498047</U64>
+                <S N="Guid">\\?\Volume{f58c7564-1b1d-4c24-a05a-6f58cb85ec9c}\</S>
+                <S N="Mount">C:\</S>
+                <S N="Device">\Device\HarddiskVolume3</S>
+              </Props>
+            </Obj>
+            <S N="Schema">StagedInvariant/1</S>
+            <S N="Status">OK</S>
+            <S N="ObserverSid">S-1-5-18</S>
+            <S N="CaseId">A01</S>
+          </MS>
+        </Obj>
+      </En>
+    </DCT>
+  </Obj>
+</Objs>

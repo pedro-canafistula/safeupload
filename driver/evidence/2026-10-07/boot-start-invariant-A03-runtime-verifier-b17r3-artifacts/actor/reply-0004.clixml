@@ -1,0 +1,161 @@
+<Objs Version="1.1.0.1" xmlns="http://schemas.microsoft.com/powershell/2004/04">
+  <Obj RefId="0">
+    <TN RefId="0">
+      <T>System.Collections.Hashtable</T>
+      <T>System.Object</T>
+    </TN>
+    <DCT>
+      <En>
+        <S N="Key">QpcFrequency</S>
+        <I64 N="Value">10000000</I64>
+      </En>
+      <En>
+        <S N="Key">Action</S>
+        <S N="Value">write-old</S>
+      </En>
+      <En>
+        <S N="Key">BootId</S>
+        <S N="Value">WIN10-DEBUGGED/2026-10-07T09:01:14.5000000Z</S>
+      </En>
+      <En>
+        <S N="Key">Error</S>
+        <S N="Value">System.Management.Automation.RuntimeException: Old holder flush failed: Win32 5</S>
+      </En>
+      <En>
+        <S N="Key">EndQpc</S>
+        <I64 N="Value">492501752</I64>
+      </En>
+      <En>
+        <S N="Key">NativeCode</S>
+        <Nil N="Value" />
+      </En>
+      <En>
+        <S N="Key">Calls</S>
+        <Obj N="Value" RefId="1">
+          <TN RefId="1">
+            <T>System.Object[]</T>
+            <T>System.Array</T>
+            <T>System.Object</T>
+          </TN>
+          <LST>
+            <Obj RefId="2">
+              <TNRef RefId="0" />
+              <DCT>
+                <En>
+                  <S N="Key">EndQpc</S>
+                  <I64 N="Value">491738796</I64>
+                </En>
+                <En>
+                  <S N="Key">PayloadSha256</S>
+                  <S N="Value">6CA9E7B8A4C120CE531F3D203DB7930186B456E786E0E1573031FBD4BF36A15B</S>
+                </En>
+                <En>
+                  <S N="Key">StartQpc</S>
+                  <I64 N="Value">491645937</I64>
+                </En>
+                <En>
+                  <S N="Key">Paging</S>
+                  <B N="Value">true</B>
+                </En>
+                <En>
+                  <S N="Key">Length</S>
+                  <I32 N="Value">96</I32>
+                </En>
+                <En>
+                  <S N="Key">Offset</S>
+                  <I64 N="Value">64</I64>
+                </En>
+                <En>
+                  <S N="Key">NativeCode</S>
+                  <I32 N="Value">0</I32>
+                </En>
+              </DCT>
+            </Obj>
+            <Obj RefId="3">
+              <TNRef RefId="0" />
+              <DCT>
+                <En>
+                  <S N="Key">EndQpc</S>
+                  <I64 N="Value">491872027</I64>
+                </En>
+                <En>
+                  <S N="Key">PayloadSha256</S>
+                  <S N="Value">B60A1ACCE8E1C5B3A03C3F89C9DF7087E1679A9C2AFDD9C9C2ECF453CDD3A3EB</S>
+                </En>
+                <En>
+                  <S N="Key">StartQpc</S>
+                  <I64 N="Value">491871875</I64>
+                </En>
+                <En>
+                  <S N="Key">Paging</S>
+                  <B N="Value">true</B>
+                </En>
+                <En>
+                  <S N="Key">Length</S>
+                  <I32 N="Value">96</I32>
+                </En>
+                <En>
+                  <S N="Key">Offset</S>
+                  <I64 N="Value">6144</I64>
+                </En>
+                <En>
+                  <S N="Key">NativeCode</S>
+                  <I32 N="Value">0</I32>
+                </En>
+              </DCT>
+            </Obj>
+            <Obj RefId="4">
+              <TNRef RefId="0" />
+              <DCT>
+                <En>
+                  <S N="Key">EndQpc</S>
+                  <I64 N="Value">491872258</I64>
+                </En>
+                <En>
+                  <S N="Key">PayloadSha256</S>
+                  <S N="Value">086EE158B72C6BE5C07C2396EFBDB270084F61F8572E9232D50062EAF7AC3DAA</S>
+                </En>
+                <En>
+                  <S N="Key">StartQpc</S>
+                  <I64 N="Value">491872192</I64>
+                </En>
+                <En>
+                  <S N="Key">Paging</S>
+                  <B N="Value">true</B>
+                </En>
+                <En>
+                  <S N="Key">Length</S>
+                  <I32 N="Value">96</I32>
+                </En>
+                <En>
+                  <S N="Key">Offset</S>
+                  <I64 N="Value">12128</I64>
+                </En>
+                <En>
+                  <S N="Key">NativeCode</S>
+                  <I32 N="Value">0</I32>
+                </En>
+              </DCT>
+            </Obj>
+          </LST>
+        </Obj>
+      </En>
+      <En>
+        <S N="Key">FlushCode</S>
+        <I32 N="Value">5</I32>
+      </En>
+      <En>
+        <S N="Key">Sequence</S>
+        <I32 N="Value">4</I32>
+      </En>
+      <En>
+        <S N="Key">Pid</S>
+        <I32 N="Value">5488</I32>
+      </En>
+      <En>
+        <S N="Key">StartQpc</S>
+        <I64 N="Value">491606952</I64>
+      </En>
+    </DCT>
+  </Obj>
+</Objs>

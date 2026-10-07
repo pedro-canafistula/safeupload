@@ -1,0 +1,25 @@
+PRE_RUN_PS: $ErrorActionPreference='Stop';$d='C:\Users\vika\Documents';
+$p=Join-Path $d 'SafeUpload-stage-prototype-20A9F5121C560BBE.sys';if((Test-Path -LiteralPath $p) -and (Get-FileHash $p).Hash -ne '20A9F5121C560BBE4840A5C455BEFD5FDD1C253C7BE1D908B95FE6DCDBD6BEEC'){throw 'Input collision'};
+$p=Join-Path $d 'inspector-feature-release-F57263A3752E4575.exe';if((Test-Path -LiteralPath $p) -and (Get-FileHash $p).Hash -ne 'F57263A3752E4575AA87A0FFEC7233133619D11D1B29568982AB465D5F2E53FC'){throw 'Input collision'};
+$p=Join-Path $d 'StagedInvariantCases-66DA0D5904249112.psd1';if((Test-Path -LiteralPath $p) -and (Get-FileHash $p).Hash -ne '66DA0D590424911252046B0EE65893ABC0F75639680AF940A9F1BBB2E852FBA6'){throw 'Input collision'};
+$p=Join-Path $d 'StagedInvariantObserver-5210C6FCC9058D9F.psm1';if((Test-Path -LiteralPath $p) -and (Get-FileHash $p).Hash -ne '5210C6FCC9058D9F6FD52E0C2505654F4779875A82771AFC3558D838250CC81A'){throw 'Input collision'};
+$p=Join-Path $d 'StagedTestAgent-4C9220B7D202255D.ps1';if((Test-Path -LiteralPath $p) -and (Get-FileHash $p).Hash -ne '4C9220B7D202255DC29EDB585DB3C51AED0B2284C06914E41E2C7C1BAA247699'){throw 'Input collision'};
+$p=Join-Path $d 'stage-service-publish.zip';if((Test-Path -LiteralPath $p) -and (Get-FileHash $p).Hash -ne 'F15B84470D2B6DF83A5FEFF00BEE07B0B454BCEFC25878C7C0D0255296ADD402'){$old=(Get-FileHash $p).Hash;$keep=$p+'.preserved-'+$old;if(Test-Path -LiteralPath $keep){throw 'Preserved package collision'};Move-Item -LiteralPath $p -Destination $keep};
+$p=Join-Path $d 'Test-StagedInvariantSuite-6020A02ABE26A030.ps1';if((Test-Path -LiteralPath $p) -and (Get-FileHash $p).Hash -ne '6020A02ABE26A0306554D22FA7BDC72AEE87086D904C237FFAD1C8B4A6DE6340'){throw 'Input collision'};
+if(Test-Path -LiteralPath (Join-Path $d 'boot-start-invariant-A04-runtime-verifier-b17r4-artifacts')){throw 'Run-scoped guest evidence collision'};
+if(Test-Path -LiteralPath (Join-Path $d 'SafeUpload-invariant-state-boot-start-invariant-A04-runtime-verifier-b17r4')){throw 'Run-scoped guest evidence collision'};
+if(Test-Path -LiteralPath (Join-Path $d 'boot-start-invariant-A04-runtime-verifier-b17r4-prepare.out')){throw 'Run-scoped guest evidence collision'};
+if(Test-Path -LiteralPath (Join-Path $d 'boot-start-invariant-A04-runtime-verifier-b17r4-prepare.err')){throw 'Run-scoped guest evidence collision'};
+if(Test-Path -LiteralPath (Join-Path $d 'boot-start-invariant-A04-runtime-verifier-b17r4-afterboot.out')){throw 'Run-scoped guest evidence collision'};
+if(Test-Path -LiteralPath (Join-Path $d 'boot-start-invariant-A04-runtime-verifier-b17r4-afterboot.err')){throw 'Run-scoped guest evidence collision'};
+if(Test-Path -LiteralPath (Join-Path $d 'boot-start-invariant-A04-runtime-verifier-b17r4-finalize.out')){throw 'Run-scoped guest evidence collision'};
+if(Test-Path -LiteralPath (Join-Path $d 'boot-start-invariant-A04-runtime-verifier-b17r4-finalize.err')){throw 'Run-scoped guest evidence collision'};
+'PRE_RUN_OK=True'
+
+PRE_RUN_OK=True
+copied /tmp/claude-1000/exact-mvp4-b17/SafeUpload-stage-prototype.sys -> SafeUpload-stage-prototype-20A9F5121C560BBE.sys sha256=20a9f5121c560bbe4840a5c455befd5fdd1c253c7be1d908b95fe6dcdbd6beec
+copied /tmp/claude-1000/exact-mvp4-b17/inspector-feature-release.exe -> inspector-feature-release-F57263A3752E4575.exe sha256=f57263a3752e4575aa87a0ffec7233133619d11d1b29568982ab465d5f2e53fc
+copied /home/victor/Work/safeupload-staging/driver/scripts/StagedInvariantCases.psd1 -> StagedInvariantCases-66DA0D5904249112.psd1 sha256=66da0d590424911252046b0ee65893abc0f75639680af940a9f1bbb2e852fba6
+copied /home/victor/Work/safeupload-staging/driver/scripts/StagedInvariantObserver.psm1 -> StagedInvariantObserver-5210C6FCC9058D9F.psm1 sha256=5210c6fcc9058d9f6fd52e0c2505654f4779875a82771afc3558d838250cc81a
+copied /home/victor/Work/safeupload-staging/driver/scripts/StagedTestAgent.ps1 -> StagedTestAgent-4C9220B7D202255D.ps1 sha256=4c9220b7d202255dc29edb585db3c51aed0b2284c06914e41e2c7c1baa247699
+copied /tmp/claude-1000/exact-agent-agent-mvp4-sol-b20/stage-service-publish.zip -> stage-service-publish.zip sha256=f15b84470d2b6df83a5feff00bee07b0b454bcefc25878c7c0d0255296add402
