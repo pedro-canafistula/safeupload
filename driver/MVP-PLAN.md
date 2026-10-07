@@ -1913,3 +1913,18 @@ the batch wrapper before it runs.
   head.json and the agent closed its notification record, `c094f5a7`), qualified EventIDs and actor TEMP (`2e0841ca`),
   C02 BLOCK shared hand-back checks (`bef9589e`), ending LastAccess receipt in finally (`764bc613`), X01 flush-and-recapture
   during publication (`e903cec3`), C05 index LastAccess and namespaced deferrals (`09fa7d6a`).
+- [x] **Product fix 1 (driver `c108c607`, branch `feat/mvp-incarnation-gone`):** coverage stuck Degraded/WRITER_UNKNOWN
+  (C04 p2a1, B02 p1a5, C02 BLOCK restart). The one Unknown entry was out-of-scope
+  `\System Volume Information\MountPointManagerRemoteDatabase` (H/C/T/W 0): the policy-apply alias probe reopened it by
+  ID, got the same file ID with a different section-object pointer (MountMgr writes it at boot, then NTFS tears down the
+  SCB) and marked it Unknown(IDENTITY). Same NTFS rule the SOP rebind path already relies on: a different SOP for the
+  same identity proves the recorded incarnation (and every handle/section/view on it) is gone. Non-Activating entries
+  still bound to the gone incarnation with zero H/W/T/C/spilled state, re-checked under the exclusive lock, now retire
+  like name-gone entries; Activating entries and promotion are unchanged. Build `mvp4-goal-incarn1` clean (4 configs,
+  PREfast/ApiValidator, signed F810C977...). Luna review requested. New-build runs started from that worktree.
+- [ ] **Open product finding (latency):** C01 dedicated latency l2c1 (and b18 goallatmap1 at round 74): after ~60
+  rounds the service logged nothing for ~11 s, then "Falha ao responder o veredito 438" (driver inspection request
+  timed out), and the next user create was denied after 5.5 s. Just before the stall the service logged repeated
+  source-scope inspections of its own `notifications\emissions.jsonl` attributed to its own PID 4992, which the driver's
+  pre-create should exempt (SafeUploadIsIgnoredProcess: InspectorProcessId). Not yet explained; next latency run on the
+  new build must retain process/thread state at the first denied create before any fix.
