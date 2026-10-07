@@ -1,0 +1,1 @@
+Could not determine the checkpoint overlay backing file: /var/lib/libvirt/images/win10-debug.safeupload-pre-boot-start-invariant-C02-approve-absent-runtime-verifier-sol-c02diag1-20261007
