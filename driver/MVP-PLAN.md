@@ -985,3 +985,35 @@ The safe W01 checkpoint parent was written by Sol and checked by root: Windows P
   (`sol-notification-stream-corrected-validation.txt`). Final source Windows
   parser/adapters/observer 0/229/88 PASS (`sol-harness-windows-validation-q.txt`).
   Fresh review and exact new Inspector build pending, then A runtime rerun.
+
+- Luna review4 REJECT until closing captures preserves completed unread frames
+  and every readiness assertion uses matching active generation. Correction:
+  share one frame parser/latch with normal reads and closure; drain completed
+  reads, close the pipe, join and preserve any successful racing read before
+  disposing its reader. Malformed/lost/undrained data is an explicit error.
+  Drain/close while the holder is still live before publishing release, so
+  closure receipts cannot be misattributed to post-release readiness. Missing
+  interval/server-time evidence remains deferred, never inferred.
+
+- C03 `sol-c03a2` now reaches real overwrite publication and several retained
+  B buffered reads PASS. Outcome/final raw capture fails with `Truncated run
+  mapping`, after parent and marker captures, before the new cached.txt image.
+  Suspect only the bootstrap MFT run map lacking a newly allocated record; this
+  is not proven. Add exact logical range/map end and record-number diagnostics
+  before considering a read-only MFT-map refresh. Do not substitute cached
+  metadata for public raw proof, flush the protected window, or rebaseline it.
+- Upstream mapped-create question refined: pinned rdwr-test.c:529-533 and
+  info-test.c:777-780 create an extending mapping directly on a new empty file,
+  just like C02. Pre-sizing the file would narrow away a valid stimulus, so
+  preserve it and obtain the real blocked stack before a product fix.
+
+- [x] Corrected close/replace real-pipe controls PASS for normal reads and a
+  completed-but-unread Ready task: all five frames retained, exactly one
+  premature Ready latched, wrong-generation and inactive Ready ignored
+  (`sol-notification-close-builder-validation.txt`). Final exact Windows
+  gate parser 0, adapters 229/native observer 88 PASS
+  (`sol-harness-windows-validation-t.txt`). Fresh source review pending.
+- [x] Exact b13 at `847a21da` is clean in all four WDK/PREfast/ApiValidator
+  configurations and both Inspectors (`exact-mvp4-sol-b13-summary.txt`).
+  Inspector/kernel source is unchanged by the subsequent harness-only fixes.
+  Do not install until corrected harness gets fresh independent review.

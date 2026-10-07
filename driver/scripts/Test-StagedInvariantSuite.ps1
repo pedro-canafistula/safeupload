@@ -837,13 +837,56 @@ function Get-ActivationPendingEntry([string]$NtPath,[string]$FileId,[string]$Tag
     $entries=@($snapshot.Record.entries | Where-Object {$_.path -ieq $NtPath -and $_.fileId -ieq $FileId})
     return [pscustomobject]@{Snapshot=$snapshot;Entries=$entries}
 }
+function Receive-ActivationStatusFrame($Capture,[string]$Line) {
+    if([string]::IsNullOrWhiteSpace($Line) -or $Line.Length -gt 65536){throw 'Service notification stream ended or returned an invalid frame'}
+    $record=$Line|ConvertFrom-Json -ErrorAction Stop
+    if($record.type -ceq 'status'){
+        $Capture.Last=$record;$Capture.LastQpc=[Diagnostics.Stopwatch]::GetTimestamp();$Capture.Sequence++
+        $receipt=@{Value=$record;ReceiptQpc=$Capture.LastQpc;Sequence=$Capture.Sequence;ConnectionId=$Capture.ConnectionId;FirstConnectionSnapshot=($Capture.Sequence -eq 1);HolderLive=[bool]$script:ActivationHolderLive}
+        if(@($script:ActivationNotificationHistory).Count -ge 4096){throw 'Notification status history cap reached'}
+        $script:ActivationNotificationHistory+=@($receipt)
+        if($script:ActivationHolderLive -and $null -ne $script:ActivationCandidateGeneration -and $record.protectionActive -eq $true -and $record.admissionCoverage -ceq 'Ready' -and
+            $null -ne $record.nativePolicyGeneration -and [uint32]$record.nativePolicyGeneration -eq $script:ActivationCandidateGeneration){$script:ActivationObservedPrematureReady+=@($receipt)}
+    }elseif($null -eq $Capture.Last){throw 'First service pipe record is not current StatusNotification'}
+}
 function Close-ActivationNotificationCapture {
-    $capture=$script:ActivationNotificationCapture;$script:ActivationNotificationCapture=$null
+    $capture=$script:ActivationNotificationCapture
     if($null -eq $capture){return}
-    try{if($null -ne $capture.Reader){$capture.Reader.Dispose()}}finally{$capture.Pipe.Dispose()}
-    if($null -ne $capture.ReadTask){
-        try{$null=$capture.ReadTask.Wait(1000)}catch{if(-not $capture.ReadTask.IsCompleted){throw}}
-        if(-not $capture.ReadTask.IsCompleted){throw 'Notification read did not complete after checked pipe closure.'}
+    try {
+        if($null -ne $capture.Reader){
+            for($n=0;$n -lt 64;$n++){
+                if($null -eq $capture.ReadTask){$capture.ReadTask=$capture.Reader.ReadLineAsync()}
+                if(-not $capture.ReadTask.IsCompleted){break}
+                $line=$capture.ReadTask.GetAwaiter().GetResult();$capture.ReadTask=$null
+                if($null -eq $line){break}
+                Receive-ActivationStatusFrame $capture $line
+                if($n -eq 63){throw 'Notification closure drain cap reached; capture incomplete'}
+            }
+        }
+    }finally{
+        try {
+            # Close the native pipe first; do not dispose a reader with unjoined I/O.
+            $capture.Pipe.Dispose()
+            if($null -ne $capture.Reader){
+                for($n=0;$n -lt 64;$n++){
+                    if($null -eq $capture.ReadTask){$capture.ReadTask=$capture.Reader.ReadLineAsync()}
+                    try{$null=$capture.ReadTask.Wait(1000)}catch{if(-not $capture.ReadTask.IsCompleted){throw}}
+                    if(-not $capture.ReadTask.IsCompleted){throw 'Notification read did not complete after checked pipe closure.'}
+                    if($capture.ReadTask.Status -eq [Threading.Tasks.TaskStatus]::RanToCompletion){
+                        $line=$capture.ReadTask.GetAwaiter().GetResult();$capture.ReadTask=$null
+                        if($null -eq $line){break}
+                        Receive-ActivationStatusFrame $capture $line
+                    }elseif($capture.ReadTask.IsFaulted){
+                        $failure=$capture.ReadTask.Exception.GetBaseException()
+                        if($failure -isnot [IO.IOException] -and $failure -isnot [ObjectDisposedException]){throw $failure}
+                        break
+                    }else{break}
+                    if($n -eq 63){throw 'Notification post-close buffer drain cap reached; capture incomplete'}
+                }
+            }
+        }finally{
+            try{if($null -ne $capture.Reader){$capture.Reader.Dispose()}}finally{$script:ActivationNotificationCapture=$null}
+        }
     }
 }
 function Get-ActivationProductStatus([string]$Tag,[int]$TimeoutMs=5000,[switch]$FirstSnapshotOnly) {
@@ -871,17 +914,7 @@ public static class SUActivationPipeProof{[DllImport("kernel32.dll",SetLastError
             $remaining=[int][Math]::Max(0,[Math]::Min($TimeoutMs,($deadline-[Diagnostics.Stopwatch]::GetTimestamp())*1000/[Diagnostics.Stopwatch]::Frequency))
             if(-not $capture.ReadTask.Wait($remaining)){break}
             $line=$capture.ReadTask.GetAwaiter().GetResult();$capture.ReadTask=$null
-            if([string]::IsNullOrWhiteSpace($line)){throw 'Service notification stream ended or returned an empty frame'}
-            $record=$line|ConvertFrom-Json -ErrorAction Stop;$drained++
-            if($record.type -ceq 'status'){
-                $capture.Last=$record;$capture.LastQpc=[Diagnostics.Stopwatch]::GetTimestamp();$capture.Sequence++
-                $receipt=@{Value=$record;ReceiptQpc=$capture.LastQpc;Sequence=$capture.Sequence;ConnectionId=$capture.ConnectionId;FirstConnectionSnapshot=($capture.Sequence -eq 1);HolderLive=[bool]$script:ActivationHolderLive}
-                if(@($script:ActivationNotificationHistory).Count -ge 4096){throw 'Notification status history cap reached'}
-                $script:ActivationNotificationHistory+=@($receipt)
-                if($script:ActivationHolderLive -and $null -ne $script:ActivationCandidateGeneration -and $record.protectionActive -eq $true -and $record.admissionCoverage -ceq 'Ready' -and
-                    $null -ne $record.nativePolicyGeneration -and [uint32]$record.nativePolicyGeneration -eq $script:ActivationCandidateGeneration){$script:ActivationObservedPrematureReady+=@($receipt)}
-            }
-            elseif($null -eq $capture.Last){throw 'First service pipe record is not current StatusNotification'}
+            Receive-ActivationStatusFrame $capture $line;$drained++
             if($FirstSnapshotOnly -and $null -ne $capture.Last){break}
             if($drained -ge 64){throw 'Notification frame drain cap reached; status capture incomplete'}
             # Drain already queued frames, then retain the pending read for the next call.
@@ -906,7 +939,7 @@ function Wait-ActivationProductStatus([string]$ExpectedCoverage,[uint32]$PolicyG
     do {$last=Get-ActivationProductStatus $Tag 3000;if($last.TransportInvalidated){throw ('Notification capture invalidated: '+$last.Reason)};if($last.Status -eq 'OK'){
         $s=$last.Value
         if($s.protectionActive -and $s.admissionCoverage -eq $ExpectedCoverage -and $null -ne $s.nativePolicyGeneration -and [uint32]$s.nativePolicyGeneration -eq $PolicyGeneration){return $last}
-        if($s.admissionCoverage -eq 'Ready' -and $ExpectedCoverage -eq 'Pending'){$reason='Service reported Ready while the pre-scope holder was still live.'}
+        if($s.protectionActive -eq $true -and $s.admissionCoverage -eq 'Ready' -and $ExpectedCoverage -eq 'Pending' -and $null -ne $s.nativePolicyGeneration -and [uint32]$s.nativePolicyGeneration -eq $PolicyGeneration){$reason='Service reported Ready while the pre-scope holder was still live.'}
         else{$reason=('Current service status did not match '+$ExpectedCoverage+' for policy generation '+$PolicyGeneration+': coverage='+$s.admissionCoverage+'; reason='+$s.admissionCoverageReason+'; nativeGeneration='+$s.nativePolicyGeneration)}
     }else{$reason=$last.Reason};Start-Sleep -Milliseconds 100}while([Diagnostics.Stopwatch]::GetTimestamp() -lt $deadline)
     throw ('Service readiness timeout ('+$ExpectedCoverage+'): '+$reason)
@@ -2875,7 +2908,7 @@ function Invoke-ActivationObservation {
         if(-not $stillActivating){throw 'Target left Activating or lost exact holder evidence before the old holder was released.'}
 
         $holderStatusAfterWrite=Get-ActivationCurrentProductStatus 'holder-after-old-write' 3000
-        if($holderStatusAfterWrite.Status -eq 'OK' -and $holderStatusAfterWrite.Value.admissionCoverage -eq 'Ready'){
+        if($holderStatusAfterWrite.Status -eq 'OK' -and $holderStatusAfterWrite.Value.protectionActive -eq $true -and $holderStatusAfterWrite.Value.admissionCoverage -eq 'Ready' -and $null -ne $holderStatusAfterWrite.Value.nativePolicyGeneration -and [uint32]$holderStatusAfterWrite.Value.nativePolicyGeneration -eq $candidatePolicyGeneration){
             Add-ActivationAssertion $trial 'ServiceNeverReadyAtSampleAfterMutation' 'FAIL' 'Service reported Ready while the old-holder mutation completed and the old holder still lived.' $holderStatusAfterWrite
         }
         $trial.ReadinessSamplesWhileHolder+=@($holderStatusAfterWrite)
@@ -2884,6 +2917,7 @@ function Invoke-ActivationObservation {
         $readinessSampleVerdict=if($readyWhileHeld.Count -gt 0){'FAIL'}elseif($pendingStatus -and $unverifiedReadiness.Count -eq 0){'PASS'}else{'INCONCLUSIVE'}
         $readinessSampleReason=if($readyWhileHeld.Count -gt 0){'At least one authenticated current service status reported Ready before last-holder release.'}elseif($readinessSampleVerdict -eq 'PASS'){'Every current status sample at the policy-acceptance, pre-mutation, and post-mutation checkpoints was authenticated, active, at the accepted generation, and non-Ready.'}else{'One or more holder-interval service status samples were missing, unauthenticated, inactive, or at another generation; sampled never-Ready evidence is incomplete.'}
         Add-ActivationAssertion $trial 'NoObservedReadyWhileHolderLives' $readinessSampleVerdict $readinessSampleReason @($trial.ReadinessSamplesWhileHolder | ForEach-Object {if($_.Status -eq 'OK'){@{Tag=$_.Tag;Coverage=$_.Value.admissionCoverage;Generation=$_.Value.nativePolicyGeneration;Qpc=$_.EndQpc}}else{@{Tag=$_.Tag;Status=$_.Status;Reason=$_.Reason}}})
+        Close-ActivationNotificationCapture
         $release=Publish-ActivationActorCommand $state 'release-holder' $null
         if(-not $release.HolderReleased -or $release.NativeCode -ne 0){throw ('Last pre-scope holder release failed: Win32 '+$release.NativeCode)}
         $trial.LastHolderRelease=$release;$script:ActivationHolderLive=$false
@@ -2926,7 +2960,7 @@ function Invoke-ActivationObservation {
             @{Coverage=$readyStatus.Value.admissionCoverage;Generation=$readyStatus.Value.nativePolicyGeneration;Reason=$readyStatus.Value.admissionCoverageReason;Qpc=$readyStatus.EndQpc;ServerPid=$readyStatus.ServerPid;ServerSid=$readyStatus.ServerSid}}
         else{
             $current=Get-ActivationCurrentProductStatus 'ready-timeout-current' 3000
-            $knownDegraded=($current.Status -eq 'OK' -and $current.Value.admissionCoverage -eq 'Degraded')
+            $knownDegraded=($current.Status -eq 'OK' -and $current.Value.protectionActive -eq $true -and $current.Value.admissionCoverage -eq 'Degraded' -and $null -ne $current.Value.nativePolicyGeneration -and [uint32]$current.Value.nativePolicyGeneration -eq $candidatePolicyGeneration)
             Add-ActivationAssertion $trial 'ServiceReadinessReadyAfterPromotion' $(if($knownDegraded){'FAIL'}else{'INCONCLUSIVE'})`
                 $(if($knownDegraded){'Service remained Degraded after exact Protected/Free promotion: '+$current.Value.admissionCoverageReason}else{'Ready status was not observed within 60s after promotion: '+$readyFailure}) $current
         }
@@ -2983,7 +3017,7 @@ function Invoke-ActivationObservation {
             Add-ActivationAssertion $trial 'PostPromotionRawDestinationUnchanged' $(if($trial.ForbiddenByteCount -eq 0){'PASS'}else{'FAIL'})`
                 $(if($trial.ForbiddenByteCount -eq 0){'Every raw allocated DATA extent matches the captured image at promotion after the unapproved staged write; ForbiddenByteCount counts post-Protected differences only.'}else{'Raw allocated DATA extent changed after Protected; ForbiddenByteCount counts those post-Protected differing bytes only.'}) $trial.PostPromotionRawDifference
         }
-        if($stageStartStatus.Status -eq 'OK' -and $stageStartStatus.Value.admissionCoverage -eq 'Ready' -and $stageStartStatus.Value.nativePolicyGeneration -eq $candidatePolicyGeneration){
+        if($stageStartStatus.Status -eq 'OK' -and $stageStartStatus.Value.protectionActive -eq $true -and $stageStartStatus.Value.admissionCoverage -eq 'Ready' -and $null -ne $stageStartStatus.Value.nativePolicyGeneration -and [uint32]$stageStartStatus.Value.nativePolicyGeneration -eq $candidatePolicyGeneration){
             Add-ActivationAssertion $trial 'ServiceStillReadyDuringOwnedWrite' 'PASS' 'Product readiness remained Ready at the accepted generation before the unapproved staged write.' $stageStartStatus
         }else{Add-ActivationAssertion $trial 'ServiceStillReadyDuringOwnedWrite' 'INCONCLUSIVE' 'Current service status immediately before the staged write was not a verified Ready status at the accepted generation.' $stageStartStatus}
         if($stageSample.Status -ne 'OK'){Add-ActivationAssertion $trial 'PostPromotionRawDestinationUnchanged' 'INCONCLUSIVE' ('Post-write raw observer sample failed: '+($stageSample.Error | Out-String)) $stageSample}
@@ -3003,11 +3037,12 @@ function Invoke-ActivationObservation {
         $trial.Errors+=Get-ErrorChain $_.Exception
         if(@($trial.Assertions | Where-Object Name -eq 'ActivationObservationCompleted').Count -eq 0){Add-ActivationAssertion $trial 'ActivationObservationCompleted' 'INCONCLUSIVE' ('A case stopped at the first missing/invalid bounded observation: '+$_.Exception.Message) $null}
     }finally{
+        try{Close-ActivationNotificationCapture}catch{$trial.Errors+=Get-ErrorChain $_.Exception;Add-ActivationAssertion $trial 'NotificationCaptureCleanup' 'INCONCLUSIVE' $_.Exception.Message $null}
         if($actorStarted){
             try{$exitReply=Publish-ActivationActorCommand $state 'exit-worker' $null;$actorStarted=$false
                 if(-not $exitReply.HolderReleased -or $exitReply.NativeCode -ne 0){throw ('Activation actor holder cleanup failed: Win32 '+$exitReply.NativeCode)}
                 $completion=Wait-TaskCompletion $writerTask (Join-Path $actorDirectory 'completion.clixml') $state.WriterToken 45
-                $trial.ActorTaskCompletion=@{ExitCode=$completion.ExitCode;BootId=$completion.BootId;HolderReleased=$exitReply.HolderReleased}}
+                $trial.ActorTaskCompletion=@{ExitCode=$completion.ExitCode;BootId=$completion.BootId;HolderReleased=$exitReply.HolderReleased};$script:ActivationHolderLive=$false}
             catch{$trial.Errors+=Get-ErrorChain $_.Exception;Add-ActivationAssertion $trial 'ActorCleanup' 'INCONCLUSIVE' ('Could not prove the activation actor exited and released all handles: '+$_.Exception.Message) $null}
         }
         if($null -ne $trial.TaintCounterBefore){
@@ -3016,7 +3051,6 @@ function Invoke-ActivationObservation {
         }
         $trial.NotificationStatusHistory=@($script:ActivationNotificationHistory)
         if(@($script:ActivationObservedPrematureReady).Count -gt 0){Add-ActivationAssertion $trial 'NoObservedReadyWhileHolderLives' 'FAIL' 'Authenticated Ready frame was received for the accepted generation while the exact holder remained live; subsequent Pending cannot erase it.' @($script:ActivationObservedPrematureReady)}
-        try{Close-ActivationNotificationCapture}catch{$trial.Errors+=Get-ErrorChain $_.Exception;Add-ActivationAssertion $trial 'NotificationCaptureCleanup' 'INCONCLUSIVE' $_.Exception.Message $null}
         if($null -ne $agent){
             try{Stop-StagedTestAgent $agent;$state.AgentServiceStarted=$false;Save-State $state $statePath;$agent=$null}
             catch{$trial.Errors+=Get-ErrorChain $_.Exception;Add-ActivationAssertion $trial 'AgentServiceCleanup' 'INCONCLUSIVE' ('Could not stop/restore the test SafeUploadAgent service: '+$_.Exception.Message) $null}
