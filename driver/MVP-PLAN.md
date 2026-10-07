@@ -1669,3 +1669,17 @@ proof parsing, other failures, and all default Inspector operations fail at the
 first error. Windows gate `goal-cache-state-2` PASS, all14 self-checks and18 live
 taint/transport controls. Cache2 `b7b488e9` four-config WDK/Inspectors/fixture PASS,
 zero warnings/errors and valid signature; no VM qualification claimed yet.
+
+`goald1` live timeout evidence (cache2) confirms actual resident Activating state,
+H/W/C/T=0, S=NO, classification successful, entry/global/instance Unknown=0,
+complete empty promotion trace, and current service coverage Pending at generation1
+with the live disable bit/capability. The exact remaining early-exit predicate is
+not established. Diagnostic contract before changing it: extend only the feature
+classification-step enum with FlushAndPurge and CacheRetained steps; retain the
+actual flush NTSTATUS, and distinguish a successful call that leaves cache/section
+pointers present. CacheRetained uses success status and describes pointer presence,
+not a failed file-system request. Keep all existing promotion conditions and all
+wire layouts. Existing managed evidence uses the older entry page without these
+diagnostic fields; normal clients/gates remain unchanged. Add no cleanup, retry,
+Unknown clearing or promotion bypass. Fresh exact build and targeted native receipt
+are required before drawing a conclusion.

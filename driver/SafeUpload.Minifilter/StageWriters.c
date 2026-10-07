@@ -5457,10 +5457,16 @@ static VOID StageRegistryActivationProcess(_In_ PSTAGE_REGISTRY_ENTRY Entry,
          * and purge path; never use the unsupported StageFence purge helper.
          * Failure or a retained section keeps the published Activating gate. */
         status = FltFlushBuffers2(Instance, object, FLT_FLUSH_TYPE_FLUSH_AND_PURGE, NULL);
+        StageRegistryRecordClassificationResult(Entry, status,
+            SAFEUPLOAD_ACTIVATING_CLASSIFY_STEP_FLUSH_PURGE);
         if (status != STATUS_SUCCESS) goto Exit;
         cacheFlushedAndPurged = TRUE;
         if (object->SectionObjectPointer != sop ||
-            sop->DataSectionObject != NULL || sop->SharedCacheMap != NULL) goto Exit;
+            sop->DataSectionObject != NULL || sop->SharedCacheMap != NULL) {
+            StageRegistryRecordClassificationResult(Entry, STATUS_SUCCESS,
+                SAFEUPLOAD_ACTIVATING_CLASSIFY_STEP_CACHE_RETAINED);
+            goto Exit;
+        }
     }
 
     /* Every live unknown marker holds this instance until exact quiescence and identity-safe retirement. */

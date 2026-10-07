@@ -1434,6 +1434,8 @@ static PCWSTR ActivatingClassificationStepName(UINT32 Step)
     case SAFEUPLOAD_ACTIVATING_CLASSIFY_STEP_PAGING_FILE: return L"PagingFile";
     case SAFEUPLOAD_ACTIVATING_CLASSIFY_STEP_OUTSIDE: return L"Outside";
     case SAFEUPLOAD_ACTIVATING_CLASSIFY_STEP_NOT_RUN: return L"NotRun";
+    case SAFEUPLOAD_ACTIVATING_CLASSIFY_STEP_FLUSH_PURGE: return L"FlushAndPurge";
+    case SAFEUPLOAD_ACTIVATING_CLASSIFY_STEP_CACHE_RETAINED: return L"CacheRetained";
     default: return L"UnknownStep";
     }
 }
