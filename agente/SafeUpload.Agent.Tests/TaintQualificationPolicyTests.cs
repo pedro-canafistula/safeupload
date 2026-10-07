@@ -25,7 +25,11 @@ public sealed class TaintQualificationPolicyTests
         // The durable boot record remains a scope-only v1 record. The
         // feature kernel's bootstrap supplies its own diagnostic test bit.
         Assert.Equal(0u, BootPolicyCodec.DecodeKnown(BootPolicyCodec.Encode(message)).Flags);
-        Assert.Equal((uint)PolicyFlags.ClassifyAllSources,
-            message.Flags & ~(uint)PolicyFlags.TestDisableTaint);
+        // Read classification only feeds taint: requested exactly when taint is on.
+#if SAFEUPLOAD_ADMISSION_EVIDENCE
+        Assert.Equal(0u, message.Flags & ~(uint)PolicyFlags.TestDisableTaint);
+#else
+        Assert.Equal((uint)PolicyFlags.ClassifyAllSources, message.Flags);
+#endif
     }
 }

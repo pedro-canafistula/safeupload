@@ -5,7 +5,9 @@ import subprocess
 import sys
 
 import pathlib
-DEBUGGEES = {line.split()[1] for line in (pathlib.Path(__file__).resolve().parent / "debuggees.txt").read_text().splitlines()
+# Snapshotted tool copies (exact agent matrix) carry no debuggees.txt: then only the builder is reachable.
+_list = pathlib.Path(__file__).resolve().parent / "debuggees.txt"
+DEBUGGEES = {line.split()[1] for line in (_list.read_text().splitlines() if _list.is_file() else [])
              if line.strip() and not line.startswith("#")}
 if len(sys.argv) != 2 or sys.argv[1] not in DEBUGGEES | {"192.168.122.210"}:
     raise SystemExit("Expected a recorded SafeUpload debuggee (debuggees.txt) or the builder address")
