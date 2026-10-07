@@ -430,12 +430,12 @@ namespace StagedInvariant {
     entries++; if(next==0) return selected; p=checked(p+(int)next);
    }
   }
-  static ulong PrivateDirectoryReference(Handle directory,string leaf,List<Container> containers) {
+  static ulong PrivateDirectoryReference(Handle directory,string leaf,List<Container> containers,bool allowAbsent=false) {
    ulong selected=0; int total=0;
    for(int page=0;page<64;page++) {
     byte[] bytes=new byte[65536];
     if(!GetFileInformationByHandleEx(directory.Value,page==0?11:10,bytes,(uint)bytes.Length)) {
-     ObservationException failure=Error("PrivateDirectory"); if(failure.NativeCode==18) {Require(selected!=0,"PrivateDirectory","Private name absent in cached directory");return selected;}
+     ObservationException failure=Error("PrivateDirectory"); if(failure.NativeCode==18) {Require(allowAbsent || selected!=0,"PrivateDirectory","Private name absent in cached directory");return selected;}
      throw failure;
     }
     AddContainer(containers,"KERNEL_DIRECTORY_QUERY",-1,bytes);
@@ -443,6 +443,14 @@ namespace StagedInvariant {
     Require(total<=MaxEntries && (found==0 || selected==0),"PrivateDirectory","Directory cap/duplicate private name"); if(found!=0) selected=found;
    }
    throw new ObservationException("PrivateDirectory","Directory page cap",0);
+  }
+  public static Container[] CapturePrivateAbsence(Volume v,Handle directory,string leaf) {
+   Require(!String.IsNullOrWhiteSpace(leaf) && leaf.IndexOfAny(new char[]{'\\','/',':'})<0,"PrivateAbsence","Invalid leaf");
+   List<Container> containers=new List<Container>(); Identity before=GetIdentity(directory);
+   Require(before.Directory && before.VolumeSerial==v.Geometry.Serial,"PrivateAbsence","Parent volume/type mismatch");
+   Require(PrivateDirectoryReference(directory,leaf,containers,true)==0,"PrivateAbsence","Private stage still present");
+   Require(PrivateDirectoryReference(directory,leaf,containers,true)==0 && SameIdentity(before,GetIdentity(directory)),"PrivateAbsence","Stage reappeared or parent changed");
+   return containers.ToArray();
   }
   static Record ReadCachedRecord(Volume v,uint number,List<Container> containers) {
    byte[] data=Io(v.Raw,0x90068,BitConverter.GetBytes((long)number),v.Geometry.RecordSize+16);
@@ -819,6 +827,24 @@ function Save-IOMftRefreshes($Context) {
         $Context.SavedMftRefreshCount++
     }
     return $saved
+}
+function Read-InvariantPrivateAbsence {
+    [CmdletBinding()] param([Parameter(Mandatory=$true)]$Context,[Parameter(Mandatory=$true)][string]$Path)
+    Assert-IOContext $Context
+    $full=[IO.Path]::GetFullPath($Path);$parent=[IO.Path]::GetDirectoryName($full);$leaf=[IO.Path]::GetFileName($full)
+    if($parent -ine 'C:\ProgramData\SafeUpload\staging' -or $leaf -cnotmatch '^[0-9a-fA-F]{32}\.[A-Za-z0-9]+$'){throw 'Private absence path outside exact stage namespace.'}
+    if([StagedInvariant.Native]::ResolveGuid($parent) -ine $Context.Geometry.Guid){throw 'Private absence is on another volume.'}
+    $held=@();$artifacts=@();$start=[Diagnostics.Stopwatch]::GetTimestamp()
+    try{
+        for($ancestor=$parent;-not [string]::IsNullOrEmpty($ancestor);$ancestor=[IO.Path]::GetDirectoryName($ancestor)){
+            if(((Get-Item -LiteralPath $ancestor -Force).Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0){throw 'Reparse private absence ancestor.'}
+            $held+=[StagedInvariant.Native]::Open($ancestor,$false,$true)
+        }
+        foreach($container in [StagedInvariant.Native]::CapturePrivateAbsence($Context.Volume,$held[0],$leaf)){
+            $artifacts+=@{Kind=$container.Kind;Artifact=(Save-IOBytes $Context $container.Bytes 'private-absence-directory')}
+        }
+        return [pscustomobject]@{Absent=$true;StagePath=$full;StartQpc=$start;EndQpc=[Diagnostics.Stopwatch]::GetTimestamp();MetadataSource='TwoCompleteTrustedKernelDirectoryQueries;StableParentIdentity';Containers=$artifacts}
+    }finally{foreach($handle in $held){$handle.Dispose()}}
 }
 function Read-InvariantPrivateSnapshot {
     [CmdletBinding()] param([Parameter(Mandatory=$true)]$Context,[Parameter(Mandatory=$true)][string]$Path)
@@ -1666,4 +1692,4 @@ function Close-InvariantObserver {
     $Context.Closed = $true; $errors += $Context.Errors
     return New-IORecord 'Disposal' @{ Status = $(if ($errors.Count -eq 0) { 'OK' } else { 'ERROR' }); Errors = $errors; Time = (Get-IOTime $Context) }
 }
-Export-ModuleMember -Function Read-InvariantPrivateSnapshot, Test-InvariantCadence, Test-InvariantExternalCoverage, Open-InvariantObserver, Capture-InvariantBaseline, Register-InvariantPublication, Capture-InvariantSample, Test-NoUnapprovedByte, Close-InvariantObserver
+Export-ModuleMember -Function Read-InvariantPrivateAbsence, Read-InvariantPrivateSnapshot, Test-InvariantCadence, Test-InvariantExternalCoverage, Open-InvariantObserver, Capture-InvariantBaseline, Register-InvariantPublication, Capture-InvariantSample, Test-NoUnapprovedByte, Close-InvariantObserver

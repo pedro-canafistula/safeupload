@@ -8,6 +8,8 @@ if($errors.Count){throw 'Suite parse failed'}
 $fn=@($ast.FindAll({param($node)$node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -ceq 'Get-WriterBody'},$false))
 if($fn.Count -ne 1){throw 'Unique actor body unavailable'}
 Invoke-Expression $fn[0].Extent.Text
+$shared=@($ast.FindAll({param($node)$node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -ceq 'Get-B02JustificationClientBody'},$false))
+if($shared.Count -ne 1){throw 'Shared justification client unavailable'};Invoke-Expression $shared[0].Extent.Text
 $body=Get-WriterBody;$tokens=$null;$errors=$null
 $actorAst=[Management.Automation.Language.Parser]::ParseInput($body,[ref]$tokens,[ref]$errors)
 if($errors.Count){throw 'Actor parse failed'}
