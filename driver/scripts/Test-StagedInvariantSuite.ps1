@@ -986,6 +986,11 @@ function Invoke-InvariantStartupObservation {
     try{
         if($counterBefore){$counters=Get-ActivationTaintCounterDelta $counterBefore (Get-ActivationTaintCounters 'whole-case-after')}
         $after=Get-InvariantLiveTaintReceipt 'after'
+        if($null -ne $after -and [int]$after.Coverage.state -ne 1){
+            # Diagnostic only, never a verdict input: name the registry entries that keep coverage
+            # from Ready at the window's end (C04 latency l4b1 ended WriterPromotionPending unnamed).
+            try{[void](Invoke-ActivationInspector '--activating-status' (Join-Path $evidenceDirectory 'final-not-ready--activating-status'))}catch{}
+        }
     }catch{$captureErrors+=Get-ErrorChain $_.Exception}
     $trial=Load-State $trialPath
     $trial.LiveTaintWindow=@{Before=$before;After=$after;Counters=$counters;CaptureErrors=$captureErrors}
