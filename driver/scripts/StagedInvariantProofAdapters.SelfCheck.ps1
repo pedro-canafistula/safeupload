@@ -18,10 +18,30 @@ function Import-EvaluationFunctions([string]$File,[string[]]$Names) {
     }
 }
 Import-EvaluationFunctions (Join-Path $PSScriptRoot 'StagedInvariantObserver.psm1') @('New-IORecord','New-IOAssertion','Test-InvariantCadence','Test-InvariantMetadata','Test-InvariantExternalCoverage')
-Import-EvaluationFunctions (Join-Path $PSScriptRoot 'Test-StagedInvariantSuite.ps1') @('Test-ActivationRetiredPromotion','Test-ActivationChildWindow','Add-ActivationAssertion','Test-ActivationDuplicateCleanup','Test-ActivationRawWholeImage','Get-ActivationSha256','Get-ActivationPendingEntry','Get-ActivationFullPendingEntry','ConvertFrom-NtfsLastAccessOutput','Wait-WriterIdentity','Load-State','Get-ActivatingWriterBody','Get-ExpectedCheckpoint','Test-ServiceJournalStateReachable','Assert-ServiceManifestPath','ConvertFrom-ServiceJournalRecord','Test-ServiceJournalDelta','Get-ServiceDestinationPaths','Test-ServiceFixtureEntry','Get-NotificationTailCoverage','Get-NotificationFenceWaitDecision','ConvertFrom-NotificationRecord','Test-NotificationWindow','ConvertFrom-AgentEventXml','Test-AgentLogContinuity','Read-AgentLogWindow','Test-NotificationLocationUnchanged','Test-AgentDidNotRun','Get-ServiceTimeline','Test-CachedJournalSequence','Test-CachedNotifications','Test-CachedHandBackAcl','Test-CachedSample','Test-CachedImage','Test-CachedActorCalls','Add-CachedHeldJournal','Test-CachedNamespaceCommit','Get-B02JustificationClientBody','Get-WriterBody','Get-ActivationActorIdentity','Publish-ActivationActorCommand')
+Import-EvaluationFunctions (Join-Path $PSScriptRoot 'Test-StagedInvariantSuite.ps1') @('Test-ActivationMappingOnly','Test-ActivationRetiredPromotion','Test-ActivationChildWindow','Add-ActivationAssertion','Test-ActivationDuplicateCleanup','Test-ActivationRawWholeImage','Get-ActivationSha256','Get-ActivationPendingEntry','Get-ActivationFullPendingEntry','ConvertFrom-NtfsLastAccessOutput','Wait-WriterIdentity','Load-State','Get-ActivatingWriterBody','Get-ExpectedCheckpoint','Test-ServiceJournalStateReachable','Assert-ServiceManifestPath','ConvertFrom-ServiceJournalRecord','Test-ServiceJournalDelta','Get-ServiceDestinationPaths','Test-ServiceFixtureEntry','Get-NotificationTailCoverage','Get-NotificationFenceWaitDecision','ConvertFrom-NotificationRecord','Test-NotificationWindow','ConvertFrom-AgentEventXml','Test-AgentLogContinuity','Read-AgentLogWindow','Test-NotificationLocationUnchanged','Test-AgentDidNotRun','Get-ServiceTimeline','Test-CachedJournalSequence','Test-CachedNotifications','Test-CachedHandBackAcl','Test-CachedSample','Test-CachedImage','Test-CachedActorCalls','Add-CachedHeldJournal','Test-CachedNamespaceCommit','Get-B02JustificationClientBody','Get-WriterBody','Get-ActivationActorIdentity','Publish-ActivationActorCommand')
 $script:checks=0
 function Check([bool]$Condition,[string]$Message){if(-not $Condition){throw $Message};$script:checks++}
 function Clone($Value){return ($Value | ConvertTo-Json -Depth 32 | ConvertFrom-Json)}
+# A temporary callback source cannot contaminate the subsequent map-only claim.
+$mapId='AA'*16;$mapPath='\Device\HarddiskVolume3\fixture.txt';$mapSerial='0x0000000000000011'
+$mapActor=@{Pid=10;BootId='fixture'}
+$mapClose=@{NativeCode=0;IdentityCode=0;ProbeClosed=$true;OriginalSourceClosed=$true;FileId=$mapId;VolumeSerial=$mapSerial;Pid=10;BootId='fixture';QpcFrequency=[Diagnostics.Stopwatch]::Frequency;StartQpc=100;EndQpc=110}
+$mapNative=@{Snapshot=@{Qpc=120;Record=@{policyGeneration=1}};Entries=@(@{fileId=$mapId;path=$mapPath;state='Activating';H=0;W=0;C=0;T=0;S='YES';unknownReasons='0x00000000'})}
+Check ((Test-ActivationMappingOnly $mapClose $mapNative $mapId $mapPath $mapSerial 1 $mapActor).Verdict -ceq 'PASS') 'Checked same-target probe close and native Activating H=0/S=YES passes.'
+foreach($change in @(@('NativeCode',5),@('IdentityCode',6),@('ProbeClosed',$false),@('OriginalSourceClosed',$false),@('FileId','wrong'),@('VolumeSerial','wrong'),@('Pid',11),@('BootId','old'),@('QpcFrequency',1),@('StartQpc',0),@('EndQpc',99))){
+ $bad=Clone $mapClose;$bad.($change[0])=$change[1]
+ Check ((Test-ActivationMappingOnly $bad $mapNative $mapId $mapPath $mapSerial 1 $mapActor).Verdict -ceq 'INCONCLUSIVE') ('Map-only rejects probe close '+$change[0]+'.')
+}
+foreach($change in @(@('H',1),@('W',1),@('C',1),@('T',1),@('S','NO'),@('state','Protected'),@('fileId','other'),@('path','other'),@('unknownReasons','0x00000001'))){
+ $bad=Clone $mapNative;$bad.Entries[0].($change[0])=$change[1]
+ Check ((Test-ActivationMappingOnly $mapClose $bad $mapId $mapPath $mapSerial 1 $mapActor).Verdict -ceq 'INCONCLUSIVE') ('Map-only rejects native '+$change[0]+'.')
+}
+$bad=Clone $mapNative;$bad.Entries[0].PSObject.Properties.Remove('H')
+Check ((Test-ActivationMappingOnly $mapClose $bad $mapId $mapPath $mapSerial 1 $mapActor).Verdict -ceq 'INCONCLUSIVE') 'Missing map-only H cannot default to zero.'
+$bad=Clone $mapNative;$bad.Snapshot.Qpc=109
+Check ((Test-ActivationMappingOnly $mapClose $bad $mapId $mapPath $mapSerial 1 $mapActor).Verdict -ceq 'INCONCLUSIVE') 'Map-only native sample must follow completed probe close.'
+$bad=Clone $mapNative;$bad.Snapshot.Record.policyGeneration=2
+Check ((Test-ActivationMappingOnly $mapClose $bad $mapId $mapPath $mapSerial 1 $mapActor).Verdict -ceq 'INCONCLUSIVE') 'Map-only accepted generation must match.'
 # A retired entry needs the actual native same-ID CAS; Free alone is not proof.
 $retiredId='AA'*16;$retiredSerial='0x0000000000000011'
 $retiredCurrent=@{Record=@{registryEntry=$true;historyPresent=$false;nameMatches=$true;fileId=$retiredId;volumeSerial=$retiredSerial;state='Protected';free=$true;S='NO';H=0;C=0;T=0;unknownReasons='0x00000000'};Qpc=600}

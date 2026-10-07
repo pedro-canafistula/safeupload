@@ -31,6 +31,16 @@ def fixture():
 
 
 class A04GateTests(unittest.TestCase):
+    def test_mapping_only_receipts_are_required_in_a02_and_a03(self):
+        for case in ('A02', 'A03'):
+            result=fixture();result['CaseId']=case
+            result['Trials'][0]['Assertions']=[dict(Name=name,Verdict='PASS') for name in Q.activation_required_assertions(case) | {'LiveTaintFlags'}]
+            self.assertTrue(Q.mvp_case_gate(result)['MvpGatePassed'])
+            for missing in ('MappingOnlyAfterProbeClose', 'MappingOnlyServicePending'):
+                bad=copy.deepcopy(result);bad['Trials'][0]['Assertions']=[a for a in bad['Trials'][0]['Assertions'] if a['Name']!=missing]
+                with self.subTest(case=case,missing=missing):
+                    self.assertIn('Missing:'+missing,Q.mvp_case_gate(bad)['MvpBlockers'])
+
     def test_complete_same_object_provenance(self):
         result=fixture();self.assertTrue(Q.activation_duplicate_provenance(result));self.assertTrue(Q.mvp_case_gate(result)['MvpGatePassed'])
 

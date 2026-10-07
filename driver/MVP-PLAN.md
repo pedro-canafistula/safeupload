@@ -1822,3 +1822,27 @@ tests pass. Table10 increments A01-A03 to revision6 and A04 to revision7.
 Actual native CAS remains mandatory; a Free-only, lost/incomplete, duplicate,
 wrong-ID/generation/volume/timing, missing-field or nonzero-counter result
 cannot qualify. A fresh supported-VM run remains required for these changes.
+
+A02/A03 callback stimulus repair contract before implementation: close the
+original mapping source handle as before. Open a separate read/write probe
+handle to that exact target while still unscoped; report its native file ID
+and volume serial and bind both to raw P. Keep this extra H explicit during
+policy activation and only until the denied new writable-section callback.
+Require the existing exact acquire/failed-retire deltas and same-target
+admission evidence, then checked-close the probe. Before old-view writes or
+A03's first late view, require exact native Activating H=0, S=YES, W/C/T0,
+Unknown0 and Pending service readiness. Retained section/view is then the
+only actor holder. No read-only source fallback, auxiliary target, callback
+deferral, kernel gate change or weakened map-only claim is allowed.
+
+A02/A03 probe implementation table11/revision7 passes Windows gate
+`goal-map-probe1` all14 self-checks and57 host tests. Real native disposable
+builder controls exercise view and section variants, native same-file-ID and
+volume identity, a valid PAGE_READWRITE source, checked one-time probe close,
+no read-only fallback, late view mapping and retained mapped write/flush after
+probe close. These are stimulus controls, not driver qualification. New
+MappingOnlyAfterProbeClose and MappingOnlyServicePending assertions are
+mandatory only for A02/A03.24 proof rejection/positive controls cover the
+map-only receipt, bringing proof-adapter total to386. Kernel/agent source and
+their exact build matrices remain unchanged. Merge waits for the active A01
+child and independent restoration; then supported-VM A02/A03 remain required.

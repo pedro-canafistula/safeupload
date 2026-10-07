@@ -717,6 +717,7 @@ using System.Runtime.InteropServices;
 using Microsoft.Win32.SafeHandles;
 public static class SUActivationNative {
  public static IntPtr FileHandle = new IntPtr(-1);
+ public static IntPtr SectionProbeHandle = new IntPtr(-1);
  public static IntPtr SectionHandle = IntPtr.Zero;
  public static IntPtr View = IntPtr.Zero;
  [DllImport("kernel32.dll", CharSet=CharSet.Unicode, SetLastError=true)] static extern IntPtr CreateFileW(string p,uint a,uint s,IntPtr z,uint d,uint f,IntPtr t);
@@ -729,6 +730,24 @@ public static class SUActivationNative {
  [DllImport("kernel32.dll", SetLastError=true)] static extern bool SetFilePointerEx(IntPtr h,long d,out long p,uint m);
  [DllImport("kernel32.dll", SetLastError=true)] static extern bool SetEndOfFile(IntPtr h);
  [DllImport("kernel32.dll", SetLastError=true)] static extern bool CloseHandle(IntPtr h);
+ [DllImport("kernel32.dll", SetLastError=true)] static extern bool GetFileInformationByHandleEx(IntPtr h,int info,IntPtr data,uint size);
+ public static bool OriginalSourceClosed { get { return FileHandle==new IntPtr(-1); } }
+ public static bool SectionProbeClosed { get { return SectionProbeHandle==new IntPtr(-1); } }
+ public static int SourceIdentity(out string volumeSerial,out string fileId) {
+  volumeSerial=null;fileId=null;IntPtr h=FileHandle!=new IntPtr(-1)?FileHandle:SectionProbeHandle;
+  if(h==new IntPtr(-1))return 6;IntPtr data=Marshal.AllocHGlobal(24);
+  try {if(!GetFileInformationByHandleEx(h,18,data,24))return Error();
+   volumeSerial="0x"+unchecked((ulong)Marshal.ReadInt64(data)).ToString("X16");byte[] id=new byte[16];Marshal.Copy(IntPtr.Add(data,8),id,0,16);fileId=BitConverter.ToString(id).Replace("-","");return 0;
+  }finally{Marshal.FreeHGlobal(data);}
+ }
+ public static int OpenSectionProbe(string path) {
+  if(!OriginalSourceClosed || !SectionProbeClosed || SectionHandle==IntPtr.Zero)return 6;
+  SectionProbeHandle=CreateFileW(path,0xC0000000u,7,IntPtr.Zero,3,0x80,IntPtr.Zero);
+  return SectionProbeClosed?Error():0;
+ }
+ public static int CloseSectionProbe() {
+  if(SectionProbeClosed)return 6;if(!CloseHandle(SectionProbeHandle))return Error();SectionProbeHandle=new IntPtr(-1);return 0;
+ }
  [DllImport("advapi32.dll", SetLastError=true)] static extern bool GetTokenInformation(IntPtr h,int c,out int v,int n,out int r);
  public static bool Elevated(IntPtr token) { int v,r; if(!GetTokenInformation(token,20,out v,4,out r)) throw new Win32Exception(Marshal.GetLastWin32Error()); return v!=0; }
  static int Error() { int e=Marshal.GetLastWin32Error(); return e==0?1:e; }
@@ -756,10 +775,10 @@ public static class SUActivationNative {
  public static int NewWritableOpen(string path) { IntPtr h=CreateFileW(path,0x40000000u,7,IntPtr.Zero,3,0x80,IntPtr.Zero); if(h==new IntPtr(-1)) return Error(); return CloseHandle(h)?0:Error(); }
  public static int NewWritableSection(string path,out int sourceOpenCode) {
   sourceOpenCode=0;
-  IntPtr source=FileHandle; bool closeSource=false;
-  if(source==new IntPtr(-1)) { source=CreateFileW(path,0x80000000u,7,IntPtr.Zero,3,0x80,IntPtr.Zero); if(source==new IntPtr(-1)) { sourceOpenCode=Error(); return sourceOpenCode; } closeSource=true; }
+  IntPtr source=FileHandle!=new IntPtr(-1)?FileHandle:SectionProbeHandle;
+  if(source==new IntPtr(-1)){sourceOpenCode=6;return 6;}
   IntPtr section=CreateFileMappingW(source,IntPtr.Zero,4,0,0,null); int result=section==IntPtr.Zero?Error():0;
-  if(section!=IntPtr.Zero) CloseHandle(section); if(closeSource) CloseHandle(source); return result;
+  if(section!=IntPtr.Zero && !CloseHandle(section) && result==0)result=Error();return result;
  }
  public static int StageWrite(string path,long offset,byte[] bytes,out int flushCode,out int closeCode,out long bytesWritten) {
   flushCode=0; closeCode=0; bytesWritten=0; IntPtr h=CreateFileW(path,0x40000000u,7,IntPtr.Zero,3,0x80,IntPtr.Zero);
@@ -804,7 +823,7 @@ public static class SUActivationNative {
   using(var hash=System.Security.Cryptography.SHA256.Create()){return BitConverter.ToString(hash.ComputeHash(bytes)).Replace("-","");}
  }
  public static int ReleaseHolder() {
-  int result=0; if(View!=IntPtr.Zero){if(!UnmapViewOfFile(View)) result=Error();View=IntPtr.Zero;}
+  int result=0;if(!SectionProbeClosed)result=CloseSectionProbe(); if(View!=IntPtr.Zero){if(!UnmapViewOfFile(View) && result==0) result=Error();View=IntPtr.Zero;}
   if(SectionHandle!=IntPtr.Zero){if(!CloseHandle(SectionHandle) && result==0) result=Error();SectionHandle=IntPtr.Zero;}
   if(FileHandle!=new IntPtr(-1)){if(!CloseHandle(FileHandle) && result==0) result=Error();FileHandle=new IntPtr(-1);}
   return result;
@@ -830,7 +849,9 @@ try {
     'adopt-holder' {$result.NativeCode=[SUActivationNative]::AdoptHolder([long]$command.RemoteHandle);$result.RemoteHandle=[long]$command.RemoteHandle;$result.HolderCreated=($result.NativeCode -eq 0)}
     'position-holder' {$position=[long]-1;$result.NativeCode=[SUActivationNative]::Position([long]$command.Offset,[bool]$command.Query,[ref]$position);$result.Position=$position}
     'staged-write-held' {$written=[long]0;$bytes=[Convert]::FromBase64String($command.PayloadBase64);$result.NativeCode=[SUActivationNative]::StageWriteHeld($config.Target,[long]$command.Offset,$bytes,[ref]$written);$result.BytesWritten=$written;if($result.NativeCode -eq 0){$result.PrivateSha256=[SUActivationNative]::HolderDigest([int]$config.ImageLength)};$result.HolderCreated=($result.NativeCode -eq 0)}
-    'probe-new-writers' {$sectionOpen=[int]0;$result.OpenCode=[SUActivationNative]::NewWritableOpen($config.Target);$result.SectionCode=[SUActivationNative]::NewWritableSection($config.Target,[ref]$sectionOpen);$result.SectionSourceOpenCode=$sectionOpen;$result.NativeCode=0}
+    'prepare-section-probe' {$result.NativeCode=[SUActivationNative]::OpenSectionProbe($config.Target);$serial=$null;$id=$null;$result.IdentityCode=[SUActivationNative]::SourceIdentity([ref]$serial,[ref]$id);$result.VolumeSerial=$serial;$result.FileId=$id;$result.OriginalSourceClosed=[SUActivationNative]::OriginalSourceClosed;$result.ProbeOpen=-not [SUActivationNative]::SectionProbeClosed}
+    'close-section-probe' {$serial=$null;$id=$null;$result.IdentityCode=[SUActivationNative]::SourceIdentity([ref]$serial,[ref]$id);$result.VolumeSerial=$serial;$result.FileId=$id;$result.NativeCode=[SUActivationNative]::CloseSectionProbe();$result.OriginalSourceClosed=[SUActivationNative]::OriginalSourceClosed;$result.ProbeClosed=[SUActivationNative]::SectionProbeClosed}
+    'probe-new-writers' {$sectionOpen=[int]0;$serial=$null;$id=$null;$result.IdentityCode=[SUActivationNative]::SourceIdentity([ref]$serial,[ref]$id);$result.VolumeSerial=$serial;$result.FileId=$id;$result.OpenCode=[SUActivationNative]::NewWritableOpen($config.Target);$result.SectionCode=[SUActivationNative]::NewWritableSection($config.Target,[ref]$sectionOpen);$result.SectionSourceOpenCode=$sectionOpen;$result.NativeCode=0}
     'map-late' {$result.NativeCode=[SUActivationNative]::MapLate([uint32]$config.ImageLength);$result.Mapped=($result.NativeCode -eq 0)}
     'write-old' {
      foreach($change in $command.Changes){$bytes=[Convert]::FromBase64String($change.BytesBase64);$start=[Diagnostics.Stopwatch]::GetTimestamp();$code=if($config.HolderKind -eq 'handle'){[SUActivationNative]::WriteFileAt([long]$change.Offset,$bytes)}else{[SUActivationNative]::WriteViewAt([long]$change.Offset,$bytes)};$end=[Diagnostics.Stopwatch]::GetTimestamp();$seekCode=[SUActivationNative]::LastSeekCode;$result.Calls+=@{Offset=[long]$change.Offset;Length=$bytes.Length;PayloadSha256=$change.PayloadSha256;NativeCode=$code;SeekCode=$seekCode;StartQpc=$start;EndQpc=$end;Paging=($config.HolderKind -ne 'handle')};if($code -ne 0){throw ('Old holder write failed: Win32 '+$code+'; seek Win32 '+$seekCode)}}
@@ -3681,6 +3702,20 @@ function Test-ActivationRawWholeImage($Sample,[string]$Path,[byte[]]$Expected) {
     }catch{return [pscustomobject]@{Verdict='INCONCLUSIVE';Reason=$_.Exception.Message}}
 }
 
+function Test-ActivationMappingOnly($Close,$Native,[string]$FileId,[string]$NtPath,[string]$VolumeSerial,[uint32]$PolicyGeneration,$Actor) {
+    try {
+        foreach($field in @('NativeCode','IdentityCode','ProbeClosed','OriginalSourceClosed','FileId','VolumeSerial','Pid','BootId','QpcFrequency','StartQpc','EndQpc')){if($null -eq $Close.$field){throw ('Probe close field missing: '+$field)}}
+        if($Close.NativeCode -ne 0 -or $Close.IdentityCode -ne 0 -or $Close.ProbeClosed -cne $true -or $Close.OriginalSourceClosed -cne $true -or
+            $Close.FileId -ine $FileId -or $Close.VolumeSerial -cne $VolumeSerial -or $Close.Pid -ne $Actor.Pid -or $Close.BootId -cne $Actor.BootId -or
+            $Close.QpcFrequency -ne [Diagnostics.Stopwatch]::Frequency -or [long]$Close.StartQpc -le 0 -or [long]$Close.EndQpc -lt [long]$Close.StartQpc -or
+            [long]$Native.Snapshot.Qpc -lt [long]$Close.EndQpc -or $Native.Snapshot.Record.policyGeneration -ne $PolicyGeneration -or $Native.Entries.Count -ne 1){throw 'Exact probe close identity/lifetime or native snapshot is incomplete.'}
+        $e=$Native.Entries[0]
+        foreach($field in @('fileId','path','state','H','W','C','T','S','unknownReasons')){if($null -eq $e.$field){throw ('Map-only native field missing: '+$field)}}
+        if($e.fileId -ine $FileId -or $e.path -ine $NtPath -or $e.state -cne 'Activating' -or $e.S -cne 'YES' -or $e.unknownReasons -cne '0x00000000' -or
+            [long]$e.H -ne 0 -or [long]$e.W -ne 0 -or [long]$e.C -ne 0 -or [long]$e.T -ne 0){throw 'Mapping-only interval requires exact Activating H=0, S=YES, W/C/T0 and Unknown0.'}
+        return [pscustomobject]@{Verdict='PASS';Reason='Exact pre-policy callback probe handle was checked closed; native same-ID Activating H=0/S=YES proves the retained section/view interval without an actor file handle.';Close=$Close;Native=$Native}
+    }catch{return [pscustomobject]@{Verdict='INCONCLUSIVE';Reason=$_.Exception.Message;Close=$Close;Native=$Native}}
+}
 function Test-ActivationRetiredPromotion($Snapshot,$Trace,$Release,[string]$FileId,[string]$VolumeSerial,[uint32]$PolicyGeneration,[string]$BootId) {
     # Free alone cannot prove promotion after resident history retires.
     try {
@@ -3823,6 +3858,10 @@ function Invoke-ActivationObservation {
         $script:ActivationHolderLive=$true
         $trial.HolderSetup=@{CaseId=$CaseId;Pid=$actor.Pid;Sid=$actor.Sid;SessionId=$actor.SessionId;HolderKind=$row.Variant;
             SourceHandleClosed=$holder.SourceHandleClosed;CreateQpc=$holder.StartQpc;CompleteQpc=$holder.EndQpc;NativeCode=$holder.NativeCode}
+        if($CaseId -cin @('A02','A03')){
+            $trial.SectionProbeSetup=Publish-ActivationActorCommand $state 'prepare-section-probe' $null
+            if($trial.SectionProbeSetup.NativeCode -ne 0 -or $trial.SectionProbeSetup.IdentityCode -ne 0 -or -not $trial.SectionProbeSetup.ProbeOpen -or -not $trial.SectionProbeSetup.OriginalSourceClosed){throw 'Pre-policy same-target writable callback probe setup failed.'}
+        }
 
         if($CaseId -ceq 'A04'){$duplicateStarted=$true;$duplicateActor=Initialize-ActivationDuplicate $trial $actor}
         $trial.SetupCacheFlush=Flush-InvariantSetupVolume
@@ -3834,6 +3873,8 @@ function Invoke-ActivationObservation {
         if($pImage.Count -ne 1 -or $pImage[0].Length -ne $pBytes.Length -or $pImage[0].Sha256 -cne (Get-ActivationSha256 $pBytes)){throw 'Raw pre-scope image P or exact target file identity missing.'}
         $fileId=[string]$pImage[0].Identity.FileId
         $ntPath=Get-NtDevicePath $target
+        $expectedVolumeSerial='0x'+([uint64]$context.Geometry.Serial).ToString('X16')
+        if($CaseId -cin @('A02','A03') -and ($trial.SectionProbeSetup.FileId -ine $fileId -or $trial.SectionProbeSetup.VolumeSerial -cne $expectedVolumeSerial)){throw 'Pre-policy section probe identity differs from raw P.'}
         $trial.PreScopeP=@{Status=$baseline.Status;FileId=$fileId;DosPath=$target;NtPath=$ntPath;Length=$pImage[0].Length;Sha256=$pImage[0].Sha256;CaptureTime=$baseline.Time;Image=$pImage[0]}
         $samples+=Capture-InvariantSample $context $baseline 'PBeforeRuntimePolicyUpdate' 1
         if($samples[-1].Status -ne 'OK'){throw ('Raw P pre-epoch sample failed: '+($samples[-1].Error | Out-String))}
@@ -3900,9 +3941,9 @@ function Invoke-ActivationObservation {
             $entry.state -ceq 'Activating' -and $entry.fileId -ieq $fileId -and $entry.path -ieq $ntPath -and
             [uint32]$entry.generation -gt 0 -and [uint32]$entry.W -eq 0 -and $entry.unknownReasons -ceq '0x00000000')
         if($CaseId -cin @('A01','A04')){$holderStateGood=$holderStateGood -and [uint32]$entry.H -gt 0 -and $entry.openerPids -contains [int]$actor.Pid}
-        else{$holderStateGood=$holderStateGood -and $entry.S -ceq 'YES'}
+        else{$holderStateGood=$holderStateGood -and $entry.S -ceq 'YES' -and [uint32]$entry.H -eq 1 -and $entry.openerPids -contains [int]$actor.Pid}
         if($CaseId -ceq 'A04'){$holderStateGood=$holderStateGood -and [uint32]$entry.H -eq 1 -and [uint32]$entry.C -eq 0 -and [uint32]$entry.T -eq 0}
-        $holderEvidenceReason=if($CaseId -cin @('A01','A04')){'Exact-target Inspector point sample identifies the exact NT path, stable file ID, policy generation, Activating state, H>0, and the standard-user actor opener PID.'}else{'Exact-target Inspector point sample identifies the exact NT path, stable file ID, policy generation, Activating state and S=YES; the actor process independently created and retains the view/section after closing its source handle.'}
+        $holderEvidenceReason=if($CaseId -cin @('A01','A04')){'Exact-target Inspector point sample identifies the exact NT path, stable file ID, policy generation, Activating state, H>0, and the standard-user actor opener PID.'}else{'Exact-target native Activating H=1/S=YES identifies the retained section/view plus the explicitly retained same-target pre-policy callback probe handle; original mapping source handle is closed.'}
         Add-ActivationAssertion $trial 'ExactActivatingWriterEvidence' $(if($holderStateGood){'PASS'}else{'FAIL'})`
             $holderEvidenceReason`
             @{Entry=$entry;Snapshot=$activating.Snapshot.Record;ExpectedNtPath=$ntPath;ExpectedFileId=$fileId;ActorPid=$actor.Pid}
@@ -3926,6 +3967,7 @@ function Invoke-ActivationObservation {
         $writerBefore=Get-ActivationWriterState 'before-new-writer-probes'
         $probeActorKey=if($CaseId -ceq 'A04'){'Duplicate'}else{'Primary'}
         $probe=Publish-ActivationActorCommand $state 'probe-new-writers' $null $probeActorKey
+        if($probe.IdentityCode -ne 0 -or $probe.FileId -ine $fileId -or $probe.VolumeSerial -cne $expectedVolumeSerial){throw 'Writable-section callback source identity differs from raw P.'}
         $writerAfter=Get-ActivationWriterState 'after-new-writer-probes'
         $openDenied=([int]$probe.OpenCode -eq 5)
         Add-ActivationAssertion $trial 'NewWritableOpenDenied' $(if($openDenied){'PASS'}else{'FAIL'})`
@@ -3934,7 +3976,7 @@ function Invoke-ActivationObservation {
         $failedDelta=[uint64]$writerAfter.sectionInFlightRemovedOnFailure-[uint64]$writerBefore.sectionInFlightRemovedOnFailure
         $sectionDenied=([int]$probe.SectionCode -eq 5)
         $sectionCallback=($insertedDelta -eq 1 -and $failedDelta -eq 1)
-        if($sectionDenied -and [int]$probe.SectionSourceOpenCode -eq 0 -and $sectionCallback){$sectionVerdict='PASS';$sectionReason='The read-only source open succeeded, PAGE_READWRITE section creation returned exact Win32 access denied 5, and Inspector counters show the corresponding failed section-acquire callback.'}
+        if($sectionDenied -and [int]$probe.SectionSourceOpenCode -eq 0 -and $sectionCallback){$sectionVerdict='PASS';$sectionReason='The exact pre-policy read/write source handle was valid, PAGE_READWRITE section creation returned exact Win32 access denied 5, and Inspector counters show the corresponding failed section-acquire callback.'}
         elseif($sectionDenied){$sectionVerdict='INCONCLUSIVE';$sectionReason='CreateFileMapping returned Win32 5, but the source-open result and/or exact section-acquire counter deltas do not attribute that denial to contract-D minifilter admission.'}
         else{$sectionVerdict='FAIL';$sectionReason=('New PAGE_READWRITE section attempt returned Win32 '+$probe.SectionCode+'; contract D requires access denied 5.')}
         Add-ActivationAssertion $trial 'NewWritableSectionDenied' $sectionVerdict $sectionReason`
@@ -3943,6 +3985,20 @@ function Invoke-ActivationObservation {
         $sectionCallbackReason=if($sectionCallbackVerdict -eq 'PASS'){'Inspector section-acquire counters show exactly one acquire slot inserted and removed on the failed PAGE_READWRITE section request.'}elseif($sectionDenied -and [int]$probe.SectionSourceOpenCode -eq 5){'A02/A03 must close the original writable source handle; the new read-only source open was denied before a section-acquire callback could be attributed, so callback-specific D evidence is incomplete.'}elseif($sectionDenied){'The exact API denial was observed, but section-acquire counters do not isolate an acquire/reject callback for this request.'}else{'The new PAGE_READWRITE section request was not denied.'}
         Add-ActivationAssertion $trial 'NewWritableSectionAdmissionCallback' $sectionCallbackVerdict $sectionCallbackReason @{SourceOpenCode=$probe.SectionSourceOpenCode;SectionCode=$probe.SectionCode;SectionInFlightInsertedDelta=$insertedDelta;SectionInFlightRemovedOnFailureDelta=$failedDelta}
         $trial.NewWriterProbe=$probe
+        if($CaseId -cin @('A02','A03')){
+            $probeClose=Publish-ActivationActorCommand $state 'close-section-probe' $null
+            $mapDeadline=[Diagnostics.Stopwatch]::GetTimestamp()+[long](15*[Diagnostics.Stopwatch]::Frequency)
+            do{
+                $mapOnly=Get-ActivationPendingEntry $ntPath $fileId 'mapping-only-after-probe-close' $target
+                $trial.MappingOnlyProof=Test-ActivationMappingOnly $probeClose $mapOnly $fileId $ntPath $expectedVolumeSerial $candidatePolicyGeneration $actor
+                if($trial.MappingOnlyProof.Verdict -ceq 'PASS'){break}
+                Start-Sleep -Milliseconds 100
+            }while([Diagnostics.Stopwatch]::GetTimestamp() -lt $mapDeadline)
+            Add-ActivationAssertion $trial 'MappingOnlyAfterProbeClose' $trial.MappingOnlyProof.Verdict $trial.MappingOnlyProof.Reason $trial.MappingOnlyProof
+            if($trial.MappingOnlyProof.Verdict -cne 'PASS'){throw 'Retained section/view did not establish native map-only H=0/S=YES after callback probe close.'}
+            $trial.MappingOnlyPending=Wait-ActivationProductStatus 'Pending' $candidatePolicyGeneration 15 'mapping-only-after-probe-close'
+            Add-ActivationAssertion $trial 'MappingOnlyServicePending' 'PASS' 'Authenticated service readiness remains Pending after checked probe close, during native H=0/S=YES section/view-only interval.' $trial.MappingOnlyPending
+        }
         $holderReadinessSamples=@()
         for($sampleIndex=0;$sampleIndex -lt 3;$sampleIndex++){$holderReadinessSamples+=Get-ActivationCurrentProductStatus ('holder-readiness-'+$sampleIndex) 3000;Start-Sleep -Milliseconds 200}
         $trial.ReadinessSamplesWhileHolder=@()

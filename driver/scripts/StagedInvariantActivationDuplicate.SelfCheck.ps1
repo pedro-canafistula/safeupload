@@ -92,6 +92,19 @@ try{
   if(-not $process.WaitForExit(30000) -or $process.ExitCode -ne 0){throw 'Child exit failed'}
   $written=[long]0;if([SUActivationNative]::StageWriteHeld($target,1024,$bytes,[ref]$written) -ne 0 -or $written -ne $bytes.Length -or [SUActivationNative]::HolderDigest($expected.Length) -cne $digest){throw 'Held owned-write native helper failed'}
  }finally{$hash.Dispose()}
+ $serial=$null;$id=$null;if([SUActivationNative]::SourceIdentity([ref]$serial,[ref]$id) -ne 0 -or $id -notmatch '^[0-9A-F]{32}$' -or $serial -notmatch '^0x[0-9A-F]{16}$'){throw 'Actual source native file identity failed'}
+ if([SUActivationNative]::ReleaseHolder() -ne 0){throw 'Release before mapping probe controls failed'}
+ foreach($kind in @('view','section')){
+  $closed=$false;if([SUActivationNative]::CreateHolder($target,$seed,$kind,[ref]$closed) -ne 0 -or -not $closed -or -not [SUActivationNative]::OriginalSourceClosed){throw 'Original mapping source must be closed'}
+  if([SUActivationNative]::OpenSectionProbe($target) -ne 0 -or [SUActivationNative]::SectionProbeClosed -or [SUActivationNative]::OpenSectionProbe($target) -ne 6){throw 'One temporary read/write probe handle required'}
+  $probeSerial=$null;$probeId=$null;if([SUActivationNative]::SourceIdentity([ref]$probeSerial,[ref]$probeId) -ne 0 -or $probeSerial -cne $serial -or $probeId -cne $id){throw 'Temporary probe must identify the same actual target'}
+  $sourceCode=[int]0;if([SUActivationNative]::NewWritableSection($target,[ref]$sourceCode) -ne 0 -or $sourceCode -ne 0){throw 'Actual pre-policy writable source must support PAGE_READWRITE'}
+  if([SUActivationNative]::CloseSectionProbe() -ne 0 -or -not [SUActivationNative]::SectionProbeClosed -or [SUActivationNative]::CloseSectionProbe() -ne 6){throw 'Probe checked close must succeed exactly once'}
+  if([SUActivationNative]::NewWritableSection($target,[ref]$sourceCode) -ne 6 -or $sourceCode -ne 6){throw 'No source must reject without a read-only fallback'}
+  if($kind -ceq 'section' -and [SUActivationNative]::MapLate([uint32]$seed.Length) -ne 0){throw 'First late view after probe close failed'}
+  if([SUActivationNative]::WriteViewAt(128,[Text.Encoding]::ASCII.GetBytes('mapped after probe close')) -ne 0 -or [SUActivationNative]::FlushView() -ne 0 -or [SUActivationNative]::ReleaseHolder() -ne 0){throw 'Retained mapping must remain writable after probe close'}
+ }
+ Write-Output 'NativeSectionProbeControls=PASS;ViewAndSection=PASS;SameNativeIdentity=PASS;WritableSource=PASS;CheckedClose=PASS;NoReadOnlyFallback=PASS;RetainedMappingWrite=PASS;Qualification=False'
  Write-Output ('NativeDuplicateControl=PASS;ParentPid='+$PID+';ChildPid='+$process.Id+';TrustedPhysicalObject=PASS;SeparateOpensRejected=PASS;SameFileObjectTwoWayPosition=PASS;ParentCloseChildWrite=PASS;WholeImage=PASS;OwnedHeldWrite=PASS;Qualification=False')
 }finally{
  [void][SUActivationNative]::ReleaseHolder()

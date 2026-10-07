@@ -459,6 +459,13 @@ A04_REQUIRED_ASSERTIONS = ACTIVATION_REQUIRED_ASSERTIONS | frozenset((
     'PostPromotionHeldOwnedWrite', 'HeldOwnedSaveNoApproval', 'ApprovedFinalRawImageA',
 ))
 
+def activation_required_assertions(case):
+    if case == 'A04':
+        return A04_REQUIRED_ASSERTIONS
+    if case in ('A02', 'A03'):
+        return ACTIVATION_REQUIRED_ASSERTIONS | {'MappingOnlyAfterProbeClose', 'MappingOnlyServicePending'}
+    return ACTIVATION_REQUIRED_ASSERTIONS
+
 
 def activation_duplicate_provenance(result):
     """Bind both actual OS processes and every native duplicate position receipt."""
@@ -543,7 +550,7 @@ def case_gate(result, case, mode, name, params):
     boot = result.get('BootIds', {})
     require(all(isinstance(boot.get(k), str) and boot[k] for k in ('Prepare', 'Active', 'Final')) and len(set(boot.values())) == 3, 'Case boot identities incomplete')
     if case in ('A01', 'A02', 'A03', 'A04'):
-        required = A04_REQUIRED_ASSERTIONS if case == 'A04' else ACTIVATION_REQUIRED_ASSERTIONS
+        required = activation_required_assertions(case)
         passed = (result.get('Verdict') == 'PASS' and result.get('CaseStatus') == 'READY'
                   and result.get('ForbiddenByteCount') == 0)
         for trial in result['Trials']:
@@ -925,7 +932,7 @@ def mvp_case_gate(result, latency_evidence=None):
         if len(taint) != 1 or taint[0].get('Verdict') != 'PASS':
             blockers.add('LiveTaintFlags')
         if result.get('CaseId') in ('A01', 'A02', 'A03', 'A04'):
-            required = A04_REQUIRED_ASSERTIONS if result['CaseId'] == 'A04' else ACTIVATION_REQUIRED_ASSERTIONS
+            required = activation_required_assertions(result['CaseId'])
             missing = required - {a.get('Name') for a in assertions}
             blockers.update('Missing:' + name for name in missing)
             if result['CaseId'] == 'A04' and not activation_duplicate_provenance(result):
