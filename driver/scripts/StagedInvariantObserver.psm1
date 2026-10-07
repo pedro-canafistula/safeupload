@@ -413,6 +413,50 @@ namespace StagedInvariant {
     throw failure;
    }
   }
+  // Trusted observer only: resolve a file from its raw parent index without a
+  // named/file-ID open of the private stream. StageAdmit intentionally refuses
+  // those opens for every process except the authenticated service.
+  public static Image CaptureNamedRaw(Volume v,Handle directory,string leaf) {
+   Require(!String.IsNullOrWhiteSpace(leaf) && leaf.IndexOfAny(new char[]{'\\','/',':'})<0,"PrivateSnapshot","Invalid leaf");
+   List<Container> containers=new List<Container>(); Image image=null;
+   try {
+    Image parent=Capture(v,directory); Require(parent.Identity.Directory && parent.CrossCheckErrors.Length==0,"PrivateSnapshot","Parent capture invalid");
+    NameEntry match=null;
+    foreach(NameEntry n in parent.Names) if(n.Namespace!=2 && n.Name==leaf) { Require(match==null,"PrivateSnapshot","Ambiguous parent name"); match=n; }
+    Require(match!=null,"PrivateSnapshot","Private name absent in raw parent index");
+    uint number=checked((uint)(match.Reference&0x0000FFFFFFFFFFFFUL));
+    Record basis=ReadRecord(v,number,containers); List<Record> records=new List<Record>(); records.Add(basis);
+    Require(basis.Sequence==(ushort)(match.Reference>>48) && basis.BaseReference==0 && (basis.Flags&2)==0 && U16(basis.Fixed,18)==1,"PrivateSnapshot","Record identity/type/link ambiguity");
+    Attribute[] attrs=ResolveAttributes(v,basis,records,containers); List<NameEntry> names=new List<NameEntry>(); Attribute standard=null;
+    foreach(Attribute a in attrs) {
+     if(a.Type==0x30) { Require(!a.NonResident,"PrivateSnapshot","Nonresident name"); names.Add(DecodeName(a.Value,0,a.Value.Length,match.Reference)); }
+     if(a.Type==0x10) { Require(standard==null && !a.NonResident && a.Value.Length>=72,"PrivateSnapshot","Invalid standard information"); standard=a; }
+     if(a.Type==0x80) Require(a.Name=="","PrivateSnapshot","ADS ambiguity");
+    }
+    Require(standard!=null && (U32(standard.Value,32)&0x4410)==0,"PrivateSnapshot","Reparse/EFS/directory ambiguity");
+    int bound=0; foreach(NameEntry n in names) if(n.Namespace!=2 && n.Name==leaf && n.Parent==parent.Identity.Reference) bound++;
+    Require(bound==1,"PrivateSnapshot","FILE_NAME does not bind to raw parent index");
+    List<Attribute> data=Select(attrs,0x80,""); Require(data.Count>0,"PrivateSnapshot","Missing data");
+    byte[] logical=ReadStream(v,data,containers,"PRIVATE_DATA");
+    List<Container> secondContainers=new List<Container>(); byte[] second=ReadStream(v,data,secondContainers,"PRIVATE_DATA_REPEAT");
+    Require(logical.Length==second.Length && Hash(logical)==Hash(second),"PrivateSnapshot","Private bytes changed during read");
+    containers.AddRange(secondContainers);
+    foreach(Record record in records) { Record after=ReadRecord(v,record.Number,containers); Require(Hash(record.Raw)==Hash(after.Raw),"PrivateSnapshot","Private record/runlist changed during read"); }
+    Image parentAfter=Capture(v,directory); Require(Fingerprint(parent)==Fingerprint(parentAfter),"PrivateSnapshot","Parent index changed during read");
+    containers.AddRange(parent.Containers); containers.AddRange(parentAfter.Containers);
+    byte[] id=new byte[16]; Buffer.BlockCopy(BitConverter.GetBytes(match.Reference),0,id,0,8);
+    Identity identity=new Identity{VolumeSerial=v.Geometry.Serial,Reference=match.Reference,FileId=BitConverter.ToString(id).Replace("-",""),
+     Eof=logical.Length,Allocation=data[0].NonResident?data[0].Allocation:logical.Length,Attributes=U32(standard.Value,32),Links=1,
+     Creation=I64(standard.Value,0),Modified=I64(standard.Value,8),Changed=I64(standard.Value,16),Accessed=I64(standard.Value,24)};
+    image=new Image{Identity=identity,RawMetadata=identity,SecurityId=U32(standard.Value,52),Attributes=attrs,FileNames=names.ToArray(),Names=new NameEntry[0],
+     Logical=logical,Digest=Hash(logical),Resident=!data[0].NonResident,Runs=data[0].NonResident?MergeRuns(data):new Run[0],Records=records.ToArray(),
+     Containers=containers.ToArray(),CrossCheckErrors=new string[0]};
+    return image;
+   } catch(Exception cause) {
+    ObservationException failure=cause as ObservationException; if(failure==null) failure=new ObservationException("PrivateSnapshot",cause.Message,cause);
+    failure.Containers=containers.ToArray(); failure.PartialImage=image; throw failure;
+   }
+  }
   public static string Fingerprint(Image image) {
    StringBuilder s=new StringBuilder(); s.Append(image.Identity.FileId).Append(':').Append(image.Identity.Eof).Append(':').Append(image.Identity.Allocation).Append(':').Append(image.Identity.Attributes);
    foreach(Run r in image.Runs) s.Append('|').Append(r.Vcn).Append(',').Append(r.NextVcn).Append(',').Append(r.Lcn);
@@ -525,6 +569,38 @@ function Save-IOImage($Context, $Image, [string] $Path, [string] $Role) {
         Records = @($Image.Records | ForEach-Object { [pscustomobject]@{ Number = $_.Number; Sequence = $_.Sequence; BaseReference = $_.BaseReference
             RawSha256 = [StagedInvariant.Native]::Hash($_.Raw); FixedSha256 = [StagedInvariant.Native]::Hash($_.Fixed) } })
         Containers = $containers; LogicalArtifact = $logical; Fingerprint = [StagedInvariant.Native]::Fingerprint($Image) }
+}
+function Read-InvariantPrivateSnapshot {
+    [CmdletBinding()] param([Parameter(Mandatory=$true)]$Context,[Parameter(Mandatory=$true)][string]$Path)
+    Assert-IOContext $Context
+    $full=[IO.Path]::GetFullPath($Path)
+    $parent=[IO.Path]::GetDirectoryName($full);$leaf=[IO.Path]::GetFileName($full)
+    # This helper is a private staging proof, never a substitute for a public
+    # destination's API/raw cross-check and supplemental-reader contract.
+    if($parent -ine 'C:\ProgramData\SafeUpload\staging' -or $leaf -cnotmatch '^[0-9a-fA-F]{32}\.[A-Za-z0-9]+$'){throw 'Private snapshot path outside exact stage namespace.'}
+    if([StagedInvariant.Native]::ResolveGuid($parent) -ine $Context.Geometry.Guid){throw 'Private snapshot is on another volume.'}
+    $held=@();$native=$null
+    try {
+        $ancestor=$parent
+        while(-not [string]::IsNullOrEmpty($ancestor)){
+            if(((Get-Item -LiteralPath $ancestor -Force).Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0){throw 'Reparse private snapshot ancestor.'}
+            $held+=[StagedInvariant.Native]::Open($ancestor,$false,$true)
+            $ancestor=[IO.Path]::GetDirectoryName($ancestor)
+        }
+        $native=[StagedInvariant.Native]::CaptureNamedRaw($Context.Volume,$held[0],$leaf)
+        # No named stage-file security query/open: raw index + MFT reference is
+        # the file binding. The sealed service manifest supplies expected A.
+        $saved=Save-IOImage $Context $native $null 'PrivateSealedSnapshot'
+        $saved | Add-Member -NotePropertyName StagePath -NotePropertyValue $full
+        return $saved
+    } catch {
+        for($error=$_.Exception;$null -ne $error;$error=$error.InnerException){
+            if($error -is [StagedInvariant.ObservationException] -and $null -ne $error.Containers){
+                foreach($container in $error.Containers){$null=Save-IOBytes $Context $container.Bytes 'private-partial'}
+            }
+        }
+        throw
+    } finally {foreach($handle in $held){$handle.Dispose()}}
 }
 function Get-IOEntryKey($Entry) { return ('{0}|{1}|{2}|{3}|{4}|{5}|{6}|{7}|{8}|{9}|{10}' -f $Entry.Name, $Entry.Namespace, $Entry.Reference, $Entry.Eof, $Entry.Attributes, $Entry.Parent, $Entry.Allocated, $Entry.Creation, $Entry.Modified, $Entry.Changed, $Entry.Accessed) }
 function Assert-IOParentMatch($Image, $Parent, [string] $Leaf) {
@@ -1279,4 +1355,4 @@ function Close-InvariantObserver {
     $Context.Closed = $true; $errors += $Context.Errors
     return New-IORecord 'Disposal' @{ Status = $(if ($errors.Count -eq 0) { 'OK' } else { 'ERROR' }); Errors = $errors; Time = (Get-IOTime $Context) }
 }
-Export-ModuleMember -Function Test-InvariantCadence, Test-InvariantExternalCoverage, Open-InvariantObserver, Capture-InvariantBaseline, Register-InvariantPublication, Capture-InvariantSample, Test-NoUnapprovedByte, Close-InvariantObserver
+Export-ModuleMember -Function Read-InvariantPrivateSnapshot, Test-InvariantCadence, Test-InvariantExternalCoverage, Open-InvariantObserver, Capture-InvariantBaseline, Register-InvariantPublication, Capture-InvariantSample, Test-NoUnapprovedByte, Close-InvariantObserver

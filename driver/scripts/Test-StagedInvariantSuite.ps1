@@ -756,7 +756,7 @@ function Get-ActivationActorIdentity {
     $identity=Wait-WriterIdentity (Join-Path $actorDirectory 'identity.clixml') 60
     if($identity.Sid -cne $state.ActorSid -or $identity.Elevated -or $identity.IsAdministrator -or $identity.Pid -eq $PID -or $identity.BootId -cne (Get-BootId)){throw 'Activation holder identity/session/token proof mismatch'}
     $process=Get-CimInstance Win32_Process -Filter ('ProcessId='+$identity.Pid) -ErrorAction Stop
-    if($null -eq $process -or $process.SessionId -ne $identity.SessionId -or $process.CommandLine -notlike ('*'+(Join-Path $stateDirectory 'activation-writer.ps1')+'*')){throw 'Activation holder OS process provenance mismatch'}
+    if($null -eq $process -or $process.SessionId -ne $identity.SessionId -or $process.CommandLine -notlike ('*'+(Join-Path $stateDirectory 'writer.ps1')+'*')){throw 'Activation holder OS process provenance mismatch'}
     $owner=Invoke-CimMethod -InputObject $process -MethodName GetOwnerSid -ErrorAction Stop
     if($owner.ReturnValue -ne 0 -or $owner.Sid -cne $state.ActorSid){throw 'Activation holder OS process owner SID mismatch'}
     return [pscustomobject]@{Pid=$identity.Pid;Sid=$identity.Sid;Elevated=$identity.Elevated;IsAdministrator=$identity.IsAdministrator;
@@ -2314,13 +2314,11 @@ function Invoke-CachedObservation {
         # No service copy is fabricated by the harness.
         if($row.Outcome -ceq 'BLOCK'){
             $blockedEntry=ConvertFrom-ServiceJournalRecord $terminal.Record
-            $stage=$null
             try{
-                $stage=[SUProofFile]::Open($blockedEntry.Entry.Transfer.StagePath,$false,$true,$false,$true)
-                $blockedBytes=[SUProofFile]::Read($stage,20971520)
-                $trial.Assertions+=@{Name='C01BlockedStageRetained';Verdict=$(if($blockedBytes.Length -eq $imageA.Length -and [StagedInvariant.Native]::Hash($blockedBytes) -ceq $digest){'PASS'}else{'FAIL'});Reason='Blocked sealed snapshot remains private and equals exact A during the available window.'}
+                $stage=Read-InvariantPrivateSnapshot -Context $context -Path $blockedEntry.Entry.Transfer.StagePath
+                $trial.BlockedStageSnapshot=$stage
+                $trial.Assertions+=@{Name='C01BlockedStageRetained';Verdict=$(if($stage.Length -eq $imageA.Length -and $stage.Sha256 -ceq $digest){'PASS'}else{'FAIL'});Reason='Raw parent-index/MFT-bound sealed stage snapshot remains present and equals exact A; repeated data and record/index stability checked. No stage-file open bypasses the product namespace gate.';Evidence=$stage}
             }catch{$trial.Assertions+=@{Name='C01BlockedStageRetained';Verdict='INCONCLUSIVE';Reason=$_.Exception.ToString()}}
-            finally{if($null -ne $stage){$stage.Dispose()}}
             $handBackDeadline=([Diagnostics.Stopwatch]::GetTimestamp()+[long]((10)*[Diagnostics.Stopwatch]::Frequency));$handBackRoot=Join-Path $actor.Profile 'SafeUpload\_bloqueados'
             do{if(Test-Path -LiteralPath $handBackRoot){if(@(Get-ChildItem -LiteralPath $handBackRoot -File -Force).Count){break}};Start-Sleep -Milliseconds 100}while([Diagnostics.Stopwatch]::GetTimestamp() -lt $handBackDeadline)
         }

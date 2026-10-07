@@ -723,3 +723,44 @@ The safe W01 checkpoint parent was written by Sol and checked by root: Windows P
 **2026-10-05 W01 run 2 (`w01-b38b36-20261005b`, GUID `fe004c32…`) — passed Prepare and the reboot; AfterBoot failed on a second parent bug, still before any child or write:** Prepare completed (`W01_PREPARED=True`) and AfterBoot attached the lower filter and read both drivers verified under flags `0x001209bb`, then threw `Active/configured Verifier missing: SafeUpload.sys`: the check also required `/querysettings` to list the drivers, but a one-boot Verifier configuration is consumed by the boot that applied it (settings read back `Verified Drivers: None`). Fix: the active check now uses the live `/query` module list (each module once, loaded, not unloaded) and exact flags. Read-only guest state afterwards: no W01/stimulus/child process, phase task Ready (not running), lower filter loaded and attached on C: but never armed, Verifier active on both, the run's three fixture roots on C:; nothing can be pending. The parent recorded RecoveryRequired and the host wrote three W01 latch files, so the guest restoration and the latch disposition await the operator. Bulk copies (87 MB guest service tree, 36 MB staged inputs) are retained locally, untracked, and pinned by hash in `provenance.json` / `input-staging-verified.json`. Unexecuted AfterBoot code after the Verifier step is being walked against these artifacts before a third run.
 
 **Owner-directed upstream reuse (2026-10-05):** before designing a new mechanism or experiment for unresolved Windows behavior, inspect the corresponding WinFsp implementation and tests against a concrete question, pin sources, and record what applies, differs and changes the next action. Reuse targeted WinFsp/Winfstest/Windows FSX stimuli for W01/A05 pending-write/cleanup, M01/M02 surviving mappings and C/B/X replacement saves through the existing checkpointed harness. Retain raw observations and SafeUpload-specific state, completion, service and byte assertions. Upstream workload success alone closes no MVP qualification gate. Keep current tracking-Unknown and 93-case regression diagnosis on the critical path and every remaining requirement in the table visible.
+
+## 2026-10-07 overnight (Sol)
+
+- [x] Read handoff and checked current checkout (`3be557de`); isolated host work in
+  `feat/sol-overnight-20261007` at `/home/victor/Work/safeupload-wt-sol`.
+- [x] Independent pre-run debuggee baseline returned `BaselineClean=True`; A01 run
+  `sol-a01r2` pins driver `mvp4-b10`/`326eb512` and agent `agent-mvp4-b17`/`12ad8e96`.
+- [x] A01 runtime-Verifier rerun restored clean; stopped at harness launcher-path mismatch: `evidence/2026-10-07/phase4-suite-sol-a01r2-index.txt`.
+- [x] Separate MVP gate implemented; 7 synthetic MVP tests and 18 existing proof-adapter
+  tests pass. Assessment: `evidence/2026-10-07/sol-mvp-historical-reassessment.txt`.
+  Strict gate remains unchanged; both historical cases correctly fail the MVP gate.
+  - Decision: `*UnheldLatency` cannot be tolerated before dedicated evidence for the same
+    write path, mode, driver/Inspector/service artifact hashes, 100 unheld samples per
+    class plus a cold sample passes. No assumed future latency pass.
+  - Evidence correction: c01o saved authoritative JSON has additional unallowlisted
+    `C01RawCapture`, `C01OutcomeNotification`, `C01ReleasedNotificationDigest` gaps.
+    They remain blocking; historical summary is not substituted for saved assertions.
+- [ ] Blocked stage proof: `SUProofFile.Open` already uses `FILE_FLAG_BACKUP_SEMANTICS`
+  (`0x02200000` also includes OPEN_REPARSE_POINT). Driver `StageAdmit` deliberately
+  denies every staging-namespace open except its authenticated service PID. SYSTEM
+  alone is not an exception. Use a read-only raw-volume/MFT proof; do not weaken driver.
+- [ ] Remaining Ready rows, live taint evidence, dedicated latency, NotReady MVP rows,
+  ordinary/boot modes and Phase 5 review remain pending.
+
+- [ ] Harness repair awaiting VM requalification: A01 checks `activation-writer.ps1`,
+  but Prepare creates and starts `writer.ps1` for every actor. Match the actual launcher,
+  retaining PID/session/token/OS-owner checks; 3 synthetic identity checks added.
+- [ ] Raw private-stage reader implemented without product changes: bind exact filename
+  through parent raw index, MFT record sequence and FILE_NAME parent, require one link,
+  reject ADS/reparse/EFS, read complete resident/nonresident bytes twice, bracket records
+  and parent index; preserve raw containers. Candidate builder validation passed 0 parser
+  errors, 224 adapter checks and 77 observer checks before the identity regression additions.
+- [ ] Live taint flag needs a driver change: `TestDisableTaintState` is explicitly
+  `SAFEUPLOAD_PROMOTION_TEST_DISABLE_TAINT_UNAVAILABLE` in `StageWriters.c`; there is no
+  TEST_DISABLE_TAINT policy bit or readback in the current product. Control 24 exposes live
+  policy flags but cannot attest an absent flag. Keep `LiveTaintFlags` on the fixed allowlist
+  and report this limitation; counters alone cannot manufacture live flag confirmation.
+
+- [x] Candidate harness Windows gate PASS: `evidence/2026-10-07/sol-harness-windows-validation-b.txt`
+  (0 parser errors, 227 proof-adapter checks, 77 native observer checks). Python
+  18 proof tests plus 7 MVP tests pass; raw helper compiles on .NET/PowerShell 5.1.
