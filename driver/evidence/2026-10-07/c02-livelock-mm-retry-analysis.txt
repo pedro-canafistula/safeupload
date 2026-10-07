@@ -1,0 +1,28 @@
+Schema=SafeUploadC02LivelockAnalysis/1
+Question=why the C02 extending CreateFileMapping never returns (sol-c02a1/a2/a3, sol-c02diag1)
+Evidence1=sol-c02diag1-cdb-initial2-decoded.txt: actor thread 14c8.1440 ContextSwitchCount 427471, KernelTime 00:00:40.906, UserTime 00:00:00.328, WaitStartTickCount 6877 Ticks 0 (wait began at the capture tick) -> the thread loops in kernel; the captured FltFlushBuffers wait is one sample of the loop, not a permanent block. User mode issues one CreateFileMappingW (Test-StagedInvariantSuite.ps1 CreateMapping), no user retry.
+Evidence2=sol-c02diag1 thread TopLevelIrp=1 (FSRTL_FSP_TOP_LEVEL_IRP); stack NtCreateSection->MiCreateSectionCommon->MiCreateSection->MiCreateImageOrDataSection->MiCreateNewSection->MiCreateDataFileMap->FsRtlSetFileSize->SafeUpload StagePreOperation->StageResize->StageZeroGrowth->StageFlush->FltFlushBuffers; MiCreateNewSection frame home slot holds 0xC0000054.
+Evidence3=ntoskrnl 19045.2965 code read from guest memory (lat-cached2 ELF, same kernel, ntkrnlmp.pdb 89284D0C...-1) and disassembled on the host:
+--- MiCreateSectionCommon
+  67f3a2:	e8 29 01 00 00       	call   0x67f4d0
+  67f3a7:	44 8b f8             	mov    r15d,eax
+  67f3aa:	3d 54 00 00 c0       	cmp    eax,0xc0000054
+  67f3af:	0f 84 c0 a0 18 00    	je     0x809475
+--- out-of-line 0x809475 (target of je)
+  809475:	4c 8d 05 84 ad 82 ff 	lea    r8,[rip+0xffffffffff82ad84]        # 0x34200
+  80947c:	33 d2                	xor    edx,edx
+  80947e:	33 c9                	xor    ecx,ecx
+  809480:	e8 cb 0f ad ff       	call   0x2da450
+  809485:	90                   	nop
+  809486:	e9 c6 5e e7 ff       	jmp    0x67f351
+    (0x2da450=KeDelayExecutionThread, 0x67f351 re-enters the MiCreateSection call sequence: unbounded retry)
+--- MiCreateSection
+  67f5bf:	e8 dc 06 00 00       	call   0x67fca0
+  67f5c4:	8b f8                	mov    edi,eax
+  67f5c6:	3d 54 00 00 c0       	cmp    eax,0xc0000054
+  67f5cb:	0f 84 c5 9e 18 00    	je     0x809496
+  67f5d1:	3d 76 04 00 c0       	cmp    eax,0xc0000476
+  67f5d6:	0f 84 ba 9e 18 00    	je     0x809496
+    (0x809496 re-initializes the create packet with memset and calls MiInitializeCreateSectionPacket/MiCreateImageOrDataSection again)
+Conclusion=a STATUS_FILE_LOCK_CONFLICT from our FsRtlSetFileSize handling makes section creation retry forever; each retry repeats StageResize because FileSize never advanced. b14 (dropping only the backing flush) kept failing, so the refused operation is the backing read/write/EOF under the recursive top-level IRP, not the flush alone (exact NTFS call not isolated).
+Fix=957aa15a: StageResize runs backing work (flush, tail read, zero-fill, EOF) on a system worker (no top-level IRP) when IoGetTopLevelIrp()!=NULL; upper CcFlushCache stays on the caller. Requires runtime C02 qualification.

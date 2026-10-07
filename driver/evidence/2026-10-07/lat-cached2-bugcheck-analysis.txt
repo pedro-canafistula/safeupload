@@ -1,0 +1,15 @@
+Schema=SafeUploadBugcheckAnalysis/1
+Run=boot-start-invariant-C01-approve-absent-runtime-verifier-sol-lat-cached2 (dedicated cached latency, runtime Verifier 0x13B)
+Driver=exact mvp4-sol-b13 (847a21da) owned-feature Debug, PDB GUID {DF8EDD44-9A25-4351-BD59-F47BD9955E1D} age 1 (fetched from builder, matches owned-feature.sys CodeView)
+Symptom=guest unreachable from ~04:30 host time; both vCPUs busy; lock screen frozen at 08:30 guest clock
+Capture=virsh qemu-monitor-command --hmp dump-guest-memory /var/tmp/lat-cached2-hang-20261007.elf at 2026-10-07T12:15Z; readable copy /var/tmp/lat-cached2-hang-readable.elf (sha256 below)
+Tool=volatility3 2.28.2 on the host, kernel ntkrnlmp.pdb 89284D0CA6ACC8274B9A44BD5AF9290B-1, NTBuildLab 19041.1.amd64fre.vb_release.1912, KernelBase 0xfffff8032c600000
+Guest KUSER SystemTime at capture=2026-10-07 07:30:42Z (frozen)
+nt!KiBugCheckData=0xd1 0xffff878ff5a03010 0x2 0x1 0xfffff8032f5edb47
+Meaning=DRIVER_IRQL_NOT_LESS_OR_EQUAL: write (arg3=1) of 0xffff878ff5a03010 at IRQL 2 by code 0xfffff8032f5edb47
+Module=SafeUpload.sys base 0xfffff8032f5d0000 size 0x6e3000 -> RVA 0x1DB47
+Function=StageRegistryCopyUnknownSopChunk (S_LPROC32 RVA 0x1da50 size 373) +0xf7
+RootCause=StageRegistryUnknownSopMarkersQuiescent allocates snapshots with POOL_FLAG_PAGED (StageWriters.c, b13 line 3547); StageRegistryCopyUnknownSopChunk writes it while holding SectionLock (StageAcquireSpinLock, DISPATCH_LEVEL). Verifier IRQL checking pages pageable memory out on raise -> 0xD1.
+Fix=957aa15a allocates the 64x48-byte buffer POOL_FLAG_NON_PAGED.
+KnownGap=a full audit of other paged buffers touched under spin locks is running (Luna, read-only).
+ReadableElfSha256=49803231ee0a8e586b4fa12f83fb3d779860c89c188fab5499c72e51705d29a7
