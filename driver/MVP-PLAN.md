@@ -840,3 +840,21 @@ The safe W01 checkpoint parent was written by Sol and checked by root: Windows P
   Retain native stderr and exit status in build helper even when tests fail (PS 5.1
   ErrorAction=Stop previously aborted before saving the test status). Rebuild with
   a fresh label; do not use the failed artifact or call it a passing gate.
+
+- [x] Exact feature agent `agent-mvp4-sol-b19` at `b0e7f8be` passes all 416 tests,
+  publish exit=0/warnings=0 (`evidence/2026-10-07/sol-agent-b19-build.txt`).
+- [x] Exact agent matrix `sol-agent-b19-matrix` PASS: normal Debug/Release 353/353,
+  feature Debug/Release 416/416 (`evidence/2026-10-07/sol-agent-b19-matrix.txt`).
+- [x] Fresh Luna follow-up ACCEPT WITH CONDITIONS (`sol-proxy-luna-review2.txt`).
+  Decision: preserve the existing absolute five-second response cutoff from
+  request handling, including validation/native-send elapsed time. It controls
+  response I/O eligibility and never cancels or bounds native send completion;
+  timeout means incomplete diagnostic evidence, with no successful fallback.
+  An expired response/canceled reader cannot abandon the service port lease.
+  Deterministic cancellation regression fixes only test scheduling assumptions.
+- [x] C03 APPROVE `sol-c03a1` restored independently clean but stopped at raw
+  baseline parent-index/file-reference binding after the real service approved
+  initial B (`evidence/2026-10-07/phase4-suite-sol-c03a1-index.txt`).
+  No valid baseline exists; forbidden count is unknown, not zero.
+- [ ] Runtime-Verifier A01 requalification on gated `mvp4-sol-b11`/`6a20c49f`
+  and `agent-mvp4-sol-b19`/`b0e7f8be`, with real service-owned relay continuity.
