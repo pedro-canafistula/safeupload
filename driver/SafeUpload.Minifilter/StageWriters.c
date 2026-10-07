@@ -283,7 +283,8 @@ _IRQL_requires_(PASSIVE_LEVEL)
 static NTSTATUS StageRegistryOpenIdentity(_In_ PSTAGE_REGISTRY_ENTRY Entry,
     _In_ PFLT_INSTANCE Instance, _In_ PFLT_VOLUME Volume, _Out_ PHANDLE Handle,
     _Outptr_result_nullonfailure_ PFILE_OBJECT *Object,
-    _Out_opt_ PUINT32 FailureStep, _Out_opt_ PBOOLEAN NoNamesProven);
+    _Out_opt_ PUINT32 FailureStep, _Out_opt_ PBOOLEAN NoNamesProven,
+    _In_ BOOLEAN NamesOnly);
 _IRQL_requires_(PASSIVE_LEVEL)
 static NTSTATUS StageRegistryOpenParentById(_In_ PFLT_INSTANCE Instance,
     _In_ PFLT_VOLUME Volume, _In_ ULONGLONG VolumeSerial, _In_ ULONGLONG ParentFileId,
@@ -3513,7 +3514,7 @@ static BOOLEAN StageRegistrySopSnapshotQuiescent(_In_ PSTAGE_REGISTRY_SOP_SNAPSH
     probe.SectionObjectPointer = Snapshot->SectionObjectPointer;
 
     status = StageRegistryOpenIdentity(&probe, Instance, Volume, &handle, &object,
-        NULL, &noNamesProven);
+        NULL, &noNamesProven, FALSE);
     if (noNamesProven && StageRegistryOpenByIdMeansNoName(status)) {
         quiescent = TRUE;
         goto Exit;
@@ -3941,7 +3942,7 @@ static BOOLEAN StageRegistryEntryQuiescent(_In_ PSTAGE_REGISTRY_ENTRY Entry, _In
         StageRegistrySnapshotSpilledMutatingIo(Entry) != 0 ||
         StageRegistrySnapshotC(Entry, NULL, 0, NULL) != 0) return FALSE;
     status = StageRegistryOpenIdentity(Entry, Instance, Volume, &handle, &object,
-        NULL, &noNamesProven);
+        NULL, &noNamesProven, FALSE);
     if (noNamesProven && StageRegistryOpenByIdMeansNoName(status)) {
         quiescent = TRUE; /* the recorded file identity no longer exists */
         goto Exit;
@@ -4106,7 +4107,8 @@ _IRQL_requires_(PASSIVE_LEVEL)
 static NTSTATUS StageRegistryOpenIdentity(_In_ PSTAGE_REGISTRY_ENTRY Entry,
     _In_ PFLT_INSTANCE Instance, _In_ PFLT_VOLUME Volume, _Out_ PHANDLE Handle,
     _Outptr_result_nullonfailure_ PFILE_OBJECT *Object,
-    _Out_opt_ PUINT32 FailureStep, _Out_opt_ PBOOLEAN NoNamesProven)
+    _Out_opt_ PUINT32 FailureStep, _Out_opt_ PBOOLEAN NoNamesProven,
+    _In_ BOOLEAN NamesOnly)
 {
     UNICODE_STRING volumeName = { 0 }, name;
     OBJECT_ATTRIBUTES attributes;
@@ -4200,11 +4202,16 @@ static NTSTATUS StageRegistryOpenIdentity(_In_ PSTAGE_REGISTRY_ENTRY Entry,
     status = FltQueryInformationFile(Instance, *Object, &actual, sizeof(actual),
         FileIdInformation, &returned);
     if (status != STATUS_SUCCESS) goto Exit;
+    /* NamesOnly (hard-link name classification) identifies the file by volume serial and file ID:
+     * names belong to the file, not to one stream incarnation. NTFS may tear down the stream's
+     * SCB after its last user closes and give the reopen a new section-object pointer while the
+     * file and its links remain (p2a1: MountMgr's database). Every writer-state caller still
+     * requires the exact recorded SOP. */
     if (returned != sizeof(actual) || actual.VolumeSerialNumber != Entry->VolumeSerial ||
         !RtlEqualMemory(&actual.FileId, &Entry->FileId, sizeof(actual.FileId)) ||
-        (*Object)->SectionObjectPointer == NULL ||
-        (*Object)->SectionObjectPointer != InterlockedCompareExchangePointer(
-            (PVOID volatile *)&Entry->SectionObjectPointer, NULL, NULL)) {
+        (!NamesOnly && ((*Object)->SectionObjectPointer == NULL ||
+            (*Object)->SectionObjectPointer != InterlockedCompareExchangePointer(
+                (PVOID volatile *)&Entry->SectionObjectPointer, NULL, NULL)))) {
         status = STATUS_FILE_INVALID;
     }
     if (NT_SUCCESS(status)) {
@@ -4488,7 +4495,7 @@ __declspec(noinline) static NTSTATUS StageRegistryClassifyAllLinkNames(_In_ PSTA
     if (!stable) { status = STATUS_FILE_INVALID; goto Exit; }
     resultStep = SAFEUPLOAD_ACTIVATING_CLASSIFY_STEP_OPEN_BY_ID;
     status = StageRegistryOpenIdentity(Entry, Instance, Volume, &fileHandle, &fileObject,
-        &resultStep, &noNamesProvenByIdentity);
+        &resultStep, &noNamesProvenByIdentity, TRUE);
     if (!NT_SUCCESS(status)) {
         /* The entry owns this exact mounted volume and its recorded serial;
          * only an attempted ID open (or an exact, complete compact-stream
@@ -4513,11 +4520,9 @@ __declspec(noinline) static NTSTATUS StageRegistryClassifyAllLinkNames(_In_ PSTA
         }
         goto Exit;
     }
-    if (fileObject->SectionObjectPointer != InterlockedCompareExchangePointer(
-            (PVOID volatile *)&Entry->SectionObjectPointer, NULL, NULL)) {
-        status = STATUS_FILE_INVALID;
-        goto Exit;
-    }
+    /* Names only: the reopened object is the same file (serial and file ID were verified); its
+     * section-object pointer may be a newer incarnation of the stream and is not used here. A
+     * scoped result still reaches the activation path, which requires the exact recorded SOP. */
     pagingFile = FsRtlIsPagingFile(fileObject) != FALSE;
     if (compactStream) {
         resultStep = SAFEUPLOAD_ACTIVATING_CLASSIFY_STEP_NAME_BUILD;
@@ -5392,7 +5397,7 @@ static VOID StageRegistryActivationProcess(_In_ PSTAGE_REGISTRY_ENTRY Entry,
     if (!currentlyScoped) goto Exit; /* candidate scope is gated until the policy is finalized */
 
     status = StageRegistryOpenIdentity(Entry, Instance, Volume, &handle, &object,
-        &openFailureStep, &noNamesProvenByIdentity);
+        &openFailureStep, &noNamesProvenByIdentity, FALSE);
     if (!NT_SUCCESS(status)) {
         if (noNamesProvenByIdentity && Entry->Volume == Volume && Entry->VolumeSerial != 0) {
             StageRegistryRecordClassificationResult(Entry, status,
