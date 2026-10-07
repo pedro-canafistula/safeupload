@@ -124,8 +124,10 @@ function Wait-WriterIdentity([string]$Path,[int]$Seconds=60) {
 function Get-BootId { $env:COMPUTERNAME+'/'+(Get-CimInstance Win32_OperatingSystem).LastBootUpTime.ToUniversalTime().ToString('o') }
 function Get-ErrorChain($Exception) {
     $chain=@();for($ex=$Exception;$null -ne $ex;$ex=$ex.InnerException){
-        $native=$null;if($ex -is [ComponentModel.Win32Exception]){$native=$ex.NativeErrorCode}
-        $chain+= [pscustomobject]@{Type=$ex.GetType().FullName;Message=$ex.Message;HResult=$ex.HResult;NativeCode=$native;Stack=$ex.StackTrace}
+        $native=$null;$ntStatus=$null;if($ex -is [ComponentModel.Win32Exception]){$native=$ex.NativeErrorCode}
+        if($null -ne $ex.PSObject.Properties['NativeCode']){$native=$ex.NativeCode}
+        if($null -ne $ex.PSObject.Properties['NativeNtStatus']){$ntStatus=$ex.NativeNtStatus}
+        $chain+= [pscustomobject]@{Type=$ex.GetType().FullName;Message=$ex.Message;HResult=$ex.HResult;NativeCode=$native;NativeNtStatus=$ntStatus;Stack=$ex.StackTrace}
     };return ,$chain
 }
 function Assert-Hash([string]$Path,[string]$Hash) {
@@ -1288,17 +1290,46 @@ function Get-NotificationFenceWaitDecision($Coverage,[long]$NowQpc,[long]$Deadli
     return 'Wait'
 }
 
+function Get-NotificationInventoryDecision([string[]]$Names,[long]$NowQpc,$Wait) {
+    $unknown=@($Names | Where-Object {$_ -cnotin @('emissions.jsonl','previous.jsonl','head.json','writer.lock')})
+    $missing=@(@('emissions.jsonl','head.json','writer.lock') | Where-Object {$Names -cnotcontains $_})
+    $onlyHead=$unknown.Count -eq 1 -and $unknown[0] -ceq 'head.tmp' -and $missing.Count -eq 0
+    if($onlyHead -and ($null -eq $Wait.StartQpc -or $Wait.Cleared)){
+        $Wait.StartQpc=$NowQpc;$Wait.DeadlineQpc=[Math]::Min($Wait.OuterDeadlineQpc,$NowQpc+[long](5*$Wait.QpcFrequency))
+        $Wait.Cleared=$false;$Wait.TimedOut=$false
+        $Wait.Windows+=@([ordered]@{StartQpc=$Wait.StartQpc;DeadlineQpc=$Wait.DeadlineQpc;EndQpc=$null;DurationMs=$null;Cleared=$false;TimedOut=$false})
+    }
+    $decision='Accept';$reason=$null
+    if($missing.Count -or ($unknown.Count -and -not $onlyHead)){$decision='Reject'}
+    elseif($null -ne $Wait.StartQpc -and ($onlyHead -or -not $Wait.Cleared) -and $NowQpc -ge $Wait.DeadlineQpc){$decision='Reject';$Wait.TimedOut=$true}
+    elseif($onlyHead){$decision='Wait'}
+    if($decision -cne 'Accept'){
+        $reason='Missing/unrecognized notification record child. Unknown='+ (ConvertTo-Json -InputObject $unknown -Compress)+'; Missing='+ (ConvertTo-Json -InputObject $missing -Compress)
+        if($Wait.TimedOut){$reason+='; head.tmp did not clear within the QPC-bounded 5 s wait.'}
+    }
+    $receipt=[pscustomobject]@{ReadQpc=$NowQpc;ChildNames=@($Names);UnknownChildNames=$unknown;MissingChildNames=$missing;Decision=$decision;Reason=$reason}
+    $Wait.Observations+=@($receipt)
+    if($null -ne $Wait.StartQpc -and (-not $Wait.Cleared -or $decision -cne 'Accept')){
+        $Wait.EndQpc=$NowQpc;$Wait.DurationMs=1000.0*($NowQpc-$Wait.StartQpc)/$Wait.QpcFrequency;$Wait.Cleared=$decision -ceq 'Accept'
+        $window=$Wait.Windows[$Wait.Windows.Count-1]
+        $window.EndQpc=$Wait.EndQpc;$window.DurationMs=$Wait.DurationMs;$window.Cleared=$Wait.Cleared;$window.TimedOut=$Wait.TimedOut
+    }
+    return $receipt
+}
+
 function Get-NotificationSnapshot([string]$Tag,[string]$BootId,[long]$MinimumQpc) {
     $root=Split-Path -Parent $policyPath;$directory=Join-Path $root 'notifications'
     $start=[Diagnostics.Stopwatch]::GetTimestamp();$frequency=[Diagnostics.Stopwatch]::Frequency
     $deadline=$start+[long](30*$frequency);$readDeadline=$start+[long](4*$frequency);$reason='Notification record unavailable.'
     $wait=[ordered]@{StartQpc=$start;DeadlineQpc=$deadline;EndQpc=$null;QpcFrequency=$frequency;MinimumQpc=$MinimumQpc;
         TimeoutSeconds=30;PollMilliseconds=100;DurationMs=$null;Covered=$false;TimedOut=$false;Attempts=@()}
+    $inventoryWait=[ordered]@{StartQpc=$null;DeadlineQpc=$null;OuterDeadlineQpc=$deadline;EndQpc=$null;QpcFrequency=$frequency;
+        TimeoutSeconds=5;PollMilliseconds=25;DurationMs=$null;Cleared=$false;TimedOut=$false;Windows=@();Observations=@()}
     do {
-        $held=@()
-        $snapshot=[ordered]@{Status='INCONCLUSIVE';LocationStatus='INCONCLUSIVE';LocationFiles=@();Directory=$directory;DirectoryExists=$null;ChildNames=@();Objects=@();
+        $held=@();$inventoryRetry=$false;$inventoryRejected=$false
+        $snapshot=[ordered]@{Status='INCONCLUSIVE';LocationStatus='INCONCLUSIVE';LocationFiles=@();Directory=$directory;DirectoryExists=$null;ChildNames=@();AfterChildNames=@();UnknownChildNames=@();MissingChildNames=@();Objects=@();
             BootId=$BootId;QpcFrequency=[Diagnostics.Stopwatch]::Frequency;MinimumQpc=$MinimumQpc;ReadQpc=$null;
-            Entries=@();Head=$null;Artifacts=@();Errors=@();Reason=$reason;FenceWait=$wait}
+            Entries=@();Head=$null;Artifacts=@();Errors=@();Reason=$reason;FenceWait=$wait;InventoryWait=$inventoryWait}
         try {
             Initialize-ServiceEvidenceReader
             # Pin ancestors; read live files with write/delete sharing so evidence
@@ -1320,16 +1351,13 @@ function Get-NotificationSnapshot([string]$Tag,[string]$BootId,[long]$MinimumQpc
             }
             $obj=[SUProofFile]::Open($directory,$true,$true,$false,$true);$held+=$obj;$snapshot.Objects+=@{Path=$directory;Owner=$obj.Owner;Sddl=$obj.Sddl}
             $names=@(Get-ChildItem -LiteralPath $directory -Force -ErrorAction Stop | Select-Object -ExpandProperty Name)
-            # head.tmp exists only while the writer replaces head.json within one append (run c01o); wait it out.
-            $headDeadline=[Math]::Min($deadline,[Diagnostics.Stopwatch]::GetTimestamp()+[long](2*$frequency))
-            while($names -ccontains 'head.tmp' -and [Diagnostics.Stopwatch]::GetTimestamp() -lt $headDeadline){
-                $headRemaining=1000.0*($headDeadline-[Diagnostics.Stopwatch]::GetTimestamp())/$frequency
-                if($headRemaining -gt 0){Start-Sleep -Milliseconds ([int][Math]::Min(25,[Math]::Ceiling($headRemaining)))}
-                $names=@(Get-ChildItem -LiteralPath $directory -Force -ErrorAction Stop | Select-Object -ExpandProperty Name)
-            }
             $snapshot.ChildNames=$names
-            if($names -notcontains 'emissions.jsonl' -or $names -notcontains 'head.json' -or $names -notcontains 'writer.lock' -or
-                @($names | Where-Object {$_ -cnotin @('emissions.jsonl','previous.jsonl','head.json','writer.lock')}).Count){throw 'Missing/unrecognized notification record child.'}
+            $inventory=Get-NotificationInventoryDecision $names ([Diagnostics.Stopwatch]::GetTimestamp()) $inventoryWait
+            $snapshot.UnknownChildNames=$inventory.UnknownChildNames;$snapshot.MissingChildNames=$inventory.MissingChildNames
+            if($inventory.Decision -cne 'Accept'){
+                $inventoryRetry=$inventory.Decision -ceq 'Wait';$inventoryRejected=-not $inventoryRetry
+                throw $inventory.Reason
+            }
             $files=@{}
             foreach($name in @('previous.jsonl','emissions.jsonl','head.json','writer.lock')){
                 if($names -contains $name){$obj=[SUProofFile]::Open((Join-Path $directory $name),$false,$true,$true,$true);$held+=$obj;$files[$name]=$obj;$snapshot.Objects+=@{Path=$obj.Path;Owner=$obj.Owner;Sddl=$obj.Sddl}}
@@ -1348,6 +1376,13 @@ function Get-NotificationSnapshot([string]$Tag,[string]$BootId,[long]$MinimumQpc
             }
             # Authenticate the complete raw location independently of durable coverage.
             $afterNames=@(Get-ChildItem -LiteralPath $directory -Force -ErrorAction Stop | Select-Object -ExpandProperty Name | Sort-Object)
+            $snapshot.AfterChildNames=$afterNames
+            $inventory=Get-NotificationInventoryDecision $afterNames ([Diagnostics.Stopwatch]::GetTimestamp()) $inventoryWait
+            $snapshot.UnknownChildNames=$inventory.UnknownChildNames;$snapshot.MissingChildNames=$inventory.MissingChildNames
+            if($inventory.Decision -cne 'Accept'){
+                $inventoryRetry=$inventory.Decision -ceq 'Wait';$inventoryRejected=-not $inventoryRetry
+                throw $inventory.Reason
+            }
             if((@($names | Sort-Object) -join '|') -cne ($afterNames -join '|')){throw 'Notification location inventory changed during read.'}
             $snapshot.LocationStatus='OK';$snapshot.ReadQpc=[Diagnostics.Stopwatch]::GetTimestamp()
             $record=ConvertFrom-NotificationRecord $segments $headBytes
@@ -1374,19 +1409,35 @@ function Get-NotificationSnapshot([string]$Tag,[string]$BootId,[long]$MinimumQpc
             }
             if($decision -cne 'Wait'){return [pscustomobject]$snapshot}
         }catch{
-            $reason=$_.Exception.Message;$snapshot.Status='INCONCLUSIVE';$snapshot.Reason=$reason;$snapshot.Errors=Get-ErrorChain $_.Exception
+            $reason=$_.Exception.Message;$snapshot.Status='INCONCLUSIVE';$snapshot.Reason=$reason
             $wait.Covered=$false
-            $wait.Attempts+=@{ReadQpc=[Diagnostics.Stopwatch]::GetTimestamp();Decision='ReadError';Authenticated=$false;Reason=$reason}
-            if([Diagnostics.Stopwatch]::GetTimestamp() -ge $readDeadline){return [pscustomobject]$snapshot}
+            if($inventoryRetry){
+                # Release all handles, then re-authenticate and re-read the entire
+                # snapshot. A transient inventory alone is not a collector error.
+                $wait.Attempts+=@{ReadQpc=[Diagnostics.Stopwatch]::GetTimestamp();Decision='HeadTmpWait';Authenticated=$false;Reason=$reason}
+            }else{
+                $snapshot.Errors=Get-ErrorChain $_.Exception
+                $wait.Attempts+=@{ReadQpc=[Diagnostics.Stopwatch]::GetTimestamp();Decision='ReadError';Authenticated=$false;Reason=$reason}
+                if($inventoryRejected -or [Diagnostics.Stopwatch]::GetTimestamp() -ge $readDeadline){return [pscustomobject]$snapshot}
+            }
         }
         finally{
             foreach($obj in $held){$obj.Dispose()}
             $wait.EndQpc=[Diagnostics.Stopwatch]::GetTimestamp();$wait.DurationMs=1000.0*($wait.EndQpc-$start)/$frequency
         }
         # Sleep only within the remaining QPC budget.
-        $remainingMs=[Math]::Max(0,1000.0*($deadline-[Diagnostics.Stopwatch]::GetTimestamp())/$frequency)
-        if($remainingMs -gt 0){Start-Sleep -Milliseconds ([int][Math]::Min(100,[Math]::Ceiling($remainingMs)))}
+        $pollDeadline=$deadline;$pollMs=100
+        if($inventoryRetry){$pollDeadline=$inventoryWait.DeadlineQpc;$pollMs=$inventoryWait.PollMilliseconds}
+        $remainingMs=[Math]::Max(0,1000.0*($pollDeadline-[Diagnostics.Stopwatch]::GetTimestamp())/$frequency)
+        if($remainingMs -gt 0){Start-Sleep -Milliseconds ([int][Math]::Min($pollMs,[Math]::Ceiling($remainingMs)))}
     }while([Diagnostics.Stopwatch]::GetTimestamp() -lt $deadline)
+    if($inventoryRetry){
+        $inventoryWait.TimedOut=$true;$inventoryWait.EndQpc=[Diagnostics.Stopwatch]::GetTimestamp()
+        $inventoryWait.DurationMs=1000.0*($inventoryWait.EndQpc-$inventoryWait.StartQpc)/$frequency
+        $window=$inventoryWait.Windows[$inventoryWait.Windows.Count-1];$window.EndQpc=$inventoryWait.EndQpc;$window.DurationMs=$inventoryWait.DurationMs;$window.TimedOut=$true
+        $snapshot.Reason+='; head.tmp did not clear within the QPC-bounded 5 s wait.'
+        $snapshot.Errors=Get-ErrorChain ([InvalidOperationException]::new($snapshot.Reason))
+    }
     # Retain the last authenticated short read when the deadline elapsed in
     # the polling sleep, preserving its INCONCLUSIVE coverage reason.
     if($snapshot.Errors.Count -eq 0 -and $snapshot.Entries.Count -gt 0){
@@ -2153,7 +2204,7 @@ function Capture-CachedSample($Context,$Baseline,[string]$PhaseName,[long]$Seque
         try{$reader=[StagedInvariant.Native]::Fresh($path,$raw,$Context.Geometry.Alignment);$readers+=@{Unbuffered=$raw;Status='OK';Result=$reader;NativeCode=0}}
         catch{
             $code=$null;for($ex=$_.Exception;$null -ne $ex;$ex=$ex.InnerException){if($null -ne $ex.PSObject.Properties['NativeCode']){$code=$ex.NativeCode}}
-            $readers+=@{Unbuffered=$raw;Status='ERROR';NativeCode=$code;Reason=$_.Exception.ToString()}
+            $readers+=@{Unbuffered=$raw;Status='ERROR';NativeCode=$code;Errors=(Get-ErrorChain $_.Exception);Reason=$_.Exception.ToString()}
         }
     }
     $sample | Add-Member NoteProperty C01Readers $readers

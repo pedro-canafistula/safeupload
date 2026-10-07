@@ -24,6 +24,14 @@ API (positional order also supported)
     public temp write. ApprovalRecord field list below. No fixture token counts.
   Capture-InvariantSample Context Baseline Phase OperationSequence
     Full raw/reader capture; retains original and observed approved final IDs.
+    A01/A02/A03/A05/R02 pin the pre-epoch target identity and DATA map. Current
+    raw MFT records validate volume serial, file reference/sequence, EOF,
+    allocation, DATA representation and name/link binding before, between and
+    after repeated physical reads. A changed map fails closed; it is never
+    refreshed to accept a new target layout. Named GENERIC_READ opens are
+    separate diagnostic receipts and their failures do not block raw samples.
+    Target metadata/ACL queries by name are also skipped; pinned images have
+    IdentitySource=RawMft, DataSource and LayoutValidation, with Sddl=null.
     A record beyond the cached $MFT map triggers one raw record-0 refresh,
     checked fixups and extension decoding, then one record capture using the
     new map. Every previously mapped cluster must retain its physical address.
@@ -56,8 +64,11 @@ Result schema (JSON fields; PascalCase; optional fields on failure)
   Sample: Schema, Status, CaseId, Sequence, OperationSequence, Phase, Start, End,
     GapMs (idle interval after preceding pass), CadenceMs (start-to-start),
     DurationMs, Attempts, Captures,
-    Images, Readers, MftRefreshes, Error, CleanupErrors. Attempt: Attempt, StartQpc, EndQpc,
-    Status, Error. Capture: Status, Images, Readers, MftRefreshes, Error.
+    Images, Readers, NamedOpenDiagnostics, MftRefreshes, Error, CleanupErrors.
+    Attempt: Attempt, StartQpc, EndQpc, Status, Error.
+    Capture: Status, Images, Readers, NamedOpenDiagnostics, MftRefreshes, Error.
+  NamedOpenDiagnostic: Path, StartQpc, EndQpc, QpcFrequency, DesiredAccess,
+    ShareMode, Disposition, Flags, Status, Errors, DiagnosticOnly=true.
   MftRefresh: RequestedRecord, Status, Reason, StartQpc, EndQpc, QpcFrequency,
     OldRuns, NewRuns, Containers. Refresh records and extensions are archived
     separately from the subject's physical containers. A failed decode may
@@ -87,9 +98,13 @@ Result schema (JSON fields; PascalCase; optional fields on failure)
   FreshReader: Path, Unbuffered, Status, Result, Error; held readers also have
     Role=Retained and FileId. Result: Before, After, Digest, Length, Status,
     NativeCode. The held supplemental reader is buffered, over the retained ID.
-  Error: Phase, NativePhase, NativeCode (null when no native code), Verdict,
-    Chain[]. Chain: Type, Message, HResult, Stack, NativeCode, NativePhase; includes
+  Error: Phase, NativePhase, NativeCode (null when no native code), NativeNtStatus,
+    Verdict, Chain[]. Chain: Type, Message, HResult, Stack, NativeCode,
+    NativePhase, NativeNtStatus; includes
     inner exceptions and all aggregate cleanup exceptions.
+    NativeNtStatus is the immediate ntdll!RtlGetLastNtStatus() snapshot as
+    0xXXXXXXXX, also included in the native exception message. It is diagnostic
+    thread status, not proof that a particular filter returned that status.
   Verdict: Schema, Verdict (PASS/FAIL/INCONCLUSIVE), ForbiddenByteCount,
     Assertions, RawDifferences, AuthoritativeCaseExport=false. ForbiddenByteCount
     counts whole-image violation alarms, detected logical differences and first
