@@ -3,7 +3,7 @@
 # design section 4 corpus, NOT a claim that one row covers every future variant.
 @{
     Schema = 'StagedInvariantCases/1'
-    TableRevision = 15
+    TableRevision = 16
     Modes = @('ordinary', 'runtime-verifier', 'boot-verifier')
     RowSchema = @{
         Required = @('CaseId', 'Revision', 'Status', 'Variant', 'Outcome',
@@ -210,7 +210,7 @@
             Cleanup = @('CooperativeActorRelease', 'StopRestoreRealAgent', 'CloseRawObserver', 'RestoreProductState', 'CommonSeedRestoration', 'IndependentBaseline')
         }
         @{
-            CaseId = 'C01-approve-absent'; Revision = 3; Status = 'Ready'
+            CaseId = 'C01-approve-absent'; Revision = 4; Status = 'Ready'
             Variant = 'fixed-NTFS-cached-create-absent'; Outcome = 'APPROVE'
             QualificationScope = 'Phase4FunctionalOnly; sampled bytes, not full temporal/permit/latency qualification'
             ActorSid = 'ResolveStandardUserTokenAtRuntime'; ActorSession = 'ResolveTokenSessionId'
@@ -228,6 +228,7 @@
             LatencyClasses = @('writer-open', 'cached-write', 'flush', 'close')
             Repetitions = @{ Coordinated = 1; Unheld = 0; DeterministicSeed = 4003 }
             Cleanup = @('StopAndRestoreAgent', 'RestoreProductStateBytesAndAcls', 'CommonSeedRestoration', 'IndependentBaseline')
+            DedicatedLatencyContract = '101UnheldRounds;OneCold100Warm;AllObservationIoBeforeNextNativeStart;ExactReleasedAndWholePublicImageBeforeNextApproveRound;C04FunctionalSaveTempAndCommittedRename;C05FlatIndependentSourceDestinationAssertions;CheckedAgentProcessExitBeforeRestoration'
         }
         @{
             CaseId = 'C01-block-absent'; Revision = 6; Status = 'Ready'
@@ -266,7 +267,7 @@
             Cleanup = @('Unimplemented; common restoration still mandatory')
         }
         @{
-            CaseId = 'C02-approve-absent'; Revision = 3; Status = 'Ready'
+            CaseId = 'C02-approve-absent'; Revision = 4; Status = 'Ready'
             Variant = 'fixed-NTFS-owned-mapped-create-absent-source-closed-view-held'; Outcome = 'APPROVE'
             QualificationScope = 'Phase4FunctionalOnly; sampled bytes, not full temporal/permit/latency qualification'
             ActorSid = 'ResolveStandardUserTokenAtRuntime'; ActorSession = 'ResolveTokenSessionId'
@@ -284,6 +285,7 @@
             LatencyClasses = @('writer-open', 'create-mapping', 'map-view', 'close-source', 'mapped-store', 'flush-view', 'unmap-view', 'close-section')
             Repetitions = @{ Coordinated = 1; Unheld = 0; DeterministicSeed = 4003 }
             Cleanup = @('StopAndRestoreAgent', 'RestorePolicyBeforeProductStateInPlace', 'RestoreProductStateBytesAndAcls', 'CommonSeedRestoration', 'IndependentBaseline')
+            DedicatedLatencyContract = '101UnheldRounds;OneCold100Warm;AllObservationIoBeforeNextNativeStart;ExactReleasedAndWholePublicImageBeforeNextApproveRound;C04FunctionalSaveTempAndCommittedRename;C05FlatIndependentSourceDestinationAssertions;CheckedAgentProcessExitBeforeRestoration'
         }
         @{
             CaseId = 'C02-block-absent'; Revision = 4; Status = 'Ready'
@@ -308,7 +310,7 @@
             Cleanup = @('StopAndRestoreAgent', 'RestorePolicyBeforeProductStateInPlace', 'RestoreProductStateBytesAndAcls', 'CommonSeedRestoration', 'IndependentBaseline', 'RemoveSecondUserTaskBatchRightAccountAndProfileIncludingAfterRestorationReboot')
         }
         @{
-            CaseId = 'C03-approve-existing'; Revision = 3; Status = 'Ready'
+            CaseId = 'C03-approve-existing'; Revision = 4; Status = 'Ready'
             Variant = 'fixed-NTFS-truncate-overwrite-approved-B'; Outcome = 'APPROVE'
             QualificationScope = 'Phase4FunctionalOnly; approved B and retained physical B checked; full temporal/permit/latency qualification deferred'
             ActorSid = 'ResolveStandardUserTokenAtRuntime'; ActorSession = 'ResolveTokenSessionId'
@@ -326,6 +328,7 @@
             LatencyClasses = @('writer-open', 'cached-write', 'flush', 'close')
             Repetitions = @{ Coordinated = 1; Unheld = 0; DeterministicSeed = 4003 }
             Cleanup = @('StopAndRestoreAgent', 'RestorePolicyBeforeProductStateInPlace', 'RestoreProductStateBytesAndAcls', 'CommonSeedRestoration', 'IndependentBaseline')
+            DedicatedLatencyContract = '101UnheldRounds;OneCold100Warm;AllObservationIoBeforeNextNativeStart;ExactReleasedAndWholePublicImageBeforeNextApproveRound;C04FunctionalSaveTempAndCommittedRename;C05FlatIndependentSourceDestinationAssertions;CheckedAgentProcessExitBeforeRestoration'
         }
         @{
             CaseId = 'C03-block-existing'; Revision = 5; Status = 'Ready'
@@ -350,7 +353,7 @@
             Cleanup = @('StopAndRestoreAgent', 'RestorePolicyBeforeProductStateInPlace', 'RestoreProductStateBytesAndAcls', 'CommonSeedRestoration', 'IndependentBaseline', 'RemoveSecondUserTaskBatchRightAccountAndProfileIncludingAfterRestorationReboot')
         }
         @{
-            CaseId = 'C04-approve'; Revision = 3; Status = 'Ready'
+            CaseId = 'C04-approve'; Revision = 4; Status = 'Ready'
             Variant = 'fixed-NTFS-private-sibling-replacement-approved-B'; Outcome = 'APPROVE'
             QualificationScope = 'Phase4FunctionalOnly; approved B and retained physical B checked; full temporal/permit/latency qualification deferred'
             ActorSid = 'ResolveStandardUserTokenAtRuntime'; ActorSession = 'ResolveTokenSessionId'
@@ -368,6 +371,7 @@
             LatencyClasses = @('writer-open', 'cached-write', 'flush', 'rename-ex', 'close')
             Repetitions = @{ Coordinated = 1; Unheld = 0; DeterministicSeed = 4003 }
             Cleanup = @('StopAndRestoreAgent', 'RestorePolicyBeforeProductStateInPlace', 'RestoreProductStateBytesAndAcls', 'CommonSeedRestoration', 'IndependentBaseline')
+            DedicatedLatencyContract = '101UnheldRounds;OneCold100Warm;AllObservationIoBeforeNextNativeStart;ExactReleasedAndWholePublicImageBeforeNextApproveRound;C04FunctionalSaveTempAndCommittedRename;C05FlatIndependentSourceDestinationAssertions;CheckedAgentProcessExitBeforeRestoration'
         }
         @{
             CaseId = 'C04-block'; Revision = 5; Status = 'Ready'
@@ -434,7 +438,7 @@
             Cleanup = @('Unimplemented; common restoration still mandatory')
         }
         @{
-            CaseId = 'C05-denied-external-rename'; Revision = 4; Status = 'Ready'
+            CaseId = 'C05-denied-external-rename'; Revision = 5; Status = 'Ready'
             Variant = 'fixed-NTFS-old-physical-external-source-rename-into-protected-absent-target'; Outcome = 'DENY'
             QualificationScope = 'Phase4FunctionalDOnly; exact denial ledger/reason unavailable; dedicated denied-rename latency implemented; positive owned-source variant deferred'
             ActorSid = 'ResolveStandardUserTokenAtRuntime'; ActorSession = 'ResolveTokenSessionId'
@@ -452,6 +456,7 @@
             LatencyClasses = @('writer-open', 'rename-ex', 'close')
             Repetitions = @{ Coordinated = 1; Unheld = 100; DeterministicSeed = 4003 }
             Cleanup = @('CloseBothObservers', 'StopAndRestoreAgent', 'RestorePolicyBeforeProductStateInPlace', 'RestoreProductStateBytesAndAcls', 'RemoveExternalFixture', 'CommonSeedRestoration', 'IndependentBaseline')
+            DedicatedLatencyContract = '101UnheldRounds;OneCold100Warm;AllObservationIoBeforeNextNativeStart;ExactReleasedAndWholePublicImageBeforeNextApproveRound;C04FunctionalSaveTempAndCommittedRename;C05FlatIndependentSourceDestinationAssertions;CheckedAgentProcessExitBeforeRestoration'
         }
         @{
             CaseId = 'C05'; Revision = 2; Status = 'NotReady'

@@ -6,7 +6,8 @@ $ast=[Management.Automation.Language.Parser]::ParseFile((Join-Path $PSScriptRoot
 if($errors.Count){throw 'Suite parse failed'}
 foreach($name in @('Test-LatencyTransientIoError','Invoke-LatencyJournalIo','Get-ErrorChain','Get-LatencyTransferHints',
     'ConvertFrom-LatencyManifestRecord','ConvertFrom-ServiceJournalRecord','Test-ServiceJournalStateReachable','Assert-ServiceManifestPath',
-    'Get-ServiceDestinationPaths','Invoke-DedicatedLatencyObservation','Get-LatencyVerdict','Write-DurableFile','Initialize-ServiceEvidenceReader')){
+    'Get-ServiceDestinationPaths','Invoke-DedicatedLatencyObservation','Get-LatencyVerdict','Write-DurableFile','Initialize-ServiceEvidenceReader',
+    'Assert-CachedAgentExited','Restore-CachedAgent','Complete-CachedAgentQuiescence','Stop-OwnedCachedAgentProcess','Remove-InvariantFixture')){
     $functions=@($ast.FindAll({param($node)$node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -ceq $name},$false))
     if($functions.Count -ne 1){throw ('Missing/ambiguous function: '+$name)}
     Invoke-Expression $functions[0].Extent.Text
@@ -15,6 +16,50 @@ $checks=0
 function Check([bool]$Condition,[string]$Message){if(-not $Condition){throw $Message};$script:checks++}
 function Refuses([scriptblock]$Body,[string]$Message){$failed=$false;try{$null=& $Body}catch{$failed=$true};Check $failed $Message}
 function Clone($Value){return ($Value | ConvertTo-Json -Depth 32 -Compress | ConvertFrom-Json)}
+# SCM Stopped and a previous saved restoration flag cannot replace process exit.
+$script:processQueries=0
+function Get-Process { $script:processQueries++;if($script:processQueries -eq 1){return [pscustomobject]@{Id=123}} }
+Assert-CachedAgentExited
+Check ($script:processQueries -eq 2) 'Quiescence waits for real process absence after SCM stop'
+function Get-Process { return [pscustomobject]@{Id=123} }
+Refuses {Assert-CachedAgentExited 0} 'A surviving service process cannot satisfy cleanup'
+$state=@{CachedAgent=@{};CachedAgentRestored=$true}
+function Assert-CachedAgentExited {throw 'synthetic surviving process'}
+Refuses {Restore-CachedAgent} 'Previously saved restoration still checks surviving handles'
+$serviceDirectory=Join-Path ([IO.Path]::GetTempPath()) 'owned-test-agent'
+$evidenceDirectory=$serviceDirectory
+$expectedPath=Join-Path $serviceDirectory 'SafeUpload.Agent.Service.exe'
+$birth=[DateTime]::UtcNow;$script:terminated=0
+$fakeProcess=[pscustomobject]@{Id=123;Handle=1;StartTime=$birth;MainModule=@{FileName=$expectedPath}}
+$fakeProcess | Add-Member ScriptMethod WaitForExit {param($Milliseconds)return $true}
+function Get-Process {return $fakeProcess}
+function Stop-Process {param($InputObject,[switch]$Force,$ErrorAction)$script:terminated++;$script:fakeProcess=$null}
+function Assert-CachedAgentExited {param($Seconds)if($null -ne $fakeProcess){throw 'synthetic surviving process'}}
+function Get-BootId {return 'synthetic/boot'}
+function Save-State {}
+$state=@{DedicatedUnheldLatency=$true;CachedAgent=@{ProcessId=123;ProcessStartUtcFileTime=$birth.ToUniversalTime().ToFileTimeUtc();ProcessPath=$expectedPath}}
+Complete-CachedAgentQuiescence
+Check ($script:terminated -eq 1 -and $state.CachedAgentForcedExit.RestorationOnly) 'Only the pinned owned test-agent process is terminated during restoration'
+$fakeProcess=[pscustomobject]@{Id=123;Handle=1;StartTime=$birth.AddSeconds(1);MainModule=@{FileName=$expectedPath}}
+Refuses {Stop-OwnedCachedAgentProcess} 'A reused PID cannot be terminated'
+Check ($script:terminated -eq 1) 'PID reuse rejection happens before termination'
+$fakeProcess.StartTime=$birth;$fakeProcess.MainModule.FileName='unrelated.exe'
+Refuses {Stop-OwnedCachedAgentProcess} 'An unrelated executable cannot be terminated'
+$state.CachedAgent.ProcessId=$null
+Refuses {Stop-OwnedCachedAgentProcess} 'Missing process provenance cannot authorize termination'
+Remove-Item Function:\Stop-Process,Function:\Get-BootId,Function:\Save-State
+Remove-Item Function:\Get-Process,Function:\Assert-CachedAgentExited
+$cleanupRoot=Join-Path ([IO.Path]::GetTempPath()) ('latency-cleanup-'+[guid]::NewGuid().ToString('N'))
+$null=New-Item -ItemType Directory -Path (Join-Path $cleanupRoot 'child') -Force
+[IO.File]::WriteAllText((Join-Path $cleanupRoot 'child/held.txt'),'fixture')
+try{
+    function Remove-Item {throw [UnauthorizedAccessException]::new('synthetic access denied')}
+    $failure=$null;try{Remove-InvariantFixture $cleanupRoot}catch{$failure=$_.Exception.Message}
+    Check ($null -ne $failure -and $failure.Contains('held.txt') -and $failure.Contains('Attributes=')) 'Deletion refusal keeps exact failing leaf and attributes'
+    Check (Test-Path -LiteralPath (Join-Path $cleanupRoot 'child/held.txt')) 'Denied cleanup preserves the fixture and cannot report success'
+}finally{Microsoft.PowerShell.Management\Remove-Item Function:\Remove-Item}
+Remove-InvariantFixture $cleanupRoot
+Check (-not (Test-Path -LiteralPath $cleanupRoot)) 'Checked leaf-first cleanup removes the whole disposable fixture'
 foreach($code in @(5,32,33)){
     $native=[ComponentModel.Win32Exception]::new($code)
     Check (Test-LatencyTransientIoError $native) ('Native transient '+$code)
@@ -87,6 +132,8 @@ foreach($field in @('ProcessId','SessionId','RequestorSid','Sha256Hex','StateHis
 }
 $entry.State=2;$entry.StateHistory=@(0..2 | ForEach-Object {@{State=$_}})
 Check ((ConvertFrom-LatencyManifestRecord (Record $entry) $actor @('C:\fixture\target.txt') $id $digest).StateName -ceq 'Inspecting') 'Nonterminal exact manifest is observable but not complete'
+$entry.State=7;$entry.StateHistory=@(@{State=0},@{State=1},@{State=2},@{State=3},@{State=4},@{State=7})
+Refuses {ConvertFrom-LatencyManifestRecord (Record $entry) $actor @('C:\fixture\target.txt') $id $digest} 'Publication Retained cannot release the next latency round'
 if([Environment]::OSVersion.Platform -ne [PlatformID]::Win32NT){
     Write-Output ('LatencyLitePureSelfCheck='+$checks+';PASS;WindowsCoordinatorControl=NotRun;Qualification=False')
     exit 0
@@ -115,8 +162,11 @@ try{
         Check ($read.Offset -eq 34464 -and $read.Bytes.Length -eq 65536 -and $read.Bytes[65535] -eq 42) 'Native same-handle tail reader seeks instead of reading historical prefix'
         Remove-Item -LiteralPath $tailPath -Force
     }
-    $protectedDirectory=$actorDirectory;$cachedKind='cached';$RunName='synthetic-latency';$writerTask='synthetic';$state=@{WriterToken='a'*32}
-    $row=@{LatencyClasses=@('writer-open','cached-write','flush','close')};$script:closedRound=-1;$script:snapshots=0;$script:aggregate=@()
+    foreach($kind in @('cached','replacement')){
+    Get-ChildItem -LiteralPath $actorDirectory -File | Remove-Item -Force
+    $protectedDirectory=$actorDirectory;$cachedKind=$kind;$RunName='synthetic-latency';$writerTask='synthetic';$state=@{WriterToken='a'*32}
+    $classes=if($kind -ceq 'replacement'){@('writer-open','cached-write','flush','rename-ex','close')}else{@('writer-open','cached-write','flush','close')}
+    $row=@{LatencyClasses=$classes};$script:closedRound=-1;$script:snapshots=0;$script:aggregate=@();$script:completionPolls=@{};$script:rejectCompletion=$false
     $trial=@{Operations=@();JournalSnapshots=@();ServiceBefore=@{Status='OK';Notifications=@{LocationStatus='OK';Entries=@(@{Entry=@{BootId=$boot;InstanceId=$instance;QpcFrequency=$frequency}})}}}
     function Wait-WriterIdentity([string]$Path,[int]$Seconds){
         $round=[int]([regex]::Match($Path,'round-(\d{3})-').Groups[1].Value);$closed=$Path.EndsWith('closed.clixml')
@@ -127,14 +177,19 @@ try{
             $calls=@($row.LatencyClasses | ForEach-Object {$qpc=[Diagnostics.Stopwatch]::GetTimestamp();[pscustomobject]@{Class=$_;Trial=$round;Cold=($round -eq 0);NativeCode=0;StartQpc=$qpc;EndQpc=$qpc}})
             $script:aggregate+= $calls
         }else{$calls=@()}
+        $target=Join-Path $actorDirectory $(if($cachedKind -ceq 'replacement'){'cached.txt'}else{'latency-'+$round.ToString('D3')+'.txt'})
+        $openPath=if($cachedKind -ceq 'replacement'){Join-Path $actorDirectory 'save.tmp.txt'}else{$target}
         return @{Pid=$actor.Pid;Sid=$actor.Sid;BootId=$boot;Token=$state.WriterToken;Trial=$round;Held=$false;
-            Target=(Join-Path $actorDirectory ('latency-'+$round.ToString('D3')+'.txt'));OpenPath=(Join-Path $actorDirectory ('latency-'+$round.ToString('D3')+'.txt'));
-            WriterKind='cached';PrivateSha256=$digest;Calls=$calls;Qpc=[Diagnostics.Stopwatch]::GetTimestamp()}
+            Target=$target;OpenPath=$openPath;WriterKind=$cachedKind;PrivateSha256=$digest;Calls=$calls;Qpc=[Diagnostics.Stopwatch]::GetTimestamp()}
     }
     function Get-LatencyCompletionObservation($Probe,$Actor,$Paths,$Digest,$Deadline,$ExcludedIds){
         Check ($script:snapshots -eq $script:closedRound) 'Completion polling does not take full snapshots'
         Check ($ExcludedIds.Count -eq $script:closedRound) 'Completed transfer IDs have constant-time discovery exclusions'
-        $Probe.TransferId=([guid]::NewGuid().ToString('D'));return @{StateName='Released'}
+        Check (-not(Test-Path -LiteralPath (Join-Path $actorDirectory ('round-'+$script:closedRound.ToString('D3')+'-next')))) 'Next native round stays closed while service completion is pending'
+        if($script:rejectCompletion){throw 'Synthetic Retained publication'}
+        $script:completionPolls[$script:closedRound]++
+        if(-not $Probe.TransferId){$Probe.TransferId=([guid]::NewGuid().ToString('D'))}
+        return @{StateName=$(if($script:completionPolls[$script:closedRound] -eq 1){'Inspecting'}else{'Released'})}
     }
     function Get-CachedJournalObservation($Tag,$Actor,$Paths,$ExcludedIds,[switch]$RetryTransientJournal){
         Check $RetryTransientJournal 'Terminal snapshot enables bounded retry'
@@ -152,6 +207,16 @@ try{
         Check ($round.NativeNotBeforeQpc -eq $previous -and $round.Receipt.Calls[0].StartQpc -ge $previous) 'Native calls follow previous round I/O boundary'
         Check ($round.SnapshotCompletedQpc -le $round.PublicationVerifiedQpc -and $round.PublicationVerifiedQpc -le $round.IoCompletedQpc) 'Snapshot and public-image work finish before next barrier'
         $previous=$round.IoCompletedQpc
+    }
+    if($kind -ceq 'replacement'){
+        Check (@($trial.DedicatedLatency.Rounds | Where-Object {$_.Receipt.OpenPath -cne (Join-Path $actorDirectory 'save.tmp.txt')}).Count -eq 0) 'All C04 rounds use the exact functional sibling temp'
+    }
+    Get-ChildItem -LiteralPath $actorDirectory -File | Remove-Item -Force
+    $script:closedRound=-1;$script:snapshots=0;$script:aggregate=@();$script:rejectCompletion=$true
+    $trial=@{Operations=@();JournalSnapshots=@();ServiceBefore=@{Status='OK';Notifications=@{LocationStatus='OK';Entries=@(@{Entry=@{BootId=$boot;InstanceId=$instance;QpcFrequency=$frequency}})}}}
+    Refuses {Invoke-DedicatedLatencyObservation $trial $actor @{Qpc=0} @{BootId=$boot;Geometry=@{Alignment=4096}} $digest 12288} 'A rejected completion stops the coordinator before the next round'
+    Check ($trial.DedicatedLatency.Rounds.Count -eq 1 -and -not $trial.DedicatedLatency.Complete -and
+        -not(Test-Path -LiteralPath (Join-Path $actorDirectory 'round-000-next'))) 'Failed completion retains partial evidence and no admission barrier'
     }
 }finally{Remove-Item -LiteralPath $actorDirectory -Recurse -Force}
 Write-Output ('LatencyLiteSelfCheck='+$checks+';PASS;Qualification=False')

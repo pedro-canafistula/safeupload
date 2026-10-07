@@ -5,6 +5,29 @@ $ErrorActionPreference='Stop'
 $tokens=$null;$errors=$null
 $ast=[Management.Automation.Language.Parser]::ParseFile((Join-Path $PSScriptRoot 'Test-StagedInvariantSuite.ps1'),[ref]$tokens,[ref]$errors)
 if($errors.Count){throw 'Suite parse failed'}
+$checks=0
+function Check([bool]$Good,[string]$Label){if(-not $Good){throw $Label};$script:checks++}
+foreach($name in @('Get-DeniedRenameLatencySampleAssertions','Set-CachedAssertionFamily')){
+    $fn=@($ast.FindAll({param($node)$node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -ceq $name},$false))
+    if($fn.Count -ne 1){throw ('Missing function: '+$name)};Invoke-Expression $fn[0].Extent.Text
+}
+function Test-CachedSample($Sample,$Baseline,$Released,$ImageA,$ImageB,$TargetPath){return ,@(@{Name='C01Image';Verdict=$Sample.Verdict},@{Name='C01Reader';Verdict='PASS'})}
+$source='C:\external\source.txt';$image=[byte[]](1,2,3)
+$good=Get-DeniedRenameLatencySampleAssertions @{Verdict='PASS'} @{} @{Verdict='PASS'} @{} $image $source
+Check ($good.Count -eq 4 -and @($good | Where-Object {$_ -is [array]}).Count -eq 0) 'Both sample groups must export flat individual assertions'
+Set-CachedAssertionFamily $good 'C05'
+Check (($good.Name -join ',') -ceq 'C05Image,C05Reader,C05Image,C05Reader') 'Every flat sample assertion survives the real final family adapter'
+foreach($verdict in @('FAIL','INCONCLUSIVE')){
+    $bad=Get-DeniedRenameLatencySampleAssertions @{Verdict='PASS'} @{} @{Verdict=$verdict} @{} $image $source
+    Set-CachedAssertionFamily $bad 'C05'
+    Check (@($bad | Where-Object Verdict -cne 'PASS').Count -eq 1) ('Source '+$verdict+' cannot disappear when sample groups are combined')
+    Check ($bad[2].Verdict -ceq $verdict -and $bad[2].Name -ceq 'C05Image') 'Source verdict and identity are retained'
+}
+Remove-Item Function:\Test-CachedSample
+Check ($ast.Extent.Text.Contains('$Trial.DedicatedLatency=@{Complete=$false;Held=$false;Rounds=@();Digest=$digest;')) 'Denied producer uses the same DedicatedLatency field as APPROVE and host export'
+if([Environment]::OSVersion.Platform -ne [PlatformID]::Win32NT){
+    'DeniedRenameLatencyPureControl='+$checks+';PASS;NativeControl=NotRun;Qualification=False';exit 0
+}
 $definition=@($ast.FindAll({param($node)$node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -ceq 'Get-WriterBody'},$false))
 if($definition.Count -ne 1){throw 'Missing writer body'}
 Invoke-Expression $definition[0].Extent.Text
@@ -39,7 +62,7 @@ try{
         if(($calls.Class -join ',') -cne 'writer-open,rename-ex,close' -or ($calls.NativeCode -join ',') -cne '0,5,0' -or @($calls|Where-Object {$_.EndQpc -lt $_.StartQpc}).Count -or (Test-Path -LiteralPath $target)){throw 'Native denied-rename sequence/target mismatch'}
         $count++
     }
-    'DeniedRenameNativeControl=PASS;Rounds='+$count+';Qualification=False'
+    'DeniedRenameNativeControl=PASS;Rounds='+$count+';PureControls='+$checks+';Qualification=False'
 }finally{
     $hasher.Dispose()
     if(Test-Path -LiteralPath $destination){$null=& icacls.exe $destination /remove:d '*S-1-1-0'}

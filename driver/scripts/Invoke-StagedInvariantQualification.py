@@ -737,7 +737,10 @@ def export_dedicated_latency(result):
                 'Dedicated authoritative lifecycle is incomplete or failed')
         trial = result['Trials'][0]
         expected = classes[result['CaseId']]
-        observation = trial['DedicatedLatency']
+        observation = trial.get('DedicatedLatency')
+        require(isinstance(observation, dict),
+                'DedicatedLatency observation missing; startup/trial reasons: '
+                + repr(trial.get('Reasons', [])) + '; errors: ' + repr(trial.get('Errors', [])))
         actor, platform, provenance = trial['Actor'], trial['Platform'], trial['ActorProvenance']
         require(not trial.get('Errors') and trial.get('Disposal', {}).get('Status') == 'OK'
                 and observation.get('Complete') is True and observation.get('Held') is False
@@ -761,7 +764,8 @@ def export_dedicated_latency(result):
         frequency = observation['QpcFrequency']
         require(type(frequency) is int and frequency > 0, 'Dedicated QPC frequency missing')
         samples = {name: [] for name in expected}
-        previous, transfer_ids, targets, open_paths = 0, set(), set(), set()
+        previous, transfer_ids, targets, open_paths = observation['InitialIoCompletedQpc'], set(), set(), set()
+        require(type(previous) is int and previous > 0, 'Dedicated initial I/O boundary missing')
         all_calls = []
         for number, round_record in enumerate(observation['Rounds']):
             receipt, private, terminal = (round_record[k] for k in ('Receipt', 'PrivateReceipt', 'Terminal'))
@@ -778,6 +782,9 @@ def export_dedicated_latency(result):
             require(receipt['Token'] == token, 'Dedicated actor token changed')
             calls = receipt['Calls']
             require([c['Class'] for c in calls] == expected, 'Dedicated native call sequence mismatch')
+            require(type(round_record['NativeNotBeforeQpc']) is int
+                    and round_record['NativeNotBeforeQpc'] == previous,
+                    'Dedicated next round admitted before previous observation I/O completed')
             for call in calls:
                 expected_code = 5 if result['CaseId'] == 'C05-denied-external-rename' and call['Class'] == 'rename-ex' else 0
                 require(type(call['Trial']) is int and call['Trial'] == number
@@ -847,9 +854,22 @@ def export_dedicated_latency(result):
             else:
                 require(not targets or target in targets, 'Dedicated existing destination changed')
             if result['CaseId'] == 'C04-approve':
-                require(open_path != target and open_path not in open_paths, 'Dedicated replacement temp reused')
+                functional_temp = target.rsplit('\\', 1)[0] + '\\save.tmp.txt'
+                tombstone = transfer.get('NamespaceTombstones')
+                require(open_path == functional_temp and (not open_paths or open_path in open_paths)
+                        and transfer.get('LastRenameCommitted') is True
+                        and transfer.get('PendingRename') is None
+                        and transfer.get('LastRenameDestination') == target
+                        and isinstance(tombstone, dict) and tombstone.get('DestinationPath') == open_path,
+                        'Dedicated replacement differs from functional temp/committed rename path')
             targets.add(target); open_paths.add(open_path)
-            previous = round_record['PublicationVerifiedQpc']
+            require(round_record['ValidationStatus'] == 'Complete'
+                    and round_record['Snapshot']['Status'] == 'OK'
+                    and round_record['SnapshotCompletedQpc'] == terminal['EndQpc']
+                    and type(round_record['IoCompletedQpc']) is int
+                    and round_record['PublicationVerifiedQpc'] <= round_record['IoCompletedQpc'],
+                    'Dedicated terminal snapshot/publication/barrier completion missing or unordered')
+            previous = round_record['IoCompletedQpc']
         require(all_calls == trial['Operations'], 'Dedicated aggregate calls differ from receipts')
         evidence['Latency'] = []
         for name in expected:

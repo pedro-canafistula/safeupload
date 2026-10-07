@@ -11,11 +11,16 @@ Invoke-Expression $fn[0].Extent.Text
 $shared=@($ast.FindAll({param($node)$node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -ceq 'Get-B02JustificationClientBody'},$false))
 if($shared.Count -ne 1){throw 'Shared justification client unavailable'};Invoke-Expression $shared[0].Extent.Text
 $body=Get-WriterBody;$tokens=$null;$errors=$null
+if(-not $body.Contains('$roundTarget=$config.Target;$roundTemp=$config.TempTarget') -or
+    $body.Contains("('latency-'+`$round.ToString('D3')+'.tmp.txt')")){throw 'C04 must repeat the functional temp path, not a different latency rename stimulus'}
 $actorAst=[Management.Automation.Language.Parser]::ParseInput($body,[ref]$tokens,[ref]$errors)
 if($errors.Count){throw 'Actor parse failed'}
 $native=@($actorAst.FindAll({param($node)$node -is [Management.Automation.Language.StringConstantExpressionAst] -and $node.Value -like '*public static class SUWriter*'},$true))
 if($native.Count -ne 1){throw 'Unique native helper unavailable'}
 Add-Type -TypeDefinition $native[0].Value
+if([Environment]::OSVersion.Platform -ne [PlatformID]::Win32NT){
+    'NativeLatencyAuthoringControl=PASS;C04FunctionalPath=True;CSharpCompiled=True;NativeControl=NotRun;Qualification=False';exit 0
+}
 $directory=Join-Path ([IO.Path]::GetTempPath()) ('sol-latency-native-'+[guid]::NewGuid().ToString('N'))
 $null=New-Item -ItemType Directory -Path $directory
 $bytes=[Text.Encoding]::ASCII.GetBytes(('Benign native latency stimulus control').PadRight(12288,'P'))
@@ -27,11 +32,16 @@ try{
         if($kind -cin @('overwrite','replacement')){[IO.File]::WriteAllBytes($target,$bytes)}
         for($round=0;$round -le 100;$round++){
             $h=[IntPtr]::Zero;$section=[IntPtr]::Zero;$view=[IntPtr]::Zero;$calls=@();$call=$null
-            $path=if($kind -cin @('cached','mapped','replacement')){Join-Path $directory ($kind+'-'+$round.ToString('D3')+'.txt')}else{$target}
+            $path=if($kind -cin @('cached','mapped')){Join-Path $directory ($kind+'-'+$round.ToString('D3')+'.txt')}elseif($kind -ceq 'replacement'){Join-Path $directory 'save.tmp.txt'}else{$target}
             try{
                 $disposition=if($kind -ceq 'overwrite'){[uint32]5}else{[uint32]1}
                 $h=[SUWriter]::OpenHeld($path,$disposition,($kind -ceq 'replacement'),[ref]$call);$calls+= $call
                 if($call.NativeCode -ne 0){throw ('Native open:'+ $call.NativeCode)}
+                if($kind -ceq 'replacement' -and $round -eq 0){
+                    $duplicateCall=$null;$duplicate=[SUWriter]::OpenHeld($path,[uint32]1,$true,[ref]$duplicateCall)
+                    try{if($duplicateCall.NativeCode -ne 80){throw 'A still-live replacement temp cannot be reused by CREATE_NEW'}}
+                    finally{if($duplicate -ne [IntPtr]::Zero -and $duplicate -ne [IntPtr]::new(-1)){$null=[SUWriter]::CloseHeld($duplicate)}}
+                }
                 if($kind -ceq 'mapped'){
                     $section=[SUWriter]::CreateMapping($h,$bytes.Length,[ref]$call);$calls+= $call
                     if($call.NativeCode -ne 0){throw ('Native mapping:'+ $call.NativeCode)}
@@ -52,6 +62,10 @@ try{
                 if($h -ne [IntPtr]::Zero -and $h -ne [IntPtr]::new(-1)){$calls+= [SUWriter]::CloseHeld($h)}
             }
             foreach($c in $calls){if($c.NativeCode -ne 0 -or $c.EndQpc -lt $c.StartQpc){throw ('Native status/QPC failure:'+ $c.Class+':'+$c.NativeCode)}}
+            if($kind -ceq 'replacement'){
+                if(Test-Path -LiteralPath $path){throw 'Committed replacement must retire the same functional temp before reuse'}
+                if([BitConverter]::ToString($hasher.ComputeHash([IO.File]::ReadAllBytes($target))).Replace('-','') -cne $digest){throw 'Committed replacement public image differs'}
+            }
             $count++
         }
         Write-Output ('NativeLatencyStimulus='+$kind+';CompleteRounds='+$count+';PASS;Qualification=False')

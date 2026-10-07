@@ -595,7 +595,8 @@ try {
         $roundTarget=$config.Target;$roundTemp=$config.TempTarget
         if($config.DedicatedUnheldLatency){
             if($config.WriterKind -cin @('cached','mapped')){$roundTarget=Join-Path ([IO.Path]::GetDirectoryName($config.Target)) ('latency-'+$round.ToString('D3')+'.txt')}
-            if($config.WriterKind -ceq 'replacement'){$roundTemp=Join-Path ([IO.Path]::GetDirectoryName($config.TempTarget)) ('latency-'+$round.ToString('D3')+'.tmp.txt')}
+            # C04 repeats the functional save.tmp.txt -> cached.txt path. The
+            # coordinator admits this name again only after exact Released.
         }
         $h=[IntPtr]::Zero;$section=[IntPtr]::Zero;$view=[IntPtr]::Zero;$privateDigest=$null;$openCall=$null
         try {
@@ -2973,12 +2974,17 @@ $value='ProductStateRestored'
     $null=Invoke-SystemBody ($body.Replace('__STATE__',(ConvertTo-PowerShellLiteral $statePath)).Replace('__BACKUP__',(ConvertTo-PowerShellLiteral (Join-Path $stateDirectory 'product-backup'))))
 }
 function Restore-CachedAgent {
-    if($null -eq $state.CachedAgent -or $state.CachedAgentRestored){return}
+    if($null -eq $state.CachedAgent){return}
+    # SCM Stopped is not process exit. A service can still hold its port and
+    # stage handles while its worker threads finish (l2c1). Even a repeated
+    # restoration must check quiescence rather than trust the saved flag.
+    if($state.CachedAgentRestored){Complete-CachedAgentQuiescence;return}
     $service=Get-Service SafeUploadAgent -ErrorAction SilentlyContinue
     if($null -ne $service -and $service.Status -ne 'Stopped'){
         Stop-Service SafeUploadAgent -ErrorAction Stop
         $service.WaitForStatus([ServiceProcess.ServiceControllerStatus]::Stopped,[TimeSpan]::FromSeconds(30))
     }
+    Complete-CachedAgentQuiescence
     if($state.CachedAgent.ServiceCreated){
         & sc.exe delete SafeUploadAgent | Out-Host;$deleteExit=$LASTEXITCODE
         # 1060: already gone; 1072: already marked for deletion (removed when the last handle closes).
@@ -2986,6 +2992,56 @@ function Restore-CachedAgent {
     }
     else{Restore-StagedAgentService 'SafeUploadAgent' 'HKLM:\SYSTEM\CurrentControlSet\Services\SafeUploadAgent' $state.CachedAgent.OriginalService}
     $state.CachedAgentRestored=$true;Save-State $state $statePath
+}
+function Complete-CachedAgentQuiescence {
+    try{Assert-CachedAgentExited}
+    catch{
+        if(-not $state.DedicatedUnheldLatency){throw}
+        Stop-OwnedCachedAgentProcess
+    }
+}
+function Assert-CachedAgentExited([ValidateRange(0,30)][int]$Seconds=30) {
+    $deadline=[Diagnostics.Stopwatch]::GetTimestamp()+[long]($Seconds*[Diagnostics.Stopwatch]::Frequency)
+    do{
+        $processes=@(Get-Process SafeUpload.Agent.Service -ErrorAction SilentlyContinue)
+        if(-not $processes.Count){return}
+        if($Seconds -eq 0){break}
+        Start-Sleep -Milliseconds 100
+    }while([Diagnostics.Stopwatch]::GetTimestamp() -lt $deadline)
+    throw ('Test agent process still owns handles after SCM stop; preserve recovery state. PIDs='+($processes.Id -join ','))
+}
+function Stop-OwnedCachedAgentProcess {
+    # Called only during restoration, after cooperative SCM stop. Pin the exact
+    # process object before checking its persisted birth time and package path;
+    # never terminate a reused PID or an unrelated/original service instance.
+    $proof=$state.CachedAgent
+    if($null -eq $proof.ProcessId -or $null -eq $proof.ProcessStartUtcFileTime -or
+        $proof.ProcessPath -ine (Join-Path $serviceDirectory 'SafeUpload.Agent.Service.exe')){throw 'Owned test-agent process identity unavailable; preserve recovery state'}
+    $process=Get-Process -Id $proof.ProcessId -ErrorAction SilentlyContinue
+    if($null -ne $process){
+        $null=$process.Handle
+        if($process.StartTime.ToUniversalTime().ToFileTimeUtc() -ne $proof.ProcessStartUtcFileTime -or
+            $process.MainModule.FileName -ine $proof.ProcessPath){throw 'Test-agent PID was reused or package identity changed; preserve recovery state'}
+        Stop-Process -InputObject $process -Force -ErrorAction Stop
+        if(-not $process.WaitForExit(15000)){throw 'Owned test agent did not exit after restoration termination; preserve recovery state'}
+    }
+    Assert-CachedAgentExited 0
+    $state.CachedAgentForcedExit=@{ProcessId=$proof.ProcessId;ProcessStartUtcFileTime=$proof.ProcessStartUtcFileTime;
+        ProcessPath=$proof.ProcessPath;BootId=(Get-BootId);Qpc=[Diagnostics.Stopwatch]::GetTimestamp();RestorationOnly=$true}
+    Save-State $state.CachedAgentForcedExit (Join-Path $evidenceDirectory 'cached-agent-forced-exit.clixml')
+    Save-State $state $statePath
+}
+function Remove-InvariantFixture([string]$Path) {
+    if(-not(Test-Path -LiteralPath $Path)){return}
+    # Retain the failing object's full path, which recursive Remove-Item loses
+    # when FileSystemInfo.set_Attributes throws. Never relax its ACL or suppress
+    # a deletion error; the existing Force semantics and residue check remain.
+    $items=@(Get-Item -LiteralPath $Path -Force)+@(Get-ChildItem -LiteralPath $Path -Recurse -Force)
+    foreach($item in @($items | Sort-Object {$_.FullName.Length} -Descending)){
+        try{Remove-Item -LiteralPath $item.FullName -Force -ErrorAction Stop}
+        catch{throw ('Fixture deletion failed: Path='+$item.FullName+'; Attributes='+$item.Attributes+'; '+$_.Exception.ToString())}
+    }
+    if(Test-Path -LiteralPath $Path){throw ('Fixture residue: '+$Path)}
 }
 function Invoke-CachedBaseSeed($Actor,[byte[]]$ImageB,[long]$ReadyQpc) {
     $seed=[ordered]@{ImageB=@{Length=$ImageB.Length;Sha256=[StagedInvariant.Native]::Hash($ImageB)};Assertions=@();Transitions=@();Before=$trial.ServiceBefore;After=$null;Receipt=$null;TransferId=$null}
@@ -3081,7 +3137,7 @@ function Invoke-DedicatedLatencyObservation($Trial,$Actor,$Ready,$Context,[strin
     for($round=0;$round -le 100;$round++){
         $prefix='round-'+$round.ToString('D3')+'-'
         $target=Join-Path $protectedDirectory $(if($cachedKind -cin @('cached','mapped')){'latency-'+$round.ToString('D3')+'.txt'}else{'cached.txt'})
-        $openPath=if($cachedKind -ceq 'replacement'){Join-Path $protectedDirectory ('latency-'+$round.ToString('D3')+'.tmp.txt')}else{$target}
+        $openPath=if($cachedKind -ceq 'replacement'){Join-Path $protectedDirectory 'save.tmp.txt'}else{$target}
         $closed=Wait-WriterIdentity (Join-Path $actorDirectory ($prefix+'closed.clixml')) 60
         $roundRecord=@{Trial=$round;Receipt=$closed;PrivateReceipt=$null;Terminal=$null;PublicationVerifiedQpc=$null;ValidationStatus='Incomplete';
             NativeNotBeforeQpc=$nativeNotBeforeQpc;Snapshot=$null;SnapshotCompletedQpc=$null;IoCompletedQpc=$null;PublicReaders=@();CompletionProbe=$null}
@@ -3149,11 +3205,19 @@ function Invoke-DedicatedLatencyObservation($Trial,$Actor,$Ready,$Context,[strin
     return $writer
 }
 
+function Get-DeniedRenameLatencySampleAssertions($DestinationSample,$Baseline,$SourceSample,$ExternalBaseline,[byte[]]$Image,[string]$Source) {
+    # Each evaluator returns one non-enumerated array. Assign before
+    # concatenating; @(<call>) otherwise nests those two arrays (l2b2).
+    $destinationChecks=Test-CachedSample $DestinationSample $Baseline $false $Image
+    $sourceChecks=Test-CachedSample $SourceSample $ExternalBaseline $false $Image $Image $Source
+    return ,(@($destinationChecks)+@($sourceChecks))
+}
 function Invoke-DedicatedDeniedRenameLatencyObservation($Trial,$Actor,$Context,$Baseline,$ExternalContext,$ExternalBaseline,[byte[]]$Image) {
     $digest=[StagedInvariant.Native]::Hash($Image);$target=Join-Path $protectedDirectory 'cached.txt';$source=Join-Path $externalDirectory 'source.txt'
     $Trial.DedicatedLatency=@{Complete=$false;Held=$false;Rounds=@();Digest=$digest;Length=$Image.Length;QpcFrequency=[Diagnostics.Stopwatch]::Frequency}
     $barrier=Join-Path $actorDirectory 'go';Write-DurableFile ($barrier+'.pending') $RunName -New
     $notBefore=[Diagnostics.Stopwatch]::GetTimestamp();[IO.File]::Move(($barrier+'.pending'),$barrier)
+    $Trial.DedicatedLatency.InitialIoCompletedQpc=$notBefore
     $previous=$notBefore
     for($round=0;$round -le 100;$round++){
         $prefix='round-'+$round.ToString('D3')+'-'
@@ -3173,7 +3237,7 @@ function Invoke-DedicatedDeniedRenameLatencyObservation($Trial,$Actor,$Context,$
         }
         $destinationSample=Capture-CachedSample $Context $Baseline ('LatencyDenied-'+$round) ($round+1)
         $sourceSample=Capture-CachedSample $ExternalContext $ExternalBaseline ('LatencySource-'+$round) ($round+1) $source
-        $checks=@(Test-CachedSample $destinationSample $Baseline $false $Image)+@(Test-CachedSample $sourceSample $ExternalBaseline $false $Image $Image $source)
+        $checks=Get-DeniedRenameLatencySampleAssertions $destinationSample $Baseline $sourceSample $ExternalBaseline $Image $source
         $record.DestinationSample=$destinationSample;$record.SourceSample=$sourceSample;$record.SampleAssertions=$checks
         $Trial.ExternalSource.Samples+=$sourceSample;$Trial.Assertions+=@($checks)
         if($destinationSample.Status -cne 'OK' -or $sourceSample.Status -cne 'OK' -or -not $checks.Count -or @($checks | Where-Object Verdict -cne 'PASS').Count){throw 'C05 dedicated independent source/destination sample incomplete or contradicted'}
@@ -3210,7 +3274,11 @@ function Invoke-CachedObservation {
         # Debug-level service events (publisher steps) reach the event log for diagnosis (run c01i hung in Publishing).
         $agent=Start-StagedTestAgent $serviceDirectory (Join-Path $evidenceDirectory 'agent') -Arguments '--Logging:EventLog:LogLevel:Default=Debug'
         # Persist recovery receipt before waiting for policy readiness.
-        $state.CachedAgent=@{ServiceCreated=$agent.ServiceCreated;OriginalService=$agent.OriginalService};Save-State $state $statePath
+        $state.CachedAgent=@{ServiceCreated=$agent.ServiceCreated;OriginalService=$agent.OriginalService;
+            ProcessId=$agent.Process.Id};Save-State $state $statePath
+        # Keep the configuration receipt even if process identity capture fails.
+        $state.CachedAgent.ProcessStartUtcFileTime=$agent.Process.StartTime.ToUniversalTime().ToFileTimeUtc()
+        $state.CachedAgent.ProcessPath=$agent.Process.MainModule.FileName;Save-State $state $statePath
         if(-not $readyEvent.WaitOne([TimeSpan]::FromSeconds(45))){
             # The service logs each coverage transition with its reason; keep them as the diagnosis.
             try{Get-WinEvent -FilterHashtable @{LogName='Application';StartTime=$agentStartLocal} -ErrorAction Stop | Where-Object ProviderName -match 'SafeUpload' |
@@ -6130,7 +6198,7 @@ $value='Removed'
         @{Name='verifier';Action={& verifier.exe /reset | Out-Host;if($LASTEXITCODE -notin @(0,2)){throw 'Verifier reset failed'}}},
         @{Name='b01-junction';Action={Remove-B01Junction}},
         @{Name='external-fixture';Action={if($state.ExternalDirectory -and (Test-Path -LiteralPath $state.ExternalDirectory)){Remove-Item -LiteralPath $state.ExternalDirectory -Recurse -Force};if($state.ExternalDirectory -and (Test-Path -LiteralPath $state.ExternalDirectory)){throw 'External fixture residue'}}},
-        @{Name='fixture';Action={if(Test-Path -LiteralPath $protectedDirectory){Remove-Item -LiteralPath $protectedDirectory -Recurse -Force};if(Test-Path -LiteralPath $protectedDirectory){throw 'Fixture residue'}}},
+        @{Name='fixture';Action={Remove-InvariantFixture $protectedDirectory}},
         @{Name='service-package';Action={if(Test-Path -LiteralPath $serviceDirectory){Remove-Item -LiteralPath $serviceDirectory -Recurse -Force};if(Test-Path -LiteralPath $serviceDirectory){throw 'Service package residue'}}},
         @{Name='second-user-profile';Action={Remove-CachedSecondUserProfile}},
         @{Name='second-user-account';Action={Remove-CachedSecondUser}},

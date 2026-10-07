@@ -21,11 +21,13 @@ CLASSES = {
 
 def fixture(case='C01-approve-absent'):
     actor = dict(Pid=1234, Sid='S-1-5-21-1-2-3-1001', SessionId=0, BootId='active', Elevated=False, IsAdministrator=False)
-    observation = dict(Complete=True, Held=False, Rounds=[], Digest='A'*64, Length=12288, QpcFrequency=1000)
+    observation = dict(Complete=True, Held=False, Rounds=[], Digest='A'*64, Length=12288,
+                       QpcFrequency=1000, InitialIoCompletedQpc=1)
     calls, qpc = [], 1
+    not_before = qpc
     for n in range(101):
         target = 'C:\\fixture\\'+(f'latency-{n:03}.txt' if case.startswith(('C01-', 'C02-')) else 'cached.txt')
-        open_path = (f'C:\\fixture\\latency-{n:03}.tmp.txt' if case == 'C04-approve'
+        open_path = ('C:\\fixture\\save.tmp.txt' if case == 'C04-approve'
                      else 'C:\\external\\source.txt' if case == 'C05-denied-external-rename' else target)
         native = []
         for cls in CLASSES[case]:
@@ -36,22 +38,28 @@ def fixture(case='C01-approve-absent'):
         private = dict(common, SourceClosed=True, ViewLive=True, SectionLive=True)
         transfer = dict(State=5, SealedOnce=True, Sha256Hex='A'*64, StateHistory=[dict(State=i) for i in range(6)],
                 Transfer=dict(ProcessId=1234, SessionId=0, RequestorSid=actor['Sid'], TransferId=f'id-{n}', DestinationPath=target))
+        if case == 'C04-approve':
+            transfer.update(LastRenameCommitted=True, PendingRename=None, LastRenameDestination=target,
+                            NamespaceTombstones=dict(DestinationPath=open_path))
         terminal = dict(StateName='Released', SealedOnce=True, Sha256Hex='A'*64,
                 History=['Allocated','Sealed','Inspecting','Approved','Publishing','Released'], TransferId=f'id-{n}',
                 StartQpc=qpc, EndQpc=qpc+1, Record=dict(Bytes=list(json.dumps(transfer).encode())))
-        record=dict(Trial=n, Receipt=receipt, PrivateReceipt=private, Terminal=terminal, PublicationVerifiedQpc=qpc+2)
+        record=dict(Trial=n, Receipt=receipt, PrivateReceipt=private, Terminal=terminal, PublicationVerifiedQpc=qpc+2,
+                    NativeNotBeforeQpc=not_before, IoCompletedQpc=qpc+2, ValidationStatus='Complete',
+                    Snapshot=dict(Status='OK'), SnapshotCompletedQpc=qpc+1)
         if case == 'C05-denied-external-rename':
             def raw_sample(path, absent):
                 time=dict(BootId='active', QpcFrequency=1000, Qpc=qpc+1)
                 return dict(Status='OK', Start=time.copy(), End=time.copy(), Captures=[dict(Images=[
                     dict(Role='Current', Path=path, Absent=absent), dict(Role='Parent')])])
-            record.update(Terminal=None, NativeNotBeforeQpc=n*9,
+            record.update(Terminal=None,
                 ObservationVerifiedQpc=qpc+2, IoCompletedQpc=qpc+2,
                 ValidationStatus='Complete', Snapshot=dict(Status='OK'),
                 JournalProof=dict(Complete=True, NewEntries=[], Findings=[]),
                 SampleAssertions=[dict(Name='RawSourceAndAbsentTarget', Verdict='PASS')],
                 DestinationSample=raw_sample(target, True), SourceSample=raw_sample(open_path, False))
         observation['Rounds'].append(record)
+        not_before = record['IoCompletedQpc']
         qpc+=3;calls.extend(native)
     return dict(Schema='StagedInvariantSuite/2', AuthoritativeCaseExport=True, CaseId=case, RunName='synthetic-only', Mode='runtime-verifier', Verdict='INCONCLUSIVE',
             InputHashes={k:'B'*64 for k in Q.MVP_BUILD_HASHES}, Restoration=dict(Known=True, GuestChecks=True), BootIds=dict(Active='active'),
@@ -62,6 +70,42 @@ def fixture(case='C01-approve-absent'):
 
 
 class DedicatedLatencyTests(unittest.TestCase):
+    def test_missing_trial_observation_keeps_startup_failure_for_both_paths(self):
+        for case in ('C01-approve-absent', 'C05-denied-external-rename'):
+            result=fixture(case)
+            result['Trials']=[dict(Reasons=['Startup task did not export observations'])]
+            actual=Q.export_dedicated_latency(result)
+            with self.subTest(case=case):
+                self.assertNotEqual('PASS', actual['Verdict'])
+                self.assertEqual([], actual['ObservedRounds'])
+                self.assertIn('DedicatedLatency observation missing', actual['Errors'][0])
+                self.assertIn('Startup task did not export observations', actual['Errors'][0])
+
+    def test_round_io_and_released_barriers_are_mandatory(self):
+        for case in CLASSES:
+            for field in ('NativeNotBeforeQpc', 'IoCompletedQpc'):
+                result=fixture(case)
+                result['Trials'][0]['DedicatedLatency']['Rounds'][40][field]=0
+                with self.subTest(case=case, field=field):
+                    self.assertNotEqual('PASS', Q.export_dedicated_latency(result)['Verdict'])
+        for field in ('ValidationStatus', 'Snapshot', 'SnapshotCompletedQpc'):
+            result=fixture('C04-approve');r=result['Trials'][0]['DedicatedLatency']['Rounds'][40]
+            r[field]={'Status':'INCONCLUSIVE'} if field=='Snapshot' else 'Incomplete' if field=='ValidationStatus' else 0
+            with self.subTest(field=field):
+                self.assertNotEqual('PASS', Q.export_dedicated_latency(result)['Verdict'])
+
+    def test_c04_requires_functional_temp_and_committed_rename(self):
+        for kind in ('unique-temp', 'uncommitted', 'pending', 'wrong-tombstone', 'missing-tombstone'):
+            result=fixture('C04-approve');r=result['Trials'][0]['DedicatedLatency']['Rounds'][40]
+            transfer=json.loads(bytes(r['Terminal']['Record']['Bytes']))
+            if kind=='unique-temp': r['Receipt']['OpenPath']='C:\\fixture\\latency-040.tmp.txt'
+            elif kind=='uncommitted': transfer['LastRenameCommitted']=False
+            elif kind=='pending': transfer['PendingRename']={'TransactionId':123}
+            elif kind=='missing-tombstone': transfer['NamespaceTombstones']=None
+            else: transfer['NamespaceTombstones']['DestinationPath']='wrong'
+            r['Terminal']['Record']['Bytes']=list(json.dumps(transfer).encode())
+            with self.subTest(kind=kind):
+                self.assertNotEqual('PASS', Q.export_dedicated_latency(result)['Verdict'])
     def test_real_cli_selection_accepts_denied_rename_and_rejects_other_variants(self):
         self.assertEqual(set(CLASSES), Q.DEDICATED_LATENCY_CASES)
         for case in CLASSES:
@@ -147,6 +191,8 @@ class DedicatedLatencyTests(unittest.TestCase):
                 if c is not o['Rounds'][0]['Receipt']['Calls'][0]: c['StartQpc']+=1001;c['EndQpc']+=1001
             r['Receipt']['Qpc']+=1001;r['PrivateReceipt']['Qpc']+=1001
             r['Terminal']['StartQpc']+=1001;r['Terminal']['EndQpc']+=1001;r['PublicationVerifiedQpc']+=1001
+            r['SnapshotCompletedQpc']+=1001;r['IoCompletedQpc']+=1001
+            if r['Trial'] != 0: r['NativeNotBeforeQpc']+=1001
         result['Verdict']='FAIL'
         actual=Q.export_dedicated_latency(result)
         self.assertEqual(actual['Verdict'],'FAIL');self.assertFalse(actual['Errors']);self.assertEqual(len(actual['Latency'][0]['Samples']),101)
