@@ -2271,6 +2271,11 @@ function Invoke-ActivationObservation {
         if((Get-BootId) -ceq $state.PrepareBootId){throw 'Activating reboot not observed before A case.'}
         if((Get-ItemProperty "HKLM:\$registryService").Start -ne 0){throw 'A case requires the boot-start driver.'}
         if(@(Get-Process SafeUpload.Agent.Service -ErrorAction SilentlyContinue).Count -ne 0){throw 'Agent must be absent until the pre-scope holder is live.'}
+        # Runtime Verifier is armed by the observation itself, as for seeds and C01 (run a01r1 stopped here).
+        if($Mode -eq 'runtime-verifier'){
+            & verifier.exe /volatile /flags 0x13B /adddriver SafeUpload.sys | Out-Host
+            if($LASTEXITCODE -ne 0){throw 'Runtime Verifier arm failed'}
+        }
         $trial.VerifierBefore=Get-VerifierEvidence 'activation-before' -RequireMode
         $ready=Get-Readiness
         if($ready.VolumeGuid -cne $state.VolumeGuid){throw 'A case volume identity changed across boot.'}
