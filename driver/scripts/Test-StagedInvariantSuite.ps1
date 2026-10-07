@@ -901,8 +901,8 @@ function Invoke-ActivationInspector([string]$Argument,[string]$Prefix,[int]$Time
 }
 function Get-InvariantLiveTaintReceipt([string]$Tag) {
     $start=[Diagnostics.Stopwatch]::GetTimestamp()
-    $coverage=(Get-ActivationInspectorJson '--admission-coverage' ('taint-policy-'+$Tag)).Record
-    return @{BootId=(Get-BootId);StartQpc=$start;EndQpc=[Diagnostics.Stopwatch]::GetTimestamp();Coverage=$coverage}
+    $capture=Get-ActivationInspectorJson '--admission-coverage' ('taint-policy-'+$Tag) -RetryTransientConnection
+    return @{BootId=(Get-BootId);StartQpc=$start;EndQpc=[Diagnostics.Stopwatch]::GetTimestamp();Coverage=$capture.Record;Capture=$capture}
 }
 function Test-InvariantLiveTaintWindow($Before,$After,$Counters) {
     if($null -eq $Before -or $null -eq $After -or $null -eq $Counters){
@@ -970,13 +970,25 @@ function Get-ActivationTaintCounterDelta($Before,$After) {
     }
     return @{Status='OK';Before=$Before;After=$After;Deltas=$deltas;NoCounterChanges=$unchanged;LiveTestDisableTaint='Unavailable';ProvesNoTaintDecision=$false}
 }
-function Get-ActivationInspectorJson([string]$Argument,[string]$Tag) {
-    $prefix=Join-Path $evidenceDirectory ('activation-'+$Tag+'-'+[guid]::NewGuid().ToString('N'))
-    $out=Invoke-ActivationInspector $Argument $prefix 45000
+function Get-ActivationInspectorJson([string]$Argument,[string]$Tag,[switch]$RetryTransientConnection) {
+    $failedAttempts=@()
+    for($attempt=0;;$attempt++){
+        $prefix=Join-Path $evidenceDirectory ('activation-'+$Tag+'-'+[guid]::NewGuid().ToString('N'))
+        try{$out=Invoke-ActivationInspector $Argument $prefix 45000;break}
+        catch{
+            # Closing a direct Inspector port may finish asynchronously. Retry
+            # only its explicit connection-count-limit transport error, with
+            # unique retained artifacts; never retry parsed native proof.
+            $transport='';foreach($suffix in @('.out','.err')){if(Test-Path -LiteralPath ($prefix+$suffix)){$transport+=[IO.File]::ReadAllText($prefix+$suffix)}}
+            if(-not $RetryTransientConnection -or $attempt -ge 3 -or $transport -cnotmatch '0x800704D6\b'){throw}
+            $failedAttempts+=@{StdOutPath=$prefix+'.out';StdErrPath=$prefix+'.err';Reason=$_.Exception.Message}
+            Start-Sleep -Milliseconds 100
+        }
+    }
     $lines=@($out -split "`r?`n" | Where-Object {-not [string]::IsNullOrWhiteSpace($_)})
     if($lines.Count -ne 1){throw ('Inspector output was not one JSON record: '+$Argument)}
     $record=$lines[0]|ConvertFrom-Json -ErrorAction Stop
-    return [pscustomobject]@{Record=$record;Raw=$out;StdErrPath=$prefix+'.err';StdOutPath=$prefix+'.out';Qpc=[Diagnostics.Stopwatch]::GetTimestamp()}
+    return [pscustomobject]@{Record=$record;Raw=$out;StdErrPath=$prefix+'.err';StdOutPath=$prefix+'.out';FailedConnectionAttempts=$failedAttempts;Qpc=[Diagnostics.Stopwatch]::GetTimestamp()}
 }
 function Get-ActivationEpochStatus([string]$Tag) { return (Get-ActivationInspectorJson '--epoch-status' $Tag).Record }
 function Get-ActivationWriterState([string]$Tag) { return (Get-ActivationInspectorJson '--writer-state-status' $Tag).Record }
@@ -4002,11 +4014,23 @@ function Invoke-ActivationObservation {
                 $promotedGood=($r.registryEntry -and $r.historyPresent -and $r.nameMatches -and $r.fileId -ieq $fileId -and $r.state -ceq 'Protected' -and $r.free -and
                     [uint32]$r.H -eq 0 -and $r.S -ceq 'NO' -and [uint32]$r.C -eq 0 -and [uint32]$r.T -eq 0 -and $r.unknownReasons -ceq '0x00000000')
                 if($promotedGood){break}
+                if($r.state -ceq 'Unknown' -and -not $trial.PromotionWaitDiagnostic){
+                    try{$trial.PromotionWaitDiagnostic=@{Target=(Get-ActivationPendingEntry $ntPath $fileId 'promotion-unknown-target' $target);WriterState=(Get-ActivationWriterState 'promotion-unknown-writer-state')}}
+                    catch{$trial.PromotionWaitDiagnostic=@{Error=$_.Exception.Message}}
+                }
                 $promotionReason=('Latest exact entry: history='+$r.historyPresent+';fileId='+$r.fileId+';state='+$r.state+';free='+$r.free+';H='+$r.H+';S='+$r.S+';C='+$r.C+';T='+$r.T+';unknown='+$r.unknownReasons)
             }catch{$promotionReason=$_.Exception.Message}
             Start-Sleep -Milliseconds 150
         }while([Diagnostics.Stopwatch]::GetTimestamp() -lt $deadline)
         if(-not $promotedGood){
+            # Diagnostic reads after the unchanged qualification deadline do
+            # not extend it. Preserve the actual native state, loss sources
+            # and CAS history before stopping the service on this failure.
+            $trial.PromotionTimeoutDiagnostic=@{}
+            try{$trial.PromotionTimeoutDiagnostic.Target=Get-ActivationPendingEntry $ntPath $fileId 'promotion-timeout-target' $target}catch{$trial.PromotionTimeoutDiagnostic.TargetError=$_.Exception.Message}
+            try{$trial.PromotionTimeoutDiagnostic.WriterState=Get-ActivationWriterState 'promotion-timeout-writer-state'}catch{$trial.PromotionTimeoutDiagnostic.WriterStateError=$_.Exception.Message}
+            try{$trial.PromotionTimeoutDiagnostic.Coverage=(Get-ActivationInspectorJson '--admission-coverage' 'promotion-timeout-coverage' -RetryTransientConnection).Record}catch{$trial.PromotionTimeoutDiagnostic.CoverageError=$_.Exception.Message}
+            try{$trial.PromotionTimeoutDiagnostic.Trace=ConvertFrom-ActivationPromotionTrace (Invoke-ActivationInspector '--promotion-trace' (Join-Path $evidenceDirectory 'activation-promotion-timeout-trace') 45000) $fileId}catch{$trial.PromotionTimeoutDiagnostic.TraceError=$_.Exception.Message}
             Add-ActivationAssertion $trial 'FreeAndProtectedAfterLastHolder' 'INCONCLUSIVE' ('90s promotion timeout after release; '+$promotionReason) $promoted
             throw ('Promotion timeout after last-holder release: '+$promotionReason)
         }

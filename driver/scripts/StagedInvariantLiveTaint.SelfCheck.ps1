@@ -39,4 +39,28 @@ $before.EndQpc=20;$after.StartQpc=69
 CheckVerdict $before $after $counters 'FAIL' 'Ending receipt ordering'
 $after.StartQpc=80;$counters.NoCounterChanges=$false
 CheckVerdict $before $after $counters 'FAIL' 'Any taint counter activity'
+$jsonDefinition=@($ast.FindAll({param($node)$node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -ceq 'Get-ActivationInspectorJson'},$false))
+if($jsonDefinition.Count -ne 1){throw 'Missing/ambiguous JSON capture helper'}
+Invoke-Expression $jsonDefinition[0].Extent.Text
+$evidenceDirectory=Join-Path ([IO.Path]::GetTempPath()) ('live-taint-port-control-'+[guid]::NewGuid().ToString('N'))
+$null=New-Item -ItemType Directory -Path $evidenceDirectory
+$script:portAttempts=0;$script:portMode='transient'
+function Invoke-ActivationInspector([string]$Argument,[string]$Prefix,[int]$Timeout){
+    $script:portAttempts++
+    if($script:portMode -ceq 'malformed'){return 'malformed'}
+    if($script:portMode -ceq 'transient' -and $script:portAttempts -gt 1){return '{"policyFlags":"0x00000020"}'}
+    [IO.File]::WriteAllText($Prefix+'.out',$(if($script:portMode -ceq 'wrong'){ 'hr = 0x80070005' }else{'hr = 0x800704D6'}))
+    [IO.File]::WriteAllText($Prefix+'.err','')
+    throw 'Synthetic Inspector failure'
+}
+try{
+    $capture=Get-ActivationInspectorJson '--admission-coverage' 'control' -RetryTransientConnection
+    if($portAttempts -ne 2 -or $capture.FailedConnectionAttempts.Count -ne 1 -or -not(Test-Path -LiteralPath $capture.FailedConnectionAttempts[0].StdOutPath)){throw 'Bounded retry must retain actual failed transport artifacts'};$checks++
+    foreach($kind in @('default','persistent','wrong','malformed')){
+        $script:portAttempts=0;$script:portMode=if($kind -ceq 'default'){'transient'}else{$kind}
+        $refused=$false;try{if($kind -ceq 'default'){$null=Get-ActivationInspectorJson '--admission-coverage' 'control'}else{$null=Get-ActivationInspectorJson '--admission-coverage' 'control' -RetryTransientConnection}}catch{$refused=$true}
+        $want=if($kind -ceq 'persistent'){4}else{1}
+        if(-not $refused -or $portAttempts -ne $want){throw ('Invalid native/parser/default retry for '+$kind)};$checks++
+    }
+}finally{Remove-Item -LiteralPath $evidenceDirectory -Recurse -Force}
 'LiveTaintSelfCheck=PASS;Checks='+$checks

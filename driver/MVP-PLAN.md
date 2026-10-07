@@ -1650,3 +1650,22 @@ clear Unknown, skip the cache barrier or convert Free alone into protection.
 Fresh exact builds and an actual same-ID promotion edge/registry readout must
 confirm it before qualification. A03's Unknown readout may include derived
 instance/global loss; it does not establish a sticky target identity failure.
+
+`goalv3` A03 and `goalk1` A01/cache1 both end INCONCLUSIVE with unknown forbidden
+count and clean independent restoration; exact registry readout after release is
+Unknown(IDENTITY), H/C/T=0, S=NO. They cannot qualify. New diagnostics retain
+targeted native classification, writer/global loss counters, coverage and the
+promotion CAS trace before stopping the service on a promotion timeout. The
+90-second acceptance deadline is unchanged; post-deadline reads cannot qualify.
+A03's new-section callback proof is separately incomplete because its reopened
+source is refused before the requested section acquire. Do not infer callback
+coverage from an earlier open denial.
+
+A03's ending taint policy capture also failed with direct port connection-count
+limit `0x800704D6` after the preceding Inspector closed its port. Only opted-in
+read-only live policy captures retry that exact transport status, at most four
+attempts with 100ms between retries and unique retained failure artifacts. Native
+proof parsing, other failures, and all default Inspector operations fail at the
+first error. Windows gate `goal-cache-state-2` PASS, all14 self-checks and18 live
+taint/transport controls. Cache2 `b7b488e9` four-config WDK/Inspectors/fixture PASS,
+zero warnings/errors and valid signature; no VM qualification claimed yet.
