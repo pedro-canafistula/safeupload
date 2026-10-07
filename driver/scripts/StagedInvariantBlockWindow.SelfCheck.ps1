@@ -5,7 +5,7 @@ $ErrorActionPreference='Stop'
 $t=$null;$e=$null
 $ast=[Management.Automation.Language.Parser]::ParseFile((Join-Path $PSScriptRoot 'Test-StagedInvariantSuite.ps1'),[ref]$t,[ref]$e)
 if($e.Count){throw 'Suite parse failed'}
-foreach($name in @('Get-CachedBlockTiming','Test-CachedBlockManifest','Test-CachedBlockNotificationWindow','Test-CachedBlockNoRelease','Test-NotificationWindow')){
+foreach($name in @('Test-CachedBlockCase','Set-CachedAssertionFamily','Get-CachedBlockTiming','Test-CachedBlockManifest','Test-CachedBlockNotificationWindow','Test-CachedBlockNoRelease','Test-NotificationWindow')){
     $fn=@($ast.FindAll({param($node)$node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -ceq $name},$false))
     if($fn.Count -ne 1){throw ('Unique function unavailable: '+$name)};Invoke-Expression $fn[0].Extent.Text
 }
@@ -82,10 +82,39 @@ foreach($kind in @('Transfer','Event')){
     $release.Complete=$false
     Check ((Test-CachedBlockNoRelease $release $open.TransferId).Verdict -ceq 'FAIL') ('coverage loss cannot conceal '+$kind+' Released')
 }
-Check ($ast.Extent.Text.Contains("`$assertion.Name -cne 'C01HandBackWindowClosureAndRestart'")) 'umbrella keeps literal C01 name in C03/C04 exports'
+foreach($id in @('C01-block-absent','C02-block-absent','C03-block-existing','C04-block')){
+    Check (Test-CachedBlockCase $id) ('shared BLOCK dispatch includes '+$id)
+}
+foreach($id in @('C02-approve-absent','C01-approve-absent','C03-approve-existing','C04-approve','C05-denied-external-rename','B01','C02','c02-block-absent','C02-block-absent-extra')){
+    Check (-not (Test-CachedBlockCase $id)) ('shared BLOCK dispatch excludes '+$id)
+}
+foreach($family in @('C01','C02','C03','C04')){
+    $export=@(@{Name='C01HandBackWindowClosureAndRestart';Verdict='PASS';Evidence=$clean},@{Name='C01BlockedAuditedStageCleanup';Verdict='FAIL'},@{Name='LiveTaintFlags';Verdict='PASS'})
+    Set-CachedAssertionFamily $export $family
+    $umbrella=if($family -ceq 'C02'){'C02HandBackWindowClosureAndRestart'}else{'C01HandBackWindowClosureAndRestart'}
+    Check ($export[0].Name -ceq $umbrella -and $export[0].Verdict -ceq 'PASS' -and $export[0].Evidence.Manifest.StageDeleted -eq $true) ('family umbrella retains verdict/evidence '+$family)
+    Check ($export[1].Name -ceq ($family+'BlockedAuditedStageCleanup') -and $export[1].Verdict -ceq 'FAIL') ('family export cannot conceal failed cleanup '+$family)
+    Check ($export[2].Name -ceq 'LiveTaintFlags') ('family export leaves unrelated check '+$family)
+    Set-CachedAssertionFamily $export $family
+    Check ($export[0].Name -ceq $umbrella -and $export[1].Verdict -ceq 'FAIL') ('family export is idempotent '+$family)
+}
+$safe=@{Name='C01HandBackSafeRelativeCreation';Verdict='INCONCLUSIVE';Reason='Receipt unavailable'}
+Set-CachedAssertionFamily @($safe) 'C02'
+Check ($safe.Name -ceq 'C02HandBackSafeRelativeCreation' -and $safe.Verdict -ceq 'INCONCLUSIVE' -and $safe.Reason -ceq 'Receipt unavailable') 'C02 naming cannot manufacture a safe-creation receipt'
+Check ($ast.Extent.Text.Contains('$cachedBlockCase=Test-CachedBlockCase $CaseId')) 'single shared BLOCK selector'
+$routes=@('if($cachedBlockCase){Initialize-CachedSecondUser}', 'BlockWindowClosure=$cachedBlockCase;', '$interactiveActorCase=$coreJustificationCase -or $cachedBlockCase')
+$routes+=('if($cachedBlockCase){' + "`n" + '            try{Invoke-CachedBlockWindow')
+$routes+=('if($cachedBlockCase){' + "`n" + '                $trial.Assertions+=Invoke-CachedSecondUserDenial')
+foreach($route in $routes){
+    Check ($ast.Extent.Text.Contains($route)) 'preparation, actor configuration and collection use shared BLOCK selector'
+}
+Check ($ast.Extent.Text.Contains('Set-CachedAssertionFamily $trial.Assertions $cachedFamily')) 'final export uses tested family adapter'
 $table=Import-PowerShellDataFile (Join-Path $PSScriptRoot 'StagedInvariantCases.psd1')
-foreach($id in @('C01-block-absent','C03-block-existing','C04-block')){
+foreach($id in @('C01-block-absent','C02-block-absent','C03-block-existing','C04-block')){
     $row=@($table.Cases | Where-Object CaseId -ceq $id)[0]
     Check ($row.Status -ceq 'Ready' -and $row.Actions -contains 'QpcWaitToExpiryPlusMargin' -and $row.Actions -contains 'RequireProductCompleteStageCleanupJournalReceiptStageDeleted' -and $row.ExtraDuration) ('row expiry contract '+$id)
 }
+$mapped=@($table.Cases | Where-Object CaseId -ceq 'C02-block-absent')[0]
+Check ($mapped.Revision -ge 4 -and $table.TableRevision -ge 13 -and $mapped.Setup -contains 'SecondStandardUserTaskAndRegisteredProfile' -and $mapped.Cleanup -contains 'RemoveSecondUserTaskBatchRightAccountAndProfileIncludingAfterRestorationReboot') 'C02 revised second-user setup/restoration contract'
+Check ($mapped.Actions -contains 'CloseSourceHandleBeforeStore' -and $mapped.Actions -contains 'WholeImageMappedStoreA' -and $mapped.Actions -contains 'UnmapView' -and $mapped.Actions -contains 'CloseSection') 'C02 retains mapped-path stimulus'
 'BlockWindowSelfCheck=PASS;Controls='+$count+';Qualification=False'

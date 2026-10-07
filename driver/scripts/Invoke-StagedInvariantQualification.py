@@ -550,6 +550,21 @@ def activation_duplicate_provenance(result):
         return False
 
 
+C02_BLOCK_REQUIRED_ASSERTIONS = frozenset((
+    'C02HandBackSecondUserAccess', 'C02HandBackSafeRelativeCreation',
+    'C02HandBackWindowClosureAndRestart',
+))
+
+
+def c02_block_assertion_findings(case, assertions):
+    """The mapped BLOCK row must export each hand-back contract exactly once."""
+    if case != 'C02-block-absent':
+        return set()
+    names = [a.get('Name') for a in assertions]
+    return {('Missing:' if names.count(name) == 0 else 'Duplicate:') + name
+            for name in C02_BLOCK_REQUIRED_ASSERTIONS if names.count(name) != 1}
+
+
 def case_gate(result, case, mode, name, params):
     require(result.get('Schema') == 'StagedInvariantSuite/2' and result.get('CaseId') == case and result.get('Mode') == mode
             and result.get('RunName') == name, 'Case JSON schema/run identity mismatch')
@@ -580,6 +595,7 @@ def case_gate(result, case, mode, name, params):
                    trial.get('Predicate', {}).get('Verdict') == 'PASS' and trial.get('Disposal', {}).get('Status') == 'OK' and
                    not trial.get('Errors') and bool(trial.get('Assertions')) and
                    all(a.get('Verdict') == 'PASS' for a in trial['Assertions']))
+        passed &= not c02_block_assertion_findings(case, trial.get('Assertions', []))
         classes = trial.get('Latency', [])
         passed &= bool(classes)
         for item in classes:
@@ -939,6 +955,7 @@ def mvp_case_gate(result, latency_evidence=None):
         assertions = trial.get('Assertions', [])
         if not assertions:
             blockers.add('Assertions')
+        blockers.update(c02_block_assertion_findings(result.get('CaseId'), assertions))
         taint = [a for a in assertions if a.get('Name') == 'LiveTaintFlags']
         if len(taint) != 1 or taint[0].get('Verdict') != 'PASS':
             blockers.add('LiveTaintFlags')

@@ -2723,6 +2723,18 @@ function Test-CachedBlockNoRelease($Proof,[string]$TransferId) {
     $released=@($Proof.Emissions | Where-Object {$_.Entry.TransferId -ieq $TransferId -and $_.Entry.Kind -cin @('Transfer','Event') -and $_.Entry.Phase -ceq 'Released'})
     return @{Name='C01AfterClosedWindowNoReleased';Verdict=$(if($released.Count){'FAIL'}elseif($Proof.Complete){'PASS'}else{'INCONCLUSIVE'});Reason=('Authenticated notification fence covers the complete BLOCK operation, expiry, cleanup and late submission; Released count='+$released.Count+'; '+$Proof.Reason)}
 }
+function Test-CachedBlockCase([string]$Id) {
+    return $Id -cin @('C01-block-absent','C02-block-absent','C03-block-existing','C04-block')
+}
+function Set-CachedAssertionFamily($Assertions,[string]$Family) {
+    # C03/C04 retain their existing literal umbrella contract. C02 exports every
+    # shared BLOCK check under its own family, including the closure umbrella.
+    foreach($assertion in $Assertions){
+        if($assertion.Name -clike 'C01*' -and ($Family -ceq 'C02' -or $assertion.Name -cne 'C01HandBackWindowClosureAndRestart')){
+            $assertion.Name=$Family+$assertion.Name.Substring(3)
+        }
+    }
+}
 function Invoke-CachedBlockWindow($Trial,$Actor,$Context,$Baseline,$Terminal,[byte[]]$ImageA,[byte[]]$ImageB,[long]$Sequence) {
     $started=[Diagnostics.Stopwatch]::GetTimestamp()
     $evidence=@{RequiredAssertions=@();StartQpc=$started;QpcFrequency=[Diagnostics.Stopwatch]::Frequency;Timing=$null;Open=$null;Closed=$null;Cleanup=$null;Final=$null;Restart=$null;Samples=@();Mode='RuntimePublisherLoop250ms';LateJustification=$null}
@@ -2806,7 +2818,7 @@ function Get-CachedHandBack($Actor,$OwnerFiles,[string]$Digest,[int]$Length,[str
         foreach($path in $ancestors){$held+= [SUProofFile]::Open($path,$true,$false)}
         foreach($path in @((Join-Path $Actor.Profile 'SafeUpload'),$root)){
             if(Test-Path -LiteralPath $path){$held+= [SUProofFile]::Open($path,$true,$false)}else{
-                return [pscustomobject]@{Root=$root;Files=@();Assertions=@(@{Name='C01HandBack';Verdict=$(if($row.Outcome -ceq 'BLOCK'){'FAIL'}else{'PASS'});Reason=('Actor hand-back location absent: '+$path)});SecondUserAccess='NotChecked: harness owns one standard user only'}
+                return [pscustomobject]@{Root=$root;Files=@();Assertions=@(@{Name='C01HandBack';Verdict=$(if($row.Outcome -ceq 'BLOCK'){'FAIL'}else{'PASS'});Reason=('Actor hand-back location absent: '+$path)});SecondUserAccess='Collected separately by shared BLOCK second-user adapter'}
             }
         }
         $before=@($Actor.HandBackBefore);$files=@(Get-ChildItem -LiteralPath $root -Force)
@@ -2830,7 +2842,7 @@ function Get-CachedHandBack($Actor,$OwnerFiles,[string]$Digest,[int]$Length,[str
         $assertions+=@{Name='C01HandBackCount';Verdict=$(if($good){'PASS'}else{'FAIL'});Reason=('New actor hand-back files='+$new.Count+'; required='+$(if($row.Outcome -ceq 'BLOCK'){1}else{0}))}
     }catch{$assertions+=@{Name='C01HandBackH';Verdict=$(if($_.Exception.ToString() -like '*Reparse/type/link-count*' -or $_.Exception.Message -ceq 'Unexpected hand-back subdirectory'){'FAIL'}else{'INCONCLUSIVE'});Reason=$_.Exception.ToString()}}
     finally{foreach($obj in $held){$obj.Dispose()}}
-    return [pscustomobject]@{Root=$root;Files=$objects;Assertions=$assertions;SecondUserAccess='NotChecked: harness owns one standard user only';SafeRelativeCreation='NotChecked: product creation receipt unavailable';WindowClosureAndRestart='Collected separately for C01/C03/C04 BLOCK from product expiry/cleanup receipts'}
+    return [pscustomobject]@{Root=$root;Files=$objects;Assertions=$assertions;SecondUserAccess='Collected separately by shared BLOCK second-user adapter';SafeRelativeCreation='NotChecked: product creation receipt unavailable';WindowClosureAndRestart='Collected separately for C01/C02/C03/C04 BLOCK from product expiry/cleanup receipts'}
 }
 function Save-CachedProductState {
     $backup=Join-Path $stateDirectory 'product-backup'
@@ -3327,7 +3339,7 @@ function Invoke-CachedObservation {
             }
         }
         }
-        if($CaseId -cin @('C01-block-absent','C03-block-existing','C04-block')){
+        if($cachedBlockCase){
             try{Invoke-CachedBlockWindow $trial $actor $context $baseline $terminal $imageA $imageB $sequence}
             finally{
                 foreach($windowSample in $trial.BlockWindowClosure.Samples){$samples+=$windowSample;$predicateSamples+=$windowSample;$checkpoints+=Get-ExpectedCheckpoint $baseline $windowSample.Phase $windowSample.Sequence}
@@ -3342,13 +3354,13 @@ function Invoke-CachedObservation {
         $trial.HandBack=Get-CachedHandBack $actor $writer.Value.HandBackAfter $digest $imageA.Length;$trial.Assertions+=@($trial.HandBack.Assertions)
         }
         if($row.Outcome -ceq 'BLOCK' -and $CaseId -cne 'B01'){
-            if($CaseId -cin @('C01-block-absent','C03-block-existing','C04-block')){
+            if($cachedBlockCase){
                 $trial.Assertions+=Invoke-CachedSecondUserDenial $actor $trial.HandBack $digest
             }else{
             $trial.Assertions+=@{Name='C01HandBackSecondUserAccess';Verdict='INCONCLUSIVE';Reason='Contract H second standard-user denial is untested; harness owns one standard user only.'}
             }
             $trial.Assertions+=@{Name='C01HandBackSafeRelativeCreation';Verdict='INCONCLUSIVE';Reason='Contract H safe relative-to-verified-handle creation receipt unavailable; final no-reparse/single-link checks alone do not attest creation.'}
-            if($CaseId -cnotin @('C01-block-absent','C03-block-existing','C04-block')){$trial.Assertions+=@{Name='C01HandBackWindowClosureAndRestart';Verdict='INCONCLUSIVE';Reason='Expiry closure adapter currently covers C01/C03/C04 BLOCK only.'}}
+            if(-not $cachedBlockCase){$trial.Assertions+=@{Name='C01HandBackWindowClosureAndRestart';Verdict='INCONCLUSIVE';Reason='Expiry closure adapter currently covers C01/C02/C03/C04 BLOCK only.'}}
         }
         $trial.FinalCacheFlush=Flush-InvariantFinalVolume
         $sequence++;$sample=Capture-CachedSample $context $baseline 'FinalQuiescence' $sequence;$samples+= $sample
@@ -3465,7 +3477,7 @@ function Invoke-CachedObservation {
         if($null -eq $disposal -or $disposal.Status -cne 'OK'){$trial.Assertions+=@{Name='Disposal';Verdict='INCONCLUSIVE';Reason='Checked observer disposal missing/failed.'}}
         # Shared C01 evaluators retain stable names for their self-check fixtures;
         # exports name the actual expanded family, including C05 source checks.
-        foreach($assertion in $trial.Assertions){if($assertion.Name -clike 'C01*' -and $assertion.Name -cne 'C01HandBackWindowClosureAndRestart'){$assertion.Name=$cachedFamily+$assertion.Name.Substring(3)}}
+        Set-CachedAssertionFamily $trial.Assertions $cachedFamily
         $trial.Verdict=if(@($trial.Assertions | Where-Object Verdict -ceq 'FAIL').Count -or @($trial.Latency | Where-Object Verdict -ceq 'FAIL').Count){'FAIL'}else{'INCONCLUSIVE'}
         $trial.CaseDurationMs=1000.0*([Diagnostics.Stopwatch]::GetTimestamp()-$caseStartedQpc)/[Diagnostics.Stopwatch]::Frequency
         Save-State $trial $trialPath
@@ -6016,6 +6028,7 @@ $row=$matchesRows[0]
 foreach($field in $table.RowSchema.Required){if(-not $row.ContainsKey($field)){throw "Case schema missing $field"}}
 $cachedCaseIds=@('C01-approve-absent','C01-block-absent','C02-approve-absent','C02-block-absent','C03-approve-existing','C03-block-existing','C04-approve','C04-block','C05-denied-external-rename')
 $cachedCase=$CaseId -cin $cachedCaseIds
+$cachedBlockCase=Test-CachedBlockCase $CaseId
 if($CaseId -cin @('R01','B01')){$cachedCase=$true} # Core variants reuse cached preparation and observation barriers.
 if($CaseId -ceq 'R03'){$cachedCase=$true} # R03 reuses C01 preparation; its dispatch and assertions are separate.
 $cachedFamily=$CaseId.Split('-')[0]
@@ -6027,7 +6040,7 @@ $isActivationCase=($CaseId -cin $activationCaseIds -or $CaseId -ceq 'A05')
 $coreConcurrentCase=$CaseId -ceq 'X01'
 $coreRestartPolicyCase=$CaseId -ceq 'R02'
 $coreJustificationCase=$CaseId -ceq 'B02'
-$interactiveActorCase=$coreJustificationCase -or $CaseId -cin @('C01-block-absent','C03-block-existing','C04-block')
+$interactiveActorCase=$coreJustificationCase -or $cachedBlockCase
 if($row.Status -ne 'Ready' -or ($CaseId -notin @('S00-observer-control','S01-denied-write-after-boot','S02-agent-down-open-refused') -and -not $cachedCase -and -not $isActivationCase -and -not $coreConcurrentCase -and -not $coreRestartPolicyCase -and -not $coreJustificationCase)){'CaseStatus=NOT_READY';throw "Case $CaseId is not implemented"}
 if($MappedStackDiagnosticSeconds -ne 0 -and ($CaseId -cnotin @('C02-approve-absent','C02-block-absent') -or $Mode -cne 'runtime-verifier')){throw 'Mapped stack diagnostic requires C02 runtime-Verifier'}
 if($DedicatedUnheldLatency -and ($CaseId -cnotin @('C01-approve-absent','C02-approve-absent','C03-approve-existing','C04-approve','C05-denied-external-rename') -or $MappedStackDiagnosticSeconds)){throw 'Dedicated latency requires an APPROVE C01-C04 or denied C05 case without stack diagnostics'}
@@ -6106,7 +6119,7 @@ if($Phase -eq 'Prepare'){
             if($hr -ne 0){throw ('Actor profile creation failed: 0x'+$hr.ToString('X8'))}
             $state.ActorProfile=$profilePath.ToString()
         }
-        if($CaseId -cin @('C01-block-absent','C03-block-existing','C04-block')){Initialize-CachedSecondUser}
+        if($cachedBlockCase){Initialize-CachedSecondUser}
         & icacls.exe $stateDirectory /grant ('*'+$state.ActorSid+':RX') | Out-Host
         if($LASTEXITCODE -ne 0){throw 'Actor traversal ACL failed'}
         & icacls.exe $actorDirectory /grant ('*'+$state.ActorSid+':(OI)(CI)M') | Out-Host
@@ -6226,7 +6239,7 @@ $value=$b.ToString().Split([char]0)[0]
             if($CaseId -ceq 'R01'){
                 $state.R01InitialBase64=[Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes(('R01 initial private image '+$RunName+"`n").PadRight($size,'Q')))
             }
-            Save-State @{ActorSid=$state.ActorSid;Payloads=$payloads;DedicatedUnheldLatency=([bool]$DedicatedUnheldLatency);CachedCase=$cachedCase;BlockWindowClosure=($CaseId -cin @('C01-block-absent','C03-block-existing','C04-block'));WriterKind=$cachedKind;SeedBaseBase64=$state.CachedBaseBase64;TempTarget=(Join-Path $protectedDirectory 'save.tmp.txt');Source=(Join-Path $externalDirectory 'source.txt');Token=$state.WriterToken;CoordinationDirectory=$actorDirectory;
+            Save-State @{ActorSid=$state.ActorSid;Payloads=$payloads;DedicatedUnheldLatency=([bool]$DedicatedUnheldLatency);CachedCase=$cachedCase;BlockWindowClosure=$cachedBlockCase;WriterKind=$cachedKind;SeedBaseBase64=$state.CachedBaseBase64;TempTarget=(Join-Path $protectedDirectory 'save.tmp.txt');Source=(Join-Path $externalDirectory 'source.txt');Token=$state.WriterToken;CoordinationDirectory=$actorDirectory;
                 CreateNew=($CaseId -eq 'S02-agent-down-open-refused');Target=(Join-Path $protectedDirectory $(if($cachedCase){'cached.txt'}elseif($CaseId -eq 'S02-agent-down-open-refused'){'new.bin'}else{'marker.bin'}))} $configPath
             if($CaseId -cin @('R01','B01')){
                 $coreConfig=Load-State $configPath
@@ -6393,7 +6406,7 @@ $value=$b.ToString().Split([char]0)[0]
             Feature=$ExpectedFeatureSha256;Inspector=$ExpectedInspectorSha256;ServicePackage=$ExpectedServicePackageSha256;ServiceTree=$ExpectedServiceTreeSha256};
         BootIds=@{Prepare=$state.PrepareBootId;Active=$state.AfterBootId;Final=(Get-BootId)};Restoration=@{GuestChecks=$true;IndependentBaseline=$null;Known=$false;
             ProcessCreationAudit=@{Original=$state.OriginalProcessCreationAudit;Final=$finalAudit;Restored=$true}};
-        AuthoritativeCaseExport=$false;Reasons=$(if($cachedCase){@('Functional/seed rows do not qualify full Phase4: lower mutation ledger, live taint and full temporal/permit evidence unavailable; C01-C05 use coordinated functional variants; second-user H access, safe creation receipts and unheld latency remain unqualified; C01/C03/C04 BLOCK collect expiry closure/cleanup and optional real-pipe late rejection')}else{$finalReasons});
+        AuthoritativeCaseExport=$false;Reasons=$(if($cachedCase){@('Functional/seed rows do not qualify full Phase4: lower mutation ledger, live taint and full temporal/permit evidence unavailable; C01-C05 use coordinated functional variants; safe creation receipts and unheld latency remain unqualified; C01/C02/C03/C04 BLOCK collect second-user H denial, expiry closure/cleanup and optional real-pipe late rejection')}else{$finalReasons});
         Load=@{ComputerSystem=(Get-CimInstance Win32_ComputerSystem | Select-Object NumberOfLogicalProcessors,TotalPhysicalMemory);Cpu=(Get-CimInstance Win32_Processor | Select-Object Name,NumberOfCores);Disk=(Get-Disk | Select-Object Number,FriendlyName,BusType);ObserverPriority=[string][Diagnostics.Process]::GetCurrentProcess().PriorityClass}}
     Copy-Item -LiteralPath $statePath -Destination (Join-Path $evidenceDirectory 'lifecycle.clixml')
     Copy-Item -LiteralPath $actorDirectory -Destination (Join-Path $evidenceDirectory 'actor') -Recurse

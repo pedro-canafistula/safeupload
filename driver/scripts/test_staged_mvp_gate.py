@@ -36,6 +36,37 @@ class MvpGateTests(unittest.TestCase):
     def assess(self, result, evidence=None):
         return Q.mvp_case_gate(result, evidence)
 
+    def test_c02_block_requires_unique_family_handback_contracts(self):
+        result = fixture()
+        result['CaseId'] = 'C02-block-absent'
+        assertions = result['Trials'][0]['Assertions']
+        assertions.extend({'Name': name, 'Verdict': 'PASS'}
+                          for name in sorted(Q.C02_BLOCK_REQUIRED_ASSERTIONS))
+        self.assertTrue(self.assess(result)['MvpGatePassed'])
+        for name in sorted(Q.C02_BLOCK_REQUIRED_ASSERTIONS):
+            for change in ('missing', 'duplicate', 'c01-prefix', 'fail'):
+                bad = copy.deepcopy(result)
+                items = bad['Trials'][0]['Assertions']
+                item = next(a for a in items if a['Name'] == name)
+                if change == 'missing':
+                    items.remove(item)
+                elif change == 'duplicate':
+                    items.append(item.copy())
+                elif change == 'c01-prefix':
+                    item['Name'] = 'C01' + name[3:]
+                else:
+                    item['Verdict'] = 'FAIL'
+                with self.subTest(name=name, change=change):
+                    assessment = self.assess(bad)
+                    self.assertFalse(assessment['MvpGatePassed'])
+                    finding = ('Duplicate:' if change == 'duplicate' else
+                               '' if change == 'fail' else 'Missing:') + name
+                    self.assertIn(finding, assessment['MvpBlockers'])
+        for name in ('C02HandBackSecondUserAccess', 'C02HandBackWindowClosureAndRestart'):
+            bad = copy.deepcopy(result)
+            next(a for a in bad['Trials'][0]['Assertions'] if a['Name'] == name)['Verdict'] = 'INCONCLUSIVE'
+            self.assertFalse(self.assess(bad)['MvpGatePassed'])
+
     def test_live_taint_must_be_present_unique_and_pass(self):
         for kind in ('missing', 'duplicate', 'inconclusive', 'fail'):
             result = fixture()

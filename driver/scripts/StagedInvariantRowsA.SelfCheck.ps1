@@ -9,7 +9,7 @@ try {
     if($errors.Count){throw ($errors | Out-String)}
     foreach($name in @('Get-B02JustificationClientBody','Get-WriterBody','Get-R01WriterBody','Get-B01WriterBody','Get-CachedSecondUserBody','Test-R01OfflineCalls','Test-R01OfflineAbsent','Test-R01HeldRecovery','Test-R01HeldNotifications',
         'Test-R01JournalSequence','Test-R01ActorCalls','Test-R01OutcomeSample','Test-R01ReleasedOnce','Test-B01JunctionReceipt','Test-B01FailedHandBack','Test-B01FailureNotification',
-        'Test-B01SentinelSample','Test-B01FailureAudit','Test-AgentLogContinuity','ConvertFrom-AgentEventXml','Test-CachedSecondUserDenial','Test-CachedActorCalls','Test-CachedSample','Test-CachedImage')){
+        'Test-B01SentinelSample','Test-B01FailureAudit','Test-AgentLogContinuity','ConvertFrom-AgentEventXml','Test-CachedSecondUserDenial','Set-CachedAssertionFamily','Test-CachedActorCalls','Test-CachedSample','Test-CachedImage')){
         $defs=@($ast.FindAll({param($node)$node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -ceq $name},$false))
         if($defs.Count -ne 1){throw ('Missing/ambiguous function: '+$name)}
         Invoke-Expression ($defs[0].Extent.Text.Replace(('function '+$name),('function script:'+$name)))
@@ -117,10 +117,16 @@ try {
     $i=100
     foreach($kind in @('read','write','list')){$probe.Calls+=@{Class=$kind;Path=$(if($kind -ceq 'list'){'folder'}else{'H'});NativeCode=5;StartQpc=$i;EndQpc=($i+1)};$i+=10}
     Check (Passed (Test-CachedSecondUserDenial $probe $second $actor.Sid 'probe' 'H' 'folder' 90)) 'Second standard user read/write/list access-denied passes.'
+    $mapped=Test-CachedSecondUserDenial $probe $second $actor.Sid 'probe' 'H' 'folder' 90
+    Set-CachedAssertionFamily @($mapped) 'C02'
+    Check ($mapped.Name -ceq 'C02HandBackSecondUserAccess' -and (Passed $mapped)) 'C02 uses the same three native Win32:5 denial checks.'
     foreach($change in @('read','write','list','wrong-code','path','early','sid','token','missing')){
         $bad=Clone $probe
         switch($change){'read'{$bad.Calls[0].NativeCode=0}'write'{$bad.Calls[1].NativeCode=0}'list'{$bad.Calls[2].NativeCode=0}'wrong-code'{$bad.Calls[0].NativeCode=2}'path'{$bad.Calls[0].Path='other'}'early'{$bad.Calls[0].StartQpc=89}'sid'{$bad.Sid=$actor.Sid}'token'{$bad.Token='stale'}'missing'{$bad.Calls=@($bad.Calls[0],$bad.Calls[1])}}
         Check (Rejected (Test-CachedSecondUserDenial $bad $second $actor.Sid 'probe' 'H' 'folder' 90)) ('Second-user probe rejects '+$change+'.')
+        $mapped=Test-CachedSecondUserDenial $bad $second $actor.Sid 'probe' 'H' 'folder' 90
+        Set-CachedAssertionFamily @($mapped) 'C02'
+        Check ($mapped.Name -ceq 'C02HandBackSecondUserAccess' -and (Rejected $mapped)) ('C02 cannot conceal second-user '+$change+'.')
     }
     $badActor=Clone $second;$badActor.Elevated=$true
     Check (Rejected (Test-CachedSecondUserDenial $probe $badActor $actor.Sid 'probe' 'H' 'folder' 90)) 'Second-user probe rejects elevated actor.'

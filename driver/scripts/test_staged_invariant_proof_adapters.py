@@ -42,6 +42,44 @@ def fixture():
 
 
 class ProofTests(unittest.TestCase):
+    def test_c02_block_strict_gate_requires_each_handback_assertion(self):
+        required_names = {'C02HandBackSecondUserAccess', 'C02HandBackSafeRelativeCreation',
+                          'C02HandBackWindowClosureAndRestart'}
+        self.assertEqual(required_names, Q.C02_BLOCK_REQUIRED_ASSERTIONS)
+        result = fixture()
+        case, mode, name = 'C02-block-absent', 'runtime-verifier', 'synthetic-c02-block'
+        params = {param: 'A' * 64 for param in (
+            'ExpectedTableSha256', 'ExpectedObserverSha256', 'ExpectedSuiteSha256',
+            'ExpectedHelperSha256', 'ExpectedFeatureSha256', 'ExpectedInspectorSha256',
+            'ExpectedServicePackageSha256', 'ExpectedServiceTreeSha256')}
+        fields = ('Table', 'Observer', 'Suite', 'Helper', 'Feature', 'Inspector', 'ServicePackage', 'ServiceTree')
+        result.update(Schema='StagedInvariantSuite/2', CaseId=case, Mode=mode, RunName=name,
+                      Verdict='PASS', CaseStatus='READY', ForbiddenByteCount=0,
+                      InputHashes={field: 'A' * 64 for field in fields})
+        trial = result['Trials'][0]
+        trial.update(Verdict='PASS', ForbiddenByteCount=0, Disposal={'Status': 'OK'},
+                     Predicate={'Verdict': 'PASS'},
+                     Assertions=[{'Name': item, 'Verdict': 'PASS'}
+                                 for item in sorted(required_names)],
+                     Latency=[{'Verdict': 'PASS', 'Samples': [
+                         {'Cold': n == 0, 'Ms': 10} for n in range(101)]}])
+        self.assertTrue(Q.case_gate(result, case, mode, name, params))
+        for required in sorted(required_names):
+            for change in ('missing', 'duplicate', 'wrong-family', 'inconclusive', 'fail'):
+                bad = copy.deepcopy(result)
+                assertions = bad['Trials'][0]['Assertions']
+                item = next(a for a in assertions if a['Name'] == required)
+                if change == 'missing':
+                    assertions.remove(item)
+                elif change == 'duplicate':
+                    assertions.append(item.copy())
+                elif change == 'wrong-family':
+                    item['Name'] = 'C01' + required[3:]
+                else:
+                    item['Verdict'] = change.upper()
+                with self.subTest(required=required, change=change):
+                    self.assertFalse(Q.case_gate(bad, case, mode, name, params))
+
     def test_c01_rows_ready_and_justify_deferred(self):
         rows = Q.table_rows(Q.SCRIPTS / 'StagedInvariantCases.psd1')
         for name in ('C01-approve-absent', 'C01-block-absent'):
