@@ -3374,7 +3374,7 @@ static FLT_PREOP_CALLBACK_STATUS StageDispatchCore(PFLT_CALLBACK_DATA Data,
     case IRP_MJ_CLOSE:
         StageTraceFileLifetime(Data, Objects, SAFEUPLOAD_ADMISSION_TRACE_EVENT_FILE_CLOSE);
 #if SAFEUPLOAD_STAGING_PROTOTYPE
-        SafeUploadStageWritersQueueRecheck();
+        SafeUploadStageWritersQueueLifetimeRecheck();
 #endif
         break;
     case IRP_MJ_MDL_READ_COMPLETE:
@@ -3709,7 +3709,7 @@ static FLT_POSTOP_CALLBACK_STATUS StagePostOperationCore(PFLT_CALLBACK_DATA Data
                 Objects->FileObject != NULL ? Objects->FileObject->SectionObjectPointer : NULL);
         } else if (NT_SUCCESS(Data->IoStatus.Status)) {
             SafeUploadStageWritersOnCleanup(Data, Objects);
-            SafeUploadStageWritersQueueRecheck();
+            SafeUploadStageWritersQueueLifetimeRecheck();
         }
     }
 #endif

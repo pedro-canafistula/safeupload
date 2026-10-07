@@ -1692,3 +1692,17 @@ No runtime result is claimed for this candidate. The CacheRetained diagnostic
 currently groups a changed SOP identity and nonempty DataSectionObject or
 SharedCacheMap; a receipt with this step alone cannot identify which predicate
 was responsible. All enforcement and promotion gates remain unchanged.
+
+Reclaim self-wakeup repair contract, before implementation: goald1 recorded
+296,507 passes during the activation wait. The worker performs below-instance
+identity/parent opens and closes, while unconditional close and successful
+cleanup callbacks request another pass. Track only the currently executing
+reclaim body's borrowed thread identity, publish it before its file I/O, and
+clear it before the existing handoff can start a successor. Suppress only
+unconditional lifetime rechecks on that exact thread and read-only section
+release rechecks on that thread. Keep every ledger update, Unknown/teardown
+handling, writable-section release, writer/spill/mutating-I/O completion, other
+thread recheck, bounded scan continuation and the CAS rescan handshake intact.
+No worker I/O changes and no promotion predicate changes are authorized by
+this repair. This source path explains a potential feedback loop; runtime
+comparison is required to establish whether it caused the observed churn.

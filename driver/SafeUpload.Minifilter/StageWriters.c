@@ -434,6 +434,9 @@ static volatile LONG64 RegistryReclaimPasses;
 static volatile LONG64 RegistryChangeSequence;
 static volatile LONG RegistryReclaimQueued;
 static volatile LONG RegistryReclaimResetCursor;
+/* Borrowed only while the one reclaim body executes. Clear before the work
+ * item handoff, which may start its successor on a different system thread. */
+static PVOID volatile RegistryReclaimIoThread;
 static ULONGLONG RegistryEntrySequence;
 static ULONGLONG RegistryReclaimCursor;
 static STAGE_REGISTRY_SOP_SLOT RegistrySopSlots[SAFEUPLOAD_WRITER_REGISTRY_SOP_LIMIT];
@@ -5701,6 +5704,9 @@ static VOID StageRegistryReclaimWorker(_In_ PFLT_GENERIC_WORKITEM WorkItem, _In_
     UNREFERENCED_PARAMETER(Context);
     PAGED_CODE();
     FltFreeGenericWorkItem(WorkItem);
+    NT_ASSERT(InterlockedCompareExchangePointer(&RegistryReclaimIoThread,
+        NULL, NULL) == NULL);
+    InterlockedExchangePointer(&RegistryReclaimIoThread, PsGetCurrentThread());
     InterlockedIncrement64(&RegistryReclaimPasses);
 
     candidates = ExAllocatePool2(POOL_FLAG_NON_PAGED, STAGE_RECLAIM_BATCH * (sizeof(PVOID) * 3), SAFEUPLOAD_REGISTRY_POOL_TAG);
@@ -5805,6 +5811,7 @@ static VOID StageRegistryReclaimWorker(_In_ PFLT_GENERIC_WORKITEM WorkItem, _In_
         if (reachedBatch || unfinishedScan) InterlockedOr(&RegistryReclaimQueued, STAGE_RECLAIM_RESCAN);
         ExFreePoolWithTag(candidates, SAFEUPLOAD_REGISTRY_POOL_TAG);
     }
+    InterlockedExchangePointer(&RegistryReclaimIoThread, NULL);
     StageRegistryReclaimWorkerFinish();
     ExReleaseRundownProtection(&SafeUploadData.ChannelRundown);
 }
@@ -5839,6 +5846,20 @@ VOID SafeUploadStageWritersQueueRecheck(VOID)
      * sequence sweep without polling entries that are still in use. */
     InterlockedExchange(&RegistryReclaimResetCursor, 1);
     (VOID)StageRegistryQueueReclaim();
+}
+
+static BOOLEAN StageRegistryIsReclaimIoThread(VOID)
+{
+    return InterlockedCompareExchangePointer(&RegistryReclaimIoThread, NULL, NULL) ==
+        (PVOID)PsGetCurrentThread();
+}
+
+VOID SafeUploadStageWritersQueueLifetimeRecheck(VOID)
+{
+    /* The reclaim body's own attribute-only probes cannot release an external
+     * holder. Rechecking their cleanup/close would perpetually reschedule it.
+     * All ledger updates and their counted-writer wakeups run independently. */
+    if (!StageRegistryIsReclaimIoThread()) SafeUploadStageWritersQueueRecheck();
 }
 
 VOID SafeUploadStageWritersInitialize(VOID)
@@ -6104,7 +6125,8 @@ __declspec(noinline) VOID SafeUploadStageSectionReleaseComplete(_In_opt_ PFLT_IN
             activating = InterlockedCompareExchange((volatile LONG *)&removed->State, 0, 0) ==
                 SAFEUPLOAD_REGISTRY_STATE_ACTIVATING;
             StageRegistryDereference(removed);
-            if (activating || writable) StageRegistryQueueReclaim();
+            if (writable || (activating && !StageRegistryIsReclaimIoThread()))
+                StageRegistryQueueReclaim();
         } else if (writable) {
             StageRegistryQueueReclaim();
         }

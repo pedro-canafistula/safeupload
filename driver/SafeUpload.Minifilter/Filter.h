@@ -705,6 +705,7 @@ BOOLEAN SafeUploadPolicyAdmissionMustRetry(VOID);
 NTSTATUS SafeUploadPolicyAdmissionEpochStatus(_Out_ PSAFEUPLOAD_ADMISSION_EPOCH_STATUS Status);
 VOID SafeUploadPolicyAdmissionForceNextTimeout(VOID);
 VOID SafeUploadStageWritersQueueRecheck(VOID);
+VOID SafeUploadStageWritersQueueLifetimeRecheck(VOID);
 BOOLEAN SafeUploadPolicyEntryIsNewlyScoped(_In_ SAFEUPLOAD_VOLUME_KIND VolumeKind,
     _In_ PCUNICODE_STRING NormalizedPath);
 BOOLEAN SafeUploadPolicyEntryIsCurrentlyScoped(_In_ SAFEUPLOAD_VOLUME_KIND VolumeKind,
