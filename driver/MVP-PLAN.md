@@ -1928,3 +1928,14 @@ the batch wrapper before it runs.
   source-scope inspections of its own `notifications\emissions.jsonl` attributed to its own PID 4992, which the driver's
   pre-create should exempt (SafeUploadIsIgnoredProcess: InspectorProcessId). Not yet explained; next latency run on the
   new build must retain process/thread state at the first denied create before any fix.
+- [x] **Product fix 1, v2 (driver `9b964be9`, branch `feat/mvp-names-by-id`) supersedes `c108c607`.** Luna rejected v1
+  ([review](evidence/2026-10-07/luna-incarnation-v1-review.md)): it published an SOP change as "no names" and could miss a
+  protected hard link. v2 only lets the hard-link name classification reopen by volume serial + file ID without the recorded
+  SOP and then classifies the file's actual links; nothing is retired or promoted on SOP evidence, and every writer-state
+  and promotion path keeps the exact-SOP open. Build `mvp4-goal-names1` clean (4 configs, PREfast/ApiValidator, signed
+  51FE79B8...). Luna v2 review **ACCEPT WITH CONDITIONS** ([review](evidence/2026-10-07/luna-names-by-id-v2-review.md)):
+  no P0/P1. Conditions, recorded as post-MVP qualification items: (P2) changed-SOP entries are not retired and could
+  accumulate toward the bounded registry (fail-closed availability, not an escape) - measure the rate on the target build;
+  (P2) the pre-existing SOP-lifetime premise in StageRegistryAssociateSectionPointer is a target-build precondition, not a
+  documented NTFS contract. **The v2 pair (driver 9b964be9, agent d9501a71) is the MVP sweep build**; v1 and older runs
+  are diagnostics only.
