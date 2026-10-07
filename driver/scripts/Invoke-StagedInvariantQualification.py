@@ -698,6 +698,67 @@ def export_dedicated_latency(result):
     return evidence
 
 
+def mvp_seed_latency_passed(result, trial):
+    """Only the seed actors already perform 101 native unheld repetitions."""
+    expected = {'S00-observer-control': ('writer-open', 'cached-write', 'flush', 'close'),
+                'S01-denied-write-after-boot': ('writer-open-deny',),
+                'S02-agent-down-open-refused': ('writer-open-deny',)}
+    try:
+        classes = expected[result['CaseId']]
+        fence = trial['WriterFence']
+        frequency = fence['QpcFrequency']
+        if (fence['Complete'] is not True or fence['BootId'] != result['BootIds']['Active']
+                or type(frequency) is not int or frequency <= 0
+                or type(fence['ExpectedAttempts']) is not int or fence['ExpectedAttempts'] != 101
+                or trial['Repetitions']['Unheld'] != 100 or trial.get('HeldReceipt')
+                or trial.get('DedicatedLatencyOnly') or trial.get('CloseBarrierQpc')):
+            return False
+        operations = trial['Operations']
+        if len(operations) != 101 * len(classes):
+            return False
+        expected_code = 0 if len(classes) == 4 else 5
+        previous = fence['ReleasedQpc']
+        if type(previous) is not int or previous < 0 or type(fence['CompletedQpc']) is not int:
+            return False
+        grouped = {name: [] for name in classes}
+        for index, call in enumerate(operations):
+            n, name = divmod(index, len(classes))
+            name = classes[name]
+            if (call['Class'] != name or type(call['Trial']) is not int or call['Trial'] != n
+                    or call['Cold'] is not (n == 0) or call.get('Held', False) is not False
+                    or type(call['NativeCode']) is not int or call['NativeCode'] != expected_code
+                    or type(call['StartQpc']) is not int or type(call['EndQpc']) is not int
+                    or not previous <= call['StartQpc'] <= call['EndQpc'] <= fence['CompletedQpc']):
+                return False
+            grouped[name].append(call)
+            previous = call['EndQpc']
+        latency = trial['Latency']
+        if len(latency) != len(classes) or [item['Class'] for item in latency] != list(classes):
+            return False
+        for item in latency:
+            calls = grouped[item['Class']]
+            if item['Verdict'] != 'PASS' or item['UnheldCount'] != 100 or len(item['Samples']) != 101:
+                return False
+            times = []
+            for call, sample in zip(calls, item['Samples']):
+                if any(sample[key] != call[key] or type(sample[key]) is not type(call[key])
+                       for key in ('Trial', 'Cold', 'NativeCode', 'StartQpc', 'EndQpc')):
+                    return False
+                ms = 1000 * (call['EndQpc'] - call['StartQpc']) / frequency
+                if (type(sample['Ms']) not in (int, float) or not math.isfinite(sample['Ms'])
+                        or not math.isclose(sample['Ms'], ms, abs_tol=0.000001)):
+                    return False
+                times.append(ms)
+            p95, maximum = sorted(times[1:])[94], max(times)
+            if (p95 > 250 or maximum > 1000
+                    or not math.isclose(item['P95Ms'], p95, abs_tol=0.000001)
+                    or not math.isclose(item['MaxMs'], maximum, abs_tol=0.000001)):
+                return False
+        return True
+    except (KeyError, TypeError, ValueError, IndexError):
+        return False
+
+
 def mvp_case_gate(result, latency_evidence=None):
     """Separate MVP assessment, after the existing identity/provenance/lifecycle gates."""
     deferred, blockers = set(), set()
@@ -733,7 +794,8 @@ def mvp_case_gate(result, latency_evidence=None):
             blockers.update('Missing:' + name for name in missing)
         assertions = assertions + predicate.get('Assertions', [])
         classes = [c.get('Class') for c in trial.get('Latency', [])]
-        latency_ok = mvp_latency_passed(latency_evidence, result, classes)
+        latency_ok = (mvp_seed_latency_passed(result, trial)
+                      or mvp_latency_passed(latency_evidence, result, classes))
         for assertion in assertions:
             name, verdict = assertion.get('Name', ''), assertion.get('Verdict')
             if verdict == 'PASS':
@@ -751,7 +813,7 @@ def mvp_case_gate(result, latency_evidence=None):
             elif item.get('Verdict') != 'PASS' and not latency_ok:
                 blockers.add('Latency:' + str(item.get('Class')))
         if classes and not latency_ok:
-            # Functional samples cannot stand in for the mandatory dedicated run.
+            # Held C-path functional samples cannot replace dedicated write-path runs.
             blockers.add('DedicatedUnheldLatency')
     def failures(value):
         if isinstance(value, dict):

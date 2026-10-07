@@ -18,10 +18,21 @@ function Import-EvaluationFunctions([string]$File,[string[]]$Names) {
     }
 }
 Import-EvaluationFunctions (Join-Path $PSScriptRoot 'StagedInvariantObserver.psm1') @('New-IORecord','New-IOAssertion','Test-InvariantCadence','Test-InvariantMetadata','Test-InvariantExternalCoverage')
-Import-EvaluationFunctions (Join-Path $PSScriptRoot 'Test-StagedInvariantSuite.ps1') @('Get-ActivationPendingEntry','ConvertFrom-NtfsLastAccessOutput','Wait-WriterIdentity','Load-State','Get-ActivatingWriterBody','Get-ExpectedCheckpoint','Test-ServiceJournalStateReachable','Assert-ServiceManifestPath','ConvertFrom-ServiceJournalRecord','Test-ServiceJournalDelta','Get-ServiceDestinationPaths','Test-ServiceFixtureEntry','ConvertFrom-NotificationRecord','Test-NotificationWindow','ConvertFrom-AgentEventXml','Test-AgentLogContinuity','Read-AgentLogWindow','Test-NotificationLocationUnchanged','Test-AgentDidNotRun','Get-ServiceTimeline','Test-CachedJournalSequence','Test-CachedNotifications','Test-CachedHandBackAcl','Test-CachedSample','Test-CachedImage','Test-CachedActorCalls','Add-CachedHeldJournal','Test-CachedNamespaceCommit','Get-WriterBody','Get-ActivationActorIdentity')
+Import-EvaluationFunctions (Join-Path $PSScriptRoot 'Test-StagedInvariantSuite.ps1') @('Get-ActivationPendingEntry','ConvertFrom-NtfsLastAccessOutput','Wait-WriterIdentity','Load-State','Get-ActivatingWriterBody','Get-ExpectedCheckpoint','Test-ServiceJournalStateReachable','Assert-ServiceManifestPath','ConvertFrom-ServiceJournalRecord','Test-ServiceJournalDelta','Get-ServiceDestinationPaths','Test-ServiceFixtureEntry','Get-NotificationTailCoverage','ConvertFrom-NotificationRecord','Test-NotificationWindow','ConvertFrom-AgentEventXml','Test-AgentLogContinuity','Read-AgentLogWindow','Test-NotificationLocationUnchanged','Test-AgentDidNotRun','Get-ServiceTimeline','Test-CachedJournalSequence','Test-CachedNotifications','Test-CachedHandBackAcl','Test-CachedSample','Test-CachedImage','Test-CachedActorCalls','Add-CachedHeldJournal','Test-CachedNamespaceCommit','Get-WriterBody','Get-ActivationActorIdentity')
 $script:checks=0
 function Check([bool]$Condition,[string]$Message){if(-not $Condition){throw $Message};$script:checks++}
 function Clone($Value){return ($Value | ConvertTo-Json -Depth 32 | ConvertFrom-Json)}
+# Valid historical/fence-short records are missing coverage, not read errors.
+$tailFixture=@{BootId='old';QpcFrequency=1000;Qpc=10}
+$tailProof=Get-NotificationTailCoverage $tailFixture 'active' 1000 20
+Check ($tailProof.Status -ceq 'INCONCLUSIVE' -and $tailProof.HistoricalTail -and $tailProof.RecordedBootId -ceq 'old') 'Historical authenticated chain cannot provide current-boot coverage.'
+$tailFixture.BootId='active';$tailProof=Get-NotificationTailCoverage $tailFixture 'active' 1000 20
+Check ($tailProof.Status -ceq 'INCONCLUSIVE' -and -not $tailProof.HistoricalTail) 'Fence-short valid tail is missing coverage.'
+$tailFixture.Qpc=20
+Check ((Get-NotificationTailCoverage $tailFixture 'active' 1000 20).Status -ceq 'OK') 'Current same-frequency tail covers fence.'
+$tailFixture.QpcFrequency=1001;$rejected=$false;try{$null=Get-NotificationTailCoverage $tailFixture 'active' 1000 20}catch{$rejected=$_.Exception.Message -ceq 'Notification tail QPC frequency mismatch.'}
+Check $rejected 'Same-boot QPC frequency mismatch remains a collector error.'
+
 # Machine-wide page completeness and exact target uniqueness are separate.
 function Get-ActivationInspectorJson { return [pscustomobject]@{Record=$script:activatingFixture} }
 $script:activatingFixture=@{activatingStatus=$true;totalEntries=3;entries=@(

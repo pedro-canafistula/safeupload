@@ -1020,7 +1020,7 @@ function Get-LatencyVerdict($Calls,$Classes,[long]$Frequency) {
         $unheld=@($raw | Where-Object {-not $_.Cold} | Sort-Object Ms)
         $p95=$null;$max=$null;$verdict='INCONCLUSIVE'
         if($raw.Count -gt 0){$max=($raw | Measure-Object Ms -Maximum).Maximum}
-        if($unheld.Count -ge 100){$ordered=@($raw | Sort-Object Ms);$p95=$ordered[[int][Math]::Ceiling(.95*$ordered.Count)-1].Ms;$verdict='PASS'}
+        if($unheld.Count -ge 100){$p95=$unheld[[int][Math]::Ceiling(.95*$unheld.Count)-1].Ms;$verdict='PASS'}
         if(@($raw | Where-Object {$_.Ms -lt 0}).Count -gt 0){$verdict='INCONCLUSIVE'}
         if(($null -ne $p95 -and $p95 -gt 250) -or ($null -ne $max -and $max -gt 1000)){$verdict='FAIL'}
         $result+= [pscustomobject]@{Class=$class;Verdict=$verdict;UnheldCount=$unheld.Count;P95Ms=$p95;MaxMs=$max;Samples=$raw}
@@ -1192,6 +1192,15 @@ function ConvertFrom-NotificationRecord($Segments,[byte[]]$HeadBytes) {
         return [pscustomobject]@{Entries=$entries;Head=$head}
     }finally{$sha.Dispose()}
 }
+function Get-NotificationTailCoverage($Tail,[string]$BootId,[long]$Frequency,[long]$MinimumQpc) {
+    # Input is already the complete authenticated chain. Historical bytes remain
+    # evidence, but cannot establish a current-boot notification window.
+    if($Tail.BootId -cne $BootId){return [pscustomobject]@{Status='INCONCLUSIVE';HistoricalTail=$true;RecordedBootId=$Tail.BootId;Reason=('Authenticated historical notification tail: recorded='+$Tail.BootId+'; required='+$BootId+'. No current-boot heartbeat coverage.')}}
+    if($Tail.QpcFrequency -ne $Frequency){throw 'Notification tail QPC frequency mismatch.'}
+    if($Tail.Qpc -lt $MinimumQpc){return [pscustomobject]@{Status='INCONCLUSIVE';HistoricalTail=$false;RecordedBootId=$Tail.BootId;Reason=('Authenticated notification tail precedes snapshot fence: tailQpc='+$Tail.Qpc+'; minimumQpc='+$MinimumQpc+'. No heartbeat covers the fence.')}}
+    return [pscustomobject]@{Status='OK';HistoricalTail=$false;RecordedBootId=$Tail.BootId;Reason='Authenticated notification record covers snapshot fence.'}
+}
+
 function Get-NotificationSnapshot([string]$Tag,[string]$BootId,[long]$MinimumQpc) {
     $root=Split-Path -Parent $policyPath;$directory=Join-Path $root 'notifications'
     $deadline=([Diagnostics.Stopwatch]::GetTimestamp()+[long]((4)*[Diagnostics.Stopwatch]::Frequency));$reason='Notification record unavailable.'
@@ -1259,10 +1268,9 @@ function Get-NotificationSnapshot([string]$Tag,[string]$BootId,[long]$MinimumQpc
             $record=ConvertFrom-NotificationRecord $segments $headBytes
             $tail=$record.Entries[$record.Entries.Count-1].Entry
             $snapshot.Entries=$record.Entries;$snapshot.Head=$record.Head
-            if($tail.BootId -cne $BootId){throw ('Notification tail boot mismatch: recorded='+$tail.BootId+'; required='+$BootId+'. Agent-down seed cannot supply a current-boot heartbeat.')}
-            if($tail.QpcFrequency -ne $snapshot.QpcFrequency){throw 'Notification tail QPC frequency mismatch.'}
-            if($tail.Qpc -lt $MinimumQpc){throw ('Notification tail precedes snapshot fence: tailQpc='+$tail.Qpc+'; minimumQpc='+$MinimumQpc+'; tailKind='+$tail.Kind+'. Agent-down seed has no live notification writer.')}
-            $snapshot.Status='OK';$snapshot.Reason='Authenticated notification record covers snapshot fence.'
+            $coverage=Get-NotificationTailCoverage $tail $BootId $snapshot.QpcFrequency $MinimumQpc
+            $snapshot.Status=$coverage.Status;$snapshot.Reason=$coverage.Reason
+            $snapshot.HistoricalTail=$coverage.HistoricalTail;$snapshot.RecordedBootId=$coverage.RecordedBootId
             return [pscustomobject]$snapshot
         }catch{$reason=$_.Exception.Message;$snapshot.Reason=$reason;$snapshot.Errors=Get-ErrorChain $_.Exception}
         finally{foreach($obj in $held){$obj.Dispose()}}
@@ -1660,7 +1668,7 @@ function Get-ServiceSnapshot([string]$Tag,[switch]$JournalOnly) {
             # owned by Administrators and the stricter SYSTEM-only check rejected genuine evidence).
             $obj=[SUProofFile]::Open($journal,$true,$true,$false,$true);$held+=$obj;$result.Objects+=@{Path=$journal;Owner=$obj.Owner;Sddl=$obj.Sddl}
             foreach($file in @(Get-ChildItem -LiteralPath $journal -Force | Sort-Object Name)) {
-                if($file.Name -notmatch '^[0-9a-f]{32}\.json$'){throw 'Unrecognized journal child; snapshot is not complete.'}
+                if($file.Name -notmatch '^[0-9a-f]{32}\.json$'){throw ('Unrecognized journal child; snapshot is not complete. Name='+$file.Name+'; Attributes='+[string]$file.Attributes)}
                 $obj=[SUProofFile]::Open($file.FullName,$false,$true,[bool]$JournalOnly,$true)
                 try{$bytes=[SUProofFile]::Read($obj,131072)}finally{$obj.Dispose()}
                 $leaf='service-'+$Tag+'-'+$file.Name;$copy=Join-Path $evidenceDirectory $leaf
@@ -2361,7 +2369,7 @@ function Invoke-DedicatedLatencyObservation($Trial,$Actor,$Ready,$Context,[strin
         do {
             $poll=Get-CachedJournalObservation ($prefix+'outcome-'+$pollNumber) $Actor @($target,$openPath) $knownIds
             $pollNumber++;$Trial.JournalSnapshots+= $poll.Snapshot
-            if($poll.Status -cne 'OK'){throw ('Dedicated authenticated journal incomplete: '+($poll.Errors -join '; '))}
+            if($poll.Status -cne 'OK'){throw ('Dedicated authenticated journal incomplete: '+((@($poll.Errors)+@($poll.Snapshot.Errors | ForEach-Object Message)) -join '; '))}
             if($poll.Entries.Count -gt 1){throw 'Dedicated round has ambiguous transfers'}
             foreach($entry in $poll.Entries){
                 if($entry.StateName -cin @('Blocked','Retained','Unsealed')){throw ('Dedicated expected APPROVE but observed '+$entry.StateName)}
