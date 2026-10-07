@@ -1131,3 +1131,13 @@ The safe W01 checkpoint parent was written by Sol and checked by root: Windows P
   preserves failed overlay and creates one unique recovery child on the
   pre-run A01r6 checkpoint. Independent baseline is BaselineClean=True
   (`sol-c02diag1-rollback.txt`, `sol-c02diag1-recovery-baseline.txt`).
+- [x] A02 `sol-a02r1` restored independently clean, gates false. Pre-epoch
+  retained P stopped on Bad range/alignment. Confirmed2356c2fb regression:
+  successful CrossRecord appended cached API reply offset-1, then physical
+  historical reread treated it as disk range. Gated repair archives this reply
+  only on identity-validation failure; no success requirement/cache substitute
+  changed. Windows parser0/proof240/native88 and Python18+7 PASS
+  (`sol-harness-windows-validation-y.txt`). Real native builder control retains
+  12288-byte whole-image and rereads both physical containers with exact hashes
+  (`sol-retained-native-builder-validation.txt`). Builder19045.6466 is explicitly
+  not suite qualification; rejected full observer control retained too.
