@@ -276,6 +276,8 @@ typedef struct _STAGE_DEFERRED_INSTANCE_UNKNOWN {
 
 _IRQL_requires_max_(APC_LEVEL)
 static BOOLEAN StageRegistryEntryIsBaseStream(_In_ PSTAGE_REGISTRY_ENTRY Entry);
+_IRQL_requires_max_(APC_LEVEL)
+static BOOLEAN StageRegistryEntryHoldsNoWriterState(_In_ PSTAGE_REGISTRY_ENTRY Entry);
 _IRQL_requires_(PASSIVE_LEVEL)
 static BOOLEAN StageRegistryEntryQuiescent(_In_ PSTAGE_REGISTRY_ENTRY Entry, _In_ PFLT_INSTANCE Instance,
     _In_ PFLT_VOLUME Volume);
@@ -4981,6 +4983,24 @@ __declspec(noinline) static BOOLEAN StageRegistryTryPromoteStateNoInline(
     return promoted;
 }
 
+/* Every other listed entry for the same file identity (any stream incarnation or named stream) holds no writer
+ * state and no Unknown reason. RegistryLock is held by the caller; the snapshots take SectionLock after it. */
+_IRQL_requires_max_(APC_LEVEL)
+static BOOLEAN StageRegistrySiblingsHoldNoWriterStateLocked(_In_ PSTAGE_REGISTRY_ENTRY Entry)
+{
+    PLIST_ENTRY link;
+    for (link = RegistryEntries.Flink; link != &RegistryEntries; link = link->Flink) {
+        PSTAGE_REGISTRY_ENTRY sibling = CONTAINING_RECORD(link, STAGE_REGISTRY_ENTRY, Link);
+        if (sibling == Entry || sibling->Retired || sibling->Instance != Entry->Instance ||
+            sibling->Volume != Entry->Volume || sibling->VolumeSerial != Entry->VolumeSerial ||
+            !RtlEqualMemory(&sibling->FileId, &Entry->FileId, sizeof(sibling->FileId))) continue;
+        if (InterlockedCompareExchange(&sibling->UnknownReasons, 0, 0) != 0 ||
+            InterlockedCompareExchange((volatile LONG *)&sibling->State, 0, 0) == SAFEUPLOAD_REGISTRY_STATE_UNKNOWN ||
+            !StageRegistryEntryHoldsNoWriterState(sibling)) return FALSE;
+    }
+    return TRUE;
+}
+
 /* RegistryLock remains held by the pageable caller, stabilizing the name and
  * list membership. Name comparison is done there because its snapshot is paged. */
 _IRQL_requires_max_(APC_LEVEL)
@@ -5001,6 +5021,9 @@ __declspec(noinline) static VOID StageRegistryTryPromoteEntry(
     KIRQL irql;
     UNICODE_STRING entryName;
     BOOLEAN directoryRenameInFlight;
+    /* A replaced incarnation's CAS is identity-wide: no other entry for this file, including one keyed by the
+     * live SOP, may hold writer state (S and the cache barrier were evaluated on the live SOP). */
+    BOOLEAN siblingsFree = ReplacedLiveSop == NULL || StageRegistrySiblingsHoldNoWriterStateLocked(Entry);
     entryName.Buffer = Entry->Name;
     entryName.Length = entryName.MaximumLength = (USHORT)(Entry->NameChars * sizeof(WCHAR));
     directoryRenameInFlight = StageRegistryDirectoryRenameInFlightLocked(Entry->Instance, &entryName);
@@ -5043,6 +5066,7 @@ __declspec(noinline) static VOID StageRegistryTryPromoteEntry(
         StageRegistrySnapshotSpilledMutatingIo(Entry) == 0 &&
         SopEmpty &&
         StageRegistrySnapshotC(Entry, NULL, 0, NULL) == 0 &&
+        siblingsFree &&
         (ReplacedLiveSop == NULL || InterlockedCompareExchangePointer(
             (PVOID volatile *)&Entry->SectionObjectPointer, NULL, NULL) != ReplacedLiveSop)) {
         /* Serialize the final marker-generation check with marker insertion. A marker
@@ -5442,11 +5466,13 @@ static VOID StageRegistryActivationProcess(_In_ PSTAGE_REGISTRY_ENTRY Entry,
          * down before this pass (C01 latency l4c1: Unknown after round 62, later creates refused). Only a
          * base data stream qualifies: a compact ADS is resolved by name hash and could reopen another stream.
          * With no writer state left on the entry, nothing pre-scope can reach the stream through the old
-         * incarnation; S and the cache barrier below are evaluated on the live stream. The CAS rechecks,
-         * under RegistryLock and the state lock, that the entry is still bound to the gone incarnation, so
-         * this discharges the stale entry; a writer on the live stream is tracked, and gates coverage and
-         * admission, through its own SOP-keyed entry. Reclaim then prunes the discharged entry. Any other
-         * failure keeps the fail-closed path. */
+         * incarnation; S and the cache barrier below are evaluated on the live stream. Under RegistryLock
+         * and the state lock the CAS rechecks that the entry is still bound to the gone incarnation and
+         * that no other entry for this file (the live-SOP one included) holds writer state or an Unknown
+         * reason, so promotion means the file is Free across its incarnations. A later writable open through
+         * an out-of-scope hard link is refused at pre-create (SafeUploadStageCheckNamedAliases), and one
+         * through the protected name is staged. Reclaim then prunes the entry. Any other failure keeps the
+         * fail-closed path. */
         status = StageRegistryOpenIdentity(Entry, Instance, Volume, &handle, &object,
             &openFailureStep, &noNamesProvenByIdentity, TRUE);
         if (NT_SUCCESS(status) && object->SectionObjectPointer != NULL &&
