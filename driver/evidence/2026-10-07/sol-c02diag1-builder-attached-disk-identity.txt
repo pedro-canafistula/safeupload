@@ -1,0 +1,38 @@
+
+
+Number         : 1
+FriendlyName   : Red Hat VirtIO
+SerialNumber   : sol-c02diag1-2026100
+UniqueId       : sol-c02diag1-2026100
+Size           : 21474836480
+PartitionStyle : RAW
+IsBoot         : False
+IsSystem       : False
+
+Number         : 0
+FriendlyName   : Red Hat VirtIO
+SerialNumber   : 
+UniqueId       : 0000000400000000
+Size           : 128849018880
+PartitionStyle : GPT
+IsBoot         : True
+IsSystem       : True
+
+
+
+
+
+Index        : 1
+Model        : Red Hat VirtIO SCSI Disk Device
+SerialNumber : sol-c02diag1-2026100
+PNPDeviceID  : SCSI\DISK&VEN_RED_HAT&PROD_VIRTIO\5&1CA3259&0&000000
+Size         : 21467980800
+
+Index        : 0
+Model        : Red Hat VirtIO SCSI Disk Device
+SerialNumber : 
+PNPDeviceID  : SCSI\DISK&VEN_RED_HAT&PROD_VIRTIO\5&36375FD9&0&000000
+Size         : 128849011200
+
+
+

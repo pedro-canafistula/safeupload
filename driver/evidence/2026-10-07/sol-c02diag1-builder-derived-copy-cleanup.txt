@@ -1,0 +1,9 @@
+RemovedUnusableDerivedCopy=guest-sparse.dmp;Bytes=8723972096
+RemovedUnusableDerivedCopy=guest.dmp.zip;Bytes=655362854
+OriginalHostElfAndCompleteDmpPreserved=True
+
+
+Free : 9291808768
+
+
+

@@ -1,0 +1,18 @@
+
+
+Number         : 0
+FriendlyName   : Red Hat VirtIO
+SerialNumber   : 
+UniqueId       : 0000000400000000
+Size           : 128849018880
+PartitionStyle : GPT
+
+
+
+
+DeviceID DriveType FileSystem FreeSpace         Size
+-------- --------- ---------- ---------         ----
+C:               3 NTFS               0 128168321024
+D:               5 CDFS               0    485173248
+
+

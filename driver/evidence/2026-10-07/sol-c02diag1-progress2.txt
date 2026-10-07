@@ -1,0 +1,8 @@
+DiagnosticReady=False
+
+TaskName                                                                                                State
+--------                                                                                                -----
+SafeUpload-StagedTest-Invariant-boot-start-invariant-C02-approve-absent-runtime-verifier-sol-c02diag1 Running
+SafeUpload-StagedTest-Writer-boot-start-invariant-C02-approve-absent-runtime-verifier-sol-c02diag1      Ready
+
+

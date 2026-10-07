@@ -1,0 +1,10 @@
+PartialDumpBytes=8036229120
+PartialDumpSHA256=735A31DAA05BF7EB9903165AE1B3239E20B4522D96095F5A5CDE1F981E042BC9
+PartialDumpPreservedSource=Host original ELF and complete derived DMP; failed transfer retained by bytes/hash/log
+
+
+Free : 9292095488
+
+
+
+OwnedPartialRemoved=True
