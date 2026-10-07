@@ -67,6 +67,52 @@ if ($PSBoundParameters.ContainsKey('Live') -and [string]::IsNullOrWhiteSpace($Li
 }
 try { Import-Module (Join-Path $PSScriptRoot 'StagedInvariantObserver.psm1') -Force -DisableNameChecking -ErrorAction Stop }
 catch { Report-IO 'Import' $false $_.Exception.ToString(); Write-Output ('IO_Summary=passed:' + $script:Passed + ';failed:' + $script:Failed); exit 1 }
+# Real checked handle-disposal controls on a disposable builder file. These do
+# not pretend that a constructed pin qualifies raw-volume capture or rebind.
+$readerFixture=Join-Path $env:TEMP ('safeupload-observer-reader-'+[guid]::NewGuid().ToString('N')+'.txt')
+$readerHandle=$null
+try {
+    [IO.File]::WriteAllBytes($readerFixture,[Text.Encoding]::ASCII.GetBytes('reader-release-control'))
+    $readerHandle=[StagedInvariant.Native]::Open($readerFixture,$false,$false)
+    $readerIdentity=[StagedInvariant.Native]::GetIdentity($readerHandle)
+    $pin=[StagedInvariant.Image]::new();$pin.Identity=$readerIdentity
+    $entry=@{Handle=$readerHandle;NativeOriginal=$pin;Original=@{Path=$readerFixture};Version='Baseline'}
+    $readerContext=[pscustomobject]@{Status='OK';Closed=$false;CaseId='C01';BaselineCaptured=$true;
+        Handles=@{};BootId='builder-stimulus-only';ObserverPid=$PID;ObserverSid=([Security.Principal.WindowsIdentity]::GetCurrent().User.Value)}
+    $readerContext.Handles[$readerIdentity.FileId]=$entry
+    Check-IO 'ActivationReaderUnsupportedCaseRejected' {
+        (Close-InvariantActivationReader $readerContext $readerIdentity.FileId).Status -ceq 'ERROR' -and -not $readerHandle.Value.IsClosed
+    }
+    $readerContext.CaseId='A01'
+    Check-IO 'ActivationReaderWrongKeyRejected' {
+        (Close-InvariantActivationReader $readerContext 'wrong-file-id').Status -ceq 'ERROR' -and -not $readerHandle.Value.IsClosed
+    }
+    $pin.Identity=[StagedInvariant.Native]::GetIdentity($readerHandle);$pin.Identity.VolumeSerial=$pin.Identity.VolumeSerial -bxor 1
+    Check-IO 'ActivationReaderWrongVolumeRejected' {
+        (Close-InvariantActivationReader $readerContext $readerIdentity.FileId).Status -ceq 'ERROR' -and -not $readerHandle.Value.IsClosed
+    }
+    $pin.Identity=[StagedInvariant.Native]::GetIdentity($readerHandle)
+    Check-IO 'ActivationReaderCheckedNativeClose' {
+        $r=Close-InvariantActivationReader $readerContext $readerIdentity.FileId
+        $r.Status -ceq 'OK' -and $r.NativeHandleClosed -and $readerHandle.Value.IsClosed -and
+            $r.FileId -ceq $readerIdentity.FileId -and $r.End.Qpc -ge $r.Start.Qpc -and -not $r.Rebound
+    }
+    Check-IO 'ActivationReaderDuplicateCloseRejected' {
+        (Close-InvariantActivationReader $readerContext $readerIdentity.FileId).Status -ceq 'ERROR'
+    }
+    Check-IO 'ActivationReaderRebindWrongIdentityRejected' {
+        (Open-InvariantActivationReader $readerContext 'wrong-file-id' ('A'*64) 22).Status -ceq 'ERROR'
+    }
+    Check-IO 'ActivationReaderRebindMalformedDigestRejected' {
+        (Open-InvariantActivationReader $readerContext $readerIdentity.FileId 'malformed' 22).Status -ceq 'ERROR'
+    }
+    Check-IO 'ActivationReaderRebindNegativeLengthRejected' {
+        (Open-InvariantActivationReader $readerContext $readerIdentity.FileId ('A'*64) -1).Status -ceq 'ERROR'
+    }
+}finally{
+    if($null -ne $readerHandle){$readerHandle.Dispose()}
+    if(Test-Path -LiteralPath $readerFixture){Remove-Item -LiteralPath $readerFixture -Force}
+}
 $record = TinyRecord $false; $nonresident = TinyRecord $true; $root = TinyRoot
 function MftFixtureVolume {
     $v=[StagedInvariant.Volume]::new()

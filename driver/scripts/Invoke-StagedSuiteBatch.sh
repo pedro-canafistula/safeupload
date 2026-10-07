@@ -49,6 +49,12 @@ day=$(date +%F); ev=driver/evidence/$day; mkdir -p "$ev"
 i=0
 for case in "$@"; do
     i=$((i+1)); tag="${prefix}${i}"
+    # Refuse reused suite tags before touching the guest. Otherwise a runner
+    # preflight failure can accidentally display an older index as its result.
+    if compgen -G "driver/evidence/*/phase4-suite-$tag-index.txt" >/dev/null; then
+        log "STOP: suite index already exists for $tag; choose a fresh tag prefix"
+        exit 6
+    fi
     baseline "$ev/batch-$tag-pre-baseline.txt" || { log "STOP: baseline not clean before $tag"; exit 2; }
     log "run $tag $case $mode"
     python3 driver/scripts/Invoke-StagedInvariantQualification.py "$tag" "$driver_label" "$driver_commit" "$agent_label" "$policy" \

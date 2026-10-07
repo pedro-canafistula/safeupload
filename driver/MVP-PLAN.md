@@ -1724,3 +1724,51 @@ comparison of worker pass counts and promotion remains required. Source
 inspection also confirms service boot-policy finalization occurs before its
 coverage-readiness loop; goald1 coverage flags do not contain POLICY_PENDING.
 A pending-policy finalize/readiness cycle is not established by this evidence.
+
+`goalc1` A01/cache3 runtime-Verifier ends INCONCLUSIVE with unknown forbidden
+count and clean restoration. Native exact target is Activating, H/W/C/T0,
+S=NO, Unknown0, successful CacheRetained step11, and a complete empty promotion
+trace. The diagnostic groups a retained cache pointer and a changed SOP; it
+does not isolate their individual values. Reclaim passes285686. Live taint PASS.
+
+Observer cache-drain repair contract, before implementation: retain full raw
+P and pre-protection U evidence, then close only the observer's one exact
+buffered target handle, with checked native disposal and a boot/PID/QPC-bound
+receipt, while the actor's old writer still lives. Keep the raw-volume handle,
+original pre-epoch identity/map and all evidence intact. Release the actor
+and require the unchanged native promotion/CAS/Ready gates within90s. Reopen
+the observer's exact same identity only after Protected; require unchanged
+raw U digest/length across the gap and raw/native identity and layout agreement.
+No protected write stimulus starts before rebind and that raw check. Do not
+rebaseline U from unchecked post-transition bytes. This keeps the observer's
+cache from being an extra workload holder; the interval between reader close
+and reopen has raw pinned identity evidence and no continuous held-reader
+claim. All driver gates and the fixed MVP allowlist remain unchanged. Limit
+this repair to A01-A04; update their contract revisions and retain the gap.
+Existing application cached read handles may also delay this stronger cache
+gate; record that release limitation if the evidence confirms it.
+
+`goalr1` did not run: runner preflight refused an already existing suite index.
+The batch displayed that older index; it is not a new cache4 A01 result. The
+batch now refuses existing suite indices before any guest contact. A disposable
+host control confirms exit6, unchanged retained index and no guest contact.
+Fresh unchanged-observer cache4 A01 is `goalrecl101`; result pending.
+
+`goalr2` S00/cache4 runtime-Verifier passes MvpGatePassed, ForbiddenByteCount0,
+no errors and independent restoration clean. All four native latency classes
+pass100 warm samples plus one cold sample: writer-open p95/max2.9022/57.6769ms,
+cached-write2.3157/12.5325ms, flush239.4307/817.9419ms, close3.7829/15.4762ms.
+Strict verdict remains INCONCLUSIVE solely for PredicateCoverage and
+NoUnapprovedByte, the fixed deferred lower-ledger proofs. This is one current
+MVP mode cell, not full qualification; every other required row/mode and Phase5
+remain pending. Hash-bound readout: `goal-cache3-and-cache4-runtime-readout.json`.
+
+Observer contract table9 increments A01-A03 to revision5 and A04 to revision6.
+Eight new real native checked-close/rejection controls pass on a disposable
+builder file (stimulus only), within103 observer self-check controls; malformed
+rebind inputs are rejected before any raw operation. Full Windows gate
+`goal-reader1` all14 self-checks PASS and56 host tests PASS. Both new observer
+close/rebind assertions are mandatory for A01-A04; they are not deferred.
+Kernel and service source are unchanged from exact cache4/taint2 and their
+passing four-config builds/matrix. Native raw rebind and promotion behavior
+remain to be qualified on the supported VM after the active child restores.

@@ -1201,6 +1201,80 @@ function Register-InvariantPublication {
         return New-IORecord 'ApprovedImage' @{ Status='ERROR'; Error=$errorRecord }
     }
 }
+function Close-InvariantActivationReader {
+    [CmdletBinding()] param([Parameter(Mandatory=$true)] $Context,
+        [Parameter(Mandatory=$true)][string] $FileId)
+    $start=Get-IOTime $Context
+    try {
+        Assert-IOContext $Context
+        if($Context.CaseId -cnotin @('A01','A02','A03','A04') -or
+            -not $Context.BaselineCaptured -or $Context.Handles.Count -ne 1 -or
+            -not $Context.Handles.ContainsKey($FileId) -or
+            $null -ne $Context.PSObject.Properties['ActivationReaderRelease']){
+            throw 'One-use activation reader close requires one exact pinned A01-A04 baseline identity.'
+        }
+        $entry=$Context.Handles[$FileId]
+        if($null -eq $entry.NativeOriginal -or $entry.Version -cne 'Baseline' -or
+            $entry.NativeOriginal.Identity.FileId -cne $FileId -or
+            $entry.Handle.Value.IsClosed -or $entry.Handle.Value.IsInvalid){
+            throw 'Activation reader is not the live exact pre-epoch baseline handle.'
+        }
+        $identity=[StagedInvariant.Native]::GetIdentity($entry.Handle)
+        if($identity.FileId -cne $FileId -or
+            $identity.VolumeSerial -ne $entry.NativeOriginal.Identity.VolumeSerial -or
+            $identity.Reference -ne $entry.NativeOriginal.Identity.Reference){
+            throw 'Activation reader handle no longer identifies the original raw pin.'
+        }
+        $entry.Handle.Dispose()
+        if(-not $entry.Handle.Value.IsClosed){throw 'Checked activation reader close did not close the native handle.'}
+        $receipt=New-IORecord 'ActivationReaderClose' @{Status='OK';FileId=$FileId;
+            Path=$entry.Original.Path;ObserverPid=$Context.ObserverPid;ObserverSid=$Context.ObserverSid;
+            Start=$start;End=(Get-IOTime $Context);NativeHandleClosed=$true;RawVolumeKept=$true;
+            OriginalPinKept=$true;Identity=$identity;Rebound=$false;Error=$null}
+        $Context | Add-Member NoteProperty ActivationReaderRelease $receipt
+        return $receipt
+    }catch{return New-IORecord 'ActivationReaderClose' @{Status='ERROR';Start=$start;
+        End=(Get-IOTime $Context);Error=(New-IOError 'ActivationReaderClose' $_.Exception)}}
+}
+function Open-InvariantActivationReader {
+    [CmdletBinding()] param([Parameter(Mandatory=$true)] $Context,
+        [Parameter(Mandatory=$true)][string] $FileId,
+        [Parameter(Mandatory=$true)][string] $ExpectedSha256,
+        [Parameter(Mandatory=$true)][long] $ExpectedLength)
+    $start=Get-IOTime $Context;$handle=$null;$keep=$false
+    try {
+        Assert-IOContext $Context
+        $release=$Context.ActivationReaderRelease
+        if($Context.CaseId -cnotin @('A01','A02','A03','A04') -or
+            $null -eq $release -or $release.Status -cne 'OK' -or $release.Rebound -or
+            $release.FileId -cne $FileId -or $Context.Handles.Count -ne 1 -or
+            -not $Context.Handles.ContainsKey($FileId) -or
+            $ExpectedSha256 -cnotmatch '^[A-F0-9]{64}$' -or $ExpectedLength -lt 0){
+            throw 'Activation rebind requires the one exact successful reader close and pre-release raw U digest.'
+        }
+        $entry=$Context.Handles[$FileId]
+        if(-not $entry.Handle.Value.IsClosed -or $null -eq $entry.NativeOriginal){throw 'Activation reader/pin state changed before rebind.'}
+        $before=[StagedInvariant.Native]::CapturePinned($Context.Volume,$entry.NativeOriginal)
+        if($before.Identity.FileId -cne $FileId -or $before.Digest -cne $ExpectedSha256 -or
+            $before.Logical.Length -ne $ExpectedLength){throw 'Raw U changed across the activation reader gap.'}
+        $handle=[StagedInvariant.Native]::Open($entry.Original.Path,$false,$false)
+        $identity=[StagedInvariant.Native]::GetIdentity($handle)
+        if(-not [StagedInvariant.Native]::SameIdentity($before.Identity,$identity)){throw 'Reopened activation reader resolved a different raw identity/layout.'}
+        $after=[StagedInvariant.Native]::CapturePinned($Context.Volume,$entry.NativeOriginal)
+        if([StagedInvariant.Native]::Fingerprint($before) -cne [StagedInvariant.Native]::Fingerprint($after) -or
+            $after.Digest -cne $ExpectedSha256 -or
+            -not [StagedInvariant.Native]::SameIdentity($after.Identity,[StagedInvariant.Native]::GetIdentity($handle))){
+            throw 'Raw/native identity, layout or U bytes changed while rebinding the activation reader.'
+        }
+        $entry.Handle=$handle;$keep=$true;$release.Rebound=$true
+        return New-IORecord 'ActivationReaderRebind' @{Status='OK';FileId=$FileId;Path=$entry.Original.Path;
+            ObserverPid=$Context.ObserverPid;ObserverSid=$Context.ObserverSid;Start=$start;End=(Get-IOTime $Context);
+            Close=$release;RawSha256=$after.Digest;RawLength=$after.Logical.Length;
+            OriginalPinKept=$true;Identity=$identity;ContinuousHeldReader=$false;Error=$null}
+    }catch{return New-IORecord 'ActivationReaderRebind' @{Status='ERROR';Start=$start;
+        End=(Get-IOTime $Context);Error=(New-IOError 'ActivationReaderRebind' $_.Exception)}}
+    finally{if($null -ne $handle -and -not $keep){$handle.Dispose()}}
+}
 function Capture-InvariantSample {
     [CmdletBinding()] param([Parameter(Mandatory=$true)] $Context, [Parameter(Mandatory=$true)] $Baseline,
         [Parameter(Mandatory=$true)][string] $Phase, [Parameter(Mandatory=$true)][long] $OperationSequence)
@@ -1693,4 +1767,4 @@ function Close-InvariantObserver {
     $Context.Closed = $true; $errors += $Context.Errors
     return New-IORecord 'Disposal' @{ Status = $(if ($errors.Count -eq 0) { 'OK' } else { 'ERROR' }); Errors = $errors; Time = (Get-IOTime $Context) }
 }
-Export-ModuleMember -Function Read-InvariantPrivateAbsence, Read-InvariantPrivateSnapshot, Test-InvariantCadence, Test-InvariantExternalCoverage, Open-InvariantObserver, Capture-InvariantBaseline, Register-InvariantPublication, Capture-InvariantSample, Test-NoUnapprovedByte, Close-InvariantObserver
+Export-ModuleMember -Function Read-InvariantPrivateAbsence, Read-InvariantPrivateSnapshot, Test-InvariantCadence, Test-InvariantExternalCoverage, Open-InvariantObserver, Capture-InvariantBaseline, Register-InvariantPublication, Close-InvariantActivationReader, Open-InvariantActivationReader, Capture-InvariantSample, Test-NoUnapprovedByte, Close-InvariantObserver

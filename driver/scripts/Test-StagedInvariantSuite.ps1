@@ -3994,6 +3994,11 @@ function Invoke-ActivationObservation {
         $readinessSampleReason=if($readyWhileHeld.Count -gt 0){'At least one authenticated current service status reported Ready before last-holder release.'}elseif($readinessSampleVerdict -eq 'PASS'){'Every current status sample at the policy-acceptance, pre-mutation, and post-mutation checkpoints was authenticated, active, at the accepted generation, and non-Ready.'}else{'One or more holder-interval service status samples were missing, unauthenticated, inactive, or at another generation; sampled never-Ready evidence is incomplete.'}
         Add-ActivationAssertion $trial 'NoObservedReadyWhileHolderLives' $readinessSampleVerdict $readinessSampleReason @($trial.ReadinessSamplesWhileHolder | ForEach-Object {if($_.Status -eq 'OK'){@{Tag=$_.Tag;Coverage=$_.Value.admissionCoverage;Generation=$_.Value.nativePolicyGeneration;Qpc=$_.EndQpc}}else{@{Tag=$_.Tag;Status=$_.Status;Reason=$_.Reason}}})
         Close-ActivationNotificationCapture
+        $preReleaseImages=@($preProtectionSample.Images | Where-Object {$_.Role -ceq 'Current' -and $_.Path -ieq $target -and -not $_.Absent})
+        if($preProtectionSample.Status -cne 'OK' -or $preReleaseImages.Count -ne 1){throw 'Exact raw U image is required before releasing the observer cached reader.'}
+        $trial.ObserverReaderClose=Close-InvariantActivationReader $context $fileId
+        Add-ActivationAssertion $trial 'ObserverCachedReaderClosedBeforeActorRelease' $(if($trial.ObserverReaderClose.Status -ceq 'OK'){'PASS'}else{'FAIL'}) 'Checked close releases only the observer cached reader; the original raw pin and raw-volume handle remain live while the actor still holds its old writer.' $trial.ObserverReaderClose
+        if($trial.ObserverReaderClose.Status -cne 'OK'){throw 'Observer cached reader close failed.'}
         if($CaseId -ceq 'A04'){
             $null=Invoke-ActivationInspector '--admission-trace-enable-lifetime' (Join-Path $evidenceDirectory 'activation-child-close-trace-enable') 45000;$traceEnabled=$true
             $null=Invoke-ActivationInspector '--admission-trace-clear' (Join-Path $evidenceDirectory 'activation-before-child-last-close-clear') 45000
@@ -4063,6 +4068,9 @@ function Invoke-ActivationObservation {
                 $(if($knownDegraded){'Service remained Degraded after exact Protected/Free promotion: '+$current.Value.admissionCoverageReason}else{'Ready status was not observed within 60s after promotion: '+$readyFailure}) $current
         }
 
+        $trial.ObserverReaderRebind=Open-InvariantActivationReader $context $fileId $preReleaseImages[0].Sha256 $preReleaseImages[0].Length
+        Add-ActivationAssertion $trial 'ObserverReaderReboundWithStableRawU' $(if($trial.ObserverReaderRebind.Status -ceq 'OK'){'PASS'}else{'FAIL'}) 'After native Protected promotion, reopen the same identity and require the exact pre-release raw U digest/length and raw/native identity/layout across the reader gap. No protected write stimulus has started.' $trial.ObserverReaderRebind
+        if($trial.ObserverReaderRebind.Status -cne 'OK'){throw 'Observer cached reader rebind or stable raw U validation failed.'}
         $promotionSample=Capture-InvariantSample $context $baseline 'RawImageAtPromotion' 3;$samples+=$promotionSample
         if($promotionSample.Status -ne 'OK'){throw ('Raw image capture after promotion failed: '+($promotionSample.Error | Out-String))}
         $trial.RawPromotionImage=@{FileId=$fileId;Images=$promotionSample.Images;Capture=$promotionSample;AfterProtectedEntry=$promoted.Record;AfterServiceReady=$readyStatus}

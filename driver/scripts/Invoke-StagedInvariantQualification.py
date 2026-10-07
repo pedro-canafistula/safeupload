@@ -448,6 +448,7 @@ ACTIVATION_REQUIRED_ASSERTIONS = {
     'OldHolderLowerCompletion', 'FreeAndProtectedAfterLastHolder', 'PromotionTraceForSameFileId',
     'ServiceReadinessReadyAfterPromotion', 'PostPromotionUnapprovedWriteRoutedToOwnedStream',
     'OwnedStreamJournalForExactDestination', 'PostPromotionRawDestinationUnchanged', 'Disposal',
+    'ObserverCachedReaderClosedBeforeActorRelease', 'ObserverReaderReboundWithStableRawU',
 }
 
 A04_REQUIRED_ASSERTIONS = ACTIVATION_REQUIRED_ASSERTIONS | frozenset((
