@@ -1,6 +1,7 @@
 using SafeUpload.Agent.Core.Application;
 using SafeUpload.Agent.Service.Dispatch;
 using SafeUpload.Agent.Service.Interception;
+using SafeUpload.Agent.Service.Network;
 using SafeUpload.Agent.Service.Notifications;
 using SafeUpload.Agent.Core.Infrastructure;
 using SafeUpload.Agent.Core.Infrastructure.Extraction;
@@ -27,6 +28,18 @@ public static class Program
     /// <summary>Monta e executa o host.</summary>
     public static async Task Main(string[] args)
     {
+        // Comandos de manutenção da CA de inspeção TLS ("ca install", "ca
+        // status", "ca remove"). Rodam e encerram, sem subir o serviço.
+        if (args.Length > 0 && string.Equals(args[0], "ca", StringComparison.OrdinalIgnoreCase))
+        {
+            // Sem isso o console do Windows usa a página de código antiga e os
+            // acentos das mensagens saem trocados.
+            Console.OutputEncoding = System.Text.Encoding.UTF8;
+
+            Environment.ExitCode = CertificateAuthorityCommand.Run(args[1..], Console.Out);
+            return;
+        }
+
         var builder = Host.CreateApplicationBuilder(args);
 
         builder.Services.AddWindowsService(options => options.ServiceName = ServiceName);

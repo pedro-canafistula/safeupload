@@ -17,6 +17,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SafeUpload.Minifilter.Probe
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SafeUpload.Fixtures", "SafeUpload.Fixtures\SafeUpload.Fixtures.csproj", "{B3C2815F-BD7B-4D71-BA3C-9FABA889BD48}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SafeUpload.Agent.Network", "SafeUpload.Agent.Network\SafeUpload.Agent.Network.csproj", "{E24FDA95-277A-451A-A059-35044702B354}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -111,6 +113,18 @@ Global
 		{B3C2815F-BD7B-4D71-BA3C-9FABA889BD48}.Release|x64.Build.0 = Release|Any CPU
 		{B3C2815F-BD7B-4D71-BA3C-9FABA889BD48}.Release|x86.ActiveCfg = Release|Any CPU
 		{B3C2815F-BD7B-4D71-BA3C-9FABA889BD48}.Release|x86.Build.0 = Release|Any CPU
+		{E24FDA95-277A-451A-A059-35044702B354}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{E24FDA95-277A-451A-A059-35044702B354}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{E24FDA95-277A-451A-A059-35044702B354}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{E24FDA95-277A-451A-A059-35044702B354}.Debug|x64.Build.0 = Debug|Any CPU
+		{E24FDA95-277A-451A-A059-35044702B354}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{E24FDA95-277A-451A-A059-35044702B354}.Debug|x86.Build.0 = Debug|Any CPU
+		{E24FDA95-277A-451A-A059-35044702B354}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{E24FDA95-277A-451A-A059-35044702B354}.Release|Any CPU.Build.0 = Release|Any CPU
+		{E24FDA95-277A-451A-A059-35044702B354}.Release|x64.ActiveCfg = Release|Any CPU
+		{E24FDA95-277A-451A-A059-35044702B354}.Release|x64.Build.0 = Release|Any CPU
+		{E24FDA95-277A-451A-A059-35044702B354}.Release|x86.ActiveCfg = Release|Any CPU
+		{E24FDA95-277A-451A-A059-35044702B354}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

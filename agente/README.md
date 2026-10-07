@@ -19,6 +19,7 @@ opcional**:
 | `SafeUpload.Agent.App` | Interface WPF (bandeja do sistema, tela de status/histórico, aviso de bloqueio) — só exibe, não decide nada |
 | `SafeUpload.Agent.Tests` | Testes automatizados (xUnit, sem framework de mock) |
 | `SafeUpload.Agent.Minifilter` | Biblioteca de protocolo que conecta o Service ao driver de kernel |
+| `SafeUpload.Agent.Network` | Inspeção TLS do tráfego web: CA local e certificados por host (Fase 1); proxy e desvio nas próximas fases ([plano](../docs/rede/PLANO-INSPECAO-TLS.md)) |
 
 Também existe `SafeUploadAgent/` — um protótipo visual WPF anterior (sem
 lógica) — e `driver/` na raiz do repositório, o driver de kernel
@@ -65,12 +66,30 @@ dotnet run
 Abre minimizada na bandeja do sistema — dê duplo clique no ícone para ver o
 painel.
 
+### CA da inspeção TLS
+
+A inspeção TLS usa uma CA gerada na própria máquina. Num terminal de
+administrador:
+
+```powershell
+cd SafeUpload.Agent.Service
+dotnet run -- ca install   # cria a CA (chave não exportável) e a põe em LocalMachine\Root
+dotnet run -- ca status    # mostra a CA e se está confiável
+dotnet run -- ca remove    # remove CA, confiança e chave (desinstalação)
+```
+
+`ca install` também liga a política `ImportEnterpriseRoots` do Firefox, que
+por padrão ignora as raízes do Windows.
+
 ### Rodar os testes
 
 ```powershell
 cd agente
 dotnet test SafeUpload.Agent.sln
 ```
+
+O teste que instala uma CA em `LocalMachine\Root` só roda com
+`SAFEUPLOAD_MACHINE_TESTS=1`, como administrador, numa máquina de teste.
 
 ---
 
@@ -122,6 +141,7 @@ agente/
 ├── SafeUpload.Agent.App/          # Interface WPF (bandeja + painel)
 ├── SafeUpload.Agent.Tests/        # Testes automatizados
 ├── SafeUpload.Agent.Minifilter/   # Protocolo de comunicação com o driver
+├── SafeUpload.Agent.Network/      # Inspeção TLS: CA local e certificados por host
 ├── SafeUpload.Fixtures/           # Gerador de arquivos de teste (.docx/.xlsx/.pdf)
 ├── SafeUpload.Minifilter.Probe/   # Ferramenta de teste do driver (sem lógica real)
 ├── SafeUploadAgent/                # Protótipo visual WPF anterior (sem lógica)
