@@ -432,6 +432,16 @@ def validate_service_artifacts(result, destination, guest_root):
                     'Agent absence event XML differs from retained bytes')
 
 
+ACTIVATION_REQUIRED_ASSERTIONS = {
+    'RuntimePendingUnionAndAdmissionEpoch', 'ServiceReadinessPendingWhileHolderLives',
+    'ExactActivatingWriterEvidence', 'NewWritableOpenDenied', 'NewWritableSectionDenied',
+    'NewWritableSectionAdmissionCallback', 'NoObservedReadyWhileHolderLives',
+    'OldHolderMutationAllowedAndRecorded', 'OldHolderStillActivatingAfterMutation',
+    'OldHolderLowerCompletion', 'FreeAndProtectedAfterLastHolder', 'PromotionTraceForSameFileId',
+    'ServiceReadinessReadyAfterPromotion', 'PostPromotionUnapprovedWriteRoutedToOwnedStream',
+    'OwnedStreamJournalForExactDestination', 'PostPromotionRawDestinationUnchanged', 'Disposal',
+}
+
 def case_gate(result, case, mode, name, params):
     require(result.get('Schema') == 'StagedInvariantSuite/2' and result.get('CaseId') == case and result.get('Mode') == mode
             and result.get('RunName') == name, 'Case JSON schema/run identity mismatch')
@@ -443,15 +453,7 @@ def case_gate(result, case, mode, name, params):
     boot = result.get('BootIds', {})
     require(all(isinstance(boot.get(k), str) and boot[k] for k in ('Prepare', 'Active', 'Final')) and len(set(boot.values())) == 3, 'Case boot identities incomplete')
     if case in ('A01', 'A02', 'A03'):
-        required = {
-            'RuntimePendingUnionAndAdmissionEpoch', 'ServiceReadinessPendingWhileHolderLives',
-            'ExactActivatingWriterEvidence', 'NewWritableOpenDenied', 'NewWritableSectionDenied',
-            'NewWritableSectionAdmissionCallback', 'NoObservedReadyWhileHolderLives',
-            'OldHolderMutationAllowedAndRecorded', 'OldHolderStillActivatingAfterMutation',
-            'OldHolderLowerCompletion', 'FreeAndProtectedAfterLastHolder', 'PromotionTraceForSameFileId',
-            'ServiceReadinessReadyAfterPromotion', 'PostPromotionUnapprovedWriteRoutedToOwnedStream',
-            'OwnedStreamJournalForExactDestination', 'PostPromotionRawDestinationUnchanged', 'Disposal',
-        }
+        required = ACTIVATION_REQUIRED_ASSERTIONS
         passed = (result.get('Verdict') == 'PASS' and result.get('CaseStatus') == 'READY'
                   and result.get('ForbiddenByteCount') == 0)
         for trial in result['Trials']:
@@ -479,6 +481,135 @@ def case_gate(result, case, mode, name, params):
             if valid:
                 passed &= sorted(durations)[math.ceil(.95 * len(durations)) - 1] <= 250 and max(durations) <= 1000
     return bool(passed)
+
+
+MVP_DEFERRED_EXACT = frozenset((
+    'PredicateCoverage', 'NoUnapprovedByte', 'CadenceCoverage', 'CadenceGap',
+    'ExternalCoverage', 'NeverReadyWholeHolderInterval', 'LiveTaintFlags',
+))
+MVP_BUILD_HASHES = ('Feature', 'Inspector', 'ServicePackage', 'ServiceTree')
+
+
+def mvp_write_path(case):
+    return {'C01': 'cached-write', 'C02': 'mapped-write', 'C03': 'overwrite',
+            'C04': 'replacement-save', 'C05': 'external-rename'}.get(case[:3], case)
+
+
+def mvp_latency_passed(evidence, result, classes):
+    """Recompute dedicated unheld samples; a reported verdict alone is insufficient."""
+    if not evidence or evidence.get('Schema') != 'StagedInvariantLatency/1':
+        return False
+    if (evidence.get('WritePath') != mvp_write_path(result.get('CaseId', ''))
+            or evidence.get('Mode') != result.get('Mode')
+            or evidence.get('RestorationClean') is not True
+            or evidence.get('Errors') or not evidence.get('RunName')):
+        return False
+    if any(not re.fullmatch(r'[A-F0-9]{64}', result.get('InputHashes', {}).get(k, ''))
+           or evidence.get('InputHashes', {}).get(k) != result['InputHashes'][k]
+           for k in MVP_BUILD_HASHES):
+        return False
+    records = evidence.get('Latency', [])
+    if not classes or len(records) != len(classes) or {c.get('Class') for c in records} != set(classes):
+        return False
+    for record in records:
+        samples = record.get('Samples', [])
+        if not samples or record.get('Verdict') != 'PASS':
+            return False
+        if any(s.get('Held') is not False or type(s.get('Cold')) is not bool
+               or type(s.get('Ms')) not in (int, float)
+               or not math.isfinite(s['Ms']) or s['Ms'] < 0 for s in samples):
+            return False
+        warm = sorted(s['Ms'] for s in samples if not s['Cold'])
+        if (len(warm) < 100 or not any(s['Cold'] for s in samples)
+                or warm[math.ceil(.95 * len(warm)) - 1] > 250
+                or max(s['Ms'] for s in samples) > 1000):
+            return False
+    return True
+
+
+def mvp_case_gate(result, latency_evidence=None):
+    """Separate MVP assessment, after the existing identity/provenance/lifecycle gates."""
+    deferred, blockers = set(), set()
+    restoration = result.get('Restoration') or {}
+    if (result.get('Schema') != 'StagedInvariantSuite/2'
+            or result.get('AuthoritativeCaseExport') is not True
+            or result.get('CaseStatus') != 'READY'
+            or result.get('Verdict') not in ('PASS', 'INCONCLUSIVE')
+            or type(result.get('ForbiddenByteCount')) is not int
+            or result['ForbiddenByteCount'] != 0 or result.get('Errors')):
+        blockers.add('CasePrerequisites')
+    if (restoration.get('Known') is not True or restoration.get('GuestChecks') is not True
+            or not restoration.get('IndependentBaseline')
+            or not re.fullmatch(r'[A-F0-9]{64}', restoration.get('IndependentBaselineSha256', ''))):
+        blockers.add('RestorationClean')
+    trials = result.get('Trials', [])
+    if len(trials) != 1:
+        blockers.add('Trials')
+    for trial in trials:
+        if (trial.get('Verdict') not in ('PASS', 'INCONCLUSIVE')
+                or type(trial.get('ForbiddenByteCount')) is not int
+                or trial['ForbiddenByteCount'] != 0
+                or trial.get('Disposal', {}).get('Status') != 'OK' or trial.get('Errors')):
+            blockers.add('TrialPrerequisites')
+        predicate = trial.get('Predicate') or {}
+        if predicate.get('Verdict', 'PASS') not in ('PASS', 'INCONCLUSIVE') or predicate.get('Errors'):
+            blockers.add('PredicatePrerequisites')
+        assertions = trial.get('Assertions', [])
+        if not assertions:
+            blockers.add('Assertions')
+        if result.get('CaseId') in ('A01', 'A02', 'A03'):
+            missing = ACTIVATION_REQUIRED_ASSERTIONS - {a.get('Name') for a in assertions}
+            blockers.update('Missing:' + name for name in missing)
+        assertions = assertions + predicate.get('Assertions', [])
+        classes = [c.get('Class') for c in trial.get('Latency', [])]
+        latency_ok = mvp_latency_passed(latency_evidence, result, classes)
+        for assertion in assertions:
+            name, verdict = assertion.get('Name', ''), assertion.get('Verdict')
+            if verdict == 'PASS':
+                continue
+            allowed = (name in MVP_DEFERRED_EXACT or
+                       bool(name[:-len('PublicationAndTemporalCoverage')]) and name.endswith('PublicationAndTemporalCoverage') or
+                       bool(name[:-len('UnheldLatency')]) and name.endswith('UnheldLatency') and latency_ok)
+            if verdict == 'INCONCLUSIVE' and allowed:
+                deferred.add(name)
+            else:
+                blockers.add(name or 'UnnamedAssertion')
+        for item in trial.get('Latency', []):
+            if item.get('Verdict') == 'FAIL':
+                blockers.add('Latency:' + str(item.get('Class')))
+            elif item.get('Verdict') != 'PASS' and not latency_ok:
+                blockers.add('Latency:' + str(item.get('Class')))
+        if classes and not latency_ok:
+            # Functional samples cannot stand in for the mandatory dedicated run.
+            blockers.add('DedicatedUnheldLatency')
+    def failures(value):
+        if isinstance(value, dict):
+            if value.get('Verdict') == 'FAIL' or value.get('Errors'):
+                return True
+            return any(failures(v) for v in value.values())
+        return isinstance(value, list) and any(failures(v) for v in value)
+    if failures(result):
+        blockers.add('FailureOrErrorsInEvidence')
+    return {'MvpGatePassed': not blockers, 'MvpDeferred': sorted(deferred),
+            'MvpBlockers': sorted(blockers)}
+
+
+def mvp_required_rows(rows):
+    required = {'S00-observer-control', 'S01-denied-write-after-boot', 'S02-agent-down-open-refused',
+                *('A%02d' % n for n in range(1, 6)), 'B01', 'B02', 'R01', 'R02', 'R03', 'X01'}
+    for family in ('C01', 'C02', 'C03', 'C04', 'C05'):
+        variants = {case for case in rows if case.startswith(family + '-')}
+        required.update(variants or {family})
+    return required
+
+
+def mvp_suite_passed(outcomes, rows):
+    expected = {(case, mode) for case in mvp_required_rows(rows) for mode in MODES}
+    selected = [(item['CaseId'], item['Mode']) for item in outcomes]
+    return (len(selected) == len(set(selected)) and expected <= set(selected)
+            and all(item.get('MvpGatePassed') is True for item in outcomes
+                    if (item['CaseId'], item['Mode']) in expected))
+
 
 
 def run_case(args, case, mode, ev, files, package, tree_hash, provenance):
@@ -565,9 +696,11 @@ def run_case(args, case, mode, ev, files, package, tree_hash, provenance):
         attest_external_coverage(result)
         passed = case_gate(result, case, mode, name, params)
         result['GatePassed'] = passed
+        assessment = mvp_case_gate(result, getattr(args, 'mvp_latency_record', None))
+        result.update(assessment)
         write_new(provisional, json.dumps(result, indent=2) + '\n')
         return {'CaseId': case, 'Mode': mode, 'RunName': name, 'Verdict': result['Verdict'], 'GatePassed': passed,
-                'ForbiddenByteCount': result.get('ForbiddenByteCount'), 'RestorationClean': True, 'Result': str(provisional), 'ResultSha256': sha(provisional)}
+                **assessment, 'ForbiddenByteCount': result.get('ForbiddenByteCount'), 'RestorationClean': True, 'Result': str(provisional), 'ResultSha256': sha(provisional)}
 
 
 def main():
@@ -575,6 +708,7 @@ def main():
     for value in ('tag', 'driver_label', 'source_commit', 'agent_label', 'policy_sha'):
         parser.add_argument(value)
     parser.add_argument('--agent-source-commit', default='HEAD')
+    parser.add_argument('--mvp-latency-evidence', type=Path, help='Dedicated unheld latency JSON; pinned with this run')
     parser.add_argument('--cases', nargs='+')
     parser.add_argument('--modes', nargs='+', choices=MODES)
     args = parser.parse_args()
@@ -592,6 +726,10 @@ def main():
     modes = args.modes or list(MODES)
     require(len(cases) == len(set(cases)) and set(cases) <= rows.keys() and len(modes) == len(set(modes)), 'Unknown/duplicate selection')
     files, package, tree_hash, provenance = build_inputs(args, commit, agent_commit, head)
+    args.mvp_latency_record = None
+    if args.mvp_latency_evidence:
+        args.mvp_latency_record = json.loads(args.mvp_latency_evidence.read_text('utf-8-sig'))
+        provenance['MvpLatencyEvidence'] = {'Path': str(args.mvp_latency_evidence.resolve()), 'Sha256': sha(args.mvp_latency_evidence)}
     ev = ROOT / 'driver/evidence' / datetime.date.today().isoformat()
     ev.mkdir(parents=True, exist_ok=True)
     index = ev / ('phase4-suite-' + args.tag + '-index.txt')
@@ -609,6 +747,10 @@ def main():
                 shutil.copyfileobj(inp, out)
                 out.flush();os.fsync(out.fileno())
             retained[str(destination)] = sha(destination)
+    if args.mvp_latency_evidence:
+        latency_copy = frozen / 'mvp-latency-evidence.json'
+        write_new(latency_copy, json.dumps(args.mvp_latency_record, indent=2) + '\n')
+        retained[str(latency_copy)] = sha(latency_copy)
     provenance['RetainedInputs'] = retained
     outcomes = []
     aborted = False
@@ -631,6 +773,8 @@ def main():
                     known_failure = (ev / (failed_name + '-final-restored-state.txt')).exists() and not clean_baseline(ev / (failed_name + '-final-restored-state.txt'))
                     item = {'CaseId': case, 'Mode': mode, 'RunName': failed_name, 'Verdict': 'FAIL' if known_failure else 'INCONCLUSIVE',
                             'Reason': str(error), 'GatePassed': False, 'RetainedFailurePrefix': str(ev / failed_name)}
+            item.setdefault('MvpGatePassed', False)
+            item.setdefault('MvpDeferred', [])
             outcomes.append(item)
             with index.open('a') as stream:
                 stream.write(json.dumps(item, sort_keys=True) + '\n');stream.flush();os.fsync(stream.fileno())
@@ -639,6 +783,8 @@ def main():
     phase4_pass = complete and selected_pass
     # WP3 seed-only rows and NotReady families intentionally make full qualification impossible.
     verdict = f'SelectedInvariantGate={"PASS" if selected_pass else "FAIL"}\nPhase4Suite={"PASS" if phase4_pass else "FAIL"}\nCompleteTableAndModes={complete}\n'
+    verdict += ('SelectedMvpGate=' + ('PASS' if outcomes and all(i['MvpGatePassed'] for i in outcomes) else 'FAIL') + '\n'
+                + 'MvpSuite=' + ('PASS' if mvp_suite_passed(outcomes, rows) else 'FAIL') + '\n')
     with index.open('a') as stream:
         stream.write(verdict);stream.flush();os.fsync(stream.fileno())
     print(verdict, end='')
