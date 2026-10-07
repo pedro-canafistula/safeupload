@@ -1595,12 +1595,17 @@ static NTSTATUS StageResize(PSTAGE_STREAM Stream, PFILE_OBJECT FileObject, LARGE
     if (Size.QuadPart < 0 || Size.QuadPart > STAGE_MAX_BYTES) return STATUS_FILE_TOO_LARGE;
     if (Size.QuadPart < Stream->Header.FileSize.QuadPart &&
         !MmCanFileBeTruncated(&Stream->Sections, &Size)) return STATUS_USER_MAPPED_FILE;
-    if (Size.QuadPart > Stream->Header.FileSize.QuadPart) {
-        status = StageFlushUpper(Stream);
-        if (!NT_SUCCESS(status)) return status;
-    }
-    status = IoGetTopLevelIrp() == NULL ? StageResizeBacking(Stream, Size) :
-        StagePostResizeBacking(Stream, Size);
+    /* The upper flush stays on this thread even when recursive: in C02 this thread is still
+     * creating the control area, so a cross-thread MmFlushSection could wait on it. */
+    status = STATUS_SUCCESS;
+    if (Size.QuadPart > Stream->Header.FileSize.QuadPart) status = StageFlushUpper(Stream);
+    if (NT_SUCCESS(status)) status = IoGetTopLevelIrp() == NULL ?
+        StageResizeBacking(Stream, Size) : StagePostResizeBacking(Stream, Size);
+    /* A recursive caller may be section creation, which retries these statuses forever.
+     * Fail instead of livelocking. */
+    if (IoGetTopLevelIrp() != NULL &&
+        (status == STATUS_FILE_LOCK_CONFLICT || status == (NTSTATUS)0xC0000476L))
+        status = STATUS_UNEXPECTED_IO_ERROR;
     if (!NT_SUCCESS(status)) return status;
     Stream->Header.FileSize = Size;
     Stream->Header.AllocationSize.QuadPart = (Size.QuadPart + PAGE_SIZE - 1) & ~((LONGLONG)PAGE_SIZE - 1);
@@ -3359,7 +3364,10 @@ static FLT_PREOP_CALLBACK_STATUS StageDispatchCore(PFLT_CALLBACK_DATA Data,
 #endif
         result = SafeUploadPreCleanup(Data, Objects, CompletionContext);
 #if SAFEUPLOAD_STAGING_PROTOTYPE
-        if (result == FLT_PREOP_SUCCESS_NO_CALLBACK) return FLT_PREOP_SUCCESS_WITH_CALLBACK;
+        /* Synchronize: post-cleanup writer processing calls PAGE code (SafeUploadInstanceIsTrusted),
+         * and a plain post-op may run at DISPATCH_LEVEL. */
+        if (result == FLT_PREOP_SUCCESS_NO_CALLBACK || result == FLT_PREOP_SUCCESS_WITH_CALLBACK)
+            return FLT_PREOP_SYNCHRONIZE;
 #endif
         return result;
 #if SAFEUPLOAD_STAGING_PROTOTYPE
