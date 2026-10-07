@@ -178,7 +178,7 @@ exit $code
     $suffix=$suffix.Replace('__TOKEN__',$Token).Replace('__DONE__',(ConvertTo-PowerShellLiteral $Done))
     return $prefix+$preamble+"`n"+$Body+"`n"+$suffix
 }
-function Register-SystemTask([string]$Name,[string]$Launcher,[switch]$AtStartup,[ValidateRange(1,240)][int]$ExecutionMinutes=15) {
+function Register-SystemTask([string]$Name,[string]$Launcher,[switch]$AtStartup,[ValidateRange(0,240)][int]$ExecutionMinutes=15) {
     if(Get-ScheduledTask -TaskName $Name -ErrorAction SilentlyContinue){throw 'Task collision'}
     $action=New-ScheduledTaskAction -Execute 'powershell.exe' -Argument ('-NoProfile -ExecutionPolicy Bypass -File "'+$Launcher+'"')
     $principal=New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
@@ -1101,6 +1101,15 @@ function ConvertFrom-ActivationTrace([string]$Raw,[string]$FileId) {
     $writeEnds=@($entries|Where-Object {$_.event -eq 'w_end' -and $_.ioStatus -eq '0x00000000' -and ([Convert]::ToUInt32($_.completionFlags.Substring(2),16) -band 1) -ne 0})
     $pairs=@();foreach($end in $writeEnds){$begin=@($entries|Where-Object {$_.event -eq 'w_begin' -and [uint64]$_.ticketSequence -eq [uint64]$end.ticketSequence -and $_.writeOffset -eq $end.writeOffset -and $_.writeLength -eq $end.writeLength});if($begin.Count -eq 1){$pairs+=@{Begin=$begin[0];End=$end}}}
     return [pscustomobject]@{Summary=$summaries[0];Entries=$entries;CompletedWritePairs=$pairs;PayloadSha256Available=$false;Reason='Diagnostic W_BEGIN/W_END records carry file ID, offset, length, status and completion, but no lower payload digest.'}
+}
+function Get-ActivationQuiescedWriteTrace([string]$FileId) {
+    # DISABLE refuses outstanding observer W tickets. A successful acknowledgment
+    # freezes the write window before raw collection and trace output generate
+    # unrelated I/O. Every loss still rejects the retained trace.
+    $disabled=Invoke-ActivationInspector '--admission-trace-disable' (Join-Path $evidenceDirectory 'activation-old-write-trace-disable') 45000
+    if($disabled.Trim() -cne 'admission trace disable: OK'){throw 'Admission write trace disable acknowledgment unavailable'}
+    $raw=Invoke-ActivationInspector '--admission-trace' (Join-Path $evidenceDirectory 'activation-old-holder-admission-trace') 45000
+    return ConvertFrom-ActivationTrace $raw $FileId
 }
 function ConvertFrom-ActivationPromotionTrace([string]$Raw,[string]$FileId) {
     $records=@()
@@ -3204,7 +3213,8 @@ function Invoke-CachedObservation {
             $fence.ReleasedQpc=$trial.R01PostRestartBefore.EndQpc
             $proof=Test-NotificationWindow $trial.R01PostRestartBefore.Notifications $trial.ServiceAfter.Notifications $fence $true
             $trial.Assertions+=Test-R01ReleasedOnce $terminal $proof $actor.SessionId $digest
-        }else{        $proof=Test-CachedBlockNotificationWindow $trial.ServiceBefore.Notifications $trial.ServiceAfter.Notifications $fence $trial.BlockWindowClosure.Restart
+        }else{
+        $proof=Test-CachedBlockNotificationWindow $trial.ServiceBefore.Notifications $trial.ServiceAfter.Notifications $fence $trial.BlockWindowClosure.Restart
         if($null -ne $trial.BlockWindowClosure){
             $noRelease=Test-CachedBlockNoRelease $proof $terminal.TransferId;$trial.Assertions+=$noRelease
             $trial.BlockWindowClosure.NotificationProof=$proof;$trial.BlockWindowClosure.RequiredAssertions+=$noRelease
@@ -3214,8 +3224,7 @@ function Invoke-CachedObservation {
             $umbrella[0].Reason+=' Notification no-release proof='+$noRelease.Verdict+'.'
             Save-State $trial.BlockWindowClosure (Join-Path $evidenceDirectory 'block-window-closure.clixml')
         }
-}
-
+        }
         $trial.ServiceEvidence=@{JournalDelta=$delta;NotificationProof=$proof;OperationFence=$fence;TrustBoundary='Existing SYSTEM/Administrators same-handle proof adapters'}
         $trial.Journal=$trial.ServiceAfter.Journal;$trial.Notifications=$proof.Emissions
         $trial.Assertions+=@{Name='JournalDelta';Verdict=$(if($delta.Findings.Count){'FAIL'}elseif($delta.Complete){'PASS'}else{'INCONCLUSIVE'});Reason=(@($delta.Failures)+@($delta.Findings) -join '; ')}
@@ -3788,6 +3797,9 @@ function Invoke-ActivationObservation {
                 ('First MapViewOfFile after admission epoch returned Win32 '+$lateMap.NativeCode+'.') $lateMap
         }
 
+        # Section admission was checked above. This window needs lower writes
+        # only; lifetime events are re-enabled for A04's last-close proof below.
+        $null=Invoke-ActivationInspector '--admission-trace-enable' (Join-Path $evidenceDirectory 'activation-old-write-trace-write-only') 45000
         $clearOldPrefix=Join-Path $evidenceDirectory ('activation-old-write-trace-clear-'+[guid]::NewGuid().ToString('N'))
         $null=Invoke-ActivationInspector '--admission-trace-clear' $clearOldPrefix 45000
         $changes=@();$changeOffsets=@(64,[int]($pBytes.Length/2),($pBytes.Length-160));$changeIndex=0
@@ -3797,6 +3809,8 @@ function Invoke-ActivationObservation {
         # On failure keep the admission trace of the refused operation (file object, instance, SOP, IRP flags, W tickets).
         try{$oldWrite=Publish-ActivationActorCommand $state 'write-old' @{Changes=$changes} $probeActorKey}
         catch{try{$null=Invoke-ActivationInspector '--admission-trace' (Join-Path $evidenceDirectory 'activation-old-write-failure-trace') 45000}catch{};throw}
+        $trace=Get-ActivationQuiescedWriteTrace $fileId;$traceEnabled=$false
+        $trial.OldHolderAdmissionTrace=$trace
         if($CaseId -ceq 'A04'){$childAfter=Get-ServiceSnapshot 'a04-after-child-write';$handBackAfter=Get-ActivationHandBackInventory $duplicateActor;Test-ActivationChildWindow $trial $childBefore $childAfter $oldWrite $handBackBefore $handBackAfter $target $actor $duplicateActor}
         $trial.Operations+=@($oldWrite.Calls);$trial.OldHolderMutation=$oldWrite
         $oldApiGood=($oldWrite.NativeCode -eq 0 -and $oldWrite.FlushCode -eq 0 -and @($oldWrite.Calls | Where-Object NativeCode -ne 0).Count -eq 0)
@@ -3819,9 +3833,6 @@ function Invoke-ActivationObservation {
             $preReason=if($preDifference.Status -ne 'OK'){$preDifference.Reason}elseif([long]$preDifference.DifferingBytes -gt 0){'Raw allocated DATA extents changed before promotion; those allowed pre-protection bytes are recorded here and excluded from ForbiddenByteCount.'}else{'Old-holder API and lower write evidence exist, but this raw capture shows no persisted DATA-byte delta before release.'}
             Add-ActivationAssertion $trial 'PreProtectionRawMutation' $preVerdict $preReason $preDifference
         }
-        $traceText=Invoke-ActivationInspector '--admission-trace' (Join-Path $evidenceDirectory 'activation-old-holder-admission-trace') 45000
-        $trace=ConvertFrom-ActivationTrace $traceText $fileId
-        $trial.OldHolderAdmissionTrace=$trace
         if($CaseId -ceq 'A04' -and @($trace.CompletedWritePairs | Where-Object {$_.Begin.targetFileObject -cne $trial.DuplicateSetup.PhysicalObjectProof.Object}).Count){throw 'Child lower writes did not target the trusted shared physical file object'}
         $lowerCorrelations=@()
         foreach($change in $changes){
@@ -3866,7 +3877,10 @@ function Invoke-ActivationObservation {
         $readinessSampleReason=if($readyWhileHeld.Count -gt 0){'At least one authenticated current service status reported Ready before last-holder release.'}elseif($readinessSampleVerdict -eq 'PASS'){'Every current status sample at the policy-acceptance, pre-mutation, and post-mutation checkpoints was authenticated, active, at the accepted generation, and non-Ready.'}else{'One or more holder-interval service status samples were missing, unauthenticated, inactive, or at another generation; sampled never-Ready evidence is incomplete.'}
         Add-ActivationAssertion $trial 'NoObservedReadyWhileHolderLives' $readinessSampleVerdict $readinessSampleReason @($trial.ReadinessSamplesWhileHolder | ForEach-Object {if($_.Status -eq 'OK'){@{Tag=$_.Tag;Coverage=$_.Value.admissionCoverage;Generation=$_.Value.nativePolicyGeneration;Qpc=$_.EndQpc}}else{@{Tag=$_.Tag;Status=$_.Status;Reason=$_.Reason}}})
         Close-ActivationNotificationCapture
-        if($CaseId -ceq 'A04'){$null=Invoke-ActivationInspector '--admission-trace-clear' (Join-Path $evidenceDirectory 'activation-before-child-last-close-clear') 45000}
+        if($CaseId -ceq 'A04'){
+            $null=Invoke-ActivationInspector '--admission-trace-enable-lifetime' (Join-Path $evidenceDirectory 'activation-child-close-trace-enable') 45000;$traceEnabled=$true
+            $null=Invoke-ActivationInspector '--admission-trace-clear' (Join-Path $evidenceDirectory 'activation-before-child-last-close-clear') 45000
+        }
         $release=Publish-ActivationActorCommand $state 'release-holder' $null $probeActorKey
         if(-not $release.HolderReleased -or $release.NativeCode -ne 0){throw ('Last pre-scope holder release failed: Win32 '+$release.NativeCode)}
         $trial.LastHolderRelease=$release;$script:ActivationHolderLive=$false

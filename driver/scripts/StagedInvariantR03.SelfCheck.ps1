@@ -7,7 +7,7 @@ try {
     $tokens=$null;$errors=$null
     $ast=[Management.Automation.Language.Parser]::ParseFile((Join-Path $PSScriptRoot 'Test-StagedInvariantSuite.ps1'),[ref]$tokens,[ref]$errors)
     if($errors.Count){throw ($errors | Out-String)}
-    foreach($name in @('Test-R03OfflineCalls','Test-R03ServiceReady','Test-R03HandBackAbsent','Test-R03BaseSample','Test-R03OutcomeSample','Get-R03WriterBody','Get-WriterBody','Get-ExpectedCheckpoint','Test-CachedImage')){
+    foreach($name in @('Test-R03OfflineCalls','Test-R03ServiceReady','Test-R03HandBackAbsent','Test-R03BaseSample','Test-R03OutcomeSample','Get-R03WriterBody','Get-B02JustificationClientBody','Get-WriterBody','Get-ExpectedCheckpoint','Test-CachedImage')){
         $defs=@($ast.FindAll({param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -ceq $name},$false))
         if($defs.Count -ne 1){throw ('Missing/ambiguous R03 function: '+$name)}
         Invoke-Expression ($defs[0].Extent.Text.Replace(('function '+$name),('function script:'+$name)))

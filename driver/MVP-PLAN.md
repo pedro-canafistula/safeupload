@@ -1461,3 +1461,52 @@ The safe W01 checkpoint parent was written by Sol and checked by root: Windows P
   refused: Luna is analysing StagePhysicalMutationEx's fail-closed path for untracked writers.
 - [x] Merged into the MVP branch: R03, R01, B01, X01, A05 core rows and the second-user hand-back check (21 Ready
   rows); merged harness PS 5.1 gate PASS. B02 (interactive session) and R02 (post-apply stop) in progress.
+
+## 2026-10-07 goal continuation
+
+The owner requested continued MVP work as an active goal. Scope remains the local fixed-NTFS
+19045.2965 MVP and the existing strict and MVP gates. A fresh independent debuggee baseline
+reported `BaselineClean=True` before run `goalr1` (C02 APPROVE, runtime Verifier, exact b18
+driver and b20 agent). No VM run was in flight at the start of this continuation.
+
+Integration decision, before changing the combined case contracts: retain the completed
+`46800219` B02 interactive two-version justification and R02 finalized-policy restart cores,
+and `e8ae370d` C01/C03/C04 BLOCK expiry/cleanup proof. These were already authored and
+Windows-validated on `feat/mvp-rows-b` but not merged into the MVP branch. Preserve the newer
+second-standard-user denial proof, R01/R03 lifecycle, notification-fence retries, lightweight
+latency polling, and MFT refresh/error capture from the current branch. The combined BLOCK
+contracts require both second-user denial and expiry closure; no assertion or release gate
+is relaxed. Combined contracts get fresh revisions and a new Windows gate before VM use.
+
+- [x] Integrated B02/R02 and BLOCK expiry cores in `fb898aa9` / `594cbd0d`, with newer second-user, R01/R03, observer and notification checks preserved. Combined table revision 6 has 23 Ready variants. Windows PS5.1 full gate PASS: `evidence/2026-10-07/harness-windows-gate-goal-trace-1.txt`; all 13 self-checks exit 0 (including 14 trace/task-boundary controls), zero parse errors; 52 host Python tests PASS. Final runtime qualification remains pending.
+- [ ] Rerun the current failing functional cases with the repaired harness.
+- [ ] Finish live taint evidence, dedicated latency, all three VM modes and Phase 5 review.
+
+Activation diagnostic change: A01/A03 b18 runs stopped on genuine global recorder
+loss (for example A01 lostEntries=4, snapshot 2984; collection continued to totalEvents
+12734). Before changing diagnostics, retain that evidence as INCONCLUSIVE. The old-write
+window now enables existing write-only recording, clears before the actor mutations,
+and disables/drains immediately after the actor flush before raw capture and output.
+The same loss-free paired lower completion and exact file-ID/range checks still apply;
+all losses and incomplete snapshots remain fatal. A04 explicitly re-enables lifetime
+recording and clears before the last child close. No product or protection logic changed.
+
+The BLOCK expiry integration also exposed a task-helper parameter bug: the collector
+uses duration zero while its authenticated product-expiry/QPC deadline bounds the
+observation, but Register-SystemTask rejected zero. The helper now accepts 0..240;
+negative and >240 values still fail, verified with mocked task binding on Windows.
+R03/RowsA self-checks now import the new real-pipe code generator dependency.
+
+Run `goalr1` (C02 APPROVE runtime Verifier) completed with ForbiddenByteCount=0, no
+Errors or FAIL assertions, and independent restoration clean. Every remaining MVP
+blocker is dedicated latency (`C02UnheldLatency`, `DedicatedUnheldLatency`, and the
+eight operation-class latency rows). Notification/final raw checks now pass. Strict
+GatePassed and MvpGatePassed remain false; retained case: `evidence/2026-10-07/boot-start-invariant-C02-approve-absent-runtime-verifier-goalr1-artifacts/case.json`.
+Run `goallatmap1` is the 101-round mapped-path dedicated latency qualification on the
+same pinned b18 driver / b20 service, using the already validated lightweight harness.
+
+Live taint investigation confirmed the earlier limitation: Control 24 reads actual
+PolicyFlags, but there is no TEST_DISABLE_TAINT policy bit in the product. Do not
+interpret that receipt, zero counters, or the unavailable promotion field as proof
+that taint is disabled. A feature-only product implementation/readback and its
+qualification remain MVP work; no allowlist or scope has been changed here.

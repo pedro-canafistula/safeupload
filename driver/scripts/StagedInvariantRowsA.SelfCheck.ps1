@@ -7,7 +7,7 @@ try {
     $tokens=$null;$errors=$null
     $ast=[Management.Automation.Language.Parser]::ParseFile((Join-Path $PSScriptRoot 'Test-StagedInvariantSuite.ps1'),[ref]$tokens,[ref]$errors)
     if($errors.Count){throw ($errors | Out-String)}
-    foreach($name in @('Get-WriterBody','Get-R01WriterBody','Get-B01WriterBody','Get-CachedSecondUserBody','Test-R01OfflineCalls','Test-R01OfflineAbsent','Test-R01HeldRecovery','Test-R01HeldNotifications',
+    foreach($name in @('Get-B02JustificationClientBody','Get-WriterBody','Get-R01WriterBody','Get-B01WriterBody','Get-CachedSecondUserBody','Test-R01OfflineCalls','Test-R01OfflineAbsent','Test-R01HeldRecovery','Test-R01HeldNotifications',
         'Test-R01JournalSequence','Test-R01ActorCalls','Test-R01OutcomeSample','Test-R01ReleasedOnce','Test-B01JunctionReceipt','Test-B01FailedHandBack','Test-B01FailureNotification',
         'Test-B01SentinelSample','Test-B01FailureAudit','Test-AgentLogContinuity','ConvertFrom-AgentEventXml','Test-CachedSecondUserDenial','Test-CachedActorCalls','Test-CachedSample','Test-CachedImage')){
         $defs=@($ast.FindAll({param($node)$node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -ceq $name},$false))
