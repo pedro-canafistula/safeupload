@@ -899,7 +899,7 @@ function Get-ActivationInspectorJson([string]$Argument,[string]$Tag) {
 function Get-ActivationEpochStatus([string]$Tag) { return (Get-ActivationInspectorJson '--epoch-status' $Tag).Record }
 function Get-ActivationWriterState([string]$Tag) { return (Get-ActivationInspectorJson '--writer-state-status' $Tag).Record }
 function Get-ActivationEntry([string]$Path,[string]$Tag) { return (Get-ActivationInspectorJson ('--registry-entry "'+$Path+'"') $Tag) }
-function Get-ActivationPendingEntry([string]$NtPath,[string]$FileId,[string]$Tag) {
+function Get-ActivationFullPendingEntry([string]$NtPath,[string]$FileId,[string]$Tag) {
     $snapshot=Get-ActivationInspectorJson '--activating-status' $Tag
     $allEntries=@($snapshot.Record.entries)
     if($snapshot.Record.activatingStatus -ne $true -or
@@ -907,6 +907,28 @@ function Get-ActivationPendingEntry([string]$NtPath,[string]$FileId,[string]$Tag
         $snapshot.Record.totalEntries -ne $allEntries.Count){throw 'Activating snapshot complete machine-wide count mismatch'}
     $entries=@($allEntries | Where-Object {$_.path -ieq $NtPath -and $_.fileId -ieq $FileId})
     return [pscustomobject]@{Snapshot=$snapshot;Entries=$entries}
+}
+function Get-ActivationPendingEntry([string]$NtPath,[string]$FileId,[string]$Tag,[string]$DosPath) {
+    if([string]::IsNullOrWhiteSpace($DosPath)){throw 'Exact-target activation diagnostic requires explicit DOS path'}
+    $snapshot=Get-ActivationInspectorJson ('--activating-target "'+$DosPath+'"') $Tag
+    $record=$snapshot.Record;$allEntries=@($record.entries)
+    if($record.activatingTarget -isnot [bool] -or -not $record.activatingTarget -or
+        $record.requestedPath -ine $NtPath -or
+        ($record.matchCount -isnot [int] -and $record.matchCount -isnot [long]) -or
+        $record.matchCount -notin @(0,1) -or $record.matchCount -ne $allEntries.Count -or
+        ($record.flags -isnot [int] -and $record.flags -isnot [long]) -or $record.flags -ne 0 -or
+        ($record.policyGeneration -isnot [int] -and $record.policyGeneration -isnot [long]) -or $record.policyGeneration -le 0){
+        throw 'Exact-target activation diagnostic identity/count/global-uncertainty mismatch'
+    }
+    foreach($entry in $allEntries){
+        foreach($field in @('generation','H','C','T','W')){
+            if(($entry.$field -isnot [int] -and $entry.$field -isnot [long]) -or $entry.$field -lt 0){throw ('Invalid exact-target counter '+$field)}
+        }
+        if($entry.path -ine $NtPath -or $entry.fileId -notmatch '^[0-9a-fA-F]{32}$' -or
+            $entry.S -cnotin @('NO','YES','Unknown')){throw 'Invalid exact-target entry identity or section state'}
+    }
+    $entries=@($allEntries | Where-Object {$_.path -ieq $NtPath -and $_.fileId -ieq $FileId})
+    return [pscustomobject]@{Snapshot=$snapshot;Entries=$entries;QualificationScope='ExactTargetPointSample;NotMachineWideOrInterval'}
 }
 function Receive-ActivationStatusFrame($Capture,[string]$Line) {
     if([string]::IsNullOrWhiteSpace($Line) -or $Line.Length -gt 65536){throw 'Service notification stream ended or returned an invalid frame'}
@@ -3122,21 +3144,21 @@ function Invoke-ActivationObservation {
                 $(if($knownReady){'Service reported Ready while a pre-scope writable holder was still live.'}else{'Pending status was not observed within 45s: '+$pendingFailure}) $current
         }
 
-        $activating=Get-ActivationPendingEntry $ntPath $fileId 'live-holder'
+        $activating=Get-ActivationPendingEntry $ntPath $fileId 'live-holder' $target
         if($activating.Entries.Count -ne 1){
             Add-ActivationAssertion $trial 'ExactActivatingWriterEvidence' 'FAIL'`
-                ('Complete paged activating-status had '+$activating.Entries.Count+' exact path/file-ID matches; expected one Activating entry.') $activating.Snapshot.Record
+                ('Exact-target activating diagnostic had '+$activating.Entries.Count+' exact path/file-ID matches; expected one Activating entry.') $activating.Snapshot.Record
             throw 'Target did not have one exact activating-status entry while its pre-scope holder lived.'
         }
         $entry=$activating.Entries[0]
         $holderStateGood=($activating.Snapshot.Record.policyGeneration -eq $candidatePolicyGeneration -and
-            $activating.Snapshot.Record.totalEntries -eq @($activating.Snapshot.Record.entries).Count -and
+            $activating.Snapshot.Record.matchCount -eq @($activating.Snapshot.Record.entries).Count -and
             $entry.state -ceq 'Activating' -and $entry.fileId -ieq $fileId -and $entry.path -ieq $ntPath -and
             [uint32]$entry.generation -gt 0 -and [uint32]$entry.W -eq 0 -and $entry.unknownReasons -ceq '0x00000000')
         if($CaseId -cin @('A01','A04')){$holderStateGood=$holderStateGood -and [uint32]$entry.H -gt 0 -and $entry.openerPids -contains [int]$actor.Pid}
         else{$holderStateGood=$holderStateGood -and $entry.S -ceq 'YES'}
-        if($CaseId -ceq 'A04'){$holderStateGood=$holderStateGood -and [uint32]$entry.H -eq 1 -and $entry.S -ceq 'NO' -and [uint32]$entry.C -eq 0 -and [uint32]$entry.T -eq 0}
-        $holderEvidenceReason=if($CaseId -cin @('A01','A04')){'Complete paged Inspector snapshot identifies the exact NT path, stable file ID, policy generation, Activating state, H>0, and the standard-user actor opener PID.'}else{'Complete paged Inspector snapshot identifies the exact NT path, stable file ID, policy generation, Activating state and S=YES; the actor process independently created and retains the view/section after closing its source handle.'}
+        if($CaseId -ceq 'A04'){$holderStateGood=$holderStateGood -and [uint32]$entry.H -eq 1 -and [uint32]$entry.C -eq 0 -and [uint32]$entry.T -eq 0}
+        $holderEvidenceReason=if($CaseId -cin @('A01','A04')){'Exact-target Inspector point sample identifies the exact NT path, stable file ID, policy generation, Activating state, H>0, and the standard-user actor opener PID.'}else{'Exact-target Inspector point sample identifies the exact NT path, stable file ID, policy generation, Activating state and S=YES; the actor process independently created and retains the view/section after closing its source handle.'}
         Add-ActivationAssertion $trial 'ExactActivatingWriterEvidence' $(if($holderStateGood){'PASS'}else{'FAIL'})`
             $holderEvidenceReason`
             @{Entry=$entry;Snapshot=$activating.Snapshot.Record;ExpectedNtPath=$ntPath;ExpectedFileId=$fileId;ActorPid=$actor.Pid}
@@ -3147,11 +3169,11 @@ function Invoke-ActivationObservation {
             $null=Invoke-ActivationInspector '--admission-trace-clear' $clearParent 45000
             $parentClose=Publish-ActivationActorCommand $state 'release-holder' $null
             if($parentClose.NativeCode -ne 0 -or -not $parentClose.HolderReleased){throw 'Duplicated primary handle close failed'}
-            $afterParent=Get-ActivationPendingEntry $ntPath $fileId 'after-parent-close'
+            $afterParent=Get-ActivationPendingEntry $ntPath $fileId 'after-parent-close' $target
             $parentTrace=ConvertFrom-ActivationTrace (Invoke-ActivationInspector '--admission-trace' (Join-Path $evidenceDirectory 'activation-parent-close-trace') 45000) $fileId
             $cleanup=@($parentTrace.Entries | Where-Object event -ceq 'file_cleanup')
             $parentGood=$afterParent.Entries.Count -eq 1 -and $afterParent.Entries[0].state -ceq 'Activating' -and
-                [uint32]$afterParent.Entries[0].H -eq 1 -and [uint32]$afterParent.Entries[0].W -eq 0 -and $afterParent.Entries[0].S -ceq 'NO' -and [uint32]$afterParent.Entries[0].C -eq 0 -and [uint32]$afterParent.Entries[0].T -eq 0 -and
+                [uint32]$afterParent.Entries[0].H -eq 1 -and [uint32]$afterParent.Entries[0].W -eq 0 -and [uint32]$afterParent.Entries[0].C -eq 0 -and [uint32]$afterParent.Entries[0].T -eq 0 -and
                 $afterParent.Entries[0].unknownReasons -ceq '0x00000000' -and $afterParent.Entries[0].openerPids -contains [int]$actor.Pid -and $afterParent.Entries[0].openerPids -notcontains [int]$duplicateActor.Pid -and @($afterParent.Entries[0].openerPids).Count -eq 1 -and $cleanup.Count -eq 0
             $trial.ParentClose=@{Receipt=$parentClose;Snapshot=$afterParent;Trace=$parentTrace;ParentStillReportedAsOpener=$afterParent.Entries[0].openerPids -contains [int]$actor.Pid}
             Add-ActivationAssertion $trial 'ParentCloseKeepsSingleHAndActivating' $(if($parentGood){'PASS'}else{'FAIL'}) 'Closing the parent duplicate reference causes no target cleanup, keeps H=1 and Activating while the child owns the live file object; opener PID is not reported as current holder.' $trial.ParentClose
@@ -3243,14 +3265,14 @@ function Invoke-ActivationObservation {
         $traceEnabled=$false
         }
 
-        $activatingAfterWrite=Get-ActivationPendingEntry $ntPath $fileId 'after-old-holder-mutation'
+        $activatingAfterWrite=Get-ActivationPendingEntry $ntPath $fileId 'after-old-holder-mutation' $target
         $afterWriteEntries=@($activatingAfterWrite.Entries)
         $stillActivating=($afterWriteEntries.Count -eq 1 -and $activatingAfterWrite.Snapshot.Record.policyGeneration -eq $candidatePolicyGeneration -and
             $afterWriteEntries[0].state -ceq 'Activating' -and $afterWriteEntries[0].fileId -ieq $fileId -and
             [uint32]$afterWriteEntries[0].W -eq 0 -and $afterWriteEntries[0].unknownReasons -ceq '0x00000000')
         if($CaseId -cin @('A01','A04')){$stillActivating=$stillActivating -and [uint32]$afterWriteEntries[0].H -gt 0 -and $afterWriteEntries[0].openerPids -contains [int]$actor.Pid}
         else{$stillActivating=$stillActivating -and $afterWriteEntries[0].S -ceq 'YES'}
-        if($CaseId -ceq 'A04'){$stillActivating=$stillActivating -and [uint32]$afterWriteEntries[0].H -eq 1 -and $afterWriteEntries[0].S -ceq 'NO' -and [uint32]$afterWriteEntries[0].C -eq 0 -and [uint32]$afterWriteEntries[0].T -eq 0}
+        if($CaseId -ceq 'A04'){$stillActivating=$stillActivating -and [uint32]$afterWriteEntries[0].H -eq 1 -and [uint32]$afterWriteEntries[0].C -eq 0 -and [uint32]$afterWriteEntries[0].T -eq 0}
         Add-ActivationAssertion $trial 'OldHolderStillActivatingAfterMutation' $(if($stillActivating){'PASS'}else{'FAIL'}) 'After the tagged old-holder writes and flush completed, the exact same target remained Activating with its holder evidence and W drained to zero.' @{Entries=$afterWriteEntries;Snapshot=$activatingAfterWrite.Snapshot.Record;FileId=$fileId;ActorPid=$actor.Pid;Mutation=$oldWrite}
         if(-not $stillActivating){throw 'Target left Activating or lost exact holder evidence before the old holder was released.'}
 

@@ -297,6 +297,7 @@ static NTSTATUS StageRegistryClassifyAllLinkNames(_In_ PSTAGE_REGISTRY_ENTRY Ent
     _In_ PFLT_INSTANCE Instance, _In_ PFLT_VOLUME Volume,
     _Inout_ PULONG WorkBudget,
     _Out_ PBOOLEAN NoNames, _Out_ PBOOLEAN UnionScoped, _Out_ PBOOLEAN CurrentScoped);
+
 static NTSTATUS StageRegistryBuildActivatingStatusPage(_In_ UINT32 StartIndex,
     _Out_ PVOID PageBuffer, _In_ BOOLEAN Diagnostic);
 _IRQL_requires_max_(APC_LEVEL)
@@ -382,6 +383,7 @@ __declspec(noinline) static BOOLEAN StageRegistryMarkSopUnknown(_In_ PFLT_INSTAN
 #pragma alloc_text(PAGE, SafeUploadStageWritersReconcileCurrentScope)
 #pragma alloc_text(PAGE, SafeUploadStageWritersActivatingStatusPage)
 #pragma alloc_text(PAGE, SafeUploadStageWritersActivatingDiagnosticStatusPage)
+#pragma alloc_text(PAGE, SafeUploadStageWritersActivatingTargetStatus)
 #pragma alloc_text(PAGE, StageRegistryBuildActivatingStatusPage)
 #pragma alloc_text(PAGE, StageRegistryEntryQuiescent)
 #pragma alloc_text(PAGE, StageRegistryOpenIdentity)
@@ -6528,6 +6530,52 @@ __declspec(noinline) static VOID StageRegistryActivatingStatusSnapshot(
     StageRegistryReleaseStateLock(Entry, stateIrql);
 }
 
+/* Same independent diagnostic counter samples for full-page and exact-target
+ * reads. Caller holds RegistryLock and pins the listed entry. No file I/O. */
+static VOID StageRegistryCopyActivatingDiagnostic(_In_ PSTAGE_REGISTRY_ENTRY Entry,
+    _Out_ PSAFEUPLOAD_ACTIVATING_ENTRY_STATUS Output,
+    _Out_opt_ PUINT32 ClassificationStatus, _Out_opt_ PUINT32 ClassificationStep)
+{
+    STAGE_ACTIVATING_LOCKED_SNAPSHOT lockedSnapshot;
+    ULONG index;
+    UINT32 pidCount = 0;
+    UINT32 openerPids[RTL_NUMBER_OF(Output->OpenerPids)];
+    UINT32 sectionPids[RTL_NUMBER_OF(Output->OpenerPids)];
+    UINT32 openerCount = 0, sectionPidCount = 0;
+    UINT32 sectionCount, pidIndex;
+    StageRegistryActivatingStatusSnapshot(Entry, &lockedSnapshot);
+    Output->VolumeSerialNumber = lockedSnapshot.VolumeSerialNumber;
+    RtlCopyMemory(Output->FileId, &lockedSnapshot.FileId, sizeof(Output->FileId));
+    Output->Generation = lockedSnapshot.Generation;
+    Output->State = lockedSnapshot.State;
+    Output->H = lockedSnapshot.H;
+    Output->W = lockedSnapshot.W;
+    Output->T = (UINT32)max(0, InterlockedCompareExchange(&Entry->T, 0, 0));
+    Output->S = (UINT32)InterlockedCompareExchange(&Entry->LastSState, 0, 0);
+    Output->UnknownReasons = (ULONG)InterlockedCompareExchange(&Entry->UnknownReasons, 0, 0);
+    Output->ReservedFlags = 0;
+    Output->NameChars = min((UINT32)Entry->NameChars, (UINT32)SAFEUPLOAD_WRITER_REGISTRY_NAME_CHARS);
+    if (Output->NameChars != 0)
+        RtlCopyMemory(Output->Name, Entry->Name, Output->NameChars * sizeof(WCHAR));
+    StageRegistryCopyOpeners(Entry, openerPids,
+        RTL_NUMBER_OF(openerPids), &openerCount);
+    for (index = 0; index < openerCount; ++index)
+        Output->OpenerPids[pidCount++] = openerPids[index];
+    sectionCount = StageRegistrySnapshotC(Entry, sectionPids,
+        RTL_NUMBER_OF(sectionPids), &sectionPidCount);
+    Output->C = sectionCount;
+    for (pidIndex = 0; pidIndex < sectionPidCount; ++pidIndex) {
+        ULONG existing;
+        for (existing = 0; existing < pidCount; ++existing)
+            if (Output->OpenerPids[existing] == sectionPids[pidIndex]) break;
+        if (existing == pidCount && pidCount < RTL_NUMBER_OF(Output->OpenerPids))
+            Output->OpenerPids[pidCount++] = sectionPids[pidIndex];
+    }
+    Output->OpenerPidCount = pidCount;
+    if (ClassificationStatus != NULL) *ClassificationStatus = (UINT32)lockedSnapshot.ClassificationStatus;
+    if (ClassificationStep != NULL) *ClassificationStep = lockedSnapshot.ClassificationStep;
+}
+
 static NTSTATUS StageRegistryBuildActivatingStatusPage(_In_ UINT32 StartIndex,
     _Out_ PVOID PageBuffer, _In_ BOOLEAN Diagnostic)
 {
@@ -6564,48 +6612,11 @@ static NTSTATUS StageRegistryBuildActivatingStatusPage(_In_ UINT32 StartIndex,
                 FIELD_OFFSET(SAFEUPLOAD_ACTIVATING_STATUS_PAGE, Entries) + count * entrySize;
             PSAFEUPLOAD_ACTIVATING_ENTRY_STATUS output =
                 (PSAFEUPLOAD_ACTIVATING_ENTRY_STATUS)entryBytes;
-            STAGE_ACTIVATING_LOCKED_SNAPSHOT lockedSnapshot;
-            ULONG index;
-            UINT32 pidCount = 0;
-            UINT32 openerPids[RTL_NUMBER_OF(output->OpenerPids)];
-            UINT32 sectionPids[RTL_NUMBER_OF(output->OpenerPids)];
-            UINT32 openerCount = 0, sectionPidCount = 0;
-            UINT32 sectionCount, pidIndex;
-            StageRegistryActivatingStatusSnapshot(entry, &lockedSnapshot);
-            output->VolumeSerialNumber = lockedSnapshot.VolumeSerialNumber;
-            RtlCopyMemory(output->FileId, &lockedSnapshot.FileId, sizeof(output->FileId));
-            output->Generation = lockedSnapshot.Generation;
-            output->State = lockedSnapshot.State;
-            output->H = lockedSnapshot.H;
-            output->W = lockedSnapshot.W;
-            output->T = (UINT32)max(0, InterlockedCompareExchange(&entry->T, 0, 0));
-            output->S = (UINT32)InterlockedCompareExchange(&entry->LastSState, 0, 0);
-            output->UnknownReasons = (ULONG)InterlockedCompareExchange(&entry->UnknownReasons, 0, 0);
-            output->ReservedFlags = 0;
-            output->NameChars = min((UINT32)entry->NameChars, (UINT32)SAFEUPLOAD_WRITER_REGISTRY_NAME_CHARS);
-            if (output->NameChars != 0)
-                RtlCopyMemory(output->Name, entry->Name, output->NameChars * sizeof(WCHAR));
-            StageRegistryCopyOpeners(entry, openerPids,
-                RTL_NUMBER_OF(openerPids), &openerCount);
-            for (index = 0; index < openerCount; ++index)
-                output->OpenerPids[pidCount++] = openerPids[index];
-            sectionCount = StageRegistrySnapshotC(entry, sectionPids,
-                RTL_NUMBER_OF(sectionPids), &sectionPidCount);
-            output->C = sectionCount;
-            for (pidIndex = 0; pidIndex < sectionPidCount; ++pidIndex) {
-                ULONG existing;
-                for (existing = 0; existing < pidCount; ++existing)
-                    if (output->OpenerPids[existing] == sectionPids[pidIndex]) break;
-                if (existing == pidCount && pidCount < RTL_NUMBER_OF(output->OpenerPids))
-                    output->OpenerPids[pidCount++] = sectionPids[pidIndex];
-            }
-            output->OpenerPidCount = pidCount;
-            if (Diagnostic) {
-                PSAFEUPLOAD_ACTIVATING_DIAGNOSTIC_ENTRY_STATUS diagnostic =
-                    (PSAFEUPLOAD_ACTIVATING_DIAGNOSTIC_ENTRY_STATUS)entryBytes;
-                diagnostic->ClassificationStatus = lockedSnapshot.ClassificationStatus;
-                diagnostic->ClassificationStep = lockedSnapshot.ClassificationStep;
-            }
+            PSAFEUPLOAD_ACTIVATING_DIAGNOSTIC_ENTRY_STATUS diagnostic =
+                Diagnostic ? (PSAFEUPLOAD_ACTIVATING_DIAGNOSTIC_ENTRY_STATUS)entryBytes : NULL;
+            StageRegistryCopyActivatingDiagnostic(entry, output,
+                diagnostic != NULL ? &diagnostic->ClassificationStatus : NULL,
+                diagnostic != NULL ? &diagnostic->ClassificationStep : NULL);
             count += 1;
         }
     }
@@ -6632,6 +6643,45 @@ NTSTATUS SafeUploadStageWritersActivatingDiagnosticStatusPage(_In_ UINT32 StartI
 {
     PAGED_CODE();
     return StageRegistryBuildActivatingStatusPage(StartIndex, Page, TRUE);
+}
+
+/* Enumerate the bounded in-memory registry by its retained full normalized
+ * name. No file open, cache probe, mutation, policy commit or promotion. */
+NTSTATUS SafeUploadStageWritersActivatingTargetStatus(_In_ PCUNICODE_STRING Name,
+    _Out_ PSAFEUPLOAD_ACTIVATING_TARGET_STATUS Result)
+{
+    PLIST_ENTRY link;
+    UINT32 generation;
+    PAGED_CODE();
+    if (Name == NULL || Name->Buffer == NULL || Name->Length == 0 ||
+        (Name->Length & 1) != 0 || Result == NULL) return STATUS_INVALID_PARAMETER;
+    RtlZeroMemory(Result, sizeof(*Result));
+    Result->StructSize = sizeof(*Result);
+    generation = (UINT32)SafeUploadCurrentPolicyGeneration();
+    Result->PolicyGeneration = generation;
+    Result->SequenceStart = (UINT64)InterlockedCompareExchange64(&RegistryChangeSequence, 0, 0);
+    FltAcquirePushLockShared(&RegistryLock);
+    for (link = RegistryEntries.Flink; link != &RegistryEntries; link = link->Flink) {
+        PSTAGE_REGISTRY_ENTRY entry = CONTAINING_RECORD(link, STAGE_REGISTRY_ENTRY, Link);
+        UNICODE_STRING retainedName;
+        if (entry->Retired || !entry->Listed || entry->NameChars == 0 ||
+            entry->NameChars > SAFEUPLOAD_WRITER_REGISTRY_NAME_CHARS ||
+            entry->NameChars * sizeof(WCHAR) != Name->Length) continue;
+        retainedName.Buffer = entry->Name;
+        retainedName.Length = retainedName.MaximumLength = (USHORT)(entry->NameChars * sizeof(WCHAR));
+        if (!RtlEqualUnicodeString(&retainedName, Name, TRUE)) continue;
+        Result->MatchCount += 1;
+        if (Result->MatchCount == 1)
+            StageRegistryCopyActivatingDiagnostic(entry, &Result->Diagnostic.Entry,
+                &Result->Diagnostic.ClassificationStatus, &Result->Diagnostic.ClassificationStep);
+    }
+    FltReleasePushLock(&RegistryLock);
+    /* Ambiguity must never expose an arbitrary first entry as usable. */
+    if (Result->MatchCount != 1) RtlZeroMemory(&Result->Diagnostic, sizeof(Result->Diagnostic));
+    Result->Flags = SafeUploadStageWritersGlobalUnknown() ? 1 : 0;
+    Result->SequenceEnd = (UINT64)InterlockedCompareExchange64(&RegistryChangeSequence, 0, 0);
+    if (generation != (UINT32)SafeUploadCurrentPolicyGeneration()) return STATUS_RETRY;
+    return STATUS_SUCCESS;
 }
 
 /* Build a compact, private summary from the complete activation-enforced

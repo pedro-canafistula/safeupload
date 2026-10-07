@@ -23,7 +23,7 @@ public sealed class StagedProofProxyTests
     [Theory]
     [InlineData(1)] [InlineData(3)] [InlineData(4)] [InlineData(9)]
     [InlineData(10)] [InlineData(11)] [InlineData(13)] [InlineData(14)]
-    [InlineData(15)] [InlineData(16)] [InlineData(18)] [InlineData(21)] [InlineData(26)]
+    [InlineData(15)] [InlineData(16)] [InlineData(18)] [InlineData(21)] [InlineData(27)]
     public void MutatingOrUnspecifiedControlsNeverReachNative(uint command)
     {
         var backend = new Native();
@@ -49,6 +49,27 @@ public sealed class StagedProofProxyTests
         Assert.Equal(104, StagedProofProxyWire.Validate(registry, 104));
         BinaryPrimitives.WriteUInt16LittleEndian(registry.AsSpan(18), 2);
         Assert.Throws<InvalidDataException>(() => StagedProofProxyWire.Validate(registry, 104));
+    }
+
+    [Fact]
+    public void ExactTargetDiagnosticBoundsRemainReadOnly()
+    {
+        byte[] request = Control(26, 0, 28);
+        BinaryPrimitives.WriteUInt16LittleEndian(request.AsSpan(16), 1);
+        BinaryPrimitives.WriteUInt16LittleEndian(request.AsSpan(18), 1);
+        Assert.Equal(1168, StagedProofProxyWire.Validate(request, 1168));
+        foreach (int output in new[] { 0, 104, 1167, 1169, 36392 })
+            Assert.Throws<InvalidDataException>(() => StagedProofProxyWire.Validate(request, output));
+        foreach (int offset in new[] { 0, 4, 12, 20 }) {
+            byte[] bad = (byte[])request.Clone(); bad[offset] ^= 1;
+            Assert.Throws<InvalidDataException>(() => StagedProofProxyWire.Validate(bad, 1168));
+        }
+        foreach (ushort length in new ushort[] { 0, 2, 261, ushort.MaxValue }) {
+            byte[] bad = (byte[])request.Clone();
+            BinaryPrimitives.WriteUInt16LittleEndian(bad.AsSpan(18), length);
+            Assert.Throws<InvalidDataException>(() => StagedProofProxyWire.Validate(bad, 1168));
+        }
+        Assert.Throws<InvalidDataException>(() => StagedProofProxyWire.Validate(Control(26), 1168));
     }
 
     [Fact]

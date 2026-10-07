@@ -1,0 +1,93 @@
+{
+  "SourceCommit": "1e910e6acaf73ed813fed6c01b9bf6840778a3e1",
+  "DriverBuild": "mvp4-sol-b15",
+  "AgentBuild": "agent-mvp4-sol-b20",
+  "AgentMatrix": "agent-mvp4-sol-b20-matrix",
+  "RuntimeQualified": false,
+  "RetainedOnDisk": [
+    {
+      "Path": "/tmp/claude-1000/exact-mvp4-sol-b15/writer-fixture.exe",
+      "Bytes": 4608,
+      "Sha256": "229FA23559C6A6C88B2A62BAF29D2C75D5745391A8F1D67355FA85477648224F",
+      "Reason": "RetainedExactBuildArtifactOutsideEvidence"
+    },
+    {
+      "Path": "/tmp/claude-1000/exact-mvp4-sol-b15/inspector-normal-release.exe",
+      "Bytes": 155648,
+      "Sha256": "D8BE1BF29BBD164FCDA61EC7472C7E003BD34749AE6A9E053D3CF4A87A651CAB",
+      "Reason": "RetainedExactBuildArtifactOutsideEvidence"
+    },
+    {
+      "Path": "/tmp/claude-1000/exact-mvp4-sol-b15/inspector-feature-release.exe",
+      "Bytes": 201216,
+      "Sha256": "289E9B9A4C4A622E2B172A74E14FE6460F145E13A5D984879FD4D510F2AD3802",
+      "Reason": "RetainedExactBuildArtifactOutsideEvidence"
+    },
+    {
+      "Path": "/tmp/claude-1000/exact-mvp4-sol-b15/normal-release.sys",
+      "Bytes": 41984,
+      "Sha256": "77ED38C3C3961441C3BD7A9CDFD15530CB27AD82D807C0783D6A8F30072B5D86",
+      "Reason": "RetainedExactBuildArtifactOutsideEvidence"
+    },
+    {
+      "Path": "/tmp/claude-1000/exact-mvp4-sol-b15/owned-feature-release.sys",
+      "Bytes": 189440,
+      "Sha256": "64DA0D25A0B0B4D1DF22B8C99D10E5B7AEF973508A21618B53E900F4CC609043",
+      "Reason": "RetainedExactBuildArtifactOutsideEvidence"
+    },
+    {
+      "Path": "/tmp/claude-1000/exact-mvp4-sol-b15/normal.sys",
+      "Bytes": 50688,
+      "Sha256": "88218A39F189EA0364979EFFE81F221C2467EABA2736BCCB5338FD6F85CE7F0B",
+      "Reason": "RetainedExactBuildArtifactOutsideEvidence"
+    },
+    {
+      "Path": "/tmp/claude-1000/exact-mvp4-sol-b15/owned-feature.sys",
+      "Bytes": 296960,
+      "Sha256": "D0936E844E0BABD41A708B356F04D1D036B0E0601AABB353C7E992CEAC076437",
+      "Reason": "RetainedExactBuildArtifactOutsideEvidence"
+    },
+    {
+      "Path": "/tmp/claude-1000/exact-mvp4-sol-b15/SafeUpload-stage-prototype.sys",
+      "Bytes": 298848,
+      "Sha256": "C5EE2DC417BB3E5A9E01EE5C46A0229B2C43F269C3382B160B6564D88ABB5472",
+      "Reason": "RetainedExactBuildArtifactOutsideEvidence"
+    },
+    {
+      "Path": "/tmp/claude-1000/exact-mvp4-sol-b15/src.zip",
+      "Bytes": 279654,
+      "Sha256": "398FB85DA4664D9093C7F2A3BE16C74A6D8AA6269D1829FADB91715FDD741B03",
+      "Reason": "RetainedExactBuildArtifactOutsideEvidence"
+    },
+    {
+      "Path": "/tmp/claude-1000/exact-agent-agent-mvp4-sol-b20/stage-service-publish.zip",
+      "Bytes": 36476734,
+      "Sha256": "F15B84470D2B6DF83A5FEFF00BEE07B0B454BCEFC25878C7C0D0255296ADD402",
+      "Reason": "RetainedExactBuildArtifactOutsideEvidence"
+    },
+    {
+      "Path": "/tmp/claude-1000/exact-agent-agent-mvp4-sol-b20/src.zip",
+      "Bytes": 340858,
+      "Sha256": "F75100CFD43E644DCD0715C1950B0F79D6C23EC5C187979DA1354AC13A2ED92A",
+      "Reason": "RetainedExactBuildArtifactOutsideEvidence"
+    },
+    {
+      "Path": "/tmp/safeupload-sol-next/output/exact-agent-matrix/agent-mvp4-sol-b20-matrix/src.zip",
+      "Bytes": 1196041,
+      "Sha256": "EBD66A1DBF3C80D2C89E0B35A4BCC1EB128637ABD648FB139003406D4666AFA6",
+      "Reason": "RetainedExactBuildArtifactOutsideEvidence"
+    },
+    {
+      "Path": "/tmp/safeupload-sol-next/output/exact-agent-matrix/agent-mvp4-sol-b20-matrix/out/feature-release-service-publish.zip",
+      "Bytes": 36476842,
+      "Sha256": "29442B09AE4A2FA457D30F4FB4A8563703B9159F1FF40899C8C58349ADA122F0",
+      "Reason": "RetainedExactBuildArtifactOutsideEvidence"
+    },
+    {
+      "Path": "/tmp/safeupload-sol-next/output/exact-agent-matrix/agent-mvp4-sol-b20-matrix/out/normal-release-service-publish.zip",
+      "Bytes": 36431852,
+      "Sha256": "03AAC5C0BE39B40D81DB81A2B8BBD57CA172FA5C4FBD157CED1BB4770BD677AC",
+      "Reason": "RetainedExactBuildArtifactOutsideEvidence"
+    }
+  ]
+}

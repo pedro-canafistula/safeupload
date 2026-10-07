@@ -1258,7 +1258,10 @@ static PCWSTR RegistrySName(_In_ UINT32 State)
     }
 }
 
-static int SendRegistryEntry(_In_z_ PCWSTR DosPath)
+static VOID PrintJsonWide(_In_reads_(Chars) PCWSTR Text, _In_ ULONG Chars);
+static VOID PrintActivatingDiagnosticEntry(_In_ PSAFEUPLOAD_ACTIVATING_DIAGNOSTIC_ENTRY_STATUS Diagnostic);
+
+static int SendRegistryEntry(_In_z_ PCWSTR DosPath, _In_ BOOLEAN TargetOnly)
 {
     static const WCHAR volumePrefix[] = L"\\Device\\HarddiskVolume";
     WCHAR drive[3];
@@ -1266,6 +1269,7 @@ static int SendRegistryEntry(_In_z_ PCWSTR DosPath)
     PSAFEUPLOAD_ADMISSION_PROBE_REQUEST request = NULL;
     HANDLE port = INVALID_HANDLE_VALUE;
     SAFEUPLOAD_REGISTRY_ENTRY_STATUS entry;
+    SAFEUPLOAD_ACTIVATING_TARGET_STATUS target;
     PCWSTR relativePath;
     SIZE_T pathChars, deviceChars, prefixChars = ARRAYSIZE(volumePrefix) - 1, index;
     ULONG requestBytes;
@@ -1308,7 +1312,7 @@ static int SendRegistryEntry(_In_z_ PCWSTR DosPath)
     if (request == NULL) goto Cleanup;
     request->Control.Version = SAFEUPLOAD_PROTOCOL_VERSION;
     request->Control.StructSize = requestBytes;
-    request->Control.Command = SAFEUPLOAD_CONTROL_REGISTRY_ENTRY;
+    request->Control.Command = TargetOnly ? SAFEUPLOAD_CONTROL_ACTIVATING_TARGET_STATUS : SAFEUPLOAD_CONTROL_REGISTRY_ENTRY;
     request->VolumeNameChars = (UINT16)deviceChars;
     request->RelativePathChars = (UINT16)(pathChars - 2);
     CopyMemory(request->Strings, deviceName, deviceChars * sizeof(WCHAR));
@@ -1317,6 +1321,28 @@ static int SendRegistryEntry(_In_z_ PCWSTR DosPath)
     hr = FilterConnectCommunicationPort(SAFEUPLOAD_PORT_NAME, 0, NULL, 0, NULL, &port);
     if (FAILED(hr)) {
         fwprintf(stderr, L"ERRO: nao foi possivel conectar na porta (hr = 0x%08X).\n", hr);
+        goto Cleanup;
+    }
+    if (TargetOnly) {
+        ZeroMemory(&target, sizeof(target));
+        hr = FilterSendMessage(port, request, requestBytes, &target, sizeof(target), &returned);
+        if (FAILED(hr) || returned != sizeof(target) || target.StructSize != sizeof(target) ||
+            target.MatchCount > SAFEUPLOAD_WRITER_REGISTRY_ALL_LIMIT || (target.Flags & ~1u) != 0 ||
+            (target.MatchCount == 1 && (target.Diagnostic.Entry.NameChars == 0 ||
+                target.Diagnostic.Entry.NameChars > SAFEUPLOAD_WRITER_REGISTRY_NAME_CHARS ||
+                target.Diagnostic.Entry.OpenerPidCount > ARRAYSIZE(target.Diagnostic.Entry.OpenerPids)))) {
+            fwprintf(stderr, L"ERRO: resposta activating-target invalida (hr = 0x%08X, bytes = %u).\n", hr, returned);
+            result = 3;
+            goto Cleanup;
+        }
+        wprintf(L"{\"activatingTarget\":true,\"requestedPath\":");
+        PrintJsonWide(request->Strings, (UINT32)(deviceChars + pathChars - 2));
+        wprintf(L",\"matchCount\":%u,\"policyGeneration\":%u,\"flags\":%u,"
+            L"\"sequenceStart\":%llu,\"sequenceEnd\":%llu,\"entries\":[",
+            target.MatchCount, target.PolicyGeneration, target.Flags, target.SequenceStart, target.SequenceEnd);
+        if (target.MatchCount == 1) PrintActivatingDiagnosticEntry(&target.Diagnostic);
+        wprintf(L"]}\n");
+        result = 0;
         goto Cleanup;
     }
     ZeroMemory(&entry, sizeof(entry));
@@ -1410,6 +1436,28 @@ static PCWSTR ActivatingClassificationStepName(UINT32 Step)
     case SAFEUPLOAD_ACTIVATING_CLASSIFY_STEP_NOT_RUN: return L"NotRun";
     default: return L"UnknownStep";
     }
+}
+
+static VOID PrintActivatingDiagnosticEntry(_In_ PSAFEUPLOAD_ACTIVATING_DIAGNOSTIC_ENTRY_STATUS Diagnostic)
+{
+    PSAFEUPLOAD_ACTIVATING_ENTRY_STATUS entry = &Diagnostic->Entry;
+    ULONG byteIndex;
+    wprintf(L"{\"generation\":%u,\"state\":\"%s\",\"volumeSerial\":\"0x%016llX\",\"fileId\":\"",
+        entry->Generation, RegistryStateName(entry->State), entry->VolumeSerialNumber);
+    for (byteIndex = 0; byteIndex < ARRAYSIZE(entry->FileId); ++byteIndex)
+        wprintf(L"%02X", entry->FileId[byteIndex]);
+    wprintf(L"\",\"path\":");
+    PrintJsonWide(entry->Name, min(entry->NameChars, SAFEUPLOAD_WRITER_REGISTRY_NAME_CHARS));
+    wprintf(L",\"H\":%u,\"S\":\"%s\",\"C\":%u,\"T\":%u,\"W\":%u,\"unknownReasons\":\"0x%08X\","
+        L"\"classificationStatus\":\"0x%08X\",\"classificationStep\":\"%s\","
+        L"\"classificationStepCode\":%u,\"openerPids\":[",
+        entry->H, RegistrySName(entry->S), entry->C, entry->T, entry->W,
+        entry->UnknownReasons, (UINT32)Diagnostic->ClassificationStatus,
+        ActivatingClassificationStepName(Diagnostic->ClassificationStep),
+        Diagnostic->ClassificationStep);
+    for (byteIndex = 0; byteIndex < entry->OpenerPidCount && byteIndex < ARRAYSIZE(entry->OpenerPids); ++byteIndex)
+        wprintf(L"%s%u", byteIndex == 0 ? L"" : L",", entry->OpenerPids[byteIndex]);
+    wprintf(L"]}");
 }
 
 static int PrintActivatingStatus(VOID)
@@ -1527,26 +1575,9 @@ static int PrintActivatingStatus(VOID)
         wprintf(L"{\"activatingStatus\":true,\"entries\":[");
         for (index = 0; index < entryCount; ++index) {
             PSAFEUPLOAD_ACTIVATING_DIAGNOSTIC_ENTRY_STATUS diagnostic = &entries[index];
-            PSAFEUPLOAD_ACTIVATING_ENTRY_STATUS entry = &diagnostic->Entry;
-            ULONG byteIndex;
             if (!first) wprintf(L",");
             first = FALSE;
-            wprintf(L"{\"generation\":%u,\"state\":\"%s\",\"volumeSerial\":\"0x%016llX\",\"fileId\":\"",
-                entry->Generation, RegistryStateName(entry->State), entry->VolumeSerialNumber);
-            for (byteIndex = 0; byteIndex < ARRAYSIZE(entry->FileId); ++byteIndex)
-                wprintf(L"%02X", entry->FileId[byteIndex]);
-            wprintf(L"\",\"path\":");
-            PrintJsonWide(entry->Name, min(entry->NameChars, SAFEUPLOAD_WRITER_REGISTRY_NAME_CHARS));
-            wprintf(L",\"H\":%u,\"S\":\"%s\",\"C\":%u,\"T\":%u,\"W\":%u,\"unknownReasons\":\"0x%08X\","
-                L"\"classificationStatus\":\"0x%08X\",\"classificationStep\":\"%s\","
-                L"\"classificationStepCode\":%u,\"openerPids\":[",
-                entry->H, RegistrySName(entry->S), entry->C, entry->T, entry->W,
-                entry->UnknownReasons, (UINT32)diagnostic->ClassificationStatus,
-                ActivatingClassificationStepName(diagnostic->ClassificationStep),
-                diagnostic->ClassificationStep);
-            for (byteIndex = 0; byteIndex < entry->OpenerPidCount && byteIndex < ARRAYSIZE(entry->OpenerPids); ++byteIndex)
-                wprintf(L"%s%u", byteIndex == 0 ? L"" : L",", entry->OpenerPids[byteIndex]);
-            wprintf(L"]}");
+            PrintActivatingDiagnosticEntry(diagnostic);
         }
         wprintf(L"],\"totalEntries\":%u,\"policyGeneration\":%u,\"changeSequence\":%llu}\n",
             total, pageGeneration, changeSequence);
@@ -1962,12 +1993,16 @@ Return Value:
         return SendAdmissionTraceControl(SAFEUPLOAD_CONTROL_ADMISSION_EPOCH_FORCE_TIMEOUT,
             L"admission epoch forced timeout", 0);
     }
+    if (argc > 1 && _wcsicmp(argv[1], L"--activating-target") == 0) {
+        if (argc != 3) return 2;
+        return SendRegistryEntry(argv[2], TRUE);
+    }
     if (argc > 1 && _wcsicmp(argv[1], L"--registry-entry") == 0) {
         if (argc != 3) {
             fwprintf(stderr, L"Uso: SafeUpload.Inspector --registry-entry X:\\dir\\file\n");
             return 2;
         }
-        return SendRegistryEntry(argv[2]);
+        return SendRegistryEntry(argv[2], FALSE);
     }
     if (argc > 1 && _wcsicmp(argv[1], L"--registry-capacity") == 0) {
         if (argc != 3) {
