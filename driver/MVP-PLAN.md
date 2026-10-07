@@ -830,3 +830,13 @@ The safe W01 checkpoint parent was written by Sol and checked by root: Windows P
   clean, sampled forbidden bytes 0 (`evidence/2026-10-07/phase4-suite-sol-c02a1-index.txt`).
   Mapped actor never published its held receipt and did not cooperatively cancel.
   Native operation localization is required before calling this a product bug.
+
+- [x] Exact driver/Inspector build `mvp4-sol-b11` at `6a20c49f` passed all four WDK
+  configurations with 0 warnings/errors, PREfast and ApiValidator clean; Inspector
+  normal/feature Release builds also clean (`evidence/2026-10-07/exact-mvp4-sol-b11-summary.txt`).
+- [ ] Exact agent `agent-mvp4-sol-b18` failed a new timing-sensitive cancellation
+  regression; its isolated rerun passed (`sol-expired-test-diagnostic.txt`). Replace
+  the 20 ms timer assumption with explicit cancellation while native send is held.
+  Retain native stderr and exit status in build helper even when tests fail (PS 5.1
+  ErrorAction=Stop previously aborted before saving the test status). Rebuild with
+  a fresh label; do not use the failed artifact or call it a passing gate.

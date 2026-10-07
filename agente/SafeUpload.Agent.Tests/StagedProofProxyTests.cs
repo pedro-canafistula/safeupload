@@ -188,7 +188,7 @@ public sealed class StagedProofProxyTests
     }
 
     [Fact]
-    public async Task ExpiredWriteDeadlineDoesNotAbandonTheNativeSendLease()
+    public async Task CanceledResponseDoesNotAbandonTheNativeSendLease()
     {
         using var entered = new ManualResetEventSlim();
         using var release = new ManualResetEventSlim();
@@ -197,9 +197,11 @@ public sealed class StagedProofProxyTests
         var binding = AdmissionEvidenceBinding.TryCreate(port, 1, 1, new byte[32]);
         backend.Entered = entered; backend.Release = release;
         using var response = new MemoryStream();
+        using var stop = new CancellationTokenSource();
         Task sending = Task.Run(() => AdmissionEvidenceEndpoint.ServeStagedProofAsync(response, binding,
-            "S-1-5-18", true, _ => true, Frame(Control(20),32), CancellationToken.None, TimeSpan.FromMilliseconds(20)));
+            "S-1-5-18", true, _ => true, Frame(Control(20),32), stop.Token, TimeSpan.FromSeconds(30)));
         Assert.True(entered.Wait(TimeSpan.FromSeconds(5)));
+        stop.Cancel(); // Deterministic cancellation while native send is held.
         Task drain = Task.Run(binding.StopAcceptingAndDrain);
         try {
             await Task.Delay(100);

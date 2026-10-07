@@ -42,18 +42,20 @@ try {
     & dotnet.exe --info > (Join-Path $out 'dotnet-info.txt') 2>&1
     $featureArgs=@();if($AdmissionEvidence){$featureArgs=@("-p:SafeUploadAdmissionEvidence=true")}
     $summary += "admission_evidence=$($AdmissionEvidence.IsPresent)"
+    $nativePreference=$ErrorActionPreference;$ErrorActionPreference='Continue'
     & dotnet.exe test agente\SafeUpload.Agent.Tests\SafeUpload.Agent.Tests.csproj -c Release -warnaserror @featureArgs `
         --logger 'trx;LogFileName=agent-tests.trx' --results-directory $out > (Join-Path $out 'tests.txt') 2>&1
-    $testExit = $LASTEXITCODE
+    $testExit = $LASTEXITCODE;$ErrorActionPreference=$nativePreference
     $testText = [IO.File]::ReadAllText((Join-Path $out 'tests.txt'))
     $testWarnings = [regex]::Matches($testText, '(?im)\bwarning\s+[A-Z]+\d+\b').Count
     $summary += "tests: exit=$testExit warnings=$testWarnings"
     if ($testExit -eq 0 -and $testWarnings -eq 0) {
         $publish = Join-Path $out 'publish'
+        $nativePreference=$ErrorActionPreference;$ErrorActionPreference='Continue'
         & dotnet.exe publish agente\SafeUpload.Agent.Service\SafeUpload.Agent.Service.csproj -c Release -r win-x64 `
             --self-contained true @featureArgs -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true `
             -warnaserror -o $publish > (Join-Path $out 'publish.txt') 2>&1
-        $publishExit = $LASTEXITCODE
+        $publishExit = $LASTEXITCODE;$ErrorActionPreference=$nativePreference
         $publishText = [IO.File]::ReadAllText((Join-Path $out 'publish.txt'))
         $publishWarnings = [regex]::Matches($publishText, '(?im)\bwarning\s+[A-Z]+\d+\b').Count
         $summary += "publish: exit=$publishExit warnings=$publishWarnings"
