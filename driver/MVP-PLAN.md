@@ -1600,3 +1600,21 @@ collector could not finish cleanup. Independent baseline is clean. Failed overla
 live memory image and partial evidence remain retained; no complete latency export
 was produced. See staging evidence `goallatmap1-failure-retention.json` and
 `goallatmap1-live-failure-diagnostics.txt`. No kernel deadlock is established.
+
+Phase3 cache-barrier repair contract, before implementation: the bounded PASSIVE
+activation worker may issue `FltFlushBuffers2(FLUSH_AND_PURGE)` on its already
+identity/SOP-validated file object below this instance only after H/W/T/C=0,
+S=NO, no spill and no unknown reason. It holds no registry/state/section lock
+across synchronous file-system I/O. Flush failure keeps Activating and prevents
+promotion; successful flush alone is insufficient. Recheck all existing counters,
+SOP DataSectionObject/SharedCacheMap NULL, exact identity, name/rename/policy and
+marker-generation predicates before the existing promotion CAS. Empty SOP needs
+no flush because it contains no cache. Add a diagnostic predicate bit to distinguish
+successful file-system flush-and-purge from initially empty cache without changing
+protocol layouts. Never call the old unsupported StageFence purge helper. Microsoft
+documents this minifilter API and flush-and-purge option on the supported Windows
+version: https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/fltkernel/nf-fltkernel-fltflushbuffers2.
+This implements the already-required cache barrier while preserving the stronger
+empty-cache gate. The queued-above-filter paging-write boundary remains the
+explicit post-MVP hardening item; no new completeness claim is made. Fresh exact
+WDK builds and actual A-row promotion/raw evidence remain required.

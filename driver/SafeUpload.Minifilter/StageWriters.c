@@ -4979,7 +4979,8 @@ __declspec(noinline) static VOID StageRegistryTryPromoteEntry(
     _In_ ULONG CurrentGeneration,
     _In_ BOOLEAN SopEmpty,
     _In_ ULONGLONG ExpectedSopMarkerGeneration,
-    _In_ ULONG PolicyGeneration, _In_ ULONG PolicyFlags)
+    _In_ ULONG PolicyGeneration, _In_ ULONG PolicyFlags,
+    _In_ BOOLEAN CacheFlushedAndPurged)
 {
     PSAFEUPLOAD_INSTANCE_CONTEXT instanceContext = NULL;
     KIRQL renameLossIrql;
@@ -5034,7 +5035,8 @@ __declspec(noinline) static VOID StageRegistryTryPromoteEntry(
         (VOID)StageRegistryTryPromoteStateNoInline(Entry, ExpectedSopMarkerGeneration,
             PolicyGeneration, PolicyFlags,
             SAFEUPLOAD_PROMOTION_BASIS_NAME_MATCH | SAFEUPLOAD_PROMOTION_BASIS_SOP_EMPTY |
-            SAFEUPLOAD_PROMOTION_BASIS_NO_USER_WRITABLE);
+            SAFEUPLOAD_PROMOTION_BASIS_NO_USER_WRITABLE |
+            (CacheFlushedAndPurged ? SAFEUPLOAD_PROMOTION_BASIS_CACHE_FLUSH_PURGE : 0));
     }
     StageReleaseSpinLock(&Entry->StateLock, irql);
     SafeUploadPolicyRenameLossGenerationLeave(renameLossIrql);
@@ -5287,6 +5289,7 @@ static VOID StageRegistryActivationProcess(_In_ PSTAGE_REGISTRY_ENTRY Entry,
     BOOLEAN markerWorkRemaining = FALSE;
     BOOLEAN aliasProbe, transactionActive, noLinkNames = FALSE, unionLinkScoped = FALSE;
     BOOLEAN currentLinkScoped = FALSE, aliasActivated = FALSE;
+    BOOLEAN cacheFlushedAndPurged = FALSE;
     BOOLEAN noNamesProvenByIdentity = FALSE;
     ULONG currentGeneration;
     ULONG promotionPolicyGeneration = 0;
@@ -5428,9 +5431,10 @@ static VOID StageRegistryActivationProcess(_In_ PSTAGE_REGISTRY_ENTRY Entry,
         InterlockedCompareExchange((volatile LONG *)&Entry->State, 0, 0) !=
             SAFEUPLOAD_REGISTRY_STATE_ACTIVATING) goto Exit;
 
-    /* Free(F) is a single observation behind the published gate. Paging
-     * writes continue while either SOP cache/section pointer exists; no flush
-     * or wait is needed when both are absent. */
+    /* Free(F) is a single observation behind the published gate. After the
+     * last holder leaves, NTFS may retain clean or dirty cache pointers. The
+     * synchronous file-system barrier below drains and purges that cache;
+     * promotion still requires both pointers empty. */
     if (InterlockedCompareExchange(&Entry->H, 0, 0) != 0 ||
         InterlockedCompareExchange(&Entry->W, 0, 0) != 0 ||
         InterlockedCompareExchange(&Entry->T, 0, 0) != 0 ||
@@ -5446,7 +5450,18 @@ static VOID StageRegistryActivationProcess(_In_ PSTAGE_REGISTRY_ENTRY Entry,
             InterlockedIncrement64(&RegistryChangeSequence);
     }
     sopEmpty = sop->DataSectionObject == NULL && sop->SharedCacheMap == NULL;
-    if (userWritable || !sopEmpty) goto Exit;
+    if (userWritable) goto Exit;
+    if (!sopEmpty) {
+        /* PASSIVE worker, identity/SOP checked, and no registry/state/section
+         * lock held. Issue below this instance using NTFS's supported flush
+         * and purge path; never use the unsupported StageFence purge helper.
+         * Failure or a retained section keeps the published Activating gate. */
+        status = FltFlushBuffers2(Instance, object, FLT_FLUSH_TYPE_FLUSH_AND_PURGE, NULL);
+        if (status != STATUS_SUCCESS) goto Exit;
+        cacheFlushedAndPurged = TRUE;
+        if (object->SectionObjectPointer != sop ||
+            sop->DataSectionObject != NULL || sop->SharedCacheMap != NULL) goto Exit;
+    }
 
     /* Every live unknown marker holds this instance until exact quiescence and identity-safe retirement. */
     if (!StageRegistryUnknownSopMarkersQuiescent(Instance, Volume, &markerWorkBudget,
@@ -5487,7 +5502,7 @@ static VOID StageRegistryActivationProcess(_In_ PSTAGE_REGISTRY_ENTRY Entry,
             sopMarkerGeneration)
         StageRegistryTryPromoteEntry(Entry, nameStillMatches, nameSnapshotChars,
             renameVersion, currentGeneration, sopEmpty, sopMarkerGeneration,
-            promotionPolicyGeneration, promotionPolicyFlags);
+            promotionPolicyGeneration, promotionPolicyFlags, cacheFlushedAndPurged);
     FltReleasePushLock(&RegistryLock);
 
 Exit:
