@@ -1,0 +1,6 @@
+LatencyControlParseErrors=0
+NativeLatencyStimulus=cached;CompleteRounds=101;PASS;Qualification=False
+NativeLatencyStimulus=mapped;CompleteRounds=101;PASS;Qualification=False
+NativeLatencyStimulus=overwrite;CompleteRounds=101;PASS;Qualification=False
+NativeLatencyStimulus=replacement;CompleteRounds=101;PASS;Qualification=False
+NativeLatencyStimulusGate=PASS;Qualification=False

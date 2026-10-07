@@ -1223,3 +1223,33 @@ The safe W01 checkpoint parent was written by Sol and checked by root: Windows P
   private dump setup stopped on missing pool directory before any capture or
   guest mutation. No crash/dump/recovery claim. Per handoff, move to other Ready
   rows after recurring global snapshot churn without new information.
+- [x] Root withdrew b14 candidate in8971eac3 after runtime sol-c02a3
+  still stopped at CreateFileMapping without view/source-close completion.
+  Independent baseline clean; negative runtime retained in root evidence.
+  Host source likewise restored to reviewed exact b13; no mapping success claim.
+
+- [x] Dedicated 101-round C01-C04 latency actor/coordinator/export implemented
+  behind pinned opt-in; functional DedicatedLatencyOnly remains unallowlisted
+  INCONCLUSIVE. Complete actual standard-user/native/image/Released history
+  checks and independent baseline required. Warm p95<=250ms, max incl cold
+  <=1000ms. Partial native/failure receipts retained and never qualify. Luna
+  first REJECT exposed terminal byte linkage and partial-sample loss; both fixed
+  with controls, follow-up ACCEPT WITH CONDITIONS (sol-latency-review2.txt),
+  requiring actual debuggee latency. Windows PS5.1 parser0/proof244/native88
+  latest matching suite SHA PASS (sol-harness-windows-validation-ab.txt);
+  Python adapter18/MVP7/dedicated10 PASS. Builder real native 101x4 paths PASS
+  with explicit Qualification=False (sol-latency-native-control.txt). No product
+  or latency qualification claimed. Merge after current serial batch, then run.
+
+- [x] Serial runtime batch sol-ready1 completed seven cases, all independently
+  restored clean; evidence commits 8d46b270 (C03 block),58a4a65d (C04 block),
+  c32b1ffa/b8779f4f/87b02a7a (S00-S02),fbaa537d/559863b6 (C01 approve/block),
+  frozen inputs/index11c2d9d2. All MVP gates false. C03 stops on incomplete
+  seed journal inventory; C04 and C01 BLOCK have real blocked stage/hand-back
+  but three unproved hand-back requirements. C01 APPROVE functional assertions
+  pass apart from allowlisted coverage and mandatory dedicated latency. S00-S02
+  native101 samples pass, but gate wrongly demands external dedicated latency;
+  valid historical notification tails generate collector errors despite actual
+  AgentDidNotRun plus unchanged trusted location alternative. Correct these
+  harness defects without weakening any FAIL/Errors gate or case contract,
+  then rerun. No reinterpretation of these saved results as qualified.

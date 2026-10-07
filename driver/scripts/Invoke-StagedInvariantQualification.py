@@ -391,7 +391,9 @@ def validate_raw_artifacts(destination, guest_root, required=('raw',)):
 def validate_service_artifacts(result, destination, guest_root):
     for trial in result.get('Trials', []):
         for snapshot in [trial.get('ServiceBefore') or {}, trial.get('ServiceAfter') or {},
-                         *trial.get('JournalSnapshots', []), {'Journal': (trial.get('HandBack') or {}).get('Files', [])}]:
+                         *trial.get('JournalSnapshots', []), {'Journal': (trial.get('HandBack') or {}).get('Files', [])},
+                         {'Journal': [r['Terminal']['Record'] for r in (trial.get('DedicatedLatency') or {}).get('Rounds', [])
+                                      if r.get('Terminal') and r['Terminal'].get('Record')]}]:
             records = list(snapshot.get('Journal', [])) + list((snapshot.get('Notifications') or {}).get('Artifacts', []))
             for record in records:
                 path = record['Artifact']
@@ -401,6 +403,10 @@ def validate_service_artifacts(result, destination, guest_root):
                 artifact = destination / relative
                 require(artifact.stat().st_size == record['Length'] and sha(artifact) == record['Sha256'],
                         'Copied authenticated service evidence hash/length mismatch')
+                if 'Bytes' in record:
+                    require(isinstance(record['Bytes'], list) and all(type(b) is int and 0 <= b <= 255 for b in record['Bytes'])
+                            and artifact.read_bytes() == bytes(record['Bytes']),
+                            'Copied authenticated service artifact bytes differ from retained record')
                 if 'Entry' in record:
                     require(json.loads(artifact.read_text('utf-8-sig')) == record['Entry'], 'Journal JSON differs from retained bytes')
 
@@ -527,6 +533,171 @@ def mvp_latency_passed(evidence, result, classes):
     return True
 
 
+def retain_partial_latency_samples(result):
+    """Retain independently timed attempts even when whole-round proof fails.
+
+    These are partial diagnostics, not accepted latency qualification. Full
+    image/terminal/lifecycle proof remains mandatory in export_dedicated_latency.
+    """
+    trials = result.get('Trials') or []
+    if len(trials) != 1:
+        return []
+    trial = trials[0]
+    observation = trial.get('DedicatedLatency') or {}
+    actor = trial.get('Actor') or {}
+    frequency = observation.get('QpcFrequency')
+    if type(frequency) is not int or frequency <= 0:
+        return []
+    collected = {}
+    for round_record in observation.get('Rounds', []):
+        receipt = round_record.get('Receipt') or {}
+        number = round_record.get('Trial')
+        if (type(number) is not int or not 0 <= number <= 100
+                or receipt.get('Trial') != number or receipt.get('Held') is not False
+                or receipt.get('Pid') != actor.get('Pid') or receipt.get('Sid') != actor.get('Sid')
+                or receipt.get('BootId') != actor.get('BootId')):
+            continue
+        for call in receipt.get('Calls', []):
+            start, end = call.get('StartQpc'), call.get('EndQpc')
+            if (type(start) is not int or type(end) is not int or not 0 <= start <= end
+                    or type(call.get('NativeCode')) is not int or call.get('Trial') != number
+                    or type(call.get('Cold')) is not bool or call['Cold'] != (number == 0)
+                    or not isinstance(call.get('Class'), str)):
+                continue
+            collected.setdefault(call['Class'], []).append(dict(Trial=number, Cold=number == 0,
+                Held=False, NativeCode=call['NativeCode'], StartQpc=start, EndQpc=end,
+                Ms=1000.0 * (end - start) / frequency))
+    records = []
+    for name, samples in collected.items():
+        warm = sorted(s['Ms'] for s in samples if not s['Cold'])
+        p95 = warm[math.ceil(.95 * len(warm)) - 1] if len(warm) >= 100 else None
+        maximum = max(s['Ms'] for s in samples)
+        failed = any(s['NativeCode'] != 0 for s in samples) or maximum > 1000 or (p95 is not None and p95 > 250)
+        records.append(dict(Class=name, Samples=samples, UnheldCount=len(warm), P95Ms=p95,
+                            MaxMs=maximum, Verdict='FAIL' if failed else 'INCONCLUSIVE'))
+    return records
+
+
+def export_dedicated_latency(result):
+    """After artifact verification and independent restoration, recompute receipts.
+
+    Functional case failure/coverage remains separate; this export cannot make
+    DedicatedLatencyOnly qualify. Native or product failure prevents acceptance.
+    """
+    classes = {
+        'C01-approve-absent': ['writer-open', 'cached-write', 'flush', 'close'],
+        'C02-approve-absent': ['writer-open', 'create-mapping', 'map-view', 'close-source',
+                              'mapped-store', 'flush-view', 'unmap-view', 'close-section'],
+        'C03-approve-existing': ['writer-open', 'cached-write', 'flush', 'close'],
+        'C04-approve': ['writer-open', 'cached-write', 'flush', 'rename-ex', 'close'],
+    }
+    evidence = dict(Schema='StagedInvariantLatency/1', RunName=result.get('RunName'),
+                    WritePath=mvp_write_path(result.get('CaseId', '')), Mode=result.get('Mode'),
+                    InputHashes=result.get('InputHashes', {}), Latency=[], Errors=[],
+                    RestorationClean=result.get('Restoration', {}).get('Known') is True,
+                    SourceCaseSha256=None, Verdict='INCONCLUSIVE')
+    evidence['Latency'] = retain_partial_latency_samples(result)
+    evidence['ObservedRounds'] = ((result.get('Trials') or [{}])[0].get('DedicatedLatency') or {}).get('Rounds', [])
+    if any(r['Verdict'] == 'FAIL' for r in evidence['Latency']):
+        evidence['Verdict'] = 'FAIL'
+    try:
+        require(result.get('AuthoritativeCaseExport') is True and evidence['RestorationClean']
+                and result['Restoration'].get('GuestChecks') is True
+                and result.get('Verdict') in ('INCONCLUSIVE', 'FAIL') and len(result['Trials']) == 1,
+                'Dedicated authoritative lifecycle is incomplete or failed')
+        trial = result['Trials'][0]
+        expected = classes[result['CaseId']]
+        observation = trial['DedicatedLatency']
+        actor, platform, provenance = trial['Actor'], trial['Platform'], trial['ActorProvenance']
+        require(not trial.get('Errors') and trial.get('Disposal', {}).get('Status') == 'OK'
+                and observation.get('Complete') is True and observation.get('Held') is False
+                and len(observation['Rounds']) == 101
+                and platform['Build'] == '19045.2965'
+                and actor['BootId'] == result['BootIds']['Active'] == platform['BootId']
+                and actor['Elevated'] is False and actor['IsAdministrator'] is False
+                and actor['Pid'] == provenance['Pid'] and actor['Sid'] == provenance['OwnerSid']
+                and actor['SessionId'] == provenance['SessionId']
+                and any(a.get('Name') == 'DedicatedLatencyOnly' and a.get('Verdict') == 'INCONCLUSIVE'
+                        for a in trial['Assertions']), 'Dedicated rounds/platform/provenance/disposal incomplete')
+        require(not any(a.get('Verdict') == 'FAIL' for a in trial['Assertions']), 'Dedicated assertion failure')
+        digest = observation['Digest']
+        require(re.fullmatch(r'[A-F0-9]{64}', digest) and observation['Length'] > 0
+                and trial['ImageA']['Sha256'] == digest and trial['ImageA']['Length'] == observation['Length'],
+                'Dedicated independent image pin mismatch')
+        frequency = observation['QpcFrequency']
+        require(type(frequency) is int and frequency > 0, 'Dedicated QPC frequency missing')
+        samples = {name: [] for name in expected}
+        previous, transfer_ids, targets, open_paths = 0, set(), set(), set()
+        all_calls = []
+        for number, round_record in enumerate(observation['Rounds']):
+            receipt, private, terminal = (round_record[k] for k in ('Receipt', 'PrivateReceipt', 'Terminal'))
+            require(type(round_record['Trial']) is int and round_record['Trial'] == number
+                    and receipt['Trial'] == number and receipt['Held'] is False,
+                    'Dedicated round ordering or held receipt mismatch')
+            for record in (receipt, private):
+                require(record['Pid'] == actor['Pid'] and record['Sid'] == actor['Sid']
+                        and record['BootId'] == actor['BootId'] and record['PrivateSha256'] == digest
+                        and re.fullmatch(r'[a-f0-9]{32}', record['Token']), 'Dedicated actor/image receipt mismatch')
+            require(receipt['Token'] == private['Token'], 'Dedicated round token mismatch')
+            if number == 0:
+                token = receipt['Token']
+            require(receipt['Token'] == token, 'Dedicated actor token changed')
+            calls = receipt['Calls']
+            require([c['Class'] for c in calls] == expected, 'Dedicated native call sequence mismatch')
+            for call in calls:
+                require(type(call['Trial']) is int and call['Trial'] == number
+                        and type(call['Cold']) is bool and call['Cold'] == (number == 0)
+                        and type(call['NativeCode']) is int and call['NativeCode'] == 0
+                        and type(call['StartQpc']) is int and type(call['EndQpc']) is int
+                        and previous <= call['StartQpc'] <= call['EndQpc'] <= receipt['Qpc'],
+                        'Dedicated native status/timing/repetition mismatch')
+                previous = call['EndQpc']
+                samples[call['Class']].append(dict(Trial=number, Cold=number == 0, Held=False,
+                        NativeCode=0, StartQpc=call['StartQpc'], EndQpc=call['EndQpc'],
+                        Ms=1000.0 * (call['EndQpc'] - call['StartQpc']) / frequency))
+            all_calls.extend(calls)
+            if result['CaseId'] == 'C02-approve-absent':
+                require(private.get('SourceClosed') is True and private.get('ViewLive') is True
+                        and private.get('SectionLive') is True, 'Dedicated mapped lifetime incomplete')
+            transfer = json.loads(bytes(terminal['Record']['Bytes']).decode('utf-8-sig'))
+            require(terminal['StateName'] == 'Released' and terminal['Sha256Hex'] == digest
+                    and terminal['SealedOnce'] is True
+                    and terminal['History'] == ['Allocated', 'Sealed', 'Inspecting', 'Approved', 'Publishing', 'Released']
+                    and transfer['State'] == 5 and transfer['SealedOnce'] is True and transfer['Sha256Hex'] == digest
+                    and transfer['Transfer']['ProcessId'] == actor['Pid']
+                    and transfer['Transfer']['SessionId'] == actor['SessionId']
+                    and transfer['Transfer']['RequestorSid'] == actor['Sid']
+                    and [h['State'] for h in transfer['StateHistory']] == list(range(6))
+                    and transfer['Transfer']['TransferId'] == terminal['TransferId']
+                    and terminal['TransferId'] not in transfer_ids
+                    and previous <= terminal['StartQpc'] <= terminal['EndQpc'] <= round_record['PublicationVerifiedQpc'],
+                    'Dedicated Released transfer identity/image/history/timing mismatch')
+            destinations = {transfer['Transfer'].get('DestinationPath'), transfer.get('LastRenameDestination')}
+            require(receipt['Target'] in destinations, 'Dedicated transfer destination mismatch')
+            transfer_ids.add(terminal['TransferId'])
+            target, open_path = receipt['Target'], receipt['OpenPath']
+            if result['CaseId'].startswith(('C01-', 'C02-')):
+                require(target not in targets and open_path == target, 'Dedicated absent path reused')
+            else:
+                require(not targets or target in targets, 'Dedicated existing destination changed')
+            if result['CaseId'] == 'C04-approve':
+                require(open_path != target and open_path not in open_paths, 'Dedicated replacement temp reused')
+            targets.add(target); open_paths.add(open_path)
+            previous = round_record['PublicationVerifiedQpc']
+        require(all_calls == trial['Operations'], 'Dedicated aggregate calls differ from receipts')
+        evidence['Latency'] = []
+        for name in expected:
+            values = samples[name]
+            warm = sorted(s['Ms'] for s in values if not s['Cold'])
+            p95, maximum = warm[math.ceil(.95 * len(warm)) - 1], max(s['Ms'] for s in values)
+            evidence['Latency'].append(dict(Class=name, Verdict='PASS' if p95 <= 250 and maximum <= 1000 else 'FAIL',
+                                           UnheldCount=len(warm), P95Ms=p95, MaxMs=maximum, Samples=values))
+        evidence['Verdict'] = 'PASS' if mvp_latency_passed(evidence, result, expected) else 'FAIL'
+    except (RuntimeError, KeyError, TypeError, ValueError, IndexError) as error:
+        evidence['Errors'].append(str(error))
+    return evidence
+
+
 def mvp_case_gate(result, latency_evidence=None):
     """Separate MVP assessment, after the existing identity/provenance/lifecycle gates."""
     deferred, blockers = set(), set()
@@ -618,6 +789,8 @@ def run_case(args, case, mode, ev, files, package, tree_hash, provenance):
     params = {'CaseId': case, 'Mode': mode, 'RunName': name, 'ExpectedOriginalPolicySha256': args.policy_sha.upper(),
               'ExpectedServicePackageSha256': sha(package), 'ExpectedServiceTreeSha256': tree_hash,
               'ExpectedSignerThumbprint': provenance['Signer']}
+    if args.dedicated_unheld_latency:
+        params['DedicatedUnheldLatency'] = 1
     if args.mapped_stack_diagnostic_seconds:
         params['MappedStackDiagnosticSeconds'] = args.mapped_stack_diagnostic_seconds
     transfers = []
@@ -701,6 +874,11 @@ def run_case(args, case, mode, ev, files, package, tree_hash, provenance):
         assessment = mvp_case_gate(result, getattr(args, 'mvp_latency_record', None))
         result.update(assessment)
         write_new(provisional, json.dumps(result, indent=2) + '\n')
+        if args.dedicated_unheld_latency:
+            latency = export_dedicated_latency(result)
+            latency['SourceCaseSha256'] = sha(provisional)
+            latency['SourceCase'] = str(provisional)
+            write_new(destination / 'dedicated-latency.json', json.dumps(latency, indent=2) + '\n')
         return {'CaseId': case, 'Mode': mode, 'RunName': name, 'Verdict': result['Verdict'], 'GatePassed': passed,
                 **assessment, 'ForbiddenByteCount': result.get('ForbiddenByteCount'), 'RestorationClean': True, 'Result': str(provisional), 'ResultSha256': sha(provisional)}
 
@@ -711,6 +889,8 @@ def main():
         parser.add_argument(value)
     parser.add_argument('--agent-source-commit', default='HEAD')
     parser.add_argument('--mvp-latency-evidence', type=Path, help='Dedicated unheld latency JSON; pinned with this run')
+    parser.add_argument('--dedicated-unheld-latency', action='store_true',
+                        help='Separate 101-round APPROVE C01-C04 latency evidence; cannot qualify a functional case')
     parser.add_argument('--mapped-stack-diagnostic-seconds', type=int, choices=(0, 600), default=0,
                         help='C02 runtime-Verifier only: keep native actor alive for stack capture; never qualifies')
     parser.add_argument('--cases', nargs='+')
@@ -732,6 +912,10 @@ def main():
     require(not args.mapped_stack_diagnostic_seconds or
             (set(cases) <= {'C02-approve-absent', 'C02-block-absent'} and modes == ['runtime-verifier']),
             'Mapped stack diagnostic requires only C02 cases in runtime-Verifier mode')
+    require(not args.dedicated_unheld_latency or
+            (len(cases) == 1 and set(cases) <= {'C01-approve-absent', 'C02-approve-absent', 'C03-approve-existing', 'C04-approve'}
+             and len(modes) == 1 and not args.mapped_stack_diagnostic_seconds and not args.mvp_latency_evidence),
+            'Dedicated latency requires one APPROVE C01-C04 case/mode without diagnostic/evidence options')
     files, package, tree_hash, provenance = build_inputs(args, commit, agent_commit, head)
     args.mvp_latency_record = None
     if args.mvp_latency_evidence:

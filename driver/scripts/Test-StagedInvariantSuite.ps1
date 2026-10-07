@@ -27,6 +27,8 @@ param(
     [Parameter(Mandatory=$true)][ValidatePattern('^[A-Za-z0-9._-]+$')][string]$HelperFileName,
     # Diagnostic-only C02 hold extension, pinned in state/provenance; never qualifies.
     [ValidateSet(0,600)][int]$MappedStackDiagnosticSeconds=0,
+    # Separate evidence experiment; never qualifies its functional case.
+    [ValidateSet(0,1)][int]$DedicatedUnheldLatency=0,
     # Internal SYSTEM startup coordinator; only AfterBoot accepts this switch.
     [switch]$StartupProbe
 )
@@ -559,6 +561,7 @@ try {
         if(Test-Path -LiteralPath (Join-Path $config.CoordinationDirectory 'cancel')){throw ('Observer cancelled at barrier: '+$Leaf)}
     }
     function Save-ActorReceipt([string]$Leaf,$Calls,$Digest,$Fields) {
+        if($config.DedicatedUnheldLatency -and $receiptPrefix){$Leaf=$receiptPrefix+$Leaf}
         $receipt=@{Pid=$PID;Sid=$actor.Sid;BootId=$actor.BootId;Token=$config.Token;Calls=@($Calls);PrivateSha256=$Digest;Qpc=[Diagnostics.Stopwatch]::GetTimestamp();ReleasedQpc=$releasedQpc}
         foreach($key in $Fields.Keys){$receipt[$key]=$Fields[$key]}
         Write-DurableFile (Join-Path $config.CoordinationDirectory $Leaf) ([Management.Automation.PSSerializer]::Serialize($receipt,32)) -New
@@ -582,10 +585,18 @@ try {
     $releasedQpc=[Diagnostics.Stopwatch]::GetTimestamp()
     $calls=@()
     if($config.CachedCase){
+        $allCalls=@();$rounds=if($config.DedicatedUnheldLatency){101}else{1}
+        for($round=0;$round -lt $rounds;$round++){
+        $calls=@();$receiptPrefix=if($config.DedicatedUnheldLatency){'round-'+$round.ToString('D3')+'-'}else{''}
+        $roundTarget=$config.Target;$roundTemp=$config.TempTarget
+        if($config.DedicatedUnheldLatency){
+            if($config.WriterKind -cin @('cached','mapped')){$roundTarget=Join-Path ([IO.Path]::GetDirectoryName($config.Target)) ('latency-'+$round.ToString('D3')+'.txt')}
+            if($config.WriterKind -ceq 'replacement'){$roundTemp=Join-Path ([IO.Path]::GetDirectoryName($config.TempTarget)) ('latency-'+$round.ToString('D3')+'.tmp.txt')}
+        }
         $h=[IntPtr]::Zero;$section=[IntPtr]::Zero;$view=[IntPtr]::Zero;$privateDigest=$null;$openCall=$null
         try {
             $bytes=[Convert]::FromBase64String($config.Payloads[0])
-            $openPath=if($config.WriterKind -ceq 'replacement'){$config.TempTarget}elseif($config.WriterKind -ceq 'external-rename'){$config.Source}else{$config.Target}
+            $openPath=if($config.WriterKind -ceq 'replacement'){$roundTemp}elseif($config.WriterKind -ceq 'external-rename'){$config.Source}else{$roundTarget}
             $disposition=if($config.WriterKind -ceq 'overwrite'){[uint32]5}elseif($config.WriterKind -ceq 'external-rename'){[uint32]3}else{[uint32]1}
             $rename=$config.WriterKind -cin @('replacement','external-rename')
             Save-ActorReceipt 'native-open-start.clixml' $calls $null @{Phase='open'}
@@ -617,21 +628,28 @@ try {
             try{$privateDigest=[BitConverter]::ToString($hash.ComputeHash($privateBytes)).Replace('-','')}finally{$hash.Dispose()}
             Save-ActorReceipt 'held.clixml' $calls $privateDigest @{WriterKind=$config.WriterKind;SourceClosed=($h -eq [IntPtr]::Zero);ViewLive=($view -ne [IntPtr]::Zero);SectionLive=($section -ne [IntPtr]::Zero)}
             if($rename){
-                Wait-ActorBarrier 'rename'
-                $calls+= [SUWriter]::Rename($h,$config.Target)
+                if(-not $config.DedicatedUnheldLatency){Wait-ActorBarrier 'rename'}
+                $calls+= [SUWriter]::Rename($h,$roundTarget)
                 $hash=[Security.Cryptography.SHA256]::Create()
                 try{$privateDigest=[BitConverter]::ToString($hash.ComputeHash([SUWriter]::ReadPrivate($h,$bytes.Length))).Replace('-','')}finally{$hash.Dispose()}
                 Save-ActorReceipt 'renamed.clixml' $calls $privateDigest @{}
             }
-            Wait-ActorBarrier 'close'
+            if(-not $config.DedicatedUnheldLatency){Wait-ActorBarrier 'close'}
         } finally {
             if($view -ne [IntPtr]::Zero){$calls+= [SUWriter]::Unmap($view)}
             if($section -ne [IntPtr]::Zero){$calls+= [SUWriter]::CloseSection($section)}
             if($h -ne [IntPtr]::Zero -and $h -ne [IntPtr]::new(-1)){$calls+= [SUWriter]::CloseHeld($h)}
-            Save-ActorReceipt 'closed.clixml' $calls $privateDigest @{}
+            if($config.DedicatedUnheldLatency){foreach($call in $calls){$call.Trial=$round;$call.Cold=($round -eq 0)}}
+            Save-ActorReceipt 'closed.clixml' $calls $privateDigest @{Trial=$round;Held=$false;Target=$roundTarget;OpenPath=$openPath;WriterKind=$config.WriterKind}
         }
+        $allCalls+= $calls
+        if($config.DedicatedUnheldLatency){Wait-ActorBarrier ('round-'+$round.ToString('D3')+'-next')}
+        }
+        $calls=$allCalls
+        if(-not $config.DedicatedUnheldLatency){
         $deadline=([Diagnostics.Stopwatch]::GetTimestamp()+[long]((180)*[Diagnostics.Stopwatch]::Frequency))
         while(-not(Test-Path -LiteralPath (Join-Path $config.CoordinationDirectory 'inspect-handback'))){if([Diagnostics.Stopwatch]::GetTimestamp() -gt $deadline){throw 'Cached writer hand-back barrier timed out after 180 seconds'};Start-Sleep -Milliseconds 10}
+        }
         $handBackAfter=Get-ActorHandBack
         $value=@{Actor=$actor;Calls=$calls;PrivateSha256=$privateDigest;HandBackAfter=$handBackAfter;QpcFrequency=[Diagnostics.Stopwatch]::Frequency;ReleasedQpc=$releasedQpc;Held=$false}
     }else{
@@ -1973,15 +1991,15 @@ function Test-CachedNotifications($Proof,[string]$TransferId,[int]$SessionId,[st
             Reason=('Every Blocked emission must name the exact independently verified actor hand-back file; paths='+$paths.Count+'; verified='+$verified.Count+'. Missing hand-back/notification coverage remains INCONCLUSIVE.')}
     };return ,$assertions
 }
-function Get-CachedJournalObservation([string]$Tag,$Actor) {
-    $paths=@((Join-Path $protectedDirectory 'cached.txt'))
-    if($cachedKind -ceq 'replacement'){$paths+= (Join-Path $protectedDirectory 'save.tmp.txt')}
+function Get-CachedJournalObservation([string]$Tag,$Actor,[string[]]$Paths=@(),[string[]]$ExcludedIds=@()) {
+    if(-not $Paths.Count){$Paths=@((Join-Path $protectedDirectory 'cached.txt'));if($cachedKind -ceq 'replacement'){$Paths+= (Join-Path $protectedDirectory 'save.tmp.txt')}}
     $snapshot=Get-ServiceSnapshot $Tag -JournalOnly
     $entries=@();$errors=@($snapshot.Errors)
     foreach($record in $snapshot.Journal){
         if(@($trial.ServiceBefore.Journal | Where-Object Path -ieq $record.Path).Count){continue}
         try {
             $parsed=ConvertFrom-ServiceJournalRecord $record
+            if($parsed.Entry.Transfer.TransferId -iin $ExcludedIds){continue}
             if(@($parsed.DestinationPaths | Where-Object {$_ -iin $paths}).Count){
                 if($parsed.Entry.Transfer.ProcessId -ne $Actor.Pid -or $parsed.Entry.Transfer.SessionId -ne $Actor.SessionId){throw 'C01 transfer writer PID/session mismatch'}
                 $historyNames=@($parsed.Entry.StateHistory | Where-Object {$null -ne $_} | ForEach-Object {@('Allocated','Sealed','Inspecting','Approved','Publishing','Released','Blocked','Retained','Unsealed')[[int]$_.State]})
@@ -2314,6 +2332,64 @@ function Capture-CachedExternalSample($Context,$Baseline,[string]$PhaseName,[lon
     $trial.Assertions+=Test-CachedSample $sample $Baseline $false $Image $Image $path
     return $sample
 }
+function Invoke-DedicatedLatencyObservation($Trial,$Actor,$Ready,$Context,[string]$Digest,[int]$Length) {
+    $Trial.DedicatedLatency=@{Complete=$false;Held=$false;Rounds=@();Digest=$Digest;Length=$Length;QpcFrequency=[Diagnostics.Stopwatch]::Frequency}
+    $knownIds=@();$previousQpc=$Ready.Qpc
+    Write-DurableFile (Join-Path $actorDirectory 'go') $RunName -New
+    for($round=0;$round -le 100;$round++){
+        $prefix='round-'+$round.ToString('D3')+'-'
+        $target=Join-Path $protectedDirectory $(if($cachedKind -cin @('cached','mapped')){'latency-'+$round.ToString('D3')+'.txt'}else{'cached.txt'})
+        $openPath=if($cachedKind -ceq 'replacement'){Join-Path $protectedDirectory ('latency-'+$round.ToString('D3')+'.tmp.txt')}else{$target}
+        $closed=Wait-WriterIdentity (Join-Path $actorDirectory ($prefix+'closed.clixml')) 60
+        $roundRecord=@{Trial=$round;Receipt=$closed;PrivateReceipt=$null;Terminal=$null;PublicationVerifiedQpc=$null;ValidationStatus='Incomplete'}
+        $Trial.DedicatedLatency.Rounds+= $roundRecord
+        $Trial.Operations+= @($closed.Calls)
+        if($closed.Pid -ne $Actor.Pid -or $closed.Sid -cne $Actor.Sid -or $closed.BootId -cne $Context.BootId -or $closed.Token -cne $state.WriterToken -or
+            $closed.Trial -ne $round -or $closed.Held -ne $false -or $closed.Target -cne $target -or $closed.OpenPath -cne $openPath -or $closed.WriterKind -cne $cachedKind -or $closed.PrivateSha256 -cne $Digest){throw ('Dedicated latency round receipt mismatch: '+$round)}
+        $calls=@($closed.Calls)
+        if(($calls.Class -join ',') -cne ($row.LatencyClasses -join ',')){throw ('Dedicated native class sequence incomplete: '+$round)}
+        foreach($call in $calls){
+            if($call.NativeCode -ne 0 -or $call.Trial -ne $round -or $call.Cold -ne ($round -eq 0) -or
+                $call.StartQpc -lt $previousQpc -or $call.EndQpc -lt $call.StartQpc -or $call.EndQpc -gt $closed.Qpc){throw ('Dedicated native status/QPC mismatch: '+$round)}
+            $previousQpc=$call.EndQpc
+        }
+        $held=Wait-WriterIdentity (Join-Path $actorDirectory ($prefix+'held.clixml')) 1
+        $roundRecord.PrivateReceipt=$held
+        if($held.Pid -ne $Actor.Pid -or $held.Sid -cne $Actor.Sid -or $held.BootId -cne $Context.BootId -or $held.Token -cne $state.WriterToken -or $held.PrivateSha256 -cne $Digest){throw 'Dedicated private image provenance mismatch'}
+        if($cachedKind -ceq 'mapped' -and (-not $held.SourceClosed -or -not $held.ViewLive -or -not $held.SectionLive)){throw 'Dedicated mapped lifetime contract incomplete'}
+        $terminal=$null;$deadline=[Diagnostics.Stopwatch]::GetTimestamp()+[long](120*[Diagnostics.Stopwatch]::Frequency);$pollNumber=0
+        do {
+            $poll=Get-CachedJournalObservation ($prefix+'outcome-'+$pollNumber) $Actor @($target,$openPath) $knownIds
+            $pollNumber++;$Trial.JournalSnapshots+= $poll.Snapshot
+            if($poll.Status -cne 'OK'){throw ('Dedicated authenticated journal incomplete: '+($poll.Errors -join '; '))}
+            if($poll.Entries.Count -gt 1){throw 'Dedicated round has ambiguous transfers'}
+            foreach($entry in $poll.Entries){
+                if($entry.StateName -cin @('Blocked','Retained','Unsealed')){throw ('Dedicated expected APPROVE but observed '+$entry.StateName)}
+                if($entry.StateName -ceq 'Released'){$terminal=$entry}
+            }
+            if($null -ne $terminal){break};Start-Sleep -Milliseconds 50
+        }while([Diagnostics.Stopwatch]::GetTimestamp() -lt $deadline)
+        if($null -eq $terminal -or -not $terminal.SealedOnce -or $terminal.Sha256Hex -cne $Digest -or
+            ($terminal.History -join ',') -cne 'Allocated,Sealed,Inspecting,Approved,Publishing,Released'){throw ('Dedicated Released whole-image/history evidence missing: '+$round)}
+        $roundRecord.Terminal=$terminal;$roundRecord.PublicationVerifiedQpc=[Diagnostics.Stopwatch]::GetTimestamp();$roundRecord.ValidationStatus='Complete'
+        $knownIds+= $terminal.TransferId
+        # No native holder is live here. Release next repetition only after the
+        # authenticated product transfer has reached exact Released image A.
+        Write-DurableFile (Join-Path $actorDirectory ($prefix+'next')) $RunName -New
+    }
+    $writer=Wait-TaskCompletion $writerTask (Join-Path $actorDirectory 'completion.clixml') $state.WriterToken 60
+    if($writer.ExitCode -ne 0 -or $writer.Value.Held -ne $false -or $writer.Value.Actor.Pid -ne $Actor.Pid -or $writer.Value.Actor.Sid -cne $Actor.Sid -or
+        $writer.Value.Actor.BootId -cne $Context.BootId -or $writer.Value.Calls.Count -ne $Trial.Operations.Count){throw 'Dedicated final actor completion mismatch'}
+    $Trial.Latency=Get-LatencyVerdict $Trial.Operations $row.LatencyClasses $writer.Value.QpcFrequency
+    foreach($class in $Trial.Latency){
+        foreach($sample in $class.Samples){$sample | Add-Member NoteProperty Held $false}
+        $warm=@($class.Samples | Where-Object {-not $_.Cold} | Sort-Object Ms)
+        if($warm.Count -eq 100){$class.P95Ms=$warm[[int][Math]::Ceiling(.95*$warm.Count)-1].Ms;$class.Verdict=if($class.P95Ms -le 250 -and $class.MaxMs -le 1000){'PASS'}else{'FAIL'}}
+    }
+    $Trial.DedicatedLatency.Complete=$true
+    return $writer
+}
+
 function Invoke-CachedObservation {
     $externalContext=$null;$externalBaseline=$null;$externalSequence=0;$imageB=$null;$terminal=$null;$context=$null;$baseline=$null;$disposal=$null;$samples=@();$predicateSamples=@();$checkpoints=@();$writer=$null;$agent=$null;$readyEvent=$null;$actor=$null;$agentStartLocal=$null
     $trial=[ordered]@{Errors=@();Approvals=@();Permits=@();Journal=@();JournalSnapshots=@();JournalTransitions=@();Notifications=@();Operations=@();Latency=@();Assertions=@();Verdict='INCONCLUSIVE';ForbiddenByteCount=$null}
@@ -2378,6 +2454,14 @@ function Invoke-CachedObservation {
             ObserverProcess=@{Pid=$process.ProcessId;OwnerSid=$owner.Sid;SessionId=$process.SessionId;CommandLine=$process.CommandLine}}
         $trial.Geometry=$context.Geometry;$trial.DecoderVersion=$context.DecoderVersion;$trial.ObserverModuleSha256=$context.ModuleSha256
         $imageA=[Convert]::FromBase64String($state.CachedImageBase64);$digest=[StagedInvariant.Native]::Hash($imageA);$trial.ImageA=@{Sha256=$digest;Length=$imageA.Length;Fixture=$state.CachedFixture}
+        if($DedicatedUnheldLatency){
+            $trial.Assertions+=@{Name='DedicatedLatencyOnly';Verdict='INCONCLUSIVE';Reason='Separate unheld native latency experiment; no functional protection qualification.'}
+            $writer=Invoke-DedicatedLatencyObservation $trial $actor $ready $context $digest $imageA.Length
+            $trial.LastAccessAfter=Get-LastAccessEvidence
+            $trial.ServiceAfter=Get-ServiceSnapshot 'latency-after';$trial.Journal=$trial.ServiceAfter.Journal
+            $trial.VerifierAfter=Get-VerifierEvidence 'after' -RequireMode
+            return
+        }
         if($cachedDenial){
             $trial.ExternalSource=@{Baseline=$null;Samples=@();Disposal=$null}
             $externalContext=Open-InvariantObserver $ready.VolumeGuid $externalDirectory (Join-Path $evidenceDirectory 'raw-external') $CaseId
@@ -3200,6 +3284,7 @@ $activationCaseIds=@('A01','A02','A03')
 $isActivationCase=$CaseId -cin $activationCaseIds
 if($row.Status -ne 'Ready' -or ($CaseId -notin @('S00-observer-control','S01-denied-write-after-boot','S02-agent-down-open-refused') -and -not $cachedCase -and -not $isActivationCase)){'CaseStatus=NOT_READY';throw "Case $CaseId is not implemented"}
 if($MappedStackDiagnosticSeconds -ne 0 -and ($CaseId -cnotin @('C02-approve-absent','C02-block-absent') -or $Mode -cne 'runtime-verifier')){throw 'Mapped stack diagnostic requires C02 runtime-Verifier'}
+if($DedicatedUnheldLatency -and ($CaseId -cnotin @('C01-approve-absent','C02-approve-absent','C03-approve-existing','C04-approve') -or $MappedStackDiagnosticSeconds)){throw 'Dedicated latency requires an APPROVE C01-C04 case without stack diagnostics'}
 if($StartupProbe -and $Phase -ne 'AfterBoot'){throw 'StartupProbe requires AfterBoot'}
 
 if($Phase -eq 'Prepare'){
@@ -3233,7 +3318,7 @@ if($Phase -eq 'Prepare'){
     if($cVolumes.Count -ne 1 -or [int]$cVolumes[0].BlockSize -le 0){throw ('Expected exactly one C: volume with a block size; found '+$cVolumes.Count)}
     $size=[int]$cVolumes[0].BlockSize*3
     $baseline=[Text.Encoding]::ASCII.GetBytes(('BASELINE-'+$RunName).PadRight($size,'B'))
-    $state=@{CaseId=$CaseId;Mode=$Mode;RunName=$RunName;MappedStackDiagnosticSeconds=$MappedStackDiagnosticSeconds;TableRevision=$table.TableRevision;PrepareBootId=(Get-BootId);
+    $state=@{CaseId=$CaseId;Mode=$Mode;RunName=$RunName;DedicatedUnheldLatency=$DedicatedUnheldLatency;MappedStackDiagnosticSeconds=$MappedStackDiagnosticSeconds;TableRevision=$table.TableRevision;PrepareBootId=(Get-BootId);
         OriginalAgentStart=$originalAgentStart;OriginalProcessCreationAudit=$originalProcessCreationAudit;OriginalPolicyBase64=[Convert]::ToBase64String([IO.File]::ReadAllBytes($policyPath));
         OriginalPolicyDirectorySddl=(Get-SecuritySddl (Split-Path -Parent $policyPath) $true);OriginalPolicyFileSddl=(Get-SecuritySddl $policyPath $false);
         BaselineBase64=[Convert]::ToBase64String($baseline);VolumeGuid=$volume[0].DeviceID;ActorUser=$actorUser;
@@ -3364,7 +3449,7 @@ $value=$b.ToString().Split([char]0)[0]
                     try{$stream.Write($bytes,0,$bytes.Length);$stream.Flush($true)}finally{$stream.Dispose()}
                 }
             }
-            Save-State @{ActorSid=$state.ActorSid;Payloads=$payloads;CachedCase=$cachedCase;WriterKind=$cachedKind;SeedBaseBase64=$state.CachedBaseBase64;TempTarget=(Join-Path $protectedDirectory 'save.tmp.txt');Source=(Join-Path $externalDirectory 'source.txt');Token=$state.WriterToken;CoordinationDirectory=$actorDirectory;
+            Save-State @{ActorSid=$state.ActorSid;Payloads=$payloads;DedicatedUnheldLatency=([bool]$DedicatedUnheldLatency);CachedCase=$cachedCase;WriterKind=$cachedKind;SeedBaseBase64=$state.CachedBaseBase64;TempTarget=(Join-Path $protectedDirectory 'save.tmp.txt');Source=(Join-Path $externalDirectory 'source.txt');Token=$state.WriterToken;CoordinationDirectory=$actorDirectory;
                 CreateNew=($CaseId -eq 'S02-agent-down-open-refused');Target=(Join-Path $protectedDirectory $(if($cachedCase){'cached.txt'}elseif($CaseId -eq 'S02-agent-down-open-refused'){'new.bin'}else{'marker.bin'}))} $configPath
             $writerBody=(Get-WriterBody).Replace('__CONFIG__',(ConvertTo-PowerShellLiteral $configPath)).Replace('__IDENTITY__',(ConvertTo-PowerShellLiteral (Join-Path $actorDirectory 'identity.clixml'))).Replace('__GO__',(ConvertTo-PowerShellLiteral (Join-Path $actorDirectory 'go'))).Replace('__TEMP__',(ConvertTo-PowerShellLiteral $actorDirectory))
         }
@@ -3375,7 +3460,7 @@ $value=$b.ToString().Split([char]0)[0]
             if($LASTEXITCODE -ne 0){throw 'Read-only writer input ACL failed'}
         }
         $action=New-ScheduledTaskAction -Execute 'powershell.exe' -Argument ('-NoProfile -ExecutionPolicy Bypass -File "'+$writerLauncher+'"')
-        $actorMinutes=if($MappedStackDiagnosticSeconds -ne 0){15}elseif($cachedExisting){10}else{5}
+        $actorMinutes=if($MappedStackDiagnosticSeconds -ne 0 -or $DedicatedUnheldLatency){15}elseif($cachedExisting){10}else{5}
         Register-ScheduledTask -TaskName $writerTask -Action $action -User ($env:COMPUTERNAME+'\'+$actorUser) -Password $password -RunLevel Limited -Settings (New-ScheduledTaskSettingsSet -ExecutionTimeLimit ([TimeSpan]::FromMinutes($actorMinutes))) | Out-Null
         $password=$null
         # Trusted coordinator launches this SAME pinned suite in a fresh process.
@@ -3416,6 +3501,7 @@ $value=$b.ToString().Split([char]0)[0]
     }
 }elseif($Phase -eq 'AfterBoot'){
     $state=Load-State $statePath
+    if($state.DedicatedUnheldLatency -ne $DedicatedUnheldLatency){throw 'Dedicated latency parameter/state mismatch'}
     if($state.MappedStackDiagnosticSeconds -ne $MappedStackDiagnosticSeconds){throw 'Mapped diagnostic parameter/state mismatch'}
     if($state.CaseId -cne $CaseId -or $state.Mode -cne $Mode -or $state.RunName -cne $RunName){throw 'State identity mismatch'}
     if($StartupProbe){if($isActivationCase){Invoke-ActivationObservation}elseif($cachedCase){Invoke-CachedObservation}else{Invoke-SeedObservation};return}
@@ -3437,6 +3523,7 @@ $value=$b.ToString().Split([char]0)[0]
     'INVARIANT_CASE_COMPLETED=True';'INVARIANT_RESTORED=True'
 }else{
     $state=Load-State $statePath
+    if($state.DedicatedUnheldLatency -ne $DedicatedUnheldLatency){throw 'Dedicated latency parameter/state mismatch'}
     if($state.MappedStackDiagnosticSeconds -ne $MappedStackDiagnosticSeconds){throw 'Mapped diagnostic parameter/state mismatch'}
     if((Get-BootId) -ceq $state.AfterBootId -or [string]::IsNullOrWhiteSpace($state.AfterBootId)){throw 'Restoration reboot identity unavailable'}
     Assert-Hash $installedDriver $originalDriverHash;Assert-Hash $policyPath $ExpectedOriginalPolicySha256
