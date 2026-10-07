@@ -1,0 +1,43 @@
+{
+  "Outcome": {
+    "CaseId": "C04-block",
+    "ForbiddenByteCount": 0,
+    "GatePassed": false,
+    "Mode": "runtime-verifier",
+    "MvpBlockers": [
+      "C04HandBackSafeRelativeCreation",
+      "C04HandBackSecondUserAccess",
+      "C04HandBackWindowClosureAndRestart",
+      "C04UnheldLatency",
+      "DedicatedUnheldLatency",
+      "Latency:cached-write",
+      "Latency:close",
+      "Latency:flush",
+      "Latency:rename-ex",
+      "Latency:writer-open"
+    ],
+    "MvpDeferred": [
+      "C04PublicationAndTemporalCoverage",
+      "CadenceCoverage",
+      "CadenceGap",
+      "ExternalCoverage",
+      "LiveTaintFlags",
+      "NoUnapprovedByte",
+      "PredicateCoverage"
+    ],
+    "MvpGatePassed": false,
+    "RestorationClean": true,
+    "Result": "/home/victor/Work/safeupload-staging/driver/evidence/2026-10-07/boot-start-invariant-C04-block-runtime-verifier-sol-ready1-artifacts/case.json",
+    "ResultSha256": "C26687B5F82B2A8543A3D2FE6B1A00816A32019E14861A2538B0D540570C66AF",
+    "RunName": "boot-start-invariant-C04-block-runtime-verifier-sol-ready1",
+    "Verdict": "INCONCLUSIVE"
+  },
+  "OmittedFromGitButRetainedOnDisk": [
+    {
+      "Path": "driver/evidence/2026-10-07/boot-start-invariant-C04-block-runtime-verifier-sol-ready1-artifacts/case.guest-export.txt",
+      "Bytes": 96373145,
+      "Sha256": "8D9FF65AB4C76CE349B3A1252BFF34276F5F37D84BD78B5C4CF9354658A86B39",
+      "Reason": "Over20MiB"
+    }
+  ]
+}
