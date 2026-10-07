@@ -274,6 +274,8 @@ typedef struct _STAGE_DEFERRED_INSTANCE_UNKNOWN {
     ULONG OriginSite;               /* original source line, never the worker's location */
 } STAGE_DEFERRED_INSTANCE_UNKNOWN, *PSTAGE_DEFERRED_INSTANCE_UNKNOWN;
 
+_IRQL_requires_max_(APC_LEVEL)
+static BOOLEAN StageRegistryEntryIsBaseStream(_In_ PSTAGE_REGISTRY_ENTRY Entry);
 _IRQL_requires_(PASSIVE_LEVEL)
 static BOOLEAN StageRegistryEntryQuiescent(_In_ PSTAGE_REGISTRY_ENTRY Entry, _In_ PFLT_INSTANCE Instance,
     _In_ PFLT_VOLUME Volume);
@@ -3941,8 +3943,11 @@ static BOOLEAN StageRegistryEntryQuiescent(_In_ PSTAGE_REGISTRY_ENTRY Entry, _In
         StageRegistrySnapshotSpilledWriters(Entry) != 0 ||
         StageRegistrySnapshotSpilledMutatingIo(Entry) != 0 ||
         StageRegistrySnapshotC(Entry, NULL, 0, NULL) != 0) return FALSE;
+    /* A base data stream reopens by file identity so that a replaced incarnation reaches the branch below
+     * (the exact-SOP form rejected it first, leaving such entries resident until capacity ran out). A compact
+     * ADS keeps the exact form: its name-hash resolution could select another stream. */
     status = StageRegistryOpenIdentity(Entry, Instance, Volume, &handle, &object,
-        NULL, &noNamesProven, FALSE);
+        NULL, &noNamesProven, StageRegistryEntryIsBaseStream(Entry));
     if (noNamesProven && StageRegistryOpenByIdMeansNoName(status)) {
         quiescent = TRUE; /* the recorded file identity no longer exists */
         goto Exit;
@@ -4988,7 +4993,7 @@ __declspec(noinline) static VOID StageRegistryTryPromoteEntry(
     _In_ BOOLEAN SopEmpty,
     _In_ ULONGLONG ExpectedSopMarkerGeneration,
     _In_ ULONG PolicyGeneration, _In_ ULONG PolicyFlags,
-    _In_ BOOLEAN CacheFlushedAndPurged, _In_ BOOLEAN IncarnationReplaced)
+    _In_ BOOLEAN CacheFlushedAndPurged, _In_opt_ PVOID ReplacedLiveSop)
 {
     PSAFEUPLOAD_INSTANCE_CONTEXT instanceContext = NULL;
     KIRQL renameLossIrql;
@@ -5037,7 +5042,9 @@ __declspec(noinline) static VOID StageRegistryTryPromoteEntry(
         StageRegistrySnapshotSpilledWriters(Entry) == 0 &&
         StageRegistrySnapshotSpilledMutatingIo(Entry) == 0 &&
         SopEmpty &&
-        StageRegistrySnapshotC(Entry, NULL, 0, NULL) == 0) {
+        StageRegistrySnapshotC(Entry, NULL, 0, NULL) == 0 &&
+        (ReplacedLiveSop == NULL || InterlockedCompareExchangePointer(
+            (PVOID volatile *)&Entry->SectionObjectPointer, NULL, NULL) != ReplacedLiveSop)) {
         /* Serialize the final marker-generation check with marker insertion. A marker
          * discovered after the earlier PASSIVE scan must keep this promotion waiting. */
         (VOID)StageRegistryTryPromoteStateNoInline(Entry, ExpectedSopMarkerGeneration,
@@ -5045,7 +5052,7 @@ __declspec(noinline) static VOID StageRegistryTryPromoteEntry(
             SAFEUPLOAD_PROMOTION_BASIS_NAME_MATCH | SAFEUPLOAD_PROMOTION_BASIS_SOP_EMPTY |
             SAFEUPLOAD_PROMOTION_BASIS_NO_USER_WRITABLE |
             (CacheFlushedAndPurged ? SAFEUPLOAD_PROMOTION_BASIS_CACHE_FLUSH_PURGE : 0) |
-            (IncarnationReplaced ? SAFEUPLOAD_PROMOTION_BASIS_INCARNATION_REPLACED : 0));
+            (ReplacedLiveSop != NULL ? SAFEUPLOAD_PROMOTION_BASIS_INCARNATION_REPLACED : 0));
     }
     StageReleaseSpinLock(&Entry->StateLock, irql);
     SafeUploadPolicyRenameLossGenerationLeave(renameLossIrql);
@@ -5278,6 +5285,18 @@ __declspec(noinline) static VOID StageRegistryClearActivation(_In_ PSTAGE_REGIST
     StageReleaseSpinLock(&Entry->StateLock, irql);
 }
 
+/* A non-compact entry for the file's unnamed data stream: its by-ID reopen names exactly that stream. */
+_IRQL_requires_max_(APC_LEVEL)
+static BOOLEAN StageRegistryEntryIsBaseStream(_In_ PSTAGE_REGISTRY_ENTRY Entry)
+{
+    BOOLEAN baseStream;
+    FltAcquirePushLockShared(&RegistryLock);
+    baseStream = Entry->Listed && !Entry->Retired && Entry->StreamIdentityKnown &&
+        !Entry->CompactStream && Entry->StreamChars == 0;
+    FltReleasePushLock(&RegistryLock);
+    return baseStream;
+}
+
 /* No handle, mutating I/O, transaction, rename, spilled writer, spilled mutating I/O or in-flight writable
  * section is accounted to this entry. Sampled; the promotion CAS rechecks under the state lock. */
 _IRQL_requires_max_(APC_LEVEL)
@@ -5415,15 +5434,19 @@ static VOID StageRegistryActivationProcess(_In_ PSTAGE_REGISTRY_ENTRY Entry,
     status = StageRegistryOpenIdentity(Entry, Instance, Volume, &handle, &object,
         &openFailureStep, &noNamesProvenByIdentity, FALSE);
     if (status == STATUS_FILE_INVALID && !noNamesProvenByIdentity &&
-        StageRegistryEntryHoldsNoWriterState(Entry)) {
+        StageRegistryEntryIsBaseStream(Entry) && StageRegistryEntryHoldsNoWriterState(Entry)) {
         /* The exact-SOP open failed. If the same volume serial and file ID now open with a different
          * section-object pointer, the recorded stream incarnation is gone: NTFS keeps one SCB per live
          * stream and every handle, section or view keeps it alive (the rule
          * StageRegistryAssociateSectionPointer rebinds on). A non-cached publication's SCB can be torn
-         * down before this pass (C01 latency l4c1: Unknown after round 62, later creates refused). With
-         * no writer state left on the entry, nothing pre-scope can still reach the stream through the old
-         * incarnation; S and the cache barrier below are evaluated on the live stream, and the final
-         * counter recheck and CAS are unchanged. Any other failure keeps the fail-closed path. */
+         * down before this pass (C01 latency l4c1: Unknown after round 62, later creates refused). Only a
+         * base data stream qualifies: a compact ADS is resolved by name hash and could reopen another stream.
+         * With no writer state left on the entry, nothing pre-scope can reach the stream through the old
+         * incarnation; S and the cache barrier below are evaluated on the live stream. The CAS rechecks,
+         * under RegistryLock and the state lock, that the entry is still bound to the gone incarnation, so
+         * this discharges the stale entry; a writer on the live stream is tracked, and gates coverage and
+         * admission, through its own SOP-keyed entry. Reclaim then prunes the discharged entry. Any other
+         * failure keeps the fail-closed path. */
         status = StageRegistryOpenIdentity(Entry, Instance, Volume, &handle, &object,
             &openFailureStep, &noNamesProvenByIdentity, TRUE);
         if (NT_SUCCESS(status) && object->SectionObjectPointer != NULL &&
@@ -5540,8 +5563,6 @@ static VOID StageRegistryActivationProcess(_In_ PSTAGE_REGISTRY_ENTRY Entry,
         StageRegistrySnapshotSpilledMutatingIo(Entry) != 0 ||
         StageRegistrySnapshotC(Entry, NULL, 0, NULL) != 0 ||
         sop->DataSectionObject != NULL || sop->SharedCacheMap != NULL) goto Exit;
-    if (incarnationReplaced && InterlockedCompareExchangePointer(
-            (PVOID volatile *)&Entry->SectionObjectPointer, NULL, NULL) == sop) goto Exit;
 
     /* Policy is sampled before RegistryLock to avoid introducing a lock-order edge.
      * The receipt labels this as a sample, not an atomic part of the CAS predicate. */
@@ -5557,7 +5578,7 @@ static VOID StageRegistryActivationProcess(_In_ PSTAGE_REGISTRY_ENTRY Entry,
         StageRegistryTryPromoteEntry(Entry, nameStillMatches, nameSnapshotChars,
             renameVersion, currentGeneration, sopEmpty, sopMarkerGeneration,
             promotionPolicyGeneration, promotionPolicyFlags, cacheFlushedAndPurged,
-            incarnationReplaced);
+            incarnationReplaced ? sop : NULL);
     FltReleasePushLock(&RegistryLock);
 
 Exit:
