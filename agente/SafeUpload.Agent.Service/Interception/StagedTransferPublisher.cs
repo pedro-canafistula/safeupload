@@ -202,7 +202,7 @@ public sealed class StagedTransferPublisher
             await _inspection.RecordTransferOutcomeAsync(operation, result,
                 Verdict.Blocked, result.Reason, cancellationToken,
                 transfer.TransferId).ConfigureAwait(false);
-            TransferJournalEntry blocked = ownerSessionMatches
+            TransferJournalEntry blocked = HasRequestorIdentity(transfer)
                 ? await HandbackSnapshotAsync(transfer, snapshot.Stream, inspectedFile.Length,
                     inspectedDigest, operation, result, cancellationToken).ConfigureAwait(false)
                 : await RecordHandbackFailureAsync(transfer, operation, result,
@@ -364,7 +364,7 @@ public sealed class StagedTransferPublisher
     {
         if (entry.State != TransferJournalState.Blocked || entry.PendingRename is not null) return;
         TransferJournalEntry current = entry;
-        if (!TryGetBoundSession(current.Transfer, out _, out _))
+        if (!HasRequestorIdentity(current.Transfer))
         {
             await RecordOwnerIdentityFailureAsync(current, "requestor_identity_unavailable", token)
                 .ConfigureAwait(false);
@@ -469,7 +469,7 @@ public sealed class StagedTransferPublisher
         if (entry.State is not (TransferJournalState.Blocked or TransferJournalState.Released) ||
             entry.StageDeleted) return;
         TransferJournalEntry current = entry;
-        if (!TryGetBoundSession(current.Transfer, out _, out _))
+        if (!HasRequestorIdentity(current.Transfer))
         {
             await RecordOwnerIdentityFailureAsync(current, "requestor_identity_unavailable", token)
                 .ConfigureAwait(false);
@@ -551,8 +551,8 @@ public sealed class StagedTransferPublisher
     {
         try
         {
-            if (!TryGetBoundSession(transfer, out _, out _))
-                throw new UnauthorizedAccessException("The current session does not match the staged requestor SID.");
+            if (!HasRequestorIdentity(transfer))
+                throw new UnauthorizedAccessException("The staged transfer has no valid requestor SID.");
             await _journal.BeginHandbackAttemptAsync(transfer.TransferId, token).ConfigureAwait(false);
             if (_handbackCopier is null)
                 throw new IOException("No Windows user-profile hand-back provider is available.");
@@ -583,6 +583,21 @@ public sealed class StagedTransferPublisher
                 reason, CancellationToken.None, Guid.NewGuid()).ConfigureAwait(false);
         }
         return current;
+    }
+
+    // Hand-back belongs to the requestor SID read from the requesting process token at
+    // allocation; it never depends on who currently uses a session number (session reuse)
+    // nor on an interactive session existing (session 0 batch/service requestors, logoff,
+    // reboot). Session binding is required only for UI delivery and justification.
+    private static bool HasRequestorIdentity(StagedTransfer transfer)
+    {
+        if (string.IsNullOrWhiteSpace(transfer.RequestorSid) || transfer.RequestorSid.Length > 184) return false;
+        try
+        {
+            var sid = new System.Security.Principal.SecurityIdentifier(transfer.RequestorSid);
+            return !sid.IsWellKnown(System.Security.Principal.WellKnownSidType.LocalSystemSid);
+        }
+        catch (ArgumentException) { return false; }
     }
 
     private bool TryGetBoundSession(StagedTransfer transfer, out uint sessionId, out string sid)

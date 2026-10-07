@@ -237,7 +237,7 @@ internal sealed class StagedHandbackCopier : IStagedHandbackCopier
 
     private SecurityIdentifier RequireBoundSessionUser(StagedTransfer transfer)
     {
-        if (transfer.SessionId is null || string.IsNullOrWhiteSpace(transfer.RequestorSid))
+        if (string.IsNullOrWhiteSpace(transfer.RequestorSid))
             throw new UnauthorizedAccessException("The staged transfer has no bound requestor identity.");
         SecurityIdentifier expected;
         try { expected = new SecurityIdentifier(transfer.RequestorSid); }
@@ -247,9 +247,8 @@ internal sealed class StagedHandbackCopier : IStagedHandbackCopier
         }
         if (expected.IsWellKnown(WellKnownSidType.LocalSystemSid))
             throw new UnauthorizedAccessException("A hand-back cannot be routed to the SYSTEM account.");
-        SecurityIdentifier actual = _environment.ResolveUser(transfer.SessionId);
-        if (!expected.Equals(actual))
-            throw new UnauthorizedAccessException("The current session SID does not own this staged transfer.");
+        // The requestor SID comes from the requesting process token at allocation; the
+        // session's current user is irrelevant (and absent for session 0 requestors).
         return expected;
     }
 

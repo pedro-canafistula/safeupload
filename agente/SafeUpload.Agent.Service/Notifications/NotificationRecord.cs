@@ -223,7 +223,16 @@ public sealed class NotificationRecord : INotificationRecord, IDisposable
             checkpoint.Write(JsonSerializer.SerializeToUtf8Bytes(new NotificationRecordHead(1, entry.Sequence, hash)));
             checkpoint.Flush(flushToDisk: true);
         }
-        File.Move(temporary, Head, overwrite: true);
+        // A reader holding head.json without delete sharing (an evidence collector) blocks
+        // the replace briefly; retry before failing closed (run c01b2 lost the record to one).
+        for (int attempt = 0; ; attempt++)
+        {
+            try { File.Move(temporary, Head, overwrite: true); break; }
+            catch (Exception error) when (attempt < 50 && error is IOException or UnauthorizedAccessException)
+            {
+                Thread.Sleep(20);
+            }
+        }
         _sequence = entry.Sequence;
         _hash = hash;
     }
