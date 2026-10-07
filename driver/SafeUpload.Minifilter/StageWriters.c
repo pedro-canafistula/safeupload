@@ -7527,7 +7527,14 @@ NTSTATUS SafeUploadStageWritersRegistryEvaluate(_In_ PFLT_INSTANCE Instance,
     Result->UnknownReasons = unknown;
     if (unknown != 0) state = SAFEUPLOAD_REGISTRY_STATE_UNKNOWN;
     else if (!protectedPath) state = SAFEUPLOAD_REGISTRY_STATE_UNSCOPED;
-    else state = SAFEUPLOAD_REGISTRY_STATE_ACTIVATING; /* Promotion/barrier is a later increment. */
+    else {
+        /* Free is not promotion. Report Protected only after the worker's
+         * actual CAS, preserving a pending result for every other stored
+         * state. Evaluate is a read and changes no admission decision. */
+        state = (UINT32)InterlockedCompareExchange((volatile LONG *)&entry->State, 0, 0);
+        if (state != SAFEUPLOAD_REGISTRY_STATE_PROTECTED)
+            state = SAFEUPLOAD_REGISTRY_STATE_ACTIVATING;
+    }
     Result->State = state;
     Result->Free = (Result->H == 0 && Result->S == SAFEUPLOAD_REGISTRY_S_NO &&
         Result->C == 0 && Result->T == 0 && unknown == 0) ? 1 : 0;

@@ -1638,3 +1638,15 @@ PASS live-taint-disable receipt; old/unattested latency receipts cannot qualify.
 14 self-checks, including 101 real native ACL-denied rename sequences on the
 builder (stimulus control only), and 329 proof-adapter controls. C05 runtime
 latency qualification remains pending.
+
+Diagnostic readout repair contract: `SafeUploadStageWritersRegistryEvaluate`
+currently overwrites every tracked scoped non-pending result with Activating
+(stale "promotion is a later increment" code). After its existing exact ID/SOP,
+name, counter and unknown checks, report Protected only when the actual resident
+entry state is Protected; otherwise retain the conservative Activating result.
+The no-history and pending fast paths stay intact. This is the feature diagnostic
+used by Inspector, not the enforcement state transition. It does not promote,
+clear Unknown, skip the cache barrier or convert Free alone into protection.
+Fresh exact builds and an actual same-ID promotion edge/registry readout must
+confirm it before qualification. A03's Unknown readout may include derived
+instance/global loss; it does not establish a sticky target identity failure.
