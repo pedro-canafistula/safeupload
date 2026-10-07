@@ -78,7 +78,11 @@ public static class AdmissionCoverageEvaluator
     private const uint RemovablePolicyFlag = 0x00000001;
     private const uint NetworkPolicyFlag = 0x00000002;
     private const uint AuditOnlyPolicyFlag = 0x00000004;
+#if SAFEUPLOAD_ADMISSION_EVIDENCE
+    private const uint KnownPolicyFlags = 0x0000003f;
+#else
     private const uint KnownPolicyFlags = 0x0000001f;
+#endif
 
     public static unsafe string[] GetExpectedPrefixes(SafeUploadPolicyMessage policy)
     {

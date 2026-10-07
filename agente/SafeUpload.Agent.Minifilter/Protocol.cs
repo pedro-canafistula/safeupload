@@ -189,6 +189,9 @@ public enum PolicyFlags : uint
 
     /// <summary>Classify supported file reads on every attached volume.</summary>
     ClassifyAllSources = 0x00000010,
+
+    /// <summary>Feature-build qualification: bypass process-taint recording and lookup.</summary>
+    TestDisableTaint = 0x00000020,
 }
 
 public static class ControlCommand

@@ -11,6 +11,24 @@ public sealed class AdmissionCoverageTests
         AdmissionCoverageContract.RegistryCompleteFlag;
 
     [Fact]
+    public void Taint_disable_receipt_is_known_only_in_feature_build_and_remains_policy_bound()
+    {
+        AdmissionCoverageScopeReceipt scope = PrefixScope();
+        uint flags = (uint)PolicyFlags.TestDisableTaint;
+        AdmissionCoverageDecision decision = AdmissionCoverageEvaluator.Evaluate(
+            ReadyReceipt(scope, policyFlags: flags), [scope.Prefix],
+            expectedPolicyFlags: flags, boundNativePolicyGeneration: 7);
+#if SAFEUPLOAD_ADMISSION_EVIDENCE
+        Assert.Equal(AdmissionCoverageReadiness.Ready, decision.Readiness);
+#else
+        Assert.Equal(AdmissionCoverageReadiness.Degraded, decision.Readiness);
+#endif
+        Assert.Equal(AdmissionCoverageReadiness.Degraded,
+            AdmissionCoverageEvaluator.Evaluate(ReadyReceipt(scope, policyFlags: flags),
+                [scope.Prefix], expectedPolicyFlags: 0, boundNativePolicyGeneration: 7).Readiness);
+    }
+
+    [Fact]
     public void Managed_coverage_wire_layout_matches_the_shared_protocol_contract()
     {
         Contract.Verify();

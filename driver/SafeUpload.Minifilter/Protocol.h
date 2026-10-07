@@ -472,6 +472,10 @@ typedef struct _SAFEUPLOAD_RESPONSE {
 
 #define SAFEUPLOAD_POLICY_FLAG_ALLOW_OVERRIDE ((UINT32) 0x00000008)
 
+/* Feature-build qualification only. Normal drivers reject this bit. It
+ * bypasses both process-taint recording and lookup, never staged admission. */
+#define SAFEUPLOAD_POLICY_FLAG_TEST_DISABLE_TAINT ((UINT32) 0x00000020)
+
 // Classify supported file reads anywhere, without a configured source path.
 #define SAFEUPLOAD_POLICY_FLAG_CLASSIFY_ALL_SOURCES ((UINT32) 0x00000010)
 

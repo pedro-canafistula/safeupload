@@ -734,6 +734,7 @@ SafeUploadCurrentPolicyGeneration (
 
 #if SAFEUPLOAD_STAGING_PROTOTYPE
 VOID SafeUploadPolicyReadLiveSnapshot(_Out_ PULONG Generation, _Out_ PULONG Flags);
+BOOLEAN SafeUploadPolicyTestDisablesTaint(VOID);
 NTSTATUS SafeUploadPolicyAdmissionCoverageSnapshot(
     _Inout_ PSAFEUPLOAD_ADMISSION_COVERAGE_STATUS Status);
 VOID SafeUploadPolicyAdmissionCoverageMetadata(

@@ -23,6 +23,7 @@ def fixture():
     for key in ('ParentPosition','ChildQuery'):setup[key]['Position']=317
     for key in ('ChildPosition','ParentQuery'):setup[key]['Position']=619
     assertions=[dict(Name=name,Verdict='INCONCLUSIVE' if name in ('A04PublicationAndTemporalCoverage','NeverReadyWholeHolderInterval') else 'PASS') for name in sorted(Q.A04_REQUIRED_ASSERTIONS)]
+    assertions.append(dict(Name='LiveTaintFlags', Verdict='PASS'))
     return dict(Schema='StagedInvariantSuite/2',AuthoritativeCaseExport=True,CaseId='A04',Mode='runtime-verifier',CaseStatus='READY',Verdict='INCONCLUSIVE',ForbiddenByteCount=0,
                 InputHashes={k:'A'*64 for k in Q.MVP_BUILD_HASHES},Restoration=dict(Known=True,GuestChecks=True,IndependentBaseline='baseline.txt',IndependentBaselineSha256='B'*64),
                 BootIds=dict(Active='active'),Trials=[dict(Verdict='INCONCLUSIVE',ForbiddenByteCount=0,Disposal=dict(Status='OK'),Errors=[],Actor=actor,DuplicateActor=child,

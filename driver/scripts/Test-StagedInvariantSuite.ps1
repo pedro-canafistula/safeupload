@@ -899,6 +899,51 @@ function Invoke-ActivationInspector([string]$Argument,[string]$Prefix,[int]$Time
         if($null -eq $previous){Remove-Item Env:SAFEUPLOAD_STAGED_PROOF_PROXY -ErrorAction SilentlyContinue}else{$env:SAFEUPLOAD_STAGED_PROOF_PROXY=$previous}
     }
 }
+function Get-InvariantLiveTaintReceipt([string]$Tag) {
+    $start=[Diagnostics.Stopwatch]::GetTimestamp()
+    $coverage=(Get-ActivationInspectorJson '--admission-coverage' ('taint-policy-'+$Tag)).Record
+    return @{BootId=(Get-BootId);StartQpc=$start;EndQpc=[Diagnostics.Stopwatch]::GetTimestamp();Coverage=$coverage}
+}
+function Test-InvariantLiveTaintWindow($Before,$After,$Counters) {
+    if($null -eq $Before -or $null -eq $After -or $null -eq $Counters){
+        return @{Name='LiveTaintFlags';Verdict='INCONCLUSIVE';Reason='Actual live policy and counter window receipts are incomplete.'}
+    }
+    $ordered=($Before.BootId -ceq $After.BootId -and $Before.BootId -ceq $Counters.Before.BootId -and
+        $Before.EndQpc -le $Counters.Before.StartQpc -and $Counters.After.EndQpc -le $After.StartQpc)
+    if(-not $ordered){return @{Name='LiveTaintFlags';Verdict='FAIL';Reason='Live policy/counter receipts have inconsistent boot identity or ordering.'}}
+    foreach($receipt in @($Before,$After)){
+        $coverage=$receipt.Coverage
+        if([string]$coverage.policyFlags -cnotmatch '^0x[0-9A-Fa-f]{8}$' -or
+            [string]$coverage.flags -cnotmatch '^0x[0-9A-Fa-f]{8}$' -or
+            $null -eq $coverage.policyGeneration -or $null -eq $coverage.policyGenerationEnd){
+            return @{Name='LiveTaintFlags';Verdict='INCONCLUSIVE';Reason='Live policy receipt is malformed.'}
+        }
+        $flags=[Convert]::ToUInt32($coverage.policyFlags.Substring(2),16)
+        if(($flags -band 0x20) -eq 0){return @{Name='LiveTaintFlags';Verdict='FAIL';Reason='Actual current policy does not enable TEST_DISABLE_TAINT.'}}
+        if(([Convert]::ToUInt32($coverage.flags.Substring(2),16) -band 2) -eq 0 -or
+            $coverage.policyGeneration -ne $coverage.policyGenerationEnd){
+            return @{Name='LiveTaintFlags';Verdict='INCONCLUSIVE';Reason='Live policy receipt changed during capture.'}
+        }
+    }
+    if(-not $Counters.NoCounterChanges){return @{Name='LiveTaintFlags';Verdict='FAIL';Reason='A legacy taint recording, lookup, hit or tainted rename occurred in the observed window.'}}
+    return @{Name='LiveTaintFlags';Verdict='PASS';Reason='Stable actual current policies enable feature-only TEST_DISABLE_TAINT at both window boundaries; actual legacy taint counters are unchanged throughout the window.';Evidence=@{Before=$Before;After=$After;Counters=$Counters}}
+}
+function Invoke-InvariantStartupObservation {
+    $before=$null;$counterBefore=$null;$after=$null;$counters=$null;$captureErrors=@()
+    try{$before=Get-InvariantLiveTaintReceipt 'before';$counterBefore=Get-ActivationTaintCounters 'whole-case-before'}catch{$captureErrors+=Get-ErrorChain $_.Exception}
+    if($coreRestartPolicyCase){Invoke-R02Observation}elseif($coreJustificationCase){Invoke-B02Observation}elseif($interactiveActorCase){Invoke-InteractiveCachedObservation}elseif($CaseId -ceq 'R03'){Invoke-R03Observation}elseif($CaseId -ceq 'A05'){Invoke-A05Observation}elseif($coreConcurrentCase){Invoke-X01Observation}elseif($isActivationCase){Invoke-ActivationObservation}elseif($cachedCase){Invoke-CachedObservation}else{Invoke-SeedObservation}
+    try{
+        if($counterBefore){$counters=Get-ActivationTaintCounterDelta $counterBefore (Get-ActivationTaintCounters 'whole-case-after')}
+        $after=Get-InvariantLiveTaintReceipt 'after'
+    }catch{$captureErrors+=Get-ErrorChain $_.Exception}
+    $trial=Load-State $trialPath
+    $trial.LiveTaintWindow=@{Before=$before;After=$after;Counters=$counters;CaptureErrors=$captureErrors}
+    $assertion=Test-InvariantLiveTaintWindow $before $after $counters
+    $trial.Assertions=@($trial.Assertions | Where-Object Name -cne 'LiveTaintFlags')+@($assertion)
+    if($assertion.Verdict -ceq 'FAIL'){$trial.Verdict='FAIL'}
+    if($trial.Policy){$trial.Policy.LiveFlags=@($before.Coverage.policyFlags,$after.Coverage.policyFlags);$trial.Policy.TaintDisabledConfirmed=($assertion.Verdict -ceq 'PASS')}
+    Save-State $trial $trialPath
+}
 function Get-ActivationTaintCounters([string]$Tag) {
     $start=[Diagnostics.Stopwatch]::GetTimestamp()
     $prefix=Join-Path $evidenceDirectory ('activation-taint-'+$Tag+'-'+[guid]::NewGuid().ToString('N'))
@@ -6053,7 +6098,7 @@ $value=$b.ToString().Split([char]0)[0]
     if($state.DedicatedUnheldLatency -ne $DedicatedUnheldLatency){throw 'Dedicated latency parameter/state mismatch'}
     if($state.MappedStackDiagnosticSeconds -ne $MappedStackDiagnosticSeconds){throw 'Mapped diagnostic parameter/state mismatch'}
     if($state.CaseId -cne $CaseId -or $state.Mode -cne $Mode -or $state.RunName -cne $RunName){throw 'State identity mismatch'}
-    if($StartupProbe){if($coreRestartPolicyCase){Invoke-R02Observation}elseif($coreJustificationCase){Invoke-B02Observation}elseif($interactiveActorCase){Invoke-InteractiveCachedObservation}elseif($CaseId -ceq 'R03'){Invoke-R03Observation}elseif($CaseId -ceq 'A05'){Invoke-A05Observation}elseif($coreConcurrentCase){Invoke-X01Observation}elseif($isActivationCase){Invoke-ActivationObservation}elseif($cachedCase){Invoke-CachedObservation}else{Invoke-SeedObservation};return}
+    if($StartupProbe){Invoke-InvariantStartupObservation;return}
     $observationError=$null
     try {
         $coordinatorWaitSeconds=if($DedicatedUnheldLatency){14460}elseif($CaseId -ceq 'A04'){2760}else{900}

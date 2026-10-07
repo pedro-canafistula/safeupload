@@ -18,7 +18,8 @@ def fixture():
                             'IndependentBaselineSha256': 'B' * 64},
             'Trials': [{'Verdict': 'INCONCLUSIVE', 'ForbiddenByteCount': 0,
                         'Disposal': {'Status': 'OK'}, 'Errors': [], 'Assertions': [
-                            {'Name': 'DestinationImage', 'Verdict': 'PASS'}],
+                            {'Name': 'DestinationImage', 'Verdict': 'PASS'},
+                            {'Name': 'LiveTaintFlags', 'Verdict': 'PASS'}],
                         'Predicate': {'Verdict': 'INCONCLUSIVE', 'Assertions': []}, 'Latency': []}]}
 
 
@@ -33,6 +34,21 @@ def latency(result):
 class MvpGateTests(unittest.TestCase):
     def assess(self, result, evidence=None):
         return Q.mvp_case_gate(result, evidence)
+
+    def test_live_taint_must_be_present_unique_and_pass(self):
+        for kind in ('missing', 'duplicate', 'inconclusive', 'fail'):
+            result = fixture()
+            assertions = result['Trials'][0]['Assertions']
+            if kind == 'missing':
+                assertions.pop()
+            elif kind == 'duplicate':
+                assertions.append(assertions[-1].copy())
+            else:
+                assertions[-1]['Verdict'] = kind.upper()
+            with self.subTest(kind=kind):
+                actual = self.assess(result)
+                self.assertFalse(actual['MvpGatePassed'])
+                self.assertIn('LiveTaintFlags', actual['MvpBlockers'])
 
     def test_each_fixed_allowlist_assertion(self):
         for name in (*Q.MVP_DEFERRED_EXACT, 'C01PublicationAndTemporalCoverage'):

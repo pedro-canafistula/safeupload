@@ -576,7 +576,7 @@ def case_gate(result, case, mode, name, params):
 
 MVP_DEFERRED_EXACT = frozenset((
     'PredicateCoverage', 'NoUnapprovedByte', 'CadenceCoverage', 'CadenceGap',
-    'ExternalCoverage', 'NeverReadyWholeHolderInterval', 'LiveTaintFlags',
+    'ExternalCoverage', 'NeverReadyWholeHolderInterval',
 ))
 MVP_BUILD_HASHES = ('Feature', 'Inspector', 'ServicePackage', 'ServiceTree')
 
@@ -874,6 +874,9 @@ def mvp_case_gate(result, latency_evidence=None):
         assertions = trial.get('Assertions', [])
         if not assertions:
             blockers.add('Assertions')
+        taint = [a for a in assertions if a.get('Name') == 'LiveTaintFlags']
+        if len(taint) != 1 or taint[0].get('Verdict') != 'PASS':
+            blockers.add('LiveTaintFlags')
         if result.get('CaseId') in ('A01', 'A02', 'A03', 'A04'):
             required = A04_REQUIRED_ASSERTIONS if result['CaseId'] == 'A04' else ACTIVATION_REQUIRED_ASSERTIONS
             missing = required - {a.get('Name') for a in assertions}

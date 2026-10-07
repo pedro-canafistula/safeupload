@@ -4944,7 +4944,8 @@ __declspec(noinline) static BOOLEAN StageRegistryTryPromoteStateNoInline(
                 event.ActivationGeneration = (UINT32)InterlockedCompareExchange(&Entry->ActivationGeneration, 0, 0);
                 event.PolicyGeneration = PolicyGeneration;
                 event.CurrentPolicyFlags = PolicyFlags;
-                event.TestDisableTaintState = SAFEUPLOAD_PROMOTION_TEST_DISABLE_TAINT_UNAVAILABLE;
+                event.TestDisableTaintState = BooleanFlagOn(PolicyFlags,
+                    SAFEUPLOAD_POLICY_FLAG_TEST_DISABLE_TAINT) ? 1 : 0;
                 event.CForSop = 0; /* independently checked as zero immediately before the CAS attempt */
                 event.UnknownWriterCount = mapFound && map != NULL ? map->UnknownWriterCount : 0;
                 event.SpilledMutatingIoCount = mapFound && map != NULL ? map->SpilledMutatingIoCount : 0;

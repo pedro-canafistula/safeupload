@@ -26,6 +26,15 @@ public sealed class PolicyBuilder
 
     private uint _verdictTimeoutMs;
 
+#if SAFEUPLOAD_ADMISSION_EVIDENCE
+    /// <summary>Disable the legacy process-taint gate for staged MVP qualification.</summary>
+    public PolicyBuilder WithTestDisableTaint()
+    {
+        _flags |= PolicyFlags.TestDisableTaint;
+        return this;
+    }
+#endif
+
     /// <summary>Extension including the dot, e.g. ".docx".</summary>
     public PolicyBuilder WithExtension(string extension)
     {

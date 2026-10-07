@@ -843,7 +843,11 @@ Routine Description:
 
     SafeUploadBootScopesActive = SafeUploadBootScopes.PrefixCount != 0 ||
         SafeUploadBootScopes.Flags != 0 || SafeUploadBootScopes.Overflow;
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    if (SafeUploadBootScopesActive || bootPolicyState == SAFEUPLOAD_BOOT_POLICY_STATE_VALID) {
+#else
     if (SafeUploadBootScopesActive) {
+#endif
         RtlCopyMemory(&SafeUploadBootSnapshot.Data, &SafeUploadBootMessage,
             sizeof(SAFEUPLOAD_POLICY_MESSAGE));
         SafeUploadBootSnapshot.ExtensionCount = 0;
@@ -851,6 +855,11 @@ Routine Description:
         SafeUploadBootSnapshot.SourcePrefixCount = 0;
         SafeUploadBootSnapshot.ImageCount = 0;
         SafeUploadBootSnapshot.Flags = SafeUploadBootMessage.Flags;
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+        /* Boot records persist destination scopes only. The feature binary
+         * qualifies boot protection without the legacy process-taint gate. */
+        SafeUploadBootSnapshot.Flags |= SAFEUPLOAD_POLICY_FLAG_TEST_DISABLE_TAINT;
+#endif
         SafeUploadBootSnapshot.VerdictTimeoutIntervals =
             -((LONGLONG)SAFEUPLOAD_VERDICT_TIMEOUT_MS * 10 * 1000);
         SafeUploadBuildStringTable(&SafeUploadBootSnapshot.Data.Prefixes[0][0],
@@ -1012,6 +1021,10 @@ SafeUploadSetPolicy (
         Message->PrefixCount > SAFEUPLOAD_MAX_PREFIXES ||
         Message->SourcePrefixCount > SAFEUPLOAD_MAX_SOURCE_PREFIXES ||
         Message->ImageCount > SAFEUPLOAD_MAX_IMAGES) return STATUS_INVALID_PARAMETER;
+#if !SAFEUPLOAD_STAGING_PROTOTYPE
+    if (FlagOn(Message->Flags, SAFEUPLOAD_POLICY_FLAG_TEST_DISABLE_TAINT))
+        return STATUS_NOT_SUPPORTED;
+#endif
 
     snapshot = (PSAFEUPLOAD_POLICY)ExAllocatePool2(POOL_FLAG_NON_PAGED,
         sizeof(SAFEUPLOAD_POLICY), SAFEUPLOAD_POOL_TAG);
@@ -1206,6 +1219,17 @@ SafeUploadCurrentPolicyGeneration (
 }
 
 #if SAFEUPLOAD_STAGING_PROTOTYPE
+BOOLEAN SafeUploadPolicyTestDisablesTaint(VOID)
+{
+    BOOLEAN disabled;
+    /* Called before taking the taint lock, only at <= APC_LEVEL. */
+    FltAcquirePushLockShared(&SafeUploadPolicyLock);
+    disabled = (SafeUploadPolicy != NULL && FlagOn(SafeUploadPolicy->Flags,
+        SAFEUPLOAD_POLICY_FLAG_TEST_DISABLE_TAINT)) ? TRUE : FALSE;
+    FltReleasePushLock(&SafeUploadPolicyLock);
+    return disabled;
+}
+
 VOID SafeUploadPolicyReadLiveSnapshot(_Out_ PULONG Generation, _Out_ PULONG Flags)
 {
     FltAcquirePushLockShared(&SafeUploadPolicyLock);

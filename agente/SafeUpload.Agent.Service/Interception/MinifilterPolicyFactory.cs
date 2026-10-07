@@ -18,6 +18,9 @@ internal static class MinifilterPolicyFactory
         ArgumentNullException.ThrowIfNull(policy);
         MonitoredScopes scopes = policy.MonitoredScopes;
         var builder = new PolicyBuilder();
+#if SAFEUPLOAD_ADMISSION_EVIDENCE
+        builder.WithTestDisableTaint();
+#endif
 
         foreach (string extension in scopes.Extensions)
             builder.WithExtension(extension);

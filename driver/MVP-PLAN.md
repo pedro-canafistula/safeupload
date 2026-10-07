@@ -112,8 +112,10 @@ separate per-run `MvpGatePassed`, computed by the runner. It requires all of the
   - authenticated per-file readiness event stream: `NeverReadyWholeHolderInterval`
   - `*UnheldLatency`, only when a dedicated latency run for the same write path passes (at least 100 unheld
     samples, p95 <= 250 ms, max <= 1000 ms)
-  - `LiveTaintFlags`, only until live evidence replaces it: Inspector counters showing that no taint
-    decision occurred during the run. That evidence is MVP work, not deferred.
+
+`LiveTaintFlags` must now be present exactly once and PASS. The feature-only test bit is read
+from the actual current policy at both observation boundaries, with stable native receipts
+and unchanged taint counters across that window. Missing live evidence is an MVP blocker.
 
 The runner records the names it tolerated (`MvpDeferred`). Any other INCONCLUSIVE fails the MVP gate. For
 the MVP, NoUnapprovedByte is therefore evidenced by sampled raw-volume, fresh and uncached reads across the
@@ -1518,3 +1520,17 @@ qualification remain MVP work; no allowlist or scope has been changed here.
   All 27 driver/Inspector source files are byte-identical to reviewed b18
   (manifest `ED10CD934C09CF7081DC003E04745952B2C84CECBB0E739CA530BFB917BE42CA`);
   current VM runs retain the original b18 artifacts for same-build latency joins.
+
+Taint implementation contract (2026-10-07, before qualification): add test-only live policy
+bit 0x20 without changing protocol-18 layouts. The normal driver rejects that bit. The
+feature service policy factory sends it; the feature boot snapshot supplies it independently
+because durable v1 boot records remain destination-scope-only. The two legacy taint entry
+points consult the current policy before acquiring the taint table lock: disabling prevents
+both recording and lookup/counter increments. It does not bypass staged admission, inspection,
+publication, or any destination gate. The existing promotion receipt derives its sampled
+state from its existing sampled current flags. All rows capture native Control 24 plus
+actual taint counters around the complete case, require boot/QPC ordering, stable live bit
+at both boundaries and zero counter changes. `LiveTaintFlags` is removed from the temporary
+MVP allowlist, and absent/duplicate/non-PASS assertions now block that gate. Old b18 runs
+remain diagnostics and cannot qualify the finished taint-disabled MVP. Exact builds, the
+normal/feature agent matrix and VM qualification on the new pair remain required.
