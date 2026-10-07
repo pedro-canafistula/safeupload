@@ -1,0 +1,24 @@
+The command was successfully executed.
+
+[SC] ChangeServiceConfig SUCCESS
+
+Unload failed with error: 0x801f0010
+Do not detach the filter from the volume at this time.
+
+No settings were changed.
+ScriptError=System.Management.Automation.RuntimeException: Restoration needs attention; preserve state and checkpoint: driver: System.Management.Automation.RuntimeException: Test filter refused unload; original driver bytes were retained in the state directory.; policy: System.Management.Automation.MethodInvocationException: Exception calling "WriteAllBytes" with "2" argument(s): "The process cannot access the file 'C:\ProgramData\SafeUpload\policy.json' because it is being used by another process." ---> System.IO.IOException: The process cannot access the file 'C:\ProgramData\SafeUpload\policy.json' because it is being used by another process.
+   at System.IO.__Error.WinIOError(Int32 errorCode, String maybeFullPath)
+   at System.IO.FileStream.Init(String path, FileMode mode, FileAccess access, Int32 rights, Boolean useRights, FileShare share, Int32 bufferSize, FileOptions options, SECURITY_ATTRIBUTES secAttrs, String msgPath, Boolean bFromProxy, Boolean useLongPath, Boolean checkHost)
+   at System.IO.FileStream..ctor(String path, FileMode mode, FileAccess access, FileShare share, Int32 bufferSize, FileOptions options, String msgPath, Boolean bFromProxy, Boolean useLongPath, Boolean checkHost)
+   at System.IO.File.InternalWriteAllBytes(String path, Byte[] bytes, Boolean checkHost)
+   at CallSite.Target(Closure , CallSite , Type , Object , Object )
+   --- End of inner exception stack trace ---
+   at System.Management.Automation.ExceptionHandlingOps.CheckActionPreference(FunctionContext funcContext, Exception exception)
+   at System.Management.Automation.Interpreter.ActionCallInstruction`2.Run(InterpretedFrame frame)
+   at System.Management.Automation.Interpreter.EnterTryCatchFinallyInstruction.Run(InterpretedFrame frame)
+   at System.Management.Automation.Interpreter.EnterTryCatchFinallyInstruction.Run(InterpretedFrame frame); cached-product-state: System.Management.Automation.RuntimeException: Cannot restore product files while the agent is running; preserve backup; fixture: System.ArgumentException: Access to the path is denied.
+   at System.IO.FileSystemInfo.set_Attributes(FileAttributes value)
+   at Microsoft.PowerShell.Commands.FileSystemProvider.RemoveFileSystemItem(FileSystemInfo fileSystemInfo, Boolean force); service-package: System.UnauthorizedAccessException: Access to the path 'SafeUpload.Agent.Minifilter.pdb' is denied.
+   at System.IO.__Error.WinIOError(Int32 errorCode, String maybeFullPath)
+   at System.IO.FileInfo.Delete()
+   at Microsoft.PowerShell.Commands.FileSystemProvider.RemoveFileSystemItem(FileSystemInfo fileSystemInfo, Boolean force)
