@@ -1492,21 +1492,30 @@ function Get-NotificationSnapshot([string]$Tag,[string]$BootId,[long]$MinimumQpc
                 throw $inventory.Reason
             }
             $files=@{}
-            foreach($name in @('previous.jsonl','emissions.jsonl','head.json','writer.lock')){
+            # head.json is opened only for its own read below: NTFS refuses to replace a file while ANY handle to it is
+            # open, even with delete sharing, and the agent closes its notification record after 1 s of failed
+            # head replacements (p1a4/p1c2/p1c3 under three-VM load). Torn reads are rejected by the hash chain.
+            foreach($name in @('previous.jsonl','emissions.jsonl','writer.lock')){
                 if($names -contains $name){$obj=[SUProofFile]::Open((Join-Path $directory $name),$false,$true,$true,$true);$held+=$obj;$files[$name]=$obj;$snapshot.Objects+=@{Path=$obj.Path;Owner=$obj.Owner;Sddl=$obj.Sddl}}
             }
             if(([SUProofFile]::Read($files['writer.lock'],1)).Length -ne 0){throw 'Invalid notification writer lease.'}
             $segments=@();$headBytes=$null;$copies=@()
             $snapshot.LocationFiles=@(@{Name='writer.lock';Bytes=[byte[]]@()})
             foreach($name in @('previous.jsonl','emissions.jsonl','head.json')){
-                if(-not $files.ContainsKey($name)){continue}
-                $bound=if($name -ceq 'head.json'){4096}else{4194304}
-                $bytes=[SUProofFile]::Read($files[$name],$bound)
+                if($name -ceq 'head.json'){
+                    if($names -notcontains $name){continue}
+                    $obj=[SUProofFile]::Open((Join-Path $directory $name),$false,$true,$true,$true)
+                    try{$snapshot.Objects+=@{Path=$obj.Path;Owner=$obj.Owner;Sddl=$obj.Sddl};$bytes=[SUProofFile]::Read($obj,4096)}finally{$obj.Dispose()}
+                }else{
+                    if(-not $files.ContainsKey($name)){continue}
+                    $bytes=[SUProofFile]::Read($files[$name],4194304)
+                }
                 $artifact=Join-Path $evidenceDirectory ('notifications-'+$Tag+'-'+$name)
                 $copies+=@{Name=$name;Path=$artifact;Bytes=$bytes}
                 $snapshot.LocationFiles+=@{Name=$name;Bytes=$bytes}
                 if($name -ceq 'head.json'){$headBytes=$bytes}else{$segments+=@{Bytes=$bytes;Artifact=$artifact}}
             }
+            foreach($obj in @($files.Values)){$obj.Dispose()};$held=@($held | Where-Object {-not $files.ContainsValue($_)})
             # Authenticate the complete raw location independently of durable coverage.
             $afterNames=@(Get-ChildItem -LiteralPath $directory -Force -ErrorAction Stop | Select-Object -ExpandProperty Name | Sort-Object)
             $snapshot.AfterChildNames=$afterNames
