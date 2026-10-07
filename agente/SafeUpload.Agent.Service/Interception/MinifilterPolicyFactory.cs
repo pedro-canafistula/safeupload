@@ -18,8 +18,10 @@ internal static class MinifilterPolicyFactory
         ArgumentNullException.ThrowIfNull(policy);
         MonitoredScopes scopes = policy.MonitoredScopes;
         var builder = new PolicyBuilder();
+        bool taintEnabled = true;
 #if SAFEUPLOAD_ADMISSION_EVIDENCE
         builder.WithTestDisableTaint();
+        taintEnabled = false;
 #endif
 
         foreach (string extension in scopes.Extensions)
@@ -28,10 +30,14 @@ internal static class MinifilterPolicyFactory
         foreach (string path in scopes.DestinationPaths)
             builder.WithDestination(path);
 
-        // Classify supported files by content wherever they reside.
-        // The minifilter only sets source scope for read opens. Its
-        // path-sensitive stream cache is disabled in this mode.
-        builder.WithAllSources();
+        // Classify supported files by content wherever they reside, but only while
+        // process taint is on: classification exists to mark the reading process.
+        // With taint off every read of a supported file would still wait on an
+        // inspection whose result nothing uses, and that load stalled the service
+        // until saves were denied (owner decision 2026-10-07). The minifilter only
+        // sets source scope for read opens; its stream cache is disabled in this mode.
+        if (taintEnabled)
+            builder.WithAllSources();
 
         foreach (string image in policy.ExcludedProcesses)
             builder.WithExcludedImage(image);
