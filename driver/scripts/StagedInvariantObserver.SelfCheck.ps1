@@ -68,6 +68,56 @@ if ($PSBoundParameters.ContainsKey('Live') -and [string]::IsNullOrWhiteSpace($Li
 try { Import-Module (Join-Path $PSScriptRoot 'StagedInvariantObserver.psm1') -Force -DisableNameChecking -ErrorAction Stop }
 catch { Report-IO 'Import' $false $_.Exception.ToString(); Write-Output ('IO_Summary=passed:' + $script:Passed + ';failed:' + $script:Failed); exit 1 }
 $record = TinyRecord $false; $nonresident = TinyRecord $true; $root = TinyRoot
+Check-IO 'CachedFileRecordUsesAppliedFixups' {
+    $fixed=[StagedInvariant.Native]::DecodeRecord($record,512,7).Fixed
+    $cached=[StagedInvariant.Native]::DecodeCachedRecord($fixed,512,7)
+    $cached.Number -eq 7 -and $cached.Sequence -eq 3 -and $cached.Attributes[0].Value.Length -eq 3
+}
+Check-IO 'CachedFileRecordAppliesRawFixups' {
+    $cached=[StagedInvariant.Native]::DecodeCachedRecord($record,512,7)
+    $cached.Number -eq 7 -and $cached.Sequence -eq 3 -and $cached.Attributes[0].Value.Length -eq 3
+}
+Check-IO 'CachedFileRecordAcceptsClearedApiUsa' {
+    $copy=[StagedInvariant.Native]::DecodeRecord($record,512,7).Fixed
+    Put16 $copy 50 0;Put16 $copy 52 0
+    $cached=[StagedInvariant.Native]::DecodeCachedRecord($copy,512,7)
+    $cached.Number -eq 7 -and $cached.Attributes[0].Value.Length -eq 3
+}
+Reject-IO 'CachedFileRecordRejectsMixedFixups' {
+    $copy=[byte[]]$record.Clone();Put16 $copy 510 1234
+    [StagedInvariant.Native]::DecodeCachedRecord($copy,512,7)
+}
+Reject-IO 'CachedFileRecordRejectsWrongNumber' {
+    $fixed=[StagedInvariant.Native]::DecodeRecord($record,512,7).Fixed
+    [StagedInvariant.Native]::DecodeCachedRecord($fixed,512,8)
+}
+Reject-IO 'CachedFileRecordRejectsNotInUse' {
+    $fixed=[StagedInvariant.Native]::DecodeRecord($record,512,7).Fixed;Put16 $fixed 22 0
+    [StagedInvariant.Native]::DecodeCachedRecord($fixed,512,7)
+}
+$directoryPage=[byte[]]::new(240);Put32 $directoryPage 0 120;Put32 $directoryPage 60 10;Put64 $directoryPage 96 844424930131975
+[Array]::Copy([Text.Encoding]::Unicode.GetBytes('stage'),0,$directoryPage,104,10)
+Put32 $directoryPage 180 10;Put64 $directoryPage 216 844424930131976
+[Array]::Copy([Text.Encoding]::Unicode.GetBytes('other'),0,$directoryPage,224,10)
+Check-IO 'CachedPrivateDirectoryReference' {
+    $count=[int]0;$reference=[StagedInvariant.Native]::DecodePrivateDirectoryPage($directoryPage,'stage',[ref]$count)
+    $count -eq 2 -and $reference -eq 844424930131975
+}
+Reject-IO 'CachedPrivateDirectoryDuplicateName' {
+    $copy=[byte[]]$directoryPage.Clone();[Array]::Copy([Text.Encoding]::Unicode.GetBytes('stage'),0,$copy,224,10)
+    $count=[int]0;[StagedInvariant.Native]::DecodePrivateDirectoryPage($copy,'stage',[ref]$count)
+}
+Reject-IO 'CachedPrivateDirectoryTruncation' {
+    $count=[int]0;[StagedInvariant.Native]::DecodePrivateDirectoryPage([StagedInvariant.Native]::Slice($directoryPage,0,113),'stage',[ref]$count)
+}
+Reject-IO 'CachedPrivateDirectoryMisalignment' {
+    $copy=[byte[]]$directoryPage.Clone();Put32 $copy 0 118;$count=[int]0
+    [StagedInvariant.Native]::DecodePrivateDirectoryPage($copy,'stage',[ref]$count)
+}
+Reject-IO 'CachedPrivateDirectorySequenceRequired' {
+    $copy=[byte[]]$directoryPage.Clone();Put64 $copy 96 7;$count=[int]0
+    [StagedInvariant.Native]::DecodePrivateDirectoryPage($copy,'stage',[ref]$count)
+}
 Check-IO 'Fixups' {
     $r = [StagedInvariant.Native]::DecodeRecord($record, 512, 7)
     $r.Number -eq 7 -and $r.Sequence -eq 3 -and [StagedInvariant.Native]::U16($r.Fixed, 510) -eq 0x1122 -and
