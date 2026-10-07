@@ -1,0 +1,17 @@
+The command was successfully executed.
+
+[SC] ChangeServiceConfig SUCCESS
+
+No settings were changed.
+ScriptError=System.Management.Automation.RuntimeException: Restoration needs attention; preserve state and checkpoint: cached-product-state: System.Management.Automation.RuntimeException: Task failed: SafeUpload-StagedTest-System-e03d40fb70ea499eb58f01aa4489364d; LastTaskResult=1; 
+Name                           Value                                                               
+----                           -----                                                               
+Token                          e03d40fb70ea499eb58f01aa4489364d                                    
+BootId                         WIN10-DEBUGGED/2026-10-06T18:56:52.5000000Z                         
+Errors                         {System.Collections.Hashtable}                                      
+Value                                                                                              
+CompletedQpc                   844752650                                                           
+ExitCode                       1                                                                   
+
+
+

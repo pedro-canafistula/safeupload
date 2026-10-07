@@ -1,0 +1,21 @@
+[SC] OpenService FAILED 1060:
+
+The specified service does not exist as an installed service.
+
+The command was successfully executed.
+
+[SC] ChangeServiceConfig SUCCESS
+
+No settings were changed.
+ScriptError=System.Management.Automation.RuntimeException: Restoration needs attention; preserve state and checkpoint: cached-product-state: System.Management.Automation.RuntimeException: Task failed: SafeUpload-StagedTest-System-879c57a2686c4cc5a7fad57b117bfa5c; LastTaskResult=1; 
+Name                           Value                                                               
+----                           -----                                                               
+Token                          879c57a2686c4cc5a7fad57b117bfa5c                                    
+BootId                         WIN10-DEBUGGED/2026-10-06T22:36:13.5000000Z                         
+Errors                         {System.Collections.Hashtable}                                      
+Value                                                                                              
+CompletedQpc                   1762878833                                                          
+ExitCode                       1                                                                   
+
+
+

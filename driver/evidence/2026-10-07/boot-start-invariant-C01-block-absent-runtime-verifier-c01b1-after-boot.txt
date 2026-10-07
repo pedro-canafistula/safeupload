@@ -1,0 +1,36 @@
+ScriptError=System.Management.Automation.MethodInvocationException: Exception calling "ReadAllText" with "1" argument(s): "The process cannot access the file 'C:\Users\vika\Documents\SafeUpload-invariant-state-boot-start-invariant-C01-block-absent-runtime-verifier-c01b1\state.clixml' because it is being used by another process." ---> System.IO.IOException: The process cannot access the file 'C:\Users\vika\Documents\SafeUpload-invariant-state-boot-start-invariant-C01-block-absent-runtime-verifier-c01b1\state.clixml' because it is being used by another process.
+   at System.IO.__Error.WinIOError(Int32 errorCode, String maybeFullPath)
+   at System.IO.FileStream.Init(String path, FileMode mode, FileAccess access, Int32 rights, Boolean useRights, FileShare share, Int32 bufferSize, FileOptions options, SECURITY_ATTRIBUTES secAttrs, String msgPath, Boolean bFromProxy, Boolean useLongPath, Boolean checkHost)
+   at System.IO.FileStream..ctor(String path, FileMode mode, FileAccess access, FileShare share, Int32 bufferSize, FileOptions options, String msgPath, Boolean bFromProxy, Boolean useLongPath, Boolean checkHost)
+   at System.IO.StreamReader..ctor(String path, Encoding encoding, Boolean detectEncodingFromByteOrderMarks, Int32 bufferSize, Boolean checkHost)
+   at System.IO.File.InternalReadAllText(String path, Encoding encoding, Boolean checkHost)
+   at CallSite.Target(Closure , CallSite , Type , String )
+   --- End of inner exception stack trace ---
+   at System.Management.Automation.ExceptionHandlingOps.CheckActionPreference(FunctionContext funcContext, Exception exception)
+   at System.Management.Automation.Interpreter.ActionCallInstruction`2.Run(InterpretedFrame frame)
+   at System.Management.Automation.Interpreter.EnterTryCatchFinallyInstruction.Run(InterpretedFrame frame)
+   at System.Management.Automation.Interpreter.EnterTryCatchFinallyInstruction.Run(InterpretedFrame frame)
+Exception calling "ReadAllText" with "1" argument(s): "The process cannot access the file 'C:\Users
+\vika\Documents\SafeUpload-invariant-state-boot-start-invariant-C01-block-absent-runtime-verifier-c
+01b1\state.clixml' because it is being used by another process."
+At C:\Users\vika\Documents\Test-StagedInvariantSuite-E46A4D89301BF83C.ps1:90 char:38
++ ... ng]$Path) { [Management.Automation.PSSerializer]::Deserialize([IO.Fil ...
++                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (:) [], MethodInvocationException
+    + FullyQualifiedErrorId : IOException
+ 
+System.Management.Automation.MethodInvocationException: Exception calling "ReadAllText" with "1" argument(s): "The process cannot access the file 'C:\Users\vika\Documents\SafeUpload-invariant-state-boot-start-invariant-C01-block-absent-runtime-verifier-c01b1\state.clixml' because it is being used by another process." ---> System.IO.IOException: The process cannot access the file 'C:\Users\vika\Documents\SafeUpload-invariant-state-boot-start-invariant-C01-block-absent-runtime-verifier-c01b1\state.clixml' because it is being used by another process.
+   at System.IO.__Error.WinIOError(Int32 errorCode, String maybeFullPath)
+   at System.IO.FileStream.Init(String path, FileMode mode, FileAccess access, Int32 rights, Boolean useRights, FileShare share, Int32 bufferSize, FileOptions options, SECURITY_ATTRIBUTES secAttrs, String msgPath, Boolean bFromProxy, Boolean useLongPath, Boolean checkHost)
+   at System.IO.FileStream..ctor(String path, FileMode mode, FileAccess access, FileShare share, Int32 bufferSize, FileOptions options, String msgPath, Boolean bFromProxy, Boolean useLongPath, Boolean checkHost)
+   at System.IO.StreamReader..ctor(String path, Encoding encoding, Boolean detectEncodingFromByteOrderMarks, Int32 bufferSize, Boolean checkHost)
+   at System.IO.File.InternalReadAllText(String path, Encoding encoding, Boolean checkHost)
+   at CallSite.Target(Closure , CallSite , Type , String )
+   --- End of inner exception stack trace ---
+   at System.Management.Automation.ExceptionHandlingOps.CheckActionPreference(FunctionContext funcContext, Exception exception)
+   at System.Management.Automation.Interpreter.ActionCallInstruction`2.Run(InterpretedFrame frame)
+   at System.Management.Automation.Interpreter.EnterTryCatchFinallyInstruction.Run(InterpretedFrame frame)
+   at System.Management.Automation.Interpreter.EnterTryCatchFinallyInstruction.Run(InterpretedFrame frame)at Load-State, C:\Users\vika\Documents\Test-StagedInvariantSuite-E46A4D89301BF83C.ps1: line 90
+at <ScriptBlock>, C:\Users\vika\Documents\Test-StagedInvariantSuite-E46A4D89301BF83C.ps1: line 2922
+at <ScriptBlock>, <No file>: line 1
+HARNESS_THREW: Suite child failed

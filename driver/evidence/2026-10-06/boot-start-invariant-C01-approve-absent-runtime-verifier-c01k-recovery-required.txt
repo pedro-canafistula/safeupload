@@ -1,0 +1,11 @@
+GUEST_RECOVERY_REQUIRED=True
+Reason=AfterBoot harness failed or restoration was incomplete.
+Checkpoint=safeupload-pre-boot-start-invariant-C01-approve-absent-runtime-verifier-c01k-20261006
+ActiveOverlay=/var/lib/libvirt/images/win10-debug.safeupload-pre-boot-start-invariant-C01-approve-absent-runtime-verifier-c01k-20261006
+Domain=win10-debug
+ Type   Device   Target   Source
+-----------------------------------------------------------------------------------------------------------------------------------------------------
+ file   disk     vda      /var/lib/libvirt/images/win10-debug.safeupload-pre-boot-start-invariant-C01-approve-absent-runtime-verifier-c01k-20261006
+ file   cdrom    sda      -
+ file   cdrom    sdb      -
+

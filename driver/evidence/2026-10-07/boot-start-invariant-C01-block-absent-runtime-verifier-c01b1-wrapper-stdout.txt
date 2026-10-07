@@ -1,0 +1,116 @@
+== 1. baseline
+baseline clean
+== 2. checkpoint
+BackingChainDepth=124
+UTC=2026-10-07T03:07:51Z
+virsh -c qemu:///system snapshot-create-as --domain win10-debug --name safeupload-pre-boot-start-invariant-C01-block-absent-runtime-verifier-c01b1-20261007 --description 'Clean original driver and policy before boot-start-invariant-C01-block-absent-runtime-verifier-c01b1' --disk-only --no-metadata --diskspec vda,snapshot=external,file=/var/lib/libvirt/images/win10-debug.safeupload-pre-boot-start-invariant-C01-block-absent-runtime-verifier-c01b1-20261007 --atomic
+Domain snapshot safeupload-pre-boot-start-invariant-C01-block-absent-runtime-verifier-c01b1-20261007 created
+--- active disk after checkpoint
+ Target   Source
+------------------------------------------------------------------------------------------------------------------------------------
+ vda      /var/lib/libvirt/images/win10-debug.safeupload-pre-boot-start-invariant-C01-block-absent-runtime-verifier-c01b1-20261007
+ sda      -
+ sdb      -
+
+running
+
+== 3. run
+PRE_RUN_PS: $ErrorActionPreference='Stop';$d='C:\Users\vika\Documents';
+$p=Join-Path $d 'SafeUpload-stage-prototype-4CBFC89AC2D00DC6.sys';if((Test-Path -LiteralPath $p) -and (Get-FileHash $p).Hash -ne '4CBFC89AC2D00DC6A80FE280381802451ACB228557157452B4B4F76D852B98EA'){throw 'Input collision'};
+$p=Join-Path $d 'inspector-feature-release-5015054FFFF7CEAA.exe';if((Test-Path -LiteralPath $p) -and (Get-FileHash $p).Hash -ne '5015054FFFF7CEAAC63955F8EA731191A9B15EAB8EB99BE933283770499CD462'){throw 'Input collision'};
+$p=Join-Path $d 'StagedInvariantCases-4A4FC02E015E6623.psd1';if((Test-Path -LiteralPath $p) -and (Get-FileHash $p).Hash -ne '4A4FC02E015E66236E8B7C1D49DCBF8EE12AFE62FDB896F698E27AEF642E5FD8'){throw 'Input collision'};
+$p=Join-Path $d 'StagedInvariantObserver-4411CC06C522D62B.psm1';if((Test-Path -LiteralPath $p) -and (Get-FileHash $p).Hash -ne '4411CC06C522D62B6078F52689C0D2C681401795D8CB50603E8FFBD5ED5AE46E'){throw 'Input collision'};
+$p=Join-Path $d 'StagedTestAgent-4C9220B7D202255D.ps1';if((Test-Path -LiteralPath $p) -and (Get-FileHash $p).Hash -ne '4C9220B7D202255DC29EDB585DB3C51AED0B2284C06914E41E2C7C1BAA247699'){throw 'Input collision'};
+$p=Join-Path $d 'stage-service-publish.zip';if((Test-Path -LiteralPath $p) -and (Get-FileHash $p).Hash -ne '6ABC0EA4CDFC6B70150699F5B32A0A2E9C5DE437049F648448A55E2E96CB9040'){$old=(Get-FileHash $p).Hash;$keep=$p+'.preserved-'+$old;if(Test-Path -LiteralPath $keep){throw 'Preserved package collision'};Move-Item -LiteralPath $p -Destination $keep};
+$p=Join-Path $d 'Test-StagedInvariantSuite-E46A4D89301BF83C.ps1';if((Test-Path -LiteralPath $p) -and (Get-FileHash $p).Hash -ne 'E46A4D89301BF83C7DAF72B757A0B4DF9932840174A24D52D65107877D885F76'){throw 'Input collision'};
+if(Test-Path -LiteralPath (Join-Path $d 'boot-start-invariant-C01-block-absent-runtime-verifier-c01b1-artifacts')){throw 'Run-scoped guest evidence collision'};
+if(Test-Path -LiteralPath (Join-Path $d 'SafeUpload-invariant-state-boot-start-invariant-C01-block-absent-runtime-verifier-c01b1')){throw 'Run-scoped guest evidence collision'};
+if(Test-Path -LiteralPath (Join-Path $d 'boot-start-invariant-C01-block-absent-runtime-verifier-c01b1-prepare.out')){throw 'Run-scoped guest evidence collision'};
+if(Test-Path -LiteralPath (Join-Path $d 'boot-start-invariant-C01-block-absent-runtime-verifier-c01b1-prepare.err')){throw 'Run-scoped guest evidence collision'};
+if(Test-Path -LiteralPath (Join-Path $d 'boot-start-invariant-C01-block-absent-runtime-verifier-c01b1-afterboot.out')){throw 'Run-scoped guest evidence collision'};
+if(Test-Path -LiteralPath (Join-Path $d 'boot-start-invariant-C01-block-absent-runtime-verifier-c01b1-afterboot.err')){throw 'Run-scoped guest evidence collision'};
+if(Test-Path -LiteralPath (Join-Path $d 'boot-start-invariant-C01-block-absent-runtime-verifier-c01b1-finalize.out')){throw 'Run-scoped guest evidence collision'};
+if(Test-Path -LiteralPath (Join-Path $d 'boot-start-invariant-C01-block-absent-runtime-verifier-c01b1-finalize.err')){throw 'Run-scoped guest evidence collision'};
+'PRE_RUN_OK=True'
+
+PRE_RUN_OK=True
+copied /tmp/claude-1000/exact-mvp4-b10/SafeUpload-stage-prototype.sys -> SafeUpload-stage-prototype-4CBFC89AC2D00DC6.sys sha256=4cbfc89ac2d00dc6a80fe280381802451acb228557157452b4b4f76d852b98ea
+copied /tmp/claude-1000/exact-mvp4-b10/inspector-feature-release.exe -> inspector-feature-release-5015054FFFF7CEAA.exe sha256=5015054ffff7ceaac63955f8ea731191a9b15eab8eb99be933283770499cd462
+copied /home/victor/Work/safeupload-staging/driver/scripts/StagedInvariantCases.psd1 -> StagedInvariantCases-4A4FC02E015E6623.psd1 sha256=4a4fc02e015e66236e8b7c1d49dcbf8ee12afe62fdb896f698e27aef642e5fd8
+copied /home/victor/Work/safeupload-staging/driver/scripts/StagedInvariantObserver.psm1 -> StagedInvariantObserver-4411CC06C522D62B.psm1 sha256=4411cc06c522d62b6078f52689c0d2c681401795d8cb50603e8ffbd5ed5ae46e
+copied /home/victor/Work/safeupload-staging/driver/scripts/StagedTestAgent.ps1 -> StagedTestAgent-4C9220B7D202255D.ps1 sha256=4c9220b7d202255dc29edb585db3c51aed0b2284c06914e41e2c7c1baa247699
+copied /tmp/claude-1000/exact-agent-agent-mvp4-b14/stage-service-publish.zip -> stage-service-publish.zip sha256=6abc0ea4cdfc6b70150699f5b32a0a2e9c5de437049f648448a55e2e96cb9040
+processed file: C:\Users\vika\Documents\SafeUpload-invariant-state-boot-start-invariant-C01-block-absent-runtime-verifier-c01b1
+Successfully processed 1 files; Failed processing 0 files
+processed file: C:\Users\vika\Documents\boot-start-invariant-C01-block-absent-runtime-verifier-c01b1-artifacts
+Successfully processed 1 files; Failed processing 0 files
+The command was successfully executed.
+processed file: C:\Users\vika\Documents\SafeUpload-invariant-state-boot-start-invariant-C01-block-absent-runtime-verifier-c01b1
+Successfully processed 1 files; Failed processing 0 files
+processed file: C:\Users\vika\Documents\SafeUpload-invariant-state-boot-start-invariant-C01-block-absent-runtime-verifier-c01b1\actor
+Successfully processed 1 files; Failed processing 0 files
+processed file: C:\SafeUploadInvariant-boot-start-invariant-C01-block-absent-runtime-verifier-c01b1
+Successfully processed 1 files; Failed processing 0 files
+PolicyAclVerified=True;Trustees=SYSTEM,Administrators;InheritedAces=0
+BootPolicySeed=product-mode;ExitCode:0;PASS
+BootPolicyPrebootVerified=ParametersAcl:True;BootPolicyAcl:True;RecordBytes:16656;ExactRecord:True;PendingScopes:Absent;Start:3;PASS
+processed file: C:\Users\vika\Documents\SafeUpload-invariant-state-boot-start-invariant-C01-block-absent-runtime-verifier-c01b1\writer-config.clixml
+Successfully processed 1 files; Failed processing 0 files
+processed file: C:\Users\vika\Documents\SafeUpload-invariant-state-boot-start-invariant-C01-block-absent-runtime-verifier-c01b1\writer.ps1
+Successfully processed 1 files; Failed processing 0 files
+[SC] ChangeServiceConfig SUCCESS
+CaseStatus=READY
+INVARIANT_PREPARED=True
+HARNESS_RETURNED
+REBOOT_REQUESTED=True
+guest SSH returned after reboot (attempt 1)
+BootIdentityChanged=True;Before=2026-10-07T03:05:33.5000000Z;After=2026-10-07T03:08:25.5000000Z
+ScriptError=System.Management.Automation.MethodInvocationException: Exception calling "ReadAllText" with "1" argument(s): "The process cannot access the file 'C:\Users\vika\Documents\SafeUpload-invariant-state-boot-start-invariant-C01-block-absent-runtime-verifier-c01b1\state.clixml' because it is being used by another process." ---> System.IO.IOException: The process cannot access the file 'C:\Users\vika\Documents\SafeUpload-invariant-state-boot-start-invariant-C01-block-absent-runtime-verifier-c01b1\state.clixml' because it is being used by another process.
+   at System.IO.__Error.WinIOError(Int32 errorCode, String maybeFullPath)
+   at System.IO.FileStream.Init(String path, FileMode mode, FileAccess access, Int32 rights, Boolean useRights, FileShare share, Int32 bufferSize, FileOptions options, SECURITY_ATTRIBUTES secAttrs, String msgPath, Boolean bFromProxy, Boolean useLongPath, Boolean checkHost)
+   at System.IO.FileStream..ctor(String path, FileMode mode, FileAccess access, FileShare share, Int32 bufferSize, FileOptions options, String msgPath, Boolean bFromProxy, Boolean useLongPath, Boolean checkHost)
+   at System.IO.StreamReader..ctor(String path, Encoding encoding, Boolean detectEncodingFromByteOrderMarks, Int32 bufferSize, Boolean checkHost)
+   at System.IO.File.InternalReadAllText(String path, Encoding encoding, Boolean checkHost)
+   at CallSite.Target(Closure , CallSite , Type , String )
+   --- End of inner exception stack trace ---
+   at System.Management.Automation.ExceptionHandlingOps.CheckActionPreference(FunctionContext funcContext, Exception exception)
+   at System.Management.Automation.Interpreter.ActionCallInstruction`2.Run(InterpretedFrame frame)
+   at System.Management.Automation.Interpreter.EnterTryCatchFinallyInstruction.Run(InterpretedFrame frame)
+   at System.Management.Automation.Interpreter.EnterTryCatchFinallyInstruction.Run(InterpretedFrame frame)
+Exception calling "ReadAllText" with "1" argument(s): "The process cannot access the file 'C:\Users
+\vika\Documents\SafeUpload-invariant-state-boot-start-invariant-C01-block-absent-runtime-verifier-c
+01b1\state.clixml' because it is being used by another process."
+At C:\Users\vika\Documents\Test-StagedInvariantSuite-E46A4D89301BF83C.ps1:90 char:38
++ ... ng]$Path) { [Management.Automation.PSSerializer]::Deserialize([IO.Fil ...
++                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (:) [], MethodInvocationException
+    + FullyQualifiedErrorId : IOException
+ 
+System.Management.Automation.MethodInvocationException: Exception calling "ReadAllText" with "1" argument(s): "The process cannot access the file 'C:\Users\vika\Documents\SafeUpload-invariant-state-boot-start-invariant-C01-block-absent-runtime-verifier-c01b1\state.clixml' because it is being used by another process." ---> System.IO.IOException: The process cannot access the file 'C:\Users\vika\Documents\SafeUpload-invariant-state-boot-start-invariant-C01-block-absent-runtime-verifier-c01b1\state.clixml' because it is being used by another process.
+   at System.IO.__Error.WinIOError(Int32 errorCode, String maybeFullPath)
+   at System.IO.FileStream.Init(String path, FileMode mode, FileAccess access, Int32 rights, Boolean useRights, FileShare share, Int32 bufferSize, FileOptions options, SECURITY_ATTRIBUTES secAttrs, String msgPath, Boolean bFromProxy, Boolean useLongPath, Boolean checkHost)
+   at System.IO.FileStream..ctor(String path, FileMode mode, FileAccess access, FileShare share, Int32 bufferSize, FileOptions options, String msgPath, Boolean bFromProxy, Boolean useLongPath, Boolean checkHost)
+   at System.IO.StreamReader..ctor(String path, Encoding encoding, Boolean detectEncodingFromByteOrderMarks, Int32 bufferSize, Boolean checkHost)
+   at System.IO.File.InternalReadAllText(String path, Encoding encoding, Boolean checkHost)
+   at CallSite.Target(Closure , CallSite , Type , String )
+   --- End of inner exception stack trace ---
+   at System.Management.Automation.ExceptionHandlingOps.CheckActionPreference(FunctionContext funcContext, Exception exception)
+   at System.Management.Automation.Interpreter.ActionCallInstruction`2.Run(InterpretedFrame frame)
+   at System.Management.Automation.Interpreter.EnterTryCatchFinallyInstruction.Run(InterpretedFrame frame)
+   at System.Management.Automation.Interpreter.EnterTryCatchFinallyInstruction.Run(InterpretedFrame frame)at Load-State, C:\Users\vika\Documents\Test-StagedInvariantSuite-E46A4D89301BF83C.ps1: line 90
+at <ScriptBlock>, C:\Users\vika\Documents\Test-StagedInvariantSuite-E46A4D89301BF83C.ps1: line 2922
+at <ScriptBlock>, <No file>: line 1
+HARNESS_THREW: Suite child failed
+AFTER-BOOT RESTORATION FAILED; preserve checkpoint and inspect guest state
+GUEST_RECOVERY_REQUIRED=True
+Reason=AfterBoot harness failed or restoration was incomplete.
+Checkpoint=safeupload-pre-boot-start-invariant-C01-block-absent-runtime-verifier-c01b1-20261007
+ActiveOverlay=/var/lib/libvirt/images/win10-debug.safeupload-pre-boot-start-invariant-C01-block-absent-runtime-verifier-c01b1-20261007
+Domain=win10-debug
+ Type   Device   Target   Source
+----------------------------------------------------------------------------------------------------------------------------------------------------
+ file   disk     vda      /var/lib/libvirt/images/win10-debug.safeupload-pre-boot-start-invariant-C01-block-absent-runtime-verifier-c01b1-20261007
+ file   cdrom    sda      -
+ file   cdrom    sdb      -
+
+Could not determine the checkpoint overlay backing file: /var/lib/libvirt/images/win10-debug.safeupload-pre-boot-start-invariant-C01-block-absent-runtime-verifier-c01b1-20261007

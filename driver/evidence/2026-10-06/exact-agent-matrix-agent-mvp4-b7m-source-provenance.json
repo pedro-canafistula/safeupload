@@ -1,0 +1,20 @@
+{
+  "SourceKind": "worktree",
+  "BaseCommit": "88225662bfbf9627aaf1f36680a2ed9c99122ded",
+  "CapturedUTC": "2026-10-06T22:48:13.071339+00:00",
+  "ArchiveSHA256": "e1b064d9a560bfb06c440a3956a019de4955462bef4fe3a650157ed74f80a8b9",
+  "ManifestSHA256": "ca8d7f373d805de2b58e67c5ed7430c19aeed325ca5db7c969815c8326ccb3a6",
+  "ProjectIndexSHA256": "b828be691fc7fd7795e2d89db92b727a8f774b275b9193d9e2e15853d767bddb",
+  "Files": 135,
+  "ChangedFromBaseCommit": [],
+  "BuildToolsSHA256": {
+    "driver/scripts/Build-ExactAgentMatrix.ps1": "2cbe579f26be5d8e22e7932212bcb577459c30d8c1daeda6a66e7b31c1537b8a",
+    "driver/scripts/remote_ps.py": "71e39bb56a5b5c89b3e00131e24d05377624219a34ae47dd68a4db74c0560351",
+    "driver/scripts/Prepare-ExactWorktreeSource.py": "67386727e63ac8ff961548101276bdaa4b9bf0d0f970d23e801a915e6adff107",
+    "driver/scripts/Prepare-ExactAgentWorktreeSource.py": "137002d23758ca8bd700abce891c2e3e0f7b43614eedfd38ffa944ba0b27de83",
+    "driver/scripts/Invoke-ExactAgentMatrixBuild.py": "8ec449fdc92cc2a0e310d6c0aa3e7be5b8e6be41ad8f126b6388a74b46d513ec"
+  },
+  "ReviewedUntrackedSHA256": {},
+  "CaptureCheck": "two reads; byte and file metadata equality",
+  "NetworkOperationsDuringPreparation": 0
+}

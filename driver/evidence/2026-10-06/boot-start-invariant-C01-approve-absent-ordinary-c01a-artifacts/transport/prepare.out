@@ -1,0 +1,42 @@
+processed file: C:\Users\vika\Documents\SafeUpload-invariant-state-boot-start-invariant-C01-approve-absent-ordinary-c01a
+Successfully processed 1 files; Failed processing 0 files
+processed file: C:\Users\vika\Documents\boot-start-invariant-C01-approve-absent-ordinary-c01a-artifacts
+Successfully processed 1 files; Failed processing 0 files
+The command was successfully executed.
+
+processed file: C:\Users\vika\Documents\SafeUpload-invariant-state-boot-start-invariant-C01-approve-absent-ordinary-c01a
+Successfully processed 1 files; Failed processing 0 files
+processed file: C:\Users\vika\Documents\SafeUpload-invariant-state-boot-start-invariant-C01-approve-absent-ordinary-c01a\actor
+Successfully processed 1 files; Failed processing 0 files
+processed file: C:\SafeUploadInvariant-boot-start-invariant-C01-approve-absent-ordinary-c01a
+Successfully processed 1 files; Failed processing 0 files
+PolicyAclVerified=True;Trustees=SYSTEM,Administrators;InheritedAces=0
+ScriptError=System.Management.Automation.RuntimeException: Task failed: SafeUpload-StagedTest-System-a0b6af2fa77e458fa026a0a3ef5b9321; LastTaskResult=1; 
+Name                           Value                                                               
+----                           -----                                                               
+Token                          a0b6af2fa77e458fa026a0a3ef5b9321                                    
+BootId                         WIN10-DEBUGGED/2026-10-06T15:20:18.8088650Z                         
+Errors                         {System.Collections.Hashtable}                                      
+Value                                                                                              
+CompletedQpc                   221184215602                                                        
+ExitCode                       1                                                                   
+
+
+
+The command was successfully executed.
+
+[SC] ChangeServiceConfig SUCCESS
+
+No settings were changed.
+ScriptError=System.Management.Automation.RuntimeException: Restoration needs attention; preserve state and checkpoint: cached-product-state: System.Management.Automation.RuntimeException: Task failed: SafeUpload-StagedTest-System-4d6b0e02cfa7477fac34f0ff46e962de; LastTaskResult=1; 
+Name                           Value                                                               
+----                           -----                                                               
+Token                          4d6b0e02cfa7477fac34f0ff46e962de                                    
+BootId                         WIN10-DEBUGGED/2026-10-06T15:20:18.8088650Z                         
+Errors                         {System.Collections.Hashtable}                                      
+Value                                                                                              
+CompletedQpc                   221221590553                                                        
+ExitCode                       1                                                                   
+
+
+

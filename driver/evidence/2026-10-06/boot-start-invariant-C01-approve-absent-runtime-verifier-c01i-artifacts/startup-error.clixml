@@ -1,0 +1,24 @@
+<Objs Version="1.1.0.1" xmlns="http://schemas.microsoft.com/powershell/2004/04">
+  <Obj RefId="0">
+    <TN RefId="0">
+      <T>System.Object[]</T>
+      <T>System.Array</T>
+      <T>System.Object</T>
+    </TN>
+    <LST>
+      <Obj RefId="1">
+        <TN RefId="1">
+          <T>System.Management.Automation.PSCustomObject</T>
+          <T>System.Object</T>
+        </TN>
+        <MS>
+          <S N="Type">System.Management.Automation.RuntimeException</S>
+          <S N="Message">Task completion unavailable: SafeUpload-StagedTest-Invariant-boot-start-invariant-C01-approve-absent-runtime-verifier-c01i</S>
+          <I32 N="HResult">-2146233087</I32>
+          <Nil N="NativeCode" />
+          <Nil N="Stack" />
+        </MS>
+      </Obj>
+    </LST>
+  </Obj>
+</Objs>

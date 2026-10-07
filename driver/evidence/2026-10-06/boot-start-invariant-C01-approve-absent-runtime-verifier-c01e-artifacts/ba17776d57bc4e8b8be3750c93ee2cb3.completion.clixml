@@ -1,0 +1,41 @@
+<Objs Version="1.1.0.1" xmlns="http://schemas.microsoft.com/powershell/2004/04">
+  <Obj RefId="0">
+    <TN RefId="0">
+      <T>System.Collections.Hashtable</T>
+      <T>System.Object</T>
+    </TN>
+    <DCT>
+      <En>
+        <S N="Key">Value</S>
+        <S N="Value">\Device\HarddiskVolume3</S>
+      </En>
+      <En>
+        <S N="Key">ExitCode</S>
+        <I32 N="Value">0</I32>
+      </En>
+      <En>
+        <S N="Key">CompletedQpc</S>
+        <I64 N="Value">29267708452</I64>
+      </En>
+      <En>
+        <S N="Key">Errors</S>
+        <Obj N="Value" RefId="1">
+          <TN RefId="1">
+            <T>System.Object[]</T>
+            <T>System.Array</T>
+            <T>System.Object</T>
+          </TN>
+          <LST />
+        </Obj>
+      </En>
+      <En>
+        <S N="Key">Token</S>
+        <S N="Value">ba17776d57bc4e8b8be3750c93ee2cb3</S>
+      </En>
+      <En>
+        <S N="Key">BootId</S>
+        <S N="Value">WIN10-DEBUGGED/2026-10-06T22:02:18.2288770Z</S>
+      </En>
+    </DCT>
+  </Obj>
+</Objs>

@@ -1,0 +1,17 @@
+Pool default refreshed
+
+Domain 'win10-debug' destroyed
+
+Vol win10-debug.safeupload-recovery-c01c-20261006.qcow2 created
+
+Domain 'win10-debug' defined from /tmp/claude-1000/win10-debug-recovery-c01c.xml
+
+Domain 'win10-debug' started
+
+ Target   Source
+---------------------------------------------------------------------------------------
+ vda      /var/lib/libvirt/images/win10-debug.safeupload-recovery-c01c-20261006.qcow2
+ sda      -
+ sdb      -
+
+Started on win10-debug.safeupload-recovery-c01c-20261006.qcow2. Then: driver/scripts/Get-StagedBaseline.ps1 via remote_ps should report BaselineClean=True.

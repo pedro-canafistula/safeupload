@@ -1,0 +1,200 @@
+   -- Configuring repositories
+      ----> Repository : LocalInstalled, Enabled: true
+      ----> Repository : UserExtensions, Enabled: true
+
+>>>>>>>>>>>>> Preparing the environment for Debugger Extensions Gallery repositories completed, duration 0.000 seconds
+
+************* Waiting for Debugger Extensions Gallery to Initialize **************
+
+>>>>>>>>>>>>> Waiting for Debugger Extensions Gallery to Initialize completed, duration 0.031 seconds
+   ----> Repository : UserExtensions, Enabled: true, Packages count: 0
+   ----> Repository : LocalInstalled, Enabled: true, Packages count: 30
+
+Microsoft (R) Windows Debugger Version 10.0.28000.2705 AMD64
+Copyright (c) Microsoft Corporation. All rights reserved.
+
+
+Loading Dump File [C:\Users\vika\Documents\forensic\c01g-hang.dmp]
+Kernel Complete Dump File: Full address space is available
+
+Comment: 'Hello from elf2dmp!'
+
+************* Path validation summary **************
+Response                         Time (ms)     Location
+Deferred                                       srv*C:\symbols*https://msdl.microsoft.com/download/symbols
+Symbol search path is: srv*C:\symbols*https://msdl.microsoft.com/download/symbols
+Executable search path is: 
+KiProcessorBlock[2] is null.
+KiProcessorBlock[3] is null.
+Windows 10 Kernel Version 19041 MP (4 procs) Free x64
+Product: WinNt, suite: TerminalServer SingleUserTS
+Edition build lab: 19041.1.amd64fre.vb_release.191206-1406
+Kernel base = 0xfffff801`31800000 PsLoadedModuleList = 0xfffff801`3242a2b0
+System Uptime: 0 days 0:00:44.236
+Loading Kernel Symbols
+...............................................................
+................................................................
+..........................................
+Loading User Symbols
+................................................................
+........................
+Loading unloaded module list
+..
+CLRDLL: Consider using ".cordll -lp <path>" command to specify .NET runtime directory.
+CLRDLL: Consider using ".cordll -lp <path>" command to specify .NET runtime directory.
+Unknown exception - code 00000000 (first/second chance not available)
+For analysis of this file, run !analyze -v
+0: kd> .symfix+ C:\symcache
+0: kd> .sympath+ C:\Users\vika\Documents\exact-mvp4-b9\src\driver\SafeUpload.Minifilter\x64\Debug
+Symbol search path is: srv*C:\symbols*https://msdl.microsoft.com/download/symbols;srv*;C:\Users\vika\Documents\exact-mvp4-b9\src\driver\SafeUpload.Minifilter\x64\Debug
+Expanded Symbol search path is: srv*c:\symbols*https://msdl.microsoft.com/download/symbols;SRV*C:\symcache*https://msdl.microsoft.com/download/symbols;c:\users\vika\documents\exact-mvp4-b9\src\driver\safeupload.minifilter\x64\debug
+
+************* Path validation summary **************
+Response                         Time (ms)     Location
+Deferred                                       srv*C:\symbols*https://msdl.microsoft.com/download/symbols
+Deferred                                       srv*
+OK                                             C:\Users\vika\Documents\exact-mvp4-b9\src\driver\SafeUpload.Minifilter\x64\Debug
+0: kd> .reload
+Loading Kernel Symbols
+...............................................................
+................................................................
+..........................................
+Loading User Symbols
+................................................................
+........................
+Loading unloaded module list
+..
+CLRDLL: Consider using ".cordll -lp <path>" command to specify .NET runtime directory.
+CLRDLL: Consider using ".cordll -lp <path>" command to specify .NET runtime directory.
+0: kd> lm m SafeUpload
+Browse full module list
+start             end                 module name
+fffff801`34660000 fffff801`34d43000   SafeUpload   (deferred)             
+0: kd> dq nt!KiBugCheckData L5
+fffff801`3242b340  00000000`0000003b 00000000`c0000005
+fffff801`3242b350  fffff801`34669a4d ffffa603`3cf1d6e0
+fffff801`3242b360  00000000`00000000
+0: kd> !running -it
+
+System Processors:  (0000000000000003)
+  Idle Processors:  (0000000000000000)
+
+       Prcbs             Current         (pri) Next            (pri) Idle
+  0    fffff8012d83c180  ffffb48c66af2080 ( 7)                       fffff80132527a00  ................
+
+ # Child-SP          RetAddr               Call Site
+00 fffff801`35c2bd48 fffff801`2e3c16e5     kdcom!READ_REGISTER_ULONG+0x2
+01 fffff801`35c2bd50 fffff801`2e3c39d9     kd_02_8086!ReadDeviceMemory+0x71
+02 fffff801`35c2bd90 fffff801`2e3c33d6     kd_02_8086!e1000_InDword+0x39
+03 fffff801`35c2bdd0 fffff801`2e3c375a     kd_02_8086!e1000_UNDI_Status+0xc6
+04 fffff801`35c2be10 fffff801`2e3c1895     kd_02_8086!e1000_UNDI_APIEntry+0x12a
+05 fffff801`35c2be40 fffff801`2e3c1079     kd_02_8086!UndiGetRxPacket+0xb9
+06 fffff801`35c2c050 fffff801`2e424cf8     kd_02_8086!KdGetRxPacket+0x9
+07 fffff801`35c2c080 fffff801`2e4250fe     kdcom!GetRxPacket+0x88
+08 fffff801`35c2c0d0 fffff801`2e4251a1     kdcom!WaitForRxPacket+0x11a
+09 fffff801`35c2c130 fffff801`2e42535b     kdcom!WaitForSpecificRxPacket+0x39
+0a fffff801`35c2c190 fffff801`2e425576     kdcom!WaitForSpecificRxIpPacket+0xb7
+0b fffff801`35c2c260 fffff801`2e426ac6     kdcom!WaitForSpecificRxUdpPacketEx+0x6e
+0c fffff801`35c2c2e0 fffff801`2e423253     kdcom!NetReadKdPacket+0xd6
+0d fffff801`35c2c3a0 fffff801`2e42385d     kdcom!KdReceivePacket+0x153
+0e fffff801`35c2c460 fffff801`321bb5a3     kdcom!KdSendPacket+0x2ad
+0f fffff801`35c2c4d0 fffff801`321bad9f     nt!KdpSendWaitContinue+0xaf
+10 fffff801`35c2c6b0 fffff801`31d0ff6b     nt!KdpReportExceptionStateChange+0xbf
+11 fffff801`35c2c820 fffff801`321bdb80     nt!KdpReport+0xb7
+12 fffff801`35c2c860 fffff801`31ae7c99     nt!KdpTrap+0x160
+13 fffff801`35c2c8b0 fffff801`31ae7887     nt!KdTrap+0x2d
+14 fffff801`35c2c8f0 fffff801`31bfcdb2     nt!KiDispatchException+0x177
+15 fffff801`35c2cfb0 fffff801`31bfcd80     nt!KxExceptionDispatchOnExceptionStack+0x12
+16 ffffa603`3cf1c2a8 fffff801`31c0fe65     nt!KiExceptionDispatchOnExceptionStackContinue
+17 ffffa603`3cf1c2b0 fffff801`31c08ed0     nt!KiExceptionDispatch+0x125
+18 ffffa603`3cf1c490 fffff801`31c05241     nt!KiBreakpointTrap+0x310
+19 ffffa603`3cf1c628 fffff801`31d162f2     nt!DbgBreakPointWithStatus+0x1
+1a ffffa603`3cf1c630 fffff801`31d15d62     nt!KiBugCheckDebugBreak+0x12
+1b ffffa603`3cf1c690 fffff801`31bfbda7     nt!KeBugCheck2+0xdd2
+1c ffffa603`3cf1cda0 fffff801`31c0fd29     nt!KeBugCheckEx+0x107
+1d ffffa603`3cf1cde0 fffff801`31c0eefc     nt!KiBugCheckDispatch+0x69
+1e ffffa603`3cf1cf20 fffff801`31c06392     nt!KiSystemServiceHandler+0x7c
+1f ffffa603`3cf1cf60 fffff801`31ae58c7     nt!RtlpExecuteHandlerForException+0x12
+20 ffffa603`3cf1cf90 fffff801`31ae7896     nt!RtlDispatchException+0x297
+21 ffffa603`3cf1d6b0 fffff801`31c0fe6c     nt!KiDispatchException+0x186
+22 ffffa603`3cf1dd70 fffff801`31c0b8bd     nt!KiExceptionDispatch+0x12c
+23 ffffa603`3cf1df50 fffff801`34669a4d     nt!KiPageFault+0x43d
+24 ffffa603`3cf1e0e0 fffff801`2e665b86     SafeUpload!SafeUploadStagePostOperation+0x3d
+25 ffffa603`3cf1e130 fffff801`2e66545b     FLTMGR!FltpPerformPostCallbacksWorker+0x346
+26 ffffa603`3cf1e200 fffff801`2e6671a2     FLTMGR!FltpPassThroughCompletionWorker+0xfb
+27 ffffa603`3cf1e2a0 fffff801`2e699f54     FLTMGR!FltpLegacyProcessingAfterPreCallbacksCompleted+0x322
+28 ffffa603`3cf1e310 fffff801`31b6fd97     FLTMGR!FltpCreate+0x324
+29 ffffa603`3cf1e3c0 fffff801`321c7f2a     nt!IopfCallDriver+0x53
+2a ffffa603`3cf1e400 fffff801`31c20a65     nt!IovCallDriver+0x266
+2b ffffa603`3cf1e440 fffff801`31a0d944     nt!IofCallDriver+0x20f735
+2c ffffa603`3cf1e480 fffff801`31dff58b     nt!IoCallDriverWithTracing+0x34
+2d ffffa603`3cf1e4d0 fffff801`31e1501e     nt!IopParseDevice+0x11bb
+2e ffffa603`3cf1e640 fffff801`31e0ccea     nt!ObpLookupObjectName+0x3fe
+2f ffffa603`3cf1e810 fffff801`31dfd0ac     nt!ObOpenObjectByNameEx+0x1fa
+30 ffffa603`3cf1e940 fffff801`31dfbd69     nt!IopCreateFile+0x132c
+31 ffffa603`3cf1ea00 fffff801`31c0f4f8     nt!NtCreateFile+0x79
+32 ffffa603`3cf1ea90 00007ff8`d388db04     nt!KiSystemServiceCopyEnd+0x28
+33 000000fb`f510bdf8 00007ff8`d14c6579     ntdll!NtCreateFile+0x14
+34 000000fb`f510be00 00007ff8`d14c5fe6     KERNELBASE!CreateFileInternal+0x579
+35 000000fb`f510bf70 00007ff8`6021ceb0     KERNELBASE!CreateFileW+0x66
+36 000000fb`f510bfd0 00007ff8`60409b38     0x00007ff8`6021ceb0
+37 000000fb`f510bfd8 0000026f`abaf6830     0x00007ff8`60409b38
+38 000000fb`f510bfe0 00000000`80000000     0x0000026f`abaf6830
+Unable to load image C:\Windows\assembly\NativeImages_v4.0.30319_64\mscorlib\b647019e9c1f6030fc3caa74d4f8f2ac\mscorlib.ni.dll, Win32 error 0n2
+39 000000fb`f510bfe8 00007ff8`bb28336e     0x80000000
+3a 000000fb`f510bff0 00000000`00000000     mscorlib_ni+0x64336e
+
+  1    ffff820043798180  ffffb48c5f4f0040 (12)                       ffff8200437a30c0  ................
+
+ # Child-SP          RetAddr               Call Site
+00 ffff8200`43854b70 fffff801`31d1c562     nt!KiCheckStall+0x79
+01 ffff8200`43854ba0 fffff801`31d10b0a     nt!KiFreezeTargetExecution+0x1e2
+02 ffff8200`43854cb0 fffff801`31d10f85     nt!KiCheckForFreezeExecution+0x2a
+03 ffff8200`43854ce0 fffff801`31c08b42     nt!KiProcessNMI+0x55
+04 ffff8200`43854d30 fffff801`31c08912     nt!KxNmiInterrupt+0x82
+05 ffff8200`43854e70 fffff801`31af65e0     nt!KiNmiInterrupt+0x212
+06 ffffa603`3b0d5a98 fffff801`31af0b30     nt!HalpApic1WriteIcr+0x10
+07 ffffa603`3b0d5aa0 fffff801`31a7fc3d     nt!HalpApicRequestInterrupt+0x90
+08 ffffa603`3b0d5b10 fffff801`31a7e10e     nt!HalpInterruptSendIpi+0xfd
+09 ffffa603`3b0d5d80 fffff801`31aeab3b     nt!HalRequestIpiSpecifyVector+0x7e
+0a ffffa603`3b0d5dd0 fffff801`31abfccb     nt!KiIpiSendRequest+0x38b
+0b ffffa603`3b0d5ee0 fffff801`31abfb18     nt!KeFlushMultipleRangeTb+0x12b
+0c ffffa603`3b0d5f80 fffff801`31aaab89     nt!MiFlushTbList+0x88
+0d ffffa603`3b0d5fb0 fffff801`31b2828d     nt!MiFreeWsleList+0x119
+0e ffffa603`3b0d6180 fffff801`31a6dd2d     nt!MiEmptyWorkingSetTail+0x2d
+0f ffffa603`3b0d61b0 fffff801`31a6d94b     nt!MiWalkPageTablesRecursively+0xc6d
+10 ffffa603`3b0d6250 fffff801`31a6d94b     nt!MiWalkPageTablesRecursively+0x88b
+11 ffffa603`3b0d62f0 fffff801`31a6d94b     nt!MiWalkPageTablesRecursively+0x88b
+12 ffffa603`3b0d6390 fffff801`31a6a94b     nt!MiWalkPageTablesRecursively+0x88b
+13 ffffa603`3b0d6430 fffff801`31b1ab87     nt!MiWalkPageTables+0x36b
+14 ffffa603`3b0d6530 fffff801`31d39819     nt!MiEmptyWorkingSetInitiate+0x107
+15 ffffa603`3b0d6700 fffff801`31d3a61e     nt!MiEmptyTargetedWorkingSet+0xf1
+16 ffffa603`3b0d6750 fffff801`321c8c86     nt!MiTrimAllSystemPagableMemory+0xde
+17 ffffa603`3b0d67a0 fffff801`321df353     nt!MmVerifierTrimMemory+0x72
+18 ffffa603`3b0d67d0 fffff801`321defca     nt!ViKeRaiseIrqlSanityChecks+0xc7
+19 ffffa603`3b0d6810 fffff801`321dda69     nt!ViKeAcquireSpinLockRaiseToDpcCommon+0x2a
+1a ffffa603`3b0d6840 fffff801`34663e69     nt!VerifierKeAcquireSpinLockRaiseToDpcNoReboot+0x9
+1b ffffa603`3b0d6870 fffff801`3468250d     SafeUpload!SafeUploadAcquireSpinLock+0x19
+1c ffffa603`3b0d68a0 fffff801`34d37ef7     SafeUpload!StageRegistrySnapshotSpilledWriters+0x4d
+1d ffffa603`3b0d68f0 fffff801`34d39676     SafeUpload!StageRegistryEntryQuiescent+0x127
+1e ffffa603`3b0d6990 fffff801`2e69e3e6     SafeUpload!StageRegistryReclaimWorker+0x766
+1f ffffa603`3b0d6ae0 fffff801`31a8e5c5     FLTMGR!FltpProcessGenericWorkItem+0xa6
+20 ffffa603`3b0d6b70 fffff801`31b265f5     nt!ExpWorkerThread+0x105
+21 ffffa603`3b0d6c10 fffff801`31c048d8     nt!PspSystemThreadStartup+0x55
+22 ffffa603`3b0d6c60 00000000`00000000     nt!KiStartSystemThread+0x28
+
+0: kd> q
+quit:
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\atlmfc.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\concurrency.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\cpp_rest.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\Kernel.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\ObjectiveC.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\stl.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\Usb4Kd.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\Windows.Data.Json.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\Windows.Devices.Geolocation.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\Windows.Devices.Sensors.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\Windows.Media.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\windows.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\winrt.natvis'

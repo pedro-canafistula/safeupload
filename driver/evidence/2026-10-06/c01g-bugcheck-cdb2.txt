@@ -1,0 +1,120 @@
+0: kd> .symfix+ C:\symcache
+0: kd> .sympath+ C:\Users\vika\Documents\exact-mvp4-b9\src\driver\SafeUpload.Minifilter\x64\Debug
+Symbol search path is: srv*C:\symbols*https://msdl.microsoft.com/download/symbols;srv*;C:\Users\vika\Documents\exact-mvp4-b9\src\driver\SafeUpload.Minifilter\x64\Debug
+Expanded Symbol search path is: srv*c:\symbols*https://msdl.microsoft.com/download/symbols;SRV*C:\symcache*https://msdl.microsoft.com/download/symbols;c:\users\vika\documents\exact-mvp4-b9\src\driver\safeupload.minifilter\x64\debug
+
+************* Path validation summary **************
+Response                         Time (ms)     Location
+Deferred                                       srv*C:\symbols*https://msdl.microsoft.com/download/symbols
+Deferred                                       srv*
+OK                                             C:\Users\vika\Documents\exact-mvp4-b9\src\driver\SafeUpload.Minifilter\x64\Debug
+0: kd> .reload
+Loading Kernel Symbols
+...............................................................
+................................................................
+..........................................
+Loading User Symbols
+................................................................
+........................
+Loading unloaded module list
+..
+CLRDLL: Consider using ".cordll -lp <path>" command to specify .NET runtime directory.
+CLRDLL: Consider using ".cordll -lp <path>" command to specify .NET runtime directory.
+0: kd> .lines -e
+Line number information will be loaded
+0: kd> .cxr ffffa6033cf1d6e0
+rax=0000000000000000 rbx=ffffb48c6009d820 rcx=ffffb48c6009d908
+rdx=ffffa6033cf1e178 rsi=0000000000000000 rdi=ffffb48c601da010
+rip=fffff80134669a4d rsp=ffffa6033cf1e0e0 rbp=ffffb48c6009d908
+ r8=0000000000000001  r9=0000000000000000 r10=0000fffff8013466
+r11=ffff71ff0e200000 r12=ffffb48c600dc010 r13=ffffb48c601da240
+r14=0000000000000000 r15=ffffb48c6009d9a8
+iopl=0         nv up ei pl zr na po nc
+cs=0010  ss=0018  ds=002b  es=002b  fs=0053  gs=002b             efl=00050246
+SafeUpload!SafeUploadStagePostOperation+0x3d:
+fffff801`34669a4d 813853704574    cmp     dword ptr [rax],74457053h ds:002b:00000000`00000000=????????
+0: kd> r
+Last set context:
+rax=0000000000000000 rbx=ffffb48c6009d820 rcx=ffffb48c6009d908
+rdx=ffffa6033cf1e178 rsi=0000000000000000 rdi=ffffb48c601da010
+rip=fffff80134669a4d rsp=ffffa6033cf1e0e0 rbp=ffffb48c6009d908
+ r8=0000000000000001  r9=0000000000000000 r10=0000fffff8013466
+r11=ffff71ff0e200000 r12=ffffb48c600dc010 r13=ffffb48c601da240
+r14=0000000000000000 r15=ffffb48c6009d9a8
+iopl=0         nv up ei pl zr na po nc
+cs=0010  ss=0018  ds=002b  es=002b  fs=0053  gs=002b             efl=00050246
+SafeUpload!SafeUploadStagePostOperation+0x3d:
+fffff801`34669a4d 813853704574    cmp     dword ptr [rax],74457053h ds:002b:00000000`00000000=????????
+0: kd> kn 4
+ # Child-SP          RetAddr               Call Site
+00 ffffa603`3cf1e0e0 fffff801`2e665b86     SafeUpload!SafeUploadStagePostOperation+0x3d [C:\Users\vika\Documents\exact-mvp4-b9\src\driver\SafeUpload.Minifilter\StageStream.c @ 3674] 
+01 ffffa603`3cf1e130 fffff801`2e66545b     FLTMGR!FltpPerformPostCallbacksWorker+0x346
+02 ffffa603`3cf1e200 fffff801`2e6671a2     FLTMGR!FltpPassThroughCompletionWorker+0xfb
+03 ffffa603`3cf1e2a0 fffff801`2e699f54     FLTMGR!FltpLegacyProcessingAfterPreCallbacksCompleted+0x322
+0: kd> u SafeUpload!SafeUploadStagePostOperation L20
+SafeUpload!SafeUploadStagePostOperation [C:\Users\vika\Documents\exact-mvp4-b9\src\driver\SafeUpload.Minifilter\StageStream.c @ 3668]:
+fffff801`34669a10 44894c2420      mov     dword ptr [rsp+20h],r9d
+fffff801`34669a15 4c89442418      mov     qword ptr [rsp+18h],r8
+fffff801`34669a1a 4889542410      mov     qword ptr [rsp+10h],rdx
+fffff801`34669a1f 48894c2408      mov     qword ptr [rsp+8],rcx
+fffff801`34669a24 4883ec48        sub     rsp,48h
+fffff801`34669a28 488b442460      mov     rax,qword ptr [rsp+60h]
+fffff801`34669a2d 4883e001        and     rax,1
+fffff801`34669a31 4885c0          test    rax,rax
+fffff801`34669a34 0f8494000000    je      SafeUpload!SafeUploadStagePostOperation+0xbe (fffff801`34669ace)
+fffff801`34669a3a 488b442460      mov     rax,qword ptr [rsp+60h]
+fffff801`34669a3f 4883e0fe        and     rax,0FFFFFFFFFFFFFFFEh
+fffff801`34669a43 4889442428      mov     qword ptr [rsp+28h],rax
+fffff801`34669a48 488b442428      mov     rax,qword ptr [rsp+28h]
+fffff801`34669a4d 813853704574    cmp     dword ptr [rax],74457053h
+fffff801`34669a53 7579            jne     SafeUpload!SafeUploadStagePostOperation+0xbe (fffff801`34669ace)
+fffff801`34669a55 8b442468        mov     eax,dword ptr [rsp+68h]
+fffff801`34669a59 83e001          and     eax,1
+fffff801`34669a5c 85c0            test    eax,eax
+fffff801`34669a5e 743d            je      SafeUpload!SafeUploadStagePostOperation+0x8d (fffff801`34669a9d)
+fffff801`34669a60 488b442458      mov     rax,qword ptr [rsp+58h]
+fffff801`34669a65 4883782000      cmp     qword ptr [rax+20h],0
+fffff801`34669a6a 7414            je      SafeUpload!SafeUploadStagePostOperation+0x70 (fffff801`34669a80)
+fffff801`34669a6c 488b442458      mov     rax,qword ptr [rsp+58h]
+fffff801`34669a71 488b4020        mov     rax,qword ptr [rax+20h]
+fffff801`34669a75 488b4028        mov     rax,qword ptr [rax+28h]
+fffff801`34669a79 4889442430      mov     qword ptr [rsp+30h],rax
+fffff801`34669a7e eb09            jmp     SafeUpload!SafeUploadStagePostOperation+0x79 (fffff801`34669a89)
+fffff801`34669a80 48c744243000000000 mov   qword ptr [rsp+30h],0
+fffff801`34669a89 488b542430      mov     rdx,qword ptr [rsp+30h]
+fffff801`34669a8e 488b442458      mov     rax,qword ptr [rsp+58h]
+fffff801`34669a93 488b4818        mov     rcx,qword ptr [rax+18h]
+fffff801`34669a97 e824050100      call    SafeUpload!SafeUploadStageWritersMutationDraining (fffff801`34679fc0)
+0: kd> lsa fffff80134669a4d
+  3670:     if (((ULONG_PTR)CompletionContext & 1) != 0) {
+  3671:         PSAFEUPLOAD_ADMISSION_EPOCH_TOKEN token = (PSAFEUPLOAD_ADMISSION_EPOCH_TOKEN)
+  3672:             ((ULONG_PTR)CompletionContext & ~(ULONG_PTR)1);
+  3673:         FLT_POSTOP_CALLBACK_STATUS result;
+> 3674:         if (token->Signature == SAFEUPLOAD_ADMISSION_EPOCH_TOKEN_SIGNATURE) {
+  3675:             if (FlagOn(Flags, FLTFL_POST_OPERATION_DRAINING))
+  3676:                 SafeUploadStageWritersMutationDraining(Objects->Instance,
+  3677:                     Objects->FileObject != NULL ? Objects->FileObject->SectionObjectPointer : NULL);
+  3678:             result = StagePostOperationCore(Data, Objects, token->InnerCompletionContext, Flags);
+  3679:             SafeUploadPolicyAdmissionRelease(token);
+0: kd> dv /t /v
+ffffa603`3cf1e108 struct _SAFEUPLOAD_ADMISSION_EPOCH_TOKEN * token = 0x00000000`00000000
+ffffa603`3cf1e100 _FLT_POSTOP_CALLBACK_STATUS result = 0n1611258120 (No matching enumerant)
+ffffa603`3cf1e130 struct _FLT_CALLBACK_DATA * Data = 0xffffb48c`6009d908
+ffffa603`3cf1e138 struct _FLT_RELATED_OBJECTS * Objects = 0xffffa603`3cf1e178
+ffffa603`3cf1e140 void * CompletionContext = 0x00000000`00000001
+ffffa603`3cf1e148 unsigned long Flags = 0
+0: kd> q
+quit:
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\atlmfc.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\concurrency.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\cpp_rest.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\Kernel.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\ObjectiveC.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\stl.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\Usb4Kd.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\Windows.Data.Json.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\Windows.Devices.Geolocation.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\Windows.Devices.Sensors.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\Windows.Media.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\windows.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\winrt.natvis'
