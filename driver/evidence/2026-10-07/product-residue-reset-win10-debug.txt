@@ -1,0 +1,7 @@
+TaskResult=0
+Archive=C:\Users\vika\Documents\product-residue-20261007T230714Z.zip;Sha256=40901D5FAB9C989F93ECCB17C6997AE8A03676DA5AA5E402A6629B16768B2B14
+stagingRemoved=11
+staging-journalRemoved=14
+notificationsRemoved=3
+QueueTruncatedFrom=7956490
+PRODUCT_RESIDUE_RESET=True
