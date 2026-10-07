@@ -18,7 +18,7 @@ function Import-EvaluationFunctions([string]$File,[string[]]$Names) {
     }
 }
 Import-EvaluationFunctions (Join-Path $PSScriptRoot 'StagedInvariantObserver.psm1') @('New-IORecord','New-IOAssertion','Test-InvariantCadence','Test-InvariantMetadata','Test-InvariantExternalCoverage')
-Import-EvaluationFunctions (Join-Path $PSScriptRoot 'Test-StagedInvariantSuite.ps1') @('Wait-WriterIdentity','Get-ExpectedCheckpoint','Test-ServiceJournalStateReachable','Assert-ServiceManifestPath','ConvertFrom-ServiceJournalRecord','Test-ServiceJournalDelta','Get-ServiceDestinationPaths','Test-ServiceFixtureEntry','ConvertFrom-NotificationRecord','Test-NotificationWindow','ConvertFrom-AgentEventXml','Test-AgentLogContinuity','Read-AgentLogWindow','Test-NotificationLocationUnchanged','Test-AgentDidNotRun','Get-ServiceTimeline','Test-CachedJournalSequence','Test-CachedNotifications','Test-CachedHandBackAcl','Test-CachedSample','Get-WriterBody')
+Import-EvaluationFunctions (Join-Path $PSScriptRoot 'Test-StagedInvariantSuite.ps1') @('Wait-WriterIdentity','Get-ExpectedCheckpoint','Test-ServiceJournalStateReachable','Assert-ServiceManifestPath','ConvertFrom-ServiceJournalRecord','Test-ServiceJournalDelta','Get-ServiceDestinationPaths','Test-ServiceFixtureEntry','ConvertFrom-NotificationRecord','Test-NotificationWindow','ConvertFrom-AgentEventXml','Test-AgentLogContinuity','Read-AgentLogWindow','Test-NotificationLocationUnchanged','Test-AgentDidNotRun','Get-ServiceTimeline','Test-CachedJournalSequence','Test-CachedNotifications','Test-CachedHandBackAcl','Test-CachedSample','Test-CachedImage','Test-CachedActorCalls','Add-CachedHeldJournal','Test-CachedNamespaceCommit','Get-WriterBody')
 $script:checks=0
 function Check([bool]$Condition,[string]$Message){if(-not $Condition){throw $Message};$script:checks++}
 function Clone($Value){return ($Value | ConvertTo-Json -Depth 32 | ConvertFrom-Json)}
@@ -524,6 +524,76 @@ Check ((Test-CachedNotifications $notification 'fixture-transfer' 0 'APPROVE' $d
 $notification.Emissions=@($notification.Emissions[0])
 $notification.Complete=$false
 Check ((Test-CachedNotifications $notification 'fixture-transfer' 0 'APPROVE' $digest)[0].Verdict -ceq 'INCONCLUSIVE') 'C01 incomplete durable notification window stays inconclusive.'
+# Durable history resolves skipped polling; it must not hide a wrong state or digest.
+$durable=Clone @($approve[0],$approve[-1]);$durable[-1] | Add-Member NoteProperty History @('Allocated','Sealed','Inspecting','Approved','Publishing','Released')
+Check ((Test-CachedJournalSequence $durable 'APPROVE' $digest)[0].Verdict -ceq 'PASS') 'Complete durable StateHistory proves transitions skipped by polling.'
+$durable[-1].History=@('Allocated','Sealed','Approved','Inspecting','Publishing','Released')
+Check ((Test-CachedJournalSequence $durable 'APPROVE' $digest)[0].Verdict -ceq 'FAIL') 'Reordered durable StateHistory fails.'
+$durable[-1].History=@('Allocated')
+Check ((Test-CachedJournalSequence $durable 'APPROVE' $digest)[0].Verdict -ceq 'INCONCLUSIVE') 'One-element durable history remains an array and cannot prove completion.'
+$renamedStates=Clone $approve
+foreach($item in $renamedStates){$item | Add-Member NoteProperty TransferId 'rename-transfer';$item | Add-Member NoteProperty DestinationGeneration $(if($item.StateName -ceq 'Allocated'){1}else{2})}
+$commit=@{Verified=$true;TransferId='rename-transfer';SourceGeneration=1;TargetGeneration=2}
+Check (@(Test-CachedJournalSequence $renamedStates 'APPROVE' $digest $commit | ForEach-Object {$_} | Where-Object Verdict -cne 'PASS').Count -eq 0) 'C04 committed rename explains the one source-to-target generation change.'
+Check ((Test-CachedJournalSequence $renamedStates 'APPROVE' $digest)[-1].Verdict -ceq 'FAIL') 'Generation change without committed namespace evidence fails.'
+$bad=Clone $renamedStates;$bad[-1].DestinationGeneration=1
+Check ((Test-CachedJournalSequence $bad 'APPROVE' $digest $commit)[-1].Verdict -ceq 'FAIL') 'C04 cannot revert to the source generation after target commit.'
+$bad=Clone $renamedStates;$bad[-1].TransferId='wrong-transfer'
+Check ((Test-CachedJournalSequence $bad 'APPROVE' $digest $commit)[-1].Verdict -ceq 'FAIL') 'A namespace transaction cannot authorize a new transfer identity.'
+# The held journal collector is mocked here; exercise the actual commit evaluator.
+$script:cachedKind='replacement';$script:cachedDenial=$false
+$record=Make-JournalRecord 0;$manifest=[Text.Encoding]::UTF8.GetString($record.Bytes) | ConvertFrom-Json
+$manifest.SealedOnce=$false;$manifest.Sha256Hex=$null;$manifest.DestinationGeneration=2
+$manifest.Transfer.DestinationPath='C:\fixture\cached.txt'
+$manifest.LastRenameTransactionId=123;$manifest.LastRenameDestination=$manifest.Transfer.DestinationPath;$manifest.LastRenameCommitted=$true
+$manifest.NamespaceTombstones=[pscustomobject]@{DestinationPath='C:\fixture\save.tmp.txt';Generation=2;Previous=$null}
+$record.Bytes=[Text.Encoding]::UTF8.GetBytes(($manifest | ConvertTo-Json -Depth 32 -Compress))
+$entry=[pscustomobject]@{State=0;StateName='Allocated';SealedOnce=$false;TransferId=$manifest.Transfer.TransferId;DestinationGeneration=2;Record=$record;Artifact='fixture-manifest'}
+$script:heldJournalFixture=[pscustomobject]@{Status='OK';Entries=@($entry);Errors=@();Snapshot=@{Journal=@($record)}}
+function script:Get-CachedJournalObservation {param($Tag,$Actor) return $script:heldJournalFixture}
+$heldTrial=@{Assertions=@();JournalSnapshots=@();JournalTransitions=@(@{State=0;StateName='Allocated';TransferId=$entry.TransferId;DestinationGeneration=1});SeedBase=@{Transitions=@(@{DestinationGeneration=1})}}
+$namespaceProof=Test-CachedNamespaceCommit $entry $heldTrial 'C:\fixture\save.tmp.txt' 'C:\fixture\cached.txt'
+Check ($namespaceProof.Verified -and $namespaceProof.Assertion.Verdict -ceq 'PASS') 'C04 exact committed target, reserved generation and source tombstone pass while unsealed.'
+$manifest.NamespaceTombstones=$null;$record.Bytes=[Text.Encoding]::UTF8.GetBytes(($manifest | ConvertTo-Json -Depth 32 -Compress))
+$namespaceProof=Test-CachedNamespaceCommit $entry $heldTrial 'C:\fixture\save.tmp.txt' 'C:\fixture\cached.txt'
+Check (-not $namespaceProof.Verified -and $namespaceProof.Assertion.Verdict -ceq 'FAIL') 'C04 missing source tombstone fails even with a successful native rename.'
+$script:cachedKind='external-rename';$script:cachedDenial=$true
+$heldTrial.Assertions=@();Add-CachedHeldJournal $heldTrial @{} 'fixture-illegal-transfer'
+Check (@($heldTrial.Assertions | Where-Object Verdict -ceq 'FAIL').Count -eq 1) 'C05 any target transfer contradicts D while the physical handle lives.'
+$script:heldJournalFixture.Status='INCONCLUSIVE';$script:heldJournalFixture.Entries=@();$heldTrial.Assertions=@()
+Add-CachedHeldJournal $heldTrial @{} 'fixture-missing-journal'
+Check (@($heldTrial.Assertions | Where-Object Verdict -ceq 'INCONCLUSIVE').Count -eq 1) 'C05 unauthenticated empty journal cannot prove no transfer.'
+$script:cachedKind=$null;$script:cachedDenial=$false
+$notification.Complete=$true;$notification.Emissions[0].Entry | Add-Member NoteProperty Sha256Hex $digest
+Check ((Test-CachedNotifications $notification 'fixture-transfer' 0 'APPROVE' $digest)[1].Verdict -ceq 'PASS') 'Actual Released notification digest equals A.'
+$notification.Emissions[0].Entry.Sha256Hex='B'*64
+Check ((Test-CachedNotifications $notification 'fixture-transfer' 0 'APPROVE' $digest)[1].Verdict -ceq 'FAIL') 'Wrong Released digest fails.'
+$notification.Emissions[0].Entry.Sha256Hex=$digest;$notification.Emissions[0].Entry.Phase='Blocked'
+$notification.Emissions[0].Entry | Add-Member NoteProperty HandBackPath 'verified-handback'
+$hb=@{Files=@(@{Path='verified-handback';Sha256=$digest;SingleLink=$true;NoReparse=$true})}
+Check (@(Test-CachedNotifications $notification 'fixture-transfer' 0 'BLOCK' $digest $hb | ForEach-Object {$_} | Where-Object Verdict -cne 'PASS').Count -eq 0) 'Blocked digest and hand-back path bind to the verified file.'
+$notification.Emissions[0].Entry.HandBackPath='wrong-handback'
+Check ((Test-CachedNotifications $notification 'fixture-transfer' 0 'BLOCK' $digest $hb)[2].Verdict -ceq 'FAIL') 'Wrong Blocked hand-back path fails.'
+Check ((Test-CachedNotifications $notification 'fixture-transfer' 0 'BLOCK' $digest)[2].Verdict -ceq 'INCONCLUSIVE') 'Unverified hand-back path stays inconclusive.'
+function Make-NativeCalls([string[]]$Names,[bool]$DenyRename=$false){
+    return ,@(for($i=0;$i -lt $Names.Count;$i++){@{Class=$Names[$i];NativeCode=$(if($DenyRename -and $Names[$i] -ceq 'rename-ex'){5}else{0});StartQpc=100+$i*10;EndQpc=101+$i*10}})
+}
+$mapped=Make-NativeCalls @('writer-open','create-mapping','map-view','close-source','mapped-store','flush-view','unmap-view','close-section')
+Check ((Test-CachedActorCalls $mapped 'mapped' 90 160)[0].Verdict -ceq 'PASS') 'C02 store after source close, flush, then view/section release passes.'
+$bad=Clone $mapped;$bad[3].Class='mapped-store';$bad[4].Class='close-source'
+Check ((Test-CachedActorCalls $bad 'mapped' 90 160)[0].Verdict -ceq 'FAIL') 'C02 source handle must close before mapped store.'
+Check ((Test-CachedActorCalls $mapped 'mapped' 90 161)[0].Verdict -ceq 'FAIL') 'C02 cannot unmap before the observer release barrier.'
+Check ((Test-CachedActorCalls $mapped[0..6] 'mapped' 90 160)[0].Verdict -ceq 'INCONCLUSIVE') 'C02 missing section disposal receipt stays inconclusive.'
+$replacement=Make-NativeCalls @('writer-open','cached-write','flush','rename-ex','close')
+Check ((Test-CachedActorCalls $replacement 'replacement' 90 140)[0].Verdict -ceq 'PASS') 'C04 rename before source cleanup passes.'
+$denied=Make-NativeCalls @('writer-open','rename-ex','close') $true
+Check ((Test-CachedActorCalls $denied 'external-rename' 90 120)[0].Verdict -ceq 'PASS') 'C05 exact access denial belongs to rename, with successful source open and cleanup.'
+$bad=Clone $denied;$bad[1].NativeCode=32
+Check ((Test-CachedActorCalls $bad 'external-rename' 90 120)[0].Verdict -ceq 'FAIL') 'C05 sharing failure cannot substitute for access denial.'
+$bad=Clone $denied;$bad[1].NativeCode=0
+Check ((Test-CachedActorCalls $bad 'external-rename' 90 120)[0].Verdict -ceq 'FAIL') 'C05 successful external rename violates D.'
+$bad=Clone $denied;$bad[0].NativeCode=5
+Check ((Test-CachedActorCalls $bad 'external-rename' 90 120)[0].Verdict -ceq 'FAIL') 'C05 source-open denial cannot count as rename denial.'
 $body=Get-WriterBody;$bodyTokens=$null;$bodyErrors=$null
 $bodyAst=[Management.Automation.Language.Parser]::ParseInput($body,[ref]$bodyTokens,[ref]$bodyErrors)
 Check ($bodyErrors.Count -eq 0) 'Generated cached/seed actor script parses.'
@@ -531,6 +601,7 @@ $native=@($bodyAst.FindAll({param($node) $node -is [Management.Automation.Langua
 Check ($native.Count -eq 1) 'Actor native cached helper is retained in the existing writer body.'
 Add-Type -TypeDefinition $native[0].Value
 Check ($null -ne ('SUWriter' -as [type])) 'Cached writer native declarations compile without calling Windows APIs.'
+Check ([SUWriter]::FileRenameInfoEx -eq 22) 'Win32 FileRenameInfoEx must use class 22 as in the existing tested rename fixtures.'
 if([Environment]::OSVersion.Platform -eq [PlatformID]::Win32NT){
     $sid='S-1-5-21-1-2-3-1000'
     Check (Test-CachedHandBackAcl ('O:SYG:SYD:P(A;;FA;;;SY)(A;;FA;;;'+$sid+')') $sid) 'H exact actor/SYSTEM explicit protected ACL passes.'
@@ -568,6 +639,44 @@ try{
     Check ($extent.Count -eq 1 -and $extent[0].Verdict -ceq 'FAIL' -and $extent[0].ForbiddenByteCount -eq 1) 'C01 raw extent comparator counts exactly one changed byte.'
     $releasedParent.DirectoryEntries+= [pscustomobject]@{Name='.safeupload-left.pending';Reference=6;Eof=12;Attributes=32}
     Check (@(Test-CachedSample $s $base $true $imageA | ForEach-Object {$_} | Where-Object { $_.Name -ceq 'C01PublicListing' -and $_.Verdict -ceq 'FAIL' }).Count -gt 0) 'C01 lingering publication temporary fails.'
+    # C03/C04 compare approved B during the hold and keep the old physical reader
+    # after a new target identity becomes A. Different lengths expose EOF mistakes.
+    $imageB=[Text.Encoding]::ASCII.GetBytes('approved-base-B!');$bHash=[StagedInvariant.Native]::Hash($imageB)
+    $bPath=Join-Path $sampleDirectory 'base.bin';[IO.File]::WriteAllBytes($bPath,$imageB)
+    $bArtifact=@{Path=$bPath;Length=$imageB.Length;Sha256=$bHash}
+    $bEntry=[pscustomobject]@{Name='cached.txt';Reference=7;Eof=$imageB.Length;Attributes=32}
+    $bParent=Clone $parent;$bParent.DirectoryEntries+= $bEntry
+    $baseImage=[pscustomobject]@{Role='Current';Path=$final;Absent=$false;Length=$imageB.Length;Sha256=$bHash;Identity=@{FileId='B-id'};LogicalArtifact=$bArtifact;
+        Runs=@(@{Vcn=0;Lcn=20;Clusters=4});Containers=@(@{Kind='DATA';Offset=80;Length=$imageB.Length;Artifact=$bArtifact})}
+    # Synthetic image uses an exact extent length; the VM fixtures are cluster multiples.
+    $retained=Clone $baseImage;$retained.Role='Retained:B-id';$retained.Path=$null
+    $base.Images=@($bParent,$baseImage)
+    $oldReader=@{Role='Retained';FileId='B-id';Status='OK';Result=@{Digest=$bHash;Length=$imageB.Length}}
+    $s.Phase='FlushedHandleHeld';$s.Captures=@(@{Images=@($bParent,$baseImage,$retained);Readers=@($oldReader)})
+    $s.C01Readers=@(@{Status='OK';NativeCode=0;Unbuffered=$false;Result=@{Digest=$bHash;Length=$imageB.Length}},@{Status='OK';NativeCode=0;Unbuffered=$true;Result=@{Digest=$bHash;Length=$imageB.Length}})
+    Check (@(Test-CachedSample $s $base $false $imageA $imageB | ForEach-Object {$_} | Where-Object Verdict -cne 'PASS').Count -eq 0) 'C03/C04 whole B raw/fresh/uncached and held B reader pass before approval.'
+    [IO.File]::WriteAllBytes($artifactPath,$imageA);$released.Containers[0].Artifact=$artifact
+    $released | Add-Member NoteProperty Identity @{FileId='A-id'}
+    $afterParent=Clone $parent;$afterParent.DirectoryEntries+= [pscustomobject]@{Name='cached.txt';Reference=8;Eof=$imageA.Length;Attributes=32}
+    $s.Phase='FinalQuiescence';$s.Captures=@(@{Images=@($afterParent,$released,$retained);Readers=@($oldReader)})
+    $s.C01Readers=@(@{Status='OK';NativeCode=0;Unbuffered=$false;Result=@{Digest=$hash;Length=$imageA.Length}},@{Status='OK';NativeCode=0;Unbuffered=$true;Result=@{Digest=$hash;Length=$imageA.Length}})
+    Check (@(Test-CachedSample $s $base $true $imageA $imageB | ForEach-Object {$_} | Where-Object Verdict -cne 'PASS').Count -eq 0) 'C03/C04 new target A and retained old physical B pass after POSIX publication.'
+    Check (@(Test-CachedSample $s $base $false $imageA $imageB | ForEach-Object {$_} | Where-Object Verdict -ceq 'FAIL').Count -gt 0) 'C03/C04 leaked A before approval or on BLOCK fails.'
+    $bad=Clone $s;$bad.Captures[0].Readers=@()
+    Check (@(Test-CachedSample $bad $base $true $imageA $imageB | ForEach-Object {$_} | Where-Object {$_.Name -ceq 'C01RetainedBaseReader' -and $_.Verdict -ceq 'INCONCLUSIVE'}).Count -eq 1) 'Missing old physical reader is inconclusive.'
+    $bad=Clone $s;$bad.Captures[0].Images=@($afterParent,$released)
+    Check (@(Test-CachedSample $bad $base $true $imageA $imageB | ForEach-Object {$_} | Where-Object {$_.Name -ceq 'C01RetainedBase' -and $_.Verdict -ceq 'INCONCLUSIVE'}).Count -eq 1) 'Missing retained B raw identity is inconclusive.'
+    $bad=Clone $s;$bad.Captures[0].Images[0].DirectoryEntries+= [pscustomobject]@{Name='save.tmp.txt';Reference=9;Eof=12;Attributes=32}
+    Check (@(Test-CachedSample $bad $base $true $imageA $imageB | ForEach-Object {$_} | Where-Object {$_.Name -ceq 'C01PublicListing' -and $_.Verdict -ceq 'FAIL'}).Count -eq 1) 'C04 public user temporary fails after publication.'
+    # C05 uses the exact same image/listing checks against an explicit outside path.
+    $source=Join-Path $sampleDirectory 'source.txt';$sourceImage=Clone $baseImage;$sourceImage.Path=$source
+    $sourceParent=Clone $parent;$sourceParent.DirectoryEntries+= [pscustomobject]@{Name='source.txt';Reference=7;Eof=$imageB.Length;Attributes=32}
+    $sourceBase=@{Geometry=$base.Geometry;Images=@($sourceParent,$sourceImage)}
+    $sourceSample=@{Status='OK';Phase='AfterDeniedRename';Sequence=1;Captures=@(@{Images=@($sourceParent,$sourceImage,$retained);Readers=@($oldReader)});
+        C01Readers=@(@{Status='OK';NativeCode=0;Unbuffered=$false;Result=@{Digest=$bHash;Length=$imageB.Length}},@{Status='OK';NativeCode=0;Unbuffered=$true;Result=@{Digest=$bHash;Length=$imageB.Length}})}
+    Check (@(Test-CachedSample $sourceSample $sourceBase $false $imageB $imageB $source | ForEach-Object {$_} | Where-Object Verdict -cne 'PASS').Count -eq 0) 'C05 outside source remains exact image and identity after denied rename.'
+    $bad=Clone $sourceSample;$bad.Captures[0].Images[1].Absent=$true
+    Check (@(Test-CachedSample $bad $sourceBase $false $imageB $imageB $source | ForEach-Object {$_} | Where-Object Verdict -ceq 'FAIL').Count -gt 0) 'C05 source removal despite denial fails.'
 }finally{[IO.Directory]::Delete($sampleDirectory,$true)}
 'ProofAdapterEvaluationChecks='+$script:checks+';PASS (host-safe synthetic evaluation, collector mocks and identity publication only)'
 }catch{'ScriptError='+$_.Exception.ToString();throw}

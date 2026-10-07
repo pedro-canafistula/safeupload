@@ -368,6 +368,26 @@ def attest_external_coverage(result):
                          'INCONCLUSIVE' if any(t['Verdict'] != 'PASS' for t in result['Trials']) else 'PASS')
 
 
+def validate_raw_artifacts(destination, guest_root, required=('raw',)):
+    # C05 has a second observer for its external physical source. Each module
+    # writes its own manifest; pin both, including failed/partial captures.
+    for leaf in ('raw', 'raw-external'):
+        manifest = destination / leaf / 'manifest.ndjson'
+        if not manifest.exists():
+            require(leaf not in required, 'Required raw evidence manifest missing: ' + leaf)
+            continue
+        lines = manifest.read_text('utf-8-sig').splitlines()
+        require(bool(lines), 'Raw evidence manifest empty: ' + leaf)
+        for line in lines:
+            entry = json.loads(line)
+            require(entry['Path'].startswith(guest_root), 'Raw artifact outside owned evidence root')
+            relative = entry['Path'][len(guest_root):].replace('\\', '/')
+            require('..' not in relative.split('/') and not relative.startswith('/'), 'Invalid artifact path')
+            artifact = destination / relative
+            require(artifact.stat().st_size == entry['Length'] and sha(artifact) == entry['Sha256'],
+                    'Copied raw artifact hash/length mismatch')
+
+
 def validate_service_artifacts(result, destination, guest_root):
     for trial in result.get('Trials', []):
         for snapshot in [trial.get('ServiceBefore') or {}, trial.get('ServiceAfter') or {},
@@ -531,16 +551,9 @@ def run_case(args, case, mode, ev, files, package, tree_hash, provenance):
         result = json.loads(provisional.read_text('utf-8-sig'))
         # Preserve guest bytes; only the host knows the separate remote baseline.
         provisional.rename(destination / 'case.guest-export.txt')
-        manifest = destination / 'raw/manifest.ndjson'
         guest_root = 'C:\\Users\\vika\\Documents\\' + name + '-artifacts\\'
-        if manifest.exists():
-            for line in manifest.read_text('utf-8-sig').splitlines():
-                entry = json.loads(line)
-                require(entry['Path'].startswith(guest_root), 'Raw artifact outside owned evidence root')
-                relative = entry['Path'][len(guest_root):].replace('\\', '/')
-                require('..' not in relative.split('/'), 'Invalid artifact path')
-                artifact = destination / relative
-                require(artifact.stat().st_size == entry['Length'] and sha(artifact) == entry['Sha256'], 'Copied raw artifact hash/length mismatch')
+        required_raw = ('raw', 'raw-external') if case == 'C05-denied-external-rename' else ('raw',)
+        validate_raw_artifacts(destination, guest_root, required_raw)
         validate_service_artifacts(result, destination, guest_root)
         validate_audit_restoration(result, ev / (name + '-baseline.txt'), ev / (name + '-final-restored-state.txt'))
         result['AuthoritativeCaseExport'] = True

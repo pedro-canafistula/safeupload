@@ -48,6 +48,41 @@ class ProofTests(unittest.TestCase):
             self.assertEqual('Ready', rows[name]['Status'])
         self.assertEqual('NotReady', rows['C01']['Status'])
 
+    def test_c02_c05_expanded_rows_ready_and_families_deferred(self):
+        rows = Q.table_rows(Q.SCRIPTS / 'StagedInvariantCases.psd1')
+        for name in ('C02-approve-absent', 'C02-block-absent', 'C03-approve-existing',
+                     'C03-block-existing', 'C04-approve', 'C04-block', 'C05-denied-external-rename'):
+            self.assertEqual('Ready', rows[name]['Status'])
+        for family in ('C02', 'C03', 'C04', 'C05'):
+            self.assertEqual('NotReady', rows[family]['Status'])
+
+    def test_external_source_raw_artifacts_remain_bound(self):
+        with tempfile.TemporaryDirectory(prefix='c05-source-proof-', dir='/tmp') as directory:
+            root = Path(directory)
+            for leaf in ('raw', 'raw-external'):
+                (root / leaf).mkdir()
+                artifact = root / leaf / 'extent.bin'
+                artifact.write_bytes(b'whole physical image')
+                record = {'Path': 'guest\\' + leaf + '\\extent.bin', 'Length': artifact.stat().st_size,
+                          'Sha256': Q.sha(artifact)}
+                (root / leaf / 'manifest.ndjson').write_text(json.dumps(record) + '\n')
+            Q.validate_raw_artifacts(root, 'guest\\')
+            (root / 'raw-external/extent.bin').write_bytes(b'wrong physical image')
+            with self.assertRaisesRegex(RuntimeError, 'raw artifact hash/length mismatch'):
+                Q.validate_raw_artifacts(root, 'guest\\')
+
+    def test_missing_external_source_raw_manifest_is_explicit(self):
+        with tempfile.TemporaryDirectory(prefix='c05-missing-proof-', dir='/tmp') as directory:
+            root = Path(directory)
+            (root / 'raw').mkdir()
+            artifact = root / 'raw/extent.bin'
+            artifact.write_bytes(b'protected baseline')
+            record = {'Path': 'guest\\raw\\extent.bin', 'Length': artifact.stat().st_size,
+                      'Sha256': Q.sha(artifact)}
+            (root / 'raw/manifest.ndjson').write_text(json.dumps(record) + '\n')
+            with self.assertRaisesRegex(RuntimeError, 'Required raw evidence manifest missing: raw-external'):
+                Q.validate_raw_artifacts(root, 'guest\\', ('raw', 'raw-external'))
+
     def test_c01_polled_journal_bytes_remain_bound(self):
         with tempfile.TemporaryDirectory(prefix='c01-journal-proof-', dir='/tmp') as directory:
             root = Path(directory)

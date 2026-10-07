@@ -47,6 +47,7 @@ $featureDriver=Join-Path $documents $FeatureDriverFileName
 $inspectorPath=Join-Path $documents $InspectorFileName
 $serviceDirectory=Join-Path $stateDirectory 'service'
 $protectedDirectory='C:\SafeUploadInvariant-'+$RunName
+$externalDirectory=$protectedDirectory+'-external'
 $actorDirectory=Join-Path $stateDirectory 'actor'
 
 function Write-DurableFile([string]$Path,[string]$Text,[switch]$New) {
@@ -427,17 +428,27 @@ public sealed class SUCall {
  public string Class; public int NativeCode; public long StartQpc,EndQpc; public int Trial; public bool Cold;
 }
 public static class SUWriter {
+ public const int FileRenameInfoEx = 22;
  [DllImport("kernel32.dll", CharSet=CharSet.Unicode, SetLastError=true)] static extern IntPtr CreateFileW(string p,uint a,uint s,IntPtr z,uint d,uint f,IntPtr t);
  [DllImport("kernel32.dll", SetLastError=true)] static extern bool WriteFile(IntPtr h,byte[] b,uint n,out uint w,IntPtr o);
  [DllImport("kernel32.dll", SetLastError=true)] static extern bool FlushFileBuffers(IntPtr h);
  [DllImport("kernel32.dll", SetLastError=true)] static extern bool CloseHandle(IntPtr h);
  [DllImport("kernel32.dll", SetLastError=true)] static extern bool ReadFile(IntPtr h,byte[] b,uint n,out uint r,IntPtr o);
+ [DllImport("kernel32.dll", SetLastError=true)] static extern bool GetFileSizeEx(IntPtr h,out long size);
  [DllImport("kernel32.dll", SetLastError=true)] static extern bool SetFilePointerEx(IntPtr h,long d,out long p,uint m);
+ [DllImport("kernel32.dll", CharSet=CharSet.Unicode, SetLastError=true)] static extern IntPtr CreateFileMappingW(IntPtr h,IntPtr sa,uint protect,uint high,uint low,string name);
+ [DllImport("kernel32.dll", SetLastError=true)] static extern IntPtr MapViewOfFile(IntPtr h,uint access,uint high,uint low,UIntPtr length);
+ [DllImport("kernel32.dll", SetLastError=true)] static extern bool FlushViewOfFile(IntPtr p,UIntPtr length);
+ [DllImport("kernel32.dll", SetLastError=true)] static extern bool UnmapViewOfFile(IntPtr p);
+ [DllImport("kernel32.dll", SetLastError=true)] static extern bool SetFileInformationByHandle(IntPtr h,int kind,IntPtr info,uint size);
  [DllImport("advapi32.dll", SetLastError=true)] static extern bool GetTokenInformation(IntPtr h,int c,out int v,int n,out int r);
  public static bool Elevated(IntPtr token) { int v,r; if(!GetTokenInformation(token,20,out v,4,out r))throw new Win32Exception(Marshal.GetLastWin32Error());return v!=0; }
  static SUCall Call(string c,int code,long start,long end,int trial) {return new SUCall{Class=c,NativeCode=code,StartQpc=start,EndQpc=end,Trial=trial,Cold=trial==0};}
  public static IntPtr OpenHeld(string path,out SUCall call) {
-  long start=Stopwatch.GetTimestamp();var h=CreateFileW(path,0xC0000000,7,IntPtr.Zero,1,0x80,IntPtr.Zero);
+  return OpenHeld(path,1,false,out call);
+ }
+ public static IntPtr OpenHeld(string path,uint disposition,bool rename,out SUCall call) {
+  long start=Stopwatch.GetTimestamp();var h=CreateFileW(path,0xC0000000u|(rename?0x10000u:0u),7,IntPtr.Zero,disposition,0x80,IntPtr.Zero);
   int code=h==new IntPtr(-1)?Marshal.GetLastWin32Error():0;
   call=Call("writer-open",code,start,Stopwatch.GetTimestamp(),0);return h;
  }
@@ -449,12 +460,50 @@ public static class SUWriter {
   long start=Stopwatch.GetTimestamp();bool ok=FlushFileBuffers(h);int code=ok?0:Marshal.GetLastWin32Error();return Call("flush",code,start,Stopwatch.GetTimestamp(),0);
  }
  public static byte[] ReadPrivate(IntPtr h,int length) {
+  long size;if(!GetFileSizeEx(h,out size))throw new Win32Exception(Marshal.GetLastWin32Error());
+  if(size!=length)throw new System.IO.IOException("Private EOF differs from the whole expected image.");
   long position;if(!SetFilePointerEx(h,0,out position,0))throw new Win32Exception(Marshal.GetLastWin32Error());
   byte[] bytes=new byte[length];uint read;if(!ReadFile(h,bytes,(uint)length,out read,IntPtr.Zero))throw new Win32Exception(Marshal.GetLastWin32Error());
   if(read!=length)throw new System.IO.IOException("Private read was short.");return bytes;
  }
  public static SUCall CloseHeld(IntPtr h) {
   long start=Stopwatch.GetTimestamp();bool ok=CloseHandle(h);int code=ok?0:Marshal.GetLastWin32Error();return Call("close",code,start,Stopwatch.GetTimestamp(),0);
+ }
+ public static IntPtr CreateMapping(IntPtr h,int length,out SUCall call) {
+  long start=Stopwatch.GetTimestamp();IntPtr section=CreateFileMappingW(h,IntPtr.Zero,4,0,(uint)length,null);
+  call=Call("create-mapping",section==IntPtr.Zero?Marshal.GetLastWin32Error():0,start,Stopwatch.GetTimestamp(),0);return section;
+ }
+ public static IntPtr Map(IntPtr section,int length,out SUCall call) {
+  long start=Stopwatch.GetTimestamp();IntPtr view=MapViewOfFile(section,2,0,0,new UIntPtr((uint)length));
+  call=Call("map-view",view==IntPtr.Zero?Marshal.GetLastWin32Error():0,start,Stopwatch.GetTimestamp(),0);return view;
+ }
+ public static SUCall StoreView(IntPtr view,byte[] bytes) {
+  long start=Stopwatch.GetTimestamp();Marshal.Copy(bytes,0,view,bytes.Length);return Call("mapped-store",0,start,Stopwatch.GetTimestamp(),0);
+ }
+ public static SUCall FlushView(IntPtr view,int length) {
+  long start=Stopwatch.GetTimestamp();bool ok=FlushViewOfFile(view,new UIntPtr((uint)length));
+  return Call("flush-view",ok?0:Marshal.GetLastWin32Error(),start,Stopwatch.GetTimestamp(),0);
+ }
+ public static byte[] ReadView(IntPtr view,int length) {byte[] bytes=new byte[length];Marshal.Copy(view,bytes,0,length);return bytes;}
+ public static SUCall Unmap(IntPtr view) {
+  long start=Stopwatch.GetTimestamp();bool ok=UnmapViewOfFile(view);return Call("unmap-view",ok?0:Marshal.GetLastWin32Error(),start,Stopwatch.GetTimestamp(),0);
+ }
+ public static SUCall CloseSection(IntPtr section) {
+  SUCall call=CloseHeld(section);call.Class="close-section";return call;
+ }
+ public static SUCall Rename(IntPtr h,string destination) {
+  // FILE_RENAME_INFO_EX: DWORD Flags, aligned HANDLE RootDirectory (NULL),
+  // DWORD FileNameLength, UTF-16 FileName. Works in 32- and 64-bit actors.
+  byte[] name=System.Text.Encoding.Unicode.GetBytes(destination);
+  int root=IntPtr.Size==8?8:4,length=root+IntPtr.Size,offset=length+4;
+  int size=offset+name.Length+2;IntPtr info=Marshal.AllocHGlobal(size);
+  try {
+   for(int n=0;n<size;n++)Marshal.WriteByte(info,n,0);
+   Marshal.WriteInt32(info,0,3); // REPLACE_IF_EXISTS | POSIX_SEMANTICS
+   Marshal.WriteIntPtr(info,root,IntPtr.Zero);Marshal.WriteInt32(info,length,name.Length);Marshal.Copy(name,0,IntPtr.Add(info,offset),name.Length);
+   long start=Stopwatch.GetTimestamp();bool ok=SetFileInformationByHandle(h,FileRenameInfoEx,info,(uint)size);
+   return Call("rename-ex",ok?0:Marshal.GetLastWin32Error(),start,Stopwatch.GetTimestamp(),0);
+  }finally{Marshal.FreeHGlobal(info);}
  }
  public static SUCall[] Attempt(string path,byte[] bytes,bool create,int trial) {
   var results=new System.Collections.Generic.List<SUCall>();
@@ -499,28 +548,77 @@ try {
     }
     if($actor.Elevated -or $actor.IsAdministrator -or $actor.Sid -cne $config.ActorSid){throw 'Writer token is not the expected standard user'}
     Write-DurableFile '__IDENTITY__' ([Management.Automation.PSSerializer]::Serialize($actor,32)) -New
+    function Wait-ActorBarrier([string]$Leaf) {
+        $deadline=([Diagnostics.Stopwatch]::GetTimestamp()+[long](180*[Diagnostics.Stopwatch]::Frequency))
+        while(-not(Test-Path -LiteralPath (Join-Path $config.CoordinationDirectory $Leaf))){
+            if(Test-Path -LiteralPath (Join-Path $config.CoordinationDirectory 'cancel')){throw ('Observer cancelled before barrier: '+$Leaf)}
+            if([Diagnostics.Stopwatch]::GetTimestamp() -gt $deadline){throw ('Writer barrier timed out after 180 seconds: '+$Leaf)};Start-Sleep -Milliseconds 10
+        }
+        if(Test-Path -LiteralPath (Join-Path $config.CoordinationDirectory 'cancel')){throw ('Observer cancelled at barrier: '+$Leaf)}
+    }
+    function Save-ActorReceipt([string]$Leaf,$Calls,$Digest,$Fields) {
+        $receipt=@{Pid=$PID;Sid=$actor.Sid;BootId=$actor.BootId;Token=$config.Token;Calls=@($Calls);PrivateSha256=$Digest;Qpc=[Diagnostics.Stopwatch]::GetTimestamp();ReleasedQpc=$releasedQpc}
+        foreach($key in $Fields.Keys){$receipt[$key]=$Fields[$key]}
+        Write-DurableFile (Join-Path $config.CoordinationDirectory $Leaf) ([Management.Automation.PSSerializer]::Serialize($receipt,32)) -New
+    }
+    if($config.CachedCase -and $null -ne $config.SeedBaseBase64){
+        Wait-ActorBarrier 'seed-go'
+        $releasedQpc=[Diagnostics.Stopwatch]::GetTimestamp();$seedCalls=@();$seedHandle=[IntPtr]::Zero;$openCall=$null
+        try{
+            $seedHandle=[SUWriter]::OpenHeld($config.Target,[ref]$openCall);$seedCalls+= $openCall
+            if($openCall.NativeCode -ne 0){throw ('Approved B seed open failed: Win32='+$openCall.NativeCode)}
+            $seedCalls+= [SUWriter]::WriteHeld($seedHandle,[Convert]::FromBase64String($config.SeedBaseBase64))
+            $seedCalls+= [SUWriter]::FlushHeld($seedHandle)
+        }finally{
+            if($seedHandle -ne [IntPtr]::Zero -and $seedHandle -ne [IntPtr]::new(-1)){$seedCalls+= [SUWriter]::CloseHeld($seedHandle)}
+            Save-ActorReceipt 'seed-closed.clixml' $seedCalls $null @{}
+        }
+        if(@($seedCalls | Where-Object NativeCode -ne 0).Count){throw 'Approved B seed native write/flush/close failed'}
+    }
     $deadline=([Diagnostics.Stopwatch]::GetTimestamp()+[long]((180)*[Diagnostics.Stopwatch]::Frequency))
-    while(-not(Test-Path -LiteralPath '__GO__')){if([Diagnostics.Stopwatch]::GetTimestamp() -gt $deadline){throw 'Writer barrier timed out'};Start-Sleep -Milliseconds 10}
+    while(-not(Test-Path -LiteralPath '__GO__')){if($config.CachedCase -and (Test-Path -LiteralPath (Join-Path $config.CoordinationDirectory 'cancel'))){throw 'Observer cancelled before main operation'};if([Diagnostics.Stopwatch]::GetTimestamp() -gt $deadline){throw 'Writer barrier timed out'};Start-Sleep -Milliseconds 10}
     $releasedQpc=[Diagnostics.Stopwatch]::GetTimestamp()
     $calls=@()
     if($config.CachedCase){
-        $h=[IntPtr]::Zero;$privateDigest=$null;$openCall=$null
+        $h=[IntPtr]::Zero;$section=[IntPtr]::Zero;$view=[IntPtr]::Zero;$privateDigest=$null;$openCall=$null
         try {
             $bytes=[Convert]::FromBase64String($config.Payloads[0])
-            $h=[SUWriter]::OpenHeld($config.Target,[ref]$openCall);$calls+= $openCall
-            if($openCall.NativeCode -ne 0){throw ('Cached create failed: Win32='+$openCall.NativeCode)}
-            $calls+= [SUWriter]::WriteHeld($h,$bytes);$calls+= [SUWriter]::FlushHeld($h)
-            if(@($calls | Where-Object NativeCode -ne 0).Count){throw 'Cached write/flush failed; see held/closed operation receipt'}
+            $openPath=if($config.WriterKind -ceq 'replacement'){$config.TempTarget}elseif($config.WriterKind -ceq 'external-rename'){$config.Source}else{$config.Target}
+            $disposition=if($config.WriterKind -ceq 'overwrite'){[uint32]5}elseif($config.WriterKind -ceq 'external-rename'){[uint32]3}else{[uint32]1}
+            $rename=$config.WriterKind -cin @('replacement','external-rename')
+            $h=[SUWriter]::OpenHeld($openPath,$disposition,$rename,[ref]$openCall);$calls+= $openCall
+            if($openCall.NativeCode -ne 0){throw ('Owned/physical source open failed: Win32='+$openCall.NativeCode)}
+            if($config.WriterKind -ceq 'mapped'){
+                $nativeCall=$null;$section=[SUWriter]::CreateMapping($h,$bytes.Length,[ref]$nativeCall);$calls+= $nativeCall
+                if($nativeCall.NativeCode -ne 0){throw ('CreateFileMapping PAGE_READWRITE failed: Win32='+$nativeCall.NativeCode)}
+                $view=[SUWriter]::Map($section,$bytes.Length,[ref]$nativeCall);$calls+= $nativeCall
+                if($nativeCall.NativeCode -ne 0){throw ('MapViewOfFile failed: Win32='+$nativeCall.NativeCode)}
+                # Store AFTER the source closes: the view and section are the only remaining upper references.
+                $closeCall=[SUWriter]::CloseHeld($h);$closeCall.Class='close-source';$calls+= $closeCall
+                if($closeCall.NativeCode -ne 0){throw ('Source close failed: Win32='+$closeCall.NativeCode)};$h=[IntPtr]::Zero
+                $calls+= [SUWriter]::StoreView($view,$bytes);$calls+= [SUWriter]::FlushView($view,$bytes.Length)
+                $privateBytes=[SUWriter]::ReadView($view,$bytes.Length)
+            }else{
+                if($config.WriterKind -cne 'external-rename'){$calls+= [SUWriter]::WriteHeld($h,$bytes);$calls+= [SUWriter]::FlushHeld($h)}
+                $privateBytes=[SUWriter]::ReadPrivate($h,$bytes.Length)
+            }
+            if(@($calls | Where-Object NativeCode -ne 0).Count){throw 'Native store/flush failed; see held/closed operation receipt'}
             $hash=[Security.Cryptography.SHA256]::Create()
-            try{$privateDigest=[BitConverter]::ToString($hash.ComputeHash([SUWriter]::ReadPrivate($h,$bytes.Length))).Replace('-','')}finally{$hash.Dispose()}
-            $held=@{Pid=$PID;Sid=$actor.Sid;BootId=$actor.BootId;Token=$config.Token;Calls=$calls;PrivateSha256=$privateDigest;Qpc=[Diagnostics.Stopwatch]::GetTimestamp();ReleasedQpc=$releasedQpc}
-            Write-DurableFile (Join-Path $config.CoordinationDirectory 'held.clixml') ([Management.Automation.PSSerializer]::Serialize($held,32)) -New
-            $deadline=([Diagnostics.Stopwatch]::GetTimestamp()+[long]((180)*[Diagnostics.Stopwatch]::Frequency))
-            while(-not(Test-Path -LiteralPath (Join-Path $config.CoordinationDirectory 'close'))){if([Diagnostics.Stopwatch]::GetTimestamp() -gt $deadline){throw 'Cached writer close barrier timed out after 180 seconds'};Start-Sleep -Milliseconds 10}
+            try{$privateDigest=[BitConverter]::ToString($hash.ComputeHash($privateBytes)).Replace('-','')}finally{$hash.Dispose()}
+            Save-ActorReceipt 'held.clixml' $calls $privateDigest @{WriterKind=$config.WriterKind;SourceClosed=($h -eq [IntPtr]::Zero);ViewLive=($view -ne [IntPtr]::Zero);SectionLive=($section -ne [IntPtr]::Zero)}
+            if($rename){
+                Wait-ActorBarrier 'rename'
+                $calls+= [SUWriter]::Rename($h,$config.Target)
+                $hash=[Security.Cryptography.SHA256]::Create()
+                try{$privateDigest=[BitConverter]::ToString($hash.ComputeHash([SUWriter]::ReadPrivate($h,$bytes.Length))).Replace('-','')}finally{$hash.Dispose()}
+                Save-ActorReceipt 'renamed.clixml' $calls $privateDigest @{}
+            }
+            Wait-ActorBarrier 'close'
         } finally {
+            if($view -ne [IntPtr]::Zero){$calls+= [SUWriter]::Unmap($view)}
+            if($section -ne [IntPtr]::Zero){$calls+= [SUWriter]::CloseSection($section)}
             if($h -ne [IntPtr]::Zero -and $h -ne [IntPtr]::new(-1)){$calls+= [SUWriter]::CloseHeld($h)}
-            $closed=@{Pid=$PID;Sid=$actor.Sid;BootId=$actor.BootId;Token=$config.Token;Calls=$calls;Qpc=[Diagnostics.Stopwatch]::GetTimestamp();ReleasedQpc=$releasedQpc}
-            Write-DurableFile (Join-Path $config.CoordinationDirectory 'closed.clixml') ([Management.Automation.PSSerializer]::Serialize($closed,32)) -New
+            Save-ActorReceipt 'closed.clixml' $calls $privateDigest @{}
         }
         $deadline=([Diagnostics.Stopwatch]::GetTimestamp()+[long]((180)*[Diagnostics.Stopwatch]::Frequency))
         while(-not(Test-Path -LiteralPath (Join-Path $config.CoordinationDirectory 'inspect-handback'))){if([Diagnostics.Stopwatch]::GetTimestamp() -gt $deadline){throw 'Cached writer hand-back barrier timed out after 180 seconds'};Start-Sleep -Milliseconds 10}
@@ -1677,15 +1775,15 @@ function Assert-ActorProcess($Actor) {
     if(@(Get-LocalGroupMember -SID 'S-1-5-32-544' | Where-Object {$_.SID.Value -ceq $state.ActorSid}).Count -ne 0){throw 'Writer has administrator membership'}
     return [pscustomobject]@{Pid=$process.ProcessId;SessionId=$process.SessionId;OwnerSid=$owner.Sid;CommandLine=$process.CommandLine;Task=(Get-ScheduledTask -TaskName $writerTask | Select-Object TaskName,Principal,State)}
 }
-function Test-CachedJournalSequence($Transitions,[string]$Outcome,[string]$Digest) {
-    $assertions=@();$expected=if($Outcome -ceq 'APPROVE'){@('Allocated','Sealed','Inspecting','Approved','Publishing','Released')}else{@('Allocated','Sealed','Inspecting','Blocked')}
+function Test-CachedJournalSequence($Transitions,[string]$Outcome,[string]$Digest,$RenameCommit=$null) {
+    $assertions=@();$expected=@(if($Outcome -ceq 'APPROVE'){@('Allocated','Sealed','Inspecting','Approved','Publishing','Released')}else{@('Allocated','Sealed','Inspecting','Blocked')})
     $names=@($Transitions | ForEach-Object {$_.StateName})
     $missing=@($expected | Where-Object {$names -cnotcontains $_})
     $bad=@($names | Where-Object {$_ -cnotin $expected})
     $position=-1;$ordered=$true
     foreach($name in $names){$next=[array]::IndexOf($expected,$name);if($next -le $position){$ordered=$false};$position=$next}
     # The manifest's durable, service-validated state history records every transition; prefer it to polling.
-    $history=if(@($Transitions).Count){@($Transitions[-1].History)}else{@()}
+    $history=@(if(@($Transitions).Count){$Transitions[-1].History | Where-Object {$null -ne $_}}else{@()})
     if($history.Count){
         $exact=($history -join ',') -ceq ($expected -join ',')
         $assertions+=@{Name='C01JournalOrder';Verdict=$(if($exact){'PASS'}elseif($bad.Count -or -not $ordered -or ($expected[0..([Math]::Min($history.Count,$expected.Count)-1)] -join ',') -cne ($history[0..([Math]::Min($history.Count,$expected.Count)-1)] -join ',')){'FAIL'}else{'INCONCLUSIVE'});
@@ -1698,36 +1796,55 @@ function Test-CachedJournalSequence($Transitions,[string]$Outcome,[string]$Diges
     $wrong=@($sealed | Where-Object {$_.Sha256Hex -cne $Digest})
     $assertions+=@{Name='C01SealedDigest';Verdict=$(if($wrong.Count){'FAIL'}elseif($sealed.Count){'PASS'}else{'INCONCLUSIVE'});Reason='Every observed sealed digest must equal independently generated whole image A.'}
     $identities=@($Transitions | Where-Object {$null -ne $_.TransferId} | ForEach-Object {([string]$_.TransferId)+':'+$_.DestinationGeneration} | Sort-Object -Unique)
-    if($identities.Count -gt 1){$assertions+=@{Name='C01JournalIdentity';Verdict='FAIL';Reason='Transfer ID/destination generation changed within one cached write.'}}
+    if($identities.Count -gt 1){
+        # A native replacement moves ONE transfer between independent source
+        # and target generation slots. Require its observed committed manifest,
+        # never waive generation identity just because this is a rename case.
+        $valid=$null -ne $RenameCommit -and $RenameCommit.Verified -eq $true
+        $targetSeen=$false
+        foreach($transition in $Transitions){
+            if($transition.TransferId -ine $RenameCommit.TransferId){$valid=$false}
+            if($transition.DestinationGeneration -eq $RenameCommit.TargetGeneration){$targetSeen=$true}
+            elseif($transition.DestinationGeneration -ne $RenameCommit.SourceGeneration -or $targetSeen){$valid=$false}
+        }
+        $assertions+=@{Name='C01JournalIdentity';Verdict=$(if($valid -and $targetSeen){'PASS'}else{'FAIL'});Reason='Only one proven committed rename may advance from the source generation to the reserved target generation; transfer ID stays exact.';RenameCommit=$RenameCommit}
+    }
     return ,$assertions
 }
-function Test-CachedNotifications($Proof,[string]$TransferId,[int]$SessionId,[string]$Outcome,[string]$Digest) {
+function Test-CachedNotifications($Proof,[string]$TransferId,[int]$SessionId,[string]$Outcome,[string]$Digest,$HandBack=$null) {
     $assertions=@();$correlated=@($Proof.Emissions | ForEach-Object {$_.Entry} | Where-Object {
         ($_.Kind -ceq 'Transfer' -and $_.TransferId -ieq $TransferId) -or ($_.Kind -ceq 'Event' -and $_.EventId -ieq $TransferId)})
     $entries=@($correlated | Where-Object Kind -ceq 'Transfer')
     $wanted=if($Outcome -ceq 'APPROVE'){'Released'}else{'Blocked'}
     $found=@($entries | Where-Object {$_.Phase -ceq $wanted})
-    $bad=@($correlated | Where-Object {($_.TargetSessionId -ne $SessionId) -or ($Outcome -ceq 'BLOCK' -and $_.Phase -cin @('Approved','Publishing','Released')) -or ($Outcome -ceq 'APPROVE' -and $_.Phase -ceq 'Blocked')})
+    $bad=@($correlated | Where-Object {($_.TargetSessionId -ne $SessionId) -or ($Outcome -ceq 'BLOCK' -and $_.Phase -cin @('Approved','Publishing','Released')) -or
+        ($Outcome -ceq 'APPROVE' -and ($_.Phase -ceq 'Blocked' -or -not [string]::IsNullOrWhiteSpace($_.HandBackPath)))})
     $assertions+=@{Name='C01OutcomeNotification';Verdict=$(if($bad.Count){'FAIL'}elseif(-not $Proof.Complete){'INCONCLUSIVE'}elseif(-not $found.Count){'FAIL'}else{'PASS'});
         Reason=('Required='+$wanted+'; matching='+$found.Count+'; contradictory/session mismatch='+$bad.Count+'; '+$Proof.Reason)}
-    if($Outcome -ceq 'APPROVE'){
-        $digests=@($found | Where-Object {$null -ne $_.PSObject.Properties['Sha256Hex']})
-        $assertions+=@{Name='C01ReleasedNotificationDigest';Verdict=$(if(@($digests | Where-Object Sha256Hex -cne $Digest).Count){'FAIL'}elseif($digests.Count -and $Proof.Complete){'PASS'}else{'INCONCLUSIVE'});
-            Reason='Released must identify A digest. Current durable NotificationRecord and TransferNotification omit content digest; journal correlation alone does not satisfy this contract.'}
-    }else{
+    $digests=@($found | Where-Object {-not [string]::IsNullOrWhiteSpace($_.Sha256Hex)})
+    $wrong=@($digests | Where-Object Sha256Hex -cne $Digest)
+    $label=if($Outcome -ceq 'APPROVE'){'C01ReleasedNotificationDigest'}else{'C01BlockedNotificationDigest'}
+    $assertions+=@{Name=$label;Verdict=$(if($wrong.Count){'FAIL'}elseif($digests.Count -eq $found.Count -and $found.Count -and $Proof.Complete){'PASS'}else{'INCONCLUSIVE'});
+        Reason=($wanted+' notification requires exact whole-image digest; present='+$digests.Count+'; matching outcome emissions='+$found.Count+'; coverage='+$Proof.Complete+'. Missing digest/coverage cannot be supplied by journal correlation.')}
+    if($Outcome -ceq 'BLOCK'){
         $paths=@($found | Where-Object {-not [string]::IsNullOrWhiteSpace($_.HandBackPath)})
-        $assertions+=@{Name='C01BlockedNotificationHandBackPath';Verdict=$(if($paths.Count -and $Proof.Complete){'PASS'}else{'INCONCLUSIVE'});
-            Reason='Blocked must identify verified actor hand-back path. Current notification adapter/contract has no hand-back path field.'}
+        $verified=@($HandBack.Files | Where-Object {$_.Sha256 -ceq $Digest -and $_.SingleLink -eq $true -and $_.NoReparse -eq $true})
+        $wrong=@($paths | Where-Object {$_.HandBackPath -cnotin $verified.Path})
+        $verdict=if($null -ne $HandBack -and $wrong.Count){'FAIL'}elseif($null -eq $HandBack -or $paths.Count -ne $found.Count -or -not $found.Count -or -not $Proof.Complete){'INCONCLUSIVE'}else{'PASS'}
+        $assertions+=@{Name='C01BlockedNotificationHandBackPath';Verdict=$verdict;
+            Reason=('Every Blocked emission must name the exact independently verified actor hand-back file; paths='+$paths.Count+'; verified='+$verified.Count+'. Missing hand-back/notification coverage remains INCONCLUSIVE.')}
     };return ,$assertions
 }
 function Get-CachedJournalObservation([string]$Tag,$Actor) {
+    $paths=@((Join-Path $protectedDirectory 'cached.txt'))
+    if($cachedKind -ceq 'replacement'){$paths+= (Join-Path $protectedDirectory 'save.tmp.txt')}
     $snapshot=Get-ServiceSnapshot $Tag -JournalOnly
     $entries=@();$errors=@($snapshot.Errors)
     foreach($record in $snapshot.Journal){
         if(@($trial.ServiceBefore.Journal | Where-Object Path -ieq $record.Path).Count){continue}
         try {
             $parsed=ConvertFrom-ServiceJournalRecord $record
-            if($parsed.DestinationPaths -icontains (Join-Path $protectedDirectory 'cached.txt')){
+            if(@($parsed.DestinationPaths | Where-Object {$_ -iin $paths}).Count){
                 if($parsed.Entry.Transfer.ProcessId -ne $Actor.Pid -or $parsed.Entry.Transfer.SessionId -ne $Actor.SessionId){throw 'C01 transfer writer PID/session mismatch'}
                 $historyNames=@($parsed.Entry.StateHistory | Where-Object {$null -ne $_} | ForEach-Object {@('Allocated','Sealed','Inspecting','Approved','Publishing','Released','Blocked','Retained','Unsealed')[[int]$_.State]})
                 $entries+= [pscustomobject]@{StateName=$parsed.StateName;State=[int]$parsed.Entry.State;TransferId=$parsed.Entry.Transfer.TransferId;History=$historyNames;
@@ -1738,12 +1855,12 @@ function Get-CachedJournalObservation([string]$Tag,$Actor) {
     }
     return [pscustomobject]@{Status=$(if($snapshot.Status -ceq 'OK' -and -not $errors.Count){'OK'}else{'INCONCLUSIVE'});Entries=$entries;Errors=$errors;Snapshot=$snapshot}
 }
-function Capture-CachedSample($Context,$Baseline,[string]$PhaseName,[long]$Sequence) {
+function Capture-CachedSample($Context,$Baseline,[string]$PhaseName,[long]$Sequence,[string]$TargetPath=(Join-Path $protectedDirectory 'cached.txt')) {
     $sample=Capture-InvariantSample $Context $Baseline $PhaseName $Sequence
     # The shared observer records raw absence via the parent index, but only
     # opens supplemental readers for existing files. C01 also needs both
     # native fresh opens to attest ERROR_FILE_NOT_FOUND for an absent final.
-    $readers=@();$path=Join-Path $protectedDirectory 'cached.txt'
+    $readers=@();$path=$TargetPath
     foreach($raw in @($false,$true)){
         try{$reader=[StagedInvariant.Native]::Fresh($path,$raw,$Context.Geometry.Alignment);$readers+=@{Unbuffered=$raw;Status='OK';Result=$reader;NativeCode=0}}
         catch{
@@ -1754,59 +1871,106 @@ function Capture-CachedSample($Context,$Baseline,[string]$PhaseName,[long]$Seque
     $sample | Add-Member NoteProperty C01Readers $readers
     return $sample
 }
-function Test-CachedSample($Sample,$Baseline,[bool]$Released,[byte[]]$ImageA) {
-    $assertions=@();$path=Join-Path $protectedDirectory 'cached.txt';$digest=[StagedInvariant.Native]::Hash($ImageA)
+function Test-CachedImage($Image,$Geometry,[byte[]]$Expected,[string]$Label) {
+    $assertions=@();$digest=[StagedInvariant.Native]::Hash($Expected)
+    if($Image.Absent){return ,@(@{Name=($Label+'Image');Verdict='FAIL';Reason='Expected whole image absent in raw parent index.'})}
+    if($null -eq $Image.Length -or [string]::IsNullOrWhiteSpace($Image.Sha256)){return ,@(@{Name=($Label+'Image');Verdict='INCONCLUSIVE';Reason='Raw image length or digest unavailable.'})}
+    $good=$Image.Length -eq $Expected.Length -and $Image.Sha256 -ceq $digest
+    $assertions+=@{Name=($Label+'Image');Verdict=$(if($good){'PASS'}else{'FAIL'});Reason='Raw logical length and SHA-256 must equal the complete independent image.'}
+    try{
+        $logical=[IO.File]::ReadAllBytes($Image.LogicalArtifact.Path)
+        if($logical.Length -ne $Image.LogicalArtifact.Length -or [StagedInvariant.Native]::Hash($logical) -cne $Image.LogicalArtifact.Sha256){throw 'Raw logical artifact hash/length mismatch'}
+        $assertions+=@{Name=($Label+'LogicalBytes');Verdict=$(if([StagedInvariant.Native]::CountDifferences($Expected,$logical)){'FAIL'}else{'PASS'});Reason='Retained whole raw logical artifact compared byte for byte to independent image.'}
+    }catch{$assertions+=@{Name=($Label+'LogicalBytes');Verdict='INCONCLUSIVE';Reason=$_.Exception.Message}}
+    $covered=0;$ranges=@()
+    foreach($container in @($Image.Containers | Where-Object Kind -ceq 'DATA')){
+        try{
+            $raw=[IO.File]::ReadAllBytes($container.Artifact.Path)
+            if($raw.Length -ne $container.Artifact.Length -or [StagedInvariant.Native]::Hash($raw) -cne $container.Artifact.Sha256){throw 'Retained raw extent hash/length mismatch'}
+            $run=@($Image.Runs | Where-Object {$_.Lcn -ge 0 -and $container.Offset -ge $_.Lcn*$Geometry.Cluster -and $container.Offset+$container.Length -le ($_.Lcn+$_.Clusters)*$Geometry.Cluster})
+            if($run.Count -ne 1){throw 'Cannot position raw extent in exactly one VCN run'}
+            $offset=$run[0].Vcn*$Geometry.Cluster+$container.Offset-$run[0].Lcn*$Geometry.Cluster
+            if($offset -lt 0 -or $offset+$raw.Length -gt $Expected.Length){throw 'Raw allocation outside exact cluster-aligned image; no slack oracle available'}
+            $want=New-Object byte[] $raw.Length;[Array]::Copy($Expected,[long]$offset,$want,[long]0,[long]$raw.Length)
+            $different=[StagedInvariant.Native]::CountDifferences($want,$raw);$covered+=$raw.Length;$ranges+=@{Offset=$offset;Length=$raw.Length}
+            $assertions+=@{Name=($Label+'RawExtent');Verdict=$(if($different){'FAIL'}else{'PASS'});Reason=('Raw extent at '+$container.Offset+'; differing bytes='+$different);ForbiddenByteCount=$different}
+        }catch{$assertions+=@{Name=($Label+'RawExtent');Verdict='INCONCLUSIVE';Reason=$_.Exception.Message}}
+    }
+    $end=0;$contiguous=$true
+    foreach($range in @($ranges | Sort-Object Offset)){if($range.Offset -ne $end){$contiguous=$false};$end=$range.Offset+$range.Length}
+    if($covered -ne $Expected.Length -or -not $contiguous -or $end -ne $Expected.Length){$assertions+=@{Name=($Label+'RawExtentCoverage');Verdict='INCONCLUSIVE';Reason=('Expected '+$Expected.Length+' allocated data bytes; compared '+$covered+'; complete VCN coverage without gaps/overlap='+$contiguous)}}
+    return ,$assertions
+}
+function Test-CachedSample($Sample,$Baseline,[bool]$Released,[byte[]]$ImageA,[byte[]]$ImageB=$null,[string]$TargetPath=(Join-Path $protectedDirectory 'cached.txt')) {
+    $assertions=@();$path=$TargetPath;$leaf=[IO.Path]::GetFileName($path)
+    $expected=$ImageB;if($Released){$expected=$ImageA}
+    if($null -ne $expected){$expected=[byte[]]$expected;$digest=[StagedInvariant.Native]::Hash($expected)}else{$digest=$null}
+    $base=@($Baseline.Images | Where-Object {$_.Role -ceq 'Current' -and $_.Path -ceq $path -and -not $_.Absent})
     if($Sample.Status -cne 'OK'){$assertions+=@{Name='C01RawCapture';Verdict='INCONCLUSIVE';Reason=('Incomplete raw sample '+$Sample.Phase+': '+($Sample.Error | Out-String))}}
     foreach($capture in $Sample.Captures){
         foreach($image in @($capture.Images | Where-Object {$_.Role -ceq 'Current' -and $_.Path -ceq $path})){
-            if(-not $Released){
+            if($null -eq $expected){
                 $assertions+=@{Name='C01RawFinalAbsent';Verdict=$(if($image.Absent){'PASS'}else{'FAIL'});Reason=('Raw final must remain absent in '+$Sample.Phase);Sequence=$Sample.Sequence}
-            }elseif($image.Absent){$assertions+=@{Name='C01ReleasedImage';Verdict='FAIL';Reason='Released final absent in raw parent index.'}}
-            else{
-                $good=$image.Length -eq $ImageA.Length -and $image.Sha256 -ceq $digest
-                $assertions+=@{Name='C01ReleasedImage';Verdict=$(if($good){'PASS'}else{'FAIL'});Reason='Raw logical length and SHA-256 must equal all of A.'}
-                try{
-                    $logical=[IO.File]::ReadAllBytes($image.LogicalArtifact.Path)
-                    if($logical.Length -ne $image.LogicalArtifact.Length -or [StagedInvariant.Native]::Hash($logical) -cne $image.LogicalArtifact.Sha256){throw 'Raw logical artifact hash/length mismatch'}
-                    $assertions+=@{Name='C01ReleasedLogicalBytes';Verdict=$(if([StagedInvariant.Native]::CountDifferences($ImageA,$logical)){'FAIL'}else{'PASS'});Reason='Retained whole raw logical artifact compared byte for byte to independently generated A.'}
-                }catch{$assertions+=@{Name='C01ReleasedLogicalBytes';Verdict='INCONCLUSIVE';Reason=$_.Exception.Message}}
-                # Same VCN-to-volume extent positioning as Test-NoUnapprovedByte.
-                # Fixture is exactly three clusters: no unexplained allocation slack.
-                $covered=0
-                foreach($container in @($image.Containers | Where-Object Kind -ceq 'DATA')){
-                    try {
-                        $raw=[IO.File]::ReadAllBytes($container.Artifact.Path)
-                        if($raw.Length -ne $container.Artifact.Length -or [StagedInvariant.Native]::Hash($raw) -cne $container.Artifact.Sha256){throw 'Retained raw extent hash/length mismatch'}
-                        $run=@($image.Runs | Where-Object {$_.Lcn -ge 0 -and $container.Offset -ge $_.Lcn*$Baseline.Geometry.Cluster -and $container.Offset+$container.Length -le ($_.Lcn+$_.Clusters)*$Baseline.Geometry.Cluster})
-                        if($run.Count -ne 1){throw 'Cannot position C01 raw extent'}
-                        $offset=$run[0].Vcn*$Baseline.Geometry.Cluster+$container.Offset-$run[0].Lcn*$Baseline.Geometry.Cluster
-                        if($offset -lt 0 -or $offset+$raw.Length -gt $ImageA.Length){throw 'Raw allocation outside exact cluster-aligned A; no slack oracle available'}
-                        $want=New-Object byte[] $raw.Length;[Array]::Copy($ImageA,[long]$offset,$want,[long]0,[long]$raw.Length)
-                        $different=[StagedInvariant.Native]::CountDifferences($want,$raw);$covered+=$raw.Length
-                        $assertions+=@{Name='C01ReleasedRawExtent';Verdict=$(if($different){'FAIL'}else{'PASS'});Reason=('Raw extent at '+$container.Offset+'; differing bytes='+$different);ForbiddenByteCount=$different}
-                    }catch{$assertions+=@{Name='C01ReleasedRawExtent';Verdict='INCONCLUSIVE';Reason=$_.Exception.Message}}
+            }else{
+                $label=if($Released){'C01Released'}else{'C01Base'}
+                $assertions+=Test-CachedImage $image $Baseline.Geometry $expected $label
+                if($null -ne $ImageB){
+                    if($base.Count -ne 1 -or $null -eq $image.Identity.FileId){$assertions+=@{Name='C01FinalIdentity';Verdict='INCONCLUSIVE';Reason='Baseline/current final file identity unavailable.'}}
+                    else{
+                        $same=$base[0].Identity.FileId -ceq $image.Identity.FileId
+                        $assertions+=@{Name='C01FinalIdentity';Verdict=$(if($same -ne $Released){'PASS'}else{'FAIL'});Reason='Protected B keeps its file ID until approval; POSIX publication must create a new A file ID.'}
+                    }
                 }
-                if($covered -ne $ImageA.Length){$assertions+=@{Name='C01RawExtentCoverage';Verdict='INCONCLUSIVE';Reason=('Expected '+$ImageA.Length+' allocated data bytes; compared '+$covered)}}
             }
         }
         foreach($parent in @($capture.Images | Where-Object Role -ceq 'Parent')){
-            $before=@($Baseline.Images | Where-Object {$_.Role -ceq 'Parent' -and $_.Path -ceq $parent.Path})[0]
+            $before=@($Baseline.Images | Where-Object {$_.Role -ceq 'Parent' -and $_.Path -ceq $parent.Path})
+            if($before.Count -ne 1){$assertions+=@{Name='C01PublicListing';Verdict='INCONCLUSIVE';Reason=('No unique raw baseline parent for '+$parent.Path)};continue}
+            if($null -eq $parent.DirectoryEntries -or $null -eq $before[0].DirectoryEntries){$assertions+=@{Name='C01PublicListing';Verdict='INCONCLUSIVE';Reason='Raw parent or baseline directory entries unavailable.'};continue}
             $actual=@($parent.DirectoryEntries | Where-Object {$_.Name -notin @('.','..')})
-            $old=@($before.DirectoryEntries | Where-Object {$_.Name -notin @('.','..')})
-            $extras=@($actual | Where-Object {$_.Name -cnotin $old.Name -and (-not $Released -or $_.Name -cne 'cached.txt')})
+            $old=@($before[0].DirectoryEntries | Where-Object {$_.Name -notin @('.','..')})
+            $extras=@($actual | Where-Object {$_.Name -cnotin $old.Name -and (-not $Released -or $_.Name -cne $leaf)})
             $missing=@($old | Where-Object {$_.Name -cnotin $actual.Name})
-            $changed=@($old | Where-Object {$prior=$_;@($actual | Where-Object {$_.Name -ceq $prior.Name -and $_.Reference -eq $prior.Reference -and $_.Eof -eq $prior.Eof -and $_.Attributes -eq $prior.Attributes}).Count -ne 1})
+            $changed=@($old | Where-Object {
+                $prior=$_
+                if($Released -and $prior.Name -ceq $leaf){$false}else{@($actual | Where-Object {$_.Name -ceq $prior.Name -and $_.Reference -eq $prior.Reference -and $_.Eof -eq $prior.Eof -and $_.Attributes -eq $prior.Attributes}).Count -ne 1}
+            })
             $assertions+=@{Name='C01PublicListing';Verdict=$(if($extras.Count -or $missing.Count -or $changed.Count){'FAIL'}else{'PASS'});Reason=('Raw names/IDs: unexpected='+($extras.Name -join ',')+'; missing='+($missing.Name -join ',')+'; changed='+($changed.Name -join ','));Sequence=$Sample.Sequence}
+        }
+        if($null -ne $ImageB){
+            $retained=@($capture.Images | Where-Object {$base.Count -eq 1 -and $_.Role -ceq ('Retained:'+$base[0].Identity.FileId)})
+            if($retained.Count -ne 1){$assertions+=@{Name='C01RetainedBase';Verdict='INCONCLUSIVE';Reason='Exactly one retained physical B identity/raw capture required.'}}
+            else{$assertions+=Test-CachedImage $retained[0] $Baseline.Geometry $ImageB 'C01RetainedBase'}
+            $oldReaders=@($capture.Readers | Where-Object {$_.Role -ceq 'Retained' -and $base.Count -eq 1 -and $_.FileId -ceq $base[0].Identity.FileId})
+            if($oldReaders.Count -ne 1 -or $oldReaders[0].Status -cne 'OK'){$assertions+=@{Name='C01RetainedBaseReader';Verdict='INCONCLUSIVE';Reason='Held independent physical B reader missing/failed; '+($oldReaders.Error | Out-String)}}
+            else{$assertions+=@{Name='C01RetainedBaseReader';Verdict=$(if($oldReaders[0].Result.Digest -ceq [StagedInvariant.Native]::Hash($ImageB) -and $oldReaders[0].Result.Length -eq $ImageB.Length){'PASS'}else{'FAIL'});Reason='Old reader sharing DELETE still returns whole B after replacement.'}}
         }
     }
     if(-not @($Sample.Captures | ForEach-Object {$_.Images} | Where-Object {$_.Role -ceq 'Current' -and $_.Path -ceq $path}).Count){$assertions+=@{Name='C01RawFinalCoverage';Verdict='INCONCLUSIVE';Reason='No raw final/absence image retained.'}}
     if(-not @($Sample.Captures | ForEach-Object {$_.Images} | Where-Object Role -ceq 'Parent').Count){$assertions+=@{Name='C01RawListingCoverage';Verdict='INCONCLUSIVE';Reason='No raw parent-directory listing retained.'}}
     foreach($reader in $Sample.C01Readers){
-        $good=if($Released){$reader.Status -ceq 'OK' -and $reader.Result.Digest -ceq $digest -and $reader.Result.Length -eq $ImageA.Length}else{$reader.Status -ceq 'ERROR' -and $reader.NativeCode -eq 2}
+        $good=if($null -ne $expected){$reader.Status -ceq 'OK' -and $reader.Result.Digest -ceq $digest -and $reader.Result.Length -eq $expected.Length}else{$reader.Status -ceq 'ERROR' -and $reader.NativeCode -eq 2}
         $verdict=if($good){'PASS'}elseif($reader.Status -ceq 'OK' -or $reader.NativeCode -eq 2){'FAIL'}else{'INCONCLUSIVE'}
-        $assertions+=@{Name='C01IndependentReader';Verdict=$verdict;Reason=('Uncached='+$reader.Unbuffered+'; expected='+$(if($Released){'whole A'}else{'Win32:2'})+'; native='+$reader.NativeCode+'; '+$reader.Reason);Sequence=$Sample.Sequence}
+        $assertions+=@{Name='C01IndependentReader';Verdict=$verdict;Reason=('Uncached='+$reader.Unbuffered+'; expected='+$(if($null -ne $expected){'whole image '+$digest}else{'Win32:2'})+'; native='+$reader.NativeCode+'; '+$reader.Reason);Sequence=$Sample.Sequence}
     }
     if(@($Sample.C01Readers).Count -ne 2 -or @($Sample.C01Readers | Where-Object Unbuffered).Count -ne 1){$assertions+=@{Name='C01ReaderCoverage';Verdict='INCONCLUSIVE';Reason='Exactly one fresh and one uncached receipt required.'}}
+    return ,$assertions
+}
+function Test-CachedActorCalls($Calls,[string]$Kind,[long]$ReadyQpc,[long]$CloseQpc) {
+    $expected=@(switch -CaseSensitive ($Kind){
+        'mapped' {'writer-open';'create-mapping';'map-view';'close-source';'mapped-store';'flush-view';'unmap-view';'close-section'}
+        'replacement' {'writer-open';'cached-write';'flush';'rename-ex';'close'}
+        'external-rename' {'writer-open';'rename-ex';'close'}
+        default {'writer-open';'cached-write';'flush';'close'}
+    })
+    $assertions=@();$bad=@($Calls | Where-Object {$want=if($Kind -ceq 'external-rename' -and $_.Class -ceq 'rename-ex'){5}else{0};$null -ne $_.NativeCode -and $_.NativeCode -ne $want})
+    $complete=@($Calls).Count -eq $expected.Count -and -not @($Calls | Where-Object {$null -eq $_.NativeCode -or $null -eq $_.StartQpc -or $null -eq $_.EndQpc}).Count
+    $ordered=($Calls.Class -join ',') -ceq ($expected -join ',');$previous=$ReadyQpc
+    foreach($call in $Calls){if($call.StartQpc -lt $previous -or $call.EndQpc -lt $call.StartQpc){$ordered=$false};$previous=$call.EndQpc}
+    $release=@($Calls | Where-Object {$_.Class -cin @('close','unmap-view','close-section')})
+    if(@($release | Where-Object StartQpc -lt $CloseQpc).Count){$ordered=$false}
+    $assertions+=@{Name='ExactNativeStatus';Verdict=$(if($bad.Count){'FAIL'}elseif(-not $complete){'INCONCLUSIVE'}elseif(-not $ordered){'FAIL'}else{'PASS'});
+        Reason=('Required ordered calls='+($expected -join ',')+'; external rename alone requires Win32:5, all other calls Win32:0; missing receipt fields='+(-not $complete)+'; readiness/release QPC order='+$ordered);Calls=$Calls}
     return ,$assertions
 }
 function Test-CachedHandBackAcl([string]$Sddl,[string]$Sid) {
@@ -1940,8 +2104,80 @@ function Restore-CachedAgent {
     else{Restore-StagedAgentService 'SafeUploadAgent' 'HKLM:\SYSTEM\CurrentControlSet\Services\SafeUploadAgent' $state.CachedAgent.OriginalService}
     $state.CachedAgentRestored=$true;Save-State $state $statePath
 }
+function Invoke-CachedBaseSeed($Actor,[byte[]]$ImageB,[long]$ReadyQpc) {
+    $seed=[ordered]@{ImageB=@{Length=$ImageB.Length;Sha256=[StagedInvariant.Native]::Hash($ImageB)};Assertions=@();Transitions=@();Before=$trial.ServiceBefore;After=$null;Receipt=$null;TransferId=$null}
+    $trial.JournalSnapshots+= $seed.Before
+    Write-DurableFile (Join-Path $actorDirectory 'seed-go') $RunName -New
+    $receipt=Wait-WriterIdentity (Join-Path $actorDirectory 'seed-closed.clixml') 60;$seed.Receipt=$receipt
+    if($receipt.Pid -ne $Actor.Pid -or $receipt.Sid -cne $Actor.Sid -or $receipt.BootId -cne $Actor.BootId -or $receipt.Token -cne $state.WriterToken){throw 'Approved B seed receipt identity/token mismatch'}
+    $seed.Assertions+=Test-CachedActorCalls $receipt.Calls 'cached' $ReadyQpc 0
+    if(@($seed.Assertions | Where-Object Verdict -cne 'PASS').Count){$trial.SeedBase=$seed;$trial.Assertions+=@($seed.Assertions);throw 'Approved B seed native evidence failed/incomplete; see SeedBase receipt'}
+    $deadline=([Diagnostics.Stopwatch]::GetTimestamp()+[long](120*[Diagnostics.Stopwatch]::Frequency));$number=0;$terminal=$null
+    do{
+        $poll=Get-CachedJournalObservation ('seed-'+$number) $Actor;$number++;$trial.JournalSnapshots+= $poll.Snapshot
+        if($poll.Status -cne 'OK'){$seed.Assertions+=@{Name='SeedJournalPoll';Verdict='INCONCLUSIVE';Reason=($poll.Errors | Out-String)}}
+        if($poll.Entries.Count -gt 1){throw 'Approved B seed has multiple new transfers'}
+        foreach($entry in $poll.Entries){
+            if($seed.Transitions.Count -and $seed.Transitions[0].TransferId -ine $entry.TransferId){throw 'Approved B seed transfer identity changed'}
+            if(-not $seed.Transitions.Count -or $seed.Transitions[-1].State -ne $entry.State){$seed.Transitions+= $entry}
+            if($entry.StateName -ceq 'Released'){$terminal=$entry}
+            if($entry.StateName -cin @('Blocked','Retained')){$seed.Assertions+=@{Name='SeedApproveB';Verdict='FAIL';Reason=('Benign B unexpectedly '+$entry.StateName)};break}
+        }
+        if($null -ne $terminal -or @($seed.Assertions | Where-Object Verdict -ceq 'FAIL').Count){break};Start-Sleep -Milliseconds 50
+    }while([Diagnostics.Stopwatch]::GetTimestamp() -lt $deadline)
+    $seed.Assertions+=Test-CachedJournalSequence $seed.Transitions 'APPROVE' $seed.ImageB.Sha256
+    if($null -eq $terminal){$trial.SeedBase=$seed;$trial.Assertions+=@($seed.Assertions);throw 'Approved B seed did not reach Released within 120 seconds; no unapproved baseline fallback'}
+    $seed.TransferId=$terminal.TransferId
+    $fence=[pscustomobject]@{Complete=$true;BootId=$Actor.BootId;QpcFrequency=[Diagnostics.Stopwatch]::Frequency;ReleasedQpc=$receipt.ReleasedQpc;CompletedQpc=[Diagnostics.Stopwatch]::GetTimestamp()}
+    # Released is durable before its asynchronous notification. Keep bounded,
+    # authenticated snapshots until that exact transfer's emission arrives.
+    $deadline=([Diagnostics.Stopwatch]::GetTimestamp()+[long](10*[Diagnostics.Stopwatch]::Frequency));$number=0
+    do{
+        $seed.After=Get-ServiceSnapshot ('seed-after-'+$number);$number++;$trial.JournalSnapshots+= $seed.After
+        $proof=Test-NotificationWindow $seed.Before.Notifications $seed.After.Notifications $fence $true
+        if(@($proof.Emissions | Where-Object {$_.Entry.Kind -ceq 'Transfer' -and $_.Entry.TransferId -ieq $terminal.TransferId -and $_.Entry.Phase -ceq 'Released'}).Count){break};Start-Sleep -Milliseconds 100
+    }while([Diagnostics.Stopwatch]::GetTimestamp() -lt $deadline)
+    $seed.NotificationProof=$proof;$seed.Assertions+=Test-CachedNotifications $proof $terminal.TransferId $Actor.SessionId 'APPROVE' $seed.ImageB.Sha256
+    foreach($assertion in $seed.Assertions){$assertion.Name='SeedB'+$assertion.Name}
+    return $seed
+}
+function Test-CachedNamespaceCommit($Entry,$Trial,[string]$Source,[string]$Target) {
+    $parsed=ConvertFrom-ServiceJournalRecord $Entry.Record;$journal=$parsed.Entry;$tombstones=@()
+    for($t=$journal.NamespaceTombstones;$null -ne $t;$t=$t.Previous){$tombstones+= $t}
+    $sourceGeneration=$Trial.JournalTransitions[0].DestinationGeneration
+    $baseGeneration=$Trial.SeedBase.Transitions[-1].DestinationGeneration
+    $good=$journal.LastRenameCommitted -eq $true -and $journal.LastRenameTransactionId -gt 0 -and $journal.LastRenameDestination -ieq $Target -and
+        $journal.Transfer.DestinationPath -ieq $Target -and $null -eq $journal.PendingRename -and $journal.DestinationGeneration -eq ($baseGeneration+1) -and
+        @($tombstones | Where-Object {$_.DestinationPath -ieq $Source -and $_.Generation -eq ($sourceGeneration+1)}).Count -eq 1
+    return [pscustomobject]@{Verified=$good;TransferId=$Entry.TransferId;SourceGeneration=$sourceGeneration;TargetGeneration=$Entry.DestinationGeneration;TransactionId=$journal.LastRenameTransactionId;Artifact=$Entry.Artifact;
+        Assertion=@{Name='C04CommittedNamespace';Verdict=$(if($good){'PASS'}else{'FAIL'});Reason='Same held transfer commits target and durable source tombstone with exact source/target reserved generations, positive transaction, no pending rename.';Manifest=$Entry.Artifact}}
+}
+function Add-CachedHeldJournal($Trial,$Actor,[string]$Tag,[bool]$Renamed=$false) {
+    $poll=Get-CachedJournalObservation $Tag $Actor;$Trial.JournalSnapshots+= $poll.Snapshot
+    if($cachedDenial){
+        $Trial.Assertions+=@{Name='C05NoHeldTransfer';Verdict=$(if($poll.Entries.Count){'FAIL'}elseif($poll.Status -ceq 'OK'){'PASS'}else{'INCONCLUSIVE'});Reason=('External physical handle must allocate no private transfer; observed='+$poll.Entries.Count+'; '+($poll.Errors | Out-String))};return
+    }
+    if($poll.Status -cne 'OK' -or $poll.Entries.Count -ne 1){$Trial.Assertions+=@{Name='C01HeldJournal';Verdict='INCONCLUSIVE';Reason=('Expected one authenticated Allocated transfer while held; observed='+$poll.Entries.Count+'; '+($poll.Errors | Out-String))}}
+    if($poll.Entries.Count -gt 1){$Trial.Assertions+=@{Name='C01HeldJournalIdentity';Verdict='FAIL';Reason='More than one owned transfer for a single held writer.'}}
+    foreach($entry in $poll.Entries){
+        if($Trial.JournalTransitions.Count -and $Trial.JournalTransitions[0].TransferId -ine $entry.TransferId){$Trial.Assertions+=@{Name='C01HeldJournalIdentity';Verdict='FAIL';Reason='Held writer transfer identity changed.'}}
+        if(-not $Trial.JournalTransitions.Count -or $Trial.JournalTransitions[-1].State -ne $entry.State){$Trial.JournalTransitions+= $entry}
+        $Trial.Assertions+=@{Name='C01SealAfterClose';Verdict=$(if($entry.State -eq 0 -and -not $entry.SealedOnce){'PASS'}else{'FAIL'});Reason=('Held upper references must remain Allocated/unsealed; observed '+$entry.StateName)}
+        if($Renamed -and $cachedKind -ceq 'replacement'){
+            $Trial.NamespaceCommit=Test-CachedNamespaceCommit $entry $Trial (Join-Path $protectedDirectory 'save.tmp.txt') (Join-Path $protectedDirectory 'cached.txt')
+            $Trial.Assertions+= $Trial.NamespaceCommit.Assertion
+        }
+    }
+}
+function Capture-CachedExternalSample($Context,$Baseline,[string]$PhaseName,[long]$Sequence,[byte[]]$Image) {
+    $path=Join-Path $externalDirectory 'source.txt'
+    $sample=Capture-CachedSample $Context $Baseline $PhaseName $Sequence $path
+    $trial.ExternalSource.Samples+= $sample
+    $trial.Assertions+=Test-CachedSample $sample $Baseline $false $Image $Image $path
+    return $sample
+}
 function Invoke-CachedObservation {
-    $context=$null;$baseline=$null;$disposal=$null;$samples=@();$predicateSamples=@();$checkpoints=@();$writer=$null;$agent=$null;$readyEvent=$null;$actor=$null;$agentStartLocal=$null
+    $externalContext=$null;$externalBaseline=$null;$externalSequence=0;$imageB=$null;$terminal=$null;$context=$null;$baseline=$null;$disposal=$null;$samples=@();$predicateSamples=@();$checkpoints=@();$writer=$null;$agent=$null;$readyEvent=$null;$actor=$null;$agentStartLocal=$null
     $trial=[ordered]@{Errors=@();Approvals=@();Permits=@();Journal=@();JournalSnapshots=@();JournalTransitions=@();Notifications=@();Operations=@();Latency=@();Assertions=@();Verdict='INCONCLUSIVE';ForbiddenByteCount=$null}
     try {
         Assert-Hash $installedDriver $ExpectedFeatureSha256
@@ -1976,51 +2212,87 @@ function Invoke-CachedObservation {
         $trial.ServiceBefore=Get-ServiceSnapshot 'before';$trial.LastAccessBefore=Get-LastAccessEvidence
         $context=Open-InvariantObserver $ready.VolumeGuid $protectedDirectory (Join-Path $evidenceDirectory 'raw') $CaseId
         if($context.Status -cne 'OK'){throw ($context.Error | Out-String)}
-        $expected=@{'marker.bin'=[Convert]::FromBase64String($state.BaselineBase64);'cached.txt'=$null}
-        # The window starts before the capture: the capture's own read updates marker.bin's LastAccess (run c01n).
+        Start-ScheduledTask -TaskName $writerTask
+        $actor=Wait-WriterIdentity (Join-Path $actorDirectory 'identity.clixml');$trial.Actor=$actor
+        if($actor.Sid -cne $state.ActorSid -or $actor.Elevated -or $actor.IsAdministrator -or $actor.Pid -eq $PID -or $actor.BootId -cne $context.BootId){throw 'Cached actor token/boot provenance invalid'}
+        $trial.ActorProvenance=Assert-ActorProcess $actor
+        $profiles=@(Get-CimInstance Win32_UserProfile | Where-Object SID -ceq $actor.Sid)
+        if($profiles.Count -ne 1 -or $profiles[0].LocalPath -ine $actor.Profile){throw 'Actor profile does not match OS SID profile binding'}
+        if(@($trial.ServiceBefore.Journal | Where-Object {try{(ConvertFrom-ServiceJournalRecord $_).DestinationPaths -icontains (Join-Path $protectedDirectory 'cached.txt')}catch{$false}}).Count){throw 'Final already claimed in pre-case service journal'}
+        if($cachedExisting){
+            $imageB=[Convert]::FromBase64String($state.CachedBaseBase64)
+            $trial.SeedBase=Invoke-CachedBaseSeed $actor $imageB $ready.Qpc;$trial.Assertions+=@($trial.SeedBase.Assertions)
+            if(@($trial.SeedBase.Assertions | Where-Object Verdict -cne 'PASS').Count){throw 'Approved B seed evidence incomplete/failed; no main mutation attempted'}
+            # Exclude the proven Released B transfer from the A window, never a dirty baseline.
+            $trial.ServiceBefore=Get-ServiceSnapshot 'before-A';$trial.LastAccessBefore=Get-LastAccessEvidence
+        }
+        $expected=@{'marker.bin'=[Convert]::FromBase64String($state.BaselineBase64);'cached.txt'=$imageB};$names=@('marker.bin','cached.txt')
+        if($cachedKind -ceq 'replacement'){$expected['save.tmp.txt']=$null;$names+= 'save.tmp.txt'}
+        # LastAccess window starts BEFORE the raw capture it covers (c01n).
         $captureStartedFileTime=[DateTime]::UtcNow.ToFileTimeUtc()
-        $baseline=Capture-InvariantBaseline $context @('marker.bin','cached.txt') $expected
+        $baseline=Capture-InvariantBaseline $context $names $expected
         $baseline | Add-Member NoteProperty CaptureStartedFileTime $captureStartedFileTime
         if($baseline.Status -cne 'OK'){throw ($baseline.Error | Out-String)}
         $process=Get-CimInstance Win32_Process -Filter ('ProcessId='+$PID);$owner=Invoke-CimMethod -InputObject $process -MethodName GetOwnerSid
-        if($owner.ReturnValue -ne 0 -or $owner.Sid -cne $context.ObserverSid){throw 'C01 observer OS SID mismatch'}
+        if($owner.ReturnValue -ne 0 -or $owner.Sid -cne $context.ObserverSid){throw 'Observer OS SID mismatch'}
         $trial.Platform=@{Build=$context.Build;BootId=$context.BootId;ObserverPid=$context.ObserverPid;ObserverSid=$context.ObserverSid;
             ObserverProcess=@{Pid=$process.ProcessId;OwnerSid=$owner.Sid;SessionId=$process.SessionId;CommandLine=$process.CommandLine}}
         $trial.Geometry=$context.Geometry;$trial.DecoderVersion=$context.DecoderVersion;$trial.ObserverModuleSha256=$context.ModuleSha256
         $imageA=[Convert]::FromBase64String($state.CachedImageBase64);$digest=[StagedInvariant.Native]::Hash($imageA);$trial.ImageA=@{Sha256=$digest;Length=$imageA.Length;Fixture=$state.CachedFixture}
+        if($cachedDenial){
+            $trial.ExternalSource=@{Baseline=$null;Samples=@();Disposal=$null}
+            $externalContext=Open-InvariantObserver $ready.VolumeGuid $externalDirectory (Join-Path $evidenceDirectory 'raw-external') $CaseId
+            if($externalContext.Status -cne 'OK'){throw ('External source observer: '+($externalContext.Error | Out-String))}
+            $sourceCaptureStart=[DateTime]::UtcNow.ToFileTimeUtc()
+            $externalBaseline=Capture-InvariantBaseline $externalContext @('source.txt') @{'source.txt'=$imageA}
+            $externalBaseline | Add-Member NoteProperty CaptureStartedFileTime $sourceCaptureStart
+            $trial.ExternalSource.Baseline=$externalBaseline
+            if($externalBaseline.Status -cne 'OK'){throw ('External source baseline: '+($externalBaseline.Error | Out-String))}
+        }
         $sequence=1;$sample=Capture-CachedSample $context $baseline 'BeforeOperation' $sequence;$samples+= $sample;$predicateSamples+= $sample;$checkpoints+=Get-ExpectedCheckpoint $baseline $sample.Phase $sequence
-        $trial.Assertions+=Test-CachedSample $sample $baseline $false $imageA
-        Start-ScheduledTask -TaskName $writerTask
-        $actor=Wait-WriterIdentity (Join-Path $actorDirectory 'identity.clixml');$trial.Actor=$actor
-        if($actor.Sid -cne $state.ActorSid -or $actor.Elevated -or $actor.IsAdministrator -or $actor.Pid -eq $PID -or $actor.BootId -cne $context.BootId){throw 'C01 actor token/boot provenance invalid'}
-        $trial.ActorProvenance=Assert-ActorProcess $actor
-        $profiles=@(Get-CimInstance Win32_UserProfile | Where-Object SID -ceq $actor.Sid)
-        if($profiles.Count -ne 1 -or $profiles[0].LocalPath -ine $actor.Profile){throw 'C01 actor profile does not match OS SID profile binding'}
-        if(@($trial.ServiceBefore.Journal | Where-Object {try{(ConvertFrom-ServiceJournalRecord $_).DestinationPaths -icontains (Join-Path $protectedDirectory 'cached.txt')}catch{$false}}).Count){throw 'C01 final already claimed in service journal'}
+        $trial.Assertions+=Test-CachedSample $sample $baseline $false $imageA $imageB
+        if($cachedDenial){$externalSequence++;$null=Capture-CachedExternalSample $externalContext $externalBaseline 'BeforeOperation' $externalSequence $imageA}
         Write-DurableFile (Join-Path $actorDirectory 'go') $RunName -New
         $held=Wait-WriterIdentity (Join-Path $actorDirectory 'held.clixml') 60
-        if($held.Pid -ne $actor.Pid -or $held.Sid -cne $actor.Sid -or $held.Token -cne $state.WriterToken -or $held.BootId -cne $context.BootId){throw 'C01 held receipt identity/token mismatch'}
+        if($held.Pid -ne $actor.Pid -or $held.Sid -cne $actor.Sid -or $held.Token -cne $state.WriterToken -or $held.BootId -cne $context.BootId){throw 'Held receipt identity/token mismatch'}
         $trial.HeldReceipt=$held;$trial.Operations=@($held.Calls)
-        $trial.Assertions+=@{Name='C01PrivateRead';Verdict=$(if($held.PrivateSha256 -ceq $digest){'PASS'}else{'FAIL'});Reason='Whole private cached handle read must equal A after flush.'}
+        $trial.Assertions+=@{Name='C01PrivateRead';Verdict=$(if($null -eq $held.PrivateSha256){'INCONCLUSIVE'}elseif($held.PrivateSha256 -ceq $digest){'PASS'}else{'FAIL'});Reason='Whole private handle/view (or external physical source) read must equal A after flush.'}
+        if($cachedKind -ceq 'mapped'){
+            $trial.Assertions+=@{Name='C02SourceClosedViewLive';Verdict=$(if($null -eq $held.SourceClosed -or $null -eq $held.ViewLive -or $null -eq $held.SectionLive){'INCONCLUSIVE'}elseif($held.SourceClosed -and $held.ViewLive -and $held.SectionLive){'PASS'}else{'FAIL'});Reason='Source file handle is closed; PAGE_READWRITE section and writable view remain live during all held samples.'}
+        }
         for($n=0;$n -lt 3;$n++){
-            $poll=Get-CachedJournalObservation ('held-'+$n) $actor;$trial.JournalSnapshots+= $poll.Snapshot
-            if($poll.Status -cne 'OK' -or $poll.Entries.Count -ne 1){$trial.Assertions+=@{Name='C01HeldJournal';Verdict='INCONCLUSIVE';Reason=('Expected one authenticated Allocated transfer while held; '+($poll.Errors | Out-String))}}
-            foreach($entry in $poll.Entries){
-                if(-not $trial.JournalTransitions.Count -or $trial.JournalTransitions[-1].State -ne $entry.State){$trial.JournalTransitions+= $entry}
-                $trial.Assertions+=@{Name='C01SealAfterClose';Verdict=$(if($entry.State -eq 0 -and -not $entry.SealedOnce){'PASS'}else{'FAIL'});Reason=('Held writer must remain Allocated/unsealed; observed '+$entry.StateName)}
-            }
-            $sequence++;$sample=Capture-CachedSample $context $baseline 'FlushedHandleHeld' $sequence;$samples+= $sample;$predicateSamples+= $sample;$checkpoints+=Get-ExpectedCheckpoint $baseline $sample.Phase $sequence
-            $trial.Assertions+=Test-CachedSample $sample $baseline $false $imageA
+            Add-CachedHeldJournal $trial $actor ('held-'+$n)
+            $heldPhase=if($cachedKind -ceq 'mapped'){'SourceClosedViewHeld'}elseif($cachedKind -cin @('replacement','external-rename')){'BeforeRenameHandleHeld'}else{'FlushedHandleHeld'}
+            $sequence++;$sample=Capture-CachedSample $context $baseline $heldPhase $sequence;$samples+= $sample;$predicateSamples+= $sample;$checkpoints+=Get-ExpectedCheckpoint $baseline $sample.Phase $sequence
+            $trial.Assertions+=Test-CachedSample $sample $baseline $false $imageA $imageB
+            if($cachedDenial){$externalSequence++;$null=Capture-CachedExternalSample $externalContext $externalBaseline $heldPhase $externalSequence $imageA}
             Start-Sleep -Milliseconds 10
+        }
+        if($cachedKind -cin @('replacement','external-rename')){
+            $trial.RenameBarrierQpc=[Diagnostics.Stopwatch]::GetTimestamp();Write-DurableFile (Join-Path $actorDirectory 'rename') $RunName -New
+            $renamed=Wait-WriterIdentity (Join-Path $actorDirectory 'renamed.clixml') 60
+            if($renamed.Pid -ne $actor.Pid -or $renamed.Sid -cne $actor.Sid -or $renamed.BootId -cne $actor.BootId -or $renamed.Token -cne $state.WriterToken){throw 'Rename receipt identity/token mismatch'}
+            $trial.RenameReceipt=$renamed;$trial.Operations=@($renamed.Calls);$renameCalls=@($renamed.Calls | Where-Object Class -ceq 'rename-ex')
+            $wantedCode=if($cachedDenial){5}else{0}
+            $verdict=if($renameCalls.Count -ne 1 -or $null -eq $renameCalls[0].NativeCode){'INCONCLUSIVE'}elseif($renameCalls[0].NativeCode -ne $wantedCode -or $renameCalls[0].StartQpc -lt $trial.RenameBarrierQpc){'FAIL'}else{'PASS'}
+            $trial.Assertions+=@{Name='NativeRenameStatus';Verdict=$verdict;Reason=('FileRenameInfoEx REPLACE_IF_EXISTS|POSIX via old held source: expected Win32:'+ $wantedCode+'; receipt count='+$renameCalls.Count)}
+            $trial.Assertions+=@{Name='C01PrivateReadAfterRename';Verdict=$(if($null -eq $renamed.PrivateSha256){'INCONCLUSIVE'}elseif($renamed.PrivateSha256 -ceq $digest){'PASS'}else{'FAIL'});Reason='Held source image remains exact A after the native rename attempt.'}
+            for($n=0;$n -lt 3;$n++){
+                Add-CachedHeldJournal $trial $actor ('renamed-held-'+$n) $true
+                $sequence++;$sample=Capture-CachedSample $context $baseline 'AfterRenameHandleHeld' $sequence;$samples+= $sample;$predicateSamples+= $sample;$checkpoints+=Get-ExpectedCheckpoint $baseline $sample.Phase $sequence
+                $trial.Assertions+=Test-CachedSample $sample $baseline $false $imageA $imageB
+                if($cachedDenial){$externalSequence++;$null=Capture-CachedExternalSample $externalContext $externalBaseline 'AfterDeniedRename' $externalSequence $imageA}
+            }
         }
         $trial.CloseBarrierQpc=[Diagnostics.Stopwatch]::GetTimestamp();Write-DurableFile (Join-Path $actorDirectory 'close') $RunName -New
         $closed=Wait-WriterIdentity (Join-Path $actorDirectory 'closed.clixml') 60
         if($closed.Pid -ne $actor.Pid -or $closed.Token -cne $state.WriterToken -or $closed.Sid -cne $actor.Sid -or $closed.BootId -cne $context.BootId){throw 'C01 close receipt identity/token mismatch'}
         $trial.ClosedReceipt=$closed;$trial.Operations=@($closed.Calls)
-        $good=($trial.Operations.Class -join ',') -ceq 'writer-open,cached-write,flush,close' -and @($trial.Operations | Where-Object NativeCode -ne 0).Count -eq 0
-        $trial.Assertions+=@{Name='ExactNativeStatus';Verdict=$(if($good){'PASS'}else{'FAIL'});Reason=($row.StatusClasses -join ';')}
-        if(-not $good){throw 'C01 actor native write/flush/close failed'}
-        if($trial.Operations[0].StartQpc -lt $ready.Qpc -or $trial.Operations[-1].StartQpc -lt $trial.CloseBarrierQpc){throw 'C01 operation/readiness/close QPC order invalid'}
+        $trial.Assertions+=Test-CachedActorCalls $trial.Operations $cachedKind $ready.Qpc $trial.CloseBarrierQpc
+        if($cachedDenial){
+            $poll=Get-CachedJournalObservation 'denied-after-close' $actor;$trial.JournalSnapshots+= $poll.Snapshot
+            $trial.Assertions+=@{Name='C05NoTransfer';Verdict=$(if($poll.Entries.Count){'FAIL'}elseif($poll.Status -ceq 'OK'){'PASS'}else{'INCONCLUSIVE'});Reason=('Denied external rename allocates no transfer; '+($poll.Errors | Out-String))}
+        }else{
         $wanted=if($row.Outcome -ceq 'APPROVE'){'Released'}else{'Blocked'};$deadline=([Diagnostics.Stopwatch]::GetTimestamp()+[long]((120)*[Diagnostics.Stopwatch]::Frequency));$pollNumber=0;$terminal=$null
         do {
             $poll=Get-CachedJournalObservation ('outcome-'+$pollNumber) $actor;$trial.JournalSnapshots+= $poll.Snapshot;$pollNumber++
@@ -2032,10 +2304,10 @@ function Invoke-CachedObservation {
                 if($entry.StateName -ceq $wanted){$terminal=$entry}
             }
             $sequence++;$sample=Capture-CachedSample $context $baseline 'OutcomeWait' $sequence;$samples+= $sample
-            if($row.Outcome -ceq 'BLOCK'){$predicateSamples+= $sample;$checkpoints+=Get-ExpectedCheckpoint $baseline $sample.Phase $sequence;$trial.Assertions+=Test-CachedSample $sample $baseline $false $imageA}
+            if($row.Outcome -ceq 'BLOCK'){$predicateSamples+= $sample;$checkpoints+=Get-ExpectedCheckpoint $baseline $sample.Phase $sequence;$trial.Assertions+=Test-CachedSample $sample $baseline $false $imageA $imageB}
             if($null -ne $terminal){break};Start-Sleep -Milliseconds 10
         }while([Diagnostics.Stopwatch]::GetTimestamp() -lt $deadline)
-        $trial.Assertions+=Test-CachedJournalSequence $trial.JournalTransitions $row.Outcome $digest
+        $trial.Assertions+=Test-CachedJournalSequence $trial.JournalTransitions $row.Outcome $digest $trial.NamespaceCommit
         if($null -eq $terminal){throw ('C01 journal timeout after 120 seconds: expected '+$wanted+'; last observed='+($trial.JournalTransitions.StateName -join ' -> '))}
         $trial.TransferId=$terminal.TransferId
         # Allow asynchronous post-Blocked hand-back work a bounded grace period.
@@ -2052,12 +2324,19 @@ function Invoke-CachedObservation {
             $handBackDeadline=([Diagnostics.Stopwatch]::GetTimestamp()+[long]((10)*[Diagnostics.Stopwatch]::Frequency));$handBackRoot=Join-Path $actor.Profile 'SafeUpload\_bloqueados'
             do{if(Test-Path -LiteralPath $handBackRoot){if(@(Get-ChildItem -LiteralPath $handBackRoot -File -Force).Count){break}};Start-Sleep -Milliseconds 100}while([Diagnostics.Stopwatch]::GetTimestamp() -lt $handBackDeadline)
         }
+        }
         Write-DurableFile (Join-Path $actorDirectory 'inspect-handback') $RunName -New
         $writer=Wait-TaskCompletion $writerTask (Join-Path $actorDirectory 'completion.clixml') $state.WriterToken 60
         $trial.HandBack=Get-CachedHandBack $actor $writer.Value.HandBackAfter $digest $imageA.Length;$trial.Assertions+=@($trial.HandBack.Assertions)
+        if($row.Outcome -ceq 'BLOCK'){
+            $trial.Assertions+=@{Name='C01HandBackSecondUserAccess';Verdict='INCONCLUSIVE';Reason='Contract H second standard-user denial is untested; harness owns one standard user only.'}
+            $trial.Assertions+=@{Name='C01HandBackSafeRelativeCreation';Verdict='INCONCLUSIVE';Reason='Contract H safe relative-to-verified-handle creation receipt unavailable; final no-reparse/single-link checks alone do not attest creation.'}
+            $trial.Assertions+=@{Name='C01HandBackWindowClosureAndRestart';Verdict='INCONCLUSIVE';Reason='Contract H restart, explicit justification-window closure and subsequent audited cleanup require the owning interactive client/session; this batch functional case checks retention and copy during the available window.'}
+        }
         $sequence++;$sample=Capture-CachedSample $context $baseline 'FinalQuiescence' $sequence;$samples+= $sample
-        $trial.Assertions+=Test-CachedSample $sample $baseline ($row.Outcome -ceq 'APPROVE') $imageA
-        if($row.Outcome -ceq 'BLOCK'){$predicateSamples+= $sample;$checkpoints+=Get-ExpectedCheckpoint $baseline $sample.Phase $sequence}
+        $trial.Assertions+=Test-CachedSample $sample $baseline ($row.Outcome -ceq 'APPROVE') $imageA $imageB
+        if($row.Outcome -ceq 'BLOCK' -or $cachedDenial){$predicateSamples+= $sample;$checkpoints+=Get-ExpectedCheckpoint $baseline $sample.Phase $sequence}
+        if($cachedDenial){$externalSequence++;$null=Capture-CachedExternalSample $externalContext $externalBaseline 'FinalQuiescence' $externalSequence $imageA}
         $trial.Latency=Get-LatencyVerdict $trial.Operations $row.LatencyClasses $writer.Value.QpcFrequency
         $trial.Repetitions=$row.Repetitions;$trial.OperationClassTimeline=$row.StatusClasses
         $trial.Assertions+=@{Name='C01UnheldLatency';Verdict='INCONCLUSIVE';Reason='One coordinated functional write only; 100 unheld latency repetitions deferred.'}
@@ -2069,7 +2348,11 @@ function Invoke-CachedObservation {
         $trial.ServiceEvidence=@{JournalDelta=$delta;NotificationProof=$proof;OperationFence=$fence;TrustBoundary='Existing SYSTEM/Administrators same-handle proof adapters'}
         $trial.Journal=$trial.ServiceAfter.Journal;$trial.Notifications=$proof.Emissions
         $trial.Assertions+=@{Name='JournalDelta';Verdict=$(if($delta.Findings.Count){'FAIL'}elseif($delta.Complete){'PASS'}else{'INCONCLUSIVE'});Reason=(@($delta.Failures)+@($delta.Findings) -join '; ')}
-        $trial.Assertions+=Test-CachedNotifications $proof $terminal.TransferId $actor.SessionId $row.Outcome $digest
+        if($cachedDenial){
+            $trial.ServiceEvidence=Get-ServiceTimeline $trial.ServiceBefore $trial.ServiceAfter $fence;$trial.Assertions+=@($trial.ServiceEvidence.Assertions)
+            $trial.Assertions+=@{Name='C05NoAnyNewTransfer';Verdict=$(if($delta.NewEntries.Count){'FAIL'}elseif($delta.Complete){'PASS'}else{'INCONCLUSIVE'});Reason=('Physical external source and denied target rename must create no transfer anywhere in the authenticated journal window; new entries='+$delta.NewEntries.Count+'; '+(@($delta.Failures)+@($delta.Findings) -join '; '))}
+            $trial.Assertions+=@{Name='C05DenialLedger';Verdict='INCONCLUSIVE';Reason='Win32:5 is recorded on the exact native rename with a successful physical source open/read; exact driver denial reason/lower-admission ledger unavailable.'}
+        }else{$trial.Assertions+=Test-CachedNotifications $proof $terminal.TransferId $actor.SessionId $row.Outcome $digest $trial.HandBack}
         $trial.VerifierAfter=Get-VerifierEvidence 'after' -RequireMode
     }catch{'ScriptError='+$_.Exception.ToString();$trial.Errors+=Get-ErrorChain $_.Exception;$trial.Assertions+=@{Name='C01Execution';Verdict='INCONCLUSIVE';Reason=($_.Exception.Message+'; '+$_.ScriptStackTrace)}}
     finally {
@@ -2079,17 +2362,28 @@ function Invoke-CachedObservation {
                 Set-Content -LiteralPath (Join-Path $evidenceDirectory 'agent-events-final.txt') -Encoding UTF8}catch{}
         }
         if($null -ne $actor){
-            foreach($leaf in @('close','inspect-handback')){try{if(-not(Test-Path -LiteralPath (Join-Path $actorDirectory $leaf))){Write-DurableFile (Join-Path $actorDirectory $leaf) $RunName -New}}catch{$trial.Errors+=Get-ErrorChain $_.Exception}}
+            foreach($leaf in @('cancel','close','inspect-handback')){try{if(-not(Test-Path -LiteralPath (Join-Path $actorDirectory $leaf))){Write-DurableFile (Join-Path $actorDirectory $leaf) $RunName -New}}catch{$trial.Errors+=Get-ErrorChain $_.Exception}}
+            if($null -eq $writer){
+                try{
+                    $deadline=([Diagnostics.Stopwatch]::GetTimestamp()+[long](15*[Diagnostics.Stopwatch]::Frequency))
+                    while((Get-ScheduledTask -TaskName $writerTask).State -eq 'Running' -and [Diagnostics.Stopwatch]::GetTimestamp() -lt $deadline){Start-Sleep -Milliseconds 100}
+                    if((Get-ScheduledTask -TaskName $writerTask).State -eq 'Running'){Stop-ScheduledTask -TaskName $writerTask;throw 'Actor did not complete cooperative cancellation within 15 seconds; task stopped, native release evidence incomplete'}
+                }catch{$trial.Errors+=Get-ErrorChain $_.Exception;$trial.Assertions+=@{Name='ActorQuiescence';Verdict='INCONCLUSIVE';Reason=$_.Exception.ToString()}}
+            }
             try{
                 if(Test-Path -LiteralPath (Join-Path $actorDirectory 'closed.clixml')){
                     $receipt=Wait-WriterIdentity (Join-Path $actorDirectory 'closed.clixml') 1
                     if($receipt.Pid -eq $actor.Pid -and $receipt.Token -ceq $state.WriterToken -and $receipt.BootId -ceq $actor.BootId){
                         $trial.Operations=@($receipt.Calls)
-                        if(@($receipt.Calls | Where-Object NativeCode -ne 0).Count){$trial.Assertions+=@{Name='ExactNativeStatus';Verdict='FAIL';Reason=('Unexpected native failure: '+(@($receipt.Calls | ForEach-Object {$_.Class+'=Win32:'+$_.NativeCode}) -join '; '))}}
+                        if(@($receipt.Calls | Where-Object {$want=if($cachedDenial -and $_.Class -ceq 'rename-ex'){5}else{0};$_.NativeCode -ne $want}).Count){$trial.Assertions+=@{Name='ExactNativeStatus';Verdict='FAIL';Reason=('Unexpected native failure: '+(@($receipt.Calls | ForEach-Object {$_.Class+'=Win32:'+$_.NativeCode}) -join '; '))}}
                     }
                 }
             }catch{$trial.Errors+=Get-ErrorChain $_.Exception}
         }
+        if($null -ne $externalContext -and $externalContext.Status -ceq 'OK'){
+            $externalDisposal=Close-InvariantObserver $externalContext;$trial.ExternalSource.Disposal=$externalDisposal
+            if($externalDisposal.Status -cne 'OK'){$trial.Assertions+=@{Name='C05SourceDisposal';Verdict='INCONCLUSIVE';Reason=('External observer disposal failed: '+($externalDisposal.Error | Out-String))}}
+        }elseif($cachedDenial){$trial.Assertions+=@{Name='C05SourceCoverage';Verdict='INCONCLUSIVE';Reason='External raw/fresh/uncached observer or baseline unavailable; see execution error.'}}
         if($null -ne $context -and $context.Status -ceq 'OK'){$disposal=Close-InvariantObserver $context}
         if($null -ne $readyEvent){$readyEvent.Dispose()}
         try{Restore-CachedAgent}catch{$trial.Errors+=Get-ErrorChain $_.Exception;$trial.Assertions+=@{Name='C01AgentRestoration';Verdict='INCONCLUSIVE';Reason=$_.Exception.ToString()}}
@@ -2108,15 +2402,27 @@ function Invoke-CachedObservation {
             $trial.ForbiddenByteCount=$trial.Predicate.ForbiddenByteCount;$trial.Assertions+=@($trial.Predicate.Assertions)
             # Explicit sum: Windows PowerShell 5.1 Measure-Object rejects a property name on hashtable input (run c01m).
             foreach($assertion in @($trial.Assertions)){
-                if($assertion -is [Collections.IDictionary] -and $assertion['Name'] -ceq 'C01ReleasedRawExtent' -and $assertion.Contains('ForbiddenByteCount')){
+                if($assertion -is [Collections.IDictionary] -and $assertion['Name'] -clike '*RawExtent' -and $assertion.Contains('ForbiddenByteCount')){
                     $trial.ForbiddenByteCount+= [long]$assertion['ForbiddenByteCount']
                 }
             }
+        }
+        if($cachedDenial -and $null -ne $externalBaseline -and $externalBaseline.Status -ceq 'OK' -and $trial.ExternalSource.Samples.Count){
+            $sourceCheckpoints=@($trial.ExternalSource.Samples | ForEach-Object {$cp=Get-ExpectedCheckpoint $externalBaseline $_.Phase $_.Sequence;$cp.State='Unscoped';$cp})
+            $sourceTimeline=@{ForbiddenBlocks=@();Checkpoints=$sourceCheckpoints;AllowedMutations=@();ExpectedDenials=@();
+                WriterIdentities=@($actor);Operations=$trial.Operations;WriterFence=$trial.WriterFence;LastAccessPolicy=$trial.LastAccessPolicy;ExternalEvidence=$trial.ExpectedTimeline.ExternalEvidence}
+            $sourcePredicate=Test-NoUnapprovedByte $externalBaseline @() $trial.ExternalSource.Samples $trial.MutationLedger $sourceTimeline
+            $trial.ExternalSource.Predicate=$sourcePredicate
+            if($null -ne $trial.ForbiddenByteCount -and $null -ne $sourcePredicate.ForbiddenByteCount){$trial.ForbiddenByteCount+=[long]$sourcePredicate.ForbiddenByteCount}
+            foreach($assertion in $sourcePredicate.Assertions){$assertion.Name='C05Source'+$assertion.Name};$trial.Assertions+=@($sourcePredicate.Assertions)
         }
         $trial.Assertions+=@{Name='LiveTaintFlags';Verdict='INCONCLUSIVE';Reason='Live TEST_DISABLE_TAINT readback unavailable; BootPolicy.Flags is not a live proof.'}
         $trial.Assertions+=@{Name='C01PublicationAndTemporalCoverage';Verdict='INCONCLUSIVE';Reason='Lower mutation ledger, authenticated permit/snapshot grant and continuous coverage unavailable. APPROVE post-close samples are retained but cannot establish pre-permit absence from latest-state polling.'}
         if($null -eq $trial.ServiceEvidence){$trial.Assertions+=@{Name='ActualServiceTimelines';Verdict='INCONCLUSIVE';Reason='C01 authenticated service window incomplete; see exact execution error and partial journal artifacts.'}}
         if($null -eq $disposal -or $disposal.Status -cne 'OK'){$trial.Assertions+=@{Name='Disposal';Verdict='INCONCLUSIVE';Reason='Checked observer disposal missing/failed.'}}
+        # Shared C01 evaluators retain stable names for their self-check fixtures;
+        # exports name the actual expanded family, including C05 source checks.
+        foreach($assertion in $trial.Assertions){if($assertion.Name -clike 'C01*'){$assertion.Name=$cachedFamily+$assertion.Name.Substring(3)}}
         $trial.Verdict=if(@($trial.Assertions | Where-Object Verdict -ceq 'FAIL').Count -or @($trial.Latency | Where-Object Verdict -ceq 'FAIL').Count){'FAIL'}else{'INCONCLUSIVE'}
         Save-State $trial $trialPath
     }
@@ -2673,6 +2979,7 @@ $value='Removed'
             if(Test-Path -LiteralPath $parametersKey){throw 'BootPolicy residue'}
         }},
         @{Name='verifier';Action={& verifier.exe /reset | Out-Host;if($LASTEXITCODE -notin @(0,2)){throw 'Verifier reset failed'}}},
+        @{Name='external-fixture';Action={if($state.ExternalDirectory -and (Test-Path -LiteralPath $state.ExternalDirectory)){Remove-Item -LiteralPath $state.ExternalDirectory -Recurse -Force};if($state.ExternalDirectory -and (Test-Path -LiteralPath $state.ExternalDirectory)){throw 'External fixture residue'}}},
         @{Name='fixture';Action={if(Test-Path -LiteralPath $protectedDirectory){Remove-Item -LiteralPath $protectedDirectory -Recurse -Force};if(Test-Path -LiteralPath $protectedDirectory){throw 'Fixture residue'}}},
         @{Name='service-package';Action={if(Test-Path -LiteralPath $serviceDirectory){Remove-Item -LiteralPath $serviceDirectory -Recurse -Force};if(Test-Path -LiteralPath $serviceDirectory){throw 'Service package residue'}}},
         @{Name='actor-profile';Action={
@@ -2721,15 +3028,20 @@ $matchesRows=@($table.Cases | Where-Object CaseId -ceq $CaseId)
 if($matchesRows.Count -ne 1){throw 'Unknown/duplicate CaseId'}
 $row=$matchesRows[0]
 foreach($field in $table.RowSchema.Required){if(-not $row.ContainsKey($field)){throw "Case schema missing $field"}}
-$cachedCase=$CaseId -in @('C01-approve-absent','C01-block-absent')
+$cachedCaseIds=@('C01-approve-absent','C01-block-absent','C02-approve-absent','C02-block-absent','C03-approve-existing','C03-block-existing','C04-approve','C04-block','C05-denied-external-rename')
+$cachedCase=$CaseId -cin $cachedCaseIds
+$cachedFamily=$CaseId.Split('-')[0]
+$cachedKind=switch -CaseSensitive ($cachedFamily){'C02'{'mapped'}'C03'{'overwrite'}'C04'{'replacement'}'C05'{'external-rename'}default{'cached'}}
+$cachedExisting=$cachedKind -cin @('overwrite','replacement')
+$cachedDenial=$cachedKind -ceq 'external-rename'
 $activationCaseIds=@('A01','A02','A03')
 $isActivationCase=$CaseId -cin $activationCaseIds
-if($row.Status -ne 'Ready' -or ($CaseId -notin @('S00-observer-control','S01-denied-write-after-boot','S02-agent-down-open-refused','C01-approve-absent','C01-block-absent') -and -not $isActivationCase)){'CaseStatus=NOT_READY';throw "Case $CaseId is not implemented"}
+if($row.Status -ne 'Ready' -or ($CaseId -notin @('S00-observer-control','S01-denied-write-after-boot','S02-agent-down-open-refused') -and -not $cachedCase -and -not $isActivationCase)){'CaseStatus=NOT_READY';throw "Case $CaseId is not implemented"}
 if($StartupProbe -and $Phase -ne 'AfterBoot'){throw 'StartupProbe requires AfterBoot'}
 
 if($Phase -eq 'Prepare'){
     if($StartupProbe){throw 'Invalid phase'}
-    foreach($path in @($stateDirectory,$evidenceDirectory,$protectedDirectory,$parametersKey)){
+    foreach($path in @($stateDirectory,$evidenceDirectory,$protectedDirectory,$externalDirectory,$parametersKey)){
         if(Test-Path -LiteralPath $path){throw "Pre-existing state: $path"}
     }
     Assert-Hash $installedDriver $originalDriverHash
@@ -2865,10 +3177,10 @@ $value=$b.ToString().Split([char]0)[0]
                 # .txt uses PlainTextExtractor. Only CPF is enabled, so benign
                 # alphabetic padding is Approved and this valid-checkdigit test
                 # CPF is Blocked by real DigitRules/CpfValidator inspection.
-                $bytes=[Text.Encoding]::ASCII.GetBytes(('C01 patterned benign image '+$RunName+"`n").PadRight($size,'P'))
+                $bytes=[Text.Encoding]::ASCII.GetBytes(($cachedFamily+' patterned benign image '+$RunName+"`n").PadRight($size,'P'))
                 $state.ForbiddenBlocks=@()
                 foreach($offset in @(0,[int]($size/2),($size-128))){
-                    $block=[Text.Encoding]::ASCII.GetBytes(('C01-'+$RunName+'-offset-'+$offset+"`n").PadRight(128,'A'))
+                    $block=[Text.Encoding]::ASCII.GetBytes(($cachedFamily+'-'+$RunName+'-offset-'+$offset+"`n").PadRight(128,'A'))
                     if($block.Length -ne 128){throw 'C01 patterned block exceeds 128 bytes'}
                     [Array]::Copy($block,0,$bytes,$offset,128);$state.ForbiddenBlocks+= [Convert]::ToBase64String($block)
                 }
@@ -2876,8 +3188,18 @@ $value=$b.ToString().Split([char]0)[0]
                 $state.CachedImageBase64=[Convert]::ToBase64String($bytes)
                 $state.CachedFixture=if($row.Outcome -ceq 'BLOCK'){'PlainTextExtractor/Cpf; synthetic valid-checkdigit 529.982.247-25'}else{'PlainTextExtractor/Cpf; no CPF candidate'}
                 $payloads=@($state.CachedImageBase64)
+                if($cachedExisting){$baseBytes=[Text.Encoding]::ASCII.GetBytes(('Approved base B '+$RunName+"`n").PadRight([int]$cVolumes[0].BlockSize*4,'B'));$state.CachedBaseBase64=[Convert]::ToBase64String($baseBytes)}
+                if($cachedDenial){
+                    # This source is a durable physical file on the SAME NTFS volume, outside policy.
+                    $state.ExternalDirectory=$externalDirectory;Save-State $state $statePath
+                    New-Item -ItemType Directory -Path $externalDirectory | Out-Null
+                    & icacls.exe $externalDirectory /grant ('*'+$state.ActorSid+':(OI)(CI)M') | Out-Host
+                    if($LASTEXITCODE -ne 0){throw 'External fixture ACL failed'}
+                    $stream=[IO.FileStream]::new((Join-Path $externalDirectory 'source.txt'),[IO.FileMode]::CreateNew,[IO.FileAccess]::Write,[IO.FileShare]::Read,4096,[IO.FileOptions]::WriteThrough)
+                    try{$stream.Write($bytes,0,$bytes.Length);$stream.Flush($true)}finally{$stream.Dispose()}
+                }
             }
-            Save-State @{ActorSid=$state.ActorSid;Payloads=$payloads;CachedCase=$cachedCase;Token=$state.WriterToken;CoordinationDirectory=$actorDirectory;
+            Save-State @{ActorSid=$state.ActorSid;Payloads=$payloads;CachedCase=$cachedCase;WriterKind=$cachedKind;SeedBaseBase64=$state.CachedBaseBase64;TempTarget=(Join-Path $protectedDirectory 'save.tmp.txt');Source=(Join-Path $externalDirectory 'source.txt');Token=$state.WriterToken;CoordinationDirectory=$actorDirectory;
                 CreateNew=($CaseId -eq 'S02-agent-down-open-refused');Target=(Join-Path $protectedDirectory $(if($cachedCase){'cached.txt'}elseif($CaseId -eq 'S02-agent-down-open-refused'){'new.bin'}else{'marker.bin'}))} $configPath
             $writerBody=(Get-WriterBody).Replace('__CONFIG__',(ConvertTo-PowerShellLiteral $configPath)).Replace('__IDENTITY__',(ConvertTo-PowerShellLiteral (Join-Path $actorDirectory 'identity.clixml'))).Replace('__GO__',(ConvertTo-PowerShellLiteral (Join-Path $actorDirectory 'go'))).Replace('__TEMP__',(ConvertTo-PowerShellLiteral $actorDirectory))
         }
@@ -2888,7 +3210,8 @@ $value=$b.ToString().Split([char]0)[0]
             if($LASTEXITCODE -ne 0){throw 'Read-only writer input ACL failed'}
         }
         $action=New-ScheduledTaskAction -Execute 'powershell.exe' -Argument ('-NoProfile -ExecutionPolicy Bypass -File "'+$writerLauncher+'"')
-        Register-ScheduledTask -TaskName $writerTask -Action $action -User ($env:COMPUTERNAME+'\'+$actorUser) -Password $password -RunLevel Limited -Settings (New-ScheduledTaskSettingsSet -ExecutionTimeLimit ([TimeSpan]::FromMinutes(5))) | Out-Null
+        $actorMinutes=if($cachedExisting){10}else{5}
+        Register-ScheduledTask -TaskName $writerTask -Action $action -User ($env:COMPUTERNAME+'\'+$actorUser) -Password $password -RunLevel Limited -Settings (New-ScheduledTaskSettingsSet -ExecutionTimeLimit ([TimeSpan]::FromMinutes($actorMinutes))) | Out-Null
         $password=$null
         # Trusted coordinator launches this SAME pinned suite in a fresh process.
         $invoke="& '"+(ConvertTo-PowerShellLiteral $PSCommandPath)+"' -Phase AfterBoot -StartupProbe"
@@ -2962,7 +3285,7 @@ $value=$b.ToString().Split([char]0)[0]
         if(@(Get-CimInstance Win32_UserProfile | Where-Object SID -ceq $state.ActorSid).Count -ne 0){throw 'Actor profile residue'}
     }
     if((Get-ItemProperty "HKLM:\$registryService").Start -ne 3 -or (& fltmc.exe filters | Out-String) -match '(?m)^SafeUpload\s' -or
-        (Test-Path -LiteralPath $parametersKey) -or (Test-Path -LiteralPath $protectedDirectory) -or (Test-Path -LiteralPath $serviceDirectory) -or
+        (Test-Path -LiteralPath $parametersKey) -or (Test-Path -LiteralPath $protectedDirectory) -or (Test-Path -LiteralPath $externalDirectory) -or (Test-Path -LiteralPath $serviceDirectory) -or
         @(Get-Process SafeUpload.Agent.Service -ErrorAction SilentlyContinue).Count -ne 0 -or
         @(Get-ScheduledTask | Where-Object {$_.TaskName -eq $bootTask -or $_.TaskName -eq $writerTask}).Count -ne 0 -or
         (Get-LocalUser -Name $state.ActorUser -ErrorAction SilentlyContinue)){throw 'Final restoration residue'}
@@ -2986,7 +3309,7 @@ $value=$b.ToString().Split([char]0)[0]
             Feature=$ExpectedFeatureSha256;Inspector=$ExpectedInspectorSha256;ServicePackage=$ExpectedServicePackageSha256;ServiceTree=$ExpectedServiceTreeSha256};
         BootIds=@{Prepare=$state.PrepareBootId;Active=$state.AfterBootId;Final=(Get-BootId)};Restoration=@{GuestChecks=$true;IndependentBaseline=$null;Known=$false;
             ProcessCreationAudit=@{Original=$state.OriginalProcessCreationAudit;Final=$finalAudit;Restored=$true}};
-        AuthoritativeCaseExport=$false;Reasons=$(if($cachedCase){@('Functional/seed rows do not qualify full Phase4: lower mutation ledger, live taint and full temporal/permit evidence unavailable; C01 is one coordinated absent-final write, no approved B or interactive JUSTIFY/restart/window-closure qualification')}else{$finalReasons});
+        AuthoritativeCaseExport=$false;Reasons=$(if($cachedCase){@('Functional/seed rows do not qualify full Phase4: lower mutation ledger, live taint and full temporal/permit evidence unavailable; C01-C05 use coordinated functional variants; interactive JUSTIFY/restart/window closure, second-user H access and unheld latency remain unqualified')}else{$finalReasons});
         Load=@{ComputerSystem=(Get-CimInstance Win32_ComputerSystem | Select-Object NumberOfLogicalProcessors,TotalPhysicalMemory);Cpu=(Get-CimInstance Win32_Processor | Select-Object Name,NumberOfCores);Disk=(Get-Disk | Select-Object Number,FriendlyName,BusType);ObserverPriority=[string][Diagnostics.Process]::GetCurrentProcess().PriorityClass}}
     Copy-Item -LiteralPath $statePath -Destination (Join-Path $evidenceDirectory 'lifecycle.clixml')
     Copy-Item -LiteralPath $actorDirectory -Destination (Join-Path $evidenceDirectory 'actor') -Recurse
