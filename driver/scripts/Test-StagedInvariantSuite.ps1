@@ -1670,8 +1670,16 @@ function Test-CachedJournalSequence($Transitions,[string]$Outcome,[string]$Diges
     $bad=@($names | Where-Object {$_ -cnotin $expected})
     $position=-1;$ordered=$true
     foreach($name in $names){$next=[array]::IndexOf($expected,$name);if($next -le $position){$ordered=$false};$position=$next}
+    # The manifest's durable, service-validated state history records every transition; prefer it to polling.
+    $history=if(@($Transitions).Count){@($Transitions[-1].History)}else{@()}
+    if($history.Count){
+        $exact=($history -join ',') -ceq ($expected -join ',')
+        $assertions+=@{Name='C01JournalOrder';Verdict=$(if($exact){'PASS'}elseif($bad.Count -or -not $ordered -or ($expected[0..([Math]::Min($history.Count,$expected.Count)-1)] -join ',') -cne ($history[0..([Math]::Min($history.Count,$expected.Count)-1)] -join ',')){'FAIL'}else{'INCONCLUSIVE'});
+            Reason=('Durable history='+($history -join ' -> ')+'; expected='+($expected -join ' -> ')+'; polled='+($names -join ' -> '));Transitions=$Transitions}
+    }else{
     $assertions+=@{Name='C01JournalOrder';Verdict=$(if($bad.Count -or -not $ordered){'FAIL'}elseif($missing.Count){'INCONCLUSIVE'}else{'PASS'});
         Reason=('Observed='+($names -join ' -> ')+'; missing='+($missing -join ',')+'. Latest-state journal polling cannot reconstruct skipped transitions.');Transitions=$Transitions}
+    }
     $sealed=@($Transitions | Where-Object {$_.SealedOnce -and $null -ne $_.Sha256Hex})
     $wrong=@($sealed | Where-Object {$_.Sha256Hex -cne $Digest})
     $assertions+=@{Name='C01SealedDigest';Verdict=$(if($wrong.Count){'FAIL'}elseif($sealed.Count){'PASS'}else{'INCONCLUSIVE'});Reason='Every observed sealed digest must equal independently generated whole image A.'}
@@ -1707,7 +1715,8 @@ function Get-CachedJournalObservation([string]$Tag,$Actor) {
             $parsed=ConvertFrom-ServiceJournalRecord $record
             if($parsed.DestinationPaths -icontains (Join-Path $protectedDirectory 'cached.txt')){
                 if($parsed.Entry.Transfer.ProcessId -ne $Actor.Pid -or $parsed.Entry.Transfer.SessionId -ne $Actor.SessionId){throw 'C01 transfer writer PID/session mismatch'}
-                $entries+= [pscustomobject]@{StateName=$parsed.StateName;State=[int]$parsed.Entry.State;TransferId=$parsed.Entry.Transfer.TransferId;
+                $historyNames=@($parsed.Entry.StateHistory | Where-Object {$null -ne $_} | ForEach-Object {@('Allocated','Sealed','Inspecting','Approved','Publishing','Released','Blocked','Retained','Unsealed')[[int]$_.State]})
+                $entries+= [pscustomobject]@{StateName=$parsed.StateName;State=[int]$parsed.Entry.State;TransferId=$parsed.Entry.Transfer.TransferId;History=$historyNames;
                     SealedOnce=$parsed.Entry.SealedOnce;Sha256Hex=$parsed.Entry.Sha256Hex;DestinationGeneration=$parsed.Entry.DestinationGeneration;
                     UpdatedAtUtc=$parsed.Entry.UpdatedAtUtc;StartQpc=$snapshot.StartQpc;EndQpc=$snapshot.EndQpc;Artifact=$record.Artifact;Record=$record}
             }
