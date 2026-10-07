@@ -1,0 +1,34 @@
+{
+  "Outcome": {
+    "CaseId": "S02-agent-down-open-refused",
+    "ForbiddenByteCount": 0,
+    "GatePassed": false,
+    "Mode": "runtime-verifier",
+    "MvpBlockers": [
+      "DedicatedUnheldLatency",
+      "FailureOrErrorsInEvidence"
+    ],
+    "MvpDeferred": [
+      "CadenceCoverage",
+      "CadenceGap",
+      "ExternalCoverage",
+      "LiveTaintFlags",
+      "NoUnapprovedByte",
+      "PredicateCoverage"
+    ],
+    "MvpGatePassed": false,
+    "RestorationClean": true,
+    "Result": "/home/victor/Work/safeupload-staging/driver/evidence/2026-10-07/boot-start-invariant-S02-agent-down-open-refused-runtime-verifier-sol-ready1-artifacts/case.json",
+    "ResultSha256": "72A216C84B2FDE473E6D705A8F066D5E753231EB9FB11DA20267D4945D89FCFC",
+    "RunName": "boot-start-invariant-S02-agent-down-open-refused-runtime-verifier-sol-ready1",
+    "Verdict": "INCONCLUSIVE"
+  },
+  "OmittedFromGitButRetainedOnDisk": [
+    {
+      "Path": "driver/evidence/2026-10-07/boot-start-invariant-S02-agent-down-open-refused-runtime-verifier-sol-ready1-artifacts/case.guest-export.txt",
+      "Bytes": 43416277,
+      "Sha256": "865B70CD6D2FDB1EE0E02D8179C81E748758A44A3B69C8D3907DB82713C4FAAB",
+      "Reason": "Over20MiB"
+    }
+  ]
+}
