@@ -958,6 +958,12 @@ function Get-NotificationSnapshot([string]$Tag,[string]$BootId,[long]$MinimumQpc
             }
             $obj=[SUProofFile]::Open($directory,$true,$true,$false,$true);$held+=$obj;$snapshot.Objects+=@{Path=$directory;Owner=$obj.Owner;Sddl=$obj.Sddl}
             $names=@(Get-ChildItem -LiteralPath $directory -Force -ErrorAction Stop | Select-Object -ExpandProperty Name)
+            # head.tmp exists only while the writer replaces head.json within one append (run c01o); wait it out.
+            $headWait=[Diagnostics.Stopwatch]::StartNew()
+            while($names -ccontains 'head.tmp' -and $headWait.ElapsedMilliseconds -lt 2000){
+                Start-Sleep -Milliseconds 25
+                $names=@(Get-ChildItem -LiteralPath $directory -Force -ErrorAction Stop | Select-Object -ExpandProperty Name)
+            }
             $snapshot.ChildNames=$names
             if($names -notcontains 'emissions.jsonl' -or $names -notcontains 'head.json' -or $names -notcontains 'writer.lock' -or
                 @($names | Where-Object {$_ -cnotin @('emissions.jsonl','previous.jsonl','head.json','writer.lock')}).Count){throw 'Missing/unrecognized notification record child.'}
