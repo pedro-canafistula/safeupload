@@ -224,24 +224,24 @@
             Cleanup = @('StopAndRestoreAgent', 'RestoreProductStateBytesAndAcls', 'CommonSeedRestoration', 'IndependentBaseline')
         }
         @{
-            CaseId = 'C01-block-absent'; Revision = 2; Status = 'Ready'
+            CaseId = 'C01-block-absent'; Revision = 3; Status = 'Ready'
             Variant = 'fixed-NTFS-cached-create-absent'; Outcome = 'BLOCK'
             QualificationScope = 'Phase4FunctionalOnly; H checked, restart/window closure and unheld latency deferred'
             ActorSid = 'ResolveStandardUserTokenAtRuntime'; ActorSession = 'ResolveTokenSessionId'
             InitialPolicy = @{ Seed = 'Product'; StartDuringSeed = 3; StartAfterSeed = 0; LiveFlags = 'TEST_DISABLE_TAINT-required' }
             Scopes = @('FixtureScope')
-            Setup = @('DriverUnloaded', 'AbsentFinal', 'IndependentPatternedTextAWithValidCpf', 'ProductBootPolicy', 'StandardUserTask', 'RealStagingAgent')
-            Actions = @('CachedCreateNew', 'WholeImageWrite', 'FlushFileBuffers', 'PrivateHandleReadEqualsA', 'HoldWriterDuringThreeRawSamples', 'Close', 'BoundedJournalBlockedWait', 'VerifyActorHandBackH')
+            Setup = @('DriverUnloaded', 'AbsentFinal', 'IndependentPatternedTextAWithValidCpf', 'ProductBootPolicy', 'StandardUserTask', 'RealStagingAgent', 'SecondStandardUserTaskAndRegisteredProfile')
+            Actions = @('CachedCreateNew', 'WholeImageWrite', 'FlushFileBuffers', 'PrivateHandleReadEqualsA', 'HoldWriterDuringThreeRawSamples', 'Close', 'BoundedJournalBlockedWait', 'VerifyActorHandBackH', 'RequireSecondUserReadWriteAndFolderListWin32AccessDenied')
             Barriers = @('BootIdentityChanged', 'DurableReadiness', 'AgentPolicyAccepted', 'BeforeOperation', 'FlushedHandleHeld', 'LastUpperClose', 'Blocked', 'FinalQuiescence')
             ExpectedTimeline = @('UnscopedSetup', 'BootTrusted', 'Protected', 'Allocated', 'HeldFinalAbsent', 'Sealed', 'Inspecting', 'Blocked', 'FinalAbsent', 'HandBackEqualsA')
-            StatusClasses = @('Open=Win32:0', 'Write=Win32:0;WholeImage', 'Flush=Win32:0', 'PrivateRead=Win32:0;EqualsA', 'Close=Win32:0', 'FreshAbsent=Win32:2', 'UncachedAbsent=Win32:2', 'OwnerHandBackRead=Success')
+            StatusClasses = @('Open=Win32:0', 'Write=Win32:0;WholeImage', 'Flush=Win32:0', 'PrivateRead=Win32:0;EqualsA', 'Close=Win32:0', 'FreshAbsent=Win32:2', 'UncachedAbsent=Win32:2', 'OwnerHandBackRead=Success', 'SecondUserReadWriteFolderList=Win32:5Each')
             MetadataExpectations = @{ Exact = @('Attributes','Creation','Modified','Changed','Links','SecurityId','Sddl'); Accessed = 'NtfsReadWindow'; AccessReason = 'Same bounded NTFS read-side LastAccess rule as S00-S02; all other baseline metadata exact.' }
             JournalExpectations = @('Allocated', 'Sealed', 'Inspecting', 'Blocked', 'ImmutableSealedDigestA', 'NoApprovedPublishingReleased')
             NotificationExpectations = @('BlockedDigestA', 'BlockedWithVerifiedHandBackPath', 'NoReleased')
             AllowedDirectoryTransitions = @('SameActiveNamesIdsSizesAttributesSecurity')
             LatencyClasses = @('writer-open', 'cached-write', 'flush', 'close')
             Repetitions = @{ Coordinated = 1; Unheld = 0; DeterministicSeed = 4003 }
-            Cleanup = @('StopAndRestoreAgent', 'RestoreProductStateBytesAndAcls', 'CommonSeedRestoration', 'IndependentBaseline')
+            Cleanup = @('StopAndRestoreAgent', 'RestoreProductStateBytesAndAcls', 'CommonSeedRestoration', 'IndependentBaseline', 'RemoveSecondUserTaskBatchRightAccountAndProfileIncludingAfterRestorationReboot')
         }
         @{
             CaseId = 'C01'; Revision = 2; Status = 'NotReady'
@@ -318,24 +318,24 @@
             Cleanup = @('StopAndRestoreAgent', 'RestorePolicyBeforeProductStateInPlace', 'RestoreProductStateBytesAndAcls', 'CommonSeedRestoration', 'IndependentBaseline')
         }
         @{
-            CaseId = 'C03-block-existing'; Revision = 1; Status = 'Ready'
+            CaseId = 'C03-block-existing'; Revision = 2; Status = 'Ready'
             Variant = 'fixed-NTFS-truncate-overwrite-approved-B'; Outcome = 'BLOCK'
             QualificationScope = 'Phase4FunctionalOnly; H checked, restart/window closure and unheld latency deferred'
             ActorSid = 'ResolveStandardUserTokenAtRuntime'; ActorSession = 'ResolveTokenSessionId'
             InitialPolicy = @{ Seed = 'Product'; StartDuringSeed = 3; StartAfterSeed = 0; LiveFlags = 'TEST_DISABLE_TAINT-required' }
             Scopes = @('FixtureScope')
-            Setup = @('DriverUnloaded', 'SeedBenignBThroughStandardUserOwnedStreamAndRequireApprovedPublishingReleasedDigestB', 'IndependentPatternedTextAWithValidCpf', 'ProductBootPolicy', 'StandardUserTask', 'RealStagingAgent', 'HoldIndependentPhysicalBReaderSharingDELETE', 'BIsFourClusters:AIsThreeClusters')
-            Actions = @('SeedAndProveApprovedB', 'OpenTRUNCATE_EXISTING', 'WholeImageWriteA', 'FlushFileBuffers', 'PrivateHandleReadEqualsA', 'HoldWriterDuringThreeRawFreshUncachedBSamples', 'Close', 'BoundedJournalBlockedWait', 'VerifyRetainedPhysicalB', 'VerifyActorHandBackH')
+            Setup = @('DriverUnloaded', 'SeedBenignBThroughStandardUserOwnedStreamAndRequireApprovedPublishingReleasedDigestB', 'IndependentPatternedTextAWithValidCpf', 'ProductBootPolicy', 'StandardUserTask', 'RealStagingAgent', 'HoldIndependentPhysicalBReaderSharingDELETE', 'BIsFourClusters:AIsThreeClusters', 'SecondStandardUserTaskAndRegisteredProfile')
+            Actions = @('SeedAndProveApprovedB', 'OpenTRUNCATE_EXISTING', 'WholeImageWriteA', 'FlushFileBuffers', 'PrivateHandleReadEqualsA', 'HoldWriterDuringThreeRawFreshUncachedBSamples', 'Close', 'BoundedJournalBlockedWait', 'VerifyRetainedPhysicalB', 'VerifyActorHandBackH', 'RequireSecondUserReadWriteAndFolderListWin32AccessDenied')
             Barriers = @('BootIdentityChanged', 'DurableReadiness', 'AgentPolicyAccepted', 'ApprovedBaseB', 'BeforeOperation', 'FlushedHandleHeld', 'LastUpperClose', 'Blocked', 'FinalQuiescence')
             ExpectedTimeline = @('UnscopedSetup', 'BootTrusted', 'Protected', 'SeedB:AllocatedSealedInspectingApprovedPublishingReleased', 'RawFreshUncachedB', 'RetainPhysicalB:ShareDELETE', 'TruncateOpen:OwnedStream', 'Allocated', 'WriteFlushPrivateA', 'HeldRawFreshUncachedB:SameEOFAllocationNamesIds', 'LastUpperClose', 'Sealed', 'Inspecting', 'Blocked', 'FinalRemainsB:SameFileId', 'HandBackEqualsA:H')
-            StatusClasses = @('SeedBOpenWriteFlushClose=Win32:0', 'SeedBJournal=Released;DigestB;DurableFullHistory', 'Open=Win32:0;TRUNCATE_EXISTING', 'Write=Win32:0;WholeImageA', 'Flush=Win32:0', 'PrivateRead=Win32:0;EqualsA', 'Close=Win32:0', 'HeldRawFreshUncached=WholeB', 'RetainedPhysicalReaderAndRaw=WholeB', 'OwnerHandBackRead=Success;EqualsA')
+            StatusClasses = @('SeedBOpenWriteFlushClose=Win32:0', 'SeedBJournal=Released;DigestB;DurableFullHistory', 'Open=Win32:0;TRUNCATE_EXISTING', 'Write=Win32:0;WholeImageA', 'Flush=Win32:0', 'PrivateRead=Win32:0;EqualsA', 'Close=Win32:0', 'HeldRawFreshUncached=WholeB', 'RetainedPhysicalReaderAndRaw=WholeB', 'OwnerHandBackRead=Success;EqualsA', 'SecondUserReadWriteFolderList=Win32:5Each')
             MetadataExpectations = @{ Exact = @('Attributes','Creation','Modified','Changed','Links','SecurityId','Sddl'); Accessed = 'NtfsReadWindow'; AccessReason = 'Same bounded NTFS read-side LastAccess rule as S00-S02; all other baseline metadata exact.' }
             JournalExpectations = @('Allocated', 'Sealed', 'Inspecting', 'Blocked', 'ImmutableSealedDigestA', 'NoApprovedPublishingReleased')
             NotificationExpectations = @('BlockedDigestA', 'BlockedWithVerifiedHandBackPath', 'NoReleased')
             AllowedDirectoryTransitions = @('SameActiveNamesIdsSizesAttributesSecurity', 'NoUserOrServiceTemp')
             LatencyClasses = @('writer-open', 'cached-write', 'flush', 'close')
             Repetitions = @{ Coordinated = 1; Unheld = 0; DeterministicSeed = 4003 }
-            Cleanup = @('StopAndRestoreAgent', 'RestorePolicyBeforeProductStateInPlace', 'RestoreProductStateBytesAndAcls', 'CommonSeedRestoration', 'IndependentBaseline')
+            Cleanup = @('StopAndRestoreAgent', 'RestorePolicyBeforeProductStateInPlace', 'RestoreProductStateBytesAndAcls', 'CommonSeedRestoration', 'IndependentBaseline', 'RemoveSecondUserTaskBatchRightAccountAndProfileIncludingAfterRestorationReboot')
         }
         @{
             CaseId = 'C04-approve'; Revision = 1; Status = 'Ready'
@@ -358,24 +358,24 @@
             Cleanup = @('StopAndRestoreAgent', 'RestorePolicyBeforeProductStateInPlace', 'RestoreProductStateBytesAndAcls', 'CommonSeedRestoration', 'IndependentBaseline')
         }
         @{
-            CaseId = 'C04-block'; Revision = 1; Status = 'Ready'
+            CaseId = 'C04-block'; Revision = 2; Status = 'Ready'
             Variant = 'fixed-NTFS-private-sibling-replacement-approved-B'; Outcome = 'BLOCK'
             QualificationScope = 'Phase4FunctionalOnly; H checked, restart/window closure and unheld latency deferred'
             ActorSid = 'ResolveStandardUserTokenAtRuntime'; ActorSession = 'ResolveTokenSessionId'
             InitialPolicy = @{ Seed = 'Product'; StartDuringSeed = 3; StartAfterSeed = 0; LiveFlags = 'TEST_DISABLE_TAINT-required' }
             Scopes = @('FixtureScope')
-            Setup = @('DriverUnloaded', 'SeedBenignBThroughStandardUserOwnedStreamAndRequireApprovedPublishingReleasedDigestB', 'IndependentPatternedTextAWithValidCpf', 'ProductBootPolicy', 'StandardUserTask', 'RealStagingAgent', 'HoldIndependentPhysicalBReaderSharingDELETE', 'BIsFourClusters:AIsThreeClusters')
-            Actions = @('SeedAndProveApprovedB', 'OwnedCreateNewSiblingSaveTmpTxt', 'WholeImageWriteA', 'FlushFileBuffers', 'PrivateHandleReadEqualsA', 'HoldWriterDuringThreeRawFreshUncachedBSamples', 'SetFileInformationByHandleFileRenameInfoExReplacePosixOntoTarget', 'RequireSameTransferCommittedTargetAndSourceTombstone', 'HoldRenamedWriterDuringThreeRawFreshUncachedBSamples', 'Close', 'BoundedJournalBlockedWait', 'VerifyRetainedPhysicalB', 'VerifyActorHandBackH')
+            Setup = @('DriverUnloaded', 'SeedBenignBThroughStandardUserOwnedStreamAndRequireApprovedPublishingReleasedDigestB', 'IndependentPatternedTextAWithValidCpf', 'ProductBootPolicy', 'StandardUserTask', 'RealStagingAgent', 'HoldIndependentPhysicalBReaderSharingDELETE', 'BIsFourClusters:AIsThreeClusters', 'SecondStandardUserTaskAndRegisteredProfile')
+            Actions = @('SeedAndProveApprovedB', 'OwnedCreateNewSiblingSaveTmpTxt', 'WholeImageWriteA', 'FlushFileBuffers', 'PrivateHandleReadEqualsA', 'HoldWriterDuringThreeRawFreshUncachedBSamples', 'SetFileInformationByHandleFileRenameInfoExReplacePosixOntoTarget', 'RequireSameTransferCommittedTargetAndSourceTombstone', 'HoldRenamedWriterDuringThreeRawFreshUncachedBSamples', 'Close', 'BoundedJournalBlockedWait', 'VerifyRetainedPhysicalB', 'VerifyActorHandBackH', 'RequireSecondUserReadWriteAndFolderListWin32AccessDenied')
             Barriers = @('BootIdentityChanged', 'DurableReadiness', 'AgentPolicyAccepted', 'ApprovedBaseB', 'BeforeOperation', 'BeforeRenameHandleHeld', 'NativeRename', 'AfterRenameHandleHeld', 'LastUpperClose', 'Blocked', 'FinalQuiescence')
             ExpectedTimeline = @('UnscopedSetup', 'BootTrusted', 'Protected', 'SeedB:AllocatedSealedInspectingApprovedPublishingReleased', 'RawFreshUncachedB', 'RetainPhysicalB:ShareDELETE', 'PrivateSiblingTemp:Allocated', 'WriteFlushPrivateA', 'BeforeRename:PublicB:NoTemp', 'RenameExReplacePosix:Win32:0', 'CommittedTarget:SameTransfer:SourceTombstone', 'AfterRenameHeld:PublicB:NoTemp:AllocatedUnsealed', 'LastUpperClose', 'Sealed', 'Inspecting', 'Blocked', 'FinalRemainsB:SameFileId', 'HandBackEqualsA:H')
-            StatusClasses = @('SeedBOpenWriteFlushClose=Win32:0', 'SeedBJournal=Released;DigestB;DurableFullHistory', 'TempOpen=Win32:0;CREATE_NEW;DELETE', 'Write=Win32:0;WholeImageA', 'Flush=Win32:0', 'PrivateRead=Win32:0;EqualsA', 'RenameEx=Win32:0;REPLACE_IF_EXISTS|POSIX', 'PrivateReadAfterRename=Win32:0;EqualsA', 'Close=Win32:0', 'HeldRawFreshUncached=WholeB', 'RetainedPhysicalReaderAndRaw=WholeB', 'PublicSiblingTemp=Absent', 'OwnerHandBackRead=Success;EqualsA')
+            StatusClasses = @('SeedBOpenWriteFlushClose=Win32:0', 'SeedBJournal=Released;DigestB;DurableFullHistory', 'TempOpen=Win32:0;CREATE_NEW;DELETE', 'Write=Win32:0;WholeImageA', 'Flush=Win32:0', 'PrivateRead=Win32:0;EqualsA', 'RenameEx=Win32:0;REPLACE_IF_EXISTS|POSIX', 'PrivateReadAfterRename=Win32:0;EqualsA', 'Close=Win32:0', 'HeldRawFreshUncached=WholeB', 'RetainedPhysicalReaderAndRaw=WholeB', 'PublicSiblingTemp=Absent', 'OwnerHandBackRead=Success;EqualsA', 'SecondUserReadWriteFolderList=Win32:5Each')
             MetadataExpectations = @{ Exact = @('Attributes','Creation','Modified','Changed','Links','SecurityId','Sddl'); Accessed = 'NtfsReadWindow'; AccessReason = 'Same bounded NTFS read-side LastAccess rule as S00-S02; all other baseline metadata exact.' }
             JournalExpectations = @('Allocated', 'Sealed', 'Inspecting', 'Blocked', 'ImmutableSealedDigestA', 'NoApprovedPublishingReleased')
             NotificationExpectations = @('BlockedDigestA', 'BlockedWithVerifiedHandBackPath', 'NoReleased')
             AllowedDirectoryTransitions = @('SameActiveNamesIdsSizesAttributesSecurity', 'NoUserOrServiceTemp')
             LatencyClasses = @('writer-open', 'cached-write', 'flush', 'rename-ex', 'close')
             Repetitions = @{ Coordinated = 1; Unheld = 0; DeterministicSeed = 4003 }
-            Cleanup = @('StopAndRestoreAgent', 'RestorePolicyBeforeProductStateInPlace', 'RestoreProductStateBytesAndAcls', 'CommonSeedRestoration', 'IndependentBaseline')
+            Cleanup = @('StopAndRestoreAgent', 'RestorePolicyBeforeProductStateInPlace', 'RestoreProductStateBytesAndAcls', 'CommonSeedRestoration', 'IndependentBaseline', 'RemoveSecondUserTaskBatchRightAccountAndProfileIncludingAfterRestorationReboot')
         }
         @{
             CaseId = 'C02'; Revision = 2; Status = 'NotReady'
@@ -454,18 +454,26 @@
             Cleanup = @('Unimplemented; common restoration still mandatory')
         }
         @{
-            CaseId = 'B01'; Revision = 1; Status = 'NotReady'
-            Variant = 'UnexpandedFamily'; Outcome = 'Unimplemented: Block hand-back failures'
-            QualificationScope = 'Phase4; WP4 must expand all design variants'
+            CaseId = 'B01'; Revision = 2; Status = 'Ready'
+            CoreVariant = 'One coordinated C01 BLOCK absent save; standard actor replaces empty hand-back folder with sentinel junction before last close; fail closed'
+            DeferredVariants = @('PreExistingValidHandBackTarget', 'JunctionAtOtherAncestorComponents', 'AncestorSwapBetweenProductCheckAndCreate', 'SymlinkAncestor', 'HardLinkTarget', 'ProtectedTarget', 'SyncedTarget', 'CopyFailure', 'DigestFailure', 'SeededUnheldAncestorRace', 'AdditionalRepetitions', 'UnheldLatencyCorpus', 'SafeRetryProductGap: agente/SafeUpload.Agent.Service/Interception/StagedTransferPublisher.cs RecoverBlockedAsync only cleans temporaries for HandbackState=Failed; no external retry API for this exact blocked version')
+            Variant = 'fixed-NTFS-cached-block-absent-handback-sentinel-junction'; Outcome = 'BLOCK'
+            QualificationScope = 'Phase4MvpCoreVariant; fail-closed terminal Blocked/Failed retained; safe retry is a deferred product feature gap'
             ActorSid = 'ResolveStandardUserTokenAtRuntime'; ActorSession = 'ResolveTokenSessionId'
-            InitialPolicy = @{ Seed = 'Product'; LiveFlags = 'TEST_DISABLE_TAINT-required' }
-            Scopes = @('Unimplemented'); Setup = @('WP4: design section 4.1 B01')
-            Actions = @('Unimplemented'); Barriers = @('Unimplemented')
-            ExpectedTimeline = @('Unimplemented'); StatusClasses = @('Unimplemented')
-            JournalExpectations = @('Unimplemented'); NotificationExpectations = @('Unimplemented')
-            AllowedDirectoryTransitions = @('Unimplemented'); LatencyClasses = @('Unimplemented')
-            Repetitions = @{ Coordinated = 1; Unheld = 100; DeterministicSeed = 4003 }
-            Cleanup = @('Unimplemented; common restoration still mandatory')
+            InitialPolicy = @{ Seed = 'Product'; StartDuringSeed = 3; StartAfterSeed = 0; LiveFlags = 'TEST_DISABLE_TAINT-required' }
+            Scopes = @('FixtureScope')
+            Setup = @('DriverUnloaded', 'AbsentFinalN', 'IndependentWholeAWithValidCpf', 'ProductBootPolicy', 'StandardUserTask', 'RealStagingAgent', 'ActorSeedsReadableSentinelMarkerAndPreExistingExactTransferLeafOutsideProtection')
+            Actions = @('CachedCreateNewWholeAWriteFlushPrivateReadAndHold', 'ActorReplacesEmptyHandBackFolderWithJunction', 'VerifyActorAndOsJunctionTargetBeforeClose', 'RawSentinelBaselineBeforeHandBack', 'CloseLastWriter', 'RealCpfBlockAndHandBackFailure', 'RequireBlockedSnapshotAAndFailedJournal', 'VerifySentinelRawBytesIdsListingFreshAndUncachedUnchanged', 'RequireNoReleasedAndNoDestinationDeltaOrTemp')
+            Barriers = @('BootIdentityChanged', 'DurableReadiness', 'AgentPolicyAccepted', 'HeldMutableAllocated', 'ActorJunctionReceiptAndOsReadback', 'IndependentSentinelRawBaseline', 'LastUpperClose', 'BlockedHandbackFailed', 'FinalQuiescence')
+            ExpectedTimeline = @('UnscopedSetup', 'BootTrusted', 'Protected', 'AllocatedMutableA', 'ActorJunctionWhileHeld', 'RawSentinelBaseline', 'LastUpperClose', 'SealedA', 'InspectingA', 'BlockedA', 'HandbackStateFailed:handback_failed', 'StageRetainedA', 'RawNAbsentAndProtectedListingUnchanged', 'SentinelUnchangedNoNewNameTempOrOverwrite', 'NoReleased')
+            StatusClasses = @('OpenWriteFlushClose=Win32:0', 'PrivateRead=WholeA', 'ActorMklinkJunction=Exit:0;Reparse;ExactSentinelTarget', 'FreshUncachedAbsent=Win32:2', 'SentinelRawFreshUncached=ExactOriginalWholeImages', 'HandbackState=Failed:3;PathNull;StageRetained')
+            MetadataExpectations = @{ Exact = @('Attributes','Creation','Modified','Changed','Links','SecurityId','Sddl'); Accessed = 'NtfsReadWindow'; AccessReason = 'Same bounded NTFS read-side LastAccess rule as S00-S02; all other baseline metadata exact.' }
+            JournalExpectations = @('Allocated', 'Sealed', 'Inspecting', 'Blocked', 'SealedDigestA', 'HandbackStateFailed', 'HandbackFailureReason:handback_failed', 'NoApprovedPublishingReleased', 'NoStageCleanupOrDeletion')
+            NotificationExpectations = @('BlockedExactTransferSessionDigestAWithNullHandBackPath', 'ExactTransferApplicationFailureWarning', 'NoReleased')
+            AllowedDirectoryTransitions = @('ProtectedDestinationAndSentinelExactRawNamesIdsSizesAttributes', 'NoPublicDestinationOrSentinelTemporary', 'NoSentinelOverwrite')
+            LatencyClasses = @()
+            Repetitions = @{ Coordinated = 1; Unheld = 0; DeterministicSeed = 4051 }
+            Cleanup = @('CooperativeWriterCancellationAndClose', 'CloseBothObservers', 'StopAndRestoreAgent', 'RemoveOnlyJunctionEntryBeforeSentinelAndProfileRemoval', 'RestoreProductStateBytesAndAcls', 'CommonSeedRestoration', 'IndependentBaseline')
         }
         @{
             CaseId = 'B02'; Revision = 1; Status = 'NotReady'
@@ -482,18 +490,26 @@
             Cleanup = @('Unimplemented; common restoration still mandatory')
         }
         @{
-            CaseId = 'R01'; Revision = 1; Status = 'NotReady'
-            Variant = 'UnexpandedFamily'; Outcome = 'Unimplemented: Service restart mid-save'
-            QualificationScope = 'Phase4; WP6 must expand all design variants'
+            CaseId = 'R01'; Revision = 2; Status = 'Ready'
+            CoreVariant = 'One coordinated cached new-name save; restart at mutable Allocated with the private writer held'
+            DeferredVariants = @('ExistingFinalB', 'MutableAllocatedOwnedViewWriter', 'SealRequestBeforeReply', 'Inspecting', 'ApprovedBeforePermit', 'PublishingAfterPermittedRenameBeforeReleasedCommit', 'DisconnectAfterPermitBeforeTemporaryCreate', 'FailedRename', 'BlockedCompanion', 'SeededUnheldStopRace', 'AdditionalRepetitions', 'UnheldLatencyCorpus')
+            Variant = 'fixed-NTFS-cached-create-absent-restart-mutable-Allocated'; Outcome = 'APPROVE'
+            QualificationScope = 'Phase4MvpCoreVariant; sampled raw/fresh/uncached evidence; other section 4.1 variants are post-MVP hardening'
             ActorSid = 'ResolveStandardUserTokenAtRuntime'; ActorSession = 'ResolveTokenSessionId'
-            InitialPolicy = @{ Seed = 'Product'; LiveFlags = 'TEST_DISABLE_TAINT-required' }
-            Scopes = @('Unimplemented'); Setup = @('WP6: design section 4.1 R01')
-            Actions = @('Unimplemented'); Barriers = @('Unimplemented')
-            ExpectedTimeline = @('Unimplemented'); StatusClasses = @('Unimplemented')
-            JournalExpectations = @('Unimplemented'); NotificationExpectations = @('Unimplemented')
-            AllowedDirectoryTransitions = @('Unimplemented'); LatencyClasses = @('Unimplemented')
-            Repetitions = @{ Coordinated = 1; Unheld = 100; DeterministicSeed = 4003 }
-            Cleanup = @('Unimplemented; common restoration still mandatory')
+            InitialPolicy = @{ Seed = 'Product'; StartDuringSeed = 3; StartAfterSeed = 0; LiveFlags = 'TEST_DISABLE_TAINT-required' }
+            Scopes = @('FixtureScope')
+            Setup = @('DriverUnloaded', 'AbsentFinalN', 'IndependentDistinctInitialAndFinalBenignWholeImages', 'ProductBootPolicy', 'StandardUserTask', 'RealStagingAgent')
+            Actions = @('CachedCreateNewWriteFlushAndHoldPrivateHandle', 'StopAgentAtAllocated', 'SecondOpenOfSameActorDeniedWhileDown', 'RewriteFinalWholeAThroughHeldPrivateHandleWhileDown', 'RestartSameServiceWithFreshSystemProcess', 'RequireExactTransferUnsealedWhileHolderLives', 'CloseLastWriter', 'FreshRealInspection', 'RequireReleasedExactWholeAExactlyOnce')
+            Barriers = @('BootIdentityChanged', 'DurableReadiness', 'AgentPolicyAccepted', 'HeldMutableAllocated', 'SCMStoppedAndNoServiceProcess', 'OfflineNativeReceipt', 'RestartedAuthenticatedReady', 'UnsealedHolderLive', 'LastUpperClose', 'Released', 'FinalQuiescence')
+            ExpectedTimeline = @('UnscopedSetup', 'BootTrusted', 'Protected', 'AllocatedMutable:InitialPrivateImage', 'AgentStopped:RawNAbsent', 'NewProtectedOpenDenied', 'HeldRewriteA:RawNAbsent', 'Restart:UnsealedNoImplicitApproval', 'LastUpperClose', 'SealedA', 'InspectingA', 'ApprovedA', 'PublishingA', 'ReleasedOnceA', 'FinalRawFreshUncachedA')
+            StatusClasses = @('InitialOpenWriteFlush=Win32:0', 'OfflineSecondOpen=Win32:5;NoWriteFlushClose', 'HeldOfflineWriteFlush=Win32:0;PrivateWholeA', 'Close=Win32:0', 'HeldFreshUncachedAbsent=Win32:2', 'OutcomeRawFreshUncached=AbsentOrWholeA', 'FinalRawFreshUncached=WholeA')
+            MetadataExpectations = @{ Exact = @('Attributes','Creation','Modified','Changed','Links','SecurityId','Sddl'); Accessed = 'NtfsReadWindow'; AccessReason = 'Same bounded NTFS read-side LastAccess rule as S00-S02; all other baseline metadata exact.' }
+            JournalExpectations = @('OneTransferAndGeneration', 'Allocated', 'UnsealedWhileHeld', 'Sealed', 'Inspecting', 'Approved', 'Publishing', 'ReleasedExactlyOnce', 'SealedDigestFinalA')
+            NotificationExpectations = @('NoHeldInspectionApprovalReleaseAtCheckpoints', 'SeparateAuthenticatedBeforeStopAndAfterRestartWindows', 'ExactlyOneReleasedExactTransferSessionDigestA', 'NoBlockedOrHandBack')
+            AllowedDirectoryTransitions = @('BaselineWhileHeldAndOfflineAndUnsealed', 'ApprovedPublicationOnlyAfterClose', 'OneFinalNEqualsAAtQuiescence', 'NoLingeringTemp')
+            LatencyClasses = @()
+            Repetitions = @{ Coordinated = 1; Unheld = 0; DeterministicSeed = 4061 }
+            Cleanup = @('CooperativeWriterCancellationAndClose', 'StopAndRestoreAgent', 'RestoreProductStateBytesAndAcls', 'CommonSeedRestoration', 'IndependentBaseline')
         }
         @{
             CaseId = 'R02'; Revision = 1; Status = 'NotReady'
@@ -510,18 +526,27 @@
             Cleanup = @('Unimplemented; common restoration still mandatory')
         }
         @{
-            CaseId = 'R03'; Revision = 1; Status = 'NotReady'
-            Variant = 'UnexpandedFamily'; Outcome = 'Unimplemented: Agent down at boot'
-            QualificationScope = 'Phase4; WP6 must expand all design variants'
+            CaseId = 'R03'; Revision = 2; Status = 'Ready'
+            Variant = 'fixed-NTFS-boot-agent-disabled-cached-overwrite-and-create-then-fresh-approve'; Outcome = 'APPROVE'
+            QualificationScope = 'Phase4MvpCoordinatedCore; sampled raw/fresh/uncached evidence; unheld latency remains a separate hardening workload'
             ActorSid = 'ResolveStandardUserTokenAtRuntime'; ActorSession = 'ResolveTokenSessionId'
-            InitialPolicy = @{ Seed = 'Product'; LiveFlags = 'TEST_DISABLE_TAINT-required' }
-            Scopes = @('Unimplemented'); Setup = @('WP6: design section 4.1 R03')
-            Actions = @('Unimplemented'); Barriers = @('Unimplemented')
-            ExpectedTimeline = @('Unimplemented'); StatusClasses = @('Unimplemented')
-            JournalExpectations = @('Unimplemented'); NotificationExpectations = @('Unimplemented')
-            AllowedDirectoryTransitions = @('Unimplemented'); LatencyClasses = @('Unimplemented')
-            Repetitions = @{ Coordinated = 1; Unheld = 100; DeterministicSeed = 4003 }
-            Cleanup = @('Unimplemented; common restoration still mandatory')
+            InitialPolicy = @{ Seed = 'Product'; StartDuringSeed = 3; StartAfterSeed = 0; AgentStart = 4; LiveFlags = 'TEST_DISABLE_TAINT-required; actual taint counter window retained' }
+            Scopes = @('FixtureScope')
+            Setup = @('DriverUnloaded', 'PrebootMarkerB', 'AbsentCachedTxtN', 'ProductBootPolicy', 'DisabledAgentService', 'AtStartupStandardUserTask')
+            Actions = @('ActorDurablyRecordsReadiness', 'CachedOverwriteBRefused', 'CachedCreateNRefused', 'VerifyWholeDirectoryAndJournalUnchanged', 'StartRealAgent', 'RequirePolicyAcceptedAndCoverageReady', 'FreshExplicitCachedCreateN', 'WholeImageWriteFlushPrivateRead', 'CloseAndRequireReleasedA')
+            Barriers = @('BootIdentityChanged', 'StartupActorIdentity', 'DurableBootReadiness', 'OfflineRawBaseline', 'OfflineGo', 'OfflineReceipt', 'AgentAbsenceWindowComplete', 'CoverageReady', 'FreshSaveGo', 'FlushedHandleHeld', 'LastUpperClose', 'Released', 'FinalQuiescence')
+            ExpectedTimeline = @('UnscopedSetup', 'BootTrusted', 'ProtectedAgentAbsent', 'BUnchangedNAbsent', 'OfflineOpensDenied', 'NoTransferNotificationOrHandBack', 'PolicyAcceptedCoverageReady', 'FreshSaveAllocated', 'Sealed', 'Inspecting', 'Approved', 'Publishing', 'Released', 'BUnchangedNEqualsA')
+            StatusClasses = @('OfflineOverwriteOpen=Win32:5;WriteFlushNotCalled', 'OfflineCreateOpen=Win32:5;WriteFlushNotCalled', 'OnlineOpenWriteFlushClose=Win32:0', 'PrivateRead=WholeA', 'OfflineFreshUncachedN=Win32:2', 'FinalFreshUncachedN=WholeA')
+            MetadataExpectations = @{ Exact = @('Attributes','Creation','Modified','Changed','Links','SecurityId','Sddl'); Accessed = 'NtfsReadWindow'; AccessReason = 'Same bounded NTFS read-side LastAccess rule as S00-S02; all other baseline metadata exact.' }
+            JournalExpectations = @('NoNewTransfer', 'NoApproved', 'NoReleased')
+            NotificationExpectations = @('NoNotification', 'NoApproval', 'NoRelease', 'NoHandBack')
+            OnlineJournalExpectations = @('Allocated', 'Sealed', 'Inspecting', 'Approved', 'Publishing', 'Released', 'ImmutableSealedDigestA', 'ExactlyOneFreshActorTransfer')
+            OnlineNotificationExpectations = @('ReleasedDigestA', 'NoBlocked', 'NoHandBack')
+            AllowedDirectoryTransitions = @('BaselineWhileAgentDownAndWriterHeld', 'OneApprovedNAfterRelease', 'BUnchanged', 'NoLingeringTemp')
+            LatencyClasses = @()
+            Repetitions = @{ Coordinated = 1; Unheld = 0; DeterministicSeed = 4033 }
+            DeferredVariants = @('WritableSectionWhileDown', 'ReplacementWhileDown', 'RenameInWhileDown', 'SeededUnheldStartupRace', 'AdditionalRepetitions', 'UnheldLatency')
+            Cleanup = @('StopAndRestoreAgentIncludingDisabledBootConfiguration', 'StopOwnedStartupActor', 'RestoreProductStateBytesAndAcls', 'CommonSeedRestoration', 'IndependentBaseline')
         }
         @{
             CaseId = 'P01'; Revision = 1; Status = 'NotReady'
