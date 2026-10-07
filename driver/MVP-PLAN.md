@@ -1296,3 +1296,24 @@ The safe W01 checkpoint parent was written by Sol and checked by root: Windows P
   incompleteness. Partial export non-PASS, forbidden count unknown, clean
   restoration. Evidence1e406280. No100-warm latency claim. Exact filename
   was missing in old collector; new diagnostic must localize it before retry.
+- Latency timeout audit: dedicated101 rounds can exceed the inherited15min
+  actor/startup-task limit and900s coordinator join even when every round is
+  within its120s service deadline. Increase only the pinned dedicated mode's
+  actor and coordinator task caps to240min and join to14460s, covering101
+  service deadlines plus native/snapshot overhead. Functional/diagnostic/task
+  helper defaults stay unchanged. These are harness bounds, no product timer.
+
+- [x] Dedicated-only task/join bounds corrected; Windows PS5.1 parser0,
+  proof248/native88 PASS (sol-latency-timeout-windows-a). Actor/coordinator
+ 240min, outer join14460s only when DedicatedUnheldLatency=1; ordinary
+ functional bounds unchanged. Python adapter/MVP/dedicated/seed controls PASS.
+ Actual complete101-round runtime remains pending journal-child localization.
+
+- [x] Repaired runtime seed batch sol-seed-r2: S00/S01/S02 each
+  MvpGatePassed=True, ForbiddenByteCount0, clean independent restoration,
+  no Errors/FAIL,101 native samples verified. Strict gates INCONCLUSIVE for
+  recorded instrumentation gaps, whole suite false. Evidence b661dc59,
+  cf9744ca,b69240ce plus frozen batch input/index. C03 BLOCK now completes
+  real blocked overwrite with forbidden0 and clean restoration; only three
+  hand-back requirements and dedicated latency remain. No unknown journal
+  child in this rerun, so prior atomic-temp hypothesis still unproved.

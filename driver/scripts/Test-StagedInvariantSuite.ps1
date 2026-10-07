@@ -176,11 +176,11 @@ exit $code
     $suffix=$suffix.Replace('__TOKEN__',$Token).Replace('__DONE__',(ConvertTo-PowerShellLiteral $Done))
     return $prefix+$preamble+"`n"+$Body+"`n"+$suffix
 }
-function Register-SystemTask([string]$Name,[string]$Launcher,[switch]$AtStartup) {
+function Register-SystemTask([string]$Name,[string]$Launcher,[switch]$AtStartup,[ValidateRange(1,240)][int]$ExecutionMinutes=15) {
     if(Get-ScheduledTask -TaskName $Name -ErrorAction SilentlyContinue){throw 'Task collision'}
     $action=New-ScheduledTaskAction -Execute 'powershell.exe' -Argument ('-NoProfile -ExecutionPolicy Bypass -File "'+$Launcher+'"')
     $principal=New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
-    $settings=New-ScheduledTaskSettingsSet -ExecutionTimeLimit ([TimeSpan]::FromMinutes(15))
+    $settings=New-ScheduledTaskSettingsSet -ExecutionTimeLimit ([TimeSpan]::FromMinutes($ExecutionMinutes))
     $args=@{TaskName=$Name;Action=$action;Principal=$principal;Settings=$settings}
     if($AtStartup){$args.Trigger=New-ScheduledTaskTrigger -AtStartup}
     Register-ScheduledTask @args | Out-Null
@@ -3468,7 +3468,7 @@ $value=$b.ToString().Split([char]0)[0]
             if($LASTEXITCODE -ne 0){throw 'Read-only writer input ACL failed'}
         }
         $action=New-ScheduledTaskAction -Execute 'powershell.exe' -Argument ('-NoProfile -ExecutionPolicy Bypass -File "'+$writerLauncher+'"')
-        $actorMinutes=if($MappedStackDiagnosticSeconds -ne 0 -or $DedicatedUnheldLatency){15}elseif($cachedExisting){10}else{5}
+        $actorMinutes=if($DedicatedUnheldLatency){240}elseif($MappedStackDiagnosticSeconds -ne 0){15}elseif($cachedExisting){10}else{5}
         Register-ScheduledTask -TaskName $writerTask -Action $action -User ($env:COMPUTERNAME+'\'+$actorUser) -Password $password -RunLevel Limited -Settings (New-ScheduledTaskSettingsSet -ExecutionTimeLimit ([TimeSpan]::FromMinutes($actorMinutes))) | Out-Null
         $password=$null
         # Trusted coordinator launches this SAME pinned suite in a fresh process.
@@ -3476,7 +3476,8 @@ $value=$b.ToString().Split([char]0)[0]
         foreach($key in @($PSBoundParameters.Keys | Sort-Object)){if($key -notin @('Phase','StartupProbe')){$invoke+=' -'+$key+" '"+(ConvertTo-PowerShellLiteral ([string]$PSBoundParameters[$key]))+"'"}}
         $launcher=Join-Path $stateDirectory 'startup.ps1'
         Write-DurableFile $launcher (New-TaskLauncher $invoke $state.CoordinatorToken (Join-Path $evidenceDirectory 'startup-completion.clixml')) -New
-        Register-SystemTask $bootTask $launcher -AtStartup
+        $coordinatorMinutes=if($DedicatedUnheldLatency){240}else{15}
+        Register-SystemTask $bootTask $launcher -AtStartup -ExecutionMinutes $coordinatorMinutes
         & sc.exe config SafeUpload start= boot | Out-Host
         if($LASTEXITCODE -ne 0){throw 'Start=0 configuration failed'}
         $svc=Get-ItemProperty "HKLM:\$registryService"
@@ -3515,7 +3516,8 @@ $value=$b.ToString().Split([char]0)[0]
     if($StartupProbe){if($isActivationCase){Invoke-ActivationObservation}elseif($cachedCase){Invoke-CachedObservation}else{Invoke-SeedObservation};return}
     $observationError=$null
     try {
-        $null=Wait-TaskCompletion $bootTask (Join-Path $evidenceDirectory 'startup-completion.clixml') $state.CoordinatorToken 900
+        $coordinatorWaitSeconds=if($DedicatedUnheldLatency){14460}else{900}
+        $null=Wait-TaskCompletion $bootTask (Join-Path $evidenceDirectory 'startup-completion.clixml') $state.CoordinatorToken $coordinatorWaitSeconds
         if(-not(Test-Path -LiteralPath $trialPath)){throw 'Completed startup task omitted trial'}
     }catch{$observationError=Get-ErrorChain $_.Exception;Save-State $observationError (Join-Path $evidenceDirectory 'startup-error.clixml')}
     finally {
