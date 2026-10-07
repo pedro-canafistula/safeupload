@@ -1,4 +1,5 @@
 using SafeUpload.Agent.Core.Application;
+using SafeUpload.Agent.Service.Clipboard;
 using SafeUpload.Agent.Service.Dispatch;
 using SafeUpload.Agent.Service.Interception;
 using SafeUpload.Agent.Service.Notifications;
@@ -46,6 +47,9 @@ public static class Program
         builder.Services.AddSingleton<NotificationHub>();
         builder.Services.AddSingleton<PendingOverrides>();
         builder.Services.AddSingleton<OverrideGrantQueue>();
+        builder.Services.AddSingleton<ClipboardCopyStore>();
+        builder.Services.AddSingleton<ClipboardMetrics>();
+        builder.Services.AddSingleton<ClipboardService>();
 
         // De onde vem a politica, e para onde vai a trilha (HU-10).
         //
@@ -142,6 +146,11 @@ public static class Program
         // Nao altera veredito - submete um motivo para um bloqueio que este
         // servico registrou, e valida contra o registro dele.
         builder.Services.AddHostedService<JustificationPipeServer>();
+
+        // O canal de clipboard (Fase 1: classifica e mede, sem interferir).
+        // Com "clipboard.mode" Off na politica, que e o padrao, ele responde
+        // "limpo" a tudo e nao conta nada.
+        builder.Services.AddHostedService<ClipboardPipeServer>();
 
         await builder.Build().RunAsync();
     }
