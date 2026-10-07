@@ -2740,8 +2740,12 @@ static FLT_PREOP_CALLBACK_STATUS StagePhysicalMutationEx(PFLT_CALLBACK_DATA Data
     }
  #endif
     /* The writer registry records existing handles; direct mutators through
-     * other handles use the current+pending policy and alias checks. */
-    if (SafeUploadPolicyMatchesCurrentOrPendingDestination(kind, &name->Name, IncludeAncestors)) {
+     * other handles use the current+pending policy and alias checks. The
+     * authenticated service is exempt: its writable handles to a protected
+     * name exist only through a consumed publication permit (create gate), and
+     * its rename is permit-checked again; without this its own approved
+     * publication write and failed-publication cleanup were denied (run c01k). */
+    if (!service && SafeUploadPolicyMatchesCurrentOrPendingDestination(kind, &name->Name, IncludeAncestors)) {
         unresolved = FALSE;
         status = STATUS_ACCESS_DENIED;
         goto Complete;
