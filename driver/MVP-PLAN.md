@@ -1043,3 +1043,14 @@ The safe W01 checkpoint parent was written by Sol and checked by root: Windows P
   observer 88 PASS (`sol-harness-windows-validation-u.txt`); Python 18+7 PASS.
   Invalid S00 diagnostic selection refuses before build/guest work
   (`sol-mapped-diagnostic-invalid-scope.txt`). Runtime diagnostic not yet run.
+
+- Raw identity diagnostic decision: preserve the actual FSCTL identity-check
+  response as an explicitly cached API container (offset -1) and report requested
+  record, raw/cached sequence, record number and base reference on mismatch.
+  This changes failure precision only: public bytes and metadata still require
+  raw-sector proof and exact API identity agreement. No cache fallback, flush,
+  retry/rebaseline, run-map refresh or new success path is introduced.
+
+- [x] Failure-only raw/FSCTL identity diagnostics validated: Windows parser 0,
+  proof adapters 229/native observer 88 PASS (`sol-harness-windows-validation-v.txt`);
+  Python 18+7 PASS. Existing raw/public success requirements remain unchanged.
