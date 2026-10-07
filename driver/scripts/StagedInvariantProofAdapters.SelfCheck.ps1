@@ -17,7 +17,7 @@ function Import-EvaluationFunctions([string]$File,[string[]]$Names) {
         Invoke-Expression $definition
     }
 }
-Import-EvaluationFunctions (Join-Path $PSScriptRoot 'StagedInvariantObserver.psm1') @('New-IORecord','New-IOAssertion','Test-InvariantCadence','Test-InvariantMetadata','Test-InvariantExternalCoverage')
+Import-EvaluationFunctions (Join-Path $PSScriptRoot 'StagedInvariantObserver.psm1') @('New-IORecord','New-IOAssertion','Get-IOEntryKey','Test-IODirectoryVersion','Test-InvariantCadence','Test-InvariantMetadata','Test-InvariantExternalCoverage')
 Import-EvaluationFunctions (Join-Path $PSScriptRoot 'Test-StagedInvariantSuite.ps1') @('Test-ActivationMappingOnly','Test-ActivationRetiredPromotion','Test-ActivationChildWindow','Add-ActivationAssertion','Test-ActivationDuplicateCleanup','Test-ActivationRawWholeImage','Get-ActivationSha256','Get-ActivationPendingEntry','Get-ActivationFullPendingEntry','ConvertFrom-NtfsLastAccessOutput','Wait-WriterIdentity','Load-State','Get-ActivatingWriterBody','Get-ExpectedCheckpoint','Test-ServiceJournalStateReachable','Assert-ServiceManifestPath','ConvertFrom-ServiceJournalRecord','Test-ServiceJournalDelta','Get-ServiceDestinationPaths','Test-ServiceFixtureEntry','Get-NotificationTailCoverage','Get-NotificationFenceWaitDecision','ConvertFrom-NotificationRecord','Test-NotificationWindow','ConvertFrom-AgentEventXml','Test-AgentLogContinuity','Read-AgentLogWindow','Test-NotificationLocationUnchanged','Test-AgentDidNotRun','Get-ServiceTimeline','Test-CachedJournalSequence','Test-CachedNotifications','Test-CachedHandBackAcl','Test-CachedSample','Test-CachedImage','Test-CachedActorCalls','Add-CachedHeldJournal','Test-CachedNamespaceCommit','Get-B02JustificationClientBody','Get-WriterBody','Get-ActivationActorIdentity','Publish-ActivationActorCommand')
 $script:checks=0
 function Check([bool]$Condition,[string]$Message){if(-not $Condition){throw $Message};$script:checks++}
@@ -308,6 +308,93 @@ foreach($name in @('Invoke-CachedObservation','Invoke-SeedObservation','Invoke-R
         $n.Finally.Extent.Text.Contains('Complete-LastAccessEvidence $trial')},$false))
     Check ($finalizers.Count -eq 1) ('Real metadata consumer always finalizes its policy receipt: '+$name)
 }
+# C05 p1c3: the index LastAccess advances lazily, after the child's raw value.
+# These are fabricated same-capture facts, never raw-volume qualification.
+$directoryPath=Join-Path ([IO.Path]::GetTempPath()) 'c05-directory-control'
+$entry=[pscustomobject]@{Name='marker.bin';Namespace=3;Reference=17;Parent=9;Eof=12288;Allocated=12288;Attributes=32;Creation=$time;Modified=$time;Changed=$time;Accessed=$time}
+$directoryParent=[pscustomobject]@{Role='Parent';Path=$directoryPath;DirectoryEntries=@($entry);SecurityId=42;Sddl='exact'}
+$directoryChild=[pscustomobject]@{Role='Current';Path=(Join-Path $directoryPath 'marker.bin');Absent=$false;Identity=(Clone $metadata);RawMetadata=(Clone $metadata);SecurityId=42;Sddl='exact';CrossCheckErrors=@()}
+$directoryChild.Identity | Add-Member NoteProperty FileId 'directory-child-id'
+$directoryChild.Identity | Add-Member NoteProperty Reference 17
+$directoryBaseline=Clone $baseline;$directoryBaseline.Images=@($directoryParent,$directoryChild);$directoryBaseline.CaptureStartedFileTime=$time+10000
+$savedRow=$script:row
+$script:row=@{ExpectedTimeline=@('setup','boot','Protected');MetadataExpectations=@{Accessed='NtfsReadWindow';DirectoryEntryAccessed='NtfsReadWindow';AccessReason='same identity read window'}}
+$directoryCheckpoint=Get-ExpectedCheckpoint $directoryBaseline 'AfterRenameHandleHeld' 6
+$directoryExpected=$directoryCheckpoint.Directories[0];$directoryStorage=$directoryCheckpoint.Storage
+Check ($directoryExpected.EntryAccessRule -ceq 'NtfsReadWindow' -and $directoryExpected.Entries[0].Accessed -eq $time -and
+    $directoryStorage[0].Metadata.AccessWindowStartFileTime -eq ($time+10000)) 'C05 checkpoint records opt-in and original index/child window, without rebaselining.'
+$script:row=@{ExpectedTimeline=@('setup','boot','Protected');MetadataExpectations=@{Accessed='NtfsReadWindow'}}
+$exactDirectory=(Get-ExpectedCheckpoint $directoryBaseline 'AfterRenameHandleHeld' 6).Directories[0]
+Check ($null -eq $exactDirectory.PSObject.Properties['EntryAccessRule']) 'Rows without explicit directory opt-in keep exact index metadata.'
+$script:row=$savedRow
+$directoryActual=Clone $directoryParent;$directoryActual.DirectoryEntries[0].Accessed=$time+20000
+$directoryCurrent=Clone $directoryChild;$directoryCurrent.RawMetadata.Accessed=$time+30000;$directoryCurrent.Identity.Accessed=$time+50000
+$directorySample=[pscustomobject]@{Sequence=6;Start=[pscustomobject]@{BootId='directory-control';Qpc=100};End=[pscustomobject]@{Qpc=200;Utc=([DateTime]::FromFileTimeUtc($time+10000000).ToString('o'))}}
+$directoryPolicy=[pscustomobject]@{Status='OK';Before=[pscustomobject]@{Value=2;Management='System';UpdatesDisabled=$false;BootId='directory-control';VolumeGuid='volume';Qpc=50};After=[pscustomobject]@{Value=2;Management='System';UpdatesDisabled=$false;BootId='directory-control';VolumeGuid='volume';Qpc=250}}
+Check (Test-IODirectoryVersion $directoryParent $exactDirectory @() @() $directorySample $null $true) 'Exact index transition still passes without a tolerance or child read.'
+Check (Test-IODirectoryVersion $directoryActual $directoryExpected $directoryStorage @($directoryCurrent) $directorySample $directoryPolicy $true) 'Same identity index Accessed may lag its proven raw LastAccess.'
+$equalRaw=Clone $directoryActual;$equalRaw.DirectoryEntries[0].Accessed=$directoryCurrent.RawMetadata.Accessed
+Check (Test-IODirectoryVersion $equalRaw $directoryExpected $directoryStorage @($directoryCurrent) $directorySample $directoryPolicy $true) 'Same identity index Accessed may equal its proven raw LastAccess.'
+Check (-not (Test-IODirectoryVersion $directoryActual $exactDirectory $directoryStorage @($directoryCurrent) $directorySample $directoryPolicy $true)) 'No directory opt-in means LastAccess stays exact.'
+Check (-not (Test-IODirectoryVersion $directoryActual $directoryExpected $directoryStorage @($directoryCurrent) $directorySample $directoryPolicy $false)) 'Unstable capture cannot authorize changed index Accessed.'
+foreach($field in @('Name','Namespace','Reference','Parent','Eof','Allocated','Attributes','Creation','Modified','Changed')){
+    $bad=Clone $directoryActual
+    if($field -ceq 'Name'){$bad.DirectoryEntries[0].Name='MARKER.bin'}else{$bad.DirectoryEntries[0].$field++}
+    Check (-not (Test-IODirectoryVersion $bad $directoryExpected $directoryStorage @($directoryCurrent) $directorySample $directoryPolicy $true)) ('Read-side index tolerance must reject changed '+$field+'.')
+}
+foreach($change in @('extra','duplicate','missing','security-id','sddl','regressed','before-window','ahead-of-raw','future')){
+    $bad=Clone $directoryActual
+    switch($change){
+        'extra'{$extra=Clone $entry;$extra.Name='cached.txt';$bad.DirectoryEntries+=$extra}
+        'duplicate'{$bad.DirectoryEntries+=Clone $bad.DirectoryEntries[0]}
+        'missing'{$bad.DirectoryEntries=@()}
+        'security-id'{$bad.SecurityId++}
+        'sddl'{$bad.Sddl='other'}
+        'regressed'{$bad.DirectoryEntries[0].Accessed=$time-1}
+        'before-window'{$bad.DirectoryEntries[0].Accessed=$time+1}
+        'ahead-of-raw'{$bad.DirectoryEntries[0].Accessed=$time+30001}
+        'future'{$bad.DirectoryEntries[0].Accessed=$time+10000001}
+    }
+    Check (-not (Test-IODirectoryVersion $bad $directoryExpected $directoryStorage @($directoryCurrent) $directorySample $directoryPolicy $true)) ('Directory transition rejects '+$change+'.')
+}
+foreach($change in @('absent','wrong-id','wrong-reference','wrong-path','missing-raw','missing-cross-check','cross-check-error','modified','api-before-raw','future-api')){
+    $bad=Clone $directoryCurrent
+    switch($change){
+        'absent'{$bad.Absent=$true}
+        'wrong-id'{$bad.Identity.FileId='other'}
+        'wrong-reference'{$bad.Identity.Reference++}
+        'wrong-path'{$bad.Path=Join-Path $directoryPath 'other.bin'}
+        'missing-raw'{$bad.RawMetadata=$null}
+        'missing-cross-check'{$bad.PSObject.Properties.Remove('CrossCheckErrors')}
+        'cross-check-error'{$bad.CrossCheckErrors=@('raw/API identity mismatch')}
+        'modified'{$bad.RawMetadata.Modified++}
+        'api-before-raw'{$bad.Identity.Accessed=$time+29999}
+        'future-api'{$bad.Identity.Accessed=$time+10000001}
+    }
+    Check (-not (Test-IODirectoryVersion $directoryActual $directoryExpected $directoryStorage @($bad) $directorySample $directoryPolicy $true)) ('Directory Accessed requires child proof: '+$change+'.')
+}
+Check (-not (Test-IODirectoryVersion $directoryActual $directoryExpected $directoryStorage @() $directorySample $directoryPolicy $true)) 'Missing current child cannot authorize an index transition.'
+Check (-not (Test-IODirectoryVersion $directoryActual $directoryExpected $directoryStorage @($directoryCurrent,$directoryCurrent) $directorySample $directoryPolicy $true)) 'Duplicate current child cannot authorize an index transition.'
+Check (-not (Test-IODirectoryVersion $directoryActual $directoryExpected @() @($directoryCurrent) $directorySample $directoryPolicy $true)) 'Missing baseline child expectation cannot authorize an index transition.'
+$bad=Clone $directorySample;$bad.End.Utc='malformed'
+Check (-not (Test-IODirectoryVersion $directoryActual $directoryExpected $directoryStorage @($directoryCurrent) $bad $directoryPolicy $true)) 'Malformed window proof keeps the directory mismatch a FAIL.'
+foreach($change in @('missing','changed','disabled','wrong-boot','wrong-volume','late-before','early-after','missing-disabled-bit')){
+    $bad=Clone $directoryPolicy
+    switch($change){
+        'missing'{$bad=$null}
+        'changed'{$bad.After.Value=0}
+        'disabled'{$bad.Before.Value=3;$bad.After.Value=3;$bad.Before.UpdatesDisabled=$true;$bad.After.UpdatesDisabled=$true}
+        'wrong-boot'{$bad.Before.BootId='other'}
+        'wrong-volume'{$bad.Before.VolumeGuid='other'}
+        'late-before'{$bad.Before.Qpc=101}
+        'early-after'{$bad.After.Qpc=199}
+        'missing-disabled-bit'{$bad.Before.PSObject.Properties.Remove('UpdatesDisabled')}
+    }
+    Check (-not (Test-IODirectoryVersion $directoryActual $directoryExpected $directoryStorage @($directoryCurrent) $directorySample $bad $true)) ('Directory Accessed requires bound enabled policy: '+$change+'.')
+}
+$disabledPolicy=Clone $directoryPolicy;$disabledPolicy.Before.Value=3;$disabledPolicy.After.Value=3;$disabledPolicy.Before.UpdatesDisabled=$true;$disabledPolicy.After.UpdatesDisabled=$true
+$disabledCurrent=Clone $directoryCurrent;$disabledCurrent.RawMetadata.Accessed=$time
+Check (-not (Test-IODirectoryVersion $directoryActual $directoryExpected $directoryStorage @($disabledCurrent) $directorySample $disabledPolicy $true)) 'Disabled updates forbid an index advance even with valid unchanged raw metadata.'
 $external=[pscustomobject]@{WriterIdentities=@([pscustomobject]@{Pid=1000;Sid='S-1-5-21-1-2-3-1000';SessionId=1;Elevated=$false;IsAdministrator=$false;BootId=$boot});CadenceProof=[pscustomobject]@{Complete=$true}
     ExternalEvidence=[pscustomobject]@{Provenance='SyntheticTestEvidence';Build=$baseline.Build;PrepareBootId='fixture/prepare';ActiveBootId=$boot;ObserverPid=$baseline.ObserverPid;ObserverSid=$baseline.ObserverSid
         ActorProvenance=[pscustomobject]@{OwnerSid='S-1-5-21-1-2-3-1000';Pid=1000;SessionId=1};ObserverProcess=[pscustomobject]@{OwnerSid=$baseline.ObserverSid;Pid=$baseline.ObserverPid};Restoration=[pscustomobject]@{Known=$true}}}

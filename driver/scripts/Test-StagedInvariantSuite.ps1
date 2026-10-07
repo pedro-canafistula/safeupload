@@ -1261,7 +1261,13 @@ function Get-Readiness {
 function Get-ExpectedCheckpoint($Baseline,[string]$PhaseName,[long]$Sequence) {
     $storage=@();$dirs=@()
     foreach($image in $Baseline.Images){
-        if($image.Role -eq 'Parent'){$dirs+=@{Path=$image.Path;Entries=$image.DirectoryEntries;SecurityId=$image.SecurityId;Sddl=$image.Sddl}}
+        if($image.Role -eq 'Parent'){
+            $directory=[pscustomobject]@{Path=$image.Path;Entries=$image.DirectoryEntries;SecurityId=$image.SecurityId;Sddl=$image.Sddl}
+            if($row.MetadataExpectations -is [Collections.IDictionary] -and $row.MetadataExpectations['DirectoryEntryAccessed'] -ceq 'NtfsReadWindow'){
+                $directory | Add-Member NoteProperty EntryAccessRule 'NtfsReadWindow'
+            }
+            $dirs+=$directory
+        }
         elseif($image.Role -eq 'Current'){
             if($image.Absent){$storage+=@{Path=$image.Path;Kind='Absent'}}
             else{

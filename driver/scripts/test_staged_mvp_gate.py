@@ -91,6 +91,41 @@ class MvpGateTests(unittest.TestCase):
                 self.assertTrue(actual['MvpGatePassed'])
                 self.assertEqual([name], actual['MvpDeferred'])
 
+    def test_c05_source_uses_the_existing_exact_deferred_allowlist(self):
+        for container in ('Assertions', 'Predicate'):
+            for proof in Q.MVP_DEFERRED_EXACT:
+                name = 'C05Source' + proof
+                with self.subTest(container=container, name=name):
+                    result = fixture()
+                    result['CaseId'] = 'C05-denied-external-rename'
+                    assertions = result['Trials'][0][container]
+                    if container == 'Predicate':
+                        assertions = assertions['Assertions']
+                    assertions.append({'Name': name, 'Verdict': 'INCONCLUSIVE'})
+                    actual = self.assess(result)
+                    self.assertTrue(actual['MvpGatePassed'])
+                    self.assertEqual([name], actual['MvpDeferred'])
+                    assertions[-1]['Verdict'] = 'FAIL'
+                    actual = self.assess(result)
+                    self.assertFalse(actual['MvpGatePassed'])
+                    self.assertIn(name, actual['MvpBlockers'])
+
+    def test_c05_source_does_not_defer_other_proofs_or_prefixes(self):
+        for name in ('C05SourceDirectoryMetadata', 'C05SourceCoverage', 'C05SourceDisposal',
+                     'C05SourceFileMetadata', 'C05SourceNoUnapprovedByteX',
+                     'C05SourceAlmostCadenceCoverage', 'OtherSourceCadenceCoverage',
+                     'C05SourceC05SourceCadenceCoverage', 'C05Source', 'C05DenialLedger'):
+            with self.subTest(name=name):
+                result = fixture()
+                result['CaseId'] = 'C05-denied-external-rename'
+                result['Trials'][0]['Assertions'].append({'Name': name, 'Verdict': 'INCONCLUSIVE'})
+                actual = self.assess(result)
+                self.assertFalse(actual['MvpGatePassed'])
+                self.assertIn(name, actual['MvpBlockers'])
+        result = fixture()
+        result['Trials'][0]['Assertions'].append({'Name': 'C05SourceCadenceCoverage', 'Verdict': 'INCONCLUSIVE'})
+        self.assertFalse(self.assess(result)['MvpGatePassed'])
+
     def test_handback_safe_creation_deferred_only_by_exact_suffix(self):
         result = fixture()
         result['Trials'][0]['Assertions'].append({'Name': 'C01HandBackSafeRelativeCreation', 'Verdict': 'INCONCLUSIVE'})

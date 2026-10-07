@@ -3,7 +3,7 @@
 # design section 4 corpus, NOT a claim that one row covers every future variant.
 @{
     Schema = 'StagedInvariantCases/1'
-    TableRevision = 13
+    TableRevision = 14
     Modes = @('ordinary', 'runtime-verifier', 'boot-verifier')
     RowSchema = @{
         Required = @('CaseId', 'Revision', 'Status', 'Variant', 'Outcome',
@@ -434,7 +434,7 @@
             Cleanup = @('Unimplemented; common restoration still mandatory')
         }
         @{
-            CaseId = 'C05-denied-external-rename'; Revision = 3; Status = 'Ready'
+            CaseId = 'C05-denied-external-rename'; Revision = 4; Status = 'Ready'
             Variant = 'fixed-NTFS-old-physical-external-source-rename-into-protected-absent-target'; Outcome = 'DENY'
             QualificationScope = 'Phase4FunctionalDOnly; exact denial ledger/reason unavailable; dedicated denied-rename latency implemented; positive owned-source variant deferred'
             ActorSid = 'ResolveStandardUserTokenAtRuntime'; ActorSession = 'ResolveTokenSessionId'
@@ -445,10 +445,10 @@
             Barriers = @('BootIdentityChanged', 'DurableReadiness', 'AgentPolicyAccepted', 'BeforeOperation', 'BeforeRenameHandleHeld', 'NativeRename', 'AfterRenameHandleHeld', 'SourceClose', 'FinalQuiescence')
             ExpectedTimeline = @('UnscopedSourceSetup', 'BootTrusted', 'Protected', 'TargetAbsent', 'PhysicalExternalSourceOpen:Win32:0', 'HeldSourceA:SameIdAllocationNames', 'RenameIntoProtected:Win32:5', 'SourceStillA:SameIdAllocationNames', 'TargetStillAbsent:NoPublicTemp', 'SourceClose:Win32:0', 'NoNewTransfer', 'NoApprovalReleaseHandBack', 'FinalTargetAbsentAndSourceA')
             StatusClasses = @('SourceOpen=Win32:0;OPEN_EXISTING;DELETE', 'SourceRead=Win32:0;WholeA', 'RenameEx=Win32:5;REPLACE_IF_EXISTS|POSIX', 'SourceReadAfterDenial=Win32:0;WholeA', 'SourceClose=Win32:0', 'TargetFreshAbsent=Win32:2', 'TargetUncachedAbsent=Win32:2', 'SourceRawFreshUncached=WholeA;SameIdAllocation')
-            MetadataExpectations = @{ Exact = @('Attributes','Creation','Modified','Changed','Links','SecurityId','Sddl'); Accessed = 'NtfsReadWindow'; AccessReason = 'Same bounded NTFS read-side LastAccess rule as S00-S02; all other baseline metadata exact.' }
+            MetadataExpectations = @{ Exact = @('Attributes','Creation','Modified','Changed','Links','SecurityId','Sddl'); Accessed = 'NtfsReadWindow'; DirectoryEntryAccessed = 'NtfsReadWindow'; AccessReason = 'Same bounded NTFS read-side LastAccess rule as S00-S02; directory-index Accessed may lag the same identity raw value within the read window when disk updates are enabled; all other baseline metadata exact.' }
             JournalExpectations = @('NoNewTransfer', 'NoApproved', 'NoReleased')
             NotificationExpectations = @('NoApproval', 'NoRelease', 'NoHandBack')
-            AllowedDirectoryTransitions = @('SameActiveNamesIdsSizesAttributesSecurityInProtectedAndExternalFolders')
+            AllowedDirectoryTransitions = @('SameActiveNamesIdsSizesAttributesSecurityInProtectedAndExternalFolders', 'OnlySameIdentityDirectoryEntryAccessedWithinNtfsReadWindow')
             LatencyClasses = @('writer-open', 'rename-ex', 'close')
             Repetitions = @{ Coordinated = 1; Unheld = 100; DeterministicSeed = 4003 }
             Cleanup = @('CloseBothObservers', 'StopAndRestoreAgent', 'RestorePolicyBeforeProductStateInPlace', 'RestoreProductStateBytesAndAcls', 'RemoveExternalFixture', 'CommonSeedRestoration', 'IndependentBaseline')

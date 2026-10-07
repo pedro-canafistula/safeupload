@@ -897,7 +897,11 @@ function Read-InvariantPrivateSnapshot {
         throw
     } finally {foreach($handle in $held){$handle.Dispose()}}
 }
-function Get-IOEntryKey($Entry) { return ('{0}|{1}|{2}|{3}|{4}|{5}|{6}|{7}|{8}|{9}|{10}' -f $Entry.Name, $Entry.Namespace, $Entry.Reference, $Entry.Eof, $Entry.Attributes, $Entry.Parent, $Entry.Allocated, $Entry.Creation, $Entry.Modified, $Entry.Changed, $Entry.Accessed) }
+function Get-IOEntryKey($Entry, [switch]$WithoutAccessed) {
+    $key=('{0}|{1}|{2}|{3}|{4}|{5}|{6}|{7}|{8}|{9}' -f $Entry.Name, $Entry.Namespace, $Entry.Reference, $Entry.Eof, $Entry.Attributes, $Entry.Parent, $Entry.Allocated, $Entry.Creation, $Entry.Modified, $Entry.Changed)
+    if($WithoutAccessed){return $key}
+    return ($key+'|'+$Entry.Accessed)
+}
 function Assert-IOParentMatch($Image, $Parent, [string] $Leaf) {
     $match = @($Parent.Names | Where-Object { $_.Name -ceq $Leaf -and $_.Reference -eq $Image.Identity.Reference -and $_.Namespace -ne 2 })
     if ($match.Count -ne 1) { throw 'Raw parent index does not identify the requested name/file reference.' }
@@ -1445,6 +1449,39 @@ function Test-InvariantMetadata($Image, $Expectation, $Sample, $Policy) {
     $assertions+=New-IOAssertion 'MetadataCoverage' $(if($complete){'PASS'}else{'INCONCLUSIVE'}) ('Per-fixture fields: '+($fields -join ',')+'; tolerated field Accessed only under the recorded NtfsReadWindow rule.') $Sample.Sequence $Image.Path
     return $assertions
 }
+function Test-IODirectoryVersion($Image, $Expectation, $Storage, $Images, $Sample, $Policy, [bool]$Stable) {
+    Set-StrictMode -Off # A missing bound proof cannot authorize a changed index entry.
+    try {
+        if($Expectation.SecurityId -ne $Image.SecurityId -or ($Stable -and $Expectation.Sddl -cne $Image.Sddl)){return $false}
+        $actualKeys=@($Image.DirectoryEntries | ForEach-Object {Get-IOEntryKey $_} | Sort-Object)
+        $expectedKeys=@($Expectation.Entries | ForEach-Object {Get-IOEntryKey $_} | Sort-Object)
+        if(($actualKeys -join "`n") -ceq ($expectedKeys -join "`n")){return $true}
+        if(-not $Stable -or $Expectation.EntryAccessRule -cne 'NtfsReadWindow' -or $actualKeys.Count -ne $expectedKeys.Count){return $false}
+        # C05 opts in explicitly. NTFS may lazily copy a read's LastAccess into
+        # $I30 after the same identity's $STANDARD_INFORMATION has advanced. Every
+        # other index field remains exact; a changed Accessed needs that child's
+        # complete existing metadata proof in this same stable capture.
+        foreach($entry in $Expectation.Entries){
+            $key=Get-IOEntryKey $entry -WithoutAccessed
+            $actual=@($Image.DirectoryEntries | Where-Object {(Get-IOEntryKey $_ -WithoutAccessed) -ceq $key})
+            if($actual.Count -ne 1){return $false}
+            if($actual[0].Accessed -eq $entry.Accessed){continue}
+            $path=Join-Path $Image.Path $entry.Name
+            $child=@($Images | Where-Object {$_.Role -ceq 'Current' -and $_.Path -ceq $path -and -not $_.Absent})
+            $expected=@($Storage | Where-Object {$_.Path -ceq $path -and $_.Kind -ceq 'Final' -and $_.Version -ceq 'Baseline'})
+            if($child.Count -ne 1 -or $expected.Count -ne 1 -or $child[0].Identity.Reference -ne $entry.Reference -or
+                [string]::IsNullOrWhiteSpace($expected[0].FileId) -or $child[0].Identity.FileId -cne $expected[0].FileId -or
+                $null -eq $child[0].PSObject.Properties['CrossCheckErrors'] -or $child[0].CrossCheckErrors.Count -gt 0 -or
+                $expected[0].Metadata.AccessRule -cne 'NtfsReadWindow'){return $false}
+            $metadata=@(Test-InvariantMetadata $child[0] $expected[0] $Sample $Policy)
+            if(-not $metadata.Count -or @($metadata | Where-Object Verdict -cne 'PASS').Count -or $Policy.Before.UpdatesDisabled){return $false}
+            $accessed=[long]$actual[0].Accessed
+            if($accessed -lt $entry.Accessed -or $accessed -lt $expected[0].Metadata.AccessWindowStartFileTime -or
+                $accessed -gt $child[0].RawMetadata.Accessed){return $false}
+        }
+        return $true
+    } catch { return $false } # Preserve DirectoryMetadata FAIL if any bound proof is malformed.
+}
 function Test-InvariantExternalCoverage($Baseline, $Timeline, [switch] $SyntheticRun) {
     Set-StrictMode -Off # Missing proof fields produce INCONCLUSIVE, including older evidence.
 
@@ -1544,7 +1581,7 @@ function Test-NoUnapprovedByte {
             if ($s.CleanupErrors.Count -ne 0) { $assertions += New-IOAssertion 'Disposal' 'INCONCLUSIVE' 'Native cleanup failed.' $s.Sequence $null }
             $frames=@()
             foreach ($capturedPass in $s.Captures) { foreach ($capturedImage in $capturedPass.Images) {
-                $frames += [pscustomobject]@{ Image=$capturedImage; Stable=($capturedPass.Status -eq 'OK'); Readers=$capturedPass.Readers }
+                $frames += [pscustomobject]@{ Image=$capturedImage; Stable=($capturedPass.Status -eq 'OK'); Readers=$capturedPass.Readers; Images=$capturedPass.Images }
             } }
             $observedImages=@($frames | ForEach-Object { $_.Image })
             foreach ($wanted in $cp.Storage) {
@@ -1592,14 +1629,14 @@ function Test-NoUnapprovedByte {
                 if ($image.Role -eq 'Parent') {
                     $parentExpect = @($cp.Directories | Where-Object { $_.Path -ceq $image.Path })
                     if ($parentExpect.Count -ne 1) { $assertions += New-IOAssertion 'DirectoryCoverage' 'INCONCLUSIVE' 'No exact expected directory listing/security.' $s.Sequence $image.Path; continue }
-                    $actualKeys = @($image.DirectoryEntries | ForEach-Object { Get-IOEntryKey $_ } | Sort-Object)
                     $directoryVersions=@($parentExpect[0])
                     if ($null -ne $parentExpect[0].PSObject.Properties['Alternates']) { $directoryVersions += @($parentExpect[0].Alternates) }
                     $directoryMatch=$false
+                    $policy=$null
+                    if($ExpectedTimeline -is [System.Collections.IDictionary]){$policy=$ExpectedTimeline['LastAccessPolicy']}
+                    elseif($null -ne $ExpectedTimeline.PSObject.Properties['LastAccessPolicy']){$policy=$ExpectedTimeline.LastAccessPolicy}
                     foreach ($dv in $directoryVersions) {
-                        $expectedKeys=@($dv.Entries | ForEach-Object { Get-IOEntryKey $_ } | Sort-Object)
-                        if (($expectedKeys -join "`n") -ceq ($actualKeys -join "`n") -and $dv.SecurityId -eq $image.SecurityId -and
-                            (-not $frame.Stable -or $dv.Sddl -ceq $image.Sddl)) { $directoryMatch=$true }
+                        if(Test-IODirectoryVersion $image $dv $cp.Storage $frame.Images $s $policy $frame.Stable){$directoryMatch=$true}
                     }
                     if (-not $directoryMatch) { $assertions += New-IOAssertion 'DirectoryMetadata' 'FAIL' 'Active names/IDs/sizes/attributes/security differ from every exact allowed transition.' $s.Sequence $image.Path }
                     foreach ($c in $image.Containers) {

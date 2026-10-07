@@ -422,6 +422,37 @@ function SyntheticPredicate([string] $Variant) {
             $ledger.Provenance=$null; $ledger.Complete=$false; $ledger.Entries=@()
             $timeline.ExternalEvidence.Provenance=$null
         }
+        if($Variant -like 'DirectoryReadWindow*'){
+            $accessTime=[DateTime]::Parse('2026-10-03T23:59:59Z').ToUniversalTime().ToFileTimeUtc()
+            $metadata.Accessed=$accessTime;$identity.Accessed=$accessTime
+            $identity | Add-Member NoteProperty Reference 17
+            $path=Join-Path $dir 'marker.bin';$bimage.Path=$path;$simage.Path=$path;$expect.Path=$path;$denied.Path=$path
+            foreach($reader in $readers){$reader.Path=$path}
+            $simage.RawMetadata=[pscustomobject]@{Attributes=0;Creation=0;Modified=0;Changed=0;Accessed=($accessTime+2000);Links=1}
+            $simage.Identity=[pscustomobject]@{FileId='synthetic-id';Reference=17;Attributes=0;Creation=0;Modified=0;Changed=0;Accessed=($accessTime+2500);Links=1}
+            $simage | Add-Member NoteProperty CrossCheckErrors @()
+            $exactMetadata.AccessRule='NtfsReadWindow'
+            $exactMetadata | Add-Member NoteProperty AccessWindowStartFileTime ($accessTime+1000)
+            $exactMetadata | Add-Member NoteProperty VolumeGuid 'synthetic-volume'
+            $exactMetadata | Add-Member NoteProperty AccessReason 'Synthetic same-identity read-side index update'
+            $entries=@(for($n=0;$n -lt 2;$n++){
+                [pscustomobject]@{Name='marker.bin';Namespace=3;Reference=17;Parent=9;Eof=4;Allocated=4;Attributes=0;Creation=0;Modified=0;Changed=0;Accessed=$accessTime}
+            })
+            $entries[1].Accessed=$accessTime+1500
+            $beforeParent=[pscustomobject]@{Role='Parent';Path=$dir;DirectoryEntries=@($entries[0]);SecurityId=0;Sddl='synthetic';Containers=@()}
+            $afterParent=[pscustomobject]@{Role='Parent';Path=$dir;DirectoryEntries=@($entries[1]);SecurityId=0;Sddl='synthetic';Containers=@()}
+            $baseline.Images+=$beforeParent;$sample.Images+=$afterParent;$sample.Captures[0].Images+=$afterParent
+            $timeline.Checkpoints[0].Directories=@([pscustomobject]@{Path=$dir;Entries=@($entries[0]);SecurityId=0;Sddl='synthetic';EntryAccessRule='NtfsReadWindow'})
+            $policy=[pscustomobject]@{Status='OK';Before=[pscustomobject]@{Value=2;Management='System';UpdatesDisabled=$false;BootId='fabricated';VolumeGuid='synthetic-volume';Qpc=1999};After=[pscustomobject]@{Value=2;Management='System';UpdatesDisabled=$false;BootId='fabricated';VolumeGuid='synthetic-volume';Qpc=2012}}
+            $timeline | Add-Member NoteProperty LastAccessPolicy $policy
+            switch($Variant){
+                'DirectoryReadWindowOtherTimestamp'{$entries[1].Modified++}
+                'DirectoryReadWindowExternalName'{$entries[1].Name='source.txt'}
+                'DirectoryReadWindowExtra'{$afterParent.DirectoryEntries+=[pscustomobject]@{Name='cached.txt';Namespace=3;Reference=18;Parent=9;Eof=4;Allocated=4;Attributes=0;Creation=0;Modified=0;Changed=0;Accessed=$accessTime}}
+                'DirectoryReadWindowAheadRaw'{$entries[1].Accessed=$accessTime+2001}
+                'DirectoryReadWindowNoPolicy'{$timeline.LastAccessPolicy=$null}
+            }
+        }
         $timeline.CadenceProof=Test-InvariantCadence $baseline @($sample) $timeline.Operations $timeline.WriterFence
         return Test-NoUnapprovedByte $baseline @() @($sample) $ledger $timeline -SyntheticRun:($Variant -notin @('UnmarkedSynthetic','LedgerInRealRun','ExternalInRealRun','RealMissingLedger'))
     } finally { [IO.Directory]::Delete($dir,$true) }
@@ -470,6 +501,16 @@ Check-IO 'PredicateLostCompletion' {
             @($v.Assertions | Where-Object { $_.Name -eq 'AllowedImageCoverage' }).Count -eq 0
     }
     $ok
+}
+Check-IO 'PredicateDirectoryReadWindow' {
+    $v=SyntheticPredicate 'DirectoryReadWindow'
+    $v.Verdict -ceq 'PASS' -and $v.ForbiddenByteCount -eq 0 -and @($v.Assertions | Where-Object Verdict -cne 'PASS').Count -eq 0
+}
+foreach($variant in @('OtherTimestamp','ExternalName','Extra','AheadRaw','NoPolicy')){
+    Check-IO ('PredicateDirectoryReadWindowRejects'+$variant) {
+        $v=SyntheticPredicate ('DirectoryReadWindow'+$variant)
+        $v.Verdict -ceq 'FAIL' -and @($v.Assertions | Where-Object {$_.Name -ceq 'DirectoryMetadata' -and $_.Verdict -ceq 'FAIL'}).Count -eq 1
+    }
 }
 function FixtureBytes([int] $Length, [int] $Seed) {
     $b = [byte[]]::new($Length)

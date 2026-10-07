@@ -973,7 +973,12 @@ def mvp_case_gate(result, latency_evidence=None):
             name, verdict = assertion.get('Name', ''), assertion.get('Verdict')
             if verdict == 'PASS':
                 continue
-            allowed = (name in MVP_DEFERRED_EXACT or
+            # C05's second observer namespaces the same proofs. Resolve only
+            # that row's exact source prefix; keep the fixed allowlist intact.
+            deferred_name = name
+            if result.get('CaseId') == 'C05-denied-external-rename' and name.startswith('C05Source'):
+                deferred_name = name[len('C05Source'):]
+            allowed = (deferred_name in MVP_DEFERRED_EXACT or
                        bool(name[:-len('PublicationAndTemporalCoverage')]) and name.endswith('PublicationAndTemporalCoverage') or
                        # The product emits no creation receipt; B01 (junction-swapped hand-back folder, same MVP
                        # suite) proves safe relative creation by behavior. Owner decision pending (2026-10-07).
