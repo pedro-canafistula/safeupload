@@ -618,6 +618,8 @@ def run_case(args, case, mode, ev, files, package, tree_hash, provenance):
     params = {'CaseId': case, 'Mode': mode, 'RunName': name, 'ExpectedOriginalPolicySha256': args.policy_sha.upper(),
               'ExpectedServicePackageSha256': sha(package), 'ExpectedServiceTreeSha256': tree_hash,
               'ExpectedSignerThumbprint': provenance['Signer']}
+    if args.mapped_stack_diagnostic_seconds:
+        params['MappedStackDiagnosticSeconds'] = args.mapped_stack_diagnostic_seconds
     transfers = []
     for param, (path, hash_param) in files.items():
         leaf = path.stem + '-' + sha(path)[:16] + path.suffix
@@ -709,6 +711,8 @@ def main():
         parser.add_argument(value)
     parser.add_argument('--agent-source-commit', default='HEAD')
     parser.add_argument('--mvp-latency-evidence', type=Path, help='Dedicated unheld latency JSON; pinned with this run')
+    parser.add_argument('--mapped-stack-diagnostic-seconds', type=int, choices=(0, 600), default=0,
+                        help='C02 runtime-Verifier only: keep native actor alive for stack capture; never qualifies')
     parser.add_argument('--cases', nargs='+')
     parser.add_argument('--modes', nargs='+', choices=MODES)
     args = parser.parse_args()
@@ -725,6 +729,9 @@ def main():
     cases = args.cases or list(rows)
     modes = args.modes or list(MODES)
     require(len(cases) == len(set(cases)) and set(cases) <= rows.keys() and len(modes) == len(set(modes)), 'Unknown/duplicate selection')
+    require(not args.mapped_stack_diagnostic_seconds or
+            (set(cases) <= {'C02-approve-absent', 'C02-block-absent'} and modes == ['runtime-verifier']),
+            'Mapped stack diagnostic requires only C02 cases in runtime-Verifier mode')
     files, package, tree_hash, provenance = build_inputs(args, commit, agent_commit, head)
     args.mvp_latency_record = None
     if args.mvp_latency_evidence:

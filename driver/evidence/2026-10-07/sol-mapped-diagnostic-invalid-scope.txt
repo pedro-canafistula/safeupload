@@ -1,0 +1,1 @@
+Invariant qualification preflight failed: Mapped stack diagnostic requires only C02 cases in runtime-Verifier mode

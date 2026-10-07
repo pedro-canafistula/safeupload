@@ -1029,3 +1029,17 @@ The safe W01 checkpoint parent was written by Sol and checked by root: Windows P
   (`phase4-suite-sol-c04a1-index.txt`, root 992bf816). Final raw failure is
   Raw/FSCTL identity mismatch (FileRecord), distinct from C03 truncated Map.
   Replacement publication is reached; no cached-public-proof substitution.
+
+- C02 stack-capture decision: optional exact 600-second mapped receipt wait,
+  accepted only for C02 runtime-Verifier and pinned in all phase parameters/state.
+  Extend only that actor task to 15 minutes; normal 60-second behavior unchanged.
+  Durable marker records real actor identity/boot/QPC before waiting. An explicit
+  unallowlisted C02StackDiagnosticOnly INCONCLUSIVE prevents functional/MVP
+  qualification even if the operation returns. Preserve empty-file extending
+  mapping, early source close, section/view lifetime and native receipts. This
+  permits a live-memory snapshot of the blocked call without weakening a case.
+
+- [x] C02 diagnostic option Windows gate: parser 0, proof adapters 229/native
+  observer 88 PASS (`sol-harness-windows-validation-u.txt`); Python 18+7 PASS.
+  Invalid S00 diagnostic selection refuses before build/guest work
+  (`sol-mapped-diagnostic-invalid-scope.txt`). Runtime diagnostic not yet run.
