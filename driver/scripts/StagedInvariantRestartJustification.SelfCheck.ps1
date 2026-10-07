@@ -5,7 +5,7 @@ $ErrorActionPreference='Stop'
 $tokens=$null;$errors=$null
 $ast=[Management.Automation.Language.Parser]::ParseFile((Join-Path $PSScriptRoot 'Test-StagedInvariantSuite.ps1'),[ref]$tokens,[ref]$errors)
 if($errors.Count){throw 'Suite parse failed'}
-foreach($name in @('Load-State','Get-ActivatingWriterBody','Get-R02WriterBody','Get-B02JustificationClientBody','Get-B02WriterBody','Initialize-InvariantWts','Test-R02Held','Test-R02Protected','Test-R02Pending','Test-InvariantInteractiveActor','Test-B02Window','Test-B02Versions','Test-B02Notifications')){
+foreach($name in @('Load-State','Get-ActivatingWriterBody','Get-R02WriterBody','Get-B02JustificationClientBody','Get-B02WriterBody','Initialize-InvariantWts','Test-R02Held','Test-R02Protected','Test-R02Pending','Test-InvariantInteractiveActor','Test-B02Window','Test-B02Versions','Test-B02Notifications','Save-B02ReadyTimeoutDiagnostics','Get-ErrorChain')){
     $fn=@($ast.FindAll({param($node)$node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -ceq $name},$false))
     if($fn.Count -ne 1){throw ('Unique function unavailable: '+$name)};Invoke-Expression $fn[0].Extent.Text
 }
@@ -82,6 +82,42 @@ foreach($field in @('gap','wrongSession','wrongDigest','v1Release','doubleReleas
     switch($field){'gap' {$bad.Complete=$false} 'wrongSession' {$bad.Emissions[2].Entry.TargetSessionId=3} 'wrongDigest' {$bad.Emissions[2].Entry.Sha256Hex=$d1} 'v1Release' {$bad.Emissions[2].Entry.TransferId=$first.TransferId} 'doubleRelease' {$bad.Emissions+=@($bad.Emissions[2])} 'wrongOrder' {$bad.Emissions[2].Entry.Sequence=15}}
     Assert-Control ((Test-B02Notifications $bad $first.TransferId $latest.TransferId 2 $d1 $d2).Verdict -cne 'PASS') ('reject notification '+$field)
 }
+# Timeout diagnostics are read-only and must neither erase nor reclassify the
+# first prerequisite failure. Mock sources; never run the real service here.
+function Get-ActivationCurrentProductStatus([string]$Tag,[int]$TimeoutMs) {
+    if($script:b02StatusFails){throw 'fixture status unavailable'}
+    return @{Status='OK';Tag=$Tag;ServerSid='S-1-5-18';TimeoutMs=$TimeoutMs;Value=@{admissionCoverage='Pending'}}
+}
+function Close-ActivationNotificationCapture {
+    $script:b02CloseCalls++
+    if($script:b02CloseFails){throw 'fixture close failed'}
+}
+function Get-WinEvent {
+    [CmdletBinding()] param($FilterHashtable)
+    $script:b02EventStart=$FilterHashtable.StartTime
+    if($script:b02EventsFail){throw 'fixture events unavailable'}
+    return @(@{TimeCreated=$FilterHashtable.StartTime;ProviderName='SafeUpload.Agent.Service';LevelDisplayName='Warning';Message="coverage Pending`nwriter Unknown"},
+        @{TimeCreated=$FilterHashtable.StartTime;ProviderName='Other';LevelDisplayName='Information';Message='unrelated'})
+}
+$diagRoot=Join-Path ([IO.Path]::GetTempPath()) ('b02-ready-controls-'+[guid]::NewGuid().ToString('N'))
+$null=[IO.Directory]::CreateDirectory($diagRoot);$script:evidenceDirectory=$diagRoot
+try{
+    $script:b02StatusFails=$false;$script:b02EventsFail=$false;$script:b02CloseFails=$false;$script:b02CloseCalls=0
+    $since=[DateTime]::Now;$original=@{Message='B02 agent Ready timeout'};$trial=@{Errors=@($original);Assertions=@();Samples=@()}
+    Save-B02ReadyTimeoutDiagnostics $trial $since
+    $log=[IO.File]::ReadAllText($trial.ReadyTimeout.EventLogPath)
+    Assert-Control ($trial.ReadyTimeout.DiagnosticOnly -eq $true -and $trial.ReadyTimeout.CurrentStatus.Value.admissionCoverage -ceq 'Pending' -and
+        $trial.ReadyTimeout.CurrentStatus.TimeoutMs -eq 3000 -and $trial.ReadyTimeout.Errors.Count -eq 0 -and $script:b02CloseCalls -eq 1 -and $script:b02EventStart -eq $since) 'retain bounded current status and close its pipe on timeout'
+    Assert-Control ($log.Contains('coverage Pending writer Unknown') -and -not $log.Contains('unrelated')) 'retain service event diagnosis from the exact launch window'
+    Assert-Control ($trial.Errors.Count -eq 1 -and $trial.Errors[0].Message -ceq 'B02 agent Ready timeout' -and $trial.Assertions.Count -eq 0 -and $trial.Samples.Count -eq 0) 'diagnostics never fabricate a PASS or raw sample or erase original timeout'
+    foreach($failure in @('status','events','close','all')){
+        $script:b02StatusFails=$failure -cin @('status','all');$script:b02EventsFail=$failure -cin @('events','all');$script:b02CloseFails=$failure -cin @('close','all');$script:b02CloseCalls=0
+        $trial=@{Errors=@($original);Assertions=@();Samples=@()};Save-B02ReadyTimeoutDiagnostics $trial $since
+        $expectedErrors=if($failure -ceq 'all'){3}else{1}
+        Assert-Control ($trial.ReadyTimeout.Errors.Count -eq $expectedErrors -and $script:b02CloseCalls -eq 1 -and $trial.Errors[0].Message -ceq 'B02 agent Ready timeout' -and
+            $trial.Assertions.Count -eq 0 -and $trial.Samples.Count -eq 0) ('diagnostic '+$failure+' failure preserves the original readiness blocker')
+    }
+}finally{Remove-Item -LiteralPath $diagRoot -Recurse -Force}
 foreach($body in @((Get-R02WriterBody),(Get-B02WriterBody))){
     $e=$null;$t=$null;$generated=[Management.Automation.Language.Parser]::ParseInput($body,[ref]$t,[ref]$e)
     Assert-Control ($e.Count -eq 0) 'generated actor parses in PS5.1'

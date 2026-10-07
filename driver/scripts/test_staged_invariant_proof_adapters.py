@@ -121,6 +121,30 @@ class ProofTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, 'Required raw evidence manifest missing: raw-external'):
                 Q.validate_raw_artifacts(root, 'guest\\', ('raw', 'raw-external'))
 
+    def test_primary_raw_manifest_still_required_after_guest_prerequisite_failure(self):
+        with tempfile.TemporaryDirectory(prefix='b02-ready-timeout-proof-', dir='/tmp') as directory:
+            root = Path(directory)
+            (root / 'case.guest-export.txt').write_text(json.dumps({
+                'CaseId': 'B02', 'Trials': [{'Errors': [{'Message': 'B02 agent Ready timeout'}],
+                                          'Samples': [], 'Operations': []}]}))
+            (root / 'b02-ready-timeout-events.txt').write_text('coverage Pending; writer Unknown\n')
+            with self.assertRaisesRegex(RuntimeError, 'Required raw evidence manifest missing: raw$'):
+                Q.validate_raw_artifacts(root, 'guest\\')
+            (root / 'raw').mkdir()
+            artifact = root / 'raw/extent.bin'
+            artifact.write_bytes(b'whole physical image')
+            record = {'Path': 'guest\\raw\\extent.bin', 'Length': artifact.stat().st_size,
+                      'Sha256': Q.sha(artifact)}
+            manifest = root / 'raw/manifest.ndjson'
+            manifest.write_text('')
+            with self.assertRaisesRegex(RuntimeError, 'Raw evidence manifest empty: raw$'):
+                Q.validate_raw_artifacts(root, 'guest\\')
+            manifest.write_text(json.dumps(record) + '\n')
+            Q.validate_raw_artifacts(root, 'guest\\')
+            artifact.write_bytes(b'wrong physical image')
+            with self.assertRaisesRegex(RuntimeError, 'raw artifact hash/length mismatch'):
+                Q.validate_raw_artifacts(root, 'guest\\')
+
     def test_c01_polled_journal_bytes_remain_bound(self):
         with tempfile.TemporaryDirectory(prefix='c01-journal-proof-', dir='/tmp') as directory:
             root = Path(directory)

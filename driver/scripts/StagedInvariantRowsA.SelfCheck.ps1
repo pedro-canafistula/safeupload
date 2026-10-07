@@ -8,7 +8,7 @@ try {
     $ast=[Management.Automation.Language.Parser]::ParseFile((Join-Path $PSScriptRoot 'Test-StagedInvariantSuite.ps1'),[ref]$tokens,[ref]$errors)
     if($errors.Count){throw ($errors | Out-String)}
     foreach($name in @('Get-B02JustificationClientBody','Get-WriterBody','Get-R01WriterBody','Get-B01WriterBody','Get-CachedSecondUserBody','Test-R01OfflineCalls','Test-R01OfflineAbsent','Test-R01HeldRecovery','Test-R01HeldNotifications',
-        'Test-R01JournalSequence','Test-R01ActorCalls','Test-R01OutcomeSample','Test-R01ReleasedOnce','Test-B01JunctionReceipt','Test-B01FailedHandBack','Test-B01FailureNotification',
+        'Test-R01JournalSequence','Test-R01ActorCalls','Capture-R01OutcomeSample','Test-R01OutcomeSample','Test-R01ReleasedOnce','Test-B01JunctionReceipt','Test-B01FailedHandBack','Test-B01FailureNotification',
         'Test-B01SentinelSample','Test-B01FailureAudit','Test-AgentLogContinuity','ConvertFrom-AgentEventXml','Test-CachedSecondUserDenial','Set-CachedAssertionFamily','Test-CachedActorCalls','Test-CachedSample','Test-CachedImage')){
         $defs=@($ast.FindAll({param($node)$node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -ceq $name},$false))
         if($defs.Count -ne 1){throw ('Missing/ambiguous function: '+$name)}
@@ -65,6 +65,24 @@ try {
     $terminal=@{StateName='Released';TransferId='id';DestinationGeneration=1;SealedOnce=$true;Sha256Hex='A';History=@('Allocated','Unsealed','Sealed','Inspecting','Approved','Publishing','Released')}
     $transitions=@($initial,$unsealed,$terminal)
     Check (Passed (Test-R01JournalSequence $transitions 'A')) 'R01 exact recovered/fresh inspected history and digest passes.'
+    $seal=@{StateName='Sealed';TransferId='id';DestinationGeneration=1;SealedOnce=$true;Sha256Hex=$null;History=@('Allocated','Unsealed','Sealed')}
+    $inspecting=Clone $seal;$inspecting.StateName='Inspecting';$inspecting.History+= 'Inspecting'
+    Check (Passed (Test-R01JournalSequence @($initial,$unsealed,$seal,$inspecting,$terminal) 'A')) 'R01 accepts real pre-digest Sealed/Inspecting followed by exact final digest.'
+    foreach($stateName in @('Sealed','Inspecting','Approved','Publishing','Released')){
+        $earlier=Clone $seal;$earlier.StateName=$stateName;$earlier.Sha256Hex='initial-image'
+        Check (Rejected (Test-R01JournalSequence @($initial,$unsealed,$earlier,$terminal) 'A')) ('R01 rejects earlier differing '+$stateName+' digest despite later correct release.')
+        $earlier.Sha256Hex=''
+        Check (Rejected (Test-R01JournalSequence @($initial,$unsealed,$earlier,$terminal) 'A')) ('R01 rejects empty '+$stateName+' digest rather than treating it as null.')
+    }
+    foreach($stateName in @('Approved','Publishing','Released')){
+        $missing=Clone $seal;$missing.StateName=$stateName
+        Check (Rejected (Test-R01JournalSequence @($initial,$unsealed,$missing,$terminal) 'A')) ('R01 requires digest after inspection: '+$stateName+'.')
+    }
+    $missing=Clone $terminal;$missing.Sha256Hex=$null
+    Check (Rejected (Test-R01JournalSequence @($initial,$unsealed,$seal,$missing) 'A')) 'R01 rejects missing terminal digest.'
+    $missing=Clone $terminal;$missing.SealedOnce=$false
+    Check (Rejected (Test-R01JournalSequence @($initial,$unsealed,$missing) 'A')) 'R01 rejects terminal without seal proof.'
+    Check (Rejected (Test-R01JournalSequence @($initial,$unsealed,$seal,$inspecting) 'A')) 'R01 requires terminal release, not only null pre-digest records.'
     foreach($change in @('history','digest','identity','double-release')){
         $bad=Clone $terminal
         switch($change){'history'{$bad.History=@('Allocated','Approved','Released')}'digest'{$bad.Sha256Hex='other'}'identity'{$bad.TransferId='other'}'double-release'{$bad.History+= 'Released'}}
@@ -77,6 +95,30 @@ try {
     Check (Passed (Test-R01ReleasedOnce $terminal $releaseProof 0 'A')) 'R01 one exact Released journal and emission passes.'
     $bad=Clone $releaseProof;$bad.Emissions+= $bad.Emissions[0]
     Check (Rejected (Test-R01ReleasedOnce $terminal $bad 0 'A')) 'R01 rejects duplicate Released emission.'
+    # Exercise the capture ordering without any volume write or native reader.
+    function Flush-InvariantFinalVolume {
+        $script:r01CaptureCalls+= 'flush'
+        if($script:r01FlushFails){throw 'fixture flush failure'}
+        return @{VolumeGuid=$script:r01FlushGuid;Purpose='FinalAfterObservationWindow';StartQpc=10;EndQpc=20}
+    }
+    function Capture-CachedSample($Context,$Baseline,[string]$PhaseName,[long]$Sequence) {
+        $script:r01CaptureCalls+= 'capture'
+        return [pscustomobject]@{Status=$script:r01CaptureStatus;Phase=$PhaseName;Sequence=$Sequence;Start=@{Qpc=21};Captures=@();Error='fixture capture result'}
+    }
+    $script:r01FlushFails=$false;$script:r01FlushGuid='volume';$script:r01CaptureStatus='OK';$script:r01CaptureCalls=@()
+    $captureContext=@{CaseId='R01';Geometry=@{Guid='volume'}}
+    $flushed=Capture-R01OutcomeSample $captureContext @{} 8
+    Check (($script:r01CaptureCalls -join ',') -ceq 'flush,capture' -and $flushed.Phase -ceq 'OutcomeWait' -and $flushed.Sequence -eq 8 -and
+        $flushed.CacheFlush.VolumeGuid -ceq 'volume' -and $flushed.CacheFlush.Purpose -ceq 'R01PostCloseOutcomeObservation' -and $flushed.CacheFlush.EndQpc -lt $flushed.Start.Qpc) 'R01 flushes exact volume before outcome capture and retains receipt.'
+    foreach($change in @('flush-failed','wrong-volume','wrong-case')){
+        $script:r01CaptureCalls=@();$script:r01FlushFails=($change -ceq 'flush-failed');$script:r01FlushGuid=if($change -ceq 'wrong-volume'){'other'}else{'volume'}
+        $ctx=Clone $captureContext;if($change -ceq 'wrong-case'){$ctx.CaseId='C01'}
+        $threw=$false;try{$null=Capture-R01OutcomeSample $ctx @{} 8}catch{$threw=$true}
+        Check ($threw -and 'capture' -cnotin $script:r01CaptureCalls) ('R01 refuses raw capture on '+$change+'.')
+    }
+    $script:r01FlushFails=$false;$script:r01FlushGuid='volume';$script:r01CaptureStatus='ERROR'
+    $failed=Capture-R01OutcomeSample $captureContext @{} 9
+    Check ($failed.Status -ceq 'ERROR' -and $failed.Error -ceq 'fixture capture result') 'R01 preserves post-flush raw capture errors without accepting them.'
     $junction=@{Pid=101;Sid=$actor.Sid;BootId='fixture';Token='token';Root=(Join-Path $actor.Profile 'SafeUpload\_bloqueados');Sentinel='C:\sentinel';Leaf='id.txt';ExitCode=0;Reparse=$true;Held=$true;Target=@('C:\sentinel');Qpc=100}
     Check (Passed (Test-B01JunctionReceipt $junction $actor 'token' 'C:\sentinel' 'id.txt' 90)) 'B01 exact actor junction receipt passes.'
     $bad=Clone $junction;$bad.Target=@('C:\other')

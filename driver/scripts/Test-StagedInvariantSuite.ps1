@@ -3360,14 +3360,19 @@ function Invoke-CachedObservation {
             if($poll.Entries.Count -gt 1){throw 'C01 destination has multiple transfer manifests'}
             foreach($entry in $poll.Entries){
                 if($trial.JournalTransitions.Count -and $trial.JournalTransitions[0].TransferId -ine $entry.TransferId){throw 'C01 transfer identity changed while waiting'}
-                if(-not $trial.JournalTransitions.Count -or $trial.JournalTransitions[-1].State -ne $entry.State){$trial.JournalTransitions+= $entry}
+                # R01 checks every observed digest, including successive receipts
+                # in the same state. A later correct digest cannot hide an earlier one.
+                if($CaseId -ceq 'R01' -or -not $trial.JournalTransitions.Count -or $trial.JournalTransitions[-1].State -ne $entry.State){$trial.JournalTransitions+= $entry}
                 if($entry.StateName -ceq $wanted){$terminal=$entry}
                 if($CaseId -ceq 'B01' -and $null -ne $terminal){
                     $manifest=(ConvertFrom-ServiceJournalRecord $entry.Record).Entry
                     if($manifest.HandbackState -ne 3){$terminal=$null}
                 }
             }
-            $sequence++;$sample=Capture-CachedSample $context $baseline 'OutcomeWait' $sequence;$samples+= $sample
+            $sequence++
+            if($CaseId -ceq 'R01'){$sample=Capture-R01OutcomeSample $context $baseline $sequence}
+            else{$sample=Capture-CachedSample $context $baseline 'OutcomeWait' $sequence}
+            $samples+= $sample
             if($CaseId -ceq 'R01'){$trial.Assertions+=Test-R01OutcomeSample $sample $baseline $imageA}
             if($row.Outcome -ceq 'BLOCK'){$predicateSamples+= $sample;$checkpoints+=Get-ExpectedCheckpoint $baseline $sample.Phase $sequence;$trial.Assertions+=Test-CachedSample $sample $baseline $false $imageA $imageB}
             if($CaseId -ceq 'B01'){Add-B01SentinelSample $trial $externalContext $externalBaseline 'HandBackWait'}
@@ -4732,9 +4737,17 @@ function Test-R01HeldNotifications($Proof,[string]$TransferId) {
 function Test-R01JournalSequence($Transitions,[string]$Digest) {
     $last=$Transitions[-1];$expected='Allocated,Unsealed,Sealed,Inspecting,Approved,Publishing,Released'
     $sealed=@($Transitions | Where-Object SealedOnce)
+    # SealAsync persists SealedOnce before the publisher opens/hashes the
+    # immutable snapshot. Sealed/Inspecting may therefore have a null digest;
+    # the publisher records it on Approved. Null is not a different byte image.
+    # Every recorded sealed digest must still match, and post-inspection records
+    # and the terminal release must carry the digest of the final whole image.
+    $wrong=@($sealed | Where-Object {$null -ne $_.Sha256Hex -and $_.Sha256Hex -cne $Digest})
+    $missing=@($sealed | Where-Object {$null -eq $_.Sha256Hex -and $_.StateName -cnotin @('Sealed','Inspecting')})
+    $released=$last.StateName -ceq 'Released' -and $last.SealedOnce -eq $true -and $last.Sha256Hex -ceq $Digest
     return ,@(
         @{Name='R01JournalOrder';Verdict=$(if(($last.History -join ',') -ceq $expected){'PASS'}else{'FAIL'});Reason='Durable history requires recovery, a fresh seal and real inspection, then exactly one release.';Evidence=$Transitions},
-        @{Name='R01SealedDigest';Verdict=$(if($sealed.Count -and -not @($sealed | Where-Object Sha256Hex -cne $Digest).Count){'PASS'}else{'FAIL'});Reason='All observed sealed versions equal the final whole private image A.'},
+        @{Name='R01SealedDigest';Verdict=$(if($released -and -not $wrong.Count -and -not $missing.Count){'PASS'}else{'FAIL'});Reason='Every recorded sealed digest and the required terminal Released digest equal final whole private image A; only pre-digest Sealed/Inspecting receipts may have null Sha256Hex.';Evidence=@($sealed | Select-Object StateName,Sha256Hex,TransferId,DestinationGeneration,Artifact)},
         @{Name='R01JournalIdentity';Verdict=$(if($Transitions.Count -and -not @($Transitions | Where-Object {$_.TransferId -ine $last.TransferId -or $_.DestinationGeneration -ne $last.DestinationGeneration}).Count){'PASS'}else{'FAIL'});Reason='One exact transfer and destination generation across service restart, seal and release.'})
 }
 function Test-R01ActorCalls($Calls,[long]$ReadyQpc,[long]$CloseQpc) {
@@ -4744,6 +4757,18 @@ function Test-R01ActorCalls($Calls,[long]$ReadyQpc,[long]$CloseQpc) {
     $assertions=@(@{Name='R01ActorCallShape';Verdict=$(if($shape){'PASS'}else{'FAIL'});Reason='Initial write/flush, offline rewrite/flush, then last handle close.';Evidence=$Calls})
     if($shape){$assertions+=Test-CachedActorCalls @($Calls[0],$Calls[1],$Calls[2],$Calls[5]) 'cached' $ReadyQpc $CloseQpc}
     return ,$assertions
+}
+function Capture-R01OutcomeSample($Context,$Baseline,[long]$Sequence) {
+    # These samples follow last-upper-close and can already encounter the new
+    # approved publication file. Flush its exact volume before raw MFT capture,
+    # as at FinalQuiescence, rather than accepting a cached/raw identity mismatch.
+    if($Context.CaseId -cne 'R01'){throw 'R01 outcome capture requires its own observer'}
+    $flush=Flush-InvariantFinalVolume
+    if($flush.VolumeGuid -cne $Context.Geometry.Guid){throw 'R01 outcome flush/observer volume identity mismatch'}
+    $flush.Purpose='R01PostCloseOutcomeObservation'
+    $sample=Capture-CachedSample $Context $Baseline 'OutcomeWait' $Sequence
+    $sample | Add-Member NoteProperty CacheFlush $flush
+    return $sample
 }
 function Test-R01OutcomeSample($Sample,$Baseline,[byte[]]$ImageA) {
     # Publication can race a poll. Each raw capture and each reader may show
@@ -5927,6 +5952,21 @@ function Get-B02HandBack($Actor,$OwnerFiles,[string]$Digest,[int]$Length,[string
     $evidenceDirectory=Join-Path $evidenceDirectory $Label;$null=New-Item -ItemType Directory -Path $evidenceDirectory
     return Get-X01HandBack $Actor $OwnerFiles $Digest $Length
 }
+function Save-B02ReadyTimeoutDiagnostics($Trial,[DateTime]$Since) {
+    # Readiness failure precedes the raw observer. Retain the original failure
+    # and its service diagnosis; neither a status receipt nor logs replace raw
+    # destination proof or authorize starting the actor after the timeout.
+    $diagnostics=@{DiagnosticOnly=$true;CurrentStatus=$null;Errors=@();EventLogPath=(Join-Path $evidenceDirectory 'b02-ready-timeout-events.txt')}
+    $Trial.ReadyTimeout=$diagnostics
+    try{$diagnostics.CurrentStatus=Get-ActivationCurrentProductStatus 'b02-ready-timeout-current' 3000}
+    catch{$diagnostics.Errors+=Get-ErrorChain $_.Exception}
+    finally{try{Close-ActivationNotificationCapture}catch{$diagnostics.Errors+=Get-ErrorChain $_.Exception}}
+    try{
+        Get-WinEvent -FilterHashtable @{LogName='Application';StartTime=$Since} -ErrorAction Stop | Where-Object ProviderName -match 'SafeUpload' |
+            ForEach-Object {$_.TimeCreated.ToString('o')+' '+$_.ProviderName+' '+$_.LevelDisplayName+' '+($_.Message -replace '\s+',' ')} |
+            Set-Content -LiteralPath $diagnostics.EventLogPath -Encoding UTF8 -ErrorAction Stop
+    }catch{$diagnostics.Errors+=Get-ErrorChain $_.Exception}
+}
 function Invoke-B02Observation {
     $context=$null;$agent=$null;$actor=$null;$baseline=$null;$first=$null;$latest=$null;$readyEvent=$null
     $trial=[ordered]@{Errors=@();Assertions=@();Operations=@();Samples=@();PublicReceipts=@();JournalSnapshots=@();Reasons=@();Verdict='INCONCLUSIVE';ForbiddenByteCount=$null}
@@ -5937,10 +5977,11 @@ function Invoke-B02Observation {
         if($Mode -ceq 'runtime-verifier'){& verifier.exe /volatile /flags 0x13B /adddriver SafeUpload.sys | Out-Host;if($LASTEXITCODE -ne 0){throw 'Runtime Verifier arm failed'}}
         $trial.VerifierBefore=Get-VerifierEvidence 'b02-before' -RequireMode;$ready=Get-Readiness;$boot=Get-BootPolicyReadback
         if($ready.VolumeGuid -cne $state.VolumeGuid -or $boot.RecordBase64 -cne $state.ExpectedBootRecord -or $boot.PendingPresent -or -not $boot.AclValid){throw 'B02 exact boot policy mismatch'}
+        $agentStartLocal=[DateTime]::Now.AddSeconds(-1)
         $readyEvent=[Threading.EventWaitHandle]::new($false,[Threading.EventResetMode]::ManualReset,'Global\SafeUploadServiceReady');[void]$readyEvent.Reset()
         $agent=Start-StagedTestAgent $serviceDirectory (Join-Path $evidenceDirectory 'b02-agent') -Arguments '--Diagnostics:StagedProofProxy=true'
         $state.AgentServiceStarted=$true;$state.AgentServiceCreated=$agent.ServiceCreated;$state.AgentOriginalService=$agent.OriginalService;Save-State $state $statePath
-        if(-not $readyEvent.WaitOne([TimeSpan]::FromSeconds(45))){throw 'B02 agent Ready timeout'}
+        if(-not $readyEvent.WaitOne([TimeSpan]::FromSeconds(45))){Save-B02ReadyTimeoutDiagnostics $trial $agentStartLocal;throw 'B02 agent Ready timeout'}
         $serverProcess=Get-CimInstance Win32_Process -Filter ('ProcessId='+$agent.Process.Id)
         $serverOwner=Invoke-CimMethod -InputObject $serverProcess -MethodName GetOwnerSid
         if($serverOwner.ReturnValue -ne 0 -or $serverOwner.Sid -cne 'S-1-5-18' -or $serverProcess.Name -cne 'SafeUpload.Agent.Service.exe'){throw 'B02 justification product server OS provenance mismatch'}
