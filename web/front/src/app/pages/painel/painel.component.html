@@ -1,55 +1,27 @@
-<header class="page-header">
-  <h2>Visão geral</h2>
-  <p>Indicadores de inspeção processados pelo servidor central</p>
-</header>
-
-<div class="grid-kpi">
-  <div class="kpi-card">
-    <div class="kpi-icon">
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-           stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-        <polyline points="14 2 14 8 20 8"/>
-      </svg>
+<header class="page-header"><h2>Visão geral</h2><p>Indicadores calculados a partir dos eventos recebidos.</p>
+  <button class="btn-secondary" (click)="refresh.next()">Atualizar</button></header>
+<ng-container *ngIf="state$ | async as state">
+  <p role="status" *ngIf="state.loading">Carregando painel…</p>
+  <p role="alert" *ngIf="state.error">{{ state.error }} <a routerLink="/login">Entrar</a></p>
+  <ng-container *ngIf="state.data as dados">
+    <p>{{ dados.periodo }}</p>
+    <div class="metrics">
+      <section class="card"><h3>Inspeções</h3><strong>{{ dados.resumo.total | number }}</strong></section>
+      <section class="card"><h3>Bloqueados</h3><strong>{{ dados.resumo.bloqueados | number }}</strong>
+        <p>{{ percentage(dados.resumo.bloqueados, dados.resumo.total) | number:'1.1-1' }}% do total</p></section>
+      <section class="card"><h3>Aprovados</h3><strong>{{ dados.resumo.aprovados | number }}</strong>
+        <p>{{ percentage(dados.resumo.aprovados, dados.resumo.total) | number:'1.1-1' }}% do total</p></section>
+      <section class="card"><h3>Liberados sem inspeção</h3><strong>{{ dados.resumo.liberadosSemInspecao | number }}</strong>
+        <p>{{ percentage(dados.resumo.liberadosSemInspecao, dados.resumo.total) | number:'1.1-1' }}% do total</p></section>
     </div>
-    <div class="kpi-info">
-      <span class="kpi-label">Inspeções realizadas</span>
-      <strong class="kpi-value">{{ resumo_inspecoes.inspecoes.toLocaleString('pt-BR') }}</strong>
-      <span class="kpi-trend">+{{ resumo_inspecoes.variacao }}% vs. semana anterior</span>
-    </div>
-  </div>
-</div>
-
-<div class="block">
-  <div class="blocked-itens-card">
-    <div class="block-icon">
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-            stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <circle cx="12" cy="12" r="10"/>
-        <line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/>
-    </svg>
-    </div>
-    <div class="kpi-info">
-      <span class="kpi-label">Bloqueados</span>
-      <strong class="kpi-value">{{ resumo_bloqueados.quantidade.toLocaleString('pt-BR') }}</strong>
-    </div>
-  </div>
-</div>
-
-<div class="aproved">
-  <div class="aproved-itens-card">
-    <div class="aproved-icon">
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-            stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <circle cx="12" cy="12" r="10"/>
-        <line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/>
-    </svg>
-    </div>
-    <div class="kpi-info">
-      <span class="kpi-label">Aprovados</span>
-      <strong class="kpi-value">{{ resumo_aprovados.quantidade.toLocaleString('pt-BR') }}</strong>
-    </div>
-  </div>
-</div>
-
-<!-- o resto continua com *ngIf="dados" -->
+    <section class="card"><h3>Inspeções por dia</h3><ul class="daily-counts">
+      <li *ngFor="let day of dados.tendencia"><span>{{ day.data | date:'dd/MM':'UTC' }}</span><strong>{{ day.quantidade }}</strong></li>
+    </ul></section>
+    <section class="card"><h3>Categorias em arquivos bloqueados</h3>
+      <p *ngIf="!dados.categoriasBloqueadas.length">Nenhum bloqueio no período.</p>
+      <ol><li *ngFor="let category of dados.categoriasBloqueadas">{{ category.nome }}: {{ category.quantidade }}</li></ol></section>
+    <section class="card"><h3>Categorias da política vigente</h3><ul>
+      <li *ngFor="let category of dados.categoriasAtivas">{{ categories[category] }}</li></ul></section>
+    <section class="card"><h3>Últimas 6 inspeções recebidas</h3><app-event-table [events]="dados.recentes" /></section>
+  </ng-container>
+</ng-container>

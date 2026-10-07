@@ -12,7 +12,7 @@ public class CorsConfig implements WebMvcConfigurer {
     public void addCorsMappings(CorsRegistry registry) {
         registry.addMapping("/api/**")
                 // Endereço do Angular em desenvolvimento (ng serve).
-                .allowedOrigins("http://localhost:4200")
+                .allowedOrigins("http://localhost:4200", "http://127.0.0.1:4200")
                 .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS")
                 // Necessário para o cookie de sessão (JSESSIONID) ir e voltar entre domínios.
                 .allowCredentials(true);

@@ -4,14 +4,14 @@
     <p>Painel de administração</p>
 
     <div class="msg ok" *ngIf="sucesso">{{ sucesso }}</div>
-    <div class="msg erro" *ngIf="erro">{{ erro }}</div>
+    <div class="msg erro" role="alert" *ngIf="erro">{{ erro }}</div>
 
     <form (ngSubmit)="enviar()">
-      <label>E-mail</label>
-      <input name="email" [(ngModel)]="email" type="email" required />
+      <label for="email">E-mail</label>
+      <input id="email" name="email" [(ngModel)]="email" type="email" autocomplete="username" required />
 
-      <label>Senha</label>
-      <input name="senha" [(ngModel)]="senha" type="password" required />
+      <label for="senha">Senha</label>
+      <input id="senha" name="senha" [(ngModel)]="senha" type="password" autocomplete="current-password" required />
 
       <button class="btn-primary" [disabled]="carregando" type="submit">Entrar</button>
     </form>

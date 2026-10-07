@@ -129,6 +129,11 @@ public class AuthService {
         });
     }
 
+    public Usuario usuarioAtivo(Long idUsuario) {
+        if (idUsuario == null) return null;
+        return usuarios.findById(idUsuario).filter(usuario -> !usuario.isBloqueado()).orElse(null);
+    }
+
     private Sessao registrarSessao(Long idUsuario, String ip, String agente, boolean sucesso, String motivo) {
         Sessao sessao = new Sessao();
         sessao.setFkIdUsuario(idUsuario);

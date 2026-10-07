@@ -6,26 +6,26 @@
     <div class="msg erro" *ngIf="erro">{{ erro }}</div>
 
     <form (ngSubmit)="enviar()">
-      <label>Nome completo</label>
-      <input name="nomeCompleto" [(ngModel)]="nomeCompleto" required />
+      <label for="nomeCompleto">Nome completo</label>
+      <input id="nomeCompleto" name="nomeCompleto" [(ngModel)]="nomeCompleto" autocomplete="name" required />
 
-      <label>Nome de usuário</label>
-      <input name="username" [(ngModel)]="username" required />
+      <label for="username">Nome de usuário</label>
+      <input id="username" name="username" [(ngModel)]="username" autocomplete="username" required />
 
-      <label>E-mail</label>
-      <input name="email" [(ngModel)]="email" type="email" required />
+      <label for="email">E-mail</label>
+      <input id="email" name="email" [(ngModel)]="email" type="email" autocomplete="email" required />
 
-      <label>CPF</label>
-      <input name="cpf" [(ngModel)]="cpf" required />
+      <label for="cpf">CPF</label>
+      <input id="cpf" name="cpf" [(ngModel)]="cpf" required />
 
-      <label>Data de nascimento</label>
-      <input name="dataNascimento" [(ngModel)]="dataNascimento" type="date" />
+      <label for="dataNascimento">Data de nascimento</label>
+      <input id="dataNascimento" name="dataNascimento" [(ngModel)]="dataNascimento" type="date" />
 
-      <label>Senha</label>
-      <input name="senha" [(ngModel)]="senha" type="password" required minlength="8" />
+      <label for="senha">Senha</label>
+      <input id="senha" name="senha" [(ngModel)]="senha" type="password" autocomplete="new-password" required minlength="8" />
 
-      <label>Confirmar senha</label>
-      <input name="confirmarSenha" [(ngModel)]="confirmarSenha" type="password" required />
+      <label for="confirmarSenha">Confirmar senha</label>
+      <input id="confirmarSenha" name="confirmarSenha" [(ngModel)]="confirmarSenha" type="password" autocomplete="new-password" required />
 
       <button class="btn-primary" [disabled]="carregando" type="submit">Criar conta</button>
     </form>

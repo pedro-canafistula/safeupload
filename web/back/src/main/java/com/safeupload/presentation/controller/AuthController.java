@@ -36,6 +36,7 @@ public class AuthController {
 
             Usuario usuario = resultado.usuario();
             HttpSession session = request.getSession(true);
+            request.changeSessionId();
             session.setAttribute("idUsuario", usuario.getIdUsuario());
             session.setAttribute("idSessao", resultado.idSessao());
             session.setAttribute("role", usuario.getRole());
@@ -76,9 +77,11 @@ public class AuthController {
         if (session == null || session.getAttribute("idUsuario") == null) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
-        return ResponseEntity.ok(Map.of(
-                "idUsuario", session.getAttribute("idUsuario"),
-                "role", session.getAttribute("role")
-        ));
+        Usuario usuario = authService.usuarioAtivo((Long) session.getAttribute("idUsuario"));
+        if (usuario == null) {
+            session.invalidate();
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+        return ResponseEntity.ok(UsuarioResponse.de(usuario));
     }
 }
