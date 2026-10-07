@@ -1394,3 +1394,23 @@ The safe W01 checkpoint parent was written by Sol and checked by root: Windows P
 - [x] Merged A04 with seed-tail/latency corrections and dedicated-only 240-minute bounds; both A04 45-minute bounds and all four seed-tail controls retained. Windows PS5.1 parser clean, proof 270 and native observer 88 PASS; Python adapter18/MVP7/dedicated10/seed6/A04-10 PASS. Evidence: `driver/evidence/2026-10-07/sol-harness-windows-validation-ak.txt`, `sol-merged-python-*.txt`, `sol-merged-a04-seed-latency-pins.json`. Actual A04 runtime qualification remains pending.
 
 - [x] A04 first runtime `sol-a04r1`, b13/b19: independently confirmed two standard-user processes share one physical file object, P raw baseline and actual Pending accepted epoch; restoration clean. Case stopped with exact target H=1/C=T=W=0, Activating, opener PID correct, unknownReasons=0, but S=Unknown. The newly authored A04 harness required S=NO while H was live; the kernel caches LastSState=Unknown until final promotion evaluation. This is not evidence of premature promotion or duplicated cleanup. Qualification remains FAIL and forbidden bytes unknown. Evidence: `boot-start-invariant-A04-runtime-verifier-sol-a04r1-artifacts/case.json`; investigation/fix required before rerun.
+
+## 2026-10-07 morning (orchestrator)
+
+- [x] Overnight guest freeze = **driver bugcheck 0xD1** in `StageRegistryCopyUnknownSopChunk+0xf7` during the dedicated
+  cached-latency run `sol-lat-cached2` (runtime Verifier): a PAGED snapshot buffer written under `SectionLock`. Read with
+  volatility3 on the host from a fresh guest memory image, PDB GUID matched to b13
+  ([analysis](evidence/2026-10-07/lat-cached2-bugcheck-analysis.txt)). Fixed in `957aa15a` (nonpaged buffer). A read-only
+  Luna audit for other pageable memory touched at DISPATCH is running.
+- [x] **C02 root cause: livelock, not a stuck flush.** The actor thread had 427k context switches and 40.9 s kernel time
+  with a wait started at tick 0. Kernel disassembly (19045.2965) shows `MiCreateSectionCommon` delays and retries
+  `MiCreateSection` forever on STATUS_FILE_LOCK_CONFLICT; our backing I/O issued under Mm's recursive top-level IRP
+  (FSRTL_FSP_TOP_LEVEL_IRP) gets that status, so every retry redoes the resize
+  ([analysis](evidence/2026-10-07/c02-livelock-mm-retry-analysis.txt)). Fix `957aa15a`: backing resize work runs on a
+  system worker when a top-level IRP is set. Exact build `mvp4-b15` clean in all four configurations
+  (`evidence/2026-10-07/exact-mvp4-b15-*`). Fresh Luna review running; runtime C02 pending.
+- [ ] Guest recovery: the wrapper's offline rollback failed (could not read the libvirt-owned overlay); the guarded
+  script `evidence/2026-10-07/lat-cached2-bugcheck-rollback.sh` is waiting for the owner to run it.
+- **Owner decision (2026-10-07): unimplemented MVP rows (A05, B01, B02, R01, R02, R03, X01) are built as one
+  coordinated core variant each**, keeping the invariant (no unapproved byte at the destination, raw observer) and the
+  terminal state. The remaining design variants of section 4.1 become the first post-MVP hardening milestone.
