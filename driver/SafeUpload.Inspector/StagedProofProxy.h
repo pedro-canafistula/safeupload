@@ -106,6 +106,7 @@ static HRESULT SuProofSend(HANDLE port, LPVOID input, DWORD inputBytes, LPVOID o
     for (;;) {
         DWORD error;
         ULONGLONG now;
+        if (GetTickCount64() >= deadline) return HRESULT_FROM_WIN32(ERROR_TIMEOUT);
         pipe = CreateFileW(L"\\\\.\\pipe\\SafeUploadAdmissionEvidence.Capture", GENERIC_READ | GENERIC_WRITE,
             0, NULL, OPEN_EXISTING, FILE_FLAG_OVERLAPPED | SECURITY_SQOS_PRESENT | SECURITY_IDENTIFICATION, NULL);
         if (pipe != INVALID_HANDLE_VALUE) break;
@@ -123,7 +124,9 @@ static HRESULT SuProofSend(HANDLE port, LPVOID input, DWORD inputBytes, LPVOID o
             if (error == ERROR_FILE_NOT_FOUND) Sleep(10);
         }
     }
+    if (GetTickCount64() >= deadline) { hr = HRESULT_FROM_WIN32(ERROR_TIMEOUT); goto Done; }
     if (!SuProofSystemServer(pipe)) { hr = E_ACCESSDENIED; goto Done; }
+    if (GetTickCount64() >= deadline) { hr = HRESULT_FROM_WIN32(ERROR_TIMEOUT); goto Done; }
     if (!SuProofIo(pipe, TRUE, request, 4 + bodyBytes, deadline) ||
         !SuProofIo(pipe, FALSE, reply, sizeof(reply), deadline)) {
         hr = HRESULT_FROM_WIN32(GetLastError()); goto Done;
