@@ -1422,3 +1422,17 @@ The safe W01 checkpoint parent was written by Sol and checked by root: Windows P
 - **Owner decision (2026-10-07): unimplemented MVP rows (A05, B01, B02, R01, R02, R03, X01) are built as one
   coordinated core variant each**, keeping the invariant (no unapproved byte at the destination, raw observer) and the
   terminal state. The remaining design variants of section 4.1 become the first post-MVP hardening milestone.
+- [x] Luna review of 957aa15a REJECT (P1: caller-side upper flush under the recursive top-level IRP). Disposition in
+  `e9170960`: the flush stays on the caller (in C02 this thread is creating the control area; a worker-side
+  MmFlushSection could wait on it), and StageResize maps STATUS_FILE_LOCK_CONFLICT/0xC0000476 to a hard error under
+  any top-level IRP, so section creation fails instead of livelocking. Cleanup returns FLT_PREOP_SYNCHRONIZE (IRQL
+  audit). Follow-up review **ACCEPT WITH CONDITIONS** ([review](evidence/2026-10-07/luna-b17-resize-followup-review.txt)).
+  **Decision (orchestrator):** accept the tradeoff that a genuine transient lock conflict under a recursive top-level
+  IRP fails once instead of being retried (fail closed). Post-MVP: FileAllocationInformation ordering under a
+  recursive caller (no caller found), per-build qualification of Mm's retry behavior.
+- [x] Exact build `mvp4-b17` (`e9170960`, includes merge of control 26) clean in all four configurations.
+- [x] **C02 APPROVE on b17 works end to end** (run b17r1, runtime Verifier): mapping created, source closed with live
+  view, journal Allocated->Sealed->Inspecting->Approved->Publishing->Released, both independent readers see exact A,
+  136 PASS / 0 FAIL, ForbiddenByteCount 0, restoration clean. MVP blockers left: final raw capture (new file's MFT
+  record not yet written back: raw sequence 1 vs FSCTL 3) and dedicated latency. Harness fix `6ead2f25` (branch
+  feat/final-flush): flush the exact volume after the observation window, before the final capture.
