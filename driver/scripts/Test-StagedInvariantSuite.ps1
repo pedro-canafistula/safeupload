@@ -25,6 +25,8 @@ param(
     [Parameter(Mandatory=$true)][ValidatePattern('^[A-Za-z0-9._-]+$')][string]$TableFileName,
     [Parameter(Mandatory=$true)][ValidatePattern('^[A-Za-z0-9._-]+$')][string]$ObserverFileName,
     [Parameter(Mandatory=$true)][ValidatePattern('^[A-Za-z0-9._-]+$')][string]$HelperFileName,
+    # Diagnostic-only C02 hold extension, pinned in state/provenance; never qualifies.
+    [ValidateSet(0,600)][int]$MappedStackDiagnosticSeconds=0,
     # Internal SYSTEM startup coordinator; only AfterBoot accepts this switch.
     [switch]$StartupProbe
 )
@@ -1055,11 +1057,16 @@ function Get-ExpectedCheckpoint($Baseline,[string]$PhaseName,[long]$Sequence) {
     }
     return [pscustomobject]@{Phase=$PhaseName;OperationSequence=$Sequence;State=$row.ExpectedTimeline[2];Storage=$storage;Directories=$dirs;ReadDenials=@()}
 }
+function ConvertFrom-NtfsLastAccessOutput([string]$Text,[int]$ExitCode) {
+    $matches=[regex]::Matches($Text,'(?m)^\s*DisableLastAccess\s*=\s*([0-3])\s*\((User|System) Managed, (Enabled|Disabled)\)\s*$')
+    if($ExitCode -ne 0 -or $matches.Count -ne 1){return [pscustomobject]@{Value=$null;Management=$null;UpdatesDisabled=$null}}
+    return [pscustomobject]@{Value=[int]$matches[0].Groups[1].Value;Management=$matches[0].Groups[2].Value;UpdatesDisabled=($matches[0].Groups[3].Value -ceq 'Disabled')}
+}
 function Get-LastAccessEvidence {
     $text=(& fsutil.exe behavior query disablelastaccess 2>&1 | Out-String);$code=$LASTEXITCODE
-    $matches=[regex]::Matches($text,'(?im)^\s*DisableLastAccess\s*=\s*([0-3])\b')
+    $parsed=ConvertFrom-NtfsLastAccessOutput $text $code
     return [pscustomobject]@{Command='fsutil.exe behavior query disablelastaccess';Output=$text;ExitCode=$code;
-        Value=$(if($code -eq 0 -and $matches.Count -eq 1){[int]$matches[0].Groups[1].Value}else{$null});
+        Value=$parsed.Value;Management=$parsed.Management;UpdatesDisabled=$parsed.UpdatesDisabled;
         BootId=(Get-BootId);VolumeGuid=$state.VolumeGuid;Qpc=[Diagnostics.Stopwatch]::GetTimestamp();
         RegistryValue=(Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem').NtfsDisableLastAccessUpdate;
         Note='Query only: set disablelastaccess changes machine policy and may require reboot. No default is assumed.'}
@@ -2381,7 +2388,15 @@ function Invoke-CachedObservation {
         $trial.Assertions+=Test-CachedSample $sample $baseline $false $imageA $imageB
         if($cachedDenial){$externalSequence++;$null=Capture-CachedExternalSample $externalContext $externalBaseline 'BeforeOperation' $externalSequence $imageA}
         Write-DurableFile (Join-Path $actorDirectory 'go') $RunName -New
-        $held=Wait-WriterIdentity (Join-Path $actorDirectory 'held.clixml') 60
+        $heldWaitSeconds=60
+        if($MappedStackDiagnosticSeconds -ne 0){
+            $heldWaitSeconds=$MappedStackDiagnosticSeconds
+            $trial.Assertions+=@{Name='C02StackDiagnosticOnly';Verdict='INCONCLUSIVE';Reason='Diagnostic actor hold extension is not functional or latency qualification.'}
+            Write-DurableFile (Join-Path $evidenceDirectory 'stack-diagnostic-ready.clixml') ([Management.Automation.PSSerializer]::Serialize(@{
+                RunName=$RunName;CaseId=$CaseId;Mode=$Mode;Actor=$actor;StartedQpc=[Diagnostics.Stopwatch]::GetTimestamp();
+                WaitSeconds=$heldWaitSeconds;SuiteSha256=$ExpectedSuiteSha256;DiagnosticOnly=$true},32)) -New
+        }
+        $held=Wait-WriterIdentity (Join-Path $actorDirectory 'held.clixml') $heldWaitSeconds
         if($held.Pid -ne $actor.Pid -or $held.Sid -cne $actor.Sid -or $held.Token -cne $state.WriterToken -or $held.BootId -cne $context.BootId){throw 'Held receipt identity/token mismatch'}
         $trial.HeldReceipt=$held;$trial.Operations=@($held.Calls)
         $trial.Assertions+=@{Name='C01PrivateRead';Verdict=$(if($null -eq $held.PrivateSha256){'INCONCLUSIVE'}elseif($held.PrivateSha256 -ceq $digest){'PASS'}else{'FAIL'});Reason='Whole private handle/view (or external physical source) read must equal A after flush.'}
@@ -3180,6 +3195,7 @@ $cachedDenial=$cachedKind -ceq 'external-rename'
 $activationCaseIds=@('A01','A02','A03')
 $isActivationCase=$CaseId -cin $activationCaseIds
 if($row.Status -ne 'Ready' -or ($CaseId -notin @('S00-observer-control','S01-denied-write-after-boot','S02-agent-down-open-refused') -and -not $cachedCase -and -not $isActivationCase)){'CaseStatus=NOT_READY';throw "Case $CaseId is not implemented"}
+if($MappedStackDiagnosticSeconds -ne 0 -and ($CaseId -cnotin @('C02-approve-absent','C02-block-absent') -or $Mode -cne 'runtime-verifier')){throw 'Mapped stack diagnostic requires C02 runtime-Verifier'}
 if($StartupProbe -and $Phase -ne 'AfterBoot'){throw 'StartupProbe requires AfterBoot'}
 
 if($Phase -eq 'Prepare'){
@@ -3213,7 +3229,7 @@ if($Phase -eq 'Prepare'){
     if($cVolumes.Count -ne 1 -or [int]$cVolumes[0].BlockSize -le 0){throw ('Expected exactly one C: volume with a block size; found '+$cVolumes.Count)}
     $size=[int]$cVolumes[0].BlockSize*3
     $baseline=[Text.Encoding]::ASCII.GetBytes(('BASELINE-'+$RunName).PadRight($size,'B'))
-    $state=@{CaseId=$CaseId;Mode=$Mode;RunName=$RunName;TableRevision=$table.TableRevision;PrepareBootId=(Get-BootId);
+    $state=@{CaseId=$CaseId;Mode=$Mode;RunName=$RunName;MappedStackDiagnosticSeconds=$MappedStackDiagnosticSeconds;TableRevision=$table.TableRevision;PrepareBootId=(Get-BootId);
         OriginalAgentStart=$originalAgentStart;OriginalProcessCreationAudit=$originalProcessCreationAudit;OriginalPolicyBase64=[Convert]::ToBase64String([IO.File]::ReadAllBytes($policyPath));
         OriginalPolicyDirectorySddl=(Get-SecuritySddl (Split-Path -Parent $policyPath) $true);OriginalPolicyFileSddl=(Get-SecuritySddl $policyPath $false);
         BaselineBase64=[Convert]::ToBase64String($baseline);VolumeGuid=$volume[0].DeviceID;ActorUser=$actorUser;
@@ -3355,7 +3371,7 @@ $value=$b.ToString().Split([char]0)[0]
             if($LASTEXITCODE -ne 0){throw 'Read-only writer input ACL failed'}
         }
         $action=New-ScheduledTaskAction -Execute 'powershell.exe' -Argument ('-NoProfile -ExecutionPolicy Bypass -File "'+$writerLauncher+'"')
-        $actorMinutes=if($cachedExisting){10}else{5}
+        $actorMinutes=if($MappedStackDiagnosticSeconds -ne 0){15}elseif($cachedExisting){10}else{5}
         Register-ScheduledTask -TaskName $writerTask -Action $action -User ($env:COMPUTERNAME+'\'+$actorUser) -Password $password -RunLevel Limited -Settings (New-ScheduledTaskSettingsSet -ExecutionTimeLimit ([TimeSpan]::FromMinutes($actorMinutes))) | Out-Null
         $password=$null
         # Trusted coordinator launches this SAME pinned suite in a fresh process.
@@ -3396,6 +3412,7 @@ $value=$b.ToString().Split([char]0)[0]
     }
 }elseif($Phase -eq 'AfterBoot'){
     $state=Load-State $statePath
+    if($state.MappedStackDiagnosticSeconds -ne $MappedStackDiagnosticSeconds){throw 'Mapped diagnostic parameter/state mismatch'}
     if($state.CaseId -cne $CaseId -or $state.Mode -cne $Mode -or $state.RunName -cne $RunName){throw 'State identity mismatch'}
     if($StartupProbe){if($isActivationCase){Invoke-ActivationObservation}elseif($cachedCase){Invoke-CachedObservation}else{Invoke-SeedObservation};return}
     $observationError=$null
@@ -3416,6 +3433,7 @@ $value=$b.ToString().Split([char]0)[0]
     'INVARIANT_CASE_COMPLETED=True';'INVARIANT_RESTORED=True'
 }else{
     $state=Load-State $statePath
+    if($state.MappedStackDiagnosticSeconds -ne $MappedStackDiagnosticSeconds){throw 'Mapped diagnostic parameter/state mismatch'}
     if((Get-BootId) -ceq $state.AfterBootId -or [string]::IsNullOrWhiteSpace($state.AfterBootId)){throw 'Restoration reboot identity unavailable'}
     Assert-Hash $installedDriver $originalDriverHash;Assert-Hash $policyPath $ExpectedOriginalPolicySha256
     $finalAudit=Get-ProcessCreationAudit

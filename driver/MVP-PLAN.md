@@ -1029,3 +1029,62 @@ The safe W01 checkpoint parent was written by Sol and checked by root: Windows P
   (`phase4-suite-sol-c04a1-index.txt`, root 992bf816). Final raw failure is
   Raw/FSCTL identity mismatch (FileRecord), distinct from C03 truncated Map.
   Replacement publication is reached; no cached-public-proof substitution.
+
+- C02 stack-capture decision: optional exact 600-second mapped receipt wait,
+  accepted only for C02 runtime-Verifier and pinned in all phase parameters/state.
+  Extend only that actor task to 15 minutes; normal 60-second behavior unchanged.
+  Durable marker records real actor identity/boot/QPC before waiting. An explicit
+  unallowlisted C02StackDiagnosticOnly INCONCLUSIVE prevents functional/MVP
+  qualification even if the operation returns. Preserve empty-file extending
+  mapping, early source close, section/view lifetime and native receipts. This
+  permits a live-memory snapshot of the blocked call without weakening a case.
+
+- [x] C02 diagnostic option Windows gate: parser 0, proof adapters 229/native
+  observer 88 PASS (`sol-harness-windows-validation-u.txt`); Python 18+7 PASS.
+  Invalid S00 diagnostic selection refuses before build/guest work
+  (`sol-mapped-diagnostic-invalid-scope.txt`). Runtime diagnostic not yet run.
+
+- Raw identity diagnostic decision: preserve the actual FSCTL identity-check
+  response as an explicitly cached API container (offset -1) and report requested
+  record, raw/cached sequence, record number and base reference on mismatch.
+  This changes failure precision only: public bytes and metadata still require
+  raw-sector proof and exact API identity agreement. No cache fallback, flush,
+  retry/rebaseline, run-map refresh or new success path is introduced.
+
+- [x] Failure-only raw/FSCTL identity diagnostics validated: Windows parser 0,
+  proof adapters 229/native observer 88 PASS (`sol-harness-windows-validation-v.txt`);
+  Python 18+7 PASS. Existing raw/public success requirements remain unchanged.
+
+- C05 triage (`sol-c05d1`, root 4d4acdce): forbidden sampled 0/restoration
+  clean but actual FAILs remain. Parent names/IDs/EOF/allocation/attributes/
+  security unchanged; marker FILE_NAME Accessed advanced from
+  134358231702730276 to 134358232324312359. fsutil explicitly reports
+  `2 (System Managed, Disabled)`. Legacy Approved events have no TransferId
+  or destination in the emission record; all journal entries are pre-existing
+  unchanged. They cannot yet be attributed to the denied rename. Keep failures;
+  no contract or notification filter has been weakened.
+- LastAccess interpretation repair: the prior observer classified numeric
+  values 1/3 as disabled without using fsutil's actual mode label. Actual pinned
+  Win10 value2 output contradicts that assumption. Parse exactly one successful
+  English User/System Managed Enabled/Disabled result, preserve it and require
+  unchanged labeled mode across the boot/volume/window. Disabled requires exact
+  raw baseline Accessed; missing/ambiguous/old numeric-only records are
+  INCONCLUSIVE, never permissive. This tightens file proof; it does not waive
+  C05's directory timestamp failure. Microsoft primary guidance documents
+  in-memory timestamps and up-to-one-hour disk deferral:
+  https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/fsutil-behavior
+
+- [x] Explicit LastAccess-mode repair passes Windows parser 0, proof adapters
+  239/native observer 88 (`sol-harness-windows-validation-w.txt`), Python 18+7.
+  Controls cover four numeric/label combinations, missing/unknown/duplicate
+  labels, command failure, historical missing state and a mode change.
+
+- [x] Strict-label LastAccess final gate: parser 0, adapters 240/native observer
+  88 PASS (`sol-harness-windows-validation-x.txt`), Python 18+7 PASS; unsupported
+  label case fails parsing instead of interpreting Disabled as Enabled.
+- [x] A01 b13/b19 runtime `sol-a01r6` restored independently clean, gates false.
+  Physical P and policy/epoch swap PASS; real authenticated SYSTEM fresh Pending
+  for accepted generation PASS. Stops next at Inspector activating-status:
+  `changed during five consecutive reads` (exit3), before exact holder registry
+  receipt. No activation qualification; forbidden count unknown. The reviewed
+  transport/status fixes reached their next real diagnostic boundary.

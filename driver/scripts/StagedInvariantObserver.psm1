@@ -150,7 +150,7 @@ namespace StagedInvariant {
     StringBuilder dev=new StringBuilder(4096); if(QueryDosDeviceW(guid.Substring(4).TrimEnd('\\'),dev,4096)==0) throw Error("QueryDosDeviceW"); g.Device=dev.ToString(); v.Geometry=g;
     byte[] n=Io(v.Raw,0x90064,null,128); Require(n.Length>=96,"VolumeData","Truncated NTFS volume data");
     Require(U64(n,0)==g.Serial && U32(n,40)==g.Sector && U32(n,44)==g.Cluster && U32(n,48)==g.RecordSize && I64(n,64)==g.MftLcn && I64(n,8)*g.Sector==g.TotalBytes,"VolumeData","Boot/FSCTL geometry mismatch");
-    byte[] mft=ReadAligned(v.Raw,checked(g.MftLcn*g.Cluster),g.RecordSize,g.Alignment,false,0); AddContainer(bootstrap,"MFT_BOOTSTRAP",checked(g.MftLcn*g.Cluster),mft); Record m=DecodeRecord(mft,g.Sector,0); CrossRecord(v,m);
+    byte[] mft=ReadAligned(v.Raw,checked(g.MftLcn*g.Cluster),g.RecordSize,g.Alignment,false,0); AddContainer(bootstrap,"MFT_BOOTSTRAP",checked(g.MftLcn*g.Cluster),mft); Record m=DecodeRecord(mft,g.Sector,0); CrossRecord(v,m,bootstrap);
     Require(m.BaseReference==0 && (m.Flags&1)!=0,"MFT","Invalid base MFT record");
     List<Run> runs=new List<Run>(); foreach(Attribute at in m.Attributes) if(at.Type==0x80 && at.Name=="" && at.NonResident) runs.AddRange(at.Runs);
     Require(runs.Count>0 && runs[0].Vcn==0,"MFT","No bootstrap runlist"); v.MftRuns=runs.ToArray();
@@ -290,13 +290,14 @@ namespace StagedInvariant {
    }
    throw new ObservationException("Retrieval","Page cap",0);
   }
-  static void CrossRecord(Volume v,Record r) {
+  static void CrossRecord(Volume v,Record r,List<Container> containers) {
    byte[] data=Io(v.Raw,0x90068,BitConverter.GetBytes((long)r.Number),v.Geometry.RecordSize+16);
+   AddContainer(containers,"FSCTL_RECORD_IDENTITY_CHECK",-1,data);
    Require(data.Length>=12 && (U64(data,0)&0x0000FFFFFFFFFFFFUL)==r.Number && U32(data,8)==r.Raw.Length && data.Length>=12+r.Raw.Length,"FileRecord","Lower/mismatched/truncated FSCTL record");
    // FSCTL_GET_NTFS_FILE_RECORD returns the record with the update-sequence fixups ALREADY APPLIED (verified on Win10 19045:
    // tails restored, USA array intact), unlike a raw read. Fixup() applies only to raw data; here just validate the signature.
    byte[] fixedRecord=Slice(data,12,r.Raw.Length); Require(Encoding.ASCII.GetString(fixedRecord,0,4)=="FILE","FileRecord","FSCTL record signature");
-   Require(U32(fixedRecord,44)==r.Number && U16(fixedRecord,16)==r.Sequence && U64(fixedRecord,32)==r.BaseReference,"FileRecord","Raw/FSCTL identity mismatch");
+   Require(U32(fixedRecord,44)==r.Number && U16(fixedRecord,16)==r.Sequence && U64(fixedRecord,32)==r.BaseReference,"FileRecord","Raw/FSCTL identity mismatch; requested="+r.Number+"; rawNumber="+r.Number+"; rawSequence="+r.Sequence+"; rawBase="+r.BaseReference+"; cachedNumber="+U32(fixedRecord,44)+"; cachedSequence="+U16(fixedRecord,16)+"; cachedBase="+U64(fixedRecord,32));
   }
   static void AddContainer(List<Container> list,string kind,long offset,byte[] bytes) {
    Require(list.Count<MaxEntries,"Containers","Container cap"); list.Add(new Container { Kind=kind,Offset=offset,Bytes=bytes,Sha256=Hash(bytes) });
@@ -312,7 +313,7 @@ namespace StagedInvariant {
    Require(cursor==end,"Map","Truncated run mapping; kind="+kind+"; logicalOffset="+offset+"; length="+length+"; cursor="+cursor+"; mappedEnd="+(runs.Length==0?0:checked(runs[runs.Length-1].NextVcn*cluster))); return output;
   }
   static Record ReadRecord(Volume v,uint number,List<Container> containers) {
-   try { Record r=DecodeRecord(ReadMapped(v,v.MftRuns,checked((long)number*v.Geometry.RecordSize),v.Geometry.RecordSize,containers,"MFT"),v.Geometry.Sector,number); CrossRecord(v,r); return r; }
+   try { Record r=DecodeRecord(ReadMapped(v,v.MftRuns,checked((long)number*v.Geometry.RecordSize),v.Geometry.RecordSize,containers,"MFT"),v.Geometry.Sector,number); CrossRecord(v,r,containers); return r; }
    catch(ObservationException cause) { ObservationException failure=new ObservationException("MftRecord","Requested record="+number+"; "+cause.Message,cause); failure.Containers=containers.ToArray(); throw failure; }
   }
   // Private-stage fallback only. The source is the trusted NTFS metadata
@@ -1092,18 +1093,20 @@ function Test-InvariantMetadata($Image, $Expectation, $Sample, $Policy) {
             # LastAccess is the only permitted divergence. Both values remain bounded;
             # disabled disk updates must retain exactly the baseline disk value.
             $known=($m.AccessWindowStartFileTime -gt 0 -and $Policy.Status -ceq 'OK' -and $Policy.Before.Value -eq $Policy.After.Value -and
-                $Policy.Before.Value -in @(0,1,2,3) -and $Policy.Before.BootId -ceq $Sample.Start.BootId -and
+                $Policy.Before.Value -in @(0,1,2,3) -and $Policy.Before.UpdatesDisabled -is [bool] -and
+                $Policy.After.UpdatesDisabled -is [bool] -and $Policy.Before.UpdatesDisabled -eq $Policy.After.UpdatesDisabled -and
+                $Policy.Before.Management -in @('User','System') -and $Policy.Before.Management -ceq $Policy.After.Management -and $Policy.Before.BootId -ceq $Sample.Start.BootId -and
                 $Policy.After.BootId -ceq $Sample.Start.BootId -and $Policy.Before.VolumeGuid -ceq $m.VolumeGuid -and
                 $Policy.After.VolumeGuid -ceq $m.VolumeGuid -and $Policy.Before.Qpc -le $Sample.Start.Qpc -and $Policy.After.Qpc -ge $Sample.End.Qpc)
             if(-not $known) { $complete=$false;$assertions+=New-IOAssertion 'MetadataCrossCheck' 'INCONCLUSIVE' 'Accessed: fsutil disablelastaccess policy missing, changed, or not bound to this volume/boot/window.' $Sample.Sequence $Image.Path;continue }
             $raw=[long]$Image.RawMetadata.Accessed;$api=[long]$Image.Identity.Accessed
             $upper=[DateTime]::Parse($Sample.End.Utc).ToUniversalTime().ToFileTimeUtc()
-            $disabled=($Policy.Before.Value -in @(1,3))
+            $disabled=$Policy.Before.UpdatesDisabled
             $good=($m.AccessWindowStartFileTime -gt 0 -and $raw -ge $m.Raw.Accessed -and $api -ge $m.Api.Accessed -and $raw -le $api -and $api -le $upper)
             if($api -ne $m.Api.Accessed){$good=$good -and $api -ge $m.AccessWindowStartFileTime}
             if($disabled){$good=$good -and $raw -eq $m.Raw.Accessed}
             else{$good=$good -and ($api-$raw) -le [TimeSpan]::FromHours(1).Ticks}
-            $reason='Accessed: '+$m.AccessReason+'; fsutil='+$Policy.Before.Value+'; raw='+$raw+'; API='+$api+'; baselineRaw='+$m.Raw.Accessed+'; baselineAPI='+$m.Api.Accessed+'; upper='+$upper
+            $reason='Accessed: '+$m.AccessReason+'; fsutil='+$Policy.Before.Value+'; updatesDisabled='+$disabled+'; raw='+$raw+'; API='+$api+'; baselineRaw='+$m.Raw.Accessed+'; baselineAPI='+$m.Api.Accessed+'; upper='+$upper
             $assertions+=New-IOAssertion 'MetadataCrossCheck' $(if($good){'PASS'}else{'FAIL'}) $reason $Sample.Sequence $Image.Path
             $assertions+=New-IOAssertion 'FileMetadata' $(if($good){'PASS'}else{'FAIL'}) $reason $Sample.Sequence $Image.Path
         } else {
