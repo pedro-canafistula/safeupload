@@ -6,6 +6,7 @@ using System.IO.Pipes;
 using System.Runtime.InteropServices;
 using System.Security.Principal;
 using Microsoft.Win32.SafeHandles;
+using Microsoft.Extensions.Configuration;
 using SafeUpload.Agent.Minifilter;
 
 namespace SafeUpload.Agent.Service.Diagnostics;
@@ -25,8 +26,13 @@ public sealed class AdmissionEvidenceEndpoint : IAsyncDisposable
     private NamedPipeServerStream? _currentPipe;
     private long _nextBindingGeneration;
 
-    public AdmissionEvidenceEndpoint(ILogger<AdmissionEvidenceEndpoint> logger) =>
+    internal bool StagedProofEnabled { get; }
+
+    public AdmissionEvidenceEndpoint(ILogger<AdmissionEvidenceEndpoint> logger, IConfiguration? configuration = null)
+    {
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        StagedProofEnabled = configuration?.GetValue<bool>("Diagnostics:StagedProofProxy") == true;
+    }
 
     internal bool TryBind(
         IAdmissionEvidenceSender sender,
@@ -198,6 +204,14 @@ public sealed class AdmissionEvidenceEndpoint : IAsyncDisposable
         if (!TryGetAuthorizedCaller(pipe, out AdmissionEvidenceCaller? caller))
             return;
 
+        // A distinct, explicitly enabled SYSTEM-only protocol. The existing
+        // capture protocol remains limited to read-only controls 19/20/23.
+        if (BinaryPrimitives.ReadUInt32LittleEndian(body) == StagedProofProxyWire.Magic)
+        {
+            await ServeStagedProofAsync(pipe, binding, caller!.Sid, StagedProofEnabled, IsCurrent, body, stoppingToken).ConfigureAwait(false);
+            return;
+        }
+
         AdmissionEvidenceRequest request;
         try
         {
@@ -262,6 +276,43 @@ public sealed class AdmissionEvidenceEndpoint : IAsyncDisposable
             if (!completed)
                 _runs.MarkCaptureIncomplete(request, binding.Generation);
         }
+    }
+
+    internal static bool IsStagedProofAuthorized(bool enabled, string? sid) =>
+        enabled && string.Equals(sid, "S-1-5-18", StringComparison.Ordinal);
+
+    internal static async Task ServeStagedProofAsync(Stream pipe, AdmissionEvidenceBinding binding,
+        string? callerSid, bool enabled, Func<AdmissionEvidenceBinding, bool> isCurrent,
+        byte[] body, CancellationToken stoppingToken, TimeSpan? writeDeadline = null)
+    {
+        if (!IsStagedProofAuthorized(enabled, callerSid)) return;
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
+        // This bounds response I/O only. A native synchronous send retains its
+        // port lease until it actually returns; it cannot safely be abandoned.
+        deadline.CancelAfter(writeDeadline ?? TimeSpan.FromSeconds(5));
+        int hr = unchecked((int)0x80070057); // E_INVALIDARG; no payload on errors.
+        byte[] raw = [];
+        try
+        {
+            var request = StagedProofProxyWire.Parse(body);
+            if (isCurrent(binding) && binding.TrySendStagedProof(request.Input, request.OutputBytes, out var reply)
+                && isCurrent(binding) && binding.IsAccepting && reply is not null)
+            {
+                hr = reply.HResult;
+                if (hr == 0 && reply.IsWirePayloadValid && reply.BytesReturned == request.OutputBytes)
+                    raw = reply.RawReply;
+                else if (hr == 0) hr = unchecked((int)0x80004005); // E_FAIL
+            }
+            else hr = unchecked((int)0x80004004); // E_ABORT
+        }
+        catch (InvalidDataException) { }
+        catch (ObjectDisposedException) { hr = unchecked((int)0x80004004); }
+        byte[] header = new byte[12];
+        BinaryPrimitives.WriteUInt32LittleEndian(header, StagedProofProxyWire.Magic);
+        BinaryPrimitives.WriteInt32LittleEndian(header.AsSpan(4), hr);
+        BinaryPrimitives.WriteUInt32LittleEndian(header.AsSpan(8), (uint)raw.Length);
+        await pipe.WriteAsync(header, deadline.Token).ConfigureAwait(false);
+        if (raw.Length != 0) await pipe.WriteAsync(raw, deadline.Token).ConfigureAwait(false);
     }
 
     private string? AdvanceRun(AdmissionEvidenceRequest request, AdmissionEvidenceBinding binding)

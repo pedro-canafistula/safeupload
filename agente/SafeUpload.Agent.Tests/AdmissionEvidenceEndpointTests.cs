@@ -38,6 +38,8 @@ public sealed class AdmissionEvidenceEndpointTests
             "SafeUpload.Agent.Minifilter.IAdmissionEvidenceSender",
             "SafeUpload.Agent.Minifilter.AdmissionEvidenceCommand",
             "SafeUpload.Agent.Minifilter.AdmissionEvidenceReply",
+            "SafeUpload.Agent.Minifilter.StagedProofProxyWire",
+            "SafeUpload.Agent.Minifilter.IStagedProofSender",
         ];
 
 #if SAFEUPLOAD_ADMISSION_EVIDENCE

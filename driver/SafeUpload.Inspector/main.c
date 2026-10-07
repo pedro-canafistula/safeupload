@@ -38,6 +38,7 @@ Environment:
 #include <strsafe.h>
 
 #include "..\SafeUpload.Minifilter\Protocol.h"
+#include "StagedProofProxy.h"
 
 //
 //  The string whose presence in a path makes this test client answer DENY.

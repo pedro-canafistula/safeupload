@@ -2,7 +2,8 @@
 param(
     [Parameter(Mandatory)][ValidatePattern('^[A-Za-z0-9._-]{3,60}$')][string] $Label,
     [Parameter(Mandatory)][ValidatePattern('^[0-9a-fA-F]{64}$')][string] $ArchiveSha256,
-    [Parameter(Mandatory)][ValidatePattern('^[0-9a-fA-F]{64}$')][string] $ManifestSha256
+    [Parameter(Mandatory)][ValidatePattern('^[0-9a-fA-F]{64}$')][string] $ManifestSha256,
+    [switch] $AdmissionEvidence
 )
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
@@ -39,7 +40,9 @@ $summary = @("LABEL=$Label", "BUILDER=$env:COMPUTERNAME",
 Push-Location $src
 try {
     & dotnet.exe --info > (Join-Path $out 'dotnet-info.txt') 2>&1
-    & dotnet.exe test agente\SafeUpload.Agent.Tests\SafeUpload.Agent.Tests.csproj -c Release -warnaserror `
+    $featureArgs=@();if($AdmissionEvidence){$featureArgs=@("-p:SafeUploadAdmissionEvidence=true")}
+    $summary += "admission_evidence=$($AdmissionEvidence.IsPresent)"
+    & dotnet.exe test agente\SafeUpload.Agent.Tests\SafeUpload.Agent.Tests.csproj -c Release -warnaserror @featureArgs `
         --logger 'trx;LogFileName=agent-tests.trx' --results-directory $out > (Join-Path $out 'tests.txt') 2>&1
     $testExit = $LASTEXITCODE
     $testText = [IO.File]::ReadAllText((Join-Path $out 'tests.txt'))
@@ -48,7 +51,7 @@ try {
     if ($testExit -eq 0 -and $testWarnings -eq 0) {
         $publish = Join-Path $out 'publish'
         & dotnet.exe publish agente\SafeUpload.Agent.Service\SafeUpload.Agent.Service.csproj -c Release -r win-x64 `
-            --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true `
+            --self-contained true @featureArgs -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true `
             -warnaserror -o $publish > (Join-Path $out 'publish.txt') 2>&1
         $publishExit = $LASTEXITCODE
         $publishText = [IO.File]::ReadAllText((Join-Path $out 'publish.txt'))
