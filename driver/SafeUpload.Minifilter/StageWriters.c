@@ -3544,7 +3544,9 @@ static BOOLEAN StageRegistryUnknownSopMarkersQuiescent(_In_ PFLT_INSTANCE Instan
     *Generation = (ULONGLONG)InterlockedCompareExchange64(&RegistrySopMapGeneration, 0, 0);
     if (KeGetCurrentIrql() != PASSIVE_LEVEL || IoGetTopLevelIrp() != NULL ||
         Instance == NULL || Volume == NULL) return FALSE;
-    snapshots = ExAllocatePool2(POOL_FLAG_PAGED,
+    /* Nonpaged: StageRegistryCopyUnknownSopChunk fills it under SectionLock (DISPATCH_LEVEL).
+     * A paged buffer bugchecked 0xD1 under runtime Verifier (sol-lat-cached2, 2026-10-07). */
+    snapshots = ExAllocatePool2(POOL_FLAG_NON_PAGED,
         SAFEUPLOAD_REGISTRY_SOP_SCAN_CHUNK * sizeof(*snapshots), SAFEUPLOAD_REGISTRY_POOL_TAG);
     if (snapshots == NULL) return FALSE;
     startingGeneration = (ULONGLONG)InterlockedCompareExchange64(&RegistrySopMapGeneration, 0, 0);

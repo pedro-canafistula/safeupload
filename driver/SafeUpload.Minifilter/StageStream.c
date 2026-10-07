@@ -1067,13 +1067,21 @@ static VOID StageInitializeCache(PSTAGE_STREAM Stream, PFILE_OBJECT FileObject)
     CcInitializeCacheMap(FileObject, &sizes, FALSE, &StageCacheCallbacks, Stream);
 }
 
-static NTSTATUS StageFlush(PSTAGE_STREAM Stream)
+/* Drain dirty upper pages; their paging writes route to the backing. */
+static NTSTATUS StageFlushUpper(PSTAGE_STREAM Stream)
 {
     IO_STATUS_BLOCK io = {0};
     if (Stream->Sections.DataSectionObject != NULL) {
         CcFlushCache(&Stream->Sections, NULL, 0, &io);
         if (!NT_SUCCESS(io.Status)) return io.Status;
     }
+    return STATUS_SUCCESS;
+}
+
+static NTSTATUS StageFlush(PSTAGE_STREAM Stream)
+{
+    NTSTATUS status = StageFlushUpper(Stream);
+    if (!NT_SUCCESS(status)) return status;
     return Stream->ReadOnly ? STATUS_SUCCESS : FltFlushBuffers(Stream->BackingInstance, Stream->BackingObject);
 }
 
@@ -1481,7 +1489,8 @@ Exit:
 /* Materialize the extended range with ordinary noncached backing writes.
  * Paging writes do not advance NTFS's valid data length. Claiming a larger
  * upper VDL without zeroing could expose old disk contents when Cc advances it.
- * Preserve an existing partial sector; the backing has no second data cache. */
+ * Preserve an existing partial sector; the backing has no second data cache.
+ * Backing I/O only: the caller drained the upper cache with StageFlushUpper. */
 static NTSTATUS StageZeroGrowth(PSTAGE_STREAM Stream, LARGE_INTEGER Size)
 {
     PVOID buffer;
@@ -1490,7 +1499,7 @@ static NTSTATUS StageZeroGrowth(PSTAGE_STREAM Stream, LARGE_INTEGER Size)
     ULONG length, transferred, tail;
     NTSTATUS status;
     if (Size.QuadPart <= Stream->Header.FileSize.QuadPart) return STATUS_SUCCESS;
-    status = StageFlush(Stream);
+    status = FltFlushBuffers(Stream->BackingInstance, Stream->BackingObject);
     if (!NT_SUCCESS(status)) return status;
     buffer = FltAllocatePoolAlignedWithTag(Stream->BackingInstance, NonPagedPoolNx, 65536, STAGE_TAG);
     if (buffer == NULL) return STATUS_INSUFFICIENT_RESOURCES;
@@ -1524,9 +1533,61 @@ Exit:
     return status;
 }
 
-static NTSTATUS StageResize(PSTAGE_STREAM Stream, PFILE_OBJECT FileObject, LARGE_INTEGER Size)
+static NTSTATUS StageResizeBacking(PSTAGE_STREAM Stream, LARGE_INTEGER Size)
 {
     FILE_END_OF_FILE_INFORMATION end;
+    NTSTATUS status = StageZeroGrowth(Stream, Size);
+    if (!NT_SUCCESS(status)) return status;
+    end.EndOfFile = Size;
+    return FltSetInformationFile(Stream->BackingInstance, Stream->BackingObject,
+        &end, sizeof(end), FileEndOfFileInformation);
+}
+
+typedef struct _STAGE_RESIZE_WORK {
+    PSTAGE_STREAM Stream;
+    LARGE_INTEGER Size;
+    NTSTATUS Status;
+    KEVENT Done;
+} STAGE_RESIZE_WORK, *PSTAGE_RESIZE_WORK;
+
+static VOID StageResizeBackingWorker(_In_ PFLT_GENERIC_WORKITEM WorkItem, _In_ PVOID FltObject,
+    _In_opt_ PVOID Context)
+{
+    PSTAGE_RESIZE_WORK work = (PSTAGE_RESIZE_WORK)Context;
+    UNREFERENCED_PARAMETER(FltObject);
+    if (work == NULL) { FltFreeGenericWorkItem(WorkItem); return; }
+    work->Status = StageResizeBacking(work->Stream, work->Size);
+    FltFreeGenericWorkItem(WorkItem);
+    KeSetEvent(&work->Done, IO_NO_INCREMENT, FALSE);
+}
+
+/* Mm's FsRtlSetFileSize (section creation/extension) runs with FSRTL_FSP_TOP_LEVEL_IRP. NTFS
+ * refuses backing I/O issued under it with STATUS_FILE_LOCK_CONFLICT, and MiCreateSectionCommon
+ * retries on that status forever: the C02 extending-map livelock (2026-10-07). Minifilters may
+ * not change the top-level IRP, so the backing work runs on a system worker, which has none.
+ * The waiter holds only this stream's resource; the worker touches only the backing file. */
+static NTSTATUS StagePostResizeBacking(PSTAGE_STREAM Stream, LARGE_INTEGER Size)
+{
+    STAGE_RESIZE_WORK work;
+    PFLT_GENERIC_WORKITEM item = FltAllocateGenericWorkItem();
+    NTSTATUS status;
+    if (item == NULL) return STATUS_INSUFFICIENT_RESOURCES;
+    work.Stream = Stream;
+    work.Size = Size;
+    work.Status = STATUS_UNSUCCESSFUL;
+    KeInitializeEvent(&work.Done, NotificationEvent, FALSE);
+    status = FltQueueGenericWorkItem(item, SafeUploadData.Filter, StageResizeBackingWorker,
+        DelayedWorkQueue, &work);
+    if (!NT_SUCCESS(status)) {
+        FltFreeGenericWorkItem(item);
+        return status;
+    }
+    (VOID)KeWaitForSingleObject(&work.Done, Executive, KernelMode, FALSE, NULL);
+    return work.Status;
+}
+
+static NTSTATUS StageResize(PSTAGE_STREAM Stream, PFILE_OBJECT FileObject, LARGE_INTEGER Size)
+{
     CC_FILE_SIZES sizes;
     NTSTATUS status;
     NT_ASSERT(ExIsResourceAcquiredExclusiveLite(&Stream->Resource));
@@ -1534,11 +1595,12 @@ static NTSTATUS StageResize(PSTAGE_STREAM Stream, PFILE_OBJECT FileObject, LARGE
     if (Size.QuadPart < 0 || Size.QuadPart > STAGE_MAX_BYTES) return STATUS_FILE_TOO_LARGE;
     if (Size.QuadPart < Stream->Header.FileSize.QuadPart &&
         !MmCanFileBeTruncated(&Stream->Sections, &Size)) return STATUS_USER_MAPPED_FILE;
-    status = StageZeroGrowth(Stream, Size);
-    if (!NT_SUCCESS(status)) return status;
-    end.EndOfFile = Size;
-    status = FltSetInformationFile(Stream->BackingInstance, Stream->BackingObject,
-        &end, sizeof(end), FileEndOfFileInformation);
+    if (Size.QuadPart > Stream->Header.FileSize.QuadPart) {
+        status = StageFlushUpper(Stream);
+        if (!NT_SUCCESS(status)) return status;
+    }
+    status = IoGetTopLevelIrp() == NULL ? StageResizeBacking(Stream, Size) :
+        StagePostResizeBacking(Stream, Size);
     if (!NT_SUCCESS(status)) return status;
     Stream->Header.FileSize = Size;
     Stream->Header.AllocationSize.QuadPart = (Size.QuadPart + PAGE_SIZE - 1) & ~((LONGLONG)PAGE_SIZE - 1);
