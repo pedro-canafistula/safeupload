@@ -1,0 +1,138 @@
+SafeUpload Phase 4 C02-C05 implementation
+2026-10-07. Authoring only in /home/victor/Work/safeupload-wt-ccases,
+branch wt/ccases, based on c6ce2c05. No commit, driver/service changes or VM run.
+Scope follows MVP-PLAN.md: one local fixed NTFS folder, Win10 19045.2965;
+P01-P06 and RV4 remain deferred. TableRevision is now 4.
+
+Files changed (one line each):
+driver/scripts/Test-StagedInvariantSuite.ps1 -- extend the C01 actor/observation and reusable image, journal, notification, hand-back and restoration paths.
+driver/scripts/StagedInvariantCases.psd1 -- seven concrete Ready variants; retain family placeholders for deferred variants; C01 BLOCK revision 2 binds the digest and verified hand-back path.
+driver/scripts/StagedInvariantProofAdapters.SelfCheck.ps1 -- native helper compilation and synthetic mapped/status, namespace/generation, B/retained-reader, source and notification checks.
+driver/scripts/Invoke-StagedInvariantQualification.py -- bind both protected and external observer raw manifests to copied artifact hashes/lengths.
+driver/scripts/test_staged_invariant_proof_adapters.py -- Ready-row inventory and external raw-artifact tamper tests.
+driver/evidence/2026-10-07/ccases-implementation-note.txt -- implementation, validation, commands and gaps.
+
+Implemented behavior:
+- C02-approve-absent / C02-block-absent: CREATE_NEW on the owned stream,
+  CreateFileMapping PAGE_READWRITE, MapViewOfFile FILE_MAP_WRITE, close the
+  source file handle BEFORE the mapped store, FlushViewOfFile, private mapped
+  digest A, three raw/fresh/uncached held samples with final absent and the
+  authenticated transfer still Allocated/unsealed. Release view, then section;
+  require APPROVE or BLOCK durable StateHistory and exact A outcome/H.
+- C03-approve-existing / C03-block-existing: B is four clusters, A is three.
+  The SAME standard-user actor first writes B through the owned stream;
+  require successful native operations, durable Allocated -> Sealed ->
+  Inspecting -> Approved -> Publishing -> Released and Released digest B.
+  Capture raw/fresh/uncached B and retain the observer's physical B handle
+  sharing DELETE. Only then release the actor's main-operation barrier.
+  TRUNCATE_EXISTING, write/flush A, require private EOF and whole private A.
+  While held and throughout BLOCK, raw/fresh/uncached final remains B;
+  APPROVE requires final A with a new file ID. Retained physical reader and
+  raw old identity remain B, including after POSIX replacement.
+- C04-approve / C04-block: same real approved B seed and retained physical B.
+  Actor writes private sibling save.tmp.txt, holds it for three baseline-B
+  samples, then SetFileInformationByHandle(FileRenameInfoEx=22,
+  REPLACE_IF_EXISTS|POSIX=3, RootDirectory=NULL) onto cached.txt. Require
+  native success, same transfer, committed target, no pending rename and the
+  exact source tombstone/target generation reservations in the manifest.
+  Three more held samples require public B and no public user temporary.
+  After cleanup, apply APPROVE/BLOCK and H. Shared journal identity checks
+  accept the single observed source-to-target generation change only when
+  that committed namespace evidence explains it.
+- C05-denied-external-rename: durable three-cluster source.txt is created
+  outside the protected folder, on the same volume, before the boot. After
+  durable protection/readiness, standard user opens it physically with DELETE
+  and retains that old source handle through before/after rename samples.
+  RenameInfoEx onto an absent protected target must return exactly Win32:5;
+  source open/read/close must succeed. Target remains absent, source stays
+  exact A with the same identity/allocation/active name; no new transfer,
+  approval/release/hand-back. A second independent observer captures external
+  source raw data, metadata/index, fresh/uncached reads and retained identity.
+  The complete journal delta must contain zero new transfers anywhere,
+  including the outside source; accidental owned routing cannot satisfy D.
+
+Implementation details affecting evidence/restoration:
+- Reuses Invoke-CachedObservation, Capture/Test-CachedSample,
+  Test-CachedJournalSequence, Test-CachedNotifications and Get-CachedHandBack;
+  raw image comparison was extracted into Test-CachedImage. New APIs and
+  coordination branches live in Get-WriterBody, not cloned whole actors.
+- Raw manifests are required (both for C05); absent/empty transport evidence
+  produces an explicit INCONCLUSIVE wrapper reason.
+- B seeding is implemented, not skipped or fabricated by direct physical
+  writes. Seed manifests/snapshots remain bound in JournalSnapshots. The A
+  service window starts after proven B release, excluding the seed transfer.
+  The actor execution limit is ten minutes for the two-transfer B cases.
+- Outcome notifications require the actual digest (both APPROVE and BLOCK);
+  every Blocked hand-back path must match an independently checked actor
+  hand-back file. APPROVE forbids a hand-back path/copy.
+- C01 evaluator names stay stable for existing synthetic fixtures; exported
+  shared assertions are renamed to the actual C02-C05 family. All original
+  C01 synthetic checks still pass. C01 BLOCK also gains explicit INCONCLUSIVE
+  assertions for the missing second-user, safe-creation and window/restart H
+  evidence instead of leaving those only as descriptive NotChecked fields.
+- All new deadlines use Stopwatch QPC. Capture time windows start before the
+  corresponding capture. Shared state.clixml uses Save-State/Load-State only.
+  Conditional arrays are wrapped; hashtable counts are summed explicitly.
+- Failure cleanup cancels the actor and releases references without triggering
+  an unrequested main write or rename; incomplete cleanup evidence is explicit.
+- Product files are restored in place by the existing backup path, after
+  policy restoration. C05 persists its external-directory recovery receipt
+  before creating it, removes the directory during restoration, and checks
+  for its residue after the restoration reboot. Both observers are disposed.
+
+Authoring validation (Linux; no Windows/VM qualification claim):
+- python3 -m py_compile driver/scripts/Invoke-StagedInvariantQualification.py driver/scripts/test_staged_invariant_proof_adapters.py -- PASS.
+- python3 driver/scripts/test_staged_invariant_proof_adapters.py -- 18 tests, PASS.
+- Linux PowerShell 7.4.2: suite/table/self-check parse, complete required row
+  schema and seven new Ready rows -- PASS; TableRevision=4.
+- Linux PowerShell 7.4.2: StagedInvariantProofAdapters.SelfCheck.ps1 --
+  ProofAdapterEvaluationChecks=221;PASS, including C# native declarations
+  compiled without invoking Windows APIs. Windows-only ACL checks skipped.
+- git diff --check -- PASS.
+The orchestrator must run Windows PowerShell 5.1 parse plus this self-check
+on the builder, followed by the VM runs and independent restoration.
+
+Host commands (run from this worktree; choose new tags for any repeat):
+
+policy_sha=29DC8A341BD7C549996596D2477A0CCCAF19602C362A2167FB4FDD5C66663731
+run_ccase() {
+  python3 driver/scripts/Invoke-StagedInvariantQualification.py "$1" \
+    mvp4-b10 326eb512 AGENT_LABEL "$policy_sha" \
+    --agent-source-commit AGENT_COMMIT --cases "$2" --modes runtime-verifier
+}
+run_ccase cc02a C02-approve-absent
+run_ccase cc02b C02-block-absent
+run_ccase cc03a C03-approve-existing
+run_ccase cc03b C03-block-existing
+run_ccase cc04a C04-approve
+run_ccase cc04b C04-block
+run_ccase cc05d C05-denied-external-rename
+
+Replace AGENT_LABEL / AGENT_COMMIT with the orchestrator's exact agent inputs.
+Each command uses the existing checkpoint/reboot/restoration wrapper. Inspect
+restoration evidence before proceeding to another command after a lifecycle
+failure. Functional Ready is not full Phase4Suite PASS; the wrapper continues
+reporting INCONCLUSIVE/nonzero for the missing full-qualification evidence.
+
+Known gaps:
+- No Windows PowerShell 5.1 or Windows VM result here. Native mapped/rename
+  behavior, real approved B seeding and restoration need those runs.
+- As for C01, no complete lower mutation/denial ledger, authenticated permit
+  grant/snapshot adapter, continuous 10 ms temporal coverage, live taint Flags
+  readback, exact-artifact observer corpus or 100 unheld latency repetitions.
+  Missing evidence is explicitly INCONCLUSIVE; sampled absence cannot prove
+  that a transient pre-permit publication never occurred.
+- H checks exact bytes/length/digest, profile/SID binding, owner read receipt,
+  explicit actor+SYSTEM ACL, no reparses/single link, copy count and no prior
+  file overwrite. Second standard-user access denial, safe relative-handle
+  creation receipt, restart, explicit window closure and audited later cleanup
+  remain INCONCLUSIVE. Staging is checked retained during the available BLOCK
+  window; teardown restoration is not claimed as product window-close cleanup.
+- C05 checks the prescribed native ACCESS_DENIED, not a sharing/setup denial,
+  but exact driver denial reason/lower-admission evidence remains INCONCLUSIVE.
+  Its target variant is absent; existing-target and positive owned-source in
+  another protected sibling are deferred. The positive two-folder variant
+  requires another policy/namespace fixture; it is not added as a cheap clone.
+- C02 retained-section-without-view/late-view and approved-base variants,
+  C03 supersede, C04 open-private-target refusal/reconnect, and interactive
+  JUSTIFY variants remain deferred under their NotReady family IDs.

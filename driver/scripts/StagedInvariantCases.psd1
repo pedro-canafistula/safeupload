@@ -3,7 +3,7 @@
 # design section 4 corpus, NOT a claim that one row covers every future variant.
 @{
     Schema = 'StagedInvariantCases/1'
-    TableRevision = 3
+    TableRevision = 4
     Modes = @('ordinary', 'runtime-verifier', 'boot-verifier')
     RowSchema = @{
         Required = @('CaseId', 'Revision', 'Status', 'Variant', 'Outcome',
@@ -218,7 +218,7 @@
             Cleanup = @('StopAndRestoreAgent', 'RestoreProductStateBytesAndAcls', 'CommonSeedRestoration', 'IndependentBaseline')
         }
         @{
-            CaseId = 'C01-block-absent'; Revision = 1; Status = 'Ready'
+            CaseId = 'C01-block-absent'; Revision = 2; Status = 'Ready'
             Variant = 'fixed-NTFS-cached-create-absent'; Outcome = 'BLOCK'
             QualificationScope = 'Phase4FunctionalOnly; H checked, restart/window closure and unheld latency deferred'
             ActorSid = 'ResolveStandardUserTokenAtRuntime'; ActorSession = 'ResolveTokenSessionId'
@@ -231,7 +231,7 @@
             StatusClasses = @('Open=Win32:0', 'Write=Win32:0;WholeImage', 'Flush=Win32:0', 'PrivateRead=Win32:0;EqualsA', 'Close=Win32:0', 'FreshAbsent=Win32:2', 'UncachedAbsent=Win32:2', 'OwnerHandBackRead=Success')
             MetadataExpectations = @{ Exact = @('Attributes','Creation','Modified','Changed','Links','SecurityId','Sddl'); Accessed = 'NtfsReadWindow'; AccessReason = 'Same bounded NTFS read-side LastAccess rule as S00-S02; all other baseline metadata exact.' }
             JournalExpectations = @('Allocated', 'Sealed', 'Inspecting', 'Blocked', 'ImmutableSealedDigestA', 'NoApprovedPublishingReleased')
-            NotificationExpectations = @('BlockedWithHandBackPath', 'NoReleased')
+            NotificationExpectations = @('BlockedDigestA', 'BlockedWithVerifiedHandBackPath', 'NoReleased')
             AllowedDirectoryTransitions = @('SameActiveNamesIdsSizesAttributesSecurity')
             LatencyClasses = @('writer-open', 'cached-write', 'flush', 'close')
             Repetitions = @{ Coordinated = 1; Unheld = 0; DeterministicSeed = 4003 }
@@ -240,7 +240,7 @@
         @{
             CaseId = 'C01'; Revision = 2; Status = 'NotReady'
             Variant = 'fixed-NTFS-cached-create-absent-justify'; Outcome = 'JUSTIFY'
-            QualificationScope = 'Deferred: requires the owning standard-user interactive app session and actual justification UI; batch actor cannot submit it. Approved-base B setup also deferred: seed baseline is not inspected/approved.'
+            QualificationScope = 'Deferred: requires the owning standard-user interactive app session and actual justification UI; batch actor cannot submit it. C01 approved-base variants remain deferred; C03/C04 now seed inspected and approved B through the product.'
             ActorSid = 'ResolveStandardUserTokenAtRuntime'; ActorSession = 'ResolveTokenSessionId'
             InitialPolicy = @{ Seed = 'Product'; LiveFlags = 'TEST_DISABLE_TAINT-required' }
             Scopes = @('Unimplemented'); Setup = @('WP4: design section 4.1 C01')
@@ -252,9 +252,129 @@
             Cleanup = @('Unimplemented; common restoration still mandatory')
         }
         @{
-            CaseId = 'C02'; Revision = 1; Status = 'NotReady'
+            CaseId = 'C02-approve-absent'; Revision = 1; Status = 'Ready'
+            Variant = 'fixed-NTFS-owned-mapped-create-absent-source-closed-view-held'; Outcome = 'APPROVE'
+            QualificationScope = 'Phase4FunctionalOnly; sampled bytes, not full temporal/permit/latency qualification'
+            ActorSid = 'ResolveStandardUserTokenAtRuntime'; ActorSession = 'ResolveTokenSessionId'
+            InitialPolicy = @{ Seed = 'Product'; StartDuringSeed = 3; StartAfterSeed = 0; LiveFlags = 'TEST_DISABLE_TAINT-required' }
+            Scopes = @('FixtureScope')
+            Setup = @('DriverUnloaded', 'AbsentFinal', 'IndependentPatternedTextA', 'ProductBootPolicy', 'StandardUserTask', 'RealStagingAgent')
+            Actions = @('OwnedCreateNew', 'CreateFileMappingPAGE_READWRITE', 'MapViewOfFileFILE_MAP_WRITE', 'CloseSourceHandleBeforeStore', 'WholeImageMappedStoreA', 'FlushViewOfFile', 'PrivateMappedReadEqualsA', 'HoldSectionAndViewDuringThreeRawSamples', 'UnmapView', 'CloseSection', 'BoundedJournalReleasedWait')
+            Barriers = @('BootIdentityChanged', 'DurableReadiness', 'AgentPolicyAccepted', 'BeforeOperation', 'SourceClosedViewHeld', 'LastViewAndSectionRelease', 'Released', 'FinalQuiescence')
+            ExpectedTimeline = @('UnscopedSetup', 'BootTrusted', 'Protected', 'Allocated', 'PAGE_READWRITE:OwnedStream', 'MappedViewLive', 'SourceHandleClosed', 'MappedStoreA', 'FlushViewOfFile', 'HeldFinalAbsent:AllocatedUnsealed', 'LastViewAndSectionRelease', 'Sealed', 'Inspecting', 'Approved', 'Publishing', 'Released', 'FinalEqualsA')
+            StatusClasses = @('Open=Win32:0;CREATE_NEW', 'CreateFileMapping=Win32:0;PAGE_READWRITE', 'MapViewOfFile=Win32:0;FILE_MAP_WRITE', 'SourceClose=Win32:0;BeforeMappedStore', 'MappedStore=Success;WholeImageA', 'FlushViewOfFile=Win32:0', 'PrivateMappedRead=Success;EqualsA', 'UnmapViewOfFile=Win32:0', 'SectionClose=Win32:0', 'HeldFreshAbsent=Win32:2', 'HeldUncachedAbsent=Win32:2', 'FinalRawFreshUncached=WholeA')
+            MetadataExpectations = @{ Exact = @('Attributes','Creation','Modified','Changed','Links','SecurityId','Sddl'); Accessed = 'NtfsReadWindow'; AccessReason = 'Same bounded NTFS read-side LastAccess rule as S00-S02; all other baseline metadata exact.' }
+            JournalExpectations = @('Allocated', 'Sealed', 'Inspecting', 'Approved', 'Publishing', 'Released', 'ImmutableSealedDigestA')
+            NotificationExpectations = @('ReleasedDigestA', 'NoBlocked', 'NoHandBack')
+            AllowedDirectoryTransitions = @('BaselineWhileHeld', 'OneApprovedFinalAfterRelease', 'NoLingeringTemp')
+            LatencyClasses = @('writer-open', 'create-mapping', 'map-view', 'close-source', 'mapped-store', 'flush-view', 'unmap-view', 'close-section')
+            Repetitions = @{ Coordinated = 1; Unheld = 0; DeterministicSeed = 4003 }
+            Cleanup = @('StopAndRestoreAgent', 'RestorePolicyBeforeProductStateInPlace', 'RestoreProductStateBytesAndAcls', 'CommonSeedRestoration', 'IndependentBaseline')
+        }
+        @{
+            CaseId = 'C02-block-absent'; Revision = 1; Status = 'Ready'
+            Variant = 'fixed-NTFS-owned-mapped-create-absent-source-closed-view-held'; Outcome = 'BLOCK'
+            QualificationScope = 'Phase4FunctionalOnly; H checked, restart/window closure and unheld latency deferred'
+            ActorSid = 'ResolveStandardUserTokenAtRuntime'; ActorSession = 'ResolveTokenSessionId'
+            InitialPolicy = @{ Seed = 'Product'; StartDuringSeed = 3; StartAfterSeed = 0; LiveFlags = 'TEST_DISABLE_TAINT-required' }
+            Scopes = @('FixtureScope')
+            Setup = @('DriverUnloaded', 'AbsentFinal', 'IndependentPatternedTextAWithValidCpf', 'ProductBootPolicy', 'StandardUserTask', 'RealStagingAgent')
+            Actions = @('OwnedCreateNew', 'CreateFileMappingPAGE_READWRITE', 'MapViewOfFileFILE_MAP_WRITE', 'CloseSourceHandleBeforeStore', 'WholeImageMappedStoreA', 'FlushViewOfFile', 'PrivateMappedReadEqualsA', 'HoldSectionAndViewDuringThreeRawSamples', 'UnmapView', 'CloseSection', 'BoundedJournalBlockedWait', 'VerifyActorHandBackH')
+            Barriers = @('BootIdentityChanged', 'DurableReadiness', 'AgentPolicyAccepted', 'BeforeOperation', 'SourceClosedViewHeld', 'LastViewAndSectionRelease', 'Blocked', 'FinalQuiescence')
+            ExpectedTimeline = @('UnscopedSetup', 'BootTrusted', 'Protected', 'Allocated', 'PAGE_READWRITE:OwnedStream', 'MappedViewLive', 'SourceHandleClosed', 'MappedStoreA', 'FlushViewOfFile', 'HeldFinalAbsent:AllocatedUnsealed', 'LastViewAndSectionRelease', 'Sealed', 'Inspecting', 'Blocked', 'FinalAbsent', 'HandBackEqualsA:H')
+            StatusClasses = @('Open=Win32:0;CREATE_NEW', 'CreateFileMapping=Win32:0;PAGE_READWRITE', 'MapViewOfFile=Win32:0;FILE_MAP_WRITE', 'SourceClose=Win32:0;BeforeMappedStore', 'MappedStore=Success;WholeImageA', 'FlushViewOfFile=Win32:0', 'PrivateMappedRead=Success;EqualsA', 'UnmapViewOfFile=Win32:0', 'SectionClose=Win32:0', 'HeldFreshAbsent=Win32:2', 'HeldUncachedAbsent=Win32:2', 'OwnerHandBackRead=Success;EqualsA')
+            MetadataExpectations = @{ Exact = @('Attributes','Creation','Modified','Changed','Links','SecurityId','Sddl'); Accessed = 'NtfsReadWindow'; AccessReason = 'Same bounded NTFS read-side LastAccess rule as S00-S02; all other baseline metadata exact.' }
+            JournalExpectations = @('Allocated', 'Sealed', 'Inspecting', 'Blocked', 'ImmutableSealedDigestA', 'NoApprovedPublishingReleased')
+            NotificationExpectations = @('BlockedDigestA', 'BlockedWithVerifiedHandBackPath', 'NoReleased')
+            AllowedDirectoryTransitions = @('SameActiveNamesIdsSizesAttributesSecurity')
+            LatencyClasses = @('writer-open', 'create-mapping', 'map-view', 'close-source', 'mapped-store', 'flush-view', 'unmap-view', 'close-section')
+            Repetitions = @{ Coordinated = 1; Unheld = 0; DeterministicSeed = 4003 }
+            Cleanup = @('StopAndRestoreAgent', 'RestorePolicyBeforeProductStateInPlace', 'RestoreProductStateBytesAndAcls', 'CommonSeedRestoration', 'IndependentBaseline')
+        }
+        @{
+            CaseId = 'C03-approve-existing'; Revision = 1; Status = 'Ready'
+            Variant = 'fixed-NTFS-truncate-overwrite-approved-B'; Outcome = 'APPROVE'
+            QualificationScope = 'Phase4FunctionalOnly; approved B and retained physical B checked; full temporal/permit/latency qualification deferred'
+            ActorSid = 'ResolveStandardUserTokenAtRuntime'; ActorSession = 'ResolveTokenSessionId'
+            InitialPolicy = @{ Seed = 'Product'; StartDuringSeed = 3; StartAfterSeed = 0; LiveFlags = 'TEST_DISABLE_TAINT-required' }
+            Scopes = @('FixtureScope')
+            Setup = @('DriverUnloaded', 'SeedBenignBThroughStandardUserOwnedStreamAndRequireApprovedPublishingReleasedDigestB', 'IndependentPatternedTextA', 'ProductBootPolicy', 'StandardUserTask', 'RealStagingAgent', 'HoldIndependentPhysicalBReaderSharingDELETE', 'BIsFourClusters:AIsThreeClusters')
+            Actions = @('SeedAndProveApprovedB', 'OpenTRUNCATE_EXISTING', 'WholeImageWriteA', 'FlushFileBuffers', 'PrivateHandleReadEqualsA', 'HoldWriterDuringThreeRawFreshUncachedBSamples', 'Close', 'BoundedJournalReleasedWait', 'VerifyRetainedPhysicalB')
+            Barriers = @('BootIdentityChanged', 'DurableReadiness', 'AgentPolicyAccepted', 'ApprovedBaseB', 'BeforeOperation', 'FlushedHandleHeld', 'LastUpperClose', 'Released', 'FinalQuiescence')
+            ExpectedTimeline = @('UnscopedSetup', 'BootTrusted', 'Protected', 'SeedB:AllocatedSealedInspectingApprovedPublishingReleased', 'RawFreshUncachedB', 'RetainPhysicalB:ShareDELETE', 'TruncateOpen:OwnedStream', 'Allocated', 'WriteFlushPrivateA', 'HeldRawFreshUncachedB:SameEOFAllocationNamesIds', 'LastUpperClose', 'Sealed', 'Inspecting', 'Approved', 'Publishing', 'Released', 'FinalEqualsA:NewFileId', 'RetainedReaderAndRawB')
+            StatusClasses = @('SeedBOpenWriteFlushClose=Win32:0', 'SeedBJournal=Released;DigestB;DurableFullHistory', 'Open=Win32:0;TRUNCATE_EXISTING', 'Write=Win32:0;WholeImageA', 'Flush=Win32:0', 'PrivateRead=Win32:0;EqualsA', 'Close=Win32:0', 'HeldRawFreshUncached=WholeB', 'RetainedPhysicalReaderAndRaw=WholeB', 'FinalRawFreshUncached=WholeA')
+            MetadataExpectations = @{ Exact = @('Attributes','Creation','Modified','Changed','Links','SecurityId','Sddl'); Accessed = 'NtfsReadWindow'; AccessReason = 'Same bounded NTFS read-side LastAccess rule as S00-S02; all other baseline metadata exact.' }
+            JournalExpectations = @('Allocated', 'Sealed', 'Inspecting', 'Approved', 'Publishing', 'Released', 'ImmutableSealedDigestA')
+            NotificationExpectations = @('ReleasedDigestA', 'NoBlocked', 'NoHandBack')
+            AllowedDirectoryTransitions = @('BaselineBWhileHeld', 'OnlyTargetIdentityBToAAfterRelease', 'NoUserOrServiceTemp', 'RetainedBUnchanged')
+            LatencyClasses = @('writer-open', 'cached-write', 'flush', 'close')
+            Repetitions = @{ Coordinated = 1; Unheld = 0; DeterministicSeed = 4003 }
+            Cleanup = @('StopAndRestoreAgent', 'RestorePolicyBeforeProductStateInPlace', 'RestoreProductStateBytesAndAcls', 'CommonSeedRestoration', 'IndependentBaseline')
+        }
+        @{
+            CaseId = 'C03-block-existing'; Revision = 1; Status = 'Ready'
+            Variant = 'fixed-NTFS-truncate-overwrite-approved-B'; Outcome = 'BLOCK'
+            QualificationScope = 'Phase4FunctionalOnly; H checked, restart/window closure and unheld latency deferred'
+            ActorSid = 'ResolveStandardUserTokenAtRuntime'; ActorSession = 'ResolveTokenSessionId'
+            InitialPolicy = @{ Seed = 'Product'; StartDuringSeed = 3; StartAfterSeed = 0; LiveFlags = 'TEST_DISABLE_TAINT-required' }
+            Scopes = @('FixtureScope')
+            Setup = @('DriverUnloaded', 'SeedBenignBThroughStandardUserOwnedStreamAndRequireApprovedPublishingReleasedDigestB', 'IndependentPatternedTextAWithValidCpf', 'ProductBootPolicy', 'StandardUserTask', 'RealStagingAgent', 'HoldIndependentPhysicalBReaderSharingDELETE', 'BIsFourClusters:AIsThreeClusters')
+            Actions = @('SeedAndProveApprovedB', 'OpenTRUNCATE_EXISTING', 'WholeImageWriteA', 'FlushFileBuffers', 'PrivateHandleReadEqualsA', 'HoldWriterDuringThreeRawFreshUncachedBSamples', 'Close', 'BoundedJournalBlockedWait', 'VerifyRetainedPhysicalB', 'VerifyActorHandBackH')
+            Barriers = @('BootIdentityChanged', 'DurableReadiness', 'AgentPolicyAccepted', 'ApprovedBaseB', 'BeforeOperation', 'FlushedHandleHeld', 'LastUpperClose', 'Blocked', 'FinalQuiescence')
+            ExpectedTimeline = @('UnscopedSetup', 'BootTrusted', 'Protected', 'SeedB:AllocatedSealedInspectingApprovedPublishingReleased', 'RawFreshUncachedB', 'RetainPhysicalB:ShareDELETE', 'TruncateOpen:OwnedStream', 'Allocated', 'WriteFlushPrivateA', 'HeldRawFreshUncachedB:SameEOFAllocationNamesIds', 'LastUpperClose', 'Sealed', 'Inspecting', 'Blocked', 'FinalRemainsB:SameFileId', 'HandBackEqualsA:H')
+            StatusClasses = @('SeedBOpenWriteFlushClose=Win32:0', 'SeedBJournal=Released;DigestB;DurableFullHistory', 'Open=Win32:0;TRUNCATE_EXISTING', 'Write=Win32:0;WholeImageA', 'Flush=Win32:0', 'PrivateRead=Win32:0;EqualsA', 'Close=Win32:0', 'HeldRawFreshUncached=WholeB', 'RetainedPhysicalReaderAndRaw=WholeB', 'OwnerHandBackRead=Success;EqualsA')
+            MetadataExpectations = @{ Exact = @('Attributes','Creation','Modified','Changed','Links','SecurityId','Sddl'); Accessed = 'NtfsReadWindow'; AccessReason = 'Same bounded NTFS read-side LastAccess rule as S00-S02; all other baseline metadata exact.' }
+            JournalExpectations = @('Allocated', 'Sealed', 'Inspecting', 'Blocked', 'ImmutableSealedDigestA', 'NoApprovedPublishingReleased')
+            NotificationExpectations = @('BlockedDigestA', 'BlockedWithVerifiedHandBackPath', 'NoReleased')
+            AllowedDirectoryTransitions = @('SameActiveNamesIdsSizesAttributesSecurity', 'NoUserOrServiceTemp')
+            LatencyClasses = @('writer-open', 'cached-write', 'flush', 'close')
+            Repetitions = @{ Coordinated = 1; Unheld = 0; DeterministicSeed = 4003 }
+            Cleanup = @('StopAndRestoreAgent', 'RestorePolicyBeforeProductStateInPlace', 'RestoreProductStateBytesAndAcls', 'CommonSeedRestoration', 'IndependentBaseline')
+        }
+        @{
+            CaseId = 'C04-approve'; Revision = 1; Status = 'Ready'
+            Variant = 'fixed-NTFS-private-sibling-replacement-approved-B'; Outcome = 'APPROVE'
+            QualificationScope = 'Phase4FunctionalOnly; approved B and retained physical B checked; full temporal/permit/latency qualification deferred'
+            ActorSid = 'ResolveStandardUserTokenAtRuntime'; ActorSession = 'ResolveTokenSessionId'
+            InitialPolicy = @{ Seed = 'Product'; StartDuringSeed = 3; StartAfterSeed = 0; LiveFlags = 'TEST_DISABLE_TAINT-required' }
+            Scopes = @('FixtureScope')
+            Setup = @('DriverUnloaded', 'SeedBenignBThroughStandardUserOwnedStreamAndRequireApprovedPublishingReleasedDigestB', 'IndependentPatternedTextA', 'ProductBootPolicy', 'StandardUserTask', 'RealStagingAgent', 'HoldIndependentPhysicalBReaderSharingDELETE', 'BIsFourClusters:AIsThreeClusters')
+            Actions = @('SeedAndProveApprovedB', 'OwnedCreateNewSiblingSaveTmpTxt', 'WholeImageWriteA', 'FlushFileBuffers', 'PrivateHandleReadEqualsA', 'HoldWriterDuringThreeRawFreshUncachedBSamples', 'SetFileInformationByHandleFileRenameInfoExReplacePosixOntoTarget', 'RequireSameTransferCommittedTargetAndSourceTombstone', 'HoldRenamedWriterDuringThreeRawFreshUncachedBSamples', 'Close', 'BoundedJournalReleasedWait', 'VerifyRetainedPhysicalB')
+            Barriers = @('BootIdentityChanged', 'DurableReadiness', 'AgentPolicyAccepted', 'ApprovedBaseB', 'BeforeOperation', 'BeforeRenameHandleHeld', 'NativeRename', 'AfterRenameHandleHeld', 'LastUpperClose', 'Released', 'FinalQuiescence')
+            ExpectedTimeline = @('UnscopedSetup', 'BootTrusted', 'Protected', 'SeedB:AllocatedSealedInspectingApprovedPublishingReleased', 'RawFreshUncachedB', 'RetainPhysicalB:ShareDELETE', 'PrivateSiblingTemp:Allocated', 'WriteFlushPrivateA', 'BeforeRename:PublicB:NoTemp', 'RenameExReplacePosix:Win32:0', 'CommittedTarget:SameTransfer:SourceTombstone', 'AfterRenameHeld:PublicB:NoTemp:AllocatedUnsealed', 'LastUpperClose', 'Sealed', 'Inspecting', 'Approved', 'Publishing', 'Released', 'FinalEqualsA:NewFileId', 'RetainedReaderAndRawB')
+            StatusClasses = @('SeedBOpenWriteFlushClose=Win32:0', 'SeedBJournal=Released;DigestB;DurableFullHistory', 'TempOpen=Win32:0;CREATE_NEW;DELETE', 'Write=Win32:0;WholeImageA', 'Flush=Win32:0', 'PrivateRead=Win32:0;EqualsA', 'RenameEx=Win32:0;REPLACE_IF_EXISTS|POSIX', 'PrivateReadAfterRename=Win32:0;EqualsA', 'Close=Win32:0', 'HeldRawFreshUncached=WholeB', 'RetainedPhysicalReaderAndRaw=WholeB', 'PublicSiblingTemp=Absent', 'FinalRawFreshUncached=WholeA')
+            MetadataExpectations = @{ Exact = @('Attributes','Creation','Modified','Changed','Links','SecurityId','Sddl'); Accessed = 'NtfsReadWindow'; AccessReason = 'Same bounded NTFS read-side LastAccess rule as S00-S02; all other baseline metadata exact.' }
+            JournalExpectations = @('Allocated', 'Sealed', 'Inspecting', 'Approved', 'Publishing', 'Released', 'ImmutableSealedDigestA')
+            NotificationExpectations = @('ReleasedDigestA', 'NoBlocked', 'NoHandBack')
+            AllowedDirectoryTransitions = @('BaselineBWhileHeld', 'OnlyTargetIdentityBToAAfterRelease', 'NoUserOrServiceTemp', 'RetainedBUnchanged')
+            LatencyClasses = @('writer-open', 'cached-write', 'flush', 'rename-ex', 'close')
+            Repetitions = @{ Coordinated = 1; Unheld = 0; DeterministicSeed = 4003 }
+            Cleanup = @('StopAndRestoreAgent', 'RestorePolicyBeforeProductStateInPlace', 'RestoreProductStateBytesAndAcls', 'CommonSeedRestoration', 'IndependentBaseline')
+        }
+        @{
+            CaseId = 'C04-block'; Revision = 1; Status = 'Ready'
+            Variant = 'fixed-NTFS-private-sibling-replacement-approved-B'; Outcome = 'BLOCK'
+            QualificationScope = 'Phase4FunctionalOnly; H checked, restart/window closure and unheld latency deferred'
+            ActorSid = 'ResolveStandardUserTokenAtRuntime'; ActorSession = 'ResolveTokenSessionId'
+            InitialPolicy = @{ Seed = 'Product'; StartDuringSeed = 3; StartAfterSeed = 0; LiveFlags = 'TEST_DISABLE_TAINT-required' }
+            Scopes = @('FixtureScope')
+            Setup = @('DriverUnloaded', 'SeedBenignBThroughStandardUserOwnedStreamAndRequireApprovedPublishingReleasedDigestB', 'IndependentPatternedTextAWithValidCpf', 'ProductBootPolicy', 'StandardUserTask', 'RealStagingAgent', 'HoldIndependentPhysicalBReaderSharingDELETE', 'BIsFourClusters:AIsThreeClusters')
+            Actions = @('SeedAndProveApprovedB', 'OwnedCreateNewSiblingSaveTmpTxt', 'WholeImageWriteA', 'FlushFileBuffers', 'PrivateHandleReadEqualsA', 'HoldWriterDuringThreeRawFreshUncachedBSamples', 'SetFileInformationByHandleFileRenameInfoExReplacePosixOntoTarget', 'RequireSameTransferCommittedTargetAndSourceTombstone', 'HoldRenamedWriterDuringThreeRawFreshUncachedBSamples', 'Close', 'BoundedJournalBlockedWait', 'VerifyRetainedPhysicalB', 'VerifyActorHandBackH')
+            Barriers = @('BootIdentityChanged', 'DurableReadiness', 'AgentPolicyAccepted', 'ApprovedBaseB', 'BeforeOperation', 'BeforeRenameHandleHeld', 'NativeRename', 'AfterRenameHandleHeld', 'LastUpperClose', 'Blocked', 'FinalQuiescence')
+            ExpectedTimeline = @('UnscopedSetup', 'BootTrusted', 'Protected', 'SeedB:AllocatedSealedInspectingApprovedPublishingReleased', 'RawFreshUncachedB', 'RetainPhysicalB:ShareDELETE', 'PrivateSiblingTemp:Allocated', 'WriteFlushPrivateA', 'BeforeRename:PublicB:NoTemp', 'RenameExReplacePosix:Win32:0', 'CommittedTarget:SameTransfer:SourceTombstone', 'AfterRenameHeld:PublicB:NoTemp:AllocatedUnsealed', 'LastUpperClose', 'Sealed', 'Inspecting', 'Blocked', 'FinalRemainsB:SameFileId', 'HandBackEqualsA:H')
+            StatusClasses = @('SeedBOpenWriteFlushClose=Win32:0', 'SeedBJournal=Released;DigestB;DurableFullHistory', 'TempOpen=Win32:0;CREATE_NEW;DELETE', 'Write=Win32:0;WholeImageA', 'Flush=Win32:0', 'PrivateRead=Win32:0;EqualsA', 'RenameEx=Win32:0;REPLACE_IF_EXISTS|POSIX', 'PrivateReadAfterRename=Win32:0;EqualsA', 'Close=Win32:0', 'HeldRawFreshUncached=WholeB', 'RetainedPhysicalReaderAndRaw=WholeB', 'PublicSiblingTemp=Absent', 'OwnerHandBackRead=Success;EqualsA')
+            MetadataExpectations = @{ Exact = @('Attributes','Creation','Modified','Changed','Links','SecurityId','Sddl'); Accessed = 'NtfsReadWindow'; AccessReason = 'Same bounded NTFS read-side LastAccess rule as S00-S02; all other baseline metadata exact.' }
+            JournalExpectations = @('Allocated', 'Sealed', 'Inspecting', 'Blocked', 'ImmutableSealedDigestA', 'NoApprovedPublishingReleased')
+            NotificationExpectations = @('BlockedDigestA', 'BlockedWithVerifiedHandBackPath', 'NoReleased')
+            AllowedDirectoryTransitions = @('SameActiveNamesIdsSizesAttributesSecurity', 'NoUserOrServiceTemp')
+            LatencyClasses = @('writer-open', 'cached-write', 'flush', 'rename-ex', 'close')
+            Repetitions = @{ Coordinated = 1; Unheld = 0; DeterministicSeed = 4003 }
+            Cleanup = @('StopAndRestoreAgent', 'RestorePolicyBeforeProductStateInPlace', 'RestoreProductStateBytesAndAcls', 'CommonSeedRestoration', 'IndependentBaseline')
+        }
+        @{
+            CaseId = 'C02'; Revision = 2; Status = 'NotReady'
             Variant = 'UnexpandedFamily'; Outcome = 'Unimplemented: Mapped write'
-            QualificationScope = 'Phase4; WP4 must expand all design variants'
+            QualificationScope = 'JUSTIFY and retained section without view / late view variants deferred; APPROVE/BLOCK absent variants have distinct Ready IDs'
             ActorSid = 'ResolveStandardUserTokenAtRuntime'; ActorSession = 'ResolveTokenSessionId'
             InitialPolicy = @{ Seed = 'Product'; LiveFlags = 'TEST_DISABLE_TAINT-required' }
             Scopes = @('Unimplemented'); Setup = @('WP4: design section 4.1 C02')
@@ -266,9 +386,9 @@
             Cleanup = @('Unimplemented; common restoration still mandatory')
         }
         @{
-            CaseId = 'C03'; Revision = 1; Status = 'NotReady'
+            CaseId = 'C03'; Revision = 2; Status = 'NotReady'
             Variant = 'UnexpandedFamily'; Outcome = 'Unimplemented: Overwrite'
-            QualificationScope = 'Phase4; WP4 must expand all design variants'
+            QualificationScope = 'JUSTIFY and supersede variants deferred; APPROVE/BLOCK truncate-existing variants have distinct Ready IDs'
             ActorSid = 'ResolveStandardUserTokenAtRuntime'; ActorSession = 'ResolveTokenSessionId'
             InitialPolicy = @{ Seed = 'Product'; LiveFlags = 'TEST_DISABLE_TAINT-required' }
             Scopes = @('Unimplemented'); Setup = @('WP4: design section 4.1 C03')
@@ -280,9 +400,9 @@
             Cleanup = @('Unimplemented; common restoration still mandatory')
         }
         @{
-            CaseId = 'C04'; Revision = 1; Status = 'NotReady'
+            CaseId = 'C04'; Revision = 2; Status = 'NotReady'
             Variant = 'UnexpandedFamily'; Outcome = 'Unimplemented: Replacement save'
-            QualificationScope = 'Phase4; WP4 must expand all design variants'
+            QualificationScope = 'JUSTIFY, open private target refusal and reconnect tombstone variants deferred; APPROVE/BLOCK replacement variants have distinct Ready IDs'
             ActorSid = 'ResolveStandardUserTokenAtRuntime'; ActorSession = 'ResolveTokenSessionId'
             InitialPolicy = @{ Seed = 'Product'; LiveFlags = 'TEST_DISABLE_TAINT-required' }
             Scopes = @('Unimplemented'); Setup = @('WP4: design section 4.1 C04')
@@ -294,9 +414,29 @@
             Cleanup = @('Unimplemented; common restoration still mandatory')
         }
         @{
-            CaseId = 'C05'; Revision = 1; Status = 'NotReady'
+            CaseId = 'C05-denied-external-rename'; Revision = 1; Status = 'Ready'
+            Variant = 'fixed-NTFS-old-physical-external-source-rename-into-protected-absent-target'; Outcome = 'DENY'
+            QualificationScope = 'Phase4FunctionalDOnly; exact denial ledger/reason and unheld latency unavailable; positive owned-source variant deferred'
+            ActorSid = 'ResolveStandardUserTokenAtRuntime'; ActorSession = 'ResolveTokenSessionId'
+            InitialPolicy = @{ Seed = 'Product'; StartDuringSeed = 3; StartAfterSeed = 0; LiveFlags = 'TEST_DISABLE_TAINT-required' }
+            Scopes = @('FixtureScope')
+            Setup = @('DriverUnloaded', 'AbsentFinal', 'DurablePhysicalSourceAOutsidePolicyOnSameVolume', 'ProductBootPolicy', 'StandardUserTask', 'RealStagingAgent', 'IndependentExternalRawObserver')
+            Actions = @('OpenPhysicalExternalSourceDELETEAndKeepOldHandle', 'SourceHandleReadEqualsA', 'ThreeBeforeRenameRawSamplesOfTargetAndSource', 'SetFileInformationByHandleFileRenameInfoExReplacePosixOntoTarget', 'RequireExactAccessDeniedOnRename', 'SourceHandleReadStillEqualsA', 'ThreeAfterDeniedRenameRawSamplesOfTargetAndSource', 'ClosePhysicalSource', 'NoTransferOrOutcomeNotificationOrHandBack')
+            Barriers = @('BootIdentityChanged', 'DurableReadiness', 'AgentPolicyAccepted', 'BeforeOperation', 'BeforeRenameHandleHeld', 'NativeRename', 'AfterRenameHandleHeld', 'SourceClose', 'FinalQuiescence')
+            ExpectedTimeline = @('UnscopedSourceSetup', 'BootTrusted', 'Protected', 'TargetAbsent', 'PhysicalExternalSourceOpen:Win32:0', 'HeldSourceA:SameIdAllocationNames', 'RenameIntoProtected:Win32:5', 'SourceStillA:SameIdAllocationNames', 'TargetStillAbsent:NoPublicTemp', 'SourceClose:Win32:0', 'NoNewTransfer', 'NoApprovalReleaseHandBack', 'FinalTargetAbsentAndSourceA')
+            StatusClasses = @('SourceOpen=Win32:0;OPEN_EXISTING;DELETE', 'SourceRead=Win32:0;WholeA', 'RenameEx=Win32:5;REPLACE_IF_EXISTS|POSIX', 'SourceReadAfterDenial=Win32:0;WholeA', 'SourceClose=Win32:0', 'TargetFreshAbsent=Win32:2', 'TargetUncachedAbsent=Win32:2', 'SourceRawFreshUncached=WholeA;SameIdAllocation')
+            MetadataExpectations = @{ Exact = @('Attributes','Creation','Modified','Changed','Links','SecurityId','Sddl'); Accessed = 'NtfsReadWindow'; AccessReason = 'Same bounded NTFS read-side LastAccess rule as S00-S02; all other baseline metadata exact.' }
+            JournalExpectations = @('NoNewTransfer', 'NoApproved', 'NoReleased')
+            NotificationExpectations = @('NoApproval', 'NoRelease', 'NoHandBack')
+            AllowedDirectoryTransitions = @('SameActiveNamesIdsSizesAttributesSecurityInProtectedAndExternalFolders')
+            LatencyClasses = @('writer-open', 'rename-ex', 'close')
+            Repetitions = @{ Coordinated = 1; Unheld = 0; DeterministicSeed = 4003 }
+            Cleanup = @('CloseBothObservers', 'StopAndRestoreAgent', 'RestorePolicyBeforeProductStateInPlace', 'RestoreProductStateBytesAndAcls', 'RemoveExternalFixture', 'CommonSeedRestoration', 'IndependentBaseline')
+        }
+        @{
+            CaseId = 'C05'; Revision = 2; Status = 'NotReady'
             Variant = 'UnexpandedFamily'; Outcome = 'Unimplemented: Rename into folder'
-            QualificationScope = 'Phase4; WP4 must expand all design variants'
+            QualificationScope = 'Positive owned source rename and existing-target denial variants deferred; external old physical handle / absent target denial has a distinct Ready ID'
             ActorSid = 'ResolveStandardUserTokenAtRuntime'; ActorSession = 'ResolveTokenSessionId'
             InitialPolicy = @{ Seed = 'Product'; LiveFlags = 'TEST_DISABLE_TAINT-required' }
             Scopes = @('Unimplemented'); Setup = @('WP4: design section 4.1 C05')
