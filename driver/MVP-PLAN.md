@@ -1856,3 +1856,38 @@ maintenance overlay preserved the prior active checkpoint and its backing
 files, and a completed blockpull reduced the active chain to0. Fresh-tag
 retry `goalpruned111` is in progress; baseline is independently checked by
 the batch wrapper before it runs.
+
+## 2026-10-07 afternoon (orchestrator): throughput and the cross-run MVP gate
+
+- [x] `goalpruned111` A01 (cache5/taint2, runtime Verifier): the product does what A01 requires: native
+  Pending while the old writer lives, one actual same-ID ACTIVATING->PROTECTED CAS after release, then
+  service Ready. The run failed only on the observer rebind: `SameIdentity` compared raw on-disk
+  `$STANDARD_INFORMATION` times with the reopened handle's, and NTFS writes those lazily after the old
+  writer's cleanup. Fixed in `a53d01bb` (raw-vs-handle compares identity and layout, not times; U digest,
+  pinned layout and fingerprint checks unchanged; 9 new real-handle controls). The orchestrating session
+  had died while the guest rebooted for restoration; `Resume-StagedInvariantRun.py` replayed only the
+  remaining finalize/restoration/transfer/gate steps and recorded the resume.
+- [x] The A04 "S=NO while H is live" contract correction is already in the harness (live-holder checks
+  require H>0 and the opener PID only); no further change.
+- **Owner decisions (2026-10-07):** (1) do not rerun cells that already pass; (2) remove the batch's
+  redundant restart and duplicate baseline; (3) run several debuggees in parallel.
+- **Decision (orchestrator) on (1):** a cell (row, mode) counts as passed when any run of the final build
+  pair passed it with the current row revision. `Get-StagedMvpStatus.py` computes the 69-cell matrix across
+  all suite indices: hash-verified case.json, current row revision, ForbiddenByteCount 0, proven
+  restoration, MVP gate recomputed with the run's pinned latency evidence. Why: harness-only fixes do not
+  change what was tested on the product; a product rebuild or a row contract change (revision bump) does,
+  and those still invalidate earlier passes. This is also required because batches run one case per runner
+  invocation, so no single suite index can ever show `MvpSuite=PASS`.
+- **Decision (orchestrator) on (2):** the batch trusts the wrapper's own independent restoration record
+  (baseline + audit, taken after the restoration reboot) instead of restarting again; a restart and fresh
+  baseline still follow any rollback or a runner that stopped before the wrapper. ~50 s of ~6.3 min per run.
+- **Decision (orchestrator) on (3):** the builder `win10` stays (WDK builds, test signer, .NET matrix,
+  PS 5.1 gate) but is shut down during parallel sweeps and started for builds/gates. Host RAM is the limit
+  (32 GB, already ~11 GB in zram). Start with 3 debuggees at 4 GB each (~12 GB, less than today's two
+  VMs), add a 4th only if run times and swap stay flat. All debuggees, including the original, get the same
+  4 GB and are clones of one clean disk, so every cell runs on one platform configuration (19045.2965).
+  Latency-bearing runs (dedicated latency, S00) run with the other debuggees idle, so host contention is not
+  reported as product latency. `debuggees.txt` lists the VMs (`win10-debug`, `win10-debug2..4`, .51-.54);
+  `SAFEUPLOAD_DEBUGGEE` selects one; provenance records it. Setup: `New-ParallelDebuggees.sh`.
+- Order of work: fix while only runtime-Verifier runs; once it is green, run ordinary and boot-Verifier
+  without product changes in between; dedicated latency per write path and mode with other VMs idle.
