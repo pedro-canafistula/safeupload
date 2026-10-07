@@ -1141,3 +1141,35 @@ The safe W01 checkpoint parent was written by Sol and checked by root: Windows P
   12288-byte whole-image and rereads both physical containers with exact hashes
   (`sol-retained-native-builder-validation.txt`). Builder19045.6466 is explicitly
   not suite qualification; rejected full observer control retained too.
+- C02 refinement: generated backing flush IRP795aca20 has reached viostor's
+  device-cache flush (disk/partmgr/volmgr/Ntfs completion chain), not a FileInfo
+  pre-callback block. Thread TopLevelIrp=1, upper EOF0, private noncached backing
+  has no shared cache map. Exact lower hardware completion cause is not proved.
+  Do not clear TopLevelIrp: Microsoft explicitly prohibits minifilter use of
+  IoSetTopLevelIrp. Candidate minimal product repair separates upper cache
+  coherence from device durability: StageZeroGrowth only needs existing dirty
+  upper bytes drained before preserving a partial sector and zeroing extension.
+  Keep CcFlushCache and checked status for existing data sections; omit the
+  unrelated device-wide cache barrier before zeroing. Explicit Flush, cleanup
+  and seal retain the full StageFlush/backing barrier. No noncached zero writes,
+  tail preservation, upper VDL proof, final durability or publication changes.
+  This is a narrowly motivated candidate, not a confirmed lower-driver fix.
+  Exact four-config builds, fresh Luna review, then runtime C02 required.
+  Primary references: https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/fltkernel/nf-fltkernel-fltflushbuffers
+  https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nf-wdm-iosettoplevelirp
+- [x] C02 growth candidate bd4d02fb exact b14 builds clean in all four normal/feature
+  Debug/Release WDK/PREfast/ApiValidator configurations, both Inspectors and
+  writer fixture (`exact-mvp4-sol-b14-summary.txt`). Signed SHA
+  5752B047BCF756ED0C8ADE64737C848A11654DBBF9F155C569A6BD20567F3204.
+  Fresh Luna ACCEPT WITH CONDITIONS (`sol-c02-growth-review.txt`): cache
+  coherence/zero/tail/VDL unchanged; resize no longer has incidental earlier-data
+  storage-cache durability. Full explicit flush/write-through/cleanup/seal
+  durability remains. Actual lower-completion cause unproved; source-close
+  could still wait. Runtime C02 is required before pushing the product change.
+- [x] Builder derived DMP and ZIP removed only after owned debugger completion;
+  C free9.27GB, E free21.13GB. Exact new disk offlined and detached live from
+  verified builder win10; original builder disk unchanged. Diagnostic qcow2
+  retained on host, original private ELF/full DMP retained. The broad !irpfind
+  remaining pool scan was stopped using exact owned cdb PID/command guards;
+  complete specific IRP/stack evidence and partial scan preserved.
+
