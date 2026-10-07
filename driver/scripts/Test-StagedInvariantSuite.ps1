@@ -91,7 +91,7 @@ function Load-State([string]$Path) { [Management.Automation.PSSerializer]::Deser
 function Wait-WriterIdentity([string]$Path,[int]$Seconds=60) {
     # Existence is not publication: CreateNew exposes the name before the writer
     # has flushed/closed it. Allow its write handle and retry partial CLIXML too.
-    $deadline=[DateTime]::UtcNow.AddSeconds($Seconds);$reason='File not published.'
+    $deadline=([Diagnostics.Stopwatch]::GetTimestamp()+[long](($Seconds)*[Diagnostics.Stopwatch]::Frequency));$reason='File not published.'
     do {
         $stream=$null;$reader=$null
         try {
@@ -105,7 +105,7 @@ function Wait-WriterIdentity([string]$Path,[int]$Seconds=60) {
         }catch{$reason=$_.Exception.Message}
         finally{if($null -ne $reader){$reader.Dispose()}elseif($null -ne $stream){$stream.Dispose()}}
         Start-Sleep -Milliseconds 100
-    }while([DateTime]::UtcNow -lt $deadline)
+    }while([Diagnostics.Stopwatch]::GetTimestamp() -lt $deadline)
     throw ('Writer identity unavailable after bounded retry: '+$Path+'; '+$reason)
 }
 function Get-BootId { $env:COMPUTERNAME+'/'+(Get-CimInstance Win32_OperatingSystem).LastBootUpTime.ToUniversalTime().ToString('o') }
@@ -128,12 +128,12 @@ function ConvertTo-PowerShellLiteral([string]$Value){$Value.Replace("'","''")}
 # Every auxiliary task gets its own durable envelope and retained stdout/stderr.
 # Never accept scheduling success, an empty exit code or a stale completion.
 function Wait-TaskCompletion([string]$Task,[string]$Done,[string]$Token,[int]$Seconds=240) {
-    $deadline=[DateTime]::UtcNow.AddSeconds($Seconds)
+    $deadline=([Diagnostics.Stopwatch]::GetTimestamp()+[long](($Seconds)*[Diagnostics.Stopwatch]::Frequency))
     do {
         $t=Get-ScheduledTask -TaskName $Task -ErrorAction Stop
         if((Test-Path -LiteralPath $Done) -and $t.State -ne 'Running'){break}
         Start-Sleep -Milliseconds 200
-    }while([DateTime]::UtcNow -lt $deadline)
+    }while([Diagnostics.Stopwatch]::GetTimestamp() -lt $deadline)
     if(-not(Test-Path -LiteralPath $Done) -or $t.State -eq 'Running'){throw "Task completion unavailable: $Task"}
     $doneRecord=Load-State $Done
     $info=Get-ScheduledTaskInfo -TaskName $Task
@@ -491,8 +491,8 @@ try {
     }
     if($actor.Elevated -or $actor.IsAdministrator -or $actor.Sid -cne $config.ActorSid){throw 'Writer token is not the expected standard user'}
     Write-DurableFile '__IDENTITY__' ([Management.Automation.PSSerializer]::Serialize($actor,32)) -New
-    $deadline=[DateTime]::UtcNow.AddSeconds(180)
-    while(-not(Test-Path -LiteralPath '__GO__')){if([DateTime]::UtcNow -gt $deadline){throw 'Writer barrier timed out'};Start-Sleep -Milliseconds 10}
+    $deadline=([Diagnostics.Stopwatch]::GetTimestamp()+[long]((180)*[Diagnostics.Stopwatch]::Frequency))
+    while(-not(Test-Path -LiteralPath '__GO__')){if([Diagnostics.Stopwatch]::GetTimestamp() -gt $deadline){throw 'Writer barrier timed out'};Start-Sleep -Milliseconds 10}
     $releasedQpc=[Diagnostics.Stopwatch]::GetTimestamp()
     $calls=@()
     if($config.CachedCase){
@@ -507,15 +507,15 @@ try {
             try{$privateDigest=[BitConverter]::ToString($hash.ComputeHash([SUWriter]::ReadPrivate($h,$bytes.Length))).Replace('-','')}finally{$hash.Dispose()}
             $held=@{Pid=$PID;Sid=$actor.Sid;BootId=$actor.BootId;Token=$config.Token;Calls=$calls;PrivateSha256=$privateDigest;Qpc=[Diagnostics.Stopwatch]::GetTimestamp();ReleasedQpc=$releasedQpc}
             Write-DurableFile (Join-Path $config.CoordinationDirectory 'held.clixml') ([Management.Automation.PSSerializer]::Serialize($held,32)) -New
-            $deadline=[DateTime]::UtcNow.AddSeconds(180)
-            while(-not(Test-Path -LiteralPath (Join-Path $config.CoordinationDirectory 'close'))){if([DateTime]::UtcNow -gt $deadline){throw 'Cached writer close barrier timed out after 180 seconds'};Start-Sleep -Milliseconds 10}
+            $deadline=([Diagnostics.Stopwatch]::GetTimestamp()+[long]((180)*[Diagnostics.Stopwatch]::Frequency))
+            while(-not(Test-Path -LiteralPath (Join-Path $config.CoordinationDirectory 'close'))){if([Diagnostics.Stopwatch]::GetTimestamp() -gt $deadline){throw 'Cached writer close barrier timed out after 180 seconds'};Start-Sleep -Milliseconds 10}
         } finally {
             if($h -ne [IntPtr]::Zero -and $h -ne [IntPtr]::new(-1)){$calls+= [SUWriter]::CloseHeld($h)}
             $closed=@{Pid=$PID;Sid=$actor.Sid;BootId=$actor.BootId;Token=$config.Token;Calls=$calls;Qpc=[Diagnostics.Stopwatch]::GetTimestamp();ReleasedQpc=$releasedQpc}
             Write-DurableFile (Join-Path $config.CoordinationDirectory 'closed.clixml') ([Management.Automation.PSSerializer]::Serialize($closed,32)) -New
         }
-        $deadline=[DateTime]::UtcNow.AddSeconds(180)
-        while(-not(Test-Path -LiteralPath (Join-Path $config.CoordinationDirectory 'inspect-handback'))){if([DateTime]::UtcNow -gt $deadline){throw 'Cached writer hand-back barrier timed out after 180 seconds'};Start-Sleep -Milliseconds 10}
+        $deadline=([Diagnostics.Stopwatch]::GetTimestamp()+[long]((180)*[Diagnostics.Stopwatch]::Frequency))
+        while(-not(Test-Path -LiteralPath (Join-Path $config.CoordinationDirectory 'inspect-handback'))){if([Diagnostics.Stopwatch]::GetTimestamp() -gt $deadline){throw 'Cached writer hand-back barrier timed out after 180 seconds'};Start-Sleep -Milliseconds 10}
         $handBackAfter=Get-ActorHandBack
         $value=@{Actor=$actor;Calls=$calls;PrivateSha256=$privateDigest;HandBackAfter=$handBackAfter;QpcFrequency=[Diagnostics.Stopwatch]::Frequency;ReleasedQpc=$releasedQpc;Held=$false}
     }else{
@@ -642,8 +642,8 @@ function Publish-ActivationActorCommand($State,[string]$Action,$Fields) {
     Save-State $value $commandPath
     $State.ActorNextSequence=$sequence+1;Save-State $State $statePath
     $replyPath=Join-Path $actorDirectory ('reply-'+$sequence.ToString('D4')+'.clixml')
-    $deadline=[DateTime]::UtcNow.AddSeconds(30)
-    do {if(Test-Path -LiteralPath $replyPath){$reply=Load-State $replyPath;if($reply.Sequence -ne $sequence){throw 'Activation actor reply sequence mismatch'};if($reply.Error){throw ('Activation actor '+$Action+' failed: '+$reply.Error)};return $reply};Start-Sleep -Milliseconds 20}while([DateTime]::UtcNow -lt $deadline)
+    $deadline=([Diagnostics.Stopwatch]::GetTimestamp()+[long]((30)*[Diagnostics.Stopwatch]::Frequency))
+    do {if(Test-Path -LiteralPath $replyPath){$reply=Load-State $replyPath;if($reply.Sequence -ne $sequence){throw 'Activation actor reply sequence mismatch'};if($reply.Error){throw ('Activation actor '+$Action+' failed: '+$reply.Error)};return $reply};Start-Sleep -Milliseconds 20}while([Diagnostics.Stopwatch]::GetTimestamp() -lt $deadline)
     throw ('Activation actor timeout: action='+$Action+'; sequence='+$sequence+'; no reply after 30s')
 }
 function Get-ActivationActorIdentity {
@@ -702,13 +702,13 @@ public static class SUActivationPipeProof{[DllImport("kernel32.dll",SetLastError
     finally{if($null -ne $reader){$reader.Dispose()};if($null -ne $pipe){$pipe.Dispose()}}
 }
 function Wait-ActivationProductStatus([string]$ExpectedCoverage,[uint32]$PolicyGeneration,[int]$Seconds,[string]$Tag) {
-    $deadline=[DateTime]::UtcNow.AddSeconds($Seconds);$last=$null;$reason='No current service status received.'
+    $deadline=([Diagnostics.Stopwatch]::GetTimestamp()+[long](($Seconds)*[Diagnostics.Stopwatch]::Frequency));$last=$null;$reason='No current service status received.'
     do {$last=Get-ActivationProductStatus $Tag 3000;if($last.Status -eq 'OK'){
         $s=$last.Value
         if($s.protectionActive -and $s.admissionCoverage -eq $ExpectedCoverage -and $null -ne $s.nativePolicyGeneration -and [uint32]$s.nativePolicyGeneration -eq $PolicyGeneration){return $last}
         if($s.admissionCoverage -eq 'Ready' -and $ExpectedCoverage -eq 'Pending'){$reason='Service reported Ready while the pre-scope holder was still live.'}
         else{$reason=('Current service status did not match '+$ExpectedCoverage+' for policy generation '+$PolicyGeneration+': coverage='+$s.admissionCoverage+'; reason='+$s.admissionCoverageReason+'; nativeGeneration='+$s.nativePolicyGeneration)}
-    }else{$reason=$last.Reason};Start-Sleep -Milliseconds 100}while([DateTime]::UtcNow -lt $deadline)
+    }else{$reason=$last.Reason};Start-Sleep -Milliseconds 100}while([Diagnostics.Stopwatch]::GetTimestamp() -lt $deadline)
     throw ('Service readiness timeout ('+$ExpectedCoverage+'): '+$reason)
 }
 function Get-ActivationRawDifference($Baseline,$Sample,[string]$Path) {
@@ -786,7 +786,7 @@ function Get-VerifierEvidence([string]$Tag,[switch]$RequireMode) {
     return [pscustomobject]@{Active=$active;Settings=$settings;ActiveFlags=$flags;ActiveExit=$activeExit;SettingsExit=$settingsExit;RuntimeDriverEntryUnchecked=($Mode -eq 'runtime-verifier')}
 }
 function Get-Readiness {
-    $deadline=[DateTime]::UtcNow.AddSeconds(180)
+    $deadline=([Diagnostics.Stopwatch]::GetTimestamp()+[long]((180)*[Diagnostics.Stopwatch]::Frequency))
     do {
         $out=Invoke-CapturedProcess $inspectorPath '--admission-volume-status' (Join-Path $evidenceDirectory ('status-'+[guid]::NewGuid().ToString('N')))
         $status=$out | ConvertFrom-Json
@@ -801,7 +801,7 @@ function Get-Readiness {
                 Utc=[DateTime]::UtcNow.ToString('o');VolumeGuid=$guid;Status=$status;Entry=$entries[0];FilterInstances=$filter;FilterReady=$true}
         }
         Start-Sleep -Milliseconds 200
-    }while([DateTime]::UtcNow -lt $deadline)
+    }while([Diagnostics.Stopwatch]::GetTimestamp() -lt $deadline)
     throw 'Durable readiness unavailable: valid BootPolicy/newly-mounted/canary/trust/filter required'
 }
 function Get-ExpectedCheckpoint($Baseline,[string]$PhaseName,[long]$Sequence) {
@@ -932,7 +932,7 @@ function ConvertFrom-NotificationRecord($Segments,[byte[]]$HeadBytes) {
 }
 function Get-NotificationSnapshot([string]$Tag,[string]$BootId,[long]$MinimumQpc) {
     $root=Split-Path -Parent $policyPath;$directory=Join-Path $root 'notifications'
-    $deadline=[DateTime]::UtcNow.AddSeconds(4);$reason='Notification record unavailable.'
+    $deadline=([Diagnostics.Stopwatch]::GetTimestamp()+[long]((4)*[Diagnostics.Stopwatch]::Frequency));$reason='Notification record unavailable.'
     do {
         $held=@()
         $snapshot=[ordered]@{Status='INCONCLUSIVE';LocationStatus='INCONCLUSIVE';LocationFiles=@();Directory=$directory;DirectoryExists=$null;ChildNames=@();Objects=@();
@@ -999,7 +999,7 @@ function Get-NotificationSnapshot([string]$Tag,[string]$BootId,[long]$MinimumQpc
         }catch{$reason=$_.Exception.Message;$snapshot.Reason=$reason;$snapshot.Errors=Get-ErrorChain $_.Exception}
         finally{foreach($obj in $held){$obj.Dispose()}}
         Start-Sleep -Milliseconds 100
-    }while([DateTime]::UtcNow -lt $deadline)
+    }while([Diagnostics.Stopwatch]::GetTimestamp() -lt $deadline)
     return [pscustomobject]$snapshot
 }
 function Test-NotificationWindow($Before,$After,$Fence,[bool]$WindowKnown) {
@@ -1996,7 +1996,7 @@ function Invoke-CachedObservation {
         $trial.Assertions+=@{Name='ExactNativeStatus';Verdict=$(if($good){'PASS'}else{'FAIL'});Reason=($row.StatusClasses -join ';')}
         if(-not $good){throw 'C01 actor native write/flush/close failed'}
         if($trial.Operations[0].StartQpc -lt $ready.Qpc -or $trial.Operations[-1].StartQpc -lt $trial.CloseBarrierQpc){throw 'C01 operation/readiness/close QPC order invalid'}
-        $wanted=if($row.Outcome -ceq 'APPROVE'){'Released'}else{'Blocked'};$deadline=[DateTime]::UtcNow.AddSeconds(120);$pollNumber=0;$terminal=$null
+        $wanted=if($row.Outcome -ceq 'APPROVE'){'Released'}else{'Blocked'};$deadline=([Diagnostics.Stopwatch]::GetTimestamp()+[long]((120)*[Diagnostics.Stopwatch]::Frequency));$pollNumber=0;$terminal=$null
         do {
             $poll=Get-CachedJournalObservation ('outcome-'+$pollNumber) $actor;$trial.JournalSnapshots+= $poll.Snapshot;$pollNumber++
             if($poll.Status -cne 'OK'){$trial.Assertions+=@{Name='C01JournalPoll';Verdict='INCONCLUSIVE';Reason=($poll.Errors | Out-String)}}
@@ -2009,7 +2009,7 @@ function Invoke-CachedObservation {
             $sequence++;$sample=Capture-CachedSample $context $baseline 'OutcomeWait' $sequence;$samples+= $sample
             if($row.Outcome -ceq 'BLOCK'){$predicateSamples+= $sample;$checkpoints+=Get-ExpectedCheckpoint $baseline $sample.Phase $sequence;$trial.Assertions+=Test-CachedSample $sample $baseline $false $imageA}
             if($null -ne $terminal){break};Start-Sleep -Milliseconds 10
-        }while([DateTime]::UtcNow -lt $deadline)
+        }while([Diagnostics.Stopwatch]::GetTimestamp() -lt $deadline)
         $trial.Assertions+=Test-CachedJournalSequence $trial.JournalTransitions $row.Outcome $digest
         if($null -eq $terminal){throw ('C01 journal timeout after 120 seconds: expected '+$wanted+'; last observed='+($trial.JournalTransitions.StateName -join ' -> '))}
         $trial.TransferId=$terminal.TransferId
@@ -2024,8 +2024,8 @@ function Invoke-CachedObservation {
                 $trial.Assertions+=@{Name='C01BlockedStageRetained';Verdict=$(if($blockedBytes.Length -eq $imageA.Length -and [StagedInvariant.Native]::Hash($blockedBytes) -ceq $digest){'PASS'}else{'FAIL'});Reason='Blocked sealed snapshot remains private and equals exact A during the available window.'}
             }catch{$trial.Assertions+=@{Name='C01BlockedStageRetained';Verdict='INCONCLUSIVE';Reason=$_.Exception.ToString()}}
             finally{if($null -ne $stage){$stage.Dispose()}}
-            $handBackDeadline=[DateTime]::UtcNow.AddSeconds(10);$handBackRoot=Join-Path $actor.Profile 'SafeUpload\_bloqueados'
-            do{if(Test-Path -LiteralPath $handBackRoot){if(@(Get-ChildItem -LiteralPath $handBackRoot -File -Force).Count){break}};Start-Sleep -Milliseconds 100}while([DateTime]::UtcNow -lt $handBackDeadline)
+            $handBackDeadline=([Diagnostics.Stopwatch]::GetTimestamp()+[long]((10)*[Diagnostics.Stopwatch]::Frequency));$handBackRoot=Join-Path $actor.Profile 'SafeUpload\_bloqueados'
+            do{if(Test-Path -LiteralPath $handBackRoot){if(@(Get-ChildItem -LiteralPath $handBackRoot -File -Force).Count){break}};Start-Sleep -Milliseconds 100}while([Diagnostics.Stopwatch]::GetTimestamp() -lt $handBackDeadline)
         }
         Write-DurableFile (Join-Path $actorDirectory 'inspect-handback') $RunName -New
         $writer=Wait-TaskCompletion $writerTask (Join-Path $actorDirectory 'completion.clixml') $state.WriterToken 60
@@ -2146,7 +2146,7 @@ $value=$b.ToString().Split([char]0)[0]
         $seq=1;$checkpoints+=Get-ExpectedCheckpoint $baseline 'BeforeOperation' $seq
         $samples+=Capture-InvariantSample $context $baseline 'BeforeOperation' $seq
         if($CaseId -ne 'S00-observer-control'){Start-ScheduledTask -TaskName $writerTask}
-        $deadline=[DateTime]::UtcNow.AddSeconds(60)
+        $deadline=([Diagnostics.Stopwatch]::GetTimestamp()+[long]((60)*[Diagnostics.Stopwatch]::Frequency))
         # S00 is complete now; its completion envelope owns the final identity.
         $actor=if($CaseId -eq 'S00-observer-control'){$writer.Value.Actor}else{Wait-WriterIdentity (Join-Path $actorDirectory 'identity.clixml')}
         if($actor.Sid -cne $state.ActorSid -or $actor.Elevated -or $actor.IsAdministrator -or $actor.Pid -eq $PID -or $actor.BootId -cne $context.BootId){throw 'Actor provenance invalid'}
@@ -2157,7 +2157,7 @@ $value=$b.ToString().Split([char]0)[0]
             $samples+=Capture-InvariantSample $context $baseline 'Continuous' $seq
             # Full-pass and gap QPC intervals are later checked against all actor attempts.
             Start-Sleep -Milliseconds 10
-            if([DateTime]::UtcNow -gt $deadline.AddSeconds(120)){throw 'Writer completion unavailable'}
+            if([Diagnostics.Stopwatch]::GetTimestamp() -gt ($deadline+[long](120*[Diagnostics.Stopwatch]::Frequency))){throw 'Writer completion unavailable'}
         }while(-not(Test-Path -LiteralPath (Join-Path $actorDirectory 'completion.clixml')))
         $writer=Wait-TaskCompletion $writerTask (Join-Path $actorDirectory 'completion.clixml') $state.WriterToken
         $trial.Operations=$writer.Value.Calls
@@ -2299,7 +2299,7 @@ function Invoke-ActivationObservation {
         Save-State $state $statePath
 
         $epochAfter=$null;$epochStable=$false;$epochReason='Admission epoch did not advance to a stable quiescent snapshot within 45s.'
-        $epochDeadline=[DateTime]::UtcNow.AddSeconds(45);$lastEpochKey=$null
+        $epochDeadline=([Diagnostics.Stopwatch]::GetTimestamp()+[long]((45)*[Diagnostics.Stopwatch]::Frequency));$lastEpochKey=$null
         do {
             try {
                 $candidate=Get-ActivationEpochStatus 'after-policy-update'
@@ -2312,7 +2312,7 @@ function Invoke-ActivationObservation {
                 }else{$lastEpochKey=$null;$epochReason=('Policy/epoch not advanced and quiescent: '+($candidate | ConvertTo-Json -Compress))}
             }catch{$epochReason=$_.Exception.Message;$lastEpochKey=$null}
             Start-Sleep -Milliseconds 100
-        }while([DateTime]::UtcNow -lt $epochDeadline)
+        }while([Diagnostics.Stopwatch]::GetTimestamp() -lt $epochDeadline)
         if($null -eq $epochAfter){$epochAfter=Get-ActivationEpochStatus 'last-after-policy-update'}
         $candidatePolicyGeneration=[uint32]$epochAfter.policyGeneration
         $epochAdvanced=($epochStable -and [uint32]$epochAfter.policyGeneration -gt [uint32]$epochBefore.policyGeneration -and
@@ -2450,7 +2450,7 @@ function Invoke-ActivationObservation {
         if(-not $release.HolderReleased -or $release.NativeCode -ne 0){throw ('Last pre-scope holder release failed: Win32 '+$release.NativeCode)}
         $trial.LastHolderRelease=$release
 
-        $deadline=[DateTime]::UtcNow.AddSeconds(90);$promoted=$null;$promotedGood=$false;$promotionReason='No registry-entry sample received after last-holder release.'
+        $deadline=([Diagnostics.Stopwatch]::GetTimestamp()+[long]((90)*[Diagnostics.Stopwatch]::Frequency));$promoted=$null;$promotedGood=$false;$promotionReason='No registry-entry sample received after last-holder release.'
         do{
             try{$promoted=Get-ActivationEntry $target 'post-release-registry-entry';$r=$promoted.Record
                 $promotedGood=($r.registryEntry -and $r.historyPresent -and $r.nameMatches -and $r.fileId -ieq $fileId -and $r.state -ceq 'Protected' -and $r.free -and
@@ -2459,7 +2459,7 @@ function Invoke-ActivationObservation {
                 $promotionReason=('Latest exact entry: history='+$r.historyPresent+';fileId='+$r.fileId+';state='+$r.state+';free='+$r.free+';H='+$r.H+';S='+$r.S+';C='+$r.C+';T='+$r.T+';unknown='+$r.unknownReasons)
             }catch{$promotionReason=$_.Exception.Message}
             Start-Sleep -Milliseconds 150
-        }while([DateTime]::UtcNow -lt $deadline)
+        }while([Diagnostics.Stopwatch]::GetTimestamp() -lt $deadline)
         if(-not $promotedGood){
             Add-ActivationAssertion $trial 'FreeAndProtectedAfterLastHolder' 'INCONCLUSIVE' ('90s promotion timeout after release; '+$promotionReason) $promoted
             throw ('Promotion timeout after last-holder release: '+$promotionReason)
@@ -2603,10 +2603,10 @@ function Restore-Suite([switch]$Rollback) {
                 if($null -ne $service -and $service.State -ne 'Stopped'){
                     & sc.exe stop SafeUploadAgent | Out-Null
                     if($LASTEXITCODE -ne 0 -and $LASTEXITCODE -ne 1062){throw ('Could not stop leaked test SafeUploadAgent service: sc.exe '+$LASTEXITCODE)}
-                    $deadline=[DateTime]::UtcNow.AddSeconds(30)
+                    $deadline=([Diagnostics.Stopwatch]::GetTimestamp()+[long]((30)*[Diagnostics.Stopwatch]::Frequency))
                     do{$service=Get-CimInstance Win32_Service -Filter "Name='SafeUploadAgent'" -ErrorAction SilentlyContinue
                         if($null -eq $service -or $service.State -eq 'Stopped'){break};Start-Sleep -Milliseconds 250
-                    }while([DateTime]::UtcNow -lt $deadline)
+                    }while([Diagnostics.Stopwatch]::GetTimestamp() -lt $deadline)
                     if($null -ne $service -and $service.State -ne 'Stopped'){throw 'Leaked test SafeUploadAgent did not stop within 30s.'}
                 }
                 if($state.AgentServiceCreated){
@@ -2652,9 +2652,9 @@ $value='Removed'
                     try{$owner=Invoke-CimMethod -InputObject $process -MethodName GetOwnerSid -ErrorAction Stop}catch{continue}
                     if($owner.Sid -ceq $state.ActorSid){Stop-Process -Id $process.ProcessId -Force -ErrorAction SilentlyContinue}
                 }
-                $profileDeadline=[DateTime]::UtcNow.AddSeconds(90)
+                $profileDeadline=([Diagnostics.Stopwatch]::GetTimestamp()+[long]((90)*[Diagnostics.Stopwatch]::Frequency))
                 while(@(Get-CimInstance Win32_UserProfile | Where-Object { $_.SID -ceq $state.ActorSid -and $_.Loaded }).Count -ne 0 -and
-                      [DateTime]::UtcNow -lt $profileDeadline){Start-Sleep -Milliseconds 500}
+                      [Diagnostics.Stopwatch]::GetTimestamp() -lt $profileDeadline){Start-Sleep -Milliseconds 500}
                 $profiles=@(Get-CimInstance Win32_UserProfile | Where-Object SID -ceq $state.ActorSid)
                 # Services can keep a batch logon's hive open for minutes even after its processes end (attempt 6: still loaded
                 # after 90 s). Defer: Finalize runs after the restoration reboot, where no profile can be loaded, and deletes it.
