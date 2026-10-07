@@ -1017,3 +1017,15 @@ The safe W01 checkpoint parent was written by Sol and checked by root: Windows P
   configurations and both Inspectors (`exact-mvp4-sol-b13-summary.txt`).
   Inspector/kernel source is unchanged by the subsequent harness-only fixes.
   Do not install until corrected harness gets fresh independent review.
+
+- [x] Fresh independent Luna review5 ACCEPT WITH CONDITIONS for controlled
+  runtime-Verifier use of be5e7e03 (`sol-harness-relay-review5.txt`). No remaining
+  concrete closure/generation blocker; preserve whole-holder interval and live
+  taint gaps as INCONCLUSIVE. Next A01 uses reviewed harness and exact b13/b19;
+  production SYSTEM authentication and actual transport remain runtime gates.
+- [x] C03 `sol-c03a2` restored clean, sampled forbidden bytes 0, MVP false
+  (`phase4-suite-sol-c03a2-index.txt`, root 20e9cace). Final raw Map gap remains.
+- [x] C04 `sol-c04a1` restored clean, sampled forbidden bytes 0, MVP false
+  (`phase4-suite-sol-c04a1-index.txt`, root 992bf816). Final raw failure is
+  Raw/FSCTL identity mismatch (FileRecord), distinct from C03 truncated Map.
+  Replacement publication is reached; no cached-public-proof substitution.

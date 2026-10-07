@@ -1,0 +1,17 @@
+## ACCEPT WITH CONDITIONS
+
+I found no remaining concrete blocker in the review4 corrections for **controlled runtime-Verifier use** of `be5e7e032ecf0eb95295ca9011ad0219a5c8049e`. This is not MVP or release qualification.
+
+The close path now routes normal reads and close-drained results through the same parser and latch. It consumes completed reads before closing the pipe, waits up to one second for the outstanding read, and surfaces parse errors, caps, other faults, or an unjoined read. The explicit drain runs while the holder is live before `release-holder`; finalization drains before `exit-worker`, then copies history and evaluates the latched failure. A later `Pending` cannot erase a qualifying `Ready`. See [the capture and latch code](/home/victor/Work/safeupload-wt-sol/driver/scripts/Test-StagedInvariantSuite.ps1:840), [the pre-release close](/home/victor/Work/safeupload-wt-sol/driver/scripts/Test-StagedInvariantSuite.ps1:2919), and [the finalizer ordering](/home/victor/Work/safeupload-wt-sol/driver/scripts/Test-StagedInvariantSuite.ps1:3039).
+
+The corrected readiness checks consistently require active protection and the exact accepted generation. That includes the after-mutation failure, post-promotion degraded check, owned-write Ready check, and the wait’s Ready reason. Mismatched observations cannot satisfy those predicates and remain inconclusive in the checkpoint fallback paths. See [the predicates](/home/victor/Work/safeupload-wt-sol/driver/scripts/Test-StagedInvariantSuite.ps1:2910) and [the wait logic](/home/victor/Work/safeupload-wt-sol/driver/scripts/Test-StagedInvariantSuite.ps1:936).
+
+Fresh checkpoints select the first status from a new connection; retained stream state is inconclusive. The receipt QPC is when the harness parsed the frame, not a server publication timestamp. These samples do not establish loss-free coverage of the holder interval, so `NeverReadyWholeHolderInterval` must remain **INCONCLUSIVE**. The checked-in pipe fixture covers normal reads and a completed-but-unread read during close, but uses a synthetic connection; it does not establish production SYSTEM authentication. See the [fixture record](/home/victor/Work/safeupload-wt-sol/driver/evidence/2026-10-07/sol-notification-close-builder-validation.txt).
+
+For the next controlled A01 run:
+
+- Stage only the exact reviewed harness and hash-pinned b13 driver/Inspector artifacts. The commit records the [final Windows harness gate](/home/victor/Work/safeupload-wt-sol/driver/evidence/2026-10-07/sol-harness-windows-validation-t.txt) and [b13 build results](/home/victor/Work/safeupload-wt-sol/driver/evidence/2026-10-07/exact-mvp4-sol-b13-summary.txt); I read these records but did not rerun tests or builds.
+- Treat connection, identity, parse, cap, timeout, or cleanup errors as inconclusive; do not upgrade missing interval or live-taint evidence from counter deltas.
+- Keep the C02 `CreateFileMapping` stall and C03 truncated raw capture as separate unresolved evidence. This review does not resolve them or qualify the product.
+
+The exact commit is the checked-out `HEAD`, and the worktree is clean.
