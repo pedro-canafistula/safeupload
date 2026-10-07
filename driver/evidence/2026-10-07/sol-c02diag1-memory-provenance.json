@@ -1,0 +1,17 @@
+{
+  "RunName": "boot-start-invariant-C02-approve-absent-runtime-verifier-sol-c02diag1",
+  "ActorPid": 5320,
+  "ActorSid": "S-1-5-21-316478115-1595729549-2803163825-1059",
+  "Domain": "win10-debug",
+  "CaptureMethod": "HMP dump-guest-memory from verified live CreateFileMapping blocked actor; no reboot/disk change",
+  "OriginalElf": "/var/tmp/safeupload-sol-c02diag1-20261007/guest.elf",
+  "ReadableElf": "/var/tmp/safeupload-sol-c02diag1-readable.elf",
+  "ElfSha256": "8A00A82119B013F4910671637D4CCFD2770531CA925CDE0D3B7E33C535FD2DDC",
+  "DerivedDmp": "/var/tmp/safeupload-sol-c02diag1.dmp",
+  "DmpSha256": "5DEC25174741239830B67C67FE3B7466CAD20C416566E931DF091F14ACD3E054",
+  "TemporaryPool": "sol-c02diag1-memory",
+  "PoolUuid": "fd212567-68f7-4fb2-b203-372e1962b7d5",
+  "PoolRemoved": true,
+  "ArtifactsOver20MiBRetainedOnHost": true,
+  "Qualification": "DiagnosticOnly; cannot qualify C02; actual stack analysis pending"
+}

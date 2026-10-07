@@ -1,0 +1,29 @@
+
+
+FullName   : C:\Users\vika\Documents\sol-c02diag1-memory\guest.dmp
+Length     : 8036229120
+Attributes : Archive, Compressed
+
+
+
+
+
+Free : 469090304
+Used : 127699230720
+
+
+
+
+ Listing C:\Users\vika\Documents\sol-c02diag1-memory\
+ New files added to this directory will be compressed.
+
+8036229120 : 771985408 = 10.4 to 1 C guest.dmp
+
+Of 1 files within 1 directories
+1 are compressed and 0 are not compressed.
+8,036,229,120 total bytes of data are stored in 771,985,408 bytes.
+The compression ratio is 10.4 to 1.
+
+Total free bytes        :     469,090,304 (447.4 MB)
+Total bytes             : 128,168,321,024 (119.4 GB)
+Total quota free bytes  :     469,090,304 (447.4 MB)

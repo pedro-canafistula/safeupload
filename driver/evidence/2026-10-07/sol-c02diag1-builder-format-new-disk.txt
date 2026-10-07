@@ -1,0 +1,30 @@
+
+processed file: E:\sol-c02diag1-memory
+Successfully processed 1 files; Failed processing 0 files
+DriveLetter FriendlyName     FileSystemType DriveType HealthStatus OperationalStatus SizeRemaining
+----------- ------------     -------------- --------- ------------ ----------------- -------------
+E           SolC02Diagnostic NTFS           Fixed     Healthy      OK                     19.93 GB
+
+
+
+
+Number         : 1
+SerialNumber   : sol-c02diag1-2026100
+UniqueId       : sol-c02diag1-2026100
+Size           : 21474836480
+PartitionStyle : GPT
+IsBoot         : False
+IsSystem       : False
+
+
+
+
+
+DriveLetter     : E
+FileSystemLabel : SolC02Diagnostic
+FileSystem      : NTFS
+Size            : 21457006592
+SizeRemaining   : 21395931136
+
+
+

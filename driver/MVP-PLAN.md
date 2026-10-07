@@ -1088,3 +1088,46 @@ The safe W01 checkpoint parent was written by Sol and checked by root: Windows P
   `changed during five consecutive reads` (exit3), before exact holder registry
   receipt. No activation qualification; forbidden count unknown. The reviewed
   transport/status fixes reached their next real diagnostic boundary.
+
+- [x] C02 diagnostic `sol-c02diag1` reproduced real open success then blocking
+  CreateFileMapping before MapView/source close (actor PID5320, standard SID1059).
+  Frozen suite D8EB96F3... verified while actor live; 600-second QPC-bounded
+  wait remains active. Captured live guest ELF before cleanup, retained original
+  and private readable host copy; temporary unique libvirt pool destroyed, no
+  VM disks/reboot changed (`sol-c02diag1-memory-provenance.json`). Actual stack
+  analysis pending. Converter reports missing CPU2/3 context; preserve this
+  limitation and use real KiBugCheckData rather than synthetic LIVE_DUMP code.
+- Builder direct DMP transfer failed at logical 8,036,229,120 bytes. Retained
+  partial hash/length and failure log, then removed only that derived builder
+  file to recover 9.29GB free. Original host ELF/full DMP unchanged. Retrying
+  via a compressed transport archive and bounded streaming extraction into a
+  private compressed artifact directory, with exact full-DMP SHA verification
+  before analysis (`sol-c02diag1-partial-transfer-retention.txt`).
+- The compressed and sparse derived copies also exhausted builder C:. Preserve
+  every failed extraction/prefix hash; only unusable copies from this diagnostic
+  directory were removed, restoring 9.29GB free. Original ELF/full DMP remain
+  unchanged. Attached one new live-only 20GiB qcow2 to the verified builder
+  (win10 UUID C6440689-D11C-4C63-A463-F3722B7DDB69), never the debuggee.
+  VirtIO truncates its supplied serial to `sol-c02diag1-2026100`; original disk0
+  remains GPT/boot/system 128849018880 bytes. Initialized only the uniquely
+  matching RAW, non-boot/system disk1 of 21474836480 bytes, with private NTFS
+  artifact directory E:\sol-c02diag1-memory. Full extracted DMP SHA matches
+  host 5DEC25174741239830B67C67FE3B7466CAD20C416566E931DF091F14ACD3E054.
+- C02 diagnostic restoration failed: filter refused unload, agent remained
+  running, original product backup retained. recovery-required marker exists;
+  automatic recovery could not read backing-file metadata. No new case may
+  run until actual KiBugCheckData is read, the exact guarded failed-overlay
+  rollback is completed, and an independent baseline reports clean.
+- [x] Captured actual `nt!KiBugCheckData` five uint64 values are all zero
+  (`sol-c02diag1-cdb-initial2-decoded.txt`), not synthetic dump code0x161.
+  Actor thread14c8.1440 holds stream Resource exclusively and waits in
+  FltFlushBuffers -> StageFlush -> StageZeroGrowth -> StageResize ->
+  StagePreOperation -> FsRtlSetFileSize -> MiCreateDataFileMap -> NtCreateSection.
+  Backing is the private staging file, no mapped view has been created.
+  This localizes the extending-map stall to synchronous backing flush;
+  lower completion/lock cause still requires follow-up, no speculative fix.
+  Private exact b13 PDB loaded. CPU2/3 contexts remain missing in conversion.
+- [x] Guarded rollback checks debuggee UUID, exact failed top and exact parent,
+  preserves failed overlay and creates one unique recovery child on the
+  pre-run A01r6 checkpoint. Independent baseline is BaselineClean=True
+  (`sol-c02diag1-rollback.txt`, `sol-c02diag1-recovery-baseline.txt`).

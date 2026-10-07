@@ -1,0 +1,16 @@
+PartialBytes=6896156672
+
+ Compressing files in C:\Users\vika\Documents\sol-c02diag1-memory\
+
+guest.dmp           6896156672 : 657219584 = 10.5 to 1 [OK]
+
+1 files within 1 directories were compressed.
+6,896,156,672 total bytes of data are stored in 657,219,584 bytes.
+The compression ratio is 10.5 to 1.
+CompactExit=0
+
+
+Free : 7348011008
+
+
+
