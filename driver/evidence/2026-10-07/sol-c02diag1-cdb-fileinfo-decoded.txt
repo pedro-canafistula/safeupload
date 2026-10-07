@@ -1,0 +1,449 @@
+
+************* Preparing the environment for Debugger Extensions Gallery repositories **************
+   ExtensionRepository : Implicit
+   UseExperimentalFeatureForNugetShare : true
+   AllowNugetExeUpdate : true
+   NonInteractiveNuget : true
+   AllowNugetMSCredentialProviderInstall : true
+   AllowParallelInitializationOfLocalRepositories : true
+   EnableRedirectToChakraJsProvider : false
+
+   -- Configuring repositories
+      ----> Repository : LocalInstalled, Enabled: true
+      ----> Repository : UserExtensions, Enabled: true
+
+>>>>>>>>>>>>> Preparing the environment for Debugger Extensions Gallery repositories completed, duration 0.000 seconds
+
+************* Waiting for Debugger Extensions Gallery to Initialize **************
+
+>>>>>>>>>>>>> Waiting for Debugger Extensions Gallery to Initialize completed, duration 0.031 seconds
+   ----> Repository : UserExtensions, Enabled: true, Packages count: 0
+   ----> Repository : LocalInstalled, Enabled: true, Packages count: 30
+
+Microsoft (R) Windows Debugger Version 10.0.28000.2705 AMD64
+Copyright (c) Microsoft Corporation. All rights reserved.
+
+
+Loading Dump File [E:\sol-c02diag1-memory\guest.dmp]
+Kernel Complete Dump File: Full address space is available
+
+Comment: 'Hello from elf2dmp!'
+
+************* Path validation summary **************
+Response                         Time (ms)     Location
+Deferred                                       srv*E:\sol-c02diag1-memory\symbols*https://msdl.microsoft.com/download/symbols
+OK                                             C:\Users\vika\Documents\exact-mvp4-sol-b13\src\driver\SafeUpload.Minifilter\x64\Debug
+Symbol search path is: srv*E:\sol-c02diag1-memory\symbols*https://msdl.microsoft.com/download/symbols;C:\Users\vika\Documents\exact-mvp4-sol-b13\src\driver\SafeUpload.Minifilter\x64\Debug
+Executable search path is: 
+KiProcessorBlock[2] is null.
+KiProcessorBlock[3] is null.
+Windows 10 Kernel Version 19041 MP (4 procs) Free x64
+Product: WinNt, suite: TerminalServer SingleUserTS
+Edition build lab: 19041.1.amd64fre.vb_release.191206-1406
+Kernel base = 0xfffff800`4f800000 PsLoadedModuleList = 0xfffff800`5042a2b0
+System Uptime: 0 days 0:01:47.456
+Loading Kernel Symbols
+...............................................................
+................................................................
+..........................................
+Loading User Symbols
+................................................................
+................
+Loading unloaded module list
+...
+Unknown exception - code 00000000 (first/second chance not available)
+For analysis of this file, run !analyze -v
+0: kd> .reload /f fileinfo.sys
+0: kd> !irp ffffb985795aca20 1
+Irp is active with 12 stacks 7 is current (= 0xffffb985795acca0)
+ No Mdl: No System Buffer: Thread ffffb98579569080:  Irp stack trace.  
+Flags = 40040000
+ThreadListEntry.Flink = ffffb985795aca40
+ThreadListEntry.Blink = ffffb985795aca40
+IoStatus.Status = 00000000
+IoStatus.Information = 00000000
+RequestorMode = 00000000
+Cancel = 00
+CancelIrql = 0
+ApcEnvironment = 00
+UserIosb = 00000000
+UserEvent = 00000000
+Overlay.AsynchronousParameters.UserApcRoutine = 00000000
+Overlay.AsynchronousParameters.UserApcContext = 00000000
+Overlay.AllocationSize = 00000000 - 00000000
+CancelRoutine = 00000000   
+UserBuffer = 00000000
+&Tail.Overlay.DeviceQueueEntry = ffffb985795aca98
+Tail.Overlay.Thread = ffffb98579569080
+Tail.Overlay.AuxiliaryBuffer = 00000000
+Tail.Overlay.ListEntry.Flink = 00000000
+Tail.Overlay.ListEntry.Blink = 00000000
+Tail.Overlay.CurrentStackLocation = ffffb985795acca0
+Tail.Overlay.OriginalFileObject = 00000000
+Tail.Apc = 00000000
+Tail.CompletionKey = 00000000
+     cmd  flg cl Device   File     Completion-Context
+ [N/A(0), N/A(0)]
+            0  0 00000000 00000000 00000000-00000000    
+
+			Args: 00000000 00000000 00000000 00000000
+ [N/A(0), N/A(0)]
+            0  0 00000000 00000000 00000000-00000000    
+
+			Args: 00000000 00000000 00000000 00000000
+ [N/A(0), N/A(0)]
+            0  0 00000000 00000000 00000000-00000000    
+
+			Args: 00000000 00000000 00000000 00000000
+ [N/A(0), N/A(0)]
+            0  0 00000000 00000000 00000000-00000000    
+
+			Args: 00000000 00000000 00000000 00000000
+ [N/A(0), N/A(0)]
+            0  0 00000000 00000000 00000000-00000000    
+
+			Args: 00000000 00000000 00000000 00000000
+ [N/A(0), N/A(0)]
+            0  0 00000000 00000000 00000000-00000000    
+
+			Args: 00000000 00000000 00000000 00000000
+>[IRP_MJ_INTERNAL_DEVICE_CONTROL(f), N/A(0)]
+            0 e1 ffffb98571952050 00000000 fffff800540618b0-00000000 Success Error Cancel pending
+	      Unable to load image \SystemRoot\System32\drivers\viostor.sys, Win32 error 0n2
+ \Driver\viostor	disk!DiskFlushComplete
+			Args: ffffb98571fe7710 00000000 0x0 ffffb985719521a0
+ [IRP_MJ_FLUSH_BUFFERS(9), N/A(0)]
+            0 e1 ffffb98571fe7060 ffffb985793767c0 fffff80052b01010-00000000 Success Error Cancel pending
+	       \Driver\disk	partmgr!PmIoCompletion
+			Args: 00000000 00000000 00000000 00000000
+ [IRP_MJ_FLUSH_BUFFERS(9), N/A(1)]
+            0 e0 ffffb98571fa18d0 ffffb985793767c0 fffff80052bf1d90-00000009 Success Error Cancel 
+	       \Driver\partmgr	volmgr!VmpRefCountCompletionRoutine
+			Args: 400c8db9 00000000 00000000 00000000
+ [IRP_MJ_FLUSH_BUFFERS(9), N/A(0)]
+            0 e0 ffffb98571fe98f0 ffffb985793767c0 fffff800537a6920-ffffb98577af8630 Success Error Cancel 
+	       \Driver\volmgr	Ntfs!NtfsFlushCompletionRoutine
+			Args: 00000000 00000000 00000000 00000000
+ [IRP_MJ_FLUSH_BUFFERS(9), N/A(0)]
+            0 e0 ffffb98575058030 ffffb985793767c0 fffff8004ce2be80-ffffb985783a7010 Success Error Cancel 
+	       \FileSystem\Ntfs	FLTMGR!FltpSynchronizedOperationCompletion
+			Args: 00000000 00000000 00000000 00000000
+ [IRP_MJ_FLUSH_BUFFERS(9), N/A(0)]
+            0  0 ffffb98571f688d0 ffffb985793767c0 00000000-00000000    
+	       \FileSystem\FltMgr
+			Args: 00000000 00000000 00000000 00000000
+
+Irp Extension present at 0xffffb985795ace50:
+0: kd> !fltkd.irpctrl ffffb985783a7010
+
+IRP_CTRL: ffffb985783a7010  FLUSH_BUFFERS (9) [00010001] Irp GeneratedIo
+Flags                    : [1100000c] DontCopyParms Synchronize AllocatedIrp FixedAlloc
+Irp                      : ffffb985795aca20 
+DeviceObject             : ffffb98571f688d0 "\Device\HarddiskVolume3"
+FileObject               : ffffb985793767c0 
+CompletionNodeStack      : ffffb985783a7198   Size=5  Next=0
+SyncEvent                : (ffffb985783a7028)
+InitiatingInstance       : ffffb98575195010  Inst:(ffffb98575195010,"SafeUpload","\Device\HarddiskVolume3")"SafeUpload Instance"
+Icc                      : ffffcd013e852ad0 
+AsyncCompletionRoutine   : 0000000000000000  (null) 
+AsyncCompletionContext   : 0000000000000000 
+PendingCallbackNode      : ffffb985779b9750 
+PendingCallbackContext   : 0000000000000000 
+PendingStatus            : 0x00000000 
+CallbackData             : (ffffb985783a70f8)
+ Flags                    : [00010001] Irp GeneratedIo
+ Thread                   : ffffb98579569080 
+ Iopb                     : ffffb985783a7150 
+ RequestorMode            : [00] KernelMode
+ IoStatus.Status          : 0x00000000 
+ IoStatus.Information     : 0000000000000000 
+ TagData                  : 0000000000000000 *************************************************************************
+***                                                                   ***
+***                                                                   ***
+***    Either you specified an unqualified symbol, or your debugger   ***
+***    doesn't have full symbol information.  Unqualified symbol      ***
+***    resolution is turned off by default. Please either specify a   ***
+***    fully qualified symbol module!symbolname, or enable resolution ***
+***    of unqualified symbols by typing ".symopt- 100". Note that     ***
+***    enabling unqualified symbol resolution with network symbol     ***
+***    server shares in the symbol path may cause the debugger to     ***
+***    appear to hang for long periods of time when an incorrect      ***
+***    symbol name is typed or the network symbol server is down.     ***
+***                                                                   ***
+***    For some commands to work properly, your symbol path           ***
+***    must point to .pdb files that have full type information.      ***
+***                                                                   ***
+***    Certain .pdb files (such as the public OS symbols) do not      ***
+***    contain the required information.  Contact the group that      ***
+***    provided you with these symbols if you need this command to    ***
+***    work.                                                          ***
+***                                                                   ***
+***    Type referenced: PVOID                                         ***
+***                                                                   ***
+*************************************************************************
+
+ FilterContext[0]         : 0000000000000000 
+ FilterContext[1]         : 0000000000000000 
+ FilterContext[2]         : 0000000000000000 
+ FilterContext[3]         : 0000000000000000 
+
+   Cmd     IrpFl   OpFl  CmpFl  Instance FileObjt Completion-Context  Node Adr
+--------- -------- ----- -----  -------- -------- ------------------  --------
+ [0,0]    00000000  00   0000   0000000000000000 0000000000000000 0000000000000000-0000000000000000   ffffb985783a7398
+	    Args: 0000000000000000 0000000000000000 0000000000000000 0000000000000000 0000000000000000 0000000000000000
+ [0,0]    00000000  00   0000   0000000000000000 0000000000000000 0000000000000000-0000000000000000   ffffb985783a7318
+	    Args: 0000000000000000 0000000000000000 0000000000000000 0000000000000000 0000000000000000 0000000000000000
+ [0,0]    00000000  00   0000   0000000000000000 0000000000000000 0000000000000000-0000000000000000   ffffb985783a7298
+	    Args: 0000000000000000 0000000000000000 0000000000000000 0000000000000000 0000000000000000 0000000000000000
+ [0,0]    00000000  00   0000   0000000000000000 0000000000000000 0000000000000000-0000000000000000   ffffb985783a7218
+	    Args: 0000000000000000 0000000000000000 0000000000000000 0000000000000000 0000000000000000 0000000000000000
+ [9,0]    40000000  00   0000   ffffb985750b41e0 ffffb985793767c0 fffff80052df3390-0000000000000000   ffffb985783a7198
+            ("FileInfo","FileInfo")  fileinfo!FIPostOperationCommonCallback 
+	    Args: 0000000000000000 0000000000000000 0000000000000000 0000000000000000 0000000000000000 0000000000000000
+Working IOPB:
+>[9,0]    40000000  00          ffffb985750b41e0 ffffb985793767c0                     ffffb985783a7150
+            ("FileInfo","FileInfo")  
+	    Args: 0000000000000000 0000000000000000 0000000000000000 0000000000000000 0000000000000000 0000000000000000
+0: kd> !stacks 1 fileinfo
+Proc.Thread  .Thread  Ticks   ThreadState Blocker
+                            [fffff80050524a00 Idle]
+                            [ffffb985712b70c0 System]
+Unable to load image \SystemRoot\System32\drivers\balloon.sys, Win32 error 0n2
+Unable to load image \SystemRoot\System32\drivers\qxldod.sys, Win32 error 0n2
+
+                            [ffffb985712eb040 Registry]
+
+                            [ffffb98575408300 smss.exe]
+
+                            [ffffb985767b7140 csrss.exe]
+
+                            [ffffb98576844080 wininit.exe]
+
+                            [ffffb98576849140 csrss.exe]
+
+                            [ffffb9857685e080 winlogon.exe]
+
+                            [ffffb985767790c0 services.exe]
+
+                            [ffffb9857689a080 lsass.exe]
+
+                            [ffffb98576947180 fontdrvhost.ex]
+
+                            [ffffb98576945180 fontdrvhost.ex]
+
+                            [ffffb98576958280 svchost.exe]
+
+                            [ffffb98576899300 svchost.exe]
+
+                            [ffffb985776e6280 svchost.exe]
+
+                            [ffffb985777240c0 LogonUI.exe]
+
+                            [ffffb985777560c0 dwm.exe]
+
+                            [ffffb9857777f280 svchost.exe]
+
+                            [ffffb98577799300 svchost.exe]
+
+                            [ffffb985777a7340 svchost.exe]
+
+                            [ffffb985777df2c0 svchost.exe]
+
+                            [ffffb985777e3340 svchost.exe]
+
+                            [ffffb98577833280 svchost.exe]
+
+                            [ffffb98577868340 svchost.exe]
+
+                            [ffffb98577779080 svchost.exe]
+
+                            [ffffb98577873280 svchost.exe]
+
+                            [ffffb9857788e300 svchost.exe]
+
+                            [ffffb985778dc300 svchost.exe]
+
+                            [ffffb985778e7280 svchost.exe]
+
+                            [ffffb9857794e300 svchost.exe]
+
+                            [ffffb985779b22c0 svchost.exe]
+
+                            [ffffb985779d10c0 powershell.exe]
+
+                            [ffffb985760b6300 svchost.exe]
+
+                            [ffffb985760b3300 svchost.exe]
+
+                            [ffffb985760b4080 svchost.exe]
+
+                            [ffffb985779f1080 svchost.exe]
+
+                            [ffffb98577a6f080 MemCompression]
+
+                            [ffffb985779ec300 svchost.exe]
+
+                            [ffffb985779ae0c0 svchost.exe]
+
+                            [ffffb985760b7080 svchost.exe]
+
+                            [ffffb985779ed080 svchost.exe]
+
+                            [ffffb98577a9e300 svchost.exe]
+
+                            [ffffb98577ad3300 svchost.exe]
+
+                            [ffffb98577ad4080 svchost.exe]
+
+                            [ffffb98577ad5080 svchost.exe]
+
+                            [ffffb98577b10080 svchost.exe]
+
+                            [ffffb98577b52280 svchost.exe]
+
+                            [ffffb98577b85300 svchost.exe]
+
+                            [ffffb98577b99300 svchost.exe]
+
+                            [ffffb98577b9a080 svchost.exe]
+
+                            [ffffb98577be1340 svchost.exe]
+
+                            [ffffb98577c0c240 spoolsv.exe]
+
+                            [ffffb98577c1a300 svchost.exe]
+
+                            [ffffb98577c1c300 svchost.exe]
+
+                            [ffffb98577c19080 svchost.exe]
+
+                            [ffffb98577d15340 svchost.exe]
+
+                            [ffffb98577d60280 svchost.exe]
+
+                            [ffffb98577d79280 svchost.exe]
+
+                            [ffffb98577dcd2c0 blnsvr.exe]
+
+                            [ffffb98577dcf300 svchost.exe]
+
+                            [ffffb98577dce080 svchost.exe]
+
+                            [ffffb98577dec300 svchost.exe]
+
+                            [ffffb98577e65280 svchost.exe]
+
+                            [ffffb98577e7c280 qemu-ga.exe]
+
+                            [ffffb98577eb7280 sshd.exe]
+
+                            [ffffb98577ebc280 vdservice.exe]
+
+                            [ffffb98577ebe300 svchost.exe]
+
+                            [ffffb98577ec2140 svchost.exe]
+
+                            [ffffb98577eb8080 svchost.exe]
+
+                            [ffffb98577f9b280 CompatTelRunne]
+
+                            [ffffb98577fca2c0 WmiPrvSE.exe]
+
+                            [ffffb98577fdd300 svchost.exe]
+
+                            [ffffb985780282c0 vdagent.exe]
+
+                            [ffffb9857815f2c0 WmiPrvSE.exe]
+
+                            [ffffb9857125e2c0 svchost.exe]
+
+                            [ffffb9857823d2c0 svchost.exe]
+
+                            [ffffb98577fdc080 svchost.exe]
+
+                            [ffffb985783e2280 svchost.exe]
+
+                            [ffffb985783e9280 svchost.exe]
+
+                            [ffffb985784282c0 svchost.exe]
+
+                            [ffffb9857844d280 svchost.exe]
+
+                            [ffffb985784502c0 dasHost.exe]
+
+                            [ffffb985784b4340 svchost.exe]
+
+                            [ffffb985784f8080 conhost.exe]
+
+                            [ffffb98578591240 conhost.exe]
+
+                            [ffffb985787c4300 svchost.exe]
+
+                            [ffffb985787c02c0 svchost.exe]
+
+                            [ffffb985788a4300 svchost.exe]
+
+                            [ffffb985788ef280 svchost.exe]
+
+                            [ffffb985792130c0 SafeUpload.Age]
+
+                            [ffffb985793ac280 WmiApSrv.exe]
+
+                            [ffffb985792c52c0 sshd.exe]
+
+                            [ffffb985792a72c0 conhost.exe]
+
+                            [ffffb985792c00c0 sshd.exe]
+
+                            [ffffb985792a6080 sshd.exe]
+
+                            [ffffb98579455080 cmd.exe]
+
+                            [ffffb985794540c0 powershell.exe]
+
+                            [ffffb985794590c0 powershell.exe]
+
+                            [ffffb9857947c080 powershell.exe]
+
+                            [ffffb9857947a080 conhost.exe]
+
+                            [ffffb985794de2c0 WmiPrvSE.exe]
+
+                            [ffffb98579609100 powershell.exe]
+
+                            [ffffb9857960b240 conhost.exe]
+
+                            [ffffb98577b972c0 svchost.exe]
+
+
+Threads Processed: 1009
+0: kd> lmvm fileinfo
+Browse full module list
+start             end                 module name
+fffff800`52df0000 fffff800`52e0a000   fileinfo # (pdb symbols)          e:\sol-c02diag1-memory\symbols\fileinfo.pdb\9315E0DB7B3E69E10CE8C62054F75C4D1\fileinfo.pdb
+    Loaded symbol image file: fileinfo.sys
+    Mapped memory image file: e:\sol-c02diag1-memory\symbols\fileinfo.sys\AEE275C21a000\fileinfo.sys
+    Image path: \SystemRoot\System32\drivers\fileinfo.sys
+    Image name: fileinfo.sys
+    Browse all global symbols  functions  data  Symbol Reload
+    Image was built with /Brepro flag.
+    Timestamp:        AEE275C2 (This is a reproducible build file hash, not a timestamp)
+    CheckSum:         0002169B
+    ImageSize:        0001A000
+    Translations:     0000.04b0 0000.04e4 0409.04b0 0409.04e4
+    Information from resource tables:
+0: kd> q
+quit:
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\atlmfc.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\concurrency.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\cpp_rest.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\Kernel.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\ObjectiveC.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\stl.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\Usb4Kd.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\Windows.Data.Json.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\Windows.Devices.Geolocation.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\Windows.Devices.Sensors.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\Windows.Media.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\windows.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\winrt.natvis'

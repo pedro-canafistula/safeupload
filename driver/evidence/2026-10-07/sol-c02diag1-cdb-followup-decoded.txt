@@ -185,3 +185,272 @@ Working IOPB:
 Proc.Thread  .Thread  Ticks   ThreadState Blocker
                             [fffff80050524a00 Idle]
                             [ffffb985712b70c0 System]
+   4.000110  ffffb98571ef9040 000000d Blocked    nt!KiSwapContext+0x76
+                                        nt!KiSwapThread+0x500
+                                        nt!KiCommitThreadWait+0x14f
+                                        nt!KeWaitForSingleObject+0x233
+                                        SafeUpload!StageCanaryWorker+0x31
+                                        nt!PspSystemThreadStartup+0x55
+                                        nt!KiStartSystemThread+0x28
+   4.000114  ffffb98571efa040 000000a Blocked    nt!KiSwapContext+0x76
+                                        nt!KiSwapThread+0x500
+                                        nt!KiCommitThreadWait+0x14f
+                                        nt!KeWaitForSingleObject+0x233
+                                        SafeUpload!StageWorker+0x31
+                                        nt!PspSystemThreadStartup+0x55
+                                        nt!KiStartSystemThread+0x28
+Unable to load image \SystemRoot\System32\drivers\balloon.sys, Win32 error 0n2
+Unable to load image \SystemRoot\System32\drivers\qxldod.sys, Win32 error 0n2
+
+                            [ffffb985712eb040 Registry]
+
+                            [ffffb98575408300 smss.exe]
+
+                            [ffffb985767b7140 csrss.exe]
+
+                            [ffffb98576844080 wininit.exe]
+
+                            [ffffb98576849140 csrss.exe]
+
+                            [ffffb9857685e080 winlogon.exe]
+
+                            [ffffb985767790c0 services.exe]
+
+                            [ffffb9857689a080 lsass.exe]
+
+                            [ffffb98576947180 fontdrvhost.ex]
+
+                            [ffffb98576945180 fontdrvhost.ex]
+
+                            [ffffb98576958280 svchost.exe]
+
+                            [ffffb98576899300 svchost.exe]
+
+                            [ffffb985776e6280 svchost.exe]
+
+                            [ffffb985777240c0 LogonUI.exe]
+
+                            [ffffb985777560c0 dwm.exe]
+
+                            [ffffb9857777f280 svchost.exe]
+
+                            [ffffb98577799300 svchost.exe]
+
+                            [ffffb985777a7340 svchost.exe]
+
+                            [ffffb985777df2c0 svchost.exe]
+
+                            [ffffb985777e3340 svchost.exe]
+
+                            [ffffb98577833280 svchost.exe]
+
+                            [ffffb98577868340 svchost.exe]
+
+                            [ffffb98577779080 svchost.exe]
+
+                            [ffffb98577873280 svchost.exe]
+
+                            [ffffb9857788e300 svchost.exe]
+
+                            [ffffb985778dc300 svchost.exe]
+
+                            [ffffb985778e7280 svchost.exe]
+
+                            [ffffb9857794e300 svchost.exe]
+
+                            [ffffb985779b22c0 svchost.exe]
+
+                            [ffffb985779d10c0 powershell.exe]
+
+                            [ffffb985760b6300 svchost.exe]
+
+                            [ffffb985760b3300 svchost.exe]
+
+                            [ffffb985760b4080 svchost.exe]
+
+                            [ffffb985779f1080 svchost.exe]
+
+                            [ffffb98577a6f080 MemCompression]
+
+                            [ffffb985779ec300 svchost.exe]
+
+                            [ffffb985779ae0c0 svchost.exe]
+
+                            [ffffb985760b7080 svchost.exe]
+
+                            [ffffb985779ed080 svchost.exe]
+
+                            [ffffb98577a9e300 svchost.exe]
+
+                            [ffffb98577ad3300 svchost.exe]
+
+                            [ffffb98577ad4080 svchost.exe]
+
+                            [ffffb98577ad5080 svchost.exe]
+
+                            [ffffb98577b10080 svchost.exe]
+
+                            [ffffb98577b52280 svchost.exe]
+
+                            [ffffb98577b85300 svchost.exe]
+
+                            [ffffb98577b99300 svchost.exe]
+
+                            [ffffb98577b9a080 svchost.exe]
+
+                            [ffffb98577be1340 svchost.exe]
+
+                            [ffffb98577c0c240 spoolsv.exe]
+
+                            [ffffb98577c1a300 svchost.exe]
+
+                            [ffffb98577c1c300 svchost.exe]
+
+                            [ffffb98577c19080 svchost.exe]
+
+                            [ffffb98577d15340 svchost.exe]
+
+                            [ffffb98577d60280 svchost.exe]
+
+                            [ffffb98577d79280 svchost.exe]
+
+                            [ffffb98577dcd2c0 blnsvr.exe]
+
+                            [ffffb98577dcf300 svchost.exe]
+
+                            [ffffb98577dce080 svchost.exe]
+
+                            [ffffb98577dec300 svchost.exe]
+
+                            [ffffb98577e65280 svchost.exe]
+
+                            [ffffb98577e7c280 qemu-ga.exe]
+
+                            [ffffb98577eb7280 sshd.exe]
+
+                            [ffffb98577ebc280 vdservice.exe]
+
+                            [ffffb98577ebe300 svchost.exe]
+
+                            [ffffb98577ec2140 svchost.exe]
+
+                            [ffffb98577eb8080 svchost.exe]
+
+                            [ffffb98577f9b280 CompatTelRunne]
+
+                            [ffffb98577fca2c0 WmiPrvSE.exe]
+
+                            [ffffb98577fdd300 svchost.exe]
+
+                            [ffffb985780282c0 vdagent.exe]
+
+                            [ffffb9857815f2c0 WmiPrvSE.exe]
+
+                            [ffffb9857125e2c0 svchost.exe]
+
+                            [ffffb9857823d2c0 svchost.exe]
+
+                            [ffffb98577fdc080 svchost.exe]
+
+                            [ffffb985783e2280 svchost.exe]
+
+                            [ffffb985783e9280 svchost.exe]
+
+                            [ffffb985784282c0 svchost.exe]
+
+                            [ffffb9857844d280 svchost.exe]
+
+                            [ffffb985784502c0 dasHost.exe]
+
+                            [ffffb985784b4340 svchost.exe]
+
+                            [ffffb985784f8080 conhost.exe]
+
+                            [ffffb98578591240 conhost.exe]
+
+                            [ffffb985787c4300 svchost.exe]
+
+                            [ffffb985787c02c0 svchost.exe]
+
+                            [ffffb985788a4300 svchost.exe]
+
+                            [ffffb985788ef280 svchost.exe]
+
+                            [ffffb985792130c0 SafeUpload.Age]
+
+                            [ffffb985793ac280 WmiApSrv.exe]
+
+                            [ffffb985792c52c0 sshd.exe]
+
+                            [ffffb985792a72c0 conhost.exe]
+
+                            [ffffb985792c00c0 sshd.exe]
+
+                            [ffffb985792a6080 sshd.exe]
+
+                            [ffffb98579455080 cmd.exe]
+
+                            [ffffb985794540c0 powershell.exe]
+
+                            [ffffb985794590c0 powershell.exe]
+
+                            [ffffb9857947c080 powershell.exe]
+
+                            [ffffb9857947a080 conhost.exe]
+
+                            [ffffb985794de2c0 WmiPrvSE.exe]
+
+                            [ffffb98579609100 powershell.exe]
+14c8.001440  ffffb98579569080 0000000 Blocked    nt!KiSwapContext+0x76
+                                        nt!KiSwapThread+0x500
+                                        nt!KiCommitThreadWait+0x14f
+                                        nt!KeWaitForSingleObject+0x233
+                                        nt!FsRtlCancellableWaitForMultipleObjects+0xcc
+                                        nt!FsRtlCancellableWaitForSingleObject+0x27
+                                        FLTMGR!FltpLegacyProcessingAfterPreCallbacksCompleted+0x753
+                                        FLTMGR!FltPerformSynchronousIo+0x3dd
+                                        FLTMGR!FltFlushBuffers2+0xa7
+                                        FLTMGR!FltFlushBuffers+0xf
+                                        SafeUpload!StageFlush+0x8c
+                                        SafeUpload!StageZeroGrowth+0x73
+                                        SafeUpload!StageResize+0x11a
+                                        SafeUpload!StagePreOperation+0x4a0
+                                        SafeUpload!StageDispatchCore+0x109
+                                        SafeUpload!SafeUploadStageDispatch+0x15c
+                                        FLTMGR!FltpPerformPreCallbacksWorker+0x36b
+                                        FLTMGR!FltpPassThroughInternal+0xca
+                                        FLTMGR!FltpPassThrough+0x541
+                                        FLTMGR!FltpDispatch+0x8b
+                                        nt!IopfCallDriver+0x53
+                                        nt!IovCallDriver+0x266
+                                        nt!IofCallDriver+0x20f735
+                                        nt!FsRtlSetFileSize+0xd6
+                                        nt!MiCreateDataFileMap+0x30f
+                                        nt!MiCreateNewSection+0x14c
+                                        nt!MiCreateImageOrDataSection+0x2db
+                                        nt!MiCreateSection+0xf4
+                                        nt!MiCreateSectionCommon+0x207
+                                        nt!NtCreateSection+0x5c
+                                        nt!KiSystemServiceCopyEnd+0x28
+                                        ntdll!NtCreateSection+0x14
+
+                            [ffffb9857960b240 conhost.exe]
+
+                            [ffffb98577b972c0 svchost.exe]
+
+
+Threads Processed: 1009
+0: kd> !irpfind
+unable to get nt!PspSessionIdBitmap
+
+Scanning large pool allocation table for tag 0x3f707249 (Irp?) (ffffb98574850000 : ffffb98574910000)
+
+  Irp            [ Thread ]         irpStack: (Mj,Mn)   DevObj          [Driver]         MDL Process
+ffffb985718e00d0 [0000000000000000] Irp is complete (CurrentLocation 7 > StackCount 6)
+ffffb985718e05e0 [0000000000000000] Irp is complete (CurrentLocation 3 > StackCount 2) 0x0000000000000003
+ffffb985788a24e0 [0000000000000000] Irp is complete (CurrentLocation 4 > StackCount 3)
+ffffb985788a29b0 [0000000000000000] Irp is complete (CurrentLocation 4 > StackCount 3)
+ffffb985718cf9e0 [0000000000000000] Irp is complete (CurrentLocation 7 > StackCount 6)
+ffffb9857858d470 [0000000000000000] Irp is complete (CurrentLocation 4 > StackCount 3)
+ffffb985718e49e0 [0000000000000000] Irp is complete (CurrentLocation 7 > StackCount 6)
+ffffb985718a9ae0 [0000000000000000] Irp is complete (CurrentLocation 6 > StackCount 5)

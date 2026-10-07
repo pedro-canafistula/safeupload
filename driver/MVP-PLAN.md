@@ -1147,3 +1147,27 @@ The safe W01 checkpoint parent was written by Sol and checked by root: Windows P
   Exact four-config builds, fresh Luna review, then runtime C02 required.
   Primary references: https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/fltkernel/nf-fltkernel-fltflushbuffers
   https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nf-wdm-iosettoplevelirp
+- A02 `sol-a02r1` restored clean, gates false: pre-epoch retained physical P
+  sample failed Bad range/alignment. Confirmed harness regression from2356c2fb:
+  CrossRecord appended cached FSCTL response offset-1 on successful captures,
+  and historical-container sampling read every successful container as a raw
+  range. Restrict API-response archival to thrown identity-validation failures;
+  raw successful containers remain physical sectors. Identity validation and
+  failure detail unchanged, no public-cache substitution. Real builder retained
+  capture plus Windows parser/adapters/native observer and Python gates required.
+
+- [x] C02 growth candidate bd4d02fb exact b14 builds clean in all four normal/feature
+  Debug/Release WDK/PREfast/ApiValidator configurations, both Inspectors and
+  writer fixture (`exact-mvp4-sol-b14-summary.txt`). Signed SHA
+  5752B047BCF756ED0C8ADE64737C848A11654DBBF9F155C569A6BD20567F3204.
+  Fresh Luna ACCEPT WITH CONDITIONS (`sol-c02-growth-review.txt`): cache
+  coherence/zero/tail/VDL unchanged; resize no longer has incidental earlier-data
+  storage-cache durability. Full explicit flush/write-through/cleanup/seal
+  durability remains. Actual lower-completion cause unproved; source-close
+  could still wait. Runtime C02 is required before pushing the product change.
+- [x] Builder derived DMP and ZIP removed only after owned debugger completion;
+  C free9.27GB, E free21.13GB. Exact new disk offlined and detached live from
+  verified builder win10; original builder disk unchanged. Diagnostic qcow2
+  retained on host, original private ELF/full DMP retained. The broad !irpfind
+  remaining pool scan was stopped using exact owned cdb PID/command guards;
+  complete specific IRP/stack evidence and partial scan preserved.
