@@ -5267,9 +5267,18 @@ function Test-X01FinalListing($Sample,$Baseline,[string]$Target) {
     }
     return @{Name='X01ExactlyOneFinalTarget';Verdict=$(if($good){'PASS'}else{'FAIL'});Reason='Final raw parent has exactly one T and exactly the preboot name multiset; no user temp, duplicate or service temp remains.';Evidence=$parents}
 }
-function Add-X01PublicSample($Trial,$Context,$Baseline,[byte[]]$B,[byte[]]$V2,[bool]$BeforePublication,[string]$PhaseName) {
+function Add-X01PublicSample($Trial,$Context,$Baseline,[byte[]]$B,[byte[]]$V2,[bool]$BeforePublication,[string]$PhaseName,[switch]$DuringPublication) {
     $sample=Capture-CachedSample $Context $Baseline $PhaseName ($Trial.Samples.Count+1)
     $Trial.Samples+= $sample
+    if($sample.Status -cne 'OK' -and $DuringPublication){
+        # While the service replaces T, NTFS writes the new parent index entry lazily and the raw name/reference
+        # lookup can disagree with the live one (p1b6). Flush the exact volume (only stricter: cached bytes reach
+        # the disk the observer reads) and recapture once; a still-failed sample stays retained, never a pass.
+        $Trial.X01PublicationRawRetries+=@(@{FailedSequence=$sample.Sequence;Flush=(Flush-InvariantSetupVolume)})
+        $sample=Capture-CachedSample $Context $Baseline ($PhaseName+'AfterFlush') ($Trial.Samples.Count+1)
+        $Trial.Samples+= $sample
+        if($sample.Status -cne 'OK'){$Trial.X01PublicationRawRetries[-1].RetryFailedSequence=$sample.Sequence;return $null}
+    }
     if($sample.Status -cne 'OK'){throw 'X01 raw observer capture incomplete'}
     $images=@($sample.Captures | ForEach-Object {$_.Images} | Where-Object {$_.Role -ceq 'Current' -and $_.Path -ieq (Join-Path $protectedDirectory 'cached.txt')})
     if(-not $images.Count){throw 'X01 current raw target image missing'}
@@ -5305,7 +5314,7 @@ function Get-X01HandBack($Actor,$OwnerFiles,[string]$Digest,[int]$Length) {
 }
 function Invoke-X01Observation {
     $context=$null;$agent=$null;$actors=@{};$baseline=$null;$first=$null;$latest=$null;$readyEvent=$null
-    $trial=[ordered]@{Errors=@();Assertions=@();Operations=@();Samples=@();PublicReceipts=@();JournalSnapshots=@();Reasons=@();Verdict='INCONCLUSIVE';ForbiddenByteCount=$null}
+    $trial=[ordered]@{Errors=@();Assertions=@();Operations=@();Samples=@();PublicReceipts=@();JournalSnapshots=@();Reasons=@();Verdict='INCONCLUSIVE';ForbiddenByteCount=$null;X01PublicationRawRetries=@()}
     try{
         Assert-Hash $installedDriver $ExpectedFeatureSha256
         if((Get-BootId) -ceq $state.PrepareBootId -or (Get-ItemProperty "HKLM:\$registryService").Start -ne 0 -or @(Get-Process SafeUpload.Agent.Service -ErrorAction SilentlyContinue).Count){throw 'X01 requires a new boot-start boot and initially absent agent'}
@@ -5380,7 +5389,7 @@ function Invoke-X01Observation {
             $latest=Get-X01Journal $trial $actor2 ('x01-release-'+$number) @($first.TransferId)
             $first=Get-X01Journal $trial $actor ('x01-superseded-'+$number) @($allocated2.TransferId);$number++
             if($first.StateName -cne 'Blocked' -or @($first.History | Where-Object {$_ -cin @('Approved','Publishing','Released')}).Count){throw 'X01 superseded v1 entered publication'}
-            $null=Add-X01PublicSample $trial $context $baseline $b $v2 $false 'X01LatestPublicationWait'
+            $null=Add-X01PublicSample $trial $context $baseline $b $v2 $false 'X01LatestPublicationWait' -DuringPublication
             if($latest.StateName -ceq 'Released'){break}
             if($latest.StateName -cin @('Blocked','Retained','Unsealed')){throw ('X01 v2 unexpected state '+$latest.StateName)}
             Start-Sleep -Milliseconds 50
