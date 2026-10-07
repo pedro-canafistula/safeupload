@@ -932,3 +932,100 @@ The safe W01 checkpoint parent was written by Sol and checked by root: Windows P
   idle retention with unchanged receipt, disconnect invalidation and checked
   closure (`sol-notification-stream-builder-validation.txt`). Fixture seeds a
   synthetic connection; production SYSTEM authentication remains a VM requirement.
+
+- Diagnostic connect decision (A01 `sol-a01r5`): the prototype endpoint serves
+  one request and closes/recreates its single pipe instance. Adjacent Inspector
+  calls can reach the short no-instance/busy interval. Bound connection retries
+  for ERROR_FILE_NOT_FOUND/ERROR_PIPE_BUSY with the existing ten-second monotonic
+  diagnostic deadline, authenticate SYSTEM after opening, and never retry a
+  delivered request or fall back to a competing driver port. Other native
+  connection errors fail immediately. This is Inspector-only transport; kernel
+  product behavior is unchanged. New exact four-configuration WDK/Inspector
+  build, independent Luna review, then runtime-Verifier qualification required.
+
+- Live taint evidence decision: capture four actual driver counter receipts
+  around the A observation, with exact decimal uint64 bounds and monotonic
+  QPC brackets, then report nonnegative deltas or counter-reset/missing evidence.
+  These are machine-wide counters, not target-specific decision attribution.
+  They cannot replace the unavailable live TEST_DISABLE_TAINT diagnostic; leave
+  LiveTaintFlags INCONCLUSIVE on the fixed MVP allowlist, even for zero deltas.
+  Reading that unavailable flag needs a driver/protocol change; do not infer it
+  from registry policy, admission epoch flags or the trace's 0xffffffff marker.
+
+- Status-stream refinement: archive every status frame with receipt QPC and
+  sequence, rather than only the final frame drained in a call. Any observed
+  Ready frame for the accepted generation while the holder is live remains a
+  FAIL even if a later Pending frame follows. Receipt-time observation does not
+  prove absence of a transient event before connection/between observations;
+  NeverReadyWholeHolderInterval remains explicitly deferred.
+
+- Luna review3 REJECT retained-current readiness evidence and lost intermediate
+  Ready; no VM use of rejected A repair. Disposition: current checkpoints open
+  a fresh authenticated notification connection and take the service's first
+  GetRecordedStatus snapshot. Transition waits hold one stream and only accept
+  a newly received status, never retained state. Preserve all frame receipts
+  and latch observed Ready for exact active accepted generation while held;
+  filter timeout/sample failure decisions by that same generation/state.
+  No server emission timestamp/loss-free sequence is invented. At most ten
+  notification connections in an A trial avoid the 16 idle-instance cap.
+
+- [x] C02 second runtime attempt `sol-c02a2` completed/restored clean, sampled
+  forbidden bytes 0, strict/MVP FAIL (`phase4-suite-sol-c02a2-index.txt`, root
+  `50f673e2`). Native open PASS; first unfinished call is CreateFileMapping,
+  before MapViewOfFile or source close. Requires actual native/kernel stack
+  localization before product change; do not infer a cache lock cause.
+- [x] Inspector b12 exact build at `aa995a57` passed all four WDK configs,
+  PREfast/ApiValidator and both Inspectors with zero warnings/errors
+  (`exact-mvp4-sol-b12-summary.txt`). Superseded by the reviewed deadline-edge
+  repair; do not install b12 or treat its build as the next source gate.
+- [x] Luna review3 REJECT retained/lost readiness evidence
+  (`sol-harness-relay-review3.txt`). It accepts only the narrow private retention
+  proof and transport retry design. Corrected real-pipe controls now PASS
+  including Ready-then-Pending latch and retained status INCONCLUSIVE
+  (`sol-notification-stream-corrected-validation.txt`). Final source Windows
+  parser/adapters/observer 0/229/88 PASS (`sol-harness-windows-validation-q.txt`).
+  Fresh review and exact new Inspector build pending, then A runtime rerun.
+
+- Luna review4 REJECT until closing captures preserves completed unread frames
+  and every readiness assertion uses matching active generation. Correction:
+  share one frame parser/latch with normal reads and closure; drain completed
+  reads, close the pipe, join and preserve any successful racing read before
+  disposing its reader. Malformed/lost/undrained data is an explicit error.
+  Drain/close while the holder is still live before publishing release, so
+  closure receipts cannot be misattributed to post-release readiness. Missing
+  interval/server-time evidence remains deferred, never inferred.
+
+- C03 `sol-c03a2` now reaches real overwrite publication and several retained
+  B buffered reads PASS. Outcome/final raw capture fails with `Truncated run
+  mapping`, after parent and marker captures, before the new cached.txt image.
+  Suspect only the bootstrap MFT run map lacking a newly allocated record; this
+  is not proven. Add exact logical range/map end and record-number diagnostics
+  before considering a read-only MFT-map refresh. Do not substitute cached
+  metadata for public raw proof, flush the protected window, or rebaseline it.
+- Upstream mapped-create question refined: pinned rdwr-test.c:529-533 and
+  info-test.c:777-780 create an extending mapping directly on a new empty file,
+  just like C02. Pre-sizing the file would narrow away a valid stimulus, so
+  preserve it and obtain the real blocked stack before a product fix.
+
+- [x] Corrected close/replace real-pipe controls PASS for normal reads and a
+  completed-but-unread Ready task: all five frames retained, exactly one
+  premature Ready latched, wrong-generation and inactive Ready ignored
+  (`sol-notification-close-builder-validation.txt`). Final exact Windows
+  gate parser 0, adapters 229/native observer 88 PASS
+  (`sol-harness-windows-validation-t.txt`). Fresh source review pending.
+- [x] Exact b13 at `847a21da` is clean in all four WDK/PREfast/ApiValidator
+  configurations and both Inspectors (`exact-mvp4-sol-b13-summary.txt`).
+  Inspector/kernel source is unchanged by the subsequent harness-only fixes.
+  Do not install until corrected harness gets fresh independent review.
+
+- [x] Fresh independent Luna review5 ACCEPT WITH CONDITIONS for controlled
+  runtime-Verifier use of be5e7e03 (`sol-harness-relay-review5.txt`). No remaining
+  concrete closure/generation blocker; preserve whole-holder interval and live
+  taint gaps as INCONCLUSIVE. Next A01 uses reviewed harness and exact b13/b19;
+  production SYSTEM authentication and actual transport remain runtime gates.
+- [x] C03 `sol-c03a2` restored clean, sampled forbidden bytes 0, MVP false
+  (`phase4-suite-sol-c03a2-index.txt`, root 20e9cace). Final raw Map gap remains.
+- [x] C04 `sol-c04a1` restored clean, sampled forbidden bytes 0, MVP false
+  (`phase4-suite-sol-c04a1-index.txt`, root 992bf816). Final raw failure is
+  Raw/FSCTL identity mismatch (FileRecord), distinct from C03 truncated Map.
+  Replacement publication is reached; no cached-public-proof substitution.

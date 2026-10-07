@@ -309,10 +309,11 @@ namespace StagedInvariant {
     Require(physical>=0 && checked(physical+n)<=v.Geometry.TotalBytes,"Map","Physical bounds");
     for(int done=0;done<n;) { int chunk=Math.Min(1024*1024,n-done); byte[] b=ReadAligned(v.Raw,checked(physical+done),chunk,v.Geometry.Alignment,false,0); Buffer.BlockCopy(b,0,output,checked((int)(cursor-offset)+done),chunk); AddContainer(containers,kind,physical+done,b); done+=chunk; } cursor+=n;
    }
-   Require(cursor==end,"Map","Truncated run mapping"); return output;
+   Require(cursor==end,"Map","Truncated run mapping; kind="+kind+"; logicalOffset="+offset+"; length="+length+"; cursor="+cursor+"; mappedEnd="+(runs.Length==0?0:checked(runs[runs.Length-1].NextVcn*cluster))); return output;
   }
   static Record ReadRecord(Volume v,uint number,List<Container> containers) {
-   Record r=DecodeRecord(ReadMapped(v,v.MftRuns,checked((long)number*v.Geometry.RecordSize),v.Geometry.RecordSize,containers,"MFT"),v.Geometry.Sector,number); CrossRecord(v,r); return r;
+   try { Record r=DecodeRecord(ReadMapped(v,v.MftRuns,checked((long)number*v.Geometry.RecordSize),v.Geometry.RecordSize,containers,"MFT"),v.Geometry.Sector,number); CrossRecord(v,r); return r; }
+   catch(ObservationException cause) { ObservationException failure=new ObservationException("MftRecord","Requested record="+number+"; "+cause.Message,cause); failure.Containers=containers.ToArray(); throw failure; }
   }
   // Private-stage fallback only. The source is the trusted NTFS metadata
   // cache, explicitly not an on-disk MFT/index proof. No stage-file open.

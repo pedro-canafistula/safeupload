@@ -102,11 +102,31 @@ static HRESULT SuProofSend(HANDLE port, LPVOID input, DWORD inputBytes, LPVOID o
     CopyMemory(request + 8, &outputBytes, 4);
     CopyMemory(request + 12, &inputBytes, 4);
     CopyMemory(request + 68, input, inputBytes);
-    pipe = CreateFileW(L"\\\\.\\pipe\\SafeUploadAdmissionEvidence.Capture", GENERIC_READ | GENERIC_WRITE,
-        0, NULL, OPEN_EXISTING, FILE_FLAG_OVERLAPPED | SECURITY_SQOS_PRESENT | SECURITY_IDENTIFICATION, NULL);
-    if (pipe == INVALID_HANDLE_VALUE) return HRESULT_FROM_WIN32(GetLastError());
-    if (!SuProofSystemServer(pipe)) { hr = E_ACCESSDENIED; goto Done; }
     deadline = GetTickCount64() + 10000;
+    for (;;) {
+        DWORD error;
+        ULONGLONG now;
+        if (GetTickCount64() >= deadline) return HRESULT_FROM_WIN32(ERROR_TIMEOUT);
+        pipe = CreateFileW(L"\\\\.\\pipe\\SafeUploadAdmissionEvidence.Capture", GENERIC_READ | GENERIC_WRITE,
+            0, NULL, OPEN_EXISTING, FILE_FLAG_OVERLAPPED | SECURITY_SQOS_PRESENT | SECURITY_IDENTIFICATION, NULL);
+        if (pipe != INVALID_HANDLE_VALUE) break;
+        error = GetLastError();
+        if (error != ERROR_FILE_NOT_FOUND && error != ERROR_PIPE_BUSY)
+            return HRESULT_FROM_WIN32(error);
+        now = GetTickCount64();
+        if (now >= deadline) return HRESULT_FROM_WIN32(ERROR_TIMEOUT);
+        /* Only retry connection establishment. No request bytes were delivered. */
+        if (!WaitNamedPipeW(L"\\\\.\\pipe\\SafeUploadAdmissionEvidence.Capture",
+            (DWORD)((deadline - now < 50) ? deadline - now : 50))) {
+            error = GetLastError();
+            if (error != ERROR_FILE_NOT_FOUND && error != ERROR_PIPE_BUSY && error != ERROR_SEM_TIMEOUT)
+                return HRESULT_FROM_WIN32(error);
+            if (error == ERROR_FILE_NOT_FOUND) Sleep(10);
+        }
+    }
+    if (GetTickCount64() >= deadline) { hr = HRESULT_FROM_WIN32(ERROR_TIMEOUT); goto Done; }
+    if (!SuProofSystemServer(pipe)) { hr = E_ACCESSDENIED; goto Done; }
+    if (GetTickCount64() >= deadline) { hr = HRESULT_FROM_WIN32(ERROR_TIMEOUT); goto Done; }
     if (!SuProofIo(pipe, TRUE, request, 4 + bodyBytes, deadline) ||
         !SuProofIo(pipe, FALSE, reply, sizeof(reply), deadline)) {
         hr = HRESULT_FROM_WIN32(GetLastError()); goto Done;
