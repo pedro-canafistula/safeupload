@@ -7,7 +7,7 @@ try {
     $tokens=$null;$errors=$null
     $ast=[Management.Automation.Language.Parser]::ParseFile((Join-Path $PSScriptRoot 'Test-StagedInvariantSuite.ps1'),[ref]$tokens,[ref]$errors)
     if($errors.Count){throw ($errors | Out-String)}
-    foreach($name in @('Get-WriterBody','Get-R01WriterBody','Get-B01WriterBody','Get-CachedSecondUserBody','Test-R01OfflineCalls','Test-R01HeldRecovery','Test-R01HeldNotifications',
+    foreach($name in @('Get-WriterBody','Get-R01WriterBody','Get-B01WriterBody','Get-CachedSecondUserBody','Test-R01OfflineCalls','Test-R01OfflineAbsent','Test-R01HeldRecovery','Test-R01HeldNotifications',
         'Test-R01JournalSequence','Test-R01ActorCalls','Test-R01OutcomeSample','Test-R01ReleasedOnce','Test-B01JunctionReceipt','Test-B01FailedHandBack','Test-B01FailureNotification',
         'Test-B01SentinelSample','Test-B01FailureAudit','Test-AgentLogContinuity','ConvertFrom-AgentEventXml','Test-CachedSecondUserDenial','Test-CachedActorCalls','Test-CachedSample','Test-CachedImage')){
         $defs=@($ast.FindAll({param($node)$node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -ceq $name},$false))
@@ -24,10 +24,16 @@ try {
     foreach($name in @('writer-open','cached-write','flush','cached-write','flush','close')){
         $calls+=@{Class=$name;NativeCode=0;StartQpc=$i;EndQpc=($i+1)};$i+=10
     }
-    $receipt=@{Pid=101;Sid=$actor.Sid;BootId='fixture';Token='token';Target='N';Held=$true;PrivateSha256='A';Calls=$calls[0..4];Qpc=72;
+    $receipt=@{Pid=101;Sid=$actor.Sid;BootId='fixture';Token='token';Target='N';OfflineTarget='offline-new';Held=$true;PrivateSha256='A';Calls=$calls[0..4];Qpc=72;
         OfflineCalls=@(@{Class='writer-open-deny';NativeCode=5;StartQpc=55;EndQpc=56})}
-    Check (Passed (Test-R01OfflineCalls $receipt $actor 'token' 'N' 50 'A')) 'R01 offline denial followed by private write/flush passes.'
-    foreach($change in @('admitted','early','digest','sid','token','path','closed','write-failed','extra-denial')){
+    Check (Passed (Test-R01OfflineCalls $receipt $actor 'token' 'N' 50 'A' 'offline-new')) 'R01 distinct-name Win32:5 denial followed by private write/flush passes.'
+    foreach($code in @(80,0,2,32,87,$null)){
+        $bad=Clone $receipt;$bad.OfflineCalls[0].NativeCode=$code
+        Check (Rejected (Test-R01OfflineCalls $bad $actor 'token' 'N' 50 'A' 'offline-new')) ('R01 rejects offline native code '+$code+'.')
+    }
+    $bad=Clone $receipt;$bad.OfflineTarget='N'
+    Check (Rejected (Test-R01OfflineCalls $bad $actor 'token' 'N' 50 'A' 'N')) 'R01 rejects probing the held private name even with Win32:5.'
+    foreach($change in @('admitted','early','digest','sid','token','path','offline-path','missing-offline-path','closed','write-failed','extra-denial')){
         $bad=Clone $receipt
         switch($change){
             'admitted'{$bad.OfflineCalls[0].NativeCode=0}
@@ -36,11 +42,13 @@ try {
             'sid'{$bad.Sid='other'}
             'token'{$bad.Token='stale'}
             'path'{$bad.Target='other'}
+            'offline-path'{$bad.OfflineTarget='other'}
+            'missing-offline-path'{$bad.OfflineTarget=$null}
             'closed'{$bad.Held=$false}
             'write-failed'{$bad.Calls[3].NativeCode=5}
             'extra-denial'{$bad.OfflineCalls+=@{Class='close';NativeCode=0;StartQpc=57;EndQpc=58}}
         }
-        Check (Rejected (Test-R01OfflineCalls $bad $actor 'token' 'N' 50 'A')) ('R01 rejects offline '+$change+'.')
+        Check (Rejected (Test-R01OfflineCalls $bad $actor 'token' 'N' 50 'A' 'offline-new')) ('R01 rejects offline '+$change+'.')
     }
     $initial=@{StateName='Allocated';SealedOnce=$false;TransferId='id';DestinationGeneration=1;History=@('Allocated')}
     $unsealed=@{StateName='Unsealed';SealedOnce=$false;TransferId='id';DestinationGeneration=1;Sha256Hex=$null;History=@('Allocated','Unsealed')}
@@ -114,6 +122,10 @@ try {
     foreach($name in @('Get-R01WriterBody','Get-B01WriterBody','Get-CachedSecondUserBody')){
         $body=& $name;$t=$null;$e=$null;$generated=[Management.Automation.Language.Parser]::ParseInput($body,[ref]$t,[ref]$e)
         Check ($e.Count -eq 0) ($name+' generated actor parses.')
+        if($name -ceq 'Get-R01WriterBody'){
+            $attempts=@($generated.FindAll({param($node)$node -is [Management.Automation.Language.InvokeMemberExpressionAst] -and $node.Extent.Text -clike '[[]SUWriter]::Attempt(*'},$true))
+            Check (@($attempts | Where-Object {$_.Extent.Text -ceq '[SUWriter]::Attempt($config.R01OfflineTarget,$finalBytes,$true,0)'}).Count -eq 1) 'R01 generated actor uses the separate configured name with CREATE_NEW and the native write-access helper.'
+        }
         if($name -cne 'Get-B01WriterBody'){
             $native=@($generated.FindAll({param($node)$node -is [Management.Automation.Language.StringConstantExpressionAst] -and $node.Value -like '*public static class SU*'},$true))
             Check ($native.Count -eq 1) ($name+' has one native helper.')
@@ -140,6 +152,28 @@ try {
         Check (Rejected (Test-R01OutcomeSample $bad $baseline $bytes)) 'R01 outcome rejects uncached different image.'
         $absent=Clone $sample;$absent.Captures[0].Images[0].Absent=$true;$absent.C01Readers=@(@{Status='ERROR';NativeCode=2;Unbuffered=$false},@{Status='ERROR';NativeCode=2;Unbuffered=$true})
         Check (Passed (Test-R01OutcomeSample $absent $baseline $bytes)) 'R01 outcome absence passes.'
+        $offlinePath=Join-Path $temp 'offline-new.txt'
+        $offlineSample=Clone $sample;$offlineSample.Captures[0].Images+=@{Role='Current';Path=$offlinePath;Absent=$true}
+        $offlineSample | Add-Member NoteProperty R01OfflineReaders @(@{Status='ERROR';NativeCode=2;Unbuffered=$false},@{Status='ERROR';NativeCode=2;Unbuffered=$true})
+        $offlineBaseline=Clone $baseline;$offlineBaseline.Images[1].DirectoryEntries=@()
+        Check (Passed (Test-R01OfflineAbsent $offlineSample $offlineBaseline $offlinePath)) 'R01 offline create-name raw/fresh/uncached absence passes even after cached.txt publication.'
+        foreach($change in @('raw-present','raw-name-present','fresh-present','uncached-present','raw-missing','parent-missing','fresh-missing','uncached-wrong-code','capture-error')){
+            $bad=Clone $offlineSample
+            switch($change){
+                'raw-present'{$bad.Captures[0].Images[2].Absent=$false}
+                'raw-name-present'{$bad.Captures[0].Images[1].DirectoryEntries+=@{Name='offline-new.txt';Reference=2;Eof=12;Attributes=32}}
+                'fresh-present'{$bad.R01OfflineReaders[0].Status='OK';$bad.R01OfflineReaders[0].NativeCode=0}
+                'uncached-present'{$bad.R01OfflineReaders[1].Status='OK';$bad.R01OfflineReaders[1].NativeCode=0}
+                'raw-missing'{$bad.Captures[0].Images=$bad.Captures[0].Images[0..1]}
+                'parent-missing'{$bad.Captures[0].Images=@($bad.Captures[0].Images | Where-Object Role -cne 'Parent')}
+                'fresh-missing'{$bad.R01OfflineReaders=@($bad.R01OfflineReaders[1])}
+                'uncached-wrong-code'{$bad.R01OfflineReaders[1].NativeCode=5}
+                'capture-error'{$bad.Status='ERROR'}
+            }
+            $result=Test-R01OfflineAbsent $bad $offlineBaseline $offlinePath
+            Check (-not (Passed $result)) ('R01 offline create-name absence rejects '+$change+'.')
+            if($change -clike '*present'){Check (Rejected $result) ('R01 offline created name present is FAIL: '+$change+'.')}
+        }
         Check (Passed (Test-B01SentinelSample $sample $baseline $bytes)) 'B01 unchanged raw sentinel and independent readers pass.'
         foreach($change in @('raw','id','metadata','reader','new-temp')){
             $bad=Clone $sample

@@ -2104,15 +2104,19 @@ function Capture-CachedSample($Context,$Baseline,[string]$PhaseName,[long]$Seque
     # The shared observer records raw absence via the parent index, but only
     # opens supplemental readers for existing files. C01 also needs both
     # native fresh opens to attest ERROR_FILE_NOT_FOUND for an absent final.
-    $readers=@();$path=$TargetPath
-    foreach($raw in @($false,$true)){
-        try{$reader=[StagedInvariant.Native]::Fresh($path,$raw,$Context.Geometry.Alignment);$readers+=@{Unbuffered=$raw;Status='OK';Result=$reader;NativeCode=0}}
-        catch{
-            $code=$null;for($ex=$_.Exception;$null -ne $ex;$ex=$ex.InnerException){if($null -ne $ex.PSObject.Properties['NativeCode']){$code=$ex.NativeCode}}
-            $readers+=@{Unbuffered=$raw;Status='ERROR';NativeCode=$code;Reason=$_.Exception.ToString()}
+    $targets=@(@{Path=$TargetPath;Property='C01Readers'})
+    if($CaseId -ceq 'R01'){$targets+=@{Path=(Join-Path $protectedDirectory 'offline-new.txt');Property='R01OfflineReaders'}}
+    foreach($target in $targets){
+        $readers=@();$path=$target.Path
+        foreach($raw in @($false,$true)){
+            try{$reader=[StagedInvariant.Native]::Fresh($path,$raw,$Context.Geometry.Alignment);$readers+=@{Unbuffered=$raw;Status='OK';Result=$reader;NativeCode=0}}
+            catch{
+                $code=$null;for($ex=$_.Exception;$null -ne $ex;$ex=$ex.InnerException){if($null -ne $ex.PSObject.Properties['NativeCode']){$code=$ex.NativeCode}}
+                $readers+=@{Unbuffered=$raw;Status='ERROR';NativeCode=$code;Reason=$_.Exception.ToString()}
+            }
         }
+        $sample | Add-Member NoteProperty $target.Property $readers
     }
-    $sample | Add-Member NoteProperty C01Readers $readers
     return $sample
 }
 function Test-CachedImage($Image,$Geometry,[byte[]]$Expected,[string]$Label) {
@@ -2531,6 +2535,7 @@ function Invoke-CachedObservation {
         }
         $expected=@{'marker.bin'=[Convert]::FromBase64String($state.BaselineBase64);'cached.txt'=$imageB};$names=@('marker.bin','cached.txt')
         if($cachedKind -ceq 'replacement'){$expected['save.tmp.txt']=$null;$names+= 'save.tmp.txt'}
+        if($CaseId -ceq 'R01'){$expected['offline-new.txt']=$null;$names+= 'offline-new.txt'}
         # LastAccess window starts BEFORE the raw capture it covers (c01n).
         $captureStartedFileTime=[DateTime]::UtcNow.ToFileTimeUtc()
         $baseline=Capture-InvariantBaseline $context $names $expected
@@ -2752,6 +2757,10 @@ function Invoke-CachedObservation {
         if($null -ne $readyEvent){$readyEvent.Dispose()}
         try{Restore-CachedAgent}catch{$trial.Errors+=Get-ErrorChain $_.Exception;$trial.Assertions+=@{Name='C01AgentRestoration';Verdict='INCONCLUSIVE';Reason=$_.Exception.ToString()}}
         $trial.Baseline=$baseline;$trial.Samples=$samples;$trial.PredicateSamples=$predicateSamples;$trial.Disposal=$disposal
+        if($CaseId -ceq 'R01'){
+            foreach($sample in $samples){$trial.Assertions+=Test-R01OfflineAbsent $sample $baseline (Join-Path $protectedDirectory 'offline-new.txt')}
+            if(-not $samples.Count){$trial.Assertions+=@{Name='R01OfflineNewCoverage';Verdict='INCONCLUSIVE';Reason='No raw/fresh/uncached offline create-name absence samples retained.'}}
+        }
         $trial.WriterFence=@{Complete=($null -ne $writer -and $writer.ExitCode -eq 0);BootId=$writer.BootId;QpcFrequency=$writer.Value.QpcFrequency;ReleasedQpc=$writer.Value.ReleasedQpc;CompletedQpc=$writer.CompletedQpc;ExpectedAttempts=1}
         $trial.LastAccessPolicy=@{Status=$(if($null -ne $trial.LastAccessBefore.Value -and $null -ne $trial.LastAccessAfter.Value){'OK'}else{'INCONCLUSIVE'});Before=$trial.LastAccessBefore;After=$trial.LastAccessAfter}
         $trial.MutationLedger=@{Complete=$false;Overflow=$false;Entries=@();Source='Unavailable: existing lower admission/completion adapter'}
@@ -3802,25 +3811,41 @@ function Get-R01WriterBody {
     $offline=@'
             Wait-ActorBarrier 'r01-offline-go'
             $finalBytes=[Convert]::FromBase64String($config.Payloads[0])
-            $offlineCalls=@([SUWriter]::Attempt($config.Target,$finalBytes,$true,0))
+            $offlineCalls=@([SUWriter]::Attempt($config.R01OfflineTarget,$finalBytes,$true,0))
             [SUWriter]::RewindHeld($h)
             $calls+= [SUWriter]::WriteHeld($h,$finalBytes);$calls+= [SUWriter]::FlushHeld($h)
             $hash=[Security.Cryptography.SHA256]::Create()
             try{$privateDigest=[BitConverter]::ToString($hash.ComputeHash([SUWriter]::ReadPrivate($h,$finalBytes.Length))).Replace('-','')}finally{$hash.Dispose()}
-            Save-ActorReceipt 'r01-offline.clixml' $calls $privateDigest @{OfflineCalls=$offlineCalls;Target=$config.Target;Held=$true}
+            Save-ActorReceipt 'r01-offline.clixml' $calls $privateDigest @{OfflineCalls=$offlineCalls;Target=$config.Target;OfflineTarget=$config.R01OfflineTarget;Held=$true}
 '@
     return $body.Replace($anchor,($offline+"`n"+$anchor))
 }
-function Test-R01OfflineCalls($Receipt,$Actor,[string]$Token,[string]$Path,[long]$StoppedQpc,[string]$Digest) {
+function Test-R01OfflineCalls($Receipt,$Actor,[string]$Token,[string]$Path,[long]$StoppedQpc,[string]$Digest,[string]$OfflinePath) {
     $denied=@($Receipt.OfflineCalls);$writes=@($Receipt.Calls | Select-Object -Last 2)
     $good=$null -ne $Receipt -and $Receipt.Pid -eq $Actor.Pid -and $Receipt.Sid -ceq $Actor.Sid -and $Receipt.BootId -ceq $Actor.BootId -and
         $Receipt.Token -ceq $Token -and $Receipt.Target -ceq $Path -and $Receipt.Held -eq $true -and $Receipt.PrivateSha256 -ceq $Digest -and
+        -not [string]::IsNullOrWhiteSpace($OfflinePath) -and $OfflinePath -ine $Path -and $Receipt.OfflineTarget -ceq $OfflinePath -and
         $denied.Count -eq 1 -and $denied[0].Class -ceq 'writer-open-deny' -and $denied[0].NativeCode -eq 5 -and
         $denied[0].StartQpc -ge $StoppedQpc -and $denied[0].EndQpc -ge $denied[0].StartQpc -and
         ($writes.Class -join ',') -ceq 'cached-write,flush' -and -not @($writes | Where-Object {$null -eq $_.NativeCode -or $_.NativeCode -ne 0}).Count -and
         $writes[0].StartQpc -ge $denied[0].EndQpc -and $writes[0].EndQpc -ge $writes[0].StartQpc -and
         $writes[1].StartQpc -ge $writes[0].EndQpc -and $writes[1].EndQpc -ge $writes[1].StartQpc -and $Receipt.Qpc -ge $writes[1].EndQpc
-    return @{Name='R01OfflineNativeCalls';Verdict=$(if($good){'PASS'}else{'FAIL'});Reason='Same standard actor: second protected open Win32:5, then held private whole-image write/flush Win32:0 after SCM Stopped; private read equals final A.';Evidence=$Receipt}
+    return @{Name='R01OfflineNativeCalls';Verdict=$(if($good){'PASS'}else{'FAIL'});Reason='Same standard actor: CREATE_NEW with write access on a distinct absent protected name returns Win32:5, then held private whole-image write/flush Win32:0 after SCM Stopped; private read equals final A.';Evidence=$Receipt}
+}
+function Test-R01OfflineAbsent($Sample,$Baseline,[string]$Path) {
+    # Reuse the raw absence and fresh/uncached Win32:2 checks. The ordinary
+    # public listing can gain cached.txt during approved publication; this
+    # separate create name must stay absent through final quiescence.
+    $frame=@{Status=$Sample.Status;Error=$Sample.Error;Phase=$Sample.Phase;Sequence=$Sample.Sequence;Captures=$Sample.Captures;C01Readers=$Sample.R01OfflineReaders}
+    $assertions=@(Test-CachedSample $frame $Baseline $false $null $null $Path | ForEach-Object {$_} | Where-Object Name -cne 'C01PublicListing')
+    foreach($assertion in $assertions){$assertion.Name='R01OfflineNew'+$assertion.Name.Substring(3)}
+    foreach($capture in $Sample.Captures){
+        $parents=@($capture.Images | Where-Object {$_.Role -ceq 'Parent' -and $_.Path -ceq [IO.Path]::GetDirectoryName($Path)})
+        $complete=$parents.Count -eq 1 -and $null -ne $parents[0].DirectoryEntries
+        $present=@($parents | ForEach-Object {$_.DirectoryEntries} | Where-Object Name -ieq ([IO.Path]::GetFileName($Path)))
+        $assertions+=@{Name='R01OfflineNewRawNameAbsent';Verdict=$(if($present.Count){'FAIL'}elseif($complete){'PASS'}else{'INCONCLUSIVE'});Reason=('Offline CREATE_NEW name must remain absent in the raw parent index in '+$Sample.Phase);Sequence=$Sample.Sequence}
+    }
+    return ,$assertions
 }
 function Test-R01HeldRecovery($Initial,$Recovered) {
     $good=$null -ne $Initial -and $null -ne $Recovered -and $Initial.StateName -ceq 'Allocated' -and -not $Initial.SealedOnce -and
@@ -3892,7 +3917,7 @@ function Invoke-R01AllocatedRestart($Trial,$Actor,$Context,$Baseline,[byte[]]$Im
     $result.Samples+=Capture-CachedSample $Context $Baseline 'R01AgentDownBeforeRewrite' (++$Sequence)
     Write-DurableFile (Join-Path $actorDirectory 'r01-offline-go') $RunName -New
     $receipt=Wait-WriterIdentity (Join-Path $actorDirectory 'r01-offline.clixml') 60;$Trial.R01Offline=$receipt
-    $Trial.Assertions+=Test-R01OfflineCalls $receipt $Actor $state.WriterToken (Join-Path $protectedDirectory 'cached.txt') $down.Qpc ([StagedInvariant.Native]::Hash($ImageA))
+    $Trial.Assertions+=Test-R01OfflineCalls $receipt $Actor $state.WriterToken (Join-Path $protectedDirectory 'cached.txt') $down.Qpc ([StagedInvariant.Native]::Hash($ImageA)) (Join-Path $protectedDirectory 'offline-new.txt')
     $result.Samples+=Capture-CachedSample $Context $Baseline 'R01AgentDownAfterRewrite' (++$Sequence)
     $offline=Get-CachedJournalObservation 'r01-offline' $Actor;$Trial.JournalSnapshots+=$offline.Snapshot
     $Trial.Assertions+=@{Name='R01OfflineAllocated';Verdict=$(if($offline.Status -cne 'OK'){'INCONCLUSIVE'}elseif($offline.Entries.Count -eq 1 -and $offline.Entries[0].TransferId -ieq $initial.TransferId -and ($offline.Entries[0].History -join ',') -ceq 'Allocated' -and -not $offline.Entries[0].SealedOnce){'PASS'}else{'FAIL'});Reason='No new transfer or implicit offline seal/approval; original mutable Allocated manifest retained.';Evidence=$offline}
@@ -4908,7 +4933,9 @@ $value=$b.ToString().Split([char]0)[0]
                 CreateNew=($CaseId -eq 'S02-agent-down-open-refused');Target=(Join-Path $protectedDirectory $(if($cachedCase){'cached.txt'}elseif($CaseId -eq 'S02-agent-down-open-refused'){'new.bin'}else{'marker.bin'}))} $configPath
             if($CaseId -cin @('R01','B01')){
                 $coreConfig=Load-State $configPath
-                if($CaseId -ceq 'R01'){$coreConfig.R01InitialBase64=$state.R01InitialBase64}else{$coreConfig.B01SentinelBase64=$state.B01SentinelBase64}
+                if($CaseId -ceq 'R01'){
+                    $coreConfig.R01InitialBase64=$state.R01InitialBase64;$coreConfig.R01OfflineTarget=Join-Path $protectedDirectory 'offline-new.txt'
+                }else{$coreConfig.B01SentinelBase64=$state.B01SentinelBase64}
                 Save-State $coreConfig $configPath
             }
             $writerBody=(Get-WriterBody).Replace('__CONFIG__',(ConvertTo-PowerShellLiteral $configPath)).Replace('__IDENTITY__',(ConvertTo-PowerShellLiteral (Join-Path $actorDirectory 'identity.clixml'))).Replace('__GO__',(ConvertTo-PowerShellLiteral (Join-Path $actorDirectory 'go'))).Replace('__TEMP__',(ConvertTo-PowerShellLiteral $actorDirectory))
