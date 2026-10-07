@@ -764,3 +764,24 @@ The safe W01 checkpoint parent was written by Sol and checked by root: Windows P
 - [x] Candidate harness Windows gate PASS: `evidence/2026-10-07/sol-harness-windows-validation-b.txt`
   (0 parser errors, 227 proof-adapter checks, 77 native observer checks). Python
   18 proof tests plus 7 MVP tests pass; raw helper compiles on .NET/PowerShell 5.1.
+
+- [ ] A01 `sol-a01r3` exposed a second harness bug before creating its pre-scope
+  holder: the actor's `ReadAllText(command-0001.clixml)` races the producer's open
+  write handle and exits on sharing violation. Reuse the bounded monotonic
+  `Load-State` implementation inside the generated actor and validate sequence/action.
+  Next run follows Windows 5.1 publication regression checks.
+
+- [x] Bounded actor command reader validated on builder: 229 proof-adapter
+  checks, 77 native observer checks, 0 parser errors (`evidence/2026-10-07/sol-harness-windows-validation-c.txt`).
+- [ ] Source review found the next A-path stimulus passed uninitialized `$flush`/`$written`
+  by reference; initialize both before `StageWrite` so PowerShell can call the native
+  fixture. This is harness-only; full A-path qualification remains pending.
+- [ ] A-path service observation requires repair: Inspector uses the one-client
+  `SafeUploadPort`; once the real agent owns it, the suite's direct epoch/registry/trace
+  Inspector commands cannot connect. Preserve service ownership and state continuity;
+  do not stop/reconnect the agent to obtain a fabricated continuous observation.
+
+- [x] A01 r3 restoration independently clean; full failure evidence retained under
+  `evidence/2026-10-07/boot-start-invariant-A01-runtime-verifier-sol-a01r3-artifacts/`.
+- [x] Actor command publication/native-ref repairs pass Windows 5.1 gate: 229 adapter
+  checks, 77 observer checks, zero parser errors (`evidence/2026-10-07/sol-harness-windows-validation-d.txt`).

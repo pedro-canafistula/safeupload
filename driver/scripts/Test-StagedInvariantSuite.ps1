@@ -637,7 +637,7 @@ try {
 '@
 }
 function Get-ActivatingWriterBody {
-@'
+$body=@'
 Add-Type -TypeDefinition @"
 using System;
 using System.ComponentModel;
@@ -717,7 +717,7 @@ try {
  while($true){
   $commandPath=Join-Path $config.ActorDirectory ('command-'+$commandSequence.ToString('D4')+'.clixml')
   if(-not(Test-Path -LiteralPath $commandPath)){Start-Sleep -Milliseconds 10;continue}
-  $command=[Management.Automation.PSSerializer]::Deserialize([IO.File]::ReadAllText($commandPath));$result=@{Sequence=$command.Sequence;Action=$command.Action;Pid=$PID;BootId=(Get-BootId);QpcFrequency=[Diagnostics.Stopwatch]::Frequency;StartQpc=[Diagnostics.Stopwatch]::GetTimestamp();NativeCode=$null;FlushCode=$null;Calls=@();Error=$null}
+  $command=Load-State $commandPath;if($command.Sequence -ne $commandSequence -or [string]::IsNullOrWhiteSpace($command.Action)){throw 'Activation command sequence/action mismatch'};$result=@{Sequence=$command.Sequence;Action=$command.Action;Pid=$PID;BootId=(Get-BootId);QpcFrequency=[Diagnostics.Stopwatch]::Frequency;StartQpc=[Diagnostics.Stopwatch]::GetTimestamp();NativeCode=$null;FlushCode=$null;Calls=@();Error=$null}
   try {
    switch($command.Action){
     'create-holder' {$closed=$false;$result.NativeCode=[SUActivationNative]::CreateHolder($config.Target,[Convert]::FromBase64String($config.PBase64),$config.HolderKind,[ref]$closed);$result.SourceHandleClosed=$closed;$result.HolderCreated=($result.NativeCode -eq 0)}
@@ -727,7 +727,7 @@ try {
      foreach($change in $command.Changes){$bytes=[Convert]::FromBase64String($change.BytesBase64);$start=[Diagnostics.Stopwatch]::GetTimestamp();$code=if($config.HolderKind -eq 'handle'){[SUActivationNative]::WriteFileAt([long]$change.Offset,$bytes)}else{[SUActivationNative]::WriteViewAt([long]$change.Offset,$bytes)};$end=[Diagnostics.Stopwatch]::GetTimestamp();$result.Calls+=@{Offset=[long]$change.Offset;Length=$bytes.Length;PayloadSha256=$change.PayloadSha256;NativeCode=$code;StartQpc=$start;EndQpc=$end;Paging=($config.HolderKind -ne 'handle')};if($code -ne 0){throw ('Old holder write failed: Win32 '+$code)}}
      if($config.HolderKind -eq 'handle'){$result.FlushCode=[SUActivationNative]::FlushHolderFile()}else{$result.FlushCode=[SUActivationNative]::FlushView()};if($result.FlushCode -ne 0){throw ('Old holder flush failed: Win32 '+$result.FlushCode)};$result.NativeCode=0
     }
-    'staged-write' {$bytes=[Convert]::FromBase64String($command.PayloadBase64);$start=[Diagnostics.Stopwatch]::GetTimestamp();$closeCode=[int]0;$code=[SUActivationNative]::StageWrite($config.Target,[long]$command.Offset,$bytes,[ref]$flush,[ref]$closeCode,[ref]$written);$end=[Diagnostics.Stopwatch]::GetTimestamp();$result.NativeCode=$code;$result.FlushCode=$flush;$result.CloseCode=$closeCode;$result.BytesWritten=$written;$result.Calls+=@{Class='staged-write';NativeCode=$code;FlushCode=$flush;CloseCode=$closeCode;Length=$bytes.Length;PayloadSha256=$command.PayloadSha256;StartQpc=$start;EndQpc=$end};if($code -ne 0){throw ('Post-protection staged write failed: Win32 '+$code)}}
+    'staged-write' {$bytes=[Convert]::FromBase64String($command.PayloadBase64);$start=[Diagnostics.Stopwatch]::GetTimestamp();$closeCode=[int]0;$flush=[int]0;$written=[long]0;$code=[SUActivationNative]::StageWrite($config.Target,[long]$command.Offset,$bytes,[ref]$flush,[ref]$closeCode,[ref]$written);$end=[Diagnostics.Stopwatch]::GetTimestamp();$result.NativeCode=$code;$result.FlushCode=$flush;$result.CloseCode=$closeCode;$result.BytesWritten=$written;$result.Calls+=@{Class='staged-write';NativeCode=$code;FlushCode=$flush;CloseCode=$closeCode;Length=$bytes.Length;PayloadSha256=$command.PayloadSha256;StartQpc=$start;EndQpc=$end};if($code -ne 0){throw ('Post-protection staged write failed: Win32 '+$code)}}
     'release-holder' {$result.NativeCode=[SUActivationNative]::ReleaseHolder();$result.HolderReleased=($result.NativeCode -eq 0);if($result.NativeCode -ne 0){throw ('Holder release failed: Win32 '+$result.NativeCode)}}
     'exit-worker' {$result.NativeCode=[SUActivationNative]::ReleaseHolder();$result.HolderReleased=($result.NativeCode -eq 0);$result.ExitWorker=$true}
     default {throw ('Unknown actor action: '+$command.Action)}
@@ -739,6 +739,7 @@ try {
 }catch{$workerError=$_.Exception.ToString();Write-Output ('ScriptError='+$workerError);try{[IO.File]::WriteAllText('__SCRIPT_ERROR__',$workerError)}catch{}}
 finally{try{[void][SUActivationNative]::ReleaseHolder()}catch{};$identity.Dispose()}
 '@
+return ("function Load-State { ${function:Load-State} }`n"+$body)
 }
 function Publish-ActivationActorCommand($State,[string]$Action,$Fields) {
     $sequence=[int]$State.ActorNextSequence
