@@ -1,0 +1,6 @@
+The command was successfully executed.
+[SC] ChangeServiceConfig SUCCESS
+No settings were changed.
+INVARIANT_CASE_COMPLETED=True
+INVARIANT_RESTORED=True
+HARNESS_RETURNED
