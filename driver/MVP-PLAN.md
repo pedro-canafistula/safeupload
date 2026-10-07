@@ -1672,7 +1672,7 @@ zero warnings/errors and valid signature; no VM qualification claimed yet.
 
 `goald1` live timeout evidence (cache2) confirms actual resident Activating state,
 H/W/C/T=0, S=NO, classification successful, entry/global/instance Unknown=0,
-complete empty promotion trace, and current service coverage Pending at generation1
+complete empty promotion trace, and current native coverage Degraded (state2/reason6) at generation1
 with the live disable bit/capability. The exact remaining early-exit predicate is
 not established. Diagnostic contract before changing it: extend only the feature
 classification-step enum with FlushAndPurge and CacheRetained steps; retain the
@@ -1772,3 +1772,41 @@ close/rebind assertions are mandatory for A01-A04; they are not deferred.
 Kernel and service source are unchanged from exact cache4/taint2 and their
 passing four-config builds/matrix. Native raw rebind and promotion behavior
 remain to be qualified on the supported VM after the active child restores.
+
+`goalrecl101` unchanged-observer cache4 A01 remains INCONCLUSIVE with clean
+restoration: H/W/C/T0, S=NO, Unknown0, successful CacheRetained step11, empty
+promotion trace and226211 reclaim passes. Thread-local lifetime suppression
+does not establish or eliminate the observed churn. Do not claim it solved
+the worker feedback loop.
+
+`goalreader101` reader-drain A01 proves actual same-ID promotion after reader
+and actor release: one complete native CAS record, zero H/W/C/T/spill/unknown,
+S=NO, equal expected/actual marker generation, policy generation1, predicates31
+and live taint state1. The resident entry was then legitimately pruned; current
+exact-ID query is Protected/Free with no history. The harness still demands
+resident history and times out. Forbidden count remains unknown, no qualification.
+Independent restoration clean. Readiness samples also show Degraded/CoverageUnknown.
+Native coverage state2 means Degraded; Pending is0. Earlier prose interpreting
+state2 as Pending was incorrect. Scope itself is Ready, writers not-ready/unknown
+are0 and current flags0x30. Source finds the coverage policy known-mask still
+rejects feature TEST_DISABLE_TAINT0x20, despite SET_POLICY and native live-bit
+readback supporting it.
+
+Coverage repair contract before implementation: add only the defined test taint
+bit to the known policy mask in feature builds. Normal builds retain their old
+mask and SET_POLICY rejection. Unknown bits, audit-only, scope overflow, epochs,
+trust/topology/stability, complete registry, writer unknown/pending and future
+mount gates remain mandatory and unchanged. Native Pending while held and Ready
+after actual promotion must be measured with fresh four-config exact builds.
+
+Pruned-history proof repair contract before implementation: a current same-ID
+Protected/Free query alone cannot prove promotion. When its resident history
+is absent, require one complete actual native same-ID ACTIVATING-to-PROTECTED
+CAS record in the actor release/query QPC window, accepted policy generation,
+zero counters/spill/unknown/rename, S=NO, equal marker generations and all base
+CAS predicate bits. The same raw pin and U digest must still survive the
+reader gap before a protected write stimulus. Keep the existing promotion trace,
+readiness, raw destination, taint, errors and restoration gates; add no deferral.
+Record retirement explicitly rather than pretending the current entry is resident.
+Also emit a PASS disposal assertion only from the already checked OK disposal
+record, which the existing A-row gate requires but its producer currently omits.

@@ -491,6 +491,9 @@ NTSTATUS SafeUploadStageAdmissionCoverageStatus(
     ULONGLONG policySequenceEnd = 0;
     ULONGLONG registrySequenceCurrent = 0;
     ULONG count = 0, index, scopeIndex;
+    ULONG knownPolicyFlags = SAFEUPLOAD_POLICY_FLAG_REMOVABLE |
+        SAFEUPLOAD_POLICY_FLAG_NETWORK | SAFEUPLOAD_POLICY_FLAG_AUDIT_ONLY |
+        SAFEUPLOAD_POLICY_FLAG_ALLOW_OVERRIDE | SAFEUPLOAD_POLICY_FLAG_CLASSIFY_ALL_SOURCES;
     UINT32 writerGlobalUnknownCurrent = 0;
     ULONG startPolicyGeneration, startPolicyFlags, startBootPolicyState;
     ULONG startExpectedScopeCount;
@@ -501,6 +504,9 @@ NTSTATUS SafeUploadStageAdmissionCoverageStatus(
 
     PAGED_CODE();
     NT_ASSERT(KeGetCurrentIrql() == PASSIVE_LEVEL);
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    knownPolicyFlags |= SAFEUPLOAD_POLICY_FLAG_TEST_DISABLE_TAINT;
+#endif
     if (Status == NULL) return STATUS_INVALID_PARAMETER;
     RtlZeroMemory(Status, sizeof(*Status));
     Status->StructSize = sizeof(*Status);
@@ -773,11 +779,7 @@ Finalize:
         goto Exit;
     }
     if ((Status->Flags & SAFEUPLOAD_ADMISSION_COVERAGE_FLAG_POLICY_SCOPE_OVERFLOW) != 0 ||
-        (policyFlagsEnd & ~((ULONG)SAFEUPLOAD_POLICY_FLAG_REMOVABLE |
-            (ULONG)SAFEUPLOAD_POLICY_FLAG_NETWORK |
-            (ULONG)SAFEUPLOAD_POLICY_FLAG_AUDIT_ONLY |
-            (ULONG)SAFEUPLOAD_POLICY_FLAG_ALLOW_OVERRIDE |
-            (ULONG)SAFEUPLOAD_POLICY_FLAG_CLASSIFY_ALL_SOURCES)) != 0) {
+        (policyFlagsEnd & ~knownPolicyFlags) != 0) {
         Status->State = SAFEUPLOAD_ADMISSION_COVERAGE_STATE_DEGRADED;
         Status->Reason = SAFEUPLOAD_ADMISSION_COVERAGE_REASON_UNKNOWN;
         goto Exit;
