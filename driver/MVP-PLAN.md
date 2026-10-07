@@ -1846,3 +1846,13 @@ mandatory only for A02/A03.24 proof rejection/positive controls cover the
 map-only receipt, bringing proof-adapter total to386. Kernel/agent source and
 their exact build matrices remain unchanged. Merge waits for the active A01
 child and independent restoration; then supported-VM A02/A03 remain required.
+
+`goal-reader-runtime-readout.json` retains hash-bound case and independent
+baseline receipts for `goalrecl101` and `goalreader101`, including the actual
+native CAS and honest nonqualification/unknown-forbidden-count findings.
+Fresh cache5 A01 `goalpruned101` stopped before checkpoint because the VM
+backing chain had190 layers; it is not a workload result. A separate clean
+maintenance overlay preserved the prior active checkpoint and its backing
+files, and a completed blockpull reduced the active chain to0. Fresh-tag
+retry `goalpruned111` is in progress; baseline is independently checked by
+the batch wrapper before it runs.

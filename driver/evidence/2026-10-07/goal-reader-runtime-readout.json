@@ -1,0 +1,583 @@
+{
+  "Schema": "SafeUploadGoalReaderReadout/1",
+  "Qualification": false,
+  "Reason": "Retained diagnostic runs did not finish full raw/rebind/readiness qualification. Actual CAS is diagnostic proof; counter fields remain noncoherent samples. Native coverage state2 is Degraded/CoverageUnknown. Worker thread suppression did not eliminate churn.",
+  "Rows": [
+    {
+      "Tag": "goalrecl101",
+      "CaseId": "A01",
+      "CaseRevision": 4,
+      "TableRevision": 8,
+      "Mode": "runtime-verifier",
+      "Verdict": "INCONCLUSIVE",
+      "MvpGatePassed": false,
+      "ForbiddenByteCount": null,
+      "CaseArtifact": "driver/evidence/2026-10-07/boot-start-invariant-A01-runtime-verifier-goalrecl101-artifacts/case.json",
+      "CaseSha256": "088FA75ECEBA6F88E47591E266BA9DE1747CC2B3C216FF5F8AD70D4B8B144723",
+      "InputHashes": {
+        "Feature": "A3D1E261E59AE14F59AD7EB4D0F921BAE32E709BB695DE9CED123FB55DDCB7B4",
+        "Suite": "537297D2CE2F1B9B86CE5036EE4C69145CF1D1C2877409890A51123868C3B023",
+        "Observer": "FFAA5159C601B633CCD0D0F6DDE15C6EE1AC5E8D0D66513082FCEE7CC71AA5B1",
+        "Inspector": "2E4E2C3FE851C690291D06B1C2FF4D0E162DF6470DFA23F6B1A9AC0FD476905C",
+        "ServicePackage": "39E75934FA45866E5C532DCA081E94C01F9D3D68FE9B2488797D9CA1AAAA6E08",
+        "Helper": "4C9220B7D202255DC29EDB585DB3C51AED0B2284C06914E41E2C7C1BAA247699",
+        "ServiceTree": "2E31614346CCE3D2DC9D78C3BC63E835A2C39BE62A3E0E0FBA39B0AB9D9F74E8",
+        "Table": "501568C1DF368C1A42AA92BA4A23B36A0122374278172CC19EF097C78A5C9AD6"
+      },
+      "BaselineArtifact": "driver/evidence/2026-10-07/batch-goalrecl101-post-baseline.txt",
+      "BaselineSha256": "D49ACC15ADC7002B14B8A27E5DF1D640AA21A984AFE82EFABB9F12CD1B781337",
+      "BaselineClean": true,
+      "NonPassingAssertions": [
+        {
+          "Name": "FreeAndProtectedAfterLastHolder",
+          "Verdict": "INCONCLUSIVE",
+          "Reason": "90s promotion timeout after release; Latest exact entry: history=True;fileId=F6910200000010000000000000000000;state=Activating;free=True;H=0;S=NO;C=0;T=0;unknown=0x00000000",
+          "Evidence": {
+            "Record": {
+              "registryEntry": true,
+              "historyPresent": true,
+              "state": "Activating",
+              "free": true,
+              "H": 0,
+              "S": "NO",
+              "C": 0,
+              "T": 0,
+              "volumeSerial": "0x4AD66344D6632F7F",
+              "fileId": "F6910200000010000000000000000000",
+              "unknownReasons": "0x00000000",
+              "firstSeenGeneration": 0,
+              "openerPids": [],
+              "nameMatches": true
+            },
+            "Raw": "{\"registryEntry\":true,\"historyPresent\":true,\"state\":\"Activating\",\"free\":true,\"H\":0,\"S\":\"NO\",\"C\":0,\"T\":0,\"volumeSerial\":\"0x4AD66344D6632F7F\",\"fileId\":\"F6910200000010000000000000000000\",\"unknownReasons\":\"0x00000000\",\"firstSeenGeneration\":0,\"openerPids\":[],\"nameMatches\":true}\r\n",
+            "StdErrPath": "C:\\Users\\vika\\Documents\\boot-start-invariant-A01-runtime-verifier-goalrecl101-artifacts\\activation-post-release-registry-entry-8a00837d48224ee49a9623d375eec79d.err",
+            "StdOutPath": "C:\\Users\\vika\\Documents\\boot-start-invariant-A01-runtime-verifier-goalrecl101-artifacts\\activation-post-release-registry-entry-8a00837d48224ee49a9623d375eec79d.out",
+            "FailedConnectionAttempts": [],
+            "Qpc": 1568783328
+          }
+        },
+        {
+          "Name": "ActivationObservationCompleted",
+          "Verdict": "INCONCLUSIVE",
+          "Reason": "A case stopped at the first missing/invalid bounded observation: Promotion timeout after last-holder release: Latest exact entry: history=True;fileId=F6910200000010000000000000000000;state=Activating;free=True;H=0;S=NO;C=0;T=0;unknown=0x00000000"
+        },
+        {
+          "Name": "NeverReadyWholeHolderInterval",
+          "Verdict": "INCONCLUSIVE",
+          "Reason": "No authenticated, loss-detecting per-file readiness event stream covers the holder interval."
+        },
+        {
+          "Name": "ExternalCoverage",
+          "Verdict": "INCONCLUSIVE",
+          "Reason": "Build 19045.2965 attestation missing. Activation/restoration boot identities incomplete. OS SYSTEM observer identity missing. OS independent standard-user writer/session provenance missing.",
+          "Evidence": {
+            "Restoration": {
+              "Known": true,
+              "GuestChecks": true,
+              "IndependentBaseline": "/home/victor/Work/safeupload-staging/driver/evidence/2026-10-07/boot-start-invariant-A01-runtime-verifier-goalrecl101-final-restored-state.txt",
+              "ProcessCreationAudit": {
+                "Original": {
+                  "CreationFlags": 0,
+                  "PerUserPolicyCount": 0
+                },
+                "Final": {
+                  "CreationFlags": 0,
+                  "PerUserPolicyCount": 0
+                },
+                "Restored": true
+              },
+              "IndependentBaselineSha256": "8466B37E4C1B359B5D2D11EBAF7737510BCB6F6F37356DB40560CD45AFBF57BB",
+              "FinalBootId": "WIN10-DEBUGGED/2026-10-07T12:27:16.5000000Z"
+            }
+          }
+        }
+      ],
+      "ObserverReaderClose": null,
+      "LastHolderRelease": {
+        "Sequence": 4,
+        "Action": "release-holder",
+        "StartQpc": 665785663,
+        "QpcFrequency": 10000000,
+        "HolderReleased": true,
+        "BootId": "WIN10-DEBUGGED/2026-10-07T12:22:37.5000000Z",
+        "NativeCode": 0,
+        "Calls": [],
+        "EndQpc": 665822946,
+        "FlushCode": null,
+        "Pid": 5836,
+        "Error": null
+      },
+      "NativeTargetQuery": {
+        "activatingTarget": true,
+        "requestedPath": "\\Device\\HarddiskVolume3\\SafeUploadInvariant-boot-start-invariant-A01-runtime-verifier-goalrecl101\\marker.txt",
+        "matchCount": 1,
+        "policyGeneration": 1,
+        "flags": 0,
+        "sequenceStart": 400885,
+        "sequenceEnd": 400885,
+        "entries": [
+          {
+            "generation": 1,
+            "state": "Activating",
+            "volumeSerial": "0x4AD66344D6632F7F",
+            "fileId": "F6910200000010000000000000000000",
+            "path": "\\Device\\HarddiskVolume3\\SafeUploadInvariant-boot-start-invariant-A01-runtime-verifier-goalrecl101\\marker.txt",
+            "H": 0,
+            "S": "NO",
+            "C": 0,
+            "T": 0,
+            "W": 0,
+            "unknownReasons": "0x00000000",
+            "classificationStatus": "0x00000000",
+            "classificationStep": "CacheRetained",
+            "classificationStepCode": 11,
+            "openerPids": []
+          }
+        ]
+      },
+      "NativePromotionSummary": {
+        "promotionTraceSummary": true,
+        "snapshotSequence": 0,
+        "firstAvailableSequence": 0,
+        "nextCursor": 0,
+        "completeSnapshot": true
+      },
+      "ActualNativeCasEntries": [],
+      "ReclaimPasses": 226211,
+      "NativeCoverage": {
+        "state": 2,
+        "reason": 6,
+        "flags": "0x00000057",
+        "policyGeneration": 1,
+        "policyGenerationEnd": 1,
+        "policyFlags": "0x00000030",
+        "bootPolicyState": 1,
+        "scopeCount": 1,
+        "expectedScopeCount": 1,
+        "epochGeneration": 3,
+        "epochFlags": "0x00000000",
+        "epochActiveCallbacks": 0,
+        "epochFlagsEnd": "0x00000000",
+        "enumeratedInstances": 4,
+        "setupInFlight": 0,
+        "teardownInFlight": 0,
+        "coverageChangesInFlight": 0,
+        "writerGlobalUnknown": 0,
+        "writerEntries": 1,
+        "writerEntriesNotReady": 1,
+        "writerEntriesUnknown": 0,
+        "futureMountGateReady": 1,
+        "topologySequence": [
+          160,
+          160
+        ],
+        "coverageSequence": [
+          5538,
+          5538
+        ],
+        "scopes": [
+          {
+            "kind": 1,
+            "index": 0,
+            "resolution": 2,
+            "state": 1,
+            "reason": 0,
+            "matchingInstances": 1,
+            "uniqueVolumes": 1,
+            "readyInstances": 1,
+            "prefix": "\\Device\\HarddiskVolume3\\SafeUploadInvariant-boot-start-invariant-A01-runtime-verifier-goalrecl101"
+          }
+        ]
+      },
+      "LiveTaintCounters": {
+        "Before": {
+          "QpcFrequency": 10000000,
+          "BootId": "WIN10-DEBUGGED/2026-10-07T12:22:37.5000000Z",
+          "Raw": "CreatesSeen             : 27245\r\nCreatesPastCheapGates   : 0\r\nScopeEvaluations        : 41\r\nUserModeRoundTrips      : 0\r\nCacheHits               : 5\r\nDeniedPreCreate         : 0\r\nDeniedPostCreate        : 0\r\nDeniedRename            : 0\r\nAllowedWithoutInspection: 2\r\nTaintsRecorded          : 0\r\nTaintLookups            : 0\r\nTaintHits               : 0\r\nSetInformationSeen      : 1032\r\nRenamesSeen             : 0\r\nRenamesFromTainted      : 0\r\nClassesSeen             : 0000000000000401 0000000000180410\r\n  classes vistas        : 4=FileBasicInformation 10=FileRenameInformation 19=FileEndOfFileInformation 20=FileAllocationInformation 64=FileDispositionInformationEx\r\n\r\nPassaram das portas baratas: 0.0000% dos creates\r\nAcerto de cache            : 10.9%\r\n",
+          "StartQpc": 247971500,
+          "Scope": "MachineWideDiagnostic;NoTargetAttribution",
+          "EndQpc": 248735043,
+          "Values": {
+            "TaintsRecorded": "0",
+            "TaintLookups": "0",
+            "RenamesFromTainted": "0",
+            "TaintHits": "0"
+          },
+          "StdErrPath": "C:\\Users\\vika\\Documents\\boot-start-invariant-A01-runtime-verifier-goalrecl101-artifacts\\activation-taint-whole-case-before-0104a288484442d2b2184e2d2f674cd1.err",
+          "StdOutPath": "C:\\Users\\vika\\Documents\\boot-start-invariant-A01-runtime-verifier-goalrecl101-artifacts\\activation-taint-whole-case-before-0104a288484442d2b2184e2d2f674cd1.out"
+        },
+        "Deltas": {
+          "TaintsRecorded": "0",
+          "TaintLookups": "0",
+          "RenamesFromTainted": "0",
+          "TaintHits": "0"
+        },
+        "LiveTestDisableTaint": "Unavailable",
+        "NoCounterChanges": true,
+        "After": {
+          "QpcFrequency": 10000000,
+          "BootId": "WIN10-DEBUGGED/2026-10-07T12:22:37.5000000Z",
+          "Raw": "CreatesSeen             : 308367\r\nCreatesPastCheapGates   : 9\r\nScopeEvaluations        : 119\r\nUserModeRoundTrips      : 12\r\nCacheHits               : 6\r\nDeniedPreCreate         : 0\r\nDeniedPostCreate        : 1\r\nDeniedRename            : 0\r\nAllowedWithoutInspection: 5\r\nTaintsRecorded          : 0\r\nTaintLookups            : 0\r\nTaintHits               : 0\r\nSetInformationSeen      : 15352\r\nRenamesSeen             : 152\r\nRenamesFromTainted      : 0\r\nClassesSeen             : 0000000000000403 0000008000186410\r\n  classes vistas        : 4=FileBasicInformation 10=FileRenameInformation 13=FileDispositionInformation 14=FilePositionInformation 19=FileEndOfFileInformation 20=FileAllocationInformation 64=FileDispositionInformationEx 65=FileRenameInformationEx\r\n\r\nPassaram das portas baratas: 0.0029% dos creates\r\nAcerto de cache            : 4.8%\r\n",
+          "StartQpc": 1624601549,
+          "Scope": "MachineWideDiagnostic;NoTargetAttribution",
+          "EndQpc": 1625305299,
+          "Values": {
+            "TaintsRecorded": "0",
+            "TaintLookups": "0",
+            "RenamesFromTainted": "0",
+            "TaintHits": "0"
+          },
+          "StdErrPath": "C:\\Users\\vika\\Documents\\boot-start-invariant-A01-runtime-verifier-goalrecl101-artifacts\\activation-taint-whole-case-after-ccdd4986f87846ce9b3ebccd15b118e6.err",
+          "StdOutPath": "C:\\Users\\vika\\Documents\\boot-start-invariant-A01-runtime-verifier-goalrecl101-artifacts\\activation-taint-whole-case-after-ccdd4986f87846ce9b3ebccd15b118e6.out"
+        },
+        "ProvesNoTaintDecision": false,
+        "Status": "OK"
+      }
+    },
+    {
+      "Tag": "goalreader101",
+      "CaseId": "A01",
+      "CaseRevision": 5,
+      "TableRevision": 9,
+      "Mode": "runtime-verifier",
+      "Verdict": "INCONCLUSIVE",
+      "MvpGatePassed": false,
+      "ForbiddenByteCount": null,
+      "CaseArtifact": "driver/evidence/2026-10-07/boot-start-invariant-A01-runtime-verifier-goalreader101-artifacts/case.json",
+      "CaseSha256": "326CE6E49B86969D7EC32CA3ECF41B30F83AF9B0A2FA930869A786E01DA9394F",
+      "InputHashes": {
+        "Feature": "A3D1E261E59AE14F59AD7EB4D0F921BAE32E709BB695DE9CED123FB55DDCB7B4",
+        "Suite": "79C91F83CDBF51B8FD71F59F507E19486CFF3F3803E007C52382674E99ABC6D6",
+        "Observer": "3B2DC87477BC94612227F6EADCE3D90DDAB8154E0C1FBE326590299349B67CDA",
+        "Inspector": "2E4E2C3FE851C690291D06B1C2FF4D0E162DF6470DFA23F6B1A9AC0FD476905C",
+        "ServicePackage": "39E75934FA45866E5C532DCA081E94C01F9D3D68FE9B2488797D9CA1AAAA6E08",
+        "Helper": "4C9220B7D202255DC29EDB585DB3C51AED0B2284C06914E41E2C7C1BAA247699",
+        "ServiceTree": "2E31614346CCE3D2DC9D78C3BC63E835A2C39BE62A3E0E0FBA39B0AB9D9F74E8",
+        "Table": "03CFB77FE14C06888B3B322E8FED26599E9B8E4E2FCCB3AC5E10DFAB9EA14817"
+      },
+      "BaselineArtifact": "driver/evidence/2026-10-07/batch-goalreader101-post-baseline.txt",
+      "BaselineSha256": "A00FFCF6DA91093A4D2C60BE45F780D030A27F00BBCA0E2266E0ACB5112F4F54",
+      "BaselineClean": true,
+      "NonPassingAssertions": [
+        {
+          "Name": "ServiceReadinessPendingWhileHolderLives",
+          "Verdict": "INCONCLUSIVE",
+          "Reason": "Pending status was not observed within 45s: Service readiness timeout (Pending): No newly received status; retained stream state is not a current snapshot.",
+          "Evidence": {
+            "Status": "OK",
+            "Reason": null,
+            "Tag": "pending-timeout-current",
+            "StartQpc": 939734455,
+            "EndQpc": 940996025,
+            "QpcFrequency": 10000000,
+            "BootId": "WIN10-DEBUGGED/2026-10-07T12:29:32.5000000Z",
+            "ServerPid": 5656,
+            "ServerSid": "S-1-5-18",
+            "Value": {
+              "type": "status",
+              "policyVersion": 2,
+              "activeCategories": 1,
+              "protectionActive": true,
+              "auditOnly": false,
+              "admissionCoverage": "Degraded",
+              "admissionCoverageReason": "CoverageUnknown",
+              "nativePolicyGeneration": 1
+            },
+            "StatusReceiptQpc": 940989032,
+            "StatusSequence": 1,
+            "ConnectionId": "fb67758ee2124eb793bfe99c81026115",
+            "FirstConnectionSnapshot": true,
+            "RetainedStreamState": false,
+            "WholeIntervalLossFree": false
+          }
+        },
+        {
+          "Name": "NoObservedReadyWhileHolderLives",
+          "Verdict": "INCONCLUSIVE",
+          "Reason": "One or more holder-interval service status samples were missing, unauthenticated, inactive, or at another generation; sampled never-Ready evidence is incomplete.",
+          "Evidence": [
+            {
+              "Generation": 1,
+              "Coverage": "Degraded",
+              "Tag": "holder-readiness-0",
+              "Qpc": 950113234
+            },
+            {
+              "Generation": 1,
+              "Coverage": "Degraded",
+              "Tag": "holder-readiness-1",
+              "Qpc": 954136650
+            },
+            {
+              "Generation": 1,
+              "Coverage": "Degraded",
+              "Tag": "holder-readiness-2",
+              "Qpc": 959106104
+            },
+            {
+              "Generation": 1,
+              "Coverage": "Degraded",
+              "Tag": "holder-after-old-write",
+              "Qpc": 994755706
+            }
+          ]
+        },
+        {
+          "Name": "FreeAndProtectedAfterLastHolder",
+          "Verdict": "INCONCLUSIVE",
+          "Reason": "90s promotion timeout after release; Latest exact entry: history=False;fileId=F6690200000017000000000000000000;state=Protected;free=True;H=0;S=NO;C=0;T=0;unknown=0x00000000",
+          "Evidence": {
+            "Record": {
+              "registryEntry": true,
+              "historyPresent": false,
+              "state": "Protected",
+              "free": true,
+              "H": 0,
+              "S": "NO",
+              "C": 0,
+              "T": 0,
+              "volumeSerial": "0x4AD66344D6632F7F",
+              "fileId": "F6690200000017000000000000000000",
+              "unknownReasons": "0x00000000",
+              "firstSeenGeneration": 0,
+              "openerPids": [],
+              "nameMatches": true
+            },
+            "Raw": "{\"registryEntry\":true,\"historyPresent\":false,\"state\":\"Protected\",\"free\":true,\"H\":0,\"S\":\"NO\",\"C\":0,\"T\":0,\"volumeSerial\":\"0x4AD66344D6632F7F\",\"fileId\":\"F6690200000017000000000000000000\",\"unknownReasons\":\"0x00000000\",\"firstSeenGeneration\":0,\"openerPids\":[],\"nameMatches\":true}\r\n",
+            "StdErrPath": "C:\\Users\\vika\\Documents\\boot-start-invariant-A01-runtime-verifier-goalreader101-artifacts\\activation-post-release-registry-entry-e86501c13d0b48c885af9bd78cfddda1.err",
+            "StdOutPath": "C:\\Users\\vika\\Documents\\boot-start-invariant-A01-runtime-verifier-goalreader101-artifacts\\activation-post-release-registry-entry-e86501c13d0b48c885af9bd78cfddda1.out",
+            "FailedConnectionAttempts": [],
+            "Qpc": 1896572459
+          }
+        },
+        {
+          "Name": "ActivationObservationCompleted",
+          "Verdict": "INCONCLUSIVE",
+          "Reason": "A case stopped at the first missing/invalid bounded observation: Promotion timeout after last-holder release: Latest exact entry: history=False;fileId=F6690200000017000000000000000000;state=Protected;free=True;H=0;S=NO;C=0;T=0;unknown=0x00000000"
+        },
+        {
+          "Name": "NeverReadyWholeHolderInterval",
+          "Verdict": "INCONCLUSIVE",
+          "Reason": "No authenticated, loss-detecting per-file readiness event stream covers the holder interval."
+        },
+        {
+          "Name": "ExternalCoverage",
+          "Verdict": "INCONCLUSIVE",
+          "Reason": "Build 19045.2965 attestation missing. Activation/restoration boot identities incomplete. OS SYSTEM observer identity missing. OS independent standard-user writer/session provenance missing.",
+          "Evidence": {
+            "Restoration": {
+              "Known": true,
+              "GuestChecks": true,
+              "IndependentBaseline": "/home/victor/Work/safeupload-staging/driver/evidence/2026-10-07/boot-start-invariant-A01-runtime-verifier-goalreader101-final-restored-state.txt",
+              "ProcessCreationAudit": {
+                "Original": {
+                  "CreationFlags": 0,
+                  "PerUserPolicyCount": 0
+                },
+                "Final": {
+                  "CreationFlags": 0,
+                  "PerUserPolicyCount": 0
+                },
+                "Restored": true
+              },
+              "IndependentBaselineSha256": "35EA5807C2C0D3401B4061FC2025B982A9E8307501049C2FC8DFC7F87A7448AB",
+              "FinalBootId": "WIN10-DEBUGGED/2026-10-07T12:34:41.5000000Z"
+            }
+          }
+        }
+      ],
+      "ObserverReaderClose": {
+        "Start": {
+          "Utc": "2026-10-07T12:31:11.8793631Z",
+          "QpcFrequency": 10000000,
+          "BootId": "WIN10-DEBUGGED/2026-10-07T12:29:32.5000000Z",
+          "Qpc": 996177688
+        },
+        "OriginalPinKept": true,
+        "FileId": "F6690200000017000000000000000000",
+        "ObserverPid": 1760,
+        "RawVolumeKept": true,
+        "Identity": {
+          "VolumeSerial": 5392606751128498047,
+          "Reference": 6473924464503286,
+          "FileId": "F6690200000017000000000000000000",
+          "Allocation": 12288,
+          "Eof": 12288,
+          "Creation": 134358497536953585,
+          "Modified": 134358498689193641,
+          "Changed": 134358498689193641,
+          "Accessed": 134358498709153647,
+          "Attributes": 32,
+          "Links": 1,
+          "Directory": false,
+          "DeletePending": false
+        },
+        "Status": "OK",
+        "Rebound": false,
+        "Error": null,
+        "End": {
+          "Utc": "2026-10-07T12:31:11.8853627Z",
+          "QpcFrequency": 10000000,
+          "BootId": "WIN10-DEBUGGED/2026-10-07T12:29:32.5000000Z",
+          "Qpc": 996240169
+        },
+        "Path": "C:\\SafeUploadInvariant-boot-start-invariant-A01-runtime-verifier-goalreader101\\marker.txt",
+        "ObserverSid": "S-1-5-18",
+        "NativeHandleClosed": true
+      },
+      "LastHolderRelease": {
+        "Sequence": 4,
+        "Action": "release-holder",
+        "StartQpc": 996747651,
+        "QpcFrequency": 10000000,
+        "HolderReleased": true,
+        "BootId": "WIN10-DEBUGGED/2026-10-07T12:29:32.5000000Z",
+        "NativeCode": 0,
+        "Calls": [],
+        "EndQpc": 996786621,
+        "FlushCode": null,
+        "Pid": 6124,
+        "Error": null
+      },
+      "NativeTargetQuery": {
+        "activatingTarget": true,
+        "requestedPath": "\\Device\\HarddiskVolume3\\SafeUploadInvariant-boot-start-invariant-A01-runtime-verifier-goalreader101\\marker.txt",
+        "matchCount": 0,
+        "policyGeneration": 1,
+        "flags": 0,
+        "sequenceStart": 165756,
+        "sequenceEnd": 165756,
+        "entries": []
+      },
+      "NativePromotionSummary": {
+        "promotionTraceSummary": true,
+        "snapshotSequence": 1,
+        "firstAvailableSequence": 1,
+        "nextCursor": 2,
+        "completeSnapshot": true
+      },
+      "ActualNativeCasEntries": [
+        {
+          "promotionTraceEntry": true,
+          "sequence": 1,
+          "qpc": 998800281,
+          "instance": "0xFFFFC602773B0010",
+          "sop": "0xFFFFC6027B08D3D8",
+          "volumeSerial": "0x4AD66344D6632F7F",
+          "registryChangeSequence": 142168,
+          "markerGenerationExpected": 2631,
+          "markerGenerationAtCas": 2631,
+          "fileId": "F6690200000017000000000000000000",
+          "stateBefore": 1,
+          "stateAfter": 2,
+          "Hsample": 0,
+          "Wsample": 0,
+          "Tsample": 0,
+          "CforSopSample": 0,
+          "lastSsample": 1,
+          "unknownReasonsSample": 0,
+          "renameInFlightSample": 0,
+          "renameVersionSample": 0,
+          "activationGenerationSample": 1,
+          "policyGenerationSample": 1,
+          "policyFlagsSample": 48,
+          "testDisableTaint": 1,
+          "spilledMutatingIoCountSample": 0,
+          "unknownWriterCountSample": 0,
+          "predicateFlags": 31,
+          "snapshotFlags": 1
+        }
+      ],
+      "ReclaimPasses": 398614,
+      "NativeCoverage": {
+        "state": 2,
+        "reason": 6,
+        "flags": "0x00000057",
+        "policyGeneration": 1,
+        "policyGenerationEnd": 1,
+        "policyFlags": "0x00000030",
+        "bootPolicyState": 1,
+        "scopeCount": 1,
+        "expectedScopeCount": 1,
+        "epochGeneration": 3,
+        "epochFlags": "0x00000000",
+        "epochActiveCallbacks": 0,
+        "epochFlagsEnd": "0x00000000",
+        "enumeratedInstances": 4,
+        "setupInFlight": 0,
+        "teardownInFlight": 0,
+        "coverageChangesInFlight": 0,
+        "writerGlobalUnknown": 0,
+        "writerEntries": 0,
+        "writerEntriesNotReady": 0,
+        "writerEntriesUnknown": 0,
+        "futureMountGateReady": 1,
+        "topologySequence": [
+          172,
+          172
+        ],
+        "coverageSequence": [
+          6602,
+          6602
+        ],
+        "scopes": [
+          {
+            "kind": 1,
+            "index": 0,
+            "resolution": 2,
+            "state": 1,
+            "reason": 0,
+            "matchingInstances": 1,
+            "uniqueVolumes": 1,
+            "readyInstances": 1,
+            "prefix": "\\Device\\HarddiskVolume3\\SafeUploadInvariant-boot-start-invariant-A01-runtime-verifier-goalreader101"
+          }
+        ]
+      },
+      "LiveTaintCounters": {
+        "Before": {
+          "QpcFrequency": 10000000,
+          "BootId": "WIN10-DEBUGGED/2026-10-07T12:29:32.5000000Z",
+          "Raw": "CreatesSeen             : 53424\r\nCreatesPastCheapGates   : 0\r\nScopeEvaluations        : 41\r\nUserModeRoundTrips      : 0\r\nCacheHits               : 5\r\nDeniedPreCreate         : 0\r\nDeniedPostCreate        : 0\r\nDeniedRename            : 0\r\nAllowedWithoutInspection: 3\r\nTaintsRecorded          : 0\r\nTaintLookups            : 0\r\nTaintHits               : 0\r\nSetInformationSeen      : 1078\r\nRenamesSeen             : 0\r\nRenamesFromTainted      : 0\r\nClassesSeen             : 0000000000000403 0000008000184410\r\n  classes vistas        : 4=FileBasicInformation 10=FileRenameInformation 14=FilePositionInformation 19=FileEndOfFileInformation 20=FileAllocationInformation 64=FileDispositionInformationEx 65=FileRenameInformationEx\r\n\r\nPassaram das portas baratas: 0.0000% dos creates\r\nAcerto de cache            : 10.9%\r\n",
+          "StartQpc": 254810576,
+          "Scope": "MachineWideDiagnostic;NoTargetAttribution",
+          "EndQpc": 262467394,
+          "Values": {
+            "TaintsRecorded": "0",
+            "TaintLookups": "0",
+            "RenamesFromTainted": "0",
+            "TaintHits": "0"
+          },
+          "StdErrPath": "C:\\Users\\vika\\Documents\\boot-start-invariant-A01-runtime-verifier-goalreader101-artifacts\\activation-taint-whole-case-before-79de772601094585a0b9d5d15b4c9ba4.err",
+          "StdOutPath": "C:\\Users\\vika\\Documents\\boot-start-invariant-A01-runtime-verifier-goalreader101-artifacts\\activation-taint-whole-case-before-79de772601094585a0b9d5d15b4c9ba4.out"
+        },
+        "Deltas": {
+          "TaintsRecorded": "0",
+          "TaintLookups": "0",
+          "RenamesFromTainted": "0",
+          "TaintHits": "0"
+        },
+        "LiveTestDisableTaint": "Unavailable",
+        "NoCounterChanges": true,
+        "After": {
+          "QpcFrequency": 10000000,
+          "BootId": "WIN10-DEBUGGED/2026-10-07T12:29:32.5000000Z",
+          "Raw": "CreatesSeen             : 408355\r\nCreatesPastCheapGates   : 9\r\nScopeEvaluations        : 118\r\nUserModeRoundTrips      : 12\r\nCacheHits               : 6\r\nDeniedPreCreate         : 0\r\nDeniedPostCreate        : 1\r\nDeniedRename            : 0\r\nAllowedWithoutInspection: 5\r\nTaintsRecorded          : 0\r\nTaintLookups            : 0\r\nTaintHits               : 0\r\nSetInformationSeen      : 19328\r\nRenamesSeen             : 189\r\nRenamesFromTainted      : 0\r\nClassesSeen             : 0000000000000403 0000008000186C10\r\n  classes vistas        : 4=FileBasicInformation 10=FileRenameInformation 11=FileLinkInformation 13=FileDispositionInformation 14=FilePositionInformation 19=FileEndOfFileInformation 20=FileAllocationInformation 64=FileDispositionInformationEx 65=FileRenameInformationEx\r\n\r\nPassaram das portas baratas: 0.0022% dos creates\r\nAcerto de cache            : 4.8%\r\n",
+          "StartQpc": 1936913638,
+          "Scope": "MachineWideDiagnostic;NoTargetAttribution",
+          "EndQpc": 1938093617,
+          "Values": {
+            "TaintsRecorded": "0",
+            "TaintLookups": "0",
+            "RenamesFromTainted": "0",
+            "TaintHits": "0"
+          },
+          "StdErrPath": "C:\\Users\\vika\\Documents\\boot-start-invariant-A01-runtime-verifier-goalreader101-artifacts\\activation-taint-whole-case-after-7627358d06414b949a2ffafb52284c86.err",
+          "StdOutPath": "C:\\Users\\vika\\Documents\\boot-start-invariant-A01-runtime-verifier-goalreader101-artifacts\\activation-taint-whole-case-after-7627358d06414b949a2ffafb52284c86.out"
+        },
+        "ProvesNoTaintDecision": false,
+        "Status": "OK"
+      }
+    }
+  ]
+}
