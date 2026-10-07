@@ -3,7 +3,7 @@
 # design section 4 corpus, NOT a claim that one row covers every future variant.
 @{
     Schema = 'StagedInvariantCases/1'
-    TableRevision = 14
+    TableRevision = 15
     Modes = @('ordinary', 'runtime-verifier', 'boot-verifier')
     RowSchema = @{
         Required = @('CaseId', 'Revision', 'Status', 'Variant', 'Outcome',
@@ -170,7 +170,7 @@
             Cleanup = @('CloseObserver', 'ReleaseActorHolder', 'StopTestServiceAndRestoreServiceConfig', 'StopOwnedTasks', 'RestoreDriver', 'RestorePolicyBytesAndAcls', 'RemoveOwnedBootPolicy', 'RestoreAgentConfig', 'ResetVerifier', 'RemoveFixtureAndState', 'RestorationReboot', 'IndependentBaseline')
         }
         @{
-            CaseId = 'A04'; Revision = 7; Status = 'Ready'
+            CaseId = 'A04'; Revision = 8; Status = 'Ready'
             Variant = 'fixed-NTFS-real-cross-process-duplicated-physical-file-object-runtime-scope-add'
             Outcome = 'ACTIVATING_THEN_STAGED_APPROVED; child P+U captured before Free/Protected, subsequent benign owned save Released'
             QualificationScope = 'Phase4A04Functional; exact duplicate/cleanup/raw U/actual Approved evidence, complete lower permit and temporal coverage still required'
@@ -190,7 +190,7 @@
             Cleanup = @('ReleaseBothActorsAndProveTaskCompletion', 'CloseObserverAndNotificationCapture', 'StopRestoreTestService', 'StopBothOwnedTasks', 'RestoreDriverPolicyAclsBootPolicyAuditProductState', 'ResetVerifier', 'RemoveActorAccountProfileFixturesAndBothRoutes', 'RestorationReboot', 'IndependentBaseline')
         }
         @{
-            CaseId = 'A05'; Revision = 4; Status = 'Ready'
+            CaseId = 'A05'; Revision = 5; Status = 'Ready'
             Variant = 'core-a-after-new-writer-gate-before-final-FreeF'; Outcome = 'Protected; agent-down unpermitted write refused'
             QualificationScope = 'MVP coordinated core (a); sampled raw/fresh/uncached bytes and existing lower/promotion diagnostics'
             DeferredVariants = @('(b) pending lower WRITE versus CLEANUP', '(c) mutating SET_INFORMATION/FSCTL draining', '(d) final identity/barrier race', 'Seeded unheld races', 'Repetition beyond one coordinated core (post-MVP hardening)')
@@ -198,9 +198,9 @@
             InitialPolicy = @{ Seed = 'ProductEmptyScopes'; StartDuringSeed = 3; StartAfterSeed = 0; LiveFlags = 'TEST_DISABLE_TAINT-required' }
             Scopes = @('EmptyAtBoot', 'RuntimeAddsFixtureScope')
             Setup = @('PrebootMarkerTxt', 'StandardUserPhysicalHandleP', 'IndependentRawObserver', 'RealAgentPolicyApply', 'ExistingProofProxyAndControl26')
-            Actions = @('CaptureExactRawP', 'ExpandScope', 'VerifyNewWritableOpenAndSectionDenied', 'HoldPhysicalHBeforeFreeF', 'WriteThreeDisjointUAndFlush', 'RecordPairedLowerCompletions', 'CaptureExactRawPUWhileActivating', 'LastHolderClose', 'RequireFreeFAndSinglePromotionEdge', 'CaptureExactStablePUBaseline', 'StopRealAgent', 'StandardUserNativeWriteAttemptMustReturn5AndZeroBytes', 'CompareThreeRawFreshUncachedSamplesToPU')
-            Barriers = @('NewBoot', 'PreScopePFlush', 'ExpandedAdmissionEpoch', 'Control26ExactActivatingH', 'CompletedUAndFlush', 'LastHolderRelease', 'FreeProtectedPromotion', 'AuthenticatedReady', 'StablePU', 'AgentStopped', 'RefusedWrite', 'FinalQuiescence')
-            ExpectedTimeline = @('Unscoped:P', 'ExpandedGate:Activating:H>0', 'NewWriterDenied', 'OldFileObject:P->PUAllowed', 'Activating:H>0:W=0', 'LastClose', 'FreeF:Protected', 'Ready', 'ExactStablePU', 'AgentDown:Win32:5:ZeroWritten', 'RawDestinationStillPU')
+            Actions = @('CaptureExactRawP', 'ExpandScope', 'VerifyNewWritableOpenAndSectionDenied', 'HoldPhysicalHBeforeFreeF', 'WriteThreeDisjointUAndFlush', 'RecordPairedLowerCompletions', 'CaptureExactRawPUWhileActivating', 'CheckedObserverCachedReaderCloseBeforeLastHolderRelease', 'LastHolderClose', 'RequireFreeFAndSinglePromotionEdge', 'CheckedObserverReaderRebindAndStableRawPUAfterProtected', 'CaptureExactStablePUBaseline', 'StopRealAgent', 'StandardUserNativeWriteAttemptMustReturn5AndZeroBytes', 'CompareThreeRawFreshUncachedSamplesToPU')
+            Barriers = @('NewBoot', 'PreScopePFlush', 'ExpandedAdmissionEpoch', 'Control26ExactActivatingH', 'CompletedUAndFlush', 'ObserverCachedReaderClosed', 'LastHolderRelease', 'FreeProtectedPromotion', 'AuthenticatedReady', 'ObserverReaderReboundAndStableRawPU', 'StablePU', 'AgentStopped', 'RefusedWrite', 'FinalQuiescence')
+            ExpectedTimeline = @('Unscoped:P', 'ExpandedGate:Activating:H>0', 'NewWriterDenied', 'OldFileObject:P->PUAllowed', 'Activating:H>0:W=0', 'ExactRawPUWhileActivating', 'ObserverReaderClosedBeforeLastClose', 'LastClose', 'FreeF:Protected', 'Ready', 'SameIdentityReaderReboundWithStableRawPU', 'ExactStablePU', 'AgentDown:Win32:5:ZeroWritten', 'RawDestinationStillPU')
             StatusClasses = @('OldWritesAndFlush=Win32:0', 'NewWriterGate=Win32:5', 'LastClose=Win32:0', 'ProtectedAgentDownMutation=Win32:5;BytesWritten=0')
             JournalExpectations = @('OldPhysicalPUNoTransferOrPublication', 'RefusedWriteNoJournalDelta')
             NotificationExpectations = @('AuthenticatedPendingWhileHLive', 'AuthenticatedReadyAfterFreeF')

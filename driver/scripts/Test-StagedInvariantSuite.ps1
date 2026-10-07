@@ -924,6 +924,28 @@ function Invoke-ActivationInspector([string]$Argument,[string]$Prefix,[int]$Time
         if($null -eq $previous){Remove-Item Env:SAFEUPLOAD_STAGED_PROOF_PROXY -ErrorAction SilentlyContinue}else{$env:SAFEUPLOAD_STAGED_PROOF_PROXY=$previous}
     }
 }
+function Invoke-ActivationTraceControlUntilAcknowledged([string]$Argument,[string]$Prefix,[string]$ExpectedAcknowledgment,[ValidateRange(1,20)][int]$MaxAttempts=8) {
+    for($attempt=1;$attempt -le $MaxAttempts;$attempt++){
+        $attemptPrefix=if($attempt -eq 1){$Prefix}else{$Prefix+'-busy-retry-'+$attempt}
+        try{
+            $output=Invoke-ActivationInspector $Argument $attemptPrefix 45000
+            if($output.Trim() -cne $ExpectedAcknowledgment){throw ('Admission trace control acknowledgment mismatch: '+$output.Trim())}
+            return $output
+        }catch{
+            $transport=''
+            foreach($suffix in @('.out','.err')){
+                $path=$attemptPrefix+$suffix
+                if(Test-Path -LiteralPath $path){$transport+=[IO.File]::ReadAllText($path)}
+            }
+            if($transport -match '(?i)0x800700AA\b'){
+                if($attempt -lt $MaxAttempts){Start-Sleep -Milliseconds 10;continue}
+                throw ('Admission trace control remained busy after '+$MaxAttempts+' bounded attempts: '+$transport)
+            }
+            throw
+        }
+    }
+    throw 'Admission trace control did not complete.'
+}
 function Get-InvariantLiveTaintReceipt([string]$Tag) {
     $start=[Diagnostics.Stopwatch]::GetTimestamp()
     $capture=Get-ActivationInspectorJson '--admission-coverage' ('taint-policy-'+$Tag) -RetryTransientConnection
@@ -1181,19 +1203,35 @@ function ConvertFrom-ActivationTrace([string]$Raw,[string]$FileId) {
         try{$records+=@($line|ConvertFrom-Json -ErrorAction Stop)}catch{throw ('Admission trace JSON parse failed: '+$_.Exception.Message)}
     }
     $summaries=@($records|Where-Object {$null -ne $_.summary});if($summaries.Count -ne 1){throw 'Admission trace summary missing or ambiguous'}
-    $entries=@($records|Where-Object {$null -ne $_.sequence -and $_.fileId -ieq $FileId})
+    $allEntries=@($records|Where-Object {$null -ne $_.sequence})
+    $entries=@($allEntries|Where-Object {$_.fileId -ieq $FileId})
     if([uint64]$summaries[0].lostEntries -ne 0 -or [uint64]$summaries[0].cursor -ne [uint64]$summaries[0].snapshotSequence+1){throw 'Admission trace lost/overwritten or incomplete sequence'}
     $writeEnds=@($entries|Where-Object {$_.event -eq 'w_end' -and $_.ioStatus -eq '0x00000000' -and ([Convert]::ToUInt32($_.completionFlags.Substring(2),16) -band 1) -ne 0})
     $pairs=@();foreach($end in $writeEnds){$begin=@($entries|Where-Object {$_.event -eq 'w_begin' -and [uint64]$_.ticketSequence -eq [uint64]$end.ticketSequence -and $_.writeOffset -eq $end.writeOffset -and $_.writeLength -eq $end.writeLength});if($begin.Count -eq 1){$pairs+=@{Begin=$begin[0];End=$end}}}
-    return [pscustomobject]@{Summary=$summaries[0];Entries=$entries;CompletedWritePairs=$pairs;PayloadSha256Available=$false;Reason='Diagnostic W_BEGIN/W_END records carry file ID, offset, length, status and completion, but no lower payload digest.'}
+    return [pscustomobject]@{Summary=$summaries[0];Entries=$entries;AllEntries=$allEntries;CompletedWritePairs=$pairs;PayloadSha256Available=$false;Reason='Diagnostic W_BEGIN/W_END records carry file ID, offset, length, status and completion, but no lower payload digest.'}
 }
-function Get-ActivationQuiescedWriteTrace([string]$FileId) {
+function Get-ActivationFileObjectLifetimeEvents($Trace,[string]$PhysicalFileObject) {
+    if($PhysicalFileObject -cnotmatch '^0x[0-9A-Fa-f]{16}$' -or $PhysicalFileObject -ceq '0x0000000000000000'){
+        throw 'Trusted physical file object is absent or malformed.'
+    }
+    if($null -eq $Trace.PSObject.Properties['AllEntries']){throw 'Complete admission trace entries are unavailable for physical-object lifetime filtering.'}
+    return @($Trace.AllEntries | Where-Object {
+        $_.event -cin @('file_cleanup','file_close') -and $_.targetFileObject -ieq $PhysicalFileObject
+    })
+}
+function Get-ActivationQuiescedWriteTrace([string]$FileId,[string]$TracePrefix) {
     # DISABLE refuses outstanding observer W tickets. A successful acknowledgment
     # freezes the write window before raw collection and trace output generate
     # unrelated I/O. Every loss still rejects the retained trace.
-    $disabled=Invoke-ActivationInspector '--admission-trace-disable' (Join-Path $evidenceDirectory 'activation-old-write-trace-disable') 45000
-    if($disabled.Trim() -cne 'admission trace disable: OK'){throw 'Admission write trace disable acknowledgment unavailable'}
-    $raw=Invoke-ActivationInspector '--admission-trace' (Join-Path $evidenceDirectory 'activation-old-holder-admission-trace') 45000
+    if([string]::IsNullOrWhiteSpace($TracePrefix)){
+        $disablePrefix=Join-Path $evidenceDirectory 'activation-old-write-trace-disable'
+        $outputPrefix=Join-Path $evidenceDirectory 'activation-old-holder-admission-trace'
+    }else{
+        $disablePrefix=$TracePrefix+'-disable'
+        $outputPrefix=$TracePrefix
+    }
+    $disabled=Invoke-ActivationTraceControlUntilAcknowledged '--admission-trace-disable' $disablePrefix 'admission trace disable: OK'
+    $raw=Invoke-ActivationInspector '--admission-trace' $outputPrefix 45000
     return ConvertFrom-ActivationTrace $raw $FileId
 }
 function ConvertFrom-ActivationPromotionTrace([string]$Raw,[string]$FileId) {
@@ -3723,11 +3761,14 @@ function Test-ActivationDuplicateCleanup($Trace,$OldWrites,$Child,$Release) {
     # The kernel trace timestamp is FILETIME, whereas actor times are QPC.
     # Bind the loss-free post-clear receipt to actual PID and physical file
     # object; never compare unrelated clock domains.
-    $cleanup=@($Trace.Entries | Where-Object event -ceq 'file_cleanup')
     $objects=@($OldWrites.CompletedWritePairs | ForEach-Object {$_.Begin.targetFileObject} | Sort-Object -Unique)
+    $cleanup=@()
+    if($objects.Count -eq 1 -and $objects[0] -cmatch '^0x[0-9A-Fa-f]{16}$' -and $objects[0] -cne '0x0000000000000000'){
+        $cleanup=@((Get-ActivationFileObjectLifetimeEvents $Trace $objects[0]) | Where-Object event -ceq 'file_cleanup')
+    }
     $good=$Release.NativeCode -eq 0 -and $Release.HolderReleased -and $Release.Pid -eq $Child.Pid -and $Release.BootId -ceq $Child.BootId -and
         $cleanup.Count -eq 1 -and $objects.Count -eq 1 -and $objects[0] -cmatch '^0x[0-9A-Fa-f]{16}$' -and $objects[0] -cne '0x0000000000000000' -and
-        $cleanup[0].targetFileObject -ceq $objects[0] -and [uint32]$cleanup[0].pid -eq [uint32]$Child.Pid
+        $cleanup[0].targetFileObject -ieq $objects[0] -and [uint32]$cleanup[0].pid -eq [uint32]$Child.Pid
     return [pscustomobject]@{Verdict=$(if($good){'PASS'}else{'INCONCLUSIVE'});Reason='Loss-free post-clear target trace has exactly one final child-PID cleanup matching the physical file object that accepted old child writes.';Release=$Release;Trace=$Trace;OldWrites=$OldWrites;KernelTimestampDomain='FILETIME';ActorTimestampDomain='QPC'}
 }
 
@@ -3883,7 +3924,8 @@ function Invoke-ActivationObservation {
         $clearPrefix=Join-Path $evidenceDirectory ('activation-trace-clear-'+[guid]::NewGuid().ToString('N'))
         $null=Invoke-ActivationInspector '--admission-trace-clear' $clearPrefix 45000
         $enablePrefix=Join-Path $evidenceDirectory ('activation-trace-enable-'+[guid]::NewGuid().ToString('N'))
-        $null=Invoke-ActivationInspector '--admission-trace-enable-sections-lifetime' $enablePrefix 45000
+        $traceEnableArgument=if($CaseId -ceq 'A04'){'--admission-trace-enable'}else{'--admission-trace-enable-sections-lifetime'}
+        $null=Invoke-ActivationInspector $traceEnableArgument $enablePrefix 45000
         $traceEnabled=$true
 
         Start-ScheduledTask -TaskName $writerTask
@@ -3994,17 +4036,24 @@ function Invoke-ActivationObservation {
         if(-not $holderStateGood){throw 'Exact Activating holder evidence did not match the case contract.'}
 
         if($CaseId -ceq 'A04'){
+            $parentFileObject=[string]$trial.DuplicateSetup.PhysicalObjectProof.Object
+            $lifetimePrefix=Join-Path $evidenceDirectory 'activation-parent-close-trace-enable'
+            $null=Invoke-ActivationTraceControlUntilAcknowledged '--admission-trace-enable-lifetime' $lifetimePrefix 'admission trace enable with file lifetime events: OK'
             $clearParent=Join-Path $evidenceDirectory 'activation-before-parent-close-clear'
-            $null=Invoke-ActivationInspector '--admission-trace-clear' $clearParent 45000
+            $null=Invoke-ActivationTraceControlUntilAcknowledged '--admission-trace-clear' $clearParent 'admission trace clear: OK'
             $parentClose=Publish-ActivationActorCommand $state 'release-holder' $null
             if($parentClose.NativeCode -ne 0 -or -not $parentClose.HolderReleased){throw 'Duplicated primary handle close failed'}
-            $afterParent=Get-ActivationPendingEntry $ntPath $fileId 'after-parent-close' $target
+            $parentDisable=Join-Path $evidenceDirectory 'activation-parent-close-trace-disable'
+            $null=Invoke-ActivationTraceControlUntilAcknowledged '--admission-trace-disable' $parentDisable 'admission trace disable: OK'
+            $traceEnabled=$false
             $parentTrace=ConvertFrom-ActivationTrace (Invoke-ActivationInspector '--admission-trace' (Join-Path $evidenceDirectory 'activation-parent-close-trace') 45000) $fileId
-            $cleanup=@($parentTrace.Entries | Where-Object event -ceq 'file_cleanup')
+            $parentLifetime=@(Get-ActivationFileObjectLifetimeEvents $parentTrace $parentFileObject)
+            $cleanup=@($parentLifetime | Where-Object event -ceq 'file_cleanup')
+            $afterParent=Get-ActivationPendingEntry $ntPath $fileId 'after-parent-close' $target
             $parentGood=$afterParent.Entries.Count -eq 1 -and $afterParent.Entries[0].state -ceq 'Activating' -and
                 [uint32]$afterParent.Entries[0].H -eq 1 -and [uint32]$afterParent.Entries[0].W -eq 0 -and [uint32]$afterParent.Entries[0].C -eq 0 -and [uint32]$afterParent.Entries[0].T -eq 0 -and
                 $afterParent.Entries[0].unknownReasons -ceq '0x00000000' -and $afterParent.Entries[0].openerPids -contains [int]$actor.Pid -and $afterParent.Entries[0].openerPids -notcontains [int]$duplicateActor.Pid -and @($afterParent.Entries[0].openerPids).Count -eq 1 -and $cleanup.Count -eq 0
-            $trial.ParentClose=@{Receipt=$parentClose;Snapshot=$afterParent;Trace=$parentTrace;ParentStillReportedAsOpener=$afterParent.Entries[0].openerPids -contains [int]$actor.Pid}
+            $trial.ParentClose=@{Receipt=$parentClose;Snapshot=$afterParent;Trace=$parentTrace;PhysicalFileObject=$parentFileObject;TargetLifetimeEvents=$parentLifetime;ParentStillReportedAsOpener=$afterParent.Entries[0].openerPids -contains [int]$actor.Pid}
             Add-ActivationAssertion $trial 'ParentCloseKeepsSingleHAndActivating' $(if($parentGood){'PASS'}else{'FAIL'}) 'Closing the parent duplicate reference causes no target cleanup, keeps H=1 and Activating while the child owns the live file object; opener PID is not reported as current holder.' $trial.ParentClose
             if(-not $parentGood){throw 'Parent close triggered cleanup/promotion or lost duplicate lifetime evidence'}
         }
@@ -4058,6 +4107,7 @@ function Invoke-ActivationObservation {
         # Section admission was checked above. This window needs lower writes
         # only; lifetime events are re-enabled for A04's last-close proof below.
         $null=Invoke-ActivationInspector '--admission-trace-enable' (Join-Path $evidenceDirectory 'activation-old-write-trace-write-only') 45000
+        $traceEnabled=$true
         $clearOldPrefix=Join-Path $evidenceDirectory ('activation-old-write-trace-clear-'+[guid]::NewGuid().ToString('N'))
         $null=Invoke-ActivationInspector '--admission-trace-clear' $clearOldPrefix 45000
         $changes=@();$changeOffsets=@(64,[int]($pBytes.Length/2),($pBytes.Length-160));$changeIndex=0
@@ -4067,7 +4117,7 @@ function Invoke-ActivationObservation {
         # On failure keep the admission trace of the refused operation (file object, instance, SOP, IRP flags, W tickets).
         try{$oldWrite=Publish-ActivationActorCommand $state 'write-old' @{Changes=$changes} $probeActorKey}
         catch{try{$null=Invoke-ActivationInspector '--admission-trace' (Join-Path $evidenceDirectory 'activation-old-write-failure-trace') 45000}catch{};throw}
-        $trace=Get-ActivationQuiescedWriteTrace $fileId;$traceEnabled=$false
+        $trace=Get-ActivationQuiescedWriteTrace $fileId (Join-Path $evidenceDirectory 'a05-old-write-trace');$traceEnabled=$false
         $trial.OldHolderAdmissionTrace=$trace
         if($CaseId -ceq 'A04'){$childAfter=Get-ServiceSnapshot 'a04-after-child-write';$handBackAfter=Get-ActivationHandBackInventory $duplicateActor;Test-ActivationChildWindow $trial $childBefore $childAfter $oldWrite $handBackBefore $handBackAfter $target $actor $duplicateActor}
         $trial.Operations+=@($oldWrite.Calls);$trial.OldHolderMutation=$oldWrite
@@ -4141,17 +4191,20 @@ function Invoke-ActivationObservation {
         Add-ActivationAssertion $trial 'ObserverCachedReaderClosedBeforeActorRelease' $(if($trial.ObserverReaderClose.Status -ceq 'OK'){'PASS'}else{'FAIL'}) 'Checked close releases only the observer cached reader; the original raw pin and raw-volume handle remain live while the actor still holds its old writer.' $trial.ObserverReaderClose
         if($trial.ObserverReaderClose.Status -cne 'OK'){throw 'Observer cached reader close failed.'}
         if($CaseId -ceq 'A04'){
-            $null=Invoke-ActivationInspector '--admission-trace-enable-lifetime' (Join-Path $evidenceDirectory 'activation-child-close-trace-enable') 45000;$traceEnabled=$true
-            $null=Invoke-ActivationInspector '--admission-trace-clear' (Join-Path $evidenceDirectory 'activation-before-child-last-close-clear') 45000
+            $null=Invoke-ActivationTraceControlUntilAcknowledged '--admission-trace-enable-lifetime' (Join-Path $evidenceDirectory 'activation-child-close-trace-enable') 'admission trace enable with file lifetime events: OK'
+            $traceEnabled=$true
+            $null=Invoke-ActivationTraceControlUntilAcknowledged '--admission-trace-clear' (Join-Path $evidenceDirectory 'activation-before-child-last-close-clear') 'admission trace clear: OK'
         }
         $release=Publish-ActivationActorCommand $state 'release-holder' $null $probeActorKey
         if(-not $release.HolderReleased -or $release.NativeCode -ne 0){throw ('Last pre-scope holder release failed: Win32 '+$release.NativeCode)}
         $trial.LastHolderRelease=$release;$script:ActivationHolderLive=$false
         if($CaseId -ceq 'A04'){
+            $lastCloseDisable=Join-Path $evidenceDirectory 'activation-child-close-trace-disable'
+            $null=Invoke-ActivationTraceControlUntilAcknowledged '--admission-trace-disable' $lastCloseDisable 'admission trace disable: OK'
+            $traceEnabled=$false
             $lastTrace=ConvertFrom-ActivationTrace (Invoke-ActivationInspector '--admission-trace' (Join-Path $evidenceDirectory 'activation-child-last-close-trace') 45000) $fileId
             $cleanupProof=Test-ActivationDuplicateCleanup $lastTrace $trace $duplicateActor $release
             Add-ActivationAssertion $trial 'ChildLastCloseExactlyOneCleanup' $cleanupProof.Verdict $cleanupProof.Reason $cleanupProof
-            $null=Invoke-ActivationInspector '--admission-trace-disable' (Join-Path $evidenceDirectory 'activation-child-close-trace-disable') 45000;$traceEnabled=$false
         }
 
         $deadline=([Diagnostics.Stopwatch]::GetTimestamp()+[long]((90)*[Diagnostics.Stopwatch]::Frequency));$promoted=$null;$promotedGood=$false;$promotionReason='No registry-entry sample received after last-holder release.'
@@ -5043,13 +5096,17 @@ function Test-A05Holder($Snapshot,[string]$FileId,[string]$NtPath,[int]$ActorPid
         [uint32]$e.H -gt 0 -and $e.openerPids -contains $ActorPid -and $null -ne $e.W -and [uint32]$e.W -eq 0 -and $e.unknownReasons -ceq '0x00000000'}
     return @{Name='A05HeldAtGate';Verdict=$(if($good){'PASS'}else{'FAIL'});Reason='Control 26 must identify the same Activating file, generation and actor H>0, with completed W drained and no uncertainty.';Evidence=$Snapshot}
 }
-function Test-A05Promotion($Record,$Trace,[string]$FileId,[long]$ReleaseStartQpc,[long]$MutationEndQpc) {
+function Test-A05Promotion($Record,$Trace,[string]$FileId,[long]$ReleaseStartQpc,[long]$MutationEndQpc,$RetiredProof=$null) {
     $edges=@($Trace.Entries | Where-Object {$_.fileId -ieq $FileId -and [uint32]$_.stateBefore -eq 1 -and [uint32]$_.stateAfter -eq 2})
-    $good=$Record.registryEntry -eq $true -and $Record.historyPresent -eq $true -and $Record.nameMatches -eq $true -and
+    $batches=@($Trace.Batches);$traceGood=$Trace.Summary.completeSnapshot -eq $true -and $batches.Count -gt 0
+    foreach($batch in $batches){$traceGood=$traceGood -and $batch.lostEvents -eq 0 -and $batch.overwrittenEvents -eq 0 -and $batch.flags -eq 0}
+    $historyGood=($Record.historyPresent -eq $true)
+    if($Record.historyPresent -eq $false){$historyGood=($null -ne $RetiredProof -and $RetiredProof.Verdict -ceq 'PASS')}
+    $good=$traceGood -and $historyGood -and $Record.registryEntry -eq $true -and $Record.nameMatches -eq $true -and
         $Record.fileId -ieq $FileId -and $Record.state -ceq 'Protected' -and $Record.free -eq $true -and
         $ReleaseStartQpc -gt 0 -and $MutationEndQpc -gt 0 -and $MutationEndQpc -le $ReleaseStartQpc -and $Record.H -eq 0 -and $Record.S -ceq 'NO' -and $Record.C -eq 0 -and $Record.T -eq 0 -and $Record.unknownReasons -ceq '0x00000000' -and $edges.Count -eq 1
     if($good){$e=$edges[0];$good=$e.Hsample -eq 0 -and $e.Wsample -eq 0 -and $e.Tsample -eq 0 -and $e.CforSopSample -eq 0 -and $e.unknownReasonsSample -eq 0 -and $e.qpc -ge $ReleaseStartQpc}
-    return @{Name='A05FreeAndProtected';Verdict=$(if($good){'PASS'}else{'FAIL'});Reason='Same-ID registry Free/Protected and one loss-free promotion edge must report H/S/C/T/W drained and no unknown reason.';Evidence=@{Record=$Record;Trace=$Trace}}
+    return @{Name='A05FreeAndProtected';Verdict=$(if($good){'PASS'}else{'FAIL'});Reason='Same-ID registry Free/Protected and one loss-free promotion edge must report H/S/C/T/W drained and no unknown reason; retired resident history requires the complete native CAS proof.';Evidence=@{Record=$Record;Trace=$Trace;RetiredProof=$RetiredProof}}
 }
 function Add-A05WholeSample($Trial,$Sample,$Baseline,[byte[]]$Expected,[string]$Target,[string]$Label) {
     $images=@($Sample.Captures | ForEach-Object {$_.Images} | Where-Object {$_.Role -ceq 'Current' -and $_.Path -ieq $Target})
@@ -5058,11 +5115,13 @@ function Add-A05WholeSample($Trial,$Sample,$Baseline,[byte[]]$Expected,[string]$
     $Trial.Assertions+=@($checks)
     foreach($check in $checks){if($check.ContainsKey('ForbiddenByteCount') -and $Label -ceq 'A05AfterRefusal'){$Trial.ForbiddenByteCount+=[long]$check.ForbiddenByteCount}}
     $digest=Get-ActivationSha256 $Expected
-    foreach($reader in $Sample.C01Readers){
-        $ok=$reader.Status -ceq 'OK' -and $reader.Result.Digest -ceq $digest -and $reader.Result.Length -eq $Expected.Length
-        Add-ActivationAssertion $Trial ($Label+'Reader') $(if($ok){'PASS'}elseif($reader.Status -ceq 'OK'){'FAIL'}else{'INCONCLUSIVE'}) 'Independent fresh and uncached whole reads must equal the exact P/U image.' $reader
+    if($Label -cne 'A05AllowedPU'){
+        foreach($reader in $Sample.C01Readers){
+            $ok=$reader.Status -ceq 'OK' -and $reader.Result.Digest -ceq $digest -and $reader.Result.Length -eq $Expected.Length
+            Add-ActivationAssertion $Trial ($Label+'Reader') $(if($ok){'PASS'}elseif($reader.Status -ceq 'OK'){'FAIL'}else{'INCONCLUSIVE'}) 'Independent fresh and uncached whole reads must equal the exact P/U image.' $reader
+        }
+        if(@($Sample.C01Readers).Count -ne 2 -or @($Sample.C01Readers | Where-Object Unbuffered).Count -ne 1){throw 'A05 fresh/uncached reader coverage missing'}
     }
-    if(@($Sample.C01Readers).Count -ne 2 -or @($Sample.C01Readers | Where-Object Unbuffered).Count -ne 1){throw 'A05 fresh/uncached reader coverage missing'}
     if(@($checks | Where-Object Verdict -cne 'PASS').Count -and $Label -cne 'A05AfterRefusal'){throw 'A05 exact pre-protection or stable baseline proof failed'}
 }
 function Invoke-A05Observation {
@@ -5122,7 +5181,7 @@ function Invoke-A05Observation {
         $probe=Publish-ActivationActorCommand $state 'probe-new-writers' $null
         Add-ActivationAssertion $trial 'A05NewWriterGateDenied' $(if($probe.OpenCode -eq 5 -and $probe.SectionCode -eq 5){'PASS'}else{'FAIL'}) 'Standard-user new writable open and section requests returned Win32:5 while the old H is live.' $probe
         $null=Invoke-ActivationInspector '--admission-trace-clear' (Join-Path $evidenceDirectory 'a05-clear')
-        $null=Invoke-ActivationInspector '--admission-trace-enable-sections-lifetime' (Join-Path $evidenceDirectory 'a05-enable');$traceEnabled=$true
+        $null=Invoke-ActivationInspector '--admission-trace-enable' (Join-Path $evidenceDirectory 'a05-enable');$traceEnabled=$true
         $changes=@();$u=[byte[]]$p.Clone();$i=0
         foreach($offset in @(64,[int]($p.Length/2),($p.Length-160))){
             $bytes=[Text.Encoding]::ASCII.GetBytes(('A05-'+$RunName+'-'+$i).PadRight(96,'U'));$i++
@@ -5131,7 +5190,7 @@ function Invoke-A05Observation {
         }
         $mutation=Publish-ActivationActorCommand $state 'write-old' @{Changes=$changes};$trial.Operations+=@($mutation.Calls)
         Add-ActivationAssertion $trial 'A05OldWritesCompleted' $(if($mutation.NativeCode -eq 0 -and $mutation.FlushCode -eq 0 -and @($mutation.Calls | Where-Object NativeCode -ne 0).Count -eq 0){'PASS'}else{'FAIL'}) 'Retained physical file-object writes and flush succeeded before protection; U is an allowed pre-protection mutation.' $mutation
-        $trace=ConvertFrom-ActivationTrace (Invoke-ActivationInspector '--admission-trace' (Join-Path $evidenceDirectory 'a05-old-write-trace')) $fileId
+        $trace=Get-ActivationQuiescedWriteTrace $fileId (Join-Path $evidenceDirectory 'a05-old-write-trace');$traceEnabled=$false
         $matched=$true
         foreach($change in $changes){
             $pairs=@($trace.CompletedWritePairs | Where-Object {$_.Begin.pid -eq $actor.Pid -and [long]$_.Begin.writeLength -gt 0 -and [long]$_.Begin.writeOffset -lt $change.Offset+$change.Length -and [long]$_.Begin.writeOffset+[long]$_.Begin.writeLength -gt $change.Offset})
@@ -5139,7 +5198,7 @@ function Invoke-A05Observation {
         }
         Add-ActivationAssertion $trial 'A05OldLowerCompletions' $(if($matched){'PASS'}else{'INCONCLUSIVE'}) 'Loss-free paired successful W_BEGIN/W_END for the actor and same file ID overlap every disjoint U range.' $trace
         $trial.Assertions+=Test-A05Holder (Get-ActivationPendingEntry $ntPath $fileId 'a05-after-U' $target) $fileId $ntPath $actor.Pid $generation
-        $samples+=Capture-CachedSample $context $baseline 'A05AllowedPUWhileHeld' 2 $target
+        $samples+=Capture-InvariantSample $context $baseline 'A05AllowedPUWhileHeld' 2
         Add-A05WholeSample $trial $samples[-1] $baseline $u $target 'A05AllowedPU'
         $oldJournalAfter=Get-ServiceSnapshot 'a05-after-old-writes' -JournalOnly;$trial.JournalSnapshots+=$oldJournalAfter
         $oldDelta=Test-ServiceJournalDelta $oldJournalBefore $oldJournalAfter ($oldJournalBefore.EndQpc -le $mutation.StartQpc -and $mutation.EndQpc -le $oldJournalAfter.StartQpc)
@@ -5147,18 +5206,47 @@ function Invoke-A05Observation {
         $heldStatus=Get-ActivationCurrentProductStatus 'a05-after-U-status' 5000
         Add-ActivationAssertion $trial 'A05StillPendingAfterU' $(if($heldStatus.Status -ceq 'OK' -and $heldStatus.Value.protectionActive -eq $true -and $heldStatus.Value.admissionCoverage -ceq 'Pending' -and $heldStatus.Value.nativePolicyGeneration -eq $generation){'PASS'}else{'FAIL'}) 'Service is still Pending after completed U with H live.' $heldStatus
         Close-ActivationNotificationCapture
+        $trial.ObserverReaderClose=Close-InvariantActivationReader $context $fileId
+        Add-ActivationAssertion $trial 'A05ObserverCachedReaderClosedBeforeActorRelease' $(if($trial.ObserverReaderClose.Status -ceq 'OK'){'PASS'}else{'FAIL'}) 'Checked close releases the observer cached reader after exact raw P/U capture while the old actor holder remains live; the pinned raw volume and pre-epoch identity/map remain available.' $trial.ObserverReaderClose
+        if($trial.ObserverReaderClose.Status -cne 'OK'){throw 'A05 observer cached reader close failed.'}
         $release=Publish-ActivationActorCommand $state 'release-holder' $null;$trial.LastHolderRelease=$release;$script:ActivationHolderLive=$false
         if($release.NativeCode -ne 0 -or -not $release.HolderReleased){throw 'A05 last holder release failed'}
         $deadline=[Diagnostics.Stopwatch]::GetTimestamp()+[long](90*[Diagnostics.Stopwatch]::Frequency);$promoted=$null
+        $promotionTrace=$null;$retiredPromotionProof=$null;$promotionAssertion=$null
         do{
             $promoted=Get-ActivationEntry $target 'a05-promotion'
-            if($promoted.Record.state -ceq 'Protected' -and $promoted.Record.free){break};Start-Sleep -Milliseconds 150
+            $r=$promoted.Record
+            $currentProtectedFree=$r.registryEntry -eq $true -and $r.nameMatches -eq $true -and $r.fileId -ieq $fileId -and
+                $r.state -ceq 'Protected' -and $r.free -eq $true -and [uint32]$r.H -eq 0 -and $r.S -ceq 'NO' -and
+                [uint32]$r.C -eq 0 -and [uint32]$r.T -eq 0 -and $r.unknownReasons -ceq '0x00000000'
+            if($currentProtectedFree){
+                $promotionTrace=ConvertFrom-ActivationPromotionTrace (Invoke-ActivationInspector '--promotion-trace' (Join-Path $evidenceDirectory ('a05-promotion-trace-'+[guid]::NewGuid().ToString('N')))) $fileId
+                $retiredPromotionProof=$null
+                if($r.historyPresent -eq $false){
+                    $retiredPromotionProof=Test-ActivationRetiredPromotion $promoted $promotionTrace $release $fileId ('0x'+([uint64]$context.Geometry.Serial).ToString('X16')) $generation $context.BootId
+                }
+                $promotionAssertion=Test-A05Promotion $r $promotionTrace $fileId $release.StartQpc $mutation.EndQpc $retiredPromotionProof
+                if($promotionAssertion.Verdict -ceq 'PASS'){break}
+            }
+            Start-Sleep -Milliseconds 150
         }while([Diagnostics.Stopwatch]::GetTimestamp() -lt $deadline)
-        $promotionTrace=ConvertFrom-ActivationPromotionTrace (Invoke-ActivationInspector '--promotion-trace' (Join-Path $evidenceDirectory 'a05-promotion-trace')) $fileId
-        $trial.Assertions+=Test-A05Promotion $promoted.Record $promotionTrace $fileId $release.StartQpc $mutation.EndQpc
-        if($trial.Assertions[-1].Verdict -cne 'PASS'){throw 'A05 Free/Protected promotion proof failed'}
+        if($null -eq $promotionTrace){
+            try{$promotionTrace=ConvertFrom-ActivationPromotionTrace (Invoke-ActivationInspector '--promotion-trace' (Join-Path $evidenceDirectory 'a05-promotion-trace-timeout')) $fileId}
+            catch{$trial.PromotionTraceError=$_.Exception.Message;$promotionTrace=@{Summary=@{completeSnapshot=$false};Batches=@();Entries=@()}}
+        }
+        if($null -eq $promotionAssertion){$promotionAssertion=Test-A05Promotion $promoted.Record $promotionTrace $fileId $release.StartQpc $mutation.EndQpc $retiredPromotionProof}
+        $trial.Assertions+=$promotionAssertion
+        if($trial.Assertions[-1].Verdict -cne 'PASS'){
+            $trial.PromotionTimeoutDiagnostic=@{Promotion=$promotionTrace;CurrentRegistry=$promoted}
+            try{$trial.PromotionTimeoutDiagnostic.Control26=Get-ActivationPendingEntry $ntPath $fileId 'a05-promotion-timeout-target' $target}catch{$trial.PromotionTimeoutDiagnostic.Control26Error=$_.Exception.Message}
+            try{$trial.PromotionTimeoutDiagnostic.WriterState=Get-ActivationWriterState 'a05-promotion-timeout-writer-state'}catch{$trial.PromotionTimeoutDiagnostic.WriterStateError=$_.Exception.Message}
+            throw 'A05 Free/Protected promotion proof failed'
+        }
         $readyStatus=Wait-ActivationProductStatus 'Ready' $generation 60 'a05-after-promotion'
         Add-ActivationAssertion $trial 'A05ReadyAfterDrain' 'PASS' 'Authenticated Ready status follows last-holder release and same-file Free/Protected evidence.' @{Release=$release;Status=$readyStatus;Promotion=$promoted}
+        $trial.ObserverReaderRebind=Open-InvariantActivationReader $context $fileId (Get-ActivationSha256 $u) $u.Length
+        Add-ActivationAssertion $trial 'A05ObserverReaderReboundWithStableRawPU' $(if($trial.ObserverReaderRebind.Status -ceq 'OK'){'PASS'}else{'FAIL'}) 'After same-ID Protected promotion, reopen the same identity and require exact pre-release raw P/U digest/length plus raw/native identity/layout across the observer reader gap.' $trial.ObserverReaderRebind
+        if($trial.ObserverReaderRebind.Status -cne 'OK'){throw 'A05 observer cached reader rebind or stable raw P/U validation failed.'}
         $samples+=Capture-CachedSample $context $baseline 'A05ProtectedStablePU' 3 $target
         Add-A05WholeSample $trial $samples[-1] $baseline $u $target 'A05StablePU'
         # Remove the real agent/port connection to make the requested mutation
@@ -5181,7 +5269,11 @@ function Invoke-A05Observation {
         $trial.ServiceAfter=Get-ServiceSnapshot 'a05-after-refusal' -JournalOnly
         $delta=Test-ServiceJournalDelta $trial.ServiceBefore $trial.ServiceAfter ($trial.ServiceBefore.EndQpc -le $denied.StartQpc -and $denied.EndQpc -le $trial.ServiceAfter.StartQpc)
         Add-ActivationAssertion $trial 'A05NoPublicationOrTransfer' $(if($delta.Complete -and -not $delta.NewEntries.Count -and -not $delta.Findings.Count){'PASS'}else{'FAIL'}) 'Old physical writes and the refused protected attempt create no transfer or publication journal change.' $delta
-        $terminalProof=Test-A05Promotion (Get-ActivationEntry $target 'a05-terminal').Record $promotionTrace $fileId $release.StartQpc $mutation.EndQpc
+        $terminalSnapshot=Get-ActivationEntry $target 'a05-terminal';$terminalRetiredProof=$retiredPromotionProof
+        if($terminalSnapshot.Record.historyPresent -eq $false){
+            $terminalRetiredProof=Test-ActivationRetiredPromotion $terminalSnapshot $promotionTrace $release $fileId ('0x'+([uint64]$context.Geometry.Serial).ToString('X16')) $generation $context.BootId
+        }
+        $terminalProof=Test-A05Promotion $terminalSnapshot.Record $promotionTrace $fileId $release.StartQpc $mutation.EndQpc $terminalRetiredProof
         $terminalProof.Name='A05TerminalProtected';$trial.Assertions+=$terminalProof
         $trial.VerifierAfter=Get-VerifierEvidence 'a05-after' -RequireMode
     }catch{$trial.Errors+=Get-ErrorChain $_.Exception;Add-ActivationAssertion $trial 'A05Execution' 'INCONCLUSIVE' ($_.Exception.Message+'; '+$_.ScriptStackTrace) $null}

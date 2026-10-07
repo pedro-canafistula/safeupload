@@ -70,7 +70,7 @@ catch { Report-IO 'Import' $false $_.Exception.ToString(); Write-Output ('IO_Sum
 # Real checked handle-disposal controls on a disposable builder file. These do
 # not pretend that a constructed pin qualifies raw-volume capture or rebind.
 $readerFixture=Join-Path $env:TEMP ('safeupload-observer-reader-'+[guid]::NewGuid().ToString('N')+'.txt')
-$readerHandle=$null
+$readerHandle=$null;$readerHandleA05=$null
 try {
     [IO.File]::WriteAllBytes($readerFixture,[Text.Encoding]::ASCII.GetBytes('reader-release-control'))
     $readerHandle=[StagedInvariant.Native]::Open($readerFixture,$false,$false)
@@ -109,6 +109,24 @@ try {
     Check-IO 'ActivationReaderRebindNegativeLengthRejected' {
         (Open-InvariantActivationReader $readerContext $readerIdentity.FileId ('A'*64) -1).Status -ceq 'ERROR'
     }
+    $readerHandleA05=[StagedInvariant.Native]::Open($readerFixture,$false,$false)
+    $readerIdentityA05=[StagedInvariant.Native]::GetIdentity($readerHandleA05)
+    $pinA05=[StagedInvariant.Image]::new();$pinA05.Identity=$readerIdentityA05
+    $readerContextA05=[pscustomobject]@{Status='OK';Closed=$false;CaseId='A05';BaselineCaptured=$true;
+        Handles=@{};BootId='builder-stimulus-only';ObserverPid=$PID;ObserverSid=([Security.Principal.WindowsIdentity]::GetCurrent().User.Value)}
+    $readerContextA05.Handles[$readerIdentityA05.FileId]=@{Handle=$readerHandleA05;NativeOriginal=$pinA05;
+        Original=@{Path=$readerFixture};Version='Baseline'}
+    Check-IO 'A05ActivationReaderCheckedNativeClose' {
+        $r=Close-InvariantActivationReader $readerContextA05 $readerIdentityA05.FileId
+        $r.Status -ceq 'OK' -and $r.NativeHandleClosed -and $readerHandleA05.Value.IsClosed -and
+            $r.FileId -ceq $readerIdentityA05.FileId -and $r.RawVolumeKept -and $r.OriginalPinKept -and -not $r.Rebound
+    }
+    Check-IO 'A05ActivationReaderDuplicateCloseRejected' {
+        (Close-InvariantActivationReader $readerContextA05 $readerIdentityA05.FileId).Status -ceq 'ERROR'
+    }
+    Check-IO 'A05ActivationReaderRebindBadDigestRejected' {
+        (Open-InvariantActivationReader $readerContextA05 $readerIdentityA05.FileId 'malformed' 22).Status -ceq 'ERROR'
+    }
     # Raw MFT times lag the handle's (lazy $STANDARD_INFORMATION write); identity and layout must still match exactly.
     $identityHandle=[StagedInvariant.Native]::Open($readerFixture,$false,$false)
     try{$handleIdentity=[StagedInvariant.Native]::GetIdentity($identityHandle);$lagged=[StagedInvariant.Native]::GetIdentity($identityHandle)}finally{$identityHandle.Dispose()}
@@ -126,6 +144,7 @@ try {
         Check-IO ('RawVersusHandleIdentityRejects'+$field) { -not [StagedInvariant.Native]::SameRawAndHandleIdentity($changed,$handleIdentity) }
     }
 }finally{
+    if($null -ne $readerHandleA05){$readerHandleA05.Dispose()}
     if($null -ne $readerHandle){$readerHandle.Dispose()}
     if(Test-Path -LiteralPath $readerFixture){Remove-Item -LiteralPath $readerFixture -Force}
 }

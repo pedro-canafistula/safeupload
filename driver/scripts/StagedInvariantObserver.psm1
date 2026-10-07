@@ -1214,11 +1214,11 @@ function Close-InvariantActivationReader {
     $start=Get-IOTime $Context
     try {
         Assert-IOContext $Context
-        if($Context.CaseId -cnotin @('A01','A02','A03','A04') -or
+        if($Context.CaseId -cnotin @('A01','A02','A03','A04','A05') -or
             -not $Context.BaselineCaptured -or $Context.Handles.Count -ne 1 -or
             -not $Context.Handles.ContainsKey($FileId) -or
             $null -ne $Context.PSObject.Properties['ActivationReaderRelease']){
-            throw 'One-use activation reader close requires one exact pinned A01-A04 baseline identity.'
+            throw 'One-use activation reader close requires one exact pinned A01-A05 baseline identity.'
         }
         $entry=$Context.Handles[$FileId]
         if($null -eq $entry.NativeOriginal -or $entry.Version -cne 'Baseline' -or
@@ -1252,7 +1252,7 @@ function Open-InvariantActivationReader {
     try {
         Assert-IOContext $Context
         $release=$Context.ActivationReaderRelease
-        if($Context.CaseId -cnotin @('A01','A02','A03','A04') -or
+        if($Context.CaseId -cnotin @('A01','A02','A03','A04','A05') -or
             $null -eq $release -or $release.Status -cne 'OK' -or $release.Rebound -or
             $release.FileId -cne $FileId -or $Context.Handles.Count -ne 1 -or
             -not $Context.Handles.ContainsKey($FileId) -or
