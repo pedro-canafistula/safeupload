@@ -1478,7 +1478,7 @@ latency polling, and MFT refresh/error capture from the current branch. The comb
 contracts require both second-user denial and expiry closure; no assertion or release gate
 is relaxed. Combined contracts get fresh revisions and a new Windows gate before VM use.
 
-- [x] Integrated B02/R02 and BLOCK expiry cores in `fb898aa9` / `594cbd0d`, with newer second-user, R01/R03, observer and notification checks preserved. Combined table revision 6 has 23 Ready variants. Windows PS5.1 full gate PASS: `evidence/2026-10-07/harness-windows-gate-goal-trace-1.txt`; all 13 self-checks exit 0 (including 14 trace/task-boundary controls), zero parse errors; 52 host Python tests PASS. Final runtime qualification remains pending.
+- [x] Integrated B02/R02 and BLOCK expiry cores in `fb898aa9` / `594cbd0d`, with newer second-user, R01/R03, observer and notification checks preserved. Combined table revision 6 has 23 Ready variants. Windows PS5.1 full gate PASS: `evidence/2026-10-07/harness-windows-gate-goal-trace-1.txt`; all 12 self-checks exit 0 (including 14 trace/task-boundary controls), zero parse errors; 52 host Python tests PASS. Final runtime qualification remains pending.
 - [ ] Rerun the current failing functional cases with the repaired harness.
 - [ ] Finish live taint evidence, dedicated latency, all three VM modes and Phase 5 review.
 
@@ -1510,3 +1510,11 @@ PolicyFlags, but there is no TEST_DISABLE_TAINT policy bit in the product. Do no
 interpret that receipt, zero counters, or the unavailable promotion field as proof
 that taint is disabled. A feature-only product implementation/readback and its
 qualification remain MVP work; no allowlist or scope has been changed here.
+
+- [x] Fresh exact four-configuration WDK build `mvp4-goal-harness1` from
+  `6e232182` PASS, all warnings/errors zero, PREfast and ApiValidator clean,
+  both Inspectors and native fixture clean, replacement test signer verified.
+  Summary: `evidence/2026-10-07/exact-mvp4-goal-harness1-summary.txt`.
+  All 27 driver/Inspector source files are byte-identical to reviewed b18
+  (manifest `ED10CD934C09CF7081DC003E04745952B2C84CECBB0E739CA530BFB917BE42CA`);
+  current VM runs retain the original b18 artifacts for same-build latency joins.
