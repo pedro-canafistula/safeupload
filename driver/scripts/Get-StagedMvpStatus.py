@@ -10,6 +10,10 @@ case.json whose hash matches its index entry, whose row revision equals the curr
 whose restoration is clean, ForbiddenByteCount is 0, and whose MVP gate, recomputed here with the
 run's own pinned latency evidence, passes. Harness-only fixes therefore keep earlier passes of
 an unchanged row contract; a product rebuild or a row revision change does not.
+
+Dedicated unheld latency is a separate experiment. When a run passes everything but its latency
+rows, a retained dedicated-latency.json of the same write path, mode and build hashes (checked by
+the runner's own mvp_latency_passed) may be joined here; the joined file is named in the output.
 """
 import argparse
 import importlib.util
@@ -23,25 +27,33 @@ spec.loader.exec_module(Q)
 PAIR_KEYS = ('SourceCommit', 'AgentSourceCommit', 'SignedSha256', 'ServiceTreeSha256')
 
 
-def cell_pass(item, index, rows):
-    """None when the outcome qualifies its cell, else the reason it does not."""
-    if item.get('MvpGatePassed') is not True:
-        return 'MvpBlockers=' + ','.join(item.get('MvpBlockers') or [item.get('Reason') or item.get('Verdict', '?')])
+def latency_only(item):
+    blockers = item.get('MvpBlockers') or []
+    return bool(blockers) and all(b.endswith('UnheldLatency') or b.startswith('Latency:') for b in blockers)
+
+
+def cell_pass(item, index, rows, latency_files):
+    """(None, joined latency file or None) when the outcome qualifies its cell, else (reason, None)."""
+    if item.get('MvpGatePassed') is not True and not latency_only(item):
+        return 'MvpBlockers=' + ','.join(item.get('MvpBlockers') or [item.get('Reason') or item.get('Verdict', '?')]), None
     path = Path(item.get('Result', ''))
     if not path.is_file() or Q.sha(path) != item.get('ResultSha256'):
-        return 'case.json missing or hash differs from index'
+        return 'case.json missing or hash differs from index', None
     result = json.loads(path.read_text('utf-8-sig'))
     if result.get('CaseId') != item['CaseId'] or result.get('Mode') != item['Mode']:
-        return 'case.json identity differs from index'
+        return 'case.json identity differs from index', None
     if result.get('CaseRevision') != rows[item['CaseId']]['Revision']:
-        return f"row revision {result.get('CaseRevision')} is not current {rows[item['CaseId']]['Revision']}"
+        return f"row revision {result.get('CaseRevision')} is not current {rows[item['CaseId']]['Revision']}", None
     if result.get('ForbiddenByteCount') != 0 or result.get('Restoration', {}).get('Known') is not True:
-        return 'forbidden bytes or restoration not proven'
-    latency = index.parent / (index.name.replace('-index.txt', '-inputs')) / 'mvp-latency-evidence.json'
-    record = json.loads(latency.read_text('utf-8-sig')) if latency.is_file() else None
-    if Q.mvp_case_gate(result, record).get('MvpGatePassed') is not True:
-        return 'recomputed MVP gate fails'
-    return None
+        return 'forbidden bytes or restoration not proven', None
+    pinned = index.parent / (index.name.replace('-index.txt', '-inputs')) / 'mvp-latency-evidence.json'
+    record = json.loads(pinned.read_text('utf-8-sig')) if pinned.is_file() else None
+    if Q.mvp_case_gate(result, record).get('MvpGatePassed') is True:
+        return None, None
+    for candidate in latency_files:
+        if Q.mvp_case_gate(result, json.loads(candidate.read_text('utf-8-sig'))).get('MvpGatePassed') is True:
+            return None, str(candidate.relative_to(ROOT))
+    return 'MvpBlockers=' + ','.join(item.get('MvpBlockers') or []) + ' (no matching dedicated latency)', None
 
 
 def main():
@@ -56,6 +68,7 @@ def main():
     required = sorted(Q.mvp_required_rows(rows))
     cells = {(case, mode): {'Pass': None, 'Last': None} for case in required for mode in Q.MODES}
     pair = None
+    latency_files = sorted((ROOT / 'driver/evidence').glob('*/*-artifacts/dedicated-latency.json'))
     indices = sorted((ROOT / 'driver/evidence').glob('*/phase4-suite-*-index.txt'), key=lambda p: p.stat().st_mtime)
     for index in indices:
         lines = index.read_text().splitlines()
@@ -76,8 +89,12 @@ def main():
             if key not in cells:
                 continue
             run = item.get('RunName') or index.name
-            reason = cell_pass(item, index, rows)
-            entry = {'Run': run, 'Debuggee': provenance.get('Debuggee', {}).get('Domain', 'win10-debug'), 'Index': str(index.relative_to(ROOT))}
+            run_provenance = index.parent / (run + '-provenance.txt')
+            if run_provenance.is_file() and json.loads(run_provenance.read_text()).get('Parameters', {}).get('DedicatedUnheldLatency'):
+                continue  # a dedicated latency experiment never qualifies a functional cell; it is joined above
+            reason, joined = cell_pass(item, index, rows, latency_files)
+            entry = {'Run': run, 'Debuggee': provenance.get('Debuggee', {}).get('Domain', 'win10-debug'), 'Index': str(index.relative_to(ROOT)),
+                     'JoinedLatency': joined}
             if reason is None:
                 cells[key]['Pass'] = entry
             cells[key]['Last'] = dict(entry, Verdict=item.get('Verdict'), Reason=reason)
@@ -87,7 +104,8 @@ def main():
         for case in required:
             cell = cells[(case, mode)]
             if cell['Pass']:
-                print(f"  [x] {case}: {cell['Pass']['Run']} ({cell['Pass']['Debuggee']})")
+                joined = f" + latency {cell['Pass']['JoinedLatency']}" if cell['Pass']['JoinedLatency'] else ''
+                print(f"  [x] {case}: {cell['Pass']['Run']} ({cell['Pass']['Debuggee']}){joined}")
             elif cell['Last']:
                 print(f"  [ ] {case}: last {cell['Last']['Run']} {cell['Last']['Verdict']} - {cell['Last']['Reason']}"[:300])
             else:
