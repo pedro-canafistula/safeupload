@@ -6360,7 +6360,9 @@ if($Phase -eq 'Prepare'){
         if($coreJustificationCase){Initialize-B02Fixture $size}
         $state.FixtureSddl=Get-SecuritySddl $protectedDirectory $true
         $scopes=if($coreRestartPolicyCase){@($state.R02ScopeX)}elseif($isActivationCase){@()}elseif($CaseId -eq 'S00-observer-control'){@()}else{@($protectedDirectory)}
-        if($cachedCase -or $coreConcurrentCase -or $coreRestartPolicyCase -or $coreJustificationCase -or $CaseId -ceq 'A05'){$state.CachedProductBackup=Save-CachedProductState;Save-State $state $statePath}
+        # Every row that runs the agent restores its product state exactly: journals persist across runs, and the service
+        # keeps maintaining an earlier run's transfers mid-window (A05 m1c2 saw A02 m1c1's hand-back fail re-verification).
+        if($cachedCase -or $coreConcurrentCase -or $coreRestartPolicyCase -or $coreJustificationCase -or $isActivationCase){$state.CachedProductBackup=Save-CachedProductState;Save-State $state $statePath}
         Set-ProtectedPolicyAcl
         $extensions=@(if($cachedCase -or $isActivationCase -or $coreConcurrentCase -or $coreRestartPolicyCase -or $coreJustificationCase){'.txt'}else{'.bin'})
         $policy=@{version=1;activeCategories=@('Cpf');monitoredScopes=@{extensions=$extensions;destinationPaths=@($scopes);removableDrives=$false;networkPaths=$false};
