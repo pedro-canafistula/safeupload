@@ -184,7 +184,10 @@ namespace StagedInvariant {
    Require(ended && vcn==last+1,"Runlist","Missing terminator/incomplete mapping"); return runs.ToArray();
   }
   public static Record DecodeRecord(byte[] raw,int sector,uint expected) {
-   byte[] b=Fixup(raw,sector,"FILE"); Require(b.Length>=48,"Record","Short header");
+   return DecodeRecordBody(raw,Fixup(raw,sector,"FILE"),expected);
+  }
+  static Record DecodeRecordBody(byte[] raw,byte[] b,uint expected) {
+   Require(b.Length>=48,"Record","Short header");
    Record r=new Record(); r.Number=U32(b,44); r.Sequence=U16(b,16); r.Flags=U16(b,22); r.BaseReference=U64(b,32); r.Raw=(byte[])raw.Clone(); r.Fixed=b;
    Require(r.Number==expected && r.Sequence!=0 && (r.Flags&1)!=0,"Record","Wrong record number/sequence or not in use");
    int first=U16(b,20); uint used=U32(b,24),allocated=U32(b,28);
@@ -311,6 +314,58 @@ namespace StagedInvariant {
   static Record ReadRecord(Volume v,uint number,List<Container> containers) {
    Record r=DecodeRecord(ReadMapped(v,v.MftRuns,checked((long)number*v.Geometry.RecordSize),v.Geometry.RecordSize,containers,"MFT"),v.Geometry.Sector,number); CrossRecord(v,r); return r;
   }
+  // Private-stage fallback only. The source is the trusted NTFS metadata
+  // cache, explicitly not an on-disk MFT/index proof. No stage-file open.
+  public static Record DecodeCachedRecord(byte[] fixedRecord,int sector,uint expected) {
+   Require(fixedRecord!=null && Power(sector) && fixedRecord.Length>=sector && fixedRecord.Length%sector==0 &&
+    Encoding.ASCII.GetString(fixedRecord,0,4)=="FILE","CachedRecord","Bad cached record geometry/signature");
+   int usa=U16(fixedRecord,4),count=U16(fixedRecord,6);
+   Require(count==fixedRecord.Length/sector+1 && usa>=8 && usa+count*2<=U16(fixedRecord,20),"CachedRecord","Bad cached USA bounds");
+   bool encoded=true,applied=true,cleared=true; ushort usn=U16(fixedRecord,usa);
+   for(int i=1;i<count;i++) { ushort tail=U16(fixedRecord,i*sector-2); encoded &= tail==usn; applied &= tail==U16(fixedRecord,usa+i*2); cleared &= U16(fixedRecord,usa+i*2)==0; }
+   // NTFS can return its normalized cache image with the saved USA tails cleared.
+   // This trusted API image has structural/identity validation, not raw-sector integrity.
+   Require(encoded || applied || cleared,"CachedRecord","Mixed or invalid FSCTL record fixups");
+   return DecodeRecordBody(fixedRecord,encoded?Fixup(fixedRecord,sector,"FILE"):(byte[])fixedRecord.Clone(),expected);
+  }
+  public static ulong DecodePrivateDirectoryPage(byte[] page,string leaf,out int entries) {
+   Require(page!=null && page.Length>=106 && !String.IsNullOrWhiteSpace(leaf),"PrivateDirectory","Bad directory page/leaf");
+   entries=0; ulong selected=0;
+   for(int p=0;;) {
+    Require(p<=page.Length-104 && entries<MaxEntries,"PrivateDirectory","Entry bounds/cap");
+    uint next=U32(page,p),chars=U32(page,p+60);
+    Require(chars>0 && chars<=510 && chars%2==0 && chars<=page.Length-p-104,"PrivateDirectory","Bad name length");
+    Require(next==0 || (next>=104+chars && next%8==0 && next<=page.Length-p-104),"PrivateDirectory","Bad next entry bounds/alignment");
+    string name=Encoding.Unicode.GetString(page,p+104,(int)chars); Require(name.IndexOf('\0')<0,"PrivateDirectory","NUL name");
+    if(name==leaf) {
+     ulong reference=U64(page,p+96);
+     Require(selected==0 && (reference>>48)!=0 && (U32(page,p+56)&0x4410)==0,"PrivateDirectory","Duplicate/invalid private identity/type");
+     selected=reference;
+    }
+    entries++; if(next==0) return selected; p=checked(p+(int)next);
+   }
+  }
+  static ulong PrivateDirectoryReference(Handle directory,string leaf,List<Container> containers) {
+   ulong selected=0; int total=0;
+   for(int page=0;page<64;page++) {
+    byte[] bytes=new byte[65536];
+    if(!GetFileInformationByHandleEx(directory.Value,page==0?11:10,bytes,(uint)bytes.Length)) {
+     int code=Marshal.GetLastWin32Error(); if(code==18) {Require(selected!=0,"PrivateDirectory","Private name absent in cached directory");return selected;}
+     throw new ObservationException("PrivateDirectory",new Win32Exception(code).Message,code);
+    }
+    AddContainer(containers,"KERNEL_DIRECTORY_QUERY",-1,bytes);
+    int count; ulong found=DecodePrivateDirectoryPage(bytes,leaf,out count); total=checked(total+count);
+    Require(total<=MaxEntries && (found==0 || selected==0),"PrivateDirectory","Directory cap/duplicate private name"); if(found!=0) selected=found;
+   }
+   throw new ObservationException("PrivateDirectory","Directory page cap",0);
+  }
+  static Record ReadCachedRecord(Volume v,uint number,List<Container> containers) {
+   byte[] data=Io(v.Raw,0x90068,BitConverter.GetBytes((long)number),v.Geometry.RecordSize+16);
+   AddContainer(containers,"FSCTL_CACHED_FILE_RECORD",-1,data);
+   Require(data.Length>=12 && (U64(data,0)&0x0000FFFFFFFFFFFFUL)==number && U32(data,8)==v.Geometry.RecordSize &&
+    data.Length>=12+v.Geometry.RecordSize,"CachedRecord","FSCTL lower-record fallback/length mismatch");
+   return DecodeCachedRecord(Slice(data,12,v.Geometry.RecordSize),v.Geometry.Sector,number);
+  }
   static Attribute[] ResolveAttributes(Volume v,Record baseRecord,List<Record> records,List<Container> containers) {
    List<Attribute> all=new List<Attribute>(baseRecord.Attributes); List<Attribute> lists=Select(baseRecord.Attributes,0x20,"");
    Require(lists.Count<=1,"AttributeList","Split attribute list unsupported"); if(lists.Count==0) return all.ToArray();
@@ -416,34 +471,51 @@ namespace StagedInvariant {
   // Trusted observer only: resolve a file from its raw parent index without a
   // named/file-ID open of the private stream. StageAdmit intentionally refuses
   // those opens for every process except the authenticated service.
-  public static Image CaptureNamedRaw(Volume v,Handle directory,string leaf) {
+  public static Image CaptureNamedRaw(Volume v,Handle directory,string leaf) {return CapturePrivateCore(v,directory,leaf,false);}
+  public static Image CaptureNamedTrusted(Volume v,Handle directory,string leaf) {return CapturePrivateCore(v,directory,leaf,true);}
+  static Image CapturePrivateCore(Volume v,Handle directory,string leaf,bool cachedMetadata) {
    Require(!String.IsNullOrWhiteSpace(leaf) && leaf.IndexOfAny(new char[]{'\\','/',':'})<0,"PrivateSnapshot","Invalid leaf");
    List<Container> containers=new List<Container>(); Image image=null;
    try {
-    Image parent=Capture(v,directory); Require(parent.Identity.Directory && parent.CrossCheckErrors.Length==0,"PrivateSnapshot","Parent capture invalid");
-    NameEntry match=null;
-    foreach(NameEntry n in parent.Names) if(n.Namespace!=2 && n.Name==leaf) { Require(match==null,"PrivateSnapshot","Ambiguous parent name"); match=n; }
-    Require(match!=null,"PrivateSnapshot","Private name absent in raw parent index");
+    Image parent=null; Identity parentIdentity; NameEntry match=null;
+    if(cachedMetadata) {
+     parentIdentity=GetIdentity(directory); Require(parentIdentity.Directory && parentIdentity.VolumeSerial==v.Geometry.Serial,"PrivateSnapshot","Cached parent identity invalid");
+     match=new NameEntry{Name=leaf,Reference=PrivateDirectoryReference(directory,leaf,containers)};
+    } else {
+     parent=Capture(v,directory); containers.AddRange(parent.Containers);
+     Require(parent.Identity.Directory && parent.CrossCheckErrors.Length==0,"PrivateSnapshot","Parent capture invalid"); parentIdentity=parent.Identity;
+     foreach(NameEntry n in parent.Names) if(n.Namespace!=2 && n.Name==leaf) { Require(match==null,"PrivateSnapshot","Ambiguous parent name"); match=n; }
+     Require(match!=null,"PrivateSnapshot","Private name absent in raw parent index");
+    }
     uint number=checked((uint)(match.Reference&0x0000FFFFFFFFFFFFUL));
-    Record basis=ReadRecord(v,number,containers); List<Record> records=new List<Record>(); records.Add(basis);
-    Require(basis.Sequence==(ushort)(match.Reference>>48) && basis.BaseReference==0 && (basis.Flags&2)==0 && U16(basis.Fixed,18)==1,"PrivateSnapshot","Record identity/type/link ambiguity");
-    Attribute[] attrs=ResolveAttributes(v,basis,records,containers); List<NameEntry> names=new List<NameEntry>(); Attribute standard=null;
+    Record basis=cachedMetadata?ReadCachedRecord(v,number,containers):ReadRecord(v,number,containers); List<Record> records=new List<Record>(); records.Add(basis);
+    Require(basis.Sequence==(ushort)(match.Reference>>48) && basis.BaseReference==0 && (basis.Flags&2)==0,"PrivateSnapshot","Record identity/type/link ambiguity");
+    if(cachedMetadata) Require(Select(basis.Attributes,0x20,"").Count==0,"PrivateSnapshot","Cached split-record stage unsupported");
+    Attribute[] attrs=cachedMetadata?basis.Attributes:ResolveAttributes(v,basis,records,containers); List<NameEntry> names=new List<NameEntry>(); Attribute standard=null;
     foreach(Attribute a in attrs) {
      if(a.Type==0x30) { Require(!a.NonResident,"PrivateSnapshot","Nonresident name"); names.Add(DecodeName(a.Value,0,a.Value.Length,match.Reference)); }
      if(a.Type==0x10) { Require(standard==null && !a.NonResident && a.Value.Length>=72,"PrivateSnapshot","Invalid standard information"); standard=a; }
      if(a.Type==0x80) Require(a.Name=="","PrivateSnapshot","ADS ambiguity");
     }
     Require(standard!=null && (U32(standard.Value,32)&0x4410)==0,"PrivateSnapshot","Reparse/EFS/directory ambiguity");
-    int bound=0; foreach(NameEntry n in names) if(n.Namespace!=2 && n.Name==leaf && n.Parent==parent.Identity.Reference) bound++;
-    Require(bound==1,"PrivateSnapshot","FILE_NAME does not bind to raw parent index");
+    int bound=0,aliases=0; foreach(NameEntry n in names) {
+     Require(n.Parent==parentIdentity.Reference,"PrivateSnapshot","Additional parent/hard-link ambiguity");
+     if((n.Namespace==1 || n.Namespace==3) && n.Name==leaf) bound++;
+     else { Require(n.Namespace==2,"PrivateSnapshot","Additional private name/hard-link ambiguity"); aliases++; }
+    }
+    Require(bound==1 && aliases<=1 && U16(basis.Fixed,18)==names.Count,"PrivateSnapshot","FILE_NAME/header does not bind one Win32 name and optional DOS alias");
     List<Attribute> data=Select(attrs,0x80,""); Require(data.Count>0,"PrivateSnapshot","Missing data");
     byte[] logical=ReadStream(v,data,containers,"PRIVATE_DATA");
     List<Container> secondContainers=new List<Container>(); byte[] second=ReadStream(v,data,secondContainers,"PRIVATE_DATA_REPEAT");
     Require(logical.Length==second.Length && Hash(logical)==Hash(second),"PrivateSnapshot","Private bytes changed during read");
     containers.AddRange(secondContainers);
-    foreach(Record record in records) { Record after=ReadRecord(v,record.Number,containers); Require(Hash(record.Raw)==Hash(after.Raw),"PrivateSnapshot","Private record/runlist changed during read"); }
-    Image parentAfter=Capture(v,directory); Require(Fingerprint(parent)==Fingerprint(parentAfter),"PrivateSnapshot","Parent index changed during read");
-    containers.AddRange(parent.Containers); containers.AddRange(parentAfter.Containers);
+    foreach(Record record in records) { Record after=cachedMetadata?ReadCachedRecord(v,record.Number,containers):ReadRecord(v,record.Number,containers); Require(Hash(record.Raw)==Hash(after.Raw),"PrivateSnapshot","Private record/runlist changed during read"); }
+    if(cachedMetadata) {
+     Require(PrivateDirectoryReference(directory,leaf,containers)==match.Reference && SameIdentity(parentIdentity,GetIdentity(directory)),"PrivateSnapshot","Cached private name/parent identity changed during read");
+    } else {
+     Image parentAfter=Capture(v,directory); containers.AddRange(parentAfter.Containers);
+     Require(Fingerprint(parent)==Fingerprint(parentAfter),"PrivateSnapshot","Parent index changed during read");
+    }
     byte[] id=new byte[16]; Buffer.BlockCopy(BitConverter.GetBytes(match.Reference),0,id,0,8);
     Identity identity=new Identity{VolumeSerial=v.Geometry.Serial,Reference=match.Reference,FileId=BitConverter.ToString(id).Replace("-",""),
      Eof=logical.Length,Allocation=data[0].NonResident?data[0].Allocation:logical.Length,Attributes=U32(standard.Value,32),Links=1,
@@ -587,16 +659,31 @@ function Read-InvariantPrivateSnapshot {
             $held+=[StagedInvariant.Native]::Open($ancestor,$false,$true)
             $ancestor=[IO.Path]::GetDirectoryName($ancestor)
         }
-        $native=[StagedInvariant.Native]::CaptureNamedRaw($Context.Volume,$held[0],$leaf)
+        $metadataSource='RawIndexAndMft';$rawAttempt=$null
+        try {$native=[StagedInvariant.Native]::CaptureNamedRaw($Context.Volume,$held[0],$leaf)}
+        catch {
+            $caught=$_.Exception;$archived=@()
+            for($error=$caught;$null -ne $error;$error=$error.InnerException){
+                if($error -is [StagedInvariant.ObservationException] -and $null -ne $error.Containers){
+                    foreach($container in $error.Containers){$archived+=@{Kind=$container.Kind;Offset=$container.Offset;Artifact=(Save-IOBytes $Context $container.Bytes ('private-partial-'+$container.Kind))}}
+                }
+            }
+            $rawAttempt=@{Status='ERROR';Error=(New-IOError 'PrivateRawMetadata' $caught);ArchivedContainers=$archived}
+            $native=[StagedInvariant.Native]::CaptureNamedTrusted($Context.Volume,$held[0],$leaf)
+            $metadataSource='TrustedKernelDirectoryAndCachedMft'
+        }
         # No named stage-file security query/open: raw index + MFT reference is
         # the file binding. The sealed service manifest supplies expected A.
         $saved=Save-IOImage $Context $native $null 'PrivateSealedSnapshot'
+        $saved | Add-Member -NotePropertyName MetadataSource -NotePropertyValue $metadataSource
+        $saved | Add-Member -NotePropertyName DataSource -NotePropertyValue $(if($native.Resident){$metadataSource+'ResidentData'}else{'RawVolumeNonresidentRuns'})
+        $saved | Add-Member -NotePropertyName RawAttempt -NotePropertyValue $rawAttempt
         $saved | Add-Member -NotePropertyName StagePath -NotePropertyValue $full
         return $saved
     } catch {
         for($error=$_.Exception;$null -ne $error;$error=$error.InnerException){
             if($error -is [StagedInvariant.ObservationException] -and $null -ne $error.Containers){
-                foreach($container in $error.Containers){$null=Save-IOBytes $Context $container.Bytes 'private-partial'}
+                foreach($container in $error.Containers){$null=Save-IOBytes $Context $container.Bytes ('private-partial-'+$container.Kind)}
             }
         }
         throw

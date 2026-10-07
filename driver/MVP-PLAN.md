@@ -858,3 +858,77 @@ The safe W01 checkpoint parent was written by Sol and checked by root: Windows P
   No valid baseline exists; forbidden count is unknown, not zero.
 - [ ] Runtime-Verifier A01 requalification on gated `mvp4-sol-b11`/`6a20c49f`
   and `agent-mvp4-sol-b19`/`b0e7f8be`, with real service-owned relay continuity.
+
+- [ ] Setup durability: C03's real approved B seed is flushed as trusted setup
+  before the A observation window; A01's known Unscoped P is flushed before
+  baseline capture/epoch update. The raw observer remains read-only; no flush
+  during the protected mutation window or rebaseline of unexpected bytes.
+- [ ] Private-stage proof decision: raw index/MFT can lag newly created stage
+  metadata. A separate fallback uses trusted NTFS directory/file-record queries
+  to bind exact filename, file reference/sequence and FILE_NAME parent, then
+  reads complete raw nonresident data twice (resident data is explicitly from
+  the metadata cache), with repeated record/name/parent identity checks. Archive
+  both failed raw attempt and cached metadata under explicit source kinds; do
+  not claim cached metadata is on-disk evidence. No named/file-ID stage open,
+  no service impersonation and no weakening of the service-PID namespace gate.
+  Fallback rejects attribute-list/split-record stage representations rather
+  than guessing. This is trusted bounded retention evidence only, never a
+  substitute for public destination raw/API/privacy checks.
+- [ ] C02 localization: persist before-call receipts for each native mapping
+  operation, preserving completed calls and QPC. WinFsp source/test reuse pinned
+  at `fde790d8ea41283606d1c56b557608a17e455f59`: `rdwr_mmap_dotest`
+  exercises early source close with a surviving section/view; callback code
+  treats section acquisition and modified-page locking separately. Keep that
+  lifetime stimulus; locate the unfinished SafeUpload call before changing it.
+
+- Builder fixture caught a cached-record encoding assumption before VM use: NTFS
+  FSCTL replies can carry the intact update-sequence encoding. Validate every
+  sector tail as either intact USA or already-applied USA, normalize the intact
+  encoding with the existing checked fixup decoder, and reject mixed/corrupt
+  encodings. Archive the original API response unchanged. This does not make
+  kernel-cached metadata an on-disk read.
+
+- The next disposable builder capture retained the actual API header/tails:
+  NTFS normalized the record and cleared the saved USA tail words (the USA counter remained nonzero) while sector tails
+  retained data. Accept that explicitly trusted API encoding with common FILE
+  structural bounds and exact record/name/reference identity validation; it
+  has no raw-sector fixup-integrity claim. Raw record decoding still requires
+  intact checked fixups. Both failed fixture attempts are retained as evidence.
+
+- Disposable GUID.txt capture exposed the raw MFT name-reference count as 2:
+  NTFS has one Win32 name and its DOS alias. Do not equate this count with API
+  hard-link count. Before accepting private retention, require exactly one
+  Win32/combined name equal to the allocator leaf under the exact parent; permit
+  at most one DOS-only alias under that same parent; require the header count
+  to equal these name attributes. Reject every additional parent/name and
+  POSIX-only namespace. The public raw observer still uses its unchanged API
+  one-link check. This admits an alias, not an additional writable hard link.
+
+- A01 diagnostic harness decision before repair: NamedPipeClientStream does not
+  support ReadTimeout. Repeated one-line connects also exhaust the outbound
+  service's 16 instances while idle subscriptions await another event. Keep one
+  authenticated notification stream for the observation, one outstanding
+  asynchronous read, QPC-bounded waits, and explicit sequence/receipt timestamps
+  for status updates. When there is no update, label the last received status
+  as retained stream state, never a new status publication or whole-interval
+  loss-free readiness proof. Any disconnect/parse/identity failure invalidates
+  the capture. Close and join the read before restoration.
+
+- [x] Windows harness gate: parser zero, proof adapters 229 PASS, native observer
+  88 PASS (`sol-harness-windows-validation-k.txt`); disposable builder full-byte
+  resident/nonresident and real hard-link/ADS rejection PASS
+  (`sol-private-cache-builder-validation.txt`). These are harness qualification
+  controls, not a functional case or public raw-byte proof. Source pin and
+  applicable upstream mapped-lifetime paths: `sol-upstream-mapped-and-cache-investigation.txt`.
+
+- [x] A01 runtime-Verifier `sol-a01r5` on gated b11/b19 completed and restored
+  independently clean (`phase4-suite-sol-a01r5-index.txt`, root evidence commit
+  `0b5584d9`). Pre-epoch physical P and runtime policy/epoch swap PASS, followed
+  by notification/readiness and diagnostic connection gaps; forbidden count
+  unknown. Strict/MVP gates FAIL. Do not claim activation qualification.
+- [x] Final repaired harness Windows gate: parser zero, adapters 229 PASS,
+  observer 88 PASS (`sol-harness-windows-validation-l.txt`), Python 18+7 PASS.
+  Disposable real-pipe fixture covers async initial/update frames, QPC-bounded
+  idle retention with unchanged receipt, disconnect invalidation and checked
+  closure (`sol-notification-stream-builder-validation.txt`). Fixture seeds a
+  synthetic connection; production SYSTEM authentication remains a VM requirement.

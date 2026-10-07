@@ -586,17 +586,25 @@ try {
             $openPath=if($config.WriterKind -ceq 'replacement'){$config.TempTarget}elseif($config.WriterKind -ceq 'external-rename'){$config.Source}else{$config.Target}
             $disposition=if($config.WriterKind -ceq 'overwrite'){[uint32]5}elseif($config.WriterKind -ceq 'external-rename'){[uint32]3}else{[uint32]1}
             $rename=$config.WriterKind -cin @('replacement','external-rename')
+            Save-ActorReceipt 'native-open-start.clixml' $calls $null @{Phase='open'}
             $h=[SUWriter]::OpenHeld($openPath,$disposition,$rename,[ref]$openCall);$calls+= $openCall
             if($openCall.NativeCode -ne 0){throw ('Owned/physical source open failed: Win32='+$openCall.NativeCode)}
             if($config.WriterKind -ceq 'mapped'){
+            Save-ActorReceipt 'native-create-section-start.clixml' $calls $null @{Phase='create-section'}
                 $nativeCall=$null;$section=[SUWriter]::CreateMapping($h,$bytes.Length,[ref]$nativeCall);$calls+= $nativeCall
                 if($nativeCall.NativeCode -ne 0){throw ('CreateFileMapping PAGE_READWRITE failed: Win32='+$nativeCall.NativeCode)}
+            Save-ActorReceipt 'native-map-view-start.clixml' $calls $null @{Phase='map-view'}
                 $view=[SUWriter]::Map($section,$bytes.Length,[ref]$nativeCall);$calls+= $nativeCall
                 if($nativeCall.NativeCode -ne 0){throw ('MapViewOfFile failed: Win32='+$nativeCall.NativeCode)}
                 # Store AFTER the source closes: the view and section are the only remaining upper references.
+            Save-ActorReceipt 'native-close-source-start.clixml' $calls $null @{Phase='close-source'}
                 $closeCall=[SUWriter]::CloseHeld($h);$closeCall.Class='close-source';$calls+= $closeCall
                 if($closeCall.NativeCode -ne 0){throw ('Source close failed: Win32='+$closeCall.NativeCode)};$h=[IntPtr]::Zero
-                $calls+= [SUWriter]::StoreView($view,$bytes);$calls+= [SUWriter]::FlushView($view,$bytes.Length)
+            Save-ActorReceipt 'native-mapped-store-start.clixml' $calls $null @{Phase='mapped-store'}
+                $calls+= [SUWriter]::StoreView($view,$bytes)
+                Save-ActorReceipt 'native-flush-view-start.clixml' $calls $null @{Phase='flush-view'}
+                $calls+= [SUWriter]::FlushView($view,$bytes.Length)
+                Save-ActorReceipt 'native-read-view-start.clixml' $calls $null @{Phase='read-view'}
                 $privateBytes=[SUWriter]::ReadView($view,$bytes.Length)
             }else{
                 if($config.WriterKind -cne 'external-rename'){$calls+= [SUWriter]::WriteHeld($h,$bytes);$calls+= [SUWriter]::FlushHeld($h)}
@@ -635,6 +643,17 @@ try {
     }
 }finally{$identity.Dispose()}
 '@
+}
+function Flush-InvariantSetupVolume {
+    $before=[StagedInvariant.Native]::ResolveGuid($protectedDirectory)
+    if($before -cne $state.VolumeGuid){throw 'Setup flush volume identity mismatch'}
+    $volumes=@(Get-Volume -FilePath $protectedDirectory -ErrorAction Stop)
+    if($volumes.Count -ne 1 -or $volumes[0].FileSystem -ine 'NTFS' -or $volumes[0].DriveType -ine 'Fixed'){throw 'Setup flush requires exact fixed NTFS volume'}
+    $start=[Diagnostics.Stopwatch]::GetTimestamp()
+    $volumes[0] | Write-VolumeCache -ErrorAction Stop | Out-Null
+    $end=[Diagnostics.Stopwatch]::GetTimestamp()
+    if([StagedInvariant.Native]::ResolveGuid($protectedDirectory) -cne $before){throw 'Setup flush volume changed'}
+    return @{Purpose='TrustedSetupBeforeObservation';VolumeGuid=$before;StartQpc=$start;EndQpc=$end;QpcFrequency=[Diagnostics.Stopwatch]::Frequency}
 }
 function Get-ActivatingWriterBody {
 $body=@'
@@ -795,27 +814,56 @@ function Get-ActivationPendingEntry([string]$NtPath,[string]$FileId,[string]$Tag
     $entries=@($snapshot.Record.entries | Where-Object {$_.path -ieq $NtPath -and $_.fileId -ieq $FileId})
     return [pscustomobject]@{Snapshot=$snapshot;Entries=$entries}
 }
+function Close-ActivationNotificationCapture {
+    $capture=$script:ActivationNotificationCapture;$script:ActivationNotificationCapture=$null
+    if($null -eq $capture){return}
+    try{if($null -ne $capture.Reader){$capture.Reader.Dispose()}}finally{$capture.Pipe.Dispose()}
+    if($null -ne $capture.ReadTask){
+        try{$null=$capture.ReadTask.Wait(1000)}catch{if(-not $capture.ReadTask.IsCompleted){throw}}
+        if(-not $capture.ReadTask.IsCompleted){throw 'Notification read did not complete after checked pipe closure.'}
+    }
+}
 function Get-ActivationProductStatus([string]$Tag,[int]$TimeoutMs=5000) {
     if(-not('SUActivationPipeProof' -as [type])){Add-Type -TypeDefinition @'
 using System;using System.ComponentModel;using Microsoft.Win32.SafeHandles;using System.Runtime.InteropServices;
 public static class SUActivationPipeProof{[DllImport("kernel32.dll",SetLastError=true)]public static extern bool GetNamedPipeServerProcessId(SafePipeHandle h,out uint pid);}
 '@}
-    $pipe=$null;$reader=$null;$start=[Diagnostics.Stopwatch]::GetTimestamp()
+    $start=[Diagnostics.Stopwatch]::GetTimestamp();$deadline=$start+[long]($TimeoutMs*[Diagnostics.Stopwatch]::Frequency/1000)
     try {
-        $pipe=[IO.Pipes.NamedPipeClientStream]::new('.','SafeUpload.Agent',[IO.Pipes.PipeDirection]::In)
-        $pipe.Connect($TimeoutMs);$pipe.ReadTimeout=$TimeoutMs
-        $serverPid=[uint32]0;if(-not [SUActivationPipeProof]::GetNamedPipeServerProcessId($pipe.SafePipeHandle,[ref]$serverPid) -or $serverPid -eq 0){throw 'Service notification pipe server PID unavailable'}
-        $server=Get-CimInstance Win32_Process -Filter ('ProcessId='+$serverPid) -ErrorAction Stop
-        if($null -eq $server -or $server.Name -cne 'SafeUpload.Agent.Service.exe'){throw 'Notification pipe server image mismatch'}
-        $owner=Invoke-CimMethod -InputObject $server -MethodName GetOwnerSid -ErrorAction Stop
-        if($owner.ReturnValue -ne 0 -or $owner.Sid -cne 'S-1-5-18'){throw 'Notification pipe server is not LocalSystem'}
-        $reader=[IO.StreamReader]::new($pipe,[Text.Encoding]::UTF8,$false,4096,$true)
-        $line=$reader.ReadLine();if([string]::IsNullOrWhiteSpace($line)){throw 'Service notification status line unavailable'}
-        $status=$line|ConvertFrom-Json -ErrorAction Stop
-        if($status.type -cne 'status'){throw 'First service pipe record is not current StatusNotification'}
-        return [pscustomobject]@{Status='OK';Tag=$Tag;StartQpc=$start;EndQpc=[Diagnostics.Stopwatch]::GetTimestamp();QpcFrequency=[Diagnostics.Stopwatch]::Frequency;BootId=(Get-BootId);ServerPid=$serverPid;ServerSid=$owner.Sid;RawLine=$line;Value=$status}
-    }catch{return [pscustomobject]@{Status='INCONCLUSIVE';Tag=$Tag;Reason=$_.Exception.Message;StartQpc=$start;EndQpc=[Diagnostics.Stopwatch]::GetTimestamp();BootId=(Get-BootId);QpcFrequency=[Diagnostics.Stopwatch]::Frequency}}
-    finally{if($null -ne $reader){$reader.Dispose()};if($null -ne $pipe){$pipe.Dispose()}}
+        if($null -eq $script:ActivationNotificationCapture){
+            $pipe=[IO.Pipes.NamedPipeClientStream]::new('.','SafeUpload.Agent',[IO.Pipes.PipeDirection]::In,[IO.Pipes.PipeOptions]::Asynchronous)
+            $script:ActivationNotificationCapture=@{Pipe=$pipe;Reader=$null;ReadTask=$null;Last=$null;LastQpc=$null;Sequence=0;ServerPid=$null;ServerSid=$null}
+            $pipe.Connect($TimeoutMs)
+            $serverPid=[uint32]0;if(-not [SUActivationPipeProof]::GetNamedPipeServerProcessId($pipe.SafePipeHandle,[ref]$serverPid) -or $serverPid -eq 0){throw 'Service notification pipe server PID unavailable'}
+            $server=Get-CimInstance Win32_Process -Filter ('ProcessId='+$serverPid) -ErrorAction Stop
+            if($null -eq $server -or $server.Name -cne 'SafeUpload.Agent.Service.exe'){throw 'Notification pipe server image mismatch'}
+            $owner=Invoke-CimMethod -InputObject $server -MethodName GetOwnerSid -ErrorAction Stop
+            if($owner.ReturnValue -ne 0 -or $owner.Sid -cne 'S-1-5-18'){throw 'Notification pipe server is not LocalSystem'}
+            $script:ActivationNotificationCapture.ServerPid=$serverPid;$script:ActivationNotificationCapture.ServerSid=$owner.Sid
+            $script:ActivationNotificationCapture.Reader=[IO.StreamReader]::new($pipe,[Text.Encoding]::UTF8,$false,4096,$true)
+        }
+        $capture=$script:ActivationNotificationCapture;$beforeSequence=$capture.Sequence;$drained=0
+        do {
+            if($null -eq $capture.ReadTask){$capture.ReadTask=$capture.Reader.ReadLineAsync()}
+            $remaining=[int][Math]::Max(0,[Math]::Min($TimeoutMs,($deadline-[Diagnostics.Stopwatch]::GetTimestamp())*1000/[Diagnostics.Stopwatch]::Frequency))
+            if(-not $capture.ReadTask.Wait($remaining)){break}
+            $line=$capture.ReadTask.GetAwaiter().GetResult();$capture.ReadTask=$null
+            if([string]::IsNullOrWhiteSpace($line)){throw 'Service notification stream ended or returned an empty frame'}
+            $record=$line|ConvertFrom-Json -ErrorAction Stop;$drained++
+            if($record.type -ceq 'status'){$capture.Last=$record;$capture.LastQpc=[Diagnostics.Stopwatch]::GetTimestamp();$capture.Sequence++}
+            elseif($null -eq $capture.Last){throw 'First service pipe record is not current StatusNotification'}
+            if($drained -ge 64){throw 'Notification frame drain cap reached; status capture incomplete'}
+            # Drain already queued frames, then retain the pending read for the next call.
+            $capture.ReadTask=$capture.Reader.ReadLineAsync()
+            if(-not $capture.ReadTask.IsCompleted){break}
+        }while([Diagnostics.Stopwatch]::GetTimestamp() -lt $deadline)
+        if($null -eq $capture.Last){throw 'No authenticated status publication received within the QPC deadline'}
+        return [pscustomobject]@{Status='OK';Tag=$Tag;StartQpc=$start;EndQpc=[Diagnostics.Stopwatch]::GetTimestamp();QpcFrequency=[Diagnostics.Stopwatch]::Frequency;BootId=(Get-BootId);ServerPid=$capture.ServerPid;ServerSid=$capture.ServerSid;Value=$capture.Last;
+            StatusReceiptQpc=$capture.LastQpc;StatusSequence=$capture.Sequence;RetainedStreamState=($capture.Sequence -eq $beforeSequence);WholeIntervalLossFree=$false}
+    }catch{
+        $reason=$_.Exception.Message;try{Close-ActivationNotificationCapture}catch{$reason+='; closure: '+$_.Exception.Message}
+        return [pscustomobject]@{Status='INCONCLUSIVE';Tag=$Tag;Reason=$reason;StartQpc=$start;EndQpc=[Diagnostics.Stopwatch]::GetTimestamp();BootId=(Get-BootId);QpcFrequency=[Diagnostics.Stopwatch]::Frequency}
+    }
 }
 function Wait-ActivationProductStatus([string]$ExpectedCoverage,[uint32]$PolicyGeneration,[int]$Seconds,[string]$Tag) {
     $deadline=([Diagnostics.Stopwatch]::GetTimestamp()+[long](($Seconds)*[Diagnostics.Stopwatch]::Frequency));$last=$null;$reason='No current service status received.'
@@ -2233,6 +2281,7 @@ function Invoke-CachedObservation {
             $imageB=[Convert]::FromBase64String($state.CachedBaseBase64)
             $trial.SeedBase=Invoke-CachedBaseSeed $actor $imageB $ready.Qpc;$trial.Assertions+=@($trial.SeedBase.Assertions)
             if(@($trial.SeedBase.Assertions | Where-Object Verdict -cne 'PASS').Count){throw 'Approved B seed evidence incomplete/failed; no main mutation attempted'}
+            $trial.SetupCacheFlush=Flush-InvariantSetupVolume
             # Exclude the proven Released B transfer from the A window, never a dirty baseline.
             $trial.ServiceBefore=Get-ServiceSnapshot 'before-A';$trial.LastAccessBefore=Get-LastAccessEvidence
         }
@@ -2327,7 +2376,7 @@ function Invoke-CachedObservation {
             try{
                 $stage=Read-InvariantPrivateSnapshot -Context $context -Path $blockedEntry.Entry.Transfer.StagePath
                 $trial.BlockedStageSnapshot=$stage
-                $trial.Assertions+=@{Name='C01BlockedStageRetained';Verdict=$(if($stage.Length -eq $imageA.Length -and $stage.Sha256 -ceq $digest){'PASS'}else{'FAIL'});Reason='Raw parent-index/MFT-bound sealed stage snapshot remains present and equals exact A; repeated data and record/index stability checked. No stage-file open bypasses the product namespace gate.';Evidence=$stage}
+                $trial.Assertions+=@{Name='C01BlockedStageRetained';Verdict=$(if($stage.Length -eq $imageA.Length -and $stage.Sha256 -ceq $digest){'PASS'}else{'FAIL'});Reason=('Bounded sealed private snapshot remains present and equals exact A; MetadataSource='+$stage.MetadataSource+'; full repeated bytes and exact file-reference/sequence/name/parent stability checked. Cached metadata is not claimed as on-disk proof; no stage-file open bypasses the product gate.');Evidence=$stage}
             }catch{$trial.Assertions+=@{Name='C01BlockedStageRetained';Verdict='INCONCLUSIVE';Reason=$_.Exception.ToString()}}
             $handBackDeadline=([Diagnostics.Stopwatch]::GetTimestamp()+[long]((10)*[Diagnostics.Stopwatch]::Frequency));$handBackRoot=Join-Path $actor.Profile 'SafeUpload\_bloqueados'
             do{if(Test-Path -LiteralPath $handBackRoot){if(@(Get-ChildItem -LiteralPath $handBackRoot -File -Force).Count){break}};Start-Sleep -Milliseconds 100}while([Diagnostics.Stopwatch]::GetTimestamp() -lt $handBackDeadline)
@@ -2623,6 +2672,7 @@ function Invoke-ActivationObservation {
         $trial.HolderSetup=@{CaseId=$CaseId;Pid=$actor.Pid;Sid=$actor.Sid;SessionId=$actor.SessionId;HolderKind=$row.Variant;
             SourceHandleClosed=$holder.SourceHandleClosed;CreateQpc=$holder.StartQpc;CompleteQpc=$holder.EndQpc;NativeCode=$holder.NativeCode}
 
+        $trial.SetupCacheFlush=Flush-InvariantSetupVolume
         $pBytes=[Convert]::FromBase64String($state.BaselineBase64)
         $expectedImages=@{};$expectedImages[$relativeName]=$pBytes
         $baseline=Capture-InvariantBaseline $context @($relativeName) $expectedImages
@@ -2921,6 +2971,7 @@ function Invoke-ActivationObservation {
                 $trial.ActorTaskCompletion=@{ExitCode=$completion.ExitCode;BootId=$completion.BootId;HolderReleased=$exitReply.HolderReleased}}
             catch{$trial.Errors+=Get-ErrorChain $_.Exception;Add-ActivationAssertion $trial 'ActorCleanup' 'INCONCLUSIVE' ('Could not prove the activation actor exited and released all handles: '+$_.Exception.Message) $null}
         }
+        try{Close-ActivationNotificationCapture}catch{$trial.Errors+=Get-ErrorChain $_.Exception;Add-ActivationAssertion $trial 'NotificationCaptureCleanup' 'INCONCLUSIVE' $_.Exception.Message $null}
         if($null -ne $agent){
             try{Stop-StagedTestAgent $agent;$state.AgentServiceStarted=$false;Save-State $state $statePath;$agent=$null}
             catch{$trial.Errors+=Get-ErrorChain $_.Exception;Add-ActivationAssertion $trial 'AgentServiceCleanup' 'INCONCLUSIVE' ('Could not stop/restore the test SafeUploadAgent service: '+$_.Exception.Message) $null}

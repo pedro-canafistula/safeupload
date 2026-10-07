@@ -1,0 +1,14 @@
+Upstream reuse decision for mapped-holder and private metadata harness
+SourceCommit=fde790d8ea41283606d1c56b557608a17e455f59
+tst/winfsp-tests/rdwr-test.c SHA256=E652CF81B616D01A1B2E4AE0FC81476329B582C8945A89A2CFC889C05DBD844A
+tst/winfsp-tests/info-test.c SHA256=5CA8181EEE1687DCA606E96899496768615680570ED7CD5E4C3FB2549904281A
+src/sys/callbacks.c SHA256=7043D71A415FF8ABBC4789385A45A1A78CD44B2CCCC2AF997AD8B62228C71A1D
+Question: Does closing the source file handle invalidate an independently retained writable mapping?
+rdwr-test.c:486-574 and info-test.c:760-820 retain section/view lifetime across early file-handle closure. Preserve the existing mapped stimulus and add before-call localization receipts. Upstream success does not qualify SafeUpload.
+callbacks.c:85-151 distinguishes section synchronization, modified-page writer try-acquire and cache flush/lazy writer locking. This is a full filesystem, not a SafeUpload minifilter; do not copy locks or infer SafeUpload completion.
+Next action: locate first unfinished C02 native call from durable receipts, then inspect that exact path before any product change.
+Trusted NTFS API references (struct/API semantics only, not SafeUpload proof):
+https://learn.microsoft.com/en-us/windows/win32/api/winbase/ns-winbase-file_id_both_dir_info
+https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-getfileinformationbyhandleex
+https://learn.microsoft.com/en-us/windows/win32/api/winioctl/ni-winioctl-fsctl_get_ntfs_file_record
+API returns nearest lower in-use file record when exact record is unavailable; capture rejects mismatched output record number. Metadata is labelled kernel cached. Real builder fixture supplies observed USA encoding and full-byte/hard-link/ADS controls.
