@@ -1,0 +1,5 @@
+QueueOwner=BUILTIN\Administrators
+QueueSddl=O:BAG:S-1-5-21-316478115-1595729549-2803163825-513D:AI(A;ID;FA;;;SY)(A;ID;FA;;;BA)(A;ID;0x1200a9;;;BU)
+CaptureQpc=1411998409
+FoundCount=0
+AttributionScope=Post-case diagnostic only; not a replacement for original-window authenticated proof
