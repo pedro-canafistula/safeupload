@@ -114,7 +114,7 @@ class MvpGateTests(unittest.TestCase):
         for name in ('C05SourceDirectoryMetadata', 'C05SourceCoverage', 'C05SourceDisposal',
                      'C05SourceFileMetadata', 'C05SourceNoUnapprovedByteX',
                      'C05SourceAlmostCadenceCoverage', 'OtherSourceCadenceCoverage',
-                     'C05SourceC05SourceCadenceCoverage', 'C05Source', 'C05DenialLedger'):
+                     'C05SourceC05SourceCadenceCoverage', 'C05Source', 'C05SourceDenialLedger'):
             with self.subTest(name=name):
                 result = fixture()
                 result['CaseId'] = 'C05-denied-external-rename'
@@ -125,6 +125,25 @@ class MvpGateTests(unittest.TestCase):
         result = fixture()
         result['Trials'][0]['Assertions'].append({'Name': 'C05SourceCadenceCoverage', 'Verdict': 'INCONCLUSIVE'})
         self.assertFalse(self.assess(result)['MvpGatePassed'])
+
+    def test_c05_denial_ledger_deferred_only_for_c05_by_owner_decision(self):
+        # Owner decision 2026-10-07: no driver rename-denial event exists; attribution is behavioral.
+        result = fixture()
+        result['CaseId'] = 'C05-denied-external-rename'
+        result['Trials'][0]['Assertions'].append({'Name': 'C05DenialLedger', 'Verdict': 'INCONCLUSIVE'})
+        actual = self.assess(result)
+        self.assertTrue(actual['MvpGatePassed'])
+        self.assertEqual(['C05DenialLedger'], actual['MvpDeferred'])
+        result['Trials'][0]['Assertions'][-1]['Verdict'] = 'FAIL'
+        self.assertFalse(self.assess(result)['MvpGatePassed'])
+        for case in ('C01-approve-absent', 'C04-block', 'B01'):
+            with self.subTest(case=case):
+                other = fixture()
+                other['CaseId'] = case
+                other['Trials'][0]['Assertions'].append({'Name': 'C05DenialLedger', 'Verdict': 'INCONCLUSIVE'})
+                actual = self.assess(other)
+                self.assertFalse(actual['MvpGatePassed'])
+                self.assertIn('C05DenialLedger', actual['MvpBlockers'])
 
     def test_handback_safe_creation_deferred_only_by_exact_suffix(self):
         result = fixture()

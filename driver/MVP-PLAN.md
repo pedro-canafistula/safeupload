@@ -1904,3 +1904,12 @@ the batch wrapper before it runs.
   H=0/S=YES check (`3ea267a7`). A01 `rv1s1`: all activation proofs pass; the post-promotion write was routed to an
   owned stream, but the single immediate journal snapshot still saw Allocated. A01-A03 now poll up to 120 s for the
   exact transfer to leave Allocated/Sealed/Inspecting, as A04 does.
+- **Owner decision (2026-10-07): `C05DenialLedger` is deferred for the MVP** under the existing "driver lower
+  admission/completion ledger" category. The driver has no rename-denial trace event, so C05 cannot attribute the
+  denial to the driver; it is proven behaviorally (native rename Win32 5, destination absent in raw/fresh/uncached reads,
+  source unchanged, no transfer, and the actor has write access to the folder, so no ACL explains it). The exception is
+  C05-only and exact-name; a FAIL still blocks. Release notes must list it; driver denial events are post-MVP.
+- Harness fixes merged during the parallel rounds (each Windows-gated): notification head handle (the collector held
+  head.json and the agent closed its notification record, `c094f5a7`), qualified EventIDs and actor TEMP (`2e0841ca`),
+  C02 BLOCK shared hand-back checks (`bef9589e`), ending LastAccess receipt in finally (`764bc613`), X01 flush-and-recapture
+  during publication (`e903cec3`), C05 index LastAccess and namespaced deferrals (`09fa7d6a`).

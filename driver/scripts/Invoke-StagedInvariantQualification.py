@@ -979,6 +979,10 @@ def mvp_case_gate(result, latency_evidence=None):
             if result.get('CaseId') == 'C05-denied-external-rename' and name.startswith('C05Source'):
                 deferred_name = name[len('C05Source'):]
             allowed = (deferred_name in MVP_DEFERRED_EXACT or
+                       # Same deferred lower admission ledger: the driver records no rename-denial event, so the
+                       # denial's attribution is behavioral (Win32 5, destination absent in raw/fresh/uncached reads,
+                       # source unchanged, no transfer). Owner decision 2026-10-07: defer for the MVP.
+                       (result.get('CaseId') == 'C05-denied-external-rename' and name == 'C05DenialLedger') or
                        bool(name[:-len('PublicationAndTemporalCoverage')]) and name.endswith('PublicationAndTemporalCoverage') or
                        # The product emits no creation receipt; B01 (junction-swapped hand-back folder, same MVP
                        # suite) proves safe relative creation by behavior. Owner decision pending (2026-10-07).
