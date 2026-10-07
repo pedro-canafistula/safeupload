@@ -3,7 +3,7 @@
 # design section 4 corpus, NOT a claim that one row covers every future variant.
 @{
     Schema = 'StagedInvariantCases/1'
-    TableRevision = 11
+    TableRevision = 12
     Modes = @('ordinary', 'runtime-verifier', 'boot-verifier')
     RowSchema = @{
         Required = @('CaseId', 'Revision', 'Status', 'Variant', 'Outcome',
@@ -130,7 +130,7 @@
             Cleanup = @('CloseObserver', 'ReleaseActorHolder', 'StopTestServiceAndRestoreServiceConfig', 'StopOwnedTasks', 'RestoreDriver', 'RestorePolicyBytesAndAcls', 'RemoveOwnedBootPolicy', 'RestoreAgentConfig', 'ResetVerifier', 'RemoveFixtureAndState', 'RestorationReboot', 'IndependentBaseline')
         }
         @{
-            CaseId = 'A02'; Revision = 7; Status = 'Ready'
+            CaseId = 'A02'; Revision = 8; Status = 'Ready'
             Variant = 'fixed-NTFS-pre-scope-writable-view-source-handle-closed-runtime-scope-add-supported-text-target'
             Outcome = 'ACTIVATING_THEN_STAGED; retained-view paging mutation is permitted and captured before promotion; post-promotion write remains private before approval'
             QualificationScope = 'Phase4A02SingleLateStoreVariant; no-store and additional reconnect repetitions deferred'
@@ -150,7 +150,7 @@
             Cleanup = @('CloseObserver', 'ReleaseActorHolder', 'StopTestServiceAndRestoreServiceConfig', 'StopOwnedTasks', 'RestoreDriver', 'RestorePolicyBytesAndAcls', 'RemoveOwnedBootPolicy', 'RestoreAgentConfig', 'ResetVerifier', 'RemoveFixtureAndState', 'RestorationReboot', 'IndependentBaseline')
         }
         @{
-            CaseId = 'A03'; Revision = 7; Status = 'Ready'
+            CaseId = 'A03'; Revision = 8; Status = 'Ready'
             Variant = 'fixed-NTFS-retained-PAGE_READWRITE-section-no-view-runtime-scope-add-supported-text-target'
             Outcome = 'ACTIVATING_THEN_STAGED; first late view store is permitted and captured before promotion; post-promotion write remains private before approval'
             QualificationScope = 'Phase4A03SingleLateStoreVariant; no-store and additional reconnect repetitions deferred'

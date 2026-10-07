@@ -3942,7 +3942,10 @@ function Invoke-ActivationObservation {
             $entry.state -ceq 'Activating' -and $entry.fileId -ieq $fileId -and $entry.path -ieq $ntPath -and
             [uint32]$entry.generation -gt 0 -and [uint32]$entry.W -eq 0 -and $entry.unknownReasons -ceq '0x00000000')
         if($CaseId -cin @('A01','A04')){$holderStateGood=$holderStateGood -and [uint32]$entry.H -gt 0 -and $entry.openerPids -contains [int]$actor.Pid}
-        else{$holderStateGood=$holderStateGood -and $entry.S -ceq 'YES' -and [uint32]$entry.H -eq 1 -and $entry.openerPids -contains [int]$actor.Pid}
+        # While H>0 the driver does not sample S (LastSState stays Unknown until promotion evaluation at H=0; same as the
+        # accepted A04 correction). S=NO here would contradict the retained section/view and fails; the section/view
+        # proof is the strict native H=0/S=YES MappingOnlyAfterProbeClose check after the probe closes.
+        else{$holderStateGood=$holderStateGood -and $entry.S -cin @('YES','Unknown') -and [uint32]$entry.H -eq 1 -and $entry.openerPids -contains [int]$actor.Pid}
         if($CaseId -ceq 'A04'){$holderStateGood=$holderStateGood -and [uint32]$entry.H -eq 1 -and [uint32]$entry.C -eq 0 -and [uint32]$entry.T -eq 0}
         $holderEvidenceReason=if($CaseId -cin @('A01','A04')){'Exact-target Inspector point sample identifies the exact NT path, stable file ID, policy generation, Activating state, H>0, and the standard-user actor opener PID.'}else{'Exact-target native Activating H=1/S=YES identifies the retained section/view plus the explicitly retained same-target pre-policy callback probe handle; original mapping source handle is closed.'}
         Add-ActivationAssertion $trial 'ExactActivatingWriterEvidence' $(if($holderStateGood){'PASS'}else{'FAIL'})`
@@ -4076,7 +4079,7 @@ function Invoke-ActivationObservation {
             $afterWriteEntries[0].state -ceq 'Activating' -and $afterWriteEntries[0].fileId -ieq $fileId -and
             [uint32]$afterWriteEntries[0].W -eq 0 -and $afterWriteEntries[0].unknownReasons -ceq '0x00000000')
         if($CaseId -cin @('A01','A04')){$stillActivating=$stillActivating -and [uint32]$afterWriteEntries[0].H -gt 0 -and $afterWriteEntries[0].openerPids -contains [int]$actor.Pid}
-        else{$stillActivating=$stillActivating -and $afterWriteEntries[0].S -ceq 'YES'}
+        else{$stillActivating=$stillActivating -and $afterWriteEntries[0].S -cin @('YES','Unknown')}  # S unsampled while H>0, see above
         if($CaseId -ceq 'A04'){$stillActivating=$stillActivating -and [uint32]$afterWriteEntries[0].H -eq 1 -and [uint32]$afterWriteEntries[0].C -eq 0 -and [uint32]$afterWriteEntries[0].T -eq 0}
         Add-ActivationAssertion $trial 'OldHolderStillActivatingAfterMutation' $(if($stillActivating){'PASS'}else{'FAIL'}) 'After the tagged old-holder writes and flush completed, the exact same target remained Activating with its holder evidence and W drained to zero.' @{Entries=$afterWriteEntries;Snapshot=$activatingAfterWrite.Snapshot.Record;FileId=$fileId;ActorPid=$actor.Pid;Mutation=$oldWrite}
         if(-not $stillActivating){throw 'Target left Activating or lost exact holder evidence before the old holder was released.'}
