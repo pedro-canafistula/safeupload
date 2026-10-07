@@ -482,22 +482,22 @@
             Cleanup = @('CooperativeWriterCancellationAndClose', 'CloseBothObservers', 'StopAndRestoreAgent', 'RemoveOnlyJunctionEntryBeforeSentinelAndProfileRemoval', 'RestoreProductStateBytesAndAcls', 'CommonSeedRestoration', 'IndependentBaseline')
         }
         @{
-            CaseId = 'B02'; Revision = 1; Status = 'NotReady'
-            Variant = 'core-existing-T-block-v1-block-v2-stale-v1-justify-latest-v2'; Outcome = 'Blocked: no owning standard-user interactive session in suite'
-            QualificationScope = 'MVP core blocked; real pipe is scriptable but session binding cannot be met by the existing disposable batch actor'
-            Blocker = 'agente/SafeUpload.Agent.Service/Interception/StagedTransferPublisher.cs: TryGetBoundSession/PublishCoreAsync require SessionResolver.TryGetSessionUserSid to match the requesting SID before Remember opens justification. SessionResolver.cs uses WTSQueryUserToken. Test-StagedInvariantSuite.ps1 Prepare creates a new disposable user and password/batch limited task in session 0, with no logged-on WTS session for that SID. Need an owning logged-on standard-user session and InteractiveToken actor/restoration support; sending the real pipe protocol from the current batch actor can only be rejected and cannot qualify latest-v2 release. No product hook or UI bypass added.'
+            CaseId = 'B02'; Revision = 2; Status = 'Ready'
+            Variant = 'core-existing-T-block-v1-block-v2-stale-v1-justify-latest-v2'; Outcome = 'LatestV2ReleasedOnce;V1BlockedNeverPublished'
+            QualificationScope = 'MVP coordinated C03 overwrite exact-version justification core through real pipe in owning interactive WTS session'
             DeferredVariants = @('C04 replacement-save JUSTIFY/stale-JUSTIFY companion', 'Wrong principal or session', 'Duplicate/replayed submission', 'V1 justification after restart', 'Repetition beyond coordinated core')
-            ActorSid = 'OwningLoggedOnStandardUserRequired'; ActorSession = 'WTSBoundInteractiveSessionRequired'
+            ActorSid = 'DisposableStandardUserInteractiveToken'; ActorSession = 'ActiveWTSQueryUserTokenSidAndSessionMatchesActor; real service open-window manifest confirms binding'
             InitialPolicy = @{ Seed = 'Product'; LiveFlags = 'TEST_DISABLE_TAINT-required'; OverrideAllowed = $true }
-            Scopes = @('FixtureScope'); Setup = @('CoreRequiresPrebootB', 'C03StyleOverwrite', 'RealJustificationPipe', 'OwningInteractiveSessionUnavailable')
-            Actions = @('BlockedPendingSessionPrerequisite; do not fabricate a justification window')
-            Barriers = @('V1Blocked', 'V2BlockedAtNewDigest', 'RealV1SubmissionRejected', 'RealV2SubmissionAccepted')
-            ExpectedTimeline = @('BRemainsPublicThroughBothBlocksAndStaleSubmission', 'LatestV2OnlyReleasedOnce')
-            StatusClasses = @('RealPipeRejectedStale', 'RealPipeAcceptedLatest')
-            JournalExpectations = @('V1NeverPublished', 'V2ReleasedOnce'); NotificationExpectations = @('RealBlockedAndReleased')
-            AllowedDirectoryTransitions = @('T:B->V2Only'); LatencyClasses = @()
+            Scopes = @('FixtureScope'); Setup = @('DurablePrebootB', 'OneBootActorAutoLogon', 'LimitedInteractiveTask', 'C03StyleNativeTruncateOverwrite', 'IndependentRawObserverAndFreshUncachedReaders')
+            Actions = @('OverwriteAndHoldV1ThenCloseAndRequireBlockedWithHandBackAndOpenWindow', 'OverwriteAndHoldV2ThenCloseAndRequireBlockedNewDigestGeneration', 'SubmitRealV1JustificationAndRequireRejectedNoRelease', 'SubmitRealV2JustificationAndRequireAcceptedReleasedOnce')
+            Barriers = @('ActiveOwningWtsSession', 'AuthenticatedServiceReady', 'RawPrebootB', 'V1MutableHandleHeld', 'V1BlockedVerifiedHandBackOpenWindow', 'V2MutableHandleHeld', 'V2BlockedVerifiedHandBackOpenWindow', 'RealV1Rejected', 'RawBStillExact', 'RealV2Accepted', 'FinalRawV2')
+            ExpectedTimeline = @('BPublic', 'PrivateV1Held', 'V1Blocked-BPublic-HandBackV1', 'PrivateV2Held', 'V2Blocked-BPublic-HandBackV2', 'StaleV1Rejected-BPublic', 'V2JustifiedFreshInspection-Approved-Publishing-ReleasedOnce', 'FinalExactV2Only')
+            StatusClasses = @('OverwriteFlushAndClose=Win32:0', 'RealPipeRejectedStale', 'RealPipeAcceptedLatest')
+            JournalExpectations = @('DistinctIncreasingDestinationGenerations', 'V1HistoryExactlyAllocatedSealedInspectingBlocked', 'V2HistoryExactlyAllocatedSealedInspectingBlockedInspectingApprovedPublishingReleased')
+            NotificationExpectations = @('CompleteAuthenticatedOwnerV1BlockedV2BlockedV2ReleasedWithExactDigests', 'NoV1Released')
+            AllowedDirectoryTransitions = @('T:B->V2Only', 'ExactlyOneFinalTargetNoTemporaryResidue'); LatencyClasses = @()
             Repetitions = @{ Coordinated = 1; Unheld = 0; DeterministicSeed = 4003 }
-            Cleanup = @('CoreNotStarted; common restoration mandatory when session prerequisite is implemented')
+            Cleanup = @('ExitInteractiveActor', 'RemoveAllOwnedWinlogonValues-NoLsaSecretCreated', 'LogoffOwnedWtsSession', 'DeleteActorUserAndProfile', 'StopAndRestoreAgent', 'CloseObserver', 'CommonRestorationAndReboot', 'IndependentBaseline')
         }
         @{
             CaseId = 'R01'; Revision = 2; Status = 'Ready'
@@ -522,22 +522,21 @@
             Cleanup = @('CooperativeWriterCancellationAndClose', 'StopAndRestoreAgent', 'RestoreProductStateBytesAndAcls', 'CommonSeedRestoration', 'IndependentBaseline')
         }
         @{
-            CaseId = 'R02'; Revision = 1; Status = 'NotReady'
-            Variant = 'core-stop-after-durable-PendingScopes-before-authenticated-apply'; Outcome = 'Blocked: no coordinated pre-apply service barrier'
-            QualificationScope = 'MVP core blocked; registry polling plus Stop-Service is an unheld race and cannot guarantee the selected stop point'
-            Blocker = 'agente/SafeUpload.Agent.Service/Interception/BootPolicyRegistryWriter.cs: Apply calls _backend.WritePending (WindowsBootPolicyRegistryBackend.WriteValue flushes and verifies PendingScopes), then immediately applyAuthenticatedPolicy, WriteCommitted, ClearPending and finalizeAuthenticatedPolicy. MinifilterInterceptor.TryPushPolicy provides no service pause/stop hook between WritePending and the first port update. An A01 H holder blocks file promotion, not this policy update. Control 26 and StagedProofProxy observe/forward diagnostics only. Need an existing coordinated barrier at Apply after WritePending returns and before applyAuthenticatedPolicy; none exists. No product edit, registry injection, or polling race substituted.'
-            DeferredVariants = @('Other three stop points', 'Dirty-holder status variants', 'FailedClosed variants', 'Seeded unheld stop races', 'Repetition beyond coordinated core')
+            CaseId = 'R02'; Revision = 2; Status = 'Ready'
+            Variant = 'core-stop-after-finalized-policy-with-clean-A01-H-holder-Y'; Outcome = 'ProtectedXAndY; ReadyAfterLastHolderRelease'
+            QualificationScope = 'MVP coordinated finalized-policy restart core; earlier apply boundaries and dirty holders deferred'
+            DeferredVariants = @('Stops before/after PendingScopes durable', 'Stops between drains', 'Stops before/after Reserved=1', 'Dirty-holder variants', 'FailedClosed variants', 'Seeded unheld stop races', 'Repetition beyond coordinated core')
             ActorSid = 'ResolveStandardUserTokenAtRuntime'; ActorSession = 'ResolveTokenSessionId'
-            InitialPolicy = @{ Seed = 'ProductOldScopeX'; LiveFlags = 'TEST_DISABLE_TAINT-required' }
-            Scopes = @('ProtectedX', 'CandidateY'); Setup = @('ProtectedBaselineX', 'StandardUserA01PhysicalHolderY', 'MissingDurablePendingPreApplyBarrier')
-            Actions = @('CoreNotStarted: cannot stop at required coordinated boundary')
-            Barriers = @('PendingScopesDurableBeforePortUpdate', 'AgentStopped', 'RestartCandidateRetryFinalize', 'Control26ExactHeldY', 'LastHolderRelease', 'FreeFStableRawBaseline', 'ProtectedReady')
-            ExpectedTimeline = @('XProtectedUnchanged', 'NoAppliedSuccessBeforeStop', 'YNotReady', 'RestartRetryCandidate', 'YActivatingWhileHLive', 'ReleaseDrainFreeF', 'YProtectedReadyWithStableBaseline')
-            StatusClasses = @('NoPrematurePolicyAppliedOrReady'); JournalExpectations = @('NoHolderPublication')
-            NotificationExpectations = @('NoPrematureAppliedSuccess', 'ReadyOnlyAfterFreeF')
-            AllowedDirectoryTransitions = @('XBaselineExact', 'YPreProtectionHolderMutationsAllowed'); LatencyClasses = @()
+            InitialPolicy = @{ Seed = 'ProductOldScopeX'; RuntimeUpdate = 'Real service startup policy apply adds Y and completes durable finalization'; LiveFlags = 'TEST_DISABLE_TAINT-required' }
+            Scopes = @('ProtectedX', 'CandidateY'); Setup = @('SiblingXAndY', 'PrebootProtectedBaselineX', 'StandardUserA01PhysicalHandleY', 'BothIndependentRawBaselines')
+            Actions = @('AddYThroughRealServicePolicyPath', 'RequireFinalizedAdvancedPolicyAndExactActivatingY-H>0', 'StopServiceWithHolderLive', 'RefuseNewActorWriteOpenXAndYWhileDown', 'RestartSameService', 'RequireAuthenticatedPendingAndSameHeldY', 'ReleaseLastHolder', 'RequireFreeFProtectedYAndServiceReady')
+            Barriers = @('ExactXOnlyBootPolicy', 'RawBaselinesBeforeApply', 'AuthenticatedPolicyGenerationAdvanced', 'DurableXPlusY-PendingAbsent', 'Control26ExactHeldY', 'ServiceStoppedPidZero', 'RestartedActivePending', 'LastHolderRelease', 'SameIdFreeFAndDrainedPromotionEdge', 'ProtectedReady')
+            ExpectedTimeline = @('XProtectedUnchanged', 'YUnscopedCleanHandle', 'AppliedYActivating-H>0', 'ServiceDown-XProtected-BaselinesExact-NewOpensDenied', 'RestartPending-SameY-H>0', 'ReleaseDrainFreeF', 'YProtectedReady-BaselinesExact')
+            StatusClasses = @('ActorHolderCreate=Win32:0', 'DownNewWritableOpenXAndY=Win32:5', 'HolderRelease=Win32:0')
+            JournalExpectations = @('NoHolderTransferOrPublication'); NotificationExpectations = @('AuthenticatedPendingAtHeldCheckpoints', 'NoObservedReadyWhileHolderLives', 'ReadyAfterFreeFProtected')
+            AllowedDirectoryTransitions = @('XAndYSameFileIdAndExactWholeRawBaseline'); LatencyClasses = @()
             Repetitions = @{ Coordinated = 1; Unheld = 0; DeterministicSeed = 4003 }
-            Cleanup = @('CoreNotStarted; common restoration mandatory when barrier prerequisite exists')
+            Cleanup = @('ReleaseHolderAndExitActor', 'StopAndRestoreAgent', 'CloseObserver', 'CommonRestorationAndReboot', 'IndependentBaseline')
         }
         @{
             CaseId = 'R03'; Revision = 2; Status = 'Ready'

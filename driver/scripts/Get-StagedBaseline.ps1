@@ -102,6 +102,12 @@ $fixtures = @(Get-ChildItem -LiteralPath $documents -Directory -Force -ErrorActi
 $checks['NoGuidFixtureDirectories'] = ($fixtures.Count -eq 0)
 # The invariant suite creates a standard-user actor; its account and profile (C:\Users\<name>) must not survive a run.
 $checks['NoActorUsers'] = (@(Get-LocalUser | Where-Object { $_.Name -match '^su[0-9a-f]{8,}$' -or $_.Name -eq 'surtprobe' }).Count -eq 0)
+# The invariant suite's one-boot interactive actor sets these values, never an LSA secret.
+try {
+    $winlogonNames = (Get-Item 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon' -ErrorAction Stop).GetValueNames()
+    $checks['NoActorAutoLogonValues'] = (@('AutoAdminLogon','DefaultUserName','DefaultDomainName','DefaultPassword','AutoLogonCount') |
+        Where-Object { $winlogonNames -contains $_ }).Count -eq 0
+} catch { $checks['NoActorAutoLogonValues'] = $false }
 $checks['NoTestProfiles'] = (@(Get-CimInstance Win32_UserProfile | Where-Object { -not $_.Special -and $_.LocalPath -notmatch '\\vika$' }).Count -eq 0)
 $checks['NoSyntheticVolume'] = -not (Test-Path -LiteralPath 'S:\')
 $canaries = @()

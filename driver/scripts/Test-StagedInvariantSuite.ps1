@@ -4909,6 +4909,486 @@ function Invoke-X01Observation {
     }
 }
 
+# R02: the coordinated stop is after real policy finalization, with a clean H holder.
+function Initialize-R02Fixture([byte[]]$Image) {
+    $state.R02ScopeX=Join-Path $protectedDirectory 'X';$state.R02ScopeY=Join-Path $protectedDirectory 'Y'
+    foreach($dir in @($state.R02ScopeX,$state.R02ScopeY)){
+        $null=New-Item -ItemType Directory -Path $dir
+        $stream=[IO.FileStream]::new((Join-Path $dir 'marker.txt'),[IO.FileMode]::CreateNew,[IO.FileAccess]::Write,[IO.FileShare]::Read,4096,[IO.FileOptions]::WriteThrough)
+        try{$stream.Write($Image,0,$Image.Length);$stream.Flush($true)}finally{$stream.Dispose()}
+    }
+}
+function Get-R02WriterBody {
+    $body=Get-ActivatingWriterBody
+    $anchor="    default {throw ('Unknown actor action: '+`$command.Action)}"
+    $branch=@'
+    'r02-probe-path' {$result.NativeCode=[SUActivationNative]::NewWritableOpen([string]$command.Path);$result.Path=[string]$command.Path}
+'@
+    if(-not $body.Contains($anchor)){throw 'R02 actor template anchor missing'}
+    return $body.Replace($anchor,($branch+"`n"+$anchor))
+}
+function Test-R02Held($Snapshot,[string]$FileId,[string]$NtPath,[int]$PidExpected,[uint32]$Generation) {
+    $entries=@($Snapshot.Entries);$good=$entries.Count -eq 1 -and $Snapshot.Snapshot.Record.policyGeneration -eq $Generation
+    if($good){$e=$entries[0];$good=$e.fileId -ieq $FileId -and $e.path -ieq $NtPath -and $e.state -ceq 'Activating' -and
+        $null -ne $e.H -and $e.H -gt 0 -and $e.openerPids -contains $PidExpected -and $null -ne $e.W -and $e.W -eq 0 -and $e.unknownReasons -ceq '0x00000000'}
+    return @{Name='R02ExactHeldY';Verdict=$(if($good){'PASS'}else{'FAIL'});Reason='Control 26 identifies the same Y file, actor H>0, drained W and accepted generation without uncertainty.';Evidence=$Snapshot}
+}
+function Test-R02Protected($Record,[string]$FileId,[switch]$RequireFree) {
+    $good=$Record.registryEntry -eq $true -and $Record.historyPresent -is [bool] -and $Record.nameMatches -eq $true -and
+        $Record.fileId -ieq $FileId -and $Record.state -ceq 'Protected' -and
+        $null -ne $Record.H -and $Record.H -eq 0 -and $Record.S -ceq 'NO' -and $null -ne $Record.C -and $Record.C -eq 0 -and
+        $null -ne $Record.T -and $Record.T -eq 0 -and $Record.unknownReasons -ceq '0x00000000'
+    if($RequireFree){$good=$good -and $Record.free -eq $true -and $Record.historyPresent -eq $true}
+    return @{Name=$(if($RequireFree){'R02FreeAndProtected'}else{'R02XRemainsProtected'});Verdict=$(if($good){'PASS'}else{'FAIL'});Reason='Same-ID exact registry query proves Protected with H=0,S=NO,C=T=0 and no unknown reason; Y promotion additionally requires history and Free.';Evidence=$Record}
+}
+function Test-R02Pending($Status,[uint32]$Generation) {
+    $good=$Status.Status -ceq 'OK' -and $Status.ServerSid -ceq 'S-1-5-18' -and $Status.Value.protectionActive -eq $true -and
+        $Status.Value.nativePolicyGeneration -eq $Generation -and $Status.Value.admissionCoverage -ceq 'Pending'
+    return @{Name='R02PendingWhileHolderLives';Verdict=$(if($good){'PASS'}else{'FAIL'});Reason='Authenticated LocalSystem current status must remain active/Pending at the accepted generation while Y H is live.';Evidence=$Status}
+}
+function Add-R02Sample($Trial,$Context,$Baseline,[byte[]]$Expected,[string]$Label) {
+    $sample=Capture-InvariantSample $Context $Baseline $Label ($Trial.Samples.Count+1);$Trial.Samples+= $sample
+    if($sample.Status -cne 'OK'){throw 'R02 complete raw capture unavailable'}
+    foreach($name in @('X\marker.txt','Y\marker.txt')){
+        $target=Join-Path $protectedDirectory $name;$images=@($sample.Captures | ForEach-Object {$_.Images} | Where-Object {$_.Role -ceq 'Current' -and $_.Path -ieq $target})
+        if(-not $images.Count){throw 'R02 exact target raw image unavailable'}
+        foreach($image in $images){
+            $checks=Test-CachedImage $image $Baseline.Geometry $Expected ($Label+$name.Substring(0,1));$Trial.Assertions+=@($checks)
+            foreach($check in $checks){if($check.ContainsKey('ForbiddenByteCount')){$Trial.ForbiddenByteCount+=[long]$check.ForbiddenByteCount}}
+            $original=@($Baseline.Images | Where-Object {$_.Role -ceq 'Current' -and $_.Path -ieq $target})
+            if($original.Count -ne 1 -or $original[0].Identity.FileId -ine $image.Identity.FileId){throw 'R02 raw target file identity changed'}
+        }
+        foreach($uncached in @($false,$true)){
+            $reader=[StagedInvariant.Native]::Fresh($target,$uncached,$Context.Geometry.Alignment)
+            $good=$reader.Length -eq $Expected.Length -and $reader.Digest -ceq (Get-ActivationSha256 $Expected)
+            Add-ActivationAssertion $Trial ($Label+$name.Substring(0,1)+'Reader') $(if($good){'PASS'}else{'FAIL'}) 'Independent fresh and uncached readers must equal the exact baseline.' @{Path=$target;Unbuffered=$uncached;Result=$reader}
+        }
+    }
+}
+function Stop-R02AgentAtBarrier($Agent) {
+    Close-ActivationNotificationCapture
+    Stop-Service -Name $Agent.ServiceName -ErrorAction Stop
+    $deadline=[Diagnostics.Stopwatch]::GetTimestamp()+[long](30*[Diagnostics.Stopwatch]::Frequency)
+    do{$service=Get-CimInstance Win32_Service -Filter "Name='SafeUploadAgent'";if($service.State -ceq 'Stopped' -and $service.ProcessId -eq 0 -and $Agent.Process.HasExited){break};Start-Sleep -Milliseconds 100}while([Diagnostics.Stopwatch]::GetTimestamp() -lt $deadline)
+    if($service.State -cne 'Stopped' -or $service.ProcessId -ne 0 -or -not $Agent.Process.HasExited){throw 'R02 coordinated service stop timeout'}
+    $state.AgentServiceStarted=$false;Save-State $state $statePath
+    return @{State=$service.State;ProcessId=$service.ProcessId;OldPid=$Agent.Process.Id;OldProcessExited=$Agent.Process.HasExited;Qpc=[Diagnostics.Stopwatch]::GetTimestamp()}
+}
+function Invoke-R02Observation {
+    $script:ActivationNotificationHistory=@();$script:ActivationObservedPrematureReady=@();$script:ActivationHolderLive=$false;$script:ActivationCandidateGeneration=$null
+    $context=$null;$agent=$null;$actor=$null;$baseline=$null;$traceEnabled=$false
+    $trial=[ordered]@{Errors=@();Assertions=@();Operations=@();Samples=@();Reasons=@();Verdict='INCONCLUSIVE';ForbiddenByteCount=$null}
+    $x=Join-Path $state.R02ScopeX 'marker.txt';$y=Join-Path $state.R02ScopeY 'marker.txt'
+    try{
+        Assert-Hash $installedDriver $ExpectedFeatureSha256
+        if((Get-BootId) -ceq $state.PrepareBootId -or (Get-ItemProperty "HKLM:\$registryService").Start -ne 0 -or @(Get-Process SafeUpload.Agent.Service -ErrorAction SilentlyContinue).Count){throw 'R02 requires a new boot-start boot with absent agent'}
+        if($Mode -ceq 'runtime-verifier'){& verifier.exe /volatile /flags 0x13B /adddriver SafeUpload.sys | Out-Host;if($LASTEXITCODE -ne 0){throw 'Runtime Verifier arm failed'}}
+        $trial.VerifierBefore=Get-VerifierEvidence 'r02-before' -RequireMode;$ready=Get-Readiness;$boot=Get-BootPolicyReadback
+        if($ready.VolumeGuid -cne $state.VolumeGuid -or $boot.RecordBase64 -cne $state.ExpectedBootRecord -or $boot.PendingPresent -or $boot.PrefixCount -ne 1 -or -not $boot.AclValid){throw 'R02 exact X-only boot policy mismatch'}
+        $context=Open-InvariantObserver $ready.VolumeGuid $protectedDirectory (Join-Path $evidenceDirectory 'raw') $CaseId
+        if($context.Status -cne 'OK'){throw 'R02 raw observer unavailable'}
+        $process=Get-CimInstance Win32_Process -Filter ('ProcessId='+$PID);$owner=Invoke-CimMethod -InputObject $process -MethodName GetOwnerSid
+        if($owner.ReturnValue -ne 0 -or $owner.Sid -cne 'S-1-5-18' -or $owner.Sid -cne $context.ObserverSid){throw 'R02 SYSTEM observer provenance mismatch'}
+        $trial.Platform=@{Build=$context.Build;BootId=$context.BootId;ObserverPid=$PID;ObserverSid=$owner.Sid;ObserverProcess=@{Pid=$PID;OwnerSid=$owner.Sid;SessionId=$process.SessionId;CommandLine=$process.CommandLine}}
+        Start-ScheduledTask -TaskName $writerTask;$actor=Get-ActivationActorIdentity;$trial.Actor=$actor;$trial.ActorProvenance=$actor
+        $holder=Publish-ActivationActorCommand $state 'create-holder' $null
+        if($holder.NativeCode -ne 0 -or -not $holder.HolderCreated -or $holder.SourceHandleClosed){throw 'R02 clean pre-scope physical H holder failed'}
+        $trial.HolderSetup=$holder;$script:ActivationHolderLive=$true;$trial.SetupCacheFlush=Flush-InvariantSetupVolume
+        $p=[Convert]::FromBase64String($state.BaselineBase64);$baseline=Capture-InvariantBaseline $context @('X\marker.txt','Y\marker.txt') @{'X\marker.txt'=$p;'Y\marker.txt'=$p}
+        if($baseline.Status -cne 'OK'){throw 'R02 raw baseline unavailable'}
+        $xId=[string](@($baseline.Images | Where-Object {$_.Role -ceq 'Current' -and $_.Path -ieq $x})[0].Identity.FileId)
+        $yId=[string](@($baseline.Images | Where-Object {$_.Role -ceq 'Current' -and $_.Path -ieq $y})[0].Identity.FileId);$ntY=Get-NtDevicePath $y
+        $trial.ForbiddenByteCount=[long]0;Add-R02Sample $trial $context $baseline $p 'R02BeforeApply'
+        $trial.Assertions+=Test-R02Protected (Get-ActivationEntry $x 'r02-x-before').Record $xId
+        $before=Get-ActivationEpochStatus 'r02-before-apply';$trial.TaintCounterBefore=Get-ActivationTaintCounters 'r02-before'
+        $policy=Get-Content -LiteralPath $policyPath -Raw | ConvertFrom-Json
+        if(@($policy.monitoredScopes.destinationPaths).Count -ne 1 -or $policy.monitoredScopes.destinationPaths[0] -ine $state.R02ScopeX){throw 'R02 initial service policy is not X-only'}
+        $policy.version=[int]$policy.version+1;$policy.monitoredScopes.destinationPaths=@($state.R02ScopeX,$state.R02ScopeY)
+        Write-DurableFile $policyPath ($policy | ConvertTo-Json -Depth 8)
+        $agent=Start-StagedTestAgent $serviceDirectory (Join-Path $evidenceDirectory 'r02-agent') -Arguments '--Diagnostics:StagedProofProxy=true'
+        $state.AgentServiceStarted=$true;$state.AgentServiceCreated=$agent.ServiceCreated;$state.AgentOriginalService=$agent.OriginalService;Save-State $state $statePath
+        $deadline=[Diagnostics.Stopwatch]::GetTimestamp()+[long](60*[Diagnostics.Stopwatch]::Frequency)
+        $wantedPrefixes=@((Get-NtDevicePath $state.R02ScopeX),(Get-NtDevicePath $state.R02ScopeY));$applied=$false;$applyError=$null
+        do{try{$epoch=Get-ActivationEpochStatus 'r02-applied';$committed=Get-BootPolicyReadback
+            $applied=$epoch.policyGeneration -gt $before.policyGeneration -and $epoch.epochGeneration -gt $before.epochGeneration -and $epoch.flags -eq 0 -and $epoch.activeCallbacks -eq 0 -and -not $committed.PendingPresent -and $committed.AclValid -and
+                ($committed.Prefixes -join ';') -ieq ($wantedPrefixes -join ';')
+            if($applied){break}
+        }catch{$applyError=$_.Exception.Message};Start-Sleep -Milliseconds 100}while([Diagnostics.Stopwatch]::GetTimestamp() -lt $deadline)
+        Add-ActivationAssertion $trial 'R02PolicyFullyAppliedBeforeStop' $(if($applied){'PASS'}else{'FAIL'}) 'Real service policy startup advanced authenticated policy/epoch and durably finalized X+Y before the coordinated stop.' @{Before=$before;After=$epoch;BootPolicy=$committed;LastError=$applyError}
+        if(-not $applied){throw 'R02 policy apply/finalization timeout'}
+        $generation=[uint32]$epoch.policyGeneration;$script:ActivationCandidateGeneration=$generation
+        $trial.Assertions+=Test-R02Held (Get-ActivationPendingEntry $ntY $yId 'r02-before-stop-y' $y) $yId $ntY $actor.Pid $generation
+        $pending=Wait-ActivationProductStatus 'Pending' $generation 45 'r02-before-stop';$trial.Assertions+=Test-R02Pending $pending $generation
+        $trial.ServiceBefore=Get-ServiceSnapshot 'r02-before-stop' -JournalOnly
+        Add-R02Sample $trial $context $baseline $p 'R02AppliedHeld'
+        if(@($trial.Assertions | Where-Object Verdict -cne 'PASS').Count){throw 'R02 coordinated stop prerequisites failed'}
+        $trial.StopBarrier=Stop-R02AgentAtBarrier $agent
+        Add-ActivationAssertion $trial 'R02AgentStoppedAtAppliedHeldBarrier' 'PASS' 'SCM Stopped, PID zero and original process exited after applied policy and exact held Y evidence.' $trial.StopBarrier
+        $trial.Assertions+=Test-R02Protected (Get-ActivationEntry $x 'r02-x-down').Record $xId
+        foreach($path in @($x,$y)){$probe=Publish-ActivationActorCommand $state 'r02-probe-path' @{Path=$path};$trial.Operations+= $probe
+            Add-ActivationAssertion $trial 'R02DownNewWritableOpenRefused' $(if($probe.NativeCode -eq 5){'PASS'}else{'FAIL'}) 'The standard actor attempts a fresh writable open in X and Y while the service is stopped; both require Win32 5.' $probe}
+        Add-R02Sample $trial $context $baseline $p 'R02ServiceDown'
+        $null=Invoke-ActivationInspector '--admission-trace-clear' (Join-Path $evidenceDirectory 'r02-trace-clear');$null=Invoke-ActivationInspector '--admission-trace-enable-sections-lifetime' (Join-Path $evidenceDirectory 'r02-trace-enable');$traceEnabled=$true
+        Start-Service -Name SafeUploadAgent
+        $deadline=[Diagnostics.Stopwatch]::GetTimestamp()+[long](30*[Diagnostics.Stopwatch]::Frequency)
+        do{$svc=Get-CimInstance Win32_Service -Filter "Name='SafeUploadAgent'";if($svc.State -ceq 'Running' -and $svc.ProcessId -ne 0){break};Start-Sleep -Milliseconds 100}while([Diagnostics.Stopwatch]::GetTimestamp() -lt $deadline)
+        if($svc.State -cne 'Running' -or $svc.ProcessId -eq 0){throw 'R02 service restart timeout'}
+        $agent.Process=Get-Process -Id ([int]$svc.ProcessId);$state.AgentServiceStarted=$true;Save-State $state $statePath
+        $acceptedGeneration=$generation;$restartApplied=$false;$deadline=[Diagnostics.Stopwatch]::GetTimestamp()+[long](60*[Diagnostics.Stopwatch]::Frequency)
+        do{try{$epoch=Get-ActivationEpochStatus 'r02-restarted';$committed=Get-BootPolicyReadback
+            if($epoch.policyGeneration -ge $acceptedGeneration -and $epoch.flags -eq 0 -and $epoch.activeCallbacks -eq 0 -and -not $committed.PendingPresent -and $committed.AclValid -and
+                ($committed.Prefixes -join ';') -ieq ($wantedPrefixes -join ';')){
+                $pending=Get-ActivationCurrentProductStatus 'r02-restarted-held' 3000
+                if($pending.Status -ceq 'OK' -and $pending.Value.protectionActive -eq $true -and $pending.Value.nativePolicyGeneration -eq $epoch.policyGeneration -and $pending.Value.admissionCoverage -ceq 'Pending'){$restartApplied=$true;break}
+            }
+        }catch{$applyError=$_.Exception.Message};Start-Sleep -Milliseconds 100}while([Diagnostics.Stopwatch]::GetTimestamp() -lt $deadline)
+        if(-not $restartApplied){throw ('R02 restarted X+Y policy/current Pending status unavailable: '+$applyError)}
+        $generation=[uint32]$epoch.policyGeneration;$script:ActivationCandidateGeneration=$generation;$trial.Assertions+=Test-R02Pending $pending $generation
+        $trial.Assertions+=Test-R02Held (Get-ActivationPendingEntry $ntY $yId 'r02-restarted-y' $y) $yId $ntY $actor.Pid $generation
+        Add-R02Sample $trial $context $baseline $p 'R02RestartedHeld'
+        $heldBeforeRelease=Test-R02Held (Get-ActivationPendingEntry $ntY $yId 'r02-before-release-y' $y) $yId $ntY $actor.Pid $generation
+        $trial.Assertions+= $heldBeforeRelease
+        $pendingBeforeRelease=Test-R02Pending (Get-ActivationCurrentProductStatus 'r02-before-release' 3000) $generation;$trial.Assertions+= $pendingBeforeRelease
+        if($heldBeforeRelease.Verdict -cne 'PASS' -or $pendingBeforeRelease.Verdict -cne 'PASS'){throw 'R02 exact held/Pending proof failed before release'}
+        Close-ActivationNotificationCapture
+        if(@($script:ActivationNotificationHistory | Where-Object {$_.HolderLive -and $_.Value.admissionCoverage -ceq 'Ready'}).Count){throw 'R02 observed Ready while the holder lived'}
+        $release=Publish-ActivationActorCommand $state 'release-holder' $null;$trial.LastHolderRelease=$release;$script:ActivationHolderLive=$false
+        if($release.NativeCode -ne 0 -or -not $release.HolderReleased){throw 'R02 final H release failed'}
+        $deadline=[Diagnostics.Stopwatch]::GetTimestamp()+[long](90*[Diagnostics.Stopwatch]::Frequency)
+        do{$protected=Get-ActivationEntry $y 'r02-promoted';$free=Test-R02Protected $protected.Record $yId -RequireFree;if($free.Verdict -ceq 'PASS'){break};Start-Sleep -Milliseconds 100}while([Diagnostics.Stopwatch]::GetTimestamp() -lt $deadline)
+        $trial.Assertions+= $free
+        $trace=ConvertFrom-ActivationPromotionTrace (Invoke-ActivationInspector '--promotion-trace' (Join-Path $evidenceDirectory 'r02-promotion-trace')) $yId
+        $edges=@($trace.Entries | Where-Object {$_.stateBefore -eq 1 -and $_.stateAfter -eq 2})
+        $edgeGood=$edges.Count -eq 1 -and $edges[0].Hsample -eq 0 -and $edges[0].Wsample -eq 0 -and $edges[0].Tsample -eq 0 -and $edges[0].CforSopSample -eq 0 -and $edges[0].unknownReasonsSample -eq 0
+        Add-ActivationAssertion $trial 'R02PromotionDrainedW' $(if($edgeGood){'PASS'}else{'FAIL'}) 'Loss-free same-file promotion edge records drained H/W/T/C and no uncertainty; registry separately proves S=NO/Free.' $trace
+        if($free.Verdict -cne 'PASS' -or -not $edgeGood){throw 'R02 final Free/Protected proof failed'}
+        $trial.ServiceReady=Wait-ActivationProductStatus 'Ready' $generation 60 'r02-final-ready'
+        Add-ActivationAssertion $trial 'R02ReadyAfterRelease' 'PASS' 'Authenticated Ready at the restarted generation follows holder release and same-ID Free/Protected.' $trial.ServiceReady
+        $trial.Assertions+=Test-R02Protected (Get-ActivationEntry $x 'r02-x-final').Record $xId
+        Add-R02Sample $trial $context $baseline $p 'R02FinalProtected'
+        $trial.ServiceAfter=Get-ServiceSnapshot 'r02-final' -JournalOnly;$delta=Test-ServiceJournalDelta $trial.ServiceBefore $trial.ServiceAfter $true
+        Add-ActivationAssertion $trial 'R02NoHolderPublication' $(if($delta.Complete -and -not $delta.NewEntries.Count -and -not $delta.Findings.Count){'PASS'}else{'FAIL'}) 'Clean physical holder and refused opens create no new transfer or publication through restart.' $delta
+        $trial.VerifierAfter=Get-VerifierEvidence 'r02-after' -RequireMode
+    }catch{$trial.Errors+=Get-ErrorChain $_.Exception;Add-ActivationAssertion $trial 'R02Execution' 'INCONCLUSIVE' ($_.Exception.Message+'; '+$_.ScriptStackTrace) $null}
+    finally{
+        try{Close-ActivationNotificationCapture}catch{$trial.Errors+=Get-ErrorChain $_.Exception}
+        $trial.NotificationStatusHistory=@($script:ActivationNotificationHistory)
+        Add-ActivationAssertion $trial 'R02NoObservedReadyWhileHolderLives' $(if(@($trial.NotificationStatusHistory | Where-Object {$_.HolderLive -and $_.Value.admissionCoverage -ceq 'Ready'}).Count){'FAIL'}elseif($trial.LastHolderRelease){'PASS'}else{'INCONCLUSIVE'}) 'All authenticated current status frames collected at the applied and restarted holder checkpoints are non-Ready.' $trial.NotificationStatusHistory
+        if($actor){try{$null=Publish-ActivationActorCommand $state 'exit-worker' $null;$trial.ActorTaskCompletion=Wait-TaskCompletion $writerTask (Join-Path $actorDirectory 'completion.clixml') $state.WriterToken 45}catch{$trial.Errors+=Get-ErrorChain $_.Exception}}
+        if($trial.TaintCounterBefore){try{$trial.TaintCounterWindow=Get-ActivationTaintCounterDelta $trial.TaintCounterBefore (Get-ActivationTaintCounters 'r02-after')}catch{$trial.Errors+=Get-ErrorChain $_.Exception}}
+        if($traceEnabled){try{$null=Invoke-ActivationInspector '--admission-trace-disable' (Join-Path $evidenceDirectory 'r02-trace-disable')}catch{$trial.Errors+=Get-ErrorChain $_.Exception}}
+        if($agent){try{
+            $cleanupService=Get-CimInstance Win32_Service -Filter "Name='SafeUploadAgent'"
+            if($cleanupService -and $cleanupService.ProcessId -gt 0){$agent.Process=Get-Process -Id ([int]$cleanupService.ProcessId)}
+            Stop-StagedTestAgent $agent;$state.AgentServiceStarted=$false;Save-State $state $statePath
+        }catch{$trial.Errors+=Get-ErrorChain $_.Exception}}
+        if($context -and $context.Status -ceq 'OK'){$trial.Disposal=Close-InvariantObserver $context}
+        $trial.Baseline=$baseline
+        $trial.ExpectedTimeline=@{WriterIdentities=@($actor);Points=@($row.ExpectedTimeline);ExternalEvidence=@{Build=$trial.Platform.Build;PrepareBootId=$state.PrepareBootId;ActiveBootId=$context.BootId;ObserverPid=$PID;ObserverSid=$trial.Platform.ObserverSid;ObserverProcess=$trial.Platform.ObserverProcess;ActorProvenance=$trial.ActorProvenance}}
+        Add-ActivationAssertion $trial 'LiveTaintFlags' 'INCONCLUSIVE' 'Live flags unavailable; existing Inspector counter window retained.' $trial.TaintCounterWindow
+        Add-ActivationAssertion $trial 'NeverReadyWholeHolderInterval' 'INCONCLUSIVE' 'Current authenticated statuses are checkpoint evidence; loss-detecting per-file whole-interval readiness events are deferred.' $null
+        Add-ActivationAssertion $trial 'R02PublicationAndTemporalCoverage' 'INCONCLUSIVE' 'Complete raw/fresh/uncached checkpoint images do not replace the deferred continuous mutation ledger.' $null
+        $trial.Reasons=@('R02 core stops after finalized policy while a clean physical Y holder lives; all earlier/during-policy stop variants deferred.')
+        $trial.Verdict=if(@($trial.Assertions | Where-Object Verdict -ceq 'FAIL').Count){'FAIL'}else{'INCONCLUSIVE'};Save-State $trial $trialPath
+    }
+}
+
+# Disposable one-boot interactive actor. No LSA secret is created.
+function Initialize-InvariantWts {
+    if('SUInvariantWts' -as [type]){return}
+    Add-Type -TypeDefinition @'
+using System;using System.Collections.Generic;using System.ComponentModel;using System.Runtime.InteropServices;using System.Security.Principal;
+public sealed class SUInvariantSession { public int SessionId;public int State;public string User;public string Domain;public string Sid;public int TokenSessionId; }
+public static class SUInvariantWts {
+ [StructLayout(LayoutKind.Sequential)] struct Session { public int Id;public IntPtr Name;public int State; }
+ [DllImport("wtsapi32.dll",SetLastError=true)] static extern bool WTSEnumerateSessionsW(IntPtr server,int reserved,int version,out IntPtr sessions,out int count);
+ [DllImport("wtsapi32.dll",SetLastError=true)] static extern bool WTSQuerySessionInformationW(IntPtr server,int session,int kind,out IntPtr value,out int bytes);
+ [DllImport("wtsapi32.dll",SetLastError=true)] static extern bool WTSQueryUserToken(uint session,out IntPtr token);
+ [DllImport("wtsapi32.dll",SetLastError=true)] static extern bool WTSLogoffSession(IntPtr server,int session,bool wait);
+ [DllImport("wtsapi32.dll")] static extern void WTSFreeMemory(IntPtr value);
+ [DllImport("kernel32.dll")] static extern bool CloseHandle(IntPtr value);
+ [DllImport("advapi32.dll",SetLastError=true)] static extern bool GetTokenInformation(IntPtr token,int kind,out int value,int bytes,out int needed);
+ static string Query(int id,int kind) { IntPtr p;int bytes;if(!WTSQuerySessionInformationW(IntPtr.Zero,id,kind,out p,out bytes))throw new Win32Exception(Marshal.GetLastWin32Error());try{string text=Marshal.PtrToStringUni(p);return text==null?"":text;}finally{WTSFreeMemory(p);} }
+ public static SUInvariantSession[] Read() {
+  IntPtr p;int count;if(!WTSEnumerateSessionsW(IntPtr.Zero,0,1,out p,out count))throw new Win32Exception(Marshal.GetLastWin32Error());
+  try { if(count<0 || count>256)throw new InvalidOperationException("WTS session count invalid");var list=new List<SUInvariantSession>();int size=Marshal.SizeOf(typeof(Session));
+   for(int i=0;i<count;i++){var s=(Session)Marshal.PtrToStructure(IntPtr.Add(p,i*size),typeof(Session));if(s.Id<=0 || s.State==6)continue;var r=new SUInvariantSession{SessionId=s.Id,State=s.State,User=Query(s.Id,5),Domain=Query(s.Id,7),Sid="",TokenSessionId=-1};
+    IntPtr token;if(WTSQueryUserToken((uint)s.Id,out token)){try{using(var identity=new WindowsIdentity(token)){r.Sid=identity.User.Value;}int actual,needed;if(!GetTokenInformation(token,12,out actual,4,out needed))throw new Win32Exception(Marshal.GetLastWin32Error());r.TokenSessionId=actual;}finally{CloseHandle(token);}}
+    list.Add(r);
+   }return list.ToArray();
+  }finally{WTSFreeMemory(p);}
+ }
+ public static void Logoff(int id){if(!WTSLogoffSession(IntPtr.Zero,id,false))throw new Win32Exception(Marshal.GetLastWin32Error());}
+}
+'@
+}
+function Set-InvariantActorAutoLogon([string]$Password) {
+    $key='HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon'
+    $names=@('AutoAdminLogon','DefaultUserName','DefaultDomainName','DefaultPassword','AutoLogonCount')
+    $existing=(Get-Item -LiteralPath $key).GetValueNames()
+    if(@($names | Where-Object {$existing -contains $_}).Count){throw 'Pre-existing Winlogon autologon values; preserve them, do not overwrite'}
+    # Persist ownership before any value is set, so partial Prepare failure rolls back.
+    $state.ActorAutoLogonValues=$names;Save-State $state $statePath
+    $values=@{AutoAdminLogon='1';DefaultUserName=$state.ActorUser;DefaultDomainName=$env:COMPUTERNAME;DefaultPassword=$Password}
+    foreach($name in $values.Keys){$null=New-ItemProperty -LiteralPath $key -Name $name -Value $values[$name] -PropertyType String -Force}
+    $null=New-ItemProperty -LiteralPath $key -Name AutoLogonCount -Value 1 -PropertyType DWord -Force
+}
+function Get-InvariantActorSession {
+    Initialize-InvariantWts
+    $deadline=[Diagnostics.Stopwatch]::GetTimestamp()+[long](120*[Diagnostics.Stopwatch]::Frequency)
+    do{$sessions=@([SUInvariantWts]::Read() | Where-Object {$_.User -ieq $state.ActorUser -and $_.Domain -ieq $env:COMPUTERNAME})
+        if($sessions.Count -eq 1 -and $sessions[0].State -eq 0 -and $sessions[0].SessionId -gt 0 -and $sessions[0].Sid -ceq $state.ActorSid -and $sessions[0].TokenSessionId -eq $sessions[0].SessionId){
+            $state.ActorInteractiveSession=$sessions[0];Save-State $state $statePath;return $sessions[0]
+        };Start-Sleep -Milliseconds 200
+    }while([Diagnostics.Stopwatch]::GetTimestamp() -lt $deadline)
+    throw 'Disposable actor did not own one active WTS session with matching WTSQueryUserToken SID/session within 120s'
+}
+function Test-InvariantInteractiveActor($Session,$Actor) {
+    $good=$Session.State -eq 0 -and $Session.SessionId -gt 0 -and $Session.TokenSessionId -eq $Session.SessionId -and
+        -not [string]::IsNullOrWhiteSpace($Session.Sid) -and $Session.Sid -ceq $Actor.Sid -and $Session.SessionId -eq $Actor.SessionId -and
+        $Actor.Elevated -eq $false -and $Actor.IsAdministrator -eq $false -and $Actor.OwnerSid -ceq $Session.Sid
+    return @{Name='InteractiveActorWtsBinding';Verdict=$(if($good){'PASS'}else{'FAIL'});Reason='OS-verified limited actor PID/token must match the active owning WTSQueryUserToken SID and session.';Evidence=@{Session=$Session;Actor=$Actor}}
+}
+function Restore-InvariantActorAutoLogon {
+    if(-not $state.ActorAutoLogonValues){return}
+    # Remove credentials even if WTS logoff fails; preserve failure in restoration.
+    $key='HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon'
+    foreach($name in $state.ActorAutoLogonValues){Remove-ItemProperty -LiteralPath $key -Name $name -ErrorAction SilentlyContinue}
+    if(@($state.ActorAutoLogonValues | Where-Object {(Get-Item -LiteralPath $key).GetValueNames() -contains $_}).Count){throw 'Owned autologon value residue'}
+    Initialize-InvariantWts
+    $sessions=@([SUInvariantWts]::Read() | Where-Object {$_.User -ieq $state.ActorUser -and $_.Domain -ieq $env:COMPUTERNAME})
+    foreach($session in $sessions){[SUInvariantWts]::Logoff($session.SessionId)}
+    $deadline=[Diagnostics.Stopwatch]::GetTimestamp()+[long](60*[Diagnostics.Stopwatch]::Frequency)
+    do{$remaining=@([SUInvariantWts]::Read() | Where-Object {$_.User -ieq $state.ActorUser -and $_.Domain -ieq $env:COMPUTERNAME});if(-not $remaining.Count){break};Start-Sleep -Milliseconds 200}while([Diagnostics.Stopwatch]::GetTimestamp() -lt $deadline)
+    if($remaining.Count){throw 'Owned interactive actor WTS session survived logoff'}
+    Save-State @{ValuesRemoved=@($state.ActorAutoLogonValues);SessionIdsLoggedOff=@($sessions.SessionId);NoSessionRemains=$true;NoLsaSecretCreated=$true;Qpc=[Diagnostics.Stopwatch]::GetTimestamp()} (Join-Path $evidenceDirectory 'interactive-restoration.clixml')
+}
+function Invoke-InteractiveCachedObservation {
+    $session=$null;$failure=$null
+    try{$session=Get-InvariantActorSession}catch{$failure=Get-ErrorChain $_.Exception}
+    if($failure){Save-State @{Errors=@($failure);Assertions=@(@{Name='InteractiveActorWtsBinding';Verdict='INCONCLUSIVE';Reason='Interactive boot prerequisite unavailable'});Verdict='INCONCLUSIVE';ForbiddenByteCount=$null} $trialPath;return}
+    Invoke-CachedObservation
+    $trial=Load-State $trialPath
+    $actor=$trial.Actor
+    $actor | Add-Member NoteProperty OwnerSid $trial.ActorProvenance.OwnerSid -Force
+    $trial.Assertions+=Test-InvariantInteractiveActor $session $actor
+    $trial.InteractiveSession=$session
+    if(@($trial.Assertions | Where-Object Verdict -ceq 'FAIL').Count){$trial.Verdict='FAIL'}
+    Save-State $trial $trialPath
+}
+
+function Initialize-B02Fixture([int]$Size) {
+    $b=[Text.Encoding]::ASCII.GetBytes(('B02 preboot B '+$RunName+"`n").PadRight($Size,'B'))
+    $v1=[Text.Encoding]::ASCII.GetBytes(('B02 v1 '+$RunName+"`nCPF 529.982.247-25`n").PadRight($Size,'U'))
+    $v2=[Text.Encoding]::ASCII.GetBytes(('B02 v2 '+$RunName+"`nCPF 529.982.247-25`n").PadRight($Size,'V'))
+    if($b.Length -ne $Size -or $v1.Length -ne $Size -or $v2.Length -ne $Size){throw 'B02 fixture length mismatch'}
+    $state.B02Images=@{B=[Convert]::ToBase64String($b);V1=[Convert]::ToBase64String($v1);V2=[Convert]::ToBase64String($v2)}
+    $stream=[IO.FileStream]::new((Join-Path $protectedDirectory 'cached.txt'),[IO.FileMode]::CreateNew,[IO.FileAccess]::Write,[IO.FileShare]::Read,4096,[IO.FileOptions]::WriteThrough)
+    try{$stream.Write($b,0,$b.Length);$stream.Flush($true)}finally{$stream.Dispose()}
+}
+function Get-B02WriterBody {
+    $body=Get-ActivatingWriterBody
+    $native=@'
+ public static int B02OverwriteHeld(string path,byte[] bytes,out long written) {
+  written=0;if(FileHandle!=new IntPtr(-1))return 6;
+  FileHandle=CreateFileW(path,0xC0000000u,7,IntPtr.Zero,5,0x80,IntPtr.Zero);
+  if(FileHandle==new IntPtr(-1))return Error();uint count;
+  if(!WriteFile(FileHandle,bytes,(uint)bytes.Length,out count,IntPtr.Zero))return Error();
+  written=count;if(count!=bytes.Length)return 29;return FlushHolderFile();
+ }
+ [DllImport("kernel32.dll",SetLastError=true)] public static extern bool GetNamedPipeServerProcessId(SafePipeHandle h,out uint pid);
+'@
+    $nativeAnchor=' public static int ReleaseHolder() {'
+    $profile=@'
+ $actor.Profile=[Environment]::GetFolderPath([Environment+SpecialFolder]::UserProfile)
+ if([string]::IsNullOrWhiteSpace($actor.Profile)){throw 'Interactive actor profile unavailable'}
+ $handBackRoot=Join-Path $actor.Profile 'SafeUpload\_bloqueados'
+ function Get-B02OwnerFiles {
+  $files=@();if(Test-Path -LiteralPath $handBackRoot){foreach($file in @(Get-ChildItem -LiteralPath $handBackRoot -Force)){
+   if($file.PSIsContainer){throw 'Unexpected hand-back subdirectory'}
+   $files+=@{Path=$file.FullName;Length=$file.Length;Sha256=(Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash}
+  }};return ,$files
+ }
+ $actor.HandBackBefore=Get-B02OwnerFiles
+'@
+    $identityAnchor=" Save-ActivationActorState `$actor '__IDENTITY__' -New"
+    $branch=@'
+    'b02-overwrite-held' {
+     $bytes=[Convert]::FromBase64String($command.PayloadBase64);$written=[long]0
+     $result.NativeCode=[SUActivationNative]::B02OverwriteHeld($config.Target,$bytes,[ref]$written);$result.BytesWritten=$written
+     $result.HolderCreated=($result.NativeCode -eq 0);if($result.HolderCreated){$result.PrivateSha256=[SUActivationNative]::HolderDigest($bytes.Length)}
+    }
+    'b02-handback' {$result.Files=Get-B02OwnerFiles;$result.NativeCode=0}
+    'b02-justify' {
+     $pipe=[IO.Pipes.NamedPipeClientStream]::new('.','SafeUpload.Agent.Justification',[IO.Pipes.PipeDirection]::InOut,[IO.Pipes.PipeOptions]::Asynchronous)
+     $reader=$null;$writer=$null;$read=$null
+     try{
+      $pipe.Connect(3000);$serverPid=[uint32]0
+      if(-not [SUActivationNative]::GetNamedPipeServerProcessId($pipe.SafePipeHandle,[ref]$serverPid) -or $serverPid -ne [uint32]$command.ServerPid){throw 'Justification pipe server does not match the OS-verified product service PID'}
+      $result.ServerPid=$serverPid;$result.TransferId=[string]$command.TransferId
+      $encoding=[Text.UTF8Encoding]::new($false);$writer=[IO.StreamWriter]::new($pipe,$encoding,1024,$true);$writer.AutoFlush=$true
+      $line=@{eventId=[string]$command.TransferId;justification='SafeUpload harness exact-version core'} | ConvertTo-Json -Compress
+      $write=$writer.WriteLineAsync($line);if(-not $write.Wait(5000)){throw 'Justification request write timeout'};$write.GetAwaiter().GetResult()
+      $reader=[IO.StreamReader]::new($pipe,$encoding,$false,1024,$true);$read=$reader.ReadLineAsync()
+      if(-not $read.Wait(5000)){throw 'Justification response timeout'};$result.Reply=$read.GetAwaiter().GetResult()
+      if($result.Reply -cnotin @('accepted','rejected')){throw 'Malformed real justification protocol reply'};$result.NativeCode=0
+     }finally{$pipe.Dispose();if($read -and -not $read.IsCompleted){try{[void]$read.Wait(1000)}catch{}};if($read -and -not $read.IsCompleted){throw 'Justification read did not join after pipe close'};if($reader){$reader.Dispose()};if($writer){$writer.Dispose()}}
+    }
+'@
+    $anchor="    default {throw ('Unknown actor action: '+`$command.Action)}"
+    foreach($required in @($nativeAnchor,$identityAnchor,$anchor)){if(-not $body.Contains($required)){throw 'B02 actor template anchor missing'}}
+    return $body.Replace($nativeAnchor,($native+"`n"+$nativeAnchor)).Replace($identityAnchor,($profile+"`n"+$identityAnchor)).Replace($anchor,($branch+"`n"+$anchor))
+}
+function Get-B02Journal($Trial,$Actor,[string]$Tag,[string[]]$Exclude=@()) {
+    $poll=Get-CachedJournalObservation $Tag $Actor @((Join-Path $protectedDirectory 'cached.txt')) $Exclude;$Trial.JournalSnapshots+= $poll.Snapshot
+    if($poll.Status -cne 'OK' -or $poll.Entries.Count -ne 1){throw ('B02 needs one exact actor transfer: '+($poll.Errors | Out-String))}
+    $entry=$poll.Entries[0];$manifest=ConvertFrom-ServiceJournalRecord $entry.Record
+    $entry | Add-Member NoteProperty Manifest $manifest.Entry
+    return $entry
+}
+function Wait-B02Terminal($Trial,$Actor,[string]$Expected,[string[]]$Exclude=@()) {
+    $deadline=[Diagnostics.Stopwatch]::GetTimestamp()+[long](120*[Diagnostics.Stopwatch]::Frequency);$n=0
+    do{$entry=Get-B02Journal $Trial $Actor ('b02-'+$Expected+'-'+[guid]::NewGuid().ToString('N')) $Exclude
+        if($entry.StateName -ceq $Expected){return $entry}
+        if($entry.StateName -cin @('Blocked','Retained','Unsealed','Released') -and $entry.StateName -cne $Expected){throw ('B02 unexpected terminal '+$entry.StateName)}
+        Start-Sleep -Milliseconds 100;$n++
+    }while([Diagnostics.Stopwatch]::GetTimestamp() -lt $deadline)
+    throw ('B02 '+$Expected+' timeout')
+}
+function Test-B02Window($Entry,$Actor,[string]$Digest) {
+    $m=$Entry.Manifest
+    $good=$Entry.StateName -ceq 'Blocked' -and $Entry.SealedOnce -eq $true -and $Entry.Sha256Hex -ceq $Digest -and
+        $m.JustificationWindowClosed -eq $false -and $null -ne $m.JustificationExpiresAtUtc -and $m.BlockedPolicyVersion -gt 0 -and
+        $m.HandbackState -eq 2 -and $m.Sha256Hex -ceq $Digest -and -not [string]::IsNullOrWhiteSpace($m.HandbackPath) -and
+        $m.Transfer.SessionId -eq $Actor.SessionId -and $m.Transfer.RequestorSid -ceq $Actor.Sid -and $m.Transfer.ProcessId -eq $Actor.Pid
+    return @{Name='B02OwningSessionJustificationWindow';Verdict=$(if($good){'PASS'}else{'FAIL'});Reason='Authenticated Blocked manifest must bind exact digest/PID/SID/session, verified hand-back and an open product justification window.';Evidence=$Entry}
+}
+function Test-B02Versions($First,$Latest,[string]$Digest1,[string]$Digest2) {
+    $distinct=-not [string]::IsNullOrWhiteSpace($First.TransferId) -and -not [string]::IsNullOrWhiteSpace($Latest.TransferId) -and
+        $First.TransferId -ine $Latest.TransferId -and $First.DestinationGeneration -gt 0 -and $Latest.DestinationGeneration -gt $First.DestinationGeneration -and $Digest1 -cne $Digest2
+    $old=$First.StateName -ceq 'Blocked' -and $First.SealedOnce -eq $true -and $First.Sha256Hex -ceq $Digest1 -and ($First.History -join ',') -ceq 'Allocated,Sealed,Inspecting,Blocked'
+    $new=$Latest.StateName -ceq 'Released' -and $Latest.SealedOnce -eq $true -and $Latest.Sha256Hex -ceq $Digest2 -and
+        ($Latest.History -join ',') -ceq 'Allocated,Sealed,Inspecting,Blocked,Inspecting,Approved,Publishing,Released'
+    return ,@(@{Name='B02DistinctLatestGeneration';Verdict=$(if($distinct){'PASS'}else{'FAIL'});Reason='v2 is a distinct later destination generation and digest.'},
+        @{Name='B02StaleV1NeverPublished';Verdict=$(if($distinct -and $old){'PASS'}else{'FAIL'});Reason='v1 durable history stays exactly Blocked with its original digest; stale justification produces no inspection/approval/publication/release.';Evidence=$First},
+        @{Name='B02LatestV2ReleasedOnce';Verdict=$(if($distinct -and $new){'PASS'}else{'FAIL'});Reason='Latest exact v2 traverses Blocked -> fresh Inspecting -> Approved -> Publishing -> Released exactly once.';Evidence=$Latest})
+}
+function Test-B02Notifications($Proof,[string]$FirstId,[string]$LatestId,[int]$SessionId,[string]$Digest1,[string]$Digest2) {
+    $first=@($Proof.Emissions | ForEach-Object {$_.Entry} | Where-Object {$_.Kind -ceq 'Transfer' -and $_.TransferId -ieq $FirstId})
+    $latest=@($Proof.Emissions | ForEach-Object {$_.Entry} | Where-Object {$_.Kind -ceq 'Transfer' -and $_.TransferId -ieq $LatestId})
+    $blocked1=@($first | Where-Object Phase -ceq 'Blocked');$blocked2=@($latest | Where-Object Phase -ceq 'Blocked');$released=@($latest | Where-Object Phase -ceq 'Released')
+    $good=$Proof.Complete -eq $true -and $blocked1.Count -eq 1 -and $blocked2.Count -eq 1 -and $released.Count -eq 1 -and
+        @($first | Where-Object Phase -ceq 'Released').Count -eq 0 -and @(@($first)+@($latest) | Where-Object TargetSessionId -ne $SessionId).Count -eq 0
+    if($good){$good=$blocked1[0].Sha256Hex -ceq $Digest1 -and $blocked2[0].Sha256Hex -ceq $Digest2 -and $released[0].Sha256Hex -ceq $Digest2 -and
+        $blocked1[0].Sequence -lt $blocked2[0].Sequence -and $blocked2[0].Sequence -lt $released[0].Sequence}
+    return @{Name='B02ExactVersionNotifications';Verdict=$(if($good){'PASS'}elseif(-not $Proof.Complete){'INCONCLUSIVE'}else{'FAIL'});Reason='Authenticated complete real emission sequence binds owner session and v1 Blocked -> v2 Blocked -> one v2 Released, with exact digests and no v1 release.';Evidence=$Proof}
+}
+function Get-B02HandBack($Actor,$OwnerFiles,[string]$Digest,[int]$Length,[string]$Label) {
+    $evidenceDirectory=Join-Path $evidenceDirectory $Label;$null=New-Item -ItemType Directory -Path $evidenceDirectory
+    return Get-X01HandBack $Actor $OwnerFiles $Digest $Length
+}
+function Invoke-B02Observation {
+    $context=$null;$agent=$null;$actor=$null;$baseline=$null;$first=$null;$latest=$null;$readyEvent=$null
+    $trial=[ordered]@{Errors=@();Assertions=@();Operations=@();Samples=@();PublicReceipts=@();JournalSnapshots=@();Reasons=@();Verdict='INCONCLUSIVE';ForbiddenByteCount=$null}
+    try{
+        Assert-Hash $installedDriver $ExpectedFeatureSha256
+        if((Get-BootId) -ceq $state.PrepareBootId -or (Get-ItemProperty "HKLM:\$registryService").Start -ne 0 -or @(Get-Process SafeUpload.Agent.Service -ErrorAction SilentlyContinue).Count){throw 'B02 requires a new boot-start boot with initially absent agent'}
+        $session=Get-InvariantActorSession;$trial.InteractiveSession=$session
+        if($Mode -ceq 'runtime-verifier'){& verifier.exe /volatile /flags 0x13B /adddriver SafeUpload.sys | Out-Host;if($LASTEXITCODE -ne 0){throw 'Runtime Verifier arm failed'}}
+        $trial.VerifierBefore=Get-VerifierEvidence 'b02-before' -RequireMode;$ready=Get-Readiness;$boot=Get-BootPolicyReadback
+        if($ready.VolumeGuid -cne $state.VolumeGuid -or $boot.RecordBase64 -cne $state.ExpectedBootRecord -or $boot.PendingPresent -or -not $boot.AclValid){throw 'B02 exact boot policy mismatch'}
+        $readyEvent=[Threading.EventWaitHandle]::new($false,[Threading.EventResetMode]::ManualReset,'Global\SafeUploadServiceReady');[void]$readyEvent.Reset()
+        $agent=Start-StagedTestAgent $serviceDirectory (Join-Path $evidenceDirectory 'b02-agent') -Arguments '--Diagnostics:StagedProofProxy=true'
+        $state.AgentServiceStarted=$true;$state.AgentServiceCreated=$agent.ServiceCreated;$state.AgentOriginalService=$agent.OriginalService;Save-State $state $statePath
+        if(-not $readyEvent.WaitOne([TimeSpan]::FromSeconds(45))){throw 'B02 agent Ready timeout'}
+        $serverProcess=Get-CimInstance Win32_Process -Filter ('ProcessId='+$agent.Process.Id)
+        $serverOwner=Invoke-CimMethod -InputObject $serverProcess -MethodName GetOwnerSid
+        if($serverOwner.ReturnValue -ne 0 -or $serverOwner.Sid -cne 'S-1-5-18' -or $serverProcess.Name -cne 'SafeUpload.Agent.Service.exe'){throw 'B02 justification product server OS provenance mismatch'}
+        $trial.JustificationServerProvenance=@{Pid=$agent.Process.Id;OwnerSid=$serverOwner.Sid;CommandLine=$serverProcess.CommandLine}
+        $trial.TaintCounterBefore=Get-ActivationTaintCounters 'b02-before'
+        $context=Open-InvariantObserver $ready.VolumeGuid $protectedDirectory (Join-Path $evidenceDirectory 'raw') $CaseId
+        if($context.Status -cne 'OK'){throw 'B02 raw observer unavailable'}
+        $process=Get-CimInstance Win32_Process -Filter ('ProcessId='+$PID);$owner=Invoke-CimMethod -InputObject $process -MethodName GetOwnerSid
+        if($owner.ReturnValue -ne 0 -or $owner.Sid -cne 'S-1-5-18' -or $owner.Sid -cne $context.ObserverSid){throw 'B02 SYSTEM observer provenance mismatch'}
+        $trial.Platform=@{Build=$context.Build;BootId=$context.BootId;ObserverPid=$PID;ObserverSid=$owner.Sid;ObserverProcess=@{Pid=$PID;OwnerSid=$owner.Sid;SessionId=$process.SessionId;CommandLine=$process.CommandLine}}
+        Start-ScheduledTask -TaskName $writerTask;$actor=Get-ActivationActorIdentity
+        $identity=Wait-WriterIdentity (Join-Path $actorDirectory 'identity.clixml');$actor | Add-Member NoteProperty Profile $identity.Profile;$actor | Add-Member NoteProperty HandBackBefore @($identity.HandBackBefore)
+        $trial.Actor=$actor;$trial.ActorProvenance=$actor;$trial.Assertions+=Test-InvariantInteractiveActor $session $actor
+        if($trial.Assertions[-1].Verdict -cne 'PASS'){throw 'B02 interactive task token/session mismatch'}
+        $b=[Convert]::FromBase64String($state.B02Images.B);$v1=[Convert]::FromBase64String($state.B02Images.V1);$v2=[Convert]::FromBase64String($state.B02Images.V2)
+        $d1=Get-ActivationSha256 $v1;$d2=Get-ActivationSha256 $v2;$target=Join-Path $protectedDirectory 'cached.txt'
+        $baseline=Capture-InvariantBaseline $context @('marker.bin','cached.txt') @{'marker.bin'=[Convert]::FromBase64String($state.BaselineBase64);'cached.txt'=$b}
+        if($baseline.Status -cne 'OK'){throw 'B02 preboot raw B baseline unavailable'}
+        $trial.ForbiddenByteCount=[long]0;$trial.ServiceBefore=Get-ServiceSnapshot 'b02-before'
+        if($trial.ServiceBefore.Status -cne 'OK'){throw 'B02 initial authenticated service snapshot unavailable'}
+        $null=Add-X01PublicSample $trial $context $baseline $b $v2 $true 'B02BeforeWrites'
+        $writeStart=[Diagnostics.Stopwatch]::GetTimestamp()
+        $exclude=@();$handbacks=@();$priorFiles=@($actor.HandBackBefore)
+        foreach($version in @(@{Name='V1';Bytes=$v1;Digest=$d1},@{Name='V2';Bytes=$v2;Digest=$d2})){
+            $held=Publish-ActivationActorCommand $state 'b02-overwrite-held' @{PayloadBase64=[Convert]::ToBase64String($version.Bytes)};$trial.Operations+= $held
+            $good=$held.NativeCode -eq 0 -and $held.HolderCreated -and $held.BytesWritten -eq $version.Bytes.Length -and $held.PrivateSha256 -ceq $version.Digest
+            Add-ActivationAssertion $trial ('B02'+$version.Name+'PrivateOverwrite') $(if($good){'PASS'}else{'FAIL'}) 'Interactive standard actor uses native TRUNCATE_EXISTING/write/flush and reads its exact whole private image while the upper handle lives.' $held
+            if(-not $good){throw 'B02 private overwrite failed'}
+            $allocated=Get-B02Journal $trial $actor ('b02-held-'+$version.Name) $exclude
+            if($allocated.StateName -cne 'Allocated' -or $allocated.SealedOnce){throw 'B02 held mutable transfer was sealed early'}
+            $null=Add-X01PublicSample $trial $context $baseline $b $v2 $true ('B02'+$version.Name+'Held')
+            $close=Publish-ActivationActorCommand $state 'release-holder' $null;$trial.Operations+= $close
+            if($close.NativeCode -ne 0 -or -not $close.HolderReleased){throw 'B02 upper source close failed'}
+            $blocked=Wait-B02Terminal $trial $actor 'Blocked' $exclude
+            # Blocked state can precede hand-back completion/Remember. Wait for
+            # the authenticated manifest to expose its verified open window.
+            $deadline=[Diagnostics.Stopwatch]::GetTimestamp()+[long](15*[Diagnostics.Stopwatch]::Frequency)
+            do{$blocked=Get-B02Journal $trial $actor ('b02-window-'+[guid]::NewGuid().ToString('N')) $exclude;$window=Test-B02Window $blocked $actor $version.Digest;if($window.Verdict -ceq 'PASS'){break};Start-Sleep -Milliseconds 100}while([Diagnostics.Stopwatch]::GetTimestamp() -lt $deadline)
+            $window.Name='B02'+$version.Name+'OwningSessionWindow';$trial.Assertions+= $window
+            if($window.Verdict -cne 'PASS'){throw 'B02 real service could not bind owning session/open justification window'}
+            $null=Add-X01PublicSample $trial $context $baseline $b $v2 $true ('B02'+$version.Name+'Blocked')
+            $ownerFiles=Publish-ActivationActorCommand $state 'b02-handback' $null
+            $handbackActor=@{Sid=$actor.Sid;Profile=$actor.Profile;HandBackBefore=$priorFiles}
+            $h=Get-B02HandBack $handbackActor $ownerFiles.Files $version.Digest $version.Bytes.Length ('b02-handback-'+$version.Name)
+            foreach($check in $h.Assertions){$check.Name='B02'+$version.Name+$check.Name};$trial.Assertions+=@($h.Assertions);$handbacks+= $h
+            if(@($h.Assertions | Where-Object Verdict -cne 'PASS').Count){throw 'B02 exact snapshot hand-back failed'}
+            $priorFiles=@($ownerFiles.Files)
+            if($version.Name -ceq 'V1'){$first=$blocked;$exclude=@($first.TransferId)}else{$latest=$blocked}
+        }
+        $stale=Publish-ActivationActorCommand $state 'b02-justify' @{TransferId=$first.TransferId;ServerPid=$agent.Process.Id};$trial.StaleSubmission=$stale
+        Add-ActivationAssertion $trial 'B02RealStaleSubmissionRejected' $(if($stale.NativeCode -eq 0 -and $stale.Reply -ceq 'rejected'){ 'PASS' }else{ 'FAIL' }) 'The actual bidirectional justification pipe, authenticated to the service PID, rejects v1 from its owning interactive actor after v2 is Blocked.' $stale
+        if($stale.Reply -cne 'rejected'){throw 'B02 stale v1 justification was accepted'}
+        $first=Get-B02Journal $trial $actor 'b02-after-stale-v1' @($latest.TransferId);$latest=Get-B02Journal $trial $actor 'b02-after-stale-v2' @($first.TransferId)
+        if($first.StateName -cne 'Blocked' -or $latest.StateName -cne 'Blocked' -or @($first.History+$latest.History | Where-Object {$_ -cin @('Approved','Publishing','Released')}).Count){throw 'B02 stale request changed publication state'}
+        $null=Add-X01PublicSample $trial $context $baseline $b $v2 $true 'B02AfterStaleJustification'
+        # The next real protocol request is the only publication-authorizing action.
+        $accepted=Publish-ActivationActorCommand $state 'b02-justify' @{TransferId=$latest.TransferId;ServerPid=$agent.Process.Id};$trial.LatestSubmission=$accepted
+        Add-ActivationAssertion $trial 'B02RealLatestSubmissionAccepted' $(if($accepted.NativeCode -eq 0 -and $accepted.Reply -ceq 'accepted'){'PASS'}else{'FAIL'}) 'The same interactive actor submits v2 through the real justification protocol and receives accepted after audited publication.' $accepted
+        if($accepted.Reply -cne 'accepted'){throw 'B02 latest justification was rejected'}
+        $latest=Wait-B02Terminal $trial $actor 'Released' @($first.TransferId);$first=Get-B02Journal $trial $actor 'b02-final-v1' @($latest.TransferId)
+        $trial.Assertions+=Test-B02Versions $first $latest $d1 $d2
+        $final=Add-X01PublicSample $trial $context $baseline $b $v2 $false 'B02FinalReleased'
+        $checks=Test-X01PublicSequence $trial.PublicReceipts (Get-ActivationSha256 $b) $d2 $b.Length
+        foreach($check in $checks){$check.Name=$check.Name.Replace('X01','B02')};$trial.Assertions+=@($checks)
+        $listing=Test-X01FinalListing $final.Captures[-1] $baseline $target;$listing.Name='B02ExactlyOneFinalTarget';$trial.Assertions+= $listing
+        $fenceEnd=[Diagnostics.Stopwatch]::GetTimestamp();Start-Sleep -Milliseconds 1200
+        $trial.ServiceAfter=Get-ServiceSnapshot 'b02-after'
+        $fence=@{Complete=$true;BootId=$context.BootId;QpcFrequency=[Diagnostics.Stopwatch]::Frequency;ReleasedQpc=$writeStart;CompletedQpc=$fenceEnd}
+        $proof=Test-NotificationWindow $trial.ServiceBefore.Notifications $trial.ServiceAfter.Notifications $fence $true
+        $trial.Assertions+=Test-B02Notifications $proof $first.TransferId $latest.TransferId $actor.SessionId $d1 $d2
+        foreach($check in $trial.Assertions){if($check.Name -clike 'X01Public*'){$check.Name=$check.Name.Replace('X01Public','B02Public')}}
+        $trial.FirstVersion=$first;$trial.LatestVersion=$latest;$trial.HandBacks=$handbacks;$trial.VerifierAfter=Get-VerifierEvidence 'b02-after' -RequireMode
+    }catch{$trial.Errors+=Get-ErrorChain $_.Exception;Add-ActivationAssertion $trial 'B02Execution' 'INCONCLUSIVE' ($_.Exception.Message+'; '+$_.ScriptStackTrace) $null}
+    finally{
+        if($actor){try{$null=Publish-ActivationActorCommand $state 'exit-worker' $null;$trial.ActorTaskCompletion=Wait-TaskCompletion $writerTask (Join-Path $actorDirectory 'completion.clixml') $state.WriterToken 45}catch{$trial.Errors+=Get-ErrorChain $_.Exception}}
+        if($trial.TaintCounterBefore){try{$trial.TaintCounterWindow=Get-ActivationTaintCounterDelta $trial.TaintCounterBefore (Get-ActivationTaintCounters 'b02-after')}catch{$trial.Errors+=Get-ErrorChain $_.Exception}}
+        if($context -and $context.Status -ceq 'OK'){$trial.Disposal=Close-InvariantObserver $context}
+        if($readyEvent){$readyEvent.Dispose()}
+        if($agent){try{Stop-StagedTestAgent $agent;$state.AgentServiceStarted=$false;Save-State $state $statePath}catch{$trial.Errors+=Get-ErrorChain $_.Exception}}
+        $trial.Baseline=$baseline
+        $trial.ExpectedTimeline=@{WriterIdentities=@($actor);Points=@($row.ExpectedTimeline);ExternalEvidence=@{Build=$trial.Platform.Build;PrepareBootId=$state.PrepareBootId;ActiveBootId=$context.BootId;ObserverPid=$PID;ObserverSid=$trial.Platform.ObserverSid;ObserverProcess=$trial.Platform.ObserverProcess;ActorProvenance=$trial.ActorProvenance}}
+        Add-ActivationAssertion $trial 'LiveTaintFlags' 'INCONCLUSIVE' 'Live flags unavailable; existing Inspector counters retained.' $trial.TaintCounterWindow
+        Add-ActivationAssertion $trial 'B02PublicationAndTemporalCoverage' 'INCONCLUSIVE' 'Raw/fresh/uncached whole-image samples and real journal/notification history do not supply the deferred continuous lower mutation/permit ledger.' $null
+        $trial.Reasons=@('B02 core uses one interactive standard-user process, two sequential C03 overwrites, stale-v1 rejection and actual justified-v2 publication; other justification variants deferred.')
+        $trial.Verdict=if(@($trial.Assertions | Where-Object Verdict -ceq 'FAIL').Count){'FAIL'}else{'INCONCLUSIVE'};Save-State $trial $trialPath
+    }
+}
+
 function Restore-Suite([switch]$Rollback) {
     $errors=[Collections.Generic.List[string]]::new()
     $ownedTasks=@($bootTask,$writerTask)
@@ -4973,6 +5453,7 @@ $value='Removed'
         @{Name='service-package';Action={if(Test-Path -LiteralPath $serviceDirectory){Remove-Item -LiteralPath $serviceDirectory -Recurse -Force};if(Test-Path -LiteralPath $serviceDirectory){throw 'Service package residue'}}},
         @{Name='second-user-profile';Action={Remove-CachedSecondUserProfile}},
         @{Name='second-user-account';Action={Remove-CachedSecondUser}},
+        @{Name='actor-interactive-session';Action={Restore-InvariantActorAutoLogon}},
         @{Name='actor-profile';Action={
             if(-not [string]::IsNullOrWhiteSpace($state.ActorSid)){
                 # Windows unloads a profile asynchronously after the task's logon session ends (S00 attempt 5: "Owned user profile
@@ -5030,7 +5511,10 @@ $cachedDenial=$cachedKind -ceq 'external-rename'
 $activationCaseIds=@('A01','A02','A03','A04')
 $isActivationCase=($CaseId -cin $activationCaseIds -or $CaseId -ceq 'A05')
 $coreConcurrentCase=$CaseId -ceq 'X01'
-if($row.Status -ne 'Ready' -or ($CaseId -notin @('S00-observer-control','S01-denied-write-after-boot','S02-agent-down-open-refused') -and -not $cachedCase -and -not $isActivationCase -and -not $coreConcurrentCase)){'CaseStatus=NOT_READY';throw "Case $CaseId is not implemented"}
+$coreRestartPolicyCase=$CaseId -ceq 'R02'
+$coreJustificationCase=$CaseId -ceq 'B02'
+$interactiveActorCase=$coreJustificationCase -or $CaseId -cin @('C01-block-absent','C03-block-existing','C04-block')
+if($row.Status -ne 'Ready' -or ($CaseId -notin @('S00-observer-control','S01-denied-write-after-boot','S02-agent-down-open-refused') -and -not $cachedCase -and -not $isActivationCase -and -not $coreConcurrentCase -and -not $coreRestartPolicyCase -and -not $coreJustificationCase)){'CaseStatus=NOT_READY';throw "Case $CaseId is not implemented"}
 if($MappedStackDiagnosticSeconds -ne 0 -and ($CaseId -cnotin @('C02-approve-absent','C02-block-absent') -or $Mode -cne 'runtime-verifier')){throw 'Mapped stack diagnostic requires C02 runtime-Verifier'}
 if($DedicatedUnheldLatency -and ($CaseId -cnotin @('C01-approve-absent','C02-approve-absent','C03-approve-existing','C04-approve') -or $MappedStackDiagnosticSeconds)){throw 'Dedicated latency requires an APPROVE C01-C04 case without stack diagnostics'}
 if($StartupProbe -and $Phase -ne 'AfterBoot'){throw 'StartupProbe requires AfterBoot'}
@@ -5098,7 +5582,7 @@ if($Phase -eq 'Prepare'){
         Add-LocalGroupMember -SID 'S-1-5-32-545' -Member $actorUser
         Set-ActorBatchLogon $state.ActorSid $true
         if(@(Get-LocalGroupMember -SID 'S-1-5-32-544' | Where-Object SID -eq $user.SID).Count -ne 0){throw 'Actor administrator membership'}
-        if($cachedCase -or $coreConcurrentCase -or $CaseId -ceq 'A04'){
+        if($cachedCase -or $coreConcurrentCase -or $coreJustificationCase -or $CaseId -ceq 'A04'){
             # A batch-logon task gets no loaded profile (run c01h: empty UserProfile folder), but hand-back
             # contract H needs the profile a real user has after first logon. Create it explicitly; the
             # actor-profile restoration step removes it.
@@ -5122,13 +5606,15 @@ if($Phase -eq 'Prepare'){
         $stream=[IO.FileStream]::new((Join-Path $protectedDirectory $fixtureLeaf),[IO.FileMode]::CreateNew,[IO.FileAccess]::Write,[IO.FileShare]::Read,4096,[IO.FileOptions]::WriteThrough)
         try{$stream.Write($baseline,0,$baseline.Length);$stream.Flush($true)}finally{$stream.Dispose()}
         if($coreConcurrentCase){Initialize-X01Fixture $size}
+        if($coreRestartPolicyCase){Initialize-R02Fixture $baseline}
+        if($coreJustificationCase){Initialize-B02Fixture $size}
         $state.FixtureSddl=Get-SecuritySddl $protectedDirectory $true
-        $scopes=if($isActivationCase){@()}elseif($CaseId -eq 'S00-observer-control'){@()}else{@($protectedDirectory)}
-        if($cachedCase -or $coreConcurrentCase -or $CaseId -ceq 'A05'){$state.CachedProductBackup=Save-CachedProductState;Save-State $state $statePath}
+        $scopes=if($coreRestartPolicyCase){@($state.R02ScopeX)}elseif($isActivationCase){@()}elseif($CaseId -eq 'S00-observer-control'){@()}else{@($protectedDirectory)}
+        if($cachedCase -or $coreConcurrentCase -or $coreRestartPolicyCase -or $coreJustificationCase -or $CaseId -ceq 'A05'){$state.CachedProductBackup=Save-CachedProductState;Save-State $state $statePath}
         Set-ProtectedPolicyAcl
-        $extensions=@(if($cachedCase -or $isActivationCase -or $coreConcurrentCase){'.txt'}else{'.bin'})
+        $extensions=@(if($cachedCase -or $isActivationCase -or $coreConcurrentCase -or $coreRestartPolicyCase -or $coreJustificationCase){'.txt'}else{'.bin'})
         $policy=@{version=1;activeCategories=@('Cpf');monitoredScopes=@{extensions=$extensions;destinationPaths=@($scopes);removableDrives=$false;networkPaths=$false};
-            maxFileSizeMb=20;inspectionTimeoutSeconds=5;failOpen=$false;excludedProcesses=@('System','SafeUpload.Agent.App');auditOnly=$false;overrideAllowed=($cachedCase -and $row.Outcome -ceq 'BLOCK')}
+            maxFileSizeMb=20;inspectionTimeoutSeconds=5;failOpen=$false;excludedProcesses=@('System','SafeUpload.Agent.App');auditOnly=$false;overrideAllowed=($coreJustificationCase -or ($cachedCase -and $row.Outcome -ceq 'BLOCK'))}
         Write-DurableFile $policyPath ($policy | ConvertTo-Json -Depth 6)
         Copy-Item -LiteralPath $featureDriver -Destination $installedDriver
         Assert-Hash $installedDriver $ExpectedFeatureSha256
@@ -5144,7 +5630,8 @@ Add-Type -TypeDefinition 'using System;using System.Runtime.InteropServices;usin
 $b=[Text.StringBuilder]::new(1024);if([SUDevice]::QueryDosDevice('C:',$b,1024) -eq 0){throw 'QueryDosDevice failed'}
 $value=$b.ToString().Split([char]0)[0]
 '@
-            $prefix=$nt+$protectedDirectory.Substring(2)
+            $scopeDos=if($coreRestartPolicyCase){$state.R02ScopeX}else{$protectedDirectory}
+            $prefix=$nt+$scopeDos.Substring(2)
             $pb=[Text.Encoding]::Unicode.GetBytes($prefix);if($pb.Length -gt 518){throw 'Scope prefix too long'}
             [Array]::Copy($pb,0,$expected,16,$pb.Length)
         }
@@ -5153,7 +5640,17 @@ $value=$b.ToString().Split([char]0)[0]
             @(Get-Process SafeUpload.Agent.Service -ErrorAction SilentlyContinue).Count -ne 0 -or (& fltmc.exe filters | Out-String) -match '(?m)^SafeUpload\s'){throw 'Product seed exact bytes/ACL/Start/no-load readback failed'}
         'BootPolicyPrebootVerified=ParametersAcl:True;BootPolicyAcl:True;RecordBytes:16656;ExactRecord:True;PendingScopes:Absent;Start:3;PASS'
         $configPath=Join-Path $stateDirectory 'writer-config.clixml'
-        if($isActivationCase){
+        if($coreRestartPolicyCase -or $coreJustificationCase){
+            $state.ActorNextSequence=1
+            $commands=Join-Path $stateDirectory 'core-commands';$null=New-Item -ItemType Directory -Path $commands
+            & icacls.exe $commands /inheritance:r /grant:r '*S-1-5-18:(OI)(CI)F' '*S-1-5-32-544:(OI)(CI)F' ('*'+$state.ActorSid+':(OI)(CI)RX') | Out-Host
+            if($LASTEXITCODE -ne 0){throw 'Core trusted command directory ACL failed'}
+            $state.ActivationActors=@{Primary=@{Directory=$actorDirectory;CommandDirectory=$commands;Launcher=(Join-Path $stateDirectory 'writer.ps1');Task=$writerTask;Token=$state.WriterToken;NextSequence=1;ExpectedPid=$null}}
+            $target=if($coreRestartPolicyCase){Join-Path $state.R02ScopeY 'marker.txt'}else{Join-Path $protectedDirectory 'cached.txt'}
+            Save-State @{ActorSid=$state.ActorSid;ActorDirectory=$actorDirectory;CommandDirectory=$commands;Target=$target;HolderKind='handle';PBase64=$state.BaselineBase64;ImageLength=$size} $configPath
+            $writerBody=if($coreRestartPolicyCase){Get-R02WriterBody}else{Get-B02WriterBody}
+            $writerBody=$writerBody.Replace('__CONFIG__',(ConvertTo-PowerShellLiteral $configPath)).Replace('__IDENTITY__',(ConvertTo-PowerShellLiteral (Join-Path $actorDirectory 'identity.clixml'))).Replace('__SCRIPT_ERROR__',(ConvertTo-PowerShellLiteral (Join-Path $actorDirectory 'script-error.txt')))
+        }elseif($isActivationCase){
             $state.ActorNextSequence=1
             $holderKind=switch($CaseId){'A01'{'handle'}'A04'{'handle'}'A05'{'handle'}'A02'{'view'}default{'section'}}
             Save-State @{ActorSid=$state.ActorSid;ActorDirectory=$actorDirectory;Target=(Join-Path $protectedDirectory 'marker.txt');
@@ -5234,10 +5731,14 @@ $value=$b.ToString().Split([char]0)[0]
             if($LASTEXITCODE -ne 0){throw 'Read-only writer input ACL failed'}
         }
         $action=New-ScheduledTaskAction -Execute 'powershell.exe' -Argument ('-NoProfile -ExecutionPolicy Bypass -File "'+$writerLauncher+'"')
-        $actorMinutes=if($DedicatedUnheldLatency){240}elseif($coreConcurrentCase -or $CaseId -ceq 'A05'){15}elseif($CaseId -ceq 'A04'){45}elseif($MappedStackDiagnosticSeconds -ne 0){15}elseif($cachedExisting){10}else{5}
+        $actorMinutes=if($coreRestartPolicyCase){15}elseif($DedicatedUnheldLatency){240}elseif($coreConcurrentCase -or $CaseId -ceq 'A05'){15}elseif($CaseId -ceq 'A04'){45}elseif($MappedStackDiagnosticSeconds -ne 0){15}elseif($cachedExisting){10}else{5}
         if($CaseId -cin @('R01','B01')){$actorMinutes=15}
         if($CaseId -ceq 'R03'){
             Register-ScheduledTask -TaskName $writerTask -Action $action -Trigger (New-ScheduledTaskTrigger -AtStartup) -User ($env:COMPUTERNAME+'\'+$actorUser) -Password $password -RunLevel Limited -Settings (New-ScheduledTaskSettingsSet -ExecutionTimeLimit ([TimeSpan]::FromMinutes(15)) -MultipleInstances IgnoreNew) | Out-Null
+        }elseif($interactiveActorCase){
+            Set-InvariantActorAutoLogon $password
+            $principal=New-ScheduledTaskPrincipal -UserId ($env:COMPUTERNAME+'\'+$actorUser) -LogonType Interactive -RunLevel Limited
+            Register-ScheduledTask -TaskName $writerTask -Action $action -Principal $principal -Settings (New-ScheduledTaskSettingsSet -ExecutionTimeLimit ([TimeSpan]::FromMinutes(15))) | Out-Null
         }else{
         Register-ScheduledTask -TaskName $writerTask -Action $action -User ($env:COMPUTERNAME+'\'+$actorUser) -Password $password -RunLevel Limited -Settings (New-ScheduledTaskSettingsSet -ExecutionTimeLimit ([TimeSpan]::FromMinutes($actorMinutes))) | Out-Null
         }
@@ -5306,7 +5807,7 @@ $value=$b.ToString().Split([char]0)[0]
     if($state.DedicatedUnheldLatency -ne $DedicatedUnheldLatency){throw 'Dedicated latency parameter/state mismatch'}
     if($state.MappedStackDiagnosticSeconds -ne $MappedStackDiagnosticSeconds){throw 'Mapped diagnostic parameter/state mismatch'}
     if($state.CaseId -cne $CaseId -or $state.Mode -cne $Mode -or $state.RunName -cne $RunName){throw 'State identity mismatch'}
-    if($StartupProbe){if($CaseId -ceq 'R03'){Invoke-R03Observation}elseif($CaseId -ceq 'A05'){Invoke-A05Observation}elseif($coreConcurrentCase){Invoke-X01Observation}elseif($isActivationCase){Invoke-ActivationObservation}elseif($cachedCase){Invoke-CachedObservation}else{Invoke-SeedObservation};return}
+    if($StartupProbe){if($coreRestartPolicyCase){Invoke-R02Observation}elseif($coreJustificationCase){Invoke-B02Observation}elseif($interactiveActorCase){Invoke-InteractiveCachedObservation}elseif($CaseId -ceq 'R03'){Invoke-R03Observation}elseif($CaseId -ceq 'A05'){Invoke-A05Observation}elseif($coreConcurrentCase){Invoke-X01Observation}elseif($isActivationCase){Invoke-ActivationObservation}elseif($cachedCase){Invoke-CachedObservation}else{Invoke-SeedObservation};return}
     $observationError=$null
     try {
         $coordinatorWaitSeconds=if($DedicatedUnheldLatency){14460}elseif($CaseId -ceq 'A04'){2760}else{900}
@@ -5316,7 +5817,7 @@ $value=$b.ToString().Split([char]0)[0]
     finally {
         # StartupProbe updates actor/service recovery fields in its own process.
         # Re-read after its completion before restoration or those fields are lost.
-        if($isActivationCase -or $cachedCase -or $coreConcurrentCase){$state=Load-State $statePath}
+        if($isActivationCase -or $cachedCase -or $coreConcurrentCase -or $coreRestartPolicyCase -or $coreJustificationCase){$state=Load-State $statePath}
         $state.AfterBootId=Get-BootId
         Save-State $state $statePath
         Restore-Suite
@@ -5355,15 +5856,21 @@ $value=$b.ToString().Split([char]0)[0]
     Set-AgentServiceStart $state.OriginalAgentStart
     if((Get-SecuritySddl $policyPath $false) -cne $state.OriginalPolicyFileSddl -or
         (Get-SecuritySddl (Split-Path -Parent $policyPath) $true) -cne $state.OriginalPolicyDirectorySddl){throw 'Restored policy ACL mismatch'}
+    if($state.ActorAutoLogonValues){
+        $names=(Get-Item 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon').GetValueNames()
+        if(@($state.ActorAutoLogonValues | Where-Object {$names -contains $_}).Count){throw 'Final owned autologon residue'}
+        Initialize-InvariantWts
+        if(@([SUInvariantWts]::Read() | Where-Object {$_.User -ieq $state.ActorUser -and $_.Domain -ieq $env:COMPUTERNAME}).Count){throw 'Final actor WTS session residue'}
+    }
     $trial=if(Test-Path -LiteralPath $trialPath){Load-State $trialPath}else{@{Verdict='INCONCLUSIVE';ForbiddenByteCount=$null;Reasons=@('Startup task did not export observations')}}
-    if(-not $cachedCase -and -not $isActivationCase -and -not $coreConcurrentCase -and $null -ne $trial.Baseline -and @($trial.Samples).Count -gt 0){
+    if(-not $cachedCase -and -not $isActivationCase -and -not $coreConcurrentCase -and -not $coreRestartPolicyCase -and -not $coreJustificationCase -and $null -ne $trial.Baseline -and @($trial.Samples).Count -gt 0){
         $trial.Assertions=@($trial.Assertions | Where-Object {$trial.Predicate.Assertions.Name -notcontains $_.Name})
         $trial.Predicate=Test-NoUnapprovedByte $trial.Baseline @() $trial.Samples $trial.MutationLedger $trial.ExpectedTimeline
         $trial.Assertions+=@($trial.Predicate.Assertions)
         if($trial.Predicate.Verdict -eq 'FAIL'){$trial.Verdict='FAIL'}
         $trial.ForbiddenByteCount=$trial.Predicate.ForbiddenByteCount
     }
-    $finalReasons=if(($isActivationCase -or $coreConcurrentCase) -and $trial.Reasons.Count -gt 0){@($trial.Reasons)}else{@('Seed rows do not qualify Phase4; driver lower mutation ledger and live taint readback unavailable; notification absence requires authenticated durable coverage or whole-window agent absence plus an unchanged authenticated record location')}
+    $finalReasons=if(($isActivationCase -or $coreConcurrentCase -or $coreRestartPolicyCase -or $coreJustificationCase) -and $trial.Reasons.Count -gt 0){@($trial.Reasons)}else{@('Seed rows do not qualify Phase4; driver lower mutation ledger and live taint readback unavailable; notification absence requires authenticated durable coverage or whole-window agent absence plus an unchanged authenticated record location')}
     $result=[ordered]@{Schema='StagedInvariantSuite/2';TableRevision=$table.TableRevision;CaseRevision=$row.Revision;CaseId=$CaseId;Mode=$Mode;RunName=$RunName;
         CaseStatus='READY';QualificationScope=$row.QualificationScope;Verdict=$trial.Verdict;ForbiddenByteCount=$trial.ForbiddenByteCount;Trials=@($trial);
         InputHashes=@{Table=$ExpectedTableSha256;Observer=$ExpectedObserverSha256;Suite=$ExpectedSuiteSha256;Helper=$ExpectedHelperSha256;
