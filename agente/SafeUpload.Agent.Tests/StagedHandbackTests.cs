@@ -112,7 +112,7 @@ public sealed class StagedHandbackTests : IDisposable
     }
 
     [Fact]
-    public async Task Reused_session_with_a_different_sid_keeps_stage_and_suppresses_blocked_notification()
+    public async Task Reused_session_still_hands_back_to_the_requestor_and_delivers_nothing_to_the_session()
     {
         IPolicyStore policy = await PolicyAsync(allowJustification: true);
         var journal = new StagedTransferJournal(_journalRoot);
@@ -129,10 +129,11 @@ public sealed class StagedHandbackTests : IDisposable
             await publisher.PublishAsync(transfer, CancellationToken.None));
         TransferJournalEntry blocked = await journal.ReadAsync(transfer.TransferId, CancellationToken.None);
 
-        Assert.Equal(StagedHandbackState.Failed, blocked.HandbackState);
-        Assert.Equal("requestor_identity_unavailable", blocked.HandbackFailureReason);
-        Assert.Equal(0, copier.CopyCount);
-        Assert.True(File.Exists(transfer.StagePath));
+        // The hand-back follows the requestor SID persisted at allocation, never the
+        // session's current user; the session's new user receives nothing.
+        Assert.Equal(StagedHandbackState.Verified, blocked.HandbackState);
+        Assert.Equal(1, copier.CopyCount);
+        Assert.NotNull(blocked.HandbackPath);
         Assert.DoesNotContain(DrainTransfers(subscription),
             notification => notification.Phase == TransferPhase.Blocked);
         Assert.Contains(await new LocalQueueAuditSink(_workspace.QueueFile)
@@ -167,7 +168,7 @@ public sealed class StagedHandbackTests : IDisposable
     }
 
     [Fact]
-    public async Task Recovery_with_a_reused_session_sid_invalidates_handback_and_retains_stage()
+    public async Task Recovery_with_a_reused_session_keeps_the_verified_handback_without_recopy()
     {
         IPolicyStore policy = await PolicyAsync(allowJustification: false);
         var journal = new StagedTransferJournal(_journalRoot);
@@ -192,17 +193,14 @@ public sealed class StagedHandbackTests : IDisposable
         await recoveredPublisher.RecoverBlockedAsync(verified, CancellationToken.None);
         TransferJournalEntry retained = await journal.ReadAsync(transfer.TransferId, CancellationToken.None);
 
-        Assert.Equal(StagedHandbackState.Failed, retained.HandbackState);
-        Assert.Equal("requestor_identity_unavailable", retained.HandbackFailureReason);
-        Assert.Null(retained.HandbackPath);
-        Assert.True(File.Exists(transfer.StagePath));
+        // Session reuse neither redirects nor invalidates a hand-back bound to the requestor SID.
+        Assert.Equal(StagedHandbackState.Verified, retained.HandbackState);
+        Assert.Equal(verified.HandbackPath, retained.HandbackPath);
         Assert.Equal(1, copier.CopyCount);
-        Assert.DoesNotContain(DrainTransfers(owner), notification => notification.Phase == TransferPhase.Blocked);
         Assert.DoesNotContain(DrainTransfers(newSessionUser), notification => notification.Phase == TransferPhase.Blocked);
-        Assert.Contains(await new LocalQueueAuditSink(_workspace.QueueFile)
+        Assert.DoesNotContain(await new LocalQueueAuditSink(_workspace.QueueFile)
                 .ReadRecentAsync(10, CancellationToken.None),
-            audit => audit.Verdict == Verdict.Retained &&
-                audit.NotInspectedReason == "requestor_identity_unavailable");
+            audit => audit.NotInspectedReason == "requestor_identity_unavailable");
     }
 
     [Fact]
