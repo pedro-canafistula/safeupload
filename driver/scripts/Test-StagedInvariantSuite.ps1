@@ -2090,7 +2090,12 @@ function Invoke-CachedObservation {
             # above, without inventing an authenticated publication permit.
             $trial.Predicate=Test-NoUnapprovedByte $baseline @() $predicateSamples $trial.MutationLedger $trial.ExpectedTimeline
             $trial.ForbiddenByteCount=$trial.Predicate.ForbiddenByteCount;$trial.Assertions+=@($trial.Predicate.Assertions)
-            $trial.ForbiddenByteCount+= [long](@($trial.Assertions | Where-Object {$_.Name -ceq 'C01ReleasedRawExtent' -and $_.ContainsKey('ForbiddenByteCount')} | Measure-Object ForbiddenByteCount -Sum).Sum)
+            # Explicit sum: Windows PowerShell 5.1 Measure-Object rejects a property name on hashtable input (run c01m).
+            foreach($assertion in @($trial.Assertions)){
+                if($assertion -is [Collections.IDictionary] -and $assertion['Name'] -ceq 'C01ReleasedRawExtent' -and $assertion.Contains('ForbiddenByteCount')){
+                    $trial.ForbiddenByteCount+= [long]$assertion['ForbiddenByteCount']
+                }
+            }
         }
         $trial.Assertions+=@{Name='LiveTaintFlags';Verdict='INCONCLUSIVE';Reason='Live TEST_DISABLE_TAINT readback unavailable; BootPolicy.Flags is not a live proof.'}
         $trial.Assertions+=@{Name='C01PublicationAndTemporalCoverage';Verdict='INCONCLUSIVE';Reason='Lower mutation ledger, authenticated permit/snapshot grant and continuous coverage unavailable. APPROVE post-close samples are retained but cannot establish pre-permit absence from latest-state polling.'}
@@ -2634,8 +2639,9 @@ function Restore-Suite([switch]$Rollback) {
             Save-State $restored (Join-Path $evidenceDirectory 'restored-process-creation-audit.clixml')
         }},
         @{Name='driver';Action={Set-DemandStartAndRestoreDriver}},
-        @{Name='cached-product-state';Action={Restore-CachedProductState}},
+        # Policy first: it restores the product root's ACL, which product files inherit (run c01m).
         @{Name='policy';Action={Restore-PolicyFile}},
+        @{Name='cached-product-state';Action={Restore-CachedProductState}},
         @{Name='registry';Action={
             $null=Invoke-SystemBody @'
 $boot='HKLM:\SYSTEM\CurrentControlSet\Services\SafeUpload\Parameters\BootPolicy'
