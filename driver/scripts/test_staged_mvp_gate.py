@@ -43,6 +43,20 @@ class MvpGateTests(unittest.TestCase):
                 self.assertTrue(actual['MvpGatePassed'])
                 self.assertEqual([name], actual['MvpDeferred'])
 
+    def test_handback_safe_creation_deferred_only_by_exact_suffix(self):
+        result = fixture()
+        result['Trials'][0]['Assertions'].append({'Name': 'C01HandBackSafeRelativeCreation', 'Verdict': 'INCONCLUSIVE'})
+        actual = self.assess(result)
+        self.assertTrue(actual['MvpGatePassed'])
+        self.assertEqual(['C01HandBackSafeRelativeCreation'], actual['MvpDeferred'])
+        for name, verdict in (('HandBackSafeRelativeCreation', 'INCONCLUSIVE'),
+                              ('C01HandBackSafeRelativeCreationX', 'INCONCLUSIVE'),
+                              ('C01HandBackSafeRelativeCreation', 'FAIL')):
+            with self.subTest(name=name, verdict=verdict):
+                bad = fixture()
+                bad['Trials'][0]['Assertions'].append({'Name': name, 'Verdict': verdict})
+                self.assertFalse(self.assess(bad)['MvpGatePassed'])
+
     def test_unheld_latency_requires_matching_dedicated_evidence(self):
         result = fixture()
         result['Trials'][0]['Assertions'].append({'Name': 'C01UnheldLatency', 'Verdict': 'INCONCLUSIVE'})

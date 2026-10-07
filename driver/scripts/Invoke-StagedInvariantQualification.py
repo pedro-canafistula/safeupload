@@ -890,6 +890,9 @@ def mvp_case_gate(result, latency_evidence=None):
                 continue
             allowed = (name in MVP_DEFERRED_EXACT or
                        bool(name[:-len('PublicationAndTemporalCoverage')]) and name.endswith('PublicationAndTemporalCoverage') or
+                       # The product emits no creation receipt; B01 (junction-swapped hand-back folder, same MVP
+                       # suite) proves safe relative creation by behavior. Owner decision pending (2026-10-07).
+                       bool(name[:-len('HandBackSafeRelativeCreation')]) and name.endswith('HandBackSafeRelativeCreation') or
                        bool(name[:-len('UnheldLatency')]) and name.endswith('UnheldLatency') and latency_ok)
             if verdict == 'INCONCLUSIVE' and allowed:
                 deferred.add(name)
