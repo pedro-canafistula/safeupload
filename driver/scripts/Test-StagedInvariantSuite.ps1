@@ -662,7 +662,7 @@ public static class SUActivationNative {
  static int Error() { int e=Marshal.GetLastWin32Error(); return e==0?1:e; }
  static bool Seek(IntPtr h,long offset) { long p; return SetFilePointerEx(h,offset,out p,0); }
  public static int CreateHolder(string path,byte[] seed,string kind,out bool sourceClosed) {
-  sourceClosed=false; FileHandle=CreateFileW(path,0xC0000000u,7,IntPtr.Zero,1,0x80,IntPtr.Zero);
+  sourceClosed=false; FileHandle=CreateFileW(path,0xC0000000u,7,IntPtr.Zero,3,0x80,IntPtr.Zero);
   if(FileHandle==new IntPtr(-1)) return Error();
   if(!Seek(FileHandle,seed.Length)) return Error(); if(!SetEndOfFile(FileHandle)) return Error();
   if(!Seek(FileHandle,0)) return Error(); uint written;
@@ -3121,10 +3121,12 @@ if($Phase -eq 'Prepare'){
         if($LASTEXITCODE -ne 0){throw 'Actor coordination ACL failed'}
         & icacls.exe $protectedDirectory /grant ('*'+$state.ActorSid+':(OI)(CI)M') | Out-Host
         if($LASTEXITCODE -ne 0){throw 'Fixture ACL failed'}
-        if(-not $isActivationCase){
-            $stream=[IO.FileStream]::new((Join-Path $protectedDirectory 'marker.bin'),[IO.FileMode]::CreateNew,[IO.FileAccess]::Write,[IO.FileShare]::Read,4096,[IO.FileOptions]::WriteThrough)
-            try{$stream.Write($baseline,0,$baseline.Length);$stream.Flush($true)}finally{$stream.Dispose()}
-        }
+        # Establish the known fixture before reboot so raw NTFS metadata is
+        # durable. The activation actor opens this same file while Unscoped,
+        # rewrites/flushed P and retains its physical writable holder.
+        $fixtureLeaf=if($isActivationCase){'marker.txt'}else{'marker.bin'}
+        $stream=[IO.FileStream]::new((Join-Path $protectedDirectory $fixtureLeaf),[IO.FileMode]::CreateNew,[IO.FileAccess]::Write,[IO.FileShare]::Read,4096,[IO.FileOptions]::WriteThrough)
+        try{$stream.Write($baseline,0,$baseline.Length);$stream.Flush($true)}finally{$stream.Dispose()}
         $state.FixtureSddl=Get-SecuritySddl $protectedDirectory $true
         $scopes=if($isActivationCase){@()}elseif($CaseId -eq 'S00-observer-control'){@()}else{@($protectedDirectory)}
         if($cachedCase){$state.CachedProductBackup=Save-CachedProductState;Save-State $state $statePath}
