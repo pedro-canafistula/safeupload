@@ -45,6 +45,9 @@ internal sealed record PolicyDocument
     [JsonPropertyName("excludedProcesses")]
     public string[]? ExcludedProcesses { get; init; }
 
+    [JsonPropertyName("clipboard")]
+    public ClipboardDocument? Clipboard { get; init; }
+
     public static PolicyDocument Default { get; } = new()
     {
         Version = 1,
@@ -53,7 +56,8 @@ internal sealed record PolicyDocument
         MaxFileSizeMb = 20,
         InspectionTimeoutSeconds = 5,
         FailOpen = true,
-        ExcludedProcesses = ["System", "SafeUpload.Agent.App"]
+        ExcludedProcesses = ["System", "SafeUpload.Agent.App"],
+        Clipboard = ClipboardDocument.Default
     };
 
     /// <summary>
@@ -108,8 +112,72 @@ internal sealed record PolicyDocument
             FailOpen,
             excluded,
             AuditOnly,
-            OverrideAllowed);
+            OverrideAllowed,
+            MapClipboard(Clipboard));
     }
+
+    /// <summary>
+    /// Bloco <c>clipboard</c>. Ausente = canal desligado.
+    ///
+    /// O modo é lido como texto, e não pelo conversor de enum, para que um
+    /// valor desconhecido vire <see cref="InvalidPolicyException"/> com uma
+    /// mensagem clara. Diferente da categoria desconhecida, que é ignorada,
+    /// aqui ignorar seria pior: um "Blok" digitado errado desligaria a
+    /// proteção em silêncio.
+    /// </summary>
+    private static ClipboardPolicy? MapClipboard(ClipboardDocument? document)
+    {
+        if (document is null)
+        {
+            return null;
+        }
+
+        if (!Enum.TryParse<ClipboardMode>(document.Mode, ignoreCase: true, out var mode) ||
+            !Enum.IsDefined(mode) ||
+            int.TryParse(document.Mode, out _))
+        {
+            throw new InvalidPolicyException(
+                $"clipboard.mode \"{document.Mode}\" não é válido. Use Off, Audit ou Block.");
+        }
+
+        return new ClipboardPolicy(
+            mode,
+            new HashSet<string>(document.EgressDestinations ?? [], StringComparer.OrdinalIgnoreCase),
+            new HashSet<string>(document.ExcludedSources ?? [], StringComparer.OrdinalIgnoreCase),
+            document.MaxTextLength,
+            document.OversizedTextIsDirty);
+    }
+}
+
+/// <summary>O bloco clipboard do documento de política.</summary>
+internal sealed record ClipboardDocument
+{
+    [JsonPropertyName("mode")]
+    public string Mode { get; init; } = nameof(ClipboardMode.Off);
+
+    [JsonPropertyName("egressDestinations")]
+    public string[]? EgressDestinations { get; init; }
+
+    [JsonPropertyName("excludedSources")]
+    public string[]? ExcludedSources { get; init; }
+
+    [JsonPropertyName("maxTextLength")]
+    public int MaxTextLength { get; init; } = ClipboardPolicy.DefaultMaxTextLength;
+
+    [JsonPropertyName("oversizedTextIsDirty")]
+    public bool OversizedTextIsDirty { get; init; } = true;
+
+    // Desligado, mas preenchido: quem abrir o arquivo padrão vê o bloco e
+    // o que ligar, em vez de ter de descobrir a chave no código. Os nomes
+    // de executável são exemplos e precisam ser conferidos na máquina.
+    public static ClipboardDocument Default { get; } = new()
+    {
+        Mode = nameof(ClipboardMode.Off),
+        EgressDestinations = ["chrome", "msedge", "firefox", "brave", "opera", "WhatsApp", "Telegram", "ms-teams", "slack", "Discord", "OUTLOOK", "thunderbird"],
+        ExcludedSources = ["KeePass", "KeePassXC", "1Password", "Bitwarden"],
+        MaxTextLength = ClipboardPolicy.DefaultMaxTextLength,
+        OversizedTextIsDirty = true
+    };
 }
 
 /// <summary>O bloco monitoredScopes do documento de política.</summary>
