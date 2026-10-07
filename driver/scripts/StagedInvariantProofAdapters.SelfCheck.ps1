@@ -18,7 +18,7 @@ function Import-EvaluationFunctions([string]$File,[string[]]$Names) {
     }
 }
 Import-EvaluationFunctions (Join-Path $PSScriptRoot 'StagedInvariantObserver.psm1') @('New-IORecord','New-IOAssertion','Test-InvariantCadence','Test-InvariantMetadata','Test-InvariantExternalCoverage')
-Import-EvaluationFunctions (Join-Path $PSScriptRoot 'Test-StagedInvariantSuite.ps1') @('Wait-WriterIdentity','Get-ExpectedCheckpoint','Test-ServiceJournalStateReachable','Assert-ServiceManifestPath','ConvertFrom-ServiceJournalRecord','Test-ServiceJournalDelta','Get-ServiceDestinationPaths','Test-ServiceFixtureEntry','ConvertFrom-NotificationRecord','Test-NotificationWindow','ConvertFrom-AgentEventXml','Test-AgentLogContinuity','Read-AgentLogWindow','Test-NotificationLocationUnchanged','Test-AgentDidNotRun','Get-ServiceTimeline','Test-CachedJournalSequence','Test-CachedNotifications','Test-CachedHandBackAcl','Test-CachedSample','Test-CachedImage','Test-CachedActorCalls','Add-CachedHeldJournal','Test-CachedNamespaceCommit','Get-WriterBody','Get-ActivationActorIdentity')
+Import-EvaluationFunctions (Join-Path $PSScriptRoot 'Test-StagedInvariantSuite.ps1') @('Wait-WriterIdentity','Load-State','Get-ActivatingWriterBody','Get-ExpectedCheckpoint','Test-ServiceJournalStateReachable','Assert-ServiceManifestPath','ConvertFrom-ServiceJournalRecord','Test-ServiceJournalDelta','Get-ServiceDestinationPaths','Test-ServiceFixtureEntry','ConvertFrom-NotificationRecord','Test-NotificationWindow','ConvertFrom-AgentEventXml','Test-AgentLogContinuity','Read-AgentLogWindow','Test-NotificationLocationUnchanged','Test-AgentDidNotRun','Get-ServiceTimeline','Test-CachedJournalSequence','Test-CachedNotifications','Test-CachedHandBackAcl','Test-CachedSample','Test-CachedImage','Test-CachedActorCalls','Add-CachedHeldJournal','Test-CachedNamespaceCommit','Get-WriterBody','Get-ActivationActorIdentity')
 $script:checks=0
 function Check([bool]$Condition,[string]$Message){if(-not $Condition){throw $Message};$script:checks++}
 function Clone($Value){return ($Value | ConvertTo-Json -Depth 32 | ConvertFrom-Json)}
@@ -39,6 +39,15 @@ try {
     Check ((Wait-WriterIdentity $identityPath 3).BootId -ceq 'fixture-boot') 'Partial identity must retry until complete publication.'
     $null=$publisher.EndInvoke($publication)
     if($publisher.HadErrors){throw ($publisher.Streams.Error | Out-String)}
+    # The activation actor consumes command CLIXML through the same bounded
+    # reader used for shared state; name visibility is not a complete command.
+    $identityWriter.SetLength(0);$identityWriter.Position=0;$identityWriter.Write($identityBytes,0,40);$identityWriter.Flush($true)
+    $publisher.Dispose();$publisher=[PowerShell]::Create()
+    $null=$publisher.AddScript('param($writer,$bytes) Start-Sleep -Milliseconds 250; $writer.SetLength(0); $writer.Position=0; $writer.Write($bytes,0,$bytes.Length); $writer.Flush($true); $writer.Dispose()').AddArgument($identityWriter).AddArgument($identityBytes)
+    $publication=$publisher.BeginInvoke()
+    Check ((Load-State $identityPath).Pid -eq 123) 'Shared state/activation command read retries the live write handle and partial CLIXML.'
+    $null=$publisher.EndInvoke($publication)
+    Check ((Get-ActivatingWriterBody).Contains('$command=Load-State $commandPath')) 'Activation actor must use bounded shared-state command publication.'
     $identityWriter.Dispose();$identityWriter=$null
     foreach($badPath in @((Join-Path $identityDirectory 'missing.clixml'),$identityPath)){
         if($badPath -ceq $identityPath){[IO.File]::WriteAllText($identityPath,'<Objs><broken>')}
