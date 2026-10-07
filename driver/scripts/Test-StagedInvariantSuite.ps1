@@ -711,6 +711,9 @@ function Flush-InvariantFinalVolume {
 }
 function Get-ActivatingWriterBody {
 $body=@'
+# Compile in the actor's own directory like every other actor body: a profile-less task gets TEMP=C:\Windows\TEMP and
+# Add-Type then fails ("Source file ... could not be found", R02 p1c5 after its restart).
+$env:TEMP='__TEMP__';$env:TMP=$env:TEMP
 Add-Type -TypeDefinition @"
 using System;
 using System.ComponentModel;
@@ -1776,8 +1779,10 @@ function Get-AgentExecutionSnapshot {
 }
 function ConvertFrom-AgentEventXml([string]$Xml,[string]$Channel) {
     [xml]$document=$Xml;$system=$document.Event.System
+    # EventID with a Qualifiers attribute is an element, not a string, in the PowerShell XML adapter (p1c4 B01).
+    $eventId=$document.SelectSingleNode('/*[local-name()="Event"]/*[local-name()="System"]/*[local-name()="EventID"]')
     if([string]$system.Channel -cne $Channel -or [string]::IsNullOrWhiteSpace([string]$system.Provider.Name) -or
-        [string]$system.EventRecordID -notmatch '^\d+$'){throw ('Malformed '+$Channel+' event XML.')}
+        [string]$system.EventRecordID -notmatch '^\d+$' -or $null -eq $eventId -or $eventId.InnerText -notmatch '^\d+$'){throw ('Malformed '+$Channel+' event XML.')}
     $data=@{};$values=@()
     # The PowerShell XML adapter turns unnamed, text-only Data elements into
     # strings. Select the XML nodes directly so their InnerText is retained.
@@ -1785,7 +1790,7 @@ function ConvertFrom-AgentEventXml([string]$Xml,[string]$Channel) {
         $values+=$node.InnerText;$field=$node.GetAttribute('Name')
         if(-not [string]::IsNullOrWhiteSpace($field)){$data[$field]=$node.InnerText}
     }
-    return [pscustomobject]@{RecordId=[long]$system.EventRecordID;Id=[int]$system.EventID;Provider=[string]$system.Provider.Name;Data=$data;Values=$values;Xml=$Xml}
+    return [pscustomobject]@{RecordId=[long]$system.EventRecordID;Id=[int]$eventId.InnerText;Provider=[string]$system.Provider.Name;Data=$data;Values=$values;Xml=$Xml}
 }
 function Read-AgentLogWindow($Before,$After,[string]$Name) {
     try {
@@ -6158,6 +6163,7 @@ $value=$b.ToString().Split([char]0)[0]
             $target=if($coreRestartPolicyCase){Join-Path $state.R02ScopeY 'marker.txt'}else{Join-Path $protectedDirectory 'cached.txt'}
             Save-State @{ActorSid=$state.ActorSid;ActorDirectory=$actorDirectory;CommandDirectory=$commands;Target=$target;HolderKind='handle';PBase64=$state.BaselineBase64;ImageLength=$size} $configPath
             $writerBody=if($coreRestartPolicyCase){Get-R02WriterBody}else{Get-B02WriterBody}
+            $writerBody=$writerBody.Replace('__TEMP__',(ConvertTo-PowerShellLiteral $actorDirectory))
             $writerBody=$writerBody.Replace('__CONFIG__',(ConvertTo-PowerShellLiteral $configPath)).Replace('__IDENTITY__',(ConvertTo-PowerShellLiteral (Join-Path $actorDirectory 'identity.clixml'))).Replace('__SCRIPT_ERROR__',(ConvertTo-PowerShellLiteral (Join-Path $actorDirectory 'script-error.txt')))
         }elseif($isActivationCase){
             $state.ActorNextSequence=1
@@ -6165,6 +6171,7 @@ $value=$b.ToString().Split([char]0)[0]
             Save-State @{ActorSid=$state.ActorSid;ActorDirectory=$actorDirectory;Target=(Join-Path $protectedDirectory 'marker.txt');
                 HolderKind=$holderKind;PBase64=$state.BaselineBase64;ImageLength=$size} $configPath
             $writerBody=if($CaseId -ceq 'A05'){Get-A05WriterBody}else{Get-ActivatingWriterBody}
+            $writerBody=$writerBody.Replace('__TEMP__',(ConvertTo-PowerShellLiteral $actorDirectory))
             $writerBody=$writerBody.Replace('__CONFIG__',(ConvertTo-PowerShellLiteral $configPath))
             $writerBody=$writerBody.Replace('__IDENTITY__',(ConvertTo-PowerShellLiteral (Join-Path $actorDirectory 'identity.clixml')))
             $writerBody=$writerBody.Replace('__SCRIPT_ERROR__',(ConvertTo-PowerShellLiteral (Join-Path $actorDirectory 'script-error.txt')))
@@ -6266,7 +6273,7 @@ $value=$b.ToString().Split([char]0)[0]
                 Duplicate=@{Directory=$duplicateDirectory;CommandDirectory=$duplicateCommands;Launcher=$duplicateLauncher;Task=($writerTask+'-duplicate');Token=[guid]::NewGuid().ToString('N');NextSequence=1;ExpectedPid=$null}}
             Save-State $state $statePath
             Save-State @{ActorSid=$state.ActorSid;ActorDirectory=$duplicateDirectory;CommandDirectory=$duplicateCommands;Target=(Join-Path $protectedDirectory 'marker.txt');HolderKind='handle';PBase64=$state.BaselineBase64;ImageLength=$size} $duplicateConfig
-            $duplicateBody=(Get-ActivatingWriterBody).Replace('__CONFIG__',(ConvertTo-PowerShellLiteral $duplicateConfig)).Replace('__IDENTITY__',(ConvertTo-PowerShellLiteral (Join-Path $duplicateDirectory 'identity.clixml'))).Replace('__SCRIPT_ERROR__',(ConvertTo-PowerShellLiteral (Join-Path $duplicateDirectory 'script-error.txt')))
+            $duplicateBody=(Get-ActivatingWriterBody).Replace('__TEMP__',(ConvertTo-PowerShellLiteral $duplicateDirectory)).Replace('__CONFIG__',(ConvertTo-PowerShellLiteral $duplicateConfig)).Replace('__IDENTITY__',(ConvertTo-PowerShellLiteral (Join-Path $duplicateDirectory 'identity.clixml'))).Replace('__SCRIPT_ERROR__',(ConvertTo-PowerShellLiteral (Join-Path $duplicateDirectory 'script-error.txt')))
             Write-DurableFile $duplicateLauncher (New-TaskLauncher $duplicateBody $state.ActivationActors.Duplicate.Token (Join-Path $duplicateDirectory 'completion.clixml')) -New
             foreach($path in @($duplicateConfig,$duplicateLauncher)){& icacls.exe $path /grant ('*'+$state.ActorSid+':R') | Out-Host;if($LASTEXITCODE -ne 0){throw 'Duplicate actor input ACL failed'}}
             $duplicateAction=New-ScheduledTaskAction -Execute 'powershell.exe' -Argument ('-NoProfile -ExecutionPolicy Bypass -File "'+$duplicateLauncher+'"')

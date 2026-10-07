@@ -104,6 +104,11 @@ try {
     $namedXml=$failXml.Replace('<Event>','<Event xmlns="http://schemas.microsoft.com/win/2004/08/events/event">').Replace('<Data>','<Data Name="Message">')
     $parsed=ConvertFrom-AgentEventXml $namedXml 'Application'
     Check ($parsed.Values.Count -eq 1 -and $parsed.Values[0] -ceq ('Staged hand-back failed for '+$id+'.') -and $parsed.Data.Count -eq 1 -and $parsed.Data.Message -ceq $parsed.Values[0]) 'Namespaced named EventData preserves both its text and field name.'
+    $qualifiedXml=$namedXml.Replace('<EventID>0</EventID>','<EventID Qualifiers="0">0</EventID>')
+    $parsed=ConvertFrom-AgentEventXml $qualifiedXml 'Application'
+    Check ($parsed.Id -eq 0 -and $parsed.RecordId -eq 2 -and $parsed.Data.Message -ceq ('Staged hand-back failed for '+$id+'.')) 'EventID with a Qualifiers attribute parses (real Application log shape).'
+    $badId=$false;try{$null=ConvertFrom-AgentEventXml ($failXml.Replace('<EventID>0</EventID>','<EventID>x</EventID>')) 'Application'}catch{$badId=$true}
+    Check $badId 'A non-numeric EventID is rejected as malformed.'
     $log=@{Status='OK';Before=@{Status='OK';NewestRecordId=1;NewestXml=$startXml};After=@{Status='OK';OldestRecordId=1;NewestRecordId=2;NewestXml=$failXml};Xmls=@($startXml,$failXml)}
     Check (Passed (Test-B01FailureAudit $log $id)) 'B01 exact-transfer product failure warning passes.'
     Check (Rejected (Test-B01FailureAudit $log 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee')) 'B01 rejects unrelated transfer warning.'
