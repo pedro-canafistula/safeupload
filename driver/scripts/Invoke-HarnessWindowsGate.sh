@@ -27,7 +27,7 @@ foreach(\$f in @(${list%,})){
 }
 foreach(\$c in @(${checklist%,})){
   \$out=& powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File (Join-Path '$dest' \$c) 2>&1
-  \$code=\$LASTEXITCODE; \$out | Select-Object -Last 3 | ForEach-Object { "  \$c> \$_" }
+  \$code=\$LASTEXITCODE; \$keep=3; if(\$code -ne 0){\$keep=25}; \$out | Select-Object -Last \$keep | ForEach-Object { "  \$c> \$_" }
   "\${c}:Exit=\$code"; if(\$code -ne 0){\$ok=\$false}
 }
 'PSVersion='+\$PSVersionTable.PSVersion

@@ -190,18 +190,24 @@
             Cleanup = @('ReleaseBothActorsAndProveTaskCompletion', 'CloseObserverAndNotificationCapture', 'StopRestoreTestService', 'StopBothOwnedTasks', 'RestoreDriverPolicyAclsBootPolicyAuditProductState', 'ResetVerifier', 'RemoveActorAccountProfileFixturesAndBothRoutes', 'RestorationReboot', 'IndependentBaseline')
         }
         @{
-            CaseId = 'A05'; Revision = 1; Status = 'NotReady'
-            Variant = 'UnexpandedFamily'; Outcome = 'Unimplemented: Activation-gate race'
-            QualificationScope = 'Phase4; WP5 must expand all design variants'
+            CaseId = 'A05'; Revision = 2; Status = 'Ready'
+            Variant = 'core-a-after-new-writer-gate-before-final-FreeF'; Outcome = 'Protected; agent-down unpermitted write refused'
+            QualificationScope = 'MVP coordinated core (a); sampled raw/fresh/uncached bytes and existing lower/promotion diagnostics'
+            DeferredVariants = @('(b) pending lower WRITE versus CLEANUP', '(c) mutating SET_INFORMATION/FSCTL draining', '(d) final identity/barrier race', 'Seeded unheld races', 'Repetition beyond one coordinated core (post-MVP hardening)')
             ActorSid = 'ResolveStandardUserTokenAtRuntime'; ActorSession = 'ResolveTokenSessionId'
-            InitialPolicy = @{ Seed = 'Product'; LiveFlags = 'TEST_DISABLE_TAINT-required' }
-            Scopes = @('Unimplemented'); Setup = @('WP5: design section 4.1 A05')
-            Actions = @('Unimplemented'); Barriers = @('Unimplemented')
-            ExpectedTimeline = @('Unimplemented'); StatusClasses = @('Unimplemented')
-            JournalExpectations = @('Unimplemented'); NotificationExpectations = @('Unimplemented')
-            AllowedDirectoryTransitions = @('Unimplemented'); LatencyClasses = @('Unimplemented')
-            Repetitions = @{ Coordinated = 1; Unheld = 100; DeterministicSeed = 4003 }
-            Cleanup = @('Unimplemented; common restoration still mandatory')
+            InitialPolicy = @{ Seed = 'ProductEmptyScopes'; StartDuringSeed = 3; StartAfterSeed = 0; LiveFlags = 'TEST_DISABLE_TAINT-required' }
+            Scopes = @('EmptyAtBoot', 'RuntimeAddsFixtureScope')
+            Setup = @('PrebootMarkerTxt', 'StandardUserPhysicalHandleP', 'IndependentRawObserver', 'RealAgentPolicyApply', 'ExistingProofProxyAndControl26')
+            Actions = @('CaptureExactRawP', 'ExpandScope', 'VerifyNewWritableOpenAndSectionDenied', 'HoldPhysicalHBeforeFreeF', 'WriteThreeDisjointUAndFlush', 'RecordPairedLowerCompletions', 'CaptureExactRawPUWhileActivating', 'LastHolderClose', 'RequireFreeFAndSinglePromotionEdge', 'CaptureExactStablePUBaseline', 'StopRealAgent', 'StandardUserNativeWriteAttemptMustReturn5AndZeroBytes', 'CompareThreeRawFreshUncachedSamplesToPU')
+            Barriers = @('NewBoot', 'PreScopePFlush', 'ExpandedAdmissionEpoch', 'Control26ExactActivatingH', 'CompletedUAndFlush', 'LastHolderRelease', 'FreeProtectedPromotion', 'AuthenticatedReady', 'StablePU', 'AgentStopped', 'RefusedWrite', 'FinalQuiescence')
+            ExpectedTimeline = @('Unscoped:P', 'ExpandedGate:Activating:H>0', 'NewWriterDenied', 'OldFileObject:P->PUAllowed', 'Activating:H>0:W=0', 'LastClose', 'FreeF:Protected', 'Ready', 'ExactStablePU', 'AgentDown:Win32:5:ZeroWritten', 'RawDestinationStillPU')
+            StatusClasses = @('OldWritesAndFlush=Win32:0', 'NewWriterGate=Win32:5', 'LastClose=Win32:0', 'ProtectedAgentDownMutation=Win32:5;BytesWritten=0')
+            JournalExpectations = @('OldPhysicalPUNoTransferOrPublication', 'RefusedWriteNoJournalDelta')
+            NotificationExpectations = @('AuthenticatedPendingWhileHLive', 'AuthenticatedReadyAfterFreeF')
+            AllowedDirectoryTransitions = @('marker.txtSameIdentityAndNames;P->PUOnlyBeforeProtection')
+            LatencyClasses = @()
+            Repetitions = @{ Coordinated = 1; Unheld = 0; DeterministicSeed = 4003 }
+            Cleanup = @('CooperativeActorRelease', 'StopRestoreRealAgent', 'CloseRawObserver', 'RestoreProductState', 'CommonSeedRestoration', 'IndependentBaseline')
         }
         @{
             CaseId = 'C01-approve-absent'; Revision = 1; Status = 'Ready'
@@ -469,17 +475,21 @@
         }
         @{
             CaseId = 'B02'; Revision = 1; Status = 'NotReady'
-            Variant = 'UnexpandedFamily'; Outcome = 'Unimplemented: Exact-version justification'
-            QualificationScope = 'Phase4; WP4 must expand all design variants'
-            ActorSid = 'ResolveStandardUserTokenAtRuntime'; ActorSession = 'ResolveTokenSessionId'
-            InitialPolicy = @{ Seed = 'Product'; LiveFlags = 'TEST_DISABLE_TAINT-required' }
-            Scopes = @('Unimplemented'); Setup = @('WP4: design section 4.1 B02')
-            Actions = @('Unimplemented'); Barriers = @('Unimplemented')
-            ExpectedTimeline = @('Unimplemented'); StatusClasses = @('Unimplemented')
-            JournalExpectations = @('Unimplemented'); NotificationExpectations = @('Unimplemented')
-            AllowedDirectoryTransitions = @('Unimplemented'); LatencyClasses = @('Unimplemented')
-            Repetitions = @{ Coordinated = 1; Unheld = 100; DeterministicSeed = 4003 }
-            Cleanup = @('Unimplemented; common restoration still mandatory')
+            Variant = 'core-existing-T-block-v1-block-v2-stale-v1-justify-latest-v2'; Outcome = 'Blocked: no owning standard-user interactive session in suite'
+            QualificationScope = 'MVP core blocked; real pipe is scriptable but session binding cannot be met by the existing disposable batch actor'
+            Blocker = 'agente/SafeUpload.Agent.Service/Interception/StagedTransferPublisher.cs: TryGetBoundSession/PublishCoreAsync require SessionResolver.TryGetSessionUserSid to match the requesting SID before Remember opens justification. SessionResolver.cs uses WTSQueryUserToken. Test-StagedInvariantSuite.ps1 Prepare creates a new disposable user and password/batch limited task in session 0, with no logged-on WTS session for that SID. Need an owning logged-on standard-user session and InteractiveToken actor/restoration support; sending the real pipe protocol from the current batch actor can only be rejected and cannot qualify latest-v2 release. No product hook or UI bypass added.'
+            DeferredVariants = @('C04 replacement-save JUSTIFY/stale-JUSTIFY companion', 'Wrong principal or session', 'Duplicate/replayed submission', 'V1 justification after restart', 'Repetition beyond coordinated core')
+            ActorSid = 'OwningLoggedOnStandardUserRequired'; ActorSession = 'WTSBoundInteractiveSessionRequired'
+            InitialPolicy = @{ Seed = 'Product'; LiveFlags = 'TEST_DISABLE_TAINT-required'; OverrideAllowed = $true }
+            Scopes = @('FixtureScope'); Setup = @('CoreRequiresPrebootB', 'C03StyleOverwrite', 'RealJustificationPipe', 'OwningInteractiveSessionUnavailable')
+            Actions = @('BlockedPendingSessionPrerequisite; do not fabricate a justification window')
+            Barriers = @('V1Blocked', 'V2BlockedAtNewDigest', 'RealV1SubmissionRejected', 'RealV2SubmissionAccepted')
+            ExpectedTimeline = @('BRemainsPublicThroughBothBlocksAndStaleSubmission', 'LatestV2OnlyReleasedOnce')
+            StatusClasses = @('RealPipeRejectedStale', 'RealPipeAcceptedLatest')
+            JournalExpectations = @('V1NeverPublished', 'V2ReleasedOnce'); NotificationExpectations = @('RealBlockedAndReleased')
+            AllowedDirectoryTransitions = @('T:B->V2Only'); LatencyClasses = @()
+            Repetitions = @{ Coordinated = 1; Unheld = 0; DeterministicSeed = 4003 }
+            Cleanup = @('CoreNotStarted; common restoration mandatory when session prerequisite is implemented')
         }
         @{
             CaseId = 'R01'; Revision = 1; Status = 'NotReady'
@@ -497,17 +507,21 @@
         }
         @{
             CaseId = 'R02'; Revision = 1; Status = 'NotReady'
-            Variant = 'UnexpandedFamily'; Outcome = 'Unimplemented: Service restart mid-policy'
-            QualificationScope = 'Phase4; WP6 must expand all design variants'
+            Variant = 'core-stop-after-durable-PendingScopes-before-authenticated-apply'; Outcome = 'Blocked: no coordinated pre-apply service barrier'
+            QualificationScope = 'MVP core blocked; registry polling plus Stop-Service is an unheld race and cannot guarantee the selected stop point'
+            Blocker = 'agente/SafeUpload.Agent.Service/Interception/BootPolicyRegistryWriter.cs: Apply calls _backend.WritePending (WindowsBootPolicyRegistryBackend.WriteValue flushes and verifies PendingScopes), then immediately applyAuthenticatedPolicy, WriteCommitted, ClearPending and finalizeAuthenticatedPolicy. MinifilterInterceptor.TryPushPolicy provides no service pause/stop hook between WritePending and the first port update. An A01 H holder blocks file promotion, not this policy update. Control 26 and StagedProofProxy observe/forward diagnostics only. Need an existing coordinated barrier at Apply after WritePending returns and before applyAuthenticatedPolicy; none exists. No product edit, registry injection, or polling race substituted.'
+            DeferredVariants = @('Other three stop points', 'Dirty-holder status variants', 'FailedClosed variants', 'Seeded unheld stop races', 'Repetition beyond coordinated core')
             ActorSid = 'ResolveStandardUserTokenAtRuntime'; ActorSession = 'ResolveTokenSessionId'
-            InitialPolicy = @{ Seed = 'Product'; LiveFlags = 'TEST_DISABLE_TAINT-required' }
-            Scopes = @('Unimplemented'); Setup = @('WP6: design section 4.1 R02')
-            Actions = @('Unimplemented'); Barriers = @('Unimplemented')
-            ExpectedTimeline = @('Unimplemented'); StatusClasses = @('Unimplemented')
-            JournalExpectations = @('Unimplemented'); NotificationExpectations = @('Unimplemented')
-            AllowedDirectoryTransitions = @('Unimplemented'); LatencyClasses = @('Unimplemented')
-            Repetitions = @{ Coordinated = 1; Unheld = 100; DeterministicSeed = 4003 }
-            Cleanup = @('Unimplemented; common restoration still mandatory')
+            InitialPolicy = @{ Seed = 'ProductOldScopeX'; LiveFlags = 'TEST_DISABLE_TAINT-required' }
+            Scopes = @('ProtectedX', 'CandidateY'); Setup = @('ProtectedBaselineX', 'StandardUserA01PhysicalHolderY', 'MissingDurablePendingPreApplyBarrier')
+            Actions = @('CoreNotStarted: cannot stop at required coordinated boundary')
+            Barriers = @('PendingScopesDurableBeforePortUpdate', 'AgentStopped', 'RestartCandidateRetryFinalize', 'Control26ExactHeldY', 'LastHolderRelease', 'FreeFStableRawBaseline', 'ProtectedReady')
+            ExpectedTimeline = @('XProtectedUnchanged', 'NoAppliedSuccessBeforeStop', 'YNotReady', 'RestartRetryCandidate', 'YActivatingWhileHLive', 'ReleaseDrainFreeF', 'YProtectedReadyWithStableBaseline')
+            StatusClasses = @('NoPrematurePolicyAppliedOrReady'); JournalExpectations = @('NoHolderPublication')
+            NotificationExpectations = @('NoPrematureAppliedSuccess', 'ReadyOnlyAfterFreeF')
+            AllowedDirectoryTransitions = @('XBaselineExact', 'YPreProtectionHolderMutationsAllowed'); LatencyClasses = @()
+            Repetitions = @{ Coordinated = 1; Unheld = 0; DeterministicSeed = 4003 }
+            Cleanup = @('CoreNotStarted; common restoration mandatory when barrier prerequisite exists')
         }
         @{
             CaseId = 'R03'; Revision = 1; Status = 'NotReady'
@@ -608,18 +622,24 @@
             Cleanup = @('Unimplemented; common restoration still mandatory')
         }
         @{
-            CaseId = 'X01'; Revision = 1; Status = 'NotReady'
-            Variant = 'UnexpandedFamily'; Outcome = 'Unimplemented: Concurrent writers/readers'
-            QualificationScope = 'Phase4; WP4 must expand all design variants'
-            ActorSid = 'ResolveStandardUserTokenAtRuntime'; ActorSession = 'ResolveTokenSessionId'
-            InitialPolicy = @{ Seed = 'Product'; LiveFlags = 'TEST_DISABLE_TAINT-required' }
-            Scopes = @('Unimplemented'); Setup = @('WP4: design section 4.1 X01')
-            Actions = @('Unimplemented'); Barriers = @('Unimplemented')
-            ExpectedTimeline = @('Unimplemented'); StatusClasses = @('Unimplemented')
-            JournalExpectations = @('Unimplemented'); NotificationExpectations = @('Unimplemented')
-            AllowedDirectoryTransitions = @('Unimplemented'); LatencyClasses = @('Unimplemented')
-            Repetitions = @{ Coordinated = 1; Unheld = 100; DeterministicSeed = 4003 }
-            Cleanup = @('Unimplemented; common restoration still mandatory')
+            CaseId = 'X01'; Revision = 2; Status = 'Ready'
+            Variant = 'core-two-live-processes-cached-overwrite-block-v1-approve-latest-v2'; Outcome = 'v1 Blocked; v2 Released'
+            QualificationScope = 'MVP coordinated core; v1 BLOCK completes before v2 allocation, with both writer processes live; sampled whole-byte publication invariant'
+            DeferredVariants = @('Four writers', 'Mapped/replacement mixes', 'Held old reader as a separately exercised variant', 'Stale justification', 'Cross-process private-capability negative probes', 'New allocation versus Publishing reservation', 'Seeded unheld races', 'Repetition beyond one coordinated core (post-MVP hardening)')
+            ActorSid = 'TwoDistinctStandardUserProcessesSameResolvedSid'; ActorSession = 'ResolveBothActualTokenSessions'
+            InitialPolicy = @{ Seed = 'Product'; StartDuringSeed = 3; StartAfterSeed = 0; LiveFlags = 'TEST_DISABLE_TAINT-required' }
+            Scopes = @('FixtureScope')
+            Setup = @('DurablePrebootTEqualsB', 'V1SyntheticValidCpf', 'V2BenignDistinctWholeImage', 'TwoLimitedTasks', 'RealStagingAgent', 'IndependentRawObserverAndFreshUncachedReaders')
+            Actions = @('StartBothProcessesAtGoBarriers', 'Writer1CachedTruncateOverwriteV1AndPrivateRead', 'ObserveAllocatedV1WithHandleHeld', 'CloseV1WaitForDurableBlocked', 'KeepWriter1AliveAtHandBackBarrier', 'ReleaseWriter2AllocationBarrier', 'Writer2CachedTruncateOverwriteV2AndPrivateRead', 'ObserveAllocatedV2NewerGeneration', 'CloseV2', 'SampleRawFreshUncachedBOrV2ThroughoutOutcomeWait', 'RejectV1PublicationAfterSupersession', 'RequireV2ReleasedOnce', 'VerifyExactV1HandBackThroughOwnerReadAndTrustedAclByteChecks', 'RequireExactlyOneTAndNoTempOrDuplicates')
+            Barriers = @('NewBoot', 'AgentReady', 'BothProcessIdentities', 'RawPrebootB', 'V1AllocatedHeld', 'V1Blocked', 'V2AllocationGo', 'V2AllocatedHeld', 'V2Close', 'V2Released', 'HandBackOwnerRead', 'FinalQuiescence')
+            ExpectedTimeline = @('Protected:T=B', 'v1:Allocated->Sealed->Inspecting->Blocked', 'v2:AllocatedAtGreaterDestinationGeneration', 'v1RemainsBlockedAfterSupersession', 'v2:Sealed->Inspecting->Approved->Publishing->ReleasedExactlyOnce', 'T:B->V2Only', 'V1ExactHandBack', 'OneFinalTNoTemporaryOrDuplicateNames')
+            StatusClasses = @('BothCachedOverwriteWriteFlushClose=Win32:0', 'PrivateWholeDigests=ExactV1AndV2', 'RawFreshUncachedWholeDigests=BThenV2')
+            JournalExpectations = @('V1CompleteBlockedHistoryNoApprovePublishRelease', 'V2CompleteReleasedHistoryExactlyOnce', 'V2DestinationGenerationGreaterThanV1')
+            NotificationExpectations = @('V1BlockedWithExactDigestAndVerifiedHandBackPath', 'V2ReleasedWithExactDigestAndActorSession')
+            AllowedDirectoryTransitions = @('TIdentityReplacedOnlyByApprovedV2', 'FinalRawNameMultisetExactlyPrebootNamesWithOneT')
+            LatencyClasses = @()
+            Repetitions = @{ Coordinated = 1; Unheld = 0; DeterministicSeed = 4003 }
+            Cleanup = @('CancelAndCloseBothActors', 'WaitBothTaskEnvelopes', 'CloseRawObserver', 'StopRestoreRealAgent', 'RestoreProductStateBytesAndAcls', 'RemoveBothTasksAndOwnedProfile', 'CommonSeedRestoration', 'IndependentBaseline')
         }
     )
 }
