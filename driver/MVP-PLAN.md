@@ -1436,3 +1436,12 @@ The safe W01 checkpoint parent was written by Sol and checked by root: Windows P
   136 PASS / 0 FAIL, ForbiddenByteCount 0, restoration clean. MVP blockers left: final raw capture (new file's MFT
   record not yet written back: raw sequence 1 vs FSCTL 3) and dedicated latency. Harness fix `6ead2f25` (branch
   feat/final-flush): flush the exact volume after the observation window, before the final capture.
+- [x] R03 core implemented by Sol (worktree `feat/mvp-rows-a`, not yet merged or run): agent disabled at boot,
+  offline overwrite/create refused, then online explicit save APPROVE -> Released.
+- **Decision (orchestrator, within the owner's core-variant scope):** R01 and B01 cores were re-scoped to behavior the
+  product actually has. R01 stops the service at mutable Allocated (C01's existing writer hold) instead of Inspecting:
+  the publisher awaits inspection inline and there is no hold point at Inspecting. B01 checks the fail-closed hand-back
+  (junction swap -> no SYSTEM write through it, Blocked retained, HandbackState=Failed, no Released); a safe retry after
+  a failed hand-back does not exist in the product (`RecoverBlockedAsync` only cleans temporaries) and is recorded as a
+  post-MVP product feature, not an MVP assertion. The C-row BLOCK `C01HandBackSecondUserAccess` INCONCLUSIVE is being
+  replaced by a real second-standard-user denial check.
