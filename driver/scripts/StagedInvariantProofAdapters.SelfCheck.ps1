@@ -18,7 +18,7 @@ function Import-EvaluationFunctions([string]$File,[string[]]$Names) {
     }
 }
 Import-EvaluationFunctions (Join-Path $PSScriptRoot 'StagedInvariantObserver.psm1') @('New-IORecord','New-IOAssertion','Test-InvariantCadence','Test-InvariantMetadata','Test-InvariantExternalCoverage')
-Import-EvaluationFunctions (Join-Path $PSScriptRoot 'Test-StagedInvariantSuite.ps1') @('Wait-WriterIdentity','Get-ExpectedCheckpoint','Test-ServiceJournalStateReachable','Assert-ServiceManifestPath','ConvertFrom-ServiceJournalRecord','Test-ServiceJournalDelta','Get-ServiceDestinationPaths','Test-ServiceFixtureEntry','ConvertFrom-NotificationRecord','Test-NotificationWindow','ConvertFrom-AgentEventXml','Test-AgentLogContinuity','Read-AgentLogWindow','Test-NotificationLocationUnchanged','Test-AgentDidNotRun','Get-ServiceTimeline','Test-CachedJournalSequence','Test-CachedNotifications','Test-CachedHandBackAcl','Test-CachedSample','Test-CachedImage','Test-CachedActorCalls','Add-CachedHeldJournal','Test-CachedNamespaceCommit','Get-WriterBody')
+Import-EvaluationFunctions (Join-Path $PSScriptRoot 'Test-StagedInvariantSuite.ps1') @('Wait-WriterIdentity','Get-ExpectedCheckpoint','Test-ServiceJournalStateReachable','Assert-ServiceManifestPath','ConvertFrom-ServiceJournalRecord','Test-ServiceJournalDelta','Get-ServiceDestinationPaths','Test-ServiceFixtureEntry','ConvertFrom-NotificationRecord','Test-NotificationWindow','ConvertFrom-AgentEventXml','Test-AgentLogContinuity','Read-AgentLogWindow','Test-NotificationLocationUnchanged','Test-AgentDidNotRun','Get-ServiceTimeline','Test-CachedJournalSequence','Test-CachedNotifications','Test-CachedHandBackAcl','Test-CachedSample','Test-CachedImage','Test-CachedActorCalls','Add-CachedHeldJournal','Test-CachedNamespaceCommit','Get-WriterBody','Get-ActivationActorIdentity')
 $script:checks=0
 function Check([bool]$Condition,[string]$Message){if(-not $Condition){throw $Message};$script:checks++}
 function Clone($Value){return ($Value | ConvertTo-Json -Depth 32 | ConvertFrom-Json)}
@@ -678,5 +678,25 @@ try{
     $bad=Clone $sourceSample;$bad.Captures[0].Images[1].Absent=$true
     Check (@(Test-CachedSample $bad $sourceBase $false $imageB $imageB $source | ForEach-Object {$_} | Where-Object Verdict -ceq 'FAIL').Count -gt 0) 'C05 source removal despite denial fails.'
 }finally{[IO.Directory]::Delete($sampleDirectory,$true)}
+# Activation and seed actors use the same Prepare-created writer.ps1 launcher.
+# Mock only the OS queries; retain the real actor-identity validation function.
+$stateDirectory=Join-Path ([IO.Path]::GetTempPath()) 'activation-identity-fixture'
+$actorDirectory=Join-Path $stateDirectory 'actor';$writerTask='fixture-writer-task'
+$state=@{ActorSid='S-1-5-21-1-2-3-1001'}
+$script:activationIdentity=@{Pid=($PID+100);Sid=$state.ActorSid;Elevated=$false;IsAdministrator=$false;SessionId=0;BootId='fixture-active'}
+$script:activationProcess=[pscustomobject]@{ProcessId=($PID+100);SessionId=0;CommandLine=('powershell.exe -File "'+(Join-Path $stateDirectory 'writer.ps1')+'"')}
+function Wait-WriterIdentity { return $script:activationIdentity }
+function Get-BootId { return 'fixture-active' }
+function Get-CimInstance { return $script:activationProcess }
+function Invoke-CimMethod { return @{ReturnValue=0;Sid=$state.ActorSid} }
+function Get-ScheduledTask { return [pscustomobject]@{TaskName=$writerTask;Principal='standard-user';State='Running'} }
+$proof=Get-ActivationActorIdentity
+Check ($proof.Pid -eq $script:activationIdentity.Pid -and $proof.OwnerSid -ceq $state.ActorSid) 'Activation actor matches the actual shared writer.ps1 launcher.'
+$script:activationProcess.CommandLine='powershell.exe -File unrelated.ps1';$rejected=$false
+try{$null=Get-ActivationActorIdentity}catch{$rejected=$_.Exception.Message -like '*OS process provenance mismatch*'}
+Check $rejected 'Unrelated process command line must still be rejected.'
+$script:activationProcess.CommandLine=('powershell.exe -File "'+(Join-Path $stateDirectory 'writer.ps1')+'"');$script:activationProcess.SessionId=1;$rejected=$false
+try{$null=Get-ActivationActorIdentity}catch{$rejected=$_.Exception.Message -like '*OS process provenance mismatch*'}
+Check $rejected 'Activation actor session mismatch must still be rejected.'
 'ProofAdapterEvaluationChecks='+$script:checks+';PASS (host-safe synthetic evaluation, collector mocks and identity publication only)'
 }catch{'ScriptError='+$_.Exception.ToString();throw}

@@ -730,7 +730,7 @@ The safe W01 checkpoint parent was written by Sol and checked by root: Windows P
   `feat/sol-overnight-20261007` at `/home/victor/Work/safeupload-wt-sol`.
 - [x] Independent pre-run debuggee baseline returned `BaselineClean=True`; A01 run
   `sol-a01r2` pins driver `mvp4-b10`/`326eb512` and agent `agent-mvp4-b17`/`12ad8e96`.
-- [ ] A01 runtime-Verifier rerun in progress: `evidence/2026-10-07/phase4-suite-sol-a01r2-index.txt`.
+- [x] A01 runtime-Verifier rerun restored clean; stopped at harness launcher-path mismatch: `evidence/2026-10-07/phase4-suite-sol-a01r2-index.txt`.
 - [x] Separate MVP gate implemented; 7 synthetic MVP tests and 18 existing proof-adapter
   tests pass. Assessment: `evidence/2026-10-07/sol-mvp-historical-reassessment.txt`.
   Strict gate remains unchanged; both historical cases correctly fail the MVP gate.
@@ -746,3 +746,21 @@ The safe W01 checkpoint parent was written by Sol and checked by root: Windows P
   alone is not an exception. Use a read-only raw-volume/MFT proof; do not weaken driver.
 - [ ] Remaining Ready rows, live taint evidence, dedicated latency, NotReady MVP rows,
   ordinary/boot modes and Phase 5 review remain pending.
+
+- [ ] Harness repair awaiting VM requalification: A01 checks `activation-writer.ps1`,
+  but Prepare creates and starts `writer.ps1` for every actor. Match the actual launcher,
+  retaining PID/session/token/OS-owner checks; 3 synthetic identity checks added.
+- [ ] Raw private-stage reader implemented without product changes: bind exact filename
+  through parent raw index, MFT record sequence and FILE_NAME parent, require one link,
+  reject ADS/reparse/EFS, read complete resident/nonresident bytes twice, bracket records
+  and parent index; preserve raw containers. Candidate builder validation passed 0 parser
+  errors, 224 adapter checks and 77 observer checks before the identity regression additions.
+- [ ] Live taint flag needs a driver change: `TestDisableTaintState` is explicitly
+  `SAFEUPLOAD_PROMOTION_TEST_DISABLE_TAINT_UNAVAILABLE` in `StageWriters.c`; there is no
+  TEST_DISABLE_TAINT policy bit or readback in the current product. Control 24 exposes live
+  policy flags but cannot attest an absent flag. Keep `LiveTaintFlags` on the fixed allowlist
+  and report this limitation; counters alone cannot manufacture live flag confirmation.
+
+- [x] Candidate harness Windows gate PASS: `evidence/2026-10-07/sol-harness-windows-validation-b.txt`
+  (0 parser errors, 227 proof-adapter checks, 77 native observer checks). Python
+  18 proof tests plus 7 MVP tests pass; raw helper compiles on .NET/PowerShell 5.1.
