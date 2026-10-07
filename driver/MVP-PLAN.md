@@ -1445,3 +1445,19 @@ The safe W01 checkpoint parent was written by Sol and checked by root: Windows P
   a failed hand-back does not exist in the product (`RecoverBlockedAsync` only cleans temporaries) and is recorded as a
   post-MVP product feature, not an MVP assertion. The C-row BLOCK `C01HandBackSecondUserAccess` INCONCLUSIVE is being
   replaced by a real second-standard-user denial check.
+- [x] **Old writers were refused, contrary to the 2026-10-05 contract** (A01 b17r2: holder WriteFile Win32 5; A03
+  b17r3: FlushViewOfFile Win32 5). Luna: product bug ([analysis](evidence/2026-10-07/luna-a01-old-writer-refusal-analysis.txt)).
+  `5b97cbbb` removes the 2026-10-06 paging-write refusal for tracked SOPs in current/pending scopes (W accounting
+  kept); review **ACCEPT WITH CONDITIONS** ([review](evidence/2026-10-07/luna-b18-paging-ledger-review.txt)). Post-MVP:
+  qualify the Free(F) boundary against a paging write queued above the filter; fix the stale comment in
+  `StagedDestinationFile.cs:44`. The A01 non-paging refusal (holder's exact FO not found as tracked) is not yet
+  explained; the harness now dumps the admission trace and seek/write codes on failure (`a6761c76`). Build `mvp4-b18`
+  clean.
+- [ ] Dedicated cached latency on b17 (b17lat1): 46/101 rounds, then the harness's per-poll full-journal copy failed
+  (access denied on Flush of its own evidence copy). Native open p50 31 ms but 6/46 rounds 0.8-1.0 s (p95 893 ms,
+  over budget); write/flush/close within budget. The poll copies every journal file into evidence ~25-115 times per
+  round (quadratic I/O); a Sol worker is making it O(1) per poll. Open spikes to be re-measured on the lightweight
+  harness and in ordinary mode before any product change. Separately, a SYSTEM write to an unprotected file was
+  refused: Luna is analysing StagePhysicalMutationEx's fail-closed path for untracked writers.
+- [x] Merged into the MVP branch: R03, R01, B01, X01, A05 core rows and the second-user hand-back check (21 Ready
+  rows); merged harness PS 5.1 gate PASS. B02 (interactive session) and R02 (post-apply stop) in progress.
