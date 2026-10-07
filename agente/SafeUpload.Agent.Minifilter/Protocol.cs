@@ -223,6 +223,7 @@ public static class AdmissionCoverageContract
     public const uint PolicyPendingFlag = 0x00000008;
     public const uint RegistryCompleteFlag = 0x00000010;
     public const uint PolicyScopeOverflowFlag = 0x00000020;
+    public const uint TestTaintControlFlag = 0x00000040;
 }
 
 [StructLayout(LayoutKind.Sequential, Pack = 8)]

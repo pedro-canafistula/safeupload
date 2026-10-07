@@ -1534,3 +1534,21 @@ at both boundaries and zero counter changes. `LiveTaintFlags` is removed from th
 MVP allowlist, and absent/duplicate/non-PASS assertions now block that gate. Old b18 runs
 remain diagnostics and cannot qualify the finished taint-disabled MVP. Exact builds, the
 normal/feature agent matrix and VM qualification on the new pair remain required.
+
+Adversarial self-review found an old-pair attestation hazard: b18 accepts unknown live
+policy bits, so echoing 0x20 alone does not prove that taint bypass exists. Control 24
+now carries a feature-only native capability flag 0x40, set by the implementation
+itself. The service rejects a taint-disabled expected policy without that capability,
+and the harness fails an old driver's echoed bit without it. The normal client does
+not recognize the feature capability. Protocol sizes/version remain unchanged.
+Table revision 7 increments all 23 Ready row revisions for the common live-taint
+contract. Windows gate `goal-taint-3` PASS (13 self-checks; 13 live-taint controls),
+53 host tests PASS. First candidate `9b3a4ea6` built clean in all four WDK configs,
+feature agent419 PASS and matrix normal355/feature419 PASS in both configurations;
+those pre-capability builds are retained but are not the next runtime pair.
+
+The b18 diagnostic latency run `goallatmap1` stopped at round index74 with
+writer-open Win32 5 after about 5.5 seconds. The actor exported failure and exited,
+but the SYSTEM collector remained blocked during cleanup, before trial export.
+Retain the live guest memory snapshot and all existing files before guarded
+recovery; do not count the 74 successful rounds as dedicated qualification.

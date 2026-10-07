@@ -919,6 +919,9 @@ function Test-InvariantLiveTaintWindow($Before,$After,$Counters) {
             return @{Name='LiveTaintFlags';Verdict='INCONCLUSIVE';Reason='Live policy receipt is malformed.'}
         }
         $flags=[Convert]::ToUInt32($coverage.policyFlags.Substring(2),16)
+        if(([Convert]::ToUInt32($coverage.flags.Substring(2),16) -band 0x40) -eq 0){
+            return @{Name='LiveTaintFlags';Verdict='FAIL';Reason='Native driver receipt does not attest implementation of the test taint control.'}
+        }
         if(($flags -band 0x20) -eq 0){return @{Name='LiveTaintFlags';Verdict='FAIL';Reason='Actual current policy does not enable TEST_DISABLE_TAINT.'}}
         if(([Convert]::ToUInt32($coverage.flags.Substring(2),16) -band 2) -eq 0 -or
             $coverage.policyGeneration -ne $coverage.policyGenerationEnd){

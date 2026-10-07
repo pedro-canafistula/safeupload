@@ -1,0 +1,23 @@
+LABEL=goal-taint1
+BUILDER=DESKTOP-O1LP5DG
+SOURCE_MANIFEST_VERIFIED=138
+ARCHIVE_SHA256=0DE4521E0AFD016EA9DBF6BAE9618DBE2C8C30E174FB2486ED35FBC73E954860
+MANIFEST_SHA256=3D872C4BF01D8F6FA749CED1E46E09AB12D4624CD63765CAB15ABF67DF398918
+normal-debug-build: exit=0 warnings=0 errors=0
+normal-debug-tests: exit=0 warnings=0 errors=0
+normal-debug: tests_passed=355
+normal-release-build: exit=0 warnings=0 errors=0
+normal-release-tests: exit=0 warnings=0 errors=0
+normal-release: tests_passed=355
+normal-release-publish: exit=0 warnings=0 errors=0
+normal-release: package_sha256=C87ACDFA3D4CCF4A8D8CA1F321066CB543C20043B14708EA4F49CDF94CB27BCA
+feature-debug-build: exit=0 warnings=0 errors=0
+feature-debug-tests: exit=0 warnings=0 errors=0
+feature-debug: tests_passed=419
+feature-release-build: exit=0 warnings=0 errors=0
+feature-release-tests: exit=0 warnings=0 errors=0
+feature-release: tests_passed=419
+feature-release-publish: exit=0 warnings=0 errors=0
+feature-release: package_sha256=D9BFECF95BD5067B4C51ED90F119F73B7EDBEFB30953E28BAC7F32551AC40EA9
+AgentMatrixGate=True
+BUILD_END_UTC=2026-10-07T15:10:40.5312860Z

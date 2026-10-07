@@ -13,7 +13,7 @@ function CheckVerdict($Before,$After,$Counters,[string]$Expected,[string]$Label)
     if($result.Verdict -cne $Expected){throw ($Label+': '+($result|ConvertTo-Json -Compress -Depth 8))}
     $script:checks++
 }
-function Receipt([long]$Start,[long]$End){return @{BootId='boot';StartQpc=$Start;EndQpc=$End;Coverage=@{policyFlags='0x00000030';flags='0x00000002';policyGeneration=1;policyGenerationEnd=1}}}
+function Receipt([long]$Start,[long]$End){return @{BootId='boot';StartQpc=$Start;EndQpc=$End;Coverage=@{policyFlags='0x00000030';flags='0x00000042';policyGeneration=1;policyGenerationEnd=1}}}
 $before=Receipt 10 20;$after=Receipt 80 90
 $counters=@{Before=@{BootId='boot';StartQpc=30;EndQpc=40};After=@{BootId='boot';StartQpc=60;EndQpc=70};NoCounterChanges=$true}
 CheckVerdict $before $after $counters 'PASS' 'Live bit and unchanged actual window'
@@ -23,9 +23,11 @@ $before.Coverage.policyFlags='0x00000010'
 CheckVerdict $before $after $counters 'FAIL' 'Current policy bit off'
 $before.Coverage.policyFlags='0x00000030';$after.Coverage.policyFlags='0x00000010'
 CheckVerdict $before $after $counters 'FAIL' 'Ending policy bit off'
-$after.Coverage.policyFlags='0x00000030';$after.Coverage.flags='0x00000000'
+$after.Coverage.policyFlags='0x00000030';$after.Coverage.flags='0x00000002'
+CheckVerdict $before $after $counters 'FAIL' 'Old driver echoing an unsupported policy bit'
+$after.Coverage.flags='0x00000040'
 CheckVerdict $before $after $counters 'INCONCLUSIVE' 'Unstable native receipt'
-$after.Coverage.flags='0x00000002';$after.Coverage.policyGenerationEnd=2
+$after.Coverage.flags='0x00000042';$after.Coverage.policyGenerationEnd=2
 CheckVerdict $before $after $counters 'INCONCLUSIVE' 'Native generation changed'
 $after.Coverage.policyGenerationEnd=1;$after.Coverage.policyFlags='registry value'
 CheckVerdict $before $after $counters 'INCONCLUSIVE' 'Malformed policy flags'

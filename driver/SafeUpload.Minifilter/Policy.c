@@ -1279,6 +1279,7 @@ NTSTATUS SafeUploadPolicyAdmissionCoverageSnapshot(
     FltAcquirePushLockShared(&SafeUploadPolicyLock);
     Status->StructSize = sizeof(*Status);
     Status->ProtocolVersion = SAFEUPLOAD_PROTOCOL_VERSION;
+    Status->Flags |= SAFEUPLOAD_ADMISSION_COVERAGE_FLAG_TEST_TAINT_CONTROL;
     Status->PolicyGeneration = (ULONG)InterlockedCompareExchange(&SafeUploadPolicyGeneration, 0, 0);
     Status->PolicyFlags = SafeUploadPolicy != NULL ? SafeUploadPolicy->Flags : 0;
     Status->BootPolicyState = SafeUploadData.BootPolicyState;

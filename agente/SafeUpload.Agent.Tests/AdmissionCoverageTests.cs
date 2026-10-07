@@ -16,7 +16,8 @@ public sealed class AdmissionCoverageTests
         AdmissionCoverageScopeReceipt scope = PrefixScope();
         uint flags = (uint)PolicyFlags.TestDisableTaint;
         AdmissionCoverageDecision decision = AdmissionCoverageEvaluator.Evaluate(
-            ReadyReceipt(scope, policyFlags: flags), [scope.Prefix],
+            ReadyReceipt(scope, policyFlags: flags,
+                flags: CompleteStableFutureRegistry | AdmissionCoverageContract.TestTaintControlFlag), [scope.Prefix],
             expectedPolicyFlags: flags, boundNativePolicyGeneration: 7);
 #if SAFEUPLOAD_ADMISSION_EVIDENCE
         Assert.Equal(AdmissionCoverageReadiness.Ready, decision.Readiness);
@@ -26,6 +27,9 @@ public sealed class AdmissionCoverageTests
         Assert.Equal(AdmissionCoverageReadiness.Degraded,
             AdmissionCoverageEvaluator.Evaluate(ReadyReceipt(scope, policyFlags: flags),
                 [scope.Prefix], expectedPolicyFlags: 0, boundNativePolicyGeneration: 7).Readiness);
+        Assert.Equal(AdmissionCoverageReadiness.Degraded,
+            AdmissionCoverageEvaluator.Evaluate(ReadyReceipt(scope, policyFlags: flags),
+                [scope.Prefix], expectedPolicyFlags: flags, boundNativePolicyGeneration: 7).Readiness);
     }
 
     [Fact]

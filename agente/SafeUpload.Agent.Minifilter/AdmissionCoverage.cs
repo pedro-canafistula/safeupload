@@ -80,8 +80,10 @@ public static class AdmissionCoverageEvaluator
     private const uint AuditOnlyPolicyFlag = 0x00000004;
 #if SAFEUPLOAD_ADMISSION_EVIDENCE
     private const uint KnownPolicyFlags = 0x0000003f;
+    private const uint KnownReceiptFlags = 0x0000007f;
 #else
     private const uint KnownPolicyFlags = 0x0000001f;
+    private const uint KnownReceiptFlags = 0x0000003f;
 #endif
 
     public static unsafe string[] GetExpectedPrefixes(SafeUploadPolicyMessage policy)
@@ -147,7 +149,7 @@ public static class AdmissionCoverageEvaluator
         if (boundNativePolicyGeneration != 0 && currentGeneration != boundNativePolicyGeneration)
             return Degraded("NativePolicyGenerationChanged", currentGeneration);
 
-        if ((receipt.Flags & ~0x0000003fu) != 0)
+        if ((receipt.Flags & ~KnownReceiptFlags) != 0)
             return Degraded("UnknownReceiptFlags", 0);
         if ((receipt.Flags & AdmissionCoverageContract.PolicyScopeOverflowFlag) != 0)
             return Degraded("PolicyScopeOverflow", 0);
@@ -155,6 +157,9 @@ public static class AdmissionCoverageEvaluator
             return Degraded("UnknownPolicyFlags", 0);
         if (receipt.PolicyFlags != expectedPolicyFlags)
             return Degraded("AcceptedPolicyMismatch", 0);
+        if ((expectedPolicyFlags & (uint)PolicyFlags.TestDisableTaint) != 0 &&
+            (receipt.Flags & AdmissionCoverageContract.TestTaintControlFlag) == 0)
+            return Degraded("TaintDisableUnsupported", currentGeneration);
         if (expectedPrefixes.Count == 0 &&
             (expectedPolicyFlags & (RemovablePolicyFlag | NetworkPolicyFlag)) == 0)
             return Degraded("NoDestinationScope", 0);
