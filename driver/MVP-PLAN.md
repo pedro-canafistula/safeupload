@@ -785,3 +785,15 @@ The safe W01 checkpoint parent was written by Sol and checked by root: Windows P
   `evidence/2026-10-07/boot-start-invariant-A01-runtime-verifier-sol-a01r3-artifacts/`.
 - [x] Actor command publication/native-ref repairs pass Windows 5.1 gate: 229 adapter
   checks, 77 observer checks, zero parser errors (`evidence/2026-10-07/sol-harness-windows-validation-d.txt`).
+
+- [x] A01 `sol-a01r4` reached the standard-user holder; restored independently clean.
+  Evidence: `evidence/2026-10-07/phase4-suite-sol-a01r4-index.txt`. It stopped before
+  the epoch update because the newly created file's on-disk MFT record was stale.
+- [ ] A fixture durability repair: prepare known P before reboot and have the actor
+  open the existing file (OPEN_EXISTING), rewrite/flush P while Unscoped and retain
+  its writable holder. This follows A01's physical-open contract and preserves all
+  raw identity/byte checks, without volume writes or observer rebaselining.
+
+- [x] Pre-reboot P fixture repair passes Windows 5.1 validation: 0 parse errors,
+  229 adapter checks and 77 observer checks (`evidence/2026-10-07/sol-harness-windows-validation-e.txt`);
+  Python MVP (7) and proof adapter (18) tests pass. VM qualification pending.
