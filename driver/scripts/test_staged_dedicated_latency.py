@@ -15,6 +15,7 @@ CLASSES = {
  'C02-approve-absent': ['writer-open', 'create-mapping', 'map-view', 'close-source', 'mapped-store', 'flush-view', 'unmap-view', 'close-section'],
  'C03-approve-existing': ['writer-open', 'cached-write', 'flush', 'close'],
  'C04-approve': ['writer-open', 'cached-write', 'flush', 'rename-ex', 'close'],
+ 'C05-denied-external-rename': ['writer-open', 'rename-ex', 'close'],
 }
 
 
@@ -24,10 +25,12 @@ def fixture(case='C01-approve-absent'):
     calls, qpc = [], 1
     for n in range(101):
         target = 'C:\\fixture\\'+(f'latency-{n:03}.txt' if case.startswith(('C01-', 'C02-')) else 'cached.txt')
-        open_path = f'C:\\fixture\\latency-{n:03}.tmp.txt' if case == 'C04-approve' else target
+        open_path = (f'C:\\fixture\\latency-{n:03}.tmp.txt' if case == 'C04-approve'
+                     else 'C:\\external\\source.txt' if case == 'C05-denied-external-rename' else target)
         native = []
         for cls in CLASSES[case]:
-            native.append(dict(Class=cls, Trial=n, Cold=n == 0, NativeCode=0, StartQpc=qpc, EndQpc=qpc+1));qpc+=2
+            code = 5 if case == 'C05-denied-external-rename' and cls == 'rename-ex' else 0
+            native.append(dict(Class=cls, Trial=n, Cold=n == 0, NativeCode=code, StartQpc=qpc, EndQpc=qpc+1));qpc+=2
         common = dict(Pid=1234, Sid=actor['Sid'], BootId='active', PrivateSha256='A'*64, Token='a'*32, Qpc=qpc)
         receipt = dict(common, Calls=native, Trial=n, Held=False, Target=target, OpenPath=open_path)
         private = dict(common, SourceClosed=True, ViewLive=True, SectionLive=True)
@@ -36,7 +39,19 @@ def fixture(case='C01-approve-absent'):
         terminal = dict(StateName='Released', SealedOnce=True, Sha256Hex='A'*64,
                 History=['Allocated','Sealed','Inspecting','Approved','Publishing','Released'], TransferId=f'id-{n}',
                 StartQpc=qpc, EndQpc=qpc+1, Record=dict(Bytes=list(json.dumps(transfer).encode())))
-        observation['Rounds'].append(dict(Trial=n, Receipt=receipt, PrivateReceipt=private, Terminal=terminal, PublicationVerifiedQpc=qpc+2))
+        record=dict(Trial=n, Receipt=receipt, PrivateReceipt=private, Terminal=terminal, PublicationVerifiedQpc=qpc+2)
+        if case == 'C05-denied-external-rename':
+            def raw_sample(path, absent):
+                time=dict(BootId='active', QpcFrequency=1000, Qpc=qpc+1)
+                return dict(Status='OK', Start=time.copy(), End=time.copy(), Captures=[dict(Images=[
+                    dict(Role='Current', Path=path, Absent=absent), dict(Role='Parent')])])
+            record.update(Terminal=None, NativeNotBeforeQpc=n*9,
+                ObservationVerifiedQpc=qpc+2, IoCompletedQpc=qpc+2,
+                ValidationStatus='Complete', Snapshot=dict(Status='OK'),
+                JournalProof=dict(Complete=True, NewEntries=[], Findings=[]),
+                SampleAssertions=[dict(Name='RawSourceAndAbsentTarget', Verdict='PASS')],
+                DestinationSample=raw_sample(target, True), SourceSample=raw_sample(open_path, False))
+        observation['Rounds'].append(record)
         qpc+=3;calls.extend(native)
     return dict(Schema='StagedInvariantSuite/2', AuthoritativeCaseExport=True, CaseId=case, RunName='synthetic-only', Mode='runtime-verifier', Verdict='INCONCLUSIVE',
             InputHashes={k:'B'*64 for k in Q.MVP_BUILD_HASHES}, Restoration=dict(Known=True, GuestChecks=True), BootIds=dict(Active='active'),
@@ -46,6 +61,22 @@ def fixture(case='C01-approve-absent'):
 
 
 class DedicatedLatencyTests(unittest.TestCase):
+    def test_denied_rename_requires_exact_status_and_every_independent_round_proof(self):
+        changes = [lambda r: r['Receipt']['Calls'][1].update(NativeCode=0),
+                   lambda r: r['Receipt']['Calls'][1].update(NativeCode=32),
+                   lambda r: r['JournalProof'].update(NewEntries=[{'TransferId':'unexpected'}]),
+                   lambda r: r['JournalProof'].update(Complete=False),
+                   lambda r: r['SourceSample'].update(Status='INCONCLUSIVE'),
+                   lambda r: r['SourceSample'].update(Captures=[]),
+                   lambda r: r['DestinationSample']['Captures'][0]['Images'][0].update(Absent=False),
+                   lambda r: r['SampleAssertions'][0].update(Verdict='FAIL'),
+                   lambda r: r.update(IoCompletedQpc=0),
+                   lambda r: r['Receipt'].update(OpenPath=r['Receipt']['Target'])]
+        for change in changes:
+            result=fixture('C05-denied-external-rename');change(result['Trials'][0]['DedicatedLatency']['Rounds'][40])
+            with self.subTest(change=change):
+                self.assertNotEqual('PASS', Q.export_dedicated_latency(result)['Verdict'])
+
     def test_all_write_paths(self):
         for case in CLASSES:
             with self.subTest(case=case):

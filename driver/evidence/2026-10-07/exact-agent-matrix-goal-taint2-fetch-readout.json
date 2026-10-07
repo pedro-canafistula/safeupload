@@ -1,0 +1,87 @@
+{
+  "summary.txt": {
+    "Fetched": true,
+    "Bytes": 403,
+    "SHA256": "073323be6735ade8a1fc9440611cd4ed9863964562f678a91974e5c49b0ee80f"
+  },
+  "dotnet-info.txt": {
+    "Fetched": true,
+    "Bytes": 2696,
+    "SHA256": "560a57cd44c346ce185ddd6573f1e43eda687f1ab6648d6561c1549a036e9327"
+  },
+  "normal-debug-build.txt": {
+    "Fetched": true,
+    "Bytes": 2472,
+    "SHA256": "576b6f76e5ef89edc6a931ac4353724fe9d837ce264704b2e19c8f5140b1149b"
+  },
+  "normal-debug-tests.txt": {
+    "Fetched": true,
+    "Bytes": 5058,
+    "SHA256": "7c8d0512c0d8c9b931a484d78762cbd7ce359a17c3b5ad3f9872d5681c601d9b"
+  },
+  "normal-debug-results/agent-tests.trx": {
+    "Fetched": true,
+    "Bytes": 550762,
+    "SHA256": "bd510d38382c1494dfcaf91e2b95f4ef97b1940907a051169d8073406e4b6370"
+  },
+  "normal-release-build.txt": {
+    "Fetched": false,
+    "Exit": 1
+  },
+  "normal-release-tests.txt": {
+    "Fetched": false,
+    "Exit": 1
+  },
+  "normal-release-results/agent-tests.trx": {
+    "Fetched": false,
+    "Exit": 1
+  },
+  "normal-release-publish.txt": {
+    "Fetched": false,
+    "Exit": 1
+  },
+  "normal-release-package-manifest.txt": {
+    "Fetched": false,
+    "Exit": 1
+  },
+  "normal-release-service-publish.zip": {
+    "Fetched": false,
+    "Exit": 1
+  },
+  "feature-debug-build.txt": {
+    "Fetched": false,
+    "Exit": 1
+  },
+  "feature-debug-tests.txt": {
+    "Fetched": false,
+    "Exit": 1
+  },
+  "feature-debug-results/agent-tests.trx": {
+    "Fetched": false,
+    "Exit": 1
+  },
+  "feature-release-build.txt": {
+    "Fetched": false,
+    "Exit": 1
+  },
+  "feature-release-tests.txt": {
+    "Fetched": false,
+    "Exit": 1
+  },
+  "feature-release-results/agent-tests.trx": {
+    "Fetched": false,
+    "Exit": 1
+  },
+  "feature-release-publish.txt": {
+    "Fetched": false,
+    "Exit": 1
+  },
+  "feature-release-package-manifest.txt": {
+    "Fetched": false,
+    "Exit": 1
+  },
+  "feature-release-service-publish.zip": {
+    "Fetched": false,
+    "Exit": 1
+  }
+}

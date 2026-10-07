@@ -1242,7 +1242,12 @@ function Get-ExpectedCheckpoint($Baseline,[string]$PhaseName,[long]$Sequence) {
 function ConvertFrom-NtfsLastAccessOutput([string]$Text,[int]$ExitCode) {
     $matches=[regex]::Matches($Text,'(?m)^\s*DisableLastAccess\s*=\s*([0-3])\s*\((User|System) Managed, (Enabled|Disabled)\)\s*$')
     if($ExitCode -ne 0 -or $matches.Count -ne 1){return [pscustomobject]@{Value=$null;Management=$null;UpdatesDisabled=$null}}
-    return [pscustomobject]@{Value=[int]$matches[0].Groups[1].Value;Management=$matches[0].Groups[2].Value;UpdatesDisabled=($matches[0].Groups[3].Value -ceq 'Disabled')}
+    $value=[int]$matches[0].Groups[1].Value;$management=$matches[0].Groups[2].Value
+    if(($value -ge 2) -ne ($management -ceq 'System')){return [pscustomobject]@{Value=$null;Management=$null;UpdatesDisabled=$null}}
+    # The supported build prints value2 as "System Managed, Disabled", but
+    # its own help defines value2 as Last Access Updates Enabled. The label
+    # describes disableLastAccess, not the update policy. Bit0 is authoritative.
+    return [pscustomobject]@{Value=$value;Management=$management;UpdatesDisabled=(($value -band 1) -ne 0)}
 }
 function Get-LastAccessEvidence {
     $text=(& fsutil.exe behavior query disablelastaccess 2>&1 | Out-String);$code=$LASTEXITCODE
@@ -3029,6 +3034,51 @@ function Invoke-DedicatedLatencyObservation($Trial,$Actor,$Ready,$Context,[strin
     return $writer
 }
 
+function Invoke-DedicatedDeniedRenameLatencyObservation($Trial,$Actor,$Context,$Baseline,$ExternalContext,$ExternalBaseline,[byte[]]$Image) {
+    $digest=[StagedInvariant.Native]::Hash($Image);$target=Join-Path $protectedDirectory 'cached.txt';$source=Join-Path $externalDirectory 'source.txt'
+    $Trial.DedicatedLatency=@{Complete=$false;Held=$false;Rounds=@();Digest=$digest;Length=$Image.Length;QpcFrequency=[Diagnostics.Stopwatch]::Frequency}
+    $barrier=Join-Path $actorDirectory 'go';Write-DurableFile ($barrier+'.pending') $RunName -New
+    $notBefore=[Diagnostics.Stopwatch]::GetTimestamp();[IO.File]::Move(($barrier+'.pending'),$barrier)
+    $previous=$notBefore
+    for($round=0;$round -le 100;$round++){
+        $prefix='round-'+$round.ToString('D3')+'-'
+        $receipt=Wait-WriterIdentity (Join-Path $actorDirectory ($prefix+'closed.clixml')) 60
+        $private=Wait-WriterIdentity (Join-Path $actorDirectory ($prefix+'held.clixml')) 1
+        $record=@{Trial=$round;Receipt=$receipt;PrivateReceipt=$private;Terminal=$null;NativeNotBeforeQpc=$notBefore;ValidationStatus='Incomplete';DestinationSample=$null;SourceSample=$null;SampleAssertions=@();JournalProof=$null;Snapshot=$null;ObservationVerifiedQpc=$null;IoCompletedQpc=$null}
+        $Trial.DedicatedLatency.Rounds+=$record;$Trial.Operations+=@($receipt.Calls)
+        foreach($entry in @($receipt,$private)){
+            if($entry.Pid -ne $Actor.Pid -or $entry.Sid -cne $Actor.Sid -or $entry.BootId -cne $Context.BootId -or $entry.Token -cne $state.WriterToken -or $entry.PrivateSha256 -cne $digest){throw 'C05 dedicated actor/source image identity mismatch'}
+        }
+        if($receipt.Trial -ne $round -or $receipt.Held -ne $false -or $receipt.Target -cne $target -or $receipt.OpenPath -cne $source -or $receipt.WriterKind -cne 'external-rename' -or
+            ($receipt.Calls.Class -join ',') -cne 'writer-open,rename-ex,close'){throw 'C05 dedicated native sequence/paths/round mismatch'}
+        foreach($call in $receipt.Calls){
+            $expectedCode=if($call.Class -ceq 'rename-ex'){5}else{0}
+            if($call.NativeCode -ne $expectedCode -or $call.Trial -ne $round -or $call.Cold -ne ($round -eq 0) -or $call.StartQpc -lt $previous -or $call.EndQpc -lt $call.StartQpc -or $call.EndQpc -gt $receipt.Qpc){throw 'C05 dedicated native status or QPC ordering mismatch'}
+            $previous=$call.EndQpc
+        }
+        $destinationSample=Capture-CachedSample $Context $Baseline ('LatencyDenied-'+$round) ($round+1)
+        $sourceSample=Capture-CachedSample $ExternalContext $ExternalBaseline ('LatencySource-'+$round) ($round+1) $source
+        $checks=@(Test-CachedSample $destinationSample $Baseline $false $Image)+@(Test-CachedSample $sourceSample $ExternalBaseline $false $Image $Image $source)
+        $record.DestinationSample=$destinationSample;$record.SourceSample=$sourceSample;$record.SampleAssertions=$checks
+        $Trial.ExternalSource.Samples+=$sourceSample;$Trial.Assertions+=@($checks)
+        if($destinationSample.Status -cne 'OK' -or $sourceSample.Status -cne 'OK' -or -not $checks.Count -or @($checks | Where-Object Verdict -cne 'PASS').Count){throw 'C05 dedicated independent source/destination sample incomplete or contradicted'}
+        $snapshot=Get-ServiceSnapshot ($prefix+'denied') -RetryTransientJournal
+        $Trial.JournalSnapshots+=$snapshot;$record.Snapshot=$snapshot
+        $delta=Test-ServiceJournalDelta $Trial.ServiceBefore $snapshot $true;$record.JournalProof=$delta
+        if($snapshot.Status -cne 'OK' -or -not $delta.Complete -or $delta.NewEntries.Count -or $delta.Findings.Count){throw 'C05 dedicated private-transfer absence incomplete or contradicted'}
+        $record.ObservationVerifiedQpc=[Diagnostics.Stopwatch]::GetTimestamp();$record.ValidationStatus='Complete'
+        $barrier=Join-Path $actorDirectory ($prefix+'next');Write-DurableFile ($barrier+'.pending') $RunName -New
+        $notBefore=[Diagnostics.Stopwatch]::GetTimestamp();$record.IoCompletedQpc=$notBefore;$previous=$notBefore
+        [IO.File]::Move(($barrier+'.pending'),$barrier)
+    }
+    $writer=Wait-TaskCompletion $writerTask (Join-Path $actorDirectory 'completion.clixml') $state.WriterToken 60
+    if($writer.ExitCode -ne 0 -or $writer.Value.Held -ne $false -or $writer.Value.Actor.Pid -ne $Actor.Pid -or $writer.Value.Calls.Count -ne $Trial.Operations.Count){throw 'C05 dedicated final actor completion mismatch'}
+    $Trial.Latency=Get-LatencyVerdict $Trial.Operations $row.LatencyClasses $writer.Value.QpcFrequency
+    foreach($class in $Trial.Latency){foreach($sample in $class.Samples){$sample | Add-Member NoteProperty Held $false}}
+    $Trial.DedicatedLatency.Complete=$true
+    return $writer
+}
+
 function Invoke-CachedObservation {
     $caseStartedQpc=[Diagnostics.Stopwatch]::GetTimestamp()
     $externalContext=$null;$externalBaseline=$null;$externalSequence=0;$imageB=$null;$terminal=$null;$context=$null;$baseline=$null;$disposal=$null;$samples=@();$predicateSamples=@();$checkpoints=@();$writer=$null;$agent=$null;$readyEvent=$null;$actor=$null;$agentStartLocal=$null
@@ -3095,7 +3145,7 @@ function Invoke-CachedObservation {
             ObserverProcess=@{Pid=$process.ProcessId;OwnerSid=$owner.Sid;SessionId=$process.SessionId;CommandLine=$process.CommandLine}}
         $trial.Geometry=$context.Geometry;$trial.DecoderVersion=$context.DecoderVersion;$trial.ObserverModuleSha256=$context.ModuleSha256
         $imageA=[Convert]::FromBase64String($state.CachedImageBase64);$digest=[StagedInvariant.Native]::Hash($imageA);$trial.ImageA=@{Sha256=$digest;Length=$imageA.Length;Fixture=$state.CachedFixture}
-        if($DedicatedUnheldLatency){
+        if($DedicatedUnheldLatency -and -not $cachedDenial){
             $trial.Assertions+=@{Name='DedicatedLatencyOnly';Verdict='INCONCLUSIVE';Reason='Separate unheld native latency experiment; no functional protection qualification.'}
             $writer=Invoke-DedicatedLatencyObservation $trial $actor $ready $context $digest $imageA.Length
             $trial.LastAccessAfter=Get-LastAccessEvidence
@@ -3112,6 +3162,13 @@ function Invoke-CachedObservation {
             $externalBaseline | Add-Member NoteProperty CaptureStartedFileTime $sourceCaptureStart
             $trial.ExternalSource.Baseline=$externalBaseline
             if($externalBaseline.Status -cne 'OK'){throw ('External source baseline: '+($externalBaseline.Error | Out-String))}
+            if($DedicatedUnheldLatency){
+                $trial.Assertions+=@{Name='DedicatedLatencyOnly';Verdict='INCONCLUSIVE';Reason='Separate unheld denied-rename latency experiment; no functional protection qualification.'}
+                $writer=Invoke-DedicatedDeniedRenameLatencyObservation $trial $actor $context $baseline $externalContext $externalBaseline $imageA
+                $trial.LastAccessAfter=Get-LastAccessEvidence;$trial.ServiceAfter=Get-ServiceSnapshot 'latency-denied-after' -RetryTransientJournal;$trial.Journal=$trial.ServiceAfter.Journal
+                $trial.VerifierAfter=Get-VerifierEvidence 'after' -RequireMode
+                return
+            }
         }
         $sequence=1;$sample=Capture-CachedSample $context $baseline 'BeforeOperation' $sequence;$samples+= $sample;$predicateSamples+= $sample;$checkpoints+=Get-ExpectedCheckpoint $baseline $sample.Phase $sequence
         $trial.Assertions+=Test-CachedSample $sample $baseline $false $imageA $imageB
@@ -5810,7 +5867,7 @@ $coreJustificationCase=$CaseId -ceq 'B02'
 $interactiveActorCase=$coreJustificationCase -or $CaseId -cin @('C01-block-absent','C03-block-existing','C04-block')
 if($row.Status -ne 'Ready' -or ($CaseId -notin @('S00-observer-control','S01-denied-write-after-boot','S02-agent-down-open-refused') -and -not $cachedCase -and -not $isActivationCase -and -not $coreConcurrentCase -and -not $coreRestartPolicyCase -and -not $coreJustificationCase)){'CaseStatus=NOT_READY';throw "Case $CaseId is not implemented"}
 if($MappedStackDiagnosticSeconds -ne 0 -and ($CaseId -cnotin @('C02-approve-absent','C02-block-absent') -or $Mode -cne 'runtime-verifier')){throw 'Mapped stack diagnostic requires C02 runtime-Verifier'}
-if($DedicatedUnheldLatency -and ($CaseId -cnotin @('C01-approve-absent','C02-approve-absent','C03-approve-existing','C04-approve') -or $MappedStackDiagnosticSeconds)){throw 'Dedicated latency requires an APPROVE C01-C04 case without stack diagnostics'}
+if($DedicatedUnheldLatency -and ($CaseId -cnotin @('C01-approve-absent','C02-approve-absent','C03-approve-existing','C04-approve','C05-denied-external-rename') -or $MappedStackDiagnosticSeconds)){throw 'Dedicated latency requires an APPROVE C01-C04 or denied C05 case without stack diagnostics'}
 if($StartupProbe -and $Phase -ne 'AfterBoot'){throw 'StartupProbe requires AfterBoot'}
 
 if($Phase -eq 'Prepare'){

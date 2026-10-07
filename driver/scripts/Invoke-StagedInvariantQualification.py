@@ -657,7 +657,8 @@ def retain_partial_latency_samples(result):
         warm = sorted(s['Ms'] for s in samples if not s['Cold'])
         p95 = warm[math.ceil(.95 * len(warm)) - 1] if len(warm) >= 100 else None
         maximum = max(s['Ms'] for s in samples)
-        failed = any(s['NativeCode'] != 0 for s in samples) or maximum > 1000 or (p95 is not None and p95 > 250)
+        expected_code = 5 if result.get('CaseId') == 'C05-denied-external-rename' and name == 'rename-ex' else 0
+        failed = any(s['NativeCode'] != expected_code for s in samples) or maximum > 1000 or (p95 is not None and p95 > 250)
         records.append(dict(Class=name, Samples=samples, UnheldCount=len(warm), P95Ms=p95,
                             MaxMs=maximum, Verdict='FAIL' if failed else 'INCONCLUSIVE'))
     return records
@@ -675,6 +676,7 @@ def export_dedicated_latency(result):
                               'mapped-store', 'flush-view', 'unmap-view', 'close-section'],
         'C03-approve-existing': ['writer-open', 'cached-write', 'flush', 'close'],
         'C04-approve': ['writer-open', 'cached-write', 'flush', 'rename-ex', 'close'],
+        'C05-denied-external-rename': ['writer-open', 'rename-ex', 'close'],
     }
     evidence = dict(Schema='StagedInvariantLatency/1', RunName=result.get('RunName'),
                     WritePath=mvp_write_path(result.get('CaseId', '')), Mode=result.get('Mode'),
@@ -730,20 +732,52 @@ def export_dedicated_latency(result):
             calls = receipt['Calls']
             require([c['Class'] for c in calls] == expected, 'Dedicated native call sequence mismatch')
             for call in calls:
+                expected_code = 5 if result['CaseId'] == 'C05-denied-external-rename' and call['Class'] == 'rename-ex' else 0
                 require(type(call['Trial']) is int and call['Trial'] == number
                         and type(call['Cold']) is bool and call['Cold'] == (number == 0)
-                        and type(call['NativeCode']) is int and call['NativeCode'] == 0
+                        and type(call['NativeCode']) is int and call['NativeCode'] == expected_code
                         and type(call['StartQpc']) is int and type(call['EndQpc']) is int
                         and previous <= call['StartQpc'] <= call['EndQpc'] <= receipt['Qpc'],
                         'Dedicated native status/timing/repetition mismatch')
                 previous = call['EndQpc']
                 samples[call['Class']].append(dict(Trial=number, Cold=number == 0, Held=False,
-                        NativeCode=0, StartQpc=call['StartQpc'], EndQpc=call['EndQpc'],
+                        NativeCode=expected_code, StartQpc=call['StartQpc'], EndQpc=call['EndQpc'],
                         Ms=1000.0 * (call['EndQpc'] - call['StartQpc']) / frequency))
             all_calls.extend(calls)
             if result['CaseId'] == 'C02-approve-absent':
                 require(private.get('SourceClosed') is True and private.get('ViewLive') is True
                         and private.get('SectionLive') is True, 'Dedicated mapped lifetime incomplete')
+            if result['CaseId'] == 'C05-denied-external-rename':
+                proof = round_record['JournalProof']
+                destination, source = round_record['DestinationSample'], round_record['SourceSample']
+                checks = round_record['SampleAssertions']
+                require(terminal is None and round_record['ValidationStatus'] == 'Complete'
+                        and round_record['Snapshot']['Status'] == 'OK'
+                        and proof['Complete'] is True and not proof['NewEntries'] and not proof['Findings']
+                        and checks and all(a.get('Verdict') == 'PASS' for a in checks)
+                        and all(s.get('Status') == 'OK' and s['Start']['BootId'] == actor['BootId']
+                                and s['End']['BootId'] == actor['BootId']
+                                and s['Start']['QpcFrequency'] == frequency == s['End']['QpcFrequency']
+                                and previous <= s['Start']['Qpc'] <= s['End']['Qpc'] <= round_record['ObservationVerifiedQpc']
+                                for s in (destination, source)),
+                        'Dedicated denied rename raw/source/private-transfer proof incomplete or contradicted')
+                for sample, path, absent in ((destination, receipt['Target'], True),
+                                             (source, receipt['OpenPath'], False)):
+                    require(sample.get('Captures') and all(
+                        any(i.get('Role') == 'Current' and i.get('Path') == path
+                            and i.get('Absent', False) is absent for i in capture.get('Images', []))
+                        and any(i.get('Role') == 'Parent' for i in capture.get('Images', []))
+                        for capture in sample['Captures']),
+                        'Dedicated denied rename raw target/source/parent captures missing')
+                require(receipt['OpenPath'] != receipt['Target']
+                        and receipt['Calls'][0]['StartQpc'] >= round_record['NativeNotBeforeQpc']
+                        and round_record['ObservationVerifiedQpc'] <= round_record['IoCompletedQpc']
+                        and (not targets or receipt['Target'] in targets)
+                        and (not open_paths or receipt['OpenPath'] in open_paths),
+                        'Dedicated denied rename paths/barrier ordering changed')
+                targets.add(receipt['Target']); open_paths.add(receipt['OpenPath'])
+                previous = round_record['IoCompletedQpc']
+                continue
             transfer = json.loads(bytes(terminal['Record']['Bytes']).decode('utf-8-sig'))
             require(terminal['StateName'] == 'Released' and terminal['Sha256Hex'] == digest
                     and terminal['SealedOnce'] is True
@@ -1046,7 +1080,7 @@ def main():
     parser.add_argument('--agent-source-commit', default='HEAD')
     parser.add_argument('--mvp-latency-evidence', type=Path, help='Dedicated unheld latency JSON; pinned with this run')
     parser.add_argument('--dedicated-unheld-latency', action='store_true',
-                        help='Separate 101-round APPROVE C01-C04 latency evidence; cannot qualify a functional case')
+                        help='Separate 101-round APPROVE C01-C04 or denied C05 latency evidence; cannot qualify a functional case')
     parser.add_argument('--mapped-stack-diagnostic-seconds', type=int, choices=(0, 600), default=0,
                         help='C02 runtime-Verifier only: keep native actor alive for stack capture; never qualifies')
     parser.add_argument('--cases', nargs='+')

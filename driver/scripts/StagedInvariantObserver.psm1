@@ -1340,6 +1340,7 @@ function Test-InvariantMetadata($Image, $Expectation, $Sample, $Policy) {
             # disabled disk updates must retain exactly the baseline disk value.
             $known=($m.AccessWindowStartFileTime -gt 0 -and $Policy.Status -ceq 'OK' -and $Policy.Before.Value -eq $Policy.After.Value -and
                 $Policy.Before.Value -in @(0,1,2,3) -and $Policy.Before.UpdatesDisabled -is [bool] -and
+                $Policy.Before.UpdatesDisabled -eq (($Policy.Before.Value -band 1) -ne 0) -and
                 $Policy.After.UpdatesDisabled -is [bool] -and $Policy.Before.UpdatesDisabled -eq $Policy.After.UpdatesDisabled -and
                 $Policy.Before.Management -in @('User','System') -and $Policy.Before.Management -ceq $Policy.After.Management -and $Policy.Before.BootId -ceq $Sample.Start.BootId -and
                 $Policy.After.BootId -ceq $Sample.Start.BootId -and $Policy.Before.VolumeGuid -ceq $m.VolumeGuid -and

@@ -3,7 +3,7 @@
 # design section 4 corpus, NOT a claim that one row covers every future variant.
 @{
     Schema = 'StagedInvariantCases/1'
-    TableRevision = 7
+    TableRevision = 8
     Modes = @('ordinary', 'runtime-verifier', 'boot-verifier')
     RowSchema = @{
         Required = @('CaseId', 'Revision', 'Status', 'Variant', 'Outcome',
@@ -32,7 +32,7 @@
     }
     Cases = @(
         @{
-            CaseId = 'S00-observer-control'; Revision = 3; Status = 'Ready'
+            CaseId = 'S00-observer-control'; Revision = 4; Status = 'Ready'
             Variant = 'fixed-NTFS-nonresident-known-rewrite'; Outcome = 'CONTROL'
             QualificationScope = 'WP3SeedOnly; cannot satisfy Phase4Suite'
             ActorSid = 'ResolveStandardUserTokenAtRuntime'; ActorSession = 'ResolveTokenSessionId'
@@ -58,7 +58,7 @@
             Cleanup = @('CloseObserver', 'StopOwnedTasks', 'RemoveOwnedUser', 'RestoreDriver', 'RestorePolicyBytesAndAcls', 'RemoveOwnedBootPolicy', 'RestoreAgentConfig', 'ResetVerifier', 'RemoveFixtureAndState', 'RestorationReboot', 'IndependentBaseline')
         }
         @{
-            CaseId = 'S01-denied-write-after-boot'; Revision = 3; Status = 'Ready'
+            CaseId = 'S01-denied-write-after-boot'; Revision = 4; Status = 'Ready'
             Variant = 'fixed-NTFS-nonresident-first-write'; Outcome = 'DENY'
             QualificationScope = 'WP3SeedOnly; cannot satisfy Phase4Suite'
             ActorSid = 'ResolveStandardUserTokenAtRuntime'; ActorSession = 'ResolveTokenSessionId'
@@ -84,7 +84,7 @@
             Cleanup = @('CloseObserver', 'StopOwnedTasks', 'RemoveOwnedUser', 'RestoreDriver', 'RestorePolicyBytesAndAcls', 'RemoveOwnedBootPolicy', 'RestoreAgentConfig', 'ResetVerifier', 'RemoveFixtureAndState', 'RestorationReboot', 'IndependentBaseline')
         }
         @{
-            CaseId = 'S02-agent-down-open-refused'; Revision = 3; Status = 'Ready'
+            CaseId = 'S02-agent-down-open-refused'; Revision = 4; Status = 'Ready'
             Variant = 'fixed-NTFS-absent-new-name'; Outcome = 'DENY'
             QualificationScope = 'WP3SeedOnly; cannot satisfy Phase4Suite'
             ActorSid = 'ResolveStandardUserTokenAtRuntime'; ActorSession = 'ResolveTokenSessionId'
@@ -110,7 +110,7 @@
             Cleanup = @('CloseObserver', 'StopOwnedTasks', 'RemoveOwnedUser', 'RestoreDriver', 'RestorePolicyBytesAndAcls', 'RemoveOwnedBootPolicy', 'RestoreAgentConfig', 'ResetVerifier', 'RemoveFixtureAndState', 'RestorationReboot', 'IndependentBaseline')
         }
         @{
-            CaseId = 'A01'; Revision = 3; Status = 'Ready'
+            CaseId = 'A01'; Revision = 4; Status = 'Ready'
             Variant = 'fixed-NTFS-pre-scope-write-handle-runtime-scope-add-supported-text-target'
             Outcome = 'ACTIVATING_THEN_STAGED; pre-protection old-handle mutation is permitted and captured; post-promotion write remains private before approval'
             QualificationScope = 'Phase4A01SingleHandleVariant; noncached/EOF/allocation/disposition/rename/link variants deferred'
@@ -130,7 +130,7 @@
             Cleanup = @('CloseObserver', 'ReleaseActorHolder', 'StopTestServiceAndRestoreServiceConfig', 'StopOwnedTasks', 'RestoreDriver', 'RestorePolicyBytesAndAcls', 'RemoveOwnedBootPolicy', 'RestoreAgentConfig', 'ResetVerifier', 'RemoveFixtureAndState', 'RestorationReboot', 'IndependentBaseline')
         }
         @{
-            CaseId = 'A02'; Revision = 3; Status = 'Ready'
+            CaseId = 'A02'; Revision = 4; Status = 'Ready'
             Variant = 'fixed-NTFS-pre-scope-writable-view-source-handle-closed-runtime-scope-add-supported-text-target'
             Outcome = 'ACTIVATING_THEN_STAGED; retained-view paging mutation is permitted and captured before promotion; post-promotion write remains private before approval'
             QualificationScope = 'Phase4A02SingleLateStoreVariant; no-store and additional reconnect repetitions deferred'
@@ -150,7 +150,7 @@
             Cleanup = @('CloseObserver', 'ReleaseActorHolder', 'StopTestServiceAndRestoreServiceConfig', 'StopOwnedTasks', 'RestoreDriver', 'RestorePolicyBytesAndAcls', 'RemoveOwnedBootPolicy', 'RestoreAgentConfig', 'ResetVerifier', 'RemoveFixtureAndState', 'RestorationReboot', 'IndependentBaseline')
         }
         @{
-            CaseId = 'A03'; Revision = 3; Status = 'Ready'
+            CaseId = 'A03'; Revision = 4; Status = 'Ready'
             Variant = 'fixed-NTFS-retained-PAGE_READWRITE-section-no-view-runtime-scope-add-supported-text-target'
             Outcome = 'ACTIVATING_THEN_STAGED; first late view store is permitted and captured before promotion; post-promotion write remains private before approval'
             QualificationScope = 'Phase4A03SingleLateStoreVariant; no-store and additional reconnect repetitions deferred'
@@ -170,7 +170,7 @@
             Cleanup = @('CloseObserver', 'ReleaseActorHolder', 'StopTestServiceAndRestoreServiceConfig', 'StopOwnedTasks', 'RestoreDriver', 'RestorePolicyBytesAndAcls', 'RemoveOwnedBootPolicy', 'RestoreAgentConfig', 'ResetVerifier', 'RemoveFixtureAndState', 'RestorationReboot', 'IndependentBaseline')
         }
         @{
-            CaseId = 'A04'; Revision = 4; Status = 'Ready'
+            CaseId = 'A04'; Revision = 5; Status = 'Ready'
             Variant = 'fixed-NTFS-real-cross-process-duplicated-physical-file-object-runtime-scope-add'
             Outcome = 'ACTIVATING_THEN_STAGED_APPROVED; child P+U captured before Free/Protected, subsequent benign owned save Released'
             QualificationScope = 'Phase4A04Functional; exact duplicate/cleanup/raw U/actual Approved evidence, complete lower permit and temporal coverage still required'
@@ -190,7 +190,7 @@
             Cleanup = @('ReleaseBothActorsAndProveTaskCompletion', 'CloseObserverAndNotificationCapture', 'StopRestoreTestService', 'StopBothOwnedTasks', 'RestoreDriverPolicyAclsBootPolicyAuditProductState', 'ResetVerifier', 'RemoveActorAccountProfileFixturesAndBothRoutes', 'RestorationReboot', 'IndependentBaseline')
         }
         @{
-            CaseId = 'A05'; Revision = 3; Status = 'Ready'
+            CaseId = 'A05'; Revision = 4; Status = 'Ready'
             Variant = 'core-a-after-new-writer-gate-before-final-FreeF'; Outcome = 'Protected; agent-down unpermitted write refused'
             QualificationScope = 'MVP coordinated core (a); sampled raw/fresh/uncached bytes and existing lower/promotion diagnostics'
             DeferredVariants = @('(b) pending lower WRITE versus CLEANUP', '(c) mutating SET_INFORMATION/FSCTL draining', '(d) final identity/barrier race', 'Seeded unheld races', 'Repetition beyond one coordinated core (post-MVP hardening)')
@@ -210,7 +210,7 @@
             Cleanup = @('CooperativeActorRelease', 'StopRestoreRealAgent', 'CloseRawObserver', 'RestoreProductState', 'CommonSeedRestoration', 'IndependentBaseline')
         }
         @{
-            CaseId = 'C01-approve-absent'; Revision = 2; Status = 'Ready'
+            CaseId = 'C01-approve-absent'; Revision = 3; Status = 'Ready'
             Variant = 'fixed-NTFS-cached-create-absent'; Outcome = 'APPROVE'
             QualificationScope = 'Phase4FunctionalOnly; sampled bytes, not full temporal/permit/latency qualification'
             ActorSid = 'ResolveStandardUserTokenAtRuntime'; ActorSession = 'ResolveTokenSessionId'
@@ -230,7 +230,7 @@
             Cleanup = @('StopAndRestoreAgent', 'RestoreProductStateBytesAndAcls', 'CommonSeedRestoration', 'IndependentBaseline')
         }
         @{
-            CaseId = 'C01-block-absent'; Revision = 5; Status = 'Ready'
+            CaseId = 'C01-block-absent'; Revision = 6; Status = 'Ready'
             Variant = 'fixed-NTFS-cached-create-absent'; Outcome = 'BLOCK'
             QualificationScope = 'Phase4FunctionalOnly; expiry closure and product journal cleanup receipts collected; second-user H denial collected; safe creation receipt, unheld latency and continuous lower-ledger proof remain unqualified'
             ActorSid = 'ResolveStandardUserTokenAtRuntime'; ActorSession = 'ResolveOwningLimitedInteractiveWtsToken; exact SID/session; optional late submission explicitly skipped without interactive binding'
@@ -266,7 +266,7 @@
             Cleanup = @('Unimplemented; common restoration still mandatory')
         }
         @{
-            CaseId = 'C02-approve-absent'; Revision = 2; Status = 'Ready'
+            CaseId = 'C02-approve-absent'; Revision = 3; Status = 'Ready'
             Variant = 'fixed-NTFS-owned-mapped-create-absent-source-closed-view-held'; Outcome = 'APPROVE'
             QualificationScope = 'Phase4FunctionalOnly; sampled bytes, not full temporal/permit/latency qualification'
             ActorSid = 'ResolveStandardUserTokenAtRuntime'; ActorSession = 'ResolveTokenSessionId'
@@ -286,7 +286,7 @@
             Cleanup = @('StopAndRestoreAgent', 'RestorePolicyBeforeProductStateInPlace', 'RestoreProductStateBytesAndAcls', 'CommonSeedRestoration', 'IndependentBaseline')
         }
         @{
-            CaseId = 'C02-block-absent'; Revision = 2; Status = 'Ready'
+            CaseId = 'C02-block-absent'; Revision = 3; Status = 'Ready'
             Variant = 'fixed-NTFS-owned-mapped-create-absent-source-closed-view-held'; Outcome = 'BLOCK'
             QualificationScope = 'Phase4FunctionalOnly; H checked, restart/window closure and unheld latency deferred'
             ActorSid = 'ResolveStandardUserTokenAtRuntime'; ActorSession = 'ResolveTokenSessionId'
@@ -306,7 +306,7 @@
             Cleanup = @('StopAndRestoreAgent', 'RestorePolicyBeforeProductStateInPlace', 'RestoreProductStateBytesAndAcls', 'CommonSeedRestoration', 'IndependentBaseline')
         }
         @{
-            CaseId = 'C03-approve-existing'; Revision = 2; Status = 'Ready'
+            CaseId = 'C03-approve-existing'; Revision = 3; Status = 'Ready'
             Variant = 'fixed-NTFS-truncate-overwrite-approved-B'; Outcome = 'APPROVE'
             QualificationScope = 'Phase4FunctionalOnly; approved B and retained physical B checked; full temporal/permit/latency qualification deferred'
             ActorSid = 'ResolveStandardUserTokenAtRuntime'; ActorSession = 'ResolveTokenSessionId'
@@ -326,7 +326,7 @@
             Cleanup = @('StopAndRestoreAgent', 'RestorePolicyBeforeProductStateInPlace', 'RestoreProductStateBytesAndAcls', 'CommonSeedRestoration', 'IndependentBaseline')
         }
         @{
-            CaseId = 'C03-block-existing'; Revision = 4; Status = 'Ready'
+            CaseId = 'C03-block-existing'; Revision = 5; Status = 'Ready'
             Variant = 'fixed-NTFS-truncate-overwrite-approved-B'; Outcome = 'BLOCK'
             QualificationScope = 'Phase4FunctionalOnly; expiry closure and product journal cleanup receipts collected; second-user H denial collected; safe creation receipt, unheld latency and continuous lower-ledger proof remain unqualified'
             ActorSid = 'ResolveStandardUserTokenAtRuntime'; ActorSession = 'ResolveOwningLimitedInteractiveWtsToken; exact SID/session; optional late submission explicitly skipped without interactive binding'
@@ -348,7 +348,7 @@
             Cleanup = @('StopAndRestoreAgent', 'RestorePolicyBeforeProductStateInPlace', 'RestoreProductStateBytesAndAcls', 'CommonSeedRestoration', 'IndependentBaseline', 'RemoveSecondUserTaskBatchRightAccountAndProfileIncludingAfterRestorationReboot')
         }
         @{
-            CaseId = 'C04-approve'; Revision = 2; Status = 'Ready'
+            CaseId = 'C04-approve'; Revision = 3; Status = 'Ready'
             Variant = 'fixed-NTFS-private-sibling-replacement-approved-B'; Outcome = 'APPROVE'
             QualificationScope = 'Phase4FunctionalOnly; approved B and retained physical B checked; full temporal/permit/latency qualification deferred'
             ActorSid = 'ResolveStandardUserTokenAtRuntime'; ActorSession = 'ResolveTokenSessionId'
@@ -368,7 +368,7 @@
             Cleanup = @('StopAndRestoreAgent', 'RestorePolicyBeforeProductStateInPlace', 'RestoreProductStateBytesAndAcls', 'CommonSeedRestoration', 'IndependentBaseline')
         }
         @{
-            CaseId = 'C04-block'; Revision = 4; Status = 'Ready'
+            CaseId = 'C04-block'; Revision = 5; Status = 'Ready'
             Variant = 'fixed-NTFS-private-sibling-replacement-approved-B'; Outcome = 'BLOCK'
             QualificationScope = 'Phase4FunctionalOnly; expiry closure and product journal cleanup receipts collected; second-user H denial collected; safe creation receipt, unheld latency and continuous lower-ledger proof remain unqualified'
             ActorSid = 'ResolveStandardUserTokenAtRuntime'; ActorSession = 'ResolveOwningLimitedInteractiveWtsToken; exact SID/session; optional late submission explicitly skipped without interactive binding'
@@ -432,9 +432,9 @@
             Cleanup = @('Unimplemented; common restoration still mandatory')
         }
         @{
-            CaseId = 'C05-denied-external-rename'; Revision = 2; Status = 'Ready'
+            CaseId = 'C05-denied-external-rename'; Revision = 3; Status = 'Ready'
             Variant = 'fixed-NTFS-old-physical-external-source-rename-into-protected-absent-target'; Outcome = 'DENY'
-            QualificationScope = 'Phase4FunctionalDOnly; exact denial ledger/reason and unheld latency unavailable; positive owned-source variant deferred'
+            QualificationScope = 'Phase4FunctionalDOnly; exact denial ledger/reason unavailable; dedicated denied-rename latency implemented; positive owned-source variant deferred'
             ActorSid = 'ResolveStandardUserTokenAtRuntime'; ActorSession = 'ResolveTokenSessionId'
             InitialPolicy = @{ Seed = 'Product'; StartDuringSeed = 3; StartAfterSeed = 0; LiveFlags = 'TEST_DISABLE_TAINT-required' }
             Scopes = @('FixtureScope')
@@ -448,7 +448,7 @@
             NotificationExpectations = @('NoApproval', 'NoRelease', 'NoHandBack')
             AllowedDirectoryTransitions = @('SameActiveNamesIdsSizesAttributesSecurityInProtectedAndExternalFolders')
             LatencyClasses = @('writer-open', 'rename-ex', 'close')
-            Repetitions = @{ Coordinated = 1; Unheld = 0; DeterministicSeed = 4003 }
+            Repetitions = @{ Coordinated = 1; Unheld = 100; DeterministicSeed = 4003 }
             Cleanup = @('CloseBothObservers', 'StopAndRestoreAgent', 'RestorePolicyBeforeProductStateInPlace', 'RestoreProductStateBytesAndAcls', 'RemoveExternalFixture', 'CommonSeedRestoration', 'IndependentBaseline')
         }
         @{
@@ -466,7 +466,7 @@
             Cleanup = @('Unimplemented; common restoration still mandatory')
         }
         @{
-            CaseId = 'B01'; Revision = 3; Status = 'Ready'
+            CaseId = 'B01'; Revision = 4; Status = 'Ready'
             CoreVariant = 'One coordinated C01 BLOCK absent save; standard actor replaces empty hand-back folder with sentinel junction before last close; fail closed'
             DeferredVariants = @('PreExistingValidHandBackTarget', 'JunctionAtOtherAncestorComponents', 'AncestorSwapBetweenProductCheckAndCreate', 'SymlinkAncestor', 'HardLinkTarget', 'ProtectedTarget', 'SyncedTarget', 'CopyFailure', 'DigestFailure', 'SeededUnheldAncestorRace', 'AdditionalRepetitions', 'UnheldLatencyCorpus', 'SafeRetryProductGap: agente/SafeUpload.Agent.Service/Interception/StagedTransferPublisher.cs RecoverBlockedAsync only cleans temporaries for HandbackState=Failed; no external retry API for this exact blocked version')
             Variant = 'fixed-NTFS-cached-block-absent-handback-sentinel-junction'; Outcome = 'BLOCK'
@@ -488,7 +488,7 @@
             Cleanup = @('CooperativeWriterCancellationAndClose', 'CloseBothObservers', 'StopAndRestoreAgent', 'RemoveOnlyJunctionEntryBeforeSentinelAndProfileRemoval', 'RestoreProductStateBytesAndAcls', 'CommonSeedRestoration', 'IndependentBaseline')
         }
         @{
-            CaseId = 'B02'; Revision = 3; Status = 'Ready'
+            CaseId = 'B02'; Revision = 4; Status = 'Ready'
             Variant = 'core-existing-T-block-v1-block-v2-stale-v1-justify-latest-v2'; Outcome = 'LatestV2ReleasedOnce;V1BlockedNeverPublished'
             QualificationScope = 'MVP coordinated C03 overwrite exact-version justification core through real pipe in owning interactive WTS session'
             DeferredVariants = @('C04 replacement-save JUSTIFY/stale-JUSTIFY companion', 'Wrong principal or session', 'Duplicate/replayed submission', 'V1 justification after restart', 'Repetition beyond coordinated core')
@@ -506,7 +506,7 @@
             Cleanup = @('ExitInteractiveActor', 'RemoveAllOwnedWinlogonValues-NoLsaSecretCreated', 'LogoffOwnedWtsSession', 'DeleteActorUserAndProfile', 'StopAndRestoreAgent', 'CloseObserver', 'CommonRestorationAndReboot', 'IndependentBaseline')
         }
         @{
-            CaseId = 'R01'; Revision = 3; Status = 'Ready'
+            CaseId = 'R01'; Revision = 4; Status = 'Ready'
             CoreVariant = 'One coordinated cached new-name save; restart at mutable Allocated with the private writer held'
             DeferredVariants = @('ExistingFinalB', 'MutableAllocatedOwnedViewWriter', 'SealRequestBeforeReply', 'Inspecting', 'ApprovedBeforePermit', 'PublishingAfterPermittedRenameBeforeReleasedCommit', 'DisconnectAfterPermitBeforeTemporaryCreate', 'FailedRename', 'BlockedCompanion', 'SeededUnheldStopRace', 'AdditionalRepetitions', 'UnheldLatencyCorpus')
             Variant = 'fixed-NTFS-cached-create-absent-restart-mutable-Allocated'; Outcome = 'APPROVE'
@@ -528,7 +528,7 @@
             Cleanup = @('CooperativeWriterCancellationAndClose', 'StopAndRestoreAgent', 'RestoreProductStateBytesAndAcls', 'CommonSeedRestoration', 'IndependentBaseline')
         }
         @{
-            CaseId = 'R02'; Revision = 3; Status = 'Ready'
+            CaseId = 'R02'; Revision = 4; Status = 'Ready'
             Variant = 'core-stop-after-finalized-policy-with-clean-A01-H-holder-Y'; Outcome = 'ProtectedXAndY; ReadyAfterLastHolderRelease'
             QualificationScope = 'MVP coordinated finalized-policy restart core; earlier apply boundaries and dirty holders deferred'
             DeferredVariants = @('Stops before/after PendingScopes durable', 'Stops between drains', 'Stops before/after Reserved=1', 'Dirty-holder variants', 'FailedClosed variants', 'Seeded unheld stop races', 'Repetition beyond coordinated core')
@@ -545,7 +545,7 @@
             Cleanup = @('ReleaseHolderAndExitActor', 'StopAndRestoreAgent', 'CloseObserver', 'CommonRestorationAndReboot', 'IndependentBaseline')
         }
         @{
-            CaseId = 'R03'; Revision = 3; Status = 'Ready'
+            CaseId = 'R03'; Revision = 4; Status = 'Ready'
             Variant = 'fixed-NTFS-boot-agent-disabled-cached-overwrite-and-create-then-fresh-approve'; Outcome = 'APPROVE'
             QualificationScope = 'Phase4MvpCoordinatedCore; sampled raw/fresh/uncached evidence; unheld latency remains a separate hardening workload'
             ActorSid = 'ResolveStandardUserTokenAtRuntime'; ActorSession = 'ResolveTokenSessionId'
@@ -652,7 +652,7 @@
             Cleanup = @('Unimplemented; common restoration still mandatory')
         }
         @{
-            CaseId = 'X01'; Revision = 3; Status = 'Ready'
+            CaseId = 'X01'; Revision = 4; Status = 'Ready'
             Variant = 'core-two-live-processes-cached-overwrite-block-v1-approve-latest-v2'; Outcome = 'v1 Blocked; v2 Released'
             QualificationScope = 'MVP coordinated core; v1 BLOCK completes before v2 allocation, with both writer processes live; sampled whole-byte publication invariant'
             DeferredVariants = @('Four writers', 'Mapped/replacement mixes', 'Held old reader as a separately exercised variant', 'Stale justification', 'Cross-process private-capability negative probes', 'New allocation versus Publishing reservation', 'Seeded unheld races', 'Repetition beyond one coordinated core (post-MVP hardening)')

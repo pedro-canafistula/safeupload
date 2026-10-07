@@ -1552,3 +1552,51 @@ writer-open Win32 5 after about 5.5 seconds. The actor exported failure and exit
 but the SYSTEM collector remained blocked during cleanup, before trial export.
 Retain the live guest memory snapshot and all existing files before guarded
 recovery; do not count the 74 successful rounds as dedicated qualification.
+
+C05 latency contract, before implementation: the existing core has a held functional
+denial but no route to produce its required latency sidecar. Add a separate 101-round
+unheld experiment for the same source/absent target. Each native sequence is physical
+source open=0, FileRenameInfoEx=5, close=0, with exact source A before/after denial.
+After each close and before releasing the next round, independently capture source
+and destination raw/fresh/uncached images and authenticated journal absence. Any
+unexpected native status, source mutation, destination appearance, private transfer,
+incomplete sample, or broken ordering prevents latency acceptance. Reusing the same
+source is intentional; no service publication is expected for a denied external
+rename. Keep DedicatedLatencyOnly INCONCLUSIVE so the experiment cannot qualify the
+functional row. All existing functional and strict gates remain unchanged.
+
+Current native-capability pair is exact `d9501a71`: four-configuration WDK build
+`mvp4-goal-taint2` PASS with zero warnings/errors, PREfast and ApiValidator clean;
+feature service `agent-goal-taint2` 419 tests PASS. Agent matrix `goal-taint2` failed
+its normal Debug cache timing control (27ms versus <10ms) while three builder jobs
+ran concurrently. Retain that failure. The unchanged-source isolated rerun
+`goal-taint3` PASS: normal 355 and feature 419 tests in Debug and Release, no
+warnings/errors. The failure was not suppressed and no timing limit changed.
+
+`goalv1` S00 proves actual native capability/current disable bit and unchanged
+taint counters, ForbiddenByteCount=0, independent restoration clean. It FAILs
+metadata: fsutil value2 was incorrectly interpreted from its display label as
+updates-disabled, rejecting a bounded read-side Accessed change. The supported
+build's own CLI help defines 0/2 as updates-enabled, 1/3 as updates-disabled;
+the raw setting is 0x80000002. The parser and proof adapter now bind UpdatesDisabled
+to numeric bit0, still requiring an unambiguous supported management label,
+stable before/after policy and the same timestamp bounds. All other metadata
+remains exact. Table revision8 increments all 23 Ready rows for this evidence
+binding; C05 also requires 100 unheld warm trials plus the cold trial. Retained
+native help: `evidence/2026-10-07/ntfs-lastaccess-supported-build-help.txt`.
+
+`goalv2` A01 successfully records the old holder's writes and release, then stops
+after 90 seconds: exact target remains Activating with Free=True, H/C/T=0, S=NO
+and no unknown reason. ForbiddenByteCount is unknown, MVP gate false, independent
+restoration clean. Product inspection finds that promotion currently waits for
+both SOP cache pointers to become NULL without issuing the required cache
+barrier. This is an open Phase3 implementation requirement, not proof that the
+particular guest timeout has a confirmed cause. Compact runtime readout:
+`evidence/2026-10-07/goal-taint2-runtime-readout.json`; full cases remain retained
+in the staging worktree. No fresh independent milestone review is claimed.
+
+`goallatmap1` recovery completed through the guarded serial runner after the guest
+collector could not finish cleanup. Independent baseline is clean. Failed overlay,
+live memory image and partial evidence remain retained; no complete latency export
+was produced. See staging evidence `goallatmap1-failure-retention.json` and
+`goallatmap1-live-failure-diagnostics.txt`. No kernel deadlock is established.

@@ -191,13 +191,13 @@ Check ($result.Count -eq 1 -and $result[0].Verdict -eq 'INCONCLUSIVE' -and $resu
 $bad=Clone $expect;$bad.Metadata=$null
 $result=@(Test-InvariantMetadata $image $bad $samples[0] $null)
 Check ($result.Count -eq 1 -and $result[0].Verdict -eq 'INCONCLUSIVE' -and $result[0].Reason -ceq 'Exact per-fixture metadata expectation missing.') 'Null metadata must be INCONCLUSIVE without throwing.'
-$policy=[pscustomobject]@{Status='OK';Before=[pscustomobject]@{Value=2;Management='System';UpdatesDisabled=$true;BootId=$boot;VolumeGuid='volume';Qpc=0};After=[pscustomobject]@{Value=2;Management='System';UpdatesDisabled=$true;BootId=$boot;VolumeGuid='volume';Qpc=20000}}
+$policy=[pscustomobject]@{Status='OK';Before=[pscustomobject]@{Value=3;Management='System';UpdatesDisabled=$true;BootId=$boot;VolumeGuid='volume';Qpc=0};After=[pscustomobject]@{Value=3;Management='System';UpdatesDisabled=$true;BootId=$boot;VolumeGuid='volume';Qpc=20000}}
 foreach($pair in @(@(0,'User','Enabled'),@(1,'User','Disabled'),@(2,'System','Disabled'),@(3,'System','Enabled'))){
     $text='DisableLastAccess = '+$pair[0]+'  ('+$pair[1]+' Managed, '+$pair[2]+')'
     $parsed=ConvertFrom-NtfsLastAccessOutput $text 0
-    Check ($parsed.Value -eq $pair[0] -and $parsed.Management -ceq $pair[1] -and $parsed.UpdatesDisabled -eq ($pair[2] -ceq 'Disabled')) 'Exact fsutil mode label must determine disabled state.'
+    Check ($parsed.Value -eq $pair[0] -and $parsed.Management -ceq $pair[1] -and $parsed.UpdatesDisabled -eq (($pair[0] -band 1) -ne 0)) 'Supported fsutil numeric update state is authoritative; display labels may describe the disable switch.'
 }
-foreach($text in @('DisableLastAccess = 2','DisableLastAccess = 2 (system managed, disabled)','DisableLastAccess = 2 (System Managed, Unknown)',"DisableLastAccess = 2 (System Managed, Disabled)`nDisableLastAccess = 2 (System Managed, Disabled)")){
+foreach($text in @('DisableLastAccess = 2','DisableLastAccess = 2 (system managed, disabled)','DisableLastAccess = 2 (System Managed, Unknown)','DisableLastAccess = 0 (System Managed, Enabled)','DisableLastAccess = 3 (User Managed, Disabled)',"DisableLastAccess = 2 (System Managed, Disabled)`nDisableLastAccess = 2 (System Managed, Disabled)")){
     Check ($null -eq (ConvertFrom-NtfsLastAccessOutput $text 0).UpdatesDisabled) 'Missing/ambiguous fsutil mode label cannot authorize tolerance.'
 }
 Check ($null -eq (ConvertFrom-NtfsLastAccessOutput 'DisableLastAccess = 2 (System Managed, Disabled)' 1).UpdatesDisabled) 'Failed fsutil command cannot authorize tolerance.'

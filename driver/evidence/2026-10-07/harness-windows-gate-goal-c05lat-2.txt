@@ -1,0 +1,64 @@
+Test-StagedInvariantSuite.ps1:ParseErrors=0;SHA256=3D5A3C01F4ADD10A7A6D936DF3A5B3B8F9582930D532F379184661C93ECAC422
+StagedInvariantObserver.psm1:ParseErrors=0;SHA256=FFAA5159C601B633CCD0D0F6DDE15C6EE1AC5E8D0D66513082FCEE7CC71AA5B1
+StagedInvariantCases.psd1:ParseErrors=0;SHA256=B4BD7823CDAC083EF93A33E38036A875708C8295BF21FF478C58C05D83A46809
+Build-ExactAgent.ps1:ParseErrors=0;SHA256=DB9C56E61F2AE111ED0798C460302DCDCB1717B6EC483DF486378BB942888212
+StagedInvariantActivationDuplicate.SelfCheck.ps1:ParseErrors=0;SHA256=2F39BAB352D3DF3479B4A6DE6B9795123D0D13998DDDFC686E6456DA2D06B9DD
+StagedInvariantBlockWindow.SelfCheck.ps1:ParseErrors=0;SHA256=107D21FB2DCBAD4860AA902F9539EC60ABCBCEF80955642A388CDD6EB5BAB434
+StagedInvariantCoreVariants.SelfCheck.ps1:ParseErrors=0;SHA256=18564F0D9F060C78ACF61A3466B852EFEF5761A6267CE8C57E3C6391AF33DF6F
+StagedInvariantDeniedRenameLatency.SelfCheck.ps1:ParseErrors=0;SHA256=AF1727E5D90C03298F2FD26E5BC047B37BA4D21B88999BA392441D3FD9A7B1F1
+StagedInvariantLatency.SelfCheck.ps1:ParseErrors=0;SHA256=5A2C5B01A46068FBF778B466E36882F7EC1A95C328287349426497948DA768D0
+StagedInvariantLatencyLite.SelfCheck.ps1:ParseErrors=0;SHA256=7CF9EF601028AFAD7719B0F633BB9C8F1D09C5CA3AD6DAE82072520442ED5A70
+StagedInvariantLiveTaint.SelfCheck.ps1:ParseErrors=0;SHA256=586F2DFE294093C28949995EDD2A09708DF37DE6F82BCEEDBC7EB934373FC87D
+StagedInvariantObserver.SelfCheck.ps1:ParseErrors=0;SHA256=D487818D03FEA63989B6EA6D84D0A824D4B3766FD195070174428BE5CFE15E6F
+StagedInvariantProofAdapters.SelfCheck.ps1:ParseErrors=0;SHA256=0D08823C1E2055A55B657619FD5114E7A1818AE984A668770F9D3A9E0F67432D
+StagedInvariantR03.SelfCheck.ps1:ParseErrors=0;SHA256=99F1C34FACBA3BCD6306C6AC310259C97476519C95F248A9348E07544EF9C752
+StagedInvariantRestartJustification.SelfCheck.ps1:ParseErrors=0;SHA256=6ED3674297626CC62D6907FBAA30963DC5B476243A816C725DFBA5B1B080FA97
+StagedInvariantRobustness.SelfCheck.ps1:ParseErrors=0;SHA256=C50C2F40B34D90A1ACE74FA5BFBB9D65DA4929353F0875490D0AB6D37414F7A0
+StagedInvariantRowsA.SelfCheck.ps1:ParseErrors=0;SHA256=81CFB74CA9A8D36E18155F90EAAEEC88E6DCD0546BD1583A229E2BC069975627
+StagedInvariantTraceWindow.SelfCheck.ps1:ParseErrors=0;SHA256=11C71443A03DE58BB8A25701FE8F017E21704F0CB719281DFC4C2B3FACDA2AC3
+  StagedInvariantActivationDuplicate.SelfCheck.ps1> NativeDuplicateControl=PASS;ParentPid=6060;ChildPid=5556;TrustedPhysicalObject=PASS;SeparateOpensRejected=PASS;SameFileObjectTwoWayPosition=PASS;ParentCloseChildWrite=PASS;WholeImage=PASS;OwnedHeldWrite=PASS;Qualification=False
+StagedInvariantActivationDuplicate.SelfCheck.ps1:Exit=0
+  StagedInvariantBlockWindow.SelfCheck.ps1> BlockWindowSelfCheck=PASS;Controls=73;Qualification=False
+StagedInvariantBlockWindow.SelfCheck.ps1:Exit=0
+  StagedInvariantCoreVariants.SelfCheck.ps1> CoreVariantsSelfCheck=PASS;Controls=52;Qualification=False
+StagedInvariantCoreVariants.SelfCheck.ps1:Exit=0
+  StagedInvariantDeniedRenameLatency.SelfCheck.ps1> Add-Type : c:\Users\vika\AppData\Local\Temp\zv12coeg\zv12coeg.0.cs(1) : Unexpected character '$'
+  StagedInvariantDeniedRenameLatency.SelfCheck.ps1> c:\Users\vika\AppData\Local\Temp\zv12coeg\zv12coeg.0.cs(1) : >>> 
+  StagedInvariantDeniedRenameLatency.SelfCheck.ps1> $env:TEMP='__TEMP__';$env:TMP=$env:TEMP
+  StagedInvariantDeniedRenameLatency.SelfCheck.ps1> c:\Users\vika\AppData\Local\Temp\zv12coeg\zv12coeg.0.cs(2) : Add-Type -TypeDefinition @"
+  StagedInvariantDeniedRenameLatency.SelfCheck.ps1> At C:\Users\vika\Documents\harness-gate-goal-c05lat-2\StagedInvariantDeniedRenameLatency.SelfCheck.
+  StagedInvariantDeniedRenameLatency.SelfCheck.ps1> ps1:12 char:1
+  StagedInvariantDeniedRenameLatency.SelfCheck.ps1> + Add-Type -TypeDefinition $native[0].Value
+  StagedInvariantDeniedRenameLatency.SelfCheck.ps1> + ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  StagedInvariantDeniedRenameLatency.SelfCheck.ps1>     + CategoryInfo          : InvalidData: (Microsoft.Power...peCompilerError:AddTypeCompilerError 
+  StagedInvariantDeniedRenameLatency.SelfCheck.ps1>    ) [Add-Type], Exception
+  StagedInvariantDeniedRenameLatency.SelfCheck.ps1>     + FullyQualifiedErrorId : SOURCE_CODE_ERROR,Microsoft.PowerShell.Commands.AddTypeCommand
+  StagedInvariantDeniedRenameLatency.SelfCheck.ps1>  
+StagedInvariantDeniedRenameLatency.SelfCheck.ps1:Exit=1
+  StagedInvariantLatency.SelfCheck.ps1> NativeLatencyStimulus=overwrite;CompleteRounds=101;PASS;Qualification=False
+  StagedInvariantLatency.SelfCheck.ps1> NativeLatencyStimulus=replacement;CompleteRounds=101;PASS;Qualification=False
+  StagedInvariantLatency.SelfCheck.ps1> NativeLatencyStimulusGate=PASS;Qualification=False
+StagedInvariantLatency.SelfCheck.ps1:Exit=0
+  StagedInvariantLatencyLite.SelfCheck.ps1> LatencyLiteSelfCheck=764;PASS;Qualification=False
+StagedInvariantLatencyLite.SelfCheck.ps1:Exit=0
+  StagedInvariantLiveTaint.SelfCheck.ps1> LiveTaintSelfCheck=PASS;Checks=13
+StagedInvariantLiveTaint.SelfCheck.ps1:Exit=0
+  StagedInvariantObserver.SelfCheck.ps1> IO_PredicateLostArtifactCannotHideViolation=synthetic;PASS
+  StagedInvariantObserver.SelfCheck.ps1> IO_PredicateLostCompletion=synthetic;PASS
+  StagedInvariantObserver.SelfCheck.ps1> IO_Summary=passed:95;failed:0
+StagedInvariantObserver.SelfCheck.ps1:Exit=0
+  StagedInvariantProofAdapters.SelfCheck.ps1> ProofAdapterEvaluationChecks=327;PASS (host-safe synthetic evaluation, collector mocks and identity publication only)
+StagedInvariantProofAdapters.SelfCheck.ps1:Exit=0
+  StagedInvariantR03.SelfCheck.ps1> StagedInvariantR03SelfCheck: checks=29; PASS
+StagedInvariantR03.SelfCheck.ps1:Exit=0
+  StagedInvariantRestartJustification.SelfCheck.ps1> StagedInvariantRestartJustificationControls=68
+  StagedInvariantRestartJustification.SelfCheck.ps1> SelfCheck=PASS
+StagedInvariantRestartJustification.SelfCheck.ps1:Exit=0
+  StagedInvariantRobustness.SelfCheck.ps1> RobustnessSelfCheck=PASS;Checks=89
+StagedInvariantRobustness.SelfCheck.ps1:Exit=0
+  StagedInvariantRowsA.SelfCheck.ps1> StagedInvariantRowsASelfCheck: checks=96; PASS
+StagedInvariantRowsA.SelfCheck.ps1:Exit=0
+  StagedInvariantTraceWindow.SelfCheck.ps1> TraceWindowSelfCheck=PASS;Controls=14;Qualification=False
+StagedInvariantTraceWindow.SelfCheck.ps1:Exit=0
+PSVersion=5.1.19041.6456
+HarnessWindowsGate=FAIL
