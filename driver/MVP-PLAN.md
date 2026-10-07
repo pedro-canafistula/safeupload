@@ -1683,3 +1683,12 @@ wire layouts. Existing managed evidence uses the older entry page without these
 diagnostic fields; normal clients/gates remain unchanged. Add no cleanup, retry,
 Unknown clearing or promotion bypass. Fresh exact build and targeted native receipt
 are required before drawing a conclusion.
+
+Cache3 diagnostic candidate `17418211` built as `mvp4-goal-cache3`: all four
+WDK configurations, both Inspectors and the writer fixture PASS, zero warnings
+and errors, PREfast/ApiValidator clean, valid signature. Signed feature driver
+SHA256 is `D532DEA72AAFF5F294331B52E094D9872C1B84F8ED55701DEBDAE5EB9DA4F0C5`.
+No runtime result is claimed for this candidate. The CacheRetained diagnostic
+currently groups a changed SOP identity and nonempty DataSectionObject or
+SharedCacheMap; a receipt with this step alone cannot identify which predicate
+was responsible. All enforcement and promotion gates remain unchanged.
