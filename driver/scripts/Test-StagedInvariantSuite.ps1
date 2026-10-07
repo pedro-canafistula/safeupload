@@ -3904,7 +3904,9 @@ function Test-ActivationRetiredPromotion($Snapshot,$Trace,$Release,[string]$File
             [long]$e.CforSopSample -ne 0 -or [long]$e.lastSsample -ne 1 -or
             [long]$e.unknownReasonsSample -ne 0 -or [long]$e.renameInFlightSample -ne 0 -or
             [long]$e.spilledMutatingIoCountSample -ne 0 -or [long]$e.unknownWriterCountSample -ne 0 -or
-            ([uint32]$e.predicateFlags -band 15) -ne 15 -or ([uint32]$e.predicateFlags -band (-bnot 31)) -ne 0 -or
+            # 0x20 = SAFEUPLOAD_PROMOTION_BASIS_INCARNATION_REPLACED (driver c1086343): same exact CAS, S and cache barrier
+            # evaluated on the live stream after the recorded one was replaced; any other unknown bit still rejects.
+            ([uint32]$e.predicateFlags -band 15) -ne 15 -or ([uint32]$e.predicateFlags -band (-bnot 63)) -ne 0 -or
             [uint32]$e.snapshotFlags -ne 1 -or [uint32]$e.testDisableTaint -ne 1 -or
             ([uint32]$e.policyFlagsSample -band 32) -ne 32){
             throw 'Retired history CAS samples, generation, timing or predicate basis do not match.'

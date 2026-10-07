@@ -56,10 +56,14 @@ foreach($field in @('Hsample','Wsample','Tsample','CforSopSample','unknownReason
 foreach($bad in @(@{Summary=$retiredTrace.Summary;Entries=@()},@{Summary=$retiredTrace.Summary;Entries=@($retiredEdge,$retiredEdge)},@{Summary=@{completeSnapshot=$false;firstAvailableSequence=1};Entries=@($retiredEdge)},@{Summary=@{completeSnapshot=$true;firstAvailableSequence=2};Entries=@($retiredEdge)})){
  Check ((Test-ActivationRetiredPromotion $retiredCurrent $bad $retiredRelease $retiredId $retiredSerial 1 'fixture').Verdict -ceq 'INCONCLUSIVE') 'Missing/duplicate/incomplete/lost native CAS cannot be replaced by current Free.'
 }
-foreach($change in @(@('fileId','wrong'),@('volumeSerial','wrong'),@('policyGenerationSample',2),@('activationGenerationSample',2),@('qpc',499),@('qpc',601),@('markerGenerationAtCas',4),@('lastSsample',2),@('predicateFlags',13),@('predicateFlags',63),@('snapshotFlags',0),@('testDisableTaint',0),@('policyFlagsSample',16))){
+foreach($change in @(@('fileId','wrong'),@('volumeSerial','wrong'),@('policyGenerationSample',2),@('activationGenerationSample',2),@('qpc',499),@('qpc',601),@('markerGenerationAtCas',4),@('lastSsample',2),@('predicateFlags',13),@('predicateFlags',95),@('snapshotFlags',0),@('testDisableTaint',0),@('policyFlagsSample',16))){
  $bad=Clone $retiredTrace;$bad.Entries[0].($change[0])=$change[1]
  Check ((Test-ActivationRetiredPromotion $retiredCurrent $bad $retiredRelease $retiredId $retiredSerial 1 'fixture').Verdict -ceq 'INCONCLUSIVE') ('Retired history rejects CAS '+$change[0]+'='+$change[1]+'.')
 }
+# Incarnation-replaced basis 0x20 (driver c1086343) is an accepted explicit CAS basis.
+$replacedEdge=Clone $retiredEdge;$replacedEdge.predicateFlags=63
+$replacedTrace=Clone $retiredTrace;$replacedTrace.Entries=@($replacedEdge)
+Check ((Test-ActivationRetiredPromotion $retiredCurrent $replacedTrace $retiredRelease $retiredId $retiredSerial 1 'fixture').Verdict -ceq 'PASS') 'Retired history accepts the explicit incarnation-replaced CAS basis.'
 $bad=Clone $retiredTrace;$bad.Entries[0].PSObject.Properties.Remove('Wsample')
 Check ((Test-ActivationRetiredPromotion $retiredCurrent $bad $retiredRelease $retiredId $retiredSerial 1 'fixture').Verdict -ceq 'INCONCLUSIVE') 'Missing native W sample cannot default to zero.'
 foreach($change in @(@('NativeCode',5),@('BootId','old'),@('HolderReleased',$false),@('QpcFrequency',1),@('StartQpc',0),@('EndQpc',499))){
