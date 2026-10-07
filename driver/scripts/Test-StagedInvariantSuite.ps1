@@ -723,7 +723,8 @@ public static class SUActivationNative {
   if(!CloseHandle(FileHandle)) return Error(); FileHandle=new IntPtr(-1); sourceClosed=true; return 0;
  }
  public static int MapLate(uint length) { if(SectionHandle==IntPtr.Zero) return 6; View=MapViewOfFile(SectionHandle,2,0,0,new UIntPtr(length)); return View==IntPtr.Zero?Error():0; }
- public static int WriteFileAt(long offset,byte[] bytes) { if(FileHandle==new IntPtr(-1)) return 6; if(!Seek(FileHandle,offset)) return Error(); uint written; if(!WriteFile(FileHandle,bytes,(uint)bytes.Length,out written,IntPtr.Zero)) return Error(); return written==(uint)bytes.Length?0:29; }
+ public static int LastSeekCode = 0;
+ public static int WriteFileAt(long offset,byte[] bytes) { LastSeekCode=0; if(FileHandle==new IntPtr(-1)) return 6; if(!Seek(FileHandle,offset)) { LastSeekCode=Error(); return LastSeekCode; } uint written; if(!WriteFile(FileHandle,bytes,(uint)bytes.Length,out written,IntPtr.Zero)) return Error(); return written==(uint)bytes.Length?0:29; }
  public static int WriteViewAt(long offset,byte[] bytes) { if(View==IntPtr.Zero || offset<0 || offset>Int32.MaxValue) return 487; Marshal.Copy(bytes,0,IntPtr.Add(View,(int)offset),bytes.Length); return 0; }
  public static int FlushView() { return View!=IntPtr.Zero && FlushViewOfFile(View,UIntPtr.Zero)?0:Error(); }
  public static int FlushHolderFile() { return FileHandle!=new IntPtr(-1) && FlushFileBuffers(FileHandle)?0:6; }
@@ -807,7 +808,7 @@ try {
     'probe-new-writers' {$sectionOpen=[int]0;$result.OpenCode=[SUActivationNative]::NewWritableOpen($config.Target);$result.SectionCode=[SUActivationNative]::NewWritableSection($config.Target,[ref]$sectionOpen);$result.SectionSourceOpenCode=$sectionOpen;$result.NativeCode=0}
     'map-late' {$result.NativeCode=[SUActivationNative]::MapLate([uint32]$config.ImageLength);$result.Mapped=($result.NativeCode -eq 0)}
     'write-old' {
-     foreach($change in $command.Changes){$bytes=[Convert]::FromBase64String($change.BytesBase64);$start=[Diagnostics.Stopwatch]::GetTimestamp();$code=if($config.HolderKind -eq 'handle'){[SUActivationNative]::WriteFileAt([long]$change.Offset,$bytes)}else{[SUActivationNative]::WriteViewAt([long]$change.Offset,$bytes)};$end=[Diagnostics.Stopwatch]::GetTimestamp();$result.Calls+=@{Offset=[long]$change.Offset;Length=$bytes.Length;PayloadSha256=$change.PayloadSha256;NativeCode=$code;StartQpc=$start;EndQpc=$end;Paging=($config.HolderKind -ne 'handle')};if($code -ne 0){throw ('Old holder write failed: Win32 '+$code)}}
+     foreach($change in $command.Changes){$bytes=[Convert]::FromBase64String($change.BytesBase64);$start=[Diagnostics.Stopwatch]::GetTimestamp();$code=if($config.HolderKind -eq 'handle'){[SUActivationNative]::WriteFileAt([long]$change.Offset,$bytes)}else{[SUActivationNative]::WriteViewAt([long]$change.Offset,$bytes)};$end=[Diagnostics.Stopwatch]::GetTimestamp();$seekCode=[SUActivationNative]::LastSeekCode;$result.Calls+=@{Offset=[long]$change.Offset;Length=$bytes.Length;PayloadSha256=$change.PayloadSha256;NativeCode=$code;SeekCode=$seekCode;StartQpc=$start;EndQpc=$end;Paging=($config.HolderKind -ne 'handle')};if($code -ne 0){throw ('Old holder write failed: Win32 '+$code+'; seek Win32 '+$seekCode)}}
      if($config.HolderKind -eq 'handle'){$result.FlushCode=[SUActivationNative]::FlushHolderFile()}else{$result.FlushCode=[SUActivationNative]::FlushView()};if($result.FlushCode -ne 0){throw ('Old holder flush failed: Win32 '+$result.FlushCode)};$result.NativeCode=0
     }
     'staged-write' {$bytes=[Convert]::FromBase64String($command.PayloadBase64);$start=[Diagnostics.Stopwatch]::GetTimestamp();$closeCode=[int]0;$flush=[int]0;$written=[long]0;$code=[SUActivationNative]::StageWrite($config.Target,[long]$command.Offset,$bytes,[ref]$flush,[ref]$closeCode,[ref]$written);$end=[Diagnostics.Stopwatch]::GetTimestamp();$result.NativeCode=$code;$result.FlushCode=$flush;$result.CloseCode=$closeCode;$result.BytesWritten=$written;$result.Calls+=@{Class='staged-write';NativeCode=$code;FlushCode=$flush;CloseCode=$closeCode;Length=$bytes.Length;PayloadSha256=$command.PayloadSha256;StartQpc=$start;EndQpc=$end};if($code -ne 0){throw ('Post-protection staged write failed: Win32 '+$code)}}
@@ -3275,7 +3276,9 @@ function Invoke-ActivationObservation {
         foreach($offset in $changeOffsets){$tag=('ACT-'+$CaseId+'-'+$RunName+'-'+$changeIndex);$payload=[Text.Encoding]::ASCII.GetBytes($tag.PadRight(96,'U'))
             $changes+=@{Offset=[long]$offset;BytesBase64=[Convert]::ToBase64String($payload);PayloadSha256=(Get-ActivationSha256 $payload);Length=$payload.Length};$changeIndex++}
         if($CaseId -ceq 'A04'){$childBefore=Get-ServiceSnapshot 'a04-before-child-write';$handBackBefore=Get-ActivationHandBackInventory $duplicateActor}
-        $oldWrite=Publish-ActivationActorCommand $state 'write-old' @{Changes=$changes} $probeActorKey
+        # On failure keep the admission trace of the refused operation (file object, instance, SOP, IRP flags, W tickets).
+        try{$oldWrite=Publish-ActivationActorCommand $state 'write-old' @{Changes=$changes} $probeActorKey}
+        catch{try{$null=Invoke-ActivationInspector '--admission-trace' (Join-Path $evidenceDirectory 'activation-old-write-failure-trace') 45000}catch{};throw}
         if($CaseId -ceq 'A04'){$childAfter=Get-ServiceSnapshot 'a04-after-child-write';$handBackAfter=Get-ActivationHandBackInventory $duplicateActor;Test-ActivationChildWindow $trial $childBefore $childAfter $oldWrite $handBackBefore $handBackAfter $target $actor $duplicateActor}
         $trial.Operations+=@($oldWrite.Calls);$trial.OldHolderMutation=$oldWrite
         $oldApiGood=($oldWrite.NativeCode -eq 0 -and $oldWrite.FlushCode -eq 0 -and @($oldWrite.Calls | Where-Object NativeCode -ne 0).Count -eq 0)
