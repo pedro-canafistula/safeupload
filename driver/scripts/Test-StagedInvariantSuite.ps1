@@ -675,6 +675,14 @@ function Flush-InvariantSetupVolume {
     if([StagedInvariant.Native]::ResolveGuid($protectedDirectory) -cne $before){throw 'Setup flush volume changed'}
     return @{Purpose='TrustedSetupBeforeObservation';VolumeGuid=$before;StartQpc=$start;EndQpc=$end;QpcFrequency=[Diagnostics.Stopwatch]::Frequency}
 }
+# After the observation window, before the final raw capture: NTFS writes a new file's MFT record lazily,
+# so raw and FSCTL identities disagree until it does (b17r1 C02: raw sequence 1, cached 3). Flushing can only
+# make the final check stricter: any cached unapproved byte would then be on disk for the observer to see.
+function Flush-InvariantFinalVolume {
+    $receipt=Flush-InvariantSetupVolume
+    $receipt.Purpose='FinalAfterObservationWindow'
+    return $receipt
+}
 function Get-ActivatingWriterBody {
 $body=@'
 Add-Type -TypeDefinition @"
@@ -2639,6 +2647,7 @@ function Invoke-CachedObservation {
             $trial.Assertions+=@{Name='C01HandBackSafeRelativeCreation';Verdict='INCONCLUSIVE';Reason='Contract H safe relative-to-verified-handle creation receipt unavailable; final no-reparse/single-link checks alone do not attest creation.'}
             $trial.Assertions+=@{Name='C01HandBackWindowClosureAndRestart';Verdict='INCONCLUSIVE';Reason='Contract H restart, explicit justification-window closure and subsequent audited cleanup require the owning interactive client/session; this batch functional case checks retention and copy during the available window.'}
         }
+        $trial.FinalCacheFlush=Flush-InvariantFinalVolume
         $sequence++;$sample=Capture-CachedSample $context $baseline 'FinalQuiescence' $sequence;$samples+= $sample
         $trial.Assertions+=Test-CachedSample $sample $baseline ($row.Outcome -ceq 'APPROVE') $imageA $imageB
         if($row.Outcome -ceq 'BLOCK' -or $cachedDenial){$predicateSamples+= $sample;$checkpoints+=Get-ExpectedCheckpoint $baseline $sample.Phase $sequence}
@@ -2809,6 +2818,7 @@ $value=$b.ToString().Split([char]0)[0]
         $trial.Latency=Get-LatencyVerdict $trial.Operations $row.LatencyClasses $writer.Value.QpcFrequency
         $seq++;$checkpoints+=Get-ExpectedCheckpoint $baseline 'AfterOperation' $seq
         $samples+=Capture-InvariantSample $context $baseline 'AfterOperation' $seq
+        $trial.FinalCacheFlush=Flush-InvariantFinalVolume
         $seq++;$checkpoints+=Get-ExpectedCheckpoint $baseline 'FinalQuiescence' $seq
         $samples+=Capture-InvariantSample $context $baseline 'FinalQuiescence' $seq
         $trial.LastAccessAfter=Get-LastAccessEvidence
