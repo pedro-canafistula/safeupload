@@ -3,7 +3,7 @@
 # design section 4 corpus, NOT a claim that one row covers every future variant.
 @{
     Schema = 'StagedInvariantCases/1'
-    TableRevision = 16
+    TableRevision = 18
     Modes = @('ordinary', 'runtime-verifier', 'boot-verifier')
     RowSchema = @{
         Required = @('CaseId', 'Revision', 'Status', 'Variant', 'Outcome',
@@ -473,7 +473,7 @@
             Cleanup = @('Unimplemented; common restoration still mandatory')
         }
         @{
-            CaseId = 'B01'; Revision = 4; Status = 'Ready'
+            CaseId = 'B01'; Revision = 5; Status = 'Ready'
             CoreVariant = 'One coordinated C01 BLOCK absent save; standard actor replaces empty hand-back folder with sentinel junction before last close; fail closed'
             DeferredVariants = @('PreExistingValidHandBackTarget', 'JunctionAtOtherAncestorComponents', 'AncestorSwapBetweenProductCheckAndCreate', 'SymlinkAncestor', 'HardLinkTarget', 'ProtectedTarget', 'SyncedTarget', 'CopyFailure', 'DigestFailure', 'SeededUnheldAncestorRace', 'AdditionalRepetitions', 'UnheldLatencyCorpus', 'SafeRetryProductGap: agente/SafeUpload.Agent.Service/Interception/StagedTransferPublisher.cs RecoverBlockedAsync only cleans temporaries for HandbackState=Failed; no external retry API for this exact blocked version')
             Variant = 'fixed-NTFS-cached-block-absent-handback-sentinel-junction'; Outcome = 'BLOCK'
@@ -486,10 +486,10 @@
             Barriers = @('BootIdentityChanged', 'DurableReadiness', 'AgentPolicyAccepted', 'HeldMutableAllocated', 'ActorJunctionReceiptAndOsReadback', 'IndependentSentinelRawBaseline', 'LastUpperClose', 'BlockedHandbackFailed', 'FinalQuiescence')
             ExpectedTimeline = @('UnscopedSetup', 'BootTrusted', 'Protected', 'AllocatedMutableA', 'ActorJunctionWhileHeld', 'RawSentinelBaseline', 'LastUpperClose', 'SealedA', 'InspectingA', 'BlockedA', 'HandbackStateFailed:handback_failed', 'StageRetainedA', 'RawNAbsentAndProtectedListingUnchanged', 'SentinelUnchangedNoNewNameTempOrOverwrite', 'NoReleased')
             StatusClasses = @('OpenWriteFlushClose=Win32:0', 'PrivateRead=WholeA', 'ActorMklinkJunction=Exit:0;Reparse;ExactSentinelTarget', 'FreshUncachedAbsent=Win32:2', 'SentinelRawFreshUncached=ExactOriginalWholeImages', 'HandbackState=Failed:3;PathNull;StageRetained')
-            MetadataExpectations = @{ Exact = @('Attributes','Creation','Modified','Changed','Links','SecurityId','Sddl'); Accessed = 'NtfsReadWindow'; AccessReason = 'Same bounded NTFS read-side LastAccess rule as S00-S02; all other baseline metadata exact.' }
+            MetadataExpectations = @{ Exact = @('Attributes','Creation','Modified','Changed','Links','SecurityId','Sddl'); Accessed = 'NtfsReadWindow'; DirectoryEntryAccessed = 'NtfsReadWindow'; AccessReason = 'Same bounded NTFS read-side LastAccess rule as S00-S02; directory-index Accessed may lag the same identity raw value within the read window when disk updates are enabled (B01 m1a6); all other baseline metadata exact.' }
             JournalExpectations = @('Allocated', 'Sealed', 'Inspecting', 'Blocked', 'SealedDigestA', 'HandbackStateFailed', 'HandbackFailureReason:handback_failed', 'NoApprovedPublishingReleased', 'NoStageCleanupOrDeletion')
             NotificationExpectations = @('BlockedExactTransferSessionDigestAWithNullHandBackPath', 'ExactTransferApplicationFailureWarning', 'NoReleased')
-            AllowedDirectoryTransitions = @('ProtectedDestinationAndSentinelExactRawNamesIdsSizesAttributes', 'NoPublicDestinationOrSentinelTemporary', 'NoSentinelOverwrite')
+            AllowedDirectoryTransitions = @('ProtectedDestinationAndSentinelExactRawNamesIdsSizesAttributes', 'NoPublicDestinationOrSentinelTemporary', 'NoSentinelOverwrite', 'OnlySameIdentityDirectoryEntryAccessedWithinNtfsReadWindow')
             LatencyClasses = @()
             Repetitions = @{ Coordinated = 1; Unheld = 0; DeterministicSeed = 4051 }
             Cleanup = @('CooperativeWriterCancellationAndClose', 'CloseBothObservers', 'StopAndRestoreAgent', 'RemoveOnlyJunctionEntryBeforeSentinelAndProfileRemoval', 'RestoreProductStateBytesAndAcls', 'CommonSeedRestoration', 'IndependentBaseline')
@@ -535,7 +535,7 @@
             Cleanup = @('CooperativeWriterCancellationAndClose', 'StopAndRestoreAgent', 'RestoreProductStateBytesAndAcls', 'CommonSeedRestoration', 'IndependentBaseline')
         }
         @{
-            CaseId = 'R02'; Revision = 4; Status = 'Ready'
+            CaseId = 'R02'; Revision = 5; Status = 'Ready'
             Variant = 'core-stop-after-finalized-policy-with-clean-A01-H-holder-Y'; Outcome = 'ProtectedXAndY; ReadyAfterLastHolderRelease'
             QualificationScope = 'MVP coordinated finalized-policy restart core; earlier apply boundaries and dirty holders deferred'
             DeferredVariants = @('Stops before/after PendingScopes durable', 'Stops between drains', 'Stops before/after Reserved=1', 'Dirty-holder variants', 'FailedClosed variants', 'Seeded unheld stop races', 'Repetition beyond coordinated core')

@@ -1214,11 +1214,13 @@ function Close-InvariantActivationReader {
     $start=Get-IOTime $Context
     try {
         Assert-IOContext $Context
-        if($Context.CaseId -cnotin @('A01','A02','A03','A04','A05') -or
-            -not $Context.BaselineCaptured -or $Context.Handles.Count -ne 1 -or
+        # R02 pins X and Y; only the activating holder file's reader (Y) is drained, X stays held.
+        $heldCount=if($Context.CaseId -ceq 'R02'){2}else{1}
+        if($Context.CaseId -cnotin @('A01','A02','A03','A04','A05','R02') -or
+            -not $Context.BaselineCaptured -or $Context.Handles.Count -ne $heldCount -or
             -not $Context.Handles.ContainsKey($FileId) -or
             $null -ne $Context.PSObject.Properties['ActivationReaderRelease']){
-            throw 'One-use activation reader close requires one exact pinned A01-A05 baseline identity.'
+            throw 'One-use activation reader close requires one exact pinned A01-A05/R02 baseline identity.'
         }
         $entry=$Context.Handles[$FileId]
         if($null -eq $entry.NativeOriginal -or $entry.Version -cne 'Baseline' -or
@@ -1252,9 +1254,10 @@ function Open-InvariantActivationReader {
     try {
         Assert-IOContext $Context
         $release=$Context.ActivationReaderRelease
-        if($Context.CaseId -cnotin @('A01','A02','A03','A04','A05') -or
+        $heldCount=if($Context.CaseId -ceq 'R02'){2}else{1}
+        if($Context.CaseId -cnotin @('A01','A02','A03','A04','A05','R02') -or
             $null -eq $release -or $release.Status -cne 'OK' -or $release.Rebound -or
-            $release.FileId -cne $FileId -or $Context.Handles.Count -ne 1 -or
+            $release.FileId -cne $FileId -or $Context.Handles.Count -ne $heldCount -or
             -not $Context.Handles.ContainsKey($FileId) -or
             $ExpectedSha256 -cnotmatch '^[A-F0-9]{64}$' -or $ExpectedLength -lt 0){
             throw 'Activation rebind requires the one exact successful reader close and pre-release raw U digest.'

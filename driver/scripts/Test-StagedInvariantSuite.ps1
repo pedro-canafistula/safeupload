@@ -5779,6 +5779,11 @@ function Invoke-R02Observation {
         if($heldBeforeRelease.Verdict -cne 'PASS' -or $pendingBeforeRelease.Verdict -cne 'PASS'){throw 'R02 exact held/Pending proof failed before release'}
         Close-ActivationNotificationCapture
         if(@($script:ActivationNotificationHistory | Where-Object {$_.HolderLive -and $_.Value.admissionCoverage -ceq 'Ready'}).Count){throw 'R02 observed Ready while the holder lived'}
+        # Same observer cache drain as A01-A05 (m1a7: Y stayed Activating/Free with an empty promotion trace while
+        # the observer's buffered Y reader kept the stream cache): checked close now, exact rebind after Protected.
+        $trial.ObserverReaderClose=Close-InvariantActivationReader $context $yId
+        Add-ActivationAssertion $trial 'R02ObserverCachedReaderClosedBeforeActorRelease' $(if($trial.ObserverReaderClose.Status -ceq 'OK'){'PASS'}else{'FAIL'}) 'Checked close releases the observer cached Y reader after the exact held/Pending proof; X stays held and the raw pins stay intact.' $trial.ObserverReaderClose
+        if($trial.ObserverReaderClose.Status -cne 'OK'){throw 'R02 observer cached Y reader close failed.'}
         $release=Publish-ActivationActorCommand $state 'release-holder' $null;$trial.LastHolderRelease=$release;$script:ActivationHolderLive=$false
         if($release.NativeCode -ne 0 -or -not $release.HolderReleased){throw 'R02 final H release failed'}
         $deadline=[Diagnostics.Stopwatch]::GetTimestamp()+[long](90*[Diagnostics.Stopwatch]::Frequency)
@@ -5791,6 +5796,9 @@ function Invoke-R02Observation {
         if($free.Verdict -cne 'PASS' -or -not $edgeGood){throw 'R02 final Free/Protected proof failed'}
         $trial.ServiceReady=Wait-ActivationProductStatus 'Ready' $generation 60 'r02-final-ready'
         Add-ActivationAssertion $trial 'R02ReadyAfterRelease' 'PASS' 'Authenticated Ready at the restarted generation follows holder release and same-ID Free/Protected.' $trial.ServiceReady
+        $trial.ObserverReaderRebind=Open-InvariantActivationReader $context $yId (Get-ActivationSha256 $p) $p.Length
+        Add-ActivationAssertion $trial 'R02ObserverReaderReboundWithStableRawP' $(if($trial.ObserverReaderRebind.Status -ceq 'OK'){'PASS'}else{'FAIL'}) 'After same-ID Protected promotion, reopen the same Y identity and require the exact pre-release raw P digest/length and raw/native identity/layout across the reader gap.' $trial.ObserverReaderRebind
+        if($trial.ObserverReaderRebind.Status -cne 'OK'){throw 'R02 observer Y reader rebind or stable raw P validation failed.'}
         $trial.Assertions+=Test-R02Protected (Get-ActivationEntry $x 'r02-x-final').Record $xId
         Add-R02Sample $trial $context $baseline $p 'R02FinalProtected'
         $trial.ServiceAfter=Get-ServiceSnapshot 'r02-final' -JournalOnly;$delta=Test-ServiceJournalDelta $trial.ServiceBefore $trial.ServiceAfter $true
