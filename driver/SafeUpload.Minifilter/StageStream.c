@@ -1067,13 +1067,20 @@ static VOID StageInitializeCache(PSTAGE_STREAM Stream, PFILE_OBJECT FileObject)
     CcInitializeCacheMap(FileObject, &sizes, FALSE, &StageCacheCallbacks, Stream);
 }
 
-static NTSTATUS StageFlush(PSTAGE_STREAM Stream)
+static NTSTATUS StageFlushCache(PSTAGE_STREAM Stream)
 {
     IO_STATUS_BLOCK io = {0};
     if (Stream->Sections.DataSectionObject != NULL) {
         CcFlushCache(&Stream->Sections, NULL, 0, &io);
         if (!NT_SUCCESS(io.Status)) return io.Status;
     }
+    return STATUS_SUCCESS;
+}
+
+static NTSTATUS StageFlush(PSTAGE_STREAM Stream)
+{
+    NTSTATUS status = StageFlushCache(Stream);
+    if (!NT_SUCCESS(status)) return status;
     return Stream->ReadOnly ? STATUS_SUCCESS : FltFlushBuffers(Stream->BackingInstance, Stream->BackingObject);
 }
 
@@ -1490,7 +1497,11 @@ static NTSTATUS StageZeroGrowth(PSTAGE_STREAM Stream, LARGE_INTEGER Size)
     ULONG length, transferred, tail;
     NTSTATUS status;
     if (Size.QuadPart <= Stream->Header.FileSize.QuadPart) return STATUS_SUCCESS;
-    status = StageFlush(Stream);
+    /* Preserve existing upper dirty bytes before reading the partial tail.
+     * The noncached lower object has no data cache to drain. Device durability
+     * belongs to explicit flush/cleanup/seal, not a resize performed by Mm
+     * while creating an extending section. */
+    status = StageFlushCache(Stream);
     if (!NT_SUCCESS(status)) return status;
     buffer = FltAllocatePoolAlignedWithTag(Stream->BackingInstance, NonPagedPoolNx, 65536, STAGE_TAG);
     if (buffer == NULL) return STATUS_INSUFFICIENT_RESOURCES;

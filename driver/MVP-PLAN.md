@@ -1131,3 +1131,19 @@ The safe W01 checkpoint parent was written by Sol and checked by root: Windows P
   preserves failed overlay and creates one unique recovery child on the
   pre-run A01r6 checkpoint. Independent baseline is BaselineClean=True
   (`sol-c02diag1-rollback.txt`, `sol-c02diag1-recovery-baseline.txt`).
+- C02 refinement: generated backing flush IRP795aca20 has reached viostor's
+  device-cache flush (disk/partmgr/volmgr/Ntfs completion chain), not a FileInfo
+  pre-callback block. Thread TopLevelIrp=1, upper EOF0, private noncached backing
+  has no shared cache map. Exact lower hardware completion cause is not proved.
+  Do not clear TopLevelIrp: Microsoft explicitly prohibits minifilter use of
+  IoSetTopLevelIrp. Candidate minimal product repair separates upper cache
+  coherence from device durability: StageZeroGrowth only needs existing dirty
+  upper bytes drained before preserving a partial sector and zeroing extension.
+  Keep CcFlushCache and checked status for existing data sections; omit the
+  unrelated device-wide cache barrier before zeroing. Explicit Flush, cleanup
+  and seal retain the full StageFlush/backing barrier. No noncached zero writes,
+  tail preservation, upper VDL proof, final durability or publication changes.
+  This is a narrowly motivated candidate, not a confirmed lower-driver fix.
+  Exact four-config builds, fresh Luna review, then runtime C02 required.
+  Primary references: https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/fltkernel/nf-fltkernel-fltflushbuffers
+  https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nf-wdm-iosettoplevelirp
