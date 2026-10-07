@@ -1963,8 +1963,10 @@ function Invoke-CachedObservation {
         $context=Open-InvariantObserver $ready.VolumeGuid $protectedDirectory (Join-Path $evidenceDirectory 'raw') $CaseId
         if($context.Status -cne 'OK'){throw ($context.Error | Out-String)}
         $expected=@{'marker.bin'=[Convert]::FromBase64String($state.BaselineBase64);'cached.txt'=$null}
+        # The window starts before the capture: the capture's own read updates marker.bin's LastAccess (run c01n).
+        $captureStartedFileTime=[DateTime]::UtcNow.ToFileTimeUtc()
         $baseline=Capture-InvariantBaseline $context @('marker.bin','cached.txt') $expected
-        $baseline | Add-Member NoteProperty CaptureStartedFileTime ([DateTime]::UtcNow.ToFileTimeUtc())
+        $baseline | Add-Member NoteProperty CaptureStartedFileTime $captureStartedFileTime
         if($baseline.Status -cne 'OK'){throw ($baseline.Error | Out-String)}
         $process=Get-CimInstance Win32_Process -Filter ('ProcessId='+$PID);$owner=Invoke-CimMethod -InputObject $process -MethodName GetOwnerSid
         if($owner.ReturnValue -ne 0 -or $owner.Sid -cne $context.ObserverSid){throw 'C01 observer OS SID mismatch'}
