@@ -1117,7 +1117,8 @@ typedef struct _SAFEUPLOAD_ADMISSION_TRACE_ENTRY {
 #define SAFEUPLOAD_PROMOTION_BASIS_MARKER_SCAN_CLEAR ((UINT32)0x00000008)
 #define SAFEUPLOAD_PROMOTION_BASIS_CACHE_FLUSH_PURGE ((UINT32)0x00000010)
 /* The recorded base-stream incarnation was replaced (same serial and file ID, new SOP); S and the cache barrier
- * were evaluated on the live stream, and neither this entry nor any other entry for the file held writer state. */
+ * were evaluated on the live stream, and neither this entry nor any other incarnation entry of the same data
+ * stream held writer state. Named streams of the file are not part of this proof; their own rows gate them. */
 #define SAFEUPLOAD_PROMOTION_BASIS_INCARNATION_REPLACED ((UINT32)0x00000020)
 #define SAFEUPLOAD_PROMOTION_SNAPSHOT_NONCOHERENT     ((UINT32)0x00000001)
 typedef struct _SAFEUPLOAD_PROMOTION_TRACE_REQUEST {
