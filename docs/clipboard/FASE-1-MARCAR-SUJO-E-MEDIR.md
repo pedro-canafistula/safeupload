@@ -84,16 +84,18 @@ os totais acumulados. As linhas têm categorias, nomes de processo e contagens;
 | **Cópia que não é texto limpa o estado.** | Imagem ou arquivos também substituem um clipboard sujo anterior. |
 | **Clipboard que não abre = estado desconhecido, tratado como limpo.** | Não se afirma "sujo" sem ter lido (RN-013). O App tenta 5 vezes, a cada 40 ms. |
 | **Cada sessão do Windows enxerga só a própria cópia.** | O clipboard é por sessão. |
+| **Falha ao criar o pipe não derruba o serviço.** O servidor registra um erro e tenta de novo, esperando 1 s e dobrando até 30 s. | Uma exceção não tratada num `BackgroundService` derruba o host inteiro, e com ele a proteção de arquivos. O clipboard é um canal à parte e desligado por padrão; falhar não pode custar mais do que o próprio canal. Sem pipe, o App não recebe resposta e libera (RN-013). Uma falha ao aceitar conexão também espera antes de tentar de novo, para não virar um laço apertado. |
 
 ## Verificação
 
-- **269 testes passam** (243 anteriores e 26 novos), compilação sem avisos:
+- **270 testes passam** (243 anteriores e 27 novos), compilação sem avisos:
   - `ClipboardServiceTests`: classificação, texto grande, fonte excluída, canal
     desligado, política que falha, contadores, sessões, e que o texto não
     aparece em nenhum log.
   - `ClipboardPipeTests`: pipe real com classify e sonda de foco, 20 conexões
-    seguidas, linha malformada, linha acima do teto, tipo desconhecido e a
-    leitura de linha com teto.
+    seguidas, linha malformada, linha acima do teto, tipo desconhecido, a
+    leitura de linha com teto e a falha ao criar o pipe (o servidor não cai e
+    se recupera sozinho).
 - **Teste com o clipboard real do Windows**, num harness descartável (o monitor
   e o serviço no mesmo processo): CPF suja; foco em destino de saída conta 1;
   repetir a mesma troca não conta de novo; texto limpo volta a limpo; serviço
@@ -195,6 +197,5 @@ célula, ou texto selecionado na barra de fórmulas).
 
 | Ponto | Com quem |
 |---|---|
-| A criação do pipe em `ClipboardPipeServer.ExecuteAsync` fica fora do tratamento de erro: se falhar (por exemplo, acesso negado), a exceção derruba o serviço inteiro, inclusive a proteção de arquivos. Os outros dois canais têm o mesmo padrão. A corrigir antes do merge | Equipe do agente |
 | O serviço poder dizer "canal desligado" para o App não enviar o texto | Equipe do agente |
 | Mostrar os contadores no painel do agente, em vez de só no log | A definir |

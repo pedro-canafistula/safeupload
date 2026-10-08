@@ -8,9 +8,9 @@ o que ficou sem prova.
 
 | | |
 |---|---|
-| Suíte do agente | **269 testes passando**, 0 falhas, compilação sem avisos |
+| Suíte do agente | **270 testes passando**, 0 falhas, compilação sem avisos |
 | Já existiam | 243 (incluem os da Fase 0: política, regras e protocolo do clipboard) |
-| Novos na Fase 1 | **26**: 16 em `ClipboardServiceTests` e 10 em `ClipboardPipeTests` |
+| Novos na Fase 1 | **27**: 16 em `ClipboardServiceTests` e 11 em `ClipboardPipeTests` |
 | Prova no Windows real | Harness descartável (fora do repositório) |
 | Teste manual com Excel, Word, Chrome e Edge | ✅ **Passou** em 7/10/2026 (seção abaixo) |
 
@@ -56,7 +56,7 @@ O CPF `529.982.247-25` tem **dígitos verificadores válidos**. O scanner só
 marca como achado o que passa na conta do CPF; um número qualquer, como
 `111.111.111-11`, não suja o clipboard.
 
-## Os 26 testes novos
+## Os 27 testes novos
 
 ### `ClipboardServiceTests` (16)
 
@@ -86,7 +86,7 @@ marca como achado o que passa na conta do CPF; um número qualquer, como
 | `Identificador_desconhecido_libera` | `copyId` que o serviço não conhece: `Allow` |
 | `Modo_block_tambem_so_mede_na_fase_um_e_o_veredito_e_de_bloqueio` | Em `Block` o serviço devolve `Block` e a conta é a mesma |
 
-### `ClipboardPipeTests` (10)
+### `ClipboardPipeTests` (11)
 
 | Teste | O que prova |
 |---|---|
@@ -95,6 +95,7 @@ marca como achado o que passa na conta do CPF; um número qualquer, como
 | `Linha_malformada_fecha_sem_responder_e_o_servidor_segue_de_pe` | Lixo fecha sem resposta, e a pergunta válida seguinte funciona |
 | `Linha_acima_do_teto_e_descartada_sem_resposta` | Linha maior que `MaxLineLength` é descartada e não conta como cópia |
 | `Pedido_de_tipo_desconhecido_fecha_sem_responder` | `{"type":"formatar-disco"}` não é atendido |
+| `Falha_ao_criar_o_pipe_nao_derruba_o_servidor_e_ele_se_recupera` | Com o nome do pipe ocupado, a criação falha várias vezes; o servidor segue rodando, registra erro e, liberado o nome, volta a atender sozinho |
 | `Leitura_de_linha_para_na_quebra_e_tira_o_retorno_de_carro` | `ReadLineAsync` para na quebra e remove o `\r` |
 | `Leitura_de_linha_sem_quebra_vale_o_que_chegou` | Fim do fluxo sem quebra devolve o que chegou |
 | `Leitura_de_linha_vazia_devolve_nulo` | Fluxo vazio devolve `null` |
@@ -162,12 +163,20 @@ copiado e o restaura no fim.
 O gancho de foco também entregou um **evento real** durante o teste, sem
 nenhuma chamada minha, o que mostra que ele funciona fora do harness.
 
-### Achados dos testes de integração
+### Achados durante a fase
 
 | Achado | Como apareceu | Resolução |
 |---|---|---|
 | **Uma cópia contava duas vezes** (`Copies = 2` com um só `SetText`) | Harness com o clipboard real. O WPF e muitos apps disparam `WM_CLIPBOARDUPDATE` mais de uma vez por cópia | O monitor agrupa a rajada: espera 120 ms e trata só o último aviso. Depois: 1 cópia por Ctrl+C |
 | **Aviso falso `Falha ao atender o canal de clipboard` após quase toda resposta boa** | Rastreio com um logger que mostra tudo. Os testes usam logger nulo e não viam | O `StreamWriter` era descartado no fim do método, depois de o cliente fechar, e o último `Flush` lançava `IOException: Pipe is broken`. A escrita agora tem escopo próprio e termina antes da espera. Medido: **5 avisos sem a correção, 0 com ela** |
+| **Criação do pipe fora do tratamento de erro** | Revisão do código, ao fechar a fase. Nenhum teste nem o teste manual teria mostrado isso, porque só acontece se a criação falhar | Uma exceção não tratada num `BackgroundService` derruba o host inteiro, e com ele a proteção de arquivos. A criação agora fica num `try/catch`, com espera e recuo (1 s, dobrando até 30 s) e erro no log. A falha ao aceitar conexão também espera, para não virar um laço apertado |
+
+Para a criação do pipe há teste automatizado, e ele **falha sem a correção**
+(3 de 3 execuções, com a exceção escapando como antes) e passa com ela. Além
+disso, com o nome real `SafeUpload.Agent.Clipboard` ocupado por outro pipe, o
+serviço de verdade continuou vivo, registrou `Nao foi possivel criar o pipe do
+canal de clipboard. Nova tentativa em 00:00:01` (depois `00:00:02`) e, liberado
+o nome, o pipe voltou sozinho.
 
 ## Teste manual com aplicativos reais (7/10/2026)
 

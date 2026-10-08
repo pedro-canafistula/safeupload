@@ -1,4 +1,5 @@
 using System.IO.Pipes;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using SafeUpload.Agent.Core.Application;
 using SafeUpload.Agent.Core.Contracts;
@@ -40,25 +41,53 @@ public class ClipboardPipeTests
                 ClipboardPolicy.DefaultMaxTextLength,
                 OversizedTextIsDirty: true));
 
+    /// <summary>Guarda o que o servidor do pipe registrou como erro.</summary>
+    private sealed class ErrorLog<T> : ILogger<T>
+    {
+        public List<string> Errors { get; } = [];
+
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(
+            LogLevel logLevel, EventId eventId, TState state, Exception? exception,
+            Func<TState, Exception?, string> formatter)
+        {
+            if (logLevel >= LogLevel.Error)
+            {
+                lock (Errors)
+                {
+                    Errors.Add(formatter(state, exception));
+                }
+            }
+        }
+    }
+
     /// <summary>Sobe um servidor num pipe de nome único e o derruba no fim.</summary>
     private sealed class Server : IAsyncDisposable
     {
         private readonly ClipboardPipeServer _server;
 
-        public Server()
+        public Server(string? pipeName = null, TimeSpan? retryDelay = null)
         {
-            PipeName = "SafeUpload.Test.Clipboard." + Guid.NewGuid().ToString("N");
+            PipeName = pipeName ?? "SafeUpload.Test.Clipboard." + Guid.NewGuid().ToString("N");
             Service = new ClipboardService(
                 new FixedPolicyStore(Politica()),
                 new ClipboardCopyStore(),
                 new ClipboardMetrics(),
                 NullLogger<ClipboardService>.Instance);
-            _server = new ClipboardPipeServer(Service, NullLogger<ClipboardPipeServer>.Instance, PipeName);
+            _server = new ClipboardPipeServer(Service, Log, PipeName, retryDelay);
         }
 
         public string PipeName { get; }
 
         public ClipboardService Service { get; }
+
+        public ErrorLog<ClipboardPipeServer> Log { get; } = new();
+
+        /// <summary>A tarefa do servidor: se ela terminar enquanto o serviço roda, o host cairia.</summary>
+        public Task? ExecuteTask => _server.ExecuteTask;
 
         public Task StartAsync() => _server.StartAsync(CancellationToken.None);
 
@@ -106,6 +135,40 @@ public class ClipboardPipeTests
         Assert.NotNull(foco);
         Assert.Equal(ClipboardPasteVerdict.AuditOnly, foco.Verdict);
         Assert.Equal(1, server.Service.Metrics.FocusOnEgressWhileDirty);
+    }
+
+    [Fact]
+    public async Task Falha_ao_criar_o_pipe_nao_derruba_o_servidor_e_ele_se_recupera()
+    {
+        var pipeName = "SafeUpload.Test.Clipboard." + Guid.NewGuid().ToString("N");
+
+        // Ocupa o nome com uma instância só: criar outra com o mesmo nome falha.
+        var ocupante = new NamedPipeServerStream(
+            pipeName, PipeDirection.InOut, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
+
+        await using var server = new Server(pipeName, retryDelay: TimeSpan.FromMilliseconds(50));
+        await server.StartAsync();
+
+        // Várias tentativas falham. Se a exceção saísse do servidor, a tarefa
+        // terminaria com falha, e num serviço de verdade o host cairia junto.
+        await Task.Delay(400);
+
+        Assert.False(
+            server.ExecuteTask!.IsCompleted,
+            "O servidor terminou (a exceção da criação do pipe saiu dele).");
+        lock (server.Log.Errors)
+        {
+            Assert.NotEmpty(server.Log.Errors);
+        }
+
+        // Liberado o nome, o servidor se recupera sozinho e passa a atender.
+        ocupante.Dispose();
+
+        var resposta = await server.PerguntarAsync(
+            ClipboardProtocol.Serialize(ClipboardRequest.Classify("CPF " + CpfValido, "notepad")) + "\n");
+
+        Assert.NotNull(resposta);
+        Assert.True(resposta.Dirty);
     }
 
     [Fact]

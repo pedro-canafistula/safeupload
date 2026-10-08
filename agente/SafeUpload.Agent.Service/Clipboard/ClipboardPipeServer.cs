@@ -31,30 +31,72 @@ public sealed class ClipboardPipeServer : BackgroundService
     /// </summary>
     private static readonly TimeSpan ServeTimeout = TimeSpan.FromSeconds(5);
 
+    /// <summary>Espera inicial entre tentativas de recriar o pipe.</summary>
+    private static readonly TimeSpan DefaultRetryDelay = TimeSpan.FromSeconds(1);
+
+    /// <summary>
+    /// Teto da espera. O pipe pode ficar indisponível por muito tempo; sem teto,
+    /// o intervalo cresceria até o canal levar minutos para voltar.
+    /// </summary>
+    private static readonly TimeSpan MaxRetryDelay = TimeSpan.FromSeconds(30);
+
     private readonly ClipboardService _service;
     private readonly ILogger<ClipboardPipeServer> _logger;
     private readonly string _pipeName;
+    private readonly TimeSpan _initialRetryDelay;
 
     /// <summary>Compõe o servidor.</summary>
     /// <param name="service">Quem decide.</param>
     /// <param name="logger">Log.</param>
     /// <param name="pipeName">Nome do pipe; só os testes usam outro que não o do protocolo.</param>
+    /// <param name="retryDelay">Espera inicial ao falhar; só os testes usam outra que não a padrão.</param>
     public ClipboardPipeServer(
         ClipboardService service,
         ILogger<ClipboardPipeServer> logger,
-        string? pipeName = null)
+        string? pipeName = null,
+        TimeSpan? retryDelay = null)
     {
         _service = service ?? throw new ArgumentNullException(nameof(service));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _pipeName = pipeName ?? ClipboardProtocol.PipeName;
+        _initialRetryDelay = retryDelay ?? DefaultRetryDelay;
     }
 
     /// <inheritdoc />
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        TimeSpan retryDelay = _initialRetryDelay;
+
         while (!stoppingToken.IsCancellationRequested)
         {
-            NamedPipeServerStream pipe = CreatePipe(_pipeName);
+            NamedPipeServerStream pipe;
+
+            // Criar o pipe pode falhar (nome ocupado, acesso negado, sem
+            // recursos), e a exceção NÃO pode sair daqui: uma exceção não tratada
+            // num BackgroundService derruba o host inteiro por padrão, e com ele
+            // a proteção de arquivos. O clipboard é um canal à parte e desligado
+            // por padrão; falhar não pode custar mais do que o próprio canal. Sem
+            // pipe, o aplicativo não recebe resposta e libera (RN-013).
+            try
+            {
+                pipe = CreatePipe(_pipeName);
+                retryDelay = _initialRetryDelay;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(
+                    ex,
+                    "Nao foi possivel criar o pipe do canal de clipboard. Nova tentativa em {Espera}.",
+                    retryDelay);
+
+                if (!await WaitBeforeRetryAsync(retryDelay, stoppingToken).ConfigureAwait(false))
+                {
+                    return;
+                }
+
+                retryDelay = NextRetryDelay(retryDelay);
+                continue;
+            }
 
             try
             {
@@ -69,13 +111,41 @@ public sealed class ClipboardPipeServer : BackgroundService
             {
                 _logger.LogWarning(ex, "Falha ao aceitar conexao no canal de clipboard.");
                 await pipe.DisposeAsync().ConfigureAwait(false);
+
+                // Sem esperar, uma falha que se repete viraria um laço apertado
+                // gastando CPU e enchendo o log.
+                if (!await WaitBeforeRetryAsync(retryDelay, stoppingToken).ConfigureAwait(false))
+                {
+                    return;
+                }
+
+                retryDelay = NextRetryDelay(retryDelay);
                 continue;
             }
+
+            retryDelay = _initialRetryDelay;
 
             // Sem await: um cliente lento não pode impedir o próximo de conectar.
             _ = ServeAsync(pipe, stoppingToken);
         }
     }
+
+    /// <returns><c>false</c> se o serviço foi parado durante a espera.</returns>
+    private static async Task<bool> WaitBeforeRetryAsync(TimeSpan delay, CancellationToken stoppingToken)
+    {
+        try
+        {
+            await Task.Delay(delay, stoppingToken).ConfigureAwait(false);
+            return true;
+        }
+        catch (OperationCanceledException)
+        {
+            return false;
+        }
+    }
+
+    private static TimeSpan NextRetryDelay(TimeSpan current) =>
+        TimeSpan.FromMilliseconds(Math.Min(current.TotalMilliseconds * 2, MaxRetryDelay.TotalMilliseconds));
 
     private async Task ServeAsync(NamedPipeServerStream pipe, CancellationToken stoppingToken)
     {
