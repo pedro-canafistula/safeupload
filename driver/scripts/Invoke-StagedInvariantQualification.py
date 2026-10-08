@@ -210,7 +210,7 @@ def phase_line(phase, params, suite_leaf, name):
         command += ' -' + key + ' ' + ps_literal(value)
     encoded = base64.b64encode(("$ErrorActionPreference='Stop';try{" + command + "}catch{[Console]::Error.WriteLine(($_|Out-String)+$_.Exception.ToString()+$_.ScriptStackTrace);exit 1}").encode('utf-16le')).decode()
     prefix = docs + '\\' + name + '-' + phase.lower()
-    # AfterBoot waits for the startup task (up to 2400 s for the long boot-verifier cases) and then restores, so its child gets a longer
+    # AfterBoot waits for the startup task (up to 2460 s for the long boot-verifier cases) and then restores, so its child gets a longer
     # limit than the other phases; the harness call as a whole is still bounded by HARNESS_TIMEOUT_SECONDS (5400 s).
     child_limit_ms = 3300000 if phase == 'AfterBoot' else 1500000
     # Raw guest process streams survive the wrapper's CLIXML cleaning. All

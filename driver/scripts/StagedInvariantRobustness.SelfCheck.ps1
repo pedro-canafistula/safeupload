@@ -9,13 +9,21 @@ try {
     $tokens=$null;$errors=$null
     $ast=[Management.Automation.Language.Parser]::ParseFile((Join-Path $PSScriptRoot 'Test-StagedInvariantSuite.ps1'),[ref]$tokens,[ref]$errors)
     if($errors.Count){throw ($errors | Out-String)}
-    foreach($name in @('Get-NotificationInventoryDecision','Get-ErrorChain','Test-ActivationRawWholeImage','Get-ActivationSha256','Test-CachedImage')){
+    foreach($name in @('Get-NotificationInventoryDecision','Get-ErrorChain','Test-ActivationRawWholeImage','Get-ActivationSha256','Test-CachedImage','Test-LongBootVerifierCase')){
         $defs=@($ast.FindAll({param($node)$node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -ceq $name},$false))
         if($defs.Count -ne 1){throw ('Missing/ambiguous function: '+$name)}
         Invoke-Expression ($defs[0].Extent.Text.Replace(('function '+$name),('function script:'+$name)))
     }
     $checks=0
     function Check([bool]$Condition,[string]$Reason){if(-not $Condition){throw $Reason};$script:checks++}
+    # Only these five boot-verifier cells get the 40-minute startup task and the long AfterBoot wait; every other mode/case keeps 15 minutes.
+    foreach($row in @(@('boot-verifier','B02',$true),@('boot-verifier','C01-block-absent',$true),@('boot-verifier','C02-block-absent',$true),
+            @('boot-verifier','C03-block-existing',$true),@('boot-verifier','C04-block',$true),@('boot-verifier','A04',$false),
+            @('boot-verifier','C01-approve-absent',$false),@('boot-verifier','X01',$false),@('runtime-verifier','B02',$false),
+            @('ordinary','C01-block-absent',$false),@('boot-verifier','b02',$false))){
+        $Mode=$row[0];$CaseId=$row[1]
+        Check ((Test-LongBootVerifierCase) -eq $row[2]) ('Long boot-verifier case selection for '+$row[0]+' '+$row[1]+'.')
+    }
     function InventoryWait {
         return [ordered]@{StartQpc=$null;DeadlineQpc=$null;OuterDeadlineQpc=30000;EndQpc=$null;QpcFrequency=1000;
             TimeoutSeconds=5;PollMilliseconds=25;DurationMs=$null;Cleared=$false;TimedOut=$false;Windows=@();Observations=@()}
