@@ -2115,3 +2115,40 @@ tip `f6c8e00b`, itself on gen2 `cfee5a33` + harness fixes). The agent stays `age
   retries only the driver's ERROR_BUSY refusal (10 s QPC bound).
 - Builds: `mvp4-gen3a` (b4ff2a84, signed 4CA6A170...), `mvp4-gen3b` (94334034, signed 537BACA0...), `mvp4-gen3c`
   (f550666b, signed 6001F261...), all four configurations 0 warnings/0 errors, PREfast and ApiValidator clean.
+
+## MVP release notes (draft 2026-10-08; final numbers are filled in when the gate closes)
+
+**What the MVP is.** SafeUpload protects one or more local fixed-NTFS folders on Windows 10 22H2 build 19045.2965
+(the only qualified platform): a boot-start minifilter stages every write by a standard user, the service inspects the
+staged bytes, and only an approved version reaches the protected folder; a blocked version is handed back to its
+requestor. Administrators and SYSTEM are trusted. Installation requires a reboot (the installer stages a boot-start
+driver; there is no late-attach period in normal deployment), and protection of a file begins when it has no writer that
+existed before the file entered scope: a scope whose files still have a pre-scope writer stays Activating and is never
+reported Ready.
+
+**Not in the MVP (post-MVP milestone, in order):** USB / SMB / sync-client destinations, Windows 11 and other builds, process
+taint (read classification only runs while taint is on; its stall risk is recorded below), the other section-4.1 variants of each
+suite row, P01-P06 and the RV4 families, the driver lower admission/completion mutation ledger (the MVP evidences "no unapproved
+byte" by sampled raw-volume, fresh and uncached reads plus the final raw image rather than a continuous proof), authenticated
+per-file readiness events, host-independent cadence proofs, and `C05DenialLedger` (the driver has no rename-denial trace event;
+C05 is proven behaviorally and its exemption is exact-name, a FAIL still blocks).
+
+**Known issues and conditions the release carries (Luna reviews, orchestrator decisions):**
+- Reclaim worker CPU: any unresolved or parked alias probe keeps the reclaim worker rescanning (the worker requeues while
+  `AliasProbePending` or `ScopeScanPending` is set), and close/cleanup events on an unrelated file system restart the sweep;
+  measured 2.5-5k passes/s. Fails closed; costs CPU. Post-MVP: bounded, event-driven rescans.
+- Policy generation is compared as a signed LONG in `StageRegistryBeginAliasProbe`; after 2^31 successful policy commits a fresh
+  runtime entry would no longer be stamped (it stays gated). Define rollover before that horizon.
+- Names-by-id (`9b964be9`) P2s: changed-SOP entries are not retired and could accumulate toward the bounded registry (fail-closed
+  availability; measure on the target build); the SOP-lifetime premise of `StageRegistryAssociateSectionPointer` is a target-build
+  precondition, not a documented NTFS contract.
+- Rename-churn parking can defer a classification repeatedly while churn never settles (gated, not Ready; no timers/scans added).
+- Taint-on read classification is a synchronous agent inspection per supported read open: with taint enabled it can stall the
+  service until the driver's 5.5 s verdict window (`Falha ao responder o veredito`) and deny a create. The MVP runs with taint off.
+- Agent journal scan cache (`51ba5873`): a manifest keeps its parsed projection for journal scans while its size, creation time,
+  last-write time and attributes are unchanged; every service write drops it and every state change re-reads and re-validates the
+  disk. Only an administrator/SYSTEM who preserves all four could keep a stale projection for scans until the next write.
+- The journal never shrinks (records carry destination generations and tombstones); memory for the scan cache is bounded at 50 000
+  entries (cleared when exceeded). Journal retention/compaction is post-MVP.
+- Sticky Unknown is never cleared before reboot (owner decision 2026-10-03): a lost-tracking event on the protected volume leaves
+  coverage Degraded until restart.
