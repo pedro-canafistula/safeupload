@@ -1440,6 +1440,7 @@ static PCWSTR ActivatingClassificationStepName(UINT32 Step)
     case SAFEUPLOAD_ACTIVATING_CLASSIFY_STEP_SCOPE_DEFERRED: return L"ScopeDeferred";
     case SAFEUPLOAD_ACTIVATING_CLASSIFY_STEP_MARKERS_LIVE: return L"MarkersLive";
     case SAFEUPLOAD_ACTIVATING_CLASSIFY_STEP_PROMOTE_DEFERRED: return L"PromoteDeferred";
+    case SAFEUPLOAD_ACTIVATING_CLASSIFY_STEP_EXIT_SITE: return L"ExitSite";
     default: return L"UnknownStep";
     }
 }

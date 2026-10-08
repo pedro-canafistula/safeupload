@@ -4378,7 +4378,8 @@ __declspec(noinline) static VOID StageRegistryRecordDeferral(
         current == (LONG)SAFEUPLOAD_ACTIVATING_CLASSIFY_STEP_LINK_SCAN_MORE ||
         current == (LONG)SAFEUPLOAD_ACTIVATING_CLASSIFY_STEP_SCOPE_DEFERRED ||
         current == (LONG)SAFEUPLOAD_ACTIVATING_CLASSIFY_STEP_MARKERS_LIVE ||
-        current == (LONG)SAFEUPLOAD_ACTIVATING_CLASSIFY_STEP_PROMOTE_DEFERRED) {
+        current == (LONG)SAFEUPLOAD_ACTIVATING_CLASSIFY_STEP_PROMOTE_DEFERRED ||
+        current == (LONG)SAFEUPLOAD_ACTIVATING_CLASSIFY_STEP_EXIT_SITE) {
         InterlockedExchange(&Entry->ClassificationStatus, Status);
         InterlockedExchange(&Entry->ClassificationStep, (LONG)Step);
     }
@@ -5382,6 +5383,13 @@ static BOOLEAN StageRegistryEntryHoldsNoWriterState(_In_ PSTAGE_REGISTRY_ENTRY E
         StageRegistrySnapshotC(Entry, NULL, 0, NULL) == 0;
 }
 
+/* Silent exits of the activation pass record the source line that left, so a stuck Activating entry names its blocker
+ * (diagnostic row, never moves the registry snapshot sequence). */
+#define STAGE_ACT_EXIT() do { \
+    StageRegistryRecordDeferral(Entry, (NTSTATUS)(0xD0000000u | ((ULONG)__LINE__ & 0x00FFFFFFu)), \
+        SAFEUPLOAD_ACTIVATING_CLASSIFY_STEP_EXIT_SITE); \
+    goto Exit; } while (0)
+
 static VOID StageRegistryActivationProcess(_In_ PSTAGE_REGISTRY_ENTRY Entry,
     _In_ PFLT_INSTANCE Instance, _In_ PFLT_VOLUME Volume, _Inout_ PULONG WorkBudget)
 {
@@ -5450,7 +5458,7 @@ static VOID StageRegistryActivationProcess(_In_ PSTAGE_REGISTRY_ENTRY Entry,
         InterlockedCompareExchange(&Entry->RenameInFlight, 0, 0) != 0 ||
         directoryRenameInFlight) {
         FltReleasePushLock(&RegistryLock);
-        goto Exit;
+        STAGE_ACT_EXIT();
     }
     nameSnapshotChars = Entry->Compact ? 0 : Entry->NameChars;
     renameVersion = (ULONG)InterlockedCompareExchange(&Entry->RenameVersion, 0, 0);
@@ -5460,7 +5468,7 @@ static VOID StageRegistryActivationProcess(_In_ PSTAGE_REGISTRY_ENTRY Entry,
     if (transactionActive) {
         /* Nontransacted by-ID opens see only the committed TxF view. */
         StageRegistryPrepareActivation(Entry, FALSE);
-        goto Exit;
+        STAGE_ACT_EXIT();
     }
     entryName.Buffer = nameSnapshot;
     entryName.Length = entryName.MaximumLength = (USHORT)(nameSnapshotChars * sizeof(WCHAR));
@@ -5499,10 +5507,10 @@ static VOID StageRegistryActivationProcess(_In_ PSTAGE_REGISTRY_ENTRY Entry,
         }
     } else {
         if (!StageRegistrySetLinkScopeClassificationVersioned(Entry, TRUE,
-                unionLinkScoped, transactionVersion)) goto Exit;
+                unionLinkScoped, transactionVersion)) STAGE_ACT_EXIT();
         if (!unionLinkScoped) {
             InterlockedIncrement64(&RegistryChangeSequence);
-            goto Exit;
+            STAGE_ACT_EXIT();
         }
     }
 
@@ -5550,7 +5558,7 @@ static VOID StageRegistryActivationProcess(_In_ PSTAGE_REGISTRY_ENTRY Entry,
             if (StageRegistrySetLinkScopeClassificationVersioned(Entry, TRUE, FALSE,
                     transactionVersion))
                 InterlockedIncrement64(&RegistryChangeSequence);
-            goto Exit;
+            STAGE_ACT_EXIT();
         }
         StageRegistryRecordClassificationResult(Entry, status, openFailureStep);
         StageRegistryMarkEntryUnknown(Entry, SAFEUPLOAD_REGISTRY_UNKNOWN_IDENTITY);
@@ -5582,7 +5590,7 @@ static VOID StageRegistryActivationProcess(_In_ PSTAGE_REGISTRY_ENTRY Entry,
         InterlockedCompareExchange(&Entry->UnknownReasons, 0, 0) != 0 ||
         InterlockedCompareExchange(&Entry->ActivationEnforced, 0, 0) == 0 ||
         InterlockedCompareExchange((volatile LONG *)&Entry->State, 0, 0) !=
-            SAFEUPLOAD_REGISTRY_STATE_ACTIVATING) goto Exit;
+            SAFEUPLOAD_REGISTRY_STATE_ACTIVATING) STAGE_ACT_EXIT();
 
     /* Free(F) is a single observation behind the published gate. After the
      * last holder leaves, NTFS may retain clean or dirty cache pointers. The
@@ -5593,9 +5601,9 @@ static VOID StageRegistryActivationProcess(_In_ PSTAGE_REGISTRY_ENTRY Entry,
         InterlockedCompareExchange(&Entry->T, 0, 0) != 0 ||
         InterlockedCompareExchange(&Entry->RenameInFlight, 0, 0) != 0 ||
         StageRegistrySnapshotSpilledWriters(Entry) != 0 ||
-        StageRegistrySnapshotSpilledMutatingIo(Entry) != 0) goto Exit;
+        StageRegistrySnapshotSpilledMutatingIo(Entry) != 0) STAGE_ACT_EXIT();
     sectionCount = StageRegistrySnapshotC(Entry, NULL, 0, NULL);
-    if (sectionCount != 0 || (sectionCount & SAFEUPLOAD_SECTIONS_UNTRACKED_BIT) != 0) goto Exit;
+    if (sectionCount != 0 || (sectionCount & SAFEUPLOAD_SECTIONS_UNTRACKED_BIT) != 0) STAGE_ACT_EXIT();
     userWritable = MmDoesFileHaveUserWritableReferences(sop) != FALSE;
     {
         LONG newSState = userWritable ? SAFEUPLOAD_REGISTRY_S_YES : SAFEUPLOAD_REGISTRY_S_NO;
@@ -5603,7 +5611,7 @@ static VOID StageRegistryActivationProcess(_In_ PSTAGE_REGISTRY_ENTRY Entry,
             InterlockedIncrement64(&RegistryChangeSequence);
     }
     sopEmpty = sop->DataSectionObject == NULL && sop->SharedCacheMap == NULL;
-    if (userWritable) goto Exit;
+    if (userWritable) STAGE_ACT_EXIT();
     if (!sopEmpty) {
         /* PASSIVE worker, identity/SOP checked, and no registry/state/section
          * lock held. Issue below this instance using NTFS's supported flush
@@ -5653,7 +5661,7 @@ static VOID StageRegistryActivationProcess(_In_ PSTAGE_REGISTRY_ENTRY Entry,
         StageRegistrySnapshotSpilledWriters(Entry) != 0 ||
         StageRegistrySnapshotSpilledMutatingIo(Entry) != 0 ||
         StageRegistrySnapshotC(Entry, NULL, 0, NULL) != 0 ||
-        sop->DataSectionObject != NULL || sop->SharedCacheMap != NULL) goto Exit;
+        sop->DataSectionObject != NULL || sop->SharedCacheMap != NULL) STAGE_ACT_EXIT();
 
     /* Policy is sampled before RegistryLock to avoid introducing a lock-order edge.
      * The receipt labels this as a sample, not an atomic part of the CAS predicate. */
