@@ -5643,6 +5643,17 @@ function Save-OpenFailureDiagnostics([string]$Tag,[string]$Path) {
             else{$fs=[IO.File]::Open($Path,[IO.FileMode]::Open,$access[1],([IO.FileShare]::ReadWrite -bor [IO.FileShare]::Delete));$lines.Add('OpenRead=OK Length='+$fs.Length);$fs.Dispose()}
         }catch{$lines.Add($access[0]+'Error='+$_.Exception.GetType().Name+': '+$_.Exception.Message)}
     }
+    try{
+        if(-not ('SUOpenProbe' -as [type])){Add-Type -TypeDefinition @'
+using System;using System.Runtime.InteropServices;
+public static class SUOpenProbe {
+ [DllImport("kernel32.dll",CharSet=CharSet.Unicode,SetLastError=true)]static extern IntPtr CreateFileW(string name,uint access,uint share,IntPtr sa,uint disposition,uint flags,IntPtr template);
+ [DllImport("kernel32.dll")]static extern bool CloseHandle(IntPtr h);
+ public static string Try(string path,uint access){IntPtr h=CreateFileW(path,access,7,IntPtr.Zero,3,0,IntPtr.Zero);if(h==new IntPtr(-1))return "FAIL Win32="+Marshal.GetLastWin32Error();CloseHandle(h);return "OK";}
+}
+'@}
+        foreach($probe in @(@('FILE_READ_ATTRIBUTES|SYNCHRONIZE',[uint32]0x00100080),@('FILE_READ_ATTRIBUTES|READ_CONTROL|SYNCHRONIZE',[uint32]0x00120080),@('FILE_READ_DATA|SYNCHRONIZE',[uint32]0x00100001),@('FILE_GENERIC_READ',[uint32]0x00120089))){$lines.Add('Probe '+$probe[0]+'='+[SUOpenProbe]::Try($Path,$probe[1]))}
+    }catch{$lines.Add('ProbeError='+$_.Exception.Message)}
     try{$item=Get-Item -LiteralPath $Path -Force;$lines.Add('Item Length='+$item.Length+' Attributes='+$item.Attributes+' LastWriteUtc='+$item.LastWriteTimeUtc.ToString('o'))}catch{$lines.Add('GetItemError='+$_.Exception.Message)}
     try{$lines.Add('Dir='+((Get-ChildItem -LiteralPath (Split-Path -Parent $Path) -Force | ForEach-Object {$_.Name+':'+$_.Length+':'+$_.Attributes}) -join ';'))}catch{$lines.Add('DirError='+$_.Exception.Message)}
     try{$lines.Add('Fltmc='+((& fltmc.exe instances 2>&1 | Out-String) -replace "`r?`n",' | '))}catch{}
