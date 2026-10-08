@@ -1383,6 +1383,16 @@ static NTSTATUS StageCreate(PFLT_CALLBACK_DATA Data, PCFLT_RELATED_OBJECTS Objec
         if (stream->RenameExchange != NULL || (stream->ReadOnly && !stream->Sealed)) {
             status = STATUS_SHARING_VIOLATION; goto Exit;
         }
+        if (stream->Sealed && stream->BackingObject != NULL) {
+            /* The service deleted this sealed version's stage file (BLOCK cleanup): the worker retires the stream at its next pass, but an
+             * open must not be served from a delete-pending backing in between. Fail closed; the delete-pending state is permanent. */
+            FILE_STANDARD_INFORMATION pending;
+            RtlZeroMemory(&pending, sizeof(pending));
+            status = FltQueryInformationFile(stream->BackingInstance, stream->BackingObject,
+                &pending, sizeof(pending), FileStandardInformation, NULL);
+            if (!NT_SUCCESS(status)) goto Exit;
+            if (pending.DeletePending) { status = STATUS_DELETE_PENDING; goto Exit; }
+        }
     }
     if (stream == NULL || (Writer && stream->Sealed)) {
         PSTAGE_STREAM previous = stream;
@@ -3822,7 +3832,9 @@ BOOLEAN SafeUploadProcessHasMappings(_In_ ULONG Owner)
     if (!NT_SUCCESS(PsLookupProcessByProcessId(ULongToHandle(Owner), &process))) return FALSE;
     StageAcquire(&StageNamespaceResource);
     for (link = StageViews.Flink; link != &StageViews; link = link->Flink)
-        if (CONTAINING_RECORD(link, STAGE_VIEW, Link)->Owner == process) { found = TRUE; break; }
+        if (CONTAINING_RECORD(link, STAGE_VIEW, Link)->Owner == process &&
+            !(CONTAINING_RECORD(link, STAGE_VIEW, Link)->Detached && CONTAINING_RECORD(link, STAGE_VIEW, Link)->Current != NULL &&
+              CONTAINING_RECORD(link, STAGE_VIEW, Link)->Current->Retired)) { found = TRUE; break; }
     StageRelease(&StageNamespaceResource);
     ObDereferenceObject(process);
     return found;
