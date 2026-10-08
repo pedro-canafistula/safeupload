@@ -57,12 +57,26 @@ def is_latency(name):
 def without_latency(result):
     """Copy of a case result with every latency measurement and latency assertion removed (latency is reported, never gating)."""
     result = copy.deepcopy(result)
+    downgraded = False
     for trial in result.get('Trials', []):
+        had_latency = bool(trial.get('Latency')) or any(is_latency(a.get('Name', '')) for a in trial.get('Assertions', []))
         trial['Latency'] = []
         trial['Assertions'] = [a for a in trial.get('Assertions', []) if not is_latency(a.get('Name', ''))]
         predicate = trial.get('Predicate')
         if isinstance(predicate, dict):
             predicate['Assertions'] = [a for a in predicate.get('Assertions', []) if not is_latency(a.get('Name', ''))]
+        # The harness folds a latency FAIL (a budget miss) into the trial and case verdicts. With the latency evidence removed, a FAIL
+        # that no remaining assertion, predicate or error explains was latency only: it becomes INCONCLUSIVE, which tier 1 still accepts
+        # only when every remaining assertion passes or is proof depth. A FAIL with any other cause stays FAIL.
+        remaining = trial.get('Assertions', []) + (predicate.get('Assertions', []) if isinstance(predicate, dict) else [])
+        if (had_latency and trial.get('Verdict') == 'FAIL' and not trial.get('Errors')
+                and not (isinstance(predicate, dict) and (predicate.get('Verdict') == 'FAIL' or predicate.get('Errors')))
+                and not any(a.get('Verdict') == 'FAIL' for a in remaining)):
+            trial['Verdict'] = 'INCONCLUSIVE'
+            downgraded = True
+    if (downgraded and result.get('Verdict') == 'FAIL' and not result.get('Errors')
+            and all(t.get('Verdict') != 'FAIL' for t in result.get('Trials', []))):
+        result['Verdict'] = 'INCONCLUSIVE'
     return result
 
 

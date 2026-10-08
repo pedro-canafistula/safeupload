@@ -28,6 +28,15 @@ def with_assertion(result, name, verdict):
     return result
 
 
+def latency_fail(result):
+    """The result the harness writes when only a latency budget is missed: latency evidence FAIL, trial and case verdicts FAIL."""
+    result = copy.deepcopy(result)
+    result['Verdict'] = 'FAIL'
+    result['Trials'][0]['Verdict'] = 'FAIL'
+    result['Trials'][0]['Latency'] = [{'Class': 'close', 'Verdict': 'FAIL', 'Samples': []}]
+    return result
+
+
 class TierOneTests(unittest.TestCase):
     def test_clean_result_passes(self):
         self.assertEqual(S.tier1_blockers(passing()), [])
@@ -93,6 +102,43 @@ class TierOneTests(unittest.TestCase):
         result['Trials'][0]['Latency'] = [{'Class': 'close', 'Verdict': 'FAIL', 'Samples': []}]
         self.assertEqual(S.tier1_blockers(with_assertion(result, 'C01UnheldLatency', 'FAIL')), [])
 
+    def test_latency_only_fail_verdicts_do_not_block(self):
+        # The harness folds a latency budget miss into the trial and case verdicts (S00 boot-verifier w13220521: flush max 2246 ms).
+        result = latency_fail(passing())
+        self.assertEqual(S.tier1_blockers(result), [])
+        shaped_like_the_harness = latency_fail(passing())
+        shaped_like_the_harness['Trials'][0]['Latency'] = {'Verdict': 'FAIL', 'P95Ms': 56.9, 'MaxMs': 2246.8}
+        self.assertEqual(S.tier1_blockers(shaped_like_the_harness), [])
+
+    def test_a_fail_with_any_other_cause_still_blocks(self):
+        result = with_assertion(latency_fail(passing()), 'C01RawFinalAbsent', 'FAIL')
+        self.assertTrue(S.tier1_blockers(result))
+        result = latency_fail(passing())
+        result['Trials'][0]['Errors'] = ['x']
+        self.assertTrue(S.tier1_blockers(result))
+        result = latency_fail(passing())
+        result['Trials'][0]['Predicate']['Verdict'] = 'FAIL'
+        self.assertTrue(S.tier1_blockers(result))
+        result = latency_fail(passing())
+        result['Errors'] = ['x']
+        self.assertTrue(S.tier1_blockers(result))
+        result = latency_fail(passing())
+        result['ForbiddenByteCount'] = 1
+        self.assertTrue(S.tier1_blockers(result))
+
+    def test_a_fail_verdict_without_latency_evidence_is_not_downgraded(self):
+        result = passing()
+        result['Trials'][0]['Verdict'] = 'FAIL'
+        self.assertTrue(S.tier1_blockers(result))
+        result = passing()
+        result['Verdict'] = 'FAIL'
+        self.assertTrue(S.tier1_blockers(result))
+        # a case-level FAIL that no latency downgrade explains stays FAIL even when a trial carries latency evidence
+        result = passing()
+        result['Verdict'] = 'FAIL'
+        result['Trials'][0]['Latency'] = [{'Class': 'close', 'Verdict': 'PASS', 'Samples': []}]
+        self.assertTrue(S.tier1_blockers(result))
+
 
 class TierTwoTests(unittest.TestCase):
     def test_latency_is_excluded_but_everything_else_is_not(self):
@@ -102,6 +148,10 @@ class TierTwoTests(unittest.TestCase):
         self.assertEqual(S.tier2_blockers(with_assertion(result, 'C01UnheldLatency', 'INCONCLUSIVE')), [])
         self.assertTrue(S.tier2_blockers(with_assertion(passing(mode='runtime-verifier'), 'ActualServiceTimelines', 'INCONCLUSIVE')))
         self.assertTrue(S.tier2_blockers(with_assertion(passing(mode='runtime-verifier'), 'C01RawFinalAbsent', 'FAIL')))
+
+    def test_latency_only_fail_verdicts_are_excluded_but_other_fails_are_not(self):
+        self.assertEqual(S.tier2_blockers(latency_fail(passing(mode='runtime-verifier'))), [])
+        self.assertTrue(S.tier2_blockers(with_assertion(latency_fail(passing(mode='runtime-verifier')), 'C01RawFinalAbsent', 'FAIL')))
 
 
 class LatencyReportTests(unittest.TestCase):

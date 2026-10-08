@@ -2247,6 +2247,16 @@ isolated latency runs, which is release-qualification depth.
 boot-verifier modes; it is still covered by the tier-2 proofs in runtime-verifier mode, by the recorded traces and by Luna's source review. A
 latency regression is visible in the release notes but no longer stops the release.
 
+**Addendum (2026-10-08, owner approved the change in session).** The harness folds a latency budget miss into the trial and case verdicts.
+Boot-verifier S00 (`w13220521`) failed only that way: flush max 2246.8 ms against the 1000 ms budget, p95 57 ms, `ForbiddenByteCount` 0,
+restoration clean, no other FAIL or error. The first tiering stripped the latency evidence but kept the `FAIL` verdicts, so tier 1 reported
+`CasePrerequisites`, `TrialPrerequisites` and `FailureOrErrorsInEvidence` for a latency-only miss. `without_latency` now downgrades a trial
+`FAIL` to `INCONCLUSIVE` only when latency evidence was present and no remaining assertion, predicate or error explains the `FAIL`, and the
+case verdict only when such a trial was downgraded. Any `FAIL` with another cause still blocks, `INCONCLUSIVE` is still accepted only when every
+remaining assertion passes or is proof depth, and `--strict` is unchanged (36 of 69 at the time of the change). Tests:
+`test_latency_only_fail_verdicts_do_not_block`, `test_a_fail_with_any_other_cause_still_blocks`,
+`test_a_fail_verdict_without_latency_evidence_is_not_downgraded` and the tier-2 counterpart.
+
 **Operations.** Run state lives in `/home/victor/Work/safeupload-tools` (pool worker, rollback, exact-build backup), not `/tmp`: the host
 reset at 08:32 wiped `/tmp` and stranded B02 and X01 runs mid-flight on two guests; they were rolled back to their pre-run checkpoints
 (`rollback-vm.sh`, the harness's own rollback) and re-verified `BaselineClean=True` before the sweep restarted.
