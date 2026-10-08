@@ -100,7 +100,7 @@ namespace StagedInvariant {
   public static Handle Open(string path,bool raw,bool directory) {
    Require(!String.IsNullOrWhiteSpace(path),"Open","Empty path");
    IntPtr p=CreateFileW(path,0x80000000,7,IntPtr.Zero,3,(raw?0xA0000000u:0u)|(directory?0x02000000u:0u),IntPtr.Zero);
-   if(p==new IntPtr(-1)) throw Error("CreateFileW"); return new Handle(p);
+   if(p==new IntPtr(-1)) { ObservationException e=Error("CreateFileW"); throw new ObservationException(e.Phase,e.Message+"; Path="+path+"; Raw="+raw+"; Directory="+directory,e.NativeCode) { NativeNtStatus=e.NativeNtStatus }; } return new Handle(p);
   }
   static byte[] Io(Handle h,uint code,byte[] input,int length) {
    byte[] b=new byte[length]; uint n; if(!DeviceIoControl(h.Value,code,input,(uint)(input==null?0:input.Length),b,(uint)b.Length,out n,IntPtr.Zero)) {
@@ -1226,7 +1226,10 @@ function Close-InvariantActivationReader {
         if($null -eq $entry.NativeOriginal -or $entry.Version -cne 'Baseline' -or
             $entry.NativeOriginal.Identity.FileId -cne $FileId -or
             $entry.Handle.Value.IsClosed -or $entry.Handle.Value.IsInvalid){
-            throw 'Activation reader is not the live exact pre-epoch baseline handle.'
+            # Name the failed condition: this one message covered five different states (A04 sa2f6).
+            throw ('Activation reader is not the live exact pre-epoch baseline handle. NativeOriginalNull='+($null -eq $entry.NativeOriginal)+
+                '; Version='+[string]$entry.Version+'; OriginalFileId='+$(if($null -ne $entry.NativeOriginal){[string]$entry.NativeOriginal.Identity.FileId}else{'n/a'})+
+                '; Expected='+$FileId+'; IsClosed='+[string]$entry.Handle.Value.IsClosed+'; IsInvalid='+[string]$entry.Handle.Value.IsInvalid)
         }
         $identity=[StagedInvariant.Native]::GetIdentity($entry.Handle)
         if($identity.FileId -cne $FileId -or
