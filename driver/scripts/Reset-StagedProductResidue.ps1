@@ -2,7 +2,7 @@
 # Journals, staged files, notification records and the audit queue persisted across runs, and the service kept
 # maintaining earlier runs' transfers inside later observation windows (A05 m1c2). Activation rows now restore
 # their product state exactly (dce1ef27); this clears what accumulated before that. Requires no running agent.
-# Archives everything first; keeps the folders and queue.jsonl in place so their ACLs are untouched.
+# Archives everything first; keeps the folders, the notification record and queue.jsonl in place so their ACLs are untouched.
 $ErrorActionPreference='Stop'
 if(@(Get-Process SafeUpload.Agent.Service -ErrorAction SilentlyContinue).Count){throw 'Agent is running; refusing to reset product state.'}
 $root='C:\ProgramData\SafeUpload'
@@ -18,7 +18,9 @@ foreach($item in Get-ChildItem -LiteralPath $root -Recurse -Force){
 }
 Compress-Archive -LiteralPath $items -DestinationPath $archive
 'Archive=' + $archive + ';Sha256=' + (Get-FileHash -LiteralPath $archive).Hash
-foreach($leaf in 'staging','staging-journal','notifications'){
+# notifications is archived but kept: R03 snapshots the service-written record while the service is offline and its
+# strict reader requires emissions.jsonl, head.json and writer.lock to exist (they only appear after a service run).
+foreach($leaf in 'staging','staging-journal'){
     $path=Join-Path $root $leaf
     if(Test-Path -LiteralPath $path){
         $n=@(Get-ChildItem -LiteralPath $path -Force).Count
