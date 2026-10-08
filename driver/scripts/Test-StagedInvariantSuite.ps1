@@ -145,14 +145,23 @@ function ConvertTo-PowerShellLiteral([string]$Value){$Value.Replace("'","''")}
 # Never accept scheduling success, an empty exit code or a stale completion.
 function Wait-TaskCompletion([string]$Task,[string]$Done,[string]$Token,[int]$Seconds=240) {
     $deadline=([Diagnostics.Stopwatch]::GetTimestamp()+[long](($Seconds)*[Diagnostics.Stopwatch]::Frequency))
+    $lookupError=$null
     do {
-        $t=Get-ScheduledTask -TaskName $Task -ErrorAction Stop
+        # A single CIM lookup can fail transiently while the Task Scheduler rewrites its definitions (R02 h3i1: a
+        # CimException 'The system cannot find the file specified' ended an ~8 minute wait after 20 s, the case was
+        # then restored mid-run). Retry until the QPC deadline; a task that is really absent still ends as an error.
+        try{$t=Get-ScheduledTask -TaskName $Task -ErrorAction Stop;$lookupError=$null}
+        catch{$t=$null;$lookupError=$_;Start-Sleep -Milliseconds 200;continue}
         if((Test-Path -LiteralPath $Done) -and $t.State -ne 'Running'){break}
         Start-Sleep -Milliseconds 200
     }while([Diagnostics.Stopwatch]::GetTimestamp() -lt $deadline)
+    if($null -eq $t){throw $lookupError}
     if(-not(Test-Path -LiteralPath $Done) -or $t.State -eq 'Running'){throw "Task completion unavailable: $Task"}
     $doneRecord=Load-State $Done
-    $info=Get-ScheduledTaskInfo -TaskName $Task
+    $info=$null
+    for($attempt=1;$attempt -le 5 -and $null -eq $info;$attempt++){
+        try{$info=Get-ScheduledTaskInfo -TaskName $Task -ErrorAction Stop}catch{if($attempt -eq 5){throw};Start-Sleep -Milliseconds 200}
+    }
     if($doneRecord.Token -cne $Token -or $doneRecord.BootId -cne (Get-BootId) -or
         $null -eq $doneRecord.ExitCode -or $doneRecord.ExitCode -ne 0 -or $info.LastTaskResult -ne 0){
         throw "Task failed: $Task; LastTaskResult=$($info.LastTaskResult); $($doneRecord | Out-String)"

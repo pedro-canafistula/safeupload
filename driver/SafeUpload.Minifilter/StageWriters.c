@@ -4528,12 +4528,13 @@ __declspec(noinline) static NTSTATUS StageRegistryClassifyAllLinkNames(_In_ PSTA
     PWCH pathBuffer = NULL, streamSnapshot = NULL;
     UNICODE_STRING linkName, parentName;
     ULONG bufferBytes = 4096, returned = 0, recordIndex, offset, streamChars = 0;
-    ULONG startingRenameVersion, startingTransactionVersion, startingPolicyGeneration, savedNextLink = 0;
+    ULONG startingRenameVersion = 0, startingTransactionVersion, startingPolicyGeneration, savedNextLink = 0;
     ULONGLONG streamSuffixHash = 0, startingPolicySequence;
-    ULONG startingActivationGeneration, startingProbeSerial;
+    ULONG startingActivationGeneration, startingProbeSerial = 0;
     ULONG savedUnionScoped = 0, savedCurrentScoped = 0, savedLinkCount = 0;
     ULONG nextLink = 0, cacheCount = 0, cacheIndex;
     BOOLEAN unionScoped = FALSE, currentScoped = FALSE, stable, compactStream = FALSE, renameChurn = FALSE;
+    BOOLEAN versionsCaptured = FALSE;
     BOOLEAN partial = FALSE, scanComplete = FALSE, pagingFile = FALSE, noRemainingNames = FALSE;
     BOOLEAN noNamesProvenByIdentity = FALSE;
     UINT32 resultStep = SAFEUPLOAD_ACTIVATING_CLASSIFY_STEP_OTHER;
@@ -4568,6 +4569,7 @@ __declspec(noinline) static NTSTATUS StageRegistryClassifyAllLinkNames(_In_ PSTA
     startingActivationGeneration = (ULONG)InterlockedCompareExchange(
         &Entry->ActivationGeneration, 0, 0);
     startingProbeSerial = (ULONG)InterlockedCompareExchange(&Entry->AliasProbeSerial, 0, 0);
+    versionsCaptured = TRUE;
     if (InterlockedCompareExchange(&Entry->T, 0, 0) != 0) {
         FltReleasePushLock(&RegistryLock);
         status = STATUS_MORE_ENTRIES;
@@ -4878,6 +4880,20 @@ PublishResult:
     StageRegistryRecordClassificationResult(Entry, reportedStatus, resultStep);
     status = STATUS_SUCCESS;
 Exit:
+    if (status == STATUS_FILE_INVALID && versionsCaptured) {
+        /* Any failure that surfaced after the starting versions were taken (a compact stream whose suffix changed
+         * under a stream rename, a parent that moved) while this entry's rename state moved is churn, not a failed
+         * identity: park and retry rather than leave a sticky Unknown (Luna gen3c P2). */
+        BOOLEAN moved;
+        FltAcquirePushLockExclusive(&RegistryLock);
+        moved = Entry->Listed && !Entry->Retired &&
+            (InterlockedCompareExchange(&Entry->RenameInFlight, 0, 0) != 0 ||
+             (ULONG)InterlockedCompareExchange(&Entry->RenameVersion, 0, 0) != startingRenameVersion ||
+             (ULONG)InterlockedCompareExchange(&Entry->AliasProbeSerial, 0, 0) != startingProbeSerial);
+        if (moved) StageRegistryParkScopeScanLocked(Entry);
+        FltReleasePushLock(&RegistryLock);
+        if (moved) status = STATUS_MORE_ENTRIES;
+    }
     if (!NT_SUCCESS(status) && status != STATUS_MORE_ENTRIES)
         StageRegistryRecordClassificationResult(Entry, status, resultStep);
     if (streamNameInfo != NULL) FltReleaseFileNameInformation(streamNameInfo);
