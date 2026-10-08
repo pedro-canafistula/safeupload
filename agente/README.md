@@ -19,7 +19,7 @@ opcional**:
 | `SafeUpload.Agent.App` | Interface WPF (bandeja do sistema, tela de status/histórico, aviso de bloqueio) — só exibe, não decide nada |
 | `SafeUpload.Agent.Tests` | Testes automatizados (xUnit, sem framework de mock) |
 | `SafeUpload.Agent.Minifilter` | Biblioteca de protocolo que conecta o Service ao driver de kernel |
-| `SafeUpload.Agent.Network` | Inspeção TLS do tráfego web: CA local e certificados por host (Fase 1); proxy e desvio nas próximas fases ([plano](../docs/rede/PLANO-INSPECAO-TLS.md)) |
+| `SafeUpload.Agent.Network` | Inspeção TLS do tráfego web: CA local e certificados por host (Fase 1), proxy TLS e parser HTTP/1.1 (Fase 2); desvio e inspeção nas próximas fases ([plano](../docs/rede/PLANO-INSPECAO-TLS.md)) |
 
 Também existe `SafeUploadAgent/` — um protótipo visual WPF anterior (sem
 lógica) — e `driver/` na raiz do repositório, o driver de kernel
@@ -81,6 +81,21 @@ dotnet run -- ca remove    # remove CA, confiança e chave (desinstalação)
 `ca install` também liga a política `ImportEnterpriseRoots` do Firefox, que
 por padrão ignora as raízes do Windows.
 
+### Proxy de inspeção TLS
+
+Desligado por padrão. Em `SafeUpload.Agent.Service/appsettings.json`:
+
+```json
+"InspecaoTls": { "Habilitada": true, "Porta": 8877 }
+```
+
+Com isso o serviço cria a CA (se ainda não existir) e sobe o proxy em
+`127.0.0.1:8877`. Até a Fase 3 o tráfego não é desviado sozinho: aponte o
+navegador para o proxy (`msedge --proxy-server=http://127.0.0.1:8877`, ou
+`curl -x http://127.0.0.1:8877 ...`). Nesta fase o proxy só registra no log os
+envios que veria (site, tamanho, tipo e processo) e libera tudo; o bloqueio
+de verdade vem com a Fase 5.
+
 ### Rodar os testes
 
 ```powershell
@@ -141,7 +156,7 @@ agente/
 ├── SafeUpload.Agent.App/          # Interface WPF (bandeja + painel)
 ├── SafeUpload.Agent.Tests/        # Testes automatizados
 ├── SafeUpload.Agent.Minifilter/   # Protocolo de comunicação com o driver
-├── SafeUpload.Agent.Network/      # Inspeção TLS: CA local e certificados por host
+├── SafeUpload.Agent.Network/      # Inspeção TLS: CA local, certificados e proxy
 ├── SafeUpload.Fixtures/           # Gerador de arquivos de teste (.docx/.xlsx/.pdf)
 ├── SafeUpload.Minifilter.Probe/   # Ferramenta de teste do driver (sem lógica real)
 ├── SafeUploadAgent/                # Protótipo visual WPF anterior (sem lógica)

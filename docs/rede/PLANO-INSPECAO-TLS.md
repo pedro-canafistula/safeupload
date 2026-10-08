@@ -88,6 +88,19 @@ o último pedaço, e já diz quais serviços não dá para inspecionar.
 - Parser HTTP/1.1: keep-alive, `Content-Length`, `chunked`, `100-continue`.
   WebSocket passa sem inspeção nesta versão.
 - Processo de origem pela porta local (`GetExtendedTcpTable`), para a auditoria.
+- **Lista de revogação (CRL) servida pelo próprio proxy.** Descoberto no teste
+  real: o TLS do Windows (SChannel), usado por curl, Outlook, Teams e boa parte
+  dos programas que não são navegadores, exige verificar revogação e recusa
+  certificado sem lista (`CRYPT_E_NO_REVOCATION_CHECK`). Cada certificado
+  emitido aponta para `http://127.0.0.1:porta/safeupload-ca.crl`, uma lista
+  vazia assinada pela CA. Chrome e Edge não fazem essa verificação.
+
+Estado: implementada em `agente/SafeUpload.Agent.Network` (`TlsInspectionProxy`,
+`HttpStreamReader`), ligada no serviço por `InspecaoTls:Habilitada`. Testada na
+VM com Edge (Google, Wikipedia, formulário no httpbin) e curl. Riscos anotados
+para a Fase 7: conexão ao destino tenta os endereços um a um, sem "Happy
+Eyeballs" (IPv6 quebrado deixa a conexão lenta); WebSocket passa pelo túnel,
+mas sem teste automatizado.
 
 ### Fase 3 — Desvio do tráfego
 

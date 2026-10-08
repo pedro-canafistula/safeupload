@@ -165,6 +165,14 @@ public static class Program
         // "limpo" a tudo e nao conta nada.
         builder.Services.AddHostedService<ClipboardPipeServer>();
 
+        // A inspeção do tráfego web (proxy TLS). Desligada por padrão: ligar
+        // instala uma CA confiável na máquina, e isso tem de ser uma decisão
+        // explícita. Ver docs/rede/PLANO-INSPECAO-TLS.md.
+        if (string.Equals(builder.Configuration["InspecaoTls:Habilitada"], "true", StringComparison.OrdinalIgnoreCase))
+        {
+            builder.Services.AddHostedService<TlsInspectionService>();
+        }
+
         await builder.Build().RunAsync();
     }
 }
