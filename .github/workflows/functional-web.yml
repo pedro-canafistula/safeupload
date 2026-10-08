@@ -59,6 +59,11 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 20
     steps:
+      # O repositorio tem caminhos acima de 260 caracteres (evidencias do
+      # driver em driver/recovery-dispositioned). Sem isto o checkout no
+      # Windows falha com "cannot create directory".
+      - name: Enable long paths
+        run: git config --system core.longpaths true
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
         with:
