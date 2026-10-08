@@ -97,22 +97,37 @@ public class ClipboardPipeTests
             _server.Dispose();
         }
 
-        /// <summary>Uma conexão: escreve a linha e lê a resposta, se vier.</summary>
+        /// <summary>
+        /// Uma conexão: escreve a linha e lê a resposta, se vier. Devolve
+        /// <c>null</c> quando o servidor fecha sem responder.
+        /// </summary>
         public async Task<ClipboardResponse?> PerguntarAsync(string linha)
         {
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
             await using var pipe = new NamedPipeClientStream(".", PipeName, PipeDirection.InOut, PipeOptions.Asynchronous);
             await pipe.ConnectAsync(cts.Token);
 
-            await using (var writer = new StreamWriter(pipe, ClipboardProtocol.Encoding, 1024, leaveOpen: true))
+            try
             {
-                await writer.WriteAsync(linha.AsMemory(), cts.Token);
-                await writer.FlushAsync(cts.Token);
-            }
+                await using (var writer = new StreamWriter(pipe, ClipboardProtocol.Encoding, 1024, leaveOpen: true))
+                {
+                    await writer.WriteAsync(linha.AsMemory(), cts.Token);
+                    await writer.FlushAsync(cts.Token);
+                }
 
-            using var reader = new StreamReader(pipe, ClipboardProtocol.Encoding, false, 4096, leaveOpen: true);
-            var resposta = await ClipboardProtocol.ReadLineAsync(reader, cts.Token);
-            return ClipboardProtocol.DeserializeResponse(resposta);
+                using var reader = new StreamReader(pipe, ClipboardProtocol.Encoding, false, 4096, leaveOpen: true);
+                var resposta = await ClipboardProtocol.ReadLineAsync(reader, cts.Token);
+                return ClipboardProtocol.DeserializeResponse(resposta);
+            }
+            catch (IOException)
+            {
+                // O servidor descartou o pedido e fechou a conexão antes de o
+                // cliente terminar de escrever ou de ler. Para uma linha acima do
+                // teto isso é o esperado, e o Windows o reporta como "Pipe is
+                // broken". O ClipboardPipeClient do App faz o mesmo: qualquer
+                // falha vira "sem resposta", que o App trata como "libera".
+                return null;
+            }
         }
     }
 
@@ -210,7 +225,7 @@ public class ClipboardPipeTests
         await using var server = new Server();
         await server.StartAsync();
 
-        var enorme = new string('a', ClipboardProtocol.MaxLineLength + 10_000);
+        var enorme = new string('a', ClipboardProtocol.MaxLineLength * 10);
 
         var resposta = await server.PerguntarAsync(enorme + "\n");
 
