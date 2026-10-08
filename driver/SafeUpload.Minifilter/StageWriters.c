@@ -4482,6 +4482,20 @@ Exit:
 
 /* P0-4: every expansion decision is based on the complete PASSIVE-level NTFS link list.
  * A truncated or unresolvable list is a failed classification and remains enforced Unknown. */
+/* A rename, link or probe that moved the entry while its hard-link scan ran is churn, not lost tracking: park the
+ * scan (empty continuation, still pending) so the reclaim worker retries it after that operation finished. The
+ * probe that moved the entry is still pending, so admission stays gated meanwhile. Caller holds RegistryLock
+ * exclusive. A sticky Unknown here would withhold coverage until reboot after one ordinary rename (Luna P2). */
+static VOID StageRegistryParkScopeScanLocked(_In_ PSTAGE_REGISTRY_ENTRY Entry)
+{
+    InterlockedExchange(&Entry->ScopeScanNextLink, 0);
+    InterlockedExchange(&Entry->ScopeScanUnionScoped, 0);
+    InterlockedExchange(&Entry->ScopeScanCurrentScoped, 0);
+    Entry->ScopeScanLinkCount = 0;
+    InterlockedExchange(&Entry->ScopeScanPending, 1);
+    InterlockedIncrement64(&RegistryChangeSequence);
+}
+
 _IRQL_requires_(PASSIVE_LEVEL)
 __declspec(noinline) static NTSTATUS StageRegistryClassifyAllLinkNames(_In_ PSTAGE_REGISTRY_ENTRY Entry,
     _In_ PFLT_INSTANCE Instance, _In_ PFLT_VOLUME Volume,
@@ -4503,7 +4517,7 @@ __declspec(noinline) static NTSTATUS StageRegistryClassifyAllLinkNames(_In_ PSTA
     ULONG startingActivationGeneration, startingProbeSerial;
     ULONG savedUnionScoped = 0, savedCurrentScoped = 0, savedLinkCount = 0;
     ULONG nextLink = 0, cacheCount = 0, cacheIndex;
-    BOOLEAN unionScoped = FALSE, currentScoped = FALSE, stable, compactStream = FALSE;
+    BOOLEAN unionScoped = FALSE, currentScoped = FALSE, stable, compactStream = FALSE, renameChurn = FALSE;
     BOOLEAN partial = FALSE, scanComplete = FALSE, pagingFile = FALSE, noRemainingNames = FALSE;
     BOOLEAN noNamesProvenByIdentity = FALSE;
     UINT32 resultStep = SAFEUPLOAD_ACTIVATING_CLASSIFY_STEP_OTHER;
@@ -4547,10 +4561,10 @@ __declspec(noinline) static NTSTATUS StageRegistryClassifyAllLinkNames(_In_ PSTA
         (Entry->Instance == NULL || Entry->Instance == Instance) &&
         (Entry->Volume == NULL || Entry->Volume == Volume) &&
         Entry->VolumeSerial != 0 &&
-        InterlockedCompareExchange(&Entry->RenameInFlight, 0, 0) == 0 &&
         Entry->StreamIdentityKnown &&
         (Entry->CompactStream || Entry->StreamChars <= SAFEUPLOAD_WRITER_REGISTRY_NAME_CHARS);
-    if (stable) {
+    renameChurn = stable && InterlockedCompareExchange(&Entry->RenameInFlight, 0, 0) != 0;
+    if (stable && !renameChurn) {
         compactStream = Entry->CompactStream;
         streamSuffixHash = Entry->StreamSuffixHash;
         streamChars = compactStream ? 0 : Entry->StreamChars;
@@ -4569,6 +4583,14 @@ __declspec(noinline) static NTSTATUS StageRegistryClassifyAllLinkNames(_In_ PSTA
     }
     FltReleasePushLock(&RegistryLock);
     if (!stable) { status = STATUS_FILE_INVALID; goto Exit; }
+    if (renameChurn) {
+        /* A rename of this entry is in flight: its completion begins a fresh probe. Retry then. */
+        FltAcquirePushLockExclusive(&RegistryLock);
+        if (Entry->Listed && !Entry->Retired) StageRegistryParkScopeScanLocked(Entry);
+        FltReleasePushLock(&RegistryLock);
+        status = STATUS_MORE_ENTRIES;
+        goto Exit;
+    }
     resultStep = SAFEUPLOAD_ACTIVATING_CLASSIFY_STEP_OPEN_BY_ID;
     status = StageRegistryOpenIdentity(Entry, Instance, Volume, &fileHandle, &fileObject,
         &resultStep, &noNamesProvenByIdentity, TRUE);
@@ -4785,10 +4807,17 @@ PublishResult:
         status = STATUS_MORE_ENTRIES;
         goto Exit;
     }
-    stable = Entry->Listed && !Entry->Retired &&
-        InterlockedCompareExchange(&Entry->RenameInFlight, 0, 0) == 0 &&
-        (ULONG)InterlockedCompareExchange(&Entry->RenameVersion, 0, 0) == startingRenameVersion &&
-        (ULONG)InterlockedCompareExchange(&Entry->AliasProbeSerial, 0, 0) == startingProbeSerial;
+    stable = Entry->Listed && !Entry->Retired;
+    renameChurn = stable &&
+        (InterlockedCompareExchange(&Entry->RenameInFlight, 0, 0) != 0 ||
+         (ULONG)InterlockedCompareExchange(&Entry->RenameVersion, 0, 0) != startingRenameVersion ||
+         (ULONG)InterlockedCompareExchange(&Entry->AliasProbeSerial, 0, 0) != startingProbeSerial);
+    if (renameChurn) {
+        StageRegistryParkScopeScanLocked(Entry);
+        FltReleasePushLock(&RegistryLock);
+        status = STATUS_MORE_ENTRIES;
+        goto Exit;
+    }
     if (stable) {
         Entry->ScopeScanRenameVersion = startingRenameVersion;
         Entry->ScopeScanProbeSerial = startingProbeSerial;
