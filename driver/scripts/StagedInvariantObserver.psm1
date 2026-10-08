@@ -97,6 +97,13 @@ namespace StagedInvariant {
   public static byte[] Slice(byte[] b,int o,int n) { Bounds(b,o,n); byte[] r=new byte[n]; Buffer.BlockCopy(b,o,r,0,n); return r; }
   public static string Hash(byte[] b) { Require(b!=null,"Hash","Null image"); using(SHA256 s=SHA256.Create()) return BitConverter.ToString(s.ComputeHash(b)).Replace("-",""); }
   static bool Power(int n) { return n>0 && (n & (n-1))==0; }
+  // Attribute-only open (FILE_READ_ATTRIBUTES|READ_CONTROL|SYNCHRONIZE): identity, layout and extent queries need no data access, so the
+  // observer can still bind a published file whose content the product refuses to non-covered readers (B02's justified sensitive v2).
+  public static Handle OpenAttributes(string path) {
+   Require(!String.IsNullOrWhiteSpace(path),"Open","Empty path");
+   IntPtr p=CreateFileW(path,0x00120080,7,IntPtr.Zero,3,0,IntPtr.Zero);
+   if(p==new IntPtr(-1)) { ObservationException e=Error("CreateFileW"); throw new ObservationException(e.Phase,e.Message+"; Path="+path+"; AttributesOnly=True",e.NativeCode) { NativeNtStatus=e.NativeNtStatus }; } return new Handle(p);
+  }
   public static Handle Open(string path,bool raw,bool directory) {
    Require(!String.IsNullOrWhiteSpace(path),"Open","Empty path");
    IntPtr p=CreateFileW(path,0x80000000,7,IntPtr.Zero,3,(raw?0xA0000000u:0u)|(directory?0x02000000u:0u),IntPtr.Zero);
@@ -1023,7 +1030,7 @@ function Get-IOCapture($Context, [string[]] $Names, [switch] $Retained, [switch]
             }
             # Native create reports exact missing-name status; Test-Path access failures cannot prove absence.
             $h = $null
-            try { $h = [StagedInvariant.Native]::Open($path, $false, $false) }
+            try { $h = if($null -ne $Context.PSObject.Properties['NamedOpenAttributesOnly'] -and $Context.NamedOpenAttributesOnly -eq $true){[StagedInvariant.Native]::OpenAttributes($path)}else{[StagedInvariant.Native]::Open($path, $false, $false)} }
             catch {
                 $err = New-IOError 'Lookup' $_.Exception
                 if ($err.NativeCode -ne 2) { throw }

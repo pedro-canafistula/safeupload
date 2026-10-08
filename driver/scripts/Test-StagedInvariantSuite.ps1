@@ -5600,7 +5600,7 @@ function Test-X01Versions($First,$Latest,[string]$DigestV1,[string]$DigestV2) {
     $assertions+=@{Name='X01LatestReleasedOnce';Verdict=$(if($released -and $distinct){'PASS'}else{'FAIL'});Reason='Latest v2 has its exact independently supplied digest and complete history with one Released transition.';Evidence=$Latest}
     return ,$assertions
 }
-function Test-X01PublicSequence($Receipts,[string]$DigestB,[string]$DigestV2,[int]$Length) {
+function Test-X01PublicSequence($Receipts,[string]$DigestB,[string]$DigestV2,[int]$Length,[string[]]$RefusedFinalChannels=@()) {
     $assertions=@();$seen=@{};$begun=@{};$previous=@{};$channels=@('Raw','Fresh','Uncached');$bad=$false;$regressed=$false;$before=$false
     foreach($receipt in $Receipts){
         if($receipt.BeforePublication -isnot [bool] -or $null -eq $receipt.Sequence -or $receipt.Channel -cnotin $channels -or $receipt.Length -ne $Length -or $receipt.Digest -cnotin @($DigestB,$DigestV2)){$bad=$true;continue}
@@ -5611,7 +5611,9 @@ function Test-X01PublicSequence($Receipts,[string]$DigestB,[string]$DigestV2,[in
         if($seen[$receipt.Channel] -and $receipt.Digest -ceq $DigestB){$regressed=$true}
         if($receipt.Digest -ceq $DigestV2){$seen[$receipt.Channel]=$true}
     }
-    $coverage=@($channels | Where-Object {-not $seen[$_]}).Count -eq 0 -and @($Receipts).Count -ge 6
+    # A channel the product refuses at the end (B02: data reads of the justified sensitive v2) has no final digest to wait for; the refusal
+    # itself is asserted separately and the raw channel must still reach v2.
+    $coverage=@($channels | Where-Object {-not $seen[$_] -and $_ -cnotin $RefusedFinalChannels}).Count -eq 0 -and @($Receipts).Count -ge 6
     $assertions+=@{Name='X01PublicWholeImages';Verdict=$(if($bad){'FAIL'}elseif($coverage){'PASS'}else{'INCONCLUSIVE'});Reason='Every raw/fresh/uncached observation is one complete B or v2 image; all three channels must finish at v2. v1, torn and spliced digests are rejected.'}
     $assertions+=@{Name='X01PublicNeverRegresses';Verdict=$(if($regressed){'FAIL'}else{'PASS'});Reason='Each independent observation channel may advance B -> v2 only once and must never regress.'}
     $assertions+=@{Name='X01ReaderBeforePublication';Verdict=$(if($before){'FAIL'}else{'PASS'});Reason='All observations before the latest writer is released for seal/publication must be B.'}
@@ -5660,8 +5662,14 @@ public static class SUOpenProbe {
     try{$out=Invoke-ActivationInspector '--activating-status' (Join-Path $evidenceDirectory ('open-failure-'+$Tag+'-activating')) 45000;$lines.Add('ActivatingStatus='+(($out -replace "`r?`n",' ')).Substring(0,[Math]::Min(6000,$out.Length)))}catch{$lines.Add('ActivatingStatusError='+$_.Exception.Message)}
     try{Write-DurableFile (Join-Path $evidenceDirectory ('open-failure-'+$Tag+'.txt')) ($lines -join "`n") -New}catch{}
 }
-function Add-X01PublicSample($Trial,$Context,$Baseline,[byte[]]$B,[byte[]]$V2,[bool]$BeforePublication,[string]$PhaseName,[switch]$DuringPublication) {
-    $sample=Capture-CachedSample $Context $Baseline $PhaseName ($Trial.Samples.Count+1)
+function Add-X01PublicSample($Trial,$Context,$Baseline,[byte[]]$B,[byte[]]$V2,[bool]$BeforePublication,[string]$PhaseName,[switch]$DuringPublication,[switch]$SensitiveJustified) {
+    # SensitiveJustified (B02 FinalReleased): the published v2 is a justified SENSITIVE file and the product's post-create classification refuses
+    # data-read opens of it by processes without an override (DeniedPostCreate, observed 0 -> 3; attribute-only opens succeed). The observer
+    # therefore binds the name with an attribute-only handle and proves the bytes from the raw volume, and the two independent data readers
+    # must be REFUSED with Win32 5 (asserted below) instead of returning v2.
+    if($SensitiveJustified){Add-Member -InputObject $Context -NotePropertyName NamedOpenAttributesOnly -NotePropertyValue $true -Force}
+    try{$sample=Capture-CachedSample $Context $Baseline $PhaseName ($Trial.Samples.Count+1)}
+    finally{if($SensitiveJustified){Add-Member -InputObject $Context -NotePropertyName NamedOpenAttributesOnly -NotePropertyValue $false -Force}}
     $Trial.Samples+= $sample
     if($sample.Status -cne 'OK' -and $DuringPublication){
         # While the service replaces T, NTFS writes the new parent index entry lazily and the raw name/reference
@@ -5682,6 +5690,13 @@ function Add-X01PublicSample($Trial,$Context,$Baseline,[byte[]]$B,[byte[]]$V2,[b
     $Trial.Assertions+=@($checks)
     foreach($check in $checks){if($check.ContainsKey('ForbiddenByteCount')){$Trial.ForbiddenByteCount+=[long]$check.ForbiddenByteCount}}
     $Trial.PublicReceipts+=@{Channel='Raw';Digest=$image.Sha256;Length=$image.Length;BeforePublication=$BeforePublication;Sequence=$sample.Sequence}
+    }
+    if($SensitiveJustified){
+        $refused=@($sample.C01Readers | Where-Object {$_.Status -ceq 'ERROR' -and $_.NativeCode -eq 5})
+        $good=@($sample.C01Readers).Count -eq 2 -and $refused.Count -eq 2 -and @($sample.C01Readers | Where-Object Unbuffered).Count -eq 1
+        $Trial.Assertions+=@{Name='B02JustifiedSensitiveDataReadsRefused';Verdict=$(if($good){'PASS'}else{'FAIL'});
+            Reason='After the justified publication the standard fresh and uncached data reads of the sensitive v2 are refused with Win32 5 by the product (post-create destination classification); the bytes are proven from the raw volume through an attribute-only binding.';Evidence=@{Readers=@($sample.C01Readers | ForEach-Object {@{Unbuffered=$_.Unbuffered;Status=$_.Status;NativeCode=$_.NativeCode}})}}
+        return $sample
     }
     foreach($reader in $sample.C01Readers){
         if($reader.Status -cne 'OK'){throw 'X01 independent reader failed'}
@@ -6354,8 +6369,9 @@ function Invoke-B02Observation {
         if($accepted.Reply -cne 'accepted'){throw 'B02 latest justification was rejected'}
         $latest=Wait-B02Terminal $trial $actor 'Released' @($first.TransferId);$first=Get-B02Journal $trial $actor 'b02-final-v1' @($latest.TransferId)
         $trial.Assertions+=Test-B02Versions $first $latest $d1 $d2
-        $final=Add-X01PublicSample $trial $context $baseline $b $v2 $false 'B02FinalReleased'
-        $checks=Test-X01PublicSequence $trial.PublicReceipts (Get-ActivationSha256 $b) $d2 $b.Length
+        $null=Flush-InvariantSetupVolume
+        $final=Add-X01PublicSample $trial $context $baseline $b $v2 $false 'B02FinalReleased' -SensitiveJustified
+        $checks=Test-X01PublicSequence $trial.PublicReceipts (Get-ActivationSha256 $b) $d2 $b.Length -RefusedFinalChannels @('Fresh','Uncached')
         foreach($check in $checks){$check.Name=$check.Name.Replace('X01','B02')};$trial.Assertions+=@($checks)
         $listing=Test-X01FinalListing $final.Captures[-1] $baseline $target;$listing.Name='B02ExactlyOneFinalTarget';$trial.Assertions+= $listing
         $fenceEnd=[Diagnostics.Stopwatch]::GetTimestamp();Start-Sleep -Milliseconds 1200
