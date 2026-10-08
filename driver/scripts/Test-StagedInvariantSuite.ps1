@@ -3293,7 +3293,7 @@ function Invoke-CachedObservation {
         $agentStartLocal=[DateTime]::Now.AddSeconds(-1)
         $readyEvent=[Threading.EventWaitHandle]::new($false,[Threading.EventResetMode]::ManualReset,'Global\SafeUploadServiceReady');[void]$readyEvent.Reset()
         # Debug-level service events (publisher steps) reach the event log for diagnosis (run c01i hung in Publishing).
-        $agent=Start-StagedTestAgent $serviceDirectory (Join-Path $evidenceDirectory 'agent') -Arguments '--Logging:EventLog:LogLevel:Default=Debug'
+        $agent=Start-StagedTestAgent $serviceDirectory (Join-Path $evidenceDirectory 'agent') -Arguments '--Logging:EventLog:LogLevel:Default=Debug --Diagnostics:StagedProofProxy=true'
         # Persist recovery receipt before waiting for policy readiness.
         $state.CachedAgent=@{ServiceCreated=$agent.ServiceCreated;OriginalService=$agent.OriginalService;
             ProcessId=$agent.Process.Id};Save-State $state $statePath
@@ -5102,7 +5102,7 @@ function Invoke-R03Observation {
         # Refuse to start the online phase unless every offline core proof passed.
         if(@($trial.Assertions | Where-Object Verdict -cne 'PASS').Count){throw 'R03 offline core evidence failed/incomplete; no fresh save attempted'}
         $readyEvent=[Threading.EventWaitHandle]::new($false,[Threading.EventResetMode]::ManualReset,'Global\SafeUploadServiceReady');[void]$readyEvent.Reset()
-        $agent=Start-StagedTestAgent $serviceDirectory (Join-Path $evidenceDirectory 'r03-agent') -Arguments '--Logging:EventLog:LogLevel:Default=Debug'
+        $agent=Start-StagedTestAgent $serviceDirectory (Join-Path $evidenceDirectory 'r03-agent') -Arguments '--Logging:EventLog:LogLevel:Default=Debug --Diagnostics:StagedProofProxy=true'
         if(-not $readyEvent.WaitOne([TimeSpan]::FromSeconds(45))){throw 'R03 agent policy/coverage Ready timed out'}
         $status=Get-ActivationCurrentProductStatus 'r03-online-ready' 5000
         $trial.Assertions+=Test-R03ServiceReady $status $agent.Process.Id

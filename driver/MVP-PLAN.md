@@ -2029,3 +2029,8 @@ the batch wrapper before it runs.
   INCONCLUSIVE/deferred; this repair proves the promotion checkpoint, not continuous readiness. Windows gate
   `codex-r02-bindings1`: PASS. Fresh draft row6 run `codexr02a1` on driver `cfee5a33` / agent `63664ffd` reports
   MvpGatePassed=true, ForbiddenByteCount=0 and RestorationClean=true; a fresh row7 run remains required.
+- C-row diagnostic transport: the cached and R03 service starts now explicitly enable the feature-only
+  `Diagnostics:StagedProofProxy=true` option already used by activation rows. A live C04 query on the former startup
+  returned a broken pipe even for allowed Control23 because that optional proxy was disabled. The observation controls
+  stay restricted by the existing service wire allowlist; product bytes and gate contracts are unchanged.
+  Windows gate `codex-cached-proxy1`: PASS.
