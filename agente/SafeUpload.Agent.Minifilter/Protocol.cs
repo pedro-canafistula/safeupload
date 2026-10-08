@@ -24,7 +24,7 @@ public static class Contract
     /// mechanism that turns an incompatible pair into a clean refusal
     /// instead of a misread structure.
     /// </summary>
-    public const uint Version = 10;
+    public const uint Version = 18;
 
     public const int MaxPathChars = 512;
     public const int MaxImageNameChars = 64;
@@ -40,11 +40,18 @@ public static class Contract
     // Sizes asserted by C_ASSERT on the kernel side. Duplicated here on
     // purpose: if the two ever disagree, Verify() says so by name.
     public const int RequestSize = 1192;
-    public const int ResponseSize = 24;
+    public const int ResponseSize = 152;
+    public const int MaxStageNameChars = 64;
     public const int ControlSize = 16;
     public const int PolicyMessageSize = 19752;
+    // SafeUploadControl.Reserved on SET_POLICY. Sent only after the boot
+    // policy's committed registry value is durable and its pending union is removed.
+    public const uint FinalizeDurableBootScopes = 1;
     public const int CountersSize = 184;
     public const int OverrideMessageSize = 1056;
+    public const int AdmissionCoverageMaxScopes = 98;
+    public const int AdmissionCoverageScopeSize = 556;
+    public const int AdmissionCoverageStatusSize = 54664;
 
     /// <summary>
     /// Throws if any managed structure fails to match the size the driver
@@ -63,6 +70,13 @@ public static class Contract
         Check(nameof(SafeUploadPolicyMessage), sizeof(SafeUploadPolicyMessage), PolicyMessageSize);
         Check(nameof(SafeUploadCounters), sizeof(SafeUploadCounters), CountersSize);
         Check(nameof(SafeUploadOverrideMessage), sizeof(SafeUploadOverrideMessage), OverrideMessageSize);
+        Check(nameof(SafeUploadPublicationMessage), sizeof(SafeUploadPublicationMessage), 2128);
+        Check(nameof(SafeUploadAdmissionCoverageScope), sizeof(SafeUploadAdmissionCoverageScope),
+              AdmissionCoverageScopeSize);
+        Check(nameof(SafeUploadAdmissionCoverageStatus), sizeof(SafeUploadAdmissionCoverageStatus),
+              AdmissionCoverageStatusSize);
+        CheckOffset(nameof(SafeUploadPublicationMessage) + ".TemporaryPath",
+                    (int) Marshal.OffsetOf<SafeUploadPublicationMessage>(nameof(SafeUploadPublicationMessage.TemporaryPath)), 80);
 
         // Offsets that carry real risk: everything after them shifts if
         // they are wrong, and a shifted path is still a readable string.
@@ -70,6 +84,8 @@ public static class Contract
                     (int) Marshal.OffsetOf<SafeUploadRequest>(nameof(SafeUploadRequest.Path)), 40);
         CheckOffset(nameof(SafeUploadRequest) + ".ImageName",
                     (int) Marshal.OffsetOf<SafeUploadRequest>(nameof(SafeUploadRequest.ImageName)), 1064);
+        CheckOffset(nameof(SafeUploadResponse) + ".StageName",
+                    (int) Marshal.OffsetOf<SafeUploadResponse>(nameof(SafeUploadResponse.StageName)), 24);
         CheckOffset(nameof(SafeUploadPolicyMessage) + ".Prefixes",
                     (int) Marshal.OffsetOf<SafeUploadPolicyMessage>(nameof(SafeUploadPolicyMessage.Prefixes)), 1064);
         CheckOffset(nameof(SafeUploadPolicyMessage) + ".SourcePrefixes",
@@ -78,6 +94,8 @@ public static class Contract
                     (int) Marshal.OffsetOf<SafeUploadPolicyMessage>(nameof(SafeUploadPolicyMessage.Images)), 17704);
         CheckOffset(nameof(SafeUploadCounters) + ".TaintHits",
                     (int) Marshal.OffsetOf<SafeUploadCounters>(nameof(SafeUploadCounters.TaintHits)), 96);
+        CheckOffset(nameof(SafeUploadAdmissionCoverageStatus) + ".Scopes",
+                    (int) Marshal.OffsetOf<SafeUploadAdmissionCoverageStatus>(nameof(SafeUploadAdmissionCoverageStatus.Scopes)), 176);
     }
 
     private static void Check(string name, int actual, int expected)
@@ -104,6 +122,12 @@ public static class Contract
 public static class Operation
 {
     public const uint Create = 1;
+    public const uint StageAllocate = 3;
+    public const uint StageSeal = 4;
+    public const uint StageRename = 5;
+    public const uint StageDiagnostic = 6;
+    public const uint StageRenameCommit = 7;
+    public const uint StageRenameAbort = 8;
 
     /// <summary>
     /// Kept for contract completeness. The driver no longer registers
@@ -132,6 +156,10 @@ public enum RequestFlags : uint
 
     /// <summary>The create is reading from a monitored source.</summary>
     ScopeSource = 0x00000010,
+    StageFollowup = 0x00000020,
+    StageRemovable = 0x00000040,
+    StageNetwork = 0x00000080,
+    StageTombstoneCreate = 0x00000100,
 }
 
 [Flags]
@@ -158,6 +186,12 @@ public enum PolicyFlags : uint
     /// libera nada. A escolha e da organizacao, nao do usuario.
     /// </summary>
     AllowOverride = 0x00000008,
+
+    /// <summary>Classify supported file reads on every attached volume.</summary>
+    ClassifyAllSources = 0x00000010,
+
+    /// <summary>Feature-build qualification: bypass process-taint recording and lookup.</summary>
+    TestDisableTaint = 0x00000020,
 }
 
 public static class ControlCommand
@@ -165,6 +199,102 @@ public static class ControlCommand
     public const uint SetPolicy = 1;
     public const uint GetCounters = 2;
     public const uint GrantOverride = 3;
+    public const uint StagePublication = 4;
+    public const uint AdmissionCoverage = 24;
+}
+
+
+public static class AdmissionCoverageContract
+{
+    public const uint Pending = 0;
+    public const uint Ready = 1;
+    public const uint Degraded = 2;
+    public const uint PrefixScope = 1;
+    public const uint RemovableScope = 2;
+    public const uint NetworkScope = 3;
+    public const uint UnknownResolution = 0;
+    public const uint AbsentResolution = 1;
+    public const uint UniqueResolution = 2;
+    public const uint AmbiguousResolution = 3;
+    public const uint NotApplicableResolution = 4;
+    public const uint CompleteFlag = 0x00000001;
+    public const uint StableFlag = 0x00000002;
+    public const uint FutureGateFlag = 0x00000004;
+    public const uint PolicyPendingFlag = 0x00000008;
+    public const uint RegistryCompleteFlag = 0x00000010;
+    public const uint PolicyScopeOverflowFlag = 0x00000020;
+    public const uint TestTaintControlFlag = 0x00000040;
+}
+
+[StructLayout(LayoutKind.Sequential, Pack = 8)]
+public unsafe struct SafeUploadAdmissionCoverageScope
+{
+    public uint ScopeKind;
+    public uint ScopeIndex;
+    public uint Resolution;
+    public uint State;
+    public uint Reason;
+    public uint MatchingInstances;
+    public uint UniqueVolumes;
+    public uint ReadyInstances;
+    public uint PrefixChars;
+    public fixed char Prefix[Contract.MaxPrefixChars];
+
+    public string ReadPrefix()
+    {
+        uint chars = Math.Min(PrefixChars, (uint) Contract.MaxPrefixChars);
+        fixed (char* value = Prefix) return new string(value, 0, (int) chars);
+    }
+}
+
+[StructLayout(LayoutKind.Sequential, Pack = 8)]
+public unsafe struct SafeUploadAdmissionCoverageStatus
+{
+    public uint StructSize;
+    public uint ProtocolVersion;
+    public uint State;
+    public uint Flags;
+    public uint PolicyGeneration;
+    public uint PolicyFlags;
+    public uint BootPolicyState;
+    public uint ScopeCount;
+    public uint ExpectedScopeCount;
+    public uint PolicyGenerationEnd;
+    public uint PolicyFlagsEnd;
+    public uint BootPolicyStateEnd;
+    public uint EpochGeneration;
+    public uint EpochFlags;
+    public uint EpochActiveCallbacks;
+    public uint EpochGenerationEnd;
+    public uint EpochFlagsEnd;
+    public uint EpochActiveCallbacksEnd;
+    public uint EnumeratedInstances;
+    public uint SetupInFlight;
+    public uint TeardownInFlight;
+    public uint CoverageChangesInFlight;
+    public uint WriterGlobalUnknown;
+    public uint WriterEntries;
+    public uint WriterEntriesNotReady;
+    public uint WriterEntriesUnknown;
+    public uint FutureMountGateReady;
+    public uint Reason;
+    public ulong PolicyScopeSequenceStart;
+    public ulong PolicyScopeSequenceEnd;
+    public ulong TopologySequenceStart;
+    public ulong TopologySequenceEnd;
+    public ulong CoverageSequenceStart;
+    public ulong CoverageSequenceEnd;
+    public ulong RegistrySequenceStart;
+    public ulong RegistrySequenceEnd;
+    public fixed byte Scopes[Contract.AdmissionCoverageMaxScopes * Contract.AdmissionCoverageScopeSize];
+
+    public SafeUploadAdmissionCoverageScope GetScope(int index)
+    {
+        if ((uint) index >= ScopeCount || index >= Contract.AdmissionCoverageMaxScopes)
+            throw new ArgumentOutOfRangeException(nameof(index));
+        fixed (byte* data = Scopes)
+            return ((SafeUploadAdmissionCoverageScope*) data)[index];
+    }
 }
 
 [StructLayout(LayoutKind.Sequential, Pack = 8)]
@@ -183,6 +313,16 @@ public unsafe struct SafeUploadRequest
     public fixed char ImageName[Contract.MaxImageNameChars];
 
     public RequestFlags TypedFlags => (RequestFlags) Flags;
+
+    public bool HasKnownFlags
+    {
+        get
+        {
+            const uint v18Known = 0x000001ff;
+            const uint known = v18Known;
+            return (Flags & ~known) == 0;
+        }
+    }
 
     public string GetPath()
     {
@@ -212,13 +352,14 @@ public unsafe struct SafeUploadRequest
 }
 
 [StructLayout(LayoutKind.Sequential, Pack = 8)]
-public struct SafeUploadResponse
+public unsafe struct SafeUploadResponse
 {
     public uint Version;
     public uint StructSize;
     public ulong RequestId;
     public uint Verdict;
-    public uint Reserved;
+    public uint StageNameLength;
+    public fixed char StageName[Contract.MaxStageNameChars];
 }
 
 [StructLayout(LayoutKind.Sequential, Pack = 8)]
@@ -229,6 +370,7 @@ public struct SafeUploadControl
     public uint Command;
     public uint Reserved;
 }
+
 
 [StructLayout(LayoutKind.Sequential, Pack = 8)]
 public unsafe struct SafeUploadPolicyMessage
@@ -274,6 +416,20 @@ public unsafe struct SafeUploadOverrideMessage
     public uint PathLength;
     public uint Reserved;
     public fixed char Path[Contract.MaxPathChars];
+}
+
+[StructLayout(LayoutKind.Sequential, Pack = 8)]
+public unsafe struct SafeUploadPublicationMessage
+{
+    public SafeUploadControl Control;
+    public Guid TransferId;
+    public uint Revoke;
+    public uint TemporaryPathLength;
+    public uint DestinationPathLength;
+    public uint Reserved;
+    public fixed byte Digest[32];
+    public fixed char TemporaryPath[Contract.MaxPathChars];
+    public fixed char DestinationPath[Contract.MaxPathChars];
 }
 
 [StructLayout(LayoutKind.Sequential, Pack = 8)]

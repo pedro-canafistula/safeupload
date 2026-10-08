@@ -1,0 +1,90 @@
+MVP gate status, frozen pair driver 5ebe139a (mvp4-gen4b) + agent 51ba5873 (agent-gen3b)
+Generated 2026-10-08T21:53:09Z by driver/scripts/Get-StagedMvpStatus.py from the retained, hash-checked case.json files.
+
+== Two-tier gate (owner decision 2026-10-08)
+== ordinary (tier 1: outcome proofs) 23/23
+  [x] A01: boot-start-invariant-A01-ordinary-w12135631 (win10-debug3)
+  [x] A02: boot-start-invariant-A02-ordinary-w12160621 (win10-debug2)
+  [x] A03: boot-start-invariant-A03-ordinary-w12234331 (win10-debug3)
+  [x] A04: boot-start-invariant-A04-ordinary-w10042931 (win10-debug3)
+  [x] A05: boot-start-invariant-A05-ordinary-w122406g1 (win10-debug)
+  [x] B01: boot-start-invariant-B01-ordinary-w115101g1 (win10-debug)
+  [x] B02: boot-start-invariant-B02-ordinary-w100308g1 (win10-debug)
+  [x] C01-approve-absent: boot-start-invariant-C01-approve-absent-ordinary-w120129g1 (win10-debug)
+  [x] C01-block-absent: boot-start-invariant-C01-block-absent-ordinary-w163215g1 (win10-debug)
+  [x] C02-approve-absent: boot-start-invariant-C02-approve-absent-ordinary-w12031921 (win10-debug2)
+  [x] C02-block-absent: boot-start-invariant-C02-block-absent-ordinary-w11265931 (win10-debug3)
+  [x] C03-approve-existing: boot-start-invariant-C03-approve-existing-ordinary-w12043831 (win10-debug3)
+  [x] C03-block-existing: boot-start-invariant-C03-block-existing-ordinary-w165734g1 (win10-debug)
+  [x] C04-approve: boot-start-invariant-C04-approve-ordinary-w121144g1 (win10-debug)
+  [x] C04-block: boot-start-invariant-C04-block-ordinary-w164433g1 (win10-debug)
+  [x] C05-denied-external-rename: boot-start-invariant-C05-denied-external-rename-ordinary-w11563431 (win10-debug3)
+  [x] R01: boot-start-invariant-R01-ordinary-w113850g1 (win10-debug)
+  [x] R02: boot-start-invariant-R02-ordinary-w11451431 (win10-debug3)
+  [x] R03: boot-start-invariant-R03-ordinary-w11474521 (win10-debug2)
+  [x] S00-observer-control: boot-start-invariant-S00-observer-control-ordinary-w12260621 (win10-debug2)
+  [x] S01-denied-write-after-boot: boot-start-invariant-S01-denied-write-after-boot-ordinary-w122852g1 (win10-debug)
+  [x] S02-agent-down-open-refused: boot-start-invariant-S02-agent-down-open-refused-ordinary-w12300231 (win10-debug3)
+  [x] X01: boot-start-invariant-X01-ordinary-w10021721 (win10-debug2)
+== runtime-verifier (tier 2: all proofs, latency excluded) 23/23
+  [x] A01: boot-start-invariant-A01-runtime-verifier-w094838g1 (win10-debug)
+  [x] A02: boot-start-invariant-A02-runtime-verifier-w112142g1 (win10-debug)
+  [x] A03: boot-start-invariant-A03-runtime-verifier-w09525931 (win10-debug3)
+  [x] A04: boot-start-invariant-A04-runtime-verifier-w084958g1 (win10-debug)
+  [x] A05: boot-start-invariant-A05-runtime-verifier-w095344g1 (win10-debug)
+  [x] B01: boot-start-invariant-B01-runtime-verifier-w09321621 (win10-debug2)
+  [x] B02: boot-start-invariant-B02-runtime-verifier-w10291331 (win10-debug3)
+  [x] C01-approve-absent: boot-start-invariant-C01-approve-absent-runtime-verifier-w09421331 (win10-debug3)
+  [x] C01-block-absent: boot-start-invariant-C01-block-absent-runtime-verifier-w104722g1 (win10-debug)
+  [x] C02-approve-absent: boot-start-invariant-C02-approve-absent-runtime-verifier-w09421321 (win10-debug2)
+  [x] C02-block-absent: boot-start-invariant-C02-block-absent-runtime-verifier-fc21 (win10-debug2)
+  [x] C03-approve-existing: boot-start-invariant-C03-approve-existing-runtime-verifier-w094213g1 (win10-debug)
+  [x] C03-block-existing: boot-start-invariant-C03-block-existing-runtime-verifier-w103045g1 (win10-debug)
+  [x] C04-approve: boot-start-invariant-C04-approve-runtime-verifier-w09470031 (win10-debug3)
+  [x] C04-block: boot-start-invariant-C04-block-runtime-verifier-w110206g1 (win10-debug)
+  [x] C05-denied-external-rename: boot-start-invariant-C05-denied-external-rename-runtime-verifier-w093433g1 (win10-debug)
+  [x] R01: boot-start-invariant-R01-runtime-verifier-w09234931 (win10-debug3)
+  [x] R02: boot-start-invariant-R02-runtime-verifier-w092734g1 (win10-debug)
+  [x] R03: boot-start-invariant-R03-runtime-verifier-w09311731 (win10-debug3)
+  [x] S00-observer-control: boot-start-invariant-S00-observer-control-runtime-verifier-w09554821 (win10-debug2)
+  [x] S01-denied-write-after-boot: boot-start-invariant-S01-denied-write-after-boot-runtime-verifier-w095818g1 (win10-debug)
+  [x] S02-agent-down-open-refused: boot-start-invariant-S02-agent-down-open-refused-runtime-verifier-w09582531 (win10-debug3)
+  [x] X01: boot-start-invariant-X01-runtime-verifier-w08594131 (win10-debug3)
+== boot-verifier (tier 1: outcome proofs) 18/23
+  [x] A01: boot-start-invariant-A01-boot-verifier-w13125831 (win10-debug3)
+  [x] A02: boot-start-invariant-A02-boot-verifier-w13150921 (win10-debug2)
+  [x] A03: boot-start-invariant-A03-boot-verifier-w131851g1 (win10-debug)
+  [x] A04: boot-start-invariant-A04-boot-verifier-w13301121 (win10-debug2)
+  [x] A05: boot-start-invariant-A05-boot-verifier-w13212531 (win10-debug3)
+  [x] B01: boot-start-invariant-B01-boot-verifier-w12544631 (win10-debug3)
+  [ ] B02: last boot-start-invariant-B02-boot-verifier-w154054g1 INCONCLUSIVE - case.json missing or hash differs from index
+  [x] C01-approve-absent: boot-start-invariant-C01-approve-absent-boot-verifier-w130239g1 (win10-debug)
+  [ ] C01-block-absent: last boot-start-invariant-C01-block-absent-boot-verifier-w160337g1 INCONCLUSIVE - case.json missing or hash differs from index
+  [x] C02-approve-absent: boot-start-invariant-C02-approve-absent-boot-verifier-w13040531 (win10-debug3)
+  [ ] C02-block-absent: not run on this build pair
+  [x] C03-approve-existing: boot-start-invariant-C03-approve-existing-boot-verifier-w13053721 (win10-debug2)
+  [ ] C03-block-existing: not run on this build pair
+  [x] C04-approve: boot-start-invariant-C04-approve-boot-verifier-w130857g1 (win10-debug)
+  [ ] C04-block: not run on this build pair
+  [x] C05-denied-external-rename: boot-start-invariant-C05-denied-external-rename-boot-verifier-w12565921 (win10-debug2)
+  [x] R01: boot-start-invariant-R01-boot-verifier-w13370031 (win10-debug3)
+  [x] R02: boot-start-invariant-R02-boot-verifier-w12474531 (win10-debug3)
+  [x] R03: boot-start-invariant-R03-boot-verifier-w125321g1 (win10-debug)
+  [x] S00-observer-control: boot-start-invariant-S00-observer-control-boot-verifier-w13390621 (win10-debug2)
+  [x] S01-denied-write-after-boot: boot-start-invariant-S01-denied-write-after-boot-boot-verifier-w132653g1 (win10-debug)
+  [x] S02-agent-down-open-refused: boot-start-invariant-S02-agent-down-open-refused-boot-verifier-w13282931 (win10-debug3)
+  [x] X01: boot-start-invariant-X01-boot-verifier-w123315g1 (win10-debug)
+MvpCells=64/69
+MvpSuite=FAIL (two-tier gate; --strict for the all-proofs verdict)
+Latency cached-write: worst p95 2.2364 ms, worst max 53.381 ms over 3 cells (informational)
+Latency close: worst p95 4.0392 ms, worst max 305.0114 ms over 3 cells (informational)
+Latency flush: worst p95 161.6231 ms, worst max 916.6807 ms over 3 cells (informational)
+Latency writer-open: worst p95 8.6638 ms, worst max 2239.6292 ms over 3 cells (informational)
+Latency writer-open-deny: worst p95 12.9602 ms, worst max 51.7407 ms over 6 cells (informational)
+
+== Strict (all proofs in all modes, latency needs dedicated evidence)
+== ordinary (strict) 14/23
+== runtime-verifier (strict) 14/23
+== boot-verifier (strict) 12/23
+MvpCells=40/69
+MvpSuite=FAIL

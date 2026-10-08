@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Security.AccessControl;
 using SafeUpload.Agent.Core.Application;
 using SafeUpload.Agent.Core.Domain;
 
@@ -33,17 +34,33 @@ public sealed class LocalPolicyStore : IPolicyStore
     };
 
     private readonly string _policyFile;
+    private readonly bool _enforceProtectedAcl;
+    private readonly Func<string, bool>? _aclVerifier;
+    private readonly SemaphoreSlim _loadGate = new(1, 1);
+    private Policy? _lastGoodPolicy;
 
     /// <summary>Usa o caminho padrão do agente.</summary>
-    public LocalPolicyStore() : this(AgentPaths.PolicyFile)
+    public LocalPolicyStore() : this(AgentPaths.PolicyFile, enforceProtectedAcl: true, aclVerifier: null)
     {
     }
 
-    /// <summary>Usa um caminho específico. Serve aos testes.</summary>
-    public LocalPolicyStore(string policyFile)
+    /// <summary>Usa um caminho específico. Serve aos testes isolados.</summary>
+    public LocalPolicyStore(string policyFile) : this(policyFile, enforceProtectedAcl: false, aclVerifier: null)
+    {
+    }
+
+    internal LocalPolicyStore(string policyFile, Func<string, bool> aclVerifier)
+        : this(policyFile, enforceProtectedAcl: true,
+            aclVerifier ?? throw new ArgumentNullException(nameof(aclVerifier)))
+    {
+    }
+
+    private LocalPolicyStore(string policyFile, bool enforceProtectedAcl, Func<string, bool>? aclVerifier)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(policyFile);
         _policyFile = policyFile;
+        _enforceProtectedAcl = enforceProtectedAcl;
+        _aclVerifier = aclVerifier;
     }
 
     /// <summary>Caminho do arquivo lido, para exibição na interface.</summary>
@@ -52,33 +69,63 @@ public sealed class LocalPolicyStore : IPolicyStore
     /// <inheritdoc />
     public async Task<Policy> LoadAsync(CancellationToken cancellationToken)
     {
-        if (!File.Exists(_policyFile))
+        await _loadGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
         {
-            await WriteDefaultAsync(cancellationToken).ConfigureAwait(false);
+            try
+            {
+                if (_enforceProtectedAcl && _aclVerifier is not null)
+                {
+                    VerifyInjectedAcl();
+                }
+                else if (_enforceProtectedAcl && OperatingSystem.IsWindows())
+                {
+                    ProtectedPolicyAcl.EnsureDirectory(_policyFile);
+                }
+
+                if (!File.Exists(_policyFile))
+                {
+                    await WriteDefaultAsync(cancellationToken).ConfigureAwait(false);
+                }
+
+                if (_enforceProtectedAcl && OperatingSystem.IsWindows() && _aclVerifier is null)
+                {
+                    ProtectedPolicyAcl.VerifyPolicyFile(_policyFile);
+                }
+
+                PolicyDocument? document;
+                await using (var stream = File.OpenRead(_policyFile))
+                {
+                    document = await JsonSerializer
+                        .DeserializeAsync<PolicyDocument>(stream, ReadOptions, cancellationToken)
+                        .ConfigureAwait(false);
+                }
+
+                if (document is null)
+                {
+                    throw new InvalidPolicyException($"O arquivo {_policyFile} não contém uma política.");
+                }
+
+                var policy = document.ToPolicy();
+
+                // RN-009: the validation happens at load time. Cache only a
+                // policy whose protected ACL and contents both passed checks.
+                policy.EnsureValid();
+                _lastGoodPolicy = policy;
+                return policy;
+            }
+            catch (PolicyFileAclRejectedException) when (_lastGoodPolicy is not null)
+            {
+                // Do not read or adopt a policy whose ACL is weaker. Existing
+                // service users keep the prior in-memory policy; first start
+                // without a valid policy fails instead of selecting a default.
+                return _lastGoodPolicy;
+            }
         }
-
-        PolicyDocument? document;
-
-        await using (var stream = File.OpenRead(_policyFile))
+        finally
         {
-            document = await JsonSerializer
-                .DeserializeAsync<PolicyDocument>(stream, ReadOptions, cancellationToken)
-                .ConfigureAwait(false);
+            _loadGate.Release();
         }
-
-        if (document is null)
-        {
-            throw new InvalidPolicyException($"O arquivo {_policyFile} não contém uma política.");
-        }
-
-        var policy = document.ToPolicy();
-
-        // RN-009: a validação acontece no carregamento, e não no uso. Uma
-        // política inválida precisa falhar alto e cedo, no lugar de ser
-        // descoberta no meio de uma inspeção que deveria ter bloqueado.
-        policy.EnsureValid();
-
-        return policy;
     }
 
     /// <summary>
@@ -93,12 +140,29 @@ public sealed class LocalPolicyStore : IPolicyStore
         var directory = Path.GetDirectoryName(_policyFile);
         if (!string.IsNullOrEmpty(directory))
         {
-            Directory.CreateDirectory(directory);
+            if (!_enforceProtectedAcl || !OperatingSystem.IsWindows())
+            {
+                Directory.CreateDirectory(directory);
+            }
         }
 
-        await using var stream = File.Create(_policyFile);
+        await using var stream = _enforceProtectedAcl && OperatingSystem.IsWindows()
+            ? new FileInfo(_policyFile).Create(FileMode.CreateNew, FileSystemRights.FullControl,
+                FileShare.None, 4096, FileOptions.Asynchronous | FileOptions.WriteThrough,
+                ProtectedPolicyAcl.CreatePolicyFileSecurity())
+            : File.Create(_policyFile);
         await JsonSerializer
             .SerializeAsync(stream, PolicyDocument.Default, WriteOptions, cancellationToken)
             .ConfigureAwait(false);
+        await stream.FlushAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    private void VerifyInjectedAcl()
+    {
+        if (!_aclVerifier!(_policyFile))
+        {
+            throw new PolicyFileAclRejectedException(
+                $"SafeUpload policy directory or {_policyFile} ACL does not match the protected SYSTEM/Administrators DACL.");
+        }
     }
 }

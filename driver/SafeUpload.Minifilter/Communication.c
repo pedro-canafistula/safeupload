@@ -9,14 +9,9 @@ Abstract:
     Filter communication port used by the SafeUpload minifilter to ask a
     user-mode inspector whether a file operation may proceed.
 
-    Everything here is transport. No message is interpreted beyond checking
-    that it is well formed and answers the question that was asked; the
-    policy that produces the verdict lives entirely in user mode.
-
-    The overriding rule of this module is RN-013: every failure mode -
-    nobody connected, allocation failure, timeout, malformed reply, driver
-    unloading - resolves to "allow". The kernel never blocks a user because
-    inspection did not happen.
+    Existing inspection exchanges retain RN-013: failure to obtain a verdict
+    does not wedge unrelated I/O. Phase 2 separately denies new writes and
+    writable sections inside identified protected scopes while unauthorized.
 
 Environment:
 
@@ -25,6 +20,9 @@ Environment:
 --*/
 
 #include "Filter.h"
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+#include "Stage.h"
+#endif
 
 //
 //  Port callbacks.
@@ -57,6 +55,8 @@ SafeUploadPortMessage (
     _Out_ PULONG ReturnOutputBufferLength
     );
 
+BOOLEAN SafeUploadCurrentProcessHasAgentServiceSid(VOID);
+
 #ifdef ALLOC_PRAGMA
     #pragma alloc_text(PAGE, SafeUploadCreateCommunicationPort)
     #pragma alloc_text(PAGE, SafeUploadCloseCommunicationPort)
@@ -64,7 +64,68 @@ SafeUploadPortMessage (
     #pragma alloc_text(PAGE, SafeUploadPortDisconnect)
     #pragma alloc_text(PAGE, SafeUploadPortMessage)
     #pragma alloc_text(PAGE, SafeUploadRequestVerdict)
+    #pragma alloc_text(PAGE, SafeUploadCurrentProcessHasAgentServiceSid)
 #endif
+
+/* Documented fallback service SID for NT SERVICE\SafeUploadAgent:
+ * SHA-1(uppercase service name as UTF-16LE), split into five little-endian
+ * ULONG subauthorities after S-1-5-80. The fixed result is
+ * S-1-5-80-2445692249-22211692-2238493510-3749888094-4283558424.
+ * Prefer the kernel's RtlCreateServiceSid when exported. Keep the fallback
+ * synchronized with Program.ServiceName and the installer. */
+static const struct _SAFEUPLOAD_AGENT_SERVICE_SID {
+    UCHAR Revision;
+    UCHAR SubAuthorityCount;
+    SID_IDENTIFIER_AUTHORITY IdentifierAuthority;
+    ULONG SubAuthority[6];
+} SafeUploadAgentServiceSid = {
+    SID_REVISION,
+    6,
+    {{0, 0, 0, 0, 0, 5}},
+    {80, 2445692249, 22211692, 2238493510, 3749888094, 4283558424}
+};
+
+BOOLEAN SafeUploadCurrentProcessHasAgentServiceSid(VOID)
+{
+    typedef NTSTATUS (NTAPI *PSAFEUPLOAD_RTL_CREATE_SERVICE_SID)(
+        PUNICODE_STRING ServiceName, PSID ServiceSid, PULONG ServiceSidLength);
+    PACCESS_TOKEN token;
+    PTOKEN_GROUPS groups = NULL;
+    UCHAR serviceSidStorage[68];
+    PSID serviceSid = (PSID)&SafeUploadAgentServiceSid;
+    UNICODE_STRING serviceName, routineName;
+    PSAFEUPLOAD_RTL_CREATE_SERVICE_SID createServiceSid;
+    ULONG serviceSidLength;
+    ULONG index;
+    BOOLEAN found = FALSE;
+    NTSTATUS status;
+
+    PAGED_CODE();
+    RtlInitUnicodeString(&serviceName, L"SafeUploadAgent");
+    RtlInitUnicodeString(&routineName, L"RtlCreateServiceSid");
+    createServiceSid = (PSAFEUPLOAD_RTL_CREATE_SERVICE_SID)MmGetSystemRoutineAddress(&routineName);
+    if (createServiceSid != NULL) {
+        RtlZeroMemory(serviceSidStorage, sizeof(serviceSidStorage));
+        serviceSidLength = sizeof(serviceSidStorage);
+        status = createServiceSid(&serviceName, (PSID)serviceSidStorage, &serviceSidLength);
+        if (!NT_SUCCESS(status) || serviceSidLength < (ULONG)FIELD_OFFSET(SID, SubAuthority) ||
+            serviceSidLength > sizeof(serviceSidStorage)) return FALSE;
+        serviceSid = (PSID)serviceSidStorage;
+    }
+    token = PsReferencePrimaryToken(PsGetCurrentProcess());
+    status = SeQueryInformationToken(token, TokenGroups, (PVOID *)&groups);
+    if (NT_SUCCESS(status) && groups != NULL) {
+        for (index = 0; index < groups->GroupCount; ++index) {
+            if (RtlEqualSid(groups->Groups[index].Sid, serviceSid)) {
+                found = TRUE;
+                break;
+            }
+        }
+    }
+    if (groups != NULL) ExFreePool(groups);
+    PsDereferencePrimaryToken(token);
+    return found;
+}
 
 
 NTSTATUS
@@ -147,6 +208,7 @@ Return Value:
                          status );
     }
 
+
     return status;
 }
 
@@ -181,6 +243,11 @@ Return Value:
 {
     PAGED_CODE();
 
+
+    /* A connected port is not an accepted policy. Drop authorization before
+     * either endpoint is closed, including DriverEntry failure cleanup. */
+    InterlockedExchange(&SafeUploadData.AuthenticatedClient, 0);
+
     if (SafeUploadData.ServerPort != NULL) {
 
         FltCloseCommunicationPort( SafeUploadData.ServerPort );
@@ -191,6 +258,9 @@ Return Value:
 
         FltCloseClientPort( SafeUploadData.Filter, &SafeUploadData.ClientPort );
         SafeUploadData.InspectorProcessId = 0;
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    SafeUploadClearPublicationPermits();
+#endif
     }
 }
 
@@ -245,8 +315,21 @@ Return Value:
     //  in place here.
     //
 
+    {
+        PACCESS_TOKEN token = PsReferencePrimaryToken( PsGetCurrentProcess() );
+        PTOKEN_USER user = NULL;
+        NTSTATUS identityStatus = SeQueryInformationToken( token, TokenUser, (PVOID *) &user );
+        BOOLEAN system = NT_SUCCESS( identityStatus ) && user != NULL &&
+            user->User.Sid != NULL && RtlValidSid( user->User.Sid ) &&
+            RtlEqualSid( user->User.Sid, SeExports->SeLocalSystemSid );
+        if (user != NULL) ExFreePool( user );
+        PsDereferencePrimaryToken( token );
+        if (!system) return STATUS_ACCESS_DENIED;
+    }
+
     FLT_ASSERT( SafeUploadData.ClientPort == NULL );
 
+    InterlockedExchange(&SafeUploadData.AuthenticatedClient, 0);
     SafeUploadData.InspectorProcessId = HandleToULong( PsGetCurrentProcessId() );
     SafeUploadData.ClientPort = ClientPort;
 
@@ -268,9 +351,9 @@ Routine Description:
 
     Called when the inspector closes its handle or exits.
 
-    From the moment ClientPort goes back to NULL, every operation is
-    allowed without inspection (RN-013). That is deliberate: an inspector
-    that crashed must not take the file system down with it.
+    From the moment the authenticated client disconnects, protected-scope
+    create and writable-section gates fail closed. Reads and operations
+    outside those scopes retain the existing no-inspection behavior.
 
     IRQL: PASSIVE_LEVEL.
 
@@ -292,15 +375,18 @@ Return Value:
                      SafeUploadData.InspectorProcessId );
 
     //
-    //  Close the port before clearing the PID, never the other way round.
-    //  Once ClientPort is NULL no message can be sent at all; clearing the
-    //  PID first would open a window in which the port is still live and
-    //  the departing inspector's own I/O would be sent back to it.
+    //  Clear authorization before closing the port. An already-dispatched
+    //  callback may still see ClientPort while teardown is in progress, but
+    //  it can no longer authorize a protected create or writable section.
     //
 
+    InterlockedExchange(&SafeUploadData.AuthenticatedClient, 0);
     FltCloseClientPort( SafeUploadData.Filter, &SafeUploadData.ClientPort );
 
     SafeUploadData.InspectorProcessId = 0;
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    SafeUploadClearPublicationPermits();
+#endif
 }
 
 
@@ -496,11 +582,11 @@ Arguments:
 
     InputBufferLength - Its size, as claimed by the caller.
 
-    OutputBuffer - Unused: control messages carry no reply payload.
+    OutputBuffer - Used by GET_COUNTERS and the feature-only trace batch.
 
-    OutputBufferLength - Unused.
+    OutputBufferLength - Capacity of the optional reply payload.
 
-    ReturnOutputBufferLength - Set to zero.
+    ReturnOutputBufferLength - Number of reply bytes written.
 
 Return Value:
 
@@ -510,6 +596,12 @@ Return Value:
 --*/
 {
     PSAFEUPLOAD_POLICY_MESSAGE policy = NULL;
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    SAFEUPLOAD_CONTROL controlHeader;
+    PSAFEUPLOAD_ACTIVATING_STATUS_PAGE activatingPage = NULL;
+    PSAFEUPLOAD_ACTIVATING_DIAGNOSTIC_STATUS_PAGE activatingDiagnosticPage = NULL;
+    PSAFEUPLOAD_ADMISSION_COVERAGE_STATUS coverageStatus = NULL;
+#endif
     NTSTATUS status = STATUS_SUCCESS;
     UINT32 command = 0;
 
@@ -522,6 +614,14 @@ Return Value:
     if (InputBuffer == NULL || InputBufferLength < sizeof( SAFEUPLOAD_CONTROL )) {
 
         return STATUS_INVALID_PARAMETER;
+    }
+
+    /* A SYSTEM process may duplicate the client-port handle. Bind every
+     * request to the process accepted by PortConnect, not only to whoever
+     * presents a handle for the connection. */
+    if (SafeUploadData.ClientPort == NULL ||
+        HandleToULong(PsGetCurrentProcessId()) != SafeUploadData.InspectorProcessId) {
+        return STATUS_ACCESS_DENIED;
     }
 
     //
@@ -548,9 +648,725 @@ Return Value:
         //  cannot legally sit on.
         //
 
-        ProbeForRead( InputBuffer, InputBufferLength, __alignof( SAFEUPLOAD_POLICY_MESSAGE ) );
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+        ProbeForRead( InputBuffer, sizeof( SAFEUPLOAD_CONTROL ), __alignof( SAFEUPLOAD_CONTROL ) );
+        RtlCopyMemory( &controlHeader, InputBuffer, sizeof( controlHeader ) );
+        command = controlHeader.Command;
 
+        if (command == SAFEUPLOAD_CONTROL_ADMISSION_PROBE ||
+            command == SAFEUPLOAD_CONTROL_REGISTRY_ENTRY ||
+            command == SAFEUPLOAD_CONTROL_ACTIVATING_TARGET_STATUS) {
+            ULONG maximumProbeSize = (ULONG)FIELD_OFFSET( SAFEUPLOAD_ADMISSION_PROBE_REQUEST, Strings ) +
+                (2UL * (ULONG)SAFEUPLOAD_ADMISSION_PROBE_MAX_STRING_CHARS * (ULONG)sizeof( WCHAR ));
+
+            if (InputBufferLength > maximumProbeSize || InputBufferLength > sizeof( *policy )) {
+                status = STATUS_INVALID_BUFFER_SIZE;
+                leave;
+            }
+            ProbeForRead( InputBuffer,
+                          InputBufferLength,
+                          __alignof( SAFEUPLOAD_ADMISSION_PROBE_REQUEST ) );
+        } else if (command == SAFEUPLOAD_CONTROL_REGISTRY_SET_CAPACITY) {
+            if (InputBufferLength != sizeof(SAFEUPLOAD_CONTROL)) {
+                status = STATUS_INVALID_BUFFER_SIZE;
+                leave;
+            }
+            ProbeForRead(InputBuffer, InputBufferLength, __alignof(SAFEUPLOAD_CONTROL));
+        } else if (command == SAFEUPLOAD_CONTROL_ADMISSION_DELETE_STREAM_CONTEXT) {
+            ULONG maximumDeleteSize =
+                (ULONG)FIELD_OFFSET(SAFEUPLOAD_ADMISSION_DELETE_STREAM_CONTEXT_REQUEST, Strings) +
+                (2UL * (ULONG)SAFEUPLOAD_ADMISSION_PROBE_MAX_STRING_CHARS * (ULONG)sizeof(WCHAR));
+
+            if (InputBufferLength > maximumDeleteSize || InputBufferLength > sizeof(*policy)) {
+                status = STATUS_INVALID_BUFFER_SIZE;
+                leave;
+            }
+            ProbeForRead(InputBuffer, InputBufferLength,
+                __alignof(SAFEUPLOAD_ADMISSION_DELETE_STREAM_CONTEXT_REQUEST));
+        } else
+        {
+            ProbeForRead( InputBuffer,
+                          InputBufferLength,
+                          __alignof( SAFEUPLOAD_POLICY_MESSAGE ) );
+        }
+#else
+        ProbeForRead( InputBuffer, InputBufferLength, __alignof( SAFEUPLOAD_POLICY_MESSAGE ) );
         command = ((PSAFEUPLOAD_CONTROL) InputBuffer)->Command;
+#endif
+
+        /* SYSTEM remains the connection prerequisite. Policy replacement,
+         * publication permits and override grants additionally require the
+         * service SID; the owner decision trusts admins/SYSTEM, so this is
+         * inexpensive hardening against unrelated SYSTEM clients. Read-only
+         * and feature diagnostics remain available to the SYSTEM Inspector. */
+        if (command == SAFEUPLOAD_CONTROL_SET_POLICY ||
+            command == SAFEUPLOAD_CONTROL_STAGE_PUBLICATION ||
+            command == SAFEUPLOAD_CONTROL_GRANT_OVERRIDE) {
+            if (!SafeUploadCurrentProcessHasAgentServiceSid()) {
+                status = STATUS_ACCESS_DENIED;
+                leave;
+            }
+        }
+
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+        if (command == SAFEUPLOAD_CONTROL_ADMISSION_TRACE_ENABLE ||
+            command == SAFEUPLOAD_CONTROL_ADMISSION_TRACE_DISABLE ||
+            command == SAFEUPLOAD_CONTROL_ADMISSION_TRACE_CLEAR) {
+            SAFEUPLOAD_CONTROL traceControl;
+
+            if (InputBufferLength != sizeof( SAFEUPLOAD_CONTROL )) {
+                status = STATUS_INVALID_BUFFER_SIZE;
+                leave;
+            }
+            if (OutputBuffer != NULL || OutputBufferLength != 0) {
+                status = STATUS_INVALID_PARAMETER;
+                leave;
+            }
+
+            RtlCopyMemory( &traceControl, InputBuffer, sizeof( traceControl ) );
+            if (traceControl.Version != SAFEUPLOAD_PROTOCOL_VERSION ||
+                traceControl.StructSize != sizeof( SAFEUPLOAD_CONTROL ) ||
+                traceControl.Command != command ||
+                (command != SAFEUPLOAD_CONTROL_ADMISSION_TRACE_ENABLE && traceControl.Reserved != 0) ||
+                (command == SAFEUPLOAD_CONTROL_ADMISSION_TRACE_ENABLE &&
+                 (traceControl.Reserved & ~(SAFEUPLOAD_ADMISSION_TRACE_OPTION_SECTION_EVENTS |
+                                            SAFEUPLOAD_ADMISSION_TRACE_OPTION_FILE_LIFETIME)) != 0)) {
+                status = STATUS_REVISION_MISMATCH;
+                leave;
+            }
+
+            status = SafeUploadStageAdmissionTraceControl( command, traceControl.Reserved );
+            leave;
+        }
+
+        if (command == SAFEUPLOAD_CONTROL_ADMISSION_TRACE_READ_BATCH) {
+            SAFEUPLOAD_ADMISSION_TRACE_REQUEST request;
+
+            //
+            //  The reply is about 1.0 KB: built in the pool scratch buffer
+            //  already allocated above, never on the stack. Its size is
+            //  asserted against that buffer in Protocol.h.
+            //
+
+            PSAFEUPLOAD_ADMISSION_TRACE_BATCH batch = (PSAFEUPLOAD_ADMISSION_TRACE_BATCH) policy;
+
+            if (InputBufferLength != sizeof( SAFEUPLOAD_ADMISSION_TRACE_REQUEST )) {
+                status = STATUS_INVALID_BUFFER_SIZE;
+                leave;
+            }
+            if (OutputBuffer == NULL || OutputBufferLength != sizeof( SAFEUPLOAD_ADMISSION_TRACE_BATCH )) {
+                status = OutputBufferLength < sizeof( SAFEUPLOAD_ADMISSION_TRACE_BATCH ) ?
+                    STATUS_BUFFER_TOO_SMALL : STATUS_INVALID_BUFFER_SIZE;
+                leave;
+            }
+
+            RtlCopyMemory( &request, InputBuffer, sizeof( request ) );
+            if (request.Control.Version != SAFEUPLOAD_PROTOCOL_VERSION ||
+                request.Control.StructSize != sizeof( SAFEUPLOAD_ADMISSION_TRACE_REQUEST ) ||
+                request.Control.Command != SAFEUPLOAD_CONTROL_ADMISSION_TRACE_READ_BATCH ||
+                request.Control.Reserved != 0) {
+                status = STATUS_REVISION_MISMATCH;
+                leave;
+            }
+
+#pragma warning( suppress: 6001 )
+            ProbeForWrite( OutputBuffer,
+                           sizeof( SAFEUPLOAD_ADMISSION_TRACE_BATCH ),
+                           __alignof( SAFEUPLOAD_ADMISSION_TRACE_BATCH ) );
+
+            status = SafeUploadStageAdmissionTraceReadBatch( request.Cursor,
+                                                              request.SnapshotSequence,
+                                                              batch );
+            if (NT_SUCCESS( status )) {
+                RtlCopyMemory( OutputBuffer, batch, sizeof( *batch ) );
+                *ReturnOutputBufferLength = sizeof( *batch );
+            }
+            leave;
+        }
+
+        if (command == SAFEUPLOAD_CONTROL_PROMOTION_TRACE_READ_BATCH) {
+            SAFEUPLOAD_PROMOTION_TRACE_REQUEST request;
+            PSAFEUPLOAD_PROMOTION_TRACE_BATCH batch = (PSAFEUPLOAD_PROMOTION_TRACE_BATCH)policy;
+            if (InputBufferLength != sizeof(request)) {
+                status = STATUS_INVALID_BUFFER_SIZE;
+                leave;
+            }
+            if (OutputBuffer == NULL || OutputBufferLength != sizeof(*batch)) {
+                status = OutputBufferLength < sizeof(*batch) ? STATUS_BUFFER_TOO_SMALL : STATUS_INVALID_BUFFER_SIZE;
+                leave;
+            }
+            RtlCopyMemory(&request, InputBuffer, sizeof(request));
+            if (request.Control.Version != SAFEUPLOAD_PROTOCOL_VERSION ||
+                request.Control.StructSize != sizeof(request) ||
+                request.Control.Command != command || request.Control.Reserved != 0) {
+                status = STATUS_REVISION_MISMATCH;
+                leave;
+            }
+#pragma warning( suppress: 6001 )
+            ProbeForWrite(OutputBuffer, sizeof(*batch), __alignof(SAFEUPLOAD_PROMOTION_TRACE_BATCH));
+            status = SafeUploadStageWritersPromotionTraceReadBatch(&request, batch);
+            if (NT_SUCCESS(status)) {
+                RtlCopyMemory(OutputBuffer, batch, sizeof(*batch));
+                *ReturnOutputBufferLength = sizeof(*batch);
+            }
+            leave;
+        }
+
+        if (command == SAFEUPLOAD_CONTROL_ADMISSION_PROBE ||
+            command == SAFEUPLOAD_CONTROL_REGISTRY_ENTRY ||
+            command == SAFEUPLOAD_CONTROL_ACTIVATING_TARGET_STATUS) {
+            PSAFEUPLOAD_ADMISSION_PROBE_REQUEST request =
+                (PSAFEUPLOAD_ADMISSION_PROBE_REQUEST)policy;
+            PSAFEUPLOAD_REGISTRY_ENTRY_STATUS registryReply = NULL;
+            PSAFEUPLOAD_ACTIVATING_TARGET_STATUS targetReply = NULL;
+            UNICODE_STRING volumeName;
+            UNICODE_STRING relativePath;
+            UNICODE_STRING volumePrefix = RTL_CONSTANT_STRING( L"\\Device\\" );
+            ULONG volumeChars;
+            ULONG relativeChars;
+            ULONG volumeBytes;
+            ULONG relativeBytes;
+            ULONG stringBytes;
+            ULONG expectedLength;
+            ULONG index;
+            ULONG maximumProbeSize = (ULONG)FIELD_OFFSET( SAFEUPLOAD_ADMISSION_PROBE_REQUEST, Strings ) +
+                (2UL * (ULONG)SAFEUPLOAD_ADMISSION_PROBE_MAX_STRING_CHARS * (ULONG)sizeof( WCHAR ));
+
+            if (InputBufferLength < (ULONG)FIELD_OFFSET( SAFEUPLOAD_ADMISSION_PROBE_REQUEST, Strings ) ||
+                InputBufferLength > maximumProbeSize ||
+                (command == SAFEUPLOAD_CONTROL_ADMISSION_PROBE ?
+                    (OutputBuffer != NULL || OutputBufferLength != 0) :
+                    (OutputBuffer == NULL || OutputBufferLength !=
+                        (command == SAFEUPLOAD_CONTROL_ACTIVATING_TARGET_STATUS ?
+                            sizeof(SAFEUPLOAD_ACTIVATING_TARGET_STATUS) : sizeof(SAFEUPLOAD_REGISTRY_ENTRY_STATUS))))) {
+                status = STATUS_INVALID_BUFFER_SIZE;
+                leave;
+            }
+
+            if (command == SAFEUPLOAD_CONTROL_REGISTRY_ENTRY) {
+                C_ASSERT(sizeof(SAFEUPLOAD_POLICY_MESSAGE) >=
+                    (ULONG)FIELD_OFFSET(SAFEUPLOAD_ADMISSION_PROBE_REQUEST, Strings) +
+                    (2UL * SAFEUPLOAD_ADMISSION_PROBE_MAX_STRING_CHARS * sizeof(WCHAR)) +
+                    sizeof(SAFEUPLOAD_REGISTRY_ENTRY_STATUS));
+                C_ASSERT((sizeof(SAFEUPLOAD_POLICY_MESSAGE) - sizeof(SAFEUPLOAD_REGISTRY_ENTRY_STATUS)) %
+                    __alignof(SAFEUPLOAD_REGISTRY_ENTRY_STATUS) == 0);
+#pragma warning( suppress: 6001 )
+                ProbeForWrite(OutputBuffer, sizeof(SAFEUPLOAD_REGISTRY_ENTRY_STATUS),
+                    __alignof(SAFEUPLOAD_REGISTRY_ENTRY_STATUS));
+                /* Keep the reply beyond the bounded request in the existing pool allocation. */
+                registryReply = (PSAFEUPLOAD_REGISTRY_ENTRY_STATUS)((PUCHAR)policy +
+                    sizeof(*policy) - sizeof(*registryReply));
+                RtlZeroMemory(registryReply, sizeof(*registryReply));
+            }
+
+            if (command == SAFEUPLOAD_CONTROL_ACTIVATING_TARGET_STATUS) {
+                C_ASSERT(sizeof(SAFEUPLOAD_POLICY_MESSAGE) >=
+                    FIELD_OFFSET(SAFEUPLOAD_ADMISSION_PROBE_REQUEST, Strings) +
+                    2 * SAFEUPLOAD_ADMISSION_PROBE_MAX_STRING_CHARS * sizeof(WCHAR) +
+                    sizeof(SAFEUPLOAD_ACTIVATING_TARGET_STATUS));
+                C_ASSERT((sizeof(SAFEUPLOAD_POLICY_MESSAGE) - sizeof(SAFEUPLOAD_ACTIVATING_TARGET_STATUS)) %
+                    __alignof(SAFEUPLOAD_ACTIVATING_TARGET_STATUS) == 0);
+#pragma warning(suppress: 6001)
+                ProbeForWrite(OutputBuffer, sizeof(SAFEUPLOAD_ACTIVATING_TARGET_STATUS),
+                    __alignof(SAFEUPLOAD_ACTIVATING_TARGET_STATUS));
+                targetReply = (PSAFEUPLOAD_ACTIVATING_TARGET_STATUS)((PUCHAR)policy +
+                    sizeof(*policy) - sizeof(*targetReply));
+            }
+
+            // This bounded request is larger than the control header; copy it
+            // into the existing pool scratch buffer, never a kernel stack local.
+            RtlCopyMemory( request, InputBuffer, InputBufferLength );
+
+            if (request->Control.Version != SAFEUPLOAD_PROTOCOL_VERSION ||
+                request->Control.StructSize != InputBufferLength ||
+                request->Control.Command != command ||
+                request->Control.Reserved != 0 ||
+                request->Reserved != 0) {
+                status = STATUS_REVISION_MISMATCH;
+                leave;
+            }
+
+            volumeChars = (ULONG)request->VolumeNameChars;
+            relativeChars = (ULONG)request->RelativePathChars;
+            if (volumeChars == 0 || relativeChars < 2 ||
+                volumeChars > (ULONG)SAFEUPLOAD_ADMISSION_PROBE_MAX_STRING_CHARS ||
+                relativeChars > (ULONG)SAFEUPLOAD_ADMISSION_PROBE_MAX_STRING_CHARS ||
+                volumeChars > MAXULONG / (ULONG)sizeof( WCHAR ) ||
+                relativeChars > MAXULONG / (ULONG)sizeof( WCHAR )) {
+                status = STATUS_INVALID_PARAMETER;
+                leave;
+            }
+
+            volumeBytes = volumeChars * (ULONG)sizeof( WCHAR );
+            relativeBytes = relativeChars * (ULONG)sizeof( WCHAR );
+            if (relativeBytes > MAXULONG - volumeBytes) {
+                status = STATUS_INVALID_PARAMETER;
+                leave;
+            }
+            stringBytes = volumeBytes + relativeBytes;
+            if (stringBytes > MAXULONG -
+                (ULONG)FIELD_OFFSET( SAFEUPLOAD_ADMISSION_PROBE_REQUEST, Strings )) {
+                status = STATUS_INVALID_PARAMETER;
+                leave;
+            }
+            expectedLength = (ULONG)FIELD_OFFSET( SAFEUPLOAD_ADMISSION_PROBE_REQUEST, Strings ) + stringBytes;
+            if (InputBufferLength != expectedLength) {
+                status = STATUS_INVALID_BUFFER_SIZE;
+                leave;
+            }
+
+            volumeName.Buffer = request->Strings;
+            volumeName.Length = (USHORT)volumeBytes;
+            volumeName.MaximumLength = volumeName.Length;
+            relativePath.Buffer = request->Strings + volumeChars;
+            relativePath.Length = (USHORT)relativeBytes;
+            relativePath.MaximumLength = relativePath.Length;
+
+            for (index = 0; index < volumeChars; index += 1) {
+                if (volumeName.Buffer[index] == UNICODE_NULL) {
+                    status = STATUS_INVALID_PARAMETER;
+                    leave;
+                }
+            }
+            for (index = 0; index < relativeChars; index += 1) {
+
+                //
+                //  A colon would name an alternate data stream, whose section
+                //  pointers need not describe the default stream being probed.
+                //
+
+                if (relativePath.Buffer[index] == UNICODE_NULL ||
+                    relativePath.Buffer[index] == L':') {
+                    status = STATUS_INVALID_PARAMETER;
+                    leave;
+                }
+            }
+
+            if (!RtlPrefixUnicodeString( &volumePrefix, &volumeName, TRUE ) ||
+                relativePath.Buffer[0] != L'\\' ||
+                relativePath.Buffer[relativeChars - 1] == L'\\') {
+                status = STATUS_INVALID_PARAMETER;
+                leave;
+            }
+
+            if (command == SAFEUPLOAD_CONTROL_ADMISSION_PROBE) {
+                status = SafeUploadStageAdmissionProbe(&volumeName, &relativePath);
+            } else if (command == SAFEUPLOAD_CONTROL_ACTIVATING_TARGET_STATUS) {
+                UNICODE_STRING normalizedName;
+                normalizedName.Buffer = request->Strings;
+                normalizedName.Length = normalizedName.MaximumLength = (USHORT)stringBytes;
+                status = SafeUploadStageWritersActivatingTargetStatus(&normalizedName, targetReply);
+                if (NT_SUCCESS(status)) {
+                    RtlCopyMemory(OutputBuffer, targetReply, sizeof(*targetReply));
+                    *ReturnOutputBufferLength = sizeof(*targetReply);
+                }
+            } else {
+                status = SafeUploadStageRegistryEntryProbe(&volumeName, &relativePath, registryReply);
+                if (NT_SUCCESS(status)) {
+                    RtlCopyMemory(OutputBuffer, registryReply, sizeof(*registryReply));
+                    *ReturnOutputBufferLength = sizeof(*registryReply);
+                }
+            }
+            leave;
+        }
+
+        if (command == SAFEUPLOAD_CONTROL_REGISTRY_SET_CAPACITY) {
+            SAFEUPLOAD_CONTROL capacityControl;
+            if (InputBufferLength != sizeof(capacityControl) || OutputBuffer != NULL ||
+                OutputBufferLength != 0) {
+                status = STATUS_INVALID_BUFFER_SIZE;
+                leave;
+            }
+            RtlCopyMemory(&capacityControl, InputBuffer, sizeof(capacityControl));
+            if (capacityControl.Version != SAFEUPLOAD_PROTOCOL_VERSION ||
+                capacityControl.StructSize != sizeof(capacityControl) ||
+                capacityControl.Command != command ||
+                capacityControl.Reserved > SAFEUPLOAD_WRITER_REGISTRY_TOTAL_LIMIT) {
+                status = STATUS_REVISION_MISMATCH;
+                leave;
+            }
+            SafeUploadStageWritersSetCapacity(capacityControl.Reserved);
+            status = STATUS_SUCCESS;
+            leave;
+        }
+
+        if (command == SAFEUPLOAD_CONTROL_ADMISSION_DELETE_STREAM_CONTEXT) {
+            PSAFEUPLOAD_ADMISSION_DELETE_STREAM_CONTEXT_REQUEST request =
+                (PSAFEUPLOAD_ADMISSION_DELETE_STREAM_CONTEXT_REQUEST)policy;
+            UNICODE_STRING volumeName;
+            UNICODE_STRING relativePath;
+            UNICODE_STRING volumePrefix = RTL_CONSTANT_STRING(L"\\Device\\HarddiskVolume");
+            ULONG volumeChars;
+            ULONG relativeChars;
+            ULONG volumeBytes;
+            ULONG relativeBytes;
+            ULONG expectedLength;
+            ULONG index;
+            ULONG maximumDeleteSize =
+                (ULONG)FIELD_OFFSET(SAFEUPLOAD_ADMISSION_DELETE_STREAM_CONTEXT_REQUEST, Strings) +
+                (2UL * (ULONG)SAFEUPLOAD_ADMISSION_PROBE_MAX_STRING_CHARS * (ULONG)sizeof(WCHAR));
+
+            if (InputBufferLength < (ULONG)FIELD_OFFSET(
+                    SAFEUPLOAD_ADMISSION_DELETE_STREAM_CONTEXT_REQUEST, Strings) ||
+                InputBufferLength > maximumDeleteSize || OutputBuffer != NULL || OutputBufferLength != 0) {
+                status = STATUS_INVALID_BUFFER_SIZE;
+                leave;
+            }
+            RtlCopyMemory(request, InputBuffer, InputBufferLength);
+            if (request->Control.Version != SAFEUPLOAD_PROTOCOL_VERSION ||
+                request->Control.StructSize != InputBufferLength ||
+                request->Control.Command != command || request->Control.Reserved != 0 ||
+                request->Reserved != 0 || request->DriveLetter != L'C' || request->Reserved2 != 0) {
+                status = STATUS_REVISION_MISMATCH;
+                leave;
+            }
+
+            volumeChars = (ULONG)request->VolumeNameChars;
+            relativeChars = (ULONG)request->RelativePathChars;
+            if (volumeChars < volumePrefix.Length / sizeof(WCHAR) ||
+                relativeChars < 2 ||
+                volumeChars > (ULONG)SAFEUPLOAD_ADMISSION_PROBE_MAX_STRING_CHARS ||
+                relativeChars > (ULONG)SAFEUPLOAD_ADMISSION_PROBE_MAX_STRING_CHARS) {
+                status = STATUS_INVALID_PARAMETER;
+                leave;
+            }
+            volumeBytes = volumeChars * (ULONG)sizeof(WCHAR);
+            relativeBytes = relativeChars * (ULONG)sizeof(WCHAR);
+            expectedLength = (ULONG)FIELD_OFFSET(
+                SAFEUPLOAD_ADMISSION_DELETE_STREAM_CONTEXT_REQUEST, Strings) +
+                volumeBytes + relativeBytes;
+            if (InputBufferLength != expectedLength) {
+                status = STATUS_INVALID_BUFFER_SIZE;
+                leave;
+            }
+
+            volumeName.Buffer = request->Strings;
+            volumeName.Length = (USHORT)volumeBytes;
+            volumeName.MaximumLength = volumeName.Length;
+            relativePath.Buffer = request->Strings + volumeChars;
+            relativePath.Length = (USHORT)relativeBytes;
+            relativePath.MaximumLength = relativePath.Length;
+            if (!RtlPrefixUnicodeString(&volumePrefix, &volumeName, TRUE) ||
+                relativePath.Buffer[0] != L'\\' ||
+                relativePath.Buffer[relativeChars - 1] == L'\\') {
+                status = STATUS_INVALID_PARAMETER;
+                leave;
+            }
+            for (index = 0; index < volumeChars; ++index) {
+                if (volumeName.Buffer[index] == UNICODE_NULL) {
+                    status = STATUS_INVALID_PARAMETER;
+                    leave;
+                }
+            }
+            for (index = 0; index < relativeChars; ++index) {
+                if (relativePath.Buffer[index] == UNICODE_NULL || relativePath.Buffer[index] == L':') {
+                    status = STATUS_INVALID_PARAMETER;
+                    leave;
+                }
+            }
+
+            status = SafeUploadStageAdmissionDeleteStreamContext(&volumeName, &relativePath);
+            leave;
+        }
+
+        if (command == SAFEUPLOAD_CONTROL_ADMISSION_VOLUME_STATUS ||
+            command == SAFEUPLOAD_CONTROL_ADMISSION_VOLUME_OBSERVE) {
+            PSAFEUPLOAD_ADMISSION_VOLUME_STATUS volumeStatus = (PSAFEUPLOAD_ADMISSION_VOLUME_STATUS)policy;
+            if (InputBufferLength != sizeof(SAFEUPLOAD_CONTROL) || OutputBuffer == NULL ||
+                OutputBufferLength != sizeof(*volumeStatus)) {
+                status = STATUS_INVALID_BUFFER_SIZE;
+                leave;
+            }
+            if (controlHeader.Version != SAFEUPLOAD_PROTOCOL_VERSION ||
+                controlHeader.StructSize != sizeof(SAFEUPLOAD_CONTROL) || controlHeader.Reserved != 0) {
+                status = STATUS_REVISION_MISMATCH;
+                leave;
+            }
+#pragma warning( suppress: 6001 )
+            ProbeForWrite(OutputBuffer, sizeof(*volumeStatus), __alignof(SAFEUPLOAD_ADMISSION_VOLUME_STATUS));
+            status = SafeUploadStageAdmissionVolumeStatus(volumeStatus,
+                command == SAFEUPLOAD_CONTROL_ADMISSION_VOLUME_STATUS);
+            if (NT_SUCCESS(status)) {
+                RtlCopyMemory(OutputBuffer, volumeStatus, sizeof(*volumeStatus));
+                *ReturnOutputBufferLength = sizeof(*volumeStatus);
+            }
+            leave;
+        }
+
+        if (command == SAFEUPLOAD_CONTROL_ADMISSION_COVERAGE) {
+            if (InputBufferLength != sizeof(SAFEUPLOAD_CONTROL) || OutputBuffer == NULL ||
+                OutputBufferLength != sizeof(SAFEUPLOAD_ADMISSION_COVERAGE_STATUS)) {
+                status = STATUS_INVALID_BUFFER_SIZE;
+                leave;
+            }
+            if (controlHeader.Version != SAFEUPLOAD_PROTOCOL_VERSION ||
+                controlHeader.StructSize != sizeof(SAFEUPLOAD_CONTROL) ||
+                controlHeader.Command != command || controlHeader.Reserved != 0) {
+                status = STATUS_REVISION_MISMATCH;
+                leave;
+            }
+#pragma warning( suppress: 6001 )
+            ProbeForWrite(OutputBuffer, sizeof(SAFEUPLOAD_ADMISSION_COVERAGE_STATUS),
+                __alignof(SAFEUPLOAD_ADMISSION_COVERAGE_STATUS));
+            coverageStatus = ExAllocatePool2(POOL_FLAG_PAGED,
+                sizeof(*coverageStatus), SAFEUPLOAD_POOL_TAG);
+            if (coverageStatus == NULL) {
+                status = STATUS_INSUFFICIENT_RESOURCES;
+                leave;
+            }
+            status = SafeUploadStageAdmissionCoverageStatus(coverageStatus);
+            if (NT_SUCCESS(status)) {
+                RtlCopyMemory(OutputBuffer, coverageStatus, sizeof(*coverageStatus));
+                *ReturnOutputBufferLength = sizeof(*coverageStatus);
+            }
+            leave;
+        }
+
+        if (command == SAFEUPLOAD_CONTROL_ADMISSION_CANARY_HOLD) {
+            PSAFEUPLOAD_ADMISSION_CANARY_HOLD_REQUEST request =
+                (PSAFEUPLOAD_ADMISSION_CANARY_HOLD_REQUEST)policy;
+            PSAFEUPLOAD_ADMISSION_CANARY_HOLD_REPLY reply;
+            UNICODE_STRING volumeName;
+            ULONG index;
+
+            if (InputBufferLength != sizeof(*request) || OutputBuffer == NULL ||
+                OutputBufferLength != sizeof(*reply)) {
+                status = STATUS_INVALID_BUFFER_SIZE;
+                leave;
+            }
+            /* Reuse the existing pool scratch buffer instead of placing this fixed request on the stack. */
+            RtlCopyMemory(request, InputBuffer, sizeof(*request));
+            if (request->Control.Version != SAFEUPLOAD_PROTOCOL_VERSION ||
+                request->Control.StructSize != sizeof(*request) ||
+                request->Control.Command != command || request->Control.Reserved != 0 ||
+                request->Reserved != 0 || request->VolumeNameChars == 0 ||
+                request->VolumeNameChars >= SAFEUPLOAD_CANARY_VOLUME_CHARS ||
+                request->VolumeName[request->VolumeNameChars] != UNICODE_NULL ||
+                request->HoldMilliseconds == 0 ||
+                request->HoldMilliseconds > SAFEUPLOAD_CANARY_MAX_HOLD_MS) {
+                status = STATUS_INVALID_PARAMETER;
+                leave;
+            }
+            for (index = 0; index < request->VolumeNameChars; ++index) {
+                if (request->VolumeName[index] == UNICODE_NULL) {
+                    status = STATUS_INVALID_PARAMETER;
+                    leave;
+                }
+            }
+            for (index = request->VolumeNameChars + 1; index < SAFEUPLOAD_CANARY_VOLUME_CHARS; ++index) {
+                if (request->VolumeName[index] != UNICODE_NULL) {
+                    status = STATUS_INVALID_PARAMETER;
+                    leave;
+                }
+            }
+            volumeName.Buffer = request->VolumeName;
+            volumeName.Length = (USHORT)(request->VolumeNameChars * sizeof(WCHAR));
+            volumeName.MaximumLength = sizeof(request->VolumeName);
+#pragma warning( suppress: 6001 )
+            ProbeForWrite(OutputBuffer, sizeof(*reply), __alignof(SAFEUPLOAD_ADMISSION_CANARY_HOLD_REPLY));
+            /* The 1 KB reply lives in pool, not on this already large dispatch frame. */
+            reply = ExAllocatePool2(POOL_FLAG_PAGED, sizeof(*reply), SAFEUPLOAD_POOL_TAG);
+            if (reply == NULL) {
+                status = STATUS_INSUFFICIENT_RESOURCES;
+                leave;
+            }
+            try {
+                status = SafeUploadStageAdmissionCanaryHold(&volumeName,
+                    request->HoldMilliseconds, reply);
+                if (NT_SUCCESS(status)) {
+                    RtlCopyMemory(OutputBuffer, reply, sizeof(*reply));
+                    *ReturnOutputBufferLength = sizeof(*reply);
+                }
+            } finally {
+                ExFreePoolWithTag(reply, SAFEUPLOAD_POOL_TAG);
+            }
+            leave;
+        }
+
+        if (command == SAFEUPLOAD_CONTROL_ADMISSION_CANARY_HOLD_CANCEL) {
+            SAFEUPLOAD_CONTROL cancelControl;
+            if (InputBufferLength != sizeof(cancelControl) || OutputBuffer != NULL ||
+                OutputBufferLength != 0) {
+                status = STATUS_INVALID_BUFFER_SIZE;
+                leave;
+            }
+            RtlCopyMemory(&cancelControl, InputBuffer, sizeof(cancelControl));
+            if (cancelControl.Version != SAFEUPLOAD_PROTOCOL_VERSION ||
+                cancelControl.StructSize != sizeof(cancelControl) ||
+                cancelControl.Command != command || cancelControl.Reserved != 0) {
+                status = STATUS_REVISION_MISMATCH;
+                leave;
+            }
+            SafeUploadStageAdmissionCanaryHoldCancel();
+            status = STATUS_SUCCESS;
+            leave;
+        }
+
+        if (command == SAFEUPLOAD_CONTROL_ADMISSION_FENCE_REFRESH ||
+            command == SAFEUPLOAD_CONTROL_ADMISSION_FENCE_STATUS) {
+            SAFEUPLOAD_CONTROL fenceControl;
+            SAFEUPLOAD_FENCE_STATUS fenceStatus;
+            BOOLEAN wantStatus = command == SAFEUPLOAD_CONTROL_ADMISSION_FENCE_STATUS;
+
+            if (InputBufferLength != sizeof( SAFEUPLOAD_CONTROL )) {
+                status = STATUS_INVALID_BUFFER_SIZE;
+                leave;
+            }
+            if (wantStatus ? (OutputBuffer == NULL || OutputBufferLength != sizeof( fenceStatus )) :
+                             (OutputBuffer != NULL || OutputBufferLength != 0)) {
+                status = STATUS_INVALID_BUFFER_SIZE;
+                leave;
+            }
+
+            RtlCopyMemory( &fenceControl, InputBuffer, sizeof( fenceControl ) );
+            if (fenceControl.Version != SAFEUPLOAD_PROTOCOL_VERSION ||
+                fenceControl.StructSize != sizeof( SAFEUPLOAD_CONTROL ) ||
+                fenceControl.Command != command ||
+                fenceControl.Reserved != 0) {
+                status = STATUS_REVISION_MISMATCH;
+                leave;
+            }
+
+            if (!wantStatus) {
+                if (SafeUploadData.BootStartMode) {
+                    status = STATUS_NOT_SUPPORTED;
+                    leave;
+                }
+                status = SafeUploadStageFenceRefresh( NULL );
+                leave;
+            }
+
+#pragma warning( suppress: 6001 )
+            ProbeForWrite( OutputBuffer, sizeof( fenceStatus ), __alignof( SAFEUPLOAD_FENCE_STATUS ) );
+            SafeUploadStageFenceGetStatus( &fenceStatus );
+            RtlCopyMemory( OutputBuffer, &fenceStatus, sizeof( fenceStatus ) );
+            *ReturnOutputBufferLength = sizeof( fenceStatus );
+            leave;
+        }
+#endif
+
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+        if (command == SAFEUPLOAD_CONTROL_ACTIVATING_STATUS) {
+            if (InputBufferLength != sizeof(SAFEUPLOAD_CONTROL) || OutputBuffer == NULL ||
+                OutputBufferLength != sizeof(SAFEUPLOAD_ACTIVATING_STATUS_PAGE)) {
+                status = STATUS_INVALID_BUFFER_SIZE;
+                leave;
+            }
+            if (controlHeader.Version != SAFEUPLOAD_PROTOCOL_VERSION ||
+                controlHeader.StructSize != sizeof(SAFEUPLOAD_CONTROL) ||
+                controlHeader.Command != command) {
+                status = STATUS_REVISION_MISMATCH;
+                leave;
+            }
+#pragma warning( suppress: 6001 )
+            ProbeForWrite(OutputBuffer, sizeof(SAFEUPLOAD_ACTIVATING_STATUS_PAGE),
+                __alignof(SAFEUPLOAD_ACTIVATING_STATUS_PAGE));
+            activatingPage = ExAllocatePool2(POOL_FLAG_PAGED,
+                sizeof(*activatingPage), SAFEUPLOAD_POOL_TAG);
+            if (activatingPage == NULL) {
+                status = STATUS_INSUFFICIENT_RESOURCES;
+                leave;
+            }
+            status = SafeUploadStageWritersActivatingStatusPage(controlHeader.Reserved, activatingPage);
+            if (NT_SUCCESS(status)) {
+                RtlCopyMemory(OutputBuffer, activatingPage, sizeof(*activatingPage));
+                *ReturnOutputBufferLength = sizeof(*activatingPage);
+            }
+            leave;
+        }
+
+        if (command == SAFEUPLOAD_CONTROL_ACTIVATING_DIAGNOSTIC_STATUS) {
+            if (InputBufferLength != sizeof(SAFEUPLOAD_CONTROL) || OutputBuffer == NULL ||
+                OutputBufferLength != sizeof(SAFEUPLOAD_ACTIVATING_DIAGNOSTIC_STATUS_PAGE)) {
+                status = STATUS_INVALID_BUFFER_SIZE;
+                leave;
+            }
+            if (controlHeader.Version != SAFEUPLOAD_PROTOCOL_VERSION ||
+                controlHeader.StructSize != sizeof(SAFEUPLOAD_CONTROL) ||
+                controlHeader.Command != command) {
+                status = STATUS_REVISION_MISMATCH;
+                leave;
+            }
+#pragma warning( suppress: 6001 )
+            ProbeForWrite(OutputBuffer, sizeof(SAFEUPLOAD_ACTIVATING_DIAGNOSTIC_STATUS_PAGE),
+                __alignof(SAFEUPLOAD_ACTIVATING_DIAGNOSTIC_STATUS_PAGE));
+            activatingDiagnosticPage = ExAllocatePool2(POOL_FLAG_PAGED,
+                sizeof(*activatingDiagnosticPage), SAFEUPLOAD_POOL_TAG);
+            if (activatingDiagnosticPage == NULL) {
+                status = STATUS_INSUFFICIENT_RESOURCES;
+                leave;
+            }
+            status = SafeUploadStageWritersActivatingDiagnosticStatusPage(
+                controlHeader.Reserved, activatingDiagnosticPage);
+            if (NT_SUCCESS(status)) {
+                RtlCopyMemory(OutputBuffer, activatingDiagnosticPage,
+                    sizeof(*activatingDiagnosticPage));
+                *ReturnOutputBufferLength = sizeof(*activatingDiagnosticPage);
+            }
+            leave;
+        }
+
+        if (command == SAFEUPLOAD_CONTROL_ADMISSION_EPOCH_STATUS) {
+            SAFEUPLOAD_ADMISSION_EPOCH_STATUS epochStatus;
+            if (InputBufferLength != sizeof(SAFEUPLOAD_CONTROL) || OutputBuffer == NULL ||
+                OutputBufferLength != sizeof(epochStatus)) {
+                status = STATUS_INVALID_BUFFER_SIZE;
+                leave;
+            }
+            if (controlHeader.Version != SAFEUPLOAD_PROTOCOL_VERSION ||
+                controlHeader.StructSize != sizeof(SAFEUPLOAD_CONTROL) ||
+                controlHeader.Command != command || controlHeader.Reserved != 0) {
+                status = STATUS_REVISION_MISMATCH;
+                leave;
+            }
+#pragma warning( suppress: 6001 )
+            ProbeForWrite(OutputBuffer, sizeof(epochStatus), __alignof(SAFEUPLOAD_ADMISSION_EPOCH_STATUS));
+            status = SafeUploadPolicyAdmissionEpochStatus(&epochStatus);
+            if (NT_SUCCESS(status)) {
+                RtlCopyMemory(OutputBuffer, &epochStatus, sizeof(epochStatus));
+                *ReturnOutputBufferLength = sizeof(epochStatus);
+            }
+            leave;
+        }
+
+        if (command == SAFEUPLOAD_CONTROL_ADMISSION_EPOCH_FORCE_TIMEOUT) {
+            if (InputBufferLength != sizeof(SAFEUPLOAD_CONTROL) || OutputBuffer != NULL ||
+                OutputBufferLength != 0 || controlHeader.Version != SAFEUPLOAD_PROTOCOL_VERSION ||
+                controlHeader.StructSize != sizeof(SAFEUPLOAD_CONTROL) ||
+                controlHeader.Command != command || controlHeader.Reserved != 0) {
+                status = STATUS_INVALID_PARAMETER;
+                leave;
+            }
+            SafeUploadPolicyAdmissionForceNextTimeout();
+            status = STATUS_SUCCESS;
+            leave;
+        }
+
+        if (command == SAFEUPLOAD_CONTROL_WRITER_STATE_STATUS) {
+            SAFEUPLOAD_CONTROL writerControl;
+            SAFEUPLOAD_WRITER_STATE_STATUS writerStatus;
+
+            if (InputBufferLength != sizeof( SAFEUPLOAD_CONTROL ) ||
+                OutputBuffer == NULL || OutputBufferLength != sizeof( writerStatus )) {
+                status = STATUS_INVALID_BUFFER_SIZE;
+                leave;
+            }
+            RtlCopyMemory( &writerControl, InputBuffer, sizeof( writerControl ) );
+            if (writerControl.Version != SAFEUPLOAD_PROTOCOL_VERSION ||
+                writerControl.StructSize != sizeof( SAFEUPLOAD_CONTROL ) ||
+                writerControl.Command != command ||
+                writerControl.Reserved != 0) {
+                status = STATUS_REVISION_MISMATCH;
+                leave;
+            }
+#pragma warning( suppress: 6001 )
+            ProbeForWrite( OutputBuffer, sizeof( writerStatus ), __alignof( SAFEUPLOAD_WRITER_STATE_STATUS ) );
+            SafeUploadStageWritersGetStatus( &writerStatus );
+            RtlCopyMemory( OutputBuffer, &writerStatus, sizeof( writerStatus ) );
+            *ReturnOutputBufferLength = sizeof( writerStatus );
+            leave;
+        }
+#endif
 
         if (command == SAFEUPLOAD_CONTROL_GET_COUNTERS) {
 
@@ -598,9 +1414,21 @@ Return Value:
             leave;
         }
 
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+        if (command == SAFEUPLOAD_CONTROL_STAGE_PUBLICATION) {
+            if (InputBufferLength != sizeof( SAFEUPLOAD_PUBLICATION_MESSAGE )) {
+                status = STATUS_INVALID_BUFFER_SIZE;
+                leave;
+            }
+            RtlCopyMemory( policy, InputBuffer, sizeof( SAFEUPLOAD_PUBLICATION_MESSAGE ) );
+            status = SafeUploadSetPublicationPermit( (PSAFEUPLOAD_PUBLICATION_MESSAGE) policy );
+            leave;
+        }
+#endif
+
         if (command == SAFEUPLOAD_CONTROL_GRANT_OVERRIDE) {
 
-            SAFEUPLOAD_OVERRIDE_MESSAGE grant;
+            PSAFEUPLOAD_OVERRIDE_MESSAGE grant = (PSAFEUPLOAD_OVERRIDE_MESSAGE)policy;
 
             if (InputBufferLength < sizeof( SAFEUPLOAD_OVERRIDE_MESSAGE )) {
 
@@ -615,19 +1443,19 @@ Return Value:
             //  verificacao e o uso.
             //
 
-            RtlCopyMemory( &grant, InputBuffer, sizeof( SAFEUPLOAD_OVERRIDE_MESSAGE ) );
+            RtlCopyMemory( grant, InputBuffer, sizeof( SAFEUPLOAD_OVERRIDE_MESSAGE ) );
 
-            if (grant.PathLength == 0 ||
-                grant.PathLength > (SAFEUPLOAD_MAX_PATH_CHARS - 1) * sizeof( WCHAR )) {
+            if (grant->PathLength == 0 ||
+                grant->PathLength > (SAFEUPLOAD_MAX_PATH_CHARS - 1) * sizeof( WCHAR )) {
 
                 status = STATUS_INVALID_PARAMETER;
                 leave;
             }
 
-            status = SafeUploadGrantOverride( grant.ProcessId,
-                                              grant.Path,
-                                              (USHORT) grant.PathLength,
-                                              grant.DurationSeconds );
+            status = SafeUploadGrantOverride( grant->ProcessId,
+                                              grant->Path,
+                                              (USHORT) grant->PathLength,
+                                              grant->DurationSeconds );
             leave;
         }
 
@@ -657,6 +1485,13 @@ Return Value:
         status = GetExceptionCode();
     }
 
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    if (activatingPage != NULL) ExFreePoolWithTag(activatingPage, SAFEUPLOAD_POOL_TAG);
+    if (activatingDiagnosticPage != NULL)
+        ExFreePoolWithTag(activatingDiagnosticPage, SAFEUPLOAD_POOL_TAG);
+    if (coverageStatus != NULL) ExFreePoolWithTag(coverageStatus, SAFEUPLOAD_POOL_TAG);
+#endif
+
     //
     //  Only the policy command has a policy to validate. Testing the status
     //  alone would run this over the untouched, zeroed buffer after a
@@ -675,9 +1510,22 @@ Return Value:
 
             status = STATUS_REVISION_MISMATCH;
 
-        } else {
+        } else if (policy->Control.Reserved == 0) {
 
             status = SafeUploadSetPolicy( policy );
+            if (NT_SUCCESS(status)) {
+                InterlockedExchange(&SafeUploadData.AuthenticatedClient, 1);
+            }
+
+        } else if (policy->Control.Reserved == SAFEUPLOAD_POLICY_CONTROL_FINALIZE_BOOT_SCOPES) {
+            /* The second SET_POLICY arrives only after the service durably
+             * commits Scopes and removes PendingScopes. Normalize the header
+             * before comparing it with the already-installed live snapshot. */
+            policy->Control.Reserved = 0;
+            status = SafeUploadFinalizeBootPolicy(policy);
+
+        } else {
+            status = STATUS_INVALID_PARAMETER;
         }
     }
 

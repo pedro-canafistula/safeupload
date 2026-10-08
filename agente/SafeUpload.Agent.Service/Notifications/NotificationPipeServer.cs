@@ -9,10 +9,9 @@ namespace SafeUpload.Agent.Service.Notifications;
 /// Entrega as notificações aos aplicativos de bandeja conectados, por named
 /// pipe.
 ///
-/// O canal é de mão única: o servidor escreve, o cliente lê, e não existe
-/// caminho de volta. Não é economia de código — é a garantia de que nada que o
-/// usuário faça na interface pode alterar um veredito. Um canal bidirecional
-/// exigiria confiar no que o cliente manda; sem ele, não há o que validar.
+/// Este canal é de mão única: o servidor escreve e o cliente lê. O pedido de
+/// justificativa usa outro pipe, onde o serviço valida o ID e a sessão do
+/// bloqueio antes de enviar uma concessão ao driver.
 /// </summary>
 public sealed class NotificationPipeServer : BackgroundService
 {
@@ -151,9 +150,10 @@ public sealed class NotificationPipeServer : BackgroundService
     {
         // A sessao do aplicativo que conectou, para nao entregar a uma sessao
         // o bloqueio ocorrido em outra.
-        var sessionId = SessionResolver.TryGetClientSessionId(pipe.SafePipeHandle);
+        SessionResolver.ProcessIdentity? client = SessionResolver.TryGetClientIdentity(pipe.SafePipeHandle);
+        uint? sessionId = client?.SessionId;
 
-        using var subscription = _hub.Subscribe(sessionId);
+        using var subscription = _hub.Subscribe(sessionId, client?.UserSid.Value);
 
         try
         {
@@ -171,7 +171,7 @@ public sealed class NotificationPipeServer : BackgroundService
                 // O estado vai primeiro, antes de qualquer evento: sem ele o
                 // aplicativo recém-aberto não teria como preencher os cartões,
                 // porque quem carrega política agora é o serviço.
-                if (_hub.CurrentStatus is { } status
+                if (_hub.GetRecordedStatus() is { } status
                     && !await TryWriteAsync(writer, status, stoppingToken).ConfigureAwait(false))
                 {
                     return;

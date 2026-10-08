@@ -147,6 +147,11 @@ typedef struct _SAFEUPLOAD_DATA {
 
     volatile ULONG InspectorProcessId;
 
+    /* Set only after the connected SYSTEM client installs a valid policy. */
+    volatile LONG AuthenticatedClient;
+    volatile ULONG BootPolicyState;
+    BOOLEAN BootStartMode;
+
     //
     //  Guards the user-mode channel against teardown. Every caller of
     //  FltSendMessage holds rundown protection for the duration of the
@@ -213,9 +218,76 @@ typedef enum _SAFEUPLOAD_VOLUME_KIND {
 
 } SAFEUPLOAD_VOLUME_KIND, *PSAFEUPLOAD_VOLUME_KIND;
 
+/* Up to two boot records are unioned until the first authenticated live
+ * policy replaces them. Kept separately from SAFEUPLOAD_POLICY because the
+ * live port protocol deliberately remains capped at 16 destination paths. */
+typedef struct _SAFEUPLOAD_BOOT_SCOPE_SET {
+    UINT32 PrefixCount;
+    UINT32 Flags;
+    BOOLEAN Overflow;
+    USHORT PrefixChars[SAFEUPLOAD_BOOT_SCOPE_MAX_PREFIXES];
+    WCHAR Prefixes[SAFEUPLOAD_BOOT_SCOPE_MAX_PREFIXES][SAFEUPLOAD_MAX_PREFIX_CHARS];
+} SAFEUPLOAD_BOOT_SCOPE_SET, *PSAFEUPLOAD_BOOT_SCOPE_SET;
+
+
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+/* Shared by the instance and its stream contexts so teardown state outlives either context. */
+typedef struct _SAFEUPLOAD_INSTANCE_TEARDOWN_TOKEN {
+    volatile LONG ReferenceCount;
+    volatile LONG State;
+    volatile LONG Published;
+} SAFEUPLOAD_INSTANCE_TEARDOWN_TOKEN, *PSAFEUPLOAD_INSTANCE_TEARDOWN_TOKEN;
+
+#define SAFEUPLOAD_INSTANCE_STATE_ACTIVE       ((LONG)0)
+#define SAFEUPLOAD_INSTANCE_STATE_TEARING_DOWN ((LONG)1)
+#define SAFEUPLOAD_INSTANCE_STATE_UNKNOWN      ((LONG)2)
+
+/* Sticky prototype registry loss reasons; these are diagnostic bits only. */
+#define SAFEUPLOAD_REGISTRY_UNKNOWN_CAPACITY    ((LONG)0x00000001)
+#define SAFEUPLOAD_REGISTRY_UNKNOWN_ALLOCATION  ((LONG)0x00000002)
+#define SAFEUPLOAD_REGISTRY_UNKNOWN_IDENTITY    ((LONG)0x00000004)
+#define SAFEUPLOAD_REGISTRY_UNKNOWN_TRANSACTION ((LONG)0x00000008)
+#define SAFEUPLOAD_REGISTRY_UNKNOWN_RENAME      ((LONG)0x00000010)
+#define SAFEUPLOAD_REGISTRY_UNKNOWN_TEARDOWN    ((LONG)0x00000020)
+#define SAFEUPLOAD_REGISTRY_UNKNOWN_CLEANUP     ((LONG)0x00000040)
+#define SAFEUPLOAD_REGISTRY_UNKNOWN_TRUST       ((LONG)0x00000080)
+#define SAFEUPLOAD_REGISTRY_UNKNOWN_CREATE_IN_FLIGHT ((LONG)0x00000100)
+#define SAFEUPLOAD_REGISTRY_UNKNOWN_RENAME_IN_FLIGHT ((LONG)0x00000200)
+
+/* FltEnlistInTransaction requires a registered, non-NULL transaction context. */
+typedef struct _SAFEUPLOAD_TRANSACTION_CONTEXT {
+    ULONG Signature;
+    volatile LONG State;
+} SAFEUPLOAD_TRANSACTION_CONTEXT, *PSAFEUPLOAD_TRANSACTION_CONTEXT;
+#define SAFEUPLOAD_TRANSACTION_CONTEXT_SIGNATURE 'xUwS'
+#endif
+
+
 typedef struct _SAFEUPLOAD_INSTANCE_CONTEXT {
 
     SAFEUPLOAD_VOLUME_KIND VolumeKind;
+    USHORT VolumeNameChars;
+    WCHAR VolumeName[SAFEUPLOAD_MAX_PREFIX_CHARS]; /* Cached NT volume name for resident scope classification. */
+    FLT_INSTANCE_SETUP_FLAGS SetupFlags;
+    volatile LONG TrustState; /* Monotonic per instance: canary pass is required; loss is sticky until reboot. */
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    PSAFEUPLOAD_INSTANCE_TEARDOWN_TOKEN TeardownToken;
+    volatile LONG WritersUntracked; /* Sticky for this attachment if a writer cannot get a context. */
+    volatile LONG RegistryUnknownReasons;
+    DECLSPEC_ALIGN(8) volatile LONG64 RegistryFirstUnknown; /* First context publication: reason low32, origin line high32; not event chronology. */
+    volatile LONG64 RegistryDirectoryRenameGeneration; /* qualifies names resolved before a completed parent move */
+    volatile LONG64 RegistryRenameLossGeneration; /* makes all older retained names unresolved at expansion */
+    volatile LONG CanaryState;
+    volatile LONG64 CanaryStartInterruptTime;
+    NTSTATUS CanaryStatus;
+    UINT32 CanaryChecks;
+    NTSTATUS CanaryCleanupStatus;
+    FLT_FILESYSTEM_TYPE FileSystemType;
+    NTSTATUS FileSystemStatus;
+    NTSTATUS VolumeGuidStatus;
+    UINT32 VolumeGuidChars;
+    WCHAR VolumeGuid[64]; /* Immutable after InstanceSetup; query failure stays explicit. */
+#endif
 
 } SAFEUPLOAD_INSTANCE_CONTEXT, *PSAFEUPLOAD_INSTANCE_CONTEXT;
 
@@ -225,9 +297,16 @@ typedef struct _SAFEUPLOAD_INSTANCE_CONTEXT {
 //  verdict for the file has to be thrown away.
 //
 
+
+
 typedef struct _SAFEUPLOAD_STREAMHANDLE_CONTEXT {
 
     BOOLEAN OpenedForWrite;
+    BOOLEAN OverrideGranted;
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    EX_PUSH_LOCK DirectoryLock;
+    PVOID DirectoryView;
+#endif
 
 } SAFEUPLOAD_STREAMHANDLE_CONTEXT, *PSAFEUPLOAD_STREAMHANDLE_CONTEXT;
 
@@ -264,6 +343,9 @@ typedef struct _SAFEUPLOAD_STREAM_CONTEXT {
     //
 
     BOOLEAN ScopeEvaluated;
+
+    // A cached result belongs to the policy snapshot that produced it.
+    LONG PolicyGeneration;
 
     //
     //  SAFEUPLOAD_REQUEST_FLAG_SCOPE_*, or zero when out of scope.
@@ -304,6 +386,23 @@ typedef struct _SAFEUPLOAD_STREAM_CONTEXT {
     LARGE_INTEGER FileSize;
     LARGE_INTEGER LastWriteTime;
 
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+
+    //
+    //  H(F): the file objects opened with write access on this stream that have
+    //  not yet seen IRP_MJ_CLEANUP. Only objects counted at post-create are ever
+    //  removed, so a stray cleanup can never undercount. WritersUntracked is
+    //  sticky: a write open could not be recorded, so the count is a lower bound.
+    //
+
+    KSPIN_LOCK WriterLock;
+    LIST_ENTRY WriterObjects;
+    volatile LONG WritersUntracked;
+    PVOID WriterRegistryEntry; /* Identity history is owned by StageWriters; H nodes reference it. */
+    PSAFEUPLOAD_INSTANCE_TEARDOWN_TOKEN TeardownToken;
+
+#endif
+
 } SAFEUPLOAD_STREAM_CONTEXT, *PSAFEUPLOAD_STREAM_CONTEXT;
 
 extern CONST FLT_CONTEXT_REGISTRATION SafeUploadContextRegistration[];
@@ -318,16 +417,23 @@ NTSTATUS
 SafeUploadSetInstanceContext (
     _In_ PCFLT_RELATED_OBJECTS FltObjects,
     _In_ DEVICE_TYPE VolumeDeviceType,
+    _In_ FLT_INSTANCE_SETUP_FLAGS SetupFlags,
     _Out_ PSAFEUPLOAD_VOLUME_KIND VolumeKind
     );
 
 NTSTATUS
 SafeUploadMarkHandleForWrite (
-    _In_ PCFLT_RELATED_OBJECTS FltObjects
+    _In_ PCFLT_RELATED_OBJECTS FltObjects,
+    _In_ BOOLEAN OverrideGranted
     );
 
 BOOLEAN
 SafeUploadHandleWasOpenedForWrite (
+    _In_ PCFLT_RELATED_OBJECTS FltObjects
+    );
+
+BOOLEAN
+SafeUploadHandleHasOverride (
     _In_ PCFLT_RELATED_OBJECTS FltObjects
     );
 
@@ -402,6 +508,13 @@ SafeUploadPostCreate (
 
 FLT_PREOP_CALLBACK_STATUS
 SafeUploadPreCleanup (
+    _Inout_ PFLT_CALLBACK_DATA Data,
+    _In_ PCFLT_RELATED_OBJECTS FltObjects,
+    _Flt_CompletionContext_Outptr_ PVOID *CompletionContext
+    );
+
+FLT_PREOP_CALLBACK_STATUS
+SafeUploadPreWrite (
     _Inout_ PFLT_CALLBACK_DATA Data,
     _In_ PCFLT_RELATED_OBJECTS FltObjects,
     _Flt_CompletionContext_Outptr_ PVOID *CompletionContext
@@ -557,8 +670,12 @@ typedef struct _SAFEUPLOAD_POLICY {
 
 VOID
 SafeUploadInitializePolicy (
-    VOID
+    _In_ PUNICODE_STRING RegistryPath
     );
+
+NTSTATUS SafeUploadReadBootPolicy(_In_ PUNICODE_STRING ServiceRegistryPath,
+    _Out_ PSAFEUPLOAD_POLICY_MESSAGE Policy, _Out_ PSAFEUPLOAD_BOOT_SCOPE_SET Scopes,
+    _Out_ PUINT32 State, _Out_ PBOOLEAN BootStartMode);
 
 VOID
 SafeUploadFreePolicy (
@@ -568,6 +685,68 @@ SafeUploadFreePolicy (
 NTSTATUS
 SafeUploadSetPolicy (
     _In_ CONST SAFEUPLOAD_POLICY_MESSAGE *Message
+    );
+
+NTSTATUS SafeUploadFinalizeBootPolicy(_In_ CONST SAFEUPLOAD_POLICY_MESSAGE *Message);
+
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+#define SAFEUPLOAD_ADMISSION_EPOCH_TOKEN_SIGNATURE 'tEpS'
+typedef struct _SAFEUPLOAD_ADMISSION_EPOCH SAFEUPLOAD_ADMISSION_EPOCH, *PSAFEUPLOAD_ADMISSION_EPOCH;
+typedef struct _SAFEUPLOAD_ADMISSION_EPOCH_TOKEN {
+    UINT32 Signature;
+    PSAFEUPLOAD_ADMISSION_EPOCH Epoch;
+    PVOID InnerCompletionContext;
+    UINT32 OperationKind;
+} SAFEUPLOAD_ADMISSION_EPOCH_TOKEN, *PSAFEUPLOAD_ADMISSION_EPOCH_TOKEN;
+
+NTSTATUS SafeUploadPolicyAdmissionAcquire(_Outptr_ PSAFEUPLOAD_ADMISSION_EPOCH_TOKEN *Token);
+VOID SafeUploadPolicyAdmissionRelease(_In_opt_ PSAFEUPLOAD_ADMISSION_EPOCH_TOKEN Token);
+BOOLEAN SafeUploadPolicyAdmissionMustRetry(VOID);
+NTSTATUS SafeUploadPolicyAdmissionEpochStatus(_Out_ PSAFEUPLOAD_ADMISSION_EPOCH_STATUS Status);
+VOID SafeUploadPolicyAdmissionForceNextTimeout(VOID);
+VOID SafeUploadStageWritersQueueRecheck(VOID);
+VOID SafeUploadStageWritersQueueLifetimeRecheck(VOID);
+BOOLEAN SafeUploadPolicyEntryIsNewlyScoped(_In_ SAFEUPLOAD_VOLUME_KIND VolumeKind,
+    _In_ PCUNICODE_STRING NormalizedPath);
+BOOLEAN SafeUploadPolicyEntryIsCurrentlyScoped(_In_ SAFEUPLOAD_VOLUME_KIND VolumeKind,
+    _In_ PCUNICODE_STRING NormalizedPath);
+NTSTATUS SafeUploadStageWritersApplyPendingScope(VOID);
+VOID SafeUploadStageWritersReconcileCurrentScope(VOID);
+#endif
+
+BOOLEAN SafeUploadIsAuthenticatedClient(VOID);
+BOOLEAN SafeUploadCurrentProcessHasAgentServiceSid(VOID);
+BOOLEAN SafeUploadInstanceIsTrusted(_In_ PFLT_INSTANCE Instance);
+BOOLEAN SafeUploadInstanceTrustGateSatisfied(_In_ PFLT_INSTANCE Instance);
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+BOOLEAN SafeUploadInstanceAdmissionGateSatisfied(_In_ PFLT_INSTANCE Instance);
+#endif
+VOID SafeUploadInstanceCheckCanaryDeadline(_Inout_ PSAFEUPLOAD_INSTANCE_CONTEXT Context);
+BOOLEAN SafeUploadPolicyHasDestinationScopes(_In_ SAFEUPLOAD_VOLUME_KIND VolumeKind);
+BOOLEAN SafeUploadPolicyMatchesCurrentOrPendingDestination(
+    _In_ SAFEUPLOAD_VOLUME_KIND VolumeKind,
+    _In_opt_ PCUNICODE_STRING NormalizedPath,
+    _In_ BOOLEAN IncludeAncestors);
+
+LONG
+SafeUploadCurrentPolicyGeneration (
+    VOID
+    );
+
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+VOID SafeUploadPolicyReadLiveSnapshot(_Out_ PULONG Generation, _Out_ PULONG Flags);
+BOOLEAN SafeUploadPolicyTestDisablesTaint(VOID);
+NTSTATUS SafeUploadPolicyAdmissionCoverageSnapshot(
+    _Inout_ PSAFEUPLOAD_ADMISSION_COVERAGE_STATUS Status);
+VOID SafeUploadPolicyAdmissionCoverageMetadata(
+    _Out_ PULONG Generation, _Out_ PULONG Flags, _Out_ PULONG BootPolicyState,
+    _Out_ PULONG ScopeCount, _Out_ PULONG EpochPending,
+    _Out_ PULONGLONG ScopeSequence);
+#endif
+
+BOOLEAN
+SafeUploadPolicyClassifiesAllSources (
+    VOID
     );
 
 LONGLONG
@@ -597,9 +776,92 @@ SafeUploadPolicyMatchesDestination (
     );
 
 BOOLEAN
+SafeUploadPolicyMayMatchVolume (
+    _In_ SAFEUPLOAD_VOLUME_KIND VolumeKind,
+    _In_opt_ PFLT_VOLUME Volume
+    );
+
+BOOLEAN SafeUploadPolicyMayMatchInstanceVolume(_In_opt_ PFLT_INSTANCE Instance);
+VOID SafeUploadPolicyRenameLossAdvance(_Inout_ volatile LONG64 *InstanceGeneration,
+    _In_ SAFEUPLOAD_VOLUME_KIND VolumeKind, _In_opt_ PCUNICODE_STRING VolumeName);
+VOID SafeUploadPolicyRenameLossSnapshot(_Out_ PULONGLONG Generation);
+_IRQL_raises_(DISPATCH_LEVEL)
+BOOLEAN SafeUploadPolicyRenameLossGenerationEnter(_In_ volatile LONG64 *InstanceGeneration,
+    _In_ ULONGLONG ExpectedGeneration, _Out_ _At_(*OldIrql, _IRQL_saves_) PKIRQL OldIrql);
+_IRQL_requires_(DISPATCH_LEVEL)
+VOID SafeUploadPolicyRenameLossGenerationLeave(_In_ _IRQL_restores_ KIRQL OldIrql);
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+_IRQL_requires_max_(DISPATCH_LEVEL)
+ULONGLONG SafeUploadPolicyScopeSequenceSnapshot(VOID);
+#endif
+BOOLEAN SafeUploadPolicyTryEndScopeTransition(_In_ ULONGLONG RenameLossSnapshot,
+    _In_ BOOLEAN Finalizing);
+
+BOOLEAN
+SafeUploadPolicyTouchesDestinationNamespace (
+    _In_ SAFEUPLOAD_VOLUME_KIND VolumeKind,
+    _In_opt_ PCUNICODE_STRING NormalizedPath
+    );
+
+BOOLEAN
 SafeUploadPolicyMatchesSource (
     _In_ PCUNICODE_STRING NormalizedPath
     );
+
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+
+//
+//  Destination prefixes copied out of a policy snapshot, for the fence scan.
+//  The scan does file I/O and must not run under the policy lock.
+//
+
+typedef struct _SAFEUPLOAD_SCOPE_COPY {
+
+    UINT32 Count;
+    UINT32 Flags;
+    USHORT Length[SAFEUPLOAD_MAX_PREFIXES];             // bytes, no terminator
+    WCHAR Prefix[SAFEUPLOAD_MAX_PREFIXES][SAFEUPLOAD_MAX_PREFIX_CHARS];
+
+} SAFEUPLOAD_SCOPE_COPY, *PSAFEUPLOAD_SCOPE_COPY;
+
+NTSTATUS
+SafeUploadPolicyCopyScope (
+    _In_opt_ const SAFEUPLOAD_POLICY *Candidate,
+    _Out_ PSAFEUPLOAD_SCOPE_COPY Scope
+    );
+
+VOID SafeUploadPolicySetPending( _In_opt_ const SAFEUPLOAD_POLICY *Pending );
+VOID SafeUploadStageWritersFreeContext( _Inout_ PSAFEUPLOAD_STREAM_CONTEXT StreamContext );
+NTSTATUS SafeUploadStageFenceInitialize( VOID );
+VOID SafeUploadStageFenceFree( VOID );
+VOID SafeUploadStageFenceStartRetries( VOID );
+_IRQL_requires_(PASSIVE_LEVEL)
+NTSTATUS SafeUploadStageFenceRefresh( _In_opt_ const SAFEUPLOAD_POLICY *Candidate );
+_IRQL_requires_(PASSIVE_LEVEL)
+NTSTATUS SafeUploadStageFencePrepareUnload( VOID );
+_IRQL_requires_(PASSIVE_LEVEL)
+BOOLEAN SafeUploadStageFenceTryCommitUnload( VOID );
+VOID SafeUploadStageFenceCancelUnload( VOID );
+VOID SafeUploadStageFenceCommitUnload( VOID );
+BOOLEAN SafeUploadStageFenceHasEntries( VOID );
+_IRQL_requires_(PASSIVE_LEVEL)
+BOOLEAN SafeUploadStageFenceTransitionBegin( VOID );
+_IRQL_requires_(PASSIVE_LEVEL)
+VOID SafeUploadStageFenceTransitionEnd( VOID );
+BOOLEAN SafeUploadStageFenceVolumeHasEntries( _In_opt_ PFLT_VOLUME Volume );
+BOOLEAN SafeUploadStageFenceVolumeBlocksDetach( _In_opt_ PFLT_VOLUME Volume );
+BOOLEAN SafeUploadStageFenceNameQuarantined( _In_ PCUNICODE_STRING NormalizedName );
+BOOLEAN SafeUploadStageFenceVolumeQuarantined( _In_opt_ PFLT_VOLUME Volume );
+VOID SafeUploadStageFenceCountOpenRefused( VOID );
+VOID SafeUploadStageFenceCountSectionDenied( VOID );
+VOID SafeUploadStageFenceCountSectionUnresolved( VOID );
+VOID SafeUploadStageFenceCountFsctlUnresolved( VOID );
+BOOLEAN SafeUploadStageFenceQueueRefresh( _In_ PFLT_VOLUME Volume );
+BOOLEAN SafeUploadStageFenceSetupBegin( VOID );
+VOID SafeUploadStageFenceSetupEnd( VOID );
+VOID SafeUploadStageFenceGetStatus( _Out_ PSAFEUPLOAD_FENCE_STATUS Status );
+
+#endif
 
 BOOLEAN
 SafeUploadPolicyExcludesImage (
@@ -628,5 +890,29 @@ SafeUploadRequestVerdict (
     _Out_ PUINT32 Verdict,
     _Out_ PBOOLEAN Answered
     );
+
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+typedef struct _SAFEUPLOAD_DIRECTORY_OVERLAY {
+    LIST_ENTRY Link;
+    BOOLEAN Deleted;
+    UNICODE_STRING Name;
+    FILE_BASIC_INFORMATION Basic;
+    FILE_STANDARD_INFORMATION Standard;
+    LARGE_INTEGER FileId;
+    FILE_ID_128 ExtendedId;
+} SAFEUPLOAD_DIRECTORY_OVERLAY, *PSAFEUPLOAD_DIRECTORY_OVERLAY;
+BOOLEAN SafeUploadHasDirectoryOverlay(_In_ ULONG Owner, _In_ PUNICODE_STRING Directory);
+BOOLEAN SafeUploadProcessHasMappings(_In_ ULONG Owner);
+NTSTATUS SafeUploadCollectDirectoryOverlay(_In_ ULONG Owner, _In_ PUNICODE_STRING Directory,
+    _Inout_ PLIST_ENTRY Overlays);
+FLT_PREOP_CALLBACK_STATUS SafeUploadStageDirectoryQuery(_Inout_ PFLT_CALLBACK_DATA Data,
+    _In_ PCFLT_RELATED_OBJECTS FltObjects, _Flt_CompletionContext_Outptr_ PVOID *CompletionContext);
+#endif
+
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+NTSTATUS SafeUploadSetPublicationPermit(_In_ PSAFEUPLOAD_PUBLICATION_MESSAGE Message);
+VOID SafeUploadClearPublicationPermits(VOID);
+VOID SafeUploadFreeDirectoryView(_In_opt_ PVOID View);
+#endif
 
 #endif // _SAFEUPLOAD_FILTER_H_

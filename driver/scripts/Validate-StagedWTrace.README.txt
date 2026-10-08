@@ -1,0 +1,83 @@
+Validate-StagedWTrace.py is a read-only host check of the *upper* W01 ordinary
+IRP_MJ_WRITE ticket ledger printed by feature Inspector --admission-trace. It
+does not parse W02 SET_INFORMATION/FSCTL operations. It is not a W01/W02 or Phase 4
+qualification decision. It never opens a device, contacts a VM, or modifies a
+fixture. Exit 0 means PAIRED_W01_SUCCESS_STATUS upper ledger; exit 2 means INCONCLUSIVE. Both
+structured outputs contain W01/W02/Phase4=NOT_QUALIFIED. Malformed CLI
+arguments are rejected by argparse with usage text and no JSON result.
+
+Example with externally reviewed, exact target/request pins:
+
+  python3 driver/scripts/Validate-StagedWTrace.py trace.jsonl \
+    --file-id 000102030405060708090A0B0C0D0E0F \
+    --volume-serial 0x0102030405060708 --pid 123 \
+    --offset 8192 --length 4096 --alignment 4096 --irp-flags 0x00000001 \
+    --instance 0x0000000000001111 \
+    --target-file-object 0x0000000000002222 \
+    --section-object-pointer 0x0000000000003333 --pairs 1
+
+The FileId is the Inspector's exact 16 byte order. The serial is the exact
+unsigned value Inspector prints; neither is inferred from a path. Optional
+--callback-data pins only the upper callback pointer. The section-object
+pointer must be nonzero and stable within the pair; an optional external pin
+is still only upper-filter identity. Matching those opaque values within the
+upper pair is not cross-filter or lower-arm proof. Obtain
+the pins independently from trusted controller/kernel evidence, not by reading
+the trace being validated. --irp-flags is required, must contain IRP_NOCACHE
+(bit 0), and must exclude IRP_PAGING_IO (bit 1). --alignment is an externally
+pinned sector alignment, a power of two from 512 through 65536; offset and
+length must both be multiples. These trace flags cannot prove that the user
+fixture opened with FILE_FLAG_NO_BUFFERING, which needs independent receipts.
+The operation is W01 IRP_MJ_WRITE/minor zero only.
+
+The complete-window requirement is intentionally strict: one final Inspector
+summary, sequence 1..snapshotSequence, cursor=snapshotSequence+1, totalEvents
+equal to snapshotSequence, <=16,384 retained entries, and lostEntries=0. This
+models a trace CLEAR before the finite trial followed by a completed read.
+The dump has no CLEAR receipt or observer epoch proof. A controller must bind
+those external receipts to this capture; this parser cannot distinguish a
+fresh clear from earlier retained traffic. Every W event in the complete
+window must match the one target/request, so background W writes cause an
+INCONCLUSIVE result rather than being filtered away. W01 requires exactly one
+matched W ticket; --pairs cannot relax that case boundary.
+The Inspector can print a summary even when a slot changed and its cursor did
+not pass the snapshot; that output is INCONCLUSIVE here. Concurrent post-
+snapshot traffic may make totalEvents exceed the snapshot; that too is
+INCONCLUSIVE. An accepted pair asserts only ticket-level upper events, exact
+identity/range, noncached/nonpaging flags, aligned range, and W_END status
+STATUS_SUCCESS with ioInformation exactly the requested length, as sampled by
+the upper callback before W retirement. Other statuses, cancellation and short
+completion are INCONCLUSIVE here; there is no outcome-neutral mode. H, W,
+registryState, and generation are independently sampled; their begin/end
+values are type checked but never treated as a coherent tuple. Lower-filter
+arm/hold, close ordering, raw bytes, and runtime outcome remain separate proof.
+Numeric H/W samples and generation are context, not a verified isolated
+counter transition or a coherent whole-record tuple. Non-W event names and
+the summary's category counters are not reconciled with trial isolation.
+
+Input is at most 8 MiB, 16,385 JSONL lines, and 4096 UTF-8 bytes per decoded
+line. UTF-8 and BOM-marked UTF-16 Inspector captures are accepted. One file
+handle is read with a hard MAX_BYTES+1 cap. Duplicate
+keys, float/nonfinite numbers, bool-as-integer, malformed hex, loss, gaps,
+overwrite, unmatched/double tickets, wrong exact ID/request/range, missing
+post-completion/post-retirement flags, pre-lower retirement, cached/paging or
+unaligned writes, mismatched/zero stream pointer, failing/short completion,
+and recursive JSON are rejected.
+
+Provenance: source checkout HEAD 937b568cfa7cdbdcf2c46256e914d851b9ede950.
+Inspector formatter main.c SHA-256 FFA47C60DAE5D600751C2C3F9E237799C79290029063390242EF59BCDF641FF6;
+Protocol.h C5AB6AA14D81D0D3D11004194BBC177FC443F4F0AA066F2D4E4414B59373CAFC;
+StageStream.c 9018B37886396E9D744794D725AC9A525D2893C014788B127DC6BB81F2A7EFD5;
+StageWriters.c F8E9481DD25D8F61D6A7BBFA2822FF78758B8C2CD61CE9F8945976BA48CF0A78.
+The self-test starts with literal formatter capture
+driver/evidence/2026-10-05/rv4-w-inspector-selftest-stdout-b.txt SHA-256
+F0B278EA3F35FDF8B05955C4CED1B2771AF5B14BA578027E107537228C8900AD;
+it changes formatter control values to a synthetic complete W window. It is
+never VM qualification. Run python3 driver/scripts/Test-Validate-StagedWTrace.py.
+
+Integration source: f99989f19cc6642cf59c7ab8f24b9b94d85f08fe, StageWriters.c
+A69FCF8F3EBEDB9CA7AB121328ADE7B42340B284E3EE705AA80226AE0EE0DF92.
+The historical formatter fixture above is retained; the later bounded status-page
+helper does not change the ticket formatter or W trace protocol.
+
+Control-transition prerequisite (main integration review 2026-10-05): the callback samples the trace epoch before acquiring recorder rundown. A callback crossing CLEAR/ENABLE can continue core W accounting without an observer ticket or loss increment. The controlled trial must prove target writer quiescence across those commands and trigger the selected operation only after their successful completion. The parser cannot establish that prerequisite; a zero loss count alone does not prove exhaustive temporal coverage. Unaccounted foreign W traffic remains INCONCLUSIVE.

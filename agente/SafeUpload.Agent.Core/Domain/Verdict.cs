@@ -20,5 +20,11 @@ public enum Verdict
     /// suportado, timeout ou erro de parsing (RN-012 e RN-013).
     /// Falha nunca vira bloqueio: o agente é fail-open.
     /// </summary>
-    AllowedWithoutInspection
+    AllowedWithoutInspection,
+
+    /// <summary>
+    /// A staged transfer was held locally. No bytes were released to its
+    /// protected destination.
+    /// </summary>
+    Retained
 }

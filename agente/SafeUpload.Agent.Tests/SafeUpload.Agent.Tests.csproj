@@ -11,6 +11,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
+    <DefineConstants Condition="'$(SafeUploadAdmissionEvidence)' == 'true'">$(DefineConstants);SAFEUPLOAD_ADMISSION_EVIDENCE</DefineConstants>
   </PropertyGroup>
 
   <ItemGroup>

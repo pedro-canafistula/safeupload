@@ -29,6 +29,12 @@ Environment:
 
 #include "Filter.h"
 
+C_ASSERT(FLTFL_INSTANCE_SETUP_NEWLY_MOUNTED_VOLUME ==
+    SAFEUPLOAD_SETUP_FLAG_NEWLY_MOUNTED_VOLUME);
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+#include "Stage.h"
+#endif
+
 static
 VOID
 SafeUploadStreamContextCleanup (
@@ -36,11 +42,45 @@ SafeUploadStreamContextCleanup (
     _In_ FLT_CONTEXT_TYPE ContextType
     );
 
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+#define SAFEUPLOAD_TEARDOWN_TOKEN_POOL_TAG 'tUAS'
+
+static VOID SafeUploadReleaseTeardownToken(
+    _Inout_opt_ PSAFEUPLOAD_INSTANCE_TEARDOWN_TOKEN Token)
+{
+    if (Token != NULL && InterlockedDecrement(&Token->ReferenceCount) == 0) {
+        ExFreePoolWithTag(Token, SAFEUPLOAD_TEARDOWN_TOKEN_POOL_TAG);
+    }
+}
+
+static VOID SafeUploadInstanceContextCleanup(
+    _In_ PFLT_CONTEXT Context,
+    _In_ FLT_CONTEXT_TYPE ContextType)
+{
+    PSAFEUPLOAD_INSTANCE_CONTEXT instanceContext = (PSAFEUPLOAD_INSTANCE_CONTEXT)Context;
+
+    UNREFERENCED_PARAMETER(ContextType);
+    FLT_ASSERT(ContextType == FLT_INSTANCE_CONTEXT);
+
+    if (instanceContext->TeardownToken != NULL) {
+        SafeUploadStageWritersInstanceContextFreed(
+            instanceContext->TeardownToken,
+            (BOOLEAN)(InterlockedCompareExchange(&instanceContext->TeardownToken->Published, 0, 0) != 0));
+        SafeUploadReleaseTeardownToken(instanceContext->TeardownToken);
+        instanceContext->TeardownToken = NULL;
+    }
+}
+#endif
+
 #ifdef ALLOC_PRAGMA
     #pragma alloc_text(PAGE, SafeUploadClassifyVolume)
     #pragma alloc_text(PAGE, SafeUploadSetInstanceContext)
+    #pragma alloc_text(PAGE, SafeUploadInstanceIsTrusted)
     #pragma alloc_text(PAGE, SafeUploadGetOrCreateStreamContext)
     #pragma alloc_text(PAGE, SafeUploadMarkHandleForWrite)
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    #pragma alloc_text(PAGE, SafeUploadInstanceAdmissionGateSatisfied)
+#endif
 #endif
 
 ///////////////////////////////////////////////////////////////////////////
@@ -49,16 +89,30 @@ SafeUploadStreamContextCleanup (
 //
 ///////////////////////////////////////////////////////////////////////////
 
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+static VOID SafeUploadHandleContextCleanup(_In_ PFLT_CONTEXT Context,
+    _In_ FLT_CONTEXT_TYPE ContextType)
+{
+    PSAFEUPLOAD_STREAMHANDLE_CONTEXT handle = (PSAFEUPLOAD_STREAMHANDLE_CONTEXT) Context;
+    UNREFERENCED_PARAMETER( ContextType );
+    SafeUploadFreeDirectoryView( handle->DirectoryView );
+    FltDeletePushLock( &handle->DirectoryLock );
+}
+#endif
+
 CONST FLT_CONTEXT_REGISTRATION SafeUploadContextRegistration[] = {
 
     //
-    //  No cleanup callback: the instance context owns nothing but its own
-    //  bytes, which the filter manager frees.
+    //  The prototype instance context owns a reference to its teardown token.
     //
 
     { FLT_INSTANCE_CONTEXT,
       0,
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+      SafeUploadInstanceContextCleanup,
+#else
       NULL,
+#endif
       sizeof( SAFEUPLOAD_INSTANCE_CONTEXT ),
       SAFEUPLOAD_POOL_TAG },
 
@@ -79,9 +133,21 @@ CONST FLT_CONTEXT_REGISTRATION SafeUploadContextRegistration[] = {
 
     { FLT_STREAMHANDLE_CONTEXT,
       0,
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+      SafeUploadHandleContextCleanup,
+#else
       NULL,
+#endif
       sizeof( SAFEUPLOAD_STREAMHANDLE_CONTEXT ),
       SAFEUPLOAD_POOL_TAG },
+
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    { FLT_TRANSACTION_CONTEXT,
+      0,
+      NULL,
+      sizeof( SAFEUPLOAD_TRANSACTION_CONTEXT ),
+      SAFEUPLOAD_POOL_TAG },
+#endif
 
     { FLT_CONTEXT_END }
 };
@@ -119,6 +185,12 @@ Return Value:
     UNREFERENCED_PARAMETER( ContextType );
 
     FLT_ASSERT( ContextType == FLT_STREAM_CONTEXT );
+
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    SafeUploadStageWritersFreeContext( streamContext );
+    SafeUploadReleaseTeardownToken(streamContext->TeardownToken);
+    streamContext->TeardownToken = NULL;
+#endif
 
     FltDeletePushLock( &streamContext->Lock );
 }
@@ -209,6 +281,7 @@ NTSTATUS
 SafeUploadSetInstanceContext (
     _In_ PCFLT_RELATED_OBJECTS FltObjects,
     _In_ DEVICE_TYPE VolumeDeviceType,
+    _In_ FLT_INSTANCE_SETUP_FLAGS SetupFlags,
     _Out_ PSAFEUPLOAD_VOLUME_KIND VolumeKind
     )
 /*++
@@ -231,12 +304,18 @@ Arguments:
 Return Value:
 
     STATUS_SUCCESS when the context is in place. On failure nothing is left
-    allocated and the caller must decline the attachment.
+    allocated. The feature build may retain attachment and use its conservative
+    Unknown-volume fallback; the normal build retains its prior behavior.
 
 --*/
 {
     PSAFEUPLOAD_INSTANCE_CONTEXT instanceContext = NULL;
+    UNICODE_STRING volumeName;
     NTSTATUS status;
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    PSAFEUPLOAD_INSTANCE_TEARDOWN_TOKEN teardownToken = NULL;
+    UNICODE_STRING volumeGuid;
+#endif
 
     PAGED_CODE();
 
@@ -257,8 +336,64 @@ Return Value:
     //  FltAllocateContext does not zero what it hands back.
     //
 
+    RtlZeroMemory( instanceContext, sizeof( *instanceContext ) );
+    instanceContext->SetupFlags = SetupFlags;
+    instanceContext->TrustState = FlagOn(SetupFlags, FLTFL_INSTANCE_SETUP_NEWLY_MOUNTED_VOLUME) ?
+        SAFEUPLOAD_VOLUME_TRUST_CANARY_PENDING :
+        (SafeUploadData.BootStartMode ? SAFEUPLOAD_VOLUME_TRUST_PENDING_REBOOT :
+            SAFEUPLOAD_VOLUME_TRUST_UNTRUSTED_FLAGS);
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    teardownToken = (PSAFEUPLOAD_INSTANCE_TEARDOWN_TOKEN)ExAllocatePool2(
+        POOL_FLAG_NON_PAGED, sizeof(*teardownToken), SAFEUPLOAD_TEARDOWN_TOKEN_POOL_TAG);
+    if (teardownToken == NULL) {
+        FltReleaseContext(instanceContext);
+        return STATUS_INSUFFICIENT_RESOURCES;
+    }
+    RtlZeroMemory(teardownToken, sizeof(*teardownToken));
+    teardownToken->ReferenceCount = 1; /* Owned by this instance context. */
+    teardownToken->State = SAFEUPLOAD_INSTANCE_STATE_ACTIVE;
+    instanceContext->TeardownToken = teardownToken;
+#endif
     instanceContext->VolumeKind = SafeUploadClassifyVolume( FltObjects->Volume,
                                                             VolumeDeviceType );
+    volumeName.Buffer = instanceContext->VolumeName;
+    volumeName.Length = 0;
+    volumeName.MaximumLength = sizeof(instanceContext->VolumeName);
+    status = FltGetVolumeName(FltObjects->Volume, &volumeName, NULL);
+    if (NT_SUCCESS(status) && volumeName.Length != 0 &&
+        volumeName.Length <= volumeName.MaximumLength &&
+        (volumeName.Length & (sizeof(WCHAR) - 1)) == 0) {
+        instanceContext->VolumeNameChars = volumeName.Length / sizeof(WCHAR);
+    } else {
+        RtlZeroMemory(instanceContext->VolumeName, sizeof(instanceContext->VolumeName));
+        instanceContext->VolumeNameChars = 0;
+    }
+    if (!FlagOn(SetupFlags, FLTFL_INSTANCE_SETUP_NEWLY_MOUNTED_VOLUME) && SafeUploadData.BootStartMode) {
+        DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL,
+            "SafeUpload: volume instance attached after mount; protection pending reboot; volume remains Untrusted\n");
+    }
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    instanceContext->CanaryStatus = STATUS_PENDING;
+    instanceContext->CanaryCleanupStatus = STATUS_PENDING;
+    instanceContext->FileSystemStatus = FltGetFileSystemType(FltObjects->Instance,
+        &instanceContext->FileSystemType);
+    volumeGuid.Buffer = instanceContext->VolumeGuid;
+    volumeGuid.Length = 0;
+    volumeGuid.MaximumLength = sizeof(instanceContext->VolumeGuid) - sizeof(WCHAR);
+    /* On supported Windows versions this is safe in InstanceSetup, after mount processing.
+     * Keep the GUID rather than a drive letter or transient HarddiskVolume number. */
+    instanceContext->VolumeGuidStatus = FltGetVolumeGuidName(FltObjects->Volume, &volumeGuid, NULL);
+    if (instanceContext->VolumeGuidStatus == STATUS_SUCCESS) {
+        if (volumeGuid.Length == 0 || volumeGuid.Length > volumeGuid.MaximumLength ||
+            (volumeGuid.Length % sizeof(WCHAR)) != 0) {
+            instanceContext->VolumeGuidStatus = STATUS_INVALID_BUFFER_SIZE;
+        } else {
+            instanceContext->VolumeGuidChars = volumeGuid.Length / sizeof(WCHAR);
+        }
+    }
+    if (instanceContext->VolumeGuidStatus != STATUS_SUCCESS)
+        RtlZeroMemory(instanceContext->VolumeGuid, sizeof(instanceContext->VolumeGuid));
+#endif
 
     status = FltSetInstanceContext( FltObjects->Instance,
                                     FLT_SET_CONTEXT_KEEP_IF_EXISTS,
@@ -268,6 +403,9 @@ Return Value:
     if (NT_SUCCESS( status )) {
 
         *VolumeKind = instanceContext->VolumeKind;
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+        InterlockedExchange(&teardownToken->Published, 1);
+#endif
     }
 
     //
@@ -279,6 +417,105 @@ Return Value:
 
     return status;
 }
+
+VOID SafeUploadInstanceCheckCanaryDeadline(_Inout_ PSAFEUPLOAD_INSTANCE_CONTEXT Context)
+{
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    LONG trustState, canaryState;
+    LONG64 started;
+    ULONGLONG now;
+    const ULONGLONG timeout = 60ULL * 10000000ULL;
+
+    /* Non-paged: interlocked state only (and empty in the normal build). */
+    trustState = InterlockedCompareExchange(&Context->TrustState, 0, 0);
+    canaryState = InterlockedCompareExchange(&Context->CanaryState, 0, 0);
+    if (trustState != SAFEUPLOAD_VOLUME_TRUST_CANARY_PENDING ||
+        canaryState != SAFEUPLOAD_CANARY_RUNNING) return;
+    started = InterlockedCompareExchange64(&Context->CanaryStartInterruptTime, 0, 0);
+    if (started == 0) return;
+    now = KeQueryInterruptTime();
+    if (now >= (ULONGLONG)started && now - (ULONGLONG)started >= timeout) {
+        SafeUploadStageAdmissionCoverageBegin();
+        if (InterlockedCompareExchange(&Context->TrustState,
+                SAFEUPLOAD_VOLUME_TRUST_CANARY_LOST, SAFEUPLOAD_VOLUME_TRUST_CANARY_PENDING) ==
+                SAFEUPLOAD_VOLUME_TRUST_CANARY_PENDING) {
+            DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL,
+                "SafeUpload: startup canary timed out; volume remains Untrusted until reboot\n");
+        }
+        SafeUploadStageAdmissionCoverageEnd();
+    }
+#else
+    UNREFERENCED_PARAMETER(Context);
+#endif
+}
+
+BOOLEAN SafeUploadInstanceIsTrusted(_In_ PFLT_INSTANCE Instance)
+{
+    PSAFEUPLOAD_INSTANCE_CONTEXT context = NULL;
+    BOOLEAN trusted = FALSE;
+    PAGED_CODE();
+    if (NT_SUCCESS(FltGetInstanceContext(Instance, (PFLT_CONTEXT *)&context))) {
+        SafeUploadInstanceCheckCanaryDeadline(context);
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+        trusted = InterlockedCompareExchange(&context->TrustState, 0, 0) ==
+                SAFEUPLOAD_VOLUME_TRUST_CANARY_PASSED &&
+            InterlockedCompareExchange(&context->CanaryState, 0, 0) == SAFEUPLOAD_CANARY_PASSED;
+#else
+        trusted = InterlockedCompareExchange(&context->TrustState, 0, 0) ==
+            SAFEUPLOAD_VOLUME_TRUST_CANARY_PASSED;
+#endif
+        FltReleaseContext(context);
+    }
+    return trusted;
+}
+
+BOOLEAN SafeUploadInstanceTrustGateSatisfied(_In_ PFLT_INSTANCE Instance)
+{
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    /* Keep the demand-start Phase 1 diagnostic corpus runnable with its
+     * authenticated service. Trust reporting remains canary-gated in both
+     * modes; boot-start admission always requires the trusted state. */
+    if (!SafeUploadData.BootStartMode) return TRUE;
+#endif
+    return SafeUploadInstanceIsTrusted(Instance);
+}
+
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+/* The legacy demand-start diagnostic trust shortcut is intentionally excluded
+ * here. This is the per-instance destination admission gate used before the
+ * authenticated service fast path and by the coverage receipt. */
+BOOLEAN SafeUploadInstanceAdmissionGateSatisfied(_In_ PFLT_INSTANCE Instance)
+{
+    PSAFEUPLOAD_INSTANCE_CONTEXT context = NULL;
+    BOOLEAN ready = FALSE;
+    PAGED_CODE();
+    if (Instance == NULL || !NT_SUCCESS(FltGetInstanceContext(Instance, (PFLT_CONTEXT *)&context)))
+        return FALSE;
+
+    SafeUploadInstanceCheckCanaryDeadline(context);
+    if (context->VolumeKind == SafeUploadVolumeFixed &&
+        context->FileSystemStatus == STATUS_SUCCESS &&
+        context->FileSystemType == FLT_FSTYPE_NTFS &&
+        context->VolumeNameChars != 0 &&
+        context->VolumeNameChars <= SAFEUPLOAD_MAX_PREFIX_CHARS &&
+        context->VolumeGuidStatus == STATUS_SUCCESS &&
+        context->VolumeGuidChars != 0 &&
+        context->VolumeGuidChars < RTL_NUMBER_OF(context->VolumeGuid) &&
+        InterlockedCompareExchange(&context->TrustState, 0, 0) == SAFEUPLOAD_VOLUME_TRUST_CANARY_PASSED &&
+        InterlockedCompareExchange(&context->CanaryState, 0, 0) == SAFEUPLOAD_CANARY_PASSED &&
+        context->CanaryStatus == STATUS_SUCCESS &&
+        context->CanaryChecks == SAFEUPLOAD_CANARY_CHECKS_ALL &&
+        context->CanaryCleanupStatus == STATUS_SUCCESS &&
+        InterlockedCompareExchange(&context->WritersUntracked, 0, 0) == 0 &&
+        InterlockedCompareExchange(&context->RegistryUnknownReasons, 0, 0) == 0 &&
+        SafeUploadStageWritersGlobalUnknown() == 0) {
+        ready = TRUE;
+    }
+
+    FltReleaseContext(context);
+    return ready;
+}
+#endif
 
 ///////////////////////////////////////////////////////////////////////////
 //
@@ -324,6 +561,10 @@ Return Value:
 {
     PSAFEUPLOAD_STREAM_CONTEXT created = NULL;
     PSAFEUPLOAD_STREAM_CONTEXT existing = NULL;
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    PSAFEUPLOAD_INSTANCE_CONTEXT instanceContext = NULL;
+    PSAFEUPLOAD_INSTANCE_TEARDOWN_TOKEN teardownToken = NULL;
+#endif
     NTSTATUS status;
 
     PAGED_CODE();
@@ -369,6 +610,23 @@ Return Value:
 
     RtlZeroMemory( created, sizeof( SAFEUPLOAD_STREAM_CONTEXT ) );
     FltInitializePushLock( &created->Lock );
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    KeInitializeSpinLock( &created->WriterLock );
+    InitializeListHead( &created->WriterObjects );
+
+    /*
+     *  Hold the instance context while taking a token reference. A stream context
+     *  without a token is deliberately retained as ambiguous; a later dropped
+     *  writer then poisons machine-wide state instead of guessing.
+     */
+    if (NT_SUCCESS(FltGetInstanceContext(FltObjects->Instance,
+            (PFLT_CONTEXT *)&instanceContext))) {
+        teardownToken = instanceContext->TeardownToken;
+        if (teardownToken != NULL) InterlockedIncrement(&teardownToken->ReferenceCount);
+        FltReleaseContext(instanceContext);
+    }
+    created->TeardownToken = teardownToken;
+#endif
 
     //
     //  KEEP_IF_EXISTS rather than REPLACE: another thread may have created
@@ -418,7 +676,8 @@ Return Value:
 
 NTSTATUS
 SafeUploadMarkHandleForWrite (
-    _In_ PCFLT_RELATED_OBJECTS FltObjects
+    _In_ PCFLT_RELATED_OBJECTS FltObjects,
+    _In_ BOOLEAN OverrideGranted
     )
 /*++
 
@@ -427,11 +686,10 @@ Routine Description:
     Marks the handle as opened for write, so that cleanup knows to
     invalidate the file's cached verdict.
 
-    The alternative would be to hook every write, which costs a callback per
-    operation to learn something a single flag at open time already says.
-    It is deliberately conservative: a handle opened for write but never
-    written still invalidates the cache, which costs one extra inspection
-    and never returns a stale answer.
+    This flag is for cache invalidation at cleanup. The write callback has a
+    separate purpose: it prevents a handle opened before process taint from
+    becoming an egress bypass. OverrideGranted makes a justified create's
+    one-use exception apply to subsequent writes through that handle.
 
     IRQL: PASSIVE_LEVEL. Called from post-create.
 
@@ -441,8 +699,8 @@ Arguments:
 
 Return Value:
 
-    STATUS_SUCCESS, or the failing status. Failure is not fatal: it only
-    means the file will be re-inspected more often than strictly necessary.
+    STATUS_SUCCESS, or the failing status. Failure to mark a justified handle
+    may cause the following write to be denied; the grant is not broadened.
 
 --*/
 {
@@ -467,7 +725,12 @@ Return Value:
         return status;
     }
 
+    RtlZeroMemory( handleContext, sizeof( *handleContext ) );
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    FltInitializePushLock( &handleContext->DirectoryLock );
+#endif
     handleContext->OpenedForWrite = TRUE;
+    handleContext->OverrideGranted = OverrideGranted;
 
     status = FltSetStreamHandleContext( FltObjects->Instance,
                                         FltObjects->FileObject,
@@ -523,4 +786,26 @@ Return Value:
     }
 
     return openedForWrite;
+}
+
+
+BOOLEAN
+SafeUploadHandleHasOverride (
+    _In_ PCFLT_RELATED_OBJECTS FltObjects
+    )
+{
+    PSAFEUPLOAD_STREAMHANDLE_CONTEXT handleContext = NULL;
+    BOOLEAN granted = FALSE;
+    NTSTATUS status;
+
+    status = FltGetStreamHandleContext( FltObjects->Instance,
+                                        FltObjects->FileObject,
+                                        (PFLT_CONTEXT *) &handleContext );
+
+    if (NT_SUCCESS( status )) {
+        granted = handleContext->OverrideGranted;
+        FltReleaseContext( handleContext );
+    }
+
+    return granted;
 }

@@ -79,11 +79,44 @@ public class NotificationProtocolTests
     [Fact]
     public void Status_sobrevive_ao_percurso_completo()
     {
-        var original = new StatusNotification(9, 2, ProtectionActive: false);
+        var original = new StatusNotification(9, 2, ProtectionActive: true, AuditOnly: true);
         var lido = NotificationProtocol.Deserialize(NotificationProtocol.Serialize(original).TrimEnd('\n'));
 
         var status = Assert.IsType<StatusNotification>(lido);
         Assert.Equal(original, status);
+    }
+
+    [Fact]
+    public void Staged_transfer_progress_survives_the_notification_pipe()
+    {
+        var original = new TransferNotification(
+            Guid.Parse("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"),
+            "report.txt", TransferPhase.Analyzing);
+
+        string line = NotificationProtocol.Serialize(original);
+        using var document = JsonDocument.Parse(line);
+        Assert.Equal("transfer", document.RootElement.GetProperty("type").GetString());
+        Assert.Equal("Analyzing", document.RootElement.GetProperty("phase").GetString());
+        Assert.Equal(original,
+            NotificationProtocol.Deserialize(line.TrimEnd('\n')));
+    }
+
+    [Fact]
+    public void Blocked_staged_handback_digest_and_verified_path_survive_the_notification_pipe()
+    {
+        var original = new TransferNotification(
+            Guid.Parse("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"),
+            "report.txt", TransferPhase.Blocked, OverrideAllowed: true,
+            SnapshotSha256Hex: new string('A', 64),
+            HandbackPath: @"C:\Users\sample\SafeUpload\_bloqueados\version.txt",
+            HandbackVerified: true);
+
+        string line = NotificationProtocol.Serialize(original);
+        var restored = Assert.IsType<TransferNotification>(
+            NotificationProtocol.Deserialize(line.TrimEnd('\n')));
+        Assert.Equal(original.SnapshotSha256Hex, restored.SnapshotSha256Hex);
+        Assert.Equal(original.HandbackPath, restored.HandbackPath);
+        Assert.True(restored.HandbackVerified);
     }
 
     /// <summary>

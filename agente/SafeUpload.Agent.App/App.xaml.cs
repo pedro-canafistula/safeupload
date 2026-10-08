@@ -1,3 +1,4 @@
+using System.IO;
 using System.Windows;
 using SafeUpload.Agent.App.ClipboardWatch;
 using SafeUpload.Agent.App.Notifications;
@@ -12,11 +13,11 @@ namespace SafeUpload.Agent.App;
 /// <summary>
 /// Ponto de entrada e composition root do aplicativo de bandeja.
 ///
-/// A partir da separação em dois processos, este aplicativo é um <b>visor</b>.
-/// Ele não intercepta, não inspeciona e não decide: quem faz isso é o serviço
-/// <c>SafeUploadAgent</c>, que roda como LocalSystem e continua funcionando com
-/// esta janela fechada. Nada que o usuário clique aqui altera um veredito,
-/// porque o canal com o serviço não tem caminho de volta.
+/// A partir da separação em dois processos, este aplicativo mostra o estado
+/// e recebe justificativas. Ele não intercepta, não inspeciona e não decide:
+/// quem faz isso é o serviço <c>SafeUploadAgent</c>, que continua funcionando
+/// com esta janela fechada. A justificativa vai por um pipe separado, e o
+/// serviço valida o ID do bloqueio antes de conceder uma nova tentativa.
 ///
 /// A consequência prática é a lista de dependências: não há mais
 /// <c>InspectionService</c>, <c>ContentScanner</c> nem extratores neste projeto.
@@ -110,8 +111,65 @@ public partial class App : System.Windows.Application
                     }
 
                     break;
+
+                case TransferNotification transfer:
+                    ShowTransferNotification(transfer);
+                    break;
             }
         });
+    }
+
+    private void ShowTransferNotification(TransferNotification transfer)
+    {
+        if (_tray is null)
+        {
+            return;
+        }
+
+        string fileName = Path.GetFileName(transfer.FileName);
+
+        switch (transfer.Phase)
+        {
+            case TransferPhase.Analyzing:
+                _tray.ShowBalloon("SafeUpload: analisando arquivo",
+                    $"{fileName} foi salvo localmente. Aguarde a análise antes do envio.");
+                break;
+            case TransferPhase.Released:
+                _tray.ShowBalloon("SafeUpload: envio concluído",
+                    $"{fileName} foi analisado e enviado ao destino. SHA-256: {transfer.PublishedSha256Hex ?? "indisponível"}");
+                break;
+            case TransferPhase.Retained:
+                _tray.ShowBalloon("SafeUpload: envio pendente",
+                    $"{fileName} permanece guardado localmente. O envio será tentado novamente.");
+                break;
+            // A janela de bloqueio detalha o motivo; no status, o arquivo
+            // continua somente no armazenamento local de staging.
+            case TransferPhase.Blocked:
+                _tray.ShowBalloon("SafeUpload: envio bloqueado",
+                    $"{fileName} não foi enviado ao destino.");
+                ShowStagedBlockNotification(transfer);
+                break;
+        }
+    }
+
+    private void ShowStagedBlockNotification(TransferNotification transfer)
+    {
+        string? eventId = transfer.OverrideAllowed ? transfer.TransferId.ToString("D") : null;
+        var findings = transfer.Findings ?? [];
+        if (_notification is { IsLoaded: true })
+        {
+            _notification.Add(transfer.FileName, findings, eventId, quarantined: true, staged: true,
+                handbackPath: transfer.HandbackPath, handbackVerified: transfer.HandbackVerified,
+                snapshotSha256Hex: transfer.SnapshotSha256Hex);
+            return;
+        }
+        _notification = new BlockNotificationWindow(transfer.FileName, findings,
+            eventId, quarantined: true, staged: true,
+            handbackPath: transfer.HandbackPath, handbackVerified: transfer.HandbackVerified,
+            snapshotSha256Hex: transfer.SnapshotSha256Hex);
+        _notification.Closed += (_, _) => _notification = null;
+        if (_panel is { IsVisible: true }) _notification.Owner = _panel;
+        _notification.Show();
     }
 
     private void OnConnectionChanged(object? sender, bool connected)
@@ -127,9 +185,8 @@ public partial class App : System.Windows.Application
     }
 
     /// <summary>
-    /// RN-005 — todo bloqueio notifica. A janela não tem nenhuma forma de
-    /// liberar o arquivo; ela existe para o usuário saber por que a operação
-    /// não passou.
+    /// RN-005 — todo bloqueio notifica. Quando a política permite, a janela
+    /// envia uma justificativa para que o serviço autorize uma nova tentativa.
     /// </summary>
     private void ShowBlockNotification(EventNotification notification)
     {
@@ -143,14 +200,19 @@ public partial class App : System.Windows.Application
             // de uma segunda janela nascer por cima. Copiar uma pasta com dez
             // arquivos sensíveis produziria dez janelas empilhadas no mesmo
             // canto, e o usuário fecharia uma por uma sem ler nenhuma.
-            _notification.Add(notification.Event.FileName, notification.Findings);
+            _notification.Add(
+                notification.Event.FileName,
+                notification.Findings,
+                notification.OverrideAllowed ? notification.Event.EventId.ToString("D") : null,
+                notification.Quarantined);
             return;
         }
 
         _notification = new BlockNotificationWindow(
             notification.Event.FileName,
             notification.Findings,
-            quarantined: true);
+            notification.OverrideAllowed ? notification.Event.EventId.ToString("D") : null,
+            quarantined: notification.Quarantined);
 
         _notification.Closed += (_, _) => _notification = null;
 

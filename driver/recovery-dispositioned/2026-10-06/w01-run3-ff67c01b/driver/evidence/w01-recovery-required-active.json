@@ -1,0 +1,7 @@
+{
+  "CheckpointReceipt": "/home/victor/Work/safeupload-staging/driver/evidence/2026-10-06/boot-start-w01-w01-b38b36-20261006c-ff67c01b990e41ff9af89b5a9959757c-checkpoint.txt",
+  "Reason": "Run active or interrupted; do not start another VM case",
+  "RecoveryRequired": true,
+  "RunGuid": "ff67c01b990e41ff9af89b5a9959757c",
+  "RunName": "boot-start-w01-w01-b38b36-20261006c-ff67c01b990e41ff9af89b5a9959757c"
+}

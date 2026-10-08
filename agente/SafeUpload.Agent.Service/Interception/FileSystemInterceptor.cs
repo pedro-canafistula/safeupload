@@ -136,7 +136,8 @@ public sealed class FileSystemInterceptor : BackgroundService
             _hub.Publish(new StatusNotification(
                 policy.Version,
                 policy.ActiveCategories.Count,
-                ProtectionActive: _watchers.Count > 0));
+                ProtectionActive: _watchers.Count > 0,
+                AuditOnly: true));
         }
         catch (Exception ex)
         {
@@ -396,7 +397,8 @@ public sealed class FileSystemInterceptor : BackgroundService
             // existe para o dia em que o minifiltro informar o processo.
             var sessionId = SessionResolver.TryGetSessionId(operation.ProcessId);
 
-            _hub.Publish(new EventNotification(auditEvent, result.Findings), sessionId);
+            _hub.Publish(new EventNotification(
+                auditEvent, result.Findings, Quarantined: result.IsBlocked), sessionId);
         }
 
         _logger.LogInformation(

@@ -1,0 +1,23 @@
+{
+    "Checkpoint":  "safeupload-pre-boot-start-w01-w01-b38b36-20261005b-fe004c32b19e4cc88a0cf42389818d7b-20261005",
+    "RunName":  "boot-start-w01-w01-b38b36-20261005b-fe004c32b19e4cc88a0cf42389818d7b",
+    "LowerStatus":  "Unknown: child may own the sole port; parent does not connect while pending",
+    "Utc":  "2026-10-05T21:01:26.5787500Z",
+    "Overlay":  "/var/lib/libvirt/images/win10-debug.safeupload-pre-boot-start-w01-w01-b38b36-20261005b-fe004c32b19e4cc88a0cf42389818d7b-20261005",
+    "ChildRecovery":  null,
+    "ArmGeneration":  "Unknown",
+    "Reason":  "System.Management.Automation.RuntimeException: Active/configured Verifier missing: SafeUpload.sys",
+    "RunGuid":  "fe004c32b19e4cc88a0cf42389818d7b",
+    "Pids":  [
+                 {
+                     "ProcessId":  4088,
+                     "ParentProcessId":  1164,
+                     "CreationDate":  "\/Date(1791234077273)\/",
+                     "Name":  "powershell.exe",
+                     "CommandLine":  "\"powershell.exe\" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"C:\\Users\\vika\\Documents\\w01-fe004c32b19e4cc88a0cf42389818d7b-phase-AfterBoot.ps1\""
+                 }
+             ],
+    "Verdict":  "W01/A05 INCONCLUSIVE",
+    "RecoveryRequired":  true,
+    "Phase4":  "NOT_QUALIFIED"
+}

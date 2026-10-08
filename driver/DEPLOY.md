@@ -1,5 +1,37 @@
 # DEPLOY.md — Minifiltro SafeUpload (v1)
 
+## Estado atual: MVP de escrita em estágio (08/10/2026)
+
+O MVP que passou pelo gate é o modo de escrita em estágio: driver `mvp4-gen4b`
+(`5ebe139a`) e agente `agent-gen3b` (`51ba5873`), somente em VM descartável com
+Windows 10 22H2 19045.2965. Para instalar e testar esse modo siga "Install and
+test by hand" em [MVP-PLAN.md](MVP-PLAN.md): o serviço precisa dos argumentos
+`--Interception:Mode=Minifilter --Interception:StagingPrototype=true`, e o
+produto falha fechado (não existe fail-open). O desenho está em
+[STAGED-WRITES.md](STAGED-WRITES.md); o que o driver tem e não tem, os
+problemas conhecidos e o resultado do gate estão em `MVP-PLAN.md`.
+
+O restante deste documento descreve o fluxo anterior, sem estágio (veredito
+direto no kernel, com fail-open conforme a RN-013), e vale somente para ele.
+
+## Política atual: classificação em qualquer origem
+
+O agente não usa `sourcePaths`. Ele inspeciona o conteúdo de arquivos com
+extensões monitoradas quando são abertos para leitura, qualquer que seja a
+pasta ou o volume. `destinationPaths`, `removableDrives` e `networkPaths`
+definem para onde a saída é controlada. O cliente de prova ainda usa prefixos
+de origem para exercitar o protocolo legado.
+
+Prefixos de destino exigem limite de pasta; um nome de pasta vizinha
+com o mesmo começo não entra no escopo.
+
+O pacote com protocolo 11 passou **50/50 verificações** na VM alvo em
+30/09/2026, com uma verificação de Driver Verifier pulada. O modo operacional
+desativa temporariamente o cache de fluxo para não reutilizar decisões de
+escopo de outra abertura do mesmo arquivo. Meça a latência sob carga antes
+de implantar; a separação de classificação de conteúdo e escopo por operação
+é trabalho pendente.
+
 Runbook completo para compilar, assinar, instalar, testar, depurar e remover
 o minifiltro SafeUpload em uma **VM alvo descartável**.
 
@@ -27,9 +59,22 @@ Regras que não se negociam:
 
 ---
 
-## O que este driver faz na v1
+## O que este driver faz hoje
 
-- Intercepta `IRP_MJ_CREATE` (abertura de arquivo) e `IRP_MJ_READ` (leitura).
+**Instalação exige reinicialização.** O INF configura `SafeUpload` como
+`SERVICE_BOOT_START`. Antes de qualquer reinicialização, o instalador do agente
+mantém o serviço do driver em `DEMAND_START`, executa `--seed-boot-policy`
+como `SYSTEM`, verifica o registro durável e só então volta a configurar
+`BOOT_START`. Não reinicie entre instalar o INF e concluir o instalador do
+agente. O filtro não é iniciado pelo instalador. A proteção só pode ser
+anunciada depois do primeiro boot com o driver. Se alguém o carregar
+manualmente mais tarde, os volumes ficam `Untrusted` e o Inspector informa
+`protection pending reboot` até reiniciar. Sem escopos válidos no registro, ou
+após `ACL_REJECTED`, o driver não reivindica proteção baseada na política de
+boot.
+
+- Intercepta `IRP_MJ_CREATE`, `IRP_MJ_CLEANUP`, `IRP_MJ_SET_INFORMATION`
+  (rename e hard link) e escritas não paginadas em `IRP_MJ_WRITE`.
 - Ignora paging I/O, abertura de volumes, abertura de diretórios, I/O dos
   processos Idle e System, e o I/O do próprio inspetor.
 - Manda para o modo usuário, por uma porta de comunicação do Filter Manager,
@@ -43,8 +88,8 @@ O que ele **não** faz, por decisão de projeto:
   transporta.
 - Não bloqueia quando a inspeção falha. Timeout, porta fechada, resposta
   inválida, falta de memória — tudo isso resulta em **permitir**
-  (RN-013: "Permitido sem inspeção"). O driver nunca trava o sistema de
-  arquivos esperando uma resposta que não vem: o teto é 500 ms por operação.
+  (RN-013: "Permitido sem inspeção"). O prazo de espera do kernel vem da
+  política de inspeção enviada pelo serviço, com margem para a resposta.
 
 ---
 
@@ -72,21 +117,72 @@ IP desta máquina.
 iex (irm http://192.168.122.132:8000/bootstrap.ps1)
 ```
 
+Se executar pelo SSH do Windows e `Invoke-WebRequest` falhar ao desenhar o
+progresso no console, desative essa saída na mesma sessão antes do bootstrap:
+
+```powershell
+$ProgressPreference = 'SilentlyContinue'
+iex (irm http://IP_DA_VM_DEBUGGER:8000/bootstrap.ps1)
+```
+
+Numa bateria anterior de 30/09/2026, o pacote assinado passou 49/49 verificações:
+escrita por handle pré-aberto foi negada após a contaminação, `.bin` não
+contornou o destino e uma justificativa válida liberou somente uma tentativa.
+O pipe confirmou `rejected` para ID inventado e `accepted` após a concessão
+válida chegar ao driver.
+O unload com Pool Tracking ativo também passou. Para investigar a carga do
+unload, Driver Verifier volátil foi ativado sem reboot no debuggee:
+
+```powershell
+verifier /volatile /flags 0x9 /adddriver SafeUpload.sys
+verifier /query
+& C:\safeupload\Invoke-SafeUploadTest.ps1 -ReproduceUnloadLeak -StressProcesses 64
+```
+
+`0x9` ativa Special Pool e Pool Tracking. A carga corrigida alterna escrita e
+leitura em arquivos separados; o pico observado foi **50 alocações
+simultâneas**, acima das 33 do travamento original. O inspetor foi encerrado
+durante a rajada e o filtro descarregou sem bugcheck. Isso não identifica a
+causa original; um novo travamento exige dump de kernel e pilha de alocação.
+
 O `bootstrap.ps1` é gerado a cada publicação com a URL embutida. Ele baixa a
 **versão atual** do script de teste, libera a política de execução no escopo
 do processo e entrega o controle. Não há cópia de script para manter
 atualizada na VM alvo: o que roda é sempre o que acabou de ser publicado.
 
-A partir daí o script faz a verificação prévia, baixa o pacote, confere os
-hashes contra o manifesto, troca o binário, carrega o filtro e roda o teste
-de fumaça inteiro, terminando com um resumo do tipo `6/6 verificações
-passaram` e código de saída diferente de zero se alguma falhar.
+A partir daí o script faz a verificação prévia, baixa o pacote e confere os
+hashes contra o manifesto. Na primeira execução (ou depois de trocar o
+binário), ele só instala/atualiza o driver boot-start e termina com
+`protection pending reboot`; ele não inicia o filtro. Reinicie o Windows e
+rode o script de novo para confirmar que o driver subiu no boot antes de
+iniciar o teste de fumaça. Um teste que não confirmou o boot não anuncia
+proteção.
 
 Para passar opções, rode o script já baixado:
 
 ```powershell
 & $env:TEMP\Invoke-SafeUploadTest.ps1 -SkipDownload -SkipSmokeTest
 ```
+
+### Validar a interface de justificativa
+
+A bateria automática valida o pipe, a auditoria, a concessão no kernel e o
+uso único, mas não clica na janela WPF. Para fechar essa última validação na
+VM alvo, execute o aplicativo de bandeja na sessão interativa do usuário,
+com o serviço em modo minifiltro e `overrideAllowed: true` na política:
+
+1. Abra um arquivo sensível já existente no destino monitorado. A primeira
+   tentativa deve ser recusada e a notificação deve mostrar o campo de
+   justificativa, sem dizer que o arquivo foi movido para quarentena.
+2. Informe um motivo, envie e aguarde a mensagem de que a justificativa foi
+   **aceita** antes de tentar a mesma operação novamente. A nova tentativa
+   deve passar. O serviço só confirma depois que o driver recebe a concessão.
+3. Tente uma terceira vez. A exceção já consumida não deve valer. Confira
+   a entrada `type: "override"` em `queue.jsonl` para o ID do bloqueio.
+4. Com `overrideAllowed: false`, repita o bloqueio. O campo de justificativa
+   não deve aparecer.
+
+O projeto WPF compilou em Release em 30/09/2026; essa sequência de cliques foi executada por Victor na VM alvo.
 
 > O `bootstrap.ps1` entrega o controle ao script **como arquivo**, e não por
 > `Invoke-Expression`. É deliberado: `#Requires -RunAsAdministrator` é
@@ -280,12 +376,12 @@ VirtualBox), com a VM desligada ou em estado estável:
 - Hyper-V: `Checkpoint-VM -Name "<nome-da-vm>" -SnapshotName "pre-safeupload"`
 - VMware / VirtualBox: use o menu de snapshots da interface.
 
-Anote o nome do snapshot. O passo 10 depende dele.
+Anote o nome do snapshot. O passo 11 depende dele.
 
 ### 2. Preparar a VM para aceitar assinatura de teste
 
 Sem isto, o Windows recusa carregar o driver com
-`STATUS_INVALID_IMAGE_HASH` e o `fltmc load` do passo 5 falha.
+`STATUS_INVALID_IMAGE_HASH` e o carregamento manual com `fltmc load` falha.
 
 **2a. Desligar o Secure Boot** no firmware da VM (configuração do
 hipervisor). Confirme dentro do Windows:
@@ -354,7 +450,7 @@ Confira que a assinatura agora é reconhecida:
 certutil -verify -urlfetch C:\safeupload\SafeUpload.sys
 ```
 
-### 4. Instalar o INF
+### 4. Instalar o pacote do driver sem reiniciar
 
 ```
 rundll32.exe setupapi.dll,InstallHinfSection DefaultInstall 128 C:\safeupload\SafeUpload.inf
@@ -369,8 +465,47 @@ o resultado de duas formas:
 sc query SafeUpload
 ```
 
-Esperado: `TYPE : 2 FILE_SYSTEM_DRIVER` e `STATE : 1 STOPPED` (parado
-porque é demand start — ele só sobe no passo 5).
+Esperado antes da reinicialização: `TYPE : 2 FILE_SYSTEM_DRIVER` e
+`STATE : 1 STOPPED`. O INF pode inicialmente registrar `BOOT_START`; não
+reinicie ainda. Não inicie o filtro com `fltmc load` ou `sc start`.
+
+### 5. Semear a política antes do reboot
+
+Com o serviço do driver criado pelo INF e ainda descarregado, instale o agente
+antes de reiniciar:
+
+```powershell
+.\agente\scripts\Install-SafeUploadAgent.ps1 `
+  -ServiceExecutablePath "C:\caminho\publicado\SafeUpload.Agent.Service.exe"
+```
+
+O instalador muda temporariamente o tipo de início do driver para demanda e
+cria uma tarefa agendada de execução única como `SYSTEM`. O processo carrega e
+valida `C:\ProgramData\SafeUpload\policy.json` pelo mesmo caminho de ACL do
+serviço, grava `PendingScopes`, `Scopes`, remove `PendingScopes` e confere os
+bytes finais e o proprietário/DACL de `Parameters` e `BootPolicy`. Qualquer
+falha encerra a instalação antes de voltar para `BOOT_START`. O agente e o
+filtro não são iniciados. O instalador imprime `Protection activates after
+reboot.`; só então reinicie o Windows.
+
+Confira que o instalador deixou o driver em boot-start:
+
+```
+sc qc SafeUpload
+```
+
+`START_TYPE` deve mostrar `BOOT_START` (`0`).
+
+Os prefixos de pasta no registro usam nomes como
+`\Device\HarddiskVolume3\...`, derivados da letra de unidade no momento da
+semeadura. O sufixo numérico `HarddiskVolumeN` pode mudar entre boots. O
+serviço, em modo `Minifilter`, atualiza o registro quando aplica a política
+em cada início e também faz uma nova semeadura ao encerrar; isso prepara o próximo boot, mas não
+corrige o boot atual se o número mudar antes de o agente iniciar. Não mude a
+versão nem o formato do registro manualmente. A correção completa exige um
+formato de política com identidade estável de volume (por exemplo, GUID de
+volume) e uma mudança no driver para comparar essa identidade com cada volume
+montado, em vez de depender do nome `HarddiskVolumeN`.
 
 **Arquivo copiado:**
 
@@ -386,13 +521,25 @@ notepad C:\Windows\INF\setupapi.dev.log
 
 Procure pelas últimas entradas contendo `SafeUpload`.
 
-### 5. Carregar o filtro
+### 6. Reiniciar para iniciar a proteção
+
+Reinicie o Windows depois da instalação ou de trocar o driver:
 
 ```
-fltmc load SafeUpload
+shutdown /r /t 0
 ```
 
-Sem saída = sucesso. Erros comuns:
+Depois do boot, confira o filtro e as instâncias:
+
+```
+fltmc filters
+fltmc instances -f SafeUpload
+```
+
+O Inspector deve indicar `trusted` depois que o canário passar. Se a instância
+foi carregada manualmente após o boot, ela continua `Untrusted` e informa
+`protection pending reboot`; reinicie para começar a proteção. Erros de carga
+comuns:
 
 | Mensagem | Causa |
 |---|---|
@@ -423,7 +570,7 @@ Sem saída = sucesso. Erros comuns:
 > Com o instalador legado que este INF usa, ela tem que estar em
 > `Services\SafeUpload\Instances`. Se estiver em
 > `Services\SafeUpload\Parameters\Instances`, o INF aplicado é de uma versão
-> anterior à correção desse layout — reinstale com o INF atual (passo 8d
+> anterior à correção desse layout — reinstale com o INF atual (passo 9d
 > para remover, depois passo 4).
 
 Conferir que o filtro está registrado:
@@ -449,7 +596,7 @@ fltmc instances -f SafeUpload
 Esperado — uma instância por volume local (`C:`, `D:`, etc.). Volumes de
 rede são recusados de propósito pelo `InstanceSetup` do driver.
 
-### 6. Ligar o Driver Verifier apenas neste driver
+### 7. Ligar o Driver Verifier apenas neste driver
 
 O Verifier é o que transforma um bug silencioso (uso de memória liberada,
 IRQL errado, vazamento de pool) em uma tela azul imediata e diagnosticável.
@@ -460,7 +607,8 @@ ficaria inutilizavelmente lenta.
 verifier /standard /driver SafeUpload.sys
 ```
 
-Resposta esperada: aviso de que é preciso reiniciar.
+Resposta esperada: aviso de que é preciso reiniciar. Se você ativar o Verifier
+depois do reboot de instalação, reinicie outra vez para aplicá-lo.
 
 ```
 shutdown /r /t 0
@@ -476,19 +624,14 @@ Deve listar `SafeUpload.sys` com as opções padrão (que incluem **Special
 Pool** — é ele que detecta uso de memória liberada, e é a razão principal de
 ligar o Verifier aqui).
 
-> O driver é *demand start*: ele **não** sobe sozinho no boot. Depois de
-> reiniciar, carregue de novo:
->
-> ```
-> fltmc load SafeUpload
-> ```
+O Verifier não muda o tipo boot-start. O filtro continua iniciando no boot.
 
-### 7. Teste de fumaça
+### 8. Teste de fumaça
 
 O inspetor é o "log" desta versão: ele imprime no console cada operação que
 o kernel manda.
 
-**7a. Preparar o arquivo de bloqueio ANTES de tudo.**
+**8a. Preparar o arquivo de bloqueio ANTES de tudo.**
 
 Isto tem que ser feito com o inspetor **desligado**. Enquanto ele estiver
 rodando, qualquer tentativa de *criar* um arquivo com `BLOQUEAR_TESTE` no
@@ -501,7 +644,7 @@ echo conteudo de teste > C:\safeupload-teste\BLOQUEAR_TESTE.txt
 echo arquivo normal > C:\safeupload-teste\normal.txt
 ```
 
-**7b. Iniciar o inspetor** em um Prompt de Comando **como Administrador**
+**8b. Iniciar o inspetor** em um Prompt de Comando **como Administrador**
 (a porta é acessível apenas a SYSTEM e Administradores):
 
 ```
@@ -518,7 +661,7 @@ Conectado. Aguardando requisicoes (Ctrl+C para sair).
 ```
 
 Se aparecer `ERRO: nao foi possivel conectar na porta`, o filtro não está
-carregado (volte ao passo 5) ou o prompt não está elevado.
+carregado (volte ao passo 6) ou o prompt não está elevado.
 
 Se **não aparecer nada** e o prompt voltar na hora, o processo morreu no
 carregador antes de chegar ao `main`. Confirme:
@@ -540,7 +683,7 @@ dumpbin /dependents C:\safeupload-pkg\SafeUpload.Inspector.exe
 Só podem aparecer `KERNEL32.dll` e `FLTLIB.DLL`. Se aparecerem
 `VCRUNTIME140D.dll` ou `ucrtbased.dll`, recompile e recopie.
 
-**7c. Caso permitido.** Em *outra* janela:
+**8c. Caso permitido.** Em *outra* janela:
 
 ```
 notepad C:\safeupload-teste\normal.txt
@@ -557,7 +700,7 @@ como:
 O caminho vem em forma NT (`\Device\HarddiskVolumeN\...`), não em forma DOS
 (`C:\...`). Isso é o caminho normalizado que o Filter Manager entrega.
 
-**7d. Caso bloqueado:**
+**8d. Caso bloqueado:**
 
 ```
 notepad C:\safeupload-teste\BLOQUEAR_TESTE.txt
@@ -578,12 +721,12 @@ E no inspetor:
 [57] CREATE pid=9120   cmd.exe          \Device\HarddiskVolume3\safeupload-teste\BLOQUEAR_TESTE.txt  => BLOQUEADO
 ```
 
-**7e. Caso de falha de inspeção (RN-013).** Feche o inspetor com `Ctrl+C` e
-repita o passo 7d. O arquivo agora **abre normalmente**: sem inspetor
+**8e. Caso de falha de inspeção (RN-013).** Feche o inspetor com `Ctrl+C` e
+repita o passo 8d. O arquivo agora **abre normalmente**: sem inspetor
 conectado, o driver permite tudo. Esse é o comportamento correto e
 proposital — falha de inspeção nunca vira bloqueio.
 
-**7f. Rastros do kernel (opcional).** As mensagens `DbgPrintEx` do driver
+**8f. Rastros do kernel (opcional).** As mensagens `DbgPrintEx` do driver
 saem em `DPFLTR_INFO_LEVEL`, que o kernel filtra por padrão. Para vê-las é
 preciso um depurador de kernel anexado (ou o DebugView do Sysinternals com
 "Capture Kernel" ligado) **e** subir a máscara:
@@ -595,9 +738,9 @@ preciso um depurador de kernel anexado (ou o DebugView do Sysinternals com
   reg add "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Debug Print Filter" /v IHVDRIVER /t REG_DWORD /d 0xF /f
   ```
 
-### 8. Descarregar e desinstalar
+### 9. Descarregar e desinstalar
 
-**8a. Pare o inspetor primeiro** (`Ctrl+C` na janela dele).
+**9a. Pare o inspetor primeiro** (`Ctrl+C` na janela dele).
 
 Isso é obrigatório: o driver **recusa** um descarregamento voluntário
 enquanto houver inspetor conectado. Se você tentar `fltmc unload` com ele
@@ -605,7 +748,7 @@ rodando, o comando falha com `STATUS_FLT_DO_NOT_DETACH` (`0xC01C0010`).
 É proposital — descarregar sob um cliente vivo deixa a ordem dos eventos
 imprevisível.
 
-**8b. Descarregar o filtro:**
+**9b. Descarregar o filtro:**
 
 ```
 fltmc unload SafeUpload
@@ -619,14 +762,14 @@ fltmc filters
 
 `SafeUpload` não deve mais aparecer na lista.
 
-**8c. Desligar o Driver Verifier:**
+**9c. Desligar o Driver Verifier:**
 
 ```
 verifier /reset
 shutdown /r /t 0
 ```
 
-**8d. Desinstalar o INF (remove o serviço e o arquivo):**
+**9d. Desinstalar o INF (remove o serviço e o arquivo):**
 
 ```
 rundll32.exe setupapi.dll,InstallHinfSection DefaultUninstall 128 C:\safeupload\SafeUpload.inf
@@ -647,7 +790,7 @@ sc query SafeUpload
 
 Esperado: `O serviço especificado não existe como um serviço instalado.`
 
-**8e. (Opcional) Reverter o modo de teste:**
+**9e. (Opcional) Reverter o modo de teste:**
 
 ```
 bcdedit /set testsigning off
@@ -656,9 +799,9 @@ certutil -delstore TrustedPublisher "SafeUpload Test Signing"
 shutdown /r /t 0
 ```
 
-### 9. Em caso de tela azul (BSOD)
+### 10. Em caso de tela azul (BSOD)
 
-**9a. Garanta que a VM alvo está configurada para gerar dump.** Faça isto
+**10a. Garanta que a VM alvo está configurada para gerar dump.** Faça isto
 *antes* de precisar:
 
 - `sysdm.cpl` → Avançado → Inicialização e Recuperação → Configurações →
@@ -672,20 +815,20 @@ Equivalente por linha de comando (1 = completo, 2 = kernel):
 reg add "HKLM\SYSTEM\CurrentControlSet\Control\CrashControl" /v CrashDumpEnabled /t REG_DWORD /d 2 /f
 ```
 
-**9b. Depois do BSOD**, copie o dump da VM alvo para esta VM de
+**10b. Depois do BSOD**, copie o dump da VM alvo para esta VM de
 desenvolvimento:
 
 ```
 C:\Windows\MEMORY.DMP  ->  C:\safeupload-dumps\MEMORY.DMP
 ```
 
-**9c. Abrir no WinDbg** (nesta VM):
+**10c. Abrir no WinDbg** (nesta VM):
 
 ```
 & "C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\windbg.exe" -z C:\safeupload-dumps\MEMORY.DMP
 ```
 
-**9d. Dentro do WinDbg**, na ordem:
+**10d. Dentro do WinDbg**, na ordem:
 
 ```
 .symfix
@@ -702,7 +845,7 @@ símbolo não casa.
 O `!analyze -v` mostra o bugcheck, o módulo culpado (`MODULE_NAME`) e a
 pilha. Se `MODULE_NAME` for `SafeUpload`, a falha é nossa.
 
-**9e. Estado do Filter Manager** no momento do crash:
+**10e. Estado do Filter Manager** no momento do crash:
 
 ```
 .load fltkd
@@ -717,7 +860,7 @@ seguida:
 !fltkd.volumes
 ```
 
-**9e-bis. Nem toda tela azul é do driver — confira antes de investigar.**
+**10e-bis. Nem toda tela azul é do driver — confira antes de investigar.**
 
 A primeira pergunta, sempre:
 
@@ -765,7 +908,8 @@ anexado. Redirecionar a saída para arquivo também reduz o volume de I/O de
 console, que é o que alimenta o defeito:
 
 ```
-powershell -NoProfile -Command "iex (irm http://SEU_IP:8000/bootstrap.ps1)" > C:\safeuploadun.log 2>&1
+powershell -NoProfile -Command "iex (irm http://SEU_IP:8000/bootstrap.ps1)" > C:\safeupload
+un.log 2>&1
 ```
 
 Custaram três rodadas de investigação antes de alguém rodar
@@ -777,7 +921,7 @@ evidência forte, não prova. Se houver motivo para desconfiar, `verifier
 /standard /all` instrumenta todos os drivers e encontra quem corrompe — ao
 custo de deixar a VM bem mais lenta.
 
-**9f. Bugchecks típicos com Driver Verifier ligado:**
+**10f. Bugchecks típicos com Driver Verifier ligado:**
 
 | Bugcheck | Significado provável |
 |---|---|
@@ -795,12 +939,13 @@ Para inspecionar o pool deste driver especificamente (tag `SUfl`):
 
 Um valor que só cresce em `!poolused` entre operações indica vazamento.
 
-### 10. Recuperação: a VM alvo não inicializa
+### 11. Recuperação: a VM alvo não inicializa
 
 Ordem do mais barato para o mais caro:
 
-**10a.** Se ela chega ao menu de boot: F8 → **Modo de Segurança**. O driver
-é *demand start*, então não sobe em modo de segurança. De dentro dele:
+**11a.** Se ela chega ao menu de boot: F8 → **Modo de Segurança**. Não conte
+com o modo de segurança como recuperação do filtro boot-start. Se a VM inicia
+nesse modo, desative o Verifier e o driver antes de tentar iniciar normalmente:
 
 ```
 verifier /reset
@@ -809,7 +954,7 @@ sc config SafeUpload start= disabled
 
 Reinicie normalmente.
 
-**10b.** Se nem isso funciona: **reverta o snapshot** do passo 1.
+**11b.** Se nem isso funciona: **reverta o snapshot** do passo 1.
 
 - Hyper-V: `Restore-VMSnapshot -VMName "<nome-da-vm>" -Name "pre-safeupload" -Confirm:$false`
 - VMware / VirtualBox: pelo gerenciador de snapshots.
@@ -859,7 +1004,7 @@ dotnet run --project service\SafeUpload.Agent -- --verify
 
 ### Versão
 
-`SAFEUPLOAD_PROTOCOL_VERSION` é **6**. Ela sobe sempre que o layout muda,
+`SAFEUPLOAD_PROTOCOL_VERSION` é **11**. Ela sobe sempre que o layout muda,
 inclusive quando a mudança é só um contador novo: o receptor lê a estrutura
 inteira de uma vez, então um campo acrescentado no meio desloca tudo o que
 vem depois. Um cliente antigo contra um driver novo não leria um número
@@ -899,7 +1044,7 @@ canal de controle e vai no sentido oposto.
 
 | Offset | Tamanho | Campo | Descrição |
 |---:|---:|---|---|
-| 0 | 4 | `Version` | `6`. |
+| 0 | 4 | `Version` | `11`. |
 | 4 | 4 | `StructSize` | `1192`. |
 | 8 | 8 | `RequestId` | Identificador monotônico. A resposta **tem que** repeti-lo. |
 | 16 | 4 | `Operation` | `1` = CREATE. O `2` = READ existe no contrato mas não ocorre: `IRP_MJ_READ` não é registrado. |
@@ -919,7 +1064,7 @@ Flags:
 | 0x02 | `IMAGE_NAME_TRUNCATED` | O nome da imagem não coube em 64. |
 | 0x04 | `PATH_NOT_NORMALIZED` | A normalização falhou; o caminho é o de abertura. |
 | 0x08 | `SCOPE_DESTINATION` | A operação vai para um destino monitorado. |
-| 0x10 | `SCOPE_SOURCE` | A operação lê de uma origem monitorada. |
+| 0x10 | `SCOPE_SOURCE` | A operação lê um formato monitorado; no serviço, independe da pasta. |
 
 Os dois últimos são a informação que o serviço usa para decidir o que a
 resposta significa. Uma negação em escopo de **origem** marca o processo;
@@ -934,7 +1079,7 @@ um cliente correto e um que lê fora da estrutura.
 
 | Offset | Tamanho | Campo | Descrição |
 |---:|---:|---|---|
-| 0 | 4 | `Version` | `6`. |
+| 0 | 4 | `Version` | `11`. |
 | 4 | 4 | `StructSize` | `24`. |
 | 8 | 8 | `RequestId` | O mesmo que chegou. |
 | 16 | 4 | `Verdict` | `0` = permitir, `1` = negar. |
@@ -946,7 +1091,7 @@ Cabeçalho de todo comando pelo `FilterSendMessage`.
 
 | Offset | Tamanho | Campo | Descrição |
 |---:|---:|---|---|
-| 0 | 4 | `Version` | `6`. |
+| 0 | 4 | `Version` | `11`. |
 | 4 | 4 | `StructSize` | Tamanho da mensagem **inteira**, não do cabeçalho. |
 | 8 | 4 | `Command` | `1` = SET_POLICY, `2` = GET_COUNTERS. |
 | 12 | 4 | `Reserved` | Zero. |
@@ -964,11 +1109,11 @@ o filtro, não configuração opcional.
 | 20 | 4 | `PrefixCount` | Destinos, máximo 16. |
 | 24 | 4 | `ImageCount` | Imagens excluídas, máximo 16. |
 | 28 | 4 | `SourcePrefixCount` | Origens, máximo 16. |
-| 32 | 4 | `Flags` | `0x01` = todo volume removível, `0x02` = toda rede. |
+| 32 | 4 | `Flags` | `0x01` = removível, `0x02` = rede, `0x04` = só auditoria, `0x08` = justificativa, `0x10` = classificar toda origem. |
 | 36 | 4 | `Reserved` | Zero. |
 | 40 | 1024 | `Extensions[32][16]` | Com o ponto: `.docx`. |
 | 1064 | 8320 | `Prefixes[16][260]` | Destinos monitorados. |
-| 9384 | 8320 | `SourcePrefixes[16][260]` | Origens sensíveis. |
+| 9384 | 8320 | `SourcePrefixes[16][260]` | Prefixos legados, usados pelo cliente de prova. |
 | 17704 | 2048 | `Images[16][64]` | Processos ignorados, só o nome. |
 
 Cada entrada ocupa um slot de tamanho fixo e **tem que terminar em nulo**:
@@ -1092,21 +1237,27 @@ faz o sample `scanner` do WDK.
 **4. Espera circular limitada pelo timeout.** Se o inspetor bloquear em uma
 operação de arquivo que passa por este mesmo filtro (por exemplo escrevendo
 um log através de um processo intermediário), forma-se uma espera circular.
-Ela **não** trava a máquina: o timeout de 500 ms a rompe e a operação é
-permitida. Mas cada ocorrência custa 500 ms. O agente C# deve evitar I/O de
-arquivo no caminho de resposta.
+Ela **não** trava a máquina: o prazo de inspeção enviado pela política a
+rompe e a operação é permitida. Mas cada ocorrência custa esse prazo. O
+agente C# deve evitar I/O de arquivo no caminho de resposta.
 
 **5. Caminhos em forma NT.** O driver entrega
 `\Device\HarddiskVolume3\...`, não `C:\...`. A conversão para forma DOS é
 responsabilidade do modo usuário (`QueryDosDevice` / tabela de volumes).
 
-**6. Sem versionamento de recurso no binário.** O `.sys` não tem bloco
-`VERSIONINFO`. Antes de qualquer assinatura de produção, adicionar um `.rc`
-com `VERSIONINFO` ao projeto do driver.
+**6. Versionamento de recurso no binário.** `SafeUpload.rc` fornece
+`VERSIONINFO` 1.0.0.0, igual ao `DriverVer` do INF. Após compilar, confirme:
 
-**7. Sem parâmetros de registro.** O timeout de 500 ms é constante de
-compilação (`SAFEUPLOAD_VERDICT_TIMEOUT_MS`, em `Filter.h`). O `RegistryPath`
-recebido no `DriverEntry` é deliberadamente ignorado nesta versão.
+```powershell
+(Get-Item .\driver\x64\Debug\SafeUpload.sys).VersionInfo |
+    Format-List FileVersion,ProductVersion,FileDescription,OriginalFilename
+```
+
+Os quatro campos foram conferidos no build de 30/09/2026.
+
+**7. Sem parâmetros de registro.** O serviço envia o prazo de inspeção ao
+driver pela política. O `RegistryPath` recebido no `DriverEntry` é
+deliberadamente ignorado nesta versão.
 
 **8. Comportamento do buffer de resposta no timeout — verificado
 empiricamente.** O driver aloca requisição e resposta em um único bloco de
@@ -1144,5 +1295,5 @@ bloco no retorno de `STATUS_TIMEOUT` — mantê-lo até o unload, ou trocar por
 um buffer por-thread reaproveitado.
 
 **Repita este teste sempre que o caminho de veredito mudar.** O
-procedimento está no passo 6 e a forma de forçar o timeout é a descrita
+procedimento está no passo 7 e a forma de forçar o timeout é a descrita
 acima.

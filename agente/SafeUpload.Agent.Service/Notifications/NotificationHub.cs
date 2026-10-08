@@ -4,19 +4,9 @@ using SafeUpload.Agent.Core.Contracts;
 namespace SafeUpload.Agent.Service.Notifications;
 
 /// <summary>
-/// O ponto de encontro entre quem decide e quem mostra.
-///
-/// O interceptador publica aqui e segue em frente; quem entrega as mensagens
-/// aos aplicativos conectados é outro serviço. A separação existe por uma razão
-/// só: <b>publicar não pode bloquear</b>. O veredito já foi dado e o arquivo já
-/// foi movido quando a notificação sai — se a entrega ficasse no caminho da
-/// decisão, um aplicativo lento, minimizado ou morto seguraria a inspeção do
-/// próximo arquivo.
-///
-/// Cada assinante tem sua própria fila limitada. Fila cheia significa
-/// aplicativo que parou de ler: a mensagem mais antiga é descartada em vez de
-/// esperar. Perder notificação de tela é aceitável — a trilha de auditoria em
-/// disco é a fonte da verdade, e ela não passa por aqui.
+/// Records each emission durably before retaining or delivering it. Subscriber
+/// queues are bounded and never wait for a slow client; durable recording is
+/// synchronous and may wait for disk. A failed record suppresses delivery.
 /// </summary>
 public sealed class NotificationHub
 {
@@ -44,17 +34,20 @@ public sealed class NotificationHub
     private readonly List<Buffered> _replay = [];
     private readonly Lock _gate = new();
     private readonly TimeProvider _clock;
+    private readonly INotificationRecord _record;
+    private readonly ILogger<NotificationHub> _logger;
 
     private StatusNotification? _currentStatus;
 
-    /// <summary>Cria o hub com o relógio do sistema.</summary>
-    public NotificationHub() : this(TimeProvider.System)
-    {
-    }
+    public NotificationHub(INotificationRecord record, ILogger<NotificationHub> logger)
+        : this(record, logger, TimeProvider.System) { }
 
-    /// <summary>Cria o hub com um relógio explícito. Serve aos testes.</summary>
-    public NotificationHub(TimeProvider clock) =>
+    internal NotificationHub(INotificationRecord record, ILogger<NotificationHub> logger, TimeProvider clock)
+    {
+        _record = record ?? throw new ArgumentNullException(nameof(record));
+        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _clock = clock ?? throw new ArgumentNullException(nameof(clock));
+    }
 
     /// <summary>
     /// O último estado publicado, entregue a todo aplicativo que conectar.
@@ -85,7 +78,7 @@ public sealed class NotificationHub
     /// chamá-lo ao perder a conexão, senão o hub acumula filas de aplicativos
     /// que já morreram.
     /// </returns>
-    public NotificationSubscription Subscribe(uint? sessionId = null)
+    public NotificationSubscription Subscribe(uint? sessionId = null, string? userSid = null)
     {
         // DropOldest e não Wait: escrever nunca pode bloquear quem publica.
         var channel = Channel.CreateBounded<AgentNotification>(
@@ -96,7 +89,7 @@ public sealed class NotificationHub
                 SingleWriter = false
             });
 
-        var subscription = new Subscription(channel, sessionId);
+        var subscription = new Subscription(channel, sessionId, userSid);
 
         lock (_gate)
         {
@@ -108,7 +101,8 @@ public sealed class NotificationHub
 
             foreach (var buffered in _replay)
             {
-                if (Targets(subscription, buffered.TargetSessionId))
+                if (Targets(subscription, buffered.TargetSessionId, buffered.TargetUserSid) &&
+                    TryRecord(buffered.Notification, buffered.TargetSessionId))
                 {
                     channel.Writer.TryWrite(buffered.Notification);
                 }
@@ -119,7 +113,7 @@ public sealed class NotificationHub
     }
 
     /// <summary>
-    /// Publica uma mensagem. Não bloqueia e não lança.
+    /// Flushes the emission record, then publishes. Recording failure is logged and suppresses delivery.
     /// </summary>
     /// <param name="notification">A mensagem.</param>
     /// <param name="targetSessionId">
@@ -127,12 +121,26 @@ public sealed class NotificationHub
     /// conectados — que é o caminho percorrido hoje, porque a origem de uma
     /// operação detectada por <c>FileSystemWatcher</c> não é determinável.
     /// </param>
-    public void Publish(AgentNotification notification, uint? targetSessionId = null)
+    // Durable audit only: used when the owner's session cannot be bound to its SID (for
+    // example session 0, where no interactive user or agent UI exists). Nothing is delivered.
+    public void RecordOnly(AgentNotification notification, uint targetSessionId)
     {
         ArgumentNullException.ThrowIfNull(notification);
+        lock (_gate) { _ = TryRecord(notification, targetSessionId); }
+    }
+
+    public void Publish(AgentNotification notification, uint? targetSessionId = null,
+        string? targetUserSid = null)
+    {
+        ArgumentNullException.ThrowIfNull(notification);
+        if (notification is TransferNotification { Phase: TransferPhase.Blocked } &&
+            (targetSessionId is null || targetUserSid is null))
+            return;
 
         lock (_gate)
         {
+            if (!TryRecord(notification, targetSessionId)) return;
+
             if (notification is StatusNotification status)
             {
                 _currentStatus = status;
@@ -141,13 +149,13 @@ public sealed class NotificationHub
             {
                 // Só evento entra na janela de reprodução. Estado não precisa:
                 // quem conecta já recebe o estado corrente.
-                _replay.Add(new Buffered(notification, targetSessionId, _clock.GetUtcNow()));
+                _replay.Add(new Buffered(notification, targetSessionId, targetUserSid, _clock.GetUtcNow()));
                 PruneReplay();
             }
 
             foreach (var subscription in _subscriptions)
             {
-                if (Targets(subscription, targetSessionId))
+                if (Targets(subscription, targetSessionId, targetUserSid))
                 {
                     // TryWrite devolve falso apenas se o canal estiver fechado;
                     // com DropOldest ele nunca recusa por lotação.
@@ -157,16 +165,38 @@ public sealed class NotificationHub
         }
     }
 
+    /// <summary>Record the retained status again before the pipe sends it to a new client.</summary>
+    public StatusNotification? GetRecordedStatus()
+    {
+        lock (_gate)
+        {
+            return _currentStatus is { } status && TryRecord(status, null) ? status : null;
+        }
+    }
+
+    private bool TryRecord(AgentNotification notification, uint? targetSessionId)
+    {
+        try { _record.Append(notification, targetSessionId); return true; }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Notification recording failed; {Kind} was not delivered", notification.GetType().Name);
+            return false;
+        }
+    }
+
     /// <summary>
-    /// Uma mensagem sem sessão de destino vai para todos; com sessão, só para
-    /// quem está nela. Um assinante de sessão desconhecida recebe tudo — é o
-    /// caso do aplicativo cuja sessão o sistema não soube informar, e deixá-lo
-    /// sem notificação nenhuma seria pior do que mostrar demais.
+    /// A notification with a user SID requires an exact session and SID
+    /// match. Other messages keep their legacy session-only routing, including
+    /// delivery to a subscriber whose session is unknown.
     /// </summary>
-    private static bool Targets(Subscription subscription, uint? targetSessionId) =>
-        targetSessionId is null
-        || subscription.SessionId is null
-        || subscription.SessionId == targetSessionId;
+    private static bool Targets(Subscription subscription, uint? targetSessionId, string? targetUserSid)
+    {
+        if (targetUserSid is not null)
+            return targetSessionId is not null && subscription.SessionId == targetSessionId &&
+                string.Equals(subscription.UserSid, targetUserSid, StringComparison.OrdinalIgnoreCase);
+        return targetSessionId is null || subscription.SessionId is null ||
+            subscription.SessionId == targetSessionId;
+    }
 
     private void PruneReplay()
     {
@@ -190,9 +220,10 @@ public sealed class NotificationHub
         subscription.Channel.Writer.TryComplete();
     }
 
-    private sealed record Subscription(Channel<AgentNotification> Channel, uint? SessionId);
+    private sealed record Subscription(Channel<AgentNotification> Channel, uint? SessionId, string? UserSid);
 
-    private sealed record Buffered(AgentNotification Notification, uint? TargetSessionId, DateTimeOffset At);
+    private sealed record Buffered(AgentNotification Notification, uint? TargetSessionId,
+        string? TargetUserSid, DateTimeOffset At);
 }
 
 /// <summary>

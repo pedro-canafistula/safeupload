@@ -27,6 +27,8 @@ namespace SafeUpload.Agent.Service.Notifications;
 public sealed class JustificationPipeServer : BackgroundService
 {
     private const int MaxServerInstances = 16;
+    private static readonly TimeSpan ReadTimeout = TimeSpan.FromSeconds(5);
+    private readonly SemaphoreSlim _connections = new(MaxServerInstances, MaxServerInstances);
 
     /// <summary>
     /// Prazo da exceção no driver.
@@ -40,7 +42,8 @@ public sealed class JustificationPipeServer : BackgroundService
     private readonly PendingOverrides _pending;
     private readonly IPolicyStore _policyStore;
     private readonly IAuditSink _auditSink;
-    private readonly OverrideGrantQueue _grants;
+    private readonly OverrideGrantDispatcher _grants;
+    private readonly StagedJustifications _staged;
     private readonly ILogger<JustificationPipeServer> _logger;
 
     /// <summary>Compõe o servidor.</summary>
@@ -48,13 +51,15 @@ public sealed class JustificationPipeServer : BackgroundService
         PendingOverrides pending,
         IPolicyStore policyStore,
         IAuditSink auditSink,
-        OverrideGrantQueue grants,
+        OverrideGrantDispatcher grants,
+        StagedJustifications staged,
         ILogger<JustificationPipeServer> logger)
     {
         _pending = pending ?? throw new ArgumentNullException(nameof(pending));
         _policyStore = policyStore ?? throw new ArgumentNullException(nameof(policyStore));
         _auditSink = auditSink ?? throw new ArgumentNullException(nameof(auditSink));
         _grants = grants ?? throw new ArgumentNullException(nameof(grants));
+        _staged = staged ?? throw new ArgumentNullException(nameof(staged));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -63,49 +68,81 @@ public sealed class JustificationPipeServer : BackgroundService
     {
         while (!stoppingToken.IsCancellationRequested)
         {
-            NamedPipeServerStream pipe = CreatePipe();
+            try { await _connections.WaitAsync(stoppingToken).ConfigureAwait(false); }
+            catch (OperationCanceledException) { return; }
+            NamedPipeServerStream? pipe = null;
 
             try
             {
+                pipe = CreatePipe();
                 await pipe.WaitForConnectionAsync(stoppingToken).ConfigureAwait(false);
             }
             catch (OperationCanceledException)
             {
-                await pipe.DisposeAsync().ConfigureAwait(false);
+                if (pipe is not null) await pipe.DisposeAsync().ConfigureAwait(false);
+                _connections.Release();
                 return;
             }
             catch (Exception ex)
             {
                 _logger.LogWarning(ex, "Falha ao aceitar conexao no canal de justificativas.");
-                await pipe.DisposeAsync().ConfigureAwait(false);
+                if (pipe is not null) await pipe.DisposeAsync().ConfigureAwait(false);
+                _connections.Release();
                 continue;
             }
 
-            // Sem await: um cliente lento nao pode impedir o proximo de
-            // conectar. O canal e raro, entao nao ha fila a controlar.
+            // Bound active requests and reserve an instance before accepting.
+            // Slow readers release their slot at the request deadline.
             _ = ServeAsync(pipe, stoppingToken);
         }
     }
 
     private async Task ServeAsync(NamedPipeServerStream pipe, CancellationToken stoppingToken)
     {
-        uint? sessionId = SessionResolver.TryGetClientSessionId(pipe.SafePipeHandle);
+        SessionResolver.ProcessIdentity? client = SessionResolver.TryGetClientIdentity(pipe.SafePipeHandle);
+        uint? sessionId = client?.SessionId;
+        string? clientSid = client?.UserSid.Value;
 
         try
         {
-            using var reader = new StreamReader(pipe, JustificationProtocol.Encoding);
+            using var reader = new StreamReader(
+                pipe, JustificationProtocol.Encoding,
+                detectEncodingFromByteOrderMarks: false, bufferSize: 1024,
+                leaveOpen: true);
 
-            string? line = await reader.ReadLineAsync(stoppingToken).ConfigureAwait(false);
+            using var readDeadline = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
+            readDeadline.CancelAfter(ReadTimeout);
+            string? line = await BoundedPipeLine.ReadAsync(reader, readDeadline.Token).ConfigureAwait(false);
 
             JustificationRequest? request = JustificationProtocol.Deserialize(line);
 
             if (request is null)
             {
                 _logger.LogWarning("Pedido de justificativa malformado, descartado.");
-                return;
             }
 
-            await HandleAsync(request, sessionId, stoppingToken).ConfigureAwait(false);
+            bool accepted = false;
+            if (request is not null)
+            {
+                try { accepted = await HandleAsync(request, sessionId, clientSid, stoppingToken).ConfigureAwait(false); }
+                catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { throw; }
+                catch (Exception ex)
+                {
+                    // A stale generation or failed audit/publication is a
+                    // rejection, not an unexplained EOF to the real client.
+                    _logger.LogWarning(ex, "Justificativa recusada durante auditoria ou publicacao.");
+                }
+            }
+
+            await using var writer = new StreamWriter(
+                pipe, JustificationProtocol.Encoding, bufferSize: 1024,
+                leaveOpen: true);
+            using var writeDeadline = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
+            writeDeadline.CancelAfter(TimeSpan.FromSeconds(1));
+            await writer.WriteLineAsync((accepted
+                ? JustificationProtocol.Accepted
+                : JustificationProtocol.Rejected).AsMemory(), writeDeadline.Token).ConfigureAwait(false);
+            await writer.FlushAsync(writeDeadline.Token).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {
@@ -116,13 +153,15 @@ public sealed class JustificationPipeServer : BackgroundService
         }
         finally
         {
-            await pipe.DisposeAsync().ConfigureAwait(false);
+            try { await pipe.DisposeAsync().ConfigureAwait(false); }
+            finally { _connections.Release(); }
         }
     }
 
-    private async Task HandleAsync(
+    private async Task<bool> HandleAsync(
         JustificationRequest request,
         uint? sessionId,
+        string? clientSid,
         CancellationToken cancellationToken)
     {
         Policy policy = await _policyStore.LoadAsync(cancellationToken).ConfigureAwait(false);
@@ -133,7 +172,21 @@ public sealed class JustificationPipeServer : BackgroundService
             // notificação e a resposta. O driver recusaria de qualquer forma.
             _logger.LogInformation(
                 "Justificativa recebida com a politica em modo sem justificativa. Ignorada.");
-            return;
+            return false;
+        }
+
+        if (!_grants.IsConnected)
+        {
+            _logger.LogWarning("Justificativa recebida sem conexao com o minifiltro.");
+            return false;
+        }
+
+        if (_staged.TryConsume(request.EventId, sessionId, clientSid, out var publish))
+        {
+            if (publish is null) return false;
+            await _auditSink.RecordOverrideAsync(request.EventId,
+                request.Justification, cancellationToken).ConfigureAwait(false);
+            return await publish(cancellationToken).ConfigureAwait(false);
         }
 
         PendingOverrides.Entry? pendente = _pending.Consume(request.EventId, sessionId);
@@ -142,7 +195,7 @@ public sealed class JustificationPipeServer : BackgroundService
         {
             _logger.LogWarning(
                 "Justificativa para um bloqueio que nao existe, venceu, ou e de outra sessao. Ignorada.");
-            return;
+            return false;
         }
 
         // Auditar ANTES de conceder. Concedendo primeiro, uma falha aqui
@@ -152,12 +205,13 @@ public sealed class JustificationPipeServer : BackgroundService
             request.Justification,
             cancellationToken).ConfigureAwait(false);
 
-        _grants.Enqueue(pendente.ProcessId, pendente.NtPath, GrantDuration);
+        _grants.Grant(pendente.ProcessId, pendente.NtPath, GrantDuration);
 
         _logger.LogWarning(
             "Excecao concedida para {Arquivo}, processo {Pid}, justificada pelo usuario.",
             pendente.FileName,
             pendente.ProcessId);
+        return true;
     }
 
     /// <summary>
@@ -194,12 +248,12 @@ public sealed class JustificationPipeServer : BackgroundService
 
         return NamedPipeServerStreamAcl.Create(
             JustificationProtocol.PipeName,
-            PipeDirection.In,
+            PipeDirection.InOut,
             MaxServerInstances,
             PipeTransmissionMode.Byte,
             PipeOptions.Asynchronous,
             inBufferSize: 8 * 1024,
-            outBufferSize: 0,
+            outBufferSize: 1024,
             security);
     }
 }

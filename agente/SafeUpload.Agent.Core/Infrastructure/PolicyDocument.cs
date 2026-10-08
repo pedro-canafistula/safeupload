@@ -105,8 +105,7 @@ internal sealed record PolicyDocument
                 extensions,
                 destinations,
                 scopes.RemovableDrives,
-                scopes.NetworkPaths,
-                scopes.SourcePaths is null ? [] : [.. scopes.SourcePaths]),
+                scopes.NetworkPaths),
             MaxFileSizeMb,
             InspectionTimeoutSeconds,
             FailOpen,
@@ -189,6 +188,9 @@ internal sealed record MonitoredScopesDocument
     [JsonPropertyName("destinationPaths")]
     public string[]? DestinationPaths { get; init; }
 
+    // Aceita e ignorada: o agente classifica arquivos de qualquer origem
+    // (35a13695), e o domínio não tem mais SourcePaths. Mantida para que um
+    // painel que ainda publica a chave não quebre a leitura do documento.
     [JsonPropertyName("sourcePaths")]
     public string[]? SourcePaths { get; init; }
 

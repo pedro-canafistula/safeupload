@@ -26,6 +26,15 @@ public sealed class PolicyBuilder
 
     private uint _verdictTimeoutMs;
 
+#if SAFEUPLOAD_ADMISSION_EVIDENCE
+    /// <summary>Disable the legacy process-taint gate for staged MVP qualification.</summary>
+    public PolicyBuilder WithTestDisableTaint()
+    {
+        _flags |= PolicyFlags.TestDisableTaint;
+        return this;
+    }
+#endif
+
     /// <summary>Extension including the dot, e.g. ".docx".</summary>
     public PolicyBuilder WithExtension(string extension)
     {
@@ -40,9 +49,17 @@ public sealed class PolicyBuilder
         return this;
     }
 
+    // Retained for the probe and older policy messages. The production agent
+    // classifies without a source folder list.
     public PolicyBuilder WithSource(string dosPath)
     {
         _sourcePrefixes.Add(ToNtPath(dosPath));
+        return this;
+    }
+
+    public PolicyBuilder WithAllSources()
+    {
+        _flags |= PolicyFlags.ClassifyAllSources;
         return this;
     }
 

@@ -1,0 +1,11 @@
+GUEST_RECOVERY_REQUIRED=True
+Reason=AfterBoot harness failed or restoration was incomplete.
+Checkpoint=safeupload-pre-boot-start-w01-w01-b38b36-20261005b-fe004c32b19e4cc88a0cf42389818d7b-20261005
+ActiveOverlay=/var/lib/libvirt/images/win10-debug.safeupload-pre-boot-start-w01-w01-b38b36-20261005b-fe004c32b19e4cc88a0cf42389818d7b-20261005
+Domain=win10-debug
+ Type   Device   Target   Source
+------------------------------------------------------------------------------------------------------------------------------------------------------------
+ file   disk     vda      /var/lib/libvirt/images/win10-debug.safeupload-pre-boot-start-w01-w01-b38b36-20261005b-fe004c32b19e4cc88a0cf42389818d7b-20261005
+ file   cdrom    sda      -
+ file   cdrom    sdb      -
+

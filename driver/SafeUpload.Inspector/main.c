@@ -30,12 +30,15 @@ Environment:
 
 #include <windows.h>
 #include <fltUser.h>
+#include <aclapi.h>
+#include <sddl.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <wchar.h>
 #include <strsafe.h>
 
 #include "..\SafeUpload.Minifilter\Protocol.h"
+#include "StagedProofProxy.h"
 
 //
 //  The string whose presence in a path makes this test client answer DENY.
@@ -355,6 +358,9 @@ OperationName (
         case SAFEUPLOAD_OPERATION_READ:
             return L"READ";
 
+        case SAFEUPLOAD_OPERATION_STAGE_ALLOCATE:
+            return L"STAGE";
+
         default:
             return L"?";
     }
@@ -505,6 +511,1385 @@ Return Value:
 }
 
 
+#if defined(SAFEUPLOAD_STAGING_PROTOTYPE) && SAFEUPLOAD_STAGING_PROTOTYPE
+static PCWSTR AdmissionEventName(_In_ UINT32 EventKind)
+{
+    switch (EventKind) {
+        case SAFEUPLOAD_ADMISSION_TRACE_EVENT_PAGING_WRITE: return L"paging_write";
+        case SAFEUPLOAD_ADMISSION_TRACE_EVENT_UNOWNED_NONPAGING_WRITE: return L"unowned_nonpaging_write";
+        case SAFEUPLOAD_ADMISSION_TRACE_EVENT_SECTION_ACQUIRE: return L"section_acquire";
+        case SAFEUPLOAD_ADMISSION_TRACE_EVENT_SECTION_RELEASE: return L"section_release";
+        case SAFEUPLOAD_ADMISSION_TRACE_EVENT_INSTANCE_SETUP: return L"instance_setup";
+        case SAFEUPLOAD_ADMISSION_TRACE_EVENT_EXPLICIT_PROBE: return L"explicit_probe";
+        case SAFEUPLOAD_ADMISSION_TRACE_EVENT_FILE_CLEANUP: return L"file_cleanup";
+        case SAFEUPLOAD_ADMISSION_TRACE_EVENT_FILE_CLOSE: return L"file_close";
+        case SAFEUPLOAD_ADMISSION_TRACE_EVENT_W_BEGIN: return L"w_begin";
+        case SAFEUPLOAD_ADMISSION_TRACE_EVENT_W_END: return L"w_end";
+        default: return L"unknown";
+    }
+}
+
+static PCWSTR AdmissionMmDoesName(_In_ UINT32 Result)
+{
+    switch (Result) {
+        case SAFEUPLOAD_ADMISSION_TRACE_MMDOES_NOT_APPLICABLE: return L"not_applicable";
+        case SAFEUPLOAD_ADMISSION_TRACE_MMDOES_SKIPPED: return L"skipped";
+        case SAFEUPLOAD_ADMISSION_TRACE_MMDOES_NO: return L"no";
+        case SAFEUPLOAD_ADMISSION_TRACE_MMDOES_YES: return L"yes";
+        default: return L"unknown";
+    }
+}
+
+static PCWSTR AdmissionContextName(_In_ UINT32 State)
+{
+    switch (State) {
+        case SAFEUPLOAD_ADMISSION_TRACE_CONTEXT_NOT_APPLICABLE: return L"not_applicable";
+        case SAFEUPLOAD_ADMISSION_TRACE_CONTEXT_UNKNOWN: return L"unknown";
+        case SAFEUPLOAD_ADMISSION_TRACE_CONTEXT_ABSENT: return L"absent";
+        case SAFEUPLOAD_ADMISSION_TRACE_CONTEXT_PRESENT: return L"present";
+        case SAFEUPLOAD_ADMISSION_TRACE_CONTEXT_NOT_QUERIED: return L"not_queried";
+        default: return L"unknown";
+    }
+}
+
+static PCWSTR AdmissionAttachClassName(_In_ UINT32 AttachClass)
+{
+    switch (AttachClass) {
+        case SAFEUPLOAD_ADMISSION_TRACE_ATTACH_AUTOMATIC: return L"automatic";
+        case SAFEUPLOAD_ADMISSION_TRACE_ATTACH_MANUAL: return L"manual";
+        case SAFEUPLOAD_ADMISSION_TRACE_ATTACH_AUTOMATIC | SAFEUPLOAD_ADMISSION_TRACE_ATTACH_MANUAL:
+            return L"automatic|manual";
+        case SAFEUPLOAD_ADMISSION_TRACE_ATTACH_NEWLY_MOUNTED: return L"newly_mounted";
+        case SAFEUPLOAD_ADMISSION_TRACE_ATTACH_AUTOMATIC | SAFEUPLOAD_ADMISSION_TRACE_ATTACH_NEWLY_MOUNTED:
+            return L"automatic|newly_mounted";
+        case SAFEUPLOAD_ADMISSION_TRACE_ATTACH_MANUAL | SAFEUPLOAD_ADMISSION_TRACE_ATTACH_NEWLY_MOUNTED:
+            return L"manual|newly_mounted";
+        case SAFEUPLOAD_ADMISSION_TRACE_ATTACH_AUTOMATIC | SAFEUPLOAD_ADMISSION_TRACE_ATTACH_MANUAL |
+             SAFEUPLOAD_ADMISSION_TRACE_ATTACH_NEWLY_MOUNTED:
+            return L"automatic|manual|newly_mounted";
+        default: return L"unknown";
+    }
+}
+
+static VOID PrintAdmissionTraceEntry(_In_ const SAFEUPLOAD_ADMISSION_TRACE_ENTRY *Entry)
+{
+    UINT32 byteIndex;
+    wprintf(L"{\"sequence\":%llu,\"timestamp\":%llu,\"event\":\"%s\","
+            L"\"pid\":%u,\"irql\":%u,\"instance\":\"0x%016llX\","
+            L"\"targetFileObject\":\"0x%016llX\",\"sectionObjectPointer\":\"0x%016llX\","
+            L"\"major\":%u,\"minor\":%u,\"irpFlags\":\"0x%08X\","
+            L"\"mmDoes\":\"%s\",\"streamContext\":\"%s\",\"ownedStream\":%s,"
+            L"\"admissionRecordState\":\"not_tracked\",\"setupFlags\":%u,"
+            L"\"volumeKind\":%u,\"attachClass\":\"%s\",\"syncType\":%u,"
+            L"\"pageProtection\":\"0x%08X\",\"syncParametersValid\":%s,"
+            L"\"probeStatus\":\"0x%08X\",\"probeStage\":%u,"
+            L"\"writeObjects\":%u,\"writersUntracked\":%s,\"inFlightSections\":%u,"
+            L"\"canaryState\":%u,\"canaryStatus\":\"0x%08X\",\"canaryChecks\":%u,"
+            L"\"canaryCleanupStatus\":\"0x%08X\"",
+            Entry->Sequence, Entry->Timestamp, AdmissionEventName(Entry->EventKind),
+            Entry->ProcessId, Entry->Irql, Entry->Instance, Entry->TargetFileObject,
+            Entry->SectionObjectPointer, Entry->MajorFunction, Entry->MinorFunction,
+            Entry->IrpFlags, AdmissionMmDoesName(Entry->MmDoesResult),
+            AdmissionContextName(Entry->StreamContextState),
+            Entry->OwnedStream != 0 ? L"true" : L"false", Entry->SetupFlags,
+            Entry->VolumeKind, AdmissionAttachClassName(Entry->AttachClass),
+            Entry->SyncType, Entry->PageProtection,
+            Entry->SyncParametersValid != 0 ? L"true" : L"false",
+            Entry->ProbeStatus, Entry->ProbeStage,
+            Entry->AdmissionRecordState & ~SAFEUPLOAD_WRITERS_UNTRACKED_BIT,
+            (Entry->AdmissionRecordState & SAFEUPLOAD_WRITERS_UNTRACKED_BIT) != 0 ? L"true" : L"false",
+            Entry->EventKind == SAFEUPLOAD_ADMISSION_TRACE_EVENT_EXPLICIT_PROBE ? Entry->SetupFlags : 0,
+            Entry->CanaryState, Entry->CanaryStatus, Entry->CanaryChecks, Entry->CanaryCleanupStatus);
+    wprintf(L",\"ticketSequence\":%llu,\"callbackData\":\"0x%016llX\","
+            L"\"volumeSerial\":\"0x%016llX\",\"fileId\":\"",
+            Entry->TicketSequence, Entry->CallbackData, Entry->VolumeSerialNumber);
+    for (byteIndex = 0; byteIndex < ARRAYSIZE(Entry->FileId); ++byteIndex)
+        wprintf(L"%02X", Entry->FileId[byteIndex]);
+    wprintf(L"\",\"ioInformation\":%llu,\"H\":%u,\"W\":%u,\"registryState\":%u,"
+            L"\"activationGeneration\":%u,\"policyGeneration\":%u,"
+            L"\"ioStatus\":\"0x%08X\",\"operationCode\":%u,"
+            L"\"completionFlags\":\"0x%08X\",\"registryUnknownReasons\":\"0x%08X\","
+            L"\"registrySnapshotFlags\":\"0x%08X\",\"writeOffset\":%llu,"
+            L"\"writeLength\":%u,\"reservedWrite\":%u}\n",
+            Entry->IoInformation, Entry->H, Entry->W, Entry->RegistryState,
+            Entry->ActivationGeneration, Entry->PolicyGeneration, Entry->IoStatus,
+            Entry->OperationCode, Entry->CompletionFlags, Entry->RegistryUnknownReasons,
+            Entry->RegistrySnapshotFlags, Entry->WriteOffset, Entry->WriteLength,
+            Entry->ReservedWrite);
+}
+
+/* A literal formatter control: no filter connection, driver state, or file I/O. */
+static int PrintAdmissionTraceFormatSelfTest(VOID)
+{
+    SAFEUPLOAD_ADMISSION_TRACE_ENTRY entry;
+    UINT32 index;
+
+    ZeroMemory(&entry, sizeof(entry));
+    entry.Sequence = 42;
+    entry.Timestamp = 43;
+    entry.EventKind = SAFEUPLOAD_ADMISSION_TRACE_EVENT_W_BEGIN;
+    entry.TicketSequence = 9007199254740993ULL;
+    entry.CallbackData = 0x123456789ABCDEF0ULL;
+    entry.VolumeSerialNumber = 0x0102030405060708ULL;
+    for (index = 0; index < ARRAYSIZE(entry.FileId); ++index)
+        entry.FileId[index] = (UINT8)index;
+    entry.IoInformation = 4096;
+    entry.H = 0;
+    entry.W = 1;
+    entry.RegistryState = 2;
+    entry.ActivationGeneration = 17;
+    entry.PolicyGeneration = 18;
+    entry.IoStatus = 0;
+    entry.OperationCode = 0;
+    entry.CompletionFlags = 4;
+    entry.RegistryUnknownReasons = 0x10;
+    entry.RegistrySnapshotFlags = SAFEUPLOAD_ADMISSION_TRACE_REGISTRY_SNAPSHOT_LOCKED |
+        SAFEUPLOAD_ADMISSION_TRACE_REGISTRY_SNAPSHOT_EXACT_ID;
+    entry.WriteOffset = 8192;
+    entry.WriteLength = 4096;
+    PrintAdmissionTraceEntry(&entry);
+    entry.Sequence = 44;
+    entry.EventKind = SAFEUPLOAD_ADMISSION_TRACE_EVENT_W_END;
+    entry.W = 0;
+    entry.IoStatus = 0xC0000120;
+    entry.CompletionFlags = 3;
+    entry.RegistrySnapshotFlags |= SAFEUPLOAD_ADMISSION_TRACE_REGISTRY_SNAPSHOT_POST_RETIRE;
+    PrintAdmissionTraceEntry(&entry);
+    return 0;
+}
+
+static int SendAdmissionProbe(_In_z_ PCWSTR DosPath)
+{
+    static const WCHAR volumePrefix[] = L"\\Device\\HarddiskVolume";
+    WCHAR drive[3];
+    PWCHAR deviceName = NULL;
+    PSAFEUPLOAD_ADMISSION_PROBE_REQUEST request = NULL;
+    HANDLE port = INVALID_HANDLE_VALUE;
+    PCWSTR relativePath;
+    SIZE_T dosPathChars;
+    SIZE_T deviceNameChars;
+    SIZE_T prefixChars = ARRAYSIZE(volumePrefix) - 1;
+    SIZE_T index;
+    ULONG relativeChars;
+    ULONG requestBytes;
+    const DWORD deviceNameCapacity = 4096;
+    DWORD returned = 0;
+    HRESULT hr;
+    int exitCode = 2;
+
+    dosPathChars = wcslen(DosPath);
+    if (dosPathChars < 4 || dosPathChars > SAFEUPLOAD_ADMISSION_PROBE_MAX_STRING_CHARS ||
+        !((DosPath[0] >= L'A' && DosPath[0] <= L'Z') ||
+          (DosPath[0] >= L'a' && DosPath[0] <= L'z')) ||
+        DosPath[1] != L':' || DosPath[2] != L'\\' ||
+        DosPath[dosPathChars - 1] == L'\\') {
+        fwprintf(stderr, L"Uso: SafeUpload.Inspector --admission-probe X:\\dir\\file\n");
+        return 2;
+    }
+    for (index = 0; index < dosPathChars; index += 1) {
+        if (DosPath[index] == L'/') {
+            fwprintf(stderr, L"ERRO: use uma barra invertida no caminho.\n");
+            return 2;
+        }
+        if (index >= 2 && DosPath[index] == L':') {
+            fwprintf(stderr, L"ERRO: fluxos alternativos (:) nao sao aceitos.\n");
+            return 2;
+        }
+    }
+
+    drive[0] = DosPath[0];
+    drive[1] = L':';
+    drive[2] = L'\0';
+    deviceName = (PWCHAR)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY,
+        (SIZE_T)deviceNameCapacity * sizeof(WCHAR));
+    if (deviceName == NULL) return 2;
+
+    if (QueryDosDeviceW(drive, deviceName, deviceNameCapacity) == 0) {
+        fwprintf(stderr, L"ERRO: nao foi possivel resolver a unidade %s.\n", drive);
+        goto Cleanup;
+    }
+
+    deviceNameChars = wcslen(deviceName);
+    if (deviceNameChars == 0 ||
+        deviceNameChars > SAFEUPLOAD_ADMISSION_PROBE_MAX_STRING_CHARS ||
+        deviceNameChars < prefixChars ||
+        _wcsnicmp(deviceName, volumePrefix, prefixChars) != 0) {
+        fwprintf(stderr, L"ERRO: a unidade nao aponta para um volume local suportado.\n");
+        goto Cleanup;
+    }
+
+    relativePath = DosPath + 2;
+    relativeChars = (ULONG)(dosPathChars - 2);
+    if (relativeChars > SAFEUPLOAD_ADMISSION_PROBE_MAX_STRING_CHARS) {
+        fwprintf(stderr, L"ERRO: o caminho excede o limite do protocolo.\n");
+        goto Cleanup;
+    }
+
+    requestBytes = (ULONG)FIELD_OFFSET(SAFEUPLOAD_ADMISSION_PROBE_REQUEST, Strings) +
+        ((ULONG)deviceNameChars + relativeChars) * (ULONG)sizeof(WCHAR);
+    request = (PSAFEUPLOAD_ADMISSION_PROBE_REQUEST)HeapAlloc(
+        GetProcessHeap(), HEAP_ZERO_MEMORY, requestBytes);
+    if (request == NULL) goto Cleanup;
+
+    request->Control.Version = SAFEUPLOAD_PROTOCOL_VERSION;
+    request->Control.StructSize = requestBytes;
+    request->Control.Command = SAFEUPLOAD_CONTROL_ADMISSION_PROBE;
+    request->VolumeNameChars = (UINT16)deviceNameChars;
+    request->RelativePathChars = (UINT16)relativeChars;
+    CopyMemory(request->Strings, deviceName, deviceNameChars * sizeof(WCHAR));
+    CopyMemory(request->Strings + deviceNameChars,
+               relativePath,
+               relativeChars * sizeof(WCHAR));
+
+    hr = FilterConnectCommunicationPort(SAFEUPLOAD_PORT_NAME, 0, NULL, 0, NULL, &port);
+    if (FAILED(hr)) {
+        fwprintf(stderr, L"ERRO: nao foi possivel conectar na porta (hr = 0x%08X).\n", hr);
+        goto Cleanup;
+    }
+
+    hr = FilterSendMessage(port, request, requestBytes, NULL, 0, &returned);
+    wprintf(L"{\"admissionProbe\":\"sent\",\"status\":\"0x%08X\"}\n", hr);
+    exitCode = SUCCEEDED(hr) && returned == 0 ? 0 : 3;
+
+Cleanup:
+    if (port != INVALID_HANDLE_VALUE) CloseHandle(port);
+    if (request != NULL) HeapFree(GetProcessHeap(), 0, request);
+    if (deviceName != NULL) HeapFree(GetProcessHeap(), 0, deviceName);
+    return exitCode;
+}
+
+static int SendAdmissionDeleteStreamContext(_In_z_ PCWSTR DosPath)
+{
+    static const WCHAR volumePrefix[] = L"\\Device\\HarddiskVolume";
+    WCHAR drive[] = L"C:";
+    PWCHAR deviceName = NULL;
+    PSAFEUPLOAD_ADMISSION_DELETE_STREAM_CONTEXT_REQUEST request = NULL;
+    HANDLE port = INVALID_HANDLE_VALUE;
+    PCWSTR relativePath;
+    SIZE_T dosPathChars;
+    SIZE_T deviceNameChars;
+    SIZE_T prefixChars = ARRAYSIZE(volumePrefix) - 1;
+    SIZE_T index;
+    ULONG relativeChars;
+    ULONG requestBytes;
+    const DWORD deviceNameCapacity = 4096;
+    DWORD returned = 0;
+    HRESULT hr;
+    int exitCode = 2;
+
+    dosPathChars = wcslen(DosPath);
+    if (dosPathChars < 4 || dosPathChars > SAFEUPLOAD_ADMISSION_PROBE_MAX_STRING_CHARS ||
+        (DosPath[0] != L'C' && DosPath[0] != L'c') ||
+        DosPath[1] != L':' || DosPath[2] != L'\\' ||
+        DosPath[dosPathChars - 1] == L'\\') {
+        fwprintf(stderr, L"Uso: SafeUpload.Inspector --admission-delete-stream-context C:\\dir\\file.maptest\n");
+        return 2;
+    }
+    for (index = 0; index < dosPathChars; ++index) {
+        if (DosPath[index] == L'/' || (index >= 2 && DosPath[index] == L':')) {
+            fwprintf(stderr, L"ERRO: caminho C: invalido ou fluxo alternativo.\n");
+            return 2;
+        }
+    }
+
+    deviceName = (PWCHAR)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY,
+        (SIZE_T)deviceNameCapacity * sizeof(WCHAR));
+    if (deviceName == NULL) return 2;
+    if (QueryDosDeviceW(drive, deviceName, deviceNameCapacity) == 0) {
+        fwprintf(stderr, L"ERRO: nao foi possivel resolver C:.\n");
+        goto Cleanup;
+    }
+    deviceNameChars = wcslen(deviceName);
+    if (deviceNameChars < prefixChars ||
+        deviceNameChars > SAFEUPLOAD_ADMISSION_PROBE_MAX_STRING_CHARS ||
+        _wcsnicmp(deviceName, volumePrefix, prefixChars) != 0) {
+        fwprintf(stderr, L"ERRO: C: nao aponta para um volume local suportado.\n");
+        goto Cleanup;
+    }
+
+    relativePath = DosPath + 2;
+    relativeChars = (ULONG)(dosPathChars - 2);
+    requestBytes = (ULONG)FIELD_OFFSET(SAFEUPLOAD_ADMISSION_DELETE_STREAM_CONTEXT_REQUEST, Strings) +
+        ((ULONG)deviceNameChars + relativeChars) * (ULONG)sizeof(WCHAR);
+    request = (PSAFEUPLOAD_ADMISSION_DELETE_STREAM_CONTEXT_REQUEST)HeapAlloc(
+        GetProcessHeap(), HEAP_ZERO_MEMORY, requestBytes);
+    if (request == NULL) goto Cleanup;
+
+    request->Control.Version = SAFEUPLOAD_PROTOCOL_VERSION;
+    request->Control.StructSize = requestBytes;
+    request->Control.Command = SAFEUPLOAD_CONTROL_ADMISSION_DELETE_STREAM_CONTEXT;
+    request->VolumeNameChars = (UINT16)deviceNameChars;
+    request->RelativePathChars = (UINT16)relativeChars;
+    request->DriveLetter = L'C';
+    CopyMemory(request->Strings, deviceName, deviceNameChars * sizeof(WCHAR));
+    CopyMemory(request->Strings + deviceNameChars, relativePath, relativeChars * sizeof(WCHAR));
+
+    hr = FilterConnectCommunicationPort(SAFEUPLOAD_PORT_NAME, 0, NULL, 0, NULL, &port);
+    if (FAILED(hr)) {
+        fwprintf(stderr, L"ERRO: nao foi possivel conectar na porta (hr = 0x%08X).\n", hr);
+        goto Cleanup;
+    }
+    hr = FilterSendMessage(port, request, requestBytes, NULL, 0, &returned);
+    wprintf(L"{\"streamContextDeleted\":%s,\"status\":\"0x%08X\"}\n",
+        SUCCEEDED(hr) && returned == 0 ? L"true" : L"false", hr);
+    exitCode = SUCCEEDED(hr) && returned == 0 ? 0 : 3;
+
+Cleanup:
+    if (port != INVALID_HANDLE_VALUE) CloseHandle(port);
+    if (request != NULL) HeapFree(GetProcessHeap(), 0, request);
+    if (deviceName != NULL) HeapFree(GetProcessHeap(), 0, deviceName);
+    return exitCode;
+}
+
+static BOOL ResolveCanaryVolumeName(_In_z_ PCWSTR Volume, _Out_writes_(SAFEUPLOAD_CANARY_VOLUME_CHARS) PWSTR NativeName,
+    _Out_ PUINT16 NativeChars)
+{
+    WCHAR mountPoint[4];
+    WCHAR volumeName[SAFEUPLOAD_CANARY_VOLUME_CHARS];
+    static const WCHAR guidPrefix[] = L"\\\\?\\Volume{";
+    size_t inputChars, volumeChars, nativeChars;
+
+    inputChars = wcslen(Volume);
+    if (inputChars == 2 && Volume[1] == L':') {
+        mountPoint[0] = Volume[0]; mountPoint[1] = L':'; mountPoint[2] = L'\\'; mountPoint[3] = UNICODE_NULL;
+    } else if (inputChars == 3 && Volume[1] == L':' && Volume[2] == L'\\') {
+        CopyMemory(mountPoint, Volume, sizeof(mountPoint));
+    } else {
+        return FALSE;
+    }
+    ZeroMemory(volumeName, sizeof(volumeName));
+    if (!GetVolumeNameForVolumeMountPointW(mountPoint, volumeName, ARRAYSIZE(volumeName))) return FALSE;
+    volumeChars = wcslen(volumeName);
+    if (volumeChars < ARRAYSIZE(guidPrefix) - 1 ||
+        _wcsnicmp(volumeName, guidPrefix, ARRAYSIZE(guidPrefix) - 1) != 0 ||
+        volumeName[volumeChars - 1] != L'\\') return FALSE;
+
+    /* FltGetVolumeGuidName uses the native \\??\\Volume{GUID} form without a trailing slash. */
+    if (volumeChars - 1 + 1 > SAFEUPLOAD_CANARY_VOLUME_CHARS) return FALSE;
+    NativeName[0] = L'\\'; NativeName[1] = L'?'; NativeName[2] = L'?'; NativeName[3] = L'\\';
+    nativeChars = volumeChars - 4 - 1;
+    CopyMemory(NativeName + 4, volumeName + 4, nativeChars * sizeof(WCHAR));
+    NativeName[4 + nativeChars] = UNICODE_NULL;
+    *NativeChars = (UINT16)(4 + nativeChars);
+    return TRUE;
+}
+
+static int SendAdmissionCanaryHold(_In_z_ PCWSTR Volume, _In_z_ PCWSTR MillisecondsText)
+{
+    SAFEUPLOAD_ADMISSION_CANARY_HOLD_REQUEST request;
+    SAFEUPLOAD_ADMISSION_CANARY_HOLD_REPLY reply;
+    WCHAR nativeVolume[SAFEUPLOAD_CANARY_VOLUME_CHARS];
+    WCHAR *end = NULL;
+    ULONG holdMilliseconds;
+    HANDLE port = INVALID_HANDLE_VALUE;
+    UINT16 volumeChars = 0;
+    DWORD returned = 0;
+    HRESULT hr;
+
+    holdMilliseconds = (ULONG)wcstoul(MillisecondsText, &end, 10);
+    if (end == MillisecondsText || *end != UNICODE_NULL || holdMilliseconds == 0 ||
+        holdMilliseconds > SAFEUPLOAD_CANARY_MAX_HOLD_MS ||
+        !ResolveCanaryVolumeName(Volume, nativeVolume, &volumeChars)) {
+        fwprintf(stderr, L"Uso: SafeUpload.Inspector --admission-canary-hold X:\\ 1..30000\n");
+        return 2;
+    }
+
+    ZeroMemory(&request, sizeof(request));
+    ZeroMemory(&reply, sizeof(reply));
+    request.Control.Version = SAFEUPLOAD_PROTOCOL_VERSION;
+    request.Control.StructSize = sizeof(request);
+    request.Control.Command = SAFEUPLOAD_CONTROL_ADMISSION_CANARY_HOLD;
+    request.HoldMilliseconds = holdMilliseconds;
+    request.VolumeNameChars = volumeChars;
+    CopyMemory(request.VolumeName, nativeVolume, (volumeChars + 1) * sizeof(WCHAR));
+
+    hr = FilterConnectCommunicationPort(SAFEUPLOAD_PORT_NAME, 0, NULL, 0, NULL, &port);
+    if (FAILED(hr)) goto Exit;
+    hr = FilterSendMessage(port, &request, sizeof(request), &reply, sizeof(reply), &returned);
+    if (FAILED(hr) || returned != sizeof(reply) || reply.StructSize != sizeof(reply) ||
+        reply.Status != 0 || reply.Reserved != 0 || reply.PathChars == 0 ||
+        reply.PathChars >= ARRAYSIZE(reply.CanaryPath) ||
+        reply.CanaryPath[reply.PathChars] != UNICODE_NULL ||
+        wcsncmp(reply.CanaryPath, L"\\Device\\", 8) != 0) {
+        fwprintf(stderr, L"ERRO: resposta do hold do canary invalida (hr = 0x%08X, bytes = %u).\n",
+            hr, returned);
+        if (port != INVALID_HANDLE_VALUE) CloseHandle(port);
+        return 3;
+    }
+
+    wprintf(L"{\"canaryHold\":\"armed\",\"status\":\"0x%08X\",\"holdMilliseconds\":%u,\"path\":\"",
+        reply.Status, holdMilliseconds);
+    for (UINT32 index = 0; index < reply.PathChars; ++index) {
+        WCHAR value = reply.CanaryPath[index];
+        if (value == L'\\' || value == L'\"') wprintf(L"\\%lc", value);
+        else if (value < 32 || value > 126) wprintf(L"\\u%04X", (unsigned)value);
+        else wprintf(L"%lc", value);
+    }
+    wprintf(L"\"}\n");
+    CloseHandle(port);
+    return 0;
+
+Exit:
+    fwprintf(stderr, L"ERRO: nao foi possivel conectar na porta (hr = 0x%08X).\n", hr);
+    if (port != INVALID_HANDLE_VALUE) CloseHandle(port);
+    return 3;
+}
+
+static int SendAdmissionCanaryHoldCancel(VOID)
+{
+    SAFEUPLOAD_CONTROL control;
+    HANDLE port = INVALID_HANDLE_VALUE;
+    DWORD returned = 0;
+    HRESULT hr;
+    ZeroMemory(&control, sizeof(control));
+    control.Version = SAFEUPLOAD_PROTOCOL_VERSION;
+    control.StructSize = sizeof(control);
+    control.Command = SAFEUPLOAD_CONTROL_ADMISSION_CANARY_HOLD_CANCEL;
+    hr = FilterConnectCommunicationPort(SAFEUPLOAD_PORT_NAME, 0, NULL, 0, NULL, &port);
+    if (SUCCEEDED(hr)) hr = FilterSendMessage(port, &control, sizeof(control), NULL, 0, &returned);
+    if (port != INVALID_HANDLE_VALUE) CloseHandle(port);
+    wprintf(L"{\"canaryHoldCancel\":true,\"status\":\"0x%08X\"}\n", hr);
+    return SUCCEEDED(hr) && returned == 0 ? 0 : 3;
+}
+
+static int PrintCanarySecurity(_In_z_ PCWSTR NativePath)
+{
+    WCHAR win32Path[SAFEUPLOAD_MAX_PATH_CHARS + 32];
+    HANDLE file = INVALID_HANDLE_VALUE;
+    PSECURITY_DESCRIPTOR descriptor = NULL;
+    LPWSTR sddl = NULL;
+    DWORD error, characters = 0;
+    int result = 3;
+
+    if (wcsncmp(NativePath, L"\\Device\\", 8) != 0 ||
+        FAILED(StringCchPrintfW(win32Path, ARRAYSIZE(win32Path), L"\\\\?\\GLOBALROOT%s", NativePath))) {
+        fwprintf(stderr, L"ERRO: caminho nativo do canary invalido.\n");
+        return 2;
+    }
+    file = CreateFileW(win32Path, READ_CONTROL,
+        FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL, OPEN_EXISTING,
+        FILE_FLAG_OPEN_REPARSE_POINT, NULL);
+    if (file == INVALID_HANDLE_VALUE) {
+        error = GetLastError();
+        fwprintf(stderr, L"ERRO: abertura SYSTEM do canary falhou (Win32=%lu).\n", error);
+        return 3;
+    }
+    error = GetSecurityInfo(file, SE_FILE_OBJECT,
+        OWNER_SECURITY_INFORMATION | GROUP_SECURITY_INFORMATION | DACL_SECURITY_INFORMATION,
+        NULL, NULL, NULL, NULL, &descriptor);
+    if (error != ERROR_SUCCESS) goto Exit;
+    if (!ConvertSecurityDescriptorToStringSecurityDescriptorW(descriptor, SDDL_REVISION_1,
+            OWNER_SECURITY_INFORMATION | GROUP_SECURITY_INFORMATION | DACL_SECURITY_INFORMATION,
+            &sddl, &characters)) {
+        error = GetLastError();
+        goto Exit;
+    }
+    wprintf(L"{\"canarySecurity\":\"readback\",\"status\":\"0x%08X\",\"sddl\":\"%s\"}\n",
+        ERROR_SUCCESS, sddl);
+    result = 0;
+
+Exit:
+    if (result != 0) {
+        fwprintf(stderr, L"ERRO: descritor de seguranca do canary falhou (Win32=%lu).\n", error);
+    }
+    if (sddl != NULL) LocalFree(sddl);
+    if (descriptor != NULL) LocalFree(descriptor);
+    CloseHandle(file);
+    return result;
+}
+
+static int PrintAdmissionVolumeStatus(_In_ BOOL ObserveOnly)
+{
+    SAFEUPLOAD_CONTROL control;
+    PSAFEUPLOAD_ADMISSION_VOLUME_STATUS status;
+    HANDLE port = INVALID_HANDLE_VALUE;
+    DWORD returned = 0;
+    UINT32 index, character;
+    PCWSTR bootPolicyProtectionStatus;
+    HRESULT hr;
+    int result = 3;
+    status = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(*status));
+    if (status == NULL) return 4;
+    hr = FilterConnectCommunicationPort(SAFEUPLOAD_PORT_NAME, 0, NULL, 0, NULL, &port);
+    if (FAILED(hr)) goto Exit;
+    ZeroMemory(&control, sizeof(control));
+    control.Version = SAFEUPLOAD_PROTOCOL_VERSION;
+    control.StructSize = sizeof(control);
+    control.Command = ObserveOnly ? SAFEUPLOAD_CONTROL_ADMISSION_VOLUME_OBSERVE :
+        SAFEUPLOAD_CONTROL_ADMISSION_VOLUME_STATUS;
+    hr = FilterSendMessage(port, &control, sizeof(control), status, sizeof(*status), &returned);
+    if (FAILED(hr) || returned != sizeof(*status) || status->StructSize != sizeof(*status) ||
+        status->EntryCount > SAFEUPLOAD_ADMISSION_VOLUME_MAX_ENTRIES ||
+        status->BootPolicyState > SAFEUPLOAD_BOOT_POLICY_STATE_PENDING_UNION) goto Exit;
+    for (index = 0; index < status->EntryCount; ++index) {
+        if (status->Entries[index].VolumeGuidChars >= ARRAYSIZE(status->Entries[index].VolumeGuid)) goto Exit;
+    }
+    switch (status->BootPolicyState) {
+    case SAFEUPLOAD_BOOT_POLICY_STATE_MISSING:
+        bootPolicyProtectionStatus = L"not claimed: missing";
+        break;
+    case SAFEUPLOAD_BOOT_POLICY_STATE_CORRUPT_EMPTY:
+        bootPolicyProtectionStatus = L"not claimed: corrupt empty";
+        break;
+    case SAFEUPLOAD_BOOT_POLICY_STATE_ACL_REJECTED:
+        bootPolicyProtectionStatus = L"not claimed: ACL_REJECTED";
+        break;
+    case SAFEUPLOAD_BOOT_POLICY_STATE_VALID:
+        bootPolicyProtectionStatus = L"valid";
+        break;
+    case SAFEUPLOAD_BOOT_POLICY_STATE_PENDING_UNION:
+        bootPolicyProtectionStatus = L"pending union";
+        break;
+    case SAFEUPLOAD_BOOT_POLICY_STATE_CORRUPT_PARTIAL:
+        bootPolicyProtectionStatus = L"partial: only identified scopes enforced";
+        break;
+    default:
+        bootPolicyProtectionStatus = L"unreadable: protection uncertain";
+        break;
+    }
+    wprintf(L"{\"writerGlobalUnknown\":%u,\"bootPolicyState\":%u,"
+        L"\"bootPolicyProtectionStatus\":\"%s\",\"admissionVolumes\":[",
+        status->WriterGlobalUnknown, status->BootPolicyState, bootPolicyProtectionStatus);
+    for (index = 0; index < status->EntryCount; ++index) {
+        const SAFEUPLOAD_ADMISSION_VOLUME_ENTRY *entry = &status->Entries[index];
+        UINT32 trustState = ((INT32)entry->ContextStatus >= 0) ?
+            ((entry->SetupFlags >> SAFEUPLOAD_SETUP_TRUST_STATE_SHIFT) & 0xFFFF) :
+            SAFEUPLOAD_VOLUME_TRUST_CONTEXT_UNAVAILABLE;
+        UINT32 setupFlags = entry->SetupFlags & SAFEUPLOAD_SETUP_FLAGS_MASK;
+        BOOLEAN trusted = trustState == SAFEUPLOAD_VOLUME_TRUST_CANARY_PASSED &&
+            entry->CanaryState == SAFEUPLOAD_CANARY_PASSED;
+        PCWSTR protectionStatus;
+        if (trustState == SAFEUPLOAD_VOLUME_TRUST_CANARY_PASSED && !trusted)
+            trustState = SAFEUPLOAD_VOLUME_TRUST_CANARY_PENDING;
+        protectionStatus = trusted ? L"trusted" :
+            (trustState == SAFEUPLOAD_VOLUME_TRUST_PENDING_REBOOT ? L"protection pending reboot" : L"untrusted");
+        wprintf(L"%s{\"instance\":\"%016llX\",\"volumeKind\":%u,\"fileSystemType\":%u,"
+            L"\"fileSystemStatus\":%u,\"setupFlags\":%u,\"trustState\":%u,\"protectionStatus\":\"%s\",\"contextStatus\":%u,"
+            L"\"canaryState\":%u,\"canaryStatus\":%u,\"canaryChecks\":%u,\"canaryCleanupStatus\":%u,"
+            L"\"instanceWritersUntracked\":%u,\"volumeInfoStatus\":%u,\"volumeFlags\":%u,"
+#if defined(SAFEUPLOAD_STAGING_PROTOTYPE) && SAFEUPLOAD_STAGING_PROTOTYPE
+            L"\"instanceRegistryUnknownReasons\":\"0x%08X\",\"firstUnknownReason\":\"0x%08X\",\"firstUnknownSite\":%u,"
+#endif
+            L"\"volumeGuidStatus\":%u,\"volumeGuid\":\"",
+            index == 0 ? L"" : L",", entry->Instance, entry->VolumeKind, entry->FileSystemType,
+            entry->FileSystemStatus, setupFlags, trustState, protectionStatus, entry->ContextStatus, entry->CanaryState,
+            entry->CanaryStatus, entry->CanaryChecks, entry->CanaryCleanupStatus,
+            entry->InstanceWritersUntracked, entry->VolumeInfoStatus, entry->VolumeFlags,
+#if defined(SAFEUPLOAD_STAGING_PROTOTYPE) && SAFEUPLOAD_STAGING_PROTOTYPE
+            entry->InstanceRegistryUnknownReasons, entry->FirstUnknownReason, entry->FirstUnknownSite,
+#endif
+            entry->VolumeGuidStatus);
+        for (character = 0; character < entry->VolumeGuidChars; ++character) {
+            WCHAR value = entry->VolumeGuid[character];
+            if (value == L'\\' || value == L'"') wprintf(L"\\%lc", value);
+            else if (value < 32 || value > 126) wprintf(L"\\u%04X", (unsigned)value);
+            else wprintf(L"%lc", value);
+        }
+        wprintf(L"\"}");
+    }
+    wprintf(L"]}\n");
+    result = 0;
+Exit:
+    if (result != 0) wprintf(L"ERRO: resposta de admission-volume invalida (hr = 0x%08X, bytes = %u).\n", hr, returned);
+    if (port != INVALID_HANDLE_VALUE) CloseHandle(port);
+    HeapFree(GetProcessHeap(), 0, status);
+    return result;
+}
+
+#if defined(SAFEUPLOAD_STAGING_PROTOTYPE) && SAFEUPLOAD_STAGING_PROTOTYPE
+/* Read-only Control 24 receipt: the evidence the service's readiness evaluator
+ * consumes, printed whole so a Pending/Degraded destination can be explained. */
+static int PrintAdmissionCoverageStatus(void)
+{
+    SAFEUPLOAD_CONTROL control;
+    PSAFEUPLOAD_ADMISSION_COVERAGE_STATUS status;
+    HANDLE port = INVALID_HANDLE_VALUE;
+    DWORD returned = 0;
+    UINT32 index, character;
+    HRESULT hr;
+    int result = 3;
+    status = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(*status));
+    if (status == NULL) return 4;
+    hr = FilterConnectCommunicationPort(SAFEUPLOAD_PORT_NAME, 0, NULL, 0, NULL, &port);
+    if (FAILED(hr)) goto Exit;
+    ZeroMemory(&control, sizeof(control));
+    control.Version = SAFEUPLOAD_PROTOCOL_VERSION;
+    control.StructSize = sizeof(control);
+    control.Command = SAFEUPLOAD_CONTROL_ADMISSION_COVERAGE;
+    hr = FilterSendMessage(port, &control, sizeof(control), status, sizeof(*status), &returned);
+    if (FAILED(hr) || returned != sizeof(*status) || status->StructSize != sizeof(*status) ||
+        status->ScopeCount > SAFEUPLOAD_ADMISSION_COVERAGE_MAX_SCOPES) goto Exit;
+    for (index = 0; index < status->ScopeCount; ++index) {
+        if (status->Scopes[index].PrefixChars > SAFEUPLOAD_MAX_PREFIX_CHARS) goto Exit;
+    }
+    wprintf(L"{\"state\":%u,\"reason\":%u,\"flags\":\"0x%08X\",\"policyGeneration\":%u,\"policyGenerationEnd\":%u,"
+        L"\"policyFlags\":\"0x%08X\",\"bootPolicyState\":%u,\"scopeCount\":%u,\"expectedScopeCount\":%u,"
+        L"\"epochGeneration\":%u,\"epochFlags\":\"0x%08X\",\"epochActiveCallbacks\":%u,\"epochFlagsEnd\":\"0x%08X\","
+        L"\"enumeratedInstances\":%u,\"setupInFlight\":%u,\"teardownInFlight\":%u,\"coverageChangesInFlight\":%u,"
+        L"\"writerGlobalUnknown\":%u,\"writerEntries\":%u,\"writerEntriesNotReady\":%u,\"writerEntriesUnknown\":%u,"
+        L"\"futureMountGateReady\":%u,\"topologySequence\":[%llu,%llu],\"coverageSequence\":[%llu,%llu],\"scopes\":[",
+        status->State, status->Reason, status->Flags, status->PolicyGeneration, status->PolicyGenerationEnd,
+        status->PolicyFlags, status->BootPolicyState, status->ScopeCount, status->ExpectedScopeCount,
+        status->EpochGeneration, status->EpochFlags, status->EpochActiveCallbacks, status->EpochFlagsEnd,
+        status->EnumeratedInstances, status->SetupInFlight, status->TeardownInFlight, status->CoverageChangesInFlight,
+        status->WriterGlobalUnknown, status->WriterEntries, status->WriterEntriesNotReady, status->WriterEntriesUnknown,
+        status->FutureMountGateReady, status->TopologySequenceStart, status->TopologySequenceEnd,
+        status->CoverageSequenceStart, status->CoverageSequenceEnd);
+    for (index = 0; index < status->ScopeCount; ++index) {
+        const SAFEUPLOAD_ADMISSION_COVERAGE_SCOPE *scope = &status->Scopes[index];
+        wprintf(L"%s{\"kind\":%u,\"index\":%u,\"resolution\":%u,\"state\":%u,\"reason\":%u,"
+            L"\"matchingInstances\":%u,\"uniqueVolumes\":%u,\"readyInstances\":%u,\"prefix\":\"",
+            index == 0 ? L"" : L",", scope->ScopeKind, scope->ScopeIndex, scope->Resolution, scope->State,
+            scope->Reason, scope->MatchingInstances, scope->UniqueVolumes, scope->ReadyInstances);
+        for (character = 0; character < scope->PrefixChars; ++character) {
+            WCHAR value = scope->Prefix[character];
+            if (value == L'\\' || value == L'"') wprintf(L"\\%lc", value);
+            else if (value < 32 || value > 126) wprintf(L"\\u%04X", (unsigned)value);
+            else wprintf(L"%lc", value);
+        }
+        wprintf(L"\"}");
+    }
+    wprintf(L"]}\n");
+    result = 0;
+Exit:
+    if (result != 0) wprintf(L"ERRO: resposta de admission-coverage invalida (hr = 0x%08X, bytes = %u).\n", hr, returned);
+    if (port != INVALID_HANDLE_VALUE) CloseHandle(port);
+    HeapFree(GetProcessHeap(), 0, status);
+    return result;
+}
+#endif
+
+static int PrintWriterStateStatus(_In_ BOOL RegistryStatus)
+{
+    SAFEUPLOAD_CONTROL control;
+    SAFEUPLOAD_WRITER_STATE_STATUS status;
+    HANDLE port = INVALID_HANDLE_VALUE;
+    DWORD returned = 0;
+    HRESULT hr;
+
+    hr = FilterConnectCommunicationPort(SAFEUPLOAD_PORT_NAME, 0, NULL, 0, NULL, &port);
+    if (FAILED(hr)) {
+        wprintf(L"ERRO: nao foi possivel conectar na porta (hr = 0x%08X).\n", hr);
+        return 2;
+    }
+
+    ZeroMemory(&control, sizeof(control));
+    ZeroMemory(&status, sizeof(status));
+    control.Version = SAFEUPLOAD_PROTOCOL_VERSION;
+    control.StructSize = sizeof(control);
+    control.Command = SAFEUPLOAD_CONTROL_WRITER_STATE_STATUS;
+    hr = FilterSendMessage(port, &control, sizeof(control), &status, sizeof(status), &returned);
+    CloseHandle(port);
+    if (FAILED(hr) || returned != sizeof(status) || status.StructSize != sizeof(status)) {
+        wprintf(L"ERRO: resposta de writer-state invalida (hr = 0x%08X, bytes = %u).\n", hr, returned);
+        return 3;
+    }
+
+#if defined(SAFEUPLOAD_STAGING_PROTOTYPE) && SAFEUPLOAD_STAGING_PROTOTYPE
+    wprintf(L"{\"writerState\":true,\"registryStatus\":%s,\"postCreateRuns\":%llu,\"writeObjectsCounted\":%llu,\"writeObjectsReleased\":%llu,"
+            L"\"untrackedCreates\":%llu,\"cleanupUnmatched\":%llu,\"directoryCreatesSkipped\":%llu,\"cleanupDirectoriesSkipped\":%lu,"
+            L"\"sectionInFlightNow\":%lu,\"sectionInFlightInserted\":%llu,\"sectionInFlightReleased\":%llu,"
+            L"\"sectionInFlightStuck\":%llu,\"sectionInFlightRemovedOnFailure\":%llu,"
+            L"\"sectionInFlightMaxDepth\":%lu,\"pagingCreatesSkipped\":%llu,\"volumeCreatesSkipped\":%llu,"
+            L"\"writersDroppedAtTeardown\":%llu,\"writersDroppedWhileMounted\":%llu,"
+            L"\"instanceTeardownsDismount\":%llu,\"instanceTeardownsOther\":%llu,"
+            L"\"stageStreams\":%u,\"stageFileObjects\":%u,\"lastUnloadVeto\":%u,\"lastUnloadStatus\":%u,"
+            L"\"txfRefused\":%llu,\"registryEntries\":%u,\"registryNameTierEntries\":%u,\"registryCompactTierEntries\":%u,\"registryReservations\":%u,"
+            L"\"registryOverflow\":%u,\"registryUnknownReasons\":\"0x%08X\","
+            L"\"registryInstanceUnknown\":%u,\"registryCapacity\":%u,\"transactionAssociations\":%u,"
+            L"\"registryCapacityFailures\":%llu,\"registryAllocationFailures\":%llu,"
+            L"\"registryIdentityFailures\":%llu,\"registryTransactionFailures\":%llu,"
+            L"\"registryRenameFailures\":%llu,\"registryDroppedAtDismount\":%llu,"
+            L"\"registryDroppedWhileMounted\":%llu,\"registryPruned\":%llu,\"registryReclaimPasses\":%llu}\n",
+            RegistryStatus ? L"true" : L"false",
+            status.PostCreateRuns, status.WriteObjectsCounted, status.WriteObjectsReleased,
+            status.UntrackedCreates, status.CleanupUnmatched, status.DirectoryCreatesSkipped,
+            status.CleanupDirectoriesSkipped,
+            status.SectionInFlightNow, status.SectionInFlightInserted, status.SectionInFlightReleased,
+            status.SectionInFlightStuck, status.SectionInFlightRemovedOnFailure,
+            status.SectionInFlightMaxDepth, status.PagingCreatesSkipped, status.VolumeCreatesSkipped,
+            status.WritersDroppedAtTeardown, status.WritersDroppedWhileMounted,
+            status.InstanceTeardownsDismount, status.InstanceTeardownsOther,
+            status.StageStreams, status.StageFileObjects, status.LastUnloadVeto, status.LastUnloadStatus,
+            status.TxfRefused, status.RegistryEntries, status.RegistryNameTierEntries,
+            status.RegistryCompactTierEntries, status.RegistryReservations,
+            status.RegistryOverflow, status.RegistryUnknownReasons, status.RegistryInstanceUnknown,
+            status.RegistryCapacity, status.TransactionAssociations, status.RegistryCapacityFailures,
+            status.RegistryAllocationFailures, status.RegistryIdentityFailures,
+            status.RegistryTransactionFailures, status.RegistryRenameFailures,
+            status.RegistryDroppedAtDismount, status.RegistryDroppedWhileMounted,
+            status.RegistryPruned, status.RegistryReclaimPasses);
+#else
+    UNREFERENCED_PARAMETER(RegistryStatus);
+    wprintf(L"{\"writerState\":true,\"postCreateRuns\":%llu,\"writeObjectsCounted\":%llu,\"writeObjectsReleased\":%llu,"
+            L"\"untrackedCreates\":%llu,\"cleanupUnmatched\":%llu,\"directoryCreatesSkipped\":%llu,"
+            L"\"sectionInFlightNow\":%lu,\"sectionInFlightInserted\":%llu,\"sectionInFlightReleased\":%llu,"
+            L"\"sectionInFlightStuck\":%llu,\"sectionInFlightRemovedOnFailure\":%llu,"
+            L"\"sectionInFlightMaxDepth\":%lu,\"pagingCreatesSkipped\":%llu,\"volumeCreatesSkipped\":%llu,"
+            L"\"stageStreams\":%u,\"stageFileObjects\":%u,\"lastUnloadVeto\":%u,\"lastUnloadStatus\":%u}\n",
+            status.PostCreateRuns, status.WriteObjectsCounted, status.WriteObjectsReleased,
+            status.UntrackedCreates, status.CleanupUnmatched, status.DirectoryCreatesSkipped,
+            status.SectionInFlightNow, status.SectionInFlightInserted, status.SectionInFlightReleased,
+            status.SectionInFlightStuck, status.SectionInFlightRemovedOnFailure,
+            status.SectionInFlightMaxDepth, status.PagingCreatesSkipped, status.VolumeCreatesSkipped,
+            status.StageStreams, status.StageFileObjects, status.LastUnloadVeto, status.LastUnloadStatus);
+#endif
+    return 0;
+}
+
+#if defined(SAFEUPLOAD_STAGING_PROTOTYPE) && SAFEUPLOAD_STAGING_PROTOTYPE
+static PCWSTR RegistryStateName(_In_ UINT32 State)
+{
+    switch (State) {
+        case SAFEUPLOAD_REGISTRY_STATE_UNSCOPED: return L"Unscoped";
+        case SAFEUPLOAD_REGISTRY_STATE_ACTIVATING: return L"Activating";
+        case SAFEUPLOAD_REGISTRY_STATE_PROTECTED: return L"Protected";
+        case SAFEUPLOAD_REGISTRY_STATE_UNKNOWN: return L"Unknown";
+        default: return L"Unknown";
+    }
+}
+
+static PCWSTR RegistrySName(_In_ UINT32 State)
+{
+    switch (State) {
+        case SAFEUPLOAD_REGISTRY_S_NO: return L"NO";
+        case SAFEUPLOAD_REGISTRY_S_YES: return L"YES";
+        default: return L"Unknown";
+    }
+}
+
+static VOID PrintJsonWide(_In_reads_(Chars) PCWSTR Text, _In_ ULONG Chars);
+static VOID PrintActivatingDiagnosticEntry(_In_ PSAFEUPLOAD_ACTIVATING_DIAGNOSTIC_ENTRY_STATUS Diagnostic);
+
+static int SendRegistryEntry(_In_z_ PCWSTR DosPath, _In_ BOOLEAN TargetOnly)
+{
+    static const WCHAR volumePrefix[] = L"\\Device\\HarddiskVolume";
+    WCHAR drive[3];
+    PWCHAR deviceName = NULL;
+    PSAFEUPLOAD_ADMISSION_PROBE_REQUEST request = NULL;
+    HANDLE port = INVALID_HANDLE_VALUE;
+    SAFEUPLOAD_REGISTRY_ENTRY_STATUS entry;
+    SAFEUPLOAD_ACTIVATING_TARGET_STATUS target;
+    PCWSTR relativePath;
+    SIZE_T pathChars, deviceChars, prefixChars = ARRAYSIZE(volumePrefix) - 1, index;
+    ULONG requestBytes;
+    const DWORD deviceNameCapacity = 4096;
+    DWORD returned = 0;
+    HRESULT hr;
+    int result = 2;
+
+    pathChars = wcslen(DosPath);
+    if (pathChars < 4 || pathChars > SAFEUPLOAD_ADMISSION_PROBE_MAX_STRING_CHARS ||
+        DosPath[1] != L':' || DosPath[2] != L'\\' || DosPath[pathChars - 1] == L'\\') {
+        fwprintf(stderr, L"Uso: SafeUpload.Inspector --registry-entry X:\\dir\\file\n");
+        return 2;
+    }
+    for (index = 0; index < pathChars; ++index) {
+        if (DosPath[index] == L'/' || (index >= 2 && DosPath[index] == L':')) {
+            fwprintf(stderr, L"ERRO: caminho invalido ou fluxo alternativo.\n");
+            return 2;
+        }
+    }
+    drive[0] = DosPath[0]; drive[1] = L':'; drive[2] = L'\0';
+    deviceName = (PWCHAR)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY,
+        (SIZE_T)deviceNameCapacity * sizeof(WCHAR));
+    if (deviceName == NULL) return 2;
+    if (QueryDosDeviceW(drive, deviceName, deviceNameCapacity) == 0) {
+        fwprintf(stderr, L"ERRO: nao foi possivel resolver a unidade %s.\n", drive);
+        goto Cleanup;
+    }
+    deviceChars = wcslen(deviceName);
+    if (deviceChars < prefixChars || deviceChars > SAFEUPLOAD_ADMISSION_PROBE_MAX_STRING_CHARS ||
+        _wcsnicmp(deviceName, volumePrefix, prefixChars) != 0) {
+        fwprintf(stderr, L"ERRO: a unidade nao aponta para um volume NTFS local qualificado.\n");
+        goto Cleanup;
+    }
+    relativePath = DosPath + 2;
+    requestBytes = (ULONG)FIELD_OFFSET(SAFEUPLOAD_ADMISSION_PROBE_REQUEST, Strings) +
+        ((ULONG)deviceChars + (ULONG)(pathChars - 2)) * (ULONG)sizeof(WCHAR);
+    request = (PSAFEUPLOAD_ADMISSION_PROBE_REQUEST)HeapAlloc(
+        GetProcessHeap(), HEAP_ZERO_MEMORY, requestBytes);
+    if (request == NULL) goto Cleanup;
+    request->Control.Version = SAFEUPLOAD_PROTOCOL_VERSION;
+    request->Control.StructSize = requestBytes;
+    request->Control.Command = TargetOnly ? SAFEUPLOAD_CONTROL_ACTIVATING_TARGET_STATUS : SAFEUPLOAD_CONTROL_REGISTRY_ENTRY;
+    request->VolumeNameChars = (UINT16)deviceChars;
+    request->RelativePathChars = (UINT16)(pathChars - 2);
+    CopyMemory(request->Strings, deviceName, deviceChars * sizeof(WCHAR));
+    CopyMemory(request->Strings + deviceChars, relativePath, (pathChars - 2) * sizeof(WCHAR));
+
+    hr = FilterConnectCommunicationPort(SAFEUPLOAD_PORT_NAME, 0, NULL, 0, NULL, &port);
+    if (FAILED(hr)) {
+        fwprintf(stderr, L"ERRO: nao foi possivel conectar na porta (hr = 0x%08X).\n", hr);
+        goto Cleanup;
+    }
+    if (TargetOnly) {
+        ZeroMemory(&target, sizeof(target));
+        hr = FilterSendMessage(port, request, requestBytes, &target, sizeof(target), &returned);
+        if (FAILED(hr) || returned != sizeof(target) || target.StructSize != sizeof(target) ||
+            target.MatchCount > SAFEUPLOAD_WRITER_REGISTRY_ALL_LIMIT || (target.Flags & ~1u) != 0 ||
+            (target.MatchCount == 1 && (target.Diagnostic.Entry.NameChars == 0 ||
+                target.Diagnostic.Entry.NameChars > SAFEUPLOAD_WRITER_REGISTRY_NAME_CHARS ||
+                target.Diagnostic.Entry.OpenerPidCount > ARRAYSIZE(target.Diagnostic.Entry.OpenerPids)))) {
+            fwprintf(stderr, L"ERRO: resposta activating-target invalida (hr = 0x%08X, bytes = %u).\n", hr, returned);
+            result = 3;
+            goto Cleanup;
+        }
+        wprintf(L"{\"activatingTarget\":true,\"requestedPath\":");
+        PrintJsonWide(request->Strings, (UINT32)(deviceChars + pathChars - 2));
+        wprintf(L",\"matchCount\":%u,\"policyGeneration\":%u,\"flags\":%u,"
+            L"\"sequenceStart\":%llu,\"sequenceEnd\":%llu,\"entries\":[",
+            target.MatchCount, target.PolicyGeneration, target.Flags, target.SequenceStart, target.SequenceEnd);
+        if (target.MatchCount == 1) PrintActivatingDiagnosticEntry(&target.Diagnostic);
+        wprintf(L"]}\n");
+        result = 0;
+        goto Cleanup;
+    }
+    ZeroMemory(&entry, sizeof(entry));
+    hr = FilterSendMessage(port, request, requestBytes, &entry, sizeof(entry), &returned);
+    if (FAILED(hr) || returned != sizeof(entry) || entry.StructSize != sizeof(entry)) {
+        fwprintf(stderr, L"ERRO: resposta registry-entry invalida (hr = 0x%08X, bytes = %u).\n", hr, returned);
+        result = 3;
+        goto Cleanup;
+    }
+    wprintf(L"{\"registryEntry\":true,\"historyPresent\":%s,\"state\":\"%s\",\"free\":%s,"
+            L"\"H\":%u,\"S\":\"%s\",\"C\":%u,\"T\":%u,\"volumeSerial\":\"0x%016llX\","
+            L"\"fileId\":\"",
+            entry.HistoryPresent ? L"true" : L"false", RegistryStateName(entry.State),
+            entry.Free ? L"true" : L"false", entry.H, RegistrySName(entry.S), entry.C, entry.T,
+            entry.VolumeSerialNumber);
+    for (index = 0; index < ARRAYSIZE(entry.FileId); ++index) wprintf(L"%02X", entry.FileId[index]);
+    wprintf(L"\",\"unknownReasons\":\"0x%08X\",\"firstSeenGeneration\":%u,\"openerPids\":[",
+        entry.UnknownReasons, entry.FirstSeenGeneration);
+    for (index = 0; index < entry.OpenerPidCount && index < ARRAYSIZE(entry.OpenerPids); ++index)
+        wprintf(L"%s%u", index == 0 ? L"" : L",", entry.OpenerPids[index]);
+    wprintf(L"],\"nameMatches\":%s}\n", entry.NameMatches ? L"true" : L"false");
+    result = 0;
+
+Cleanup:
+    if (port != INVALID_HANDLE_VALUE) CloseHandle(port);
+    if (request != NULL) HeapFree(GetProcessHeap(), 0, request);
+    if (deviceName != NULL) HeapFree(GetProcessHeap(), 0, deviceName);
+    return result;
+}
+
+static int SetRegistryCapacity(_In_z_ PCWSTR Text)
+{
+    WCHAR *end = NULL;
+    ULONG capacity;
+    SAFEUPLOAD_CONTROL control;
+    HANDLE port = INVALID_HANDLE_VALUE;
+    DWORD returned = 0;
+    HRESULT hr;
+    if (Text == NULL || Text[0] == L'\0') return 2;
+    capacity = wcstoul(Text, &end, 10);
+    if (end == Text || *end != L'\0' || capacity > SAFEUPLOAD_WRITER_REGISTRY_TOTAL_LIMIT) {
+        fwprintf(stderr, L"Uso: SafeUpload.Inspector --registry-capacity 0..4096\n");
+        return 2;
+    }
+    ZeroMemory(&control, sizeof(control));
+    control.Version = SAFEUPLOAD_PROTOCOL_VERSION;
+    control.StructSize = sizeof(control);
+    control.Command = SAFEUPLOAD_CONTROL_REGISTRY_SET_CAPACITY;
+    control.Reserved = capacity;
+    hr = FilterConnectCommunicationPort(SAFEUPLOAD_PORT_NAME, 0, NULL, 0, NULL, &port);
+    if (FAILED(hr)) return 2;
+    hr = FilterSendMessage(port, &control, sizeof(control), NULL, 0, &returned);
+    CloseHandle(port);
+    wprintf(L"{\"registryCapacity\":%u,\"status\":\"0x%08X\"}\n", capacity, hr);
+    return SUCCEEDED(hr) && returned == 0 ? 0 : 3;
+}
+
+static VOID PrintJsonWide(_In_reads_(Chars) PCWSTR Text, _In_ ULONG Chars)
+{
+    ULONG index;
+    wprintf(L"\"");
+    for (index = 0; index < Chars; ++index) {
+        WCHAR ch = Text[index];
+        switch (ch) {
+        case L'"': wprintf(L"\\\""); break;
+        case L'\\': wprintf(L"\\\\"); break;
+        case L'\n': wprintf(L"\\n"); break;
+        case L'\r': wprintf(L"\\r"); break;
+        case L'\t': wprintf(L"\\t"); break;
+        default:
+            if (ch < 0x20) wprintf(L"\\u%04X", (UINT32)ch);
+            else putwchar(ch);
+            break;
+        }
+    }
+    wprintf(L"\"");
+}
+
+static PCWSTR ActivatingClassificationStepName(UINT32 Step)
+{
+    switch (Step) {
+    case SAFEUPLOAD_ACTIVATING_CLASSIFY_STEP_NONE: return L"None";
+    case SAFEUPLOAD_ACTIVATING_CLASSIFY_STEP_OPEN_BY_ID: return L"OpenById";
+    case SAFEUPLOAD_ACTIVATING_CLASSIFY_STEP_LINK_QUERY: return L"LinkQuery";
+    case SAFEUPLOAD_ACTIVATING_CLASSIFY_STEP_PARENT_OPEN: return L"ParentOpen";
+    case SAFEUPLOAD_ACTIVATING_CLASSIFY_STEP_NAME_BUILD: return L"NameBuild";
+    case SAFEUPLOAD_ACTIVATING_CLASSIFY_STEP_OTHER: return L"Other";
+    case SAFEUPLOAD_ACTIVATING_CLASSIFY_STEP_NO_NAMES: return L"NoNames";
+    case SAFEUPLOAD_ACTIVATING_CLASSIFY_STEP_PAGING_FILE: return L"PagingFile";
+    case SAFEUPLOAD_ACTIVATING_CLASSIFY_STEP_OUTSIDE: return L"Outside";
+    case SAFEUPLOAD_ACTIVATING_CLASSIFY_STEP_NOT_RUN: return L"NotRun";
+    case SAFEUPLOAD_ACTIVATING_CLASSIFY_STEP_FLUSH_PURGE: return L"FlushAndPurge";
+    case SAFEUPLOAD_ACTIVATING_CLASSIFY_STEP_CACHE_RETAINED: return L"CacheRetained";
+    case SAFEUPLOAD_ACTIVATING_CLASSIFY_STEP_LINK_SCAN_MORE: return L"LinkScanMore";
+    case SAFEUPLOAD_ACTIVATING_CLASSIFY_STEP_SCOPE_DEFERRED: return L"ScopeDeferred";
+    case SAFEUPLOAD_ACTIVATING_CLASSIFY_STEP_MARKERS_LIVE: return L"MarkersLive";
+    case SAFEUPLOAD_ACTIVATING_CLASSIFY_STEP_PROMOTE_DEFERRED: return L"PromoteDeferred";
+    case SAFEUPLOAD_ACTIVATING_CLASSIFY_STEP_EXIT_SITE: return L"ExitSite";
+    default: return L"UnknownStep";
+    }
+}
+
+static VOID PrintActivatingDiagnosticEntry(_In_ PSAFEUPLOAD_ACTIVATING_DIAGNOSTIC_ENTRY_STATUS Diagnostic)
+{
+    PSAFEUPLOAD_ACTIVATING_ENTRY_STATUS entry = &Diagnostic->Entry;
+    ULONG byteIndex;
+    wprintf(L"{\"generation\":%u,\"state\":\"%s\",\"volumeSerial\":\"0x%016llX\",\"fileId\":\"",
+        entry->Generation, RegistryStateName(entry->State), entry->VolumeSerialNumber);
+    for (byteIndex = 0; byteIndex < ARRAYSIZE(entry->FileId); ++byteIndex)
+        wprintf(L"%02X", entry->FileId[byteIndex]);
+    wprintf(L"\",\"path\":");
+    PrintJsonWide(entry->Name, min(entry->NameChars, SAFEUPLOAD_WRITER_REGISTRY_NAME_CHARS));
+    wprintf(L",\"H\":%u,\"S\":\"%s\",\"C\":%u,\"T\":%u,\"W\":%u,\"unknownReasons\":\"0x%08X\","
+        L"\"classificationStatus\":\"0x%08X\",\"classificationStep\":\"%s\","
+        L"\"classificationStepCode\":%u,\"openerPids\":[",
+        entry->H, RegistrySName(entry->S), entry->C, entry->T, entry->W,
+        entry->UnknownReasons, (UINT32)Diagnostic->ClassificationStatus,
+        ActivatingClassificationStepName(Diagnostic->ClassificationStep),
+        Diagnostic->ClassificationStep);
+    for (byteIndex = 0; byteIndex < entry->OpenerPidCount && byteIndex < ARRAYSIZE(entry->OpenerPids); ++byteIndex)
+        wprintf(L"%s%u", byteIndex == 0 ? L"" : L",", entry->OpenerPids[byteIndex]);
+    wprintf(L"]}");
+}
+
+static int PrintActivatingStatus(VOID)
+{
+    HANDLE port = INVALID_HANDLE_VALUE;
+    PSAFEUPLOAD_ACTIVATING_DIAGNOSTIC_STATUS_PAGE page = NULL;
+    PSAFEUPLOAD_ACTIVATING_DIAGNOSTIC_ENTRY_STATUS entries = NULL;
+    SAFEUPLOAD_CONTROL control;
+    DWORD returned = 0;
+    UINT32 start, total = 0, pageGeneration = 0, entryCount = 0, attempt, pagesRead;
+    const UINT32 maximumPagesPerSnapshot =
+        (SAFEUPLOAD_WRITER_REGISTRY_ALL_LIMIT + SAFEUPLOAD_ACTIVATING_STATUS_MAX_ENTRIES - 1) /
+        SAFEUPLOAD_ACTIVATING_STATUS_MAX_ENTRIES;
+    UINT64 changeSequence = 0;
+    BOOLEAN snapshotReady = FALSE, retrySnapshot;
+    HRESULT hr;
+    ULONG index;
+    int result = 0;
+    page = (PSAFEUPLOAD_ACTIVATING_DIAGNOSTIC_STATUS_PAGE)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY,
+        sizeof(*page));
+    entries = (PSAFEUPLOAD_ACTIVATING_DIAGNOSTIC_ENTRY_STATUS)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY,
+        (SIZE_T)SAFEUPLOAD_WRITER_REGISTRY_ALL_LIMIT * sizeof(*entries));
+    if (page == NULL || entries == NULL) {
+        if (page != NULL) HeapFree(GetProcessHeap(), 0, page);
+        if (entries != NULL) HeapFree(GetProcessHeap(), 0, entries);
+        return 2;
+    }
+    hr = FilterConnectCommunicationPort(SAFEUPLOAD_PORT_NAME, 0, NULL, 0, NULL, &port);
+    if (FAILED(hr)) {
+        fwprintf(stderr, L"ERRO: nao foi possivel conectar na porta (hr = 0x%08X).\n", hr);
+        HeapFree(GetProcessHeap(), 0, page);
+        HeapFree(GetProcessHeap(), 0, entries);
+        return 2;
+    }
+    for (attempt = 0; attempt < 5 && !snapshotReady; ++attempt) {
+        start = 0;
+        total = 0;
+        entryCount = 0;
+        pagesRead = 0;
+        pageGeneration = 0;
+        changeSequence = 0;
+        retrySnapshot = FALSE;
+        while (start <= SAFEUPLOAD_WRITER_REGISTRY_ALL_LIMIT) {
+            if (pagesRead >= maximumPagesPerSnapshot) {
+                fwprintf(stderr, L"ERRO: activating-status excedeu o limite de %u paginas.\n",
+                    maximumPagesPerSnapshot);
+                result = 3;
+                break;
+            }
+            pagesRead += 1;
+            ZeroMemory(&control, sizeof(control));
+            ZeroMemory(page, sizeof(*page));
+            control.Version = SAFEUPLOAD_PROTOCOL_VERSION;
+            control.StructSize = sizeof(control);
+            control.Command = SAFEUPLOAD_CONTROL_ACTIVATING_DIAGNOSTIC_STATUS;
+            control.Reserved = start;
+            returned = 0;
+            hr = FilterSendMessage(port, &control, sizeof(control), page, sizeof(*page), &returned);
+            if (FAILED(hr)) {
+                /* STATUS_RETRY may surface as either HRESULT_FROM_WIN32(ERROR_RETRY) or HRESULT_FROM_NT. */
+                if (hr == HRESULT_FROM_WIN32(ERROR_RETRY) || (DWORD)hr == 0xD000022D) {
+                    retrySnapshot = TRUE;
+                    break;
+                }
+                fwprintf(stderr, L"ERRO: resposta activating-status invalida (hr = 0x%08X, bytes = %u).\n", hr, returned);
+                result = 3;
+                break;
+            }
+            if (returned != sizeof(*page) || page->StructSize != sizeof(*page) ||
+                page->StartIndex != start || page->EntryCount > SAFEUPLOAD_ACTIVATING_STATUS_MAX_ENTRIES ||
+                page->TotalEntries > SAFEUPLOAD_WRITER_REGISTRY_ALL_LIMIT ||
+                page->NextIndex < start || page->NextIndex > page->TotalEntries ||
+                page->EntryCount != page->NextIndex - start) {
+                fwprintf(stderr, L"ERRO: resposta activating-status invalida (hr = 0x%08X, bytes = %u).\n", hr, returned);
+                result = 3;
+                break;
+            }
+            if (start == 0) {
+                total = page->TotalEntries;
+                pageGeneration = page->PolicyGeneration;
+                changeSequence = page->ChangeSequence;
+            } else if (page->TotalEntries != total || page->PolicyGeneration != pageGeneration ||
+                page->ChangeSequence != changeSequence) {
+                retrySnapshot = TRUE;
+                break;
+            }
+            if (entryCount > SAFEUPLOAD_WRITER_REGISTRY_ALL_LIMIT ||
+                page->EntryCount > SAFEUPLOAD_WRITER_REGISTRY_ALL_LIMIT - entryCount) {
+                result = 3;
+                break;
+            }
+            if (page->EntryCount != 0)
+                CopyMemory(&entries[entryCount], page->Entries,
+                    page->EntryCount * sizeof(SAFEUPLOAD_ACTIVATING_DIAGNOSTIC_ENTRY_STATUS));
+            entryCount += page->EntryCount;
+            if (page->NextIndex <= start && start < total) {
+                retrySnapshot = TRUE;
+                break;
+            }
+            start = page->NextIndex;
+            if (start >= total) {
+                snapshotReady = TRUE;
+                break;
+            }
+        }
+        if (result != 0) break;
+        if (!retrySnapshot && !snapshotReady) result = 3;
+    }
+    if (!snapshotReady && result == 0) {
+        fwprintf(stderr, L"ERRO: activating-status mudou durante cinco leituras consecutivas.\n");
+        result = 3;
+    }
+    if (snapshotReady) {
+        BOOLEAN first = TRUE;
+        wprintf(L"{\"activatingStatus\":true,\"entries\":[");
+        for (index = 0; index < entryCount; ++index) {
+            PSAFEUPLOAD_ACTIVATING_DIAGNOSTIC_ENTRY_STATUS diagnostic = &entries[index];
+            if (!first) wprintf(L",");
+            first = FALSE;
+            PrintActivatingDiagnosticEntry(diagnostic);
+        }
+        wprintf(L"],\"totalEntries\":%u,\"policyGeneration\":%u,\"changeSequence\":%llu}\n",
+            total, pageGeneration, changeSequence);
+    }
+    CloseHandle(port);
+    HeapFree(GetProcessHeap(), 0, page);
+    HeapFree(GetProcessHeap(), 0, entries);
+    return result;
+}
+
+static int PrintAdmissionEpochStatus(VOID)
+{
+    SAFEUPLOAD_CONTROL control;
+    SAFEUPLOAD_ADMISSION_EPOCH_STATUS status;
+    HANDLE port = INVALID_HANDLE_VALUE;
+    DWORD returned = 0;
+    HRESULT hr;
+    hr = FilterConnectCommunicationPort(SAFEUPLOAD_PORT_NAME, 0, NULL, 0, NULL, &port);
+    if (FAILED(hr)) return 2;
+    ZeroMemory(&control, sizeof(control));
+    ZeroMemory(&status, sizeof(status));
+    control.Version = SAFEUPLOAD_PROTOCOL_VERSION;
+    control.StructSize = sizeof(control);
+    control.Command = SAFEUPLOAD_CONTROL_ADMISSION_EPOCH_STATUS;
+    hr = FilterSendMessage(port, &control, sizeof(control), &status, sizeof(status), &returned);
+    CloseHandle(port);
+    if (FAILED(hr) || returned != sizeof(status) || status.StructSize != sizeof(status)) {
+        fwprintf(stderr, L"ERRO: resposta admission-epoch-status invalida (hr = 0x%08X, bytes = %u).\n", hr, returned);
+        return 3;
+    }
+    wprintf(L"{\"admissionEpoch\":true,\"policyGeneration\":%u,\"epochGeneration\":%u,\"activeCallbacks\":%u,\"flags\":%u,\"changeSequence\":%llu}\n",
+        status.PolicyGeneration, status.EpochGeneration, status.ActiveCallbacks, status.Flags, status.ChangeSequence);
+    return 0;
+}
+#endif
+
+static int PrintFenceStatus(VOID)
+{
+    SAFEUPLOAD_CONTROL control;
+    SAFEUPLOAD_FENCE_STATUS status;
+    HANDLE port = INVALID_HANDLE_VALUE;
+    DWORD returned = 0;
+    HRESULT hr;
+    BOOL complete;
+
+    hr = FilterConnectCommunicationPort(SAFEUPLOAD_PORT_NAME, 0, NULL, 0, NULL, &port);
+    if (FAILED(hr)) {
+        wprintf(L"ERRO: nao foi possivel conectar na porta (hr = 0x%08X).\n", hr);
+        return 2;
+    }
+
+    ZeroMemory(&control, sizeof(control));
+    ZeroMemory(&status, sizeof(status));
+    control.Version = SAFEUPLOAD_PROTOCOL_VERSION;
+    control.StructSize = sizeof(control);
+    control.Command = SAFEUPLOAD_CONTROL_ADMISSION_FENCE_STATUS;
+    hr = FilterSendMessage(port, &control, sizeof(control), &status, sizeof(status), &returned);
+    CloseHandle(port);
+    if (FAILED(hr) || returned != sizeof(status) || status.StructSize != sizeof(status)) {
+        wprintf(L"ERRO: o driver recusou o status da cerca (hr = 0x%08X, %lu bytes).\n", hr, returned);
+        return 3;
+    }
+
+    // "complete" requires a successful scan with no skipped scopes or reparses, no unresolved
+    // admission counters, and no refresh, unload gate, quarantine, or retry still active. This is a
+    // sampled status and does not close the attach-to-scan window.
+    complete = status.LastStatus == 0 && status.VolumeScopesSkipped == 0 && status.ReparseSkipped == 0 &&
+        status.SectionNameUnresolved == 0 && status.FsctlUnresolved == 0 && status.StateFlags == 0;
+    wprintf(L"{\"fence\":true,\"complete\":%s,\"stateFlags\":%lu,\"entries\":%lu,\"generation\":%lu,\"lastStatus\":\"0x%08X\",\"failureLine\":%lu,"
+            L"\"refreshStarted\":%llu,\"refreshCompleted\":%llu,\"refreshFailed\":%llu,"
+            L"\"pagingWritesDenied\":%llu,\"opensRefused\":%llu,\"directoriesScanned\":%llu,"
+            L"\"filesScanned\":%llu,\"reparseSkipped\":%llu,\"volumeScopesSkipped\":%llu,"
+            L"\"streamsReleased\":%llu,\"releaseRefused\":%llu,\"sectionsDenied\":%llu,\"sectionNameUnresolved\":%llu,\"fsctlUnresolved\":%llu,\"lateRefreshesQueued\":%llu}\n",
+            complete ? L"true" : L"false",
+            status.StateFlags, status.Entries, status.Generation, status.LastStatus, status.FailureLine,
+            status.RefreshStarted, status.RefreshCompleted, status.RefreshFailed,
+            status.PagingWritesDenied, status.OpensRefused, status.DirectoriesScanned,
+            status.FilesScanned, status.ReparseSkipped, status.VolumeScopesSkipped,
+            status.StreamsReleased, status.ReleaseRefused, status.SectionsDenied, status.SectionNameUnresolved, status.FsctlUnresolved, status.LateRefreshesQueued);
+    return complete ? 0 : 4;
+}
+
+static int SendAdmissionTraceControl(_In_ UINT32 Command, _In_z_ PCWSTR Name, _In_ UINT32 Options)
+{
+    SAFEUPLOAD_CONTROL control;
+    HANDLE port = INVALID_HANDLE_VALUE;
+    DWORD returned = 0;
+    HRESULT hr;
+
+    hr = FilterConnectCommunicationPort(SAFEUPLOAD_PORT_NAME, 0, NULL, 0, NULL, &port);
+    if (FAILED(hr)) {
+        wprintf(L"ERRO: nao foi possivel conectar na porta (hr = 0x%08X).\n", hr);
+        return 2;
+    }
+
+    ZeroMemory(&control, sizeof(control));
+    control.Version = SAFEUPLOAD_PROTOCOL_VERSION;
+    control.StructSize = sizeof(control);
+    control.Command = Command;
+    control.Reserved = Options;
+    hr = FilterSendMessage(port, &control, sizeof(control), NULL, 0, &returned);
+    CloseHandle(port);
+    if (FAILED(hr) || returned != 0) {
+        wprintf(L"ERRO: o driver recusou %s (hr = 0x%08X).\n", Name, hr);
+        return 3;
+    }
+
+    wprintf(L"%s: OK\n", Name);
+    return 0;
+}
+
+static int PrintAdmissionTrace(VOID)
+{
+    SAFEUPLOAD_ADMISSION_TRACE_REQUEST request;
+    SAFEUPLOAD_ADMISSION_TRACE_BATCH batch;
+    SAFEUPLOAD_ADMISSION_TRACE_COUNTERS counters;
+    HANDLE port = INVALID_HANDLE_VALUE;
+    DWORD returned = 0;
+    UINT64 cursor = 0;
+    UINT64 snapshot = 0;
+    HRESULT hr;
+    ULONG index;
+    int exitCode = 0;
+
+    ZeroMemory(&counters, sizeof(counters));
+    hr = FilterConnectCommunicationPort(SAFEUPLOAD_PORT_NAME, 0, NULL, 0, NULL, &port);
+    if (FAILED(hr)) {
+        wprintf(L"ERRO: nao foi possivel conectar na porta (hr = 0x%08X).\n", hr);
+        return 2;
+    }
+
+    for (;;) {
+        ZeroMemory(&request, sizeof(request));
+        ZeroMemory(&batch, sizeof(batch));
+        request.Control.Version = SAFEUPLOAD_PROTOCOL_VERSION;
+        request.Control.StructSize = sizeof(request);
+        request.Control.Command = SAFEUPLOAD_CONTROL_ADMISSION_TRACE_READ_BATCH;
+        request.Cursor = cursor;
+        request.SnapshotSequence = snapshot;
+
+        returned = 0;
+        hr = FilterSendMessage(port, &request, sizeof(request), &batch, sizeof(batch), &returned);
+        if (FAILED(hr) || returned != sizeof(batch) ||
+            batch.Control.Version != SAFEUPLOAD_PROTOCOL_VERSION ||
+            batch.Control.StructSize != sizeof(batch) ||
+            batch.Control.Command != SAFEUPLOAD_CONTROL_ADMISSION_TRACE_READ_BATCH ||
+            batch.EntryCount > SAFEUPLOAD_ADMISSION_TRACE_BATCH_ENTRIES) {
+            wprintf(L"ERRO: resposta de trace invalida (hr = 0x%08X, bytes = %u).\n",
+                    hr, returned);
+            exitCode = 3;
+            break;
+        }
+
+        if (snapshot == 0) snapshot = batch.SnapshotSequence;
+        if (batch.SnapshotSequence != snapshot || batch.NextCursor < cursor) {
+            wprintf(L"ERRO: cursor ou snapshot invalido devolvido pelo driver.\n");
+            exitCode = 3;
+            break;
+        }
+
+        for (index = 0; index < batch.EntryCount; index += 1) {
+            PrintAdmissionTraceEntry(&batch.Entries[index]);
+        }
+        counters = batch.Counters;
+        if (batch.NextCursor == cursor && cursor <= snapshot) {
+            // A slot changed during this snapshot read; leave the cursor for
+            // a later invocation to retry from a fresh snapshot.
+            break;
+        }
+
+        cursor = batch.NextCursor;
+        if (cursor > snapshot) break;
+    }
+
+    CloseHandle(port);
+    if (exitCode != 0) return exitCode;
+
+    wprintf(L"{\"summary\":true,\"totalEvents\":%llu,\"pagingWrites\":%llu,"
+            L"\"nonPagingWrites\":%llu,\"sectionAcquires\":%llu,\"sectionReleases\":%llu,"
+            L"\"instanceSetups\":%llu,"
+            L"\"lostEntries\":%llu,\"cursor\":%llu,\"snapshotSequence\":%llu}\n",
+            counters.TotalEvents, counters.PagingWrites, counters.NonPagingWrites,
+            counters.SectionAcquires, counters.SectionReleases, counters.InstanceSetups,
+            counters.LostEntries, cursor, snapshot);
+    return 0;
+}
+
+static int PrintPromotionTrace(VOID)
+{
+    SAFEUPLOAD_PROMOTION_TRACE_REQUEST request;
+    SAFEUPLOAD_PROMOTION_TRACE_BATCH batch;
+    HANDLE port = INVALID_HANDLE_VALUE;
+    DWORD returned = 0;
+    UINT64 cursor = 0, snapshot = 0;
+    HRESULT hr;
+    ULONG i, j;
+    UINT64 firstAvailable = 0;
+    int exitCode = 0;
+    hr = FilterConnectCommunicationPort(SAFEUPLOAD_PORT_NAME, 0, NULL, 0, NULL, &port);
+    if (FAILED(hr)) return 2;
+    for (;;) {
+        ZeroMemory(&request, sizeof(request));
+        ZeroMemory(&batch, sizeof(batch));
+        request.Control.Version = SAFEUPLOAD_PROTOCOL_VERSION;
+        request.Control.StructSize = sizeof(request);
+        request.Control.Command = SAFEUPLOAD_CONTROL_PROMOTION_TRACE_READ_BATCH;
+        request.Cursor = cursor;
+        request.SnapshotSequence = snapshot;
+        hr = FilterSendMessage(port, &request, sizeof(request), &batch, sizeof(batch), &returned);
+        if (FAILED(hr) || returned != sizeof(batch) || batch.Version != SAFEUPLOAD_PROTOCOL_VERSION ||
+            batch.StructSize != sizeof(batch) || batch.EntryCount > SAFEUPLOAD_PROMOTION_TRACE_BATCH_ENTRIES ||
+            (batch.Flags & ~SAFEUPLOAD_PROMOTION_TRACE_BATCH_FLAG_GAP) != 0) {
+            wprintf(L"{\"promotionTraceError\":\"invalid_response\",\"hr\":%u,\"bytes\":%u}\n",
+                (UINT32)hr, returned);
+            exitCode = 3;
+            break;
+        }
+        if (cursor == 0) {
+            snapshot = batch.SnapshotSequence;
+            firstAvailable = batch.FirstAvailableSequence;
+        }
+        wprintf(L"{\"promotionTraceBatch\":true,\"version\":%u,\"structSize\":%u,"
+            L"\"cursor\":%llu,\"snapshotSequence\":%llu,\"nextCursor\":%llu,"
+            L"\"firstAvailableSequence\":%llu,\"entryCount\":%u,\"flags\":%u,"
+            L"\"lostEvents\":%llu,\"overwrittenEvents\":%llu}\n",
+            batch.Version, batch.StructSize, batch.Cursor, batch.SnapshotSequence, batch.NextCursor,
+            batch.FirstAvailableSequence, batch.EntryCount, batch.Flags,
+            batch.LostEvents, batch.OverwrittenEvents);
+        if (batch.SnapshotSequence != snapshot || batch.FirstAvailableSequence != firstAvailable ||
+            (cursor == 0 && batch.Cursor != firstAvailable) ||
+            (cursor != 0 && batch.Cursor != cursor)) {
+            wprintf(L"{\"promotionTraceError\":\"cursor_or_snapshot_invalid\"}\n");
+            exitCode = 3;
+            break;
+        }
+        if ((batch.Flags & SAFEUPLOAD_PROMOTION_TRACE_BATCH_FLAG_GAP) != 0 ||
+            batch.LostEvents != 0 || batch.OverwrittenEvents != 0 || firstAvailable > 1) {
+            wprintf(L"{\"promotionTraceIncomplete\":true,\"reason\":\"gap_or_lost_or_overwritten_prefix\"}\n");
+            exitCode = 4;
+            break;
+        }
+        if (batch.NextCursor < batch.Cursor ||
+            (UINT64)batch.EntryCount > (~(UINT64)0) - batch.Cursor ||
+            batch.NextCursor != batch.Cursor + batch.EntryCount) {
+            wprintf(L"{\"promotionTraceError\":\"cursor_or_snapshot_invalid\"}\n");
+            exitCode = 3;
+            break;
+        }
+        if ((snapshot == 0 && (batch.EntryCount != 0 || batch.Cursor != 0 ||
+                (batch.NextCursor != 0 && batch.NextCursor != 1))) ||
+            (snapshot != 0 && (firstAvailable == 0 || firstAvailable > snapshot + 1)) ||
+            (snapshot != 0 && batch.EntryCount == 0 && batch.Cursor <= snapshot)) {
+            wprintf(L"{\"promotionTraceError\":\"malformed_or_no_progress_snapshot\"}\n");
+            exitCode = 3;
+            break;
+        }
+        for (i = 0; i < batch.EntryCount; ++i) {
+            SAFEUPLOAD_PROMOTION_TRACE_ENTRY *e = &batch.Entries[i];
+            UINT64 expectedSequence = batch.Cursor + i;
+            if (e->Sequence != expectedSequence || e->Sequence > snapshot) {
+                wprintf(L"{\"promotionTraceError\":\"entry_sequence_invalid\",\"expected\":%llu,\"actual\":%llu}\n",
+                    expectedSequence, e->Sequence);
+                exitCode = 3;
+                break;
+            }
+            wprintf(L"{\"promotionTraceEntry\":true,\"sequence\":%llu,\"qpc\":%llu,"
+                L"\"instance\":\"0x%016llX\",\"sop\":\"0x%016llX\","
+                L"\"volumeSerial\":\"0x%016llX\",\"registryChangeSequence\":%llu,"
+                L"\"markerGenerationExpected\":%llu,\"markerGenerationAtCas\":%llu,\"fileId\":\"",
+                e->Sequence, e->Qpc, e->Instance, e->SectionObjectPointer,
+                e->VolumeSerialNumber, e->RegistryChangeSequence,
+                e->SopMarkerGenerationExpected, e->SopMarkerGenerationAtCas);
+            for (j = 0; j < ARRAYSIZE(e->FileId); ++j) wprintf(L"%02X", e->FileId[j]);
+            wprintf(L"\",\"stateBefore\":%u,\"stateAfter\":%u,\"Hsample\":%u,\"Wsample\":%u,"
+                L"\"Tsample\":%u,\"CforSopSample\":%u,\"lastSsample\":%u,"
+                L"\"unknownReasonsSample\":%u,\"renameInFlightSample\":%u,\"renameVersionSample\":%u,"
+                L"\"activationGenerationSample\":%u,\"policyGenerationSample\":%u,"
+                L"\"policyFlagsSample\":%u,\"testDisableTaint\":%u,\"spilledMutatingIoCountSample\":%u,"
+                L"\"unknownWriterCountSample\":%u,\"predicateFlags\":%u,\"snapshotFlags\":%u}\n",
+                e->StateBefore, e->StateAfter, e->H, e->W, e->T, e->CForSop,
+                e->LastS, e->UnknownReasons, e->RenameInFlight, e->RenameVersion, e->ActivationGeneration,
+                e->PolicyGeneration, e->CurrentPolicyFlags, e->TestDisableTaintState,
+                e->SpilledMutatingIoCount, e->UnknownWriterCount, e->PredicateFlags, e->SnapshotFlags);
+        }
+        if (exitCode != 0) break;
+        if (snapshot == 0 && batch.EntryCount == 0) {
+            cursor = batch.NextCursor;
+            break;
+        }
+        if (batch.NextCursor == cursor && snapshot != 0 && cursor <= snapshot) {
+            wprintf(L"{\"promotionTraceError\":\"cursor_did_not_advance\"}\n");
+            exitCode = 3;
+            break;
+        }
+        cursor = batch.NextCursor;
+        if (cursor > snapshot) break;
+    }
+    wprintf(L"{\"promotionTraceSummary\":true,\"snapshotSequence\":%llu,\"firstAvailableSequence\":%llu,"
+        L"\"nextCursor\":%llu,\"completeSnapshot\":%s}\n",
+        snapshot, firstAvailable, cursor, exitCode == 0 ? L"true" : L"false");
+    CloseHandle(port);
+    return exitCode;
+}
+#endif
+
 int __cdecl
 wmain (
     int argc,
@@ -550,6 +1935,147 @@ Return Value:
 
         return PrintCounters();
     }
+
+#if defined(SAFEUPLOAD_STAGING_PROTOTYPE) && SAFEUPLOAD_STAGING_PROTOTYPE
+    if (argc > 1 && _wcsicmp(argv[1], L"--admission-trace-format-selftest") == 0) {
+        return PrintAdmissionTraceFormatSelfTest();
+    }
+
+    if (argc > 1 && _wcsicmp(argv[1], L"--admission-trace-enable") == 0) {
+        return SendAdmissionTraceControl(SAFEUPLOAD_CONTROL_ADMISSION_TRACE_ENABLE,
+                                         L"admission trace enable", 0);
+    }
+
+    if (argc > 1 && _wcsicmp(argv[1], L"--admission-trace-enable-sections") == 0) {
+        return SendAdmissionTraceControl(SAFEUPLOAD_CONTROL_ADMISSION_TRACE_ENABLE,
+                                         L"admission trace enable with section events",
+                                         SAFEUPLOAD_ADMISSION_TRACE_OPTION_SECTION_EVENTS);
+    }
+
+    if (argc > 1 && _wcsicmp(argv[1], L"--admission-trace-enable-lifetime") == 0) {
+        return SendAdmissionTraceControl(SAFEUPLOAD_CONTROL_ADMISSION_TRACE_ENABLE,
+                                         L"admission trace enable with file lifetime events",
+                                         SAFEUPLOAD_ADMISSION_TRACE_OPTION_FILE_LIFETIME);
+    }
+
+    if (argc > 1 && _wcsicmp(argv[1], L"--admission-trace-enable-sections-lifetime") == 0) {
+        return SendAdmissionTraceControl(SAFEUPLOAD_CONTROL_ADMISSION_TRACE_ENABLE,
+                                         L"admission trace enable with section and file lifetime events",
+                                         SAFEUPLOAD_ADMISSION_TRACE_OPTION_SECTION_EVENTS |
+                                         SAFEUPLOAD_ADMISSION_TRACE_OPTION_FILE_LIFETIME);
+    }
+
+    if (argc > 1 && _wcsicmp(argv[1], L"--admission-trace-disable") == 0) {
+        return SendAdmissionTraceControl(SAFEUPLOAD_CONTROL_ADMISSION_TRACE_DISABLE,
+                                         L"admission trace disable", 0);
+    }
+
+    if (argc > 1 && _wcsicmp(argv[1], L"--admission-trace-clear") == 0) {
+        return SendAdmissionTraceControl(SAFEUPLOAD_CONTROL_ADMISSION_TRACE_CLEAR,
+                                         L"admission trace clear", 0);
+    }
+
+    if (argc > 1 && _wcsicmp(argv[1], L"--admission-trace") == 0) {
+        return PrintAdmissionTrace();
+    }
+
+    if (argc > 1 && _wcsicmp(argv[1], L"--promotion-trace") == 0) {
+        return PrintPromotionTrace();
+    }
+
+    if (argc > 1 && _wcsicmp(argv[1], L"--writer-state-status") == 0) {
+        return PrintWriterStateStatus(FALSE);
+    }
+    if (argc > 1 && _wcsicmp(argv[1], L"--registry-status") == 0) {
+        return PrintWriterStateStatus(TRUE);
+    }
+    if (argc > 1 && _wcsicmp(argv[1], L"--activating-status") == 0) {
+        return PrintActivatingStatus();
+    }
+    if (argc > 1 && _wcsicmp(argv[1], L"--epoch-status") == 0) {
+        return PrintAdmissionEpochStatus();
+    }
+    if (argc > 1 && _wcsicmp(argv[1], L"--admission-epoch-force-timeout") == 0) {
+        if (argc != 2) return 2;
+        return SendAdmissionTraceControl(SAFEUPLOAD_CONTROL_ADMISSION_EPOCH_FORCE_TIMEOUT,
+            L"admission epoch forced timeout", 0);
+    }
+    if (argc > 1 && _wcsicmp(argv[1], L"--activating-target") == 0) {
+        if (argc != 3) return 2;
+        return SendRegistryEntry(argv[2], TRUE);
+    }
+    if (argc > 1 && _wcsicmp(argv[1], L"--registry-entry") == 0) {
+        if (argc != 3) {
+            fwprintf(stderr, L"Uso: SafeUpload.Inspector --registry-entry X:\\dir\\file\n");
+            return 2;
+        }
+        return SendRegistryEntry(argv[2], FALSE);
+    }
+    if (argc > 1 && _wcsicmp(argv[1], L"--registry-capacity") == 0) {
+        if (argc != 3) {
+            fwprintf(stderr, L"Uso: SafeUpload.Inspector --registry-capacity 0..4096\n");
+            return 2;
+        }
+        return SetRegistryCapacity(argv[2]);
+    }
+    if (argc > 1 && _wcsicmp(argv[1], L"--admission-volume-status") == 0) {
+        return PrintAdmissionVolumeStatus(FALSE);
+    }
+#if defined(SAFEUPLOAD_STAGING_PROTOTYPE) && SAFEUPLOAD_STAGING_PROTOTYPE
+    if (argc > 1 && _wcsicmp(argv[1], L"--admission-coverage") == 0) {
+        return PrintAdmissionCoverageStatus();
+    }
+#endif
+    if (argc > 1 && _wcsicmp(argv[1], L"--admission-volume-observe") == 0) {
+        return PrintAdmissionVolumeStatus(TRUE);
+    }
+
+    if (argc > 1 && _wcsicmp(argv[1], L"--admission-fence-status") == 0) {
+        return PrintFenceStatus();
+    }
+
+    if (argc > 1 && _wcsicmp(argv[1], L"--admission-fence-refresh") == 0) {
+        return SendAdmissionTraceControl(SAFEUPLOAD_CONTROL_ADMISSION_FENCE_REFRESH,
+                                         L"admission fence refresh", 0);
+    }
+
+    if (argc > 1 && _wcsicmp(argv[1], L"--admission-probe") == 0) {
+        if (argc != 3) {
+            fwprintf(stderr, L"Uso: SafeUpload.Inspector --admission-probe X:\\dir\\file\n");
+            return 2;
+        }
+        return SendAdmissionProbe(argv[2]);
+    }
+
+    if (argc > 1 && _wcsicmp(argv[1], L"--admission-delete-stream-context") == 0) {
+        if (argc != 3) {
+            fwprintf(stderr, L"Uso: SafeUpload.Inspector --admission-delete-stream-context C:\\dir\\file.maptest\n");
+            return 2;
+        }
+        return SendAdmissionDeleteStreamContext(argv[2]);
+    }
+
+    if (argc > 1 && _wcsicmp(argv[1], L"--admission-canary-hold") == 0) {
+        if (argc != 4) {
+            fwprintf(stderr, L"Uso: SafeUpload.Inspector --admission-canary-hold X:\\ 1..30000\n");
+            return 2;
+        }
+        return SendAdmissionCanaryHold(argv[2], argv[3]);
+    }
+
+    if (argc > 1 && _wcsicmp(argv[1], L"--admission-canary-hold-cancel") == 0) {
+        if (argc != 2) return 2;
+        return SendAdmissionCanaryHoldCancel();
+    }
+
+    if (argc > 1 && _wcsicmp(argv[1], L"--admission-canary-security") == 0) {
+        if (argc != 3) {
+            fwprintf(stderr, L"Uso: SafeUpload.Inspector --admission-canary-security \\Device\\HarddiskVolumeN\\file\n");
+            return 2;
+        }
+        return PrintCanarySecurity(argv[2]);
+    }
+#endif
 
     UNREFERENCED_PARAMETER( argc );
     UNREFERENCED_PARAMETER( argv );
@@ -677,7 +2203,11 @@ Return Value:
             message.Request.Path[SAFEUPLOAD_MAX_PATH_CHARS - 1] = L'\0';
             message.Request.ImageName[SAFEUPLOAD_MAX_IMAGE_NAME_CHARS - 1] = L'\0';
 
-            if (ContainsTokenNoCase( message.Request.Path,
+            // This legacy probe has no durable transfer journal. Explicitly
+            // refuse a staged allocation instead of answering ALLOW without
+            // a basename and relying on the driver to reject it.
+            if (message.Request.Operation == SAFEUPLOAD_OPERATION_STAGE_ALLOCATE ||
+                ContainsTokenNoCase( message.Request.Path,
                                      SAFEUPLOAD_TEST_BLOCK_TOKEN )) {
 
                 verdict = SAFEUPLOAD_VERDICT_DENY;

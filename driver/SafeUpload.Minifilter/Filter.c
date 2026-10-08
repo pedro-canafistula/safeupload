@@ -37,9 +37,17 @@ SAFEUPLOAD_DATA SafeUploadData;
 
 SAFEUPLOAD_COUNTERS SafeUploadCounters;
 
-//
-//  Local helpers.
-//
+// Packed into the post-create completion context beside the volume kind.
+#define SAFEUPLOAD_POSTCREATE_OVERRIDE 0x10
+
+// Owned-stream staging is explicitly enabled only in the isolated feature
+// build. The complete filesystem/destination acceptance matrix is still open.
+// Disabled in normal builds; never include it in a production package.
+#ifndef SAFEUPLOAD_STAGING_PROTOTYPE
+#define SAFEUPLOAD_STAGING_PROTOTYPE 0
+#endif
+
+#include "Stage.h"
 
 static
 BOOLEAN
@@ -54,7 +62,6 @@ SafeUploadCopyRequestPath (
     _Inout_ PSAFEUPLOAD_REQUEST Request
     );
 
-static
 VOID
 SafeUploadCopyRequestImageName (
     _In_ PFLT_CALLBACK_DATA Data,
@@ -71,7 +78,7 @@ SafeUploadEvaluate (
     );
 
 static
-VOID
+BOOLEAN
 SafeUploadReadFileStamp (
     _In_ PCFLT_RELATED_OBJECTS FltObjects,
     _Out_ PLARGE_INTEGER FileSize,
@@ -92,6 +99,18 @@ SafeUploadOverrideCovers (
     _In_ ULONG ProcessId
     );
 
+static BOOLEAN SafeUploadCreateIsWriter(_In_ PFLT_CALLBACK_DATA Data);
+static BOOLEAN SafeUploadFailClosedProtectedCreate(_Inout_ PFLT_CALLBACK_DATA Data,
+    _In_ PCFLT_RELATED_OBJECTS FltObjects);
+static FLT_PREOP_CALLBACK_STATUS SafeUploadPreAcquireSection(_Inout_ PFLT_CALLBACK_DATA Data,
+    _In_ PCFLT_RELATED_OBJECTS FltObjects, _Flt_CompletionContext_Outptr_ PVOID *CompletionContext);
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+static VOID SafeUploadInstanceTeardownStart(_In_ PCFLT_RELATED_OBJECTS FltObjects,
+    _In_ FLT_INSTANCE_TEARDOWN_FLAGS Reason);
+static VOID SafeUploadInstanceTeardownComplete(_In_ PCFLT_RELATED_OBJECTS FltObjects,
+    _In_ FLT_INSTANCE_TEARDOWN_FLAGS Reason);
+#endif
+
 #ifdef ALLOC_PRAGMA
     #pragma alloc_text(INIT, DriverEntry)
     #pragma alloc_text(PAGE, SafeUploadUnload)
@@ -106,7 +125,15 @@ SafeUploadOverrideCovers (
     #pragma alloc_text(PAGE, SafeUploadOverrideCovers)
     #pragma alloc_text(PAGE, SafeUploadPostCreate)
     #pragma alloc_text(PAGE, SafeUploadPreCleanup)
+    #pragma alloc_text(PAGE, SafeUploadPreWrite)
     #pragma alloc_text(PAGE, SafeUploadPreSetInformation)
+    #pragma alloc_text(PAGE, SafeUploadFailClosedProtectedCreate)
+    #pragma alloc_text(PAGE, SafeUploadPreAcquireSection)
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    #pragma alloc_text(PAGE, SafeUploadInstanceTeardownStart)
+    #pragma alloc_text(PAGE, SafeUploadInstanceTeardownComplete)
+#endif
+
 #endif
 
 ///////////////////////////////////////////////////////////////////////////
@@ -115,84 +142,86 @@ SafeUploadOverrideCovers (
 //
 ///////////////////////////////////////////////////////////////////////////
 
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+#define STAGE_OPERATION(major) { major, 0, SafeUploadStageDispatch, SafeUploadStagePostOperation }
+static CONST FLT_OPERATION_REGISTRATION Callbacks[] = {
+    STAGE_OPERATION(IRP_MJ_CREATE), STAGE_OPERATION(IRP_MJ_CLOSE),
+    STAGE_OPERATION(IRP_MJ_READ), STAGE_OPERATION(IRP_MJ_WRITE),
+    STAGE_OPERATION(IRP_MJ_QUERY_INFORMATION), STAGE_OPERATION(IRP_MJ_SET_INFORMATION),
+    STAGE_OPERATION(IRP_MJ_QUERY_EA), STAGE_OPERATION(IRP_MJ_SET_EA),
+    STAGE_OPERATION(IRP_MJ_FLUSH_BUFFERS), STAGE_OPERATION(IRP_MJ_QUERY_VOLUME_INFORMATION),
+    STAGE_OPERATION(IRP_MJ_SET_VOLUME_INFORMATION), STAGE_OPERATION(IRP_MJ_DIRECTORY_CONTROL),
+    STAGE_OPERATION(IRP_MJ_FILE_SYSTEM_CONTROL), STAGE_OPERATION(IRP_MJ_DEVICE_CONTROL),
+    STAGE_OPERATION(IRP_MJ_INTERNAL_DEVICE_CONTROL), STAGE_OPERATION(IRP_MJ_SHUTDOWN),
+    STAGE_OPERATION(IRP_MJ_LOCK_CONTROL), STAGE_OPERATION(IRP_MJ_CLEANUP),
+    STAGE_OPERATION(IRP_MJ_CREATE_MAILSLOT), STAGE_OPERATION(IRP_MJ_QUERY_SECURITY),
+    STAGE_OPERATION(IRP_MJ_SET_SECURITY), STAGE_OPERATION(IRP_MJ_POWER),
+    STAGE_OPERATION(IRP_MJ_SYSTEM_CONTROL), STAGE_OPERATION(IRP_MJ_DEVICE_CHANGE),
+    STAGE_OPERATION(IRP_MJ_QUERY_QUOTA), STAGE_OPERATION(IRP_MJ_SET_QUOTA),
+    STAGE_OPERATION(IRP_MJ_PNP), STAGE_OPERATION(IRP_MJ_ACQUIRE_FOR_SECTION_SYNCHRONIZATION),
+    STAGE_OPERATION(IRP_MJ_RELEASE_FOR_SECTION_SYNCHRONIZATION),
+    STAGE_OPERATION(IRP_MJ_ACQUIRE_FOR_MOD_WRITE), STAGE_OPERATION(IRP_MJ_RELEASE_FOR_MOD_WRITE),
+    STAGE_OPERATION(IRP_MJ_ACQUIRE_FOR_CC_FLUSH), STAGE_OPERATION(IRP_MJ_RELEASE_FOR_CC_FLUSH),
+    STAGE_OPERATION(IRP_MJ_FAST_IO_CHECK_IF_POSSIBLE), STAGE_OPERATION(IRP_MJ_NETWORK_QUERY_OPEN),
+    STAGE_OPERATION(IRP_MJ_MDL_READ), STAGE_OPERATION(IRP_MJ_MDL_READ_COMPLETE),
+    STAGE_OPERATION(IRP_MJ_PREPARE_MDL_WRITE), STAGE_OPERATION(IRP_MJ_MDL_WRITE_COMPLETE),
+    STAGE_OPERATION(IRP_MJ_VOLUME_MOUNT), STAGE_OPERATION(IRP_MJ_VOLUME_DISMOUNT),
+    STAGE_OPERATION(IRP_MJ_QUERY_OPEN), {IRP_MJ_OPERATION_END}
+};
+
+#else
 CONST FLT_OPERATION_REGISTRATION Callbacks[] = {
-
-    //
-    //  IRP_MJ_CREATE carries no flags: a create is never paging I/O, so
-    //  FLTFL_OPERATION_REGISTRATION_SKIP_PAGING_IO would be a no-op here.
-    //
-
-    //
-    //  Pre-create runs the cheap gates; post-create is where the verdict is
-    //  obtained and cached, because the stream context that holds the cache
-    //  does not exist until the create has completed.
-    //
-
-    { IRP_MJ_CREATE,
-      0,
-      SafeUploadPreCreate,
-      SafeUploadPostCreate },
-
-    //
-    //  Cleanup exists only to invalidate the cached verdict when a handle
-    //  that was opened for write closes. Hooking writes instead would cost
-    //  a callback per block to learn the same thing.
-    //
-
-    { IRP_MJ_CLEANUP,
-      0,
-      SafeUploadPreCleanup,
-      NULL },
-
-    //
-    //  Rename and hard link can put content somewhere the create path never
-    //  saw it go: write to an ordinary folder, then rename into the
-    //  monitored one. Without this the zero-byte refusal has a door beside
-    //  it.
-    //
-
-    { IRP_MJ_SET_INFORMATION,
-      0,
-      SafeUploadPreSetInformation,
-      NULL },
-
-    //
-    //  IRP_MJ_READ is deliberately NOT registered.
-    //
-    //  It was, and it was the single largest cost in the driver: one
-    //  user-mode round trip per read, of every file, of every process. With
-    //  a synchronous inspector that is not merely slow, it is a feedback
-    //  loop - anything the inspector does that touches a file waits on the
-    //  inspector.
-    //
-    //  Nothing is lost. A create asking for FILE_READ_DATA is already the
-    //  declaration of intent to read, it happens once per open instead of
-    //  once per block, and it covers two cases a read hook never sees:
-    //  memory-mapped files, whose reads arrive as paging I/O, and handles
-    //  opened long before the data is touched.
-    //
-    //  See ARQUITETURA.md for the evidence under which a read hook would
-    //  come back, and in what form.
-    //
-
+    { IRP_MJ_CREATE, 0, SafeUploadPreCreate, SafeUploadPostCreate },
+    { IRP_MJ_CLEANUP, 0, SafeUploadPreCleanup, NULL },
+    { IRP_MJ_WRITE, FLTFL_OPERATION_REGISTRATION_SKIP_PAGING_IO, SafeUploadPreWrite, NULL },
+    { IRP_MJ_SET_INFORMATION, 0, SafeUploadPreSetInformation, NULL },
+    { IRP_MJ_FILE_SYSTEM_CONTROL, 0, SafeUploadStageTxfFsctlPreOperation, NULL },
+    { IRP_MJ_ACQUIRE_FOR_SECTION_SYNCHRONIZATION, 0, SafeUploadPreAcquireSection, NULL },
     { IRP_MJ_OPERATION_END }
 };
+#endif
 
 CONST FLT_REGISTRATION FilterRegistration = {
 
     sizeof( FLT_REGISTRATION ),         //  Size
     FLT_REGISTRATION_VERSION,           //  Version
-    0,                                  //  Flags
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    FLTFL_REGISTRATION_DO_NOT_SUPPORT_SERVICE_STOP,
+#else
+    0,
+#endif
     SafeUploadContextRegistration,      //  Context registration
     Callbacks,                          //  Operation callbacks
-    SafeUploadUnload,                   //  FilterUnload
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    SafeUploadUnload,                   // Test build only: the harness restores the original driver.
+#else
+    NULL,                               // Production build: no voluntary unload callback.
+#endif
     SafeUploadInstanceSetup,            //  InstanceSetup
     SafeUploadInstanceQueryTeardown,    //  InstanceQueryTeardown
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    SafeUploadInstanceTeardownStart,
+#else
     NULL,                               //  InstanceTeardownStart
+#endif
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    SafeUploadInstanceTeardownComplete,
+#else
     NULL,                               //  InstanceTeardownComplete
-    NULL,                               //  GenerateFileName
-    NULL,                               //  GenerateDestinationFileName
-    NULL                                //  NormalizeNameComponent
+#endif
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    SafeUploadStageGenerateName,
+    SafeUploadStageNormalizeComponent,
+#else
+    NULL,
+    NULL,
+#endif
+    NULL,                               // NormalizeContextCleanup
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    SafeUploadStageTransactionNotification // TransactionNotificationCallback
+#else
+    NULL                                // TransactionNotificationCallback
+#endif
 };
 
 ///////////////////////////////////////////////////////////////////////////
@@ -214,14 +243,14 @@ Routine Description:
     manager and starts filtering.
 
     IRQL: PASSIVE_LEVEL. Called by the I/O manager in the context of the
-    System process while the service is being started.
+    System process while the service is being started. RegistryPath supplies
+    the bounded durable policy location read before FltStartFiltering.
 
 Arguments:
 
     DriverObject - Driver object created by the system for this driver.
 
-    RegistryPath - Where this driver's service parameters live. Unused in
-        v1: every tunable is a compile-time constant.
+    RegistryPath - Where this driver's service parameters live.
 
 Return Value:
 
@@ -232,8 +261,6 @@ Return Value:
 {
     NTSTATUS status;
 
-    UNREFERENCED_PARAMETER( RegistryPath );
-
     //
     //  Opt in to non-paged, non-executable pool for every allocation that
     //  does not name a pool type explicitly. Required for the driver to be
@@ -241,6 +268,8 @@ Return Value:
     //
 
     ExInitializeDriverRuntime( DrvRtPoolNxOptIn );
+
+
 
     //
     //  Has to be initialized before the port exists, because the first
@@ -254,9 +283,15 @@ Return Value:
     //  is push a policy.
     //
 
-    SafeUploadInitializePolicy();
+    SafeUploadInitializePolicy( RegistryPath );
     SafeUploadInitializeTaint();
     SafeUploadInitializeOverrides();
+
+
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    status = SafeUploadStageInitialize();
+    if (!NT_SUCCESS(status)) goto FreeState;
+#endif
 
     SafeUploadData.DriverObject = DriverObject;
 
@@ -267,7 +302,7 @@ Return Value:
     if (!NT_SUCCESS( status )) {
 
         SafeUploadTrace( "FltRegisterFilter failed, status 0x%08X\n", status );
-        return status;
+        goto FreeState;
     }
 
     //
@@ -278,12 +313,13 @@ Return Value:
     status = SafeUploadCreateCommunicationPort();
 
     if (!NT_SUCCESS( status )) {
-
-        FltUnregisterFilter( SafeUploadData.Filter );
-        SafeUploadData.Filter = NULL;
-
-        return status;
+        goto UnregisterFilter;
     }
+
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    status = SafeUploadStageStartWorker();
+    if (!NT_SUCCESS(status)) goto ClosePort;
+#endif
 
     status = FltStartFiltering( SafeUploadData.Filter );
 
@@ -291,17 +327,42 @@ Return Value:
 
         SafeUploadTrace( "FltStartFiltering failed, status 0x%08X\n", status );
 
-        SafeUploadCloseCommunicationPort();
-
-        FltUnregisterFilter( SafeUploadData.Filter );
-        SafeUploadData.Filter = NULL;
-
-        return status;
+        goto ClosePort;
     }
+
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    SafeUploadStageAdmissionReady();
+#endif
 
     SafeUploadTrace( "loaded and filtering\n" );
 
     return STATUS_SUCCESS;
+
+ClosePort:
+    // A client can connect after the port is created even if filtering
+    // fails to start. Close it and drain any in-flight port callback first.
+    SafeUploadCloseCommunicationPort();
+    ExWaitForRundownProtectionRelease( &SafeUploadData.ChannelRundown );
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    SafeUploadStageStopWorker();
+#endif
+
+UnregisterFilter:
+    FltUnregisterFilter( SafeUploadData.Filter );
+    SafeUploadData.Filter = NULL;
+
+FreeState:
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    SafeUploadStageFree();
+#endif
+    // These were initialized before FltRegisterFilter. In particular, the
+    // taint table may have registered a process notification callback; it
+    // must be removed even when registration itself failed.
+    SafeUploadFreeOverrides();
+    SafeUploadFreeTaint();
+    SafeUploadFreePolicy();
+
+    return status;
 }
 
 
@@ -337,6 +398,10 @@ Return Value:
 
 --*/
 {
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    NTSTATUS status;
+#endif
+
     PAGED_CODE();
 
     SafeUploadTrace( "unload requested (mandatory=%u)\n",
@@ -353,6 +418,9 @@ Return Value:
         SafeUploadData.ClientPort != NULL) {
 
         SafeUploadTrace( "declining voluntary unload: inspector still connected\n" );
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+        SafeUploadStageRecordUnloadVeto(SAFEUPLOAD_UNLOAD_VETO_CLIENT, STATUS_FLT_DO_NOT_DETACH);
+#endif
 
         return STATUS_FLT_DO_NOT_DETACH;
     }
@@ -365,6 +433,17 @@ Return Value:
     //     instead of waiting out its verdict timeout.
     //
 
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    status = SafeUploadStagePrepareUnload();
+    if (!NT_SUCCESS(status)) {
+        if (!FlagOn( Flags, FLTFL_FILTER_UNLOAD_MANDATORY )) {
+            SafeUploadStageFenceCancelUnload();
+            return STATUS_FLT_DO_NOT_DETACH;
+        }
+    }
+    SafeUploadStageFenceCommitUnload();
+#endif
+
     SafeUploadCloseCommunicationPort();
 
     //
@@ -376,6 +455,10 @@ Return Value:
 
     ExWaitForRundownProtectionRelease( &SafeUploadData.ChannelRundown );
 
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    SafeUploadStageStopWorker();
+#endif
+
     //
     //  3. Unregister. FltUnregisterFilter waits for every in-flight
     //     callback to return, so once it completes no code of ours can run.
@@ -383,6 +466,10 @@ Return Value:
 
     FltUnregisterFilter( SafeUploadData.Filter );
     SafeUploadData.Filter = NULL;
+
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    SafeUploadStageFree();
+#endif
 
     //
     //  4. Release the policy. Last, because it can only be freed once no
@@ -434,8 +521,10 @@ Return Value:
 {
     SAFEUPLOAD_VOLUME_KIND volumeKind;
     NTSTATUS status;
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    BOOLEAN fenceSetupAdmitted = FALSE;
+#endif
 
-    UNREFERENCED_PARAMETER( Flags );
     UNREFERENCED_PARAMETER( VolumeFilesystemType );
 
     PAGED_CODE();
@@ -446,9 +535,69 @@ Return Value:
     //  a hole rather than an optimization.
     //
 
-    status = SafeUploadSetInstanceContext( FltObjects, VolumeDeviceType, &volumeKind );
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    // Hold a nonblocking admission through the end of this callback. A voluntary unload cannot
+    // commit while this setup is running. Trust remains immutable for this attachment.
+    if (!SafeUploadStageFenceSetupBegin()) {
+        SafeUploadTrace("declining late volume attachment after unload commit\n");
+        return STATUS_FLT_DO_NOT_ATTACH;
+    }
+    fenceSetupAdmitted = TRUE;
+    SafeUploadStageAdmissionTopologyBegin();
+    status = SafeUploadSetInstanceContext( FltObjects, VolumeDeviceType, Flags, &volumeKind );
+#else
+    status = SafeUploadSetInstanceContext( FltObjects, VolumeDeviceType, Flags, &volumeKind );
+#endif
 
-    if (!NT_SUCCESS( status ) || volumeKind == SafeUploadVolumeUnknown) {
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    {
+        LONG traceState = SafeUploadAdmissionTraceControlState;
+
+        if ((traceState & 1) != 0 && SafeUploadStageAdmissionTraceBegin( traceState )) {
+            SAFEUPLOAD_ADMISSION_TRACE_ENTRY entry;
+
+            RtlZeroMemory( &entry, sizeof( entry ) );
+            entry.EventKind = SAFEUPLOAD_ADMISSION_TRACE_EVENT_INSTANCE_SETUP;
+            entry.ProcessId = (UINT32)(ULONG_PTR)PsGetCurrentProcessId();
+            entry.Irql = KeGetCurrentIrql();
+            entry.Instance = (UINT64)(ULONG_PTR)FltObjects->Instance;
+            entry.AdmissionRecordState = 0;
+            entry.SetupFlags = (UINT32) Flags;
+            entry.VolumeKind = (UINT32) volumeKind;
+
+            if (FlagOn( Flags, FLTFL_INSTANCE_SETUP_AUTOMATIC_ATTACHMENT )) {
+                entry.AttachClass |= SAFEUPLOAD_ADMISSION_TRACE_ATTACH_AUTOMATIC;
+            }
+            if (FlagOn( Flags, FLTFL_INSTANCE_SETUP_MANUAL_ATTACHMENT )) {
+                entry.AttachClass |= SAFEUPLOAD_ADMISSION_TRACE_ATTACH_MANUAL;
+            }
+            if (FlagOn( Flags, FLTFL_INSTANCE_SETUP_NEWLY_MOUNTED_VOLUME )) {
+                entry.AttachClass |= SAFEUPLOAD_ADMISSION_TRACE_ATTACH_NEWLY_MOUNTED;
+            }
+
+            SafeUploadStageAdmissionTraceRecord( &entry );
+            SafeUploadStageAdmissionTraceEnd();
+        }
+    }
+#endif
+
+    if (!NT_SUCCESS( status )) {
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+        /* Keep the normal callbacks active. Every feature-build destination gate treats a missing
+         * instance context as Unknown, which matches configured network/removable flags and explicit
+         * prefixes; the setup reservation above only serializes this callback against filter unload. */
+        SafeUploadTrace( "instance context unavailable (status 0x%08X); retaining attachment with Unknown fallback\n",
+                         status );
+        volumeKind = SafeUploadVolumeUnknown;
+#else
+        /* Preserve the normal-build behavior; the feature build requires a usable context. */
+        SafeUploadTrace( "instance classification context unavailable (status 0x%08X); attaching as unknown\n",
+                         status );
+        volumeKind = SafeUploadVolumeUnknown;
+#endif
+    }
+
+    if (volumeKind == SafeUploadVolumeUnknown) {
 
         //
         //  Attach anyway.
@@ -460,14 +609,18 @@ Return Value:
         //  visible in "fltmc filters", and attached to nothing at all - the
         //  worst possible failure mode, because it looks like it is working.
         //
-        //  Staying attached with an unknown classification is safe. Nothing
-        //  is treated as a monitored destination unless it was positively
-        //  identified as one, so an unclassified volume behaves as out of
-        //  scope. That is the same fail-open outcome, without the cliff.
+        //  In the feature build, policy gates conservatively treat Unknown as
+        //  covered when removable/network destinations are enabled and still
+        //  test explicit path prefixes. A missing context follows the same
+        //  fallback while the normal callbacks remain attached.
         //
 
-        SafeUploadTrace( "volume not classified (status 0x%08X), attaching as unknown\n",
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+        SafeUploadTrace( "volume not classified (status 0x%08X), attaching with conservative Unknown policy matching\n",
                          status );
+#else
+        SafeUploadTrace( "volume not classified (status 0x%08X), attaching as unknown\n", status );
+#endif
     }
     else {
 
@@ -476,8 +629,33 @@ Return Value:
                          volumeKind == SafeUploadVolumeNetwork ? "network" : "fixed" );
     }
 
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    if (fenceSetupAdmitted) SafeUploadStageFenceSetupEnd();
+    if (fenceSetupAdmitted) SafeUploadStageAdmissionTopologyEnd();
+#endif
     return STATUS_SUCCESS;
 }
+
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+static VOID SafeUploadInstanceTeardownStart(_In_ PCFLT_RELATED_OBJECTS FltObjects,
+    _In_ FLT_INSTANCE_TEARDOWN_FLAGS Reason)
+{
+    PAGED_CODE();
+    /* Publish retirement before the ledger/context is torn down. The receipt
+     * remains unstable until InstanceTeardownComplete after outstanding I/O. */
+    SafeUploadStageAdmissionTopologyTeardownBegin();
+    SafeUploadStageWritersInstanceTeardownStart(FltObjects, Reason);
+}
+
+static VOID SafeUploadInstanceTeardownComplete(_In_ PCFLT_RELATED_OBJECTS FltObjects,
+    _In_ FLT_INSTANCE_TEARDOWN_FLAGS Reason)
+{
+    PAGED_CODE();
+    UNREFERENCED_PARAMETER(FltObjects);
+    UNREFERENCED_PARAMETER(Reason);
+    SafeUploadStageAdmissionTopologyTeardownEnd();
+}
+#endif
 
 
 NTSTATUS
@@ -490,8 +668,9 @@ SafeUploadInstanceQueryTeardown (
 Routine Description:
 
     Called when someone requests a manual detach of one of our instances
-    ("fltmc detach"). We hold no per-instance state, so detaching is always
-    safe.
+    ("fltmc detach"). The feature build refuses every manual detach because
+    trust and registry history are boot-lifetime state on an attached volume.
+    This callback is not invoked for mandatory unload or volume dismount.
 
     IRQL: PASSIVE_LEVEL.
 
@@ -503,7 +682,8 @@ Arguments:
 
 Return Value:
 
-    STATUS_SUCCESS - the detach may proceed.
+    STATUS_FLT_DO_NOT_DETACH - feature-build manual detach is disabled.
+    STATUS_SUCCESS - normal-build behavior is unchanged.
 
 --*/
 {
@@ -512,7 +692,11 @@ Return Value:
 
     PAGED_CODE();
 
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    return STATUS_FLT_DO_NOT_DETACH;
+#else
     return STATUS_SUCCESS;
+#endif
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -669,7 +853,6 @@ Return Value:
 }
 
 
-static
 VOID
 SafeUploadCopyRequestImageName (
     _In_ PFLT_CALLBACK_DATA Data,
@@ -812,7 +995,7 @@ Arguments:
 Return Value:
 
     TRUE when Verdict is a checked answer safe to cache - the operation was
-    out of scope, the process was excluded, or user mode actually replied.
+    out of scope or user mode actually replied.
     FALSE when Verdict is ALLOW only because user mode could not be reached
     (allocation failure, name resolution failure, or a fail-open inside
     SafeUploadRequestVerdict): the caller must treat this as unchecked, not
@@ -878,7 +1061,12 @@ Return Value:
         SetFlag( exchange->Request.Flags, SAFEUPLOAD_REQUEST_FLAG_SCOPE_DESTINATION );
     }
 
-    if (SafeUploadPolicyMatchesSource( &normalizedPath )) {
+    // Only a read open may classify a source and mark its process. A
+    // write-only open of a sensitive file must not taint the writer.
+    if (Data->Iopb->Parameters.Create.SecurityContext != NULL &&
+        FlagOn( Data->Iopb->Parameters.Create.SecurityContext->DesiredAccess,
+                FILE_READ_DATA ) &&
+        SafeUploadPolicyMatchesSource( &normalizedPath )) {
 
         SetFlag( exchange->Request.Flags, SAFEUPLOAD_REQUEST_FLAG_SCOPE_SOURCE );
     }
@@ -914,13 +1102,13 @@ Return Value:
         if (SafeUploadPolicyExcludesImage( &imageName )) {
 
             //
-            //  Excluded process is also a real, checked answer - RN-014,
-            //  not a fail-open.
+            //  An image exclusion belongs to this requestor, not the file.
+            //  Another process still needs its own inspection.
             //
 
             *ScopeFlags = 0;
             ExFreePoolWithTag( exchange, SAFEUPLOAD_POOL_TAG );
-            return TRUE;
+            return FALSE;
         }
     }
 
@@ -940,7 +1128,7 @@ Return Value:
 
 
 static
-VOID
+BOOLEAN
 SafeUploadReadFileStamp (
     _In_ PCFLT_RELATED_OBJECTS FltObjects,
     _Out_ PLARGE_INTEGER FileSize,
@@ -964,12 +1152,11 @@ Arguments:
     FltObjects - Objects for the create that just completed.
 
     FileSize, LastWriteTime - Receive the stamp, or zero when it could not
-        be read. Zero simply means the cached entry will never match, which
-        costs an inspection and is never wrong.
+        be read. A failed query is distinct from a confirmed empty file.
 
 Return Value:
 
-    None.
+    TRUE only when the file size and time were read successfully.
 
 --*/
 {
@@ -992,7 +1179,10 @@ Return Value:
 
         *FileSize = information.EndOfFile;
         *LastWriteTime = information.LastWriteTime;
+        return TRUE;
     }
+
+    return FALSE;
 }
 
 
@@ -1038,8 +1228,12 @@ Return Value:
                                         &nameInfo );
 
     if (!NT_SUCCESS( status )) {
-
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+        /* Name-query failure is never an override grant. */
         return FALSE;
+#else
+        return FALSE;
+#endif
     }
 
     covered = SafeUploadConsumeOverride( ProcessId, &nameInfo->Name );
@@ -1108,7 +1302,14 @@ Return Value:
                                         &nameInfo );
 
     if (!NT_SUCCESS( status )) {
-
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+        /* Unknown classification plus an unresolved name cannot prove that an explicit prefix is
+         * outside scope. Broad removable/network flags were checked above; conservatively cover
+         * prefix-only policies here as well. */
+        if (VolumeKind == SafeUploadVolumeUnknown) {
+            return TRUE;
+        }
+#endif
         return FALSE;
     }
 
@@ -1119,6 +1320,122 @@ Return Value:
     return monitored;
 }
 
+
+
+
+
+static BOOLEAN SafeUploadCreateIsWriter(_In_ PFLT_CALLBACK_DATA Data)
+{
+    PIO_SECURITY_CONTEXT security = Data->Iopb->Parameters.Create.SecurityContext;
+    ULONG disposition = Data->Iopb->Parameters.Create.Options >> 24;
+    if (security == NULL) return FALSE;
+    return BooleanFlagOn(security->DesiredAccess,
+            FILE_WRITE_DATA | FILE_APPEND_DATA | FILE_WRITE_ATTRIBUTES | FILE_WRITE_EA |
+            FILE_DELETE_CHILD | DELETE | WRITE_DAC | WRITE_OWNER | MAXIMUM_ALLOWED |
+            GENERIC_WRITE | GENERIC_ALL) ||
+        FlagOn(Data->Iopb->Parameters.Create.Options, FILE_DELETE_ON_CLOSE) ||
+        disposition == FILE_CREATE || disposition == FILE_SUPERSEDE ||
+        disposition == FILE_OVERWRITE || disposition == FILE_OVERWRITE_IF;
+}
+
+/* The connected-port bit alone is not authorization: only an accepted SET_POLICY
+ * from the authenticated service enables protected writes. */
+static BOOLEAN SafeUploadFailClosedProtectedCreate(_Inout_ PFLT_CALLBACK_DATA Data,
+    _In_ PCFLT_RELATED_OBJECTS FltObjects)
+{
+    PFLT_FILE_NAME_INFORMATION name = NULL;
+    PSAFEUPLOAD_INSTANCE_CONTEXT instanceContext = NULL;
+    SAFEUPLOAD_VOLUME_KIND kind = SafeUploadVolumeUnknown;
+    BOOLEAN protectedName = FALSE, admissionGateReady;
+    NTSTATUS status;
+
+    PAGED_CODE();
+    if (!SafeUploadCreateIsWriter(Data) || Data->Iopb->TargetFileObject == NULL) return FALSE;
+
+    if (NT_SUCCESS(FltGetInstanceContext(FltObjects->Instance,
+            (PFLT_CONTEXT *)&instanceContext))) {
+        kind = instanceContext->VolumeKind;
+        FltReleaseContext(instanceContext);
+    }
+
+    /* An open that begins while the authenticated service is connected on a
+     * trusted instance keeps the existing policy path. With no destination
+     * scopes there is no reason to normalize every unrelated boot write. */
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    admissionGateReady = SafeUploadInstanceAdmissionGateSatisfied(FltObjects->Instance);
+#else
+    admissionGateReady = SafeUploadInstanceTrustGateSatisfied(FltObjects->Instance);
+#endif
+    if ((SafeUploadIsAuthenticatedClient() && SafeUploadInstanceTrustGateSatisfied(FltObjects->Instance) &&
+         admissionGateReady) ||
+        !SafeUploadPolicyHasDestinationScopes(kind)) return FALSE;
+
+    status = FltGetFileNameInformation(Data,
+        FLT_FILE_NAME_NORMALIZED | FLT_FILE_NAME_QUERY_DEFAULT, &name);
+    if (NT_SUCCESS(status) && name != NULL && NT_SUCCESS(FltParseFileNameInformation(name))) {
+        protectedName = SafeUploadPolicyMatchesDestination(kind, &name->Name);
+    } else {
+        /* A failed target-name query is Unknown when this volume may contain
+         * a configured prefix. Do not turn that uncertainty into an
+         * out-of-scope result before the per-instance admission gate. */
+        protectedName = SafeUploadPolicyMatchesDestination(kind, NULL) ||
+            SafeUploadPolicyMayMatchVolume(kind, FltObjects->Volume);
+    }
+    if (name != NULL) FltReleaseFileNameInformation(name);
+
+    return protectedName && (!admissionGateReady || !SafeUploadInstanceTrustGateSatisfied(FltObjects->Instance) ||
+        !SafeUploadIsAuthenticatedClient());
+}
+
+static FLT_PREOP_CALLBACK_STATUS SafeUploadPreAcquireSection(_Inout_ PFLT_CALLBACK_DATA Data,
+    _In_ PCFLT_RELATED_OBJECTS FltObjects,
+    _Flt_CompletionContext_Outptr_ PVOID *CompletionContext)
+{
+    PFLT_FILE_NAME_INFORMATION name = NULL;
+    PSAFEUPLOAD_INSTANCE_CONTEXT instanceContext = NULL;
+    SAFEUPLOAD_VOLUME_KIND kind = SafeUploadVolumeUnknown;
+    BOOLEAN protectedName = FALSE, admissionGateReady;
+    NTSTATUS status;
+
+    *CompletionContext = NULL;
+    PAGED_CODE();
+    if (Data->Iopb->Parameters.AcquireForSectionSynchronization.SyncType != SyncTypeCreateSection ||
+        !FlagOn(Data->Iopb->Parameters.AcquireForSectionSynchronization.PageProtection,
+            PAGE_READWRITE | PAGE_EXECUTE_READWRITE) ||
+        FlagOn(Data->Iopb->Parameters.AcquireForSectionSynchronization.AllocationAttributes, SEC_IMAGE)) {
+        return FLT_PREOP_SUCCESS_NO_CALLBACK;
+    }
+
+    if (NT_SUCCESS(FltGetInstanceContext(FltObjects->Instance,
+            (PFLT_CONTEXT *)&instanceContext))) {
+        kind = instanceContext->VolumeKind;
+        FltReleaseContext(instanceContext);
+    }
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    admissionGateReady = SafeUploadInstanceAdmissionGateSatisfied(FltObjects->Instance);
+#else
+    admissionGateReady = SafeUploadInstanceTrustGateSatisfied(FltObjects->Instance);
+#endif
+    if ((SafeUploadIsAuthenticatedClient() && SafeUploadInstanceTrustGateSatisfied(FltObjects->Instance) &&
+         admissionGateReady) ||
+        !SafeUploadPolicyHasDestinationScopes(kind)) return FLT_PREOP_SUCCESS_NO_CALLBACK;
+    status = FltGetFileNameInformation(Data,
+        FLT_FILE_NAME_NORMALIZED | FLT_FILE_NAME_QUERY_DEFAULT, &name);
+    if (NT_SUCCESS(status) && name != NULL && NT_SUCCESS(FltParseFileNameInformation(name)))
+        protectedName = SafeUploadPolicyMatchesDestination(kind, &name->Name);
+    else
+        protectedName = SafeUploadPolicyMatchesDestination(kind, NULL) ||
+            SafeUploadPolicyMayMatchVolume(kind, FltObjects->Volume);
+    if (name != NULL) FltReleaseFileNameInformation(name);
+
+    if (protectedName && (!admissionGateReady || !SafeUploadInstanceTrustGateSatisfied(FltObjects->Instance) ||
+        !SafeUploadIsAuthenticatedClient())) {
+        Data->IoStatus.Status = STATUS_ACCESS_DENIED;
+        Data->IoStatus.Information = 0;
+        return FLT_PREOP_COMPLETE;
+    }
+    return FLT_PREOP_SUCCESS_NO_CALLBACK;
+}
 
 FLT_PREOP_CALLBACK_STATUS
 SafeUploadPreCreate (
@@ -1165,28 +1482,52 @@ Return Value:
     PIO_SECURITY_CONTEXT securityContext;
     PSAFEUPLOAD_INSTANCE_CONTEXT instanceContext = NULL;
     SAFEUPLOAD_VOLUME_KIND volumeKind;
+    BOOLEAN monitoredExtension;
+    BOOLEAN taintedWriter = FALSE;
     NTSTATUS status;
+
 
     *CompletionContext = NULL;
 
     PAGED_CODE();
 
+#if !SAFEUPLOAD_STAGING_PROTOTYPE
+    if (FltObjects->Transaction != NULL &&
+        SafeUploadStageTxfCreateMustRefuse(Data, FltObjects)) {
+        SafeUploadStageTxfRecordRefused();
+        Data->IoStatus.Status = STATUS_ACCESS_DENIED;
+        Data->IoStatus.Information = 0;
+        return FLT_PREOP_COMPLETE;
+    }
+#endif
+
     SafeUploadCount( CreatesSeen );
 
+
+
     //
-    //  With no inspector connected there is nobody to ask, and no answer to
-    //  cache.
-    //
-
-    if (SafeUploadData.ClientPort == NULL) {
-
-        return FLT_PREOP_SUCCESS_NO_CALLBACK;
-    }
-
     targetFileObject = Data->Iopb->TargetFileObject;
 
     if (targetFileObject == NULL) {
 
+        return FLT_PREOP_SUCCESS_NO_CALLBACK;
+    }
+
+    if (SafeUploadFailClosedProtectedCreate(Data, FltObjects)) {
+        Data->IoStatus.Status = STATUS_ACCESS_DENIED;
+        Data->IoStatus.Information = 0;
+        return FLT_PREOP_COMPLETE;
+    }
+
+    /* Reads and writes outside protected scopes keep the existing no-port
+     * behavior. Recheck after the initial fail-closed probe so a disconnect
+     * between the two checks cannot turn the create into a no-port allow. */
+    if (!SafeUploadIsAuthenticatedClient()) {
+        if (SafeUploadFailClosedProtectedCreate(Data, FltObjects)) {
+            Data->IoStatus.Status = STATUS_ACCESS_DENIED;
+            Data->IoStatus.Information = 0;
+            return FLT_PREOP_COMPLETE;
+        }
         return FLT_PREOP_SUCCESS_NO_CALLBACK;
     }
 
@@ -1237,9 +1578,21 @@ Return Value:
         return FLT_PREOP_SUCCESS_NO_CALLBACK;
     }
 
-    if (!SafeUploadPolicyMatchesExtension( &targetFileObject->FileName )) {
+    monitoredExtension = SafeUploadPolicyMatchesExtension( &targetFileObject->FileName );
 
-        return FLT_PREOP_SUCCESS_NO_CALLBACK;
+    if (!monitoredExtension) {
+
+        // Keep the cheap exit for ordinary files. Only an unmonitored
+        // extension written by an already tainted process can reach the
+        // destination gate below.
+        taintedWriter = (BOOLEAN)
+            (FlagOn( securityContext->DesiredAccess,
+                     FILE_WRITE_DATA | FILE_APPEND_DATA ) &&
+             SafeUploadIsProcessTainted( FltGetRequestorProcessId( Data ) ));
+
+        if (!taintedWriter) {
+            return FLT_PREOP_SUCCESS_NO_CALLBACK;
+        }
     }
 
     //
@@ -1252,17 +1605,16 @@ Return Value:
                                     (PFLT_CONTEXT *) &instanceContext );
 
     if (!NT_SUCCESS( status )) {
-
-        //
-        //  Without the classification there is no way to tell a pen drive
-        //  from a system disk, and guessing is worse than not inspecting.
-        //
-
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+        /* A missing instance context is not proof that this is an unmonitored volume. */
+        volumeKind = SafeUploadVolumeUnknown;
+#else
         return FLT_PREOP_SUCCESS_NO_CALLBACK;
+#endif
+    } else {
+        volumeKind = instanceContext->VolumeKind;
+        FltReleaseContext( instanceContext );
     }
-
-    volumeKind = instanceContext->VolumeKind;
-    FltReleaseContext( instanceContext );
 
     SafeUploadCount( CreatesPastCheapGates );
 
@@ -1284,7 +1636,8 @@ Return Value:
 
     if (FlagOn( securityContext->DesiredAccess,
                 FILE_WRITE_DATA | FILE_APPEND_DATA ) &&
-        SafeUploadIsProcessTainted( FltGetRequestorProcessId( Data ) ) &&
+        (taintedWriter ||
+         SafeUploadIsProcessTainted( FltGetRequestorProcessId( Data ) )) &&
         SafeUploadIsMonitoredDestination( Data, volumeKind )) {
 
         //
@@ -1300,7 +1653,8 @@ Return Value:
 
         if (SafeUploadOverrideCovers( Data, FltGetRequestorProcessId( Data ) )) {
 
-            *CompletionContext = (PVOID) (ULONG_PTR) volumeKind;
+            *CompletionContext = (PVOID) (ULONG_PTR)
+                ((ULONG) volumeKind | SAFEUPLOAD_POSTCREATE_OVERRIDE);
 
             return FLT_PREOP_SUCCESS_WITH_CALLBACK;
         }
@@ -1324,6 +1678,14 @@ Return Value:
 
             return FLT_PREOP_COMPLETE;
         }
+    }
+
+    // Content inspection is limited to configured formats. Destination
+    // blocking above is not: renaming or writing a .bin file into a cloud
+    // folder must not bypass a tainted process's egress restriction.
+    if (!monitoredExtension) {
+
+        return FLT_PREOP_SUCCESS_NO_CALLBACK;
     }
 
     *CompletionContext = (PVOID) (ULONG_PTR) volumeKind;
@@ -1376,17 +1738,27 @@ Return Value:
 {
     PSAFEUPLOAD_STREAM_CONTEXT streamContext = NULL;
     SAFEUPLOAD_VOLUME_KIND volumeKind;
+    BOOLEAN overrideGranted;
     LARGE_INTEGER fileSize;
     LARGE_INTEGER lastWriteTime;
     UINT32 scopeFlags = 0;
     UINT32 verdict = SAFEUPLOAD_VERDICT_ALLOW;
     BOOLEAN answered = FALSE;
     BOOLEAN inspected;
+    BOOLEAN stampKnown;
+    BOOLEAN cacheEligible;
+    LONG policyGeneration;
+    LONG currentGeneration;
     NTSTATUS status;
 
     PAGED_CODE();
 
-    volumeKind = (SAFEUPLOAD_VOLUME_KIND) (ULONG_PTR) CompletionContext;
+
+
+    volumeKind = (SAFEUPLOAD_VOLUME_KIND)
+        ((ULONG_PTR) CompletionContext & ~SAFEUPLOAD_POSTCREATE_OVERRIDE);
+    overrideGranted = (BOOLEAN)
+        (((ULONG_PTR) CompletionContext & SAFEUPLOAD_POSTCREATE_OVERRIDE) != 0);
 
     //
     //  Draining means the filter is going away, and no callback of ours
@@ -1409,17 +1781,57 @@ Return Value:
         return FLT_POSTOP_FINISHED_PROCESSING;
     }
 
-    SafeUploadReadFileStamp( FltObjects, &fileSize, &lastWriteTime );
+    // A justified create can cover an extension outside the inspection
+    // list. It still needs a handle marker so the following write does not
+    // consume a second grant or get denied by the write callback.
+    if (overrideGranted &&
+        !SafeUploadPolicyMatchesExtension( &FltObjects->FileObject->FileName )) {
 
-    status = SafeUploadGetOrCreateStreamContext( FltObjects,
-                                                 FltObjects->FileObject,
-                                                 &streamContext );
+        if (FltObjects->FileObject->WriteAccess) {
+            (VOID) SafeUploadMarkHandleForWrite( FltObjects, TRUE );
+        }
 
-    if (NT_SUCCESS( status )) {
+        return FLT_POSTOP_FINISHED_PROCESSING;
+    }
+
+    stampKnown = SafeUploadReadFileStamp( FltObjects, &fileSize, &lastWriteTime );
+    policyGeneration = SafeUploadCurrentPolicyGeneration();
+
+    // Source classification depends on the access requested for this open.
+    // A write-only open must not cache an out-of-scope result that a later
+    // reader can reuse, nor inherit a reader's sensitive source verdict.
+    cacheEligible = (BOOLEAN)
+        (Data->Iopb->Parameters.Create.SecurityContext != NULL &&
+         FlagOn( Data->Iopb->Parameters.Create.SecurityContext->DesiredAccess,
+                 FILE_READ_DATA ) &&
+         !SafeUploadPolicyClassifiesAllSources());
+
+    // A newly created or truncated file has no content to classify yet.
+    // Reading it from user mode may fail on the just-opened write handle;
+    // treating that failure as sensitive taints a clean writer. Keep the
+    // write-handle marker so cleanup dirties any previous stream verdict.
+    if (stampKnown && fileSize.QuadPart == 0) {
+
+        if (FltObjects->FileObject->WriteAccess) {
+            (VOID) SafeUploadMarkHandleForWrite( FltObjects, overrideGranted );
+        }
+
+        return FLT_POSTOP_FINISHED_PROCESSING;
+    }
+
+    status = STATUS_SUCCESS;
+    if (cacheEligible) {
+        status = SafeUploadGetOrCreateStreamContext( FltObjects,
+                                                     FltObjects->FileObject,
+                                                     &streamContext );
+    }
+
+    if (NT_SUCCESS( status ) && cacheEligible) {
 
         FltAcquirePushLockShared( &streamContext->Lock );
 
-        if (streamContext->ScopeEvaluated) {
+        if (streamContext->ScopeEvaluated &&
+            streamContext->PolicyGeneration == policyGeneration) {
 
             if (streamContext->ScopeFlags == 0) {
 
@@ -1431,7 +1843,6 @@ Return Value:
 
                 scopeFlags = 0;
                 answered = TRUE;
-                SafeUploadCount( CacheHits );
 
             } else if (streamContext->VerdictValid &&
                        !streamContext->Dirty &&
@@ -1441,22 +1852,34 @@ Return Value:
                 scopeFlags = streamContext->ScopeFlags;
                 verdict = streamContext->Verdict;
                 answered = TRUE;
-                SafeUploadCount( CacheHits );
             }
         }
 
         FltReleasePushLock( &streamContext->Lock );
     }
 
+    currentGeneration = SafeUploadCurrentPolicyGeneration();
+    if (currentGeneration != policyGeneration) {
+        policyGeneration = currentGeneration;
+        answered = FALSE;
+        scopeFlags = 0;
+        verdict = SAFEUPLOAD_VERDICT_ALLOW;
+    }
+
+    if (answered) {
+        SafeUploadCount( CacheHits );
+    }
+
     if (!answered) {
 
         inspected = SafeUploadEvaluate( Data, volumeKind, &scopeFlags, &verdict );
 
-        if (streamContext != NULL) {
+        if (streamContext != NULL && cacheEligible) {
 
             FltAcquirePushLockExclusive( &streamContext->Lock );
 
-            streamContext->ScopeEvaluated = TRUE;
+            streamContext->ScopeEvaluated = inspected;
+            streamContext->PolicyGeneration = policyGeneration;
             streamContext->ScopeFlags = scopeFlags;
             streamContext->Verdict = verdict;
 
@@ -1483,7 +1906,7 @@ Return Value:
         FltReleaseContext( streamContext );
     }
 
-    if (scopeFlags == 0) {
+    if (scopeFlags == 0 && !overrideGranted) {
 
         return FLT_POSTOP_FINISHED_PROCESSING;
     }
@@ -1495,7 +1918,7 @@ Return Value:
 
     if (FltObjects->FileObject->WriteAccess) {
 
-        (VOID) SafeUploadMarkHandleForWrite( FltObjects );
+        (VOID) SafeUploadMarkHandleForWrite( FltObjects, overrideGranted );
     }
 
     if (verdict == SAFEUPLOAD_VERDICT_DENY) {
@@ -1520,7 +1943,8 @@ Return Value:
         //  one above.
         //
 
-        if (FlagOn( scopeFlags, SAFEUPLOAD_REQUEST_FLAG_SCOPE_DESTINATION )) {
+        if (FlagOn( scopeFlags, SAFEUPLOAD_REQUEST_FLAG_SCOPE_DESTINATION ) &&
+            !overrideGranted) {
 
             //
             //  Excecao antes de cancelar, pelo mesmo motivo do pre-create:
@@ -1528,6 +1952,10 @@ Return Value:
             //
 
             if (SafeUploadOverrideCovers( Data, FltGetRequestorProcessId( Data ) )) {
+
+                if (FltObjects->FileObject->WriteAccess) {
+                    (VOID) SafeUploadMarkHandleForWrite( FltObjects, TRUE );
+                }
 
                 return FLT_POSTOP_FINISHED_PROCESSING;
             }
@@ -1553,6 +1981,83 @@ Return Value:
 
 
 FLT_PREOP_CALLBACK_STATUS
+SafeUploadPreWrite (
+    _Inout_ PFLT_CALLBACK_DATA Data,
+    _In_ PCFLT_RELATED_OBJECTS FltObjects,
+    _Flt_CompletionContext_Outptr_ PVOID *CompletionContext
+    )
+/*++
+
+Routine Description:
+
+    Closes the already-open-handle gap. A process can open a destination
+    before reading sensitive content; the create gate cannot know that it
+    will become tainted later. Only a tainted process reaches the destination
+    check, so ordinary writes do no name lookup.
+
+    Paging I/O is excluded at registration because it often runs in System's
+    context, not the process whose mapped view was modified. A grant consumed
+    at create is carried by the stream-handle context for this handle alone.
+
+    IRQL: <= APC_LEVEL.
+
+--*/
+{
+    PSAFEUPLOAD_INSTANCE_CONTEXT instanceContext = NULL;
+    SAFEUPLOAD_VOLUME_KIND volumeKind;
+    ULONG processId;
+    NTSTATUS status;
+
+    UNREFERENCED_PARAMETER( CompletionContext = NULL );
+
+    PAGED_CODE();
+
+    if (Data->Iopb->Parameters.Write.Length == 0 ||
+        SafeUploadData.ClientPort == NULL) {
+        return FLT_PREOP_SUCCESS_NO_CALLBACK;
+    }
+
+    processId = FltGetRequestorProcessId( Data );
+
+    if (SafeUploadIsIgnoredProcess( processId ) ||
+        !SafeUploadIsProcessTainted( processId ) ||
+        SafeUploadHandleHasOverride( FltObjects )) {
+        return FLT_PREOP_SUCCESS_NO_CALLBACK;
+    }
+
+    status = FltGetInstanceContext( FltObjects->Instance,
+                                    (PFLT_CONTEXT *) &instanceContext );
+
+    if (!NT_SUCCESS( status )) {
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+        volumeKind = SafeUploadVolumeUnknown;
+#else
+        return FLT_PREOP_SUCCESS_NO_CALLBACK;
+#endif
+    } else {
+        volumeKind = instanceContext->VolumeKind;
+        FltReleaseContext( instanceContext );
+    }
+
+    if (!SafeUploadIsMonitoredDestination( Data, volumeKind )) {
+        return FLT_PREOP_SUCCESS_NO_CALLBACK;
+    }
+
+    if (SafeUploadPolicyAuditOnly()) {
+        SafeUploadCount( WouldHaveDenied );
+        SafeUploadTrace( "AUDITORIA: write seria negado, processo %lu marcado\n",
+                         processId );
+        return FLT_PREOP_SUCCESS_NO_CALLBACK;
+    }
+
+    SafeUploadTrace( "write negado: processo %lu marcado\n", processId );
+    Data->IoStatus.Status = STATUS_ACCESS_DENIED;
+    Data->IoStatus.Information = 0;
+    return FLT_PREOP_COMPLETE;
+}
+
+
+FLT_PREOP_CALLBACK_STATUS
 SafeUploadPreCleanup (
     _Inout_ PFLT_CALLBACK_DATA Data,
     _In_ PCFLT_RELATED_OBJECTS FltObjects,
@@ -1567,8 +2072,8 @@ Routine Description:
 
     Its only job is to throw away the cached verdict when the handle that is
     closing was opened for write. Cleanup is the right moment because it is
-    when the writing is finished; a write callback would fire once per block
-    to learn the same thing.
+    when the writing is finished; the write callback exists to enforce a
+    process taint acquired after the handle was opened.
 
     Cleanup cannot be failed - the filter manager ignores the return value -
     so nothing here tries to.
@@ -1592,10 +2097,11 @@ Return Value:
     PSAFEUPLOAD_STREAM_CONTEXT streamContext = NULL;
     NTSTATUS status;
 
-    UNREFERENCED_PARAMETER( Data );
     UNREFERENCED_PARAMETER( CompletionContext = NULL );
 
     PAGED_CODE();
+
+    UNREFERENCED_PARAMETER( Data );
 
     if (!SafeUploadHandleWasOpenedForWrite( FltObjects )) {
 
@@ -1684,6 +2190,14 @@ Return Value:
 
     PAGED_CODE();
 
+    if (FltObjects->Transaction != NULL &&
+        SafeUploadStageTxfSetInformationMustRefuse(Data, FltObjects)) {
+        SafeUploadStageTxfRecordRefused();
+        Data->IoStatus.Status = STATUS_ACCESS_DENIED;
+        Data->IoStatus.Information = 0;
+        return FLT_PREOP_COMPLETE;
+    }
+
     SafeUploadCount( SetInformationSeen );
 
     informationClass = Data->Iopb->Parameters.SetFileInformation.FileInformationClass;
@@ -1719,6 +2233,8 @@ Return Value:
 
         return FLT_PREOP_SUCCESS_NO_CALLBACK;
     }
+
+
 
     if (SafeUploadData.ClientPort == NULL) {
 
@@ -1763,12 +2279,15 @@ Return Value:
                                     (PFLT_CONTEXT *) &instanceContext );
 
     if (!NT_SUCCESS( status )) {
-
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+        volumeKind = SafeUploadVolumeUnknown;
+#else
         return FLT_PREOP_SUCCESS_NO_CALLBACK;
+#endif
+    } else {
+        volumeKind = instanceContext->VolumeKind;
+        FltReleaseContext( instanceContext );
     }
-
-    volumeKind = instanceContext->VolumeKind;
-    FltReleaseContext( instanceContext );
 
     //
     //  FILE_LINK_INFORMATION shares its leading layout with
@@ -1803,6 +2322,11 @@ Return Value:
         monitored = SafeUploadPolicyMatchesDestination( volumeKind, &nameInfo->Name );
 
         FltReleaseFileNameInformation( nameInfo );
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    } else if (volumeKind == SafeUploadVolumeUnknown) {
+        /* A failed destination query cannot prove that this is outside an enabled broad scope. */
+        monitored = TRUE;
+#endif
     }
 
     if (!monitored) {

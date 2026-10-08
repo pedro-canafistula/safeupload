@@ -154,6 +154,40 @@ public class PolicyTests : IDisposable
         await Assert.ThrowsAsync<InvalidPolicyException>(LoadAsync);
     }
 
+    [Fact]
+    public async Task ACL_fraca_sem_politica_aplicada_recusa_o_arquivo()
+    {
+        _workspace.WritePolicy("""
+            { "version": 1, "activeCategories": ["Cpf"], "monitoredScopes": { "extensions": [".txt"], "destinationPaths": ["C:\\Protected"] } }
+            """);
+        var store = new LocalPolicyStore(_workspace.PolicyFile, _ => false);
+
+        await Assert.ThrowsAsync<PolicyFileAclRejectedException>(
+            () => store.LoadAsync(CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task ACL_fraca_depois_da_aplicacao_mantem_a_ultima_politica_em_memoria()
+    {
+        _workspace.WritePolicy("""
+            { "version": 1, "activeCategories": ["Cpf"], "monitoredScopes": { "extensions": [".txt"], "destinationPaths": ["C:\\Protected"] }, "auditOnly": false }
+            """);
+        bool aclValid = true;
+        var store = new LocalPolicyStore(_workspace.PolicyFile, _ => aclValid);
+        Policy applied = await store.LoadAsync(CancellationToken.None);
+
+        _workspace.WritePolicy("""
+            { "version": 1, "activeCategories": ["Cpf"], "monitoredScopes": { "extensions": [".txt"], "destinationPaths": [] }, "auditOnly": true }
+            """);
+        aclValid = false;
+
+        Policy retained = await store.LoadAsync(CancellationToken.None);
+
+        Assert.Same(applied, retained);
+        Assert.False(retained.AuditOnly);
+        Assert.Contains("C:\\Protected", retained.MonitoredScopes.DestinationPaths);
+    }
+
     /// <summary>
     /// Categoria desconhecida convivendo com categorias conhecidas é ignorada,
     /// e o agente continua funcionando. Um painel mais novo pode publicar uma
@@ -233,57 +267,39 @@ public class PolicyTests : IDisposable
         Assert.True(policy.IsMonitoredDestination(TestWorkspace.Operation(
             arquivo, DestinationKind.Cloud, destinationPath: Path.Combine(monitorado, "OneDrive"))));
 
+        Assert.False(policy.IsMonitoredDestination(TestWorkspace.Operation(
+            arquivo, DestinationKind.Cloud, destinationPath: monitorado + "-vizinho\\dados.txt")));
+
         Assert.False(policy.IsMonitoredDestination(
             TestWorkspace.Operation(arquivo, DestinationKind.OutOfScope, destinationPath: @"C:\Temp")));
     }
 
     /// <summary>
-    /// RN-011 pelo outro lado: a leitura de uma origem sensível entra em
-    /// escopo pela lista de origens, e não pela de destinos.
-    ///
-    /// Este teste existe porque a falta dele deixou passar um defeito inteiro.
-    /// O motor decidia escopo só por destino, então toda leitura de origem era
-    /// julgada contra os caminhos de destino, não casava nenhum e saía como
-    /// fora de escopo — o arquivo nunca era aberto e a cadeia de contaminação
-    /// ficava sem o primeiro elo. Os 156 testes passavam, porque nenhum
-    /// perguntava isto.
+    /// Classification follows content on every supported file read. A source
+    /// folder list must not decide whether a document can be protected.
     /// </summary>
     [Fact]
-    public void Rn011_leitura_de_origem_sensivel_entra_em_escopo_pela_lista_de_origens()
+    public void Rn011_leitura_de_origem_independe_da_pasta()
     {
-        var arquivo = _workspace.WriteText("relatorio.txt", "vazio");
-        var origem = Path.GetDirectoryName(arquivo)!;
+        var policy = Policy();
+        using var otherWorkspace = new TestWorkspace();
+        var first = _workspace.WriteText("relatorio.txt", "vazio");
+        var elsewhere = otherWorkspace.WriteText("relatorio.txt", "vazio");
 
-        var comOrigem = Policy(sourcePaths: [origem]);
-
-        Assert.True(comOrigem.IsInScope(
-            TestWorkspace.Operation(arquivo, DestinationKind.SensitiveSource)));
-
-        // Sem origens configuradas a mesma leitura fica fora de escopo. É
-        // configuração legítima — vigiar destinos sem manter cadeia — e o
-        // resultado tem de ser esse, não um bloqueio.
-        var semOrigem = Policy(sourcePaths: []);
-
-        Assert.False(semOrigem.IsInScope(
-            TestWorkspace.Operation(arquivo, DestinationKind.SensitiveSource)));
-
-        // Uma origem que não cobre este arquivo também não vale.
-        var outraOrigem = Policy(sourcePaths: [Path.Combine(origem, "outra-pasta")]);
-
-        Assert.False(outraOrigem.IsInScope(
-            TestWorkspace.Operation(arquivo, DestinationKind.SensitiveSource)));
+        var firstOperation = TestWorkspace.Operation(first, DestinationKind.SensitiveSource);
+        var otherOperation = TestWorkspace.Operation(elsewhere, DestinationKind.SensitiveSource);
+        Assert.True(policy.IsInScope(firstOperation),
+            $"first={firstOperation.Destination}, expected={DestinationKind.SensitiveSource}, equal={firstOperation.Destination == DestinationKind.SensitiveSource}");
+        Assert.True(policy.IsInScope(otherOperation),
+            $"other={otherOperation.Destination}, expected={DestinationKind.SensitiveSource}, equal={otherOperation.Destination == DestinationKind.SensitiveSource}");
     }
 
-    /// <summary>
-    /// A lista de origens não muda o julgamento de destino: os dois lados são
-    /// independentes, e uma origem configurada não pode fazer entrar em escopo
-    /// uma cópia para lugar nenhum.
-    /// </summary>
+    /// <summary>Reading any source does not expand the destination list.</summary>
     [Fact]
-    public void Origem_configurada_nao_altera_o_julgamento_de_destino()
+    public void Classificacao_de_origem_nao_altera_o_julgamento_de_destino()
     {
         var arquivo = _workspace.WriteText("dados.txt", "vazio");
-        var policy = Policy(sourcePaths: [Path.GetDirectoryName(arquivo)!]);
+        var policy = Policy();
 
         Assert.False(policy.IsInScope(TestWorkspace.Operation(
             arquivo, DestinationKind.OutOfScope, destinationPath: @"C:\Temp")));
@@ -321,7 +337,7 @@ public class PolicyTests : IDisposable
         Assert.True(auditoria.AuditOnly);
     }
 
-    private static Policy Policy(IReadOnlyList<string> sourcePaths) =>
+    private static Policy Policy() =>
         new(
             Version: 1,
             ActiveCategories: new HashSet<Category> { Category.Cpf },
@@ -329,8 +345,7 @@ public class PolicyTests : IDisposable
                 new HashSet<string>(StringComparer.OrdinalIgnoreCase) { ".txt" },
                 [@"C:\destino-vigiado"],
                 RemovableDrives: true,
-                NetworkPaths: true,
-                SourcePaths: sourcePaths),
+                NetworkPaths: true),
             MaxFileSizeMb: 20,
             InspectionTimeoutSeconds: 5,
             FailOpen: true,

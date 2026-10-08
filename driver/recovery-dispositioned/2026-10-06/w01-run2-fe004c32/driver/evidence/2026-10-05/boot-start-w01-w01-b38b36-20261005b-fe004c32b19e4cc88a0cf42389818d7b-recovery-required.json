@@ -1,0 +1,23 @@
+{
+  "Action": "Preserve VM/processes/ports/overlay. No further VM case until operator disposition.",
+  "CheckpointReceipt": "/home/victor/Work/safeupload-staging/driver/evidence/2026-10-05/boot-start-w01-w01-b38b36-20261005b-fe004c32b19e4cc88a0cf42389818d7b-checkpoint.txt",
+  "GuestEvidenceCopy": {
+    "SafeUpload-rv4-w01-control-fe004c32b19e4cc88a0cf42389818d7b": 0,
+    "SafeUpload-w01-state-fe004c32b19e4cc88a0cf42389818d7b": 0,
+    "boot-start-w01-w01-b38b36-20261005b-fe004c32b19e4cc88a0cf42389818d7b-afterboot.done.json": 0,
+    "boot-start-w01-w01-b38b36-20261005b-fe004c32b19e4cc88a0cf42389818d7b-afterboot.err": 0,
+    "boot-start-w01-w01-b38b36-20261005b-fe004c32b19e4cc88a0cf42389818d7b-afterboot.out": 0,
+    "boot-start-w01-w01-b38b36-20261005b-fe004c32b19e4cc88a0cf42389818d7b-artifacts": 0,
+    "boot-start-w01-w01-b38b36-20261005b-fe004c32b19e4cc88a0cf42389818d7b-finalize.done.json": 1,
+    "boot-start-w01-w01-b38b36-20261005b-fe004c32b19e4cc88a0cf42389818d7b-finalize.err": 1,
+    "boot-start-w01-w01-b38b36-20261005b-fe004c32b19e4cc88a0cf42389818d7b-finalize.out": 1,
+    "boot-start-w01-w01-b38b36-20261005b-fe004c32b19e4cc88a0cf42389818d7b-prepare.done.json": 0,
+    "boot-start-w01-w01-b38b36-20261005b-fe004c32b19e4cc88a0cf42389818d7b-prepare.err": 0,
+    "boot-start-w01-w01-b38b36-20261005b-fe004c32b19e4cc88a0cf42389818d7b-prepare.out": 0
+  },
+  "Reason": [
+    "Wrapper/staging failure: 21"
+  ],
+  "RecoveryRequired": true,
+  "RunName": "boot-start-w01-w01-b38b36-20261005b-fe004c32b19e4cc88a0cf42389818d7b"
+}

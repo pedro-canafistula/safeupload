@@ -1,0 +1,38 @@
+{
+  "UTC": "2026-10-06T14:46:04.357569+00:00",
+  "Approval": "Approve disk-only recovery and verified marker disposition",
+  "RunGuid": "fe004c32b19e4cc88a0cf42389818d7b",
+  "Disposition": "Functional restoration independently verified twice; preserve exact four markers outside active evidence scan",
+  "IndependentFunctionalRestorationVerified": true,
+  "FailedRAMPreservationProven": false,
+  "W01Verdict": "INCONCLUSIVE",
+  "Phase4": "NOT_QUALIFIED",
+  "Proof": "driver/evidence/2026-10-06/w01-run2-recovery-postbaseline-readout.json",
+  "Markers": [
+    {
+      "Path": "driver/evidence/w01-recovery-required-active.json",
+      "SHA256": "9859e2749398fccd84d81075ffc6ee68d1894f048c1fc372955386044a2c901c",
+      "Bytes": 410,
+      "RetainedPath": "driver/recovery-dispositioned/2026-10-06/w01-run2-fe004c32/driver/evidence/w01-recovery-required-active.json"
+    },
+    {
+      "Path": "driver/evidence/2026-10-05/boot-start-w01-w01-b38b36-20261005b-fe004c32b19e4cc88a0cf42389818d7b-recovery-required.txt",
+      "SHA256": "e057506dd251f5fd1e132d0acf4e83913bfc91bfef8d900a44095ae049f6eadd",
+      "Bytes": 760,
+      "RetainedPath": "driver/recovery-dispositioned/2026-10-06/w01-run2-fe004c32/driver/evidence/2026-10-05/boot-start-w01-w01-b38b36-20261005b-fe004c32b19e4cc88a0cf42389818d7b-recovery-required.txt"
+    },
+    {
+      "Path": "driver/evidence/2026-10-05/boot-start-w01-w01-b38b36-20261005b-fe004c32b19e4cc88a0cf42389818d7b-recovery-required.json",
+      "SHA256": "ce2572dbdeed1f5ef47f7142ca0decb5c46b40f07032c733eac1af312f9ac8d0",
+      "Bytes": 1540,
+      "RetainedPath": "driver/recovery-dispositioned/2026-10-06/w01-run2-fe004c32/driver/evidence/2026-10-05/boot-start-w01-w01-b38b36-20261005b-fe004c32b19e4cc88a0cf42389818d7b-recovery-required.json"
+    },
+    {
+      "Path": "driver/evidence/2026-10-05/boot-start-w01-w01-b38b36-20261005b-fe004c32b19e4cc88a0cf42389818d7b-guest/boot-start-w01-w01-b38b36-20261005b-fe004c32b19e4cc88a0cf42389818d7b-artifacts/RecoveryRequired.json",
+      "SHA256": "d5a520038a6dfbdf672937a96dea0a41146b1ec22628bac13772d46b0c21c395",
+      "Bytes": 1324,
+      "RetainedPath": "driver/recovery-dispositioned/2026-10-06/w01-run2-fe004c32/driver/evidence/2026-10-05/boot-start-w01-w01-b38b36-20261005b-fe004c32b19e4cc88a0cf42389818d7b-guest/boot-start-w01-w01-b38b36-20261005b-fe004c32b19e4cc88a0cf42389818d7b-artifacts/RecoveryRequired.json"
+    }
+  ],
+  "Applied": true
+}

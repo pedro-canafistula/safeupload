@@ -294,6 +294,10 @@ Arguments:
     ULONG bucket;
     ULONGLONG now;
 
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    if (SafeUploadPolicyTestDisablesTaint()) return;
+#endif
+
     if (ProcessId == SAFEUPLOAD_IDLE_PROCESS_ID ||
         ProcessId == SAFEUPLOAD_SYSTEM_PROCESS_ID) {
 
@@ -432,6 +436,10 @@ Return Value:
     BOOLEAN tainted = FALSE;
     ULONG bucket;
     ULONGLONG now;
+
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    if (SafeUploadPolicyTestDisablesTaint()) return FALSE;
+#endif
 
     bucket = SafeUploadTaintBucket( ProcessId );
     now = KeQueryInterruptTime();

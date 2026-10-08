@@ -8,6 +8,7 @@
 using System;
 using System.ComponentModel;
 using System.Runtime.InteropServices;
+using System.Threading;
 using Microsoft.Win32.SafeHandles;
 
 namespace SafeUpload.Agent.Minifilter;
@@ -36,16 +37,35 @@ public struct FilterReplyHeader
     public ulong MessageId;
 }
 
-public sealed class FilterPort : IDisposable
+public sealed partial class FilterPort : IDisposable
+#if SAFEUPLOAD_ADMISSION_EVIDENCE
+    , IAdmissionEvidenceSender
+#endif
 {
     private const int StatusSuccess = 0;
 
+    private readonly object _sendLifecycle = new();
+    private readonly SemaphoreSlim _sendGate = new(1, 1);
     private SafeFileHandle? _handle;
+    private bool _acceptingSends = true;
+    private bool _disposed;
+    private int _activeSenders;
 
-    private FilterPort(SafeFileHandle handle) => _handle = handle;
+#if SAFEUPLOAD_ADMISSION_EVIDENCE
+    private readonly IAdmissionEvidenceNativeSender? _admissionEvidenceNativeSender = null;
+#endif
+
+    private FilterPort(SafeFileHandle handle, string portName)
+    {
+        _handle = handle;
+        _ = portName;
+    }
 
     public static FilterPort Connect(string portName = Contract.PortName)
     {
+#if SAFEUPLOAD_ADMISSION_EVIDENCE
+        AdmissionEvidenceWire.VerifyLayout();
+#endif
         int hr = FilterConnectCommunicationPort(
             portName, 0, IntPtr.Zero, 0, IntPtr.Zero, out SafeFileHandle handle);
 
@@ -60,11 +80,68 @@ public sealed class FilterPort : IDisposable
             throw new Win32Exception(hr, $"FilterConnectCommunicationPort falhou: 0x{hr:X8}");
         }
 
-        return new FilterPort(handle);
+        return new FilterPort(handle, portName);
     }
 
     private SafeFileHandle Handle =>
         _handle ?? throw new ObjectDisposedException(nameof(FilterPort));
+
+    // All synchronous FilterSendMessage calls share this lease. Dispose first
+    // rejects new senders, then waits for accepted senders (including those
+    // queued on _sendGate) to drain before closing the native handle. The
+    // blocking FilterGetMessage receive deliberately does not use this gate.
+    private SendLease EnterSend()
+    {
+        lock (_sendLifecycle)
+        {
+            if (!_acceptingSends)
+            {
+                throw new ObjectDisposedException(nameof(FilterPort));
+            }
+
+            checked { _activeSenders++; }
+        }
+
+        bool gateTaken = false;
+        try
+        {
+            _sendGate.Wait();
+            gateTaken = true;
+            return new SendLease(this, Handle);
+        }
+        catch
+        {
+            if (gateTaken) _sendGate.Release();
+            CompleteSend();
+            throw;
+        }
+    }
+
+    private void ExitSend()
+    {
+        _sendGate.Release();
+        CompleteSend();
+    }
+
+    private void CompleteSend()
+    {
+        lock (_sendLifecycle)
+        {
+            _activeSenders--;
+            if (_activeSenders == 0) Monitor.PulseAll(_sendLifecycle);
+        }
+    }
+
+    private sealed class SendLease(FilterPort owner, SafeFileHandle handle) : IDisposable
+    {
+        private FilterPort? _owner = owner;
+        public SafeFileHandle Handle { get; } = handle;
+
+        public void Dispose()
+        {
+            Interlocked.Exchange(ref _owner, null)?.ExitSend();
+        }
+    }
 
     /// <summary>
     /// Blocks until the driver sends a request.
@@ -76,12 +153,37 @@ public sealed class FilterPort : IDisposable
     /// operation uninspected (RN-013), silently. Anything slow belongs on
     /// another thread, not here.
     /// </summary>
-    public unsafe bool TryGetMessage(out SafeUploadRequest request, out ulong messageId)
+    public unsafe bool TryGetMessage(out SafeUploadRequest request, out ulong messageId,
+        CancellationToken cancellationToken = default)
     {
         int size = sizeof(FilterMessageHeader) + sizeof(SafeUploadRequest);
         byte* buffer = stackalloc byte[size];
 
-        int hr = FilterGetMessage(Handle, (IntPtr) buffer, (uint) size, IntPtr.Zero);
+        // A null OVERLAPPED waits on the port handle itself. A concurrent
+        // FilterSendMessage can signal that same handle and wake the receive
+        // before its request has completed. Own the completion event for this
+        // receive and keep its buffer/OVERLAPPED alive until completion.
+        using var completed = new EventWaitHandle(false, EventResetMode.ManualReset);
+        NativeOverlapped overlapped = new()
+        {
+            EventHandle = completed.SafeWaitHandle.DangerousGetHandle()
+        };
+        IntPtr pending = (IntPtr)(&overlapped);
+        int hr = FilterGetMessage(Handle, (IntPtr) buffer, (uint) size, pending);
+        if (hr == unchecked((int)0x800703E5)) // HRESULT_FROM_WIN32(ERROR_IO_PENDING)
+        {
+            bool canceled = false;
+            while (!completed.WaitOne(250))
+            {
+                if (!canceled && cancellationToken.IsCancellationRequested)
+                {
+                    _ = CancelIoEx(Handle, pending);
+                    canceled = true;
+                }
+            }
+            hr = GetOverlappedResult(Handle, pending, out _, false)
+                ? 0 : Marshal.GetHRForLastWin32Error();
+        }
 
         if (hr != 0)
         {
@@ -97,10 +199,19 @@ public sealed class FilterPort : IDisposable
         return true;
     }
 
-    public unsafe void Reply(ulong messageId, ulong requestId, uint verdict)
+    public unsafe void Reply(ulong messageId, ulong requestId, uint verdict,
+        string? stageName = null)
     {
+        if (stageName is { Length: >= Contract.MaxStageNameChars } ||
+            (stageName is not null &&
+             (stageName.IndexOfAny(['\\', '/', ':']) >= 0 || stageName is "." or "..")))
+        {
+            throw new ArgumentException("Invalid stage basename.", nameof(stageName));
+        }
+
         int size = sizeof(FilterReplyHeader) + sizeof(SafeUploadResponse);
         byte* buffer = stackalloc byte[size];
+        new Span<byte>(buffer, size).Clear();
 
         *(FilterReplyHeader*) buffer = new FilterReplyHeader
         {
@@ -108,14 +219,22 @@ public sealed class FilterPort : IDisposable
             MessageId = messageId,
         };
 
-        *(SafeUploadResponse*) (buffer + sizeof(FilterReplyHeader)) = new SafeUploadResponse
+        SafeUploadResponse* response = (SafeUploadResponse*) (buffer + sizeof(FilterReplyHeader));
+        *response = new SafeUploadResponse
         {
             Version = Contract.Version,
             StructSize = (uint) sizeof(SafeUploadResponse),
             RequestId = requestId,
             Verdict = verdict,
-            Reserved = 0,
+            StageNameLength = (uint) ((stageName?.Length ?? 0) * sizeof(char)),
         };
+        if (stageName is not null)
+        {
+            for (int i = 0; i < stageName.Length; i += 1)
+            {
+                response->StageName[i] = stageName[i];
+            }
+        }
 
         int hr = FilterReplyMessage(Handle, (IntPtr) buffer, (uint) size);
 
@@ -133,16 +252,17 @@ public sealed class FilterPort : IDisposable
     /// all and inspects nothing, so this is not optional setup - it is the
     /// step that turns the filter on.
     /// </summary>
-    public unsafe void SetPolicy(in SafeUploadPolicyMessage policy)
+    public unsafe void SetPolicy(in SafeUploadPolicyMessage policy, bool finalizeDurableBootScopes = false)
     {
+        using var send = EnterSend();
         fixed (SafeUploadPolicyMessage* p = &policy)
         {
             p->Control.Version = Contract.Version;
             p->Control.StructSize = (uint) sizeof(SafeUploadPolicyMessage);
             p->Control.Command = ControlCommand.SetPolicy;
-            p->Control.Reserved = 0;
+            p->Control.Reserved = finalizeDurableBootScopes ? Contract.FinalizeDurableBootScopes : 0;
 
-            int hr = FilterSendMessage(Handle, (IntPtr) p, (uint) sizeof(SafeUploadPolicyMessage),
+            int hr = FilterSendMessage(send.Handle, (IntPtr) p, (uint) sizeof(SafeUploadPolicyMessage),
                                        IntPtr.Zero, 0, out _);
 
             if (hr != 0)
@@ -151,6 +271,7 @@ public sealed class FilterPort : IDisposable
             }
         }
     }
+
 
     /// <summary>
     /// Concede uma excecao: um processo, um caminho de destino exato, por um
@@ -193,13 +314,46 @@ public sealed class FilterPort : IDisposable
             message.Path[i] = ntPath[i];
         }
 
-        int hr = FilterSendMessage(Handle, (IntPtr) (&message), (uint) sizeof(SafeUploadOverrideMessage),
+        using var send = EnterSend();
+        int hr = FilterSendMessage(send.Handle, (IntPtr) (&message), (uint) sizeof(SafeUploadOverrideMessage),
                                    IntPtr.Zero, 0, out _);
 
         if (hr != 0)
         {
             throw new Win32Exception(hr, $"Concessao de excecao falhou: 0x{hr:X8}");
         }
+    }
+
+    public void SetPublicationPermit(Guid transferId, string temporaryPath, string destinationPath, string digest)
+        => SendPublicationPermit(transferId, PolicyBuilder.ToNtPath(temporaryPath),
+            PolicyBuilder.ToNtPath(destinationPath), Convert.FromHexString(digest), false);
+
+    public void RevokePublicationPermit(Guid transferId)
+        => SendPublicationPermit(transferId, "", "", new byte[32], true);
+
+    private unsafe void SendPublicationPermit(Guid id, string temporaryPath,
+        string destinationPath, byte[] digest, bool revoke)
+    {
+        if (id == Guid.Empty || digest.Length != 32 ||
+            temporaryPath.Length >= Contract.MaxPathChars ||
+            destinationPath.Length >= Contract.MaxPathChars)
+            throw new ArgumentException("Invalid publication permit.");
+        SafeUploadPublicationMessage message = new()
+        {
+            Control = new() { Version = Contract.Version,
+                StructSize = (uint)sizeof(SafeUploadPublicationMessage),
+                Command = ControlCommand.StagePublication },
+            TransferId = id, Revoke = revoke ? 1u : 0u,
+            TemporaryPathLength = (uint)(temporaryPath.Length * sizeof(char)),
+            DestinationPathLength = (uint)(destinationPath.Length * sizeof(char))
+        };
+        for (int i = 0; i < digest.Length; ++i) message.Digest[i] = digest[i];
+        for (int i = 0; i < temporaryPath.Length; ++i) message.TemporaryPath[i] = temporaryPath[i];
+        for (int i = 0; i < destinationPath.Length; ++i) message.DestinationPath[i] = destinationPath[i];
+        using var send = EnterSend();
+        int hr = FilterSendMessage(send.Handle, (IntPtr)(&message), (uint)sizeof(SafeUploadPublicationMessage),
+            IntPtr.Zero, 0, out _);
+        if (hr != 0) throw new Win32Exception(hr, $"Publication permit refused: 0x{hr:X8}");
     }
 
     public unsafe SafeUploadCounters GetCounters()
@@ -214,7 +368,8 @@ public sealed class FilterPort : IDisposable
 
         SafeUploadCounters counters = default;
 
-        int hr = FilterSendMessage(Handle, (IntPtr) (&control), (uint) sizeof(SafeUploadControl),
+        using var send = EnterSend();
+        int hr = FilterSendMessage(send.Handle, (IntPtr) (&control), (uint) sizeof(SafeUploadControl),
                                    (IntPtr) (&counters), (uint) sizeof(SafeUploadCounters), out _);
 
         if (hr != 0)
@@ -227,8 +382,33 @@ public sealed class FilterPort : IDisposable
 
     public void Dispose()
     {
-        _handle?.Dispose();
-        _handle = null;
+        SafeFileHandle? handle;
+        lock (_sendLifecycle)
+        {
+            if (!_acceptingSends)
+            {
+                while (!_disposed) Monitor.Wait(_sendLifecycle);
+                return;
+            }
+
+            _acceptingSends = false;
+            while (_activeSenders != 0) Monitor.Wait(_sendLifecycle);
+            handle = _handle;
+            _handle = null;
+        }
+
+        try
+        {
+            handle?.Dispose();
+        }
+        finally
+        {
+            lock (_sendLifecycle)
+            {
+                _disposed = true;
+                Monitor.PulseAll(_sendLifecycle);
+            }
+        }
     }
 
     [DllImport("fltlib.dll", CharSet = CharSet.Unicode)]
@@ -239,6 +419,15 @@ public sealed class FilterPort : IDisposable
     [DllImport("fltlib.dll")]
     private static extern int FilterGetMessage(
         SafeFileHandle hPort, IntPtr lpMessageBuffer, uint dwMessageBufferSize, IntPtr lpOverlapped);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetOverlappedResult(SafeFileHandle handle,
+        IntPtr overlapped, out uint bytes, [MarshalAs(UnmanagedType.Bool)] bool wait);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool CancelIoEx(SafeFileHandle handle, IntPtr overlapped);
 
     [DllImport("fltlib.dll")]
     private static extern int FilterReplyMessage(

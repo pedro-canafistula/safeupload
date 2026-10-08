@@ -6,8 +6,8 @@
     only.
 
 .DESCRIPTION
-    Automates part B of DEPLOY.md: preflight, fetch, swap the driver binary,
-    load the filter and run the smoke test end to end.
+    Automates part B of DEPLOY.md: preflight, fetch, stage the boot-start
+    driver, require a reboot, then validate the already boot-loaded filter.
 
     Before doing anything it verifies the machine is actually able to load a
     test-signed driver. Every one of those checks corresponds to a failure
@@ -38,7 +38,7 @@
     Use whatever is already in the staging directory.
 
 .PARAMETER SkipSmokeTest
-    Deploy and load, but stop before exercising the filter.
+    After boot readiness is verified, stop before exercising the filter.
 
 .EXAMPLE
     .\Invoke-SafeUploadTest.ps1 -SourceUrl http://192.168.122.132:8000
@@ -81,6 +81,7 @@ $FilterName = 'SafeUpload'
 $DriverFileName = 'SafeUpload.sys'
 $InspectorFileName = 'SafeUpload.Probe.exe'
 $InstalledDriverPath = Join-Path $env:SystemRoot "System32\drivers\$DriverFileName"
+$InstalledInspectorPath = Join-Path $StagingDirectory $InspectorFileName
 $BlockToken = 'BLOQUEAR_TESTE'
 $AdministratorsSid = '*S-1-5-32-544'
 
@@ -159,7 +160,7 @@ function Send-Justificativa {
     try {
         $pipe = New-Object System.IO.Pipes.NamedPipeClientStream(
             '.', 'SafeUpload.Agent.Justification',
-            [System.IO.Pipes.PipeDirection]::Out)
+            [System.IO.Pipes.PipeDirection]::InOut)
 
         $pipe.Connect(5000)
 
@@ -168,10 +169,21 @@ function Send-Justificativa {
 
         $pipe.Write($bytes, 0, $bytes.Length)
         $pipe.Flush()
+        $reader = [System.IO.StreamReader]::new(
+            $pipe, (New-Object System.Text.UTF8Encoding($false)),
+            $false, 1024, $true)
+        $replyTask = $reader.ReadLineAsync()
+        if (-not $replyTask.Wait(5000)) {
+            throw 'O servico nao respondeu a justificativa em 5 s.'
+        }
+        $reply = $replyTask.Result
+        $reader.Dispose()
         $pipe.Dispose()
+        return $reply
     }
     catch {
         Write-Host "  Falha ao mandar justificativa: $($_.Exception.Message)" -ForegroundColor Yellow
+        return 'error'
     }
 }
 
@@ -192,6 +204,54 @@ function Stop-WithMessage {
 function Test-FilterLoaded {
     $output = & fltmc.exe filters 2>&1
     return [bool] ($output | Select-String -SimpleMatch $FilterName -Quiet)
+}
+
+function Get-AdmissionStatusAsSystem {
+    $id = [guid]::NewGuid().ToString('N')
+    $taskName = 'SafeUpload-DeploymentStatus-' + $id
+    $launcher = Join-Path $env:TEMP ('safeupload-status-' + $id + '.ps1')
+    $outPath = $launcher + '.out'
+    $errPath = $launcher + '.err'
+    $exitPath = $launcher + '.exit'
+    $body = @'
+$ErrorActionPreference = 'Stop'
+$process = Start-Process -FilePath '__EXE__' -ArgumentList '--admission-volume-status' -PassThru -Wait `
+    -WindowStyle Hidden -RedirectStandardOutput '__OUT__' -RedirectStandardError '__ERR__'
+[IO.File]::WriteAllText('__EXIT__', [string]$process.ExitCode)
+'@
+    $body = $body.Replace('__EXE__', $InstalledInspectorPath.Replace("'", "''"))
+    $body = $body.Replace('__OUT__', $outPath)
+    $body = $body.Replace('__ERR__', $errPath)
+    $body = $body.Replace('__EXIT__', $exitPath)
+    Set-Content -LiteralPath $launcher -Value $body -Encoding UTF8
+    $registered = $false
+    try {
+        $action = New-ScheduledTaskAction -Execute 'powershell.exe' `
+            -Argument ('-NoProfile -ExecutionPolicy Bypass -File "' + $launcher + '"')
+        $principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
+        $settings = New-ScheduledTaskSettingsSet -ExecutionTimeLimit ([TimeSpan]::FromSeconds(45))
+        Register-ScheduledTask -TaskName $taskName -Action $action -Principal $principal -Settings $settings | Out-Null
+        $registered = $true
+        Start-ScheduledTask -TaskName $taskName
+        $deadline = [DateTime]::UtcNow.AddSeconds(45)
+        while (-not (Test-Path -LiteralPath $exitPath) -and [DateTime]::UtcNow -lt $deadline) {
+            Start-Sleep -Milliseconds 200
+        }
+        if (-not (Test-Path -LiteralPath $exitPath)) { throw 'SYSTEM admission status query timed out.' }
+        $exitCode = [int][IO.File]::ReadAllText($exitPath)
+        if ($exitCode -ne 0) {
+            $errorText = if (Test-Path -LiteralPath $errPath) { [IO.File]::ReadAllText($errPath) } else { '' }
+            throw "SYSTEM admission status query failed ($exitCode): $errorText"
+        }
+        return ([IO.File]::ReadAllText($outPath) | ConvertFrom-Json)
+    }
+    finally {
+        if ($registered) {
+            Stop-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
+            Unregister-ScheduledTask -TaskName $taskName -Confirm:$false -ErrorAction SilentlyContinue
+        }
+        Remove-Item -LiteralPath $launcher,$outPath,$errPath,$exitPath -Force -ErrorAction SilentlyContinue
+    }
 }
 
 function Stop-Inspector {
@@ -386,9 +446,6 @@ if ($ReproduceUnloadLeak) {
         New-Item -ItemType Directory -Path $TestDirectory -Force | Out-Null
     }
 
-    $stressFile = Join-Path $TestDirectory 'normal.txt'
-    Set-Content -Path $stressFile -Value 'conteudo de teste' -Encoding UTF8
-
     $inspectorLog = Join-Path $StagingDirectory 'inspector.log'
 
     Write-Host '  Subindo o inspetor.'
@@ -396,10 +453,10 @@ if ($ReproduceUnloadLeak) {
 
     Write-Host "  Inspetor conectado. Disparando $StressProcesses processos de carga."
 
-    # Separate processes, not threads: each one issues its own creates, which
-    # is exactly the shape of the traffic that produced 33 simultaneous
-    # allocations when the driver still hooked reads.
-    $stressCommand = "for /l %i in (1,1,100000) do @type `"$stressFile`" >nul 2>&1"
+    # Separate processes and files: each writer invalidates its file's cached
+    # verdict on cleanup, and the following read must ask the inspector again.
+    # Repeatedly reading one unchanged file exercises the cache instead of
+    # creating the in-flight messages required to investigate the leak.
 
     # Not $stressProcesses: PowerShell variable names are case insensitive,
     # so that would overwrite the $StressProcesses parameter with an array
@@ -407,6 +464,10 @@ if ($ReproduceUnloadLeak) {
     $loadProcesses = @()
 
     foreach ($index in 1..$StressProcesses) {
+        $stressFile = Join-Path $TestDirectory "stress-$index.txt"
+        Set-Content -Path $stressFile -Value 'conteudo de teste' -Encoding UTF8
+        $stressCommand = "for /l %i in (1,1,100000) do @(echo x>>`"$stressFile`" & type `"$stressFile`" >nul 2>&1)"
+
         $loadProcesses += Start-Process -FilePath 'cmd.exe' `
             -ArgumentList '/c', $stressCommand -WindowStyle Hidden -PassThru
     }
@@ -553,31 +614,24 @@ foreach ($expected in $manifest.files) {
 }
 
 # ---------------------------------------------------------------------------
-# 3. Swap the driver
+# 3. Stage the boot-start driver, then require a reboot
 # ---------------------------------------------------------------------------
 
-Write-Step 'Descarregando o filtro'
+Write-Step 'Preparando o filtro boot-start'
 
 Stop-Inspector | Out-Null
-
-if (Test-FilterLoaded) {
-    & fltmc.exe unload $FilterName 2>&1 | ForEach-Object { Write-Host "  $_" }
-
-    if (Test-FilterLoaded) {
-        Stop-WithMessage 'O filtro continua carregado. Nao da para trocar o binario em uso.'
-    }
-
-    Write-Host '  Descarregado.'
-}
-else {
-    Write-Host '  Nao estava carregado.'
-}
-
+$wasLoaded = Test-FilterLoaded
 $service = Get-Service -Name $FilterName -ErrorAction SilentlyContinue
+$stagedDriver = Join-Path $StagingDirectory $DriverFileName
+$manifestDriverHash = ($manifest.files | Where-Object { $_.name -eq $DriverFileName }).sha256
+$installedHash = if (Test-Path -LiteralPath $InstalledDriverPath) {
+    (Get-FileHash $InstalledDriverPath -Algorithm SHA256).Hash
+} else { '' }
+$startValue = $null
 
 if (-not $service) {
 
-    Write-Step 'Instalando o INF (servico ainda nao existe)'
+    Write-Step 'Instalando o INF como boot-start'
 
     & rundll32.exe setupapi.dll,InstallHinfSection DefaultInstall 128 (Join-Path $StagingDirectory 'SafeUpload.inf')
     Start-Sleep -Seconds 2
@@ -589,57 +643,87 @@ if (-not $service) {
     }
 
     Write-Host '  Servico criado.'
+    $service = Get-Service -Name $FilterName -ErrorAction Stop
+    $startValue = (Get-ItemProperty "HKLM:\SYSTEM\CurrentControlSet\Services\$FilterName").Start
+    $installedHash = if (Test-Path -LiteralPath $InstalledDriverPath) {
+        (Get-FileHash $InstalledDriverPath -Algorithm SHA256).Hash
+    } else { '' }
 }
 else {
-
-    Write-Step 'Substituindo o binario'
-
-    $stagedDriver = Join-Path $StagingDirectory $DriverFileName
-
-    try {
-        Copy-Item $stagedDriver $InstalledDriverPath -Force -ErrorAction Stop
-    }
-    catch [System.UnauthorizedAccessException] {
-
-        # PnpLockdown=1 in the INF leaves files under system32\drivers owned
-        # by TrustedInstaller, so an elevated administrator still cannot
-        # write them. Taking ownership is acceptable on a disposable test VM;
-        # in production a driver binary is replaced through the INF.
-        Write-Host '  Acesso negado (PnpLockdown). Tomando posse do arquivo.' -ForegroundColor Yellow
-
-        & takeown.exe /f $InstalledDriverPath | Out-Null
-        & icacls.exe $InstalledDriverPath /grant "${AdministratorsSid}:F" | Out-Null
-
-        Copy-Item $stagedDriver $InstalledDriverPath -Force
-    }
-
-    $installedHash = (Get-FileHash $InstalledDriverPath -Algorithm SHA256).Hash
-    $manifestDriverHash = ($manifest.files | Where-Object { $_.name -eq $DriverFileName }).sha256
-
-    if ($installedHash -ne $manifestDriverHash) {
-        Stop-WithMessage 'A copia nao surtiu efeito: o binario instalado nao confere com o pacote.'
-    }
-
-    Write-Host '  Binario substituido e conferido.' -ForegroundColor Green
+    $startValue = (Get-ItemProperty "HKLM:\SYSTEM\CurrentControlSet\Services\$FilterName").Start
 }
 
 # ---------------------------------------------------------------------------
-# 4. Load
+# 4. Require boot readiness; never start the driver from this deployment path
 # ---------------------------------------------------------------------------
 
-Write-Step 'Carregando o filtro'
-
-$loadOutput = & fltmc.exe load $FilterName 2>&1
+if ($startValue -ne 0 -or $installedHash -ne $manifestDriverHash) {
+    if ($wasLoaded) {
+        & fltmc.exe unload $FilterName 2>&1 | ForEach-Object { Write-Host "  $_" }
+        if (Test-FilterLoaded) { Stop-WithMessage 'O filtro continua carregado; nao da para trocar o binario em uso.' }
+    }
+    if ($installedHash -ne $manifestDriverHash) {
+        Write-Step 'Substituindo e conferindo o binario antes do reboot'
+        try {
+            Copy-Item $stagedDriver $InstalledDriverPath -Force -ErrorAction Stop
+        }
+        catch [System.UnauthorizedAccessException] {
+            Write-Host '  Acesso negado (PnpLockdown). Tomando posse do arquivo da VM descartavel.' -ForegroundColor Yellow
+            & takeown.exe /f $InstalledDriverPath | Out-Null
+            & icacls.exe $InstalledDriverPath /grant "${AdministratorsSid}:F" | Out-Null
+            Copy-Item $stagedDriver $InstalledDriverPath -Force
+        }
+        $installedHash = (Get-FileHash $InstalledDriverPath -Algorithm SHA256).Hash
+        if ($installedHash -ne $manifestDriverHash) {
+            Stop-WithMessage 'A copia nao surtiu efeito: o binario instalado nao confere com o pacote.'
+        }
+    }
+    & sc.exe config $FilterName start= boot | Out-Host
+    if ($LASTEXITCODE -ne 0 -or (Get-ItemProperty "HKLM:\SYSTEM\CurrentControlSet\Services\$FilterName").Start -ne 0) {
+        Stop-WithMessage 'Nao foi possivel deixar SafeUpload boot-start.'
+    }
+    Add-Result -Name 'Driver boot-start staged; reboot required' -Passed $true
+    Write-Output 'ProtectionStatus=protection pending reboot'
+    Write-Output 'FilterStartedByDeployment=False'
+    Write-Output 'RebootRequired=True'
+    Write-Output 'Restart Windows, then run this script again to verify boot readiness.'
+    exit 0
+}
 
 if (-not (Test-FilterLoaded)) {
-    $loadOutput | ForEach-Object { Write-Host "  $_" -ForegroundColor Red }
-    Write-Host ''
-    Write-Host '  A mensagem do fltmc costuma enganar. O status real esta no log de eventos:' -ForegroundColor Yellow
-    Write-Host '    Get-WinEvent -LogName System -MaxEvents 40 | Where-Object { $_.Message -like "*SafeUpload*" } | Format-List' -ForegroundColor Yellow
-    Stop-WithMessage 'O filtro nao carregou.'
+    Add-Result -Name 'Boot-start filter readiness' -Passed $false `
+        -Detail 'The matching driver is staged as boot-start but Filter Manager has no loaded instance; a reboot is required.'
+    Write-Output 'ProtectionStatus=protection pending reboot'
+    Write-Output 'FilterStartedByDeployment=False'
+    Write-Output 'RebootRequired=True'
+    exit 0
+}
+
+Write-Step 'Conferindo confianca das instancias carregadas no boot'
+$admission = Get-AdmissionStatusAsSystem
+$cVolumes = @(Get-CimInstance Win32_Volume -Filter "DriveLetter='C:'" -ErrorAction Stop)
+if ($cVolumes.Count -ne 1 -or $cVolumes[0].DeviceID -notmatch '(?i)\{[0-9a-f-]{36}\}') {
+    Stop-WithMessage 'Nao foi possivel identificar o volume C: para conferir o estado boot-start.'
+}
+$cGuid = [regex]::Match($cVolumes[0].DeviceID, '(?i)\{[0-9a-f-]{36}\}').Value
+$cEntries = @($admission.admissionVolumes | Where-Object {
+    ([string]$_.volumeGuid).IndexOf($cGuid, [StringComparison]::OrdinalIgnoreCase) -ge 0
+})
+$cEntry = if ($cEntries.Count -eq 1) { $cEntries[0] } else { $null }
+if ($admission.bootPolicyState -ne 1 -or $null -eq $cEntry -or $cEntry.trustState -ne 3 -or
+    $cEntry.canaryState -ne 2 -or ($cEntry.setupFlags -band 4) -eq 0) {
+    Add-Result -Name 'Boot-start protection readiness' -Passed $false `
+        -Detail (if ($null -ne $cEntry) { $cEntry.protectionStatus + '; bootPolicyState=' + $admission.bootPolicyState } else { 'No C: admission entry.' })
+    Write-Output 'ProtectionStatus=protection pending reboot'
+    if ($null -ne $cEntry) { Write-Output ('VolumeProtectionStatus=' + $cEntry.protectionStatus + ';TrustState=' + $cEntry.trustState) }
+    Write-Output ('BootPolicyState=' + $admission.bootPolicyState)
+    Write-Output 'FilterStartedByDeployment=False'
+    Write-Output 'RebootRequired=True'
+    exit 0
 }
 
 Add-Result -Name 'Filtro carregado' -Passed $true
+Write-Output 'BootTrustVerified=True'
 
 # Do not try to match the column layout of "fltmc instances": it varies with
 # the width of the volume names and gained columns between Windows releases.
@@ -847,6 +931,16 @@ try {
 
     Add-Result -Name 'Arquivo fora de escopo nao e inspecionado' -Passed ($outOfScopeLine -lt 0) `
         -Detail $(if ($outOfScopeLine -lt 0) { 'Nada foi enviado ao modo usuario, como esperado.' } else { 'O caminho apareceu no log: o escopo nao esta filtrando.' })
+
+    # Open a destination before this PowerShell process becomes tainted.
+    # A create-only filter cannot reject the later write through this handle.
+    $preopenedPath = Join-Path $TestDirectory 'aberto-antes-da-marcacao.txt'
+    Remove-Item $preopenedPath -Force -ErrorAction SilentlyContinue
+    $preopened = [System.IO.FileStream]::new(
+        $preopenedPath, [System.IO.FileMode]::Create,
+        [System.IO.FileAccess]::Write, [System.IO.FileShare]::ReadWrite,
+        1, [System.IO.FileOptions]::WriteThrough)
+
     Write-Step 'Caso 7 - ler origem sensivel e permitido, e marca o processo'
 
     # The behaviour that changed with taint. A sensitive source file is no
@@ -896,6 +990,49 @@ try {
     Add-Result -Name 'Nenhum arquivo vazio ficou no destino' -Passed (-not (Test-Path $destinationWrite)) `
         -Detail $(if (Test-Path $destinationWrite) { 'Sobrou um arquivo: a negacao veio do pos-create.' } else { 'Nada foi criado.' })
 
+    $preopenedError = $null
+    try {
+        $preopened.Write([byte[]] @(65), 0, 1)
+        $preopened.Flush()
+    }
+    catch {
+        $preopenedError = $_.Exception
+        if ($preopenedError -is [System.Management.Automation.MethodInvocationException] -and
+            $preopenedError.InnerException) {
+            $preopenedError = $preopenedError.InnerException
+        }
+    }
+    finally {
+        try { $preopened.Dispose() } catch { }
+    }
+
+    $preopenedDenied = $preopenedError -is [System.UnauthorizedAccessException] -or
+        ($preopenedError -is [System.IO.IOException] -and
+         ($preopenedError.HResult -band 0xFFFF) -eq 5)
+
+    Add-Result -Name 'Handle aberto antes da marcacao nao escreve depois dela' `
+        -Passed ($preopenedDenied -and (Get-Item $preopenedPath).Length -eq 0) `
+        -Detail $(if ($preopenedError) { "$($preopenedError.GetType().Name): $($preopenedError.Message)" } else { 'Write e Flush passaram.' })
+
+    # Destination enforcement must not depend on the content-inspection
+    # extension list. The battery policy intentionally omits .bin.
+    $unmonitoredTarget = Join-Path $TestDirectory 'saida-sem-extensao-monitorada.bin'
+    Remove-Item $unmonitoredTarget -Force -ErrorAction SilentlyContinue
+    $unmonitoredDenied = $false
+    try {
+        Set-Content -Path $unmonitoredTarget -Value 'nao deveria existir' -ErrorAction Stop
+    }
+    catch [System.UnauthorizedAccessException] {
+        $unmonitoredDenied = $true
+    }
+    catch {
+        Write-Host "          excecao inesperada: $($_.Exception.GetType().Name)" -ForegroundColor Yellow
+    }
+
+    Add-Result -Name 'Extensao nao monitorada nao contorna o destino' `
+        -Passed ($unmonitoredDenied -and -not (Test-Path $unmonitoredTarget)) `
+        -Detail $(if ($unmonitoredDenied) { 'Acesso negado antes da criacao.' } else { 'A extensao atravessou o destino.' })
+
     Write-Step 'Caso 9 - fora do destino, o processo marcado continua escrevendo'
 
     # Taint must not turn into a blanket ban. A tainted process is refused
@@ -913,6 +1050,22 @@ try {
 
     Add-Result -Name 'Escrita fora de escopo continua permitida' -Passed $freeWriteOk `
         -Detail $(if ($freeWriteOk) { 'A marcacao nao virou proibicao geral.' } else { 'Escrita fora de escopo foi negada: falso positivo grave.' })
+
+    # A destination prefix must end on a folder boundary. The sibling has
+    # the same characters up to the configured path but is a different folder.
+    $siblingDirectory = "$TestDirectory-vizinho"
+    New-Item -ItemType Directory -Path $siblingDirectory -Force | Out-Null
+    $siblingWrite = Join-Path $siblingDirectory 'livre.txt'
+    Remove-Item $siblingWrite -Force -ErrorAction SilentlyContinue
+    $siblingWriteOk = $false
+    try {
+        Set-Content -Path $siblingWrite -Value 'permitido' -ErrorAction Stop
+        $siblingWriteOk = Test-Path $siblingWrite
+    }
+    catch { }
+
+    Add-Result -Name 'Pasta vizinha com mesmo prefixo nao e destino' -Passed $siblingWriteOk `
+        -Detail $(if ($siblingWriteOk) { 'O prefixo terminou no limite da pasta.' } else { 'Pasta vizinha foi bloqueada indevidamente.' })
 
     Write-Step 'Caso 10 - renomear para o destino tambem e negado'
 
@@ -1265,7 +1418,6 @@ else {
                     # exercita o caminho "monitorado mas impossivel de olhar".
                     extensions       = @('.txt', '.csv', '.docx', '.xlsx', '.pdf', '.bin')
                     destinationPaths = @($TestDirectory)
-                    sourcePaths      = @($SourceDirectory)
                     removableDrives  = $true
                     networkPaths     = $true
                 }
@@ -1278,7 +1430,7 @@ else {
             $policy | ConvertTo-Json -Depth 5 | Set-Content -Path $policyFile -Encoding UTF8
 
             Write-Host "  Politica da bateria escrita em $policyFile."
-            Write-Host "    origem  : $SourceDirectory"
+            Write-Host '    origens : todos os arquivos dos formatos monitorados'
             Write-Host "    destino : $TestDirectory"
 
             # O evento e criado antes do processo existir, para o sinal nao
@@ -1327,7 +1479,8 @@ else {
 
                     Write-Host "  CPF sintetico do teste: $cpf"
 
-                    $sensivel = Join-Path $SourceDirectory 'relatorio-com-cpf.txt'
+                    # This fixture is outside the old source prefix on purpose.
+                    $sensivel = Join-Path $OutOfScopeDirectory 'relatorio-com-cpf.txt'
                     $inocente = Join-Path $SourceDirectory 'relatorio-sem-nada.txt'
                     $alvo = Join-Path $TestDirectory 'exfiltrado.txt'
 
@@ -1551,16 +1704,25 @@ catch { 'ERRO:' + $_.Exception.GetType().Name }
                         $filaAuditoria = Join-Path $policyDirectory 'queue.jsonl'
                         $noDestino = Join-Path $TestDirectory 'contrato-no-destino.txt'
 
-                        # Num processo NOVO, como todo o resto desta fase.
+                        # Preparado num processo NOVO e escrevendo o
+                        # conteudo direto - nao copiando a origem.
                         #
-                        # Este PowerShell ja esta marcado - leu os arquivos
-                        # sensiveis nos casos anteriores - e por isso nao
-                        # consegue colocar nada no destino vigiado. A primeira
-                        # versao deste caso usava Copy-Item aqui mesmo e
-                        # morria com acesso negado, o que era o driver
-                        # funcionando e o teste errado.
-                        & powershell.exe -NoProfile -ExecutionPolicy Bypass -Command `
-                            "Copy-Item -LiteralPath '$sensivel' -Destination '$noDestino' -Force" 2>&1 | Out-Null
+                        # Duas armadilhas, as duas ja pisadas. Este PowerShell
+                        # esta marcado, entao nao pode escrever no destino. E
+                        # Copy-Item a partir da origem marca o processo filho:
+                        # copiar le a origem sensivel, o motor acha o CPF, e a
+                        # escrita seguinte e negada. Copiar arquivo sensivel
+                        # para destino vigiado e literalmente o que o produto
+                        # bloqueia - nao serve como preparacao de teste.
+                        #
+                        # Escrever o texto direto nao le origem monitorada
+                        # nenhuma, entao o filho continua limpo e o arquivo
+                        # chega ao destino com o CPF dentro.
+                        try {
+                            & powershell.exe -NoProfile -ExecutionPolicy Bypass -Command `
+                                "Set-Content -LiteralPath '$noDestino' -Value 'Contrato. Responsavel CPF $cpf.' -Encoding UTF8" 2>&1 | Out-Null
+                        }
+                        catch { }
 
                         if (-not (Test-Path $noDestino)) {
 
@@ -1568,13 +1730,13 @@ catch { 'ERRO:' + $_.Exception.GetType().Name }
                                 -Detail 'Nao consegui preparar o arquivo no destino, nem com processo limpo.'
                         }
 
-
                         # Primeira leitura: recusada no pos-create, porque o
                         # conteudo tem CPF e o arquivo esta num destino vigiado.
                         $primeira = $false
                         try { Get-Content -LiteralPath $noDestino -Raw -ErrorAction Stop | Out-Null }
                         catch [System.UnauthorizedAccessException] { $primeira = $true }
                         catch { }
+
 
                         Add-Result -Name 'Arquivo sensivel no destino e recusado' -Passed $primeira `
                             -Detail $(if ($primeira) { 'Recusa no pos-create, como esperado.' } else { 'Passou: nao ha o que justificar depois.' })
@@ -1603,7 +1765,9 @@ catch { 'ERRO:' + $_.Exception.GetType().Name }
                             # caso vem ANTES do legitimo de proposito: se o
                             # servico aceitasse qualquer coisa, o teste
                             # seguinte passaria sem provar nada.
-                            Send-Justificativa -EventId ([guid]::NewGuid().ToString('D')) -Motivo 'sem bloqueio correspondente'
+                            $respostaInventada = Send-Justificativa `
+                                -EventId ([guid]::NewGuid().ToString('D')) `
+                                -Motivo 'sem bloqueio correspondente'
                             Start-Sleep -Milliseconds 600
 
                             $aindaNegado = $false
@@ -1611,16 +1775,26 @@ catch { 'ERRO:' + $_.Exception.GetType().Name }
                             catch [System.UnauthorizedAccessException] { $aindaNegado = $true }
                             catch { }
 
+
                             Add-Result -Name 'Justificativa com identificador inventado nao vale' -Passed $aindaNegado `
                                 -Detail $(if ($aindaNegado) { 'Continua recusado, como deve.' } else { 'A operacao passou: o servico aceitou um identificador que nunca emitiu.' })
 
-                            Send-Justificativa -EventId $eventoId -Motivo 'processo 1234, envio a parte contraria'
+                            Add-Result -Name 'Servico rejeita o identificador inventado' `
+                                -Passed ($respostaInventada -eq 'rejected') `
+                                -Detail "Resposta do pipe: '$respostaInventada'."
+
+                            $respostaValida = Send-Justificativa -EventId $eventoId `
+                                -Motivo 'processo 1234, envio a parte contraria'
                             Start-Sleep -Milliseconds 800
+
+                            Add-Result -Name 'Servico confirma a concessao antes da nova tentativa' `
+                                -Passed ($respostaValida -eq 'accepted') `
+                                -Detail "Resposta do pipe: '$respostaValida'."
 
                             $liberado = $false
                             try {
-                                Get-Content -LiteralPath $noDestino -Raw -ErrorAction Stop | Out-Null
-                                $liberado = $true
+                                $conteudo = Get-Content -LiteralPath $noDestino -Raw -ErrorAction Stop
+                                $liberado = $conteudo.Contains($cpf)
                             }
                             catch { }
 
@@ -1752,6 +1926,7 @@ $renamesFromTainted = 0
 $linksSeen = 0
 $linksFromTainted = 0
 $wouldHaveDenied = 0
+$overridesUsed = 0
 $setInformationSeen = 0
 
 foreach ($line in $counterOutput) {
@@ -1765,6 +1940,7 @@ foreach ($line in $counterOutput) {
     if ($line -match '^LinksSeen\s*:\s*(\d+)') { $linksSeen = [int] $matches[1] }
     if ($line -match '^LinksFromTainted\s*:\s*(\d+)') { $linksFromTainted = [int] $matches[1] }
     if ($line -match '^WouldHaveDenied\s*:\s*(\d+)') { $wouldHaveDenied = [int] $matches[1] }
+    if ($line -match '^OverridesUsed\s*:\s*(\d+)') { $overridesUsed = [int] $matches[1] }
 }
 
 # The cache is the property the design rests on. If it never served a single
@@ -1807,6 +1983,12 @@ Add-Result -Name 'A recusa por marca no pre-create foi contada' -Passed ($denied
 # exatamente o que se quer medir antes de ligar o bloqueio.
 Add-Result -Name 'A auditoria contou o que teria sido negado' -Passed ($wouldHaveDenied -gt 0) `
     -Detail "WouldHaveDenied = $wouldHaveDenied; a fase de auditoria passou por uma operacao que seria negada."
+
+if (-not $SkipServiceTest) {
+    Add-Result -Name 'A justificativa foi consumida uma unica vez pelo kernel' `
+        -Passed ($overridesUsed -eq 1) `
+        -Detail "OverridesUsed = $overridesUsed; o aceite do servico sozinho nao prova que o kernel consumiu a concessao."
+}
 
 Add-Result -Name 'O gancho de SET_INFORMATION e alcancado e libera fora de escopo' `
     -Passed ($renamesSeen -gt 0 -and $renamesFromTainted -gt 0) `
@@ -1890,9 +2072,9 @@ Write-Step 'Driver Verifier'
 # exactly "pool still allocated at unload", so this checks the same
 # condition the Verifier itself would bugcheck on.
 
-if ($KeepLoaded) {
+if ($KeepLoaded -or (Get-ItemProperty "HKLM:\SYSTEM\CurrentControlSet\Services\$FilterName").Start -eq 0) {
 
-    Write-Host '  Filtro mantido carregado a pedido: verificacao de pool pulada.' -ForegroundColor Yellow
+    Write-Host '  Filtro mantido carregado: verificacao de pool pulada.' -ForegroundColor Yellow
     Write-Host '  Com o driver carregado ha alocacoes de vida longa (a politica),' -ForegroundColor DarkGray
     Write-Host '  entao "alocacoes atuais" nao diz nada sobre vazamento.' -ForegroundColor DarkGray
 }
@@ -1929,6 +2111,23 @@ else {
 
                 Add-Result -Name 'Sem vazamento de pool apos o unload' -Passed ($currentValue -eq 0) `
                     -Detail $(if ($currentValue -eq 0) { 'Tudo que foi alocado foi liberado.' } else { "$currentValue alocacoes pendentes." })
+            }
+            else {
+                # Volatile Verifier lists the driver and flags, but does not
+                # print per-driver pool counts after unload. Pool Tracking
+                # checks for outstanding allocations at unload itself.
+                $flags = [regex]::Match($verifierOutput, 'Verifier Flags:\s*0x([0-9a-fA-F]+)')
+                $poolTracking = $flags.Success -and
+                    (([Convert]::ToUInt32($flags.Groups[1].Value, 16) -band 0x8) -ne 0)
+
+                if ($poolTracking) {
+                    Add-Result -Name 'Sem vazamento de pool apos o unload' -Passed $true `
+                        -Detail 'Pool Tracking ativo; unload terminou sem bugcheck. A consulta volatil nao fornece contagem por driver.'
+                }
+                else {
+                    Add-Skipped -Name 'Sem vazamento de pool apos o unload' `
+                        -Reason 'O driver aparece no Verifier, mas Pool Tracking nao esta ativo nem ha contagem disponivel.'
+                }
             }
         }
         else {
@@ -2083,11 +2282,10 @@ else {
     Write-Host 'Tudo passou.' -ForegroundColor Green
 }
 
-if ($KeepLoaded) {
-    Write-Host 'O filtro continua carregado.' -ForegroundColor DarkGray
-    Write-Host 'Para descarregar:  fltmc unload SafeUpload' -ForegroundColor DarkGray
+if ($KeepLoaded -or (Get-ItemProperty "HKLM:\SYSTEM\CurrentControlSet\Services\$FilterName").Start -eq 0) {
+    Write-Host 'O filtro continua carregado; o driver boot-start permanece ativo ate desligar o Windows.' -ForegroundColor DarkGray
 }
 else {
     Write-Host 'O filtro foi descarregado ao final, para a verificacao de pool.' -ForegroundColor DarkGray
-    Write-Host 'Para carregar de novo:  fltmc load SafeUpload' -ForegroundColor DarkGray
+    Write-Host 'Reinicie o Windows para iniciar a proteção com a instalação boot-start.' -ForegroundColor DarkGray
 }

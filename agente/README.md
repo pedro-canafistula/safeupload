@@ -108,6 +108,35 @@ O teste que instala uma CA em `LocalMachine\Root` só roda com
 
 ---
 
+### Instalar como serviço com o minifiltro (protótipo de escrita em estágio)
+
+Somente em VM de teste, com o INF do minifiltro já instalado, em PowerShell **elevado**:
+
+```powershell
+dotnet publish agente\SafeUpload.Agent.Service -c Release -r win-x64 --self-contained false
+.\agente\scripts\Install-SafeUploadAgent.ps1 -ServiceExecutablePath "<caminho>\SafeUpload.Agent.Service.exe"
+sc.exe qsidtype SafeUploadAgent
+```
+
+O script registra o serviço como LocalSystem e configura `SERVICE_SID_TYPE_UNRESTRICTED` para que o token contenha
+`NT SERVICE\SafeUploadAgent`, exigido pelo driver para substituir política e conceder autorizações. Ele não inicia o serviço.
+Instale primeiro o INF do minifiltro e execute o script antes de reiniciar. Ele semeia e verifica `BootPolicy` como SYSTEM,
+mantém o driver em início sob demanda até a semeadura terminar e então o deixa em boot-start. Se a semeadura falhar, a
+instalação para e o driver fica em início sob demanda. O filtro não é iniciado pelo instalador; a proteção ativa depois do reboot.
+
+Antes de ler `policy.json`, o agente exige ACL protegida e explícita, sem ACEs herdadas, com controle total somente para
+SYSTEM e Administradores em `%ProgramData%\SafeUpload` e no arquivo. Se a ACL existente não corresponder, ele recusa o
+arquivo e mantém a última política aplicada em memória; sem uma política válida anterior, não carrega uma política mais fraca.
+A fila local de auditoria (`queue.jsonl`) ainda não é protegida por ACL.
+
+**Limitações do instalador encontradas no teste manual de 08/10/2026** (ver
+[`../driver/evidence/2026-10-08/manual-test-win10-debug/README.md`](../driver/evidence/2026-10-08/manual-test-win10-debug/README.md)):
+o script registra o serviço só com o caminho do executável, mas o protótipo de escrita em estágio precisa de
+`--Interception:Mode=Minifilter --Interception:StagingPrototype=true` na linha de comando do serviço (é assim que a bateria de
+testes o inicia). Sem esses argumentos o agente fica fora do modo em estágio (`admissionCoverage` `NotAvailable`) e o driver recusa
+toda gravação de usuário comum na pasta protegida. A última verificação do script também falha com a saída
+`SERVICE_SID_TYPE:  UNRESTRICTED` do Windows 10 19045, depois de já ter configurado tudo.
+
 ## Integração com o Centro de Administração (HU-10)
 
 Por padrão, o agente é **autônomo**: lê a política de

@@ -6,6 +6,11 @@ using SafeUpload.Agent.Service.Network;
 using SafeUpload.Agent.Service.Notifications;
 using SafeUpload.Agent.Core.Infrastructure;
 using SafeUpload.Agent.Core.Infrastructure.Extraction;
+using System.Runtime.Versioning;
+using System.Security.Principal;
+#if SAFEUPLOAD_ADMISSION_EVIDENCE
+using SafeUpload.Agent.Service.Diagnostics;
+#endif
 
 namespace SafeUpload.Agent.Service;
 
@@ -29,6 +34,24 @@ public static class Program
     /// <summary>Monta e executa o host.</summary>
     public static async Task Main(string[] args)
     {
+        if (args.Contains("--seed-boot-policy", StringComparer.OrdinalIgnoreCase))
+        {
+            if (args.Length != 1)
+            {
+                Environment.ExitCode = FailSeedModeUsage();
+            }
+            else if (!OperatingSystem.IsWindows())
+            {
+                Console.Error.WriteLine("--seed-boot-policy is supported only on Windows.");
+                Environment.ExitCode = 1;
+            }
+            else
+            {
+                Environment.ExitCode = await SeedBootPolicyAsync().ConfigureAwait(false);
+            }
+            return;
+        }
+
         // Comandos de manutenção da CA de inspeção TLS ("ca install", "ca
         // status", "ca remove"). Rodam e encerram, sem subir o serviço.
         if (args.Length > 0 && string.Equals(args[0], "ca", StringComparison.OrdinalIgnoreCase))
@@ -57,9 +80,27 @@ public static class Program
         builder.Services.AddSingleton(ExtractorRegistry.CreateDefault());
         builder.Services.AddSingleton<VerdictCache>();
         builder.Services.AddSingleton<InspectionService>();
+        builder.Services.AddSingleton<INotificationRecord>(services =>
+        {
+            var logger = services.GetRequiredService<ILogger<NotificationRecord>>();
+            try
+            {
+                return new NotificationRecord(Path.Combine(Environment.GetFolderPath(
+                    Environment.SpecialFolder.CommonApplicationData), "SafeUpload", "notifications"), logger);
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Cannot open notification record; all notifications will be suppressed");
+                return new UnavailableNotificationRecord(ex);
+            }
+        });
         builder.Services.AddSingleton<NotificationHub>();
         builder.Services.AddSingleton<PendingOverrides>();
-        builder.Services.AddSingleton<OverrideGrantQueue>();
+        builder.Services.AddSingleton<StagedJustifications>();
+        builder.Services.AddSingleton<OverrideGrantDispatcher>();
+#if SAFEUPLOAD_ADMISSION_EVIDENCE
+        builder.Services.AddSingleton<AdmissionEvidenceEndpoint>();
+#endif
         builder.Services.AddSingleton<ClipboardCopyStore>();
         builder.Services.AddSingleton<ClipboardMetrics>();
         builder.Services.AddSingleton<ClipboardService>();
@@ -175,4 +216,42 @@ public static class Program
 
         await builder.Build().RunAsync();
     }
+
+    private static int FailSeedModeUsage()
+    {
+        Console.Error.WriteLine("--seed-boot-policy must be the only argument.");
+        return 2;
+    }
+
+    [SupportedOSPlatform("windows")]
+    private static async Task<int> SeedBootPolicyAsync()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Console.Error.WriteLine("--seed-boot-policy is supported only on Windows.");
+            return 1;
+        }
+
+        using WindowsIdentity identity = WindowsIdentity.GetCurrent();
+        if (identity.User?.IsWellKnown(WellKnownSidType.LocalSystemSid) != true)
+        {
+            Console.Error.WriteLine("--seed-boot-policy requires the LocalSystem identity.");
+            return 1;
+        }
+
+        try
+        {
+            var writer = new BootPolicyRegistryWriter(new WindowsBootPolicyRegistryBackend());
+            await BootPolicySeeder.SeedAsync(new LocalPolicyStore(), writer,
+                CancellationToken.None).ConfigureAwait(false);
+            Console.WriteLine("BootPolicySeeded=True");
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"Boot policy seed failed: {ex}");
+            return 1;
+        }
+    }
+
 }

@@ -6,11 +6,9 @@ namespace SafeUpload.Agent.Core.Contracts;
 /// <summary>
 /// Uma mensagem do serviço para o aplicativo de bandeja.
 ///
-/// O canal é de mão única, e isso é a regra de arquitetura, não uma limitação
-/// de implementação: o serviço decide, o aplicativo apenas mostra. Não existe
-/// tipo de mensagem no sentido inverso, então nada que o usuário clique na
-/// interface tem como alterar um veredito — a ausência do caminho de volta é a
-/// garantia.
+/// O canal de notificações é de mão única: o serviço decide e o aplicativo
+/// mostra. A justificativa usa outro contrato e outro pipe; o serviço valida
+/// o bloqueio antes de conceder uma nova tentativa.
 ///
 /// Os contratos vivem no <c>Core</c> para que os dois processos compartilhem a
 /// mesma definição sem um terceiro projeto só para isso. Continuam livres de
@@ -19,7 +17,45 @@ namespace SafeUpload.Agent.Core.Contracts;
 [JsonPolymorphic(TypeDiscriminatorPropertyName = "type")]
 [JsonDerivedType(typeof(StatusNotification), StatusNotification.TypeName)]
 [JsonDerivedType(typeof(EventNotification), EventNotification.TypeName)]
+[JsonDerivedType(typeof(TransferNotification), TransferNotification.TypeName)]
 public abstract record AgentNotification;
+
+/// <summary>Progress of a file held locally before release to a protected destination.</summary>
+public enum TransferPhase
+{
+    Analyzing,
+    Released,
+    Blocked,
+    Retained
+}
+
+/// <summary>
+/// Tells the user that a staged write has finished locally and is being checked.
+/// Only metadata crosses the notification pipe; the file stays in the private
+/// staging directory until the service has decided whether to release it.
+/// </summary>
+public sealed record TransferNotification(
+    Guid TransferId,
+    string FileName,
+    TransferPhase Phase,
+    IReadOnlyList<Finding>? Findings = null,
+    bool OverrideAllowed = false,
+    string? PublishedSha256Hex = null,
+    string? HandbackPath = null,
+    bool? HandbackVerified = null,
+    string? SnapshotSha256Hex = null) : AgentNotification
+{
+    public const string TypeName = "transfer";
+}
+
+/// <summary>Current admission-gate coverage for the accepted minifilter policy.</summary>
+public enum AdmissionCoverageStatus
+{
+    NotAvailable,
+    Pending,
+    Ready,
+    Degraded
+}
 
 /// <summary>
 /// O estado da proteção agora.
@@ -36,10 +72,15 @@ public abstract record AgentNotification;
 /// não conseguiu observar as pastas — o aplicativo precisa poder distinguir
 /// "protegido" de "serviço no ar, mas cego".
 /// </param>
+/// <param name="AuditOnly">Há observação ativa, mas nenhuma operação é bloqueada.</param>
 public sealed record StatusNotification(
     int PolicyVersion,
     int ActiveCategories,
-    bool ProtectionActive) : AgentNotification
+    bool ProtectionActive,
+    bool AuditOnly = false,
+    AdmissionCoverageStatus AdmissionCoverage = AdmissionCoverageStatus.NotAvailable,
+    string? AdmissionCoverageReason = null,
+    uint? NativePolicyGeneration = null) : AgentNotification
 {
     /// <summary>Discriminador desta mensagem no NDJSON.</summary>
     public const string TypeName = "status";
@@ -68,7 +109,9 @@ public sealed record StatusNotification(
 /// </param>
 public sealed record EventNotification(
     AuditEvent Event,
-    IReadOnlyList<Finding> Findings) : AgentNotification
+    IReadOnlyList<Finding> Findings,
+    bool OverrideAllowed = false,
+    bool Quarantined = false) : AgentNotification
 {
     /// <summary>Discriminador desta mensagem no NDJSON.</summary>
     public const string TypeName = "event";
