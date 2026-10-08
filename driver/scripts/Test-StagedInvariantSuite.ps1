@@ -2889,7 +2889,7 @@ function Invoke-CachedBlockWindow($Trial,$Actor,$Context,$Baseline,$Terminal,[by
         $Trial.Assertions+=@{Name='C01BlockedOpenSnapshotByteExact';Verdict=$(if($snapshot.Length -eq $ImageA.Length -and [StagedInvariant.Native]::CountDifferences($ImageA,$bytes) -eq 0){'PASS'}else{'FAIL'});Reason='Private snapshot retained byte for byte while verified hand-back window is open.'}
         $confirmed=Get-CachedBlockJournal $Trial $Actor $Terminal.TransferId;$Trial.Assertions+=Test-CachedBlockManifest $confirmed $open $Actor ([StagedInvariant.Native]::Hash($ImageA));$evidence.OpenAfterReads=$confirmed
         do{
-            if([Diagnostics.Stopwatch]::GetTimestamp() -ge $timing.DeadlineQpc){throw 'BLOCK expiry + 120-second margin QPC timeout'}
+            if([Diagnostics.Stopwatch]::GetTimestamp() -ge $timing.DeadlineQpc){$null=Save-StageHandleDump 'block-timeout';throw 'BLOCK expiry + 120-second margin QPC timeout'}
             $entry=Get-CachedBlockJournal $Trial $Actor $Terminal.TransferId
             $closed=$entry.Manifest.JustificationWindowClosed -eq $true
             $check=Test-CachedBlockManifest $entry $open $Actor ([StagedInvariant.Native]::Hash($ImageA)) -RequireClosed:$closed
@@ -2908,7 +2908,7 @@ function Invoke-CachedBlockWindow($Trial,$Actor,$Context,$Baseline,$Terminal,[by
             }
             Start-Sleep -Milliseconds 250
         }while($true)
-        if([Diagnostics.Stopwatch]::GetTimestamp() -ge $timing.DeadlineQpc){throw 'BLOCK cleanup receipt arrived after its QPC deadline'}
+        if([Diagnostics.Stopwatch]::GetTimestamp() -ge $timing.DeadlineQpc){$null=Save-StageHandleDump 'block-late-cleanup';throw 'BLOCK cleanup receipt arrived after its QPC deadline'}
         $Trial.Assertions+=Test-CachedBlockManifest $evidence.Cleanup $open $Actor ([StagedInvariant.Native]::Hash($ImageA)) -RequireClosed -RequireDeleted
         $evidence.CleanupAudit=@{Source='ProtectedProductJournal/CompleteStageCleanupAsync';Artifact=$evidence.Cleanup.Artifact;Sha256=$evidence.Cleanup.Record.Sha256;UpdatedAtUtc=$evidence.Cleanup.Manifest.UpdatedAtUtc;SeparateSuccessEvent='NotEmittedByProduct'}
         $evidence.StageAbsence=Read-InvariantPrivateAbsence -Context $Context -Path $open.Manifest.Transfer.StagePath
@@ -3880,6 +3880,77 @@ public static class SUActivationObjects {
     }finally{$identity.Dispose()}
 }
 
+# Diagnostic only (no assertion reads it): list every process holding an open file handle whose NT name contains the fragment, so a
+# stage file the service cannot delete (C02 BLOCK after a mapped write) can be attributed to a holder. Needs SYSTEM (the suite is).
+function Save-StageHandleDump([string]$Tag,[string]$Fragment='SafeUpload\staging') {
+    try {
+        if(-not ('SUHandleDump' -as [type])){Add-Type -TypeDefinition @'
+using System;using System.Collections.Generic;using System.Runtime.InteropServices;using System.Text;using System.Threading;using System.ComponentModel;using System.Diagnostics;using System.IO;
+public static class SUHandleDump {
+ [DllImport("ntdll.dll")]static extern int NtQuerySystemInformation(int c,IntPtr b,int n,out int length);
+ [DllImport("ntdll.dll")]static extern int NtQueryObject(IntPtr h,int cls,IntPtr b,int n,out int length);
+ [DllImport("kernel32.dll")]static extern IntPtr GetCurrentProcess();
+ [DllImport("kernel32.dll")]static extern bool CloseHandle(IntPtr h);
+ [DllImport("kernel32.dll")]static extern IntPtr OpenProcess(uint access,bool inherit,int pid);
+ [DllImport("kernel32.dll")]static extern bool DuplicateHandle(IntPtr sp,IntPtr sh,IntPtr tp,out IntPtr th,uint access,bool inherit,uint options);
+ [DllImport("advapi32.dll",SetLastError=true)]static extern bool OpenProcessToken(IntPtr p,uint access,out IntPtr token);
+ [DllImport("advapi32.dll",CharSet=CharSet.Unicode,SetLastError=true)]static extern bool LookupPrivilegeValueW(string system,string name,out long luid);
+ [StructLayout(LayoutKind.Sequential,Pack=4)]struct Privilege {public uint Count;public long Luid;public uint Attributes;}
+ [DllImport("advapi32.dll",SetLastError=true)]static extern bool AdjustTokenPrivileges(IntPtr token,bool disable,ref Privilege p,int n,IntPtr old,IntPtr len);
+ static void EnableDebug(){IntPtr token;if(!OpenProcessToken(GetCurrentProcess(),0x28,out token))return;try{long luid;if(!LookupPrivilegeValueW(null,"SeDebugPrivilege",out luid))return;Privilege p=new Privilege();p.Count=1;p.Luid=luid;p.Attributes=2;AdjustTokenPrivileges(token,false,ref p,0,IntPtr.Zero,IntPtr.Zero);}finally{CloseHandle(token);}}
+ static string NameOf(IntPtr h){
+  string result=null;
+  Thread t=new Thread(delegate(){
+   IntPtr buf=Marshal.AllocHGlobal(4096);
+   try{int ret;int st=NtQueryObject(h,1,buf,4096,out ret);if(st==0){int len=Marshal.ReadInt16(buf);IntPtr str=Marshal.ReadIntPtr(buf,8);if(len>0&&str!=IntPtr.Zero)result=Marshal.PtrToStringUni(str,len/2);}}
+   finally{Marshal.FreeHGlobal(buf);}
+  });
+  t.IsBackground=true;t.Start();
+  if(!t.Join(300))return "(name query timed out)";
+  return result;
+ }
+ public static string[] Dump(string fragment){
+  EnableDebug();
+  // Learn the File object type index from a handle this process owns.
+  string probe=Path.GetTempFileName();int fileType=-1;
+  using(FileStream fs=new FileStream(probe,FileMode.Open,FileAccess.Read,FileShare.ReadWrite|FileShare.Delete)){
+   long mine=fs.SafeFileHandle.DangerousGetHandle().ToInt64();int me=Process.GetCurrentProcess().Id;
+   int size=1048576;IntPtr buffer=IntPtr.Zero;
+   try{
+    int returned=0,status;
+    while(true){buffer=Marshal.AllocHGlobal(size);status=NtQuerySystemInformation(64,buffer,size,out returned);if(status==0)break;Marshal.FreeHGlobal(buffer);buffer=IntPtr.Zero;if(status!=unchecked((int)0xc0000004)||size>=268435456)throw new InvalidOperationException("inventory "+status.ToString("X8"));size=Math.Max(size*2,returned+65536);}
+    long count=Marshal.ReadInt64(buffer);
+    for(long i=0;i<count;i++){int o=checked(16+(int)i*40);if(Marshal.ReadInt64(buffer,o+8)==me&&Marshal.ReadInt64(buffer,o+16)==mine){fileType=(ushort)Marshal.ReadInt16(buffer,o+30);break;}}
+    if(fileType<0)throw new InvalidOperationException("file type index not found");
+    List<string> output=new List<string>();Dictionary<int,IntPtr> procs=new Dictionary<int,IntPtr>();
+    for(long i=0;i<count;i++){
+     int o=checked(16+(int)i*40);if((ushort)Marshal.ReadInt16(buffer,o+30)!=fileType)continue;
+     int pid=(int)Marshal.ReadInt64(buffer,o+8);long hv=Marshal.ReadInt64(buffer,o+16);uint access=(uint)Marshal.ReadInt32(buffer,o+24);
+     if(pid==me)continue;
+     IntPtr ph;if(!procs.TryGetValue(pid,out ph)){ph=OpenProcess(0x40,false,pid);procs[pid]=ph;}
+     if(ph==IntPtr.Zero)continue;
+     IntPtr dup;if(!DuplicateHandle(ph,new IntPtr(hv),GetCurrentProcess(),out dup,0,false,2))continue;
+     try{string name=NameOf(dup);if(name!=null&&name.IndexOf(fragment,StringComparison.OrdinalIgnoreCase)>=0){
+       string pname="?";try{pname=Process.GetProcessById(pid).ProcessName;}catch(Exception){}
+       output.Add(pid+"|"+pname+"|0x"+hv.ToString("X")+"|access=0x"+access.ToString("X")+"|"+name);}}
+     finally{CloseHandle(dup);}
+    }
+    foreach(IntPtr p in procs.Values)if(p!=IntPtr.Zero)CloseHandle(p);
+    return output.ToArray();
+   }finally{if(buffer!=IntPtr.Zero)Marshal.FreeHGlobal(buffer);}
+  }
+ }
+}
+'@}
+        $rows=@([SUHandleDump]::Dump($Fragment))
+        $path=Join-Path $evidenceDirectory ('stage-handle-dump-'+$Tag+'.txt')
+        Write-DurableFile $path ((@('Fragment='+$Fragment,'Count='+$rows.Count)+$rows) -join "`n") -New
+        return $path
+    }catch{
+        try{Write-DurableFile (Join-Path $evidenceDirectory ('stage-handle-dump-'+$Tag+'-error.txt')) ($_.Exception.ToString()) -New}catch{}
+        return $null
+    }
+}
 function Initialize-ActivationDuplicate($Trial,$Primary) {
     Start-ScheduledTask -TaskName $state.ActivationActors.Duplicate.Task
     $child=Get-ActivationActorIdentity 'Duplicate'
