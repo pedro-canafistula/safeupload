@@ -2063,3 +2063,18 @@ the batch wrapper before it runs.
   session alone receives a closed pipe). The harness already runs as SYSTEM and retained the origin above. Two
   owned one-shot diagnostic tasks did not produce receipts within their bounded wait; they were unregistered and
   their identified query processes terminated. They supplied no proof and changed no product setting.
+- Alias-result publication race: [Luna follow-up](evidence/2026-10-07/luna-alias-publication-race-review.md)
+  confirms P1 in the shared rename / Apply / Reconcile pipeline. A complete older Outside scan could clear a newer
+  AliasProbePending after the scan released RegistryLock; final promotion CAS predicates cannot protect an Outside
+  result that skips promotion. Partial continuation also reused old union results after pending-policy publication
+  without a live-generation change. Fix: carry the actual scanned rename/transaction versions, live generation,
+  activation stamp and scope-publication sequence; successful consumers recheck the receipt under
+  RegistryLock -> policy cache lock -> StateLock before publishing classification or clearing pending. Stale results
+  leave the newer gate intact for the existing reclaim worker; no timer/scan or sticky-loss relaxation. Continuation
+  records the scanned scope sequence and invalidates on union publication. Windows gate `codex-alias-binding1`: PASS.
+  Exact4WDK build, adversarial re-review and fresh VM qualification remain required; c56ead4f runs are diagnostics.
+- R03 `codexlinka1` completed its guest lifecycle and independently restored cleanly, but host SCP failed with disk
+  quota exceeded: guest case.json is 866,984,096 bytes, host pull was truncated, and host trial.clixml was empty while
+  the guest retained 24,946,754 bytes. It is non-qualifying until complete evidence is recovered and validated.
+  Removed only redundant tracked historical evidence via sparse checkout from completed R02 runner worktrees;
+  all newly generated evidence remains retained, and no active batch tree was edited.

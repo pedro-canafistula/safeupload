@@ -790,6 +790,10 @@ BOOLEAN SafeUploadPolicyRenameLossGenerationEnter(_In_ volatile LONG64 *Instance
     _In_ ULONGLONG ExpectedGeneration, _Out_ _At_(*OldIrql, _IRQL_saves_) PKIRQL OldIrql);
 _IRQL_requires_(DISPATCH_LEVEL)
 VOID SafeUploadPolicyRenameLossGenerationLeave(_In_ _IRQL_restores_ KIRQL OldIrql);
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+_IRQL_requires_max_(DISPATCH_LEVEL)
+ULONGLONG SafeUploadPolicyScopeSequenceSnapshot(VOID);
+#endif
 BOOLEAN SafeUploadPolicyTryEndScopeTransition(_In_ ULONGLONG RenameLossSnapshot,
     _In_ BOOLEAN Finalizing);
 

@@ -645,6 +645,16 @@ __declspec(noinline) VOID SafeUploadPolicyRenameLossGenerationLeave(_In_ _IRQL_r
     SafeUploadReleaseSpinLock(&SafeUploadVolumeScopeCacheLock, OldIrql);
 }
 
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+/* Also changes when a pending scope union is published without a live-generation increment.
+ * Consumers validate under the volume-cache lock held by RenameLossGenerationEnter. */
+_IRQL_requires_max_(DISPATCH_LEVEL)
+__declspec(noinline) ULONGLONG SafeUploadPolicyScopeSequenceSnapshot(VOID)
+{
+    return (ULONGLONG)InterlockedCompareExchange64(&SafeUploadPolicyCoverageSequence, 0, 0);
+}
+#endif
+
 /* Returns FALSE while leaving the apply active if a relevant rename loss
  * raced the caller's scope scan. */
 __declspec(noinline) BOOLEAN SafeUploadPolicyTryEndScopeTransition(
