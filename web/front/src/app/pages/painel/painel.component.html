@@ -4,8 +4,10 @@
 </header>
 
 <div class="grid-kpi">
+
+  <!-- Inspeções realizadas -->
   <div class="kpi-card">
-    <div class="kpi-icon">
+    <div class="kpi-icon kpi-icon--blue">
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor"
            stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
@@ -14,42 +16,58 @@
     </div>
     <div class="kpi-info">
       <span class="kpi-label">Inspeções realizadas</span>
-      <strong class="kpi-value">{{ resumo_inspecoes.inspecoes.toLocaleString('pt-BR') }}</strong>
-      <span class="kpi-trend">+{{ resumo_inspecoes.variacao }}% vs. semana anterior</span>
+      <strong class="kpi-value">{{ resumo.inspecoes.toLocaleString('pt-BR') }}</strong>
+      <span class="kpi-sub kpi-sub--positive">+{{ resumo.variacao }}% vs. semana anterior</span>
     </div>
   </div>
-</div>
 
-<div class="block">
-  <div class="blocked-itens-card">
-    <div class="block-icon">
+  <!-- Bloqueados -->
+  <div class="kpi-card">
+    <div class="kpi-icon kpi-icon--red">
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-            stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+           stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <circle cx="12" cy="12" r="10"/>
         <line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/>
-    </svg>
+      </svg>
     </div>
     <div class="kpi-info">
       <span class="kpi-label">Bloqueados</span>
-      <strong class="kpi-value">{{ resumo_bloqueados.quantidade.toLocaleString('pt-BR') }}</strong>
+      <strong class="kpi-value">{{ resumo.bloqueados.toLocaleString('pt-BR') }}</strong>
+      <span class="kpi-sub">{{ pct(resumo.bloqueados) }}% do total</span>
     </div>
   </div>
-</div>
 
-<div class="aproved">
-  <div class="aproved-itens-card">
-    <div class="aproved-icon">
+  <!-- Aprovados -->
+  <div class="kpi-card">
+    <div class="kpi-icon kpi-icon--green">
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-            stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+           stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <circle cx="12" cy="12" r="10"/>
-        <line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/>
-    </svg>
+        <polyline points="8 12 11 15 16 9"/>
+      </svg>
     </div>
     <div class="kpi-info">
       <span class="kpi-label">Aprovados</span>
-      <strong class="kpi-value">{{ resumo_aprovados.quantidade.toLocaleString('pt-BR') }}</strong>
+      <strong class="kpi-value">{{ resumo.aprovados.toLocaleString('pt-BR') }}</strong>
+      <span class="kpi-sub">{{ pct(resumo.aprovados) }}% do total</span>
     </div>
   </div>
-</div>
 
-<!-- o resto continua com *ngIf="dados" -->
+  <!-- Rejeitados -->
+  <div class="kpi-card">
+    <div class="kpi-icon kpi-icon--yellow">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+        <line x1="12" y1="9" x2="12" y2="13"/>
+        <line x1="12" y1="17" x2="12.01" y2="17"/>
+      </svg>
+    </div>
+    <div class="kpi-info">
+      <span class="kpi-label">Rejeitados</span>
+      <strong class="kpi-value">{{ resumo.rejeitados.toLocaleString('pt-BR') }}</strong>
+      <span class="kpi-sub">{{ pct(resumo.rejeitados) }}% do total</span>
+    </div>
+  </div>
+
+</div>

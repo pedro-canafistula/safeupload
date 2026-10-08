@@ -11,19 +11,29 @@ import { ApiService } from '../../core/api.service';
 export class PainelComponent implements OnInit {
   dados: any;
 
-  // dados fictícios do card
-  resumo_inspecoes = { inspecoes: 1247, variacao: 12 };
-
-  resumo_bloqueados = { quantidade: 89};
-
-  resumo_aprovados = { quantidade: 1000};
+  // dados fictícios (depois troque pelos dados da API)
+  resumo = {
+    inspecoes: 1247,
+    variacao: 12,
+    bloqueados: 89,
+    aprovados: 1135,
+    rejeitados: 23,
+  };
 
   constructor(private api: ApiService) {}
+
+  pct(valor: number): string {
+    const total = this.resumo.inspecoes;
+    return ((valor / total) * 100).toLocaleString('pt-BR', {
+      minimumFractionDigits: 1,
+      maximumFractionDigits: 1,
+    });
+  }
 
   ngOnInit(): void {
     this.api.getPainel().subscribe({
       next: (d: any) => (this.dados = d),
-      error: (e) => console.error('erro painel:', e),
+      error: (e: any) => console.error('erro painel:', e),
     });
   }
 }
