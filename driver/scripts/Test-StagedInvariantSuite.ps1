@@ -6173,19 +6173,30 @@ function Initialize-B02Fixture([int]$Size) {
 }
 function Get-B02JustificationClientBody([string]$NativeType='SUActivationNative') {
 (@'
-     $pipe=[IO.Pipes.NamedPipeClientStream]::new('.','SafeUpload.Agent.Justification',[IO.Pipes.PipeDirection]::InOut,[IO.Pipes.PipeOptions]::Asynchronous)
-     $reader=$null;$writer=$null;$read=$null
+     $pipe=$null;$reader=$null;$writer=$null;$read=$null;$connectAttempt=0;$sent=$false
+     $encoding=[Text.UTF8Encoding]::new($false)
+     $line=@{eventId=[string]$command.TransferId;justification='SafeUpload harness exact-version core'} | ConvertTo-Json -Compress
      try{
-      $pipe.Connect(3000);$serverPid=[uint32]0
-      if(-not [__PIPE_NATIVE__]::GetNamedPipeServerProcessId($pipe.SafePipeHandle,[ref]$serverPid) -or $serverPid -ne [uint32]$command.ServerPid){throw 'Justification pipe server does not match the OS-verified product service PID'}
-      $result.ServerPid=$serverPid;$result.TransferId=[string]$command.TransferId
-      $encoding=[Text.UTF8Encoding]::new($false);$writer=[IO.StreamWriter]::new($pipe,$encoding,1024,$true);$writer.AutoFlush=$true
-      $line=@{eventId=[string]$command.TransferId;justification='SafeUpload harness exact-version core'} | ConvertTo-Json -Compress
-      $write=$writer.WriteLineAsync($line);if(-not $write.Wait(5000)){throw 'Justification request write timeout'};$write.GetAwaiter().GetResult()
+      # The service can still be tearing down the previous instance when the next client connects (B02 dbe1: write on a pipe that was
+      # already broken). A request that never left this client cannot have been processed, so only a broken pipe on the WRITE is retried
+      # on a fresh connection (at most 4 times); the reply handling below is unchanged.
+      while(-not $sent){
+       $connectAttempt++
+       $pipe=[IO.Pipes.NamedPipeClientStream]::new('.','SafeUpload.Agent.Justification',[IO.Pipes.PipeDirection]::InOut,[IO.Pipes.PipeOptions]::Asynchronous)
+       $pipe.Connect(3000);$serverPid=[uint32]0
+       if(-not [__PIPE_NATIVE__]::GetNamedPipeServerProcessId($pipe.SafePipeHandle,[ref]$serverPid) -or $serverPid -ne [uint32]$command.ServerPid){throw 'Justification pipe server does not match the OS-verified product service PID'}
+       $result.ServerPid=$serverPid;$result.TransferId=[string]$command.TransferId;$result.ConnectAttempts=$connectAttempt
+       $writer=[IO.StreamWriter]::new($pipe,$encoding,1024,$true);$writer.AutoFlush=$true
+       try{$write=$writer.WriteLineAsync($line);if(-not $write.Wait(5000)){throw 'Justification request write timeout'};$write.GetAwaiter().GetResult();$sent=$true}
+       catch{
+        if($connectAttempt -ge 4 -or $_.Exception.ToString() -notmatch 'Pipe is broken'){throw}
+        try{$writer.Dispose()}catch{};$writer=$null;try{$pipe.Dispose()}catch{};$pipe=$null;Start-Sleep -Milliseconds 300
+       }
+      }
       $reader=[IO.StreamReader]::new($pipe,$encoding,$false,1024,$true);$read=$reader.ReadLineAsync()
       if(-not $read.Wait(5000)){throw 'Justification response timeout'};$result.Reply=$read.GetAwaiter().GetResult()
       if($result.Reply -cnotin @('accepted','rejected')){throw 'Malformed real justification protocol reply'};$result.NativeCode=0
-     }finally{$pipe.Dispose();if($read -and -not $read.IsCompleted){try{[void]$read.Wait(1000)}catch{}};if($read -and -not $read.IsCompleted){throw 'Justification read did not join after pipe close'};# The pipe is closed first to join the read, so the writer's final flush meets a closed stream (B02 v6c2: "Cannot access a closed pipe"); the request and reply already completed.
+     }finally{if($pipe){$pipe.Dispose()};if($read -and -not $read.IsCompleted){try{[void]$read.Wait(1000)}catch{}};if($read -and -not $read.IsCompleted){throw 'Justification read did not join after pipe close'};# The pipe is closed first to join the read, so the writer's final flush meets a closed stream (B02 v6c2: "Cannot access a closed pipe"); the request and reply already completed.
      if($reader){try{$reader.Dispose()}catch [System.ObjectDisposedException]{}};if($writer){try{$writer.Dispose()}catch [System.ObjectDisposedException]{}}}
 '@
 ).Replace('__PIPE_NATIVE__',$NativeType)
