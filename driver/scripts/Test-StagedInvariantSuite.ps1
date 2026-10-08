@@ -2456,21 +2456,6 @@ function Get-CachedJournalObservation([string]$Tag,$Actor,[string[]]$Paths=@(),[
     }
     return [pscustomobject]@{Status=$(if($snapshot.Status -ceq 'OK' -and -not $errors.Count){'OK'}else{'INCONCLUSIVE'});Entries=$entries;Errors=$errors;Snapshot=$snapshot}
 }
-function Remove-LatencyJournalBytes($Trial) {
-    # case.json is built with ConvertTo-Json, which writes every byte of a byte[] as its own line, and each of the
-    # 101 round snapshots of a dedicated latency trial carries the raw Bytes of every journal record (C05 l4b3:
-    # finalize OutOfMemoryException on a 4 GB guest). The authenticated copies stay on disk with Length and Sha256,
-    # which the host verifies; only a round's terminal record keeps Bytes because the host decodes it.
-    if($null -eq $Trial.DedicatedLatency){return}
-    $keep=@{}
-    foreach($round in @($Trial.DedicatedLatency.Rounds)){if($round.Terminal -and $round.Terminal.Record){$keep[[string]$round.Terminal.Record.Artifact]=$true}}
-    $snapshots=@(@($Trial.JournalSnapshots)+@(@($Trial.DedicatedLatency.Rounds) | ForEach-Object {$_.Snapshot})) | Where-Object {$_ -is [Collections.IDictionary] -and $null -ne $_.Journal}
-    foreach($snapshot in $snapshots){
-        if($snapshot.Contains('JournalBytesOmitted')){continue}
-        $snapshot.Journal=@(@($snapshot.Journal) | ForEach-Object {if($keep.ContainsKey([string]$_.Artifact)){$_}else{$_ | Select-Object -Property * -ExcludeProperty Bytes}})
-        $snapshot['JournalBytesOmitted']=$true
-    }
-}
 function Get-LatencyTransferHints($Tails,[string]$BootId,[string]$InstanceId,[long]$MinimumQpc,[long]$Frequency,[int]$SessionId,$ExcludedIds=@{}) {
     # Authenticated bounded suffixes discover names only. They are neither a
     # complete emission chain nor qualifying round evidence. Partial boundary
@@ -6655,7 +6640,6 @@ $value=$b.ToString().Split([char]0)[0]
         $trial.ForbiddenByteCount=$trial.Predicate.ForbiddenByteCount
     }
     $finalReasons=if(($isActivationCase -or $coreConcurrentCase -or $coreRestartPolicyCase -or $coreJustificationCase) -and $trial.Reasons.Count -gt 0){@($trial.Reasons)}else{@('Seed rows do not qualify Phase4; driver lower mutation ledger and live taint readback unavailable; notification absence requires authenticated durable coverage or whole-window agent absence plus an unchanged authenticated record location')}
-    Remove-LatencyJournalBytes $trial
     $result=[ordered]@{Schema='StagedInvariantSuite/2';TableRevision=$table.TableRevision;CaseRevision=$row.Revision;CaseId=$CaseId;Mode=$Mode;RunName=$RunName;
         Duration=@{CaseMs=$trial.CaseDurationMs;BlockWindowExtraMs=$trial.BlockWindowClosure.DurationMs};CaseStatus='READY';QualificationScope=$row.QualificationScope;Verdict=$trial.Verdict;ForbiddenByteCount=$trial.ForbiddenByteCount;Trials=@($trial);
         InputHashes=@{Table=$ExpectedTableSha256;Observer=$ExpectedObserverSha256;Suite=$ExpectedSuiteSha256;Helper=$ExpectedHelperSha256;

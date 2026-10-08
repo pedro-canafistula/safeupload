@@ -7,7 +7,7 @@ if($errors.Count){throw 'Suite parse failed'}
 foreach($name in @('Test-LatencyTransientIoError','Invoke-LatencyJournalIo','Get-ErrorChain','Get-LatencyTransferHints',
     'ConvertFrom-LatencyManifestRecord','ConvertFrom-ServiceJournalRecord','Test-ServiceJournalStateReachable','Assert-ServiceManifestPath',
     'Get-ServiceDestinationPaths','Invoke-DedicatedLatencyObservation','Get-LatencyVerdict','Write-DurableFile','Initialize-ServiceEvidenceReader',
-    'Remove-LatencyJournalBytes','Assert-CachedAgentExited','Restore-CachedAgent','Complete-CachedAgentQuiescence','Stop-OwnedCachedAgentProcess','Remove-InvariantFixture')){
+    'Assert-CachedAgentExited','Restore-CachedAgent','Complete-CachedAgentQuiescence','Stop-OwnedCachedAgentProcess','Remove-InvariantFixture')){
     $functions=@($ast.FindAll({param($node)$node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -ceq $name},$false))
     if($functions.Count -ne 1){throw ('Missing/ambiguous function: '+$name)}
     Invoke-Expression $functions[0].Extent.Text
@@ -219,17 +219,4 @@ try{
         -not(Test-Path -LiteralPath (Join-Path $actorDirectory 'round-000-next'))) 'Failed completion retains partial evidence and no admission barrier'
     }
 }finally{Remove-Item -LiteralPath $actorDirectory -Recurse -Force}
-# Finalize serialization drops raw journal Bytes from snapshots but keeps each round's terminal record whole.
-$termRecord=[pscustomobject]@{Path='t';Artifact='a\\terminal.json';Length=3;Sha256='AA';Bytes=[byte[]](1,2,3)}
-$otherRecord=[pscustomobject]@{Path='o';Artifact='a\\other.json';Length=2;Sha256='BB';Bytes=[byte[]](4,5)}
-$bytesSnapshot=[ordered]@{Status='OK';Journal=@($termRecord,$otherRecord)}
-$bytesTrial=@{DedicatedLatency=@{Rounds=@(@{Terminal=@{Record=$termRecord};Snapshot=$bytesSnapshot})};JournalSnapshots=@($bytesSnapshot)}
-Remove-LatencyJournalBytes $bytesTrial
-Check ($bytesSnapshot.Journal.Count -eq 2 -and $bytesSnapshot.JournalBytesOmitted -eq $true) 'Snapshot keeps every record and is marked'
-Check (($bytesSnapshot.Journal | Where-Object Artifact -ceq 'a\\other.json').PSObject.Properties.Name -cnotcontains 'Bytes') 'Non-terminal journal Bytes are omitted'
-Check (($bytesSnapshot.Journal | Where-Object Artifact -ceq 'a\\other.json').Sha256 -ceq 'BB' -and ($bytesSnapshot.Journal | Where-Object Artifact -ceq 'a\\other.json').Length -eq 2) 'Omitted record keeps its authenticated hash and length'
-Check ($bytesTrial.DedicatedLatency.Rounds[0].Terminal.Record.Bytes.Length -eq 3) 'Terminal record keeps Bytes for the host decoder'
-$functional=@{DedicatedLatency=$null;JournalSnapshots=@([ordered]@{Journal=@([pscustomobject]@{Artifact='x';Bytes=[byte[]](9)})})}
-Remove-LatencyJournalBytes $functional
-Check ($functional.JournalSnapshots[0].Journal[0].Bytes.Length -eq 1 -and -not $functional.JournalSnapshots[0].Contains('JournalBytesOmitted')) 'Functional trials are untouched'
 Write-Output ('LatencyLiteSelfCheck='+$checks+';PASS;Qualification=False')
