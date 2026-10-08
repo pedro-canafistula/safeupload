@@ -2207,3 +2207,38 @@ stage-absence proof retries while the deleted stage is delete-pending (`35ccd523
 attempts (`acd35a78`: one PS 5.1 read of a 2.5k-line record takes 2.5-5 s, so the 4 s budget allowed a single attempt and a head replaced
 a moment after the last append ended the snapshot with INCONCLUSIVE "tail truncation/head mismatch", which the host runner then reported as
 "Notification location bytes lack unique retained artifact").
+
+## 2026-10-08 (owner decision): freeze at gen4b and a two-tier MVP gate
+
+**Why the gate changes.** After the host reset the status was "0 of 69", which looked like a quality problem. A pass over all 338 suite
+runs retained since 2026-10-04 says it is not: 191 runs measured the leak counter and every one reads `ForbiddenByteCount` 0 (the other 147
+stopped before measuring), no run left a guest dirty, and the best single pair (`mvp4-gen3d` + `agent-gen3b`) had 21 of 69 cells and 17 of 23
+runtime-verifier rows. What kept the count at zero was the process: 45 different driver/agent pairs in four days (every product fix voids all
+earlier cells), 178 harness commits against 74 driver and 17 agent commits, and 86% of verdicts INCONCLUSIVE because an intermediate trace,
+timeline or coverage proof could not be completed, not because an outcome was wrong. The 69-cell gate demanded every proof in every mode plus
+isolated latency runs, which is release-qualification depth.
+
+**Decision (owner, 2026-10-08, "Freeze + two tiers").**
+- The product is frozen at driver `mvp4-gen4b` `5ebe139a` + agent `agent-gen3b` `51ba5873`. It changes again only for a leak, a crash or a
+  Verifier hit; every other finding goes on the known-issues list of the release notes.
+- **Tier 1, all 69 cells:** the run's identity and hashes match the pair, restoration is clean, `ForbiddenByteCount` is 0, no error and no
+  FAIL anywhere, and the row's outcome proofs pass: every assertion PASSes except the trace and coverage depth proofs (`ActualServiceTimelines`,
+  `NotificationExpectation`, `PredicateCoverage`, `NoUnapprovedByte` (the leak counter is the byte proof), `CadenceCoverage`, `CadenceGap`,
+  `ExternalCoverage`, `NeverReadyWholeHolderInterval`, `*PublicationAndTemporalCoverage`, `*HandBackSafeRelativeCreation`, `C05DenialLedger`),
+  where INCONCLUSIVE is tolerated. A case that did not finish (`*Execution`), a missing outcome assertion, a taint-flag failure or a disposal
+  failure still blocks. For A01-A04 only the activation outcome assertions are required: new writable open and section denied, destination
+  unchanged after promotion, unapproved write routed to the owned stream, Ready only after promotion, never Ready while a pre-scope holder
+  lives, Free and protected after the last holder.
+- **Tier 2, the 23 runtime-verifier cells:** the full recomputed MVP gate (every proof), latency excluded.
+- **Latency is reported, not blocking.** `Get-StagedMvpStatus.py` prints the worst p95 and max per write-path class over the qualifying cells; the
+  numbers go into the release notes. Dedicated isolated latency runs are no longer required.
+- `Get-StagedMvpStatus.py <driver> <agent>` implements the tiers from the retained, hash-checked `case.json` files; `--strict` keeps the old
+  all-proofs verdict. Tests: `driver/scripts/test_staged_mvp_tiers.py`. The runner's own `mvp_case_gate` and its tests are unchanged.
+
+**What this gives up.** An internal-mechanism defect that never produces a wrong outcome in these scenarios can pass tiers 1 in ordinary and
+boot-verifier modes; it is still covered by the tier-2 proofs in runtime-verifier mode, by the recorded traces and by Luna's source review. A
+latency regression is visible in the release notes but no longer stops the release.
+
+**Operations.** Run state lives in `/home/victor/Work/safeupload-tools` (pool worker, rollback, exact-build backup), not `/tmp`: the host
+reset at 08:32 wiped `/tmp` and stranded B02 and X01 runs mid-flight on two guests; they were rolled back to their pre-run checkpoints
+(`rollback-vm.sh`, the harness's own rollback) and re-verified `BaselineClean=True` before the sweep restarted.
