@@ -1,16 +1,12 @@
 .page-header h2 { margin: 0; font-size: 26px; color: #0c2d59; }
-.page-header p  { margin: 4px 0 20px; color: #6b7a90; font-size: 14px; }
+.page-header p { margin: 4px 0 20px; color: #6b7a90; font-size: 14px; }
 
 .grid-kpi {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
   gap: 16px;
-  margin-bottom: 24px;
+  margin-bottom: 16px;
 }
-
-/* telas menores: 2 colunas, depois 1 */
-@media (max-width: 1100px) { .grid-kpi { grid-template-columns: repeat(2, 1fr); } }
-@media (max-width: 600px)  { .grid-kpi { grid-template-columns: 1fr; } }
 
 .kpi-card {
   display: flex;
@@ -19,7 +15,7 @@
   padding: 20px;
   background: #fff;
   border: 1px solid #e3eaf3;
-  border-radius: 12px;
+  border-radius: 14px;
 }
 
 .kpi-icon {
@@ -27,17 +23,67 @@
   height: 48px;
   display: grid;
   place-items: center;
+  border-radius: 12px;
+  background: #e8f1fe;
+  color: #2563eb;
+  flex-shrink: 0;
+}
+
+.kpi-info { display: flex; flex-direction: column; }
+.kpi-label { font-size: 13px; color: #5b6b82; }
+.kpi-value { font-size: 32px; font-weight: 700; line-height: 1.1; color: #0c2d59; }
+.kpi-trend { font-size: 12px; color: #15803d; }
+
+
+.block {
+  display: block;
+  margin-bottom: 16px;
+}
+
+.blocked-itens-card {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 20px;
+  background: #fff;
+  border: 1px solid #e3eaf3;
+  border-radius: 14px;
+}
+
+.block-icon {
+  width: 48px;
+  height: 48px;
+  display: grid;
+  place-items: center;
   flex-shrink: 0;
   border-radius: 12px;
+  background: #fdecec;
+  color: #dc2626;
 }
-.kpi-icon--blue   { background: #e8f1fe; color: #2563eb; }
-.kpi-icon--red    { background: #fee2e2; color: #dc2626; }
-.kpi-icon--green  { background: #dcfce7; color: #16a34a; }
-.kpi-icon--yellow { background: #fef3c7; color: #d97706; }
 
-.kpi-info  { display: flex; flex-direction: column; gap: 2px; }
-.kpi-label { font-size: 12px; font-weight: 500; color: #5b6b82; }
-.kpi-value { font-size: 28px; font-weight: 700; line-height: 1.1; color: #0c2d59; }
 
-.kpi-sub          { font-size: 11px; color: #8a97ab; }
-.kpi-sub--positive { color: #15803d; }
+.aproved {
+  display: block;
+  margin-bottom: 16px;
+}
+
+.aproved-itens-card {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 20px;
+  background: #fff;
+  border: 1px solid #e3eaf3;
+  border-radius: 14px;
+}
+
+.aproved-icon {
+  width: 48px;
+  height: 48px;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  border-radius: 12px;
+  background: #dcfce7;
+  color: #16a34a;
+}

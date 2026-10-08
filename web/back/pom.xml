@@ -37,11 +37,16 @@
             <artifactId>spring-boot-starter-data-jpa</artifactId>
         </dependency>
 
-        <!-- Banco em memória utilizado pelos testes de integração. -->
+        <!--
+          H2 em memória: testes de integração, o teste de contrato do CI
+          (agent-contract sobe o .jar com jdbc:h2:mem) e a execução local do
+          README. Precisa estar no .jar, por isso runtime e não test; o banco
+          padrão continua sendo o MySQL de application.properties.
+        -->
         <dependency>
             <groupId>com.h2database</groupId>
             <artifactId>h2</artifactId>
-            <scope>test</scope>
+            <scope>runtime</scope>
         </dependency>
 
         <dependency>
