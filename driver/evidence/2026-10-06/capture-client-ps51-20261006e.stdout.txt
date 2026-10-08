@@ -1,6 +1,0 @@
-PowerShellVersion=5.1.19041.6456
-Invoke-AdmissionEvidenceCapture.SelfCheck.ps1 ParseErrors=0
-Invoke-AdmissionEvidenceCapture.ps1 ParseErrors=0
-AdmissionEvidenceCaptureSelfCheck=PASS; ProtocolFrames=ProducerShaped; PartialRetention=Checked; PipeTransport=LocalFakePipe; Privacy=RawOnly
-SelfCheckExit=0
-ValidationTempAbsent=True

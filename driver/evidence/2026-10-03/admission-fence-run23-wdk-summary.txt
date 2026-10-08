@@ -1,4 +1,0 @@
-normal : configuration=Debug feature=false exit=0 succeeded=True warnings=0 errors=0 apivalidator=True prefast=True artifact_sha256=119af71b4325f5b0ed84ba800e57a8c31894071e300f82c5298876d448fac176
-owned-feature : configuration=Debug feature=true exit=0 succeeded=True warnings=0 errors=0 apivalidator=True prefast=True artifact_sha256=30efe9fbe2c306f74991d02d2e45c4e5df8fe36c9f5deaaa1d5df84249290b12
-normal-release : configuration=Release feature=false exit=0 succeeded=True warnings=0 errors=0 apivalidator=True prefast=True artifact_sha256=c44b9359d74f59caf693d7718b3f2ab6a53d79320dbfe4d51fe2b445765ff0c1
-owned-feature-release : configuration=Release feature=true exit=0 succeeded=True warnings=0 errors=0 apivalidator=True prefast=True artifact_sha256=33e62e026288ada82edad04c5d5e6a7c0f2f28bdb882ee16d2e32fa833391820

@@ -1,4 +1,0 @@
-JournalRecoveryCases=28; LocalSystem=True; PASS
-RetainedFixtureRoot=C:\ProgramData\SafeUpload-JournalProbe-92bcfbbe615f4416846cee7f2c04cd0e
-Result=C:\Users\vika\Documents\journal-recovery-passed-92bcfbbe615f4416846cee7f2c04cd0e.json
-OriginalDriverUnchanged=ADA9D05AB6AECDD2B6C521B0CE529FC06C732154ACB3EE85439FBDC8AA80DFCE

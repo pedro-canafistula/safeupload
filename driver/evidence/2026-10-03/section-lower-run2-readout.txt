@@ -1,5 +1,0 @@
-FAILED outer gate despite SYSTEM exercise Passed=True/Errors=[], Disarmed Mode0/FO0/Held0. NonSYSTEM denied exact HRESULT80070005.
-Actual lower injected failure count1, upper insert delta1 and removed-on-failure delta1, no release, C0; native mapping error1450. Recovery mapping succeeded.
-Exact FO controlled hold: lower CurrentHeld1, upper C1, release mapping succeeded, upper C0, insert/release deltas1/1, no timeout/invalidIRQL/overflow/stuck. Attachment inventory before each arm proved SafeUpload321410 and SectionFault321409 on HarddiskVolume3.
-Outer condition rejected success; stored result proves all non-process predicates were false. The likely cause is Get-Process adapted ExitCode lacking a retained native handle; old harness did not record exit code. Do not relabel run passing. Fix retains Process.Handle before exit and uses get_ExitCode() CLR getter, records exit code and still requires zero.
-Companion and original driver restored; independent BaselineClean=True. Raw result/traces/service logs fetched and SHA verified.

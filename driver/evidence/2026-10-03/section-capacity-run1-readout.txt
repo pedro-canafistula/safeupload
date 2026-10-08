@@ -1,7 +1,0 @@
-PASS: deliberate capacity overflow qualification.
-SourceCommit=952b343b911f69801d73b8a54bc9ac24a1a6492f; HarnessSourceCommit=d0ed108d (full in provenance).
-Mode=ordinary
-66 exactFO lower callbacks held simultaneously, upper C64 and overflow14; complete trace66 exactFO writable acquisitions/no loss.
-All66 lower callbacks and native workers drained after release; no timeout/invalidIRQL. Subsequent mapping succeeded; upper tracker conservatively retains C64 with sticky overflow. Post-drain File-ID probe0x80000040 (Unknown bit +64), PID4/IRQL0/stage8/status0. No File-ID probe while held.
-Ordinary failure/hold subcases also passed. Initial/final canaries and final process exit0 validated. Main/companion restored; independent BaselineClean=True.
-This validates conservative Unknown on real table overflow; does not qualify nested acquisitions or prove an atomic admission epoch.

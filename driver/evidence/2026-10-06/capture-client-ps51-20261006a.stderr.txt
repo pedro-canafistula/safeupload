@@ -1,6 +1,0 @@
-C:\Users\vika\AppData\Local\Temp\SafeUpload-client-ps51-4803d5dff60046f491e9e25471cdc252\Invoke-Adm
-issionEvidenceCapture.SelfCheck.ps1 : Unable to find type [IO.FileSystemRights].
-    + CategoryInfo          : InvalidOperation: (IO.FileSystemRights:TypeName) [Invoke-Admissio... 
-   e.SelfCheck.ps1], RuntimeException
-    + FullyQualifiedErrorId : TypeNotFound,Invoke-AdmissionEvidenceCapture.SelfCheck.ps1
- 

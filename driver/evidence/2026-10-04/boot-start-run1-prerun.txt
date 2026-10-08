@@ -1,7 +1,0 @@
-PRE_RUN_PS: $ErrorActionPreference='Stop';$d='C:\Users\vika\Documents';
-$p=Join-Path $d 'SafeUpload-stage-prototype-mvp2-boot6.sys';if((Test-Path $p) -and (Get-FileHash $p -Algorithm SHA256).Hash -ne 'BBE405F3E8AE47CA8446932ACA1FA4EE914D024A74FB9393809F90F2B36B08AF'){throw 'Existing input hash mismatch'}
-$p=Join-Path $d 'SafeUpload.Inspector.mvp2-boot6.exe';if((Test-Path $p) -and (Get-FileHash $p -Algorithm SHA256).Hash -ne '548A328193AA4FB8F541375633E0A288C14C5460A5E5DD0D379B34FB29D03A21'){throw 'Existing input hash mismatch'}
-$p=Join-Path $d 'stage-service-publish.zip';if((Test-Path $p) -and (Get-FileHash $p -Algorithm SHA256).Hash -ne 'D741904599112EF0BEDB5453595DFA97F800B15BC292DFE5C4B5E90A0AB5F339'){throw 'Existing input hash mismatch'}
-$p=Join-Path $d 'StagedTestAgent-62D8BE1A11DACEA5.ps1';if((Test-Path $p) -and (Get-FileHash $p -Algorithm SHA256).Hash -ne '62D8BE1A11DACEA5157E9C42205AA26C61946CDBEDC37B43822E0A8A17648607'){throw 'Existing input hash mismatch'}
-'PRE_RUN_OK=True'
-

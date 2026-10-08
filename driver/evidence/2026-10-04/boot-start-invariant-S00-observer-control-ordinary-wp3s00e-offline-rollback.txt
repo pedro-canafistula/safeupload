@@ -1,1 +1,0 @@
-Could not determine the checkpoint overlay backing file: /var/lib/libvirt/images/win10-debug.safeupload-pre-boot-start-invariant-S00-observer-control-ordinary-wp3s00e-20261004

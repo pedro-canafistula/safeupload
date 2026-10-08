@@ -1,9 +1,0 @@
-{
-  "agente/SafeUpload.Agent.Minifilter/AdmissionEvidence.cs": "b384778d2c5ecd68ed39d1831f41d2ac38bddadbfcfe5f8c93cf50129eb29a84",
-  "agente/SafeUpload.Agent.Tests/AdmissionEvidenceWireTests.cs": "47f5429a4984e6a736a1bb8b26860c0a0819041b037423e1188a8a2a1154b44b",
-  "agente/SafeUpload.Agent.Service/Diagnostics/AdmissionEvidenceProtocol.cs": "77a19123e7f3e3b48fefd4e9636533989372a87a559391eee9efed2fd29fd9e7",
-  "agente/SafeUpload.Agent.Service/Diagnostics/AdmissionEvidenceCapture.cs": "3a498bed3f89eb60903eaff4dd40694dcb34805f5d74354e26e00991ee0abb64",
-  "agente/SafeUpload.Agent.Service/Diagnostics/AdmissionEvidenceEndpoint.cs": "cd7fd2834346c5a9dd87dea100db145c422ce5c2069a2ab80b7880519268f4ef",
-  "agente/SafeUpload.Agent.Service/Diagnostics/AdmissionEvidenceRunLedger.cs": "111256d0728be57e21b4b3d0b65e14d98f3903280bc19c2de3036273e69cf228",
-  "agente/SafeUpload.Agent.Tests/AdmissionEvidenceEndpointTests.cs": "9c480dac17425d17505846143048ff33835014b74c54f4a81d53a6b0c4b24ce4"
-}

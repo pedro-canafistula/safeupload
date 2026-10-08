@@ -1,8 +1,0 @@
-RV4 lower-W request typedef closure — source-only review
-Date: 2026-10-05
-
-Reviewed current Fault.c SHA-256: `9E7AFB458ED88BC16C9B02884C993209B77609E805E27E40E8B298F1B9E8F38D`; current Protocol.h SHA-256: `306B0E57FB206D7AB63B7793BDADA53B90AE769250D165E14E059C05E903B812`. Current Fault.c Git blob: `9678b7de513328696f34f1760fe58bd5f78987b4`.
-
-The only current diff against the preceding source is the requested parameter spelling at `Fault.c:451`: `SECTION_FAULT_WRITE_REQUEST *Request`. `Protocol.h:39-44` defines the tagged request struct and typedef; it does not define a `PSECTION_FAULT_WRITE_REQUEST` pointer alias. `Protocol.h:67` retains the 24-byte size assertion. The handler call at `Fault.c:561` passes `&writeRequest` where `writeRequest` is declared as that typedef at line 555; the parameter is therefore type-correct and layout-compatible. No request fields, validation, call flow, or wire layout changed. This closes the source blocker.
-
-Source-only disposition: acceptable for the exact build attempt as far as this typedef issue goes. No compile, VM, installation, or runtime qualification was performed by this review.

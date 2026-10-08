@@ -1,5 +1,0 @@
-**ACCEPT** — the scoped false-PASS is corrected. The checkpoint checks parsed new entries’ `DestinationPaths` for the target, with no PID filter. `ConvertFrom-ServiceJournalRecord` obtains that list through `Get-ServiceDestinationPaths`, which includes the current, pending rename, committed rename, and tombstoned destinations.
-
-The controls cover an unrelated PID writing directly to the target, each rename alias with a different current destination, and an incomplete delta yielding `INCONCLUSIVE`. The assertion remains limited to the before/after checkpoints; it does not claim whole-window absence.
-
-No findings. I only inspected bounded snippets and did not rerun the reported harnesses. This is acceptance of the correction only, not A04 qualification; the debuggee runtime remains outstanding.

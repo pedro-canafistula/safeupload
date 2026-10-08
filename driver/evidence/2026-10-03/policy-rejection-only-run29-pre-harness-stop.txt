@@ -1,5 +1,0 @@
-Run29 was stopped by the invocation's artifact guard before the harness ran.
-
-Fresh checkpoint: safeupload-pre-policy-rejection-only-run29-20261003; active disk is recorded in policy-rejection-only-run29-active-disk-after-input-restore.txt. The wrapper's independent baseline was clean. The staged feature driver reported SHA-256 B664C2F3AF7B1BE70BBAFB60ED5901070E736211077AB436C81A8B2587DA00A2, Authenticode Status Valid, and the expected signer thumbprint 220DD82C37FCF36048D59E4F10113185D81D5DC7. A transposed pair of characters in my invocation's expected-hash comparison caused a pre-harness stop; this was a command error, not a driver or policy result. No harness code ran, no driver was loaded, and policy scopes were unchanged.
-
-The independent post-run baseline passed. The feature input, policy harness, and baseline helper were restored to their recorded original SHA-256 hashes, creation/write timestamps, and Archive attributes; the restored baseline is clean. Preserve the checkpoint overlay. A later attempt must derive the expected feature hash from the artifact and cross-check it before invocation.

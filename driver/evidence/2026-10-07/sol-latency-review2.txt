@@ -1,9 +1,0 @@
-## ACCEPT WITH CONDITIONS
-
-I found no remaining concrete defect in the two previously rejected changes.
-
-- **Artifact linkage:** [validate_service_artifacts](/home/victor/Work/safeupload-wt-sol/driver/scripts/Invoke-StagedInvariantQualification.py:391) now checks each available terminal record from the dedicated rounds. It verifies the owned path, copied artifact length and SHA, and—when `Bytes` is present—requires an exact integer byte list matching the copied file. The exporter’s terminal bytes are therefore bound to that artifact.
-- **Partial samples:** [Invoke-DedicatedLatencyObservation](/home/victor/Work/safeupload-wt-sol/driver/scripts/Test-StagedInvariantSuite.ps1:2335) stores each closed receipt and its calls before later validation can fail. The host export computes diagnostic samples before its full acceptance checks and retains the observed rounds. Its full path still requires 101 ordered rounds and the native, timing, image, terminal, identity, and lifecycle checks.
-- **Controls:** The new tests cover forged terminal bytes, incomplete runs with missing terminal proof, preservation of a native code 5 sample, and a full-run budget failure, alongside the other stated controls in [test_staged_dedicated_latency.py](/home/victor/Work/safeupload-wt-sol/driver/scripts/test_staged_dedicated_latency.py:89).
-
-**Condition:** acceptance of actual runtime latency still requires qualification on the debuggee. I do not infer that it occurred from the earlier builder result, which had `Qualification=False`. The available Windows log ends at `SolHarnessWindowsGate=PASS` and does not show completion of the pending Windows rerun, so I give that rerun no pass credit. No files were changed and no VM or network operations were performed.

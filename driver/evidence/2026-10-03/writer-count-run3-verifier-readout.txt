@@ -1,7 +1,0 @@
-Readable extracted counters and verdicts; raw gate remains authoritative.
-WC_Summary=passed:34;failed:0
-WC_StatsBefore=counted:43;released:41;untracked:0;unmatched:1
-WC_StatsAfter=counted:3827;released:3820;untracked:0;unmatched:8;postCreateRuns:3827
-WC_StatsDelta=counted:3784;released:3779;liveDelta:5
-VariantComplete=writer-count
-RestorationSucceeded=True

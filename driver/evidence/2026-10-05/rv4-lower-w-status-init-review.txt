@@ -1,9 +1,0 @@
-RV4 lower-W status initializer (C4701) — source-only review
-Date: 2026-10-05
-Reviewer: Codex gpt-6-luna (high), read-only; orchestrator saved the final answer verbatim.
-
-**Verdict: ACCEPT.** Reviewed `Fault.c` SHA-256: `24765e5787cb4c38aeaf1257c0f89f4fd8217ea87556ed55f3d84be0965d907d`.
-
-In `FaultPreWrite`, `mode` is set to zero on the nonmatching path, which returns before the status check. A nonzero mode reaches that check only through the branch that calls `FltCbdqInsertIo` and assigns its result to `status`. The initializer therefore cannot cause an unqueued operation to return `FLT_PREOP_PENDING`.
-
-The full-file local scan found no other apparent uninitialized-use candidates for C4701/C4703. `git diff --stat` shows one file changed by one insertion and one deletion; `Protocol.h` is unchanged, with no ABI or behavior change evident from the diff. I found no additional compile blockers by reading. No compile or VM was performed.

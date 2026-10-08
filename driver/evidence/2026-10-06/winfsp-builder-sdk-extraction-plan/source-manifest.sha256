@@ -1,7 +1,0 @@
-693517f2a9c03304a628b643e10ac6c316245a9c9ee1aa31700bbd0b9fef8b01  driver/evidence/2026-10-06/winfsp-builder-sdk-extraction-plan/extract-sdk.ps1
-e6756b61e25f7b1ee49d45c7e896275c2440dc04c5da2573f9b7c9a1de9fb3ca  driver/evidence/2026-10-06/winfsp-builder-sdk-extraction-plan/plan.txt
-e582e919eb4adb7e483ea7b97e2a7301401363f0b3f9b69cffea749859c6876a  driver/evidence/2026-10-06/winfsp-v22b4-dependency-preflight-root-readout.json
-24fbc291b6c3964ebf5065bf39c31f7251e2b90ccef4f003bb49d9d2942cc2b5  driver/evidence/2026-10-06/winfsp-msi-v2.2B4-admin-tables.stdout.json
-e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  driver/evidence/2026-10-06/winfsp-msi-v2.2B4-admin-tables.stderr.txt
-ae99555775375a5046a43f28b75bf993a66f824792b9e283f425adf765bf233e  driver/evidence/2026-10-06/winfsp-msi-v2.2B4-admin-tables.exit.json
-54c8479899ecd75c5c5203416d86b1a0b9fc5935928929a31f4262d25d9f0521  driver/evidence/2026-10-06/winfsp-msi-v2.2B4-admin-tables-source.ps1

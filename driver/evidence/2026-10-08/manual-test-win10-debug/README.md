@@ -82,6 +82,12 @@ The MVP package (`stage-service-publish.zip`) contains only the service. The tra
 since `51ba5873`) is not packaged or qualified, so a blocked save is silent: the program reports success and the only trace for the user is
 the hand-back folder. The service still publishes on the `SafeUpload.Agent` pipe and in `C:\ProgramData\SafeUpload\notifications`.
 
+### F8. Microsoft 365 / Word could not be installed with the driver loaded
+The owner started the Microsoft 365 installer as `demo` with protection active. It ran very slowly (Task Manager: disk 100% in bursts;
+measured from the host about 90 MB/s of writes, about 21,000 file-system metadata operations per second in the `System` process, 8,000 in
+the Office installer and 860 in the agent) and then failed with "couldn't use a required file". Not investigated. Next time: make sure
+installers work with the driver loaded (a deployment requirement), and for tests install the applications before installing the driver.
+
 ### F7. Observations, not attributed
 - At 22:33 the agent status was `admissionCoverage:"Pending"`, `admissionCoverageReason:"WriterPromotionPending"` (it had been Ready since the
   restart at about 22:20) while the owner still had Notepad and Explorer windows open on the folder (`guest-state-2233.txt`).

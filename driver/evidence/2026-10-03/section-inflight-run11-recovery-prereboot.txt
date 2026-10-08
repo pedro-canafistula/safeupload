@@ -1,6 +1,0 @@
-UTC=2026-10-03T15:32:08.5752638Z
-
-No settings were changed.
-OriginalInstalledDriverAndPolicyVerified=True
-DriverStartMode=Manual
-Recovery=RebootOriginalInstalledDriverToDropDetachedVhdxInstance

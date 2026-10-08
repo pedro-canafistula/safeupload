@@ -1,2 +1,0 @@
-Domain 'win10' is being shutdown
-

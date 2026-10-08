@@ -1,6 +1,0 @@
-CanonicalProgramFiles=C:\Program Files
-DriveType=Fixed
-DriveFormat=NTFS
-AncestorPass=C:\Program Files
-AncestorPass=C:\
-ParentWalk=PASS

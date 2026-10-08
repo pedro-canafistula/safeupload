@@ -1,2 +1,0 @@
-Vol win10-clean.safeupload-signer-key-bearing-v8-retry1-20261006.qcow2 created from /home/victor/Work/safeupload-staging/driver/evidence/2026-10-06/signing-builder-key-bearing-recovery-v8-retry1/volume-child.xml
-

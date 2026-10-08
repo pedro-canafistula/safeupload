@@ -1,8 +1,0 @@
-PowerShellVersion=5.1.19041.6456
-signing-guard-helpers-v8.ps1 ParseErrors=0
-exact-mvp20261006admissioncap2-replacement-trust-builder-root-v8.ps1 ParseErrors=0
-SelfCheckException=System.Management.Automation.RuntimeException
-SelfCheckScriptStack=at <ScriptBlock>, C:\Users\vika\AppData\Local\Temp\SafeUpload-signing-guard-ps51-7e54f7cfdeb94a8d9ad2da123c8efe78\exact-mvp20261006admissioncap2-replacement-trust-builder-root-v8.ps1: line 106
-at <ScriptBlock>, <No file>: line 9
-SelfCheckExit=1
-ValidationTempAbsent=True

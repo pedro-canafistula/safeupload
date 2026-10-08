@@ -1,5 +1,0 @@
-BuilderHost=DESKTOP-O1LP5DG; UTC=2026-10-02T02:53:26.7201503Z
-DebuggerTasks=0
-DebuggerFirewallRules=0
-DebuggerPortEndpoints=0
-TemporaryAuthorityPresent=False

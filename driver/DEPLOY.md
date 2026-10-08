@@ -1,19 +1,18 @@
 # DEPLOY.md — Minifiltro SafeUpload (v1)
 
-## Protótipo de escrita em estágio (somente VMs de desenvolvimento)
+## Estado atual: MVP de escrita em estágio (08/10/2026)
 
-A branch `feat/staged-kernel-prototype` usa protocolo 12 quando compilada;
-driver e serviço precisam ser compilados juntos. O build padrão não inclui o
-desvio de escrita. Para testar o protótipo isolado, use
-`driver/scripts/Test-StagedCrossVolumePrototype.ps1` na debuggee, com o `.sys`
-assinado e o serviço self-contained publicados no local indicado pelo script.
-Ele cria um VHDX NTFS temporário em S:, confirma recusa sem serviço, confirma
-estágio local e diário `Allocated` com serviço, recusa abertura direta do
-estágio enquanto o filtro está carregado, retém a transferência após reinício
-do serviço, e restaura o driver original.
-Veja `STAGED-WRITES.md` para as limitações. Esse teste não valida proteção
-completa, release nem aplicativos como Word; não instale o protótipo como
-driver operacional.
+O MVP que passou pelo gate é o modo de escrita em estágio: driver `mvp4-gen4b`
+(`5ebe139a`) e agente `agent-gen3b` (`51ba5873`), somente em VM descartável com
+Windows 10 22H2 19045.2965. Para instalar e testar esse modo siga "Install and
+test by hand" em [MVP-PLAN.md](MVP-PLAN.md): o serviço precisa dos argumentos
+`--Interception:Mode=Minifilter --Interception:StagingPrototype=true`, e o
+produto falha fechado (não existe fail-open). O desenho está em
+[STAGED-WRITES.md](STAGED-WRITES.md); o que o driver tem e não tem, os
+problemas conhecidos e o resultado do gate estão em `MVP-PLAN.md`.
+
+O restante deste documento descreve o fluxo anterior, sem estágio (veredito
+direto no kernel, com fail-open conforme a RN-013), e vale somente para ele.
 
 ## Política atual: classificação em qualquer origem
 

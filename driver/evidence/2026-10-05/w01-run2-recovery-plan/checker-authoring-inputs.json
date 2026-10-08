@@ -1,6 +1,0 @@
-{
-  "CheckerSHA256": "25453548c14102f5fb2344bb542033a9cd606598b4821c067aedf67c10da0394",
-  "RemoteInput": "C:/Users/vika/Documents/w01r2-recovery-check-20261006a.ps1",
-  "BuilderUUID": "c6440689-d11c-4c63-a463-f3722b7ddb69",
-  "Validation": "ParseFile plus AST-extracted pure helper controls; full script not invoked"
-}

@@ -1,3 +1,0 @@
-# Execute only after root independently verifies checkpoint host evidence and confirms guest baseline.
-# Run in the pinned guest using the V8 challenge script/helper already staged there.
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File C:\Users\vika\Documents\exact-mvp20261006admissioncap2\exact-mvp20261006admissioncap2-key-bearing-cold-challenge-v8.ps1 -RootApprovedForColdChallenge -KeyBearingCheckpointVerified -ExpectedThumbprint A6D6CE1AA28835D509160A80ADB7894869AADF38 -ExpectedCerSha256 47E7069980A60CBCF4DFF61F0F2D3F02EDCF97C2976708790B49D03A09243B2A -ExpectedCreationMetadataSha256 51701037af41fcc19101e26dd2d632934d20b94190d42782474f68f05abdfc1e

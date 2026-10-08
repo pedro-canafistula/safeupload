@@ -1,1 +1,0 @@
-copied /tmp/safeupload-run26-feature-signed.sys -> SafeUpload-stage-prototype.sys sha256=b664c2f3af7b1be70bbafb60ed5901070e736211077ab436c81a8b2587da00a2

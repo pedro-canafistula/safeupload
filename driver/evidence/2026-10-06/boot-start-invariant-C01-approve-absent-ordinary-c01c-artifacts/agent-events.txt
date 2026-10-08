@@ -1,2 +1,0 @@
-﻿2026-10-06T18:42:40.4536223+01:00 SafeUpload.Agent.Service Warning Category: SafeUpload.Agent.Service.Interception.MinifilterInterceptor EventId: 0 Admission coverage Degraded: WriterStateUnknown (native generation 1). 
-2026-10-06T18:42:40.1356232+01:00 SafeUploadAgent Information Service started successfully.

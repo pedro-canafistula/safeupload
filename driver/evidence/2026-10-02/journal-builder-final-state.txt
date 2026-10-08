@@ -1,3 +1,0 @@
-BuilderUTC=2026-10-02T14:54:06.5175544Z
-KDTasks=0; KDRules=0; KDProcesses=0; Port50000Endpoints=0
-NoDebuggerRetargetingPerformed=True

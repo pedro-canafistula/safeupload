@@ -1,9 +1,0 @@
-CommonBase=/var/lib/libvirt/images/win10-debug.safeupload-recovery-boot-start-invariant-A04-runtime-verifier-rv1s4.qcow2
-Capacity=128849018880
-MemoryMiB=4096
-SourceNvram=/var/lib/libvirt/qemu/nvram/flare_VARS.fd
-Defined win10-debug disk=/var/lib/libvirt/images/win10-debug.parallel-base-202610071429.qcow2
-error: Failed to define domain from /tmp/tmp.W5Rgq5nfxp
-error: operation failed: Unable to find 'efi' firmware that is compatible with the current configuration
-Defined win10-debug2 disk=/var/lib/libvirt/images/win10-debug2.parallel-base-202610071429.qcow2
-Defined win10-debug3 disk=/var/lib/libvirt/images/win10-debug3.parallel-base-202610071429.qcow2

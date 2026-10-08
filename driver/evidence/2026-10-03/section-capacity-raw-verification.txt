@@ -1,4 +1,0 @@
-section-capacity-run1 capacity-held: SHA verified; trace complete; lost0; exactFO acquisitions66
-section-capacity-run1 capacity-probe: SHA verified; trace complete; lost0; PID4/IRQL0/stage8;C=0x80000040 sticky Unknown
-section-capacity-run2-verifier capacity-held: SHA verified; trace complete; lost0; exactFO acquisitions66
-section-capacity-run2-verifier capacity-probe: SHA verified; trace complete; lost0; PID4/IRQL0/stage8;C=0x80000040 sticky Unknown

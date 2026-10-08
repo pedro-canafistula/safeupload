@@ -1,8 +1,0 @@
-Debug: rdata_len=3072 differing_bytes=23 first=1708 last=1862 debugDirRvaOffsetInRdata=-12288 debugDirSize=0
-Debug: differing 16-byte rows at offsets: 1696,1728,1792,1808,1856
-Debug: worktree pdb path string = C:\Users\vika\Documents\safeupload-staging-test\driver\SafeUpload.Minifilter\x64\Debug\SafeUpload.pdb
-Debug: head pdb path string = C:\Users\vika\Documents\safeupload-staging-head\driver\SafeUpload.Minifilter\x64\Debug\SafeUpload.pdb
-Release: rdata_len=3584 differing_bytes=23 first=1708 last=1862 debugDirRvaOffsetInRdata=-16384 debugDirSize=0
-Release: differing 16-byte rows at offsets: 1696,1728,1792,1808,1856
-Release: worktree pdb path string = C:\Users\vika\Documents\safeupload-staging-test\driver\SafeUpload.Minifilter\x64\Release\SafeUpload.pdb
-Release: head pdb path string = C:\Users\vika\Documents\safeupload-staging-head\driver\SafeUpload.Minifilter\x64\Release\SafeUpload.pdb

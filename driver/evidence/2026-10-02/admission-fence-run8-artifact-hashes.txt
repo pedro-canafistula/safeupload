@@ -1,2 +1,0 @@
-b0eb10e8b710cb1c2e26a24bc69aecd4f609bc2e36200ee84fe439c82c1dd423  /tmp/claude-1000/artifacts/SafeUpload.Inspector.exe
-96be5a4de8ddb2fcb3b76ee1b493f058a2314e405de5bd3abafec696863bee44  /tmp/claude-1000/artifacts/SafeUpload-stage-prototype.sys

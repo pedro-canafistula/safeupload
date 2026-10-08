@@ -1,2 +1,0 @@
-HarnessError=The fixed Inspector copy path already exists: C:\Users\vika\Documents\SafeUpload-admission-inspector.exe
-HARNESS_RETURNED

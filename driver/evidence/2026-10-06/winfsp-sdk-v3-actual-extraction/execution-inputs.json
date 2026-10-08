@@ -1,7 +1,0 @@
-{
-  "RunGuid": "ef9bea72fc3545d985354fa5a939179b",
-  "SourceSHA256": "0e0b17a56c528834c91745fbf0e54661561ae7e62c0acde113982f16e5df41cf",
-  "IndependentReviewSHA256": "5032e7ae663a588ccf2d1b92b6c104de0f2a88904c19f39964f98f955af45d4b",
-  "CheckpointSealSHA256": "5de94b5076d620e3932b2951c3dce9844861d27b12eb75f7ec9592b6222da049",
-  "Mode": "MSI administrative public image extraction; no runtime installation"
-}

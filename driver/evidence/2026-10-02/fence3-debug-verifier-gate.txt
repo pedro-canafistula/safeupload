@@ -1,9 +1,0 @@
-VerifierEnabled=volatile flags 0x13B
-FltmcLoadSeconds=0.02
-FltmcLoadExit=0
-FltmcLoadOutput=
-DiagLaunch t+5s state=Ready lastRun=18:26:26 lastResult=0x0 marker=True pid=True powershell=1
-AgentLaunchSeconds=6.47
-Marker=launcher-started 2026-10-02T17:26:56.5682910Z
-PolicyReadyWithin20s=False
-HARNESS_THREW: Exception calling "WaitForExit" with "1" argument(s): "Access is denied"

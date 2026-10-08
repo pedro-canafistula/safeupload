@@ -1,6 +1,0 @@
-Variant=mutation-gates
-FeatureSHA256=A491F57BDF50677DBB9A29C59AECDCC6C0D052FBB85FB17025756676DE2DDC86
-ScriptError=Cannot convert value "-1073741824" to type "System.UInt32". Error: "Value was either too large or too small for a UInt32." (line 85)
-GatesRestoration=OriginalDriverRestored; FilterUnloaded=True
-VariantComplete=mutation-gates
-HARNESS_RETURNED

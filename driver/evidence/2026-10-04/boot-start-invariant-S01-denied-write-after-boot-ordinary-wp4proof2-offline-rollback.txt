@@ -1,1 +1,0 @@
-Could not determine the checkpoint overlay backing file: /var/lib/libvirt/images/win10-debug.safeupload-pre-boot-start-invariant-S01-denied-write-after-boot-ordinary-wp4proof2-20261004

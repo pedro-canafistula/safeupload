@@ -1,3 +1,0 @@
-copied /tmp/claude-1000/artifacts/SafeUpload-stage-prototype.sys -> SafeUpload-stage-prototype.sys sha256=19cae9513995e6fa74fa5e7466a89680df3e326c8eab9df6b8ab4394026e4b23
-copied /tmp/claude-1000/artifacts/SafeUpload.Inspector.exe -> SafeUpload.Inspector.input.exe sha256=7472e87e380a66f20c0b6ef8baa6f89daea60f56ddcdf04fcd02eaf3d19de44e
-copied driver/scripts/StagedTestAgent.ps1 -> StagedTestAgent.ps1 sha256=b1ec2512301a70a063a6e2931ebaddd3ac44a38d37b492c16db6d73814e4e079

@@ -1,3 +1,0 @@
-
-Domain 'win10-debug' saved to /var/lib/libvirt/images/win10-debug.safeupload-w01-run3-ff67c01b-preserved-memory-20261006.save
-

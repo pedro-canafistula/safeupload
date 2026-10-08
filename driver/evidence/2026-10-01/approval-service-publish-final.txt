@@ -1,8 +1,0 @@
-  Determining projects to restore...
-  Restored C:\Users\vika\Documents\safeupload-staging-test\agente\SafeUpload.Agent.Minifilter\SafeUpload.Agent.Minifilter.csproj (in 227 ms).
-  Restored C:\Users\vika\Documents\safeupload-staging-test\agente\SafeUpload.Agent.Core\SafeUpload.Agent.Core.csproj (in 15 ms).
-  Restored C:\Users\vika\Documents\safeupload-staging-test\agente\SafeUpload.Agent.Service\SafeUpload.Agent.Service.csproj (in 278 ms).
-  SafeUpload.Agent.Minifilter -> C:\Users\vika\Documents\safeupload-staging-test\agente\SafeUpload.Agent.Minifilter\bin\Release\net10.0-windows\SafeUpload.Agent.Minifilter.dll
-  SafeUpload.Agent.Core -> C:\Users\vika\Documents\safeupload-staging-test\agente\SafeUpload.Agent.Core\bin\Release\net10.0\SafeUpload.Agent.Core.dll
-  SafeUpload.Agent.Service -> C:\Users\vika\Documents\safeupload-staging-test\agente\SafeUpload.Agent.Service\bin\Release\net10.0-windows\win-x64\SafeUpload.Agent.Service.dll
-  SafeUpload.Agent.Service -> C:\Users\vika\Documents\approval-service\

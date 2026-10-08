@@ -1,84 +1,0 @@
-Debug Directory type is not CodeView
-Debug Directory type is not CodeView
-Debug Directory type is not CodeView
-Debug Directory type is not CodeView
-Debug Directory type is not CodeView
-Debug Directory type is not CodeView
-Debug Directory type is not CodeView
-Debug Directory type is not CodeView
-Debug Directory type is not CodeView
-Debug Directory type is not CodeView
-Debug Directory type is not CodeView
-Debug Directory type is not CodeView
-Debug Directory type is not CodeView
-Debug Directory type is not CodeView
-Debug Directory type is not CodeView
-Debug Directory type is not CodeView
-  % Total    % Received % Xferd  Average Speed  Time    Time    Time   Current
-                                 Dload  Upload  Total   Spent   Left   Speed
-  0      0   0      0   0      0      0      0                              0  0      0   0      0   0      0      0      0                              0  0      0   0      0   0      0      0      0                              0
-  0      0   0      0   0      0      0      0           00:01              0  4  8.15M   4 335.2k   0      0 139.5k      0   00:59   00:02   00:57 293.3k 26  8.15M  26  2.17M   0      0 641.9k      0   00:13   00:03   00:10  0.98M100  8.15M 100  8.15M   0      0  1.85M      0   00:04   00:04          0.98M100  8.15M 100  8.15M   0      0  1.85M      0   00:04   00:04          0.98M100  8.15M 100  8.15M   0      0  1.85M      0   00:04   00:04          0.98M
-Context for CPU #2 is missing
-Context for CPU #3 is missing
-Using Linux mmap
-4 CPU states has been found
-Block 0xfed40080+:0xf80 is too small to align
-CPU #0 CR3 is 0x000000026faa5000
-CPU #0 IDT is at 0xfffff8005440b000
-CPU #0 IDT[0] -> 0xfffff8004fc07f00
-Searching kernel downwards from 0xfffff8004fc07000...
-Checking candidate KernBase = 0xfffff8004f9fc000
-Data directory entry #6: RVA = 0x000021d0
-Checking candidate KernBase = 0xfffff8004f9f3000
-Data directory entry #6: RVA = 0x00004890
-Checking candidate KernBase = 0xfffff8004f9ea000
-Data directory entry #6: RVA = 0x00002180
-Checking candidate KernBase = 0xfffff8004f9d8000
-Data directory entry #6: RVA = 0x00043740
-Checking candidate KernBase = 0xfffff8004f9c9000
-Data directory entry #6: RVA = 0x00010eb0
-Checking candidate KernBase = 0xfffff8004f9ae000
-Data directory entry #6: RVA = 0x0000b4b0
-Checking candidate KernBase = 0xfffff8004f9ad000
-Data directory entry #6: RVA = 0x00021930
-Checking candidate KernBase = 0xfffff8004f990000
-Data directory entry #6: RVA = 0x0001be50
-Checking candidate KernBase = 0xfffff8004f98a000
-Data directory entry #6: RVA = 0x00003fc0
-Checking candidate KernBase = 0xfffff8004f985000
-Data directory entry #6: RVA = 0x00019bf0
-Checking candidate KernBase = 0xfffff8004f97e000
-Data directory entry #6: RVA = 0x00006530
-Checking candidate KernBase = 0xfffff8004f973000
-Data directory entry #6: RVA = 0x00003120
-Checking candidate KernBase = 0xfffff8004f971000
-Data directory entry #6: RVA = 0x0004ade0
-Checking candidate KernBase = 0xfffff8004f95f000
-Data directory entry #6: RVA = 0x00014460
-Checking candidate KernBase = 0xfffff8004f957000
-Data directory entry #6: RVA = 0x000038b0
-Checking candidate KernBase = 0xfffff8004f94f000
-Data directory entry #6: RVA = 0x000179d0
-Checking candidate KernBase = 0xfffff8004f800000
-Data directory entry #6: RVA = 0x00010970
-PDB name is 'ntkrnlmp.pdb', 'ntkrnlmp.pdb' expected
-KernBase = 0xfffff8004f800000, signature is 'MZ'
-PDB URL is https://msdl.microsoft.com/download/symbols/ntkrnlmp.pdb/89284d0ca6acc8274b9a44bd5af9290b1/ntkrnlmp.pdb
-KdDebuggerDataBlock: 0x0000000000c00000(23:'.data') + 0x00000b20 = 0x000c00b20
-KdDebuggerDataBlock = 0xfffff80050400b20
-KdVersionBlock: 0x0000000000c00000(23:'.data') + 0x0000f3a0 = 0x000c0f3a0
-KdVersionBlock = 0xfffff8005040f3a0
-Filling context for CPU #0...
-Filling context for CPU #1...
-Writing header to file...
-Writing block #0/11 of 98304 bytes to file...
-Writing block #1/11 of 4096 bytes to file...
-Writing block #2/11 of 4096 bytes to file...
-Writing block #3/11 of 548864 bytes to file...
-Writing block #4/11 of 65536 bytes to file...
-Writing block #5/11 of 131072 bytes to file...
-Writing block #6/11 of 2146435072 bytes to file...
-Writing block #7/11 of 67108864 bytes to file...
-Writing block #8/11 of 67108864 bytes to file...
-Writing block #9/11 of 8192 bytes to file...
-Writing block #10/11 of 6442450944 bytes to file...

@@ -1,9 +1,0 @@
-PASS: actual lower-stack resource-failure injection and exact-FO controlled hold.
-Mode=runtime Verifier0x13B on main and companion
-SourceCommit=952b343b911f69801d73b8a54bc9ac24a1a6492f; HarnessSourceCommit=52482af1 (full SHA in provenance).
-NonSYSTEM port connection denied HRESULT80070005; actual native inventory before each ARM proves same-volume SafeUpload321410 above SectionFault321409.
-Failure: mapping error1450, lower failure delta1 matches exactFO writable acquire trace1, upper insert delta1 and removed-on-failure delta1, no release, finalC0. Later mapping after disarm succeeded.
-Hold: lowerCurrentHeld1, exactFO trace writable acquire1, upperC1 while callback remains held; release yields successful mapping, upper insert/release deltas1/1, finalC0; no timeout, invalidIRQL, overflow or stuck.
-SYSTEM process exit code0 and Passed=True/errors[]/Disarmed Mode0/FO0/Held0. Initial/final all-volume canaries passed; two disposed records retained as Detached.
-SectionFaultRestored=True, RestorationSucceeded=True, VariantComplete=section-lower; independent BaselineClean=True including companion filter/service/key/binary/process absence.
-Raw result/trace/logs guest/local SHA-verified in section-lower-raw-manifest.json. No file-ID S probe performed while a lower callback was held.

@@ -1,6 +1,0 @@
-Variant=mutation-gates
-FeatureSHA256=A491F57BDF50677DBB9A29C59AECDCC6C0D052FBB85FB17025756676DE2DDC86
-ScriptError=Cannot convert value "C:\Users\vika\Documents\SafeUpload-original-before-fence-gates-bd956ea1acae4253b26c126209006858.sys" to type "System.UInt32". Error: "Input string was not in a correct format." (line 91)
-GatesRestoration=OriginalDriverRestored; FilterUnloaded=True
-VariantComplete=mutation-gates
-HARNESS_RETURNED

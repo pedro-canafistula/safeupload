@@ -1,6 +1,0 @@
-section-lower-run2 failure: exactFO=0xFFFF9F0150326590;writableAcquires=1;releasesAtSnapshot=0;lost=0;snapshotComplete=True
-section-lower-run2 held: exactFO=0xFFFF9F0150326590;writableAcquires=1;releasesAtSnapshot=0;lost=0;snapshotComplete=True
-section-lower-run3 failure: exactFO=0xFFFF9F015032A410;writableAcquires=1;releasesAtSnapshot=0;lost=0;snapshotComplete=True
-section-lower-run3 held: exactFO=0xFFFF9F015032A410;writableAcquires=1;releasesAtSnapshot=0;lost=0;snapshotComplete=True
-section-lower-run4-verifier failure: exactFO=0xFFFF9F0150316EB0;writableAcquires=1;releasesAtSnapshot=0;lost=0;snapshotComplete=True
-section-lower-run4-verifier held: exactFO=0xFFFF9F0150316EB0;writableAcquires=1;releasesAtSnapshot=0;lost=0;snapshotComplete=True

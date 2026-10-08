@@ -1,7 +1,0 @@
-{
-    "Inventory":  "\r\nFilter Name                     Num Instances    Altitude    Frame\r\n------------------------------  -------------  ------------  -----\r\nbindflt                                 0       409800         0\r\nstorqosflt                              0       244000         0\r\nwcifs                                   0       189900         0\r\nCldFlt                                  1       180451         0\r\nFileCrypt                               0       141100         0\r\nluafv                                   1       135000         0\r\nnpsvctrig                               1        46000         0\r\nWof                                     2        40700         0\r\nFileInfo                                4        40500         0\r\n",
-    "Absent":  true,
-    "Services":  [
-
-                 ]
-}

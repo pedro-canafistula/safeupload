@@ -1,9 +1,0 @@
-
-  Building 'SafeUpload.ArchitectureProbe' with toolset 'WindowsKernelModeDriver10.0' and the 'Universal' target platform.
-  Probe.c
-  StageSecurity.c
-  Running Code Analysis for C/C++...
-  Generating Code...
-  SafeUpload.ArchitectureProbe.vcxproj -> C:\Users\vika\Documents\safeupload-staging-test\driver\SafeUpload.ArchitectureProbe\x64\Release\SafeUploadArchitectureProbe.sys
-ApiValidation : error : While Checking file C:\Users\vika\Documents\safeupload-staging-test\driver\SafeUpload.ArchitectureProbe\x64\Release\SafeUploadArchitectureProbe.sys aitstatic is returned exit code 193. [C:\Users\vika\Documents\safeupload-staging-test\driver\SafeUpload.ArchitectureProbe\SafeUpload.ArchitectureProbe.vcxproj]
-C:\Program Files (x86)\Windows Kits\10\build\10.0.28000.0\WindowsDriver.common.targets(2002,5): error MSB3721: The command ""C:\Program Files (x86)\Windows Kits\10\bin\10.0.28000.0\x86\ApiValidator.exe" -DriverPackagePath:C:\Users\vika\Documents\safeupload-staging-test\driver\SafeUpload.ArchitectureProbe\x64\Release\SafeUploadArchitectureProbe.sys -SupportedApiXmlFiles:"C:\Program Files (x86)\Windows Kits\10\build\10.0.28000.0\universalDDIs\x64\UniversalDDIs.xml" -ModuleWhiteListXmlFiles:"C:\Program Files (x86)\Windows Kits\10\build\10.0.28000.0\universalDDIs\x64\ModuleWhiteList.xml" -ApiExtractorExePath:"C:\Program Files (x86)\Windows Kits\10\bin\10.0.28000.0\x86" " exited with code -1. [C:\Users\vika\Documents\safeupload-staging-test\driver\SafeUpload.ArchitectureProbe\SafeUpload.ArchitectureProbe.vcxproj]

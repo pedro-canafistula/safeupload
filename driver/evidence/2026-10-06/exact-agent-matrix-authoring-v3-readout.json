@@ -1,8 +1,0 @@
-{
-  "UTC": "2026-10-06T15:33:23.632300+00:00",
-  "Source": "driver/scripts/Build-ExactAgentMatrix.ps1",
-  "SHA256": "a04724507a2eabc90c541759c6135f7f3d06786e8dfefb5eb0eac2a34d382cb0",
-  "RemoteExit": 0,
-  "ParserErrorsZero": true,
-  "AgentMatrixRunComplete": false
-}

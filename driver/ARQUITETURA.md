@@ -21,7 +21,7 @@ Ainda faltam ACLs que preservem essa proteção após unload, o acompanhamento d
 último handle de escrita, a visualização de diretórios, renames e hard links
 virtuais, a liberação autenticada, USB/UNC e testes de aplicativo. Portanto
 o protótipo não substitui o caminho operacional por contaminação de processo.
-Detalhes e roteiro: `STAGED-WRITES.md`.
+Desenho: `STAGED-WRITES.md`; estado do MVP, limitações e roteiro: `MVP-PLAN.md`.
 
 ### Atualização: classificação independente da pasta de origem
 
@@ -882,8 +882,8 @@ valor para x86 mesmo no host Windows x64. O script
 `MSBuild\Current\Bin\amd64\MSBuild.exe`. Debug/Release normal e experimental
 passaram com zero avisos/erros, PREfast/DriverRecommendedRules e ApiValidator
 ativos. Não foi preciso desabilitar validação nem otimização. Para builds
-manuais use também MSBuild nativo x64. Evidência e reprodução:
-[STAGED-WRITES.md](STAGED-WRITES.md).
+manuais use também MSBuild nativo x64. Evidência e reprodução: o histórico
+completo de `STAGED-WRITES.md` e de `driver/evidence` na tag `mvp-history-2026-10-08`.
 
 ---
 

@@ -1,6 +1,0 @@
-RV4 lower-W reply typedef compile fix — source-only review
-Date: 2026-10-05
-
-Exact reviewed diff: `driver/SafeUpload.SectionFault/Fault.c` SHA-256 `7BE91336E3B71D696FE08AAC6789C6E7B8FBFAC04BBDA6C15AB5DF5F8D40A187` against base `1571ca76`; `Protocol.h` unchanged SHA-256 `306B0E57FB206D7AB63B7793BDADA53B90AE769250D165E14E059C05E903B812` (recomputed from file).
-
-`Protocol.h:45-66` defines `SECTION_FAULT_WRITE_REPLY` but does not define a `PSECTION_FAULT_WRITE_REPLY` alias. The current two signatures at `Fault.c:424,451-452` now use `SECTION_FAULT_WRITE_REPLY *`, matching the actual wire type. Call sites pass `&writeReply` (`Fault.c:556-561`) and fill/forward the same buffer (`528`); no field, size, alignment, behavior, or wire ABI changed. This closes the undefined-type source blocker. The two-line signature correction is acceptable by source inspection only; no build, VM, or runtime check was performed.

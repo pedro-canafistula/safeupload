@@ -1,6 +1,0 @@
-Running C04-approve / runtime-verifier
-SelectedInvariantGate=FAIL
-Phase4Suite=FAIL
-CompleteTableAndModes=False
-SelectedMvpGate=FAIL
-MvpSuite=FAIL

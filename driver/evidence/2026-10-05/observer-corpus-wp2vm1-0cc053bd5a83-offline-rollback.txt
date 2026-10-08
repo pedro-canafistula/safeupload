@@ -1,1 +1,0 @@
-Could not determine the checkpoint overlay backing file: /var/lib/libvirt/images/win10-debug.safeupload-pre-observer-corpus-wp2vm1-0cc053bd5a83-20261005

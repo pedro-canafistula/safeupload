@@ -1,4 +1,0 @@
-Build attempt FAILED overall: summary not written due to terminating native signtool /pa error.
-Debug and Release WDK logs show build succeeded, zero warnings/errors, PREfast and ApiValidator.
-Signed binary fetched but not used on any VM. Builder has signing key but test root is not trusted, chain verification failed.
-Preserved build output, both WDK logs, sign output, source manifest/provenance. Corrected build tool records chain validation separately; debuggee continues to require Valid signature + pinned thumbprint before install.

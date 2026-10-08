@@ -1,2 +1,0 @@
-PinnedBuilderIdentityAndNoActorsVerified=True; NormalShutdownRequested=True; ForcedShutdown=False
-NormalShutdownNativeExitCode=0

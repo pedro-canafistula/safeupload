@@ -1,4 +1,0 @@
-PRE_RUN_PS: if (-not (Test-Path 'C:\Users\vika\Documents\SafeUpload-stage-pre-admission.sys')) { Copy-Item 'C:\Users\vika\Documents\SafeUpload-stage-prototype.sys' 'C:\Users\vika\Documents\SafeUpload-stage-pre-admission.sys' }; 'preserved old feature SYS: ' + (Get-FileHash 'C:\Users\vika\Documents\SafeUpload-stage-pre-admission.sys' -Algorithm SHA256).Hash
-preserved old feature SYS: ACED8226913E062E5D3EE6FD0CF96963C3FD2C1FB2242EDBEDBB00768CCD44F8
-copied /tmp/claude-1000/artifacts/SafeUpload-stage-prototype.sys -> SafeUpload-stage-prototype.sys sha256=5c4d04f50f37ca477110b5d496f8698c791842030e7d14ac3834704f70eec516
-copied /tmp/claude-1000/artifacts/SafeUpload.Inspector.exe -> SafeUpload.Inspector.input.exe sha256=84d7857b61fc930ffe3ca37602ab494d71c4d353ea9960ae7a819431a31ea8a0

@@ -1,6 +1,0 @@
-Running C03-approve-existing / runtime-verifier
-SelectedInvariantGate=FAIL
-Phase4Suite=FAIL
-CompleteTableAndModes=False
-SelectedMvpGate=FAIL
-MvpSuite=FAIL

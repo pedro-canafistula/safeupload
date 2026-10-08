@@ -1,4 +1,0 @@
-CAPTURED=/home/victor/Work/safeupload-wt-sol/output/exact-agent-matrix/sol-agent-b19-matrix
-DELIVERED; builder identity and frozen input pins verified
-BUILD_RETURNED=0; collecting retained evidence
-ExactAgentMatrixGate=PASS; {"normal-debug": 353, "normal-release": 353, "feature-debug": 416, "feature-release": 416}

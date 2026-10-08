@@ -1,3 +1,0 @@
-﻿$ErrorActionPreference='Stop'
-if((Get-FileHash -LiteralPath 'C:\Users\vika\Documents\Frozen-agent-ownerdiag-20261006e.ps1' -Algorithm SHA256).Hash -ne '2cbe579f26be5d8e22e7932212bcb577459c30d8c1daeda6a66e7b31c1537b8a'){throw 'Build tool changed'}
-& 'C:\Users\vika\Documents\Frozen-agent-ownerdiag-20261006e.ps1' -Label 'agent-ownerdiag-20261006e' -ArchiveSha256 '4cd25d82916672d43383649f2c7e062b9422028eaefed5bc1bc0c65271a27258' -ManifestSha256 'cb5bf0971940aa1d3eec2514395629ef332311a991f7ca8e8261fa379758a8ba' -DiagnosticCompileOnly

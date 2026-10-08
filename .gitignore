@@ -581,3 +581,8 @@ Windows-driver-samples/
 # diretorio, e nao cobre bin/ nem obj/ dos projetos C#.
 [Bb]in/
 [Oo]bj/
+
+# Raw harness/VM evidence stays local; curated files are added with `git add -f` (see driver/evidence/README.md).
+# Full raw history: tag mvp-history-2026-10-08.
+/driver/evidence/*
+!/driver/evidence/README.md

@@ -1,5 +1,0 @@
-** WARNING: connection is not using a post-quantum key exchange algorithm.
-** This session may be vulnerable to "store now, decrypt later" attacks.
-** The server may need to be upgraded. See https://openssh.com/pq.html
-scp: write remote "C:/Users/vika/Documents/sol-c02diag1-memory/guest.dmp": Failure
-scp: failed to upload file /var/tmp/safeupload-sol-c02diag1.dmp to C:/Users/vika/Documents/sol-c02diag1-memory/guest.dmp

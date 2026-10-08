@@ -1,3 +1,0 @@
-OriginalDebuggerHostPortKeyVerified=True
-GuestPrivateDebuggerConfigAbsent=True
-BuilderDebuggerTasks=0; ScopedFirewallRules=0; Endpoints=0; PrivateConfigPresent=False

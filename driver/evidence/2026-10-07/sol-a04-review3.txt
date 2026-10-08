@@ -1,5 +1,0 @@
-**REJECT — one remaining false-PASS path.**
-
-[NoJournalAtChildMutationCheckpoints](</home/victor/Work/safeupload-wt-sol/driver/scripts/Test-StagedInvariantSuite.ps1:2858>) checks only `Entry.Transfer.DestinationPath`. The journal parser also recognizes `PendingRename.DestinationPath`, `LastRenameDestination`, and namespace tombstone paths through `DestinationPaths` ([suite.ps1:1855](</home/victor/Work/safeupload-wt-sol/driver/scripts/Test-StagedInvariantSuite.ps1:1855>), [suite.ps1:1875](</home/victor/Work/safeupload-wt-sol/driver/scripts/Test-StagedInvariantSuite.ps1:1875>)). If a new entry names the exact target only through one of those fields, `$exact` stays empty and a complete delta can report PASS. Check the normalized destination paths for the exact target.
-
-The other listed fixes appear in the inspected functions. I did not run tests or runtime qualification; debuggee qualification remains outstanding.

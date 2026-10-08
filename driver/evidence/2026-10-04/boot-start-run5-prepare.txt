@@ -1,7 +1,0 @@
-PolicyAclVerified=True;Trustees=SYSTEM,Administrators;InheritedAces=0
-[SC] ChangeServiceConfig SUCCESS
-BootServiceSettings=Start:0;ErrorControl:1;Group:FSFilter Anti-Virus;Depend:FltMgr;Type:2;PASS
-PrepareRollbackReason=SYSTEM boot-policy writer timed out.
-[SC] ChangeServiceConfig SUCCESS
-No settings were changed.
-HARNESS_THREW: SYSTEM boot-policy writer timed out.

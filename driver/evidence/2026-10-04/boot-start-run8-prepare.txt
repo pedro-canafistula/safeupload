@@ -1,1 +1,0 @@
-HARNESS_THREW: A prior boot-start state directory exists.

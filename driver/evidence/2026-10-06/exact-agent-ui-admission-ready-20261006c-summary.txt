@@ -1,7 +1,0 @@
-﻿SourceManifestSHA256=FE005DCBF87216CB8A08E46C5EF7DB8BA2CD791356374673A1FA68EFD1BBB939
-normal-debug: exit=0 warnings=0 errors=0
-normal-release: exit=0 warnings=0 errors=0
-feature-debug: exit=0 warnings=0 errors=0
-feature-release: exit=0 warnings=0 errors=0
-UiBuildGate=True
-BUILD_END_UTC=2026-10-06T17:30:37.4576575Z

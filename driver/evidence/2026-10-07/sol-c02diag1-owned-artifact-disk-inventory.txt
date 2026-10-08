@@ -1,6 +1,0 @@
-
-FullName                                                  Length
---------                                                  ------
-C:\Users\vika\Documents\sol-c02diag1-memory\guest.dmp 6896156672
-
-

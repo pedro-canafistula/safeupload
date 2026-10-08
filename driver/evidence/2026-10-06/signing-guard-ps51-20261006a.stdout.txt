@@ -1,6 +1,0 @@
-PowerShellVersion=5.1.19041.6456
-signing-guard-helpers-v5.ps1 ParseErrors=0
-exact-mvp20261006admissioncap2-signing-guard-fixture-v5.ps1 ParseErrors=0
-{"Status":"V5_MEMORY_ONLY_FIXTURE_PASS","PowerShellVersion":"5.1.19041.6456","FileOrKeyOpened":false,"CertificateStoreRead":false,"FilesystemAclReadOrWritten":false,"TrustChanged":false,"VmContacted":false,"ConstructedReadMask":1179785,"ConstructedReadRights":"Read, Synchronize","ExactOneAceDeltaAccepted":true,"ExistingFullControlRejected":true,"ExtraRightsAndUnexpectedAceRejected":true,"OwnerGroupProtectionDriftRejected":true,"TypedEkuPositiveAccepted":true,"DuplicateExtensionsAndPurposesRejected":true,"MalformedEkuRejected":true}
-SelfCheckExit=0
-ValidationTempAbsent=True

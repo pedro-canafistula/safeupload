@@ -1,3 +1,0 @@
-IndependentObserverHostUtc=2026-10-02T02:03:29.290403+00:00
-BuilderDebuggerTasks=0; ScopedFirewallRules=0; Endpoints=0; PrivateConfigPresent=False
-BuilderTemporaryDebuggerFixturesAbsent=True

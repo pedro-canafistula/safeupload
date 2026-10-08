@@ -1,9 +1,0 @@
-{
-  "driver/evidence/2026-10-06/signing-builder-trusted-v10-host-checkpoint-v2/execute-checkpoint.py": "da78064ba4e297fd4977847ca031b1b1c36d402d0c9d4863a9b21940caba9ac6",
-  "driver/evidence/2026-10-06/signing-builder-trusted-v10-host-checkpoint-v2/inputs.json": "2b6bd3de275e58ac195a280c0fecdd361d723cc66281ec7bce54eee60b74c0d7",
-  "driver/evidence/2026-10-06/signing-builder-trusted-v10-host-checkpoint-v2/domain-initial.xml": "880937605fa5aee09ce5f6f68b077047614d3902384678217c517c4bfb1609e0",
-  "driver/evidence/2026-10-06/signing-builder-trusted-v10-host-checkpoint-v2/domain-child.xml": "2bd5f734d9fcada24e63a94fddca02652d4ebc9282e08d517e9c89f6e6173c91",
-  "driver/evidence/2026-10-06/signing-builder-trusted-v10-host-checkpoint-v2/domain-live-preflight.xml": "3e9550da6e75e9d5986bfbd0a7797770e41ca8b100d7d126d8b9d27139a6cc3b",
-  "driver/evidence/2026-10-06/signing-builder-trusted-v10-host-checkpoint-v2/volume-child.xml": "b180f336c94e9314c492032111535978d25609021947e2edc6d9106ccf0e105e",
-  "driver/evidence/2026-10-06/signing-builder-trusted-v10-host-checkpoint-v2/plan.md": "130779884ac21b97c5680c4d4a3e5c4ba04e2a8946a9b7bbb8e985a9dc08e4cf"
-}

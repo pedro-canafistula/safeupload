@@ -1,1 +1,0 @@
-HARNESS_THREW: Illegal characters in path.

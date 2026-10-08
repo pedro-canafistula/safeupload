@@ -1,2 +1,0 @@
-ERRO: resposta de admission-coverage invalida (hr = 0x80070002, bytes = 0).
-exit=3

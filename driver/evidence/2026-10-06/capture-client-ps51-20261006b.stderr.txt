@@ -1,8 +1,0 @@
-C:\Users\vika\AppData\Local\Temp\SafeUpload-client-ps51-0376c1c3f51c4cae89998e1a05578aea\Invoke-Adm
-issionEvidenceCapture.SelfCheck.ps1 : Exception setting "BindingGeneration": "The property 
-'BindingGeneration' cannot be found on this object. Verify that the property exists and can be 
-set."
-    + CategoryInfo          : NotSpecified: (:) [Invoke-Admissio...e.SelfCheck.ps1], SetValueInvoc 
-   ationException
-    + FullyQualifiedErrorId : ExceptionWhenSetting,Invoke-AdmissionEvidenceCapture.SelfCheck.ps1
- 
