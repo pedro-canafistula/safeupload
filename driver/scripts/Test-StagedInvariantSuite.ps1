@@ -1494,6 +1494,17 @@ function ConvertFrom-NotificationRecord($Segments,[byte[]]$HeadBytes) {
     # 1 MB segment and one ConvertFrom-Json per line made a single read cost 2.5-5 s under load, which was longer than the fence wait allowed.
     if($null -eq $script:NotificationLineCache -or $script:NotificationLineCache.Count -gt 20000){$script:NotificationLineCache=[Collections.Generic.Dictionary[string,object]]::new([StringComparer]::Ordinal)}
     try {
+        # Reject a torn read (head replaced a moment after the last append) before the expensive per-line validation, so a retry costs milliseconds:
+        # the head authenticates exactly the hash of the final line of the final segment, the same equality the full check repeats below.
+        if($Segments.Count -gt 0 -and $HeadBytes.Length -gt 0 -and $HeadBytes.Length -le 4096){
+            [byte[]]$tailBytes=$Segments[$Segments.Count-1].Bytes
+            if($tailBytes.Length -gt 1 -and $tailBytes[$tailBytes.Length-1] -eq 10){
+                $tailStart=[Array]::LastIndexOf($tailBytes,[byte]10,$tailBytes.Length-2)+1;$tailLength=$tailBytes.Length-1-$tailStart
+                $earlyHead=$utf8.GetString($HeadBytes) | ConvertFrom-Json
+                if($tailLength -gt 0 -and $tailLength -lt 16384 -and
+                    ([BitConverter]::ToString($sha.ComputeHash($tailBytes,$tailStart,$tailLength))).Replace('-','') -cne [string]$earlyHead.Sha256){throw 'Notification tail truncation/head mismatch.'}
+            }
+        }
         foreach($segment in $Segments){
             [byte[]]$bytes=$segment.Bytes
             if($bytes.Length -eq 0 -or $bytes.Length -gt 4194304 -or $bytes[$bytes.Length-1] -ne 10){throw 'Notification segment empty, oversized, or partial.'}
@@ -1586,7 +1597,7 @@ function Get-NotificationSnapshot([string]$Tag,[string]$BootId,[long]$MinimumQpc
     $start=[Diagnostics.Stopwatch]::GetTimestamp();$frequency=[Diagnostics.Stopwatch]::Frequency
     $deadline=$start+[long](30*$frequency);$readDeadline=$start+[long](4*$frequency);$reason='Notification record unavailable.'
     $wait=[ordered]@{StartQpc=$start;DeadlineQpc=$deadline;EndQpc=$null;QpcFrequency=$frequency;MinimumQpc=$MinimumQpc;
-        TimeoutSeconds=30;PollMilliseconds=100;DurationMs=$null;Covered=$false;TimedOut=$false;Attempts=@()}
+        TimeoutSeconds=30;PollMilliseconds=100;DurationMs=$null;Covered=$false;TimedOut=$false;ParseExcludedMs=0.0;Attempts=@()}
     $inventoryWait=[ordered]@{StartQpc=$null;DeadlineQpc=$null;OuterDeadlineQpc=$deadline;EndQpc=$null;QpcFrequency=$frequency;
         TimeoutSeconds=5;PollMilliseconds=25;DurationMs=$null;Cleared=$false;TimedOut=$false;Windows=@();Observations=@()}
     $readFailures=0
@@ -1659,13 +1670,17 @@ function Get-NotificationSnapshot([string]$Tag,[string]$BootId,[long]$MinimumQpc
             }
             if((@($names | Sort-Object) -join '|') -cne ($afterNames -join '|')){throw 'Notification location inventory changed during read.'}
             $snapshot.LocationStatus='OK';$snapshot.ReadQpc=[Diagnostics.Stopwatch]::GetTimestamp()
+            # Parsing is collector CPU, not product emission delay: the observation time is ReadQpc and the wait budget is extended by the parse time.
+            $parseStart=[Diagnostics.Stopwatch]::GetTimestamp()
             $record=ConvertFrom-NotificationRecord $segments $headBytes
+            $parseTicks=[Diagnostics.Stopwatch]::GetTimestamp()-$parseStart
+            $deadline+=$parseTicks;$wait.DeadlineQpc=$deadline;$wait.ParseExcludedMs+=1000.0*$parseTicks/$frequency
             $tail=$record.Entries[$record.Entries.Count-1].Entry
             $snapshot.Entries=$record.Entries;$snapshot.Head=$record.Head
             $coverage=Get-NotificationTailCoverage $tail $BootId $snapshot.QpcFrequency $MinimumQpc
             $snapshot.Status=$coverage.Status;$snapshot.Reason=$coverage.Reason
             $snapshot.HistoricalTail=$coverage.HistoricalTail;$snapshot.RecordedBootId=$coverage.RecordedBootId
-            $now=[Diagnostics.Stopwatch]::GetTimestamp();$decision=Get-NotificationFenceWaitDecision $coverage $now $deadline
+            $now=$snapshot.ReadQpc;$decision=Get-NotificationFenceWaitDecision $coverage $now $deadline
             $wait.Attempts+=@{ReadQpc=$now;Decision=$decision;Authenticated=$true;TailQpc=$tail.Qpc;TailBootId=$tail.BootId;TailQpcFrequency=$tail.QpcFrequency;Reason=$coverage.Reason}
             $wait.Covered=$decision -ceq 'Covered';$wait.TimedOut=$decision -ceq 'TimedOut'
             if($wait.TimedOut -and $coverage.Status -ceq 'OK'){
