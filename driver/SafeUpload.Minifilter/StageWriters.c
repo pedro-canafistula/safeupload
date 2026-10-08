@@ -5100,7 +5100,10 @@ __declspec(noinline) static ULONG StageRegistryTryPromoteEntry(
     if (directoryRenameInFlight) failed |= SAFEUPLOAD_PROMOTE_FAIL_DIRECTORY_RENAME;
     if ((ULONG)InterlockedCompareExchange(&Entry->RenameVersion, 0, 0) != RenameVersion)
         failed |= SAFEUPLOAD_PROMOTE_FAIL_RENAME_VERSION;
-    if ((ULONG)InterlockedCompareExchange(&Entry->ActivationGeneration, 0, 0) != CurrentGeneration)
+    /* CurrentGeneration was sampled by the worker before it took the registry and entry locks; a policy commit in
+     * between must not promote on the older classification, so the live generation is re-read here as well. */
+    if ((ULONG)InterlockedCompareExchange(&Entry->ActivationGeneration, 0, 0) != CurrentGeneration ||
+        (ULONG)SafeUploadCurrentPolicyGeneration() != CurrentGeneration)
         failed |= SAFEUPLOAD_PROMOTE_FAIL_ACTIVATION_GENERATION;
     if (InterlockedCompareExchange(&Entry->ActivationEnforced, 0, 0) == 0) failed |= SAFEUPLOAD_PROMOTE_FAIL_NOT_ENFORCED;
     if (InterlockedCompareExchange(&Entry->ScopeNameClassification, 0, 0) != STAGE_SCOPE_CLASS_SCOPED)
@@ -5166,10 +5169,20 @@ __declspec(noinline) static BOOLEAN StageRegistryBeginAliasProbe(_In_ PSTAGE_REG
         InterlockedExchange(&Entry->ScopeNameClassification, STAGE_SCOPE_CLASS_UNRESOLVED);
         /* The promotion CAS requires ActivationGeneration to equal the live policy generation. Scope apply and
          * reconcile stamp the generation they commit after calling this; an activation begun at runtime (a file
-         * renamed into a live scope, the service's publication) was never stamped, kept 0, and could not promote
-         * at generation 1 (C03 v6b2: PromoteDeferred 0x200; C01 v6b1: 18 published files at generation 0). Any
-         * policy change re-begins every entry, so a stamp taken here never outlives the policy it was begun under. */
-        InterlockedExchange(&Entry->ActivationGeneration, (LONG)(ULONG)SafeUploadCurrentPolicyGeneration());
+         * renamed into a live scope, the service's publication) was usually never stamped, stayed 0, and could not
+         * promote at generation 1 (C03 v6b2: PromoteDeferred 0x200; C01 v6b1: 18 published files at generation 0).
+         * The stamp only raises: a generation already stamped ahead of the live one (apply's G+1 while its policy is
+         * pending) is kept, so an entry apply visited stays unpromotable until that policy commits. Every policy
+         * change re-begins every entry, and the CAS re-reads the live generation under the entry lock. */
+        {
+            LONG live = SafeUploadCurrentPolicyGeneration();
+            LONG stamped = InterlockedCompareExchange(&Entry->ActivationGeneration, 0, 0);
+            while (stamped < live) {
+                LONG seen = InterlockedCompareExchange(&Entry->ActivationGeneration, live, stamped);
+                if (seen == stamped) break;
+                stamped = seen;
+            }
+        }
         if (InterlockedCompareExchange(&Entry->T, 0, 0) != 0) {
             InterlockedExchange(&Entry->ActivationEnforced, 1);
             if (state != SAFEUPLOAD_REGISTRY_STATE_UNKNOWN)
