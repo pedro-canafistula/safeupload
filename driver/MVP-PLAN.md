@@ -2008,7 +2008,11 @@ the batch wrapper before it runs.
 - Diagnostic repair: capture `--admission-volume-status`, which exports firstUnknownReason/firstUnknownSite.
   `--registry-status` exports aggregate counters only; its former comment and capture list could not locate the loss.
   This query remains diagnostic-only and changes no gate, row revision, product source or recovery behavior.
-  Windows PowerShell 5.1 gate `codex-unknown-origin1`: PASS.
+  Windows PowerShell 5.1 gate `codex-unknown-origin1`: PASS. Live query showed that the feature agent's proof proxy
+  refuses Control13 (`--admission-volume-status`), which permits evaluation. Correct the capture to the explicitly
+  allowed observation-only Control23 (`--admission-volume-observe`); it returns the same first-Unknown fields without
+  evaluating volumes. No agent or driver rebuild is needed for this correction. Windows gate
+  `codex-unknown-observe1`: PASS.
 - R02 harness repair (table19, row6): g2c4 retained the exact generation2 ACTIVATING->PROTECTED native CAS after
   the actor's final H release, but its later Control17 query returned Protected/Free with historyPresent=false because
   reclaim had pruned the resident row. R02 formerly waited 90s for that retired history to reappear and failed.

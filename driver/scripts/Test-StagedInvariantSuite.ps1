@@ -992,7 +992,7 @@ function Invoke-InvariantStartupObservation {
             try{[void](Invoke-ActivationInspector '--activating-status' (Join-Path $evidenceDirectory 'final-not-ready--activating-status'))}catch{}
             # The per-volume receipt carries the first Unknown reason and the source line that raised it.
             # Registry status has only aggregate counters and cannot locate a rename-loss origin.
-            foreach($query in '--registry-status','--admission-volume-status','--admission-coverage'){
+            foreach($query in '--registry-status','--admission-volume-observe','--admission-coverage'){
                 try{[void](Invoke-ActivationInspector $query (Join-Path $evidenceDirectory ('final-not-ready'+$query)))}catch{}
             }
             # --activating-status needs five consecutive reads at one registry sequence and fails while an entry is
