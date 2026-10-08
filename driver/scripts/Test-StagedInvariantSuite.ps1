@@ -990,6 +990,10 @@ function Invoke-InvariantStartupObservation {
             # Diagnostic only, never a verdict input: name the registry entries that keep coverage
             # from Ready at the window's end (C04 latency l4b1 ended WriterPromotionPending unnamed).
             try{[void](Invoke-ActivationInspector '--activating-status' (Join-Path $evidenceDirectory 'final-not-ready--activating-status'))}catch{}
+            # --registry-status carries each volume's first Unknown reason and the source line that raised it.
+            foreach($query in '--registry-status','--admission-coverage'){
+                try{[void](Invoke-ActivationInspector $query (Join-Path $evidenceDirectory ('final-not-ready'+$query)))}catch{}
+            }
             # --activating-status needs five consecutive reads at one registry sequence and fails while an entry is
             # re-evaluated on every worker pass (C04 v6a1); the exact-target query reports the same row without that.
             try{foreach($file in @(Get-ChildItem -LiteralPath $protectedDirectory -File -Force -ErrorAction Stop)){
