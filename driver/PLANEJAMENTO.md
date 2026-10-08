@@ -204,6 +204,6 @@ contador.
   2026-09-17). Nada foi mesclado com `main` ainda.
 - `origin/develop-victor-minifiltro-driver` não teve nenhum commit novo desde
   a última investigação (`4020dea` continua sendo o topo, confirmado hoje).
-- Existe um `ONBOARDING-DRIVER.md` na raiz do repo (branch `main`, não neste
-  branch) com o mapeamento completo da arquitetura do driver, caso precise
-  relembrar o quadro geral.
+- Existe um `driver/ONBOARDING.md` (antes `ONBOARDING-DRIVER.md` na raiz) com o
+  mapeamento da arquitetura anterior do driver, caso precise relembrar o quadro
+  geral; o estado atual está em `driver/MVP-PLAN.md`.

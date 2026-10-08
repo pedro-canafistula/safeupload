@@ -1,5 +1,10 @@
 # O driver do Victor — guia de retomada
 
+> **Histórico (setembro de 2026).** Este guia descreve o desenho anterior do driver, do branch
+> `develop-victor-minifiltro-driver` (veredito direto no kernel, taint como regra central). O estado atual
+> (MVP de escrita em estágio), o que o driver tem e não tem e os problemas conhecidos estão em
+> [`MVP-PLAN.md`](MVP-PLAN.md); o desenho atual está em [`STAGED-WRITES.md`](STAGED-WRITES.md).
+
 > Documento gerado em 2026-09-09 a partir de uma investigação completa do branch
 > `origin/develop-victor-minifiltro-driver` (78 commits, 3–9/09/2026), cruzando
 > `driver/ARQUITETURA.md`, `driver/DEPLOY.md`, o código-fonte C do driver e a
