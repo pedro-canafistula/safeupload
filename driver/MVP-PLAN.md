@@ -2078,3 +2078,40 @@ the batch wrapper before it runs.
   the guest retained 24,946,754 bytes. It is non-qualifying until complete evidence is recovered and validated.
   Removed only redundant tracked historical evidence via sparse checkout from completed R02 runner worktrees;
   all newly generated evidence remains retained, and no active batch tree was edited.
+
+## 2026-10-08 night (orchestrator, Claude Sonnet 5.5): gen3 driver
+
+State found at 00:50: no (driver, agent) pair had a single passing MVP cell except X01 (gen2). The owner set the goal
+"69/69 on one frozen pair, then a Luna Phase 5 ACCEPT*, then release notes". Work is on `feat/mvp-gen3` (from the Codex
+tip `f6c8e00b`, itself on gen2 `cfee5a33` + harness fixes). The agent stays `agent-goal-reads1` (`63664ffd`).
+
+- **Root cause of the C-row Degraded/WriterStateUnknown (confirmed on guest evidence):** (1) any successful hard-link
+  ADDITION was treated as lost rename tracking (sticky instance Unknown(RENAME) that makes every older entry Unknown at
+  promotion); Windows itself makes such links (`WmiApRpl.*`), so every C row degraded. `c56ead4f` begins the existing
+  all-link alias probe instead (Luna ACCEPT WITH CONDITIONS). (2) A hard-link scan that a rename moved became a sticky
+  per-entry Unknown(IDENTITY) (`STATUS_FILE_INVALID` -> failed classification), and one such out-of-scope system file
+  (`wpndatabase.db-wal`, `SMBClient%4Operational.evtx`) degraded coverage for the whole run (gen3a C04 `h3a1`: service never
+  Ready, 70 s ready timeout; `h3a2`: same). Churn is now parked and retried: `94334034` (publish-time and scan-start churn)
+  and `f550666b` (`StageRegistryOpenIdentity` returns `STATUS_RETRY` for rename churn instead of `STATUS_FILE_INVALID`;
+  identity mismatches, retired/unlisted entries and unknown stream identity keep `STATUS_FILE_INVALID`).
+- **Alias-result publication race (Luna P1 on the shared pipeline, pre-existing):** `f6c8e00b` binds every successful
+  consumer to a classification receipt (rename/transaction version, policy generation, activation stamp, scope-publication
+  sequence) validated under RegistryLock -> policy-cache lock -> StateLock. Luna rejected it for (a) a compact entry's
+  directory rename leaving its scan valid and no probe identity when the activation generation was already current: fixed
+  in `b4ff2a84` with a per-entry `AliasProbeSerial` advanced by every `StageRegistryBeginAliasProbe`, captured at scan start,
+  required at publish, keyed into the partial-scan continuation and the receipt; and (b) the by-ID classifier publishing
+  without a receipt. **Decision (orchestrator), (b) not changed, and Luna accepted the argument on re-review
+  (`review-gen3b-report.md`, "P1 not reproduced"):** a mutating create (name- or ID-based) holds the admission epoch
+  token from pre-operation through post-create writer registration; a policy publication can make the union visible
+  while the token is held, but the apply drains the old epoch before reconciling, so the old-epoch writer is an
+  existing registry entry when it is probed against the pending union, becomes Activating, is never promoted while
+  H/S/C/T/W is live, and coverage is never Ready while it exists. The name-based create has the identical check-to-filesystem
+  window, which no receipt can close. The receipt is needed only by consumers that outlive the lease (the reclaim worker).
+- **Known issue recorded (Luna gen3b P2, not changed):** a parked or deferred probe keeps the reclaim worker rescanning
+  while churn never ends (the existing rule for any unresolved probe; the 2026-10-07 reclaim-churn analysis applies).
+  Fails closed (gated, not Ready, not pruned); CPU only. Post-MVP: bounded/event-driven rescans.
+- **Harness fixes (Windows gate PASS each):** the journal snapshot relists around the service's `<id>.json.<guid>.tmp`
+  write-in-progress child (5 s QPC bound, then it still fails as unrecognized); the R02 cleanup `--admission-trace-disable`
+  retries only the driver's ERROR_BUSY refusal (10 s QPC bound).
+- Builds: `mvp4-gen3a` (b4ff2a84, signed 4CA6A170...), `mvp4-gen3b` (94334034, signed 537BACA0...), `mvp4-gen3c`
+  (f550666b, signed 6001F261...), all four configurations 0 warnings/0 errors, PREfast and ApiValidator clean.
