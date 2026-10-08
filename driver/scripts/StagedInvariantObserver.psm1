@@ -564,7 +564,7 @@ namespace StagedInvariant {
     throw failure;
    }
   }
-  public static bool UsesPinnedExtents(string caseId) { return caseId=="A01" || caseId=="A02" || caseId=="A03" || caseId=="A05" || caseId=="R02"; }
+  public static bool UsesPinnedExtents(string caseId) { return caseId=="A01" || caseId=="A02" || caseId=="A03" || caseId=="A04" || caseId=="A05" || caseId=="R02"; }
   public static void ValidatePinnedLayout(Image original,Image current) {
    Require(original!=null && current!=null && original.CrossCheckErrors.Length==0 && current.CrossCheckErrors.Length==0,
     "PinnedLayout","Missing or invalid pre-epoch/current raw image");

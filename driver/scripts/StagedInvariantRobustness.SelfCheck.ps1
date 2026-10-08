@@ -127,8 +127,8 @@ try {
                 Check $rejected ('Pinned capture fails closed for '+$change+' at metadata bracket '+$stage+'.')
             }
         }
-        foreach($id in @('A01','A02','A03','A05','R02')){Check ([StagedInvariant.Native]::UsesPinnedExtents($id)) ('Pinned raw samples selected for '+$id+'.')}
-        foreach($id in @('A04','C01','R01','R03','X01','a01')){Check (-not [StagedInvariant.Native]::UsesPinnedExtents($id)) ('Existing publication capture retained for '+$id+'.')}
+        foreach($id in @('A01','A02','A03','A04','A05','R02')){Check ([StagedInvariant.Native]::UsesPinnedExtents($id)) ('Pinned raw samples selected for '+$id+'.')}
+        foreach($id in @('C01','R01','R03','X01','a01')){Check (-not [StagedInvariant.Native]::UsesPinnedExtents($id)) ('Existing publication capture retained for '+$id+'.')}
     } finally {
         if($null -ne $v){$v.Dispose()};if($null -ne $exclusive){$exclusive.Dispose()}
         [IO.Directory]::Delete($dir,$true)
