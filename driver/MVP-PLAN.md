@@ -2169,3 +2169,32 @@ Release-note conditions confirmed by the review: local fixed NTFS / Windows 10 1
 SYSTEM trusted; Activating never Ready and sticky Unknown until reboot; reclaim-worker CPU under endless churn; C05DenialLedger,
 lower mutation ledger and continuous coverage proofs deferred (NoUnapprovedByte is sampled evidence); read classification can stall
 the service while taint is on (the MVP proof runs with taint off); signed-LONG policy generation rollover after 2^31 commits.
+
+## 2026-10-08 morning (orchestrator, Claude Sonnet 5.5): gen4 driver - stage cleanup of a blocked version (`feat/mvp-gen4`)
+
+**Decision: the frozen pair changes once more, driver only (`mvp4-gen3d` -> `mvp4-gen4b`), because no BLOCK row could ever complete.**
+Evidence: in every BLOCK case (C01-C04 and B01) the service logged "Could not remove verified blocked stage ... being used by another
+process" every ~270 ms until the case timed out (306 retries in the C02 run); no BLOCK case has ever reached `StageDeleted` on any build.
+Handle dumps found no user-mode holder. Cause (code, `StageStream.c`): a sealed stream keeps its read-only backing open until driver
+unload and `StageOpenBacking(ReadOnly)` used `FILE_SHARE_READ` only (no `FILE_SHARE_DELETE`), while `StageWorker` skipped sealed streams, so
+`File.Delete(stage)` in `ProcessBlockedCleanupAsync` could never succeed and a blocked version's bytes stayed in
+`C:\ProgramData\SafeUpload\staging` after its hand-back window closed.
+
+Change (`b085d577`, `5ebe139a`): the read-only backing is opened with `FILE_SHARE_READ | FILE_SHARE_DELETE`; the stage worker (250 ms) retires a
+sealed stream with no handle, file object or section once its backing is `DeletePending` (rundown barrier as `StageDrain`, close backing,
+mark Retired, detach the private view); `StageCreate` refuses an open of a sealed stream whose backing is delete-pending
+(`STATUS_DELETE_PENDING`); `SafeUploadProcessHasMappings` ignores retired detached views. Approved stages are not deleted by the service and are
+unaffected.
+
+Luna: `b085d577` **REJECT** (P1: reopen between the service's delete and the next worker pass was served from the delete-pending backing;
+P2: retired views counted as mappings) -> both fixed in `5ebe139a`; `5ebe139a` **ACCEPT WITH CONDITIONS**, no P0/P1
+([gen4a](evidence/2026-10-08/luna-gen4a-review.md), [gen4b](evidence/2026-10-08/luna-gen4b-review.md)). Conditions carried to the release notes:
+the delete-pending query in `StageCreate` runs under the global namespace lock and has no top-level-IRP guard (no ordinary standard-user
+direct-open path sets that, none found); an open admitted just before the service's delete is equivalent to a pre-delete open (the retire waits
+for it to close).
+
+Every result obtained on `mvp4-gen3d` is void for the gate; the 69 cells are re-run on the gen4b pair. Harness commits this morning on this branch:
+stage-absence proof retries while the deleted stage is delete-pending (`35ccd523`); the notification snapshot always makes three read
+attempts (`acd35a78`: one PS 5.1 read of a 2.5k-line record takes 2.5-5 s, so the 4 s budget allowed a single attempt and a head replaced
+a moment after the last append ended the snapshot with INCONCLUSIVE "tail truncation/head mismatch", which the host runner then reported as
+"Notification location bytes lack unique retained artifact").
