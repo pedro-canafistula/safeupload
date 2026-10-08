@@ -5024,6 +5024,16 @@ function Test-R03BaseSample($Sample,$Baseline,[byte[]]$ImageB,$LastAccessPolicy)
     }
     return ,$assertions
 }
+function Capture-R03OutcomeSample($Context,$Baseline,[long]$Sequence) {
+    # g2c2's OutcomeWait raw record had sequence 2 while live FSCTL identity had sequence 4.
+    # Flush before, rather than discard or retry, every publication-window raw observation.
+    # This exposes cached bytes to the existing independent disk oracle; every capture still counts.
+    $flush=Flush-InvariantSetupVolume
+    $flush.Purpose='R03PublicationBeforeRawCapture'
+    $sample=Capture-CachedSample $Context $Baseline 'OutcomeWait' $Sequence
+    $sample | Add-Member NoteProperty R03PublicationCacheFlush $flush
+    return $sample
+}
 function Test-R03OutcomeSample($Sample,$Baseline,[byte[]]$ImageA) {
     # APPROVE may publish between the journal poll and raw capture. Accept only
     # absence or the complete A image here; final Released still requires A.
@@ -5136,7 +5146,7 @@ function Invoke-R03Observation {
                 if(-not $trial.JournalTransitions.Count -or $trial.JournalTransitions[-1].State -ne $entry.State){$trial.JournalTransitions+=$entry}
                 if($entry.StateName -ceq 'Released'){$terminal=$entry}
             }
-            $sequence++;$sample=Capture-CachedSample $context $baseline 'OutcomeWait' $sequence;$samples+=$sample
+            $sequence++;$sample=Capture-R03OutcomeSample $context $baseline $sequence;$samples+=$sample
             $trial.Assertions+=Test-R03OutcomeSample $sample $baseline $imageA
             if($null -ne $terminal){break};Start-Sleep -Milliseconds 10
         }while([Diagnostics.Stopwatch]::GetTimestamp() -lt $deadline)

@@ -3,7 +3,7 @@
 # design section 4 corpus, NOT a claim that one row covers every future variant.
 @{
     Schema = 'StagedInvariantCases/1'
-    TableRevision = 20
+    TableRevision = 21
     Modes = @('ordinary', 'runtime-verifier', 'boot-verifier')
     RowSchema = @{
         Required = @('CaseId', 'Revision', 'Status', 'Variant', 'Outcome',
@@ -552,7 +552,7 @@
             Cleanup = @('ReleaseHolderAndExitActor', 'StopAndRestoreAgent', 'CloseObserver', 'CommonRestorationAndReboot', 'IndependentBaseline')
         }
         @{
-            CaseId = 'R03'; Revision = 4; Status = 'Ready'
+            CaseId = 'R03'; Revision = 5; Status = 'Ready'
             Variant = 'fixed-NTFS-boot-agent-disabled-cached-overwrite-and-create-then-fresh-approve'; Outcome = 'APPROVE'
             QualificationScope = 'Phase4MvpCoordinatedCore; sampled raw/fresh/uncached evidence; unheld latency remains a separate hardening workload'
             ActorSid = 'ResolveStandardUserTokenAtRuntime'; ActorSession = 'ResolveTokenSessionId'

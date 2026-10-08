@@ -2034,3 +2034,14 @@ the batch wrapper before it runs.
   returned a broken pipe even for allowed Control23 because that optional proxy was disabled. The observation controls
   stay restricted by the existing service wire allowlist; product bytes and gate contracts are unchanged.
   Windows gate `codex-cached-proxy1`: PASS.
+- R03 raw-publication observation repair (table21, row5): g2c2 failed OutcomeWait sequence10 because NTFS's new
+  target MFT record was still raw sequence2 while its live FSCTL identity was sequence4; its final post-flush sample11
+  succeeded. Record an exact-volume checked cache flush before each OutcomeWait capture, retaining every capture
+  and its existing A/absence, B identity/metadata, fresh/uncached and forbidden-byte assertions. A failed flush aborts;
+  an incomplete capture still blocks qualification and is never retried or discarded. This is harness observation
+  ordering, not a product timer, filesystem scan or admission change. Windows gate `codex-r03-outcome-flush1`: PASS
+  with ordering, failed-flush and incomplete-capture controls. Fresh row5 VM evidence remains required.
+- Worktree provisioning: a full additional checkout failed while writing redundant historical evidence in tmpfs;
+  Git removed the incomplete checkout. New frozen runners use a sparse checkout containing all driver/agent/harness
+  sources but excluding historical evidence directories. Exact-source preflight remains mandatory; newly generated
+  run evidence is retained. No active batch source tree was edited.

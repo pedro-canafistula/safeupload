@@ -7,7 +7,7 @@ try {
     $tokens=$null;$errors=$null
     $ast=[Management.Automation.Language.Parser]::ParseFile((Join-Path $PSScriptRoot 'Test-StagedInvariantSuite.ps1'),[ref]$tokens,[ref]$errors)
     if($errors.Count){throw ($errors | Out-String)}
-    foreach($name in @('Test-R03OfflineCalls','Test-R03ServiceReady','Test-R03HandBackAbsent','Test-R03BaseSample','Test-R03OutcomeSample','Get-R03WriterBody','Get-B02JustificationClientBody','Get-WriterBody','Get-ExpectedCheckpoint','Test-CachedImage')){
+    foreach($name in @('Test-R03OfflineCalls','Test-R03ServiceReady','Test-R03HandBackAbsent','Test-R03BaseSample','Test-R03OutcomeSample','Capture-R03OutcomeSample','Get-R03WriterBody','Get-B02JustificationClientBody','Get-WriterBody','Get-ExpectedCheckpoint','Test-CachedImage')){
         $defs=@($ast.FindAll({param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -ceq $name},$false))
         if($defs.Count -ne 1){throw ('Missing/ambiguous R03 function: '+$name)}
         Invoke-Expression ($defs[0].Extent.Text.Replace(('function '+$name),('function script:'+$name)))
@@ -15,6 +15,25 @@ try {
     $checks=0
     function Check([bool]$Condition,[string]$Reason){if(-not $Condition){throw $Reason};$script:checks++}
     function Clone($Value){return ($Value | ConvertTo-Json -Depth 32 | ConvertFrom-Json)}
+    $script:publicationCalls=@();$script:publicationFlushFails=$false;$script:publicationCaptureStatus='OK'
+    function script:Flush-InvariantSetupVolume {
+        $script:publicationCalls+='flush'
+        if($script:publicationFlushFails){throw 'fixture flush failed'}
+        return @{Purpose='fixture';VolumeGuid='fixture-volume';StartQpc=10;EndQpc=20}
+    }
+    function script:Capture-CachedSample($Context,$Baseline,[string]$PhaseName,[long]$Sequence) {
+        $script:publicationCalls+='capture'
+        return [pscustomobject]@{Status=$script:publicationCaptureStatus;Phase=$PhaseName;Sequence=$Sequence}
+    }
+    $publication=Capture-R03OutcomeSample @{} @{} 7
+    Check (($script:publicationCalls -join ',') -ceq 'flush,capture' -and $publication.Sequence -eq 7 -and
+        $publication.R03PublicationCacheFlush.Purpose -ceq 'R03PublicationBeforeRawCapture') 'R03 retains the exact ordered flush receipt before its publication raw capture.'
+    $script:publicationCaptureStatus='ERROR';$script:publicationCalls=@()
+    $publication=Capture-R03OutcomeSample @{} @{} 8
+    Check ($publication.Status -ceq 'ERROR' -and ($script:publicationCalls -join ',') -ceq 'flush,capture') 'R03 does not retry or hide an incomplete post-flush capture.'
+    $script:publicationFlushFails=$true;$script:publicationCalls=@();$flushRejected=$false
+    try{$null=Capture-R03OutcomeSample @{} @{} 9}catch{$flushRejected=$true}
+    Check ($flushRejected -and ($script:publicationCalls -join ',') -ceq 'flush') 'R03 failed flush stops before observation and cannot qualify.'
     $actor=@{Pid=101;Sid='S-1-5-21-1-2-3-1001';BootId='fixture';HandBackBefore=@()}
     $ready=@{BootId='fixture';Qpc=10;QpcFrequency=1000}
     $recorded=@{Pid=101;Sid=$actor.Sid;BootId='fixture';Token='token';Readiness=$ready;RecordedQpc=20;Qpc=21;AgentStart=4}
