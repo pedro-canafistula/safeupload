@@ -2174,8 +2174,19 @@ VOID SafeUploadStageWritersCompleteRename(_In_ PFLT_INSTANCE Instance, _In_opt_ 
         return;
     }
     FltAcquirePushLockExclusive(&RegistryLock);
-    if (Draining || (Succeeded && (rename->LinkOperation || rename->Ambiguous))) {
+    if (Draining || (Succeeded && rename->Ambiguous)) {
         markUnknown = TRUE;
+    } else if (Succeeded && rename->LinkOperation) {
+        /* A retained, unambiguous link addition does not lose this entry's
+         * source name or file identity. Keep its name unchanged and require
+         * the existing versioned, complete all-link classification before
+         * clearing the alias gate or promoting. The pre-operation already
+         * invalidated ScopeNameClassification and incremented RenameVersion;
+         * policy apply drains the mutating-I/O epoch and probes every entry.
+         * Draining/ambiguous completion and classification failure still use
+         * the existing fail-closed paths. A known link must not advance the
+         * volume's lost-rename generation and poison unrelated scoped files. */
+        recheck = StageRegistryBeginAliasProbe(entry);
     } else if (Succeeded && entry->Compact) {
         if (entry->Retired || rename->NameChars == 0 ||
             rename->NewStreamChars > SAFEUPLOAD_WRITER_REGISTRY_NAME_CHARS) {

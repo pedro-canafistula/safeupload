@@ -2045,3 +2045,21 @@ the batch wrapper before it runs.
   Git removed the incomplete checkout. New frozen runners use a sparse checkout containing all driver/agent/harness
   sources but excluding historical evidence directories. Exact-source preflight remains mandatory; newly generated
   run evidence is retained. No active batch source tree was edited.
+- Known-link tracking repair: fresh R02 row7 `codexr02b1` failed restarted Pending status before actor release,
+  with ForbiddenByteCount=0 and independent RestorationClean=true. Its native receipt
+  [origin](evidence/2026-10-07/codex-r02b-rename-loss-origin.json), SHA256
+  `257633979b80ee2443fa60be50a568ca69de3d8692eebfa556402a73b42a9380`, names first Unknown(RENAME)
+  at gen2 StageWriters.c:2247, the completion loss branch. Original B02's
+  [entry](evidence/2026-10-07/codex-b02-rename-loss-entries.json) is an outside-scope WmiApRpl.ini.
+  Successful hard-link completion was unconditionally treated as rename loss. A retained, unambiguous link addition
+  now preserves the source name and begins the existing versioned all-link alias probe under RegistryLock before
+  completing rename accounting. The existing alias gate, complete by-ID classification, policy epoch drain and
+  H/S/C/T/W promotion predicates remain required; genuine ambiguity, draining, identity/allocation/name loss and
+  classifier failure retain their fail-closed paths. No sticky Unknown is cleared. Site2247 also serves draining and
+  ambiguity: identifying a successful hard-link as the trigger is an inference from the source and outside Windows
+  file evidence, pending the repaired exact build and fresh reproduction. Windows gate `codex-known-link1`: PASS.
+  Luna review and all four exact WDK builds remain required before qualification.
+- Manual live proof queries must run as SYSTEM, as required by the existing feature proxy (an administrator SSH
+  session alone receives a closed pipe). The harness already runs as SYSTEM and retained the origin above. Two
+  owned one-shot diagnostic tasks did not produce receipts within their bounded wait; they were unregistered and
+  their identified query processes terminated. They supplied no proof and changed no product setting.
