@@ -81,6 +81,13 @@ x86/
 bld/
 [Bb]in/
 [Oo]bj/
+
+web/back/target/
+web/back/data/
+web/front/dist/
+web/front/.angular/
+web/front/test-results/
+web/front/playwright-report/
 [Ll]og/
 [Ll]ogs/
 
