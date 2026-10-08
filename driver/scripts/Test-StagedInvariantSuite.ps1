@@ -1377,6 +1377,10 @@ public sealed class SUProofObject : IDisposable {
  public void Dispose() { if(Handle!=null) Handle.Dispose(); }
 }
 public sealed class SUProofTail { public byte[] Bytes; public long Offset; }
+// A POSIX-semantics replace unlinks the old object while a reader that opened it a moment earlier still holds the
+// handle: its link count is then 0. That is a race with the service replacing the manifest, not a bad object, and
+// the read is repeated against the name's current object (latency journal reads; bounded by the caller).
+public sealed class SUUnlinkedObjectException : IOException { public SUUnlinkedObjectException(string message) : base(message) {} }
 public static class SUProofFile {
  [StructLayout(LayoutKind.Sequential)] struct Info { public uint Attributes; public System.Runtime.InteropServices.ComTypes.FILETIME Creation,Access,Write; public uint Volume,High,Low,Links,IdHigh,IdLow; }
  [DllImport("kernel32.dll",CharSet=CharSet.Unicode,SetLastError=true)] static extern SafeFileHandle CreateFile(string p,uint a,uint s,IntPtr z,uint d,uint f,IntPtr t);
@@ -1392,6 +1396,7 @@ public static class SUProofFile {
   if(h.IsInvalid){int e=Marshal.GetLastWin32Error();h.Dispose();throw new Win32Exception(e,"Service evidence open failed: "+path+"; "+new Win32Exception(e).Message);}
   try {
    Info i;if(!GetFileInformationByHandle(h,out i))throw new Win32Exception(Marshal.GetLastWin32Error());
+   if(!directory && i.Links==0 && (i.Attributes&0x400)==0 && (i.Attributes&0x10)==0)throw new SUUnlinkedObjectException("Journal object was unlinked by a replace between open and inspection.");
    if((i.Attributes&0x400)!=0 || ((i.Attributes&0x10)!=0)!=directory || (!directory && i.Links!=1))throw new IOException("Reparse/type/link-count journal object rejected.");
    IntPtr owner,group,dacl,sacl,sd;uint code=GetSecurityInfo(h,1,7,out owner,out group,out dacl,out sacl,out sd);
    if(code!=0)throw new Win32Exception((int)code);
@@ -2060,6 +2065,7 @@ function Test-LatencyTransientIoError($Exception) {
         if($ex -is [ComponentModel.Win32Exception] -and $ex.NativeErrorCode -in @(5,32,33)){return $true}
         if($ex.HResult -in @(-2147024891,-2147024864,-2147024863)){return $true}
         if($null -ne $ex.PSObject.Properties['NativeCode'] -and $ex.NativeCode -in @(5,32,33)){return $true}
+        if($ex.GetType().Name -ceq 'SUUnlinkedObjectException'){return $true}
     }
     return $false
 }

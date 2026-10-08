@@ -70,6 +70,11 @@ Check (Test-LatencyTransientIoError ([UnauthorizedAccessException]::new('flush d
 foreach($code in @(2,3,80,87,112)){
     Check (-not (Test-LatencyTransientIoError ([ComponentModel.Win32Exception]::new($code)))) ('Other native code fails immediately: '+$code)
 }
+# A journal object unlinked by the service's POSIX replace between open and inspection is a retryable race, by type
+# (the real exception is compiled by the suite's evidence reader); the generic link-count rejection is not.
+Initialize-ServiceEvidenceReader
+Check (Test-LatencyTransientIoError ([IO.IOException]::new('Service evidence object rejected',[SUUnlinkedObjectException]::new('unlinked')))) 'An object unlinked during open is retryable'
+Check (-not (Test-LatencyTransientIoError ([IO.IOException]::new('Reparse/type/link-count journal object rejected.')))) 'A generic link-count or reparse rejection is not retryable'
 foreach($message in @('Access to the path is denied','sharing violation','Trusted owner and protected DACL required.','Short/unstable product evidence read.')){
     Check (-not (Test-LatencyTransientIoError ([IO.IOException]::new($message)))) 'Text must not classify schema/authentication errors'
 }
