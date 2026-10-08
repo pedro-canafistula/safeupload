@@ -4117,7 +4117,9 @@ function Invoke-ActivationApprovedSave($Trial,$Actor,$Context,$Baseline,$Promoti
 function Invoke-ActivationObservation {
     $script:ActivationNotificationHistory=@();$script:ActivationObservedPrematureReady=@();$script:ActivationHolderLive=$false;$script:ActivationCandidateGeneration=$null
     $context=$null;$agent=$null;$baseline=$null;$samples=@();$actorStarted=$false;$duplicateStarted=$false;$duplicateActor=$null;$traceEnabled=$false
-    $trial=[ordered]@{Errors=@();Assertions=@();Samples=@();Operations=@();Verdict='INCONCLUSIVE';ForbiddenByteCount=$null;Reasons=@()}
+    # JournalSnapshots must start as an array: A04's approved-save checkpoints append to it, and `+=` on an unset key turned the
+    # second snapshot into an op_Addition failure that ended the trial and, as a bare object, crashed the host-side artifact validator.
+    $trial=[ordered]@{Errors=@();Assertions=@();Samples=@();Operations=@();Verdict='INCONCLUSIVE';ForbiddenByteCount=$null;Reasons=@();JournalSnapshots=@()}
     $target=Join-Path $protectedDirectory 'marker.txt';$relativeName='marker.txt';$actor=$null
     try {
         Assert-Hash $installedDriver $ExpectedFeatureSha256
