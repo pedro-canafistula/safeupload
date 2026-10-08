@@ -908,7 +908,9 @@ function Get-ActivationActorIdentity([string]$ActorKey='Primary') {
         if(-not $state.ActivationActors.ContainsKey($ActorKey)){throw 'Unknown activation identity route'}
         $slot=$state.ActivationActors[$ActorKey];$directory=$slot.Directory;$launcher=$slot.Launcher;$taskName=$slot.Task
     }elseif($ActorKey -cne 'Primary'){throw 'Secondary activation identity route missing'}
-    $identity=Wait-WriterIdentity (Join-Path $directory 'identity.clixml') 60
+    # A standard user's first logon (profile creation) on a paging 4 GB guest can exceed 60 s while the host runs several
+    # debuggees (B02 h3i2); the wait is QPC-bounded and a missing identity still fails the trial.
+    $identity=Wait-WriterIdentity (Join-Path $directory 'identity.clixml') 180
     if($identity.Sid -cne $state.ActorSid -or $identity.Elevated -or $identity.IsAdministrator -or $identity.Pid -eq $PID -or $identity.BootId -cne (Get-BootId)){throw 'Activation holder identity/session/token proof mismatch'}
     $process=Get-CimInstance Win32_Process -Filter ('ProcessId='+$identity.Pid) -ErrorAction Stop
     if($null -eq $process -or $process.SessionId -ne $identity.SessionId -or $process.CommandLine -notlike ('*'+$launcher+'*')){throw 'Activation holder OS process provenance mismatch'}
