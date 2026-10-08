@@ -5012,7 +5012,7 @@ static BOOLEAN StageRegistrySiblingsHoldNoWriterStateLocked(_In_ PSTAGE_REGISTRY
 /* RegistryLock remains held by the pageable caller, stabilizing the name and
  * list membership. Name comparison is done there because its snapshot is paged. */
 _IRQL_requires_max_(APC_LEVEL)
-__declspec(noinline) static VOID StageRegistryTryPromoteEntry(
+__declspec(noinline) static ULONG StageRegistryTryPromoteEntry(
     _In_ PSTAGE_REGISTRY_ENTRY Entry,
     _In_ BOOLEAN NameMatches,
     _In_ USHORT NameSnapshotChars,
@@ -5029,6 +5029,8 @@ __declspec(noinline) static VOID StageRegistryTryPromoteEntry(
     KIRQL irql;
     UNICODE_STRING entryName;
     BOOLEAN directoryRenameInFlight;
+    BOOLEAN nameOk;
+    ULONG failed = 0;
     /* A replaced incarnation's CAS covers the whole data stream: no other incarnation entry of it, including
      * one keyed by the live SOP, may hold writer state (S and the cache barrier were evaluated on the live SOP). */
     BOOLEAN siblingsFree = ReplacedLiveSop == NULL || StageRegistrySiblingsHoldNoWriterStateLocked(Entry);
@@ -5040,7 +5042,7 @@ __declspec(noinline) static VOID StageRegistryTryPromoteEntry(
         StageRegistrySetEntryUnknownLocked(Entry, SAFEUPLOAD_REGISTRY_UNKNOWN_RENAME);
         StageRegistryPrepareActivation(Entry, TRUE);
         StageRegistryPublishGlobalUnknown(SAFEUPLOAD_REGISTRY_UNKNOWN_RENAME);
-        return;
+        return SAFEUPLOAD_PROMOTE_FAIL_INSTANCE_CONTEXT;
     }
     renameLossStable = SafeUploadPolicyRenameLossGenerationEnter(
         &instanceContext->RegistryRenameLossGeneration,
@@ -5050,45 +5052,54 @@ __declspec(noinline) static VOID StageRegistryTryPromoteEntry(
         FltReleaseContext(instanceContext);
         StageRegistrySetEntryUnknownLocked(Entry, SAFEUPLOAD_REGISTRY_UNKNOWN_RENAME);
         StageRegistryPrepareActivation(Entry, TRUE);
-        return;
+        return SAFEUPLOAD_PROMOTE_FAIL_RENAME_LOSS;
     }
 
+    nameOk = (Entry->Compact && NameSnapshotChars == 0 && Entry->StreamIdentityKnown && NameMatches) ||
+        (!Entry->Compact && Entry->NameChars == NameSnapshotChars && NameSnapshotChars != 0 && NameMatches);
     StageAcquireSpinLock(&Entry->StateLock, &irql);
-    if (Entry->Listed && !Entry->Retired &&
-        InterlockedCompareExchange((volatile LONG *)&Entry->State, 0, 0) == SAFEUPLOAD_REGISTRY_STATE_ACTIVATING &&
-        InterlockedCompareExchange(&Entry->H, 0, 0) == 0 &&
-        InterlockedCompareExchange(&Entry->T, 0, 0) == 0 &&
-        InterlockedCompareExchange(&Entry->W, 0, 0) == 0 &&
-        InterlockedCompareExchange(&Entry->UnknownReasons, 0, 0) == 0 &&
-        InterlockedCompareExchange(&Entry->RenameInFlight, 0, 0) == 0 &&
-        !directoryRenameInFlight &&
-        (ULONG)InterlockedCompareExchange(&Entry->RenameVersion, 0, 0) == RenameVersion &&
-        (ULONG)InterlockedCompareExchange(&Entry->ActivationGeneration, 0, 0) == CurrentGeneration &&
-        InterlockedCompareExchange(&Entry->ActivationEnforced, 0, 0) != 0 &&
-        InterlockedCompareExchange(&Entry->ScopeNameClassification, 0, 0) ==
-            STAGE_SCOPE_CLASS_SCOPED &&
-        ((Entry->Compact && NameSnapshotChars == 0 && Entry->StreamIdentityKnown && NameMatches) ||
-         (!Entry->Compact && Entry->NameChars == NameSnapshotChars &&
-          NameSnapshotChars != 0 && NameMatches)) &&
-        StageRegistrySnapshotSpilledWriters(Entry) == 0 &&
-        StageRegistrySnapshotSpilledMutatingIo(Entry) == 0 &&
-        SopEmpty &&
-        StageRegistrySnapshotC(Entry, NULL, 0, NULL) == 0 &&
-        siblingsFree &&
-        (ReplacedLiveSop == NULL || InterlockedCompareExchangePointer(
-            (PVOID volatile *)&Entry->SectionObjectPointer, NULL, NULL) != ReplacedLiveSop)) {
+    /* Every predicate is evaluated (no short circuit) so a refused promotion reports all of them; the
+     * conjunction is the same as before. */
+    if (!Entry->Listed || Entry->Retired) failed |= SAFEUPLOAD_PROMOTE_FAIL_NOT_LISTED;
+    if (InterlockedCompareExchange((volatile LONG *)&Entry->State, 0, 0) != SAFEUPLOAD_REGISTRY_STATE_ACTIVATING)
+        failed |= SAFEUPLOAD_PROMOTE_FAIL_STATE;
+    if (InterlockedCompareExchange(&Entry->H, 0, 0) != 0) failed |= SAFEUPLOAD_PROMOTE_FAIL_H;
+    if (InterlockedCompareExchange(&Entry->T, 0, 0) != 0) failed |= SAFEUPLOAD_PROMOTE_FAIL_T;
+    if (InterlockedCompareExchange(&Entry->W, 0, 0) != 0) failed |= SAFEUPLOAD_PROMOTE_FAIL_W;
+    if (InterlockedCompareExchange(&Entry->UnknownReasons, 0, 0) != 0) failed |= SAFEUPLOAD_PROMOTE_FAIL_UNKNOWN;
+    if (InterlockedCompareExchange(&Entry->RenameInFlight, 0, 0) != 0) failed |= SAFEUPLOAD_PROMOTE_FAIL_RENAME_IN_FLIGHT;
+    if (directoryRenameInFlight) failed |= SAFEUPLOAD_PROMOTE_FAIL_DIRECTORY_RENAME;
+    if ((ULONG)InterlockedCompareExchange(&Entry->RenameVersion, 0, 0) != RenameVersion)
+        failed |= SAFEUPLOAD_PROMOTE_FAIL_RENAME_VERSION;
+    if ((ULONG)InterlockedCompareExchange(&Entry->ActivationGeneration, 0, 0) != CurrentGeneration)
+        failed |= SAFEUPLOAD_PROMOTE_FAIL_ACTIVATION_GENERATION;
+    if (InterlockedCompareExchange(&Entry->ActivationEnforced, 0, 0) == 0) failed |= SAFEUPLOAD_PROMOTE_FAIL_NOT_ENFORCED;
+    if (InterlockedCompareExchange(&Entry->ScopeNameClassification, 0, 0) != STAGE_SCOPE_CLASS_SCOPED)
+        failed |= SAFEUPLOAD_PROMOTE_FAIL_NOT_SCOPED;
+    if (!nameOk) failed |= SAFEUPLOAD_PROMOTE_FAIL_NAME;
+    if (StageRegistrySnapshotSpilledWriters(Entry) != 0) failed |= SAFEUPLOAD_PROMOTE_FAIL_SPILLED_WRITERS;
+    if (StageRegistrySnapshotSpilledMutatingIo(Entry) != 0) failed |= SAFEUPLOAD_PROMOTE_FAIL_SPILLED_MUTATING_IO;
+    if (!SopEmpty) failed |= SAFEUPLOAD_PROMOTE_FAIL_SOP_NOT_EMPTY;
+    if (StageRegistrySnapshotC(Entry, NULL, 0, NULL) != 0) failed |= SAFEUPLOAD_PROMOTE_FAIL_C;
+    if (!siblingsFree) failed |= SAFEUPLOAD_PROMOTE_FAIL_SIBLING;
+    if (ReplacedLiveSop != NULL && InterlockedCompareExchangePointer(
+            (PVOID volatile *)&Entry->SectionObjectPointer, NULL, NULL) == ReplacedLiveSop)
+        failed |= SAFEUPLOAD_PROMOTE_FAIL_REBOUND;
+    if (failed == 0) {
         /* Serialize the final marker-generation check with marker insertion. A marker
          * discovered after the earlier PASSIVE scan must keep this promotion waiting. */
-        (VOID)StageRegistryTryPromoteStateNoInline(Entry, ExpectedSopMarkerGeneration,
-            PolicyGeneration, PolicyFlags,
-            SAFEUPLOAD_PROMOTION_BASIS_NAME_MATCH | SAFEUPLOAD_PROMOTION_BASIS_SOP_EMPTY |
-            SAFEUPLOAD_PROMOTION_BASIS_NO_USER_WRITABLE |
-            (CacheFlushedAndPurged ? SAFEUPLOAD_PROMOTION_BASIS_CACHE_FLUSH_PURGE : 0) |
-            (ReplacedLiveSop != NULL ? SAFEUPLOAD_PROMOTION_BASIS_INCARNATION_REPLACED : 0));
+        if (!StageRegistryTryPromoteStateNoInline(Entry, ExpectedSopMarkerGeneration,
+                PolicyGeneration, PolicyFlags,
+                SAFEUPLOAD_PROMOTION_BASIS_NAME_MATCH | SAFEUPLOAD_PROMOTION_BASIS_SOP_EMPTY |
+                SAFEUPLOAD_PROMOTION_BASIS_NO_USER_WRITABLE |
+                (CacheFlushedAndPurged ? SAFEUPLOAD_PROMOTION_BASIS_CACHE_FLUSH_PURGE : 0) |
+                (ReplacedLiveSop != NULL ? SAFEUPLOAD_PROMOTION_BASIS_INCARNATION_REPLACED : 0)))
+            failed |= SAFEUPLOAD_PROMOTE_FAIL_STATE_RECHECK;
     }
     StageReleaseSpinLock(&Entry->StateLock, irql);
     SafeUploadPolicyRenameLossGenerationLeave(renameLossIrql);
     FltReleaseContext(instanceContext);
+    return failed;
 }
 
 _IRQL_requires_max_(APC_LEVEL)
@@ -5366,6 +5377,7 @@ static VOID StageRegistryActivationProcess(_In_ PSTAGE_REGISTRY_ENTRY Entry,
     BOOLEAN cacheFlushedAndPurged = FALSE;
     BOOLEAN noNamesProvenByIdentity = FALSE;
     BOOLEAN incarnationReplaced = FALSE;
+    ULONG promoteFailed = 0;
     ULONG currentGeneration;
     ULONG promotionPolicyGeneration = 0;
     ULONG promotionPolicyFlags = 0;
@@ -5429,7 +5441,10 @@ static VOID StageRegistryActivationProcess(_In_ PSTAGE_REGISTRY_ENTRY Entry,
      * section creations already consult this policy union while the scan runs. */
     status = StageRegistryClassifyAllLinkNames(Entry, Instance, Volume, WorkBudget,
         &noLinkNames, &unionLinkScoped, &currentLinkScoped);
-    if (status == STATUS_MORE_ENTRIES) goto Exit;
+    if (status == STATUS_MORE_ENTRIES) {
+        StageRegistryRecordClassificationResult(Entry, status, SAFEUPLOAD_ACTIVATING_CLASSIFY_STEP_LINK_SCAN_MORE);
+        goto Exit;
+    }
     if (!NT_SUCCESS(status)) {
         if (aliasProbe) StageRegistryResolveAliasProbeVersioned(Entry, FALSE, FALSE,
             TRUE, transactionVersion, &aliasActivated);
@@ -5450,7 +5465,10 @@ static VOID StageRegistryActivationProcess(_In_ PSTAGE_REGISTRY_ENTRY Entry,
         /* Publish Activating before the first H/S/C/T and SOP read. */
         (VOID)StageRegistryResolveAliasProbeForGeneration(Entry, Instance,
             TRUE, unionLinkScoped, transactionVersion, &aliasActivated);
-        if (!aliasActivated) goto Exit;
+        if (!aliasActivated) {
+            StageRegistryRecordClassificationResult(Entry, STATUS_RETRY, SAFEUPLOAD_ACTIVATING_CLASSIFY_STEP_SCOPE_DEFERRED);
+            goto Exit;
+        }
     } else {
         if (!StageRegistrySetLinkScopeClassificationVersioned(Entry, TRUE,
                 unionLinkScoped, transactionVersion)) goto Exit;
@@ -5461,7 +5479,10 @@ static VOID StageRegistryActivationProcess(_In_ PSTAGE_REGISTRY_ENTRY Entry,
     }
 
     currentlyScoped = currentLinkScoped;
-    if (!currentlyScoped) goto Exit; /* candidate scope is gated until the policy is finalized */
+    if (!currentlyScoped) { /* candidate scope is gated until the policy is finalized */
+        StageRegistryRecordClassificationResult(Entry, STATUS_PENDING, SAFEUPLOAD_ACTIVATING_CLASSIFY_STEP_SCOPE_DEFERRED);
+        goto Exit;
+    }
 
     status = StageRegistryOpenIdentity(Entry, Instance, Volume, &handle, &object,
         &openFailureStep, &noNamesProvenByIdentity, FALSE);
@@ -5583,6 +5604,7 @@ static VOID StageRegistryActivationProcess(_In_ PSTAGE_REGISTRY_ENTRY Entry,
     if (!StageRegistryUnknownSopMarkersQuiescent(Instance, Volume, &markerWorkBudget,
             &markerWorkRemaining, &sopMarkerGeneration)) {
         if (markerWorkRemaining) InterlockedExchange(&Entry->ScopeScanPending, 1);
+        StageRegistryRecordClassificationResult(Entry, STATUS_PENDING, SAFEUPLOAD_ACTIVATING_CLASSIFY_STEP_MARKERS_LIVE);
         goto Exit;
     }
 
@@ -5616,11 +5638,17 @@ static VOID StageRegistryActivationProcess(_In_ PSTAGE_REGISTRY_ENTRY Entry,
     sopEmpty = sop->DataSectionObject == NULL && sop->SharedCacheMap == NULL;
     if ((ULONGLONG)InterlockedCompareExchange64(&RegistrySopMapGeneration, 0, 0) ==
             sopMarkerGeneration)
-        StageRegistryTryPromoteEntry(Entry, nameStillMatches, nameSnapshotChars,
+        promoteFailed = StageRegistryTryPromoteEntry(Entry, nameStillMatches, nameSnapshotChars,
             renameVersion, currentGeneration, sopEmpty, sopMarkerGeneration,
             promotionPolicyGeneration, promotionPolicyFlags, cacheFlushedAndPurged,
             incarnationReplaced ? sop : NULL);
+    else
+        promoteFailed = SAFEUPLOAD_PROMOTE_FAIL_SOP_MAP_MOVED;
     FltReleasePushLock(&RegistryLock);
+    /* Diagnostic row only: which predicate kept a refused promotion from Protected (0xE0000000 | mask). */
+    if (promoteFailed != 0)
+        StageRegistryRecordClassificationResult(Entry, (NTSTATUS)(0xE0000000u | promoteFailed),
+            SAFEUPLOAD_ACTIVATING_CLASSIFY_STEP_PROMOTE_DEFERRED);
 
 Exit:
     if (nameSnapshot != NULL) ExFreePoolWithTag(nameSnapshot, SAFEUPLOAD_REGISTRY_POOL_TAG);

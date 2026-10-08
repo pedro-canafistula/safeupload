@@ -1436,6 +1436,10 @@ static PCWSTR ActivatingClassificationStepName(UINT32 Step)
     case SAFEUPLOAD_ACTIVATING_CLASSIFY_STEP_NOT_RUN: return L"NotRun";
     case SAFEUPLOAD_ACTIVATING_CLASSIFY_STEP_FLUSH_PURGE: return L"FlushAndPurge";
     case SAFEUPLOAD_ACTIVATING_CLASSIFY_STEP_CACHE_RETAINED: return L"CacheRetained";
+    case SAFEUPLOAD_ACTIVATING_CLASSIFY_STEP_LINK_SCAN_MORE: return L"LinkScanMore";
+    case SAFEUPLOAD_ACTIVATING_CLASSIFY_STEP_SCOPE_DEFERRED: return L"ScopeDeferred";
+    case SAFEUPLOAD_ACTIVATING_CLASSIFY_STEP_MARKERS_LIVE: return L"MarkersLive";
+    case SAFEUPLOAD_ACTIVATING_CLASSIFY_STEP_PROMOTE_DEFERRED: return L"PromoteDeferred";
     default: return L"UnknownStep";
     }
 }
