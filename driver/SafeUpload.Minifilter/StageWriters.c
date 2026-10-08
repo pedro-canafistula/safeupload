@@ -4164,10 +4164,15 @@ static NTSTATUS StageRegistryOpenIdentity(_In_ PSTAGE_REGISTRY_ENTRY Entry,
     if (streamSnapshot == NULL) return STATUS_INSUFFICIENT_RESOURCES;
     FltAcquirePushLockShared(&RegistryLock);
     if (!Entry->Listed || Entry->Retired || !Entry->StreamIdentityKnown ||
-        Entry->StreamChars > SAFEUPLOAD_WRITER_REGISTRY_NAME_CHARS ||
-        InterlockedCompareExchange(&Entry->RenameInFlight, 0, 0) != 0) {
+        Entry->StreamChars > SAFEUPLOAD_WRITER_REGISTRY_NAME_CHARS) {
         FltReleasePushLock(&RegistryLock);
         status = STATUS_FILE_INVALID;
+        goto Exit;
+    }
+    if (InterlockedCompareExchange(&Entry->RenameInFlight, 0, 0) != 0) {
+        /* Churn, not a failed identity: the rename's completion begins a fresh probe. */
+        FltReleasePushLock(&RegistryLock);
+        status = STATUS_RETRY;
         goto Exit;
     }
     /* ADS names are appended after the stable 64-bit file reference so the
@@ -4249,13 +4254,15 @@ static NTSTATUS StageRegistryOpenIdentity(_In_ PSTAGE_REGISTRY_ENTRY Entry,
         status = STATUS_FILE_INVALID;
     }
     if (NT_SUCCESS(status)) {
-        BOOLEAN renameStable;
+        BOOLEAN live, churned;
         FltAcquirePushLockShared(&RegistryLock);
-        renameStable = Entry->Listed && !Entry->Retired &&
-            InterlockedCompareExchange(&Entry->RenameInFlight, 0, 0) == 0 &&
-            (ULONG)InterlockedCompareExchange(&Entry->RenameVersion, 0, 0) == renameVersion;
+        live = Entry->Listed && !Entry->Retired;
+        churned = InterlockedCompareExchange(&Entry->RenameInFlight, 0, 0) != 0 ||
+            (ULONG)InterlockedCompareExchange(&Entry->RenameVersion, 0, 0) != renameVersion;
         FltReleasePushLock(&RegistryLock);
-        if (!renameStable) status = STATUS_FILE_INVALID;
+        /* A rename that started or finished during the open is churn (STATUS_RETRY), not a failed identity. */
+        if (!live) status = STATUS_FILE_INVALID;
+        else if (churned) status = STATUS_RETRY;
     }
     if (NT_SUCCESS(status) && FailureStep != NULL)
         *FailureStep = SAFEUPLOAD_ACTIVATING_CLASSIFY_STEP_NONE;
@@ -4486,6 +4493,7 @@ Exit:
  * scan (empty continuation, still pending) so the reclaim worker retries it after that operation finished. The
  * probe that moved the entry is still pending, so admission stays gated meanwhile. Caller holds RegistryLock
  * exclusive. A sticky Unknown here would withhold coverage until reboot after one ordinary rename (Luna P2). */
+_IRQL_requires_max_(APC_LEVEL)
 static VOID StageRegistryParkScopeScanLocked(_In_ PSTAGE_REGISTRY_ENTRY Entry)
 {
     InterlockedExchange(&Entry->ScopeScanNextLink, 0);
@@ -4494,6 +4502,14 @@ static VOID StageRegistryParkScopeScanLocked(_In_ PSTAGE_REGISTRY_ENTRY Entry)
     Entry->ScopeScanLinkCount = 0;
     InterlockedExchange(&Entry->ScopeScanPending, 1);
     InterlockedIncrement64(&RegistryChangeSequence);
+}
+
+_IRQL_requires_max_(APC_LEVEL)
+static VOID StageRegistryParkScopeScan(_In_ PSTAGE_REGISTRY_ENTRY Entry)
+{
+    FltAcquirePushLockExclusive(&RegistryLock);
+    if (Entry->Listed && !Entry->Retired) StageRegistryParkScopeScanLocked(Entry);
+    FltReleasePushLock(&RegistryLock);
 }
 
 _IRQL_requires_(PASSIVE_LEVEL)
@@ -4585,15 +4601,19 @@ __declspec(noinline) static NTSTATUS StageRegistryClassifyAllLinkNames(_In_ PSTA
     if (!stable) { status = STATUS_FILE_INVALID; goto Exit; }
     if (renameChurn) {
         /* A rename of this entry is in flight: its completion begins a fresh probe. Retry then. */
-        FltAcquirePushLockExclusive(&RegistryLock);
-        if (Entry->Listed && !Entry->Retired) StageRegistryParkScopeScanLocked(Entry);
-        FltReleasePushLock(&RegistryLock);
+        StageRegistryParkScopeScan(Entry);
         status = STATUS_MORE_ENTRIES;
         goto Exit;
     }
     resultStep = SAFEUPLOAD_ACTIVATING_CLASSIFY_STEP_OPEN_BY_ID;
     status = StageRegistryOpenIdentity(Entry, Instance, Volume, &fileHandle, &fileObject,
         &resultStep, &noNamesProvenByIdentity, TRUE);
+    if (status == STATUS_RETRY) {
+        /* A rename moved the entry during the open: churn. Park and retry after its probe. */
+        StageRegistryParkScopeScan(Entry);
+        status = STATUS_MORE_ENTRIES;
+        goto Exit;
+    }
     if (!NT_SUCCESS(status)) {
         /* The entry owns this exact mounted volume and its recorded serial;
          * only an attempted ID open (or an exact, complete compact-stream
@@ -5700,6 +5720,13 @@ static VOID StageRegistryActivationProcess(_In_ PSTAGE_REGISTRY_ENTRY Entry,
             FltClose(handle); handle = NULL;
             status = STATUS_FILE_INVALID;
         }
+    }
+    if (status == STATUS_RETRY) {
+        /* A rename started or finished during the exact-identity open: churn, not a failed identity. Its probe
+         * is pending; rescan after it (Luna gen3b P2). */
+        StageRegistryRecordDeferral(Entry, status, SAFEUPLOAD_ACTIVATING_CLASSIFY_STEP_SCOPE_DEFERRED);
+        StageRegistryParkScopeScan(Entry);
+        goto Exit;
     }
     if (!NT_SUCCESS(status)) {
         if (noNamesProvenByIdentity && Entry->Volume == Volume && Entry->VolumeSerial != 0) {
