@@ -117,6 +117,7 @@ typedef struct _STAGE_SCOPE_CLASSIFICATION_RECEIPT {
     ULONG TransactionVersion;
     ULONG PolicyGeneration;
     ULONG ActivationGeneration;
+    ULONG AliasProbeSerial;          /* the probe this scan answers; a later Begin makes the answer stale */
     ULONGLONG PolicyScopeSequence;
 } STAGE_SCOPE_CLASSIFICATION_RECEIPT, *PSTAGE_SCOPE_CLASSIFICATION_RECEIPT;
 
@@ -148,6 +149,7 @@ __declspec(align(16)) struct _STAGE_REGISTRY_ENTRY {
     volatile LONG ScopeScanPending;
     ULONG ScopeScanRenameVersion;
     ULONG ScopeScanPolicyGeneration;
+    ULONG ScopeScanProbeSerial;
     ULONGLONG ScopeScanPolicySequence;
     ULONG ScopeScanLinkCount;
     volatile LONG ClassificationStatus;
@@ -156,6 +158,7 @@ __declspec(align(16)) struct _STAGE_REGISTRY_ENTRY {
     volatile LONG AliasProbePending;
     volatile LONG ScopeNameClassification;
     volatile LONG LastSState;
+    volatile LONG AliasProbeSerial;  /* advanced by every StageRegistryBeginAliasProbe, under StateLock */
     ULONGLONG Sequence;
     USHORT NameChars;
     BOOLEAN Compact;
@@ -1933,6 +1936,9 @@ static VOID StageRegistryCompleteDirectoryRename(_In_ PFLT_INSTANCE Instance,
                     StageRegistryPrepareActivation(entry, TRUE);
                     failed = TRUE;
                 } else if (Succeeded && StageRegistryBeginAliasProbe(entry)) {
+                    /* A compact entry has no stored name, so any directory move may change one of its links:
+                     * a scan or partial continuation taken before the move must not be reused (Luna P1). */
+                    InterlockedIncrement(&entry->RenameVersion);
                     recheck = TRUE;
                 }
                 continue;
@@ -4494,7 +4500,7 @@ __declspec(noinline) static NTSTATUS StageRegistryClassifyAllLinkNames(_In_ PSTA
     ULONG bufferBytes = 4096, returned = 0, recordIndex, offset, streamChars = 0;
     ULONG startingRenameVersion, startingTransactionVersion, startingPolicyGeneration, savedNextLink = 0;
     ULONGLONG streamSuffixHash = 0, startingPolicySequence;
-    ULONG startingActivationGeneration;
+    ULONG startingActivationGeneration, startingProbeSerial;
     ULONG savedUnionScoped = 0, savedCurrentScoped = 0, savedLinkCount = 0;
     ULONG nextLink = 0, cacheCount = 0, cacheIndex;
     BOOLEAN unionScoped = FALSE, currentScoped = FALSE, stable, compactStream = FALSE;
@@ -4531,6 +4537,7 @@ __declspec(noinline) static NTSTATUS StageRegistryClassifyAllLinkNames(_In_ PSTA
         &Entry->TransactionVersion, 0, 0);
     startingActivationGeneration = (ULONG)InterlockedCompareExchange(
         &Entry->ActivationGeneration, 0, 0);
+    startingProbeSerial = (ULONG)InterlockedCompareExchange(&Entry->AliasProbeSerial, 0, 0);
     if (InterlockedCompareExchange(&Entry->T, 0, 0) != 0) {
         FltReleasePushLock(&RegistryLock);
         status = STATUS_MORE_ENTRIES;
@@ -4551,6 +4558,7 @@ __declspec(noinline) static NTSTATUS StageRegistryClassifyAllLinkNames(_In_ PSTA
             RtlCopyMemory(streamSnapshot, Entry->StreamName, streamChars * sizeof(WCHAR));
         if (InterlockedCompareExchange(&Entry->ScopeScanPending, 0, 0) != 0 &&
             Entry->ScopeScanRenameVersion == startingRenameVersion &&
+            Entry->ScopeScanProbeSerial == startingProbeSerial &&
             Entry->ScopeScanPolicyGeneration == startingPolicyGeneration &&
             Entry->ScopeScanPolicySequence == startingPolicySequence) {
             savedNextLink = (ULONG)max(0, InterlockedCompareExchange(&Entry->ScopeScanNextLink, 0, 0));
@@ -4779,9 +4787,11 @@ PublishResult:
     }
     stable = Entry->Listed && !Entry->Retired &&
         InterlockedCompareExchange(&Entry->RenameInFlight, 0, 0) == 0 &&
-        (ULONG)InterlockedCompareExchange(&Entry->RenameVersion, 0, 0) == startingRenameVersion;
+        (ULONG)InterlockedCompareExchange(&Entry->RenameVersion, 0, 0) == startingRenameVersion &&
+        (ULONG)InterlockedCompareExchange(&Entry->AliasProbeSerial, 0, 0) == startingProbeSerial;
     if (stable) {
         Entry->ScopeScanRenameVersion = startingRenameVersion;
+        Entry->ScopeScanProbeSerial = startingProbeSerial;
         /* Store the scan's actual policy identity, never label old bytes with a newer publication. */
         Entry->ScopeScanPolicyGeneration = startingPolicyGeneration;
         Entry->ScopeScanPolicySequence = startingPolicySequence;
@@ -4807,6 +4817,7 @@ PublishResult:
         Receipt->TransactionVersion = startingTransactionVersion;
         Receipt->PolicyGeneration = startingPolicyGeneration;
         Receipt->ActivationGeneration = startingActivationGeneration;
+        Receipt->AliasProbeSerial = startingProbeSerial;
         Receipt->PolicyScopeSequence = startingPolicySequence;
     }
     if (NT_SUCCESS(status) && !noRemainingNames && !unionScoped) {
@@ -5204,6 +5215,9 @@ __declspec(noinline) static BOOLEAN StageRegistryBeginAliasProbe(_In_ PSTAGE_REG
          (state == SAFEUPLOAD_REGISTRY_STATE_UNKNOWN &&
           (Entry->NameChars != 0 || Entry->Compact) && Entry->StreamIdentityKnown))) {
         InterlockedExchange(&Entry->AliasProbePending, 1);
+        /* A scan already running answers an older probe: it must not clear this one (rename, link, directory
+         * rename and policy apply all begin through here), and a partial scan must not resume across it. */
+        InterlockedIncrement(&Entry->AliasProbeSerial);
         InterlockedExchange(&Entry->ScopeNameClassification, STAGE_SCOPE_CLASS_UNRESOLVED);
         /* The promotion CAS requires ActivationGeneration to equal the live policy generation. Scope apply and
          * reconcile stamp the generation they commit after calling this; an activation begun at runtime (a file
@@ -5245,6 +5259,7 @@ static BOOLEAN StageRegistryClassificationReceiptMatchesLocked(_In_ PSTAGE_REGIS
         (ULONG)InterlockedCompareExchange(&Entry->RenameVersion, 0, 0) == Receipt->RenameVersion &&
         (ULONG)InterlockedCompareExchange(&Entry->TransactionVersion, 0, 0) == Receipt->TransactionVersion &&
         (ULONG)InterlockedCompareExchange(&Entry->ActivationGeneration, 0, 0) == Receipt->ActivationGeneration &&
+        (ULONG)InterlockedCompareExchange(&Entry->AliasProbeSerial, 0, 0) == Receipt->AliasProbeSerial &&
         (ULONG)SafeUploadCurrentPolicyGeneration() == Receipt->PolicyGeneration &&
         SafeUploadPolicyScopeSequenceSnapshot() == Receipt->PolicyScopeSequence;
 }
