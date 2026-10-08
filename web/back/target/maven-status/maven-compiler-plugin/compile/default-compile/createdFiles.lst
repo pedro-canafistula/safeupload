@@ -1,11 +1,11 @@
-com/safeupload/application/dto/UsuarioResponse.class
-com/safeupload/presentation/controller/AuthController.class
 com/safeupload/application/AuthService$ResultadoLogin.class
+com/safeupload/application/exception/ErroDeValidacaoException.class
+com/safeupload/application/AdminService$1.class
+com/safeupload/application/dto/UsuarioResponse.class
 com/safeupload/infrastructure/repository/UsuarioRepository.class
 com/safeupload/presentation/config/CorsConfig.class
 com/safeupload/SafeuploadApplication.class
 com/safeupload/domain/entity/Usuario.class
-com/safeupload/application/exception/ErroDeValidacaoException.class
 com/safeupload/infrastructure/repository/SessaoRepository.class
 com/safeupload/application/AuthService.class
 com/safeupload/domain/entity/Sessao.class
