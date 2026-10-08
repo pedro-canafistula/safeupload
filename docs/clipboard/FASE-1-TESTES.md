@@ -12,7 +12,7 @@ o que ficou sem prova.
 | Já existiam | 243 (incluem os da Fase 0: política, regras e protocolo do clipboard) |
 | Novos na Fase 1 | **26**: 16 em `ClipboardServiceTests` e 10 em `ClipboardPipeTests` |
 | Prova no Windows real | Harness descartável (fora do repositório) |
-| Teste manual com Excel e Chrome | ⏳ **Pendente** |
+| Teste manual com Excel, Word, Chrome e Edge | ✅ **Passou** em 7/10/2026 (seção abaixo) |
 
 Como rodar:
 
@@ -35,6 +35,7 @@ Cada camada pega um tipo de erro diferente.
 | **Serviço** (`ClipboardServiceTests`) | Uma loja de política de mentira e um logger que grava o que foi dito | Estado da cópia, contadores, falha que libera, texto vazando em log |
 | **Pipe real** (`ClipboardPipeTests`) | Um named pipe do Windows de verdade, com nome único por teste | O protocolo no fio, linha malformada, linha gigante |
 | **Windows real** (harness) | Clipboard e gancho de foco reais | O App funcionando de verdade |
+| **Apps reais** (teste manual) | Excel, Word, Chrome, Edge e Bloco de Notas, com o serviço e o App rodando | O comportamento de aplicativos de verdade, como a renderização atrasada do Office |
 
 Os testes do serviço não abrem pipe, porque `ClipboardService` não conhece o
 pipe de propósito. Os do pipe sobem o `ClipboardPipeServer` com um nome único
@@ -168,14 +169,160 @@ nenhuma chamada minha, o que mostra que ele funciona fora do harness.
 | **Uma cópia contava duas vezes** (`Copies = 2` com um só `SetText`) | Harness com o clipboard real. O WPF e muitos apps disparam `WM_CLIPBOARDUPDATE` mais de uma vez por cópia | O monitor agrupa a rajada: espera 120 ms e trata só o último aviso. Depois: 1 cópia por Ctrl+C |
 | **Aviso falso `Falha ao atender o canal de clipboard` após quase toda resposta boa** | Rastreio com um logger que mostra tudo. Os testes usam logger nulo e não viam | O `StreamWriter` era descartado no fim do método, depois de o cliente fechar, e o último `Flush` lançava `IOException: Pipe is broken`. A escrita agora tem escopo próprio e termina antes da espera. Medido: **5 avisos sem a correção, 0 com ela** |
 
+## Teste manual com aplicativos reais (7/10/2026)
+
+O harness copiava texto pelo próprio processo. Este teste usa **os aplicativos de
+verdade**, para ver o que o harness não consegue: a renderização atrasada do
+Office, o nome real do processo de origem e as trocas de foco feitas por uma
+pessoa.
+
+### Como foi montado
+
+| Peça | Como |
+|---|---|
+| Política | `%ProgramData%\SafeUpload\policy.json` com `"mode": "Audit"`; saída: navegadores (Chrome, Edge...), mensageiros e e-mail. O Word **não** está na lista |
+| Serviço | Em modo console, `dotnet run --project agente/SafeUpload.Agent.Service -- --CentroAdministracao:BaseUrl=`. O argumento faz o serviço ler o arquivo local em vez da política do painel |
+| App | `dotnet run --project agente/SafeUpload.Agent.App`, na bandeja |
+| Aplicativos | Excel e Word (Office 16), Chrome, Edge e Bloco de Notas |
+| Como se observou | O log do serviço, lido a cada passo; nada foi inferido de fora dele |
+
+O serviço e o App ficaram conectados (`Aplicativo conectado ao canal de
+notificacao (sessao 1)`), e o pipe `SafeUpload.Agent.Clipboard` apareceu em
+`\\.\pipe\`.
+
+### O que passou entre o App e o serviço
+
+O que cada ação do usuário provoca, de ponta a ponta:
+
+```
+Ctrl+C no Excel, numa célula com 529.982.247-25
+  └─ Excel dispara WM_CLIPBOARDUPDATE → o App espera 120 ms → lê o texto
+       └─ pipe "classify": texto, tamanho real, origem "EXCEL"
+            └─ serviço: varre, acha um CPF válido, guarda (copyId, sujo)
+  LOG: Clipboard sujo: motivo Sensitive, categorias [Cpf], origem EXCEL. Copias 9, sujas 8.
+
+Clique no Word (não é saída)
+  └─ o gancho de foco avisa o App → o clipboard está sujo → pipe "paste" (sonda)
+       └─ serviço: DecidePaste → Allow → conta a troca de foco, e só isso
+  LOG: (nenhuma linha: só os focos em saída são logados)
+
+Clique no Chrome (saída)
+  └─ pipe "paste" (sonda) → serviço: DecidePaste → AuditOnly
+  LOG: Foco em destino de saida com o clipboard sujo: chrome (origem EXCEL, veredito AuditOnly). Total 8 de 64 trocas de foco.
+```
+
+Em nenhum momento o CPF aparece no log, nem a resposta do serviço o devolve.
+
+### Passos isolados
+
+Para tirar a dúvida sobre cópias contadas em dobro, três ações, uma por vez,
+comparando o log antes e depois de cada uma:
+
+**Passo 1. Um único Ctrl+C no Excel numa célula com CPF** → esperado: 1 linha.
+```
+antes:  ... Copias 8, sujas 7.
+depois: Clipboard sujo: motivo Sensitive, categorias [Cpf], origem EXCEL. Copias 9, sujas 8.
+```
+Uma linha, e os dois contadores subiram em 1. **O Excel não dispara
+classificação dupla.**
+
+**Passo 2. Um único Ctrl+C no Excel com `reunião às 14h`** → esperado: nenhuma linha.
+```
+antes:  (log com 43 linhas)
+depois: (log com 43 linhas)
+```
+Nenhuma linha nova, como o esperado: texto limpo não gera log. Mas isso, sozinho,
+não prova que a cópia foi contada. A prova veio no passo seguinte.
+
+**Passo 3. CPF copiado de novo; foco no Word; foco no Chrome.**
+```
+Clipboard sujo: motivo Sensitive, categorias [Cpf], origem EXCEL. Copias 11, sujas 9.
+Foco em destino de saida com o clipboard sujo: chrome (origem EXCEL, veredito AuditOnly). Total 8 de 64 trocas de foco.
+```
+- `Copias` foi de **9 para 11** e `sujas` de 8 para 9: houve uma cópia limpa (a do
+  passo 2, que não gerou log) e uma suja. **Isso prova que a cópia limpa foi
+  classificada.**
+- Houve uma linha de foco só para o **Chrome**. O Word recebeu foco e não gerou
+  linha, porque não está na lista de saída.
+
+### O primeiro roteiro, em conjunto
+
+Antes dos passos isolados, os cinco cenários (Excel → Chrome, Excel → Word, texto
+limpo, volta a limpo, Bloco de Notas → Chrome) foram feitos em sequência. O log:
+
+```
+Clipboard sujo: ... origem EXCEL. Copias 1, sujas 1.
+Clipboard sujo: ... origem EXCEL. Copias 3, sujas 2.            ← Copias 2 foi uma cópia limpa, sem log
+Foco em destino de saida ...: msedge (origem EXCEL, AuditOnly). Total 1 de 1 trocas de foco.
+Foco em destino de saida ...: msedge (origem EXCEL, AuditOnly). Total 2 de 3 trocas de foco.
+Clipboard sujo: ... origem EXCEL. Copias 4, sujas 3.
+Foco em destino de saida ...: chrome (origem EXCEL, AuditOnly). Total 3 de 6 trocas de foco.
+Foco em destino de saida ...: chrome (origem EXCEL, AuditOnly). Total 4 de 10 trocas de foco.
+Clipboard sujo: ... origem EXCEL. Copias 5, sujas 4.
+Clipboard sujo: ... origem EXCEL. Copias 6, sujas 5.
+Foco em destino de saida ...: chrome (origem EXCEL, AuditOnly). Total 5 de 17 trocas de foco.
+Clipboard sujo: ... origem EXCEL. Copias 7, sujas 6.
+Foco em destino de saida ...: chrome (origem EXCEL, AuditOnly). Total 6 de 21 trocas de foco.
+Clipboard sujo: ... origem Notepad. Copias 8, sujas 7.
+Foco em destino de saida ...: chrome (origem Notepad, AuditOnly). Total 7 de 25 trocas de foco.
+```
+
+O log não tem hora, então não dá para ligar cada linha a um cenário. Foi por isso
+que se fizeram os passos isolados, que respondem às três perguntas que esta
+sequência deixava abertas:
+
+| Dúvida | O que respondeu |
+|---|---|
+| Um Ctrl+C no Excel conta como uma ou duas cópias? | Passo 1: uma |
+| Uma cópia limpa é classificada, já que não gera log? | Passo 3: sim, `Copias` avançou em 2 |
+| O Word recebe foco sem contar como saída? | Passo 3: sim |
+
+### Totais do teste inteiro
+
+| Medida | Valor |
+|---|---|
+| Cópias classificadas | 11 (9 sujas, 2 limpas) |
+| Sujas por origem | 8 `EXCEL`, 1 `Notepad` |
+| Focos em destino de saída com o clipboard sujo | 8: 6 `chrome` e 2 `msedge`, todos `AuditOnly` |
+| Trocas de foco com o clipboard sujo | 64 |
+| Avisos ou erros no log do serviço | **0** |
+| Saída do App | Nenhuma (nenhuma exceção) |
+
+### O que este teste provou
+
+- **O Excel é detectado de forma confiável**: 8 cópias com CPF, todas marcadas,
+  todas com origem `EXCEL`. O risco que preocupava antes do teste, o Office usar
+  renderização atrasada e o App perder o CPF, não se concretizou.
+- **Um Ctrl+C gera uma classificação**, e não duas, também no Excel real. O
+  agrupamento de 120 ms basta.
+- **O Word não conta como saída.** O Chrome e o Edge contam. O Bloco de Notas
+  funciona como origem.
+- **O nome do processo de origem** vem certo: `EXCEL` e `Notepad`.
+- **Texto limpo** é classificado e contado, e não gera log.
+- O serviço e o App rodaram o teste inteiro sem erro.
+
+### O que ele não provou
+
+- **Cópia com a célula do Excel em modo de edição** (cursor dentro da célula, ou
+  texto selecionado na barra de fórmulas) não foi testada.
+- **Word como origem** não foi testado. O Word só foi usado como destino.
+- **Teams, WhatsApp e outros mensageiros** não foram testados.
+- **A contagem de "trocas de foco" é ruidosa** (64 contra 8 em saída). O gancho
+  conta toda troca de janela com o clipboard sujo, inclusive para o terminal e
+  para a conversa de desenvolvimento. A medida que importa é a de foco em
+  destino de saída.
+- O teste usa o texto `529.982.247-25`, um CPF de teste. Outras categorias
+  (cartão, senha, segredo) foram cobertas só pelos testes automatizados.
+
 ## Limites: o que a suíte não prova
 
 - **O App não tem teste xUnit.** `ClipboardMonitor` e `ClipboardPipeClient` falam
   com o Windows (janela de mensagens, gancho de foco, clipboard), e a única prova
   é o harness, que **não está no repositório**. Este documento registra o que ele
   provou, mas a equipe não consegue repeti-lo sem o código.
-- **Excel e Chrome reais não foram testados.** O harness copiava texto pelo
-  próprio processo, e o destino era a barra de tarefas. O roteiro manual está em
+- **O teste com aplicativos reais é manual**, não automatizado, e foi feito uma
+  vez, com o Office 16 e os navegadores desta máquina. Não há como a equipe
+  repeti-lo sem uma pessoa na frente do PC. O roteiro está em
   [FASE-1-MARCAR-SUJO-E-MEDIR.md](FASE-1-MARCAR-SUJO-E-MEDIR.md).
 - **O conserto do aviso falso não tem teste automatizado.** Foi tentado um teste
   de regressão, mas ele passava com e sem a correção, ou seja, não detectava o
@@ -188,5 +335,5 @@ nenhuma chamada minha, o que mostra que ele funciona fora do harness.
 
 | Item | Observação |
 |---|---|
-| Teste manual com Excel e Chrome | Exige alguém na frente do PC; roteiro no documento da fase |
+| Cópia com a célula do Excel em modo de edição, Word como origem, Teams e WhatsApp | Cenários não cobertos pelo teste manual de 7/10/2026 |
 | Levar o harness e o rastreio para o repositório | Fecharia o maior buraco de cobertura (o App) e permitiria à equipe repetir a prova |
