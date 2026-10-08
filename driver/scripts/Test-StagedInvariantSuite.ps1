@@ -990,8 +990,9 @@ function Invoke-InvariantStartupObservation {
             # Diagnostic only, never a verdict input: name the registry entries that keep coverage
             # from Ready at the window's end (C04 latency l4b1 ended WriterPromotionPending unnamed).
             try{[void](Invoke-ActivationInspector '--activating-status' (Join-Path $evidenceDirectory 'final-not-ready--activating-status'))}catch{}
-            # --registry-status carries each volume's first Unknown reason and the source line that raised it.
-            foreach($query in '--registry-status','--admission-coverage'){
+            # The per-volume receipt carries the first Unknown reason and the source line that raised it.
+            # Registry status has only aggregate counters and cannot locate a rename-loss origin.
+            foreach($query in '--registry-status','--admission-volume-status','--admission-coverage'){
                 try{[void](Invoke-ActivationInspector $query (Join-Path $evidenceDirectory ('final-not-ready'+$query)))}catch{}
             }
             # --activating-status needs five consecutive reads at one registry sequence and fails while an entry is

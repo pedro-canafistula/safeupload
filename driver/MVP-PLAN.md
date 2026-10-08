@@ -1987,3 +1987,25 @@ the batch wrapper before it runs.
   and `Restore-StagedNotificationRecord.ps1` puts it back from the reset's own archive (bytes unchanged, evidence-reader ACL).
   Batches now run from their own worktree: committing in the shared worktree mid-batch broke the exact-source preflight of
   the batch's later cases (v3a2/v3b2).
+
+## 2026-10-08 continuation (Codex)
+
+- Owner clarification: continue autonomous diagnosis and repairs of the observed workload failures under the existing
+  fail-closed, no-timers/no-scans and standard-user trust rules. The g2c dispatcher was briefly suspended between cases
+  while asking about repeated failures, then resumed; its in-flight case and restoration child were never suspended.
+- Verified source provenance for gen2: driver `cfee5a33`, agent `63664ffd` (`agent-goal-reads1`), harness `77684a17`.
+  Suite indices pin signed driver `B424BEFFB2FA341D4037D9FF6255F4FA53600AF89864F45F11115D8BAF0B15A3` and
+  service tree `7D6F33EDF649B73E93C339601A9F5A7BF1457CD18B4A2BA2F5AB42E8FA1DD1A0`. The source and build-summary
+  hashes match the retained inputs. All four WDK configurations report zero warnings/errors, PREfast and ApiValidator.
+- Generation repair review: [Luna gen2](evidence/2026-10-07/luna-activation-generation-gen2-review.md)
+  ACCEPT WITH CONDITIONS, no P0/P1. P2 post-MVP condition: the monotone signed LONG comparison stops stamping fresh
+  runtime entries after the policy-generation sign bit; define rollover handling before that horizon. The current
+  policy-finalization admission barrier and epoch drain cover the residual generation-read/CAS interval.
+- `Get-StagedMvpStatus.py cfee5a33 63664ffd` in the frozen gen2 run worktree reports 1/69, X01 runtime-Verifier only.
+  C03 dedicated overwrite latency g2b1 independently passes 100 warm + one cold samples, live taint and restoration.
+  C02 g2b2 and C04 g2b3 end Retained after 55 and 40 warm rounds, respectively; their forbidden-byte count is unknown
+  and neither is qualification. Both final coverage receipts show WriterStateUnknown with instance rename loss.
+- Diagnostic repair: capture `--admission-volume-status`, which exports firstUnknownReason/firstUnknownSite.
+  `--registry-status` exports aggregate counters only; its former comment and capture list could not locate the loss.
+  This query remains diagnostic-only and changes no gate, row revision, product source or recovery behavior.
+  Windows PowerShell 5.1 gate `codex-unknown-origin1`: PASS.
