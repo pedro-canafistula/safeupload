@@ -41,6 +41,7 @@ public sealed class HostCertificateFactory : IDisposable
     private const int MaxEntries = 2000;
 
     private readonly X509Certificate2 _authority;
+    private readonly RevocationListPublisher? _revocationList;
     private readonly ECDsa _leafKey;
     private readonly ConcurrentDictionary<string, Lazy<X509Certificate2>> _cache =
         new(StringComparer.OrdinalIgnoreCase);
@@ -49,7 +50,13 @@ public sealed class HostCertificateFactory : IDisposable
     /// Cria a fábrica sobre uma CA. A CA precisa ter chave privada: é ela que
     /// assina cada certificado emitido.
     /// </summary>
-    public HostCertificateFactory(X509Certificate2 authority)
+    /// <param name="authority">A CA de inspeção.</param>
+    /// <param name="revocationList">
+    /// Lista de revogação para onde os certificados apontam. Sem ela, programas
+    /// que usam o TLS do Windows (SChannel) recusam os certificados; os
+    /// navegadores não se importam. Ver <see cref="RevocationListPublisher"/>.
+    /// </param>
+    public HostCertificateFactory(X509Certificate2 authority, RevocationListPublisher? revocationList = null)
     {
         ArgumentNullException.ThrowIfNull(authority);
 
@@ -59,6 +66,7 @@ public sealed class HostCertificateFactory : IDisposable
         }
 
         _authority = authority;
+        _revocationList = revocationList;
         _leafKey = ECDsa.Create(ECCurve.NamedCurves.nistP256);
     }
 
@@ -153,6 +161,11 @@ public sealed class HostCertificateFactory : IDisposable
             new X509SubjectKeyIdentifierExtension(request.PublicKey, critical: false));
         request.CertificateExtensions.Add(
             X509AuthorityKeyIdentifierExtension.CreateFromCertificate(_authority, includeKeyIdentifier: true, includeIssuerAndSerial: false));
+
+        if (_revocationList is not null)
+        {
+            request.CertificateExtensions.Add(_revocationList.DistributionPointExtension());
+        }
 
         DateTimeOffset now = DateTimeOffset.UtcNow;
         DateTimeOffset notAfter = now.Add(Lifetime);
