@@ -101,7 +101,9 @@ function Load-State([string]$Path) {
         catch{if($watch.ElapsedMilliseconds -ge 10000 -or -not (Test-Path -LiteralPath $Path)){throw};Start-Sleep -Milliseconds 50}
     }
 }
-function Wait-WriterIdentity([string]$Path,[int]$Seconds=60) {
+# The default covers a standard user's first logon right after a boot on a paging 4 GB guest while the host runs other debuggees
+# (C03 BLOCK sc1f1, B02 h3i2: the actor published its identity after the old 60 s bound). Still QPC-bounded; a missing identity fails.
+function Wait-WriterIdentity([string]$Path,[int]$Seconds=180) {
     # Existence is not publication: CreateNew exposes the name before the writer
     # has flushed/closed it. Allow its write handle and retry partial CLIXML too.
     $deadline=([Diagnostics.Stopwatch]::GetTimestamp()+[long](($Seconds)*[Diagnostics.Stopwatch]::Frequency));$reason='File not published.'
@@ -948,7 +950,20 @@ function Invoke-ActivationInspector([string]$Argument,[string]$Prefix,[int]$Time
     $previous=$env:SAFEUPLOAD_STAGED_PROOF_PROXY
     try {
         if($state.AgentServiceStarted){$env:SAFEUPLOAD_STAGED_PROOF_PROXY='1'}else{Remove-Item Env:SAFEUPLOAD_STAGED_PROOF_PROXY -ErrorAction SilentlyContinue}
-        return Invoke-CapturedProcess $inspectorPath $Argument $Prefix $Timeout
+        # The driver refuses trace disable/clear with ERROR_BUSY (0x800700AA) while a paired observer ticket is outstanding
+        # (A05 sb2f1, R02 h3c1). That clears within moments, so retry only that refusal for these two commands, QPC-bounded
+        # (10 s), each attempt keeping its own output. Every other failure, and a refusal that persists, is thrown unchanged.
+        $retryBusy=$Argument -ceq '--admission-trace-disable' -or $Argument -ceq '--admission-trace-clear'
+        $limit=[Diagnostics.Stopwatch]::GetTimestamp()+[long](10*[Diagnostics.Stopwatch]::Frequency);$attempt=0
+        while($true) {
+            $attempt++;$attemptPrefix=if($attempt -eq 1){$Prefix}else{$Prefix+'-attempt-'+$attempt}
+            try{return Invoke-CapturedProcess $inspectorPath $Argument $attemptPrefix $Timeout}
+            catch{
+                $busy=$retryBusy -and (Test-Path -LiteralPath ($attemptPrefix+'.out')) -and ([IO.File]::ReadAllText($attemptPrefix+'.out') -match '0x800700AA')
+                if(-not $busy -or [Diagnostics.Stopwatch]::GetTimestamp() -ge $limit){throw}
+                Start-Sleep -Milliseconds 100
+            }
+        }
     }finally{
         if($null -eq $previous){Remove-Item Env:SAFEUPLOAD_STAGED_PROOF_PROXY -ErrorAction SilentlyContinue}else{$env:SAFEUPLOAD_STAGED_PROOF_PROXY=$previous}
     }
@@ -4937,7 +4952,8 @@ function Invoke-R01AllocatedRestart($Trial,$Actor,$Context,$Baseline,[byte[]]$Im
     $oldPid=@(Get-CimInstance Win32_Process -Filter "Name='SafeUpload.Agent.Service.exe'" | Select-Object -ExpandProperty ProcessId)
     Stop-Service SafeUploadAgent -ErrorAction Stop
     $watch=[Diagnostics.Stopwatch]::StartNew()
-    do{$service=Get-Service SafeUploadAgent;if($service.Status -eq 'Stopped'){break};Start-Sleep -Milliseconds 100}while($watch.ElapsedMilliseconds -lt 30000)
+    # SCM reports Stopped slightly before the process object is gone: wait (30 s bound, as before) for both.
+    do{$service=Get-Service SafeUploadAgent;if($service.Status -eq 'Stopped' -and -not @(Get-CimInstance Win32_Process -Filter "Name='SafeUpload.Agent.Service.exe'").Count){break};Start-Sleep -Milliseconds 100}while($watch.ElapsedMilliseconds -lt 30000)
     $down=@{State=[string]$service.Status;Processes=@(Get-CimInstance Win32_Process -Filter "Name='SafeUpload.Agent.Service.exe'");Qpc=[Diagnostics.Stopwatch]::GetTimestamp()}
     $Trial.R01Down=$down;$Trial.Assertions+=@{Name='R01ServiceStopped';Verdict=$(if($down.State -ceq 'Stopped' -and -not $down.Processes.Count){'PASS'}else{'FAIL'});Reason='SCM Stopped and no service process before offline actor barrier.';Evidence=$down}
     if($Trial.Assertions[-1].Verdict -cne 'PASS'){throw 'R01 agent did not stop'}
@@ -5422,6 +5438,10 @@ function Invoke-A05Observation {
         # unpermitted, using the same agent-down admission premise as S02.
         Close-ActivationNotificationCapture
         Stop-Service SafeUploadAgent -ErrorAction Stop;(Get-Service SafeUploadAgent).WaitForStatus([ServiceProcess.ServiceControllerStatus]::Stopped,[TimeSpan]::FromSeconds(30))
+        # SCM reports Stopped before the process object is gone (the service reseeds the boot policy on shutdown): give the
+        # exit a QPC-bounded 15 s before declaring the barrier violated (A05 sb2f1).
+        $exitDeadline=[Diagnostics.Stopwatch]::GetTimestamp()+[long](15*[Diagnostics.Stopwatch]::Frequency)
+        while(@(Get-Process SafeUpload.Agent.Service -ErrorAction SilentlyContinue).Count -and [Diagnostics.Stopwatch]::GetTimestamp() -lt $exitDeadline){Start-Sleep -Milliseconds 100}
         if(@(Get-Process SafeUpload.Agent.Service -ErrorAction SilentlyContinue).Count){throw 'A05 agent still running at refusal barrier'}
         $state.AgentServiceStarted=$false;Save-State $state $statePath
         $trial.ServiceBefore=Get-ServiceSnapshot 'a05-before-refusal' -JournalOnly
