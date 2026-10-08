@@ -1,5 +1,8 @@
 using SafeUpload.Agent.Core.Application;
+using SafeUpload.Agent.Service.Clipboard;
+using SafeUpload.Agent.Service.Dispatch;
 using SafeUpload.Agent.Service.Interception;
+using SafeUpload.Agent.Service.Network;
 using SafeUpload.Agent.Service.Notifications;
 using SafeUpload.Agent.Core.Infrastructure;
 using SafeUpload.Agent.Core.Infrastructure.Extraction;
@@ -25,6 +28,9 @@ public static class Program
     /// <summary>Nome do serviço no gerenciador de serviços do Windows.</summary>
     public const string ServiceName = "SafeUploadAgent";
 
+    /// <summary>Cliente nomeado usado para falar com o Centro de Administração.</summary>
+    private const string HttpClientName = "CentroAdministracao";
+
     /// <summary>Monta e executa o host.</summary>
     public static async Task Main(string[] args)
     {
@@ -46,6 +52,18 @@ public static class Program
             return;
         }
 
+        // Comandos de manutenção da CA de inspeção TLS ("ca install", "ca
+        // status", "ca remove"). Rodam e encerram, sem subir o serviço.
+        if (args.Length > 0 && string.Equals(args[0], "ca", StringComparison.OrdinalIgnoreCase))
+        {
+            // Sem isso o console do Windows usa a página de código antiga e os
+            // acentos das mensagens saem trocados.
+            Console.OutputEncoding = System.Text.Encoding.UTF8;
+
+            Environment.ExitCode = CertificateAuthorityCommand.Run(args[1..], Console.Out);
+            return;
+        }
+
         var builder = Host.CreateApplicationBuilder(args);
 
         builder.Services.AddWindowsService(options => options.ServiceName = ServiceName);
@@ -53,7 +71,11 @@ public static class Program
         // A composição é a mesma que o aplicativo WPF fazia à mão, agora do
         // lado do serviço: são estes objetos que decidem, e é por isso que
         // saíram do processo da interface.
-        builder.Services.AddSingleton<IPolicyStore, LocalPolicyStore>();
+        //
+        // A fila de auditoria é SEMPRE a local, com ou sem Centro de
+        // Administração configurado: é ela que deixa o endpoint continuar
+        // registrando com a rede fora do ar. O envio ao painel é uma etapa
+        // posterior, feita pelo HttpAgentDispatcher, e não um substituto.
         builder.Services.AddSingleton<IAuditSink, LocalQueueAuditSink>();
         builder.Services.AddSingleton(ExtractorRegistry.CreateDefault());
         builder.Services.AddSingleton<VerdictCache>();
@@ -79,6 +101,66 @@ public static class Program
 #if SAFEUPLOAD_ADMISSION_EVIDENCE
         builder.Services.AddSingleton<AdmissionEvidenceEndpoint>();
 #endif
+        builder.Services.AddSingleton<ClipboardCopyStore>();
+        builder.Services.AddSingleton<ClipboardMetrics>();
+        builder.Services.AddSingleton<ClipboardService>();
+
+        // De onde vem a politica, e para onde vai a trilha (HU-10).
+        //
+        // Sem "CentroAdministracao:BaseUrl" configurado, o agente e autonomo:
+        // le a politica do arquivo local e so acumula auditoria em disco. Com
+        // a URL configurada, a politica passa a vir do painel e um despachante
+        // sobe para entregar os eventos pendentes.
+        //
+        // O padrao e o local pelo mesmo motivo do gatilho logo abaixo: uma
+        // maquina que ainda nao aponta para nenhum painel precisa proteger de
+        // forma autonoma, e nao ficar esperando um servidor que talvez nunca
+        // seja configurado.
+        string adminBaseUrl = builder.Configuration["CentroAdministracao:BaseUrl"] ?? string.Empty;
+        string endpointId = Environment.MachineName;
+
+        if (string.IsNullOrWhiteSpace(adminBaseUrl))
+        {
+            builder.Services.AddSingleton<IPolicyStore, LocalPolicyStore>();
+        }
+        else
+        {
+            var adminUri = new Uri(adminBaseUrl.EndsWith('/') ? adminBaseUrl : adminBaseUrl + "/");
+
+            int timeoutSeconds =
+                int.TryParse(builder.Configuration["CentroAdministracao:TimeoutSeconds"], out int parsedTimeout)
+                    ? parsedTimeout
+                    : 5;
+
+            int intervalSeconds =
+                int.TryParse(builder.Configuration["CentroAdministracao:DispatchIntervalSeconds"], out int parsedInterval)
+                    ? parsedInterval
+                    : 30;
+
+            // Timeout curto de proposito: a politica e lida no caminho da
+            // decisao, e um painel lento nao pode virar uma inspecao lenta. Se
+            // estourar, a HttpPolicyStore cai no padrao embutido.
+            builder.Services
+                .AddHttpClient(HttpClientName, client =>
+                {
+                    client.BaseAddress = adminUri;
+                    client.Timeout = TimeSpan.FromSeconds(timeoutSeconds);
+                });
+
+            builder.Services.AddSingleton<IPolicyStore>(provider =>
+                new HttpPolicyStore(
+                    provider.GetRequiredService<IHttpClientFactory>().CreateClient(HttpClientName),
+                    endpointId));
+
+            builder.Services.AddHostedService(provider =>
+                new HttpAgentDispatcher(
+                    provider.GetRequiredService<IAuditSink>(),
+                    provider.GetRequiredService<IPolicyStore>(),
+                    provider.GetRequiredService<IHttpClientFactory>().CreateClient(HttpClientName),
+                    endpointId,
+                    TimeSpan.FromSeconds(intervalSeconds),
+                    provider.GetRequiredService<ILogger<HttpAgentDispatcher>>()));
+        }
 
         // O gatilho. A partir daqui a protecao existe sem interface nenhuma
         // aberta, que e o ponto de separar os dois processos.
@@ -118,6 +200,19 @@ public static class Program
         // Nao altera veredito - submete um motivo para um bloqueio que este
         // servico registrou, e valida contra o registro dele.
         builder.Services.AddHostedService<JustificationPipeServer>();
+
+        // O canal de clipboard (Fase 1: classifica e mede, sem interferir).
+        // Com "clipboard.mode" Off na politica, que e o padrao, ele responde
+        // "limpo" a tudo e nao conta nada.
+        builder.Services.AddHostedService<ClipboardPipeServer>();
+
+        // A inspeção do tráfego web (proxy TLS). Desligada por padrão: ligar
+        // instala uma CA confiável na máquina, e isso tem de ser uma decisão
+        // explícita. Ver docs/rede/PLANO-INSPECAO-TLS.md.
+        if (string.Equals(builder.Configuration["InspecaoTls:Habilitada"], "true", StringComparison.OrdinalIgnoreCase))
+        {
+            builder.Services.AddHostedService<TlsInspectionService>();
+        }
 
         await builder.Build().RunAsync();
     }

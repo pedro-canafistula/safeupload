@@ -21,11 +21,14 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.11" />
     <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="10.0.11" />
+    <!-- IHttpClientFactory, para o despachante da HU-10 falar com o painel. -->
+    <PackageReference Include="Microsoft.Extensions.Http" Version="10.0.11" />
   </ItemGroup>
 
   <ItemGroup>
     <InternalsVisibleTo Include="SafeUpload.Agent.Tests" />
     <ProjectReference Include="..\SafeUpload.Agent.Core\SafeUpload.Agent.Core.csproj" />
     <ProjectReference Include="..\SafeUpload.Agent.Minifilter\SafeUpload.Agent.Minifilter.csproj" />
+    <ProjectReference Include="..\SafeUpload.Agent.Network\SafeUpload.Agent.Network.csproj" />
   </ItemGroup>
 </Project>

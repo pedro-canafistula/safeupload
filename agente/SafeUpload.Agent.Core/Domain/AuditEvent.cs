@@ -55,4 +55,24 @@ public sealed record AuditEvent(
     int PolicyVersion,
     long ElapsedMs,
     bool Dispatched,
-    string? PublishedSha256Hex = null);
+    string? PublishedSha256Hex = null,
+    AuditChannel Channel = AuditChannel.File);
+
+/// <summary>
+/// Por onde o dado tentou sair.
+///
+/// Opcional e com padrão <see cref="File"/>: os eventos que já existem, e as
+/// linhas antigas da fila em disco, continuam significando o que sempre
+/// significaram. Num evento de <see cref="Clipboard"/>, <c>FileName</c> e
+/// <c>Extension</c> ficam vazios, <c>SizeBytes</c> é o tamanho do texto,
+/// <c>ProcessName</c> é quem copiou e <c>DestinationPath</c> é o processo onde
+/// se tentou colar. O texto copiado nunca entra no evento (RN-006).
+/// </summary>
+public enum AuditChannel
+{
+    /// <summary>Operação de arquivo, vista pelo minifiltro ou pelo watcher.</summary>
+    File,
+
+    /// <summary>Colagem a partir da área de transferência.</summary>
+    Clipboard
+}

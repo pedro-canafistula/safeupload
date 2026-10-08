@@ -1,0 +1,19 @@
+services:
+  mysql:
+    build:
+      context: .
+      dockerfile: Dockerfile 
+    container_name: safeupload-db 
+    secrets:
+      - mysql_senha_root
+    ports: 
+      - "3306:3306"
+    volumes:
+      - mysql_dados:/var/lib/mysql
+
+volumes:
+  mysql_dados:
+
+secrets:
+  mysql_senha_root:
+    file: ./secrets/MYSQL_SENHA_ROOT.txt
