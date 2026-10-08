@@ -1307,7 +1307,10 @@ function Capture-InvariantSample {
         $start = Get-IOTime $Context; $attempts = @(); $captures = @(); $watch = [Diagnostics.Stopwatch]::StartNew()
         for ($i = 0; $i -lt 10 -and $watch.ElapsedMilliseconds -lt 2000; $i++) {
             $begin = [Diagnostics.Stopwatch]::GetTimestamp()
-            $capture = Get-IOCapture $Context $Baseline.Names -Retained -PinnedExtents:([StagedInvariant.Native]::UsesPinnedExtents($Context.CaseId))
+            # A04 pins its baseline for the checked reader close/rebind, but its last sample follows the approved publication, which REPLACES the
+            # pinned file (CapturePinned: 'FILE_NAME binding changed'); the suite sets PinnedExtentsDisabled for that sample only.
+            $pinnedNow=[StagedInvariant.Native]::UsesPinnedExtents($Context.CaseId) -and -not ($null -ne $Context.PSObject.Properties['PinnedExtentsDisabled'] -and $Context.PinnedExtentsDisabled -eq $true)
+            $capture = Get-IOCapture $Context $Baseline.Names -Retained -PinnedExtents:$pinnedNow
             $captures += $capture
             $attempts += [pscustomobject]@{ Attempt = $i + 1; StartQpc = $begin; EndQpc = [Diagnostics.Stopwatch]::GetTimestamp(); Status = $capture.Status; Error = $capture.Error }
             if ($capture.Status -eq 'OK') { break }

@@ -4109,7 +4109,8 @@ function Invoke-ActivationApprovedSave($Trial,$Actor,$Context,$Baseline,$Promoti
     # the old file (A04 dad1: final raw image equalled the pre-approval U, 96 payload bytes differing). Flush the exact volume first, as
     # R03 and X01 do; it only makes the disk the observer reads match the live state.
     $null=Flush-InvariantSetupVolume
-    $final=Capture-InvariantSample $Context $Baseline 'A04FinalReleasedImage' 5
+    Add-Member -InputObject $Context -NotePropertyName PinnedExtentsDisabled -NotePropertyValue $true -Force
+    try{$final=Capture-InvariantSample $Context $Baseline 'A04FinalReleasedImage' 5}finally{Add-Member -InputObject $Context -NotePropertyName PinnedExtentsDisabled -NotePropertyValue $false -Force}
     $whole=Test-ActivationRawWholeImage $final $Target $imageA
     Add-ActivationAssertion $Trial 'ApprovedFinalRawImageA' $whole.Verdict $whole.Reason $whole
     $Trial.ApprovedSave=@{Before=$before;Held=$held;Allocated=$allocated;Close=$close;Terminal=$terminal;ImageA=@{Length=$imageA.Length;Sha256=$digest};Final=$final;RawHeldDifference=$difference}
