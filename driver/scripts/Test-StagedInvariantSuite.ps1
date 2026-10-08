@@ -1580,6 +1580,7 @@ function Get-NotificationSnapshot([string]$Tag,[string]$BootId,[long]$MinimumQpc
         TimeoutSeconds=30;PollMilliseconds=100;DurationMs=$null;Covered=$false;TimedOut=$false;Attempts=@()}
     $inventoryWait=[ordered]@{StartQpc=$null;DeadlineQpc=$null;OuterDeadlineQpc=$deadline;EndQpc=$null;QpcFrequency=$frequency;
         TimeoutSeconds=5;PollMilliseconds=25;DurationMs=$null;Cleared=$false;TimedOut=$false;Windows=@();Observations=@()}
+    $readFailures=0
     do {
         $held=@();$inventoryRetry=$false;$inventoryRejected=$false
         $snapshot=[ordered]@{Status='INCONCLUSIVE';LocationStatus='INCONCLUSIVE';LocationFiles=@();Directory=$directory;DirectoryExists=$null;ChildNames=@();AfterChildNames=@();UnknownChildNames=@();MissingChildNames=@();Objects=@();
@@ -1682,7 +1683,10 @@ function Get-NotificationSnapshot([string]$Tag,[string]$BootId,[long]$MinimumQpc
             }else{
                 $snapshot.Errors=Get-ErrorChain $_.Exception
                 $wait.Attempts+=@{ReadQpc=[Diagnostics.Stopwatch]::GetTimestamp();Decision='ReadError';Authenticated=$false;Reason=$reason}
-                if($inventoryRejected -or [Diagnostics.Stopwatch]::GetTimestamp() -ge $readDeadline){return [pscustomobject]$snapshot}
+                # One read of a long-lived record costs several seconds in PS 5.1 (2.5k lines parsed one by one), so the 4 s budget alone allowed a
+                # single attempt: a head replaced a moment after the last append (head.tmp) then ended the snapshot. Always make three attempts.
+                $readFailures++
+                if($inventoryRejected -or ([Diagnostics.Stopwatch]::GetTimestamp() -ge $readDeadline -and $readFailures -ge 3)){return [pscustomobject]$snapshot}
             }
         }
         finally{
