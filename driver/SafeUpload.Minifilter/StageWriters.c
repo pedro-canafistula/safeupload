@@ -4357,6 +4357,34 @@ __declspec(noinline) static VOID StageRegistryRecordClassificationResult(
     if (changed) InterlockedIncrement64(&RegistryChangeSequence);
 }
 
+/* Diagnostic row for the activation pass's deferrals (steps LINK_SCAN_MORE .. PROMOTE_DEFERRED). No readiness,
+ * promotion or admission decision reads it, so it never moves RegistryChangeSequence: coverage and activating-status
+ * snapshots retry on that sequence, and a row whose value alternates between passes (a changing predicate mask) would
+ * otherwise keep them returning STATUS_RETRY (C04 v6a1, Luna 94fcc04c P2). It also never replaces a more specific
+ * classification failure (OPEN_BY_ID .. NAME_BUILD, OTHER) recorded by the pass or a helper. */
+_IRQL_requires_max_(APC_LEVEL)
+__declspec(noinline) static VOID StageRegistryRecordDeferral(
+    _In_ PSTAGE_REGISTRY_ENTRY Entry, _In_ NTSTATUS Status, _In_ UINT32 Step)
+{
+    KIRQL irql;
+    LONG current;
+    if (Entry->Instance == NULL) return;
+    StageAcquireSpinLock(&Entry->StateLock, &irql);
+    current = InterlockedCompareExchange(&Entry->ClassificationStep, 0, 0);
+    if (current == (LONG)SAFEUPLOAD_ACTIVATING_CLASSIFY_STEP_NONE ||
+        current == (LONG)SAFEUPLOAD_ACTIVATING_CLASSIFY_STEP_NOT_RUN ||
+        current == (LONG)SAFEUPLOAD_ACTIVATING_CLASSIFY_STEP_FLUSH_PURGE ||
+        current == (LONG)SAFEUPLOAD_ACTIVATING_CLASSIFY_STEP_CACHE_RETAINED ||
+        current == (LONG)SAFEUPLOAD_ACTIVATING_CLASSIFY_STEP_LINK_SCAN_MORE ||
+        current == (LONG)SAFEUPLOAD_ACTIVATING_CLASSIFY_STEP_SCOPE_DEFERRED ||
+        current == (LONG)SAFEUPLOAD_ACTIVATING_CLASSIFY_STEP_MARKERS_LIVE ||
+        current == (LONG)SAFEUPLOAD_ACTIVATING_CLASSIFY_STEP_PROMOTE_DEFERRED) {
+        InterlockedExchange(&Entry->ClassificationStatus, Status);
+        InterlockedExchange(&Entry->ClassificationStep, (LONG)Step);
+    }
+    StageReleaseSpinLock(&Entry->StateLock, irql);
+}
+
 static BOOLEAN StageRegistryOpenByIdMeansNoName(_In_ NTSTATUS Status)
 {
     /* DELETE_PENDING alone does not prove that the namespace link is gone.
@@ -5442,7 +5470,7 @@ static VOID StageRegistryActivationProcess(_In_ PSTAGE_REGISTRY_ENTRY Entry,
     status = StageRegistryClassifyAllLinkNames(Entry, Instance, Volume, WorkBudget,
         &noLinkNames, &unionLinkScoped, &currentLinkScoped);
     if (status == STATUS_MORE_ENTRIES) {
-        StageRegistryRecordClassificationResult(Entry, status, SAFEUPLOAD_ACTIVATING_CLASSIFY_STEP_LINK_SCAN_MORE);
+        StageRegistryRecordDeferral(Entry, status, SAFEUPLOAD_ACTIVATING_CLASSIFY_STEP_LINK_SCAN_MORE);
         goto Exit;
     }
     if (!NT_SUCCESS(status)) {
@@ -5466,7 +5494,7 @@ static VOID StageRegistryActivationProcess(_In_ PSTAGE_REGISTRY_ENTRY Entry,
         (VOID)StageRegistryResolveAliasProbeForGeneration(Entry, Instance,
             TRUE, unionLinkScoped, transactionVersion, &aliasActivated);
         if (!aliasActivated) {
-            StageRegistryRecordClassificationResult(Entry, STATUS_RETRY, SAFEUPLOAD_ACTIVATING_CLASSIFY_STEP_SCOPE_DEFERRED);
+            StageRegistryRecordDeferral(Entry, STATUS_RETRY, SAFEUPLOAD_ACTIVATING_CLASSIFY_STEP_SCOPE_DEFERRED);
             goto Exit;
         }
     } else {
@@ -5480,7 +5508,7 @@ static VOID StageRegistryActivationProcess(_In_ PSTAGE_REGISTRY_ENTRY Entry,
 
     currentlyScoped = currentLinkScoped;
     if (!currentlyScoped) { /* candidate scope is gated until the policy is finalized */
-        StageRegistryRecordClassificationResult(Entry, STATUS_PENDING, SAFEUPLOAD_ACTIVATING_CLASSIFY_STEP_SCOPE_DEFERRED);
+        StageRegistryRecordDeferral(Entry, STATUS_PENDING, SAFEUPLOAD_ACTIVATING_CLASSIFY_STEP_SCOPE_DEFERRED);
         goto Exit;
     }
 
@@ -5604,7 +5632,7 @@ static VOID StageRegistryActivationProcess(_In_ PSTAGE_REGISTRY_ENTRY Entry,
     if (!StageRegistryUnknownSopMarkersQuiescent(Instance, Volume, &markerWorkBudget,
             &markerWorkRemaining, &sopMarkerGeneration)) {
         if (markerWorkRemaining) InterlockedExchange(&Entry->ScopeScanPending, 1);
-        StageRegistryRecordClassificationResult(Entry, STATUS_PENDING, SAFEUPLOAD_ACTIVATING_CLASSIFY_STEP_MARKERS_LIVE);
+        StageRegistryRecordDeferral(Entry, STATUS_PENDING, SAFEUPLOAD_ACTIVATING_CLASSIFY_STEP_MARKERS_LIVE);
         goto Exit;
     }
 
@@ -5647,7 +5675,7 @@ static VOID StageRegistryActivationProcess(_In_ PSTAGE_REGISTRY_ENTRY Entry,
     FltReleasePushLock(&RegistryLock);
     /* Diagnostic row only: which predicate kept a refused promotion from Protected (0xE0000000 | mask). */
     if (promoteFailed != 0)
-        StageRegistryRecordClassificationResult(Entry, (NTSTATUS)(0xE0000000u | promoteFailed),
+        StageRegistryRecordDeferral(Entry, (NTSTATUS)(0xE0000000u | promoteFailed),
             SAFEUPLOAD_ACTIVATING_CLASSIFY_STEP_PROMOTE_DEFERRED);
 
 Exit:
