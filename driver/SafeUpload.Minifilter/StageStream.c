@@ -41,6 +41,7 @@ typedef struct _STAGE_STREAM {
     EX_RUNDOWN_REF PagingRundown;
     BOOLEAN ReadOnly;
     BOOLEAN Sealed;
+    BOOLEAN Retired;            /* sealed, stage file deleted by the service, backing closed: kept only until unload */
     NTSTATUS DrainStatus;
     UNICODE_STRING StageName;
     WCHAR StageBuffer[SAFEUPLOAD_MAX_PATH_CHARS];
@@ -1144,7 +1145,7 @@ static NTSTATUS StageOpenBacking(PSTAGE_STREAM Stream, BOOLEAN ReadOnly)
         &Stream->BackingHandle, &Stream->BackingObject,
         FILE_READ_DATA | FILE_READ_ATTRIBUTES | SYNCHRONIZE |
             (ReadOnly ? 0 : FILE_WRITE_DATA | FILE_WRITE_ATTRIBUTES),
-        &attributes, &io, NULL, FILE_ATTRIBUTE_NORMAL, ReadOnly ? FILE_SHARE_READ : 0, FILE_OPEN,
+        &attributes, &io, NULL, FILE_ATTRIBUTE_NORMAL, ReadOnly ? (FILE_SHARE_READ | FILE_SHARE_DELETE) : 0, FILE_OPEN,
         FILE_NON_DIRECTORY_FILE | FILE_SYNCHRONOUS_IO_NONALERT | FILE_NO_INTERMEDIATE_BUFFERING,
         NULL, 0, IO_STOP_ON_SYMLINK, NULL);
     if (status == STATUS_STOPPED_ON_SYMLINK && io.Information != 0) ExFreePool((PVOID)io.Information);
@@ -2305,6 +2306,37 @@ static NTSTATUS StageDrain(PSTAGE_STREAM Stream)
     return status;
 }
 
+/* A sealed version keeps its read-only backing open so that its owner can still read it. The backing is opened with
+ * FILE_SHARE_DELETE so the service can remove the stage (BLOCK cleanup after the hand-back window): NTFS then marks it delete-pending
+ * and keeps the name until the last handle closes. Once nobody holds the version (no handle, file object or section) and the
+ * backing is delete-pending, close it so the file really goes away, and detach the private view so later opens resolve to the
+ * public name. Before this, no sealed stage could ever be deleted while the driver was loaded (sharing violation on every try).
+ * Caller owns NamespaceResource. */
+static VOID StageRetireDeletedStream(PSTAGE_STREAM Stream)
+{
+    FILE_STANDARD_INFORMATION standard;
+    NTSTATUS status;
+    StageAcquire(&Stream->Resource);
+    if (Stream->BackingObject != NULL && Stream->ShareAccess.OpenCount == 0 &&
+        InterlockedCompareExchange(&Stream->FileObjects, 0, 0) == 0 &&
+        Stream->Sections.SharedCacheMap == NULL && Stream->Sections.DataSectionObject == NULL &&
+        Stream->Sections.ImageSectionObject == NULL) {
+        RtlZeroMemory(&standard, sizeof(standard));
+        status = FltQueryInformationFile(Stream->BackingInstance, Stream->BackingObject,
+            &standard, sizeof(standard), FileStandardInformation, NULL);
+        if (NT_SUCCESS(status) && standard.DeletePending) {
+            /* No handle, file object or section exists, so no paging I/O can be in flight; the wait is the same barrier StageDrain
+             * uses, and the rundown is re-armed so the unload path's wait on this stream still returns. */
+            ExWaitForRundownProtectionRelease(&Stream->PagingRundown);
+            StageCloseBacking(Stream);
+            Stream->Retired = TRUE;
+            if (Stream->View != NULL && Stream->View->Current == Stream) Stream->View->Detached = TRUE;
+            ExReInitializeRundownProtection(&Stream->PagingRundown);
+        }
+    }
+    StageRelease(&Stream->Resource);
+}
+
 static KSTART_ROUTINE StageWorker;
 static VOID StageWorker(PVOID Context)
 {
@@ -2318,6 +2350,7 @@ static VOID StageWorker(PVOID Context)
             PSTAGE_STREAM stream = CONTAINING_RECORD(link, STAGE_STREAM, Link);
             NTSTATUS status = STATUS_SUCCESS;
             if (stream->RenameExchange != NULL) StageFinishRename(stream);
+            if (stream->Sealed && !stream->Retired) StageRetireDeletedStream(stream);
             if (stream->Sealed || stream->RenameExchange != NULL) continue;
             StageAcquire(&stream->Resource);
             if (!stream->ReadOnly) {
