@@ -670,7 +670,20 @@ try {
         $windowReceipt=$null
         if($config.BlockWindowClosure -and -not $config.DedicatedUnheldLatency){
             Save-ActorReceipt 'handback-open.clixml' $calls $privateDigest @{Files=$handBackAfter;Held=$false}
-            $windowConfig=[Management.Automation.PSSerializer]::Deserialize([IO.File]::ReadAllText((Join-Path $config.CoordinationDirectory 'window-config.clixml')))
+            # The host writes these two files with a write handle open; ReadAllText (FileShare.Read) loses that race with a sharing
+            # violation (C01/C03 BLOCK w090008g1/w09134821: actor exit 1, no window receipt). Open shared and retry a partial file.
+            $readShared={param([string]$Path,[long]$DeadlineQpc)
+                while($true){
+                    try{
+                        $fs=[IO.FileStream]::new($Path,[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::ReadWrite -bor [IO.FileShare]::Delete)
+                        try{return [Management.Automation.PSSerializer]::Deserialize([IO.StreamReader]::new($fs,[Text.UTF8Encoding]::new($false)).ReadToEnd())}finally{$fs.Dispose()}
+                    }catch{
+                        if([Diagnostics.Stopwatch]::GetTimestamp() -ge $DeadlineQpc){throw}
+                        Start-Sleep -Milliseconds 50
+                    }
+                }
+            }
+            $windowConfig=& $readShared (Join-Path $config.CoordinationDirectory 'window-config.clixml') ([Diagnostics.Stopwatch]::GetTimestamp()+[long](30*[Diagnostics.Stopwatch]::Frequency))
             if($windowConfig.Token -cne $config.Token -or $windowConfig.DeadlineQpc -le [Diagnostics.Stopwatch]::GetTimestamp()){throw 'Invalid BLOCK window QPC deadline/token'}
             $windowCommandPath=Join-Path $config.CoordinationDirectory 'window-complete.clixml'
             while(-not(Test-Path -LiteralPath $windowCommandPath)){
@@ -678,7 +691,7 @@ try {
                 if([Diagnostics.Stopwatch]::GetTimestamp() -ge $windowConfig.DeadlineQpc){throw 'BLOCK window actor QPC timeout'}
                 Start-Sleep -Milliseconds 100
             }
-            $command=[Management.Automation.PSSerializer]::Deserialize([IO.File]::ReadAllText($windowCommandPath))
+            $command=& $readShared $windowCommandPath $windowConfig.DeadlineQpc
             if($command.Token -cne $config.Token){throw 'BLOCK window completion token mismatch'}
             $result=@{NativeCode=$null;Reply=$null;StartQpc=[Diagnostics.Stopwatch]::GetTimestamp();SkippedReason=$command.SkippedReason}
             if($command.Submit){

@@ -987,6 +987,13 @@ function Open-InvariantObserver {
         return New-IORecord 'Context' @{ Schema = 'StagedInvariant/1'; Status = 'ERROR'; Closed = $true; Error = $errorRecord }
     }
 }
+function Open-IONamed($Context,[string]$Path) {
+    # B02 FinalReleased: the product refuses data-read opens of a justified sensitive file (DeniedPostCreate), so every re-open of that
+    # name in the sample (stability bracket, retained publication handle) binds it by identity with the attribute-only handle the first
+    # lookup used. Everything else keeps the ordinary read open.
+    if($null -ne $Context.PSObject.Properties['NamedOpenAttributesOnly'] -and $Context.NamedOpenAttributesOnly -eq $true){return [StagedInvariant.Native]::OpenAttributes($Path)}
+    return [StagedInvariant.Native]::Open($Path,$false,$false)
+}
 function Get-IONamedOpenDiagnostic([string]$Path) {
     $start=[Diagnostics.Stopwatch]::GetTimestamp();$h=$null;$errors=@()
     try { $h=[StagedInvariant.Native]::Open($Path,$false,$false) }
@@ -1086,7 +1093,7 @@ function Get-IOCapture($Context, [string[]] $Names, [switch] $Retained, [switch]
                 $l.Before.Digest -ne $after.Digest) { throw [StagedInvariant.ObservationException]::new('Stability', 'Content/layout changed across bracket.', 0) }
             if ($null -ne $l.Path) {
                 if($l.ContainsKey('PinnedOriginal')){Assert-IOParentMatch $after $parents[[IO.Path]::GetDirectoryName($l.Path)].Before ([IO.Path]::GetFileName($l.Path));continue}
-                $newLookup = [StagedInvariant.Native]::Open($l.Path, $false, $false)
+                $newLookup = Open-IONamed $Context $l.Path
                 try { if (-not [StagedInvariant.Native]::SameIdentity($l.Before.Identity, [StagedInvariant.Native]::GetIdentity($newLookup))) {
                     throw [StagedInvariant.ObservationException]::new('Stability', 'Path generation changed across bracket.', 0) }
                 } finally { $newLookup.Dispose() }
@@ -1321,7 +1328,7 @@ function Capture-InvariantSample {
                 if ($Context.Handles.ContainsKey($image.Identity.FileId)) { continue }
                 $approval = @($Context.Publications | Where-Object { $_.Approval.FinalPath -ceq $image.Path -and $_.Sha256 -ceq $image.Sha256 -and $_.Length -eq $image.Length -and $_.Time.Qpc -le $start.Qpc })
                 if ($approval.Count -eq 1) {
-                    $handle = [StagedInvariant.Native]::Open($image.Path,$false,$false); $keep=$false
+                    $handle = Open-IONamed $Context $image.Path; $keep=$false
                     try {
                         if (-not [StagedInvariant.Native]::SameIdentity($image.Identity,[StagedInvariant.Native]::GetIdentity($handle))) { throw 'Approved generation changed before retained handle.' }
                         $Context.Handles[$image.Identity.FileId]=@{ Handle=$handle; Original=$image; Version=$approval[0].Approval.AttemptId }; $keep=$true
