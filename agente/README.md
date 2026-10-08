@@ -19,7 +19,7 @@ opcional**:
 | `SafeUpload.Agent.App` | Interface WPF (bandeja do sistema, tela de status/histórico, aviso de bloqueio) — só exibe, não decide nada |
 | `SafeUpload.Agent.Tests` | Testes automatizados (xUnit, sem framework de mock) |
 | `SafeUpload.Agent.Minifilter` | Biblioteca de protocolo que conecta o Service ao driver de kernel |
-| `SafeUpload.Agent.Network` | Inspeção TLS do tráfego web: CA local e certificados por host (Fase 1), proxy TLS e parser HTTP/1.1 (Fase 2), desvio dos navegadores (Fase 3); exceções e inspeção nas próximas fases ([plano](../docs/rede/PLANO-INSPECAO-TLS.md)) |
+| `SafeUpload.Agent.Network` | Inspeção TLS do tráfego web: CA local e certificados por host (Fase 1), proxy TLS e parser HTTP/1.1 (Fase 2), desvio dos navegadores (Fase 3); exceções e inspeção nas próximas fases ([arquitetura](../docs/rede/ARQUITETURA-INSPECAO-TLS.md), [plano](../docs/rede/PLANO-INSPECAO-TLS.md)) |
 
 Também existe `SafeUploadAgent/` — um protótipo visual WPF anterior (sem
 lógica) — e `driver/` na raiz do repositório, o driver de kernel

@@ -1,5 +1,8 @@
 # Plano: inspeção TLS no agente
 
+> Este é o plano (intenções e ordem das fases). O que está implementado, como
+> funciona e o que falta está em [ARQUITETURA-INSPECAO-TLS.md](ARQUITETURA-INSPECAO-TLS.md).
+
 Branch: `feat/inspecao-tls`. Objetivo: inspecionar o que sai da máquina para a
 internet (upload de arquivo e texto enviado a sites), reaproveitando o motor de
 inspeção que o agente já usa para arquivos.
