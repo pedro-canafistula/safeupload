@@ -1950,3 +1950,37 @@ the batch wrapper before it runs.
 - First full v2-driver runtime-Verifier pass (old agent d9501a71): 5/23 pass (A02, A05, R01, S00, S01); C01-C04 APPROVE
   wait only on dedicated latency; readiness flapping (Pending after each write) blocks A01/A03/X01 assertions; R03 and
   both C03/C04 BLOCK rows lost their live-taint receipt. These are re-measured on the new agent before more fixes.
+- [~] **Product finding 3 (2026-10-08): a just-published file stays Activating, so the next publication onto its name is
+  refused.** On the new agent (reads classified only with taint), C01 dedicated latency ran 62 rounds and C04/X01 stopped
+  early: after the service's non-cached publication (temp create, rename over the destination) coverage turns
+  Pending/WriterPromotionPending and the service's next create/replace onto that name is denied (Win32 5) because
+  `SafeUploadStageWritersNameActivating` refuses writers, the service included, on an Activating name. X01 ends with the same
+  `Pending/WriterPromotionPending` after v2 release. Two driver causes found so far:
+  - *Replaced incarnation* (C01 l4c1, round 62 -> `WriterStateUnknown` then Win32 5 at round 63): the service's NO_BUFFERING
+    publication closes its handle, NTFS tears the SCB down, and the activation pass's exact-SOP identity open then sees the
+    same serial and file ID with a new SOP and marks the entry Unknown(IDENTITY) permanently.
+  - *Snapshot churn* (C04 v3a1): `StageRegistryRecordClassificationResult` bumped `RegistryChangeSequence` on every call, so
+    an entry held in the pass kept every coverage and `--activating-status` query answering STATUS_RETRY (service
+    `CoverageQueryFailed`, 0x800704D5; the diagnostic itself could not be read). Fixed (`817c1420`, Luna **ACCEPT**: no
+    classification reader feeds a promotion/admission decision; the sequence still moves on every real row change).
+  - Still open: C04 v4a1 (v3d) now shows `cached.txt` Activating with H/C/T/W 0, S=NO, no Unknown reason and
+    classificationStep None, i.e. the pass reaches the S sample and exits without a row. `94fcc04c` records a named row at
+    each silent exit and the mask of failed CAS predicates (diagnostic only) so the next run names the blocker.
+- **Replaced-incarnation promotion, design and review history (branch `feat/mvp-replaced-incarnation`).** The pass may now
+  promote an Activating entry whose recorded incarnation was replaced, only for a base data stream (not a compact ADS,
+  whose name-hash reopen can select another stream), only when the entry holds no writer state, with S and the cache
+  barrier evaluated on the live SOP, an exclusive-lock recheck that the entry is not rebound to that SOP, and no writer
+  state on any other incarnation row of the same data stream; basis bit `0x20`; reclaim reopens base streams by identity so
+  replaced incarnations are pruned. Luna: round 1 REJECT (compact ADS hash collision lets the proof inspect another stream;
+  unlocked rebound guard; reclaim never prunes) -> round 2 REJECT (CAS entry-local; hard-link bypass through a new live-SOP
+  entry) -> round 3 REJECT on one P2 (sibling rows' S/cache not sampled, so "identity-wide Free" overclaimed; the
+  alias-refusal argument for the hard-link case held: no standard-user bypass of the pre-create
+  `SafeUploadStageCheckNamedAliases`) -> v3e narrows the proof to the data stream (named streams keep their own
+  rows/gates). Reports under `evidence/2026-10-07/luna-replaced-incarnation-*-review.md`.
+- **Harness fixes from the same runs:** finalize `OutOfMemoryException` in `ConvertTo-Json` on a 4 GB guest for a 101-round
+  dedicated latency trial (every byte of every journal record in every round snapshot was written as its own JSON line):
+  `Remove-LatencyJournalBytes` drops non-terminal record `Bytes` (hash and length stay and are host-verified); R03 offline
+  snapshot needs the service-written notification record, which my residue reset had deleted: the reset now keeps it and
+  `Restore-StagedNotificationRecord.ps1` puts it back from the reset's own archive (bytes unchanged, evidence-reader ACL).
+  Batches now run from their own worktree: committing in the shared worktree mid-batch broke the exact-source preflight of
+  the batch's later cases (v3a2/v3b2).
