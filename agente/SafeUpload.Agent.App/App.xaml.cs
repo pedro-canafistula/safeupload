@@ -1,4 +1,5 @@
 using System.Windows;
+using SafeUpload.Agent.App.ClipboardWatch;
 using SafeUpload.Agent.App.Notifications;
 using SafeUpload.Agent.App.ViewModels;
 using SafeUpload.Agent.App.Views;
@@ -25,6 +26,7 @@ public partial class App : System.Windows.Application
 {
     private readonly LocalQueueAuditSink _auditSink = new();
     private readonly PipeClient _pipe = new();
+    private readonly ClipboardMonitor _clipboard = new(new ClipboardPipeClient());
 
     private AgentViewModel? _agentViewModel;
     private AgentWindow? _panel;
@@ -53,6 +55,11 @@ public partial class App : System.Windows.Application
         _pipe.ConnectionChanged += OnConnectionChanged;
         _pipe.Start();
 
+        // Observa o clipboard e o foco e pergunta ao serviço. Na Fase 1 não
+        // altera nada para o usuário; com a política em "Off" (o padrão) o
+        // serviço responde "limpo" a tudo.
+        _clipboard.Start();
+
         _tray.ShowBalloon("SafeUpload", "Painel do agente ativo na bandeja do sistema.");
     }
 
@@ -63,6 +70,7 @@ public partial class App : System.Windows.Application
         _pipe.ConnectionChanged -= OnConnectionChanged;
         _ = _pipe.DisposeAsync().AsTask();
 
+        _clipboard.Dispose();
         _tray?.Dispose();
         base.OnExit(e);
     }

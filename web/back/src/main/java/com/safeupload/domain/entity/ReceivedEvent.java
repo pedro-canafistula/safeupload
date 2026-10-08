@@ -13,7 +13,7 @@ public class ReceivedEvent {
     @Column(nullable = false)
     private Instant occurredAtUtc;
     @Lob
-    @Column(nullable = false)
+    @Column(nullable = false, columnDefinition = "LONGTEXT")
     private String payload;
 
     protected ReceivedEvent() {}

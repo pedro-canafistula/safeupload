@@ -129,14 +129,22 @@ public class AuthService {
         });
     }
 
+    /** Retorna o usuário da sessão, desde que a conta ainda esteja ativa. */
     public Usuario usuarioAtivo(Long idUsuario) {
-        if (idUsuario == null) return null;
-        return usuarios.findById(idUsuario).filter(usuario -> !usuario.isBloqueado()).orElse(null);
+        if (idUsuario == null || idUsuario < Integer.MIN_VALUE || idUsuario > Integer.MAX_VALUE) {
+            return null;
+        }
+
+        return usuarios.findById(idUsuario.intValue())
+                .filter(usuario -> !usuario.isBloqueado())
+                .orElse(null);
     }
 
-    private Sessao registrarSessao(Long idUsuario, String ip, String agente, boolean sucesso, String motivo) {
+    // idUsuario vem como Integer (tipo do id_usuario no banco).
+    // A conversão para Long é feita aqui porque a entidade Sessao usa Long em fkIdUsuario.
+    private Sessao registrarSessao(Integer idUsuario, String ip, String agente, boolean sucesso, String motivo) {
         Sessao sessao = new Sessao();
-        sessao.setFkIdUsuario(idUsuario);
+        sessao.setFkIdUsuario(idUsuario == null ? null : idUsuario.longValue());
         sessao.setIpOrigem(ip);
         sessao.setAgenteConexao(agente);
         sessao.setStatusFinal(sucesso);

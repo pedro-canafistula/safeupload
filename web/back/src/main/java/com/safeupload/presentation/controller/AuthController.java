@@ -37,7 +37,7 @@ public class AuthController {
             Usuario usuario = resultado.usuario();
             HttpSession session = request.getSession(true);
             request.changeSessionId();
-            session.setAttribute("idUsuario", usuario.getIdUsuario());
+            session.setAttribute("idUsuario", usuario.getIdUsuario().longValue());
             session.setAttribute("idSessao", resultado.idSessao());
             session.setAttribute("role", usuario.getRole());
 
