@@ -2116,7 +2116,31 @@ tip `f6c8e00b`, itself on gen2 `cfee5a33` + harness fixes). The agent stays `age
 - Builds: `mvp4-gen3a` (b4ff2a84, signed 4CA6A170...), `mvp4-gen3b` (94334034, signed 537BACA0...), `mvp4-gen3c`
   (f550666b, signed 6001F261...), all four configurations 0 warnings/0 errors, PREfast and ApiValidator clean.
 
-## MVP release notes (draft 2026-10-08; final numbers are filled in when the gate closes)
+## MVP release notes (2026-10-08; gate closed at 64 of 69 cells, five boot-verifier cells carried as a known gap)
+
+**Gate result.** Pair: driver `mvp4-gen4b` (`5ebe139a`, signed `DA4EFA9A...`) and agent `agent-gen3b` (`51ba5873`), frozen since 2026-10-08 10:15Z.
+Two-tier gate (owner decision above), 69 cells = 23 suite rows x 3 modes:
+- **Ordinary, tier 1 (outcome proofs): 23 of 23.**
+- **Runtime-Verifier, tier 2 (every proof, latency excluded): 23 of 23.**
+- **Boot-Verifier, tier 1 (outcome proofs): 18 of 23.** Not completed: B02, C01-block-absent, C02-block-absent, C03-block-existing, C04-block (below).
+- **No unapproved byte reached the protected destination in any run:** `ForbiddenByteCount` is 0 in every run that measured it, restoration was
+  clean after every run, and all three debuggee guests read `BaselineClean=True` when the gate closed.
+- Latency (reported, not gating; worst case over the qualifying cells): cached write p95 2.2 ms / max 53 ms; close p95 4.0 ms / max 305 ms;
+  flush p95 161.6 ms / max 916.7 ms; writer-open p95 8.7 ms / max 2239.6 ms; writer-open-deny p95 13.0 ms / max 51.7 ms. Two boot-Verifier S00
+  runs missed the original budget (max 1000 ms) on a flush under three guests in parallel; both are latency-only and count under the tiers.
+
+**The five boot-Verifier cells that did not complete (owner decision 2026-10-08, "document as a known gap").** With Verifier enabled from boot
+(flags `0x001209bb`, special pool, `SafeUpload.sys` verified) the guest stays CPU bound for 20+ minutes after boot: measured 100% CPU (88-90%
+privileged, run queue 25-31), the `System` process at 373 s of kernel CPU in 400 s of uptime, and `SafeUpload.sys` making 118,172 special-pool
+allocations in 6 s (about 20,000 per second) 14 minutes after boot. Every short SYSTEM task the harness launches then outlasts its 240 s wait, so
+B02 and C01-block-absent ended `INCONCLUSIVE` at their first operation, with no raw evidence and no verdict (B02 `w12345521`, `w133814g1`,
+`w141842g1`, `w143834g1`, `w154054g1`; C01-block-absent `w135731g1`, `w160337g1`). C02, C03 and C04 BLOCK were not rerun after the owner decision. No run
+saw a leak and restoration was clean after each. The same five cells pass in ordinary mode and in runtime-Verifier mode (tier 2, every proof), so
+the Verifier-from-boot evidence for them is the missing piece. Likely cause: the reclaim-worker rescan loop in the known issue below
+(`StageRegistryReclaimWorker` re-queues itself with `STAGE_RECLAIM_RESCAN` and no backoff while a scan is unfinished); not proven, because
+`Inspector --registry-status` cannot connect while the agent holds the filter port (`0x800704D6`). Harness fixes made on the way (kept):
+`a8a85a3b` raises the startup task's own 15-minute limit and the wait for it for these five cells, and `Get-StagedMvpStatus.py` no longer lets a
+latency-only `FAIL` verdict block a tier (`9127b650`, owner approved).
 
 **What the MVP is.** SafeUpload protects one or more local fixed-NTFS folders on Windows 10 22H2 build 19045.2965
 (the only qualified platform): a boot-start minifilter stages every write by a standard user, the service inspects the
@@ -2136,7 +2160,9 @@ C05 is proven behaviorally and its exemption is exact-name, a FAIL still blocks)
 **Known issues and conditions the release carries (Luna reviews, orchestrator decisions):**
 - Reclaim worker CPU: any unresolved or parked alias probe keeps the reclaim worker rescanning (the worker requeues while
   `AliasProbePending` or `ScopeScanPending` is set), and close/cleanup events on an unrelated file system restart the sweep;
-  measured 2.5-5k passes/s. Fails closed; costs CPU. Post-MVP: bounded, event-driven rescans.
+  measured 2.5-5k passes/s. Fails closed; costs CPU. Post-MVP: bounded, event-driven rescans. Under boot-time Verifier (special pool) the
+  same guest ran at 100% CPU for 20+ minutes with about 20,000 driver pool allocations per second and five boot-Verifier cells could not
+  complete (see Gate result); ordinary and runtime-Verifier runs finish at normal speed. Treat this as the first post-MVP fix.
 - Policy generation is compared as a signed LONG in `StageRegistryBeginAliasProbe`; after 2^31 successful policy commits a fresh
   runtime entry would no longer be stamped (it stays gated). Define rollover before that horizon.
 - Names-by-id (`9b964be9`) P2s: changed-SOP entries are not retired and could accumulate toward the bounded registry (fail-closed
@@ -2260,6 +2286,20 @@ remaining assertion passes or is proof depth, and `--strict` is unchanged (36 of
 **Operations.** Run state lives in `/home/victor/Work/safeupload-tools` (pool worker, rollback, exact-build backup), not `/tmp`: the host
 reset at 08:32 wiped `/tmp` and stranded B02 and X01 runs mid-flight on two guests; they were rolled back to their pre-run checkpoints
 (`rollback-vm.sh`, the harness's own rollback) and re-verified `BaselineClean=True` before the sweep restarted.
+
+## 2026-10-08 (owner decision, in session): close the gate at 64 of 69 and carry five boot-Verifier cells as a known gap
+
+**Why.** Boot-Verifier B02 and the four BLOCK rows could not complete: with Verifier on from boot the guest is CPU bound for 20+ minutes (measured
+numbers in the release notes' Gate result), every harness SYSTEM task outlasts its 240 s wait, and a case ends `INCONCLUSIVE` at its first operation
+with no raw evidence. Raising the harness budgets might still fail (a saturated guest also stretches the cases' own timing windows) and each attempt
+costs 60-90 minutes; fixing the likely cause (the reclaim-worker rescan loop) unfreezes the pair and voids every passing cell.
+
+**Decision (owner, via AskUserQuestion, "Document as a known gap").** The product stays frozen at `5ebe139a` + `51ba5873`. The five cells are not
+retried and are listed in the release notes with the measurements. The release gate is the two-tier gate at 64 of 69: ordinary 23/23, runtime-Verifier
+23/23 (every proof), boot-Verifier 18/23. The reclaim-worker CPU issue, already a Luna P2, is promoted to the first post-MVP fix.
+
+**What this gives up.** Verifier-from-boot evidence for B02, C01-block-absent, C02-block-absent, C03-block-existing and C04-block. The same rows pass in
+ordinary mode and in runtime-Verifier mode with every proof, and no run showed a leak.
 
 ## 2026-10-08 Phase 5 review of the final pair (Luna, `9578f937..5ebe139a`, driver `mvp4-gen4b` + agent `51ba5873`)
 
