@@ -210,5 +210,58 @@ public static class ClipboardProtocol
         }
     }
 
+    /// <summary>
+    /// Lê uma linha sem deixá-la passar de <see cref="MaxLineLength"/>.
+    ///
+    /// <c>ReadLineAsync</c> não tem teto: um processo do usuário que escrevesse
+    /// sem nunca mandar a quebra faria o serviço acumular memória até o limite
+    /// do processo. Aqui, estourar o teto devolve <c>null</c> sem ler o resto.
+    /// Os dois lados usam esta leitura, porque o limite do protocolo vale para
+    /// quem pergunta e para quem responde.
+    ///
+    /// Cada conexão carrega uma única linha, então o que vier depois da quebra
+    /// no mesmo bloco lido é descartado de propósito.
+    /// </summary>
+    /// <returns>A linha sem a quebra, ou <c>null</c> se estourou o teto ou o fluxo acabou vazio.</returns>
+    public static async Task<string?> ReadLineAsync(TextReader reader, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(reader);
+
+        var line = new StringBuilder();
+        var buffer = new char[4096];
+
+        while (true)
+        {
+            var read = await reader.ReadAsync(buffer.AsMemory(), cancellationToken).ConfigureAwait(false);
+
+            if (read == 0)
+            {
+                // Fim do fluxo sem quebra: vale o que chegou, se chegou algo.
+                return line.Length == 0 ? null : line.ToString();
+            }
+
+            var newline = Array.IndexOf(buffer, '\n', 0, read);
+            var take = newline >= 0 ? newline : read;
+
+            if (line.Length + take > MaxLineLength)
+            {
+                return null;
+            }
+
+            line.Append(buffer, 0, take);
+
+            if (newline >= 0)
+            {
+                // Tira o \r de quem escreveu "\r\n".
+                if (line.Length > 0 && line[^1] == '\r')
+                {
+                    line.Length--;
+                }
+
+                return line.ToString();
+            }
+        }
+    }
+
     private static bool TooLong(string? value) => value is not null && value.Length > MaxProcessNameLength;
 }
