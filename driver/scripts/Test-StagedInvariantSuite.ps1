@@ -2911,7 +2911,13 @@ function Invoke-CachedBlockWindow($Trial,$Actor,$Context,$Baseline,$Terminal,[by
         if([Diagnostics.Stopwatch]::GetTimestamp() -ge $timing.DeadlineQpc){$null=Save-StageHandleDump 'block-late-cleanup';throw 'BLOCK cleanup receipt arrived after its QPC deadline'}
         $Trial.Assertions+=Test-CachedBlockManifest $evidence.Cleanup $open $Actor ([StagedInvariant.Native]::Hash($ImageA)) -RequireClosed -RequireDeleted
         $evidence.CleanupAudit=@{Source='ProtectedProductJournal/CompleteStageCleanupAsync';Artifact=$evidence.Cleanup.Artifact;Sha256=$evidence.Cleanup.Record.Sha256;UpdatedAtUtc=$evidence.Cleanup.Manifest.UpdatedAtUtc;SeparateSuccessEvent='NotEmittedByProduct'}
-        $evidence.StageAbsence=Read-InvariantPrivateAbsence -Context $Context -Path $open.Manifest.Transfer.StagePath
+        # The service's delete leaves the stage delete-pending until the driver's worker closes its read-only backing (<= 250 ms), so the
+        # directory still lists the name for a moment: retry the absence proof (QPC-bounded, 10 s) instead of failing on that window.
+        $absenceDeadline=[Diagnostics.Stopwatch]::GetTimestamp()+[long](10*[Diagnostics.Stopwatch]::Frequency)
+        while($true){
+            try{$evidence.StageAbsence=Read-InvariantPrivateAbsence -Context $Context -Path $open.Manifest.Transfer.StagePath;break}
+            catch{if([Diagnostics.Stopwatch]::GetTimestamp() -ge $absenceDeadline){throw};Start-Sleep -Milliseconds 100}
+        }
         $submit=$false;$skip='Actor has no owning interactive WTS session; post-closure real-pipe submission skipped.'
         if($Actor.SessionId -gt 0){$session=Get-InvariantActorSession;$Actor | Add-Member NoteProperty OwnerSid $Trial.ActorProvenance.OwnerSid -Force;$binding=Test-InvariantInteractiveActor $session $Actor;$Trial.Assertions+=$binding;if($binding.Verdict -cne 'PASS'){throw 'BLOCK late justification interactive actor binding failed'};$submit=$true;$skip=$null}
         $server=Get-CachedJustificationServer;$evidence.JustificationServer=$server
