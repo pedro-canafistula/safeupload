@@ -5625,6 +5625,24 @@ function Test-X01FinalListing($Sample,$Baseline,[string]$Target) {
     }
     return @{Name='X01ExactlyOneFinalTarget';Verdict=$(if($good){'PASS'}else{'FAIL'});Reason='Final raw parent has exactly one T and exactly the preboot name multiset; no user temp, duplicate or service temp remains.';Evidence=$parents}
 }
+# Diagnostic only (no assertion reads it): when the observer's own read open of a published destination is refused, record what the
+# file system and the driver say about that name right then (B02 FinalReleased: CreateFileW 0xC0000022 on a SYSTEM read).
+function Save-OpenFailureDiagnostics([string]$Tag,[string]$Path) {
+    $lines=New-Object 'System.Collections.Generic.List[string]'
+    $lines.Add('Path='+$Path);$lines.Add('Utc='+[DateTime]::UtcNow.ToString('o'))
+    try{$acl=Get-Acl -LiteralPath $Path;$lines.Add('Owner='+$acl.Owner);$lines.Add('Sddl='+$acl.Sddl)}catch{$lines.Add('GetAclError='+$_.Exception.Message)}
+    foreach($access in @(@('Read',[IO.FileAccess]::Read),@('ReadAttributesOnly',$null))){
+        try{
+            if($null -eq $access[1]){$a=[IO.File]::GetAttributes($Path);$lines.Add('GetAttributes='+$a)}
+            else{$fs=[IO.File]::Open($Path,[IO.FileMode]::Open,$access[1],([IO.FileShare]::ReadWrite -bor [IO.FileShare]::Delete));$lines.Add('OpenRead=OK Length='+$fs.Length);$fs.Dispose()}
+        }catch{$lines.Add($access[0]+'Error='+$_.Exception.GetType().Name+': '+$_.Exception.Message)}
+    }
+    try{$item=Get-Item -LiteralPath $Path -Force;$lines.Add('Item Length='+$item.Length+' Attributes='+$item.Attributes+' LastWriteUtc='+$item.LastWriteTimeUtc.ToString('o'))}catch{$lines.Add('GetItemError='+$_.Exception.Message)}
+    try{$lines.Add('Dir='+((Get-ChildItem -LiteralPath (Split-Path -Parent $Path) -Force | ForEach-Object {$_.Name+':'+$_.Length+':'+$_.Attributes}) -join ';'))}catch{$lines.Add('DirError='+$_.Exception.Message)}
+    try{$lines.Add('Fltmc='+((& fltmc.exe instances 2>&1 | Out-String) -replace "`r?`n",' | '))}catch{}
+    try{$out=Invoke-ActivationInspector '--activating-status' (Join-Path $evidenceDirectory ('open-failure-'+$Tag+'-activating')) 45000;$lines.Add('ActivatingStatus='+(($out -replace "`r?`n",' ')).Substring(0,[Math]::Min(6000,$out.Length)))}catch{$lines.Add('ActivatingStatusError='+$_.Exception.Message)}
+    try{Write-DurableFile (Join-Path $evidenceDirectory ('open-failure-'+$Tag+'.txt')) ($lines -join "`n") -New}catch{}
+}
 function Add-X01PublicSample($Trial,$Context,$Baseline,[byte[]]$B,[byte[]]$V2,[bool]$BeforePublication,[string]$PhaseName,[switch]$DuringPublication) {
     $sample=Capture-CachedSample $Context $Baseline $PhaseName ($Trial.Samples.Count+1)
     $Trial.Samples+= $sample
@@ -5637,7 +5655,7 @@ function Add-X01PublicSample($Trial,$Context,$Baseline,[byte[]]$B,[byte[]]$V2,[b
         $Trial.Samples+= $sample
         if($sample.Status -cne 'OK'){$Trial.X01PublicationRawRetries[-1].RetryFailedSequence=$sample.Sequence;return $null}
     }
-    if($sample.Status -cne 'OK'){throw 'X01 raw observer capture incomplete'}
+    if($sample.Status -cne 'OK'){try{$null=Save-OpenFailureDiagnostics ($PhaseName+'-'+$sample.Sequence) (Join-Path $protectedDirectory 'cached.txt')}catch{};throw 'X01 raw observer capture incomplete'}
     $images=@($sample.Captures | ForEach-Object {$_.Images} | Where-Object {$_.Role -ceq 'Current' -and $_.Path -ieq (Join-Path $protectedDirectory 'cached.txt')})
     if(-not $images.Count){throw 'X01 current raw target image missing'}
     foreach($image in $images){
