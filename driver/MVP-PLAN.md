@@ -2161,6 +2161,14 @@ C05 is proven behaviorally and its exemption is exact-name, a FAIL still blocks)
   delete-pending stage (`STATUS_DELETE_PENDING`). A handle opened before the delete keeps the version alive until it is closed.
   The delete-pending query in `StageCreate` runs under the global namespace lock and has no top-level-IRP guard (Luna P2; no
   ordinary standard-user direct-open path sets that).
+- Stage-stream cap (`STAGE_LIMIT` 128, unchanged from `9578f937`): `StageStreamCount` is never decremented, a retired or deleted
+  version keeps its slot until driver unload, so after 128 distinct staged files in one boot the next create in a protected folder is
+  refused with `STATUS_INSUFFICIENT_RESOURCES` (fail closed) until the next reboot. Raising or reclaiming the slot is post-MVP unless the
+  owner decides otherwise.
+- Agent journal scan cache above 50 000 manifests: the cache clears at the cap, so with a longer history every scan can again re-read most
+  manifests (performance and `_gate` hold time, not memory). Journal retention/compaction is post-MVP.
+- Evidence limit: "no unapproved byte" is evidenced by sampled fresh and uncached raw-volume reads and the final raw image, not a
+  continuous proof. The staging build carries diagnostic Inspector/protocol additions and must not be shipped to users as it is.
 
 ## 2026-10-08 Phase 5 review (Luna, whole MVP diff `9578f937..51ba5873`)
 
@@ -2242,3 +2250,13 @@ latency regression is visible in the release notes but no longer stops the relea
 **Operations.** Run state lives in `/home/victor/Work/safeupload-tools` (pool worker, rollback, exact-build backup), not `/tmp`: the host
 reset at 08:32 wiped `/tmp` and stranded B02 and X01 runs mid-flight on two guests; they were rolled back to their pre-run checkpoints
 (`rollback-vm.sh`, the harness's own rollback) and re-verified `BaselineClean=True` before the sweep restarted.
+
+## 2026-10-08 Phase 5 review of the final pair (Luna, `9578f937..5ebe139a`, driver `mvp4-gen4b` + agent `51ba5873`)
+
+**Verdict: ACCEPT WITH CONDITIONS, no P0/P1** ([report](evidence/2026-10-08/luna-phase5-final-review.md), [brief](evidence/2026-10-08/luna-phase5-final-brief.md)).
+Static review of the whole diff including the stage-stream retirement; no build, VM or test. She found no path for a standard user to put
+unapproved bytes into a protected destination while coverage is Ready, no receipt consumer that clears a newer probe, no promotion of a replaced
+incarnation with writer state, and no dangling view or tombstone after retirement or unload. P2s, all carried to the release notes above:
+privileged stale journal projection (accepted trust boundary), journal cache clear at 50 000 entries, `FltQueryInformationFile` under the
+namespace lock without a top-level-IRP guard, the 128 stage-stream cap per boot, signed-LONG generation rollover. This closes the Phase 5
+review step of the gate for this pair; any later driver or agent change reopens it.
