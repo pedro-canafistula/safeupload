@@ -5145,6 +5145,9 @@ function Invoke-R03Observation {
         Write-DurableFile (Join-Path $actorDirectory 'inspect-handback') $RunName -New
         $writer=Wait-TaskCompletion $writerTask (Join-Path $actorDirectory 'completion.clixml') $state.WriterToken 60
         $trial.HandBack=Get-CachedHandBack $actor $writer.Value.HandBackAfter $digest $imageA.Length;$trial.Assertions+=@($trial.HandBack.Assertions)
+        # The fresh save created a new file: flush so its MFT record is on disk before the final raw capture
+        # (R03 v6c1: "Raw/FSCTL identity mismatch", the C02 b17r1 case).
+        $trial.FinalCacheFlush=Flush-InvariantFinalVolume
         $sequence++;$sample=Capture-CachedSample $context $baseline 'FinalQuiescence' $sequence;$samples+=$sample
         $trial.Assertions+=Test-CachedSample $sample $baseline $true $imageA
         $trial.ServiceAfter=Get-ServiceSnapshot 'r03-online-after'
@@ -5957,7 +5960,8 @@ function Get-B02JustificationClientBody([string]$NativeType='SUActivationNative'
       $reader=[IO.StreamReader]::new($pipe,$encoding,$false,1024,$true);$read=$reader.ReadLineAsync()
       if(-not $read.Wait(5000)){throw 'Justification response timeout'};$result.Reply=$read.GetAwaiter().GetResult()
       if($result.Reply -cnotin @('accepted','rejected')){throw 'Malformed real justification protocol reply'};$result.NativeCode=0
-     }finally{$pipe.Dispose();if($read -and -not $read.IsCompleted){try{[void]$read.Wait(1000)}catch{}};if($read -and -not $read.IsCompleted){throw 'Justification read did not join after pipe close'};if($reader){$reader.Dispose()};if($writer){$writer.Dispose()}}
+     }finally{$pipe.Dispose();if($read -and -not $read.IsCompleted){try{[void]$read.Wait(1000)}catch{}};if($read -and -not $read.IsCompleted){throw 'Justification read did not join after pipe close'};# The pipe is closed first to join the read, so the writer's final flush meets a closed stream (B02 v6c2: "Cannot access a closed pipe"); the request and reply already completed.
+     if($reader){try{$reader.Dispose()}catch [System.ObjectDisposedException]{}};if($writer){try{$writer.Dispose()}catch [System.ObjectDisposedException]{}}}
 '@
 ).Replace('__PIPE_NATIVE__',$NativeType)
 }
