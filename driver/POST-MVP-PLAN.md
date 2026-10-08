@@ -6,16 +6,17 @@ order. Where a cause is not yet measured, the task says so and lists hypotheses 
 
 ## What "complete" means
 
-The driver is complete for the local-NTFS product when all of these hold:
+The driver is complete for the local-NTFS product on Windows 10 22H2 build 19045.2965 when all of these hold:
 
 1. **It can stay loaded on a real machine**: no CPU churn at idle, new users can sign in, large installers and Windows Update complete.
-2. **Everyday saves work**: Notepad, Office and other common applications save into a protected folder with the same result as without
-   the driver (approved content published, blocked content handed back), with no per-boot or small file-size ceiling a user would hit.
+2. **Everyday file work behaves like Windows without the driver, plus inspection**: Notepad, Office and other common applications save into
+   a protected folder; copies and moves into it are inspected the same way; reading and permission changes are left to Windows; no per-boot
+   or small file-size ceiling a user would hit.
 3. **It is a shippable build**: staging is the release configuration, the test-only diagnostics are out of it, the altitude is assigned by
-   Microsoft, the driver is production-signed and loads with Secure Boot on, and it is qualified on the Windows builds customers run.
+   Microsoft, and the driver is production-signed and loads with Secure Boot on.
 4. **It is qualified**: the full invariant suite (all variants) passes in all three modes, plus soak, stress and coexistence runs.
 
-Destinations beyond local NTFS (USB, SMB, sync clients, ReFS) are separate features after that (P3).
+Other Windows builds and destinations beyond local NTFS (USB, SMB, sync clients, ReFS) come after that.
 
 ## Rules for every task
 
@@ -25,12 +26,12 @@ Carried over from the MVP; they apply to every driver change on this branch.
   runtime Driver Verifier; the affected suite rows pass end to end with the raw-volume observer (`ForbiddenByteCount` 0) and a clean
   restoration (`Get-StagedBaseline.ps1`).
 - One adversarial review per milestone against the working system, plus one before the first VM boot of any change to object lifetime,
-  lock order or the retirement gate (T4 in particular). Reviews only by Luna; implementation is done here.
+  lock order or the retirement gate (T4 and T6 in particular). Reviews only by Luna; implementation is done here.
 - Each milestone ends with a new frozen pair (new build labels) and the full three-mode gate. BLOCK-window cells run serially on one VM.
 - Harness changes pass `Invoke-HarnessWindowsGate.sh` (Windows PowerShell 5.1) before they are used for a gate run.
 - Owner decisions in force stay in force (no process taint, no scan-based or timer-based fixes for writer state, sticky Unknown until
-  reboot, Activating never reports Ready). A task that seems to need an exception stops and asks (see "Owner decisions needed").
-- Any change that removes a refusal must come with a suite row proving the refusal is still applied inside a protected scope.
+  reboot, Activating never reports Ready). A task that seems to need an exception stops and asks.
+- Any change that removes a refusal must come with a suite row proving that unapproved bytes still cannot reach a protected folder.
 
 ## Priority order
 
@@ -41,27 +42,30 @@ Sizes are rough: S = a few days, M = about a week, L = several weeks.
 | T0 | Field diagnostics: deny ring and counters readable while the agent runs; installer quick fixes | P0 | S | - |
 | T1 | Event-driven reclaim worker (no rescan loop); rerun the five boot-Verifier cells | P0 | M | T0 |
 | T2 | Find and fix the denial that breaks new-profile creation | P0 | M | T0 |
-| T3 | Large installers and Windows servicing with the driver loaded (M365, cumulative updates) | P0 | M-L | T1, T2 |
+| T3 | Large installers and Windows Update with the driver loaded (M365, cumulative updates) | P0 | M-L | T1, T2 |
 | T4 | Reclaim stage slots: remove the 128-versions-per-boot ceiling | P1 | M-L | T1 |
 | T5 | Notepad Save As | P1 | M | T0 |
-| T6 | Office and common-application save patterns, metadata fidelity | P1 | L | T4, T5 |
-| T7 | Raise the 16 MiB version limit | P1 | M | T4 |
-| T8 | Close the review conditions (Luna P2s) | P1 | S-M | - |
-| T9 | Release build: staging becomes the product configuration, diagnostics test-only | P1 | M | T8 |
-| T10 | Current Windows builds: Windows 11 24H2/25H2 and current Windows 10 22H2 | P1 | L | T9 |
-| T11 | Altitude, INF, production signing, Secure Boot on (start the paperwork now) | P1 | M + lead time | T9 |
-| T12 | Driver install, upgrade, uninstall and an administrator maintenance path | P1 | M | T9 |
-| T13 | Full suite: section-4.1 variants, P01-P06, RV4, dedicated latency | P2 | L | M2 |
-| T14 | Soak, stress and fault injection | P2 | M | M2 |
-| T15 | Coexistence: antivirus/EDR filters, BitLocker, VSS, indexer, backup, OneDrive | P2 | M | T10 |
-| T16 | Operating Degraded/Unknown in the field | P2 | S | T0 |
-| T17 | Continuous no-unapproved-byte evidence (mutation ledger, C05 denial ledger) | P2 | M | T13 |
-| T18-T21 | USB/removable, SMB/UNC, cloud-sync folders, ReFS | P3 | L each | M4 |
+| T6 | Moves into a protected folder are inspected like copies | P1 | S-L | T0 |
+| T7 | Reads are never refused | P1 | S | - |
+| T8 | Office and common-application save patterns, metadata fidelity | P1 | L | T4, T5 |
+| T9 | Large files: no fixed size cap, whole-file inspection, "could not inspect" is blocked | P1 | M | T4 |
+| T10 | Permission and owner changes reach the real file or folder | P1 | M | T0 |
+| T11 | Close the review conditions (Luna P2s) | P1 | S-M | - |
+| T12 | Release build: staging becomes the product configuration, diagnostics test-only | P1 | M | T11 |
+| T13 | Altitude, INF, production (attestation) signing, Secure Boot on; start the paperwork now | P1 | M + lead time | T12 |
+| T14 | Driver install, upgrade and uninstall | P1 | M | T12 |
+| T15 | Full suite: section-4.1 variants, P01-P06, RV4, dedicated latency | P2 | L | M2 |
+| T16 | Soak, stress and fault injection | P2 | M | M2 |
+| T17 | Coexistence: antivirus/EDR filters, BitLocker, VSS, indexer, backup, OneDrive | P2 | M | M3 |
+| T18 | Operating Degraded/Unknown in the field | P2 | S | T0 |
+| T19 | Continuous no-unapproved-byte evidence (mutation ledger, C05 denial ledger) | P2 | M | T15 |
+| T20 | Other Windows builds (deferred by the owner) | Later | L | M4 |
+| T21-T24 | USB/removable, SMB/UNC, cloud-sync folders, ReFS | Later | L each | M4 |
 
-Milestones: **M1 "safe to leave loaded"** = T0-T3; **M2 "everyday saves work"** = T4-T8; **M3 "release candidate"** = T9-T12;
-**M4 "qualified"** = T13-T17; **M5** = each P3 destination on its own.
+Milestones: **M1 "safe to leave loaded"** = T0-T3; **M2 "everyday file work"** = T4-T11; **M3 "release candidate"** = T12-T14;
+**M4 "qualified"** = T15-T19; then T20-T24, each on its own.
 
-Start the external lead-time items of T11 (altitude request, EV certificate, Partner Center account) now, in parallel with M1: they take
+Start the external lead-time items of T13 (altitude request, EV certificate, Partner Center account) now, in parallel with M1: they take
 weeks and nothing in M1 depends on them.
 
 ## P0: the driver can stay loaded (M1)
@@ -94,7 +98,7 @@ An entry that cannot finish keeps the worker spinning: 2.5-5k passes/s measured,
 Verifier, guest CPU at 100% for 20+ minutes. It is the likely cause of the five missing boot-Verifier cells and a suspect for the slow
 M365 install.
 
-**Approach (fits the "no timers, no scans" decision).** A pass requeues itself only when it made progress or new work arrived:
+**Approach (event-driven, no timer).** A pass requeues itself only when it made progress or new work arrived:
 - keep the immediate requeue when the batch limit was reached (`reachedBatch`: real work remains);
 - when the pass ends with only unfinished entries, compare the registry change sequence and the recheck flag with their values at pass
   start; if nothing changed, park instead of requeueing;
@@ -127,11 +131,12 @@ row for first sign-in of a new user with protection active (the harness pre-crea
 **Done when** the new row passes in all three modes, the deny ring shows no refusal outside a scope during sign-in, and every existing row
 still passes (no refusal was weakened inside a scope).
 
-### T3. Large installers and Windows servicing
+### T3. Large installers and Windows Update
 
 **Problem.** The Microsoft 365 installer ran very slowly (about 21,000 metadata operations/s in `System`) and then failed with "couldn't
 use a required file". Windows Update, Defender updates and Store updates were never exercised with the driver loaded, and a deployed
-driver has to survive monthly cumulative updates.
+driver has to survive monthly updates. (The platform stays build 19045.2965 for now; these runs check that installing an update with the
+driver loaded works, not that the driver is qualified on the updated build, which is T20.)
 
 **Work.** Re-measure after T1 and T2 (some or all of this may be the same causes). Then add qualification runs, each with the driver
 loaded and a protected folder on `C:`: Microsoft 365 install, an MSI install, a Windows cumulative update and reboot, a Defender platform
@@ -141,7 +146,7 @@ that fills it would leave protection Degraded.
 
 **Done when** all four complete with no refusal outside a scope, coverage still Ready afterwards, and an overhead number the owner accepts.
 
-## P1: everyday saves work (M2)
+## P1: everyday file work (M2)
 
 ### T4. Stage-slot reclamation (remove the 128-per-boot ceiling)
 
@@ -171,7 +176,42 @@ recorded Notepad sequence.
 **Done when** Save As of clean content publishes that content, Save As of CPF content hands it back, no empty version is published, and
 the new row passes in all three modes.
 
-### T6. Office and common applications
+### T6. Moves into a protected folder are inspected like copies
+
+**Owner decision (2026-10-08):** moves must not stay refused; they are analysed exactly like copies.
+
+**Why it is refused today (C05).** On the same volume a move is a rename: NTFS moves the existing file into the folder and no byte is
+written, so the staged write path never sees the content. Letting the rename through as it is would publish uninspected content.
+
+**Approach, cheapest first.**
+1. Answer a rename or hard link from outside into a protected folder with `STATUS_NOT_SAME_DEVICE` instead of `ACCESS_DENIED`. That is the
+   answer Windows gives for a move to another disk, and callers that support cross-disk moves then copy and delete the source: `MoveFileEx`
+   with `MOVEFILE_COPY_ALLOWED` (used by .NET `File.Move` and `cmd move`) and, expected but to verify first, the Explorer copy engine. The
+   copy goes through the normal staged path, so it is inspected, published or handed back like any copy. If the copy is blocked the source
+   is already gone, but the user's bytes are in the hand-back folder, so nothing is lost. Renames inside the folder (Office's temporary
+   file to final name) are unchanged.
+2. Only if Explorer does not fall back: do the conversion in the kernel (stage the moved file's content as a new version and remove the
+   source after the copy). That is a much larger change with its own design review.
+
+Callers that do not allow a cross-disk copy get the same error as a move to another drive. Directory moves into the folder take the same
+path (Explorer then copies the tree).
+
+**Done when** Explorer drag, `Move-Item`, `cmd move` and `MoveFileEx` of a clean file end with it published and the source removed; the same
+with a CPF file ends with it handed back; C05 is rewritten from "refused" to "inspected", and no move publishes uninspected bytes (observer).
+
+### T7. Reads are never refused
+
+**Owner decision (2026-10-08):** the driver does not refuse reads; who may read a file is decided by its permissions and the
+administrators.
+
+**Work.** Remove the read refusal in the legacy post-create path (`Filter.c` `SafeUploadPostCreate`: `FltCancelFileOpen` of a file classified
+sensitive in a destination scope unless an override covers it), and check no other path refuses an open that has no write, delete or
+metadata-change access. Writes are unaffected: they still go through staging.
+
+**Done when** a justified sensitive file can be opened and read by a standard user with read permission, a user without read permission
+still gets the normal Windows denial, and a suite row covers both.
+
+### T8. Office and common applications
 
 **Work.** Record the real save sequences of Word, Excel and PowerPoint (temporary file in the same folder, rename original to backup,
 rename temporary to the final name, delete backup), plus Paint, WordPad, Explorer copy with replace, a browser download into the folder,
@@ -186,19 +226,46 @@ Install the applications before installing the driver (owner note) until T3 is d
 
 **Done when** each application row passes in all three modes and a user can open the published file with the same application afterwards.
 
-### T7. Larger files
+### T9. Large files
 
-**Problem.** A staged version is capped at 16 MiB (`STAGE_MAX_BYTES`); bigger writes fail with `STATUS_FILE_TOO_LARGE`. Office files, PDFs
-and images often exceed that.
+**Today.** The driver caps a staged version at 16 MiB (`STAGE_MAX_BYTES`, `STATUS_FILE_TOO_LARGE`), the agent seeds at most 16 MiB of an
+existing file into a stage (`StagedTransferAllocator.MaximumSeedBytes`), and the legacy policy value `MaxFileSizeMb` (20) returns
+`AllowedWithoutInspection` above it, which in staged mode never publishes. Office files, PDFs and images often exceed 16 MiB.
 
-**Work.** Find what each side assumes (driver backing, cache and paging; agent seal and inspection, which must stream instead of reading the
-whole file). Make the limit a policy value with a high default chosen by the owner, and bound the disk space staged versions can take per
-user, so a standard user cannot fill the volume with stages. Measure seal and inspection latency at the new limit.
+**How commercial DLP products handle it.** They cap *inspection*, not the file: Symantec's endpoint agent inspects 30 MB by default
+(150 MB tested maximum) and ignores larger files; Microsoft Purview scans the first 2 million characters of extracted text and lets a rule
+match "content not scanned"; Forcepoint checks only name, size and a fingerprint above 100 MB. Skipping or truncating is a bypass in our
+threat model: a standard user pads a file past the limit, or puts the CPF after the scanned part.
 
-**Done when** a file at the new limit is approved and published byte-exact, one over it is refused cleanly, and a stage-space exhaustion
-attempt by a standard user fails closed without affecting other users.
+**Approach (recommended, owner to confirm).**
+- No fixed size cap in the driver. A staged version is an ordinary NTFS file, so its size is bounded by a **stage-space budget** (per user
+  and in total, as a policy value) rather than by 16 MiB; exhaustion fails closed with a disk-full status and does not affect other users.
+- The agent inspects the **whole** file, streaming with bounded memory; no truncation.
+- One verdict for every case where the content cannot be fully inspected: larger than the inspection limit (policy value; default chosen
+  after measuring scan throughput on the VM, starting the measurement at 256 MiB), encrypted or password-protected, corrupt, an archive past
+  its extraction limits, inspection timeout. That verdict is **Blocked**, with hand-back, and justifiable when the policy allows overrides,
+  so the product stays fail closed.
+- Measure the cost of seeding: opening an existing large file for write copies it into the stage before the open returns.
 
-### T8. Review conditions
+**Done when** a file at the inspection limit is approved and published byte-exact, one over it is blocked and handed back, a CPF placed at
+the end of a large file is found, and a stage-space exhaustion attempt by a standard user fails closed without affecting other users.
+
+### T10. Permission and owner changes reach the real file or folder
+
+**Problem.** With the driver loaded nobody, administrators included, can change the permissions of the protected folder or its files
+(`icacls` was refused in the manual test). A handle to a protected file points at the private staged version, and `StageSecurity.c`
+refuses `WRITE_DAC`/`WRITE_OWNER` on it ("never give a staged handle authority to weaken the backing file's private ACL"); directory
+opens with those rights go through the directory-mutation admission and are refused too.
+
+**Approach.** A permission or owner change adds no content, so it does not need inspection. Apply it to the destination file or folder (the
+real one), never to the private backing, and let Windows' own access check decide who may do it. Keep auditing changes (`ACCESS_SYSTEM_SECURITY`)
+for administrators only, as Windows does.
+
+**Done when** an administrator can change the folder's and a file's permissions with `icacls` and Explorer while the driver is loaded, the
+private backing's ACL never changes, and a standard user still cannot get unapproved bytes into the folder through a permission change
+(suite row with the observer).
+
+### T11. Review conditions
 
 Small, independent fixes from the Phase 5 and gen4b reviews:
 - `StageCreate` sealed-stage reopen calls `FltQueryInformationFile` under the namespace lock with no `IoGetTopLevelIrp()` guard
@@ -215,7 +282,7 @@ Small, independent fixes from the Phase 5 and gen4b reviews:
 
 ## P1: shippable build (M3)
 
-### T9. Release build configuration
+### T12. Release build configuration
 
 **Problem.** Staged writes compile only with `SafeUploadStagingPrototype=true` (`SafeUpload.Minifilter.vcxproj`); the release
 configuration has none of `Stage*.c`. The staging build also carries diagnostics that must not ship: Inspector-only protocol extensions,
@@ -228,67 +295,59 @@ test-only code. CodeQL, PREfast and ApiValidator at 0/0 on the release configura
 
 **Done when** the release configuration passes the full gate and the identity test shows no test-only message or hook.
 
-### T10. Current Windows builds
+### T13. Altitude, INF and signing
 
-**Problem.** Only Windows 10 22H2 build 19045.2965 (May 2023) is qualified. Windows 10 reached end of support on 2025-10-14, so customers
-run Windows 11 or Windows 10 with extended security updates at a current patch level. The design depends on observed, undocumented
-behavior of `MmDoesFileHaveUserWritableReferences` for sections, which needs qualification on each build.
-
-**Work.** Add debuggee VMs for Windows 11 24H2 and 25H2 and a current Windows 10 22H2. On each, rerun the section-behavior experiments
-(retained section, view after handle close, cross-process section), the start-up canary, then the full gate. Make the driver refuse to
-report Ready on a build it was not qualified for (fail closed, with a clear reason in coverage).
-
-**Done when** each target build passes the full gate and an unqualified build reports a clear "not qualified" coverage state.
-
-### T11. Altitude, INF and signing
+Today the driver is test-signed, which only loads on machines with test signing on and Secure Boot off. Since Windows 10 1607, a kernel
+driver on a normal Windows 10/11 machine must carry Microsoft's signature, obtained through the Partner Center (Hardware Dev Center), which
+requires an EV code-signing certificate. Two ways to get it:
+- **Attestation signing**: submit the EV-signed driver package; Microsoft signs it without running tests, usually within hours. Valid on
+  Windows 10/11 client editions, not on Windows Server. Enough for this product.
+- **WHQL certification**: run Microsoft's Hardware Lab Kit tests for file-system filters on our own test machines and submit the results.
+  Needed for Windows Server, Windows Update distribution, or customers who require certified drivers. Weeks of work.
 
 **Work.**
 - Request a minifilter altitude from Microsoft; `SafeUpload.inf` carries a provisional `321410` with a "must not ship" note. Confirm the
   class and load order group for the request (the INF says `ActivityMonitor` class with `FSFilter Anti-Virus` load order; a filter that
   blocks writes may belong in a different group).
 - Finalize the INF (`DriverVer`, version resource, catalog).
-- Production signing: EV code-signing certificate, Partner Center registration, attestation signing (enough for Windows 10/11 client); HLK
-  (WHQL) only if the owner wants it.
+- EV certificate, Partner Center registration, attestation signing (recommended for the first release; WHQL only if a customer needs it).
 - Qualify with test signing off and Secure Boot on.
 
-**Done when** the attestation-signed driver loads with Secure Boot on and passes the gate on each T10 build.
+**Done when** the attestation-signed driver loads with Secure Boot on and passes the gate.
 
-### T12. Install, upgrade, uninstall, maintenance
+### T14. Install, upgrade, uninstall
 
 **Work.**
 - Driver install as part of the product installer: INF install, BootPolicy seeding, reboot (installation needs one reboot by design).
 - Upgrade: driver and agent versions in the field differ for a reboot; define protocol version negotiation and test old-driver/new-agent
   and the reverse.
 - Uninstall: back to a clean machine after reboot, no residue (`Reset-StagedProductResidue.ps1` is the starting point).
-- Administrator maintenance: today even an administrator cannot change the ACL of a protected folder while the driver is loaded. Add a
-  supported way (for example an authenticated maintenance request through the agent), since admins are trusted.
 
-**Done when** install, upgrade and uninstall pass on a clean VM of each T10 build, and an administrator can change the folder ACL without
-holding the driver.
+**Done when** install, upgrade and uninstall pass on a clean VM.
 
 ## P2: qualified (M4)
 
-- **T13. Full suite.** The other section-4.1 variants of each row, P01-P06 and RV4 (deferred on 2026-10-06), dedicated latency runs, and
-  the new rows from T2, T3, T5 and T6, all in three modes. Fix the parallel-pool flake in BLOCK cells (the agent's flush stalls under disk
+- **T15. Full suite.** The other section-4.1 variants of each row, P01-P06 and RV4 (deferred on 2026-10-06), dedicated latency runs, and
+  the new rows from T2, T3 and T5-T10, all in three modes. Fix the parallel-pool flake in BLOCK cells (the agent's flush stalls under disk
   pressure when three guests run) or keep them serial.
-- **T14. Soak, stress and fault injection.** Several days of scripted use with many saves; Driver Verifier with low-resources simulation;
+- **T16. Soak, stress and fault injection.** Several days of scripted use with many saves; Driver Verifier with low-resources simulation;
   power loss during seal and publication (extends R01-R03); service crash loops; full disk; many concurrent writers.
-- **T15. Coexistence.** Microsoft Defender and at least one third-party antivirus/EDR filter, BitLocker, VSS and System Restore, the search
+- **T17. Coexistence.** Microsoft Defender and at least one third-party antivirus/EDR filter, BitLocker, VSS and System Restore, the search
   indexer, a backup agent, OneDrive in the user profile, `chkdsk` and defrag on the protected volume.
-- **T16. Degraded and Unknown in the field.** Sticky Unknown stays until reboot (owner decision). Make it actionable: the reason (from T0)
+- **T18. Degraded and Unknown in the field.** Sticky Unknown stays until reboot (owner decision). Make it actionable: the reason (from T0)
   in the agent status and a durable notification an administrator can see, with the documented remedy.
-- **T17. Continuous evidence.** If customers or audits need it: a driver-side mutation ledger proving no unapproved byte reached a
+- **T19. Continuous evidence.** If customers or audits need it: a driver-side mutation ledger proving no unapproved byte reached a
   destination continuously (the MVP proves it with sampled raw reads and the final image), and the deferred C05 denial ledger.
 
-## P3: new destinations (M5)
+## Later
 
-Each needs its own design, owner decisions and qualification; none may be enabled by removing today's guards.
-
-- **T18. USB and removable media**: surprise removal, FAT/exFAT have no stable file IDs, teardown rules (writers dropped by volume teardown
-  do not set machine-wide Unknown).
-- **T19. SMB/UNC**: redirector-level filtering, different identity and caching model.
-- **T20. Cloud-sync folders**: interplay with the Cloud Files API and sync clients' own writers.
-- **T21. ReFS**.
+- **T20. Other Windows builds.** Deferred by the owner on 2026-10-08: the platform stays Windows 10 22H2 build 19045.2965 for now. When it
+  is picked up: Windows 11 24H2/25H2 and current Windows 10 22H2 (Windows 10 support ended on 2025-10-14), rerunning the section-behavior
+  experiments (`MmDoesFileHaveUserWritableReferences` is observed, not documented, behavior), the start-up canary and the full gate on each,
+  and a clear "not qualified" coverage state on any other build.
+- **T21-T24. New destinations**, each with its own design, owner decisions and qualification; none may be enabled by removing today's guards:
+  USB and removable media (surprise removal; FAT/exFAT have no stable file IDs), SMB/UNC (redirector-level filtering), cloud-sync folders
+  (the Cloud Files API and sync clients' own writers), ReFS.
 
 ## Outside the driver, needed for a complete product
 
@@ -298,14 +357,18 @@ Each needs its own design, owner decisions and qualification; none may be enable
   the protocol has to change.
 - The agent's TLS-inspection tests that fail without rights to create machine CNG keys (from `main`).
 
-## Owner decisions needed
+## Owner decisions
 
-| Decision | Needed by | Recommendation |
+Decided on 2026-10-08:
+- The platform stays Windows 10 22H2 build 19045.2965 for now (other builds moved to T20).
+- Moves into a protected folder are inspected like copies, not refused (T6).
+- Reads are never refused by the driver; permissions and administrators decide who reads (T7).
+
+Recommended, waiting for the owner's OK:
+
+| Decision | Task | Recommendation |
 |---|---|---|
-| Reclaim worker: purely event-driven, or is a bounded backoff acceptable as a fallback? | T1 | Event-driven with a progress check; no timer. |
-| Which Windows builds the first release supports | T10 | Windows 11 24H2 and 25H2, plus current Windows 10 22H2 for ESU customers. |
-| File size limit and per-user stage space | T7 | Choose from customer files; start the measurement at 256 MiB. |
-| Keep refusing moves into a protected folder, or turn a same-volume move into copy, inspect, then delete the source | T6 | Keep refusing in the first release; revisit with user feedback. |
-| Reading a justified sensitive file: the post-create path refuses data-read opens without an override; intended? | T6 | Decide with the product owner; it affects users who justified a file. |
-| Attestation signing only, or WHQL | T11 | Attestation for the first release. |
-| Administrator maintenance path for protected-folder ACLs | T12 | Authenticated request through the agent. |
+| Reclaim worker: event-driven only, no backoff timer (consistent with the 2026-10-03 "no timers" rule) | T1 | Event-driven. |
+| File size: no driver cap, stage-space budget, whole-file inspection, "could not inspect" = Blocked and justifiable | T9 | As described in T9. |
+| Permission and owner changes go to the real file or folder, decided by Windows' access check | T10 | As described in T10. |
+| Attestation signing for the first release; WHQL only if a customer needs it | T13 | Attestation. |
