@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    A inspecao do trafego web: CA local, certificados por host e, nas proximas
+    fases, o proxy TLS e o desvio do trafego (docs/rede/PLANO-INSPECAO-TLS.md).
+
+    Fica fora do Core pelo mesmo motivo do Minifilter: o Core e o dominio -
+    regras, extracao, mascaramento - e nao sabe por onde o dado chegou. Este
+    projeto e borda, como o minifiltro: entrega conteudo ao Core e aplica o
+    veredito. Quem o hospeda e o servico.
+
+    net10.0-windows porque depende de APIs que so existem no Windows: o
+    repositorio de certificados da maquina (LocalMachine\Root), as chaves CNG
+    persistidas e o registro.
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+  </PropertyGroup>
+
+</Project>

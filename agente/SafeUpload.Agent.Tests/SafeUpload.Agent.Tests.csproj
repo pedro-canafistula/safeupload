@@ -26,6 +26,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\SafeUpload.Agent.Core\SafeUpload.Agent.Core.csproj" />
+    <ProjectReference Include="..\SafeUpload.Agent.Network\SafeUpload.Agent.Network.csproj" />
     <ProjectReference Include="..\SafeUpload.Agent.Service\SafeUpload.Agent.Service.csproj" />
   </ItemGroup>
 

@@ -74,7 +74,9 @@ o último pedaço, e já diz quais serviços não dá para inspecionar.
 
 - CA raiz gerada na instalação, **única por máquina**; chave no repositório de
   chaves da máquina, não exportável; instalada em `LocalMachine\Root`.
-- Firefox: `policies.json` com `ImportEnterpriseRoots`.
+- Firefox: política `ImportEnterpriseRoots`, gravada no registro
+  (`HKLM\SOFTWARE\Policies\Mozilla\Firefox`) em vez de `policies.json`: não
+  depende da pasta de instalação nem é sobrescrita nas atualizações.
 - Certificados por host gerados na hora, com cache em memória.
 - A desinstalação remove a CA.
 
