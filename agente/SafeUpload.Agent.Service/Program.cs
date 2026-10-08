@@ -64,6 +64,21 @@ public static class Program
             return;
         }
 
+        // "desvio status" e "desvio remove": políticas de proxy dos navegadores.
+        if (args.Length > 0 && string.Equals(args[0], "desvio", StringComparison.OrdinalIgnoreCase))
+        {
+            Console.OutputEncoding = System.Text.Encoding.UTF8;
+            IConfiguration settings = new ConfigurationBuilder()
+                .SetBasePath(AppContext.BaseDirectory)
+                .AddJsonFile("appsettings.json", optional: true)
+                .AddEnvironmentVariables()
+                .Build();
+            int port = int.TryParse(settings["InspecaoTls:Porta"], out int configured) ? configured : 8877;
+
+            Environment.ExitCode = DiversionCommand.Run(args[1..], port, Console.Out);
+            return;
+        }
+
         var builder = Host.CreateApplicationBuilder(args);
 
         builder.Services.AddWindowsService(options => options.ServiceName = ServiceName);
