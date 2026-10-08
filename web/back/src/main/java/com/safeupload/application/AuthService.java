@@ -129,9 +129,11 @@ public class AuthService {
         });
     }
 
-    private Sessao registrarSessao(Long idUsuario, String ip, String agente, boolean sucesso, String motivo) {
+    // idUsuario vem como Integer (tipo do id_usuario no banco).
+    // A conversão para Long é feita aqui porque a entidade Sessao usa Long em fkIdUsuario.
+    private Sessao registrarSessao(Integer idUsuario, String ip, String agente, boolean sucesso, String motivo) {
         Sessao sessao = new Sessao();
-        sessao.setFkIdUsuario(idUsuario);
+        sessao.setFkIdUsuario(idUsuario == null ? null : idUsuario.longValue());
         sessao.setIpOrigem(ip);
         sessao.setAgenteConexao(agente);
         sessao.setStatusFinal(sucesso);
