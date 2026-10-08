@@ -1489,17 +1489,23 @@ public static class SUProofFile {
 '@
 }
 function ConvertFrom-NotificationRecord($Segments,[byte[]]$HeadBytes) {
-    $entries=@();$utf8=[Text.UTF8Encoding]::new($false,$true);$sha=[Security.Cryptography.SHA256]::Create()
+    $entries=[Collections.Generic.List[object]]::new();$utf8=[Text.UTF8Encoding]::new($false,$true);$sha=[Security.Cryptography.SHA256]::Create()
+    # A line that was parsed and validated once is reused by later snapshot attempts (the record only grows). The byte-by-byte PS 5.1 scan of a
+    # 1 MB segment and one ConvertFrom-Json per line made a single read cost 2.5-5 s under load, which was longer than the fence wait allowed.
+    if($null -eq $script:NotificationLineCache -or $script:NotificationLineCache.Count -gt 20000){$script:NotificationLineCache=[Collections.Generic.Dictionary[string,object]]::new([StringComparer]::Ordinal)}
     try {
         foreach($segment in $Segments){
             [byte[]]$bytes=$segment.Bytes
             if($bytes.Length -eq 0 -or $bytes.Length -gt 4194304 -or $bytes[$bytes.Length-1] -ne 10){throw 'Notification segment empty, oversized, or partial.'}
             $start=0
-            for($i=0;$i -lt $bytes.Length;$i++){
-                if($bytes[$i] -ne 10){continue}
+            while($start -lt $bytes.Length){
+                $i=[Array]::IndexOf($bytes,[byte]10,$start)
+                if($i -lt 0){throw 'Notification segment empty, oversized, or partial.'}
                 $length=$i-$start
                 if($length -le 0 -or $length -ge 16384){throw 'Invalid notification line size.'}
-                $text=$utf8.GetString($bytes,$start,$length);$entry=$text | ConvertFrom-Json
+                $text=$utf8.GetString($bytes,$start,$length);$known=$null;$null=$script:NotificationLineCache.TryGetValue($text,[ref]$known)
+                if($null -eq $known){
+                $entry=$text | ConvertFrom-Json
                 if($entry.Version -ne 1 -or $entry.Sequence -le 0 -or $null -eq $entry.DroppedThroughSequence -or $entry.DroppedThroughSequence -lt 0 -or
                     $entry.DroppedThroughSequence -ge $entry.Sequence -or [string]::IsNullOrWhiteSpace($entry.BootId) -or
                     [string]::IsNullOrWhiteSpace($entry.Utc) -or $null -eq $entry.Qpc -or $entry.Qpc -lt 0 -or $entry.QpcFrequency -le 0 -or
@@ -1509,13 +1515,16 @@ function ConvertFrom-NotificationRecord($Segments,[byte[]]$HeadBytes) {
                 if($entry.Kind -ceq 'Transfer' -and ([guid]::Parse($entry.TransferId) -eq [guid]::Empty -or $entry.Phase -cnotin @('Analyzing','Released','Blocked','Retained'))){throw 'Invalid transfer notification.'}
                 if($entry.Kind -ceq 'Event' -and ([guid]::Parse($entry.EventId) -eq [guid]::Empty -or $entry.Phase -cnotin @('Approved','Blocked','AllowedWithoutInspection','Retained'))){throw 'Invalid event notification.'}
                 $hash=([BitConverter]::ToString($sha.ComputeHash($bytes,$start,$length))).Replace('-','')
+                $known=[pscustomobject]@{Entry=$entry;Hash=$hash};$script:NotificationLineCache[$text]=$known
+                }
+                $entry=$known.Entry;$hash=$known.Hash
                 if($entries.Count){
                     $prior=$entries[$entries.Count-1]
                     if($entry.Sequence -ne $prior.Entry.Sequence+1 -or $entry.PreviousSha256 -cne $prior.Hash){throw 'Notification sequence/hash chain gap.'}
                     if($entry.DroppedThroughSequence -lt $prior.Entry.DroppedThroughSequence -or
                         ($entry.DroppedThroughSequence -ne $prior.Entry.DroppedThroughSequence -and $entry.Kind -cne 'Rotation')){throw 'Unannounced notification rotation loss.'}
                 }
-                $entries+= [pscustomobject]@{Entry=$entry;Hash=$hash;Artifact=$segment.Artifact};$start=$i+1
+                $entries.Add([pscustomobject]@{Entry=$entry;Hash=$hash;Artifact=$segment.Artifact});$start=$i+1
             }
         }
         if($entries.Count -eq 0 -or $HeadBytes.Length -gt 4096){throw 'Missing or oversized notification head.'}
@@ -1524,7 +1533,7 @@ function ConvertFrom-NotificationRecord($Segments,[byte[]]$HeadBytes) {
         if($first.Sequence -ne $last.Entry.DroppedThroughSequence+1 -or
             ($first.Sequence -eq 1 -and $first.PreviousSha256 -cne ('0'*64))){throw 'Unannounced retained-prefix loss.'}
         if($head.Version -ne 1 -or $head.Sequence -ne $last.Entry.Sequence -or $head.Sha256 -cne $last.Hash){throw 'Notification tail truncation/head mismatch.'}
-        return [pscustomobject]@{Entries=$entries;Head=$head}
+        return [pscustomobject]@{Entries=$entries.ToArray();Head=$head}
     }finally{$sha.Dispose()}
 }
 function Get-NotificationTailCoverage($Tail,[string]$BootId,[long]$Frequency,[long]$MinimumQpc) {
