@@ -6652,7 +6652,11 @@ $value=$b.ToString().Split([char]0)[0]
     Copy-Item -LiteralPath $actorDirectory -Destination (Join-Path $evidenceDirectory 'actor') -Recurse
     Remove-Item -LiteralPath $stateDirectory -Recurse -Force
     if(Test-Path -LiteralPath $stateDirectory){throw 'State directory residue'}
-    Write-DurableFile (Join-Path $evidenceDirectory 'case.json') ($result | ConvertTo-Json -Depth 32) -New
+    # A dedicated latency trial is about 100 MB as JSON. Windows PowerShell 5.1's pretty-printer re-indents every
+    # array element at depth and ran the 4 GB guest out of memory (C05 l4b3, v4a2: OutOfMemoryException in
+    # ConvertToPrettyJsonString); the compact form of the same trial converts in 11 s at a 1.6 GB peak on that guest.
+    $caseJson=if($null -ne $trial.DedicatedLatency){$result | ConvertTo-Json -Depth 32 -Compress}else{$result | ConvertTo-Json -Depth 32}
+    Write-DurableFile (Join-Path $evidenceDirectory 'case.json') $caseJson -New
     'InvariantVerdict='+$result.Verdict
     'INVARIANT_FINAL_STATE=True'
 }
