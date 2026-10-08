@@ -38,9 +38,11 @@
         </dependency>
 
         <!-- Banco de teste: H2 em arquivo (troca fácil depois por Postgres/SQLite) -->
+
+
         <dependency>
-            <groupId>com.h2database</groupId>
-            <artifactId>h2</artifactId>
+            <groupId>com.mysql</groupId>
+            <artifactId>mysql-connector-j</artifactId>
             <scope>runtime</scope>
         </dependency>
 
