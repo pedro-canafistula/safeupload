@@ -5,7 +5,7 @@ $ErrorActionPreference='Stop'
 $tokens=$null;$errors=$null
 $ast=[Management.Automation.Language.Parser]::ParseFile((Join-Path $PSScriptRoot 'Test-StagedInvariantSuite.ps1'),[ref]$tokens,[ref]$errors)
 if($errors.Count){throw 'Suite parse failed'}
-foreach($name in @('Load-State','Get-ActivatingWriterBody','Get-R02WriterBody','Get-B02JustificationClientBody','Get-B02WriterBody','Initialize-InvariantWts','Test-R02Held','Test-R02Protected','Test-R02Pending','Test-InvariantInteractiveActor','Test-B02Window','Test-B02Versions','Test-B02Notifications','Save-B02ReadyTimeoutDiagnostics','Get-ErrorChain')){
+foreach($name in @('Load-State','Get-ActivatingWriterBody','Get-R02WriterBody','Get-B02JustificationClientBody','Get-B02WriterBody','Initialize-InvariantWts','Test-R02Held','Test-R02Protected','Test-R02Promotion','Test-ActivationRetiredPromotion','Test-R02Pending','Test-InvariantInteractiveActor','Test-B02Window','Test-B02Versions','Test-B02Notifications','Save-B02ReadyTimeoutDiagnostics','Get-ErrorChain')){
     $fn=@($ast.FindAll({param($node)$node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -ceq $name},$false))
     if($fn.Count -ne 1){throw ('Unique function unavailable: '+$name)};Invoke-Expression $fn[0].Extent.Text
 }
@@ -30,6 +30,35 @@ Assert-Control ((Test-R02Protected $protected $id -RequireFree).Verdict -ceq 'PA
 $bootProtected=Copy-Fixture $protected;$bootProtected.historyPresent=$false
 Assert-Control ((Test-R02Protected $bootProtected $id).Verdict -ceq 'PASS') 'protected boot X without manufactured holder history'
 Assert-Control ((Test-R02Protected $bootProtected $id -RequireFree).Verdict -ceq 'FAIL') 'Y promotion requires actual holder history'
+$serial='0x000000000000002A';$boot='R02-fixture-boot'
+$retired=Copy-Fixture $bootProtected;$retired.volumeSerial=$serial
+$snapshot=@{Record=$retired;Qpc=40}
+$release=@{NativeCode=0;HolderReleased=$true;BootId=$boot;QpcFrequency=[Diagnostics.Stopwatch]::Frequency;StartQpc=20;EndQpc=21}
+$edge=@{fileId=$id;volumeSerial=$serial;stateBefore=1;stateAfter=2;qpc=30;policyGenerationSample=9;activationGenerationSample=9;markerGenerationExpected=7;markerGenerationAtCas=7;Hsample=0;Wsample=0;Tsample=0;CforSopSample=0;lastSsample=1;unknownReasonsSample=0;renameInFlightSample=0;spilledMutatingIoCountSample=0;unknownWriterCountSample=0;predicateFlags=15;snapshotFlags=1;testDisableTaint=1;policyFlagsSample=32}
+$trace=@{Summary=@{completeSnapshot=$true;firstAvailableSequence=1};Batches=@(@{lostEvents=0;overwrittenEvents=0;flags=0});Entries=@($edge)}
+Assert-Control ((Test-R02Promotion $snapshot $trace $release $id $serial 9 $boot).Verdict -ceq 'PASS') 'pruned Y needs exact native CAS in release/query window'
+foreach($field in @('fileId','volumeSerial','policyGenerationSample','activationGenerationSample','qpc','Hsample','Wsample','CforSopSample','lastSsample','predicateFlags','markerGenerationAtCas','missingW','duplicate','incomplete')){
+    $bad=Copy-Fixture $trace
+    switch($field){
+        'fileId' {$bad.Entries[0].fileId='wrong'} 'volumeSerial' {$bad.Entries[0].volumeSerial='wrong'}
+        'qpc' {$bad.Entries[0].qpc=19} 'lastSsample' {$bad.Entries[0].lastSsample=0} 'predicateFlags' {$bad.Entries[0].predicateFlags=0}
+        'missingW' {$bad.Entries[0].Remove('Wsample')} 'duplicate' {$bad.Entries+=@($bad.Entries[0])}
+        'incomplete' {$bad.Summary.completeSnapshot=$false}
+        default {$bad.Entries[0][$field]=1}
+    }
+    Assert-Control ((Test-R02Promotion $snapshot $bad $release $id $serial 9 $boot).Verdict -cne 'PASS') ('reject pruned Y CAS '+$field)
+}
+$bad=Copy-Fixture $snapshot;$bad.Qpc=29
+Assert-Control ((Test-R02Promotion $bad $trace $release $id $serial 9 $boot).Verdict -cne 'PASS') 'CAS after current query rejected'
+$bad=Copy-Fixture $release;$bad.BootId='old-boot'
+Assert-Control ((Test-R02Promotion $snapshot $trace $bad $id $serial 9 $boot).Verdict -cne 'PASS') 'release from old boot rejected'
+Assert-Control ((Test-R02Promotion $snapshot $null $release $id $serial 9 $boot).Verdict -cne 'PASS') 'missing CAS cannot replace resident history'
+foreach($field in @('lostEvents','overwrittenEvents','flags')){
+    $bad=Copy-Fixture $trace;$bad.Batches[0][$field]=1
+    Assert-Control ((Test-R02Promotion $snapshot $bad $release $id $serial 9 $boot).Verdict -cne 'PASS') ('reject trace '+$field)
+    $bad=Copy-Fixture $trace;$bad.Batches[0].Remove($field)
+    Assert-Control ((Test-R02Promotion $snapshot $bad $release $id $serial 9 $boot).Verdict -cne 'PASS') ('reject missing trace '+$field)
+}
 foreach($field in @('registryEntry','historyPresent','nameMatches','fileId','state','free','H','S','C','T','unknownReasons','missingH')){
     $bad=Copy-Fixture $protected
     switch($field){

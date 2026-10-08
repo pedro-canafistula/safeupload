@@ -5694,6 +5694,20 @@ function Test-R02Protected($Record,[string]$FileId,[switch]$RequireFree) {
     if($RequireFree){$good=$good -and $Record.free -eq $true -and $Record.historyPresent -eq $true}
     return @{Name=$(if($RequireFree){'R02FreeAndProtected'}else{'R02XRemainsProtected'});Verdict=$(if($good){'PASS'}else{'FAIL'});Reason='Same-ID exact registry query proves Protected with H=0,S=NO,C=T=0 and no unknown reason; Y promotion additionally requires history and Free.';Evidence=$Record}
 }
+function Test-R02Promotion($Snapshot,$Trace,$Release,[string]$FileId,[string]$VolumeSerial,[uint32]$PolicyGeneration,[string]$BootId) {
+    if($Snapshot.Record.historyPresent -eq $true){return Test-R02Protected $Snapshot.Record $FileId -RequireFree}
+    $lossFree=@($Trace.Batches).Count -gt 0
+    foreach($batch in @($Trace.Batches)){
+        foreach($field in @('lostEvents','overwrittenEvents','flags')){
+            $lossFree=$lossFree -and $null -ne $batch.$field -and [long]$batch.$field -eq 0
+        }
+    }
+    if(-not $lossFree){return @{Name='R02FreeAndProtected';Verdict='INCONCLUSIVE';Reason='Retired R02 history requires complete zero-loss native trace batches.';Evidence=$Trace}}
+    # Reclaim can retire Y's resident row between its actual promotion and this query. Current Free alone
+    # is insufficient: use the existing same-ID/volume/generation native CAS proof bound to this release/query window.
+    $retired=Test-ActivationRetiredPromotion $Snapshot $Trace $Release $FileId $VolumeSerial $PolicyGeneration $BootId
+    return @{Name='R02FreeAndProtected';Verdict=$retired.Verdict;Reason=$retired.Reason;Evidence=$retired}
+}
 function Test-R02Pending($Status,[uint32]$Generation) {
     $good=$Status.Status -ceq 'OK' -and $Status.ServerSid -ceq 'S-1-5-18' -and $Status.Value.protectionActive -eq $true -and
         $Status.Value.nativePolicyGeneration -eq $Generation -and $Status.Value.admissionCoverage -ceq 'Pending'
@@ -5813,7 +5827,19 @@ function Invoke-R02Observation {
         $release=Publish-ActivationActorCommand $state 'release-holder' $null;$trial.LastHolderRelease=$release;$script:ActivationHolderLive=$false
         if($release.NativeCode -ne 0 -or -not $release.HolderReleased){throw 'R02 final H release failed'}
         $deadline=[Diagnostics.Stopwatch]::GetTimestamp()+[long](90*[Diagnostics.Stopwatch]::Frequency)
-        do{$protected=Get-ActivationEntry $y 'r02-promoted';$free=Test-R02Protected $protected.Record $yId -RequireFree;if($free.Verdict -ceq 'PASS'){break};Start-Sleep -Milliseconds 100}while([Diagnostics.Stopwatch]::GetTimestamp() -lt $deadline)
+        $promotionObservedInTime=$false
+        do{
+            $protected=Get-ActivationEntry $y 'r02-promoted'
+            $free=Test-R02Protected $protected.Record $yId -RequireFree
+            if($protected.Record.historyPresent -eq $false -and $protected.Record.state -ceq 'Protected' -and $protected.Record.free -eq $true){
+                $retiredTrace=ConvertFrom-ActivationPromotionTrace (Invoke-ActivationInspector '--promotion-trace' (Join-Path $evidenceDirectory ('r02-retired-promotion-trace-'+[guid]::NewGuid().ToString('N')))) $yId
+                $free=Test-R02Promotion $protected $retiredTrace $release $yId ('0x'+([uint64]$context.Geometry.Serial).ToString('X16')) $generation $context.BootId
+                $trial.RetiredPromotionProof=$free.Evidence
+            }
+            if($free.Verdict -ceq 'PASS' -and [Diagnostics.Stopwatch]::GetTimestamp() -le $deadline){$promotionObservedInTime=$true;break}
+            Start-Sleep -Milliseconds 100
+        }while([Diagnostics.Stopwatch]::GetTimestamp() -lt $deadline)
+        if(-not $promotionObservedInTime -and $free.Verdict -ceq 'PASS'){$free.Verdict='INCONCLUSIVE';$free.Reason+='; proof was not completed within the unchanged 90s promotion deadline.'}
         $trial.Assertions+= $free
         $trace=ConvertFrom-ActivationPromotionTrace (Invoke-ActivationInspector '--promotion-trace' (Join-Path $evidenceDirectory 'r02-promotion-trace')) $yId
         $edges=@($trace.Entries | Where-Object {$_.stateBefore -eq 1 -and $_.stateAfter -eq 2})

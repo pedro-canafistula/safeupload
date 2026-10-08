@@ -2009,3 +2009,12 @@ the batch wrapper before it runs.
   `--registry-status` exports aggregate counters only; its former comment and capture list could not locate the loss.
   This query remains diagnostic-only and changes no gate, row revision, product source or recovery behavior.
   Windows PowerShell 5.1 gate `codex-unknown-origin1`: PASS.
+- R02 harness repair (table19, row6): g2c4 retained the exact generation2 ACTIVATING->PROTECTED native CAS after
+  the actor's final H release, but its later Control17 query returned Protected/Free with historyPresent=false because
+  reclaim had pruned the resident row. R02 formerly waited 90s for that retired history to reappear and failed.
+  The resident-history path stays intact; absent resident history now requires the existing A-row retired-promotion
+  adapter, bound to the actual release/current-query QPC window, raw volume serial, file ID, boot and restarted generation.
+  Zero-loss native batches, one actual CAS, all sample predicates and S/cache basis remain mandatory. Missing, stale,
+  duplicate, lossy, wrong-generation and late proof cannot qualify. No old run is reclassified as PASS.
+  Windows gate `codex-r02-retired1`: PASS, including new negative controls. Fresh supported-VM R02 and Luna review remain
+  required; product driver/agent bytes and failure policy are unchanged.
