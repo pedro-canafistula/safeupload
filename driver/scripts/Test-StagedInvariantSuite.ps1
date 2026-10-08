@@ -916,6 +916,23 @@ function Get-NtDevicePath([string]$DosPath) {
     if([SUActivationDevice]::QueryDosDevice($drive,$builder,$builder.Capacity) -eq 0){throw ('QueryDosDevice failed for '+$drive+': '+[Runtime.InteropServices.Marshal]::GetLastWin32Error())}
     return $builder.ToString().Split([char]0)[0]+$DosPath.Substring(2)
 }
+# The driver refuses --admission-trace-disable (ERROR_BUSY, 0x800700AA) while a paired observer ticket is outstanding or
+# a W_END retired during the off-state window; both clear within moments of the writers closing. Retry only that refusal,
+# QPC-bounded (10 s); any other failure, or a refusal that persists, is thrown to the caller as before.
+function Invoke-ActivationTraceDisable([string]$Prefix) {
+    $limit=[Diagnostics.Stopwatch]::GetTimestamp()+[long](10*[Diagnostics.Stopwatch]::Frequency)
+    $attempt=0
+    while($true) {
+        $attempt++
+        $attemptPrefix=if($attempt -eq 1){$Prefix}else{$Prefix+'-attempt-'+$attempt}
+        try{return Invoke-ActivationInspector '--admission-trace-disable' $attemptPrefix}
+        catch{
+            $busy=(Test-Path -LiteralPath ($attemptPrefix+'.out')) -and ([IO.File]::ReadAllText($attemptPrefix+'.out') -match '0x800700AA')
+            if(-not $busy -or [Diagnostics.Stopwatch]::GetTimestamp() -ge $limit){throw}
+            Start-Sleep -Milliseconds 100
+        }
+    }
+}
 function Invoke-ActivationInspector([string]$Argument,[string]$Prefix,[int]$Timeout=45000) {
     $previous=$env:SAFEUPLOAD_STAGED_PROOF_PROXY
     try {
@@ -2094,6 +2111,18 @@ function Invoke-LatencyJournalIo([scriptblock]$Body,[string]$Action,[string]$Pat
         }
     }
 }
+# The service writes each journal record through a sibling "<id>.json.<guid>.tmp" and renames it. A listing that lands in
+# that window is not a complete snapshot, but it is not corrupt either: relist (QPC-bounded, 5 s) until no temp child is
+# present. A temp child that persists past the bound is returned and fails the caller's unrecognized-child check as before.
+function Get-StableJournalChildren([string]$Journal) {
+    $limit=[Diagnostics.Stopwatch]::GetTimestamp()+[long](5*[Diagnostics.Stopwatch]::Frequency)
+    while($true) {
+        $children=@(Get-ChildItem -LiteralPath $Journal -Force | Sort-Object Name)
+        $transient=@($children | Where-Object {$_.Name -match '^[0-9a-f]{32}\.json\.[0-9a-f]{32}\.tmp$'})
+        if(-not $transient.Count -or [Diagnostics.Stopwatch]::GetTimestamp() -ge $limit){return $children}
+        Start-Sleep -Milliseconds 25
+    }
+}
 function Get-ServiceSnapshot([string]$Tag,[switch]$JournalOnly,[switch]$RetryTransientJournal) {
     $result=[ordered]@{Status='INCONCLUSIVE';Tag=$Tag;BootId=(Get-BootId);QpcFrequency=[Diagnostics.Stopwatch]::Frequency;StartQpc=[Diagnostics.Stopwatch]::GetTimestamp();
         Journal=@();Objects=@();Errors=@();Retries=(New-Object 'Collections.Generic.List[object]');Application=@();AgentProcesses=@(Get-CimInstance Win32_Process -Filter "Name='SafeUpload.Agent.Service.exe'" | Select-Object ProcessId,CommandLine);}
@@ -2109,7 +2138,7 @@ function Get-ServiceSnapshot([string]$Tag,[switch]$JournalOnly,[switch]$RetryTra
             # Same owner rule as the agent's RequireTrustedOwner: SYSTEM or BUILTIN\Administrators (notify2: the guest journal is
             # owned by Administrators and the stricter SYSTEM-only check rejected genuine evidence).
             $obj=[SUProofFile]::Open($journal,$true,$true,$false,$true);$held+=$obj;$result.Objects+=@{Path=$journal;Owner=$obj.Owner;Sddl=$obj.Sddl}
-            foreach($file in @(Get-ChildItem -LiteralPath $journal -Force | Sort-Object Name)) {
+            foreach($file in @(Get-StableJournalChildren $journal)) {
                 if($file.Name -notmatch '^[0-9a-f]{32}\.json$'){throw ('Unrecognized journal child; snapshot is not complete. Name='+$file.Name+'; Attributes='+[string]$file.Attributes)}
                 $read=Invoke-LatencyJournalIo {
                     $obj=[SUProofFile]::Open($file.FullName,$false,$true,([bool]$JournalOnly -or [bool]$RetryTransientJournal),$true)
@@ -5879,7 +5908,7 @@ function Invoke-R02Observation {
         Add-ActivationAssertion $trial 'R02NoObservedReadyWhileHolderLives' $(if(@($trial.NotificationStatusHistory | Where-Object {$_.HolderLive -and $_.Value.admissionCoverage -ceq 'Ready'}).Count){'FAIL'}elseif($trial.LastHolderRelease){'PASS'}else{'INCONCLUSIVE'}) 'All authenticated current status frames collected at the applied and restarted holder checkpoints are non-Ready.' $trial.NotificationStatusHistory
         if($actor){try{$null=Publish-ActivationActorCommand $state 'exit-worker' $null;$trial.ActorTaskCompletion=Wait-TaskCompletion $writerTask (Join-Path $actorDirectory 'completion.clixml') $state.WriterToken 45}catch{$trial.Errors+=Get-ErrorChain $_.Exception}}
         if($trial.TaintCounterBefore){try{$trial.TaintCounterWindow=Get-ActivationTaintCounterDelta $trial.TaintCounterBefore (Get-ActivationTaintCounters 'r02-after')}catch{$trial.Errors+=Get-ErrorChain $_.Exception}}
-        if($traceEnabled){try{$null=Invoke-ActivationInspector '--admission-trace-disable' (Join-Path $evidenceDirectory 'r02-trace-disable')}catch{$trial.Errors+=Get-ErrorChain $_.Exception}}
+        if($traceEnabled){try{$null=Invoke-ActivationTraceDisable (Join-Path $evidenceDirectory 'r02-trace-disable')}catch{$trial.Errors+=Get-ErrorChain $_.Exception}}
         if($agent){try{
             $cleanupService=Get-CimInstance Win32_Service -Filter "Name='SafeUploadAgent'"
             if($cleanupService -and $cleanupService.ProcessId -gt 0){$agent.Process=Get-Process -Id ([int]$cleanupService.ProcessId)}
