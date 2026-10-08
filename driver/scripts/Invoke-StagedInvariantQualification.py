@@ -210,12 +210,15 @@ def phase_line(phase, params, suite_leaf, name):
         command += ' -' + key + ' ' + ps_literal(value)
     encoded = base64.b64encode(("$ErrorActionPreference='Stop';try{" + command + "}catch{[Console]::Error.WriteLine(($_|Out-String)+$_.Exception.ToString()+$_.ScriptStackTrace);exit 1}").encode('utf-16le')).decode()
     prefix = docs + '\\' + name + '-' + phase.lower()
+    # AfterBoot waits for the startup task (up to 2400 s for the long boot-verifier cases) and then restores, so its child gets a longer
+    # limit than the other phases; the harness call as a whole is still bounded by HARNESS_TIMEOUT_SECONDS (5400 s).
+    child_limit_ms = 3300000 if phase == 'AfterBoot' else 1500000
     # Raw guest process streams survive the wrapper's CLIXML cleaning. All
     # sentinels come from this pinned child; cache Handle before wait on PS 5.1.
     return ("$ErrorActionPreference='Stop';$p=$null;try{"
             "$p=Start-Process powershell.exe -ArgumentList '-NoProfile -ExecutionPolicy Bypass -EncodedCommand " + encoded + "' -PassThru "
             "-RedirectStandardOutput " + ps_literal(prefix + '.out') + " -RedirectStandardError " + ps_literal(prefix + '.err') + ";"
-            "$null=$p.Handle;if(-not $p.WaitForExit(1500000)){throw 'Suite child timeout'};$p.WaitForExit();"
+            "$null=$p.Handle;if(-not $p.WaitForExit(" + str(child_limit_ms) + ")){throw 'Suite child timeout'};$p.WaitForExit();"
             "Get-Content -LiteralPath " + ps_literal(prefix + '.out') + ";"
             "if($null -eq $p.ExitCode -or $p.ExitCode -ne 0){Get-Content -LiteralPath " + ps_literal(prefix + '.err') + ";throw 'Suite child failed'}"
             "}finally{if($null -ne $p){if(-not $p.HasExited){$p.Kill();$p.WaitForExit()};$p.Dispose()}}")

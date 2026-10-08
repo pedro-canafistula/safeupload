@@ -6882,7 +6882,10 @@ $value=$b.ToString().Split([char]0)[0]
     if($StartupProbe){Invoke-InvariantStartupObservation;return}
     $observationError=$null
     try {
-        $coordinatorWaitSeconds=if($DedicatedUnheldLatency){14460}elseif($CaseId -ceq 'A04'){2760}else{900}
+        # B02 and the BLOCK cases already take 13-15 minutes end to end in runtime-verifier mode; boot-verifier mode adds the special-pool
+        # overhead, and 900 s timed out every run (B02 w12345521/w133814g1, C01-block-absent w135731g1: no trial file, no verdict). The qualifier's
+        # AfterBoot child limit is raised to match (Invoke-StagedInvariantQualification.py phase_line).
+        $coordinatorWaitSeconds=if($DedicatedUnheldLatency){14460}elseif($CaseId -ceq 'A04'){2760}elseif($Mode -ceq 'boot-verifier' -and $CaseId -cin @('B02','C01-block-absent','C02-block-absent','C03-block-existing','C04-block')){2400}else{900}
         $null=Wait-TaskCompletion $bootTask (Join-Path $evidenceDirectory 'startup-completion.clixml') $state.CoordinatorToken $coordinatorWaitSeconds
         if(-not(Test-Path -LiteralPath $trialPath)){throw 'Completed startup task omitted trial'}
     }catch{$observationError=Get-ErrorChain $_.Exception;Save-State $observationError (Join-Path $evidenceDirectory 'startup-error.clixml')}
