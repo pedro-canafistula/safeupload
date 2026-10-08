@@ -18,6 +18,20 @@ public sealed class StagedTransferJournal
     private readonly FileSecurity? _fileSecurity;
     private readonly SecurityIdentifier? _owner;
 
+    // The publish loop (every 250 ms) and every destination-version scan used to open, ACL-check and JSON-parse EVERY
+    // historical manifest, so each stage operation cost O(journal age): latency grew ~3 ms per retained record (C04
+    // rename-ex 30 ms -> 340 ms over 100 rounds) and the loop competed with kernel requests for _gate. A manifest is now
+    // fully read, ACL-checked and validated once per change; scans reuse the parsed entry while the directory
+    // enumeration still reports the same size, timestamps and attributes. Every write through this class drops the
+    // entry (Create/Replace), and ReadAsync/ReadCoreAsync, which every state change starts from, always read the disk.
+    private readonly record struct ManifestStamp(long Length, long LastWriteTicks, long CreationTicks,
+        FileAttributes Attributes);
+    private readonly Dictionary<Guid, (ManifestStamp Stamp, TransferJournalEntry Entry)> _scanCache = new();
+    private const int MaximumScanCacheEntries = 50_000;
+    private long _scanManifestReads;
+    /// <summary>Manifests a scan had to read, ACL-check and parse (cache misses); test observability.</summary>
+    internal long ScanManifestReads => Interlocked.Read(ref _scanManifestReads);
+
     public StagedTransferJournal(string directory, bool requireProtectedParent = false)
     {
         _directory = Path.GetFullPath(directory);
@@ -148,6 +162,7 @@ public sealed class StagedTransferJournal
             // A complete, flushed manifest becomes visible all at once. A
             // duplicate ID cannot take over an earlier destination.
             File.Move(temporary, path);
+            ForgetScanned(transfer.TransferId);
         }
         finally
         {
@@ -191,6 +206,37 @@ public sealed class StagedTransferJournal
         catch (JsonException error) { throw new InvalidDataException("The transfer manifest is invalid JSON.", error); }
         ValidateEntry(entry, transferId);
         return entry!;
+    }
+
+    private static ManifestStamp StampOf(FileInfo file) => new(file.Length,
+        file.LastWriteTimeUtc.Ticks, file.CreationTimeUtc.Ticks, file.Attributes);
+
+    // Caller holds _gate. The stamp is taken from the enumeration BEFORE the read: if the manifest changes in between,
+    // the cached stamp is older than the content and the next scan simply reads again.
+    private async Task<TransferJournalEntry> ReadScannedAsync(
+        FileInfo file, Guid id, CancellationToken token)
+    {
+        ManifestStamp stamp = StampOf(file);
+        if ((stamp.Attributes & FileAttributes.ReparsePoint) == 0)
+        {
+            lock (_scanCache)
+            {
+                if (_scanCache.TryGetValue(id, out var cached) && cached.Stamp == stamp) return cached.Entry;
+            }
+        }
+        Interlocked.Increment(ref _scanManifestReads);
+        var entry = await ReadCoreAsync(id, token).ConfigureAwait(false);
+        lock (_scanCache)
+        {
+            if (_scanCache.Count >= MaximumScanCacheEntries) _scanCache.Clear();
+            _scanCache[id] = (stamp, entry);
+        }
+        return entry;
+    }
+
+    private void ForgetScanned(Guid id)
+    {
+        lock (_scanCache) _scanCache.Remove(id);
     }
 
     private static void ValidateEntry(TransferJournalEntry? entry, Guid id)
@@ -552,15 +598,18 @@ public sealed class StagedTransferJournal
         CancellationToken cancellationToken)
     {
         var entries = new List<TransferJournalEntry>();
-        foreach (string path in Directory.EnumerateFiles(_directory, "*.json"))
+        foreach (FileInfo file in new DirectoryInfo(_directory).EnumerateFiles("*.json"))
         {
             cancellationToken.ThrowIfCancellationRequested();
-            if (!Guid.TryParseExact(Path.GetFileNameWithoutExtension(path), "N", out Guid id))
+            if (!Guid.TryParseExact(Path.GetFileNameWithoutExtension(file.Name), "N", out Guid id))
             {
-                throw new InvalidDataException($"Unexpected journal file: {path}");
+                throw new InvalidDataException($"Unexpected journal file: {file.FullName}");
             }
 
-            var entry = await ReadAsync(id, cancellationToken).ConfigureAwait(false);
+            TransferJournalEntry entry;
+            await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+            try { entry = await ReadScannedAsync(file, id, cancellationToken).ConfigureAwait(false); }
+            finally { _gate.Release(); }
             bool releaseCleanupPending = entry.State == TransferJournalState.Released &&
                 entry.HandbackState == StagedHandbackState.Verified &&
                 entry.JustificationWindowClosed && !entry.StageDeleted;
@@ -747,11 +796,11 @@ public sealed class StagedTransferJournal
     private async Task<List<DestinationClaim>> DestinationVersionsAsync(string destination, CancellationToken token)
     {
         var versions = new List<DestinationClaim>();
-        foreach (string path in Directory.EnumerateFiles(_directory, "*.json"))
+        foreach (FileInfo file in new DirectoryInfo(_directory).EnumerateFiles("*.json"))
         {
-            if (!Guid.TryParseExact(Path.GetFileNameWithoutExtension(path), "N", out Guid id))
-                throw new InvalidDataException($"Unexpected journal file: {path}");
-            var entry = await ReadCoreAsync(id, token).ConfigureAwait(false);
+            if (!Guid.TryParseExact(Path.GetFileNameWithoutExtension(file.Name), "N", out Guid id))
+                throw new InvalidDataException($"Unexpected journal file: {file.FullName}");
+            var entry = await ReadScannedAsync(file, id, token).ConfigureAwait(false);
             bool current = string.Equals(entry.Transfer.DestinationPath, destination, StringComparison.OrdinalIgnoreCase);
             bool pending = string.Equals(entry.PendingRename?.DestinationPath, destination, StringComparison.OrdinalIgnoreCase);
             long generation = current ? entry.DestinationGeneration : -1;
@@ -884,7 +933,7 @@ public sealed class StagedTransferJournal
                     throw new InvalidDataException("Journal manifest exceeds the qualified size bound.");
                 StagedDestinationFile.Commit(stream, temporary, manifestPath);
             }
-
+            ForgetScanned(entry.Transfer.TransferId);
         }
         finally
         {

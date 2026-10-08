@@ -763,4 +763,75 @@ public sealed class StagedTransferJournalTests : IDisposable
         await Assert.ThrowsAsync<InvalidDataException>(() => journal.ReadAsync(
             transfer.TransferId, CancellationToken.None));
     }
+
+    [Fact]
+    public async Task Scans_read_each_manifest_once_until_it_changes()
+    {
+        var journal = Journal();
+        var transfers = Enumerable.Range(0, 24).Select(_ => Transfer()).ToArray();
+        foreach (var transfer in transfers) await journal.CreateAsync(transfer, CancellationToken.None);
+
+        var first = await journal.ReadPendingAsync(CancellationToken.None);
+        Assert.Equal(transfers.Length, first.Count);
+        long afterFirst = journal.ScanManifestReads;
+        Assert.Equal(transfers.Length, afterFirst);
+
+        // The publish loop rescans every 250 ms: unchanged manifests must not be read, ACL-checked or parsed again.
+        for (int scan = 0; scan < 5; scan++)
+            Assert.Equal(transfers.Length, (await journal.ReadPendingAsync(CancellationToken.None)).Count);
+        Assert.Equal(afterFirst, journal.ScanManifestReads);
+
+        // A state change goes through ReplaceAsync, which drops that one entry: exactly one re-read, new state visible.
+        await journal.SealAsync(transfers[3].TransferId, transfers[3].ProcessId, transfers[3].StagePath,
+            CancellationToken.None);
+        var second = await journal.ReadPendingAsync(CancellationToken.None);
+        Assert.Equal(afterFirst + 1, journal.ScanManifestReads);
+        Assert.Equal(TransferJournalState.Sealed, second.Single(e => e.Transfer.TransferId == transfers[3].TransferId).State);
+        await journal.ReadPendingAsync(CancellationToken.None);
+        Assert.Equal(afterFirst + 1, journal.ScanManifestReads);
+    }
+
+    [Fact]
+    public async Task Scans_notice_a_manifest_changed_behind_the_cache()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        var journal = Journal();
+        var transfer = Transfer();
+        await journal.CreateAsync(transfer, CancellationToken.None);
+        Assert.Single(await journal.ReadPendingAsync(CancellationToken.None));
+        long reads = journal.ScanManifestReads;
+
+        string manifest = Path.Combine(_workspace.Root, "journal", transfer.TransferId.ToString("N") + ".json");
+        var entry = await journal.ReadAsync(transfer.TransferId, CancellationToken.None);
+        // Rewritten outside the class with the same state but different bytes and a later timestamp.
+        await File.WriteAllTextAsync(manifest, System.Text.Json.JsonSerializer.Serialize(entry) + "\n");
+        File.SetLastWriteTimeUtc(manifest, DateTime.UtcNow.AddMinutes(5));
+
+        Assert.Single(await journal.ReadPendingAsync(CancellationToken.None));
+        Assert.Equal(reads + 1, journal.ScanManifestReads);
+    }
+
+    [Fact]
+    public async Task Destination_scans_do_not_reread_unchanged_history()
+    {
+        var journal = Journal();
+        string destination = Path.Combine(_workspace.Root, "destination", "document.txt");
+        var ids = new List<Guid>();
+        for (int round = 0; round < 12; round++)
+        {
+            var transfer = new StagedTransfer(Guid.NewGuid(),
+                Path.Combine(_workspace.Root, "staging", $"document-{round}.txt"), destination,
+                DestinationKind.RemovableDrive, "explorer.exe", 1234, 1);
+            await journal.CreateAsync(transfer, CancellationToken.None);
+            ids.Add(transfer.TransferId);
+            await journal.SealAsync(transfer.TransferId, transfer.ProcessId, transfer.StagePath,
+                CancellationToken.None);
+        }
+        // Every create scanned the destination's history; each sealed version was read once after its own change, and
+        // the creates of later versions reused it. Generations still advance one per version.
+        var entries = new List<TransferJournalEntry>();
+        foreach (var id in ids) entries.Add(await journal.ReadAsync(id, CancellationToken.None));
+        Assert.Equal(Enumerable.Range(1, 12).Select(n => (long)n), entries.Select(e => e.DestinationGeneration));
+        Assert.True(journal.ScanManifestReads <= 12L * 3, $"scan reads: {journal.ScanManifestReads}");
+    }
 }
