@@ -5683,8 +5683,8 @@ function Get-R02WriterBody {
 function Test-R02Held($Snapshot,[string]$FileId,[string]$NtPath,[int]$PidExpected,[uint32]$Generation) {
     $entries=@($Snapshot.Entries);$good=$entries.Count -eq 1 -and $Snapshot.Snapshot.Record.policyGeneration -eq $Generation
     if($good){$e=$entries[0];$good=$e.fileId -ieq $FileId -and $e.path -ieq $NtPath -and $e.state -ceq 'Activating' -and
-        $null -ne $e.H -and $e.H -gt 0 -and $e.openerPids -contains $PidExpected -and $null -ne $e.W -and $e.W -eq 0 -and $e.unknownReasons -ceq '0x00000000'}
-    return @{Name='R02ExactHeldY';Verdict=$(if($good){'PASS'}else{'FAIL'});Reason='Control 26 identifies the same Y file, actor H>0, drained W and accepted generation without uncertainty.';Evidence=$Snapshot}
+        $null -ne $e.H -and $e.H -eq 1 -and @($e.openerPids).Count -eq 1 -and $e.openerPids[0] -eq $PidExpected -and $null -ne $e.W -and $e.W -eq 0 -and $e.unknownReasons -ceq '0x00000000'}
+    return @{Name='R02ExactHeldY';Verdict=$(if($good){'PASS'}else{'FAIL'});Reason='Control 26 identifies the same Y file, exactly one H belonging solely to the actor, drained W and accepted generation without uncertainty.';Evidence=$Snapshot}
 }
 function Test-R02Protected($Record,[string]$FileId,[switch]$RequireFree) {
     $good=$Record.registryEntry -eq $true -and $Record.historyPresent -is [bool] -and $Record.nameMatches -eq $true -and
@@ -5703,6 +5703,9 @@ function Test-R02Promotion($Snapshot,$Trace,$Release,[string]$FileId,[string]$Vo
         }
     }
     if(-not $lossFree){return @{Name='R02FreeAndProtected';Verdict='INCONCLUSIVE';Reason='Retired R02 history requires complete zero-loss native trace batches.';Evidence=$Trace}}
+    if(@($Trace.Entries | Where-Object {$_.fileId -ieq $FileId -and $_.stateBefore -eq 1 -and $_.stateAfter -eq 2 -and ([uint32]$_.predicateFlags -band 32) -ne 0}).Count){
+        return @{Name='R02FreeAndProtected';Verdict='INCONCLUSIVE';Reason='R02 requires the held incarnation: a replacement-basis CAS cannot substitute without independent incarnation continuity proof.';Evidence=$Trace}
+    }
     # Reclaim can retire Y's resident row between its actual promotion and this query. Current Free alone
     # is insufficient: use the existing same-ID/volume/generation native CAS proof bound to this release/query window.
     $retired=Test-ActivationRetiredPromotion $Snapshot $Trace $Release $FileId $VolumeSerial $PolicyGeneration $BootId
@@ -5833,6 +5836,9 @@ function Invoke-R02Observation {
             $free=Test-R02Protected $protected.Record $yId -RequireFree
             if($protected.Record.historyPresent -eq $false -and $protected.Record.state -ceq 'Protected' -and $protected.Record.free -eq $true){
                 $retiredTrace=ConvertFrom-ActivationPromotionTrace (Invoke-ActivationInspector '--promotion-trace' (Join-Path $evidenceDirectory ('r02-retired-promotion-trace-'+[guid]::NewGuid().ToString('N')))) $yId
+                # The confirming native read follows the trace capture, avoiding a pre-CAS query paired merely
+                # through its later wrapper timestamp. The unchanged deadline includes both proof reads.
+                $protected=Get-ActivationEntry $y 'r02-promoted-after-trace'
                 $free=Test-R02Promotion $protected $retiredTrace $release $yId ('0x'+([uint64]$context.Geometry.Serial).ToString('X16')) $generation $context.BootId
                 $trial.RetiredPromotionProof=$free.Evidence
             }

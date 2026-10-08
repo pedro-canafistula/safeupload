@@ -15,11 +15,12 @@ function Copy-Fixture($Value){return [Management.Automation.PSSerializer]::Deser
 $id='0000000000000000000000000000002a';$nt='\Device\HarddiskVolume3\Y\marker.txt'
 $held=@{Entries=@(@{fileId=$id;path=$nt;state='Activating';generation=3;H=1;W=0;unknownReasons='0x00000000';openerPids=@(123)});Snapshot=@{Record=@{policyGeneration=9}}}
 Assert-Control ((Test-R02Held $held $id $nt 123 9).Verdict -ceq 'PASS') 'exact held Y'
-foreach($field in @('fileId','path','state','H','W','unknownReasons','openerPids','policyGeneration','missingW','duplicate')){
+foreach($field in @('fileId','path','state','H','secondH','W','unknownReasons','openerPids','secondOpener','policyGeneration','missingW','duplicate')){
     $bad=Copy-Fixture $held
     switch($field){
         'fileId' {$bad.Entries[0].fileId='wrong'} 'path' {$bad.Entries[0].path='wrong'} 'state' {$bad.Entries[0].state='Protected'}
         'H' {$bad.Entries[0].H=0} 'W' {$bad.Entries[0].W=1} 'unknownReasons' {$bad.Entries[0].unknownReasons='0x00000001'}
+        'secondH' {$bad.Entries[0].H=2} 'secondOpener' {$bad.Entries[0].openerPids=@(123,456)}
         'openerPids' {$bad.Entries[0].openerPids=@(456)} 'policyGeneration' {$bad.Snapshot.Record.policyGeneration=8}
         'missingW' {$bad.Entries[0].Remove('W')} 'duplicate' {$bad.Entries+=@($bad.Entries[0])}
     }
@@ -53,6 +54,8 @@ Assert-Control ((Test-R02Promotion $bad $trace $release $id $serial 9 $boot).Ver
 $bad=Copy-Fixture $release;$bad.BootId='old-boot'
 Assert-Control ((Test-R02Promotion $snapshot $trace $bad $id $serial 9 $boot).Verdict -cne 'PASS') 'release from old boot rejected'
 Assert-Control ((Test-R02Promotion $snapshot $null $release $id $serial 9 $boot).Verdict -cne 'PASS') 'missing CAS cannot replace resident history'
+$bad=Copy-Fixture $trace;$bad.Entries[0].predicateFlags=47
+Assert-Control ((Test-R02Promotion $snapshot $bad $release $id $serial 9 $boot).Verdict -cne 'PASS') 'replacement incarnation CAS cannot qualify R02 held-incarnation proof'
 foreach($field in @('lostEvents','overwrittenEvents','flags')){
     $bad=Copy-Fixture $trace;$bad.Batches[0][$field]=1
     Assert-Control ((Test-R02Promotion $snapshot $bad $release $id $serial 9 $boot).Verdict -cne 'PASS') ('reject trace '+$field)

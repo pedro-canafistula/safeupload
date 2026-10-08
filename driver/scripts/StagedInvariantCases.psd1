@@ -3,7 +3,7 @@
 # design section 4 corpus, NOT a claim that one row covers every future variant.
 @{
     Schema = 'StagedInvariantCases/1'
-    TableRevision = 19
+    TableRevision = 20
     Modes = @('ordinary', 'runtime-verifier', 'boot-verifier')
     RowSchema = @{
         Required = @('CaseId', 'Revision', 'Status', 'Variant', 'Outcome',
@@ -535,7 +535,7 @@
             Cleanup = @('CooperativeWriterCancellationAndClose', 'StopAndRestoreAgent', 'RestoreProductStateBytesAndAcls', 'CommonSeedRestoration', 'IndependentBaseline')
         }
         @{
-            CaseId = 'R02'; Revision = 6; Status = 'Ready'
+            CaseId = 'R02'; Revision = 7; Status = 'Ready'
             Variant = 'core-stop-after-finalized-policy-with-clean-A01-H-holder-Y'; Outcome = 'ProtectedXAndY; ReadyAfterLastHolderRelease'
             QualificationScope = 'MVP coordinated finalized-policy restart core; earlier apply boundaries and dirty holders deferred'
             DeferredVariants = @('Stops before/after PendingScopes durable', 'Stops between drains', 'Stops before/after Reserved=1', 'Dirty-holder variants', 'FailedClosed variants', 'Seeded unheld stop races', 'Repetition beyond coordinated core')

@@ -2022,3 +2022,10 @@ the batch wrapper before it runs.
   duplicate, lossy, wrong-generation and late proof cannot qualify. No old run is reclassified as PASS.
   Windows gate `codex-r02-retired1`: PASS, including new negative controls. Fresh supported-VM R02 and Luna review remain
   required; product driver/agent bytes and failure policy are unchanged.
+- R02 review disposition (table20, row7): [Luna](evidence/2026-10-07/luna-r02-retired-history-review.md)
+  ACCEPT WITH CONDITIONS. Implemented sole-actor H=1 at the held checkpoint, rejection of replacement-incarnation
+  basis 0x20 for the retired R02 proof, and a confirming current query after the trace read. Negative controls reject
+  additional holders/openers and replacement-basis edges. The existing whole-holder Ready assertion remains
+  INCONCLUSIVE/deferred; this repair proves the promotion checkpoint, not continuous readiness. Windows gate
+  `codex-r02-bindings1`: PASS. Fresh draft row6 run `codexr02a1` on driver `cfee5a33` / agent `63664ffd` reports
+  MvpGatePassed=true, ForbiddenByteCount=0 and RestorationClean=true; a fresh row7 run remains required.
