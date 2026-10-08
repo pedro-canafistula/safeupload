@@ -104,11 +104,42 @@ mas sem teste automatizado.
 
 ### Fase 3 — Desvio do tráfego
 
+Plano original:
+
 - Proxy do sistema por máquina (`ProxySettingsPerUser=0`; o serviço roda como SYSTEM).
 - Filtros WFP em modo usuário: saída direta para 80/443 só para o proxy;
   UDP 443 bloqueado (força a saída do QUIC/HTTP3).
 - Política `QuicAllowed=false` no Chrome e no Edge.
 - O tráfego do próprio proxy sai direto.
+
+**Mudança na implementação: desvio só dos navegadores.** O proxy do sistema e
+o bloqueio para todos os programas levariam Windows Update, Defender, Teams e
+Outlook para dentro do proxy, e parte deles recusa interceptação (pinning).
+Antes da Fase 4 tratar essas exceções, isso quebraria a máquina. Upload pela
+web acontece no navegador, então a v1 desvia só ele:
+
+- **Políticas corporativas** (`BrowserProxyPolicies`): Chrome e Edge com
+  `ProxyMode=fixed_servers`, `ProxyServer=127.0.0.1:8877` e `QuicAllowed=0`;
+  Firefox com `Proxy` manual e travado. O usuário vê "gerenciado pela
+  organização" e não muda.
+- **Filtros WFP** (`BrowserEgressFilter`): conexões dos executáveis de
+  navegador para as portas 80 e 443, TCP e UDP, são bloqueadas. Navegador com
+  o proxy contornado fica sem conexão; QUIC do Firefox cai para TCP. Sessão
+  dinâmica: o Windows apaga os filtros sozinho se o serviço morrer.
+- O resto da máquina não muda. O proxy do sistema para todos os programas
+  volta à mesa junto com as exceções da Fase 4.
+
+Estado: implementada e testada na VM (Edge sem configuração de proxy passa
+pelo proxy; com a política removida, o filtro deixa o Edge sem conexão; curl
+segue direto; serviço morto à força libera o Edge). Limitações:
+
+- Os filtros reconhecem os navegadores pelos caminhos de instalação padrão.
+  Um navegador portátil, ou copiado para outra pasta, não é coberto.
+- Se o serviço morrer sem parar direito, as políticas ficam apontando para um
+  proxy fora do ar e os navegadores ficam sem internet até ele voltar (decisão
+  em aberto 2). Saída de emergência: `SafeUpload.Agent.Service desvio remove`.
+- Os navegadores releem políticas em alguns minutos; para valer na hora,
+  precisam ser reabertos.
 
 ### Fase 4 — Exceções
 
