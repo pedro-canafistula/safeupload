@@ -51,7 +51,8 @@ public sealed class HttpPolicyStoreTests
         Assert.False(policy.MonitoredScopes.RemovableDrives);
         Assert.True(policy.MonitoredScopes.NetworkPaths);
         Assert.Contains(@"C:\Publicado", policy.MonitoredScopes.DestinationPaths);
-        Assert.Contains(@"C:\Origem", policy.MonitoredScopes.SourcePaths);
+        // "sourcePaths" é aceito e ignorado: o agente classifica arquivos de
+        // qualquer origem e o domínio não tem mais esse campo.
 
         // Extensão sem ponto no documento continua chegando com ponto ao
         // domínio — mesma normalização da origem local.
