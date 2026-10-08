@@ -5,7 +5,7 @@ import com.safeupload.domain.entity.Usuario;
 /** Nunca inclui a senha (nem o hash) — é o que a API pode devolver com segurança. */
 public class UsuarioResponse {
 
-    private Long idUsuario;
+    private Integer idUsuario;
     private String nomeCompleto;
     private String username;
     private String email;
@@ -21,7 +21,7 @@ public class UsuarioResponse {
         return dto;
     }
 
-    public Long getIdUsuario() { return idUsuario; }
+    public Integer getIdUsuario() { return idUsuario; }
     public String getNomeCompleto() { return nomeCompleto; }
     public String getUsername() { return username; }
     public String getEmail() { return email; }
