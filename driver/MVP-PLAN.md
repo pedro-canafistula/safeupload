@@ -166,11 +166,9 @@ Revert the VM: `rollback-vm.sh <domain> <run>` (new overlay on the pre-run paren
 - 2026-10-08: freeze at `5ebe139a` + `51ba5873` (product changes only for a leak, a crash or a Verifier hit); two-tier gate; latency reported
   only; the five boot-Verifier cells are a known gap.
 
-## Next steps (post-MVP, in order)
+## Next steps (post-MVP)
 
-1. Bound the reclaim-worker rescan (backoff or event-driven), then rerun boot-Verifier B02 and the BLOCK rows.
-2. Find the operation denied during new-profile creation and fix it; make large installers (Microsoft 365) work with the driver loaded.
-3. Application compatibility: Notepad Save As, then Word/Excel save patterns (temporary file plus rename), with suite rows for each.
-4. Installer: set the staged-mode arguments, fix the SID-type check, qualify the install on a clean VM; package the notification app.
-5. The other section-4.1 variants of each suite row, P01-P06 and RV4, dedicated latency runs.
-6. Destinations beyond local NTFS (USB, SMB, sync clients) and Windows 11, each with its own qualification.
+The prioritized plan is in [POST-MVP-PLAN.md](POST-MVP-PLAN.md). In short: M1 makes the driver safe to leave loaded (reclaim-worker
+rescan, new-profile creation, large installers and Windows Update); M2 makes everyday saves work (128-per-boot stage cap, Notepad and
+Office save patterns, the 16 MiB limit, the review conditions); M3 is the release candidate (release build configuration, Windows 11 and
+current Windows 10, altitude and production signing, install/upgrade/uninstall); M4 is full qualification; new destinations come after.
