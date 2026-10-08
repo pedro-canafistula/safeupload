@@ -1977,10 +1977,13 @@ the batch wrapper before it runs.
   alias-refusal argument for the hard-link case held: no standard-user bypass of the pre-create
   `SafeUploadStageCheckNamedAliases`) -> v3e narrows the proof to the data stream (named streams keep their own
   rows/gates). Reports under `evidence/2026-10-07/luna-replaced-incarnation-*-review.md`.
-- **Harness fixes from the same runs:** finalize `OutOfMemoryException` in `ConvertTo-Json` on a 4 GB guest for a 101-round
-  dedicated latency trial (every byte of every journal record in every round snapshot was written as its own JSON line):
-  `Remove-LatencyJournalBytes` drops non-terminal record `Bytes` (hash and length stay and are host-verified); R03 offline
-  snapshot needs the service-written notification record, which my residue reset had deleted: the reset now keeps it and
-  `Restore-StagedNotificationRecord.ps1` puts it back from the reset's own archive (bytes unchanged, evidence-reader ACL).
+- **Harness fixes from the same runs:** finalize `OutOfMemoryException` in `ConvertTo-Json` on a 4 GB guest for the
+  101-round dedicated latency trials: the trial is ~100 MB as JSON and Windows PowerShell 5.1's pretty-printer
+  (`ConvertToPrettyJsonString`, in the stack) re-indents every array element at depth. Measured on the guest with the real C05
+  trial: `-Compress` converts it in 11 s at a 1.6 GB peak, so dedicated latency trials now write `case.json` compact (same JSON,
+  nothing omitted). A first attempt trimmed journal `Bytes` and was reverted: the journal is 259 bytes per round; the bulk is
+  per-round `Notifications` (940 KB) and `AgentExecution` (220 KB), which the host does not read but which stay as evidence.
+  R03's offline snapshot needs the service-written notification record, which my residue reset had deleted: the reset now keeps it
+  and `Restore-StagedNotificationRecord.ps1` puts it back from the reset's own archive (bytes unchanged, evidence-reader ACL).
   Batches now run from their own worktree: committing in the shared worktree mid-batch broke the exact-source preflight of
   the batch's later cases (v3a2/v3b2).
