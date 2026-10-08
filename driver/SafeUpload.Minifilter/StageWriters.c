@@ -5164,6 +5164,12 @@ __declspec(noinline) static BOOLEAN StageRegistryBeginAliasProbe(_In_ PSTAGE_REG
           (Entry->NameChars != 0 || Entry->Compact) && Entry->StreamIdentityKnown))) {
         InterlockedExchange(&Entry->AliasProbePending, 1);
         InterlockedExchange(&Entry->ScopeNameClassification, STAGE_SCOPE_CLASS_UNRESOLVED);
+        /* The promotion CAS requires ActivationGeneration to equal the live policy generation. Scope apply and
+         * reconcile stamp the generation they commit after calling this; an activation begun at runtime (a file
+         * renamed into a live scope, the service's publication) was never stamped, kept 0, and could not promote
+         * at generation 1 (C03 v6b2: PromoteDeferred 0x200; C01 v6b1: 18 published files at generation 0). Any
+         * policy change re-begins every entry, so a stamp taken here never outlives the policy it was begun under. */
+        InterlockedExchange(&Entry->ActivationGeneration, (LONG)(ULONG)SafeUploadCurrentPolicyGeneration());
         if (InterlockedCompareExchange(&Entry->T, 0, 0) != 0) {
             InterlockedExchange(&Entry->ActivationEnforced, 1);
             if (state != SAFEUPLOAD_REGISTRY_STATE_UNKNOWN)
