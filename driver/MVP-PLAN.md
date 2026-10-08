@@ -2152,3 +2152,20 @@ C05 is proven behaviorally and its exemption is exact-name, a FAIL still blocks)
   entries (cleared when exceeded). Journal retention/compaction is post-MVP.
 - Sticky Unknown is never cleared before reboot (owner decision 2026-10-03): a lost-tracking event on the protected volume leaves
   coverage Degraded until restart.
+
+## 2026-10-08 Phase 5 review (Luna, whole MVP diff `9578f937..51ba5873`)
+
+[Report](evidence/2026-10-08/luna-phase5-review.md): **ACCEPT WITH CONDITIONS, no P0/P1.** No path found where a standard user
+publishes an unapproved byte into a protected local-NTFS folder while coverage is Ready, nor a lost wakeup, deadlock,
+use-after-free, unbounded cache growth, or trust/ACL regression. P2s carried as release conditions:
+1. The journal scan cache is in the destination-authorization path: an administrator/SYSTEM who replaces a historical manifest
+   while preserving length, creation time, last-write time and attributes could have a scan reuse its old generation/tombstone/
+   reservation projection until the next write to it. Cache hits also skip the direct open's ACL, reparse-point and single-link
+   checks. Accepted trade-off (standard users cannot write the journal; class writes invalidate; every state change starts with a
+   direct disk read; a restart starts with an empty cache). Stated in the release notes.
+2. The 50 000-entry all-clear can restore full journal-read cost: above 50 000 retained manifests the publish loop (250 ms) and
+   stage operations can re-read history. That scale is not performance-qualified; journal retention/pruning is post-MVP.
+Release-note conditions confirmed by the review: local fixed NTFS / Windows 10 19045.2965 only, boot-start with reboot, admins and
+SYSTEM trusted; Activating never Ready and sticky Unknown until reboot; reclaim-worker CPU under endless churn; C05DenialLedger,
+lower mutation ledger and continuous coverage proofs deferred (NoUnapprovedByte is sampled evidence); read classification can stall
+the service while taint is on (the MVP proof runs with taint off); signed-LONG policy generation rollover after 2^31 commits.
