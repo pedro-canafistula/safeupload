@@ -2196,6 +2196,23 @@ C05 is proven behaviorally and its exemption is exact-name, a FAIL still blocks)
 - Evidence limit: "no unapproved byte" is evidenced by sampled fresh and uncached raw-volume reads and the final raw image, not a
   continuous proof. The staging build carries diagnostic Inspector/protocol additions and must not be shipped to users as it is.
 
+**Found by the owner's manual test on win10-debug after the gate closed** (same signed pair; details and raw evidence in
+[manual-test-win10-debug](evidence/2026-10-08/manual-test-win10-debug/README.md)):
+- Installer: `Install-SafeUploadAgent.ps1` registers the agent without `--Interception:Mode=Minifilter --Interception:StagingPrototype=true`. The
+  agent then runs outside staged mode (`admissionCoverage:"NotAvailable"`, `auditOnly:true` despite the policy) and the driver refuses every
+  standard-user save into a protected folder. Its last check also throws on `SERVICE_SID_TYPE:  UNRESTRICTED` after configuring everything.
+  The installer path (N-02) was never qualified; it must set these arguments before any real deployment.
+- New user profiles cannot be created while the driver is loaded: a new user's first sign-in fails with "The User Profile Service service
+  failed the sign-in" and `CreateProfile` returns access denied (with the driver held at demand start the same calls succeed). Existing
+  profiles are unaffected. The denied operation is not identified yet. Workaround: users sign in once before protection is installed.
+- Notepad "Save As" into a protected folder publishes an empty (0-byte) file and Notepad reports "You don't have permission to modify files
+  in this network location". Explorer copies and programmatic saves publish and block correctly. Real applications (Notepad, Word) are
+  outside the suite; application compatibility is post-MVP work and the first item to investigate after the reclaim-worker fix.
+- A blocked save is silent: the writing program reports success, the notification/tray app is not in the MVP package, and the blocked
+  version is handed back as `%USERPROFILE%\SafeUpload\_bloqueados\<transfer-id>.<ext>` (named by transfer ID, not the original name).
+- Moving a file into a protected folder (Explorer drag on the same volume) is refused with "Destination Folder Access Denied" by design
+  (a rename would publish uninspected content); users have to copy.
+
 ## 2026-10-08 Phase 5 review (Luna, whole MVP diff `9578f937..51ba5873`)
 
 [Report](evidence/2026-10-08/luna-phase5-review.md): **ACCEPT WITH CONDITIONS, no P0/P1.** No path found where a standard user
@@ -2300,6 +2317,18 @@ retried and are listed in the release notes with the measurements. The release g
 
 **What this gives up.** Verifier-from-boot evidence for B02, C01-block-absent, C02-block-absent, C03-block-existing and C04-block. The same rows pass in
 ordinary mode and in runtime-Verifier mode with every proof, and no run showed a leak.
+
+## 2026-10-08 manual test on win10-debug (owner, after the gate closed)
+
+The owner asked to see the product working "as a user would". The orchestrator installed the exact gate pair on win10-debug with the
+official installer and the harness's policy shape, and the owner tested from the console as a standard user. Results and evidence:
+[manual-test-win10-debug](evidence/2026-10-08/manual-test-win10-debug/README.md). With the agent started the way the harness starts it,
+a standard user's Explorer copy and scripted save of a clean `.txt` are published and a CPF `.txt` is blocked and handed back; moving a
+file in is refused by design. Four product findings went into the release notes' known issues: the installer omits the staged-mode
+arguments (every save refused until they are set) and throws at its last check, new user profiles cannot be created while the driver is
+loaded, Notepad Save As publishes an empty file and fails, and a blocked save is silent (no notification app in the package). No CPF
+content reached the protected folder in any of these tests. The VM is left installed for further manual tests (the owner is installing
+Microsoft Word next); `~/Work/safeupload-tools/rollback-vm.sh win10-debug w165734g1` reverts it to the clean baseline.
 
 ## 2026-10-08 Phase 5 review of the final pair (Luna, `9578f937..5ebe139a`, driver `mvp4-gen4b` + agent `51ba5873`)
 
