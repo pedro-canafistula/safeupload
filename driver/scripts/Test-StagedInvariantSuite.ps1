@@ -4105,6 +4105,10 @@ function Invoke-ActivationApprovedSave($Trial,$Actor,$Context,$Baseline,$Promoti
     Add-ActivationAssertion $Trial 'OwnedStreamJournalForExactDestination' $(if($released){'PASS'}else{'INCONCLUSIVE'}) 'Exact same standard-user benign owned transfer reaches actual Released with complete Approved publication history and whole A digest.' @{Held=$allocated;Close=$close;Terminal=$terminal;Transitions=$transitions}
     Add-ActivationAssertion $Trial 'PostPromotionUnapprovedWriteRoutedToOwnedStream' $(if($released){'PASS'}else{'INCONCLUSIVE'}) 'The post-promotion native write used a private owned stream while held, then actual service APPROVE published exact A after close.' @{Held=$held;Terminal=$terminal}
     if(-not $released){throw 'A04 approved owned save did not reach Released within 120 seconds'}
+    # Released is durable before NTFS writes the replaced name's index entry and MFT record lazily: the raw observer would still resolve
+    # the old file (A04 dad1: final raw image equalled the pre-approval U, 96 payload bytes differing). Flush the exact volume first, as
+    # R03 and X01 do; it only makes the disk the observer reads match the live state.
+    $null=Flush-InvariantSetupVolume
     $final=Capture-InvariantSample $Context $Baseline 'A04FinalReleasedImage' 5
     $whole=Test-ActivationRawWholeImage $final $Target $imageA
     Add-ActivationAssertion $Trial 'ApprovedFinalRawImageA' $whole.Verdict $whole.Reason $whole
