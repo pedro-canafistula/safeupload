@@ -2152,6 +2152,15 @@ C05 is proven behaviorally and its exemption is exact-name, a FAIL still blocks)
   entries (cleared when exceeded). Journal retention/compaction is post-MVP.
 - Sticky Unknown is never cleared before reboot (owner decision 2026-10-03): a lost-tracking event on the protected volume leaves
   coverage Degraded until restart.
+- Reading a protected file that the product classified as sensitive: the legacy post-create path refuses a data-read open of a
+  sensitive file in a monitored destination (`DeniedPostCreate`, access denied) unless an override is present, so a justified
+  sensitive file that was published is not readable by its owner without the override; attribute-only opens are allowed. Recorded by B02;
+  changing this is a post-MVP product decision.
+- Blocked-version cleanup (`mvp4-gen4b`): after a BLOCK's hand-back window closes the service deletes the private stage; the driver
+  closes its read-only backing within one 250 ms worker pass once nothing holds the version, and refuses a new open of a
+  delete-pending stage (`STATUS_DELETE_PENDING`). A handle opened before the delete keeps the version alive until it is closed.
+  The delete-pending query in `StageCreate` runs under the global namespace lock and has no top-level-IRP guard (Luna P2; no
+  ordinary standard-user direct-open path sets that).
 
 ## 2026-10-08 Phase 5 review (Luna, whole MVP diff `9578f937..51ba5873`)
 
