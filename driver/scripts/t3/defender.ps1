@@ -9,8 +9,15 @@ $exe = if ($platform) { Join-Path $platform.FullName 'MpCmdRun.exe' } else { 'C:
 $r.mpcmdrun = $exe
 $r.platformBefore = (Get-Item $exe -ErrorAction SilentlyContinue).VersionInfo.FileVersion
 $t = [Diagnostics.Stopwatch]::StartNew()
-$out = & $exe -SignatureUpdate 2>&1 | Out-String
+# 0x80070652 is ERROR_INSTALL_ALREADY_RUNNING: another installation (servicing after the boot) holds the installer. Wait it out; it is
+# the same with and without the driver, so it says nothing about the driver.
+for ($attempt = 1; $attempt -le 15; $attempt++) {
+    $out = & $exe -SignatureUpdate 2>&1 | Out-String
+    $r.exit = $LASTEXITCODE
+    if ($LASTEXITCODE -eq 0 -or $out -notmatch '80070652') { break }
+    Start-Sleep -Seconds 60
+}
+$r.attempts = $attempt
 $r.duration = [math]::Round($t.Elapsed.TotalSeconds, 1)
-$r.exit = $LASTEXITCODE
 $r.output = ($out -replace '\s+', ' ').Trim()
-$r.ok = ($LASTEXITCODE -eq 0)
+$r.ok = ($r.exit -eq 0)
