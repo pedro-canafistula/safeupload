@@ -1244,7 +1244,10 @@ static PSTAGE_REGISTRY_ENTRY StageRegistryGetOrInsert(_In_ PSTAGE_WRITER_RESERVA
     Reservation->BoundEntry = entry;
     {
         /* Reclaim before the limits are reached: at 3/4 of the instance or total limit. */
-        BOOLEAN pressure = RegistryEntryCount * 4 >= capacity * 3 ||
+        /* Above 512 live entries, every 64th insertion also wakes the pruner: the 3/4 rule below sits at 3,072 now that one volume may
+         * use the whole registry, which is far too late to keep a servicing burst from reaching the limit. */
+        BOOLEAN pressure = (RegistryEntryCount >= 512 && (RegistryEntryCount % 64) == 0) ||
+            RegistryEntryCount * 4 >= capacity * 3 ||
             RegistryCompactEntryCount * 4 >= SAFEUPLOAD_WRITER_REGISTRY_COMPACT_LIMIT * 3 / 4 ||
             StageRegistryInstanceCountLocked(Reservation->Instance) * 4 >=
                 min((ULONG)SAFEUPLOAD_WRITER_REGISTRY_INSTANCE_LIMIT, capacity) * 3 ||

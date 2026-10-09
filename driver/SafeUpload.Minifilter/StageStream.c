@@ -2829,6 +2829,12 @@ static FLT_PREOP_CALLBACK_STATUS StageAdmit(PFLT_CALLBACK_DATA Data,
         if (writerAccess || disposition == FILE_SUPERSEDE || disposition == FILE_OVERWRITE ||
             disposition == FILE_OVERWRITE_IF) {
             status = SafeUploadStageCheckNamedAliases(Objects->Instance, name, kind, &protectedAlias);
+            if (status == STATUS_DELETE_PENDING) {
+                /* The probe found the file deleted-pending: no write can reach it, whatever its other names are, and the file
+                 * system refuses the open itself. Refusing here turned that answer into ACCESS_DENIED (servicing opens the
+                 * old printer-driver files this way). */
+                handled = FALSE; goto Complete;
+            }
             if (status != STATUS_SUCCESS || protectedAlias) {
                 denyReason = protectedAlias ? SAFEUPLOAD_DENY_REASON_PROTECTED_ALIAS : SAFEUPLOAD_DENY_REASON_ALIAS_CHECK_FAILED;
                 denyAux = status;
@@ -2894,6 +2900,16 @@ static FLT_PREOP_CALLBACK_STATUS StagePhysicalMutationEx(PFLT_CALLBACK_DATA Data
      * was counted before this check and is paired by post-operation. */
     if (TrackedWriter) return FLT_PREOP_SUCCESS_NO_CALLBACK;
     if (KeGetCurrentIrql() != PASSIVE_LEVEL || IoGetTopLevelIrp() != NULL) {
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+        /* The name cannot be queried in this context (a write issued from inside another file-system call, for example a
+         * filter above this one compressing a file). A stream whose registry entry is validated and classified outside every
+         * scope is decided by that entry; everything else keeps the volume-wide answer below. */
+        if (KeGetCurrentIrql() <= APC_LEVEL &&
+            SafeUploadStageWritersSopKnownOutside(Objects->Instance, Objects->FileObject)) {
+            status = STATUS_SUCCESS;
+            goto Complete;
+        }
+#endif
         denyReason = SAFEUPLOAD_DENY_REASON_TOP_LEVEL_IRP;
         goto Complete;
     }
