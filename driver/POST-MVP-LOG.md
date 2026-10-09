@@ -92,3 +92,26 @@ may be in scope" by boot time, which confirms the suspected mechanism: `StageAdm
 profile tree deepest-first and creates parents on `PATH_NOT_FOUND`, so an ACCESS_DENIED instead aborts the whole recursion. The deny record now
 carries the status of the failed lookup (`AuxStatus`) to confirm which failure it is before the fix.
 
+### T2 fix part 1 verified, part 2 named (01:56-03:00)
+
+Fix 1 (`7331f2a0`): a normalized-name lookup that fails with PATH_NOT_FOUND, NAME_NOT_FOUND, NO_SUCH_FILE or NOT_A_DIRECTORY no longer refuses a
+create (`StageNameLookupProvesAbsent`, used by `StageAdmit` and `StageAdmitDirectoryMutation`). Verified on a guest with the driver loaded and the
+agent Ready (`t2diag7`/`t2diag8`): `CreateProfile` for a brand-new user returns 0, zero refusals recorded during it. Every other unresolved lookup still
+fails closed and is recorded in the ring with its status.
+
+First sign-in through a scheduled task as a new user still did not run (`USER_TASK_RESULT` = task not run). The ring, now carrying a reason code and the
+resolved name (`eb358ec2`), names the remaining refusals exactly: 24 kernel-mode `SET_INFORMATION` (FileBasicInformation) refusals, reason `policyScope`,
+name `\Device\HarddiskVolume3\`, the volume root, which is an ancestor of the protected scope `C:\Protected`. `StagePhysicalMutationEx` was called with
+`IncludeAncestors = TRUE` for every non-rename SET_INFORMATION; the Profile Service sets basic information on `C:\` while it builds a profile.
+Fix 2 (`8c9adc21`): the ancestor rule applies only to a delete (FileDispositionInformation/Ex); attribute, time and size changes of an ancestor leave the
+scope's bytes alone. Renames and links of an ancestor are still checked by `StageExternalRename`. Security reasoning: the rule exists so a protected folder
+cannot be removed from under the driver; none of the relaxed classes can move or remove a directory or change protected bytes.
+
+### T1 verified on C05 (02:55)
+
+With the first T1 build the idle reclaim rate was still 3,111 passes/s (`parked=0`, `moreWorkRequeues=8`): the worker was not requeueing itself, it was
+woken by every `IRP_MJ_CLOSE` and every successful `IRP_MJ_CLEANUP` on the machine. `51c4c96e` makes those wake-ups targeted (interest flag set at the
+source when an entry enters a waiting state, recomputed each pass; O(1) lookup through the section-pointer map for the closing stream; skipped
+wake-ups counted). C05 on the pair `t1-wake1`/`t1-agent4` (ordinary): idle rate 8.1 passes/s (limit 10), `C05DenialLedger` PASS, verdict INCONCLUSIVE with
+latency-only blockers (tier-1 pass). Rows A01-A04, R02, X01, C03, C04, C01 (approve and block) run next.
+
