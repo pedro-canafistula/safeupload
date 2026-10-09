@@ -46,7 +46,7 @@ __declspec(noinline) static VOID DenyRelease(_In_ _IRQL_restores_ KIRQL OldIrql)
 }
 
 /* The linker places this symbol at the image base. DRIVER_OBJECT.DriverStart is off limits to a driver (C28175). */
-extern IMAGE_DOS_HEADER __ImageBase;
+extern UCHAR __ImageBase;
 
 VOID SafeUploadDenyRingInitialize(VOID)
 {

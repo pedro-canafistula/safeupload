@@ -368,6 +368,46 @@ function Restore-PolicyFile {
 }
 
 
+function Get-DiagnosticsDenyRing {
+    # Reads the driver's deny ring through the service's administrator-only diagnostics pipe (the filter port accepts
+    # one client and the service holds it). Status is OK only if every page was read; an agent without the pipe
+    # (an older pair) is Unavailable, which callers must report as INCONCLUSIVE, never as absence of a refusal.
+    $result=@{Status='Unavailable';Records=@();Gap=$false;Error=$null}
+    try{
+        $cursor=[uint64]0;$records=@()
+        for($page=0;$page -lt 64;$page++){
+            $client=New-Object System.IO.Pipes.NamedPipeClientStream('.','SafeUpload.Agent.Diagnostics',[System.IO.Pipes.PipeDirection]::InOut)
+            try{
+                $client.Connect(5000)
+                $utf8=New-Object System.Text.UTF8Encoding($false)
+                $writer=New-Object System.IO.StreamWriter($client,$utf8,1024,$true);$writer.NewLine="`n"
+                $writer.WriteLine((@{query='deny-ring';after=$cursor} | ConvertTo-Json -Compress));$writer.Flush()
+                $reader=New-Object System.IO.StreamReader($client,$utf8,$false,1024,$true)
+                $line=$reader.ReadLine()
+            }finally{$client.Dispose()}
+            if([string]::IsNullOrEmpty($line)){throw 'Diagnostics pipe closed without a reply'}
+            $reply=$line | ConvertFrom-Json
+            if(-not $reply.ok){throw ('Diagnostics pipe refused the query: '+$reply.error)}
+            if($reply.data.gap){$result.Gap=$true}
+            $batch=@($reply.data.records)
+            if(-not $batch.Count){break}
+            $records+=$batch;$cursor=[uint64]$batch[-1].sequence
+        }
+        $result.Records=$records;$result.Status='OK'
+    }catch{$result.Error=$_.Exception.Message}
+    $result
+}
+
+function Test-C05DenyRingRecord($Ring,[int]$ActorPid,[string]$TargetLeaf) {
+    # The exact refusal of the external rename: a SET_INFORMATION completed STATUS_ACCESS_DENIED for the actor process
+    # whose rename-target name ends with the protected target's name.
+    if($Ring.Status -cne 'OK'){return @{Name='C05DenialLedger';Verdict='INCONCLUSIVE';Reason=('Driver deny ring unavailable through the service diagnostics pipe: '+$Ring.Error)}}
+    $hit=@($Ring.Records | Where-Object {$_.processId -eq $ActorPid -and $_.major -ceq 'SET_INFORMATION' -and $_.status -ceq '0xC0000022' -and
+        $null -ne $_.name -and $_.name.EndsWith($TargetLeaf,[StringComparison]::OrdinalIgnoreCase) -and @($_.flags) -contains 'nameIsRenameTarget'})
+    if($hit.Count){return @{Name='C05DenialLedger';Verdict='PASS';Reason=('Driver deny ring recorded the denied rename: sequence '+$hit[0].sequence+', status '+$hit[0].status+', site '+$hit[0].siteOffset+', target '+$hit[0].name+'; records read='+$Ring.Records.Count)}}
+    return @{Name='C05DenialLedger';Verdict='FAIL';Reason=('Driver deny ring is readable but holds no STATUS_ACCESS_DENIED SET_INFORMATION record for pid '+$ActorPid+' with target '+$TargetLeaf+'; gap='+$Ring.Gap)}
+}
+
 function Get-BootPolicyReadback {
     $body = @'
 $path = 'SYSTEM\CurrentControlSet\Services\SafeUpload\Parameters\BootPolicy'
@@ -3530,6 +3570,7 @@ function Invoke-CachedObservation {
             $trial.RenameReceipt=$renamed;$trial.Operations=@($renamed.Calls);$renameCalls=@($renamed.Calls | Where-Object Class -ceq 'rename-ex')
             $wantedCode=if($cachedDenial){5}else{0}
             $verdict=if($renameCalls.Count -ne 1 -or $null -eq $renameCalls[0].NativeCode){'INCONCLUSIVE'}elseif($renameCalls[0].NativeCode -ne $wantedCode -or $renameCalls[0].StartQpc -lt $trial.RenameBarrierQpc){'FAIL'}else{'PASS'}
+            if($cachedDenial){$trial.DenyRing=Get-DiagnosticsDenyRing;$trial.C05DenialLedger=Test-C05DenyRingRecord $trial.DenyRing $actor.Pid 'cached.txt'}
             $trial.Assertions+=@{Name='NativeRenameStatus';Verdict=$verdict;Reason=('FileRenameInfoEx REPLACE_IF_EXISTS|POSIX via old held source: expected Win32:'+ $wantedCode+'; receipt count='+$renameCalls.Count)}
             $trial.Assertions+=@{Name='C01PrivateReadAfterRename';Verdict=$(if($null -eq $renamed.PrivateSha256){'INCONCLUSIVE'}elseif($renamed.PrivateSha256 -ceq $digest){'PASS'}else{'FAIL'});Reason='Held source image remains exact A after the native rename attempt.'}
             for($n=0;$n -lt 3;$n++){
@@ -3650,7 +3691,10 @@ function Invoke-CachedObservation {
         if($cachedDenial){
             $trial.ServiceEvidence=Get-ServiceTimeline $trial.ServiceBefore $trial.ServiceAfter $fence;$trial.Assertions+=@($trial.ServiceEvidence.Assertions)
             $trial.Assertions+=@{Name='C05NoAnyNewTransfer';Verdict=$(if($delta.NewEntries.Count){'FAIL'}elseif($delta.Complete){'PASS'}else{'INCONCLUSIVE'});Reason=('Physical external source and denied target rename must create no transfer anywhere in the authenticated journal window; new entries='+$delta.NewEntries.Count+'; '+(@($delta.Failures)+@($delta.Findings) -join '; '))}
-            $trial.Assertions+=@{Name='C05DenialLedger';Verdict='INCONCLUSIVE';Reason='Win32:5 is recorded on the exact native rename with a successful physical source open/read; exact driver denial reason/lower-admission ledger unavailable.'}
+            if($null -ne $trial.C05DenialLedger -and $trial.C05DenialLedger.Verdict -ceq 'PASS'){$trial.Assertions+=$trial.C05DenialLedger}
+            else{
+                $trial.Assertions+=@{Name='C05DenialLedger';Verdict=$(if($null -ne $trial.C05DenialLedger -and $trial.C05DenialLedger.Verdict -ceq 'FAIL'){'FAIL'}else{'INCONCLUSIVE'});Reason=('Win32:5 is recorded on the exact native rename with a successful physical source open/read; '+$(if($null -ne $trial.C05DenialLedger){$trial.C05DenialLedger.Reason}else{'driver deny ring not queried'}))}
+            }
         }elseif($CaseId -ceq 'B01'){
             $trial.Assertions+=Test-B01FailureNotification $proof $terminal.TransferId $actor.SessionId $digest
             $trial.B01FailureLog=Read-AgentLogWindow $trial.ServiceBefore.Application $trial.ServiceAfter.Application 'Application'
