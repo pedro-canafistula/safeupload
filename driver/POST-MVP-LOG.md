@@ -204,3 +204,23 @@ Driver `t1-anchor3` (`78214468`: T1 worker + identity anchor + T2 fixes) with ag
 - Also seen: `STATUS_NOT_SUPPORTED` for `FileStandardLinkInformation` (class 0x36) on a staged stream (the staged view answers only Basic, Standard,
   NetworkOpen, AttributeTag and Id). Recorded for the application-compatibility work (T5/T8), where the ring will list every class real programs ask for.
 
+### M1 candidate pair, Luna reviews, and open items (06:50)
+
+Two independent reviews of the driver changes (`driver/POST-MVP-REVIEW-M1.md`; the second, a delta review of `8e506437..a53e42ee`, is recorded in the commit message of
+`ea925022`). The first found F1-F4 (fixed in `d0c53ecb`); the second found two real defects in my follow-up changes, both fixed in `ea925022`: a PASSIVE-only string
+routine called under the cache spin lock (a Verifier bugcheck waiting to happen: the network-prefix test is now a resident comparison whose result is computed into the
+cache when it is built) and a stale registry entry that could read as "known outside" (the entry is now validated under the registry lock). Both reviewers found no bypass
+in the Activating-name gate refinement, the alias probe change or the worker.
+
+Verification of the pair so far (all judged with the gate's own rule, `cellok.py`):
+- Runtime Verifier on `8e506437`: S01, C05, C01-approve-absent (after one raw-capture retry), C01-block-absent, R02 and A01 pass. Boot Verifier: B02 passes (it used to hang
+  the guest); C01-block-absent failed when it overlapped a runtime-Verifier run and a build (BLOCK cells need a quiet host, see the lessons) and is re-run alone.
+- Ordinary on the anchor driver: A01-A05, B01, R01, R02 (4 of 4 quiet runs; one run under load failed with X Unknown/IDENTITY), R03, X01, C03, C04.
+- T3: MSI (PowerShell 7) with the driver: ok, 9.1 s against 8.2 s without it, no refusal, registry high-water 224 of 4,096.
+- U01 (first sign-in): PASS on `m1-driver2`; one sporadic early-boot refusal of a writable section whose name could not be queried (fixed in `a53e42ee` by deciding it from the
+  stream's registry entry; reviewed in the delta review).
+
+Open item: under load (two guests, a build and a review running) one R02 run ended with X `Unknown` for `UNKNOWN_IDENTITY` before the policy apply: a transient failure of the
+by-ID identity open marks the entry Unknown for good (fail-closed, but sticky until reboot). The four quiet runs did not show it. To investigate with the deny ring's sibling
+(`classificationStatus` of the entry) if it recurs; candidate fix: retry the identity open a bounded number of times before marking Unknown.
+
