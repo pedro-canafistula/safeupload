@@ -85,3 +85,59 @@ If A’s writer and cache owner then close before another visit, the old stream 
 - I could not verify actual normalized names for UNC shares and mapped drives under the target Windows setup. The UNC configuration and direct string comparisons support F1 statically; runtime name forms were not exercised.
 - I did not exercise app-execution aliases, cross-volume reparse points, or other reparse tags on the target build.
 - I could not reproduce a lower filter returning one of the four absent statuses while still allowing access to an existing protected object. No tests or builds were run.
+
+---
+
+# Delta review (Luna, 2026-10-09), `8e506437..a53e42ee`
+
+Follow-up changes reviewed: the per-instance anchor teardown scheme, the writable-section gate that decides an unresolvable name from the stream's registry entry,
+the ring cursor, and the cache's network-prefix rule.
+
+## Disposition
+
+| Finding | Verdict | What was done |
+|---|---|---|
+| D1 P1 `RtlPrefixUnicodeString` under the cache spin lock | Real | The comparison is a resident ASCII case-insensitive loop and its result is computed into the cache (`NetworkPrefix`) when the cache is built; the locked readers read the flag (`ea925022`). |
+| D2 P1 a stale stream-context entry can read as "known outside" | Real | `SafeUploadStageWritersSopKnownOutside` validates the entry under the registry lock (listed, not retired, this instance, this SOP, Unscoped, classified outside, no Unknown reason, no alias probe or scope scan pending, no rename in flight); anything else falls back to the volume-wide answer (`ea925022`). |
+| D3 P2 a network prefix makes every network volume possibly scoped | By design for now | Network scopes are outside the MVP and the rule errs on the conservative side; the component boundary for provider roots was added (`\Device\MupFoo` is not MUP). The canonical per-instance share identity stays under "Later". |
+| Areas 1, 3, 5 | No finding | Nothing to do. |
+
+## Reviewer's report
+
+## Findings
+
+### D1 — P1: Network-prefix check calls a PASSIVE-only routine under a spin lock
+
+[Policy.c:605](/home/victor/Work/safeupload-staging/driver/SafeUpload.Minifilter/Policy.c:605) calls `SafeUploadPolicyPrefixIsNetwork`, which calls `RtlPrefixUnicodeString` at [Policy.c:1743](/home/victor/Work/safeupload-staging/driver/SafeUpload.Minifilter/Policy.c:1743). The caller, `SafeUploadPolicyVolumeCacheQueryNoInline`, holds `SafeUploadVolumeScopeCacheLock` while checking prefixes ([Policy.c:701–705](/home/victor/Work/safeupload-staging/driver/SafeUpload.Minifilter/Policy.c:701)). A UNC or provider-form prefix can miss the volume-name comparison and reach this new call while the lock has raised IRQL to DISPATCH_LEVEL. Microsoft documents `RtlPrefixUnicodeString` as PASSIVE_LEVEL-only ([Microsoft Learn](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntddk/nf-ntddk-rtlprefixunicodestring)). This can bugcheck, especially under Driver Verifier.
+
+**Minimal fix:** Precompute a network-prefix flag while building the cache at PASSIVE_LEVEL, or use a bounded resident case-folding comparison in the locked path.
+
+### D2 — P1: A stale stream-context entry can be treated as proof that a stream is outside scope
+
+[StageWriters.c:6904–6916](/home/victor/Work/safeupload-staging/driver/SafeUpload.Minifilter/StageWriters.c:6904) treats any non-null SOP or stream-context entry as proof that the stream is known, then returns the inverse of `SopMatchesPolicy`. But that function also returns `FALSE` when its entry is retired, unlisted, or bound to a different instance/SOP ([StageWriters.c:6978–6980](/home/victor/Work/safeupload-staging/driver/SafeUpload.Minifilter/StageWriters.c:6978)). The wrapper therefore turns “this entry does not describe this SOP” into “known outside.”
+
+One scenario is a writable handle opened before filter attachment, followed by a tracked writer that creates an outside-classified entry. After the tracked writer closes, reclaim can prune that entry because its quiescence checks count tracked H/W/T/C and section state, not the pre-attachment handle ([StageWriters.c:3995–4001](/home/victor/Work/safeupload-staging/driver/SafeUpload.Minifilter/StageWriters.c:3995), [StageWriters.c:4017–4022](/home/victor/Work/safeupload-staging/driver/SafeUpload.Minifilter/StageWriters.c:4017)). The stream context can retain the retired entry until context cleanup or a later writer insertion ([StageWriters.c:2355–2365](/home/victor/Work/safeupload-staging/driver/SafeUpload.Minifilter/StageWriters.c:2355)). If a scope is then added for that file, the retired entry is not reactivated. An unresolved writable-section request through the old handle can find the stale context entry; `SopMatchesPolicy` rejects it, and the new gate returns success before checking the volume ([StageStream.c:3332–3340](/home/victor/Work/safeupload-staging/driver/SafeUpload.Minifilter/StageStream.c:3332)).
+
+**Minimal fix:** Return “known outside” only after validating the same pinned entry against the current instance and SOP, and confirming it is listed, unretired, classified outside, and has no unknown, alias-pending, rename, or activation state. Treat any invalid or mismatched entry as unresolved so the existing volume-scope refusal still applies.
+
+### D3 — P2: A network prefix makes every Network-kind volume possibly scoped
+
+[Policy.c:601–605](/home/victor/Work/safeupload-staging/driver/SafeUpload.Minifilter/Policy.c:601) returns “may match” for a Network-kind volume if any cached prefix looks like a network path, even when that volume’s provider name does not match the prefix. For example, with a UNC scope on share A, an unresolved writable-section request on unrelated share B with no valid outside registry entry reaches the volume fallback and is denied. That is an outside-scope refusal. The missing component boundary also classifies `\Device\MupFoo` as a MUP path. The new loop is restricted to Network-kind volumes, so I found no new local-volume match from it.
+
+**Minimal fix:** Compare a canonical per-instance network share identity to the configured prefix, including a component-boundary check after provider roots. Preserve the refusal for unresolved streams on volumes that can actually contain a configured scope.
+
+## Requested areas
+
+1. **Anchor teardown — no finding.** With an instance context, insertion checks the teardown token and adds the anchor under the same lock that teardown later uses to scan. If teardown wins first, insertion refuses; if insertion sees ACTIVE first, teardown’s scan waits for the lock and sees the inserted anchor. A taken anchor cannot be put back after teardown marks the token. The no-context branch cannot pass `StageAnchorInstanceActive`. The context lookup and push-lock operations are within their documented IRQL limits here because these paths run at PASSIVE_LEVEL ([FltGetInstanceContext](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/fltkernel/nf-fltkernel-fltgetinstancecontext), [FltAcquirePushLockExclusive](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/fltkernel/nf-fltkernel-fltacquirepushlockexclusive)). I found no lock-order cycle. Failed attach cannot create registry anchors; unload stops the worker and unregisters the filter with the teardown callback registered. The O(n) scans are bounded: at most 4,096 entries per walk, with at most 128 candidate visits per reclaim pass. I found no liveness issue from those scans.
+
+2. **Writable-section gate — finding D2.** No separate bypass found through policy changes, rename, or alias activation: policy transitions gate writable section operations over the current/pending union, and listed entries are re-probed before the transition ends. A handle with no SOP or stream-context entry does not qualify as known outside. The stale-entry case is D2.
+
+3. **Deny-ring cursor — no finding.** Empty reads return the global next sequence. Gap reads begin at the oldest retained record and return one past the last record in that page, so the next request continues without skipping records ([DenyRing.c:289–308](/home/victor/Work/safeupload-staging/driver/SafeUpload.Minifilter/DenyRing.c:289)).
+
+4. **Resident volume cache — findings D1 and D3.** The prefix comparison is case-insensitive. The new fallback does not broaden Fixed local volumes, but it has the IRQL fault and the unrelated-network-volume overmatch above. The prior review’s UNC/provider-form exact-match limitation remains: this delta adds a volume-level fallback but does not canonicalize successful-name matching.
+
+5. **By-ID refusals — no finding.** The saved delta does not change the by-ID refusal predicates or status path. The added deny-detail recording is diagnostic metadata; it does not change the I/O status.
+
+## Could not verify
+
+This was a static review; I did not build or run the driver. I could not exercise teardown or unload timing on Windows 10, or reproduce the stale stream-context case on the target filesystem. I also could not verify the target network provider’s normalized volume names.
