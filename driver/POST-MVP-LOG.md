@@ -439,3 +439,13 @@ no create-time alias proof, so a nested write on one is still refused (only beyo
 name tier above 75 % every compact insertion wakes the reclaim worker. True exhaustion of both tiers (more than 20,480 concurrent writers) still
 makes coverage Unknown until reboot (the original T3c design question). Verification: `m1-final14.sh` (Microsoft 365 `t3m365c`, CU `t3cui`,
 U01 `u01p`/`u01q`, then the 69 cells on `b995943b` + agent `4d02039a`).
+
+### T3 complete with the driver loaded (19:57)
+
+- Microsoft 365 `t3m365c` on `m1-driver14`: every line PASS: workload 402.2 s (exit 0), driver loaded, coverage Ready, the deny ring empty, no
+  refusal outside the scope, no overflow (high-water 8,038 = the 4,096 full-name records plus about 3,940 compact ones: the compact tier absorbed
+  the burst), no Unknown reason. Control `t3m365b`: 418.3 s.
+- Cumulative update: `t3cuh` on `m1-driver13` PASS, 1,135.3 s; control `t3cuf` 921.3 s (+23 %). The driver14 run `t3cui` is queued for the final
+  driver line.
+- Defender `t3defenderu` 170.4 s against control 172.3 s; MSI 9.2 s against 7.0 s.
+Overhead numbers for the owner: Microsoft 365 and Defender none measurable, the cumulative update +23 %, an MSI about 2 s.
