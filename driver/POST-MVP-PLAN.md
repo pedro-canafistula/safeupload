@@ -87,6 +87,11 @@ operation the driver refused.
 **Done when** the ring shows a known refusal from a scripted test (for example a rename into `C:\Protected`) through the agent, with the
 Inspector not running, and a clean install leaves `admissionCoverage` Ready without hand edits.
 
+**Status 2026-10-09: done.** The deny ring recorded the real denied rename of C05 on a debuggee through the agent's diagnostics pipe with the Inspector not
+running; the installer registers the minifilter flavour and leaves coverage Ready. Evidence and the diagnosis of every later refusal: `POST-MVP-LOG.md`.
+- [x] deny ring + counters + pipe; installer quick fixes; agent gate green with the SYSTEM test step
+- [x] ring seen recording the real C05 denial on a debuggee
+
 ### T1. Event-driven reclaim worker
 
 **Problem.** `StageRegistryReclaimWorker` (`StageWriters.c`) sets `STAGE_RECLAIM_RESCAN` whenever a pass leaves an entry unfinished
@@ -108,6 +113,16 @@ M365 install.
 all three modes; and boot-Verifier B02 plus C01-C04 BLOCK complete, taking the gate from 64/69 to 69/69. If they still do not
 complete, measure what is CPU bound before changing anything else.
 
+**Status 2026-10-09: worker done, boot-Verifier cells pending.** The spin was external wake-ups from every CLOSE/CLEANUP; the worker now requeues only for
+bounded work and lifetime events wake it only for a stream something waits on (idle 3,100 passes/s -> about 10). Removing the unpaused requeue exposed a race
+in R02 (the cache manager's own close is the only wake-up after a clean holder leaves; if the pass starts after NTFS tore the stream down the promotion is on the
+replaced basis, which the harness refuses): fixed with an identity anchor (the pass keeps its by-ID handle while the entry is Activating with a live writer).
+- [x] idle passes about zero (A01-A04 pass; counter in the diagnostics)
+- [x] R02 passes on the held basis (2 of 2 on the anchor driver)
+- [~] A01-A05, B01, R01, R03, X01, C03, C04 on the anchor driver (A02, A03, A05, X01, C03, C04 ok; A01/A04 repeat after an evidence-capture flake)
+- [ ] boot-Verifier B02 + C01-C04 BLOCK -> 69/69 (after the final driver is frozen)
+- [ ] runtime-Verifier slice (C05, C01-approve-absent, C01-block-absent, S01) on the final pair
+
 ### T2. New user profiles
 
 **Problem.** With the driver loaded (agent running or stopped), a new user's first sign-in fails: ProfSvc 1542 "cannot load classes
@@ -128,6 +143,15 @@ row for first sign-in of a new user with protection active (the harness pre-crea
 **Done when** the new row passes in all three modes, the deny ring shows no refusal outside a scope during sign-in, and every existing row
 still passes (no refusal was weakened inside a scope).
 
+**Status 2026-10-09: fixed and verified by a real first sign-in; row U01.** Causes found with the ring: a lookup that proves the path absent was refused as
+"unresolved"; the volume root counted as an ancestor of the protected scope for attribute changes; the alias probe followed reparse points (Store app-execution
+aliases) and failed on `pagefile.sys`; an Activating entry for an unrelated name refused outside writers; and a network volume counted as in scope for any
+local prefix (the `\Device\Mup` instance, early boot). Row U01 = `driver/scripts/Invoke-NewProfileDiagnosis.sh` (verdict file). U01 is not part of the 69 cells.
+- [x] ring names the refusals; fixes without weakening a refusal inside a scope (the standard user is still refused directory creates in the protected folder)
+- [x] row U01 written, with a verdict
+- [~] U01 PASS on the final driver (all required lines pass except the two Mup refusals, fixed in 6b83f608, re-run pending)
+- [ ] U01 in runtime-Verifier mode
+
 ### T3. Large installers and Windows Update
 
 **Problem.** The Microsoft 365 installer ran very slowly (about 21,000 metadata operations/s in `System`) and then failed with "couldn't
@@ -142,6 +166,11 @@ holds at most 4,096 entries (`SAFEUPLOAD_WRITER_REGISTRY_TOTAL_LIMIT`) and exhau
 that fills it would leave protection Degraded.
 
 **Done when** all four complete with no refusal outside a scope, coverage still Ready afterwards, and an overhead number the owner accepts.
+
+**Status 2026-10-09: runner written, not yet run.** `driver/scripts/Invoke-InstallerWorkload.sh <dom> <tag> msi|m365|cu|defender driver|control` (workloads in `driver/scripts/t3/`).
+The debuggees have internet access and about 40 GB free; Defender is disabled by policy in the baseline (the defender workload removes the policy inside the
+checkpoint). Known risk to check first: M365 and installers use by-ID opens and many concurrent writers, which the T2 gate changes address.
+- [ ] msi  - [ ] m365  - [ ] cu  - [ ] defender  - [ ] control runs for the overhead comparison
 
 ## P1: everyday file work (M2)
 
