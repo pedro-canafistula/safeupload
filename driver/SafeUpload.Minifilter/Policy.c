@@ -1720,6 +1720,42 @@ BOOLEAN SafeUploadPolicyHasDestinationScopes(_In_ SAFEUPLOAD_VOLUME_KIND VolumeK
     return hasScopes;
 }
 
+/* A prefix that can only be reached through a network provider: a UNC path, or an NT name under MUP, the redirectors or DFS. A
+ * network volume cannot hold any other prefix, so a policy whose prefixes are all local paths never matches one. */
+static BOOLEAN SafeUploadPolicyPrefixIsNetwork(_In_ PCUNICODE_STRING Prefix)
+{
+    static const UNICODE_STRING networkNames[] = {
+        RTL_CONSTANT_STRING(L"\\\\"), RTL_CONSTANT_STRING(L"\\Device\\Mup"), RTL_CONSTANT_STRING(L"\\Device\\LanmanRedirector"),
+        RTL_CONSTANT_STRING(L"\\Device\\DfsClient"), RTL_CONSTANT_STRING(L"\\Device\\WebDavRedirector"),
+        RTL_CONSTANT_STRING(L"\\??\\UNC") };
+    ULONG index;
+    for (index = 0; index < RTL_NUMBER_OF(networkNames); ++index)
+        if (RtlPrefixUnicodeString(&networkNames[index], Prefix, TRUE)) return TRUE;
+    return FALSE;
+}
+
+static BOOLEAN SafeUploadPolicyHasNetworkPrefix(_In_opt_ const SAFEUPLOAD_POLICY *Policy)
+{
+    UINT32 index;
+    if (Policy == NULL) return FALSE;
+    for (index = 0; index < Policy->PrefixCount; ++index)
+        if (SafeUploadPolicyPrefixIsNetwork(&Policy->Prefixes[index])) return TRUE;
+    return FALSE;
+}
+
+static BOOLEAN SafeUploadBootScopesHaveNetworkPrefix(VOID)
+{
+    UINT32 index;
+    for (index = 0; index < SafeUploadBootScopes.PrefixCount; ++index) {
+        UNICODE_STRING prefix;
+        prefix.Buffer = SafeUploadBootScopes.Prefixes[index];
+        prefix.Length = (USHORT)(SafeUploadBootScopes.PrefixChars[index] * sizeof(WCHAR));
+        prefix.MaximumLength = prefix.Length;
+        if (SafeUploadPolicyPrefixIsNetwork(&prefix)) return TRUE;
+    }
+    return FALSE;
+}
+
 BOOLEAN SafeUploadPolicyMayMatchVolume(
     _In_ SAFEUPLOAD_VOLUME_KIND VolumeKind,
     _In_opt_ PFLT_VOLUME Volume)
@@ -1769,8 +1805,8 @@ BOOLEAN SafeUploadPolicyMayMatchVolume(
                     FlagOn(SafeUploadPolicy->Flags, SAFEUPLOAD_POLICY_FLAG_REMOVABLE)) ||
                 ((VolumeKind == SafeUploadVolumeUnknown || VolumeKind == SafeUploadVolumeNetwork) &&
                     FlagOn(SafeUploadPolicy->Flags, SAFEUPLOAD_POLICY_FLAG_NETWORK)) ||
-                ((VolumeKind == SafeUploadVolumeUnknown || VolumeKind == SafeUploadVolumeNetwork) &&
-                    SafeUploadPolicy->PrefixCount != 0);
+                (VolumeKind == SafeUploadVolumeUnknown && SafeUploadPolicy->PrefixCount != 0) ||
+                (VolumeKind == SafeUploadVolumeNetwork && SafeUploadPolicyHasNetworkPrefix(SafeUploadPolicy));
             for (index = 0; !mayMatch && index < SafeUploadPolicy->PrefixCount; ++index) {
                 mayMatch = SafeUploadPathUnderPrefix(&volumeName, &SafeUploadPolicy->Prefixes[index]);
             }
@@ -1781,8 +1817,8 @@ BOOLEAN SafeUploadPolicyMayMatchVolume(
                     FlagOn(SafeUploadPendingPolicy->Flags, SAFEUPLOAD_POLICY_FLAG_REMOVABLE)) ||
                 ((VolumeKind == SafeUploadVolumeUnknown || VolumeKind == SafeUploadVolumeNetwork) &&
                     FlagOn(SafeUploadPendingPolicy->Flags, SAFEUPLOAD_POLICY_FLAG_NETWORK)) ||
-                ((VolumeKind == SafeUploadVolumeUnknown || VolumeKind == SafeUploadVolumeNetwork) &&
-                    SafeUploadPendingPolicy->PrefixCount != 0);
+                (VolumeKind == SafeUploadVolumeUnknown && SafeUploadPendingPolicy->PrefixCount != 0) ||
+                (VolumeKind == SafeUploadVolumeNetwork && SafeUploadPolicyHasNetworkPrefix(SafeUploadPendingPolicy));
             for (index = 0; !mayMatch && index < SafeUploadPendingPolicy->PrefixCount; ++index) {
                 mayMatch = SafeUploadPathUnderPrefix(&volumeName, &SafeUploadPendingPolicy->Prefixes[index]);
             }
@@ -1793,8 +1829,8 @@ BOOLEAN SafeUploadPolicyMayMatchVolume(
                     FlagOn(SafeUploadBootScopes.Flags, SAFEUPLOAD_BOOT_POLICY_FLAG_REMOVABLE)) ||
                 ((VolumeKind == SafeUploadVolumeUnknown || VolumeKind == SafeUploadVolumeNetwork) &&
                     FlagOn(SafeUploadBootScopes.Flags, SAFEUPLOAD_BOOT_POLICY_FLAG_NETWORK)) ||
-                ((VolumeKind == SafeUploadVolumeUnknown || VolumeKind == SafeUploadVolumeNetwork) &&
-                    SafeUploadBootScopes.PrefixCount != 0);
+                (VolumeKind == SafeUploadVolumeUnknown && SafeUploadBootScopes.PrefixCount != 0) ||
+                (VolumeKind == SafeUploadVolumeNetwork && SafeUploadBootScopesHaveNetworkPrefix());
             for (index = 0; !mayMatch && index < SafeUploadBootScopes.PrefixCount; ++index) {
                 UNICODE_STRING prefix;
                 prefix.Buffer = SafeUploadBootScopes.Prefixes[index];

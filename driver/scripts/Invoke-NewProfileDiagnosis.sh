@@ -233,7 +233,9 @@ for line in re.findall(r'^RING=(\{.*\})$', phase2, re.M):
 n_ring = re.search(r'^RING_SINCE_BOOT=(\d+)', phase2, re.M)
 verdict('U01RingRead', n_ring is not None and int(n_ring.group(1)) == len(ring), f"records read {len(ring)} of {n_ring.group(1) if n_ring else 'unknown'}")
 def inside(r): return '\\protected\\' in (r.get('name') or '').lower() + '\\' or (r.get('name') or '').lower().endswith('\\protected')
-outside = [r for r in ring if r.get('major') != 'QUERY_INFORMATION' and not inside(r)]
+# The driver's own staging directory is a private namespace: refusing every process but the service there is the design.
+def own_namespace(r): return r.get('reason') == 'privateNamespace' or '\\safeupload\\staging\\' in (r.get('name') or '').lower()
+outside = [r for r in ring if r.get('major') != 'QUERY_INFORMATION' and not inside(r) and not own_namespace(r)]
 verdict('U01NoRefusalOutsideScope', not outside,
         'no refusal outside the protected folder' if not outside else '; '.join(f"#{r['sequence']} {r.get('statusName')} {r.get('major')} {r.get('reason') or 'noReason'} {r.get('name')}" for r in outside[:12]))
 unsupported = [r for r in ring if r.get('major') == 'QUERY_INFORMATION']
