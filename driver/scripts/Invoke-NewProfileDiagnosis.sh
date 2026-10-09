@@ -6,13 +6,15 @@
 # PASS/FAIL/INCONCLUSIVE per line) is written to driver/evidence/<day>/<tag>-verdict.txt and the exit status is 0 only if every
 # required assertion passes.
 #
-# Usage: driver/scripts/Invoke-NewProfileDiagnosis.sh <debuggee domain> <tag> <driver.sys> <agent stage-service-publish.zip>
+# Usage: driver/scripts/Invoke-NewProfileDiagnosis.sh <debuggee domain> <tag> <driver.sys> <agent stage-service-publish.zip> [boot-verifier]
+# With 'boot-verifier' the Driver Verifier (standard settings) is turned on for SafeUpload.sys before the first reboot, so the
+# whole run, including the first sign-in, executes under it; the verdict then also requires the driver to be listed as verified.
 # Takes a disk-only checkpoint of the debuggee first, installs the pair like the manual install in MVP-PLAN (through
 # Install-SafeUploadAgent.ps1), reboots, waits for Ready, runs the probe, then ALWAYS rolls the guest back to the checkpoint and
 # re-verifies the baseline. Evidence: driver/evidence/<day>/<tag>-*.txt.
 set -uo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/../.."
-dom="${1:?debuggee domain}"; tag="${2:?tag}"; sys="${3:?signed driver}"; zip="${4:?agent publish zip}"
+dom="${1:?debuggee domain}"; tag="${2:?tag}"; sys="${3:?signed driver}"; zip="${4:?agent publish zip}"; verifier="${5:-}"
 [[ "$tag" =~ ^[A-Za-z0-9]{3,30}$ ]] || { echo 'Invalid tag'; exit 2; }
 host=$(awk -v d="$dom" '$1==d{print $2}' driver/scripts/debuggees.txt); [ -n "$host" ] || { echo "Unknown debuggee $dom"; exit 2; }
 V="virsh -c qemu:///system"; ev="driver/evidence/$(date +%F)"; mkdir -p "$ev"
@@ -89,6 +91,10 @@ Set-Content -LiteralPath "$data\policy.json" -Value $policy -Encoding UTF8
 PS
 grep -qx 'INSTALL_DONE=True' "$ev/$tag-install.txt" || { echo 'install failed'; exit 15; }
 
+if [ "$verifier" = boot-verifier ]; then
+    remote <<<'& verifier.exe /standard /driver SafeUpload.sys; "VERIFIER_SET_EXIT=" + $LASTEXITCODE' | tee "$ev/$tag-verifier.txt"
+    grep -qx 'VERIFIER_SET_EXIT=0' "$ev/$tag-verifier.txt" || { echo 'could not turn the Driver Verifier on'; exit 21; }
+fi
 echo "== reboot"
 remote <<<'& shutdown.exe /r /t 5 /c "T2 diagnosis"' >/dev/null; sleep 60; wait_ssh || { echo 'guest did not return'; exit 17; }
 
@@ -183,6 +189,7 @@ try {
     'PROFSVC_EVENTS=' + $evts.Count
     foreach ($e in $evts | Select-Object -First 6) { 'PROFSVC_EVENT=' + $e.Id + ' ' + (($e.Message -replace '\s+', ' ')[0..220] -join '') }
 } catch { 'PROFSVC_EVENTS_ERROR=' + $_.Exception.Message }
+'VERIFIER_QUERY=' + ((& verifier.exe /query 2>&1 | Out-String) -replace '\s+', ' ')
 try {
     $ring = @(& 'C:\Users\vika\Documents\Get-SafeUploadDiagnostics.ps1' -Query deny-ring)
     'RING_SINCE_BOOT=' + $ring.Count
@@ -196,7 +203,7 @@ echo "phase 2 evidence: $ev/$tag-phase2.txt"
 # profile; CreateProfile succeeds; a standard user is still refused in scope (directory creates) and still works in scope for a clean
 # save; and the deny ring holds no refusal outside the protected folder. Reported only: an unsupported information class on a staged
 # stream (a gap in the staged view, not a refusal of an outside-scope operation).
-python3 - "$ev/$tag-probe.txt" "$ev/$tag-phase2.txt" "$ev/$tag-verdict.txt" <<'PY'
+python3 - "$ev/$tag-probe.txt" "$ev/$tag-phase2.txt" "$ev/$tag-verdict.txt" "$verifier" <<'PY'
 import json, re, sys
 probe = open(sys.argv[1], encoding='utf-8', errors='replace').read()
 phase2 = open(sys.argv[2], encoding='utf-8', errors='replace').read()
@@ -241,6 +248,10 @@ verdict('U01NoRefusalOutsideScope', not outside,
 unsupported = [r for r in ring if r.get('major') == 'QUERY_INFORMATION']
 verdict('U01StagedStreamQueries', not unsupported,
         'no refused information query' if not unsupported else '; '.join(f"#{r['sequence']} {r.get('statusName')} class {r.get('access')} pid {r.get('processId')}" for r in unsupported[:6]), required=False)
+if len(sys.argv) > 4 and sys.argv[4] == 'boot-verifier':
+    m = re.search(r'^VERIFIER_QUERY=(.*)$', phase2, re.M)
+    listed = bool(m) and 'safeupload.sys' in m.group(1).lower()
+    verdict('U01VerifierBoot', listed, 'the Driver Verifier instrumented SafeUpload.sys for the whole run' if listed else 'SafeUpload.sys is not listed as verified: ' + (m.group(1)[:160] if m else 'no query output'))
 open(sys.argv[3], 'w').write('\n'.join(out) + '\n')
 print('\n'.join(out))
 sys.exit(0 if all(' FAIL ' not in l for l in out) else 1)
