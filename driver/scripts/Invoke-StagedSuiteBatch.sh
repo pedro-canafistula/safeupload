@@ -17,7 +17,8 @@ driver_label=$1; driver_commit=$2; agent_label=$3; agent_commit=$4; mode=$5; pre
 policy=29DC8A341BD7C549996596D2477A0CCCAF19602C362A2167FB4FDD5C66663731
 dom="${SAFEUPLOAD_DEBUGGEE:-win10-debug}"; host=$(awk -v d="$dom" '$1==d{print $2}' driver/scripts/debuggees.txt)
 [ -n "$host" ] || { echo "Unknown debuggee $dom (driver/scripts/debuggees.txt)"; exit 2; }
-export SAFEUPLOAD_DEBUGGEE="$dom"; V="virsh -c qemu:///system"; IMG=/var/lib/libvirt/images
+export SAFEUPLOAD_DEBUGGEE="$dom"; V="virsh -c qemu:///system"
+source "$(dirname "${BASH_SOURCE[0]}")/image-store.sh"
 log() { printf '%s %s\n' "$(date -u +%FT%TZ)" "$*"; }
 remote() { python3 driver/scripts/remote_ps.py "$host"; }
 wait_up() { for _ in $(seq 1 60); do remote <<<'"up"' >/dev/null 2>&1 && return 0; sleep 5; done; return 1; }
@@ -31,11 +32,12 @@ rollback() {  # $1 run name; the failed overlay must be the run's checkpoint ove
     sources=$($V dumpxml "$dom" | grep -o "source file='[^']*'" | cut -d"'" -f2)
     top=$(sed -n 1p <<<"$sources"); parent=$(sed -n 2p <<<"$sources")
     [[ "$top" == *"$1"* ]] || { log "rollback refused: top overlay $top is not run $1"; return 1; }
+    local IMG pool; IMG=$(dirname "$parent"); image_dir_check "$IMG" || return 1; pool=$(image_pool_of "$IMG") || { log "no libvirt pool for $IMG"; return 1; }
     new="$dom.safeupload-recovery-$1.qcow2"; xml=/tmp/claude-1000/$dom-recovery-$1.xml
-    $V pool-refresh default >/dev/null
-    local cap; cap=$($V vol-info --bytes --pool default "$(basename "$parent")" | awk '/Capacity/{print $2}')
+    $V pool-refresh "$pool" >/dev/null
+    local cap; cap=$($V vol-info --bytes --pool "$pool" "$(basename "$parent")" | awk '/Capacity/{print $2}')
     $V destroy "$dom" >/dev/null 2>&1 || true
-    $V vol-create-as default "$new" "$cap" --format qcow2 --backing-vol "$parent" --backing-vol-format qcow2 >/dev/null || return 1
+    $V vol-create-as "$pool" "$new" "$cap" --format qcow2 --backing-vol "$(basename "$parent")" --backing-vol-format qcow2 >/dev/null || return 1
     $V dumpxml --inactive "$dom" > "$xml"
     python3 - "$top" "$IMG/$new" "$xml" <<'PY' || return 1
 import sys, xml.etree.ElementTree as ET

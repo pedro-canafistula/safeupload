@@ -38,7 +38,9 @@ grep -q '^BaselineClean=True' "$ev/$tag-baseline.txt" || { echo 'BASELINE NOT CL
 remote <<<'Write-VolumeCache -DriveLetter C; "VolumeCacheWritten=True"' | grep -qx 'VolumeCacheWritten=True' || exit 16
 
 echo "== checkpoint"
-overlay="/var/lib/libvirt/images/$dom.safeupload-pre-$tag-$(date +%Y%m%d)"
+source "$(dirname "${BASH_SOURCE[0]}")/image-store.sh"
+IMGDIR=$(image_dir_of_domain "$dom"); image_dir_check "$IMGDIR" || exit 13
+overlay="$IMGDIR/$dom.safeupload-pre-$tag-$(date +%Y%m%d)"
 [ -e "$overlay" ] && { echo "overlay exists: $overlay"; exit 11; }
 $V snapshot-create-as --domain "$dom" --name "safeupload-pre-$tag" --description "before $tag" --disk-only --no-metadata \
     --diskspec "vda,snapshot=external,file=$overlay" --atomic > "$ev/$tag-checkpoint.txt" 2>&1 || { cat "$ev/$tag-checkpoint.txt"; exit 12; }
