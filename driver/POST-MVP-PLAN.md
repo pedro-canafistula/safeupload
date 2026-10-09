@@ -122,6 +122,9 @@ replaced basis, which the harness refuses): fixed with an identity anchor (the p
 - [~] A01-A05, B01, R01, R03, X01, C03, C04 on the anchor driver (A02, A03, A05, X01, C03, C04 ok; A01/A04 repeat after an evidence-capture flake)
 - [x] boot-Verifier B02 + C01-C04 BLOCK complete on the final driver line -> 69/69 (C01 `m1b1`, C03 `m1d1`, C04 `m1d2`, C02 `m1d3`; B02 `m1w1` on 8e506437, re-run queued)
 - [x] runtime-Verifier slice (C05, C01-approve-absent, C01-block-absent, S01) on the final pair: `m1f1`-`m1f4` ok by the gate rule (tier 2) on `m1-driver4`/`m1-agent6`, also R02 `m1f5` and A01 `m1f6`; C05 `m1f2` ring: "recorded the denied rename: sequence 2, status 0xC0000022"
+- [x] follow-up 2026-10-09: the end of a write still woke the worker for every entry (C03-approve-existing `m14v13`: 156 passes/s); now only for a waiting
+  entry or a sibling a promotion waits for (`a7a69d1c`, five Luna passes, no P0/P1); the idle check runs its own 200 writes/s outside writer (driver14 `m15a1`: 206 passes/s, FAIL)
+- [ ] the 69 cells, T3 and U01 again on `m1-driver19` (`m1-final19.sh`)
 
 ### T2. New user profiles
 

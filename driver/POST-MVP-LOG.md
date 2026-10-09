@@ -449,3 +449,26 @@ U01 `u01p`/`u01q`, then the 69 cells on `b995943b` + agent `4d02039a`).
   driver line.
 - Defender `t3defenderu` 170.4 s against control 172.3 s; MSI 9.2 s against 7.0 s.
 Overhead numbers for the owner: Microsoft 365 and Defender none measurable, the cumulative update +23 %, an MSI about 2 s.
+
+### T1 follow-up: a completed write woke the reclaim worker for every entry (`a7a69d1c`, build `m1-driver19`)
+
+The driver14 runtime-Verifier batch `m14v` (23 cells, 20:32-22:51) passed 22; the slice cells C05, C01-approve-absent, C01-block-absent
+and S01 are ok. C03-approve-existing `m14v13` failed only `ReclaimWorkerIdleRate`: 2,350 passes in 15 s (156.6/s, limit 100/s) against 4-9/s
+in every other cell (the boot-Verifier BLOCK cells of earlier batches had already reached 67-79/s). Cause: `StageRegistryEndMutatingIoEntry`
+queued a reclaim pass whenever an entry's in-flight mutating I/O count W fell to 0, for every entry, so whatever process happened to be
+writing set the worker's rate (it predates T1; T1 filtered cleanup and close but not this path). Fix: W reaching 0 wakes the worker only
+for a waiting entry (Activating, alias probe or scope scan pending), like cleanup and close. Luna's reviews (five passes, no P0/P1) found the
+one consumer that depended on the blanket wake: a replaced incarnation's promotion also waits for its sibling entries, which are not
+waiting themselves (and whose last handle, transaction end or failed rename never woke the worker). When only siblings block a promotion
+it now arms a one-shot `WakeOnWriterRelease` on each and re-reads them; the first release after that wakes the worker once, and every
+such wake restarts the pass from the start of the registry. The every-64th-insertion pressure wake counts insertions instead of testing
+the live count (a count sitting on a multiple of 64 woke the worker on every insertion).
+
+The suite's idle check now brings its own steady writer: 200 small writes/s to a fresh file outside every scope, through the sample, so
+the write path is exercised in every cell instead of depending on what else runs; it also reports the deltas of entries, prunes and worker
+counters. Before: C01-approve-absent `m15a1` on `m1-driver14` with the new check: FAIL, 3,102 passes in 15 s (206.5/s) with the writer at
+199.7 writes/s, 229 entries, 40 pruned. After: the same cell `m19c1` on `m1-driver19`: PASS, 30 passes in 15 s (2/s) with the writer at
+200 writes/s, 229 entries, 30 pruned; the cell ok by the gate rule. The driver14 queue was stopped after `m14o3` (its run disk discarded cleanly, base untouched); the
+intermediate builds `m1-driver15` to `m1-driver18` (each 4 WDK configs 0/0) were superseded by review rounds before running on a VM.
+Verification of `m1-driver19` + agent `4d02039a`: `m1-final19.sh` (Microsoft 365, CU, MSI, Defender, U01 both modes, the 69 cells, a
+retry round, the gate).
