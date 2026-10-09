@@ -3598,7 +3598,12 @@ static FLT_PREOP_CALLBACK_STATUS StageDispatchCore(PFLT_CALLBACK_DATA Data,
             /* Publication rename is checked/consumed by StageExternalRename. */
             if (cls != FileRenameInformation && cls != FileRenameInformationEx &&
                 cls != FileLinkInformation && cls != FileLinkInformationEx) {
-                result = StagePhysicalMutationEx(Data, Objects, TRUE, trackedWriter);
+                /* Only a delete can remove a directory above a protected scope from under it (renames and links went
+                 * through StageExternalRename above). Attribute, time and size changes of an ancestor leave the scope's
+                 * bytes alone, and refusing them broke every caller that touches the volume root: the Profile Service
+                 * sets basic information on C:\ while it builds a new profile, so first sign-in failed. */
+                result = StagePhysicalMutationEx(Data, Objects,
+                    cls == FileDispositionInformation || cls == FileDispositionInformationEx, trackedWriter);
                 if (result != FLT_PREOP_SUCCESS_NO_CALLBACK) {
                     SafeUploadStageWritersEndMutatingIo(mutatingIoContext);
                     SafeUploadStageWritersCompleteRename(Objects->Instance,
