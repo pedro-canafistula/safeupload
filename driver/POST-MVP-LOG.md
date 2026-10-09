@@ -143,3 +143,17 @@ Hypothesis: the machine-wide wake storm used to make a pass start almost immedia
 pass at the last writer's cleanup (unconditional, `SafeUploadStageWritersOnCleanup`) but a delayed-work-queue pass can start later. Not assumed:
 R02 is being repeated twice on the T1 pair (`t1r`) and will be compared with the T0 pair before anything is changed.
 
+### T1 slice judged by the gate's tier-1 rule (04:05)
+
+Pair: driver `t1-wake1` + feature agent `t1-agent4`, both from `51c4c96e`; `cellok.py` (the gate's own judge) per row:
+- ok: A01, A02, A03, A04, C04-approve, C01-block-absent (and C05, C01-approve-absent earlier).
+- X01 and C03-approve-existing: `retry`. Both fail in the observer's raw MFT reader (`Still-truncated MFT map after one refresh; requested
+  record=231296; mappedEnd=236716032`: a file record beyond the on-disk extent of $MFT, because NTFS has not yet written the grown run list). X01
+  fails the same way on the T0 pair (`t0s2`), so this is the known raw-capture flakiness (the pool retries these cells), not a T1 effect.
+- R02: fails deterministically on the T1 pair (3 of 3: `t1q7`, `t1r1`, `t1r2`) and passes on the T0 pair (`t0s1`, no blockers). The difference is the
+  promotion basis: T0's receipt has predicateFlags 31 (held incarnation, cache flush/purge needed); T1's has 47 = 0x2F (bit 0x20: incarnation replaced,
+  the old stream was gone before the pass reached it). The harness is right to refuse the replaced basis for R02 ("a replacement-basis CAS cannot
+  substitute without independent incarnation continuity proof") and I will not relax it. The old unbounded requeue made a pass land while the stream was
+  still alive; the event-driven worker must start its pass at the right moment instead. Measuring where the time goes with scratch diagnostic notes in
+  the deny ring (branch `diag/reclaim-trace`, never merged).
+
