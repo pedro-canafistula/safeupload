@@ -7180,8 +7180,7 @@ NTSTATUS SafeUploadStageWritersAdmissionCoverage(_In_ UINT32 PolicyGeneration,
     return STATUS_SUCCESS;
 }
 
-/* The pageable control dispatcher calls this status snapshot; RegistryLock bounds it at APC_LEVEL. */
-_IRQL_requires_max_(APC_LEVEL)
+/* Plain interlocked reads of three counters: callable at any IRQL. */
 VOID SafeUploadStageWritersGetReclaimStats(_Out_ PUINT64 Passes, _Out_ PUINT64 ParkedPasses, _Out_ PUINT64 MoreWorkRequeues)
 {
     *Passes = (UINT64)InterlockedCompareExchange64(&RegistryReclaimPasses, 0, 0);
@@ -7189,6 +7188,8 @@ VOID SafeUploadStageWritersGetReclaimStats(_Out_ PUINT64 Passes, _Out_ PUINT64 P
     *MoreWorkRequeues = (UINT64)InterlockedCompareExchange64(&RegistryReclaimMoreWorkRequeues, 0, 0);
 }
 
+/* The pageable control dispatcher calls this status snapshot; RegistryLock bounds it at APC_LEVEL. */
+_IRQL_requires_max_(APC_LEVEL)
 __declspec(noinline) VOID SafeUploadStageWritersGetStatus(_Out_ PSAFEUPLOAD_WRITER_STATE_STATUS Status)
 {
     SAFEUPLOAD_WRITER_STATE_STATUS snapshot = {0};
