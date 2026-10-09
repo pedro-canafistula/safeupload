@@ -410,23 +410,59 @@ function Get-DiagnosticsDenyRing {
     $result
 }
 
-function Test-ReclaimWorkerIdle([int]$Seconds=15,[double]$MaxPassesPerSecond=100) {
+function Test-ReclaimWorkerIdle([int]$Seconds=15,[double]$MaxPassesPerSecond=100,[int]$WritesPerSecond=200) {
     # The reclaim worker must go quiet when nothing can change. Before the event-driven fix a scan or alias probe that was
     # only waiting made it requeue itself thousands of times a second (guest CPU at 100% under boot Verifier). The sample
     # runs after the trial, with the service up, so a spinning worker shows as passes with nobody asking for them.
     # Calibration (guest, ordinary mode, measured 2026-10-09): the spin was 1,700-3,100 passes/s; the event-driven worker
     # runs 8-12 passes/s after a trial (targeted wake-ups for entries that are still waiting). 100/s keeps a margin of
     # about 8x above the clean runs and 17x below the spin.
+    # A steady writer runs through the sample: one small write every 1/WritesPerSecond s to a fresh file outside every
+    # scope. A completed write on an entry that is not waiting changes nothing the worker acts on, so it must not wake
+    # the worker. Until 2026-10-09 every completed write queued a pass: whatever happened to be writing set the rate
+    # (156/s in C03-approve-existing m14v13, 4-9/s elsewhere), so the sample now brings its own writer.
+    $path=Join-Path $env:SystemRoot ('Temp\safeupload-idle-writer-'+[guid]::NewGuid().ToString('N')+'.bin')
+    $writer=$null;$handle=$null;$written=$null
     try{
+        $writer=[PowerShell]::Create()
+        [void]$writer.AddScript({param($Path,[double]$Seconds,[int]$Rate)
+            # Buffer size 1 disables FileStream buffering: each Write is one WriteFile, so one IRP_MJ_WRITE.
+            $stream=New-Object IO.FileStream($Path,[IO.FileMode]::CreateNew,[IO.FileAccess]::Write,[IO.FileShare]::Read,1,[IO.FileOptions]::None)
+            try{
+                $buffer=New-Object byte[] 64;$interval=[Diagnostics.Stopwatch]::Frequency/[double]$Rate;$count=0
+                $limit=[long]($Seconds*[Diagnostics.Stopwatch]::Frequency);$clock=[Diagnostics.Stopwatch]::StartNew()
+                while($clock.ElapsedTicks -lt $limit){
+                    $stream.Position=0;$stream.Write($buffer,0,$buffer.Length);$count++
+                    $next=[long]($count*$interval)
+                    while($clock.ElapsedTicks -lt $next){[Threading.Thread]::SpinWait(100)}
+                }
+                $count
+            }finally{$stream.Dispose()}
+        }).AddArgument($path).AddArgument([double]($Seconds+4)).AddArgument($WritesPerSecond)
+        $handle=$writer.BeginInvoke()
+        Start-Sleep -Seconds 2
+        if($handle.IsCompleted){throw ('the idle writer stopped before the sample: '+(@($writer.Streams.Error) -join '; '))}
         $first=Invoke-DiagnosticsQuery @{query='counters'};$started=[Diagnostics.Stopwatch]::GetTimestamp()
         Start-Sleep -Seconds $Seconds
         $second=Invoke-DiagnosticsQuery @{query='counters'};$elapsed=([Diagnostics.Stopwatch]::GetTimestamp()-$started)/[double][Diagnostics.Stopwatch]::Frequency
-    }catch{return @{Name='ReclaimWorkerIdleRate';Verdict='INCONCLUSIVE';Reason=('Driver counters unavailable through the service diagnostics pipe: '+$_.Exception.Message)}}
+        $written=@($writer.EndInvoke($handle))
+        if($writer.HadErrors -or $written.Count -ne 1){throw ('the idle writer failed: '+(@($writer.Streams.Error) -join '; '))}
+    }catch{return @{Name='ReclaimWorkerIdleRate';Verdict='INCONCLUSIVE';Reason=('Driver counters or the idle writer unavailable: '+$_.Exception.Message)}}
+    finally{
+        if($null -ne $writer){$writer.Dispose()}
+        Remove-Item -LiteralPath $path -Force -ErrorAction SilentlyContinue
+    }
     $passes=[uint64]$second.writerState.registryReclaimPasses-[uint64]$first.writerState.registryReclaimPasses
     $rate=$passes/$elapsed
-    $detail=('passes='+$passes+' over '+[math]::Round($elapsed,1)+' s ('+[math]::Round($rate,2)+'/s, limit '+$MaxPassesPerSecond+'/s)')
-    if($null -ne $second.reclaimWorker){$detail+=('; parked='+$second.reclaimWorker.parkedPasses+'; moreWorkRequeues='+$second.reclaimWorker.moreWorkRequeues+'; wakeupsSkipped='+$second.reclaimWorker.wakeupsSkipped)}
-    @{Name='ReclaimWorkerIdleRate';Verdict=$(if($rate -le $MaxPassesPerSecond){'PASS'}else{'FAIL'});Reason=('Reclaim worker idle rate after the trial: '+$detail)}
+    $writeRate=[double]$written[0]/($Seconds+4)
+    $detail=('passes='+$passes+' over '+[math]::Round($elapsed,1)+' s ('+[math]::Round($rate,2)+'/s, limit '+$MaxPassesPerSecond+'/s); writer '+$written[0]+' writes ('+[math]::Round($writeRate,1)+'/s)')
+    $detail+=('; entries '+$second.writerState.registryEntries+' (name tier '+$second.writerState.registryNameTierEntries+', compact '+$second.writerState.registryCompactTierEntries+'), pruned +'+([int64]$second.writerState.registryPruned-[int64]$first.writerState.registryPruned))
+    if($null -ne $second.reclaimWorker -and $null -ne $first.reclaimWorker){
+        $detail+=('; parked +'+([int64]$second.reclaimWorker.parkedPasses-[int64]$first.reclaimWorker.parkedPasses)+'; moreWorkRequeues +'+([int64]$second.reclaimWorker.moreWorkRequeues-[int64]$first.reclaimWorker.moreWorkRequeues)+'; wakeupsSkipped +'+([int64]$second.reclaimWorker.wakeupsSkipped-[int64]$first.reclaimWorker.wakeupsSkipped))
+    }
+    # The writer must have run near its rate, or the sample did not exercise the write path.
+    $verdict=if($rate -gt $MaxPassesPerSecond){'FAIL'}elseif($writeRate -lt $WritesPerSecond/2){'INCONCLUSIVE'}else{'PASS'}
+    @{Name='ReclaimWorkerIdleRate';Verdict=$verdict;Reason=('Reclaim worker idle rate after the trial, with a steady outside writer: '+$detail)}
 }
 
 function Test-C05DenyRingRecord($Ring,[int]$ActorPid,[string]$TargetLeaf) {

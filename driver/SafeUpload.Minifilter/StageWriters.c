@@ -160,6 +160,7 @@ __declspec(align(16)) struct _STAGE_REGISTRY_ENTRY {
     volatile LONG LastSState;
     volatile LONG AliasProbeSerial;  /* advanced by every StageRegistryBeginAliasProbe, under StateLock */
     volatile LONG PriorityProbe;     /* T2c: a writable-section admission waits for this entry's probe; the worker takes it first */
+    volatile LONG WakeOnWriterRelease; /* another entry's promotion waits for this one's writer state to end: wake the worker once */
     ULONGLONG Sequence;
     USHORT NameChars;
     BOOLEAN Compact;
@@ -351,6 +352,7 @@ static VOID StageRegistryMarkEntryUnknownAt(_In_ PSTAGE_REGISTRY_ENTRY Entry,
 #define StageRegistryMarkEntryUnknown(Entry, Reason) \
     StageRegistryMarkEntryUnknownAt((Entry), (Reason), (ULONG)__LINE__)
 static BOOLEAN StageRegistryQueueReclaim(VOID);
+static BOOLEAN StageRegistryEntryWaiting(_In_ PSTAGE_REGISTRY_ENTRY Entry);
 _IRQL_requires_(PASSIVE_LEVEL)
 static VOID StageAnchorReleaseInstance(_In_ PFLT_INSTANCE Instance);
 static KSPIN_LOCK SectionLock;
@@ -464,6 +466,22 @@ static volatile LONG RegistryReclaimQueued;
  * recomputed by each pass. Lifetime events (a close or cleanup anywhere on the machine) queue a pass only while it is set
  * and only for a stream a waiting entry is bound to, so a busy but idle-of-interest machine costs no reclaim passes. */
 static volatile LONG RegistryReclaimInterest;
+
+/* A replaced incarnation's promotion also waits for its siblings (other entries of the same data stream) to hold no writer
+ * state, but a sibling is not itself waiting, so the end of its handle, mutating I/O, transaction or rename would not wake
+ * the worker. A promotion that only its siblings block arms them and re-reads their state; the first release after that
+ * takes the request and wakes the worker once, and the next attempt arms a sibling again if it is still busy. */
+static VOID StageRegistryArmWriterReleaseWake(_In_ PSTAGE_REGISTRY_ENTRY Entry)
+{
+    InterlockedExchange(&RegistryReclaimInterest, 1);
+    InterlockedExchange(&Entry->WakeOnWriterRelease, 1);
+}
+
+static BOOLEAN StageRegistryTakeWriterReleaseWake(_In_ PSTAGE_REGISTRY_ENTRY Entry)
+{
+    return InterlockedCompareExchange(&Entry->WakeOnWriterRelease, 0, 0) != 0 &&
+        InterlockedExchange(&Entry->WakeOnWriterRelease, 0) != 0;
+}
 typedef struct _STAGE_ANCHOR {
     LIST_ENTRY Link;
     PSTAGE_REGISTRY_ENTRY Entry;     /* holds a registry reference */
@@ -1252,8 +1270,9 @@ static PSTAGE_REGISTRY_ENTRY StageRegistryGetOrInsert(_In_ PSTAGE_WRITER_RESERVA
     {
         /* Reclaim before the limits are reached: at 3/4 of the instance or total limit. */
         /* Above 512 live entries, every 64th insertion also wakes the pruner: the 3/4 rule below sits at 3,072 now that one volume may
-         * use the whole registry, which is far too late to keep a servicing burst from reaching the limit. */
-        BOOLEAN pressure = (RegistryEntryCount >= 512 && (RegistryEntryCount % 64) == 0) ||
+         * use the whole registry, which is far too late to keep a servicing burst from reaching the limit. Counted by
+         * insertion, not by live count: a count that sits on a multiple of 64 (insert, prune, insert) woke it every time. */
+        BOOLEAN pressure = (RegistryEntryCount >= 512 && (RegistryEntrySequence % 64) == 0) ||
             RegistryEntryCount * 4 >= capacity * 3 ||
             RegistryCompactEntryCount * 4 >= SAFEUPLOAD_WRITER_REGISTRY_COMPACT_LIMIT * 3 / 4 ||
             StageRegistryInstanceCountLocked(Reservation->Instance) * 4 >=
@@ -2222,6 +2241,9 @@ VOID SafeUploadStageWritersCompleteRename(_In_ PFLT_INSTANCE Instance, _In_opt_ 
             StageRegistryMarkEntryUnknown(entry, SAFEUPLOAD_REGISTRY_UNKNOWN_RENAME);
         }
         InterlockedIncrement(&entry->RenameVersion);
+        /* As at PASSIVE below: a pass woken by the rename's mutating I/O can have seen it in flight. */
+        if (StageRegistryEntryWaiting(entry) || StageRegistryTakeWriterReleaseWake(entry))
+            SafeUploadStageWritersQueueRecheck();
         rename->Signature = 0;
         StageRegistryDereference(entry);
         ExFreePoolWithTag(rename, SAFEUPLOAD_REGISTRY_POOL_TAG);
@@ -2307,12 +2329,17 @@ VOID SafeUploadStageWritersCompleteRename(_In_ PFLT_INSTANCE Instance, _In_opt_ 
         StageRegistrySetEntryUnknownLocked(entry, SAFEUPLOAD_REGISTRY_UNKNOWN_RENAME);
     }
     if (Succeeded && !Draining && !recheck && StageRegistryBeginAliasProbe(entry)) recheck = TRUE;
+    /* The rename's mutating I/O ended above, before RenameInFlight fell: a pass woken by it can still have seen the
+     * rename in flight. A failed rename queues nothing else, so a waiting entry, or a sibling a promotion waits for,
+     * gets its pass here. The request is taken even when another reason already queues, so it does not linger. */
+    if (StageRegistryTakeWriterReleaseWake(entry) || StageRegistryEntryWaiting(entry)) recheck = TRUE;
     FltReleasePushLock(&RegistryLock);
     if (markUnknown) {
         StageRegistryMarkEntryUnknown(entry, SAFEUPLOAD_REGISTRY_UNKNOWN_RENAME);
         InterlockedIncrement64(&RegistryRenameFailures);
     }
-    if (recheck) (VOID)StageRegistryQueueReclaim();
+    /* From the start of the registry: the cursor may already be past this entry or the promotion that waits for it. */
+    if (recheck) SafeUploadStageWritersQueueRecheck();
     rename->Signature = 0;
     StageRegistryDereference(entry);
     ExFreePoolWithTag(rename, SAFEUPLOAD_REGISTRY_POOL_TAG);
@@ -2683,8 +2710,9 @@ __declspec(noinline) VOID SafeUploadStageWritersOnCleanup(
     if (found != NULL) {
         InterlockedIncrement64(&RegistryChangeSequence);
         if (found->Entry != NULL) {
-            if (lastWriter && InterlockedCompareExchange((volatile LONG *)&found->Entry->State, 0, 0) ==
-                SAFEUPLOAD_REGISTRY_STATE_ACTIVATING) StageRegistryQueueReclaim();
+            if (lastWriter && (InterlockedCompareExchange((volatile LONG *)&found->Entry->State, 0, 0) ==
+                    SAFEUPLOAD_REGISTRY_STATE_ACTIVATING || StageRegistryTakeWriterReleaseWake(found->Entry)))
+                SafeUploadStageWritersQueueRecheck();
             StageRegistryRemoveOpener(found->Entry, found->ProcessId);
         } else {
             (VOID)StageRegistryUnknownWriterEnd(FltObjects->Instance, found->SectionObjectPointer);
@@ -3183,7 +3211,12 @@ __declspec(noinline) static VOID StageRegistryEndMutatingIoEntry(
             InterlockedExchange(&Entry->W, 0);
             markUnknown = TRUE;
         } else {
-            recheck = TRUE;
+            /* The last mutating I/O ending can only let the worker act on an entry that is waiting (activation, alias
+             * probe or scope scan) or on a promotion that waits for this entry as a sibling. Activating and
+             * AliasProbePending are set under this state lock and the worker reads W after them; a scope scan that
+             * waits for W also has one of them set. Waking it for every other entry was one reclaim pass per
+             * completed write. */
+            recheck = StageRegistryEntryWaiting(Entry) || StageRegistryTakeWriterReleaseWake(Entry);
         }
     }
     InterlockedIncrement64(&RegistryChangeSequence);
@@ -5230,7 +5263,7 @@ __declspec(noinline) static BOOLEAN StageRegistryTryPromoteStateNoInline(
  * Free. A row whose stream identity is unknown is checked. RegistryLock is held by the caller; the snapshots take
  * SectionLock after it. */
 _IRQL_requires_max_(APC_LEVEL)
-static BOOLEAN StageRegistrySiblingsHoldNoWriterStateLocked(_In_ PSTAGE_REGISTRY_ENTRY Entry)
+static BOOLEAN StageRegistrySiblingsHoldNoWriterStateLocked(_In_ PSTAGE_REGISTRY_ENTRY Entry, _In_ BOOLEAN Arm)
 {
     PLIST_ENTRY link;
     for (link = RegistryEntries.Flink; link != &RegistryEntries; link = link->Flink) {
@@ -5240,8 +5273,11 @@ static BOOLEAN StageRegistrySiblingsHoldNoWriterStateLocked(_In_ PSTAGE_REGISTRY
             !RtlEqualMemory(&sibling->FileId, &Entry->FileId, sizeof(sibling->FileId))) continue;
         if (sibling->StreamIdentityKnown && (sibling->CompactStream || sibling->StreamChars != 0)) continue;
         if (InterlockedCompareExchange(&sibling->UnknownReasons, 0, 0) != 0 ||
-            InterlockedCompareExchange((volatile LONG *)&sibling->State, 0, 0) == SAFEUPLOAD_REGISTRY_STATE_UNKNOWN ||
-            !StageRegistryEntryHoldsNoWriterState(sibling)) return FALSE;
+            InterlockedCompareExchange((volatile LONG *)&sibling->State, 0, 0) == SAFEUPLOAD_REGISTRY_STATE_UNKNOWN)
+            return FALSE;
+        /* When arming, before the read: a release after the read finds the request and wakes the worker. */
+        if (Arm) StageRegistryArmWriterReleaseWake(sibling);
+        if (!StageRegistryEntryHoldsNoWriterState(sibling)) return FALSE;
     }
     return TRUE;
 }
@@ -5270,7 +5306,7 @@ __declspec(noinline) static ULONG StageRegistryTryPromoteEntry(
     ULONG failed = 0;
     /* A replaced incarnation's CAS covers the whole data stream: no other incarnation entry of it, including
      * one keyed by the live SOP, may hold writer state (S and the cache barrier were evaluated on the live SOP). */
-    BOOLEAN siblingsFree = ReplacedLiveSop == NULL || StageRegistrySiblingsHoldNoWriterStateLocked(Entry);
+    BOOLEAN siblingsFree = ReplacedLiveSop == NULL || StageRegistrySiblingsHoldNoWriterStateLocked(Entry, FALSE);
     entryName.Buffer = Entry->Name;
     entryName.Length = entryName.MaximumLength = (USHORT)(Entry->NameChars * sizeof(WCHAR));
     directoryRenameInFlight = StageRegistryDirectoryRenameInFlightLocked(Entry->Instance, &entryName);
@@ -5338,6 +5374,13 @@ __declspec(noinline) static ULONG StageRegistryTryPromoteEntry(
     }
     StageReleaseSpinLock(&Entry->StateLock, irql);
     SafeUploadPolicyRenameLossGenerationLeave(renameLossIrql);
+    /* Only siblings keep this entry waiting: ask each busy one to wake the worker when its writer state ends. Not
+     * armed while another predicate fails, so a busy sibling does not drive passes its release cannot complete. The
+     * re-read after arming closes the window since the first read: if it finds them free, a release fell in that
+     * window and may have missed the request, so another pass is queued, from the start of the registry because this
+     * pass's cursor may move past the entry. RegistryLock is still held. */
+    if (failed == SAFEUPLOAD_PROMOTE_FAIL_SIBLING && StageRegistrySiblingsHoldNoWriterStateLocked(Entry, TRUE))
+        SafeUploadStageWritersQueueRecheck();
     FltReleaseContext(instanceContext);
     return failed;
 }
@@ -6580,7 +6623,8 @@ static BOOLEAN StageRegistryStreamHasWaitingEntry(_In_opt_ PFLT_INSTANCE Instanc
     StageAcquireSpinLock(&SectionLock, &irql);
     slot = StageRegistryFindSopSlotLocked(SectionObjectPointer, &found);
     if (found && slot != NULL) {
-        if (slot->Entry != NULL) waiting = StageRegistryEntryWaiting(slot->Entry);
+        if (slot->Entry != NULL)
+            waiting = StageRegistryEntryWaiting(slot->Entry) || StageRegistryTakeWriterReleaseWake(slot->Entry);
         else if (slot->Unknown) waiting = TRUE;
     }
     StageReleaseSpinLock(&SectionLock, irql);
@@ -7991,7 +8035,8 @@ NTSTATUS SafeUploadStageTransactionNotification(_In_ PCFLT_RELATED_OBJECTS FltOb
             if (InterlockedCompareExchange(&association->Entry->T, 0, 0) == 0 &&
                 (InterlockedCompareExchange((volatile LONG *)&association->Entry->State, 0, 0) ==
                     SAFEUPLOAD_REGISTRY_STATE_ACTIVATING ||
-                 InterlockedCompareExchange(&association->Entry->AliasProbePending, 0, 0) != 0))
+                 InterlockedCompareExchange(&association->Entry->AliasProbePending, 0, 0) != 0 ||
+                 StageRegistryTakeWriterReleaseWake(association->Entry)))
                 recheck = TRUE;
             association->CompletionStatus = STATUS_SUCCESS;
             InterlockedExchange(&association->State, SAFEUPLOAD_TX_ASSOC_TERMINAL);
