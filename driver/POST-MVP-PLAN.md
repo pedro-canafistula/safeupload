@@ -121,7 +121,7 @@ replaced basis, which the harness refuses): fixed with an identity anchor (the p
 - [x] R02 passes on the held basis (2 of 2 on the anchor driver)
 - [~] A01-A05, B01, R01, R03, X01, C03, C04 on the anchor driver (A02, A03, A05, X01, C03, C04 ok; A01/A04 repeat after an evidence-capture flake)
 - [x] boot-Verifier B02 + C01-C04 BLOCK complete on the final driver line -> 69/69 (C01 `m1b1`, C03 `m1d1`, C04 `m1d2`, C02 `m1d3`; B02 `m1w1` on 8e506437, re-run queued)
-- [ ] runtime-Verifier slice (C05, C01-approve-absent, C01-block-absent, S01) on the final pair
+- [x] runtime-Verifier slice (C05, C01-approve-absent, C01-block-absent, S01) on the final pair: `m1f1`-`m1f4` ok by the gate rule (tier 2) on `m1-driver4`/`m1-agent6`, also R02 `m1f5` and A01 `m1f6`; C05 `m1f2` ring: "recorded the denied rename: sequence 2, status 0xC0000022"
 
 ### T2. New user profiles
 
@@ -170,7 +170,11 @@ that fills it would leave protection Degraded.
 **Status 2026-10-09: runner written, not yet run.** `driver/scripts/Invoke-InstallerWorkload.sh <dom> <tag> msi|m365|cu|defender driver|control` (workloads in `driver/scripts/t3/`).
 The debuggees have internet access and about 40 GB free; Defender is disabled by policy in the baseline (the defender workload removes the policy inside the
 checkpoint). Known risk to check first: M365 and installers use by-ID opens and many concurrent writers, which the T2 gate changes address.
-- [ ] msi  - [ ] m365  - [ ] cu  - [ ] defender  - [ ] control runs for the overhead comparison
+- [x] msi: driver 9.2 s, control 7.0 s, no refusal, Ready, registry high-water 225/4096
+- [ ] m365: not run (needs 30 GB free on the debuggee's disk)
+- [~] cu: KB5066791 installs with the driver (19045.2965 -> 19045.6456 in `t3cub`/`t3cuc`/`t3cud`); 0 legacy-gate refusals since `c70a4354`; the nested TiWorker writes (23 install, 8 servicing) are still refused (T3d, `704146b8` names them)
+- [x] defender: `t3defenderu` PASS, 170.4 s, no refusal, Ready, high-water 277/4096; control `t3defenderv` 172.3 s
+- [~] control runs: msi and defender done; cu and m365 not done
 
 ## P1: everyday file work (M2)
 
