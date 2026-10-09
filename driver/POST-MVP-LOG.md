@@ -403,3 +403,11 @@ Still deferred (from the M1 review): network-scope canonicalization (UNC/provide
 Queues: `m1-t3queue6.sh` (CU `t3cuh`, U01 `u01n` and `u01o` boot-Verifier, runtime-Verifier slice `m13r`, Microsoft 365 `t3m365a`, CU and
 Microsoft 365 controls) then `m1-regress13.sh` (the 65 other cells; boot Verifier last, alone), judged by `Get-StagedMvpStatus.py` on
 `4d02039a`; both wait for win10-debug3 to be shut off (its rebuilt clone answers at debug2's address).
+
+### T3 cumulative update on the final driver: PASS (`t3cuh`, `m1-driver13` / `m1-agent11`, 18:35)
+
+KB5066791 with the driver loaded, run overlay on NVMe: workload PASS (installResult 2, 1,135 s), driver loaded afterwards, coverage Ready,
+the deny ring EMPTY (0 of 0: the 23 nested TiWorker refusals of T3d are gone, nothing refused at boot, so no T2c `config\DRIVERS`
+refusal either, nothing in the servicing boot), no registry overflow, no Unknown reason; run disk deleted, base untouched (verdict rc=0).
+Watch item: the writer registry's high-water was 4,015 of 4,096 (earlier CU runs 1,299 / 3,097 / 2,206). It did not overflow, but an
+overflow makes coverage Unknown until reboot (T3c), so the margin is thin on a fast disk; Microsoft 365 is the next test of it.

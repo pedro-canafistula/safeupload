@@ -177,7 +177,7 @@ The debuggees have internet access and about 40 GB free; Defender is disabled by
 checkpoint). Known risk to check first: M365 and installers use by-ID opens and many concurrent writers, which the T2 gate changes address.
 - [x] msi: driver 9.2 s, control 7.0 s, no refusal, Ready, registry high-water 225/4096
 - [ ] m365: not run (needs 30 GB free on the debuggee's disk)
-- [~] cu: KB5066791 installs with the driver (19045.2965 -> 19045.6456 in `t3cub`/`t3cuc`/`t3cud`); 0 legacy-gate refusals since `c70a4354`; the nested TiWorker writes (23 install, 8 servicing) are still refused (T3d, `704146b8` names them). T3d cause: their entries are Unscoped but never classified (aux `0xE5000007`); fix `77b76faa` (create-time alias proof -> OUTSIDE, distrusted during a scope transition after Luna's P0), builds `m1-driver10`; CU `t3cuh` pending
+- [x] cu: `t3cuh` PASS on `m1-driver13` (1,135 s, empty deny ring, Ready, high-water 4,015/4,096 - thin margin, see T3c). Before: KB5066791 installs with the driver (19045.2965 -> 19045.6456 in `t3cub`/`t3cuc`/`t3cud`); 0 legacy-gate refusals since `c70a4354`; the nested TiWorker writes (23 install, 8 servicing) are still refused (T3d, `704146b8` names them). T3d cause: their entries are Unscoped but never classified (aux `0xE5000007`); fix `77b76faa` (create-time alias proof -> OUTSIDE, distrusted during a scope transition after Luna's P0), builds `m1-driver10`; CU `t3cuh` pending
 - [x] defender: `t3defenderu` PASS, 170.4 s, no refusal, Ready, high-water 277/4096; control `t3defenderv` 172.3 s
 - [~] control runs: msi and defender done; cu and m365 not done
 
