@@ -181,6 +181,7 @@ public sealed class DriverDiagnosticsSource
         0xC000000F => "STATUS_NO_SUCH_FILE",
         0xC0000184 => "STATUS_INVALID_DEVICE_STATE",
         0xC0000225 => "STATUS_NOT_FOUND",
+        0xC0000279 => "STATUS_IO_REPARSE_TAG_NOT_HANDLED",
         _ => "",
     };
 
