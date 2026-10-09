@@ -298,3 +298,18 @@ Runner `Invoke-InstallerWorkload.sh`, final driver `m1-driver4` + agent `m1-agen
   runner now refuses to start with less than 12 GB free (30 GB for Microsoft 365). Auto-deleting overlays from the runners was denied by the auto-mode classifier and is not done.
 - Boot-time refusals: the runner now evaluates refusals after the ring cursor taken at the workload start; ones before it (the FontCache section window, T2c) are listed separately.
 
+### T3 cumulative update: what the ring named (14:10)
+
+With names in the ring (`2d32bbff`: a nameless refusal now carries the file object's open name or the requestor's image path), the cumulative update with the driver (`m1-driver6`)
+shows two separate problems:
+1. **The update can be reverted at its servicing reboot.** In `t3cuc` the build after the reboot is 19045.2965 again (the update was rolled back), while `t3cux/a/b` ended at 19045.6456.
+   The ring of the servicing boot holds 17 `legacyCreateGate` refusals by pid 344 (smss, before the agent connects): delete-access creates (access 0x110000) of paths whose name
+   lookup failed. The legacy fail-closed create gate treats a failed lookup as 'this volume may hold a scope' and refuses; the new gate already had the T2 rule 'a lookup that proves the
+   path absent touches nothing protected'. Fixed in `c70a4354` (one shared predicate `SafeUploadNameLookupProvesAbsent`). Not yet verified on a VM.
+2. **TiWorker.exe's kernel-mode MDL writes from inside another file-system call (top-level IRP) are refused** for lack of a queryable name: 23 during the install (pids 3120/4848)
+   and 8 in the servicing boot, 2 MB in 256 KB chunks per file. The update survives them in 3 of 4 runs, but the refusals are real (T3d). Options: resolve the name from the name
+   cache only (`FltGetFileNameInformationUnsafe` with `FLT_FILE_NAME_QUERY_CACHE_ONLY` is allowed in a nested call) and trust the create-time alias check of a file object that passed
+   the create gate; or classify by the stream's registry entry (there is none for these file objects, so they were opened outside this filter's view, which is itself worth explaining).
+Registry: with the per-volume cap at 4,096 and the pruner woken every 64th insertion above 512 live entries the update runs without overflow or Unknown reasons (high-water
+1,299 / 3,097 / 2,206 of 4,096 in the three runs).
+
