@@ -2606,6 +2606,7 @@ static FLT_PREOP_CALLBACK_STATUS StageAdmitDirectoryMutation(
     if (NT_SUCCESS(status)) status = FltParseFileNameInformation(name);
     if (!NT_SUCCESS(status)) {
         deny = SafeUploadPolicyMayMatchInstanceVolume(Objects->Instance);
+        if (deny) SafeUploadDenyAuxStatus(Data, status);
     } else {
         deny = SafeUploadPolicyMatchesCurrentOrPendingDestination(kind, &name->Name, TRUE) ||
             SafeUploadStageTouchesProtectedNamespace(name, kind);
@@ -2879,6 +2880,7 @@ Complete:
     if (unresolved && !SafeUploadPolicyMayMatchInstanceVolume(Objects->Instance))
         status = STATUS_SUCCESS;
     if (status == STATUS_SUCCESS) return FLT_PREOP_SUCCESS_NO_CALLBACK;
+    if (unresolved) SafeUploadDenyAuxStatus(Data, status);
     Data->IoStatus.Status = STATUS_ACCESS_DENIED;
     Data->IoStatus.Information = 0;
     return FLT_PREOP_COMPLETE;

@@ -1115,7 +1115,7 @@ typedef struct _SAFEUPLOAD_DENY_RECORD {
                                     // section: page protection; write: length
     UINT32 Options;                 // create: (disposition << 24) | options; write: low part of the offset
     UINT32 NameChars;
-    UINT32 Reserved;
+    UINT32 AuxStatus;               // NTSTATUS of the failed lookup that made the refusal fall back to "the whole volume"; 0 = none
     WCHAR Name[SAFEUPLOAD_DENY_NAME_CHARS];
 } SAFEUPLOAD_DENY_RECORD, *PSAFEUPLOAD_DENY_RECORD;
 

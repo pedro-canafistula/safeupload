@@ -24,6 +24,7 @@ static SAFEUPLOAD_DENY_RECORD DenyRing[SAFEUPLOAD_DENY_RING_SLOTS];
 static UINT64 DenyNext = 1;                       /* DenyLock */
 static ULONG_PTR DenyImageBase;
 static volatile LONG64 DenyHints[DENY_HINT_SLOTS];
+static volatile LONG64 DenyAuxHints[DENY_HINT_SLOTS];
 static volatile LONG64 DenyRecorded;
 static volatile LONG64 DenyAccessDenied;
 static volatile LONG64 DenyRetry;
@@ -73,6 +74,23 @@ VOID SafeUploadDenySiteHint(_In_ PFLT_CALLBACK_DATA Data, _In_ PVOID Site)
     if ((ULONG_PTR)Site < DenyImageBase || offset > MAXULONG) offset = 0;
     hint = (LONG64)(((ULONG64)DenyDataKey(Data) << 32) | (ULONG64)offset);
     InterlockedExchange64(&DenyHints[DenyHintIndex()], hint);
+}
+
+/* The status of the lookup that failed before the refusal (for example the name query of a directory create), shown in the
+ * record as AuxStatus. Same keying as the site hint: one callback data, one thread, consumed once. */
+VOID SafeUploadDenyAuxStatus(_In_ PFLT_CALLBACK_DATA Data, _In_ NTSTATUS Status)
+{
+    LONG64 hint = (LONG64)(((ULONG64)DenyDataKey(Data) << 32) | (ULONG64)(ULONG)Status);
+
+    InterlockedExchange64(&DenyAuxHints[DenyHintIndex()], hint);
+}
+
+static UINT32 DenyTakeAux(_In_ PFLT_CALLBACK_DATA Data)
+{
+    LONG64 hint = InterlockedExchange64(&DenyAuxHints[DenyHintIndex()], 0);
+
+    if (hint != 0 && (ULONG)((ULONG64)hint >> 32) == DenyDataKey(Data)) return (UINT32)(ULONG64)hint;
+    return 0;
 }
 
 static UINT32 DenyTakeHint(_In_ PFLT_CALLBACK_DATA Data)
@@ -196,6 +214,7 @@ VOID SafeUploadDenyNote(_In_ PFLT_CALLBACK_DATA Data, _In_opt_ PCFLT_RELATED_OBJ
     if (record.ProcessId != 0 && record.ProcessId == SafeUploadData.InspectorProcessId)
         record.Flags |= SAFEUPLOAD_DENY_FLAG_SERVICE_PROCESS;
     record.SiteOffset = DenyTakeHint(Data);
+    record.AuxStatus = DenyTakeAux(Data);
 
     __try {
         DenyCaptureRequest(Data, &record);

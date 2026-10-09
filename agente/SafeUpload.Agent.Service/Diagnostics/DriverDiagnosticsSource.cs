@@ -121,6 +121,8 @@ public sealed class DriverDiagnosticsSource
                     ["flags"] = FlagNames(record.Flags),
                     ["access"] = "0x" + record.Access.ToString("X"),
                     ["options"] = "0x" + record.Options.ToString("X"),
+                    ["auxStatus"] = record.AuxStatus == 0 ? null : "0x" + record.AuxStatus.ToString("X8"),
+                    ["auxStatusName"] = record.AuxStatus == 0 ? null : StatusName(record.AuxStatus),
                     ["name"] = record.Name.Length == 0 ? null : record.Name,
                 });
             }
@@ -172,6 +174,11 @@ public sealed class DriverDiagnosticsSource
         0xC000000D => "STATUS_INVALID_PARAMETER",
         0xC0000035 => "STATUS_OBJECT_NAME_COLLISION",
         0xC0000034 => "STATUS_OBJECT_NAME_NOT_FOUND",
+        0xC000003A => "STATUS_OBJECT_PATH_NOT_FOUND",
+        0xC0000033 => "STATUS_OBJECT_NAME_INVALID",
+        0xC000000F => "STATUS_NO_SUCH_FILE",
+        0xC0000184 => "STATUS_INVALID_DEVICE_STATE",
+        0xC0000225 => "STATUS_NOT_FOUND",
         _ => "",
     };
 

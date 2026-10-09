@@ -55,6 +55,7 @@ FLT_PREOP_CALLBACK_STATUS SafeUploadStageTxfFsctlPreOperation(
 /* DenyRing.c: always-on record of operations completed with an error status. */
 VOID SafeUploadDenyRingInitialize(VOID);
 VOID SafeUploadDenySiteHint(_In_ PFLT_CALLBACK_DATA Data, _In_ PVOID Site);
+VOID SafeUploadDenyAuxStatus(_In_ PFLT_CALLBACK_DATA Data, _In_ NTSTATUS Status);
 VOID SafeUploadDenyNote(_In_ PFLT_CALLBACK_DATA Data, _In_opt_ PCFLT_RELATED_OBJECTS Objects,
     _In_ NTSTATUS Status, _In_ BOOLEAN PostOperation);
 NTSTATUS SafeUploadDenyRingReadBatch(_In_ UINT64 AfterSequence, _Out_ PSAFEUPLOAD_DENY_RING_BATCH Batch);

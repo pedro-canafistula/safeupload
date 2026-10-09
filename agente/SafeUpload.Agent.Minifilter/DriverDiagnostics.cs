@@ -72,7 +72,7 @@ public unsafe struct SafeUploadDenyRecord
     public uint Access;
     public uint Options;
     public uint NameChars;
-    public uint Reserved;
+    public uint AuxStatus;
     public fixed char Name[DiagnosticsContract.DenyNameChars];
 
     public string ReadName()
@@ -186,6 +186,7 @@ public sealed record DenyRecord(
     uint Flags,
     uint Access,
     uint Options,
+    uint AuxStatus,
     string Name);
 
 /// <summary>A page of the deny ring. <see cref="NextSequence"/> is the cursor for the next request.</summary>
@@ -233,7 +234,7 @@ public sealed partial class FilterPort
             records.Add(new DenyRecord(entry->Sequence, FromFileTimeOrMin(entry->SystemTime), entry->Status,
                 entry->SiteOffset, entry->ProcessId, entry->ThreadId, entry->MajorFunction,
                 entry->MinorFunction, entry->Irql, entry->Flags, entry->Access, entry->Options,
-                entry->ReadName()));
+                entry->AuxStatus, entry->ReadName()));
         }
         return new DenyRingPage(records, batch.NextSequence, batch.ImageBase,
             (batch.Flags & DiagnosticsContract.BatchFlagGap) != 0);
