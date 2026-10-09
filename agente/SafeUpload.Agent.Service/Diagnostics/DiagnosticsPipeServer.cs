@@ -14,7 +14,9 @@ namespace SafeUpload.Agent.Service.Diagnostics;
 /// <para>The driver's filter port accepts a single client and this service holds it, so the Inspector cannot read
 /// driver state while the product runs. This pipe relays read-only queries over the service's own connection:
 /// <c>{"query":"counters"}</c> and <c>{"query":"deny-ring","after":0}</c>. It changes nothing and is not reachable by
-/// standard users or over the network (the DACL grants only SYSTEM and Administrators and denies NETWORK).</para>
+/// standard users: the DACL grants only SYSTEM and Administrators. (There is deliberately no deny entry for the
+/// NETWORK group: a logon created for an administrator over SSH or a scheduled task carries it, and the harness and
+/// support staff read this pipe from such sessions. A remote reader must authenticate as an administrator anyway.)</para>
 ///
 /// <para>Replies can include the tail of a requested file path, which is why the pipe is administrator-only.</para>
 /// </summary>
@@ -129,12 +131,9 @@ public sealed class DiagnosticsPipeServer : BackgroundService
     {
         var security = new PipeSecurity();
 
-        // SYSTEM runs the service; Administrators may query; nothing else, and never over the network. A supplied
-        // PipeSecurity replaces the default DACL, so the account running the process (a console session during
-        // debugging) gets full control explicitly, as the other pipes do.
-        security.AddAccessRule(new PipeAccessRule(
-            new SecurityIdentifier(WellKnownSidType.NetworkSid, domainSid: null),
-            PipeAccessRights.FullControl, AccessControlType.Deny));
+        // SYSTEM runs the service; Administrators may query; nothing else. A supplied PipeSecurity replaces the
+        // default DACL, so the account running the process (a console session during debugging) gets full control
+        // explicitly, as the other pipes do.
         security.AddAccessRule(new PipeAccessRule(
             new SecurityIdentifier(WellKnownSidType.LocalSystemSid, domainSid: null),
             PipeAccessRights.FullControl, AccessControlType.Allow));
