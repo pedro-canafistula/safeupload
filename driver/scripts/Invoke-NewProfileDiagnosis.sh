@@ -125,39 +125,43 @@ $hr = [ProfileProbe]::CreateProfile($sid, $name, $path, 260)
 Start-Sleep -Seconds 2
 try { $ring = @(& "$d\Get-SafeUploadDiagnostics.ps1" -Query deny-ring -After $after); 'RING_AFTER_COUNT=' + $ring.Count; foreach ($r in $ring) { 'RING=' + ($r | ConvertTo-Json -Compress) } } catch { 'RING_AFTER_ERROR=' + $_.Exception.Message }
 try { $c2 = & "$d\Get-SafeUploadDiagnostics.ps1" -Query counters; 'COUNTERS_AFTER=' + ($c2 | ConvertTo-Json -Depth 6 -Compress) } catch { 'COUNTERS_AFTER_ERROR=' + $_.Exception.Message }
-# Phase 2: the scope must still be enforced for a standard user, and a deep tree outside it must work (first logon of a new
-# account also goes through the Profile Service). The user runs as a scheduled task with its own password.
-$u = 't2user'; $pw = 'P@ssw0rd!2026'
-& net.exe user $u $pw /add | Out-Null
+# Phase 2: the scope must still be enforced for a standard user, and a deep tree outside it must work. t2user has no profile, so its
+# first logon goes through the Profile Service (the first-sign-in path); t2probe's profile was built by CreateProfile above. Each
+# user runs a scheduled task registered with its own password, as the harness does for its actors.
+$pw = 'P@ssw0rd!2026'
+& net.exe user t2user $pw /add | Out-Null
 $userScript = @'
 $r = [ordered]@{}
 function Step($name, [scriptblock]$body) { try { & $body; $r[$name] = 'OK' } catch { $r[$name] = 'ERR: ' + $_.Exception.Message } }
-Step 'mkdir-in-scope' { New-Item -ItemType Directory -Path 'C:\Protected\dirA' -ErrorAction Stop | Out-Null }
-Step 'mkdir-deep-in-scope' { New-Item -ItemType Directory -Path 'C:\Protected\a\b\c' -Force -ErrorAction Stop | Out-Null }
-Step 'write-file-in-scope' { Set-Content -LiteralPath 'C:\Protected\ok.txt' -Value 'hello' -ErrorAction Stop }
+Step 'mkdir-in-scope' { New-Item -ItemType Directory -Path ('C:\Protected\dir-' + $env:USERNAME) -ErrorAction Stop | Out-Null }
+Step 'mkdir-deep-in-scope' { New-Item -ItemType Directory -Path ('C:\Protected\deep-' + $env:USERNAME + '\b\c') -Force -ErrorAction Stop | Out-Null }
+Step 'write-file-in-scope' { Set-Content -LiteralPath ('C:\Protected\ok-' + $env:USERNAME + '.txt') -Value 'hello' -ErrorAction Stop }
 Step 'mkdir-deep-profile' { New-Item -ItemType Directory -Path (Join-Path $env:USERPROFILE 'proj\x\y') -Force -ErrorAction Stop | Out-Null }
 Step 'write-file-profile' { Set-Content -LiteralPath (Join-Path $env:USERPROFILE 'proj\x\y\f.txt') -Value 'x' -ErrorAction Stop }
 $r['whoami'] = (& whoami.exe)
-$r | ConvertTo-Json | Set-Content -LiteralPath 'C:\Users\Public\t2-user-results.json' -Encoding UTF8
+$r['profile'] = $env:USERPROFILE
+$r | ConvertTo-Json | Set-Content -LiteralPath ('C:\Users\Public\t2-user-results-' + $env:USERNAME + '.json') -Encoding UTF8
 '@
 Set-Content -LiteralPath 'C:\Users\Public\t2-user.ps1' -Value $userScript -Encoding UTF8
-Remove-Item 'C:\Users\Public\t2-user-results.json' -ErrorAction SilentlyContinue
 $ringMark = 0
 try { $ringAll = @(& "$d\Get-SafeUploadDiagnostics.ps1" -Query deny-ring); if ($ringAll.Count) { $ringMark = [uint64]$ringAll[-1].sequence } } catch { }
-$eventMark = Get-Date
-try {
-    $secure = ConvertTo-SecureString $pw -AsPlainText -Force
-    $cred = New-Object System.Management.Automation.PSCredential(("$env:COMPUTERNAME\$u"), $secure)
-    $proc = Start-Process -FilePath 'powershell.exe' -ArgumentList '-NoProfile -ExecutionPolicy Bypass -File C:\Users\Public\t2-user.ps1' `
-        -Credential $cred -LoadUserProfile -WorkingDirectory 'C:\Windows\System32' -Wait -PassThru
-    'USER_PROCESS_EXIT=' + $proc.ExitCode
-} catch { 'USER_PROCESS_ERROR=' + $_.Exception.Message }
-try {
-    $evts = Get-WinEvent -FilterHashtable @{ LogName = 'Application'; StartTime = $eventMark } -ErrorAction Stop | Where-Object { $_.ProviderName -match 'User Profiles|Userenv|ProfSvc' }
-    'PROFSVC_EVENTS=' + @($evts).Count
-    foreach ($e in @($evts) | Select-Object -First 6) { 'PROFSVC_EVENT=' + $e.Id + ' ' + ($e.Message -replace '\s+', ' ').Substring(0, [Math]::Min(220, $e.Message.Length)) }
-} catch { 'PROFSVC_EVENTS_ERROR=' + $_.Exception.Message }
-if (Test-Path 'C:\Users\Public\t2-user-results.json') { 'USER_RESULTS=' + ((Get-Content 'C:\Users\Public\t2-user-results.json' -Raw) -replace '\s+', ' ') } else { 'USER_RESULTS=missing' }
+foreach ($u in 't2user', 't2probe') {
+    $resultFile = "C:\Users\Public\t2-user-results-$u.json"
+    Remove-Item $resultFile -ErrorAction SilentlyContinue
+    $mark = Get-Date
+    try {
+        Register-ScheduledTask -TaskName "t2-run-$u" -Action (New-ScheduledTaskAction -Execute 'powershell.exe' -Argument '-NoProfile -ExecutionPolicy Bypass -File C:\Users\Public\t2-user.ps1') -User ($env:COMPUTERNAME + '\' + $u) -Password $pw -RunLevel Limited -Settings (New-ScheduledTaskSettingsSet -ExecutionTimeLimit ([TimeSpan]::FromMinutes(3))) | Out-Null
+        Start-ScheduledTask -TaskName "t2-run-$u"
+        for ($i = 0; $i -lt 60 -and -not (Test-Path $resultFile); $i++) { Start-Sleep -Seconds 2 }
+        "USER_TASK_RESULT[$u]=" + (Get-ScheduledTaskInfo -TaskName "t2-run-$u").LastTaskResult
+    } catch { "USER_TASK_ERROR[$u]=" + $_.Exception.Message }
+    if (Test-Path $resultFile) { "USER_RESULTS[$u]=" + ((Get-Content $resultFile -Raw) -replace '\s+', ' ') } else { "USER_RESULTS[$u]=missing" }
+    try {
+        $evts = @(Get-WinEvent -FilterHashtable @{ LogName = 'Application'; StartTime = $mark } -ErrorAction Stop | Where-Object { $_.ProviderName -match 'User Profiles|Userenv|ProfSvc' })
+        "PROFSVC_EVENTS[$u]=" + $evts.Count
+        foreach ($e in $evts | Select-Object -First 4) { "PROFSVC_EVENT[$u]=" + $e.Id + ' ' + (($e.Message -replace '\s+', ' ')[0..200] -join '') }
+    } catch { "PROFSVC_EVENTS_ERROR[$u]=" + $_.Exception.Message }
+}
 Start-Sleep -Seconds 8
 'PROTECTED_LISTING=' + ((Get-ChildItem 'C:\Protected' -Force -ErrorAction SilentlyContinue | ForEach-Object { $_.Name + ':' + $_.Length }) -join ',')
 try { $ring2 = @(& "$d\Get-SafeUploadDiagnostics.ps1" -Query deny-ring -After $ringMark); 'RING2_COUNT=' + $ring2.Count; foreach ($r2 in $ring2) { 'RING2=' + ($r2 | ConvertTo-Json -Compress) } } catch { 'RING2_ERROR=' + $_.Exception.Message }
