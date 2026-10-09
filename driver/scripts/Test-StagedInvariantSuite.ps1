@@ -405,10 +405,13 @@ function Get-DiagnosticsDenyRing {
     $result
 }
 
-function Test-ReclaimWorkerIdle([int]$Seconds=15,[double]$MaxPassesPerSecond=10) {
+function Test-ReclaimWorkerIdle([int]$Seconds=15,[double]$MaxPassesPerSecond=100) {
     # The reclaim worker must go quiet when nothing can change. Before the event-driven fix a scan or alias probe that was
     # only waiting made it requeue itself thousands of times a second (guest CPU at 100% under boot Verifier). The sample
     # runs after the trial, with the service up, so a spinning worker shows as passes with nobody asking for them.
+    # Calibration (guest, ordinary mode, measured 2026-10-09): the spin was 1,700-3,100 passes/s; the event-driven worker
+    # runs 8-12 passes/s after a trial (targeted wake-ups for entries that are still waiting). 100/s keeps a margin of
+    # about 8x above the clean runs and 17x below the spin.
     try{
         $first=Invoke-DiagnosticsQuery @{query='counters'};$started=[Diagnostics.Stopwatch]::GetTimestamp()
         Start-Sleep -Seconds $Seconds
@@ -417,7 +420,7 @@ function Test-ReclaimWorkerIdle([int]$Seconds=15,[double]$MaxPassesPerSecond=10)
     $passes=[uint64]$second.writerState.registryReclaimPasses-[uint64]$first.writerState.registryReclaimPasses
     $rate=$passes/$elapsed
     $detail=('passes='+$passes+' over '+[math]::Round($elapsed,1)+' s ('+[math]::Round($rate,2)+'/s, limit '+$MaxPassesPerSecond+'/s)')
-    if($null -ne $second.reclaimWorker){$detail+=('; parked='+$second.reclaimWorker.parkedPasses+'; moreWorkRequeues='+$second.reclaimWorker.moreWorkRequeues)}
+    if($null -ne $second.reclaimWorker){$detail+=('; parked='+$second.reclaimWorker.parkedPasses+'; moreWorkRequeues='+$second.reclaimWorker.moreWorkRequeues+'; wakeupsSkipped='+$second.reclaimWorker.wakeupsSkipped)}
     @{Name='ReclaimWorkerIdleRate';Verdict=$(if($rate -le $MaxPassesPerSecond){'PASS'}else{'FAIL'});Reason=('Reclaim worker idle rate after the trial: '+$detail)}
 }
 
