@@ -2591,6 +2591,17 @@ static BOOLEAN StageDirectoryCreateCanMutate(_In_ PFLT_CALLBACK_DATA Data)
         GENERIC_WRITE | GENERIC_ALL | MAXIMUM_ALLOWED)) != 0;
 }
 
+/* A normalized-name lookup that fails because the path does not exist proves the request cannot touch an existing protected
+ * object: the file system will answer not-found itself, or the create can only succeed one component at a time under a parent
+ * that does exist (and then the lookup resolves). Refusing these made every multi-level create on a volume that hosts a scope
+ * fail with ACCESS_DENIED instead of PATH_NOT_FOUND, so Windows could not build a new user's profile tree (it creates the
+ * deepest folder first and its parents on PATH_NOT_FOUND). Any other lookup failure stays "the whole volume may be in scope". */
+static BOOLEAN StageNameLookupProvesAbsent(_In_ NTSTATUS Status)
+{
+    return Status == STATUS_OBJECT_PATH_NOT_FOUND || Status == STATUS_OBJECT_NAME_NOT_FOUND ||
+        Status == STATUS_NO_SUCH_FILE || Status == STATUS_NOT_A_DIRECTORY;
+}
+
 /* Directory creates and metadata opens can change namespace state without a later SET_INFORMATION.
  * Resolve the target at PASSIVE_LEVEL; an unresolved name on a scoped volume is an admission refusal. */
 static FLT_PREOP_CALLBACK_STATUS StageAdmitDirectoryMutation(
@@ -2605,7 +2616,7 @@ static FLT_PREOP_CALLBACK_STATUS StageAdmitDirectoryMutation(
         FLT_FILE_NAME_NORMALIZED | FLT_FILE_NAME_QUERY_DEFAULT, &name);
     if (NT_SUCCESS(status)) status = FltParseFileNameInformation(name);
     if (!NT_SUCCESS(status)) {
-        deny = SafeUploadPolicyMayMatchInstanceVolume(Objects->Instance);
+        deny = !StageNameLookupProvesAbsent(status) && SafeUploadPolicyMayMatchInstanceVolume(Objects->Instance);
         if (deny) SafeUploadDenyAuxStatus(Data, status);
     } else {
         deny = SafeUploadPolicyMatchesCurrentOrPendingDestination(kind, &name->Name, TRUE) ||
@@ -2729,10 +2740,13 @@ static FLT_PREOP_CALLBACK_STATUS StageAdmit(PFLT_CALLBACK_DATA Data,
     }
     status = FltGetFileNameInformation(Data, FLT_FILE_NAME_NORMALIZED | FLT_FILE_NAME_QUERY_DEFAULT, &name);
     if (!NT_SUCCESS(status)) {
+        /* The path does not exist: nothing protected can be touched, so let the file system answer. */
+        if (StageNameLookupProvesAbsent(status)) return FLT_PREOP_SUCCESS_NO_CALLBACK;
 #if SAFEUPLOAD_STAGING_PROTOTYPE
         /* A name-resolution failure is relevant only for a request that can mutate.
          * Early boot image/manifest reads must pass even when C: has a boot scope. */
         if (writer && SafeUploadPolicyMayMatchInstanceVolume(Objects->Instance)) {
+            SafeUploadDenyAuxStatus(Data, status);
             status = STATUS_ACCESS_DENIED; goto Complete;
         }
 #endif
