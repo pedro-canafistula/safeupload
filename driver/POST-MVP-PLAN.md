@@ -347,6 +347,11 @@ test-only code. CodeQL, PREfast and ApiValidator at 0/0 on the release configura
 
 ## Later
 
+- **Network scopes (from the M1 review, F1).** A destination written as a UNC path is stored as given; the driver compares it with the
+  provider-normalized names (`\Device\Mup\...`, `\Device\LanmanRedirector\...`). Canonicalize both sides to one form for exact
+  matching, the resident volume cache and boot scopes before `networkPaths` or a UNC destination is offered. Until then the volume
+  rules only err on the conservative side (a network volume may match when any prefix is a network path).
+
 ### T13. Altitude, INF and signing (deferred)
 
 Deferred by the owner on 2026-10-08: the project runs only in test mode (test signing on, Secure Boot off) until told otherwise. The
