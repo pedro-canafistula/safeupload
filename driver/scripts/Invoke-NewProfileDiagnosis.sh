@@ -93,7 +93,8 @@ grep -qx 'INSTALL_DONE=True' "$ev/$tag-install.txt" || { echo 'install failed'; 
 
 if [ "$verifier" = boot-verifier ]; then
     remote <<<'& verifier.exe /standard /driver SafeUpload.sys; "VERIFIER_SET_EXIT=" + $LASTEXITCODE' | tee "$ev/$tag-verifier.txt"
-    grep -qx 'VERIFIER_SET_EXIT=0' "$ev/$tag-verifier.txt" || { echo 'could not turn the Driver Verifier on'; exit 21; }
+    # verifier.exe exits 0 when the change is applied and 2 when it is applied and a reboot is required (the case here).
+    grep -qxE 'VERIFIER_SET_EXIT=(0|2)' "$ev/$tag-verifier.txt" || { echo 'could not turn the Driver Verifier on'; exit 21; }
 fi
 echo "== reboot"
 remote <<<'& shutdown.exe /r /t 5 /c "T2 diagnosis"' >/dev/null; sleep 60; wait_ssh || { echo 'guest did not return'; exit 17; }
