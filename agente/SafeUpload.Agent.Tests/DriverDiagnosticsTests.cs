@@ -53,6 +53,18 @@ public sealed class DriverDiagnosticsTests
         Assert.Equal(expected, DriverDiagnosticsSource.MajorName(major));
     }
 
+    [Theory]
+    [InlineData(0u, "")]
+    [InlineData(1u, "nameUnresolved")]
+    [InlineData(3u, "policyScope")]
+    [InlineData(6u, "aliasCheckFailed")]
+    [InlineData(10u, "deleteOnClose")]
+    [InlineData(99u, "99")]
+    public void Refusal_reasons_get_readable_names(uint reason, string expected)
+    {
+        Assert.Equal(expected, DriverDiagnosticsSource.ReasonName(reason));
+    }
+
     [Fact]
     public void Queries_fail_cleanly_while_the_driver_is_not_connected()
     {

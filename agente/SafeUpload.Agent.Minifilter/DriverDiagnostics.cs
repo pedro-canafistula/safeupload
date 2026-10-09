@@ -16,7 +16,7 @@ public static class DiagnosticsCommand
 public static class DiagnosticsContract
 {
     public const int DenyRingBatchEntries = 16;
-    public const int DenyNameChars = 64;
+    public const int DenyNameChars = 62;
     public const int DenyRecordSize = 192;
     public const int DenyRingRequestSize = 24;
     public const int DenyRingBatchSize = 32 + DenyRingBatchEntries * DenyRecordSize;
@@ -73,6 +73,7 @@ public unsafe struct SafeUploadDenyRecord
     public uint Options;
     public uint NameChars;
     public uint AuxStatus;
+    public uint Reason;
     public fixed char Name[DiagnosticsContract.DenyNameChars];
 
     public string ReadName()
@@ -188,6 +189,7 @@ public sealed record DenyRecord(
     uint Access,
     uint Options,
     uint AuxStatus,
+    uint Reason,
     string Name);
 
 /// <summary>A page of the deny ring. <see cref="NextSequence"/> is the cursor for the next request.</summary>
@@ -235,7 +237,7 @@ public sealed partial class FilterPort
             records.Add(new DenyRecord(entry->Sequence, FromFileTimeOrMin(entry->SystemTime), entry->Status,
                 entry->SiteOffset, entry->ProcessId, entry->ThreadId, entry->MajorFunction,
                 entry->MinorFunction, entry->Irql, entry->Flags, entry->Access, entry->Options,
-                entry->AuxStatus, entry->ReadName()));
+                entry->AuxStatus, entry->Reason, entry->ReadName()));
         }
         return new DenyRingPage(records, batch.NextSequence, batch.ImageBase,
             (batch.Flags & DiagnosticsContract.BatchFlagGap) != 0);

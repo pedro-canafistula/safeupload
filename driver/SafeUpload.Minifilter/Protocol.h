@@ -1085,7 +1085,7 @@ typedef struct _SAFEUPLOAD_ADMISSION_EPOCH_STATUS {
  */
 #define SAFEUPLOAD_DENY_RING_SLOTS          ((UINT32) 256)
 #define SAFEUPLOAD_DENY_BATCH_ENTRIES       ((UINT32) 16)
-#define SAFEUPLOAD_DENY_NAME_CHARS          ((UINT32) 64)
+#define SAFEUPLOAD_DENY_NAME_CHARS          ((UINT32) 62)
 
 #define SAFEUPLOAD_DENY_FLAG_TOP_LEVEL_IRP        ((UINT32) 0x00000001)  /* IoGetTopLevelIrp() was non-NULL */
 #define SAFEUPLOAD_DENY_FLAG_TRANSACTION          ((UINT32) 0x00000002)
@@ -1099,6 +1099,19 @@ typedef struct _SAFEUPLOAD_ADMISSION_EPOCH_STATUS {
 #define SAFEUPLOAD_DENY_FLAG_NAME_TRUNCATED       ((UINT32) 0x00000200)  /* Name holds the tail of a longer name */
 
 #define SAFEUPLOAD_DENY_BATCH_FLAG_GAP            ((UINT32) 0x00000001)  /* records after the cursor were overwritten */
+
+/* Why an admission refused, recorded by the decision point (0 when only the choke point saw the refusal). */
+#define SAFEUPLOAD_DENY_REASON_NONE               ((UINT32) 0)
+#define SAFEUPLOAD_DENY_REASON_NAME_UNRESOLVED    ((UINT32) 1)   /* name lookup failed and the volume may hold a scope; AuxStatus = lookup status */
+#define SAFEUPLOAD_DENY_REASON_ACTIVATING_NAME    ((UINT32) 2)   /* the name is Activating: a pre-scope writer may exist */
+#define SAFEUPLOAD_DENY_REASON_POLICY_SCOPE       ((UINT32) 3)   /* the path matches a current or pending protected destination */
+#define SAFEUPLOAD_DENY_REASON_PROTECTED_NAMESPACE ((UINT32) 4)  /* the path is in the driver's protected namespace */
+#define SAFEUPLOAD_DENY_REASON_PROTECTED_ALIAS    ((UINT32) 5)   /* a hard link of the object is protected */
+#define SAFEUPLOAD_DENY_REASON_ALIAS_CHECK_FAILED ((UINT32) 6)   /* the alias lookup failed; AuxStatus = its status */
+#define SAFEUPLOAD_DENY_REASON_TOP_LEVEL_IRP      ((UINT32) 7)   /* recursive request: name queries are unsafe here */
+#define SAFEUPLOAD_DENY_REASON_PRIVATE_NAMESPACE  ((UINT32) 8)
+#define SAFEUPLOAD_DENY_REASON_TRUST_GATE         ((UINT32) 9)   /* protected name on a volume whose trust gate is not satisfied */
+#define SAFEUPLOAD_DENY_REASON_DELETE_ON_CLOSE    ((UINT32) 10)
 
 typedef struct _SAFEUPLOAD_DENY_RECORD {
     UINT64 Sequence;                // 1-based, strictly increasing; 0 never appears in a reply
@@ -1115,7 +1128,8 @@ typedef struct _SAFEUPLOAD_DENY_RECORD {
                                     // section: page protection; write: length
     UINT32 Options;                 // create: (disposition << 24) | options; write: low part of the offset
     UINT32 NameChars;
-    UINT32 AuxStatus;               // NTSTATUS of the failed lookup that made the refusal fall back to "the whole volume"; 0 = none
+    UINT32 AuxStatus;               // NTSTATUS of the failed lookup behind the refusal; 0 = none
+    UINT32 Reason;                  // SAFEUPLOAD_DENY_REASON_*
     WCHAR Name[SAFEUPLOAD_DENY_NAME_CHARS];
 } SAFEUPLOAD_DENY_RECORD, *PSAFEUPLOAD_DENY_RECORD;
 

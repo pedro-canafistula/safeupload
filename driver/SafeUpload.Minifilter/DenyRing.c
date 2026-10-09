@@ -24,7 +24,6 @@ static SAFEUPLOAD_DENY_RECORD DenyRing[SAFEUPLOAD_DENY_RING_SLOTS];
 static UINT64 DenyNext = 1;                       /* DenyLock */
 static ULONG_PTR DenyImageBase;
 static volatile LONG64 DenyHints[DENY_HINT_SLOTS];
-static volatile LONG64 DenyAuxHints[DENY_HINT_SLOTS];
 static volatile LONG64 DenyRecorded;
 static volatile LONG64 DenyAccessDenied;
 static volatile LONG64 DenyRetry;
@@ -76,21 +75,61 @@ VOID SafeUploadDenySiteHint(_In_ PFLT_CALLBACK_DATA Data, _In_ PVOID Site)
     InterlockedExchange64(&DenyHints[DenyHintIndex()], hint);
 }
 
-/* The status of the lookup that failed before the refusal (for example the name query of a directory create), shown in the
- * record as AuxStatus. Same keying as the site hint: one callback data, one thread, consumed once. */
-VOID SafeUploadDenyAuxStatus(_In_ PFLT_CALLBACK_DATA Data, _In_ NTSTATUS Status)
-{
-    LONG64 hint = (LONG64)(((ULONG64)DenyDataKey(Data) << 32) | (ULONG64)(ULONG)Status);
+/* Per-refusal detail from the decision point: why, the status of a failed lookup, and the name it had resolved. Same keying
+ * as the site hint (one callback data, one thread, consumed once). The slot is claimed with a busy flag so a writer that is
+ * preempted can never be read half-written; a contended or stale slot is simply dropped. */
+typedef struct _DENY_DETAIL {
+    volatile LONG Busy;
+    ULONG Key;
+    UINT32 Reason;
+    UINT32 Aux;
+    USHORT NameChars;
+    WCHAR Name[SAFEUPLOAD_DENY_NAME_CHARS];
+} DENY_DETAIL;
+static DENY_DETAIL DenyDetails[DENY_HINT_SLOTS];
 
-    InterlockedExchange64(&DenyAuxHints[DenyHintIndex()], hint);
+VOID SafeUploadDenyDetail(_In_ PFLT_CALLBACK_DATA Data, _In_ UINT32 Reason, _In_ NTSTATUS Aux, _In_opt_ PCUNICODE_STRING Name)
+{
+    DENY_DETAIL *slot = &DenyDetails[DenyHintIndex()];
+    ULONG chars = 0;
+    const WCHAR *source = NULL;
+
+    if (InterlockedCompareExchange(&slot->Busy, 1, 0) != 0) return;
+    slot->Key = DenyDataKey(Data);
+    slot->Reason = Reason;
+    slot->Aux = (UINT32)Aux;
+    if (Name != NULL && Name->Buffer != NULL && (Name->Length & 1) == 0) {
+        chars = Name->Length / sizeof(WCHAR);
+        source = Name->Buffer;
+        if (chars > SAFEUPLOAD_DENY_NAME_CHARS) {
+            source += chars - SAFEUPLOAD_DENY_NAME_CHARS;
+            chars = SAFEUPLOAD_DENY_NAME_CHARS;
+        }
+        RtlCopyMemory(slot->Name, source, chars * sizeof(WCHAR));
+    }
+    slot->NameChars = (USHORT)chars;
+    InterlockedExchange(&slot->Busy, 0);
 }
 
-static UINT32 DenyTakeAux(_In_ PFLT_CALLBACK_DATA Data)
+static VOID DenyTakeDetail(_In_ PFLT_CALLBACK_DATA Data, _Inout_ PSAFEUPLOAD_DENY_RECORD Record)
 {
-    LONG64 hint = InterlockedExchange64(&DenyAuxHints[DenyHintIndex()], 0);
+    DENY_DETAIL *slot = &DenyDetails[DenyHintIndex()];
 
-    if (hint != 0 && (ULONG)((ULONG64)hint >> 32) == DenyDataKey(Data)) return (UINT32)(ULONG64)hint;
-    return 0;
+    if (InterlockedCompareExchange(&slot->Busy, 1, 0) != 0) return;
+    if (slot->Key != 0 && slot->Key == DenyDataKey(Data)) {
+        Record->Reason = slot->Reason;
+        Record->AuxStatus = slot->Aux;
+        if (slot->NameChars != 0) {
+            /* The resolved name is more useful than the request's own (possibly relative) one. */
+            RtlCopyMemory(Record->Name, slot->Name, slot->NameChars * sizeof(WCHAR));
+            Record->NameChars = slot->NameChars;
+            Record->Flags &= ~(SAFEUPLOAD_DENY_FLAG_NAME_IS_CREATE_NAME | SAFEUPLOAD_DENY_FLAG_NAME_IS_RENAME_TARGET |
+                SAFEUPLOAD_DENY_FLAG_NAME_TRUNCATED);
+            RtlZeroMemory(&Record->Name[slot->NameChars], (SAFEUPLOAD_DENY_NAME_CHARS - slot->NameChars) * sizeof(WCHAR));
+        }
+    }
+    slot->Key = 0;
+    InterlockedExchange(&slot->Busy, 0);
 }
 
 static UINT32 DenyTakeHint(_In_ PFLT_CALLBACK_DATA Data)
@@ -214,7 +253,6 @@ VOID SafeUploadDenyNote(_In_ PFLT_CALLBACK_DATA Data, _In_opt_ PCFLT_RELATED_OBJ
     if (record.ProcessId != 0 && record.ProcessId == SafeUploadData.InspectorProcessId)
         record.Flags |= SAFEUPLOAD_DENY_FLAG_SERVICE_PROCESS;
     record.SiteOffset = DenyTakeHint(Data);
-    record.AuxStatus = DenyTakeAux(Data);
 
     __try {
         DenyCaptureRequest(Data, &record);
@@ -224,6 +262,7 @@ VOID SafeUploadDenyNote(_In_ PFLT_CALLBACK_DATA Data, _In_opt_ PCFLT_RELATED_OBJ
         RtlZeroMemory(record.Name, sizeof(record.Name));
     }
 
+    DenyTakeDetail(Data, &record);
     KeQuerySystemTimePrecise((PLARGE_INTEGER)&record.SystemTime);
     DenyAcquire(&irql);
     record.Sequence = DenyNext;

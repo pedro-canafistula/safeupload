@@ -122,6 +122,7 @@ public sealed class DriverDiagnosticsSource
                     ["flags"] = FlagNames(record.Flags),
                     ["access"] = "0x" + record.Access.ToString("X"),
                     ["options"] = "0x" + record.Options.ToString("X"),
+                    ["reason"] = ReasonName(record.Reason),
                     ["auxStatus"] = record.AuxStatus == 0 ? null : "0x" + record.AuxStatus.ToString("X8"),
                     ["auxStatusName"] = record.AuxStatus == 0 ? null : StatusName(record.AuxStatus),
                     ["name"] = record.Name.Length == 0 ? null : record.Name,
@@ -181,6 +182,22 @@ public sealed class DriverDiagnosticsSource
         0xC0000184 => "STATUS_INVALID_DEVICE_STATE",
         0xC0000225 => "STATUS_NOT_FOUND",
         _ => "",
+    };
+
+    internal static string ReasonName(uint reason) => reason switch
+    {
+        0 => "",
+        1 => "nameUnresolved",
+        2 => "activatingName",
+        3 => "policyScope",
+        4 => "protectedNamespace",
+        5 => "protectedAlias",
+        6 => "aliasCheckFailed",
+        7 => "topLevelIrp",
+        8 => "privateNamespace",
+        9 => "trustGate",
+        10 => "deleteOnClose",
+        _ => reason.ToString(),
     };
 
     internal static string MajorName(uint major) => major switch

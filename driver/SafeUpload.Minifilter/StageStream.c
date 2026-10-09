@@ -2609,19 +2609,25 @@ static FLT_PREOP_CALLBACK_STATUS StageAdmitDirectoryMutation(
 {
     PFLT_FILE_NAME_INFORMATION name = NULL;
     SAFEUPLOAD_VOLUME_KIND kind = StageVolumeKind(Objects->Instance);
-    NTSTATUS status;
+    NTSTATUS status, lookup = STATUS_SUCCESS;
     BOOLEAN deny;
+    UINT32 reason = SAFEUPLOAD_DENY_REASON_NONE;
     if (!StageDirectoryCreateCanMutate(Data)) return FLT_PREOP_SUCCESS_NO_CALLBACK;
     status = FltGetFileNameInformation(Data,
         FLT_FILE_NAME_NORMALIZED | FLT_FILE_NAME_QUERY_DEFAULT, &name);
     if (NT_SUCCESS(status)) status = FltParseFileNameInformation(name);
     if (!NT_SUCCESS(status)) {
         deny = !StageNameLookupProvesAbsent(status) && SafeUploadPolicyMayMatchInstanceVolume(Objects->Instance);
-        if (deny) SafeUploadDenyAuxStatus(Data, status);
+        reason = SAFEUPLOAD_DENY_REASON_NAME_UNRESOLVED;
+        lookup = status;
+    } else if (SafeUploadPolicyMatchesCurrentOrPendingDestination(kind, &name->Name, TRUE)) {
+        deny = TRUE;
+        reason = SAFEUPLOAD_DENY_REASON_POLICY_SCOPE;
     } else {
-        deny = SafeUploadPolicyMatchesCurrentOrPendingDestination(kind, &name->Name, TRUE) ||
-            SafeUploadStageTouchesProtectedNamespace(name, kind);
+        deny = SafeUploadStageTouchesProtectedNamespace(name, kind);
+        reason = SAFEUPLOAD_DENY_REASON_PROTECTED_NAMESPACE;
     }
+    if (deny) SafeUploadDenyDetail(Data, reason, lookup, name != NULL ? &name->Name : NULL);
     if (name != NULL) FltReleaseFileNameInformation(name);
     if (!deny) return FLT_PREOP_SUCCESS_NO_CALLBACK;
     Data->IoStatus.Status = STATUS_ACCESS_DENIED;
@@ -2646,6 +2652,8 @@ static FLT_PREOP_CALLBACK_STATUS StageAdmit(PFLT_CALLBACK_DATA Data,
     ULONGLONG zeroId = 0;
     SAFEUPLOAD_VOLUME_KIND kind;
     NTSTATUS status = STATUS_SUCCESS;
+    UINT32 denyReason = SAFEUPLOAD_DENY_REASON_NONE;   /* recorded in the deny ring when the create is refused */
+    NTSTATUS denyAux = STATUS_SUCCESS;
     /* StageAdmit owns the single by-ID classification in the prototype; do
      * not repeat the TxF helper's bounded open before its common by-ID path. */
     if (!FlagOn(Data->Iopb->Parameters.Create.Options, FILE_OPEN_BY_FILE_ID) &&
@@ -2746,7 +2754,8 @@ static FLT_PREOP_CALLBACK_STATUS StageAdmit(PFLT_CALLBACK_DATA Data,
         /* A name-resolution failure is relevant only for a request that can mutate.
          * Early boot image/manifest reads must pass even when C: has a boot scope. */
         if (writer && SafeUploadPolicyMayMatchInstanceVolume(Objects->Instance)) {
-            SafeUploadDenyAuxStatus(Data, status);
+            denyReason = SAFEUPLOAD_DENY_REASON_NAME_UNRESOLVED;
+            denyAux = status;
             status = STATUS_ACCESS_DENIED; goto Complete;
         }
 #endif
@@ -2765,6 +2774,8 @@ static FLT_PREOP_CALLBACK_STATUS StageAdmit(PFLT_CALLBACK_DATA Data,
             FltReleaseFileNameInformation(name);
             return FLT_PREOP_SUCCESS_NO_CALLBACK;
         }
+        denyReason = SAFEUPLOAD_DENY_REASON_NAME_UNRESOLVED;
+        denyAux = status;
         goto Complete;
     }
     relative.Buffer = (PWCH)((PUCHAR)name->Name.Buffer + name->Volume.Length);
@@ -2778,17 +2789,19 @@ static FLT_PREOP_CALLBACK_STATUS StageAdmit(PFLT_CALLBACK_DATA Data,
     }
 #if SAFEUPLOAD_STAGING_PROTOTYPE
     if (writer && !privateNamespace && SafeUploadStageWritersNameActivating(Objects->Instance, &name->Name)) {
+        denyReason = SAFEUPLOAD_DENY_REASON_ACTIVATING_NAME;
         status = STATUS_ACCESS_DENIED; goto Complete;
     }
 #endif
     if (RtlPrefixUnicodeString(&privatePrefix, &relative, TRUE)) {
-        if (!service) { status = STATUS_ACCESS_DENIED; goto Complete; }
+        if (!service) { denyReason = SAFEUPLOAD_DENY_REASON_PRIVATE_NAMESPACE; status = STATUS_ACCESS_DENIED; goto Complete; }
         handled = FALSE; goto Complete;
     }
     if (!privateNamespace && writer && SafeUploadStageProtectedName(name, kind) &&
         (!SafeUploadInstanceTrustGateSatisfied(Objects->Instance) || !SafeUploadIsAuthenticatedClient())) {
         /* Canary results describe the primitive only; trust is assigned from
          * the immutable setup flags and can never be upgraded on this mount. */
+        denyReason = SAFEUPLOAD_DENY_REASON_TRUST_GATE;
         status = STATUS_ACCESS_DENIED;
         goto Complete;
     }
@@ -2797,7 +2810,11 @@ static FLT_PREOP_CALLBACK_STATUS StageAdmit(PFLT_CALLBACK_DATA Data,
         if (writerAccess || disposition == FILE_SUPERSEDE || disposition == FILE_OVERWRITE ||
             disposition == FILE_OVERWRITE_IF) {
             status = SafeUploadStageCheckNamedAliases(Objects->Instance, name, kind, &protectedAlias);
-            if (status != STATUS_SUCCESS || protectedAlias) { status = STATUS_ACCESS_DENIED; goto Complete; }
+            if (status != STATUS_SUCCESS || protectedAlias) {
+                denyReason = protectedAlias ? SAFEUPLOAD_DENY_REASON_PROTECTED_ALIAS : SAFEUPLOAD_DENY_REASON_ALIAS_CHECK_FAILED;
+                denyAux = status;
+                status = STATUS_ACCESS_DENIED; goto Complete;
+            }
         }
         handled = FALSE; goto Complete;
     }
@@ -2816,6 +2833,7 @@ static FLT_PREOP_CALLBACK_STATUS StageAdmit(PFLT_CALLBACK_DATA Data,
     /* FILE_DELETE_ON_CLOSE on a protected name deletes the physical file at cleanup without any SET_INFORMATION, so
      * the disposition gate never sees it; a DELETE-only open is not a writer and would fall through to NTFS. */
     if (!privateNamespace && FlagOn(Data->Iopb->Parameters.Create.Options, FILE_DELETE_ON_CLOSE)) {
+        denyReason = SAFEUPLOAD_DENY_REASON_DELETE_ON_CLOSE;
         status = STATUS_ACCESS_DENIED;
         goto Complete;
     }
@@ -2823,6 +2841,8 @@ static FLT_PREOP_CALLBACK_STATUS StageAdmit(PFLT_CALLBACK_DATA Data,
     Data->IoStatus.Information = 0;
     status = StageCreate(Data, Objects, name, kind, writer, expectedView, privateNamespace, &handled);
 Complete:
+    if (handled && !NT_SUCCESS(status) && denyReason != SAFEUPLOAD_DENY_REASON_NONE)
+        SafeUploadDenyDetail(Data, denyReason, denyAux, name != NULL ? &name->Name : NULL);
     if (name != NULL) FltReleaseFileNameInformation(name);
     if (privateName != NULL) ExFreePoolWithTag(privateName, STAGE_TAG);
     if (!handled) return FLT_PREOP_SUCCESS_NO_CALLBACK;
@@ -2845,6 +2865,8 @@ static FLT_PREOP_CALLBACK_STATUS StagePhysicalMutationEx(PFLT_CALLBACK_DATA Data
         FltGetRequestorProcessId(Data) == SafeUploadData.InspectorProcessId;
     FLT_FILESYSTEM_TYPE fs;
     NTSTATUS status = STATUS_ACCESS_DENIED;
+    UINT32 denyReason = SAFEUPLOAD_DENY_REASON_NONE;   /* recorded in the deny ring when the request is refused */
+    NTSTATUS denyAux = STATUS_SUCCESS;
     if (FlagOn(Data->Iopb->IrpFlags, IRP_PAGING_IO)) return FLT_PREOP_SUCCESS_NO_CALLBACK;
     /* Querying lower metadata is forbidden in fast I/O, paging/section paths
      * or with a top-level IRP. This direct-mutation path never gates paging I/O. */
@@ -2852,14 +2874,26 @@ static FLT_PREOP_CALLBACK_STATUS StagePhysicalMutationEx(PFLT_CALLBACK_DATA Data
     /* H(F) keeps an admitted writer usable through cleanup. Its mutating IRP
      * was counted before this check and is paired by post-operation. */
     if (TrackedWriter) return FLT_PREOP_SUCCESS_NO_CALLBACK;
-    if (KeGetCurrentIrql() != PASSIVE_LEVEL || IoGetTopLevelIrp() != NULL) goto Complete;
+    if (KeGetCurrentIrql() != PASSIVE_LEVEL || IoGetTopLevelIrp() != NULL) {
+        denyReason = SAFEUPLOAD_DENY_REASON_TOP_LEVEL_IRP;
+        goto Complete;
+    }
     status = FltGetFileNameInformation(Data, FLT_FILE_NAME_NORMALIZED | FLT_FILE_NAME_QUERY_DEFAULT, &name);
-    if (!NT_SUCCESS(status)) goto Complete;
+    if (!NT_SUCCESS(status)) {
+        denyReason = SAFEUPLOAD_DENY_REASON_NAME_UNRESOLVED;
+        denyAux = status;
+        goto Complete;
+    }
     status = FltParseFileNameInformation(name);
-    if (!NT_SUCCESS(status)) goto Complete;
+    if (!NT_SUCCESS(status)) {
+        denyReason = SAFEUPLOAD_DENY_REASON_NAME_UNRESOLVED;
+        denyAux = status;
+        goto Complete;
+    }
 #if SAFEUPLOAD_STAGING_PROTOTYPE
     if (SafeUploadStageWritersNameActivating(Objects->Instance, &name->Name)) {
         unresolved = FALSE;
+        denyReason = SAFEUPLOAD_DENY_REASON_ACTIVATING_NAME;
         status = STATUS_ACCESS_DENIED;
         goto Complete;
     }
@@ -2868,17 +2902,23 @@ static FLT_PREOP_CALLBACK_STATUS StagePhysicalMutationEx(PFLT_CALLBACK_DATA Data
      * other handles use the current+pending policy and alias checks. */
     if (SafeUploadPolicyMatchesCurrentOrPendingDestination(kind, &name->Name, IncludeAncestors)) {
         unresolved = FALSE;
+        denyReason = SAFEUPLOAD_DENY_REASON_POLICY_SCOPE;
         status = STATUS_ACCESS_DENIED;
         goto Complete;
     }
     if (!service && (IncludeAncestors ? SafeUploadStageTouchesProtectedNamespace(name, kind) :
         SafeUploadStageProtectedName(name, kind))) {
         unresolved = FALSE;
+        denyReason = SAFEUPLOAD_DENY_REASON_PROTECTED_NAMESPACE;
         status = STATUS_ACCESS_DENIED;
         goto Complete;
     }
     status = FltGetFileSystemType(Objects->Instance, &fs);
-    if (!NT_SUCCESS(status)) goto Complete;
+    if (!NT_SUCCESS(status)) {
+        denyReason = SAFEUPLOAD_DENY_REASON_NAME_UNRESOLVED;
+        denyAux = status;
+        goto Complete;
+    }
     if (fs != FLT_FSTYPE_NTFS) {
         status = STATUS_SUCCESS;
         goto Complete;
@@ -2887,14 +2927,21 @@ static FLT_PREOP_CALLBACK_STATUS StagePhysicalMutationEx(PFLT_CALLBACK_DATA Data
         &name->Volume, kind, &protectedAlias);
     if (NT_SUCCESS(status)) {
         unresolved = FALSE;
-        if (protectedAlias) status = STATUS_ACCESS_DENIED;
+        if (protectedAlias) {
+            denyReason = SAFEUPLOAD_DENY_REASON_PROTECTED_ALIAS;
+            status = STATUS_ACCESS_DENIED;
+        }
+    } else {
+        denyReason = SAFEUPLOAD_DENY_REASON_ALIAS_CHECK_FAILED;
+        denyAux = status;
     }
 Complete:
-    if (name != NULL) FltReleaseFileNameInformation(name);
     if (unresolved && !SafeUploadPolicyMayMatchInstanceVolume(Objects->Instance))
         status = STATUS_SUCCESS;
+    if (status != STATUS_SUCCESS)
+        SafeUploadDenyDetail(Data, denyReason, denyAux, name != NULL ? &name->Name : NULL);
+    if (name != NULL) FltReleaseFileNameInformation(name);
     if (status == STATUS_SUCCESS) return FLT_PREOP_SUCCESS_NO_CALLBACK;
-    if (unresolved) SafeUploadDenyAuxStatus(Data, status);
     Data->IoStatus.Status = STATUS_ACCESS_DENIED;
     Data->IoStatus.Information = 0;
     return FLT_PREOP_COMPLETE;
