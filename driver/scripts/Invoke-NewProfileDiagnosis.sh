@@ -15,7 +15,14 @@ host=$(awk -v d="$dom" '$1==d{print $2}' driver/scripts/debuggees.txt); [ -n "$h
 V="virsh -c qemu:///system"; ev="driver/evidence/$(date +%F)"; mkdir -p "$ev"
 opts=(-F /dev/null -i /home/victor/.ssh/id_ed25519 -o BatchMode=yes -o ConnectTimeout=10 -o LogLevel=ERROR -o StrictHostKeyChecking=accept-new)
 guest='C:/Users/vika/Documents'
-clean() { perl -pe 's/<Objs.*?<\/Objs>//g' | tr -d '\r' | grep -v -e '^$' -e CLIXML; }
+# Keeps error records (they arrive as CLIXML <S S="Error"> strings) as "ERROR:" lines and drops only progress records.
+clean() { python3 -c '
+import re, sys, html
+text = sys.stdin.read()
+errors = ["ERROR: " + html.unescape(m).replace("_x000D__x000A_", "\n") for m in re.findall(r"<S S=\"Error\">(.*?)</S>", text, flags=re.S)]
+text = re.sub(r"<Objs.*?</Objs>", "", text, flags=re.S).replace("#< CLIXML", "").replace("\r", "")
+print("\n".join(line for line in (text.split("\n") + errors) if line.strip()))
+'; }
 remote() { python3 driver/scripts/remote_ps.py "$host" 2>&1 | clean; }
 wait_ssh() { for _ in $(seq 1 90); do ssh "${opts[@]}" -o ConnectTimeout=5 "vika@$host" 'echo up' >/dev/null 2>&1 && return 0; sleep 10; done; return 1; }
 
@@ -48,6 +55,7 @@ echo "== stage files and install"
 sleep 5
 scp "${opts[@]}" "$sys" "vika@$host:$guest/SafeUpload-t2.sys" && scp "${opts[@]}" "$zip" "vika@$host:$guest/stage-service-publish.zip" \
   && scp "${opts[@]}" agente/scripts/Install-SafeUploadAgent.ps1 "vika@$host:$guest/Install-SafeUploadAgent.ps1" \
+  && scp "${opts[@]}" agente/scripts/Protect-SafeUploadPolicy.ps1 "vika@$host:$guest/Protect-SafeUploadPolicy.ps1" \
   && scp "${opts[@]}" agente/scripts/Get-SafeUploadDiagnostics.ps1 "vika@$host:$guest/Get-SafeUploadDiagnostics.ps1" || { echo 'copy failed'; exit 14; }
 remote <<'PS' | tee "$ev/$tag-install.txt"
 $ErrorActionPreference = 'Stop'
@@ -61,8 +69,7 @@ $data = 'C:\ProgramData\SafeUpload'
 New-Item -ItemType Directory -Force -Path $data | Out-Null
 $policy = @{ version = 1; activeCategories = @('Cpf'); monitoredScopes = @{ extensions = @('.txt'); destinationPaths = @('C:\Protected'); removableDrives = $false; networkPaths = $false }; failOpen = $false; auditOnly = $false; overrideAllowed = $false } | ConvertTo-Json -Depth 5
 Set-Content -LiteralPath "$data\policy.json" -Value $policy -Encoding UTF8
-& icacls.exe $data /setowner 'NT AUTHORITY\SYSTEM' /T | Out-Null
-& icacls.exe $data /inheritance:r /grant:r 'NT AUTHORITY\SYSTEM:(OI)(CI)F' 'BUILTIN\Administrators:(OI)(CI)F' /T | Out-Null
+& "$d\Protect-SafeUploadPolicy.ps1"
 & "$d\Install-SafeUploadAgent.ps1" -ServiceExecutablePath "$agentDir\SafeUpload.Agent.Service.exe"
 'ImagePath=' + (Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Services\SafeUploadAgent').ImagePath
 'DriverStart=' + (Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Services\SafeUpload').Start

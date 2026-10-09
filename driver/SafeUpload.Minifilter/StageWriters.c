@@ -5672,7 +5672,10 @@ static VOID StageRegistryActivationProcess(_In_ PSTAGE_REGISTRY_ENTRY Entry,
         &noLinkNames, &unionLinkScoped, &currentLinkScoped, &scopeReceipt);
     if (status == STATUS_MORE_ENTRIES) {
         StageRegistryRecordDeferral(Entry, status, SAFEUPLOAD_ACTIVATING_CLASSIFY_STEP_LINK_SCAN_MORE);
-        *MoreWork = TRUE;
+        /* STATUS_MORE_ENTRIES also reports a scan that parked on rename churn or waits for a transaction: the
+         * continuation is empty and the event that ends the wait queues its own pass. Only a saved continuation
+         * (the next link to read) or an exhausted budget is work this worker can finish on another pass. */
+        if (*WorkBudget == 0 || InterlockedCompareExchange(&Entry->ScopeScanNextLink, 0, 0) > 0) *MoreWork = TRUE;
         goto Exit;
     }
     if (!NT_SUCCESS(status)) {
