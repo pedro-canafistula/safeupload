@@ -329,3 +329,20 @@ Frozen worktree at `1989f86a`, agent `m1-agent6`, judged with `cellok.py` (two-t
 Not run on this line: the rest of the A/R/C rows, the other three BLOCK cells and B02 for C01-C03. `1989f86a` changes the registry limit, the delete-pending probe, the nested-write
 rule and the pruner wake-up, so the full regression of the 69-row gate on the final driver is still owed; the rows above are a sample, not the gate.
 
+
+### Host disk and disposable run disks (2026-10-09 afternoon)
+
+The main disk filled because of the project, not because of the owner's files: about 239 GB of memory dumps from the Oct 1-7 hang and bugcheck investigations sat in
+`/var/tmp` (each 8 GB capture kept up to three times: libvirt's ELF, a readable copy, the WinDbg conversion), every suite case and T3/U01 run left its multi-GB checkpoint
+overlay stacked on the debuggee's disk (chains reached 126 files), and a snapper snapshot of the root subvolume (#39, taken by an update at 11:16) pins whatever existed at that
+moment, so deleting those files gives nothing back until the snapshot goes. The dumps are deleted (the owner's `sudo rm`); win10-debug2 was merged into one file
+(`blockcopy --pivot`, now `/mnt/storage/libvirt/images/win10-debug2.flat-20261009.qcow2`) and its 128 old chain files deleted after a chain check of every domain.
+The owner now allows the main disk when it is faster (it is NVMe; the Storage disk is a spinning HDD), on the condition that nothing piles up again.
+
+Harness change `f8be9da9`: a debuggee idles shut off on a base disk that no run writes. `run_disk_begin` (`driver/scripts/run-disk.sh`) creates a fresh overlay of the base,
+points the domain at it and starts the guest; `run_disk_end` powers the guest off, points the domain back at the base and deletes every run file above it (the run overlay and the
+wrapper's live checkpoint; anything else, anything deeper than two, or anything another domain names stops it with the files kept), and checks the base's mtime and size are
+unchanged (`RunDiskBaseUntouched=True`). The suite batch, the T3 runner and the U01 runner use it; rollback and recovery overlays are gone, and every run now starts from the same
+disk (it used to start from the previous run's restored state). Tested on win10-debug2 (`rdtest1`): boot 110 s, `BaselineClean=True`, overlay deleted, base untouched.
+Still open: 8 project overlays that win10-debug's chain does not use (about 27 GB, created before snapshot #39) - deleting them was refused by the session's permission check, so
+they wait for the owner; win10-debug's own 75-file chain is left as it is (not used by the harness now).
