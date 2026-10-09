@@ -115,3 +115,31 @@ source when an entry enters a waiting state, recomputed each pass; O(1) lookup t
 wake-ups counted). C05 on the pair `t1-wake1`/`t1-agent4` (ordinary): idle rate 8.1 passes/s (limit 10), `C05DenialLedger` PASS, verdict INCONCLUSIVE with
 latency-only blockers (tier-1 pass). Rows A01-A04, R02, X01, C03, C04, C01 (approve and block) run next.
 
+### T2 verified end to end by a real first sign-in (03:35, experiment `t2diag13`, driver `t2-anc1` = `8c9adc21`)
+
+The experiment now does a real interactive first sign-in (batch-logon tasks load no profile, which is why no suite row ever caught this; the harness
+pre-creates the actor profile): after the install the guest reboots with the driver loaded and the agent Ready, a brand-new account `t2user` has
+autologon and a logon-triggered task. Result: the account signs in (console session active, explorer running, profile `C:\Users\t2user` created,
+Profile Service events only 1531/1532 and one non-fatal 1534 component notification) and the scope behaves as designed for a standard user:
+`mkdir C:\Protected\dirA` and a deep `mkdir` in the protected folder are refused (reason `policyScope`), a clean save into it is staged and published
+(`ok.txt`, 7 bytes), a deep tree and a file under the profile work. Before the fixes the same account could not sign in at all.
+
+The ring since boot still held refusals outside every scope that did not block sign-in; named by the ring:
+- 66x `aliasCheckFailed` / `STATUS_IO_REPARSE_TAG_NOT_HANDLED` on `WindowsApps\...`: Store app-execution aliases are reparse files and the alias
+  probe followed the reparse. Fixed in `68ad4ee4` (probe opens with FILE_OPEN_REPARSE_POINT; it needs identity and link count; a create through a
+  symbolic link re-enters the filter under the target's name).
+- 2x `aliasCheckFailed` / `STATUS_SHARING_VIOLATION` on `pagefile.sys` (kernel-mode, at boot): fixed in `68ad4ee4` by excluding `pagefile.sys`,
+  `swapfile.sys`, `hiberfil.sys` at the volume root by name (exact; they cannot be hard links of a protected file).
+- 5x `activatingName` on out-of-scope files (`NTUSER.DAT`, SPP store, Libraries): a transient property of the pre-scope-writer rule (a name whose alias
+  probe is still pending refuses a second writer). Not redesigned here; carried to T3 because heavy concurrent writers (installers) are the workload
+  that would hit it, and it is the leading suspect for the Microsoft 365 install failure.
+- 2x refusals of `\;LanmanRedirector` creates and 1 `QUERY_INFORMATION` without a reason: not yet named.
+
+### T1: R02 concern (03:36)
+
+On the event-driven build R02 (ordinary) did not pass: the final Free/Protected proof saw the promotion on the replaced-incarnation basis instead of the
+held one (`predicateFlags` 0x2F, bit 0x20 set), i.e. the reclaim pass that promotes Y ran after the file system had torn the stream down. A01-A04 pass.
+Hypothesis: the machine-wide wake storm used to make a pass start almost immediately after the holder's cleanup; the targeted worker still queues a
+pass at the last writer's cleanup (unconditional, `SafeUploadStageWritersOnCleanup`) but a delayed-work-queue pass can start later. Not assumed:
+R02 is being repeated twice on the T1 pair (`t1r`) and will be compared with the T0 pair before anything is changed.
+
