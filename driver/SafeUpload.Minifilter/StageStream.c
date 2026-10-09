@@ -2778,6 +2778,14 @@ static FLT_PREOP_CALLBACK_STATUS StageAdmit(PFLT_CALLBACK_DATA Data,
         denyAux = status;
         goto Complete;
     }
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    /* A volume no current, pending or boot scope can match has nothing to protect. Without this a name the classifier
+     * cannot place on a volume (the redirector's own device, \;LanmanRedirector) read as "protected" and was refused. */
+    if (!SafeUploadPolicyMayMatchInstanceVolume(Objects->Instance)) {
+        handled = FALSE;
+        goto Complete;
+    }
+#endif
     relative.Buffer = (PWCH)((PUCHAR)name->Name.Buffer + name->Volume.Length);
     relative.Length = name->Name.Length - name->Volume.Length;
     relative.MaximumLength = relative.Length;
@@ -2788,7 +2796,11 @@ static FLT_PREOP_CALLBACK_STATUS StageAdmit(PFLT_CALLBACK_DATA Data,
         StageRelease(&StageNamespaceResource);
     }
 #if SAFEUPLOAD_STAGING_PROTOTYPE
-    if (writer && !privateNamespace && SafeUploadStageWritersNameActivating(Objects->Instance, &name->Name)) {
+    /* The gate protects a name that may be inside a scope while its entry is classified. A name outside every current and
+     * pending scope is decided below by the create's own alias check (a link inside a scope is refused there), and
+     * refusing it here only broke unrelated writers during the classification window (FontCache, the licensing store). */
+    if (writer && !privateNamespace && SafeUploadStageProtectedName(name, kind) &&
+        SafeUploadStageWritersNameActivating(Objects->Instance, &name->Name)) {
         denyReason = SAFEUPLOAD_DENY_REASON_ACTIVATING_NAME;
         status = STATUS_ACCESS_DENIED; goto Complete;
     }
@@ -2891,7 +2903,10 @@ static FLT_PREOP_CALLBACK_STATUS StagePhysicalMutationEx(PFLT_CALLBACK_DATA Data
         goto Complete;
     }
 #if SAFEUPLOAD_STAGING_PROTOTYPE
-    if (SafeUploadStageWritersNameActivating(Objects->Instance, &name->Name)) {
+    /* Same rule as the create gate: only a name that may be inside a scope waits for its entry; the policy and alias
+     * checks below decide every other name. */
+    if ((IncludeAncestors ? SafeUploadStageTouchesProtectedNamespace(name, kind) : SafeUploadStageProtectedName(name, kind)) &&
+        SafeUploadStageWritersNameActivating(Objects->Instance, &name->Name)) {
         unresolved = FALSE;
         denyReason = SAFEUPLOAD_DENY_REASON_ACTIVATING_NAME;
         status = STATUS_ACCESS_DENIED;

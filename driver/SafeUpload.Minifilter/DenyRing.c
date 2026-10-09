@@ -201,6 +201,9 @@ static VOID DenyCaptureRequest(_In_ PFLT_CALLBACK_DATA Data, _Inout_ PSAFEUPLOAD
             }
             break;
         }
+    case IRP_MJ_QUERY_INFORMATION:
+        Record->Access = (UINT32)parameters->QueryFileInformation.FileInformationClass;
+        break;
     case IRP_MJ_WRITE:
         Record->Access = parameters->Write.Length;
         Record->Options = parameters->Write.ByteOffset.LowPart;
