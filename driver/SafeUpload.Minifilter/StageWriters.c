@@ -322,7 +322,7 @@ _IRQL_requires_max_(APC_LEVEL)
 static VOID StageRegistryRecordClassificationResult(_In_ PSTAGE_REGISTRY_ENTRY Entry,
     _In_ NTSTATUS Status, _In_ UINT32 Step);
 static VOID StageRegistryActivationProcess(_In_ PSTAGE_REGISTRY_ENTRY Entry,
-    _In_ PFLT_INSTANCE Instance, _In_ PFLT_VOLUME Volume, _Inout_ PULONG WorkBudget);
+    _In_ PFLT_INSTANCE Instance, _In_ PFLT_VOLUME Volume, _Inout_ PULONG WorkBudget, _Inout_ PBOOLEAN MoreWork);
 
 _IRQL_requires_(PASSIVE_LEVEL)
 NTSTATUS SafeUploadStageWritersClassifyById(_In_ PFLT_INSTANCE Instance,
@@ -449,6 +449,10 @@ static volatile LONG64 RegistryDroppedAtDismount;
 static volatile LONG64 RegistryDroppedWhileMounted;
 static volatile LONG64 RegistryPruned;
 static volatile LONG64 RegistryReclaimPasses;
+/* Passes that ended with a scan or alias probe still waiting on an outside event and so did not requeue themselves,
+ * and passes that did requeue because bounded work remained (see StageRegistryReclaimWorker). */
+static volatile LONG64 RegistryReclaimParkedPasses;
+static volatile LONG64 RegistryReclaimMoreWorkRequeues;
 static volatile LONG64 RegistryChangeSequence;
 static volatile LONG RegistryReclaimQueued;
 static volatile LONG RegistryReclaimResetCursor;
@@ -5575,8 +5579,11 @@ static BOOLEAN StageRegistryEntryHoldsNoWriterState(_In_ PSTAGE_REGISTRY_ENTRY E
         SAFEUPLOAD_ACTIVATING_CLASSIFY_STEP_EXIT_SITE); \
     goto Exit; } while (0)
 
+/* MoreWork is set only when this entry has bounded work of its own left (a link scan or marker scan that ran out of
+ * budget), so another pass can finish it. An entry that is waiting for something outside the worker (a rename, a
+ * policy commit, a closing handle, a cache owner) leaves it alone: whatever ends the wait queues a reclaim pass. */
 static VOID StageRegistryActivationProcess(_In_ PSTAGE_REGISTRY_ENTRY Entry,
-    _In_ PFLT_INSTANCE Instance, _In_ PFLT_VOLUME Volume, _Inout_ PULONG WorkBudget)
+    _In_ PFLT_INSTANCE Instance, _In_ PFLT_VOLUME Volume, _Inout_ PULONG WorkBudget, _Inout_ PBOOLEAN MoreWork)
 {
     HANDLE handle = NULL;
     PFILE_OBJECT object = NULL;
@@ -5665,6 +5672,7 @@ static VOID StageRegistryActivationProcess(_In_ PSTAGE_REGISTRY_ENTRY Entry,
         &noLinkNames, &unionLinkScoped, &currentLinkScoped, &scopeReceipt);
     if (status == STATUS_MORE_ENTRIES) {
         StageRegistryRecordDeferral(Entry, status, SAFEUPLOAD_ACTIVATING_CLASSIFY_STEP_LINK_SCAN_MORE);
+        *MoreWork = TRUE;
         goto Exit;
     }
     if (!NT_SUCCESS(status)) {
@@ -5832,7 +5840,10 @@ static VOID StageRegistryActivationProcess(_In_ PSTAGE_REGISTRY_ENTRY Entry,
     /* Every live unknown marker holds this instance until exact quiescence and identity-safe retirement. */
     if (!StageRegistryUnknownSopMarkersQuiescent(Instance, Volume, &markerWorkBudget,
             &markerWorkRemaining, &sopMarkerGeneration)) {
-        if (markerWorkRemaining) InterlockedExchange(&Entry->ScopeScanPending, 1);
+        if (markerWorkRemaining) {
+            InterlockedExchange(&Entry->ScopeScanPending, 1);
+            *MoreWork = TRUE;
+        }
         StageRegistryRecordDeferral(Entry, STATUS_PENDING, SAFEUPLOAD_ACTIVATING_CLASSIFY_STEP_MARKERS_LIVE);
         goto Exit;
     }
@@ -6063,7 +6074,7 @@ static VOID StageRegistryReclaimWorker(_In_ PFLT_GENERIC_WORKITEM WorkItem, _In_
     ULONG count = 0, index;
     ULONGLONG cursor = 0, highestVisited = 0;
     ULONG workBudget = SAFEUPLOAD_SCOPE_SCAN_PARENT_BUDGET;
-    BOOLEAN reachedBatch = FALSE, unfinishedScan = FALSE;
+    BOOLEAN reachedBatch = FALSE, unfinishedScan = FALSE, moreWork = FALSE;
     ULONGLONG firstUnfinishedSequence = 0;
     UNREFERENCED_PARAMETER(FltObject);
     UNREFERENCED_PARAMETER(Context);
@@ -6128,9 +6139,11 @@ static VOID StageRegistryReclaimWorker(_In_ PFLT_GENERIC_WORKITEM WorkItem, _In_
             BOOLEAN promotedThisPass = FALSE;
             if (activationCandidate) {
                 if (workBudget != 0)
-                    StageRegistryActivationProcess(entry, instances[index], volumes[index], &workBudget);
+                    StageRegistryActivationProcess(entry, instances[index], volumes[index], &workBudget, &moreWork);
                 else {
+                    /* The pass ran out of scan budget before reaching this entry: real work remains. */
                     unfinishedScan = TRUE;
+                    moreWork = TRUE;
                     if (firstUnfinishedSequence == 0) firstUnfinishedSequence = entry->Sequence;
                 }
                 if ((InterlockedCompareExchange(&entry->ScopeScanPending, 0, 0) != 0 ||
@@ -6173,7 +6186,17 @@ static VOID StageRegistryReclaimWorker(_In_ PFLT_GENERIC_WORKITEM WorkItem, _In_
         else
             RegistryReclaimCursor = 0;
         FltReleasePushLock(&RegistryLock);
-        if (reachedBatch || unfinishedScan) InterlockedOr(&RegistryReclaimQueued, STAGE_RECLAIM_RESCAN);
+        /* Requeue only when the pass left bounded work behind (a full batch, or a scan that ran out of budget). A scan or
+         * alias probe that is merely waiting stays pending, and so gated (Activating, never Ready); what ends the wait is
+         * an event, and every such event (handle cleanup and close, section release, rename completion, policy and
+         * boot-policy changes, registry pressure) queues a reclaim pass itself. Requeueing a waiting entry here is
+         * what made the worker spin at thousands of passes a second with nothing able to change. */
+        if (reachedBatch || moreWork) {
+            if (moreWork) InterlockedIncrement64(&RegistryReclaimMoreWorkRequeues);
+            InterlockedOr(&RegistryReclaimQueued, STAGE_RECLAIM_RESCAN);
+        } else if (unfinishedScan) {
+            InterlockedIncrement64(&RegistryReclaimParkedPasses);
+        }
         ExFreePoolWithTag(candidates, SAFEUPLOAD_REGISTRY_POOL_TAG);
     }
     InterlockedExchangePointer(&RegistryReclaimIoThread, NULL);
@@ -7159,6 +7182,13 @@ NTSTATUS SafeUploadStageWritersAdmissionCoverage(_In_ UINT32 PolicyGeneration,
 
 /* The pageable control dispatcher calls this status snapshot; RegistryLock bounds it at APC_LEVEL. */
 _IRQL_requires_max_(APC_LEVEL)
+VOID SafeUploadStageWritersGetReclaimStats(_Out_ PUINT64 Passes, _Out_ PUINT64 ParkedPasses, _Out_ PUINT64 MoreWorkRequeues)
+{
+    *Passes = (UINT64)InterlockedCompareExchange64(&RegistryReclaimPasses, 0, 0);
+    *ParkedPasses = (UINT64)InterlockedCompareExchange64(&RegistryReclaimParkedPasses, 0, 0);
+    *MoreWorkRequeues = (UINT64)InterlockedCompareExchange64(&RegistryReclaimMoreWorkRequeues, 0, 0);
+}
+
 __declspec(noinline) VOID SafeUploadStageWritersGetStatus(_Out_ PSAFEUPLOAD_WRITER_STATE_STATUS Status)
 {
     SAFEUPLOAD_WRITER_STATE_STATUS snapshot = {0};

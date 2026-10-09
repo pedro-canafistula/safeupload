@@ -368,34 +368,57 @@ function Restore-PolicyFile {
 }
 
 
+function Invoke-DiagnosticsQuery([hashtable]$Request) {
+    # One request line to the service's administrator-only diagnostics pipe (the filter port accepts one client and the
+    # service holds it, so this is the only way to read the driver while the product runs). Returns the reply's data;
+    # throws when the pipe is missing (an older agent) or refuses the query.
+    $client=New-Object System.IO.Pipes.NamedPipeClientStream('.','SafeUpload.Agent.Diagnostics',[System.IO.Pipes.PipeDirection]::InOut)
+    try{
+        $client.Connect(5000)
+        $utf8=New-Object System.Text.UTF8Encoding($false)
+        $writer=New-Object System.IO.StreamWriter($client,$utf8,1024,$true);$writer.NewLine="`n"
+        $writer.WriteLine(($Request | ConvertTo-Json -Compress));$writer.Flush()
+        $reader=New-Object System.IO.StreamReader($client,$utf8,$false,1024,$true)
+        $line=$reader.ReadLine()
+    }finally{$client.Dispose()}
+    if([string]::IsNullOrEmpty($line)){throw 'Diagnostics pipe closed without a reply'}
+    $reply=$line | ConvertFrom-Json
+    if(-not $reply.ok){throw ('Diagnostics pipe refused the query: '+$reply.error)}
+    $reply.data
+}
+
 function Get-DiagnosticsDenyRing {
-    # Reads the driver's deny ring through the service's administrator-only diagnostics pipe (the filter port accepts
-    # one client and the service holds it). Status is OK only if every page was read; an agent without the pipe
-    # (an older pair) is Unavailable, which callers must report as INCONCLUSIVE, never as absence of a refusal.
+    # Status is OK only if every page was read; an agent without the pipe (an older pair) is Unavailable, which callers
+    # must report as INCONCLUSIVE, never as absence of a refusal.
     $result=@{Status='Unavailable';Records=@();Gap=$false;Error=$null}
     try{
         $cursor=[uint64]0;$records=@()
         for($page=0;$page -lt 64;$page++){
-            $client=New-Object System.IO.Pipes.NamedPipeClientStream('.','SafeUpload.Agent.Diagnostics',[System.IO.Pipes.PipeDirection]::InOut)
-            try{
-                $client.Connect(5000)
-                $utf8=New-Object System.Text.UTF8Encoding($false)
-                $writer=New-Object System.IO.StreamWriter($client,$utf8,1024,$true);$writer.NewLine="`n"
-                $writer.WriteLine((@{query='deny-ring';after=$cursor} | ConvertTo-Json -Compress));$writer.Flush()
-                $reader=New-Object System.IO.StreamReader($client,$utf8,$false,1024,$true)
-                $line=$reader.ReadLine()
-            }finally{$client.Dispose()}
-            if([string]::IsNullOrEmpty($line)){throw 'Diagnostics pipe closed without a reply'}
-            $reply=$line | ConvertFrom-Json
-            if(-not $reply.ok){throw ('Diagnostics pipe refused the query: '+$reply.error)}
-            if($reply.data.gap){$result.Gap=$true}
-            $batch=@($reply.data.records)
+            $data=Invoke-DiagnosticsQuery @{query='deny-ring';after=$cursor}
+            if($data.gap){$result.Gap=$true}
+            $batch=@($data.records)
             if(-not $batch.Count){break}
             $records+=$batch;$cursor=[uint64]$batch[-1].sequence
         }
         $result.Records=$records;$result.Status='OK'
     }catch{$result.Error=$_.Exception.Message}
     $result
+}
+
+function Test-ReclaimWorkerIdle([int]$Seconds=15,[double]$MaxPassesPerSecond=10) {
+    # The reclaim worker must go quiet when nothing can change. Before the event-driven fix a scan or alias probe that was
+    # only waiting made it requeue itself thousands of times a second (guest CPU at 100% under boot Verifier). The sample
+    # runs after the trial, with the service up, so a spinning worker shows as passes with nobody asking for them.
+    try{
+        $first=Invoke-DiagnosticsQuery @{query='counters'};$started=[Diagnostics.Stopwatch]::GetTimestamp()
+        Start-Sleep -Seconds $Seconds
+        $second=Invoke-DiagnosticsQuery @{query='counters'};$elapsed=([Diagnostics.Stopwatch]::GetTimestamp()-$started)/[double][Diagnostics.Stopwatch]::Frequency
+    }catch{return @{Name='ReclaimWorkerIdleRate';Verdict='INCONCLUSIVE';Reason=('Driver counters unavailable through the service diagnostics pipe: '+$_.Exception.Message)}}
+    $passes=[uint64]$second.writerState.registryReclaimPasses-[uint64]$first.writerState.registryReclaimPasses
+    $rate=$passes/$elapsed
+    $detail=('passes='+$passes+' over '+[math]::Round($elapsed,1)+' s ('+[math]::Round($rate,2)+'/s, limit '+$MaxPassesPerSecond+'/s)')
+    if($null -ne $second.reclaimWorker){$detail+=('; parked='+$second.reclaimWorker.parkedPasses+'; moreWorkRequeues='+$second.reclaimWorker.moreWorkRequeues)}
+    @{Name='ReclaimWorkerIdleRate';Verdict=$(if($rate -le $MaxPassesPerSecond){'PASS'}else{'FAIL'});Reason=('Reclaim worker idle rate after the trial: '+$detail)}
 }
 
 function Test-C05DenyRingRecord($Ring,[int]$ActorPid,[string]$TargetLeaf) {
@@ -3688,6 +3711,7 @@ function Invoke-CachedObservation {
         $trial.ServiceEvidence=@{JournalDelta=$delta;NotificationProof=$proof;OperationFence=$fence;TrustBoundary='Existing SYSTEM/Administrators same-handle proof adapters'}
         $trial.Journal=$trial.ServiceAfter.Journal;$trial.Notifications=$proof.Emissions
         $trial.Assertions+=@{Name='JournalDelta';Verdict=$(if($delta.Findings.Count){'FAIL'}elseif($delta.Complete){'PASS'}else{'INCONCLUSIVE'});Reason=(@($delta.Failures)+@($delta.Findings) -join '; ')}
+        $trial.Assertions+=Test-ReclaimWorkerIdle
         if($cachedDenial){
             $trial.ServiceEvidence=Get-ServiceTimeline $trial.ServiceBefore $trial.ServiceAfter $fence;$trial.Assertions+=@($trial.ServiceEvidence.Assertions)
             $trial.Assertions+=@{Name='C05NoAnyNewTransfer';Verdict=$(if($delta.NewEntries.Count){'FAIL'}elseif($delta.Complete){'PASS'}else{'INCONCLUSIVE'});Reason=('Physical external source and denied target rename must create no transfer anywhere in the authenticated journal window; new entries='+$delta.NewEntries.Count+'; '+(@($delta.Failures)+@($delta.Findings) -join '; '))}

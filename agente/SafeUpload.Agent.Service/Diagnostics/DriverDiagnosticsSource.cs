@@ -63,6 +63,12 @@ public sealed class DriverDiagnosticsSource
                     ["queries"] = diag.VolumeWideQueries,
                     ["answeredTrue"] = diag.VolumeWideAnswers,
                 },
+                ["reclaimWorker"] = new JsonObject
+                {
+                    ["passes"] = diag.ReclaimPasses,
+                    ["parkedPasses"] = diag.ReclaimParkedPasses,
+                    ["moreWorkRequeues"] = diag.ReclaimMoreWorkRequeues,
+                },
                 ["imageBase"] = Hex(diag.ImageBase),
                 ["writerState"] = new JsonObject
                 {

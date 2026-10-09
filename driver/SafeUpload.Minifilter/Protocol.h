@@ -1150,12 +1150,15 @@ typedef struct _SAFEUPLOAD_DIAG_COUNTERS {
     UINT64 VolumeWideAnswers;       // ... of which answered TRUE
     UINT64 NextDenySequence;
     UINT64 ImageBase;
+    UINT64 ReclaimPasses;           // reclaim worker passes since load
+    UINT64 ReclaimParkedPasses;     // passes that ended with a scan or alias probe waiting on an outside event
+    UINT64 ReclaimMoreWorkRequeues; // passes that requeued themselves because bounded work remained
 } SAFEUPLOAD_DIAG_COUNTERS, *PSAFEUPLOAD_DIAG_COUNTERS;
 C_ASSERT(sizeof(SAFEUPLOAD_DENY_RECORD) == 192);
 C_ASSERT(sizeof(SAFEUPLOAD_DENY_RING_REQUEST) == 24);
 C_ASSERT(sizeof(SAFEUPLOAD_DENY_RING_BATCH) == 32 + 16 * 192);
 C_ASSERT(FIELD_OFFSET(SAFEUPLOAD_DENY_RING_BATCH, Entries) == 32);
-C_ASSERT(sizeof(SAFEUPLOAD_DIAG_COUNTERS) == 88);
+C_ASSERT(sizeof(SAFEUPLOAD_DIAG_COUNTERS) == 112);
 #endif
 
 /* A probe entry's AdmissionRecordState carries H(F) of the probed stream; this bit marks a lower bound. */
