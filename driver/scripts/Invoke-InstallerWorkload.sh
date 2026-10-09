@@ -22,7 +22,7 @@ case "$mode" in driver) [ -f "$sys" ] && [ -f "$zip" ] || { echo 'driver mode ne
 host=$(awk -v d="$dom" '$1==d{print $2}' driver/scripts/debuggees.txt); [ -n "$host" ] || { echo "Unknown debuggee $dom"; exit 2; }
 # The guest's overlay grows by the size of what the workload writes (Microsoft 365 about 10 GB): never start on a nearly full host.
 free_gb=$(df --output=avail -BG / | tail -1 | tr -dc '0-9')
-min_gb=$([ "$workload" = m365 ] && echo 30 || echo 15)
+min_gb=${T3_MIN_FREE_GB:-$([ "$workload" = m365 ] && echo 30 || echo 15)}   # override only for a deliberate run on a tight host
 [ "${free_gb:-0}" -ge "$min_gb" ] || { echo "host disk too low for $workload: ${free_gb} GB free, need $min_gb"; exit 30; }
 V="virsh -c qemu:///system"; ev="driver/evidence/$(date +%F)"; mkdir -p "$ev"
 opts=(-F /dev/null -i /home/victor/.ssh/id_ed25519 -o BatchMode=yes -o ConnectTimeout=10 -o LogLevel=ERROR -o StrictHostKeyChecking=accept-new)
