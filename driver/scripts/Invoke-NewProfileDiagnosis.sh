@@ -125,46 +125,66 @@ $hr = [ProfileProbe]::CreateProfile($sid, $name, $path, 260)
 Start-Sleep -Seconds 2
 try { $ring = @(& "$d\Get-SafeUploadDiagnostics.ps1" -Query deny-ring -After $after); 'RING_AFTER_COUNT=' + $ring.Count; foreach ($r in $ring) { 'RING=' + ($r | ConvertTo-Json -Compress) } } catch { 'RING_AFTER_ERROR=' + $_.Exception.Message }
 try { $c2 = & "$d\Get-SafeUploadDiagnostics.ps1" -Query counters; 'COUNTERS_AFTER=' + ($c2 | ConvertTo-Json -Depth 6 -Compress) } catch { 'COUNTERS_AFTER_ERROR=' + $_.Exception.Message }
-# Phase 2: the scope must still be enforced for a standard user, and a deep tree outside it must work. t2user has no profile, so its
-# first logon goes through the Profile Service (the first-sign-in path); t2probe's profile was built by CreateProfile above. Each
-# user runs a scheduled task registered with its own password, as the harness does for its actors.
-$pw = 'P@ssw0rd!2026'
-& net.exe user t2user $pw /add | Out-Null
+'PROBE_DONE=True'
+PS
+echo "probe evidence: $ev/$tag-probe.txt"
+
+# Phase 2: a REAL first sign-in. Batch-logon tasks load no profile (the harness notes this), so only an interactive logon exercises the
+# Profile Service the way a user does. A new account gets autologon and a logon-triggered task; after the reboot the driver is loaded and
+# the agent Ready before the account signs in. The task records what the user session can and cannot do: the protected folder must still
+# refuse a standard user (directory and deep directory creates), while a deep tree in the profile must work.
+echo "== phase 2: first sign-in by autologon"
+remote <<'PS' | tee "$ev/$tag-phase2-setup.txt"
+$ErrorActionPreference = 'Stop'
+$pw = 'P@ssw0rd!2026'; $u = 't2user'
+& net.exe user $u $pw /add | Out-Null
 $userScript = @'
 $r = [ordered]@{}
 function Step($name, [scriptblock]$body) { try { & $body; $r[$name] = 'OK' } catch { $r[$name] = 'ERR: ' + $_.Exception.Message } }
-Step 'mkdir-in-scope' { New-Item -ItemType Directory -Path ('C:\Protected\dir-' + $env:USERNAME) -ErrorAction Stop | Out-Null }
-Step 'mkdir-deep-in-scope' { New-Item -ItemType Directory -Path ('C:\Protected\deep-' + $env:USERNAME + '\b\c') -Force -ErrorAction Stop | Out-Null }
-Step 'write-file-in-scope' { Set-Content -LiteralPath ('C:\Protected\ok-' + $env:USERNAME + '.txt') -Value 'hello' -ErrorAction Stop }
+Step 'mkdir-in-scope' { New-Item -ItemType Directory -Path 'C:\Protected\dirA' -ErrorAction Stop | Out-Null }
+Step 'mkdir-deep-in-scope' { New-Item -ItemType Directory -Path 'C:\Protected\a\b\c' -Force -ErrorAction Stop | Out-Null }
+Step 'write-file-in-scope' { Set-Content -LiteralPath 'C:\Protected\ok.txt' -Value 'hello' -ErrorAction Stop }
 Step 'mkdir-deep-profile' { New-Item -ItemType Directory -Path (Join-Path $env:USERPROFILE 'proj\x\y') -Force -ErrorAction Stop | Out-Null }
 Step 'write-file-profile' { Set-Content -LiteralPath (Join-Path $env:USERPROFILE 'proj\x\y\f.txt') -Value 'x' -ErrorAction Stop }
 $r['whoami'] = (& whoami.exe)
 $r['profile'] = $env:USERPROFILE
-$r | ConvertTo-Json | Set-Content -LiteralPath ('C:\Users\Public\t2-user-results-' + $env:USERNAME + '.json') -Encoding UTF8
+$r['session'] = (& query.exe user 2>&1 | Out-String).Trim()
+$r | ConvertTo-Json | Set-Content -LiteralPath 'C:\Users\Public\t2-signin-results.json' -Encoding UTF8
 '@
-Set-Content -LiteralPath 'C:\Users\Public\t2-user.ps1' -Value $userScript -Encoding UTF8
-$ringMark = 0
-try { $ringAll = @(& "$d\Get-SafeUploadDiagnostics.ps1" -Query deny-ring); if ($ringAll.Count) { $ringMark = [uint64]$ringAll[-1].sequence } } catch { }
-foreach ($u in 't2user', 't2probe') {
-    $resultFile = "C:\Users\Public\t2-user-results-$u.json"
-    Remove-Item $resultFile -ErrorAction SilentlyContinue
-    $mark = Get-Date
-    try {
-        Register-ScheduledTask -TaskName "t2-run-$u" -Action (New-ScheduledTaskAction -Execute 'powershell.exe' -Argument '-NoProfile -ExecutionPolicy Bypass -File C:\Users\Public\t2-user.ps1') -User ($env:COMPUTERNAME + '\' + $u) -Password $pw -RunLevel Limited -Settings (New-ScheduledTaskSettingsSet -ExecutionTimeLimit ([TimeSpan]::FromMinutes(3))) | Out-Null
-        Start-ScheduledTask -TaskName "t2-run-$u"
-        for ($i = 0; $i -lt 60 -and -not (Test-Path $resultFile); $i++) { Start-Sleep -Seconds 2 }
-        "USER_TASK_RESULT[$u]=" + (Get-ScheduledTaskInfo -TaskName "t2-run-$u").LastTaskResult
-    } catch { "USER_TASK_ERROR[$u]=" + $_.Exception.Message }
-    if (Test-Path $resultFile) { "USER_RESULTS[$u]=" + ((Get-Content $resultFile -Raw) -replace '\s+', ' ') } else { "USER_RESULTS[$u]=missing" }
-    try {
-        $evts = @(Get-WinEvent -FilterHashtable @{ LogName = 'Application'; StartTime = $mark } -ErrorAction Stop | Where-Object { $_.ProviderName -match 'User Profiles|Userenv|ProfSvc' })
-        "PROFSVC_EVENTS[$u]=" + $evts.Count
-        foreach ($e in $evts | Select-Object -First 4) { "PROFSVC_EVENT[$u]=" + $e.Id + ' ' + (($e.Message -replace '\s+', ' ')[0..200] -join '') }
-    } catch { "PROFSVC_EVENTS_ERROR[$u]=" + $_.Exception.Message }
-}
-Start-Sleep -Seconds 8
-'PROTECTED_LISTING=' + ((Get-ChildItem 'C:\Protected' -Force -ErrorAction SilentlyContinue | ForEach-Object { $_.Name + ':' + $_.Length }) -join ',')
-try { $ring2 = @(& "$d\Get-SafeUploadDiagnostics.ps1" -Query deny-ring -After $ringMark); 'RING2_COUNT=' + $ring2.Count; foreach ($r2 in $ring2) { 'RING2=' + ($r2 | ConvertTo-Json -Compress) } } catch { 'RING2_ERROR=' + $_.Exception.Message }
-'PROBE_DONE=True'
+Set-Content -LiteralPath 'C:\Users\Public\t2-signin.ps1' -Value $userScript -Encoding UTF8
+Remove-Item 'C:\Users\Public\t2-signin-results.json' -ErrorAction SilentlyContinue
+$who = $env:COMPUTERNAME + '\' + $u
+Register-ScheduledTask -TaskName 't2-signin' -Action (New-ScheduledTaskAction -Execute 'powershell.exe' -Argument '-NoProfile -ExecutionPolicy Bypass -File C:\Users\Public\t2-signin.ps1') `
+    -Trigger (New-ScheduledTaskTrigger -AtLogOn -User $who) -Principal (New-ScheduledTaskPrincipal -UserId $who -LogonType Interactive -RunLevel Limited) | Out-Null
+$w = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon'
+Set-ItemProperty $w -Name AutoAdminLogon -Value '1'
+Set-ItemProperty $w -Name DefaultUserName -Value $u
+Set-ItemProperty $w -Name DefaultPassword -Value $pw
+Set-ItemProperty $w -Name DefaultDomainName -Value $env:COMPUTERNAME
+'PHASE2_SETUP_DONE=True'
 PS
-echo "probe evidence: $ev/$tag-probe.txt"
+grep -qx 'PHASE2_SETUP_DONE=True' "$ev/$tag-phase2-setup.txt" || { echo 'phase 2 setup failed'; exit 18; }
+remote <<<'& shutdown.exe /r /t 5 /c "T2 first sign-in"' >/dev/null; sleep 60; wait_ssh || { echo 'guest did not return (phase 2)'; exit 17; }
+remote <<'PS' | tee "$ev/$tag-phase2.txt"
+$ErrorActionPreference = 'Continue'
+$d = 'C:\Users\vika\Documents'
+$result = 'C:\Users\Public\t2-signin-results.json'
+for ($i = 0; $i -lt 90 -and -not (Test-Path $result); $i++) { Start-Sleep -Seconds 4 }
+'SIGNIN_RESULTS=' + $(if (Test-Path $result) { (Get-Content $result -Raw) -replace '\s+', ' ' } else { 'missing' })
+'PROFILE_DIR=' + $(if (Test-Path 'C:\Users\t2user') { 'present' } else { 'absent' })
+'PROFILE_LISTING=' + ((Get-ChildItem 'C:\Users' -Force -ErrorAction SilentlyContinue | ForEach-Object { $_.Name }) -join ',')
+'EXPLORER_PROCS=' + @(Get-Process explorer -ErrorAction SilentlyContinue | Where-Object { $_.SI -ne 0 }).Count
+'PROTECTED_LISTING=' + ((Get-ChildItem 'C:\Protected' -Force -ErrorAction SilentlyContinue | ForEach-Object { $_.Name + ':' + $_.Length }) -join ',')
+try {
+    $evts = @(Get-WinEvent -FilterHashtable @{ LogName = 'Application'; StartTime = (Get-Date).AddMinutes(-10) } -ErrorAction Stop | Where-Object { $_.ProviderName -match 'User Profiles|Userenv|ProfSvc' })
+    'PROFSVC_EVENTS=' + $evts.Count
+    foreach ($e in $evts | Select-Object -First 6) { 'PROFSVC_EVENT=' + $e.Id + ' ' + (($e.Message -replace '\s+', ' ')[0..220] -join '') }
+} catch { 'PROFSVC_EVENTS_ERROR=' + $_.Exception.Message }
+try {
+    $ring = @(& 'C:\Users\vika\Documents\Get-SafeUploadDiagnostics.ps1' -Query deny-ring)
+    'RING_SINCE_BOOT=' + $ring.Count
+    foreach ($r in $ring) { 'RING=' + ($r | ConvertTo-Json -Compress) }
+} catch { 'RING_ERROR=' + $_.Exception.Message }
+'PHASE2_DONE=True'
+PS
+echo "phase 2 evidence: $ev/$tag-phase2.txt"
