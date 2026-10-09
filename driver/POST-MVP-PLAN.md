@@ -150,7 +150,7 @@ local prefix (the `\Device\Mup` instance, early boot). Row U01 = `driver/scripts
 - [x] ring names the refusals; fixes without weakening a refusal inside a scope (the standard user is still refused directory creates in the protected folder)
 - [x] row U01 written, with a verdict
 - [~] U01 PASS on the final driver (all required lines pass except the two Mup refusals, fixed in 6b83f608, re-run pending)
-- [ ] U01 in runtime-Verifier mode
+- [~] U01 in boot-Verifier mode (`u01h`): everything passes except one transient refusal of a writable section of a pre-scope writer's file (FontCache) while its entry waits for its alias probe: **T2c** (options in the log)
 
 ### T3. Large installers and Windows Update
 

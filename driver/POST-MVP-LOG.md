@@ -259,3 +259,21 @@ Final pair: driver `m1-driver4` (ea925022) + agent `m1-agent6` (91e957cc). Judge
 So the five cells that never completed (B02, C01-C04 BLOCK) now all complete under the boot Verifier: the 64/69 gate becomes 69/69 (the 64 were closed on the earlier pair; the
 final pair carries the confirmation slices listed above and in the queue).
 
+### U01 under the boot Verifier: one transient section refusal outside every scope (09:40) - open (T2c)
+
+Final pair, `u01h` (boot Verifier on, whole run): CreateProfile, the real first sign-in, the profile tree, the in-scope refusals and the clean in-scope save all pass, the driver is
+listed as verified for the whole run, and the ring holds four records: the two expected in-scope `policyScope` creates, the staged-stream `FileStandardLinkInformation` query, and one
+`STATUS_ACCESS_DENIED` for `ACQUIRE_FOR_SECTION_SYNCHRONIZATION` of the writable section of `LocalService\AppData\Local\FontCache\~FontCache-FontSet-S-1-5-18.dat`. So
+`U01NoRefusalOutsideScope` FAILS in this mode (it passes in ordinary mode on the same driver: `u01f`).
+
+Cause (reasoned from the code, not yet reproduced with a name for the entry's state): the FontCache service opened that file for write before the agent connected and the policy was
+applied, so its registry entry is a pre-scope writer: after the apply it is Activating with its alias probe pending until the single reclaim worker classifies it (hard-link names
+decide whether the stream is reachable from a scope). The writable-section gate asks the entry (`SopMatchesPolicy`: alias-pending or unresolved means "matches", fail closed), so a mapping
+created inside that window is refused. The window is short on an idle guest and longer under the boot Verifier (a backlog of such entries after the apply). It is the same class as the
+`activatingName` create refusals fixed in T2; the create gate could be refined because it has an exact alias check at hand (`SafeUploadStageCheckNamedAliases`), the section gate cannot
+(no file I/O is allowed in the section-synchronization callback: a deadlock risk with the caller's locks).
+
+Options (none done, each needs a design and a review): (a) classify pre-scope entries before the apply is published (a bounded wait in `SafeUploadSetPolicy` for the first backlog),
+(b) let the section gate wait a bounded time for the entry's classification, then decide, (c) give entries of files that are provably outside every scope by name a fast path in the
+worker (classify outside-by-name entries first, ahead of the ones with a scoped-looking name), (d) accept the window for pre-scope handles and document it. (c) is the smallest.
+
