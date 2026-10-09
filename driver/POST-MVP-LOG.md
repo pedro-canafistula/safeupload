@@ -157,3 +157,30 @@ Pair: driver `t1-wake1` + feature agent `t1-agent4`, both from `51c4c96e`; `cell
   still alive; the event-driven worker must start its pass at the right moment instead. Measuring where the time goes with scratch diagnostic notes in
   the deny ring (branch `diag/reclaim-trace`, never merged).
 
+### R02 root cause and the identity anchor (04:25)
+
+Scratch notes in the deny ring (branch `diag/reclaim-trace`, driver `t1-diag3`, never merged) show the sequence around the holder's release:
+cleanup (last writer, entry Activating) -> passes that find the cache retained (the cache manager keeps the holder's file object as its cache file
+object) -> ~190 ms later the cache manager's own close reaches the filter (pre-close, pid 4) -> a pass flushes and purges, the shared cache map is
+gone, and the entry promotes. That pass can only promote on the held incarnation if it opens the stream by ID before NTFS has processed the close; with
+the notes compiled in it starts ~10 microseconds after the wake-up and R02 passes (`t1e1`, MvpGatePassed true); without them it starts later, the
+stream is already torn down and the promotion is on the replaced basis (`predicateFlags` 0x2F), 3 of 3. So this is a race, not a logic error, and the
+old worker hid it because it requeued itself without pause: one of its passes always held the stream open.
+
+Decision (conservative, the harness stays as it is): make the held incarnation deterministic. The reclaim pass keeps the by-ID identity handle it
+already opens as the entry's anchor while the entry is Activating with a live writer (`StageAnchor*` in StageWriters.c): at most 32, closed when the
+entry resolves or retires, at the start of every pass for entries that are gone, and at instance teardown. I did not relax the R02 assertion and did
+not add a poll to the worker. Commit `34febe77`.
+
+### Follow-up found by the first sign-in (T2b, not done)
+
+After the alias fixes the ring of a real first sign-in holds 11 records (`t2diag14`): 2 expected `policyScope` refusals of the standard user's
+directory creates in the protected folder, and 9 that are outside every scope and still refused:
+- 5x `activatingName` (FontCache `~FontCache-S-1-5-18.dat`, `Windows\System32\spp\store\2.0\data.dat.bak`, the four `Libraries\*.library-ms`): a
+  writer open of a name whose registry entry is Activating (or has an alias probe pending) is refused until the entry resolves, even when the file
+  has no scoped name at all. Design to try: before refusing, run the create's own alias check; if the file provably has no name inside any current or
+  pending scope, allow it (the refusal exists for names that may be in scope). This is the leading suspect for installer failures, so it belongs at the
+  start of T3.
+- 2x `STATUS_ACCESS_DENIED` CREATE of `\;LanmanRedirector` with no reason (a deny site without detail: find it).
+- 1x `QUERY_INFORMATION` completed by the driver with `STATUS_NOT_SUPPORTED`, kernel mode, no name.
+
