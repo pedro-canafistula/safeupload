@@ -245,6 +245,7 @@ public sealed class DriverDiagnosticsSource
             (DiagnosticsContract.FlagServiceProcess, "serviceProcess"),
             (DiagnosticsContract.FlagKernelMode, "kernelMode"),
             (DiagnosticsContract.FlagNameTruncated, "nameTruncated"),
+            (DiagnosticsContract.FlagNameIsImage, "nameIsImage"),
         };
         foreach ((uint bit, string name) in known)
         {

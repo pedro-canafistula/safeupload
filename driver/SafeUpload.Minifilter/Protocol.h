@@ -1097,6 +1097,7 @@ typedef struct _SAFEUPLOAD_ADMISSION_EPOCH_STATUS {
 #define SAFEUPLOAD_DENY_FLAG_SERVICE_PROCESS      ((UINT32) 0x00000080)  /* requestor is the connected service */
 #define SAFEUPLOAD_DENY_FLAG_KERNEL_MODE          ((UINT32) 0x00000100)  /* requestor mode was KernelMode */
 #define SAFEUPLOAD_DENY_FLAG_NAME_TRUNCATED       ((UINT32) 0x00000200)  /* Name holds the tail of a longer name */
+#define SAFEUPLOAD_DENY_FLAG_NAME_IS_IMAGE        ((UINT32) 0x00000400)  /* no file name was available: Name is the requestor's image path */
 
 #define SAFEUPLOAD_DENY_BATCH_FLAG_GAP            ((UINT32) 0x00000001)  /* records after the cursor were overwritten */
 

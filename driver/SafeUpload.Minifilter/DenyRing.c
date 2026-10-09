@@ -219,6 +219,29 @@ static VOID DenyCaptureRequest(_In_ PFLT_CALLBACK_DATA Data, _Inout_ PSAFEUPLOAD
     }
 }
 
+/* An operation on an open file carries no name of its own (a write, a query). Prefer the name the file object was opened with; failing
+ * that, name the requestor by its image, so a refusal that has no file name can still be traced to a program. PASSIVE_LEVEL only. */
+static VOID DenyCaptureObjectOrImage(_In_ PFLT_CALLBACK_DATA Data, _Inout_ PSAFEUPLOAD_DENY_RECORD Record)
+{
+    PFILE_OBJECT fileObject = Data->Iopb->TargetFileObject;
+    PUNICODE_STRING image = NULL;
+    PEPROCESS process;
+
+    if (fileObject != NULL && fileObject->FileName.Buffer != NULL && fileObject->FileName.Length != 0 &&
+        (fileObject->FileName.Length & 1) == 0 && fileObject->FileName.Length <= 0x8000) {
+        DenyCopyNameTail(Record, fileObject->FileName.Buffer, fileObject->FileName.Length / sizeof(WCHAR),
+            SAFEUPLOAD_DENY_FLAG_NAME_IS_CREATE_NAME);
+        return;
+    }
+    process = FltGetRequestorProcess(Data);
+    if (process == NULL || KeGetCurrentIrql() != PASSIVE_LEVEL) return;
+    if (NT_SUCCESS(SeLocateProcessImageName(process, &image)) && image != NULL) {
+        if (image->Buffer != NULL && image->Length != 0 && (image->Length & 1) == 0)
+            DenyCopyNameTail(Record, image->Buffer, image->Length / sizeof(WCHAR), SAFEUPLOAD_DENY_FLAG_NAME_IS_IMAGE);
+        ExFreePool(image);
+    }
+}
+
 VOID SafeUploadDenyNote(_In_ PFLT_CALLBACK_DATA Data, _In_opt_ PCFLT_RELATED_OBJECTS Objects,
     _In_ NTSTATUS Status, _In_ BOOLEAN PostOperation)
 {
@@ -266,6 +289,7 @@ VOID SafeUploadDenyNote(_In_ PFLT_CALLBACK_DATA Data, _In_opt_ PCFLT_RELATED_OBJ
     }
 
     DenyTakeDetail(Data, &record);
+    if (record.NameChars == 0 && Data->Iopb->MajorFunction != IRP_MJ_CREATE) DenyCaptureObjectOrImage(Data, &record);
     KeQuerySystemTimePrecise((PLARGE_INTEGER)&record.SystemTime);
     DenyAcquire(&irql);
     record.Sequence = DenyNext;

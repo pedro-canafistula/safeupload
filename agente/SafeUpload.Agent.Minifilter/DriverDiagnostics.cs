@@ -34,6 +34,7 @@ public static class DiagnosticsContract
     public const uint FlagServiceProcess = 0x080;
     public const uint FlagKernelMode = 0x100;
     public const uint FlagNameTruncated = 0x200;
+    public const uint FlagNameIsImage = 0x400;
     public const uint BatchFlagGap = 0x1;
 
     /// <summary>
