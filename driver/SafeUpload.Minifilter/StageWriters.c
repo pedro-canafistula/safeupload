@@ -455,6 +455,12 @@ static volatile LONG64 RegistryReclaimParkedPasses;
 static volatile LONG64 RegistryReclaimMoreWorkRequeues;
 static volatile LONG64 RegistryChangeSequence;
 static volatile LONG RegistryReclaimQueued;
+/* 1 while some registry entry may be waiting for an event the worker re-evaluates (Activating, or an alias probe or scope
+ * scan pending). Set at the source whenever an entry enters such a state and by every unconditional queue request;
+ * recomputed by each pass. Lifetime events (a close or cleanup anywhere on the machine) queue a pass only while it is set
+ * and only for a stream a waiting entry is bound to, so a busy but idle-of-interest machine costs no reclaim passes. */
+static volatile LONG RegistryReclaimInterest;
+static volatile LONG64 RegistryReclaimWakeupsSkipped;
 static volatile LONG RegistryReclaimResetCursor;
 /* Borrowed only while the one reclaim body executes. Clear before the work
  * item handoff, which may start its successor on a different system thread. */
@@ -856,6 +862,7 @@ __declspec(noinline) static LONG StageRegistryTransactionAssociationChange(
     if (Add && (InterlockedCompareExchange(&Entry->AliasProbePending, 0, 0) != 0 ||
             InterlockedCompareExchange(&Entry->ActivationEnforced, 0, 0) != 0 ||
             state == SAFEUPLOAD_REGISTRY_STATE_ACTIVATING)) {
+        InterlockedExchange(&RegistryReclaimInterest, 1);
         InterlockedExchange(&Entry->AliasProbePending, 1);
         InterlockedExchange(&Entry->ScopeNameClassification, STAGE_SCOPE_CLASS_UNRESOLVED);
         InterlockedExchange(&Entry->ActivationEnforced, 1);
@@ -4504,6 +4511,7 @@ static VOID StageRegistryParkScopeScanLocked(_In_ PSTAGE_REGISTRY_ENTRY Entry)
     InterlockedExchange(&Entry->ScopeScanUnionScoped, 0);
     InterlockedExchange(&Entry->ScopeScanCurrentScoped, 0);
     Entry->ScopeScanLinkCount = 0;
+    InterlockedExchange(&RegistryReclaimInterest, 1);
     InterlockedExchange(&Entry->ScopeScanPending, 1);
     InterlockedIncrement64(&RegistryChangeSequence);
 }
@@ -5259,6 +5267,7 @@ __declspec(noinline) static VOID StageRegistryPrepareActivation(
     KIRQL irql;
 
     StageAcquireSpinLock(&Entry->StateLock, &irql);
+    if (!Unknown) InterlockedExchange(&RegistryReclaimInterest, 1);
     InterlockedExchange((volatile LONG *)&Entry->State, Unknown ?
         SAFEUPLOAD_REGISTRY_STATE_UNKNOWN : SAFEUPLOAD_REGISTRY_STATE_ACTIVATING);
     if (Unknown)
@@ -5283,6 +5292,7 @@ __declspec(noinline) static BOOLEAN StageRegistryBeginAliasProbe(_In_ PSTAGE_REG
          state == SAFEUPLOAD_REGISTRY_STATE_ACTIVATING ||
          (state == SAFEUPLOAD_REGISTRY_STATE_UNKNOWN &&
           (Entry->NameChars != 0 || Entry->Compact) && Entry->StreamIdentityKnown))) {
+        InterlockedExchange(&RegistryReclaimInterest, 1);
         InterlockedExchange(&Entry->AliasProbePending, 1);
         /* A scan already running answers an older probe: it must not clear this one (rename, link, directory
          * rename and policy apply all begin through here), and a partial scan must not resume across it. */
@@ -5500,6 +5510,7 @@ __declspec(noinline) static BOOLEAN StageRegistrySetLinkScopeClassificationVersi
         (ULONG)InterlockedCompareExchange(&Entry->TransactionVersion, 0, 0) !=
             ExpectedTransactionVersion) {
         InterlockedExchange(&Entry->ScopeNameClassification, STAGE_SCOPE_CLASS_UNRESOLVED);
+        InterlockedExchange(&RegistryReclaimInterest, 1);
         InterlockedExchange(&Entry->AliasProbePending, 1);
         InterlockedExchange(&Entry->ActivationEnforced, 1);
         state = InterlockedCompareExchange((volatile LONG *)&Entry->State, 0, 0);
@@ -5844,7 +5855,8 @@ static VOID StageRegistryActivationProcess(_In_ PSTAGE_REGISTRY_ENTRY Entry,
     if (!StageRegistryUnknownSopMarkersQuiescent(Instance, Volume, &markerWorkBudget,
             &markerWorkRemaining, &sopMarkerGeneration)) {
         if (markerWorkRemaining) {
-            InterlockedExchange(&Entry->ScopeScanPending, 1);
+            InterlockedExchange(&RegistryReclaimInterest, 1);
+    InterlockedExchange(&Entry->ScopeScanPending, 1);
             *MoreWork = TRUE;
         }
         StageRegistryRecordDeferral(Entry, STATUS_PENDING, SAFEUPLOAD_ACTIVATING_CLASSIFY_STEP_MARKERS_LIVE);
@@ -6077,7 +6089,7 @@ static VOID StageRegistryReclaimWorker(_In_ PFLT_GENERIC_WORKITEM WorkItem, _In_
     ULONG count = 0, index;
     ULONGLONG cursor = 0, highestVisited = 0;
     ULONG workBudget = SAFEUPLOAD_SCOPE_SCAN_PARENT_BUDGET;
-    BOOLEAN reachedBatch = FALSE, unfinishedScan = FALSE, moreWork = FALSE;
+    BOOLEAN reachedBatch = FALSE, unfinishedScan = FALSE, moreWork = FALSE, waitingSeen = FALSE;
     ULONGLONG firstUnfinishedSequence = 0;
     UNREFERENCED_PARAMETER(FltObject);
     UNREFERENCED_PARAMETER(Context);
@@ -6106,6 +6118,8 @@ static VOID StageRegistryReclaimWorker(_In_ PFLT_GENERIC_WORKITEM WorkItem, _In_
             BOOLEAN activating = InterlockedCompareExchange((volatile LONG *)&entry->State, 0, 0) ==
                 SAFEUPLOAD_REGISTRY_STATE_ACTIVATING;
             BOOLEAN aliasProbe = InterlockedCompareExchange(&entry->AliasProbePending, 0, 0) != 0;
+            if (activating || aliasProbe || InterlockedCompareExchange(&entry->ScopeScanPending, 0, 0) != 0)
+                waitingSeen = TRUE;
             if (entry->Sequence <= cursor) continue;
             highestVisited = entry->Sequence;
             entryName.Buffer = entry->Name;
@@ -6200,6 +6214,10 @@ static VOID StageRegistryReclaimWorker(_In_ PFLT_GENERIC_WORKITEM WorkItem, _In_
         } else if (unfinishedScan) {
             InterlockedIncrement64(&RegistryReclaimParkedPasses);
         }
+        /* Interest follows what the pass saw. A request that arrives after the scan queues its own pass, which
+         * recomputes it; an entry that starts waiting set it at the source. */
+        InterlockedExchange(&RegistryReclaimInterest,
+            (waitingSeen || reachedBatch || moreWork || unfinishedScan) ? 1 : 0);
         ExFreePoolWithTag(candidates, SAFEUPLOAD_REGISTRY_POOL_TAG);
     }
     InterlockedExchangePointer(&RegistryReclaimIoThread, NULL);
@@ -6211,6 +6229,7 @@ static VOID StageRegistryReclaimWorker(_In_ PFLT_GENERIC_WORKITEM WorkItem, _In_
 static BOOLEAN StageRegistryQueueReclaim(VOID)
 {
     BOOLEAN retriedRescan = FALSE;
+    InterlockedExchange(&RegistryReclaimInterest, 1);
     for (;;) {
         LONG state = InterlockedCompareExchange(&RegistryReclaimQueued, 0, 0);
         if ((state & STAGE_RECLAIM_QUEUED) != 0) {
@@ -6245,12 +6264,47 @@ static BOOLEAN StageRegistryIsReclaimIoThread(VOID)
         (PVOID)PsGetCurrentThread();
 }
 
-VOID SafeUploadStageWritersQueueLifetimeRecheck(VOID)
+static BOOLEAN StageRegistryEntryWaiting(_In_ PSTAGE_REGISTRY_ENTRY Entry)
+{
+    return InterlockedCompareExchange((volatile LONG *)&Entry->State, 0, 0) == SAFEUPLOAD_REGISTRY_STATE_ACTIVATING ||
+        InterlockedCompareExchange(&Entry->AliasProbePending, 0, 0) != 0 ||
+        InterlockedCompareExchange(&Entry->ScopeScanPending, 0, 0) != 0;
+}
+
+/* O(1) through the section-pointer map: is a waiting entry (or an unresolved writer marker, which also holds its
+ * instance) bound to this stream? */
+_IRQL_requires_max_(DISPATCH_LEVEL)
+static BOOLEAN StageRegistryStreamHasWaitingEntry(_In_opt_ PFLT_INSTANCE Instance, _In_opt_ PVOID SectionObjectPointer)
+{
+    KIRQL irql;
+    BOOLEAN found = FALSE, waiting = FALSE;
+    PSTAGE_REGISTRY_SOP_SLOT slot;
+    if (Instance == NULL || SectionObjectPointer == NULL) return FALSE;
+    StageAcquireSpinLock(&SectionLock, &irql);
+    slot = StageRegistryFindSopSlotLocked(SectionObjectPointer, &found);
+    if (found && slot != NULL) {
+        if (slot->Entry != NULL) waiting = StageRegistryEntryWaiting(slot->Entry);
+        else if (slot->Unknown) waiting = TRUE;
+    }
+    StageReleaseSpinLock(&SectionLock, irql);
+    return waiting;
+}
+
+VOID SafeUploadStageWritersQueueLifetimeRecheck(_In_opt_ PFLT_INSTANCE Instance, _In_opt_ PFILE_OBJECT FileObject)
 {
     /* The reclaim body's own attribute-only probes cannot release an external
      * holder. Rechecking their cleanup/close would perpetually reschedule it.
      * All ledger updates and their counted-writer wakeups run independently. */
-    if (!StageRegistryIsReclaimIoThread()) SafeUploadStageWritersQueueRecheck();
+    if (StageRegistryIsReclaimIoThread()) return;
+    /* A close or cleanup of any file on the machine reaches here. It can only expose Free(F) for an entry that is
+     * waiting, and only through that entry's own stream; queueing a pass for anything else was the thousands of
+     * reclaim passes a second measured on an idle guest. */
+    if (InterlockedCompareExchange(&RegistryReclaimInterest, 0, 0) == 0 || FileObject == NULL ||
+        !StageRegistryStreamHasWaitingEntry(Instance, FileObject->SectionObjectPointer)) {
+        InterlockedIncrement64(&RegistryReclaimWakeupsSkipped);
+        return;
+    }
+    SafeUploadStageWritersQueueRecheck();
 }
 
 VOID SafeUploadStageWritersInitialize(VOID)
@@ -7184,11 +7238,13 @@ NTSTATUS SafeUploadStageWritersAdmissionCoverage(_In_ UINT32 PolicyGeneration,
 }
 
 /* Plain interlocked reads of three counters: callable at any IRQL. */
-VOID SafeUploadStageWritersGetReclaimStats(_Out_ PUINT64 Passes, _Out_ PUINT64 ParkedPasses, _Out_ PUINT64 MoreWorkRequeues)
+VOID SafeUploadStageWritersGetReclaimStats(_Out_ PUINT64 Passes, _Out_ PUINT64 ParkedPasses, _Out_ PUINT64 MoreWorkRequeues,
+    _Out_ PUINT64 WakeupsSkipped)
 {
     *Passes = (UINT64)InterlockedCompareExchange64(&RegistryReclaimPasses, 0, 0);
     *ParkedPasses = (UINT64)InterlockedCompareExchange64(&RegistryReclaimParkedPasses, 0, 0);
     *MoreWorkRequeues = (UINT64)InterlockedCompareExchange64(&RegistryReclaimMoreWorkRequeues, 0, 0);
+    *WakeupsSkipped = (UINT64)InterlockedCompareExchange64(&RegistryReclaimWakeupsSkipped, 0, 0);
 }
 
 /* The pageable control dispatcher calls this status snapshot; RegistryLock bounds it at APC_LEVEL. */

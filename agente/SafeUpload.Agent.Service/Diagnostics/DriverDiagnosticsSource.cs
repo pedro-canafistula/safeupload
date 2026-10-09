@@ -68,6 +68,7 @@ public sealed class DriverDiagnosticsSource
                     ["passes"] = diag.ReclaimPasses,
                     ["parkedPasses"] = diag.ReclaimParkedPasses,
                     ["moreWorkRequeues"] = diag.ReclaimMoreWorkRequeues,
+                    ["wakeupsSkipped"] = diag.ReclaimWakeupsSkipped,
                 },
                 ["imageBase"] = Hex(diag.ImageBase),
                 ["writerState"] = new JsonObject

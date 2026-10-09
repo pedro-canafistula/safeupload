@@ -282,7 +282,7 @@ VOID SafeUploadDenyGetCounters(_Out_ PSAFEUPLOAD_DIAG_COUNTERS Counters)
     Counters->VolumeWideAnswers = (UINT64)InterlockedCompareExchange64(&SafeUploadVolumeWideAnswers, 0, 0);
     Counters->ImageBase = (UINT64)DenyImageBase;
     SafeUploadStageWritersGetReclaimStats(&Counters->ReclaimPasses, &Counters->ReclaimParkedPasses,
-        &Counters->ReclaimMoreWorkRequeues);
+        &Counters->ReclaimMoreWorkRequeues, &Counters->ReclaimWakeupsSkipped);
     DenyAcquire(&irql);
     Counters->NextDenySequence = DenyNext;
     DenyRelease(irql);

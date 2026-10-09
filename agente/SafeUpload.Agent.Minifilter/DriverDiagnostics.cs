@@ -20,7 +20,7 @@ public static class DiagnosticsContract
     public const int DenyRecordSize = 192;
     public const int DenyRingRequestSize = 24;
     public const int DenyRingBatchSize = 32 + DenyRingBatchEntries * DenyRecordSize;
-    public const int DiagCountersSize = 112;
+    public const int DiagCountersSize = 120;
     public const int WriterStateStatusSize = 288;
 
     // Deny record flags (SAFEUPLOAD_DENY_FLAG_*).
@@ -119,6 +119,7 @@ public struct SafeUploadDiagCounters
     public ulong ReclaimPasses;
     public ulong ReclaimParkedPasses;
     public ulong ReclaimMoreWorkRequeues;
+    public ulong ReclaimWakeupsSkipped;
 }
 
 /// <summary>SAFEUPLOAD_WRITER_STATE_STATUS of the staging build (288 bytes).</summary>
