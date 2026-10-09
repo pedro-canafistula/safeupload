@@ -45,11 +45,14 @@ __declspec(noinline) static VOID DenyRelease(_In_ _IRQL_restores_ KIRQL OldIrql)
     KeReleaseSpinLock(&DenyLock, OldIrql);
 }
 
-VOID SafeUploadDenyRingInitialize(_In_ PDRIVER_OBJECT DriverObject)
+/* The linker places this symbol at the image base. DRIVER_OBJECT.DriverStart is off limits to a driver (C28175). */
+extern IMAGE_DOS_HEADER __ImageBase;
+
+VOID SafeUploadDenyRingInitialize(VOID)
 {
     KeInitializeSpinLock(&DenyLock);
     DenyNext = 1;
-    DenyImageBase = (ULONG_PTR)DriverObject->DriverStart;
+    DenyImageBase = (ULONG_PTR)&__ImageBase;
 }
 
 static ULONG DenyHintIndex(VOID)

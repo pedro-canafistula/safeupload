@@ -295,7 +295,7 @@ Return Value:
 
     SafeUploadData.DriverObject = DriverObject;
 #if SAFEUPLOAD_STAGING_PROTOTYPE
-    SafeUploadDenyRingInitialize( DriverObject );
+    SafeUploadDenyRingInitialize();
 #endif
 
     status = FltRegisterFilter( DriverObject,

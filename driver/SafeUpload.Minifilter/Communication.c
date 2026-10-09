@@ -1368,12 +1368,14 @@ Return Value:
         }
 
         if (command == SAFEUPLOAD_CONTROL_DENY_RING_READ) {
-            SAFEUPLOAD_DENY_RING_REQUEST denyRequest;
             PSAFEUPLOAD_DENY_RING_BATCH denyBatch = (PSAFEUPLOAD_DENY_RING_BATCH)policy;
+            UINT64 afterSequence;
 
-            /* The reply is built in the pool scratch buffer allocated above, never on the stack. */
+            /* The reply is built in the pool scratch buffer allocated above, never on the stack, and the header
+             * fields are validated from the copy taken at the top of this routine: this routine is already close
+             * to the stack-use limit (C6262). */
             C_ASSERT( sizeof( SAFEUPLOAD_DENY_RING_BATCH ) <= sizeof( SAFEUPLOAD_POLICY_MESSAGE ) );
-            if (InputBufferLength != sizeof( denyRequest )) {
+            if (InputBufferLength != sizeof( SAFEUPLOAD_DENY_RING_REQUEST )) {
                 status = STATUS_INVALID_BUFFER_SIZE;
                 leave;
             }
@@ -1382,17 +1384,18 @@ Return Value:
                     STATUS_BUFFER_TOO_SMALL : STATUS_INVALID_BUFFER_SIZE;
                 leave;
             }
-            RtlCopyMemory( &denyRequest, InputBuffer, sizeof( denyRequest ) );
-            if (denyRequest.Control.Version != SAFEUPLOAD_PROTOCOL_VERSION ||
-                denyRequest.Control.StructSize != sizeof( denyRequest ) ||
-                denyRequest.Control.Command != command ||
-                denyRequest.Control.Reserved != 0) {
+            if (controlHeader.Version != SAFEUPLOAD_PROTOCOL_VERSION ||
+                controlHeader.StructSize != sizeof( SAFEUPLOAD_DENY_RING_REQUEST ) ||
+                controlHeader.Reserved != 0) {
                 status = STATUS_REVISION_MISMATCH;
                 leave;
             }
+            RtlCopyMemory( &afterSequence,
+                           (PUCHAR)InputBuffer + FIELD_OFFSET( SAFEUPLOAD_DENY_RING_REQUEST, AfterSequence ),
+                           sizeof( afterSequence ) );
 #pragma warning( suppress: 6001 )
             ProbeForWrite( OutputBuffer, sizeof( SAFEUPLOAD_DENY_RING_BATCH ), __alignof( SAFEUPLOAD_DENY_RING_BATCH ) );
-            status = SafeUploadDenyRingReadBatch( denyRequest.AfterSequence, denyBatch );
+            status = SafeUploadDenyRingReadBatch( afterSequence, denyBatch );
             if (NT_SUCCESS( status )) {
                 RtlCopyMemory( OutputBuffer, denyBatch, sizeof( *denyBatch ) );
                 *ReturnOutputBufferLength = sizeof( *denyBatch );
@@ -1401,27 +1404,25 @@ Return Value:
         }
 
         if (command == SAFEUPLOAD_CONTROL_DIAG_COUNTERS) {
-            SAFEUPLOAD_CONTROL diagControl;
-            SAFEUPLOAD_DIAG_COUNTERS diagCounters;
+            PSAFEUPLOAD_DIAG_COUNTERS diagCounters = (PSAFEUPLOAD_DIAG_COUNTERS)policy;
 
+            C_ASSERT( sizeof( SAFEUPLOAD_DIAG_COUNTERS ) <= sizeof( SAFEUPLOAD_POLICY_MESSAGE ) );
             if (InputBufferLength != sizeof( SAFEUPLOAD_CONTROL ) ||
-                OutputBuffer == NULL || OutputBufferLength != sizeof( diagCounters )) {
+                OutputBuffer == NULL || OutputBufferLength != sizeof( SAFEUPLOAD_DIAG_COUNTERS )) {
                 status = STATUS_INVALID_BUFFER_SIZE;
                 leave;
             }
-            RtlCopyMemory( &diagControl, InputBuffer, sizeof( diagControl ) );
-            if (diagControl.Version != SAFEUPLOAD_PROTOCOL_VERSION ||
-                diagControl.StructSize != sizeof( SAFEUPLOAD_CONTROL ) ||
-                diagControl.Command != command ||
-                diagControl.Reserved != 0) {
+            if (controlHeader.Version != SAFEUPLOAD_PROTOCOL_VERSION ||
+                controlHeader.StructSize != sizeof( SAFEUPLOAD_CONTROL ) ||
+                controlHeader.Reserved != 0) {
                 status = STATUS_REVISION_MISMATCH;
                 leave;
             }
 #pragma warning( suppress: 6001 )
-            ProbeForWrite( OutputBuffer, sizeof( diagCounters ), __alignof( SAFEUPLOAD_DIAG_COUNTERS ) );
-            SafeUploadDenyGetCounters( &diagCounters );
-            RtlCopyMemory( OutputBuffer, &diagCounters, sizeof( diagCounters ) );
-            *ReturnOutputBufferLength = sizeof( diagCounters );
+            ProbeForWrite( OutputBuffer, sizeof( SAFEUPLOAD_DIAG_COUNTERS ), __alignof( SAFEUPLOAD_DIAG_COUNTERS ) );
+            SafeUploadDenyGetCounters( diagCounters );
+            RtlCopyMemory( OutputBuffer, diagCounters, sizeof( *diagCounters ) );
+            *ReturnOutputBufferLength = sizeof( *diagCounters );
             leave;
         }
 #endif

@@ -53,7 +53,7 @@ FLT_PREOP_CALLBACK_STATUS SafeUploadStageTxfFsctlPreOperation(
 
 #if SAFEUPLOAD_STAGING_PROTOTYPE
 /* DenyRing.c: always-on record of operations completed with an error status. */
-VOID SafeUploadDenyRingInitialize(_In_ PDRIVER_OBJECT DriverObject);
+VOID SafeUploadDenyRingInitialize(VOID);
 VOID SafeUploadDenySiteHint(_In_ PFLT_CALLBACK_DATA Data, _In_ PVOID Site);
 VOID SafeUploadDenyNote(_In_ PFLT_CALLBACK_DATA Data, _In_opt_ PCFLT_RELATED_OBJECTS Objects,
     _In_ NTSTATUS Status, _In_ BOOLEAN PostOperation);
