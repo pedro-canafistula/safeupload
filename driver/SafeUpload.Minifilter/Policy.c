@@ -71,6 +71,7 @@ typedef struct _SAFEUPLOAD_VOLUME_SCOPE_CACHE {
     ULONG Flags;
     BOOLEAN Overflow;
     BOOLEAN ScopeApplyActive;
+    BOOLEAN NetworkPrefix;       /* some cached prefix is itself a network path; computed at PASSIVE_LEVEL when the cache is built */
     SAFEUPLOAD_VOLUME_SCOPE_PREFIX Prefixes[SAFEUPLOAD_VOLUME_SCOPE_PREFIX_LIMIT];
 } SAFEUPLOAD_VOLUME_SCOPE_CACHE, *PSAFEUPLOAD_VOLUME_SCOPE_CACHE;
 
@@ -457,6 +458,8 @@ __declspec(noinline) static BOOLEAN SafeUploadVolumeCachePathUnderPrefix(
         Path->Buffer[prefixChars] == L'\\');
 }
 
+static BOOLEAN SafeUploadPolicyPrefixIsNetwork(_In_ PCUNICODE_STRING Prefix);
+
 static VOID SafeUploadPolicyCacheAddPrefix(_Inout_ PSAFEUPLOAD_VOLUME_SCOPE_CACHE Cache,
     _In_ PCUNICODE_STRING Prefix)
 {
@@ -470,6 +473,8 @@ static VOID SafeUploadPolicyCacheAddPrefix(_Inout_ PSAFEUPLOAD_VOLUME_SCOPE_CACH
     cached = &Cache->Prefixes[Cache->PrefixCount++];
     cached->Length = Prefix->Length;
     RtlCopyMemory(cached->Text, Prefix->Buffer, Prefix->Length);
+    /* PASSIVE_LEVEL (the cache is built before it is published): the locked readers only read this flag. */
+    if (SafeUploadPolicyPrefixIsNetwork(Prefix)) Cache->NetworkPrefix = TRUE;
 }
 
 static VOID SafeUploadPolicyCacheAddSnapshot(_Inout_ PSAFEUPLOAD_VOLUME_SCOPE_CACHE Cache,
@@ -565,8 +570,6 @@ __declspec(noinline) static VOID SafeUploadPolicySetTransitionStateNoInline(
     SafeUploadReleaseSpinLock(&SafeUploadVolumeScopeCacheLock, irql);
 }
 
-static BOOLEAN SafeUploadPolicyPrefixIsNetwork(_In_ PCUNICODE_STRING Prefix);
-
 /* Unresolved refusals apply only when this cached volume can contain a current,
  * pending, or boot scope. The resident snapshot classifies policy admission. */
 __declspec(noinline) static BOOLEAN SafeUploadPolicyVolumeCacheMatchesLocked(
@@ -598,12 +601,7 @@ __declspec(noinline) static BOOLEAN SafeUploadPolicyVolumeCacheMatchesLocked(
         }
         /* A share's scope is written as a UNC or provider path, not as a path under the volume's device name, so the
          * comparison above cannot see it: a network volume may match when any prefix is itself a network path. */
-        for (index = 0; !mayMatch && VolumeKind == SafeUploadVolumeNetwork && index < Cache->PrefixCount; ++index) {
-            UNICODE_STRING prefix;
-            prefix.Buffer = Cache->Prefixes[index].Text;
-            prefix.Length = prefix.MaximumLength = Cache->Prefixes[index].Length;
-            mayMatch = SafeUploadPolicyPrefixIsNetwork(&prefix);
-        }
+        if (!mayMatch && VolumeKind == SafeUploadVolumeNetwork && Cache->NetworkPrefix) mayMatch = TRUE;
     }
     return mayMatch;
 }
@@ -1732,15 +1730,40 @@ BOOLEAN SafeUploadPolicyHasDestinationScopes(_In_ SAFEUPLOAD_VOLUME_KIND VolumeK
 
 /* A prefix that can only be reached through a network provider: a UNC path, or an NT name under MUP, the redirectors or DFS. A
  * network volume cannot hold any other prefix, so a policy whose prefixes are all local paths never matches one. */
+/* Does Prefix start with Root (ASCII case-insensitive, resident code only: no Rtl string routine, so it is safe at any IRQL)? */
+static BOOLEAN SafeUploadPolicyPrefixStartsWith(_In_ PCUNICODE_STRING Prefix, _In_reads_(RootChars) const WCHAR *Root,
+    _In_ ULONG RootChars)
+{
+    ULONG index;
+    if (Prefix->Buffer == NULL || Prefix->Length < RootChars * sizeof(WCHAR)) return FALSE;
+    for (index = 0; index < RootChars; ++index) {
+        WCHAR left = Prefix->Buffer[index], right = Root[index];
+        if (left >= L'a' && left <= L'z') left -= L'a' - L'A';
+        if (right >= L'a' && right <= L'z') right -= L'a' - L'A';
+        if (left != right) return FALSE;
+    }
+    return TRUE;
+}
+
 static BOOLEAN SafeUploadPolicyPrefixIsNetwork(_In_ PCUNICODE_STRING Prefix)
 {
-    static const UNICODE_STRING networkNames[] = {
-        RTL_CONSTANT_STRING(L"\\\\"), RTL_CONSTANT_STRING(L"\\Device\\Mup"), RTL_CONSTANT_STRING(L"\\Device\\LanmanRedirector"),
-        RTL_CONSTANT_STRING(L"\\Device\\DfsClient"), RTL_CONSTANT_STRING(L"\\Device\\WebDavRedirector"),
-        RTL_CONSTANT_STRING(L"\\??\\UNC") };
-    ULONG index;
-    for (index = 0; index < RTL_NUMBER_OF(networkNames); ++index)
-        if (RtlPrefixUnicodeString(&networkNames[index], Prefix, TRUE)) return TRUE;
+    static const WCHAR unc[] = L"\\\\";
+    static const WCHAR mup[] = L"\\Device\\Mup";
+    static const WCHAR lanman[] = L"\\Device\\LanmanRedirector";
+    static const WCHAR dfs[] = L"\\Device\\DfsClient";
+    static const WCHAR webdav[] = L"\\Device\\WebDavRedirector";
+    static const WCHAR uncDevice[] = L"\\??\\UNC";
+    static const struct { const WCHAR *Root; ULONG Chars; } providerRoots[] = {
+        { mup, RTL_NUMBER_OF(mup) - 1 }, { lanman, RTL_NUMBER_OF(lanman) - 1 }, { dfs, RTL_NUMBER_OF(dfs) - 1 },
+        { webdav, RTL_NUMBER_OF(webdav) - 1 }, { uncDevice, RTL_NUMBER_OF(uncDevice) - 1 } };
+    ULONG index, chars = Prefix->Length / sizeof(WCHAR);
+    /* A UNC prefix names a server: more than the two backslashes. */
+    if (SafeUploadPolicyPrefixStartsWith(Prefix, unc, RTL_NUMBER_OF(unc) - 1) && chars > RTL_NUMBER_OF(unc) - 1) return TRUE;
+    /* A provider root is matched at a component boundary (\Device\MupFoo is not MUP). */
+    for (index = 0; index < RTL_NUMBER_OF(providerRoots); ++index) {
+        if (SafeUploadPolicyPrefixStartsWith(Prefix, providerRoots[index].Root, providerRoots[index].Chars) &&
+            (chars == providerRoots[index].Chars || Prefix->Buffer[providerRoots[index].Chars] == L'\\')) return TRUE;
+    }
     return FALSE;
 }
 

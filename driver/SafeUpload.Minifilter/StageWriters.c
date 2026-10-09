@@ -6892,16 +6892,20 @@ __declspec(noinline) static BOOLEAN StageRegistryUnknownSopForInstance(
     return unknownMarker;
 }
 
-/* The stream has a registry entry and that entry says the stream is outside every scope (the same decision as
- * SafeUploadStageWritersSopMatchesPolicy, which also answers "no" for a stream nothing is known about; this one requires the
- * entry, so ignorance never reads as "outside"). */
+/* The stream has a registry entry, the entry still describes this instance and this section-object pointer, and it says the
+ * stream is outside every scope: listed, not retired, classified outside, state Unscoped, with no Unknown reason, no alias probe
+ * pending and no rename in flight. Anything else, including a stale entry that the stream context still points at, is "not known
+ * outside" and the caller falls back to the volume-wide answer, so ignorance never reads as "outside". */
 _IRQL_requires_max_(APC_LEVEL)
 BOOLEAN SafeUploadStageWritersSopKnownOutside(_In_ PFLT_INSTANCE Instance, _In_opt_ PFILE_OBJECT FileObject)
 {
     PSAFEUPLOAD_STREAM_CONTEXT streamContext = NULL;
     PSTAGE_REGISTRY_ENTRY entry;
+    PVOID sectionObjectPointer;
+    BOOLEAN knownOutside;
     if (Instance == NULL || FileObject == NULL || FileObject->SectionObjectPointer == NULL) return FALSE;
-    entry = StageRegistryReferenceSop(FileObject->SectionObjectPointer);
+    sectionObjectPointer = FileObject->SectionObjectPointer;
+    entry = StageRegistryReferenceSop(sectionObjectPointer);
     if (entry == NULL && NT_SUCCESS(FltGetStreamContext(Instance, FileObject, (PFLT_CONTEXT *)&streamContext))) {
         KIRQL irql;
         StageAcquireSpinLock(&streamContext->WriterLock, &irql);
@@ -6912,8 +6916,18 @@ BOOLEAN SafeUploadStageWritersSopKnownOutside(_In_ PFLT_INSTANCE Instance, _In_o
         FltReleaseContext(streamContext);
     }
     if (entry == NULL) return FALSE;
+    FltAcquirePushLockShared(&RegistryLock);
+    knownOutside = entry->Listed && !entry->Retired && entry->Instance == Instance &&
+        InterlockedCompareExchangePointer((PVOID volatile *)&entry->SectionObjectPointer, NULL, NULL) == sectionObjectPointer &&
+        InterlockedCompareExchange((volatile LONG *)&entry->State, 0, 0) == SAFEUPLOAD_REGISTRY_STATE_UNSCOPED &&
+        InterlockedCompareExchange(&entry->ScopeNameClassification, 0, 0) == STAGE_SCOPE_CLASS_OUTSIDE &&
+        InterlockedCompareExchange(&entry->UnknownReasons, 0, 0) == 0 &&
+        InterlockedCompareExchange(&entry->AliasProbePending, 0, 0) == 0 &&
+        InterlockedCompareExchange(&entry->ScopeScanPending, 0, 0) == 0 &&
+        InterlockedCompareExchange(&entry->RenameInFlight, 0, 0) == 0;
+    FltReleasePushLock(&RegistryLock);
     StageRegistryDereference(entry);
-    return !SafeUploadStageWritersSopMatchesPolicy(Instance, FileObject, FALSE);
+    return knownOutside;
 }
 
 _IRQL_requires_max_(APC_LEVEL)
