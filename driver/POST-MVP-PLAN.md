@@ -12,8 +12,8 @@ The driver is complete for the local-NTFS product on Windows 10 22H2 build 19045
 2. **Everyday file work behaves like Windows without the driver, plus inspection**: Notepad, Office and other common applications save into
    a protected folder; copies and moves into it are inspected the same way; reading and permission changes are left to Windows; no per-boot
    or small file-size ceiling a user would hit.
-3. **It is a shippable build**: staging is the release configuration, the test-only diagnostics are out of it, the altitude is assigned by
-   Microsoft, and the driver is production-signed and loads with Secure Boot on.
+3. **It is a release build**: staging is the release configuration, the test-only diagnostics are out of it, and it installs, upgrades
+   and uninstalls cleanly. It stays test-signed (test signing on, Secure Boot off) until the owner says otherwise.
 4. **It is qualified**: the full invariant suite (all variants) passes in all three modes, plus soak, stress and coexistence runs.
 
 Other Windows builds and destinations beyond local NTFS (USB, SMB, sync clients, ReFS) come after that.
@@ -52,21 +52,18 @@ Sizes are rough: S = a few days, M = about a week, L = several weeks.
 | T10 | Permission and owner changes reach the real file or folder | P1 | M | T0 |
 | T11 | Close the review conditions (Luna P2s) | P1 | S-M | - |
 | T12 | Release build: staging becomes the product configuration, diagnostics test-only | P1 | M | T11 |
-| T13 | Altitude, INF, production (attestation) signing, Secure Boot on; start the paperwork now | P1 | M + lead time | T12 |
 | T14 | Driver install, upgrade and uninstall | P1 | M | T12 |
 | T15 | Full suite: section-4.1 variants, P01-P06, RV4, dedicated latency | P2 | L | M2 |
 | T16 | Soak, stress and fault injection | P2 | M | M2 |
 | T17 | Coexistence: antivirus/EDR filters, BitLocker, VSS, indexer, backup, OneDrive | P2 | M | M3 |
 | T18 | Operating Degraded/Unknown in the field | P2 | S | T0 |
 | T19 | Continuous no-unapproved-byte evidence (mutation ledger, C05 denial ledger) | P2 | M | T15 |
+| T13 | Altitude, production (attestation) signing, Secure Boot on (deferred: test mode only) | Later | M + lead time | owner |
 | T20 | Other Windows builds (deferred by the owner) | Later | L | M4 |
 | T21-T24 | USB/removable, SMB/UNC, cloud-sync folders, ReFS | Later | L each | M4 |
 
-Milestones: **M1 "safe to leave loaded"** = T0-T3; **M2 "everyday file work"** = T4-T11; **M3 "release candidate"** = T12-T14;
-**M4 "qualified"** = T15-T19; then T20-T24, each on its own.
-
-Start the external lead-time items of T13 (altitude request, EV certificate, Partner Center account) now, in parallel with M1: they take
-weeks and nothing in M1 depends on them.
+Milestones: **M1 "safe to leave loaded"** = T0-T3; **M2 "everyday file work"** = T4-T11; **M3 "release candidate"** = T12 and T14;
+**M4 "qualified"** = T15-T19; then T13 and T20-T24, each on its own.
 
 ## P0: the driver can stay loaded (M1)
 
@@ -237,7 +234,7 @@ existing file into a stage (`StagedTransferAllocator.MaximumSeedBytes`), and the
 match "content not scanned"; Forcepoint checks only name, size and a fingerprint above 100 MB. Skipping or truncating is a bypass in our
 threat model: a standard user pads a file past the limit, or puts the CPF after the scanned part.
 
-**Approach (recommended, owner to confirm).**
+**Approach (owner agreed on 2026-10-08).**
 - No fixed size cap in the driver. A staged version is an ordinary NTFS file, so its size is bounded by a **stage-space budget** (per user
   and in total, as a policy value) rather than by 16 MiB; exhaustion fails closed with a disk-full status and does not affect other users.
 - The agent inspects the **whole** file, streaming with bounded memory; no truncation.
@@ -280,7 +277,7 @@ Small, independent fixes from the Phase 5 and gen4b reviews:
 
 **Done when** each item has its own commit with a test or a suite row, and the M2 review closes them.
 
-## P1: shippable build (M3)
+## P1: release candidate (M3)
 
 ### T12. Release build configuration
 
@@ -294,26 +291,6 @@ SID only), input validation. Keep `Test-NormalBuildIdentity.ps1` (or its success
 test-only code. CodeQL, PREfast and ApiValidator at 0/0 on the release configuration.
 
 **Done when** the release configuration passes the full gate and the identity test shows no test-only message or hook.
-
-### T13. Altitude, INF and signing
-
-Today the driver is test-signed, which only loads on machines with test signing on and Secure Boot off. Since Windows 10 1607, a kernel
-driver on a normal Windows 10/11 machine must carry Microsoft's signature, obtained through the Partner Center (Hardware Dev Center), which
-requires an EV code-signing certificate. Two ways to get it:
-- **Attestation signing**: submit the EV-signed driver package; Microsoft signs it without running tests, usually within hours. Valid on
-  Windows 10/11 client editions, not on Windows Server. Enough for this product.
-- **WHQL certification**: run Microsoft's Hardware Lab Kit tests for file-system filters on our own test machines and submit the results.
-  Needed for Windows Server, Windows Update distribution, or customers who require certified drivers. Weeks of work.
-
-**Work.**
-- Request a minifilter altitude from Microsoft; `SafeUpload.inf` carries a provisional `321410` with a "must not ship" note. Confirm the
-  class and load order group for the request (the INF says `ActivityMonitor` class with `FSFilter Anti-Virus` load order; a filter that
-  blocks writes may belong in a different group).
-- Finalize the INF (`DriverVer`, version resource, catalog).
-- EV certificate, Partner Center registration, attestation signing (recommended for the first release; WHQL only if a customer needs it).
-- Qualify with test signing off and Secure Boot on.
-
-**Done when** the attestation-signed driver loads with Secure Boot on and passes the gate.
 
 ### T14. Install, upgrade, uninstall
 
@@ -341,6 +318,31 @@ requires an EV code-signing certificate. Two ways to get it:
 
 ## Later
 
+### T13. Altitude, INF and signing (deferred)
+
+Deferred by the owner on 2026-10-08: the project runs only in test mode (test signing on, Secure Boot off) until told otherwise. The
+provisional altitude is fine there as long as no other filter on the test VMs uses `321410`. Kept here for when it is picked up.
+
+Today the driver is test-signed, which only loads on machines with test signing on and Secure Boot off. Since Windows 10 1607, a kernel
+driver on a normal Windows 10/11 machine must carry Microsoft's signature, obtained through the Partner Center (Hardware Dev Center), which
+requires an EV code-signing certificate. Two ways to get it:
+- **Attestation signing**: submit the EV-signed driver package; Microsoft signs it without running tests, usually within hours. Valid on
+  Windows 10/11 client editions, not on Windows Server. Enough for this product on Windows 10/11 PCs.
+- **WHQL certification**: run Microsoft's Hardware Lab Kit tests for file-system filters on our own test machines and submit the results.
+  Needed for Windows Server, Windows Update distribution, or customers who require certified drivers. Weeks of work.
+
+**Work.**
+- Request a minifilter altitude from Microsoft; `SafeUpload.inf` carries a provisional `321410` with a "must not ship" note. Confirm the
+  class and load order group for the request (the INF says `ActivityMonitor` class with `FSFilter Anti-Virus` load order; a filter that
+  blocks writes may belong in a different group).
+- Finalize the INF (`DriverVer`, version resource, catalog).
+- EV certificate, Partner Center registration, attestation signing (recommended for the first release; WHQL only if a customer needs it).
+- Qualify with test signing off and Secure Boot on.
+
+**Done when** the attestation-signed driver loads with Secure Boot on and passes the gate.
+
+### T20 and new destinations
+
 - **T20. Other Windows builds.** Deferred by the owner on 2026-10-08: the platform stays Windows 10 22H2 build 19045.2965 for now. When it
   is picked up: Windows 11 24H2/25H2 and current Windows 10 22H2 (Windows 10 support ended on 2025-10-14), rerunning the section-behavior
   experiments (`MmDoesFileHaveUserWritableReferences` is observed, not documented, behavior), the start-up canary and the full gate on each,
@@ -361,14 +363,12 @@ requires an EV code-signing certificate. Two ways to get it:
 
 Decided on 2026-10-08:
 - The platform stays Windows 10 22H2 build 19045.2965 for now (other builds moved to T20).
+- The project runs only in test mode (test signing on, Secure Boot off) until the owner says otherwise (T13 deferred).
+- The reclaim worker is event-driven, with no backoff timer (T1).
 - Moves into a protected folder are inspected like copies, not refused (T6).
 - Reads are never refused by the driver; permissions and administrators decide who reads (T7).
+- File size: no driver cap, a stage-space budget, whole-file inspection, and anything that cannot be fully inspected is Blocked and
+  justifiable (T9).
+- Permission and owner changes go to the real file or folder, and Windows' own access check decides who may make them (T10).
 
-Recommended, waiting for the owner's OK:
-
-| Decision | Task | Recommendation |
-|---|---|---|
-| Reclaim worker: event-driven only, no backoff timer (consistent with the 2026-10-03 "no timers" rule) | T1 | Event-driven. |
-| File size: no driver cap, stage-space budget, whole-file inspection, "could not inspect" = Blocked and justifiable | T9 | As described in T9. |
-| Permission and owner changes go to the real file or folder, decided by Windows' access check | T10 | As described in T10. |
-| Attestation signing for the first release; WHQL only if a customer needs it | T13 | Attestation. |
+No decision is open.

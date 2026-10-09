@@ -171,5 +171,6 @@ Revert the VM: `rollback-vm.sh <domain> <run>` (new overlay on the pre-run paren
 The prioritized plan is in [POST-MVP-PLAN.md](POST-MVP-PLAN.md). In short: M1 makes the driver safe to leave loaded (reclaim-worker
 rescan, new-profile creation, large installers and Windows Update); M2 makes everyday file work behave like Windows plus inspection (stage
 slot reuse, Notepad and Office saves, moves inspected like copies, reads and permission changes left to Windows, large files, the review
-conditions); M3 is the release candidate (release build configuration, altitude and production signing, install/upgrade/uninstall); M4 is
-full qualification. Other Windows builds and destinations come later (owner decision 2026-10-08: stay on 19045.2965 for now).
+conditions); M3 is the release candidate (release build configuration, install/upgrade/uninstall; still test-signed); M4 is full
+qualification. Production signing, other Windows builds and destinations come later (owner decisions 2026-10-08: test mode only, stay on
+19045.2965 for now).
