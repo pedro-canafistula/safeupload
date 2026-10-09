@@ -118,7 +118,9 @@ dotnet publish agente\SafeUpload.Agent.Service -c Release -r win-x64 --self-cont
 sc.exe qsidtype SafeUploadAgent
 ```
 
-O script registra o serviço como LocalSystem e configura `SERVICE_SID_TYPE_UNRESTRICTED` para que o token contenha
+O script registra o serviço como LocalSystem, no modo de minifiltro com escrita em estágio (`--Interception:Mode=Minifilter
+--Interception:StagingPrototype=true`, alterável com `-ServiceArguments`; sem eles toda gravação de usuário comum numa pasta
+protegida é recusada) e configura `SERVICE_SID_TYPE_UNRESTRICTED` para que o token contenha
 `NT SERVICE\SafeUploadAgent`, exigido pelo driver para substituir política e conceder autorizações. Ele não inicia o serviço.
 Instale primeiro o INF do minifiltro e execute o script antes de reiniciar. Ele semeia e verifica `BootPolicy` como SYSTEM,
 mantém o driver em início sob demanda até a semeadura terminar e então o deixa em boot-start. Se a semeadura falhar, a

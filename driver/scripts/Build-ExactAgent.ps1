@@ -11,6 +11,45 @@ if ($env:COMPUTERNAME -ne 'DESKTOP-O1LP5DG' -or
     (Get-CimInstance Win32_ComputerSystemProduct).UUID -ne 'C6440689-D11C-4C63-A463-F3722B7DDB69') {
     throw 'Wrong builder.'
 }
+# The agent unit tests create current-user CNG keys (MachineCertificateAuthority, TLS inspection). The builder's SSH logon
+# is an S4U logon with no DPAPI user secret, so CngKey.Create fails there with "Access denied" and 21 tests fail for a
+# reason that has nothing to do with the code. SYSTEM can create the keys. Same tests, same trx, same exit-code and
+# warning rules: only the account that runs the test host differs.
+function Invoke-SystemProcess {
+    param([Parameter(Mandatory)][string] $FilePath, [Parameter(Mandatory)][string] $ArgumentLine,
+        [Parameter(Mandatory)][string] $WorkingDirectory, [Parameter(Mandatory)][string] $StdoutPath,
+        [hashtable] $Environment = @{}, [int] $TimeoutMinutes = 30)
+    $directory = [IO.Path]::GetDirectoryName($StdoutPath)
+    $stamp = [guid]::NewGuid().ToString('N')
+    $wrapper = Join-Path $directory ('system-run-' + $stamp + '.ps1')
+    $exitFile = $wrapper + '.exit'
+    $stderrPath = $StdoutPath + '.stderr'
+    $environmentLines = @($Environment.GetEnumerator() | ForEach-Object { '$env:' + $_.Key + ' = ''' + ([string]$_.Value).Replace("'", "''") + '''' })
+    $body = @(
+        '$env:DOTNET_NOLOGO = ''1''; $env:DOTNET_CLI_TELEMETRY_OPTOUT = ''1''') + $environmentLines + @(
+        '$p = Start-Process -FilePath ''' + $FilePath + ''' -ArgumentList ''' + $ArgumentLine.Replace("'", "''") + ''' -WorkingDirectory ''' + $WorkingDirectory + ''' -RedirectStandardOutput ''' + $StdoutPath + ''' -RedirectStandardError ''' + $stderrPath + ''' -Wait -PassThru -WindowStyle Hidden',
+        'Set-Content -LiteralPath ''' + $exitFile + ''' -Value $p.ExitCode -Encoding ASCII')
+    Set-Content -LiteralPath $wrapper -Value $body -Encoding UTF8
+    $taskName = 'SafeUpload-ExactAgentSystem-' + $stamp
+    $action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument ('-NoProfile -ExecutionPolicy Bypass -File "' + $wrapper + '"')
+    $principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
+    $settings = New-ScheduledTaskSettingsSet -ExecutionTimeLimit ([TimeSpan]::FromMinutes($TimeoutMinutes + 5))
+    Register-ScheduledTask -TaskName $taskName -Action $action -Principal $principal -Settings $settings | Out-Null
+    try {
+        Start-ScheduledTask -TaskName $taskName
+        $deadline = [DateTime]::UtcNow.AddMinutes($TimeoutMinutes)
+        do { Start-Sleep -Seconds 2 } while (-not (Test-Path -LiteralPath $exitFile) -and [DateTime]::UtcNow -lt $deadline)
+    }
+    finally {
+        Stop-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
+        Unregister-ScheduledTask -TaskName $taskName -Confirm:$false -ErrorAction SilentlyContinue
+    }
+    if (-not (Test-Path -LiteralPath $exitFile)) { throw 'The SYSTEM test run did not finish in time.' }
+    $code = [int]([IO.File]::ReadAllText($exitFile).Trim())
+    if (Test-Path -LiteralPath $stderrPath) { Get-Content -LiteralPath $stderrPath | Add-Content -LiteralPath $StdoutPath }
+    Remove-Item -LiteralPath $wrapper, $exitFile, $stderrPath -ErrorAction SilentlyContinue
+    return $code
+}
 $documents = 'C:\Users\vika\Documents'
 $run = Join-Path $documents ('exact-agent-' + $Label)
 $archive = $run + '.zip'
@@ -43,9 +82,20 @@ try {
     $featureArgs=@();if($AdmissionEvidence){$featureArgs=@("-p:SafeUploadAdmissionEvidence=true")}
     $summary += "admission_evidence=$($AdmissionEvidence.IsPresent)"
     $nativePreference=$ErrorActionPreference;$ErrorActionPreference='Continue'
-    & dotnet.exe test agente\SafeUpload.Agent.Tests\SafeUpload.Agent.Tests.csproj -c Release -warnaserror @featureArgs `
-        --logger 'trx;LogFileName=agent-tests.trx' --results-directory $out > (Join-Path $out 'tests.txt') 2>&1
+    # Build with warnings as errors in this session, then run the built test assembly as SYSTEM (see above).
+    & dotnet.exe build agente\SafeUpload.Agent.Tests\SafeUpload.Agent.Tests.csproj -c Release -warnaserror @featureArgs `
+        > (Join-Path $out 'tests.txt') 2>&1
     $testExit = $LASTEXITCODE;$ErrorActionPreference=$nativePreference
+    if ($testExit -eq 0) {
+        $testDll = Get-ChildItem (Join-Path $src 'agente\SafeUpload.Agent.Tests\bin\Release') -Recurse -Filter 'SafeUpload.Agent.Tests.dll' | Select-Object -First 1
+        if ($null -eq $testDll) { throw 'The built test assembly was not found.' }
+        $systemLog = Join-Path $out 'tests-system.txt'
+        $testExit = Invoke-SystemProcess -FilePath (Get-Command dotnet.exe).Source `
+            -ArgumentLine ('vstest "' + $testDll.FullName + '" /Logger:"trx;LogFileName=agent-tests.trx" /ResultsDirectory:"' + $out + '"') `
+            -WorkingDirectory $testDll.DirectoryName -StdoutPath $systemLog `
+            -Environment @{ SAFEUPLOAD_MACHINE_TESTS = '1' }   # MachineFact tests (they add and remove a uniquely named test CA) are meant for this disposable VM
+        Get-Content -LiteralPath $systemLog | Add-Content -LiteralPath (Join-Path $out 'tests.txt')
+    }
     $testText = [IO.File]::ReadAllText((Join-Path $out 'tests.txt'))
     $testWarnings = [regex]::Matches($testText, '(?im)\bwarning\s+[A-Z]+\d+\b').Count
     $summary += "tests: exit=$testExit warnings=$testWarnings"
