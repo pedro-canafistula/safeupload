@@ -69,3 +69,26 @@ C04 are the rows that would show it.
 
 Pending: debuggee run `t0rx` (C05, C01-approve-absent, S01, C01-block-absent, runtime-verifier, win10-debug2); T1 builds `t1-reclaim1` and
 `t1-agent1` are being produced on the builder.
+
+### Harness pair must be the feature flavour (finding, 01:50)
+
+Second C05 attempt after pinning the policy file: still `ready-timeout`, now with `Admission coverage Degraded: UnknownReceiptFlags`. The
+harness runs the feature driver (test taint control compiled in), whose receipt carries `TestTaintControlFlag`; only the agent built with
+`SAFEUPLOAD_ADMISSION_EVIDENCE` sets the matching `TestDisableTaint` policy flag, so the plain agent I had built could never reach Ready with
+it. The gate pair is always feature driver + feature agent (`SAFEUPLOAD_ADMISSION_EVIDENCE_BUILD=true Invoke-ExactAgentBuild.sh`). The feature
+agent gates are green (`t0-agent6`, `t1-agent3`). Reminder for T12: the release build must not need a test-only flag to reach Ready.
+S01 on the T0 driver already passed the MVP gate with a clean restoration (`t0rx3`).
+
+### T2: new-profile denial named (diagnosis experiment `t2diag3`, T0 driver, 01:52)
+
+`Invoke-NewProfileDiagnosis.sh` (checkpoint, install pair through the installer, reboot, `userenv!CreateProfile` for a new user, read the ring,
+roll back) reproduces `CreateProfile = 0x80070005` and the deny ring names the refusals: **about 235 `STATUS_ACCESS_DENIED` refusals within
+one second, all `CREATE` of directories and files under `\Users\t2probe\...`** (open-for-write-attributes of directories, `FILE_CREATE` of
+directories and files) by the Profile Service's process, plus two kernel-mode `SET_INFORMATION` (FileBasicInformation) refusals just before
+it. None is inside a protected scope (the scope is `C:\Protected`). `volumeWideFallback` shows 2266 of 2295 calls answered "the whole volume
+may be in scope" by boot time, which confirms the suspected mechanism: `StageAdmitDirectoryMutation` (and `StagePhysicalMutationEx` for the
+`SET_INFORMATION` case) ask for the normalized name; when that lookup fails they fall back to
+`SafeUploadPolicyMayMatchInstanceVolume` and refuse, so every unresolved mutation on a volume that hosts any scope is denied. Windows creates a
+profile tree deepest-first and creates parents on `PATH_NOT_FOUND`, so an ACCESS_DENIED instead aborts the whole recursion. The deny record now
+carries the status of the failed lookup (`AuxStatus`) to confirm which failure it is before the fix.
+
