@@ -11,10 +11,43 @@ if ($env:COMPUTERNAME -ne 'DESKTOP-O1LP5DG' -or
     (Get-CimInstance Win32_ComputerSystemProduct).UUID -ne 'C6440689-D11C-4C63-A463-F3722B7DDB69') {
     throw 'Wrong builder.'
 }
-# The agent unit tests create current-user CNG keys (MachineCertificateAuthority, TLS inspection). The builder's SSH logon
-# is an S4U logon with no DPAPI user secret, so CngKey.Create fails there with "Access denied" and 21 tests fail for a
-# reason that has nothing to do with the code. SYSTEM can create the keys. Same tests, same trx, same exit-code and
-# warning rules: only the account that runs the test host differs.
+# Two groups of agent unit tests need different accounts. The certificate-authority and TLS-inspection tests create
+# current-user CNG keys, which fails with "Access denied" in the builder's SSH logon (an S4U logon has no DPAPI user
+# secret) and works as SYSTEM. The hand-back tests model an unprivileged host and the product refuses to route a
+# hand-back to SYSTEM, so they must run as the normal user. Every test runs exactly once, in the account it needs; the two
+# trx files are merged into the single agent-tests.trx that the pair qualification reads.
+function Merge-TrxFiles {
+    param([Parameter(Mandatory)][string[]] $Paths, [Parameter(Mandatory)][string] $Destination)
+    $ns = 'http://microsoft.com/schemas/VisualStudio/TeamTest/2010'
+    $documents = @()
+    foreach ($path in $Paths) { $document = New-Object System.Xml.XmlDocument; $document.Load($path); $documents += $document }
+    $first = $documents[0]
+    $firstManager = New-Object System.Xml.XmlNamespaceManager($first.NameTable); $firstManager.AddNamespace('t', $ns)
+    foreach ($section in 'Results', 'TestDefinitions', 'TestEntries') {
+        $target = $first.SelectSingleNode('//t:' + $section, $firstManager)
+        if ($null -eq $target) { throw ('TRX has no ' + $section + ' section.') }
+        for ($index = 1; $index -lt $documents.Count; $index++) {
+            $manager = New-Object System.Xml.XmlNamespaceManager($documents[$index].NameTable); $manager.AddNamespace('t', $ns)
+            $source = $documents[$index].SelectSingleNode('//t:' + $section, $manager)
+            if ($null -eq $source) { continue }
+            foreach ($node in @($source.ChildNodes)) { [void]$target.AppendChild($first.ImportNode($node, $true)) }
+        }
+    }
+    $summary = $first.SelectSingleNode('//t:ResultSummary', $firstManager)
+    $counters = $first.SelectSingleNode('//t:ResultSummary/t:Counters', $firstManager)
+    foreach ($name in 'total', 'executed', 'passed', 'failed', 'error', 'timeout', 'aborted', 'inconclusive', 'passedButRunAborted',
+        'notRunnable', 'notExecuted', 'disconnected', 'warning', 'completed', 'inProgress', 'pending') {
+        $sum = 0
+        foreach ($document in $documents) {
+            $manager = New-Object System.Xml.XmlNamespaceManager($document.NameTable); $manager.AddNamespace('t', $ns)
+            $counter = $document.SelectSingleNode('//t:ResultSummary/t:Counters', $manager)
+            if ($counter.HasAttribute($name)) { $sum += [int]$counter.GetAttribute($name) }
+        }
+        $counters.SetAttribute($name, [string]$sum)
+    }
+    if ([int]$counters.GetAttribute('failed') -gt 0 -or [int]$counters.GetAttribute('error') -gt 0) { $summary.SetAttribute('outcome', 'Failed') }
+    $first.Save($Destination)
+}
 function Invoke-SystemProcess {
     param([Parameter(Mandatory)][string] $FilePath, [Parameter(Mandatory)][string] $ArgumentLine,
         [Parameter(Mandatory)][string] $WorkingDirectory, [Parameter(Mandatory)][string] $StdoutPath,
@@ -93,19 +126,30 @@ try {
     $featureArgs=@();if($AdmissionEvidence){$featureArgs=@("-p:SafeUploadAdmissionEvidence=true")}
     $summary += "admission_evidence=$($AdmissionEvidence.IsPresent)"
     $nativePreference=$ErrorActionPreference;$ErrorActionPreference='Continue'
-    # Build with warnings as errors in this session, then run the built test assembly as SYSTEM (see above).
+    # Build with warnings as errors in this session, then run the built test assembly in two groups (see above).
     & dotnet.exe build agente\SafeUpload.Agent.Tests\SafeUpload.Agent.Tests.csproj -c Release -warnaserror @featureArgs `
         > (Join-Path $out 'tests.txt') 2>&1
     $testExit = $LASTEXITCODE;$ErrorActionPreference=$nativePreference
     if ($testExit -eq 0) {
         $testDll = Get-ChildItem (Join-Path $src 'agente\SafeUpload.Agent.Tests\bin\Release') -Recurse -Filter 'SafeUpload.Agent.Tests.dll' | Select-Object -First 1
         if ($null -eq $testDll) { throw 'The built test assembly was not found.' }
+        $systemGroup = 'FullyQualifiedName~CertificateAuthorityTests|FullyQualifiedName~TlsInspectionProxyTests'
+        $userGroup = 'FullyQualifiedName!~CertificateAuthorityTests&FullyQualifiedName!~TlsInspectionProxyTests'
+        $testsLog = Join-Path $out 'tests.txt'
+
+        $nativePreference=$ErrorActionPreference;$ErrorActionPreference='Continue'
+        & dotnet.exe vstest $testDll.FullName "/TestCaseFilter:$userGroup" '/Logger:trx;LogFileName=agent-tests-user.trx' "/ResultsDirectory:$out" >> $testsLog 2>&1
+        $userExit = $LASTEXITCODE;$ErrorActionPreference=$nativePreference
+
         $systemLog = Join-Path $out 'tests-system.txt'
-        $testExit = Invoke-SystemProcess -FilePath (Get-Command dotnet.exe).Source `
-            -ArgumentLine ('vstest "' + $testDll.FullName + '" /Logger:"trx;LogFileName=agent-tests.trx" /ResultsDirectory:"' + $out + '"') `
+        $systemExit = Invoke-SystemProcess -FilePath (Get-Command dotnet.exe).Source `
+            -ArgumentLine ('vstest "' + $testDll.FullName + '" /TestCaseFilter:"' + $systemGroup + '" /Logger:"trx;LogFileName=agent-tests-system.trx" /ResultsDirectory:"' + $out + '"') `
             -WorkingDirectory $testDll.DirectoryName -StdoutPath $systemLog `
             -Environment @{ SAFEUPLOAD_MACHINE_TESTS = '1' }   # MachineFact tests (they add and remove a uniquely named test CA) are meant for this disposable VM
-        Get-Content -LiteralPath $systemLog | Add-Content -LiteralPath (Join-Path $out 'tests.txt')
+        Get-Content -LiteralPath $systemLog | Add-Content -LiteralPath $testsLog
+
+        Merge-TrxFiles -Paths @((Join-Path $out 'agent-tests-user.trx'), (Join-Path $out 'agent-tests-system.trx')) -Destination (Join-Path $out 'agent-tests.trx')
+        $testExit = if ($userExit -ne 0) { $userExit } else { $systemExit }
     }
     $testText = [IO.File]::ReadAllText((Join-Path $out 'tests.txt'))
     $testWarnings = [regex]::Matches($testText, '(?im)\bwarning\s+[A-Z]+\d+\b').Count
