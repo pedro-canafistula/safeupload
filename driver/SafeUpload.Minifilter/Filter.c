@@ -1390,6 +1390,27 @@ static BOOLEAN SafeUploadFailClosedProtectedCreate(_Inout_ PFLT_CALLBACK_DATA Da
         !SafeUploadIsAuthenticatedClient());
 }
 
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+/* Names the legacy create gate in the deny ring: the volume kind and volume name of the instance that refused. */
+static VOID SafeUploadNoteLegacyCreateGate(_In_ PFLT_CALLBACK_DATA Data, _In_ PCFLT_RELATED_OBJECTS FltObjects)
+{
+    PSAFEUPLOAD_INSTANCE_CONTEXT context = NULL;
+    UNICODE_STRING volumeName = { 0 };
+    UINT32 kind = 0xFF;
+
+    if (NT_SUCCESS(FltGetInstanceContext(FltObjects->Instance, (PFLT_CONTEXT *)&context))) {
+        kind = (UINT32)context->VolumeKind;
+        if (context->VolumeNameChars != 0 && context->VolumeNameChars <= SAFEUPLOAD_MAX_PREFIX_CHARS) {
+            volumeName.Buffer = context->VolumeName;
+            volumeName.Length = volumeName.MaximumLength = (USHORT)(context->VolumeNameChars * sizeof(WCHAR));
+        }
+    }
+    SafeUploadDenyDetail(Data, SAFEUPLOAD_DENY_REASON_LEGACY_CREATE_GATE, (NTSTATUS)kind,
+        volumeName.Length != 0 ? &volumeName : NULL);
+    if (context != NULL) FltReleaseContext(context);
+}
+#endif
+
 static FLT_PREOP_CALLBACK_STATUS SafeUploadPreAcquireSection(_Inout_ PFLT_CALLBACK_DATA Data,
     _In_ PCFLT_RELATED_OBJECTS FltObjects,
     _Flt_CompletionContext_Outptr_ PVOID *CompletionContext)
@@ -1517,6 +1538,9 @@ Return Value:
     }
 
     if (SafeUploadFailClosedProtectedCreate(Data, FltObjects)) {
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+        SafeUploadNoteLegacyCreateGate(Data, FltObjects);
+#endif
         Data->IoStatus.Status = STATUS_ACCESS_DENIED;
         Data->IoStatus.Information = 0;
         return FLT_PREOP_COMPLETE;
@@ -1527,6 +1551,9 @@ Return Value:
      * between the two checks cannot turn the create into a no-port allow. */
     if (!SafeUploadIsAuthenticatedClient()) {
         if (SafeUploadFailClosedProtectedCreate(Data, FltObjects)) {
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+            SafeUploadNoteLegacyCreateGate(Data, FltObjects);
+#endif
             Data->IoStatus.Status = STATUS_ACCESS_DENIED;
             Data->IoStatus.Information = 0;
             return FLT_PREOP_COMPLETE;

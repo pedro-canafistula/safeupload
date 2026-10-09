@@ -198,6 +198,7 @@ public sealed class DriverDiagnosticsSource
         8 => "privateNamespace",
         9 => "trustGate",
         10 => "deleteOnClose",
+        11 => "legacyCreateGate",
         _ => reason.ToString(),
     };
 

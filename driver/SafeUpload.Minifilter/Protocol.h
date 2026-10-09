@@ -1112,6 +1112,7 @@ typedef struct _SAFEUPLOAD_ADMISSION_EPOCH_STATUS {
 #define SAFEUPLOAD_DENY_REASON_PRIVATE_NAMESPACE  ((UINT32) 8)
 #define SAFEUPLOAD_DENY_REASON_TRUST_GATE         ((UINT32) 9)   /* protected name on a volume whose trust gate is not satisfied */
 #define SAFEUPLOAD_DENY_REASON_DELETE_ON_CLOSE    ((UINT32) 10)
+#define SAFEUPLOAD_DENY_REASON_LEGACY_CREATE_GATE ((UINT32) 11)  /* the fail-closed create gate: AuxStatus = the instance's volume kind, name = its volume name */
 
 typedef struct _SAFEUPLOAD_DENY_RECORD {
     UINT64 Sequence;                // 1-based, strictly increasing; 0 never appears in a reply
