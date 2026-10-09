@@ -277,3 +277,24 @@ Options (none done, each needs a design and a review): (a) classify pre-scope en
 (b) let the section gate wait a bounded time for the entry's classification, then decide, (c) give entries of files that are provably outside every scope by name a fast path in the
 worker (classify outside-by-name entries first, ahead of the ones with a scoped-looking name), (d) accept the window for pre-scope handles and document it. (c) is the smallest.
 
+### T3 first results (10:50)
+
+Runner `Invoke-InstallerWorkload.sh`, final driver `m1-driver4` + agent `m1-agent6`, win10-debug2 (win10-debug3 is down, see the incident):
+- **MSI** (PowerShell 7.4.5): driver 9.2 s against control 7.0 s (earlier run: 9.1 s against 8.2 s). Installs, registry high-water 225 of 4,096, no Unknown reason, Ready.
+- **Cumulative update** (the 2025-10 CU for 22H2, KB5066791, via the Windows Update Agent API): completes with the driver loaded, 1,017 s (control run killed at the host-disk
+  limit, see below). It exposes three defects and the registry limit:
+  1. 3 creates of a delete-pending file (`spool\drivers\x64\3\Old\1\FXSAPI.DLL`) refused as `aliasCheckFailed` (the probe's `STATUS_DELETE_PENDING`).
+  2. 8 kernel-mode `WRITE`s (pid 1668) issued from inside another file-system call (top-level IRP set) on untracked file objects, refused for lack of a queryable name.
+  3. The writer registry reached its per-volume cap of 1,024 entries (977 live at the peak, 3,247 capacity failures); the volume was marked Unknown for
+     CAPACITY|ALLOCATION|IDENTITY|CLEANUP, and such a reason stays until the next boot (coverage Degraded). After the reboot that finishes the update, the servicing phase (also
+     under the driver) pruned 11,296 entries with 57,464 reclaim passes and ended with 292 entries.
+  Fixed in `1989f86a` (not yet verified on a VM): the per-volume cap is the whole registry (4,096); every 64th insertion above 512 live entries wakes the pruner; a
+  delete-pending probe lets the file system answer; a nested write is decided by the stream's validated registry entry when it is classified outside every scope. The sticky
+  capacity reason itself (T3c: a transient burst must not leave coverage Degraded until reboot) is open: the loss is real for the streams opened while the registry was full, so
+  clearing it needs the untracked handles to be accounted for; a design is needed.
+- **Defender**: both runs (driver and control) failed identically with `0x80070652` (ERROR_INSTALL_ALREADY_RUNNING right after boot); the workload now retries; re-run queued.
+- **Microsoft 365**: not run yet. The host disk had 5.5 GB free (btrfs with snapshots does not give back files that existed at the last snapshot; every run leaves its multi-GB
+  overlay behind after the rollback). I deleted the discarded run overlays that my own rollback lines name after checking them against the libvirt chain (frees 16 GB), and the
+  runner now refuses to start with less than 12 GB free (30 GB for Microsoft 365). Auto-deleting overlays from the runners was denied by the auto-mode classifier and is not done.
+- Boot-time refusals: the runner now evaluates refusals after the ring cursor taken at the workload start; ones before it (the FontCache section window, T2c) are listed separately.
+
