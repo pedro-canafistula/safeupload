@@ -349,6 +349,8 @@ static VOID StageRegistryMarkEntryUnknownAt(_In_ PSTAGE_REGISTRY_ENTRY Entry,
 #define StageRegistryMarkEntryUnknown(Entry, Reason) \
     StageRegistryMarkEntryUnknownAt((Entry), (Reason), (ULONG)__LINE__)
 static BOOLEAN StageRegistryQueueReclaim(VOID);
+_IRQL_requires_(PASSIVE_LEVEL)
+static VOID StageAnchorReleaseInstance(_In_ PFLT_INSTANCE Instance);
 static KSPIN_LOCK SectionLock;
 _IRQL_requires_(DISPATCH_LEVEL)
 __declspec(noinline) static PSTAGE_REGISTRY_SOP_SLOT StageRegistryFindSopSlotLocked(
@@ -460,6 +462,17 @@ static volatile LONG RegistryReclaimQueued;
  * recomputed by each pass. Lifetime events (a close or cleanup anywhere on the machine) queue a pass only while it is set
  * and only for a stream a waiting entry is bound to, so a busy but idle-of-interest machine costs no reclaim passes. */
 static volatile LONG RegistryReclaimInterest;
+typedef struct _STAGE_ANCHOR {
+    LIST_ENTRY Link;
+    PSTAGE_REGISTRY_ENTRY Entry;     /* holds a registry reference */
+    PFLT_INSTANCE Instance;          /* holds an object reference */
+    HANDLE Handle;
+    PFILE_OBJECT Object;
+} STAGE_ANCHOR, *PSTAGE_ANCHOR;
+static EX_PUSH_LOCK StageAnchorLock;
+static LIST_ENTRY StageAnchorList;
+static ULONG StageAnchorCount;       /* StageAnchorLock */
+static volatile ULONG StageAnchorEpoch;
 static volatile LONG64 RegistryReclaimWakeupsSkipped;
 static volatile LONG RegistryReclaimResetCursor;
 /* Borrowed only while the one reclaim body executes. Clear before the work
@@ -1290,6 +1303,8 @@ VOID SafeUploadStageWritersInstanceTeardownStart(
 
     PAGED_CODE();
 
+    /* The identity anchors are handles opened below this instance: they must be closed here. */
+    StageAnchorReleaseInstance(FltObjects->Instance);
     /* InstanceTeardownStart is PASSIVE_LEVEL and precedes context teardown. */
     dismount = FlagOn(Reason, FLTFL_INSTANCE_TEARDOWN_VOLUME_DISMOUNT);
     if (dismount) InterlockedIncrement64(&InstanceTeardownsDismount);
@@ -5583,6 +5598,165 @@ static BOOLEAN StageRegistryEntryHoldsNoWriterState(_In_ PSTAGE_REGISTRY_ENTRY E
         StageRegistrySnapshotC(Entry, NULL, 0, NULL) == 0;
 }
 
+/* Identity anchors.
+ *
+ * An Activating entry whose writer is still live cannot be promoted. When that writer's last handle closes, the cache
+ * owner (the cache manager keeps the first file object of a cached stream) closes later, and that close is the only
+ * event that wakes the reclaim pass. Between the two NTFS may tear the stream down, and the pass that finally runs
+ * reopens a new incarnation: the promotion then rests on the replaced-incarnation basis instead of the held one, and
+ * whether it did came down to how many microseconds the pass needed to start (the old worker requeued itself without
+ * pause, so one of its passes always held the stream open). The pass keeps the by-ID identity handle it already opens
+ * (attribute access, every share mode, opened below this filter) for as long as the entry waits with a live writer.
+ * While it is open the stream cannot be torn down, so the pass that finally promotes does so on the held incarnation.
+ *
+ * Ownership: an anchor is in the list, or owned by the one pass that took it for a visit (the reclaim worker is
+ * single-threaded). Every path that retires the entry, closes the instance or finishes the visit closes it. */
+#define STAGE_ANCHOR_LIMIT 32
+
+_IRQL_requires_(PASSIVE_LEVEL)
+static VOID StageAnchorDestroy(_In_ PSTAGE_ANCHOR Anchor)
+{
+    PAGED_CODE();
+    ObDereferenceObject(Anchor->Object);
+    FltClose(Anchor->Handle);
+    FltObjectDereference(Anchor->Instance);
+    StageRegistryDereference(Anchor->Entry);
+    ExFreePoolWithTag(Anchor, SAFEUPLOAD_REGISTRY_POOL_TAG);
+}
+
+static ULONG StageAnchorReadEpoch(VOID)
+{
+    return (ULONG)InterlockedCompareExchange((volatile LONG *)&StageAnchorEpoch, 0, 0);
+}
+
+_IRQL_requires_(PASSIVE_LEVEL)
+static BOOLEAN StageAnchorTake(_In_ PSTAGE_REGISTRY_ENTRY Entry, _Outptr_result_maybenull_ PSTAGE_ANCHOR *Taken)
+{
+    PLIST_ENTRY link;
+    PAGED_CODE();
+    *Taken = NULL;
+    FltAcquirePushLockExclusive(&StageAnchorLock);
+    for (link = StageAnchorList.Flink; link != &StageAnchorList; link = link->Flink) {
+        PSTAGE_ANCHOR anchor = CONTAINING_RECORD(link, STAGE_ANCHOR, Link);
+        if (anchor->Entry == Entry) {
+            RemoveEntryList(&anchor->Link);
+            StageAnchorCount -= 1;
+            *Taken = anchor;
+            break;
+        }
+    }
+    FltReleasePushLock(&StageAnchorLock);
+    return *Taken != NULL;
+}
+
+/* Puts a taken or new anchor in the list, unless the instance began teardown since Epoch was read or the list is full. */
+_IRQL_requires_(PASSIVE_LEVEL)
+static BOOLEAN StageAnchorInsert(_In_ PSTAGE_ANCHOR Anchor, _In_ ULONG Epoch)
+{
+    BOOLEAN inserted = FALSE;
+    PAGED_CODE();
+    FltAcquirePushLockExclusive(&StageAnchorLock);
+    if ((ULONG)StageAnchorEpoch == Epoch && StageAnchorCount < STAGE_ANCHOR_LIMIT) {
+        InsertTailList(&StageAnchorList, &Anchor->Link);
+        StageAnchorCount += 1;
+        inserted = TRUE;
+    }
+    FltReleasePushLock(&StageAnchorLock);
+    return inserted;
+}
+
+/* Does the entry still need its stream held? A new anchor also needs the live writer that makes the wait unbounded
+ * by anything the worker can observe; an existing one stays until the entry resolves. */
+static BOOLEAN StageAnchorWanted(_In_ PSTAGE_REGISTRY_ENTRY Entry, _In_ BOOLEAN RequireLiveWriter)
+{
+    if (Entry->Retired || !Entry->Listed ||
+        InterlockedCompareExchange((volatile LONG *)&Entry->State, 0, 0) != SAFEUPLOAD_REGISTRY_STATE_ACTIVATING) return FALSE;
+    return !RequireLiveWriter || InterlockedCompareExchange(&Entry->H, 0, 0) != 0;
+}
+
+/* Ends a visit: the handle and file object of the visit are kept as the entry's anchor, or closed. Both pointers are
+ * consumed either way. */
+_IRQL_requires_(PASSIVE_LEVEL)
+static VOID StageAnchorEndVisit(_In_ PSTAGE_REGISTRY_ENTRY Entry, _In_ PFLT_INSTANCE Instance,
+    _Inout_ PSTAGE_ANCHOR *Taken, _Inout_ HANDLE *Handle, _Inout_ PFILE_OBJECT *Object, _In_ ULONG Epoch,
+    _In_ BOOLEAN Replaced)
+{
+    PSTAGE_ANCHOR anchor = *Taken;
+    PAGED_CODE();
+    if (anchor != NULL) {
+        /* Borrowed for the visit: Handle and Object are the anchor's own. */
+        if (!StageAnchorWanted(Entry, FALSE) || !StageAnchorInsert(anchor, Epoch)) StageAnchorDestroy(anchor);
+        *Taken = NULL; *Handle = NULL; *Object = NULL;
+        return;
+    }
+    if (*Handle == NULL || *Object == NULL || Replaced || !StageAnchorWanted(Entry, TRUE)) return;
+    anchor = ExAllocatePool2(POOL_FLAG_PAGED, sizeof(*anchor), SAFEUPLOAD_REGISTRY_POOL_TAG);
+    if (anchor == NULL) return;
+    if (!NT_SUCCESS(FltObjectReference(Instance))) { ExFreePoolWithTag(anchor, SAFEUPLOAD_REGISTRY_POOL_TAG); return; }
+    StageRegistryReference(Entry);
+    anchor->Entry = Entry;
+    anchor->Instance = Instance;
+    anchor->Handle = *Handle;
+    anchor->Object = *Object;
+    if (StageAnchorInsert(anchor, Epoch)) {
+        *Handle = NULL; *Object = NULL;
+        return;
+    }
+    /* Not kept: give the caller back its handle and object, drop what the node took. */
+    FltObjectDereference(Instance);
+    StageRegistryDereference(Entry);
+    ExFreePoolWithTag(anchor, SAFEUPLOAD_REGISTRY_POOL_TAG);
+}
+
+/* Closes the anchors of entries that are gone or no longer Activating (promoted, Unknown, unscoped). */
+_IRQL_requires_(PASSIVE_LEVEL)
+static VOID StageAnchorSweep(VOID)
+{
+    LIST_ENTRY release;
+    PLIST_ENTRY link, next;
+    PAGED_CODE();
+    InitializeListHead(&release);
+    FltAcquirePushLockExclusive(&StageAnchorLock);
+    for (link = StageAnchorList.Flink; link != &StageAnchorList; link = next) {
+        PSTAGE_ANCHOR anchor = CONTAINING_RECORD(link, STAGE_ANCHOR, Link);
+        next = link->Flink;
+        if (!StageAnchorWanted(anchor->Entry, FALSE)) {
+            RemoveEntryList(&anchor->Link);
+            StageAnchorCount -= 1;
+            InsertTailList(&release, &anchor->Link);
+        }
+    }
+    FltReleasePushLock(&StageAnchorLock);
+    while (!IsListEmpty(&release)) {
+        StageAnchorDestroy(CONTAINING_RECORD(RemoveHeadList(&release), STAGE_ANCHOR, Link));
+    }
+}
+
+_IRQL_requires_(PASSIVE_LEVEL)
+static VOID StageAnchorReleaseInstance(_In_ PFLT_INSTANCE Instance)
+{
+    LIST_ENTRY release;
+    PLIST_ENTRY link, next;
+    PAGED_CODE();
+    InitializeListHead(&release);
+    FltAcquirePushLockExclusive(&StageAnchorLock);
+    /* A visit in flight that read the old epoch cannot put its anchor back after this. */
+    InterlockedIncrement((volatile LONG *)&StageAnchorEpoch);
+    for (link = StageAnchorList.Flink; link != &StageAnchorList; link = next) {
+        PSTAGE_ANCHOR anchor = CONTAINING_RECORD(link, STAGE_ANCHOR, Link);
+        next = link->Flink;
+        if (anchor->Instance == Instance) {
+            RemoveEntryList(&anchor->Link);
+            StageAnchorCount -= 1;
+            InsertTailList(&release, &anchor->Link);
+        }
+    }
+    FltReleasePushLock(&StageAnchorLock);
+    while (!IsListEmpty(&release)) {
+        StageAnchorDestroy(CONTAINING_RECORD(RemoveHeadList(&release), STAGE_ANCHOR, Link));
+    }
+}
+
 /* Silent exits of the activation pass record the source line that left, so a stuck Activating entry names its blocker
  * (diagnostic row, never moves the registry snapshot sequence). */
 #define STAGE_ACT_EXIT() do { \
@@ -5598,6 +5772,8 @@ static VOID StageRegistryActivationProcess(_In_ PSTAGE_REGISTRY_ENTRY Entry,
 {
     HANDLE handle = NULL;
     PFILE_OBJECT object = NULL;
+    PSTAGE_ANCHOR anchor = NULL;
+    ULONG anchorEpoch = StageAnchorReadEpoch();
     PSECTION_OBJECT_POINTERS sop = NULL;
     PSAFEUPLOAD_INSTANCE_CONTEXT instanceContext = NULL;
     PWCHAR nameSnapshot = NULL;
@@ -5728,8 +5904,22 @@ static VOID StageRegistryActivationProcess(_In_ PSTAGE_REGISTRY_ENTRY Entry,
         goto Exit;
     }
 
-    status = StageRegistryOpenIdentity(Entry, Instance, Volume, &handle, &object,
-        &openFailureStep, &noNamesProvenByIdentity, FALSE);
+    if (StageAnchorTake(Entry, &anchor)) {
+        /* The anchor's file object is the recorded stream as long as the entry still names that SOP. */
+        if (anchor->Instance == Instance && anchor->Object->SectionObjectPointer != NULL &&
+            anchor->Object->SectionObjectPointer == InterlockedCompareExchangePointer(
+                (PVOID volatile *)&Entry->SectionObjectPointer, NULL, NULL)) {
+            handle = anchor->Handle;
+            object = anchor->Object;
+            status = STATUS_SUCCESS;
+        } else {
+            StageAnchorDestroy(anchor);
+            anchor = NULL;
+        }
+    }
+    if (anchor == NULL)
+        status = StageRegistryOpenIdentity(Entry, Instance, Volume, &handle, &object,
+            &openFailureStep, &noNamesProvenByIdentity, FALSE);
     if (status == STATUS_FILE_INVALID && !noNamesProvenByIdentity &&
         StageRegistryEntryIsBaseStream(Entry) && StageRegistryEntryHoldsNoWriterState(Entry)) {
         /* The exact-SOP open failed. If the same volume serial and file ID now open with a different
@@ -5907,6 +6097,8 @@ static VOID StageRegistryActivationProcess(_In_ PSTAGE_REGISTRY_ENTRY Entry,
 
 Exit:
     if (nameSnapshot != NULL) ExFreePoolWithTag(nameSnapshot, SAFEUPLOAD_REGISTRY_POOL_TAG);
+    /* Keeps the visit's handle as the entry's anchor while it waits with a live writer; closes it otherwise. */
+    StageAnchorEndVisit(Entry, Instance, &anchor, &handle, &object, anchorEpoch, incarnationReplaced);
     if (object != NULL) ObDereferenceObject(object);
     if (handle != NULL) FltClose(handle);
 }
@@ -6099,6 +6291,7 @@ static VOID StageRegistryReclaimWorker(_In_ PFLT_GENERIC_WORKITEM WorkItem, _In_
         NULL, NULL) == NULL);
     InterlockedExchangePointer(&RegistryReclaimIoThread, PsGetCurrentThread());
     InterlockedIncrement64(&RegistryReclaimPasses);
+    StageAnchorSweep();
 
     candidates = ExAllocatePool2(POOL_FLAG_NON_PAGED, STAGE_RECLAIM_BATCH * (sizeof(PVOID) * 3), SAFEUPLOAD_REGISTRY_POOL_TAG);
     if (candidates != NULL) {
@@ -6313,6 +6506,8 @@ VOID SafeUploadStageWritersInitialize(VOID)
     KeInitializeSpinLock(&SectionLock);
     KeInitializeSpinLock(&RegistryCompactPoolLock);
     FltInitializePushLock(&RegistryLock);
+    FltInitializePushLock(&StageAnchorLock);
+    InitializeListHead(&StageAnchorList);
     RegistryCompactPool = ExAllocatePool2(POOL_FLAG_NON_PAGED,
         (SIZE_T)SAFEUPLOAD_WRITER_REGISTRY_COMPACT_LIMIT * sizeof(STAGE_REGISTRY_ENTRY),
         SAFEUPLOAD_REGISTRY_POOL_TAG);
