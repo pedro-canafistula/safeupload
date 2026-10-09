@@ -43,6 +43,14 @@ finish() {
     echo "== rollback"
     /home/victor/Work/safeupload-tools/rollback-vm.sh "$dom" "$tag" 2>&1 | tail -2
     sleep 25
+    # A crash-consistent checkpoint can land in Windows Recovery ("Choose your keyboard layout") instead of booting: power-cycle once.
+    local up=0
+    for _ in $(seq 1 18); do ssh "${opts[@]}" -o ConnectTimeout=5 "vika@$host" 'echo up' >/dev/null 2>&1 && { up=1; break; }; sleep 10; done
+    if [ "$up" -eq 0 ]; then
+        echo "guest did not boot after rollback; power-cycling once"
+        $V destroy "$dom" >/dev/null 2>&1; sleep 3; $V start "$dom" >/dev/null 2>&1
+        for _ in $(seq 1 30); do ssh "${opts[@]}" -o ConnectTimeout=5 "vika@$host" 'echo up' >/dev/null 2>&1 && break; sleep 10; done
+    fi
     for _ in $(seq 1 40); do
         echo "& 'C:\\Users\\vika\\Documents\\Get-StagedBaseline.ps1'" | remote > "$ev/$tag-final-restored-state.txt" 2>&1
         grep -q '^BaselineClean=True' "$ev/$tag-final-restored-state.txt" && break; sleep 6
