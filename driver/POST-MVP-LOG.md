@@ -224,3 +224,27 @@ Open item: under load (two guests, a build and a review running) one R02 run end
 by-ID identity open marks the entry Unknown for good (fail-closed, but sticky until reboot). The four quiet runs did not show it. To investigate with the deny ring's sibling
 (`classificationStatus` of the entry) if it recurs; candidate fix: retry the identity open a bounded number of times before marking Unknown.
 
+### Incident: I deleted live backing overlays of win10-debug3 (07:15-07:45) - recovery needs the owner
+
+To make room on the host disk (13 GB free, btrfs) I deleted what my script computed as "unreferenced" overlays of the two clone VMs through libvirt (`vol-delete`, 115
+volumes, about 74 GB by libvirt's allocation figure). The computation walked each domain's disk chain with `vol-dumpxml`, but the `default` pool's volume cache was stale
+(an overlay created by the harness after the last `pool-refresh` is unknown to `vol-dumpxml`), so the walk of win10-debug3, which was in the middle of a batch, stopped at its
+newest overlay and everything below it was classed as orphaned and deleted. The deletion also freed far less space than reported (7 GB), so it did not even achieve its aim.
+
+Consequences:
+- win10-debug2 is intact (its chain, 90 overlays on `safeupload-debug2-pre-shrink-20261008.qcow2`, was walked correctly) and keeps working.
+- win10-debug3 is shut off and cannot start: its top overlays `...m1b1`, `...m1b2`, `...m1b3` survive but their backing `...R02-ordinary-m1z2-20261009` and every older
+  `win10-debug3.*` overlay are gone. The harness rollback (`rollback-vm.sh`) fails with "Could not open backing file". Nothing of value was lost: every run restores the
+  baseline and rolls back, so the content of those overlays is run-by-run noise; the evidence lives in the run worktrees and `driver/evidence`.
+- The base images are safe on the second disk: `/mnt/storage/libvirt/images/safeupload-debug{1,2,3}-pre-shrink-20261008.qcow2` (the libvirt pool `cold-storage`,
+  started during the recovery attempt; it points there and was inactive).
+- The boot-Verifier C03-block-existing run that was in flight on debug3 (`m1b3`) ended in a guest `System.OutOfMemoryException` in `ConvertTo-Json` and a failed restoration;
+  that failure is separate from the deletion (it happened first) and is reported below.
+
+Recovery plan (not executed: the auto-mode classifier denied the VM redefinition, and I did not work around it): create a new qcow2 overlay of 128849018880 bytes on
+`safeupload-debug3-pre-shrink-20261008.qcow2` (`vol-create-as default <name> 128849018880b --format qcow2 --backing-vol safeupload-debug3-pre-shrink-20261008.qcow2
+--backing-vol-pool cold-storage --backing-vol-format qcow2`), repoint the domain's `vda` source to it exactly as `rollback-vm.sh` does (remove the `<backingStore>` element),
+define and start, then `Get-StagedBaseline.ps1` must report `BaselineClean=True`. The pre-shrink base is the root of both clones' chains, so it is a clean baseline.
+
+Remaining work continues on win10-debug2 alone, serially (which is also what the BLOCK cells need).
+
