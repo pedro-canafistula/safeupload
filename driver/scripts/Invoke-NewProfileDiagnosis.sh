@@ -144,12 +144,19 @@ Set-Content -LiteralPath 'C:\Users\Public\t2-user.ps1' -Value $userScript -Encod
 Remove-Item 'C:\Users\Public\t2-user-results.json' -ErrorAction SilentlyContinue
 $ringMark = 0
 try { $ringAll = @(& "$d\Get-SafeUploadDiagnostics.ps1" -Query deny-ring); if ($ringAll.Count) { $ringMark = [uint64]$ringAll[-1].sequence } } catch { }
+$eventMark = Get-Date
 try {
-    Register-ScheduledTask -TaskName 't2user-run' -Action (New-ScheduledTaskAction -Execute 'powershell.exe' -Argument '-NoProfile -ExecutionPolicy Bypass -File C:\Users\Public\t2-user.ps1') -User $u -Password $pw -RunLevel Limited | Out-Null
-    Start-ScheduledTask -TaskName 't2user-run'
-    for ($i = 0; $i -lt 60 -and -not (Test-Path 'C:\Users\Public\t2-user-results.json'); $i++) { Start-Sleep -Seconds 2 }
-    'USER_TASK_RESULT=' + (Get-ScheduledTaskInfo -TaskName 't2user-run').LastTaskResult
-} catch { 'USER_TASK_ERROR=' + $_.Exception.Message }
+    $secure = ConvertTo-SecureString $pw -AsPlainText -Force
+    $cred = New-Object System.Management.Automation.PSCredential(("$env:COMPUTERNAME\$u"), $secure)
+    $proc = Start-Process -FilePath 'powershell.exe' -ArgumentList '-NoProfile -ExecutionPolicy Bypass -File C:\Users\Public\t2-user.ps1' `
+        -Credential $cred -LoadUserProfile -WorkingDirectory 'C:\Windows\System32' -Wait -PassThru
+    'USER_PROCESS_EXIT=' + $proc.ExitCode
+} catch { 'USER_PROCESS_ERROR=' + $_.Exception.Message }
+try {
+    $evts = Get-WinEvent -FilterHashtable @{ LogName = 'Application'; StartTime = $eventMark } -ErrorAction Stop | Where-Object { $_.ProviderName -match 'User Profiles|Userenv|ProfSvc' }
+    'PROFSVC_EVENTS=' + @($evts).Count
+    foreach ($e in @($evts) | Select-Object -First 6) { 'PROFSVC_EVENT=' + $e.Id + ' ' + ($e.Message -replace '\s+', ' ').Substring(0, [Math]::Min(220, $e.Message.Length)) }
+} catch { 'PROFSVC_EVENTS_ERROR=' + $_.Exception.Message }
 if (Test-Path 'C:\Users\Public\t2-user-results.json') { 'USER_RESULTS=' + ((Get-Content 'C:\Users\Public\t2-user-results.json' -Raw) -replace '\s+', ' ') } else { 'USER_RESULTS=missing' }
 Start-Sleep -Seconds 8
 'PROTECTED_LISTING=' + ((Get-ChildItem 'C:\Protected' -Force -ErrorAction SilentlyContinue | ForEach-Object { $_.Name + ':' + $_.Length }) -join ',')
