@@ -219,7 +219,12 @@ function Invoke-CapturedProcess([string]$Exe,[string]$Arguments,[string]$Prefix,
         $p=Start-Process @start
         $null=$p.Handle
         if(-not $p.WaitForExit($Timeout)){throw 'Child process timed out'}
-        $p.WaitForExit();if($null -eq $p.ExitCode){throw 'Child process exit code absent'}
+        $p.WaitForExit()
+        # Under load Windows PowerShell 5.1 sometimes returns before the process object has its exit code (seen as 'Child process exit code
+        # absent' in the first coverage receipt of a case, which cost A01/A04/R02 their LiveTaintFlags window). The process has exited, so the code
+        # exists: refresh and read it again a few times before treating it as missing.
+        for($exitTry=0;$exitTry -lt 25 -and $null -eq $p.ExitCode;$exitTry++){Start-Sleep -Milliseconds 200;$p.Refresh()}
+        if($null -eq $p.ExitCode){throw 'Child process exit code absent'}
         if($p.ExitCode -ne 0){throw "Child process failed: $($p.ExitCode); $([IO.File]::ReadAllText($Prefix+'.err'))"}
         return [IO.File]::ReadAllText($Prefix+'.out')
     }finally {if($null -ne $p){if(-not $p.HasExited){$p.Kill();$p.WaitForExit()};$p.Dispose()}}
