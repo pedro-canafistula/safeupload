@@ -25,10 +25,16 @@ function Invoke-SystemProcess {
     $exitFile = $wrapper + '.exit'
     $stderrPath = $StdoutPath + '.stderr'
     $environmentLines = @($Environment.GetEnumerator() | ForEach-Object { '$env:' + $_.Key + ' = ''' + ([string]$_.Value).Replace("'", "''") + '''' })
-    $body = @(
-        '$env:DOTNET_NOLOGO = ''1''; $env:DOTNET_CLI_TELEMETRY_OPTOUT = ''1''') + $environmentLines + @(
-        '$p = Start-Process -FilePath ''' + $FilePath + ''' -ArgumentList ''' + $ArgumentLine.Replace("'", "''") + ''' -WorkingDirectory ''' + $WorkingDirectory + ''' -RedirectStandardOutput ''' + $StdoutPath + ''' -RedirectStandardError ''' + $stderrPath + ''' -Wait -PassThru -WindowStyle Hidden',
-        'Set-Content -LiteralPath ''' + $exitFile + ''' -Value $p.ExitCode -Encoding ASCII')
+    # One statement per line: in PowerShell the comma binds tighter than +, so joining string pieces and list items in
+    # one expression fuses neighbouring lines.
+    $startLine = '$p = Start-Process -FilePath ''' + $FilePath + ''' -ArgumentList ''' + $ArgumentLine.Replace("'", "''") +
+        ''' -WorkingDirectory ''' + $WorkingDirectory + ''' -RedirectStandardOutput ''' + $StdoutPath +
+        ''' -RedirectStandardError ''' + $stderrPath + ''' -Wait -PassThru -WindowStyle Hidden'
+    $exitLine = 'Set-Content -LiteralPath ''' + $exitFile + ''' -Value $p.ExitCode -Encoding ASCII'
+    $body = @('$env:DOTNET_NOLOGO = ''1''; $env:DOTNET_CLI_TELEMETRY_OPTOUT = ''1''')
+    $body += $environmentLines
+    $body += $startLine
+    $body += $exitLine
     Set-Content -LiteralPath $wrapper -Value $body -Encoding UTF8
     $taskName = 'SafeUpload-ExactAgentSystem-' + $stamp
     $action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument ('-NoProfile -ExecutionPolicy Bypass -File "' + $wrapper + '"')
@@ -37,14 +43,19 @@ function Invoke-SystemProcess {
     Register-ScheduledTask -TaskName $taskName -Action $action -Principal $principal -Settings $settings | Out-Null
     try {
         Start-ScheduledTask -TaskName $taskName
-        $deadline = [DateTime]::UtcNow.AddMinutes($TimeoutMinutes)
-        do { Start-Sleep -Seconds 2 } while (-not (Test-Path -LiteralPath $exitFile) -and [DateTime]::UtcNow -lt $deadline)
+        $began = [DateTime]::UtcNow
+        $deadline = $began.AddMinutes($TimeoutMinutes)
+        # A wrapper that ends without writing its exit code (the task is back to Ready) fails fast, not after the timeout.
+        do {
+            Start-Sleep -Seconds 2
+            $ended = ([DateTime]::UtcNow - $began).TotalSeconds -gt 15 -and (Get-ScheduledTask -TaskName $taskName).State -eq 'Ready'
+        } while (-not (Test-Path -LiteralPath $exitFile) -and -not $ended -and [DateTime]::UtcNow -lt $deadline)
     }
     finally {
         Stop-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
         Unregister-ScheduledTask -TaskName $taskName -Confirm:$false -ErrorAction SilentlyContinue
     }
-    if (-not (Test-Path -LiteralPath $exitFile)) { throw 'The SYSTEM test run did not finish in time.' }
+    if (-not (Test-Path -LiteralPath $exitFile)) { throw 'The SYSTEM test run ended without an exit code or did not finish in time.' }
     $code = [int]([IO.File]::ReadAllText($exitFile).Trim())
     if (Test-Path -LiteralPath $stderrPath) { Get-Content -LiteralPath $stderrPath | Add-Content -LiteralPath $StdoutPath }
     Remove-Item -LiteralPath $wrapper, $exitFile, $stderrPath -ErrorAction SilentlyContinue
