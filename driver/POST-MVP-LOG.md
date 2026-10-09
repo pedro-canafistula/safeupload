@@ -38,4 +38,34 @@ Decisions taken without asking:
    INCONCLUSIVE when the pipe is unreachable (older agent). This strengthens the row.
 5. **Local commits are squashed before pushing.** Several fix-up commits exist locally; they are regrouped into logical commits at push time.
 
-Pending: debuggee run `t0rv` (C05, C01-approve-absent, S01, C01-block-absent, runtime-verifier, win10-debug2), then squash and push.
+### Finding: the agent after the merge of `main` no longer uses `policy.json` by default
+
+First debuggee run of the T0 pair (`t0rv1`, C05) ended INCONCLUSIVE: the guest never reached Ready (coverage Degraded, reason 15
+VolumeIdentityUnknown, 3 scopes instead of 1). Cause, from the retained agent events: `appsettings.json` (brought in by `main`) ships
+`CentroAdministracao:BaseUrl = http://127.0.0.1:8080/agent/`; with any address configured `Program.cs` registers `HttpPolicyStore`, which
+cannot reach the panel and falls back to the built-in default policy (folder `C:\SafeUpload\Escopo Monitorado`, removable and network scopes
+on). The network scope has no supported volume, so coverage stays Degraded. This is independent of T0: the frozen pair predates `main`'s policy
+store. It would also hit anyone following the manual install in MVP-PLAN with the merged agent.
+
+Decision 6 (taken without asking): pin the local policy file explicitly where the MVP flow needs it, and leave the central-policy design alone.
+`StagedTestAgent.ps1`, `Test-StagedW01Parent.ps1` and `Test-StagedInvariantSuite.ps1` pass an empty `--CentroAdministracao:BaseUrl=` when they
+register the agent; `Install-SafeUploadAgent.ps1` gets `-AdminBaseUrl` (default empty = autonomous, reads `policy.json`). The policy format
+the panel should send (the open question from the earlier session's handoff) is not touched.
+
+Process note: a batch started with the broken harness was stopped by PID and the debuggee rolled back with `rollback-vm.sh win10-debug2 t0rv2`
+(baseline verified clean afterwards). The qualification runner requires the worktree's driver and agent sources to equal the builds under test, so
+the T0 pair runs from a worktree at `2f151e0f` with only `driver/scripts` overlaid from the fixed harness commit.
+
+### T1: event-driven reclaim worker (in progress)
+
+`StageRegistryReclaimWorker` now requeues itself only when bounded work remains: a full batch, an exhausted scan budget, or an entry that reports
+`MoreWork` (a link scan or marker scan that ran out of budget). A scan or alias probe that is merely waiting on an outside event stays pending
+(and so gated: Activating, never Ready) and the pass parks; every event that can end such a wait already queues a reclaim pass (handle
+cleanup/close, section release, rename completion, policy and boot-policy changes, registry pressure), so no timer is involved. Counters
+`parkedPasses` and `moreWorkRequeues` are exposed through the diagnostics pipe, and every cached suite trial now ends with a
+`ReclaimWorkerIdleRate` assertion (limit 10 passes per second over 15 s, PASS/FAIL, INCONCLUSIVE if the pipe is missing).
+Open risk to watch in the gate: an entry whose wait has no event would now stay Activating instead of being retried; A01-A04, R02, X01, C03 and
+C04 are the rows that would show it.
+
+Pending: debuggee run `t0rx` (C05, C01-approve-absent, S01, C01-block-absent, runtime-verifier, win10-debug2); T1 builds `t1-reclaim1` and
+`t1-agent1` are being produced on the builder.
