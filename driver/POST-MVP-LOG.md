@@ -184,3 +184,23 @@ directory creates in the protected folder, and 9 that are outside every scope an
 - 2x `STATUS_ACCESS_DENIED` CREATE of `\;LanmanRedirector` with no reason (a deny site without detail: find it).
 - 1x `QUERY_INFORMATION` completed by the driver with `STATUS_NOT_SUPPORTED`, kernel mode, no name.
 
+### Verification of the anchor and the T2b gates (04:30-05:00)
+
+Driver `t1-anchor3` (`78214468`: T1 worker + identity anchor + T2 fixes) with agent `t2-agent3`:
+- R02: 2 of 2 pass on the held basis (`predicateFlags` 15), tier-1 ok (`m1r2`, `m1r3`). The first attempt (`m1r1`) was a harness pre-run failure, not a
+  verdict: the VM had been switched between three agent packages and the pre-run threw `Preserved package collision`; fixed in `09af473b` (identical content
+  is already preserved; different content still throws).
+- A02, A03, X01 (retry of the raw-capture flake), C03-approve-existing and C04-approve: tier-1 ok.
+- A01 and A04: tier-1 `retry` for `LiveTaintFlags`, whose cause in the export is `Before: null` with `Child process exit code absent` (the harness
+  could not read the Inspector's exit code for the first coverage receipt of the case). It happened under load (two guests and a build running) and is an evidence
+  capture failure, not a product assertion; to be repeated on a quiet host before it counts either way.
+- First sign-in (row U01) on `t1-anchor3`: all required lines pass except `U01NoRefusalOutsideScope`; the ring held 5 records (down from 76 before the T2
+  fixes, 11 after the alias fixes): two `\;LanmanRedirector` creates and the three expected in-scope records. The `activatingName` refusals are gone with
+  the T2b gate change (`23ee822b`).
+- The remaining two were named by `t2-gate1` (`a48a0d98`, legacy create gate detail): reason `legacyCreateGate`, volume kind 3 (Network), volume `\Device\Mup`.
+  Cause: `SafeUploadPolicyMayMatchVolume` counted a network volume as possibly in scope for any policy with a path prefix, even when all prefixes are local
+  paths; before the agent connects (early boot) the legacy create gate refuses such a create. Fixed in `6b83f608`: a network volume matches through the
+  NETWORK flag or a prefix that is itself a network path (UNC, MUP, the redirectors, DFS); an unclassified volume still fails closed.
+- Also seen: `STATUS_NOT_SUPPORTED` for `FileStandardLinkInformation` (class 0x36) on a staged stream (the staged view answers only Basic, Standard,
+  NetworkOpen, AttributeTag and Id). Recorded for the application-compatibility work (T5/T8), where the ring will list every class real programs ask for.
+
