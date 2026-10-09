@@ -1198,13 +1198,18 @@ static PSTAGE_REGISTRY_ENTRY StageRegistryGetOrInsert(_In_ PSTAGE_WRITER_RESERVA
     }
 
     capacity = StageRegistryCapacityLocked();
+    /* The tier is the shell's: StageRegistryReleaseReservationCapacityLocked above already cleared CompactSlotReserved, so
+     * testing that flag here checked every compact reservation against the full-name tier, and once that tier was full
+     * (a Microsoft 365 install held about 3,800 writers open at once, t3m365a) none of the compact records the reservation had
+     * fallen back to (D2, up to SAFEUPLOAD_WRITER_REGISTRY_COMPACT_LIMIT) could be inserted: 727 overflows, coverage Unknown
+     * until reboot, with the compact tier never used. */
     if (Reservation->TrackingLost || Reservation->Shell == NULL ||
-        (Reservation->CompactSlotReserved &&
+        (Reservation->Shell->Compact &&
          (RegistryCompactEntryCount + RegistryReservedCompactSlots >=
               SAFEUPLOAD_WRITER_REGISTRY_COMPACT_LIMIT ||
           StageRegistryCompactInstanceCountLocked(Reservation->Instance) >=
               SAFEUPLOAD_WRITER_REGISTRY_COMPACT_INSTANCE_LIMIT)) ||
-        (!Reservation->CompactSlotReserved &&
+        (!Reservation->Shell->Compact &&
          (RegistryEntryCount + RegistryReservedSlots >= capacity ||
           StageRegistryInstanceCountLocked(Reservation->Instance) >=
               min((ULONG)SAFEUPLOAD_WRITER_REGISTRY_INSTANCE_LIMIT, capacity) ||
