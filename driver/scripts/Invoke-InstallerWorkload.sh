@@ -20,6 +20,10 @@ sys="${5:-}"; zip="${6:-}"
 case "$workload" in msi|m365|cu|defender) ;; *) echo 'Unknown workload'; exit 2;; esac
 case "$mode" in driver) [ -f "$sys" ] && [ -f "$zip" ] || { echo 'driver mode needs the signed driver and the agent zip'; exit 2; };; control) ;; *) echo 'Unknown mode'; exit 2;; esac
 host=$(awk -v d="$dom" '$1==d{print $2}' driver/scripts/debuggees.txt); [ -n "$host" ] || { echo "Unknown debuggee $dom"; exit 2; }
+# The guest's overlay grows by the size of what the workload writes (Microsoft 365 about 10 GB): never start on a nearly full host.
+free_gb=$(df --output=avail -BG / | tail -1 | tr -dc '0-9')
+min_gb=$([ "$workload" = m365 ] && echo 30 || echo 15)
+[ "${free_gb:-0}" -ge "$min_gb" ] || { echo "host disk too low for $workload: ${free_gb} GB free, need $min_gb"; exit 30; }
 V="virsh -c qemu:///system"; ev="driver/evidence/$(date +%F)"; mkdir -p "$ev"
 opts=(-F /dev/null -i /home/victor/.ssh/id_ed25519 -o BatchMode=yes -o ConnectTimeout=10 -o LogLevel=ERROR -o StrictHostKeyChecking=accept-new)
 guest='C:/Users/vika/Documents'
@@ -178,6 +182,9 @@ foreach ($s in $samples) { try { $j = $s | ConvertFrom-Json; if ($j.writerState.
 'REGISTRY_UNKNOWN_SEEN=' + $unk
 'AFTER_DONE=True'
 PS
+
+# Evidence kept before the rollback: the sampler's counter timeline.
+scp "${opts[@]}" "vika@$host:C:/T3/samples.jsonl" "$ev/$tag-samples.jsonl" >/dev/null 2>&1 || true
 
 # Verdict.
 python3 - "$ev/$tag-after.txt" "$ev/$tag-verdict.txt" "$mode" "$workload" "$(( $(date +%s) - started ))" "$ev/$tag-workload-setup.txt" <<'PY'
