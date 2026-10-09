@@ -696,6 +696,9 @@ __declspec(noinline) static BOOLEAN SafeUploadPolicyVolumeCacheQueryNoInline(
     return mayMatch;
 }
 
+volatile LONG64 SafeUploadVolumeWideQueries;
+volatile LONG64 SafeUploadVolumeWideAnswers;
+
 BOOLEAN SafeUploadPolicyMayMatchInstanceVolume(_In_opt_ PFLT_INSTANCE Instance)
 {
     PSAFEUPLOAD_INSTANCE_CONTEXT context = NULL;
@@ -714,6 +717,8 @@ BOOLEAN SafeUploadPolicyMayMatchInstanceVolume(_In_opt_ PFLT_INSTANCE Instance)
     }
     mayMatch = SafeUploadPolicyVolumeCacheQueryNoInline(kind, volumeNamePointer);
     if (context != NULL) FltReleaseContext(context);
+    InterlockedIncrement64(&SafeUploadVolumeWideQueries);
+    if (mayMatch) InterlockedIncrement64(&SafeUploadVolumeWideAnswers);
     return mayMatch;
 }
 

@@ -293,6 +293,10 @@ typedef struct _SAFEUPLOAD_RESPONSE {
 #define SAFEUPLOAD_CONTROL_ADMISSION_COVERAGE              ((UINT32) 24)
 #define SAFEUPLOAD_CONTROL_ACTIVATING_DIAGNOSTIC_STATUS     ((UINT32) 25)
 #define SAFEUPLOAD_CONTROL_ACTIVATING_TARGET_STATUS         ((UINT32) 26)
+/* Field diagnostics: read by the agent over its own connection (the port accepts one client, so the Inspector cannot
+ * read them while the service runs). Both are read-only. */
+#define SAFEUPLOAD_CONTROL_DENY_RING_READ                   ((UINT32) 27)
+#define SAFEUPLOAD_CONTROL_DIAG_COUNTERS                    ((UINT32) 28)
 #define SAFEUPLOAD_ADMISSION_COVERAGE_MAX_SCOPES \
     ((UINT32)(SAFEUPLOAD_MAX_PREFIXES + SAFEUPLOAD_MAX_PREFIXES + SAFEUPLOAD_BOOT_SCOPE_MAX_PREFIXES + 2))
 #define SAFEUPLOAD_ADMISSION_COVERAGE_MAX_INSTANCES         ((UINT32) 128)
@@ -1068,6 +1072,90 @@ typedef struct _SAFEUPLOAD_ADMISSION_EPOCH_STATUS {
     UINT32 Reserved;
     UINT64 ChangeSequence;
 } SAFEUPLOAD_ADMISSION_EPOCH_STATUS, *PSAFEUPLOAD_ADMISSION_EPOCH_STATUS;
+
+/*
+ *  Deny ring. Every operation SafeUpload completes itself with an error status (the pre-operation choke point in
+ *  SafeUploadStageDispatch) is recorded in a fixed ring: no allocation and no name query on the I/O path. The
+ *  newest SAFEUPLOAD_DENY_RING_SLOTS records are kept; a reader that falls behind sees the gap flag.
+ *
+ *  SiteOffset names the code that chose the refusal when it went through a shared refusal helper (the offset of the
+ *  helper's caller from ImageBase, resolved offline with the driver's PDB); it is 0 when only the choke point saw it.
+ *  Name is the tail of what the request itself carried: the requested path of a create (possibly relative to a
+ *  directory handle) or the target of a rename or link. It is empty for every other operation.
+ */
+#define SAFEUPLOAD_DENY_RING_SLOTS          ((UINT32) 256)
+#define SAFEUPLOAD_DENY_BATCH_ENTRIES       ((UINT32) 16)
+#define SAFEUPLOAD_DENY_NAME_CHARS          ((UINT32) 64)
+
+#define SAFEUPLOAD_DENY_FLAG_TOP_LEVEL_IRP        ((UINT32) 0x00000001)  /* IoGetTopLevelIrp() was non-NULL */
+#define SAFEUPLOAD_DENY_FLAG_TRANSACTION          ((UINT32) 0x00000002)
+#define SAFEUPLOAD_DENY_FLAG_PAGING_IO            ((UINT32) 0x00000004)
+#define SAFEUPLOAD_DENY_FLAG_FAST_IO              ((UINT32) 0x00000008)
+#define SAFEUPLOAD_DENY_FLAG_POST_OPERATION       ((UINT32) 0x00000010)  /* post-create cancel, not a pre-operation */
+#define SAFEUPLOAD_DENY_FLAG_NAME_IS_RENAME_TARGET ((UINT32) 0x00000020)
+#define SAFEUPLOAD_DENY_FLAG_NAME_IS_CREATE_NAME  ((UINT32) 0x00000040)
+#define SAFEUPLOAD_DENY_FLAG_SERVICE_PROCESS      ((UINT32) 0x00000080)  /* requestor is the connected service */
+#define SAFEUPLOAD_DENY_FLAG_KERNEL_MODE          ((UINT32) 0x00000100)  /* requestor mode was KernelMode */
+#define SAFEUPLOAD_DENY_FLAG_NAME_TRUNCATED       ((UINT32) 0x00000200)  /* Name holds the tail of a longer name */
+
+#define SAFEUPLOAD_DENY_BATCH_FLAG_GAP            ((UINT32) 0x00000001)  /* records after the cursor were overwritten */
+
+typedef struct _SAFEUPLOAD_DENY_RECORD {
+    UINT64 Sequence;                // 1-based, strictly increasing; 0 never appears in a reply
+    UINT64 SystemTime;              // 100 ns since 1601 (KeQuerySystemTimePrecise)
+    UINT32 Status;                  // NTSTATUS the operation was completed with
+    UINT32 SiteOffset;              // see above; 0 = unknown
+    UINT32 ProcessId;               // requestor process
+    UINT32 ThreadId;
+    UINT32 MajorFunction;
+    UINT32 MinorFunction;
+    UINT32 Irql;
+    UINT32 Flags;                   // SAFEUPLOAD_DENY_FLAG_*
+    UINT32 Access;                  // create: DesiredAccess; set-information: FILE_INFORMATION_CLASS; fsctl: code;
+                                    // section: page protection; write: length
+    UINT32 Options;                 // create: (disposition << 24) | options; write: low part of the offset
+    UINT32 NameChars;
+    UINT32 Reserved;
+    WCHAR Name[SAFEUPLOAD_DENY_NAME_CHARS];
+} SAFEUPLOAD_DENY_RECORD, *PSAFEUPLOAD_DENY_RECORD;
+
+typedef struct _SAFEUPLOAD_DENY_RING_REQUEST {
+    SAFEUPLOAD_CONTROL Control;
+    UINT64 AfterSequence;           // return records with Sequence > AfterSequence
+} SAFEUPLOAD_DENY_RING_REQUEST, *PSAFEUPLOAD_DENY_RING_REQUEST;
+
+typedef struct _SAFEUPLOAD_DENY_RING_BATCH {
+    UINT32 StructSize;
+    UINT32 ProtocolVersion;
+    UINT32 Count;                   // valid entries
+    UINT32 Flags;                   // SAFEUPLOAD_DENY_BATCH_FLAG_*
+    UINT64 NextSequence;            // Sequence the next record will get; equal to AfterSequence + 1 when caught up
+    UINT64 ImageBase;               // SiteOffset is relative to this
+    SAFEUPLOAD_DENY_RECORD Entries[SAFEUPLOAD_DENY_BATCH_ENTRIES];
+} SAFEUPLOAD_DENY_RING_BATCH, *PSAFEUPLOAD_DENY_RING_BATCH;
+
+/* Counters that existed nowhere else: how often the choke point saw a refusal, and how often a code path that could
+ * not resolve a name answered "the whole volume may be in scope" (the suspected cause of refusals outside every
+ * scope). All values are monotonic since driver load. */
+typedef struct _SAFEUPLOAD_DIAG_COUNTERS {
+    UINT32 StructSize;
+    UINT32 ProtocolVersion;
+    UINT64 DenyRecorded;            // refusals written to the ring
+    UINT64 DenyAccessDenied;
+    UINT64 DenyRetry;
+    UINT64 DenyOtherStatus;
+    UINT64 DenyBenignIgnored;       // error completions that are normal results (end of file, no more files)
+    UINT64 DenyNotRecorded;         // refusals seen at an IRQL the ring cannot be used at
+    UINT64 VolumeWideQueries;       // SafeUploadPolicyMayMatchInstanceVolume calls
+    UINT64 VolumeWideAnswers;       // ... of which answered TRUE
+    UINT64 NextDenySequence;
+    UINT64 ImageBase;
+} SAFEUPLOAD_DIAG_COUNTERS, *PSAFEUPLOAD_DIAG_COUNTERS;
+C_ASSERT(sizeof(SAFEUPLOAD_DENY_RECORD) == 192);
+C_ASSERT(sizeof(SAFEUPLOAD_DENY_RING_REQUEST) == 24);
+C_ASSERT(sizeof(SAFEUPLOAD_DENY_RING_BATCH) == 32 + 16 * 192);
+C_ASSERT(FIELD_OFFSET(SAFEUPLOAD_DENY_RING_BATCH, Entries) == 32);
+C_ASSERT(sizeof(SAFEUPLOAD_DIAG_COUNTERS) == 88);
 #endif
 
 /* A probe entry's AdmissionRecordState carries H(F) of the probed stream; this bit marks a lower bound. */

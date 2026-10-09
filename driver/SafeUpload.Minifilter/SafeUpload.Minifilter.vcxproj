@@ -74,6 +74,7 @@
     <ClCompile Include="Policy.c" />
     <ClCompile Include="Override.c" />
     <ClCompile Include="Taint.c" />
+    <ClCompile Include="DenyRing.c" Condition="'$(SafeUploadStagingPrototype)'=='true'" />
     <ClCompile Include="StageDirectory.c" Condition="'$(SafeUploadStagingPrototype)'=='true'" />
     <ClCompile Include="StageStream.c" Condition="'$(SafeUploadStagingPrototype)'=='true'" />
     <ClCompile Include="StageProtocol.c" Condition="'$(SafeUploadStagingPrototype)'=='true'" />

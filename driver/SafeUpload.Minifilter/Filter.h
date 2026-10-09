@@ -782,6 +782,10 @@ SafeUploadPolicyMayMatchVolume (
     );
 
 BOOLEAN SafeUploadPolicyMayMatchInstanceVolume(_In_opt_ PFLT_INSTANCE Instance);
+/* Calls of the function above and how many answered TRUE. Every caller is a path that could not resolve a name and
+ * fell back to "the whole volume may be in scope", so these counters measure how often that fallback is taken. */
+extern volatile LONG64 SafeUploadVolumeWideQueries;
+extern volatile LONG64 SafeUploadVolumeWideAnswers;
 VOID SafeUploadPolicyRenameLossAdvance(_Inout_ volatile LONG64 *InstanceGeneration,
     _In_ SAFEUPLOAD_VOLUME_KIND VolumeKind, _In_opt_ PCUNICODE_STRING VolumeName);
 VOID SafeUploadPolicyRenameLossSnapshot(_Out_ PULONGLONG Generation);

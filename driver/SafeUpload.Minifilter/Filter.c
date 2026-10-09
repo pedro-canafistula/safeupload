@@ -294,6 +294,9 @@ Return Value:
 #endif
 
     SafeUploadData.DriverObject = DriverObject;
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    SafeUploadDenyRingInitialize( DriverObject );
+#endif
 
     status = FltRegisterFilter( DriverObject,
                                 &FilterRegistration,
@@ -1972,6 +1975,9 @@ Return Value:
 
                 Data->IoStatus.Status = STATUS_ACCESS_DENIED;
                 Data->IoStatus.Information = 0;
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+                SafeUploadDenyNote( Data, FltObjects, STATUS_ACCESS_DENIED, TRUE );
+#endif
             }
         }
     }

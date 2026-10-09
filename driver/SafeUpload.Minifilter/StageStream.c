@@ -3089,8 +3089,11 @@ static BOOLEAN StageReparseFsctl(ULONG Code)
     return Code == FSCTL_SET_REPARSE_POINT || Code == FSCTL_DELETE_REPARSE_POINT;
 }
 
-static FLT_PREOP_CALLBACK_STATUS StageCompleteAccessDenied(_Inout_ PFLT_CALLBACK_DATA Data)
+/* The deny ring names the refusing code by the caller of this helper (the choke point in SafeUploadStageDispatch
+ * records the refusal and picks the hint up), so the helper must not be inlined into its callers. */
+__declspec(noinline) static FLT_PREOP_CALLBACK_STATUS StageCompleteAccessDenied(_Inout_ PFLT_CALLBACK_DATA Data)
 {
+    SafeUploadDenySiteHint(Data, _ReturnAddress());
     Data->IoStatus.Status = STATUS_ACCESS_DENIED;
     Data->IoStatus.Information = 0;
     return FLT_PREOP_COMPLETE;
@@ -3319,8 +3322,9 @@ static BOOLEAN StageEpochOperationTouchesUnion(_In_ PFLT_CALLBACK_DATA Data,
     return matched;
 }
 
-static FLT_PREOP_CALLBACK_STATUS StageCompleteEpochRetry(_Inout_ PFLT_CALLBACK_DATA Data)
+__declspec(noinline) static FLT_PREOP_CALLBACK_STATUS StageCompleteEpochRetry(_Inout_ PFLT_CALLBACK_DATA Data)
 {
+    SafeUploadDenySiteHint(Data, _ReturnAddress());
     Data->IoStatus.Status = STATUS_RETRY;
     Data->IoStatus.Information = 0;
     return FLT_PREOP_COMPLETE;
@@ -3649,7 +3653,7 @@ static FLT_PREOP_CALLBACK_STATUS StageDispatchCore(PFLT_CALLBACK_DATA Data,
     return FLT_PREOP_SUCCESS_NO_CALLBACK;
 }
 
-FLT_PREOP_CALLBACK_STATUS SafeUploadStageDispatch(PFLT_CALLBACK_DATA Data,
+static FLT_PREOP_CALLBACK_STATUS StageDispatchEpoch(PFLT_CALLBACK_DATA Data,
     PCFLT_RELATED_OBJECTS Objects, PVOID *CompletionContext)
 {
     *CompletionContext = NULL;
@@ -3705,6 +3709,17 @@ FLT_PREOP_CALLBACK_STATUS SafeUploadStageDispatch(PFLT_CALLBACK_DATA Data,
 #else
     return StageDispatchCore(Data, Objects, CompletionContext, NULL);
 #endif
+}
+
+/* The choke point for refusals: every operation is registered through here, so an operation this driver completes
+ * itself with an error status is noted in the deny ring whichever code path chose it. */
+FLT_PREOP_CALLBACK_STATUS SafeUploadStageDispatch(PFLT_CALLBACK_DATA Data,
+    PCFLT_RELATED_OBJECTS Objects, PVOID *CompletionContext)
+{
+    FLT_PREOP_CALLBACK_STATUS result = StageDispatchEpoch(Data, Objects, CompletionContext);
+
+    if (result == FLT_PREOP_COMPLETE) SafeUploadDenyNote(Data, Objects, Data->IoStatus.Status, FALSE);
+    return result;
 }
 
 static FLT_POSTOP_CALLBACK_STATUS StagePostOperationCore(PFLT_CALLBACK_DATA Data,
