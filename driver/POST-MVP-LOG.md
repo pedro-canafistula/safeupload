@@ -411,3 +411,14 @@ the deny ring EMPTY (0 of 0: the 23 nested TiWorker refusals of T3d are gone, no
 refusal either, nothing in the servicing boot), no registry overflow, no Unknown reason; run disk deleted, base untouched (verdict rc=0).
 Watch item: the writer registry's high-water was 4,015 of 4,096 (earlier CU runs 1,299 / 3,097 / 2,206). It did not overflow, but an
 overflow makes coverage Unknown until reboot (T3c), so the margin is thin on a fast disk; Microsoft 365 is the next test of it.
+
+### U01 and the runtime-Verifier slice on the final driver (18:35-19:10)
+
+- U01 `u01n` (ordinary) and `u01o` (boot Verifier on for the whole run): every line PASS, including `U01NoRefusalOutsideScope` under the boot
+  Verifier (T2c: FontCache's section is no longer refused) and `U01StagedStreamQueries` (the 0x36 answer); the ring holds the 2 expected in-scope
+  refusals; CreateProfile 0x0 and a real first sign-in.
+- Slice `m13r` (runtime Verifier), judged by the gate's rule: C01-approve-absent `m13r2` ok, C01-block-absent `m13r3` ok, S01 `m13r4` ok;
+  C05 `m13r1` blocked only by `FailureOrErrorsInEvidence`: the agent-execution inventory's "Process inventory PID 4960: The parameter is
+  incorrect" (a process exited while the harness enumerated it; the harness treats any vanished process as defeating the proof, by design,
+  and that is kept). Its own assertions pass, among them `C05DenialLedger` PASS: "Driver deny ring recorded the denied rename: sequence 1,
+  status 0xC0000022". Restoration clean in all four. C05 is rerun in the regression's retry round.

@@ -155,7 +155,7 @@ local prefix (the `\Device\Mup` instance, early boot). Row U01 = `driver/scripts
   built yet): when the section gate would refuse only because the entry's alias probe is pending, at PASSIVE and not nested, it moves that entry to the front
   of the worker and waits a bounded time (about 2 s) for that probe, then decides; on timeout it refuses as today. Rejected: a "single link" name-only rule
   (a hard link made through another stream's handle does not reach the default-stream entry, so its rename version is not advanced).
-- [ ] FileStandardLinkInformation (0x36) on a staged stream answered from the backing file (`77b76faa`); U01 `u01n` re-run pending
+- [x] FileStandardLinkInformation (0x36) on a staged stream answered from the backing file; U01 `u01n` and `u01o` (boot Verifier) all PASS on `m1-driver13` (T2c fixed too)
 
 ### T3. Large installers and Windows Update
 
