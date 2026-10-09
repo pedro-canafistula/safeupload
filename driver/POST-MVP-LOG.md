@@ -422,3 +422,20 @@ overflow makes coverage Unknown until reboot (T3c), so the margin is thin on a f
   incorrect" (a process exited while the harness enumerated it; the harness treats any vanished process as defeating the proof, by design,
   and that is kept). Its own assertions pass, among them `C05DenialLedger` PASS: "Driver deny ring recorded the denied rename: sequence 1,
   status 0xC0000022". Restoration clean in all four. C05 is rerun in the regression's retry round.
+
+### T3c: Microsoft 365 found the compact registry tier was never usable (`b995943b`, build `m1-driver14`)
+
+Microsoft 365 with `m1-driver13` (`t3m365a`): the install itself passes (407 s, exit 0, Word present, the deny ring empty, driver loaded), so the
+original M365 failure ("very slow, then couldn't use a required file") is gone; but coverage ended Degraded: the writer registry overflowed (727
+failed insertions, Unknown reasons, `T3CoverageReady` / `T3RegistryNeverOverflowed` / `T3NoUnknownReason` FAIL). The sampler shows why: the live
+entry count stays at 250-435 for the whole run, then jumps from 293 to 3,739 in one 3 s sample (the installer holding about 3,800 files open at once;
+about 3,000 reclaim passes pruned 17), sits at 4,096 for about 12 s and drops back when about 3,800 entries are pruned together; the compact tier
+stayed at 0 throughout. Cause: `StageRegistryGetOrInsert` releases the reservation's capacity, which clears `CompactSlotReserved`, and then chose the
+tier from that flag, so every compact reservation (the D2 fallback, 16,384 records) was checked against the full-name tier and could not be inserted
+once that tier was full. Fix: the tier is the shell's (`Shell->Compact`), as at the insertion. Luna review: no P0/P1; the tier fix and the per-tier
+accounting are correct, compact entries stay fail closed for every consumer. Follow-ups (fail closed or performance, not done): compact entries get
+no create-time alias proof, so a nested write on one is still refused (only beyond 4,096 concurrent named writers); the activation anchor cap
+(4,096) is below the compact population, so more than 4,096 activating writers at an apply could leave a compact ADS entry Unknown; with the
+name tier above 75 % every compact insertion wakes the reclaim worker. True exhaustion of both tiers (more than 20,480 concurrent writers) still
+makes coverage Unknown until reboot (the original T3c design question). Verification: `m1-final14.sh` (Microsoft 365 `t3m365c`, CU `t3cui`,
+U01 `u01p`/`u01q`, then the 69 cells on `b995943b` + agent `4d02039a`).
