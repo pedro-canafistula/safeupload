@@ -154,13 +154,7 @@ while [ "$waited" -lt "$limit" ]; do
 done
 echo "workload wait ended after ${waited}s: $state"
 
-if [ "$workload" = cu ]; then
-    # A cumulative update finishes at the reboot: let the servicing reboot happen, then check the driver survived it.
-    remote <<<'& shutdown.exe /r /t 5 /c "T3 cumulative update"' >/dev/null; sleep 90; wait_ssh || echo 'guest did not return after the update reboot'
-    sleep 120
-fi
-
-remote <<'PS' | tee "$ev/$tag-after.txt"
+capture_ps=$(cat <<'PS'
 $ErrorActionPreference = 'Continue'
 $d = 'C:\Users\vika\Documents'
 'WORKLOAD_RESULT=' + $(if (Test-Path C:\T3\result.json) { (Get-Content C:\T3\result.json -Raw) -replace '\s+', ' ' } else { 'missing' })
@@ -182,13 +176,24 @@ foreach ($s in $samples) { try { $j = $s | ConvertFrom-Json; if ($j.writerState.
 'REGISTRY_UNKNOWN_SEEN=' + $unk
 'AFTER_DONE=True'
 PS
+)
+if [ "$workload" = cu ]; then
+    # The ring and the registry counters live in the driver's memory: read them before the reboot that finishes the update (the workload-time
+    # evidence), then again after it (the servicing phase, which also runs under the driver).
+    printf '%s\n' "$capture_ps" | remote | tee "$ev/$tag-before-reboot.txt" >/dev/null
+    # A cumulative update finishes at the reboot: let the servicing reboot happen, then check the driver survived it.
+    remote <<<'& shutdown.exe /r /t 5 /c "T3 cumulative update"' >/dev/null; sleep 90; wait_ssh || echo 'guest did not return after the update reboot'
+    sleep 120
+fi
+
+printf '%s\n' "$capture_ps" | remote | tee "$ev/$tag-after.txt"
 
 # Evidence kept before the rollback: the sampler's counter timeline.
 scp "${opts[@]}" "vika@$host:C:/T3/samples.jsonl" "$ev/$tag-samples.jsonl" >/dev/null 2>&1 || true
 
 # Verdict.
-python3 - "$ev/$tag-after.txt" "$ev/$tag-verdict.txt" "$mode" "$workload" "$(( $(date +%s) - started ))" "$ev/$tag-workload-setup.txt" <<'PY'
-import json, re, sys
+python3 - "$ev/$tag-after.txt" "$ev/$tag-verdict.txt" "$mode" "$workload" "$(( $(date +%s) - started ))" "$ev/$tag-workload-setup.txt" "$ev/$tag-before-reboot.txt" <<'PY'
+import json, os, re, sys
 after = open(sys.argv[1], encoding='utf-8', errors='replace').read()
 mode, workload = sys.argv[3], sys.argv[4]
 out = []
@@ -207,11 +212,19 @@ if mode == 'driver':
     verdict('T3DriverLoaded', 'DRIVER_LOADED=True' in after, 'the filter is loaded after the workload')
     frame = re.search(r'^AGENT_FRAME=(.*)$', after, re.M)
     verdict('T3CoverageReady', bool(frame) and '"admissionCoverage":"Ready"' in frame.group(1).replace(' ', ''), (frame.group(1)[:160] if frame else 'no agent frame'))
+    # The ring is in kernel memory: for an update that reboots, the workload-time ring is the one read before the reboot.
+    ring_text = after
+    servicing = []
+    if len(sys.argv) > 7 and os.path.exists(sys.argv[7]) and os.path.getsize(sys.argv[7]) > 0:
+        ring_text = open(sys.argv[7], encoding='utf-8', errors='replace').read()
+        for line in re.findall(r'^RING=(\{.*\})$', after, re.M):
+            try: servicing.append(json.loads(line))
+            except Exception: pass
     ring = []
-    for line in re.findall(r'^RING=(\{.*\})$', after, re.M):
+    for line in re.findall(r'^RING=(\{.*\})$', ring_text, re.M):
         try: ring.append(json.loads(line))
         except Exception: pass
-    total = re.search(r'^RING_TOTAL=(\d+)', after, re.M)
+    total = re.search(r'^RING_TOTAL=(\d+)', ring_text, re.M)
     verdict('T3RingRead', total is not None and int(total.group(1)) == len(ring), f"records read {len(ring)} of {total.group(1) if total else 'unknown'}")
     def inside(r): return '\\protected\\' in ((r.get('name') or '').lower() + '\\')
     def own_namespace(r): return r.get('reason') == 'privateNamespace' or '\\safeupload\\staging\\' in (r.get('name') or '').lower()
@@ -226,6 +239,9 @@ if mode == 'driver':
             ('no refusal outside the protected folder during the workload' if not during else f"{len(during)} refusals during the workload; first: " + describe(during)) +
             ('' if cursor else '; the ring cursor at the workload start is missing'))
     out.append('T3BootTimeRefusals ' + ('INFO none before the workload' if not boot else 'INFO ' + str(len(boot)) + ' before the workload started (boot, T2c): ' + describe(boot)))
+    servicing_outside = [r for r in servicing if r.get('major') != 'QUERY_INFORMATION' and not inside(r) and not own_namespace(r)]
+    if os.path.exists(sys.argv[7]) if len(sys.argv) > 7 else False:
+        out.append('T3ServicingBootRefusals INFO ' + (str(len(servicing_outside)) + ' after the update reboot (servicing phase): ' + describe(servicing_outside) if servicing_outside else 'none after the update reboot'))
     ov = re.search(r'^REGISTRY_OVERFLOW_MAX=(\d+)', after, re.M)
     verdict('T3RegistryNeverOverflowed', ov is not None and int(ov.group(1)) == 0, f"overflow max {ov.group(1) if ov else 'unknown'}")
     mx = re.search(r'^REGISTRY_ENTRIES_MAX=(\d+)', after, re.M)
