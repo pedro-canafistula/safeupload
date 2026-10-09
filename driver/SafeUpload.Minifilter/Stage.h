@@ -165,6 +165,8 @@ _IRQL_requires_max_(APC_LEVEL)
 VOID SafeUploadStageWritersAttachMutatingIo(_In_opt_ PVOID RenameContext,
     _Inout_ PVOID *MutatingIoContext);
 _IRQL_requires_max_(APC_LEVEL)
+BOOLEAN SafeUploadStageWritersSopKnownOutside(_In_ PFLT_INSTANCE Instance, _In_opt_ PFILE_OBJECT FileObject);
+_IRQL_requires_max_(APC_LEVEL)
 BOOLEAN SafeUploadStageWritersSopMatchesPolicy(_In_ PFLT_INSTANCE Instance,
     _In_opt_ PFILE_OBJECT FileObject, _In_ BOOLEAN IncludeAncestors);
 _IRQL_requires_(PASSIVE_LEVEL)

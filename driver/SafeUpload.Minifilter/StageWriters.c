@@ -6892,6 +6892,30 @@ __declspec(noinline) static BOOLEAN StageRegistryUnknownSopForInstance(
     return unknownMarker;
 }
 
+/* The stream has a registry entry and that entry says the stream is outside every scope (the same decision as
+ * SafeUploadStageWritersSopMatchesPolicy, which also answers "no" for a stream nothing is known about; this one requires the
+ * entry, so ignorance never reads as "outside"). */
+_IRQL_requires_max_(APC_LEVEL)
+BOOLEAN SafeUploadStageWritersSopKnownOutside(_In_ PFLT_INSTANCE Instance, _In_opt_ PFILE_OBJECT FileObject)
+{
+    PSAFEUPLOAD_STREAM_CONTEXT streamContext = NULL;
+    PSTAGE_REGISTRY_ENTRY entry;
+    if (Instance == NULL || FileObject == NULL || FileObject->SectionObjectPointer == NULL) return FALSE;
+    entry = StageRegistryReferenceSop(FileObject->SectionObjectPointer);
+    if (entry == NULL && NT_SUCCESS(FltGetStreamContext(Instance, FileObject, (PFLT_CONTEXT *)&streamContext))) {
+        KIRQL irql;
+        StageAcquireSpinLock(&streamContext->WriterLock, &irql);
+        entry = (PSTAGE_REGISTRY_ENTRY)InterlockedCompareExchangePointer(
+            (PVOID volatile *)&streamContext->WriterRegistryEntry, NULL, NULL);
+        if (entry != NULL) StageRegistryReference(entry);
+        StageReleaseSpinLock(&streamContext->WriterLock, irql);
+        FltReleaseContext(streamContext);
+    }
+    if (entry == NULL) return FALSE;
+    StageRegistryDereference(entry);
+    return !SafeUploadStageWritersSopMatchesPolicy(Instance, FileObject, FALSE);
+}
+
 _IRQL_requires_max_(APC_LEVEL)
 BOOLEAN SafeUploadStageWritersSopMatchesPolicy(_In_ PFLT_INSTANCE Instance,
     _In_opt_ PFILE_OBJECT FileObject, _In_ BOOLEAN IncludeAncestors)

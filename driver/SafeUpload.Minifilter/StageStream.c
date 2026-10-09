@@ -3279,12 +3279,15 @@ static FLT_PREOP_CALLBACK_STATUS StageUnownedWritableSection(PFLT_CALLBACK_DATA 
     FLT_FILESYSTEM_TYPE fs;
     BOOLEAN unresolved = TRUE;
     NTSTATUS status;
+    UINT32 denyReason = SAFEUPLOAD_DENY_REASON_NONE;
+    NTSTATUS denyAux = STATUS_SUCCESS;
 
     if (Data->Iopb->Parameters.AcquireForSectionSynchronization.SyncType != SyncTypeCreateSection) return FLT_PREOP_SUCCESS_NO_CALLBACK;
     if (!FlagOn(Data->Iopb->Parameters.AcquireForSectionSynchronization.PageProtection,
             PAGE_READWRITE | PAGE_EXECUTE_READWRITE)) return FLT_PREOP_SUCCESS_NO_CALLBACK;
     if (FlagOn(Data->Iopb->Parameters.AcquireForSectionSynchronization.AllocationAttributes, SEC_IMAGE)) return FLT_PREOP_SUCCESS_NO_CALLBACK;
     if (KeGetCurrentIrql() != PASSIVE_LEVEL || IoGetTopLevelIrp() != NULL) {
+        denyReason = SAFEUPLOAD_DENY_REASON_TOP_LEVEL_IRP;
         goto Deny;
     }
     status = FltGetFileSystemType(Objects->Instance, &fs);
@@ -3297,24 +3300,49 @@ static FLT_PREOP_CALLBACK_STATUS StageUnownedWritableSection(PFLT_CALLBACK_DATA 
         SafeUploadTrace("writable section outside the qualified registry; checking protected-name policy\n");
     }
     status = FltGetFileNameInformation(Data, FLT_FILE_NAME_NORMALIZED | FLT_FILE_NAME_QUERY_DEFAULT, &name);
-    if (!NT_SUCCESS(status)) goto Deny;
+    if (!NT_SUCCESS(status)) {
+        denyReason = SAFEUPLOAD_DENY_REASON_NAME_UNRESOLVED;
+        denyAux = status;
+        goto Deny;
+    }
     /* The current+pending union is read under one shared policy-lock hold. Separate checks can straddle a shrink:
      * pending misses the old-only scope, then the swap publishes the new current policy before the current check. */
-    if (!NT_SUCCESS(FltParseFileNameInformation(name))) goto Deny;
+    status = FltParseFileNameInformation(name);
+    if (!NT_SUCCESS(status)) {
+        denyReason = SAFEUPLOAD_DENY_REASON_NAME_UNRESOLVED;
+        denyAux = status;
+        goto Deny;
+    }
     if (SafeUploadStageWritersSopMatchesPolicy(Objects->Instance, Objects->FileObject, FALSE) ||
-        SafeUploadStageWritersNameActivating(Objects->Instance, &name->Name) ||
         SafeUploadPolicyMatchesCurrentOrPendingDestination(kind, &name->Name, FALSE) ||
         SafeUploadStageProtectedName(name, kind)) {
         unresolved = FALSE;
+        denyReason = SAFEUPLOAD_DENY_REASON_POLICY_SCOPE;
+        goto Deny;
+    }
+    if (SafeUploadStageWritersNameActivating(Objects->Instance, &name->Name)) {
+        unresolved = FALSE;
+        denyReason = SAFEUPLOAD_DENY_REASON_ACTIVATING_NAME;
         goto Deny;
     }
     unresolved = FALSE;
     FltReleaseFileNameInformation(name);
     return FLT_PREOP_SUCCESS_NO_CALLBACK;
  Deny:
-    if (name != NULL) FltReleaseFileNameInformation(name);
-    if (unresolved && !SafeUploadPolicyMayMatchInstanceVolume(Objects->Instance))
+    if (unresolved && KeGetCurrentIrql() <= APC_LEVEL &&
+        SafeUploadStageWritersSopKnownOutside(Objects->Instance, Objects->FileObject)) {
+        /* The name cannot be queried here (a nested call, or the lookup failed), but this stream has a registry entry
+         * that recorded its name and was classified outside every scope: decide by that, not by "the volume may hold a
+         * scope". Entries that are Activating, alias-pending, renamed, Unknown or in scope still answer "matches". */
+        if (name != NULL) FltReleaseFileNameInformation(name);
         return FLT_PREOP_SUCCESS_NO_CALLBACK;
+    }
+    if (unresolved && !SafeUploadPolicyMayMatchInstanceVolume(Objects->Instance)) {
+        if (name != NULL) FltReleaseFileNameInformation(name);
+        return FLT_PREOP_SUCCESS_NO_CALLBACK;
+    }
+    SafeUploadDenyDetail(Data, denyReason, denyAux, name != NULL ? &name->Name : NULL);
+    if (name != NULL) FltReleaseFileNameInformation(name);
     Data->IoStatus.Status = STATUS_ACCESS_DENIED;
     Data->IoStatus.Information = 0;
     return FLT_PREOP_COMPLETE;
