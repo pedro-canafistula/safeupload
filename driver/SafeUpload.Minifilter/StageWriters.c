@@ -5616,7 +5616,6 @@ static BOOLEAN StageRegistryEntryHoldsNoWriterState(_In_ PSTAGE_REGISTRY_ENTRY E
 _IRQL_requires_(PASSIVE_LEVEL)
 static VOID StageAnchorDestroy(_In_ PSTAGE_ANCHOR Anchor)
 {
-    PAGED_CODE();
     ObDereferenceObject(Anchor->Object);
     FltClose(Anchor->Handle);
     FltObjectDereference(Anchor->Instance);
@@ -5633,7 +5632,6 @@ _IRQL_requires_(PASSIVE_LEVEL)
 static BOOLEAN StageAnchorTake(_In_ PSTAGE_REGISTRY_ENTRY Entry, _Outptr_result_maybenull_ PSTAGE_ANCHOR *Taken)
 {
     PLIST_ENTRY link;
-    PAGED_CODE();
     *Taken = NULL;
     FltAcquirePushLockExclusive(&StageAnchorLock);
     for (link = StageAnchorList.Flink; link != &StageAnchorList; link = link->Flink) {
@@ -5654,7 +5652,6 @@ _IRQL_requires_(PASSIVE_LEVEL)
 static BOOLEAN StageAnchorInsert(_In_ PSTAGE_ANCHOR Anchor, _In_ ULONG Epoch)
 {
     BOOLEAN inserted = FALSE;
-    PAGED_CODE();
     FltAcquirePushLockExclusive(&StageAnchorLock);
     if ((ULONG)StageAnchorEpoch == Epoch && StageAnchorCount < STAGE_ANCHOR_LIMIT) {
         InsertTailList(&StageAnchorList, &Anchor->Link);
@@ -5682,7 +5679,6 @@ static VOID StageAnchorEndVisit(_In_ PSTAGE_REGISTRY_ENTRY Entry, _In_ PFLT_INST
     _In_ BOOLEAN Replaced)
 {
     PSTAGE_ANCHOR anchor = *Taken;
-    PAGED_CODE();
     if (anchor != NULL) {
         /* Borrowed for the visit: Handle and Object are the anchor's own. */
         if (!StageAnchorWanted(Entry, FALSE) || !StageAnchorInsert(anchor, Epoch)) StageAnchorDestroy(anchor);
@@ -5714,7 +5710,6 @@ static VOID StageAnchorSweep(VOID)
 {
     LIST_ENTRY release;
     PLIST_ENTRY link, next;
-    PAGED_CODE();
     InitializeListHead(&release);
     FltAcquirePushLockExclusive(&StageAnchorLock);
     for (link = StageAnchorList.Flink; link != &StageAnchorList; link = next) {
@@ -5737,7 +5732,6 @@ static VOID StageAnchorReleaseInstance(_In_ PFLT_INSTANCE Instance)
 {
     LIST_ENTRY release;
     PLIST_ENTRY link, next;
-    PAGED_CODE();
     InitializeListHead(&release);
     FltAcquirePushLockExclusive(&StageAnchorLock);
     /* A visit in flight that read the old epoch cannot put its anchor back after this. */
@@ -5906,11 +5900,12 @@ static VOID StageRegistryActivationProcess(_In_ PSTAGE_REGISTRY_ENTRY Entry,
 
     if (StageAnchorTake(Entry, &anchor)) {
         /* The anchor's file object is the recorded stream as long as the entry still names that SOP. */
-        if (anchor->Instance == Instance && anchor->Object->SectionObjectPointer != NULL &&
-            anchor->Object->SectionObjectPointer == InterlockedCompareExchangePointer(
+        PFILE_OBJECT anchored = anchor->Object;
+        if (anchored != NULL && anchor->Instance == Instance && anchored->SectionObjectPointer != NULL &&
+            anchored->SectionObjectPointer == InterlockedCompareExchangePointer(
                 (PVOID volatile *)&Entry->SectionObjectPointer, NULL, NULL)) {
             handle = anchor->Handle;
-            object = anchor->Object;
+            object = anchored;
             status = STATUS_SUCCESS;
         } else {
             StageAnchorDestroy(anchor);
