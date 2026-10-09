@@ -782,6 +782,14 @@ SafeUploadPolicyMayMatchVolume (
     );
 
 BOOLEAN SafeUploadPolicyMayMatchInstanceVolume(_In_opt_ PFLT_INSTANCE Instance);
+
+/* A name lookup that fails with one of these statuses proves the path does not exist, so the request touches nothing protected and the
+ * file system can answer it. Every other failure leaves the target unknown (and, on a volume that may hold a scope, fail closed). */
+FORCEINLINE BOOLEAN SafeUploadNameLookupProvesAbsent(_In_ NTSTATUS Status)
+{
+    return Status == STATUS_OBJECT_PATH_NOT_FOUND || Status == STATUS_OBJECT_NAME_NOT_FOUND ||
+        Status == STATUS_NO_SUCH_FILE || Status == STATUS_NOT_A_DIRECTORY;
+}
 /* Calls of the function above and how many answered TRUE. Every caller is a path that could not resolve a name and
  * fell back to "the whole volume may be in scope", so these counters measure how often that fallback is taken. */
 extern volatile LONG64 SafeUploadVolumeWideQueries;

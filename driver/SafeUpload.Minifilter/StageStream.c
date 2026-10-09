@@ -2598,8 +2598,7 @@ static BOOLEAN StageDirectoryCreateCanMutate(_In_ PFLT_CALLBACK_DATA Data)
  * deepest folder first and its parents on PATH_NOT_FOUND). Any other lookup failure stays "the whole volume may be in scope". */
 static BOOLEAN StageNameLookupProvesAbsent(_In_ NTSTATUS Status)
 {
-    return Status == STATUS_OBJECT_PATH_NOT_FOUND || Status == STATUS_OBJECT_NAME_NOT_FOUND ||
-        Status == STATUS_NO_SUCH_FILE || Status == STATUS_NOT_A_DIRECTORY;
+    return SafeUploadNameLookupProvesAbsent(Status);
 }
 
 /* Directory creates and metadata opens can change namespace state without a later SET_INFORMATION.

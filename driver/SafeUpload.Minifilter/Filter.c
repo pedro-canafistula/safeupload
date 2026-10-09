@@ -1377,6 +1377,10 @@ static BOOLEAN SafeUploadFailClosedProtectedCreate(_Inout_ PFLT_CALLBACK_DATA Da
         FLT_FILE_NAME_NORMALIZED | FLT_FILE_NAME_QUERY_DEFAULT, &name);
     if (NT_SUCCESS(status) && name != NULL && NT_SUCCESS(FltParseFileNameInformation(name))) {
         protectedName = SafeUploadPolicyMatchesDestination(kind, &name->Name);
+    } else if (!NT_SUCCESS(status) && SafeUploadNameLookupProvesAbsent(status)) {
+        /* The lookup proved the path does not exist (smss deleting files of a pending servicing operation that are already gone, before the
+         * agent connects): nothing protected can be touched, the file system answers. Refusing it reverted a cumulative update at its reboot. */
+        protectedName = FALSE;
     } else {
         /* A failed target-name query is Unknown when this volume may contain
          * a configured prefix. Do not turn that uncertainty into an
