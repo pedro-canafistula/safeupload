@@ -1,12 +1,15 @@
 #!/usr/bin/env bash
-# T2 diagnosis: with the staged-writes driver loaded, create a brand-new local user's profile (userenv!CreateProfile, the
-# first-sign-in path) and read the driver's deny ring through the service's diagnostics pipe. Reproduces the denied operation
-# of "User Profile Service failed the sign-in" (CreateProfile = 0x80070005) and names it.
+# Suite row U01 (first sign-in of a new user) and the T2 diagnosis behind it: with the staged-writes driver loaded, create a
+# brand-new local user's profile (userenv!CreateProfile, the first-sign-in path), then let a second new account sign in for real
+# (autologon, interactive session) and read the driver's deny ring through the service's diagnostics pipe. Reproduces the denied
+# operation of "User Profile Service failed the sign-in" (CreateProfile = 0x80070005) and names it. The verdict (U01 assertions,
+# PASS/FAIL/INCONCLUSIVE per line) is written to driver/evidence/<day>/<tag>-verdict.txt and the exit status is 0 only if every
+# required assertion passes.
 #
 # Usage: driver/scripts/Invoke-NewProfileDiagnosis.sh <debuggee domain> <tag> <driver.sys> <agent stage-service-publish.zip>
 # Takes a disk-only checkpoint of the debuggee first, installs the pair like the manual install in MVP-PLAN (through
 # Install-SafeUploadAgent.ps1), reboots, waits for Ready, runs the probe, then ALWAYS rolls the guest back to the checkpoint and
-# re-verifies the baseline. Evidence: driver/evidence/<day>/<tag>-*.txt. The exit status is not the verdict: read <tag>-probe.txt.
+# re-verifies the baseline. Evidence: driver/evidence/<day>/<tag>-*.txt.
 set -uo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/../.."
 dom="${1:?debuggee domain}"; tag="${2:?tag}"; sys="${3:?signed driver}"; zip="${4:?agent publish zip}"
@@ -188,3 +191,59 @@ try {
 'PHASE2_DONE=True'
 PS
 echo "phase 2 evidence: $ev/$tag-phase2.txt"
+
+# U01 verdict. Required: the account signs in and has a working profile; the Profile Service did not fall back to a temporary
+# profile; CreateProfile succeeds; a standard user is still refused in scope (directory creates) and still works in scope for a clean
+# save; and the deny ring holds no refusal outside the protected folder. Reported only: an unsupported information class on a staged
+# stream (a gap in the staged view, not a refusal of an outside-scope operation).
+python3 - "$ev/$tag-probe.txt" "$ev/$tag-phase2.txt" "$ev/$tag-verdict.txt" <<'PY'
+import json, re, sys
+probe = open(sys.argv[1], encoding='utf-8', errors='replace').read()
+phase2 = open(sys.argv[2], encoding='utf-8', errors='replace').read()
+out = []
+def verdict(name, ok, reason, required=True):
+    out.append(f"{name} {'PASS' if ok else ('FAIL' if required else 'INCONCLUSIVE')} {reason}")
+    return ok or not required
+m = re.search(r'^CREATEPROFILE_HR=(0x[0-9A-Fa-f]+)', probe, re.M)
+create_ok = verdict('U01CreateProfile', bool(m) and int(m.group(1), 16) == 0, f"CreateProfile returned {m.group(1) if m else 'nothing'}")
+m = re.search(r'^SIGNIN_RESULTS=(.*)$', phase2, re.M)
+results = None
+if m and m.group(1).strip() != 'missing':
+    try: results = json.loads(m.group(1))
+    except Exception: results = None
+signed = results is not None and re.search(r'\\t2user$', results.get('whoami', '')) is not None and 'Active' in results.get('session', '')
+verdict('U01SignIn', signed, 'the new account reached an active interactive session' if signed else 'no sign-in result from the new account')
+profile = 'PROFILE_DIR=present' in phase2 and re.search(r'^EXPLORER_PROCS=([1-9])', phase2, re.M) is not None
+verdict('U01Profile', profile, 'profile directory present and the shell is running' if profile else 'profile directory or shell missing')
+ids = [int(x) for x in re.findall(r'^PROFSVC_EVENT=(\d+)', phase2, re.M)]
+bad = [i for i in ids if i in (1511, 1515, 1521, 1500, 1502, 1504)]
+verdict('U01NoTemporaryProfile', not bad, f"Profile Service events {ids}" + (f"; temporary-profile events {bad}" if bad else ''))
+if results is not None:
+    verdict('U01InScopeDirectoryRefused', results.get('mkdir-in-scope', '').startswith('ERR') and results.get('mkdir-deep-in-scope', '').startswith('ERR'),
+            f"mkdir={results.get('mkdir-in-scope')}; deep mkdir={results.get('mkdir-deep-in-scope')}")
+    verdict('U01InScopeCleanSave', results.get('write-file-in-scope') == 'OK', f"write={results.get('write-file-in-scope')}")
+    verdict('U01ProfileTree', results.get('mkdir-deep-profile') == 'OK' and results.get('write-file-profile') == 'OK',
+            f"deep mkdir={results.get('mkdir-deep-profile')}; write={results.get('write-file-profile')}")
+else:
+    for n in ('U01InScopeDirectoryRefused', 'U01InScopeCleanSave', 'U01ProfileTree'): verdict(n, False, 'no sign-in result')
+ring = []
+for line in re.findall(r'^RING=(\{.*\})$', phase2, re.M):
+    try: ring.append(json.loads(line))
+    except Exception: pass
+n_ring = re.search(r'^RING_SINCE_BOOT=(\d+)', phase2, re.M)
+verdict('U01RingRead', n_ring is not None and int(n_ring.group(1)) == len(ring), f"records read {len(ring)} of {n_ring.group(1) if n_ring else 'unknown'}")
+def inside(r): return '\\protected\\' in (r.get('name') or '').lower() + '\\' or (r.get('name') or '').lower().endswith('\\protected')
+outside = [r for r in ring if r.get('major') != 'QUERY_INFORMATION' and not inside(r)]
+verdict('U01NoRefusalOutsideScope', not outside,
+        'no refusal outside the protected folder' if not outside else '; '.join(f"#{r['sequence']} {r.get('statusName')} {r.get('major')} {r.get('reason') or 'noReason'} {r.get('name')}" for r in outside[:12]))
+unsupported = [r for r in ring if r.get('major') == 'QUERY_INFORMATION']
+verdict('U01StagedStreamQueries', not unsupported,
+        'no refused information query' if not unsupported else '; '.join(f"#{r['sequence']} {r.get('statusName')} class {r.get('access')} pid {r.get('processId')}" for r in unsupported[:6]), required=False)
+open(sys.argv[3], 'w').write('\n'.join(out) + '\n')
+print('\n'.join(out))
+sys.exit(0 if all(' FAIL ' not in l for l in out) else 1)
+PY
+verdict_rc=$?
+echo "U01 verdict file: $ev/$tag-verdict.txt (rc=$verdict_rc)"
+exit $verdict_rc
+
