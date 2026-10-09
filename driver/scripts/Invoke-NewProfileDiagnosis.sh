@@ -9,9 +9,9 @@
 # Usage: driver/scripts/Invoke-NewProfileDiagnosis.sh <debuggee domain> <tag> <driver.sys> <agent stage-service-publish.zip> [boot-verifier]
 # With 'boot-verifier' the Driver Verifier (standard settings) is turned on for SafeUpload.sys before the first reboot, so the
 # whole run, including the first sign-in, executes under it; the verdict then also requires the driver to be listed as verified.
-# Takes a disk-only checkpoint of the debuggee first, installs the pair like the manual install in MVP-PLAN (through
-# Install-SafeUploadAgent.ps1), reboots, waits for Ready, runs the probe, then ALWAYS rolls the guest back to the checkpoint and
-# re-verifies the baseline. Evidence: driver/evidence/<day>/<tag>-*.txt.
+# Boots the debuggee on a disposable run disk (run-disk.sh), installs the pair like the manual install in MVP-PLAN (through
+# Install-SafeUploadAgent.ps1), reboots, waits for Ready, runs the probe, then ALWAYS powers the guest off and deletes the run disk;
+# the base is never written. Evidence: driver/evidence/<day>/<tag>-*.txt.
 set -uo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/../.."
 dom="${1:?debuggee domain}"; tag="${2:?tag}"; sys="${3:?signed driver}"; zip="${4:?agent publish zip}"; verifier="${5:-}"
@@ -31,40 +31,22 @@ print("\n".join(line for line in (text.split("\n") + errors) if line.strip()))
 remote() { python3 driver/scripts/remote_ps.py "$host" 2>&1 | clean; }
 wait_ssh() { for _ in $(seq 1 90); do ssh "${opts[@]}" -o ConnectTimeout=5 "vika@$host" 'echo up' >/dev/null 2>&1 && return 0; sleep 10; done; return 1; }
 
+echo "== run disk"
+source "$(dirname "${BASH_SOURCE[0]}")/image-store.sh"; source "$(dirname "${BASH_SOURCE[0]}")/run-disk.sh"
+run_disk_begin "$dom" "$tag" > "$ev/$tag-checkpoint.txt" 2>&1 || { cat "$ev/$tag-checkpoint.txt"; exit 12; }
+# Whatever happens next, the guest is powered off and the run's files are deleted; the base is never written.
+finish() {
+    echo "== discard the run disk"
+    run_disk_end "$dom" "$tag" > "$ev/$tag-final-restored-state.txt" 2>&1
+    grep -E 'RunDiskBaseUntouched|deleted|nothing deleted' "$ev/$tag-final-restored-state.txt"
+}
+trap finish EXIT
+wait_ssh || { echo 'guest did not boot on the run disk'; exit 3; }
+
 echo "== baseline"
 scp "${opts[@]}" driver/scripts/Get-StagedBaseline.ps1 "vika@$host:$guest/Get-StagedBaseline.ps1" || exit 3
 echo "& 'C:\\Users\\vika\\Documents\\Get-StagedBaseline.ps1'" | remote | tee "$ev/$tag-baseline.txt" >/dev/null
-grep -q '^BaselineClean=True' "$ev/$tag-baseline.txt" || { echo 'BASELINE NOT CLEAN'; exit 10; }
-remote <<<'Write-VolumeCache -DriveLetter C; "VolumeCacheWritten=True"' | grep -qx 'VolumeCacheWritten=True' || exit 16
-
-echo "== checkpoint"
-source "$(dirname "${BASH_SOURCE[0]}")/image-store.sh"
-IMGDIR=$(image_dir_of_domain "$dom"); image_dir_check "$IMGDIR" || exit 13
-overlay="$IMGDIR/$dom.safeupload-pre-$tag-$(date +%Y%m%d)"
-[ -e "$overlay" ] && { echo "overlay exists: $overlay"; exit 11; }
-$V snapshot-create-as --domain "$dom" --name "safeupload-pre-$tag" --description "before $tag" --disk-only --no-metadata \
-    --diskspec "vda,snapshot=external,file=$overlay" --atomic > "$ev/$tag-checkpoint.txt" 2>&1 || { cat "$ev/$tag-checkpoint.txt"; exit 12; }
-grep -q "$overlay" <($V domblklist "$dom") || { echo 'checkpoint not active'; exit 12; }
-
-finish() {
-    echo "== rollback"
-    /home/victor/Work/safeupload-tools/rollback-vm.sh "$dom" "$tag" 2>&1 | tail -2
-    sleep 25
-    # A crash-consistent checkpoint can land in Windows Recovery ("Choose your keyboard layout") instead of booting: power-cycle once.
-    local up=0
-    for _ in $(seq 1 18); do ssh "${opts[@]}" -o ConnectTimeout=5 "vika@$host" 'echo up' >/dev/null 2>&1 && { up=1; break; }; sleep 10; done
-    if [ "$up" -eq 0 ]; then
-        echo "guest did not boot after rollback; power-cycling once"
-        $V destroy "$dom" >/dev/null 2>&1; sleep 3; $V start "$dom" >/dev/null 2>&1
-        for _ in $(seq 1 30); do ssh "${opts[@]}" -o ConnectTimeout=5 "vika@$host" 'echo up' >/dev/null 2>&1 && break; sleep 10; done
-    fi
-    for _ in $(seq 1 40); do
-        echo "& 'C:\\Users\\vika\\Documents\\Get-StagedBaseline.ps1'" | remote > "$ev/$tag-final-restored-state.txt" 2>&1
-        grep -q '^BaselineClean=True' "$ev/$tag-final-restored-state.txt" && break; sleep 6
-    done
-    grep -E 'BaselineClean|OriginalDriverHash' "$ev/$tag-final-restored-state.txt"
-}
-trap finish EXIT
+grep -q '^BaselineClean=True' "$ev/$tag-baseline.txt" || { echo 'BASELINE NOT CLEAN on a fresh run disk: the base changed'; exit 10; }
 
 echo "== stage files and install"
 sleep 5

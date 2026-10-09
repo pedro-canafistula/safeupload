@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # T3: a large installer or an update with the staged-writes driver loaded (or without it, as the control), on a debuggee in a
-# checkpoint that is ALWAYS rolled back afterwards.
+# disposable run disk (run-disk.sh) that is ALWAYS deleted afterwards; the base disk is never written.
 #
 # Usage: driver/scripts/Invoke-InstallerWorkload.sh <debuggee domain> <tag> <workload> <driver|control> [<driver.sys> <agent zip>]
 #   workload: msi | m365 | cu | defender
@@ -21,9 +21,8 @@ case "$workload" in msi|m365|cu|defender) ;; *) echo 'Unknown workload'; exit 2;
 case "$mode" in driver) [ -f "$sys" ] && [ -f "$zip" ] || { echo 'driver mode needs the signed driver and the agent zip'; exit 2; };; control) ;; *) echo 'Unknown mode'; exit 2;; esac
 host=$(awk -v d="$dom" '$1==d{print $2}' driver/scripts/debuggees.txt); [ -n "$host" ] || { echo "Unknown debuggee $dom"; exit 2; }
 # The guest's overlay grows by the size of what the workload writes (Microsoft 365 about 10 GB): never start on a nearly full host.
-free_gb=$(df --output=avail -BG / | tail -1 | tr -dc '0-9')
-min_gb=${T3_MIN_FREE_GB:-$([ "$workload" = m365 ] && echo 30 || echo 15)}   # override only for a deliberate run on a tight host
-[ "${free_gb:-0}" -ge "$min_gb" ] || { echo "host disk too low for $workload: ${free_gb} GB free, need $min_gb"; exit 30; }
+# run_disk_begin refuses a run disk directory with less than this much free space.
+export SAFEUPLOAD_MIN_FREE_GB=${T3_MIN_FREE_GB:-$([ "$workload" = m365 ] && echo 30 || echo 15)}   # override only for a deliberate run on a tight host
 V="virsh -c qemu:///system"; ev="driver/evidence/$(date +%F)"; mkdir -p "$ev"
 opts=(-F /dev/null -i /home/victor/.ssh/id_ed25519 -o BatchMode=yes -o ConnectTimeout=10 -o LogLevel=ERROR -o StrictHostKeyChecking=accept-new)
 guest='C:/Users/vika/Documents'
@@ -38,39 +37,22 @@ remote() { python3 driver/scripts/remote_ps.py "$host" 2>&1 | clean; }
 wait_ssh() { for _ in $(seq 1 90); do ssh "${opts[@]}" -o ConnectTimeout=5 "vika@$host" 'echo up' >/dev/null 2>&1 && return 0; sleep 10; done; return 1; }
 started=$(date +%s)
 
+echo "== run disk"
+source "$(dirname "${BASH_SOURCE[0]}")/image-store.sh"; source "$(dirname "${BASH_SOURCE[0]}")/run-disk.sh"
+run_disk_begin "$dom" "$tag" > "$ev/$tag-checkpoint.txt" 2>&1 || { cat "$ev/$tag-checkpoint.txt"; exit 12; }
+# Whatever happens next, the guest is powered off and the run's files are deleted; the base is never written.
+finish() {
+    echo "== discard the run disk"
+    run_disk_end "$dom" "$tag" > "$ev/$tag-final-restored-state.txt" 2>&1
+    grep -E 'RunDiskBaseUntouched|deleted|nothing deleted' "$ev/$tag-final-restored-state.txt"
+}
+trap finish EXIT
+wait_ssh || { echo 'guest did not boot on the run disk'; exit 3; }
+
 echo "== baseline"
 scp "${opts[@]}" driver/scripts/Get-StagedBaseline.ps1 "vika@$host:$guest/Get-StagedBaseline.ps1" || exit 3
 echo "& 'C:\\Users\\vika\\Documents\\Get-StagedBaseline.ps1'" | remote | tee "$ev/$tag-baseline.txt" >/dev/null
-grep -q '^BaselineClean=True' "$ev/$tag-baseline.txt" || { echo 'BASELINE NOT CLEAN'; exit 10; }
-remote <<<'Write-VolumeCache -DriveLetter C; "VolumeCacheWritten=True"' | grep -qx 'VolumeCacheWritten=True' || exit 16
-
-echo "== checkpoint"
-source "$(dirname "${BASH_SOURCE[0]}")/image-store.sh"
-IMGDIR=$(image_dir_of_domain "$dom"); image_dir_check "$IMGDIR" || exit 13
-overlay="$IMGDIR/$dom.safeupload-pre-$tag-$(date +%Y%m%d)"
-[ -e "$overlay" ] && { echo "overlay exists: $overlay"; exit 11; }
-$V snapshot-create-as --domain "$dom" --name "safeupload-pre-$tag" --description "before $tag" --disk-only --no-metadata \
-    --diskspec "vda,snapshot=external,file=$overlay" --atomic > "$ev/$tag-checkpoint.txt" 2>&1 || { cat "$ev/$tag-checkpoint.txt"; exit 12; }
-grep -q "$overlay" <($V domblklist "$dom") || { echo 'checkpoint not active'; exit 12; }
-
-finish() {
-    echo "== rollback"
-    /home/victor/Work/safeupload-tools/rollback-vm.sh "$dom" "$tag" 2>&1 | tail -2
-    sleep 25
-    local up=0
-    for _ in $(seq 1 18); do ssh "${opts[@]}" -o ConnectTimeout=5 "vika@$host" 'echo up' >/dev/null 2>&1 && { up=1; break; }; sleep 10; done
-    if [ "$up" -eq 0 ]; then
-        echo "guest did not boot after rollback; power-cycling once"
-        $V destroy "$dom" >/dev/null 2>&1; sleep 3; $V start "$dom" >/dev/null 2>&1
-        for _ in $(seq 1 30); do ssh "${opts[@]}" -o ConnectTimeout=5 "vika@$host" 'echo up' >/dev/null 2>&1 && break; sleep 10; done
-    fi
-    for _ in $(seq 1 40); do
-        echo "& 'C:\\Users\\vika\\Documents\\Get-StagedBaseline.ps1'" | remote > "$ev/$tag-final-restored-state.txt" 2>&1
-        grep -q '^BaselineClean=True' "$ev/$tag-final-restored-state.txt" && break; sleep 6
-    done
-    grep -E 'BaselineClean|OriginalDriverHash' "$ev/$tag-final-restored-state.txt"
-}
-trap finish EXIT
+grep -q '^BaselineClean=True' "$ev/$tag-baseline.txt" || { echo 'BASELINE NOT CLEAN on a fresh run disk: the base changed'; exit 10; }
 
 if [ "$mode" = driver ]; then
     echo "== stage files and install"

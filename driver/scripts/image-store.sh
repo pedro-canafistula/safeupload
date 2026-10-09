@@ -1,7 +1,7 @@
 # Sourced by the harness scripts (needs $V = "virsh -c qemu:///system").
-# VM overlays are created next to the domain's current disk, so a VM whose disk lives on the Storage disk keeps every checkpoint and
-# recovery overlay there. The project must not fill the main disk: a directory on the same filesystem as / is refused unless
-# SAFEUPLOAD_ALLOW_MAIN_DISK=1 is set deliberately.
+# VM overlays are created next to the domain's current disk (see run-disk.sh: each run's overlay is deleted when the run ends).
+# The main disk may hold them (the owner allows it when it is faster) but nothing may pile up: a directory whose filesystem has
+# less than SAFEUPLOAD_MIN_FREE_GB (default 20) free is refused.
 image_dir_of_domain() {  # $1 domain -> directory of its current top disk
     dirname "$($V dumpxml "$1" | grep -o "source file='[^']*'" | head -1 | cut -d"'" -f2)"
 }
@@ -13,9 +13,7 @@ image_pool_of() {  # $1 directory -> libvirt pool whose target path it is
     return 1
 }
 image_dir_check() {  # $1 directory
-    [ "${SAFEUPLOAD_ALLOW_MAIN_DISK:-0}" = 1 ] && return 0
-    if [ "$(stat -f -c %i "$1")" = "$(stat -f -c %i /)" ]; then
-        echo "REFUSED: $1 is on the main disk. Move the VM disk to the Storage disk (flatten onto /mnt/storage/libvirt/images) or set SAFEUPLOAD_ALLOW_MAIN_DISK=1." >&2
-        return 1
-    fi
+    local free min=${SAFEUPLOAD_MIN_FREE_GB:-20}
+    free=$(df --output=avail -BG "$1" | tail -1 | tr -dc '0-9')
+    [ "${free:-0}" -ge "$min" ] || { echo "REFUSED: $1 has ${free} GB free, need $min (delete finished run files first)" >&2; return 1; }
 }

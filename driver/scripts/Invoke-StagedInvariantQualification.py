@@ -11,7 +11,8 @@ Omitting --cases/--modes expands the entire immutable table x three modes.
 NOT_READY and INCONCLUSIVE fail; subset runs never print Phase4Suite=PASS.
 Guest case.json is provisional until the wrapper's separate baseline returns;
 its bytes are retained as case.guest-export.txt before the ONE authoritative
-host case.json export. Failed overlays/artifacts are never removed.
+host case.json export. Artifacts are never removed; the VM disk a case ran on is
+discarded by Invoke-StagedSuiteBatch.sh (run-disk.sh) after the evidence is copied.
 """
 from pathlib import Path
 import argparse
