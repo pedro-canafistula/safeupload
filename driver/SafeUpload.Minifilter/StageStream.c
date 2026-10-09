@@ -2903,10 +2903,13 @@ static FLT_PREOP_CALLBACK_STATUS StagePhysicalMutationEx(PFLT_CALLBACK_DATA Data
         /* The name cannot be queried in this context (a write issued from inside another file-system call, for example a
          * filter above this one compressing a file). A stream whose registry entry is validated and classified outside every
          * scope is decided by that entry; everything else keeps the volume-wide answer below. */
-        if (KeGetCurrentIrql() <= APC_LEVEL &&
-            SafeUploadStageWritersSopKnownOutside(Objects->Instance, Objects->FileObject)) {
-            status = STATUS_SUCCESS;
-            goto Complete;
+        if (KeGetCurrentIrql() <= APC_LEVEL) {
+            ULONG why = SafeUploadStageWritersSopOutsideWhy(Objects->Instance, Objects->FileObject);
+            if (why == SAFEUPLOAD_SOP_OUTSIDE_KNOWN) {
+                status = STATUS_SUCCESS;
+                goto Complete;
+            }
+            denyAux = (NTSTATUS)(0xE5000000UL | why);   /* the ring shows why the stream was not known outside */
         }
 #endif
         denyReason = SAFEUPLOAD_DENY_REASON_TOP_LEVEL_IRP;

@@ -233,6 +233,18 @@ static VOID DenyCaptureObjectOrImage(_In_ PFLT_CALLBACK_DATA Data, _Inout_ PSAFE
             SAFEUPLOAD_DENY_FLAG_NAME_IS_CREATE_NAME);
         return;
     }
+    /* The name cache may know the name even though the open name is empty: a cache-only lookup does no I/O, so it is allowed in a
+     * nested call at APC_LEVEL or below. */
+    if (fileObject != NULL && Data->Iopb->TargetInstance != NULL && KeGetCurrentIrql() <= APC_LEVEL) {
+        PFLT_FILE_NAME_INFORMATION cached = NULL;
+        if (NT_SUCCESS(FltGetFileNameInformationUnsafe(fileObject, Data->Iopb->TargetInstance,
+                FLT_FILE_NAME_NORMALIZED | FLT_FILE_NAME_QUERY_CACHE_ONLY, &cached)) && cached != NULL) {
+            if (cached->Name.Buffer != NULL && cached->Name.Length != 0 && (cached->Name.Length & 1) == 0)
+                DenyCopyNameTail(Record, cached->Name.Buffer, cached->Name.Length / sizeof(WCHAR), SAFEUPLOAD_DENY_FLAG_NAME_IS_CREATE_NAME);
+            FltReleaseFileNameInformation(cached);
+            if (Record->NameChars != 0) return;
+        }
+    }
     process = FltGetRequestorProcess(Data);
     if (process == NULL || KeGetCurrentIrql() != PASSIVE_LEVEL) return;
     if (NT_SUCCESS(SeLocateProcessImageName(process, &image)) && image != NULL) {

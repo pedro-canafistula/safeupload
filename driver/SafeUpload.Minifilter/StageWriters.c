@@ -6902,11 +6902,21 @@ __declspec(noinline) static BOOLEAN StageRegistryUnknownSopForInstance(
 _IRQL_requires_max_(APC_LEVEL)
 BOOLEAN SafeUploadStageWritersSopKnownOutside(_In_ PFLT_INSTANCE Instance, _In_opt_ PFILE_OBJECT FileObject)
 {
+    return SafeUploadStageWritersSopOutsideWhy(Instance, FileObject) == SAFEUPLOAD_SOP_OUTSIDE_KNOWN;
+}
+
+/* Why a stream is not "known outside" (SAFEUPLOAD_SOP_OUTSIDE_*), for the deny ring: a refusal of a write that cannot be named says
+ * what the stream's registry entry looked like. The low byte is the reason; for a state, class or unknown-reason mismatch the value
+ * is in the byte above it. SAFEUPLOAD_SOP_OUTSIDE_KNOWN (0) means the entry proves the stream is outside every scope. */
+_IRQL_requires_max_(APC_LEVEL)
+ULONG SafeUploadStageWritersSopOutsideWhy(_In_ PFLT_INSTANCE Instance, _In_opt_ PFILE_OBJECT FileObject)
+{
     PSAFEUPLOAD_STREAM_CONTEXT streamContext = NULL;
     PSTAGE_REGISTRY_ENTRY entry;
     PVOID sectionObjectPointer;
-    BOOLEAN knownOutside;
-    if (Instance == NULL || FileObject == NULL || FileObject->SectionObjectPointer == NULL) return FALSE;
+    ULONG why;
+    LONG state, classification, unknownReasons;
+    if (Instance == NULL || FileObject == NULL || FileObject->SectionObjectPointer == NULL) return SAFEUPLOAD_SOP_OUTSIDE_NO_OBJECT;
     sectionObjectPointer = FileObject->SectionObjectPointer;
     entry = StageRegistryReferenceSop(sectionObjectPointer);
     if (entry == NULL && NT_SUCCESS(FltGetStreamContext(Instance, FileObject, (PFLT_CONTEXT *)&streamContext))) {
@@ -6918,19 +6928,25 @@ BOOLEAN SafeUploadStageWritersSopKnownOutside(_In_ PFLT_INSTANCE Instance, _In_o
         StageReleaseSpinLock(&streamContext->WriterLock, irql);
         FltReleaseContext(streamContext);
     }
-    if (entry == NULL) return FALSE;
+    if (entry == NULL) return SAFEUPLOAD_SOP_OUTSIDE_NO_ENTRY;
     FltAcquirePushLockShared(&RegistryLock);
-    knownOutside = entry->Listed && !entry->Retired && entry->Instance == Instance &&
-        InterlockedCompareExchangePointer((PVOID volatile *)&entry->SectionObjectPointer, NULL, NULL) == sectionObjectPointer &&
-        InterlockedCompareExchange((volatile LONG *)&entry->State, 0, 0) == SAFEUPLOAD_REGISTRY_STATE_UNSCOPED &&
-        InterlockedCompareExchange(&entry->ScopeNameClassification, 0, 0) == STAGE_SCOPE_CLASS_OUTSIDE &&
-        InterlockedCompareExchange(&entry->UnknownReasons, 0, 0) == 0 &&
-        InterlockedCompareExchange(&entry->AliasProbePending, 0, 0) == 0 &&
-        InterlockedCompareExchange(&entry->ScopeScanPending, 0, 0) == 0 &&
-        InterlockedCompareExchange(&entry->RenameInFlight, 0, 0) == 0;
+    state = InterlockedCompareExchange((volatile LONG *)&entry->State, 0, 0);
+    classification = InterlockedCompareExchange(&entry->ScopeNameClassification, 0, 0);
+    unknownReasons = InterlockedCompareExchange(&entry->UnknownReasons, 0, 0);
+    if (!entry->Listed || entry->Retired) why = SAFEUPLOAD_SOP_OUTSIDE_RETIRED;
+    else if (entry->Instance != Instance) why = SAFEUPLOAD_SOP_OUTSIDE_OTHER_INSTANCE;
+    else if (InterlockedCompareExchangePointer((PVOID volatile *)&entry->SectionObjectPointer, NULL, NULL) != sectionObjectPointer)
+        why = SAFEUPLOAD_SOP_OUTSIDE_OTHER_SOP;
+    else if (state != SAFEUPLOAD_REGISTRY_STATE_UNSCOPED) why = SAFEUPLOAD_SOP_OUTSIDE_STATE | ((ULONG)(state & 0xFF) << 8);
+    else if (classification != STAGE_SCOPE_CLASS_OUTSIDE) why = SAFEUPLOAD_SOP_OUTSIDE_CLASS | ((ULONG)(classification & 0xFF) << 8);
+    else if (unknownReasons != 0) why = SAFEUPLOAD_SOP_OUTSIDE_UNKNOWN | ((ULONG)(unknownReasons & 0xFF) << 8);
+    else if (InterlockedCompareExchange(&entry->AliasProbePending, 0, 0) != 0) why = SAFEUPLOAD_SOP_OUTSIDE_ALIAS_PENDING;
+    else if (InterlockedCompareExchange(&entry->ScopeScanPending, 0, 0) != 0) why = SAFEUPLOAD_SOP_OUTSIDE_SCAN_PENDING;
+    else if (InterlockedCompareExchange(&entry->RenameInFlight, 0, 0) != 0) why = SAFEUPLOAD_SOP_OUTSIDE_RENAME;
+    else why = SAFEUPLOAD_SOP_OUTSIDE_KNOWN;
     FltReleasePushLock(&RegistryLock);
     StageRegistryDereference(entry);
-    return knownOutside;
+    return why;
 }
 
 _IRQL_requires_max_(APC_LEVEL)

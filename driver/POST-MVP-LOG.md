@@ -302,10 +302,13 @@ Runner `Invoke-InstallerWorkload.sh`, final driver `m1-driver4` + agent `m1-agen
 
 With names in the ring (`2d32bbff`: a nameless refusal now carries the file object's open name or the requestor's image path), the cumulative update with the driver (`m1-driver6`)
 shows two separate problems:
-1. **The update can be reverted at its servicing reboot.** In `t3cuc` the build after the reboot is 19045.2965 again (the update was rolled back), while `t3cux/a/b` ended at 19045.6456.
-   The ring of the servicing boot holds 17 `legacyCreateGate` refusals by pid 344 (smss, before the agent connects): delete-access creates (access 0x110000) of paths whose name
-   lookup failed. The legacy fail-closed create gate treats a failed lookup as 'this volume may hold a scope' and refuses; the new gate already had the T2 rule 'a lookup that proves the
-   path absent touches nothing protected'. Fixed in `c70a4354` (one shared predicate `SafeUploadNameLookupProvesAbsent`). Not yet verified on a VM.
+1. **smss's servicing-boot deletes were refused by the legacy create gate.** The ring of the servicing boot of `t3cuc` holds 17 `legacyCreateGate` refusals by pid 344 (smss, before the
+   agent connects): delete-access creates (access 0x110000) of paths whose name lookup failed. The legacy fail-closed create gate treats a failed lookup as 'this volume may hold a
+   scope' and refuses; the new gate already had the T2 rule 'a lookup that proves the path absent touches nothing protected'. Fixed in `c70a4354` (one shared predicate
+   `SafeUploadNameLookupProvesAbsent`); verified in `t3cud` (`m1-driver7`): the servicing ring has 0 `legacyCreateGate` refusals (it had 17), only the 8 nested writes of item 2 remain.
+   **Correction (17:00):** the first version of this entry, the commit message of `c70a4354` and the comment in `Filter.c` say the refusals "reverted the update". That is wrong: I read the
+   two captures of `t3cuc` in the wrong order. The build goes 19045.2965 to 19045.6456 in every CU run (`t3cub`, `t3cuc`, `t3cud`), so the update was never rolled back. The refusals are
+   real and the fix is right, but the claim that they broke the update is unsupported. The comment in `Filter.c` is corrected with the next driver change.
 2. **TiWorker.exe's kernel-mode MDL writes from inside another file-system call (top-level IRP) are refused** for lack of a queryable name: 23 during the install (pids 3120/4848)
    and 8 in the servicing boot, 2 MB in 256 KB chunks per file. The update survives them in 3 of 4 runs, but the refusals are real (T3d). Options: resolve the name from the name
    cache only (`FltGetFileNameInformationUnsafe` with `FLT_FILE_NAME_QUERY_CACHE_ONLY` is allowed in a nested call) and trust the create-time alias check of a file object that passed

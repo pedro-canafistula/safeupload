@@ -124,7 +124,7 @@ public sealed class DriverDiagnosticsSource
                     ["options"] = "0x" + record.Options.ToString("X"),
                     ["reason"] = ReasonName(record.Reason),
                     ["auxStatus"] = record.AuxStatus == 0 ? null : "0x" + record.AuxStatus.ToString("X8"),
-                    ["auxStatusName"] = record.AuxStatus == 0 ? null : StatusName(record.AuxStatus),
+                    ["auxStatusName"] = record.AuxStatus == 0 ? null : AuxName(record.AuxStatus),
                     ["name"] = record.Name.Length == 0 ? null : record.Name,
                 });
             }
@@ -184,6 +184,30 @@ public sealed class DriverDiagnosticsSource
         0xC0000279 => "STATUS_IO_REPARSE_TAG_NOT_HANDLED",
         _ => "",
     };
+
+    /// <summary>The aux value of a refusal: an NTSTATUS, or 0xE5000000 | why for a write that could not be named (why the stream's
+    /// registry entry did not prove it outside every scope: low byte reason, the byte above it the entry's state, class or unknown reasons).</summary>
+    internal static string AuxName(uint aux)
+    {
+        if ((aux >> 24) != 0xE5) return StatusName(aux);
+        uint why = aux & 0xFF, detail = (aux >> 8) & 0xFF;
+        string name = why switch
+        {
+            1 => "noObject",
+            2 => "noRegistryEntry",
+            3 => "entryRetired",
+            4 => "entryOtherInstance",
+            5 => "entryOtherSop",
+            6 => "entryState",
+            7 => "entryClass",
+            8 => "entryUnknownReasons",
+            9 => "entryAliasPending",
+            10 => "entryScanPending",
+            11 => "entryRenameInFlight",
+            _ => "why" + why,
+        };
+        return why is 6 or 7 or 8 ? name + "=" + detail : name;
+    }
 
     internal static string ReasonName(uint reason) => reason switch
     {

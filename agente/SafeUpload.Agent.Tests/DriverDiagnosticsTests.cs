@@ -43,6 +43,18 @@ public sealed class DriverDiagnosticsTests
     }
 
     [Theory]
+    [InlineData(0xC0000022u, "STATUS_ACCESS_DENIED")]
+    [InlineData(0xE5000002u, "noRegistryEntry")]
+    [InlineData(0xE5000106u, "entryState=1")]
+    [InlineData(0xE5000007u, "entryClass=0")]
+    [InlineData(0xE5000B0Bu, "entryRenameInFlight")]
+    [InlineData(0xE50000FFu, "why255")]
+    public void Aux_values_name_the_status_or_the_reason_a_stream_was_not_known_outside(uint aux, string expected)
+    {
+        Assert.Equal(expected, DriverDiagnosticsSource.AuxName(aux));
+    }
+
+    [Theory]
     [InlineData(0u, "CREATE")]
     [InlineData(4u, "WRITE")]
     [InlineData(6u, "SET_INFORMATION")]

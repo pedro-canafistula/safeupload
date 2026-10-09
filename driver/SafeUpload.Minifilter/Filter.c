@@ -1379,7 +1379,8 @@ static BOOLEAN SafeUploadFailClosedProtectedCreate(_Inout_ PFLT_CALLBACK_DATA Da
         protectedName = SafeUploadPolicyMatchesDestination(kind, &name->Name);
     } else if (!NT_SUCCESS(status) && SafeUploadNameLookupProvesAbsent(status)) {
         /* The lookup proved the path does not exist (smss deleting files of a pending servicing operation that are already gone, before the
-         * agent connects): nothing protected can be touched, the file system answers. Refusing it reverted a cumulative update at its reboot. */
+         * agent connects): nothing protected can be touched, the file system answers. Refusing it was a
+         * refusal outside every scope (17 per servicing boot of a cumulative update). */
         protectedName = FALSE;
     } else {
         /* A failed target-name query is Unknown when this volume may contain

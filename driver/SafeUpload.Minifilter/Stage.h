@@ -164,6 +164,22 @@ LONG SafeUploadStageWritersObserverTicketsOutstanding(VOID);
 _IRQL_requires_max_(APC_LEVEL)
 VOID SafeUploadStageWritersAttachMutatingIo(_In_opt_ PVOID RenameContext,
     _Inout_ PVOID *MutatingIoContext);
+/* Result of SafeUploadStageWritersSopOutsideWhy: why a stream is not known to be outside every scope. The low byte is the reason; for STATE,
+ * CLASS and UNKNOWN the byte above it holds the entry's value. A refusal in the deny ring carries 0xE5000000 | value in its aux status. */
+#define SAFEUPLOAD_SOP_OUTSIDE_KNOWN           0x00
+#define SAFEUPLOAD_SOP_OUTSIDE_NO_OBJECT       0x01   /* no instance, file object or section-object pointer */
+#define SAFEUPLOAD_SOP_OUTSIDE_NO_ENTRY        0x02   /* no registry entry for this stream: it was never seen opened for writing */
+#define SAFEUPLOAD_SOP_OUTSIDE_RETIRED         0x03
+#define SAFEUPLOAD_SOP_OUTSIDE_OTHER_INSTANCE  0x04
+#define SAFEUPLOAD_SOP_OUTSIDE_OTHER_SOP       0x05
+#define SAFEUPLOAD_SOP_OUTSIDE_STATE           0x06
+#define SAFEUPLOAD_SOP_OUTSIDE_CLASS           0x07
+#define SAFEUPLOAD_SOP_OUTSIDE_UNKNOWN         0x08
+#define SAFEUPLOAD_SOP_OUTSIDE_ALIAS_PENDING   0x09
+#define SAFEUPLOAD_SOP_OUTSIDE_SCAN_PENDING    0x0A
+#define SAFEUPLOAD_SOP_OUTSIDE_RENAME          0x0B
+_IRQL_requires_max_(APC_LEVEL)
+ULONG SafeUploadStageWritersSopOutsideWhy(_In_ PFLT_INSTANCE Instance, _In_opt_ PFILE_OBJECT FileObject);
 _IRQL_requires_max_(APC_LEVEL)
 BOOLEAN SafeUploadStageWritersSopKnownOutside(_In_ PFLT_INSTANCE Instance, _In_opt_ PFILE_OBJECT FileObject);
 _IRQL_requires_max_(APC_LEVEL)
