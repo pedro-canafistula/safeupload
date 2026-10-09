@@ -5965,7 +5965,7 @@ static VOID StageRegistryActivationProcess(_In_ PSTAGE_REGISTRY_ENTRY Entry,
         InterlockedIncrement64(&RegistryChangeSequence);
         goto Exit;
     }
-    if (object->SectionObjectPointer == NULL || (!incarnationReplaced && object->SectionObjectPointer !=
+    if (object == NULL || object->SectionObjectPointer == NULL || (!incarnationReplaced && object->SectionObjectPointer !=
         InterlockedCompareExchangePointer((PVOID volatile *)&Entry->SectionObjectPointer, NULL, NULL))) {
         StageRegistryRecordClassificationResult(Entry, STATUS_FILE_INVALID,
             SAFEUPLOAD_ACTIVATING_CLASSIFY_STEP_OPEN_BY_ID);
