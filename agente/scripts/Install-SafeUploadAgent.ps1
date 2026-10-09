@@ -6,10 +6,17 @@ param(
     [ValidateScript({ Test-Path -LiteralPath $_ -PathType Leaf })]
     [string] $ServiceExecutablePath,
 
+    # Central policy server. Empty (the default) keeps the agent autonomous: it reads C:\ProgramData\SafeUpload\policy.json.
+    # appsettings.json ships a panel address, and with any address configured the agent takes its policy from the
+    # panel and falls back to a built-in default (other folder, removable and network scopes) when it cannot reach
+    # it, so the installer states the choice explicitly instead of inheriting the shipped address.
+    [string] $AdminBaseUrl = '',
+
     # The staged-write driver only works with the agent in staged minifilter mode. Without these arguments the
     # agent runs outside staged mode (admissionCoverage NotAvailable, auditOnly true) and the driver, which fails
     # closed, refuses every standard-user save into a protected folder.
-    [string[]] $ServiceArguments = @('--Interception:Mode=Minifilter', '--Interception:StagingPrototype=true')
+    [string[]] $ServiceArguments = @('--Interception:Mode=Minifilter', '--Interception:StagingPrototype=true',
+        ('--CentroAdministracao:BaseUrl=' + $AdminBaseUrl))
 )
 
 $ErrorActionPreference = 'Stop'

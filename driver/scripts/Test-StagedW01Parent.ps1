@@ -280,7 +280,7 @@ function Start-PolicyAgent {
     $ready=[Threading.EventWaitHandle]::new($false,[Threading.EventResetMode]::ManualReset,'Global\SafeUploadServiceReady')
     try{
         [void]$ready.Reset()
-        $bin='"'+(Join-Path $serviceDirectory 'SafeUpload.Agent.Service.exe')+'" --Interception:Mode=Minifilter --Interception:StagingPrototype=true'
+        $bin='"'+(Join-Path $serviceDirectory 'SafeUpload.Agent.Service.exe')+'" --Interception:Mode=Minifilter --Interception:StagingPrototype=true --CentroAdministracao:BaseUrl='
         if($state.OriginalAgent.Exists){$null=Native 'sc.exe' @('config','SafeUploadAgent','binPath=',$bin,'start=','demand','obj=','LocalSystem')}
         else{$null=Native 'sc.exe' @('create','SafeUploadAgent','binPath=',$bin,'start=','demand','obj=','LocalSystem');$state.AgentCreated=$true;Save-State}
         $state.AgentTouched=$true;Save-State

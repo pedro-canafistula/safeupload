@@ -37,6 +37,9 @@ public sealed class InstallSafeUploadAgentScriptTests
         // driver refuses every standard-user save into a protected folder.
         Assert.Contains("'--Interception:Mode=Minifilter'", script, StringComparison.Ordinal);
         Assert.Contains("'--Interception:StagingPrototype=true'", script, StringComparison.Ordinal);
+        // appsettings.json ships a panel address; the installer must say explicitly where the policy comes from.
+        Assert.Contains("'--CentroAdministracao:BaseUrl=' + $AdminBaseUrl", script, StringComparison.Ordinal);
+        Assert.Contains("[string] $AdminBaseUrl = ''", script, StringComparison.Ordinal);
         Assert.Contains("(@($quotedExecutable) + $ServiceArguments) -join ' '", script, StringComparison.Ordinal);
         Assert.Contains("Set-ItemProperty -LiteralPath $agentServiceKey -Name ImagePath", script, StringComparison.Ordinal);
         Assert.Contains("if ($written -ne $binaryPath)", script, StringComparison.Ordinal);

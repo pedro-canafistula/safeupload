@@ -35,7 +35,7 @@ function Start-StagedTestAgent([string] $ServiceDir, [string] $LogPrefix,
         try { [void]$headerStream.Read($header, 0, 2) } finally { $headerStream.Dispose() }
         if ($header[0] -ne 0x4D -or $header[1] -ne 0x5A) { throw 'Agent executable has no PE header (zero-filled or damaged publish folder); repair it from the pinned package.' }
 
-        $binaryPath = '"' + $exe + '" --Interception:Mode=Minifilter --Interception:StagingPrototype=true'
+        $binaryPath = '"' + $exe + '" --Interception:Mode=Minifilter --Interception:StagingPrototype=true --CentroAdministracao:BaseUrl='
         if (-not [string]::IsNullOrWhiteSpace($Arguments)) { $binaryPath += ' ' + $Arguments }
         $created = $false
         try {

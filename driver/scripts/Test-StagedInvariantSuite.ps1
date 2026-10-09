@@ -5193,7 +5193,7 @@ function Initialize-R03DisabledAgent {
     }
     $state.CachedAgent=@{ServiceCreated=(-not $exists);OriginalService=$original};Save-State $state $statePath
     if(-not $exists){
-        $binary='"'+(Join-Path $serviceDirectory 'SafeUpload.Agent.Service.exe')+'" --Interception:Mode=Minifilter --Interception:StagingPrototype=true'
+        $binary='"'+(Join-Path $serviceDirectory 'SafeUpload.Agent.Service.exe')+'" --Interception:Mode=Minifilter --Interception:StagingPrototype=true --CentroAdministracao:BaseUrl='
         & sc.exe create SafeUploadAgent binPath= $binary start= disabled obj= LocalSystem | Out-Host
         if($LASTEXITCODE -ne 0){throw 'R03 disabled boot service creation failed'}
     }else{Set-AgentServiceStart 4}
