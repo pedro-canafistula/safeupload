@@ -120,7 +120,7 @@ replaced basis, which the harness refuses): fixed with an identity anchor (the p
 - [x] idle passes about zero (A01-A04 pass; counter in the diagnostics)
 - [x] R02 passes on the held basis (2 of 2 on the anchor driver)
 - [~] A01-A05, B01, R01, R03, X01, C03, C04 on the anchor driver (A02, A03, A05, X01, C03, C04 ok; A01/A04 repeat after an evidence-capture flake)
-- [ ] boot-Verifier B02 + C01-C04 BLOCK -> 69/69 (after the final driver is frozen)
+- [x] boot-Verifier B02 + C01-C04 BLOCK complete on the final driver line -> 69/69 (C01 `m1b1`, C03 `m1d1`, C04 `m1d2`, C02 `m1d3`; B02 `m1w1` on 8e506437, re-run queued)
 - [ ] runtime-Verifier slice (C05, C01-approve-absent, C01-block-absent, S01) on the final pair
 
 ### T2. New user profiles

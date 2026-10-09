@@ -248,3 +248,14 @@ define and start, then `Get-StagedBaseline.ps1` must report `BaselineClean=True`
 
 Remaining work continues on win10-debug2 alone, serially (which is also what the BLOCK cells need).
 
+### Boot-Verifier BLOCK cells on the final pair (08:35)
+
+Final pair: driver `m1-driver4` (ea925022) + agent `m1-agent6` (91e957cc). Judged with the gate's rule (`cellok.py`, tier 1 for boot-Verifier):
+- C01-block-absent `m1b1` ok (debug3, quiet host); C03-block-existing `m1d1` ok; C04-block `m1d2` ok; C02-block-absent `m1d3` ok (debug2, serial, nothing else running).
+- B02 ok on `8e506437` (`m1w1`); re-run on the final pair is in the queue.
+- Failures on the way, none a driver fault: C01-block-absent on 8e506437 (`m1w2`) overlapped runtime-Verifier runs and a build; C02 `m1b2` raw MFT capture error (retried
+  ok); C03 `m1b3` guest `System.OutOfMemoryException` in `ConvertTo-Json` (the 4 GB guest under the boot Verifier), fixed in the harness by always writing the compact JSON
+  (`6b64ae42`; the content is unchanged), after which `m1d1` passed.
+So the five cells that never completed (B02, C01-C04 BLOCK) now all complete under the boot Verifier: the 64/69 gate becomes 69/69 (the 64 were closed on the earlier pair; the
+final pair carries the confirmation slices listed above and in the queue).
+
