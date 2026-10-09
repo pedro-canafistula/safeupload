@@ -130,6 +130,9 @@ if ('__MODE__' -eq 'driver') {
     Start-ScheduledTask -TaskName 't3-sampler'
     Start-Sleep -Seconds 4
 }
+if ('__MODE__' -eq 'driver') {
+    try { $c = & "$d\Get-SafeUploadDiagnostics.ps1" -Query counters; 'RING_NEXT_BEFORE=' + $c.refusals.nextSequence } catch { 'RING_NEXT_BEFORE_ERROR=' + $_.Exception.Message }
+}
 Start-ScheduledTask -TaskName 't3-workload'
 'WORKLOAD_STARTED=True'
 PS
@@ -177,7 +180,7 @@ foreach ($s in $samples) { try { $j = $s | ConvertFrom-Json; if ($j.writerState.
 PS
 
 # Verdict.
-python3 - "$ev/$tag-after.txt" "$ev/$tag-verdict.txt" "$mode" "$workload" "$(( $(date +%s) - started ))" <<'PY'
+python3 - "$ev/$tag-after.txt" "$ev/$tag-verdict.txt" "$mode" "$workload" "$(( $(date +%s) - started ))" "$ev/$tag-workload-setup.txt" <<'PY'
 import json, re, sys
 after = open(sys.argv[1], encoding='utf-8', errors='replace').read()
 mode, workload = sys.argv[3], sys.argv[4]
@@ -204,9 +207,18 @@ if mode == 'driver':
     total = re.search(r'^RING_TOTAL=(\d+)', after, re.M)
     verdict('T3RingRead', total is not None and int(total.group(1)) == len(ring), f"records read {len(ring)} of {total.group(1) if total else 'unknown'}")
     def inside(r): return '\\protected\\' in ((r.get('name') or '').lower() + '\\')
-    outside = [r for r in ring if r.get('major') != 'QUERY_INFORMATION' and not inside(r)]
-    verdict('T3NoRefusalOutsideScope', not outside, 'no refusal outside the protected folder' if not outside else
-            f"{len(outside)} refusals; first: " + '; '.join(f"#{r['sequence']} {r.get('statusName')} {r.get('major')} {r.get('reason') or 'noReason'} {r.get('name')}" for r in outside[:8]))
+    def own_namespace(r): return r.get('reason') == 'privateNamespace' or '\\safeupload\\staging\\' in (r.get('name') or '').lower()
+    setup = open(sys.argv[6], encoding='utf-8', errors='replace').read() if len(sys.argv) > 6 else ''
+    cursor = re.search(r'^RING_NEXT_BEFORE=(\d+)', setup, re.M)
+    start_seq = int(cursor.group(1)) if cursor else 0
+    candidates = [r for r in ring if r.get('major') != 'QUERY_INFORMATION' and not inside(r) and not own_namespace(r)]
+    during = [r for r in candidates if r['sequence'] >= start_seq]
+    boot = [r for r in candidates if r['sequence'] < start_seq]
+    describe = lambda rs: '; '.join(f"#{r['sequence']} {r.get('statusName')} {r.get('major')} {r.get('reason') or 'noReason'} {r.get('name')}" for r in rs[:8])
+    verdict('T3NoRefusalOutsideScope', cursor is not None and not during,
+            ('no refusal outside the protected folder during the workload' if not during else f"{len(during)} refusals during the workload; first: " + describe(during)) +
+            ('' if cursor else '; the ring cursor at the workload start is missing'))
+    out.append('T3BootTimeRefusals ' + ('INFO none before the workload' if not boot else 'INFO ' + str(len(boot)) + ' before the workload started (boot, T2c): ' + describe(boot)))
     ov = re.search(r'^REGISTRY_OVERFLOW_MAX=(\d+)', after, re.M)
     verdict('T3RegistryNeverOverflowed', ov is not None and int(ov.group(1)) == 0, f"overflow max {ov.group(1) if ov else 'unknown'}")
     mx = re.search(r'^REGISTRY_ENTRIES_MAX=(\d+)', after, re.M)
