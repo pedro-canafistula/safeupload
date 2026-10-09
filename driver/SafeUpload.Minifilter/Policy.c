@@ -661,6 +661,21 @@ __declspec(noinline) ULONGLONG SafeUploadPolicyScopeSequenceSnapshot(VOID)
 {
     return (ULONGLONG)InterlockedCompareExchange64(&SafeUploadPolicyCoverageSequence, 0, 0);
 }
+
+/* TRUE from the publication of a scope that may grow the current+pending union (it is published with the apply active) until the
+ * apply or reconcile that begins a probe on every live entry ends the transition (SafeUploadPolicyTryEndScopeTransition); it stays
+ * TRUE when that apply fails. An OUTSIDE classification proven before the publication must not be trusted meanwhile: the apply has
+ * not reset it yet, and ordinary writes are not held by the epoch drain (Luna T3d review, P0). */
+_IRQL_requires_max_(DISPATCH_LEVEL)
+__declspec(noinline) BOOLEAN SafeUploadPolicyScopeTransitionActive(VOID)
+{
+    BOOLEAN active;
+    KIRQL irql;
+    SafeUploadAcquireSpinLock(&SafeUploadVolumeScopeCacheLock, &irql);
+    active = SafeUploadVolumeScopeCaches[(ULONG)InterlockedCompareExchange(&SafeUploadVolumeScopeCacheIndex, 0, 0)].ScopeApplyActive;
+    SafeUploadReleaseSpinLock(&SafeUploadVolumeScopeCacheLock, irql);
+    return active;
+}
 #endif
 
 /* Returns FALSE while leaving the apply active if a relevant rename loss

@@ -48,6 +48,7 @@ public sealed class DriverDiagnosticsTests
     [InlineData(0xE5000106u, "entryState=1")]
     [InlineData(0xE5000007u, "entryClass=0")]
     [InlineData(0xE5000B0Bu, "entryRenameInFlight")]
+    [InlineData(0xE500000Cu, "scopeTransition")]
     [InlineData(0xE50000FFu, "why255")]
     public void Aux_values_name_the_status_or_the_reason_a_stream_was_not_known_outside(uint aux, string expected)
     {

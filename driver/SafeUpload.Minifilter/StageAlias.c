@@ -156,7 +156,8 @@ static BOOLEAN StageAliasIsVolumeSystemFile(_In_ PFLT_FILE_NAME_INFORMATION Name
 }
 
 NTSTATUS SafeUploadStageCheckNamedAliases(_In_ PFLT_INSTANCE Instance,
-    _In_ PFLT_FILE_NAME_INFORMATION Name, _In_ SAFEUPLOAD_VOLUME_KIND Kind, _Out_ PBOOLEAN Protected)
+    _In_ PFLT_FILE_NAME_INFORMATION Name, _In_ SAFEUPLOAD_VOLUME_KIND Kind, _Out_ PBOOLEAN Protected,
+    _Inout_opt_ PSAFEUPLOAD_CREATE_ALIAS_PROOF Proof)
 {
     HANDLE handle = NULL;
     PFILE_OBJECT object = NULL;
@@ -167,6 +168,7 @@ NTSTATUS SafeUploadStageCheckNamedAliases(_In_ PFLT_INSTANCE Instance,
     NTSTATUS status;
     PAGED_CODE();
     *Protected = FALSE;
+    if (Proof != NULL) Proof->Valid = FALSE;
     if (IoGetTopLevelIrp() != NULL) return STATUS_ACCESS_DENIED;
     status = FltGetFileSystemType(Instance, &fs);
     if (!NT_SUCCESS(status) || fs != FLT_FSTYPE_NTFS) return status;
@@ -185,9 +187,25 @@ NTSTATUS SafeUploadStageCheckNamedAliases(_In_ PFLT_INSTANCE Instance,
      * STATUS_STOPPED_ON_SYMLINK for a symbolic link), so any writer open of such a name outside every scope was refused. A
      * create that really goes through a symbolic link re-enters this filter under the target's name and is classified there. */
     if (status == STATUS_STOPPED_ON_SYMLINK && io.Information != 0) ExFreePool((PVOID)io.Information);
-    if (status == STATUS_SUCCESS) status = StageAliasQuery(Instance, object, &Name->Volume, Kind, Protected);
-    else if (status == STATUS_OBJECT_NAME_NOT_FOUND || status == STATUS_OBJECT_PATH_NOT_FOUND ||
-        status == STATUS_FILE_IS_A_DIRECTORY) status = STATUS_SUCCESS;
+    if (status == STATUS_SUCCESS) {
+        status = StageAliasQuery(Instance, object, &Name->Volume, Kind, Protected);
+        /* The proof names the file this check examined, so a name re-pointed before the create cannot inherit it. */
+        if (status == STATUS_SUCCESS && !*Protected && Proof != NULL) {
+            ULONG returned = 0;
+            RtlZeroMemory(&Proof->Identity, sizeof(Proof->Identity));
+            Proof->Absent = FALSE;
+            Proof->Valid = NT_SUCCESS(FltQueryInformationFile(Instance, object, &Proof->Identity,
+                sizeof(Proof->Identity), FileIdInformation, &returned)) && returned == sizeof(Proof->Identity);
+        }
+    } else if (status == STATUS_OBJECT_NAME_NOT_FOUND || status == STATUS_OBJECT_PATH_NOT_FOUND ||
+        status == STATUS_FILE_IS_A_DIRECTORY) {
+        if (status != STATUS_FILE_IS_A_DIRECTORY && Proof != NULL) {
+            RtlZeroMemory(&Proof->Identity, sizeof(Proof->Identity));
+            Proof->Absent = TRUE;
+            Proof->Valid = TRUE;
+        }
+        status = STATUS_SUCCESS;
+    }
     if (object != NULL) ObDereferenceObject(object);
     if (handle != NULL) FltClose(handle);
     return status;

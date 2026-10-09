@@ -204,6 +204,7 @@ public sealed class DriverDiagnosticsSource
             9 => "entryAliasPending",
             10 => "entryScanPending",
             11 => "entryRenameInFlight",
+            12 => "scopeTransition",
             _ => "why" + why,
         };
         return why is 6 or 7 or 8 ? name + "=" + detail : name;

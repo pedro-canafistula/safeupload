@@ -28,8 +28,17 @@ VOID SafeUploadStageInitializeProtocol(VOID);
 BOOLEAN SafeUploadStageProtectedName(_In_ PFLT_FILE_NAME_INFORMATION Name, _In_ SAFEUPLOAD_VOLUME_KIND Kind);
 BOOLEAN SafeUploadStageTouchesProtectedNamespace(_In_ PFLT_FILE_NAME_INFORMATION Name, _In_ SAFEUPLOAD_VOLUME_KIND Kind);
 BOOLEAN SafeUploadStageProtectedPath(_In_ PUNICODE_STRING Name, _In_ USHORT VolumeLength, _In_ SAFEUPLOAD_VOLUME_KIND Kind);
+/* What the create gate's alias check proved about a writer open of a name outside every scope (T3d): no link of the file at that
+ * name is inside a current or pending scope (or no file had the name), checked against policy scope sequence ScopeSequence. The
+ * writer registry turns it into the entry's OUTSIDE classification when the same file is bound under the same sequence. */
+typedef struct _SAFEUPLOAD_CREATE_ALIAS_PROOF {
+    BOOLEAN Valid;
+    BOOLEAN Absent;                 /* no file had the name: valid only for the open that creates the file */
+    ULONGLONG ScopeSequence;        /* SafeUploadPolicyScopeSequenceSnapshot() read before the check */
+    FILE_ID_INFORMATION Identity;   /* the file the check examined, when it existed */
+} SAFEUPLOAD_CREATE_ALIAS_PROOF, *PSAFEUPLOAD_CREATE_ALIAS_PROOF;
 NTSTATUS SafeUploadStageCheckNamedAliases(_In_ PFLT_INSTANCE Instance, _In_ PFLT_FILE_NAME_INFORMATION Name,
-    _In_ SAFEUPLOAD_VOLUME_KIND Kind, _Out_ PBOOLEAN Protected);
+    _In_ SAFEUPLOAD_VOLUME_KIND Kind, _Out_ PBOOLEAN Protected, _Inout_opt_ PSAFEUPLOAD_CREATE_ALIAS_PROOF Proof);
 NTSTATUS SafeUploadStageCheckObjectAliases(_In_ PFLT_INSTANCE Instance, _In_ PFILE_OBJECT Object,
     _In_ PUNICODE_STRING Volume, _In_ SAFEUPLOAD_VOLUME_KIND Kind, _Out_ PBOOLEAN Protected);
 BOOLEAN SafeUploadPublicationCreate(_In_ PUNICODE_STRING Name, _In_ ULONG Disposition, _In_ BOOLEAN Writer);
@@ -117,7 +126,7 @@ VOID SafeUploadStageAdmissionStopWorker(VOID);
 BOOLEAN SafeUploadStageWritersWantPostCreate(_In_ PFLT_CALLBACK_DATA Data);
 NTSTATUS SafeUploadStageWritersReserveCreate(_In_ PFLT_CALLBACK_DATA Data,
     _In_ PCFLT_RELATED_OBJECTS FltObjects, _Outptr_result_maybenull_ PVOID *Reservation,
-    _Out_ PBOOLEAN Required);
+    _Out_ PBOOLEAN Required, _In_opt_ const SAFEUPLOAD_CREATE_ALIAS_PROOF *AliasProof);
 VOID SafeUploadStageWritersTrackingLostAt(_In_opt_ PFLT_INSTANCE Instance, _In_ LONG Reason,
     _In_ ULONG OriginSite);
 #define SafeUploadStageWritersTrackingLost(Instance, Reason) \
@@ -178,10 +187,16 @@ VOID SafeUploadStageWritersAttachMutatingIo(_In_opt_ PVOID RenameContext,
 #define SAFEUPLOAD_SOP_OUTSIDE_ALIAS_PENDING   0x09
 #define SAFEUPLOAD_SOP_OUTSIDE_SCAN_PENDING    0x0A
 #define SAFEUPLOAD_SOP_OUTSIDE_RENAME          0x0B
+#define SAFEUPLOAD_SOP_OUTSIDE_TRANSITION      0x0C   /* a scope that may grow the union is published and not yet applied */
 _IRQL_requires_max_(APC_LEVEL)
 ULONG SafeUploadStageWritersSopOutsideWhy(_In_ PFLT_INSTANCE Instance, _In_opt_ PFILE_OBJECT FileObject);
 _IRQL_requires_max_(APC_LEVEL)
 BOOLEAN SafeUploadStageWritersSopKnownOutside(_In_ PFLT_INSTANCE Instance, _In_opt_ PFILE_OBJECT FileObject);
+_IRQL_requires_max_(APC_LEVEL)
+ULONG SafeUploadStageWritersAdmitNestedMutation(_In_ PFLT_INSTANCE Instance, _In_opt_ PFILE_OBJECT FileObject,
+    _Outptr_result_maybenull_ PVOID *Context);
+_IRQL_requires_(PASSIVE_LEVEL)
+VOID SafeUploadStageWritersAwaitClassification(_In_ PFLT_INSTANCE Instance, _In_opt_ PFILE_OBJECT FileObject);
 _IRQL_requires_max_(APC_LEVEL)
 BOOLEAN SafeUploadStageWritersSopMatchesPolicy(_In_ PFLT_INSTANCE Instance,
     _In_opt_ PFILE_OBJECT FileObject, _In_ BOOLEAN IncludeAncestors);

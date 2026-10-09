@@ -805,6 +805,8 @@ VOID SafeUploadPolicyRenameLossGenerationLeave(_In_ _IRQL_restores_ KIRQL OldIrq
 #if SAFEUPLOAD_STAGING_PROTOTYPE
 _IRQL_requires_max_(DISPATCH_LEVEL)
 ULONGLONG SafeUploadPolicyScopeSequenceSnapshot(VOID);
+_IRQL_requires_max_(DISPATCH_LEVEL)
+BOOLEAN SafeUploadPolicyScopeTransitionActive(VOID);
 #endif
 BOOLEAN SafeUploadPolicyTryEndScopeTransition(_In_ ULONGLONG RenameLossSnapshot,
     _In_ BOOLEAN Finalizing);

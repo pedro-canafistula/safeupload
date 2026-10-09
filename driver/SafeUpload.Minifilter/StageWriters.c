@@ -159,6 +159,7 @@ __declspec(align(16)) struct _STAGE_REGISTRY_ENTRY {
     volatile LONG ScopeNameClassification;
     volatile LONG LastSState;
     volatile LONG AliasProbeSerial;  /* advanced by every StageRegistryBeginAliasProbe, under StateLock */
+    volatile LONG PriorityProbe;     /* T2c: a writable-section admission waits for this entry's probe; the worker takes it first */
     ULONGLONG Sequence;
     USHORT NameChars;
     BOOLEAN Compact;
@@ -205,6 +206,7 @@ typedef struct _STAGE_WRITER_RESERVATION {
     BOOLEAN InstanceReferenceTransferred;
     BOOLEAN VolumeReferenceTransferred;
     volatile LONG TeardownState;
+    SAFEUPLOAD_CREATE_ALIAS_PROOF AliasProof; /* the create gate's alias check of this open (T3d), applied at post-create */
 } STAGE_WRITER_RESERVATION, *PSTAGE_WRITER_RESERVATION;
 
 typedef struct _STAGE_REGISTRY_RENAME_CONTEXT {
@@ -1424,7 +1426,7 @@ BOOLEAN SafeUploadStageWritersWantPostCreate(_In_ PFLT_CALLBACK_DATA Data)
 
 NTSTATUS SafeUploadStageWritersReserveCreate(_In_ PFLT_CALLBACK_DATA Data,
     _In_ PCFLT_RELATED_OBJECTS FltObjects, _Outptr_result_maybenull_ PVOID *ReservationOut,
-    _Out_ PBOOLEAN Required)
+    _Out_ PBOOLEAN Required, _In_opt_ const SAFEUPLOAD_CREATE_ALIAS_PROOF *AliasProof)
 {
     PFILE_OBJECT fileObject = Data->Iopb->TargetFileObject;
     PSAFEUPLOAD_INSTANCE_CONTEXT instanceContext = NULL;
@@ -1555,6 +1557,7 @@ PrepareReservation:
     reservation->NameChars = nameTierCandidate ? baseNameChars : 0;
     reservation->StreamChars = pathResolved ? streamChars : 0;
     reservation->RenameLossGeneration = renameLossGeneration;
+    if (AliasProof != NULL && AliasProof->Valid && pathResolved && !byIdDefaultStream) reservation->AliasProof = *AliasProof;
     reservation->StreamSuffixHash = name != NULL && name->Stream.Length != 0 ?
         StageRegistryStreamSuffixHash(&name->Stream) : 0;
     if (reservation->Shell != NULL) {
@@ -2384,6 +2387,55 @@ _IRQL_requires_max_(APC_LEVEL)
 __declspec(noinline) static BOOLEAN StageRegistryAssociateSectionPointer(_In_ PSTAGE_WRITER_RESERVATION Reservation,
     _In_ PSTAGE_REGISTRY_ENTRY Entry, _In_opt_ PVOID SectionObjectPointer);
 
+/* T3d: the create gate's alias check (SafeUploadStageCheckNamedAliases) proved that no link of this writer's file is inside a current
+ * or pending scope, against policy scope sequence S. While S holds, no external rename or link can give the file a name inside a
+ * scope (StageExternalRename refuses such a destination, a parent directory's move included), so the entry is classified OUTSIDE
+ * exactly as a finished alias probe classifies it, and every later rename, link, directory rename or policy change resets the class
+ * as it does for a probed entry (StageRegistryBeginAliasProbe, the directory-rename rewrite). Without this an ordinary outside
+ * writer's entry stayed UNRESOLVED for its whole life, and a write issued on its stream from inside another file-system call (no name
+ * query allowed there) could never be proven outside: TiWorker's nested writes during a cumulative update were refused (t3cue).
+ * Validated like a probe receipt: registry, scope-cache and entry locks in the promotion order, same sequence, stable rename-loss
+ * generation, the same file the check examined (or a file this open created), and an entry that nothing else has touched.
+ * Resident: it runs at DISPATCH_LEVEL under the scope-cache lock. */
+_IRQL_requires_max_(APC_LEVEL)
+__declspec(noinline) static VOID StageRegistryApplyCreateAliasProof(_In_ PSTAGE_WRITER_RESERVATION Reservation,
+    _In_ PSTAGE_REGISTRY_ENTRY Entry, _In_ const FILE_ID_INFORMATION *Identity, _In_ BOOLEAN CreatedByThisOpen)
+{
+    const SAFEUPLOAD_CREATE_ALIAS_PROOF *proof = &Reservation->AliasProof;
+    PSAFEUPLOAD_INSTANCE_CONTEXT instanceContext = NULL;
+    KIRQL cacheIrql, irql;
+    BOOLEAN stable;
+    if (!proof->Valid) return;
+    if (proof->Absent ? !CreatedByThisOpen :
+        (proof->Identity.VolumeSerialNumber != Identity->VolumeSerialNumber ||
+         !RtlEqualMemory(&proof->Identity.FileId, &Identity->FileId, sizeof(Identity->FileId)))) return;
+    if (Entry->Instance == NULL ||
+        !NT_SUCCESS(FltGetInstanceContext(Entry->Instance, (PFLT_CONTEXT *)&instanceContext))) return;
+    FltAcquirePushLockExclusive(&RegistryLock);
+    stable = SafeUploadPolicyRenameLossGenerationEnter(
+        &instanceContext->RegistryRenameLossGeneration, Entry->RenameLossGeneration, &cacheIrql);
+    if (stable) {
+        StageAcquireSpinLock(&Entry->StateLock, &irql);
+        if (Entry->Listed && !Entry->Retired && !Entry->Compact && Entry->NameChars != 0 &&
+            SafeUploadPolicyScopeSequenceSnapshot() == proof->ScopeSequence &&
+            InterlockedCompareExchange((volatile LONG *)&Entry->State, 0, 0) == SAFEUPLOAD_REGISTRY_STATE_UNSCOPED &&
+            InterlockedCompareExchange(&Entry->ScopeNameClassification, 0, 0) == STAGE_SCOPE_CLASS_UNRESOLVED &&
+            InterlockedCompareExchange(&Entry->UnknownReasons, 0, 0) == 0 &&
+            InterlockedCompareExchange(&Entry->AliasProbePending, 0, 0) == 0 &&
+            InterlockedCompareExchange(&Entry->ScopeScanPending, 0, 0) == 0 &&
+            InterlockedCompareExchange(&Entry->RenameInFlight, 0, 0) == 0 &&
+            InterlockedCompareExchange(&Entry->ActivationEnforced, 0, 0) == 0 &&
+            InterlockedCompareExchange(&Entry->T, 0, 0) == 0) {
+            InterlockedExchange(&Entry->ScopeNameClassification, STAGE_SCOPE_CLASS_OUTSIDE);
+            InterlockedIncrement64(&RegistryChangeSequence);
+        }
+        StageReleaseSpinLock(&Entry->StateLock, irql);
+    }
+    SafeUploadPolicyRenameLossGenerationLeave(cacheIrql);
+    FltReleasePushLock(&RegistryLock);
+    FltReleaseContext(instanceContext);
+}
+
 NTSTATUS SafeUploadStageWritersPostCreate(
     _In_ PFLT_CALLBACK_DATA Data, _In_ PCFLT_RELATED_OBJECTS FltObjects,
     _In_ FLT_POST_OPERATION_FLAGS Flags, _In_opt_ PVOID Context,
@@ -2493,6 +2545,8 @@ NTSTATUS SafeUploadStageWritersPostCreate(
             StageRegistryMarkEntryUnknown(entry, SAFEUPLOAD_REGISTRY_UNKNOWN_TRANSACTION);
             goto TrackingLost;
         }
+    } else {
+        StageRegistryApplyCreateAliasProof(reservation, entry, &identity, Data->IoStatus.Information == FILE_CREATED);
     }
 
     if (hasWriterHandle) {
@@ -3909,6 +3963,10 @@ __declspec(noinline) static BOOLEAN StageRegistryAssociateSectionPointer(_In_ PS
  * reclaim worker runs when an instance or the total crosses 3/4 of its limit, or on a capacity failure. */
 
 #define STAGE_RECLAIM_BATCH 128
+#define STAGE_RECLAIM_PRIORITY_MAX 8          /* T2c: entries a section admission waits for, taken first in a pass */
+#define STAGE_SECTION_PROBE_WAIT_MS 2000      /* T2c: how long a section admission waits for one entry's alias probe */
+#define STAGE_SECTION_PROBE_POLL_MS 10
+#define STAGE_SECTION_WAITERS_MAX 4           /* T2c: callers that may wait at once; the others decide at once */
 
 /* Caller holds RegistryLock exclusive. Unlinks Entry if nothing can still be bound to it; returns the map-slot reference
  * to drop (at most one, since every pointer occupies one slot) through *MapReference. The caller drops the history
@@ -5433,7 +5491,10 @@ __declspec(noinline) static VOID StageRegistryResolveAliasProbe(_In_ PSTAGE_REGI
         UnionScoped, FALSE, 0, Activated, NULL);
 }
 
-/* D1: instance-level ledger loss cancels an unclassified probe without turning it into an I/O gate. */
+/* D1: instance-level ledger loss cancels an unclassified probe without turning it into an I/O gate. A scope apply that meets such an
+ * instance begins no probe, so an OUTSIDE class from before would outlive the scope change; a plain entry's (no activation enforced)
+ * drops back to UNRESOLVED, since the nested-write rule trusts OUTSIDE (T3d). Entries with an enforced activation keep theirs:
+ * SafeUploadStageWritersNameActivating reads it, and their state already keeps them out of the nested-write rule. */
 _IRQL_requires_max_(APC_LEVEL)
 __declspec(noinline) static VOID StageRegistryCancelAliasProbeForInstanceUnknown(
     _In_ PSTAGE_REGISTRY_ENTRY Entry)
@@ -5442,6 +5503,11 @@ __declspec(noinline) static VOID StageRegistryCancelAliasProbeForInstanceUnknown
     StageRegistryAcquireStateLock(Entry, &irql);
     if (InterlockedExchange(&Entry->AliasProbePending, 0) != 0)
         InterlockedIncrement64(&RegistryChangeSequence);
+    if (InterlockedCompareExchange(&Entry->ActivationEnforced, 0, 0) == 0 &&
+        InterlockedCompareExchange(&Entry->ScopeNameClassification, 0, 0) == STAGE_SCOPE_CLASS_OUTSIDE) {
+        InterlockedExchange(&Entry->ScopeNameClassification, STAGE_SCOPE_CLASS_UNRESOLVED);
+        InterlockedIncrement64(&RegistryChangeSequence);
+    }
     StageRegistryReleaseStateLock(Entry, irql);
 }
 
@@ -6284,7 +6350,7 @@ static VOID StageRegistryReclaimWorker(_In_ PFLT_GENERIC_WORKITEM WorkItem, _In_
     PFLT_INSTANCE *instances;
     PFLT_VOLUME *volumes;
     PLIST_ENTRY link;
-    ULONG count = 0, index;
+    ULONG count = 0, index, priorityCount = 0;
     ULONGLONG cursor = 0, highestVisited = 0;
     ULONG workBudget = SAFEUPLOAD_SCOPE_SCAN_PARENT_BUDGET;
     BOOLEAN reachedBatch = FALSE, unfinishedScan = FALSE, moreWork = FALSE, waitingSeen = FALSE;
@@ -6311,6 +6377,28 @@ static VOID StageRegistryReclaimWorker(_In_ PFLT_GENERIC_WORKITEM WorkItem, _In_
             RegistryReclaimCursor = 0;
         cursor = RegistryReclaimCursor;
         highestVisited = cursor;
+        /* T2c: entries a writable-section admission is waiting for go first, wherever the cursor is (bounded: the waiter gives up
+         * after STAGE_SECTION_PROBE_WAIT_MS and refuses as before). Same exclusions as the scan below for a probe candidate. */
+        for (link = RegistryEntries.Flink; link != &RegistryEntries && count < STAGE_RECLAIM_PRIORITY_MAX; link = link->Flink) {
+            PSTAGE_REGISTRY_ENTRY entry = CONTAINING_RECORD(link, STAGE_REGISTRY_ENTRY, Link);
+            UNICODE_STRING entryName;
+            if (InterlockedCompareExchange(&entry->PriorityProbe, 0, 0) == 0) continue;
+            InterlockedExchange(&entry->PriorityProbe, 0);
+            entryName.Buffer = entry->Name;
+            entryName.Length = entryName.MaximumLength = (USHORT)(entry->NameChars * sizeof(WCHAR));
+            if (entry->Retired || entry->Instance == NULL || entry->Volume == NULL ||
+                InterlockedCompareExchange(&entry->AliasProbePending, 0, 0) == 0 ||
+                InterlockedCompareExchange(&entry->T, 0, 0) != 0 ||
+                StageRegistryDirectoryRenameInFlightLocked(entry->Instance, &entryName)) continue;
+            if (!NT_SUCCESS(FltObjectReference(entry->Instance))) continue;
+            if (!NT_SUCCESS(FltObjectReference(entry->Volume))) { FltObjectDereference(entry->Instance); continue; }
+            StageRegistryReference(entry);
+            candidates[count] = entry;
+            instances[count] = entry->Instance;
+            volumes[count] = entry->Volume;
+            count += 1;
+        }
+        priorityCount = count;
         for (link = RegistryEntries.Flink; link != &RegistryEntries && count < STAGE_RECLAIM_BATCH; link = link->Flink) {
             PSTAGE_REGISTRY_ENTRY entry = CONTAINING_RECORD(link, STAGE_REGISTRY_ENTRY, Link);
             UNICODE_STRING entryName;
@@ -6321,6 +6409,11 @@ static VOID StageRegistryReclaimWorker(_In_ PFLT_GENERIC_WORKITEM WorkItem, _In_
                 waitingSeen = TRUE;
             if (entry->Sequence <= cursor) continue;
             highestVisited = entry->Sequence;
+            {
+                ULONG taken;
+                for (taken = 0; taken < priorityCount && candidates[taken] != entry; ++taken) { }
+                if (taken < priorityCount) continue;   /* already a priority candidate of this pass */
+            }
             entryName.Buffer = entry->Name;
             entryName.Length = entryName.MaximumLength = (USHORT)(entry->NameChars * sizeof(WCHAR));
             if (entry->Retired || entry->Instance == NULL || entry->Volume == NULL ||
@@ -6905,20 +6998,30 @@ BOOLEAN SafeUploadStageWritersSopKnownOutside(_In_ PFLT_INSTANCE Instance, _In_o
     return SafeUploadStageWritersSopOutsideWhy(Instance, FileObject) == SAFEUPLOAD_SOP_OUTSIDE_KNOWN;
 }
 
-/* Why a stream is not "known outside" (SAFEUPLOAD_SOP_OUTSIDE_*), for the deny ring: a refusal of a write that cannot be named says
- * what the stream's registry entry looked like. The low byte is the reason; for a state, class or unknown-reason mismatch the value
- * is in the byte above it. SAFEUPLOAD_SOP_OUTSIDE_KNOWN (0) means the entry proves the stream is outside every scope. */
+/* The entry checks of the nested-mutation rule. Caller holds RegistryLock (shared or exclusive). */
+static ULONG StageRegistryOutsideWhyLocked(_In_ PSTAGE_REGISTRY_ENTRY Entry, _In_ PFLT_INSTANCE Instance, _In_ PVOID SectionObjectPointer)
+{
+    LONG state = InterlockedCompareExchange((volatile LONG *)&Entry->State, 0, 0);
+    LONG classification = InterlockedCompareExchange(&Entry->ScopeNameClassification, 0, 0);
+    LONG unknownReasons = InterlockedCompareExchange(&Entry->UnknownReasons, 0, 0);
+    if (!Entry->Listed || Entry->Retired) return SAFEUPLOAD_SOP_OUTSIDE_RETIRED;
+    if (Entry->Instance != Instance) return SAFEUPLOAD_SOP_OUTSIDE_OTHER_INSTANCE;
+    if (InterlockedCompareExchangePointer((PVOID volatile *)&Entry->SectionObjectPointer, NULL, NULL) != SectionObjectPointer)
+        return SAFEUPLOAD_SOP_OUTSIDE_OTHER_SOP;
+    if (state != SAFEUPLOAD_REGISTRY_STATE_UNSCOPED) return SAFEUPLOAD_SOP_OUTSIDE_STATE | ((ULONG)(state & 0xFF) << 8);
+    if (classification != STAGE_SCOPE_CLASS_OUTSIDE) return SAFEUPLOAD_SOP_OUTSIDE_CLASS | ((ULONG)(classification & 0xFF) << 8);
+    if (unknownReasons != 0) return SAFEUPLOAD_SOP_OUTSIDE_UNKNOWN | ((ULONG)(unknownReasons & 0xFF) << 8);
+    if (InterlockedCompareExchange(&Entry->AliasProbePending, 0, 0) != 0) return SAFEUPLOAD_SOP_OUTSIDE_ALIAS_PENDING;
+    if (InterlockedCompareExchange(&Entry->ScopeScanPending, 0, 0) != 0) return SAFEUPLOAD_SOP_OUTSIDE_SCAN_PENDING;
+    if (InterlockedCompareExchange(&Entry->RenameInFlight, 0, 0) != 0) return SAFEUPLOAD_SOP_OUTSIDE_RENAME;
+    return SAFEUPLOAD_SOP_OUTSIDE_KNOWN;
+}
+
 _IRQL_requires_max_(APC_LEVEL)
-ULONG SafeUploadStageWritersSopOutsideWhy(_In_ PFLT_INSTANCE Instance, _In_opt_ PFILE_OBJECT FileObject)
+static PSTAGE_REGISTRY_ENTRY StageRegistryReferenceStreamEntry(_In_ PFLT_INSTANCE Instance, _In_ PFILE_OBJECT FileObject)
 {
     PSAFEUPLOAD_STREAM_CONTEXT streamContext = NULL;
-    PSTAGE_REGISTRY_ENTRY entry;
-    PVOID sectionObjectPointer;
-    ULONG why;
-    LONG state, classification, unknownReasons;
-    if (Instance == NULL || FileObject == NULL || FileObject->SectionObjectPointer == NULL) return SAFEUPLOAD_SOP_OUTSIDE_NO_OBJECT;
-    sectionObjectPointer = FileObject->SectionObjectPointer;
-    entry = StageRegistryReferenceSop(sectionObjectPointer);
+    PSTAGE_REGISTRY_ENTRY entry = StageRegistryReferenceSop(FileObject->SectionObjectPointer);
     if (entry == NULL && NT_SUCCESS(FltGetStreamContext(Instance, FileObject, (PFLT_CONTEXT *)&streamContext))) {
         KIRQL irql;
         StageAcquireSpinLock(&streamContext->WriterLock, &irql);
@@ -6928,22 +7031,65 @@ ULONG SafeUploadStageWritersSopOutsideWhy(_In_ PFLT_INSTANCE Instance, _In_opt_ 
         StageReleaseSpinLock(&streamContext->WriterLock, irql);
         FltReleaseContext(streamContext);
     }
+    return entry;
+}
+
+/* Why a stream is not "known outside" (SAFEUPLOAD_SOP_OUTSIDE_*), for the deny ring: a refusal of a write that cannot be named says
+ * what the stream's registry entry looked like. The low byte is the reason; for a state, class or unknown-reason mismatch the value
+ * is in the byte above it. SAFEUPLOAD_SOP_OUTSIDE_KNOWN (0) means the entry proves the stream is outside every scope. */
+_IRQL_requires_max_(APC_LEVEL)
+ULONG SafeUploadStageWritersSopOutsideWhy(_In_ PFLT_INSTANCE Instance, _In_opt_ PFILE_OBJECT FileObject)
+{
+    PSTAGE_REGISTRY_ENTRY entry;
+    ULONG why;
+    if (Instance == NULL || FileObject == NULL || FileObject->SectionObjectPointer == NULL) return SAFEUPLOAD_SOP_OUTSIDE_NO_OBJECT;
+    entry = StageRegistryReferenceStreamEntry(Instance, FileObject);
     if (entry == NULL) return SAFEUPLOAD_SOP_OUTSIDE_NO_ENTRY;
     FltAcquirePushLockShared(&RegistryLock);
-    state = InterlockedCompareExchange((volatile LONG *)&entry->State, 0, 0);
-    classification = InterlockedCompareExchange(&entry->ScopeNameClassification, 0, 0);
-    unknownReasons = InterlockedCompareExchange(&entry->UnknownReasons, 0, 0);
-    if (!entry->Listed || entry->Retired) why = SAFEUPLOAD_SOP_OUTSIDE_RETIRED;
-    else if (entry->Instance != Instance) why = SAFEUPLOAD_SOP_OUTSIDE_OTHER_INSTANCE;
-    else if (InterlockedCompareExchangePointer((PVOID volatile *)&entry->SectionObjectPointer, NULL, NULL) != sectionObjectPointer)
-        why = SAFEUPLOAD_SOP_OUTSIDE_OTHER_SOP;
-    else if (state != SAFEUPLOAD_REGISTRY_STATE_UNSCOPED) why = SAFEUPLOAD_SOP_OUTSIDE_STATE | ((ULONG)(state & 0xFF) << 8);
-    else if (classification != STAGE_SCOPE_CLASS_OUTSIDE) why = SAFEUPLOAD_SOP_OUTSIDE_CLASS | ((ULONG)(classification & 0xFF) << 8);
-    else if (unknownReasons != 0) why = SAFEUPLOAD_SOP_OUTSIDE_UNKNOWN | ((ULONG)(unknownReasons & 0xFF) << 8);
-    else if (InterlockedCompareExchange(&entry->AliasProbePending, 0, 0) != 0) why = SAFEUPLOAD_SOP_OUTSIDE_ALIAS_PENDING;
-    else if (InterlockedCompareExchange(&entry->ScopeScanPending, 0, 0) != 0) why = SAFEUPLOAD_SOP_OUTSIDE_SCAN_PENDING;
-    else if (InterlockedCompareExchange(&entry->RenameInFlight, 0, 0) != 0) why = SAFEUPLOAD_SOP_OUTSIDE_RENAME;
-    else why = SAFEUPLOAD_SOP_OUTSIDE_KNOWN;
+    why = StageRegistryOutsideWhyLocked(entry, Instance, FileObject->SectionObjectPointer);
+    FltReleasePushLock(&RegistryLock);
+    StageRegistryDereference(entry);
+    /* Read after the entry: a scope published before the class was read is seen here, and the apply that follows it resets the
+     * class. */
+    if (why == SAFEUPLOAD_SOP_OUTSIDE_KNOWN && SafeUploadPolicyScopeTransitionActive()) why = SAFEUPLOAD_SOP_OUTSIDE_TRANSITION;
+    return why;
+}
+
+/* T3d: admit an operation issued from inside another file-system call (no name may be queried) on a stream whose entry is known
+ * outside every scope, and count it as mutating I/O in flight (W) in the same step, under the entry's state lock, as a tracked
+ * writer's operation is counted. A promotion of the entry needs W == 0, so an operation admitted just before a scope publication
+ * keeps the stream from becoming Protected until it completes (Luna re-review P1: an untracked direct write held no W). The
+ * transition flag is read first, outside the entry locks (registry -> scope cache -> entry is the lock order); a publication after
+ * that read is ordered behind this W. Returns SAFEUPLOAD_SOP_OUTSIDE_KNOWN with *Context set (an entry reference tagged
+ * STAGE_MUTATING_IO_ENTRY_TAG, ended by the post-operation like a tracked writer's), or why the operation was not admitted. */
+_IRQL_requires_max_(APC_LEVEL)
+ULONG SafeUploadStageWritersAdmitNestedMutation(_In_ PFLT_INSTANCE Instance, _In_opt_ PFILE_OBJECT FileObject,
+    _Outptr_result_maybenull_ PVOID *Context)
+{
+    PSTAGE_REGISTRY_ENTRY entry;
+    ULONG why;
+    KIRQL irql;
+    BOOLEAN transition;
+    *Context = NULL;
+    if (Instance == NULL || FileObject == NULL || FileObject->SectionObjectPointer == NULL) return SAFEUPLOAD_SOP_OUTSIDE_NO_OBJECT;
+    transition = SafeUploadPolicyScopeTransitionActive();
+    entry = StageRegistryReferenceStreamEntry(Instance, FileObject);
+    if (entry == NULL) return SAFEUPLOAD_SOP_OUTSIDE_NO_ENTRY;
+    FltAcquirePushLockShared(&RegistryLock);
+    StageRegistryAcquireStateLock(entry, &irql);
+    why = StageRegistryOutsideWhyLocked(entry, Instance, FileObject->SectionObjectPointer);
+    if (why == SAFEUPLOAD_SOP_OUTSIDE_KNOWN && transition) why = SAFEUPLOAD_SOP_OUTSIDE_TRANSITION;
+    if (why == SAFEUPLOAD_SOP_OUTSIDE_KNOWN) {
+        if (InterlockedCompareExchange(&entry->W, 0, 0) < MAXLONG) {
+            StageRegistryReference(entry);
+            InterlockedIncrement(&entry->W);
+            InterlockedIncrement64(&RegistryChangeSequence);
+            *Context = (PVOID)((ULONG_PTR)entry | STAGE_MUTATING_IO_ENTRY_TAG);
+        } else {
+            why = SAFEUPLOAD_SOP_OUTSIDE_UNKNOWN;
+        }
+    }
+    StageRegistryReleaseStateLock(entry, irql);
     FltReleasePushLock(&RegistryLock);
     StageRegistryDereference(entry);
     return why;
@@ -6976,8 +7122,10 @@ BOOLEAN SafeUploadStageWritersSopMatchesPolicy(_In_ PFLT_INSTANCE Instance,
         FltReleaseContext(streamContext);
     }
     if (entry == NULL) {
-        /* Unknown markers have no per-SOP scope cache; fail closed on a volume that may be scoped. */
-        return StageRegistryUnknownSopForInstance(Instance, sectionObjectPointer) &&
+        /* Unknown markers have no per-SOP scope cache; fail closed on a volume that may be scoped. During a scope transition no
+         * negative answer is trusted, including "no entry" (Luna re-review 3, P1). */
+        return (StageRegistryUnknownSopForInstance(Instance, sectionObjectPointer) ||
+                SafeUploadPolicyScopeTransitionActive()) &&
             SafeUploadPolicyMayMatchInstanceVolume(Instance);
     }
 
@@ -7042,6 +7190,13 @@ BOOLEAN SafeUploadStageWritersSopMatchesPolicy(_In_ PFLT_INSTANCE Instance,
             matches = SafeUploadPolicyMayMatchInstanceVolume(Instance);
             break;
         }
+        if (SafeUploadPolicyScopeTransitionActive()) {
+            /* A scope that may grow the union is published and its apply has not reset this entry yet: neither an OUTSIDE class
+             * nor the retained name proves anything about the new scope (another hard link may be in it; aliases are not
+             * retained). Answer by the volume until the transition ends (Luna re-review P0); the section gate waits for that. */
+            matches = SafeUploadPolicyMayMatchInstanceVolume(Instance);
+            break;
+        }
         if (scopeClass == STAGE_SCOPE_CLASS_OUTSIDE) {
             matches = FALSE;
             break;
@@ -7087,11 +7242,59 @@ BOOLEAN SafeUploadStageWritersSopMatchesPolicy(_In_ PFLT_INSTANCE Instance,
     }
     ExFreePoolWithTag(nameBuffer, SAFEUPLOAD_REGISTRY_POOL_TAG);
     StageRegistryDereference(entry);
+    /* Every negative answer, a stale entry reached through the stream context included, is fail closed during a transition. */
     if (!matches)
-        matches = StageRegistryUnknownSopForInstance(Instance, sectionObjectPointer) &&
+        matches = (StageRegistryUnknownSopForInstance(Instance, sectionObjectPointer) ||
+                   SafeUploadPolicyScopeTransitionActive()) &&
             SafeUploadPolicyMayMatchInstanceVolume(Instance);
 #undef STAGE_SOP_POLICY_RETRIES
     return matches;
+}
+
+/* T2c: a writer from before the policy apply (FontCache's cache file, the Registry process's hives) has its entry begun at the apply
+ * and alias-pending until the one reclaim worker classifies it, and during a scope transition no entry's earlier answer is trusted;
+ * the writable-section gate refuses meanwhile (u01h under the boot Verifier, t3cue's config\DRIVERS). This waits a bounded time for
+ * the transition to end and for this entry's probe (asking the worker to take the entry first), so the caller decides on the
+ * classification instead of the window. The caller runs at PASSIVE outside any file-system call and holds nothing of this filter;
+ * the worker's own thread never waits, a transacted entry's probe (which the worker does not run) is not waited for, and at most
+ * STAGE_SECTION_WAITERS_MAX callers wait at once (the others decide at once). On timeout nothing changes and the caller refuses as
+ * before; a full delayed work queue only makes the wait time out. Polling every 10 ms with at most four waiters costs little and
+ * needs no signal from the resolve paths, which run under spin locks. */
+static volatile LONG SectionClassificationWaiters;
+_IRQL_requires_(PASSIVE_LEVEL)
+VOID SafeUploadStageWritersAwaitClassification(_In_ PFLT_INSTANCE Instance, _In_opt_ PFILE_OBJECT FileObject)
+{
+    PSTAGE_REGISTRY_ENTRY entry;
+    LARGE_INTEGER interval;
+    ULONG waited = 0;
+    if (Instance == NULL || FileObject == NULL || FileObject->SectionObjectPointer == NULL ||
+        KeGetCurrentIrql() != PASSIVE_LEVEL || IoGetTopLevelIrp() != NULL ||
+        InterlockedCompareExchangePointer(&RegistryReclaimIoThread, NULL, NULL) == (PVOID)PsGetCurrentThread()) return;
+    entry = StageRegistryReferenceSop(FileObject->SectionObjectPointer);
+    if (entry == NULL) return;
+    if (entry->Instance != Instance) {
+        StageRegistryDereference(entry);
+        return;
+    }
+    if (InterlockedIncrement(&SectionClassificationWaiters) <= STAGE_SECTION_WAITERS_MAX) {
+        interval.QuadPart = -10000LL * STAGE_SECTION_PROBE_POLL_MS;
+        while (waited < STAGE_SECTION_PROBE_WAIT_MS && entry->Listed && !entry->Retired) {
+            BOOLEAN transition = SafeUploadPolicyScopeTransitionActive();
+            BOOLEAN pending = InterlockedCompareExchange(&entry->AliasProbePending, 0, 0) != 0 &&
+                InterlockedCompareExchange(&entry->T, 0, 0) == 0;
+            if (!transition && !pending) break;
+            if (pending && waited % 200 == 0) {
+                /* First request, or a pass that ran out of scan budget before finishing this probe cleared it: ask again. */
+                InterlockedExchange(&entry->PriorityProbe, 1);
+                InterlockedExchange(&RegistryReclaimInterest, 1);
+                (VOID)StageRegistryQueueReclaim();
+            }
+            (VOID)KeDelayExecutionThread(KernelMode, FALSE, &interval);
+            waited += STAGE_SECTION_PROBE_POLL_MS;
+        }
+    }
+    InterlockedDecrement(&SectionClassificationWaiters);
+    StageRegistryDereference(entry);
 }
 
 _IRQL_requires_max_(APC_LEVEL)
