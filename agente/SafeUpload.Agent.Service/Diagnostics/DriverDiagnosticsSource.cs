@@ -199,6 +199,8 @@ public sealed class DriverDiagnosticsSource
         9 => "trustGate",
         10 => "deleteOnClose",
         11 => "legacyCreateGate",
+        12 => "byIdUndecidable",
+        13 => "byIdHighHalf",
         _ => reason.ToString(),
     };
 

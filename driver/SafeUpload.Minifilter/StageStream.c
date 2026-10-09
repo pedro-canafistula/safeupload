@@ -2720,6 +2720,7 @@ static FLT_PREOP_CALLBACK_STATUS StageAdmit(PFLT_CALLBACK_DATA Data,
                     &zeroId, sizeof(zeroId)) != sizeof(zeroId)) {
                 /* Documented exception: on a possibly scoped volume, an
                  * unresolvable high-half mutating ID is refused. */
+                denyReason = SAFEUPLOAD_DENY_REASON_BY_ID_HIGH_HALF;
                 status = STATUS_ACCESS_DENIED; goto Complete;
             }
             /* One bounded PASSIVE attempt classifies every hard link through
@@ -2731,6 +2732,12 @@ static FLT_PREOP_CALLBACK_STATUS StageAdmit(PFLT_CALLBACK_DATA Data,
             if (NT_SUCCESS(status) && !inScope) {
                 handled = FALSE;
                 goto Complete;
+            }
+            if (NT_SUCCESS(status)) {
+                denyReason = SAFEUPLOAD_DENY_REASON_POLICY_SCOPE;   /* a by-ID write to a scoped file: refused by design */
+            } else {
+                denyReason = SAFEUPLOAD_DENY_REASON_BY_ID_UNDECIDABLE;
+                denyAux = status;
             }
             status = STATUS_ACCESS_DENIED;
             goto Complete;
