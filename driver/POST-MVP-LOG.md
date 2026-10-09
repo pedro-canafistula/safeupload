@@ -346,3 +346,60 @@ unchanged (`RunDiskBaseUntouched=True`). The suite batch, the T3 runner and the 
 disk (it used to start from the previous run's restored state). Tested on win10-debug2 (`rdtest1`): boot 110 s, `BaselineClean=True`, overlay deleted, base untouched.
 Still open: 8 project overlays that win10-debug's chain does not use (about 27 GB, created before snapshot #39) - deleting them was refused by the session's permission check, so
 they wait for the owner; win10-debug's own 75-file chain is left as it is (not used by the harness now).
+
+### T3d: why the cumulative update's nested writes were refused, and the fix (`4d02039a`, verification pending)
+
+The driver8 ring (`2d32bbff` names a nameless refusal's file object, `704146b8` adds why its stream was not known outside) read live during
+`t3cue`: the refused nested WRITEs (pid 6000, TiWorker) are on `\Windows\servicing\Sessions\<id>.xml`, with aux `0xE5000007` = the stream HAS a
+registry entry, state Unscoped, but class 0 (UNRESOLVED). The earlier runs' records (`t3cud`) only had TiWorker's image as the name: the file
+objects carry no open name and the name cache did not know them.
+
+Cause: the nested-write rule from `1989f86a` trusts an entry only when its class is OUTSIDE, and only a finished alias probe ever set OUTSIDE.
+An ordinary writer of a name outside every scope gets an entry that starts Unscoped/UNRESOLVED and is never probed (probes begin on renames,
+links, directory renames and policy applies), so its class stayed UNRESOLVED for the entry's whole life and the rule never applied.
+
+Fix: the create gate already proves what a probe proves for such an open: `SafeUploadStageCheckNamedAliases` enumerates the file's hard
+links and refuses the open when one is in a current or pending scope. The check now records the file it examined (`FileIdInformation`, or that
+no file had the name), `StageAdmit` records the policy scope sequence read before the check, and the writer reservation carries both to
+post-create, where `StageRegistryApplyCreateAliasProof` classifies the entry OUTSIDE when the same file is bound (or this open created it)
+under the same scope sequence and a stable rename-loss generation, for an untouched plain entry only, with the probe receipt's lock order.
+Only a non-transacted open of the default stream by name gets a proof. Why it holds: while the scope sequence holds, `StageExternalRename`
+refuses every external rename or link whose destination is in a current or pending scope (a directory moved into a scope included), so the
+file cannot gain an in-scope name; every later rename, link, directory rename or policy apply resets the class exactly as for a probed entry.
+The one apply path that begins no probe (an Unknown instance) now drops a plain entry's OUTSIDE class back to UNRESOLVED (fail closed).
+Same commit: a staged stream answers `FileStandardLinkInformation` (0x36) from its backing file like `FileStandardInformation` (U01's
+INCONCLUSIVE query; reads are never refused). Builds: `m1-driver9`, 4 configurations, 0 warnings / 0 errors, PREfast and ApiValidator clean.
+Luna's review of that first version (`52430692`, never pushed) found a P0, which I accept: a scope that grows the current+pending union is
+published before the epoch drain and the apply sweep that resets every entry's class, and ordinary writes are not held by the drain, so in that
+window an OUTSIDE class proven against the old scope was trusted by the nested-write rule and by the section gate's OUTSIDE shortcut (the
+pre-existing probe-classified OUTSIDE entries had the same window; the create proof made it far more reachable). Fix, squashed into `77b76faa`:
+`SafeUploadPolicyScopeTransitionActive()` reports the scope cache's apply flag, which every growing publication sets in the same publication and
+only the end of the apply that probes every live entry clears (it stays set when the apply fails); during a transition the nested-write rule
+refuses (`SAFEUPLOAD_SOP_OUTSIDE_TRANSITION`, aux `0xE500000C`, agent name `scopeTransition`) and the section gate decides an OUTSIDE entry by
+its retained name like an unresolved one (the section epoch gate checks the opened name), or by the volume when it has no name. Rejected
+alternative: stamping each OUTSIDE with its scope sequence, because the boot-policy finalize republishes (the sequence advances) with a shrinking
+union and no reprobe, which would leave every OUTSIDE entry stale for the rest of the boot. Builds `m1-driver10` / `m1-agent9`; Luna re-reviews
+the fix. The driver8 CU run `t3cue` on the HDD-backed disk confirms the class: its 23 workload refusals are all nested WRITEs with aux
+`0xE5000007` on `\Windows\servicing\Sessions\*.xml` (pids 3024, 6000); its verdict is otherwise unusable (the workload took 3,510 s on the
+spinning disk and the guest did not answer SSH afterwards), so run overlays move to the NVMe disk for the next runs.
+Also in `t3cue`, before the workload: one writable section of `\Windows\System32\config\DRIVERS` refused for the Registry process (pid 92,
+`policyScope`), which is the T2c class (a pre-scope writer's entry waits for its alias probe after the policy apply; the section gate fails
+closed meanwhile) hitting a registry hive; T2c needs a real fix, not a note.
+
+### T3d and T2c after three Luna reviews: `4d02039a` (builds `m1-driver13` / `m1-agent11`, VM runs queued)
+
+The local commits (`52430692`, `77b76faa`, `3195dd54`, `feba0116`; none pushed) are squashed into `4d02039a`. Review rounds, all accepted:
+1. First review of T3d: P0, a stale OUTSIDE across a scope publication -> the transition flag (`SafeUploadPolicyScopeTransitionActive`).
+2. Re-review: P0, during a transition the retained name misses a third hard link in the new scope -> during a transition `SopMatchesPolicy`
+   answers every non-reclassified entry by the volume; P1, an untracked direct write held no W -> `SafeUploadStageWritersAdmitNestedMutation`
+   counts the admitted nested operation in W under the entry's state lock (promotion needs W == 0: verified by the reviewer at the predicate).
+3. T2c review: P1, the opened name was not rechecked after the wait -> re-decided under an unchanged scope sequence; P2, unbounded waiters
+   -> at most 4 waiters, others decide at once (10 ms polling kept: the resolve paths run under spin locks).
+4. Third review: P1, "no entry" or a stale stream-context entry answered "no match" before the transition check -> every negative answer
+   is fail closed during a transition; P2 (accepted, bounded): a section callback holding a pre-publication epoch token can wait on a
+   transition that ends only after that token drains; it times out after 2 s and refuses (only in the instant between a publication and
+   the epoch replacement).
+Still deferred (from the M1 review): network-scope canonicalization (UNC/provider names), plan "Later".
+Queues: `m1-t3queue6.sh` (CU `t3cuh`, U01 `u01n` and `u01o` boot-Verifier, runtime-Verifier slice `m13r`, Microsoft 365 `t3m365a`, CU and
+Microsoft 365 controls) then `m1-regress13.sh` (the 65 other cells; boot Verifier last, alone), judged by `Get-StagedMvpStatus.py` on
+`4d02039a`; both wait for win10-debug3 to be shut off (its rebuilt clone answers at debug2's address).
