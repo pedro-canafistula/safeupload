@@ -313,3 +313,16 @@ shows two separate problems:
 Registry: with the per-volume cap at 4,096 and the pruner woken every 64th insertion above 512 live entries the update runs without overflow or Unknown reasons (high-water
 1,299 / 3,097 / 2,206 of 4,096 in the three runs).
 
+### The T3b driver line (`m1-driver5`, `1989f86a`) on win10-debug2: confirmation campaign (13:00)
+
+Frozen worktree at `1989f86a`, agent `m1-agent6`, judged with `cellok.py` (two-tier gate):
+- ordinary mode: R02, A01, A02, A04, R03 all `ok` (`m1k1`..`m1k5`);
+- runtime Verifier: A01 and C05-denied-external-rename `ok`; R02 first came back `retry` on `LiveTaintFlags` (the known evidence flake: the guest's child process object returned before
+  its exit code was set). The harness now re-reads the exit code of a just-exited child a few times before calling it absent (`b14b2d0a`; no gate or assertion changed), and the rerun
+  `m1o1` of R02 under the runtime Verifier is `ok`;
+- boot Verifier: B02 and C04-block `ok` (`m1m1`, `m1m2`);
+- U01 (first sign-in of a new user, ordinary): every row PASS except `U01StagedStreamQueries`, INCONCLUSIVE: a `FileStandardLinkInformation` (class 0x36) query on a staged stream is
+  answered `STATUS_NOT_SUPPORTED` (pid 5172); it is a query, not a write, and nothing is leaked, but the refusal is outside the in-scope write path and stays open.
+Not run on this line: the rest of the A/R/C rows, the other three BLOCK cells and B02 for C01-C03. `1989f86a` changes the registry limit, the delete-pending probe, the nested-write
+rule and the pruner wake-up, so the full regression of the 69-row gate on the final driver is still owed; the rows above are a sample, not the gate.
+
