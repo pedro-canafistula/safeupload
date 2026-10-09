@@ -472,7 +472,6 @@ typedef struct _STAGE_ANCHOR {
 static EX_PUSH_LOCK StageAnchorLock;
 static LIST_ENTRY StageAnchorList;
 static ULONG StageAnchorCount;       /* StageAnchorLock */
-static volatile ULONG StageAnchorEpoch;
 static volatile LONG64 RegistryReclaimWakeupsSkipped;
 static volatile LONG RegistryReclaimResetCursor;
 /* Borrowed only while the one reclaim body executes. Clear before the work
@@ -1303,8 +1302,6 @@ VOID SafeUploadStageWritersInstanceTeardownStart(
 
     PAGED_CODE();
 
-    /* The identity anchors are handles opened below this instance: they must be closed here. */
-    StageAnchorReleaseInstance(FltObjects->Instance);
     /* InstanceTeardownStart is PASSIVE_LEVEL and precedes context teardown. */
     dismount = FlagOn(Reason, FLTFL_INSTANCE_TEARDOWN_VOLUME_DISMOUNT);
     if (dismount) InterlockedIncrement64(&InstanceTeardownsDismount);
@@ -1314,6 +1311,7 @@ VOID SafeUploadStageWritersInstanceTeardownStart(
         /* Even without our instance context, teardown must unlink every history entry and
          * release its rundown references. A live mounted drop is widened by RetireInstance. */
         StageRegistryBeginInstanceTeardown(FltObjects->Instance, NULL, dismount);
+        StageAnchorReleaseInstance(FltObjects->Instance);   /* the identity anchors are handles below this instance */
         StageRegistryRetireInstance(FltObjects->Instance, dismount);
         return;
     }
@@ -1331,6 +1329,9 @@ VOID SafeUploadStageWritersInstanceTeardownStart(
      * against post-create's H commit. */
     StageRegistryBeginInstanceTeardown(FltObjects->Instance, context->TeardownToken,
         FlagOn(Reason, FLTFL_INSTANCE_TEARDOWN_VOLUME_DISMOUNT));
+    /* The token is marked: no anchor can be inserted for this instance from here on. Close the ones in the list (they are
+     * handles opened below this instance and must not outlive its teardown). */
+    StageAnchorReleaseInstance(FltObjects->Instance);
     StageRegistryRetireInstance(FltObjects->Instance,
         FlagOn(Reason, FLTFL_INSTANCE_TEARDOWN_VOLUME_DISMOUNT));
     FltReleaseContext(context);
@@ -5611,7 +5612,7 @@ static BOOLEAN StageRegistryEntryHoldsNoWriterState(_In_ PSTAGE_REGISTRY_ENTRY E
  *
  * Ownership: an anchor is in the list, or owned by the one pass that took it for a visit (the reclaim worker is
  * single-threaded). Every path that retires the entry, closes the instance or finishes the visit closes it. */
-#define STAGE_ANCHOR_LIMIT 32
+#define STAGE_ANCHOR_LIMIT SAFEUPLOAD_WRITER_REGISTRY_TOTAL_LIMIT
 
 _IRQL_requires_(PASSIVE_LEVEL)
 static VOID StageAnchorDestroy(_In_ PSTAGE_ANCHOR Anchor)
@@ -5623,9 +5624,19 @@ static VOID StageAnchorDestroy(_In_ PSTAGE_ANCHOR Anchor)
     ExFreePoolWithTag(Anchor, SAFEUPLOAD_REGISTRY_POOL_TAG);
 }
 
-static ULONG StageAnchorReadEpoch(VOID)
+/* Is the instance still accepting new state? Teardown marks its token before it scans the anchors (see
+ * SafeUploadStageWritersInstanceTeardownStart), and this check runs under the same lock as the insertion, so an anchor is
+ * either in the list when the scan runs or refused here. */
+static BOOLEAN StageAnchorInstanceActive(_In_ PFLT_INSTANCE Instance)
 {
-    return (ULONG)InterlockedCompareExchange((volatile LONG *)&StageAnchorEpoch, 0, 0);
+    PSAFEUPLOAD_INSTANCE_CONTEXT context = NULL;
+    BOOLEAN active = FALSE;
+    if (NT_SUCCESS(FltGetInstanceContext(Instance, (PFLT_CONTEXT *)&context))) {
+        active = context->TeardownToken != NULL &&
+            InterlockedCompareExchange(&context->TeardownToken->State, 0, 0) == SAFEUPLOAD_INSTANCE_STATE_ACTIVE;
+        FltReleaseContext(context);
+    }
+    return active;
 }
 
 _IRQL_requires_(PASSIVE_LEVEL)
@@ -5647,13 +5658,13 @@ static BOOLEAN StageAnchorTake(_In_ PSTAGE_REGISTRY_ENTRY Entry, _Outptr_result_
     return *Taken != NULL;
 }
 
-/* Puts a taken or new anchor in the list, unless the instance began teardown since Epoch was read or the list is full. */
+/* Puts a taken or new anchor in the list, unless its instance began teardown or the list is full. */
 _IRQL_requires_(PASSIVE_LEVEL)
-static BOOLEAN StageAnchorInsert(_In_ PSTAGE_ANCHOR Anchor, _In_ ULONG Epoch)
+static BOOLEAN StageAnchorInsert(_In_ PSTAGE_ANCHOR Anchor)
 {
     BOOLEAN inserted = FALSE;
     FltAcquirePushLockExclusive(&StageAnchorLock);
-    if ((ULONG)StageAnchorEpoch == Epoch && StageAnchorCount < STAGE_ANCHOR_LIMIT) {
+    if (StageAnchorCount < STAGE_ANCHOR_LIMIT && StageAnchorInstanceActive(Anchor->Instance)) {
         InsertTailList(&StageAnchorList, &Anchor->Link);
         StageAnchorCount += 1;
         inserted = TRUE;
@@ -5675,13 +5686,13 @@ static BOOLEAN StageAnchorWanted(_In_ PSTAGE_REGISTRY_ENTRY Entry, _In_ BOOLEAN 
  * consumed either way. */
 _IRQL_requires_(PASSIVE_LEVEL)
 static VOID StageAnchorEndVisit(_In_ PSTAGE_REGISTRY_ENTRY Entry, _In_ PFLT_INSTANCE Instance,
-    _Inout_ PSTAGE_ANCHOR *Taken, _Inout_ HANDLE *Handle, _Inout_ PFILE_OBJECT *Object, _In_ ULONG Epoch,
+    _Inout_ PSTAGE_ANCHOR *Taken, _Inout_ HANDLE *Handle, _Inout_ PFILE_OBJECT *Object,
     _In_ BOOLEAN Replaced)
 {
     PSTAGE_ANCHOR anchor = *Taken;
     if (anchor != NULL) {
         /* Borrowed for the visit: Handle and Object are the anchor's own. */
-        if (!StageAnchorWanted(Entry, FALSE) || !StageAnchorInsert(anchor, Epoch)) StageAnchorDestroy(anchor);
+        if (!StageAnchorWanted(Entry, FALSE) || !StageAnchorInsert(anchor)) StageAnchorDestroy(anchor);
         *Taken = NULL; *Handle = NULL; *Object = NULL;
         return;
     }
@@ -5694,7 +5705,7 @@ static VOID StageAnchorEndVisit(_In_ PSTAGE_REGISTRY_ENTRY Entry, _In_ PFLT_INST
     anchor->Instance = Instance;
     anchor->Handle = *Handle;
     anchor->Object = *Object;
-    if (StageAnchorInsert(anchor, Epoch)) {
+    if (StageAnchorInsert(anchor)) {
         *Handle = NULL; *Object = NULL;
         return;
     }
@@ -5734,8 +5745,6 @@ static VOID StageAnchorReleaseInstance(_In_ PFLT_INSTANCE Instance)
     PLIST_ENTRY link, next;
     InitializeListHead(&release);
     FltAcquirePushLockExclusive(&StageAnchorLock);
-    /* A visit in flight that read the old epoch cannot put its anchor back after this. */
-    InterlockedIncrement((volatile LONG *)&StageAnchorEpoch);
     for (link = StageAnchorList.Flink; link != &StageAnchorList; link = next) {
         PSTAGE_ANCHOR anchor = CONTAINING_RECORD(link, STAGE_ANCHOR, Link);
         next = link->Flink;
@@ -5767,7 +5776,6 @@ static VOID StageRegistryActivationProcess(_In_ PSTAGE_REGISTRY_ENTRY Entry,
     HANDLE handle = NULL;
     PFILE_OBJECT object = NULL;
     PSTAGE_ANCHOR anchor = NULL;
-    ULONG anchorEpoch = StageAnchorReadEpoch();
     PSECTION_OBJECT_POINTERS sop = NULL;
     PSAFEUPLOAD_INSTANCE_CONTEXT instanceContext = NULL;
     PWCHAR nameSnapshot = NULL;
@@ -6093,7 +6101,7 @@ static VOID StageRegistryActivationProcess(_In_ PSTAGE_REGISTRY_ENTRY Entry,
 Exit:
     if (nameSnapshot != NULL) ExFreePoolWithTag(nameSnapshot, SAFEUPLOAD_REGISTRY_POOL_TAG);
     /* Keeps the visit's handle as the entry's anchor while it waits with a live writer; closes it otherwise. */
-    StageAnchorEndVisit(Entry, Instance, &anchor, &handle, &object, anchorEpoch, incarnationReplaced);
+    StageAnchorEndVisit(Entry, Instance, &anchor, &handle, &object, incarnationReplaced);
     if (object != NULL) ObDereferenceObject(object);
     if (handle != NULL) FltClose(handle);
 }

@@ -565,6 +565,8 @@ __declspec(noinline) static VOID SafeUploadPolicySetTransitionStateNoInline(
     SafeUploadReleaseSpinLock(&SafeUploadVolumeScopeCacheLock, irql);
 }
 
+static BOOLEAN SafeUploadPolicyPrefixIsNetwork(_In_ PCUNICODE_STRING Prefix);
+
 /* Unresolved refusals apply only when this cached volume can contain a current,
  * pending, or boot scope. The resident snapshot classifies policy admission. */
 __declspec(noinline) static BOOLEAN SafeUploadPolicyVolumeCacheMatchesLocked(
@@ -593,6 +595,14 @@ __declspec(noinline) static BOOLEAN SafeUploadPolicyVolumeCacheMatchesLocked(
             prefix.Buffer = Cache->Prefixes[index].Text;
             prefix.Length = prefix.MaximumLength = Cache->Prefixes[index].Length;
             mayMatch = SafeUploadVolumeCachePathUnderPrefix(VolumeName, &prefix);
+        }
+        /* A share's scope is written as a UNC or provider path, not as a path under the volume's device name, so the
+         * comparison above cannot see it: a network volume may match when any prefix is itself a network path. */
+        for (index = 0; !mayMatch && VolumeKind == SafeUploadVolumeNetwork && index < Cache->PrefixCount; ++index) {
+            UNICODE_STRING prefix;
+            prefix.Buffer = Cache->Prefixes[index].Text;
+            prefix.Length = prefix.MaximumLength = Cache->Prefixes[index].Length;
+            mayMatch = SafeUploadPolicyPrefixIsNetwork(&prefix);
         }
     }
     return mayMatch;

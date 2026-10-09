@@ -302,7 +302,9 @@ NTSTATUS SafeUploadDenyRingReadBatch(_In_ UINT64 AfterSequence, _Out_ PSAFEUPLOA
         count += 1;
     }
     Batch->Count = count;
-    Batch->NextSequence = next;
+    /* The cursor for the next request is one past the last record in this page, so a reader that is handed a full page
+     * continues where the page ended; only a page that reached the newest record reports the next sequence to come. */
+    Batch->NextSequence = count != 0 ? Batch->Entries[count - 1].Sequence + 1 : next;
     DenyRelease(irql);
     return STATUS_SUCCESS;
 }
