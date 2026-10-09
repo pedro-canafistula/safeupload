@@ -1083,7 +1083,7 @@ def run_case(args, case, mode, ev, files, package, tree_hash, provenance):
             pre += '$p=Join-Path $d ' + ps_literal(leaf) + ';'
             if leaf == 'stage-service-publish.zip':
                 pre += ("if((Test-Path -LiteralPath $p) -and (Get-FileHash $p).Hash -ne " + ps_literal(sha(path)) + "){$old=(Get-FileHash $p).Hash;"
-                        "$keep=$p+'.preserved-'+$old;if(Test-Path -LiteralPath $keep){throw 'Preserved package collision'};Move-Item -LiteralPath $p -Destination $keep};\n")
+                        "$keep=$p+'.preserved-'+$old;if(Test-Path -LiteralPath $keep){if((Get-FileHash $keep).Hash -ne $old){throw 'Preserved package collision'};Remove-Item -LiteralPath $p -Force}else{Move-Item -LiteralPath $p -Destination $keep}};\n")
             else:
                 pre += 'if((Test-Path -LiteralPath $p) -and (Get-FileHash $p).Hash -ne ' + ps_literal(sha(path)) + "){throw 'Input collision'};\n"
         for leaf in [name + '-artifacts', 'SafeUpload-invariant-state-' + name, *[name + '-' + phase + suffix for phase in ('prepare', 'afterboot', 'finalize') for suffix in ('.out', '.err')]]:
