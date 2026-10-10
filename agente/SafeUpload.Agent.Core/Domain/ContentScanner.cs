@@ -75,48 +75,68 @@ public static class ContentScanner
         List<(int Start, int End)> consumed,
         List<(int Start, Finding Finding)> found)
     {
-        var runs = BuildDigitRuns(text);
-        if (runs.Count == 0)
-        {
-            return;
-        }
-
         foreach (var (category, digitCount) in NumericRules)
         {
-            if (!active.Contains(category))
+            if (active.Contains(category))
+            {
+                ScanNumericRule(text, category, digitCount, consumed, found);
+            }
+        }
+    }
+
+    private static void ScanNumericRule(
+        string text,
+        Category category,
+        int digitCount,
+        List<(int Start, int End)> consumed,
+        List<(int Start, Finding Finding)> found)
+    {
+        // Each category still completes its full left-to-right pass before the
+        // shorter rule starts. Only one candidate's digits/positions are kept;
+        // a long digit run no longer needs a position list proportional to it.
+        Span<int> positions = stackalloc int[digitCount];
+        Span<char> digits = stackalloc char[digitCount];
+        Span<char> candidate = stackalloc char[digitCount];
+        var next = 0;
+        var count = 0;
+        for (var index = 0; index < text.Length; index++)
+        {
+            var value = text[index];
+            if (!char.IsAsciiDigit(value))
+            {
+                if (count != 0 && IsSeparator(value)
+                    && index + 1 < text.Length && char.IsAsciiDigit(text[index + 1]))
+                {
+                    continue;
+                }
+
+                next = 0;
+                count = 0;
+                continue;
+            }
+
+            positions[next] = index;
+            digits[next] = value;
+            next = (next + 1) % digitCount;
+            if (count < digitCount)
+            {
+                count++;
+            }
+
+            if (count != digitCount || Overlaps(consumed, positions[next], index))
             {
                 continue;
             }
 
-            foreach (var run in runs)
+            digits[next..].CopyTo(candidate);
+            digits[..next].CopyTo(candidate[(digitCount - next)..]);
+            if (!IsValid(category, candidate))
             {
-                for (var start = 0; start + digitCount <= run.Count; start++)
-                {
-                    var from = run[start];
-                    var to = run[start + digitCount - 1];
-
-                    if (Overlaps(consumed, from, to))
-                    {
-                        continue;
-                    }
-
-                    var candidate = string.Create(digitCount, (text, run, start), static (span, state) =>
-                    {
-                        for (var i = 0; i < span.Length; i++)
-                        {
-                            span[i] = state.text[state.run[state.start + i]];
-                        }
-                    });
-
-                    if (!IsValid(category, candidate))
-                    {
-                        continue;
-                    }
-
-                    consumed.Add((from, to));
-                    found.Add((from, new Finding(category, Masking.Mask(candidate))));
-                }
+                continue;
             }
+
+            consumed.Add((positions[next], index));
+            found.Add((positions[next], new Finding(category, Masking.Mask(new string(candidate)))));
         }
     }
 
@@ -206,60 +226,6 @@ public static class ContentScanner
         }
 
         return false;
-    }
-
-    /// <summary>
-    /// Agrupa os dígitos do texto em corridas, aceitando um único caractere de
-    /// pontuação entre dois dígitos. É o que permite reconhecer
-    /// <c>529.982.247-25</c> e <c>4111 1111 1111 1111</c> como um número só,
-    /// sem colar números vizinhos separados por vírgula, quebra de linha ou
-    /// qualquer outra coisa.
-    ///
-    /// Cada corrida guarda a posição de cada dígito no texto original, para que
-    /// os intervalos consumidos sejam comparáveis mesmo entre padrões de
-    /// comprimentos diferentes.
-    /// </summary>
-    private static List<List<int>> BuildDigitRuns(string text)
-    {
-        var runs = new List<List<int>>();
-        var index = 0;
-
-        while (index < text.Length)
-        {
-            if (!char.IsAsciiDigit(text[index]))
-            {
-                index++;
-                continue;
-            }
-
-            var positions = new List<int>();
-            var cursor = index;
-
-            while (cursor < text.Length)
-            {
-                if (char.IsAsciiDigit(text[cursor]))
-                {
-                    positions.Add(cursor);
-                    cursor++;
-                    continue;
-                }
-
-                if (IsSeparator(text[cursor])
-                    && cursor + 1 < text.Length
-                    && char.IsAsciiDigit(text[cursor + 1]))
-                {
-                    cursor++;
-                    continue;
-                }
-
-                break;
-            }
-
-            runs.Add(positions);
-            index = cursor;
-        }
-
-        return runs;
     }
 
     private static bool IsSeparator(char c) => c is '.' or '-' or '/' or ' ';
