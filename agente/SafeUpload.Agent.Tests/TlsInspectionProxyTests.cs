@@ -5,6 +5,7 @@ using System.Net.Security;
 using System.Net.Sockets;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
+using SafeUpload.Agent.Network.Bypass;
 using SafeUpload.Agent.Network.Certificates;
 using SafeUpload.Agent.Network.Http;
 using SafeUpload.Agent.Network.Proxy;
@@ -188,6 +189,104 @@ public sealed class TlsInspectionProxyTests : IAsyncLifetime
     }
 
     /// <summary>
+    /// Fase 4: host na lista de exceções passa por túnel. O navegador vê o
+    /// certificado do site de verdade, e o inspetor não é chamado.
+    /// </summary>
+    [Fact]
+    public async Task Host_na_lista_de_excecoes_passa_por_tunel()
+    {
+        var inspector = new RecordingInspector();
+        var exceptions = new InterceptionExceptions([new("teste", [SiteHost])]);
+        await using TlsInspectionProxy proxy = StartProxy(inspector, exceptions: exceptions);
+        using HttpClient browser = Browser(proxy, out Func<X509Certificate2?> seen, trust: _internetCa);
+
+        HttpResponseMessage response = await browser.PostAsync(_site.Url("/upload"), new StringContent("CPF 529.982.247-25"));
+
+        Assert.Equal("POST /upload 18", await response.Content.ReadAsStringAsync());
+        Assert.Equal(_internetCa.Subject, seen()!.Issuer);
+        Assert.Empty(inspector.Requests);
+    }
+
+    /// <summary>
+    /// Fase 4: um programa com pinning recusa o certificado da CA de inspeção.
+    /// Depois de duas recusas seguidas o proxy passa a abrir túnel para ele, e
+    /// a conexão que nunca funcionaria interceptada passa a funcionar.
+    /// </summary>
+    [Fact]
+    public async Task Programa_que_recusa_o_certificado_passa_a_ir_por_tunel()
+    {
+        var inspector = new RecordingInspector();
+        await using TlsInspectionProxy proxy = StartProxy(inspector, pinning: new PinningDetector());
+
+        // "Pinning": o cliente só aceita o certificado assinado pela CA do site.
+        using HttpClient pinned = Browser(proxy, out Func<X509Certificate2?> seen, trust: _internetCa);
+
+        await Assert.ThrowsAsync<HttpRequestException>(() => pinned.GetStringAsync(_site.Url("/ola")));
+        Assert.Equal(_inspectionCa.Subject, seen()!.Issuer);
+        Assert.Empty(_site.Requests);
+
+        // O programa insiste, como faz um cliente de verdade. O proxy registra
+        // a recusa quando vê a conexão cair, um instante depois de o cliente
+        // já ter recebido o erro; por isso o número exato de falhas varia.
+        string? body = null;
+        int failures = 1;
+
+        while (body is null && failures < 20)
+        {
+            await Task.Delay(100);
+
+            try
+            {
+                body = await pinned.GetStringAsync(_site.Url("/ola"));
+            }
+            catch (HttpRequestException)
+            {
+                failures++;
+            }
+        }
+
+        Assert.Equal("GET /ola 0", body);
+        Assert.InRange(failures, 2, 3);
+        Assert.Equal(_internetCa.Subject, seen()!.Issuer);
+        Assert.Empty(inspector.Requests);
+    }
+
+    /// <summary>
+    /// Fase 4: handshake que dá certo não conta como recusa, e o host continua
+    /// interceptado.
+    /// </summary>
+    [Fact]
+    public async Task Programa_que_aceita_o_certificado_continua_interceptado()
+    {
+        var detector = new PinningDetector { Threshold = 1 };
+        await using TlsInspectionProxy proxy = StartProxy(new RecordingInspector(), pinning: detector);
+
+        for (int i = 0; i < 3; i++)
+        {
+            using HttpClient browser = Browser(proxy, out Func<X509Certificate2?> seen);
+            await browser.GetStringAsync(_site.Url("/ola"));
+            Assert.Equal(_inspectionCa.Subject, seen()!.Issuer);
+        }
+    }
+
+    /// <summary>
+    /// Fase 4: certificado ruim do site não é pinning. A falha é do lado do
+    /// servidor, o certificado de inspeção nem chega a ser apresentado, e o
+    /// host não vai para o túnel.
+    /// </summary>
+    [Fact]
+    public async Task Certificado_invalido_do_site_nao_conta_como_pinning()
+    {
+        var detector = new PinningDetector { Threshold = 1 };
+        await using TlsInspectionProxy proxy = StartProxy(new RecordingInspector(), upstreamTrust: _inspectionCa, pinning: detector);
+        using HttpClient browser = Browser(proxy, out _, trust: _internetCa);
+
+        await Assert.ThrowsAsync<HttpRequestException>(() => browser.GetStringAsync(_site.Url("/ola")));
+        await Assert.ThrowsAsync<HttpRequestException>(() => browser.GetStringAsync(_site.Url("/ola")));
+        Assert.Empty(_site.Requests);
+    }
+
+    /// <summary>
     /// Se o certificado do site de verdade não passa na validação, o
     /// navegador recebe erro, e não um certificado "bom" da CA de inspeção.
     /// </summary>
@@ -280,7 +379,12 @@ public sealed class TlsInspectionProxyTests : IAsyncLifetime
     }
 
     private TlsInspectionProxy StartProxy(
-        IUploadInspector inspector, bool intercept = true, int maxBody = 1024 * 1024, X509Certificate2? upstreamTrust = null)
+        IUploadInspector inspector,
+        bool intercept = true,
+        int maxBody = 1024 * 1024,
+        X509Certificate2? upstreamTrust = null,
+        InterceptionExceptions? exceptions = null,
+        PinningDetector? pinning = null)
     {
         X509Certificate2 trusted = upstreamTrust ?? _internetCa;
 
@@ -288,6 +392,8 @@ public sealed class TlsInspectionProxyTests : IAsyncLifetime
         {
             Listen = new IPEndPoint(IPAddress.Loopback, 0),
             ShouldIntercept = _ => intercept,
+            Exceptions = exceptions ?? InterceptionExceptions.None,
+            PinningDetector = pinning,
             MaxInspectableBodyBytes = maxBody,
             UpstreamCertificateValidation = (_, certificate, _, errors) =>
                 certificate is not null

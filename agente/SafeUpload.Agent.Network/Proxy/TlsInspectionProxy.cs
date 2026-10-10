@@ -1,4 +1,6 @@
 using System.Collections.Concurrent;
+using System.ComponentModel;
+using System.Diagnostics;
 using System.Globalization;
 using System.Net;
 using System.Net.Security;
@@ -20,7 +22,8 @@ namespace SafeUpload.Agent.Network.Proxy;
 /// 1. O navegador, configurado com o proxy, conecta em 127.0.0.1 e manda
 ///    <c>CONNECT drive.google.com:443</c>, em texto claro. É o único momento
 ///    em que o proxy sabe o destino antes de qualquer criptografia.
-/// 2. Pelo host, <see cref="TlsInspectionProxyOptions.ShouldIntercept"/> decide:
+/// 2. Pelo host, as exceções decidem (<see cref="TlsInspectionProxyOptions.Exceptions"/>
+///    e <see cref="TlsInspectionProxyOptions.PinningDetector"/>):
 ///    - <b>túnel</b> (exceções: bancos, saúde, governo, pinning): o proxy só
 ///      conecta no servidor e copia bytes nos dois sentidos, sem entender nada;
 ///    - <b>interceptação</b>: o proxy responde 200 e faz duas conexões TLS
@@ -255,8 +258,13 @@ public sealed class TlsInspectionProxy : IAsyncDisposable
             return;
         }
 
-        if (!_options.ShouldIntercept(host))
+        // O programa só interessa à detecção de pinning, que aprende por
+        // programa e host.
+        string? application = _options.PinningDetector is null ? null : ApplicationOf(processId);
+
+        if (TunnelReason(host, application) is { } reason)
         {
+            _logger.LogDebug("Túnel sem interceptação para {Host} ({Reason}).", host, reason);
             await TunnelAsync(host, port, clientStream, clientReader, cancellationToken).ConfigureAwait(false);
             return;
         }
@@ -271,6 +279,7 @@ public sealed class TlsInspectionProxy : IAsyncDisposable
         await using var clientTls = new SslStream(transport, leaveInnerStreamOpen: false);
         SslStream? upstreamTls = null;
         TcpClient? upstreamClient = null;
+        bool certificateOffered = false;
 
         try
         {
@@ -285,6 +294,7 @@ public sealed class TlsInspectionProxy : IAsyncDisposable
                 {
                     string name = string.IsNullOrEmpty(hello.ServerName) ? host : hello.ServerName;
                     (upstreamClient, upstreamTls) = await ConnectUpstreamTlsAsync(host, port, name, ct).ConfigureAwait(false);
+                    certificateOffered = true;
 
                     return new SslServerAuthenticationOptions
                     {
@@ -295,9 +305,49 @@ public sealed class TlsInspectionProxy : IAsyncDisposable
                 null,
                 cancellationToken).ConfigureAwait(false);
 
+            // Quem valida o certificado só depois do handshake (OkHttp, .NET)
+            // não o aborta: conclui e fecha em seguida, sem mandar nada. Por
+            // isso a primeira requisição é lida aqui, com o tempo contado.
+            var tlsReader = new HttpStreamReader(clientTls);
+            long handshakeDone = Stopwatch.GetTimestamp();
+            HttpRequestHead? firstRequest = null;
+
+            try
+            {
+                firstRequest = await ReadWithIdleTimeoutAsync(tlsReader, cancellationToken).ConfigureAwait(false);
+            }
+            finally
+            {
+                if (firstRequest is not null)
+                {
+                    _options.PinningDetector?.RecordSuccess(application, host);
+                }
+                else if (_options.PinningDetector is { } detector
+                         && !cancellationToken.IsCancellationRequested
+                         && Stopwatch.GetElapsedTime(handshakeDone) <= detector.AbandonWindow)
+                {
+                    RecordRejection(application, host);
+                }
+            }
+
+            if (firstRequest is null)
+            {
+                return;
+            }
+
             await ExchangeAsync(
-                clientTls, new HttpStreamReader(clientTls), upstreamTls!, host, port, processId,
-                encrypted: true, first: null, closeAfterFirst: false, cancellationToken).ConfigureAwait(false);
+                clientTls, tlsReader, upstreamTls!, host, port, processId,
+                encrypted: true, first: firstRequest, closeAfterFirst: false, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (certificateOffered && !clientTls.IsAuthenticated && ex is AuthenticationException or IOException)
+        {
+            // O servidor de verdade foi validado e o certificado da CA local
+            // foi apresentado, mas o handshake com o programa não fechou: ele
+            // recusou o certificado (pinning, ou não confia na CA) ou desistiu
+            // da conexão. Falha do lado do servidor não chega aqui, porque
+            // nela o certificado nem é apresentado.
+            RecordRejection(application, host);
+            throw;
         }
         finally
         {
@@ -307,6 +357,65 @@ public sealed class TlsInspectionProxy : IAsyncDisposable
             }
 
             upstreamClient?.Dispose();
+        }
+    }
+
+    private void RecordRejection(string? application, string host)
+    {
+        if (_options.PinningDetector?.RecordRejection(application, host) == true)
+        {
+            _logger.LogWarning(
+                "{Application} recusou repetidamente o certificado de inspeção para {Host}; as próximas conexões seguem por túnel, sem inspeção.",
+                application, host);
+        }
+    }
+
+    /// <summary>
+    /// Por que este host passa por túnel, ou nulo se deve ser interceptado.
+    /// </summary>
+    private string? TunnelReason(string host, string? application)
+    {
+        if (!_options.ShouldIntercept(host))
+        {
+            return "regra";
+        }
+
+        if (_options.Exceptions.Match(host) is { } category)
+        {
+            return $"exceção: {category}";
+        }
+
+        return _options.PinningDetector?.IsPinned(application, host) == true ? "pinning detectado" : null;
+    }
+
+    /// <summary>
+    /// Caminho do executável do processo, que é o que identifica o programa
+    /// para a detecção de pinning. O PID não serve: muda a cada execução.
+    /// </summary>
+    private static string? ApplicationOf(int? processId)
+    {
+        if (processId is not { } pid)
+        {
+            return null;
+        }
+
+        try
+        {
+            using var process = Process.GetProcessById(pid);
+
+            try
+            {
+                return process.MainModule?.FileName ?? process.ProcessName;
+            }
+            catch (Win32Exception)
+            {
+                // Processo protegido: o caminho é negado, o nome não.
+                return process.ProcessName;
+            }
+        }
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException)
+        {
+            return null;
         }
     }
 
