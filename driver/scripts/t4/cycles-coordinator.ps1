@@ -116,10 +116,12 @@ function Get-Sample([int]$Cycle, [string]$Label) {
         $sample.Verifier = ConvertFrom-T4VerifierPool $text
     } catch { $sample.VerifierError = $_.Exception.Message }
     try {
-        foreach ($tag in 'SpUs', 'SUfl') { $t = [T4Pool]::Tag($tag); $sample['Tag' + $tag] = [ordered]@{ NonPagedAllocs = $t[0]; NonPagedFrees = $t[1]; NonPagedUsed = $t[2]; PagedAllocs = $t[3]; PagedFrees = $t[4]; PagedUsed = $t[5] } }
+        # Include the writer registry and writer-node tags, so growth outside
+        # the reclaimed stage versions can be attributed from the same sample.
+        foreach ($tag in 'SpUs', 'SUfl', 'SwUr', 'SUwH') { $t = [T4Pool]::Tag($tag); $sample['Tag' + $tag] = [ordered]@{ NonPagedAllocs = $t[0]; NonPagedFrees = $t[1]; NonPagedUsed = $t[2]; PagedAllocs = $t[3]; PagedFrees = $t[4]; PagedUsed = $t[5] } }
     } catch { $sample.TagError = $_.Exception.Message }
     try { $sample.PoolNonpagedBytes = [int64](Get-CimInstance Win32_PerfRawData_PerfOS_Memory).PoolNonpagedBytes } catch { $sample.PoolError = $_.Exception.Message }
-    try { $c = & $Diagnostics -Query counters; $sample.StageWorker = $c.stageWorker; $sample.ReclaimPasses = $c.reclaimWorker.passes } catch { $sample.CountersError = $_.Exception.Message }
+    try { $c = & $Diagnostics -Query counters; $sample.StageWorker = $c.stageWorker; $sample.ReclaimPasses = $c.reclaimWorker.passes; $sample.RegistryReclaim = $c.reclaimWorker; $sample.WriterState = $c.writerState } catch { $sample.CountersError = $_.Exception.Message }
     $sample.StageFiles = @(Get-ChildItem -LiteralPath $stageDir -File -Force -ErrorAction SilentlyContinue).Count
     $sample.JournalFiles = @(Get-ChildItem -LiteralPath $journalDir -Filter *.json -File -Force -ErrorAction SilentlyContinue).Count
     $sample.Handbacks = @(Get-ChildItem -LiteralPath $handback -File -Force -ErrorAction SilentlyContinue).Count
