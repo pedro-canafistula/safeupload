@@ -639,6 +639,19 @@ public sealed class MinifilterInterceptor : BackgroundService
             }
             // Approved stages a previous run could not dispose of (or that the driver dropped at unload).
             _stagePublisher.DisposeReleasedStagesAsync(stoppingToken).GetAwaiter().GetResult();
+            // T11: finished transfers from earlier boots leave the journal, so it stops growing with every save. The cutoff is a day
+            // before this boot: no per-boot driver state can name those transfers, and the guest clock's step after boot is covered.
+            try
+            {
+                DateTimeOffset bootUtc = DateTimeOffset.UtcNow - TimeSpan.FromMilliseconds(Environment.TickCount64);
+                int compacted = _stageJournal.CompactAsync(bootUtc - TimeSpan.FromDays(1), stoppingToken).GetAwaiter().GetResult();
+                if (compacted > 0)
+                    _logger.LogInformation("Diario de transferencias compactado: {Count} entradas concluidas removidas.", compacted);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                _logger.LogWarning(ex, "Falha ao compactar o diario de transferencias; ele sera compactado no proximo inicio.");
+            }
             return true;
         }
         catch (Exception ex)

@@ -662,6 +662,67 @@ public sealed class StagedTransferJournal
         return entries;
     }
 
+    /// <summary>
+    /// T11 journal compaction: removes manifests whose transfer is finished and cleaned up and last changed before
+    /// <paramref name="cutoffUtc"/> (the service passes a time safely before this boot, so no per-boot driver state, such as a
+    /// writer's rename tombstone, can still name the transfer). Finished: no pending rename, the stage file is gone, and either
+    /// Released (approved, or justified with its stage deleted) or Blocked with the window closed, the hand-back verified and the
+    /// stage deleted. A Blocked version whose hand-back failed keeps its stage and is never removed.
+    /// "Latest wins" is decided from the generations of every manifest claiming a destination (its own name and its rename
+    /// tombstones), so a manifest is removed only if, for each destination it claims, it is not the newest claim or every claimant
+    /// of that destination is removable too; otherwise an older version kept for justification could become current again.
+    /// </summary>
+    public async Task<int> CompactAsync(DateTimeOffset cutoffUtc, CancellationToken cancellationToken)
+    {
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var entries = new List<TransferJournalEntry>();
+            foreach (FileInfo file in new DirectoryInfo(_directory).EnumerateFiles("*.json"))
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                if (!Guid.TryParseExact(Path.GetFileNameWithoutExtension(file.Name), "N", out Guid id))
+                    throw new InvalidDataException($"Unexpected journal file: {file.FullName}");
+                entries.Add(await ReadCoreAsync(id, cancellationToken).ConfigureAwait(false));
+            }
+            static IEnumerable<(string Destination, long Generation)> Claims(TransferJournalEntry entry)
+            {
+                yield return (entry.Transfer.DestinationPath, entry.DestinationGeneration);
+                for (var name = entry.NamespaceTombstones; name is not null; name = name.Previous)
+                    yield return (name.DestinationPath, name.Generation);
+            }
+            bool Finished(TransferJournalEntry e) =>
+                e.PendingRename is null && e.UpdatedAtUtc < cutoffUtc && !File.Exists(e.Transfer.StagePath) &&
+                ((e.State == TransferJournalState.Released &&
+                  (e.HandbackState == StagedHandbackState.NotAttempted || e.StageDeleted)) ||
+                 (e.State == TransferJournalState.Blocked && e.JustificationWindowClosed && e.StageDeleted &&
+                  e.HandbackState == StagedHandbackState.Verified));
+            var finished = entries.Where(Finished).Select(e => e.Transfer.TransferId).ToHashSet();
+            var byDestination = entries
+                .SelectMany(e => Claims(e).Select(c => (c.Destination, c.Generation, Id: e.Transfer.TransferId)))
+                .GroupBy(c => c.Destination, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(g => g.Key, g => g.ToList(), StringComparer.OrdinalIgnoreCase);
+            int removed = 0;
+            foreach (TransferJournalEntry entry in entries)
+            {
+                Guid id = entry.Transfer.TransferId;
+                if (!finished.Contains(id)) continue;
+                bool keep = Claims(entry).Any(claim =>
+                {
+                    var claimants = byDestination[claim.Destination];
+                    bool newest = !claimants.Any(c => c.Id != id && c.Generation > claim.Generation);
+                    return newest && !claimants.All(c => finished.Contains(c.Id));
+                });
+                if (keep) continue;
+                File.Delete(ManifestPath(id));
+                ForgetScanned(id);
+                removed++;
+            }
+            return removed;
+        }
+        finally { _gate.Release(); }
+    }
+
     /// <summary>Released (approved and published) entries, for stage disposal when the service starts.</summary>
     public async Task<IReadOnlyList<TransferJournalEntry>> ReadReleasedAsync(CancellationToken cancellationToken)
     {

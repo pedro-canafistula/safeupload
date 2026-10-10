@@ -958,4 +958,97 @@ public sealed class StagedTransferJournalTests : IDisposable
             finally { file.SetAccessControl(original); }
         }
     }
+
+    private static async Task<TransferJournalEntry> ReleaseAsync(StagedTransferJournal journal, StagedTransfer t)
+    {
+        await journal.CreateAsync(t, CancellationToken.None);
+        await journal.SealAsync(t.TransferId, t.ProcessId, t.StagePath, CancellationToken.None);
+        await journal.TransitionAsync(t.TransferId, TransferJournalState.Sealed, TransferJournalState.Inspecting, null, CancellationToken.None);
+        await journal.TransitionAsync(t.TransferId, TransferJournalState.Inspecting, TransferJournalState.Approved, new string('B', 64), CancellationToken.None);
+        await journal.TransitionAsync(t.TransferId, TransferJournalState.Approved, TransferJournalState.Publishing, null, CancellationToken.None);
+        return await journal.TransitionAsync(t.TransferId, TransferJournalState.Publishing, TransferJournalState.Released, null, CancellationToken.None);
+    }
+
+    private static async Task BlockAsync(StagedTransferJournal journal, StagedTransfer t, bool windowClosed)
+    {
+        await journal.CreateAsync(t, CancellationToken.None);
+        await journal.SealAsync(t.TransferId, t.ProcessId, t.StagePath, CancellationToken.None);
+        await journal.TransitionAsync(t.TransferId, TransferJournalState.Sealed, TransferJournalState.Inspecting, null, CancellationToken.None);
+        await journal.TransitionAsync(t.TransferId, TransferJournalState.Inspecting, TransferJournalState.Blocked, new string('C', 64),
+            CancellationToken.None, blockedEvidence: new BlockedTransferEvidence(1,
+                windowClosed ? null : DateTimeOffset.UtcNow.AddDays(7), WindowClosed: windowClosed));
+    }
+
+    private string[] Manifests() => Directory.GetFiles(Path.Combine(_workspace.Root, "journal"), "*.json");
+
+    [Fact]
+    public async Task Compaction_removes_finished_versions_of_a_destination_together()
+    {
+        var journal = Journal();
+        var first = Transfer();
+        var second = first with { TransferId = Guid.NewGuid(), StagePath = first.StagePath + ".next" };
+        await ReleaseAsync(journal, first);
+        await ReleaseAsync(journal, second);
+        Assert.Equal(0, await journal.CompactAsync(DateTimeOffset.UtcNow.AddMinutes(-5), CancellationToken.None));
+        Assert.Equal(2, Manifests().Length);
+        Assert.Equal(2, await journal.CompactAsync(DateTimeOffset.UtcNow.AddSeconds(1), CancellationToken.None));
+        Assert.Empty(Manifests());
+        Assert.Empty(await Journal().ReadReleasedAsync(CancellationToken.None));
+        var third = await journal.CreateAsync(first with { TransferId = Guid.NewGuid() }, CancellationToken.None);
+        Assert.True(third.DestinationGeneration > 0);
+    }
+
+    [Fact]
+    public async Task Compaction_keeps_the_newest_version_while_an_older_one_can_still_be_justified()
+    {
+        var journal = Journal();
+        var blocked = Transfer();
+        var released = blocked with { TransferId = Guid.NewGuid(), StagePath = blocked.StagePath + ".next" };
+        await BlockAsync(journal, blocked, windowClosed: false);
+        await ReleaseAsync(journal, released);
+        Assert.Equal(0, await journal.CompactAsync(DateTimeOffset.UtcNow.AddSeconds(1), CancellationToken.None));
+        Assert.Equal(2, Manifests().Length);
+        // The newer released version still supersedes the blocked one: its justification cannot publish over it.
+        await Assert.ThrowsAsync<IOException>(() => Journal().TransitionAsync(blocked.TransferId,
+            TransferJournalState.Blocked, TransferJournalState.Inspecting, null, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task Compaction_keeps_a_released_version_whose_stage_is_still_on_disk()
+    {
+        var journal = Journal();
+        var transfer = Transfer();
+        await ReleaseAsync(journal, transfer);
+        Directory.CreateDirectory(Path.GetDirectoryName(transfer.StagePath)!);
+        await File.WriteAllTextAsync(transfer.StagePath, "approved stage not yet disposed");
+        Assert.Equal(0, await journal.CompactAsync(DateTimeOffset.UtcNow.AddSeconds(1), CancellationToken.None));
+        File.Delete(transfer.StagePath);
+        Assert.Equal(1, await journal.CompactAsync(DateTimeOffset.UtcNow.AddSeconds(1), CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task Compaction_removes_a_blocked_version_only_after_verified_hand_back_and_cleanup()
+    {
+        var journal = Journal();
+        var transfer = Transfer();
+        await BlockAsync(journal, transfer, windowClosed: true);
+        Assert.Equal(0, await journal.CompactAsync(DateTimeOffset.UtcNow.AddSeconds(1), CancellationToken.None));
+        await journal.BeginHandbackAttemptAsync(transfer.TransferId, CancellationToken.None);
+        await journal.CompleteHandbackAsync(transfer.TransferId, null, null, "copy failed", CancellationToken.None);
+        // A failed hand-back keeps the stage: the user's bytes exist nowhere else.
+        Assert.Equal(0, await journal.CompactAsync(DateTimeOffset.UtcNow.AddSeconds(1), CancellationToken.None));
+
+        var other = Transfer() with { DestinationPath = Path.Combine(_workspace.Root, "destination", "other.txt") };
+        await BlockAsync(journal, other, windowClosed: true);
+        await journal.BeginHandbackAttemptAsync(other.TransferId, CancellationToken.None);
+        await journal.CompleteHandbackAsync(other.TransferId, Path.Combine(_workspace.Root, "handback", "other.txt"), 3, null,
+            CancellationToken.None);
+        Assert.Equal(0, await journal.CompactAsync(DateTimeOffset.UtcNow.AddSeconds(1), CancellationToken.None));
+        await journal.TryBeginStageCleanupAsync(other.TransferId, CancellationToken.None);
+        var cleaned = await journal.CompleteStageCleanupAsync(other.TransferId, CancellationToken.None);
+        Assert.True(cleaned.StageDeleted);
+        Assert.Equal(1, await journal.CompactAsync(DateTimeOffset.UtcNow.AddSeconds(1), CancellationToken.None));
+        Assert.Single(Manifests());
+        Assert.Equal(transfer.TransferId, (await Journal().ReadAsync(transfer.TransferId, CancellationToken.None)).Transfer.TransferId);
+    }
 }
