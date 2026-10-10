@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using SafeUpload.Agent.Core.Application;
 using SafeUpload.Agent.Core.Contracts;
 using SafeUpload.Agent.Core.Domain;
+using StageDisposeOutcome = SafeUpload.Agent.Minifilter.StageDisposeOutcome;
 using SafeUpload.Agent.Service.Notifications;
 
 namespace SafeUpload.Agent.Service.Interception;
@@ -356,7 +357,73 @@ public sealed class StagedTransferPublisher
                 transfer.TransferId, CancellationToken.None).ConfigureAwait(false);
             await ProcessBlockedCleanupAsync(releasedEntry, CancellationToken.None).ConfigureAwait(false);
         }
+        else await DisposeReleasedStageAsync(transfer.TransferId, CancellationToken.None).ConfigureAwait(false);
         return StagedTransferOutcome.Released;
+    }
+
+    /// <summary>
+    /// An approved version is published, so its stage is no longer needed. The driver may still hold the version (a
+    /// program can keep the file open, rename through its handle, or start a follow-up version from the stage); then
+    /// it deletes the stage once nothing references it. Otherwise the service deletes it now. A failure leaves the stage
+    /// for the next service start (DisposeReleasedStagesAsync).
+    /// </summary>
+    public async Task DisposeReleasedStageAsync(Guid transferId, CancellationToken token)
+    {
+        try
+        {
+            TransferJournalEntry entry = await _journal.ReadAsync(transferId, token).ConfigureAwait(false);
+            if (!IsDisposableRelease(entry)) return;
+            uint renames = CommittedRenames(entry);
+            if (_publicationGate.DisposeStage(transferId, StageDisposeOutcome.Released, renames)) return;
+            // Nothing in the driver references the version, so no rename can change it any more; the journal may still
+            // have moved on before the disposal was sent (a committed rename re-inspects the version): check again.
+            entry = await _journal.ReadAsync(transferId, token).ConfigureAwait(false);
+            if (!IsDisposableRelease(entry) || CommittedRenames(entry) != renames) return;
+            RequirePrivateStagePath(entry.Transfer.StagePath);
+            File.Delete(entry.Transfer.StagePath);
+        }
+        catch (Exception ex) when (!token.IsCancellationRequested && ex is IOException or UnauthorizedAccessException or
+            System.ComponentModel.Win32Exception or InvalidOperationException or ArgumentException)
+        {
+            _logger?.LogWarning(ex, "Could not dispose of released stage {TransferId}; retried at the next service start.",
+                transferId);
+        }
+    }
+
+    private static bool IsDisposableRelease(TransferJournalEntry entry) =>
+        entry.State == TransferJournalState.Released && entry.PendingRename is null &&
+        entry.HandbackState == StagedHandbackState.NotAttempted && !entry.StageDeleted;
+
+    /// <summary>Each committed rename pushes one NamespaceTombstone; the driver counts the same commits.</summary>
+    private static uint CommittedRenames(TransferJournalEntry entry)
+    {
+        uint count = 0;
+        for (var name = entry.NamespaceTombstones; name is not null; name = name.Previous) count++;
+        return count;
+    }
+
+    /// <summary>Service start: approved versions whose stage is still on disk (the driver kept or lost it).</summary>
+    public async Task DisposeReleasedStagesAsync(CancellationToken token)
+    {
+        foreach (TransferJournalEntry entry in await _journal.ReadReleasedAsync(token).ConfigureAwait(false))
+        {
+            token.ThrowIfCancellationRequested();
+            if (!IsDisposableRelease(entry) || !File.Exists(entry.Transfer.StagePath)) continue;
+            await DisposeReleasedStageAsync(entry.Transfer.TransferId, token).ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>The service deleted a blocked or justified stage: the driver may release the version now.</summary>
+    private void DisposeCleanedUpStage(TransferJournalEntry entry)
+    {
+        StagedTransfer transfer = entry.Transfer;
+        try { _ = _publicationGate.DisposeStage(transfer.TransferId, StageDisposeOutcome.CleanedUp, CommittedRenames(entry)); }
+        catch (Exception ex) when (ex is IOException or System.ComponentModel.Win32Exception or ArgumentException)
+        {
+            // The driver also retires a version whose stage is delete-pending at its next event or service connect.
+            _logger?.LogWarning(ex, "Could not report the cleaned-up stage {TransferId} to the driver.",
+                transfer.TransferId);
+        }
     }
 
     /// <summary>Restores a blocked hand-back and lease after a service restart.</summary>
@@ -532,6 +599,7 @@ public sealed class StagedTransferPublisher
                 File.Delete(current.Transfer.StagePath);
             await _journal.CompleteStageCleanupAsync(current.Transfer.TransferId, token).ConfigureAwait(false);
             }
+            DisposeCleanedUpStage(current);
         }
         catch (Exception ex) when (!token.IsCancellationRequested)
         {

@@ -3,6 +3,7 @@ using SafeUpload.Agent.Core.Contracts;
 using SafeUpload.Agent.Core.Domain;
 using SafeUpload.Agent.Core.Infrastructure;
 using SafeUpload.Agent.Core.Infrastructure.Extraction;
+using StageDisposeOutcome = SafeUpload.Agent.Minifilter.StageDisposeOutcome;
 using SafeUpload.Agent.Service.Interception;
 using SafeUpload.Agent.Service.Notifications;
 using System.Text.Json.Nodes;
@@ -73,6 +74,7 @@ public sealed class StagedTransferPublisherTests : IDisposable
     {
         public bool Disposed;
         public IDisposable Authorize(StagedTransfer transfer, string temporaryDestination, string digest) => this;
+        public bool DisposeStage(Guid transferId, uint outcome, uint committedRenames) => false;
         public void Dispose()
         {
             Disposed = true;
@@ -175,7 +177,72 @@ public sealed class StagedTransferPublisherTests : IDisposable
             if (refuse) throw new IOException("Disconnected kernel publication gate.");
             return this;
         }
+        // Held: the kernel still holds the published version, so the stage stays for the digest check below.
+        public bool DisposeStage(Guid transferId, uint outcome, uint committedRenames) => true;
         public void Dispose() => Disposed = true;
+    }
+
+    /// <summary>Records SAFEUPLOAD_CONTROL_STAGE_DISPOSE calls; Held is the driver's answer.</summary>
+    private sealed class DisposingPublicationGate(bool held) : IStagedPublicationGate, IDisposable
+    {
+        public readonly List<(Guid TransferId, uint Outcome)> Disposals = [];
+        public IDisposable Authorize(StagedTransfer transfer, string temporaryDestination, string digest) => this;
+        public bool DisposeStage(Guid transferId, uint outcome, uint committedRenames)
+        {
+            Disposals.Add((transferId, outcome));
+            return held;
+        }
+        public void Dispose() { }
+    }
+
+    private StagedTransferPublisher DisposingPublisher(DisposingPublicationGate gate) =>
+        new(new InspectionService(new LocalPolicyStore(_workspace.PolicyFile),
+                new LocalQueueAuditSink(_workspace.QueueFile), ExtractorRegistry.CreateDefault(), new VerdictCache()),
+            _notifications, _journal, _stagingRoot, gate, sessionUserSidResolver: _ => TestRequestorSid);
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Approved_publication_disposes_the_stage(bool held)
+    {
+        var gate = new DisposingPublicationGate(held);
+        var transfer = Transfer("disposed.txt", "approved disposed version");
+
+        Assert.Equal(StagedTransferOutcome.Released,
+            await DisposingPublisher(gate).PublishAsync(transfer, CancellationToken.None));
+        Assert.Equal(new[] { (transfer.TransferId, StageDisposeOutcome.Released) }, gate.Disposals);
+        // A version the driver still holds keeps its stage until the driver releases it; otherwise the service deletes it.
+        Assert.Equal(held, File.Exists(transfer.StagePath));
+        Assert.Equal("approved disposed version", await File.ReadAllTextAsync(transfer.DestinationPath));
+    }
+
+    [Fact]
+    public async Task Blocked_publication_keeps_the_stage_and_disposes_nothing()
+    {
+        var gate = new DisposingPublicationGate(held: false);
+        var transfer = Transfer("blocked-disposal.txt", "CPF: 529.982.247-25");
+
+        Assert.Equal(StagedTransferOutcome.Blocked,
+            await DisposingPublisher(gate).PublishAsync(transfer, CancellationToken.None));
+        Assert.Empty(gate.Disposals);
+        Assert.True(File.Exists(transfer.StagePath));
+    }
+
+    [Fact]
+    public async Task Service_start_disposes_released_stages_left_on_disk()
+    {
+        var running = new DisposingPublicationGate(held: true);
+        var transfer = Transfer("left-on-disk.txt", "approved version left on disk");
+        Assert.Equal(StagedTransferOutcome.Released,
+            await DisposingPublisher(running).PublishAsync(transfer, CancellationToken.None));
+        Assert.True(File.Exists(transfer.StagePath));
+
+        var restarted = new DisposingPublicationGate(held: false);
+        await DisposingPublisher(restarted).DisposeReleasedStagesAsync(CancellationToken.None);
+
+        Assert.Equal(new[] { (transfer.TransferId, StageDisposeOutcome.Released) }, restarted.Disposals);
+        Assert.False(File.Exists(transfer.StagePath));
+        Assert.Equal("approved version left on disk", await File.ReadAllTextAsync(transfer.DestinationPath));
     }
 
     [Theory]
@@ -235,6 +302,7 @@ public sealed class StagedTransferPublisherTests : IDisposable
     private sealed class TestPublicationGate : IStagedPublicationGate, IDisposable
     {
         public IDisposable Authorize(StagedTransfer transfer, string temporaryDestination, string digest) => this;
+        public bool DisposeStage(Guid transferId, uint outcome, uint committedRenames) => false;
         public void Dispose() { }
     }
 

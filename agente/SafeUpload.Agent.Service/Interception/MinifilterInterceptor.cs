@@ -637,6 +637,8 @@ public sealed class MinifilterInterceptor : BackgroundService
                          entry.JustificationWindowClosed && !entry.StageDeleted)
                     _stagePublisher.ProcessBlockedCleanupAsync(entry, stoppingToken).GetAwaiter().GetResult();
             }
+            // Approved stages a previous run could not dispose of (or that the driver dropped at unload).
+            _stagePublisher.DisposeReleasedStagesAsync(stoppingToken).GetAwaiter().GetResult();
             return true;
         }
         catch (Exception ex)

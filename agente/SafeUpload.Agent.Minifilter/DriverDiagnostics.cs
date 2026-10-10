@@ -20,7 +20,8 @@ public static class DiagnosticsContract
     public const int DenyRecordSize = 192;
     public const int DenyRingRequestSize = 24;
     public const int DenyRingBatchSize = 32 + DenyRingBatchEntries * DenyRecordSize;
-    public const int DiagCountersSize = 120;
+    public const int DiagCountersSize = 296;
+    public const int StageLifetimeCountersSize = 176;
     public const int WriterStateStatusSize = 288;
 
     // Deny record flags (SAFEUPLOAD_DENY_FLAG_*).
@@ -46,6 +47,7 @@ public static class DiagnosticsContract
         Check(sizeof(SafeUploadDenyRingRequest), DenyRingRequestSize, nameof(SafeUploadDenyRingRequest));
         Check(sizeof(SafeUploadDenyRingBatch), DenyRingBatchSize, nameof(SafeUploadDenyRingBatch));
         Check(sizeof(SafeUploadDiagCounters), DiagCountersSize, nameof(SafeUploadDiagCounters));
+        Check(sizeof(SafeUploadStageLifetimeCounters), StageLifetimeCountersSize, nameof(SafeUploadStageLifetimeCounters));
         Check(sizeof(SafeUploadWriterStateStatus), WriterStateStatusSize, nameof(SafeUploadWriterStateStatus));
     }
 
@@ -122,6 +124,37 @@ public struct SafeUploadDiagCounters
     public ulong ReclaimParkedPasses;
     public ulong ReclaimMoreWorkRequeues;
     public ulong ReclaimWakeupsSkipped;
+    public SafeUploadStageLifetimeCounters Stage;
+}
+
+/// <summary>SAFEUPLOAD_STAGE_LIFETIME_COUNTERS (176 bytes): stage-version lifetime and stage-worker wakes (T4).</summary>
+[StructLayout(LayoutKind.Sequential, Pack = 8)]
+public struct SafeUploadStageLifetimeCounters
+{
+    public uint LiveVersions;
+    public uint LiveViews;
+    public uint Tombstones;
+    public uint WaitingVersions;
+    public ulong VersionsCreated;
+    public ulong VersionsReleased;
+    public ulong ViewsReleased;
+    public ulong CapRefusals;
+    public ulong TombstoneRefusals;
+    public ulong WorkerPasses;
+    public ulong WakeCleanup;
+    public ulong WakeClose;
+    public ulong WakeDispose;
+    public ulong WakeConnect;
+    public ulong WakeExit;
+    public ulong WakeTimer;
+    public ulong WakeInline;
+    public ulong TimerArms;
+    public ulong DisposeHeld;
+    public ulong DisposeNotHeld;
+    public ulong DisposeStale;
+    public ulong DisposeDeferred;
+    public ulong StageDeletes;
+    public ulong StageDeleteFailures;
 }
 
 /// <summary>SAFEUPLOAD_WRITER_STATE_STATUS of the staging build (288 bytes).</summary>

@@ -341,9 +341,24 @@ SafeUploadStageSeal (
                    StageName->Length );
     status = SafeUploadRequestVerdict( exchange, &verdict, &answered );
     ExFreePoolWithTag( exchange, SAFEUPLOAD_POOL_TAG );
-    if (!NT_SUCCESS( status ) || !answered ||
-        verdict != SAFEUPLOAD_VERDICT_ALLOW) {
-        return STATUS_ACCESS_DENIED;
+    return SafeUploadStageExchangeResult( status, answered, verdict );
+}
+
+/* The stage worker retries an unanswered request on its timer and a refused one at the next service connect, so callers need
+ * to tell them apart: STATUS_SUCCESS (answered, allow), STATUS_ACCESS_DENIED (answered, deny), STATUS_PORT_DISCONNECTED (no
+ * service, or unloading), STATUS_IO_TIMEOUT (sent but no valid reply). */
+NTSTATUS
+SafeUploadStageExchangeResult (
+    _In_ NTSTATUS SendStatus,
+    _In_ BOOLEAN Answered,
+    _In_ UINT32 Verdict
+    )
+{
+    if (SendStatus == STATUS_SUCCESS && Answered) {
+        return Verdict == SAFEUPLOAD_VERDICT_ALLOW ? STATUS_SUCCESS : STATUS_ACCESS_DENIED;
     }
-    return STATUS_SUCCESS;
+    if (SendStatus == STATUS_PORT_DISCONNECTED || SendStatus == STATUS_FLT_DELETING_OBJECT) {
+        return STATUS_PORT_DISCONNECTED;
+    }
+    return STATUS_IO_TIMEOUT;
 }

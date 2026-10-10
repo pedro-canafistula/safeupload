@@ -5,6 +5,7 @@ using SafeUpload.Agent.Core.Contracts;
 using SafeUpload.Agent.Core.Domain;
 using SafeUpload.Agent.Core.Infrastructure;
 using SafeUpload.Agent.Core.Infrastructure.Extraction;
+using StageDisposeOutcome = SafeUpload.Agent.Minifilter.StageDisposeOutcome;
 using SafeUpload.Agent.Service.Interception;
 using SafeUpload.Agent.Service.Notifications;
 
@@ -32,6 +33,8 @@ public sealed class StagedHandbackTests : IDisposable
     }
 
     public void Dispose() => _workspace.Dispose();
+
+    private readonly TestPublicationGate _gate = new();
 
     [Fact]
     public async Task Verified_handback_is_idempotent_across_restart_and_cleanup_waits_for_window_close()
@@ -66,6 +69,7 @@ public sealed class StagedHandbackTests : IDisposable
             CancellationToken.None);
         Assert.Equal(0, afterRestartCopy.CopyCount);
         Assert.True(File.Exists(transfer.StagePath));
+        Assert.Empty(_gate.Disposals); /* the hand-back window is still open: the driver keeps the version */
 
         blocked = await restartedJournal.ReadAsync(transfer.TransferId, CancellationToken.None);
         await restartedJournal.CloseJustificationWindowAsync(transfer.TransferId,
@@ -80,6 +84,7 @@ public sealed class StagedHandbackTests : IDisposable
         Assert.True(cleaned.StageDeleted);
         Assert.False(File.Exists(transfer.StagePath));
         Assert.Equal(0, afterRestartCopy.CopyCount);
+        Assert.Equal(new[] { (transfer.TransferId, StageDisposeOutcome.CleanedUp) }, _gate.Disposals);
     }
 
     [Fact]
@@ -507,7 +512,7 @@ public sealed class StagedHandbackTests : IDisposable
         StagedJustifications justifications, IStagedHandbackCopier copier) =>
         new(new InspectionService(policy, new LocalQueueAuditSink(_workspace.QueueFile),
                 ExtractorRegistry.CreateDefault(), new VerdictCache()),
-            _notifications, journal, _stagingRoot, new TestPublicationGate(),
+            _notifications, journal, _stagingRoot, _gate,
             justifications, policyStore: policy, handbackCopier: copier,
             sessionUserSidResolver: _ => TestRequestorSid);
 
@@ -577,7 +582,13 @@ public sealed class StagedHandbackTests : IDisposable
 
     private sealed class TestPublicationGate : IStagedPublicationGate, IDisposable
     {
+        public readonly List<(Guid TransferId, uint Outcome)> Disposals = [];
         public IDisposable Authorize(StagedTransfer transfer, string temporaryDestination, string digest) => this;
+        public bool DisposeStage(Guid transferId, uint outcome, uint committedRenames)
+        {
+            Disposals.Add((transferId, outcome));
+            return true;
+        }
         public void Dispose() { }
     }
 

@@ -622,6 +622,28 @@ public sealed class StagedTransferJournal
         return entries;
     }
 
+    /// <summary>Released (approved and published) entries, for stage disposal when the service starts.</summary>
+    public async Task<IReadOnlyList<TransferJournalEntry>> ReadReleasedAsync(CancellationToken cancellationToken)
+    {
+        var entries = new List<TransferJournalEntry>();
+        foreach (FileInfo file in new DirectoryInfo(_directory).EnumerateFiles("*.json"))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (!Guid.TryParseExact(Path.GetFileNameWithoutExtension(file.Name), "N", out Guid id))
+            {
+                throw new InvalidDataException($"Unexpected journal file: {file.FullName}");
+            }
+
+            TransferJournalEntry entry;
+            await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+            try { entry = await ReadScannedAsync(file, id, cancellationToken).ConfigureAwait(false); }
+            finally { _gate.Release(); }
+            if (entry.State == TransferJournalState.Released && entry.PendingRename is null) entries.Add(entry);
+        }
+
+        return entries;
+    }
+
     public async Task<TransferJournalEntry> BeginHandbackAttemptAsync(Guid id,
         CancellationToken token)
     {

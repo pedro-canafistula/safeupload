@@ -35,6 +35,9 @@ Environment:
 --*/
 
 #include "Filter.h"
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+#include "Stage.h"
+#endif
 
 //
 //  Buckets keyed by PID. The table is small in practice - tens of entries -
@@ -261,6 +264,15 @@ Routine Description:
     }
 
     SafeUploadClearProcessTaint( HandleToULong( ProcessId ) );
+
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    //
+    //  The stage worker detaches the exited owner's private views and drops
+    //  its renamed-away names; this only queues the PID (T4).
+    //
+
+    SafeUploadStageProcessExited( ProcessId );
+#endif
 }
 
 

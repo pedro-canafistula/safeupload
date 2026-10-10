@@ -356,6 +356,37 @@ public sealed partial class FilterPort : IDisposable
         if (hr != 0) throw new Win32Exception(hr, $"Publication permit refused: 0x{hr:X8}");
     }
 
+    /// <summary>
+    /// Tells the driver the service no longer needs a staged version (SAFEUPLOAD_CONTROL_STAGE_DISPOSE). Returns true when
+    /// the driver still holds the version: it releases it once nothing references it and, for a released (approved)
+    /// version, deletes the stage file then; a disposal that a later rename made stale is also answered true (the driver
+    /// keeps the version for the new inspection). False means nothing references it and the stage is the service's.
+    /// </summary>
+    public unsafe bool DisposeStage(Guid transferId, uint outcome, uint committedRenames)
+    {
+        if (transferId == Guid.Empty ||
+            (outcome != StageDisposeOutcome.Released && outcome != StageDisposeOutcome.CleanedUp))
+            throw new ArgumentException("Invalid stage disposal.");
+        SafeUploadStageDisposeMessage message = new()
+        {
+            Control = new() { Version = Contract.Version,
+                StructSize = (uint)sizeof(SafeUploadStageDisposeMessage),
+                Command = ControlCommand.StageDispose },
+            TransferId = transferId,
+            Outcome = outcome,
+            CommittedRenames = committedRenames,
+        };
+        SafeUploadStageDisposeReply reply = default;
+        using var send = EnterSend();
+        int hr = FilterSendMessage(send.Handle, (IntPtr)(&message), (uint)sizeof(SafeUploadStageDisposeMessage),
+            (IntPtr)(&reply), (uint)sizeof(SafeUploadStageDisposeReply), out uint returned);
+        if (hr != 0) throw new Win32Exception(hr, $"Stage disposal refused: 0x{hr:X8}");
+        if (returned != sizeof(SafeUploadStageDisposeReply) ||
+            reply.StructSize != sizeof(SafeUploadStageDisposeReply) || reply.Held > 1)
+            throw new System.IO.IOException("Malformed stage disposal reply.");
+        return reply.Held == 1;
+    }
+
     public unsafe SafeUploadCounters GetCounters()
     {
         var control = new SafeUploadControl

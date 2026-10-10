@@ -49,6 +49,7 @@ NTSTATUS SafeUploadStageAllocate(_Inout_ PFLT_CALLBACK_DATA Data, _In_ PUNICODE_
     _In_opt_ PUNICODE_STRING TombstoneStageName,
     _Out_writes_(SAFEUPLOAD_MAX_STAGE_NAME_CHARS) PWCH StageName, _Out_ PUSHORT StageNameLength);
 NTSTATUS SafeUploadStageSeal(_In_ ULONG ProcessId, _In_ PUNICODE_STRING StageName);
+NTSTATUS SafeUploadStageExchangeResult(_In_ NTSTATUS SendStatus, _In_ BOOLEAN Answered, _In_ UINT32 Verdict);
 BOOLEAN SafeUploadStageTxfSetInformationMustRefuse(_In_ PFLT_CALLBACK_DATA Data,
     _In_ PCFLT_RELATED_OBJECTS Objects);
 BOOLEAN SafeUploadStageTxfCreateMustRefuse(_In_ PFLT_CALLBACK_DATA Data,
@@ -61,6 +62,12 @@ FLT_PREOP_CALLBACK_STATUS SafeUploadStageTxfFsctlPreOperation(
     _Out_ PVOID *CompletionContext);
 
 #if SAFEUPLOAD_STAGING_PROTOTYPE
+/* StageStream.c, T4 stage-version lifetime: events that wake the stage worker. */
+NTSTATUS SafeUploadStageDispose(_In_ PSAFEUPLOAD_STAGE_DISPOSE_MESSAGE Message, _Out_ PUINT32 Held);
+VOID SafeUploadStageServiceConnected(VOID);
+VOID SafeUploadStageProcessExited(_In_ HANDLE ProcessId);
+VOID SafeUploadStageGetLifetimeCounters(_Out_ PSAFEUPLOAD_STAGE_LIFETIME_COUNTERS Counters);
+
 /* DenyRing.c: always-on record of operations completed with an error status. */
 VOID SafeUploadDenyRingInitialize(VOID);
 VOID SafeUploadDenySiteHint(_In_ PFLT_CALLBACK_DATA Data, _In_ PVOID Site);

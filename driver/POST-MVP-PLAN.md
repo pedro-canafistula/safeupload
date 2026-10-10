@@ -207,6 +207,16 @@ against the cap. This is a lifetime change: design note first, Luna review befor
 **Done when** 10,000 save cycles in one boot (approve and block mixed) run with flat nonpaged pool and no Verifier hit, and C01-C04, B01,
 B02 and X01 pass in all three modes.
 
+**Status 2026-10-10.** Design note `driver/T4-STAGE-LIFETIME.md`. A version is released once nothing can reach it, and approved stage files
+are deleted. Rename records keep a name and a transfer ID in a bounded table. The worker runs on events: last cleanup, last close, the
+service's new DISPOSE message, service connect, process exit, inline settling in create. A retry timer is armed only while a version waits
+on something Windows does not signal (owner decision 2026-10-10). The cycle row is `driver/scripts/Invoke-StageCycles.sh`.
+- [x] design note; owner decision on the timer; Luna design review (0 P0, 2 P1, 7 P2: fixed, or moved to T9)
+- [x] driver and agent implementation; 4 WDK builds 0/0; agent gate PASS (596 tests)
+- [ ] Luna implementation review before the first VM boot
+- [ ] 10,000 cycles under runtime Verifier (special pool), pool flat, versions/views/tombstones/stage files back to zero, worker idle
+- [ ] C01-C04, B01, B02, X01 in all three modes
+
 ### T5. Notepad Save As
 
 **Problem.** Save As to `C:\Protected\ok.txt` published a 0-byte, SYSTEM-owned file (journal: State 5, SHA-256 of empty input) and Notepad
@@ -291,6 +301,10 @@ threat model: a standard user pads a file past the limit, or puts the CPF after 
   its extraction limits, inspection timeout. That verdict is **Blocked**, with hand-back, and justifiable when the policy allows overrides,
   so the product stays fail closed.
 - Measure the cost of seeding: opening an existing large file for write copies it into the stage before the open returns.
+
+- Stage-space accounting must also cover orphaned allocations. A staged create that fails after the service allocated its stage (for
+  example a cancelled open) leaves that stage file and its journal entry. That is today's behaviour, found in the T4 review (Luna P1).
+  They use disk, not driver memory or the version cap, and the budget must count them and clean them up.
 
 **Done when** a file at the inspection limit is approved and published byte-exact, one over it is blocked and handed back, a CPF placed at
 the end of a large file is found, and a stage-space exhaustion attempt by a standard user fails closed without affecting other users.

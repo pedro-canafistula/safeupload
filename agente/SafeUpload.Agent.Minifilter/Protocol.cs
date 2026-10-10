@@ -71,6 +71,8 @@ public static class Contract
         Check(nameof(SafeUploadCounters), sizeof(SafeUploadCounters), CountersSize);
         Check(nameof(SafeUploadOverrideMessage), sizeof(SafeUploadOverrideMessage), OverrideMessageSize);
         Check(nameof(SafeUploadPublicationMessage), sizeof(SafeUploadPublicationMessage), 2128);
+        Check(nameof(SafeUploadStageDisposeMessage), sizeof(SafeUploadStageDisposeMessage), 40);
+        Check(nameof(SafeUploadStageDisposeReply), sizeof(SafeUploadStageDisposeReply), 8);
         Check(nameof(SafeUploadAdmissionCoverageScope), sizeof(SafeUploadAdmissionCoverageScope),
               AdmissionCoverageScopeSize);
         Check(nameof(SafeUploadAdmissionCoverageStatus), sizeof(SafeUploadAdmissionCoverageStatus),
@@ -201,6 +203,16 @@ public static class ControlCommand
     public const uint GrantOverride = 3;
     public const uint StagePublication = 4;
     public const uint AdmissionCoverage = 24;
+    public const uint StageDispose = 29;
+}
+
+/// <summary>Outcome of SAFEUPLOAD_CONTROL_STAGE_DISPOSE: why the service no longer needs a staged version.</summary>
+public static class StageDisposeOutcome
+{
+    /// <summary>Approved and published; the driver deletes the stage file once nothing holds the version.</summary>
+    public const uint Released = 1;
+    /// <summary>Blocked or justified; the service already deleted the stage file.</summary>
+    public const uint CleanedUp = 2;
 }
 
 
@@ -430,6 +442,25 @@ public unsafe struct SafeUploadPublicationMessage
     public fixed byte Digest[32];
     public fixed char TemporaryPath[Contract.MaxPathChars];
     public fixed char DestinationPath[Contract.MaxPathChars];
+}
+
+/// <summary>SAFEUPLOAD_STAGE_DISPOSE_MESSAGE (40 bytes).</summary>
+[StructLayout(LayoutKind.Sequential, Pack = 8)]
+public struct SafeUploadStageDisposeMessage
+{
+    public SafeUploadControl Control;
+    public Guid TransferId;
+    public uint Outcome;
+    /// <summary>Committed renames of the transfer in the journal state the disposal describes (NamespaceTombstones).</summary>
+    public uint CommittedRenames;
+}
+
+/// <summary>SAFEUPLOAD_STAGE_DISPOSE_REPLY (8 bytes). Held = 1: the driver still holds the version.</summary>
+[StructLayout(LayoutKind.Sequential, Pack = 8)]
+public struct SafeUploadStageDisposeReply
+{
+    public uint StructSize;
+    public uint Held;
 }
 
 [StructLayout(LayoutKind.Sequential, Pack = 8)]

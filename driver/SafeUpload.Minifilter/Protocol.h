@@ -257,6 +257,10 @@ typedef struct _SAFEUPLOAD_RESPONSE {
 #define SAFEUPLOAD_CONTROL_SET_POLICY   ((UINT32) 1)
 #define SAFEUPLOAD_CONTROL_GET_COUNTERS ((UINT32) 2)
 #define SAFEUPLOAD_CONTROL_STAGE_PUBLICATION ((UINT32) 4)
+/* Service -> driver: the service no longer needs a staged version (T4). Agent-service SID only. */
+#define SAFEUPLOAD_CONTROL_STAGE_DISPOSE ((UINT32) 29)
+#define SAFEUPLOAD_STAGE_DISPOSE_RELEASED ((UINT32) 1)    /* approved and published */
+#define SAFEUPLOAD_STAGE_DISPOSE_CLEANED_UP ((UINT32) 2)  /* blocked or justified; the stage file is deleted */
 
 #if defined(SAFEUPLOAD_STAGING_PROTOTYPE) && SAFEUPLOAD_STAGING_PROTOTYPE
 #define SAFEUPLOAD_CONTROL_ADMISSION_TRACE_ENABLE       ((UINT32) 5)
@@ -681,6 +685,22 @@ typedef struct _SAFEUPLOAD_PUBLICATION_MESSAGE {
     WCHAR TemporaryPath[SAFEUPLOAD_MAX_PATH_CHARS];
     WCHAR DestinationPath[SAFEUPLOAD_MAX_PATH_CHARS];
 } SAFEUPLOAD_PUBLICATION_MESSAGE, *PSAFEUPLOAD_PUBLICATION_MESSAGE;
+
+// SAFEUPLOAD_CONTROL_STAGE_DISPOSE. Held=1: the driver still holds the version (it releases it once nothing references it,
+// deleting a Released stage file, or it ignored a stale disposal); Held=0: nothing references it, the stage is the service's.
+// CommittedRenames is the number of committed renames of this transfer in the journal state the disposal describes: a rename
+// committed since then re-opens inspection, so the driver ignores a disposal whose count is not its own.
+typedef struct _SAFEUPLOAD_STAGE_DISPOSE_MESSAGE {
+    SAFEUPLOAD_CONTROL Control;
+    GUID TransferId;
+    UINT32 Outcome;
+    UINT32 CommittedRenames;
+} SAFEUPLOAD_STAGE_DISPOSE_MESSAGE, *PSAFEUPLOAD_STAGE_DISPOSE_MESSAGE;
+
+typedef struct _SAFEUPLOAD_STAGE_DISPOSE_REPLY {
+    UINT32 StructSize;
+    UINT32 Held;
+} SAFEUPLOAD_STAGE_DISPOSE_REPLY, *PSAFEUPLOAD_STAGE_DISPOSE_REPLY;
 
 #if defined(SAFEUPLOAD_STAGING_PROTOTYPE) && SAFEUPLOAD_STAGING_PROTOTYPE
 
@@ -1155,6 +1175,34 @@ typedef struct _SAFEUPLOAD_DENY_RING_BATCH {
 /* Counters that existed nowhere else: how often the choke point saw a refusal, and how often a code path that could
  * not resolve a name answered "the whole volume may be in scope" (the suspected cause of refusals outside every
  * scope). All values are monotonic since driver load. */
+// Stage-version lifetime and stage-worker wakes (T4). Live values are a snapshot; the rest count since load.
+typedef struct _SAFEUPLOAD_STAGE_LIFETIME_COUNTERS {
+    UINT32 LiveVersions;            // allocated stage streams (counted against the cap)
+    UINT32 LiveViews;
+    UINT32 Tombstones;
+    UINT32 WaitingVersions;         // versions the retry timer covers now
+    UINT64 VersionsCreated;
+    UINT64 VersionsReleased;
+    UINT64 ViewsReleased;
+    UINT64 CapRefusals;             // staged creates refused because LiveVersions reached the cap
+    UINT64 TombstoneRefusals;       // renames refused because the tombstone table is full
+    UINT64 WorkerPasses;
+    UINT64 WakeCleanup;             // last-handle cleanup queued a version
+    UINT64 WakeClose;               // last file-object close queued a version
+    UINT64 WakeDispose;             // a DISPOSE message queued a version
+    UINT64 WakeConnect;             // a service connect requested a sweep
+    UINT64 WakeExit;                // a process exit was queued
+    UINT64 WakeTimer;               // the retry timer fired
+    UINT64 WakeInline;              // a create, rename or retire queued a version
+    UINT64 TimerArms;
+    UINT64 DisposeHeld;
+    UINT64 DisposeNotHeld;
+    UINT64 DisposeStale;            // ignored: a rename committed since the journal state it describes
+    UINT64 DisposeDeferred;         // arrived during a rename exchange; applied if the rename aborts
+    UINT64 StageDeletes;            // approved stage files the driver deleted at release
+    UINT64 StageDeleteFailures;
+} SAFEUPLOAD_STAGE_LIFETIME_COUNTERS, *PSAFEUPLOAD_STAGE_LIFETIME_COUNTERS;
+
 typedef struct _SAFEUPLOAD_DIAG_COUNTERS {
     UINT32 StructSize;
     UINT32 ProtocolVersion;
@@ -1172,12 +1220,14 @@ typedef struct _SAFEUPLOAD_DIAG_COUNTERS {
     UINT64 ReclaimParkedPasses;     // passes that ended with a scan or alias probe waiting on an outside event
     UINT64 ReclaimMoreWorkRequeues; // passes that requeued themselves because bounded work remained
     UINT64 ReclaimWakeupsSkipped;   // close/cleanup events that did not queue a pass (nothing waiting on that stream)
+    SAFEUPLOAD_STAGE_LIFETIME_COUNTERS Stage;
 } SAFEUPLOAD_DIAG_COUNTERS, *PSAFEUPLOAD_DIAG_COUNTERS;
 C_ASSERT(sizeof(SAFEUPLOAD_DENY_RECORD) == 192);
 C_ASSERT(sizeof(SAFEUPLOAD_DENY_RING_REQUEST) == 24);
 C_ASSERT(sizeof(SAFEUPLOAD_DENY_RING_BATCH) == 32 + 16 * 192);
 C_ASSERT(FIELD_OFFSET(SAFEUPLOAD_DENY_RING_BATCH, Entries) == 32);
-C_ASSERT(sizeof(SAFEUPLOAD_DIAG_COUNTERS) == 120);
+C_ASSERT(sizeof(SAFEUPLOAD_STAGE_LIFETIME_COUNTERS) == 176);
+C_ASSERT(sizeof(SAFEUPLOAD_DIAG_COUNTERS) == 296);
 #endif
 
 /* A probe entry's AdmissionRecordState carries H(F) of the probed stream; this bit marks a lower bound. */
@@ -1188,6 +1238,7 @@ C_ASSERT(sizeof(SAFEUPLOAD_DIAG_COUNTERS) == 120);
 #define SAFEUPLOAD_UNLOAD_VETO_STAGE_DRAIN ((UINT32)3)
 #define SAFEUPLOAD_UNLOAD_VETO_STAGE_OBJECTS ((UINT32)4)
 #define SAFEUPLOAD_UNLOAD_VETO_FENCE_COMMIT ((UINT32)5)
+#define SAFEUPLOAD_UNLOAD_VETO_STAGE_RENAME ((UINT32)6)  /* a staged rename's commit or abort is not acknowledged yet */
 /* A probe entry's SetupFlags carries C(F); unknown identity or pairing overflow sets this bit. */
 #define SAFEUPLOAD_SECTIONS_UNTRACKED_BIT ((UINT32)0x80000000)
 
@@ -1541,6 +1592,8 @@ C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_RESPONSE, StageNameLength ) == 20 );
 C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_RESPONSE, StageName ) == 24 );
 
 C_ASSERT( sizeof( SAFEUPLOAD_PUBLICATION_MESSAGE ) == 2128 );
+C_ASSERT( sizeof( SAFEUPLOAD_STAGE_DISPOSE_MESSAGE ) == 40 );
+C_ASSERT( sizeof( SAFEUPLOAD_STAGE_DISPOSE_REPLY ) == 8 );
 C_ASSERT( sizeof( SAFEUPLOAD_CONTROL ) == 16 );
 C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_CONTROL, Version )    == 0 );
 C_ASSERT( FIELD_OFFSET( SAFEUPLOAD_CONTROL, StructSize ) == 4 );

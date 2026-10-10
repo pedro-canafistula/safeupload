@@ -44,6 +44,52 @@ SafeUploadPortDisconnect (
     _In_opt_ PVOID ConnectionCookie
     );
 
+
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+/* SAFEUPLOAD_CONTROL_STAGE_DISPOSE, out of line: the message routine's stack is at its analysis budget. The reply lives
+ * in the kernel copy buffer after the message. */
+static __declspec(noinline) NTSTATUS
+SafeUploadStageDisposeControl (
+    _In_reads_bytes_(InputBufferLength) PVOID InputBuffer,
+    _In_ ULONG InputBufferLength,
+    _Out_writes_bytes_to_opt_(OutputBufferLength, *ReturnOutputBufferLength) PVOID OutputBuffer,
+    _In_ ULONG OutputBufferLength,
+    _Out_ PULONG ReturnOutputBufferLength,
+    _Inout_ PSAFEUPLOAD_POLICY_MESSAGE Scratch
+    )
+{
+    PSAFEUPLOAD_STAGE_DISPOSE_MESSAGE dispose = (PSAFEUPLOAD_STAGE_DISPOSE_MESSAGE)Scratch;
+    PSAFEUPLOAD_STAGE_DISPOSE_REPLY reply = (PSAFEUPLOAD_STAGE_DISPOSE_REPLY)(dispose + 1);
+    NTSTATUS status;
+
+    C_ASSERT( sizeof( SAFEUPLOAD_STAGE_DISPOSE_MESSAGE ) + sizeof( SAFEUPLOAD_STAGE_DISPOSE_REPLY ) <=
+              sizeof( SAFEUPLOAD_POLICY_MESSAGE ) );
+    *ReturnOutputBufferLength = 0;
+    if (InputBufferLength != sizeof( SAFEUPLOAD_STAGE_DISPOSE_MESSAGE ) ||
+        OutputBuffer == NULL || OutputBufferLength != sizeof( SAFEUPLOAD_STAGE_DISPOSE_REPLY )) {
+        return STATUS_INVALID_BUFFER_SIZE;
+    }
+    __try {
+        RtlCopyMemory( dispose, InputBuffer, sizeof( *dispose ) );
+        /* Probe before the disposal takes effect, so a bad reply buffer cannot hide a disposal from the service. */
+#pragma warning( suppress: 6001 )
+        ProbeForWrite( OutputBuffer, sizeof( *reply ), __alignof( SAFEUPLOAD_STAGE_DISPOSE_REPLY ) );
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        return GetExceptionCode();
+    }
+    reply->StructSize = sizeof( *reply );
+    status = SafeUploadStageDispose( dispose, &reply->Held );
+    if (!NT_SUCCESS( status )) return status;
+    __try {
+        RtlCopyMemory( OutputBuffer, reply, sizeof( *reply ) );
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        return GetExceptionCode();
+    }
+    *ReturnOutputBufferLength = sizeof( *reply );
+    return STATUS_SUCCESS;
+}
+#endif
+
 static
 NTSTATUS
 SafeUploadPortMessage (
@@ -701,6 +747,7 @@ Return Value:
          * and feature diagnostics remain available to the SYSTEM Inspector. */
         if (command == SAFEUPLOAD_CONTROL_SET_POLICY ||
             command == SAFEUPLOAD_CONTROL_STAGE_PUBLICATION ||
+            command == SAFEUPLOAD_CONTROL_STAGE_DISPOSE ||
             command == SAFEUPLOAD_CONTROL_GRANT_OVERRIDE) {
             if (!SafeUploadCurrentProcessHasAgentServiceSid()) {
                 status = STATUS_ACCESS_DENIED;
@@ -1421,6 +1468,7 @@ Return Value:
 #pragma warning( suppress: 6001 )
             ProbeForWrite( OutputBuffer, sizeof( SAFEUPLOAD_DIAG_COUNTERS ), __alignof( SAFEUPLOAD_DIAG_COUNTERS ) );
             SafeUploadDenyGetCounters( diagCounters );
+            SafeUploadStageGetLifetimeCounters( &diagCounters->Stage );
             RtlCopyMemory( OutputBuffer, diagCounters, sizeof( *diagCounters ) );
             *ReturnOutputBufferLength = sizeof( *diagCounters );
             leave;
@@ -1481,6 +1529,12 @@ Return Value:
             }
             RtlCopyMemory( policy, InputBuffer, sizeof( SAFEUPLOAD_PUBLICATION_MESSAGE ) );
             status = SafeUploadSetPublicationPermit( (PSAFEUPLOAD_PUBLICATION_MESSAGE) policy );
+            leave;
+        }
+
+        if (command == SAFEUPLOAD_CONTROL_STAGE_DISPOSE) {
+            status = SafeUploadStageDisposeControl( InputBuffer, InputBufferLength, OutputBuffer,
+                                                    OutputBufferLength, ReturnOutputBufferLength, policy );
             leave;
         }
 #endif
@@ -1573,7 +1627,13 @@ Return Value:
 
             status = SafeUploadSetPolicy( policy );
             if (NT_SUCCESS(status)) {
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+                /* The service is up and answering: recheck every staged version (renames, seals and stage deletions that
+                 * waited on it). Only on the first policy of this connection. */
+                if (InterlockedExchange(&SafeUploadData.AuthenticatedClient, 1) == 0) SafeUploadStageServiceConnected();
+#else
                 InterlockedExchange(&SafeUploadData.AuthenticatedClient, 1);
+#endif
             }
 
         } else if (policy->Control.Reserved == SAFEUPLOAD_POLICY_CONTROL_FINALIZE_BOOT_SCOPES) {
