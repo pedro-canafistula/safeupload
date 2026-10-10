@@ -9,16 +9,16 @@ public enum Verdict
     Approved,
 
     /// <summary>
-    /// Inspecionado e negado: pelo menos um achado válido (RN-005).
-    /// Este é o único veredito que impede a operação, e ele nunca pode ser
-    /// contornado pelo usuário.
+    /// Negado: achado válido (RN-005) ou uma transferência staged em escopo
+    /// cujo conteúdo não pôde ser inspecionado completamente. A política pode
+    /// permitir uma justificativa vinculada aos bytes e à versão da política.
     /// </summary>
     Blocked,
 
     /// <summary>
     /// Liberado sem inspeção de conteúdo — arquivo grande demais, formato não
     /// suportado, timeout ou erro de parsing (RN-012 e RN-013).
-    /// Falha nunca vira bloqueio: o agente é fail-open.
+    /// Este tratamento de falhas pertence ao modo legado; staged usa Blocked.
     /// </summary>
     AllowedWithoutInspection,
 

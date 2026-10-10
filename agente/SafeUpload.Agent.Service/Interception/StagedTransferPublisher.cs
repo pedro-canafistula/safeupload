@@ -249,8 +249,9 @@ public sealed class StagedTransferPublisher
 
         if (!currentApproval)
         {
-            // Oversize, timeout, unsupported format, parser errors, and a
-            // changed policy all keep the staged bytes local.
+            // An out-of-scope result or changed/unreadable policy cannot
+            // authorize publication. In-scope inspection failures take the
+            // Blocked hand-back path above.
             await _journal.TransitionAsync(transfer.TransferId,
                 TransferJournalState.Inspecting, TransferJournalState.Retained,
                 null, cancellationToken).ConfigureAwait(false);

@@ -623,25 +623,38 @@ public sealed class StagedTransferPublisherTests : IDisposable
     }
 
     [Theory]
-    [InlineData("size", "file_too_large")]
-    [InlineData("parser", "parse_error:InvalidDataException")]
-    [InlineData("timeout", "inspection_timeout")]
-    public async Task Failed_inspection_never_requests_a_permit_or_changes_existing_destination(
-        string failure, string reason)
+    [InlineData("size", "file_too_large", false)]
+    [InlineData("size", "file_too_large", true)]
+    [InlineData("format", "unsupported_format", false)]
+    [InlineData("format", "unsupported_format", true)]
+    [InlineData("parser", "parse_error:InvalidDataException", false)]
+    [InlineData("parser", "parse_error:InvalidDataException", true)]
+    [InlineData("timeout", "inspection_timeout", false)]
+    [InlineData("timeout", "inspection_timeout", true)]
+    public async Task Failed_inspection_is_blocked_with_exact_handback_and_policy_bound_justification(
+        string failure, string reason, bool overrideAllowed)
     {
         var store = new LocalPolicyStore(_workspace.PolicyFile);
         await store.LoadAsync(CancellationToken.None);
         var policy = JsonNode.Parse(await File.ReadAllTextAsync(_workspace.PolicyFile))!;
         policy["maxFileSizeMb"] = 1;
         policy["inspectionTimeoutSeconds"] = 1;
+        policy["overrideAllowed"] = overrideAllowed;
         await File.WriteAllTextAsync(_workspace.PolicyFile, policy.ToJsonString());
         var paused = new PausingExtractor();
-        var registry = failure == "parser" ? new ExtractorRegistry([new ThrowingExtractor()])
-            : failure == "timeout" ? new ExtractorRegistry([paused]) : ExtractorRegistry.CreateDefault();
+        var registry = failure switch
+        {
+            "parser" => new ExtractorRegistry([new ThrowingExtractor()]),
+            "timeout" => new ExtractorRegistry([paused]),
+            "format" => new ExtractorRegistry([]),
+            _ => ExtractorRegistry.CreateDefault()
+        };
         var gate = new RecordingPublicationGate(false);
+        var broker = new StagedJustifications();
         var publisher = new StagedTransferPublisher(new InspectionService(store,
             new LocalQueueAuditSink(_workspace.QueueFile), registry, new VerdictCache()),
-            _notifications, _journal, _stagingRoot, gate,
+            _notifications, _journal, _stagingRoot, gate, broker,
+            handbackCopier: new VerifiedSnapshotHandbackCopier(_workspace.Root),
             sessionUserSidResolver: _ => TestRequestorSid);
         string content = failure == "size" ? new string('x', 1024 * 1024 + 1) : "Clean fixture bytes.";
         var transfer = Transfer("negative-" + failure + ".txt", content);
@@ -649,21 +662,59 @@ public sealed class StagedTransferPublisherTests : IDisposable
         using var subscription = _notifications.Subscribe(7, TestRequestorSid);
         try
         {
-            Assert.Equal(StagedTransferOutcome.Retained,
+            Assert.Equal(StagedTransferOutcome.Blocked,
                 await publisher.PublishAsync(transfer, CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(5)));
             Assert.False(gate.Called);
             Assert.Equal("public original", await File.ReadAllTextAsync(transfer.DestinationPath));
             Assert.Equal(content, await File.ReadAllTextAsync(transfer.StagePath));
-            Assert.Equal(TransferJournalState.Retained,
-                (await _journal.ReadAsync(transfer.TransferId, CancellationToken.None)).State);
+            var entry = await _journal.ReadAsync(transfer.TransferId, CancellationToken.None);
+            Assert.Equal(TransferJournalState.Blocked, entry.State);
+            Assert.Equal(StagedHandbackState.Verified, entry.HandbackState);
+            Assert.Equal(content, await File.ReadAllTextAsync(entry.HandbackPath!));
+            string digest = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(
+                await File.ReadAllBytesAsync(transfer.StagePath)));
+            Assert.Equal(digest, entry.Sha256Hex);
+            Assert.Equal(new FileInfo(transfer.StagePath).Length, entry.HandbackLength);
+            Assert.Equal(!overrideAllowed, entry.JustificationWindowClosed);
             var audit = Assert.Single(await new LocalQueueAuditSink(_workspace.QueueFile)
                 .ReadRecentAsync(10, CancellationToken.None));
-            Assert.Equal(Verdict.Retained, audit.Verdict);
+            Assert.Equal(Verdict.Blocked, audit.Verdict);
             Assert.Equal(reason, audit.NotInspectedReason);
+            var messages = new List<TransferNotification>();
             while (subscription.Reader.TryRead(out var notification))
                 if (notification is TransferNotification transferNotification)
-                    Assert.NotEqual(TransferPhase.Released, transferNotification.Phase);
+                    messages.Add(transferNotification);
+            Assert.DoesNotContain(messages, message => message.Phase == TransferPhase.Released);
+            var blocked = Assert.Single(messages, message => message.Phase == TransferPhase.Blocked);
+            Assert.Equal(overrideAllowed, blocked.OverrideAllowed);
+            Assert.True(blocked.HandbackVerified);
+            Assert.Equal(entry.HandbackPath, blocked.HandbackPath);
+            Assert.Equal(digest, blocked.SnapshotSha256Hex);
+            Assert.Empty(blocked.Findings!);
             Assert.Empty(Directory.GetFiles(Path.GetDirectoryName(transfer.DestinationPath)!, "*.pending"));
+
+            Assert.Equal(overrideAllowed, broker.TryConsume(transfer.TransferId.ToString("D"), 8, TestRequestorSid, out var wrongSession));
+            Assert.Null(wrongSession);
+            Assert.Equal(overrideAllowed, broker.TryConsume(transfer.TransferId.ToString("D"), 7,
+                "S-1-5-21-999-888-777-1000", out var wrongUser));
+            Assert.Null(wrongUser);
+            Assert.Equal(overrideAllowed, broker.TryConsume(transfer.TransferId.ToString("D"), 7, TestRequestorSid, out var justify));
+            if (overrideAllowed)
+            {
+                Assert.NotNull(justify);
+                Assert.True(await justify!(CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(5)));
+                Assert.True(gate.Called);
+                Assert.Equal(digest, gate.Digest);
+                Assert.Equal(content, await File.ReadAllTextAsync(transfer.DestinationPath));
+                Assert.Equal(TransferJournalState.Released,
+                    (await _journal.ReadAsync(transfer.TransferId, CancellationToken.None)).State);
+            }
+            else
+            {
+                Assert.Null(justify);
+                Assert.False(gate.Called);
+                Assert.Equal("public original", await File.ReadAllTextAsync(transfer.DestinationPath));
+            }
         }
         finally { paused.Continue.TrySetResult(); }
     }
@@ -673,6 +724,38 @@ public sealed class StagedTransferPublisherTests : IDisposable
         public IReadOnlySet<string> SupportedExtensions { get; } = new HashSet<string> { ".txt" };
         public Task<string> ExtractAsync(Stream content, CancellationToken cancellationToken)
             => throw new InvalidDataException("Injected parser failure.");
+    }
+
+    private sealed class VerifiedSnapshotHandbackCopier(string root) : IStagedHandbackCopier
+    {
+        public async Task<string> CopyVerifiedAsync(StagedTransfer transfer, FileStream snapshot,
+            long length, string sha256Hex, CancellationToken token)
+        {
+            string directory = Path.Combine(root, "handback");
+            Directory.CreateDirectory(directory);
+            string path = Path.Combine(directory, transfer.TransferId.ToString("N") + ".txt");
+            snapshot.Position = 0;
+            await using (var output = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+                await snapshot.CopyToAsync(output, token);
+            using var proof = OpenVerifiedReadLease(transfer, path, length, sha256Hex);
+            return path;
+        }
+
+        public IDisposable OpenVerifiedReadLease(StagedTransfer transfer, string path, long length, string sha256Hex)
+        {
+            var input = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+            try
+            {
+                string digest = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(input));
+                if (input.Length != length || !string.Equals(digest, sha256Hex, StringComparison.Ordinal))
+                    throw new IOException("The test hand-back does not match the sealed snapshot.");
+                input.Position = 0;
+                return input;
+            }
+            catch { input.Dispose(); throw; }
+        }
+
+        public void CleanupUncommittedTemporary(StagedTransfer transfer) { }
     }
 
     [Fact]
@@ -732,7 +815,7 @@ public sealed class StagedTransferPublisherTests : IDisposable
 
         public async Task<string> ExtractAsync(Stream content, CancellationToken cancellationToken)
         {
-            Entered.SetResult();
+            Entered.TrySetResult();
             await Continue.Task.WaitAsync(cancellationToken);
             using var reader = new StreamReader(content);
             return await reader.ReadToEndAsync(cancellationToken);

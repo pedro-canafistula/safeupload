@@ -22,11 +22,11 @@ namespace SafeUpload.Agent.Core.Application;
 ///   7. veredito                             RN-005
 ///   8. cache e auditoria
 ///
-/// Fail-open é a propriedade central: nenhum caminho de erro deste tipo produz
-/// bloqueio. Timeout, arquivo corrompido, formato inesperado, falha de leitura
-/// — todos terminam em AllowedWithoutInspection com o motivo registrado. Um DLP
-/// que bloqueia quando quebra impede o usuário de trabalhar e é desligado na
-/// primeira semana.
+/// A inspeção legada libera erros com AllowedWithoutInspection (RN-012/013).
+/// Uma transferência staged em escopo exige inspeção completa: tamanho acima
+/// do limite, formato não suportado, timeout e falhas de leitura ou parsing
+/// produzem Blocked. O publicador devolve os bytes ao usuário e só aceita uma
+/// justificativa vinculada à versão e à política atuais quando ela é permitida.
 /// </summary>
 public sealed class InspectionService
 {
@@ -56,15 +56,16 @@ public sealed class InspectionService
 
     /// <summary>Julga uma operação de arquivo.</summary>
     public async Task<InspectionResult> InspectAsync(FileOperation operation, CancellationToken cancellationToken)
-        => await InspectCoreAsync(operation, auditAndCache: true, cancellationToken).ConfigureAwait(false);
+        => await InspectCoreAsync(operation, staged: false, cancellationToken).ConfigureAwait(false);
 
     /// <summary>
     /// Classifies a sealed staging file. Its verdict is not an operation
     /// outcome: the caller records the outcome after publication or retention.
     /// Never reuse a cached decision for a staged file.
+    /// An in-scope file that cannot be fully inspected is Blocked.
     /// </summary>
     public Task<InspectionResult> InspectStagedAsync(FileOperation operation, CancellationToken cancellationToken)
-        => InspectCoreAsync(operation, auditAndCache: false, cancellationToken);
+        => InspectCoreAsync(operation, staged: true, cancellationToken);
 
     /// <summary>
     /// A staged approval may only be published under the same policy that
@@ -111,12 +112,14 @@ public sealed class InspectionService
             cancellationToken, eventId, publishedSha256Hex);
 
     private async Task<InspectionResult> InspectCoreAsync(
-        FileOperation operation, bool auditAndCache, CancellationToken cancellationToken)
+        FileOperation operation, bool staged, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(operation);
 
         var stopwatch = Stopwatch.StartNew();
         var policy = await _policyStore.LoadAsync(cancellationToken).ConfigureAwait(false);
+        bool auditAndCache = !staged;
+        var inspectionFailure = staged ? Verdict.Blocked : Verdict.AllowedWithoutInspection;
 
         // 1. RN-014 — o próprio agente e os processos de sistema jamais são
         // interceptados. Além do ruído, deixar o agente se interceptar criaria
@@ -132,11 +135,11 @@ public sealed class InspectionService
             return OutOfScope(stopwatch, policy, "out_of_scope");
         }
 
-        // 4. RN-013 — acima do limite, libera sem inspecionar. Nunca bloqueia.
+        // RN-013 applies to legacy operations; staged failures require a blocked hand-back.
         if (operation.SizeBytes > policy.MaxFileSizeBytes)
         {
             return await CompleteAsync(
-                    operation, policy, stopwatch, Verdict.AllowedWithoutInspection, [], "file_too_large", auditAndCache, cancellationToken)
+                    operation, policy, stopwatch, inspectionFailure, [], "file_too_large", auditAndCache, cancellationToken)
                 .ConfigureAwait(false);
         }
 
@@ -145,7 +148,7 @@ public sealed class InspectionService
         if (extractor is null)
         {
             return await CompleteAsync(
-                    operation, policy, stopwatch, Verdict.AllowedWithoutInspection, [], "unsupported_format", auditAndCache, cancellationToken)
+                    operation, policy, stopwatch, inspectionFailure, [], "unsupported_format", auditAndCache, cancellationToken)
                 .ConfigureAwait(false);
         }
 
@@ -180,9 +183,9 @@ public sealed class InspectionService
         }
         catch (TimeoutException)
         {
-            // RN-012 — estourou o prazo. Libera e audita o motivo.
+            // The caller's mode determines the failure verdict; the reason is retained.
             return await CompleteAsync(
-                    operation, policy, stopwatch, Verdict.AllowedWithoutInspection, [], "inspection_timeout", auditAndCache, cancellationToken)
+                    operation, policy, stopwatch, inspectionFailure, [], "inspection_timeout", auditAndCache, cancellationToken)
                 .ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -198,7 +201,7 @@ public sealed class InspectionService
             // diagnóstico depois; a mensagem não entra, porque pode conter
             // trecho do conteúdo do arquivo.
             return await CompleteAsync(
-                    operation, policy, stopwatch, Verdict.AllowedWithoutInspection, [],
+                    operation, policy, stopwatch, inspectionFailure, [],
                     $"parse_error:{ex.GetType().Name}", auditAndCache, cancellationToken)
                 .ConfigureAwait(false);
         }
