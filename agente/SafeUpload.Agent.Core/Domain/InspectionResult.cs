@@ -1,5 +1,14 @@
 namespace SafeUpload.Agent.Core.Domain;
 
+/// <summary>Safe, user-facing classification of an incomplete inspection; no parser diagnostics.</summary>
+public enum InspectionFailureKind
+{
+    TooLarge,
+    UnsupportedFormat,
+    Timeout,
+    ReadOrParse
+}
+
 /// <summary>
 /// O que o motor de inspeção conclui sobre uma operação.
 /// </summary>
@@ -39,4 +48,14 @@ public sealed record InspectionResult(
 
     /// <summary>Verdadeiro quando a operação deve ser negada (RN-005).</summary>
     public bool IsBlocked => Verdict == Verdict.Blocked;
+
+    /// <summary>Only standard failure codes become UI metadata. Exception messages never cross this boundary.</summary>
+    public InspectionFailureKind? FailureKind => Reason switch
+    {
+        "file_too_large" => InspectionFailureKind.TooLarge,
+        "unsupported_format" => InspectionFailureKind.UnsupportedFormat,
+        "inspection_timeout" => InspectionFailureKind.Timeout,
+        { } reason when reason.StartsWith("parse_error:", StringComparison.Ordinal) => InspectionFailureKind.ReadOrParse,
+        _ => null
+    };
 }

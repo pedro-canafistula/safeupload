@@ -286,6 +286,39 @@ public sealed class StagedTransferJournalTests : IDisposable
             (await journal.ReadAsync(transfer.TransferId, CancellationToken.None)).State);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Unknown_inspection_failure_is_refused_in_transition_and_after_manifest_tampering(bool tamper)
+    {
+        var journal = Journal();
+        var transfer = Transfer();
+        await journal.CreateAsync(transfer, CancellationToken.None);
+        await journal.SealAsync(transfer.TransferId, transfer.ProcessId, transfer.StagePath, CancellationToken.None);
+        await journal.TransitionAsync(transfer.TransferId, TransferJournalState.Sealed,
+            TransferJournalState.Inspecting, null, CancellationToken.None);
+        if (!tamper)
+        {
+            await Assert.ThrowsAsync<InvalidOperationException>(() => journal.TransitionAsync(
+                transfer.TransferId, TransferJournalState.Inspecting, TransferJournalState.Blocked,
+                new string('A', 64), CancellationToken.None,
+                blockedEvidence: new BlockedTransferEvidence(1, null, WindowClosed: true,
+                    InspectionFailure: (InspectionFailureKind)999)));
+            Assert.Equal(TransferJournalState.Inspecting,
+                (await journal.ReadAsync(transfer.TransferId, CancellationToken.None)).State);
+            return;
+        }
+        await journal.TransitionAsync(transfer.TransferId, TransferJournalState.Inspecting,
+            TransferJournalState.Blocked, new string('A', 64), CancellationToken.None,
+            blockedEvidence: new BlockedTransferEvidence(1, null, WindowClosed: true,
+                InspectionFailure: InspectionFailureKind.Timeout));
+        string manifest = Assert.Single(Directory.GetFiles(Path.Combine(_workspace.Root, "journal"), "*.json"));
+        var data = JsonNode.Parse(await File.ReadAllTextAsync(manifest))!;
+        data["BlockedInspectionFailure"] = 999;
+        await File.WriteAllTextAsync(manifest, data.ToJsonString());
+        await Assert.ThrowsAsync<InvalidDataException>(() => Journal().ReadAsync(transfer.TransferId, CancellationToken.None));
+    }
+
     [Fact]
     public async Task Replacement_reserves_both_names_and_commit_supersedes_target_across_restart()
     {

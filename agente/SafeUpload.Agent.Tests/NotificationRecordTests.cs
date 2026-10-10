@@ -7,6 +7,7 @@ using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using SafeUpload.Agent.Core.Contracts;
+using SafeUpload.Agent.Core.Domain;
 using SafeUpload.Agent.Service.Notifications;
 
 namespace SafeUpload.Agent.Tests;
@@ -62,6 +63,23 @@ public sealed class NotificationRecordTests : IDisposable
         using var record = Record();
         Assert.Throws<InvalidDataException>(() => record.Append(
             new TransferNotification(Guid.NewGuid(), "fixture.txt", TransferPhase.Released), null));
+    }
+
+    [Theory]
+    [InlineData(TransferPhase.Analyzing)]
+    [InlineData(TransferPhase.Retained)]
+    [InlineData(TransferPhase.Released)]
+    [InlineData(TransferPhase.Blocked)]
+    public void Inspection_failure_metadata_is_refused_for_unknown_kind_or_nonblocked_phase(TransferPhase phase)
+    {
+        using var record = Record();
+        var notification = new TransferNotification(Guid.NewGuid(), "fixture.txt", phase,
+            PublishedSha256Hex: phase == TransferPhase.Released ? new string('A', 64) : null,
+            SnapshotSha256Hex: phase == TransferPhase.Blocked ? new string('B', 64) : null,
+            HandbackVerified: phase == TransferPhase.Blocked ? false : null,
+            InspectionFailure: phase == TransferPhase.Blocked ? (InspectionFailureKind)999 : InspectionFailureKind.Timeout);
+        Assert.Throws<InvalidDataException>(() => record.Append(notification, null));
+        Assert.DoesNotContain(Entries(), entry => entry.Kind == "Transfer");
     }
 
     [Fact]

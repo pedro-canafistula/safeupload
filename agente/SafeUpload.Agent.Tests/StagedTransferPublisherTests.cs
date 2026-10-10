@@ -671,6 +671,14 @@ public sealed class StagedTransferPublisherTests : IDisposable
             Assert.Equal(TransferJournalState.Blocked, entry.State);
             Assert.Equal(StagedHandbackState.Verified, entry.HandbackState);
             Assert.Equal(content, await File.ReadAllTextAsync(entry.HandbackPath!));
+            InspectionFailureKind expectedFailure = failure switch
+            {
+                "size" => InspectionFailureKind.TooLarge,
+                "format" => InspectionFailureKind.UnsupportedFormat,
+                "timeout" => InspectionFailureKind.Timeout,
+                _ => InspectionFailureKind.ReadOrParse
+            };
+            Assert.Equal(expectedFailure, entry.BlockedInspectionFailure);
             string digest = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(
                 await File.ReadAllBytesAsync(transfer.StagePath)));
             Assert.Equal(digest, entry.Sha256Hex);
@@ -691,7 +699,29 @@ public sealed class StagedTransferPublisherTests : IDisposable
             Assert.Equal(entry.HandbackPath, blocked.HandbackPath);
             Assert.Equal(digest, blocked.SnapshotSha256Hex);
             Assert.Empty(blocked.Findings!);
+            Assert.Equal(expectedFailure, blocked.InspectionFailure);
+            string wire = NotificationProtocol.Serialize(blocked);
+            Assert.DoesNotContain("InvalidDataException", wire);
+            Assert.DoesNotContain("529.982.247-25", wire);
+            var restoredNotification = Assert.IsType<TransferNotification>(
+                NotificationProtocol.Deserialize(wire.TrimEnd('\n')));
+            Assert.Equal(expectedFailure, restoredNotification.InspectionFailure);
+            var restartedJournal = new StagedTransferJournal(Path.Combine(_workspace.Root, "journal"));
+            var restartedEntry = await restartedJournal.ReadAsync(transfer.TransferId, CancellationToken.None);
+            Assert.Equal(expectedFailure, restartedEntry.BlockedInspectionFailure);
             Assert.Empty(Directory.GetFiles(Path.GetDirectoryName(transfer.DestinationPath)!, "*.pending"));
+
+            await publisher.RecoverBlockedAsync(restartedEntry, CancellationToken.None);
+            var recoveryMessages = new List<TransferNotification>();
+            while (subscription.Reader.TryRead(out var recoveredNotification))
+                if (recoveredNotification is TransferNotification recoveredTransfer)
+                    recoveryMessages.Add(recoveredTransfer);
+            var recoveredBlock = Assert.Single(recoveryMessages,
+                message => message.Phase == TransferPhase.Blocked);
+            Assert.Equal(expectedFailure, recoveredBlock.InspectionFailure);
+            Assert.Equal(digest, recoveredBlock.SnapshotSha256Hex);
+            Assert.True(recoveredBlock.HandbackVerified);
+            Assert.False(gate.Called);
 
             Assert.Equal(overrideAllowed, broker.TryConsume(transfer.TransferId.ToString("D"), 8, TestRequestorSid, out var wrongSession));
             Assert.Null(wrongSession);

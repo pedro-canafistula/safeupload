@@ -199,7 +199,8 @@ public sealed class StagedTransferPublisher
             await _journal.TransitionAsync(transfer.TransferId,
                 TransferJournalState.Inspecting, TransferJournalState.Blocked,
                 inspectedDigest, cancellationToken, blockedEvidence: new BlockedTransferEvidence(
-                    result.PolicyVersion, expires, WindowClosed: !canJustify)).ConfigureAwait(false);
+                    result.PolicyVersion, expires, WindowClosed: !canJustify,
+                    InspectionFailure: result.FailureKind)).ConfigureAwait(false);
             await _inspection.RecordTransferOutcomeAsync(operation, result,
                 Verdict.Blocked, result.Reason, cancellationToken,
                 transfer.TransferId).ConfigureAwait(false);
@@ -229,7 +230,8 @@ public sealed class StagedTransferPublisher
                 OverrideAllowed: canJustify,
                 HandbackPath: blocked.HandbackPath,
                 HandbackVerified: blocked.HandbackState == StagedHandbackState.Verified,
-                SnapshotSha256Hex: inspectedDigest));
+                SnapshotSha256Hex: inspectedDigest,
+                InspectionFailure: result.FailureKind));
             return StagedTransferOutcome.Blocked;
         }
 
@@ -524,7 +526,8 @@ public sealed class StagedTransferPublisher
                 OverrideAllowed: justificationOpen && current.HandbackState == StagedHandbackState.Verified,
                 HandbackPath: current.HandbackPath,
                 HandbackVerified: current.HandbackState == StagedHandbackState.Verified,
-                SnapshotSha256Hex: current.Sha256Hex));
+                SnapshotSha256Hex: current.Sha256Hex,
+                InspectionFailure: current.BlockedInspectionFailure));
         }
         if (current.HandbackState != StagedHandbackState.Verified && !current.JustificationWindowClosed)
             current = await _journal.CloseJustificationWindowAsync(current.Transfer.TransferId,

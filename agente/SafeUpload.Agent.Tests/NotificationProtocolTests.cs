@@ -101,15 +101,21 @@ public class NotificationProtocolTests
             NotificationProtocol.Deserialize(line.TrimEnd('\n')));
     }
 
-    [Fact]
-    public void Blocked_staged_handback_digest_and_verified_path_survive_the_notification_pipe()
+    [Theory]
+    [InlineData(null)]
+    [InlineData(InspectionFailureKind.TooLarge)]
+    [InlineData(InspectionFailureKind.UnsupportedFormat)]
+    [InlineData(InspectionFailureKind.Timeout)]
+    [InlineData(InspectionFailureKind.ReadOrParse)]
+    public void Blocked_staged_handback_digest_and_verified_path_survive_the_notification_pipe(
+        InspectionFailureKind? failure)
     {
         var original = new TransferNotification(
             Guid.Parse("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"),
             "report.txt", TransferPhase.Blocked, OverrideAllowed: true,
             SnapshotSha256Hex: new string('A', 64),
             HandbackPath: @"C:\Users\sample\SafeUpload\_bloqueados\version.txt",
-            HandbackVerified: true);
+            HandbackVerified: true, InspectionFailure: failure);
 
         string line = NotificationProtocol.Serialize(original);
         var restored = Assert.IsType<TransferNotification>(
@@ -117,6 +123,7 @@ public class NotificationProtocolTests
         Assert.Equal(original.SnapshotSha256Hex, restored.SnapshotSha256Hex);
         Assert.Equal(original.HandbackPath, restored.HandbackPath);
         Assert.True(restored.HandbackVerified);
+        Assert.Equal(failure, restored.InspectionFailure);
     }
 
     /// <summary>

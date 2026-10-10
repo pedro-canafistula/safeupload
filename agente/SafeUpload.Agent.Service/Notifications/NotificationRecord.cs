@@ -107,6 +107,9 @@ public sealed class NotificationRecord : INotificationRecord, IDisposable
                 if (notification is TransferNotification candidate &&
                     (candidate.TransferId == Guid.Empty || !Enum.IsDefined(candidate.Phase)))
                     throw new InvalidDataException("Invalid transfer notification identity/phase.");
+                if (notification is TransferNotification { InspectionFailure: { } failure } failed &&
+                    (failed.Phase != TransferPhase.Blocked || !Enum.IsDefined(failure)))
+                    throw new InvalidDataException("Invalid transfer inspection failure classification.");
                 if (notification is TransferNotification transfer &&
                     ((transfer.PublishedSha256Hex is { } digest &&
                       (digest.Length != 64 || !digest.All(Uri.IsHexDigit))) ||

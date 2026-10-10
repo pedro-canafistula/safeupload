@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Security.Cryptography;
 using System.Security.AccessControl;
 using System.Security.Principal;
+using SafeUpload.Agent.Core.Domain;
 
 namespace SafeUpload.Agent.Service.Interception;
 
@@ -280,6 +281,7 @@ public sealed class StagedTransferJournal
             transfer.ProcessId <= 0 || string.IsNullOrWhiteSpace(transfer.ProcessName) ||
             transfer.ProcessName.Length > 63 || entry.DestinationGeneration < 0 ||
             entry.BlockedPolicyVersion < 0 ||
+            (entry.BlockedInspectionFailure is { } failure && !Enum.IsDefined(failure)) ||
             (entry.State == TransferJournalState.Blocked && entry.BlockedPolicyVersion <= 0 &&
                 transfer.RequestorSid is not null) ||
             entry.UpdatedAtUtc == default ||
@@ -448,6 +450,8 @@ public sealed class StagedTransferJournal
             if (next == TransferJournalState.Blocked &&
                 (blockedEvidence is null || blockedEvidence.PolicyVersion <= 0))
                 throw new InvalidOperationException("A blocked transfer needs a positive policy version.");
+            if (blockedEvidence?.InspectionFailure is { } failure && !Enum.IsDefined(failure))
+                throw new InvalidOperationException("Invalid blocked inspection failure classification.");
 
             IReadOnlyList<TransferJournalStateChange> history = next == current.State
                 ? current.StateHistory : AppendState(current, next);
@@ -465,6 +469,8 @@ public sealed class StagedTransferJournal
                     ? blockedEvidence?.PolicyVersion ?? throw new InvalidOperationException(
                         "A blocked transfer needs its policy version.")
                     : current.BlockedPolicyVersion,
+                BlockedInspectionFailure = next == TransferJournalState.Blocked
+                    ? blockedEvidence?.InspectionFailure : current.BlockedInspectionFailure,
                 JustificationExpiresAtUtc = next == TransferJournalState.Blocked
                     ? blockedEvidence?.JustificationExpiresAtUtc
                     : current.JustificationExpiresAtUtc,
@@ -1117,6 +1123,7 @@ public sealed record TransferJournalEntry(
     public string? LastRenameDestination { get; init; }
     public bool LastRenameCommitted { get; init; }
     public int BlockedPolicyVersion { get; init; }
+    public InspectionFailureKind? BlockedInspectionFailure { get; init; }
     public DateTimeOffset? JustificationExpiresAtUtc { get; init; }
     public bool JustificationWindowClosed { get; init; }
     public StagedHandbackState HandbackState { get; init; }
@@ -1137,6 +1144,7 @@ public sealed record TransferJournalEntry(
             PendingRename == other.PendingRename && LastRenameTransactionId == other.LastRenameTransactionId &&
             LastRenameDestination == other.LastRenameDestination && LastRenameCommitted == other.LastRenameCommitted &&
             BlockedPolicyVersion == other.BlockedPolicyVersion &&
+            BlockedInspectionFailure == other.BlockedInspectionFailure &&
             JustificationExpiresAtUtc == other.JustificationExpiresAtUtc &&
             JustificationWindowClosed == other.JustificationWindowClosed && HandbackState == other.HandbackState &&
             HandbackPath == other.HandbackPath && HandbackLength == other.HandbackLength &&
@@ -1161,6 +1169,7 @@ public sealed record TransferJournalEntry(
         hash.Add(LastRenameDestination);
         hash.Add(LastRenameCommitted);
         hash.Add(BlockedPolicyVersion);
+        hash.Add(BlockedInspectionFailure);
         hash.Add(JustificationExpiresAtUtc);
         hash.Add(JustificationWindowClosed);
         hash.Add(HandbackState);
@@ -1177,7 +1186,8 @@ public sealed record TransferJournalEntry(
 public sealed record TransferJournalStateChange(TransferJournalState State, DateTimeOffset OccurredAtUtc);
 
 public sealed record BlockedTransferEvidence(int PolicyVersion,
-    DateTimeOffset? JustificationExpiresAtUtc, bool WindowClosed);
+    DateTimeOffset? JustificationExpiresAtUtc, bool WindowClosed,
+    InspectionFailureKind? InspectionFailure = null);
 
 public enum StagedHandbackState
 {

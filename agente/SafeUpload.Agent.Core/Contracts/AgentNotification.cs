@@ -43,7 +43,8 @@ public sealed record TransferNotification(
     string? PublishedSha256Hex = null,
     string? HandbackPath = null,
     bool? HandbackVerified = null,
-    string? SnapshotSha256Hex = null) : AgentNotification
+    string? SnapshotSha256Hex = null,
+    InspectionFailureKind? InspectionFailure = null) : AgentNotification
 {
     public const string TypeName = "transfer";
 }

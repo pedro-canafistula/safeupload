@@ -56,6 +56,13 @@ public sealed class StagedInspectionFailureTests : IDisposable
             Assert.Equal(staged ? Verdict.Blocked : Verdict.AllowedWithoutInspection, result.Verdict);
             Assert.Equal(staged, result.IsBlocked);
             Assert.Equal(reason, result.Reason);
+            Assert.Equal(failure switch
+            {
+                "size" => InspectionFailureKind.TooLarge,
+                "format" => InspectionFailureKind.UnsupportedFormat,
+                "timeout" => InspectionFailureKind.Timeout,
+                _ => InspectionFailureKind.ReadOrParse
+            }, result.FailureKind);
             Assert.Equal(7, result.PolicyVersion);
             Assert.True(result.InScope);
             Assert.False(result.FromCache);

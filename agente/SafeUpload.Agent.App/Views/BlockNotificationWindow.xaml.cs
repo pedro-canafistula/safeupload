@@ -49,14 +49,15 @@ public partial class BlockNotificationWindow : Window
         bool staged = false,
         string? handbackPath = null,
         bool? handbackVerified = null,
-        string? snapshotSha256Hex = null)
+        string? snapshotSha256Hex = null,
+        InspectionFailureKind? inspectionFailure = null)
     {
         ArgumentNullException.ThrowIfNull(findings);
 
         InitializeComponent();
 
         Add(fileName, findings, justificationEventId, quarantined, staged,
-            handbackPath, handbackVerified, snapshotSha256Hex);
+            handbackPath, handbackVerified, snapshotSha256Hex, inspectionFailure);
 
         // A área útil exclui a barra de tarefas, então a notificação não fica
         // escondida atrás dela nem em telas com a barra em outra borda.
@@ -74,7 +75,8 @@ public partial class BlockNotificationWindow : Window
         bool staged = false,
         string? handbackPath = null,
         bool? handbackVerified = null,
-        string? snapshotSha256Hex = null)
+        string? snapshotSha256Hex = null,
+        InspectionFailureKind? inspectionFailure = null)
     {
         ArgumentNullException.ThrowIfNull(findings);
 
@@ -104,6 +106,27 @@ public partial class BlockNotificationWindow : Window
         // arquivo diferente daquele mostrado ao lado do campo.
         _justificationEventId = justificationEventId;
         _staged = staged;
+        bool incomplete = staged && inspectionFailure is not null;
+        InspectionFailureText.Visibility = incomplete ? Visibility.Visible : Visibility.Collapsed;
+        string failureMessage = inspectionFailure switch
+        {
+            InspectionFailureKind.TooLarge => "O arquivo ultrapassa o limite de inspeção atual.",
+            InspectionFailureKind.UnsupportedFormat => "Não há suporte para inspecionar este formato.",
+            InspectionFailureKind.Timeout => "A análise não terminou dentro do prazo.",
+            _ => "Não foi possível ler ou analisar todo o arquivo."
+        };
+        InspectionFailureText.Text = _fileNames.Count == 1
+            ? "Inspeção incompleta: " + failureMessage
+            : $"Inspeção incompleta no último arquivo ({fileName}): {failureMessage}";
+        FindingsHeading.Visibility = _findings.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        FindingsHeading.Text = _fileNames.Count == 1 ? "O que foi encontrado" : "Achados nos arquivos bloqueados";
+        FindingsList.Visibility = _findings.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        GuidanceText.Text = incomplete
+            ? "A versão não foi enviada ao destino. Tente salvar novamente ou peça ajuda ao administrador para concluir a análise."
+            : "Revise o arquivo, remova ou anonimize as informações e tente novamente.";
+        JustificationHelpText.Text = incomplete
+            ? "Informe o motivo de negócio para autorizar o envio desta versão mesmo se sua análise não puder ser concluída."
+            : "Informe o motivo de negócio para tentar novamente.";
         QuarantineText.Visibility = quarantined ? Visibility.Visible : Visibility.Collapsed;
         QuarantineText.Text = staged
             ? handbackVerified == true && !string.IsNullOrWhiteSpace(handbackPath)
@@ -176,7 +199,7 @@ public partial class BlockNotificationWindow : Window
             {
                 JustificationInput.IsEnabled = false;
                 JustificationStatusText.Text =
-                    _staged ? "Justificativa aceita. A versão analisada foi enviada."
+                    _staged ? "Justificativa aceita. A versão devolvida foi enviada."
                             : "Justificativa aceita. Tente a operação novamente.";
             }
         }

@@ -160,13 +160,15 @@ public partial class App : System.Windows.Application
         {
             _notification.Add(transfer.FileName, findings, eventId, quarantined: true, staged: true,
                 handbackPath: transfer.HandbackPath, handbackVerified: transfer.HandbackVerified,
-                snapshotSha256Hex: transfer.SnapshotSha256Hex);
+                snapshotSha256Hex: transfer.SnapshotSha256Hex,
+                inspectionFailure: transfer.InspectionFailure);
             return;
         }
         _notification = new BlockNotificationWindow(transfer.FileName, findings,
             eventId, quarantined: true, staged: true,
             handbackPath: transfer.HandbackPath, handbackVerified: transfer.HandbackVerified,
-            snapshotSha256Hex: transfer.SnapshotSha256Hex);
+            snapshotSha256Hex: transfer.SnapshotSha256Hex,
+            inspectionFailure: transfer.InspectionFailure);
         _notification.Closed += (_, _) => _notification = null;
         if (_panel is { IsVisible: true }) _notification.Owner = _panel;
         _notification.Show();
