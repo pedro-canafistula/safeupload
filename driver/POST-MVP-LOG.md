@@ -816,6 +816,43 @@ label. This is a lifetime change, so authorization for a read-only Luna subagent
 requested before its first VM boot. That review is pending. No debuggee has booted this candidate, and the short/10,000-cycle
 pool assertions, raw-observer component regressions and full M2 milestone remain unpassed.
 
+## M2 T9: remove duplicate staged input buffer, matched memory measurement — 2026-10-10
+
+Qualified source `dbbd6bc1120c05001c9798e3c2fdaec7fb567070` lets staged extraction read the publisher's existing service-only
+snapshot through its own exact read handle. It retains `FileShare.Read | FileShare.Delete`, so ordinary writers are excluded
+while a name replacement leaves the opened image intact. Staged approval-cache reuse remains disabled. The legacy path keeps
+the existing single captured byte image for its hash, cache lookup and extraction; an edit during parsing cannot make a
+cached verdict describe a different captured image.
+
+Six new Windows controls use actual TXT, CSV, DOCX, XLSX and PDF documents, replace the name during extraction, and verify
+that the first opened version remains Approved while the replacement containing CPF is Blocked without cache reuse.
+The legacy control changes the source through a writable mapping after capture closes the reader, then reuses the old
+size/timestamp hints: the captured image stays clean, the changed bytes invalidate that approval, and only the changed
+blocked digest subsequently hits cache. Existing hand-back, publisher, strict-decoder and worker-budget controls still pass.
+The first label `m2-t9-stream1` on `cb476376` is retained as a failed gate (678/679): its fixture created a writable mapping
+before the reader opened, so Windows correctly refused the reader and the extractor-entry wait timed out. The correction
+changes fixture order, with no production sharing change or gate relaxation.
+
+Fresh labels `m2-t9-stream3` / `m2-t9-stream4` pass 679/679 feature and 615/615 normal tests, zero build/publish warnings,
+all 197 exact inputs independently matched before integration. Feature package
+`75BB2F8A61DD959CEC2E02470A9007FB5E493339A80D1ED3AF67FEB5CB4A0961`; normal package
+`646A04A60BC2B2A6E96B850D3CA2A85D92775DC26B429CF6E61FAAB08E1AA536`.
+Build/source/test receipt: `m2-t9-snapshot-stream-qualified-source.json`; the agent component index now has five entries.
+
+The matched 256 MiB measurement uses the same hash-pinned program against the independently source-verified and tested normal
+Core binaries for `ed5a2c6d` (`m2-t9-ui2`) and this source (`m2-t9-stream4`). No filter is loaded on the builder; no service is
+installed and no publication is attempted. Fresh clean input remains Approved and CPF at EOF remains Blocked in both variants.
+All four input directories are deleted. Peak working set falls from 1,383,817,216 to 1,113,554,944 bytes for clean content,
+and from 1,383,645,184 to 1,113,886,720 for CPF at EOF: 257.7/257.3 MiB saved. Allocated bytes fall by about 255.4 MiB per case.
+Clean timings are 1,210/1,046 ms; CPF timings are 1,003/1,145 ms. These are single warm-input samples, so no throughput/default
+claim follows. The remaining peak is about 1.04 GiB, and extracted text/scanner state still scale with input.
+
+Raw source/probe/build/preflight/results are retained under `m2-t9-copy-throughput/`; decision readout:
+`m2-t9-copy-throughput-readout.json`. This removes one copy, not the remaining unbounded text extraction or format-coverage
+conditions. Stage budgets/orphans, large-file seeding, policy/snapshot failure handling, runtime/raw-volume qualification,
+the production default and full M2 freeze/review/gate remain pending. The T4 driver candidate still awaits authorized Luna
+review before its first VM boot; no new T4 long run or conditional regression cell has started.
+
 T9 source `ed5a2c6d833d6bf0c57a5fc16d8b54dab9092461` adds typed incomplete-inspection metadata to the blocked notification,
 with only four classes (size, format, timeout, read/parse). Parser diagnostics do not cross this UI boundary. The journal
 stores the class, validates it and restores it on blocked recovery. The WPF message explains incomplete analysis and the

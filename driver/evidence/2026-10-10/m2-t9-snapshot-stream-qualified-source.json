@@ -1,0 +1,61 @@
+{
+  "component": "T9 staged input copy removal",
+  "sourceCommit": "dbbd6bc1120c05001c9798e3c2fdaec7fb567070",
+  "sourceFiles": {
+    "agente/SafeUpload.Agent.Core/Application/InspectionService.cs": "be45585de46627bff6af6864f01a24dd55ed65811fd9589fedb84a550fe4fdc0",
+    "agente/SafeUpload.Agent.Tests/InspectionSharingTests.cs": "2e17181b1ab53542a1a54a4ca63b4c581ae9207f49e3c5644fd288954e191257"
+  },
+  "gates": [
+    {
+      "label": "m2-t9-stream3",
+      "admissionEvidence": true,
+      "testsPassed": 679,
+      "newControlsPassed": 6,
+      "controls": {
+        "Staged_extraction_reads_the_opened_version_when_its_name_is_replaced": 5,
+        "Legacy_hash_and_scan_use_one_capture_when_a_mapping_changes_the_source_during_extraction": 1
+      },
+      "sourceManifestVerified": 197,
+      "buildAndPublishWarnings": 0,
+      "packageSha256": "75BB2F8A61DD959CEC2E02470A9007FB5E493339A80D1ED3AF67FEB5CB4A0961",
+      "exeSha256": "7B699E64A5FB5B3359C97023423970EC6889EE079782B96B8938F942C40B01C1",
+      "archiveSha256": "89F359F8ECD7CD3460453A812470B729A145E922335A04BB8E0560788C365D15",
+      "manifestSha256": "E2D5D5827368C86D52154E0108FC5475A6D567804C856A50AA88683BD986DC52",
+      "localPackage": "driver/evidence/2026-10-10/exact-agent-m2-t9-stream3-stage-service-publish.zip",
+      "rawTrx": "driver/evidence/2026-10-10/exact-agent-m2-t9-stream3-agent-tests.trx"
+    },
+    {
+      "label": "m2-t9-stream4",
+      "admissionEvidence": false,
+      "testsPassed": 615,
+      "newControlsPassed": 6,
+      "controls": {
+        "Staged_extraction_reads_the_opened_version_when_its_name_is_replaced": 5,
+        "Legacy_hash_and_scan_use_one_capture_when_a_mapping_changes_the_source_during_extraction": 1
+      },
+      "sourceManifestVerified": 197,
+      "buildAndPublishWarnings": 0,
+      "packageSha256": "646A04A60BC2B2A6E96B850D3CA2A85D92775DC26B429CF6E61FAAB08E1AA536",
+      "exeSha256": "77A7F35D8B2B845ACF4E6E8C8FE705BEF36001E4612F9B3BE751A99D6FF153B2",
+      "archiveSha256": "89F359F8ECD7CD3460453A812470B729A145E922335A04BB8E0560788C365D15",
+      "manifestSha256": "E2D5D5827368C86D52154E0108FC5475A6D567804C856A50AA88683BD986DC52",
+      "localPackage": "driver/evidence/2026-10-10/exact-agent-m2-t9-stream4-stage-service-publish.zip",
+      "rawTrx": "driver/evidence/2026-10-10/exact-agent-m2-t9-stream4-agent-tests.trx"
+    }
+  ],
+  "failureRetained": {
+    "sourceCommit": "cb4763760d619db47a57e61bfbd3956cf028fc99",
+    "label": "m2-t9-stream1",
+    "testsPassed": 678,
+    "testsTotal": 679,
+    "failedControls": 1,
+    "cause": "The fixture created a writable mapping before inspection; Windows correctly refused the reader, so the extractor-entry wait timed out. Corrected fixture mutates only after legacy capture has closed its input handle; no production sharing or gate was relaxed."
+  },
+  "streamingExtractionComplete": false,
+  "boundedMemoryQualified": false,
+  "runtimeQualified": false,
+  "milestoneComplete": false,
+  "integrated": true,
+  "matched256MiBMeasurement": "driver/evidence/2026-10-10/m2-t9-copy-throughput-readout.json",
+  "measurementRuntimeQualified": false
+}

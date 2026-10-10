@@ -381,6 +381,15 @@ cleanup, seeding cost and runtime qualification remain open. The failure UI is i
 interactive app checks remain open. Policy-load/snapshot failures still retain
 locally and need their own safe Blocked/hand-back treatment; the agent does not claim a complete T9 implementation.
 
+**Input-copy update 2026-10-10:** `dbbd6bc1` reads the publisher's existing service-only snapshot through one exact read handle,
+without a second whole-file byte array. Legacy hash/cache/scan still use one captured image. Gates `m2-t9-stream3` / `stream4`
+pass 679/679 feature and 615/615 normal tests, with six real-format/replacement/mapping controls and zero warnings. A matched
+256 MiB warm-input comparison against `ed5a2c6d` saves 257.3-257.7 MiB of peak working set and about 255.4 MiB allocated, with
+both expected verdicts and all generated inputs deleted. Peak memory is still about 1.04 GiB: extraction/scanning remains
+whole-text memory, so this does not qualify bounded memory, throughput, runtime publication or a production default.
+Receipts: [input-copy component](evidence/2026-10-10/m2-t9-snapshot-stream-qualified-source.json),
+[matched memory measurement](evidence/2026-10-10/m2-t9-copy-throughput-readout.json).
+
 ### T10. Permission and owner changes reach the real file or folder
 
 **Problem.** With the driver loaded nobody, administrators included, can change the permissions of the protected folder or its files

@@ -1,0 +1,199 @@
+{
+  "measurement": "256 MiB matched warm-input staged inspection comparison",
+  "measurementInputs": {
+    "measurement": "matched 256 MiB warm-input staged whole-text-memory comparison",
+    "priorQualifiedSource": "ed5a2c6d833d6bf0c57a5fc16d8b54dab9092461",
+    "candidateSource": "dbbd6bc1120c05001c9798e3c2fdaec7fb567070",
+    "beforePackageSha256": "4C6A72311D00F5875DB8797C5793F96F4B40BDD2AA416914E77F97564935B655",
+    "programSha256": "35b6e1b27ff061a0433404a5d474db79b92dd63fc647a6ceafe62f4c2f4d347b",
+    "coreHashesRequireTestedBinaryAndFrozenManifestVerification": true,
+    "candidateGatePassed": false,
+    "serviceInstallation": false,
+    "runtimeQualification": false,
+    "boundedMemoryQualification": false,
+    "archiveSha256": "847271296B58EA8F43CF105134055CEA9FF20B2CD8AD67BD6D4C81286F5B6CDF",
+    "files": {
+      "after\\Program.cs": "35B6E1B27FF061A0433404A5D474DB79B92DD63FC647A6CEAFE62F4C2F4D347B",
+      "after\\T9Throughput.csproj": "D7178EFC410C0FCF3C9EE81FF007A25BD23F8199C24252F8B8A3579256E38088",
+      "before\\Program.cs": "35B6E1B27FF061A0433404A5D474DB79B92DD63FC647A6CEAFE62F4C2F4D347B",
+      "before\\T9Throughput.csproj": "842FBE6E8E647D1621461FF2BF5F73EC567C69589F2368A76666E5A8EB17291F",
+      "Invoke-CopyBenchmark.ps1": "D5B1DA4AAF74B9EF993AB27EFCC1CA116BB9409487FD7F3900E85F0A66754F46"
+    },
+    "beforeManifestSha256": "1C927EEC4AAA3B5E2A5268E1BF376005B52D888D8E55305BF1C531DC9C77EAFF",
+    "afterManifestSha256": "E2D5D5827368C86D52154E0108FC5475A6D567804C856A50AA88683BD986DC52"
+  },
+  "variants": {
+    "before": {
+      "preflight": {
+        "Variant": "before",
+        "SourceCommit": "ed5a2c6d833d6bf0c57a5fc16d8b54dab9092461",
+        "BuildLabel": "m2-t9-ui2",
+        "CoreSHA256": "FB0349A4E922F54A87ECD216094F6D4CC59AA618E145D6C6A0567E40FD2F9F75",
+        "ManifestSHA256": "1C927EEC4AAA3B5E2A5268E1BF376005B52D888D8E55305BF1C531DC9C77EAFF",
+        "SourceInputsVerified": 197,
+        "TestsPassed": 609,
+        "SafeUploadFilterLoaded": false,
+        "CoreMatchesTestedBinary": true,
+        "ServiceInstalled": false,
+        "RuntimeQualification": false,
+        "InputJustGenerated": true,
+        "FileCacheEvicted": false,
+        "PSVersion": "5.1.19041.6456"
+      },
+      "benchmarkBuildWarnings": 0,
+      "benchmarkBuildErrors": 0,
+      "cases": {
+        "clean": {
+          "Case": "clean",
+          "InputBytes": 268435456,
+          "WholeFileSizeVerified": true,
+          "Verdict": "Approved",
+          "Reason": null,
+          "InScope": true,
+          "FromCache": false,
+          "Categories": [],
+          "ElapsedMs": 1209.7531,
+          "MiBPerSecond": 211.61342756633564,
+          "WorkingSetBefore": 27123712,
+          "WorkingSetAfter": 1383813120,
+          "PeakWorkingSet": 1383817216,
+          "AllocatedBytes": 1344692296,
+          "CoreAssemblySHA256": "FB0349A4E922F54A87ECD216094F6D4CC59AA618E145D6C6A0567E40FD2F9F75",
+          "ExpectedVerdict": true,
+          "ServiceInstalledByMeasurement": false,
+          "PublicationAttempted": false,
+          "InputJustGenerated": true,
+          "FileCacheEvictionPerformed": false,
+          "RuntimeInvariantProof": false,
+          "CurrentWholeMemoryBaseline": true
+        },
+        "cpf-eof": {
+          "Case": "cpf-eof",
+          "InputBytes": 268435456,
+          "WholeFileSizeVerified": true,
+          "Verdict": "Blocked",
+          "Reason": null,
+          "InScope": true,
+          "FromCache": false,
+          "Categories": [
+            "Cpf"
+          ],
+          "ElapsedMs": 1002.8633,
+          "MiBPerSecond": 255.26908802027154,
+          "WorkingSetBefore": 27156480,
+          "WorkingSetAfter": 1383641088,
+          "PeakWorkingSet": 1383645184,
+          "AllocatedBytes": 1344699872,
+          "CoreAssemblySHA256": "FB0349A4E922F54A87ECD216094F6D4CC59AA618E145D6C6A0567E40FD2F9F75",
+          "ExpectedVerdict": true,
+          "ServiceInstalledByMeasurement": false,
+          "PublicationAttempted": false,
+          "InputJustGenerated": true,
+          "FileCacheEvictionPerformed": false,
+          "RuntimeInvariantProof": false,
+          "CurrentWholeMemoryBaseline": true
+        }
+      }
+    },
+    "after": {
+      "preflight": {
+        "Variant": "after",
+        "SourceCommit": "dbbd6bc1120c05001c9798e3c2fdaec7fb567070",
+        "BuildLabel": "m2-t9-stream4",
+        "CoreSHA256": "8A1E8EDB8AA32C96D05F52B1D21D4570CFF8B57FAAE0A2D3A706A030567AD491",
+        "ManifestSHA256": "E2D5D5827368C86D52154E0108FC5475A6D567804C856A50AA88683BD986DC52",
+        "SourceInputsVerified": 197,
+        "TestsPassed": 615,
+        "SafeUploadFilterLoaded": false,
+        "CoreMatchesTestedBinary": true,
+        "ServiceInstalled": false,
+        "RuntimeQualification": false,
+        "InputJustGenerated": true,
+        "FileCacheEvicted": false,
+        "PSVersion": "5.1.19041.6456"
+      },
+      "benchmarkBuildWarnings": 0,
+      "benchmarkBuildErrors": 0,
+      "cases": {
+        "clean": {
+          "Case": "clean",
+          "InputBytes": 268435456,
+          "WholeFileSizeVerified": true,
+          "Verdict": "Approved",
+          "Reason": null,
+          "InScope": true,
+          "FromCache": false,
+          "Categories": [],
+          "ElapsedMs": 1046.3155,
+          "MiBPerSecond": 244.66807573814972,
+          "WorkingSetBefore": 26972160,
+          "WorkingSetAfter": 1113550848,
+          "PeakWorkingSet": 1113554944,
+          "AllocatedBytes": 1076904288,
+          "CoreAssemblySHA256": "8A1E8EDB8AA32C96D05F52B1D21D4570CFF8B57FAAE0A2D3A706A030567AD491",
+          "ExpectedVerdict": true,
+          "ServiceInstalledByMeasurement": false,
+          "PublicationAttempted": false,
+          "InputJustGenerated": true,
+          "FileCacheEvictionPerformed": false,
+          "RuntimeInvariantProof": false,
+          "CurrentWholeMemoryBaseline": true
+        },
+        "cpf-eof": {
+          "Case": "cpf-eof",
+          "InputBytes": 268435456,
+          "WholeFileSizeVerified": true,
+          "Verdict": "Blocked",
+          "Reason": null,
+          "InScope": true,
+          "FromCache": false,
+          "Categories": [
+            "Cpf"
+          ],
+          "ElapsedMs": 1145.4965,
+          "MiBPerSecond": 223.48387795161312,
+          "WorkingSetBefore": 27160576,
+          "WorkingSetAfter": 1113882624,
+          "PeakWorkingSet": 1113886720,
+          "AllocatedBytes": 1076912960,
+          "CoreAssemblySHA256": "8A1E8EDB8AA32C96D05F52B1D21D4570CFF8B57FAAE0A2D3A706A030567AD491",
+          "ExpectedVerdict": true,
+          "ServiceInstalledByMeasurement": false,
+          "PublicationAttempted": false,
+          "InputJustGenerated": true,
+          "FileCacheEvictionPerformed": false,
+          "RuntimeInvariantProof": false,
+          "CurrentWholeMemoryBaseline": true
+        }
+      }
+    }
+  },
+  "comparisons": {
+    "clean": {
+      "peakWorkingSetSavingsBytes": 270262272,
+      "peakWorkingSetSavingsMiB": 257.7421875,
+      "allocatedSavingsBytes": 267788008,
+      "allocatedSavingsMiB": 255.3825454711914,
+      "beforePeakGiB": 1.2887802124023438,
+      "afterPeakGiB": 1.037078857421875,
+      "beforeElapsedMs": 1209.7531,
+      "afterElapsedMs": 1046.3155,
+      "timingConclusion": "Single warm-input samples; no latency/throughput/default qualification."
+    },
+    "cpf-eof": {
+      "peakWorkingSetSavingsBytes": 269758464,
+      "peakWorkingSetSavingsMiB": 257.26171875,
+      "allocatedSavingsBytes": 267786912,
+      "allocatedSavingsMiB": 255.38150024414062,
+      "beforePeakGiB": 1.2886199951171875,
+      "afterPeakGiB": 1.0373878479003906,
+      "beforeElapsedMs": 1002.8633,
+      "afterElapsedMs": 1145.4965,
+      "timingConclusion": "Single warm-input samples; no latency/throughput/default qualification."
+    }
+  },
+  "runtimeQualified": false,
+  "boundedMemoryQualified": false,
+  "productionDefaultChosen": false,
+  "allMeasurementInputsDeleted": true
+}
