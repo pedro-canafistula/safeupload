@@ -1270,6 +1270,30 @@ VOID SafeUploadStageAdmissionCanaryHoldCancel(VOID)
 }
 #endif
 
+/* T11: the writer registry binds a stream to its section-object pointer on the premise that NTFS keeps one SCB, hence one
+ * pointer, per live stream for every handle, section and view (StageRegistryAssociateSectionPointer). Check it on every new volume:
+ * a second open of the canary while its first handle lives must report the same pointer. A volume where it does not hold fails the
+ * canary and is never trusted. FILE_DELETE_ON_CLOSE takes effect only at the first handle's cleanup, so the name still opens. */
+static NTSTATUS StageCanaryCheckSharedSop(_In_ PFLT_INSTANCE Instance, _In_ PUNICODE_STRING Name,
+    _In_ PSECTION_OBJECT_POINTERS Expected)
+{
+    OBJECT_ATTRIBUTES attributes;
+    IO_STATUS_BLOCK io = {0};
+    HANDLE handle = NULL;
+    PFILE_OBJECT object = NULL;
+    NTSTATUS status;
+    InitializeObjectAttributes(&attributes, Name, OBJ_KERNEL_HANDLE | OBJ_CASE_INSENSITIVE, NULL, NULL);
+    status = FltCreateFileEx2(SafeUploadData.Filter, Instance, &handle, &object,
+        FILE_READ_DATA | SYNCHRONIZE, &attributes, &io, NULL, 0,
+        FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, FILE_OPEN,
+        FILE_NON_DIRECTORY_FILE | FILE_SYNCHRONOUS_IO_NONALERT | FILE_OPEN_REPARSE_POINT | FILE_COMPLETE_IF_OPLOCKED,
+        NULL, 0, 0, NULL);
+    if (NT_SUCCESS(status) && (object == NULL || object->SectionObjectPointer != Expected)) status = STATUS_DATA_ERROR;
+    if (object != NULL) ObDereferenceObject(object);
+    if (handle != NULL) FltClose(handle);
+    return status;
+}
+
 static NTSTATUS StageCanaryCheckRemoved(_In_ PFLT_INSTANCE Instance, _In_ PUNICODE_STRING Name)
 {
     OBJECT_ATTRIBUTES attributes;
@@ -1408,6 +1432,9 @@ static VOID StageCanaryRun(_In_ PFLT_INSTANCE Instance, _Inout_ PSAFEUPLOAD_INST
     if (!NT_SUCCESS(status)) goto Exit;
     if (returned != sizeof(identity)) { status = STATUS_INFO_LENGTH_MISMATCH; goto Exit; }
     if (fileObject->SectionObjectPointer == NULL) { status = STATUS_INVALID_FILE_FOR_SECTION; goto Exit; }
+    step = 12;
+    status = StageCanaryCheckSharedSop(Instance, &name, fileObject->SectionObjectPointer);
+    if (!NT_SUCCESS(status)) goto Exit;
     InitializeObjectAttributes(&attributes, NULL, OBJ_KERNEL_HANDLE, NULL, NULL);
     step = 9;
     status = ZwCreateSection(&sectionHandle, SECTION_QUERY | SECTION_MAP_READ | SECTION_MAP_WRITE,
@@ -1486,7 +1513,8 @@ Exit:
     Context->CanaryStatus = status;
     Context->CanaryCleanupStatus = cleanupStatus;
     /* Failure phase in bits 8..15: volume/name/security/create/DACL/test-hold/EOF/ID/section/
-     * retained/released. The low bits are individual checks; passed is exactly 15. */
+     * retained/released, and 12 for the shared section-object pointer (T11). The low bits are individual checks; passed is
+     * exactly 15. */
     Context->CanaryChecks = checks | (status == STATUS_SUCCESS ? 0 : step << 8);
     /* Trust can advance only from a newly-mounted pending state. Any failure
      * permanently loses it for this instance; a later diagnostic rerun cannot
