@@ -67,6 +67,9 @@ Milestones: **M1 "safe to leave loaded"** = T0-T3; **M2 "everyday file work"** =
 
 ## P0: the driver can stay loaded (M1)
 
+**M1 complete 2026-10-10:** gate 69/69 (MvpSuite PASS) on `m1-driver21` (`498f4ed7`) + agent `4d02039a`, T3's four workloads and U01 in
+both modes on the same pair (`driver/POST-MVP-LOG.md`, "M1 complete").
+
 ### T0. Field diagnostics and installer quick fixes
 
 **Problem.** The three P0 bugs could not be root-caused on the manual-test VM: the Inspector cannot open the filter port while the agent
@@ -119,12 +122,13 @@ in R02 (the cache manager's own close is the only wake-up after a clean holder l
 replaced basis, which the harness refuses): fixed with an identity anchor (the pass keeps its by-ID handle while the entry is Activating with a live writer).
 - [x] idle passes about zero (A01-A04 pass; counter in the diagnostics)
 - [x] R02 passes on the held basis (2 of 2 on the anchor driver)
-- [~] A01-A05, B01, R01, R03, X01, C03, C04 on the anchor driver (A02, A03, A05, X01, C03, C04 ok; A01/A04 repeat after an evidence-capture flake)
+- [x] A01-A05, B01, R01, R03, X01, C03, C04 ok in all three modes on the final driver `m1-driver21` (69/69, below)
 - [x] boot-Verifier B02 + C01-C04 BLOCK complete on the final driver line -> 69/69 (C01 `m1b1`, C03 `m1d1`, C04 `m1d2`, C02 `m1d3`; B02 `m1w1` on 8e506437, re-run queued)
 - [x] runtime-Verifier slice (C05, C01-approve-absent, C01-block-absent, S01) on the final pair: `m1f1`-`m1f4` ok by the gate rule (tier 2) on `m1-driver4`/`m1-agent6`, also R02 `m1f5` and A01 `m1f6`; C05 `m1f2` ring: "recorded the denied rename: sequence 2, status 0xC0000022"
 - [x] follow-up 2026-10-09: the end of a write still woke the worker for every entry (C03-approve-existing `m14v13`: 156 passes/s); now only for a waiting
   entry or a sibling a promotion waits for (`a7a69d1c`, five Luna passes, no P0/P1); the idle check runs its own 200 writes/s outside writer (driver14 `m15a1`: 206 passes/s, FAIL)
-- [ ] the 69 cells, T3 and U01 again on `m1-driver19` (`m1-final19.sh`)
+- [x] the 69 cells, T3 and U01 again on the final driver `m1-driver21` (`498f4ed7`; driver19's cumulative update exposed the stream-cache refusal
+  fixed there): gate 69/69, MvpSuite PASS; idle cell `m21c1` 1.93 passes/s (log: "M1 complete")
 
 ### T2. New user profiles
 
@@ -152,10 +156,10 @@ aliases) and failed on `pagefile.sys`; an Activating entry for an unrelated name
 local prefix (the `\Device\Mup` instance, early boot). Row U01 = `driver/scripts/Invoke-NewProfileDiagnosis.sh` (verdict file). U01 is not part of the 69 cells.
 - [x] ring names the refusals; fixes without weakening a refusal inside a scope (the standard user is still refused directory creates in the protected folder)
 - [x] row U01 written, with a verdict
-- [~] U01 PASS on the final driver (all required lines pass except the two Mup refusals, fixed in 6b83f608, re-run pending)
-- [~] U01 in boot-Verifier mode (`u01h`): everything passes except one transient refusal of a writable section of a pre-scope writer's file (FontCache) while its entry waits for its alias probe: **T2c** (options in the log)
-- [ ] **T2c** also hits a registry hive: `t3cue` refused the Registry process's writable section of `config\DRIVERS` at boot (`policyScope`). Chosen design (not
-  built yet): when the section gate would refuse only because the entry's alias probe is pending, at PASSIVE and not nested, it moves that entry to the front
+- [x] U01 PASS on the final driver: `u0121a` on `m1-driver21` (the Mup refusals were fixed in 6b83f608)
+- [x] U01 in boot-Verifier mode: `u0121b` PASS on `m1-driver21` (the transient FontCache section refusal of `u01h` was T2c, fixed below)
+- [x] **T2c** also hit a registry hive: `t3cue` refused the Registry process's writable section of `config\DRIVERS` at boot (`policyScope`). Built in
+  `4d02039a` (three Luna rounds); no T2c refusal since (U01 and the cumulative updates on driver13, driver14 and driver21). Design: when the section gate would refuse only because the entry's alias probe is pending, at PASSIVE and not nested, it moves that entry to the front
   of the worker and waits a bounded time (about 2 s) for that probe, then decides; on timeout it refuses as today. Rejected: a "single link" name-only rule
   (a hard link made through another stream's handle does not reach the default-stream entry, so its rename version is not advanced).
 - [x] FileStandardLinkInformation (0x36) on a staged stream answered from the backing file; U01 `u01n` and `u01o` (boot Verifier) all PASS on `m1-driver13` (T2c fixed too)
@@ -183,6 +187,9 @@ checkpoint). Known risk to check first: M365 and installers use by-ID opens and 
 - [x] cu: `t3cuh` PASS on `m1-driver13` (1,135 s, empty deny ring, Ready, high-water 4,015/4,096 - thin margin, see T3c). Before: KB5066791 installs with the driver (19045.2965 -> 19045.6456 in `t3cub`/`t3cuc`/`t3cud`); 0 legacy-gate refusals since `c70a4354`; the nested TiWorker writes (23 install, 8 servicing) are still refused (T3d, `704146b8` names them). T3d cause: their entries are Unscoped but never classified (aux `0xE5000007`); fix `77b76faa` (create-time alias proof -> OUTSIDE, distrusted during a scope transition after Luna's P0), builds `m1-driver10`; CU `t3cuh` pending
 - [x] defender: `t3defenderu` PASS, 170.4 s, no refusal, Ready, high-water 277/4096; control `t3defenderv` 172.3 s
 - [x] control runs: msi 7.0 s, defender 172.3 s, cu 921.3 s (driver 1,135.3 s, +23 %), m365 418.3 s (driver 402.2 s)
+- [x] all four again on the final driver `m1-driver21`: m365 `t3m365j` 453.4 s, msi `t3msi21` 11.1 s, defender `t3def21` 167.9 s, cu `t3cu21b`
+  1,016.9 s and `t3cu21c` 1,043.5 s (+10-13 %); coverage Ready, no Unknown, no overflow; the only refusal is TrkWks's write by object ID, a known
+  refusal by the owner decision of 2026-10-10
 
 ## P1: everyday file work (M2)
 

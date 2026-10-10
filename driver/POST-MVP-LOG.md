@@ -497,3 +497,32 @@ known refusal when the process is identified as TrkWks (`815ea9e8`); `t3cu21b` r
 
 I removed the `safeupload-run-m2b` worktree with `git worktree remove --force`, which deleted driver19's raw evidence (ring, samples, the
 `m19c1` case export); the T3 verdict lines survive in the tool logs and the figures above come from them.
+
+### M1 complete: 69/69 on `m1-driver21` + agent `4d02039a` (2026-10-10, 14:41 UTC)
+
+Gate: `Get-StagedMvpStatus.py 498f4ed7 4d02039a` -> **MvpCells=69/69, MvpSuite=PASS** (two-tier gate). Run from worktree `safeupload-run-m2c`
+(driver sources identical to `498f4ed7`; harness at `be568f44`, then `4f30a36d` for the retries), queue `m1-final21r.sh`, then `m1-after21.sh`
+and `m1-extra21.sh`.
+- T3 on driver21: Microsoft 365 `t3m365j` 453.4 s (control 418.3 s; high-water 8,056, no overflow, coverage Ready, no Unknown); MSI
+  `t3msi21` 11.1 s; Defender `t3def21` 167.9 s (control 172.3 s); cumulative update `t3cu21b` 1,016.9 s and `t3cu21c` 1,043.5 s
+  (control 921.3 s; high-water 1,108-1,124, no Unknown, no servicing refusal). The only refusal in each is the TrkWks write by object ID,
+  a known refusal by the owner decision of 2026-10-10 (`t3cu21c` judged by the committed rule; the others re-judged with it from their
+  saved evidence). U01 `u0121a` and `u0121b` (boot Verifier) PASS on every line. Idle cell `m21c1`: 1.93 reclaim passes/s with the
+  200 writes/s outside writer.
+- The 69 cells: first pass 61 ok (`m21v` 18/23, `m21o` 22/23, `m21b` 21/23); retry round 6 of 8 ok (`m21y1` B01, `m21y3` C02, `m21y4`
+  C03, `m21x1` B01, `m21z1` C05, `m21z2` R03); extra round 2 of 2 (`m21r1` C01-block-absent, `m21r2` C04-block). T0's runtime-Verifier
+  slice (C05, C01-approve-absent, C01-block-absent, S01) and T1's boot-Verifier B02 and C01-C04 BLOCK are all ok on this pair.
+- Nothing in the failed attempts was a driver fault:
+  - the guest wall clock starts about 4 h behind after each cold start and the time service steps it a few minutes later; a step inside
+    a BLOCK trial failed DirectoryMetadata (last-access times only: `m21v10`, `m21v12`, `m21v14`, `m21v16`) and B01's receipts
+    (`m21v18`). The batch now synchronizes the guest clock before each case (`3d1782b5`); setting it from the host left it about 1 s
+    off and the later correction moved R03's boot identity by 1.1 s (`m21b22`), so it now forces the time service to synchronize
+    (`4f30a36d`), after which R03 passed (`m21z2`);
+  - the harness's process inventory hit a process that exited while it was listed ("The parameter is incorrect": `m21o18`, `m21b17`,
+    `m21y5`); the harness treats that as defeating the proof, by design;
+  - the raw read of a blocked transfer's private snapshot saw the file's creation-time MFT record (Eof 0, stamps 2 ms apart) while the
+    sealed digest equalled A (`m21y2`, as `m1w2` on 9 October): the observer cannot open or flush the stage, so the on-disk MFT had not
+    caught up. Follow-up: flush the volume before that read.
+- Latency, informational (worst p95 / max over the measured cells): cached write 8.4 / 73 ms, close 2.9 / 665 ms, flush 12.2 / 598 ms,
+  writer open 3.7 / 209 ms, writer open refused 21.4 / 143 ms.
+Overhead for the owner: Microsoft 365 +8 %, cumulative update +10-13 %, Defender none measurable, an MSI about 4 s.
