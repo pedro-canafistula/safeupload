@@ -1498,6 +1498,10 @@ static NTSTATUS StageCreate(PFLT_CALLBACK_DATA Data, PCFLT_RELATED_OBJECTS Objec
             /* The service deleted this sealed version's stage file (BLOCK cleanup): the worker retires the stream at its next pass, but an
              * open must not be served from a delete-pending backing in between. Fail closed; the delete-pending state is permanent. */
             FILE_STANDARD_INFORMATION pending;
+            /* T11: a create nested inside another file-system call (a top-level IRP is set) must not send the backing a new
+             * request while the namespace lock is held. The backing cannot be verified there, so the open fails as a retryable
+             * sharing conflict instead of being served from a possibly delete-pending stage. */
+            if (IoGetTopLevelIrp() != NULL) { status = STATUS_SHARING_VIOLATION; goto Exit; }
             RtlZeroMemory(&pending, sizeof(pending));
             status = FltQueryInformationFile(stream->BackingInstance, stream->BackingObject,
                 &pending, sizeof(pending), FileStandardInformation, NULL);
