@@ -130,6 +130,8 @@ public static class Operation
     public const uint StageDiagnostic = 6;
     public const uint StageRenameCommit = 7;
     public const uint StageRenameAbort = 8;
+    /// <summary>T5: the owner deleted its never-sealed private version (journaled Discarded, stage removed).</summary>
+    public const uint StageDiscard = 9;
 
     /// <summary>
     /// Kept for contract completeness. The driver no longer registers

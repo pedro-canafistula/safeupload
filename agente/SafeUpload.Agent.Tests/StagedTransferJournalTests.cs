@@ -1051,4 +1051,56 @@ public sealed class StagedTransferJournalTests : IDisposable
         Assert.Single(Manifests());
         Assert.Equal(transfer.TransferId, (await Journal().ReadAsync(transfer.TransferId, CancellationToken.None)).Transfer.TransferId);
     }
+
+    [Fact]
+    public async Task Discarded_version_keeps_its_generation_and_supersedes_an_older_sealed_one()
+    {
+        var journal = Journal();
+        var sealedFirst = Transfer();
+        await journal.CreateAsync(sealedFirst, CancellationToken.None);
+        await journal.SealAsync(sealedFirst.TransferId, sealedFirst.ProcessId, sealedFirst.StagePath, CancellationToken.None);
+        var deleted = sealedFirst with { TransferId = Guid.NewGuid(), StagePath = sealedFirst.StagePath + ".next" };
+        var created = await journal.CreateAsync(deleted, CancellationToken.None);
+        var discarded = await journal.DiscardAsync(deleted.TransferId, deleted.ProcessId, deleted.StagePath, CancellationToken.None);
+        Assert.Equal(TransferJournalState.Discarded, discarded.State);
+        Assert.Equal(created.DestinationGeneration, discarded.DestinationGeneration);
+        Assert.Equal(TransferJournalState.Discarded,
+            (await Journal().DiscardAsync(deleted.TransferId, deleted.ProcessId, deleted.StagePath, CancellationToken.None)).State);
+        // The version sealed before the delete can no longer be inspected, approved or published.
+        await Assert.ThrowsAsync<IOException>(() => Journal().TransitionAsync(sealedFirst.TransferId,
+            TransferJournalState.Sealed, TransferJournalState.Inspecting, null, CancellationToken.None));
+        Assert.DoesNotContain(await Journal().ReadPendingAsync(CancellationToken.None),
+            e => e.Transfer.TransferId == deleted.TransferId);
+        var later = await journal.CreateAsync(sealedFirst with { TransferId = Guid.NewGuid() }, CancellationToken.None);
+        Assert.True(later.DestinationGeneration > discarded.DestinationGeneration);
+    }
+
+    [Fact]
+    public async Task Discard_requires_the_owner_and_an_unsealed_version()
+    {
+        var journal = Journal();
+        var transfer = Transfer();
+        await journal.CreateAsync(transfer, CancellationToken.None);
+        await Assert.ThrowsAsync<IOException>(() => journal.DiscardAsync(transfer.TransferId, transfer.ProcessId + 1,
+            transfer.StagePath, CancellationToken.None));
+        await Assert.ThrowsAsync<IOException>(() => journal.DiscardAsync(transfer.TransferId, transfer.ProcessId,
+            transfer.StagePath + ".other", CancellationToken.None));
+        await journal.SealAsync(transfer.TransferId, transfer.ProcessId, transfer.StagePath, CancellationToken.None);
+        await Assert.ThrowsAsync<IOException>(() => journal.DiscardAsync(transfer.TransferId, transfer.ProcessId,
+            transfer.StagePath, CancellationToken.None));
+        Assert.Equal(TransferJournalState.Sealed, (await Journal().ReadAsync(transfer.TransferId, CancellationToken.None)).State);
+    }
+
+    [Fact]
+    public async Task Compaction_removes_a_discarded_version_once_nothing_older_is_live()
+    {
+        var journal = Journal();
+        var first = Transfer();
+        await ReleaseAsync(journal, first);
+        var deleted = first with { TransferId = Guid.NewGuid(), StagePath = first.StagePath + ".next" };
+        await journal.CreateAsync(deleted, CancellationToken.None);
+        await journal.DiscardAsync(deleted.TransferId, deleted.ProcessId, deleted.StagePath, CancellationToken.None);
+        Assert.Equal(2, await journal.CompactAsync(DateTimeOffset.UtcNow.AddSeconds(1), CancellationToken.None));
+        Assert.Empty(Manifests());
+    }
 }

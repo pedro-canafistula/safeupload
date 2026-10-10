@@ -271,6 +271,10 @@ public sealed class MinifilterInterceptor : BackgroundService
                     {
                         verdict = SealStage(request);
                     }
+                    else if (request.Operation == Operation.StageDiscard)
+                    {
+                        verdict = DiscardStage(request);
+                    }
                     else if (request.Operation is Operation.StageRename or
                              Operation.StageRenameCommit or Operation.StageRenameAbort)
                     {
@@ -515,6 +519,56 @@ public sealed class MinifilterInterceptor : BackgroundService
         }
     }
 
+    /// <summary>
+    /// T5: the owner deleted its private version before it was sealed. The driver has closed its backing; the journal marks the
+    /// version Discarded (never inspected or published, generation kept) and the stage, which holds only bytes the owner deleted,
+    /// is removed. A stage that cannot be removed now is removed at the next service start.
+    /// </summary>
+    private uint DiscardStage(SafeUploadRequest request)
+    {
+        if (_stageJournal is null || request.Version != Contract.Version ||
+            request.TypedFlags.HasFlag(RequestFlags.PathTruncated) ||
+            request.TypedFlags.HasFlag(RequestFlags.PathNotNormalized))
+        {
+            return PortVerdict.Deny;
+        }
+
+        try
+        {
+            string? stage = NtPathTranslator.ToDosPath(request.GetPath());
+            if (stage is null ||
+                !string.Equals(Path.GetDirectoryName(stage),
+                    Path.Combine(AgentPaths.RootDirectory, "staging"),
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                return PortVerdict.Deny;
+            }
+
+            string basename = Path.GetFileName(stage);
+            if (basename.Length < 32 ||
+                !Guid.TryParseExact(basename[..32], "N", out Guid id))
+            {
+                return PortVerdict.Deny;
+            }
+
+            _stageJournal.DiscardAsync(id, checked((int)request.RequestorProcessId),
+                stage, CancellationToken.None)
+                .GetAwaiter().GetResult();
+            try { File.Delete(stage); }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                _logger.LogWarning(ex, "Estagio descartado {TransferId} sera removido no proximo inicio.", id);
+            }
+            return PortVerdict.Allow;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Falha ao descartar estagio para a requisicao {RequestId}.",
+                request.RequestId);
+            return PortVerdict.Deny;
+        }
+    }
+
     private async Task PublishSealedLoopAsync(CancellationToken cancellationToken)
     {
         if (_stageJournal is null || _stagePublisher is null) return;
@@ -639,6 +693,16 @@ public sealed class MinifilterInterceptor : BackgroundService
             }
             // Approved stages a previous run could not dispose of (or that the driver dropped at unload).
             _stagePublisher.DisposeReleasedStagesAsync(stoppingToken).GetAwaiter().GetResult();
+            // T5: stages of discarded versions that could not be removed when they were discarded.
+            foreach (TransferJournalEntry discarded in _stageJournal.ReadDiscardedWithStageAsync(stoppingToken)
+                         .GetAwaiter().GetResult())
+            {
+                try { File.Delete(discarded.Transfer.StagePath); }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    _logger.LogWarning(ex, "Estagio descartado {TransferId} nao pode ser removido.", discarded.Transfer.TransferId);
+                }
+            }
             // T11: finished transfers from earlier boots leave the journal, so it stops growing with every save. The cutoff is a day
             // before this boot: no per-boot driver state can name those transfers, and the guest clock's step after boot is covered.
             try

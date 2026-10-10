@@ -298,7 +298,9 @@ public sealed class StagedTransferJournal
             TransferJournalState.Approved or TransferJournalState.Publishing or TransferJournalState.Released or
             TransferJournalState.Blocked;
         if ((requiresSeal && !entry.SealedOnce) ||
-            (entry.State is TransferJournalState.Allocated or TransferJournalState.Unsealed && entry.SealedOnce) ||
+            (entry.State is TransferJournalState.Allocated or TransferJournalState.Unsealed or TransferJournalState.Discarded &&
+                entry.SealedOnce) ||
+            (entry.State == TransferJournalState.Discarded && entry.Sha256Hex is not null) ||
             ((entry.State is TransferJournalState.Publishing or TransferJournalState.Released or
                 TransferJournalState.Blocked) && entry.Sha256Hex is null))
             throw new InvalidDataException("The transfer manifest has invalid seal/publication evidence.");
@@ -533,6 +535,58 @@ public sealed class StagedTransferJournal
         finally { _gate.Release(); }
     }
 
+    /// <summary>
+    /// T5: the writer deleted its private version (disposition or delete-on-close on its staged handle) before the version was
+    /// sealed. The version becomes Discarded: it is never inspected or published, and it keeps its destination generation, so an
+    /// older version of the name (sealed before the delete) can never be approved or published after it. Idempotent for a
+    /// retried request; a sealed version cannot be discarded (a delete after the seal creates a newer version instead).
+    /// </summary>
+    public async Task<TransferJournalEntry> DiscardAsync(Guid id, int ownerProcessId,
+        string stagePath, CancellationToken token)
+    {
+        await _gate.WaitAsync(token).ConfigureAwait(false);
+        try
+        {
+            var current = await ReadCoreAsync(id, token).ConfigureAwait(false);
+            if (current.Transfer.ProcessId != ownerProcessId ||
+                !string.Equals(current.Transfer.StagePath, Path.GetFullPath(stagePath),
+                    StringComparison.OrdinalIgnoreCase) || current.PendingRename is not null)
+                throw new IOException("The discard does not identify an available version owned by this writer.");
+            if (current.State == TransferJournalState.Discarded) return current;
+            if (current.State is not (TransferJournalState.Allocated or TransferJournalState.Unsealed) || current.SealedOnce)
+                throw new IOException("Only a version that was never sealed can be discarded.");
+            IReadOnlyList<TransferJournalStateChange> history =
+                AppendState(current, TransferJournalState.Discarded);
+            var updated = current with
+            {
+                State = TransferJournalState.Discarded,
+                UpdatedAtUtc = history.Count == 0 ? DateTimeOffset.UtcNow : history[^1].OccurredAtUtc,
+                StateHistory = history
+            };
+            await ReplaceAsync(ManifestPath(id), updated, token).ConfigureAwait(false);
+            return updated;
+        }
+        finally { _gate.Release(); }
+    }
+
+    /// <summary>Discarded versions whose stage file is still on disk, for removal when the service starts.</summary>
+    public async Task<IReadOnlyList<TransferJournalEntry>> ReadDiscardedWithStageAsync(CancellationToken cancellationToken)
+    {
+        var entries = new List<TransferJournalEntry>();
+        foreach (FileInfo file in new DirectoryInfo(_directory).EnumerateFiles("*.json"))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (!Guid.TryParseExact(Path.GetFileNameWithoutExtension(file.Name), "N", out Guid id))
+                throw new InvalidDataException($"Unexpected journal file: {file.FullName}");
+            TransferJournalEntry entry;
+            await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+            try { entry = await ReadScannedAsync(file, id, cancellationToken).ConfigureAwait(false); }
+            finally { _gate.Release(); }
+            if (entry.State == TransferJournalState.Discarded && File.Exists(entry.Transfer.StagePath)) entries.Add(entry);
+        }
+        return entries;
+    }
+
     public async Task<TransferJournalEntry> PrepareRenameAsync(Guid id, ulong transactionId,
         int ownerProcessId, string destination, bool sealedVersion, CancellationToken token)
     {
@@ -653,7 +707,8 @@ public sealed class StagedTransferJournal
             bool releaseCleanupPending = entry.State == TransferJournalState.Released &&
                 entry.HandbackState == StagedHandbackState.Verified &&
                 entry.JustificationWindowClosed && !entry.StageDeleted;
-            if (entry.PendingRename is not null || entry.State != TransferJournalState.Released || releaseCleanupPending)
+            if (entry.PendingRename is not null ||
+                entry.State is not (TransferJournalState.Released or TransferJournalState.Discarded) || releaseCleanupPending)
             {
                 entries.Add(entry);
             }
@@ -693,7 +748,8 @@ public sealed class StagedTransferJournal
             }
             bool Finished(TransferJournalEntry e) =>
                 e.PendingRename is null && e.UpdatedAtUtc < cutoffUtc && !File.Exists(e.Transfer.StagePath) &&
-                ((e.State == TransferJournalState.Released &&
+                (e.State == TransferJournalState.Discarded ||
+                 (e.State == TransferJournalState.Released &&
                   (e.HandbackState == StagedHandbackState.NotAttempted || e.StageDeleted)) ||
                  (e.State == TransferJournalState.Blocked && e.JustificationWindowClosed && e.StageDeleted &&
                   e.HandbackState == StagedHandbackState.Verified));
@@ -1164,6 +1220,8 @@ public sealed class StagedTransferJournal
         (TransferJournalState.Publishing, TransferJournalState.Retained) => true,
         (TransferJournalState.Retained, TransferJournalState.Inspecting) => true,
         (TransferJournalState.Inspecting, TransferJournalState.Sealed) => true,
+        (TransferJournalState.Allocated, TransferJournalState.Discarded) => true,
+        (TransferJournalState.Unsealed, TransferJournalState.Discarded) => true,
         _ => false
     };
 }
@@ -1275,5 +1333,8 @@ public enum TransferJournalState
     Blocked,
     Retained,
     // Appended to preserve the numeric values in existing durable manifests.
-    Unsealed
+    Unsealed,
+    // T5: the writer deleted its private version before it was sealed. Terminal: never inspected or published; it keeps its
+    // destination generation, so no older version of the name can publish after the delete.
+    Discarded
 }
