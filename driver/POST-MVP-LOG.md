@@ -768,3 +768,42 @@ fresh regression queue require this diagnostic and any necessary corrections fir
 
 Decision-level receipt: [T4 telemetry correction](evidence/2026-10-10/m2-t4-telemetry-status.json). Failed run output,
 sharing control, corrected gate, per-query raw output and run restoration remain local evidence. M2 remains incomplete.
+
+## T4 isolated pool reproduction and T9 incomplete-inspection UI — 2026-10-10
+
+`m2t4stat1` finishes all 256 outcomes, releases every version/view, deletes 192 approved stages, verifies 64 hand-backs,
+returns tombstones/cap refusals/stage files to zero and keeps the stage worker idle for 60 s. The pool gate fails. An
+additional live allocator probe compiled its own type at about cycle 138 and could confound that measurement; its receipt
+is preserved, not silently excluded. The second diagnostic, `m2t4stat2`, repeats on the unchanged m2-driver1/t4-af1 pair
+with Windows-qualified additive harness `439f08fb` (registry/writer tags and existing counters in each sample) and no extra
+guest query. Every same outcome/cleanup/idle assertion passes and only T4PoolFlat fails: cycle 64 module pool 389,168 bytes,
+cycle 256 3,368,496, idle 3,284,448; slope 14,464.9 B/cycle versus the unchanged limit 4. Both overlays are deleted and bases
+verified untouched. Each run retains eight actual raw Verifier queries. The 10,000-cycle requirement and raw regression
+remain unqualified; no new long run/33-cell queue was started.
+
+The isolated samples locate growth outside released stage versions: `SpUs` returns to zero, `SwUr` grows from 6,557,568
+to 9,770,240 bytes, while the listed registry remains 229–253 entries (242 at idle), pruned count reaches 14,397, and
+Unknown/capacity failures stay zero. Registry source retires/unlinks an entry but an idle stream context still owns its
+cached reference until a subsequent writer replaces it or Filter Manager cleans the context. Releasing that cache safely
+needs to preserve the existing known-zero census, sticky loss markers and concurrent reader references; it is a lifetime
+change requiring Luna review before its first VM boot. This is a code-supported lead, not a claimed runtime fix.
+
+T9 source `ed5a2c6d833d6bf0c57a5fc16d8b54dab9092461` adds typed incomplete-inspection metadata to the blocked notification,
+with only four classes (size, format, timeout, read/parse). Parser diagnostics do not cross this UI boundary. The journal
+stores the class, validates it and restores it on blocked recovery. The WPF message explains incomplete analysis and the
+scope of an allowed justification; aggregated findings are labeled as such and the latest failed file/justification is
+named. Existing required sealed digest, positive policy version, verified hand-back and override binding were not relaxed.
+
+Feature `m2-t9-ui1` passes 673/673; normal `m2-t9-ui2` passes 609/609, all 197 source inputs verified, build/publish warnings
+zero. Ten additional test cases plus strengthened publisher/failure controls cover metadata round-trip, invalid journal
+transition/tampering, invalid notification kind/phase and blocked recovery with unchanged public content and exact copy.
+Packages: feature SHA-256 `1254606F972BEAE01754F374246A05AA54CE084A81F2EFE30547C61CF142A0DE`; normal
+`4C6A72311D00F5875DB8797C5793F96F4B40BDD2AA416914E77F97564935B655`. Both archives/manifests/packages and TRX are retained
+locally. The exact product WPF view builds with warnings as errors and passes 36 offscreen controls/seven renderings,
+covering all failure classes, a sensitive finding, aggregate/latest-version text and unavailable hand-back without a
+service justification capability. No window was shown and no app/service started. This is static UI qualification,
+not interactive or raw-volume runtime proof. The first six-image control run is retained separately.
+
+The working branch fast-forwarded only after exact source hashes, both complete TRX outcomes/control discovery and WPF
+checks were verified. Decision-level evidence is in [M2 agent component gates](evidence/2026-10-10/m2-agent-component-gates.json)
+and [T4 telemetry correction](evidence/2026-10-10/m2-t4-telemetry-status.json). M2 remains active and incomplete.

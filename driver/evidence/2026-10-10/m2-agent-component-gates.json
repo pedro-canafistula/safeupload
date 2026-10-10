@@ -104,6 +104,58 @@
           "rawTrx": "driver/evidence/2026-10-10/exact-agent-m2-t9-budget4-agent-tests.trx"
         }
       ]
+    },
+    {
+      "component": "T9 incomplete-inspection UI metadata",
+      "sourceCommit": "ed5a2c6d833d6bf0c57a5fc16d8b54dab9092461",
+      "sourceFiles": {
+        "agente/SafeUpload.Agent.App/App.xaml.cs": "76c2e86845e5612b044aa3f6e6ec860ca56a31337c0370dc300fc5469d683299",
+        "agente/SafeUpload.Agent.App/Views/BlockNotificationWindow.xaml": "b8fac648b2b6196ffc54db959e9b789794443768a171abaa3713764aa8b5f1f0",
+        "agente/SafeUpload.Agent.App/Views/BlockNotificationWindow.xaml.cs": "f71053f3cc0ff72b7a685cd19215213eeac3dd4ace0fd7b67d72b5d02fc773bd",
+        "agente/SafeUpload.Agent.Core/Contracts/AgentNotification.cs": "615df9a7cee5b50a8b4a0e60e689658ee34870f9d0e01eeeec849cfcf15d0c41",
+        "agente/SafeUpload.Agent.Core/Domain/InspectionResult.cs": "e9933d2024c609980d04540cf93065ef8998843100a7a65b25c2648340c80589",
+        "agente/SafeUpload.Agent.Service/Interception/StagedTransferJournal.cs": "b1b5964669c42940f220fa5c1cfad668e215e0a3fe7c3754610ab9687f0ee147",
+        "agente/SafeUpload.Agent.Service/Interception/StagedTransferPublisher.cs": "1ab287eb7b16d1ae381a5374ce98eed83ad5bcc259cd07633c088a072e4f16e3",
+        "agente/SafeUpload.Agent.Service/Notifications/NotificationRecord.cs": "eaf1b80057e6fb345a2bbd2f72c8948f59705d0531e9ac207b05f87a2dc7ca07",
+        "agente/SafeUpload.Agent.Tests/NotificationProtocolTests.cs": "83cfcf51dfee997cd2bf2b9fb2d29d56b88f7dad3dade04e925a1b86276b88a4",
+        "agente/SafeUpload.Agent.Tests/NotificationRecordTests.cs": "2226febfbcced39640a8a2dbdae8427ecf5e2e1cb53e7b6fd0e1ab8b2527faa9",
+        "agente/SafeUpload.Agent.Tests/StagedInspectionFailureTests.cs": "4c93c96908a65fa1b36abe2431f6fb83cd4f1a7b56fa0411ea5a5a7f2226263b",
+        "agente/SafeUpload.Agent.Tests/StagedTransferJournalTests.cs": "aa144dd3f7f4a9bdd16f9d2f137fe554fa40f25d8ef25d05c39669d914b9f6d2",
+        "agente/SafeUpload.Agent.Tests/StagedTransferPublisherTests.cs": "f20f586f54840a676970e8b6da1c8d4d1d81e8889c04c754f197b2c87c07c06f"
+      },
+      "rawLocalReceipt": "driver/evidence/2026-10-10/m2-t9-ui-failure-qualified-source.json",
+      "gates": [
+        {
+          "label": "m2-t9-ui1",
+          "admissionEvidence": true,
+          "testsPassed": 673,
+          "newControlsPassed": 10,
+          "sourceManifestVerified": 197,
+          "buildAndPublishWarnings": 0,
+          "packageSha256": "1254606F972BEAE01754F374246A05AA54CE084A81F2EFE30547C61CF142A0DE",
+          "localPackage": "driver/evidence/2026-10-10/exact-agent-m2-t9-ui1-stage-service-publish.zip",
+          "rawTrx": "driver/evidence/2026-10-10/exact-agent-m2-t9-ui1-agent-tests.trx"
+        },
+        {
+          "label": "m2-t9-ui2",
+          "admissionEvidence": false,
+          "testsPassed": 609,
+          "newControlsPassed": 10,
+          "sourceManifestVerified": 197,
+          "buildAndPublishWarnings": 0,
+          "packageSha256": "4C6A72311D00F5875DB8797C5793F96F4B40BDD2AA416914E77F97564935B655",
+          "localPackage": "driver/evidence/2026-10-10/exact-agent-m2-t9-ui2-stage-service-publish.zip",
+          "rawTrx": "driver/evidence/2026-10-10/exact-agent-m2-t9-ui2-agent-tests.trx"
+        }
+      ],
+      "wpf": {
+        "gate": "m2-t9-ui-offscreen2-gate.txt",
+        "controls": 36,
+        "images": 7,
+        "warningsAsErrors": true,
+        "windowShown": false,
+        "runtimeQualification": false
+      }
     }
   ]
 }

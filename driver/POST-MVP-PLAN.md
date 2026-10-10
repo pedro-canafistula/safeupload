@@ -226,8 +226,14 @@ records were appended, final settle/idle evidence was absent, and no Verifier po
 The disposable overlay was deleted and the base verified untouched; the conditional 33-cell queue stopped before any cell.
 Harness-only commit `9472b1cd` uses explicitly shared append/read streams, atomic final-result publication and the actual
 Windows 19045 Verifier `(NonPaged/Paged)` tuple format, retaining each raw query. Its Windows 5.1 gate passes all existing
-controls plus 23 IPC and 11 parser controls. A fresh 256-cycle runtime-Verifier diagnostic (`m2t4stat1`, sample every 64)
-uses the unchanged `m2-driver1` + `t4-af1` pair before another long run; pool flatness and every original assertion remain required.
+controls plus 23 IPC and 11 parser controls. Diagnostics `m2t4stat1` / `m2t4stat2` each finish 256/256 under runtime Verifier:
+every version/view releases, tombstones/stage files/cap refusals return to zero and the stage worker stays idle for 60 s.
+Both fail the unchanged pool-flat gate and restore the untouched base. The isolated second run uses additive attribution
+harness `439f08fb`, also Windows-gated, and no extra guest queries: module pool grows from 389,168 bytes at cycle 64 to
+3,368,496 at 256 (3,284,448 after idle; slope 14,464.9 B/cycle). `SpUs` returns to zero while `SwUr` grows by about 3.2 MiB;
+listed registry entries remain near 242 with over 14,000 prunes and zero Unknown/capacity failures. The code retains a
+reference on retired registry entries in idle stream contexts until replacement/context cleanup. This is the next lifetime
+path to investigate, not a confirmed runtime root cause or a passed long-run gate. No new 10,000-cycle run/regression starts yet.
 The cycle row samples public names; it does not replace the required raw-observer invariant regression.
 The stopped 33 C01-C04/B01/B02/X01 component queue (`m2t4rv`, `m2t4ro`, `m2t4rb`) and its frozen inputs remain preserved:
 `m2-driver1` kernel + separately tested `m2-t9-fail3` agent. A fresh serial queue may start only after every required
@@ -354,12 +360,20 @@ inspection after recovery and a four-second queue wait inside a six-second total
 `m2-t9-budget3` / `m2-t9-budget4` pass 663/663 feature and 599/599 normal tests, 0 build/publish warnings. This bounds concurrency;
 it does not yet make each extraction use bounded memory or qualify publication under load.
 
+`ed5a2c6d` adds a safe classification to staged failure notifications and persists it in the journal for recovery. The WPF
+view explains size, format, timeout and read/parse failures without parser diagnostics, identifies the latest file in an
+aggregate, and explains the policy-authorized exception for incomplete inspection. Exact gates `m2-t9-ui1` / `m2-t9-ui2`
+pass 673/673 feature and 609/609 normal tests at 0 warnings. Metadata tampering/invalid phases are refused; publisher,
+hand-back, digest and policy-bound justification assertions remain required. An exact-source WPF build and 36 offscreen
+controls (seven images) pass; these do not qualify interactive app behavior or raw publication.
+
 The requested initial 256 MiB measurement uses the tested core on the builder with no SafeUpload filter loaded: clean text Approved
 in 1.56 s (164 MiB/s), CPF at EOF Blocked in 1.01 s (254 MiB/s). Inputs were just generated and the file cache was not evicted;
 these are separate single-process baseline measurements, not cold-disk or staged-publication results. Peak working sets are
 1.28-1.29 GiB, confirming that the current whole-memory extraction must be replaced before choosing a large-file default.
 Whole-file streaming, remaining format/encoding/extraction limits, stage-space accounting and orphan
-cleanup, seeding cost, the UI explanation and runtime qualification remain open. Policy-load/snapshot failures still retain
+cleanup, seeding cost and runtime qualification remain open. The failure UI is implemented for the covered result codes;
+interactive app checks remain open. Policy-load/snapshot failures still retain
 locally and need their own safe Blocked/hand-back treatment; the agent does not claim a complete T9 implementation.
 
 ### T10. Permission and owner changes reach the real file or folder

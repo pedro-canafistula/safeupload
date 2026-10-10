@@ -20,7 +20,7 @@
   "tag": "m2t4stat1",
   "milestoneComplete": false,
   "schema": "SafeUploadM2T4TelemetryStatus/1",
-  "updatedUtc": "2026-10-10T19:09:05.871118+00:00",
+  "updatedUtc": "2026-10-10T19:36:02.838876+00:00",
   "previousRun": {
     "tag": "m2t4long2",
     "passed": false,
@@ -62,10 +62,53 @@
     "cycles": 256,
     "sampleEvery": 64,
     "mode": "runtime-verifier",
-    "status": "running",
-    "qualified": false
+    "status": "finished",
+    "qualified": false,
+    "passed": false,
+    "completedOutcomes": 256,
+    "cycleRecords": 256,
+    "failedAssertions": [
+      "T4PoolFlat"
+    ],
+    "baseUntouched": true,
+    "rawQueriesRetained": 8,
+    "extraProbe": {
+      "rawReceipt": "m2t4stat1-live-pool-tags.txt",
+      "coordinatorCyclesWhenObserved": 138,
+      "compiledHashVerifiedPoolType": true,
+      "potentialPoolMeasurementConfound": true
+    },
+    "rawVerdict": "m2t4stat1-verdict.txt",
+    "samples": "m2t4stat1-samples.jsonl",
+    "restoration": "m2t4stat1-final-restored-state.txt"
   },
   "assertionsRelaxed": false,
   "kernelOrAgentChanged": false,
-  "requiredLongRunPassed": false
+  "requiredLongRunPassed": false,
+  "isolatedRepeat": {
+    "tag": "m2t4stat2",
+    "status": "finished",
+    "passed": false,
+    "qualified": false,
+    "cycles": 256,
+    "sampleEvery": 64,
+    "mode": "runtime-verifier",
+    "harnessSourceCommit": "439f08fbf0fb5a18998de49a647ae8a19729aa87",
+    "windowsGate": "harness-windows-gate-m2-t4-pool1.txt",
+    "extraGuestQueriesAllowed": false,
+    "frozenInputs": "m2-t4-stat2-frozen-inputs.json",
+    "completedOutcomes": 256,
+    "cycleRecords": 256,
+    "rawQueriesRetained": 8,
+    "baseUntouched": true,
+    "failedAssertions": [
+      "T4PoolFlat"
+    ],
+    "poolSlopeBytesPerCycle": 14464.9,
+    "rawVerdict": "m2t4stat2-verdict.txt",
+    "samples": "m2t4stat2-samples.jsonl",
+    "restoration": "m2t4stat2-final-restored-state.txt"
+  },
+  "poolGrowthReproducedWithoutExtraQueries": true,
+  "nextInvestigation": "Retired writer-registry cache references in idle stream contexts; no lifetime fix booted or qualified"
 }
