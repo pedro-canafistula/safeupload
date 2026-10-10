@@ -251,7 +251,13 @@ public sealed class InspectionService
                 TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
             try
             {
-                return await inspection.WaitAsync(remaining, cancellationToken).ConfigureAwait(false);
+                var inspected = await inspection.WaitAsync(remaining, cancellationToken).ConfigureAwait(false);
+                // Timers/continuations can themselves run late under load.
+                // Enforce the full queue+work deadline with monotonic time
+                // even when WaitAsync observes an already completed task.
+                if (budget.Elapsed >= policy.InspectionTimeout)
+                    throw new TimeoutException("The inspection result arrived after the policy budget.");
+                return inspected;
             }
             catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested && workerToken.IsCancellationRequested)
             {

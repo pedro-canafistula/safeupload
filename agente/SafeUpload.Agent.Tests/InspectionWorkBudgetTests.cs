@@ -93,8 +93,48 @@ public sealed class InspectionWorkBudgetTests : IDisposable
         Assert.Equal(0, extractor.Active);
     }
 
-    private InspectionService Service(ITextExtractor extractor, LocalQueueAuditSink sink) => new(
-        new FixedPolicyStore(LocalPolicyStore.CreateDefault() with { Version = 11, InspectionTimeoutSeconds = 3 }),
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Waiting_for_capacity_and_parsing_share_one_policy_deadline(bool staged)
+    {
+        var extractor = new QueuedDeadlineExtractor();
+        var service = Service(extractor, new LocalQueueAuditSink(_workspace.QueueFile), timeoutSeconds: 6);
+        var operation = TestWorkspace.Operation(_workspace.WriteText("queued-deadline.txt", "fixture"));
+        var queuedOperation = TestWorkspace.Operation(_workspace.WriteText("queued-content.txt", "other fixture"));
+        using var shutdown = new CancellationTokenSource();
+        Task<InspectionResult> Inspect(FileOperation current) => staged
+            ? service.InspectStagedAsync(current, shutdown.Token)
+            : service.InspectAsync(current, shutdown.Token);
+        var first = new[] { Inspect(operation), Inspect(operation) };
+        try
+        {
+            await extractor.BothEntered.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            var elapsed = Stopwatch.StartNew();
+            var queued = Inspect(queuedOperation);
+            await Task.Delay(TimeSpan.FromSeconds(4));
+            extractor.Release.TrySetResult();
+            Assert.All(await Task.WhenAll(first), result => Assert.Equal(Verdict.Approved, result.Verdict));
+            await extractor.QueuedEntered.Task.WaitAsync(TimeSpan.FromSeconds(10));
+
+            AssertTimeout(await queued, staged);
+            elapsed.Stop();
+            // Resetting the timeout at admission would take about ten seconds
+            // (four waiting + six parsing), instead of the single six-second budget.
+            Assert.InRange(elapsed.ElapsedMilliseconds, 5_500, 7_500);
+            await extractor.QueuedCancelled.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            await WaitForWorkerReleaseAsync(service);
+        }
+        finally
+        {
+            extractor.Release.TrySetResult();
+            shutdown.Cancel();
+            await WaitForWorkerReleaseAsync(service);
+        }
+    }
+
+    private InspectionService Service(ITextExtractor extractor, LocalQueueAuditSink sink, int timeoutSeconds = 3) => new(
+        new FixedPolicyStore(LocalPolicyStore.CreateDefault() with { Version = 11, InspectionTimeoutSeconds = timeoutSeconds }),
         sink, new ExtractorRegistry([extractor]), new VerdictCache());
 
     private static async Task WaitForWorkerReleaseAsync(InspectionService service)
@@ -176,6 +216,33 @@ public sealed class InspectionWorkBudgetTests : IDisposable
                 Interlocked.Decrement(ref _active);
                 if (call == 1 && token.IsCancellationRequested) Cancelled.TrySetResult();
             }
+        }
+    }
+
+    private sealed class QueuedDeadlineExtractor : ITextExtractor
+    {
+        public IReadOnlySet<string> SupportedExtensions { get; } = new HashSet<string> { ".txt" };
+        public TaskCompletionSource BothEntered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource QueuedEntered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource QueuedCancelled { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource Release { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private int _calls;
+        public async Task<string> ExtractAsync(Stream content, CancellationToken token)
+        {
+            int call = Interlocked.Increment(ref _calls);
+            if (call <= 2)
+            {
+                if (call == 2) BothEntered.TrySetResult();
+                await Release.Task;
+                return "clean result";
+            }
+            QueuedEntered.TrySetResult();
+            try
+            {
+                await Task.Delay(Timeout.Infinite, token);
+                throw new InvalidOperationException("The queued parser must be cancelled.");
+            }
+            finally { if (token.IsCancellationRequested) QueuedCancelled.TrySetResult(); }
         }
     }
 }
